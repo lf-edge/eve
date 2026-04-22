@@ -93,6 +93,7 @@ type DNSContext struct {
 	triggerDeviceInfo      bool
 	triggerHandleDeferred  bool
 	triggerRadioPOST       bool
+	triggerLPSNetworkPOST  bool
 }
 
 type zedagentContext struct {
@@ -962,6 +963,13 @@ func mainEventLoop(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 				getconfigCtx.localCmdAgent.TriggerRadioPOST()
 				dnsCtx.triggerRadioPOST = false
 			}
+			if dnsCtx.triggerLPSNetworkPOST {
+				getconfigCtx.localCmdAgent.TriggerNetworkPOST()
+				dnsCtx.triggerLPSNetworkPOST = false
+			}
+
+		case change := <-zedagentCtx.subDevicePortConfigList.MsgChan():
+			zedagentCtx.subDevicePortConfigList.ProcessChange(change)
 
 		case change := <-zedagentCtx.subAssignableAdapters.MsgChan():
 			zedagentCtx.subAssignableAdapters.ProcessChange(change)
@@ -2452,6 +2460,7 @@ func handleDNSImpl(ctxArg interface{}, key string,
 		ctx.DNSinitialized = true
 		return
 	}
+
 	// if status changed to DPCStateSuccess try to send deferred objects
 	if status.State == types.DPCStateSuccess && deviceNetworkStatus.State != types.DPCStateSuccess {
 		ctx.triggerHandleDeferred = true
@@ -2466,6 +2475,7 @@ func handleDNSImpl(ctxArg interface{}, key string,
 
 	if dnsHasRealChange(*deviceNetworkStatus, status) {
 		ctx.triggerDeviceInfo = true
+		ctx.triggerLPSNetworkPOST = true
 		log.Functionf("handleDNSImpl: has change. hasRealChange")
 	}
 	*deviceNetworkStatus = status
@@ -2543,6 +2553,7 @@ func handleDPCLImpl(ctxArg interface{}, key string,
 	status := statusArg.(types.DevicePortConfigList)
 	if dpclHasRealChange(*ctx.DevicePortConfigList, status) {
 		triggerPublishDevInfo(ctx)
+		ctx.getconfigCtx.localCmdAgent.TriggerNetworkPOST()
 		log.Noticef("handleDPCLImpl: has real change.")
 	}
 	*ctx.DevicePortConfigList = status
