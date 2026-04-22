@@ -240,9 +240,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// Publish metrics for zedagent every 10 seconds and
 	// adjust publishTicker interval if global MetricInterval changed later
 	interval := time.Duration(domainCtx.metricInterval) * time.Second
-	max := float64(interval)
-	min := max * 0.3
-	domainCtx.publishTicker = flextimer.NewRangeTicker(time.Duration(min), time.Duration(max))
+	maxInterval := float64(interval)
+	minInterval := maxInterval * 0.3
+	domainCtx.publishTicker = flextimer.NewRangeTicker(time.Duration(minInterval), time.Duration(maxInterval))
 
 	aa := types.AssignableAdapters{}
 	domainCtx.assignableAdapters = &aa
@@ -732,6 +732,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			// the device is powered off. Next config refresh will see app is gone and domainmgr will not do anything.
 			// But kubernetes thinks app is still running and starts. So its safe to delete all replica sets at the start
 			// on single node installs.
+			if err := kubeapi.EnsureVMsDeschedulerAnnotated(log); err != nil {
+				log.Errorf("domainmgr: EnsureVMsDeschedulerAnnotated: %v", err)
+			}
+
 			clusterMode := kubeapi.IsClusterMode(domainCtx.ps,
 				log, agentName)
 
@@ -1020,10 +1024,10 @@ func runHandler(ctx *domainContext, key string, configChannel <-chan Notify, cpu
 	log.Functionf("runHandler starting")
 
 	interval := 30 * time.Second
-	max := float64(interval)
-	min := max * 0.3
-	ticker := flextimer.NewRangeTicker(time.Duration(min),
-		time.Duration(max))
+	maxInterval := float64(interval)
+	minInterval := maxInterval * 0.3
+	ticker := flextimer.NewRangeTicker(time.Duration(minInterval),
+		time.Duration(maxInterval))
 
 	closed := false
 	for !closed {
@@ -3411,8 +3415,8 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 	// Check if any adapters got deleted
 	// Loop first then delete to avoid deleting while we iterate
 	var deleteList []string
-	for indx := range aa.IoBundleList {
-		phylabel := aa.IoBundleList[indx].Phylabel
+	for index := range aa.IoBundleList {
+		phylabel := aa.IoBundleList[index].Phylabel
 		phyAdapter := phyIOAdapterList.LookupAdapter(phylabel)
 		if phyAdapter == nil {
 			deleteList = append(deleteList, phylabel)
@@ -3517,8 +3521,8 @@ func handlePhysicalIOAdapterListDelete(ctxArg interface{},
 	log.Functionf("handlePhysicalIOAdapterListDelete: ALL PhysicalIoAdapters " +
 		"deleted")
 
-	for indx := range phyAdapterList.AdapterList {
-		phylabel := phyAdapterList.AdapterList[indx].Phylabel
+	for index := range phyAdapterList.AdapterList {
+		phylabel := phyAdapterList.AdapterList[index].Phylabel
 		log.Functionf("handlePhysicalIOAdapterListDelete: Deleting Adapter %s",
 			phylabel)
 		handleIBDelete(ctx, phylabel)

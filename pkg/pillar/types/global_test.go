@@ -265,6 +265,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		LpsAppBootInfoInterval,
 		IGPUGOPFile,
 		EnableEFIDebug,
+		KubernetesVmiDescheduleEvents,
 	}
 	if len(specMap.GlobalSettings) != len(gsKeys) {
 		t.Errorf("GlobalSettings has more (%d) than expected keys (%d)",

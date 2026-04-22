@@ -117,9 +117,11 @@ type zedkube struct {
 	configInterval                     time.Duration
 	clusterWideDetectWindowMultiple    int
 
-	// Block 'uncordon' after running it once at bootup
+	// Block 'uncordon' after running it once at boot-up
 	onBootUncordonCheckComplete bool
-	receivedENCC                bool
+	// deschedulerOnBootStarted ensures the watcher goroutine is launched at most once per boot.
+	deschedulerOnBootStarted bool
+	receivedENCC             bool
 
 	// longhornDiskReservedSet is true once the desired reservation has been applied to the Longhorn node
 	longhornDiskReservedSet bool
@@ -639,6 +641,23 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Errorf("zedkube: WaitForKubenetes %v", err)
 	}
 
+	// Launch the VMI descheduler watcher once kubernetes is ready. GlobalConfig
+	// (which sets OnBoot) is processed as early as the ENCC wait loop above, so
+	// pubKubeConfig already reflects the operator's intent by the time we reach
+	// here. nodeName is also guaranteed set — the EdgeNodeInfo init loop completed
+	// before WaitForKubernetes.
+	//
+	// NOTE: if the operator enables types.KubernetesVmiDescheduleEvents after
+	// WaitForKubernetes returns (i.e. new config pushed just as k3s comes ready),
+	// the descheduler will not fire this boot. handleVmiDescheduleEventsOverride
+	// updates pubKubeConfig but there is no re-trigger once this window has passed.
+	if glbKubeConfig, ok := zedkubeCtx.pubKubeConfig.GetAll()["global"].(types.KubeConfig); ok &&
+		glbKubeConfig.VmiDescheduleEvents.OnBoot &&
+		!zedkubeCtx.deschedulerOnBootStarted {
+		zedkubeCtx.deschedulerOnBootStarted = true
+		go zedkubeCtx.deschedulerOnBootWatcher()
+	}
+
 	err = zedkubeCtx.initKubePrefixes()
 	if err != nil { // should never happen
 		log.Fatalf("zedkube: initKubePrefixes %v", err)
@@ -866,6 +885,9 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 
 		z.globalConfig = newConfigItemValueMap
 		z.applyLonghornDiskReserved()
+
+		z.handleVmiDescheduleEventsOverride(newConfigItemValueMap)
+
 	}
 	log.Functionf("handleGlobalConfigImpl(%s): done", key)
 }
@@ -953,6 +975,32 @@ func (z *zedkube) handleK3sVersionOverride(currentGcp *types.ConfigItemValueMap,
 	kubeConfig.K3sVersion = newVal
 	z.pubKubeConfig.Publish("global", kubeConfig)
 	currentGcp.SetGlobalValueString(types.K3sVersionOverride, newVal)
+}
+
+func (z *zedkube) handleVmiDescheduleEventsOverride(newGcp *types.ConfigItemValueMap) {
+	newVal := newGcp.GlobalValueString(types.KubernetesVmiDescheduleEvents)
+	newOnBoot := false
+	for _, token := range strings.Split(newVal, ",") {
+		if strings.TrimSpace(token) == types.VmiDescheduleEventBoot {
+			newOnBoot = true
+			break
+		}
+	}
+
+	// Compare against the currently published bool so the first call always
+	// reconciles the zero-value initial publish regardless of the raw string diff.
+	items := z.pubKubeConfig.GetAll()
+	glbKubeConfig, ok := items["global"].(types.KubeConfig)
+	if ok && glbKubeConfig.VmiDescheduleEvents.OnBoot == newOnBoot {
+		return
+	}
+
+	kubeConfig := types.KubeConfig{}
+	if ok {
+		kubeConfig = glbKubeConfig
+	}
+	kubeConfig.VmiDescheduleEvents = types.VmiDescheduleConfig{OnBoot: newOnBoot}
+	z.pubKubeConfig.Publish("global", kubeConfig)
 }
 
 func handleEdgeNodeClusterConfigCreate(ctxArg interface{}, key string,
@@ -1051,6 +1099,7 @@ func (z *zedkube) checkAndSaveEdgeNodeInfo() bool {
 					if !z.onBootUncordonCheckComplete {
 						go nodeOnBootHealthStatusWatcher(z)
 					}
+
 					z.applyLonghornDiskReserved()
 					return true
 				}

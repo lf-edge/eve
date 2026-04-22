@@ -198,7 +198,7 @@ the application cannot failover to another node, failover is disabled for only t
 
 Once the application gets Scheduled on a particular node after failover. EVE code does the following;
 
-1) zedkube microservice has a periodic loop to check for apps shceduled on that node.
+1) zedkube microservice has a periodic loop to check for apps scheduled on that node.
 2) zedkube publishes ENClusterAppStatus which looks something like this
    {
   "AppUUID": "a19baff7-5b6c-4363-9a1c-522b210f5139",
@@ -220,28 +220,165 @@ The workflow above guarantees that the app is running on only one node in a clus
 
 When a failed node recovers and rejoins the cluster, Kubernetes does not automatically move applications back to their original designated node. EVE uses the Kubernetes descheduler to trigger failback by evicting apps that are running on a node that does not match their preferred affinity.
 
-**Descheduler trigger**
+#### Descheduler trigger
 
-`Update_RunDeschedulerOnBoot()` in `cluster-update.sh` runs the descheduler once per boot on any booting cluster node — this includes the recovered node returning to service, a surviving node rebooting, or any other node in the cluster. Before running, it verifies all of the following:
+The `deschedulerOnBootWatcher` goroutine in the `zedkube` microservice
+(`pkg/pillar/cmd/zedkube/descheduler.go`) runs the descheduler once per boot on any
+booting cluster node — this includes the recovered node returning to service, a surviving
+node rebooting, or any other node in the cluster.
 
-- The cluster API is reachable
-- This node is `Ready` and not `SchedulingDisabled`
-- All Longhorn daemonsets report `numberReady == desiredNumberScheduled`
-- All KubeVirt daemonsets report `numberReady == desiredNumberScheduled` (if kubevirt is installed)
+The trigger is opt-in: it is enabled by setting the `kubernetes.vmi.deschedule.events`
+config key to a value containing `"boot"` (e.g. `kubernetes.vmi.deschedule.events:boot`).
+When the key is empty (the default), no event-driven descheduling is performed.
 
-Once prerequisites are met, any existing `descheduler-job` is deleted and a fresh Job is applied. The sentinel file `/tmp/descheduler-ran-onboot` ensures it runs at most once per boot.
+The goroutine launches once after `EdgeNodeInfo` is first received and polls
+`kubeapi.IsDeschedulerReady` every 15 seconds until all of the following are satisfied:
 
-**Descheduler policy**
+* This node is `Ready` and not `Unschedulable`
+* All Longhorn daemonsets on this node report `numberReady == desiredNumberScheduled`
+* The KubeVirt CR reports `Available` (if the kubevirt namespace exists)
+
+Once ready, `kubeapi.TriggerDescheduler` manages the Job with a Create-first idempotent
+pattern: it attempts to create a new `descheduler-job`; if one already exists and is
+active (another node's descheduler is running), it skips; if the existing Job is
+completed or failed, it deletes it and recreates. This avoids the multi-node boot race
+where an unconditional delete would interrupt another node's in-progress descheduler run.
+RBAC resources (ServiceAccount, ClusterRole, ClusterRoleBinding) and the policy ConfigMap
+are upserted before each run.
+
+#### Descheduler policy
 
 The descheduler runs the `RemovePodsViolatingNodeAffinity` plugin scoped to the `eve-kube-app` namespace with `preferredDuringSchedulingIgnoredDuringExecution` affinity type. It evicts any pod in that namespace currently running on a node that does not satisfy its preferred node affinity — i.e., an app that failed over away from its designated node and whose designated node is now back online and ready.
 
-**After eviction**
+#### After eviction
 
 Once the descheduler evicts the pod, KubeVirt reschedules a new VMI. The surviving nodes detect the new scheduling via `ENClusterAppStatus` and EVE handles the transition using the same failover path described above.
 
-**Scope limitation**
+#### Scope limitation
 
 The descheduler only acts on apps with `AffinityType == PreferredDuringScheduling`. Apps configured with `AffinityType == RequiredDuringScheduling` never fail over and therefore never require failback.
+
+### Failback Troubleshooting
+
+#### Descheduler Job Not Created After Boot
+
+After a node boots, the `descheduler-job` in the `kube-system` namespace is the signal
+that EVE triggered the descheduler to run the failback logic. If the job never appears,
+work through the following checks in order.
+
+##### 1. Verify the feature flag is enabled
+
+The descheduler trigger is opt-in and disabled by default. The global config is published
+by `zedagent` to `/run/global/zedagent/global.json` on the device. Inspect it with:
+
+```bash
+cat /run/global/zedagent/global.json | python3 -c \
+  "import sys,json; d=json.load(sys.stdin); \
+   print(d.get('GlobalSettings',{}).get('kubernetes.vmi.deschedule.events',{}))"
+# Value field should contain: boot
+# If absent or empty, the feature is disabled — it must be set via the controller.
+```
+
+If the key is missing or the value does not contain `boot`, no descheduler job will
+ever be created on boot.
+
+##### 2. Confirm the watcher goroutine started
+
+The watcher is launched only once, on first receipt of `EdgeNodeInfo`. Search zedkube logs:
+
+```bash
+logread | grep zedkube | grep -i "descheduler\|devicename"
+# Look for: "checkAndSaveEdgeNodeInfo: found devicename <name>"
+```
+
+If that log line is absent, `EdgeNodeInfo` was never delivered to zedkube. Check that
+zedkube is running and that the device is registered with the controller.
+
+##### 3. Check node Ready status
+
+The watcher polls `IsDeschedulerReady` every 15 seconds and will not proceed while the
+node is unschedulable or not `Ready`:
+
+```bash
+kubectl get node <nodename>
+kubectl describe node <nodename> | grep -A5 "Conditions:"
+# Node must show Ready=True and Unschedulable=false
+```
+
+Relevant log lines to search for:
+
+* `"IsDeschedulerReady: node <name> is unschedulable"`
+* `"IsDeschedulerReady: node <name> is not ready"`
+
+##### 4. Verify Longhorn daemonsets are Ready on this node
+
+Longhorn readiness is a hard gate. All three daemonsets — `longhorn-manager`,
+`longhorn-csi-plugin`, and `engine-image-*` — must have pods in `Running` state with
+all containers `Ready` on this node:
+
+```bash
+kubectl get pods -n longhorn-system -o wide | grep <nodename>
+# All pods must show STATUS=Running and READY=<n>/<n>
+```
+
+Relevant log line: `"IsDeschedulerReady: longhorn not ready: <error>"`
+
+If any Longhorn pod is `Pending` or `CrashLoopBackOff`, the watcher will keep retrying
+but will not trigger the job.
+
+##### 5. Verify KubeVirt is Available
+
+If the `kubevirt` namespace exists, the KubeVirt CR must report `Available=True`:
+
+```bash
+kubectl get kubevirt -n kubevirt
+kubectl describe kubevirt kubevirt -n kubevirt | grep -A3 "Conditions:"
+# Look for: Type=KubeVirtConditionAvailable  Status=True
+```
+
+Relevant log line: `"IsDeschedulerReady: kubevirt not ready: <error>"`
+
+##### 6. Check whether the job already ran
+
+The watcher is single-shot per boot. If the job was already created and completed (or
+was deleted after completion), it will not be recreated until the next boot:
+
+```bash
+kubectl get jobs -n kube-system
+kubectl get job descheduler-job -n kube-system -o yaml
+# Check .status.completionTime — if present, the job ran successfully
+```
+
+Also check for the skip-active log line `"TriggerDescheduler: descheduler job already
+active, skipping (node <name>)"` — this means another node's run is in progress and
+this node intentionally skipped creating a second job.
+
+##### 7. Look for job creation errors in zedkube logs
+
+If all prerequisites passed but the job still was not created, look for error logs:
+
+```bash
+logread | grep zedkube | grep -i descheduler
+# Key errors to look for:
+#   "deschedulerOnBootWatcher: readiness check error: <err>"
+#   "deschedulerOnBootWatcher: trigger error: <err>"
+#   "EnsureVMsDeschedulerAnnotated: update vmirs <name>: <err>"
+```
+
+##### 8. Confirm RBAC and ConfigMap prerequisites exist
+
+`TriggerDescheduler` upserts these resources before creating the job. If any upsert
+fails, the job will not be created:
+
+```bash
+kubectl get serviceaccount descheduler-sa -n kube-system
+kubectl get clusterrole descheduler-cluster-role
+kubectl get clusterrolebinding descheduler-cluster-role-binding
+kubectl get configmap descheduler-policy-configmap -n kube-system
+```
+
+Missing resources combined with a trigger error in step 7 indicates an RBAC or
+API-server connectivity issue.
 
 ## Kubernetes Timeline on VMIRs Failover
 
@@ -249,7 +386,7 @@ The following describes the sequence of Kubernetes and Longhorn object state cha
 
 **Best-case timing summary** (new pod already scheduled on failover node):
 
-```
+```text
 T+0s:       network lost
 T+40s:      node → NotReady/Unknown  (node-monitor-grace-period)
 T+55s:      DeletionTimestamp set, virt-launcher pod → Terminating  (tolerateSec=15)
@@ -257,56 +394,56 @@ T+55–65s:   checkAppsFailover() fires  (logcollectInterval=10s polling)
 T+65s:      DetachOldWorkload begins
 ```
 
-**1. Node network lost**
+### 1. Node network lost
 
 The failed node loses network connectivity to the cluster. Its kubelet stops posting status updates to the Kubernetes API server.
 
-**2. Node object → NotReady**
+### 2. Node object → NotReady
 
 After the node monitor grace period (**40 seconds**, per EVE's k3s config `node-monitor-grace-period=40s` with `node-monitor-period=10s`), the Kubernetes control plane transitions the node's `Ready` condition to `Unknown` with the message `"Kubelet stopped posting node status."`. The `node.kubernetes.io/unreachable:NoExecute` taint is added to the node object.
 
-**3. virt-launcher pod → Terminating**
+### 3. virt-launcher pod → Terminating
 
 EVE explicitly sets `tolerationSeconds=15` on all VMI and ReplicaSet pod specs at creation time (see `tolerateSec` in `hypervisor/kubevirt.go`), overriding the Kubernetes default of 300 seconds. After this **15-second** window following step 2, Kubernetes sets a `DeletionTimestamp` on all pods on the unreachable node, transitioning them to `Terminating`. The virt-launcher pod cannot fully terminate because the kubelet on the failed node is offline and cannot acknowledge the deletion. Total time from network loss to `Terminating` is approximately **~55 seconds** (40s detection + 15s toleration).
 
 EVE's zedkube `checkAppsFailover()` polls every **10 seconds** (`logcollectInterval`), so there is up to 10 seconds of additional latency before EVE detects the `Terminating` pod and begins acting on it.
 
-**3b. (Contingency if new virt-launcher pod not scheduled) VMIRs replica reset**
+### 3b. (Contingency if new virt-launcher pod not scheduled) VMIRs replica reset
 
 If no new scheduling pod appears within ~2 minutes of the pod entering `Terminating`, EVE's zedkube microservice triggers `DetachUtilVmirsReplicaReset()`. This scales the `VirtualMachineInstanceReplicaSet` (VMIRs) from 1 replica to 0 and back to 1, prompting KubeVirt to schedule a new VMI and virt-launcher pod onto an available node.
 
-**4. New virt-launcher pod → Pending on failover node**
+### 4. New virt-launcher pod → Pending on failover node
 
 KubeVirt creates a replacement VMI and virt-launcher pod, which is scheduled onto a surviving cluster node. The pod remains in `Pending` state because its PVC is still bound to a `VolumeAttachment` referencing the failed node.
 
-**5. Verify old node unreachable (DetachOldWorkload gate)**
+### 5. Verify old node unreachable (DetachOldWorkload gate)
 
 When zedkube detects a new pod scheduled on this node via `ENClusterAppStatus`, it calls `DetachOldWorkload()`. The first check verifies the failed node is genuinely unreachable by inspecting the node's `Ready` condition message for `"Kubelet stopped posting node status."`. Other `NotReady` reasons do not qualify — this prevents split-brain data corruption.
 
-**6. Verify PVC storage redundancy**
+### 6. Verify PVC storage redundancy
 
 For each Longhorn volume attached to the application, EVE checks that at least one healthy replica exists on a node other than the failed node. If any volume lacks an off-node healthy replica, the failover is blocked and does not proceed. This is a hard gate.
 
-**7. Control plane pod cleanup on failed node**
+### 7. Control plane pod cleanup on failed node
 
 Longhorn and KubeVirt control plane pods stuck in `Terminating` on the failed node are force-deleted, clearing the way for storage and compute cleanup.
 
-**8. virt-launcher and VMI cleanup on failed node**
+### 8. virt-launcher and VMI cleanup on failed node
 
 The stuck virt-launcher pod is force-deleted (grace period 0, Foreground propagation). The VMI on the failed node has its finalizers stripped before force-deletion. This unblocks KubeVirt's reconciliation loop.
 
-**9. Longhorn replica removal on failed node**
+### 9. Longhorn replica removal on failed node
 
 Longhorn `Replica` objects associated with the failed node for this application's volumes are deleted, removing the failed node's claim on the volume data and allowing Longhorn to re-establish replica count on surviving nodes.
 
-**10. VolumeAttachment deletion**
+### 10. VolumeAttachment deletion
 
 EVE polls and force-deletes all `VolumeAttachment` objects referencing the failed node for this application. The loop retries until the VA list is empty. The new virt-launcher pod's PVC bind cannot complete while the old `VolumeAttachment` exists.
 
-**11. Longhorn volume node assignment**
+### 11. Longhorn volume node assignment
 
 With the old `VolumeAttachment` removed, `longhornVolumeSetNode()` updates the Longhorn volume's `spec.nodeID` to the failover node, directing Longhorn to attach the volume engine there. For volumes migrated from Longhorn < v1.7, `BackupTargetName` may be empty; the Longhorn v1.9.x webhook rejects updates with an empty `BackupTargetName`, so EVE sets it to `"default"` when unset.
 
-**12. New VMI → Running**
+### 12. New VMI → Running
 
 Once the new `VolumeAttachment` reports `Attached`, storage is available on the failover node. The virt-launcher pod transitions from `Pending` to `Running` and the VMI reaches `Running` state. EVE's zedkube publishes an updated `ENClusterAppStatus` with `ScheduledOnThisNode=true` and `StatusRunning=true`, causing zedmanager on the failover node to set `AppInstanceStatus.Activated=true` and resume reporting app info to the controller.

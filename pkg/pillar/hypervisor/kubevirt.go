@@ -556,8 +556,6 @@ func (ctx kubevirtContext) CreateReplicaVMIConfig(domainName string, config type
 
 	vmi.Spec.Affinity = affinity
 	vmi.Spec.Tolerations = tolerations
-	vmi.Labels = make(map[string]string)
-	vmi.Labels[eveLabelKey] = domainName
 
 	// Create a VirtualMachineInstanceReplicaSet
 	replicaSet := &v1.VirtualMachineInstanceReplicaSet{
@@ -576,6 +574,9 @@ func (ctx kubevirtContext) CreateReplicaVMIConfig(domainName string, config type
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
 						eveLabelKey: domainName,
+					},
+					Annotations: map[string]string{
+						kubeapi.DeschedulerEvictAnnotation: "true",
 					},
 				},
 				Spec: vmi.Spec,

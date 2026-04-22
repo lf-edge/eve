@@ -67,3 +67,8 @@ func GetSupportedReplicaCountForCluster() (int, error) {
 func GetStorageClassForReplicaCount(count int) string {
 	return ""
 }
+
+// EnsureVMsDeschedulerAnnotated is a stub for non EVE-k builds.
+func EnsureVMsDeschedulerAnnotated(*base.LogObject) error {
+	return nil
+}

@@ -58,7 +58,6 @@ trigger_k3s_selfextraction() {
 # shellcheck disable=SC1091
 . /usr/bin/descheduler-utils.sh
 
-EdgeNodeInfoPath="/run/zedagent/EdgeNodeInfo/global.json"
 COMP_UPDATE_PATH="/usr/bin/update-component"
 
 link_multus_into_k3s() {
@@ -199,54 +198,6 @@ Update_CheckClusterComponents() {
     update_Version_Set
     wait_for_item "update_cluster_post"
     return 0
-}
-
-# Update_RunDeschedulerOnBoot will run the descheduler to evict pods from the edge node
-# on boot. This is to allow rebalancing apps via re-scheduling them with an aim to meet
-# affinity as specified in the pod config.
-# We assume that when this is called zedagent has initialized and
-# published EdgeNodeInfo (from a checkpoint if disconnected),
-Update_RunDeschedulerOnBoot() {
-    # Currently only run once per boot
-    if [ -f /tmp/descheduler-ran-onboot ]; then
-        return
-    fi
-
-    if [ ! -f $EdgeNodeInfoPath ]; then
-        return
-    fi
-    # is api ready
-    if ! update_isClusterReady; then
-        return
-    fi
-    # Don't run unless it has been installed
-    if ! descheduler_install; then
-        return
-    fi
-    # node ready and allowing scheduling
-    node=$(jq -r '.DeviceName' < $EdgeNodeInfoPath | tr -d '\n' | tr '[:upper:]' '[:lower:]')
-    node=$(convert_to_k8s_compatible "$node")
-    node_count_ready=$(kubectl get "node/${node}" | grep -v SchedulingDisabled | grep -cw Ready )
-    if [ "$node_count_ready" -ne 1 ]; then
-        return
-    fi
-    # Ensure all infrastructure pods are online on node
-    lhStatus=$(kubectl -n longhorn-system get daemonsets -o json | jq '.items[].status | .numberReady==.desiredNumberScheduled' | tr -d '\n')
-    if [ "$lhStatus" != "truetruetrue" ]; then
-        return
-    fi
-    if component_is_installed "kubevirt"; then
-        kvStatus=$(kubectl -n kubevirt get daemonsets -o json | jq '.items[].status | .numberReady==.desiredNumberScheduled' | tr -d '\n')
-        if [ "$kvStatus" != "true" ]; then
-            return
-        fi
-    fi
-    # Job lives persistently in cluster, cleanup after old runs
-    if kubectl -n kube-system get job/descheduler-job; then
-        kubectl -n kube-system delete job/descheduler-job
-    fi
-    kubectl apply -f /etc/descheduler-job.yaml
-    touch /tmp/descheduler-ran-onboot
 }
 
 update_isClusterReady() {

@@ -80,7 +80,6 @@ COPY cfg-manifests/longhorn-cfg.yaml /etc/
 # descheduler
 COPY descheduler-utils.sh /usr/bin/
 COPY descheduler_rbac.yaml /etc/
-COPY descheduler-job.yaml /etc/
 COPY descheduler-policy-configmap.yaml /etc/
 
 # ACE

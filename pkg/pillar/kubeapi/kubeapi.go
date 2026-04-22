@@ -268,7 +268,7 @@ func WaitForKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.T
 	return nodeReadyErr
 }
 
-func waitForLonghornReady(client *kubernetes.Clientset, hostname string) error {
+func waitForLonghornReady(client kubernetes.Interface, hostname string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), kubeAPITimeout)
 	defer cancel()
 	// First we'll gate on the longhorn daemonsets existing
