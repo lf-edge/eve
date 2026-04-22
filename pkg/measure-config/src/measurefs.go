@@ -146,6 +146,7 @@ func getExcludeList() []string {
 		"/config/onboard.cert.pem",
 		"/config/onboard.key.pem",
 		"/config/soft_serial",
+		"/config/ftpm.tar.xz",
 	}
 }
 
