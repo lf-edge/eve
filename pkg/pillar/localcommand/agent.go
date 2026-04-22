@@ -4,6 +4,7 @@
 package localcommand
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/url"
@@ -16,6 +17,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
+	"golang.org/x/time/rate"
 )
 
 const (
@@ -99,6 +101,12 @@ type LocalCmdAgent struct {
 
 	// LPS app boot info posting and boot config receiving
 	appBootInfoTicker *taskTicker
+
+	// Signal handler (streams pending-change notifications from LPS)
+	sigHandlerMx        sync.Mutex
+	sigHandlerCancel    context.CancelFunc // non-nil while a stream is active
+	sigHandlerLimiter   *rate.Limiter
+	restartSigHandlerCh chan struct{} // buffered; used to trigger restart of the Signal handler
 }
 
 // ConstructorArgs are required input arguments for creating a LocalCmdAgent.
@@ -357,6 +365,7 @@ func NewLocalCmdAgent(args ConstructorArgs) *LocalCmdAgent {
 	lc.initializeDevCommands()
 	lc.initializeNetworkConfig()
 	lc.initializeAppBootInfo()
+	lc.initializeSigHandler()
 	return lc
 }
 
@@ -375,6 +384,7 @@ func (lc *LocalCmdAgent) RunTasks(args RunArgs) {
 	go lc.runDevInfoTask()
 	go lc.runNetworkTask()
 	go lc.runAppBootInfoTask()
+	go lc.runSigHandlerTask()
 }
 
 // Pause temporarily suspends all tasks, blocking the processing of
@@ -482,7 +492,7 @@ func (lc *LocalCmdAgent) UpdateLpsConfig(globalProfile, lpsAddr, lpsToken string
 	// If LPS address changed, disable throttling and trigger immediate LPS GET/POST
 	// requests (from the possibly new LPS instance).
 	if lpsAddrChanged {
-		lc.triggerProfileGET()
+		lc.TriggerProfileGET()
 		lc.updateRadioTicker(false)
 		lc.TriggerRadioPOST()
 		lc.updateAppInfoTicker(false)
@@ -494,6 +504,7 @@ func (lc *LocalCmdAgent) UpdateLpsConfig(globalProfile, lpsAddr, lpsToken string
 		lc.updateAppBootInfoTicker(false)
 		lc.TriggerAppBootInfoPOST()
 		lc.throttledLocation = false
+		lc.restartSigHandler()
 	}
 	return nil
 }

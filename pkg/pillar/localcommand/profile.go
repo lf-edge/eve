@@ -48,7 +48,7 @@ func (lc *LocalCmdAgent) runProfileTask() {
 	<-lc.profileTicker.tickerChan()
 	lc.Log.Functionf("%s: profileTask: received the first trigger", logPrefix)
 	// Trigger again to pass into loop.
-	lc.triggerProfileGET()
+	lc.TriggerProfileGET()
 
 	wdName := watchdogPrefix + "profile"
 
@@ -167,7 +167,7 @@ func (lc *LocalCmdAgent) getLocalProfileConfig() (
 				lc.Log.Functionf("%s: getLocalProfileConfig: LPS response discarded "+
 					"due to task pause", logPrefix)
 				// Retry ASAP to minimize delay in fetching the latest profile.
-				lc.triggerProfileGET()
+				lc.TriggerProfileGET()
 				return nil, true
 			}
 			if err != nil {
@@ -214,8 +214,8 @@ func (lc *LocalCmdAgent) saveOrTouchReceivedLocalProfile(
 	return
 }
 
-// triggerProfileGET notifies task to reload local profile from LPS.
-func (lc *LocalCmdAgent) triggerProfileGET() {
+// TriggerProfileGET forces an immediate tick of the profileTicker.
+func (lc *LocalCmdAgent) TriggerProfileGET() {
 	lc.profileTicker.tickNow()
 }
 
