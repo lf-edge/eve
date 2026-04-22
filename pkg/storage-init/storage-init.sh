@@ -312,6 +312,12 @@ chmod 700 $UUID_SYMLINK_PATH
 # filesystem (if needed).
 if [ -f /hostfs/usr/sbin/tee-supplicant ]; then
     mkdir -p $PERSISTDIR/coretee
+
+    # Check for an existent fTPM provision data on CONFIG partition, if found,
+    # the data must be extracted to /persist/
+    if [ -f "$CONFIGDIR/ftpm.tar.xz" ]; then
+        tar -xJf "$CONFIGDIR/ftpm.tar.xz" -C $PERSISTDIR
+    fi
 fi
 
 # create /run/edgeview early before the disk mount for edgeview container
