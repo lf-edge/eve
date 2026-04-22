@@ -294,7 +294,8 @@ func (lc *LocalCmdAgent) dpcToProto(dpc types.DevicePortConfig,
 				NetworkProxyURL:    port.NetworkProxyURL,
 				ProxyCertPEM:       port.ProxyCertPEM,
 			},
-			ConfigSource: port.ConfigSource.ToProto(),
+			ConfigSource:              port.ConfigSource.ToProto(),
+			LocalModificationsAllowed: port.AllowLocalModifications,
 		}
 
 		// Determine if this port's config is currently applied.
