@@ -283,19 +283,19 @@ func (c *SCEPClient) enrollOrRenewCertificate(profile types.SCEPProfile,
 
 	// Parse configured trust anchor CA certificates.
 	// These are the root/intermediate CA certs from the SCEP profile configuration.
-	// Errors are ignored here because configuration was validated earlier.
 	var trustAnchors []*x509.Certificate
 	for _, certBytes := range profile.CACertPEM {
-		block, err := pem.Decode(certBytes)
-		if err != nil {
-			// Should be unreachable (otherwise there is a bug in zedagent or scepclient).
-			c.log.Errorf("Unexpected CA cert decoding error: %v", err)
+		// Parsing errors should be unreachable because zedagent already validated
+		// config, including trusted certificates.
+		block, _ := pem.Decode(certBytes)
+		if block == nil {
+			c.log.Errorf("Failed to PEM-decode a configured SCEP CA cert")
 			continue
 		}
-		if block != nil {
-			if caCert, _ := x509.ParseCertificate(block.Bytes); caCert != nil {
-				trustAnchors = append(trustAnchors, caCert)
-			}
+		if caCert, err := x509.ParseCertificate(block.Bytes); err == nil {
+			trustAnchors = append(trustAnchors, caCert)
+		} else {
+			c.log.Errorf("Failed to parse a configured SCEP CA cert: %v", err)
 		}
 	}
 
