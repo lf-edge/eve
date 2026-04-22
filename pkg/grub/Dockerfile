@@ -2,7 +2,7 @@
 # Copyright (c) 2025-2026 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-alpine:47d267f35e4832f639bf65bbe8a2e7b2f31e3e36 AS grub-build-base
+FROM lfedge/eve-alpine:7428d0de172b8086289945d78234daf2eac03818 AS grub-build-base
 ENV BUILD_PKGS="automake \
                make \
                bison \

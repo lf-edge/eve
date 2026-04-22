@@ -2,7 +2,7 @@
 
 # Copyright (c) 2024 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
-FROM lfedge/eve-alpine:47d267f35e4832f639bf65bbe8a2e7b2f31e3e36 AS build
+FROM lfedge/eve-alpine:7428d0de172b8086289945d78234daf2eac03818 AS build
 
 ENV BUILD_PKGS make gcc g++ git perl linux-headers musl-dev cmake zlib-dev bcc-dev libbpf-dev cereal flex bison llvm20-libs llvm20-dev llvm20-static llvm20-gtest clang-dev clang-static pahole gtest-dev bash libxml2-dev curl-dev binutils-dev libpcap-dev
 

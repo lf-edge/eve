@@ -4,10 +4,10 @@
 ARG BUILD_PKGS_BASE="bash binutils-dev build-base bc bison flex openssl-dev util-linux-dev swig gnutls-dev perl python3 python3-dev py3-setuptools py3-pycryptodome py3-elftools"
 
 # we use the same image in several places
-ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:47d267f35e4832f639bf65bbe8a2e7b2f31e3e36
+ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:7428d0de172b8086289945d78234daf2eac03818
 
 # OPTEE-OS images
-FROM lfedge/eve-optee-os:c67d22abf143aa550378fce60a625be54eb555a8 AS optee-os
+FROM lfedge/eve-optee-os:731f2456a3bb31b02eacc0f4f6b995bb6d881813 AS optee-os
 
 # hadolint ignore=DL3006
 FROM ${EVE_ALPINE_IMAGE} AS build-native
@@ -20,13 +20,11 @@ ARG BUILD_PKGS_BASE
 RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
 
 # hadolint ignore=DL3029
-FROM --platform=${BUILDPLATFORM} lfedge/eve-cross-compilers:d794c049baf50389be1dd48da056fb2472574c3e AS cross-compilers
+FROM --platform=${BUILDPLATFORM} lfedge/eve-cross-compilers:gcc-14.2.0-alpine-3.22-40a25095 AS cross-compilers
 
-# will use several packages from target arch and copy them to sysroot
+# pull target-arch eve-alpine for its mirror (no RUN = no QEMU needed)
 # hadolint ignore=DL3006
-FROM ${EVE_ALPINE_IMAGE} AS cross-compile-libs
-ENV PKGS="musl-dev libgcc libintl libuuid libtirpc libblkid"
-RUN eve-alpine-deploy.sh
+FROM ${EVE_ALPINE_IMAGE} AS target-alpine
 
 # adjust EVE_TARGET_ARCH for cross-compiler
 FROM build-cross AS build-cross-target-amd64
@@ -38,11 +36,16 @@ ENV EVE_TARGET_ARCH=riscv64
 
 # hadolint ignore=DL3006
 FROM build-cross-target-${TARGETARCH} AS build-cross-target
-ENV CROSS_COMPILE_ENV="${EVE_TARGET_ARCH}-alpine-linux-musl-"
-COPY --from=cross-compilers /packages /packages
-# hadolint ignore=DL3018
-RUN apk add --no-cache --allow-untrusted -X /packages build-base-"${EVE_TARGET_ARCH}"
-COPY --from=cross-compile-libs /out/ /usr/"${EVE_TARGET_ARCH}"-alpine-linux-musl/
+ENV CROSS_COMPILE_ENV="${EVE_TARGET_ARCH}-linux-musl-"
+# install musl.cc toolchain
+COPY --from=cross-compilers /toolchains/"${EVE_TARGET_ARCH}"-linux-musl-cross /opt/cross
+ENV PATH="/opt/cross/bin:${PATH}"
+# extract target-arch sysroot from eve-alpine mirror (no QEMU)
+COPY --from=target-alpine /mirror /target-mirror
+RUN EVE_TARGET_ARCH="${EVE_TARGET_ARCH}" \
+    PKGS="musl-dev libgcc libintl libuuid libtirpc libblkid" \
+    eve-cross-sysroot.sh
+RUN cp -a /out/* /opt/cross/"${EVE_TARGET_ARCH}"-linux-musl/
 
 # cross-compilers
 FROM build-cross-target AS target-arm64-build-amd64
