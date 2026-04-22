@@ -26,6 +26,7 @@
 #   eve_install_zfs_with_raid_level
 #   eve_install_k3s_etcd_sizeGB
 #   eve_disable_verify
+#   eve_skip_dev_cert
 #
 
 # script to check if cmdline contains a string
@@ -615,41 +616,45 @@ TPM_DEVICE_PATH="/dev/tpmrm0"
 DEVICE_CERT_NAME="/config/device.cert.pem"
 DEVICE_KEY_NAME="/config/device.key.pem"
 
-# The device cert generation needs the current time. Some hardware
-# doesn't have a battery-backed clock so we check the year makes some sense
-# In that case we defer until first boot of EVE to run ntp and generate
-# the device certificate
-YEAR=$(date +%Y)
-if [ "$YEAR" -gt 2020 ] && [ ! -f $DEVICE_CERT_NAME ]; then
-   if [ -c $TPM_DEVICE_PATH ] && ! [ -f $DEVICE_KEY_NAME ]; then
-      logmsg "Generating TPM device certificate"
-      if ! /tpmmgr createDeviceCert; then
-         logmsg "Failed generating device certificate on TPM; fallback to soft"
-         # The future existence of /config/device.key.pem indicates not using TPM
-         sync
-      else
-         logmsg "Generated a TPM device certificate"
-         if ! /tpmmgr createCerts; then
-            logmsg "Failed to create additional certificates on TPM"
-         fi
-      fi
-   else
-      logmsg "No TPM; Generating soft device certificate"
-   fi
-   if [ ! -f $DEVICE_CERT_NAME ]; then
-      if ! /tpmmgr createSoftDeviceCert; then
-         logmsg "Failed to generate soft device certificate"
-      elif ! /tpmmgr createSoftCerts; then
-         logmsg "Failed to create additional certificates"
-      fi
-   fi
-   sync
-   mount -o remount,flush,ro /config
-   sleep 5
-fi
-# Collect the device cert
-if [ -f $DEVICE_CERT_NAME ] && [ -n "$REPORT" ]; then
-   cat $DEVICE_CERT_NAME > "$REPORT/device.cert.pem"
+if cmdline eve_skip_dev_cert; then
+    logmsg "Skipping device certificate generation. The certificate will be automatically generated on first boot."
+else
+    # The device cert generation needs the current time. Some hardware
+    # doesn't have a battery-backed clock so we check the year makes some sense
+    # In that case we defer until first boot of EVE to run ntp and generate
+    # the device certificate
+    YEAR=$(date +%Y)
+    if [ "$YEAR" -gt 2020 ] && [ ! -f $DEVICE_CERT_NAME ]; then
+       if [ -c $TPM_DEVICE_PATH ] && ! [ -f $DEVICE_KEY_NAME ]; then
+          logmsg "Generating TPM device certificate"
+          if ! /tpmmgr createDeviceCert; then
+             logmsg "Failed generating device certificate on TPM; fallback to soft"
+             # The future existence of /config/device.key.pem indicates not using TPM
+             sync
+          else
+             logmsg "Generated a TPM device certificate"
+             if ! /tpmmgr createCerts; then
+                logmsg "Failed to create additional certificates on TPM"
+             fi
+          fi
+       else
+          logmsg "No TPM; Generating soft device certificate"
+       fi
+       if [ ! -f $DEVICE_CERT_NAME ]; then
+          if ! /tpmmgr createSoftDeviceCert; then
+             logmsg "Failed to generate soft device certificate"
+          elif ! /tpmmgr createSoftCerts; then
+             logmsg "Failed to create additional certificates"
+          fi
+       fi
+       sync
+       mount -o remount,flush,ro /config
+       sleep 5
+    fi
+    # Collect the device cert
+    if [ -f $DEVICE_CERT_NAME ] && [ -n "$REPORT" ]; then
+       cat $DEVICE_CERT_NAME > "$REPORT/device.cert.pem"
+    fi
 fi
 
 # finally check whether we are collecting a black box
