@@ -1391,6 +1391,81 @@ func (c *Client) SendLocalProto(destURL string, intf string, ipSrc net.IP,
 	return httpResp, nil
 }
 
+// OpenLocalStream initiates a long-lived HTTP GET request towards an application
+// deployed on the edge device and returns the response so the caller can stream
+// the body. Unlike SendLocal, no request-level timeout is applied — the caller
+// is responsible for reading the streaming body (typically for the lifetime
+// of the connection) and MUST close resp.Body when done.
+//
+// TCP keepalive is enabled on the underlying connection with the given period
+// to detect silently broken peers; pass 0 to leave keepalive at the OS default.
+// HTTP keep-alive is disabled so that closing resp.Body cleanly shuts down
+// the underlying TCP connection without leaving idle connections in the pool.
+//
+// The request is bound to ctx; cancel ctx to abort an in-flight read.
+func (c *Client) OpenLocalStream(
+	ctx context.Context, destURL string, intf string, ipSrc net.IP,
+	keepAlive time.Duration) (*http.Response, error) {
+
+	var reqURL string
+	if strings.HasPrefix(destURL, "http:") || strings.HasPrefix(destURL, "https:") {
+		reqURL = destURL
+	} else {
+		reqURL = "https://" + destURL
+	}
+
+	dialer := &DialerWithResolverCache{
+		log:           c.log,
+		ifName:        intf,
+		localIP:       ipSrc,
+		timeout:       c.NetworkDialTimeout,
+		resolverCache: c.ResolverCacheFunc,
+	}
+	dialContext := func(ctx context.Context, network, address string) (net.Conn, error) {
+		conn, err := dialer.DialContext(ctx, network, address)
+		if err != nil {
+			return nil, err
+		}
+		if keepAlive > 0 {
+			if tcpConn, ok := conn.(*net.TCPConn); ok {
+				_ = tcpConn.SetKeepAlive(true)
+				_ = tcpConn.SetKeepAlivePeriod(keepAlive)
+			} else {
+				c.log.Warnf("OpenLocalStream: cannot set TCP keepalive: unexpected conn type %T", conn)
+			}
+		}
+		return conn, nil
+	}
+
+	transport := &http.Transport{
+		TLSClientConfig:   c.TLSConfig,
+		DialContext:       dialContext,
+		DisableKeepAlives: true,
+	}
+	// No top-level timeout — the response body is expected to be read over
+	// a long period. Cancellation is via ctx.
+	client := &http.Client{Transport: transport}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("NewRequestWithContext failed: %w", err)
+	}
+
+	// Add a per-request UUID to the HTTP Header for traceability in the receiver.
+	id, err := uuid.NewV4()
+	if err != nil {
+		return nil, fmt.Errorf("uuid.NewV4 failed: %w", err)
+	}
+	req.Header.Add("X-Request-Id", id.String())
+
+	c.log.Tracef("OpenLocalStream: url %s", reqURL)
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("client.Do: %w", err)
+	}
+	return resp, nil
+}
+
 // Describe send attempts in a concise and readable form.
 func (c *Client) describeSendAttempts(attempts []SendAttempt) string {
 	var attemptDescriptions []string
