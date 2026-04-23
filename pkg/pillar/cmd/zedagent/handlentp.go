@@ -162,7 +162,7 @@ func publishNTPSourcesToDest(ctx *zedagentContext,
 // createNTPSource() returns `info.NTPSource`. The code is based on the
 // https://github.com/facebook/time/blob/main/cmd/ntpcheck/checker
 func createNTPSource(s *chrony.ReplySourceData,
-	p *chrony.ReplyNTPData,
+	p *chrony.NTPData,
 	n *chrony.ReplyNTPSourceName) (*info.NTPSource, error) {
 
 	// Clear auth and interleaved flag
@@ -222,8 +222,9 @@ func createNTPSource(s *chrony.ReplySourceData,
 		ntpSource.RootDisp = p.RootDispersion
 	}
 	if n != nil {
-		// This field is zero padded in chrony, so we need to trim it
-		ntpSource.Hostname = string(bytes.TrimRight(n.Name[:], "\x00"))
+		// chrony-go used to expose Name as a null-padded [256]byte; it now
+		// returns an already-trimmed string, so no post-processing needed.
+		ntpSource.Hostname = n.Name
 	}
 
 	return &ntpSource, nil
@@ -299,19 +300,23 @@ func getNTPSourcesInfo(ctx *zedagentContext) *info.ZInfoNTPSources {
 		}
 
 		// get ntpdata when using a unix socket
-		var ntpData *chrony.ReplyNTPData
+		var ntpData *chrony.NTPData
 		if sourceData.Mode != chrony.SourceModeRef {
 			ntpDataReq := chrony.NewNTPDataPacket(sourceData.IPAddr)
 			packet, err = client.Communicate(ntpDataReq)
 			if err != nil {
-				log.Errorf("getNTPSourcesInfo: failed to get 'ntpdata' response for source #%d", i)
+				log.Errorf("getNTPSourcesInfo: failed to get 'ntpdata' response for source #%d: %v", i, err)
 				return nil
 			}
-			ntpData, ok = packet.(*chrony.ReplyNTPData)
+			// chrony 4.6+ replies with RPY_NTP_DATA2 (pillar's bundled
+			// chrony is always 4.6+ now). ReplyNTPData2 embeds NTPData2
+			// which embeds NTPData — the fields createNTPSource needs.
+			ntpDataReply, ok := packet.(*chrony.ReplyNTPData2)
 			if !ok {
 				log.Errorf("getNTPSourcesInfo: got wrong 'ntpdata' response %+v", packet)
 				return nil
 			}
+			ntpData = &ntpDataReply.NTPData2.NTPData
 		}
 		var ntpSourceName *chrony.ReplyNTPSourceName
 		if sourceData.Mode != chrony.SourceModeRef {
