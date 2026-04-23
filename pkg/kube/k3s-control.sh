@@ -27,10 +27,11 @@ if [ -z "$ACTION" ]; then
     ACTION=$(basename "$0" | sed 's/k3s-//')
 fi
 
+mkdir -p "$(dirname "$K3S_STOP_FLAG")"
+
 case "$ACTION" in
     stop)
         logmsg "Manual k3s stop requested"
-        mkdir -p "$(dirname "$K3S_STOP_FLAG")"
         touch "$K3S_STOP_FLAG"
         if terminate_k3s; then
             logmsg "Manual k3s stop completed"
