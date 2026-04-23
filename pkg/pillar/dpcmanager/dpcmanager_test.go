@@ -4,6 +4,7 @@
 package dpcmanager_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -294,7 +295,7 @@ func dnsServersCb(ifName string) func() []net.IP {
 }
 
 func equalPortAddresses(a, b types.AddrInfo) bool {
-	return netutils.EqualIPs(a.Addr, b.Addr)
+	return netutils.EqualIPs(a.Addr, b.Addr) && bytes.Equal(a.Mask, b.Mask)
 }
 
 func dnsKeyCb() func() string {
@@ -2794,7 +2795,7 @@ func TestOverrideDhcpIPs(test *testing.T) {
 	// Check device network state.
 	eth1DhcpIP := ipAddress("172.20.1.2/24")
 	expectedAddrs := []types.AddrInfo{
-		{Addr: eth1DhcpIP.IP},
+		{Addr: eth1DhcpIP.IP, Mask: eth1DhcpIP.Mask},
 	}
 	t.Eventually(func() bool {
 		dnsObj, _ := pubDNS.Get("global")
@@ -2827,7 +2828,8 @@ func TestOverrideDhcpIPs(test *testing.T) {
 
 	// Check device network state.
 	expectedAddrs = []types.AddrInfo{
-		{Addr: eth1DhcpIP.IP}, {Addr: eth1StaticIP.IP},
+		{Addr: eth1DhcpIP.IP, Mask: eth1DhcpIP.Mask},
+		{Addr: eth1StaticIP.IP, Mask: eth1StaticIP.Mask},
 	}
 	t.Eventually(func() bool {
 		dnsObj, _ := pubDNS.Get("global")
@@ -2877,7 +2879,7 @@ func TestOverrideDhcpIPs(test *testing.T) {
 
 	// Check device network state.
 	expectedAddrs = []types.AddrInfo{
-		{Addr: eth1StaticIP.IP},
+		{Addr: eth1StaticIP.IP, Mask: eth1StaticIP.Mask},
 	}
 	t.Eventually(func() bool {
 		dnsObj, _ := pubDNS.Get("global")
