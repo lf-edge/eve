@@ -218,7 +218,7 @@ jobs:
     name: ${{ needs.context.outputs.eden_parent_job_title }} for master
     needs: context
     if: needs.context.outputs.skip_run == 'false' && needs.context.outputs.pr_base_ref == 'master'
-    uses: lf-edge/eden/.github/workflows/test.yml@1.0.15
+    uses: lf-edge/eden/.github/workflows/test.yml@master
     secrets: inherit
     with:
       eve_image: "evebuild/pr:${{ needs.context.outputs.pr_id }}"
