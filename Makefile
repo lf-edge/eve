@@ -578,7 +578,7 @@ check-docker-hashes-consistency: $(DOCKERFILE_FROM_CHECKER)
 yetus:
 	@echo Running yetus
 	mkdir -p yetus-output
-	docker run --rm -v $(CURDIR):/src:delegated,z docker.io/lfedge/eve-yetus:0.15.1-eve-1 \
+	docker run --rm -v $(CURDIR):/src:delegated,z docker.io/lfedge/eve-yetus:0.15.1-eve-2 \
 		--basedir=/src \
 		--test-parallel=true \
 		--dirty-workspace \
