@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Interactive mode for the installer
-FROM --platform=$BUILDPLATFORM lfedge/eve-rust:1.93.1 AS rust-host
+FROM --platform=$BUILDPLATFORM lfedge/eve-rust:1.93.1-1 AS rust-host
 ARG TARGETARCH
 
 # map Docker's $TARGETARCH to Rust target
@@ -14,7 +14,7 @@ FROM rust-host AS target-arm64
 ENV CARGO_BUILD_TARGET="aarch64-unknown-linux-musl"
 
 FROM rust-host AS target-riscv64
-ENV CARGO_BUILD_TARGET="riscv64gc-unknown-linux-gnu"
+ENV CARGO_BUILD_TARGET="riscv64gc-unknown-linux-musl"
 
 # hadolint ignore=DL3006
 FROM target-$TARGETARCH AS rust

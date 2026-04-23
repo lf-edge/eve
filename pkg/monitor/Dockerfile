@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 ARG MONITOR_RS_VERSION=v0.6.3
-ARG RUST_VERSION=lfedge/eve-rust:1.93.1
+ARG RUST_VERSION=lfedge/eve-rust:1.93.1-1
 FROM --platform=$BUILDPLATFORM ${RUST_VERSION} AS toolchain-base
 ARG TARGETARCH
 
@@ -13,7 +13,7 @@ FROM toolchain-base AS target-arm64
 ENV CARGO_BUILD_TARGET="aarch64-unknown-linux-musl"
 
 FROM toolchain-base AS target-riscv64
-ENV CARGO_BUILD_TARGET="riscv64gc-unknown-linux-gnu"
+ENV CARGO_BUILD_TARGET="riscv64gc-unknown-linux-musl"
 
 FROM target-$TARGETARCH AS toolchain
 ARG MONITOR_RS_VERSION

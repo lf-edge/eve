@@ -1,0 +1,20 @@
+# Copyright (c) 2026 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Merged with /usr/local/cargo/config.toml from the eve-rust base image.
+# Cargo joins `target.<triple>.rustflags` (from eve-rust, per-target linker +
+# link-args) with `target.<cfg>.rustflags` below (our codegen/lint tweaks).
+#
+# Profile settings live here too so we don't smuggle them through RUSTFLAGS.
+
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
+
+[target.'cfg(target_env = "musl")']
+rustflags = [
+    "-C", "embed-bitcode=yes",
+    "-A", "dead_code",
+]

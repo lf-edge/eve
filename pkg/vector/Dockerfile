@@ -1,7 +1,7 @@
-# Copyright (c) 2025 Zededa, Inc.
+# Copyright (c) 2025-2026 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-ARG RUST_VERSION=lfedge/eve-rust:1.93.1
+ARG RUST_VERSION=lfedge/eve-rust:1.93.1-1
 ARG VECTOR_FEATURES='--no-default-features --features \
 sources-socket,\
 sources-internal_metrics,\
@@ -32,7 +32,7 @@ FROM toolchain-base AS target-arm64
 ENV CARGO_BUILD_TARGET="aarch64-unknown-linux-musl"
 
 FROM toolchain-base AS target-riscv64
-ENV CARGO_BUILD_TARGET="riscv64gc-unknown-linux-gnu"
+ENV CARGO_BUILD_TARGET="riscv64gc-unknown-linux-musl"
 
 # hadolint ignore=DL3006
 FROM target-$TARGETARCH AS toolchain
@@ -42,25 +42,22 @@ RUN echo "Cargo target: $CARGO_BUILD_TARGET"
 FROM toolchain AS builder
 ARG VECTOR_FEATURES
 ADD https://github.com/vectordotdev/vector.git#v0.54.0 /app
-# we have our own options, so remove the default cargo config
-# if this doesn't help then remove everything leaving only
-# the files from .dockerignore except rust-toolchain.toml
+
+# Drop upstream vector's own .cargo (pins rust-toolchain etc) and replace
+# with ours. Our config.toml merges with eve-rust's per-target linker config
+# (`[target.<triple>]`) — profile/codegen tweaks go here, cross-compile
+# linker config stays in the base image.
 RUN rm -rf /app/.cargo /app/rust-toolchain.toml
+COPY cargo-config.toml /app/.cargo/config.toml
 
 WORKDIR /app
 
-ENV RUSTFLAGS="\
-    -C opt-level=z \
-    -C lto=fat \
-    -C embed-bitcode=yes \
-    -C codegen-units=1 \
-    -C link-arg=--ld-path=/usr/bin/mold \
-    -C link-arg=--target=$CARGO_BUILD_TARGET"
-
 RUN cargo build --release $VECTOR_FEATURES
 
-# strip unneeded symbols
-RUN llvm-strip "/app/target/$CARGO_BUILD_TARGET/release/vector"
+# Symbols are stripped via `profile.release.strip = "symbols"` in
+# cargo-config.toml. Doing it in the Rust profile (rather than invoking
+# a host `strip`/`llvm-strip` binary here) keeps the operation arch-aware:
+# the host is amd64 but the binary may be riscv64/aarch64.
 
 RUN cargo sbom > sbom.spdx.json
 RUN cp "/app/target/$CARGO_BUILD_TARGET/release/vector" /app/target/
