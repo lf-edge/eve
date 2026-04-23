@@ -450,35 +450,36 @@ func watchdogPresent() (bool, error) {
 }
 
 func getTPMInfo() (*info.TPM, error) {
-	present := evetpm.IsTpmEnabled()
 	tpmInfoProto := &info.TPM{
-		Present: present,
+		Present: true,
 	}
 
-	if present {
-		tpmInfo, err := evetpm.FetchTpmHwInfo()
-		if err != nil {
-			return nil, err
-		}
-		// The string returned by FetchTpmHwInfo is formatted as:
-		// "Manufacturer-Model, FW Version Version"
-		// We try to parse it to fill the individual fields
-		parts := strings.Split(tpmInfo, ", FW Version ")
-		if len(parts) == 2 {
-			tpmInfoProto.FirmwareVersion = parts[1]
-			vendorParts := strings.Split(parts[0], "-")
-			if len(vendorParts) >= 1 {
-				tpmInfoProto.Manufacturer = vendorParts[0]
-			}
-		} else {
-			// Fallback if formatting is unexpected
-			tpmInfoProto.Manufacturer = tpmInfo
-		}
-		specVersion, err := evetpm.GetSpecVersion()
-		if err != nil {
-			return nil, err
-		}
-		tpmInfoProto.SpecVersion = specVersion
+	tpmInfo, err := evetpm.FetchTpmHwInfo()
+	if errors.Is(err, os.ErrNotExist) || errors.Is(err, evetpm.ErrNoTPM) {
+		tpmInfoProto.Present = false
+		return tpmInfoProto, nil
+	} else if err != nil {
+		return nil, err
 	}
+	// The string returned by FetchTpmHwInfo is formatted as:
+	// "Manufacturer-Model, FW Version Version"
+	// We try to parse it to fill the individual fields
+	parts := strings.Split(tpmInfo, ", FW Version ")
+	if len(parts) == 2 {
+		tpmInfoProto.FirmwareVersion = parts[1]
+		vendorParts := strings.Split(parts[0], "-")
+		if len(vendorParts) >= 1 {
+			tpmInfoProto.Manufacturer = vendorParts[0]
+		}
+	} else {
+		// Fallback if formatting is unexpected
+		tpmInfoProto.Manufacturer = tpmInfo
+	}
+	specVersion, err := evetpm.GetSpecVersion()
+	if err != nil {
+		return nil, err
+	}
+	tpmInfoProto.SpecVersion = specVersion
+
 	return tpmInfoProto, nil
 }
