@@ -25,4 +25,8 @@ strip = true  # Automatically strip symbols from the binary.
 opt-level = "z"  # Optimize for size.
 lto = true
 codegen-units = 1
-panic = "abort"
+# panic = "abort" removed: rustc's tier-3 riscv64gc-unknown-linux-musl
+# sysroot cannot ship a correctly-strategized panic_abort rlib (rustup's
+# bootstrap builds it against a pre-built core hash which `-Z build-std`
+# can't replicate). The size saving from abort vs unwind is small after
+# LTO; keeping default unwind for a uniform profile across arches.
