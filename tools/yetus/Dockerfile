@@ -45,12 +45,12 @@ RUN ./autogen.sh && \
 
 # Use upstream golangci-lint instead of the one that comes with Yetus in
 # order to fix issues regarding patching code differences.
-ADD https://github.com/golangci/golangci-lint/releases/download/v2.6.2/golangci-lint-2.6.2-linux-${TARGETARCH}.deb /golangci-lint.deb
+ADD https://github.com/golangci/golangci-lint/releases/download/v2.11.4/golangci-lint-2.11.4-linux-${TARGETARCH}.deb /golangci-lint.deb
 
-RUN dpkg -i /golangci-lint.deb && \
-      rm /usr/local/bin/golangci-lint && \
-      ln -s /usr/bin/golangci-lint /usr/local/bin/golangci-lint && \
-      rm /golangci-lint.deb
+RUN dpkg -i /golangci-lint.deb
+RUN rm /usr/local/bin/golangci-lint
+RUN ln -s /usr/bin/golangci-lint /usr/local/bin/golangci-lint
+RUN rm /golangci-lint.deb
 
 # Clean up
 RUN rm -r /tmp/zfs
