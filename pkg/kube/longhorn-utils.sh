@@ -13,12 +13,6 @@ LONGHORN_VERSION=v1.9.1
 # Used to gate logging only once in Longhorn_is_ready
 bootLhRdyComplete=""
 
-longhorn_rdy_complete_file() {
-    if [ "$bootLhRdyComplete" = "" ]; then
-        bootLhRdyComplete=$(mktemp /tmp/lhreadyXXXXXX)
-    fi
-}
-
 longhorn_install() {
     node_name=$1
     logmsg "Installing longhorn version ${LONGHORN_VERSION}"
@@ -110,8 +104,6 @@ EOF
 # We assume that when this is called zedagent has initialized and
 # published EdgeNodeInfo (from a checkpoint if disconnected),
 Longhorn_is_ready() {
-    longhorn_rdy_complete_file
-
     # Namespace will exist while longhorn uninstall job completes.
     # Don't get in its way, submitting node creations.
     if [ -f /tmp/replicated-storage-uninstall-inprogress ]; then
@@ -128,9 +120,9 @@ Longhorn_is_ready() {
     # All ds ready
     lhStatus=$(kubectl -n longhorn-system get daemonsets -o json | jq '.items[].status | .numberReady==.desiredNumberScheduled' | tr -d '\n')
     if [ "$lhStatus" != "truetruetrue" ]; then
-        if [ -e "${bootLhRdyComplete}" ]; then
+        if [ -n "${bootLhRdyComplete}" ]; then
                 # Allow the final ready log message when its reached.
-                rm "$bootLhRdyComplete"
+                bootLhRdyComplete=""
         fi
         return 1
     fi
@@ -144,9 +136,9 @@ Longhorn_is_ready() {
 
     # longhorn node exists
     if ! kubectl -n longhorn-system get nodes.longhorn.io "$node"; then
-        if [ -e "${bootLhRdyComplete}" ]; then
+        if [ -n "${bootLhRdyComplete}" ]; then
                 # Allow the final ready log message when its reached.
-                rm "$bootLhRdyComplete"
+                bootLhRdyComplete=""
         fi
 
         logmsg "lh nodes.longhorn.io $node missing, creating"
@@ -188,9 +180,9 @@ Longhorn_is_ready() {
 
         return 1
     fi
-    if [ ! -e "${bootLhRdyComplete}" ]; then
+    if [ -z "${bootLhRdyComplete}" ]; then
         logmsg "longhorn ds ready, node:$node nodedeploymentmap:$(echo "$ndm" | tr -d '\n')"
-        touch "${bootLhRdyComplete}"
+        bootLhRdyComplete="1"
     fi
     return 0
 }
