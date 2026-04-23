@@ -17,32 +17,48 @@ limitations under the License.
 package chrony
 
 import (
+	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
-
-	log "github.com/sirupsen/logrus"
+	"sync"
+	"sync/atomic"
 )
 
 // Client talks to chronyd
 type Client struct {
 	Connection io.ReadWriter
 	Sequence   uint32
+	sync.Mutex
 }
 
 // Communicate sends the packet to chronyd, parse response into something usable
 func (n *Client) Communicate(packet RequestPacket) (ResponsePacket, error) {
-	n.Sequence++
-	var err error
-	packet.SetSequence(n.Sequence)
-	err = binary.Write(n.Connection, binary.BigEndian, packet)
-	if err != nil {
-		return nil, err
+	seq := atomic.AddUint32(&n.Sequence, 1)
+	packet.SetSequence(seq)
+
+	var buf bytes.Buffer
+	if err := binary.Write(&buf, binary.BigEndian, packet); err != nil {
+		return nil, fmt.Errorf("failed to encode packet: %w", err)
 	}
+
 	response := make([]uint8, 1024)
-	read, err := n.Connection.Read(response)
-	if err != nil {
-		return nil, err
+
+	n.Lock()
+	if _, err := n.Connection.Write(buf.Bytes()); err != nil {
+		n.Unlock()
+		return nil, fmt.Errorf("failed to write packet to connection: %w", err)
 	}
-	log.Debugf("Read %d bytes", read)
+
+	read, err := n.Connection.Read(response)
+	n.Unlock()
+	if err != nil {
+		return nil, fmt.Errorf("connection.Read failed: %w", err)
+	}
+
+	if read == 0 {
+		return nil, fmt.Errorf("no data received")
+	}
+
 	return decodePacket(response[:read])
 }
