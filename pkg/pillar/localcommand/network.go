@@ -48,7 +48,7 @@ var emptyConfig = types.DevicePortConfig{
 // the periodic ticker. Loads persisted configuration if available, otherwise sets
 // the default (empty local network configuration).
 func (lc *LocalCmdAgent) initializeNetworkConfig() {
-	lc.networkTicker = newTaskTicker(networkPOSTInterval)
+	lc.networkTicker = newTaskTicker(lc.lpsIntervalFromConfig(types.LpsNetworkInterval))
 	lc.networkConfig = emptyConfig
 	config, err := lc.readSavedNetworkConfig()
 	if err != nil {
@@ -113,10 +113,10 @@ func (lc *LocalCmdAgent) GetNetworkConfig() types.DevicePortConfig {
 }
 
 // updateNetworkTicker adjusts the networkTicker’s interval.
-// If throttling is enabled, the interval is stretched to the throttled interval
-// (1 hour); otherwise, it returns to the normal 1-minute cadence.
+// If throttling is enabled, the interval is stretched to the throttled interval;
+// otherwise, it uses the configurable normal interval.
 func (lc *LocalCmdAgent) updateNetworkTicker(throttle bool) {
-	interval := networkPOSTInterval
+	interval := lc.lpsIntervalFromConfig(types.LpsNetworkInterval)
 	if throttle {
 		interval = networkPOSTThrottledInterval
 	}
