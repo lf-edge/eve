@@ -293,6 +293,8 @@ github.com/exponent-io/jsonpath v0.0.0-20210407135951-1de76d718b3f h1:Wl78ApPPB2
 github.com/exponent-io/jsonpath v0.0.0-20210407135951-1de76d718b3f/go.mod h1:OSYXu++VVOHnXeitef/D8n/6y4QV8uLHSFXX4NeXMGc=
 github.com/facebook/time v0.0.0-20240605113323-bdee26e8523f h1:qEpaI5a4QYn7voX3z4pa4Fkyuk7PQ7CUHpargUHZkYE=
 github.com/facebook/time v0.0.0-20240605113323-bdee26e8523f/go.mod h1:2UFAomOuD2vAK1x68czUtCVjAqmyWCEnAXOlmGqf+G0=
+github.com/facebook/time v0.0.0-20260421154427-cee44983d290 h1:a3F8X/BGWlQiLN3SA+HdOkAiZF+wvnfaNdBOkgZ0bOE=
+github.com/facebook/time v0.0.0-20260421154427-cee44983d290/go.mod h1:Qg59tcudM5sQRrjvm4FxlAHsuNSxbAVBbOEXX3/o/Ag=
 github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2Wg=
 github.com/felixge/httpsnoop v1.0.4/go.mod h1:m8KPJKqk1gH5J9DgRY2ASl2lWCfGKXixSwevea8zH2U=
 github.com/fsnotify/fsnotify v1.4.7/go.mod h1:jwhsz4b93w/PPRr/qN1Yymfu8t87LnFCMoQvtojpjFo=

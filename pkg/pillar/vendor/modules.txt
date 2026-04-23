@@ -598,8 +598,8 @@ github.com/eshard/uevent
 # github.com/exponent-io/jsonpath v0.0.0-20210407135951-1de76d718b3f
 ## explicit; go 1.15
 github.com/exponent-io/jsonpath
-# github.com/facebook/time v0.0.0-20240605113323-bdee26e8523f
-## explicit; go 1.21
+# github.com/facebook/time v0.0.0-20260421154427-cee44983d290
+## explicit; go 1.24.0
 github.com/facebook/time/ntp/chrony
 # github.com/felixge/httpsnoop v1.0.4
 ## explicit; go 1.13
