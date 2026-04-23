@@ -208,6 +208,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		MemoryMonitorEnabled,
 		InternalMemoryMonitorStoreEnabled,
 		InternalMemoryMonitorAnalyzeEnabled,
+		LonghornDiskReservedGB,
 		// TriState Items
 		NetworkFallbackAnyEth,
 		MaintenanceMode,
