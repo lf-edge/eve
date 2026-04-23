@@ -433,39 +433,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	zedkubeCtx.electionNotifyCh = make(chan struct{}, 1)
 	go zedkubeCtx.handleLeaderElection()
 
-	// Wait for the certs, and nodeInfo which are needed to decrypt the token inside the
-	// cluster config and other operations
-	var controllerCertInitialized, edgenodeCertInitialized, edgenodeInfoInitialized bool
-	for !controllerCertInitialized || !edgenodeCertInitialized || !edgenodeInfoInitialized {
-		log.Noticef("zedkube run: waiting for controller cert (initialized=%t), "+
-			"edgenode cert (initialized=%t), edgenode info (initialized=%t)", controllerCertInitialized,
-			edgenodeCertInitialized, edgenodeInfoInitialized)
-		select {
-		case change := <-subControllerCert.MsgChan():
-			subControllerCert.ProcessChange(change)
-			log.Noticef("ControllerCert, len %d", len(subControllerCert.GetAll()))
-			// Seen issues where the change is triggered with no controller cert is in it
-			// the publication can be empty, so check the length
-			if len(subControllerCert.GetAll()) > 0 {
-				controllerCertInitialized = true
-			}
-
-		case change := <-subEdgeNodeCert.MsgChan():
-			subEdgeNodeCert.ProcessChange(change)
-			if len(subEdgeNodeCert.GetAll()) > 0 {
-				edgenodeCertInitialized = true
-			}
-
-		case change := <-subEdgeNodeInfo.MsgChan():
-			subEdgeNodeInfo.ProcessChange(change)
-			edgenodeInfoInitialized = zedkubeCtx.checkAndSaveEdgeNodeInfo()
-
-		case <-stillRunning.C:
-		}
-		ps.StillRunning(agentName, warningTime, errorTime)
-	}
-	log.Noticef("zedkube run: controller and edge node certs are ready")
-
 	//
 	// NodeDrainRequest subscriber and NodeDrainStatus publisher
 	//
@@ -555,6 +522,49 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Noticef("Got EdgeNodeClusterConfig")
+
+	// Wait for the certs and nodeInfo needed to decrypt the cluster token and for other
+	// operations. We wait after ENCC so we can gate specifically on the ECDH cert required
+	// for decryption, rather than accepting any controller cert.
+	needECDHCert := zedkubeCtx.clusterConfig.CipherToken.IsCipher &&
+		zedkubeCtx.clusterConfig.CipherToken.CipherContext != nil
+	var edgenodeCertInitialized, edgenodeInfoInitialized bool
+	ecdhCertInitialized := !needECDHCert
+	for !edgenodeCertInitialized || !edgenodeInfoInitialized || !ecdhCertInitialized {
+		log.Noticef("zedkube run: waiting for edgenode cert (initialized=%t), "+
+			"edgenode info (initialized=%t), ecdh cert (initialized=%t)",
+			edgenodeCertInitialized, edgenodeInfoInitialized, ecdhCertInitialized)
+		select {
+		case change := <-subControllerCert.MsgChan():
+			subControllerCert.ProcessChange(change)
+			if needECDHCert {
+				ecdhKey := zedkubeCtx.clusterConfig.CipherToken.CipherContext.ControllerCertKey()
+				if val, _ := subControllerCert.Get(ecdhKey); val != nil {
+					ecdhCertInitialized = true
+				}
+			}
+
+		case change := <-subEdgeNodeCert.MsgChan():
+			subEdgeNodeCert.ProcessChange(change)
+			if len(subEdgeNodeCert.GetAll()) > 0 {
+				edgenodeCertInitialized = true
+			}
+
+		case change := <-subEdgeNodeInfo.MsgChan():
+			subEdgeNodeInfo.ProcessChange(change)
+			edgenodeInfoInitialized = zedkubeCtx.checkAndSaveEdgeNodeInfo()
+
+		case <-stillRunning.C:
+		}
+		ps.StillRunning(agentName, warningTime, errorTime)
+	}
+	log.Noticef("zedkube run: edgenode certs and cluster token ECDH cert are ready")
+	// Re-publish cluster status now that certs are available for decryption.
+	// applyClusterConfig already published once (when ENCC arrived) but decryption
+	// may have failed then if the ECDH cert had not yet been received.
+	if zedkubeCtx.clusterConfig.ClusterInterface != "" {
+		zedkubeCtx.publishKubeConfigStatus()
+	}
 
 	zedkubeCtx.config, err = kubeapi.GetKubeConfig()
 	if err != nil {
