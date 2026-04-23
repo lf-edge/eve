@@ -357,6 +357,7 @@ type lpsAddress struct {
 // NewLocalCmdAgent creates and initializes a new instance of LocalCmdAgent.
 func NewLocalCmdAgent(args ConstructorArgs) *LocalCmdAgent {
 	lc := &LocalCmdAgent{ConstructorArgs: args}
+	lc.globalConfig = types.DefaultConfigItemValueMap()
 	// Make sure that newly started task is using up-to-date LPS addresses.
 	lc.tc.beforeStart = lc.ensureLpsAddresses
 	lc.initializeProfile()
@@ -417,9 +418,14 @@ func (lc *LocalCmdAgent) ProcessLocalCommandsFromLoc(
 	}
 }
 
+// lpsIntervalFromConfig returns the configured LPS task interval for the given key.
+func (lc *LocalCmdAgent) lpsIntervalFromConfig(key types.GlobalSettingKey) time.Duration {
+	return time.Duration(lc.globalConfig.GlobalValueInt(key)) * time.Second
+}
+
 // UpdateGlobalConfig updates the LocalCmdAgent with the latest global configuration.
 // This handles:
-// - Adjusting the local profile timer interval
+// - Adjusting all LPS task timer intervals
 // - Detecting changes to app.boot.order and updating affected apps
 func (lc *LocalCmdAgent) UpdateGlobalConfig(config *types.ConfigItemValueMap) {
 	oldBootOrder := ""
@@ -428,6 +434,11 @@ func (lc *LocalCmdAgent) UpdateGlobalConfig(config *types.ConfigItemValueMap) {
 	}
 	lc.globalConfig = config
 	lc.updateProfileTicker()
+	lc.updateRadioTicker(lc.radioTicker.tickerIsThrottled())
+	lc.updateAppInfoTicker(lc.appInfoTicker.tickerIsThrottled())
+	lc.updateDevInfoTicker(lc.devInfoTicker.tickerIsThrottled())
+	lc.updateNetworkTicker(lc.networkTicker.tickerIsThrottled())
+	lc.updateAppBootInfoTicker(lc.appBootInfoTicker.tickerIsThrottled())
 
 	// Check if app.boot.order changed
 	newBootOrder := ""

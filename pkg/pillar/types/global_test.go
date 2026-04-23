@@ -247,6 +247,12 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		DiagProbeRemoteHTTPSEndpoint,
 		EnableTCPMSSClamping,
 		AppBootOrder,
+		LpsProfileInterval,
+		LpsRadioInterval,
+		LpsAppInfoInterval,
+		LpsDevInfoInterval,
+		LpsNetworkInterval,
+		LpsAppBootInfoInterval,
 	}
 	if len(specMap.GlobalSettings) != len(gsKeys) {
 		t.Errorf("GlobalSettings has more (%d) than expected keys (%d)",

@@ -41,7 +41,7 @@ var emptyAppCmd types.AppInstanceOpsCmd // used as a constant
 // structure to disk.
 func (lc *LocalCmdAgent) initializeAppCommands() {
 	lc.appCommands.VolumeGenCounters = make(map[string]int64)
-	lc.appInfoTicker = newTaskTicker(appInfoPOSTInterval)
+	lc.appInfoTicker = newTaskTicker(lc.lpsIntervalFromConfig(types.LpsAppInfoInterval))
 	if !lc.loadSavedAppCommands() {
 		// Write the initial empty content.
 		lc.persistAppCommands()
@@ -198,10 +198,10 @@ func (lc *LocalCmdAgent) DelLocalVolumeGenCounter(volumeUUID uuid.UUID) {
 }
 
 // updateAppInfoTicker adjusts the appInfoTicker’s interval.
-// If throttling is enabled, the interval is stretched to the throttled interval
-// (1 hour); otherwise, it returns to the normal 1-minute cadence.
+// If throttling is enabled, the interval is stretched to the throttled interval;
+// otherwise, it uses the configurable normal interval.
 func (lc *LocalCmdAgent) updateAppInfoTicker(throttle bool) {
-	interval := appInfoPOSTInterval
+	interval := lc.lpsIntervalFromConfig(types.LpsAppInfoInterval)
 	if throttle {
 		interval = appInfoPOSTThrottledInterval
 	}

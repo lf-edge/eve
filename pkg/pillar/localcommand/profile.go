@@ -29,12 +29,7 @@ const (
 // from LPS and loads any saved profile from persistent storage to restore
 // the last known state after a reboot.
 func (lc *LocalCmdAgent) initializeProfile() {
-	// GlobalConfig is not yet available, use default config for now.
-	// It will be later updated through UpdateGlobalConfig.
-	defaultConfig := types.DefaultConfigItemValueMap()
-	configInterval := defaultConfig.GlobalValueInt(types.ConfigInterval)
-	interval := time.Duration(configInterval) * time.Second
-	lc.profileTicker = newTaskTicker(interval)
+	lc.profileTicker = newTaskTicker(lc.lpsIntervalFromConfig(types.LpsProfileInterval))
 	lc.processSavedProfile()
 }
 
@@ -98,12 +93,7 @@ func (lc *LocalCmdAgent) GetGlobalProfile() string {
 // updateProfileTicker updates the interval used by profileTicker
 // based on the latest global configuration.
 func (lc *LocalCmdAgent) updateProfileTicker() {
-	if lc.globalConfig == nil {
-		return
-	}
-	configInterval := lc.globalConfig.GlobalValueInt(types.ConfigInterval)
-	interval := time.Duration(configInterval) * time.Second
-	lc.profileTicker.update(false, interval)
+	lc.profileTicker.update(false, lc.lpsIntervalFromConfig(types.LpsProfileInterval))
 }
 
 // parseLocalProfile decodes a LocalProfile protobuf message from bytes.

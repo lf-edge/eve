@@ -90,6 +90,23 @@
 | diag.probe.remote.https.endpoint | string | `"https://www.google.com"` | - | - | Remote endpoint (URL, IP instead of hostname is NOT accepted) queried over HTTPS to assess the state of network connectivity whenever the controller is not reachable. Used only for diagnostics (no functional impact). Set to an empty string to disable. |
 | app.enable.tcp.mss.clamping | bool | true | - | - | Configuration property that enables EVE to automatically adjust (clamp) the TCP MSS on forwarded application traffic to match the path MTU, preventing fragmentation and connectivity issues on lower-MTU links. |
 
+## Local Profile Server (LPS) intervals
+
+| Name | Type | Default | Min Value | Max Value | Description |
+| ---- | ---- | ------- | --------- | --------- | ----------- |
+| timer.lps.profile.interval | integer in seconds | 60 (1 minute) | 3 | 3600 (1 hour) | how frequently EVE fetches the local profile from the Local Profile Server (LPS) |
+| timer.lps.radio.interval | integer in seconds | 5 | 3 | 3600 (1 hour) | how frequently EVE POSTs radio status to LPS and fetches radio silence configuration |
+| timer.lps.appinfo.interval | integer in seconds | 60 (1 minute) | 3 | 3600 (1 hour) | how frequently EVE POSTs application info to LPS and fetches application commands |
+| timer.lps.devinfo.interval | integer in seconds | 60 (1 minute) | 3 | 3600 (1 hour) | how frequently EVE POSTs device info to LPS and fetches device commands |
+| timer.lps.network.interval | integer in seconds | 60 (1 minute) | 3 | 3600 (1 hour) | how frequently EVE POSTs network configuration to LPS and fetches locally-made network configuration |
+| timer.lps.appbootinfo.interval | integer in seconds | 60 (1 minute) | 3 | 3600 (1 hour) | how frequently EVE POSTs application boot info to LPS and fetches boot configuration |
+
+Note: when an LPS endpoint responds with HTTP 404 (the endpoint is not implemented by
+the deployed LPS application), EVE overrides the configured interval with a longer
+backoff — 1 hour for most endpoints, 5 minutes for the radio endpoint — to avoid
+unnecessary traffic. The configured interval resumes automatically if the LPS address
+changes or if LPS starts implementing the endpoint.
+
 ## Log levels
 
 Log level can be set for four different components of EVE: EVE microservices, syslog, kernel, and TUI monitor application. Logs for TUI monitor are not sent to the controller and only available locally on the device.

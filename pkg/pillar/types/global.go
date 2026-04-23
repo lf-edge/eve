@@ -424,6 +424,19 @@ const (
 	// EnableTCPMSSClamping : Configuration property to enable or disable TCP MSS clamping
 	// for application traffic forwarded by EVE.
 	EnableTCPMSSClamping GlobalSettingKey = "app.enable.tcp.mss.clamping"
+
+	// LpsProfileInterval defines interval between LPS local profile GETs.
+	LpsProfileInterval GlobalSettingKey = "timer.lps.profile.interval"
+	// LpsRadioInterval defines interval between LPS radio status POSTs.
+	LpsRadioInterval GlobalSettingKey = "timer.lps.radio.interval"
+	// LpsAppInfoInterval defines interval between LPS app info POSTs.
+	LpsAppInfoInterval GlobalSettingKey = "timer.lps.appinfo.interval"
+	// LpsDevInfoInterval defines interval between LPS device info POSTs.
+	LpsDevInfoInterval GlobalSettingKey = "timer.lps.devinfo.interval"
+	// LpsNetworkInterval defines interval between LPS network config POSTs.
+	LpsNetworkInterval GlobalSettingKey = "timer.lps.network.interval"
+	// LpsAppBootInfoInterval defines interval between LPS app boot info POSTs.
+	LpsAppBootInfoInterval GlobalSettingKey = "timer.lps.appbootinfo.interval"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -1130,6 +1143,15 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 
 	// TCP MSS Clamping
 	configItemSpecMap.AddBoolItem(EnableTCPMSSClamping, true)
+
+	// LPS settings
+	configItemSpecMap.AddIntItem(LpsProfileInterval, MinuteInSec, 3, HourInSec)
+	configItemSpecMap.AddIntItem(LpsRadioInterval, 5, 3, HourInSec)
+	configItemSpecMap.AddIntItem(LpsAppInfoInterval, MinuteInSec, 3, HourInSec)
+	configItemSpecMap.AddIntItem(LpsDevInfoInterval, MinuteInSec, 3, HourInSec)
+	configItemSpecMap.AddIntItem(LpsNetworkInterval, MinuteInSec, 3, HourInSec)
+	configItemSpecMap.AddIntItem(LpsAppBootInfoInterval, MinuteInSec, 3, HourInSec)
+
 	return configItemSpecMap
 }
 
