@@ -15,7 +15,7 @@ require (
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/eriknordmark/ipinfo v0.0.0-20230728132417-2d8f4da903d7
 	github.com/eshard/uevent v1.0.2-0.20220110110621-d8d2be286cec
-	github.com/facebook/time v0.0.0-20240605113323-bdee26e8523f
+	github.com/facebook/time v0.0.0-20260421154427-cee44983d290
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/getlantern/framed v0.0.0-20190601192238-ceb6431eeede
 	github.com/go-chi/chi/v5 v5.2.2
