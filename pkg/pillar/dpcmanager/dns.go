@@ -155,7 +155,11 @@ func (m *DpcManager) updateDNS() {
 				// IP address received over DHCP is ignored.
 				continue
 			}
-			addrInfoList = append(addrInfoList, types.AddrInfo{Addr: addr.IP})
+			addrInfoList = append(addrInfoList,
+				types.AddrInfo{
+					Addr: addr.IP,
+					Mask: addr.Mask,
+				})
 		}
 		m.deviceNetStatus.Ports[ix].AddrInfoList = addrInfoList
 

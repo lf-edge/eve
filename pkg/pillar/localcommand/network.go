@@ -225,7 +225,6 @@ func (lc *LocalCmdAgent) collectNetworkInfo() (*profile.NetworkInfo, error) {
 	currentDPC := dpcl.PortConfigList[dpcl.CurrentIndex]
 
 	// Fetch the current network status.
-	// This is needed to determine for each port which config is currently being applied.
 	obj, err = lc.DeviceNetworkStatus.Get("global")
 	if err != nil {
 		err = fmt.Errorf(
@@ -250,7 +249,8 @@ func (lc *LocalCmdAgent) collectNetworkInfo() (*profile.NetworkInfo, error) {
 
 	// Construct and return the final NetworkInfo message,
 	// including the latest config, fallback config (if any),
-	// current testing status, and the local config.
+	// current testing status, the local config, and per-port
+	// runtime status observed on the device.
 	networkInfo := &profile.NetworkInfo{
 		LatestConfig:          latestConfig,
 		ConfigTesting:         lc.getTestingStatus(currentDPC),
@@ -260,8 +260,45 @@ func (lc *LocalCmdAgent) collectNetworkInfo() (*profile.NetworkInfo, error) {
 			Ports:        lc.dpcToProto(lc.networkConfig, dns),
 			ErrorMessage: lastNetErrMsg,
 		},
+		PortStatus: lc.dnsPortsToProto(dns),
 	}
 	return networkInfo, nil
+}
+
+// dnsPortsToProto converts the per-port runtime state from
+// DeviceNetworkStatus into the corresponding list of NetworkPortStatus
+// proto structures.
+func (lc *LocalCmdAgent) dnsPortsToProto(
+	dns types.DeviceNetworkStatus) []*profile.NetworkPortStatus {
+	ports := make([]*profile.NetworkPortStatus, 0, len(dns.Ports))
+	for _, port := range dns.Ports {
+		protoStatus := &profile.NetworkPortStatus{
+			LogicalLabel:  port.Logicallabel,
+			InterfaceName: port.IfName,
+			LinkUp:        port.Up,
+			DnsDomain:     port.DomainName,
+			Mtu:           uint32(port.MTU),
+		}
+		if len(port.MacAddr) > 0 {
+			protoStatus.MacAddress = port.MacAddr.String()
+		}
+		for _, addr := range port.AddrInfoList {
+			ipNet := &net.IPNet{IP: addr.Addr, Mask: addr.Mask}
+			protoStatus.IpAddresses = append(
+				protoStatus.IpAddresses, ipNet.String())
+		}
+		for _, gw := range port.DefaultRouters {
+			protoStatus.Gateways = append(protoStatus.Gateways, gw.String())
+		}
+		for _, dnsSrv := range port.DNSServers {
+			protoStatus.DnsServers = append(protoStatus.DnsServers, dnsSrv.String())
+		}
+		for _, ntp := range port.NtpServers {
+			protoStatus.NtpServers = append(protoStatus.NtpServers, ntp.String())
+		}
+		ports = append(ports, protoStatus)
+	}
+	return ports
 }
 
 // Convert DevicePortConfig into the corresponding list of port configs
