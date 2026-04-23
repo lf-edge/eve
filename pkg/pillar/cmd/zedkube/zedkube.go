@@ -123,6 +123,21 @@ type zedkube struct {
 
 	// longhornDiskReservedSet is true once the desired reservation has been applied to the Longhorn node
 	longhornDiskReservedSet bool
+
+	// Stuck-Pending-VMI detector state (keyed by app UUID string).
+	// vmiPendingSince: first time we observed a Pending VMI with a Running
+	// virt-launcher on this node; cleared when the VMI leaves Pending.
+	// vmiDeleteCount: consecutive FastDeleteVmi attempts; reset on Running.
+	// vmiDeleteSuppressUntil: while in the past-or-nowm window, checkAppsStatus
+	// pins StatusRunning=true so zedmanager does not flip Activate to false.
+	vmiPendingSince        map[string]time.Time
+	vmiDeleteCount         map[string]int
+	vmiDeleteSuppressUntil map[string]time.Time
+	// vmiFailoverSuppressUntil: set by checkAppsFailover when a failover is
+	// active on this node; checkStuckPendingVMI skips force-delete while the
+	// window is live, preventing a false-positive delete of a new VMI that is
+	// legitimately Pending during failover start-up.
+	vmiFailoverSuppressUntil map[string]time.Time
 }
 
 func inlineUsage() int {
@@ -223,6 +238,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		drainTimeout:                       time.Duration(time.Hour * types.DefaultDrainTimeoutHours),
 		configInterval:                     time.Duration(types.DefaultConfigItemValueMap().GlobalValueInt(types.ConfigInterval)) * time.Second,
 		clusterWideDetectWindowMultiple:    types.DefaultClusterWideDetectWindowMultiple,
+		vmiPendingSince:                    make(map[string]time.Time),
+		vmiDeleteCount:                     make(map[string]int),
+		vmiDeleteSuppressUntil:             make(map[string]time.Time),
+		vmiFailoverSuppressUntil:           make(map[string]time.Time),
 	}
 
 	// do we run a single command, or long-running service?
@@ -650,6 +669,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		// so each function gets its own kubeAPITimeout window.
 		case <-appStatusTimer.C:
 			zedkubeCtx.checkAppsFailover(zedkubeWdUpdate)
+			zedkubeCtx.checkStuckPendingVMI()
 			zedkubeWdUpdate()
 			zedkubeCtx.checkAppsStatus()
 			appStatusTimer = time.NewTimer(logcollectInterval * time.Second)

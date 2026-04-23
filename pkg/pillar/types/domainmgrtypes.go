@@ -33,7 +33,13 @@ type DomainConfig struct {
 	UUIDandVersion UUIDandVersion
 	DisplayName    string // Use as name for domU? DisplayName+version?
 	Activate       bool   // Actually start the domU as opposed to prepare
-	AppNum         int    // From networking; makes the name unique
+	// UserActivate is the raw user intent from AppInstanceConfig.Activate
+	// resolved through the current profile only, with no override from cluster
+	// scheduling state. In kubevirt cluster mode, domainmgr uses this to avoid
+	// tearing down the cluster-shared VMIRS when Activate=false is a transient
+	// cluster-status cascade rather than an explicit user opt-out.
+	UserActivate bool
+	AppNum       int // From networking; makes the name unique
 	VmConfig
 	DisableLogs    bool
 	GPUConfig      string
@@ -361,6 +367,10 @@ type DomainStatus struct {
 	PassthroughWindowsLicenseKey bool
 	// DeploymentType is the type of deployment for the app
 	DeploymentType AppRuntimeType
+	// KubeTrustLoggedState is the last non-RUNNING state for which domainmgr
+	// emitted the "trusting cluster to recover" log line. Used to deduplicate
+	// that log to state transitions only. Zero = not yet logged. KubeVirt only.
+	KubeTrustLoggedState SwState `json:"-"`
 }
 
 func (status DomainStatus) Key() string {

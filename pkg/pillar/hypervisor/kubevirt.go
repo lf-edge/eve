@@ -616,12 +616,7 @@ func (ctx kubevirtContext) Start(domainName string) error {
 	}
 	logrus.Infof("Started Kubevirt domain replicaset %s, VMI replicaset %s", domainName, vmis.name)
 
-	err = waitForVMI(vmis, nodeName, true)
-	if err != nil {
-		logrus.Errorf("couldn't start VMI %v", err)
-		return err
-	}
-
+	// Start() returns as soon as VMIRS is created; cluster drives VMI scheduling.
 	return nil
 }
 

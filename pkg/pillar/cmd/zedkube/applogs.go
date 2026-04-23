@@ -250,6 +250,21 @@ func (z *zedkube) checkAppsStatus() {
 			}
 		}
 
+		// While a stuck-Pending-VMI delete is in flight, pin StatusRunning
+		// and ScheduledOnThisNode so zedmanager's getKubeAppActivateStatus
+		// does not cascade to DomainConfig.Activate=false. Non-DNid failover
+		// nodes specifically depend on ScheduledOnThisNode for onTheDevice.
+		if _, active := z.suppressedStatusRunning(aiconfig.UUIDandVersion.UUID.String()); active {
+			if encAppStatus.AppKubeStatus != types.AppKubeStatusRunningState {
+				encAppStatus.AppKubeStatus = types.AppKubeStatusRunningState
+			}
+			if !encAppStatus.ScheduledOnThisNode {
+				encAppStatus.ScheduledOnThisNode = true
+			}
+			log.Noticef("checkAppsStatus: aiUUID:%s in VMI-delete suppression window; pinning StatusRunning/ScheduledOnThisNode",
+				aiconfig.UUIDandVersion.UUID)
+		}
+
 		log.Functionf("checkAppsStatus: devname %s, pod (%d) status %+v, old %+v", z.nodeName, len(pods.Items), encAppStatus, oldStatus)
 
 		// If this is first time after zedkube started (oldstatus is nil) and I am DNid and the app is not scheduled
