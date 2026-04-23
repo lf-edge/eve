@@ -32,7 +32,7 @@ const (
 // initializeRadioConfig initializes the radio configuration and sets up the periodic ticker.
 // Loads persisted configuration if available, otherwise sets the default (radio enabled).
 func (lc *LocalCmdAgent) initializeRadioConfig() {
-	lc.radioTicker = newTaskTicker(radioPOSTInterval)
+	lc.radioTicker = newTaskTicker(lc.lpsIntervalFromConfig(types.LpsRadioInterval))
 	if !lc.loadSavedRadioConfig() {
 		// Invalid or missing configuration - overwrite with the default.
 		lc.saveRadioConfig(&profile.RadioConfig{RadioSilence: false})
@@ -102,10 +102,10 @@ func (lc *LocalCmdAgent) GetRadioSilenceConfig() types.RadioSilence {
 }
 
 // updateRadioTicker adjusts the radioTicker’s interval.
-// If throttling is enabled, the interval is stretched to the throttled interval
-// (5 minutes); otherwise, it returns to the normal 5 seconds cadence.
+// If throttling is enabled, the interval is stretched to the throttled interval;
+// otherwise, it uses the configurable normal interval.
 func (lc *LocalCmdAgent) updateRadioTicker(throttle bool) {
-	interval := radioPOSTInterval
+	interval := lc.lpsIntervalFromConfig(types.LpsRadioInterval)
 	if throttle {
 		interval = radioPOSTThrottledInterval
 	}

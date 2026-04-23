@@ -257,6 +257,12 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		SCEPRetryInterval,
 		PnacDHCPReacquireMaxRetries,
 		DHCPEnableVendorClassID,
+		LpsProfileInterval,
+		LpsRadioInterval,
+		LpsAppInfoInterval,
+		LpsDevInfoInterval,
+		LpsNetworkInterval,
+		LpsAppBootInfoInterval,
 	}
 	if len(specMap.GlobalSettings) != len(gsKeys) {
 		t.Errorf("GlobalSettings has more (%d) than expected keys (%d)",

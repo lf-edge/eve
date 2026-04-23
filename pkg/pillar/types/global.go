@@ -471,6 +471,19 @@ const (
 	// However, some badly configured DHCP servers may reject unknown vendor class IDs.
 	// Set this to false to disable sending a vendor class ID.
 	DHCPEnableVendorClassID GlobalSettingKey = "dhcp.enable.vendorclassid"
+
+	// LpsProfileInterval defines interval between LPS local profile GETs.
+	LpsProfileInterval GlobalSettingKey = "timer.lps.profile.interval"
+	// LpsRadioInterval defines interval between LPS radio status POSTs.
+	LpsRadioInterval GlobalSettingKey = "timer.lps.radio.interval"
+	// LpsAppInfoInterval defines interval between LPS app info POSTs.
+	LpsAppInfoInterval GlobalSettingKey = "timer.lps.appinfo.interval"
+	// LpsDevInfoInterval defines interval between LPS device info POSTs.
+	LpsDevInfoInterval GlobalSettingKey = "timer.lps.devinfo.interval"
+	// LpsNetworkInterval defines interval between LPS network config POSTs.
+	LpsNetworkInterval GlobalSettingKey = "timer.lps.network.interval"
+	// LpsAppBootInfoInterval defines interval between LPS app boot info POSTs.
+	LpsAppBootInfoInterval GlobalSettingKey = "timer.lps.appbootinfo.interval"
 )
 
 // LonghornDiskReservedGBDisabled is the sentinel value for LonghornDiskReservedGB that
@@ -1197,6 +1210,15 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 
 	// PNAC settings
 	configItemSpecMap.AddIntItem(PnacDHCPReacquireMaxRetries, 4, 0, 8)
+
+	// LPS settings
+	configItemSpecMap.AddIntItem(LpsProfileInterval, MinuteInSec, 3, HourInSec)
+	configItemSpecMap.AddIntItem(LpsRadioInterval, 5, 3, HourInSec)
+	configItemSpecMap.AddIntItem(LpsAppInfoInterval, MinuteInSec, 3, HourInSec)
+	configItemSpecMap.AddIntItem(LpsDevInfoInterval, MinuteInSec, 3, HourInSec)
+	configItemSpecMap.AddIntItem(LpsNetworkInterval, MinuteInSec, 3, HourInSec)
+	configItemSpecMap.AddIntItem(LpsAppBootInfoInterval, MinuteInSec, 3, HourInSec)
+
 	return configItemSpecMap
 }
 

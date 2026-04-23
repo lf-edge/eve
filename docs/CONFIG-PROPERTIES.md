@@ -97,6 +97,23 @@
 | pnac.dhcp.reacquire.max.retries | integer | 4 | 0 | 8 | Maximum number of DHCP reacquire retries after a PNAC (802.1X) port authentication state change. When the network switch reassigns the port to a different access VLAN, EVE retries with exponential backoff (2s, 4s, 8s, ...) until the IP subnet changes or the retry limit is reached. Setting this value to 0 disables DHCP reacquire. |
 | dhcp.enable.vendorclassid | bool | true | - | - | Enables sending the DHCP Vendor Class Identifier (Option 60) to identify the device as EVE OS. This allows networks or DHCP servers to apply policies such as VLAN assignment or granting access to the EVE controller. Some badly configured DHCP servers may reject unknown vendor class IDs. Setting this to false disables sending the vendor class ID. |
 
+## Local Profile Server (LPS) intervals
+
+| Name | Type | Default | Min Value | Max Value | Description |
+| ---- | ---- | ------- | --------- | --------- | ----------- |
+| timer.lps.profile.interval | integer in seconds | 60 (1 minute) | 3 | 3600 (1 hour) | how frequently EVE fetches the local profile from the Local Profile Server (LPS) |
+| timer.lps.radio.interval | integer in seconds | 5 | 3 | 3600 (1 hour) | how frequently EVE POSTs radio status to LPS and fetches radio silence configuration |
+| timer.lps.appinfo.interval | integer in seconds | 60 (1 minute) | 3 | 3600 (1 hour) | how frequently EVE POSTs application info to LPS and fetches application commands |
+| timer.lps.devinfo.interval | integer in seconds | 60 (1 minute) | 3 | 3600 (1 hour) | how frequently EVE POSTs device info to LPS and fetches device commands |
+| timer.lps.network.interval | integer in seconds | 60 (1 minute) | 3 | 3600 (1 hour) | how frequently EVE POSTs network configuration to LPS and fetches locally-made network configuration |
+| timer.lps.appbootinfo.interval | integer in seconds | 60 (1 minute) | 3 | 3600 (1 hour) | how frequently EVE POSTs application boot info to LPS and fetches boot configuration |
+
+Note: when an LPS endpoint responds with HTTP 404 (the endpoint is not implemented by
+the deployed LPS application), EVE overrides the configured interval with a longer
+backoff — 1 hour for most endpoints, 5 minutes for the radio endpoint — to avoid
+unnecessary traffic. The configured interval resumes automatically if the LPS address
+changes or if LPS starts implementing the endpoint.
+
 ## Log levels
 
 Log level can be set for four different components of EVE: EVE microservices, syslog, kernel, and TUI monitor application. Logs for TUI monitor are not sent to the controller and only available locally on the device.

@@ -41,7 +41,7 @@ const (
 // and restores the last known device command timestamp from persistent storage.
 // This ensures commands are not replayed after a restart.
 func (lc *LocalCmdAgent) initializeDevCommands() {
-	lc.devInfoTicker = newTaskTicker(devInfoPOSTInterval)
+	lc.devInfoTicker = newTaskTicker(lc.lpsIntervalFromConfig(types.LpsDevInfoInterval))
 	if _, err := os.Stat(lastDevCmdTimestampFile); err != nil && os.IsNotExist(err) {
 		lc.lastDevCmdTimestamp = 0
 		return
@@ -112,10 +112,10 @@ func (lc *LocalCmdAgent) TriggerDevInfoPOST() {
 }
 
 // updateDevInfoTicker adjusts the devInfoTicker’s interval.
-// If throttling is enabled, the interval is stretched to the throttled interval
-// (1 hour); otherwise, it returns to the normal 1-minute cadence.
+// If throttling is enabled, the interval is stretched to the throttled interval;
+// otherwise, it uses the configurable normal interval.
 func (lc *LocalCmdAgent) updateDevInfoTicker(throttle bool) {
-	interval := devInfoPOSTInterval
+	interval := lc.lpsIntervalFromConfig(types.LpsDevInfoInterval)
 	if throttle {
 		interval = devInfoPOSTThrottledInterval
 	}

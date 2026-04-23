@@ -34,7 +34,7 @@ const (
 // and loads persisted boot configuration from disk.
 func (lc *LocalCmdAgent) initializeAppBootInfo() {
 	// sync.Map doesn't need initialization
-	lc.appBootInfoTicker = newTaskTicker(appBootInfoPOSTInterval)
+	lc.appBootInfoTicker = newTaskTicker(lc.lpsIntervalFromConfig(types.LpsAppBootInfoInterval))
 	if !lc.loadSavedAppBootConfig() {
 		// Invalid or missing configuration - start with empty.
 		lc.saveAppBootConfig(&profile.AppBootConfigList{AppConfigs: nil})
@@ -124,10 +124,10 @@ func (lc *LocalCmdAgent) TriggerAppBootInfoPOST() {
 }
 
 // updateAppBootInfoTicker adjusts the appBootInfoTicker's interval.
-// If throttling is enabled, the interval is stretched to the throttled interval
-// (1 hour); otherwise, it returns to the normal 1-minute cadence.
+// If throttling is enabled, the interval is stretched to the throttled interval;
+// otherwise, it uses the configurable normal interval.
 func (lc *LocalCmdAgent) updateAppBootInfoTicker(throttle bool) {
-	interval := appBootInfoPOSTInterval
+	interval := lc.lpsIntervalFromConfig(types.LpsAppBootInfoInterval)
 	if throttle {
 		interval = appBootInfoPOSTThrottledInterval
 	}
