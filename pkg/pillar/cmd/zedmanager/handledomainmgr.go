@@ -48,10 +48,15 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 	}
 
 	effectiveActivate := effectiveActivateCombined(aiConfig, ctx)
+	// UserActivate carries the raw user intent (profile-resolved AppInstanceConfig.Activate)
+	// without the cluster-scheduling override applied by getKubeAppActivateStatus, so domainmgr
+	// can distinguish a real user opt-out from a transient cluster-status cascade.
+	userActivate := effectiveActivateCurrentProfile(aiConfig, ctx.currentProfile)
 	dc := types.DomainConfig{
 		UUIDandVersion:    aiConfig.UUIDandVersion,
 		DisplayName:       aiConfig.DisplayName,
 		Activate:          effectiveActivate,
+		UserActivate:      userActivate,
 		AppNum:            AppNum,
 		PurgeCounter:      aiConfig.PurgeCmd.Counter + aiConfig.LocalPurgeCmd.Counter,
 		VmConfig:          aiConfig.FixedResources,

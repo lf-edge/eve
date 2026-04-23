@@ -84,7 +84,7 @@ func (z *zedkube) checkAppsFailover(wdFunc func()) {
 		var durationTerminating time.Duration
 
 		for _, pod := range pods.Items {
-			contVMIName := "virt-launcher-" + contName
+			contVMIName := base.VMIPodNamePrefix + contName
 			log.Functionf("checkAppsFailover: pod %s, looking for cont %s", pod.Name, contName)
 			foundVMIPod := strings.HasPrefix(pod.Name, contVMIName)
 			if strings.HasPrefix(pod.Name, contName) || foundVMIPod {
@@ -160,6 +160,11 @@ func (z *zedkube) checkAppsFailover(wdFunc func()) {
 			aiconfig.DisplayName, aiconfig.UUIDandVersion.UUID, encAppStatus)
 
 		if encAppStatus.ScheduledOnThisNode {
+			// Suppress checkStuckPendingVMI for this app while failover is
+			// landing on this node. The window is refreshed each tick as long
+			// as the Terminating pod still exists, so it self-extends.
+			appUUID := aiconfig.UUIDandVersion.UUID.String()
+			z.vmiFailoverSuppressUntil[appUUID] = time.Now().Add(failoverVMISuppressWindow)
 			log.Noticef("checkAppsFailover: failover start for appDomainName: %s", appDomainNameLbl)
 			kubeapi.DetachOldWorkload(log, terminatingNodeName, appDomainNameLbl, wdFunc)
 			log.Noticef("checkAppsFailover: failover complete for appDomainName: %s", appDomainNameLbl)

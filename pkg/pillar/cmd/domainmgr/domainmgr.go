@@ -1127,12 +1127,20 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 				status.SetErrorDescription(errDescription)
 			}
 
-			//cleanup app instance tasks
-			if err := hyper.Task(status).Delete(status.DomainName); err != nil {
-				log.Errorf("failed to delete domain: %s (%v)", status.DomainName, err)
-			}
-			if err := hyper.Task(status).Cleanup(status.DomainName); err != nil {
-				log.Errorf("failed to cleanup domain: %s (%v)", status.DomainName, err)
+			// KubeVirt: publish State=BOOTING (deferring to cluster
+			// recovery) rather than HALTED/BROKEN, and skip Delete/
+			// Cleanup so the VMIRS is not torn down on the error path.
+			// maybeRetryBoot re-invokes Start() which handles
+			// IsAlreadyExists if the VMIRS is still present.
+			if ctx.hvTypeKube {
+				status.State = types.BOOTING
+			} else {
+				if err := hyper.Task(status).Delete(status.DomainName); err != nil {
+					log.Errorf("failed to delete domain: %s (%v)", status.DomainName, err)
+				}
+				if err := hyper.Task(status).Cleanup(status.DomainName); err != nil {
+					log.Errorf("failed to cleanup domain: %s (%v)", status.DomainName, err)
+				}
 			}
 		}
 		status.DomainId = 0
@@ -1153,6 +1161,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 				status.Key())
 			status.Activated = true
 			status.State = types.RUNNING
+			status.KubeTrustLoggedState = 0
 			publishDomainStatus(ctx, status)
 		} else if domainID != status.DomainId {
 			// XXX shutdown + create?
@@ -1980,13 +1989,19 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 		log.Errorf("domain start for %s: %s", status.DomainName, err)
 		status.SetErrorNow(err.Error())
 
-		// Delete
-		if err := hyper.Task(status).Delete(status.DomainName); err != nil {
-			log.Errorf("failed to delete domain: %s (%v)", status.DomainName, err)
-		}
-		// Cleanup
-		if err := hyper.Task(status).Cleanup(status.DomainName); err != nil {
-			log.Errorf("failed to cleanup domain: %s (%v)", status.DomainName, err)
+		if !ctx.hvTypeKube {
+			// Delete
+			if err := hyper.Task(status).Delete(status.DomainName); err != nil {
+				log.Errorf("failed to delete domain: %s (%v)", status.DomainName, err)
+			}
+			// Cleanup
+			if err := hyper.Task(status).Cleanup(status.DomainName); err != nil {
+				log.Errorf("failed to cleanup domain: %s (%v)", status.DomainName, err)
+			}
+		} else {
+			log.Warnf("doActivateTail(%s) KubeVirt Start failed; "+
+				"skipping Delete/Cleanup to preserve cluster state",
+				status.DomainName)
 		}
 
 		// Set BootFailed to cause retry
@@ -2017,24 +2032,42 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 		err = fmt.Errorf("The domain state is still unknown after %d retries", unknownStateRetries)
 	}
 
-	if err != nil {
-		// Immediate failure treat as above
-		status.BootFailed = true
-		status.State = state
-		status.Activated = false
-		status.SetErrorNow(err.Error())
-		log.Errorf("doActivateTail(%v) failed for %s: %s",
-			status.UUIDandVersion, status.DisplayName, err)
+	if err != nil || (ctx.hvTypeKube && state != types.RUNNING) {
+		if ctx.hvTypeKube {
+			// VMIRS exists in cluster; VMI may be PENDING/SCHEDULING/UNKNOWN.
+			// Leave Activated=false so verifyStatus recovery block promotes
+			// to RUNNING once Info() observes RUNNING on a later tick.
+			// Log only on state transitions to avoid per-retry-tick spam.
+			if status.KubeTrustLoggedState != state {
+				log.Noticef("doActivateTail(%v) KubeVirt domain %s state %s "+
+					"after Start; trusting cluster to recover (err=%v)",
+					status.UUIDandVersion, status.DisplayName,
+					state.String(), err)
+				status.KubeTrustLoggedState = state
+			}
+			status.Activated = false
+			status.State = types.BOOTING
+			publishDomainStatus(ctx, status)
+			return
+		} else {
+			// Immediate failure treat as above
+			status.BootFailed = true
+			status.State = state
+			status.Activated = false
+			status.SetErrorNow(err.Error())
+			log.Errorf("doActivateTail(%v) failed for %s: %s",
+				status.UUIDandVersion, status.DisplayName, err)
 
-		// Delete
-		if err := hyper.Task(status).Delete(status.DomainName); err != nil {
-			log.Errorf("failed to delete domain: %s (%v)", status.DomainName, err)
+			// Delete
+			if err := hyper.Task(status).Delete(status.DomainName); err != nil {
+				log.Errorf("failed to delete domain: %s (%v)", status.DomainName, err)
+			}
+			// Cleanup
+			if err := hyper.Task(status).Cleanup(status.DomainName); err != nil {
+				log.Errorf("failed to cleanup domain: %s (%v)", status.DomainName, err)
+			}
+			return
 		}
-		// Cleanup
-		if err := hyper.Task(status).Cleanup(status.DomainName); err != nil {
-			log.Errorf("failed to cleanup domain: %s (%v)", status.DomainName, err)
-		}
-		return
 	}
 	if err == nil && domainID != status.DomainId {
 		status.DomainId = domainID
@@ -2045,6 +2078,7 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 	}
 
 	status.Activated = true
+	status.KubeTrustLoggedState = 0
 	// create a new json file in the filesystem for the specific VM.
 	activeapp.CreateLocalAppActiveFile(log, status.UUIDandVersion.UUID.String())
 
@@ -2057,6 +2091,22 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 
 	log.Functionf("doInactivate(%v) for %s domainId %d",
 		status.UUIDandVersion, status.DisplayName, status.DomainId)
+
+	// Defense-in-depth: in kubevirt cluster mode, never tear down the
+	// cluster-shared VMIRS while the user still wants the app up
+	// (UserActivate=true). Bail out before any Info()/Shutdown/HALTING
+	// publish work — those are wasted (and would be visible as a spurious
+	// HALTING state if Info() ever populates DomainId for kubevirt). The
+	// legitimate teardown paths — handleDelete (impatient=true) and a real
+	// user opt-out (UserActivate=false) — bypass this guard.
+	if ctx.hvTypeKube && !impatient {
+		if cfg := lookupDomainConfig(ctx, status.Key()); cfg != nil && cfg.UserActivate {
+			log.Noticef("doInactivate(%s) kubevirt: skipping Delete/Cleanup "+
+				"(UserActivate=true); leaving VMIRS to cluster", status.Key())
+			return
+		}
+	}
+
 	domainID, _, err := hyper.Task(status).Info(status.DomainName)
 	if err == nil && domainID != status.DomainId {
 		status.DomainId = domainID
@@ -2587,7 +2637,23 @@ func handleModify(ctx *domainContext, key string,
 	} else if !config.Activate {
 		log.Functionf("handleModify(%v) NOT activating for %s",
 			config.UUIDandVersion, config.DisplayName)
-		if status.HasError() {
+		// In kubevirt mode, an Activate=false that still carries UserActivate=true
+		// is a cluster-status cascade (e.g. failover bookkeeping, transient
+		// scheduling churn), not an explicit user opt-out. The VMIRS is
+		// cluster-shared; tearing it down here would defeat cluster recovery.
+		// Clear any error, update the status, but do not call doInactivate.
+		if ctx.hvTypeKube && config.UserActivate {
+			if status.HasError() {
+				log.Noticef("handleModify(%s) kubevirt: clearing error without "+
+					"Delete (UserActivate=true): %s", status.Key(), status.Error)
+				status.ClearError()
+				publishDomainStatus(ctx, status)
+				changed = true
+			} else if status.Activated {
+				log.Noticef("handleModify(%s) kubevirt: skipping doInactivate "+
+					"(UserActivate=true); leaving VMIRS to cluster", status.Key())
+			}
+		} else if status.HasError() {
 			log.Noticef("handleModify(%s) clearing existing error: %s",
 				status.Key(), status.Error)
 			status.ClearError()

@@ -745,7 +745,10 @@ func kubeNodeNotReporting(log *base.LogObject, node *corev1.Node) (notreporting 
 	return notreporting
 }
 
-func tryFastDeleteVmi(log *base.LogObject, kvClientset kubecli.KubevirtClient, vmiName string) error {
+// TryFastDeleteVmi force-deletes a VMI with 0 grace period, stripping
+// finalizers first so the delete does not hang when the kubevirt control
+// plane is impaired.
+func TryFastDeleteVmi(log *base.LogObject, kvClientset kubecli.KubevirtClient, vmiName string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), kubeAPITimeout)
 	defer cancel()
 
@@ -977,7 +980,7 @@ func DetachOldWorkload(log *base.LogObject, failedNodeName string, appDomainName
 	// Delete vmi on failed node
 	if failedNodeVmiName != "" {
 		log.Noticef("DetachOldWorkload Deleting vmi:%s", failedNodeVmiName)
-		err := tryFastDeleteVmi(log, kvClientset, failedNodeVmiName)
+		err := TryFastDeleteVmi(log, kvClientset, failedNodeVmiName)
 		if err != nil {
 			log.Errorf("DetachOldWorkload couldn't delete the Kubevirt VMI:%s for appDomainName:%s err:%v", failedNodeVmiName, appDomainName, err)
 		}
