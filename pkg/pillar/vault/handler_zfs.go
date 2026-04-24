@@ -25,6 +25,13 @@ const (
 	zfsKeyFile                      = zfsKeyDir + "/protector.key"
 	vaultZvolPathWaitSeconds int64  = 20
 	vaultFsType              string = "ext4"
+
+	// cmdlineNoDirsync is the kernel cmdline flag to disable DIRSYNC for the vault mount.
+	// DIRSYNC improves filesystem content consistency on power outage but introduces
+	// significant I/O overhead in virtualized environments.
+	// Set this flag when EVE runs as a VM.
+	// Must be kept in sync with the grub function set_no_dirsync in pkg/grub/rootfs.cfg.
+	cmdlineNoDirsync = "eve_no_dirsync"
 )
 
 // ZFSHandler handles vault operations with ZFS
@@ -353,11 +360,28 @@ func MountVaultZvol(log *base.LogObject, datasetPath string) error {
 		}
 	}
 
-	err = unix.Mount(devPath, "/"+types.SealedDataset, vaultFsType, unix.MS_DIRSYNC|unix.MS_NOATIME, "")
+	mountFlags := uintptr(unix.MS_DIRSYNC | unix.MS_NOATIME)
+	if noDirsyncRequested() {
+		mountFlags = unix.MS_NOATIME
+	}
+	err = unix.Mount(devPath, "/"+types.SealedDataset, vaultFsType, mountFlags, "")
 	if err != nil {
 		return fmt.Errorf("mount of %s to %s err:%v", devPath, "/"+types.SealedDataset, err)
 	}
 	return nil
+}
+
+func noDirsyncRequested() bool {
+	data, err := os.ReadFile("/proc/cmdline")
+	if err != nil {
+		return false
+	}
+	for _, arg := range strings.Fields(string(data)) {
+		if arg == cmdlineNoDirsync {
+			return true
+		}
+	}
+	return false
 }
 
 // formatZvol apply an ext4 fs to the device path given

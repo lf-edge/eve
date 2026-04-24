@@ -107,6 +107,11 @@ elif [ "$INSTALL_ZFS" = true ]; then
    P3_FS_TYPE_DEFAULT=zfs
 fi
 
+DIRSYNC_OPT=",dirsync"
+if grep -q 'eve_no_dirsync' /proc/cmdline; then
+   DIRSYNC_OPT=""
+fi
+
 if [ "$eve_flavor" = "k" ]; then
    if [ "$P3_FS_TYPE_DEFAULT" = "zfs" ]; then
       INSTALL_CLUSTERED_STORAGE=true
@@ -253,7 +258,7 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
     fi
 
     case "$P3_FS_TYPE" in
-             ext3) mount -t ext3 -o dirsync,noatime "$P3" $PERSISTDIR
+             ext3) mount -t ext3 -o noatime${DIRSYNC_OPT} "$P3" $PERSISTDIR
                    ;;
              ext4) #Use -F option twice, to avoid any user confirmation in mkfs
                    if [ "$INIT_FS" = 1 ]; then
@@ -261,7 +266,7 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
                    fi
                    # Enable encryption
                    tune2fs -O encrypt "$P3" && \
-                   mount -t ext4 -o dirsync,noatime "$P3" $PERSISTDIR
+                   mount -t ext4 -o noatime${DIRSYNC_OPT} "$P3" $PERSISTDIR
                    ;;
              zfs) if [ "$INIT_FS" = 1 ]; then
                       # note that we immediately create a zfs dataset for containerd, since otherwise the init sequence will fail
