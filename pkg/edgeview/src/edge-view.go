@@ -292,7 +292,7 @@ func main() {
 	} else {
 		// get the controller server signing leaf certificate
 		if clientAuthType == types.EvAuthTypeControllerCert {
-			certBytes, err := os.ReadFile(types.ServerSigningCertFileName)
+			certBytes, err := os.ReadFile(types.EdgeviewSigningCertFile)
 			if err != nil {
 				log.Errorf("Edgeview can not read in server cert file, %v\n", err)
 				return

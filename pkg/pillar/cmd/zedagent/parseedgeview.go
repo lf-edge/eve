@@ -80,9 +80,9 @@ func parseEvConfig(ctx *getconfigContext, config *zconfig.EdgeDevConfig) {
 			removeEvFiles()
 		} else {
 			// need to validate the signature for JWT
-			err := verifyJWT(ctx, params)
+			certBytes, err := verifyJWT(ctx, params)
 			if err == nil {
-				err = addEvFiles(evConfig, params)
+				err = addEvFiles(evConfig, params, certBytes)
 			}
 			if err != nil {
 				log.Errorf("edgeview JWT token verify failed: %v", err)
@@ -93,50 +93,50 @@ func parseEvConfig(ctx *getconfigContext, config *zconfig.EdgeDevConfig) {
 	ctx.configEdgeview = &evConfig
 }
 
-func verifyJWT(ctx *getconfigContext, params []string) error {
+func verifyJWT(ctx *getconfigContext, params []string) ([]byte, error) {
 	var err error
 	config := lookupControllerSigningCert(ctx)
 	if config == nil {
 		err = fmt.Errorf("lookupControllerSigningCert: not found")
 		log.Error(err)
-		return err
+		return nil, err
 	}
 	var ecdsaKey *ecdsa.PublicKey
 	if ecdsaKey, err = jwt.ParseECPublicKeyFromPEM(config.Cert); err != nil {
 		log.Errorf("Unable to parse ECDSA public key: %v", err)
-		return err
+		return nil, err
 	}
 
 	var jalgo types.EvjwtAlgo
 	part1, err := base64.RawURLEncoding.DecodeString(params[0])
 	if err != nil {
 		log.Errorf("can not decode jwt algo: %v", err)
-		return err
+		return nil, err
 	}
 	err = json.Unmarshal(part1, &jalgo)
 	if err != nil {
 		log.Errorf("json unmarshal algo error: %v", err)
-		return err
+		return nil, err
 	}
 
 	if jalgo.Alg != types.EdgeviewJWTAlgo || jalgo.Typ != types.EdgeviewJWTType {
 		err := fmt.Errorf("jwt algo incorrect: %v", jalgo)
 		log.Errorf("%v", err)
-		return err
+		return nil, err
 	}
 
 	method := jwt.GetSigningMethod(jalgo.Alg)
 	err = method.Verify(strings.Join(params[0:2], "."), params[2], ecdsaKey)
 	if err != nil {
 		log.Errorf("verify jwt failed: %v", err)
-		return err
+		return nil, err
 	}
 	log.Tracef("jwt verify ok")
 
-	return nil
+	return config.Cert, nil
 }
 
-func addEvFiles(evConfig types.EdgeviewConfig, params []string) error {
+func addEvFiles(evConfig types.EdgeviewConfig, params []string, signingCert []byte) error {
 	tokenData, err := base64.RawURLEncoding.DecodeString(params[1])
 	if err != nil {
 		log.Errorf("base64 decode jwt error: %v", err)
@@ -274,6 +274,10 @@ func addEvFiles(evConfig types.EdgeviewConfig, params []string) error {
 	err = os.Rename(f.Name(), types.EdgeviewCfgFile)
 	if err != nil {
 		log.Errorf("file rename failed: %v", err)
+		return err
+	}
+	if err = os.WriteFile(types.EdgeviewSigningCertFile, signingCert, 0600); err != nil {
+		log.Errorf("signing cert write failed: %v", err)
 		return err
 	}
 	log.Noticef("edge-view jwt install, expires in %v", time.Unix(int64(jdata.Exp), 0))
