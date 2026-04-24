@@ -3,7 +3,7 @@
 # Copyright (c) 2025 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-KUBEVIRT_VERSION=v1.6.0
+KUBEVIRT_VERSION=v1.7.3
 CDI_VERSION=v1.57.1
 
 Kubevirt_install() {
