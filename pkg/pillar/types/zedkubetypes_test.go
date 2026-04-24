@@ -254,3 +254,43 @@ func TestKubeUserServicesEqual(t *testing.T) {
 	// Both empty → equal
 	assert.True(t, KubeUserServices{}.Equal(KubeUserServices{}))
 }
+
+// KubeUserServices.Equal — ingress and LBPoolStatus branches
+
+func TestKubeUserServicesEqualIngress(t *testing.T) {
+	ing := KubeIngressInfo{
+		Namespace: "default",
+		Name:      "my-ing",
+		Hostname:  "example.com",
+		Path:      "/api",
+	}
+	s1 := KubeUserServices{UserIngress: []KubeIngressInfo{ing}}
+	s2 := KubeUserServices{UserIngress: []KubeIngressInfo{ing}}
+	assert.True(t, s1.Equal(s2))
+
+	s2.UserIngress = []KubeIngressInfo{{Namespace: "other"}}
+	assert.False(t, s1.Equal(s2))
+}
+
+func TestKubeUserServicesEqualLBPool(t *testing.T) {
+	lb := KubeLBPoolStatus{Interface: "eth0", IPPrefix: "192.168.1.0/28", AllocatedIPs: []string{"192.168.1.1"}}
+
+	// Both nil
+	s1 := KubeUserServices{}
+	s2 := KubeUserServices{}
+	assert.True(t, s1.Equal(s2))
+
+	// One nil, one not
+	s2.LBPoolStatus = &lb
+	assert.False(t, s1.Equal(s2))
+
+	// Both set, equal
+	s1.LBPoolStatus = &lb
+	assert.True(t, s1.Equal(s2))
+
+	// Both set, different
+	lb2 := lb
+	lb2.Interface = "eth1"
+	s2.LBPoolStatus = &lb2
+	assert.False(t, s1.Equal(s2))
+}

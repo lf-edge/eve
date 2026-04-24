@@ -1979,3 +1979,58 @@ func TestAppMACGeneratorNew(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, id, result.UUID)
 }
+
+// NetworkInstanceInfo.RemoveVif — not-found case
+
+func TestNetworkInstanceInfoRemoveVifNotFound(t *testing.T) {
+	log := base.NewSourceLogObject(logrus.StandardLogger(), "test", 0) //nolint:staticcheck
+	info := NetworkInstanceInfo{
+		BridgeName: "br0",
+		Vifs:       []VifNameMac{{Name: "vif0"}},
+	}
+	// Removing a vif that doesn't exist logs an error but doesn't panic
+	info.RemoveVif(log, "vif99")
+	// Original vif is still there
+	assert.Len(t, info.Vifs, 1)
+	assert.Equal(t, "vif0", info.Vifs[0].Name)
+}
+
+// ConnectivityProbe.FromProto — port out of range
+
+func TestConnectivityProbeFromProtoTCPPortOutOfRange(t *testing.T) {
+	var cp ConnectivityProbe
+	proto := &evecommon.ConnectivityProbe{
+		ProbeMethod: evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_TCP,
+		ProbeEndpoint: &evecommon.ProbeEndpoint{
+			Host: "10.0.0.1",
+			Port: 70000, // > 65535
+		},
+	}
+	err := cp.FromProto(proto)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "out of range")
+}
+
+// ConnectivityProbe.FromProto — ICMP with invalid IP
+
+func TestConnectivityProbeFromProtoICMPInvalidIPAddr(t *testing.T) {
+	var cp ConnectivityProbe
+	proto := &evecommon.ConnectivityProbe{
+		ProbeMethod: evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_ICMP,
+		ProbeEndpoint: &evecommon.ProbeEndpoint{
+			Host: "not-an-ip",
+		},
+	}
+	err := cp.FromProto(proto)
+	assert.Error(t, err)
+}
+
+// ConnectivityProbe.ToProto — unknown method (default fallback)
+
+func TestConnectivityProbeToProtoUnknownMethod(t *testing.T) {
+	cp := ConnectivityProbe{Method: ConnectivityProbeMethod(99)}
+	proto := cp.ToProto()
+	require.NotNil(t, proto)
+	assert.Equal(t, evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_UNSPECIFIED,
+		proto.ProbeMethod)
+}

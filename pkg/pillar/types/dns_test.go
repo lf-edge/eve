@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -460,4 +461,66 @@ func TestDeviceNetworkStatusMostlyEqualPortContent(t *testing.T) {
 		},
 	}
 	assert.False(t, s1.MostlyEqual(s4))
+}
+
+// DeviceNetworkStatus.MostlyEqual — remaining branches
+
+func TestDeviceNetworkStatusMostlyEqualRemainingBranches(t *testing.T) {
+	// NtpServers diff
+	s1 := DeviceNetworkStatus{
+		Ports: []NetworkPortStatus{
+			{IfName: "eth0", NtpServers: []netutils.HostnameOrIP{netutils.NewHostnameOrIP("192.168.1.1")}},
+		},
+	}
+	s2 := DeviceNetworkStatus{Ports: []NetworkPortStatus{{IfName: "eth0"}}}
+	assert.False(t, s1.MostlyEqual(s2))
+
+	// AddrInfoList diff
+	s1 = DeviceNetworkStatus{
+		Ports: []NetworkPortStatus{
+			{IfName: "eth0", AddrInfoList: []AddrInfo{{Addr: net.ParseIP("192.168.1.1")}}},
+		},
+	}
+	s2 = DeviceNetworkStatus{Ports: []NetworkPortStatus{{IfName: "eth0"}}}
+	assert.False(t, s1.MostlyEqual(s2))
+
+	// ClusterIPAddr diff
+	s1 = DeviceNetworkStatus{
+		Ports: []NetworkPortStatus{
+			{IfName: "eth0", ClusterIPAddr: net.ParseIP("10.0.0.1")},
+		},
+	}
+	s2 = DeviceNetworkStatus{Ports: []NetworkPortStatus{{IfName: "eth0"}}}
+	assert.False(t, s1.MostlyEqual(s2))
+
+	// Up diff
+	s1 = DeviceNetworkStatus{Ports: []NetworkPortStatus{{IfName: "eth0", Up: true}}}
+	s2 = DeviceNetworkStatus{Ports: []NetworkPortStatus{{IfName: "eth0", Up: false}}}
+	assert.False(t, s1.MostlyEqual(s2))
+
+	// DefaultRouters diff
+	s1 = DeviceNetworkStatus{
+		Ports: []NetworkPortStatus{
+			{IfName: "eth0", DefaultRouters: []net.IP{net.ParseIP("192.168.1.1")}},
+		},
+	}
+	s2 = DeviceNetworkStatus{Ports: []NetworkPortStatus{{IfName: "eth0"}}}
+	assert.False(t, s1.MostlyEqual(s2))
+
+	// PNAC.Enabled diff
+	s1 = DeviceNetworkStatus{
+		Ports: []NetworkPortStatus{{IfName: "eth0", PNAC: PNACStatus{Enabled: true}}},
+	}
+	s2 = DeviceNetworkStatus{Ports: []NetworkPortStatus{{IfName: "eth0"}}}
+	assert.False(t, s1.MostlyEqual(s2))
+
+	// RadioSilence diff (final return)
+	s1 = DeviceNetworkStatus{RadioSilence: RadioSilence{Imposed: true}}
+	s2 = DeviceNetworkStatus{}
+	assert.False(t, s1.MostlyEqual(s2))
+
+	// All equal → true (exercises the final return true path)
+	s1 = DeviceNetworkStatus{Ports: []NetworkPortStatus{{IfName: "eth0", Up: true}}}
+	s2 = DeviceNetworkStatus{Ports: []NetworkPortStatus{{IfName: "eth0", Up: true}}}
+	assert.True(t, s1.MostlyEqual(s2))
 }

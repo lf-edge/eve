@@ -6,6 +6,7 @@ package types
 import (
 	"net"
 	"testing"
+	"time"
 
 	"github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve-api/go/info"
@@ -456,4 +457,220 @@ func TestWwanStatusDoSanitize(t *testing.T) {
 	}
 	ws3.DoSanitize()
 	assert.Equal(t, "EM7600", ws3.Networks[0].Module.Name)
+}
+
+// WwanIPType.ToProto — all cases
+
+func TestWwanIPTypeToProto(t *testing.T) {
+	log := base.NewSourceLogObject(logrus.StandardLogger(), "test", 0) //nolint:staticcheck
+	cases := []struct {
+		in   WwanIPType
+		want evecommon.CellularIPType
+	}{
+		{WwanIPTypeUnspecified, evecommon.CellularIPType_CELLULAR_IP_TYPE_UNSPECIFIED},
+		{WwanIPTypeIPv4, evecommon.CellularIPType_CELLULAR_IP_TYPE_IPV4},
+		{WwanIPTypeIPv4AndIPv6, evecommon.CellularIPType_CELLULAR_IP_TYPE_IPV4_AND_IPV6},
+		{WwanIPTypeIPv6, evecommon.CellularIPType_CELLULAR_IP_TYPE_IPV6},
+		{WwanIPType("unknown"), evecommon.CellularIPType_CELLULAR_IP_TYPE_UNSPECIFIED},
+	}
+	for _, tc := range cases {
+		assert.Equal(t, tc.want, tc.in.ToProto(log))
+	}
+}
+
+// WwanCellModule.ToProto — additional op modes and control protocols
+
+func TestWwanCellModuleToProtoAllModes(t *testing.T) {
+	log := base.NewSourceLogObject(logrus.StandardLogger(), "test", 0) //nolint:staticcheck
+
+	opModeCases := []struct {
+		opMode WwanOpMode
+		want   info.ZCellularOperatingState
+	}{
+		{WwanOpModeUnspecified, info.ZCellularOperatingState_Z_CELLULAR_OPERATING_STATE_UNSPECIFIED},
+		{WwanOpModeConnected, info.ZCellularOperatingState_Z_CELLULAR_OPERATING_STATE_ONLINE_AND_CONNECTED},
+		{WwanOpModeRadioOff, info.ZCellularOperatingState_Z_CELLULAR_OPERATING_STATE_RADIO_OFF},
+		{WwanOpModeOffline, info.ZCellularOperatingState_Z_CELLULAR_OPERATING_STATE_OFFLINE},
+		{WwanOpModeUnrecognized, info.ZCellularOperatingState_Z_CELLULAR_OPERATING_STATE_UNRECOGNIZED},
+	}
+	for _, tc := range opModeCases {
+		m := WwanCellModule{OpMode: tc.opMode, ControlProtocol: WwanCtrlProtQMI}
+		got := m.ToProto(log)
+		assert.Equal(t, tc.want, got.OperatingState, "opMode=%v", tc.opMode)
+	}
+
+	// MBIM control protocol
+	m := WwanCellModule{OpMode: WwanOpModeOnline, ControlProtocol: WwanCtrlProtMBIM}
+	got := m.ToProto(log)
+	assert.Equal(t, info.ZCellularControlProtocol_Z_CELLULAR_CONTROL_PROTOCOL_MBIM, got.ControlProtocol)
+}
+
+// WwanNetworkStatus.Equal — additional branches
+
+func TestWwanNetworkStatusEqualAdditionalBranches(t *testing.T) {
+	wns1 := WwanNetworkStatus{
+		LogicalLabel:     "wwan0",
+		ConfigError:      "",
+		CurrentProvider:  WwanProvider{PLMN: "310410"},
+		VisibleProviders: []WwanProvider{{PLMN: "310410"}},
+	}
+	wns2 := wns1
+	assert.True(t, wns1.Equal(wns2))
+
+	// Different ConfigError
+	wns2.ConfigError = "some error"
+	assert.False(t, wns1.Equal(wns2))
+	wns2.ConfigError = ""
+
+	// Different CurrentProvider
+	wns2.CurrentProvider = WwanProvider{PLMN: "310260"}
+	assert.False(t, wns1.Equal(wns2))
+	wns2.CurrentProvider = wns1.CurrentProvider
+
+	// Different Module
+	wns2.Module = WwanCellModule{Name: "modem0"}
+	assert.False(t, wns1.Equal(wns2))
+}
+
+// WwanNetworkStatus.Equal — remaining branches
+
+func TestWwanNetworkStatusEqualRemainingBranches(t *testing.T) {
+	base := WwanNetworkStatus{LogicalLabel: "wwan0"}
+
+	// PhysAddrs diff
+	s2 := base
+	s2.PhysAddrs = WwanPhysAddrs{Interface: "wwan1"}
+	assert.False(t, base.Equal(s2))
+
+	// SimCards diff
+	s2 = base
+	s2.SimCards = []WwanSimCard{{ICCID: "1234"}}
+	assert.False(t, base.Equal(s2))
+
+	// ProbeError diff
+	s2 = base
+	s2.ProbeError = "no signal"
+	assert.False(t, base.Equal(s2))
+
+	// VisibleProviders diff
+	s2 = base
+	s2.VisibleProviders = []WwanProvider{{PLMN: "310260"}}
+	assert.False(t, base.Equal(s2))
+
+	// CurrentRATs diff
+	s2 = base
+	s2.CurrentRATs = []WwanRAT{WwanRATLTE}
+	assert.False(t, base.Equal(s2))
+
+	// ConnectedAt diff
+	s2 = base
+	s2.ConnectedAt = 12345
+	assert.False(t, base.Equal(s2))
+
+	// LocationTracking diff
+	s2 = base
+	s2.LocationTracking = true
+	assert.False(t, base.Equal(s2))
+
+	// Bearers diff
+	s2 = base
+	s2.Bearers = []WwanBearer{{APN: "internet"}}
+	assert.False(t, base.Equal(s2))
+
+	// Profiles diff
+	s2 = base
+	s2.Profiles = []WwanProfile{{Name: "default"}}
+	assert.False(t, base.Equal(s2))
+}
+
+// WwanNetworkConfig.Equal — remaining branches
+
+func TestWwanNetworkConfigEqualRemainingBranches(t *testing.T) {
+	base := WwanNetworkConfig{LogicalLabel: "wwan0"}
+
+	// PhysAddrs diff
+	s2 := base
+	s2.PhysAddrs = WwanPhysAddrs{Interface: "wwan1"}
+	assert.False(t, base.Equal(s2))
+
+	// AccessPoint.Equal returns false
+	s2 = base
+	s2.AccessPoint = CellularAccessPoint{APN: "internet"}
+	assert.False(t, base.Equal(s2))
+
+	// Proxies diff
+	s2 = base
+	s2.Proxies = []ProxyEntry{{Server: "proxy.example.com", Port: 8080}}
+	assert.False(t, base.Equal(s2))
+
+	// Probe diff
+	s2 = base
+	s2.Probe = WwanProbe{Disable: true}
+	assert.False(t, base.Equal(s2))
+
+	// LocationTracking diff
+	s2 = base
+	s2.LocationTracking = true
+	assert.False(t, base.Equal(s2))
+
+	// RouteMetric diff
+	s2 = base
+	s2.RouteMetric = 200
+	assert.False(t, base.Equal(s2))
+}
+
+// WwanConfig.Equal — timestamp and networks branches
+
+func TestWwanConfigEqualTimestampNetworks(t *testing.T) {
+	now := time.Now()
+	wc1 := WwanConfig{DPCKey: "key1"}
+
+	// DPCTimestamp diff
+	wc2 := wc1
+	wc2.DPCTimestamp = now
+	assert.False(t, wc1.Equal(wc2))
+
+	// RSConfigTimestamp diff
+	wc2 = wc1
+	wc2.RSConfigTimestamp = now
+	assert.False(t, wc1.Equal(wc2))
+
+	// Same-length Networks that differ — exercises the closure
+	wc1net := WwanConfig{
+		DPCKey:   "key1",
+		Networks: []WwanNetworkConfig{{LogicalLabel: "wwan0"}},
+	}
+	wc2net := WwanConfig{
+		DPCKey:   "key1",
+		Networks: []WwanNetworkConfig{{LogicalLabel: "wwan1"}},
+	}
+	assert.False(t, wc1net.Equal(wc2net))
+}
+
+// WwanStatus.Equal — timestamp and networks branches
+
+func TestWwanStatusEqualTimestampNetworks(t *testing.T) {
+	now := time.Now()
+	ws1 := WwanStatus{DPCKey: "key1"}
+
+	// DPCTimestamp diff
+	ws2 := ws1
+	ws2.DPCTimestamp = now
+	assert.False(t, ws1.Equal(ws2))
+
+	// RSConfigTimestamp diff
+	ws2 = ws1
+	ws2.RSConfigTimestamp = now
+	assert.False(t, ws1.Equal(ws2))
+
+	// Same-length Networks that differ — exercises the closure
+	ws1net := WwanStatus{
+		DPCKey:   "key1",
+		Networks: []WwanNetworkStatus{{LogicalLabel: "wwan0"}},
+	}
+	ws2net := WwanStatus{
+		DPCKey:   "key1",
+		Networks: []WwanNetworkStatus{{LogicalLabel: "wwan1"}},
+	}
+	assert.False(t, ws1net.Equal(ws2net))
 }

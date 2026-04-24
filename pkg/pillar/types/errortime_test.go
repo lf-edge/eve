@@ -155,3 +155,90 @@ func TestErrorDescriptionToProto(t *testing.T) {
 	require.Len(t, got.Entities, 1)
 	assert.Equal(t, "vol-1", got.Entities[0].EntityId)
 }
+
+// ErrorAndTimeWithSource.SetErrorWithSource — string source branch
+
+func TestSetErrorWithSourceStringSource(t *testing.T) {
+	et := ErrorAndTimeWithSource{}
+	now := time.Now()
+	et.SetErrorWithSource("some error", "myModule", now)
+	assert.True(t, et.HasError())
+	assert.Equal(t, "some error", et.Error)
+	assert.Equal(t, "myModule", et.ErrorSourceType)
+}
+
+// allowedSourceType — map branch
+
+func TestAllowedSourceType(t *testing.T) {
+	// String → allowed (true)
+	assert.True(t, allowedSourceType("hello"))
+
+	// Map → not allowed (false)
+	assert.False(t, allowedSourceType(map[string]interface{}{}))
+
+	// Pointer → not allowed (false)
+	x := 42
+	assert.False(t, allowedSourceType(&x))
+
+	// Struct → allowed (true)
+	assert.True(t, allowedSourceType(ContentTreeStatus{}))
+}
+
+// EvalStatus.ElapsedTime — zero and non-zero branches
+
+func TestEvalStatusElapsedTime(t *testing.T) {
+	// Zero TestStartTime → returns 0
+	s := EvalStatus{}
+	assert.Equal(t, time.Duration(0), s.ElapsedTime())
+
+	// Non-zero TestStartTime → returns positive duration
+	s = EvalStatus{TestStartTime: time.Now().Add(-5 * time.Second)}
+	elapsed := s.ElapsedTime()
+	assert.Greater(t, elapsed, time.Duration(0))
+	assert.GreaterOrEqual(t, elapsed, 4*time.Second)
+}
+
+// EvalStatus.DetailedNote — inventory branch
+
+func TestEvalStatusDetailedNoteInventory(t *testing.T) {
+	s := EvalStatus{
+		Note:               "test result",
+		InventoryCollected: true,
+		InventoryDir:       "/tmp/inventory",
+	}
+	note := s.DetailedNote()
+	assert.Contains(t, note, "test result")
+	assert.Contains(t, note, "inventory=/tmp/inventory")
+}
+
+// EvalStatus.OnboardingBlockReason — multiple branches
+
+func TestEvalStatusOnboardingBlockReasonBranches(t *testing.T) {
+	// Not evaluation platform → always ""
+	s := EvalStatus{IsEvaluationPlatform: false}
+	assert.Equal(t, "", s.OnboardingBlockReason())
+
+	// Evaluation platform, onboarding allowed → ""
+	s = EvalStatus{
+		IsEvaluationPlatform: true,
+		AllowOnboard:         true,
+		Phase:                EvalPhaseFinal,
+	}
+	assert.Equal(t, "", s.OnboardingBlockReason())
+
+	// AllowOnboard=false, Phase=Init
+	s = EvalStatus{IsEvaluationPlatform: true, AllowOnboard: false, Phase: EvalPhaseInit}
+	assert.Equal(t, "evaluation platform initializing", s.OnboardingBlockReason())
+
+	// AllowOnboard=false, Phase=Testing
+	s.Phase = EvalPhaseTesting
+	assert.Equal(t, "evaluation platform testing in progress", s.OnboardingBlockReason())
+
+	// AllowOnboard=false, Phase=Final
+	s.Phase = EvalPhaseFinal
+	assert.Equal(t, "evaluation complete but onboarding explicitly disabled", s.OnboardingBlockReason())
+
+	// AllowOnboard=true, unknown phase → IsOnboardingAllowed()=false, hits phase-based default
+	s = EvalStatus{IsEvaluationPlatform: true, AllowOnboard: true, Phase: EvalPhase("unknown")}
+	assert.Equal(t, "evaluation platform in unknown state", s.OnboardingBlockReason())
+}

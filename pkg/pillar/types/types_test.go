@@ -211,24 +211,36 @@ func TestSwStateZSwState(t *testing.T) {
 		state SwState
 		want  info.ZSwState
 	}{
+		{0, 0},
 		{INITIAL, info.ZSwState_INITIAL},
+		{RESOLVING_TAG, info.ZSwState_RESOLVING_TAG},
+		{RESOLVED_TAG, info.ZSwState_RESOLVED_TAG},
 		{DOWNLOADING, info.ZSwState_DOWNLOAD_STARTED},
 		{DOWNLOADED, info.ZSwState_DOWNLOADED},
 		{VERIFYING, info.ZSwState_VERIFYING},
 		{VERIFIED, info.ZSwState_VERIFIED},
 		{LOADING, info.ZSwState_LOADING},
+		// LOADED maps to DELIVERED (TBD per source comment)
+		{LOADED, info.ZSwState_DELIVERED},
+		{CREATING_VOLUME, info.ZSwState_CREATING_VOLUME},
+		{CREATED_VOLUME, info.ZSwState_CREATED_VOLUME},
 		{INSTALLED, info.ZSwState_INSTALLED},
+		{AWAITNETWORKINSTANCE, info.ZSwState_AWAITNETWORKINSTANCE},
 		{BOOTING, info.ZSwState_BOOTING},
 		{RUNNING, info.ZSwState_RUNNING},
 		// PAUSING maps to RUNNING (controllers don't support PAUSING)
 		{PAUSING, info.ZSwState_RUNNING},
+		// PAUSED maps to INSTALLED (controllers don't support PAUSED)
+		{PAUSED, info.ZSwState_INSTALLED},
 		{HALTING, info.ZSwState_HALTING},
 		{HALTED, info.ZSwState_HALTED},
+		// BROKEN maps to HALTING (EVE actively reaps BROKEN domains)
+		{BROKEN, info.ZSwState_HALTING},
+		{START_DELAYED, info.ZSwState_START_DELAYED},
 		{FAILED, info.ZSwState_ERROR},
 		{PENDING, info.ZSwState_PENDING},
-		{START_DELAYED, info.ZSwState_START_DELAYED},
-		{REMOTELOADED, info.ZSwState_LOADED},
 		{SCHEDULING, info.ZSwState_SCHEDULING},
+		{REMOTELOADED, info.ZSwState_LOADED},
 		{UNKNOWN, info.ZSwState_RUNNING},
 	}
 	for _, tc := range cases {

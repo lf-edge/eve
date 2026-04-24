@@ -12,6 +12,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	zcommon "github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1094,6 +1095,135 @@ func TestAddOrUpdateIoBundle(t *testing.T) {
 	assert.Len(t, aa.IoBundleList, 1)
 	// IsPort preserved
 	assert.True(t, aa.IoBundleList[0].IsPort)
+}
+
+// AddOrUpdateIoBundle — preserves all hardware-discovered fields
+
+func TestAddOrUpdateIoBundlePreservesAllFields(t *testing.T) {
+	log := base.NewSourceLogObject(logrus.StandardLogger(), "test", 0) //nolint:staticcheck
+	aa2 := AssignableAdapters{Initialized: true}
+
+	// Seed with a bundle that has all preserved fields set
+	existing := IoBundle{
+		Type:       IoNetEth,
+		Phylabel:   "eth0",
+		Ifname:     "eth0",
+		IsPCIBack:  true,
+		KeepInHost: true,
+		PciLong:    "0000:01:00.0",
+		Irq:        "16",
+		Ioports:    "3f8-3ff",
+		Serial:     "/dev/ttyS0",
+		UsbAddr:    "1:2",
+		UsbProduct: "0951:1666",
+		Unique:     "unique-id",
+		MacAddr:    "aa:bb:cc:dd:ee:ff",
+		Cbattr:     map[string]string{"k": "v"},
+	}
+	existing.UsedByUUID = uuid.Must(uuid.NewV4())
+	aa2.AddOrUpdateIoBundle(log, existing)
+
+	// Update with a bare bundle — all preserved fields should survive
+	bare := IoBundle{
+		Type:     IoNetEth,
+		Phylabel: "eth0",
+		Ifname:   "eth0-new",
+	}
+	aa2.AddOrUpdateIoBundle(log, bare)
+
+	got := aa2.LookupIoBundlePhylabel("eth0")
+	require.NotNil(t, got)
+	assert.Equal(t, existing.UsedByUUID, got.UsedByUUID)
+	assert.True(t, got.IsPCIBack)
+	assert.True(t, got.KeepInHost)
+	assert.Equal(t, "0000:01:00.0", got.PciLong)
+	assert.Equal(t, "16", got.Irq)
+	assert.Equal(t, "3f8-3ff", got.Ioports)
+	assert.Equal(t, "/dev/ttyS0", got.Serial)
+	assert.Equal(t, "1:2", got.UsbAddr)
+	assert.Equal(t, "0951:1666", got.UsbProduct)
+	assert.Equal(t, "unique-id", got.Unique)
+	assert.Equal(t, "aa:bb:cc:dd:ee:ff", got.MacAddr)
+	assert.Equal(t, map[string]string{"k": "v"}, got.Cbattr)
+}
+
+// HasAdapterChanged — remaining diff branches
+
+func TestHasAdapterChangedRemainingBranches(t *testing.T) {
+	log := base.NewSourceLogObject(logrus.StandardLogger(), "test", 1234)
+	base2 := IoBundle{
+		Type:            IoNetEth,
+		Phylabel:        "eth0",
+		Logicallabel:    "lbl",
+		AssignmentGroup: "grp",
+		Ifname:          "eth0",
+		PciLong:         "0000:01:00.0",
+		Serial:          "s1",
+		UsbAddr:         "1:1",
+		UsbProduct:      "1234:5678",
+		Irq:             "5",
+		Ioports:         "3f8",
+		Usage:           zcommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+	}
+
+	makePhyAdapter := func(ib IoBundle) PhysicalIOAdapter {
+		return PhysicalIOAdapter{
+			Ptype:        zcommon.PhyIoType_PhyIoNetEth,
+			Phylabel:     ib.Phylabel,
+			Logicallabel: ib.Logicallabel,
+			Assigngrp:    ib.AssignmentGroup,
+			Phyaddr: PhysicalAddress{
+				Ifname:     ib.Ifname,
+				PciLong:    ib.PciLong,
+				Serial:     ib.Serial,
+				UsbAddr:    ib.UsbAddr,
+				UsbProduct: ib.UsbProduct,
+				Irq:        ib.Irq,
+				Ioports:    ib.Ioports,
+			},
+			Usage: ib.Usage,
+		}
+	}
+
+	// PciLong diff
+	pa := makePhyAdapter(base2)
+	pa.Phyaddr.PciLong = "9999:99:99.0"
+	assert.True(t, base2.HasAdapterChanged(log, pa))
+
+	// Serial diff
+	pa = makePhyAdapter(base2)
+	pa.Phyaddr.Serial = "s2"
+	assert.True(t, base2.HasAdapterChanged(log, pa))
+
+	// UsbAddr diff
+	pa = makePhyAdapter(base2)
+	pa.Phyaddr.UsbAddr = "2:2"
+	assert.True(t, base2.HasAdapterChanged(log, pa))
+
+	// UsbProduct diff
+	pa = makePhyAdapter(base2)
+	pa.Phyaddr.UsbProduct = "9999:9999"
+	assert.True(t, base2.HasAdapterChanged(log, pa))
+
+	// Irq diff
+	pa = makePhyAdapter(base2)
+	pa.Phyaddr.Irq = "99"
+	assert.True(t, base2.HasAdapterChanged(log, pa))
+
+	// Ioports diff
+	pa = makePhyAdapter(base2)
+	pa.Phyaddr.Ioports = "9f8"
+	assert.True(t, base2.HasAdapterChanged(log, pa))
+
+	// AssignmentGroup diff
+	pa = makePhyAdapter(base2)
+	pa.Assigngrp = "grp2"
+	assert.True(t, base2.HasAdapterChanged(log, pa))
+
+	// Usage diff
+	pa = makePhyAdapter(base2)
+	pa.Usage = zcommon.PhyIoMemberUsage_PhyIoUsageDedicated
+	assert.True(t, base2.HasAdapterChanged(log, pa))
 }
 
 // IOBundleError.Empty and ErrorTime

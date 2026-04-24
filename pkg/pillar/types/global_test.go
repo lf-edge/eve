@@ -906,3 +906,34 @@ func TestGetDiagRemoteEndpointURLs(t *testing.T) {
 	urls3 := GetDiagRemoteEndpointURLs(log, gcp3)
 	assert.Len(t, urls3, 0)
 }
+
+// globalConfigItemValue — spec-default path (key not in map, falls back to spec)
+
+func TestGlobalConfigItemValueSpecDefault(t *testing.T) {
+	// Empty map: key not in GlobalSettings, should fall through to spec default
+	gcp := &ConfigItemValueMap{}
+	// SSHAuthorizedKeys is a registered string key with default ""
+	val := gcp.GlobalValueString(SSHAuthorizedKeys)
+	specMap := NewConfigItemSpecMap()
+	spec := specMap.GlobalSettings[SSHAuthorizedKeys]
+	assert.Equal(t, spec.StringDefault, val)
+}
+
+// SetGlobalValueBool/Int/TriState — nil GlobalSettings initialization branch
+
+func TestSetGlobalValueNilInit(t *testing.T) {
+	// Use a bare ConfigItemValueMap so GlobalSettings is nil
+	var gcp ConfigItemValueMap
+
+	gcp.SetGlobalValueBool(UsbAccess, true)
+	assert.NotNil(t, gcp.GlobalSettings)
+	assert.True(t, gcp.GlobalValueBool(UsbAccess))
+
+	var gcp2 ConfigItemValueMap
+	gcp2.SetGlobalValueInt(ConfigInterval, 42)
+	assert.Equal(t, uint32(42), gcp2.GlobalValueInt(ConfigInterval))
+
+	var gcp3 ConfigItemValueMap
+	gcp3.SetGlobalValueTriState(FallbackIfCloudGoneTime, TS_ENABLED)
+	assert.Equal(t, TS_ENABLED, gcp3.GlobalValueTriState(FallbackIfCloudGoneTime))
+}

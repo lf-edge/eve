@@ -65,3 +65,56 @@ func TestMetricsMapAddIntoNewIfname(t *testing.T) {
 	src.AddInto(dst)
 	assert.Equal(t, uint64(10), dst["eth1"].SuccessCount)
 }
+
+// AddInto — dst timestamp newer than src (else-if false path)
+
+func TestMetricsMapAddIntoDstNewerTimestamp(t *testing.T) {
+	now := time.Now()
+	older := now.Add(-time.Minute)
+
+	src := MetricsMap{
+		"eth0": ControllerConnMetrics{
+			LastFailure: older,
+			LastSuccess: older,
+		},
+	}
+	dst := MetricsMap{
+		"eth0": ControllerConnMetrics{
+			LastFailure: now,
+			LastSuccess: now,
+		},
+	}
+
+	src.AddInto(dst)
+
+	got := dst["eth0"]
+	// dst timestamps should be preserved (src is older)
+	assert.Equal(t, now, got.LastFailure)
+	assert.Equal(t, now, got.LastSuccess)
+}
+
+// AddInto — URL already in dst map (merge path)
+
+func TestMetricsMapAddIntoURLMerge(t *testing.T) {
+	src := MetricsMap{
+		"eth0": ControllerConnMetrics{
+			URLCounters: map[string]URLMetrics{
+				"/v1/config": {TryMsgCount: 5, SentMsgCount: 3, SessionResume: 1},
+			},
+		},
+	}
+	dst := MetricsMap{
+		"eth0": ControllerConnMetrics{
+			URLCounters: map[string]URLMetrics{
+				"/v1/config": {TryMsgCount: 2, SentMsgCount: 1},
+			},
+		},
+	}
+
+	src.AddInto(dst)
+
+	got := dst["eth0"].URLCounters["/v1/config"]
+	assert.Equal(t, int64(7), got.TryMsgCount)
+	assert.Equal(t, int64(4), got.SentMsgCount)
+	assert.Equal(t, int64(1), got.SessionResume)
+}
