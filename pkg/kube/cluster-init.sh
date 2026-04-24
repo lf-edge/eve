@@ -253,6 +253,8 @@ config_cluster_roles() {
 }
 
 check_start_k3s() {
+  # Ensure containerd is running
+  check_start_containerd
   if [ -f "$K3S_STOP_FLAG" ]; then
     return 1
   fi
@@ -806,7 +808,7 @@ check_cluster_config_change() {
 
             # restart k3s will run only if we are ready after the transition configs set
             terminate_k3s
-            # romove the /var/lib/rancher/k3s/server/tls directory files
+            # remove the /var/lib/rancher/k3s/server/tls directory files
             if [ "$is_bootstrap" = "false" ]; then
               rm -rf /var/lib/rancher/k3s/server/tls/*
               # redo the debugger user role binding since certs are changed
