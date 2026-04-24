@@ -146,7 +146,18 @@ func (hook *SkipCallerHook) Levels() []logrus.Level {
 	return logrus.AllLevels
 }
 
-// Wait on channel then handle the signals
+// handleSignals dispatches SIGUSR1 and SIGUSR2 for every zedbox agent.
+//
+// SIGUSR1 — dumps all goroutine stacks to /persist/agentdebug/<agent>/sigusr1.
+//
+// SIGUSR2 — starts a debug HTTP server (pprof, memory info) on localhost:6543
+// and writes a memory snapshot to /persist/agentdebug/<agent>/sigusr2.
+//
+// Note on coverage builds (COVER=y / -tags cover):
+// MaybeInitSigUsr2 is a no-op, so SIGUSR2 is NOT added to the sigs channel
+// here.  Instead, zedbox/coverage.go registers a dedicated SIGUSR2 listener
+// exclusively for coverage flushing.  In a coverage build, SIGUSR2 triggers
+// only that coverage handler and does NOT start this debug-server handler.
 func handleSignals(log *base.LogObject, agentName string, agentPid int, sigs chan os.Signal) {
 	agentDebugDir := fmt.Sprintf("%s/%s/", types.PersistDebugDir, agentName)
 	stacksDumpFileName := agentDebugDir + "/sigusr1"
@@ -543,7 +554,7 @@ func initImpl(agentName string) (*logrus.Logger, *base.LogObject) {
 
 		sigs := make(chan os.Signal, 1)
 		signal.Notify(sigs, syscall.SIGUSR1)
-		signal.Notify(sigs, syscall.SIGUSR2)
+		MaybeInitSigUsr2(sigs)
 		log.Functionf("Creating %s at %s", "handleSignals", GetMyStack())
 		go handleSignals(log, agentName, agentPid, sigs)
 		eh := func() { printStack(log, agentName, agentPid) }
