@@ -312,6 +312,8 @@ check_start_k3s() {
         # blocks forever and cluster-reset never proceeds.
         ln -sf /opt/cni/bin/host-local /usr/bin/host-local
 
+        # Ensure containerd is running before starting k3s
+        check_start_containerd
         # start the k3s server now
         nohup /usr/bin/k3s server &
 
@@ -807,7 +809,7 @@ check_cluster_config_change() {
 
             # restart k3s will run only if we are ready after the transition configs set
             terminate_k3s
-            # romove the /var/lib/rancher/k3s/server/tls directory files
+            # remove the /var/lib/rancher/k3s/server/tls directory files
             if [ "$is_bootstrap" = "false" ]; then
               rm -rf /var/lib/rancher/k3s/server/tls/*
               # redo the debugger user role binding since certs are changed
@@ -1264,6 +1266,9 @@ fi
 #Forever loop every 15 secs
 while true;
 do
+if [ -f /var/lib/k3s_installed_unpacked ]; then
+        check_start_containerd
+fi
 if [ ! -f /var/lib/all_components_initialized ]; then
         if [ ! -f /var/lib/k3s_installed_unpacked ]; then
                 #
