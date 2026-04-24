@@ -2,6 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 ---
 multus: "v3.9.3"
-kubevirt: "v1.1.0-dirty"
+kubevirt: "v1.7.3"
 cdi: "v1.57.1"
-longhorn: "v1.6.3"
+longhorn: "v1.9.1"
