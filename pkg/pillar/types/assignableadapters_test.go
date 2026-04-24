@@ -14,6 +14,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var aa = AssignableAdapters{
@@ -906,6 +907,91 @@ func TestIoBundleCmpable(t *testing.T) {
 	io2 := IoBundle{}
 
 	cmp.Diff(io1, io2)
+}
+
+// IoBundle.IsUSBController
+
+func TestIoBundleIsUSBController(t *testing.T) {
+	// Type is IoUSBController → true
+	ib := IoBundle{Type: IoUSBController}
+	assert.True(t, ib.IsUSBController())
+
+	// Type is IoUSB with no addr/product → treated as controller
+	ib = IoBundle{Type: IoUSB, UsbAddr: "", UsbProduct: ""}
+	assert.True(t, ib.IsUSBController())
+
+	// Type is IoUSB with UsbAddr set → not a controller
+	ib = IoBundle{Type: IoUSB, UsbAddr: "1:2", UsbProduct: ""}
+	assert.False(t, ib.IsUSBController())
+
+	// Type is IoUSB with UsbProduct set → not a controller
+	ib = IoBundle{Type: IoUSB, UsbAddr: "", UsbProduct: "0951:1666"}
+	assert.False(t, ib.IsUSBController())
+
+	// Other type → false
+	ib = IoBundle{Type: IoNetEth}
+	assert.False(t, ib.IsUSBController())
+}
+
+// AssignableAdapters.LookupIoBundleLogicallabel
+
+func TestLookupIoBundleLogicallabel(t *testing.T) {
+	testAA := AssignableAdapters{
+		IoBundleList: []IoBundle{
+			{Logicallabel: "shopfloor", Phylabel: "eth0"},
+			{Logicallabel: "office", Phylabel: "eth1"},
+		},
+	}
+	ib := testAA.LookupIoBundleLogicallabel("SHOPFLOOR")
+	require.NotNil(t, ib)
+	assert.Equal(t, "eth0", ib.Phylabel)
+
+	assert.Nil(t, testAA.LookupIoBundleLogicallabel("missing"))
+}
+
+// AssignableAdapters.LookupIoBundleIfName
+
+func TestLookupIoBundleIfName(t *testing.T) {
+	testAA := AssignableAdapters{
+		IoBundleList: []IoBundle{
+			{Type: IoNetEth, Ifname: "eth0"},
+			{Type: IoNetEth, Ifname: "eth1"},
+			{Type: IoUSBController, Ifname: "usb0"}, // not IoNet*
+		},
+	}
+	ib := testAA.LookupIoBundleIfName("ETH0")
+	require.NotNil(t, ib)
+	assert.Equal(t, "eth0", ib.Ifname)
+
+	assert.Nil(t, testAA.LookupIoBundleIfName("usb0"))
+	assert.Nil(t, testAA.LookupIoBundleIfName("missing"))
+}
+
+// AssignableAdapters.LookupIoBundleAny
+
+func TestLookupIoBundleAny(t *testing.T) {
+	testAA := AssignableAdapters{
+		IoBundleList: []IoBundle{
+			{Type: IoNetEth, Phylabel: "eth0", Logicallabel: "office", AssignmentGroup: "eth-grp"},
+			{Type: IoNetEth, Phylabel: "eth1", Logicallabel: "shopfloor", AssignmentGroup: "eth-grp"},
+		},
+	}
+
+	// Match by group → returns both
+	list := testAA.LookupIoBundleAny("eth-grp")
+	assert.Len(t, list, 2)
+
+	// Match by phylabel (part of group) → returns group
+	list = testAA.LookupIoBundleAny("eth0")
+	assert.Len(t, list, 2)
+
+	// Match by logicallabel → returns group
+	list = testAA.LookupIoBundleAny("office")
+	assert.Len(t, list, 2)
+
+	// No match
+	list = testAA.LookupIoBundleAny("missing")
+	assert.Len(t, list, 0)
 }
 
 // HasAdapterChanged: returns false when identical, true when any field differs
