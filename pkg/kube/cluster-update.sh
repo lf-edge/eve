@@ -7,6 +7,7 @@
 . /usr/bin/cluster-utils.sh
 
 # shellcheck source=pkg/kube/pubsub.sh
+# shellcheck disable=SC1091
 . /usr/bin/pubsub.sh
 
 K3S_VERSION=v1.34.2+k3s1
@@ -17,7 +18,7 @@ K3S_VERSION=v1.34.2+k3s1
 #       - a migration is needed (new path for something)
 #       - a version bump of: multus, kubevirt, cdi, longhorn
 #
-KUBE_VERSION=2
+KUBE_VERSION=3
 APPLIED_KUBE_VERSION_PATH="/var/lib/applied-kube-version"
 update_Version_Set() {
     echo "$KUBE_VERSION" > "$APPLIED_KUBE_VERSION_PATH"
@@ -54,6 +55,7 @@ trigger_k3s_selfextraction() {
 }
 
 # shellcheck source=pkg/kube/descheduler-utils.sh
+# shellcheck disable=SC1091
 . /usr/bin/descheduler-utils.sh
 
 EdgeNodeInfoPath="/run/zedagent/EdgeNodeInfo/global.json"
@@ -142,7 +144,10 @@ Update_CheckClusterComponents() {
     wait_for_item "update_cluster_pre"
 
     applied_version=$(update_Version_Get)
-    if [ "$KUBE_VERSION" = "$applied_version" ]; then
+    # KUBE_VERSION < applied_version : eve-os downgraded, don't attempt kube "updates" (downgrades)
+    # KUBE_VERSION == applied_version : node reboot (updates already complete)
+    # KUBE_VERSION > applied_version : eve-os updated, do kube updates or migrations
+    if [ "$KUBE_VERSION" -le "$applied_version" ]; then
         # zedagent checks for KubeClusterUpdateStatus to keep
         # a node reporting DeviceState BaseOsUpdating while kube works.
         # a k3s update above can set this after baseos update.
