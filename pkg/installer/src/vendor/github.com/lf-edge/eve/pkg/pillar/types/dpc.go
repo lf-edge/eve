@@ -178,8 +178,6 @@ type DevicePortConfig struct {
 	Key          string                  `json:",omitempty"`
 	TimePriority time.Time               `json:",omitempty"` // All zero's is fallback lowest priority
 	State        DPCState                `json:",omitempty"`
-	ShaFile      string                  `json:",omitempty"` // File in which to write ShaValue once DevicePortConfigList published
-	ShaValue     []byte                  `json:",omitempty"`
 	TestResults
 	LastIPAndDNS time.Time `json:",omitempty"` // Time when we got some IP addresses and DNS
 
@@ -537,10 +535,20 @@ func (config *DevicePortConfig) MostlyEqual(config2 *DevicePortConfig) bool {
 			!reflect.DeepEqual(p1.WirelessCfg, p2.WirelessCfg) {
 			return false
 		}
+		if !p1.L2LinkConfig.Equal(p2.L2LinkConfig) {
+			return false
+		}
 		if p1.IgnoreDhcpNtpServers != p2.IgnoreDhcpNtpServers ||
 			p1.IgnoreDhcpIPAddresses != p2.IgnoreDhcpIPAddresses ||
 			p1.IgnoreDhcpGateways != p2.IgnoreDhcpGateways ||
 			p1.IgnoreDhcpDNSConfig != p2.IgnoreDhcpDNSConfig {
+			return false
+		}
+		if p1.PNAC.Enabled != p2.PNAC.Enabled ||
+			p1.PNAC.CertEnrollmentProfileName != p2.PNAC.CertEnrollmentProfileName ||
+			p1.PNAC.EAPMethod != p2.PNAC.EAPMethod ||
+			p1.PNAC.EAPIdentity != p2.PNAC.EAPIdentity ||
+			!generics.EqualSetsFn(p1.PNAC.CACertPEM, p2.PNAC.CACertPEM, bytes.Equal) {
 			return false
 		}
 	}
@@ -689,6 +697,7 @@ type NetworkPortConfig struct {
 	ProxyConfig
 	L2LinkConfig
 	WirelessCfg WirelessConfig `json:",omitempty"`
+	PNAC        PNACConfig     `json:",omitempty"`
 	// TestResults - Errors from parsing plus success/failure from testing
 	TestResults
 	IgnoreDhcpNtpServers  bool             `json:",omitempty"` // Ignore NTP servers from DHCP
@@ -873,6 +882,13 @@ type DhcpConfig struct {
 	DNSServers []net.IP                `json:",omitempty"` // If not set we use Gateway as DNS server
 	Type       NetworkType             `json:",omitempty"` // IPv4 or IPv6 or Dual stack
 }
+
+// EveOSVendorClassID is the DHCP Vendor Class Identifier (Option 60)
+// used by EVE OS to identify itself to DHCP servers, which may use it
+// for policy decisions such as address assignment or network access.
+// For example, a network may grant access to the EVE controller when
+// it detects an EVE device through this vendor class identifier.
+const EveOSVendorClassID = "LFEDGE-EVE"
 
 // NetworkProxyType is used to differentiate proxies for different network protocols.
 type NetworkProxyType uint8
@@ -1170,88 +1186,27 @@ type L2LinkConfig struct {
 	Bond   BondConfig `json:",omitempty"`
 }
 
+// Equal compares two L2LinkConfig values for equality.
+func (l L2LinkConfig) Equal(l2 L2LinkConfig) bool {
+	if l.L2Type != l2.L2Type {
+		return false
+	}
+	switch l.L2Type {
+	case L2LinkTypeVLAN:
+		return l.VLAN == l2.VLAN
+	case L2LinkTypeBond:
+		return l.Bond.Equal(l2.Bond)
+	default:
+		return true
+	}
+}
+
 // VLANConfig - VLAN sub-interface configuration.
 type VLANConfig struct {
 	// Logical name of the parent port.
 	ParentPort string `json:",omitempty"`
 	// VLAN ID.
 	ID uint16 `json:",omitempty"`
-}
-
-// BondMode specifies the policy indicating how bonding slaves are used
-// during network transmissions.
-type BondMode uint8
-
-const (
-	// BondModeUnspecified : default is Round-Robin
-	BondModeUnspecified BondMode = iota
-	// BondModeBalanceRR : Round-Robin
-	BondModeBalanceRR
-	// BondModeActiveBackup : Active/Backup
-	BondModeActiveBackup
-	// BondModeBalanceXOR : select slave for a packet using a hash function
-	BondModeBalanceXOR
-	// BondModeBroadcast : send every packet on all slaves
-	BondModeBroadcast
-	// BondMode802Dot3AD : IEEE 802.3ad Dynamic link aggregation
-	BondMode802Dot3AD
-	// BondModeBalanceTLB : Adaptive transmit load balancing
-	BondModeBalanceTLB
-	// BondModeBalanceALB : Adaptive load balancing
-	BondModeBalanceALB
-)
-
-// LacpRate specifies the rate in which EVE will ask LACP link partners
-// to transmit LACPDU packets in 802.3ad mode.
-type LacpRate uint8
-
-const (
-	// LacpRateUnspecified : default is Slow.
-	LacpRateUnspecified LacpRate = iota
-	// LacpRateSlow : Request partner to transmit LACPDUs every 30 seconds.
-	LacpRateSlow
-	// LacpRateFast : Request partner to transmit LACPDUs every 1 second.
-	LacpRateFast
-)
-
-// BondConfig - Bond (LAG) interface configuration.
-type BondConfig struct {
-	// Logical names of PhysicalIO network adapters aggregated by this bond.
-	AggregatedPorts []string `json:",omitempty"`
-
-	// Bonding policy.
-	Mode BondMode `json:",omitempty"`
-
-	// LACPDU packets transmission rate.
-	// Applicable for BondMode802Dot3AD only.
-	LacpRate LacpRate `json:",omitempty"`
-
-	// Link monitoring is either disabled or one of the monitors
-	// is enabled, never both at the same time.
-	MIIMonitor BondMIIMonitor `json:",omitempty"`
-	ARPMonitor BondArpMonitor `json:",omitempty"`
-}
-
-// BondMIIMonitor : MII link monitoring parameters (see devmodel.proto for description).
-type BondMIIMonitor struct {
-	Enabled   bool   `json:",omitempty"`
-	Interval  uint32 `json:",omitempty"`
-	UpDelay   uint32 `json:",omitempty"`
-	DownDelay uint32 `json:",omitempty"`
-}
-
-// BondArpMonitor : ARP-based link monitoring parameters (see devmodel.proto for description).
-type BondArpMonitor struct {
-	Enabled   bool     `json:",omitempty"`
-	Interval  uint32   `json:",omitempty"`
-	IPTargets []net.IP `json:",omitempty"`
-}
-
-// Equal compares two BondArpMonitor configs for equality.
-func (m BondArpMonitor) Equal(m2 BondArpMonitor) bool {
-	return m.Enabled == m2.Enabled &&
-		m.Interval == m2.Interval &&
-		generics.EqualSetsFn(m.IPTargets, m2.IPTargets, netutils.EqualIPs)
 }
 
 // DevicePortConfigList is an array in timestamp aka priority order;

@@ -1669,6 +1669,10 @@ type DeviceMetric struct {
 	// of network connectivity.
 	DormantTimeInSeconds uint64           `protobuf:"varint,22,opt,name=dormant_time_in_seconds,json=dormantTimeInSeconds,proto3" json:"dormant_time_in_seconds,omitempty"`
 	StorageMetrics       []*StorageMetric `protobuf:"bytes,23,rep,name=storage_metrics,json=storageMetrics,proto3" json:"storage_metrics,omitempty"` // Storage metrics from ZFS
+	// 802.1X per-port metrics
+	PnacMetrics []*PNACMetrics `protobuf:"bytes,30,rep,name=pnac_metrics,json=pnacMetrics,proto3" json:"pnac_metrics,omitempty"`
+	// Bond adapter metrics
+	BondMetrics []*BondMetrics `protobuf:"bytes,31,rep,name=bond_metrics,json=bondMetrics,proto3" json:"bond_metrics,omitempty"`
 }
 
 func (x *DeviceMetric) Reset() {
@@ -1846,6 +1850,20 @@ func (x *DeviceMetric) GetDormantTimeInSeconds() uint64 {
 func (x *DeviceMetric) GetStorageMetrics() []*StorageMetric {
 	if x != nil {
 		return x.StorageMetrics
+	}
+	return nil
+}
+
+func (x *DeviceMetric) GetPnacMetrics() []*PNACMetrics {
+	if x != nil {
+		return x.PnacMetrics
+	}
+	return nil
+}
+
+func (x *DeviceMetric) GetBondMetrics() []*BondMetrics {
+	if x != nil {
+		return x.BondMetrics
 	}
 	return nil
 }
@@ -4870,6 +4888,320 @@ func (x *KubeClusterMetrics) GetEveVmiApps() []*KubeAppMetrics {
 	return nil
 }
 
+// IEEE 802.1X Port-Based Network Access Control (PNAC) metrics reported by the device
+// for the given port.
+type PNACMetrics struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// Logical label identifying the network port associated with these metrics.
+	Logicallabel string `protobuf:"bytes,1,opt,name=logicallabel,proto3" json:"logicallabel,omitempty"`
+	// Total number of EAPOL frames received from the authenticator.
+	EapolFramesRx uint64 `protobuf:"varint,2,opt,name=eapol_frames_rx,json=eapolFramesRx,proto3" json:"eapol_frames_rx,omitempty"`
+	// Total number of EAPOL frames transmitted to the authenticator.
+	EapolFramesTx uint64 `protobuf:"varint,3,opt,name=eapol_frames_tx,json=eapolFramesTx,proto3" json:"eapol_frames_tx,omitempty"`
+	// Number of EAPOL-Start frames transmitted to initiate authentication.
+	EapolStartFramesTx uint64 `protobuf:"varint,4,opt,name=eapol_start_frames_tx,json=eapolStartFramesTx,proto3" json:"eapol_start_frames_tx,omitempty"`
+	// Number of EAPOL-Logoff frames transmitted to terminate authentication.
+	EapolLogoffFramesTx uint64 `protobuf:"varint,5,opt,name=eapol_logoff_frames_tx,json=eapolLogoffFramesTx,proto3" json:"eapol_logoff_frames_tx,omitempty"`
+	// Number of EAP-Response frames transmitted in response to authentication requests.
+	EapolRespFramesTx uint64 `protobuf:"varint,6,opt,name=eapol_resp_frames_tx,json=eapolRespFramesTx,proto3" json:"eapol_resp_frames_tx,omitempty"`
+	// Number of EAP-Request Identity frames received from the authenticator.
+	EapolReqIdFramesRx uint64 `protobuf:"varint,7,opt,name=eapol_req_id_frames_rx,json=eapolReqIdFramesRx,proto3" json:"eapol_req_id_frames_rx,omitempty"`
+	// Total number of other EAP-Request frames received from the authenticator.
+	EapolReqFramesRx uint64 `protobuf:"varint,8,opt,name=eapol_req_frames_rx,json=eapolReqFramesRx,proto3" json:"eapol_req_frames_rx,omitempty"`
+	// Number of invalid or malformed EAPOL frames received.
+	InvalidEapolFramesRx uint64 `protobuf:"varint,9,opt,name=invalid_eapol_frames_rx,json=invalidEapolFramesRx,proto3" json:"invalid_eapol_frames_rx,omitempty"`
+	// Number of received EAPOL frames with incorrect length or truncated payload.
+	EapLengthErrorFramesRx uint64 `protobuf:"varint,10,opt,name=eap_length_error_frames_rx,json=eapLengthErrorFramesRx,proto3" json:"eap_length_error_frames_rx,omitempty"`
+}
+
+func (x *PNACMetrics) Reset() {
+	*x = PNACMetrics{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_metrics_metrics_proto_msgTypes[48]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *PNACMetrics) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PNACMetrics) ProtoMessage() {}
+
+func (x *PNACMetrics) ProtoReflect() protoreflect.Message {
+	mi := &file_metrics_metrics_proto_msgTypes[48]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PNACMetrics.ProtoReflect.Descriptor instead.
+func (*PNACMetrics) Descriptor() ([]byte, []int) {
+	return file_metrics_metrics_proto_rawDescGZIP(), []int{48}
+}
+
+func (x *PNACMetrics) GetLogicallabel() string {
+	if x != nil {
+		return x.Logicallabel
+	}
+	return ""
+}
+
+func (x *PNACMetrics) GetEapolFramesRx() uint64 {
+	if x != nil {
+		return x.EapolFramesRx
+	}
+	return 0
+}
+
+func (x *PNACMetrics) GetEapolFramesTx() uint64 {
+	if x != nil {
+		return x.EapolFramesTx
+	}
+	return 0
+}
+
+func (x *PNACMetrics) GetEapolStartFramesTx() uint64 {
+	if x != nil {
+		return x.EapolStartFramesTx
+	}
+	return 0
+}
+
+func (x *PNACMetrics) GetEapolLogoffFramesTx() uint64 {
+	if x != nil {
+		return x.EapolLogoffFramesTx
+	}
+	return 0
+}
+
+func (x *PNACMetrics) GetEapolRespFramesTx() uint64 {
+	if x != nil {
+		return x.EapolRespFramesTx
+	}
+	return 0
+}
+
+func (x *PNACMetrics) GetEapolReqIdFramesRx() uint64 {
+	if x != nil {
+		return x.EapolReqIdFramesRx
+	}
+	return 0
+}
+
+func (x *PNACMetrics) GetEapolReqFramesRx() uint64 {
+	if x != nil {
+		return x.EapolReqFramesRx
+	}
+	return 0
+}
+
+func (x *PNACMetrics) GetInvalidEapolFramesRx() uint64 {
+	if x != nil {
+		return x.InvalidEapolFramesRx
+	}
+	return 0
+}
+
+func (x *PNACMetrics) GetEapLengthErrorFramesRx() uint64 {
+	if x != nil {
+		return x.EapLengthErrorFramesRx
+	}
+	return 0
+}
+
+// BondMetrics contains metrics for a single bond adapter.
+type BondMetrics struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// Logical label identifying the bond adapter.
+	Logicallabel string `protobuf:"bytes,1,opt,name=logicallabel,proto3" json:"logicallabel,omitempty"`
+	// Per-member metrics.
+	Members []*BondMemberMetrics `protobuf:"bytes,2,rep,name=members,proto3" json:"members,omitempty"`
+}
+
+func (x *BondMetrics) Reset() {
+	*x = BondMetrics{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_metrics_metrics_proto_msgTypes[49]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *BondMetrics) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BondMetrics) ProtoMessage() {}
+
+func (x *BondMetrics) ProtoReflect() protoreflect.Message {
+	mi := &file_metrics_metrics_proto_msgTypes[49]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BondMetrics.ProtoReflect.Descriptor instead.
+func (*BondMetrics) Descriptor() ([]byte, []int) {
+	return file_metrics_metrics_proto_rawDescGZIP(), []int{49}
+}
+
+func (x *BondMetrics) GetLogicallabel() string {
+	if x != nil {
+		return x.Logicallabel
+	}
+	return ""
+}
+
+func (x *BondMetrics) GetMembers() []*BondMemberMetrics {
+	if x != nil {
+		return x.Members
+	}
+	return nil
+}
+
+// BondMemberMetrics contains metrics for a single member interface within a bond.
+type BondMemberMetrics struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// Logical label of the bond member port.
+	Logicallabel string `protobuf:"bytes,1,opt,name=logicallabel,proto3" json:"logicallabel,omitempty"`
+	// Number of times the link has been detected as failed.
+	LinkFailureCount uint64 `protobuf:"varint,2,opt,name=link_failure_count,json=linkFailureCount,proto3" json:"link_failure_count,omitempty"`
+	// LACP-specific metrics, set only when the bond is in 802.3ad mode.
+	Lacp *BondMemberLACPMetrics `protobuf:"bytes,3,opt,name=lacp,proto3" json:"lacp,omitempty"`
+}
+
+func (x *BondMemberMetrics) Reset() {
+	*x = BondMemberMetrics{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_metrics_metrics_proto_msgTypes[50]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *BondMemberMetrics) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BondMemberMetrics) ProtoMessage() {}
+
+func (x *BondMemberMetrics) ProtoReflect() protoreflect.Message {
+	mi := &file_metrics_metrics_proto_msgTypes[50]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BondMemberMetrics.ProtoReflect.Descriptor instead.
+func (*BondMemberMetrics) Descriptor() ([]byte, []int) {
+	return file_metrics_metrics_proto_rawDescGZIP(), []int{50}
+}
+
+func (x *BondMemberMetrics) GetLogicallabel() string {
+	if x != nil {
+		return x.Logicallabel
+	}
+	return ""
+}
+
+func (x *BondMemberMetrics) GetLinkFailureCount() uint64 {
+	if x != nil {
+		return x.LinkFailureCount
+	}
+	return 0
+}
+
+func (x *BondMemberMetrics) GetLacp() *BondMemberLACPMetrics {
+	if x != nil {
+		return x.Lacp
+	}
+	return nil
+}
+
+// BondMemberLACPMetric contains LACP (802.3ad) counters for a single bond member.
+type BondMemberLACPMetrics struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// Number of times the actor detected churn on this member.
+	ActorChurnedCount uint64 `protobuf:"varint,1,opt,name=actor_churned_count,json=actorChurnedCount,proto3" json:"actor_churned_count,omitempty"`
+	// Number of times the partner detected churn on this member.
+	PartnerChurnedCount uint64 `protobuf:"varint,2,opt,name=partner_churned_count,json=partnerChurnedCount,proto3" json:"partner_churned_count,omitempty"`
+}
+
+func (x *BondMemberLACPMetrics) Reset() {
+	*x = BondMemberLACPMetrics{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_metrics_metrics_proto_msgTypes[51]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *BondMemberLACPMetrics) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BondMemberLACPMetrics) ProtoMessage() {}
+
+func (x *BondMemberLACPMetrics) ProtoReflect() protoreflect.Message {
+	mi := &file_metrics_metrics_proto_msgTypes[51]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BondMemberLACPMetrics.ProtoReflect.Descriptor instead.
+func (*BondMemberLACPMetrics) Descriptor() ([]byte, []int) {
+	return file_metrics_metrics_proto_rawDescGZIP(), []int{51}
+}
+
+func (x *BondMemberLACPMetrics) GetActorChurnedCount() uint64 {
+	if x != nil {
+		return x.ActorChurnedCount
+	}
+	return 0
+}
+
+func (x *BondMemberLACPMetrics) GetPartnerChurnedCount() uint64 {
+	if x != nil {
+		return x.PartnerChurnedCount
+	}
+	return 0
+}
+
 type ZProbeNIMetrics_ZProbeIntfMetric struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -4889,7 +5221,7 @@ type ZProbeNIMetrics_ZProbeIntfMetric struct {
 func (x *ZProbeNIMetrics_ZProbeIntfMetric) Reset() {
 	*x = ZProbeNIMetrics_ZProbeIntfMetric{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_metrics_metrics_proto_msgTypes[49]
+		mi := &file_metrics_metrics_proto_msgTypes[53]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -4902,7 +5234,7 @@ func (x *ZProbeNIMetrics_ZProbeIntfMetric) String() string {
 func (*ZProbeNIMetrics_ZProbeIntfMetric) ProtoMessage() {}
 
 func (x *ZProbeNIMetrics_ZProbeIntfMetric) ProtoReflect() protoreflect.Message {
-	mi := &file_metrics_metrics_proto_msgTypes[49]
+	mi := &file_metrics_metrics_proto_msgTypes[53]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5247,7 +5579,7 @@ var file_metrics_metrics_proto_rawDesc = []byte{
 	0x0b, 0x32, 0x2a, 0x2e, 0x6f, 0x72, 0x67, 0x2e, 0x6c, 0x66, 0x65, 0x64, 0x67, 0x65, 0x2e, 0x65,
 	0x76, 0x65, 0x2e, 0x6d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x73, 0x2e, 0x53, 0x74, 0x6f, 0x72, 0x61,
 	0x67, 0x65, 0x56, 0x44, 0x65, 0x76, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x73, 0x52, 0x05, 0x7a,
-	0x76, 0x6f, 0x6c, 0x73, 0x22, 0xfc, 0x0a, 0x0a, 0x0c, 0x64, 0x65, 0x76, 0x69, 0x63, 0x65, 0x4d,
+	0x76, 0x6f, 0x6c, 0x73, 0x22, 0x8c, 0x0c, 0x0a, 0x0c, 0x64, 0x65, 0x76, 0x69, 0x63, 0x65, 0x4d,
 	0x65, 0x74, 0x72, 0x69, 0x63, 0x12, 0x3c, 0x0a, 0x06, 0x6d, 0x65, 0x6d, 0x6f, 0x72, 0x79, 0x18,
 	0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x24, 0x2e, 0x6f, 0x72, 0x67, 0x2e, 0x6c, 0x66, 0x65, 0x64,
 	0x67, 0x65, 0x2e, 0x65, 0x76, 0x65, 0x2e, 0x6d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x73, 0x2e, 0x6d,
@@ -5335,6 +5667,15 @@ var file_metrics_metrics_proto_rawDesc = []byte{
 	0x72, 0x67, 0x2e, 0x6c, 0x66, 0x65, 0x64, 0x67, 0x65, 0x2e, 0x65, 0x76, 0x65, 0x2e, 0x6d, 0x65,
 	0x74, 0x72, 0x69, 0x63, 0x73, 0x2e, 0x53, 0x74, 0x6f, 0x72, 0x61, 0x67, 0x65, 0x4d, 0x65, 0x74,
 	0x72, 0x69, 0x63, 0x52, 0x0e, 0x73, 0x74, 0x6f, 0x72, 0x61, 0x67, 0x65, 0x4d, 0x65, 0x74, 0x72,
+	0x69, 0x63, 0x73, 0x12, 0x46, 0x0a, 0x0c, 0x70, 0x6e, 0x61, 0x63, 0x5f, 0x6d, 0x65, 0x74, 0x72,
+	0x69, 0x63, 0x73, 0x18, 0x1e, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x23, 0x2e, 0x6f, 0x72, 0x67, 0x2e,
+	0x6c, 0x66, 0x65, 0x64, 0x67, 0x65, 0x2e, 0x65, 0x76, 0x65, 0x2e, 0x6d, 0x65, 0x74, 0x72, 0x69,
+	0x63, 0x73, 0x2e, 0x50, 0x4e, 0x41, 0x43, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x73, 0x52, 0x0b,
+	0x70, 0x6e, 0x61, 0x63, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x73, 0x12, 0x46, 0x0a, 0x0c, 0x62,
+	0x6f, 0x6e, 0x64, 0x5f, 0x6d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x73, 0x18, 0x1f, 0x20, 0x03, 0x28,
+	0x0b, 0x32, 0x23, 0x2e, 0x6f, 0x72, 0x67, 0x2e, 0x6c, 0x66, 0x65, 0x64, 0x67, 0x65, 0x2e, 0x65,
+	0x76, 0x65, 0x2e, 0x6d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x73, 0x2e, 0x42, 0x6f, 0x6e, 0x64, 0x4d,
+	0x65, 0x74, 0x72, 0x69, 0x63, 0x73, 0x52, 0x0b, 0x62, 0x6f, 0x6e, 0x64, 0x4d, 0x65, 0x74, 0x72,
 	0x69, 0x63, 0x73, 0x22, 0x35, 0x0a, 0x09, 0x41, 0x63, 0x6c, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63,
 	0x12, 0x28, 0x0a, 0x10, 0x74, 0x6f, 0x74, 0x61, 0x6c, 0x5f, 0x72, 0x75, 0x6c, 0x65, 0x5f, 0x63,
 	0x6f, 0x75, 0x6e, 0x74, 0x18, 0x01, 0x20, 0x01, 0x28, 0x04, 0x52, 0x0e, 0x74, 0x6f, 0x74, 0x61,
@@ -5962,38 +6303,95 @@ var file_metrics_metrics_proto_rawDesc = []byte{
 	0x28, 0x0b, 0x32, 0x26, 0x2e, 0x6f, 0x72, 0x67, 0x2e, 0x6c, 0x66, 0x65, 0x64, 0x67, 0x65, 0x2e,
 	0x65, 0x76, 0x65, 0x2e, 0x6d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x73, 0x2e, 0x4b, 0x75, 0x62, 0x65,
 	0x41, 0x70, 0x70, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x73, 0x52, 0x0a, 0x65, 0x76, 0x65, 0x56,
-	0x6d, 0x69, 0x41, 0x70, 0x70, 0x73, 0x2a, 0x32, 0x0a, 0x0c, 0x5a, 0x6d, 0x65, 0x74, 0x72, 0x69,
-	0x63, 0x54, 0x79, 0x70, 0x65, 0x73, 0x12, 0x09, 0x0a, 0x05, 0x5a, 0x6d, 0x4e, 0x6f, 0x70, 0x10,
-	0x00, 0x12, 0x0c, 0x0a, 0x08, 0x5a, 0x6d, 0x44, 0x65, 0x76, 0x69, 0x63, 0x65, 0x10, 0x01, 0x12,
-	0x09, 0x0a, 0x05, 0x5a, 0x6d, 0x41, 0x70, 0x70, 0x10, 0x03, 0x2a, 0x85, 0x02, 0x0a, 0x0b, 0x43,
-	0x69, 0x70, 0x68, 0x65, 0x72, 0x45, 0x72, 0x72, 0x6f, 0x72, 0x12, 0x18, 0x0a, 0x14, 0x43, 0x49,
-	0x50, 0x48, 0x45, 0x52, 0x5f, 0x45, 0x52, 0x52, 0x4f, 0x52, 0x5f, 0x49, 0x4e, 0x56, 0x41, 0x4c,
-	0x49, 0x44, 0x10, 0x00, 0x12, 0x1a, 0x0a, 0x16, 0x43, 0x49, 0x50, 0x48, 0x45, 0x52, 0x5f, 0x45,
-	0x52, 0x52, 0x4f, 0x52, 0x5f, 0x4e, 0x4f, 0x54, 0x5f, 0x52, 0x45, 0x41, 0x44, 0x59, 0x10, 0x01,
-	0x12, 0x1f, 0x0a, 0x1b, 0x43, 0x49, 0x50, 0x48, 0x45, 0x52, 0x5f, 0x45, 0x52, 0x52, 0x4f, 0x52,
-	0x5f, 0x44, 0x45, 0x43, 0x52, 0x59, 0x50, 0x54, 0x5f, 0x46, 0x41, 0x49, 0x4c, 0x45, 0x44, 0x10,
-	0x02, 0x12, 0x21, 0x0a, 0x1d, 0x43, 0x49, 0x50, 0x48, 0x45, 0x52, 0x5f, 0x45, 0x52, 0x52, 0x4f,
-	0x52, 0x5f, 0x55, 0x4e, 0x4d, 0x41, 0x52, 0x53, 0x48, 0x41, 0x4c, 0x5f, 0x46, 0x41, 0x49, 0x4c,
-	0x45, 0x44, 0x10, 0x03, 0x12, 0x23, 0x0a, 0x1f, 0x43, 0x49, 0x50, 0x48, 0x45, 0x52, 0x5f, 0x45,
-	0x52, 0x52, 0x4f, 0x52, 0x5f, 0x43, 0x4c, 0x45, 0x41, 0x52, 0x54, 0x45, 0x58, 0x54, 0x5f, 0x46,
-	0x41, 0x4c, 0x4c, 0x42, 0x41, 0x43, 0x4b, 0x10, 0x04, 0x12, 0x21, 0x0a, 0x1d, 0x43, 0x49, 0x50,
-	0x48, 0x45, 0x52, 0x5f, 0x45, 0x52, 0x52, 0x4f, 0x52, 0x5f, 0x4d, 0x49, 0x53, 0x53, 0x49, 0x4e,
-	0x47, 0x5f, 0x46, 0x41, 0x4c, 0x4c, 0x42, 0x41, 0x43, 0x4b, 0x10, 0x05, 0x12, 0x1a, 0x0a, 0x16,
-	0x43, 0x49, 0x50, 0x48, 0x45, 0x52, 0x5f, 0x45, 0x52, 0x52, 0x4f, 0x52, 0x5f, 0x4e, 0x4f, 0x5f,
-	0x43, 0x49, 0x50, 0x48, 0x45, 0x52, 0x10, 0x06, 0x12, 0x18, 0x0a, 0x14, 0x43, 0x49, 0x50, 0x48,
-	0x45, 0x52, 0x5f, 0x45, 0x52, 0x52, 0x4f, 0x52, 0x5f, 0x4e, 0x4f, 0x5f, 0x44, 0x41, 0x54, 0x41,
-	0x10, 0x07, 0x2a, 0x66, 0x0a, 0x0e, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x49, 0x74, 0x65, 0x6d,
-	0x54, 0x79, 0x70, 0x65, 0x12, 0x13, 0x0a, 0x0f, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x49, 0x74,
-	0x65, 0x6d, 0x4f, 0x74, 0x68, 0x65, 0x72, 0x10, 0x00, 0x12, 0x13, 0x0a, 0x0f, 0x4d, 0x65, 0x74,
-	0x72, 0x69, 0x63, 0x49, 0x74, 0x65, 0x6d, 0x47, 0x61, 0x75, 0x67, 0x65, 0x10, 0x01, 0x12, 0x15,
-	0x0a, 0x11, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x49, 0x74, 0x65, 0x6d, 0x43, 0x6f, 0x75, 0x6e,
-	0x74, 0x65, 0x72, 0x10, 0x02, 0x12, 0x13, 0x0a, 0x0f, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x49,
-	0x74, 0x65, 0x6d, 0x53, 0x74, 0x61, 0x74, 0x65, 0x10, 0x03, 0x42, 0x3f, 0x0a, 0x16, 0x6f, 0x72,
-	0x67, 0x2e, 0x6c, 0x66, 0x65, 0x64, 0x67, 0x65, 0x2e, 0x65, 0x76, 0x65, 0x2e, 0x6d, 0x65, 0x74,
-	0x72, 0x69, 0x63, 0x73, 0x5a, 0x25, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d,
-	0x2f, 0x6c, 0x66, 0x2d, 0x65, 0x64, 0x67, 0x65, 0x2f, 0x65, 0x76, 0x65, 0x2d, 0x61, 0x70, 0x69,
-	0x2f, 0x67, 0x6f, 0x2f, 0x6d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x73, 0x62, 0x06, 0x70, 0x72, 0x6f,
-	0x74, 0x6f, 0x33,
+	0x6d, 0x69, 0x41, 0x70, 0x70, 0x73, 0x22, 0xf0, 0x03, 0x0a, 0x0b, 0x50, 0x4e, 0x41, 0x43, 0x4d,
+	0x65, 0x74, 0x72, 0x69, 0x63, 0x73, 0x12, 0x22, 0x0a, 0x0c, 0x6c, 0x6f, 0x67, 0x69, 0x63, 0x61,
+	0x6c, 0x6c, 0x61, 0x62, 0x65, 0x6c, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0c, 0x6c, 0x6f,
+	0x67, 0x69, 0x63, 0x61, 0x6c, 0x6c, 0x61, 0x62, 0x65, 0x6c, 0x12, 0x26, 0x0a, 0x0f, 0x65, 0x61,
+	0x70, 0x6f, 0x6c, 0x5f, 0x66, 0x72, 0x61, 0x6d, 0x65, 0x73, 0x5f, 0x72, 0x78, 0x18, 0x02, 0x20,
+	0x01, 0x28, 0x04, 0x52, 0x0d, 0x65, 0x61, 0x70, 0x6f, 0x6c, 0x46, 0x72, 0x61, 0x6d, 0x65, 0x73,
+	0x52, 0x78, 0x12, 0x26, 0x0a, 0x0f, 0x65, 0x61, 0x70, 0x6f, 0x6c, 0x5f, 0x66, 0x72, 0x61, 0x6d,
+	0x65, 0x73, 0x5f, 0x74, 0x78, 0x18, 0x03, 0x20, 0x01, 0x28, 0x04, 0x52, 0x0d, 0x65, 0x61, 0x70,
+	0x6f, 0x6c, 0x46, 0x72, 0x61, 0x6d, 0x65, 0x73, 0x54, 0x78, 0x12, 0x31, 0x0a, 0x15, 0x65, 0x61,
+	0x70, 0x6f, 0x6c, 0x5f, 0x73, 0x74, 0x61, 0x72, 0x74, 0x5f, 0x66, 0x72, 0x61, 0x6d, 0x65, 0x73,
+	0x5f, 0x74, 0x78, 0x18, 0x04, 0x20, 0x01, 0x28, 0x04, 0x52, 0x12, 0x65, 0x61, 0x70, 0x6f, 0x6c,
+	0x53, 0x74, 0x61, 0x72, 0x74, 0x46, 0x72, 0x61, 0x6d, 0x65, 0x73, 0x54, 0x78, 0x12, 0x33, 0x0a,
+	0x16, 0x65, 0x61, 0x70, 0x6f, 0x6c, 0x5f, 0x6c, 0x6f, 0x67, 0x6f, 0x66, 0x66, 0x5f, 0x66, 0x72,
+	0x61, 0x6d, 0x65, 0x73, 0x5f, 0x74, 0x78, 0x18, 0x05, 0x20, 0x01, 0x28, 0x04, 0x52, 0x13, 0x65,
+	0x61, 0x70, 0x6f, 0x6c, 0x4c, 0x6f, 0x67, 0x6f, 0x66, 0x66, 0x46, 0x72, 0x61, 0x6d, 0x65, 0x73,
+	0x54, 0x78, 0x12, 0x2f, 0x0a, 0x14, 0x65, 0x61, 0x70, 0x6f, 0x6c, 0x5f, 0x72, 0x65, 0x73, 0x70,
+	0x5f, 0x66, 0x72, 0x61, 0x6d, 0x65, 0x73, 0x5f, 0x74, 0x78, 0x18, 0x06, 0x20, 0x01, 0x28, 0x04,
+	0x52, 0x11, 0x65, 0x61, 0x70, 0x6f, 0x6c, 0x52, 0x65, 0x73, 0x70, 0x46, 0x72, 0x61, 0x6d, 0x65,
+	0x73, 0x54, 0x78, 0x12, 0x32, 0x0a, 0x16, 0x65, 0x61, 0x70, 0x6f, 0x6c, 0x5f, 0x72, 0x65, 0x71,
+	0x5f, 0x69, 0x64, 0x5f, 0x66, 0x72, 0x61, 0x6d, 0x65, 0x73, 0x5f, 0x72, 0x78, 0x18, 0x07, 0x20,
+	0x01, 0x28, 0x04, 0x52, 0x12, 0x65, 0x61, 0x70, 0x6f, 0x6c, 0x52, 0x65, 0x71, 0x49, 0x64, 0x46,
+	0x72, 0x61, 0x6d, 0x65, 0x73, 0x52, 0x78, 0x12, 0x2d, 0x0a, 0x13, 0x65, 0x61, 0x70, 0x6f, 0x6c,
+	0x5f, 0x72, 0x65, 0x71, 0x5f, 0x66, 0x72, 0x61, 0x6d, 0x65, 0x73, 0x5f, 0x72, 0x78, 0x18, 0x08,
+	0x20, 0x01, 0x28, 0x04, 0x52, 0x10, 0x65, 0x61, 0x70, 0x6f, 0x6c, 0x52, 0x65, 0x71, 0x46, 0x72,
+	0x61, 0x6d, 0x65, 0x73, 0x52, 0x78, 0x12, 0x35, 0x0a, 0x17, 0x69, 0x6e, 0x76, 0x61, 0x6c, 0x69,
+	0x64, 0x5f, 0x65, 0x61, 0x70, 0x6f, 0x6c, 0x5f, 0x66, 0x72, 0x61, 0x6d, 0x65, 0x73, 0x5f, 0x72,
+	0x78, 0x18, 0x09, 0x20, 0x01, 0x28, 0x04, 0x52, 0x14, 0x69, 0x6e, 0x76, 0x61, 0x6c, 0x69, 0x64,
+	0x45, 0x61, 0x70, 0x6f, 0x6c, 0x46, 0x72, 0x61, 0x6d, 0x65, 0x73, 0x52, 0x78, 0x12, 0x3a, 0x0a,
+	0x1a, 0x65, 0x61, 0x70, 0x5f, 0x6c, 0x65, 0x6e, 0x67, 0x74, 0x68, 0x5f, 0x65, 0x72, 0x72, 0x6f,
+	0x72, 0x5f, 0x66, 0x72, 0x61, 0x6d, 0x65, 0x73, 0x5f, 0x72, 0x78, 0x18, 0x0a, 0x20, 0x01, 0x28,
+	0x04, 0x52, 0x16, 0x65, 0x61, 0x70, 0x4c, 0x65, 0x6e, 0x67, 0x74, 0x68, 0x45, 0x72, 0x72, 0x6f,
+	0x72, 0x46, 0x72, 0x61, 0x6d, 0x65, 0x73, 0x52, 0x78, 0x22, 0x76, 0x0a, 0x0b, 0x42, 0x6f, 0x6e,
+	0x64, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x73, 0x12, 0x22, 0x0a, 0x0c, 0x6c, 0x6f, 0x67, 0x69,
+	0x63, 0x61, 0x6c, 0x6c, 0x61, 0x62, 0x65, 0x6c, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0c,
+	0x6c, 0x6f, 0x67, 0x69, 0x63, 0x61, 0x6c, 0x6c, 0x61, 0x62, 0x65, 0x6c, 0x12, 0x43, 0x0a, 0x07,
+	0x6d, 0x65, 0x6d, 0x62, 0x65, 0x72, 0x73, 0x18, 0x02, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x29, 0x2e,
+	0x6f, 0x72, 0x67, 0x2e, 0x6c, 0x66, 0x65, 0x64, 0x67, 0x65, 0x2e, 0x65, 0x76, 0x65, 0x2e, 0x6d,
+	0x65, 0x74, 0x72, 0x69, 0x63, 0x73, 0x2e, 0x42, 0x6f, 0x6e, 0x64, 0x4d, 0x65, 0x6d, 0x62, 0x65,
+	0x72, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x73, 0x52, 0x07, 0x6d, 0x65, 0x6d, 0x62, 0x65, 0x72,
+	0x73, 0x22, 0xa8, 0x01, 0x0a, 0x11, 0x42, 0x6f, 0x6e, 0x64, 0x4d, 0x65, 0x6d, 0x62, 0x65, 0x72,
+	0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x73, 0x12, 0x22, 0x0a, 0x0c, 0x6c, 0x6f, 0x67, 0x69, 0x63,
+	0x61, 0x6c, 0x6c, 0x61, 0x62, 0x65, 0x6c, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0c, 0x6c,
+	0x6f, 0x67, 0x69, 0x63, 0x61, 0x6c, 0x6c, 0x61, 0x62, 0x65, 0x6c, 0x12, 0x2c, 0x0a, 0x12, 0x6c,
+	0x69, 0x6e, 0x6b, 0x5f, 0x66, 0x61, 0x69, 0x6c, 0x75, 0x72, 0x65, 0x5f, 0x63, 0x6f, 0x75, 0x6e,
+	0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x04, 0x52, 0x10, 0x6c, 0x69, 0x6e, 0x6b, 0x46, 0x61, 0x69,
+	0x6c, 0x75, 0x72, 0x65, 0x43, 0x6f, 0x75, 0x6e, 0x74, 0x12, 0x41, 0x0a, 0x04, 0x6c, 0x61, 0x63,
+	0x70, 0x18, 0x03, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x2d, 0x2e, 0x6f, 0x72, 0x67, 0x2e, 0x6c, 0x66,
+	0x65, 0x64, 0x67, 0x65, 0x2e, 0x65, 0x76, 0x65, 0x2e, 0x6d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x73,
+	0x2e, 0x42, 0x6f, 0x6e, 0x64, 0x4d, 0x65, 0x6d, 0x62, 0x65, 0x72, 0x4c, 0x41, 0x43, 0x50, 0x4d,
+	0x65, 0x74, 0x72, 0x69, 0x63, 0x73, 0x52, 0x04, 0x6c, 0x61, 0x63, 0x70, 0x22, 0x7b, 0x0a, 0x15,
+	0x42, 0x6f, 0x6e, 0x64, 0x4d, 0x65, 0x6d, 0x62, 0x65, 0x72, 0x4c, 0x41, 0x43, 0x50, 0x4d, 0x65,
+	0x74, 0x72, 0x69, 0x63, 0x73, 0x12, 0x2e, 0x0a, 0x13, 0x61, 0x63, 0x74, 0x6f, 0x72, 0x5f, 0x63,
+	0x68, 0x75, 0x72, 0x6e, 0x65, 0x64, 0x5f, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x18, 0x01, 0x20, 0x01,
+	0x28, 0x04, 0x52, 0x11, 0x61, 0x63, 0x74, 0x6f, 0x72, 0x43, 0x68, 0x75, 0x72, 0x6e, 0x65, 0x64,
+	0x43, 0x6f, 0x75, 0x6e, 0x74, 0x12, 0x32, 0x0a, 0x15, 0x70, 0x61, 0x72, 0x74, 0x6e, 0x65, 0x72,
+	0x5f, 0x63, 0x68, 0x75, 0x72, 0x6e, 0x65, 0x64, 0x5f, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x18, 0x02,
+	0x20, 0x01, 0x28, 0x04, 0x52, 0x13, 0x70, 0x61, 0x72, 0x74, 0x6e, 0x65, 0x72, 0x43, 0x68, 0x75,
+	0x72, 0x6e, 0x65, 0x64, 0x43, 0x6f, 0x75, 0x6e, 0x74, 0x2a, 0x32, 0x0a, 0x0c, 0x5a, 0x6d, 0x65,
+	0x74, 0x72, 0x69, 0x63, 0x54, 0x79, 0x70, 0x65, 0x73, 0x12, 0x09, 0x0a, 0x05, 0x5a, 0x6d, 0x4e,
+	0x6f, 0x70, 0x10, 0x00, 0x12, 0x0c, 0x0a, 0x08, 0x5a, 0x6d, 0x44, 0x65, 0x76, 0x69, 0x63, 0x65,
+	0x10, 0x01, 0x12, 0x09, 0x0a, 0x05, 0x5a, 0x6d, 0x41, 0x70, 0x70, 0x10, 0x03, 0x2a, 0x85, 0x02,
+	0x0a, 0x0b, 0x43, 0x69, 0x70, 0x68, 0x65, 0x72, 0x45, 0x72, 0x72, 0x6f, 0x72, 0x12, 0x18, 0x0a,
+	0x14, 0x43, 0x49, 0x50, 0x48, 0x45, 0x52, 0x5f, 0x45, 0x52, 0x52, 0x4f, 0x52, 0x5f, 0x49, 0x4e,
+	0x56, 0x41, 0x4c, 0x49, 0x44, 0x10, 0x00, 0x12, 0x1a, 0x0a, 0x16, 0x43, 0x49, 0x50, 0x48, 0x45,
+	0x52, 0x5f, 0x45, 0x52, 0x52, 0x4f, 0x52, 0x5f, 0x4e, 0x4f, 0x54, 0x5f, 0x52, 0x45, 0x41, 0x44,
+	0x59, 0x10, 0x01, 0x12, 0x1f, 0x0a, 0x1b, 0x43, 0x49, 0x50, 0x48, 0x45, 0x52, 0x5f, 0x45, 0x52,
+	0x52, 0x4f, 0x52, 0x5f, 0x44, 0x45, 0x43, 0x52, 0x59, 0x50, 0x54, 0x5f, 0x46, 0x41, 0x49, 0x4c,
+	0x45, 0x44, 0x10, 0x02, 0x12, 0x21, 0x0a, 0x1d, 0x43, 0x49, 0x50, 0x48, 0x45, 0x52, 0x5f, 0x45,
+	0x52, 0x52, 0x4f, 0x52, 0x5f, 0x55, 0x4e, 0x4d, 0x41, 0x52, 0x53, 0x48, 0x41, 0x4c, 0x5f, 0x46,
+	0x41, 0x49, 0x4c, 0x45, 0x44, 0x10, 0x03, 0x12, 0x23, 0x0a, 0x1f, 0x43, 0x49, 0x50, 0x48, 0x45,
+	0x52, 0x5f, 0x45, 0x52, 0x52, 0x4f, 0x52, 0x5f, 0x43, 0x4c, 0x45, 0x41, 0x52, 0x54, 0x45, 0x58,
+	0x54, 0x5f, 0x46, 0x41, 0x4c, 0x4c, 0x42, 0x41, 0x43, 0x4b, 0x10, 0x04, 0x12, 0x21, 0x0a, 0x1d,
+	0x43, 0x49, 0x50, 0x48, 0x45, 0x52, 0x5f, 0x45, 0x52, 0x52, 0x4f, 0x52, 0x5f, 0x4d, 0x49, 0x53,
+	0x53, 0x49, 0x4e, 0x47, 0x5f, 0x46, 0x41, 0x4c, 0x4c, 0x42, 0x41, 0x43, 0x4b, 0x10, 0x05, 0x12,
+	0x1a, 0x0a, 0x16, 0x43, 0x49, 0x50, 0x48, 0x45, 0x52, 0x5f, 0x45, 0x52, 0x52, 0x4f, 0x52, 0x5f,
+	0x4e, 0x4f, 0x5f, 0x43, 0x49, 0x50, 0x48, 0x45, 0x52, 0x10, 0x06, 0x12, 0x18, 0x0a, 0x14, 0x43,
+	0x49, 0x50, 0x48, 0x45, 0x52, 0x5f, 0x45, 0x52, 0x52, 0x4f, 0x52, 0x5f, 0x4e, 0x4f, 0x5f, 0x44,
+	0x41, 0x54, 0x41, 0x10, 0x07, 0x2a, 0x66, 0x0a, 0x0e, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x49,
+	0x74, 0x65, 0x6d, 0x54, 0x79, 0x70, 0x65, 0x12, 0x13, 0x0a, 0x0f, 0x4d, 0x65, 0x74, 0x72, 0x69,
+	0x63, 0x49, 0x74, 0x65, 0x6d, 0x4f, 0x74, 0x68, 0x65, 0x72, 0x10, 0x00, 0x12, 0x13, 0x0a, 0x0f,
+	0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x49, 0x74, 0x65, 0x6d, 0x47, 0x61, 0x75, 0x67, 0x65, 0x10,
+	0x01, 0x12, 0x15, 0x0a, 0x11, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x49, 0x74, 0x65, 0x6d, 0x43,
+	0x6f, 0x75, 0x6e, 0x74, 0x65, 0x72, 0x10, 0x02, 0x12, 0x13, 0x0a, 0x0f, 0x4d, 0x65, 0x74, 0x72,
+	0x69, 0x63, 0x49, 0x74, 0x65, 0x6d, 0x53, 0x74, 0x61, 0x74, 0x65, 0x10, 0x03, 0x42, 0x3f, 0x0a,
+	0x16, 0x6f, 0x72, 0x67, 0x2e, 0x6c, 0x66, 0x65, 0x64, 0x67, 0x65, 0x2e, 0x65, 0x76, 0x65, 0x2e,
+	0x6d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x73, 0x5a, 0x25, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e,
+	0x63, 0x6f, 0x6d, 0x2f, 0x6c, 0x66, 0x2d, 0x65, 0x64, 0x67, 0x65, 0x2f, 0x65, 0x76, 0x65, 0x2d,
+	0x61, 0x70, 0x69, 0x2f, 0x67, 0x6f, 0x2f, 0x6d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x73, 0x62, 0x06,
+	0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -6009,7 +6407,7 @@ func file_metrics_metrics_proto_rawDescGZIP() []byte {
 }
 
 var file_metrics_metrics_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_metrics_metrics_proto_msgTypes = make([]protoimpl.MessageInfo, 52)
+var file_metrics_metrics_proto_msgTypes = make([]protoimpl.MessageInfo, 56)
 var file_metrics_metrics_proto_goTypes = []interface{}{
 	(ZmetricTypes)(0),                        // 0: org.lfedge.eve.metrics.ZmetricTypes
 	(CipherError)(0),                         // 1: org.lfedge.eve.metrics.CipherError
@@ -6062,33 +6460,37 @@ var file_metrics_metrics_proto_goTypes = []interface{}{
 	(*KubeNodeMetrics)(nil),                  // 48: org.lfedge.eve.metrics.KubeNodeMetrics
 	(*KubeAppMetrics)(nil),                   // 49: org.lfedge.eve.metrics.KubeAppMetrics
 	(*KubeClusterMetrics)(nil),               // 50: org.lfedge.eve.metrics.KubeClusterMetrics
-	nil,                                      // 51: org.lfedge.eve.metrics.logMetric.InputSourcesEntry
-	(*ZProbeNIMetrics_ZProbeIntfMetric)(nil), // 52: org.lfedge.eve.metrics.ZProbeNIMetrics.ZProbeIntfMetric
-	nil,                                      // 53: org.lfedge.eve.metrics.newlogMetric.Top10InputSourcesEntry
-	nil,                                      // 54: org.lfedge.eve.metrics.vlanInfo.VlanCountsEntry
-	(*timestamppb.Timestamp)(nil),            // 55: google.protobuf.Timestamp
-	(*evecommon.DiskDescription)(nil),        // 56: org.lfedge.eve.common.DiskDescription
-	(*NestedAppRuntimeDiskMetric)(nil),       // 57: org.lfedge.eve.metrics.NestedAppRuntimeDiskMetric
+	(*PNACMetrics)(nil),                      // 51: org.lfedge.eve.metrics.PNACMetrics
+	(*BondMetrics)(nil),                      // 52: org.lfedge.eve.metrics.BondMetrics
+	(*BondMemberMetrics)(nil),                // 53: org.lfedge.eve.metrics.BondMemberMetrics
+	(*BondMemberLACPMetrics)(nil),            // 54: org.lfedge.eve.metrics.BondMemberLACPMetrics
+	nil,                                      // 55: org.lfedge.eve.metrics.logMetric.InputSourcesEntry
+	(*ZProbeNIMetrics_ZProbeIntfMetric)(nil), // 56: org.lfedge.eve.metrics.ZProbeNIMetrics.ZProbeIntfMetric
+	nil,                                      // 57: org.lfedge.eve.metrics.newlogMetric.Top10InputSourcesEntry
+	nil,                                      // 58: org.lfedge.eve.metrics.vlanInfo.VlanCountsEntry
+	(*timestamppb.Timestamp)(nil),            // 59: google.protobuf.Timestamp
+	(*evecommon.DiskDescription)(nil),        // 60: org.lfedge.eve.common.DiskDescription
+	(*NestedAppRuntimeDiskMetric)(nil),       // 61: org.lfedge.eve.metrics.NestedAppRuntimeDiskMetric
 }
 var file_metrics_metrics_proto_depIdxs = []int32{
 	8,   // 0: org.lfedge.eve.metrics.CellularMetric.signal_strength:type_name -> org.lfedge.eve.metrics.CellularSignalStrength
 	9,   // 1: org.lfedge.eve.metrics.CellularMetric.packet_stats:type_name -> org.lfedge.eve.metrics.CellularPacketStats
 	35,  // 2: org.lfedge.eve.metrics.CellularPacketStats.rx:type_name -> org.lfedge.eve.metrics.NetworkStats
 	35,  // 3: org.lfedge.eve.metrics.CellularPacketStats.tx:type_name -> org.lfedge.eve.metrics.NetworkStats
-	55,  // 4: org.lfedge.eve.metrics.zedcloudMetric.lastFailure:type_name -> google.protobuf.Timestamp
-	55,  // 5: org.lfedge.eve.metrics.zedcloudMetric.lastSuccess:type_name -> google.protobuf.Timestamp
+	59,  // 4: org.lfedge.eve.metrics.zedcloudMetric.lastFailure:type_name -> google.protobuf.Timestamp
+	59,  // 5: org.lfedge.eve.metrics.zedcloudMetric.lastSuccess:type_name -> google.protobuf.Timestamp
 	11,  // 6: org.lfedge.eve.metrics.zedcloudMetric.urlMetrics:type_name -> org.lfedge.eve.metrics.urlcloudMetric
-	55,  // 7: org.lfedge.eve.metrics.CipherMetric.last_failure:type_name -> google.protobuf.Timestamp
-	55,  // 8: org.lfedge.eve.metrics.CipherMetric.last_success:type_name -> google.protobuf.Timestamp
+	59,  // 7: org.lfedge.eve.metrics.CipherMetric.last_failure:type_name -> google.protobuf.Timestamp
+	59,  // 8: org.lfedge.eve.metrics.CipherMetric.last_success:type_name -> google.protobuf.Timestamp
 	13,  // 9: org.lfedge.eve.metrics.CipherMetric.tc:type_name -> org.lfedge.eve.metrics.TypeCounter
 	1,   // 10: org.lfedge.eve.metrics.TypeCounter.error_code:type_name -> org.lfedge.eve.metrics.CipherError
-	55,  // 11: org.lfedge.eve.metrics.appCpuMetric.upTime:type_name -> google.protobuf.Timestamp
-	56,  // 12: org.lfedge.eve.metrics.StorageDiskMetric.disk_name:type_name -> org.lfedge.eve.common.DiskDescription
+	59,  // 11: org.lfedge.eve.metrics.appCpuMetric.upTime:type_name -> google.protobuf.Timestamp
+	60,  // 12: org.lfedge.eve.metrics.StorageDiskMetric.disk_name:type_name -> org.lfedge.eve.common.DiskDescription
 	15,  // 13: org.lfedge.eve.metrics.StorageDiskMetric.metrics:type_name -> org.lfedge.eve.metrics.StorageVDevMetrics
 	16,  // 14: org.lfedge.eve.metrics.StorageChildrenMetric.disks:type_name -> org.lfedge.eve.metrics.StorageDiskMetric
 	17,  // 15: org.lfedge.eve.metrics.StorageChildrenMetric.children:type_name -> org.lfedge.eve.metrics.StorageChildrenMetric
 	15,  // 16: org.lfedge.eve.metrics.StorageChildrenMetric.metrics:type_name -> org.lfedge.eve.metrics.StorageVDevMetrics
-	55,  // 17: org.lfedge.eve.metrics.StorageMetric.collection_time:type_name -> google.protobuf.Timestamp
+	59,  // 17: org.lfedge.eve.metrics.StorageMetric.collection_time:type_name -> google.protobuf.Timestamp
 	15,  // 18: org.lfedge.eve.metrics.StorageMetric.zpool_metrics:type_name -> org.lfedge.eve.metrics.StorageVDevMetrics
 	17,  // 19: org.lfedge.eve.metrics.StorageMetric.children_datasets:type_name -> org.lfedge.eve.metrics.StorageChildrenMetric
 	16,  // 20: org.lfedge.eve.metrics.StorageMetric.disks:type_name -> org.lfedge.eve.metrics.StorageDiskMetric
@@ -6106,79 +6508,83 @@ var file_metrics_metrics_proto_depIdxs = []int32{
 	42,  // 32: org.lfedge.eve.metrics.deviceMetric.newlog:type_name -> org.lfedge.eve.metrics.newlogMetric
 	44,  // 33: org.lfedge.eve.metrics.deviceMetric.zedbox:type_name -> org.lfedge.eve.metrics.zedboxStats
 	5,   // 34: org.lfedge.eve.metrics.deviceMetric.deviceMemory:type_name -> org.lfedge.eve.metrics.DeviceMemoryMetric
-	55,  // 35: org.lfedge.eve.metrics.deviceMetric.last_received_config:type_name -> google.protobuf.Timestamp
-	55,  // 36: org.lfedge.eve.metrics.deviceMetric.last_processed_config:type_name -> google.protobuf.Timestamp
+	59,  // 35: org.lfedge.eve.metrics.deviceMetric.last_received_config:type_name -> google.protobuf.Timestamp
+	59,  // 36: org.lfedge.eve.metrics.deviceMetric.last_processed_config:type_name -> google.protobuf.Timestamp
 	7,   // 37: org.lfedge.eve.metrics.deviceMetric.cellular:type_name -> org.lfedge.eve.metrics.CellularMetric
 	46,  // 38: org.lfedge.eve.metrics.deviceMetric.flowlog:type_name -> org.lfedge.eve.metrics.FlowlogMetric
 	18,  // 39: org.lfedge.eve.metrics.deviceMetric.storage_metrics:type_name -> org.lfedge.eve.metrics.StorageMetric
-	14,  // 40: org.lfedge.eve.metrics.appContainerMetric.cpu:type_name -> org.lfedge.eve.metrics.appCpuMetric
-	3,   // 41: org.lfedge.eve.metrics.appContainerMetric.memory:type_name -> org.lfedge.eve.metrics.memoryMetric
-	6,   // 42: org.lfedge.eve.metrics.appContainerMetric.network:type_name -> org.lfedge.eve.metrics.networkMetric
-	23,  // 43: org.lfedge.eve.metrics.appContainerMetric.disk:type_name -> org.lfedge.eve.metrics.diskMetric
-	4,   // 44: org.lfedge.eve.metrics.appContainerMetric.appContainerMemory:type_name -> org.lfedge.eve.metrics.AppMemoryMetric
-	2,   // 45: org.lfedge.eve.metrics.MetricItem.type:type_name -> org.lfedge.eve.metrics.MetricItemType
-	14,  // 46: org.lfedge.eve.metrics.appMetric.cpu:type_name -> org.lfedge.eve.metrics.appCpuMetric
-	3,   // 47: org.lfedge.eve.metrics.appMetric.memory:type_name -> org.lfedge.eve.metrics.memoryMetric
-	6,   // 48: org.lfedge.eve.metrics.appMetric.network:type_name -> org.lfedge.eve.metrics.networkMetric
-	24,  // 49: org.lfedge.eve.metrics.appMetric.disk:type_name -> org.lfedge.eve.metrics.appDiskMetric
-	21,  // 50: org.lfedge.eve.metrics.appMetric.container:type_name -> org.lfedge.eve.metrics.appContainerMetric
-	4,   // 51: org.lfedge.eve.metrics.appMetric.appMemory:type_name -> org.lfedge.eve.metrics.AppMemoryMetric
-	26,  // 52: org.lfedge.eve.metrics.appMetric.patch_envelope:type_name -> org.lfedge.eve.metrics.AppPatchEnvelopeMetric
-	55,  // 53: org.lfedge.eve.metrics.logMetric.lastDeviceBundleSendTime:type_name -> google.protobuf.Timestamp
-	55,  // 54: org.lfedge.eve.metrics.logMetric.lastAppBundleSendTime:type_name -> google.protobuf.Timestamp
-	55,  // 55: org.lfedge.eve.metrics.logMetric.lastLogDeferTime:type_name -> google.protobuf.Timestamp
-	51,  // 56: org.lfedge.eve.metrics.logMetric.input_sources:type_name -> org.lfedge.eve.metrics.logMetric.InputSourcesEntry
-	28,  // 57: org.lfedge.eve.metrics.ZMetricConn.InPkts:type_name -> org.lfedge.eve.metrics.PktStat
-	28,  // 58: org.lfedge.eve.metrics.ZMetricConn.OutPkts:type_name -> org.lfedge.eve.metrics.PktStat
-	28,  // 59: org.lfedge.eve.metrics.ZMetricConn.ErrPkts:type_name -> org.lfedge.eve.metrics.PktStat
-	28,  // 60: org.lfedge.eve.metrics.ZMetricConn.CarierErrPkts:type_name -> org.lfedge.eve.metrics.PktStat
-	29,  // 61: org.lfedge.eve.metrics.ZMetricVpn.ConnStat:type_name -> org.lfedge.eve.metrics.ZMetricConn
-	29,  // 62: org.lfedge.eve.metrics.ZMetricVpn.IkeStat:type_name -> org.lfedge.eve.metrics.ZMetricConn
-	29,  // 63: org.lfedge.eve.metrics.ZMetricVpn.NatTStat:type_name -> org.lfedge.eve.metrics.ZMetricConn
-	29,  // 64: org.lfedge.eve.metrics.ZMetricVpn.EspStat:type_name -> org.lfedge.eve.metrics.ZMetricConn
-	32,  // 65: org.lfedge.eve.metrics.ZMetricFlowEndPoint.link:type_name -> org.lfedge.eve.metrics.ZMetricFlowLink
-	28,  // 66: org.lfedge.eve.metrics.ZMetricFlowEndPoint.stats:type_name -> org.lfedge.eve.metrics.PktStat
-	33,  // 67: org.lfedge.eve.metrics.ZMetricFlow.lEndPoint:type_name -> org.lfedge.eve.metrics.ZMetricFlowEndPoint
-	33,  // 68: org.lfedge.eve.metrics.ZMetricFlow.rEndPoint:type_name -> org.lfedge.eve.metrics.ZMetricFlowEndPoint
-	35,  // 69: org.lfedge.eve.metrics.ZMetricNetworkStats.rx:type_name -> org.lfedge.eve.metrics.NetworkStats
-	35,  // 70: org.lfedge.eve.metrics.ZMetricNetworkStats.tx:type_name -> org.lfedge.eve.metrics.NetworkStats
-	52,  // 71: org.lfedge.eve.metrics.ZProbeNIMetrics.intfMetric:type_name -> org.lfedge.eve.metrics.ZProbeNIMetrics.ZProbeIntfMetric
-	6,   // 72: org.lfedge.eve.metrics.ZMetricNetworkInstance.network:type_name -> org.lfedge.eve.metrics.networkMetric
-	37,  // 73: org.lfedge.eve.metrics.ZMetricNetworkInstance.probeMetric:type_name -> org.lfedge.eve.metrics.ZProbeNIMetrics
-	37,  // 74: org.lfedge.eve.metrics.ZMetricNetworkInstance.probe_metrics:type_name -> org.lfedge.eve.metrics.ZProbeNIMetrics
-	30,  // 75: org.lfedge.eve.metrics.ZMetricNetworkInstance.vpnm:type_name -> org.lfedge.eve.metrics.ZMetricVpn
-	31,  // 76: org.lfedge.eve.metrics.ZMetricNetworkInstance.nonem:type_name -> org.lfedge.eve.metrics.ZMetricNone
-	34,  // 77: org.lfedge.eve.metrics.ZMetricNetworkInstance.flowStats:type_name -> org.lfedge.eve.metrics.ZMetricFlow
-	36,  // 78: org.lfedge.eve.metrics.ZMetricNetworkInstance.networkStats:type_name -> org.lfedge.eve.metrics.ZMetricNetworkStats
-	45,  // 79: org.lfedge.eve.metrics.ZMetricNetworkInstance.vlan_info:type_name -> org.lfedge.eve.metrics.vlanInfo
-	55,  // 80: org.lfedge.eve.metrics.ZMetricProcess.create_time:type_name -> google.protobuf.Timestamp
-	55,  // 81: org.lfedge.eve.metrics.ZMetricMsg.atTimeStamp:type_name -> google.protobuf.Timestamp
-	19,  // 82: org.lfedge.eve.metrics.ZMetricMsg.dm:type_name -> org.lfedge.eve.metrics.deviceMetric
-	25,  // 83: org.lfedge.eve.metrics.ZMetricMsg.am:type_name -> org.lfedge.eve.metrics.appMetric
-	38,  // 84: org.lfedge.eve.metrics.ZMetricMsg.nm:type_name -> org.lfedge.eve.metrics.ZMetricNetworkInstance
-	39,  // 85: org.lfedge.eve.metrics.ZMetricMsg.vm:type_name -> org.lfedge.eve.metrics.ZMetricVolume
-	40,  // 86: org.lfedge.eve.metrics.ZMetricMsg.pr:type_name -> org.lfedge.eve.metrics.ZMetricProcess
-	50,  // 87: org.lfedge.eve.metrics.ZMetricMsg.cm:type_name -> org.lfedge.eve.metrics.KubeClusterMetrics
-	57,  // 88: org.lfedge.eve.metrics.ZMetricMsg.nest_metric:type_name -> org.lfedge.eve.metrics.NestedAppRuntimeDiskMetric
-	55,  // 89: org.lfedge.eve.metrics.newlogMetric.failSentStartTime:type_name -> google.protobuf.Timestamp
-	43,  // 90: org.lfedge.eve.metrics.newlogMetric.deviceMetrics:type_name -> org.lfedge.eve.metrics.logfileMetrics
-	43,  // 91: org.lfedge.eve.metrics.newlogMetric.appMetrics:type_name -> org.lfedge.eve.metrics.logfileMetrics
-	53,  // 92: org.lfedge.eve.metrics.newlogMetric.top10_input_sources:type_name -> org.lfedge.eve.metrics.newlogMetric.Top10InputSourcesEntry
-	55,  // 93: org.lfedge.eve.metrics.newlogMetric.oldest_saved_device_log:type_name -> google.protobuf.Timestamp
-	55,  // 94: org.lfedge.eve.metrics.logfileMetrics.recentGzipFileTime:type_name -> google.protobuf.Timestamp
-	55,  // 95: org.lfedge.eve.metrics.logfileMetrics.lastGzipFileSendTime:type_name -> google.protobuf.Timestamp
-	54,  // 96: org.lfedge.eve.metrics.vlanInfo.vlan_counts:type_name -> org.lfedge.eve.metrics.vlanInfo.VlanCountsEntry
-	47,  // 97: org.lfedge.eve.metrics.FlowlogMetric.messages:type_name -> org.lfedge.eve.metrics.FlowlogCounters
-	47,  // 98: org.lfedge.eve.metrics.FlowlogMetric.flows:type_name -> org.lfedge.eve.metrics.FlowlogCounters
-	47,  // 99: org.lfedge.eve.metrics.FlowlogMetric.dns_requests:type_name -> org.lfedge.eve.metrics.FlowlogCounters
-	48,  // 100: org.lfedge.eve.metrics.KubeClusterMetrics.nodes:type_name -> org.lfedge.eve.metrics.KubeNodeMetrics
-	49,  // 101: org.lfedge.eve.metrics.KubeClusterMetrics.eve_pod_apps:type_name -> org.lfedge.eve.metrics.KubeAppMetrics
-	49,  // 102: org.lfedge.eve.metrics.KubeClusterMetrics.eve_vmi_apps:type_name -> org.lfedge.eve.metrics.KubeAppMetrics
-	103, // [103:103] is the sub-list for method output_type
-	103, // [103:103] is the sub-list for method input_type
-	103, // [103:103] is the sub-list for extension type_name
-	103, // [103:103] is the sub-list for extension extendee
-	0,   // [0:103] is the sub-list for field type_name
+	51,  // 40: org.lfedge.eve.metrics.deviceMetric.pnac_metrics:type_name -> org.lfedge.eve.metrics.PNACMetrics
+	52,  // 41: org.lfedge.eve.metrics.deviceMetric.bond_metrics:type_name -> org.lfedge.eve.metrics.BondMetrics
+	14,  // 42: org.lfedge.eve.metrics.appContainerMetric.cpu:type_name -> org.lfedge.eve.metrics.appCpuMetric
+	3,   // 43: org.lfedge.eve.metrics.appContainerMetric.memory:type_name -> org.lfedge.eve.metrics.memoryMetric
+	6,   // 44: org.lfedge.eve.metrics.appContainerMetric.network:type_name -> org.lfedge.eve.metrics.networkMetric
+	23,  // 45: org.lfedge.eve.metrics.appContainerMetric.disk:type_name -> org.lfedge.eve.metrics.diskMetric
+	4,   // 46: org.lfedge.eve.metrics.appContainerMetric.appContainerMemory:type_name -> org.lfedge.eve.metrics.AppMemoryMetric
+	2,   // 47: org.lfedge.eve.metrics.MetricItem.type:type_name -> org.lfedge.eve.metrics.MetricItemType
+	14,  // 48: org.lfedge.eve.metrics.appMetric.cpu:type_name -> org.lfedge.eve.metrics.appCpuMetric
+	3,   // 49: org.lfedge.eve.metrics.appMetric.memory:type_name -> org.lfedge.eve.metrics.memoryMetric
+	6,   // 50: org.lfedge.eve.metrics.appMetric.network:type_name -> org.lfedge.eve.metrics.networkMetric
+	24,  // 51: org.lfedge.eve.metrics.appMetric.disk:type_name -> org.lfedge.eve.metrics.appDiskMetric
+	21,  // 52: org.lfedge.eve.metrics.appMetric.container:type_name -> org.lfedge.eve.metrics.appContainerMetric
+	4,   // 53: org.lfedge.eve.metrics.appMetric.appMemory:type_name -> org.lfedge.eve.metrics.AppMemoryMetric
+	26,  // 54: org.lfedge.eve.metrics.appMetric.patch_envelope:type_name -> org.lfedge.eve.metrics.AppPatchEnvelopeMetric
+	59,  // 55: org.lfedge.eve.metrics.logMetric.lastDeviceBundleSendTime:type_name -> google.protobuf.Timestamp
+	59,  // 56: org.lfedge.eve.metrics.logMetric.lastAppBundleSendTime:type_name -> google.protobuf.Timestamp
+	59,  // 57: org.lfedge.eve.metrics.logMetric.lastLogDeferTime:type_name -> google.protobuf.Timestamp
+	55,  // 58: org.lfedge.eve.metrics.logMetric.input_sources:type_name -> org.lfedge.eve.metrics.logMetric.InputSourcesEntry
+	28,  // 59: org.lfedge.eve.metrics.ZMetricConn.InPkts:type_name -> org.lfedge.eve.metrics.PktStat
+	28,  // 60: org.lfedge.eve.metrics.ZMetricConn.OutPkts:type_name -> org.lfedge.eve.metrics.PktStat
+	28,  // 61: org.lfedge.eve.metrics.ZMetricConn.ErrPkts:type_name -> org.lfedge.eve.metrics.PktStat
+	28,  // 62: org.lfedge.eve.metrics.ZMetricConn.CarierErrPkts:type_name -> org.lfedge.eve.metrics.PktStat
+	29,  // 63: org.lfedge.eve.metrics.ZMetricVpn.ConnStat:type_name -> org.lfedge.eve.metrics.ZMetricConn
+	29,  // 64: org.lfedge.eve.metrics.ZMetricVpn.IkeStat:type_name -> org.lfedge.eve.metrics.ZMetricConn
+	29,  // 65: org.lfedge.eve.metrics.ZMetricVpn.NatTStat:type_name -> org.lfedge.eve.metrics.ZMetricConn
+	29,  // 66: org.lfedge.eve.metrics.ZMetricVpn.EspStat:type_name -> org.lfedge.eve.metrics.ZMetricConn
+	32,  // 67: org.lfedge.eve.metrics.ZMetricFlowEndPoint.link:type_name -> org.lfedge.eve.metrics.ZMetricFlowLink
+	28,  // 68: org.lfedge.eve.metrics.ZMetricFlowEndPoint.stats:type_name -> org.lfedge.eve.metrics.PktStat
+	33,  // 69: org.lfedge.eve.metrics.ZMetricFlow.lEndPoint:type_name -> org.lfedge.eve.metrics.ZMetricFlowEndPoint
+	33,  // 70: org.lfedge.eve.metrics.ZMetricFlow.rEndPoint:type_name -> org.lfedge.eve.metrics.ZMetricFlowEndPoint
+	35,  // 71: org.lfedge.eve.metrics.ZMetricNetworkStats.rx:type_name -> org.lfedge.eve.metrics.NetworkStats
+	35,  // 72: org.lfedge.eve.metrics.ZMetricNetworkStats.tx:type_name -> org.lfedge.eve.metrics.NetworkStats
+	56,  // 73: org.lfedge.eve.metrics.ZProbeNIMetrics.intfMetric:type_name -> org.lfedge.eve.metrics.ZProbeNIMetrics.ZProbeIntfMetric
+	6,   // 74: org.lfedge.eve.metrics.ZMetricNetworkInstance.network:type_name -> org.lfedge.eve.metrics.networkMetric
+	37,  // 75: org.lfedge.eve.metrics.ZMetricNetworkInstance.probeMetric:type_name -> org.lfedge.eve.metrics.ZProbeNIMetrics
+	37,  // 76: org.lfedge.eve.metrics.ZMetricNetworkInstance.probe_metrics:type_name -> org.lfedge.eve.metrics.ZProbeNIMetrics
+	30,  // 77: org.lfedge.eve.metrics.ZMetricNetworkInstance.vpnm:type_name -> org.lfedge.eve.metrics.ZMetricVpn
+	31,  // 78: org.lfedge.eve.metrics.ZMetricNetworkInstance.nonem:type_name -> org.lfedge.eve.metrics.ZMetricNone
+	34,  // 79: org.lfedge.eve.metrics.ZMetricNetworkInstance.flowStats:type_name -> org.lfedge.eve.metrics.ZMetricFlow
+	36,  // 80: org.lfedge.eve.metrics.ZMetricNetworkInstance.networkStats:type_name -> org.lfedge.eve.metrics.ZMetricNetworkStats
+	45,  // 81: org.lfedge.eve.metrics.ZMetricNetworkInstance.vlan_info:type_name -> org.lfedge.eve.metrics.vlanInfo
+	59,  // 82: org.lfedge.eve.metrics.ZMetricProcess.create_time:type_name -> google.protobuf.Timestamp
+	59,  // 83: org.lfedge.eve.metrics.ZMetricMsg.atTimeStamp:type_name -> google.protobuf.Timestamp
+	19,  // 84: org.lfedge.eve.metrics.ZMetricMsg.dm:type_name -> org.lfedge.eve.metrics.deviceMetric
+	25,  // 85: org.lfedge.eve.metrics.ZMetricMsg.am:type_name -> org.lfedge.eve.metrics.appMetric
+	38,  // 86: org.lfedge.eve.metrics.ZMetricMsg.nm:type_name -> org.lfedge.eve.metrics.ZMetricNetworkInstance
+	39,  // 87: org.lfedge.eve.metrics.ZMetricMsg.vm:type_name -> org.lfedge.eve.metrics.ZMetricVolume
+	40,  // 88: org.lfedge.eve.metrics.ZMetricMsg.pr:type_name -> org.lfedge.eve.metrics.ZMetricProcess
+	50,  // 89: org.lfedge.eve.metrics.ZMetricMsg.cm:type_name -> org.lfedge.eve.metrics.KubeClusterMetrics
+	61,  // 90: org.lfedge.eve.metrics.ZMetricMsg.nest_metric:type_name -> org.lfedge.eve.metrics.NestedAppRuntimeDiskMetric
+	59,  // 91: org.lfedge.eve.metrics.newlogMetric.failSentStartTime:type_name -> google.protobuf.Timestamp
+	43,  // 92: org.lfedge.eve.metrics.newlogMetric.deviceMetrics:type_name -> org.lfedge.eve.metrics.logfileMetrics
+	43,  // 93: org.lfedge.eve.metrics.newlogMetric.appMetrics:type_name -> org.lfedge.eve.metrics.logfileMetrics
+	57,  // 94: org.lfedge.eve.metrics.newlogMetric.top10_input_sources:type_name -> org.lfedge.eve.metrics.newlogMetric.Top10InputSourcesEntry
+	59,  // 95: org.lfedge.eve.metrics.newlogMetric.oldest_saved_device_log:type_name -> google.protobuf.Timestamp
+	59,  // 96: org.lfedge.eve.metrics.logfileMetrics.recentGzipFileTime:type_name -> google.protobuf.Timestamp
+	59,  // 97: org.lfedge.eve.metrics.logfileMetrics.lastGzipFileSendTime:type_name -> google.protobuf.Timestamp
+	58,  // 98: org.lfedge.eve.metrics.vlanInfo.vlan_counts:type_name -> org.lfedge.eve.metrics.vlanInfo.VlanCountsEntry
+	47,  // 99: org.lfedge.eve.metrics.FlowlogMetric.messages:type_name -> org.lfedge.eve.metrics.FlowlogCounters
+	47,  // 100: org.lfedge.eve.metrics.FlowlogMetric.flows:type_name -> org.lfedge.eve.metrics.FlowlogCounters
+	47,  // 101: org.lfedge.eve.metrics.FlowlogMetric.dns_requests:type_name -> org.lfedge.eve.metrics.FlowlogCounters
+	48,  // 102: org.lfedge.eve.metrics.KubeClusterMetrics.nodes:type_name -> org.lfedge.eve.metrics.KubeNodeMetrics
+	49,  // 103: org.lfedge.eve.metrics.KubeClusterMetrics.eve_pod_apps:type_name -> org.lfedge.eve.metrics.KubeAppMetrics
+	49,  // 104: org.lfedge.eve.metrics.KubeClusterMetrics.eve_vmi_apps:type_name -> org.lfedge.eve.metrics.KubeAppMetrics
+	53,  // 105: org.lfedge.eve.metrics.BondMetrics.members:type_name -> org.lfedge.eve.metrics.BondMemberMetrics
+	54,  // 106: org.lfedge.eve.metrics.BondMemberMetrics.lacp:type_name -> org.lfedge.eve.metrics.BondMemberLACPMetrics
+	107, // [107:107] is the sub-list for method output_type
+	107, // [107:107] is the sub-list for method input_type
+	107, // [107:107] is the sub-list for extension type_name
+	107, // [107:107] is the sub-list for extension extendee
+	0,   // [0:107] is the sub-list for field type_name
 }
 
 func init() { file_metrics_metrics_proto_init() }
@@ -6764,7 +7170,55 @@ func file_metrics_metrics_proto_init() {
 				return nil
 			}
 		}
+		file_metrics_metrics_proto_msgTypes[48].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*PNACMetrics); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
 		file_metrics_metrics_proto_msgTypes[49].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*BondMetrics); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_metrics_metrics_proto_msgTypes[50].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*BondMemberMetrics); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_metrics_metrics_proto_msgTypes[51].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*BondMemberLACPMetrics); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_metrics_metrics_proto_msgTypes[53].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*ZProbeNIMetrics_ZProbeIntfMetric); i {
 			case 0:
 				return &v.state
@@ -6803,7 +7257,7 @@ func file_metrics_metrics_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_metrics_metrics_proto_rawDesc,
 			NumEnums:      3,
-			NumMessages:   52,
+			NumMessages:   56,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

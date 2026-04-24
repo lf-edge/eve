@@ -43,6 +43,10 @@ type DomainConfig struct {
 	// KubeImageName: is the container image reference we pass to domainmgr to launch a native container
 	// in EVE k
 	KubeImageName string
+	// PurgeCounter is the sum of PurgeCmd.Counter and LocalPurgeCmd.Counter from the AppInstanceConfig.
+	// It is used in EVE-K to make the VMI/Pod ReplicaSet name unique across purge cycles,
+	// preventing AlreadyExists collisions when the old ReplicaSet is still terminating.
+	PurgeCounter uint32
 	// if this node is the DNiD of the App
 	IsDNidNode bool
 
