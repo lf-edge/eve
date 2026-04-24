@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve-api/go/evecommon"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -1808,4 +1810,118 @@ func TestNetworkInstanceStatusEligibleForActivate(t *testing.T) {
 
 	s.ValidationErr = ErrorAndTime{ErrorDescription: ErrorDescription{Error: "err"}}
 	assert.False(t, s.EligibleForActivate())
+}
+
+// IPRouteInfo.IsDefaultRoute and Equal
+
+func TestIPRouteInfoIsDefaultRoute(t *testing.T) {
+	// nil DstNetwork → default
+	r := IPRouteInfo{}
+	assert.True(t, r.IsDefaultRoute())
+
+	// 0.0.0.0/0 → default
+	_, netw, _ := net.ParseCIDR("0.0.0.0/0")
+	r.DstNetwork = netw
+	assert.True(t, r.IsDefaultRoute())
+
+	// Specific subnet → not default
+	_, netw, _ = net.ParseCIDR("10.0.0.0/8")
+	r.DstNetwork = netw
+	assert.False(t, r.IsDefaultRoute())
+}
+
+func TestIPRouteInfoEqual(t *testing.T) {
+	_, dst, _ := net.ParseCIDR("192.168.0.0/24")
+	gw := net.ParseIP("10.0.0.1")
+	id := uuid.Must(uuid.NewV4())
+
+	r1 := IPRouteInfo{
+		IPVersion:   4,
+		DstNetwork:  dst,
+		Gateway:     gw,
+		OutputPort:  "eth0",
+		GatewayApp:  id,
+	}
+	r2 := r1
+	assert.True(t, r1.Equal(r2))
+
+	r2.OutputPort = "eth1"
+	assert.False(t, r1.Equal(r2))
+
+	r2 = r1
+	r2.IPVersion = 6
+	assert.False(t, r1.Equal(r2))
+}
+
+// AppNetworkStatus.GetAllAppIPs
+
+func TestAppNetworkStatusGetAllAppIPs(t *testing.T) {
+	ip4 := net.ParseIP("10.0.0.1")
+	ip6 := net.ParseIP("fd00::1")
+
+	s := AppNetworkStatus{
+		AppNetAdapterList: []AppNetAdapterStatus{
+			{
+				AssignedAddresses: AssignedAddrs{
+					IPv4Addrs: []AssignedAddr{{Address: ip4}},
+					IPv6Addrs: []AssignedAddr{{Address: ip6}},
+				},
+			},
+		},
+	}
+
+	ips := s.GetAllAppIPs()
+	require.Len(t, ips, 2)
+
+	// Empty status → nil
+	assert.Nil(t, AppNetworkStatus{}.GetAllAppIPs())
+}
+
+// NetworkInstanceInfo.AddVif and RemoveVif
+
+func TestNetworkInstanceInfoAddRemoveVif(t *testing.T) {
+	log := base.NewSourceLogObject(logrus.StandardLogger(), "test", 0) //nolint:staticcheck
+	mac, _ := net.ParseMAC("aa:bb:cc:dd:ee:ff")
+	appID := uuid.Must(uuid.NewV4())
+
+	info := &NetworkInstanceInfo{}
+	info.AddVif(log, "vif0", mac, appID)
+	require.Len(t, info.Vifs, 1)
+	assert.Equal(t, "vif0", info.Vifs[0].Name)
+
+	// Adding same vif again is a no-op (logged error)
+	info.AddVif(log, "vif0", mac, appID)
+	assert.Len(t, info.Vifs, 1)
+
+	info.RemoveVif(log, "vif0")
+	assert.Len(t, info.Vifs, 0)
+}
+
+// IPRouteConfig.String
+
+func TestIPRouteConfigString(t *testing.T) {
+	_, dst, _ := net.ParseCIDR("10.0.0.0/8")
+	gw := net.ParseIP("192.168.1.1")
+
+	r := IPRouteConfig{
+		DstNetwork:      dst,
+		Gateway:         gw,
+		OutputPortLabel: "eth0",
+	}
+	s := r.String()
+	assert.Contains(t, s, "10.0.0.0/8")
+	assert.Contains(t, s, "eth0")
+}
+
+// ConnectivityProbe.String
+
+func TestConnectivityProbeString(t *testing.T) {
+	cp := ConnectivityProbe{Method: ConnectivityProbeMethodNone}
+	assert.Equal(t, "<none>", cp.String())
+
+	cp = ConnectivityProbe{Method: ConnectivityProbeMethodICMP, ProbeHost: "1.2.3.4"}
+	assert.Equal(t, "icmp://1.2.3.4", cp.String())
+
+	cp = ConnectivityProbe{Method: ConnectivityProbeMethodTCP, ProbeHost: "1.2.3.4", ProbePort: 80}
+	assert.Equal(t, "tcp://1.2.3.4:80", cp.String())
 }

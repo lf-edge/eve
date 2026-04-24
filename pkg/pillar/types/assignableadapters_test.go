@@ -1067,6 +1067,18 @@ func TestHasAdapterChangedLogicallabel(t *testing.T) {
 	assert.True(t, ib.HasAdapterChanged(log, phyAdapter))
 }
 
+// IOBundleError.Empty and ErrorTime
+
+func TestIOBundleErrorEmptyAndErrorTime(t *testing.T) {
+	iobe := IOBundleError{}
+	assert.True(t, iobe.Empty())
+	assert.True(t, iobe.ErrorTime().IsZero())
+
+	iobe.Append(errors.New("test error"))
+	assert.False(t, iobe.Empty())
+	assert.False(t, iobe.ErrorTime().IsZero())
+}
+
 func TestIoBundleErrorRemove(t *testing.T) {
 	errs := []error{
 		fmt.Errorf("some error"),

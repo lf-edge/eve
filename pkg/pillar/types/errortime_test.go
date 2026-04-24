@@ -95,3 +95,33 @@ func TestGetErrorSeverityBoundaries(t *testing.T) {
 	assert.Equal(t, ErrorSeverityError,
 		GetErrorSeverity(0, RetryTimeError+1))
 }
+
+// ErrorAndTime.ClearError
+
+func TestErrorAndTimeClearError(t *testing.T) {
+	et := ErrorAndTime{}
+	et.SetErrorNow("some error")
+	assert.True(t, et.HasError())
+
+	et.ClearError()
+	assert.False(t, et.HasError())
+	assert.Equal(t, "", et.Error)
+	assert.True(t, et.ErrorTime.IsZero())
+	assert.Equal(t, "", et.ErrorRetryCondition)
+	assert.Equal(t, ErrorSeverityUnspecified, et.ErrorSeverity)
+}
+
+// ErrorAndTimeWithSource.SetErrorWithSourceAndDescription
+
+func TestSetErrorWithSourceAndDescription(t *testing.T) {
+	et := ErrorAndTimeWithSource{}
+	desc := ErrorDescription{
+		Error:         "enrollment error",
+		ErrorSeverity: ErrorSeverityWarning,
+	}
+	et.SetErrorWithSourceAndDescription(desc, ContentTreeStatus{})
+	assert.True(t, et.HasError())
+	assert.Equal(t, "enrollment error", et.Error)
+	assert.Equal(t, ErrorSeverityWarning, et.ErrorSeverity)
+	assert.True(t, et.IsErrorSource(ContentTreeStatus{}))
+}

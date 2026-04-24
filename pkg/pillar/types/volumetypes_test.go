@@ -136,6 +136,26 @@ func TestVolumeCreatePendingPathName(t *testing.T) {
 	assert.Contains(t, encPath, VolumeEncryptedDirName)
 }
 
+// VolumeStatus.PathName
+
+func TestVolumeStatusPathName(t *testing.T) {
+	id := uuid.Must(uuid.NewV4())
+	status := VolumeStatus{
+		VolumeID:          id,
+		GenerationCounter: 3,
+		ContentFormat:     zconfig.Format_RAW,
+		Encrypted:         false,
+	}
+	path := status.PathName()
+	assert.Contains(t, path, id.String())
+	assert.Contains(t, path, "#3")
+	assert.Contains(t, path, VolumeClearDirName)
+
+	status.Encrypted = true
+	encPath := status.PathName()
+	assert.Contains(t, encPath, VolumeEncryptedDirName)
+}
+
 // VolumeCreatePendingFromVolumeStatus
 
 func TestVolumeCreatePendingFromVolumeStatus(t *testing.T) {

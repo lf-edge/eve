@@ -6,6 +6,7 @@ import (
 
 	uuid "github.com/satori/go.uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseTriState(t *testing.T) {
@@ -79,4 +80,125 @@ func TestUuidsToStrings(t *testing.T) {
 
 	// Empty slice
 	assert.Equal(t, []string{}, UuidsToStrings([]uuid.UUID{}))
+}
+
+// SwState.String
+
+func TestSwStateString(t *testing.T) {
+	cases := []struct {
+		state SwState
+		want  string
+	}{
+		{INITIAL, "INITIAL"},
+		{RESOLVING_TAG, "RESOLVING_TAG"},
+		{RESOLVED_TAG, "RESOLVED_TAG"},
+		{DOWNLOADING, "DOWNLOADING"},
+		{DOWNLOADED, "DOWNLOADED"},
+		{VERIFYING, "VERIFYING"},
+		{VERIFIED, "VERIFIED"},
+		{LOADING, "LOADING"},
+		{LOADED, "LOADED"},
+		{CREATING_VOLUME, "CREATING_VOLUME"},
+		{CREATED_VOLUME, "CREATED_VOLUME"},
+		{INSTALLED, "INSTALLED"},
+		{AWAITNETWORKINSTANCE, "AWAITNETWORKINSTANCE"},
+		{BOOTING, "BOOTING"},
+		{RUNNING, "RUNNING"},
+		{PAUSING, "PAUSING"},
+		{PAUSED, "PAUSED"},
+		{HALTING, "HALTING"},
+		{HALTED, "HALTED"},
+		{PENDING, "PENDING"},
+		{FAILED, "FAILED"},
+		{SCHEDULING, "SCHEDULING"},
+		{BROKEN, "BROKEN"},
+		{START_DELAYED, "START_DELAYED"},
+		{REMOTELOADED, "REMOTELOADED"},
+		{UNKNOWN, "UNKNOWN"},
+		{SwState(99), fmt.Sprintf("Unknown state %d", 99)},
+	}
+	for _, tc := range cases {
+		assert.Equal(t, tc.want, tc.state.String())
+	}
+}
+
+// UuidToNum methods
+
+func TestUuidToNumSetGetNumber(t *testing.T) {
+	u := &UuidToNum{}
+	u.SetNumber(42, "appNum")
+	n, typ := u.GetNumber()
+	assert.Equal(t, 42, n)
+	assert.Equal(t, "appNum", typ)
+}
+
+func TestUuidToNumGetTimestamps(t *testing.T) {
+	u := &UuidToNum{}
+	created, last := u.GetTimestamps()
+	assert.True(t, created.IsZero())
+	assert.True(t, last.IsZero())
+}
+
+func TestUuidToNumReservedOnly(t *testing.T) {
+	u := &UuidToNum{InUse: true}
+	assert.False(t, u.IsReservedOnly())
+
+	u.SetReservedOnly(true)
+	assert.True(t, u.IsReservedOnly())
+	assert.False(t, u.InUse)
+
+	u.SetReservedOnly(false)
+	assert.False(t, u.IsReservedOnly())
+	assert.True(t, u.InUse)
+}
+
+func TestUuidToNumNew(t *testing.T) {
+	proto := &UuidToNum{}
+	key := UuidToNumKey{}
+	obj := proto.New(key)
+	require.NotNil(t, obj)
+	result, ok := obj.(*UuidToNum)
+	require.True(t, ok)
+	assert.Equal(t, key, result.UuidToNumKey)
+	assert.False(t, result.CreateTime.IsZero())
+	assert.False(t, result.LastUseTime.IsZero())
+}
+
+// AppInterfaceToNum methods
+
+func TestAppInterfaceToNumSetGetNumber(t *testing.T) {
+	u := &AppInterfaceToNum{}
+	u.SetNumber(7, "bridgeNum")
+	n, typ := u.GetNumber()
+	assert.Equal(t, 7, n)
+	assert.Equal(t, "bridgeNum", typ)
+}
+
+func TestAppInterfaceToNumGetTimestamps(t *testing.T) {
+	u := &AppInterfaceToNum{}
+	created, last := u.GetTimestamps()
+	assert.True(t, created.IsZero())
+	assert.True(t, last.IsZero())
+}
+
+func TestAppInterfaceToNumReservedOnly(t *testing.T) {
+	u := &AppInterfaceToNum{InUse: true}
+	assert.False(t, u.IsReservedOnly())
+
+	u.SetReservedOnly(true)
+	assert.True(t, u.IsReservedOnly())
+
+	u.SetReservedOnly(false)
+	assert.False(t, u.IsReservedOnly())
+}
+
+func TestAppInterfaceToNumNew(t *testing.T) {
+	proto := &AppInterfaceToNum{}
+	key := AppInterfaceKey{}
+	obj := proto.New(key)
+	require.NotNil(t, obj)
+	result, ok := obj.(*AppInterfaceToNum)
+	require.True(t, ok)
+	assert.Equal(t, key, result.AppInterfaceKey)
+	assert.False(t, result.CreateTime.IsZero())
 }

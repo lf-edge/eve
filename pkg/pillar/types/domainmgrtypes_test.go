@@ -135,3 +135,13 @@ func TestDomainStatusVifInfoByVif(t *testing.T) {
 
 	assert.Nil(t, status.VifInfoByVif("missing"))
 }
+
+// DomainStatus.Pending
+
+func TestDomainStatusPending(t *testing.T) {
+	assert.False(t, DomainStatus{}.Pending())
+
+	assert.True(t, DomainStatus{PendingAdd: true}.Pending())
+	assert.True(t, DomainStatus{PendingModify: true}.Pending())
+	assert.True(t, DomainStatus{PendingDelete: true}.Pending())
+}

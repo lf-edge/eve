@@ -327,3 +327,78 @@ func TestNetworkXObjectConfigKey(t *testing.T) {
 	config := NetworkXObjectConfig{UUID: id}
 	assert.Equal(t, id.String(), config.Key())
 }
+
+// DPCState.String
+
+func TestDPCStateString(t *testing.T) {
+	cases := []struct {
+		state DPCState
+		want  string
+	}{
+		{DPCStateNone, ""},
+		{DPCStateFail, "DPC_FAIL"},
+		{DPCStateFailWithIPAndDNS, "DPC_FAIL_WITH_IPANDDNS"},
+		{DPCStateSuccess, "DPC_SUCCESS"},
+		{DPCStateIPDNSWait, "DPC_IPDNS_WAIT"},
+		{DPCStatePCIWait, "DPC_PCI_WAIT"},
+		{DPCStateIntfWait, "DPC_INTF_WAIT"},
+		{DPCStateRemoteWait, "DPC_REMOTE_WAIT"},
+		{DPCStateAsyncWait, "DPC_ASYNC_WAIT"},
+		{DPCStateWwanWait, "DPC_WWAN_WAIT"},
+	}
+	for _, tc := range cases {
+		assert.Equal(t, tc.want, tc.state.String())
+	}
+}
+
+// WirelessType.String and WirelessConfig.IsEmpty
+
+func TestWirelessTypeString(t *testing.T) {
+	assert.Equal(t, "none", WirelessTypeNone.String())
+	assert.Equal(t, "cellular", WirelessTypeCellular.String())
+	assert.Equal(t, "wifi", WirelessTypeWifi.String())
+}
+
+func TestWirelessConfigIsEmpty(t *testing.T) {
+	// None type → always empty
+	wc := WirelessConfig{WType: WirelessTypeNone}
+	assert.True(t, wc.IsEmpty())
+
+	// Wifi with no entries → empty
+	wc = WirelessConfig{WType: WirelessTypeWifi, Wifi: nil}
+	assert.True(t, wc.IsEmpty())
+
+	// Wifi with entries → not empty
+	wc.Wifi = []WifiConfig{{SSID: "mynet"}}
+	assert.False(t, wc.IsEmpty())
+
+	// Cellular with no access points → empty
+	wc = WirelessConfig{WType: WirelessTypeCellular}
+	assert.True(t, wc.IsEmpty())
+
+	// Cellular with deprecated config → not empty
+	wc.Cellular = []DeprecatedCellConfig{{APN: "internet"}}
+	assert.False(t, wc.IsEmpty())
+}
+
+// IsEveDefinedPortLabel
+
+func TestIsEveDefinedPortLabel(t *testing.T) {
+	assert.True(t, IsEveDefinedPortLabel(AllPortsLabel))
+	assert.True(t, IsEveDefinedPortLabel(UplinkLabel))
+	assert.True(t, IsEveDefinedPortLabel(FreeUplinkLabel))
+	assert.False(t, IsEveDefinedPortLabel("custom-label"))
+	assert.False(t, IsEveDefinedPortLabel(""))
+}
+
+// PortConfigSource.Equal
+
+func TestPortConfigSourceEqual(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	s1 := PortConfigSource{SubmittedAt: now}
+	s2 := s1
+	assert.True(t, s1.Equal(s2))
+
+	s2.SubmittedAt = now.Add(time.Second)
+	assert.False(t, s1.Equal(s2))
+}

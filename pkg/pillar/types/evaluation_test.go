@@ -113,3 +113,28 @@ func TestEvalStatusDetailedNote(t *testing.T) {
 	assert.Contains(t, note, "all good")
 	assert.Contains(t, note, "reboot in 10 sec")
 }
+
+// EvalStatus.RemainingTime
+
+func TestEvalStatusRemainingTime(t *testing.T) {
+	// No start time → 0
+	s := EvalStatus{}
+	assert.Equal(t, time.Duration(0), s.RemainingTime())
+
+	// No duration → 0
+	s = EvalStatus{TestStartTime: time.Now()}
+	assert.Equal(t, time.Duration(0), s.RemainingTime())
+
+	// Started just now with 1 minute duration
+	s = EvalStatus{
+		TestStartTime: time.Now(),
+		TestDuration:  time.Minute,
+	}
+	remaining := s.RemainingTime()
+	assert.Greater(t, remaining, time.Duration(0))
+	assert.LessOrEqual(t, remaining, time.Minute)
+
+	// Already past deadline → 0
+	s.TestStartTime = time.Now().Add(-2 * time.Minute)
+	assert.Equal(t, time.Duration(0), s.RemainingTime())
+}

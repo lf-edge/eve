@@ -191,3 +191,183 @@ func TestDeviceNetworkStatusGetPortAddrInfo(t *testing.T) {
 	assert.Nil(t, dns.GetPortAddrInfo("eth0", net.ParseIP("10.0.0.99")))
 	assert.Nil(t, dns.GetPortAddrInfo("missing", ip1))
 }
+
+// DeviceNetworkStatus.LookupPortByLogicallabel
+
+func TestDeviceNetworkStatusLookupPortByLogicallabel(t *testing.T) {
+	dns := DeviceNetworkStatus{
+		Ports: []NetworkPortStatus{
+			{IfName: "eth0", Logicallabel: "wan0"},
+			{IfName: "eth1", Logicallabel: "wan1"},
+		},
+	}
+
+	p := dns.LookupPortByLogicallabel("wan0")
+	require.NotNil(t, p)
+	assert.Equal(t, "eth0", p.IfName)
+
+	p = dns.LookupPortByLogicallabel("wan1")
+	require.NotNil(t, p)
+	assert.Equal(t, "eth1", p.IfName)
+
+	assert.Nil(t, dns.LookupPortByLogicallabel("missing"))
+}
+
+// IsPort
+
+func TestIsPort(t *testing.T) {
+	dns := DeviceNetworkStatus{
+		Ports: []NetworkPortStatus{
+			{IfName: "eth0"},
+			{IfName: "eth1"},
+		},
+	}
+
+	assert.True(t, IsPort(dns, "eth0"))
+	assert.True(t, IsPort(dns, "eth1"))
+	assert.False(t, IsPort(dns, "eth2"))
+}
+
+// IsMgmtPort
+
+func TestIsMgmtPort(t *testing.T) {
+	dns := DeviceNetworkStatus{
+		Version: DPCIsMgmt,
+		Ports: []NetworkPortStatus{
+			{IfName: "eth0", IsMgmt: true},
+			{IfName: "eth1", IsMgmt: false},
+		},
+	}
+
+	assert.True(t, IsMgmtPort(dns, "eth0"))
+	assert.False(t, IsMgmtPort(dns, "eth1"))
+	assert.False(t, IsMgmtPort(dns, "eth2"))
+}
+
+// GetPortCost
+
+func TestGetPortCost(t *testing.T) {
+	dns := DeviceNetworkStatus{
+		Ports: []NetworkPortStatus{
+			{IfName: "eth0", Cost: 5},
+			{IfName: "eth1", Cost: 10},
+		},
+	}
+
+	assert.Equal(t, uint8(5), GetPortCost(dns, "eth0"))
+	assert.Equal(t, uint8(10), GetPortCost(dns, "eth1"))
+	// Missing interface returns 0
+	assert.Equal(t, uint8(0), GetPortCost(dns, "eth2"))
+}
+
+// GetMgmtPortFromAddr
+
+func TestGetMgmtPortFromAddr(t *testing.T) {
+	ip1 := net.ParseIP("10.0.0.1")
+	ip2 := net.ParseIP("10.0.0.2")
+	dns := DeviceNetworkStatus{
+		Version: DPCIsMgmt,
+		Ports: []NetworkPortStatus{
+			{IfName: "eth0", IsMgmt: true, AddrInfoList: []AddrInfo{{Addr: ip1}}},
+			{IfName: "eth1", IsMgmt: false, AddrInfoList: []AddrInfo{{Addr: ip2}}},
+		},
+	}
+
+	// Mgmt port with matching address
+	assert.Equal(t, "eth0", GetMgmtPortFromAddr(dns, ip1))
+
+	// Non-mgmt port skipped
+	assert.Equal(t, "", GetMgmtPortFromAddr(dns, ip2))
+
+	// Unknown address
+	assert.Equal(t, "", GetMgmtPortFromAddr(dns, net.ParseIP("1.2.3.4")))
+}
+
+// CountDNSServers
+
+func TestCountDNSServers(t *testing.T) {
+	dns8 := net.ParseIP("8.8.8.8")
+	dns1 := net.ParseIP("1.1.1.1")
+	dns2 := net.ParseIP("9.9.9.9")
+	d := DeviceNetworkStatus{
+		Ports: []NetworkPortStatus{
+			{IfName: "eth0", DNSServers: []net.IP{dns8, dns1}},
+			{IfName: "eth1", DNSServers: []net.IP{dns2}},
+		},
+	}
+
+	// All ports
+	assert.Equal(t, 3, CountDNSServers(d, ""))
+
+	// Only eth0
+	assert.Equal(t, 2, CountDNSServers(d, "eth0"))
+
+	// Only eth1
+	assert.Equal(t, 1, CountDNSServers(d, "eth1"))
+
+	// Unknown interface
+	assert.Equal(t, 0, CountDNSServers(d, "eth2"))
+}
+
+// GetMgmtPortsAny
+
+func TestGetMgmtPortsAny(t *testing.T) {
+	d := DeviceNetworkStatus{
+		Version: DPCIsMgmt,
+		Ports: []NetworkPortStatus{
+			{IfName: "eth0", IsL3Port: true, IsMgmt: true},
+			{IfName: "eth1", IsL3Port: true, IsMgmt: false},
+			{IfName: "eth2", IsL3Port: false, IsMgmt: true},
+		},
+	}
+
+	ports := GetMgmtPortsAny(d, 0)
+	// Only L3 mgmt ports returned
+	assert.Contains(t, ports, "eth0")
+	assert.NotContains(t, ports, "eth1")
+}
+
+// GetMgmtPortsSortedCostWithoutFailed
+
+func TestGetMgmtPortsSortedCostWithoutFailed(t *testing.T) {
+	now := time.Now()
+	d := DeviceNetworkStatus{
+		Version: DPCIsMgmt,
+		Ports: []NetworkPortStatus{
+			{IfName: "eth0", IsL3Port: true, IsMgmt: true, Cost: 0},
+			{IfName: "eth1", IsL3Port: true, IsMgmt: true, Cost: 10,
+				TestResults: TestResults{LastFailed: now, LastError: "err"}},
+		},
+	}
+
+	ports := GetMgmtPortsSortedCostWithoutFailed(d, 0)
+	// eth1 has a failure so it should be dropped
+	assert.Contains(t, ports, "eth0")
+	assert.NotContains(t, ports, "eth1")
+}
+
+// GetDNSServers
+
+func TestGetDNSServers(t *testing.T) {
+	dns8 := net.ParseIP("8.8.8.8")
+	dns1 := net.ParseIP("1.1.1.1")
+	d := DeviceNetworkStatus{
+		Ports: []NetworkPortStatus{
+			{IfName: "eth0", IsMgmt: true, DNSServers: []net.IP{dns8, dns1}},
+			{IfName: "eth1", IsMgmt: false, DNSServers: []net.IP{dns8}},
+		},
+	}
+
+	// No ifname filter: only mgmt ports
+	servers := GetDNSServers(d, "")
+	assert.Len(t, servers, 2)
+
+	// Specific ifname: get servers for that port (regardless of mgmt)
+	servers = GetDNSServers(d, "eth1")
+	assert.Len(t, servers, 1)
+	assert.True(t, servers[0].Equal(dns8))
+
+	// Unknown ifname
+	servers = GetDNSServers(d, "eth2")
+	assert.Len(t, servers, 0)
+}
