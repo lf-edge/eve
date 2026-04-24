@@ -52,7 +52,7 @@ var (
 	}
 	getEncryptionKey = func() ([]byte, error) {
 		pcrSelection := etpm.GetDiskKeyPolicyPcrOrDefault(types.PolicyPcrFile)
-		return etpm.UnsealDiskKeyWithRecovery(pcrSelection)
+		return etpm.UnsealDiskKeyWithRecovery(log, pcrSelection)
 	}
 )
 
