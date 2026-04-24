@@ -734,3 +734,112 @@ func TestAppBootOrderRetainsOldValueOnError(t *testing.T) {
 	assert.Equal(t, "usb", newConfig.GlobalValueString(AppBootOrder),
 		"Should retain old value 'usb' when new value is invalid")
 }
+
+// GlobalStatus setItemValue* helpers via UpdateItemValuesFromGlobalConfig
+
+func TestGlobalStatusSetItemValues(t *testing.T) {
+	gs := NewGlobalStatus()
+	// Prime with a key so setItemValue doesn't panic
+	gs.ConfigItems["testkey"] = ConfigItemStatus{}
+
+	gs.setItemValueInt("testkey", 42)
+	assert.Equal(t, "42", gs.ConfigItems["testkey"].Value)
+
+	gs.setItemValueBool("testkey", true)
+	assert.Equal(t, "true", gs.ConfigItems["testkey"].Value)
+
+	gs.setItemValueTriState("testkey", TS_ENABLED)
+	assert.Equal(t, FormatTriState(TS_ENABLED), gs.ConfigItems["testkey"].Value)
+}
+
+func TestUpdateItemValuesFromGlobalConfig(t *testing.T) {
+	gs := NewGlobalStatus()
+	// Pre-populate keys for all global settings we'll import
+	for key := range DefaultConfigItemValueMap().GlobalSettings {
+		gs.ConfigItems[string(key)] = ConfigItemStatus{}
+	}
+
+	gc := DefaultConfigItemValueMap()
+	gc.SetGlobalValueInt(ConfigInterval, 99)
+	gc.SetGlobalValueBool(UsbAccess, false)
+
+	gs.UpdateItemValuesFromGlobalConfig(*gc)
+
+	assert.Equal(t, "99", gs.ConfigItems[string(ConfigInterval)].Value)
+	assert.Equal(t, "false", gs.ConfigItems[string(UsbAccess)].Value)
+}
+
+// ConfigItemValueMap.ResetGlobalValue
+
+func TestResetGlobalValue(t *testing.T) {
+	specMap := NewConfigItemSpecMap()
+	defaultVal := specMap.GlobalSettings[ConfigInterval].DefaultValue()
+
+	cfg := DefaultConfigItemValueMap()
+	cfg.SetGlobalValueInt(ConfigInterval, 9999)
+	assert.Equal(t, uint32(9999), cfg.GlobalValueInt(ConfigInterval))
+
+	cfg.ResetGlobalValue(ConfigInterval)
+	assert.Equal(t, defaultVal.IntValue, cfg.GlobalValueInt(ConfigInterval))
+}
+
+// ConfigItemValueMap.UpdateItemValues
+
+func TestUpdateItemValues(t *testing.T) {
+	dst := DefaultConfigItemValueMap()
+	src := NewConfigItemValueMap()
+	src.SetGlobalValueInt(ConfigInterval, 123)
+	src.SetAgentSettingStringValue("agent1", LogLevel, "debug")
+
+	dst.UpdateItemValues(src)
+
+	assert.Equal(t, uint32(123), dst.GlobalValueInt(ConfigInterval))
+	assert.Equal(t, "debug", dst.AgentSettingStringValue("agent1", LogLevel))
+}
+
+// agentSettingKeyFromLegacyKey
+
+func TestAgentSettingKeyFromLegacyKey(t *testing.T) {
+	// Legacy format: "debug.<agentname>.<setting>"
+	result := agentSettingKeyFromLegacyKey("debug.zedagent.loglevel")
+	assert.Equal(t, "debug.loglevel", result)
+
+	// Too few components
+	result = agentSettingKeyFromLegacyKey("debug.zedagent")
+	assert.Equal(t, "", result)
+
+	// With sub-settings
+	result = agentSettingKeyFromLegacyKey("debug.nim.remote.loglevel")
+	assert.Equal(t, "debug.remote.loglevel", result)
+}
+
+// makeSemverValidator
+
+func TestMakeSemverValidator(t *testing.T) {
+	validator := makeSemverValidator("", nil)
+
+	// Empty string always valid
+	assert.NoError(t, validator(""))
+
+	// Valid semver
+	assert.NoError(t, validator("1.2.3"))
+
+	// Invalid semver
+	assert.Error(t, validator("not-a-version"))
+}
+
+func TestMakeSemverValidatorWithConstraint(t *testing.T) {
+	validator := makeSemverValidator("", []string{">=1.0.0"})
+
+	assert.NoError(t, validator("2.0.0"))
+	assert.Error(t, validator("0.9.0"))
+}
+
+func TestMakeSemverValidatorWithMetadataPrefix(t *testing.T) {
+	validator := makeSemverValidator("k3s", nil)
+
+	assert.NoError(t, validator(""))
+	assert.NoError(t, validator("1.28.0+k3s1"))
+	assert.Error(t, validator("1.28.0+other"))
+	assert.Error(t, validator("1.28.0")) // no metadata
+}

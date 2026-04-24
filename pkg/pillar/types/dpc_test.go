@@ -1,0 +1,329 @@
+// Copyright (c) 2023 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+package types
+
+import (
+	"net"
+	"testing"
+	"time"
+
+	uuid "github.com/satori/go.uuid"
+	"github.com/stretchr/testify/assert"
+)
+
+// DPCState.Describe
+
+func TestDPCStateDescribe(t *testing.T) {
+	cases := []struct {
+		state DPCState
+		want  string
+	}{
+		{DPCStateNone, "undefined state"},
+		{DPCStateFail, "DPC verification failed"},
+		{DPCStateFailWithIPAndDNS, "DPC verification failed, but interface has IP and DNS"},
+		{DPCStateSuccess, "DPC verification succeeded"},
+		{DPCStateIPDNSWait, "waiting for interface IP address(es) and/or DNS server(s)"},
+		{DPCStatePCIWait, "waiting for interface from pciback"},
+		{DPCStateIntfWait, "waiting for interface to appear in network stack"},
+		{DPCStateRemoteWait, "controller encountered an internal error or is using an outdated certificate"},
+		{DPCStateAsyncWait, "waiting for asynchronous config operations to complete"},
+		{DPCStateWwanWait, "waiting for wwan microservice to apply cellular configuration"},
+		{DPCState(200), "unknown state 200"},
+	}
+	for _, tc := range cases {
+		assert.Equal(t, tc.want, tc.state.Describe())
+	}
+}
+
+// DPCState.InProgress
+
+func TestDPCStateInProgress(t *testing.T) {
+	inProgress := []DPCState{
+		DPCStateIPDNSWait,
+		DPCStatePCIWait,
+		DPCStateIntfWait,
+		DPCStateAsyncWait,
+		DPCStateWwanWait,
+	}
+	notInProgress := []DPCState{
+		DPCStateNone,
+		DPCStateFail,
+		DPCStateFailWithIPAndDNS,
+		DPCStateSuccess,
+		DPCStateRemoteWait,
+		DPCState(200),
+	}
+	for _, s := range inProgress {
+		assert.True(t, s.InProgress(), "expected InProgress for %v", s)
+	}
+	for _, s := range notInProgress {
+		assert.False(t, s.InProgress(), "expected !InProgress for %v", s)
+	}
+}
+
+// DevicePortConfig lookup methods
+
+func makeTestDPC() DevicePortConfig {
+	return DevicePortConfig{
+		Key: "testkey",
+		Ports: []NetworkPortConfig{
+			{
+				IfName:       "eth0",
+				Logicallabel: "eth0label",
+				SharedLabels: []string{"uplink", "mgmt"},
+			},
+			{
+				IfName:       "eth1",
+				Logicallabel: "eth1label",
+				SharedLabels: []string{"uplink"},
+				L2LinkConfig: L2LinkConfig{
+					L2Type: L2LinkTypeVLAN,
+					VLAN: VLANConfig{
+						ParentPort: "eth0label",
+						ID:         100,
+					},
+				},
+			},
+			{
+				IfName:       "bond0",
+				Logicallabel: "bond0label",
+				L2LinkConfig: L2LinkConfig{
+					L2Type: L2LinkTypeBond,
+					Bond: BondConfig{
+						AggregatedPorts: []string{"eth0label", "eth1label"},
+					},
+				},
+			},
+		},
+	}
+}
+
+func TestDevicePortConfigLookupPortByLogicallabel(t *testing.T) {
+	dpc := makeTestDPC()
+
+	port := dpc.LookupPortByLogicallabel("eth0label")
+	assert.NotNil(t, port)
+	assert.Equal(t, "eth0", port.IfName)
+
+	missing := dpc.LookupPortByLogicallabel("nonexistent")
+	assert.Nil(t, missing)
+}
+
+func TestDevicePortConfigLookupPortsByLabel(t *testing.T) {
+	dpc := makeTestDPC()
+
+	// Shared label "uplink" appears on eth0 and eth1
+	ports := dpc.LookupPortsByLabel("uplink")
+	assert.Len(t, ports, 2)
+
+	// Logical label lookup
+	ports = dpc.LookupPortsByLabel("bond0label")
+	assert.Len(t, ports, 1)
+	assert.Equal(t, "bond0", ports[0].IfName)
+
+	// Shared label only on eth0
+	ports = dpc.LookupPortsByLabel("mgmt")
+	assert.Len(t, ports, 1)
+
+	// Missing
+	ports = dpc.LookupPortsByLabel("missing")
+	assert.Empty(t, ports)
+}
+
+func TestDevicePortConfigRecordPortSuccess(t *testing.T) {
+	dpc := makeTestDPC()
+	dpc.RecordPortSuccess("eth0")
+
+	port := dpc.LookupPortByIfName("eth0")
+	assert.NotNil(t, port)
+	assert.False(t, port.HasError())
+	assert.False(t, port.LastSucceeded.IsZero())
+
+	// Calling on non-existent ifname should not panic
+	dpc.RecordPortSuccess("wlan99")
+}
+
+func TestDevicePortConfigRecordPortFailure(t *testing.T) {
+	dpc := makeTestDPC()
+	dpc.RecordPortFailure("eth0", "link down")
+
+	port := dpc.LookupPortByIfName("eth0")
+	assert.NotNil(t, port)
+	assert.True(t, port.HasError())
+	assert.Equal(t, "link down", port.LastError)
+
+	// Non-existent ifname should be a no-op
+	dpc.RecordPortFailure("wlan99", "no link")
+}
+
+func TestDevicePortConfigIsPortUsedAsVlanParent(t *testing.T) {
+	dpc := makeTestDPC()
+
+	assert.True(t, dpc.IsPortUsedAsVlanParent("eth0label"))
+	assert.False(t, dpc.IsPortUsedAsVlanParent("eth1label"))
+	assert.False(t, dpc.IsPortUsedAsVlanParent("bond0label"))
+}
+
+func TestDevicePortConfigIsPortAggregatedByBond(t *testing.T) {
+	dpc := makeTestDPC()
+
+	assert.True(t, dpc.IsPortAggregatedByBond("eth0label"))
+	assert.True(t, dpc.IsPortAggregatedByBond("eth1label"))
+	assert.False(t, dpc.IsPortAggregatedByBond("bond0label"))
+}
+
+func TestDevicePortConfigLastTestTime(t *testing.T) {
+	var dpc DevicePortConfig
+
+	// Both zero: returns zero
+	assert.True(t, dpc.LastTestTime().IsZero())
+
+	now := time.Now()
+	dpc.LastSucceeded = now
+	assert.Equal(t, now, dpc.LastTestTime())
+
+	later := now.Add(time.Second)
+	dpc.LastFailed = later
+	assert.Equal(t, later, dpc.LastTestTime())
+}
+
+// DevicePortConfigList.MostlyEqual
+
+func TestDevicePortConfigListMostlyEqual(t *testing.T) {
+	list1 := DevicePortConfigList{
+		CurrentIndex: 0,
+		PortConfigList: []DevicePortConfig{
+			{Key: "k1", State: DPCStateSuccess},
+		},
+	}
+	list2 := DevicePortConfigList{
+		CurrentIndex: 0,
+		PortConfigList: []DevicePortConfig{
+			{Key: "k1", State: DPCStateSuccess},
+		},
+	}
+	assert.True(t, list1.MostlyEqual(list2))
+
+	// Different CurrentIndex
+	list2.CurrentIndex = 1
+	assert.False(t, list1.MostlyEqual(list2))
+	list2.CurrentIndex = 0
+
+	// Different length
+	list2.PortConfigList = append(list2.PortConfigList, DevicePortConfig{Key: "k2"})
+	assert.False(t, list1.MostlyEqual(list2))
+	list2.PortConfigList = list2.PortConfigList[:1]
+
+	// Different State
+	list2.PortConfigList[0].State = DPCStateFail
+	assert.False(t, list1.MostlyEqual(list2))
+}
+
+func TestDevicePortConfigListPubKey(t *testing.T) {
+	var list DevicePortConfigList
+	assert.Equal(t, "global", list.PubKey())
+}
+
+// L2LinkConfig.Equal
+
+func TestL2LinkConfigEqual(t *testing.T) {
+	l1 := L2LinkConfig{L2Type: L2LinkTypeNone}
+	l2 := L2LinkConfig{L2Type: L2LinkTypeNone}
+	assert.True(t, l1.Equal(l2))
+
+	// Different type
+	l2.L2Type = L2LinkTypeVLAN
+	assert.False(t, l1.Equal(l2))
+
+	// VLAN equality
+	v1 := L2LinkConfig{
+		L2Type: L2LinkTypeVLAN,
+		VLAN:   VLANConfig{ParentPort: "eth0", ID: 10},
+	}
+	v2 := L2LinkConfig{
+		L2Type: L2LinkTypeVLAN,
+		VLAN:   VLANConfig{ParentPort: "eth0", ID: 10},
+	}
+	assert.True(t, v1.Equal(v2))
+	v2.VLAN.ID = 20
+	assert.False(t, v1.Equal(v2))
+
+	// Bond equality
+	b1 := L2LinkConfig{
+		L2Type: L2LinkTypeBond,
+		Bond:   BondConfig{AggregatedPorts: []string{"eth0", "eth1"}},
+	}
+	b2 := L2LinkConfig{
+		L2Type: L2LinkTypeBond,
+		Bond:   BondConfig{AggregatedPorts: []string{"eth0", "eth1"}},
+	}
+	assert.True(t, b1.Equal(b2))
+	b2.Bond.AggregatedPorts = []string{"eth0"}
+	assert.False(t, b1.Equal(b2))
+}
+
+// CellularAccessPoint.Equal
+
+func TestCellularAccessPointEqual(t *testing.T) {
+	ap1 := CellularAccessPoint{
+		SIMSlot:    1,
+		Activated:  true,
+		APN:        "internet",
+		ForbidRoaming: false,
+	}
+	ap2 := ap1
+	assert.True(t, ap1.Equal(ap2))
+
+	ap2.APN = "lte"
+	assert.False(t, ap1.Equal(ap2))
+
+	ap2 = ap1
+	ap2.ForbidRoaming = true
+	assert.False(t, ap1.Equal(ap2))
+}
+
+// IPRange.Contains and IPRange.Size
+
+func TestIPRangeContains(t *testing.T) {
+	r := IPRange{
+		Start: net.ParseIP("192.168.1.10"),
+		End:   net.ParseIP("192.168.1.20"),
+	}
+
+	assert.True(t, r.Contains(net.ParseIP("192.168.1.10")))
+	assert.True(t, r.Contains(net.ParseIP("192.168.1.15")))
+	assert.True(t, r.Contains(net.ParseIP("192.168.1.20")))
+	assert.False(t, r.Contains(net.ParseIP("192.168.1.9")))
+	assert.False(t, r.Contains(net.ParseIP("192.168.1.21")))
+}
+
+func TestIPRangeSize(t *testing.T) {
+	r := IPRange{
+		Start: net.ParseIP("10.0.0.1"),
+		End:   net.ParseIP("10.0.0.10"),
+	}
+	assert.Equal(t, uint32(9), r.Size())
+
+	// Single address range
+	r2 := IPRange{
+		Start: net.ParseIP("10.0.0.5"),
+		End:   net.ParseIP("10.0.0.5"),
+	}
+	assert.Equal(t, uint32(0), r2.Size())
+
+	// IPv6 returns 0 (not supported)
+	r3 := IPRange{
+		Start: net.ParseIP("::1"),
+		End:   net.ParseIP("::2"),
+	}
+	assert.Equal(t, uint32(0), r3.Size())
+}
+
+// NetworkXObjectConfig.Key
+
+func TestNetworkXObjectConfigKey(t *testing.T) {
+	id := uuid.Must(uuid.NewV4())
+	config := NetworkXObjectConfig{UUID: id}
+	assert.Equal(t, id.String(), config.Key())
+}

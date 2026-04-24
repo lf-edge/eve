@@ -5,11 +5,13 @@ package types
 
 import (
 	"net"
-
-	"github.com/satori/go.uuid"
-	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
+
+	"github.com/lf-edge/eve-api/go/evecommon"
+	uuid "github.com/satori/go.uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var appNetAdapterUUID = uuid.UUID{0x6b, 0xa7, 0xb8, 0x10, 0x9d, 0xad, 0x11, 0xd1,
@@ -1484,4 +1486,221 @@ func TestGetLocalAddrList(t *testing.T) {
 			assert.Nil(t, err)
 		}
 	}
+}
+
+// AppNetworkStatus.AwaitingNetwork
+
+func TestAppNetworkStatusAwaitingNetwork(t *testing.T) {
+	status := AppNetworkStatus{}
+	assert.False(t, status.AwaitingNetwork())
+
+	status.AwaitNetworkInstance = true
+	assert.True(t, status.AwaitingNetwork())
+}
+
+// AppContainerMetrics.Key
+
+func TestAppContainerMetricsKey(t *testing.T) {
+	id := uuid.Must(uuid.NewV4())
+	m := AppContainerMetrics{
+		UUIDandVersion: UUIDandVersion{UUID: id},
+	}
+	assert.Equal(t, id.String(), m.Key())
+}
+
+// FlowScope.Key
+
+func TestFlowScopeKey(t *testing.T) {
+	appID := uuid.Must(uuid.NewV4())
+	fs := FlowScope{
+		AppUUID:        appID,
+		NetAdapterName: "adapter0",
+	}
+	assert.Equal(t, appID.String()+"-adapter0", fs.Key())
+
+	fs.Sequence = "seq1"
+	assert.Equal(t, appID.String()+"-adapter0-seq1", fs.Key())
+}
+
+// IPFlow.Key
+
+func TestIPFlowKey(t *testing.T) {
+	appID := uuid.Must(uuid.NewV4())
+	flow := IPFlow{
+		Scope: FlowScope{
+			AppUUID:        appID,
+			NetAdapterName: "eth0",
+		},
+	}
+	assert.Equal(t, appID.String()+"-eth0", flow.Key())
+}
+
+// ConnectivityProbe.FromProto and ToProto
+
+func TestConnectivityProbeFromProtoNil(t *testing.T) {
+	var cp ConnectivityProbe
+	err := cp.FromProto(nil)
+	assert.NoError(t, err)
+	assert.Equal(t, ConnectivityProbeMethodNone, cp.Method)
+}
+
+func TestConnectivityProbeFromProtoUnspecified(t *testing.T) {
+	var cp ConnectivityProbe
+	proto := &evecommon.ConnectivityProbe{
+		ProbeMethod: evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_UNSPECIFIED,
+	}
+	err := cp.FromProto(proto)
+	assert.NoError(t, err)
+	assert.Equal(t, ConnectivityProbeMethodNone, cp.Method)
+}
+
+func TestConnectivityProbeFromProtoICMP(t *testing.T) {
+	var cp ConnectivityProbe
+	proto := &evecommon.ConnectivityProbe{
+		ProbeMethod: evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_ICMP,
+		ProbeEndpoint: &evecommon.ProbeEndpoint{
+			Host: "8.8.8.8",
+		},
+	}
+	err := cp.FromProto(proto)
+	assert.NoError(t, err)
+	assert.Equal(t, ConnectivityProbeMethodICMP, cp.Method)
+	assert.Equal(t, "8.8.8.8", cp.ProbeHost)
+}
+
+func TestConnectivityProbeFromProtoICMPInvalidIP(t *testing.T) {
+	var cp ConnectivityProbe
+	proto := &evecommon.ConnectivityProbe{
+		ProbeMethod: evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_ICMP,
+		ProbeEndpoint: &evecommon.ProbeEndpoint{
+			Host: "not-an-ip",
+		},
+	}
+	err := cp.FromProto(proto)
+	assert.Error(t, err)
+}
+
+func TestConnectivityProbeFromProtoTCP(t *testing.T) {
+	var cp ConnectivityProbe
+	proto := &evecommon.ConnectivityProbe{
+		ProbeMethod: evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_TCP,
+		ProbeEndpoint: &evecommon.ProbeEndpoint{
+			Host: "10.0.0.1",
+			Port: 443,
+		},
+	}
+	err := cp.FromProto(proto)
+	assert.NoError(t, err)
+	assert.Equal(t, ConnectivityProbeMethodTCP, cp.Method)
+	assert.Equal(t, "10.0.0.1", cp.ProbeHost)
+	assert.Equal(t, uint16(443), cp.ProbePort)
+}
+
+func TestConnectivityProbeFromProtoTCPMissingHost(t *testing.T) {
+	var cp ConnectivityProbe
+	proto := &evecommon.ConnectivityProbe{
+		ProbeMethod: evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_TCP,
+		ProbeEndpoint: &evecommon.ProbeEndpoint{
+			Port: 443,
+		},
+	}
+	err := cp.FromProto(proto)
+	assert.Error(t, err)
+}
+
+func TestConnectivityProbeFromProtoTCPMissingPort(t *testing.T) {
+	var cp ConnectivityProbe
+	proto := &evecommon.ConnectivityProbe{
+		ProbeMethod: evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_TCP,
+		ProbeEndpoint: &evecommon.ProbeEndpoint{
+			Host: "10.0.0.1",
+		},
+	}
+	err := cp.FromProto(proto)
+	assert.Error(t, err)
+}
+
+func TestConnectivityProbeToProtoNone(t *testing.T) {
+	cp := ConnectivityProbe{Method: ConnectivityProbeMethodNone}
+	proto := cp.ToProto()
+	require.NotNil(t, proto)
+	assert.Equal(t, evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_UNSPECIFIED,
+		proto.ProbeMethod)
+}
+
+func TestConnectivityProbeToProtoICMP(t *testing.T) {
+	cp := ConnectivityProbe{Method: ConnectivityProbeMethodICMP, ProbeHost: "1.2.3.4"}
+	proto := cp.ToProto()
+	require.NotNil(t, proto)
+	assert.Equal(t, evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_ICMP,
+		proto.ProbeMethod)
+	assert.Equal(t, "1.2.3.4", proto.ProbeEndpoint.Host)
+}
+
+func TestConnectivityProbeToProtoTCP(t *testing.T) {
+	cp := ConnectivityProbe{Method: ConnectivityProbeMethodTCP, ProbeHost: "10.0.0.1", ProbePort: 80}
+	proto := cp.ToProto()
+	require.NotNil(t, proto)
+	assert.Equal(t, evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_TCP,
+		proto.ProbeMethod)
+	assert.Equal(t, "10.0.0.1", proto.ProbeEndpoint.Host)
+	assert.Equal(t, uint32(80), proto.ProbeEndpoint.Port)
+}
+
+// IPRouteConfig.IsDefaultRoute
+
+func TestIPRouteConfigIsDefaultRoute(t *testing.T) {
+	// Nil network is default
+	r := IPRouteConfig{}
+	assert.True(t, r.IsDefaultRoute())
+
+	// 0.0.0.0/0 is default
+	_, ipNet, _ := net.ParseCIDR("0.0.0.0/0")
+	r.DstNetwork = ipNet
+	assert.True(t, r.IsDefaultRoute())
+
+	// Specific subnet is not default
+	_, ipNet2, _ := net.ParseCIDR("192.168.1.0/24")
+	r.DstNetwork = ipNet2
+	assert.False(t, r.IsDefaultRoute())
+}
+
+// NetworkInstanceStatus.IsIpAssigned
+
+func TestNetworkInstanceStatusIsIpAssigned(t *testing.T) {
+	ip1 := net.ParseIP("192.168.1.10")
+	ip2 := net.ParseIP("10.0.0.5")
+	ip6 := net.ParseIP("fd00::1")
+
+	status := NetworkInstanceStatus{
+		NetworkInstanceInfo: NetworkInstanceInfo{
+			IPAssignments: map[string]AssignedAddrs{
+				"mac1": {
+					IPv4Addrs: []AssignedAddr{{Address: ip1}},
+					IPv6Addrs: []AssignedAddr{{Address: ip6}},
+				},
+			},
+		},
+	}
+
+	assert.True(t, status.IsIpAssigned(ip1))
+	assert.True(t, status.IsIpAssigned(ip6))
+	assert.False(t, status.IsIpAssigned(ip2))
+}
+
+// NestedAppDomainStatus.Key
+
+func TestNestedAppDomainStatusKey(t *testing.T) {
+	id := uuid.Must(uuid.NewV4())
+	s := NestedAppDomainStatus{
+		UUIDandVersion: UUIDandVersion{UUID: id},
+	}
+	assert.Equal(t, id.String(), s.Key())
+}
+
+// NestedAppRuntimeDiskMetric.Key
+
+func TestNestedAppRuntimeDiskMetricKey(t *testing.T) {
+	m := NestedAppRuntimeDiskMetric{UUID: "some-uuid-string"}
+	assert.Equal(t, "some-uuid-string", m.Key())
 }
