@@ -32,7 +32,7 @@ func (ctx *kubevirtComponent) GetVersion() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("can't get kubevirt client %v", err)
 	}
-	kubeVirt, err := kvClient.KubeVirt(kubevirtNamespace).Get("kubevirt", &metav1.GetOptions{})
+	kubeVirt, err := kvClient.KubeVirt(kubevirtNamespace).Get(context.Background(), "kubevirt", metav1.GetOptions{})
 	if err != nil {
 		return "", fmt.Errorf("can't fetch kubevirt version %v", err)
 	}
