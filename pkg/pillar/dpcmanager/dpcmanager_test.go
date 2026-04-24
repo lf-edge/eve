@@ -3502,8 +3502,9 @@ func TestPNACDHCPReacquire(test *testing.T) {
 		IsAuthenticated: true,
 	})
 
-	// First retry should occur after ~2s.
-	t.Eventually(dhcpReacquireCounterCb("eth0"), 5*time.Second, 200*time.Millisecond).
+	// First retry should occur after ~2s (backoff: 2^1).
+	// Allow 10s to cover concurrent dpcTestTimer blocking the main loop.
+	t.Eventually(dhcpReacquireCounterCb("eth0"), 10*time.Second, 200*time.Millisecond).
 		Should(Equal(1))
 
 	// Simulate the DHCP client restarting and getting the same IP from
@@ -3573,8 +3574,9 @@ func TestPNACDHCPReacquireMaxRetries(test *testing.T) {
 		IsAuthenticated: true,
 	})
 
-	// First retry should fire after ~2s.
-	t.Eventually(dhcpReacquireCounterCb("eth0"), 5*time.Second, 200*time.Millisecond).
+	// First retry should fire after ~2s (backoff: 2^1).
+	// Allow 10s to cover concurrent dpcTestTimer blocking the main loop.
+	t.Eventually(dhcpReacquireCounterCb("eth0"), 10*time.Second, 200*time.Millisecond).
 		Should(Equal(1))
 
 	// Simulate DHCP getting same-subnet IP to trigger AddrChange and schedule retry 2.
@@ -3667,7 +3669,11 @@ func TestPNACDHCPReacquireCancelledByNewDPC(test *testing.T) {
 	})
 
 	// Wait for first retry.
-	t.Eventually(dhcpReacquireCounterCb("eth0"), 5*time.Second, 200*time.Millisecond).
+	// The reacquire goroutine fires after 2s (backoff: 2^1), but the periodic
+	// dpcTestTimer (NetworkTestInterval=2s) can fire concurrently and block the
+	// main select loop for another ~2s running testConnectivityToController.
+	// Allow 10s total to cover this worst-case blocking plus scheduler jitter.
+	t.Eventually(dhcpReacquireCounterCb("eth0"), 10*time.Second, 200*time.Millisecond).
 		Should(Equal(1))
 
 	// Apply a new DPC that adds eth1 — the config change should cancel
