@@ -14,6 +14,8 @@ const (
 	EdgeviewPath = "/run/edgeview/"
 	// EdgeviewCfgFile - for configuration of edgeview
 	EdgeviewCfgFile = EdgeviewPath + "edge-view-config"
+	// EdgeviewSigningCertFile - controller signing cert for edgeview JWT/data verification
+	EdgeviewSigningCertFile = EdgeviewPath + "signing-cert.pem"
 
 	// EdgeViewJwtPrefix - jwt token prefix string
 	EdgeViewJwtPrefix = "EvJWToken:"
