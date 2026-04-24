@@ -6,8 +6,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDefaultValue(t *testing.T) {
@@ -870,4 +872,37 @@ func TestSenderStatusString(t *testing.T) {
 	for _, tc := range cases {
 		assert.Equal(t, tc.want, tc.status.String())
 	}
+}
+
+// GetDiagRemoteEndpointURLs
+
+func TestGetDiagRemoteEndpointURLs(t *testing.T) {
+	log := base.NewSourceLogObject(logrus.StandardLogger(), "test", 0) //nolint:staticcheck
+
+	// nil gcp → nil result
+	assert.Nil(t, GetDiagRemoteEndpointURLs(log, nil))
+
+	// Both endpoints explicitly set
+	gcp := &ConfigItemValueMap{}
+	gcp.SetGlobalValueString(DiagProbeRemoteHTTPEndpoint, "example.com/health")
+	gcp.SetGlobalValueString(DiagProbeRemoteHTTPSEndpoint, "example.com/secure")
+	urls := GetDiagRemoteEndpointURLs(log, gcp)
+	require.Len(t, urls, 2)
+	assert.Equal(t, "http", urls[0].Scheme)
+	assert.Equal(t, "https", urls[1].Scheme)
+
+	// HTTP set, HTTPS explicitly cleared to empty (skipped by the function)
+	gcp2 := &ConfigItemValueMap{}
+	gcp2.SetGlobalValueString(DiagProbeRemoteHTTPEndpoint, "check.example.com")
+	gcp2.SetGlobalValueString(DiagProbeRemoteHTTPSEndpoint, "")
+	urls2 := GetDiagRemoteEndpointURLs(log, gcp2)
+	require.Len(t, urls2, 1)
+	assert.Equal(t, "http", urls2[0].Scheme)
+
+	// Both endpoints empty → empty result
+	gcp3 := &ConfigItemValueMap{}
+	gcp3.SetGlobalValueString(DiagProbeRemoteHTTPEndpoint, "")
+	gcp3.SetGlobalValueString(DiagProbeRemoteHTTPSEndpoint, "")
+	urls3 := GetDiagRemoteEndpointURLs(log, gcp3)
+	assert.Len(t, urls3, 0)
 }

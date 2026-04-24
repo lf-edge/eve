@@ -8,8 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lf-edge/eve-api/go/info"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type simple struct {
@@ -124,4 +126,32 @@ func TestSetErrorWithSourceAndDescription(t *testing.T) {
 	assert.Equal(t, "enrollment error", et.Error)
 	assert.Equal(t, ErrorSeverityWarning, et.ErrorSeverity)
 	assert.True(t, et.IsErrorSource(ContentTreeStatus{}))
+}
+
+// ErrorDescription.ToProto
+
+func TestErrorDescriptionToProto(t *testing.T) {
+	// Zero ErrorTime → nil
+	ed := ErrorDescription{}
+	assert.Nil(t, ed.ToProto())
+
+	// Non-zero ErrorTime → populated ErrorInfo
+	now := time.Now()
+	ed = ErrorDescription{
+		Error:               "disk full",
+		ErrorSeverity:       ErrorSeverityError,
+		ErrorRetryCondition: "retry in 5m",
+		ErrorEntities: []*ErrorEntity{
+			{EntityID: "vol-1", EntityType: ErrorEntityAppInstance},
+		},
+	}
+	ed.ErrorTime = now
+
+	got := ed.ToProto()
+	require.NotNil(t, got)
+	assert.Equal(t, "disk full", got.Description)
+	assert.Equal(t, info.Severity(ErrorSeverityError), got.Severity)
+	assert.Equal(t, "retry in 5m", got.RetryCondition)
+	require.Len(t, got.Entities, 1)
+	assert.Equal(t, "vol-1", got.Entities[0].EntityId)
 }

@@ -78,3 +78,25 @@ func TestBondLACPStatusEqual(t *testing.T) {
 	l2.ActorKey = 7
 	assert.False(t, l1.Equal(l2))
 }
+
+// BondStatus.Equal - with Members comparison
+
+func TestBondStatusEqualWithMembers(t *testing.T) {
+	mem1 := BondMemberStatus{Logicallabel: "eth0", MIIUp: true}
+	mem2 := BondMemberStatus{Logicallabel: "eth1", MIIUp: true}
+	s1 := BondStatus{
+		Mode:    BondModeActiveBackup,
+		Members: []BondMemberStatus{mem1, mem2},
+	}
+	s2 := s1
+	assert.True(t, s1.Equal(s2))
+
+	// Different member set
+	s2.Members = []BondMemberStatus{mem1}
+	assert.False(t, s1.Equal(s2))
+
+	// Different MIIMonitor
+	s2 = s1
+	s2.MIIMonitor = BondMIIMonitorStatus{PollingInterval: 100}
+	assert.False(t, s1.Equal(s2))
+}

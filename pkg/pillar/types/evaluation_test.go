@@ -138,3 +138,63 @@ func TestEvalStatusRemainingTime(t *testing.T) {
 	s.TestStartTime = time.Now().Add(-2 * time.Minute)
 	assert.Equal(t, time.Duration(0), s.RemainingTime())
 }
+
+// EvalStatus.TimeStatusString
+
+func TestEvalStatusTimeStatusString(t *testing.T) {
+	// Not in testing phase → empty string
+	s := EvalStatus{Phase: EvalPhaseFinal}
+	assert.Equal(t, "", s.TimeStatusString())
+
+	// Testing phase, past deadline → "Test complete" message
+	s = EvalStatus{
+		Phase:         EvalPhaseTesting,
+		TestStartTime: time.Now().Add(-2 * time.Minute),
+		TestDuration:  time.Minute,
+	}
+	result := s.TimeStatusString()
+	assert.Contains(t, result, "Test complete")
+
+	// Testing phase, still in progress → progress message
+	s = EvalStatus{
+		Phase:         EvalPhaseTesting,
+		TestStartTime: time.Now(),
+		TestDuration:  time.Minute,
+	}
+	result = s.TimeStatusString()
+	assert.Contains(t, result, "Progress")
+	assert.Contains(t, result, "remaining")
+}
+
+// DevicePortConfig.MostlyEqual
+
+func TestDevicePortConfigMostlyEqual(t *testing.T) {
+	dpc1 := DevicePortConfig{
+		Key: "k1",
+		Ports: []NetworkPortConfig{
+			{IfName: "eth0", Logicallabel: "wan0"},
+		},
+	}
+	dpc2 := dpc1
+
+	assert.True(t, dpc1.MostlyEqual(&dpc2))
+
+	// Different key
+	dpc2.Key = "k2"
+	assert.False(t, dpc1.MostlyEqual(&dpc2))
+	dpc2.Key = "k1"
+
+	// Different port count
+	dpc2.Ports = append(dpc2.Ports, NetworkPortConfig{IfName: "eth1"})
+	assert.False(t, dpc1.MostlyEqual(&dpc2))
+	dpc2.Ports = dpc2.Ports[:1]
+
+	// Different IfName
+	dpc2.Ports[0].IfName = "eth1"
+	assert.False(t, dpc1.MostlyEqual(&dpc2))
+	dpc2.Ports[0].IfName = "eth0"
+
+	// Different IsMgmt
+	dpc2.Ports[0].IsMgmt = true
+	assert.False(t, dpc1.MostlyEqual(&dpc2))
+}

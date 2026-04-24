@@ -8,8 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lf-edge/eve-api/go/evecommon"
 	uuid "github.com/satori/go.uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // DPCState.Describe
@@ -432,4 +434,112 @@ func TestPortConfigSourceEqual(t *testing.T) {
 
 	s2.SubmittedAt = now.Add(time.Second)
 	assert.False(t, s1.Equal(s2))
+}
+
+// PortConfigSource.ToProto
+
+func TestPortConfigSourceToProto(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	src := PortConfigSource{
+		Origin:      NetworkConfigOriginController,
+		SubmittedAt: now,
+	}
+	got := src.ToProto()
+	require.NotNil(t, got)
+	assert.Equal(t, evecommon.NetworkConfigOrigin(NetworkConfigOriginController), got.Origin)
+	assert.Equal(t, now.Unix(), got.SubmittedAt.GetSeconds())
+}
+
+// ProxyEntry.FromProto and ToProto
+
+func TestProxyEntryFromProtoToProto(t *testing.T) {
+	cases := []struct {
+		proto evecommon.ProxyProto
+		want  NetworkProxyType
+	}{
+		{evecommon.ProxyProto_PROXY_HTTP, NetworkProxyTypeHTTP},
+		{evecommon.ProxyProto_PROXY_HTTPS, NetworkProxyTypeHTTPS},
+		{evecommon.ProxyProto_PROXY_SOCKS, NetworkProxyTypeSOCKS},
+		{evecommon.ProxyProto_PROXY_FTP, NetworkProxyTypeFTP},
+	}
+	for _, tc := range cases {
+		protoServer := &evecommon.ProxyServer{
+			Proto:  tc.proto,
+			Server: "proxy.example.com",
+			Port:   8080,
+		}
+		var pe ProxyEntry
+		pe.FromProto(protoServer)
+		assert.Equal(t, tc.want, pe.Type)
+		assert.Equal(t, "proxy.example.com", pe.Server)
+		assert.Equal(t, uint32(8080), pe.Port)
+
+		// Round-trip: ToProto → back
+		got := pe.ToProto()
+		require.NotNil(t, got)
+		assert.Equal(t, tc.proto, got.Proto)
+		assert.Equal(t, "proxy.example.com", got.Server)
+	}
+
+	// FromProto with nil is a no-op
+	var pe2 ProxyEntry
+	pe2.FromProto(nil)
+	assert.Equal(t, "", pe2.Server)
+}
+
+// WifiKeySchemeType.FromProto and ToProto
+
+func TestWifiKeySchemeTypeFromProtoToProto(t *testing.T) {
+	cases := []struct {
+		proto evecommon.WiFiKeyScheme
+		want  WifiKeySchemeType
+	}{
+		{evecommon.WiFiKeyScheme_SchemeNOOP, KeySchemeNone},
+		{evecommon.WiFiKeyScheme_WPAPSK, KeySchemeWpaPsk},
+		{evecommon.WiFiKeyScheme_WPAEAP, KeySchemeWpaEap},
+	}
+	for _, tc := range cases {
+		var kt WifiKeySchemeType
+		err := kt.FromProto(tc.proto)
+		assert.NoError(t, err)
+		assert.Equal(t, tc.want, kt)
+
+		got := kt.ToProto()
+		assert.Equal(t, tc.proto, got)
+	}
+
+	// Unknown value → KeySchemeOther and error
+	var kt WifiKeySchemeType
+	err := kt.FromProto(evecommon.WiFiKeyScheme(99))
+	assert.Error(t, err)
+	assert.Equal(t, KeySchemeOther, kt)
+
+	// KeySchemeOther.ToProto → NOOP fallback
+	assert.Equal(t, evecommon.WiFiKeyScheme_SchemeNOOP, KeySchemeOther.ToProto())
+}
+
+// DevicePortConfig.UpdatePortStatusFromIntfStatusMap
+
+func TestDevicePortConfigUpdatePortStatusFromIntfStatusMap(t *testing.T) {
+	now := time.Now()
+	dpc := DevicePortConfig{
+		Ports: []NetworkPortConfig{
+			{IfName: "eth0"},
+			{IfName: "eth1"},
+		},
+	}
+	statusMap := IntfStatusMap{
+		StatusMap: map[string]TestResults{
+			"eth0": {LastSucceeded: now},
+		},
+	}
+	dpc.UpdatePortStatusFromIntfStatusMap(statusMap)
+
+	port := dpc.LookupPortByIfName("eth0")
+	require.NotNil(t, port)
+	assert.Equal(t, now, port.LastSucceeded)
+
+	port1 := dpc.LookupPortByIfName("eth1")
+	require.NotNil(t, port1)
+	assert.True(t, port1.LastSucceeded.IsZero())
 }

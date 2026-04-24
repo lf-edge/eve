@@ -394,3 +394,70 @@ func TestGetDNSServers(t *testing.T) {
 	servers = GetDNSServers(d, "eth2")
 	assert.Len(t, servers, 0)
 }
+
+// DeviceNetworkStatus.MostlyEqualStatus — additional branches
+
+func TestDeviceNetworkStatusMostlyEqualStatusWithPorts(t *testing.T) {
+	now := time.Now()
+	s1 := DeviceNetworkStatus{
+		State:        DPCStateSuccess,
+		CurrentIndex: 0,
+		Ports:        []NetworkPortStatus{{IfName: "eth0"}},
+	}
+
+	// Identical → equal
+	s2 := DeviceNetworkStatus{
+		State:        DPCStateSuccess,
+		CurrentIndex: 0,
+		Ports:        []NetworkPortStatus{{IfName: "eth0"}},
+	}
+	assert.True(t, s1.MostlyEqualStatus(s2))
+
+	// Different CurrentIndex → not equal
+	s2.CurrentIndex = 1
+	assert.False(t, s1.MostlyEqualStatus(s2))
+
+	// Port changes to error state → not equal (independent port slices)
+	s3 := DeviceNetworkStatus{
+		State:        DPCStateSuccess,
+		CurrentIndex: 0,
+		Ports:        []NetworkPortStatus{{IfName: "eth0", TestResults: TestResults{LastFailed: now, LastError: "link down"}}},
+	}
+	assert.False(t, s1.MostlyEqualStatus(s3))
+}
+
+// DeviceNetworkStatus.MostlyEqual — port content diff
+
+func TestDeviceNetworkStatusMostlyEqualPortContent(t *testing.T) {
+	_, subnet, _ := net.ParseCIDR("192.168.1.0/24")
+	s1 := DeviceNetworkStatus{
+		Ports: []NetworkPortStatus{
+			{IfName: "eth0", IsMgmt: true, IPv4Subnet: subnet},
+		},
+	}
+
+	// Identical
+	s2 := DeviceNetworkStatus{
+		Ports: []NetworkPortStatus{
+			{IfName: "eth0", IsMgmt: true, IPv4Subnet: subnet},
+		},
+	}
+	assert.True(t, s1.MostlyEqual(s2))
+
+	// Different DNS servers
+	s3 := DeviceNetworkStatus{
+		Ports: []NetworkPortStatus{
+			{IfName: "eth0", IsMgmt: true, IPv4Subnet: subnet, DNSServers: []net.IP{net.ParseIP("8.8.8.8")}},
+		},
+	}
+	assert.False(t, s1.MostlyEqual(s3))
+
+	// Different IPv4Subnet
+	_, subnet2, _ := net.ParseCIDR("10.0.0.0/8")
+	s4 := DeviceNetworkStatus{
+		Ports: []NetworkPortStatus{
+			{IfName: "eth0", IsMgmt: true, IPv4Subnet: subnet2},
+		},
+	}
+	assert.False(t, s1.MostlyEqual(s4))
+}

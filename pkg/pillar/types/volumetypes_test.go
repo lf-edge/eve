@@ -174,3 +174,19 @@ func TestVolumeCreatePendingFromVolumeStatus(t *testing.T) {
 	assert.Equal(t, zconfig.Format_CONTAINER, pending.ContentFormat)
 	assert.True(t, pending.Encrypted)
 }
+
+// VolumeRefConfig.VolumeKey
+
+func TestVolumeRefConfigVolumeKey(t *testing.T) {
+	id := uuid.Must(uuid.NewV4())
+	appID := uuid.Must(uuid.NewV4())
+	cfg := VolumeRefConfig{
+		VolumeID:               id,
+		GenerationCounter:      3,
+		LocalGenerationCounter: 1,
+		AppUUID:                appID,
+	}
+	key := cfg.VolumeKey()
+	expected := fmt.Sprintf("%s#4", id.String()) // 3+1=4
+	assert.Equal(t, expected, key)
+}

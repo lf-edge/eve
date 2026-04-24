@@ -8,6 +8,10 @@ import (
 	"testing"
 
 	"github.com/lf-edge/eve-api/go/evecommon"
+	"github.com/lf-edge/eve-api/go/info"
+	"github.com/lf-edge/eve-api/go/metrics"
+	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -238,4 +242,218 @@ func TestWwanIPTypeFromProto(t *testing.T) {
 			assert.NoError(t, err)
 		}
 	}
+}
+
+// WwanProvider.ToProto
+
+func TestWwanProviderToProto(t *testing.T) {
+	wp := WwanProvider{
+		PLMN:           "310410",
+		Description:    "AT&T",
+		CurrentServing: true,
+		Roaming:        false,
+		Forbidden:      false,
+	}
+	got := wp.ToProto()
+	require.NotNil(t, got)
+	assert.Equal(t, "310410", got.Plmn)
+	assert.Equal(t, "AT&T", got.Description)
+	assert.True(t, got.CurrentServing)
+	assert.False(t, got.Roaming)
+	assert.False(t, got.Forbidden)
+}
+
+// WwanCellModule.ToProto
+
+func TestWwanCellModuleToProto(t *testing.T) {
+	log := base.NewSourceLogObject(logrus.StandardLogger(), "test", 0) //nolint:staticcheck
+	m := WwanCellModule{
+		Name:            "modem0",
+		IMEI:            "123456789012345",
+		Revision:        "v1.0",
+		Model:           "EM7455",
+		Manufacturer:    "Sierra Wireless",
+		OpMode:          WwanOpModeOnline,
+		ControlProtocol: WwanCtrlProtQMI,
+	}
+	got := m.ToProto(log)
+	require.NotNil(t, got)
+	assert.Equal(t, "modem0", got.Name)
+	assert.Equal(t, "123456789012345", got.Imei)
+	assert.Equal(t, info.ZCellularOperatingState_Z_CELLULAR_OPERATING_STATE_ONLINE, got.OperatingState)
+	assert.Equal(t, info.ZCellularControlProtocol_Z_CELLULAR_CONTROL_PROTOCOL_QMI, got.ControlProtocol)
+}
+
+// BearerType.ToProto
+
+func TestBearerTypeToProto(t *testing.T) {
+	log := base.NewSourceLogObject(logrus.StandardLogger(), "test", 0) //nolint:staticcheck
+	cases := []struct {
+		in   BearerType
+		want evecommon.BearerType
+	}{
+		{BearerTypeUnspecified, evecommon.BearerType_BEARER_TYPE_UNSPECIFIED},
+		{BearerTypeAttach, evecommon.BearerType_BEARER_TYPE_ATTACH},
+		{BearerTypeDefault, evecommon.BearerType_BEARER_TYPE_DEFAULT},
+		{BearerTypeDedicated, evecommon.BearerType_BEARER_TYPE_DEDICATED},
+		{BearerType(99), evecommon.BearerType_BEARER_TYPE_UNSPECIFIED},
+	}
+	for _, tc := range cases {
+		assert.Equal(t, tc.want, tc.in.ToProto(log))
+	}
+}
+
+// WwanNetworkStatus.CellProvidersToProto
+
+func TestWwanNetworkStatusCellProvidersToProto(t *testing.T) {
+	visible := WwanProvider{PLMN: "310410", CurrentServing: false}
+	current := WwanProvider{PLMN: "310260", CurrentServing: true}
+	wns := WwanNetworkStatus{
+		CurrentProvider:  current,
+		VisibleProviders: []WwanProvider{visible},
+	}
+
+	providers := wns.CellProvidersToProto()
+	// Visible + current (not in visible list → appended)
+	require.Len(t, providers, 2)
+	assert.Equal(t, "310410", providers[0].Plmn)
+	assert.Equal(t, "310260", providers[1].Plmn)
+
+	// Current already in VisibleProviders → no duplicate
+	wns2 := WwanNetworkStatus{
+		CurrentProvider:  visible,
+		VisibleProviders: []WwanProvider{visible},
+	}
+	providers2 := wns2.CellProvidersToProto()
+	assert.Len(t, providers2, 1)
+}
+
+// WwanNetworkStatus.SimCardsToProto
+
+func TestWwanNetworkStatusSimCardsToProto(t *testing.T) {
+	wns := WwanNetworkStatus{
+		Module: WwanCellModule{Name: "modem0"},
+		SimCards: []WwanSimCard{
+			{Name: "sim0", SlotNumber: 1, SlotActivated: true, ICCID: "89011200000002345678", IMSI: "310410123456789"},
+		},
+	}
+	cards := wns.SimCardsToProto()
+	require.Len(t, cards, 1)
+	assert.Equal(t, "sim0", cards[0].Name)
+	assert.Equal(t, "modem0", cards[0].CellModuleName)
+	assert.Equal(t, "89011200000002345678", cards[0].Iccid)
+	assert.Equal(t, "310410123456789", cards[0].Imsi)
+	assert.True(t, cards[0].SlotActivated)
+}
+
+// WwanNetworkStatus.CellBearersToProto
+
+func TestWwanNetworkStatusCellBearersToProto(t *testing.T) {
+	log := base.NewSourceLogObject(logrus.StandardLogger(), "test", 0) //nolint:staticcheck
+	wns := WwanNetworkStatus{
+		Bearers: []WwanBearer{
+			{APN: "internet", Type: BearerTypeDefault, Connected: true},
+		},
+	}
+	bearers := wns.CellBearersToProto(log)
+	require.Len(t, bearers, 1)
+	assert.Equal(t, "internet", bearers[0].Apn)
+	assert.True(t, bearers[0].Connected)
+	assert.Equal(t, evecommon.BearerType_BEARER_TYPE_DEFAULT, bearers[0].BearerType)
+}
+
+// WwanNetworkStatus.CellProfilesToProto
+
+func TestWwanNetworkStatusCellProfilesToProto(t *testing.T) {
+	log := base.NewSourceLogObject(logrus.StandardLogger(), "test", 0) //nolint:staticcheck
+	wns := WwanNetworkStatus{
+		Profiles: []WwanProfile{
+			{Name: "default", APN: "internet", BearerType: BearerTypeDefault, ForbidRoaming: false},
+		},
+	}
+	profiles := wns.CellProfilesToProto(log)
+	require.Len(t, profiles, 1)
+	assert.Equal(t, "default", profiles[0].ProfileName)
+	assert.Equal(t, "internet", profiles[0].Apn)
+	assert.Equal(t, evecommon.BearerType_BEARER_TYPE_DEFAULT, profiles[0].BearerType)
+	assert.False(t, profiles[0].ForbidRoaming)
+}
+
+// WwanMetrics.ToProto
+
+func TestWwanMetricsToProto(t *testing.T) {
+	log := base.NewSourceLogObject(logrus.StandardLogger(), "test", 0) //nolint:staticcheck
+	wm := WwanMetrics{
+		Networks: []WwanNetworkMetrics{
+			{
+				LogicalLabel: "wwan0",
+				SignalInfo:   WwanSignalInfo{RSSI: -70, RSRQ: -10, RSRP: -100, SNR: 15},
+				PacketStats:  WwanPacketStats{RxBytes: 1000, TxBytes: 500},
+			},
+			// Empty logical label → skipped in ToProto
+			{LogicalLabel: ""},
+		},
+	}
+	protoMetrics := wm.ToProto(log)
+	require.Len(t, protoMetrics, 1)
+	m := protoMetrics[0]
+	assert.Equal(t, "wwan0", m.Logicallabel)
+	assert.Equal(t, int32(-70), m.SignalStrength.Rssi)
+	assert.Equal(t, uint64(1000), m.PacketStats.Rx.TotalBytes)
+	assert.Equal(t, uint64(500), m.PacketStats.Tx.TotalBytes)
+
+	// Verify the metrics package import is used
+	var _ []*metrics.CellularMetric = protoMetrics
+}
+
+// WwanStatus.DoSanitize
+
+func TestWwanStatusDoSanitize(t *testing.T) {
+	ws := WwanStatus{
+		Networks: []WwanNetworkStatus{
+			{
+				Module: WwanCellModule{
+					IMEI:  "123456789012345",
+					Model: "EM7455",
+				},
+				SimCards: []WwanSimCard{
+					{SlotNumber: 1, ICCID: "89011200000002345678"},
+					{SlotNumber: 2}, // no ICCID → use module name + slot
+				},
+			},
+		},
+	}
+
+	ws.DoSanitize()
+
+	// Module name set from IMEI (first choice)
+	assert.Equal(t, "123456789012345", ws.Networks[0].Module.Name)
+
+	// SIM card names set: first from ICCID, second from module name + slot
+	assert.Equal(t, "89011200000002345678", ws.Networks[0].SimCards[0].Name)
+	assert.Contains(t, ws.Networks[0].SimCards[1].Name, "2") // slot number 2
+
+	// Pre-existing names are preserved
+	ws2 := WwanStatus{
+		Networks: []WwanNetworkStatus{
+			{
+				Module: WwanCellModule{Name: "already-set", IMEI: "unused"},
+				SimCards: []WwanSimCard{
+					{Name: "sim-already-named"},
+				},
+			},
+		},
+	}
+	ws2.DoSanitize()
+	assert.Equal(t, "already-set", ws2.Networks[0].Module.Name)
+	assert.Equal(t, "sim-already-named", ws2.Networks[0].SimCards[0].Name)
+
+	// Unique model → use model as module name
+	ws3 := WwanStatus{
+		Networks: []WwanNetworkStatus{
+			{Module: WwanCellModule{Model: "EM7600"}},
+		},
+	}
+	ws3.DoSanitize()
+	assert.Equal(t, "EM7600", ws3.Networks[0].Module.Name)
 }

@@ -235,3 +235,28 @@ func TestSwStateZSwState(t *testing.T) {
 		assert.Equal(t, tc.want, tc.state.ZSwState(), "state=%v", tc.state)
 	}
 }
+
+// UuidToNum.GetKey and AppInterfaceToNum.GetKey
+
+func TestUuidToNumGetKey(t *testing.T) {
+	id := uuid.Must(uuid.NewV4())
+	u := &UuidToNum{UuidToNumKey: UuidToNumKey{UUID: id}}
+	gotKey := u.GetKey()
+	k, ok := gotKey.(UuidToNumKey)
+	require.True(t, ok)
+	assert.Equal(t, id, k.UUID)
+}
+
+func TestAppInterfaceToNumGetKey(t *testing.T) {
+	netInstID := uuid.Must(uuid.NewV4())
+	appID := uuid.Must(uuid.NewV4())
+	aif := &AppInterfaceToNum{
+		AppInterfaceKey: AppInterfaceKey{NetInstID: netInstID, AppID: appID, IfIdx: 2},
+	}
+	gotKey := aif.GetKey()
+	k, ok := gotKey.(AppInterfaceKey)
+	require.True(t, ok)
+	assert.Equal(t, netInstID, k.NetInstID)
+	assert.Equal(t, appID, k.AppID)
+	assert.Equal(t, uint32(2), k.IfIdx)
+}
