@@ -106,6 +106,53 @@ func TestWwanAuthProtocolToProto(t *testing.T) {
 	}
 }
 
+// WwanMetrics helpers
+
+func TestWwanMetricsGetNetworkMetrics(t *testing.T) {
+	wm := WwanMetrics{
+		Networks: []WwanNetworkMetrics{
+			{LogicalLabel: "wwan0"},
+			{LogicalLabel: "wwan1"},
+		},
+	}
+	m := wm.GetNetworkMetrics("wwan1")
+	require.NotNil(t, m)
+	assert.Equal(t, "wwan1", m.LogicalLabel)
+
+	assert.Nil(t, wm.GetNetworkMetrics("missing"))
+}
+
+func TestWwanMetricsLookupNetworkMetrics(t *testing.T) {
+	wm := WwanMetrics{
+		Networks: []WwanNetworkMetrics{
+			{LogicalLabel: "wwan0"},
+		},
+	}
+	m, ok := wm.LookupNetworkMetrics("wwan0")
+	assert.True(t, ok)
+	assert.Equal(t, "wwan0", m.LogicalLabel)
+
+	_, ok = wm.LookupNetworkMetrics("missing")
+	assert.False(t, ok)
+}
+
+func TestWwanMetricsEqual(t *testing.T) {
+	wm1 := WwanMetrics{
+		Networks: []WwanNetworkMetrics{
+			{LogicalLabel: "wwan0"},
+		},
+	}
+	wm2 := WwanMetrics{
+		Networks: []WwanNetworkMetrics{
+			{LogicalLabel: "wwan0"},
+		},
+	}
+	assert.True(t, wm1.Equal(wm2))
+
+	wm2.Networks[0].LogicalLabel = "wwan1"
+	assert.False(t, wm1.Equal(wm2))
+}
+
 // WwanIPType.FromProto and ToProto
 
 func TestWwanIPTypeFromProto(t *testing.T) {

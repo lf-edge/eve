@@ -67,3 +67,31 @@ func TestGetSnapshotAppInstanceConfigFile(t *testing.T) {
 	expected := filepath.Join(SnapshotsDirname, "snap-789", SnapshotAppInstanceConfigFilename)
 	assert.Equal(t, expected, f)
 }
+
+// RoundupToKB
+
+func TestRoundupToKB(t *testing.T) {
+	assert.Equal(t, uint64(0), RoundupToKB(0))
+	assert.Equal(t, uint64(1), RoundupToKB(1))
+	assert.Equal(t, uint64(1), RoundupToKB(1023))
+	assert.Equal(t, uint64(1), RoundupToKB(1024))
+	assert.Equal(t, uint64(2), RoundupToKB(1025))
+}
+
+// AppInstanceStatus.GetAppInterfaceList
+
+func TestGetAppInterfaceList(t *testing.T) {
+	status := AppInstanceStatus{
+		AppNetAdapters: []AppNetAdapterStatus{
+			{VifInfo: VifInfo{VifUsed: "vif0"}},
+			{VifInfo: VifInfo{VifUsed: ""}},
+			{VifInfo: VifInfo{VifUsed: "vif2"}},
+		},
+	}
+	list := status.GetAppInterfaceList()
+	assert.Equal(t, []string{"vif0", "vif2"}, list)
+
+	// Empty adapters → nil slice
+	empty := AppInstanceStatus{}
+	assert.Nil(t, empty.GetAppInterfaceList())
+}

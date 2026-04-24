@@ -908,6 +908,79 @@ func TestIoBundleCmpable(t *testing.T) {
 	cmp.Diff(io1, io2)
 }
 
+// HasAdapterChanged: returns false when identical, true when any field differs
+
+func TestHasAdapterChangedUnchanged(t *testing.T) {
+	log := base.NewSourceLogObject(logrus.StandardLogger(), "test", 1234)
+	ib := IoBundle{
+		Type:            IoNetEth,
+		Phylabel:        "eth0",
+		Logicallabel:    "shopfloor",
+		AssignmentGroup: "eth-grp",
+		Ifname:          "eth0",
+		PciLong:         "0000:f4:00.0",
+		Serial:          "/dev/ttyS0",
+		UsbAddr:         "1:2",
+		UsbProduct:      "0951:1666",
+		Irq:             "5",
+		Ioports:         "3f8-3ff",
+		Usage:           zcommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+	}
+	phyAdapter := PhysicalIOAdapter{
+		Ptype:        zcommon.PhyIoType_PhyIoNetEth,
+		Phylabel:     ib.Phylabel,
+		Logicallabel: ib.Logicallabel,
+		Assigngrp:    ib.AssignmentGroup,
+		Phyaddr: PhysicalAddress{
+			Ifname:     ib.Ifname,
+			PciLong:    ib.PciLong,
+			Serial:     ib.Serial,
+			UsbAddr:    ib.UsbAddr,
+			UsbProduct: ib.UsbProduct,
+			Irq:        ib.Irq,
+			Ioports:    ib.Ioports,
+		},
+		Usage: ib.Usage,
+	}
+	assert.False(t, ib.HasAdapterChanged(log, phyAdapter))
+}
+
+func TestHasAdapterChangedType(t *testing.T) {
+	log := base.NewSourceLogObject(logrus.StandardLogger(), "test", 1234)
+	ib := IoBundle{Type: IoNetEth, Phylabel: "eth0"}
+	phyAdapter := PhysicalIOAdapter{Ptype: zcommon.PhyIoType_PhyIoUSB, Phylabel: "eth0"}
+	assert.True(t, ib.HasAdapterChanged(log, phyAdapter))
+}
+
+func TestHasAdapterChangedPhylabel(t *testing.T) {
+	log := base.NewSourceLogObject(logrus.StandardLogger(), "test", 1234)
+	ib := IoBundle{Type: IoNetEth, Phylabel: "eth0"}
+	phyAdapter := PhysicalIOAdapter{Ptype: zcommon.PhyIoType_PhyIoNetEth, Phylabel: "eth1"}
+	assert.True(t, ib.HasAdapterChanged(log, phyAdapter))
+}
+
+func TestHasAdapterChangedIfname(t *testing.T) {
+	log := base.NewSourceLogObject(logrus.StandardLogger(), "test", 1234)
+	ib := IoBundle{Type: IoNetEth, Phylabel: "eth0", Ifname: "eth0"}
+	phyAdapter := PhysicalIOAdapter{
+		Ptype:    zcommon.PhyIoType_PhyIoNetEth,
+		Phylabel: "eth0",
+		Phyaddr:  PhysicalAddress{Ifname: "eth1"},
+	}
+	assert.True(t, ib.HasAdapterChanged(log, phyAdapter))
+}
+
+func TestHasAdapterChangedLogicallabel(t *testing.T) {
+	log := base.NewSourceLogObject(logrus.StandardLogger(), "test", 1234)
+	ib := IoBundle{Type: IoNetEth, Phylabel: "eth0", Logicallabel: "old"}
+	phyAdapter := PhysicalIOAdapter{
+		Ptype:        zcommon.PhyIoType_PhyIoNetEth,
+		Phylabel:     "eth0",
+		Logicallabel: "new",
+	}
+	assert.True(t, ib.HasAdapterChanged(log, phyAdapter))
+}
+
 func TestIoBundleErrorRemove(t *testing.T) {
 	errs := []error{
 		fmt.Errorf("some error"),

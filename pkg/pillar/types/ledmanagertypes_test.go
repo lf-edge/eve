@@ -1,8 +1,10 @@
 package types
 
 import (
-	"github.com/stretchr/testify/assert"
+	"fmt"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestDeriveLedCounter(t *testing.T) {
@@ -51,5 +53,33 @@ func TestDeriveLedCounter(t *testing.T) {
 		t.Logf("Running test case %s", testname)
 		output := DeriveLedCounter(test.ledBlinkCount, test.usableAddressCount, test.radioSilence)
 		assert.Equal(t, test.expectedValue, output)
+	}
+}
+
+// LedBlinkCount.String — all named cases and the default
+
+func TestLedBlinkCountString(t *testing.T) {
+	cases := []struct {
+		c    LedBlinkCount
+		want string
+	}{
+		{LedBlinkUndefined, "Undefined LED counter"},
+		{LedBlinkWaitingForIP, "Waiting for DHCP IP address(es)"},
+		{LedBlinkConnectingToController, "Trying to connect to EV Controller"},
+		{LedBlinkConnectedToController, "Connected to EV Controller but not onboarded"},
+		{LedBlinkOnboarded, "Connected to EV Controller and onboarded"},
+		{LedBlinkRadioSilence, "Radio silence is imposed"},
+		{LedBlinkOnboardingFailure, "Onboarding failure - generic"},
+		{LedBlinkOnboardingFailureConflict, "Onboarding failure due to conflict with another device"},
+		{LedBlinkOnboardingFailureNotFound, "Onboarding failure due to not being found in the controller"},
+		{LedBlinkRespWithoutTLS, "Response without TLS - ignored"},
+		{LedBlinkRespWithoutOSCP, "Response without OSCP or bad OSCP - ignored"},
+		{LedBlinkInvalidControllerCert, "Failed to fetch or verify EV Controller certificate"},
+		{LedBlinkInvalidAuthContainer, "Response has invalid controller signature"},
+		{LedBlinkInvalidBootstrapConfig, "Invalid Bootstrap configuration"},
+		{LedBlinkCount(99), fmt.Sprintf("Unsupported LED counter (%d)", 99)},
+	}
+	for _, tc := range cases {
+		assert.Equal(t, tc.want, tc.c.String())
 	}
 }

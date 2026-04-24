@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/lf-edge/eve-api/go/info"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -79,4 +80,36 @@ func TestDeviceOperationString(t *testing.T) {
 	for _, tc := range cases {
 		assert.Equal(t, tc.want, tc.do.String())
 	}
+}
+
+// MaintenanceModeMultiReason.String and ToProto
+
+func TestMaintenanceModeMultiReasonString(t *testing.T) {
+	// Empty slice → empty string
+	assert.Equal(t, "", MaintenanceModeMultiReason{}.String())
+
+	// Single reason
+	single := MaintenanceModeMultiReason{MaintenanceModeReasonNone}
+	assert.Equal(t, "MaintenanceModeReasonNone", single.String())
+
+	// Multiple reasons joined with |
+	multi := MaintenanceModeMultiReason{
+		MaintenanceModeReasonUserRequested,
+		MaintenanceModeReasonVaultLockedUp,
+	}
+	assert.Equal(t, "MaintenanceModeReasonUserRequested|MaintenanceModeReasonVaultLockedUp", multi.String())
+}
+
+func TestMaintenanceModeMultiReasonToProto(t *testing.T) {
+	// nil/empty → nil result
+	assert.Nil(t, MaintenanceModeMultiReason{}.ToProto())
+
+	multi := MaintenanceModeMultiReason{
+		MaintenanceModeReasonNone,
+		MaintenanceModeReasonUserRequested,
+	}
+	got := multi.ToProto()
+	assert.Len(t, got, 2)
+	assert.Equal(t, info.MaintenanceModeReason(MaintenanceModeReasonNone), got[0])
+	assert.Equal(t, info.MaintenanceModeReason(MaintenanceModeReasonUserRequested), got[1])
 }
