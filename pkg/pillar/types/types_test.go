@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/lf-edge/eve-api/go/info"
 	uuid "github.com/satori/go.uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -201,4 +202,36 @@ func TestAppInterfaceToNumNew(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, key, result.AppInterfaceKey)
 	assert.False(t, result.CreateTime.IsZero())
+}
+
+// SwState.ZSwState
+
+func TestSwStateZSwState(t *testing.T) {
+	cases := []struct {
+		state SwState
+		want  info.ZSwState
+	}{
+		{INITIAL, info.ZSwState_INITIAL},
+		{DOWNLOADING, info.ZSwState_DOWNLOAD_STARTED},
+		{DOWNLOADED, info.ZSwState_DOWNLOADED},
+		{VERIFYING, info.ZSwState_VERIFYING},
+		{VERIFIED, info.ZSwState_VERIFIED},
+		{LOADING, info.ZSwState_LOADING},
+		{INSTALLED, info.ZSwState_INSTALLED},
+		{BOOTING, info.ZSwState_BOOTING},
+		{RUNNING, info.ZSwState_RUNNING},
+		// PAUSING maps to RUNNING (controllers don't support PAUSING)
+		{PAUSING, info.ZSwState_RUNNING},
+		{HALTING, info.ZSwState_HALTING},
+		{HALTED, info.ZSwState_HALTED},
+		{FAILED, info.ZSwState_ERROR},
+		{PENDING, info.ZSwState_PENDING},
+		{START_DELAYED, info.ZSwState_START_DELAYED},
+		{REMOTELOADED, info.ZSwState_LOADED},
+		{SCHEDULING, info.ZSwState_SCHEDULING},
+		{UNKNOWN, info.ZSwState_RUNNING},
+	}
+	for _, tc := range cases {
+		assert.Equal(t, tc.want, tc.state.ZSwState(), "state=%v", tc.state)
+	}
 }

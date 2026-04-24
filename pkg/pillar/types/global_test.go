@@ -843,3 +843,31 @@ func TestMakeSemverValidatorWithMetadataPrefix(t *testing.T) {
 	assert.Error(t, validator("1.28.0+other"))
 	assert.Error(t, validator("1.28.0")) // no metadata
 }
+
+// SenderStatus.String
+
+func TestSenderStatusString(t *testing.T) {
+	cases := []struct {
+		status SenderStatus
+		want   string
+	}{
+		{SenderStatusNone, "SenderStatusNone"},
+		{SenderStatusRefused, "SenderStatusRefused"},
+		{SenderStatusUpgrade, "SenderStatusUpgrade"},
+		{SenderStatusCertInvalid, "SenderStatusCertInvalid"},
+		{SenderStatusCertMiss, "SenderStatusCertMiss"},
+		{SenderStatusSignVerifyFail, "SenderStatusSignVerifyFail"},
+		{SenderStatusAlgoFail, "SenderStatusAlgoFail"},
+		{SenderStatusHashSizeError, "SenderStatusHashSizeError"},
+		{SenderStatusCertUnknownAuthority, "SenderStatusCertUnknownAuthority"},
+		{SenderStatusCertUnknownAuthorityProxy, "SenderStatusCertUnknownAuthorityProxy"},
+		{SenderStatusNotFound, "SenderStatusNotFound"},
+		{SenderStatusForbidden, "SenderStatusForbidden"},
+		{SenderStatusFailed, "SenderStatusFailed"},
+		{SenderStatusDebug, "SenderStatusDebug"},
+		{SenderStatus(99), fmt.Sprintf("Unknown status %d", 99)},
+	}
+	for _, tc := range cases {
+		assert.Equal(t, tc.want, tc.status.String())
+	}
+}

@@ -140,3 +140,39 @@ func TestPatchEnvelopeUsageFromInfo(t *testing.T) {
 	usages = types.PatchEnvelopeUsageFromInfo(pe)
 	assert.Len(t, usages, 0)
 }
+
+// MarshalJSON for BinaryBlobCompleted, BinaryBlobVolumeRef, BinaryCipherBlob
+
+func TestBinaryBlobCompletedMarshalJSON(t *testing.T) {
+	blob := types.BinaryBlobCompleted{
+		FileName:     "test.bin",
+		FileSha:      "abc123",
+		FileMetadata: "meta",
+		URL:          "./testurl",
+		Size:         1024,
+	}
+	data, err := blob.MarshalJSON()
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "test.bin")
+	assert.Contains(t, string(data), "abc123")
+}
+
+func TestBinaryBlobVolumeRefMarshalJSON(t *testing.T) {
+	blob := types.BinaryBlobVolumeRef{
+		FileName:  "vol.bin",
+		ImageName: "myimage",
+	}
+	data, err := blob.MarshalJSON()
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "vol.bin")
+}
+
+func TestBinaryCipherBlobMarshalJSON(t *testing.T) {
+	blob := types.BinaryCipherBlob{
+		EncType: types.BlobEncrytedTypeInline,
+		EncURL:  "https://example.com/blob",
+	}
+	data, err := blob.MarshalJSON()
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "https://example.com/blob")
+}

@@ -1897,6 +1897,31 @@ func TestNetworkInstanceInfoAddRemoveVif(t *testing.T) {
 	assert.Len(t, info.Vifs, 0)
 }
 
+// IPRouteConfig.Equal
+// Note: the implementation uses && not == for PreferStrongerWwanSignal,
+// so both must be true for Equal to return true with that flag set.
+
+func TestIPRouteConfigEqual(t *testing.T) {
+	_, dst, _ := net.ParseCIDR("192.168.0.0/24")
+	gw := net.ParseIP("10.0.0.1")
+
+	r1 := IPRouteConfig{
+		DstNetwork:              dst,
+		Gateway:                 gw,
+		OutputPortLabel:         "eth0",
+		PreferStrongerWwanSignal: true,
+	}
+	r2 := r1
+	assert.True(t, r1.Equal(r2))
+
+	r2.OutputPortLabel = "eth1"
+	assert.False(t, r1.Equal(r2))
+
+	r2 = r1
+	r2.Gateway = net.ParseIP("10.0.0.2")
+	assert.False(t, r1.Equal(r2))
+}
+
 // IPRouteConfig.String
 
 func TestIPRouteConfigString(t *testing.T) {
@@ -1924,4 +1949,33 @@ func TestConnectivityProbeString(t *testing.T) {
 
 	cp = ConnectivityProbe{Method: ConnectivityProbeMethodTCP, ProbeHost: "1.2.3.4", ProbePort: 80}
 	assert.Equal(t, "tcp://1.2.3.4:80", cp.String())
+}
+
+// NetworkInstanceStatus.CombineErrors
+
+func TestNetworkInstanceStatusCombineErrors(t *testing.T) {
+	// No errors → empty result
+	s := NetworkInstanceStatus{}
+	combined := s.CombineErrors()
+	assert.False(t, combined.HasError())
+
+	// One error present
+	s.ValidationErr = ErrorAndTime{}
+	s.ValidationErr.SetError("validation failed", time.Now())
+	combined = s.CombineErrors()
+	assert.True(t, combined.HasError())
+	assert.Contains(t, combined.Error, "validation failed")
+}
+
+// AppMACGenerator.New
+
+func TestAppMACGeneratorNew(t *testing.T) {
+	id := uuid.Must(uuid.NewV4())
+	gen := &AppMACGenerator{UuidToNum: &UuidToNum{}}
+	key := UuidToNumKey{UUID: id}
+	obj := gen.New(key)
+	require.NotNil(t, obj)
+	result, ok := obj.(*AppMACGenerator)
+	require.True(t, ok)
+	assert.Equal(t, id, result.UUID)
 }

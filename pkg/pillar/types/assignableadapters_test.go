@@ -1067,6 +1067,35 @@ func TestHasAdapterChangedLogicallabel(t *testing.T) {
 	assert.True(t, ib.HasAdapterChanged(log, phyAdapter))
 }
 
+// AssignableAdapters.AddOrUpdateIoBundle
+
+func TestAddOrUpdateIoBundle(t *testing.T) {
+	log := base.NewSourceLogObject(logrus.StandardLogger(), "test", 0) //nolint:staticcheck
+	aa := AssignableAdapters{Initialized: true}
+
+	// Add new bundle
+	ib := IoBundle{
+		Type:     IoNetEth,
+		Phylabel: "eth99",
+		Ifname:   "eth99",
+	}
+	aa.AddOrUpdateIoBundle(log, ib)
+	assert.Len(t, aa.IoBundleList, 1)
+	assert.Equal(t, "eth99", aa.IoBundleList[0].Phylabel)
+
+	// Update existing bundle - preserves IsPort
+	existing := aa.LookupIoBundlePhylabel("eth99")
+	require.NotNil(t, existing)
+	existing.IsPort = true
+
+	updated := ib
+	updated.Ifname = "eth99-updated"
+	aa.AddOrUpdateIoBundle(log, updated)
+	assert.Len(t, aa.IoBundleList, 1)
+	// IsPort preserved
+	assert.True(t, aa.IoBundleList[0].IsPort)
+}
+
 // IOBundleError.Empty and ErrorTime
 
 func TestIOBundleErrorEmptyAndErrorTime(t *testing.T) {

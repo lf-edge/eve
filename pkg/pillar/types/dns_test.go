@@ -346,6 +346,29 @@ func TestGetMgmtPortsSortedCostWithoutFailed(t *testing.T) {
 	assert.NotContains(t, ports, "eth1")
 }
 
+// DeviceNetworkStatus.UpdatePortStatusFromIntfStatusMap
+
+func TestDeviceNetworkStatusUpdatePortStatusFromIntfStatusMap(t *testing.T) {
+	now := time.Now()
+	dns := DeviceNetworkStatus{
+		Ports: []NetworkPortStatus{
+			{IfName: "eth0"},
+			{IfName: "eth1"},
+		},
+	}
+	statusMap := IntfStatusMap{
+		StatusMap: map[string]TestResults{
+			"eth0": {LastSucceeded: now, LastError: ""},
+		},
+	}
+	dns.UpdatePortStatusFromIntfStatusMap(statusMap)
+
+	// eth0 should be updated
+	assert.Equal(t, now, dns.Ports[0].TestResults.LastSucceeded)
+	// eth1 was not in map, unchanged
+	assert.True(t, dns.Ports[1].TestResults.LastSucceeded.IsZero())
+}
+
 // GetDNSServers
 
 func TestGetDNSServers(t *testing.T) {

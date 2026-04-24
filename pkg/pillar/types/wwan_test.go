@@ -4,6 +4,7 @@
 package types
 
 import (
+	"net"
 	"testing"
 
 	"github.com/lf-edge/eve-api/go/evecommon"
@@ -151,6 +152,66 @@ func TestWwanMetricsEqual(t *testing.T) {
 
 	wm2.Networks[0].LogicalLabel = "wwan1"
 	assert.False(t, wm1.Equal(wm2))
+}
+
+// WwanIPSettings.Equal
+
+func TestWwanIPSettingsEqual(t *testing.T) {
+	_, net1, _ := net.ParseCIDR("10.0.0.0/24")
+	s1 := WwanIPSettings{
+		Address: net1,
+		Gateway: net.ParseIP("10.0.0.1"),
+		MTU:     1500,
+	}
+	s2 := s1
+	assert.True(t, s1.Equal(s2))
+
+	s2.MTU = 1400
+	assert.False(t, s1.Equal(s2))
+
+	s2 = s1
+	s2.Gateway = net.ParseIP("10.0.0.2")
+	assert.False(t, s1.Equal(s2))
+}
+
+// WwanNetworkStatus.Equal
+
+func TestWwanNetworkStatusEqual(t *testing.T) {
+	wns1 := WwanNetworkStatus{LogicalLabel: "wwan0"}
+	wns2 := wns1
+	assert.True(t, wns1.Equal(wns2))
+
+	wns2.LogicalLabel = "wwan1"
+	assert.False(t, wns1.Equal(wns2))
+}
+
+// WwanConfig.Equal
+
+func TestWwanConfigEqual(t *testing.T) {
+	wc1 := WwanConfig{
+		DPCKey:      "key1",
+		RadioSilence: false,
+	}
+	wc2 := wc1
+	assert.True(t, wc1.Equal(wc2))
+
+	wc2.DPCKey = "key2"
+	assert.False(t, wc1.Equal(wc2))
+
+	wc2 = wc1
+	wc2.RadioSilence = true
+	assert.False(t, wc1.Equal(wc2))
+}
+
+// WwanStatus.Equal
+
+func TestWwanStatusEqual(t *testing.T) {
+	ws1 := WwanStatus{DPCKey: "key1"}
+	ws2 := ws1
+	assert.True(t, ws1.Equal(ws2))
+
+	ws2.DPCKey = "key2"
+	assert.False(t, ws1.Equal(ws2))
 }
 
 // WwanIPType.FromProto and ToProto

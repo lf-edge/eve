@@ -391,6 +391,37 @@ func TestIsEveDefinedPortLabel(t *testing.T) {
 	assert.False(t, IsEveDefinedPortLabel(""))
 }
 
+// NetworkPortConfig.UpdateEveDefinedSharedLabels
+
+func TestNetworkPortConfigUpdateEveDefinedSharedLabels(t *testing.T) {
+	// Mgmt port with cost 0 → AllPortsLabel, UplinkLabel, FreeUplinkLabel
+	port := NetworkPortConfig{IsMgmt: true, Cost: 0}
+	port.UpdateEveDefinedSharedLabels()
+	assert.Contains(t, port.SharedLabels, AllPortsLabel)
+	assert.Contains(t, port.SharedLabels, UplinkLabel)
+	assert.Contains(t, port.SharedLabels, FreeUplinkLabel)
+
+	// Mgmt port with cost > 0 → AllPortsLabel, UplinkLabel (no FreeUplinkLabel)
+	port = NetworkPortConfig{IsMgmt: true, Cost: 10}
+	port.UpdateEveDefinedSharedLabels()
+	assert.Contains(t, port.SharedLabels, AllPortsLabel)
+	assert.Contains(t, port.SharedLabels, UplinkLabel)
+	assert.NotContains(t, port.SharedLabels, FreeUplinkLabel)
+
+	// Non-mgmt port → only AllPortsLabel
+	port = NetworkPortConfig{IsMgmt: false, Cost: 0}
+	port.UpdateEveDefinedSharedLabels()
+	assert.Contains(t, port.SharedLabels, AllPortsLabel)
+	assert.NotContains(t, port.SharedLabels, UplinkLabel)
+	assert.NotContains(t, port.SharedLabels, FreeUplinkLabel)
+
+	// User labels are preserved, EVE labels are replaced
+	port = NetworkPortConfig{IsMgmt: true, Cost: 0, SharedLabels: []string{"my-custom-label", UplinkLabel}}
+	port.UpdateEveDefinedSharedLabels()
+	assert.Contains(t, port.SharedLabels, "my-custom-label")
+	assert.Contains(t, port.SharedLabels, AllPortsLabel)
+}
+
 // PortConfigSource.Equal
 
 func TestPortConfigSourceEqual(t *testing.T) {

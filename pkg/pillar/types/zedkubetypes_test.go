@@ -89,6 +89,151 @@ func TestZStorageVolumeReplicaStatus(t *testing.T) {
 	}
 }
 
+// KubeVMIStatus.ZKubeVMIStatus
+
+func TestZKubeVMIStatus(t *testing.T) {
+	cases := []struct {
+		in   KubeVMIStatus
+		want info.KubeVMIStatus
+	}{
+		{KubeVMIStatusUnset, info.KubeVMIStatus_KUBE_VMI_STATUS_UNSPECIFIED},
+		{KubeVMIStatusPending, info.KubeVMIStatus_KUBE_VMI_STATUS_PENDING},
+		{KubeVMIStatusScheduling, info.KubeVMIStatus_KUBE_VMI_STATUS_SCHEDULING},
+		{KubeVMIStatusScheduled, info.KubeVMIStatus_KUBE_VMI_STATUS_SCHEDULED},
+		{KubeVMIStatusRunning, info.KubeVMIStatus_KUBE_VMI_STATUS_RUNNING},
+		{KubeVMIStatusSucceeded, info.KubeVMIStatus_KUBE_VMI_STATUS_SUCCEEDED},
+		{KubeVMIStatusFailed, info.KubeVMIStatus_KUBE_VMI_STATUS_FAILED},
+		{KubeVMIStatusUnknown, info.KubeVMIStatus_KUBE_VMI_STATUS_UNKNOWN},
+		{KubeVMIStatus(99), info.KubeVMIStatus_KUBE_VMI_STATUS_UNKNOWN},
+	}
+	for _, tc := range cases {
+		assert.Equal(t, tc.want, tc.in.ZKubeVMIStatus())
+	}
+}
+
+// KubeVMIInfo.ZKubeVMIInfo
+
+func TestZKubeVMIInfo(t *testing.T) {
+	kvi := KubeVMIInfo{
+		Name:     "myapp-vmi",
+		Status:   KubeVMIStatusRunning,
+		IsReady:  true,
+		NodeName: "node1",
+	}
+	result := kvi.ZKubeVMIInfo()
+	assert.NotNil(t, result)
+	assert.Equal(t, "myapp-vmi", result.Name)
+	assert.Equal(t, info.KubeVMIStatus_KUBE_VMI_STATUS_RUNNING, result.Status)
+	assert.True(t, result.IsReady)
+	assert.Equal(t, "node1", result.NodeName)
+}
+
+// KubePodInfo.ZKubeEVEAppPodInfo
+
+func TestZKubeEVEAppPodInfo(t *testing.T) {
+	kpi := KubePodInfo{
+		Name:     "myapp-pod",
+		Status:   KubePodStatusRunning,
+		PodIP:    "10.244.0.1",
+		NodeName: "node1",
+	}
+	result := kpi.ZKubeEVEAppPodInfo()
+	assert.NotNil(t, result)
+	assert.Equal(t, "myapp-pod", result.Name)
+	assert.Equal(t, info.KubePodStatus_KUBE_POD_STATUS_RUNNING, result.Status)
+	assert.Equal(t, "10.244.0.1", result.IpAddress)
+	assert.Equal(t, "node1", result.NodeName)
+}
+
+// KubeVolumeReplicaInfo.ZKubeVolumeReplicaInfo
+
+func TestZKubeVolumeReplicaInfo(t *testing.T) {
+	kvri := KubeVolumeReplicaInfo{
+		Name:                      "vol-replica-0",
+		OwnerNode:                 "node1",
+		RebuildProgressPercentage: 50,
+		Status:                    StorageVolumeReplicaStatusOnline,
+	}
+	result := kvri.ZKubeVolumeReplicaInfo()
+	assert.NotNil(t, result)
+	assert.Equal(t, "vol-replica-0", result.Name)
+	assert.Equal(t, "node1", result.OwnerNode)
+	assert.Equal(t, uint32(50), result.RebuildProgressPercentage)
+	assert.Equal(t, info.StorageVolumeReplicaStatus_STORAGE_VOLUME_REPLICA_STATUS_ONLINE, result.Status)
+}
+
+// ServiceStatus.ZServiceStatus
+
+func TestZServiceStatus(t *testing.T) {
+	cases := []struct {
+		in   ServiceStatus
+		want info.ServiceStatus
+	}{
+		{ServiceStatusUnset, info.ServiceStatus_SERVICE_STATUS_UNSPECIFIED},
+		{ServiceStatusFailed, info.ServiceStatus_SERVICE_STATUS_FAILED},
+		{ServiceStatusDegraded, info.ServiceStatus_SERVICE_STATUS_DEGRADED},
+		{ServiceStatusHealthy, info.ServiceStatus_SERVICE_STATUS_HEALTHY},
+		{ServiceStatus(99), info.ServiceStatus_SERVICE_STATUS_UNSPECIFIED},
+	}
+	for _, tc := range cases {
+		assert.Equal(t, tc.want, tc.in.ZServiceStatus())
+	}
+}
+
+// KubeVolumeInfo.ZKubeVolumeInfo
+
+func TestZKubeVolumeInfo(t *testing.T) {
+	kvi := KubeVolumeInfo{
+		Name:             "longhorn-vol",
+		State:            StorageVolumeStateAttached,
+		ProvisionedBytes: 10 * 1024 * 1024 * 1024,
+		VolumeID:         "vol-123",
+	}
+	result := kvi.ZKubeVolumeInfo()
+	assert.NotNil(t, result)
+	assert.Equal(t, "longhorn-vol", result.Name)
+	assert.Equal(t, info.StorageVolumeState_STORAGE_VOLUME_STATE_ATTACHED, result.State)
+	assert.Equal(t, uint64(10*1024*1024*1024), result.ProvisionedBytes)
+	assert.Equal(t, "vol-123", result.VolumeId)
+}
+
+// KubeStorageInfo.ZKubeStorageInfo
+
+func TestZKubeStorageInfo(t *testing.T) {
+	ksi := KubeStorageInfo{
+		Health: ServiceStatusHealthy,
+		Volumes: []KubeVolumeInfo{
+			{Name: "vol1", State: StorageVolumeStateAttached},
+		},
+	}
+	result := ksi.ZKubeStorageInfo()
+	assert.NotNil(t, result)
+	assert.Equal(t, info.ServiceStatus_SERVICE_STATUS_HEALTHY, result.Health)
+	assert.Len(t, result.Volumes, 1)
+	assert.Equal(t, "vol1", result.Volumes[0].Name)
+}
+
+// KubeNodeInfo.ZKubeNodeInfo
+
+func TestZKubeNodeInfo(t *testing.T) {
+	kni := KubeNodeInfo{
+		Name:        "node-1",
+		Status:      KubeNodeStatusReady,
+		IsMaster:    true,
+		InternalIP:  "10.0.0.1",
+		Schedulable: true,
+		Admission:   NodeAdmissionJoined,
+		NodeID:      "abc-123",
+	}
+	result := kni.ZKubeNodeInfo()
+	assert.NotNil(t, result)
+	assert.Equal(t, "node-1", result.Name)
+	assert.Equal(t, "10.0.0.1", result.InternalIp)
+	assert.True(t, result.Schedulable)
+	assert.Equal(t, info.NodeAdmission_NODE_ADMISSION_JOINED, result.AdmissionStatus)
+	assert.Equal(t, "abc-123", result.NodeId)
+}
+
 // KubeUserServices.Equal
 
 func TestKubeUserServicesEqual(t *testing.T) {
