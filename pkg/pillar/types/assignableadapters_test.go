@@ -742,6 +742,30 @@ func TestCheckBadParentAssigngrpLoop(t *testing.T) {
 
 }
 
+// CheckParentAssigngrp — ErrEmptyAssigngrpWithParent branch
+
+func TestCheckParentAssigngrpEmptyAssigngrp(t *testing.T) {
+	aa := AssignableAdapters{
+		IoBundleList: []IoBundle{
+			{
+				Phylabel:              "1",
+				AssignmentGroup:       "", // empty
+				ParentAssignmentGroup: "AAA",
+			},
+		},
+	}
+	result := aa.CheckParentAssigngrp()
+	assert.True(t, result)
+
+	found := false
+	for _, ib := range aa.IoBundleList {
+		if ib.Phylabel == "1" {
+			found = ib.Error.String() != ""
+		}
+	}
+	assert.True(t, found, "expected error on bundle with empty assigngrp but non-empty parent")
+}
+
 func TestCheckBadUSBBundles(t *testing.T) {
 	t.Parallel()
 	aa := AssignableAdapters{}
@@ -1224,6 +1248,28 @@ func TestHasAdapterChangedRemainingBranches(t *testing.T) {
 	pa = makePhyAdapter(base2)
 	pa.Usage = zcommon.PhyIoMemberUsage_PhyIoUsageDedicated
 	assert.True(t, base2.HasAdapterChanged(log, pa))
+}
+
+// HasAdapterChanged — Vfs diff branch
+
+func TestHasAdapterChangedVfsDiff(t *testing.T) {
+	log := base.NewSourceLogObject(logrus.StandardLogger(), "test", 1234)
+	ib := IoBundle{
+		Type:     IoNetEth,
+		Phylabel: "eth0",
+		Ifname:   "eth0",
+	}
+	pa := PhysicalIOAdapter{
+		Ptype:    zcommon.PhyIoType_PhyIoNetEth,
+		Phylabel: "eth0",
+		Phyaddr:  PhysicalAddress{Ifname: "eth0"},
+	}
+	// No Vfs in either → no change
+	assert.False(t, ib.HasAdapterChanged(log, pa))
+
+	// Vfs differs → changed
+	pa.Vfs.Count = 2
+	assert.True(t, ib.HasAdapterChanged(log, pa))
 }
 
 // IOBundleError.Empty and ErrorTime

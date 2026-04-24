@@ -194,7 +194,7 @@ func TestWwanNetworkStatusEqual(t *testing.T) {
 
 func TestWwanConfigEqual(t *testing.T) {
 	wc1 := WwanConfig{
-		DPCKey:      "key1",
+		DPCKey:       "key1",
 		RadioSilence: false,
 	}
 	wc2 := wc1
@@ -677,4 +677,25 @@ func TestWwanStatusEqualTimestampNetworks(t *testing.T) {
 		Networks: []WwanNetworkStatus{{LogicalLabel: "wwan1"}},
 	}
 	assert.False(t, ws1net.Equal(ws2net))
+}
+
+// WwanStatus.DoSanitize — default case (non-unique model, no IMEI)
+
+func TestWwanStatusDoSanitizeDefaultCase(t *testing.T) {
+	// Two networks with the same model and no IMEI → default: use USB address
+	ws := WwanStatus{
+		Networks: []WwanNetworkStatus{
+			{
+				Module:    WwanCellModule{Model: "EM7455"},
+				PhysAddrs: WwanPhysAddrs{USB: "1:2.3"},
+			},
+			{
+				Module:    WwanCellModule{Model: "EM7455"},
+				PhysAddrs: WwanPhysAddrs{USB: "1:2.4"},
+			},
+		},
+	}
+	ws.DoSanitize()
+	assert.Equal(t, "1:2.3", ws.Networks[0].Module.Name)
+	assert.Equal(t, "1:2.4", ws.Networks[1].Module.Name)
 }

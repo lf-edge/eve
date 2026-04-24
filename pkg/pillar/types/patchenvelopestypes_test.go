@@ -176,3 +176,20 @@ func TestBinaryCipherBlobMarshalJSON(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(data), "https://example.com/blob")
 }
+
+// marshalWithCustomLogic — non-empty EncArtifactMeta branch (else path)
+
+func TestBinaryBlobCompletedMarshalJSONNonEmptyEncMeta(t *testing.T) {
+	// Non-zero EncArtifactMeta → covers the else branch in marshalWithCustomLogic
+	blob := types.BinaryBlobCompleted{
+		FileName: "secure.bin",
+		EncArtifactMeta: types.CipherBlockStatus{
+			IsCipher: true,
+		},
+	}
+	data, err := blob.MarshalJSON()
+	require.NoError(t, err)
+	s := string(data)
+	assert.Contains(t, s, "secure.bin")
+	assert.Contains(t, s, "encArtifactMeta")
+}

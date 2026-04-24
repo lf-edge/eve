@@ -36,6 +36,11 @@ func TestEvalStatusIsOnboardingAllowed(t *testing.T) {
 	s.Phase = EvalPhaseFinal
 	assert.True(t, s.IsOnboardingAllowed())
 
+	// Eval platform, Testing phase, AllowOnboard=true → true (manual override)
+	s.Phase = EvalPhaseTesting
+	s.AllowOnboard = true
+	assert.True(t, s.IsOnboardingAllowed())
+
 	// Eval platform, unknown phase, AllowOnboard=true → false (conservative)
 	s.Phase = EvalPhase("unknown")
 	assert.False(t, s.IsOnboardingAllowed())

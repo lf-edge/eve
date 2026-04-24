@@ -269,9 +269,9 @@ func TestL2LinkConfigEqual(t *testing.T) {
 
 func TestCellularAccessPointEqual(t *testing.T) {
 	ap1 := CellularAccessPoint{
-		SIMSlot:    1,
-		Activated:  true,
-		APN:        "internet",
+		SIMSlot:       1,
+		Activated:     true,
+		APN:           "internet",
 		ForbidRoaming: false,
 	}
 	ap2 := ap1
@@ -282,6 +282,11 @@ func TestCellularAccessPointEqual(t *testing.T) {
 
 	ap2 = ap1
 	ap2.ForbidRoaming = true
+	assert.False(t, ap1.Equal(ap2))
+
+	// AttachAPN diff → covers the third return false block
+	ap2 = ap1
+	ap2.AttachAPN = "attach.example.com"
 	assert.False(t, ap1.Equal(ap2))
 }
 
@@ -306,6 +311,13 @@ func TestIPRangeSize(t *testing.T) {
 		End:   net.ParseIP("10.0.0.10"),
 	}
 	assert.Equal(t, uint32(9), r.Size())
+
+	// Start > End (reversed) → ip1Int > ip2Int path
+	r_rev := IPRange{
+		Start: net.ParseIP("10.0.0.10"),
+		End:   net.ParseIP("10.0.0.1"),
+	}
+	assert.Equal(t, uint32(9), r_rev.Size())
 
 	// Single address range
 	r2 := IPRange{
@@ -347,6 +359,7 @@ func TestDPCStateString(t *testing.T) {
 		{DPCStateRemoteWait, "DPC_REMOTE_WAIT"},
 		{DPCStateAsyncWait, "DPC_ASYNC_WAIT"},
 		{DPCStateWwanWait, "DPC_WWAN_WAIT"},
+		{DPCState(200), "Unknown status 200"}, // default case
 	}
 	for _, tc := range cases {
 		assert.Equal(t, tc.want, tc.state.String())
@@ -542,4 +555,23 @@ func TestDevicePortConfigUpdatePortStatusFromIntfStatusMap(t *testing.T) {
 	port1 := dpc.LookupPortByIfName("eth1")
 	require.NotNil(t, port1)
 	assert.True(t, port1.LastSucceeded.IsZero())
+}
+
+// DevicePortConfig.IsDPCTestable — not-usable and future-LastFailed branches
+
+func TestIsDPCTestableExtraBranches(t *testing.T) {
+	// Not usable (no mgmt ports) → false
+	dpc := DevicePortConfig{
+		Ports: []NetworkPortConfig{{IfName: "eth0", IsMgmt: false}},
+	}
+	assert.False(t, dpc.IsDPCTestable(5*time.Minute))
+
+	// Usable, LastFailed in the future (clock not synced) → true
+	dpc = DevicePortConfig{
+		Ports: []NetworkPortConfig{{IfName: "eth0", IsMgmt: true}},
+		TestResults: TestResults{
+			LastFailed: time.Now().Add(time.Hour),
+		},
+	}
+	assert.True(t, dpc.IsDPCTestable(5*time.Minute))
 }

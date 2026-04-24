@@ -846,6 +846,12 @@ func TestMakeSemverValidatorWithMetadataPrefix(t *testing.T) {
 	assert.Error(t, validator("1.28.0")) // no metadata
 }
 
+func TestMakeSemverValidatorInvalidConstraint(t *testing.T) {
+	// An invalid constraint string causes NewConstraint to fail → covers return err
+	validator := makeSemverValidator("", []string{"!invalid-constraint-@@"})
+	assert.Error(t, validator("1.0.0"))
+}
+
 // SenderStatus.String
 
 func TestSenderStatusString(t *testing.T) {

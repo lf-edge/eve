@@ -1836,11 +1836,11 @@ func TestIPRouteInfoEqual(t *testing.T) {
 	id := uuid.Must(uuid.NewV4())
 
 	r1 := IPRouteInfo{
-		IPVersion:   4,
-		DstNetwork:  dst,
-		Gateway:     gw,
-		OutputPort:  "eth0",
-		GatewayApp:  id,
+		IPVersion:  4,
+		DstNetwork: dst,
+		Gateway:    gw,
+		OutputPort: "eth0",
+		GatewayApp: id,
 	}
 	r2 := r1
 	assert.True(t, r1.Equal(r2))
@@ -1906,9 +1906,9 @@ func TestIPRouteConfigEqual(t *testing.T) {
 	gw := net.ParseIP("10.0.0.1")
 
 	r1 := IPRouteConfig{
-		DstNetwork:              dst,
-		Gateway:                 gw,
-		OutputPortLabel:         "eth0",
+		DstNetwork:               dst,
+		Gateway:                  gw,
+		OutputPortLabel:          "eth0",
 		PreferStrongerWwanSignal: true,
 	}
 	r2 := r1
@@ -1965,6 +1965,30 @@ func TestNetworkInstanceStatusCombineErrors(t *testing.T) {
 	combined = s.CombineErrors()
 	assert.True(t, combined.HasError())
 	assert.Contains(t, combined.Error, "validation failed")
+}
+
+// NetworkInstanceStatus.CombineErrors — second error is later (else branch) + IntendedRoutes
+
+func TestNetworkInstanceStatusCombineErrorsNewerSecond(t *testing.T) {
+	earlier := time.Now().Add(-10 * time.Second)
+	later := time.Now()
+
+	s := NetworkInstanceStatus{}
+	// ValidationErr is earlier (sets oldestTime)
+	s.ValidationErr.SetError("validation failed", earlier)
+	// AllocationErr is later — should NOT update oldestTime (covers else branch)
+	s.AllocationErr.SetError("alloc failed", later)
+	// IntendedRoutes error — covers the append(errorSlice, route.ErrorAndTime) branch
+	routeErr := IPRouteStatus{}
+	routeErr.SetError("route failed", later)
+	s.IntendedRoutes = []IPRouteStatus{routeErr}
+
+	combined := s.CombineErrors()
+	assert.True(t, combined.HasError())
+	assert.Contains(t, combined.Error, "validation failed")
+	assert.Contains(t, combined.Error, "alloc failed")
+	assert.Contains(t, combined.Error, "route failed")
+	assert.Equal(t, earlier, combined.ErrorTime)
 }
 
 // AppMACGenerator.New

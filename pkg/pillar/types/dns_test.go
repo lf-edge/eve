@@ -531,3 +531,26 @@ func TestDeviceNetworkStatusMostlyEqualRemainingBranches(t *testing.T) {
 	s2 = DeviceNetworkStatus{Ports: []NetworkPortStatus{{IfName: "eth0", Up: true}}}
 	assert.True(t, s1.MostlyEqual(s2))
 }
+
+// GetPort
+
+func TestGetPort(t *testing.T) {
+	// Not found → nil
+	dns := DeviceNetworkStatus{
+		Version: DPCIsMgmt,
+		Ports:   []NetworkPortStatus{{IfName: "eth0"}},
+	}
+	assert.Nil(t, GetPort(dns, "missing"))
+
+	// Found, version >= DPCIsMgmt → IsMgmt not forced
+	port := GetPort(dns, "eth0")
+	require.NotNil(t, port)
+	assert.Equal(t, "eth0", port.IfName)
+	assert.False(t, port.IsMgmt) // was false, stays false
+
+	// Old DPC version → IsMgmt forced to true
+	dns.Version = DPCInitial
+	port = GetPort(dns, "eth0")
+	require.NotNil(t, port)
+	assert.True(t, port.IsMgmt)
+}
