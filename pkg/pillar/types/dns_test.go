@@ -425,6 +425,13 @@ func TestDeviceNetworkStatusMostlyEqualStatusWithPorts(t *testing.T) {
 		Ports:        []NetworkPortStatus{{IfName: "eth0", TestResults: TestResults{LastFailed: now, LastError: "link down"}}},
 	}
 	assert.False(t, s1.MostlyEqualStatus(s3))
+
+	// MostlyEqual itself returns false → first if in MostlyEqualStatus triggers
+	s4 := DeviceNetworkStatus{
+		State: DPCStateSuccess,
+		Ports: []NetworkPortStatus{{IfName: "eth1"}}, // different IfName → MostlyEqual=false
+	}
+	assert.False(t, s1.MostlyEqualStatus(s4))
 }
 
 // DeviceNetworkStatus.MostlyEqual — port content diff

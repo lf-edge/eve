@@ -354,13 +354,17 @@ func TestWwanNetworkStatusCellBearersToProto(t *testing.T) {
 	wns := WwanNetworkStatus{
 		Bearers: []WwanBearer{
 			{APN: "internet", Type: BearerTypeDefault, Connected: true},
+			// Non-zero ConnectedAt exercises the timestamp branch
+			{APN: "mms", Type: BearerTypeDedicated, ConnectedAt: 1700000000},
 		},
 	}
 	bearers := wns.CellBearersToProto(log)
-	require.Len(t, bearers, 1)
+	require.Len(t, bearers, 2)
 	assert.Equal(t, "internet", bearers[0].Apn)
 	assert.True(t, bearers[0].Connected)
 	assert.Equal(t, evecommon.BearerType_BEARER_TYPE_DEFAULT, bearers[0].BearerType)
+	assert.Nil(t, bearers[0].ConnectedAt)
+	assert.NotNil(t, bearers[1].ConnectedAt)
 }
 
 // WwanNetworkStatus.CellProfilesToProto

@@ -112,6 +112,17 @@ func TestEvalStatusDetailedNote(t *testing.T) {
 	note := s.DetailedNote()
 	assert.Contains(t, note, "all good")
 	assert.Contains(t, note, "reboot in 10 sec")
+
+	// With TimeStatusString non-empty (Testing phase, in progress)
+	s2 := EvalStatus{
+		Note:          "testing",
+		Phase:         EvalPhaseTesting,
+		TestStartTime: time.Now(),
+		TestDuration:  time.Minute,
+	}
+	note2 := s2.DetailedNote()
+	assert.Contains(t, note2, "testing")
+	assert.Contains(t, note2, "Progress")
 }
 
 // EvalStatus.RemainingTime
