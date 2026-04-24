@@ -55,3 +55,43 @@ func TestIsErrorSource(t *testing.T) {
 	logrus.Infof("type after SetError %s %T", status.ErrorSourceType, status.ErrorSourceType)
 	logrus.Infof("reflect %v", reflect.TypeOf(status.ErrorSourceType))
 }
+
+// ErrorAndTime.SetErrorNow
+
+func TestErrorAndTimeSetErrorNow(t *testing.T) {
+	var et ErrorAndTime
+	before := time.Now()
+	et.SetErrorNow("something went wrong")
+	after := time.Now()
+
+	assert.Equal(t, "something went wrong", et.Error)
+	assert.True(t, et.HasError())
+	assert.True(t, !et.ErrorTime.Before(before))
+	assert.True(t, !et.ErrorTime.After(after))
+}
+
+// GetErrorSeverity
+
+func TestGetErrorSeverityBoundaries(t *testing.T) {
+	// Below both warning thresholds → Notice
+	assert.Equal(t, ErrorSeverityNotice,
+		GetErrorSeverity(0, 0))
+	assert.Equal(t, ErrorSeverityNotice,
+		GetErrorSeverity(RetryCountWarning, RetryTimeWarning))
+
+	// Just over count warning threshold
+	assert.Equal(t, ErrorSeverityWarning,
+		GetErrorSeverity(RetryCountWarning+1, 0))
+
+	// Just over time warning threshold
+	assert.Equal(t, ErrorSeverityWarning,
+		GetErrorSeverity(0, RetryTimeWarning+1))
+
+	// Over count error threshold
+	assert.Equal(t, ErrorSeverityError,
+		GetErrorSeverity(RetryCountError+1, 0))
+
+	// Over time error threshold
+	assert.Equal(t, ErrorSeverityError,
+		GetErrorSeverity(0, RetryTimeError+1))
+}

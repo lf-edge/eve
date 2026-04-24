@@ -2,8 +2,10 @@ package types
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	uuid "github.com/satori/go.uuid"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestParseTriState(t *testing.T) {
@@ -61,4 +63,20 @@ func TestParseTriState(t *testing.T) {
 		assert.IsType(t, test.err, err)
 		assert.Equal(t, test.ts, ts)
 	}
+}
+
+func TestFormatTriState(t *testing.T) {
+	assert.Equal(t, "none", FormatTriState(TS_NONE))
+	assert.Equal(t, "enabled", FormatTriState(TS_ENABLED))
+	assert.Equal(t, "disabled", FormatTriState(TS_DISABLED))
+}
+
+func TestUuidsToStrings(t *testing.T) {
+	id1 := uuid.Must(uuid.NewV4())
+	id2 := uuid.Must(uuid.NewV4())
+	strs := UuidsToStrings([]uuid.UUID{id1, id2})
+	assert.Equal(t, []string{id1.String(), id2.String()}, strs)
+
+	// Empty slice
+	assert.Equal(t, []string{}, UuidsToStrings([]uuid.UUID{}))
 }
