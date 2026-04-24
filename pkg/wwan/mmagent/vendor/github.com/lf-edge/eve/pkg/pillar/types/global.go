@@ -215,6 +215,10 @@ const (
 	Dom0DiskUsageMaxBytes GlobalSettingKey = "storage.dom0.disk.maxusagebytes"
 	// StorageZfsReserved is the percentage reserved in a ZFS pool
 	StorageZfsReserved GlobalSettingKey = "storage.zfs.reserved.percent"
+	// LonghornDiskReservedGB is the number of GB reserved per disk on the local Longhorn node.
+	// Overrides Longhorn's default 25% reservation. 0 sets storageReserved to 0 bytes (no
+	// reservation). Set to LonghornDiskReservedGBDisabled to disable EVE's override entirely.
+	LonghornDiskReservedGB GlobalSettingKey = "storage.longhorn.disk.reserved.gigabytes"
 	// AppContainerStatsInterval - App Container Stats Collection
 	AppContainerStatsInterval GlobalSettingKey = "timer.appcontainer.stats.interval"
 	// VaultReadyCutOffTime global setting key
@@ -439,7 +443,33 @@ const (
 	// K3sVersionOverride : user override k3s version.  This version will take priority
 	// over any EVE-OS baseos version defined k3s version (pkg/kube/cluster-update.sh)
 	K3sVersionOverride GlobalSettingKey = "k3s.version"
+
+	// SCEPRetryInterval defines the time interval between retry attempts
+	// for certificates that previously failed to enroll or returned PENDING
+	// from the SCEP server.
+	SCEPRetryInterval GlobalSettingKey = "scep.retry.interval"
+
+	// PnacDHCPReacquireMaxRetries defines the maximum number of DHCP reacquire
+	// retries after a PNAC (802.1X) port authentication state change.
+	// When the network switch reassigns the port to a different access VLAN
+	// based on the authentication result, EVE retries the DHCP lease acquisition
+	// with exponential backoff (2s, 4s, 8s, ...) until the IP subnet changes
+	// or the retry limit is reached. Setting this value to 0 disables DHCP reacquire.
+	PnacDHCPReacquireMaxRetries GlobalSettingKey = "pnac.dhcp.reacquire.max.retries"
+
+	// DHCPEnableVendorClassID controls whether the DHCP client sends a Vendor Class
+	// Identifier (Option 60) to identify the device as EVE OS.
+	// When enabled, "LFEDGE-EVE" is sent in DHCP requests, allowing networks or DHCP
+	// servers to apply policies such as VLAN assignment or granting access to the
+	// EVE controller.
+	// However, some badly configured DHCP servers may reject unknown vendor class IDs.
+	// Set this to false to disable sending a vendor class ID.
+	DHCPEnableVendorClassID GlobalSettingKey = "dhcp.enable.vendorclassid"
 )
+
+// LonghornDiskReservedGBDisabled is the sentinel value for LonghornDiskReservedGB that
+// disables EVE's override, leaving the current Longhorn storageReserved value untouched.
+const LonghornDiskReservedGBDisabled uint32 = 1024 * 1024
 
 // AgentSettingKey - keys for per-agent settings
 type AgentSettingKey string
@@ -1038,6 +1068,8 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(Dom0DiskUsageMaxBytes, 2*1024*1024*1024,
 		100*1024*1024, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(StorageZfsReserved, 20, 1, 99)
+	// LonghornDiskReservedGB - Default 2 GB. 0 = no reservation. LonghornDiskReservedGBDisabled = disable override.
+	configItemSpecMap.AddIntItem(LonghornDiskReservedGB, 2, 0, LonghornDiskReservedGBDisabled)
 	configItemSpecMap.AddIntItem(ForceFallbackCounter, 0, 0, 0xFFFFFFFF)
 	//
 	// Go garbage collector configuration section
@@ -1096,6 +1128,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddBoolItem(WwanModemRecoveryRestartModemManager, false)
 	configItemSpecMap.AddBoolItem(NetworkLocalLegacyMACAddress, false)
 	configItemSpecMap.AddBoolItem(MemoryMonitorEnabled, false)
+	configItemSpecMap.AddBoolItem(DHCPEnableVendorClassID, true)
 
 	// Add TriState Items
 	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_DISABLED)
@@ -1151,6 +1184,12 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	//K3s Settings
 	configItemSpecMap.AddStringItem(K3sConfigOverride, "", base64Validator)
 	configItemSpecMap.AddStringItem(K3sVersionOverride, "", k3sVersionValidator)
+
+	// SCEP settings
+	configItemSpecMap.AddIntItem(SCEPRetryInterval, 5*MinuteInSec, MinuteInSec, HourInSec)
+
+	// PNAC settings
+	configItemSpecMap.AddIntItem(PnacDHCPReacquireMaxRetries, 4, 0, 8)
 	return configItemSpecMap
 }
 

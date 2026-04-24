@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 
 	uuid "github.com/satori/go.uuid"
@@ -88,6 +89,14 @@ func GetAppKubeName(displayName string, uuid uuid.UUID) string {
 	return appKubeName + "-" + uuid.String()[:KubeAppNameUUIDSuffixLen]
 }
 
+// GetAppKubeNameWithPurge returns the Kubernetes name for an app including a purge counter
+// suffix to ensure uniqueness across purge cycles. This prevents AlreadyExists collisions
+// in the Kubernetes API when the old ReplicaSet is still terminating during a new purge cycle.
+// Format: <appKubeName>-<purgeCounter>  (e.g. "myapp-027a9-3")
+func GetAppKubeNameWithPurge(displayName string, id uuid.UUID, purgeCounter uint32) string {
+	return GetAppKubeName(displayName, id) + "-" + strconv.FormatUint(uint64(purgeCounter), 10)
+}
+
 // GetVMINameFromVirtLauncher extracts VMI name and ReplicaSet name from a Kubevirt
 // launcher pod name.
 // Pod name format: virt-launcher-<vmi-name>-<5-char-pod-suffix>
@@ -127,8 +136,21 @@ func GetReplicaPodName(displayName, podName string, uuid uuid.UUID) (kubeName st
 		return "", false
 	}
 	suffix := strings.TrimPrefix(podName, kubeName)
-	if strings.HasPrefix(suffix, "-") && len(suffix[1:]) == 5 {
+	if !strings.HasPrefix(suffix, "-") {
+		return "", false
+	}
+	rest := suffix[1:] // strip leading "-"
+	// Old format: {kubeName}-{5chars}
+	if len(rest) == 5 {
 		return kubeName, true
+	}
+	// New format with purge counter: {kubeName}-{purgeCounter}-{5chars}
+	// Find the last "-" to separate the 5-char pod suffix from the purge counter.
+	dashIdx := strings.LastIndex(rest, "-")
+	if dashIdx >= 0 && len(rest[dashIdx+1:]) == 5 {
+		if _, err := strconv.ParseUint(rest[:dashIdx], 10, 32); err == nil {
+			return kubeName, true
+		}
 	}
 	return "", false
 }
