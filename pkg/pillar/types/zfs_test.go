@@ -35,6 +35,21 @@ func TestVolumeCreatePendingZVolName(t *testing.T) {
 	vcp := VolumeCreatePending{VolumeID: id, GenerationCounter: 0}
 	got := vcp.ZVolName()
 	assert.Equal(t, fmt.Sprintf("%s/%s.0", VolumeClearZFSDataset, id.String()), got)
+
+	// Encrypted: uses VolumeEncryptedZFSDataset
+	vcp.Encrypted = true
+	got = vcp.ZVolName()
+	assert.Equal(t, fmt.Sprintf("%s/%s.0", VolumeEncryptedZFSDataset, id.String()), got)
+}
+
+// ZVolStatus.Key
+
+func TestZVolStatusKey(t *testing.T) {
+	s := ZVolStatus{Dataset: "pool/vol/data"}
+	assert.Equal(t, "pool_vol_data", s.Key())
+
+	s2 := ZVolStatus{Dataset: "simple"}
+	assert.Equal(t, "simple", s2.Key())
 }
 
 // VolumeStatus.UseZVolDisk

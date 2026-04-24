@@ -372,6 +372,7 @@ func TestWirelessTypeString(t *testing.T) {
 	assert.Equal(t, "none", WirelessTypeNone.String())
 	assert.Equal(t, "cellular", WirelessTypeCellular.String())
 	assert.Equal(t, "wifi", WirelessTypeWifi.String())
+	assert.Equal(t, "unknown(99)", WirelessType(99).String()) // default case
 }
 
 func TestWirelessConfigIsEmpty(t *testing.T) {
