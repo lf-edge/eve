@@ -10,7 +10,8 @@ ZARCH         ?= $(HOSTARCH)
 DISTDIR       := dist/$(ZARCH)
 BUILD_VERSION ?=
 
-DOCKER_LIKE_LKT:= ../../build-tools/bin/linuxkit pkg build --network --platforms linux/$(ZARCH) --dry-run --force ./ | tail -n1 | perl -pe 's/ buildx / /g'
+BUILD_YML     := $(if $(filter k,$(HV)),$(if $(and $(filter y,$(DEV)),$(wildcard build-k-dev.yml)),build-k-dev.yml,build-k.yml),build.yml)
+DOCKER_LIKE_LKT:= ../../build-tools/bin/linuxkit pkg build --network --platforms linux/$(ZARCH) --dry-run --force --build-yml $(BUILD_YML) ./ | tail -n1 | perl -pe 's/ buildx / /g'
 DOCKER_TAG:=lfedge/eve-pillar:local-$(ZARCH)
 
 APPS = zedbox
@@ -95,9 +96,9 @@ enter-docker-dev: build-docker-test
 build-docker-test-dependencies:
 	make -C ../../ pillar-cache-export-docker-load
 build-docker-test-build: build-docker-test-dependencies
-	$(shell $(DOCKER_LIKE_LKT)) --build-arg TEST_TOOLS=y --load --target build
+	$(shell $(DOCKER_LIKE_LKT)) --build-arg TEST_TOOLS=y --build-arg BUILDARCH=$(ZARCH) --load --target build
 build-docker-test: build-docker-test-build
-	docker image tag $(shell $(shell $(DOCKER_LIKE_LKT)) --build-arg TEST_TOOLS=y --load -q --target build) $(DOCKER_TAG)
+	docker image tag $(shell $(shell $(DOCKER_LIKE_LKT)) --build-arg TEST_TOOLS=y --build-arg BUILDARCH=$(ZARCH) --load -q --target build) $(DOCKER_TAG)
 
 test: build-docker-test
 	rm -f results.json results.xml coverage.txt
@@ -109,7 +110,7 @@ test: build-docker-test
 		--entrypoint /final/opt/gotestsum $(DOCKER_TAG) \
 		--jsonfile /pillar/results.json \
 		--junitfile /pillar/results.xml \
-		--raw-command -- go test -tags kubevirt -coverprofile=coverage.txt -covermode=atomic -race -json \
+		--raw-command -- go test -tags k -coverprofile=coverage.txt -covermode=atomic -race -json \
 		./...
 
 fuzz-test: build-docker-test
