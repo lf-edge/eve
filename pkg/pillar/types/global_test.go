@@ -937,3 +937,32 @@ func TestSetGlobalValueNilInit(t *testing.T) {
 	gcp3.SetGlobalValueTriState(FallbackIfCloudGoneTime, TS_ENABLED)
 	assert.Equal(t, TS_ENABLED, gcp3.GlobalValueTriState(FallbackIfCloudGoneTime))
 }
+
+// Validator error branches — exercised via ConfigItemSpec.StringValidator
+
+func TestValidatorErrorBranches(t *testing.T) {
+	specMap := NewConfigItemSpecMap()
+
+	// validateLogLevel: "none" and "all" hit the non-default switch branch
+	logLevelSpec := specMap.GlobalSettings[DefaultLogLevel]
+	assert.NoError(t, logLevelSpec.StringValidator("none"))
+	assert.NoError(t, logLevelSpec.StringValidator("all"))
+	// Invalid level hits logrus.ParseLevel error path
+	assert.Error(t, logLevelSpec.StringValidator("badlevel"))
+
+	// validateSyslogKernelLevel: invalid level hits error return
+	syslogSpec := specMap.GlobalSettings[SyslogLogLevel]
+	assert.Error(t, syslogSpec.StringValidator("not-a-syslog-level"))
+
+	// base64Validator: invalid base64 hits error return
+	vectorSpec := specMap.GlobalSettings[VectorConfig]
+	assert.Error(t, vectorSpec.StringValidator("not-valid-base64!!!"))
+	assert.NoError(t, vectorSpec.StringValidator(""))
+
+	// makeURLValidator: IP-address rejected when allowIP=false (HTTPS uses allowIP=false)
+	httpsSpec := specMap.GlobalSettings[DiagProbeRemoteHTTPSEndpoint]
+	assert.Error(t, httpsSpec.StringValidator("192.168.1.1"))
+	// makeURLValidator: wrong scheme (HTTP spec expects "http", reject "https://...")
+	httpSpec := specMap.GlobalSettings[DiagProbeRemoteHTTPEndpoint]
+	assert.Error(t, httpSpec.StringValidator("https://example.com"))
+}

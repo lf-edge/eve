@@ -167,6 +167,20 @@ func TestSetErrorWithSourceStringSource(t *testing.T) {
 	assert.Equal(t, "myModule", et.ErrorSourceType)
 }
 
+// ErrorAndTimeWithSource.SetErrorWithSourceAndDescription — string source branch
+
+func TestSetErrorWithSourceAndDescriptionStringSource(t *testing.T) {
+	et := ErrorAndTimeWithSource{}
+	desc := ErrorDescription{
+		Error:         "module error",
+		ErrorSeverity: ErrorSeverityWarning,
+	}
+	et.SetErrorWithSourceAndDescription(desc, "myStringSource")
+	assert.True(t, et.HasError())
+	assert.Equal(t, "module error", et.Error)
+	assert.Equal(t, "myStringSource", et.ErrorSourceType)
+}
+
 // allowedSourceType — map branch
 
 func TestAllowedSourceType(t *testing.T) {

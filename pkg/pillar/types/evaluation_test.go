@@ -198,3 +198,28 @@ func TestDevicePortConfigMostlyEqual(t *testing.T) {
 	dpc2.Ports[0].IsMgmt = true
 	assert.False(t, dpc1.MostlyEqual(&dpc2))
 }
+
+// DevicePortConfig.MostlyEqual — remaining branches
+
+func TestDevicePortConfigMostlyEqualRemainingBranches(t *testing.T) {
+	base := DevicePortConfig{
+		Key:   "k1",
+		Ports: []NetworkPortConfig{{IfName: "eth0"}},
+	}
+
+	// DhcpConfig diff
+	s2 := DevicePortConfig{Key: "k1", Ports: []NetworkPortConfig{{IfName: "eth0", DhcpConfig: DhcpConfig{Dhcp: DhcpTypeStatic}}}}
+	assert.False(t, base.MostlyEqual(&s2))
+
+	// L2LinkConfig.Equal returns false
+	s3 := DevicePortConfig{Key: "k1", Ports: []NetworkPortConfig{{IfName: "eth0", L2LinkConfig: L2LinkConfig{L2Type: L2LinkTypeVLAN}}}}
+	assert.False(t, base.MostlyEqual(&s3))
+
+	// IgnoreDhcpNtpServers diff
+	s4 := DevicePortConfig{Key: "k1", Ports: []NetworkPortConfig{{IfName: "eth0", IgnoreDhcpNtpServers: true}}}
+	assert.False(t, base.MostlyEqual(&s4))
+
+	// PNAC diff
+	s5 := DevicePortConfig{Key: "k1", Ports: []NetworkPortConfig{{IfName: "eth0", PNAC: PNACConfig{Enabled: true}}}}
+	assert.False(t, base.MostlyEqual(&s5))
+}
