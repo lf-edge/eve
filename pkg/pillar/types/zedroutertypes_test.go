@@ -1704,3 +1704,108 @@ func TestNestedAppRuntimeDiskMetricKey(t *testing.T) {
 	m := NestedAppRuntimeDiskMetric{UUID: "some-uuid-string"}
 	assert.Equal(t, "some-uuid-string", m.Key())
 }
+
+// AppNetworkStatus.Pending and GetAdaptersStatusForNI
+
+func TestAppNetworkStatusPending(t *testing.T) {
+	assert.False(t, AppNetworkStatus{}.Pending())
+	assert.True(t, AppNetworkStatus{PendingAdd: true}.Pending())
+	assert.True(t, AppNetworkStatus{PendingModify: true}.Pending())
+	assert.True(t, AppNetworkStatus{PendingDelete: true}.Pending())
+}
+
+func TestAppNetworkStatusGetAdaptersStatusForNI(t *testing.T) {
+	ni1 := uuid.Must(uuid.NewV4())
+	ni2 := uuid.Must(uuid.NewV4())
+	status := AppNetworkStatus{
+		AppNetAdapterList: []AppNetAdapterStatus{
+			{AppNetAdapterConfig: AppNetAdapterConfig{Network: ni1}},
+			{AppNetAdapterConfig: AppNetAdapterConfig{Network: ni2}},
+			{AppNetAdapterConfig: AppNetAdapterConfig{Network: ni1}},
+		},
+	}
+	adapters := status.GetAdaptersStatusForNI(ni1)
+	assert.Len(t, adapters, 2)
+
+	assert.Len(t, status.GetAdaptersStatusForNI(uuid.Must(uuid.NewV4())), 0)
+}
+
+// AssignedAddrs.GetInternallyLeasedIPv4Addr
+
+func TestAssignedAddrsGetInternallyLeasedIPv4Addr(t *testing.T) {
+	ip := net.ParseIP("10.0.0.1")
+	aa := AssignedAddrs{
+		IPv4Addrs: []AssignedAddr{
+			{Address: net.ParseIP("192.168.1.1"), AssignedBy: AddressSourceExternalDHCP},
+			{Address: ip, AssignedBy: AddressSourceInternalDHCP},
+		},
+	}
+	got := aa.GetInternallyLeasedIPv4Addr()
+	require.NotNil(t, got)
+	assert.Equal(t, ip.String(), got.String())
+
+	// No internal DHCP → nil
+	aa2 := AssignedAddrs{
+		IPv4Addrs: []AssignedAddr{
+			{Address: net.ParseIP("192.168.1.1"), AssignedBy: AddressSourceExternalDHCP},
+		},
+	}
+	assert.Nil(t, aa2.GetInternallyLeasedIPv4Addr())
+}
+
+// DnsmasqLeaseFilePath
+
+func TestDnsmasqLeaseFilePath(t *testing.T) {
+	p := DnsmasqLeaseFilePath("bn1")
+	assert.Equal(t, DnsmasqLeaseDir+"bn1", p)
+}
+
+// NetworkInstanceInfo.IsVifInBridge
+
+func TestNetworkInstanceInfoIsVifInBridge(t *testing.T) {
+	info := &NetworkInstanceInfo{
+		Vifs: []VifNameMac{
+			{Name: "vif0"},
+			{Name: "vif1"},
+		},
+	}
+	assert.True(t, info.IsVifInBridge("vif0"))
+	assert.True(t, info.IsVifInBridge("vif1"))
+	assert.False(t, info.IsVifInBridge("vif2"))
+}
+
+// NetworkMetrics.LookupNetworkMetrics
+
+func TestNetworkMetricsLookupNetworkMetrics(t *testing.T) {
+	nms := NetworkMetrics{
+		MetricList: []NetworkMetric{
+			{IfName: "eth0", TxBytes: 100},
+			{IfName: "eth1", TxBytes: 200},
+		},
+	}
+	m, ok := nms.LookupNetworkMetrics("eth0")
+	assert.True(t, ok)
+	assert.Equal(t, uint64(100), m.TxBytes)
+
+	_, ok = nms.LookupNetworkMetrics("eth9")
+	assert.False(t, ok)
+}
+
+// NetworkInstanceConfig.IsIPv6
+
+func TestNetworkInstanceConfigIsIPv6(t *testing.T) {
+	assert.True(t, (&NetworkInstanceConfig{IpType: AddressTypeIPV6}).IsIPv6())
+	assert.True(t, (&NetworkInstanceConfig{IpType: AddressTypeCryptoIPV6}).IsIPv6())
+	assert.False(t, (&NetworkInstanceConfig{IpType: AddressTypeIPV4}).IsIPv6())
+	assert.False(t, (&NetworkInstanceConfig{}).IsIPv6())
+}
+
+// NetworkInstanceStatus.EligibleForActivate
+
+func TestNetworkInstanceStatusEligibleForActivate(t *testing.T) {
+	s := NetworkInstanceStatus{}
+	assert.True(t, s.EligibleForActivate())
+
+	s.ValidationErr = ErrorAndTime{ErrorDescription: ErrorDescription{Error: "err"}}
+	assert.False(t, s.EligibleForActivate())
+}

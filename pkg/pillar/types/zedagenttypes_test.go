@@ -100,6 +100,116 @@ func TestMaintenanceModeMultiReasonString(t *testing.T) {
 	assert.Equal(t, "MaintenanceModeReasonUserRequested|MaintenanceModeReasonVaultLockedUp", multi.String())
 }
 
+// BootReason.String
+
+func TestBootReasonString(t *testing.T) {
+	cases := []struct {
+		br   BootReason
+		want string
+	}{
+		{BootReasonNone, "BootReasonNone"},
+		{BootReasonFirst, "BootReasonFirst"},
+		{BootReasonRebootCmd, "BootReasonRebootCmd"},
+		{BootReasonUpdate, "BootReasonUpdate"},
+		{BootReasonFallback, "BootReasonFallback"},
+		{BootReasonDisconnect, "BootReasonDisconnect"},
+		{BootReasonFatal, "BootReasonFatal"},
+		{BootReasonOOM, "BootReasonOOM"},
+		{BootReasonWatchdogHung, "BootReasonWatchdogHung"},
+		{BootReasonWatchdogPid, "BootReasonWatchdogPid"},
+		{BootReasonKernel, "BootReasonKernel"},
+		{BootReasonPowerFail, "BootReasonPowerFail"},
+		{BootReasonUnknown, "BootReasonUnknown"},
+		{BootReasonVaultFailure, "BootReasonVaultFailure"},
+		{BootReasonPoweroffCmd, "BootReasonPoweroffCmd"},
+		{BootReasonKubeTransition, "BootReasonKubeTransition"},
+		{BootReason(99), fmt.Sprintf("Unknown BootReason %d", 99)},
+	}
+	for _, tc := range cases {
+		assert.Equal(t, tc.want, tc.br.String(), "br=%d", tc.br)
+	}
+}
+
+// BootReason.StartWithSavedConfig
+
+func TestBootReasonStartWithSavedConfig(t *testing.T) {
+	// returns true
+	for _, br := range []BootReason{
+		BootReasonRebootCmd, BootReasonUpdate, BootReasonDisconnect,
+		BootReasonKernel, BootReasonPowerFail, BootReasonUnknown,
+		BootReasonPoweroffCmd, BootReasonKubeTransition,
+	} {
+		assert.True(t, br.StartWithSavedConfig(), "br=%s", br)
+	}
+	// returns false
+	for _, br := range []BootReason{
+		BootReasonNone, BootReasonFirst, BootReasonFallback,
+		BootReasonFatal, BootReasonOOM, BootReasonWatchdogHung,
+		BootReasonWatchdogPid, BootReasonVaultFailure, BootReason(99),
+	} {
+		assert.False(t, br.StartWithSavedConfig(), "br=%s", br)
+	}
+}
+
+// DeviceState.String
+
+func TestDeviceStateString(t *testing.T) {
+	cases := []struct {
+		ds   DeviceState
+		want string
+	}{
+		{DEVICE_STATE_UNSPECIFIED, "unspecified"},
+		{DEVICE_STATE_ONLINE, "online"},
+		{DEVICE_STATE_REBOOTING, "rebooting"},
+		{DEVICE_STATE_MAINTENANCE_MODE, "maintenance_mode"},
+		{DEVICE_STATE_BASEOS_UPDATING, "baseos_updating"},
+		{DEVICE_STATE_BOOTING, "booting"},
+		{DEVICE_STATE_PREPARING_POWEROFF, "preparing_poweroff"},
+		{DEVICE_STATE_POWERING_OFF, "powering_off"},
+		{DEVICE_STATE_PREPARED_POWEROFF, "prepared_poweroff"},
+		{DeviceState(99), fmt.Sprintf("Unknown state %d", 99)},
+	}
+	for _, tc := range cases {
+		assert.Equal(t, tc.want, tc.ds.String(), "ds=%d", tc.ds)
+	}
+}
+
+// RadioSilence.String
+
+func TestRadioSilenceString(t *testing.T) {
+	assert.Equal(t, "Radio transmitters OFF", RadioSilence{Imposed: true}.String())
+	assert.Equal(t, "Radio transmitters ON", RadioSilence{Imposed: false}.String())
+}
+
+// LocalCommands.Empty
+
+func TestLocalCommandsEmpty(t *testing.T) {
+	lc := &LocalCommands{}
+	assert.True(t, lc.Empty())
+
+	lc.AppCommands = map[string]*LocalAppCommand{"app1": {}}
+	assert.False(t, lc.Empty())
+}
+
+// DevCommand.String
+
+func TestDevCommandString(t *testing.T) {
+	cases := []struct {
+		c    DevCommand
+		want string
+	}{
+		{DevCommandUnspecified, "Unspecified"},
+		{DevCommandShutdown, "Shutdown"},
+		{DevCommandShutdownPoweroff, "Shutdown + Poweroff"},
+		{DevCommandGracefulReboot, "Graceful Reboot"},
+		{DevCommandCollectInfo, "Collect Info"},
+		{DevCommand(99), "Unknown"},
+	}
+	for _, tc := range cases {
+		assert.Equal(t, tc.want, tc.c.String())
+	}
+}
+
 func TestMaintenanceModeMultiReasonToProto(t *testing.T) {
 	// nil/empty → nil result
 	assert.Nil(t, MaintenanceModeMultiReason{}.ToProto())
