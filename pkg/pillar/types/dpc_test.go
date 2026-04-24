@@ -498,6 +498,12 @@ func TestProxyEntryFromProtoToProto(t *testing.T) {
 	var pe2 ProxyEntry
 	pe2.FromProto(nil)
 	assert.Equal(t, "", pe2.Server)
+
+	// Unknown type → PROXY_OTHER (default case in ToProto)
+	pe3 := ProxyEntry{Type: NetworkProxyType(99), Server: "proxy.example.com", Port: 9090}
+	got3 := pe3.ToProto()
+	require.NotNil(t, got3)
+	assert.Equal(t, evecommon.ProxyProto_PROXY_OTHER, got3.Proto)
 }
 
 // WifiKeySchemeType.FromProto and ToProto

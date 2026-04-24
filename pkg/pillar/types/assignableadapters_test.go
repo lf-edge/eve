@@ -180,6 +180,32 @@ func TestIoBundleFromPhyAdapter(t *testing.T) {
 	assert.Equal(t, phyAdapter.Usage, ibPtr.Usage)
 }
 
+// IoBundleFromPhyAdapter — IsNet with empty Ifname (fallback to logicallabel or phylabel)
+
+func TestIoBundleFromPhyAdapterEmptyIfname(t *testing.T) {
+	log := base.NewSourceLogObject(logrus.StandardLogger(), "test", 1234)
+
+	// IsNet, no ifname, logicallabel set → use logicallabel
+	pa1 := PhysicalIOAdapter{
+		Ptype:        zcommon.PhyIoType_PhyIoNetEth,
+		Phylabel:     "eth0",
+		Logicallabel: "mgmt",
+		Phyaddr:      PhysicalAddress{Ifname: ""}, // empty
+	}
+	ib1 := IoBundleFromPhyAdapter(log, pa1)
+	assert.Equal(t, "mgmt", ib1.Ifname)
+
+	// IsNet, no ifname, no logicallabel → use phylabel
+	pa2 := PhysicalIOAdapter{
+		Ptype:        zcommon.PhyIoType_PhyIoNetEth,
+		Phylabel:     "eth0",
+		Logicallabel: "",
+		Phyaddr:      PhysicalAddress{Ifname: ""}, // empty
+	}
+	ib2 := IoBundleFromPhyAdapter(log, pa2)
+	assert.Equal(t, "eth0", ib2.Ifname)
+}
+
 var aa2 = AssignableAdapters{
 	Initialized: true,
 	IoBundleList: []IoBundle{
@@ -391,6 +417,53 @@ func TestCheckBadAssignmentGroups(t *testing.T) {
 		t.Logf("Running test case TestCheckBadAssignmentGroups[%d]", i)
 		assert.Equal(t, aa2Errors[i], ib.Error.String())
 	}
+}
+
+// CheckBadAssignmentGroups — UsbAddr and UsbProduct continue branches
+
+func TestCheckBadAssignmentGroupsUSBSkip(t *testing.T) {
+	log := base.NewSourceLogObject(logrus.StandardLogger(), "test", 1234)
+
+	// Two bundles on the same PCI controller, but one has UsbAddr → skip
+	aa := AssignableAdapters{
+		Initialized: true,
+		IoBundleList: []IoBundle{
+			{
+				Phylabel:        "eth0",
+				AssignmentGroup: "grp1",
+				PciLong:         "0000:01:00.0",
+				UsbAddr:         "1:1",
+			},
+			{
+				Phylabel:        "eth1",
+				AssignmentGroup: "grp2",
+				PciLong:         "0000:01:00.0",
+			},
+		},
+	}
+	changed := aa.CheckBadAssignmentGroups(log, func(a, b string) bool { return a == b })
+	// Should not flag collision because UsbAddr is non-empty
+	assert.False(t, changed)
+
+	// Now use UsbProduct instead
+	aa2 := AssignableAdapters{
+		Initialized: true,
+		IoBundleList: []IoBundle{
+			{
+				Phylabel:        "eth0",
+				AssignmentGroup: "grp1",
+				PciLong:         "0000:01:00.0",
+				UsbProduct:      "1234:5678",
+			},
+			{
+				Phylabel:        "eth1",
+				AssignmentGroup: "grp2",
+				PciLong:         "0000:01:00.0",
+			},
+		},
+	}
+	changed = aa2.CheckBadAssignmentGroups(log, func(a, b string) bool { return a == b })
+	assert.False(t, changed)
 }
 
 type expandControllersTestEntry struct {
@@ -1019,6 +1092,48 @@ func TestLookupIoBundleAny(t *testing.T) {
 	assert.Len(t, list, 0)
 }
 
+// LookupIoBundleAny — singleton (empty AssignmentGroup)
+
+func TestLookupIoBundleAnySingleton(t *testing.T) {
+	testAA := AssignableAdapters{
+		IoBundleList: []IoBundle{
+			// Singleton: no AssignmentGroup
+			{Type: IoNetEth, Phylabel: "eth0", Logicallabel: "mgmt", AssignmentGroup: ""},
+		},
+	}
+
+	// Found by phylabel, no group → singleton path
+	list := testAA.LookupIoBundleAny("eth0")
+	require.Len(t, list, 1)
+	assert.Equal(t, "eth0", list[0].Phylabel)
+
+	// Found by logicallabel, no group → singleton path
+	list = testAA.LookupIoBundleAny("mgmt")
+	require.Len(t, list, 1)
+}
+
+// LookupIoBundleGroup — empty group and bundle with no assignment group
+
+func TestLookupIoBundleGroupEdgeCases(t *testing.T) {
+	testAA := AssignableAdapters{
+		IoBundleList: []IoBundle{
+			// One bundle without an AssignmentGroup (should be skipped)
+			{Type: IoNetEth, Phylabel: "eth0", AssignmentGroup: ""},
+			// One bundle with an AssignmentGroup
+			{Type: IoNetEth, Phylabel: "eth1", AssignmentGroup: "grp1"},
+		},
+	}
+
+	// Empty group string → returns empty immediately
+	list := testAA.LookupIoBundleGroup("")
+	assert.Empty(t, list)
+
+	// Non-empty group → skips bundle with empty AssignmentGroup
+	list = testAA.LookupIoBundleGroup("grp1")
+	require.Len(t, list, 1)
+	assert.Equal(t, "eth1", list[0].Phylabel)
+}
+
 // HasAdapterChanged: returns false when identical, true when any field differs
 
 func TestHasAdapterChangedUnchanged(t *testing.T) {
@@ -1270,6 +1385,27 @@ func TestHasAdapterChangedVfsDiff(t *testing.T) {
 	// Vfs differs → changed
 	pa.Vfs.Count = 2
 	assert.True(t, ib.HasAdapterChanged(log, pa))
+}
+
+// HasErrorByType — ioBundleErrorBase branch (typeStr from base.TypeStr)
+
+func TestHasErrorByTypeIoBundleBase(t *testing.T) {
+	iobe := IOBundleError{}
+	iobe.Append(ErrOwnParent{})
+
+	// Passing the ioBundleErrorBase directly — covers the base.TypeStr path
+	internalErr := ioBundleErrorBase{
+		ErrStr:  "some error",
+		TypeStr: "types.ErrOwnParent",
+	}
+	assert.True(t, iobe.HasErrorByType(internalErr))
+
+	// TypeStr that doesn't match
+	internalErr2 := ioBundleErrorBase{
+		ErrStr:  "other error",
+		TypeStr: "types.ErrParentAssigngrpMismatch",
+	}
+	assert.False(t, iobe.HasErrorByType(internalErr2))
 }
 
 // IOBundleError.Empty and ErrorTime

@@ -507,6 +507,21 @@ func TestWwanCellModuleToProtoAllModes(t *testing.T) {
 	m := WwanCellModule{OpMode: WwanOpModeOnline, ControlProtocol: WwanCtrlProtMBIM}
 	got := m.ToProto(log)
 	assert.Equal(t, info.ZCellularControlProtocol_Z_CELLULAR_CONTROL_PROTOCOL_MBIM, got.ControlProtocol)
+
+	// WwanCtrlProtUnspecified → UNSPECIFIED
+	m2 := WwanCellModule{OpMode: WwanOpModeOnline, ControlProtocol: WwanCtrlProtUnspecified}
+	got2 := m2.ToProto(log)
+	assert.Equal(t, info.ZCellularControlProtocol_Z_CELLULAR_CONTROL_PROTOCOL_UNSPECIFIED, got2.ControlProtocol)
+
+	// Invalid OpMode → default case (log.Errorf), opState stays zero value
+	m3 := WwanCellModule{OpMode: WwanOpMode("invalid-opmode"), ControlProtocol: WwanCtrlProtQMI}
+	got3 := m3.ToProto(log)
+	assert.Equal(t, info.ZCellularOperatingState_Z_CELLULAR_OPERATING_STATE_UNSPECIFIED, got3.OperatingState)
+
+	// Invalid ControlProtocol → default case (log.Errorf)
+	m4 := WwanCellModule{OpMode: WwanOpModeOnline, ControlProtocol: WwanCtrlProt("invalid-ctrl")}
+	got4 := m4.ToProto(log)
+	assert.Equal(t, info.ZCellularControlProtocol_Z_CELLULAR_CONTROL_PROTOCOL_UNSPECIFIED, got4.ControlProtocol)
 }
 
 // WwanNetworkStatus.Equal — additional branches

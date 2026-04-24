@@ -8,6 +8,7 @@ import (
 
 	"github.com/lf-edge/eve-api/go/info"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // NodeAdmission.ZNodeAdmission
@@ -188,6 +189,9 @@ func TestZKubeVolumeInfo(t *testing.T) {
 		State:            StorageVolumeStateAttached,
 		ProvisionedBytes: 10 * 1024 * 1024 * 1024,
 		VolumeID:         "vol-123",
+		Replicas: []KubeVolumeReplicaInfo{
+			{Name: "rep1", OwnerNode: "node1", Status: StorageVolumeReplicaStatusOnline},
+		},
 	}
 	result := kvi.ZKubeVolumeInfo()
 	assert.NotNil(t, result)
@@ -195,6 +199,8 @@ func TestZKubeVolumeInfo(t *testing.T) {
 	assert.Equal(t, info.StorageVolumeState_STORAGE_VOLUME_STATE_ATTACHED, result.State)
 	assert.Equal(t, uint64(10*1024*1024*1024), result.ProvisionedBytes)
 	assert.Equal(t, "vol-123", result.VolumeId)
+	require.Len(t, result.Replica, 1)
+	assert.Equal(t, "rep1", result.Replica[0].Name)
 }
 
 // KubeStorageInfo.ZKubeStorageInfo
