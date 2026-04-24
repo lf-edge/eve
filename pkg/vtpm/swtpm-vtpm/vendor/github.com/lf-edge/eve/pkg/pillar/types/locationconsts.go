@@ -33,8 +33,6 @@ const (
 	PersistInstallerDir = PersistDir + "/installer"
 	// PersistKubelogDir - Location for kube service container logs
 	PersistKubelogDir = PersistDir + "/kubelog"
-	// IngestedDirname - location for shas of files we pulled from /config
-	IngestedDirname = PersistDir + "/ingested"
 	// SnapshotsDirname - location for snapshots
 	SnapshotsDirname = PersistDir + "/snapshots"
 	// SnapshotAppInstanceConfigFilename - file to store snapshot-related app instance config
@@ -62,19 +60,14 @@ const (
 	OnboardKeyName = IdentityDirname + "/onboard.key.pem"
 	// RootCertFileName - what we trust for signatures and object encryption
 	RootCertFileName = IdentityDirname + "/root-certificate.pem"
-	// V2TLSBaseFile is where the initial file
-	V2TLSBaseFile = IdentityDirname + "/v2tlsbaseroot-certificates.pem"
-	// APIV1FileName - user can statically allow for API v1
-	APIV1FileName = IdentityDirname + "/Force-API-V1"
+	// ImportGlobalConfigFile - old legacy file with ConfigItemValueMap items for bootstrapping
+	ImportGlobalConfigFile = IdentityDirname + "/GlobalConfig/global.json"
+	// BaseAuthorizedKeysFile - for an initial SSH key
+	BaseAuthorizedKeysFile = IdentityDirname + "/authorized_keys"
 	// BootstrapConfFileName - file to store initial device configuration for bootstrapping
 	BootstrapConfFileName = IdentityDirname + "/bootstrap-config.pb"
 	// RemoteAccessFlagFileName -- file to check for remote access configuration
 	RemoteAccessFlagFileName = IdentityDirname + "/remote_access_disabled"
-	// BootstrapShaFileName - file to store SHA hash of an already ingested bootstrap config
-	BootstrapShaFileName = IngestedDirname + "/bootstrap-config.sha"
-
-	// ServerSigningCertFileName - filename for server signing leaf certificate
-	ServerSigningCertFileName = CertificateDirname + "/server-signing-cert.pem"
 
 	// ShareCertDirname - directory to place private proxy server certificates
 	ShareCertDirname = "/usr/local/share/ca-certificates"
@@ -146,14 +139,17 @@ const (
 	// CustomOVMFSettingsDir - directory for custom OVMF settings (for different resolutions)
 	CustomOVMFSettingsDir = "/hostfs/etc/ovmf"
 
+	// CoverageDir - directory where coverage-instrumented zedbox binaries
+	// write their binary coverage files (GOCOVERDIR).  Only used when EVE
+	// is built with COVER=y (go build -cover -covermode=atomic).
+	CoverageDir = PersistDir + "/coverage"
+
 	// CheckpointDirname - directory for persisting received configuration
 	// (from controller, LPS, etc.).
 	CheckpointDirname = PersistDir + "/checkpoint"
 
 	// LocalActiveAppConfigDir - directory to put JSON of the apps that are running.
 	LocalActiveAppConfigDir = "/persist/vault/active-app-instance-config/"
-	// EdgeNodeClusterConfigFile - the file which contains edgenodecluster config
-	EdgeNodeClusterConfigFile = PersistStatusDir + "/zedagent/EdgeNodeClusterConfig/global.json"
 
 	// K3sInitialVersionPath - file to store the first k3s version a node initializes to
 	K3sInitialVersionPath = PersistKubelogDir + "/initial_k3s_version"

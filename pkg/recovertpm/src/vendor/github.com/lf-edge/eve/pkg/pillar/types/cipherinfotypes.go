@@ -163,4 +163,5 @@ type EncryptionBlock struct {
 	User                         zcommon.EncryptionBlockUser
 	EncryptedData                string
 	GzipRegistrationManifestYaml []byte
+	SCEPChallengePassword        string
 }

@@ -469,10 +469,19 @@ type KubeIngressInfo struct {
 	IngressIP   []string           // LoadBalancer IPs if available
 }
 
+// KubeLBPoolStatus reports the kube-vip load balancer pool configuration and
+// which IPs from the pool are currently assigned to services.
+type KubeLBPoolStatus struct {
+	Interface    string   // Network interface for VIP advertisement
+	IPPrefix     string   // CIDR pool (e.g. "192.168.86.200/29")
+	AllocatedIPs []string // IPs currently assigned to LoadBalancer-type services
+}
+
 // KubeUserServices - Collected User services from kubernetes
 type KubeUserServices struct {
-	UserService []KubeServiceInfo
-	UserIngress []KubeIngressInfo
+	UserService  []KubeServiceInfo
+	UserIngress  []KubeIngressInfo
+	LBPoolStatus *KubeLBPoolStatus
 }
 
 // Equal checks if two KubeUserServices instances are equal
@@ -495,7 +504,7 @@ func (s KubeUserServices) Equal(s2 KubeUserServices) bool {
 	}
 
 	// Use generics.EqualSetsFn to compare ingress arrays
-	return generics.EqualSetsFn(s.UserIngress, s2.UserIngress,
+	ingressEqual := generics.EqualSetsFn(s.UserIngress, s2.UserIngress,
 		func(ing1, ing2 KubeIngressInfo) bool {
 			if ing1.Namespace != ing2.Namespace ||
 				ing1.Name != ing2.Name ||
@@ -510,6 +519,22 @@ func (s KubeUserServices) Equal(s2 KubeUserServices) bool {
 			// Compare the ingress IPs
 			return generics.EqualSets(ing1.IngressIP, ing2.IngressIP)
 		})
+
+	if !ingressEqual {
+		return false
+	}
+
+	// Compare LBPoolStatus
+	if s.LBPoolStatus == nil && s2.LBPoolStatus == nil {
+		return true
+	}
+	if s.LBPoolStatus == nil || s2.LBPoolStatus == nil {
+		return false
+	}
+	lb1, lb2 := s.LBPoolStatus, s2.LBPoolStatus
+	return lb1.Interface == lb2.Interface &&
+		lb1.IPPrefix == lb2.IPPrefix &&
+		generics.EqualSets(lb1.AllocatedIPs, lb2.AllocatedIPs)
 }
 
 // KubeConfig : A root level structure to pass config from pillar to kube service container
