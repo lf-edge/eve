@@ -1,13 +1,6 @@
 # Copyright (c) 2025, Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 #
-# NOTE that this is the only workflow that requires access to the
-# GitHub token. However, it is safe since in EVE repo itself we
-# only trigger this workflow on pull requests and as such making
-# it effectively read-only.
-# yamllint disable rule:line-length
-#   https://docs.github.com/en/free-pro-team@latest/actions/reference/authentication-in-a-workflow#permissions-for-the-github_token
-# yamllint enable rule:line-length
 ---
 name: Apache Yetus
 on:  # yamllint disable-line rule:truthy
@@ -28,15 +21,36 @@ jobs:
           path: src
           fetch-depth: 0
 
+      - name: Generate patch locally
+        working-directory: src
+        run: |
+          # Add upstream and fetch the base branch
+          git remote add upstream ${{ github.server_url }}/${{ github.repository }}.git
+          git fetch upstream ${{ github.base_ref }}
+          # Now diff against the correct base
+          git diff upstream/${{ github.base_ref }}...HEAD > ${{ github.workspace }}/pr.patch
+          # Get back to upstream master so patch can be applied
+          git checkout upstream/master
+
       - name: Yetus
-        uses: rene/yetus-test-patch-action@eve
-        with:
-          basedir: ./src
-          buildtool: nobuild
-          continuousimprovement: true
-          githubtoken: ${{ secrets.GITHUB_TOKEN }}
-          patchdir: ./out
-          reviveconfig: .revive.toml
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            lfedge/eve-yetus:0.15.1-eve-2 \
+            test-patch \
+            --basedir=/workspace/src \
+            --patch-dir=/workspace/out \
+            --build-tool=nobuild \
+            --continuous-improvement=true \
+            --plugins='all,-asflicense,-author,-findbugs,-gitlab,-jira,-shelldocs' \
+            --revive-config=.revive.toml \
+            --brief-report-file=/workspace/out/brief.txt \
+            --console-report-file=/workspace/out/console.txt \
+            --html-report-file=/workspace/out/report.html \
+            --junit-report-xml=/workspace/out/junit-report.xml \
+            --pylint-requirements=true \
+            --report-unknown-options=false \
+            /workspace/pr.patch
 
       - name: Store Yetus artifacts
         if: ${{ always() }}
@@ -44,3 +58,28 @@ jobs:
         with:
           name: 'yetus-scan'
           path: ${{ github.workspace }}/out
+
+      - name: Annotate errors from Yetus
+        if: ${{ always() }}
+        run: |
+          set +e
+          # Yetus writes patch-<plugin>.txt files for each plugin that found issues.
+          # Each line is in the format: filename:line:message
+          for patch_file in ${{ github.workspace }}/out/patch-*-result.txt; do
+            plugin=$(basename "$patch_file" | sed "s/patch-\(.*\)-result.txt/\1/")
+            while read -r line; do
+              # Skip empty lines and header lines
+              [ -z "$line" ] && continue
+              # Parse filename:linenum:message
+              file=$(echo "$line" | awk -F: '{print $1}')
+              lineno=$(echo "$line" | awk -F: '{print $2}' | grep "^[0-9].*" || true)
+              message=$(echo "$line" | awk -F: '{start=($3~/^[0-9]+$/)?4:3; for(i=start;i<=NF;i++) printf "%s%s",(i>start?":":""),$i; print ""}')
+              # Only annotate if we got a valid file and line number
+              if [ -n "$file" ] && [ -n "$lineno" ]; then
+                echo "::error file=${file},line=${lineno},title=Yetus [${plugin}]::${message}"
+              else
+                # No file/line info, just print for visibility
+                echo "${line}"
+              fi
+            done < "$patch_file"
+          done
