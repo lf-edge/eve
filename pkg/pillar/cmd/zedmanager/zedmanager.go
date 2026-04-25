@@ -780,17 +780,36 @@ func publishAppInstanceStatus(ctx *zedmanagerContext,
 		st, _ := sub.Get(key)
 		if st != nil {
 			clusterStatus := st.(types.ENClusterAppStatus)
-			// To avoid publishing the stats to controller by multiple nodes, we set this flag here
-			// and zedagent will not publish the stats to controller for this App.
-			if !clusterStatus.ScheduledOnThisNode {
-				log.Functionf("publishAppInstanceStatus(%s) not scheduled on this node, don't publish to controller", key)
-				status.NoUploadStatsToController = true
-			} else {
-				status.NoUploadStatsToController = false
+			// Report from this node only if:
+			//   1) the pod is scheduled on this node (running or pending here), OR
+			//   2) we are the DNID and the cluster authoritatively shows no pod
+			//      exists for this app anywhere - so no peer will report it.
+			// All other cases suppress: a peer owns it (running there, or merely
+			// scheduled there with a Pending pod), or we cannot see the cluster
+			// (APIUnreachable / Unknown) and must not assume the app is silent
+			// on every peer.
+			canReport := clusterStatus.ScheduledOnThisNode ||
+				(clusterStatus.IsDNidNode &&
+					clusterStatusAllowsDNIDUpload(clusterStatus))
+			status.NoUploadStatsToController = !canReport
+			if !canReport {
+				log.Functionf("publishAppInstanceStatus(%s) suppressed: IsDNidNode=%v ScheduledOnThisNode=%v AppKubeStatus=%v",
+					key, clusterStatus.IsDNidNode, clusterStatus.ScheduledOnThisNode, clusterStatus.AppKubeStatus)
 			}
 		}
+		// st == nil: leave flag at its prior value (defaults to false on a fresh
+		// AppInstanceStatus). Cold-start reporting goes through; a later ENClusterAppStatus
+		// update re-publishes AppInstanceStatus through handleENClusterAppStatusImpl.
 	}
 	pub.Publish(key, *status)
+}
+
+func clusterStatusAllowsDNIDUpload(clusterStatus types.ENClusterAppStatus) bool {
+	// NotRunningState is intentionally NOT admitted here: that state means a
+	// pod exists somewhere in the cluster, so the node it is scheduled on
+	// already owns reporting via rule (1) above. Admitting it would cause
+	// duplicate uploads during the peer-Pending window of a failover.
+	return clusterStatus.AppKubeStatus == types.AppKubeStatusNotInCluster
 }
 
 func unpublishAppInstanceStatus(ctx *zedmanagerContext,
@@ -1827,7 +1846,7 @@ func getKubeAppActivateStatus(ctx *zedmanagerContext, aiConfig types.AppInstance
 	for _, item := range items {
 		status := item.(types.ENClusterAppStatus)
 		if status.AppUUID == aiConfig.UUIDandVersion.UUID {
-			statusRunning = status.StatusRunning
+			statusRunning = status.AppKubeStatus == types.AppKubeStatusRunningState
 			if status.IsDNidNode {
 				onTheDevice = true
 				break

@@ -167,13 +167,14 @@ func (z *zedkube) checkAppsStatus() {
 		return
 	}
 
+	stItems := z.pubENClusterAppStatus.GetAll()
+
 	clientset, err := getKubeClientSet()
 	if err != nil {
 		log.Errorf("checkAppsStatus: can't get clientset %v", err)
+		z.handleKubeAPIError(items, stItems)
 		return
 	}
-
-	stItems := z.pubENClusterAppStatus.GetAll()
 
 	podsCtx, podsCancel := context.WithTimeout(context.Background(), kubeAPITimeout)
 	defer podsCancel()
@@ -181,7 +182,7 @@ func (z *zedkube) checkAppsStatus() {
 	if err != nil {
 		log.Errorf("checkAppsStatus: can't get pods %v", err)
 		// If we can't get pods, process the error and return
-		z.handleKubePodsGetError(items, stItems)
+		z.handleKubeAPIError(items, stItems)
 		return
 	}
 
@@ -192,8 +193,9 @@ func (z *zedkube) checkAppsStatus() {
 	for _, item := range items {
 		aiconfig := item.(types.AppInstanceConfig)
 		encAppStatus := types.ENClusterAppStatus{
-			AppUUID:    aiconfig.UUIDandVersion.UUID,
-			IsDNidNode: aiconfig.IsDesignatedNodeID,
+			AppUUID:       aiconfig.UUIDandVersion.UUID,
+			IsDNidNode:    aiconfig.IsDesignatedNodeID,
+			AppKubeStatus: types.AppKubeStatusNotInCluster, // overridden below if a pod is found
 		}
 		contName := base.GetAppKubeNameWithPurge(aiconfig.DisplayName, aiconfig.UUIDandVersion.UUID, aiconfig.PurgeCmd.Counter+aiconfig.LocalPurgeCmd.Counter)
 
@@ -224,7 +226,11 @@ func (z *zedkube) checkAppsStatus() {
 					encAppStatus.ScheduledOnThisNode = true
 				}
 				if pod.Status.Phase == corev1.PodRunning {
-					encAppStatus.StatusRunning = true
+					encAppStatus.AppKubeStatus = types.AppKubeStatusRunningState
+				} else if encAppStatus.AppKubeStatus != types.AppKubeStatusRunningState {
+					// Pod found but not in PodRunning phase. Don't downgrade if
+					// a previous matching pod was already observed running.
+					encAppStatus.AppKubeStatus = types.AppKubeStatusNotRunningState
 				}
 				if foundVMIPod {
 					encAppStatus.AppIsVMI = true
@@ -261,11 +267,11 @@ func (z *zedkube) checkAppsStatus() {
 	}
 }
 
-func (z *zedkube) handleKubePodsGetError(items, stItems map[string]interface{}) {
+func (z *zedkube) handleKubeAPIError(items, stItems map[string]interface{}) {
 	if z.getKubePodsError.getKubePodsErrorTime.IsZero() {
 		now := time.Now()
 		z.getKubePodsError.getKubePodsErrorTime = now
-		log.Noticef("handleKubePodsGetError: can't get pods, set error time")
+		log.Noticef("handleKubeAPIError: kube API error, set error time")
 	} else if time.Since(z.getKubePodsError.getKubePodsErrorTime) > 2*time.Minute {
 		// The settings of kubernetes the node is 'NotReady' after unreachable for 1 minute,
 		// and the replicaSet policy for POD/VMI is after 30 seconds post the 'NotReady' node
@@ -277,13 +283,22 @@ func (z *zedkube) handleKubePodsGetError(items, stItems map[string]interface{}) 
 				for _, st := range stItems {
 					aiStatus := st.(types.ENClusterAppStatus)
 					if aiStatus.AppUUID == aiconfig.UUIDandVersion.UUID {
-						// if we used to publish the status, of this app is scheduled on this node
-						// need to reset this, since we have lost the connection to the kubernetes
-						// for longer time than the app is to be migrated to other node
+						// We have lost the connection to the kubernetes API for longer
+						// than the failover threshold. Mark APIUnreachable so consumers
+						// know not to trust ScheduledOnThisNode / a stale Running view,
+						// and clear those fields since we have no fresh evidence.
+						changed := false
+						if aiStatus.AppKubeStatus != types.AppKubeStatusAPIUnreachable {
+							aiStatus.AppKubeStatus = types.AppKubeStatusAPIUnreachable
+							changed = true
+						}
 						if aiStatus.ScheduledOnThisNode {
 							aiStatus.ScheduledOnThisNode = false
+							changed = true
+						}
+						if changed {
 							z.pubENClusterAppStatus.Publish(aiconfig.Key(), aiStatus)
-							log.Noticef("handleKubePodsGetError: can't get pods set ScheduledOnThisNode off for %s, ", aiconfig.DisplayName)
+							log.Noticef("handleKubeAPIError: marked %s APIUnreachable", aiconfig.DisplayName)
 						}
 					}
 				}
