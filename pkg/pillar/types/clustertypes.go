@@ -93,15 +93,53 @@ type EdgeNodeClusterConfig struct {
 	LBInterfaces []LBInterfaceConfig
 }
 
+// AppKubeStatus represents this node's last view of an app's lifecycle in the
+// kubernetes cluster. Each value comes from a distinct branch in zedkube's
+// periodic poll. Consumers should treat any value other than
+// AppKubeStatusRunning as "no authoritative evidence the app is running on a
+// peer" and fail open accordingly.
+type AppKubeStatus uint8
+
+const (
+	// AppKubeStatusUnknown - never polled (cold start; zero value).
+	AppKubeStatusUnknown AppKubeStatus = iota
+	// AppKubeStatusAPIUnreachable - kube API not reachable past the grace window.
+	AppKubeStatusAPIUnreachable
+	// AppKubeStatusNotInCluster - API ok, no pod found for this app.
+	AppKubeStatusNotInCluster
+	// AppKubeStatusNotRunningState - pod found, kubernetes phase != PodRunning.
+	AppKubeStatusNotRunningState
+	// AppKubeStatusRunningState - pod found, kubernetes phase == PodRunning.
+	AppKubeStatusRunningState
+)
+
+// String returns a human-readable name for the AppKubeStatus.
+func (s AppKubeStatus) String() string {
+	switch s {
+	case AppKubeStatusUnknown:
+		return "Unknown"
+	case AppKubeStatusAPIUnreachable:
+		return "APIUnreachable"
+	case AppKubeStatusNotInCluster:
+		return "NotInCluster"
+	case AppKubeStatusNotRunningState:
+		return "NotRunningState"
+	case AppKubeStatusRunningState:
+		return "RunningState"
+	default:
+		return "Invalid"
+	}
+}
+
 // ENClusterAppStatus - Status of an App Instance in the multi-node cluster
 type ENClusterAppStatus struct {
-	AppUUID             uuid.UUID // UUID of the appinstance
-	IsDNidNode          bool      // DesignatedNodeID is set on the App for this node
-	ScheduledOnThisNode bool      // App is running on this device
-	StatusRunning       bool      // Status of the app in "Running" state
-	AppIsVMI            bool      // Is this a VMI app, vs a Pod app
-	VMIName             string    // Kube name of the VMI
-	VNCPort             uint32    // VNC port for the VMI (e.g., 5901)
+	AppUUID             uuid.UUID     // UUID of the appinstance
+	IsDNidNode          bool          // DesignatedNodeID is set on the App for this node
+	ScheduledOnThisNode bool          // Pod for this app is scheduled on this node
+	AppKubeStatus       AppKubeStatus // This node's view of the app's kube lifecycle
+	AppIsVMI            bool          // Is this a VMI app, vs a Pod app
+	VMIName             string        // Kube name of the VMI
+	VNCPort             uint32        // VNC port for the VMI (e.g., 5901)
 }
 
 // Equal returns true if all ENClusterAppStatus fields are equal

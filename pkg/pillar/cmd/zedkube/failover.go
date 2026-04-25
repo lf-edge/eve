@@ -109,7 +109,7 @@ func (z *zedkube) checkAppsFailover(wdFunc func()) {
 					encAppStatus.ScheduledOnThisNode = true
 				}
 				if pod.Status.Phase == corev1.PodRunning {
-					encAppStatus.StatusRunning = true
+					encAppStatus.AppKubeStatus = types.AppKubeStatusRunningState
 				}
 				if foundVMIPod {
 					encAppStatus.AppIsVMI = true
@@ -125,7 +125,7 @@ func (z *zedkube) checkAppsFailover(wdFunc func()) {
 		//
 		// If the app is running, nothing to do.
 		//
-		if (terminatingVirtLauncherPod == "") && encAppStatus.StatusRunning {
+		if (terminatingVirtLauncherPod == "") && encAppStatus.AppKubeStatus == types.AppKubeStatusRunningState {
 			// No need to failover
 			log.Functionf("aiDisplayName:%s aiUUID:%s no terminating virtLauncher and reporting status running",
 				aiconfig.DisplayName, aiconfig.UUIDandVersion.UUID)
