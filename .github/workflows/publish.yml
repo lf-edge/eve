@@ -72,13 +72,12 @@ jobs:
         run: |
           SUCCESS=
           for i in 1 2 3; do
-            if make -e V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} PLATFORM=${{ matrix.platform }} LINUXKIT_PKG_TARGET=build pkgs; then
+            echo "Run attempt: $i"
+            if make -e V=1 HV="${{ matrix.hv }}" ZARCH="${{ matrix.arch }}" PLATFORM="${{ matrix.platform }}" LINUXKIT_PKG_TARGET=build pkgs; then
               SUCCESS=true
               break
             else
-              docker rmi -f $(docker image ls -q) || :
-              docker system prune -f -a || :
-              docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q) || :
+              docker system prune -f -a --volumes
             fi
           done
           if [ -z "$SUCCESS" ]; then echo "::error::failed to build packages" && exit 1; fi
@@ -92,13 +91,12 @@ jobs:
         run: |
           SUCCESS=
           for i in 1 2 3; do
-            if make -e V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} PLATFORM=${{ matrix.platform }} LINUXKIT_PKG_TARGET=push PRUNE=1 pkgs; then
+            echo "Run attempt: $i"
+            if make -e V=1 HV="${{ matrix.hv }}" ZARCH="${{ matrix.arch }}" PLATFORM="${{ matrix.platform }}" LINUXKIT_PKG_TARGET=push PRUNE=1 pkgs; then
               SUCCESS=true
               break
             else
-              docker rmi -f $(docker image ls -q) || :
-              docker system prune -f -a || :
-              docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q) || :
+              docker system prune -f -a --volumes
             fi
           done
           if [ -z "$SUCCESS" ]; then echo "::error::failed to push packages" && exit 1; fi
@@ -113,10 +111,9 @@ jobs:
       - name: Clean
         if: ${{ always() }}
         run: |
-          make clean || :
-          docker system prune -f -a || :
-          docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q) || :
-          rm -rf ~/.linuxkit || :
+          make clean
+          docker system prune -f -a --volumes
+          rm -rf ~/.linuxkit
 
   # 2) ARM packages, serialized
   packages-arm:
@@ -182,17 +179,12 @@ jobs:
           # sadly, our build sometimes times out on network access
           # and running out of disk space: re-trying for 3 times
           for i in 1 2 3; do
-             if make -e V=1 ZARCH=${{ matrix.arch }} PLATFORM=${{ matrix.platform }} LINUXKIT_PKG_TARGET=build pkgs; then
+             echo "Run attempt: $i"
+             if make -e V=1 ZARCH="${{ matrix.arch }}" PLATFORM="${{ matrix.platform }}" LINUXKIT_PKG_TARGET=build pkgs; then
                 SUCCESS=true
                 break
              else
-                # the most likely reason for 'make pkgs' to fail is
-                # the docker cache produced by the build exhausting
-                # disk space. So the following can't hurt before we
-                # retry:
-                docker rmi -f `docker image ls -q` || :
-                docker system prune -f -a || :
-                docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q) || :
+                docker system prune -f -a --volumes
              fi
           done
           if [ -z "$SUCCESS" ]; then echo "::error::failed to build packages" && exit 1; fi
@@ -208,17 +200,12 @@ jobs:
           # sadly, our build sometimes times out on network access
           # and running out of disk space: re-trying for 3 times
           for i in 1 2 3; do
-             if make -e V=1 ZARCH=${{ matrix.arch }} PLATFORM=${{ matrix.platform }} LINUXKIT_PKG_TARGET=push pkgs; then
+             echo "Run attempt: $i"
+             if make -e V=1 ZARCH="${{ matrix.arch }}" PLATFORM="${{ matrix.platform }}" LINUXKIT_PKG_TARGET=push pkgs; then
                 SUCCESS=true
                 break
              else
-                # the most likely reason for 'make pkgs' to fail is
-                # the docker cache produced by the build exhausting
-                # disk space. So the following can't hurt before we
-                # retry:
-                docker rmi -f `docker image ls -q` || :
-                docker system prune -f -a || :
-                docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q) || :
+                docker system prune -f -a --volumes
              fi
           done
           if [ -z "$SUCCESS" ]; then echo "::error::failed to push packages" && exit 1; fi
@@ -233,10 +220,9 @@ jobs:
       - name: Clean
         if: ${{ always() }}
         run: |
-          make clean || :
-          docker system prune -f -a || :
-          docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q) || :
-          rm -rf ~/.linuxkit || :
+          make clean
+          docker system prune -f -a --volumes
+          rm -rf ~/.linuxkit
 
   # 3) downstream jobs depend on both package jobs
   eve:
@@ -293,10 +279,9 @@ jobs:
       - name: Clean
         if: ${{ always() }}
         run: |
-          make clean || :
-          docker system prune -f -a || :
-          docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q) || :
-          rm -rf ~/.linuxkit || :
+          make clean
+          docker system prune -f -a --volumes
+          rm -rf ~/.linuxkit
 
   manifest:
     if: github.event.repository.full_name == 'lf-edge/eve'
@@ -350,10 +335,9 @@ jobs:
       - name: Clean
         if: ${{ always() }}
         run: |
-          make clean || :
-          docker system prune -f -a || :
-          docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q) || :
-          rm -rf ~/.linuxkit || :
+          make clean
+          docker system prune -f -a --volumes
+          rm -rf ~/.linuxkit
 
   trigger_assets:
     if: ${{ (startsWith(github.ref, 'refs/tags/')) && (github.event.repository.full_name == 'lf-edge/eve') }}
