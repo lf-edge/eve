@@ -352,9 +352,8 @@ external_boot_image_import() {
 
         boot_img_path="/etc/external-boot-image.tar"
 
-        # Is containerd up?
-        if ! /var/lib/k3s/bin/k3s ctr -a /run/containerd-user/containerd.sock info > /dev/null 2>&1; then
-                logmsg "k3s-containerd not yet running for image import"
+        if ! ctr_out=$(/var/lib/k3s/bin/k3s ctr -a /run/containerd-user/containerd.sock info 2>&1); then
+                logmsg "k3s-containerd management API not yet ready for image import: $ctr_out"
                 return 1
         fi
 
@@ -1261,6 +1260,11 @@ if ! is_amd64; then
         install_kubevirt=0
 fi
 
+# In basek3s cluster mode KubeVirt has been removed; skip external boot image import
+if [ -f /var/lib/base-k3s-mode ]; then
+        install_kubevirt=0
+fi
+
 #Forever loop every 15 secs
 while true;
 do
@@ -1454,7 +1458,7 @@ else
                         reapply_node_labels
                 fi
                 if ! external_boot_image_import; then
-                        continue
+                        logmsg "external_boot_image_import failed, will retry on next loop iteration"
                 fi
 
                 # Initialize CNI after k3s reboot
