@@ -8,6 +8,9 @@ egress-selector-mode: "disabled"
 default-local-storage-path: "/persist/vault/volumes"
 etcd-arg:
   - "quota-backend-bytes=8589934592"
+  - "auto-compaction-mode=periodic"
+  - "auto-compaction-retention=1h"    # was 8h default; 1h suits edge clusters
+  - "snapshot-count=5000"             # raft snapshot every 5000 entries (default 100000)
 etcd-expose-metrics: true
 container-runtime-endpoint: "/run/containerd-user/containerd.sock"
 disable-network-policy: true
