@@ -282,7 +282,7 @@ func getNetworkDevices() ([]*info.NetworkDevice, error) {
 		return nil, err
 	}
 	for _, nic := range netInfo.NICs {
-		nd := info.NetworkDevice{
+		netDev := info.NetworkDevice{
 			Ifname:     nic.Name,
 			MacAddress: nic.MACAddress,
 		}
@@ -302,25 +302,39 @@ func getNetworkDevices() ([]*info.NetworkDevice, error) {
 			}
 			if len(digits) > 0 {
 				val, _ := strconv.ParseUint(digits, 10, 32)
-				nd.SpeedMbps = uint32(val) * mult
+				netDev.SpeedMbps = uint32(val) * mult
 			}
 		}
 
 		// Type guessing
 		if strings.HasPrefix(nic.Name, "wlan") || strings.HasPrefix(nic.Name, "wl") {
-			nd.Type = info.NetworkDeviceType_NETWORK_DEVICE_TYPE_WIFI
+			netDev.Type = info.NetworkDeviceType_NETWORK_DEVICE_TYPE_WIFI
 		} else if strings.HasPrefix(nic.Name, "wwan") {
-			nd.Type = info.NetworkDeviceType_NETWORK_DEVICE_TYPE_WWAN
+			netDev.Type = info.NetworkDeviceType_NETWORK_DEVICE_TYPE_WWAN
 		} else if strings.HasPrefix(nic.Name, "eth") || strings.HasPrefix(nic.Name, "en") {
-			nd.Type = info.NetworkDeviceType_NETWORK_DEVICE_TYPE_ETHERNET
+			netDev.Type = info.NetworkDeviceType_NETWORK_DEVICE_TYPE_ETHERNET
 		}
 
-		if nic.PCIAddress != nil {
-			nd.Parent = &info.BusParent{
+		if nic.USBAddress != nil {
+			// USB address format is "{busnum}-{port}" e.g. "3-1.1"
+			parts := strings.SplitN(*nic.USBAddress, "-", 2)
+			if len(parts) == 2 {
+				busnum, err := strconv.ParseUint(parts[0], 10, 32)
+				if err == nil {
+					netDev.Parent = &info.BusParent{
+						UsbParent: &info.USBAddress{
+							Bus:  uint32(busnum),
+							Port: parts[1],
+						},
+					}
+				}
+			}
+		} else if nic.PCIAddress != nil {
+			netDev.Parent = &info.BusParent{
 				PciParent: stringToPCIAddress(*nic.PCIAddress),
 			}
 		}
-		networkDevices = append(networkDevices, &nd)
+		networkDevices = append(networkDevices, &netDev)
 	}
 	return networkDevices, nil
 }
