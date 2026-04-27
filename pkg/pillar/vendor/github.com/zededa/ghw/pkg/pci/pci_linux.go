@@ -419,17 +419,24 @@ func (info *Info) getDevices(opts *option.Options) []*Device {
 	return devs
 }
 
-// FindPCIAddress extract the pci address from a sysfs path without /sys
+// FindPCIAddress extracts the deepest (most specific) PCI BDF address from a
+// sysfs path. For devices that are themselves PCI devices (e.g. NICs behind a
+// PCIe bridge), this returns the device's own address. For non-PCI devices
+// (e.g. USB or CAN interfaces) whose paths end in non-PCI components, it
+// returns the address of the PCI controller they attach to.
 func FindPCIAddress(path string) string {
-	re := regexp.MustCompile(`\/?devices\/pci[\d:.]*\/(\d{4}:[a-f\d:\.]+)`)
-
-	matches := re.FindStringSubmatch(path)
-	// first element is the full string match like /devices/pci0000:00/0000:00:0d.0
-	// but we need the first substring match so we take the second element
-	if len(matches) != 2 {
-		return ""
+	// Match an exact BDF component: domain:bus:device.function (all hex).
+	re := regexp.MustCompile(`^[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-9a-f]$`)
+	for {
+		dir, file := filepath.Split(path)
+		if re.MatchString(strings.ToLower(file)) {
+			return strings.ToLower(file)
+		}
+		dir = filepath.Clean(dir)
+		if dir == path {
+			break
+		}
+		path = dir
 	}
-	pciAddress := matches[1]
-
-	return pciAddress
+	return ""
 }

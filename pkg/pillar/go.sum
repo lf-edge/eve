@@ -919,8 +919,8 @@ github.com/yuin/goldmark v1.4.1/go.mod h1:mwnBkeHKe2W/ZEtQ+71ViKU8L12m81fl3OWwC1
 github.com/yuin/goldmark v1.4.13/go.mod h1:6yULJ656Px+3vBD8DxQVa3kxgyrAnzto9xy5taEt/CY=
 github.com/yusufpapurcu/wmi v1.2.4 h1:zFUKzehAFReQwLys1b/iSMl+JQGSCSjtVqQn9bBrPo0=
 github.com/yusufpapurcu/wmi v1.2.4/go.mod h1:SBZ9tNy3G9/m5Oi98Zks0QjeHVDvuK0qfxQmPyzfmi0=
-github.com/zededa/ghw v0.0.0-20260218160843-b4fc0f8a6aa5 h1:XpWbH6y+ijvzerElhvg8x1VcheqouFjc2h1MqimzgbQ=
-github.com/zededa/ghw v0.0.0-20260218160843-b4fc0f8a6aa5/go.mod h1:bLYU9IrgrtEUiJ6smjXtTaej/MVO17v+kxGIC/jfj9c=
+github.com/zededa/ghw v0.0.0-20260427124750-9a7dc80ae71c h1:zfpR6V7WZ/cMq5K98SngCHF+7cykchvsF0b2bGtB/Ko=
+github.com/zededa/ghw v0.0.0-20260427124750-9a7dc80ae71c/go.mod h1:bLYU9IrgrtEUiJ6smjXtTaej/MVO17v+kxGIC/jfj9c=
 go.etcd.io/bbolt v1.3.2/go.mod h1:IbVyRI1SCnLcuJnV2u8VeU0CEYM7e686BmAb1XKL+uU=
 go.etcd.io/bbolt v1.3.11 h1:yGEzV1wPz2yVCLsD8ZAiGHhHVlczyC9d1rP43/VCRJ0=
 go.etcd.io/bbolt v1.3.11/go.mod h1:dksAq7YMXoljX0xu6VF5DMZGbhYYoLUalEiSySYAS4I=
