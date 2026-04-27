@@ -10,13 +10,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/zededa/ghw/pkg/bus"
 	"github.com/zededa/ghw/pkg/linuxpath"
 	"github.com/zededa/ghw/pkg/option"
+	"github.com/zededa/ghw/pkg/pci"
 	pciAddress "github.com/zededa/ghw/pkg/pci/address"
 	"github.com/zededa/ghw/pkg/usb"
 	usbAddress "github.com/zededa/ghw/pkg/usb/address"
@@ -36,20 +36,15 @@ func (i *Info) load(opts *option.Options) error {
 func serials(opts *option.Options) ([]*Device, []error) {
 	paths := linuxpath.New(opts)
 	ttyClass := paths.SysClassTty
-	ttys, err := filepath.Glob(filepath.Join(ttyClass, "ttyS*"))
+	entries, err := os.ReadDir(ttyClass)
 	if err != nil {
 		return nil, []error{err}
 	}
 
-	// Deterministic order: ttyS0, ttyS1, ...
-	sort.Slice(ttys, func(i, j int) bool {
-		return filepath.Base(ttys[i]) < filepath.Base(ttys[j])
-	})
-
 	var out []*Device
 	id := 1
-	for _, ttyDir := range ttys {
-		tty := filepath.Base(ttyDir) // ttyS1
+	for _, entry := range entries {
+		tty := entry.Name() // ttyS1
 		sp, ok, err := serialPortFromTTY(paths.SysRoot, ttyClass, tty)
 		if err != nil {
 			continue
@@ -97,8 +92,9 @@ func serialPortFromTTY(sysfs, ttyClass, tty string) (*Device, bool, error) {
 		ioRange = fmt.Sprintf("%04x-%04x", start, end)
 	}
 
+	pciAddrString := pci.FindPCIAddress(devSys)
 	var parent bus.BusParent
-	if pciAddr := pciAddress.FromString(devSys); pciAddr != nil {
+	if pciAddr := pciAddress.FromString(pciAddrString); pciAddr != nil {
 		parent.PCI = pciAddr
 	}
 	bus, port, err := usb.ExtractUSBBusnumPort(devSys)

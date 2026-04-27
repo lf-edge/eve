@@ -59,7 +59,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
 	github.com/vishvananda/netlink v1.3.1
-	github.com/zededa/ghw v0.0.0-20260218160843-b4fc0f8a6aa5
+	github.com/zededa/ghw v0.0.0-20260427124750-9a7dc80ae71c
 	go.uber.org/goleak v1.3.0
 	golang.org/x/crypto v0.46.0
 	golang.org/x/net v0.48.0
