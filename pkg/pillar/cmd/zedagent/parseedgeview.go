@@ -295,4 +295,9 @@ func removeEvFiles() {
 	if err == nil {
 		os.Remove(types.EdgeviewCfgFile)
 	}
+
+	_, err = os.Stat(types.EdgeviewSigningCertFile)
+	if err == nil {
+		os.Remove(types.EdgeviewSigningCertFile)
+	}
 }
