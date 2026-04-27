@@ -675,6 +675,9 @@ run-live-gui: $(SWTPM) GETTY $(DEVICETREE_DTB)
 run-target: $(SWTPM) GETTY
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT)
 
+run-target-live-gui: $(SWTPM) GETTY $(DEVICETREE_DTB)
+	$(QEMU_SYSTEM) $(QEMU_OPTS_GUI) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT)
+
 run-rootfs%: $(SWTPM) GETTY
 	(echo 'set devicetree="(hd0,msdos1)/eve.dtb"' ; echo 'set rootfs_root=/dev/vdb' ; echo 'set root=hd1' ; echo 'export rootfs_root' ; echo 'export devicetree' ; echo 'configfile /EFI/BOOT/grub.cfg' ) > $(EFI_PART)/BOOT/grub.cfg
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(ROOTFS_IMG_BASE)$*.img,format=raw -drive file=fat:rw:$(EFI_PART)/..,label=CONFIG,id=uefi-disk,format=vvfat
@@ -1428,6 +1431,7 @@ help:
 	@echo "   run-installer-raw    runs installer.raw (via qemu) and 'installs' EVE into (initially blank) target.img"
 	@echo "   run-installer-net    runs installer.net (via qemu/iPXE) and 'installs' EVE into (initially blank) target.img"
 	@echo "   run-target           runs a full fledged virtual device on qemu from target.img (similar to run-live)"
+	@echo "   run-target-live-gui  same as run-target but with an emulated graphics card"
 	@echo
 	@echo "make run is currently an alias for make run-live"
 	@echo
