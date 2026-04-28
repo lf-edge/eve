@@ -440,16 +440,23 @@ done
 #enumerate serial ports
 ID="1"
 for TTY in /sys/class/tty/*; do
-   if [ -f "$TTY/device/resources" ]; then
-      IO=$(grep '^io ' "$TTY/device/resources" | sed -e 's#io 0x##' -e 's#0x##')
-      IRQ=$(awk '/^irq /{print $2;}' < "$TTY/device/resources")
-   elif [ "$UNAME_M" = aarch64 ] && [ -f "$TTY/irq" ]; then
+   IO=""
+   IRQ=""
+   if [ -f "$TTY/irq" ]; then
       IRQ=$(cat "$TTY/irq")
       [ "${IRQ:-0}" -gt 0 ] || IRQ=""
-      IO=""
-   else
-      IO=""
-      IRQ=""
+   fi
+   if [ "$UNAME_M" = x86_64 ] && [ -f "$TTY/port" ]; then
+      IO_RAW=$(cat "$TTY/port")
+      # A port value of 0x0 means no hardware is present; clear IRQ too
+      if [ "$IO_RAW" != "0x0" ] && [ "$IO_RAW" != "0" ]; then
+         IO_DEC=$(printf '%d' "$IO_RAW")
+         IO_START=$(printf '%x' "$IO_DEC")
+         IO_END=$(printf '%x' "$((IO_DEC + 7))")
+         IO="${IO_START}-${IO_END}"
+      else
+         IRQ=""
+      fi
    fi
    TTY=$(echo "$TTY" | cut -f5 -d/)
    if [ -n "$IO" ] || [ -n "$IRQ" ]; then
