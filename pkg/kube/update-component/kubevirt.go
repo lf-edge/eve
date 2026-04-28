@@ -94,6 +94,6 @@ func (ctx *kubevirtComponent) Ready(version string) error {
 }
 
 func (ctx *kubevirtComponent) UpgradeStart(version string) error {
-	yamlPath := "https://github.com/kubevirt/kubevirt/releases/download/" + version + "/kubevirt-operator.yaml"
+	yamlPath := "/etc/kubevirt-operator.yaml"
 	return ctx.KubectlApply(yamlPath)
 }
