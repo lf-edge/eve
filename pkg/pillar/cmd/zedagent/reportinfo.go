@@ -585,7 +585,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 
 	//Operational information about TPM presence/absence/usage.
 	ReportDeviceInfo.HSMStatus = etpm.FetchTpmSwStatus()
-	ReportDeviceInfo.HSMInfo, _ = etpm.FetchTpmHwInfo()
+	ReportDeviceInfo.HSMInfo, _ = etpm.FetchTpmHwInfoDescription()
 
 	//Operational information about Data Security At Rest
 	ReportDataSecAtRestInfo := getDataSecAtRestInfo(ctx)

@@ -291,7 +291,7 @@ func readCredentials() error {
 }
 
 func printCapability() {
-	hwInfoStr, err := etpm.FetchTpmHwInfo()
+	hwInfoStr, err := etpm.FetchTpmHwInfoDescription()
 	if err != nil {
 		fmt.Println(err)
 	} else {
@@ -1223,7 +1223,7 @@ func getEkCertMetaData() ([]types.CertMetaData, error) {
 
 // Write TPM vendor, firmware info to given file.
 func saveTpmInfo(filename string) error {
-	info, err := etpm.FetchTpmHwInfo()
+	info, err := etpm.FetchTpmHwInfoDescription()
 	if err != nil {
 		return err
 	}
