@@ -65,6 +65,10 @@ jobs:
           set +e
           # Yetus writes patch-<plugin>.txt files for each plugin that found issues.
           # Each line is in the format: filename:line:message
+          if [ -z "$(ls ${{ github.workspace }}/out/patch-*-result.txt 2> /dev/null || true)" ]; then
+            echo "No result files to annotate."
+            exit 0
+          fi
           for patch_file in ${{ github.workspace }}/out/patch-*-result.txt; do
             plugin=$(basename "$patch_file" | sed "s/patch-\(.*\)-result.txt/\1/")
             while read -r line; do
