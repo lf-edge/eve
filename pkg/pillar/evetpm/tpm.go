@@ -15,6 +15,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -840,7 +841,10 @@ var vendorRegistry = map[uint32]string{
 	0x474F4F47: "Google",
 }
 
-// FetchTpmHwInfo returns TPM Hardware properties in a string
+// ErrNoTPM is returned if no TPM is found
+var ErrNoTPM = errors.New("No TPM")
+
+// FetchTpmHwInfo returns TPM Hardware properties
 func FetchTpmHwInfo() (string, error) {
 	//If we had done this earlier, return the last result
 	if tpmHwInfo != "" {
@@ -849,11 +853,8 @@ func FetchTpmHwInfo() (string, error) {
 
 	//Take care of non-TPM platforms
 	if _, err := os.Stat(TpmDevicePath); err != nil {
-		tpmHwInfo = "Not Available"
-		//nolint:nilerr
-		return tpmHwInfo, nil
+		return "", ErrNoTPM
 	}
-
 	//First time. Fetch it from TPM and cache it.
 	v1, err := GetTpmProperty(tpm2.Manufacturer)
 	if err != nil {
@@ -880,6 +881,16 @@ func FetchTpmHwInfo() (string, error) {
 		GetFirmwareVersion(v4, v5))
 
 	return tpmHwInfo, nil
+}
+
+// FetchTpmHwInfoDescription returns TPM Hardware properties in a string
+func FetchTpmHwInfoDescription() (string, error) {
+	tpmHwInfo, err := FetchTpmHwInfo()
+	if errors.Is(err, ErrNoTPM) {
+
+		return tpmHwInfo, nil
+	}
+	return tpmHwInfo, err
 }
 
 // GetSpecVersion returns TPM specification version string
