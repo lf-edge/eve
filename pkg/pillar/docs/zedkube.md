@@ -8,76 +8,79 @@ zedkube is a service in pillar/cmd/zedkube. The main purpose of the service is t
 
 ### App VNC for remote console
 
-For Kubevirt VMs, unlike in KVM image where QEMU services the VNC port 5900s ready for connection into the VM's console, in the EVE 'k' image we need to use the 'virtctl' tool with the KubeConfig YAML file to access the VMI's console.
+For KubeVirt VMIs, unlike KVM where QEMU services the VNC port directly, the
+EVE 'k' image must use `virtctl vnc --proxy-only` to bridge the KubeVirt
+WebSocket protocol onto a local TCP port.
 
-#### Unified VNC Architecture
+Two independent paths trigger this proxy:
 
-EVE supports two methods for VNC access to Kubevirt VMIs, both using a unified file-based signaling mechanism:
+| | **Remote Console** | **Edgeview VNC** |
+|---|---|---|
+| Initiator | zedkube (`runAppVNC`) | edgeview (`setAndStartProxyTCP`) |
+| Trigger | `AppInstanceConfig.RemoteConsole=true` | TCP command `appUUID:4822` |
+| Client | Guacamole (controller UI) | edgeview TCP relay |
+| `CallerPID` in file | absent | set to edgeview PID |
+| Cleanup | zedkube on `RemoteConsole=false` | edgeview `cleanupEveKVNC()` |
+| Crash recovery | port probe at next start | `monitor_caller_pid` in vnc-proxy.sh |
 
-1. **Remote Console (via zedkube)**: Traditional remote console access through the controller UI
-2. **Edgeview VNC**: VNC access via Edgeview TCP proxy for debugging and troubleshooting
+For full sequence diagrams, stale-file resolution flowcharts, and the conflict
+matrix see [vnc-workflows.md](vnc-workflows.md).
 
-Both methods use the same VNC config file path (`/run/edgeview/VncParams/vmiVNC.run`) and JSON format, allowing the kube container to handle VNC requests uniformly.
+#### Coordination file
 
-#### VNC Config File Format
-
-The VNC config file uses JSON format with the following structure:
+Both paths signal the kube container through a single JSON file at
+`/run/edgeview/VncParams/vmiVNC.run`:
 
 ```json
 {
-  "VMIName": "ubuntu-vm-app-abc123xyz",
-  "VNCPort": 5900,
+  "VMIName":   "ubuntu-vm-app-abc123xyz",
+  "VNCPort":   5910,
+  "AppUUID":   "b3e2f1a0-...",
   "CallerPID": 12345
 }
 ```
 
-- **VMIName**: The Kubernetes VMI name (used by virtctl to connect)
-- **VNCPort**: The VNC port number (typically 5900 + VncDisplay offset)
-- **CallerPID**: (Optional) Process ID of the caller - only set by Edgeview to enable cleanup when Edgeview exits unexpectedly
+`VMIName`, `VNCPort`, and `AppUUID` are set by both paths. `CallerPID` is set
+only by edgeview and is the discriminator between the two session types: its
+presence tells `monitor_caller_pid` which PID to watch for crashes, and its
+absence marks a remote-console-owned file.
 
-#### Remote Console Flow
+#### Remote Console flow (zedkube)
 
-1. zedkube service subscribes to AppInstanceConfig and monitors the `RemoteConsole` flag
-2. When RemoteConsole is enabled, zedkube writes the VNC config file with VMIName and VNCPort
-3. The kube container's `monitor_vnc_config()` detects the file creation via inotifywait
-4. The `handle_vnc()` function parses the JSON and launches `virtctl vnc` with `--proxy-only` flag
-5. The VNC port becomes available for the guacd connection from the controller
-6. When RemoteConsole is disabled, zedkube removes the config file, triggering cleanup
+zedkube subscribes to `AppInstanceConfig` and calls `runAppVNC` on any
+`RemoteConsole` change. On enable: `canClaimVNCFile` evicts stale files (dead
+edgeview PID, idle port) and blocks on a live session; then writes the file
+without `CallerPID`. On disable: removes the file, which causes the kube
+container to kill virtctl.
 
-#### Edgeview VNC Flow
+#### Edgeview VNC flow (edgeview)
 
-1. Edgeview receives a TCP command for port 4822 (VNC) with an AppUUID parameter
-2. Edgeview reads the ENClusterAppStatus to get the VMIName and VNCPort for the app
-3. Edgeview writes the VNC config file, including its CallerPID for crash cleanup
-4. The kube container detects the file and starts virtctl vnc proxy
-5. Edgeview waits for the VNC port to be listening (using `ss` command check)
-6. Once ready, Edgeview establishes the TCP proxy connection
-7. When the VNC session ends, Edgeview removes the config file
-8. If Edgeview crashes, the kube container's `monitor_caller_pid()` detects the missing PID and cleans up
+edgeview receives a TCP command for port 4822 with an AppUUID. It reads
+`ENClusterAppStatus` for the VMI name and port, calls `removeStaleVNCFile`
+(same eviction logic), writes the file with `CallerPID=os.Getpid()`, then
+polls `/proc/net/tcp` for up to 30 s waiting for virtctl to start listening.
+The kube container also starts `monitor_caller_pid` in the background to
+handle edgeview crashes.
 
-#### Kube Container Implementation
+#### Kube container handler (`vnc-proxy.sh`)
 
-The kube container (`cluster-init.sh`) implements VNC handling with several components:
+- **`monitor_vnc_config()`** — inotifywait loop on the VncParams directory;
+  calls `handle_vnc` on any file event
+- **`handle_vnc()`** — parses JSON, launches `virtctl vnc <VMI> -n
+  eve-kube-app --port <VNCPort> --proxy-only` with up to 5 retries; aborts
+  if the file disappears mid-retry; starts `monitor_caller_pid` immediately
+  when `CallerPID` is present
+- **`monitor_caller_pid()`** — edgeview sessions only; polls every 5 s and
+  kills virtctl + removes the file if the edgeview PID is gone or reused
 
-- **monitor_vnc_config()**: Background task using inotifywait to monitor the VNC config directory for file events (create, modify, delete)
-- **handle_vnc()**: Parses the JSON config and manages virtctl vnc process lifecycle with retry logic (5 attempts with delays for transient kubevirt API errors like 503)
-- **monitor_caller_pid()**: For Edgeview VNC only - monitors the caller PID and cleans up if Edgeview crashes
+#### ENClusterAppStatus VMI fields
 
-The virtctl command used is:
+`ENClusterAppStatus` exposes VMI-specific fields populated by zedkube from
+the virt-launcher pod:
 
-```bash
-virtctl vnc <vmiName> -n eve-kube-app --port <vncPort> --proxy-only
-```
-
-#### ENClusterAppStatus Enhancement
-
-The ENClusterAppStatus now includes VMI-specific fields to support Edgeview VNC:
-
-- **VMIName**: The actual VMI name (extracted from virt-launcher pod name)
-- **VNCPort**: The VNC port for the VMI (calculated as 5900 + VncDisplay)
-- **AppIsVMI**: Boolean indicating if the app is a VMI (vs a Pod)
-
-These fields are populated by zedkube when it detects VMI pods running on the node.
+- **VMIName** — actual KubeVirt VMI name used by virtctl
+- **VNCPort** — 5900 + VncDisplay offset
+- **AppIsVMI** — distinguishes VMI apps from Pod-only apps
 
 ### Cluster Status
 

@@ -16,6 +16,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"kubevirt.io/client-go/kubecli"
 )
@@ -46,10 +47,10 @@ func (z *zedkube) runAppVNC(config *types.AppInstanceConfig) {
 
 	vncPort := vmconfig.VncDisplay + 5900
 
+	appUUID := config.UUIDandVersion.UUID.String()
 	if config.RemoteConsole {
-		// Check if file already exists (another VNC session is active)
-		if _, err := os.Stat(types.VmiVNCFileName); err == nil {
-			log.Errorf("runAppVNC: VNC file already exists, another session may be active")
+		// Block only on an active session; reclaim the file otherwise.
+		if !canClaimVNCFile(appUUID) {
 			return
 		}
 
@@ -63,6 +64,7 @@ func (z *zedkube) runAppVNC(config *types.AppInstanceConfig) {
 		vncConfig := types.VmiVNCConfig{
 			VMIName: vmiName,
 			VNCPort: uint32(vncPort),
+			AppUUID: appUUID,
 			// CallerPID is not set for remote-console VNC (only edgeview sets it)
 		}
 
@@ -90,6 +92,59 @@ func (z *zedkube) runAppVNC(config *types.AppInstanceConfig) {
 		}
 	}
 	log.Noticef("runAppVNC: %s done", vmiName)
+}
+
+// canClaimVNCFile returns true if the current vmiVNC.run (if any) is safe to
+// overwrite for remote-console of appUUID. It blocks only on a session that is
+// currently live: an active edgeview instance, or a different app's
+// remote-console whose virtctl proxy is still listening. A stale file from a
+// dead edgeview or an earlier zedkube incarnation is removed so the caller can
+// proceed.
+func canClaimVNCFile(appUUID string) bool {
+	data, err := os.ReadFile(types.VmiVNCFileName)
+	if err != nil {
+		return true // absent or unreadable via Stat path upstream
+	}
+	var existing types.VmiVNCConfig
+	if err := json.Unmarshal(data, &existing); err != nil || existing.VNCPort == 0 {
+		log.Noticef("canClaimVNCFile: unreadable VNC file, removing")
+		os.Remove(types.VmiVNCFileName)
+		return true
+	}
+	if existing.CallerPID > 0 {
+		if existing.OwnerAlive() {
+			log.Errorf("canClaimVNCFile: active edgeview VNC session (pid %d), cannot start remote-console",
+				existing.CallerPID)
+			return false
+		}
+		log.Noticef("canClaimVNCFile: removing stale edgeview VNC file (pid %d dead or reused)",
+			existing.CallerPID)
+		os.Remove(types.VmiVNCFileName)
+		return true
+	}
+	// CallerPID unset: zedkube-owned remote-console file.
+	if existing.AppUUID == appUUID {
+		log.Noticef("canClaimVNCFile: reclaiming own VNC file for app %s", appUUID)
+		os.Remove(types.VmiVNCFileName)
+		return true
+	}
+	if isPortListening(existing.VNCPort) {
+		log.Errorf("canClaimVNCFile: remote-console already active for app %s, cannot start for %s",
+			existing.AppUUID, appUUID)
+		return false
+	}
+	log.Noticef("canClaimVNCFile: removing stale remote-console VNC file for app %s",
+		existing.AppUUID)
+	os.Remove(types.VmiVNCFileName)
+	return true
+}
+
+// isPortListening reports whether something is bound and listening on port on
+// localhost. Delegates to netutils.IsLocalPortListening which reads
+// /proc/net/tcp[6] directly — no Dial, so a live virtctl VNC proxy is not
+// disturbed.
+func isPortListening(port uint32) bool {
+	return netutils.IsLocalPortListening(port)
 }
 
 func (z *zedkube) getVMIdomainName(config *types.AppInstanceConfig) (string, error) {

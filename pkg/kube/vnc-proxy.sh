@@ -36,6 +36,13 @@ handle_vnc() {
             return 1
         fi
 
+        # Start PID monitor immediately if CallerPID is present (edgeview VNC).
+        # Starting here (before virtctl retry loop) ensures the monitor runs even
+        # when virtctl fails to start, so a crashed edgeview doesn't leave a stale file.
+        if [ -n "$callerPid" ]; then
+            monitor_caller_pid "$callerPid" &
+        fi
+
         # Log file uses shell PID for unique naming per session
         local virtctl_log="/tmp/virtctl-vnc.$$"
 
@@ -44,11 +51,32 @@ handle_vnc() {
         local attempt=1
 
         while [ $attempt -le $max_retries ]; do
+            # If monitor_caller_pid (or edgeview itself) removed the config file,
+            # the session is over — don't launch another virtctl on top of it.
+            if [ ! -f "$VNC_CONFIG_FILE" ]; then
+                logmsg "handle_vnc: VNC config file disappeared, aborting retry"
+                local orphan
+                orphan=$(pgrep -f "/usr/bin/virtctl.*vnc.*$vmiName.*--proxy-only")
+                if [ -n "$orphan" ]; then
+                    logmsg "handle_vnc: killing orphan virtctl PID $orphan"
+                    kill -9 "$orphan" 2>/dev/null
+                fi
+                VNC_RUNNING=false
+                return 1
+            fi
+
             # Check if a virtctl process is already running for this VMI
             local existing_pid
             existing_pid=$(pgrep -f "/usr/bin/virtctl.*vnc.*$vmiName.*--proxy-only")
 
             if [ -z "$existing_pid" ]; then
+                # Tight recheck right before launch — closes the pgrep→nohup
+                # window where monitor_caller_pid could remove the file.
+                if [ ! -f "$VNC_CONFIG_FILE" ]; then
+                    logmsg "handle_vnc: VNC config file disappeared just before launch, aborting"
+                    VNC_RUNNING=false
+                    return 1
+                fi
                 # No existing process - start a new one
                 logmsg "handle_vnc: Attempt $attempt/$max_retries: Starting virtctl vnc for $vmiName on port $vmiPort"
 
@@ -68,14 +96,19 @@ handle_vnc() {
             local port_wait=0
             local max_port_wait=5
             while [ $port_wait -lt $max_port_wait ]; do
+                # Same race: caller may have died and the monitor removed the
+                # file while we were waiting for the port. Kill virtctl and bail.
+                if [ ! -f "$VNC_CONFIG_FILE" ]; then
+                    logmsg "handle_vnc: VNC config file removed during port wait, killing virtctl PID $existing_pid"
+                    kill -9 "$existing_pid" 2>/dev/null
+                    VNC_RUNNING=false
+                    return 1
+                fi
+
                 # Check if port is listening
                 if ss -tln "sport = :$vmiPort" | grep -q ":$vmiPort"; then
                     logmsg "handle_vnc: Success: port $vmiPort is now listening (PID: $existing_pid)"
                     VNC_RUNNING=true
-                    # Start monitoring the caller PID if present (edgeview VNC)
-                    if [ -n "$callerPid" ]; then
-                        monitor_caller_pid "$callerPid" &
-                    fi
                     return 0
                 fi
 
@@ -138,9 +171,34 @@ monitor_caller_pid() {
     while true; do
         sleep $check_interval
 
+        # Check if the VNC file was removed (normal cleanup by edgeview)
+        if [ ! -f "$VNC_CONFIG_FILE" ]; then
+            logmsg "monitor_caller_pid: VNC file removed, stopping monitor"
+            return 0
+        fi
+
+        # Guard against PID reuse: if the CallerPID in the file changed, a new
+        # edgeview session replaced this one. Exit so the new session's monitor
+        # handles cleanup and we don't interfere.
+        local current_pid
+        current_pid=$(jq -r '.CallerPID // empty' "$VNC_CONFIG_FILE" 2>/dev/null)
+        if [ -n "$current_pid" ] && [ "$current_pid" != "$caller_pid" ]; then
+            logmsg "monitor_caller_pid: CallerPID in file changed ($caller_pid -> $current_pid), stopping stale monitor"
+            return 0
+        fi
+
         # Check if caller process (edgeview) crashed
         if ! kill -0 "$caller_pid" 2>/dev/null; then
             logmsg "monitor_caller_pid: Caller PID $caller_pid is gone (crashed?), cleaning up"
+
+            # Re-check CallerPID in the file before acting, in case a new edgeview
+            # process with a recycled PID already wrote a new session file.
+            local file_pid
+            file_pid=$(jq -r '.CallerPID // empty' "$VNC_CONFIG_FILE" 2>/dev/null)
+            if [ -n "$file_pid" ] && [ "$file_pid" != "$caller_pid" ]; then
+                logmsg "monitor_caller_pid: File CallerPID changed on crash check, not cleaning up"
+                return 0
+            fi
 
             # Stop virtctl vnc process
             local virtctl_pid
@@ -156,13 +214,6 @@ monitor_caller_pid() {
                 rm -f "$VNC_CONFIG_FILE"
             fi
 
-            VNC_RUNNING=false
-            return 0
-        fi
-
-        # Check if the VNC file was removed (normal cleanup by edgeview)
-        if [ ! -f "$VNC_CONFIG_FILE" ]; then
-            logmsg "monitor_caller_pid: VNC file removed, stopping monitor"
             return 0
         fi
     done

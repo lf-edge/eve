@@ -92,6 +92,8 @@ func main() {
 	setupRegexp()
 
 	if runOnServer {
+		removeStaleVNCFile(false)
+
 		values := flag.Args()
 		for _, cmd := range values {
 			if cmd == "techsupport" {
