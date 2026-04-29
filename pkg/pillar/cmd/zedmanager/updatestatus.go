@@ -1074,6 +1074,15 @@ func doInactivate(ctx *zedmanagerContext, appInstID uuid.UUID,
 			log.Warnf("doInactivate: No DomainConfig for %s",
 				uuidStr)
 		} else if dc.Activate {
+			// Refresh PurgeCounter from the current AppInstanceConfig
+			// before publishing. This path (PurgeInprogress=BringDown)
+			// does not go through MaybeAddDomainConfig, so without this
+			// the published DomainConfig carries a stale PurgeCounter
+			// and domainmgr cannot distinguish a real purge teardown
+			// from a cluster-status cascade — leaving the old VMIRS up.
+			if cfg := lookupAppInstanceConfig(ctx, uuidStr, true); cfg != nil {
+				dc.PurgeCounter = cfg.PurgeCmd.Counter + cfg.LocalPurgeCmd.Counter
+			}
 			log.Functionf("doInactivate: Clearing Activate for DomainConfig for %s",
 				uuidStr)
 			dc.Activate = false
