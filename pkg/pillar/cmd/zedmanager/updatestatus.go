@@ -877,6 +877,15 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	// Are we doing a restart?
 	if status.RestartInprogress == types.BringDown {
 		if dc.Activate {
+			// Refresh RestartCounter from the current AppInstanceConfig
+			// before publishing. This BringDown does not go through
+			// MaybeAddDomainConfig, so without this the published
+			// DomainConfig carries a stale RestartCounter and domainmgr
+			// cannot distinguish a real restart teardown from a
+			// cluster-status cascade — leaving the old VMIRS up.
+			if cfg := lookupAppInstanceConfig(ctx, uuidStr, true); cfg != nil {
+				dc.RestartCounter = cfg.RestartCmd.Counter + cfg.LocalRestartCmd.Counter
+			}
 			log.Functionf("RestartInprogress(%s) Clear Activate",
 				status.Key())
 			dc.Activate = false
@@ -1074,6 +1083,17 @@ func doInactivate(ctx *zedmanagerContext, appInstID uuid.UUID,
 			log.Warnf("doInactivate: No DomainConfig for %s",
 				uuidStr)
 		} else if dc.Activate {
+			// Refresh PurgeCounter and RestartCounter from the current
+			// AppInstanceConfig before publishing. This path
+			// (PurgeInprogress=BringDown) does not go through
+			// MaybeAddDomainConfig, so without this the published
+			// DomainConfig carries stale counters and domainmgr cannot
+			// distinguish a real teardown from a cluster-status cascade
+			// — leaving the old VMIRS up.
+			if cfg := lookupAppInstanceConfig(ctx, uuidStr, true); cfg != nil {
+				dc.PurgeCounter = cfg.PurgeCmd.Counter + cfg.LocalPurgeCmd.Counter
+				dc.RestartCounter = cfg.RestartCmd.Counter + cfg.LocalRestartCmd.Counter
+			}
 			log.Functionf("doInactivate: Clearing Activate for DomainConfig for %s",
 				uuidStr)
 			dc.Activate = false

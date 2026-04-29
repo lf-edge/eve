@@ -1460,6 +1460,15 @@ func updateNonPinnedCPUs(ctx *domainContext, config *types.DomainConfig, status 
 // and the cpumask is updated in the *status*
 func assignCPUs(ctx *domainContext, config *types.DomainConfig, status *types.DomainStatus) error {
 	if config.VmConfig.CPUsPinned { // Pin the CPU
+		// CPUs may already be allocated for this UUID from a prior
+		// doActivate that returned early (e.g. kubevirt cluster-trust path
+		// after a version bump). The cpuAllocator records one allocation
+		// per UUID and would error with "multiple allocations for UUID"
+		// on a second Allocate call, leaving the app permanently broken.
+		// Reuse the existing allocation when present.
+		if len(status.VmConfig.CPUs) > 0 {
+			return nil
+		}
 		cpusToAssign, err := ctx.cpuAllocator.Allocate(config.UUIDandVersion.UUID, config.VCpus)
 		if err != nil {
 			return err
@@ -1497,6 +1506,8 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		DisplayName:    config.DisplayName,
 		DomainName:     config.GetTaskName(),
 		AppNum:         config.AppNum,
+		PurgeCounter:   config.PurgeCounter,
+		RestartCounter: config.RestartCounter,
 		DisableLogs:    config.DisableLogs,
 		State:          types.INSTALLED,
 		VmConfig:       config.VmConfig,
@@ -2094,15 +2105,20 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 
 	// Defense-in-depth: in kubevirt cluster mode, never tear down the
 	// cluster-shared VMIRS while the user still wants the app up
-	// (UserActivate=true). Bail out before any Info()/Shutdown/HALTING
-	// publish work — those are wasted (and would be visible as a spurious
-	// HALTING state if Info() ever populates DomainId for kubevirt). The
-	// legitimate teardown paths — handleDelete (impatient=true) and a real
-	// user opt-out (UserActivate=false) — bypass this guard.
+	// (UserActivate=true) AND no real lifecycle event has occurred
+	// (PurgeCounter and RestartCounter both match status). The legitimate
+	// teardown paths — handleDelete (impatient=true), a real user opt-out
+	// (UserActivate=false), a purge (PurgeCounter change → kubeName
+	// change), and a controller Restart (RestartCounter change) — bypass
+	// this guard.
 	if ctx.hvTypeKube && !impatient {
-		if cfg := lookupDomainConfig(ctx, status.Key()); cfg != nil && cfg.UserActivate {
+		if cfg := lookupDomainConfig(ctx, status.Key()); cfg != nil &&
+			cfg.UserActivate &&
+			cfg.PurgeCounter == status.PurgeCounter &&
+			cfg.RestartCounter == status.RestartCounter {
 			log.Noticef("doInactivate(%s) kubevirt: skipping Delete/Cleanup "+
-				"(UserActivate=true); leaving VMIRS to cluster", status.Key())
+				"(UserActivate=true, Purge/Restart counters unchanged); leaving VMIRS to cluster",
+				status.Key())
 			return
 		}
 	}
@@ -2613,6 +2629,8 @@ func handleModify(ctx *domainContext, key string,
 		if status.DomainName != config.GetTaskName() {
 			status.DomainName = config.GetTaskName()
 			status.AppNum = config.AppNum
+			status.PurgeCounter = config.PurgeCounter
+			status.RestartCounter = config.RestartCounter
 			log.Functionf("handleModify(%v) set domainName %s for %s",
 				config.UUIDandVersion, status.DomainName,
 				config.DisplayName)
@@ -2638,20 +2656,28 @@ func handleModify(ctx *domainContext, key string,
 		log.Functionf("handleModify(%v) NOT activating for %s",
 			config.UUIDandVersion, config.DisplayName)
 		// In kubevirt mode, an Activate=false that still carries UserActivate=true
-		// is a cluster-status cascade (e.g. failover bookkeeping, transient
-		// scheduling churn), not an explicit user opt-out. The VMIRS is
-		// cluster-shared; tearing it down here would defeat cluster recovery.
-		// Clear any error, update the status, but do not call doInactivate.
-		if ctx.hvTypeKube && config.UserActivate {
+		// is normally a cluster-status cascade (failover bookkeeping, transient
+		// scheduling churn) where the VMIRS identity is unchanged — preserve it
+		// for cluster recovery. But on a purge the kubeName changes
+		// (PurgeCounter increments), and on a controller Restart the
+		// RestartCounter increments; in either case the OLD VMIRS must be
+		// torn down before the NEW one is created. Discriminate via
+		// PurgeCounter and RestartCounter.
+		purgeChanged := config.PurgeCounter != status.PurgeCounter
+		restartChanged := config.RestartCounter != status.RestartCounter
+		teardownNeeded := purgeChanged || restartChanged
+		if ctx.hvTypeKube && config.UserActivate && !teardownNeeded {
 			if status.HasError() {
 				log.Noticef("handleModify(%s) kubevirt: clearing error without "+
-					"Delete (UserActivate=true): %s", status.Key(), status.Error)
+					"Delete (UserActivate=true, Purge/Restart counters unchanged): %s",
+					status.Key(), status.Error)
 				status.ClearError()
 				publishDomainStatus(ctx, status)
 				changed = true
 			} else if status.Activated {
 				log.Noticef("handleModify(%s) kubevirt: skipping doInactivate "+
-					"(UserActivate=true); leaving VMIRS to cluster", status.Key())
+					"(UserActivate=true, Purge/Restart counters unchanged); leaving VMIRS to cluster",
+					status.Key())
 			}
 		} else if status.HasError() {
 			log.Noticef("handleModify(%s) clearing existing error: %s",
@@ -2662,8 +2688,28 @@ func handleModify(ctx *domainContext, key string,
 			updateStatusFromConfig(status, *config)
 			changed = true
 		} else if status.Activated {
-			doInactivate(ctx, status, false)
+			// Purge or Restart change in kubevirt mode: tear down the OLD
+			// VMIRS now (impatient=true bypasses the kubevirt cluster-trust
+			// guard in doInactivate).
+			impatient := ctx.hvTypeKube && teardownNeeded
+			if impatient {
+				log.Noticef("handleModify(%s) kubevirt: Purge %d->%d Restart %d->%d; "+
+					"tearing down old VMIRS",
+					status.Key(),
+					status.PurgeCounter, config.PurgeCounter,
+					status.RestartCounter, config.RestartCounter)
+			}
+			doInactivate(ctx, status, impatient)
 			updateStatusFromConfig(status, *config)
+			// Advance both counters only after the old VMIRS was successfully
+			// torn down (status.Activated cleared by doInactivate's tail).
+			// Otherwise a retry tick must still see teardownNeeded=true so it
+			// retries the teardown rather than misclassifying the orphan as
+			// a transient cluster cascade.
+			if impatient && !status.Activated {
+				status.PurgeCounter = config.PurgeCounter
+				status.RestartCounter = config.RestartCounter
+			}
 			changed = true
 		}
 		// Update disks based on any change to volumes
@@ -2805,7 +2851,15 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 	status.PendingDelete = true
 	publishDomainStatus(ctx, status)
 
-	if status.Activated {
+	// In kubevirt mode, always route through doInactivate(impatient=true)
+	// even when Activated=false. The cluster-trust path may have left the
+	// VMIRS in the cluster while DomainStatus reads Activated=false (e.g.
+	// State=BOOTING after a Start that did not reach RUNNING). doCleanup
+	// alone calls hyper.Cleanup → waitForVMI(available=false) which blocks
+	// up to 15 minutes waiting for a VMIRS that nothing has deleted.
+	// doInactivate(impatient=true) calls Stop first (StopReplicaVMI) then
+	// Cleanup, actually deleting the VMIRS.
+	if status.Activated || ctx.hvTypeKube {
 		doInactivate(ctx, status, true)
 	} else if status.HasError() {
 		doCleanup(ctx, status)
