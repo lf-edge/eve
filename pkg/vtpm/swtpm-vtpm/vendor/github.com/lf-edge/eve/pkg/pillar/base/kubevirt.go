@@ -4,6 +4,7 @@
 package base
 
 import (
+	"fmt"
 	"os"
 	"regexp"
 	"strings"
@@ -12,7 +13,7 @@ import (
 )
 
 const (
-	// EveVirtTypeFile contains the virtualization type, ie kvm, xen or kubevirt
+	// EveVirtTypeFile contains the virtualization type, i.e., kvm, xen or k
 	EveVirtTypeFile = "/run/eve-hv-type"
 	// KubeAppNameMaxLen limits the length of the app name for Kubernetes.
 	// This also includes the appended UUID prefix.
@@ -24,24 +25,45 @@ const (
 	// VMIPodNamePrefix : prefix added to name of every pod created to run VM.
 	VMIPodNamePrefix = "virt-launcher-"
 	// InstallOptionEtcdSizeGB grub option at install time.  Size of etcd volume in GB.
-	InstallOptionEtcdSizeGB = "eve_install_kubevirt_etcd_sizeGB"
+	InstallOptionEtcdSizeGB = "eve_install_k3s_etcd_sizeGB"
 	// DefaultEtcdSizeGB default for InstallOptionEtcdSizeGB
 	DefaultEtcdSizeGB uint32 = 10
 	// EtcdVolBlockSizeBytes is the block size for the etcd volume
 	EtcdVolBlockSizeBytes = uint64(4 * 1024)
+	// KubevirtHypervisorName is the name of the imaginary EVE 'k' hypervisor
+	KubevirtHypervisorName = "k"
 )
 
-// IsHVTypeKube - return true if the EVE image is kube cluster type.
+// IsHVTypeKube - return true if the current EVE image is kube cluster type.
 func IsHVTypeKube() bool {
 	retbytes, err := os.ReadFile(EveVirtTypeFile)
 	if err != nil {
 		return false
 	}
 
-	if strings.Contains(string(retbytes), "kubevirt") {
-		return true
+	return strings.TrimSpace(string(retbytes)) == KubevirtHypervisorName
+}
+
+// IsVersionHVTypeKube - return true if the EVE version string is kube cluster type.
+func IsVersionHVTypeKube(baseOsVersion string) (bool, error) {
+	hv, err := versionToHVType(baseOsVersion)
+	if err != nil {
+		return false, err
 	}
-	return false
+	return strings.TrimSpace(hv) == KubevirtHypervisorName, nil
+}
+
+// Returns HVType from the version string.
+// Assumes HVType is before the last dash i.e.,
+// FULL_VERSION:=$(ROOTFS_VERSION)-$(HV)-$(ZARCH)
+func versionToHVType(baseOsVersion string) (string, error) {
+	comp := strings.Split(baseOsVersion, "-")
+	num := len(comp)
+	if num < 3 {
+		return "", fmt.Errorf("Short baseOsVersion string: %s",
+			baseOsVersion)
+	}
+	return comp[num-2], nil
 }
 
 var (
@@ -66,27 +88,36 @@ func GetAppKubeName(displayName string, uuid uuid.UUID) string {
 	return appKubeName + "-" + uuid.String()[:KubeAppNameUUIDSuffixLen]
 }
 
-// GetVMINameFromVirtLauncher : get VMI name from the corresponding Kubevirt
-// launcher pod name for replicaset generated VMI.
-func GetVMINameFromVirtLauncher(podName string) (vmiName string, isVirtLauncher bool) {
+// GetVMINameFromVirtLauncher extracts VMI name and ReplicaSet name from a Kubevirt
+// launcher pod name.
+// Pod name format: virt-launcher-<vmi-name>-<5-char-pod-suffix>
+// VMI name format: <replicaset-name>-<5-char-random-suffix>
+// Returns:
+//   - vmiName: the actual VMI name (e.g., "ubuntu-cloudimg-vm-ff9d59r58j") for virtctl commands
+//   - rsName: the ReplicaSet name (e.g., "ubuntu-cloudimg-vm-ff9d5") for app identification
+//   - error: non-nil if podName is not a valid virt-launcher pod name
+func GetVMINameFromVirtLauncher(podName string) (vmiName string, rsName string, err error) {
 	if !strings.HasPrefix(podName, VMIPodNamePrefix) {
-		return "", false
+		return "", "", fmt.Errorf("not a virt-launcher pod: %s", podName)
 	}
-	vmiName = strings.TrimPrefix(podName, VMIPodNamePrefix)
-	lastSep := strings.LastIndex(vmiName, "-")
+	name := strings.TrimPrefix(podName, VMIPodNamePrefix)
+	lastSep := strings.LastIndex(name, "-")
 	if lastSep == -1 || lastSep < 5 {
-		return "", false
+		return "", "", fmt.Errorf("invalid virt-launcher pod name format: %s", podName)
 	}
 
-	// Check if the last part is 5 bytes long
-	if len(vmiName[lastSep+1:]) != 5 {
-		return "", false
+	// Check if the last part is 5 bytes long (pod suffix)
+	if len(name[lastSep+1:]) != 5 {
+		return "", "", fmt.Errorf("invalid pod suffix length in: %s", podName)
 	}
 
-	// Use the index minus 5 bytes to get the VMI name to remove added
-	// replicaset suffix
-	vmiName = vmiName[:lastSep-5]
-	return vmiName, true
+	// VMI name: remove only the pod suffix
+	vmiName = name[:lastSep]
+
+	// ReplicaSet name: remove both the pod suffix and the VMI random suffix (5 chars + dash)
+	rsName = name[:lastSep-5]
+
+	return vmiName, rsName, nil
 }
 
 // GetReplicaPodName : get the app name from the pod name for replica pods.
