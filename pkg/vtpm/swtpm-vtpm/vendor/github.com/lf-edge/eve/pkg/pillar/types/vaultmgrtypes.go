@@ -134,7 +134,23 @@ func (key EncryptedVaultKeyFromDevice) LogKey() string {
 type EncryptedVaultKeyFromController struct {
 	Name              string
 	EncryptedVaultKey []byte
+	PolicyPcr         VaultKeyPolicyPCR
 }
+
+// VaultKeyPolicyPCR defines the PCR policy associated with a vault key,
+// it is received from the controller along with the encrypted vault key.
+type VaultKeyPolicyPCR struct {
+	PolicyPresent bool
+	Indexes       []int
+	ID            int
+}
+
+const (
+	// PolicyPCRRecoveredDefault indicate that the PCR policy was recovered using default PCRs.
+	PolicyPCRRecoveredDefault = 0
+	// PolicyPCRRecovered indicate that the PCR policy was recovered locally by vaultmgr.
+	PolicyPCRRecovered = -1
+)
 
 // Key returns name of the vault corresponding to this object
 // for now it is only the default vault i.e. "Application Volume Store"
@@ -176,4 +192,9 @@ func (key EncryptedVaultKeyFromController) LogDelete(logBase *base.LogObject) {
 // LogKey :
 func (key EncryptedVaultKeyFromController) LogKey() string {
 	return string(base.EncryptedVaultKeyFromControllerLogType) + "-" + key.Key()
+}
+
+// IsVaultInError :
+func (status VaultStatus) IsVaultInError() bool {
+	return (status.Status == info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR) && len(status.MismatchingPCRs) > 0
 }

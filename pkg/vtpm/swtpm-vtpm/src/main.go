@@ -28,21 +28,31 @@ import (
 )
 
 const (
-	swtpmPath      = "/usr/bin/swtpm"
-	maxInstances   = 32
-	maxPidWaitTime = 5 //seconds
+	swtpmPath          = "/usr/bin/swtpm"
+	swtpmLogMaxSize    = 10 * 1024 * 1024 // 10MB
+	swtpmLogMaxBackups = 3
 )
 
+type swtpmInstance struct {
+	pid int
+	lf  *logForwarder
+}
+
 var (
-	liveInstances int
-	m             sync.Mutex
-	log           *base.LogObject
-	pids          = make(map[uuid.UUID]int, 0)
+	maxPidWaitTime = 5  // seconds; overridden in tests
+	maxInstances   = 32 // overridden in tests
+	liveInstances  int
+	m              sync.Mutex
+	log            *base.LogObject
+	instances      = make(map[uuid.UUID]*swtpmInstance)
 	// XXX : move the paths to types so we have everything EVE creates in one place.
 	// These are defined as vars to be able to mock them in tests
-	stateEncryptionKey   = "/run/swtpm/%s.binkey"
-	swtpmIsEncryptedPath = "/persist/swtpm/%s.encrypted"
-	swtpmStatePath       = "/persist/swtpm/tpm-state-%s"
+	stateDir             = "/persist/swtpm"
+	runDir               = "/run/swtpm"
+	stateEncryptionKey   = path.Join(runDir, "%s.binkey")
+	stateIsEncryptedPath = path.Join(stateDir, "%s.encrypted")
+	workDir              = path.Join(stateDir, "tpm-state-%s")
+	instanceLogFifoPath  = path.Join(runDir, "%s-swtpm.log.fifo")
 	vtpmdCtrlSockPath    = types.VtpmdCtrlSocket
 	swtpmCtrlSockPath    = types.SwtpmCtrlSocketPath
 	swtpmPidPath         = types.SwtpmPidPath
@@ -51,7 +61,8 @@ var (
 		return err == nil
 	}
 	getEncryptionKey = func() ([]byte, error) {
-		return etpm.UnsealDiskKey(etpm.DiskKeySealingPCRs)
+		pcrSelection := etpm.GetDiskKeyPolicyPcrOrDefault(types.PolicyPcrFile)
+		return etpm.UnsealDiskKeyWithRecovery(pcrSelection)
 	}
 )
 
@@ -64,10 +75,18 @@ func isAlive(pid int) bool {
 
 func cleanupFiles(uuid uuid.UUID) {
 	id := uuid.String()
-	os.RemoveAll(fmt.Sprintf(swtpmStatePath, id))
+
+	if inst, ok := instances[uuid]; ok {
+		if inst.lf != nil {
+			inst.lf.stop()
+		}
+		delete(instances, uuid)
+		liveInstances--
+	}
+	os.RemoveAll(fmt.Sprintf(workDir, id))
 	os.Remove(fmt.Sprintf(swtpmCtrlSockPath, id))
 	os.Remove(fmt.Sprintf(swtpmPidPath, id))
-	os.Remove(fmt.Sprintf(swtpmIsEncryptedPath, id))
+	os.Remove(fmt.Sprintf(stateIsEncryptedPath, id))
 }
 
 func makeDirs(dir string) error {
@@ -115,11 +134,11 @@ func getSwtpmPid(pidPath string, timeoutSeconds uint) (int, error) {
 
 func checkSwtpmState(uuid uuid.UUID) error {
 	id := uuid.String()
-	statePath := fmt.Sprintf(swtpmStatePath, id)
+	wd := fmt.Sprintf(workDir, id)
 	ctrlSockPath := fmt.Sprintf(swtpmCtrlSockPath, id)
 	pidPath := fmt.Sprintf(swtpmPidPath, id)
 
-	if _, err := os.Stat(statePath); err != nil {
+	if _, err := os.Stat(wd); err != nil {
 		return fmt.Errorf("failed to check SWTPM state directory: %w", err)
 	}
 
@@ -158,56 +177,71 @@ func checkSwtpmState(uuid uuid.UUID) error {
 	return nil
 }
 
-func runSwtpm(uuid uuid.UUID) (int, error) {
+func runSwtpm(uuid uuid.UUID) (int, *logForwarder, error) {
 	id := uuid.String()
-	statePath := fmt.Sprintf(swtpmStatePath, id)
+	wd := fmt.Sprintf(workDir, id)
 	ctrlSockPath := fmt.Sprintf(swtpmCtrlSockPath, id)
 	binKeyPath := fmt.Sprintf(stateEncryptionKey, id)
 	pidPath := fmt.Sprintf(swtpmPidPath, id)
-	isEncryptedPath := fmt.Sprintf(swtpmIsEncryptedPath, id)
-	logFile := path.Join(fmt.Sprintf(swtpmStatePath, id), "swtpm.log")
+	isEncryptedPath := fmt.Sprintf(stateIsEncryptedPath, id)
+	fifoPath := fmt.Sprintf(instanceLogFifoPath, id)
+	logPath := path.Join(wd, "swtpm.log")
+
+	if err := makeDirs(wd); err != nil {
+		return 0, nil, fmt.Errorf("failed to create SWTPM state directory: %w", err)
+	}
+	if err := makeDirs(path.Dir(fifoPath)); err != nil {
+		return 0, nil, fmt.Errorf("failed to create SWTPM run directory: %w", err)
+	}
+
+	// create a log forwarder for this SWTPM instance
+	lf, err := newLogForwarder(fifoPath, logPath)
+	if err != nil {
+		return 0, nil, fmt.Errorf("failed to create log forwarder: %w", err)
+	}
+
 	swtpmArgs := []string{"socket", "--tpm2",
-		"--tpmstate", "dir=" + statePath + ",backup",
+		"--tpmstate", "dir=" + wd + ",backup",
 		"--ctrl", "type=unixio,path=" + ctrlSockPath + ",terminate",
 		"--pid", "file=" + pidPath,
-		"--log", "level=3,truncate,file=" + logFile,
+		"--log", "level=3,file=" + lf.fifoPath,
 		"--daemon"}
-
-	// If state directory already exists, this call will do nothing.
-	if err := makeDirs(statePath); err != nil {
-		return 0, fmt.Errorf("failed to create SWTPM state directory: %w", err)
-	}
 
 	if !isTPMAvailable() {
 		log.Noticef("TPM is not available, starting SWTPM without state encryption!")
 		// if SWTPM state for app marked as as encrypted, and TPM is not available
 		// anymore, fail because this might corrupt the SWTPM state.
 		if utils.FileExists(log, isEncryptedPath) {
-			return 0, fmt.Errorf("state encryption was enabled for SWTPM, but TPM is no longer available")
+			lf.stop()
+			return 0, nil, fmt.Errorf("state encryption was enabled for SWTPM, but TPM is no longer available")
 		}
 
 		cmd := exec.Command(swtpmPath, swtpmArgs...)
 		if err := cmd.Run(); err != nil {
-			return 0, fmt.Errorf("failed to start SWTPM: %w", err)
+			lf.stop()
+			return 0, nil, fmt.Errorf("failed to start SWTPM: %w", err)
 		}
 	} else {
 		log.Noticef("TPM is available, starting SWTPM with state encryption")
 
 		key, err := getEncryptionKey()
 		if err != nil {
-			return 0, fmt.Errorf("failed to get SWTPM state encryption key : %w", err)
+			lf.stop()
+			return 0, nil, fmt.Errorf("failed to get SWTPM state encryption key : %w", err)
 		}
 
 		// we are about to write the key to the disk, so mark the SWTPM state
 		// as encrypted
 		if !utils.FileExists(log, isEncryptedPath) {
 			if err := utils.WriteRename(isEncryptedPath, []byte("Y")); err != nil {
-				return 0, fmt.Errorf("failed to mark the app SWTPM state as encrypted: %w", err)
+				lf.stop()
+				return 0, nil, fmt.Errorf("failed to mark the app SWTPM state as encrypted: %w", err)
 			}
 		}
 
 		if err := os.WriteFile(binKeyPath, key, 0644); err != nil {
-			return 0, fmt.Errorf("failed to write key to file: %w", err)
+			lf.stop()
+			return 0, nil, fmt.Errorf("failed to write key to file: %w", err)
 		}
 
 		swtpmArgs = append(swtpmArgs, "--key", "file="+binKeyPath+",format=binary,mode=aes-256-cbc,remove=true")
@@ -215,19 +249,21 @@ func runSwtpm(uuid uuid.UUID) (int, error) {
 		if err := cmd.Run(); err != nil {
 			// this shall not fail 🧙🏽‍♂️
 			rmErr := os.Remove(binKeyPath)
+			lf.stop()
 			if rmErr != nil {
-				return 0, fmt.Errorf("failed to start SWTPM: %w, failed to remove key file %w", err, rmErr)
+				return 0, nil, fmt.Errorf("failed to start SWTPM: %w, failed to remove key file %w", err, rmErr)
 			}
-			return 0, fmt.Errorf("failed to start SWTPM: %w", err)
+			return 0, nil, fmt.Errorf("failed to start SWTPM: %w", err)
 		}
 	}
 
-	pid, err := getSwtpmPid(pidPath, maxPidWaitTime)
+	pid, err := getSwtpmPid(pidPath, uint(maxPidWaitTime))
 	if err != nil {
-		return 0, fmt.Errorf("failed to get SWTPM pid: %w", err)
+		lf.stop()
+		return 0, nil, fmt.Errorf("failed to get SWTPM pid: %w", err)
 	}
 
-	return pid, nil
+	return pid, lf, nil
 }
 
 // Domain manager is requesting to launch a new VM/App, run a new SWTPM
@@ -260,12 +296,12 @@ func handleLaunch(w http.ResponseWriter, r *http.Request) {
 	// check if it's still alive. if it is alive, refuse to launch a new
 	// instance, even though for dir backend lock is always enabled,
 	// better be safe than sorry and not gamble with state corruption.
-	if _, ok := pids[id]; ok {
+	if inst, ok := instances[id]; ok {
 		pidPath := fmt.Sprintf(swtpmPidPath, id)
 		// if pid file does not exist, it means the SWTPM instance gracefully
 		// terminated and we can start a new one.
 		if _, err := os.Stat(pidPath); err == nil {
-			pid, err := getSwtpmPid(pidPath, maxPidWaitTime)
+			pid, err := getSwtpmPid(pidPath, uint(maxPidWaitTime))
 			if err != nil {
 				err := fmt.Sprintf("vTPM failed to read pid file of SWTPM with id %s", id)
 				http.Error(w, err, http.StatusExpectationFailed)
@@ -275,7 +311,7 @@ func handleLaunch(w http.ResponseWriter, r *http.Request) {
 			// if the SWTPM instance is still alive, we can move on. Maybe we should do a health check
 			// here too? but state should be already loaded in memory :-/
 			if isAlive(pid) {
-				log.Noticef("vTPM SWTPM instance with id %s is already running with pid %d", id, pid)
+				log.Noticef("vTPM SWTPM instance with id %s is already running with pid %d", id, inst.pid)
 				w.WriteHeader(http.StatusOK)
 				return
 			}
@@ -285,13 +321,17 @@ func handleLaunch(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		if inst.lf != nil {
+			inst.lf.stop()
+		}
+
 		liveInstances--
-		delete(pids, id)
+		delete(instances, id)
 	}
 
 	// Run SWTPM for the health check first, if there is no backup state or
 	// both normal state and backup are corrupted, we do a state reset with a warning.
-	pid, err := runSwtpm(id)
+	pid, lf, err := runSwtpm(id)
 	if err != nil {
 		err := fmt.Sprintf("vTPM failed to start SWTPM instance for health check: %v", err)
 		http.Error(w, err, http.StatusFailedDependency)
@@ -299,7 +339,7 @@ func handleLaunch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// check SWTPM health
-	err = checkSwtpmState(id)
+	checkErr := checkSwtpmState(id)
 	// wait for SWTPM instance to get terminated then check for errors
 	for i := 0; i < maxPidWaitTime; i++ {
 		if !isAlive(pid) {
@@ -307,14 +347,18 @@ func handleLaunch(w http.ResponseWriter, r *http.Request) {
 		}
 		time.Sleep(1 * time.Second)
 	}
-	if err != nil {
+
+	// The health-check run is done; stop its log forwarder before the next run.
+	lf.stop()
+
+	if checkErr != nil {
 		log.Warnf("SWTPM instance state with id %s is corrupted, resetting the state...", id)
 		// remove the state directory and start a new SWTPM instance
-		isEncryptedPath := fmt.Sprintf(swtpmIsEncryptedPath, id)
+		isEncryptedPath := fmt.Sprintf(stateIsEncryptedPath, id)
 		if utils.FileExists(log, isEncryptedPath) {
 			os.Remove(isEncryptedPath)
 		}
-		if err := os.RemoveAll(fmt.Sprintf(swtpmStatePath, id)); err != nil {
+		if err := os.RemoveAll(fmt.Sprintf(workDir, id)); err != nil {
 			err := fmt.Sprintf("failed to remove SWTPM state directory: %v", err)
 			http.Error(w, err, http.StatusFailedDependency)
 			return
@@ -326,7 +370,7 @@ func handleLaunch(w http.ResponseWriter, r *http.Request) {
 	// Run SWTPM again, since we run SWTPM with the "terminate" flag, it will
 	// terminate itself when the control socket is closed in checkSwtpmState.
 	// in any case, this should work.
-	pid, err = runSwtpm(id)
+	pid, lf, err = runSwtpm(id)
 	if err != nil {
 		err := fmt.Sprintf("vTPM failed to start SWTPM instance: %v", err)
 		http.Error(w, err, http.StatusFailedDependency)
@@ -336,7 +380,7 @@ func handleLaunch(w http.ResponseWriter, r *http.Request) {
 	log.Noticef("vTPM launched SWTPM instance with id: %s, pid: %d", id, pid)
 
 	// Send a success response.
-	pids[id] = pid
+	instances[id] = &swtpmInstance{pid: pid, lf: lf}
 	liveInstances++
 	w.WriteHeader(http.StatusOK)
 }
@@ -362,15 +406,20 @@ func handleTerminate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err, http.StatusBadRequest)
 		return
 	}
-	pid, ok := pids[id]
+	inst, ok := instances[id]
 	if ok {
-		if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
+		if err := syscall.Kill(inst.pid, syscall.SIGTERM); err != nil {
 			if err != syscall.ESRCH {
 				// This should not happen, but log it just in case.
 				log.Errorf("vTPM failed to kill SWTPM instance (terminate request): %v", err)
 			}
 		}
-		delete(pids, id)
+
+		if inst.lf != nil {
+			inst.lf.stop()
+		}
+
+		delete(instances, id)
 		liveInstances--
 	} else {
 		err := fmt.Sprintf("vTPM terminate request failed, SWTPM instance with id %s not found", id)
@@ -378,7 +427,7 @@ func handleTerminate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Noticef("vTPM terminated SWTPM instance with id: %s, pid: %d", id, pid)
+	log.Noticef("vTPM terminated SWTPM instance with id: %s, pid: %d", id, inst.pid)
 
 	// send a success response.
 	w.WriteHeader(http.StatusOK)
@@ -409,19 +458,24 @@ func handlePurge(w http.ResponseWriter, r *http.Request) {
 	// either sends CMD_SHUTDOWN through the control socket or in case of qemu
 	// crashing, SWTPM terminates itself when the control socket is closed since
 	// we run it with the "terminate" flag. but just in case send a term signal
-	pid, ok := pids[id]
+	inst, ok := instances[id]
 	if ok {
-		if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
+		if err := syscall.Kill(inst.pid, syscall.SIGTERM); err != nil {
 			if err != syscall.ESRCH {
 				// This should not happen, but log it just in case.
 				log.Errorf("failed to kill SWTPM instance (purge request): %v", err)
 			}
 		}
-		delete(pids, id)
+
+		if inst.lf != nil {
+			inst.lf.stop()
+		}
+
+		log.Noticef("vTPM purged SWTPM instance with id: %s, pid: %d", id, inst.pid)
+
+		delete(instances, id)
 		liveInstances--
 	}
-
-	log.Noticef("vTPM purged SWTPM instance with id: %s, pid: %d", id, pid)
 
 	// clean up the files and send a success response.
 	cleanupFiles(id)

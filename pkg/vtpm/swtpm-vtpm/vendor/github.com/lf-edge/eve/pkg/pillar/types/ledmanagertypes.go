@@ -36,6 +36,10 @@ const (
 	LedBlinkInvalidAuthContainer
 	// LedBlinkInvalidBootstrapConfig - LED indication of bootstrap configuration (bootstrap-config.pb) not being valid.
 	LedBlinkInvalidBootstrapConfig
+	// LedBlinkOnboardingFailureConflict - LED indication of device being onboarded but having a conflict with another device.
+	LedBlinkOnboardingFailureConflict
+	// LedBlinkOnboardingFailureNotFound - LED indication of device being onboarded but not found in the controller.
+	LedBlinkOnboardingFailureNotFound
 )
 
 // String returns human-readable description of the state indicated by the particular LED blinking count.
@@ -54,7 +58,11 @@ func (c LedBlinkCount) String() string {
 	case LedBlinkRadioSilence:
 		return "Radio silence is imposed"
 	case LedBlinkOnboardingFailure:
-		return "Onboarding failure or conflict"
+		return "Onboarding failure - generic"
+	case LedBlinkOnboardingFailureConflict:
+		return "Onboarding failure due to conflict with another device"
+	case LedBlinkOnboardingFailureNotFound:
+		return "Onboarding failure due to not being found in the controller"
 	case LedBlinkRespWithoutTLS:
 		return "Response without TLS - ignored"
 	case LedBlinkRespWithoutOSCP:
@@ -75,7 +83,7 @@ type LedBlinkCounter struct {
 }
 
 // Merge the 1/2 values based on having usable addresses or not, with
-// the value we get based on access to zedcloud or errors.
+// the value we get based on access to the controller or errors.
 func DeriveLedCounter(ledCounter LedBlinkCount, usableAddressCount int, radioSilence bool) LedBlinkCount {
 	if radioSilence {
 		return LedBlinkRadioSilence

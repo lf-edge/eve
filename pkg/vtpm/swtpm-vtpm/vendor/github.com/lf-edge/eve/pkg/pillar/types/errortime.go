@@ -7,7 +7,9 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/lf-edge/eve-api/go/info"
 	"github.com/sirupsen/logrus" // OK for logrus.Fatal
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
@@ -94,17 +96,38 @@ type ErrorDescription struct {
 // SetErrorDescription sync ErrorDescription with provided one
 // it sets ErrorSeverityError in case of unspecified ErrorSeverity
 // it sets ErrorTime to time.Now() in case of no time provided
-func (edPtr *ErrorDescription) SetErrorDescription(errDescription ErrorDescription) {
+func (ed *ErrorDescription) SetErrorDescription(errDescription ErrorDescription) {
 	if errDescription.Error == "" {
 		logrus.Fatal("Missing error string")
 	}
-	*edPtr = errDescription
-	if edPtr.ErrorSeverity == ErrorSeverityUnspecified {
-		edPtr.ErrorSeverity = ErrorSeverityError
+	*ed = errDescription
+	if ed.ErrorSeverity == ErrorSeverityUnspecified {
+		ed.ErrorSeverity = ErrorSeverityError
 	}
-	if edPtr.ErrorTime.IsZero() {
-		edPtr.ErrorTime = time.Now()
+	if ed.ErrorTime.IsZero() {
+		ed.ErrorTime = time.Now()
 	}
+}
+
+// ToProto converts an ErrorDescription into its corresponding protobuf representation.
+func (ed *ErrorDescription) ToProto() *info.ErrorInfo {
+	if ed.ErrorTime.IsZero() {
+		// No Success / Error to report
+		return nil
+	}
+	errInfo := new(info.ErrorInfo)
+	errInfo.Description = ed.Error
+	errInfo.Timestamp = timestamppb.New(ed.ErrorTime)
+	errInfo.Severity = info.Severity(ed.ErrorSeverity)
+	errInfo.RetryCondition = ed.ErrorRetryCondition
+	errInfo.Entities = make([]*info.DeviceEntity, len(ed.ErrorEntities))
+	for i, el := range ed.ErrorEntities {
+		errInfo.Entities[i] = &info.DeviceEntity{
+			EntityId: el.EntityID,
+			Entity:   info.Entity(el.EntityType),
+		}
+	}
+	return errInfo
 }
 
 // ErrorAndTime is used by many EVE agents
