@@ -213,6 +213,54 @@ func (ctx kubevirtContext) Task(status *types.DomainStatus) types.Task {
 	return ctx
 }
 
+// uuidPrefixOfDomainName returns the "uuid." prefix from a domainName of the
+// form "uuid.version.appnum". Returns "" when the input is malformed.
+func uuidPrefixOfDomainName(domainName string) string {
+	dotIdx := strings.Index(domainName, ".")
+	if dotIdx <= 0 {
+		return ""
+	}
+	return domainName[:dotIdx+1]
+}
+
+// evictStaleVMIByUUIDPrefix removes any entry from vmiList whose key shares
+// the UUID prefix of newDomainName but is a different key. Used when creating
+// a new VMIRS / Pod replicaset for an app whose domainName has changed
+// (typically a purge changed PurgeCounter, which also changed Version), so
+// that the in-memory map keeps a single entry per app UUID.
+func (ctx kubevirtContext) evictStaleVMIByUUIDPrefix(newDomainName string) {
+	uuidPrefix := uuidPrefixOfDomainName(newDomainName)
+	if uuidPrefix == "" {
+		return
+	}
+	for k := range ctx.vmiList {
+		if k != newDomainName && strings.HasPrefix(k, uuidPrefix) {
+			logrus.Warnf("evictStaleVMIByUUIDPrefix: removing stale entry %s for new %s",
+				k, newDomainName)
+			delete(ctx.vmiList, k)
+			delete(ctx.prevDomainMetric, k)
+		}
+	}
+}
+
+// lookupVMIByUUIDPrefix scans vmiList for an entry whose key shares the UUID
+// prefix of domainName. Used as a fallback when Stop/Delete/Cleanup is called
+// with a domainName that does not match the current vmiList key — e.g. the
+// caller still has the old DomainConfig version in hand. Returns the meta and
+// the actual key under which it was found.
+func (ctx kubevirtContext) lookupVMIByUUIDPrefix(domainName string) (*vmiMetaData, string) {
+	uuidPrefix := uuidPrefixOfDomainName(domainName)
+	if uuidPrefix == "" {
+		return nil, ""
+	}
+	for k, v := range ctx.vmiList {
+		if strings.HasPrefix(k, uuidPrefix) {
+			return v, k
+		}
+	}
+	return nil, ""
+}
+
 // Use eve DomainConfig and DomainStatus and generate k3s VMI config or a Pod config
 func (ctx kubevirtContext) Setup(status types.DomainStatus, config types.DomainConfig,
 	aa *types.AssignableAdapters, globalConfig *types.ConfigItemValueMap, file *os.File) error {
@@ -549,6 +597,7 @@ func (ctx kubevirtContext) CreateReplicaVMIConfig(domainName string, config type
 		mtype:    IsMetaReplicaVMI,
 		domainID: int(rand.Uint32()),
 	}
+	ctx.evictStaleVMIByUUIDPrefix(domainName)
 	ctx.vmiList[domainName] = &meta
 
 	repvmiStr := fmt.Sprintf("%+v", replicaSet)
@@ -772,9 +821,17 @@ func (ctx kubevirtContext) Stop(domainName string, force bool) error {
 	}
 	kubeconfig := ctx.kubeConfig
 
+	keyToDelete := domainName
 	vmis, ok := ctx.vmiList[domainName]
 	if !ok {
-		return logError("domain %s failed to get vmlist", domainName)
+		if stale, oldKey := ctx.lookupVMIByUUIDPrefix(domainName); stale != nil {
+			logrus.Warnf("Stop: domainName %s not in vmiList; using stale entry under %s",
+				domainName, oldKey)
+			vmis = stale
+			keyToDelete = oldKey
+		} else {
+			return logError("domain %s failed to get vmlist", domainName)
+		}
 	}
 
 	onMe, _, err := ctx.scheduledOnMe(vmis.mtype, vmis.name)
@@ -797,9 +854,9 @@ func (ctx kubevirtContext) Stop(domainName string, force bool) error {
 		return err
 	}
 
-	delete(ctx.vmiList, domainName)
+	delete(ctx.vmiList, keyToDelete)
 
-	delete(ctx.prevDomainMetric, domainName)
+	delete(ctx.prevDomainMetric, keyToDelete)
 
 	return nil
 }
@@ -812,9 +869,17 @@ func (ctx kubevirtContext) Delete(domainName string) (result error) {
 	}
 	kubeconfig := ctx.kubeConfig
 
+	keyToDelete := domainName
 	vmis, ok := ctx.vmiList[domainName]
 	if !ok {
-		return logError("delete domain %s failed to get vmlist", domainName)
+		if stale, oldKey := ctx.lookupVMIByUUIDPrefix(domainName); stale != nil {
+			logrus.Warnf("Delete: domainName %s not in vmiList; using stale entry under %s",
+				domainName, oldKey)
+			vmis = stale
+			keyToDelete = oldKey
+		} else {
+			return logError("delete domain %s failed to get vmlist", domainName)
+		}
 	}
 
 	onMe, scheduledOnNone, err := ctx.scheduledOnMe(vmis.mtype, vmis.name)
@@ -840,12 +905,12 @@ func (ctx kubevirtContext) Delete(domainName string) (result error) {
 		return logError("failed to clean up domain state directory %s (%v)", domainName, err)
 	}
 
-	if _, ok := ctx.vmiList[domainName]; ok {
-		delete(ctx.vmiList, domainName)
+	if _, ok := ctx.vmiList[keyToDelete]; ok {
+		delete(ctx.vmiList, keyToDelete)
 	}
 
-	if _, ok := ctx.prevDomainMetric[domainName]; ok {
-		delete(ctx.prevDomainMetric, domainName)
+	if _, ok := ctx.prevDomainMetric[keyToDelete]; ok {
+		delete(ctx.prevDomainMetric, keyToDelete)
 	}
 
 	return nil
@@ -889,7 +954,13 @@ func (ctx kubevirtContext) Info(domainName string) (int, types.SwState, error) {
 	}
 	vmis, ok := ctx.vmiList[domainName]
 	if !ok {
-		return 0, types.HALTED, logError("info domain %s failed to get vmlist", domainName)
+		if stale, oldKey := ctx.lookupVMIByUUIDPrefix(domainName); stale != nil {
+			logrus.Warnf("Info: domainName %s not in vmiList; using stale entry under %s",
+				domainName, oldKey)
+			vmis = stale
+		} else {
+			return 0, types.HALTED, logError("info domain %s failed to get vmlist", domainName)
+		}
 	}
 
 	onMe, _, err := ctx.scheduledOnMe(vmis.mtype, vmis.name)
@@ -923,12 +994,9 @@ func (ctx kubevirtContext) Info(domainName string) (int, types.SwState, error) {
 		if retStatus == "Unknown" {
 			effectiveDomainState = types.UNKNOWN
 		}
-		return ctx.vmiList[domainName].domainID, effectiveDomainState, err
+		return vmis.domainID, effectiveDomainState, err
 	} else {
-		if _, ok := ctx.vmiList[domainName]; !ok { // domain is deleted
-			return 0, types.HALTED, logError("domain %s is deleted", domainName)
-		}
-		return ctx.vmiList[domainName].domainID, effectiveDomainState, err
+		return vmis.domainID, effectiveDomainState, err
 	}
 }
 
@@ -945,7 +1013,13 @@ func (ctx kubevirtContext) Cleanup(domainName string) error {
 	var err error
 	vmis, ok := ctx.vmiList[domainName]
 	if !ok {
-		return logError("cleanup domain %s failed to get vmlist", domainName)
+		if stale, oldKey := ctx.lookupVMIByUUIDPrefix(domainName); stale != nil {
+			logrus.Warnf("Cleanup: domainName %s not in vmiList; using stale entry under %s",
+				domainName, oldKey)
+			vmis = stale
+		} else {
+			return logError("cleanup domain %s failed to get vmlist", domainName)
+		}
 	}
 	if vmis.mtype == IsMetaReplicaPod {
 		_, err = InfoReplicaSetContainer(ctx, vmis)
@@ -1052,6 +1126,18 @@ func getVMIStatus(vmis *vmiMetaData, nodeName string) (string, error) {
 func waitForVMI(vmis *vmiMetaData, nodeName string, available bool) error {
 	vmiName := vmis.name
 	maxDelay := time.Minute * 15
+	if !available {
+		// available=false is "wait for the VMI to be GONE", called from
+		// Cleanup at the tail of doInactivate. In kubevirt cluster mode the
+		// VMIRS lifecycle is owned by Kubernetes; once we (or the cluster)
+		// delete the VMIRS, GC of residual child VMIs runs asynchronously
+		// and we do not need to confirm it inline. The original 15-minute
+		// cap stalls handleDelete end-to-end — DomainStatus stays
+		// published, zedmanager never reaches unpublishAppNetworkConfig,
+		// zedrouter never frees portmap/MAC/UuidToNum allocations, and
+		// follow-on apps with overlapping portmaps fail to come up.
+		maxDelay = time.Minute
+	}
 	delay := time.Second
 	var waited time.Duration
 
@@ -1452,6 +1538,7 @@ func (ctx kubevirtContext) CreateReplicaPodConfig(domainName string, config type
 		name:     kubeName,
 		domainID: int(rand.Uint32()),
 	}
+	ctx.evictStaleVMIByUUIDPrefix(domainName)
 	ctx.vmiList[domainName] = &meta
 
 	repStr := fmt.Sprintf("%+v", replicaSet)

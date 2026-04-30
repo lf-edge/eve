@@ -330,6 +330,11 @@ type DomainStatus struct {
 	State          SwState // BOOTING and above?
 	Activated      bool    // XXX remove??
 	AppNum         int     // From networking; makes the name unique
+	// PurgeCounter is the PurgeCounter that produced the current
+	// DomainName / kubeName binding. Used in kubevirt mode to detect a
+	// purge (kubeName change) so the old VMIRS is torn down before the
+	// new one is created.
+	PurgeCounter   uint32
 	PendingAdd     bool
 	PendingModify  bool
 	PendingDelete  bool
