@@ -155,13 +155,24 @@ func main() {
 
 	log.Functionf("newlogd: starting... restarted %v", restarted)
 
-	loggerChan := make(chan inputEntry, 10)
-	movefileChan := make(chan fileChanInfo, 5)
+	loggerChan := make(chan inputEntry, 500)
+	movefileChan := make(chan fileChanInfo, 20)
 	panicFileChan := make(chan []byte, 2)
 
-	appLogChan := make(chan appLog)
-	uploadLogChan := make(chan string)
-	keepLogChan := make(chan string)
+	// Dedicated kernel message buffer. Kernel messages are rare but
+	// critical (OOM, hardware errors, panics). Under heavy load the
+	// main loggerChan can fill up because memlogd produces orders of
+	// magnitude more messages. While getKernelMsg blocks trying to
+	// send to a full loggerChan it stops reading /dev/kmsg, causing
+	// the kernel ring buffer to overflow and silently drop the
+	// earliest messages — exactly the ones needed to diagnose the
+	// problem. A large dedicated buffer lets getKernelMsg always
+	// drain /dev/kmsg independently of downstream backpressure.
+	kernelChan := make(chan inputEntry, 500)
+
+	appLogChan := make(chan appLog, 100)
+	uploadLogChan := make(chan string, 100)
+	keepLogChan := make(chan string, 100)
 
 	ps := *pubsub.New(&socketdriver.SocketDriver{Logger: logger, Log: log}, logger, log)
 
@@ -277,8 +288,18 @@ func main() {
 	// put the logs through vector before writing to logfiles
 	go sendLogsToVector(loggerChan, appLogChan, uploadLogChan, keepLogChan)
 
-	// handle the kernel messages
-	go getKernelMsg(loggerChan)
+	// handle the kernel messages into a dedicated buffer channel
+	go getKernelMsg(kernelChan)
+
+	// merge kernel messages from the dedicated buffer into the main
+	// pipeline. This goroutine may block on loggerChan when the
+	// downstream is slow, but the 500-slot kernelChan absorbs that
+	// delay so getKernelMsg never stops reading /dev/kmsg.
+	go func() {
+		for entry := range kernelChan {
+			loggerChan <- entry
+		}
+	}()
 
 	// handle collect other container log messages from memlogd
 	go getMemlogMsg(loggerChan, panicFileChan)
