@@ -23,6 +23,7 @@ import (
 
 	"github.com/grandcat/zeroconf"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	snet "github.com/shirou/gopsutil/net"
 	"github.com/tatsushid/go-fastping"
 	"github.com/vishvananda/netlink"
@@ -583,9 +584,10 @@ func setupEveKVNC(appUUID string) (uint32, error) {
 	}
 	log.Noticef("setupEveKVNC: starting for app %s", appUUID)
 
-	// Check if file already exists (another VNC session is active)
-	if _, err := os.Stat(types.VmiVNCFileName); err == nil {
-		return 0, errors.New("VNC file already exists, another VNC session may be active")
+	if _, err := os.Stat(vncFilePath); err == nil {
+		if !removeStaleVNCFile(true) {
+			return 0, errors.New("VNC session already active")
+		}
 	}
 
 	// Verify appUUID is a valid UUID
@@ -642,6 +644,7 @@ func setupEveKVNC(appUUID string) (uint32, error) {
 	vncConfig := types.VmiVNCConfig{
 		VMIName:   encAppStatus.VMIName,
 		VNCPort:   encAppStatus.VNCPort,
+		AppUUID:   appUUID,
 		CallerPID: os.Getpid(),
 	}
 
@@ -650,7 +653,7 @@ func setupEveKVNC(appUUID string) (uint32, error) {
 		return 0, fmt.Errorf("failed to marshal VNC config: %v", err)
 	}
 
-	if err := os.WriteFile(types.VmiVNCFileName, content, 0644); err != nil {
+	if err := os.WriteFile(vncFilePath, content, 0644); err != nil {
 		return 0, fmt.Errorf("failed to write vmiVNC.run: %v", err)
 	}
 
@@ -662,8 +665,8 @@ func setupEveKVNC(appUUID string) (uint32, error) {
 
 // cleanupEveKVNC removes the vmiVNC.run file and notifies dispatcher that VNC session ended
 func cleanupEveKVNC() {
-	if _, err := os.Stat(types.VmiVNCFileName); err == nil {
-		if err := os.Remove(types.VmiVNCFileName); err != nil {
+	if _, err := os.Stat(vncFilePath); err == nil {
+		if err := os.Remove(vncFilePath); err != nil {
 			log.Errorf("cleanupEveKVNC: failed to remove vmiVNC.run: %v", err)
 		} else {
 			log.Noticef("cleanupEveKVNC: removed VNC port file")
@@ -691,18 +694,64 @@ func waitForVirtctlVNC(timeout time.Duration, vncPort int) bool {
 	return false
 }
 
-// isPortListening checks if a specific port is listening using 'ss' command
-func isPortListening(port int) bool {
-	prog := "ss"
-	args := []string{"-tln", fmt.Sprintf("sport = :%d", port)}
-	output, err := runCmd(prog, args, false)
+// isPortListening reports whether anything is bound and listening on port.
+// It is a var so tests can swap the implementation for canned responses.
+// The default delegates to netutils.IsLocalPortListening which reads
+// /proc/net/tcp[6] directly — no Dial, so a live virtctl VNC proxy is safe.
+var isPortListening = func(port int) bool {
+	return netutils.IsLocalPortListening(uint32(port))
+}
+
+// Injection seams for tests. vncFilePath points at the unified config file
+// and ownerAlive wraps VmiVNCConfig.OwnerAlive so tests can swap it.
+var (
+	vncFilePath = types.VmiVNCFileName
+	ownerAlive  = func(c types.VmiVNCConfig) bool { return c.OwnerAlive() }
+)
+
+// removeStaleVNCFile checks vmiVNC.run and removes it if no live session backs it.
+// Returns true if the caller can proceed (file absent, stale and removed).
+// Returns false if an active session owns the file (caller should block).
+//
+// evictIdleRemoteConsole controls remote-console handling (CallerPID unset):
+//   - true  (request path): remove the file unless the virtctl proxy is
+//     actually listening on VNCPort.
+//   - false (startup):      never touch remote-console files.
+//
+// Liveness is keyed off the listener, not AppInstanceConfig.RemoteConsole.
+// The config flag reflects the user's intent; the listener reflects what is
+// actually running, which is what determines whether we'd disrupt a session.
+func removeStaleVNCFile(evictIdleRemoteConsole bool) bool {
+	data, err := os.ReadFile(vncFilePath)
 	if err != nil {
-		return false
+		return true // file absent
 	}
-	// ss output will contain the port if it's listening
-	// e.g., "LISTEN  0  128  *:5900  *:*"
-	portStr := fmt.Sprintf(":%d", port)
-	return strings.Contains(output, portStr)
+	var existing types.VmiVNCConfig
+	if json.Unmarshal(data, &existing) != nil || existing.VNCPort == 0 {
+		log.Noticef("removeStaleVNCFile: unreadable VNC file, removing")
+		os.Remove(vncFilePath)
+		return true
+	}
+	if existing.CallerPID > 0 {
+		if ownerAlive(existing) {
+			return false // live edgeview instance owns this session
+		}
+		log.Noticef("removeStaleVNCFile: stale edgeview VNC file (pid %d dead or reused), removing",
+			existing.CallerPID)
+		os.Remove(vncFilePath)
+		return true
+	}
+	// No CallerPID — remote-console file owned by zedkube
+	if !evictIdleRemoteConsole {
+		return true // startup: not our file to judge
+	}
+	if isPortListening(int(existing.VNCPort)) {
+		return false // virtctl proxy is live
+	}
+	log.Noticef("removeStaleVNCFile: stale remote-console VNC file (port %d not listening), removing",
+		existing.VNCPort)
+	os.Remove(vncFilePath)
+	return true
 }
 
 // getConnectivity

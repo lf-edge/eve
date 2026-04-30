@@ -4,7 +4,10 @@
 package types
 
 import (
+	"fmt"
 	"net"
+	"os"
+	"strings"
 	"time"
 
 	uuid "github.com/satori/go.uuid"
@@ -165,5 +168,23 @@ type KubeLeaderElectInfo struct {
 type VmiVNCConfig struct {
 	VMIName   string `json:"VMIName"`
 	VNCPort   uint32 `json:"VNCPort"`
-	CallerPID int    `json:"CallerPID,omitempty"` // Set by edgeview to allow cleanup when it exits
+	AppUUID   string `json:"AppUUID,omitempty"`   // UUID of the app owning this session
+	CallerPID int    `json:"CallerPID,omitempty"` // Set by edgeview; absent for remote-console
+}
+
+// procPath is the root of the proc filesystem. Overridden in tests.
+var procPath = "/proc"
+
+// OwnerAlive reports whether CallerPID refers to a live edge-view process.
+// Returns false when CallerPID is unset (remote-console file), when the PID
+// is dead, or when the PID has been reused by a different program.
+func (c VmiVNCConfig) OwnerAlive() bool {
+	if c.CallerPID <= 0 {
+		return false
+	}
+	comm, err := os.ReadFile(fmt.Sprintf("%s/%d/comm", procPath, c.CallerPID))
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(string(comm)) == "edge-view"
 }
