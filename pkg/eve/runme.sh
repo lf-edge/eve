@@ -5,13 +5,17 @@ set -e
 exec 3>&1
 exec 1>&2
 
+# For now the sizes are all the same across different variants. However,
+# they might change in the future due to custom packages, libraries, etc.
 OUTPUT_IMG=/tmp/output.img
-DEFAULT_LIVE_IMG_SIZE=592
-DEFAULT_INSTALLER_IMG_SIZE=592
-DEFAULT_NVIDIA_IMG_SIZE=2048
-DEFAULT_K_IMG_SIZE=2048
-DEFAULT_EVALUATION_INSTALLER_IMG_SIZE=3000
-DEFAULT_EVALUATION_LIVE_IMG_SIZE=2000
+DEFAULT_LIVE_IMG_SIZE=8192
+DEFAULT_INSTALLER_IMG_SIZE=4096
+DEFAULT_NVIDIA_INSTALLER_IMG_SIZE=4096
+DEFAULT_NVIDIA_LIVE_IMG_SIZE=8192
+DEFAULT_K_INSTALLER_IMG_SIZE=4096
+DEFAULT_K_LIVE_IMG_SIZE=8192
+DEFAULT_EVALUATION_INSTALLER_IMG_SIZE=4096
+DEFAULT_EVALUATION_LIVE_IMG_SIZE=8192
 
 bail() {
   echo "$@"
@@ -247,8 +251,8 @@ prepare_for_platform() {
         [ -n "$(ls /bits/bsp-imx/*.dtb 2> /dev/null)" ] && cp /bits/bsp-imx/*.dtb /bits/boot
         ;;
     nvidia-jp*)
-        DEFAULT_LIVE_IMG_SIZE=$DEFAULT_NVIDIA_IMG_SIZE
-        DEFAULT_INSTALLER_IMG_SIZE=$DEFAULT_NVIDIA_IMG_SIZE
+        DEFAULT_LIVE_IMG_SIZE=$DEFAULT_NVIDIA_LIVE_IMG_SIZE
+        DEFAULT_INSTALLER_IMG_SIZE=$DEFAULT_NVIDIA_INSTALLER_IMG_SIZE
         ;;
     evaluation)
         DEFAULT_LIVE_IMG_SIZE=$DEFAULT_EVALUATION_LIVE_IMG_SIZE
@@ -268,13 +272,11 @@ prepare_for_hv() {
     kvm|xen)
         ;;
     k)
-        # Override image sizes with the max of the two values
-        if [ "$DEFAULT_K_IMG_SIZE" -gt "$DEFAULT_INSTALLER_IMG_SIZE" ]; then
-            DEFAULT_INSTALLER_IMG_SIZE="$DEFAULT_K_IMG_SIZE"
-            DEFAULT_LIVE_IMG_SIZE="$DEFAULT_K_IMG_SIZE"
-        fi
+        # Override image sizes for eve-k
+        DEFAULT_INSTALLER_IMG_SIZE="$DEFAULT_K_INSTALLER_IMG_SIZE"
+        DEFAULT_LIVE_IMG_SIZE="$DEFAULT_K_LIVE_IMG_SIZE"
         ;;
-    *) #shellcheck disable=SC2039,SC2104
+    *)  #shellcheck disable=SC2039,SC2104
         bail "Unsupported hypervisor: $hv"
         ;;
     esac
