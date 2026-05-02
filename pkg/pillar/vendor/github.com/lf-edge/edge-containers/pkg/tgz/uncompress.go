@@ -15,14 +15,14 @@ import (
 func Uncompress(infile, outdir string) error {
 	tgzfile, err := os.Open(infile)
 	if err != nil {
-		return fmt.Errorf("Could not open tgz file '%s': %v", infile, err)
+		return fmt.Errorf("could not open tgz file '%s': %v", infile, err)
 	}
-	defer tgzfile.Close()
+	defer func() { _ = tgzfile.Close() }()
 	gzipReader, err := gzip.NewReader(tgzfile)
 	if err != nil {
 		return fmt.Errorf("could not open tgzfile %s to read: %v", infile, err)
 	}
-	defer gzipReader.Close()
+	defer func() { _ = gzipReader.Close() }()
 	tarReader := tar.NewReader(gzipReader)
 
 	for {
@@ -41,10 +41,10 @@ func Uncompress(infile, outdir string) error {
 			return fmt.Errorf("error creating file %s: %w", fullFilename, err)
 		}
 		if _, err := io.Copy(f, tarReader); err != nil {
-			f.Close()
+			_ = f.Close()
 			return fmt.Errorf("error reading tar file %s and writing to %s: %v", filename, fullFilename, err)
 		}
-		f.Close()
+		_ = f.Close()
 	}
 	return nil
 }

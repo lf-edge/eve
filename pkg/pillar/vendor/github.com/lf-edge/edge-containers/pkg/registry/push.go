@@ -77,7 +77,7 @@ func (p Pusher) Push(format Format, verbose bool, statusWriter io.Writer, config
 			return "", fmt.Errorf("could not make temporary directory for tgz files: %v", err)
 		}
 		legacyOpts = append(legacyOpts, WithTmpDir(tmpDir))
-		defer os.RemoveAll(tmpDir)
+		defer func() { _ = os.RemoveAll(tmpDir) }()
 	}
 
 	_, from, err := p.Artifact.Manifest(format, configOpts, p.Image, legacyOpts...)

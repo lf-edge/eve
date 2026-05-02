@@ -32,7 +32,7 @@ func (a Artifact) Manifest(format Format, configOpts ConfigOpts, ref string, leg
 
 	// Go through each file type in the registry and add the appropriate file type and path, along with annotations
 	fileStore := content.NewFile("")
-	defer fileStore.Close()
+	defer func() { _ = fileStore.Close() }()
 	memStore := content.NewMemory()
 	multiStore := content.MultiReader{}
 	multiStore.AddStore(fileStore, memStore)

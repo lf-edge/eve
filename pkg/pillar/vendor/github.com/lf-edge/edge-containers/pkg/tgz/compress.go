@@ -18,20 +18,20 @@ func Compress(infile, name, outfile string, timestamp *time.Time) (tarSha []byte
 	tgzHasher, tarHasher := sha256.New(), sha256.New()
 	tgzfile, err := os.Create(outfile)
 	if err != nil {
-		return nil, nil, fmt.Errorf("Could not create tgz file '%s': %v", outfile, err)
+		return nil, nil, fmt.Errorf("could not create tgz file '%s': %v", outfile, err)
 	}
-	defer tgzfile.Close()
+	defer func() { _ = tgzfile.Close() }()
 	gzipWriter := gzip.NewWriter(io.MultiWriter(tgzfile, tgzHasher))
-	defer gzipWriter.Close()
+	defer func() { _ = gzipWriter.Close() }()
 	tarWriter := tar.NewWriter(io.MultiWriter(gzipWriter, tarHasher))
-	defer tarWriter.Close()
+	defer func() { _ = tarWriter.Close() }()
 	if err := addFileToTarWriter(infile, name, tarWriter, timestamp); err != nil {
 		return nil, nil, fmt.Errorf("could not add %s to tar as %s: %v", infile, name, err)
 	}
 	// we cannot wait for the defer, since we have to Close() to flush
 	// everything out before calculating final hashes in the return line
-	tarWriter.Close()
-	gzipWriter.Close()
+	_ = tarWriter.Close()
+	_ = gzipWriter.Close()
 	return tarHasher.Sum(nil), tgzHasher.Sum(nil), nil
 }
 
@@ -40,11 +40,11 @@ func addFileToTarWriter(infile, name string, tarWriter *tar.Writer, timestamp *t
 	if err != nil {
 		return fmt.Errorf("could not open %s for reading: %v", infile, err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	stat, err := file.Stat()
 	if err != nil {
-		return fmt.Errorf("Could not stat '%s': %v", infile, err)
+		return fmt.Errorf("could not stat '%s': %v", infile, err)
 	}
 
 	// unless we override, use the timestamp on the file
