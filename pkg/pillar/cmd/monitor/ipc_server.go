@@ -179,15 +179,25 @@ func (s *monitorIPCServer) sendIpcMessage(t string, msg any) error {
 
 	ipcMessage := ipcMessage{Type: t, Message: json.RawMessage(data)}
 
+	// re-marshal with the ipcMessage wrapper
 	if data, err = json.Marshal(ipcMessage); err != nil {
 		log.Errorf("Failed to Marshal IPC message: %v", err)
 		return err
 	}
 
+	// Log only metadata for large messages to avoid logging system issues
 	if t == "TpmLogs" {
-		log.Noticef("Sending IPC message: %s", t)
+		log.Noticef("Sending IPC message: type=%s (TpmLogs - large binary data)", t)
+	} else if t == "EvalStatus" {
+		log.Noticef("Sending IPC message: type=%s (EvalStatus - evaluation status update)", t)
 	} else {
-		log.Noticef("Sending IPC message: %s", string(data))
+		// For smaller messages, truncate if needed
+		msgStr := string(data)
+		if len(msgStr) > 500 {
+			log.Noticef("Sending IPC message: type=%s, size=%d bytes (message truncated)", t, len(msgStr))
+		} else {
+			log.Noticef("Sending IPC message: %s", msgStr)
+		}
 	}
 
 	_, err = s.codec.Write(data)
