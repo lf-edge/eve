@@ -3,7 +3,7 @@ module github.com/lf-edge/eve/pkg/vtpm
 go 1.24.0
 
 require (
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260424194239-da076e70a1c5
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260430190438-a6fc872affc6
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
 	github.com/sirupsen/logrus v1.9.3
 )
@@ -38,8 +38,8 @@ require (
 	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	k8s.io/api v0.33.3 // indirect
-	k8s.io/apimachinery v0.33.3 // indirect
+	k8s.io/api v0.33.5 // indirect
+	k8s.io/apimachinery v0.33.5 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/utils v0.0.0-20250604170112-4c0f3b243397 // indirect
 	sigs.k8s.io/json v0.0.0-20241014173422-cfa47c3a1cc8 // indirect

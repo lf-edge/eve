@@ -7,7 +7,7 @@ require (
 	github.com/golang/protobuf v1.5.4
 	github.com/google/go-cmp v0.7.0
 	github.com/lf-edge/eve-api/go v0.0.0-20260420100351-253db6a73b76
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260424194239-da076e70a1c5
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260430190438-a6fc872affc6
 	github.com/onsi/gomega v1.36.1
 	github.com/sirupsen/logrus v1.9.3
 )
@@ -110,8 +110,8 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/api v0.33.3 // indirect
-	k8s.io/apimachinery v0.33.3 // indirect
+	k8s.io/api v0.33.5 // indirect
+	k8s.io/apimachinery v0.33.5 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/utils v0.0.0-20250604170112-4c0f3b243397 // indirect
 	oras.land/oras-go v1.2.7 // indirect

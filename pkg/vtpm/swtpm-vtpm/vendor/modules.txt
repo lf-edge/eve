@@ -67,7 +67,7 @@ github.com/lf-edge/eve-api/go/profile
 # github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d
 ## explicit; go 1.20
 github.com/lf-edge/eve/pkg/kube/cnirpc
-# github.com/lf-edge/eve/pkg/pillar v0.0.0-20260424194239-da076e70a1c5
+# github.com/lf-edge/eve/pkg/pillar v0.0.0-20260430190438-a6fc872affc6
 ## explicit; go 1.24.0
 github.com/lf-edge/eve/pkg/pillar/base
 github.com/lf-edge/eve/pkg/pillar/evetpm
@@ -164,10 +164,10 @@ gopkg.in/inf.v0
 # gopkg.in/yaml.v2 v2.4.0
 ## explicit; go 1.15
 gopkg.in/yaml.v2
-# k8s.io/api v0.33.3
+# k8s.io/api v0.33.5
 ## explicit; go 1.24.0
 k8s.io/api/core/v1
-# k8s.io/apimachinery v0.33.3
+# k8s.io/apimachinery v0.33.5
 ## explicit; go 1.24.0
 k8s.io/apimachinery/pkg/api/operation
 k8s.io/apimachinery/pkg/api/resource

@@ -7,7 +7,7 @@ toolchain go1.24.6
 require (
 	github.com/google/go-tpm v0.9.1
 	github.com/lf-edge/eve/api/go v0.0.0-20230726103732-fec97665f8c9
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260424194239-da076e70a1c5
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260430190438-a6fc872affc6
 	github.com/schollz/progressbar/v3 v3.14.2
 	google.golang.org/protobuf v1.36.10
 )
@@ -45,8 +45,8 @@ require (
 	golang.org/x/text v0.32.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	k8s.io/api v0.33.3 // indirect
-	k8s.io/apimachinery v0.33.3 // indirect
+	k8s.io/api v0.33.5 // indirect
+	k8s.io/apimachinery v0.33.5 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/utils v0.0.0-20250604170112-4c0f3b243397 // indirect
 	sigs.k8s.io/json v0.0.0-20241014173422-cfa47c3a1cc8 // indirect

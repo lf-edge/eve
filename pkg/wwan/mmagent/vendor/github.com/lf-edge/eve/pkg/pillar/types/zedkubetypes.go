@@ -25,6 +25,10 @@ const (
 	DefaultDrainSkipK8sAPINotReachableTimeoutSeconds = 300
 	// DefaultDrainTimeoutHours is time allowed for a node drain before a failure is returned
 	DefaultDrainTimeoutHours = 24
+	// DefaultClusterWideDetectWindowMultiple is the multiplier applied to the config interval
+	// to derive the cluster-wide simultaneous-drain detection window.
+	// A value of 2 covers nodes that poll at opposite edges of their config fetch windows.
+	DefaultClusterWideDetectWindowMultiple = 2
 )
 
 // KubeNodeStatus - Enum for the status of a Kubernetes node
@@ -475,6 +479,8 @@ type KubeLBPoolStatus struct {
 	Interface    string   // Network interface for VIP advertisement
 	IPPrefix     string   // CIDR pool (e.g. "192.168.86.200/29")
 	AllocatedIPs []string // IPs currently assigned to LoadBalancer-type services
+	// Error is populated when zedkube rejects the controller-supplied LB config
+	Error ErrorDescription
 }
 
 // KubeUserServices - Collected User services from kubernetes
@@ -482,6 +488,9 @@ type KubeUserServices struct {
 	UserService  []KubeServiceInfo
 	UserIngress  []KubeIngressInfo
 	LBPoolStatus *KubeLBPoolStatus
+	// ServiceError carries warnings or errors about user services that require
+	// operator attention (e.g. orphaned LoadBalancer services after kube-vip removal).
+	ServiceError ErrorDescription
 }
 
 // Equal checks if two KubeUserServices instances are equal
@@ -526,7 +535,7 @@ func (s KubeUserServices) Equal(s2 KubeUserServices) bool {
 
 	// Compare LBPoolStatus
 	if s.LBPoolStatus == nil && s2.LBPoolStatus == nil {
-		return true
+		return s.ServiceError.Error == s2.ServiceError.Error
 	}
 	if s.LBPoolStatus == nil || s2.LBPoolStatus == nil {
 		return false
@@ -534,7 +543,9 @@ func (s KubeUserServices) Equal(s2 KubeUserServices) bool {
 	lb1, lb2 := s.LBPoolStatus, s2.LBPoolStatus
 	return lb1.Interface == lb2.Interface &&
 		lb1.IPPrefix == lb2.IPPrefix &&
-		generics.EqualSets(lb1.AllocatedIPs, lb2.AllocatedIPs)
+		generics.EqualSets(lb1.AllocatedIPs, lb2.AllocatedIPs) &&
+		lb1.Error.Error == lb2.Error.Error &&
+		s.ServiceError.Error == s2.ServiceError.Error
 }
 
 // KubeConfig : A root level structure to pass config from pillar to kube service container

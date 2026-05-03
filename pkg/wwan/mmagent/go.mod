@@ -6,7 +6,7 @@ toolchain go1.24.1
 
 require (
 	github.com/godbus/dbus/v5 v5.1.0
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260424194239-da076e70a1c5
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260430190438-a6fc872affc6
 	github.com/miekg/dns v1.1.55
 	github.com/sirupsen/logrus v1.9.3
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
@@ -114,8 +114,8 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/api v0.33.3 // indirect
-	k8s.io/apimachinery v0.33.3 // indirect
+	k8s.io/api v0.33.5 // indirect
+	k8s.io/apimachinery v0.33.5 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/utils v0.0.0-20250604170112-4c0f3b243397 // indirect
 	oras.land/oras-go v1.2.7 // indirect

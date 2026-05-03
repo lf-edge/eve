@@ -10,7 +10,7 @@ require (
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/lf-edge/eve-api/go v0.0.0-20260420100351-253db6a73b76
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260424194239-da076e70a1c5
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260430190438-a6fc872affc6
 	github.com/onsi/gomega v1.36.1
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
 	github.com/shirou/gopsutil v3.21.11+incompatible
@@ -55,8 +55,8 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/api v0.33.3 // indirect
-	k8s.io/apimachinery v0.33.3 // indirect
+	k8s.io/api v0.33.5 // indirect
+	k8s.io/apimachinery v0.33.5 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/utils v0.0.0-20250604170112-4c0f3b243397 // indirect
 	sigs.k8s.io/json v0.0.0-20241014173422-cfa47c3a1cc8 // indirect

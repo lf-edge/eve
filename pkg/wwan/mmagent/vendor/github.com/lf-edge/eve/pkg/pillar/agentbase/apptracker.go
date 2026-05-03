@@ -222,7 +222,7 @@ func GetApplicationInfo(rootRun, persistKubelog, AppUUID string) AppTrackerInfo 
 			UUID:     AppUUID,
 			Exist:    true,
 			DNidNode: boolToTriState(enClusterAppStatus.IsDNidNode),
-			Content:  fmt.Sprintf("Scheduled on this node %v, StatusRunning %v", enClusterAppStatus.ScheduledOnThisNode, enClusterAppStatus.StatusRunning),
+			Content:  fmt.Sprintf("Scheduled on this node %v, AppKubeStatus %v", enClusterAppStatus.ScheduledOnThisNode, enClusterAppStatus.AppKubeStatus),
 		}
 		appInfo = append(appInfo, OrderedAppInfoItem{Key: structName2, Value: ai})
 	}
