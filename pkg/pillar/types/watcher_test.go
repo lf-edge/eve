@@ -4,8 +4,11 @@
 package types
 
 import (
+	"bytes"
 	"testing"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -35,4 +38,32 @@ func TestMemoryNotificationLogKey(t *testing.T) {
 
 func TestDiskNotificationLogKey(t *testing.T) {
 	assert.Equal(t, "DiskNotification", DiskNotification{}.LogKey())
+}
+
+// MemoryNotification / DiskNotification LogCreate / LogModify / LogDelete
+
+func TestMemoryNotificationLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	m := MemoryNotification{}
+	m.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	m.LogModify(log, m)
+	m.LogDelete(log)
+}
+
+func TestDiskNotificationLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	d := DiskNotification{}
+	d.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	d.LogModify(log, d)
+	d.LogDelete(log)
 }

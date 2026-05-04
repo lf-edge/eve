@@ -4,9 +4,12 @@
 package types
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/lf-edge/eve-api/go/info"
+	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -48,4 +51,45 @@ func TestEncryptedVaultKeyFromControllerLogKey(t *testing.T) {
 	k := EncryptedVaultKeyFromController{Name: "ctrl-vault"}
 	assert.Equal(t, "ctrl-vault", k.Key())
 	assert.Contains(t, k.LogKey(), "ctrl-vault")
+}
+
+// VaultStatus / EncryptedVaultKeyFromDevice / EncryptedVaultKeyFromController LogCreate / LogModify / LogDelete
+
+func TestVaultStatusLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	s := VaultStatus{Name: "vault1"}
+	s.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	s.LogModify(log, s)
+	s.LogDelete(log)
+}
+
+func TestEncryptedVaultKeyFromDeviceLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	k := EncryptedVaultKeyFromDevice{Name: "default"}
+	k.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	k.LogModify(log, k)
+	k.LogDelete(log)
+}
+
+func TestEncryptedVaultKeyFromControllerLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	k := EncryptedVaultKeyFromController{Name: "ctrl-vault"}
+	k.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	k.LogModify(log, k)
+	k.LogDelete(log)
 }

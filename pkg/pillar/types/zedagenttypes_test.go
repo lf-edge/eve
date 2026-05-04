@@ -4,11 +4,14 @@
 package types
 
 import (
+	"bytes"
 	"fmt"
 	"testing"
 
 	"github.com/lf-edge/eve-api/go/info"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -256,4 +259,73 @@ func TestZedAgentStatusLogKey(t *testing.T) {
 	s := ZedAgentStatus{Name: "zedagent"}
 	assert.Equal(t, "zedagent", s.Key())
 	assert.Contains(t, s.LogKey(), "zedagent")
+}
+
+// BaseOsConfig / BaseOsStatus / DatastoreConfig / NodeAgentStatus / ZedAgentStatus
+// LogCreate / LogModify / LogDelete
+
+func TestBaseOsConfigLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	cfg := BaseOsConfig{ContentTreeUUID: "tree-uuid-1", BaseOsVersion: "1.0"}
+	cfg.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	cfg.LogModify(log, cfg)
+	cfg.LogDelete(log)
+}
+
+func TestBaseOsStatusLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	s := BaseOsStatus{ContentTreeUUID: "tree-uuid-2", BaseOsVersion: "2.0"}
+	s.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	s.LogModify(log, s)
+	s.LogDelete(log)
+}
+
+func TestDatastoreConfigLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	id := uuid.Must(uuid.NewV4())
+	cfg := DatastoreConfig{UUID: id}
+	cfg.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	cfg.LogModify(log, cfg)
+	cfg.LogDelete(log)
+}
+
+func TestNodeAgentStatusLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	s := NodeAgentStatus{Name: "nodeagent"}
+	s.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	s.LogModify(log, s)
+	s.LogDelete(log)
+}
+
+func TestZedAgentStatusLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	s := ZedAgentStatus{Name: "zedagent"}
+	s.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	s.LogModify(log, s)
+	s.LogDelete(log)
 }

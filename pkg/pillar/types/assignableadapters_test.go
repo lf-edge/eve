@@ -4,6 +4,7 @@
 package types
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"testing"
@@ -1450,10 +1451,23 @@ func TestIoBundleErrorRemove(t *testing.T) {
 	}
 }
 
-// AssignableAdapters.Key / LogKey
+// AssignableAdapters.Key / LogKey / LogCreate / LogModify / LogDelete
 
 func TestAssignableAdaptersLogKey(t *testing.T) {
 	aa := AssignableAdapters{}
 	assert.Equal(t, "global", aa.Key())
 	assert.Contains(t, aa.LogKey(), "global")
+}
+
+func TestAssignableAdaptersLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	aa := AssignableAdapters{}
+	aa.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	aa.LogModify(log, aa)
+	aa.LogDelete(log)
 }

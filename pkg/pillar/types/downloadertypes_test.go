@@ -4,9 +4,12 @@
 package types
 
 import (
+	"bytes"
 	"testing"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -55,4 +58,32 @@ func TestDownloaderStatusLogKey(t *testing.T) {
 	status := DownloaderStatus{ImageSha256: "sha256status"}
 	assert.Equal(t, "sha256status", status.Key())
 	assert.Contains(t, status.LogKey(), "sha256status")
+}
+
+// DownloaderConfig / DownloaderStatus LogCreate / LogModify / LogDelete
+
+func TestDownloaderConfigLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	cfg := DownloaderConfig{ImageSha256: "sha256cfg"}
+	cfg.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	cfg.LogModify(log, cfg)
+	cfg.LogDelete(log)
+}
+
+func TestDownloaderStatusLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	s := DownloaderStatus{ImageSha256: "sha256status"}
+	s.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	s.LogModify(log, s)
+	s.LogDelete(log)
 }

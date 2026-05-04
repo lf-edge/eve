@@ -4,10 +4,13 @@
 package types
 
 import (
+	"bytes"
 	"testing"
 
 	zconfig "github.com/lf-edge/eve-api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -108,4 +111,34 @@ func TestContentTreeStatusLogKey(t *testing.T) {
 	assert.Contains(t, status.LogKey(), id.String())
 	rk := status.ResolveKey()
 	assert.Contains(t, rk, dsID.String())
+}
+
+// ContentTreeConfig / ContentTreeStatus LogCreate / LogModify / LogDelete
+
+func TestContentTreeConfigLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	id := uuid.Must(uuid.NewV4())
+	cfg := ContentTreeConfig{ContentID: id}
+	cfg.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	cfg.LogModify(log, cfg)
+	cfg.LogDelete(log)
+}
+
+func TestContentTreeStatusLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	id := uuid.Must(uuid.NewV4())
+	s := ContentTreeStatus{ContentID: id}
+	s.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	s.LogModify(log, s)
+	s.LogDelete(log)
 }

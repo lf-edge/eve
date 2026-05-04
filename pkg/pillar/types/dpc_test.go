@@ -4,12 +4,15 @@
 package types
 
 import (
+	"bytes"
 	"net"
 	"testing"
 	"time"
 
 	"github.com/lf-edge/eve-api/go/evecommon"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -604,4 +607,46 @@ func TestNetworkXObjectConfigLogKey(t *testing.T) {
 	cfg := NetworkXObjectConfig{UUID: id}
 	assert.Equal(t, id.String(), cfg.Key())
 	assert.Contains(t, cfg.LogKey(), id.String())
+}
+
+// DevicePortConfig / DevicePortConfigList / NetworkXObjectConfig LogCreate / LogModify / LogDelete
+
+func TestDevicePortConfigLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	cfg := DevicePortConfig{Key: "testkey"}
+	cfg.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	cfg.LogModify(log, cfg)
+	cfg.LogDelete(log)
+}
+
+func TestDevicePortConfigListLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	list := DevicePortConfigList{}
+	list.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	list.LogModify(log, list)
+	list.LogDelete(log)
+}
+
+func TestNetworkXObjectConfigLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	id := uuid.Must(uuid.NewV4())
+	cfg := NetworkXObjectConfig{UUID: id}
+	cfg.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	cfg.LogModify(log, cfg)
+	cfg.LogDelete(log)
 }

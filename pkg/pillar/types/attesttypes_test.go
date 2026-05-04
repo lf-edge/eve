@@ -4,8 +4,11 @@
 package types
 
 import (
+	"bytes"
 	"testing"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -50,4 +53,45 @@ func TestEdgeNodeCertLogKey(t *testing.T) {
 	cert := EdgeNodeCert{CertID: []byte{0xff, 0xee}}
 	assert.NotEmpty(t, cert.Key())
 	assert.Contains(t, cert.LogKey(), cert.Key())
+}
+
+// AttestNonce / AttestQuote / EdgeNodeCert LogCreate / LogModify / LogDelete
+
+func TestAttestNonceLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	n := AttestNonce{Nonce: []byte{0x01, 0x02}}
+	n.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	n.LogModify(log, n)
+	n.LogDelete(log)
+}
+
+func TestAttestQuoteLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	q := AttestQuote{Nonce: []byte{0x01}}
+	q.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	q.LogModify(log, q)
+	q.LogDelete(log)
+}
+
+func TestEdgeNodeCertLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	cert := EdgeNodeCert{CertID: []byte{0xab}}
+	cert.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	cert.LogModify(log, cert)
+	cert.LogDelete(log)
 }

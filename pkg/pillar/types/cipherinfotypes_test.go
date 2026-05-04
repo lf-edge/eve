@@ -4,9 +4,12 @@
 package types
 
 import (
+	"bytes"
 	"encoding/hex"
 	"testing"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -32,4 +35,32 @@ func TestCipherBlockStatusLogKey(t *testing.T) {
 	status := CipherBlockStatus{CipherBlockID: "block-abc"}
 	assert.Equal(t, "block-abc", status.Key())
 	assert.Contains(t, status.LogKey(), "block-abc")
+}
+
+// CipherContext / CipherBlockStatus LogCreate / LogModify / LogDelete
+
+func TestCipherContextLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	ctx := CipherContext{ContextID: "ctx-test"}
+	ctx.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	ctx.LogModify(log, ctx)
+	ctx.LogDelete(log)
+}
+
+func TestCipherBlockStatusLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	s := CipherBlockStatus{CipherBlockID: "block-test"}
+	s.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	s.LogModify(log, s)
+	s.LogDelete(log)
 }

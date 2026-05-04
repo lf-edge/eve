@@ -4,11 +4,14 @@
 package types
 
 import (
+	"bytes"
 	"fmt"
 	"testing"
 
 	zconfig "github.com/lf-edge/eve-api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -178,4 +181,61 @@ func TestHostMemoryLogKey(t *testing.T) {
 	hm := HostMemory{}
 	assert.Equal(t, "global", hm.Key())
 	assert.Contains(t, hm.LogKey(), "global")
+}
+
+// DomainConfig / DomainStatus / DomainMetric / HostMemory LogCreate / LogModify / LogDelete
+
+func TestDomainConfigLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	id := uuid.Must(uuid.NewV4())
+	cfg := DomainConfig{UUIDandVersion: UUIDandVersion{UUID: id}}
+	cfg.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	cfg.LogModify(log, cfg)
+	cfg.LogDelete(log)
+}
+
+func TestDomainStatusLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	id := uuid.Must(uuid.NewV4())
+	s := DomainStatus{UUIDandVersion: UUIDandVersion{UUID: id}}
+	s.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	s.LogModify(log, s)
+	s.LogDelete(log)
+}
+
+func TestDomainMetricLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	id := uuid.Must(uuid.NewV4())
+	m := DomainMetric{UUIDandVersion: UUIDandVersion{UUID: id}}
+	m.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	m.LogModify(log, m)
+	m.LogDelete(log)
+}
+
+func TestHostMemoryLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	hm := HostMemory{}
+	hm.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	hm.LogModify(log, hm)
+	hm.LogDelete(log)
 }

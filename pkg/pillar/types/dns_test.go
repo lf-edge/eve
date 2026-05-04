@@ -4,11 +4,14 @@
 package types
 
 import (
+	"bytes"
 	"net"
 	"testing"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -667,4 +670,19 @@ func TestDeviceNetworkStatusLogKey(t *testing.T) {
 	dns := DeviceNetworkStatus{}
 	key := dns.LogKey()
 	assert.Contains(t, key, dns.Key())
+}
+
+// DeviceNetworkStatus LogCreate / LogModify / LogDelete
+
+func TestDeviceNetworkStatusLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	s := DeviceNetworkStatus{}
+	s.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	s.LogModify(log, s)
+	s.LogDelete(log)
 }

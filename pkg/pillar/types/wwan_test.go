@@ -4,6 +4,7 @@
 package types
 
 import (
+	"bytes"
 	"net"
 	"testing"
 	"time"
@@ -739,4 +740,58 @@ func TestWwanLocationInfoLogKey(t *testing.T) {
 	wli := WwanLocationInfo{}
 	assert.Equal(t, "global", wli.Key())
 	assert.Contains(t, wli.LogKey(), "global")
+}
+
+// WwanConfig / WwanStatus / WwanMetrics / WwanLocationInfo LogCreate / LogModify / LogDelete
+
+func TestWwanConfigLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	wc := WwanConfig{}
+	wc.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	wc.LogModify(log, wc)
+	wc.LogDelete(log)
+}
+
+func TestWwanStatusLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	ws := WwanStatus{}
+	ws.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	ws.LogModify(log, ws)
+	ws.LogDelete(log)
+}
+
+func TestWwanMetricsLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	wm := WwanMetrics{}
+	wm.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	wm.LogModify(log, wm)
+	wm.LogDelete(log)
+}
+
+func TestWwanLocationInfoLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	wli := WwanLocationInfo{}
+	wli.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	wli.LogModify(log, wli)
+	wli.LogDelete(log)
 }

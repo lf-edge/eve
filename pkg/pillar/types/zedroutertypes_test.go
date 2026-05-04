@@ -4,6 +4,7 @@
 package types
 
 import (
+	"bytes"
 	"net"
 	"testing"
 	"time"
@@ -2143,4 +2144,137 @@ func TestAppMACGeneratorLogKey(t *testing.T) {
 	id := uuid.Must(uuid.NewV4())
 	g := AppMACGenerator{UuidToNum: &UuidToNum{UuidToNumKey: UuidToNumKey{UUID: id}}}
 	assert.Contains(t, g.LogKey(), id.String())
+}
+
+// AppNetworkConfig / AppNetworkStatus / AppContainerMetrics / NetworkInstanceMetrics /
+// NetworkMetrics / NetworkInstanceConfig / NetworkInstanceStatus / IPFlow / AppMACGenerator
+// LogCreate / LogModify / LogDelete
+
+func TestAppNetworkConfigLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	id := uuid.Must(uuid.NewV4())
+	cfg := AppNetworkConfig{UUIDandVersion: UUIDandVersion{UUID: id}}
+	cfg.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	cfg.LogModify(log, cfg)
+	cfg.LogDelete(log)
+}
+
+func TestAppNetworkStatusLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	id := uuid.Must(uuid.NewV4())
+	s := AppNetworkStatus{UUIDandVersion: UUIDandVersion{UUID: id}}
+	s.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	s.LogModify(log, s)
+	s.LogDelete(log)
+}
+
+func TestAppContainerMetricsLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	id := uuid.Must(uuid.NewV4())
+	m := AppContainerMetrics{UUIDandVersion: UUIDandVersion{UUID: id}}
+	m.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	m.LogModify(log, m)
+	m.LogDelete(log)
+}
+
+func TestNetworkInstanceMetricsLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	id := uuid.Must(uuid.NewV4())
+	m := NetworkInstanceMetrics{UUIDandVersion: UUIDandVersion{UUID: id}}
+	m.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	m.LogModify(log, m)
+	m.LogDelete(log)
+}
+
+func TestNetworkMetricsLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	m := NetworkMetrics{}
+	m.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	m.LogModify(log, m)
+	m.LogDelete(log)
+}
+
+func TestNetworkInstanceConfigLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	id := uuid.Must(uuid.NewV4())
+	cfg := NetworkInstanceConfig{UUIDandVersion: UUIDandVersion{UUID: id}}
+	cfg.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	cfg.LogModify(log, cfg)
+	cfg.LogDelete(log)
+}
+
+func TestNetworkInstanceStatusLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	id := uuid.Must(uuid.NewV4())
+	s := NetworkInstanceStatus{
+		NetworkInstanceConfig: NetworkInstanceConfig{UUIDandVersion: UUIDandVersion{UUID: id}},
+	}
+	s.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	s.LogModify(log, s)
+	s.LogDelete(log)
+}
+
+func TestIPFlowLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	appID := uuid.Must(uuid.NewV4())
+	flows := IPFlow{Scope: FlowScope{AppUUID: appID}}
+	flows.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	flows.LogModify(log, flows)
+	flows.LogDelete(log)
+}
+
+func TestAppMACGeneratorLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	id := uuid.Must(uuid.NewV4())
+	gen := AppMACGenerator{
+		UuidToNum: &UuidToNum{UuidToNumKey: UuidToNumKey{UUID: id}},
+	}
+	gen.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	gen.LogModify(log, gen)
+	gen.LogDelete(log)
 }

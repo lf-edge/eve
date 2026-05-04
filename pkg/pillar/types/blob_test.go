@@ -4,8 +4,11 @@
 package types
 
 import (
+	"bytes"
 	"testing"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -59,4 +62,19 @@ func TestBlobStatusLogKey(t *testing.T) {
 	s := BlobStatus{Sha256: "sha256abc"}
 	assert.Equal(t, "sha256abc", s.Key())
 	assert.Contains(t, s.LogKey(), "sha256abc")
+}
+
+// BlobStatus LogCreate / LogModify / LogDelete
+
+func TestBlobStatusLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	s := BlobStatus{Sha256: "abc123"}
+	s.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	s.LogModify(log, s)
+	s.LogDelete(log)
 }

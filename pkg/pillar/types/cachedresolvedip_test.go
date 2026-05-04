@@ -4,11 +4,14 @@
 package types
 
 import (
+	"bytes"
 	"net"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -54,4 +57,19 @@ func TestCachedResolvedIPsLogKey(t *testing.T) {
 	c := CachedResolvedIPs{Hostname: "example.com"}
 	assert.Equal(t, "example.com", c.Key())
 	assert.Contains(t, c.LogKey(), "example.com")
+}
+
+// CachedResolvedIPs LogCreate / LogModify / LogDelete
+
+func TestCachedResolvedIPsLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	c := CachedResolvedIPs{Hostname: "test.example.com"}
+	c.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	c.LogModify(log, c)
+	c.LogDelete(log)
 }

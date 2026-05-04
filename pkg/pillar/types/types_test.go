@@ -1,11 +1,14 @@
 package types
 
 import (
+	"bytes"
 	"fmt"
 	"testing"
 
 	"github.com/lf-edge/eve-api/go/info"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -310,4 +313,46 @@ func TestAppInterfaceKeyLogKey(t *testing.T) {
 	assert.Contains(t, key, appID.String())
 	info := AppInterfaceToNum{AppInterfaceKey: k}
 	assert.NotEmpty(t, info.LogKey())
+}
+
+// UuidToNum LogCreate / LogModify / LogDelete
+
+func TestUuidToNumLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	id := uuid.Must(uuid.NewV4())
+	utn := UuidToNum{UuidToNumKey: UuidToNumKey{UUID: id}, Number: 1, NumType: "appNum"}
+	utn.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	utn.LogModify(log, utn)
+	utn.LogDelete(log)
+}
+
+// AppInterfaceToNum LogCreate / LogModify / LogDelete
+
+func TestAppInterfaceToNumLogKey(t *testing.T) {
+	netInstID := uuid.Must(uuid.NewV4())
+	appID := uuid.Must(uuid.NewV4())
+	k := AppInterfaceKey{NetInstID: netInstID, AppID: appID, IfIdx: 1}
+	atn := AppInterfaceToNum{AppInterfaceKey: k}
+	assert.NotEmpty(t, atn.LogKey())
+}
+
+func TestAppInterfaceToNumLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	netInstID := uuid.Must(uuid.NewV4())
+	appID := uuid.Must(uuid.NewV4())
+	k := AppInterfaceKey{NetInstID: netInstID, AppID: appID, IfIdx: 1}
+	atn := AppInterfaceToNum{AppInterfaceKey: k}
+	atn.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	atn.LogModify(log, atn)
+	atn.LogDelete(log)
 }

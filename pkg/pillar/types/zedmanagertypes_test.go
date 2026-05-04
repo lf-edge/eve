@@ -4,12 +4,15 @@
 package types
 
 import (
+	"bytes"
 	"fmt"
 	"path/filepath"
 	"testing"
 
 	"github.com/lf-edge/eve-api/go/info"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -130,4 +133,49 @@ func TestAppAndImageToHashLogKey(t *testing.T) {
 	// With PurgeCounter
 	aih.PurgeCounter = 3
 	assert.Contains(t, aih.Key(), "3")
+}
+
+// AppInstanceConfig / AppInstanceStatus / AppAndImageToHash LogCreate / LogModify / LogDelete
+
+func TestAppInstanceConfigLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	id := uuid.Must(uuid.NewV4())
+	cfg := AppInstanceConfig{UUIDandVersion: UUIDandVersion{UUID: id}}
+	cfg.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	cfg.LogModify(log, cfg)
+	cfg.LogDelete(log)
+}
+
+func TestAppInstanceStatusLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	id := uuid.Must(uuid.NewV4())
+	s := AppInstanceStatus{UUIDandVersion: UUIDandVersion{UUID: id}}
+	s.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	s.LogModify(log, s)
+	s.LogDelete(log)
+}
+
+func TestAppAndImageToHashLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	appID := uuid.Must(uuid.NewV4())
+	imgID := uuid.Must(uuid.NewV4())
+	aih := AppAndImageToHash{AppUUID: appID, ImageID: imgID}
+	aih.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	aih.LogModify(log, aih)
+	aih.LogDelete(log)
 }

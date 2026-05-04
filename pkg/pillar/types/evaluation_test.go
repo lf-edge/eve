@@ -4,9 +4,12 @@
 package types
 
 import (
+	"bytes"
 	"testing"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -246,4 +249,19 @@ func TestEvalStatusLogKey(t *testing.T) {
 	s := EvalStatus{}
 	assert.Equal(t, "evalmgr", s.Key())
 	assert.Contains(t, s.LogKey(), "evalmgr")
+}
+
+// EvalStatus LogCreate / LogModify / LogDelete
+
+func TestEvalStatusLogCreateModifyDelete(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.TraceLevel)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+	s := EvalStatus{}
+	s.LogCreate(log)
+	assert.NotEmpty(t, buf.String())
+	s.LogModify(log, s)
+	s.LogDelete(log)
 }
