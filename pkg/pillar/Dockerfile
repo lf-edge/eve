@@ -137,9 +137,9 @@ RUN --mount=type=cache,target=/root/.cache/go-build if [ "${TEST_TOOLS}" = "y" ]
     GOBIN=/final/opt/ GOFLAGS="" go install gotest.tools/gotestsum@v1.7.0; \
 fi
 
-FROM lfedge/eve-fscrypt:d4cdcc1a6d34cb03ba17f05f6a493d156281e01e as fscrypt
-FROM lfedge/eve-dnsmasq:b8ca1cb29bf98184b90eeb91e0705696c0b80abd as dnsmasq
-FROM lfedge/eve-gpt-tools:825f5ad1b706cffeb1dccd75f0759d755d87289e as gpttools
+FROM lfedge/eve-fscrypt:3ea961a94d9626c3ec905540f637186da6d00780 as fscrypt
+FROM lfedge/eve-dnsmasq:71692194e607f6e70cde784dde451c6ba7480ef1 as dnsmasq
+FROM lfedge/eve-gpt-tools:7b637a06d2a443044b05f35f1d1358babb5f4ef8 as gpttools
 
 # collector collects everything together and then does any processing like stripping binaries.
 # We use this interim "collector" so that we can do processing.
