@@ -21,6 +21,7 @@ import (
 // constants for Linux paths for devices
 const (
 	NicLinuxPath      = "/sys/class/net/"
+	PciDevicesPath    = "/sys/bus/pci/devices/"
 	NumVfsDevicePath  = "/device/sriov_numvfs"
 	TotalVfsPath      = "/device/sriov_totalvfs"
 	AutoprobePath     = "/device/sriov_drivers_autoprobe"
@@ -29,11 +30,21 @@ const (
 	VfCreationTimeout = 150 * time.Second
 )
 
-// CreateVF creates Virtual Functions of given count for given Physical Function
-func CreateVF(device string, vfCount uint8, log *base.LogObject) error {
-	numVfsPath := filepath.Join(NicLinuxPath, device, NumVfsDevicePath)
-	autoprobePath := filepath.Join(NicLinuxPath, device, AutoprobePath)
-	totalVfsPath := filepath.Join(NicLinuxPath, device, TotalVfsPath)
+// CreateVF creates Virtual Functions of given count for the Physical Function
+// at the given PCI BDF.
+//
+// The sysfs writes go through /sys/bus/pci/devices/<bdf>/sriov_* rather than
+// /sys/class/net/<dev>/device/sriov_* because the latter is sensitive to the
+// kernel netdev name.  In the EVE-K path NIM renames a PF netdev (e.g.
+// eth2 -> keth2) when it bridges it; if that rename overlaps with our sysfs
+// poll, the /sys/class/net/<old-name> path disappears mid-call and the whole
+// operation fails.  The PCI BDF is stable across renames, so anchoring on it
+// makes CreateVF robust against this race.
+func CreateVF(pciBDF string, vfCount uint8, log *base.LogObject) error {
+	devBase := filepath.Join(PciDevicesPath, pciBDF)
+	numVfsPath := filepath.Join(devBase, "sriov_numvfs")
+	autoprobePath := filepath.Join(devBase, "sriov_drivers_autoprobe")
+	totalVfsPath := filepath.Join(devBase, "sriov_totalvfs")
 
 	totalBuf, err := os.ReadFile(totalVfsPath)
 	if err != nil {
@@ -46,7 +57,7 @@ func CreateVF(device string, vfCount uint8, log *base.LogObject) error {
 
 	if _, err := os.Stat(autoprobePath); err == nil {
 		if err := os.WriteFile(autoprobePath, []byte("0"), 0); err != nil {
-			log.Warnf("Warning: could not disable autoprobe on %s: %s", device, err)
+			log.Warnf("Warning: could not disable autoprobe on %s: %s", pciBDF, err)
 		}
 	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("error checking autoprobe: %w", err)
@@ -59,6 +70,12 @@ func CreateVF(device string, vfCount uint8, log *base.LogObject) error {
 	currentVal := strings.TrimSpace(string(currentBuf))
 
 	if currentVal == strconv.Itoa(int(vfCount)) {
+		// numvfs already at target — still ensure the PF is up before
+		// returning, in case a prior CreateVF aborted between the kernel
+		// allocating VFs and the link recovery step.
+		if err := ensurePFAdminUp(pciBDF); err != nil {
+			return fmt.Errorf("PF admin-up recovery failed for %s: %w", pciBDF, err)
+		}
 		return nil
 	}
 
@@ -82,12 +99,30 @@ func CreateVF(device string, vfCount uint8, log *base.LogObject) error {
 		}
 	}
 
-	// After VF manipulation the PF can go operstate=down; detect and recover.
-	if err := ensurePFLinkUp(device); err != nil {
-		return fmt.Errorf("PF link recovery failed for %s: %w", device, err)
+	// Bumping sriov_numvfs can clear IFF_UP on some drivers; restore it.
+	// Do not wait for carrier — cable-less passthrough PFs are valid.
+	if err := ensurePFAdminUp(pciBDF); err != nil {
+		return fmt.Errorf("PF admin-up recovery failed for %s: %w", pciBDF, err)
 	}
 
 	return nil
+}
+
+// resolvePFIfnameFromBDF returns the current netdev name of the PF at the
+// given PCI BDF.  Reading /sys/bus/pci/devices/<bdf>/net/ is BDF-anchored and
+// always reflects the current kernel name, so a rename (e.g. eth2 -> keth2)
+// that races with our caller is observed on the next call rather than
+// blowing up an already-cached name.
+func resolvePFIfnameFromBDF(pciBDF string) (string, error) {
+	netDir := filepath.Join(PciDevicesPath, pciBDF, "net")
+	entries, err := os.ReadDir(netDir)
+	if err != nil {
+		return "", fmt.Errorf("readdir %s: %w", netDir, err)
+	}
+	if len(entries) == 0 {
+		return "", fmt.Errorf("no netdev under %s", netDir)
+	}
+	return entries[0].Name(), nil
 }
 
 func pollNumVfs(path, expected string, timeout, interval time.Duration) error {
@@ -108,45 +143,41 @@ func pollNumVfs(path, expected string, timeout, interval time.Duration) error {
 	}
 }
 
-// ensurePFLinkUp checks if the PF interface is down and brings it up if needed.
-// device is the interface name directly (e.g. "enp3s0f0").
-func ensurePFLinkUp(device string) error {
-	link, err := netlink.LinkByName(device)
+// ensurePFAdminUp makes sure the PF netdev has the IFF_UP admin flag set.
+//
+// Bumping sriov_numvfs causes some drivers (ixgbe, i40e) to reset the PF and
+// clear IFF_UP; VF creation itself succeeds but downstream operations that
+// expect an admin-up PF (per-VF MAC/VLAN via netlink) will fail until we
+// restore the flag.
+//
+// IMPORTANT: this checks IFF_UP only, NOT OperState.  Many SR-IOV PFs are
+// intentionally cable-less — used purely as a VF source for app passthrough,
+// with no host traffic ever flowing on them.  Waiting for OperState=OperUp
+// would block forever (or until the cable poll timeout) on those PFs.  The
+// kernel allows VF allocation and per-VF config on an IFF_UP / no-carrier PF
+// just fine, so that's all we need to guarantee here.
+//
+// pciBDF (not the netdev name) is the input because NIM may rename the PF
+// (e.g. eth2 -> keth2 when bridging) concurrently with this call; the BDF is
+// stable and lets us look up the current netdev name at the moment of use.
+func ensurePFAdminUp(pciBDF string) error {
+	ifname, err := resolvePFIfnameFromBDF(pciBDF)
 	if err != nil {
-		return fmt.Errorf("netlink: could not find interface %s: %w", device, err)
+		return fmt.Errorf("resolve PF ifname for %s: %w", pciBDF, err)
 	}
-
-	if link.Attrs().OperState == netlink.OperUp {
+	link, err := netlink.LinkByName(ifname)
+	if err != nil {
+		return fmt.Errorf("netlink: could not find interface %s (pci %s): %w",
+			ifname, pciBDF, err)
+	}
+	if link.Attrs().Flags&net.FlagUp != 0 {
 		return nil
 	}
-
 	if err := netlink.LinkSetUp(link); err != nil {
-		return fmt.Errorf("netlink: failed to bring %s up: %w", device, err)
+		return fmt.Errorf("netlink: failed to bring %s (pci %s) admin-up: %w",
+			ifname, pciBDF, err)
 	}
-
-	if err := pollLinkUp(device, 3*time.Minute, 100*time.Millisecond); err != nil {
-		return fmt.Errorf("PF %s did not come up after LinkSetUp: %w", device, err)
-	}
-
 	return nil
-}
-
-func pollLinkUp(device string, timeout, interval time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	for {
-		link, err := netlink.LinkByName(device)
-		if err != nil {
-			return fmt.Errorf("netlink: lookup %s: %w", device, err)
-		}
-		if link.Attrs().OperState == netlink.OperUp {
-			return nil
-		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("timed out waiting for %s operstate to become up (current: %s)",
-				device, link.Attrs().OperState)
-		}
-		time.Sleep(interval)
-	}
 }
 
 // GetVfIfaceName returns formatted VF name
@@ -154,15 +185,133 @@ func GetVfIfaceName(index uint8, ifname string) string {
 	return fmt.Sprintf("%svf%d", ifname, index)
 }
 
-// ParseVfIfaceName returns index of VF and its PF from name
-func ParseVfIfaceName(ifname string) (uint8, string, error) {
-	var iface string
-	var index uint8
-	n, err := fmt.Sscanf(ifname, "%svf%d", &iface, &index)
-	if n != 2 {
-		err = fmt.Errorf("ParseVfIfaceName: could not parse all arguments for %s expected 2, got %d", ifname, n)
+// BindVFToVfioPCI binds the VF at the given PCI BDF to the vfio-pci driver.
+//
+// EVE sets sriov_drivers_autoprobe=0 on the PF before bumping sriov_numvfs so
+// freshly created VFs arrive driverless.  But this is not guaranteed in every
+// path: a previous boot may have left numvfs already at the target (in which
+// case CreateVF's early-return skips the autoprobe write) and the resident PF
+// VF driver (ixgbevf / iavf / igbvf) will have grabbed the VFs the first time
+// they appeared.  The upstream sriov-network-device-plugin's `drivers: vfio-pci`
+// selector won't match anything bound to those host drivers, so we have to
+// actively rebind here — driver_override + drivers_probe alone is a no-op on
+// an already-bound device.
+//
+// Sequence (mirrors what hypervisor.PCIReserveGeneric does for PF passthrough):
+//  1. If <vf>/driver already points at vfio-pci, return — nothing to do.
+//  2. Write "vfio-pci" to <vf>/driver_override so the next probe pins the
+//     driver match to vfio-pci, regardless of vendor:device tables.
+//  3. If <vf>/driver exists (bound to host driver), write the BDF to
+//     <vf>/driver/unbind to detach it.
+//  4. Write the BDF to /sys/bus/pci/drivers_probe to trigger probing.
+//  5. Verify <vf>/driver now resolves to .../drivers/vfio-pci.  drivers_probe
+//     does NOT return an error if the override driver is missing or no driver
+//     ends up bound, so a post-bind check is the only way to catch a kernel
+//     that doesn't have vfio-pci registered (or a probe race that failed).
+func BindVFToVfioPCI(vfBDF string) error {
+	devDir := filepath.Join("/sys/bus/pci/devices", vfBDF)
+	driverLink := filepath.Join(devDir, "driver")
+	overridePath := filepath.Join(devDir, "driver_override")
+
+	if isVfioPCIBound(driverLink) {
+		return nil
 	}
-	return index, iface, err
+
+	if err := os.WriteFile(overridePath, []byte("vfio-pci"), 0); err != nil {
+		return fmt.Errorf("write driver_override for %s: %w", vfBDF, err)
+	}
+
+	// Unbind whatever host driver is currently attached.  The driver symlink
+	// only exists when a driver is bound, so Stat tells us whether to skip.
+	if _, err := os.Stat(driverLink); err == nil {
+		unbindPath := filepath.Join(driverLink, "unbind")
+		if err := os.WriteFile(unbindPath, []byte(vfBDF), 0); err != nil {
+			return fmt.Errorf("unbind %s from current driver: %w", vfBDF, err)
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("stat %s: %w", driverLink, err)
+	}
+
+	if err := os.WriteFile("/sys/bus/pci/drivers_probe", []byte(vfBDF), 0); err != nil {
+		return fmt.Errorf("write drivers_probe for %s: %w", vfBDF, err)
+	}
+
+	if !isVfioPCIBound(driverLink) {
+		// Look at what (if anything) ended up bound so the operator can tell
+		// "vfio-pci not in this kernel" from "some other driver re-grabbed it".
+		actual, _ := os.Readlink(driverLink)
+		return fmt.Errorf("VF %s did not bind to vfio-pci after probe "+
+			"(current driver: %q) — check that the kernel has CONFIG_VFIO_PCI "+
+			"and that no other driver re-grabbed the device",
+			vfBDF, filepath.Base(actual))
+	}
+	return nil
+}
+
+// isVfioPCIBound returns true iff the device's "driver" symlink resolves to
+// the vfio-pci driver directory.  Reading the link target is more reliable
+// than Stat: SameFile would also work but adds a second Stat for nothing.
+func isVfioPCIBound(driverLink string) bool {
+	target, err := os.Readlink(driverLink)
+	if err != nil {
+		return false
+	}
+	return filepath.Base(target) == "vfio-pci"
+}
+
+// GetPFIfaceFromVFBDF returns the kernel netdev name of the Physical Function
+// that owns the given Virtual Function PCI BDF.
+//
+// Path: /sys/bus/pci/devices/<vf-bdf>/physfn/net/<ifname>
+//   - "physfn" is a symlink the kernel maintains on every VF, pointing back
+//     to its parent PF.
+//   - "net/<ifname>" lists the netdev(s) attached to the PF.  A normal SR-IOV
+//     PF has exactly one netdev so picking the first entry is unambiguous.
+func GetPFIfaceFromVFBDF(vfBDF string) (string, error) {
+	netDir := filepath.Join("/sys/bus/pci/devices", vfBDF, "physfn", "net")
+	entries, err := os.ReadDir(netDir)
+	if err != nil {
+		return "", fmt.Errorf("readdir %s: %w", netDir, err)
+	}
+	if len(entries) == 0 {
+		return "", fmt.Errorf("no netdev under %s", netDir)
+	}
+	return entries[0].Name(), nil
+}
+
+// ParseVfIfaceName splits a VF iface/phylabel like "eth2vf5" into its PF name
+// ("eth2") and VF index (5).  Mirrors the inverse of GetVfIfaceName.
+//
+// Implementation note: the previous version used fmt.Sscanf with format
+// "%svf%d", which is broken — Go's %s verb is greedy and consumes the entire
+// input, leaving nothing for the literal "vf" or the trailing %d to match.
+// Sscanf returns an error and zero values for both fields.  Use a manual
+// split on the LAST "vf" occurrence instead, so "eth2vf5" parses correctly
+// and the (extremely unusual) case of a PF named "...vf..." is handled by
+// only treating the final "vf<digits>" as the suffix.
+func ParseVfIfaceName(ifname string) (uint8, string, error) {
+	// Scan backwards for the last "vf" that's followed by a valid uint8.
+	// i is the position where the digit suffix begins; we need at least
+	// two characters before it (for "vf") and at least one char after.
+	for i := len(ifname) - 1; i >= 2; i-- {
+		if ifname[i-2:i] != "vf" {
+			continue
+		}
+		suffix := ifname[i:]
+		if suffix == "" {
+			continue
+		}
+		idx, err := strconv.ParseUint(suffix, 10, 8)
+		if err != nil {
+			continue
+		}
+		pf := ifname[:i-2]
+		if pf == "" {
+			return 0, "", fmt.Errorf("ParseVfIfaceName: empty PF in %q", ifname)
+		}
+		return uint8(idx), pf, nil
+	}
+	return 0, "", fmt.Errorf("ParseVfIfaceName: no 'vf<digits>' suffix in %q", ifname)
 }
 
 // GetVf retrieve information about VFs for NIC given
@@ -268,6 +417,38 @@ func (vfl *VFList) GetInfo(idx uint8) *EthVF {
 		if el.Index == idx {
 			return &el
 		}
+	}
+	return nil
+}
+
+// ClearVFAdminMAC zeroes the per-VF admin MAC programmed on the PF's VF
+// table.  Called on VM stop/delete/cleanup so the next tenant of this VF
+// doesn't inherit the previous VM's admin MAC.
+//
+// Background: sriov-cni programs the admin MAC on the PF via netlink on pod
+// ADD, and is supposed to clear it on pod DEL.  In practice — when the VF is
+// pre-bound to vfio-pci (EVE's model) — sriov-cni's DEL path doesn't always
+// reach the admin-MAC clear because the VF has no kernel netdev to operate
+// on.  Without an explicit clear here, the admin MAC entry on the PF
+// persists across VM stops and the next VM that lands on this VF sees the
+// previous tenant's MAC programmed on the host side.
+//
+// Uses the PF ifname (not VF) because LinkSetVfHardwareAddr operates on the
+// PF link with a VF index.  Caller passes both because the VF ifname is
+// usually torn down once the VF is bound to vfio-pci.
+//
+// All-zeros MAC is what `ip link set <pf> vf <idx> mac 00:00:00:00:00:00`
+// writes; the kernel interprets it as "no admin MAC, let the VF use its
+// default" — which is exactly the post-cleanup state we want.
+func ClearVFAdminMAC(pfIface string, index uint8) error {
+	pf, err := netlink.LinkByName(pfIface)
+	if err != nil {
+		return fmt.Errorf("ClearVFAdminMAC: find PF %s: %w", pfIface, err)
+	}
+	zero := net.HardwareAddr{0, 0, 0, 0, 0, 0}
+	if err := netlink.LinkSetVfHardwareAddr(pf, int(index), zero); err != nil {
+		return fmt.Errorf("ClearVFAdminMAC: clear PF %s VF %d: %w",
+			pfIface, index, err)
 	}
 	return nil
 }

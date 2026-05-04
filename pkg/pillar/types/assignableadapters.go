@@ -365,6 +365,16 @@ func (ioType IoType) IsNet() bool {
 	}
 }
 
+// IsNetEthVF returns true when the adapter is an SR-IOV Virtual Function.
+// VFs are intentionally excluded from IsNet() because:
+//   - They must be bound to vfio-pci (pciback) regardless of testing mode.
+//   - They are never EVE network ports (keepInHost logic must not apply).
+//
+// Use this predicate wherever VF-specific behaviour is required.
+func (ioType IoType) IsNetEthVF() bool {
+	return ioType == IoNetEthVF
+}
+
 // Key is used with pubsub
 func (aa AssignableAdapters) Key() string {
 	return "global"
