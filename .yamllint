@@ -11,3 +11,4 @@ ignore:
   - pkg/kube/descheduler_rbac.yaml
   - pkg/kube/lh-cfg-v1.9.1.yaml
   - pkg/kube/kubevirt-operator.yaml
+  - pkg/kube/sriov/sriov-device-plugin.yaml

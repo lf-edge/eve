@@ -1,6 +1,26 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
 
+# sriov-cni upstream image is used only as a source of the prebuilt sriov
+# binary; we copy it into our final image at build time so we don't need a
+# DaemonSet at runtime just to stage the binary on each node.  Pinned by
+# digest for reproducibility.  v2.7.0 ships amd64 only, matching the
+# previous DaemonSet's nodeSelector.
+#
+# Declare this stage BEFORE `build` so all the build-stage RUN/COPY commands
+# below (eve-alpine-deploy, etcdctl, eve-bridge, etc.) execute inside `build`
+# and not inside this passthrough stage — otherwise the COPY --from=sriov-cni-bin
+# below ends up referencing the stage it's running in (circular dependency).
+#
+# hadolint DL3029 forbids literal --platform on FROM; we silence it here because
+# upstream sriov-cni ships an amd64-only image and we need the amd64 binary
+# regardless of the build host's architecture (e.g. arm64 host cross-building
+# the kube image).  BUILDPLATFORM/TARGETPLATFORM wouldn't pin the source image
+# to amd64, which is what we actually need.
+# hadolint ignore=DL3029
+FROM --platform=linux/amd64 ghcr.io/k8snetworkplumbingwg/sriov-cni@sha256:fce504e683275ab59215065ddf6433ca80d1b4b53f0d4b0cdf037da6701c7cb4 AS sriov-cni-bin
+
 FROM lfedge/eve-alpine:325b12087b386811fdb9d3c0adffa5fb94a34b95 AS build
+
 ARG TARGETARCH
 ENV PKGS alpine-baselayout musl-utils iproute2 iptables curl openrc \
          open-iscsi libvirt libvirt-client util-linux grep findutils jq \
@@ -14,6 +34,7 @@ RUN mkdir -p /out/usr/bin /tmp/etcdtmp && \
     cp "/tmp/etcdtmp/etcd-${ETCDCTL_VERSION}-linux-${TARGETARCH}/etcdctl" /out/usr/bin/etcdctl && \
     chmod +x /out/usr/bin/etcdctl && \
     rm -rf /tmp/etcd.tar.gz /tmp/etcdtmp
+COPY --from=sriov-cni-bin /usr/bin/sriov /out/usr/bin/sriov
 
 # Register etcdctl in the APK DB, mandatory for it to be included in the SBOM.
 RUN register-sbom-pkg.sh -n etcdctl -v "${ETCDCTL_VERSION}" -l Apache-2.0 -u https://github.com/etcd-io/etcd
@@ -113,6 +134,8 @@ RUN chmod +x /usr/bin/kubevip-apply.sh /usr/bin/kubevip-delete.sh
 RUN mkdir -p /etc/nvidia-container-runtime
 COPY nvidia-container-runtime/config.toml /etc/nvidia-container-runtime
 COPY nvidia-container-runtime/nvidia-device-plugin-18.0.yml /etc/k3s-manifests/
+
+COPY sriov/sriov-device-plugin.yaml /etc/k3s-manifests/
 
 ARG TARGETARCH
 
