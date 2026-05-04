@@ -3449,6 +3449,20 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 			// Lookup since it could have changed
 			ib = aa.LookupIoBundlePhylabel(ib.Phylabel)
 			updatePortAndPciBackIoBundle(ctx, ib)
+			// Reconcile SR-IOV VF creation on every steady-state pass.  The
+			// !Initialized branch above only runs once at first boot; if the
+			// controller bumps Vfs.Count after that (or republishes config with
+			// a count that the kernel hasn't applied yet — e.g. sriov_numvfs is
+			// reset to 0 on every reboot), setupVf must run again.  CreateVF is
+			// idempotent (early-returns when numvfs already matches), so calling
+			// it here on every event is cheap.
+			if ib != nil && ib.Type == types.IoNetEthPF && ib.Vfs.Count > 0 {
+				if err := setupVf(ib, aa, log); err != nil {
+					err = fmt.Errorf("setupVf: %w", err)
+					log.Error(err)
+					ib.Error.Append(err)
+				}
+			}
 		} else {
 			log.Functionf("handlePhysicalIOAdapterListImpl: Adapter %s "+
 				"- No Change", phyAdapter.Phylabel)
@@ -3457,14 +3471,26 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 }
 
 func setupVf(ib *types.IoBundle, aa *types.AssignableAdapters, log *base.LogObject) error {
-	exists, ifName := types.PciLongToIfname(log, ib.PciLong)
-	if !exists {
-		return fmt.Errorf("Failed to resolve ifname for PCI address %s", ib.PciLong)
+	// Drive VF creation by the stable PCI BDF, not the kernel netdev name.
+	// In the EVE-K path NIM may rename the PF (e.g. eth2 -> keth2) while
+	// bridging it; if that rename overlaps CreateVF's link-up polling, a
+	// name-anchored caller fails with "Link not found" and the static VF
+	// IoBundle entries never get their PciLong/Ifname populated.
+	if ib.PciLong == "" {
+		return fmt.Errorf("setupVf: PF IoBundle %s has empty PciLong", ib.Phylabel)
 	}
 
-	err := sriov.CreateVF(ifName, ib.Vfs.Count, log)
-	if err != nil {
+	if err := sriov.CreateVF(ib.PciLong, ib.Vfs.Count, log); err != nil {
 		return fmt.Errorf("Failed to create VF for iface with PCI address %s: %w", ib.PciLong, err)
+	}
+
+	// Re-resolve the PF netdev name after CreateVF: the kernel may have
+	// renamed it (NIM bridging) during VF creation.  GetVfByTimeout and the
+	// per-VF MAC/VLAN setup still operate by ifname, so we must look up the
+	// current one rather than reusing a possibly-stale pre-CreateVF name.
+	exists, ifName := types.PciLongToIfname(log, ib.PciLong)
+	if !exists {
+		return fmt.Errorf("Failed to resolve ifname for PCI address %s after CreateVF", ib.PciLong)
 	}
 
 	vfs, err := sriov.GetVfByTimeout(sriov.VfCreationTimeout, ifName, ib.Vfs.Count)
@@ -3472,16 +3498,46 @@ func setupVf(ib *types.IoBundle, aa *types.AssignableAdapters, log *base.LogObje
 		return fmt.Errorf("Failed to get VF for iface %s: %w", ifName, err)
 	}
 
+	// Two-phase per-VF setup.  Bind to vfio-pci FIRST, registration with AA
+	// SECOND.  Reason: the bind is a pure sysfs operation with no dependency
+	// on user config — it must succeed for kubelet to advertise the VF as an
+	// allocatable resource.  createVfIoBundle, in contrast, may fail when the
+	// device model has a per-VF MAC or VLAN and SetupVfHardwareAddr /
+	// SetupVfVlan reject it (PF admin-down at that instant, kernel rejects
+	// MAC, etc.).  Previous code returned on the first createVfIoBundle error,
+	// leaving every subsequent VF in this PF driverless — observed in the
+	// field as "one PF works, the other has 20 driverless VFs and zero
+	// allocatable resources".
+	//
+	// New behaviour: bind every VF, log per-VF createVfIoBundle failures, and
+	// keep going.  The VF still gets registered in AA (with whatever fields
+	// were populated before the failure) so it remains addressable; the
+	// kube path will reapply MAC via the VMI Interface anyway.
+	var firstErr error
 	for _, vf := range vfs.Data {
-		vfIb, err := createVfIoBundle(*ib, vf)
-
-		if err != nil {
-			return fmt.Errorf("createVfIoBundle failed %w", err)
+		if err := sriov.BindVFToVfioPCI(vf.PciLong); err != nil {
+			log.Warnf("setupVf: bind VF %s to vfio-pci: %v", vf.PciLong, err)
+			if firstErr == nil {
+				firstErr = fmt.Errorf("bind VF %s: %w", vf.PciLong, err)
+			}
 		}
+
+		vfIb, err := createVfIoBundle(*ib, vf)
+		if err != nil {
+			log.Errorf("setupVf: createVfIoBundle for VF %s (PF %s, idx %d): %v "+
+				"— VF remains bound to vfio-pci; per-VF host MAC/VLAN not applied",
+				vf.PciLong, ib.Ifname, vf.Index, err)
+			if firstErr == nil {
+				firstErr = fmt.Errorf("createVfIoBundle VF %s: %w", vf.PciLong, err)
+			}
+		}
+		// Always register: vfIb is the partial bundle on error (createVfIoBundle
+		// now returns what it built rather than zero-value), so AA tracks the VF
+		// even if user-config application failed.
 		aa.AddOrUpdateIoBundle(log, vfIb)
 	}
 
-	return nil
+	return firstErr
 }
 
 func createVfIoBundle(pfIb types.IoBundle, vf sriov.EthVF) (types.IoBundle, error) {
@@ -3499,16 +3555,27 @@ func createVfIoBundle(pfIb types.IoBundle, vf sriov.EthVF) (types.IoBundle, erro
 		// no specified configuration, return what it is
 		return vfIb, nil
 	}
+	// On failure return the partially-built bundle (not zero-value) so the
+	// caller (setupVf) can still register the VF in AssignableAdapters.
+	// The kube path applies per-VM MAC via the VMI Interface anyway, so a
+	// host-side admin MAC/VLAN failure here is non-fatal to passthrough.
 	if vfUserConfig.Mac != "" {
 		vfIb.MacAddr = vfUserConfig.Mac
-		if err := sriov.SetupVfHardwareAddr(vfIb.Ifname, vfIb.MacAddr, vf.Index); err != nil {
-			return types.IoBundle{}, fmt.Errorf("setupVfHardwareAddr failed %s", err)
+		// netlink.LinkSetVfHardwareAddr must be called on the Physical Function link,
+		// not the VF link — use pfIb.Ifname (e.g. "eth0"), not vfIb.Ifname ("eth0vf0").
+		if err := sriov.SetupVfHardwareAddr(pfIb.Ifname, vfIb.MacAddr, vf.Index); err != nil {
+			return vfIb, fmt.Errorf("setupVfHardwareAddr failed %s", err)
 		}
 	}
 	if vfUserConfig.VlanID != 0 {
-		if err := sriov.SetupVfVlan(vfIb.Ifname, vf.Index, vf.VlanID); err != nil {
-			return types.IoBundle{}, fmt.Errorf("setupVfVlan failed %s", err)
+		// Use pfIb.Ifname (PF) for the same reason as above.
+		// Use vfUserConfig.VlanID (user-configured), not vf.VlanID which is always
+		// 0 for a freshly created VF (GetVf does not read the current VLAN from sysfs).
+		if err := sriov.SetupVfVlan(pfIb.Ifname, vf.Index, vfUserConfig.VlanID); err != nil {
+			return vfIb, fmt.Errorf("setupVfVlan failed %s", err)
 		}
+		// Persist the configured VLAN in VfParams so callers (e.g. hypervisor) know it.
+		vfIb.VfParams.VlanID = vfUserConfig.VlanID
 	}
 	return vfIb, nil
 }
@@ -3786,6 +3853,53 @@ func checkAndFillIoBundle(ib *types.IoBundle) (bool, error) {
 		changed = true
 		log.Functionf("checkAndFillIoBundle(%d %s %s) %s found unique %s",
 			ib.Type, ib.Phylabel, ib.AssignmentGroup, long, unique)
+	}
+
+	// VFs declared statically in the device model (Type=IoNetEthVF) come
+	// from IoBundleFromPhyAdapter, which doesn't populate VfParams at all.
+	// The result is every static VF lands in AA with VfParams.Index=0 and
+	// VfParams.PFIface="" — which breaks both the kube SR-IOV pool builder
+	// (every pool would be named *_vf0) and attachSRIOVInterfaces (every
+	// NAD reference resolves to "<pf>-vf0").  Patch both fields here so
+	// downstream consumers see correct values.
+	//
+	// Index source: the phylabel encodes the VF index (e.g. "eth2vf5").
+	// We prefer the phylabel over a fresh sysfs walk because phylabels are
+	// stable user-facing identifiers; sysfs ordering can shift across
+	// kernel versions for ARI-disabled / multi-function devices.
+	//
+	// PFIface source: sysfs (/sys/bus/pci/devices/<vf-bdf>/physfn/net/<ifname>).
+	// We do NOT use the PF name parsed from phylabel because NIM may have
+	// renamed it (e.g. eth2 -> keth2 when bridging); sysfs always reflects
+	// the current netdev name.
+	if ib.Type == types.IoNetEthVF {
+		if ib.VfParams.PFIface == "" {
+			pfIface, err := sriov.GetPFIfaceFromVFBDF(long)
+			if err != nil {
+				log.Warnf("checkAndFillIoBundle(%s %s): can't resolve PF ifname for VF %s: %v",
+					ib.Phylabel, ib.AssignmentGroup, long, err)
+			} else {
+				ib.VfParams.PFIface = pfIface
+				changed = true
+				log.Functionf("checkAndFillIoBundle(%s %s) %s VF parent PFIface=%s",
+					ib.Phylabel, ib.AssignmentGroup, long, pfIface)
+			}
+		}
+		// Always re-derive Index from Phylabel — IoBundleFromPhyAdapter
+		// leaves it at 0, and an Index of 0 is indistinguishable from
+		// "uninitialised" vs "actually VF 0", so we can't trust a zero
+		// value as authoritative.  Re-deriving is idempotent.
+		if idx, _, err := sriov.ParseVfIfaceName(ib.Phylabel); err == nil {
+			if ib.VfParams.Index != idx {
+				ib.VfParams.Index = idx
+				changed = true
+				log.Functionf("checkAndFillIoBundle(%s %s) %s VF index=%d (from phylabel)",
+					ib.Phylabel, ib.AssignmentGroup, long, idx)
+			}
+		} else {
+			log.Warnf("checkAndFillIoBundle(%s %s): can't parse VF index from phylabel: %v",
+				ib.Phylabel, ib.AssignmentGroup, err)
+		}
 	}
 	return changed, nil
 }

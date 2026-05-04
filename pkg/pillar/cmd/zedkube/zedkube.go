@@ -69,6 +69,7 @@ type zedkube struct {
 	agentbase.AgentBase
 	globalConfig             *types.ConfigItemValueMap
 	subAppInstanceConfig     pubsub.Subscription
+	subAssignableAdapters    pubsub.Subscription
 	subGlobalConfig          pubsub.Subscription
 	subDeviceNetworkStatus   pubsub.Subscription
 	subEdgeNodeClusterConfig pubsub.Subscription
@@ -639,6 +640,27 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	zedkubeCtx.subZedAgentStatus = subZedAgentStatus
 	subZedAgentStatus.Activate()
 
+	// Subscribe to AssignableAdapters from domainmgr so we can keep the
+	// sriov-network-device-plugin ConfigMap aligned with the live SR-IOV
+	// inventory.  See pkg/pillar/cmd/zedkube/sriov_devplugin.go.
+	subAssignableAdapters, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "domainmgr",
+		MyAgentName:   agentName,
+		TopicImpl:     types.AssignableAdapters{},
+		Activate:      false,
+		Ctx:           &zedkubeCtx,
+		CreateHandler: handleAssignableAdaptersCreate,
+		ModifyHandler: handleAssignableAdaptersModify,
+		DeleteHandler: handleAssignableAdaptersDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedkubeCtx.subAssignableAdapters = subAssignableAdapters
+	subAssignableAdapters.Activate()
+
 	err = kubeapi.WaitForKubernetes(agentName, ps, stillRunning,
 		kubeapi.WaitForKubernetesOptions{},
 		// Make sure we keep ClusterIPIsReady up to date while we wait
@@ -694,6 +716,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		case change := <-subAppInstanceConfig.MsgChan():
 			subAppInstanceConfig.ProcessChange(change)
 
+		case change := <-subAssignableAdapters.MsgChan():
+			subAssignableAdapters.ProcessChange(change)
+
 		// Timer 1: app log streaming only.
 		// collectAppLogs() returns early on stream timeout so this branch
 		// is bounded by a single kubeAPITimeout, not N*kubeAPITimeout.
@@ -724,6 +749,18 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		case <-kubeCfgTimer.C:
 			zedkubeCtx.applyLonghornDiskReserved()
 			zedkubeCtx.applyLonghornRecurringSnapshot()
+			// Safety net for the SR-IOV device-plugin ConfigMap.  The primary
+			// reconcile path is the AssignableAdapters subscription handler,
+			// but if the very first event arrived before z.config was ready
+			// (k3s slower than zedkube at boot) and no AA modify has happened
+			// since, we'd never recover.  Re-driving reconcile from the
+			// pubsub snapshot every kubeCfgInterval guarantees eventual
+			// consistency without needing a fresh AA event.
+			if v, err := zedkubeCtx.subAssignableAdapters.Get("global"); err == nil {
+				if aa, ok := v.(types.AssignableAdapters); ok {
+					zedkubeCtx.reconcileSRIOVDevicePlugin(&aa)
+				}
+			}
 			kubeCfgTimer = time.NewTimer(kubeCfgInterval * time.Second)
 
 		// Timer 5: leader-only safety-net re-evaluation of the stale-master
