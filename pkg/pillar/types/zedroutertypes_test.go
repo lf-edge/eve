@@ -1622,6 +1622,21 @@ func TestConnectivityProbeFromProtoTCPMissingPort(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// TCP probe with invalid IP (non-IP hostname) → covers the ParseIP==nil return path
+func TestConnectivityProbeFromProtoTCPInvalidIP(t *testing.T) {
+	var cp ConnectivityProbe
+	proto := &evecommon.ConnectivityProbe{
+		ProbeMethod: evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_TCP,
+		ProbeEndpoint: &evecommon.ProbeEndpoint{
+			Host: "not-an-ip",
+			Port: 443,
+		},
+	}
+	err := cp.FromProto(proto)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid IP address for TCP probe")
+}
+
 func TestConnectivityProbeToProtoNone(t *testing.T) {
 	cp := ConnectivityProbe{Method: ConnectivityProbeMethodNone}
 	proto := cp.ToProto()

@@ -590,3 +590,81 @@ func TestGetLocalAddrIfNilAddr(t *testing.T) {
 	_, err := GetLocalAddrAnyNoLinkLocal(dns, 0, "eth0")
 	assert.Error(t, err)
 }
+
+// getLocalAddrImpl no-addresses — covers the numAddrs==0 return path
+func TestGetLocalAddrImplNoAddresses(t *testing.T) {
+	// DNS with no ports at all → getLocalAddrListImpl with ifname="" returns empty, nil
+	// → numAddrs==0 → "no addresses" error
+	dns := DeviceNetworkStatus{}
+	_, err := GetLocalAddrAnyNoLinkLocal(dns, 0, "")
+	assert.Error(t, err)
+}
+
+// getLocalAddrIf case 6 — IPv6-only filter; IPv4 addresses are skipped
+func TestGetLocalAddrIfIPv6Only(t *testing.T) {
+	ipv4Addr := net.ParseIP("192.168.1.1")
+	ipv6Addr := net.ParseIP("2001:db8::1")
+	dns := DeviceNetworkStatus{
+		Ports: []NetworkPortStatus{
+			{
+				IfName: "eth0",
+				AddrInfoList: []AddrInfo{
+					{Addr: ipv4Addr}, // IPv4 — filtered out by af=6
+					{Addr: ipv6Addr}, // IPv6 — accepted by af=6
+				},
+			},
+		},
+	}
+	// Call getLocalAddrIf directly with af=6
+	addrs, err := getLocalAddrIf(dns, "eth0", false, 6)
+	require.NoError(t, err)
+	require.Len(t, addrs, 1)
+	assert.True(t, addrs[0].Equal(ipv6Addr))
+}
+
+// MostlyEqual AddrInfo closure — covers the EqualSetsFn closure body
+func TestMostlyEqualAddrInfoClosure(t *testing.T) {
+	addr := net.ParseIP("192.168.1.1")
+	s1 := DeviceNetworkStatus{
+		Ports: []NetworkPortStatus{
+			{IfName: "eth0", AddrInfoList: []AddrInfo{{Addr: addr}}},
+		},
+	}
+	// Same AddrInfo → equal (closure executes and returns true)
+	s2 := DeviceNetworkStatus{
+		Ports: []NetworkPortStatus{
+			{IfName: "eth0", AddrInfoList: []AddrInfo{{Addr: addr}}},
+		},
+	}
+	assert.True(t, s1.MostlyEqual(s2))
+
+	// Different AddrInfo → not equal (closure executes and returns false)
+	s3 := DeviceNetworkStatus{
+		Ports: []NetworkPortStatus{
+			{IfName: "eth0", AddrInfoList: []AddrInfo{{Addr: net.ParseIP("10.0.0.1")}}},
+		},
+	}
+	assert.False(t, s1.MostlyEqual(s3))
+}
+
+// MostlyEqual BondStatus diff — covers the !BondStatus.Equal return false branch
+func TestMostlyEqualBondStatusDiff(t *testing.T) {
+	s1 := DeviceNetworkStatus{
+		Ports: []NetworkPortStatus{
+			{IfName: "eth0", BondStatus: BondStatus{ActiveMember: "eth1"}},
+		},
+	}
+	s2 := DeviceNetworkStatus{
+		Ports: []NetworkPortStatus{
+			{IfName: "eth0", BondStatus: BondStatus{ActiveMember: "eth2"}},
+		},
+	}
+	assert.False(t, s1.MostlyEqual(s2))
+}
+
+// DeviceNetworkStatus.LogKey — covers the LogKey() function body
+func TestDeviceNetworkStatusLogKey(t *testing.T) {
+	dns := DeviceNetworkStatus{}
+	key := dns.LogKey()
+	assert.Contains(t, key, dns.Key())
+}

@@ -1023,3 +1023,30 @@ func TestParseAgentItemErrorNoOldValue(t *testing.T) {
 	spec := specMap.AgentSettings[LogLevel]
 	assert.Equal(t, spec.StringDefault, val.StrValue)
 }
+
+// parseValue — TriState and Bool error branches
+func TestParseValueTriStateBoolErrors(t *testing.T) {
+	specMap := NewConfigItemSpecMap()
+
+	// TriState: parse an invalid value → error path sets TriStateDefault
+	newCfg := DefaultConfigItemValueMap()
+	oldCfg := DefaultConfigItemValueMap()
+	_, err := specMap.ParseItem(newCfg, oldCfg, string(NetworkFallbackAnyEth), "badtristate")
+	assert.Error(t, err)
+
+	// Bool: parse an invalid value → error path sets BoolDefault
+	newCfg2 := DefaultConfigItemValueMap()
+	oldCfg2 := DefaultConfigItemValueMap()
+	_, err2 := specMap.ParseItem(newCfg2, oldCfg2, string(UsbAccess), "notabool")
+	assert.Error(t, err2)
+}
+
+// makeURLValidator — empty addr branch returns nil immediately
+func TestMakeURLValidatorEmptyAddr(t *testing.T) {
+	specMap := NewConfigItemSpecMap()
+	// Both HTTP and HTTPS URL validators accept empty string
+	httpSpec := specMap.GlobalSettings[DiagProbeRemoteHTTPEndpoint]
+	assert.NoError(t, httpSpec.StringValidator(""))
+	httpsSpec := specMap.GlobalSettings[DiagProbeRemoteHTTPSEndpoint]
+	assert.NoError(t, httpsSpec.StringValidator(""))
+}
