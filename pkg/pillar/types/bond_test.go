@@ -100,3 +100,9 @@ func TestBondStatusEqualWithMembers(t *testing.T) {
 	s2.MIIMonitor = BondMIIMonitorStatus{PollingInterval: 100}
 	assert.False(t, s1.Equal(s2))
 }
+
+// BondMetricsList.Key
+
+func TestBondMetricsListKey(t *testing.T) {
+	assert.Equal(t, "global", BondMetricsList{}.Key())
+}

@@ -190,3 +190,31 @@ func TestVolumeRefConfigVolumeKey(t *testing.T) {
 	expected := fmt.Sprintf("%s#4", id.String()) // 3+1=4
 	assert.Equal(t, expected, key)
 }
+
+// VolumeConfig.Key / LogKey
+
+func TestVolumeConfigLogKey(t *testing.T) {
+	id := uuid.Must(uuid.NewV4())
+	cfg := VolumeConfig{VolumeID: id, GenerationCounter: 1}
+	expected := fmt.Sprintf("%s#%d", id.String(), 1)
+	assert.Equal(t, expected, cfg.Key())
+	assert.Contains(t, cfg.LogKey(), expected)
+}
+
+// VolumeStatus.Key / LogKey
+
+func TestVolumeStatusLogKey(t *testing.T) {
+	id := uuid.Must(uuid.NewV4())
+	status := VolumeStatus{VolumeID: id, GenerationCounter: 2}
+	expected := fmt.Sprintf("%s#%d", id.String(), 2)
+	assert.Equal(t, expected, status.Key())
+	assert.Contains(t, status.LogKey(), expected)
+}
+
+// VolumeMgrStatus.Key / LogKey
+
+func TestVolumeMgrStatusLogKey(t *testing.T) {
+	s := VolumeMgrStatus{Name: "persist"}
+	assert.Equal(t, "persist", s.Key())
+	assert.Contains(t, s.LogKey(), "persist")
+}

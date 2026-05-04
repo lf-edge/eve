@@ -155,3 +155,15 @@ func TestEnrolledCertificateStatusEquivalent(t *testing.T) {
 	s2.CertFilepath = "/other/cert.pem"
 	assert.False(t, s1.Equivalent(s2))
 }
+
+// SCEPProfile.Key / EnrolledCertificateStatus.Key
+
+func TestSCEPProfileKey(t *testing.T) {
+	p := SCEPProfile{ProfileName: "myprofile"}
+	assert.Equal(t, "myprofile", p.Key())
+}
+
+func TestEnrolledCertificateStatusKey(t *testing.T) {
+	s := EnrolledCertificateStatus{CertEnrollmentProfileName: "enroll1"}
+	assert.Equal(t, "enroll1", s.Key())
+}

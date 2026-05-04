@@ -82,3 +82,30 @@ func TestVerifyImageStatusPending(t *testing.T) {
 	require.True(t, VerifyImageStatus{PendingModify: true}.Pending())
 	require.True(t, VerifyImageStatus{PendingDelete: true}.Pending())
 }
+
+// ContentTreeConfig.Key / LogKey
+
+func TestContentTreeConfigLogKey(t *testing.T) {
+	id := uuid.Must(uuid.NewV4())
+	cfg := ContentTreeConfig{ContentID: id}
+	assert.Equal(t, id.String(), cfg.Key())
+	assert.Contains(t, cfg.LogKey(), id.String())
+}
+
+// ContentTreeStatus.Key / LogKey / ResolveKey
+
+func TestContentTreeStatusLogKey(t *testing.T) {
+	id := uuid.Must(uuid.NewV4())
+	dsID := uuid.Must(uuid.NewV4())
+	status := ContentTreeStatus{
+		ContentID:           id,
+		DatastoreIDList:     []uuid.UUID{dsID},
+		RelativeURL:         "img.tar",
+		GenerationCounter:   1,
+		Format:              zconfig.Format_RAW,
+	}
+	assert.Equal(t, id.String(), status.Key())
+	assert.Contains(t, status.LogKey(), id.String())
+	rk := status.ResolveKey()
+	assert.Contains(t, rk, dsID.String())
+}

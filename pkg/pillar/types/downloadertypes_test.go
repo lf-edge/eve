@@ -40,3 +40,19 @@ func TestHandleDownloadFailNoRetry(t *testing.T) {
 	// Zero retryTime → no retry condition
 	assert.Empty(t, status.ErrorRetryCondition)
 }
+
+// DownloaderConfig.Key / LogKey
+
+func TestDownloaderConfigLogKey(t *testing.T) {
+	cfg := DownloaderConfig{ImageSha256: "sha256cfg"}
+	assert.Equal(t, "sha256cfg", cfg.Key())
+	assert.Contains(t, cfg.LogKey(), "sha256cfg")
+}
+
+// DownloaderStatus.Key / LogKey
+
+func TestDownloaderStatusLogKey(t *testing.T) {
+	status := DownloaderStatus{ImageSha256: "sha256status"}
+	assert.Equal(t, "sha256status", status.Key())
+	assert.Contains(t, status.LogKey(), "sha256status")
+}

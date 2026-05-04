@@ -591,3 +591,17 @@ func TestIsDPCTestableExtraBranches(t *testing.T) {
 	}
 	assert.True(t, dpc.IsDPCTestable(5*time.Minute))
 }
+
+// DevicePortConfigList.LogKey / NetworkXObjectConfig.Key and LogKey
+
+func TestDevicePortConfigListLogKey(t *testing.T) {
+	list := DevicePortConfigList{}
+	assert.Contains(t, list.LogKey(), "global")
+}
+
+func TestNetworkXObjectConfigLogKey(t *testing.T) {
+	id := uuid.Must(uuid.NewV4())
+	cfg := NetworkXObjectConfig{UUID: id}
+	assert.Equal(t, id.String(), cfg.Key())
+	assert.Contains(t, cfg.LogKey(), id.String())
+}

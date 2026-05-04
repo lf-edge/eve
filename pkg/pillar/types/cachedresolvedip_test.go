@@ -47,3 +47,11 @@ func TestCachedResolvedIPsStringEmpty(t *testing.T) {
 	assert.Contains(t, s, "empty.com")
 	assert.Contains(t, s, "[]")
 }
+
+// CachedResolvedIPs.Key / LogKey
+
+func TestCachedResolvedIPsLogKey(t *testing.T) {
+	c := CachedResolvedIPs{Hostname: "example.com"}
+	assert.Equal(t, "example.com", c.Key())
+	assert.Contains(t, c.LogKey(), "example.com")
+}

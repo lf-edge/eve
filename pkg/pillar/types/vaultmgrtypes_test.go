@@ -25,3 +25,27 @@ func TestVaultStatusIsVaultInError(t *testing.T) {
 	s.MismatchingPCRs = []int{0, 1, 7}
 	assert.True(t, s.IsVaultInError())
 }
+
+// VaultConfig / VaultStatus / EncryptedVaultKeyFromDevice / EncryptedVaultKeyFromController Key / LogKey
+
+func TestVaultConfigKey(t *testing.T) {
+	assert.Equal(t, "global", VaultConfig{}.Key())
+}
+
+func TestVaultStatusLogKey(t *testing.T) {
+	s := VaultStatus{Name: "vault1"}
+	assert.Equal(t, "vault1", s.Key())
+	assert.Contains(t, s.LogKey(), "vault1")
+}
+
+func TestEncryptedVaultKeyFromDeviceLogKey(t *testing.T) {
+	k := EncryptedVaultKeyFromDevice{Name: "default"}
+	assert.Equal(t, "default", k.Key())
+	assert.Contains(t, k.LogKey(), "default")
+}
+
+func TestEncryptedVaultKeyFromControllerLogKey(t *testing.T) {
+	k := EncryptedVaultKeyFromController{Name: "ctrl-vault"}
+	assert.Equal(t, "ctrl-vault", k.Key())
+	assert.Contains(t, k.LogKey(), "ctrl-vault")
+}

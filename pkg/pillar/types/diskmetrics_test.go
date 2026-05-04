@@ -19,3 +19,19 @@ func TestPathToKey(t *testing.T) {
 	assert.Equal(t, "", PathToKey("/"))
 	assert.Equal(t, "", PathToKey(""))
 }
+
+// DiskMetric.Key / LogKey
+
+func TestDiskMetricLogKey(t *testing.T) {
+	m := DiskMetric{DiskPath: "/dev/sda"}
+	assert.Equal(t, PathToKey("/dev/sda"), m.Key())
+	assert.Contains(t, m.LogKey(), m.Key())
+}
+
+// AppDiskMetric.Key / LogKey
+
+func TestAppDiskMetricLogKey(t *testing.T) {
+	m := AppDiskMetric{DiskPath: "/persist/volumes/vol1"}
+	assert.Equal(t, PathToKey("/persist/volumes/vol1"), m.Key())
+	assert.Contains(t, m.LogKey(), m.Key())
+}

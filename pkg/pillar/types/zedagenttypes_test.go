@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/lf-edge/eve-api/go/info"
+	uuid "github.com/satori/go.uuid"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -222,4 +223,37 @@ func TestMaintenanceModeMultiReasonToProto(t *testing.T) {
 	assert.Len(t, got, 2)
 	assert.Equal(t, info.MaintenanceModeReason(MaintenanceModeReasonNone), got[0])
 	assert.Equal(t, info.MaintenanceModeReason(MaintenanceModeReasonUserRequested), got[1])
+}
+
+// BaseOsConfig / BaseOsStatus / DatastoreConfig / NodeAgentStatus / ZedAgentStatus Key / LogKey
+
+func TestBaseOsConfigKey(t *testing.T) {
+	cfg := BaseOsConfig{ContentTreeUUID: "tree-uuid-1", BaseOsVersion: "1.0"}
+	assert.Equal(t, "tree-uuid-1", cfg.Key())
+	assert.Contains(t, cfg.LogKey(), "1.0")
+}
+
+func TestBaseOsStatusKey(t *testing.T) {
+	status := BaseOsStatus{ContentTreeUUID: "tree-uuid-2", BaseOsVersion: "2.0"}
+	assert.Equal(t, "tree-uuid-2", status.Key())
+	assert.Contains(t, status.LogKey(), "2.0")
+}
+
+func TestDatastoreConfigLogKey(t *testing.T) {
+	id := uuid.Must(uuid.NewV4())
+	cfg := DatastoreConfig{UUID: id}
+	assert.Equal(t, id.String(), cfg.Key())
+	assert.Contains(t, cfg.LogKey(), id.String())
+}
+
+func TestNodeAgentStatusLogKey(t *testing.T) {
+	s := NodeAgentStatus{Name: "nodeagent"}
+	assert.Equal(t, "nodeagent", s.Key())
+	assert.Contains(t, s.LogKey(), "nodeagent")
+}
+
+func TestZedAgentStatusLogKey(t *testing.T) {
+	s := ZedAgentStatus{Name: "zedagent"}
+	assert.Equal(t, "zedagent", s.Key())
+	assert.Contains(t, s.LogKey(), "zedagent")
 }

@@ -2116,3 +2116,31 @@ func TestAppInstMetaDataKey(t *testing.T) {
 	key := data.Key()
 	assert.Contains(t, key, id.String())
 }
+
+// LogKey for types whose Key() is already covered
+
+func TestAppContainerMetricsLogKey(t *testing.T) {
+	id := uuid.Must(uuid.NewV4())
+	m := AppContainerMetrics{UUIDandVersion: UUIDandVersion{UUID: id}}
+	assert.Contains(t, m.LogKey(), id.String())
+}
+
+func TestNetworkInstanceStatusLogKey(t *testing.T) {
+	id := uuid.Must(uuid.NewV4())
+	status := NetworkInstanceStatus{
+		NetworkInstanceConfig: NetworkInstanceConfig{UUIDandVersion: UUIDandVersion{UUID: id}},
+	}
+	assert.Contains(t, status.LogKey(), id.String())
+}
+
+func TestIPFlowLogKey(t *testing.T) {
+	id := uuid.Must(uuid.NewV4())
+	flows := IPFlow{Scope: FlowScope{AppUUID: id}}
+	assert.Contains(t, flows.LogKey(), flows.Key())
+}
+
+func TestAppMACGeneratorLogKey(t *testing.T) {
+	id := uuid.Must(uuid.NewV4())
+	g := AppMACGenerator{UuidToNum: &UuidToNum{UuidToNumKey: UuidToNumKey{UUID: id}}}
+	assert.Contains(t, g.LogKey(), id.String())
+}

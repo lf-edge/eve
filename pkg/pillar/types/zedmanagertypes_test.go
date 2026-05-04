@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/lf-edge/eve-api/go/info"
+	uuid "github.com/satori/go.uuid"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -94,4 +95,39 @@ func TestGetAppInterfaceList(t *testing.T) {
 	// Empty adapters → nil slice
 	empty := AppInstanceStatus{}
 	assert.Nil(t, empty.GetAppInterfaceList())
+}
+
+// AppInstanceConfig / AppInstanceStatus / AppInstanceSummary / AppAndImageToHash Key / LogKey
+
+func TestAppInstanceConfigLogKey(t *testing.T) {
+	id := uuid.Must(uuid.NewV4())
+	cfg := AppInstanceConfig{UUIDandVersion: UUIDandVersion{UUID: id}}
+	assert.Equal(t, id.String(), cfg.Key())
+	assert.Contains(t, cfg.LogKey(), id.String())
+}
+
+func TestAppInstanceStatusLogKey(t *testing.T) {
+	id := uuid.Must(uuid.NewV4())
+	status := AppInstanceStatus{UUIDandVersion: UUIDandVersion{UUID: id}}
+	assert.Equal(t, id.String(), status.Key())
+	assert.Contains(t, status.LogKey(), id.String())
+}
+
+func TestAppInstanceSummaryKey(t *testing.T) {
+	id := uuid.Must(uuid.NewV4())
+	s := AppInstanceSummary{UUIDandVersion: UUIDandVersion{UUID: id}}
+	assert.Equal(t, id.String(), s.Key())
+}
+
+func TestAppAndImageToHashLogKey(t *testing.T) {
+	appID := uuid.Must(uuid.NewV4())
+	imgID := uuid.Must(uuid.NewV4())
+	aih := AppAndImageToHash{AppUUID: appID, ImageID: imgID}
+	key := aih.Key()
+	assert.Contains(t, key, appID.String())
+	assert.Contains(t, aih.LogKey(), key)
+
+	// With PurgeCounter
+	aih.PurgeCounter = 3
+	assert.Contains(t, aih.Key(), "3")
 }

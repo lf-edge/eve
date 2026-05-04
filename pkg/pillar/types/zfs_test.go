@@ -70,3 +70,15 @@ func TestVolumeStatusUseZVolDisk(t *testing.T) {
 	// Raw + non-ZFS → false
 	assert.False(t, s.UseZVolDisk(PersistExt4))
 }
+
+// ZFSPoolStatus.Key / ZFSPoolMetrics.Key
+
+func TestZFSPoolStatusKey(t *testing.T) {
+	s := ZFSPoolStatus{PoolName: "poolA"}
+	assert.Equal(t, "poolA", s.Key())
+}
+
+func TestZFSPoolMetricsKey(t *testing.T) {
+	m := ZFSPoolMetrics{PoolName: "poolB"}
+	assert.Equal(t, "poolB", m.Key())
+}

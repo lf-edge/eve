@@ -31,3 +31,11 @@ func TestPhysicalIOAdapterListLookupAdapter(t *testing.T) {
 
 	assert.Nil(t, list.LookupAdapter("eth9"))
 }
+
+// PhysicalIOAdapterList.Key / LogKey
+
+func TestPhysicalIOAdapterListLogKey(t *testing.T) {
+	list := PhysicalIOAdapterList{}
+	assert.Equal(t, "global", list.Key())
+	assert.Contains(t, list.LogKey(), "global")
+}

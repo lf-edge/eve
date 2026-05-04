@@ -239,3 +239,11 @@ func TestDevicePortConfigMostlyEqualRemainingBranches(t *testing.T) {
 	s5 := DevicePortConfig{Key: "k1", Ports: []NetworkPortConfig{{IfName: "eth0", PNAC: PNACConfig{Enabled: true}}}}
 	assert.False(t, base.MostlyEqual(&s5))
 }
+
+// EvalStatus.Key / LogKey
+
+func TestEvalStatusLogKey(t *testing.T) {
+	s := EvalStatus{}
+	assert.Equal(t, "evalmgr", s.Key())
+	assert.Contains(t, s.LogKey(), "evalmgr")
+}

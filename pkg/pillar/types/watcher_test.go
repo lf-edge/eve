@@ -26,3 +26,13 @@ func TestZonetoString(t *testing.T) {
 		assert.Equal(t, tc.want, zonetoString(tc.zone))
 	}
 }
+
+// MemoryNotification.LogKey / DiskNotification.LogKey
+
+func TestMemoryNotificationLogKey(t *testing.T) {
+	assert.Equal(t, "MemoryNotification", MemoryNotification{}.LogKey())
+}
+
+func TestDiskNotificationLogKey(t *testing.T) {
+	assert.Equal(t, "DiskNotification", DiskNotification{}.LogKey())
+}

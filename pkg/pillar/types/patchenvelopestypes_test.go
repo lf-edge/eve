@@ -193,3 +193,22 @@ func TestBinaryBlobCompletedMarshalJSONNonEmptyEncMeta(t *testing.T) {
 	assert.Contains(t, s, "secure.bin")
 	assert.Contains(t, s, "encArtifactMeta")
 }
+
+// PatchEnvelopeInfo.Key / PatchEnvelopeInfoList.Key / PatchEnvelopeUsage.Key
+
+func TestPatchEnvelopeInfoKey(t *testing.T) {
+	pe := &types.PatchEnvelopeInfo{PatchID: "pe1", Version: "2"}
+	assert.Equal(t, "pe1v2", pe.Key())
+}
+
+func TestPatchEnvelopeInfoListKey(t *testing.T) {
+	list := &types.PatchEnvelopeInfoList{}
+	assert.Equal(t, "global", list.Key())
+}
+
+func TestPatchEnvelopeUsageKey(t *testing.T) {
+	u := &types.PatchEnvelopeUsage{PatchID: "pe1", Version: "2", AppUUID: "app-uuid"}
+	key := u.Key()
+	assert.Contains(t, key, "pe1")
+	assert.Contains(t, key, "app-uuid")
+}

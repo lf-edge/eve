@@ -52,3 +52,11 @@ func TestBlobStatusGetDownloadedPercentage(t *testing.T) {
 	s = BlobStatus{CurrentSize: 50, TotalSize: 0}
 	assert.Equal(t, uint32(0), s.GetDownloadedPercentage())
 }
+
+// BlobStatus.Key / LogKey
+
+func TestBlobStatusLogKey(t *testing.T) {
+	s := BlobStatus{Sha256: "sha256abc"}
+	assert.Equal(t, "sha256abc", s.Key())
+	assert.Contains(t, s.LogKey(), "sha256abc")
+}

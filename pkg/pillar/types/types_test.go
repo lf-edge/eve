@@ -288,3 +288,26 @@ func TestAppInterfaceToNumGetKey(t *testing.T) {
 	assert.Equal(t, appID, k.AppID)
 	assert.Equal(t, uint32(2), k.IfIdx)
 }
+
+// UuidToNumKey.Key / UuidToNum.LogKey
+
+func TestUuidToNumKeyLogKey(t *testing.T) {
+	id := uuid.Must(uuid.NewV4())
+	k := UuidToNumKey{UUID: id}
+	assert.Equal(t, id.String(), k.Key())
+	info := UuidToNum{UuidToNumKey: k}
+	assert.Contains(t, info.LogKey(), id.String())
+}
+
+// AppInterfaceKey.Key / AppInterfaceToNum.LogKey
+
+func TestAppInterfaceKeyLogKey(t *testing.T) {
+	netInstID := uuid.Must(uuid.NewV4())
+	appID := uuid.Must(uuid.NewV4())
+	k := AppInterfaceKey{NetInstID: netInstID, AppID: appID, IfIdx: 1}
+	key := k.Key()
+	assert.Contains(t, key, netInstID.String())
+	assert.Contains(t, key, appID.String())
+	info := AppInterfaceToNum{AppInterfaceKey: k}
+	assert.NotEmpty(t, info.LogKey())
+}

@@ -714,3 +714,29 @@ func TestWwanStatusDoSanitizeDefaultCase(t *testing.T) {
 	assert.Equal(t, "1:2.3", ws.Networks[0].Module.Name)
 	assert.Equal(t, "1:2.4", ws.Networks[1].Module.Name)
 }
+
+// WwanConfig / WwanStatus / WwanMetrics / WwanLocationInfo Key / LogKey
+
+func TestWwanConfigLogKey(t *testing.T) {
+	wc := WwanConfig{}
+	assert.Equal(t, "global", wc.Key())
+	assert.Contains(t, wc.LogKey(), "global")
+}
+
+func TestWwanStatusLogKey(t *testing.T) {
+	ws := WwanStatus{}
+	assert.Equal(t, "global", ws.Key())
+	assert.Contains(t, ws.LogKey(), "global")
+}
+
+func TestWwanMetricsLogKey(t *testing.T) {
+	wm := WwanMetrics{}
+	assert.Equal(t, "global", wm.Key())
+	assert.Contains(t, wm.LogKey(), "global")
+}
+
+func TestWwanLocationInfoLogKey(t *testing.T) {
+	wli := WwanLocationInfo{}
+	assert.Equal(t, "global", wli.Key())
+	assert.Contains(t, wli.LogKey(), "global")
+}

@@ -33,3 +33,10 @@ func TestENClusterAppStatusEqual(t *testing.T) {
 	s2.VNCPort = 5902
 	assert.False(t, s1.Equal(s2))
 }
+
+// EdgeNodeClusterConfig.Key
+
+func TestEdgeNodeClusterConfigKey(t *testing.T) {
+	cfg := EdgeNodeClusterConfig{}
+	assert.Equal(t, cfg.ClusterID.UUID.String(), cfg.Key())
+}
