@@ -150,3 +150,32 @@ func TestDomainStatusPending(t *testing.T) {
 	assert.True(t, DomainStatus{PendingModify: true}.Pending())
 	assert.True(t, DomainStatus{PendingDelete: true}.Pending())
 }
+
+// Key / LogKey
+
+func TestDomainConfigLogKey(t *testing.T) {
+	id := uuid.Must(uuid.NewV4())
+	cfg := DomainConfig{UUIDandVersion: UUIDandVersion{UUID: id}}
+	assert.Equal(t, id.String(), cfg.Key())
+	assert.Contains(t, cfg.LogKey(), id.String())
+}
+
+func TestDomainStatusLogKey(t *testing.T) {
+	id := uuid.Must(uuid.NewV4())
+	status := DomainStatus{UUIDandVersion: UUIDandVersion{UUID: id}}
+	assert.Equal(t, id.String(), status.Key())
+	assert.Contains(t, status.LogKey(), id.String())
+}
+
+func TestDomainMetricLogKey(t *testing.T) {
+	id := uuid.Must(uuid.NewV4())
+	metric := DomainMetric{UUIDandVersion: UUIDandVersion{UUID: id}}
+	assert.Equal(t, id.String(), metric.Key())
+	assert.Contains(t, metric.LogKey(), id.String())
+}
+
+func TestHostMemoryLogKey(t *testing.T) {
+	hm := HostMemory{}
+	assert.Equal(t, "global", hm.Key())
+	assert.Contains(t, hm.LogKey(), "global")
+}

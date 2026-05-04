@@ -1449,3 +1449,11 @@ func TestIoBundleErrorRemove(t *testing.T) {
 		t.Fatalf("expected only 5 errors, but got %d", len(iob.Error.Errors))
 	}
 }
+
+// AssignableAdapters.Key / LogKey
+
+func TestAssignableAdaptersLogKey(t *testing.T) {
+	aa := AssignableAdapters{}
+	assert.Equal(t, "global", aa.Key())
+	assert.Contains(t, aa.LogKey(), "global")
+}

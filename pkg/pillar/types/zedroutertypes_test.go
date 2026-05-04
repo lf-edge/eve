@@ -2073,3 +2073,46 @@ func TestConnectivityProbeToProtoUnknownMethod(t *testing.T) {
 	assert.Equal(t, evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_UNSPECIFIED,
 		proto.ProbeMethod)
 }
+
+// Key / LogKey for types with uncovered Key/LogKey
+
+func TestAppNetworkConfigLogKey(t *testing.T) {
+	id := uuid.Must(uuid.NewV4())
+	cfg := AppNetworkConfig{UUIDandVersion: UUIDandVersion{UUID: id}}
+	assert.Equal(t, id.String(), cfg.Key())
+	assert.Contains(t, cfg.LogKey(), id.String())
+}
+
+func TestAppNetworkStatusLogKey(t *testing.T) {
+	id := uuid.Must(uuid.NewV4())
+	status := AppNetworkStatus{UUIDandVersion: UUIDandVersion{UUID: id}}
+	assert.Equal(t, id.String(), status.Key())
+	assert.Contains(t, status.LogKey(), id.String())
+}
+
+func TestNetworkInstanceMetricsLogKey(t *testing.T) {
+	id := uuid.Must(uuid.NewV4())
+	metrics := NetworkInstanceMetrics{UUIDandVersion: UUIDandVersion{UUID: id}}
+	assert.Equal(t, id.String(), metrics.Key())
+	assert.Contains(t, metrics.LogKey(), id.String())
+}
+
+func TestNetworkMetricsLogKey(t *testing.T) {
+	nms := NetworkMetrics{}
+	assert.Equal(t, "global", nms.Key())
+	assert.Contains(t, nms.LogKey(), "global")
+}
+
+func TestNetworkInstanceConfigLogKey(t *testing.T) {
+	id := uuid.Must(uuid.NewV4())
+	cfg := NetworkInstanceConfig{UUIDandVersion: UUIDandVersion{UUID: id}}
+	assert.Equal(t, id.String(), cfg.Key())
+	assert.Contains(t, cfg.LogKey(), id.String())
+}
+
+func TestAppInstMetaDataKey(t *testing.T) {
+	id := uuid.Must(uuid.NewV4())
+	data := AppInstMetaData{AppInstUUID: id, Type: AppInstMetaDataTypeKubeConfig}
+	key := data.Key()
+	assert.Contains(t, key, id.String())
+}

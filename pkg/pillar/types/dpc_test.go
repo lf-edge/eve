@@ -564,6 +564,15 @@ func TestDevicePortConfigUpdatePortStatusFromIntfStatusMap(t *testing.T) {
 	assert.True(t, port1.LastSucceeded.IsZero())
 }
 
+// DevicePortConfig.PubKey / LogKey
+
+func TestDevicePortConfigPubKeyLogKey(t *testing.T) {
+	cfg := DevicePortConfig{Key: "testkey"}
+	pubKey := cfg.PubKey()
+	assert.Contains(t, pubKey, "testkey")
+	assert.Contains(t, cfg.LogKey(), pubKey)
+}
+
 // DevicePortConfig.IsDPCTestable — not-usable and future-LastFailed branches
 
 func TestIsDPCTestableExtraBranches(t *testing.T) {
