@@ -897,9 +897,11 @@ func maybeUpdateConfigItems(ctx *volumemgrContext, newConfigItemValueMap *types.
 		if newDC == 0 {
 			ctx.deferDelete.Stop()
 		} else {
-			// Run ten times as often as lifetime
-			duration := time.Duration(ctx.deferContentDelete / 10)
-			ctx.deferDelete = time.NewTicker(duration * time.Second)
+			// Run ten times as often as lifetime, but at least every
+			// second: integer division truncates values 1..9 to 0,
+			// and time.NewTicker(0) panics.
+			seconds := max(uint32(1), ctx.deferContentDelete/10)
+			ctx.deferDelete = time.NewTicker(time.Duration(seconds) * time.Second)
 		}
 	}
 }
