@@ -122,12 +122,13 @@ func (metrics *kubevirtMetrics) fill(domainName, metricName string, value interf
 
 	BytesInMegabyte := int64(1024 * 1024)
 	switch metricName {
-	// add all the cpus to be Total, seconds should be from VM startup time
-	case "kubevirt_vmi_cpu_system_usage_seconds":
-	case "kubevirt_vmi_cpu_usage_seconds":
-	case "kubevirt_vmi_cpu_user_usage_seconds":
-		cpuNs := assignToInt64(value) * int64(time.Second)
-		r.CPUTotalNs = r.CPUTotalNs + uint64(cpuNs)
+	// kubevirt_vmi_cpu_usage_seconds_total is the combined total (system+user); use it alone to avoid double-counting
+	case "kubevirt_vmi_cpu_usage_seconds_total":
+		if v, ok := value.(float64); ok {
+			r.CPUTotalNs += uint64(v * float64(time.Second))
+		}
+	case "kubevirt_vmi_cpu_system_usage_seconds_total":
+	case "kubevirt_vmi_cpu_user_usage_seconds_total":
 	case "kubevirt_vmi_memory_usable_bytes":
 		// The amount of memory which can be reclaimed by balloon without pushing the guest system to swap,
 		// corresponds to ‘Available’ in /proc/meminfo
@@ -137,10 +138,6 @@ func (metrics *kubevirtMetrics) fill(domainName, metricName string, value interf
 		// The amount of memory in bytes allocated to the domain.
 		// https://kubevirt.io/monitoring/metrics.html#kubevirt
 		r.AllocatedMB = uint32(assignToInt64(value) / BytesInMegabyte)
-	case "kubevirt_vmi_memory_available_bytes": // save this temp for later
-		// Amount of usable memory as seen by the domain.
-		// https://kubevirt.io/monitoring/metrics.html#kubevirt
-		r.UsedMemory = uint32(assignToInt64(value) / BytesInMegabyte)
 	default:
 	}
 	(*metrics)[domainName] = r
@@ -1190,7 +1187,7 @@ func (ctx kubevirtContext) GetDomsCPUMem() (map[string]types.DomainMetric, error
 	res := make(kubevirtMetrics, len(ctx.vmiList))
 	virtIP, err := getVirtHandlerIPAddr(&ctx, nodeName)
 	if err != nil {
-		logrus.Debugf("GetDomsCPUMem get virthandler ip error %v", err)
+		logrus.Debugf("GetDomsCPUMem: get virthandler ip error %v", err)
 		return nil, err
 	}
 
@@ -1224,6 +1221,10 @@ func (ctx kubevirtContext) GetDomsCPUMem() (map[string]types.DomainMetric, error
 		logrus.Infof("GetDomsCPUMem: Error reading response body %v", err)
 		return nil, err
 	}
+
+	// domainAvailMB temporarily tracks kubevirt_vmi_memory_available_bytes per domain
+	// so we can compute UsedMemory = available_bytes - usable_bytes after all metrics are parsed.
+	domainAvailMB := make(map[string]uint32)
 
 	// It seems the virt-handler metrics only container the VMIs running on this node
 	scanner := bufio.NewScanner(strings.NewReader(string(body)))
@@ -1280,6 +1281,10 @@ func (ctx kubevirtContext) GetDomsCPUMem() (map[string]types.DomainMetric, error
 					}
 				}
 			}
+			if metricName == "kubevirt_vmi_memory_available_bytes" && domainName != "" {
+				const bytesInMegabyte = int64(1024 * 1024)
+				domainAvailMB[domainName] = uint32(assignToInt64(parsedValue) / bytesInMegabyte)
+			}
 			res.fill(domainName, metricName, parsedValue)
 			logrus.Debugf("GetDomsCPUMem: vmi %s, domainName %s, metric name %s, value %v", vmiName, domainName, metricName, parsedValue)
 		}
@@ -1289,8 +1294,12 @@ func (ctx kubevirtContext) GetDomsCPUMem() (map[string]types.DomainMetric, error
 		if n == "" {
 			continue
 		}
-		// used_bytes = available_bytes - usable_bytes
-		r.UsedMemory = r.UsedMemory - r.AvailableMemory
+		// used_bytes = available_bytes - usable_bytes; guard uint32 underflow when guest agent data is stale/absent
+		if domainAvailMB[n] > r.AvailableMemory {
+			r.UsedMemory = domainAvailMB[n] - r.AvailableMemory
+		} else {
+			r.UsedMemory = 0
+		}
 		if r.AllocatedMB > 0 {
 			per := float64(r.UsedMemory) / float64(r.AllocatedMB)
 			r.UsedMemoryPercent = per
