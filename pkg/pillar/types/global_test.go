@@ -972,3 +972,54 @@ func TestValidatorErrorBranches(t *testing.T) {
 	httpSpec := specMap.GlobalSettings[DiagProbeRemoteHTTPEndpoint]
 	assert.Error(t, httpSpec.StringValidator("https://example.com"))
 }
+
+// ConfigItemValue.StringValue — default (unknown type) branch
+func TestConfigItemValueStringValueDefault(t *testing.T) {
+	val := ConfigItemValue{ItemType: ConfigItemType(99)}
+	assert.Equal(t, "UnknownType(99)", val.StringValue())
+}
+
+// DelAgentValue — non-existent agent (if !ok early return branch)
+func TestDelAgentValueNonExistentAgent(t *testing.T) {
+	valueMap := DefaultConfigItemValueMap()
+	// Calling Del on an agent that has no settings is a no-op
+	valueMap.DelAgentValue(LogLevel, "nosuchagent")
+	assert.Equal(t, "", valueMap.AgentSettingStringValue("nosuchagent", LogLevel))
+}
+
+// ParseItem — global parse error with no existing old value (default value path)
+func TestParseItemGlobalErrorNoOldValue(t *testing.T) {
+	specMap := NewConfigItemSpecMap()
+	newCfg := DefaultConfigItemValueMap()
+	// Use an empty old config so the key is not in GlobalSettings
+	oldCfg := NewConfigItemValueMap()
+	// "0" is out of range for ConfigInterval (min=5) → parse error, no old value
+	val, err := specMap.ParseItem(newCfg, oldCfg, string(ConfigInterval), "0")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "No Existing Value Found")
+	// Should fall back to spec default
+	spec := specMap.GlobalSettings[ConfigInterval]
+	assert.Equal(t, spec.IntDefault, val.IntValue)
+}
+
+// agentConfigItemValue — agent present but specific key absent (middle path)
+func TestAgentConfigItemValueKeyNotFound(t *testing.T) {
+	valueMap := NewConfigItemValueMap()
+	// Set only LogLevel for "testagent"; RemoteLogLevel is absent
+	valueMap.SetAgentSettingStringValue("testagent", LogLevel, "debug")
+	// Requesting RemoteLogLevel for same agent → agent found, key not found
+	assert.Equal(t, "", valueMap.AgentSettingStringValue("testagent", RemoteLogLevel))
+}
+
+// parseAgentItem — parse error with no old agent value (default value path)
+func TestParseAgentItemErrorNoOldValue(t *testing.T) {
+	specMap := NewConfigItemSpecMap()
+	newCfg := NewConfigItemValueMap()
+	oldCfg := NewConfigItemValueMap() // empty — no agent settings
+	// Invalid loglevel for a known agent key, no old value → uses spec default
+	val, err := specMap.ParseItem(newCfg, oldCfg, "agent.downloader.debug.loglevel", "badlevel")
+	assert.Error(t, err)
+	// default value should have been set
+	spec := specMap.AgentSettings[LogLevel]
+	assert.Equal(t, spec.StringDefault, val.StrValue)
+}

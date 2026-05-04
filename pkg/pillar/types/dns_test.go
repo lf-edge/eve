@@ -561,3 +561,32 @@ func TestGetPort(t *testing.T) {
 	require.NotNil(t, port)
 	assert.True(t, port.IsMgmt)
 }
+
+// getLocalAddrImpl error path — named interface not found triggers error return
+func TestGetLocalAddrImplErrorPath(t *testing.T) {
+	dns := DeviceNetworkStatus{
+		Ports: []NetworkPortStatus{
+			{IfName: "eth0", IsMgmt: true},
+		},
+	}
+	// Request a specific interface that does not exist → getLocalAddrListImpl returns error
+	_, err := GetLocalAddrAnyNoLinkLocal(dns, 0, "nonexistent0")
+	assert.Error(t, err)
+}
+
+// getLocalAddrIf nil Addr — safety continue branch when Addr is nil
+func TestGetLocalAddrIfNilAddr(t *testing.T) {
+	dns := DeviceNetworkStatus{
+		Ports: []NetworkPortStatus{
+			{
+				IfName: "eth0",
+				IsMgmt: true,
+				// AddrInfo with a nil Addr — skipped by the nil check
+				AddrInfoList: []AddrInfo{{Addr: nil}},
+			},
+		},
+	}
+	// All addresses are nil → no valid addresses → error
+	_, err := GetLocalAddrAnyNoLinkLocal(dns, 0, "eth0")
+	assert.Error(t, err)
+}

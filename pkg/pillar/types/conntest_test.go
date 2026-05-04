@@ -153,6 +153,20 @@ func TestTestResultsClear(t *testing.T) {
 	assert.False(t, tr.HasError())
 }
 
+// TestTestResultsUpdateSrcHasErrorNewerSucceeded covers the branch where src has an
+// error AND src.LastSucceeded is after dst.LastSucceeded (S6 in Update).
+func TestTestResultsUpdateSrcHasErrorNewerSucceeded(t *testing.T) {
+	var dst TestResults
+	// dst.LastSucceeded stays zero
+
+	var src TestResults
+	src.LastSucceeded = time.Now()
+	src.LastFailed = time.Now().Add(time.Second) // LastFailed after LastSucceeded → HasError=true
+
+	dst.Update(src)
+	assert.Equal(t, src.LastSucceeded, dst.LastSucceeded)
+}
+
 func TestIntfStatusMapRecordSuccess(t *testing.T) {
 	m := NewIntfStatusMap()
 	m.RecordSuccess("eth0")

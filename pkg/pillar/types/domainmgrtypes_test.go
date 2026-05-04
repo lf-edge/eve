@@ -107,6 +107,11 @@ func TestDomainnameToUUIDErrors(t *testing.T) {
 
 	_, _, _, err = DomainnameToUUID("not-uuid.v.0")
 	assert.Error(t, err)
+
+	// Valid UUID but non-numeric appNum → strconv.Atoi error branch
+	_, _, _, err = DomainnameToUUID("550e8400-e29b-41d4-a716-446655440000.v1.notanumber")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "Bad appNum")
 }
 
 // DomainConfig.VirtualizationModeOrDefault

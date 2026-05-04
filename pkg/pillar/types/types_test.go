@@ -204,6 +204,22 @@ func TestAppInterfaceToNumNew(t *testing.T) {
 	assert.False(t, result.CreateTime.IsZero())
 }
 
+// UuidToNum.New panic branch — wrong key type
+func TestUuidToNumNewWrongKeyType(t *testing.T) {
+	proto := &UuidToNum{}
+	assert.Panics(t, func() {
+		proto.New(AppInterfaceKey{}) // wrong key type → panic
+	})
+}
+
+// AppInterfaceToNum.New panic branch — wrong key type
+func TestAppInterfaceToNumNewWrongKeyType(t *testing.T) {
+	proto := &AppInterfaceToNum{}
+	assert.Panics(t, func() {
+		proto.New(UuidToNumKey{}) // wrong key type → panic
+	})
+}
+
 // SwState.ZSwState
 
 func TestSwStateZSwState(t *testing.T) {
