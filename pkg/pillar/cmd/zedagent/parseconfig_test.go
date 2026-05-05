@@ -320,7 +320,7 @@ func TestParseVlans(t *testing.T) {
 	}
 
 	parseDeviceIoListConfig(getconfigCtx, config)
-	parseVlans(getconfigCtx, config)
+	parseVlans(getconfigCtx, config, false)
 	parseNetworkXObjectConfig(getconfigCtx, config)
 	parseSystemAdapterConfig(getconfigCtx, config, fromController, true)
 
@@ -519,7 +519,7 @@ func TestParseBonds(t *testing.T) {
 	}
 
 	parseDeviceIoListConfig(getconfigCtx, config)
-	parseBonds(getconfigCtx, config)
+	parseBonds(getconfigCtx, config, false)
 	parseNetworkXObjectConfig(getconfigCtx, config)
 	parseSystemAdapterConfig(getconfigCtx, config, fromController, true)
 
@@ -690,8 +690,8 @@ func TestParseVlansOverBonds(t *testing.T) {
 	}
 
 	parseDeviceIoListConfig(getconfigCtx, config)
-	parseBonds(getconfigCtx, config)
-	parseVlans(getconfigCtx, config)
+	parseBonds(getconfigCtx, config, false)
+	parseVlans(getconfigCtx, config, false)
 	parseNetworkXObjectConfig(getconfigCtx, config)
 	parseSystemAdapterConfig(getconfigCtx, config, fromController, true)
 
@@ -959,7 +959,7 @@ func TestInvalidLowerLayerReferences(t *testing.T) {
 			},
 		},
 	}
-	parseBonds(getconfigCtx, config)
+	parseBonds(getconfigCtx, config, false)
 	parseSystemAdapterConfig(getconfigCtx, config, fromController, true)
 	portConfig, err = getconfigCtx.pubDevicePortConfig.Get("zedagent")
 	g.Expect(err).To(BeNil())
@@ -971,7 +971,7 @@ func TestInvalidLowerLayerReferences(t *testing.T) {
 	// fix:
 	config.Bonds[0].Logicallabel = "bond-shopfloor"
 	config.SystemAdapterList[0].LowerLayerName = "bond-shopfloor"
-	parseBonds(getconfigCtx, config)
+	parseBonds(getconfigCtx, config, false)
 	parseSystemAdapterConfig(getconfigCtx, config, fromController, true)
 	portConfig, err = getconfigCtx.pubDevicePortConfig.Get("zedagent")
 	g.Expect(err).To(BeNil())
@@ -990,7 +990,7 @@ func TestInvalidLowerLayerReferences(t *testing.T) {
 			},
 		},
 	}
-	parseBonds(getconfigCtx, config)
+	parseBonds(getconfigCtx, config, false)
 	parseSystemAdapterConfig(getconfigCtx, config, fromController, true)
 	portConfig, err = getconfigCtx.pubDevicePortConfig.Get("zedagent")
 	g.Expect(err).To(BeNil())
@@ -1008,7 +1008,7 @@ func TestInvalidLowerLayerReferences(t *testing.T) {
 			BondMode:        zcommon.BondMode_BOND_MODE_ACTIVE_BACKUP,
 		},
 	}
-	parseBonds(getconfigCtx, config)
+	parseBonds(getconfigCtx, config, false)
 	parseSystemAdapterConfig(getconfigCtx, config, fromController, true)
 	portConfig, err = getconfigCtx.pubDevicePortConfig.Get("zedagent")
 	g.Expect(err).To(BeNil())
@@ -1041,7 +1041,7 @@ func TestInvalidLowerLayerReferences(t *testing.T) {
 			},
 		},
 	}
-	parseBonds(getconfigCtx, config)
+	parseBonds(getconfigCtx, config, false)
 	parseSystemAdapterConfig(getconfigCtx, config, fromController, true)
 	portConfig, err = getconfigCtx.pubDevicePortConfig.Get("zedagent")
 	g.Expect(err).To(BeNil())
@@ -1053,7 +1053,7 @@ func TestInvalidLowerLayerReferences(t *testing.T) {
 
 	// fix:
 	config.Bonds[0].LowerLayerNames = []string{"shopfloor"}
-	parseBonds(getconfigCtx, config)
+	parseBonds(getconfigCtx, config, false)
 	parseSystemAdapterConfig(getconfigCtx, config, fromController, true)
 	portConfig, err = getconfigCtx.pubDevicePortConfig.Get("zedagent")
 	g.Expect(err).To(BeNil())
@@ -1092,8 +1092,8 @@ func TestInvalidLowerLayerReferences(t *testing.T) {
 			},
 		},
 	}
-	parseBonds(getconfigCtx, config)
-	parseVlans(getconfigCtx, config)
+	parseBonds(getconfigCtx, config, false)
+	parseVlans(getconfigCtx, config, false)
 	parseSystemAdapterConfig(getconfigCtx, config, fromController, true)
 	portConfig, err = getconfigCtx.pubDevicePortConfig.Get("zedagent")
 	g.Expect(err).To(BeNil())
@@ -1107,8 +1107,8 @@ func TestInvalidLowerLayerReferences(t *testing.T) {
 
 	// fix:
 	config.Vlans[1].VlanId = 200
-	parseBonds(getconfigCtx, config)
-	parseVlans(getconfigCtx, config)
+	parseBonds(getconfigCtx, config, false)
+	parseVlans(getconfigCtx, config, false)
 	parseSystemAdapterConfig(getconfigCtx, config, fromController, true)
 	portConfig, err = getconfigCtx.pubDevicePortConfig.Get("zedagent")
 	g.Expect(err).To(BeNil())
@@ -1149,8 +1149,8 @@ func TestInvalidLowerLayerReferences(t *testing.T) {
 			},
 		},
 	}
-	parseBonds(getconfigCtx, config)
-	parseVlans(getconfigCtx, config)
+	parseBonds(getconfigCtx, config, false)
+	parseVlans(getconfigCtx, config, false)
 	parseSystemAdapterConfig(getconfigCtx, config, fromController, true)
 	portConfig, err = getconfigCtx.pubDevicePortConfig.Get("zedagent")
 	g.Expect(err).To(BeNil())
@@ -1164,8 +1164,8 @@ func TestInvalidLowerLayerReferences(t *testing.T) {
 
 	// fix:
 	config.Bonds[0].LowerLayerNames = []string{"shopfloor"} // remove warehouse from the LAG
-	parseBonds(getconfigCtx, config)
-	parseVlans(getconfigCtx, config)
+	parseBonds(getconfigCtx, config, false)
+	parseVlans(getconfigCtx, config, false)
 	parseSystemAdapterConfig(getconfigCtx, config, fromController, true)
 	portConfig, err = getconfigCtx.pubDevicePortConfig.Get("zedagent")
 	g.Expect(err).To(BeNil())
@@ -1204,7 +1204,7 @@ func TestInvalidLowerLayerReferences(t *testing.T) {
 			},
 		},
 	}
-	parseBonds(getconfigCtx, config)
+	parseBonds(getconfigCtx, config, false)
 	parseSystemAdapterConfig(getconfigCtx, config, fromController, true)
 	portConfig, err = getconfigCtx.pubDevicePortConfig.Get("zedagent")
 	g.Expect(err).To(BeNil())
@@ -1219,7 +1219,7 @@ func TestInvalidLowerLayerReferences(t *testing.T) {
 	// fix
 	config.Bonds[0].LowerLayerNames = []string{"shopfloor"}
 	config.Bonds[1].LowerLayerNames = []string{"warehouse"}
-	parseBonds(getconfigCtx, config)
+	parseBonds(getconfigCtx, config, false)
 	parseSystemAdapterConfig(getconfigCtx, config, fromController, true)
 	portConfig, err = getconfigCtx.pubDevicePortConfig.Get("zedagent")
 	g.Expect(err).To(BeNil())
@@ -1246,8 +1246,8 @@ func TestInvalidLowerLayerReferences(t *testing.T) {
 			},
 		},
 	}
-	parseBonds(getconfigCtx, config)
-	parseVlans(getconfigCtx, config)
+	parseBonds(getconfigCtx, config, false)
+	parseVlans(getconfigCtx, config, false)
 	parseSystemAdapterConfig(getconfigCtx, config, fromController, true)
 	portConfig, err = getconfigCtx.pubDevicePortConfig.Get("zedagent")
 	g.Expect(err).To(BeNil())
@@ -1259,8 +1259,8 @@ func TestInvalidLowerLayerReferences(t *testing.T) {
 
 	// fix:
 	config.Vlans[0].VlanId = 1000
-	parseBonds(getconfigCtx, config)
-	parseVlans(getconfigCtx, config)
+	parseBonds(getconfigCtx, config, false)
+	parseVlans(getconfigCtx, config, false)
 	parseSystemAdapterConfig(getconfigCtx, config, fromController, true)
 	portConfig, err = getconfigCtx.pubDevicePortConfig.Get("zedagent")
 	g.Expect(err).To(BeNil())
@@ -2150,7 +2150,7 @@ func TestParseInvalidPNAC(t *testing.T) {
 	parseDeviceIoListConfig(getconfigCtx, config)
 	parseSCEPProfiles(getconfigCtx, config)
 	parsePNACConfig(getconfigCtx, config, true)
-	parseVlans(getconfigCtx, config)
+	parseVlans(getconfigCtx, config, false)
 	parseNetworkXObjectConfig(getconfigCtx, config)
 	parseSystemAdapterConfig(getconfigCtx, config, fromController, true)
 
@@ -2223,4 +2223,160 @@ func TestParseInvalidPNAC(t *testing.T) {
 	g.Expect(scepProfile2.ParsingError.Error).ToNot(BeEmpty())
 	g.Expect(scepProfile2.ParsingError.Error).To(ContainSubstring(
 		"Invalid SCEP URL \"invalid-URL\""))
+}
+
+// TestBondMemberSwap verifies that swapping physical adapters between two bonds
+// produces a correct DPC with no "aggregated by multiple bonds" error.
+//
+// The key scenario: bond2 has no direct system adapter (it is only reachable via
+// VLANs). When bond membership changes but the VLAN config is identical, the VLAN
+// hash is unchanged. Without forceParse, parseVlans would skip its re-parsing and
+// keep stale lowerL2Ports pointers to the old bond2, causing the old bond2
+// (with its old members) to appear in the DPC alongside the updated bond1,
+// making one adapter appear in both bonds.
+func TestBondMemberSwap(t *testing.T) {
+	g := NewGomegaWithT(t)
+	ctx := initGetConfigCtx(g)
+
+	const networkUUID = "572cd3bc-ade6-42ad-97a0-22cd24fed1a0"
+
+	config := &zconfig.EdgeDevConfig{
+		Networks: []*zconfig.NetworkConfig{
+			{
+				Id:   networkUUID,
+				Type: zcommon.NetworkType_V4,
+				Ip:   &zcommon.Ipspec{Dhcp: zcommon.DHCPType_Client},
+			},
+		},
+		DeviceIoList: []*zconfig.PhysicalIO{
+			{
+				Ptype:        zcommon.PhyIoType_PhyIoNetEth,
+				Phylabel:     "eth0",
+				Logicallabel: "eth0",
+				Assigngrp:    "eth-grp-1",
+				Phyaddrs:     map[string]string{"ifname": "eth0", "pcilong": "0000:01:00.0"},
+				Usage:        zcommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+			},
+			{
+				Ptype:        zcommon.PhyIoType_PhyIoNetEth,
+				Phylabel:     "eth1",
+				Logicallabel: "eth1",
+				Assigngrp:    "eth-grp-2",
+				Phyaddrs:     map[string]string{"ifname": "eth1", "pcilong": "0000:02:00.0"},
+				Usage:        zcommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+			},
+			{
+				Ptype:        zcommon.PhyIoType_PhyIoNetEth,
+				Phylabel:     "eth2",
+				Logicallabel: "eth2",
+				Assigngrp:    "eth-grp-3",
+				Phyaddrs:     map[string]string{"ifname": "eth2", "pcilong": "0000:03:00.0"},
+				Usage:        zcommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+			},
+			{
+				Ptype:        zcommon.PhyIoType_PhyIoNetEth,
+				Phylabel:     "eth3",
+				Logicallabel: "eth3",
+				Assigngrp:    "eth-grp-4",
+				Phyaddrs:     map[string]string{"ifname": "eth3", "pcilong": "0000:04:00.0"},
+				Usage:        zcommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+			},
+		},
+		Bonds: []*zconfig.BondAdapter{
+			{
+				Logicallabel:    "bond1",
+				InterfaceName:   "bond1",
+				LowerLayerNames: []string{"eth0", "eth1"},
+				BondMode:        zcommon.BondMode_BOND_MODE_ACTIVE_BACKUP,
+				Monitoring:      &zconfig.BondAdapter_Mii{Mii: &zconfig.MIIMonitor{Interval: 100}},
+			},
+			{
+				Logicallabel:    "bond2",
+				InterfaceName:   "bond2",
+				LowerLayerNames: []string{"eth2", "eth3"},
+				BondMode:        zcommon.BondMode_BOND_MODE_ACTIVE_BACKUP,
+				Monitoring:      &zconfig.BondAdapter_Mii{Mii: &zconfig.MIIMonitor{Interval: 100}},
+			},
+		},
+		// bond2 has no direct system adapter — it is only accessible via VLANs.
+		// This is the configuration that exercises the stale-pointer path.
+		Vlans: []*zconfig.VlanAdapter{
+			{
+				Logicallabel:   "vlan20",
+				InterfaceName:  "bond2.20",
+				LowerLayerName: "bond2",
+				VlanId:         20,
+			},
+			{
+				Logicallabel:   "vlan21",
+				InterfaceName:  "bond2.21",
+				LowerLayerName: "bond2",
+				VlanId:         21,
+			},
+		},
+		SystemAdapterList: []*zconfig.SystemAdapter{
+			{
+				Name:           "adapter-bond1",
+				Uplink:         true,
+				NetworkUUID:    networkUUID,
+				LowerLayerName: "bond1",
+			},
+			{
+				Name:           "adapter-vlan20",
+				Uplink:         true,
+				NetworkUUID:    networkUUID,
+				LowerLayerName: "vlan20",
+			},
+			{
+				Name:           "adapter-vlan21",
+				Uplink:         true,
+				NetworkUUID:    networkUUID,
+				LowerLayerName: "vlan21",
+			},
+		},
+	}
+
+	// parseAll runs the parse functions in the same dependency order as parseConfig.
+	parseAll := func(cfg *zconfig.EdgeDevConfig) {
+		physioChanged := parseDeviceIoListConfig(ctx, cfg)
+		bondsChanged := parseBonds(ctx, cfg, physioChanged)
+		vlansChanged := parseVlans(ctx, cfg, physioChanged || bondsChanged)
+		parseNetworkXObjectConfig(ctx, cfg)
+		parseSystemAdapterConfig(ctx, cfg, fromController,
+			physioChanged || bondsChanged || vlansChanged)
+	}
+
+	// Round 1: initial config — bond1=[eth0,eth1], bond2=[eth2,eth3]
+	parseAll(config)
+	portConfig, err := ctx.pubDevicePortConfig.Get("zedagent")
+	g.Expect(err).To(BeNil())
+	dpc := portConfig.(types.DevicePortConfig)
+	g.Expect(dpc.HasError()).To(BeFalse())
+	bond1Port := dpc.LookupPortByLogicallabel("adapter-bond1")
+	g.Expect(bond1Port).ToNot(BeNil())
+	g.Expect(bond1Port.L2LinkConfig.Bond.AggregatedPorts).To(ConsistOf("eth0", "eth1"))
+	bond2Port := dpc.LookupPortByLogicallabel("bond2")
+	g.Expect(bond2Port).ToNot(BeNil())
+	g.Expect(bond2Port.L2LinkConfig.Bond.AggregatedPorts).To(ConsistOf("eth2", "eth3"))
+
+	// Round 2: swap eth1↔eth2 — bond1=[eth0,eth2], bond2=[eth1,eth3].
+	// The VLAN config is identical so parseVlans detects no hash change.
+	// Without forceParse the stale vlan→old-bond2 pointer would leave
+	// old bond2 (carrying eth2) in the DPC alongside new bond1 (also carrying
+	// eth2), triggering "Port eth2 is aggregated by multiple bond interfaces".
+	config.Bonds[0].LowerLayerNames = []string{"eth0", "eth2"}
+	config.Bonds[1].LowerLayerNames = []string{"eth1", "eth3"}
+	parseAll(config)
+	portConfig, err = ctx.pubDevicePortConfig.Get("zedagent")
+	g.Expect(err).To(BeNil())
+	dpc = portConfig.(types.DevicePortConfig)
+	g.Expect(dpc.HasError()).To(BeFalse())
+	g.Expect(getPortError(&dpc, "eth1")).To(BeEmpty())
+	g.Expect(getPortError(&dpc, "eth2")).To(BeEmpty())
+	bond1Port = dpc.LookupPortByLogicallabel("adapter-bond1")
+	g.Expect(bond1Port).ToNot(BeNil())
+	g.Expect(bond1Port.L2LinkConfig.Bond.AggregatedPorts).To(ConsistOf("eth0", "eth2"))
+	bond2Port = dpc.LookupPortByLogicallabel("bond2")
+	g.Expect(bond2Port).ToNot(BeNil())
+	g.Expect(bond2Port.L2LinkConfig.Bond.AggregatedPorts).To(ConsistOf("eth1", "eth3"))
 }
