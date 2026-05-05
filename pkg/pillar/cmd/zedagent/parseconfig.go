@@ -154,8 +154,8 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 		// used by systemAdapters
 		physioChanged := parseDeviceIoListConfig(getconfigCtx, config)
 		// It is important to parse Bonds before VLANs.
-		bondsChanged := parseBonds(getconfigCtx, config)
-		vlansChanged := parseVlans(getconfigCtx, config)
+		bondsChanged := parseBonds(getconfigCtx, config, physioChanged)
+		vlansChanged := parseVlans(getconfigCtx, config, physioChanged || bondsChanged)
 		// Network objects are used for systemAdapters
 		networksChanged := parseNetworkXObjectConfig(getconfigCtx, config)
 		sourceChanged := getconfigCtx.lastConfigSource != source
@@ -1685,7 +1685,8 @@ func parseDeviceIoListConfig(getconfigCtx *getconfigContext,
 
 var bondsPrevConfigHash []byte
 
-func parseBonds(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig) bool {
+func parseBonds(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
+	forceParse bool) bool {
 	bonds := config.GetBonds()
 	h := sha256.New()
 	for _, bond := range bonds {
@@ -1693,7 +1694,7 @@ func parseBonds(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig) b
 	}
 	configHash := h.Sum(nil)
 	same := bytes.Equal(configHash, bondsPrevConfigHash)
-	if same {
+	if same && !forceParse {
 		return false
 	}
 	bondsPrevConfigHash = configHash
@@ -1801,7 +1802,8 @@ func parseBonds(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig) b
 
 var vlansPrevConfigHash []byte
 
-func parseVlans(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig) bool {
+func parseVlans(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
+	forceParse bool) bool {
 	vlans := config.GetVlans()
 	h := sha256.New()
 	for _, vlan := range vlans {
@@ -1809,7 +1811,7 @@ func parseVlans(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig) b
 	}
 	configHash := h.Sum(nil)
 	same := bytes.Equal(configHash, vlansPrevConfigHash)
-	if same {
+	if same && !forceParse {
 		return false
 	}
 	vlansPrevConfigHash = configHash
