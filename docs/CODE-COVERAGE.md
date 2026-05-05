@@ -1,5 +1,30 @@
 # Code Coverage
 
+## Test prioritization by microservice category
+
+EVE microservices fall into two categories — **device management** and
+**workload management** — described in
+[MICROSERVICE-CLASSIFICATION.md](MICROSERVICE-CLASSIFICATION.md).
+
+Device management microservices (`nim`, `zedagent`, `client`, `baseosmgr`,
+`downloader`, `verifier`, `volumemgr`, `nodeagent`, `tpmmgr`,
+`loguploader`) are critical for remote manageability.
+A sustained bug in any of them can prevent the controller from reaching the
+device, requiring physical intervention to recover. Coverage gaps in this group
+therefore carry higher operational risk than equivalent gaps in workload
+management code.
+
+Workload management microservices (`domainmgr`, `zedrouter`, `zedmanager`,
+`diag`, hypervisors, container runtime) handle running applications on the
+device and diagnostics. Their failure is recoverable remotely. Coverage gaps
+here matter, but are lower priority than equal-sized gaps in device management
+code.
+
+When choosing what to test next, prefer addressing device management gaps over
+workload management gaps of similar size.
+
+---
+
 EVE supports several sources of Go basic-block code coverage that can be
 merged into a single combined report:
 

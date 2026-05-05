@@ -330,6 +330,7 @@ process.
 
 For some of the details on EVE internals you may want to check out:
 
+* [Microservice Classification](MICROSERVICE-CLASSIFICATION.md) — device management vs. workload management microservices, and why the distinction matters for remote manageability
 * [Domain Manager](../pkg/pillar/docs/domainmgr.md)
 * [TPM Manager](../pkg/pillar/docs/tpmmgr.md)
 
