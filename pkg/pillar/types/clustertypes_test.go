@@ -14,7 +14,6 @@ import (
 func TestENClusterAppStatusEqual(t *testing.T) {
 	s1 := ENClusterAppStatus{
 		ScheduledOnThisNode: true,
-		StatusRunning:       false,
 		AppIsVMI:            true,
 		VMIName:             "myapp",
 		VNCPort:             5901,
