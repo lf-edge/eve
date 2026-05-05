@@ -89,6 +89,7 @@ func (ctx *zedmanagerContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
 var logger *logrus.Logger
 var log *base.LogObject
 
+// Run - Main function - invoked from zedbox.go
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int {
 	logger = loggerArg
 	log = logArg
@@ -796,10 +797,16 @@ func publishAppInstanceStatus(ctx *zedmanagerContext,
 				log.Functionf("publishAppInstanceStatus(%s) suppressed: IsDNidNode=%v ScheduledOnThisNode=%v AppKubeStatus=%v",
 					key, clusterStatus.IsDNidNode, clusterStatus.ScheduledOnThisNode, clusterStatus.AppKubeStatus)
 			}
+		} else if !status.IsDesignatedNodeID {
+			// No ENClusterAppStatus yet for this app, but the config says this node
+			// is not the designated node for this app. A peer owns reporting; suppress
+			// until our ENClusterAppStatus arrives and sets the correct policy.
+			// Single-device k8s and the DNID node both have IsDesignatedNodeID=true,
+			// so they are unaffected and continue to report.
+			status.NoUploadStatsToController = true
+			log.Functionf("publishAppInstanceStatus(%s) suppressed: no ENClusterAppStatus yet, not DNID node",
+				key)
 		}
-		// st == nil: leave flag at its prior value (defaults to false on a fresh
-		// AppInstanceStatus). Cold-start reporting goes through; a later ENClusterAppStatus
-		// update re-publishes AppInstanceStatus through handleENClusterAppStatusImpl.
 	}
 	pub.Publish(key, *status)
 }

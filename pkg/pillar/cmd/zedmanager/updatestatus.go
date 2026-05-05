@@ -948,6 +948,11 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		status.Activated = true
 		status.ActivateInprogress = false
 		changed = true
+	} else if status.ActivateInprogress {
+		// Failback: domain is running but ActivateInprogress was re-set
+		// during a prior failover cycle where Activated was already true.
+		status.ActivateInprogress = false
+		changed = true
 	}
 	// Are we doing a restart?
 	if status.RestartInprogress == types.BringUp {
@@ -1041,7 +1046,7 @@ func doRemove(ctx *zedmanagerContext,
 	c, done := doInactivate(ctx, appInstID, status)
 	changed = changed || c
 	if !done {
-		log.Functionf("doRemove waiting for inactivate for %s", uuidStr)
+		log.Functionf("doRemove waiting for deactivate for %s", uuidStr)
 		return changed, done
 	}
 	if !status.Activated {
