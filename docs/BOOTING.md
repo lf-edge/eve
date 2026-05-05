@@ -222,7 +222,7 @@ would've been partition entry #1 on x86 becomes partition entry #11 on HiKey).
 The upside of HiKey, of course, is that EVE at least doesn't have to worry about all the firmware bits -- as long as it
 plays nice with HiKey's already pre-created GPT structure it simply expects HiKey's firmware to, ultimately, load up a
 proper UEFI environment and call EVE's GRUB UEFI payload as it would happen normally. As such, HiKey presents a somewhat
-hybrid environment where as long as we're careful with GPT -- we can simply re-use our default booting scheme with UEFI.
+hybrid environment where as long as we're careful with GPT -- we can simply reuse our default booting scheme with UEFI.
 
 A popular Raspberry Pi ARM board, presents an extra challenge compared to HiKey. Just like HiKey it expects its firmware
 to be stored on disk, but it also expects that disk to be partitioned with legacy MBR and it has fairly strict requirements
@@ -273,7 +273,7 @@ You can load u-boot from usb. You should create FAT32 partition on your usb and 
 #### Load u-boot with netboot on Raspberry Pi
 
 In order to boot u-boot from tftp, you should modify bootloader configuration as
-described [here](https://www.raspberrypi.org/documentation/hardware/raspberrypi/bcm2711_bootloader_config.md).
+described in the [Raspberry Pi BCM2711 bootloader configuration](https://www.raspberrypi.org/documentation/hardware/raspberrypi/bcm2711_bootloader_config.md).
 You should modify BOOT_ORDER to one that uses NETWORK mode (for example `0xf121`):
 
 ```shell
@@ -298,7 +298,7 @@ should be available via HTTP/HTTPs and you need to modify `ipxe.efi.cfg` with lo
 
 During the boot process, as stated by the TCG specification, BIOS/UEFI should measure the enumerated boot options into the TPM.
 UEFI measures the list of boot options and their configuration data in PCR-1. EVE is using PCR-1 as one of the sealing
-PCRs to protect the vault key from unauthorized access (check [Encrypted Data Store](./SECURITY.md#encrypted-data-store) for more details),
+PCRs to protect the vault key from unauthorized access (check [Encrypted Data Store](./SECURITY-ARCHITECTURE.md#encrypted-data-store) for more details),
 so it is important for the edge node to have a fixed and consistent list of boot options after onboarding. Attaching any
 bootable device, most notably USB devices, will result in a different set of boot options and subsequently change of
 the PCR-1 value. If a USB disk is used as an extra storage, **it is important to make sure the attached USB device has no bootable partition present**.

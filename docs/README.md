@@ -92,7 +92,7 @@ on which a trust model can be built.
 
 We have made an effort to provide users of EVE with a system that is both
 practically secure and can be deployed in a zero-touch fashion. In order to achieve
-our goals we put forward a [few guiding principles](SECURITY.md).
+our goals we put forward a [few guiding principles](SECURITY-ARCHITECTURE.md).
 
 ## EVE Controller
 
