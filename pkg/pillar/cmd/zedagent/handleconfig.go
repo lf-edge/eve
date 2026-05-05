@@ -254,68 +254,21 @@ func (r configProcessingRetval) String() string {
 // if empty set is configured) and items related to networking (system adapters, networks,
 // vlans, bonds, etc.).
 func loadBootstrapConfig(getconfigCtx *getconfigContext) {
-	//  Check if bootstrap config has been already loaded.
-	if !fileutils.FileExists(log, types.BootstrapConfFileName) {
-		// No bootstrap config to read
-		return
-	}
+	loadBootstrapConfigImpl(getconfigCtx, types.BootstrapConfFileName, types.RootCertFileName)
+}
 
-	// Load file content.
-	contents, err := os.ReadFile(types.BootstrapConfFileName)
+// loadBootstrapConfigImpl is the testable core of loadBootstrapConfig.
+func loadBootstrapConfigImpl(getconfigCtx *getconfigContext, bootstrapFile, rootCertFile string) {
+	devConfig, err := validateBootstrapConfig(bootstrapFile, rootCertFile)
 	if err != nil {
-		log.Errorf("Failed to read bootstrap config: %v", err)
 		indicateInvalidBootstrapConfig(getconfigCtx)
 		return
 	}
-
-	// Unmarshal BootstrapConfig.
-	bootstrap := zconfig.BootstrapConfig{}
-	err = proto.Unmarshal(contents, &bootstrap)
-	if err != nil {
-		log.Errorf("Failed to unmarshal bootstrap config: %v", err)
-		indicateInvalidBootstrapConfig(getconfigCtx)
+	if devConfig == nil {
+		// File absent — nothing to do.
 		return
 	}
-
-	// Verify controller certificate chain.
-	tmpCtrlClient := controllerconn.NewClient(log, controllerconn.ClientOptions{})
-	sigCertBytes, err := controllerconn.VerifyLeavesCertChain(log, bootstrap.ControllerCerts, false)
-	if err != nil {
-		log.Errorf("Controller cert chain verification failed for bootstrap config: %v", err)
-		indicateInvalidBootstrapConfig(getconfigCtx)
-		return
-	}
-
-	// Store the server signing cert in the client then
-	// verify the payload signature on the bootstrap config
-	if err = tmpCtrlClient.StoreServerSigningCert(sigCertBytes); err != nil {
-		log.Errorf("Failed to load signing server cert from bootstrap config: %v", err)
-		indicateInvalidBootstrapConfig(getconfigCtx)
-		return
-	}
-	_, err = tmpCtrlClient.VerifyAuthContainer(bootstrap.SignedConfig)
-	if err != nil {
-		log.Errorf("Signature verification failed for bootstrap config: %v", err)
-		indicateInvalidBootstrapConfig(getconfigCtx)
-		return
-	}
-
-	// Unmarshal EdgeDevConfig from the payload of AuthContainer.
-	devConfig := zconfig.EdgeDevConfig{}
-	payload := bootstrap.SignedConfig.GetProtectedPayload().GetPayload()
-	if payload == nil {
-		log.Error("Bootstrap config payload is nil")
-		indicateInvalidBootstrapConfig(getconfigCtx)
-		return
-	}
-	err = proto.Unmarshal(payload, &devConfig)
-	if err != nil {
-		log.Errorf("Failed to unmarshal bootstrap config payload: %v", err)
-		return
-	}
-
-	// Apply bootstrap config.
-	retVal := inhaleDeviceConfig(getconfigCtx, &devConfig, fromBootstrap)
+	retVal := inhaleDeviceConfig(getconfigCtx, devConfig, fromBootstrap)
 	switch retVal {
 	case configOK:
 		log.Notice("Bootstrap config was applied")
@@ -324,6 +277,63 @@ func loadBootstrapConfig(getconfigCtx *getconfigContext) {
 	case obsoleteConfig:
 		log.Error("Bootstrap config is obsolete")
 	}
+}
+
+// validateBootstrapConfig reads and cryptographically validates a bootstrap
+// config file. Returns the parsed EdgeDevConfig on success, nil with a non-nil
+// error if the file exists but is invalid, or nil with a nil error if the file
+// is absent (nothing to do).
+func validateBootstrapConfig(bootstrapFile, rootCertFile string) (*zconfig.EdgeDevConfig, error) {
+	if !fileutils.FileExists(log, bootstrapFile) {
+		return nil, nil
+	}
+
+	contents, err := os.ReadFile(bootstrapFile)
+	if err != nil {
+		log.Errorf("Failed to read bootstrap config: %v", err)
+		return nil, err
+	}
+
+	bootstrap := zconfig.BootstrapConfig{}
+	if err = proto.Unmarshal(contents, &bootstrap); err != nil {
+		log.Errorf("Failed to unmarshal bootstrap config: %v", err)
+		return nil, err
+	}
+
+	rootCertPEM, err := os.ReadFile(rootCertFile)
+	if err != nil {
+		log.Errorf("Failed to read root certificate for bootstrap config: %v", err)
+		return nil, err
+	}
+
+	tmpCtrlClient := controllerconn.NewClient(log, controllerconn.ClientOptions{})
+	sigCertBytes, err := controllerconn.VerifyLeavesCertChainWithRootPEM(log, bootstrap.ControllerCerts, false, rootCertPEM)
+	if err != nil {
+		log.Errorf("Controller cert chain verification failed for bootstrap config: %v", err)
+		return nil, err
+	}
+
+	if err = tmpCtrlClient.StoreServerSigningCert(sigCertBytes); err != nil {
+		log.Errorf("Failed to load signing server cert from bootstrap config: %v", err)
+		return nil, err
+	}
+	if _, err = tmpCtrlClient.VerifyAuthContainer(bootstrap.SignedConfig); err != nil {
+		log.Errorf("Signature verification failed for bootstrap config: %v", err)
+		return nil, err
+	}
+
+	payload := bootstrap.SignedConfig.GetProtectedPayload().GetPayload()
+	if payload == nil {
+		err = fmt.Errorf("bootstrap config payload is nil")
+		log.Error(err)
+		return nil, err
+	}
+	devConfig := zconfig.EdgeDevConfig{}
+	if err = proto.Unmarshal(payload, &devConfig); err != nil {
+		log.Errorf("Failed to unmarshal bootstrap config payload: %v", err)
+		return nil, err
+	}
+	return &devConfig, nil
 }
 
 func indicateInvalidBootstrapConfig(getconfigCtx *getconfigContext) {
@@ -342,16 +352,17 @@ func indicateInvalidBootstrapConfig(getconfigCtx *getconfigContext) {
 // zedagentCtx,globalConfig. The caller is responsible for publishing those
 // if this returns true
 func loadGlobalConfig(getconfigCtx *getconfigContext) bool {
-	//  Check if global config has been already loaded.
-	if !fileutils.FileExists(log, types.ImportGlobalConfigFile) {
-		// No /config/GlobalConfig/ file to read
+	return loadGlobalConfigImpl(getconfigCtx, types.ImportGlobalConfigFile, types.BaseAuthorizedKeysFile)
+}
+
+// loadGlobalConfigImpl is the testable core of loadGlobalConfig.
+func loadGlobalConfigImpl(getconfigCtx *getconfigContext, globalConfigFile, authorizedKeysFile string) bool {
+	if !fileutils.FileExists(log, globalConfigFile) {
 		return false
 	}
 
-	// Start with defaults for this EVE version
 	newConfigPtr := types.DefaultConfigItemValueMap()
-	// Load file content.
-	contents, err := os.ReadFile(types.ImportGlobalConfigFile)
+	contents, err := os.ReadFile(globalConfigFile)
 	if err != nil {
 		log.Errorf("Failed to read global config: %v", err)
 		return false
@@ -360,20 +371,16 @@ func loadGlobalConfig(getconfigCtx *getconfigContext) bool {
 	var config types.ConfigItemValueMap
 	err = json.Unmarshal(contents, &config)
 	if err != nil {
-		log.Errorf("Could not unmarshall data in file %s: %s",
-			types.ImportGlobalConfigFile, err)
+		log.Errorf("Could not unmarshall data in file %s: %s", globalConfigFile, err)
 		return false
 	}
 	log.Noticef("/config/GlobalConfig contains: %v", config)
 	newConfigPtr.UpdateItemValues(&config)
 
-	keyData, keyDataValid := readAuthorizedKeys(types.BaseAuthorizedKeysFile)
-	doAuthorizedKeys := (len(keyData) != 0 && keyDataValid)
-	if doAuthorizedKeys {
-		log.Noticef("Found the key data in %s: %v",
-			types.BaseAuthorizedKeysFile, keyData)
-		newConfigPtr.SetGlobalValueString(types.SSHAuthorizedKeys,
-			keyData)
+	keyData, keyDataValid := readAuthorizedKeys(authorizedKeysFile)
+	if len(keyData) != 0 && keyDataValid {
+		log.Noticef("Found the key data in %s: %v", authorizedKeysFile, keyData)
+		newConfigPtr.SetGlobalValueString(types.SSHAuthorizedKeys, keyData)
 	}
 	getconfigCtx.zedagentCtx.globalConfig = *newConfigPtr
 	return true
@@ -490,10 +497,10 @@ func configTimerTask(getconfigCtx *getconfigContext, handleChannel chan interfac
 
 	configInterval := ctx.globalConfig.GlobalValueInt(types.ConfigInterval)
 	interval := time.Duration(configInterval) * time.Second
-	max := float64(interval)
-	min := max * 0.3
-	ticker := flextimer.NewRangeTicker(time.Duration(min),
-		time.Duration(max))
+	maxInterval := float64(interval)
+	minInterval := maxInterval * 0.3
+	ticker := flextimer.NewRangeTicker(time.Duration(minInterval),
+		time.Duration(maxInterval))
 	// Return handle to caller
 	handleChannel <- ticker
 
@@ -516,7 +523,7 @@ func configTimerTask(getconfigCtx *getconfigContext, handleChannel chan interfac
 		select {
 		case <-ticker.C:
 			start := time.Now()
-			iteration += 1
+			iteration++
 			withNetTracing = traceNextConfigReq(ctx)
 			retVal, tracedReqs = getLatestConfig(
 				getconfigCtx, iteration, withNetTracing)
@@ -576,10 +583,10 @@ func updateConfigTimer(configInterval uint32, tickerHandle interface{}) {
 	}
 	interval := time.Duration(configInterval) * time.Second
 	log.Functionf("updateConfigTimer() change to %v", interval)
-	max := float64(interval)
-	min := max * 0.3
+	maxInterval := float64(interval)
+	minInterval := maxInterval * 0.3
 	flextimer.UpdateRangeTicker(tickerHandle,
-		time.Duration(min), time.Duration(max))
+		time.Duration(minInterval), time.Duration(maxInterval))
 	// Force an immediate timeout since timer could have decreased
 	flextimer.TickNow(tickerHandle)
 }
@@ -595,11 +602,11 @@ func updateTaskTimer(configInterval uint32, tickerHandle interface{}) {
 	}
 	interval := time.Duration(configInterval) * time.Second
 	log.Functionf("updateTaskTimer() change to %v", interval)
-	max := float64(interval)
-	min := max * 0.3
+	maxInterval := float64(interval)
+	minInterval := maxInterval * 0.3
 	// Update the ticker to use the new interval range.
 	flextimer.UpdateRangeTicker(tickerHandle,
-		time.Duration(min), time.Duration(max))
+		time.Duration(minInterval), time.Duration(maxInterval))
 	// Force an immediate tick in case the interval was decreased.
 	flextimer.TickNow(tickerHandle)
 }
@@ -1153,14 +1160,14 @@ func inhaleDeviceConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevC
 	log.Tracef("Inhaling config")
 
 	// if they match return
-	var devId = &zconfig.UUIDandVersion{}
+	var devID = &zconfig.UUIDandVersion{}
 
-	devId = config.GetId()
-	if devId != nil {
-		id, err := uuid.FromString(devId.Uuid)
+	devID = config.GetId()
+	if devID != nil {
+		id, err := uuid.FromString(devID.Uuid)
 		if err != nil {
 			log.Errorf("Invalid UUID %s from cloud: %s",
-				devId.Uuid, err)
+				devID.Uuid, err)
 			return invalidConfig
 		}
 		if devUUID == nilUUID && id != devUUID &&

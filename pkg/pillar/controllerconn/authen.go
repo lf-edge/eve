@@ -546,19 +546,32 @@ func VerifyProtoLeavesCertChainImpl(log *base.LogObject, content []byte) ([]byte
 	return VerifyLeavesCertChain(log, sm.Certs, true)
 }
 
-// VerifyLeavesCertChain - verify certificate chain from controller to leaves.
+// VerifyLeavesCertChain reads the root certificate from types.RootCertFileName
+// and verifies the certificate chain from controller to leaves.
 // If requireECDH is true, the ECDH exchange certificate must also be present.
 // Returns content of the signing certificate and the verification error/nil value.
 func VerifyLeavesCertChain(log *base.LogObject, certs []*zcert.ZCert, requireECDH bool) ([]byte, error) {
+	caCert, err := os.ReadFile(types.RootCertFileName)
+	if err != nil {
+		errStr := fmt.Sprintf("root certificate read fail, %v", err)
+		log.Errorln("VerifyLeavesCertChain: " + errStr)
+		return nil, errors.New(errStr)
+	}
+	return VerifyLeavesCertChainWithRootPEM(log, certs, requireECDH, caCert)
+}
+
+// VerifyLeavesCertChainWithRootPEM is like VerifyLeavesCertChain but uses the
+// provided PEM-encoded root certificate instead of reading from disk.
+func VerifyLeavesCertChainWithRootPEM(log *base.LogObject, certs []*zcert.ZCert, requireECDH bool, rootCertPEM []byte) ([]byte, error) {
 	// prepare intermediate certs and validate the payload
 	var signCertBytes []byte
 	var keyCnt, signKeyCnt, encrKeyCnt int
-	interm := x509.NewCertPool()
+	intermediates := x509.NewCertPool()
 	for _, cert := range certs {
 		keyCnt++
 		switch cert.Type {
 		case zcert.ZCertType_CERT_TYPE_CONTROLLER_INTERMEDIATE:
-			ok := interm.AppendCertsFromPEM(cert.GetCert())
+			ok := intermediates.AppendCertsFromPEM(cert.GetCert())
 			if !ok {
 				errStr := fmt.Sprintf("intermediate cert append fail")
 				log.Errorln("VerifyLeavesCertChain: " + errStr)
@@ -601,7 +614,7 @@ func VerifyLeavesCertChain(log *base.LogObject, certs []*zcert.ZCert, requireECD
 		if cert.Type == zcert.ZCertType_CERT_TYPE_CONTROLLER_SIGNING ||
 			cert.Type == zcert.ZCertType_CERT_TYPE_CONTROLLER_ECDH_EXCHANGE {
 			certByte := cert.GetCert()
-			if err := verifySignature(log, certByte, interm); err != nil {
+			if err := verifySignatureWithRootPEM(log, certByte, intermediates, rootCertPEM); err != nil {
 				errStr := fmt.Sprintf("signature verification fail for %d",
 					cert.Type)
 				log.Errorln("VerifyLeavesCertChain: " + errStr)
@@ -613,8 +626,7 @@ func VerifyLeavesCertChain(log *base.LogObject, certs []*zcert.ZCert, requireECD
 	return signCertBytes, nil
 }
 
-func verifySignature(log *base.LogObject, certByte []byte, interm *x509.CertPool) error {
-
+func verifySignatureWithRootPEM(log *base.LogObject, certByte []byte, intermediates *x509.CertPool, rootCertPEM []byte) error {
 	block, _ := pem.Decode(certByte)
 	if block == nil {
 		errStr := fmt.Sprintf("certificate block decode fail")
@@ -629,25 +641,16 @@ func verifySignature(log *base.LogObject, certByte []byte, interm *x509.CertPool
 		return errors.New(errStr)
 	}
 
-	// Get the root certificate from file
 	signingRoots := x509.NewCertPool()
-	caCert, err := os.ReadFile(types.RootCertFileName)
-	if err != nil {
-		errStr := fmt.Sprintf("root certificate read fail, %v", err)
-		log.Errorln("verifySignature: " + errStr)
-		return err
-	}
-	if !signingRoots.AppendCertsFromPEM(caCert) {
-		errStr := fmt.Sprintf("root certificate append fail, %s",
-			types.RootCertFileName)
+	if !signingRoots.AppendCertsFromPEM(rootCertPEM) {
+		errStr := fmt.Sprintf("root certificate append fail")
 		log.Errorln("verifySignature: " + errStr)
 		return errors.New(errStr)
 	}
 
 	opts := x509.VerifyOptions{
-		Roots: signingRoots,
-		// for signing, not to verify the server name
-		Intermediates: interm,
+		Roots:         signingRoots,
+		Intermediates: intermediates,
 	}
 	if _, err := leafcert.Verify(opts); err != nil {
 		errStr := fmt.Sprintf("signature verification fail, %v", err)
