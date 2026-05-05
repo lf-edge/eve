@@ -110,15 +110,16 @@ func (c *Client) VerifyAuthContainerHeader(sm *zauth.AuthContainer) (
 	types.SenderStatus, error) {
 	status, err := c.tryVerifyAuthContainerHeader(sm, false)
 	if status == types.SenderStatusCertMiss {
-		// Try backup
+		// Try backup without clobbering status. SenderStatusCertMiss
+		// is needed to trigger a fetch of the certificates.
 		c.ClearServerCert()
-		status, err = c.tryVerifyAuthContainerHeader(sm, true)
-		if status == types.SenderStatusNone {
+		status2, err2 := c.tryVerifyAuthContainerHeader(sm, true)
+		if status2 == types.SenderStatusNone && err2 == nil {
 			c.log.Notice("controllercerts.bak worked")
-		} else {
-			c.log.Errorf("controllercerts and controllercerts.bak failed: %s, %s",
-				status, err)
+			return status2, err2
 		}
+		c.log.Errorf("controllercerts and controllercerts.bak failed: %s, %s: returning %s, %s",
+			status2, err2, status, err)
 	}
 	return status, err
 }
