@@ -101,11 +101,11 @@ func TestContentTreeStatusLogKey(t *testing.T) {
 	id := uuid.Must(uuid.NewV4())
 	dsID := uuid.Must(uuid.NewV4())
 	status := ContentTreeStatus{
-		ContentID:           id,
-		DatastoreIDList:     []uuid.UUID{dsID},
-		RelativeURL:         "img.tar",
-		GenerationCounter:   1,
-		Format:              zconfig.Format_RAW,
+		ContentID:         id,
+		DatastoreIDList:   []uuid.UUID{dsID},
+		RelativeURL:       "img.tar",
+		GenerationCounter: 1,
+		Format:            zconfig.Format_RAW,
 	}
 	assert.Equal(t, id.String(), status.Key())
 	assert.Contains(t, status.LogKey(), id.String())
