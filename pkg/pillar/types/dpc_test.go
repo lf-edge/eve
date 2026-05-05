@@ -316,11 +316,11 @@ func TestIPRangeSize(t *testing.T) {
 	assert.Equal(t, uint32(9), r.Size())
 
 	// Start > End (reversed) → ip1Int > ip2Int path
-	r_rev := IPRange{
+	rRev := IPRange{
 		Start: net.ParseIP("10.0.0.10"),
 		End:   net.ParseIP("10.0.0.1"),
 	}
-	assert.Equal(t, uint32(9), r_rev.Size())
+	assert.Equal(t, uint32(9), rRev.Size())
 
 	// Single address range
 	r2 := IPRange{
