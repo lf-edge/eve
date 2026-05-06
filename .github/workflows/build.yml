@@ -288,6 +288,30 @@ jobs:
           hv: kvm
           cache-artifact: linuxkit-cache-arm64-generic
 
+  eve-arm64-k-generic:
+    name: "eve (arm64, k, generic)"
+    needs: pkgs-arm64-generic
+    runs-on: zededa-ubuntu-2204-arm64
+    timeout-minutes: 1440
+    steps:
+      - name: Clear repository
+        shell: bash
+        run: |
+          sudo rm -fr "$GITHUB_WORKSPACE" && mkdir "$GITHUB_WORKSPACE"
+          rm -fr ~/.linuxkit
+          docker system prune --all --force --volumes
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - uses: ./.github/actions/build-eve
+        with:
+          arch: arm64
+          platform: generic
+          hv: k
+          cache-artifact: linuxkit-cache-arm64-generic
+
   # ── arm64 nvidia ──
 
   eve-arm64-kvm-nvidia-jp5:
@@ -336,6 +360,78 @@ jobs:
           arch: arm64
           platform: nvidia-jp6
           hv: kvm
+          cache-artifact: linuxkit-cache-arm64-generic
+
+  eve-arm64-kvm-nvidia-jp7:
+    name: "eve (arm64, kvm, nvidia-jp7)"
+    needs: pkgs-arm64-generic
+    runs-on: zededa-ubuntu-2204-arm64
+    timeout-minutes: 1440
+    steps:
+      - name: Clear repository
+        shell: bash
+        run: |
+          sudo rm -fr "$GITHUB_WORKSPACE" && mkdir "$GITHUB_WORKSPACE"
+          rm -fr ~/.linuxkit
+          docker system prune --all --force --volumes
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - uses: ./.github/actions/build-eve
+        with:
+          arch: arm64
+          platform: nvidia-jp7
+          hv: kvm
+          cache-artifact: linuxkit-cache-arm64-generic
+
+  eve-arm64-k-nvidia-jp6:
+    name: "eve (arm64, k, nvidia-jp6)"
+    needs: pkgs-arm64-generic
+    runs-on: zededa-ubuntu-2204-arm64
+    timeout-minutes: 1440
+    steps:
+      - name: Clear repository
+        shell: bash
+        run: |
+          sudo rm -fr "$GITHUB_WORKSPACE" && mkdir "$GITHUB_WORKSPACE"
+          rm -fr ~/.linuxkit
+          docker system prune --all --force --volumes
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - uses: ./.github/actions/build-eve
+        with:
+          arch: arm64
+          platform: nvidia-jp6
+          hv: k
+          cache-artifact: linuxkit-cache-arm64-generic
+
+  eve-arm64-k-nvidia-jp7:
+    name: "eve (arm64, k, nvidia-jp7)"
+    needs: pkgs-arm64-generic
+    runs-on: zededa-ubuntu-2204-arm64
+    timeout-minutes: 1440
+    steps:
+      - name: Clear repository
+        shell: bash
+        run: |
+          sudo rm -fr "$GITHUB_WORKSPACE" && mkdir "$GITHUB_WORKSPACE"
+          rm -fr ~/.linuxkit
+          docker system prune --all --force --volumes
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - uses: ./.github/actions/build-eve
+        with:
+          arch: arm64
+          platform: nvidia-jp7
+          hv: k
           cache-artifact: linuxkit-cache-arm64-generic
 
   # ════════════════════════════════════════════════════════════════════════
