@@ -95,6 +95,10 @@ func (c *Client) GetTLSConfig(clientCert *tls.Certificate) (*tls.Config, error) 
 
 	// Load the well-known CAs from the rootfs (integrity protected)
 	caCertPool, err := x509.SystemCertPool()
+	if err != nil {
+		c.log.Warnf("GetTLSConfig: SystemCertPool failed (%v), using empty pool", err)
+		caCertPool = x509.NewCertPool()
+	}
 	// Append any proxy certs from any interface/port to caCertPool
 	for _, port := range c.DeviceNetworkStatus.Ports {
 		for _, pem := range port.ProxyConfig.ProxyCertPEM {
@@ -224,7 +228,12 @@ func (c *Client) UpdateTLSProxyCerts() bool {
 	if len(c.prevCertPEM) > 0 {
 		// previous certs we have are different, lets rebuild from beginning
 		// Load the well-known CAs from the rootfs (integrity protected)
-		caCertPool, _ = x509.SystemCertPool()
+		var sysPoolErr error
+		caCertPool, sysPoolErr = x509.SystemCertPool()
+		if sysPoolErr != nil {
+			c.log.Warnf("UpdateTLSProxyCerts: SystemCertPool failed (%v), using empty pool", sysPoolErr)
+			caCertPool = x509.NewCertPool()
+		}
 		c.log.Functionf("UpdateTLSProxyCerts: rebuild root CA\n")
 	} else {
 		// we don't have proxy certs, add them if any exist
