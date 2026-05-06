@@ -56,8 +56,23 @@ jobs:
           - arch: arm64
             platform: "nvidia-jp6"
             hv: "kvm"
+          - arch: arm64
+            platform: "nvidia-jp7"
+            hv: "kvm"
           - arch: amd64
             platform: "generic"
+            hv: "k"
+          - arch: arm64
+            platform: "generic"
+            hv: "k"
+          - arch: arm64
+            platform: "nvidia-jp5"
+            hv: "k"
+          - arch: arm64
+            platform: "nvidia-jp6"
+            hv: "k"
+          - arch: arm64
+            platform: "nvidia-jp7"
             hv: "k"
           - arch: amd64
             platform: "evaluation"
