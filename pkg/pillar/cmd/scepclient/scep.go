@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
+	_ "crypto/sha512" // register SHA384 and SHA512 for CSR signing
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -38,7 +39,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"github.com/smallstep/pkcs7"
 	"github.com/smallstep/scep"
-	"github.com/smallstep/scep/x509util"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -1065,23 +1065,122 @@ func (c *SCEPClient) decryptChallengePassword(
 	return decBlock.SCEPChallengePassword, nil
 }
 
+// ASN.1 structures mirroring the Go stdlib x509 package internals,
+// used to manipulate raw CSR bytes for attribute reordering.
+type csrPublicKeyInfo struct {
+	Raw       asn1.RawContent
+	Algorithm pkix.AlgorithmIdentifier
+	PublicKey asn1.BitString
+}
+
+type csrTBSCertificateRequest struct {
+	Raw           asn1.RawContent
+	Version       int
+	Subject       asn1.RawValue
+	PublicKey     csrPublicKeyInfo
+	RawAttributes []asn1.RawValue `asn1:"tag:0"`
+}
+
+type csrCertificateRequest struct {
+	Raw                asn1.RawContent
+	TBSCSR             csrTBSCertificateRequest
+	SignatureAlgorithm pkix.AlgorithmIdentifier
+	SignatureValue     asn1.BitString
+}
+
+type csrChallengePasswordAttribute struct {
+	Type  asn1.ObjectIdentifier
+	Value []string `asn1:"set"`
+}
+
+var oidChallengePassword = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 7}
+
+// PrependChallengePassword inserts the challengePassword attribute as the first
+// attribute in the CSR DER, before the Extension Request attribute. Some SCEP
+// servers require this ordering and reject CSRs where it appears after extensions.
+func PrependChallengePassword(derBytes []byte, challenge string,
+	sigAlgo x509.SignatureAlgorithm, key crypto.Signer) ([]byte, error) {
+	var req csrCertificateRequest
+	rest, err := asn1.Unmarshal(derBytes, &req)
+	if err != nil {
+		return nil, err
+	}
+	if len(rest) != 0 {
+		return nil, errors.New("trailing data after CSR")
+	}
+
+	attr := csrChallengePasswordAttribute{
+		Type:  oidChallengePassword,
+		Value: []string{challenge},
+	}
+	attrBytes, err := asn1.Marshal(attr)
+	if err != nil {
+		return nil, err
+	}
+	var rawAttr asn1.RawValue
+	if _, err = asn1.Unmarshal(attrBytes, &rawAttr); err != nil {
+		return nil, err
+	}
+
+	tbsCSR := csrTBSCertificateRequest{
+		Version:       0,
+		Subject:       req.TBSCSR.Subject,
+		PublicKey:     req.TBSCSR.PublicKey,
+		RawAttributes: append([]asn1.RawValue{rawAttr}, req.TBSCSR.RawAttributes...),
+	}
+	tbsBytes, err := asn1.Marshal(tbsCSR)
+	if err != nil {
+		return nil, err
+	}
+
+	hashFunc, err := hashFuncForSignatureAlgorithm(sigAlgo)
+	if err != nil {
+		return nil, err
+	}
+	h := hashFunc.New()
+	h.Write(tbsBytes)
+	sig, err := key.Sign(rand.Reader, h.Sum(nil), hashFunc)
+	if err != nil {
+		return nil, err
+	}
+
+	return asn1.Marshal(csrCertificateRequest{
+		TBSCSR:             tbsCSR,
+		SignatureAlgorithm: req.SignatureAlgorithm,
+		SignatureValue: asn1.BitString{
+			Bytes:     sig,
+			BitLength: len(sig) * 8,
+		},
+	})
+}
+
+func hashFuncForSignatureAlgorithm(sigAlgo x509.SignatureAlgorithm) (crypto.Hash, error) {
+	switch sigAlgo {
+	case x509.SHA256WithRSA, x509.ECDSAWithSHA256:
+		return crypto.SHA256, nil
+	case x509.SHA384WithRSA, x509.ECDSAWithSHA384:
+		return crypto.SHA384, nil
+	case x509.SHA512WithRSA, x509.ECDSAWithSHA512:
+		return crypto.SHA512, nil
+	default:
+		return 0, fmt.Errorf("unsupported signature algorithm: %v", sigAlgo)
+	}
+}
+
 func (c *SCEPClient) makeCSR(profile types.CSRProfile, privateKey SignerAndDecrypter,
 	challengePassword string) (*x509.CertificateRequest, error) {
-	template := &x509util.CertificateRequest{
-		CertificateRequest: x509.CertificateRequest{
-			Subject: pkix.Name{
-				CommonName:         profile.Subject.CommonName,
-				Organization:       profile.Subject.Organization,
-				OrganizationalUnit: profile.Subject.OrganizationalUnit,
-				Country:            profile.Subject.Country,
-				Province:           profile.Subject.State,
-				Locality:           profile.Subject.Locality,
-			},
-			DNSNames:       profile.SAN.DNSNames,
-			EmailAddresses: profile.SAN.EmailAddresses,
-			IPAddresses:    profile.SAN.IPAddresses,
+	template := &x509.CertificateRequest{
+		Subject: pkix.Name{
+			CommonName:         profile.Subject.CommonName,
+			Organization:       profile.Subject.Organization,
+			OrganizationalUnit: profile.Subject.OrganizationalUnit,
+			Country:            profile.Subject.Country,
+			Province:           profile.Subject.State,
+			Locality:           profile.Subject.Locality,
 		},
-		ChallengePassword: challengePassword,
+		DNSNames:       profile.SAN.DNSNames,
+		EmailAddresses: profile.SAN.EmailAddresses,
+		IPAddresses:    profile.SAN.IPAddresses,
 	}
 	for _, uriStr := range profile.SAN.URIs {
 		// url.Parse implements a generic RFC 3986 URI parser (despite the name).
@@ -1108,9 +1207,15 @@ func (c *SCEPClient) makeCSR(profile types.CSRProfile, privateKey SignerAndDecry
 	template.SignatureAlgorithm = sigAlg
 
 	// Create CSR
-	csrDER, err := x509util.CreateCertificateRequest(rand.Reader, template, privateKey)
+	csrDER, err := x509.CreateCertificateRequest(rand.Reader, template, privateKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create CSR: %w", err)
+	}
+	if challengePassword != "" {
+		csrDER, err = PrependChallengePassword(csrDER, challengePassword, sigAlg, privateKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to add challenge password to CSR: %w", err)
+		}
 	}
 	csr, err := x509.ParseCertificateRequest(csrDER)
 	if err != nil {
