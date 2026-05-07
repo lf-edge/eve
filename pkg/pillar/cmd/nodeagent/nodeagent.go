@@ -123,6 +123,11 @@ type nodeagentContext struct {
 	minRebootDelay          uint32
 	maxDomainHaltTime       uint32
 	domainHaltWaitIncrement uint32
+
+	// startNodeOperation spawns the reboot/shutdown/poweroff goroutine.
+	// Defaulted in newNodeagentContext to handleNodeOperation; overridden
+	// by tests so they don't actually call zboot.Reset / zboot.Poweroff.
+	startNodeOperation func(types.DeviceOperation)
 }
 
 func newNodeagentContext(ps *pubsub.PubSub, _ *logrus.Logger, _ *base.LogObject) *nodeagentContext {
@@ -147,6 +152,9 @@ func newNodeagentContext(ps *pubsub.PubSub, _ *logrus.Logger, _ *base.LogObject)
 	nodeagentCtx.curPart = strings.TrimSpace(curpart)
 	nodeagentCtx.vaultOperational = types.TS_NONE
 	nodeagentCtx.hvTypeKube = base.IsHVTypeKube()
+	nodeagentCtx.startNodeOperation = func(op types.DeviceOperation) {
+		go handleNodeOperation(&nodeagentCtx, op)
+	}
 	return &nodeagentCtx
 }
 
@@ -606,37 +614,17 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 	// still no rebootReason? set the default
 	if rebootReason == "" {
 		rebootTime = time.Now()
-		dateStr := rebootTime.Format(time.RFC3339Nano)
-		var reason string
-		if fileutils.FileExists(log, firstbootFile) {
-			reason = fmt.Sprintf("NORMAL: First boot of device - at %s",
-				dateStr)
-			if bootReason == types.BootReasonNone {
-				bootReason = types.BootReasonFirst
-			}
-		} else if previousSmartData.PowerCycleCount > -1 && smartData.PowerCycleCount > -1 &&
+		firstBoot := fileutils.FileExists(log, firstbootFile)
+		if !firstBoot && previousSmartData.PowerCycleCount > -1 &&
+			smartData.PowerCycleCount > -1 &&
 			bootReason == types.BootReasonNone {
 			log.Noticef("previous power cycle count %d current %d",
 				previousSmartData.PowerCycleCount,
 				smartData.PowerCycleCount)
-			if previousSmartData.PowerCycleCount < smartData.PowerCycleCount {
-				reason = fmt.Sprintf("Reboot reason - device powered off. Restarted at %s",
-					dateStr)
-				bootReason = types.BootReasonPowerFail
-			} else {
-				reason = fmt.Sprintf("Reboot reason - system reset, reboot or kernel panic due to watchdog or kernel bug (no kdump) - at %s",
-					dateStr)
-				bootReason = types.BootReasonKernel
-			}
-		} else {
-			reason = fmt.Sprintf("Unknown reboot reason - power failure or crash - at %s",
-				dateStr)
-			if bootReason == types.BootReasonNone {
-				bootReason = types.BootReasonUnknown
-			}
 		}
-		log.Warnf("Default RebootReason: %s", reason)
-		rebootReason = reason
+		rebootReason, bootReason = synthesizeRebootReason(firstBoot,
+			bootReason, previousSmartData, smartData, rebootTime)
+		log.Warnf("Default RebootReason: %s", rebootReason)
 		rebootStack = ""
 	}
 	// remove the first boot file, if it is present
@@ -644,23 +632,7 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 		os.Remove(firstbootFile)
 	}
 
-	// if reboot stack size crosses max size, truncate
-	if len(rebootStack) > maxJSONAttributeSize {
-		runes := bytes.Runes([]byte(rebootStack))
-		sz := len(runes)
-		// Repeat the check for runes
-		if sz > maxJSONAttributeSize {
-			// Get the tail of the stack, because stack grows down and in
-			// case of truncation it is important to see the beginning of
-			// it (bottom) rather then the end (top).
-			runes = runes[sz-maxRebootStackSize : sz]
-			rebootStack = fmt.Sprintf("...\n%v", string(runes))
-		} else {
-			// It is quite possible bytes array size is beyond the max, but
-			// runes size is less. We ignore this and assume it is not so
-			// important.
-		}
-	}
+	rebootStack = truncateRebootStack(rebootStack)
 	rebootImage := agentlog.GetRebootImage(log)
 	if rebootImage != "" {
 		agentlog.DiscardRebootImage(log)
@@ -675,6 +647,62 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 	// Read and increment restartCounter
 	ctx.restartCounter = incrementRestartCounter()
 	ctx.lastLock.Unlock()
+}
+
+// synthesizeRebootReason produces a default RebootReason and BootReason
+// when nothing was persisted from the previous boot. Pure: no I/O,
+// no globals.
+func synthesizeRebootReason(firstBoot bool,
+	storedBootReason types.BootReason,
+	prevSmart, currSmart *types.DeviceSmartInfo,
+	now time.Time) (string, types.BootReason) {
+	bootReason := storedBootReason
+	dateStr := now.Format(time.RFC3339Nano)
+	var reason string
+	switch {
+	case firstBoot:
+		reason = fmt.Sprintf("NORMAL: First boot of device - at %s",
+			dateStr)
+		if bootReason == types.BootReasonNone {
+			bootReason = types.BootReasonFirst
+		}
+	case prevSmart != nil && currSmart != nil &&
+		prevSmart.PowerCycleCount > -1 && currSmart.PowerCycleCount > -1 &&
+		bootReason == types.BootReasonNone:
+		if prevSmart.PowerCycleCount < currSmart.PowerCycleCount {
+			reason = fmt.Sprintf("Reboot reason - device powered off. Restarted at %s",
+				dateStr)
+			bootReason = types.BootReasonPowerFail
+		} else {
+			reason = fmt.Sprintf("Reboot reason - system reset, reboot or kernel panic due to watchdog or kernel bug (no kdump) - at %s",
+				dateStr)
+			bootReason = types.BootReasonKernel
+		}
+	default:
+		reason = fmt.Sprintf("Unknown reboot reason - power failure or crash - at %s",
+			dateStr)
+		if bootReason == types.BootReasonNone {
+			bootReason = types.BootReasonUnknown
+		}
+	}
+	return reason, bootReason
+}
+
+// truncateRebootStack tail-truncates the reboot stack to fit in pubsub.
+// The tail is preserved (rather than the head) because the stack grows
+// down and the bottom frames are more interesting after truncation.
+// Pure: no I/O.
+func truncateRebootStack(stack string) string {
+	if len(stack) <= maxJSONAttributeSize {
+		return stack
+	}
+	runes := bytes.Runes([]byte(stack))
+	sz := len(runes)
+	if sz <= maxJSONAttributeSize {
+		// Bytes too long but runes fit; not worth truncating.
+		return stack
+	}
+	return fmt.Sprintf("...\n%v", string(runes[sz-maxRebootStackSize:sz]))
 }
 
 // handleInstallationLog checks if we should send installer logs
@@ -713,10 +741,16 @@ func handleInstallationLog(ctx *nodeagentContext) {
 // If the file doesn't exist we pick zero.
 // Return value before increment; write new value to file
 func incrementRestartCounter() uint32 {
+	return incrementRestartCounterIn(restartCounterFile)
+}
+
+// incrementRestartCounterIn is the path-parameterised core of
+// incrementRestartCounter, used by unit tests.
+func incrementRestartCounterIn(path string) uint32 {
 	var restartCounter uint32
 
-	if _, err := os.Stat(restartCounterFile); err == nil {
-		b, err := fileutils.ReadWithMaxSize(log, restartCounterFile,
+	if _, err := os.Stat(path); err == nil {
+		b, err := fileutils.ReadWithMaxSize(log, path,
 			maxReadSize)
 		if err != nil {
 			log.Errorf("incrementRestartCounter: %s", err)
@@ -731,7 +765,7 @@ func incrementRestartCounter() uint32 {
 		}
 	}
 	b := []byte(fmt.Sprintf("%d", restartCounter+1))
-	err := os.WriteFile(restartCounterFile, b, 0644)
+	err := os.WriteFile(path, b, 0644)
 	if err != nil {
 		log.Errorf("incrementRestartCounter write: %s", err)
 	}
@@ -842,23 +876,31 @@ func handleVolumeMgrStatusImpl(ctxArg interface{}, key string,
 }
 
 func parseSMARTData() {
-	currentSMARTfilename := "/persist/SMART_details.json"
-	previousSMARTfilename := "/persist/SMART_details_previous.json"
-	parseData := func(filePath string, SMARTDataObj *types.DeviceSmartInfo) {
+	parseSMARTDataFiles(
+		"/persist/SMART_details.json",
+		"/persist/SMART_details_previous.json",
+		smartData, previousSmartData)
+}
+
+// parseSMARTDataFiles is the path-parameterised core of parseSMARTData,
+// used by unit tests. Missing or malformed files leave the destination
+// unchanged.
+func parseSMARTDataFiles(currPath, prevPath string,
+	curr, prev *types.DeviceSmartInfo) {
+	parseOne := func(filePath string, dst *types.DeviceSmartInfo) {
 		data, err := fileutils.ReadWithMaxSize(log, filePath,
 			maxSmartCtlSize)
 		if err != nil {
 			log.Errorf("parseSMARTData: exception while opening %s. %s", filePath, err.Error())
 			return
 		}
-		if err := json.Unmarshal(data, &SMARTDataObj); err != nil {
+		if err := json.Unmarshal(data, &dst); err != nil {
 			log.Errorf("parseSMARTData: exception while parsing SMART data. %s", err.Error())
 			return
 		}
 	}
-
-	parseData(currentSMARTfilename, smartData)
-	parseData(previousSMARTfilename, previousSmartData)
+	parseOne(currPath, curr)
+	parseOne(prevPath, prev)
 }
 
 func handleTpmStatusCreate(ctxArg interface{}, key string,
