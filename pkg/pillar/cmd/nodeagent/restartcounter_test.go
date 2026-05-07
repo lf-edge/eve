@@ -58,6 +58,25 @@ func TestIncrementRestartCounterIn_GarbageContent(t *testing.T) {
 	}
 }
 
+// TestIncrementRestartCounter_Wrapper verifies the production wrapper
+// reads ctx.paths.restartCounterFile.
+func TestIncrementRestartCounter_Wrapper(t *testing.T) {
+	tc := newTestCtx()
+	tc.ctx.paths.restartCounterFile = filepath.Join(t.TempDir(), "rc")
+	if err := os.WriteFile(tc.ctx.paths.restartCounterFile,
+		[]byte("99"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	got := incrementRestartCounter(tc.ctx)
+	if got != 99 {
+		t.Errorf("expected 99, got %d", got)
+	}
+	if got = readCounter(t, tc.ctx.paths.restartCounterFile); got != 100 {
+		t.Errorf("expected file=100, got %d", got)
+	}
+}
+
 // readCounter reads the file and parses it as a decimal uint32. The test
 // asserts equality on the in-memory value rather than going through
 // strconv to avoid duplicating the production parse logic.
