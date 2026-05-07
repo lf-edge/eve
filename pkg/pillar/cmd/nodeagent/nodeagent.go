@@ -34,7 +34,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/pillar/utils/wait"
-	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	"github.com/sirupsen/logrus"
 )
 
@@ -129,9 +128,15 @@ type nodeagentContext struct {
 	// Defaulted in newNodeagentContext to handleNodeOperation; overridden
 	// by tests so they don't actually call zboot.Reset / zboot.Poweroff.
 	startNodeOperation func(types.DeviceOperation)
+
+	// Test seams. Defaulted to real implementations in
+	// newNodeagentContext; overridden by tests.
+	zboot       Zboot
+	rebootStore RebootStore
+	paths       pathConfig
 }
 
-func newNodeagentContext(ps *pubsub.PubSub, _ *logrus.Logger, _ *base.LogObject) *nodeagentContext {
+func newNodeagentContext(ps *pubsub.PubSub, _ *logrus.Logger, logArg *base.LogObject) *nodeagentContext {
 	nodeagentCtx := nodeagentContext{}
 	nodeagentCtx.minRebootDelay = minRebootDelay
 	nodeagentCtx.maxDomainHaltTime = maxDomainHaltTime
@@ -149,7 +154,11 @@ func newNodeagentContext(ps *pubsub.PubSub, _ *logrus.Logger, _ *base.LogObject)
 	nodeagentCtx.tickerTimer = time.NewTicker(duration)
 	nodeagentCtx.configGetStatus = types.ConfigGetFail
 
-	curpart := agentlog.EveCurrentPartition()
+	nodeagentCtx.zboot = realZboot{}
+	nodeagentCtx.rebootStore = realRebootStore{log: logArg}
+	nodeagentCtx.paths = defaultPathConfig()
+
+	curpart := nodeagentCtx.zboot.EveCurrentPartition()
 	nodeagentCtx.curPart = strings.TrimSpace(curpart)
 	nodeagentCtx.vaultOperational = types.TS_NONE
 	nodeagentCtx.hvTypeKube = base.IsHVTypeKube()
@@ -211,7 +220,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	log.Functionf("processed GlobalConfig")
 
 	//Parse SMART data
-	parseSMARTData()
+	parseSMARTData(ctxPtr)
 	// get the last reboot reason
 	handleLastRebootReason(ctxPtr)
 	// send Installation log and remove first-boot from installation
@@ -219,7 +228,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	// Fault injection; if /persist/fault-injection/readfile exists we read it
 	// which will use memory
-	fileToRead := "/persist/fault-injection/readfile"
+	fileToRead := ctxPtr.paths.faultInjectionFile
 	if _, err := os.Stat(fileToRead); err == nil {
 		log.Warnf("Reading %s", fileToRead)
 		content, err := os.ReadFile(fileToRead)
@@ -313,7 +322,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	publishZbootConfigAll(ctxPtr)
 
 	// access the zboot APIs directly, baseosmgr is still not ready
-	ctxPtr.updateInprogress = zboot.IsCurrentPartitionStateInProgress()
+	ctxPtr.updateInprogress = ctxPtr.zboot.IsCurrentPartitionStateInProgress()
 	log.Functionf("Current partition: %s, inProgress: %v", ctxPtr.curPart,
 		ctxPtr.updateInprogress)
 	publishNodeAgentStatus(ctxPtr)
@@ -580,21 +589,21 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 	// Wait to update ctx until the end since the timer publishes these
 	// values and don't want partial or changing data.
 	// until after truncation.
-	rebootReason, rebootTime, rebootStack := agentlog.GetRebootReason(log)
+	rebootReason, rebootTime, rebootStack := ctx.rebootStore.GetRebootReason()
 	if rebootReason != "" {
 		log.Warnf("Current partition RebootReason: %s",
 			rebootReason)
-		agentlog.DiscardRebootReason(log)
+		ctx.rebootStore.DiscardRebootReason()
 	}
 	// We override the above rebootTime since if bootReason is known this is when things
 	// started going down
-	bootReason, ts := agentlog.GetBootReason(log)
+	bootReason, ts := ctx.rebootStore.GetBootReason()
 	if bootReason != types.BootReasonNone {
 		rebootTime = ts
 		log.Noticef("found bootReason %s", bootReason)
 	}
 
-	agentlog.DiscardBootReason(log)
+	ctx.rebootStore.DiscardBootReason()
 	// Make sure we log the reboot stack or dmesg
 	if len(rebootStack) > 0 {
 		lines := strings.Split(rebootStack, "\n")
@@ -616,20 +625,20 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 	if rebootReason == "" {
 		rebootTime = time.Now()
 		rebootReason, bootReason = synthesizeRebootReason(
-			fileutils.FileExists(log, firstbootFile),
+			fileutils.FileExists(log, ctx.paths.firstbootFile),
 			bootReason, previousSmartData, smartData, rebootTime)
 		log.Warnf("Default RebootReason: %s", rebootReason)
 		rebootStack = ""
 	}
 	// remove the first boot file, if it is present
-	if fileutils.FileExists(log, firstbootFile) {
-		os.Remove(firstbootFile)
+	if fileutils.FileExists(log, ctx.paths.firstbootFile) {
+		os.Remove(ctx.paths.firstbootFile)
 	}
 
 	rebootStack = truncateRebootStack(rebootStack)
-	rebootImage := agentlog.GetRebootImage(log)
+	rebootImage := ctx.rebootStore.GetRebootImage()
 	if rebootImage != "" {
-		agentlog.DiscardRebootImage(log)
+		ctx.rebootStore.DiscardRebootImage()
 	}
 	// Update context
 	ctx.lastLock.Lock()
@@ -639,7 +648,7 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 	ctx.rebootTime = rebootTime
 	ctx.rebootStack = rebootStack
 	// Read and increment restartCounter
-	ctx.restartCounter = incrementRestartCounter()
+	ctx.restartCounter = incrementRestartCounter(ctx)
 	ctx.lastLock.Unlock()
 }
 
@@ -711,8 +720,8 @@ func truncateRebootStack(stack string) string {
 // send log from installation to the controller
 // and remove file after small timeout to not send them after reboot
 func handleInstallationLog(ctx *nodeagentContext) {
-	if fileutils.FileExists(log, installLogSendReq) {
-		f, err := os.Open(installLog)
+	if fileutils.FileExists(log, ctx.paths.installLogSendReq) {
+		f, err := os.Open(ctx.paths.installLog)
 		if err != nil {
 			log.Errorf("cannot open installation log: %s", err)
 			return
@@ -731,8 +740,9 @@ func handleInstallationLog(ctx *nodeagentContext) {
 		_ = f.Close()
 		// schedule remove of installLogSendReq file after small timeout
 		// to not re-send log after reboot
+		removePath := ctx.paths.installLogSendReq
 		time.AfterFunc(warningTime, func() {
-			err := os.Remove(installLogSendReq)
+			err := os.Remove(removePath)
 			if err != nil {
 				log.Errorf("cannot remove installation log sending request file: %s", err)
 			}
@@ -742,8 +752,8 @@ func handleInstallationLog(ctx *nodeagentContext) {
 
 // If the file doesn't exist we pick zero.
 // Return value before increment; write new value to file
-func incrementRestartCounter() uint32 {
-	return incrementRestartCounterIn(restartCounterFile)
+func incrementRestartCounter(ctx *nodeagentContext) uint32 {
+	return incrementRestartCounterIn(ctx.paths.restartCounterFile)
 }
 
 // incrementRestartCounterIn is the path-parameterised core of
@@ -881,10 +891,10 @@ func handleVolumeMgrStatusImpl(ctxArg interface{}, key string,
 	}
 }
 
-func parseSMARTData() {
+func parseSMARTData(ctx *nodeagentContext) {
 	parseSMARTDataFiles(
-		"/persist/SMART_details.json",
-		"/persist/SMART_details_previous.json",
+		ctx.paths.smartCurrent,
+		ctx.paths.smartPrevious,
 		smartData, previousSmartData)
 }
 
