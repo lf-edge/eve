@@ -71,6 +71,37 @@ func TestParseSMARTDataFiles_MalformedJSON(t *testing.T) {
 	}
 }
 
+// TestParseSMARTData_Wrapper verifies the production wrapper reads
+// from ctx.paths.smartCurrent / smartPrevious into the package-level
+// globals.
+func TestParseSMARTData_Wrapper(t *testing.T) {
+	tc := newTestCtx()
+	dir := t.TempDir()
+	tc.ctx.paths.smartCurrent = filepath.Join(dir, "curr.json")
+	tc.ctx.paths.smartPrevious = filepath.Join(dir, "prev.json")
+	mustWrite(t, tc.ctx.paths.smartCurrent,
+		`{"power_on_time":{"hours":7},"power_cycle_count":11}`)
+	mustWrite(t, tc.ctx.paths.smartPrevious,
+		`{"power_on_time":{"hours":3},"power_cycle_count":7}`)
+
+	// The wrapper writes into package globals; reset them first so
+	// the assertion is meaningful regardless of test ordering.
+	*smartData = types.DeviceSmartInfo{PowerCycleCount: -1,
+		PowerOnTime: types.PowerOnTime{Hours: -1}}
+	*previousSmartData = types.DeviceSmartInfo{PowerCycleCount: -1,
+		PowerOnTime: types.PowerOnTime{Hours: -1}}
+
+	parseSMARTData(tc.ctx)
+
+	if smartData.PowerCycleCount != 11 || smartData.PowerOnTime.Hours != 7 {
+		t.Errorf("smartData not populated: %+v", smartData)
+	}
+	if previousSmartData.PowerCycleCount != 7 ||
+		previousSmartData.PowerOnTime.Hours != 3 {
+		t.Errorf("previousSmartData not populated: %+v", previousSmartData)
+	}
+}
+
 func mustWrite(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
