@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/zboot"
 )
 
 func lookupZbootStatus(ctx *nodeagentContext, key string) *types.ZbootStatus {
@@ -68,7 +67,7 @@ func getZbootConfigAll(ctx *nodeagentContext) []types.ZbootConfig {
 }
 
 func publishZbootConfig(ctx *nodeagentContext, config types.ZbootConfig) {
-	if !zboot.IsValidPartitionLabel(config.PartitionLabel) {
+	if !ctx.zboot.IsValidPartitionLabel(config.PartitionLabel) {
 		return
 	}
 	pub := ctx.pubZbootConfig
@@ -79,7 +78,7 @@ func publishZbootConfig(ctx *nodeagentContext, config types.ZbootConfig) {
 
 func publishZbootConfigAll(ctx *nodeagentContext) {
 	log.Tracef("publishZbootConfigAll")
-	partitionNames := zboot.GetValidPartitionLabels()
+	partitionNames := ctx.zboot.GetValidPartitionLabels()
 	for _, partName := range partitionNames {
 		config := types.ZbootConfig{}
 		partName = strings.TrimSpace(partName)
@@ -97,7 +96,7 @@ func getZbootOtherPartition(ctx *nodeagentContext) string {
 			return status.PartitionLabel
 		}
 	}
-	return zboot.GetOtherPartition()
+	return ctx.zboot.GetOtherPartition()
 }
 
 func isZbootOtherPartitionStateUpdating(ctx *nodeagentContext) bool {
@@ -108,5 +107,5 @@ func isZbootOtherPartitionStateUpdating(ctx *nodeagentContext) bool {
 		}
 		return false
 	}
-	return zboot.IsOtherPartitionStateUpdating()
+	return ctx.zboot.IsOtherPartitionStateUpdating()
 }
