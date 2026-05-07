@@ -1072,6 +1072,17 @@ cache-export-docker-load: $(LINUXKIT)
 	$(MAKE) cache-export OUTFILE=${TARFILE} && cat ${TARFILE} | docker load
 	rm -rf ${TARFILE}
 
+# Explicit rule required by pkg/pillar's make test target on macOS. GNU Make 3.81
+# (shipped with macOS) selects pattern rules by first-match, so pillar-% (defined
+# earlier in this file) wins over %-cache-export-docker-load for the target name
+# pillar-cache-export-docker-load. GNU Make 4.x (Linux) uses shortest-stem and
+# picks %-cache-export-docker-load correctly. An explicit rule beats pattern rules
+# in all GNU Make versions.
+pillar-cache-export-docker-load: $(LINUXKIT) pkg/pillar
+	$(eval IMAGE_TAG := $(shell $(LINUXKIT) pkg show-tag --canonical pkg/pillar))
+	$(eval CACHE_CONTENT := $(shell $(LINUXKIT) cache ls 2>&1))
+	$(if $(filter $(IMAGE_TAG),$(CACHE_CONTENT)),$(MAKE) cache-export-docker-load IMAGE=$(IMAGE_TAG),@echo "Missing image $(IMAGE_TAG) in cache")
+
 %-cache-export-docker-load: $(LINUXKIT) pkg/%
 	$(eval IMAGE_TAG := $(shell $(LINUXKIT) pkg show-tag --canonical pkg/$*))
 	$(eval CACHE_CONTENT := $(shell $(LINUXKIT) cache ls 2>&1))
