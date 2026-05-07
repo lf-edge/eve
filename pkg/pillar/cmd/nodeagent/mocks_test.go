@@ -5,6 +5,7 @@ package nodeagent
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -67,6 +68,80 @@ func (m *mockPubSub) ProcessChange(_ pubsub.Change) {}
 func (m *mockPubSub) MsgChan() <-chan pubsub.Change { return nil }
 func (m *mockPubSub) Activate() error               { return nil }
 
+// --- mockZboot ------------------------------------------------------
+
+// mockZboot is a recording stub of the Zboot interface. By default
+// every partition label is valid, the partition list is IMGA/IMGB,
+// and the device is on IMGA with no upgrade in progress.
+type mockZboot struct {
+	currentPart       string
+	otherPart         string
+	currentInProgress bool
+	otherUpdating     bool
+	resetCalled       int
+	poweroffCalled    int
+	validLabels       map[string]bool
+}
+
+func newMockZboot() *mockZboot {
+	return &mockZboot{
+		currentPart: "IMGA",
+		otherPart:   "IMGB",
+		validLabels: map[string]bool{"IMGA": true, "IMGB": true},
+	}
+}
+
+func (m *mockZboot) EveCurrentPartition() string             { return m.currentPart }
+func (m *mockZboot) IsCurrentPartitionStateInProgress() bool { return m.currentInProgress }
+func (m *mockZboot) IsValidPartitionLabel(s string) bool     { return m.validLabels[s] }
+func (m *mockZboot) GetValidPartitionLabels() []string       { return []string{"IMGA", "IMGB"} }
+func (m *mockZboot) GetOtherPartition() string               { return m.otherPart }
+func (m *mockZboot) IsOtherPartitionStateUpdating() bool     { return m.otherUpdating }
+func (m *mockZboot) Reset()                                  { m.resetCalled++ }
+func (m *mockZboot) Poweroff()                               { m.poweroffCalled++ }
+
+// --- mockRebootStore -------------------------------------------------
+
+// mockRebootStore records writes and serves reads from in-memory state.
+type mockRebootStore struct {
+	rebootReason string
+	rebootTime   time.Time
+	rebootStack  string
+	bootReason   types.BootReason
+	bootTime     time.Time
+	rebootImage  string
+
+	discardedRebootReason bool
+	discardedBootReason   bool
+	discardedRebootImage  bool
+	written               []rebootWrite
+}
+
+type rebootWrite struct {
+	reason string
+	br     types.BootReason
+	agent  string
+	pid    int
+	last   bool
+}
+
+func (m *mockRebootStore) GetRebootReason() (string, time.Time, string) {
+	return m.rebootReason, m.rebootTime, m.rebootStack
+}
+func (m *mockRebootStore) GetBootReason() (types.BootReason, time.Time) {
+	return m.bootReason, m.bootTime
+}
+func (m *mockRebootStore) GetRebootImage() string { return m.rebootImage }
+func (m *mockRebootStore) DiscardRebootReason()   { m.discardedRebootReason = true }
+func (m *mockRebootStore) DiscardBootReason()     { m.discardedBootReason = true }
+func (m *mockRebootStore) DiscardRebootImage()    { m.discardedRebootImage = true }
+func (m *mockRebootStore) WriteRebootReason(reason string, br types.BootReason,
+	agent string, pid int, last bool) {
+	m.written = append(m.written, rebootWrite{reason, br, agent, pid, last})
+}
+
+// --- testCtx --------------------------------------------------------
+
 // newTestNodeagentContext builds a nodeagentContext suitable for
 // handler tests: mock publications/subscriptions, default global
 // config, and a recording stub for startNodeOperation. The returned
@@ -78,6 +153,8 @@ type testCtx struct {
 	pubZbootConfig     *mockPubSub
 	subZbootStatus     *mockPubSub
 	subDomainStatus    *mockPubSub
+	zboot              *mockZboot
+	rebootStore        *mockRebootStore
 	scheduledOps       []scheduledOp
 }
 
@@ -94,6 +171,8 @@ func newTestCtx() *testCtx {
 		pubZbootConfig:     newMockPubSub(),
 		subZbootStatus:     newMockPubSub(),
 		subDomainStatus:    newMockPubSub(),
+		zboot:              newMockZboot(),
+		rebootStore:        &mockRebootStore{},
 	}
 	ctx := &nodeagentContext{}
 	ctx.globalConfig = types.DefaultConfigItemValueMap()
@@ -101,6 +180,9 @@ func newTestCtx() *testCtx {
 	ctx.pubZbootConfig = tc.pubZbootConfig
 	ctx.subZbootStatus = tc.subZbootStatus
 	ctx.subDomainStatus = tc.subDomainStatus
+	ctx.zboot = tc.zboot
+	ctx.rebootStore = tc.rebootStore
+	ctx.paths = defaultPathConfig()
 	ctx.minRebootDelay = 0
 	ctx.maxDomainHaltTime = 0
 	ctx.domainHaltWaitIncrement = 1
