@@ -1,0 +1,20 @@
+// Copyright (c) 2026 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+package nodeagent
+
+import (
+	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/sirupsen/logrus"
+)
+
+// initTestLog initialises the package-level log so tests can call
+// production helpers that log unconditionally. Idempotent.
+func initTestLog() {
+	if log != nil {
+		return
+	}
+	logger := logrus.New()
+	logger.SetLevel(logrus.PanicLevel)
+	log = base.NewSourceLogObject(logger, "nodeagent_test", 1)
+}
