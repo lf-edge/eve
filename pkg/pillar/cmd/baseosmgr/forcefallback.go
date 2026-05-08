@@ -8,7 +8,6 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
-	"github.com/lf-edge/eve/pkg/pillar/zboot"
 )
 
 // handle zedagent status events to look if the ForceFallbackCounter changes
@@ -61,7 +60,7 @@ func handleForceFallback(ctxPtr *baseOsMgrContext, status types.ZedAgentStatus) 
 	log.Noticef("Handle ForceFallbackCounter update from %d to %d",
 		counter, status.ForceFallbackCounter)
 
-	curPartName := zboot.GetCurrentPartition()
+	curPartName := ctxPtr.zboot.GetCurrentPartition()
 	partStatus := getZbootStatus(ctxPtr, curPartName)
 	if partStatus == nil {
 		log.Warnf("No current partition status for %s; ignoring ForceFallback",
@@ -74,7 +73,7 @@ func handleForceFallback(ctxPtr *baseOsMgrContext, status types.ZedAgentStatus) 
 		return
 	}
 	shortVerCurPart := partStatus.ShortVersion
-	otherPartName := zboot.GetOtherPartition()
+	otherPartName := ctxPtr.zboot.GetOtherPartition()
 	partStatus = getZbootStatus(ctxPtr, otherPartName)
 	if partStatus == nil {
 		log.Warnf("No other partition status for %s; ignoring ForceFallback",
@@ -94,7 +93,7 @@ func handleForceFallback(ctxPtr *baseOsMgrContext, status types.ZedAgentStatus) 
 	log.Noticef("ForceFallback from %s to %s",
 		shortVerCurPart, shortVerOtherPart)
 
-	zboot.SetOtherPartitionStateUpdating(log)
+	ctxPtr.zboot.SetOtherPartitionStateUpdating()
 	updateAndPublishZbootStatus(ctxPtr,
 		partStatus.PartitionLabel, false)
 	baseOsStatus := lookupBaseOsStatusByPartLabel(ctxPtr, partStatus.PartitionLabel)

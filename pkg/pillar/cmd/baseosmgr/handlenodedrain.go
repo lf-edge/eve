@@ -94,7 +94,7 @@ func initializeNodeDrainHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 
 // shouldDeferForNodeDrain will return true if this BaseOsStatus update will be handled later
 func shouldDeferForNodeDrain(ctx *baseOsMgrContext, id string, config *types.BaseOsConfig, status *types.BaseOsStatus) bool {
-	drainStatus := kubeapi.GetNodeDrainStatus(ctx.subNodeDrainStatus, log)
+	drainStatus := ctx.seams.getNodeDrainStatus(ctx.subNodeDrainStatus)
 	if drainStatus.Status == kubeapi.NOTSUPPORTED {
 		return false
 	}
@@ -113,7 +113,7 @@ func shouldDeferForNodeDrain(ctx *baseOsMgrContext, id string, config *types.Bas
 		drainStatus.Status == kubeapi.FAILEDCORDON ||
 		drainStatus.Status == kubeapi.FAILEDDRAIN {
 		log.Noticef("shouldDeferForNodeDrain nodedrain-step:request requester:eve-os-update ctx:%s", id)
-		err := kubeapi.RequestNodeDrain(ctx.pubNodeDrainRequest, kubeapi.UPDATE, id)
+		err := ctx.seams.requestNodeDrain(ctx.pubNodeDrainRequest, kubeapi.UPDATE, id)
 		if err != nil {
 			log.Errorf("shouldDeferForNodeDrain: can't request node drain: %v", err)
 		}
