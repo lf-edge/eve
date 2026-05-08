@@ -12,6 +12,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/worker"
 )
 
 // mockZboot is an in-memory replacement for the production Zboot
@@ -138,6 +139,41 @@ func (m *mockZboot) WriteToPartition(image, partName string) error {
 	return m.writeErr
 }
 
+// mockWorker is a minimal stand-in for worker.Worker so that
+// installDownloadedObject's Pop/AddWorkInstall path is testable.
+// Only the methods baseosmgr actually calls are meaningful.
+type mockWorker struct {
+	results       map[string]*worker.WorkResult // pre-seeded by tests; popped on Pop
+	submitted     []worker.Work                 // appended on TrySubmit
+	submitErr     error                         // returned by TrySubmit
+	submittedDone bool                          // first return of TrySubmit
+}
+
+func newMockWorker() *mockWorker {
+	return &mockWorker{
+		results:       map[string]*worker.WorkResult{},
+		submittedDone: true,
+	}
+}
+
+func (w *mockWorker) NumPending() int                  { return 0 }
+func (w *mockWorker) NumResults() int                  { return len(w.results) }
+func (w *mockWorker) MsgChan() <-chan worker.Processor { return nil }
+func (w *mockWorker) C() <-chan worker.Processor       { return nil }
+func (w *mockWorker) Submit(work worker.Work) error    { return w.submitErr }
+func (w *mockWorker) TrySubmit(work worker.Work) (bool, error) {
+	w.submitted = append(w.submitted, work)
+	return w.submittedDone, w.submitErr
+}
+func (w *mockWorker) Cancel(string) {}
+func (w *mockWorker) Done()         {}
+func (w *mockWorker) Pop(key string) *worker.WorkResult {
+	res := w.results[key]
+	delete(w.results, key)
+	return res
+}
+func (w *mockWorker) Peek(key string) *worker.WorkResult { return w.results[key] }
+
 // mockPubSub satisfies pubsub.Publication and pubsub.Subscription enough
 // for baseosmgr's handlers. Only Get/GetAll/Iterate/Publish/Unpublish are
 // meaningful; everything else is a stub.
@@ -211,6 +247,7 @@ type testCtx struct {
 	subNodeDrainStatus   *mockPubSub
 	subGlobalConfig      *mockPubSub
 	zb                   *mockZboot
+	wk                   *mockWorker
 	tmpDir               string
 
 	// drain seam knobs — tests that exercise shouldDeferForNodeDrain
@@ -250,6 +287,7 @@ func newTestCtx(t *testing.T) *testCtx {
 		subNodeDrainStatus:   newMockPubSub(),
 		subGlobalConfig:      newMockPubSub(),
 		zb:                   newMockZboot(),
+		wk:                   newMockWorker(),
 		tmpDir:               tmp,
 		versionIsKube:        map[string]bool{},
 	}
@@ -272,6 +310,7 @@ func newTestCtx(t *testing.T) *testCtx {
 		subNodeDrainStatus:   tc.subNodeDrainStatus,
 		subGlobalConfig:      tc.subGlobalConfig,
 		zboot:                tc.zb,
+		worker:               tc.wk,
 		seams: seams{
 			isHVTypeKube: func() bool {
 				return tc.currentIsKube

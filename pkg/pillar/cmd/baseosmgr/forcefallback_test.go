@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 func TestForceFallbackCounter_ReadAbsent(t *testing.T) {
@@ -59,5 +61,144 @@ func TestForceFallbackCounter_GarbageContent(t *testing.T) {
 	got, found := readForceFallbackCounter(tc.ctx)
 	if found {
 		t.Fatalf("expected found=false on garbage, got (%d, true)", got)
+	}
+}
+
+// handleForceFallback: bumping ZedAgentStatus.ForceFallbackCounter is
+// the controller's "switch back to previous image" knob. Production
+// code requires curr=active and other=unused with non-empty ShortVersion;
+// any mismatch is logged and ignored.
+
+func TestHandleForceFallback_FirstObservationJustSavesCounter(t *testing.T) {
+	tc := newTestCtx(t)
+	st := types.ZedAgentStatus{ForceFallbackCounter: 5}
+	handleForceFallback(tc.ctx, st)
+
+	got, found := readForceFallbackCounter(tc.ctx)
+	if !found || got != 5 {
+		t.Fatalf("expected counter saved as 5, got (%d, %v)", got, found)
+	}
+	if tc.zb.setUpdating != 0 {
+		t.Fatal("first observation must not flip partition state")
+	}
+}
+
+func TestHandleForceFallback_NoChangeIsNoop(t *testing.T) {
+	tc := newTestCtx(t)
+	writeForceFallbackCounter(tc.ctx, 7)
+	st := types.ZedAgentStatus{ForceFallbackCounter: 7}
+	handleForceFallback(tc.ctx, st)
+	if tc.zb.setUpdating != 0 {
+		t.Fatal("counter unchanged → must not flip partition state")
+	}
+}
+
+func TestHandleForceFallback_MissingCurrentPartitionIgnored(t *testing.T) {
+	tc := newTestCtx(t)
+	writeForceFallbackCounter(tc.ctx, 1)
+	// No ZbootStatus published for either partition.
+	st := types.ZedAgentStatus{ForceFallbackCounter: 2}
+	handleForceFallback(tc.ctx, st)
+	if tc.zb.setUpdating != 0 {
+		t.Fatal("must not flip without a current partition status")
+	}
+}
+
+func TestHandleForceFallback_CurrentNotActiveIgnored(t *testing.T) {
+	tc := newTestCtx(t)
+	writeForceFallbackCounter(tc.ctx, 1)
+	tc.pubZbootStatus.items["IMGA"] = types.ZbootStatus{
+		PartitionLabel: "IMGA", PartitionState: "inprogress", ShortVersion: "13.4",
+	}
+	tc.pubZbootStatus.items["IMGB"] = types.ZbootStatus{
+		PartitionLabel: "IMGB", PartitionState: "unused", ShortVersion: "14.0",
+	}
+	handleForceFallback(tc.ctx, types.ZedAgentStatus{ForceFallbackCounter: 2})
+	if tc.zb.setUpdating != 0 {
+		t.Fatal("must not flip when curr is not active")
+	}
+}
+
+func TestHandleForceFallback_OtherEmptyVersionIgnored(t *testing.T) {
+	tc := newTestCtx(t)
+	writeForceFallbackCounter(tc.ctx, 1)
+	tc.pubZbootStatus.items["IMGA"] = types.ZbootStatus{
+		PartitionLabel: "IMGA", PartitionState: "active", ShortVersion: "13.4",
+	}
+	tc.pubZbootStatus.items["IMGB"] = types.ZbootStatus{
+		PartitionLabel: "IMGB", PartitionState: "unused", ShortVersion: "",
+	}
+	handleForceFallback(tc.ctx, types.ZedAgentStatus{ForceFallbackCounter: 2})
+	if tc.zb.setUpdating != 0 {
+		t.Fatal("must not flip without a previous version on other")
+	}
+}
+
+func TestHandleForceFallback_OtherNotUnusedIgnored(t *testing.T) {
+	tc := newTestCtx(t)
+	writeForceFallbackCounter(tc.ctx, 1)
+	tc.pubZbootStatus.items["IMGA"] = types.ZbootStatus{
+		PartitionLabel: "IMGA", PartitionState: "active", ShortVersion: "13.4",
+	}
+	tc.pubZbootStatus.items["IMGB"] = types.ZbootStatus{
+		PartitionLabel: "IMGB", PartitionState: "inprogress", ShortVersion: "14.0",
+	}
+	handleForceFallback(tc.ctx, types.ZedAgentStatus{ForceFallbackCounter: 2})
+	if tc.zb.setUpdating != 0 {
+		t.Fatal("must not flip when other is not unused")
+	}
+}
+
+func TestHandleForceFallback_HappyPathFlipsAndPersists(t *testing.T) {
+	tc := newTestCtx(t)
+	writeForceFallbackCounter(tc.ctx, 1)
+	tc.pubZbootStatus.items["IMGA"] = types.ZbootStatus{
+		PartitionLabel: "IMGA", PartitionState: "active", ShortVersion: "13.4",
+	}
+	tc.pubZbootStatus.items["IMGB"] = types.ZbootStatus{
+		PartitionLabel: "IMGB", PartitionState: "unused", ShortVersion: "14.0",
+	}
+	handleForceFallback(tc.ctx, types.ZedAgentStatus{ForceFallbackCounter: 2})
+
+	if tc.zb.setUpdating != 1 {
+		t.Fatalf("expected SetOtherPartitionStateUpdating once, got %d",
+			tc.zb.setUpdating)
+	}
+	got, found := readForceFallbackCounter(tc.ctx)
+	if !found || got != 2 {
+		t.Fatalf("counter not persisted: (%d, %v)", got, found)
+	}
+}
+
+func TestHandleForceFallback_PublishesBaseOsStatusWhenMatched(t *testing.T) {
+	tc := newTestCtx(t)
+	writeForceFallbackCounter(tc.ctx, 1)
+	tc.pubZbootStatus.items["IMGA"] = types.ZbootStatus{
+		PartitionLabel: "IMGA", PartitionState: "active", ShortVersion: "13.4",
+	}
+	tc.pubZbootStatus.items["IMGB"] = types.ZbootStatus{
+		PartitionLabel: "IMGB", PartitionState: "unused", ShortVersion: "14.0",
+	}
+	tc.pubBaseOsStatus.items["IMGB"] = types.BaseOsStatus{
+		ContentTreeUUID: "IMGB", BaseOsVersion: "14.0",
+	}
+	handleForceFallback(tc.ctx, types.ZedAgentStatus{ForceFallbackCounter: 2})
+
+	got, _ := tc.pubBaseOsStatus.Get("IMGB")
+	bst := got.(types.BaseOsStatus)
+	if bst.PartitionLabel != "IMGB" {
+		t.Fatalf("BaseOsStatus partition info not republished: %+v", bst)
+	}
+}
+
+// handleZedAgentStatusImpl: thin wrapper around handleForceFallback.
+
+func TestHandleZedAgentStatusImpl_DispatchesToForceFallback(t *testing.T) {
+	tc := newTestCtx(t)
+	st := types.ZedAgentStatus{ForceFallbackCounter: 9}
+	handleZedAgentStatusImpl(tc.ctx, "global", st)
+	got, found := readForceFallbackCounter(tc.ctx)
+	if !found || got != 9 {
+		t.Fatalf("expected counter saved, got (%d, %v)", got, found)
 	}
 }
