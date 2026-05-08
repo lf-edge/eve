@@ -9,9 +9,134 @@ import (
 	"testing"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
+
+// mockZboot is an in-memory replacement for the production Zboot
+// adapter. Tests configure it by mutating the fields directly:
+//
+//	tc.zb.cur = "IMGA"
+//	tc.zb.parts["IMGB"] = mockPart{state: "unused"}
+//
+// All Set* methods record their effects on parts so subsequent reads
+// reflect what the production code would have done.
+type mockPart struct {
+	state    string
+	devname  string
+	sizeB    uint64
+	short    string
+	shortErr error
+	long     string
+}
+
+type mockZboot struct {
+	valid           []string // valid partition labels (ordered)
+	cur             string
+	other           string
+	parts           map[string]*mockPart
+	writeErr        error                        // returned by WriteToPartition
+	markActiveErr   error                        // returned by MarkCurrentPartitionStateActive
+	writeCalls      []string                     // list of "ref→part" pairs recorded
+	markActiveCalls int                          // count
+	setUpdating     int                          // count (other-state updating)
+	setUnused       int                          // count (other-state unused)
+	hooks           map[string]func(args ...any) // optional hooks
+}
+
+func newMockZboot() *mockZboot {
+	return &mockZboot{
+		valid: []string{"IMGA", "IMGB"},
+		cur:   "IMGA",
+		other: "IMGB",
+		parts: map[string]*mockPart{
+			"IMGA": {state: "active", devname: "/dev/dummy3", sizeB: 1 << 30},
+			"IMGB": {state: "unused", devname: "/dev/dummy4", sizeB: 1 << 30},
+		},
+	}
+}
+
+func (m *mockZboot) GetCurrentPartition() string       { return m.cur }
+func (m *mockZboot) GetOtherPartition() string         { return m.other }
+func (m *mockZboot) GetValidPartitionLabels() []string { return append([]string{}, m.valid...) }
+
+func (m *mockZboot) IsValidPartitionLabel(s string) bool {
+	for _, v := range m.valid {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *mockZboot) IsCurrentPartition(s string) bool { return s == m.cur }
+func (m *mockZboot) IsOtherPartition(s string) bool   { return s == m.other }
+
+func (m *mockZboot) GetPartitionState(s string) string {
+	if p, ok := m.parts[s]; ok {
+		return p.state
+	}
+	return ""
+}
+
+func (m *mockZboot) GetPartitionDevname(s string) string {
+	if p, ok := m.parts[s]; ok {
+		return p.devname
+	}
+	return ""
+}
+
+func (m *mockZboot) GetPartitionSizeInBytes(s string) uint64 {
+	if p, ok := m.parts[s]; ok {
+		return p.sizeB
+	}
+	return 0
+}
+
+func (m *mockZboot) GetShortVersion(s string) (string, error) {
+	if p, ok := m.parts[s]; ok {
+		return p.short, p.shortErr
+	}
+	return "", nil
+}
+
+func (m *mockZboot) GetLongVersion(s string) string {
+	if p, ok := m.parts[s]; ok {
+		return p.long
+	}
+	return ""
+}
+
+func (m *mockZboot) SetOtherPartitionStateUpdating() {
+	m.setUpdating++
+	if p, ok := m.parts[m.other]; ok {
+		p.state = "updating"
+	}
+}
+
+func (m *mockZboot) SetOtherPartitionStateUnused() {
+	m.setUnused++
+	if p, ok := m.parts[m.other]; ok {
+		p.state = "unused"
+	}
+}
+
+func (m *mockZboot) MarkCurrentPartitionStateActive() error {
+	m.markActiveCalls++
+	if m.markActiveErr != nil {
+		return m.markActiveErr
+	}
+	if p, ok := m.parts[m.cur]; ok {
+		p.state = "active"
+	}
+	return nil
+}
+
+func (m *mockZboot) WriteToPartition(image, partName string) error {
+	m.writeCalls = append(m.writeCalls, image+"→"+partName)
+	return m.writeErr
+}
 
 // mockPubSub satisfies pubsub.Publication and pubsub.Subscription enough
 // for baseosmgr's handlers. Only Get/GetAll/Iterate/Publish/Unpublish are
@@ -85,13 +210,29 @@ type testCtx struct {
 	subZedAgentStatus    *mockPubSub
 	subNodeDrainStatus   *mockPubSub
 	subGlobalConfig      *mockPubSub
+	zb                   *mockZboot
 	tmpDir               string
+
+	// drain seam knobs — tests that exercise shouldDeferForNodeDrain
+	// / handleNodeDrainStatusImpl set these to drive specific status
+	// values, otherwise the default getNodeDrainStatus returns
+	// NOTSUPPORTED so the kube path short-circuits.
+	drainStatus       *kubeapi.NodeDrainStatus
+	drainRequestErr   error
+	drainRequestCalls []kubeapi.DrainRequester
+
+	// HV-type seam knobs — tests for the EVE-k personality switch
+	// override these.
+	currentIsKube    bool
+	versionIsKube    map[string]bool
+	versionIsKubeErr error
 }
 
 // newTestCtx builds a baseOsMgrContext suitable for handler tests:
-// mock publications/subscriptions, default global config, and paths
+// mock publications/subscriptions, default global config, paths
 // pointed at a per-test temporary directory so counter persistence
-// doesn't touch /persist/.
+// doesn't touch /persist/, and a mockZboot defaulting to IMGA=active /
+// IMGB=unused.
 func newTestCtx(t *testing.T) *testCtx {
 	t.Helper()
 	initTestLog()
@@ -108,7 +249,9 @@ func newTestCtx(t *testing.T) *testCtx {
 		subZedAgentStatus:    newMockPubSub(),
 		subNodeDrainStatus:   newMockPubSub(),
 		subGlobalConfig:      newMockPubSub(),
+		zb:                   newMockZboot(),
 		tmpDir:               tmp,
+		versionIsKube:        map[string]bool{},
 	}
 	ctx := &baseOsMgrContext{
 		globalConfig: types.DefaultConfigItemValueMap(),
@@ -128,7 +271,50 @@ func newTestCtx(t *testing.T) *testCtx {
 		subZedAgentStatus:    tc.subZedAgentStatus,
 		subNodeDrainStatus:   tc.subNodeDrainStatus,
 		subGlobalConfig:      tc.subGlobalConfig,
+		zboot:                tc.zb,
+		seams: seams{
+			isHVTypeKube: func() bool {
+				return tc.currentIsKube
+			},
+			isVersionHVTypeKube: func(v string) (bool, error) {
+				if tc.versionIsKubeErr != nil {
+					return false, tc.versionIsKubeErr
+				}
+				return tc.versionIsKube[v], nil
+			},
+			getNodeDrainStatus: func(_ pubsub.Subscription) *kubeapi.NodeDrainStatus {
+				if tc.drainStatus != nil {
+					return tc.drainStatus
+				}
+				return &kubeapi.NodeDrainStatus{Status: kubeapi.NOTSUPPORTED}
+			},
+			requestNodeDrain: func(_ pubsub.Publication, requester kubeapi.DrainRequester, _ string) error {
+				tc.drainRequestCalls = append(tc.drainRequestCalls, requester)
+				return tc.drainRequestErr
+			},
+		},
 	}
 	tc.ctx = ctx
 	return tc
+}
+
+// seedZbootStatus is a small helper that publishes a ZbootStatus matching
+// the mockZboot's current view of a partition, the way Run() does at
+// startup. Many tests need this because the production code reads
+// PartitionState/CurrentPartition/ShortVersion through the published
+// ZbootStatus rather than via the Zboot interface directly.
+func (tc *testCtx) seedZbootStatus(part string) {
+	p := tc.zb.parts[part]
+	if p == nil {
+		return
+	}
+	st := types.ZbootStatus{
+		PartitionLabel:   part,
+		PartitionDevname: p.devname,
+		PartitionState:   p.state,
+		ShortVersion:     p.short,
+		LongVersion:      p.long,
+		CurrentPartition: tc.zb.cur == part,
+	}
+	tc.pubZbootStatus.items[part] = st
 }
