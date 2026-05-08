@@ -59,6 +59,16 @@ type baseOsMgrContext struct {
 	// paths groups the on-disk files baseosmgr reads/writes; unit tests
 	// can point these at a temporary directory.
 	paths *pathConfig
+
+	// zboot wraps pkg/pillar/zboot so unit tests can drive partition
+	// state without invoking the real grubenv tooling. realZboot is
+	// the production default.
+	zboot Zboot
+
+	// seams holds the small one-off function-pointer seams (HV-type
+	// check, kubevirt drain) so the context carries one grouped field
+	// rather than a separate field per call.
+	seams seams
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -76,6 +86,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	ctx := baseOsMgrContext{
 		globalConfig: types.DefaultConfigItemValueMap(),
 		paths:        defaultPathConfig(),
+		zboot:        &realZboot{log: logArg},
+		seams:        defaultSeams(logArg),
 	}
 	agentbase.Init(&ctx, logger, log, agentName,
 		agentbase.WithPidFile(),
