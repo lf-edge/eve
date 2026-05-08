@@ -29,11 +29,6 @@ const (
 	// Time limits for event loop handlers
 	errorTime   = 3 * time.Minute
 	warningTime = 40 * time.Second
-
-	// last value of baseOsMgrContext.currentUpdateRetry for persistence
-	currentRetryUpdateCounterFile = types.PersistStatusDir + "/current_retry_update_counter"
-	// last value of baseOsMgrContext.configUpdateRetry for persistence
-	configRetryUpdateCounterFile = types.PersistStatusDir + "/config_retry_update_counter"
 )
 
 type baseOsMgrContext struct {
@@ -60,6 +55,10 @@ type baseOsMgrContext struct {
 	configUpdateRetry    uint32    // UpdateRetryCounter from config; to avoid loop after reboot with failed testing
 
 	worker worker.Worker // For background work
+
+	// paths groups the on-disk files baseosmgr reads/writes; unit tests
+	// can point these at a temporary directory.
+	paths *pathConfig
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -76,6 +75,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// Context to pass around
 	ctx := baseOsMgrContext{
 		globalConfig: types.DefaultConfigItemValueMap(),
+		paths:        defaultPathConfig(),
 	}
 	agentbase.Init(&ctx, logger, log, agentName,
 		agentbase.WithPidFile(),
@@ -97,8 +97,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	initializeSelfPublishHandles(ps, &ctx)
 
 	// load saved values or fill with 0
-	ctx.currentUpdateRetry = readSavedCurrentRetryUpdateCounter()
-	ctx.configUpdateRetry = readSavedConfigRetryUpdateCounter()
+	ctx.currentUpdateRetry = readSavedCurrentRetryUpdateCounter(&ctx)
+	ctx.configUpdateRetry = readSavedConfigRetryUpdateCounter(&ctx)
 	publishBaseOSMgrStatus(&ctx)
 
 	// initialize module specific subscriber handles
