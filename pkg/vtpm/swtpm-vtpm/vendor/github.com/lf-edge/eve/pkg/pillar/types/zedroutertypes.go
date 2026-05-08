@@ -4,12 +4,15 @@
 package types
 
 import (
+	"errors"
 	"fmt"
 	"net"
+	"path"
 	"strings"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve/pkg/kube/cnirpc"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/objtonum"
@@ -28,6 +31,7 @@ type AppNetworkConfig struct {
 	CloudInitUserData *string `json:"pubsub-large-CloudInitUserData"`
 	CipherBlockStatus CipherBlockStatus
 	MetaDataType      MetaDataType
+	DeploymentType    AppRuntimeType
 }
 
 // Key :
@@ -112,6 +116,7 @@ type AppNetworkStatus struct {
 	AppPod cnirpc.AppPod
 	// Copy from the AppNetworkConfig; used to delete when config is gone.
 	GetStatsIPAddr       net.IP
+	DeploymentType       AppRuntimeType
 	AppNetAdapterList    []AppNetAdapterStatus
 	AwaitNetworkInstance bool // If any Missing flag is set in the networks
 	// ID of the MAC generator variant that was used to generate MAC addresses for this app.
@@ -206,6 +211,20 @@ func (status AppNetworkStatus) GetAdaptersStatusForNI(netUUID uuid.UUID) []*AppN
 	return adapters
 }
 
+// GetAllAppIPs returns all IPv4 and IPv6 addresses currently assigned
+// to the application across its network adapters.
+func (status AppNetworkStatus) GetAllAppIPs() (appIPs []net.IP) {
+	for _, adapter := range status.AppNetAdapterList {
+		for _, assignedAddr := range adapter.AssignedAddresses.IPv4Addrs {
+			appIPs = append(appIPs, assignedAddr.Address)
+		}
+		for _, assignedAddr := range adapter.AssignedAddresses.IPv6Addrs {
+			appIPs = append(appIPs, assignedAddr.Address)
+		}
+	}
+	return appIPs
+}
+
 // AppContainerMetrics - App Container Metrics
 type AppContainerMetrics struct {
 	UUIDandVersion UUIDandVersion // App UUID
@@ -282,13 +301,13 @@ type AppNetAdapterConfig struct {
 	Name       string           // From proto message
 	AppMacAddr net.HardwareAddr // If set use it for vif
 	AppIPAddr  net.IP           // If set use DHCP to assign to app
-	IntfOrder  int32            // XXX need to get from API
+	IntfOrder  uint32           // Order wrt. other virtual and also directly assigned network adapters
 
 	// XXX Shouldn't we use ErrorAndTime here
 	// Error
 	//	If there is a parsing error and this AppNetAdapterNetwork config cannot be
 	//	processed, set the error here. This allows the error to be propagated
-	//  back to zedcloud
+	//  back to the controller
 	Error           string
 	Network         uuid.UUID // Points to a NetworkInstance.
 	ACLs            []ACE
@@ -353,10 +372,9 @@ type AppNetAdapterStatus struct {
 	AppNetAdapterConfig
 	VifInfo
 	BridgeMac         net.HardwareAddr
-	BridgeIPAddr      net.IP   // The address for DNS/DHCP service in zedrouter
-	AllocatedIPv4Addr net.IP   // Assigned to domU
-	AllocatedIPv6List []net.IP // IPv6 addresses assigned to domU
-	IPv4Assigned      bool     // Set to true once DHCP has assigned it to domU
+	BridgeIPAddr      net.IP        // The address for DNS/DHCP service in zedrouter
+	AssignedAddresses AssignedAddrs // IPv4 and IPv6 addresses assigned to domU
+	IPv4Assigned      bool          // Set to true once DHCP has assigned it to domU
 	IPAddrMisMatch    bool
 	HostName          string
 }
@@ -368,6 +386,11 @@ type NetworkInstanceInfo struct {
 	BridgeIPAddr  net.IP
 	BridgeMac     net.HardwareAddr
 	BridgeIfindex int
+
+	// Name of a (dummy) interface where ICMP, ARP, DNS and DHCP packets
+	// are mirrored from the bridge and can be used for monitoring purposes.
+	// Empty if mirroring is not available.
+	MirrorIfName string
 
 	// Collection of address assignments; from MAC address to IP address
 	IPAssignments map[string]AssignedAddrs
@@ -384,8 +407,58 @@ type NetworkInstanceInfo struct {
 
 // AssignedAddrs : IP addresses assigned to application network adapter.
 type AssignedAddrs struct {
-	IPv4Addr  net.IP
-	IPv6Addrs []net.IP
+	IPv4Addrs []AssignedAddr
+	IPv6Addrs []AssignedAddr
+}
+
+// GetInternallyLeasedIPv4Addr returns IPv4 address leased by EVE using
+// an internally run DHCP server.
+func (aa AssignedAddrs) GetInternallyLeasedIPv4Addr() net.IP {
+	for _, addr := range aa.IPv4Addrs {
+		if addr.AssignedBy == AddressSourceInternalDHCP {
+			return addr.Address
+		}
+	}
+	return nil
+}
+
+// DnsmasqLeaseDir is a directory with files (one per NI bridge) storing IP leases
+// granted to applications by dnsmasq.
+const DnsmasqLeaseDir = "/run/zedrouter/dnsmasq.leases/"
+
+// DnsmasqLeaseFilePath returns the path to a file with IP leases granted
+// to applications connected to a given bridge.
+func DnsmasqLeaseFilePath(bridgeIfName string) string {
+	return path.Join(DnsmasqLeaseDir, bridgeIfName)
+}
+
+// AddressSource determines the source of an IP address assigned to an app VIF.
+// Values are power of two and therefore can be used with a bit mask.
+type AddressSource uint8
+
+const (
+	// AddressSourceUndefined : IP address source is not defined
+	AddressSourceUndefined AddressSource = 0
+	// AddressSourceEVEInternal : IP address is used only internally by EVE
+	// (i.e. inside dom0).
+	AddressSourceEVEInternal AddressSource = 1 << iota
+	// AddressSourceInternalDHCP : IP address is leased to an app by an internal DHCP server
+	// run by EVE.
+	AddressSourceInternalDHCP
+	// AddressSourceExternalDHCP : IP address is leased to an app by an external DHCP server.
+	AddressSourceExternalDHCP
+	// AddressSourceSLAAC : Stateless Address Autoconfiguration (SLAAC) was used by the client
+	// to generate a unique IPv6 address.
+	AddressSourceSLAAC
+	// AddressSourceStatic : IP address is assigned to an app statically
+	// (using e.g. cloud-init).
+	AddressSourceStatic
+)
+
+// AssignedAddr : IP address assigned to an application interface (on the guest side).
+type AssignedAddr struct {
+	Address    net.IP
+	AssignedBy AddressSource
 }
 
 // VifNameMac : name and MAC address assigned to app VIF.
@@ -662,10 +735,10 @@ type NetworkInstanceConfig struct {
 
 	// IP configuration for the Application
 	IpType          AddressType
-	Subnet          net.IPNet
+	Subnet          *net.IPNet
 	Gateway         net.IP
 	DomainName      string
-	NtpServer       net.IP
+	NtpServers      []netutils.HostnameOrIP
 	DnsServers      []net.IP // If not set we use Gateway as DNS server
 	DhcpRange       IPRange
 	DnsNameToIPList []DNSNameToIP // Used for DNS and ACL ipset
@@ -674,6 +747,36 @@ type NetworkInstanceConfig struct {
 	// Route configuration
 	PropagateConnRoutes bool
 	StaticRoutes        []IPRouteConfig
+
+	// Enable flow logging for this network instance.
+	// If enabled, EVE periodically captures metadata about all application TCP and UDP
+	// flows, as well DNS queries.
+	// It is recommended to disable flow logging by default. This is because it may
+	// potentially produce a large amount of data, which is then uploaded to
+	// the controller. Another drawback of flow-logging is that the iptables rules
+	// that EVE installs for network instances are considerably more complicated
+	// because of this feature and thus introduce additional packet processing overhead.
+	EnableFlowlog bool
+
+	// Spanning Tree Protocol configuration.
+	// Only applied for Switch NI with multiple ports.
+	STPConfig STPConfig
+
+	// VLAN access ports configured for a switch network instance.
+	// For other types of network instances, this option is ignored.
+	// This setting applies to physical network ports attached to the network instance.
+	// VLAN configuration for application interfaces is applied separately via AppNetAdapterConfig
+	// (see AppNetAdapterConfig.AccessVlanID).
+	VlanAccessPorts []VlanAccessPort
+
+	// Enables forwarding of LLDP (Link Layer Discovery Protocol) frames across this
+	// network instance.
+	// LLDP is used by devices to advertise identity and capabilities to directly
+	// connected neighbors, and is often required for topology discovery and network
+	// management tools.
+	// When enabled, LLDP frames (EtherType 0x88cc) are not dropped or suppressed
+	// by the forwarding plane.
+	ForwardLLDP bool
 
 	// Any errors from the parser
 	// ErrorAndTime provides SetErrorNow() and ClearError()
@@ -711,6 +814,22 @@ type IPRouteConfig struct {
 	PreferStrongerWwanSignal bool
 }
 
+// STPConfig : Spanning Tree Protocol configuration.
+// Only applied for Switch NI with multiple ports.
+type STPConfig struct {
+	// Either a single NI port referenced by its name (SystemAdapter.Name, aka logical label)
+	// or an adapter shared-label matching zero or more NI ports.
+	PortsWithBpduGuard string
+}
+
+// VlanAccessPort : config applied to physical port(s) attached to a Switch NI.
+type VlanAccessPort struct {
+	VlanID uint16
+	// Either a single NI port referenced by its name (SystemAdapter.Name, aka logical label)
+	// or an adapter shared-label matching zero or more NI ports.
+	PortLabel string
+}
+
 // ConnectivityProbeMethod -  method to use to determine the connectivity status of a port.
 type ConnectivityProbeMethod uint8
 
@@ -735,15 +854,90 @@ type ConnectivityProbe struct {
 	ProbePort uint16
 }
 
-// String returns human-readable description of the probe.
-func (r ConnectivityProbe) String() string {
-	probeStr := "<none>"
-	switch r.Method {
+// FromProto populates the ConnectivityProbe from its protobuf representation.
+// Returns an error if the probe configuration is invalid.
+func (cp *ConnectivityProbe) FromProto(probe *evecommon.ConnectivityProbe) error {
+	if probe == nil {
+		return nil
+	}
+
+	switch probe.ProbeMethod {
+	case evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_UNSPECIFIED:
+		cp.Method = ConnectivityProbeMethodNone
+
+	case evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_ICMP:
+		cp.Method = ConnectivityProbeMethodICMP
+		cp.ProbeHost = probe.GetProbeEndpoint().GetHost()
+		// Undefined host for ICMP probing is allowed - EVE will probe Google DNS
+		// (8.8.8.8) in that case.
+		if cp.ProbeHost != "" {
+			if net.ParseIP(cp.ProbeHost) == nil {
+				return fmt.Errorf("invalid IP address for ICMP probe: %s",
+					cp.ProbeHost)
+			}
+		}
+
+	case evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_TCP:
+		cp.Method = ConnectivityProbeMethodTCP
+		cp.ProbeHost = probe.GetProbeEndpoint().GetHost()
+		if cp.ProbeHost == "" {
+			return errors.New("missing endpoint host address for TCP probe")
+		}
+		if net.ParseIP(cp.ProbeHost) == nil {
+			return fmt.Errorf("invalid IP address for TCP probe: %s", cp.ProbeHost)
+		}
+		probePort := probe.GetProbeEndpoint().GetPort()
+		if probePort == 0 {
+			return errors.New("missing endpoint port number for TCP probe")
+		}
+		if probePort > 65535 {
+			return fmt.Errorf("TCP probe port number (%d) is out of range", probePort)
+		}
+		cp.ProbePort = uint16(probePort)
+	}
+	return nil
+}
+
+// ToProto converts ConnectivityProbe into its protobuf representation.
+func (cp ConnectivityProbe) ToProto() *evecommon.ConnectivityProbe {
+	probe := &evecommon.ConnectivityProbe{}
+
+	switch cp.Method {
+	case ConnectivityProbeMethodNone:
+		probe.ProbeMethod =
+			evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_UNSPECIFIED
+
 	case ConnectivityProbeMethodICMP:
-		probeStr = fmt.Sprintf("icmp://%s", r.ProbeHost)
+		probe.ProbeMethod = evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_ICMP
+		probe.ProbeEndpoint = &evecommon.ProbeEndpoint{
+			Host: cp.ProbeHost,
+		}
+
 	case ConnectivityProbeMethodTCP:
-		probeStr = fmt.Sprintf("tcp://%s:%d", r.ProbeHost,
-			r.ProbePort)
+		probe.ProbeMethod = evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_TCP
+		probe.ProbeEndpoint = &evecommon.ProbeEndpoint{
+			Host: cp.ProbeHost,
+			Port: uint32(cp.ProbePort),
+		}
+
+	default:
+		// Fall back to UNSPECIFIED for unknown methods
+		probe.ProbeMethod =
+			evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_UNSPECIFIED
+	}
+
+	return probe
+}
+
+// String returns human-readable description of the probe.
+func (cp ConnectivityProbe) String() string {
+	probeStr := "<none>"
+	switch cp.Method {
+	case ConnectivityProbeMethodICMP:
+		probeStr = fmt.Sprintf("icmp://%s", cp.ProbeHost)
+	case ConnectivityProbeMethodTCP:
+		probeStr = fmt.Sprintf("tcp://%s:%d", cp.ProbeHost,
+			cp.ProbePort)
 	}
 	return probeStr
 }
@@ -849,18 +1043,6 @@ func (config *NetworkInstanceConfig) IsIPv6() bool {
 	return false
 }
 
-// IsUsingPortBridge returns true if the network instance is using the bridge
-// created (by NIM) for the selected port, instead of creating its own bridge.
-func (config *NetworkInstanceConfig) IsUsingPortBridge() bool {
-	switch config.Type {
-	case NetworkInstanceTypeSwitch:
-		airGapped := config.PortLabel == ""
-		return !airGapped
-	default:
-		return false
-	}
-}
-
 type ChangeInProgressType int32
 
 const (
@@ -911,7 +1093,7 @@ type NetworkInstanceStatus struct {
 	// List of NTP servers published to applications connected to this network instance.
 	// This includes the NTP server from the NI config (if any) and all NTP servers
 	// associated with ports used by the network instance for external connectivity.
-	NTPServers []net.IP
+	NTPServers []netutils.HostnameOrIP
 	// The intended state of the routing table.
 	// Includes user-configured static routes and potentially also automatically
 	// generated default route.
@@ -954,6 +1136,7 @@ type IPRouteStatus struct {
 // IPRouteInfo contains info about a single IP route from the NI routing table.
 // It is published to the controller as part of ZInfoNetworkInstance.
 type IPRouteInfo struct {
+	IPVersion  AddressType
 	DstNetwork *net.IPNet
 	// Nil for connected route.
 	Gateway net.IP
@@ -978,7 +1161,8 @@ func (r IPRouteInfo) IsDefaultRoute() bool {
 
 // Equal compares two IP routes for equality.
 func (r IPRouteInfo) Equal(r2 IPRouteInfo) bool {
-	return netutils.EqualIPs(r.Gateway, r2.Gateway) &&
+	return r.IPVersion == r2.IPVersion &&
+		netutils.EqualIPs(r.Gateway, r2.Gateway) &&
 		netutils.EqualIPNets(r.DstNetwork, r2.DstNetwork) &&
 		r.OutputPort == r2.OutputPort &&
 		r.GatewayApp == r2.GatewayApp
@@ -1025,11 +1209,13 @@ func (status NetworkInstanceStatus) LogKey() string {
 // IsIpAssigned returns true if the given IP address is assigned to any app VIF.
 func (status *NetworkInstanceStatus) IsIpAssigned(ip net.IP) bool {
 	for _, assignments := range status.IPAssignments {
-		if ip.Equal(assignments.IPv4Addr) {
-			return true
+		for _, assignedIP := range assignments.IPv4Addrs {
+			if ip.Equal(assignedIP.Address) {
+				return true
+			}
 		}
-		for _, nip := range assignments.IPv6Addrs {
-			if ip.Equal(nip) {
+		for _, assignedIP := range assignments.IPv6Addrs {
+			if ip.Equal(assignedIP.Address) {
 				return true
 			}
 		}
@@ -1135,7 +1321,7 @@ type FlowRec struct {
 type DNSReq struct {
 	HostName    string
 	Addrs       []net.IP
-	RequestTime int64
+	RequestTime int64 // in nanoseconds
 	ACLNum      int32
 }
 
@@ -1292,4 +1478,58 @@ const (
 	// MACGeneratorGloballyScoped generates MAC addresses which are with high probability
 	// unique globally, i.e. across entire fleet of devices.
 	MACGeneratorGloballyScoped = 2
+	// MACGeneratorClusterDeterministic generates the same MAC address for a given
+	// app interface on every node in the cluster.
+	// Additionally, the probability of MAC address conflict with other devices outside
+	// the cluster is very low (same property that MACGeneratorGloballyScoped
+	// provides).
+	MACGeneratorClusterDeterministic = 3
 )
+
+// NestedAppDomainStatus - status of a nested app domain
+// This is the struct of the nested app reported by runtime agent, and it is
+// published by zedrouter. One use case is for 'newlogd' to get the App structure
+// set up the same mechainsm as if it learned from the domainmgr's DomainStatus.
+// Because this nested app domain is configured through the Patch-envelop directly
+// to the runtime agent, and bypasses the EVE pillar, although some of the EVE
+// services may still want to know about those nested apps.
+type NestedAppDomainStatus struct {
+	UUIDandVersion UUIDandVersion // UUID of the nested app, e.g. a Docker-Compose App UUID
+	DisplayName    string         // nested App name
+	DisableLogs    bool           // if app log is disabled
+	ParentAppUUID  uuid.UUID      // parent app, a runtime VM UUID
+}
+
+// Key - returns the UUID for the nested app domain status
+func (status NestedAppDomainStatus) Key() string {
+	return status.UUIDandVersion.UUID.String()
+}
+
+// FsUsedMetric - contains the used and allocated
+// space of a NestedApp running on a runtime
+// app instance.
+type FsUsedMetric struct {
+	UsedMb      float64
+	AllocatedMb float64
+}
+
+// NestedAppRuntimeDiskMetric - contains the overall
+// fs usage of a volume instance attached to a runtime
+// app instance.  All storage of child/NestedApps running in
+// this runtime app instance is included.
+type NestedAppRuntimeDiskMetric struct {
+	UUID        string
+	TotalMb     float64
+	UsedMb      float64
+	AllocatedMb float64
+	// DependentSpaceMb is a representation of the space used by Nested Apps
+	// which share a persistent filesystem of a runtime.
+	// Key is a nested app instance uuid running on the runtime,
+	// a NestedAppDomainStatus uuid.
+	DependentSpaceMb map[string]FsUsedMetric
+}
+
+// Key - returns the UUID for the nested app runtime disk metric
+func (metric NestedAppRuntimeDiskMetric) Key() string {
+	return metric.UUID
+}

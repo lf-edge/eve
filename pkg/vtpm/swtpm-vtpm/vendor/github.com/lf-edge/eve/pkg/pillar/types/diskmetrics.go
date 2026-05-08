@@ -20,14 +20,16 @@ var ReportDiskPaths = []string{
 // ReportDirPaths  Report directory usage for these paths
 var ReportDirPaths = []string{
 	PersistConfigDir,
+	NetTraceFolder,
 	PersistStatusDir,
 	CertificateDirname,
 	SealedDirName,
 	ClearDirName,
 	PersistDebugDir,
 	PersistInstallerDir,
-	IngestedDirname,
 	NewlogDir,
+	MemoryMonitorOutputDir,
+	PersistDir + "/ingested",   // No longer used
 	PersistDir + "/containerd", // Old location
 	PersistDir + "/tmp",        // Should not be used by anything
 	PersistDir + "/log",
@@ -37,9 +39,10 @@ var ReportDirPaths = []string{
 	PersistDir + "/pubsub-large",
 	PersistDir + "/reserved",
 	PersistDir + "/etcd-storage",
-	PersistDir + "/memory-monitor/output", // for memory monitor dumps
 	PersistDir + "/kcrashes",
 	PersistDir + "/eve-info",
+	PersistDir + "/kubelog",
+	PersistDir + "/kube-save-var-lib",
 }
 
 // AppPersistPaths  Application-related files live here
