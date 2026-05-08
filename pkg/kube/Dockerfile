@@ -1,10 +1,19 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
 
 FROM lfedge/eve-alpine:1f744180283ffb4eabcc3862531aeacf1de886b3 AS build
+ARG TARGETARCH
 ENV PKGS alpine-baselayout musl-utils iproute2 iptables curl openrc \
          open-iscsi libvirt libvirt-client util-linux grep findutils jq \
          cni-plugins nfs-utils inotify-tools
 RUN eve-alpine-deploy.sh
+
+ENV ETCDCTL_VERSION=v3.5.5
+ADD https://github.com/etcd-io/etcd/releases/download/${ETCDCTL_VERSION}/etcd-${ETCDCTL_VERSION}-linux-${TARGETARCH}.tar.gz /tmp/etcd.tar.gz
+RUN mkdir -p /out/usr/bin /tmp/etcdtmp && \
+    tar -xzf /tmp/etcd.tar.gz -C /tmp/etcdtmp && \
+    cp "/tmp/etcdtmp/etcd-${ETCDCTL_VERSION}-linux-${TARGETARCH}/etcdctl" /out/usr/bin/etcdctl && \
+    chmod +x /out/usr/bin/etcdctl && \
+    rm -rf /tmp/etcd.tar.gz /tmp/etcdtmp
 
 COPY eve-bridge /plugins/eve-bridge
 WORKDIR /plugins/eve-bridge
@@ -41,7 +50,6 @@ COPY update-component/expected_versions.yaml /etc/
 COPY update-component/settings_longhorn.yaml /etc/
 
 # k3s
-COPY install-etcdctl.sh /usr/bin/
 RUN mkdir -p /etc/rancher/k3s
 COPY config.yaml /etc/rancher/k3s
 COPY debuguser-role-binding.yaml /etc/
@@ -98,7 +106,7 @@ COPY nvidia-container-runtime/nvidia-device-plugin-18.0.yml /etc/k3s-manifests/
 
 ARG TARGETARCH
 
-# Actual k3s install and config happens when this container starts during EVE bootup, look at cluster-init.sh
+# Actual k3s install and config happens when this container starts during EVE boot up, look at cluster-init.sh
 ### NOTE: the version of virtctl should match the version of kubevirt in cluster_init.sh, else PVC creation might fail due to incompatibility
 COPY k3s-control.sh /usr/bin/k3s-control
 RUN chmod +x /usr/bin/k3s-control && \

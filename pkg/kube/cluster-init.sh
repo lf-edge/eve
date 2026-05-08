@@ -19,6 +19,7 @@ All_PODS_READY=true
 install_kubevirt=1
 TRANSITION_PIPE="/tmp/cluster_transition_pipe$$"
 TRANSITION_FLAG_FILE="/tmp/cluster_transition_flag"
+MASTERLEASE_CLEANUP_FLAG="/var/lib/masterlease-cleanup-needed"
 RebootReasonFile="/persist/reboot-reason"
 BootReasonFile="/persist/boot-reason"
 BootReasonKubeTransition="BootReasonKubeTransition" # Must match string in types package
@@ -340,6 +341,63 @@ check_start_k3s() {
         current_wait_time=$INITIAL_WAIT_TIME
   fi
   return 0
+}
+
+# cleanup_stale_masterleases removes etcd masterlease entries whose IP does not
+# match cluster_node_ip.  k3s's HA endpoint reconciler reads every key under
+# /registry/masterleases/ and writes each IP into the kubernetes service
+# EndpointSlice; a stale entry causes 30-second TCP timeouts on every third
+# connection (kubectl, Multus SetNetworkStatus, CDI importer).
+# Called in the main loop once k3s is running in cluster mode with embedded
+# etcd; guarded by MASTERLEASE_CLEANUP_FLAG (set during single-to-cluster
+# conversion) so it is a no-op unless a conversion just occurred.
+# If etcd is not ready yet (empty lease list) the flag is kept and the
+# function retries on the next main-loop iteration.
+cleanup_stale_masterleases() {
+    [ -f "$MASTERLEASE_CLEANUP_FLAG" ] || return 0
+    # Re-read enc_status: is_bootstrap and cluster_node_ip may be stale in the main
+    # shell after a single-to-cluster transition done in a background subshell.
+    get_enc_status || return 0
+    [ "$is_bootstrap" = "true" ] || return 0
+
+    ETCD_CA="/var/lib/rancher/k3s/server/tls/etcd/server-ca.crt"
+    ETCD_CERT="/var/lib/rancher/k3s/server/tls/etcd/client.crt"
+    ETCD_KEY="/var/lib/rancher/k3s/server/tls/etcd/client.key"
+    if [ ! -f "$ETCD_CA" ]; then
+        logmsg "cleanup_stale_masterleases: etcd certs not found, skipping"
+        return 0
+    fi
+
+    ETCDCTL_CMD="etcdctl --endpoints https://127.0.0.1:2379 --cacert $ETCD_CA --cert $ETCD_CERT --key $ETCD_KEY"
+
+    if ! leases=$($ETCDCTL_CMD get /registry/masterleases/ --prefix --keys-only 2>&1); then
+        logmsg "cleanup_stale_masterleases: etcdctl failed: $leases"
+        return 0
+    fi
+    leases=$(echo "$leases" | grep -v '^$')
+    if [ -z "$leases" ]; then
+        logmsg "cleanup_stale_masterleases: no masterleases yet, will retry"
+        return 0
+    fi
+    logmsg "cleanup_stale_masterleases: masterleases: $(echo "$leases" | tr '\n' ' ')"
+
+    cluster_prefix_mask=$(get_cluster_prefix_len)
+    cluster_net=$(ipcalc -n "$cluster_node_ip$cluster_prefix_mask" | cut -d= -f2)
+    if [ -z "$cluster_net" ]; then
+        logmsg "cleanup_stale_masterleases: could not determine cluster network, skipping"
+        return 0
+    fi
+
+    for lease in $leases; do
+        ip=$(echo "$lease" | sed 's|/registry/masterleases/||')
+        lease_net=$(ipcalc -n "$ip$cluster_prefix_mask" 2>/dev/null | cut -d= -f2)
+        if [ "$lease_net" != "$cluster_net" ]; then
+            logmsg "cleanup_stale_masterleases: removing stale lease for $ip (outside cluster subnet $cluster_node_ip$cluster_prefix_mask)"
+            $ETCDCTL_CMD del "$lease"
+        fi
+    done
+    rm -f "$MASTERLEASE_CLEANUP_FLAG"
+    logmsg "cleanup_stale_masterleases: done"
 }
 
 external_boot_image_import() {
@@ -790,6 +848,7 @@ check_cluster_config_change() {
 
             # rotate the token with the new token
             if [ "$is_bootstrap" = "true" ]; then
+                touch "$MASTERLEASE_CLEANUP_FLAG"
                 change_to_new_token
             fi
 
@@ -1283,7 +1342,6 @@ if [ ! -f /var/lib/all_components_initialized ]; then
                 sleep 5  # Ensure minimum sleep time before retrying
                 continue
         fi
-
         if ! external_boot_image_import; then
                 sleep 5
                 continue
@@ -1553,6 +1611,7 @@ else
                 fi
         fi
 fi
+        cleanup_stale_masterleases
         save_cluster_startup_rank
         check_log_file_size "k3s.log"
         check_log_file_size "multus.log"
