@@ -131,6 +131,46 @@ func TestAddStringItem(t *testing.T) {
 	}
 }
 
+func TestCronValidator(t *testing.T) {
+	valid := []string{
+		"",                        // empty disables the feature
+		"0 0 * * *",               // daily midnight
+		"0 */6 * * *",             // every 6 hours
+		"*/5 * * * *",             // every 5 minutes
+		"0 0 1 1 *",               // once a year
+		"0 0 * * 0",               // every Sunday
+		"59 23 31 12 7",           // max valid value per field
+		"0-59 0-23 1-31 1-12 0-7", // full ranges
+	}
+	invalid := []string{
+		"@daily",         // named form
+		"@hourly",        // named form
+		"*/5 * * * * *",  // 6 fields
+		"* *",            // too few fields
+		"0 0 * * ?",      // Quartz wildcard
+		"0 0 * * L",      // Quartz last-day modifier
+		"not a cron",     // free text
+		"60 * * * *",     // minute out of range
+		"* 24 * * *",     // hour out of range
+		"* * 0 * *",      // day-of-month below minimum
+		"* * 32 * *",     // day-of-month above maximum
+		"* * * 0 *",      // month below minimum
+		"* * * 13 *",     // month above maximum
+		"* * * * 8",      // day-of-week out of range
+		"99 99 99 99 99", // all fields out of range
+	}
+	for _, s := range valid {
+		if err := cronValidator(s); err != nil {
+			t.Errorf("cronValidator(%q) returned unexpected error: %v", s, err)
+		}
+	}
+	for _, s := range invalid {
+		if err := cronValidator(s); err == nil {
+			t.Errorf("cronValidator(%q) expected error but got nil", s)
+		}
+	}
+}
+
 func TestNewConfigItemSpecMap(t *testing.T) {
 	// logrus.SetLevel(logrus.TraceLevel)
 	specMap := NewConfigItemSpecMap()
@@ -266,6 +306,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		IGPUGOPFile,
 		EnableEFIDebug,
 		KubernetesVmiDescheduleEvents,
+		LonghornSnapshotCron,
 	}
 	if len(specMap.GlobalSettings) != len(gsKeys) {
 		t.Errorf("GlobalSettings has more (%d) than expected keys (%d)",

@@ -470,6 +470,11 @@ const (
 	// over any EVE-OS baseos version defined k3s version (pkg/kube/cluster-update.sh)
 	K3sVersionOverride GlobalSettingKey = "k3s.version"
 
+	// LonghornSnapshotCron is the cron expression for the Longhorn recurring snapshot job
+	// used as delta-rebuild baselines after node power loss. Empty string disables recurring
+	// snapshots. Default "0 0 * * *" (daily at midnight UTC). Standard 5-field cron syntax.
+	LonghornSnapshotCron GlobalSettingKey = "storage.longhorn.snapshot.cron"
+
 	// SCEPRetryInterval defines the time interval between retry attempts
 	// for certificates that previously failed to enroll or returned PENDING
 	// from the SCEP server.
@@ -1227,6 +1232,8 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddStringItem(K3sConfigOverride, "", base64Validator)
 	configItemSpecMap.AddStringItem(K3sVersionOverride, "", k3sVersionValidator)
 	configItemSpecMap.AddStringItem(KubernetesVmiDescheduleEvents, "", blankValidator)
+	// LonghornSnapshotCron - Default daily at midnight. Empty string = disable recurring snapshots.
+	configItemSpecMap.AddStringItem(LonghornSnapshotCron, "0 0 * * *", cronValidator)
 
 	// SCEP settings
 	configItemSpecMap.AddIntItem(SCEPRetryInterval, 5*MinuteInSec, MinuteInSec, HourInSec)
@@ -1359,6 +1366,49 @@ func GetDiagRemoteEndpointURLs(log *base.LogObject, gcp *ConfigItemValueMap) []*
 
 // blankValidator - A validator that accepts any string
 func blankValidator(s string) error {
+	return nil
+}
+
+// cronValidator accepts empty (feature disabled) or standard 5-field cron expressions.
+// It rejects non-5-field forms (@hourly, 6-field, etc.), fields with invalid characters,
+// and field values that fall outside each position's valid numeric range.
+func cronValidator(s string) error {
+	if s == "" {
+		return nil
+	}
+	fields := strings.Fields(s)
+	if len(fields) != 5 {
+		return fmt.Errorf("cronValidator: %q must be empty or a 5-field cron expression (got %d fields)", s, len(fields))
+	}
+	// [lo, hi] inclusive range for minute, hour, day-of-month, month, day-of-week.
+	fieldRanges := [5][2]int{{0, 59}, {0, 23}, {1, 31}, {1, 12}, {0, 7}}
+	for i, f := range fields {
+		for _, c := range f {
+			if !strings.ContainsRune("0123456789*/-,", c) {
+				return fmt.Errorf("cronValidator: %q contains invalid character %q in field %q", s, c, f)
+			}
+		}
+		lo, hi := fieldRanges[i][0], fieldRanges[i][1]
+		for _, atom := range strings.Split(f, ",") {
+			// Strip step suffix: "*/5" → "*", "1-31/7" → "1-31".
+			valuePart := strings.SplitN(atom, "/", 2)[0]
+			if valuePart == "*" {
+				continue
+			}
+			for _, token := range strings.Split(valuePart, "-") {
+				if token == "" || token == "*" {
+					continue
+				}
+				n, err := strconv.Atoi(token)
+				if err != nil {
+					return fmt.Errorf("cronValidator: %q contains non-numeric token %q in field %q", s, token, f)
+				}
+				if n < lo || n > hi {
+					return fmt.Errorf("cronValidator: %q field %d value %d out of range [%d, %d]", s, i+1, n, lo, hi)
+				}
+			}
+		}
+	}
 	return nil
 }
 

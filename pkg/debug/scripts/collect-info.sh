@@ -6,7 +6,7 @@
 
 # Script version, don't forget to bump up once something is changed
 
-VERSION=43
+VERSION=44
 # Add required packages here, it will be passed to "apk add".
 # Once something added here don't forget to add the same package
 # to the Dockerfile ('ENV PKGS' line) of the debug container,
@@ -593,6 +593,10 @@ collect_longhorn_info()
         # when nodes are down.
         # Give up after 5min, and allow remaining system data to be collected.
         timeout 300s eve exec kube /usr/bin/longhorn-generate-support-bundle.sh
+        echo "============"
+        echo "longhorn-snapshot-overhead.sh -v"
+        echo "============"
+        eve exec kube /usr/bin/longhorn-snapshot-overhead.sh -v
     } > "$DIR/longhorn-info" 2>&1
 }
 

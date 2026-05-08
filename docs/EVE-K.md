@@ -120,3 +120,102 @@ running as.  All storage classes installed by EVE will place volumes in /persist
 - Default single node 'First-Boot' Mode (No EdgeNodeCluster eve-api config): Longhorn and Local-Path
 - EdgeNodeCluster with Replicated Storage (CLUSTER_TYPE_REPLICATED_STORAGE): Longhorn and Local-Path
 - EdgeNodeCluster with Base Mode (CLUSTER_TYPE_K3S_BASE): Local-Path
+
+## Longhorn Recurring Snapshots and Rebuild Performance
+
+### How snapshots improve rebuild performance
+
+When a Longhorn replica fails and later recovers with its on-disk data intact (e.g. after
+a node power cycle), Longhorn can perform a **delta rebuild** — transferring only the blocks
+that changed since the last common snapshot rather than copying the entire volume. For a
+100 GiB volume with modest write rates, the difference between a delta rebuild and a full
+rebuild is typically hours vs. minutes.
+
+The delta rebuild path (`CheckAndReuseFailedReplica`) requires a shared snapshot baseline
+between the failed replica and the currently-healthy ones. Without any snapshot, the baseline
+falls back to volume creation time, which is equivalent to a full rebuild for any
+long-running volume.
+
+EVE-k automatically creates a Longhorn
+[`RecurringJob`](https://longhorn.io/docs/1.9.1/snapshots-and-backups/scheduling-backups-and-snapshots/)
+that snapshots all enrolled volumes on a configurable interval (default: daily). This caps
+the maximum delta rebuild data at approximately one interval's worth of writes regardless
+of volume age or size.
+
+### Configuration
+
+The snapshot interval is controlled by the EVE global config property:
+
+| Property | Default | Range | Description |
+| -------- | ------- | ----- | ----------- |
+| `storage.longhorn.snapshot.cron` | `0 0 * * *` | - | Cron schedule for recurring snapshots. Empty string disables. Standard 5-field cron syntax. |
+
+Changes take effect without a reboot: zedkube applies the update to the Longhorn
+`RecurringJob` CRD within one `kubeCfgTimer` cycle.
+
+### Volume enrollment
+
+All EVE storage classes (`lh-sc-rep1`, `lh-sc-rep2`, `lh-sc-rep3`) include
+`recurringJobSelector: '[{"name":"default","isGroup":true}]'`, so any PVC provisioned from
+an EVE storage class is automatically enrolled in the default snapshot group. No manual
+labeling is required for volumes created after cluster initialization.
+
+To enroll an existing PVC that was provisioned before recurring jobs were configured, label
+it directly:
+
+```bash
+kubectl patch pvc <pvc-name> -n eve-kube-app --type=merge \
+  -p '{"metadata":{"labels":{"recurring-job-group.longhorn.io/default":"enabled"}}}'
+```
+
+### Custom recurring jobs (development / testing)
+
+For testing or higher-frequency snapshots on specific volumes, create a custom RecurringJob
+manually. The following example runs an hourly snapshot, retaining 24:
+
+```yaml
+apiVersion: longhorn.io/v1beta2
+kind: RecurringJob
+metadata:
+  name: hourly-dev-snapshots
+  namespace: longhorn-system
+spec:
+  cron: "0 * * * *"
+  task: snapshot
+  groups:
+    - hourly-dev
+  retain: 24
+  concurrency: 2
+```
+
+Apply it:
+
+```bash
+kubectl apply -f hourly-dev-snapshot-job.yaml
+```
+
+Then enroll a specific PVC by adding the job label directly (bypassing the group):
+
+```bash
+kubectl patch pvc <pvc-name> -n eve-kube-app --type=merge \
+  -p '{"metadata":{"labels":{"recurring-job.longhorn.io/hourly-dev-snapshots":"enabled"}}}'
+```
+
+Or enroll by group label if you want any PVC to pick it up:
+
+```bash
+kubectl patch pvc <pvc-name> -n eve-kube-app --type=merge \
+  -p '{"metadata":{"labels":{"recurring-job-group.longhorn.io/hourly-dev":"enabled"}}}'
+```
+
+Verify snapshot activity:
+
+```bash
+# List snapshots for a volume
+kubectl -n longhorn-system get snapshots.longhorn.io \
+  -l longhornvolume=<volume-name> \
+  --sort-by='.metadata.creationTimestamp'
+
+# Check RecurringJob execution history
+kubectl -n longhorn-system get recurringjob -o wide
+```

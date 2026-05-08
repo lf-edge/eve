@@ -58,6 +58,45 @@ func LonghornVolumeSizeDetails(longhornVolumeName string) (provisionedBytes uint
 	return uint64(lhVol.Spec.Size), uint64(lhVol.Status.ActualSize), nil
 }
 
+// LonghornVolumeSnapshotBytes returns the total bytes consumed by all snapshots
+// for the given Longhorn volume, excluding the live-data volume-head entry.
+// Returns 0 with no error when the Longhorn API is unavailable or no snapshots exist.
+func LonghornVolumeSnapshotBytes(longhornVolumeName string) (int64, error) {
+	apiExists, err := longhornAPIExists()
+	if err != nil || !apiExists {
+		return 0, err
+	}
+	config, err := GetKubeConfig()
+	if err != nil {
+		return 0, fmt.Errorf("LonghornVolumeSnapshotBytes: kubeconfig: %v", err)
+	}
+	lhClient, err := versioned.NewForConfig(config)
+	if err != nil {
+		return 0, fmt.Errorf("LonghornVolumeSnapshotBytes: client: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	snaps, err := lhClient.LonghornV1beta2().Snapshots(longhornNamespace).List(
+		ctx, metav1.ListOptions{LabelSelector: "longhornvolume=" + longhornVolumeName})
+	if err != nil {
+		return 0, fmt.Errorf("LonghornVolumeSnapshotBytes: list: %v", err)
+	}
+	return sumSnapshotBytes(snaps.Items), nil
+}
+
+// sumSnapshotBytes sums Status.Size for all non-head snapshots in the list.
+// MarkRemoved snapshots are intentionally included: they remain on disk until GC
+// completes, and omitting them would silently under-report disk usage if GC stalls.
+func sumSnapshotBytes(snaps []lhv1beta2.Snapshot) int64 {
+	var total int64
+	for _, s := range snaps {
+		if !strings.HasSuffix(s.Name, "-volume-head") {
+			total += s.Status.Size
+		}
+	}
+	return total
+}
+
 func min(a, b types.ServiceStatus) types.ServiceStatus {
 	if a < b {
 		return a
@@ -74,6 +113,70 @@ func replicaHasNoFsBacking(lhReplica lhv1beta2.Replica) bool {
 	return (lhReplica.Status.OwnerID == "") &&
 		(lhReplica.Status.InstanceManagerName == "") &&
 		(lhReplica.Status.CurrentImage == "")
+}
+
+// replicaModeProgress maps the engine's ReplicaModeMap entry for a single replica
+// to the three KubeVolumeReplicaInfo fields that populateKVIFromPVCName needs to set.
+// It always returns a definitive repStatus (Online for modes that do not change it).
+// isConsistent is true only for RW replicas that should be counted toward consistentReps.
+func replicaModeProgress(
+	inModeMap bool,
+	mode lhv1beta2.ReplicaMode,
+	hasRebuildEntry bool,
+	rebuildProgress int,
+) (percentage uint8, repStatus types.StorageVolumeReplicaStatus, isConsistent bool) {
+	repStatus = types.StorageVolumeReplicaStatusOnline
+	switch {
+	case !inModeMap:
+		// Running but not yet registered in the engine — not yet consistent.
+	case mode == lhv1beta2.ReplicaModeRW:
+		// Fully synced read-write: the only state that genuinely means 100%.
+		percentage = 100
+		isConsistent = true
+	case mode == lhv1beta2.ReplicaModeWO:
+		// Write-only: rebuild queued or in progress.
+		repStatus = types.StorageVolumeReplicaStatusRebuilding
+		if hasRebuildEntry {
+			// rebuildProgress is the Longhorn engine's Progress field, always 0-100.
+			percentage = uint8(rebuildProgress)
+		}
+	case mode == lhv1beta2.ReplicaModeERR:
+		repStatus = types.StorageVolumeReplicaStatusFailed
+	}
+	return
+}
+
+// robustnessSubstate maps (robustness, onlineReps, consistentReps) → the fine-grained
+// health substate reported to the controller. All inputs come from Longhorn API data;
+// the function is pure so it can be unit-tested without a live cluster.
+func robustnessSubstate(robustness types.StorageVolumeRobustness, onlineReps, consistentReps int) types.StorageHealthStatus {
+	switch robustness {
+	case types.StorageVolumeRobustnessHealthy:
+		return types.StorageHealthStatusHealthy
+	case types.StorageVolumeRobustnessFaulted:
+		return types.StorageHealthStatusFailed
+	case types.StorageVolumeRobustnessDegraded:
+		if onlineReps == 1 {
+			return types.StorageHealthStatusDegraded1ReplicaAvailableNotReplicating
+		}
+		if onlineReps == 2 {
+			if consistentReps == 1 {
+				return types.StorageHealthStatusDegraded1ReplicaAvailableReplicating
+			}
+			if consistentReps == 2 {
+				return types.StorageHealthStatusDegraded2ReplicaAvailableNotReplicating
+			}
+		}
+		if onlineReps == 3 {
+			if consistentReps == 1 {
+				return types.StorageHealthStatusDegraded1ReplicaAvailableReplicating
+			}
+			if consistentReps == 2 {
+				return types.StorageHealthStatusDegraded2ReplicaAvailableReplicating
+			}
+		}
+	}
+	return types.StorageHealthStatusUnknown
 }
 
 // PopulateKVIFromPVCName uses the longhorn api to retrieve volume and replica health
@@ -116,6 +219,9 @@ func populateKVIFromPVCName(kvi *types.KubeVolumeInfo) (*types.KubeVolumeInfo, e
 		return kvi, fmt.Errorf("PopulateKVIFromPVCName can't get lh vol err:%v", err)
 	}
 	kvi.AllocatedBytes = uint64(lhVol.Status.ActualSize)
+	if snapBytes, snapErr := LonghornVolumeSnapshotBytes(lhVolName); snapErr == nil && snapBytes > 0 {
+		kvi.AllocatedBytes += uint64(snapBytes)
+	}
 
 	switch lhVol.Status.Robustness {
 	case lhv1beta2.VolumeRobustnessHealthy:
@@ -126,13 +232,6 @@ func populateKVIFromPVCName(kvi *types.KubeVolumeInfo) (*types.KubeVolumeInfo, e
 		kvi.Robustness = types.StorageVolumeRobustnessFaulted
 	case lhv1beta2.VolumeRobustnessUnknown:
 		kvi.Robustness = types.StorageVolumeRobustnessUnknown
-	}
-
-	if kvi.Robustness == types.StorageVolumeRobustnessHealthy {
-		kvi.RobustnessSubstate = types.StorageHealthStatusHealthy
-	}
-	if kvi.Robustness == types.StorageVolumeRobustnessFaulted {
-		kvi.RobustnessSubstate = types.StorageHealthStatusFailed
 	}
 
 	switch lhVol.Status.State {
@@ -184,14 +283,33 @@ func populateKVIFromPVCName(kvi *types.KubeVolumeInfo) (*types.KubeVolumeInfo, e
 			if err != nil {
 				return kvi, fmt.Errorf("PopulateKVIFromPVCName can't get replica engine: %v", err)
 			}
-			replicaAddress := "tcp://" + net.JoinHostPort(replicaEngineIP, strconv.Itoa(replicaEnginePort))
-			rebuildStatus, ok := engine.Status.RebuildStatus[replicaAddress]
-			if !ok {
-				kviRep.RebuildProgressPercentage = 100
+
+			// Use the canonical address from the engine's own CurrentReplicaAddressMap
+			// rather than constructing tcp://IP:PORT from replica status.  The engine's
+			// ReplicaModeMap and RebuildStatus are both keyed by the address the engine
+			// process itself uses; constructing from replica.Status.IP/Port can diverge
+			// after a pod restart or IP reassignment, causing the lookup to silently miss.
+			replicaAddr, inEngineMap := engine.Status.CurrentReplicaAddressMap[lhReplica.Name]
+			if !inEngineMap {
+				replicaAddr = "tcp://" + net.JoinHostPort(replicaEngineIP, strconv.Itoa(replicaEnginePort))
+			}
+
+			// ReplicaModeMap is the authoritative oracle for replica sync state.
+			// RebuildStatus is ephemeral: it is absent before the rebuild transfer
+			// starts and cleared when the engine restarts, so "absent from RebuildStatus"
+			// does NOT mean the replica is consistent — it only means consistent when the
+			// replica is in RW mode.
+			replicaMode, inModeMap := engine.Status.ReplicaModeMap[replicaAddr]
+			rebuildEntry, hasRebuildEntry := engine.Status.RebuildStatus[replicaAddr]
+			rebuildProgress := 0
+			if hasRebuildEntry {
+				rebuildProgress = rebuildEntry.Progress
+			}
+			pct, repStatus, consistent := replicaModeProgress(inModeMap, replicaMode, hasRebuildEntry, rebuildProgress)
+			kviRep.RebuildProgressPercentage = pct
+			kviRep.Status = repStatus
+			if consistent {
 				consistentReps++
-			} else {
-				kviRep.RebuildProgressPercentage = uint8(rebuildStatus.Progress)
-				kviRep.Status = types.StorageVolumeReplicaStatusRebuilding
 			}
 
 			onlineReps++
@@ -210,37 +328,7 @@ func populateKVIFromPVCName(kvi *types.KubeVolumeInfo) (*types.KubeVolumeInfo, e
 		kvi.Replicas = append(kvi.Replicas, kviRep)
 	}
 
-	//RobustnessSubstate
-	//Take care of the simple cases, healthy and failed
-	if kvi.Robustness == types.StorageVolumeRobustnessHealthy {
-		kvi.RobustnessSubstate = types.StorageHealthStatusHealthy
-	}
-	if kvi.Robustness == types.StorageVolumeRobustnessFaulted {
-		kvi.RobustnessSubstate = types.StorageHealthStatusFailed
-	}
-	if kvi.Robustness == types.StorageVolumeRobustnessDegraded {
-		// Not rebuilding
-		if onlineReps == 1 {
-			kvi.RobustnessSubstate = types.StorageHealthStatusDegraded1ReplicaAvailableNotReplicating
-		}
-		// Rebuilding one or zero replicas
-		if onlineReps == 2 {
-			if consistentReps == 1 {
-				kvi.RobustnessSubstate = types.StorageHealthStatusDegraded1ReplicaAvailableReplicating
-			}
-			if consistentReps == 2 {
-				kvi.RobustnessSubstate = types.StorageHealthStatusDegraded2ReplicaAvailableNotReplicating
-			}
-		}
-		if onlineReps == 3 {
-			if consistentReps == 1 {
-				kvi.RobustnessSubstate = types.StorageHealthStatusDegraded1ReplicaAvailableReplicating
-			}
-			if consistentReps == 2 {
-				kvi.RobustnessSubstate = types.StorageHealthStatusDegraded2ReplicaAvailableReplicating
-			}
-		}
-	}
+	kvi.RobustnessSubstate = robustnessSubstate(kvi.Robustness, onlineReps, consistentReps)
 	return kvi, nil
 }
 
