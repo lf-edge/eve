@@ -145,6 +145,30 @@ func (c *BondConfigurator) Create(ctx context.Context, item depgraph.Item) error
 	} else if bondCfg.ARPMonitor.Enabled {
 		bond.ArpInterval = int(bondCfg.ARPMonitor.Interval)
 		bond.ArpIpTargets = bondCfg.ARPMonitor.IPTargets
+		// With arp_validate=none (default 0), the kernel considers the active
+		// slave healthy if it recently received *any* traffic, not just ARP
+		// replies from the configured target.  In EVE clustering mode, multiple
+		// EVE nodes share the same L2 segment, each running a bond with ARP
+		// monitoring directed at the same gateway.  Each bond periodically
+		// broadcasts ARP requests to the gateway; the switch delivers those
+		// broadcasts to all hosts on the segment, including the bond slaves of
+		// neighbouring nodes.  Should the link between the switch and the
+		// gateway fail, the gateway can no longer reply -- yet the cross-node
+		// ARP broadcasts continue to arrive on the local slave and refresh its
+		// last_rx timestamp, causing the ARP monitor to consider the path
+		// healthy and suppressing failover.
+		//
+		// arp_validate=active requires an ARP reply addressed to *this* device
+		// from the configured target to be received on the active slave, so
+		// cross-node traffic cannot falsely keep the slave alive.
+		//
+		// Note: this also fixes a bond failure when running EVE inside our test
+		// framework, where the bridge connecting the EVE VM to the SDN VM keeps
+		// forwarding STP BPDUs to the EVE bond slave even after the SDN-side interface
+		// is administratively brought down (to imitate link failure).
+		// With arp_validate=none those BPDUs refresh last_rx and mask the failure;
+		// with arp_validate=active they are correctly ignored.
+		bond.ArpValidate = netlink.BOND_ARP_VALIDATE_ACTIVE
 	} else if isFailoverBondMode(bondCfg.Mode) {
 		// Enable MII monitoring with a default interval for failover-type bonds
 		// when no monitoring method is explicitly configured. Without link monitoring,
