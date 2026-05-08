@@ -3,7 +3,9 @@
 
 package types
 
-import "strings"
+import (
+	"strings"
+)
 
 const (
 	// TmpDirname - used for files fed into pubsub as global subscriptions
@@ -29,8 +31,8 @@ const (
 	PersistDebugDir = PersistDir + "/agentdebug"
 	// PersistInstallerDir - location for installer output
 	PersistInstallerDir = PersistDir + "/installer"
-	// IngestedDirname - location for shas of files we pulled from /config
-	IngestedDirname = PersistDir + "/ingested"
+	// PersistKubelogDir - Location for kube service container logs
+	PersistKubelogDir = PersistDir + "/kubelog"
 	// SnapshotsDirname - location for snapshots
 	SnapshotsDirname = PersistDir + "/snapshots"
 	// SnapshotAppInstanceConfigFilename - file to store snapshot-related app instance config
@@ -58,21 +60,14 @@ const (
 	OnboardKeyName = IdentityDirname + "/onboard.key.pem"
 	// RootCertFileName - what we trust for signatures and object encryption
 	RootCertFileName = IdentityDirname + "/root-certificate.pem"
-	// V2TLSCertShaFilename - find TLS root cert for API V2 based on this sha
-	V2TLSCertShaFilename = CertificateDirname + "/v2tlsbaseroot-certificates.sha256"
-	// V2TLSBaseFile is where the initial file
-	V2TLSBaseFile = IdentityDirname + "/v2tlsbaseroot-certificates.pem"
-	// APIV1FileName - user can statically allow for API v1
-	APIV1FileName = IdentityDirname + "/Force-API-V1"
+	// ImportGlobalConfigFile - old legacy file with ConfigItemValueMap items for bootstrapping
+	ImportGlobalConfigFile = IdentityDirname + "/GlobalConfig/global.json"
+	// BaseAuthorizedKeysFile - for an initial SSH key
+	BaseAuthorizedKeysFile = IdentityDirname + "/authorized_keys"
 	// BootstrapConfFileName - file to store initial device configuration for bootstrapping
 	BootstrapConfFileName = IdentityDirname + "/bootstrap-config.pb"
 	// RemoteAccessFlagFileName -- file to check for remote access configuration
 	RemoteAccessFlagFileName = IdentityDirname + "/remote_access_disabled"
-	// BootstrapShaFileName - file to store SHA hash of an already ingested bootstrap config
-	BootstrapShaFileName = IngestedDirname + "/bootstrap-config.sha"
-
-	// ServerSigningCertFileName - filename for server signing leaf certificate
-	ServerSigningCertFileName = CertificateDirname + "/server-signing-cert.pem"
 
 	// ShareCertDirname - directory to place private proxy server certificates
 	ShareCertDirname = "/usr/local/share/ca-certificates"
@@ -90,6 +85,8 @@ const (
 
 	// NewlogDir - newlog directories
 	NewlogDir = "/persist/newlog"
+	// NetTraceFolder - folder to store network traces
+	NetTraceFolder = "/persist/nettrace"
 	// NewlogCollectDir - newlog collect directory for temp log files
 	NewlogCollectDir = NewlogDir + "/collect"
 	// NewlogUploadDevDir - newlog device gzip file directory ready for upload
@@ -98,8 +95,10 @@ const (
 	NewlogUploadAppDir = NewlogDir + "/appUpload"
 	// NewlogKeepSentQueueDir - a circular queue of gzip files already been sent
 	NewlogKeepSentQueueDir = NewlogDir + "/keepSentQueue"
+	// PillarHardMemoryLimitFile - hard memory reserved for pillar
+	PillarHardMemoryLimitFile = "/hostfs/sys/fs/cgroup/memory/eve/services/pillar/memory.limit_in_bytes"
 	// EveMemoryLimitFile - stores memory reserved for eve
-	EveMemoryLimitFile = "/hostfs/sys/fs/cgroup/memory/eve/memory.soft_limit_in_bytes"
+	EveMemoryLimitFile = "/hostfs/sys/fs/cgroup/memory/eve/memory.limit_in_bytes"
 	// EveMemoryUsageFile - current usage
 	EveMemoryUsageFile = "/hostfs/sys/fs/cgroup/memory/eve/memory.usage_in_bytes"
 	// EveKmemUsageFile - current kernel usage
@@ -125,6 +124,41 @@ const (
 	SwtpmCtrlSocketPath = "/run/swtpm/%s.ctrl.sock"
 	// SwtpmPidPath is SWTPM per-vm pid file path, the format string is filled with the App UUID
 	SwtpmPidPath = "/run/swtpm/%s.pid"
+
+	// MemoryMonitorDir - directory for memory monitor
+	MemoryMonitorDir = PersistDir + "/memory-monitor"
+	// MemoryMonitorOutputDir - directory for memory monitor output
+	MemoryMonitorOutputDir = MemoryMonitorDir + "/output"
+	// MemoryMonitorPSIStatsFile - file to store memory PSI (Pressure Stall Information) statistics
+	MemoryMonitorPSIStatsFile = MemoryMonitorOutputDir + "/psi.txt"
+
+	// OVMFSettingsDir - directory for OVMF settings, they are stored in per-domain files
+	OVMFSettingsDir = SealedDirName + "/ovmf"
+	// OVMFSettingsTemplate - template file for OVMF settings
+	OVMFSettingsTemplate = "/usr/lib/xen/boot/OVMF_VARS.fd"
+	// CustomOVMFSettingsDir - directory for custom OVMF settings (for different resolutions)
+	CustomOVMFSettingsDir = "/hostfs/etc/ovmf"
+
+	// CoverageDir - directory where coverage-instrumented zedbox binaries
+	// write their binary coverage files (GOCOVERDIR).  Only used when EVE
+	// is built with COVER=y (go build -cover -covermode=atomic).
+	CoverageDir = PersistDir + "/coverage"
+
+	// CheckpointDirname - directory for persisting received configuration
+	// (from controller, LPS, etc.).
+	CheckpointDirname = PersistDir + "/checkpoint"
+
+	// LocalActiveAppConfigDir - directory to put JSON of the apps that are running.
+	LocalActiveAppConfigDir = "/persist/vault/active-app-instance-config/"
+
+	// K3sInitialVersionPath - file to store the first k3s version a node initializes to
+	K3sInitialVersionPath = PersistKubelogDir + "/initial_k3s_version"
+
+	// PolicyPcrFile - file to store TPM PCR policy indexes, this
+	// is just a hint to know which PCRs to use for sealing/unsealing,
+	// changing this file does not change the actual policy, hence
+	// needs not be protected.
+	PolicyPcrFile = PersistStatusDir + "/policy-pcr.json"
 )
 
 var (
@@ -144,4 +178,10 @@ var (
 	VolumeEncryptedZFSDataset = SealedDataset + "/volumes"
 	// EtcdZvol - zvol encrypted for etcd storage
 	EtcdZvol = PersistDataset + "/etcd-storage"
+	// TpmMeasurementLogFile is a kernel exposed variable that contains the
+	// TPM measurements and events log. it is not a constant so tests can override it.
+	TpmMeasurementLogFile = "/hostfs/sys/kernel/security/tpm0/binary_bios_measurements"
+	// TpmMeasurefsEventLog is the file containing the event log from the measure-config.
+	// it is not a constant so tests can override it.
+	TpmMeasurefsEventLog = PersistStatusDir + "/measurefs_tpm_event_log"
 )

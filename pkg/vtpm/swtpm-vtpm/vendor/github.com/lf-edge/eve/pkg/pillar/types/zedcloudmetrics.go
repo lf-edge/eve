@@ -11,20 +11,22 @@ import (
 // Note that there are no LogCreate etc functions for this type
 // since it is published by logmanager and we don't want to cause logs
 // when logging
-type MetricsMap map[string]ZedcloudMetric
+type MetricsMap map[string]ControllerConnMetrics
 
-// ZedcloudMetric are metrics for one interface
-type ZedcloudMetric struct {
+// ControllerConnMetrics holds communication statistics with the controller
+// for a single interface.
+// It tracks successes, failures, authentication failures, and per-URL metrics.
+type ControllerConnMetrics struct {
 	FailureCount  uint64
 	SuccessCount  uint64
 	LastFailure   time.Time
 	LastSuccess   time.Time
-	URLCounters   map[string]UrlcloudMetrics
+	URLCounters   map[string]URLMetrics
 	AuthFailCount uint64
 }
 
-// UrlcloudMetrics are metrics for a particular URL
-type UrlcloudMetrics struct {
+// URLMetrics are metrics for a particular URL
+type URLMetrics struct {
 	TryMsgCount    int64
 	TryByteCount   int64
 	SentMsgCount   int64
@@ -45,7 +47,7 @@ func (m MetricsMap) AddInto(toMap MetricsMap) {
 		dst, ok := toMap[ifname]
 		if !ok {
 			// New ifname; take all but need to deepcopy
-			dst = ZedcloudMetric{}
+			dst = ControllerConnMetrics{}
 		}
 		if dst.LastFailure.IsZero() {
 			// Don't care if src is zero
@@ -65,7 +67,7 @@ func (m MetricsMap) AddInto(toMap MetricsMap) {
 		dst.SuccessCount += src.SuccessCount
 		dst.AuthFailCount += src.AuthFailCount
 		if dst.URLCounters == nil {
-			dst.URLCounters = make(map[string]UrlcloudMetrics)
+			dst.URLCounters = make(map[string]URLMetrics)
 		}
 		dstURLs := dst.URLCounters // A pointer to the map
 		for url, srcURL := range src.URLCounters {

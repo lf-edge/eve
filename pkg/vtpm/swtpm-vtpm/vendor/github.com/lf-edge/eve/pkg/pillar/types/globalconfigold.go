@@ -15,7 +15,7 @@ import (
 type OldGlobalConfig struct {
 	ConfigInterval          uint32 // Try get of device config
 	MetricInterval          uint32 // push metrics to cloud
-	ResetIfCloudGoneTime    uint32 // reboot if no cloud connectivity
+	ResetIfCloudGoneTime    uint32 // reboot if no controller connectivity
 	FallbackIfCloudGoneTime uint32 // ... and shorter during update
 	MintimeUpdateSuccess    uint32 // time before zedagent declares success
 	DownloadGCTime          uint32 // Garbage collect if no use
@@ -73,7 +73,7 @@ type OldGlobalConfig struct {
 
 type PerAgentSettings struct {
 	LogLevel       string // What we log to files
-	RemoteLogLevel string // What we log to zedcloud
+	RemoteLogLevel string // What we log to the controller
 }
 
 // Default values until/unless we receive them from the cloud

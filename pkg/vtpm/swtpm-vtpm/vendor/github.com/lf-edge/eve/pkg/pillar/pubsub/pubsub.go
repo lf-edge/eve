@@ -1,4 +1,4 @@
-// Copyright (c) 2017,2018 Zededa, Inc.
+// Copyright (c) 2017,2018,2024 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 // Provide for a pubsub mechanism for config and status which is
@@ -23,8 +23,8 @@ type SubscriptionOptions struct {
 	DeleteHandler  SubDeleteHandler
 	RestartHandler SubRestartHandler
 	SyncHandler    SubSyncHandler
-	WarningTime    time.Duration
-	ErrorTime      time.Duration
+	WarningTime    time.Duration // we log a warning if the subscription handler took longer than this to run
+	ErrorTime      time.Duration // we log an error if the subscription handler took longer than this to run
 	AgentName      string
 	AgentScope     string
 	TopicImpl      interface{}
@@ -86,7 +86,7 @@ func New(driver Driver, logger *logrus.Logger, log *base.LogObject) *PubSub {
 func (p *PubSub) NewSubscription(options SubscriptionOptions) (Subscription, error) {
 
 	if options.TopicImpl == nil {
-		return nil, fmt.Errorf("cannot create a subcription with a nil "+
+		return nil, fmt.Errorf("cannot create a subscription with a nil "+
 			" topicImpl. options: %+v", options)
 	}
 

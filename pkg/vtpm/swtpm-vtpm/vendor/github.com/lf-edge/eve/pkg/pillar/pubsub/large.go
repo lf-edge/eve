@@ -135,7 +135,7 @@ func writeRemoveTree(log *base.LogObject,
 			out[nk] = string(b)
 			continue
 		}
-		err = EnsureDir(dirname)
+		err = fileutils.EnsureDir(dirname)
 		if err != nil {
 			err := fmt.Errorf("writeRemoveTree: EnsureDir failed for %s %s: %v",
 				dirname, nk, err)
@@ -167,18 +167,6 @@ func writeRemoveTree(log *base.LogObject,
 		out[nk] = string(b)
 	}
 	return out, nil
-}
-
-// EnsureDir to make sure it exists
-func EnsureDir(dirname string) error {
-	_, err := os.Stat(dirname)
-	if err != nil {
-		err := os.MkdirAll(dirname, 0755)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // readAddLarge walks the json and uses readfile to fill in those fields which
