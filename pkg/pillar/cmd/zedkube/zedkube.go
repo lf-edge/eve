@@ -131,6 +131,8 @@ type zedkube struct {
 
 	// longhornDiskReservedSet is true once the desired reservation has been applied to the Longhorn node
 	longhornDiskReservedSet bool
+	// longhornSnapshotSet is true once the desired recurring snapshot interval has been applied
+	longhornSnapshotSet bool
 
 	// Stuck-Pending-VMI detector state (keyed by app UUID string).
 	// vmiPendingSince: first time we observed a Pending VMI with a Running
@@ -721,6 +723,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		// Timer 4: cluster-wide component config application
 		case <-kubeCfgTimer.C:
 			zedkubeCtx.applyLonghornDiskReserved()
+			zedkubeCtx.applyLonghornRecurringSnapshot()
 			kubeCfgTimer = time.NewTimer(kubeCfgInterval * time.Second)
 
 		// Timer 5: leader-only safety-net re-evaluation of the stale-master
@@ -900,11 +903,20 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 			z.longhornDiskReservedSet = false
 		}
 
+		newSnapshotCron := newConfigItemValueMap.GlobalValueString(types.LonghornSnapshotCron)
+		existingSnapshotCron := currentConfigItemValueMap.GlobalValueString(types.LonghornSnapshotCron)
+		if newSnapshotCron != existingSnapshotCron {
+			log.Functionf("handleGlobalConfigImpl: LonghornSnapshotCron changed %q -> %q",
+				existingSnapshotCron, newSnapshotCron)
+			z.longhornSnapshotSet = false
+		}
+
 		z.globalConfig = newConfigItemValueMap
 		z.applyLonghornDiskReserved()
 
 		z.handleVmiDescheduleEventsOverride(newConfigItemValueMap)
 
+		z.applyLonghornRecurringSnapshot()
 	}
 	log.Functionf("handleGlobalConfigImpl(%s): done", key)
 }
@@ -929,6 +941,22 @@ func (z *zedkube) applyLonghornDiskReserved() {
 		return
 	}
 	z.longhornDiskReservedSet = applied
+}
+
+// applyLonghornRecurringSnapshot creates or updates the Longhorn recurring snapshot job
+// to match the configured interval. It is a no-op if the value has already been applied.
+// Callers should retry periodically until longhornSnapshotSet is true.
+func (z *zedkube) applyLonghornRecurringSnapshot() {
+	if z.longhornSnapshotSet {
+		return
+	}
+	cron := z.globalConfig.GlobalValueString(types.LonghornSnapshotCron)
+	applied, err := kubeapi.SetLonghornRecurringSnapshot(cron)
+	if err != nil {
+		log.Errorf("applyLonghornRecurringSnapshot: %v", err)
+		return
+	}
+	z.longhornSnapshotSet = applied
 }
 
 func handleK3sConfigOverrideChanged(currentGcp *types.ConfigItemValueMap, newGcp *types.ConfigItemValueMap) {

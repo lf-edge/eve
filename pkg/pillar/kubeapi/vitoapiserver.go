@@ -147,6 +147,13 @@ func GetPVCInfo(pvcName string, log *base.LogObject) (*types.ImgInfo, error) {
 		log.Error(err)
 		return &imgInfo, err
 	}
+	// Add snapshot overhead so ActualSize reflects true on-disk consumption.
+	snapBytes, snapErr := LonghornVolumeSnapshotBytes(pvc.Spec.VolumeName)
+	if snapErr != nil {
+		log.Warningf("GetPVCInfo: snapshot bytes unavailable for %s: %v", pvcName, snapErr)
+	} else if snapBytes > 0 {
+		imgInfo.ActualSize += uint64(snapBytes)
+	}
 	return &imgInfo, nil
 }
 

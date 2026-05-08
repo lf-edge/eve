@@ -1,6 +1,7 @@
 # Copyright (c) 2026 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 ---
+# Ensure pods are rescheduled promptly when a node goes down rather than waiting for the node eviction timeout.
 apiVersion: longhorn.io/v1beta2
 kind: Setting
 metadata:
@@ -8,9 +9,56 @@ metadata:
   namespace: longhorn-system
 value: "delete-both-statefulset-and-deployment-pod"
 ---
+# Disable Longhorn's call-home version check; EVE manages Longhorn upgrades independently.
 apiVersion: longhorn.io/v1beta2
 kind: Setting
 metadata:
   name: upgrade-checker
   namespace: longhorn-system
 value: "false"
+---
+# replica-replenishment-wait-interval: how long Longhorn waits after a replica fails before
+# creating a replacement replica object (R-new). This must be long enough to cover the
+# worst-case boot time of the slowest cluster node after a simultaneous power reset.
+#
+# Why this matters: once R-new is created, Longhorn counts it as a "usable" slot
+# (FailedAt=="", Active==true) and getReplenishReplicasCount returns 0. This prevents
+# CheckAndReuseFailedReplica from ever being called, so when the original node returns with
+# its on-disk data, Longhorn schedules R-new there and forces a full rebuild instead of a
+# cheap delta sync. Keeping R-new from being created at all is the only way to preserve
+# the delta reuse path.
+#
+# In EVE's 3-node topology there are no spare nodes for R-new to schedule onto prematurely
+# (rep3 has no free node; rep2's tie-breaker node has Longhorn scheduling disabled), so the
+# wait interval cannot prevent bad placement — its sole purpose is to delay R-new creation
+# until the original nodes are back.
+#
+# Sizing: rank-0 (fastest node, 0 s stagger delay) takes ~2 min to reach Longhorn-ready.
+# rank-2 (50 s stagger delay + Longhorn pod startup) takes ~3:50 from power-on. The interval
+# clock starts when rank-0 sets lastDegradedAt (~T=2 min), so the minimum safe value is
+# ~110 s. The Longhorn default of 600 s provides ample margin and is explicitly set here
+# to make the intent visible in the manifest.
+apiVersion: longhorn.io/v1beta2
+kind: Setting
+metadata:
+  name: replica-replenishment-wait-interval
+  namespace: longhorn-system
+value: "600"
+---
+# Limit concurrent rebuilds per node to avoid saturating disk I/O on edge hardware when all
+# volumes need resync simultaneously after a cluster-wide power reset.
+apiVersion: longhorn.io/v1beta2
+kind: Setting
+metadata:
+  name: concurrent-replica-rebuild-per-node-limit
+  namespace: longhorn-system
+value: "2"
+---
+# Allow Longhorn to self-recover faulted volumes by salvaging the best available replica,
+# critical for unattended edge devices with no operator present to perform manual salvage.
+apiVersion: longhorn.io/v1beta2
+kind: Setting
+metadata:
+  name: auto-salvage
+  namespace: longhorn-system
+value: "true"

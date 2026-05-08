@@ -82,6 +82,7 @@ COPY longhorn-utils.sh /usr/bin/
 COPY lh-cfg-v1.9.1.yaml /etc/
 COPY iscsid.conf /etc/iscsi/
 COPY longhorn-generate-support-bundle.sh /usr/bin/
+COPY longhorn-snapshot-overhead.sh /usr/bin/
 COPY nsmounter /usr/bin/
 COPY longhorn_uninstall_settings.yaml /etc/
 COPY failover-events.sh /usr/bin/
