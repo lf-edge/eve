@@ -479,6 +479,10 @@ if [ -f $CONFIGDIR/onboard.cert.pem ] && [ -f $CONFIGDIR/onboard.key.pem ]; then
    echo "$(date -Ins -u) Self-registering our device certificate"
    CLIENT_COMMANDS="selfRegister $CLIENT_COMMANDS"
 fi
+
+# disable mdev
+echo "" > /proc/sys/kernel/hotplug
+
 echo "$(date -Ins -u) Starting client $CLIENT_COMMANDS"
 # shellcheck disable=SC2086
 if ! $BINDIR/client $CLIENT_COMMANDS; then
