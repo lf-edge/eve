@@ -219,8 +219,9 @@ func (msrv *Msrv) handleOpenStack() func(http.ResponseWriter, *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("{}"))
+		default:
+			http.Error(w, "not found", http.StatusNotFound)
 		}
-		w.WriteHeader(http.StatusNotFound)
 	}
 }
 

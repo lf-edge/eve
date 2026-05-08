@@ -743,7 +743,7 @@ func (msrv *Msrv) MakeMetadataHandler() http.Handler {
 	r.Get("/eve/app-custom-blobs", msrv.handleAppCustomBlobs())
 
 	r.Get("/openstack", msrv.handleOpenStack())
-	r.Get("/openstack/", msrv.handleOpenStack())
+	r.Get("/openstack/*", msrv.handleOpenStack())
 
 	return r
 }
