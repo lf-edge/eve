@@ -34,10 +34,10 @@
 | network.fallback.any.eth | "enabled" or "disabled" | disabled (enabled forcefully during onboarding if no network config) | - | - | if no connectivity try any Ethernet, WiFi, or LTE with DHCP client |
 | network.download.max.cost | 0-255 | 0 | 0 | 255 | [max port cost for download](DEVICE-CONNECTIVITY.md) to avoid e.g., LTE ports |
 | blob.download.max.retries | 1-10 | 5 | 1 | 10 | max download retries when image verification fails. |
-| debug.enable.usb | boolean | false | - | - | allow USB e.g. keyboards on device |
-| debug.enable.vga | boolean | false | - | - | allow VGA console on device |
+| debug.enable.usb | boolean | true | - | - | allow USB e.g. keyboards on device (controller by default overrides to false) |
+| debug.enable.vga | boolean | true | - | - | allow VGA console on device (controller by default overrides to false) |
 | debug.enable.ssh | authorized ssh key | empty string(ssh disabled) | - | - | allow ssh to EVE |
-| debug.enable.console | boolean | false | - | - | allow console access to EVE (reboot required to disable) |
+| debug.enable.console | boolean | true | - | - | allow console access to EVE, reboot required to disable (controller by default overrides to false) |
 | debug.enable.vnc.shim.vm | boolean | false | - | - | allow VNC access to the container application shim VM (reboot required to disable) |
 | storage.dom0.disk.minusage.percent | integer percent | 20 | 20 | 80 | min. percent of persist partition reserved for dom0 |
 | storage.zfs.reserved.percent | integer percent | 20 | 1 | 99 | min. percent of persist partition reserved for zfs performance |
