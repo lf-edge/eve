@@ -130,16 +130,26 @@ jobs:
              docker run "$EVE" installer_iso > assets/installer.iso
              docker run "$EVE" installer_net > assets/installer-net.tar
           fi
-      - name: Pull eve-sources and publish collected_sources.tar.gz to assets
+      - name: Export eve-sources to assets/collected_sources.tar
         run: |
           if [ "${{ matrix.platform }}" != "evaluation" ]; then
             HV=${{ matrix.hv }}
             EVE_SOURCES=lfedge/eve-sources:${TAG}-${{ env.PLATFORMVER }}${HV}-${{ env.ARCH }}
             docker pull "$EVE_SOURCES"
             docker create --name eve_sources "$EVE_SOURCES" bash
-            docker export --output assets/collected_sources.tar.gz eve_sources
+            docker export --output assets/collected_sources.tar eve_sources
             docker rm eve_sources
           fi
+      - name: Compress large assets with zstd
+        # installer.raw, live.raw, and collected_sources.tar can exceed the
+        # GitHub release asset size limit (2 GiB). These compress extremely
+        # well (raw disk images typically 5-20x for sparse regions), keeping
+        # them well under the limit and reducing transfer time.
+        run: |
+          for file in assets/*.raw assets/collected_sources.tar; do
+            [ -e "$file" ] || continue
+            zstd -T0 --rm -q "$file"
+          done
       - name: Rename, create SHA256 checksums and upload files
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -164,7 +174,9 @@ jobs:
           cd ../
           mv "$sha256_file" assets/
           mv "$sizes_file" assets/
-          # Upload files
+          # Upload files. Track failures and fail the job at the end so that
+          # all assets are attempted before the run is marked failed.
+          upload_failed=0
           for file in assets/*; do
             file_name=$(basename $file)
             echo "Uploading ${file_name}..."
@@ -176,6 +188,8 @@ jobs:
             if echo "$upload_response" | jq -e .id > /dev/null; then
               echo "$file_name uploaded successfully."
             else
-              echo "Error uploading $file_name: $upload_response"
+              echo "::error::Failed to upload $file_name: $upload_response"
+              upload_failed=1
             fi
           done
+          exit "$upload_failed"
