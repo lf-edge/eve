@@ -25,6 +25,16 @@ MIN_DISKSPACE=4096 # MBytes
 
 echo "$(date -Ins -u) Starting onboot.sh"
 
+# Set GOCOVERDIR for coverage-instrumented pillar binaries (built with
+# COVER=y).  This MUST be in the environment before any pillar binary
+# is exec'd: Go's -cover runtime caches GOCOVERDIR at main-package init
+# time, so setting it later via os.Setenv would only help the explicit
+# WriteMetaDir/WriteCountersDir paths and leave the auto-on-exit path
+# poisoned (no covcounters for short-lived agents like client).
+# Harmless on non-coverage builds.
+mkdir -p $PERSISTDIR/coverage
+export GOCOVERDIR=$PERSISTDIR/coverage
+
 # Copy pre-defined fscrypt.conf
 cp fscrypt.conf /etc/fscrypt.conf
 

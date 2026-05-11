@@ -134,6 +134,7 @@ func main() {
 			}
 		}
 		retval := runService(basename, sep, inline)
+		agentlog.FlushCoverage(log)
 		os.Exit(retval)
 	}
 	// If this zedbox?
@@ -146,9 +147,11 @@ func main() {
 		}
 		retval := runService(basename, sep, inline)
 		// Not likely to ever return, but for uniformity ...
+		agentlog.FlushCoverage(log)
 		os.Exit(retval)
 	}
 	fmt.Printf("zedbox: Unknown package: %s\n", basename)
+	agentlog.FlushCoverage(log)
 	os.Exit(1)
 }
 
