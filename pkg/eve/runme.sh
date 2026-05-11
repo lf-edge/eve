@@ -136,7 +136,7 @@ create_efi_raw() {
   rm -rf /parts
   ln -s /bits /parts
   dd if=/dev/zero of="$OUTPUT_IMG" seek=$(( $1 * 1024 * 1024 - 1)) bs=1 count=1
-  /make-raw "$OUTPUT_IMG" "$2"
+  /make-raw "$OUTPUT_IMG" "$2" || bail "ERROR: make-raw failed to build a $1 MiB image with partitions: $2"
 }
 
 do_rootfs() {
