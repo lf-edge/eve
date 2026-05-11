@@ -125,6 +125,16 @@ jobs:
             docker export --output assets/collected_sources.tar eve_sources
             docker rm eve_sources
           fi
+      - name: Compress large assets with zstd
+        # installer.raw, live.raw, and collected_sources.tar can exceed the
+        # GitHub release asset size limit (2 GiB). These compress extremely
+        # well (raw disk images typically 5-20x for sparse regions), keeping
+        # them well under the limit and reducing transfer time.
+        run: |
+          for file in assets/*.raw assets/collected_sources.tar; do
+            [ -e "$file" ] || continue
+            zstd -T0 --rm -q "$file"
+          done
       - name: Rename, create SHA256 checksums and upload files
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
