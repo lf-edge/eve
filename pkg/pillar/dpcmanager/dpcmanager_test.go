@@ -3485,6 +3485,7 @@ func TestPNACDHCPReacquire(test *testing.T) {
 	aa := makeAA(selectedIntfs{eth0: true})
 	timePrio1 := time.Now()
 	dpc := makeDPC("zedagent", timePrio1, selectedIntfs{eth0: true})
+	dpc.Ports[0].PNAC = types.PNACConfig{Enabled: true}
 	dpcManager.UpdateAA(aa)
 	dpcManager.AddDPC(dpc)
 
@@ -3562,6 +3563,7 @@ func TestPNACDHCPReacquireMaxRetries(test *testing.T) {
 	// Apply DPC.
 	aa := makeAA(selectedIntfs{eth0: true})
 	dpc := makeDPC("zedagent", time.Now(), selectedIntfs{eth0: true})
+	dpc.Ports[0].PNAC = types.PNACConfig{Enabled: true}
 	dpcManager.UpdateAA(aa)
 	dpcManager.AddDPC(dpc)
 
@@ -3617,6 +3619,7 @@ func TestPNACDHCPReacquireDisabled(test *testing.T) {
 	// Apply DPC.
 	aa := makeAA(selectedIntfs{eth0: true})
 	dpc := makeDPC("zedagent", time.Now(), selectedIntfs{eth0: true})
+	dpc.Ports[0].PNAC = types.PNACConfig{Enabled: true}
 	dpcManager.UpdateAA(aa)
 	dpcManager.AddDPC(dpc)
 
@@ -3636,26 +3639,26 @@ func TestPNACDHCPReacquireDisabled(test *testing.T) {
 		Should(Equal(0))
 }
 
-// TestPNACDHCPReacquireCancelledByNewDPC verifies that active DHCP reacquire
-// trackers are cancelled when a new DPC is applied.
-func TestPNACDHCPReacquireCancelledByNewDPC(test *testing.T) {
+// TestPNACDHCPReacquireNoPNACInNewDPC verifies that if a DPC update removes
+// PNAC from a port while a DHCP reacquire timer is pending, the timer
+// self-cancels without incrementing the reacquire counter.
+func TestPNACDHCPReacquireNoPNACInNewDPC(test *testing.T) {
 	t := initTest(test)
 
 	// Prepare simulated network stack.
 	eth0 := mockEth0()
-	eth1 := mockEth1()
 	networkMonitor.AddOrUpdateInterface(eth0)
-	networkMonitor.AddOrUpdateInterface(eth1)
 
-	// Apply global config.
+	// Apply global config with PNAC DHCP reacquire enabled.
 	gcp := globalConfig()
 	gcp.SetGlobalValueInt(types.PnacDHCPReacquireMaxRetries, 5)
 	dpcManager.UpdateGCP(gcp)
 
-	// Apply DPC with only eth0.
-	aa := makeAA(selectedIntfs{eth0: true, eth1: true})
+	// Apply DPC with eth0 configured for PNAC + DHCP client.
+	aa := makeAA(selectedIntfs{eth0: true})
 	timePrio1 := time.Now()
 	dpc := makeDPC("zedagent", timePrio1, selectedIntfs{eth0: true})
+	dpc.Ports[0].PNAC = types.PNACConfig{Enabled: true}
 	dpcManager.UpdateAA(aa)
 	dpcManager.AddDPC(dpc)
 
@@ -3664,30 +3667,25 @@ func TestPNACDHCPReacquireCancelledByNewDPC(test *testing.T) {
 	t.Eventually(testingInProgressCb()).Should(BeFalse())
 	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
 
-	// Simulate PNAC event.
+	// Simulate PNAC authentication — schedules a DHCP reacquire timer (2s delay).
 	networkMonitor.PublishPNACEvent(netmonitor.PNACEvent{
 		IfName:          "eth0",
 		IsAuthenticated: true,
 	})
 
-	// Wait for first retry.
+	// Apply a new DPC where eth0 no longer has PNAC enabled. The pending
+	// reacquire tracker survives the DPC transition but self-cancels when
+	// the timer fires because the new port config does not have PNAC.
+	timePrio2 := time.Now()
+	dpc2 := makeDPC("zedagent", timePrio2, selectedIntfs{eth0: true})
+	// dpc2.Ports[0].PNAC.Enabled is false (zero value) — PNAC removed.
+	dpcManager.AddDPC(dpc2)
+
+	// The reacquire counter must remain 0. Wait long enough for the pending
+	// 2s timer (and any scheduler jitter) to have fired and self-cancelled.
 	// The reacquire goroutine fires after 2s (backoff: 2^1), but the periodic
 	// dpcTestTimer (NetworkTestInterval=2s) can fire concurrently and block the
-	// main select loop for another ~2s running testConnectivityToController.
-	// Allow 10s total to cover this worst-case blocking plus scheduler jitter.
-	t.Eventually(dhcpReacquireCounterCb("eth0"), 10*time.Second, 200*time.Millisecond).
-		Should(Equal(1))
-
-	// Apply a new DPC that adds eth1 — the config change should cancel
-	// the active reacquire tracker and trigger re-verification.
-	timePrio2 := time.Now()
-	dpc2 := makeDPC("zedagent", timePrio2, selectedIntfs{eth0: true, eth1: true})
-	dpcManager.AddDPC(dpc2)
-	t.Eventually(testingInProgressCb()).Should(BeTrue())
-	t.Eventually(testingInProgressCb()).Should(BeFalse())
-	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
-
-	// The reacquire counter should not increase further.
+	// main select loop for another ~2s. Allow 10s total.
 	t.Consistently(dhcpReacquireCounterCb("eth0"), 10*time.Second, 500*time.Millisecond).
-		Should(Equal(1))
+		Should(Equal(0))
 }

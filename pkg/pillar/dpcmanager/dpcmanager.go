@@ -615,19 +615,28 @@ func (m *DpcManager) cancelDHCPReacquireTracker(portLL string) {
 	}
 }
 
-// cancelAllDHCPReacquireTrackers cancels all active DHCP reacquire trackers.
-func (m *DpcManager) cancelAllDHCPReacquireTrackers() {
-	for portLL := range m.dhcpReacquireState {
-		m.cancelDHCPReacquireTracker(portLL)
-	}
-}
-
 // processDHCPReacquireSignal handles a DHCP reacquire timer firing for a port.
 // It increments the reacquire counter to trigger DHCP client restart via the reconciler.
 func (m *DpcManager) processDHCPReacquireSignal(ctx context.Context, portLL string) {
 	tracker, ok := m.dhcpReacquireState[portLL]
 	if !ok {
-		// Tracker was cancelled (e.g. new DPC arrived); ignore stale signal.
+		// Tracker was already cancelled (e.g. subnet change completed);
+		// ignore stale signal.
+		return
+	}
+	// If the current DPC no longer has PNAC+DHCP client for this port,
+	// the reacquire is no longer needed.
+	dpc, haveDPC := m.getCurrentDPC()
+	if !haveDPC {
+		m.cancelDHCPReacquireTracker(portLL)
+		return
+	}
+	portConfig := dpc.LookupPortByLogicallabel(portLL)
+	if portConfig == nil ||
+		!portConfig.PNAC.Enabled || portConfig.Dhcp != types.DhcpTypeClient {
+		m.Log.Noticef("PNAC: Canceling DHCP reacquire for port %q: "+
+			"no longer has PNAC+DHCP client configured", portLL)
+		m.cancelDHCPReacquireTracker(portLL)
 		return
 	}
 	tracker.retriesDone++

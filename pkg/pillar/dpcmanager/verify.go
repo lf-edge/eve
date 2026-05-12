@@ -67,11 +67,6 @@ func (m *DpcManager) restartVerify(ctx context.Context, reason string) {
 func (m *DpcManager) setupVerify(index int, reason string) {
 	m.Log.Noticef("DPC verify: Setting up verification for DPC at index %d, reason: %s",
 		index, reason)
-	// Cancel any active DHCP reacquire trackers if switching to a different DPC,
-	// because the previous subnet baseline is no longer valid.
-	if m.dpcList.CurrentIndex != index {
-		m.cancelAllDHCPReacquireTrackers()
-	}
 	m.dpcList.CurrentIndex = index
 	m.dpcVerify.inProgress = true
 	m.dpcVerify.startedAt = time.Now()
