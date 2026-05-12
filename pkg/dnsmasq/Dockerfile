@@ -5,7 +5,7 @@ FROM lfedge/eve-alpine:41f3648ded073c351d0dcd3432322f5816c9c7b1 AS build
 ENV BUILD_PKGS gcc make patch libc-dev linux-headers tar xz coreutils
 RUN eve-alpine-deploy.sh
 
-ENV DNSMASQ_VERSION 2.91
+ENV DNSMASQ_VERSION 2.92rel2
 
 RUN mkdir -p /dnsmasq/patches
 
