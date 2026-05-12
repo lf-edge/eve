@@ -34,6 +34,23 @@ func handleContentTreeStatusModify(ctxArg interface{}, key string,
 func handleContentTreeStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	handleContentTreeStatusImpl(ctxArg, key, statusArg)
+
+	// If the BaseOsConfig for a BaseOsStatus referencing this content
+	// tree has already been deleted, doBaseOsUninstall ran at
+	// BaseOsConfig-delete time but returned del=false because
+	// ContentTreeStatus was still present. Retry the uninstall now so
+	// the orphan BaseOsStatus is unpublished instead of lingering until
+	// the next reboot.
+	status := statusArg.(types.ContentTreeStatus)
+	ctx := ctxArg.(*baseOsMgrContext)
+	for _, el := range lookupBaseOsStatusesByContentID(ctx, status.ContentID.String()) {
+		if lookupBaseOsConfig(ctx, el.Key()) != nil {
+			continue
+		}
+		log.Functionf("handleContentTreeStatusDelete: retrying removeBaseOsStatus for %s",
+			el.Key())
+		removeBaseOsStatus(ctx, el.Key())
+	}
 }
 
 func handleContentTreeStatusImpl(ctxArg interface{}, key string,
