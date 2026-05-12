@@ -108,6 +108,7 @@ type SCEPClient struct {
 	subControllerCert      pubsub.Subscription
 	subEdgeNodeCert        pubsub.Subscription
 	subSCEPProfile         pubsub.Subscription
+	subZedAgentStatus      pubsub.Subscription
 	pubEnrolledCertStatus  pubsub.Publication
 
 	devUUID          uuid.UUID
@@ -331,6 +332,21 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject,
 	scepClient.subSCEPProfile = subSCEPProfile
 	subSCEPProfile.Activate()
 
+	// subscribe to zedagent status events
+	subZedAgentStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zedagent",
+		MyAgentName: agentName,
+		TopicImpl:   types.ZedAgentStatus{},
+		Activate:    false,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	scepClient.subZedAgentStatus = subZedAgentStatus
+	subZedAgentStatus.Activate()
+
 	// Ticker used to periodically:
 	//   - Detect enrolled certificates or private keys that have been lost
 	//     (e.g. due to a disk error or vault re-creation) and trigger re-enrollment.
@@ -366,6 +382,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject,
 
 		case change := <-subSCEPProfile.MsgChan():
 			subSCEPProfile.ProcessChange(change)
+
+		case change := <-subZedAgentStatus.MsgChan():
+			subZedAgentStatus.ProcessChange(change)
 
 		case <-scepClient.retryTicker.C:
 			scepClient.retryAndStartRenew()

@@ -52,24 +52,7 @@ func (c *SCEPClient) handleSCEPProfile(profile types.SCEPProfile, deleted bool) 
 	if deleted {
 		c.log.Noticef("Clearing EnrolledCertificateStatus for deleted SCEP profile %s",
 			profile.ProfileName)
-		if enrolledCert.CertFilepath != "" {
-			if err = os.Remove(enrolledCert.CertFilepath); err != nil {
-				c.log.Errorf(
-					"Failed to remove certificate file %q for deleted SCEP profile %q: %v",
-					enrolledCert.CertFilepath, profile.ProfileName, err)
-			}
-		}
-		if enrolledCert.PrivateKeyFilepath != "" {
-			if err = os.Remove(enrolledCert.PrivateKeyFilepath); err != nil {
-				c.log.Errorf(
-					"Failed to remove private key file %q for deleted SCEP profile %q: %v",
-					enrolledCert.PrivateKeyFilepath, profile.ProfileName, err)
-			}
-		}
-		if err = c.pubEnrolledCertStatus.Unpublish(profile.ProfileName); err != nil {
-			c.log.Errorf("Failed to un-publish EnrolledCertificateStatus for profile %s",
-				profile.ProfileName)
-		}
+		c.deleteEnrolledCert(profile.ProfileName, enrolledCert)
 		return
 	}
 
@@ -1513,6 +1496,8 @@ func (c *SCEPClient) retryAndStartRenew() {
 		enrolledCert.Error = types.ErrorDescription{}
 		c.publishEnrolledCertStatus(enrolledCert)
 	}
+
+	c.cleanupObsoleteEnrolledCerts()
 }
 
 // populateCertStatus copies certificate-derived fields from cert
@@ -1689,6 +1674,61 @@ func (c *SCEPClient) removeCACertBundle(enrolledCert *types.EnrolledCertificateS
 	if enrolledCert.CACertBundleFilepath != "" {
 		_ = os.Remove(enrolledCert.CACertBundleFilepath)
 		enrolledCert.CACertBundleFilepath = ""
+	}
+}
+
+// deleteEnrolledCert removes the cert, private key, and CA bundle files associated
+// with an EnrolledCertificateStatus and unpublishes the status.
+func (c *SCEPClient) deleteEnrolledCert(profileName string,
+	enrolledCert types.EnrolledCertificateStatus) {
+	if enrolledCert.CertFilepath != "" {
+		if err := os.Remove(enrolledCert.CertFilepath); err != nil {
+			c.log.Errorf(
+				"Failed to remove certificate file %q for deleted SCEP profile %q: %v",
+				enrolledCert.CertFilepath, profileName, err)
+		}
+	}
+	if enrolledCert.PrivateKeyFilepath != "" {
+		if err := os.Remove(enrolledCert.PrivateKeyFilepath); err != nil {
+			c.log.Errorf(
+				"Failed to remove private key file %q for deleted SCEP profile %q: %v",
+				enrolledCert.PrivateKeyFilepath, profileName, err)
+		}
+	}
+	c.removeCACertBundle(&enrolledCert)
+	if err := c.pubEnrolledCertStatus.Unpublish(profileName); err != nil {
+		c.log.Errorf("Failed to un-publish EnrolledCertificateStatus for profile %s",
+			profileName)
+	}
+}
+
+// cleanupObsoleteEnrolledCerts removes EnrolledCertificateStatus entries (and their
+// associated files) for SCEP profiles that zedagent no longer publishes. This covers
+// the case where a profile is deleted while the device is powered off: on next boot
+// scepclient receives no "delete" pubsub notification and must detect the orphan itself.
+//
+// The cleanup is skipped until zedagent reports ConfigGetSuccess or ConfigGetReadSaved,
+// to avoid removing certs before zedagent has had a chance to publish all current profiles.
+func (c *SCEPClient) cleanupObsoleteEnrolledCerts() {
+	zedAgentStatusObj, err := c.subZedAgentStatus.Get("zedagent")
+	if err != nil || zedAgentStatusObj == nil {
+		return
+	}
+	zedAgentStatus := zedAgentStatusObj.(types.ZedAgentStatus)
+	if zedAgentStatus.ConfigGetStatus != types.ConfigGetSuccess &&
+		zedAgentStatus.ConfigGetStatus != types.ConfigGetReadSaved {
+		return
+	}
+
+	for _, certStatusObj := range c.pubEnrolledCertStatus.GetAll() {
+		certStatus := certStatusObj.(types.EnrolledCertificateStatus)
+		profileName := certStatus.CertEnrollmentProfileName
+		if _, err := c.subSCEPProfile.Get(profileName); err == nil {
+			continue
+		}
+		c.log.Noticef("Removing EnrolledCertificateStatus for obsolete SCEP profile %s",
+			profileName)
+		c.deleteEnrolledCert(profileName, certStatus)
 	}
 }
 
