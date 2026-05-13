@@ -806,13 +806,6 @@ func compareControllerCertBytes(newCertChainBytes, prevCertChainBytes []byte) bo
 
 func doGetUUID(ctx *clientContext, tlsConfig *tls.Config,
 	retryCount int) (bool, uuid.UUID, string) {
-	//First try the new /uuid api, if fails, fall back to /config API
-	done, devUUID, hardwaremodel := doGetUUIDNew(ctx, tlsConfig, retryCount)
-	return done, devUUID, hardwaremodel
-}
-
-func doGetUUIDNew(ctx *clientContext, tlsConfig *tls.Config,
-	retryCount int) (bool, uuid.UUID, string) {
 	ctrlClient := ctx.ctrlClient
 
 	// get UUID does not have UUID string
