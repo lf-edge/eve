@@ -27,9 +27,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
-	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
@@ -40,12 +38,12 @@ const (
 	maxDelay    = time.Second * 600 // 10 minutes
 	uuidMaxWait = time.Second * 60  // 1 minute
 	// Time limits for event loop handlers
-	errorTime             = 3 * time.Minute
-	warningTime           = 40 * time.Second
-	bailOnHTTPErr         = false // For 4xx and 5xx HTTP errors we try other interfaces
-	withNetTrace          = false
-	uuidFileName          = types.PersistStatusDir + "/uuid"
-	hardwaremodelFileName = types.PersistStatusDir + "/hardwaremodel"
+	errorTime                    = 3 * time.Minute
+	warningTime                  = 40 * time.Second
+	bailOnHTTPErr                = false // For 4xx and 5xx HTTP errors we try other interfaces
+	withNetTrace                 = false
+	defaultUUIDFileName          = types.PersistStatusDir + "/uuid"
+	defaultHardwaremodelFileName = types.PersistStatusDir + "/hardwaremodel"
 )
 
 // Really a constant
@@ -68,23 +66,36 @@ type clientContext struct {
 	subGlobalConfig        pubsub.Subscription
 	globalConfig           *types.ConfigItemValueMap
 	getCertsTimer          *time.Timer
-	ctrlClient             *controllerconn.Client
 	agentMetrics           *controllerconn.AgentMetrics
+
+	// Seams. Production code wires real impls; tests inject fakes.
+	sender         controllerSender
+	certStore      certStore
+	led            ledNotifier
+	hostnameSetter hostnameSetter
+
+	// Runtime state previously held in package globals.
+	serverNameAndPort     string
+	onboardTLSConfig      *tls.Config
+	devtlsConfig          *tls.Config
+	uuidFileName          string
+	hardwaremodelFileName string
+
 	// cli options
 	operations    map[string]bool
 	maxRetriesPtr *int
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
-func (ctxPtr *clientContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
-	ctxPtr.maxRetriesPtr = flagSet.Int("r", 0, "Max retries")
+func (ctx *clientContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
+	ctx.maxRetriesPtr = flagSet.Int("r", 0, "Max retries")
 }
 
 // ProcessAgentSpecificCLIFlags process received CLI options
-func (ctxPtr *clientContext) ProcessAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
+func (ctx *clientContext) ProcessAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
 	for _, op := range flagSet.Args() {
-		if _, ok := ctxPtr.operations[op]; ok {
-			ctxPtr.operations[op] = true
+		if _, ok := ctx.operations[op]; ok {
+			ctx.operations[op] = true
 		} else {
 			log.Errorf("Unknown arg %s", op)
 			log.Fatal("Usage: " + agentName +
@@ -94,11 +105,8 @@ func (ctxPtr *clientContext) ProcessAgentSpecificCLIFlags(flagSet *flag.FlagSet)
 }
 
 var (
-	serverNameAndPort string
-	onboardTLSConfig  *tls.Config
-	devtlsConfig      *tls.Config
-	logger            *logrus.Logger
-	log               *base.LogObject
+	logger *logrus.Logger
+	log    *base.LogObject
 )
 
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int { //nolint:gocyclo
@@ -106,9 +114,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	log = logArg
 
 	clientCtx := clientContext{
-		deviceNetworkStatus: &types.DeviceNetworkStatus{},
-		globalConfig:        types.DefaultConfigItemValueMap(),
-		agentMetrics:        controllerconn.NewAgentMetrics(),
+		deviceNetworkStatus:   &types.DeviceNetworkStatus{},
+		globalConfig:          types.DefaultConfigItemValueMap(),
+		agentMetrics:          controllerconn.NewAgentMetrics(),
+		certStore:             &realCertStore{log: log},
+		led:                   &realLedNotifier{log: log},
+		hostnameSetter:        &realHostnameSetter{log: log},
+		uuidFileName:          defaultUUIDFileName,
+		hardwaremodelFileName: defaultHardwaremodelFileName,
 		operations: map[string]bool{
 			"selfRegister": false,
 			"getUuid":      false,
@@ -194,8 +207,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		DevSoftSerial:       hardware.GetSoftSerial(log),
 		AgentName:           agentName,
 	})
-
-	clientCtx.ctrlClient = ctrlClient
+	clientCtx.sender = newRealControllerSender(ctrlClient)
 	log.Functionf("Client Get Device Serial %s, Soft Serial %s", ctrlClient.DevSerial,
 		ctrlClient.DevSoftSerial)
 
@@ -215,7 +227,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	if err != nil {
 		log.Fatal(err)
 	}
-	serverNameAndPort = strings.TrimSpace(string(server))
+	clientCtx.serverNameAndPort = strings.TrimSpace(string(server))
 
 	var onboardCert tls.Certificate
 	var deviceCertPem []byte
@@ -228,7 +240,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		if err != nil {
 			log.Fatal(err)
 		}
-		onboardTLSConfig, err = ctrlClient.GetTLSConfig(&onboardCert)
+		clientCtx.onboardTLSConfig, err = clientCtx.sender.GetTLSConfig(&onboardCert)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -244,7 +256,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	if err != nil {
 		log.Fatal(err)
 	}
-	devtlsConfig, err = ctrlClient.GetTLSConfig(&deviceCert)
+	clientCtx.devtlsConfig, err = clientCtx.sender.GetTLSConfig(&deviceCert)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -278,32 +290,32 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		// try to fetch the server certs chain first
 		if !gotServerCerts {
 			// Set force so we re-download certs on each boot
-			gotServerCerts = fetchCertChain(ctrlClient, devtlsConfig, retryCount)
+			gotServerCerts = clientCtx.fetchCertChain(clientCtx.devtlsConfig, retryCount)
 			if !gotServerCerts {
 				log.Errorf("Failed to fetch certs from %s. Wrong URL?",
-					serverNameAndPort)
-				if !ctrlClient.NoLedManager {
-					utils.UpdateLedManagerConfig(log, types.LedBlinkInvalidControllerCert)
+					clientCtx.serverNameAndPort)
+				if !clientCtx.sender.LedManagerDisabled() {
+					clientCtx.led.Update(types.LedBlinkInvalidControllerCert)
 				}
 				return 0 // Try again later
 			}
 			log.Noticef("Fetched certs from %s",
-				serverNameAndPort)
+				clientCtx.serverNameAndPort)
 		}
 
 		if !gotRegister && clientCtx.operations["selfRegister"] {
-			done = selfRegister(ctrlClient, onboardTLSConfig, deviceCertPem, retryCount)
+			done = clientCtx.selfRegister(clientCtx.onboardTLSConfig, deviceCertPem, retryCount)
 			if done {
 				gotRegister = true
 				log.Noticef("Registered at %s",
-					serverNameAndPort)
+					clientCtx.serverNameAndPort)
 			} else {
 				log.Errorf("Failed to register at %s. Wrong URL? Not activated?",
-					serverNameAndPort)
+					clientCtx.serverNameAndPort)
 			}
 			if !done && clientCtx.operations["getUuid"] {
 				// Check if getUUid succeeds
-				done, devUUID, hardwaremodel = doGetUUID(&clientCtx, devtlsConfig, retryCount)
+				done, devUUID, hardwaremodel = clientCtx.doGetUUID(clientCtx.devtlsConfig, retryCount)
 				if done {
 					log.Noticef("getUUID succeeded; selfRegister no longer needed")
 					gotUUID = true
@@ -311,13 +323,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			}
 		}
 		if !gotUUID && clientCtx.operations["getUuid"] {
-			done, devUUID, hardwaremodel = doGetUUID(&clientCtx, devtlsConfig, retryCount)
+			done, devUUID, hardwaremodel = clientCtx.doGetUUID(clientCtx.devtlsConfig, retryCount)
 			if done {
 				log.Noticef("getUUID succeeded; selfRegister no longer needed")
 				gotUUID = true
 			} else {
 				log.Errorf("Failed to getUUID at %s. Wrong URL? Not activated?",
-					serverNameAndPort)
+					clientCtx.serverNameAndPort)
 			}
 		}
 		retryCount++
@@ -352,11 +364,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 				log.Warnf("/config/server changed from %s to %s",
 					server, nserver)
 				server = nserver
-				serverNameAndPort = strings.TrimSpace(string(server))
+				clientCtx.serverNameAndPort = strings.TrimSpace(string(server))
 				// Force a refresh
-				ok := fetchCertChain(ctrlClient, devtlsConfig, retryCount)
-				if !ok && !ctrlClient.NoLedManager {
-					utils.UpdateLedManagerConfig(log, types.LedBlinkInvalidControllerCert)
+				ok := clientCtx.fetchCertChain(clientCtx.devtlsConfig, retryCount)
+				if !ok && !clientCtx.sender.LedManagerDisabled() {
+					clientCtx.led.Update(types.LedBlinkInvalidControllerCert)
 				}
 				log.Noticef("get cert chain result %t", ok)
 			}
@@ -381,7 +393,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			// which did not have and use that checkpoint.
 			if clientCtx.networkState != types.DPCStateSuccess &&
 				clientCtx.operations["getUuid"] && oldUUID != nilUUID &&
-				haveControllerCertsCheckpoint() {
+				clientCtx.haveControllerCertsCheckpoint() {
 
 				log.Noticef("Already have a UUID %s; declaring success",
 					oldUUID.String())
@@ -391,9 +403,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case <-clientCtx.getCertsTimer.C:
 			// triggered by cert miss error in doGetUUID, so the TLS is device TLSConfig
-			ok := fetchCertChain(ctrlClient, devtlsConfig, retryCount)
-			if !ok && !ctrlClient.NoLedManager {
-				utils.UpdateLedManagerConfig(log, types.LedBlinkInvalidControllerCert)
+			ok := clientCtx.fetchCertChain(clientCtx.devtlsConfig, retryCount)
+			if !ok && !clientCtx.sender.LedManagerDisabled() {
+				clientCtx.led.Update(types.LedBlinkInvalidControllerCert)
 			}
 			log.Noticef("client timer get cert chain result %t", ok)
 
@@ -401,74 +413,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
-	// Post loop code
-	if devUUID != nilUUID {
-		var trigOnboardStatus types.OnboardingStatus
-		doWrite := true
-		if oldUUID != nilUUID {
-			if oldUUID != devUUID {
-				log.Functionf("Replacing existing UUID %s",
-					oldUUID.String())
-			} else {
-				log.Functionf("No change to UUID %s",
-					devUUID)
-				doWrite = false
-			}
-		} else {
-			log.Functionf("Got config with UUID %s", devUUID)
-		}
-		// Set the kernel hostname
-		cmd := "/bin/hostname"
-		cmdArgs := []string{devUUID.String()}
-		log.Noticef("Calling command %s %v", cmd, cmdArgs)
-		out, err := base.Exec(log, cmd, cmdArgs...).CombinedOutput()
-		if err != nil {
-			log.Errorf("hostname command %s failed %s output %s",
-				cmdArgs, err, out)
-		} else {
-			log.Noticef("Set hostname to %s", devUUID.String())
-		}
-		_, err = os.Stat(uuidFileName)
-		if err != nil {
-			doWrite = true
-		}
-		if doWrite {
-			b := []byte(fmt.Sprintf("%s\n", devUUID))
-			err = os.WriteFile(uuidFileName, b, 0644)
-			if err != nil {
-				log.Errorf("WriteFile %s failed: %v",
-					uuidFileName, err)
-			} else {
-				log.Noticef("Wrote UUID file %s", devUUID)
-			}
-		}
-		if hardwaremodel == "" {
-			hardwaremodel = oldHardwaremodel
-		}
-		if hardwaremodel == "" {
-			// Nothing from controller; use dmidecode etc
-			hardwaremodel = hardware.GetHardwareModelNoOverride(log)
-		}
-		// always publish the latest UUID and hardwaremode
-		trigOnboardStatus.DeviceUUID = devUUID
-		trigOnboardStatus.HardwareModel = hardwaremodel
 
-		pubOnboardStatus.Publish("global", trigOnboardStatus)
-		log.Functionf("client pub OnboardStatus")
-
-		if hardwaremodel != oldHardwaremodel {
-			// Write/update file for ledmanager
-			// Note that no CRLF
-			b := []byte(hardwaremodel)
-			err = os.WriteFile(hardwaremodelFileName, b, 0644)
-			if err != nil {
-				log.Errorf("WriteFile %s failed: %v",
-					hardwaremodelFileName, err)
-			} else {
-				log.Noticef("Wrote hardwaremodel %s", hardwaremodel)
-			}
-		}
-	}
+	clientCtx.finalizeOnboarding(devUUID, oldUUID, hardwaremodel, oldHardwaremodel, pubOnboardStatus)
 
 	err = clientCtx.agentMetrics.Publish(log, pub, "global")
 	if err != nil {
@@ -478,16 +424,86 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	return 0
 }
 
-// Post something without a return type.
+// finalizeOnboarding handles the post-loop side effects when Run() has
+// resolved a device UUID: setting the kernel hostname, writing the uuid and
+// hardwaremodel files, and publishing the OnboardingStatus. Returns immediately
+// when devUUID is the nil UUID (i.e. Run() exited without resolving one).
+func (ctx *clientContext) finalizeOnboarding(devUUID, oldUUID uuid.UUID,
+	hardwaremodel, oldHardwaremodel string, pubOnboardStatus pubsub.Publication) {
+	if devUUID == nilUUID {
+		return
+	}
+	var trigOnboardStatus types.OnboardingStatus
+	doWrite := true
+	if oldUUID != nilUUID {
+		if oldUUID != devUUID {
+			log.Functionf("Replacing existing UUID %s",
+				oldUUID.String())
+		} else {
+			log.Functionf("No change to UUID %s",
+				devUUID)
+			doWrite = false
+		}
+	} else {
+		log.Functionf("Got config with UUID %s", devUUID)
+	}
+	// Set the kernel hostname
+	log.Noticef("Setting hostname to %s", devUUID.String())
+	if err := ctx.hostnameSetter.Set(devUUID.String()); err == nil {
+		log.Noticef("Set hostname to %s", devUUID.String())
+	}
+	if _, err := os.Stat(ctx.uuidFileName); err != nil {
+		doWrite = true
+	}
+	if doWrite {
+		b := []byte(fmt.Sprintf("%s\n", devUUID))
+		if err := os.WriteFile(ctx.uuidFileName, b, 0644); err != nil {
+			log.Errorf("WriteFile %s failed: %v",
+				ctx.uuidFileName, err)
+		} else {
+			log.Noticef("Wrote UUID file %s", devUUID)
+		}
+	}
+	if hardwaremodel == "" {
+		hardwaremodel = oldHardwaremodel
+	}
+	if hardwaremodel == "" {
+		// Nothing from controller; use dmidecode etc
+		hardwaremodel = hardware.GetHardwareModelNoOverride(log)
+	}
+	// always publish the latest UUID and hardwaremode
+	trigOnboardStatus.DeviceUUID = devUUID
+	trigOnboardStatus.HardwareModel = hardwaremodel
+
+	pubOnboardStatus.Publish("global", trigOnboardStatus)
+	log.Functionf("client pub OnboardStatus")
+
+	if hardwaremodel != oldHardwaremodel {
+		// Write/update file for ledmanager
+		// Note that no CRLF
+		b := []byte(hardwaremodel)
+		if err := os.WriteFile(ctx.hardwaremodelFileName, b, 0644); err != nil {
+			log.Errorf("WriteFile %s failed: %v",
+				ctx.hardwaremodelFileName, err)
+		} else {
+			log.Noticef("Wrote hardwaremodel %s", hardwaremodel)
+		}
+	}
+}
+
+// myPost posts a request to the controller and classifies the response
+// into a done/retry decision while emitting LED status updates via led.
+// led lets callers suppress LED updates for "internal" requests
+// (e.g. the cert prefetch in fetchCertChain) by passing a nullLedNotifier.
 // Returns true when done; false when retry.
-func myPost(ctrlClient *controllerconn.Client, tlsConfig *tls.Config,
+func (ctx *clientContext) myPost(led ledNotifier, tlsConfig *tls.Config,
 	requrl string, skipVerify bool, retryCount int,
 	b *bytes.Buffer) (done bool, rv controllerconn.SendRetval) {
 
-	ctrlClient.TLSConfig = tlsConfig
-	ctx, cancel := ctrlClient.GetContextForAllIntfFunctions()
+	ctx.sender.SetTLSConfig(tlsConfig)
+	sendCtx, cancel := ctx.sender.GetContextForAllIntfFunctions()
 	defer cancel()
-	rv, err := ctrlClient.SendOnAllIntf(ctx, requrl, b, controllerconn.RequestOptions{
+	rv, err := ctx.sender.SendOnAllIntf(sendCtx, requrl, b, controllerconn.RequestOptions{
 		WithNetTracing: withNetTrace,
 		NetTraceFolder: types.NetTraceFolder,
 		BailOnHTTPErr:  bailOnHTTPErr,
@@ -504,11 +520,7 @@ func myPost(ctrlClient *controllerconn.Client, tlsConfig *tls.Config,
 		case types.SenderStatusCertMiss:
 			log.Functionf("Controller certificate miss")
 		case types.SenderStatusNotFound:
-			if !ctrlClient.NoLedManager {
-				// Inform ledmanager about controller connectivity
-				utils.UpdateLedManagerConfig(log,
-					types.LedBlinkConnectedToController)
-			}
+			led.Update(types.LedBlinkConnectedToController)
 		default:
 			log.Error(err)
 		}
@@ -517,40 +529,23 @@ func myPost(ctrlClient *controllerconn.Client, tlsConfig *tls.Config,
 
 	switch rv.HTTPResp.StatusCode {
 	case http.StatusOK:
-		if !ctrlClient.NoLedManager {
-			// Inform ledmanager about existence in cloud
-			utils.UpdateLedManagerConfig(log, types.LedBlinkOnboarded)
-		}
+		led.Update(types.LedBlinkOnboarded)
 		log.Functionf("%s StatusOK", requrl)
 	case http.StatusCreated:
-		if !ctrlClient.NoLedManager {
-			// Inform ledmanager about existence in cloud
-			utils.UpdateLedManagerConfig(log, types.LedBlinkOnboarded)
-		}
+		led.Update(types.LedBlinkOnboarded)
 		log.Functionf("%s StatusCreated", requrl)
 	case http.StatusConflict:
-		if !ctrlClient.NoLedManager {
-			// Inform ledmanager about brokenness
-			utils.UpdateLedManagerConfig(log, types.LedBlinkOnboardingFailure)
-		}
+		led.Update(types.LedBlinkOnboardingFailure)
 		log.Errorf("%s StatusConflict", requrl)
 		// Retry until fixed
 		log.Errorf("%s", string(rv.RespContents))
 		return false, rv
 	case http.StatusNotFound, http.StatusUnauthorized, http.StatusNotModified:
 		// Caller needs to handle
-		if !ctrlClient.NoLedManager {
-			// Inform ledmanager about controller connectivity
-			utils.UpdateLedManagerConfig(log,
-				types.LedBlinkConnectedToController)
-		}
+		led.Update(types.LedBlinkConnectedToController)
 		return false, rv
 	default:
-		if !ctrlClient.NoLedManager {
-			// Inform ledmanager about controller connectivity
-			utils.UpdateLedManagerConfig(log,
-				types.LedBlinkConnectedToController)
-		}
+		led.Update(types.LedBlinkConnectedToController)
 		log.Errorf("%s statuscode %d %s",
 			requrl, rv.Status,
 			http.StatusText(rv.HTTPResp.StatusCode))
@@ -578,12 +573,9 @@ func myPost(ctrlClient *controllerconn.Client, tlsConfig *tls.Config,
 	if len(rv.RespContents) == 0 {
 		return true, rv
 	}
-	err = ctrlClient.RemoveAndVerifyAuthContainer(&rv, skipVerify)
+	err = ctx.sender.RemoveAndVerifyAuthContainer(&rv, skipVerify)
 	if err != nil {
-		if !ctrlClient.NoLedManager {
-			utils.UpdateLedManagerConfig(log,
-				types.LedBlinkInvalidAuthContainer)
-		}
+		led.Update(types.LedBlinkInvalidAuthContainer)
 		log.Errorf("RemoveAndVerifyAuthContainer failed: %s",
 			err)
 		return false, rv
@@ -591,8 +583,19 @@ func myPost(ctrlClient *controllerconn.Client, tlsConfig *tls.Config,
 	return true, rv
 }
 
-// Returns true when done; false when retry
-func selfRegister(ctrlClient *controllerconn.Client, tlsConfig *tls.Config, deviceCertPem []byte, retryCount int) bool {
+// activeLed returns the ledNotifier to use for caller-visible LED
+// transitions: the configured notifier when the sender has LED updates
+// enabled, otherwise a no-op.
+func (ctx *clientContext) activeLed() ledNotifier {
+	if ctx.sender.LedManagerDisabled() {
+		return nullLedNotifier{}
+	}
+	return ctx.led
+}
+
+// selfRegister sends a registration request and classifies the result.
+// Returns true when done; false when retry.
+func (ctx *clientContext) selfRegister(tlsConfig *tls.Config, deviceCertPem []byte, retryCount int) bool {
 	// XXX add option to get this from a file in /config + override
 	// logic
 	productSerial := hardware.GetProductSerial(log)
@@ -613,12 +616,11 @@ func selfRegister(ctrlClient *controllerconn.Client, tlsConfig *tls.Config, devi
 	}
 	// register URL does not include UUID string
 	requrl := controllerconn.URLPathString(
-		serverNameAndPort, nilUUID, "register")
-	done, rv := myPost(ctrlClient, tlsConfig, requrl, false, retryCount,
+		ctx.serverNameAndPort, nilUUID, "register")
+	done, rv := ctx.myPost(ctx.activeLed(), tlsConfig, requrl, false, retryCount,
 		bytes.NewBuffer(b))
 	if rv.HTTPResp != nil {
-		// Inform ledmanager about brokenness
-		if !ctrlClient.NoLedManager {
+		if !ctx.sender.LedManagerDisabled() {
 			// XXX zedcloud is not respecting the eve-api, fix this when zedcloud is updated.
 			// for now it returns:
 			// StatusBadRequest - if failed parse AuthContainer, verify signature or failed to unmarshal message.
@@ -630,11 +632,11 @@ func selfRegister(ctrlClient *controllerconn.Client, tlsConfig *tls.Config, devi
 			// https://github.com/lf-edge/eve-api/blob/main/APIv2.md#register
 			switch rv.HTTPResp.StatusCode {
 			case http.StatusBadRequest, http.StatusGatewayTimeout, http.StatusInternalServerError:
-				utils.UpdateLedManagerConfig(log, types.LedBlinkOnboardingFailure)
+				ctx.led.Update(types.LedBlinkOnboardingFailure)
 			case http.StatusForbidden:
-				utils.UpdateLedManagerConfig(log, types.LedBlinkOnboardingFailureNotFound)
+				ctx.led.Update(types.LedBlinkOnboardingFailureNotFound)
 			case http.StatusConflict, http.StatusNotModified:
-				utils.UpdateLedManagerConfig(log, types.LedBlinkOnboardingFailureConflict)
+				ctx.led.Update(types.LedBlinkOnboardingFailureConflict)
 			}
 		}
 		// Retry until fixed
@@ -647,19 +649,18 @@ func selfRegister(ctrlClient *controllerconn.Client, tlsConfig *tls.Config, devi
 	return done
 }
 
-// fetch V2 certs from cloud, return GotCloudCerts and ServerIsV1 boolean
-// if got certs, the chain is verified and then saved to /persist/checkpoint/controllercerts
-func fetchCertChain(ctrlClient *controllerconn.Client, tlsConfig *tls.Config, retryCount int) bool {
-	// certs API is and without UUID, use https
-	requrl := controllerconn.URLPathString(serverNameAndPort, nilUUID, "certs")
-	// Save and restore since we don't want the fetch of /certs to
-	// appear as if the device is onboarded.
-	savedNoLedManager := ctrlClient.NoLedManager
-	ctrlClient.NoLedManager = true
+// fetchCertChain pulls the V2 cert chain from the controller, verifies it,
+// and saves a checkpoint when the set of cert hashes differs from any
+// existing checkpoint. LED updates from the underlying request are
+// suppressed so the prefetch is not visible as "device just came online".
+// Returns true on success.
+func (ctx *clientContext) fetchCertChain(tlsConfig *tls.Config, retryCount int) bool {
+	requrl := controllerconn.URLPathString(ctx.serverNameAndPort, nilUUID, "certs")
+	savedNoLedManager := ctx.sender.LedManagerDisabled()
+	ctx.sender.SetLedManagerDisabled(true)
 
-	// currently there is no data included for the request, same as myGet()
-	done, rv := myPost(ctrlClient, tlsConfig, requrl, true, retryCount, nil)
-	ctrlClient.NoLedManager = savedNoLedManager
+	done, rv := ctx.myPost(nullLedNotifier{}, tlsConfig, requrl, true, retryCount, nil)
+	ctx.sender.SetLedManagerDisabled(savedNoLedManager)
 	if rv.HTTPResp != nil {
 		log.Functionf("client fetchCertChain done %v, resp-code %d, content len %d",
 			done, rv.HTTPResp.StatusCode, len(rv.RespContents))
@@ -669,12 +670,12 @@ func fetchCertChain(ctrlClient *controllerconn.Client, tlsConfig *tls.Config, re
 			rv.HTTPResp.StatusCode == http.StatusBadRequest {
 			// cloud server does not support V2 API
 			log.Functionf("client fetchCertChain: server %s does not support V2 API",
-				serverNameAndPort)
+				ctx.serverNameAndPort)
 			return false
 		}
 		// catch default return status, if not done, will return false later
 		log.Functionf("client fetchCertChain: server %s return status %s, done %v",
-			serverNameAndPort, rv.HTTPResp.Status, done)
+			ctx.serverNameAndPort, rv.HTTPResp.Status, done)
 	} else {
 		log.Functionf("client fetchCertChain done %v, resp null, content len %d",
 			done, len(rv.RespContents))
@@ -683,32 +684,30 @@ func fetchCertChain(ctrlClient *controllerconn.Client, tlsConfig *tls.Config, re
 		return false
 	}
 
-	ctrlClient.TLSConfig = tlsConfig
+	ctx.sender.SetTLSConfig(tlsConfig)
 	// verify the certificate chains down to the signing and ECDH leaves
-	signerCertBytes, err := ctrlClient.VerifyProtoSigningCertChain(rv.RespContents)
+	signerCertBytes, err := ctx.sender.VerifyProtoSigningCertChain(rv.RespContents)
 	if err != nil {
 		errStr := fmt.Sprintf("controller certificate signature verify fail, %v", err)
 		log.Errorln("fetchCertChain: " + errStr)
 		return false
 	}
 	// Save signer cert in the client object
-	err = ctrlClient.StoreServerSigningCert(signerCertBytes)
+	err = ctx.sender.StoreServerSigningCert(signerCertBytes)
 	if err != nil {
 		errStr := fmt.Sprintf("StoreServerSigningCert fail: %v", err)
 		log.Errorln("fetchCertChain: " + errStr)
 		return false // Try again to fetch and save
 	}
-	// Compare against the existing /persist/checkpoint/controllercerts
-	// to see if any certs were added or deleted. If so we write a new
-	// checkpoint. Since zedagent has not yet published ControllerCerts
-	// we compare against the checkpoint
-	// Note that it is not sufficient to compare the protobuf bytes
-	// since the controller might generate this from a golang map (with
-	// random order) thus we extract and compare they keys for
-	// the ControllerCert objects, which are the hashes of the certs.
+	// Compare against the existing checkpoint to see if any certs were
+	// added or deleted. If so we write a new checkpoint. Since zedagent
+	// has not yet published ControllerCerts we compare against the
+	// checkpoint. Note that it is not sufficient to compare the protobuf
+	// bytes since the controller might generate this from a golang map
+	// (with random order), so we extract and compare the CertHash keys.
 	changed := false
 	newCertChainBytes := rv.RespContents
-	prevCertChainBytes, _, _ := persist.ReadControllerCerts(log, false)
+	prevCertChainBytes, _ := ctx.certStore.Read(false)
 	if prevCertChainBytes == nil {
 		changed = true // Need to checkpoint
 	} else {
@@ -716,21 +715,19 @@ func fetchCertChain(ctrlClient *controllerconn.Client, tlsConfig *tls.Config, re
 			prevCertChainBytes)
 	}
 	if changed {
-		// This differs from last set of certs - save into /persist/checkpoint
-		persist.MaybeSaveControllerCerts(log, newCertChainBytes)
+		ctx.certStore.MaybeSave(newCertChainBytes)
 	}
 	log.Functionf("client fetchCertChain: ok")
 	return true
 }
 
-// Return true if we have a checkpoint file or a backup checkpoint file.
-func haveControllerCertsCheckpoint() bool {
-	certChainBytes, _, _ := persist.ReadControllerCerts(log, false)
-	if certChainBytes != nil {
+// haveControllerCertsCheckpoint reports whether either the primary or
+// backup controller-certs checkpoint exists on disk.
+func (ctx *clientContext) haveControllerCertsCheckpoint() bool {
+	if b, _ := ctx.certStore.Read(false); b != nil {
 		return true
 	}
-	certChainBytes, _, _ = persist.ReadControllerCerts(log, true)
-	if certChainBytes != nil {
+	if b, _ := ctx.certStore.Read(true); b != nil {
 		return true
 	}
 	return false
@@ -769,23 +766,23 @@ func compareControllerCertBytes(newCertChainBytes, prevCertChainBytes []byte) bo
 	return false
 }
 
-func doGetUUID(ctx *clientContext, tlsConfig *tls.Config,
+// doGetUUID asks the controller for the device UUID and, on success,
+// extracts the UUID and the controller-provided hardwaremodel override
+// (if any). Returns done=true on a parsed reply; on cert-miss errors
+// schedules a cert refetch on getCertsTimer.
+func (ctx *clientContext) doGetUUID(tlsConfig *tls.Config,
 	retryCount int) (bool, uuid.UUID, string) {
-	ctrlClient := ctx.ctrlClient
-
-	// get UUID does not have UUID string
 	requrl := controllerconn.URLPathString(
-		serverNameAndPort, nilUUID, "uuid")
+		ctx.serverNameAndPort, nilUUID, "uuid")
 	b, err := generateUUIDRequest()
 	if err != nil {
 		log.Errorln(err)
 		return false, nilUUID, ""
 	}
-	done, rv := myPost(ctrlClient, tlsConfig, requrl, false, retryCount,
+	done, rv := ctx.myPost(ctx.activeLed(), tlsConfig, requrl, false, retryCount,
 		bytes.NewBuffer(b))
 	if !done {
-		// This may be due to the cloud cert file is stale, since the hash does not match.
-		// acquire new cert chain.
+		// May be a stale cloud cert. Schedule a refetch.
 		if rv.Status == types.SenderStatusCertMiss {
 			ctx.getCertsTimer = time.NewTimer(time.Second)
 			log.Functionf("doGetUUID: Cert miss. Setup timer to acquire")
@@ -795,9 +792,8 @@ func doGetUUID(ctx *clientContext, tlsConfig *tls.Config,
 	log.Functionf("doGetUUID: client getUUID ok")
 	devUUID, hardwaremodel, err := parseUUIDResponse(rv.HTTPResp, rv.RespContents)
 	if err == nil {
-		// Inform ledmanager about config received from cloud
-		if !ctrlClient.NoLedManager {
-			utils.UpdateLedManagerConfig(log, types.LedBlinkOnboarded)
+		if !ctx.sender.LedManagerDisabled() {
+			ctx.led.Update(types.LedBlinkOnboarded)
 		}
 		// If successfully connected to the controller, log the peer certificates,
 		// can be used to detect if it's a MiTM proxy
@@ -900,17 +896,18 @@ func handleDNSImpl(ctxArg interface{}, key string,
 	}
 
 	// update proxy certs if configured
-	ctx.ctrlClient.DeviceNetworkStatus = &status
+	ctx.sender.SetDeviceNetworkStatus(&status)
 
 	// if there is proxy certs change, needs to update both
 	// onboard and device tlsconfig
-	ctx.ctrlClient.TLSConfig = devtlsConfig
-	updated := ctx.ctrlClient.UpdateTLSProxyCerts()
+	ctx.sender.SetTLSConfig(ctx.devtlsConfig)
+	updated := ctx.sender.UpdateTLSProxyCerts()
 	if updated {
-		if onboardTLSConfig != nil {
-			onboardTLSConfig.RootCAs = ctx.ctrlClient.TLSConfig.RootCAs
+		rootCAs := ctx.sender.TLSConfig().RootCAs
+		if ctx.onboardTLSConfig != nil {
+			ctx.onboardTLSConfig.RootCAs = rootCAs
 		}
-		devtlsConfig.RootCAs = ctx.ctrlClient.TLSConfig.RootCAs
+		ctx.devtlsConfig.RootCAs = rootCAs
 		log.Functionf("handleDNSImpl: client rootCAs updated")
 	}
 
