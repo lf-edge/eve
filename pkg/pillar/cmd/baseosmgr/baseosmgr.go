@@ -245,6 +245,14 @@ func handleBaseOsConfigDeleteByStatus(ctx *baseOsMgrContext, key string,
 	status *types.BaseOsStatus) {
 
 	log.Functionf("handleBaseOsConfigDeleteByStatus for %s", status.BaseOsVersion)
+	// Best-effort: clear the in-progress flag for any install job tied to
+	// this baseos so a queued WriteToPartition can be skipped. processWork
+	// itself is not interruptible, so a write that has already started
+	// will still complete; the partition-state rollback in doBaseOsUninstall
+	// is what prevents that completion from taking effect on the next boot.
+	if status.ContentTreeUUID != "" {
+		ctx.worker.Cancel(status.ContentTreeUUID)
+	}
 	removeBaseOsConfig(ctx, status.Key())
 }
 
