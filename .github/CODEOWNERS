@@ -27,14 +27,14 @@
 /pkg/optee-os/                @rene
 /pkg/pillar/cas/              @europaul
 /pkg/pillar/cmd/baseosmgr/    @eriknordmark
-/pkg/pillar/cmd/domainmgr/    @OhmSpectator @jsfakian @milan-zededa @uncleDecart
+/pkg/pillar/cmd/domainmgr/    @OhmSpectator @jsfakian @milan-zededa
 /pkg/pillar/cmd/downloader/   @milan-zededa
 /pkg/pillar/cmd/ledmanager/   @rucoder @rene
 /pkg/pillar/cmd/nim/          @milan-zededa
 /pkg/pillar/cmd/scepclient/   @milan-zededa
 /pkg/pillar/cmd/tpmmgr/       @rucoder @shjala
 /pkg/pillar/cmd/volumemgr/    @OhmSpectator @europaul
-/pkg/pillar/cmd/zedagent/     @OhmSpectator @milan-zededa @uncleDecart
+/pkg/pillar/cmd/zedagent/     @OhmSpectator @milan-zededa
 /pkg/pillar/cmd/zedkube/      @andrewd-zededa @naiming-zededa @zedi-pramodh
 /pkg/pillar/cmd/zedmanager/   @OhmSpectator
 /pkg/pillar/cmd/zedrouter/    @christoph-zededa @milan-zededa
@@ -51,7 +51,7 @@
 /pkg/pillar/netmonitor/       @milan-zededa
 /pkg/pillar/nireconciler/     @milan-zededa
 /pkg/pillar/nistate/          @milan-zededa
-/pkg/pillar/sriov/            @uncleDecart
+/pkg/pillar/sriov/            @rene
 /pkg/pillar/portprober/       @milan-zededa
 /pkg/pillar/utils/            @milan-zededa
 /pkg/pillar/volumehandlers/   @OhmSpectator
@@ -67,6 +67,6 @@
 /pkg/wwan/                    @milan-zededa
 /pkg/xen-tools/               @OhmSpectator @rucoder @rene @shjala
 /pkg/xen/                     @OhmSpectator @rucoder @rene @shjala
-/tests/eden/                  @milan-zededa @uncleDecart
+/tests/eden/                  @milan-zededa
 /tools/                       @jsfakian
-.github/workflows/            @eriknordmark @uncleDecart @yash-zededa
+.github/workflows/            @eriknordmark @yash-zededa
