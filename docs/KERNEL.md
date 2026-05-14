@@ -108,9 +108,9 @@ KERNEL_COMMIT_riscv64_v6.1.112_generic = 18e1d313b90b
 
 **Purpose:** Pins EVE to specific kernel commits to ensure reproducible builds.
 
-### kernel-version.mk
+### mk/kernel-version.mk
 
-Location: `/kernel-version.mk` (root of EVE repository)
+Location: `/mk/kernel-version.mk` (EVE repository)
 
 This file defines the kernel version selection logic based on architecture and platform. It:
 
@@ -211,7 +211,7 @@ The appropriate branch is automatically selected based on:
 
 - Architecture (amd64, arm64, riscv64)
 - Platform (generic, rt, nvidia-jp5, etc.)
-- Configuration defined in `kernel-version.mk`
+- Configuration defined in `mk/kernel-version.mk`
 
 ## Kernel Config Flavors
 
