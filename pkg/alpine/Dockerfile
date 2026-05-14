@@ -1,3 +1,6 @@
+# Copyright (c) 2023-2025 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
 # DON'T FORGET TO UPDATE THE HASH WHEN SOMETHING CHANGES!
 # please see https://github.com/lf-edge/eve/blob/master/docs/BUILD.md#how-to-update-eve-alpine-package
 FROM lfedge/eve-alpine-base:77cc1495c875b7468dbf4123210abf86a1ffb852-07a6e7df6 AS cache-build
@@ -47,7 +50,7 @@ ARG GO_VERSION=1.24.6
 COPY --from=cache-build /etc/apk/repositories* /etc/apk/
 COPY --from=cache-build /etc/apk/keys /etc/apk/keys/
 COPY --from=cache-build /mirror /mirror/
-COPY eve-alpine-deploy.sh go-compile.sh /bin/
+COPY eve-alpine-deploy.sh go-compile.sh register-sbom-pkg.sh /bin/
 
 RUN apk update && apk upgrade -a
 
