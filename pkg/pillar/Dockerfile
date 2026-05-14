@@ -10,8 +10,8 @@ ARG BUILD_PKGS_BASE="git gcc linux-headers libc-dev make linux-pam-dev m4 findut
 # we use the same image in several places
 ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:41f3648ded073c351d0dcd3432322f5816c9c7b1
 
-FROM lfedge/eve-uefi:c5eb2951550c9cc112c54d49ee57fa2c858d8579 AS uefi-build
-FROM lfedge/eve-dom0-ztools:12f3be8183942a1134241414bc265f624dbaad51 AS zfs
+FROM lfedge/eve-uefi:af155c30b466aa52b8061b48e3824159a122411a AS uefi-build
+FROM lfedge/eve-dom0-ztools:30914d1e4993e8b1e4ddec17d02523cdeff02d3b AS zfs
 RUN mkdir /out
 # copy zfs-related files from dom0-ztools using prepared list of files
 RUN while read -r x; do \
@@ -135,9 +135,9 @@ RUN --mount=type=cache,target=/root/.cache/go-build if [ "${TEST_TOOLS}" = "y" ]
     GOBIN=/final/opt/ GOFLAGS="" go install gotest.tools/gotestsum@v1.7.0; \
 fi
 
-FROM lfedge/eve-fscrypt:e6a8b9da0aa85206bf84cbebd3a2c6e8df959216 AS fscrypt
-FROM lfedge/eve-dnsmasq:960948b6a5627ec1d3815d58235d6f2ca64642bc AS dnsmasq
-FROM lfedge/eve-gpt-tools:36b9660038be7724ef1a7d2e0458a33fe4489b45 AS gpttools
+FROM lfedge/eve-fscrypt:cf2d03f3fb3c646639076b1f96ee8d908dec4ff3 AS fscrypt
+FROM lfedge/eve-dnsmasq:a44436ae4fd5bfb0e72c312e6bf305cbf7673017 AS dnsmasq
+FROM lfedge/eve-gpt-tools:118f6058a3cfd3204456178da448f5e2bb2975e5 AS gpttools
 
 # dhcpcd: Alpine 3.21+ ships a sufficiently up-to-date version (10.x with required IPv6 fixes).
 # No --platform means Docker BuildKit uses the target platform, giving us the correct binary arch.
