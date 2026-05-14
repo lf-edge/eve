@@ -77,8 +77,8 @@ go tool cover -html=pkg/pillar/coverage.txt -o coverage_unit.html
    while running.
 
 2. Clones and builds Eden from EDEN_REPO (default: github.com/lf-edge/eden)
-   using EDEN_TAG (default: 1.0.16) which contains the coverage-collection
-   extensions.
+   using EDEN_TAG (default: master), which carries the coverage-collection
+   extensions and the current default EVE image size.
 
 3. Starts the EVE VM under QEMU, onboards it, and runs the selected test
    scenarios exactly as `make eden` would.
@@ -312,8 +312,9 @@ tools such as `gocovmerge` can be used on the text profiles directly.
 
 ### eden-cover vs eden
 
-Both `make eden` and `make eden-cover` use the upstream Eden release
-(`EDEN_TAG=1.0.16` from `github.com/lf-edge/eden`).  The difference is
+Both `make eden` and `make eden-cover` use eden from
+`github.com/lf-edge/eden` (default `EDEN_TAG=master`; override
+`EDEN_TAG=<sha-or-tag>` for reproducibility).  The difference is
 that `make eden-cover` sets `COVER=y`, which causes `run.sh` to pass
 `--coverage-dir` to each `eden test` invocation and to call
 `eden eve collect-coverage` after all scenarios complete.

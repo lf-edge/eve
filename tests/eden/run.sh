@@ -8,7 +8,7 @@ set -eo pipefail
 EVE_ROOT=$(pwd)
 EDEN_DEBUG_OPT=""
 PREFIX="[EDEN_TEST]"
-EDEN_TAG=${EDEN_TAG:-1.0.16}
+EDEN_TAG=${EDEN_TAG:-master}
 EDEN_REPO=${EDEN_REPO:-https://github.com/lf-edge/eden.git}
 COVER=${COVER:-}
 EVE_FLAVOR=${EVE_FLAVOR:-kvm}
