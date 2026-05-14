@@ -1,0 +1,29 @@
+# Copyright (c) 2026, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+name: SBOM Coverage Check
+
+on:  # yamllint disable-line rule:truthy
+  pull_request:
+    branches:
+      - "master"
+      - "[0-9]+.[0-9]+"
+      - "[0-9]+.[0-9]+-stable"
+      - "feature/*"
+    paths:
+      - "pkg/**/Dockerfile"
+      - "pkg/alpine/register-sbom-pkg.sh"
+      - "tools/check-sbom-coverage.sh"
+      - "tools/sbom-coverage-allowlist.txt"
+      - ".github/workflows/sbom-coverage-check.yml"
+
+jobs:
+  check-sbom-coverage:
+    name: Every source-built pkg must call register-sbom-pkg.sh
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Run SBOM coverage check
+        run: ./tools/check-sbom-coverage.sh

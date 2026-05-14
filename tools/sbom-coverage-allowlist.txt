@@ -1,0 +1,20 @@
+# Allowlist for tools/check-sbom-coverage.sh
+#
+# Dockerfiles listed here pull external source code via ADD but are exempt
+# from the register-sbom-pkg.sh requirement. Each entry MUST be accompanied
+# by a justification comment above it.
+#
+# Format: one Dockerfile path per line (relative to repo root). Blank lines
+# and lines starting with '#' are ignored.
+
+# Cross-compiler toolchains: build-time only. The fetched GCC/binutils/musl
+# tarballs produce APKs that get installed into other pkgs' build stages via
+# apk add; they never appear in the EVE rootfs as compiled artifacts, so no
+# apk-db entry is needed in the final SBOM.
+pkg/cross-compilers/Dockerfile
+
+# OP-TEE OS: cross-compiled by a non-eve-alpine toolchain image, so
+# register-sbom-pkg.sh is not available in that stage. The resulting
+# OP-TEE binary is consumed by pkg/bsp-imx which already registers it
+# under the imx-atf / firmware-imx / uboot-imx umbrella entries.
+pkg/optee-os/Dockerfile
