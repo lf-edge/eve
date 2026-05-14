@@ -293,6 +293,13 @@ exercised across all coverage sources" questions. Use
 or `combined_coverage.txt`) for statement-weighted reporting and
 per-function detail.
 
+For driving multiple Eden suites in one Eden lifetime (the typical
+shape of a coverage run that wants more than just `smoke`), see
+[`../tools/README-coverage.md`](../tools/README-coverage.md) — the
+`run_eden_suites.sh` driver and the `eden_run_lib.sh` shell library it
+builds on handle pre-flight EVE-tag verification, between-suite state
+reset, and drift detection.
+
 ## Running all steps in sequence
 
 ```sh
