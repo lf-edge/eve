@@ -10,7 +10,7 @@ FROM lfedge/eve-dom0-ztools:12f3be8183942a1134241414bc265f624dbaad51 AS dom0
 # These use autoconf/automake with many -dev dependencies, so for now they
 # remain under QEMU emulation when cross-building.
 # ===========================================================================
-FROM lfedge/eve-alpine:1f744180283ffb4eabcc3862531aeacf1de886b3 AS build-c
+FROM lfedge/eve-alpine:41f3648ded073c351d0dcd3432322f5816c9c7b1 AS build-c
 ENV BUILD_PKGS="gcc g++ autoconf automake libtool make openssl-dev libtasn1-dev \
     json-glib-dev gnutls bash expect gawk socat libseccomp-dev gmp-dev \
     musl-utils autoconf-archive git json-c json-c-dev libcurl curl-dev \
@@ -26,6 +26,10 @@ RUN make -j$(nproc)
 RUN make -j$(nproc) install
 RUN cp /usr/lib/libtpms.so.* /out/usr/lib/
 RUN strip --strip-unneeded /out/usr/lib/libtpms.so.*
+# Register libtpms in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n libtpms -v 0.10.0 -l BSD-3-Clause \
+    -u https://github.com/stefanberger/libtpms \
+    -d "TPM 2.0 emulation library (built from source)"
 
 # build swtpm
 WORKDIR /swtpm
@@ -38,6 +42,10 @@ RUN src/swtpm/swtpm socket --tpm2 --print-capabilities | grep "tpmstate-dir-back
 RUN make -j$(nproc) install
 RUN cp /out/usr/lib/swtpm/* /out/usr/lib/
 RUN strip --strip-unneeded /out/usr/lib/swtpm/*.so*
+# Register swtpm in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n swtpm -v 732bbd6a -l BSD-3-Clause \
+    -u https://github.com/stefanberger/swtpm \
+    -d "TPM emulator (built from source)"
 
 # build tpm2-tss, it is needed by tpm2-tools
 WORKDIR /tpm2-tss
@@ -48,6 +56,10 @@ RUN ./bootstrap && \
     make install
 RUN cp /usr/local/lib/libtss2* /out/usr/lib/
 RUN strip --strip-unneeded /out/usr/lib/libtss2*.so*
+# Register tpm2-tss in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n tpm2-tss -v 4.0.1 -l BSD-2-Clause \
+    -u https://github.com/tpm2-software/tpm2-tss \
+    -d "TPM2 Software Stack (built from source)"
 
 # build tpm2-tools, it is needed by ptpm
 WORKDIR /tpm2-tools
@@ -63,6 +75,10 @@ RUN make -j$(nproc)
 RUN cp lib/.libs/libcommon.so* /out/usr/lib/
 RUN cp tools/.libs/tpm2 /out/usr/bin/
 RUN strip --strip-unneeded /out/usr/lib/*.so*
+# Register tpm2-tools in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n tpm2-tools -v 5.5 -l BSD-3-Clause \
+    -u https://github.com/tpm2-software/tpm2-tools \
+    -d "TPM2 command line tools (built from source)"
 
 # Build ptpm (C++)
 WORKDIR /ptpm-build
@@ -83,7 +99,7 @@ RUN rm /out/usr/lib/libprotoc.so*
 # This avoids QEMU, which is known to deadlock on go vet / go build.
 # ===========================================================================
 # hadolint ignore=DL3029
-FROM --platform=$BUILDPLATFORM lfedge/eve-alpine:1f744180283ffb4eabcc3862531aeacf1de886b3 AS build-go
+FROM --platform=$BUILDPLATFORM lfedge/eve-alpine:41f3648ded073c351d0dcd3432322f5816c9c7b1 AS build-go
 ARG TARGETARCH
 
 WORKDIR /vtpm-build

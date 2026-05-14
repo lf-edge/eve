@@ -1,7 +1,7 @@
 # Copyright (c) 2023 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 # hadolint ignore=DL3029
-FROM --platform=$BUILDPLATFORM lfedge/eve-alpine:1f744180283ffb4eabcc3862531aeacf1de886b3 AS build
+FROM --platform=$BUILDPLATFORM lfedge/eve-alpine:41f3648ded073c351d0dcd3432322f5816c9c7b1 AS build
 ARG TARGETARCH
 
 COPY src/  /measure-config/.

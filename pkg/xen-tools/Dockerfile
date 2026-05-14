@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 FROM lfedge/eve-uefi:c5eb2951550c9cc112c54d49ee57fa2c858d8579 AS uefi-build
-FROM lfedge/eve-alpine:1f744180283ffb4eabcc3862531aeacf1de886b3 AS runx-build
+FROM lfedge/eve-alpine:41f3648ded073c351d0dcd3432322f5816c9c7b1 AS runx-build
 ENV BUILD_PKGS="mkinitfs gcc musl-dev e2fsprogs chrony agetty"
 RUN eve-alpine-deploy.sh
 
@@ -20,7 +20,7 @@ RUN gcc -s -o /chroot2 /tmp/chroot2.c -Wall -Werror
 RUN gcc -s -o /hacf /tmp/hacf.c -Wall -Werror
 RUN mkinitfs -n -F base -i /init-initrd -o /runx-initrd
 
-FROM lfedge/eve-alpine:1f744180283ffb4eabcc3862531aeacf1de886b3 AS build
+FROM lfedge/eve-alpine:41f3648ded073c351d0dcd3432322f5816c9c7b1 AS build
 ENV BUILD_PKGS="\
     gcc make libc-dev dev86 xz-dev perl bash python3-dev \
     gettext iasl util-linux-dev ncurses-dev glib-dev \
@@ -57,6 +57,9 @@ RUN make src && make install DESTDIR=/out && make install
 # Filter out unneeded stuff
 RUN rm -rf /out/usr/man
 RUN strip /out/usr/lib/* || :
+
+# Register liburing in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n liburing -v "${LIBURING_VERSION}" -l LGPL-2.1-only -u https://github.com/axboe/liburing
 
 # When changing this version, also update SEABIOS_UPSTREAM_REVISION to whatever is in `Config.mk` in the xen source
 ENV XEN_VERSION=4.19.0
@@ -103,6 +106,12 @@ RUN ./configure --prefix=/usr --disable-xen --disable-golang --disable-qemu-trad
     --disable-storage-daemon
 RUN make -j "$(getconf _NPROCESSORS_ONLN)" && make dist
 RUN dist/install.sh /out
+
+# Register xen in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n xen -v "${XEN_VERSION}" -l GPL-2.0-only -u https://xenproject.org
+
+# Register seabios in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n seabios -v "${SEABIOS_UPSTREAM_REVISION}" -l LGPL-2.1-only -u https://www.seabios.org
 
 # Filter out a few things that we don't currently need
 RUN rm -rf /out/usr/share/qemu-xen/qemu/edk2-* /out/var/run /usr/include /usr/lib/*.a

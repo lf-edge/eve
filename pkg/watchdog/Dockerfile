@@ -1,7 +1,7 @@
 # Copyright (c) 2023 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-alpine:1f744180283ffb4eabcc3862531aeacf1de886b3 AS watchdog-build
+FROM lfedge/eve-alpine:41f3648ded073c351d0dcd3432322f5816c9c7b1 AS watchdog-build
 ENV BUILD_PKGS build-base file libtirpc-dev linux-headers tar util-linux
 ENV PKGS alpine-baselayout musl-utils libsmartcols
 RUN eve-alpine-deploy.sh
@@ -35,6 +35,9 @@ ENV CONFIGURE_OPTS "--disable-nfs"
 
 RUN \
     CPPFLAGS=-I/usr/include/tirpc ./configure ${CONFIGURE_OPTS} && make -j "$(getconf _NPROCESSORS_ONLN)" && make install DESTDIR=/out
+
+# Register watchdog in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n watchdog -v "${WATCHDOGD_VERSION}" -l GPL-2.0-only -u https://sourceforge.net/projects/watchdog
 
 FROM scratch
 WORKDIR /

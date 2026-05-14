@@ -2,7 +2,7 @@
 
 # Copyright (c) 2024 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
-FROM lfedge/eve-alpine:1f744180283ffb4eabcc3862531aeacf1de886b3 AS build
+FROM lfedge/eve-alpine:41f3648ded073c351d0dcd3432322f5816c9c7b1 AS build
 
 ENV BUILD_PKGS libbpf-dev make gcc g++ git perl linux-headers musl-dev cmake elfutils-dev llvm17-libs llvm17-dev llvm17-gtest llvm17-static cereal flex bison clang17-extra-tools clang17-dev clang17-static pahole gtest-dev bash py3-setuptools zip zlib-dev
 
@@ -23,6 +23,8 @@ RUN cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_CXX_COMPILER=clang++-17 -DCMA
 RUN make -j "$(getconf _NPROCESSORS_ONLN)"
 RUN make install
 
+# Register bcc in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n bcc -v 0.27.0 -l Apache-2.0 -u https://github.com/iovisor/bcc.git
 
 RUN mkdir -p /usr/src
 ADD https://github.com/bpftrace/bpftrace.git#v0.20.3 /usr/src/bpftrace
@@ -34,6 +36,9 @@ WORKDIR /usr/src/bpftrace/build
 RUN cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_CXX_COMPILER=clang++-17 -DCMAKE_C_COMPILER=clang-17 ..
 RUN make -j "$(getconf _NPROCESSORS_ONLN)"
 RUN make install
+
+# Register bpftrace in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n bpftrace -v 0.20.3 -l Apache-2.0 -u https://github.com/bpftrace/bpftrace.git
 
 # portability analyser is disabled, therefore skip those tests
 # skip file exist test - probably broken because of container
@@ -52,6 +57,7 @@ RUN if [ "$TARGETARCH" = "$BUILDARCH" ]; then \
     fi
 
 FROM scratch AS bin
+COPY --from=build /out/lib/apk/db/installed /lib/apk/db/installed
 COPY --from=build /usr/bin/bpftrace /bpftrace/usr/bin/bpftrace
 COPY --from=build /usr/bin/bpftrace-aotrt /bpftrace-aotrt/usr/bin/bpftrace-aotrt
 

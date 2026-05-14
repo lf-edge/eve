@@ -1,4 +1,4 @@
-FROM lfedge/eve-alpine:1f744180283ffb4eabcc3862531aeacf1de886b3 AS build
+FROM lfedge/eve-alpine:41f3648ded073c351d0dcd3432322f5816c9c7b1 AS build
 
 ENV BUILD_PKGS="patch make gcc perl util-linux-dev git mtools linux-headers musl-dev xz-dev"
 RUN eve-alpine-deploy.sh
@@ -24,5 +24,9 @@ RUN mkdir -p /ws/src/bin-riscv64 && touch /ws/src/bin-riscv64/ipxe.riscv64 && to
 RUN mv /ws/src/bin/undionly.kpxe /ws/src/bin/ipxe.undionly 2>/dev/null || :
 RUN rm /ws/src/bin*/*.*.*
 
+# Register ipxe in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n ipxe -v "${IPXE_VERSION:0:8}" -l GPL-2.0-only -u https://ipxe.org
+
 FROM scratch
+COPY --from=build /out/lib/apk/db/installed /lib/apk/db/installed
 COPY --from=build /ws/src/bin*/ipxe.* /

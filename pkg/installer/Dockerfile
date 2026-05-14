@@ -31,7 +31,7 @@ RUN cp "/usr/local/my-installer/target/$CARGO_BUILD_TARGET/release/installer" /u
 FROM lfedge/eve-debug:e06d7bcd9fb4d382bb5e94b39e8764d5c41c5f40 AS debug
 
 # Dockerfile to build installer img initrd
-FROM lfedge/eve-alpine:1f744180283ffb4eabcc3862531aeacf1de886b3 AS build
+FROM lfedge/eve-alpine:41f3648ded073c351d0dcd3432322f5816c9c7b1 AS build
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 ENV BUILD_PKGS="mkinitfs grep patch make coreutils musl-dev gcc g++ perl \
     autoconf automake libtool file bsd-compat-headers libc-dev \
@@ -73,11 +73,19 @@ WORKDIR /out/edid-decode-188950472c19492547e298b27f9da0d72cf826df
 RUN make \
     && find . -type f | perl -lne "print if -B and -x" | xargs strip \
     && install -m 0755 edid-decode /out/usr/bin
+
+# Register edid-decode in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n edid-decode -v 18895047 -l MIT -u https://git.linuxtv.org/edid-decode.git
+
 WORKDIR /out/ddcutil-1.2.2
 RUN ./configure --prefix=/out/usr \
     && make \
     && find . -type f | perl -lne "print if -B and -x" | xargs strip \
     && make install
+
+# Register ddcutil in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n ddcutil -v 1.2.2 -l GPL-2.0-only -u https://www.ddcutil.com
+
 WORKDIR /out/hw-probe-1.6-AI
 RUN install -m 755 hw-probe.pl /out/usr/bin/hw-probe  \
     && sed -i "s/root\/HW_PROBE/tmp\/HW_PROBE/" /out/usr/bin/hw-probe
@@ -92,11 +100,18 @@ RUN ./bootstrap && \
 RUN cp /usr/local/lib/libtss2* /out/usr/lib/
 RUN strip --strip-unneeded /out/usr/lib/libtss2*.so*
 
+# Register tpm2-tss in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n tpm2-tss -v 4.0.1 -l BSD-2-Clause -u https://github.com/tpm2-software/tpm2-tss
+
 WORKDIR /out/tpm2-tools-5.5
 RUN ./bootstrap
 RUN ./configure --prefix=/out/usr CFLAGS="-Wno-error"
 RUN make -j"$(nproc)" CFLAGS="-Wno-error"
 RUN make install
+
+# Register tpm2-tools in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n tpm2-tools -v 5.5 -l BSD-3-Clause -u https://github.com/tpm2-software/tpm2-tools
+
 RUN rm -rf /out/edid-decode-188950472c19492547e298b27f9da0d72cf826df \
     /out/ddcutil-1.2.2 /out/hw-probe-1.6-AI /out/tpm2-tools-5.5
 

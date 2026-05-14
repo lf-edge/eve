@@ -1,4 +1,4 @@
-FROM lfedge/eve-alpine:1f744180283ffb4eabcc3862531aeacf1de886b3 AS kernel-build
+FROM lfedge/eve-alpine:41f3648ded073c351d0dcd3432322f5816c9c7b1 AS kernel-build
 
 ENV BUILD_PKGS argp-standalone automake bash bc binutils-dev bison build-base \
                diffutils flex git gmp-dev gnupg installkernel kmod \
@@ -44,8 +44,12 @@ RUN make -j "$(getconf _NPROCESSORS_ONLN)" && \
         ;; \
     esac
 
+# Register xen in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n xen -v "${XEN_VERSION}" -l GPL-2.0-only -u https://xenproject.org -o /sbom-out
+
 FROM scratch
 ENTRYPOINT []
 CMD []
+COPY --from=kernel-build /sbom-out/lib/apk/db/installed /lib/apk/db/installed
 WORKDIR /boot
 COPY --from=kernel-build /out/* .

@@ -62,9 +62,12 @@ RUN cargo build --release $VECTOR_FEATURES
 RUN cargo sbom > sbom.spdx.json
 RUN cp "/app/target/$CARGO_BUILD_TARGET/release/vector" /app/target/
 
-FROM lfedge/eve-alpine:1f744180283ffb4eabcc3862531aeacf1de886b3 AS runtime
+FROM lfedge/eve-alpine:41f3648ded073c351d0dcd3432322f5816c9c7b1 AS runtime
 ENV PKGS="inotify-tools"
 RUN eve-alpine-deploy.sh
+
+# Register vector in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n vector -v 0.54.0 -l MPL-2.0 -u https://github.com/vectordotdev/vector
 
 # Assemble the final image
 FROM scratch

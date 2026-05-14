@@ -1,4 +1,4 @@
-FROM lfedge/eve-alpine:1f744180283ffb4eabcc3862531aeacf1de886b3 AS build
+FROM lfedge/eve-alpine:41f3648ded073c351d0dcd3432322f5816c9c7b1 AS build
 ENV BUILD_PKGS="gcc make file patch libc-dev linux-headers openssl-dev g++ tar coreutils"
 # util-linux-static on riscv64 is broken; we build libuuid from source instead (see below).
 ENV BUILD_PKGS_amd64="util-linux-static util-linux-dev"
@@ -21,6 +21,11 @@ RUN if [ "${TARGETARCH}" = "riscv64" ]; then \
       cp .libs/libuuid.a /usr/lib/libuuid.a && \
       mkdir -p /usr/include/uuid && \
       cp libuuid/src/uuid.h /usr/include/uuid/uuid.h; \
+    fi
+
+# Register util-linux in the APK DB, mandatory for it to be included in the SBOM.
+RUN if [ "${TARGETARCH}" = "riscv64" ]; then \
+      register-sbom-pkg.sh -n util-linux -v 2.41 -l GPL-2.0-only -u https://github.com/util-linux/util-linux; \
     fi
 
 #
@@ -55,6 +60,9 @@ RUN make -j "$(getconf _NPROCESSORS_ONLN)" CXXFLAGS="-Dfstat64=fstat -Dstat64=st
 RUN strip sgdisk
 RUN cp sgdisk /out/sgdisk
 
+# Register gptfdisk in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n gptfdisk -v "${GPTFDISK_VERSION}" -l GPL-2.0-only -u https://sourceforge.net/projects/gptfdisk
+
 
 #
 # Step 2: Fetch and compile CGPT
@@ -68,7 +76,11 @@ RUN [ -d host/arch/riscv64 ] || cp -r host/arch/arm host/arch/riscv64
 RUN make cgpt -j "$(getconf _NPROCESSORS_ONLN)" USE_FLASHROM=0 LDFLAGS=-static
 RUN cp build/cgpt/cgpt /out/cgpt
 
+# Register vboot in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n vboot -v "${VBOOT_COMMIT:0:8}" -l GPL-3.0-only -u https://github.com/coreboot/vboot
+
 FROM scratch
 COPY --from=build /out/sgdisk /usr/bin/sgdisk
 COPY --from=build /out/cgpt /usr/bin/cgpt
+COPY --from=build /out/lib/apk/db/installed /lib/apk/db/installed
 COPY files/zboot /usr/bin/zboot

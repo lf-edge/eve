@@ -5,7 +5,7 @@
 
 ARG PLATFORM=generic
 
-FROM lfedge/eve-alpine:1f744180283ffb4eabcc3862531aeacf1de886b3 AS build-base
+FROM lfedge/eve-alpine:41f3648ded073c351d0dcd3432322f5816c9c7b1 AS build-base
 ENV BUILD_PKGS="autoconf automake build-base coreutils gettext git glib-dev libtool libmd-dev ncurses-dev tar xz-dev yq zstd-dev dpkg"
 
 RUN eve-alpine-deploy.sh
@@ -91,6 +91,18 @@ RUN mkdir -p /ldconfig-bin && \
     dpkg -x /libc-bin_2.31-0ubuntu9_arm64.deb /ldconfig && \
     cp /ldconfig/sbin/ldconfig.real /ldconfig-bin/ldconfig-glibc
 
+# Register source-built / downloaded NVIDIA components in the APK DB, mandatory
+# for them to be included in the SBOM.
+RUN case "${JETPACK_VER}" in \
+        jp5) JL_VER=r35.5.0 ;; \
+        jp6) JL_VER=r36.3.0 ;; \
+        jp7) JL_VER=r38.4.0 ;; \
+        *)   JL_VER="${JETPACK_VER}" ;; \
+    esac && \
+    register-sbom-pkg.sh -n jetson-linux -v "${JL_VER}" -l proprietary -u https://developer.nvidia.com/embedded/jetson-linux -o /sbom-out && \
+    register-sbom-pkg.sh -n nvidia-container-toolkit -v "${NVIDIA_CONTAINER_TOOLKIT_REV}" -l Apache-2.0 -u https://github.com/NVIDIA/nvidia-container-toolkit -o /sbom-out && \
+    register-sbom-pkg.sh -n libc-bin -v 2.31-0ubuntu9 -l LGPL-2.1-or-later -u http://ports.ubuntu.com/ubuntu-ports/pool/main/g/glibc -o /sbom-out
+
 # Copy udev rules
 COPY udev/${JETPACK_VER}/rules.d/* /rules.d/
 
@@ -130,6 +142,7 @@ COPY --from=build /nvfanctrl/dist/* /opt/vendor/nvidia/bin/
 COPY --from=build /nvct/dist/* /opt/vendor/nvidia/bin/
 COPY --from=build /nv-init.sh /opt/vendor/nvidia/init.d/
 COPY --from=build /eve-platform /opt/vendor/nvidia/
+COPY --from=build /sbom-out/lib/apk/db/installed /lib/apk/db/installed
 
 ENTRYPOINT []
 CMD []

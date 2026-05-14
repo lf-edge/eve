@@ -5,7 +5,7 @@
 #   /EFI/BOOT/grub.cfg - Chainloads main bootloader
 #   /UsbInvocationScript.txt - Enables USB boot on Dell 3000 series
 #
-FROM lfedge/eve-alpine:1f744180283ffb4eabcc3862531aeacf1de886b3 AS build
+FROM lfedge/eve-alpine:41f3648ded073c351d0dcd3432322f5816c9c7b1 AS build
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 ENV BUILD_PKGS="grep patch git make gcc linux-headers musl-dev autoconf automake pkgconfig kmod-dev util-linux-dev cryptsetup-dev lddtree libgcc mkinitfs"
 ENV PKGS="mtools dosfstools libarchive-tools sgdisk e2fsprogs util-linux squashfs-tools coreutils tar dmidecode \
@@ -20,6 +20,9 @@ ADD https://github.com/alpinelinux/mkinitfs.git#3.8.1 /tmp/mkinitfs
 RUN make -j "$(getconf _NPROCESSORS_ONLN)"
 WORKDIR /
 RUN make -C /tmp/mkinitfs install
+
+# Register mkinitfs in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n mkinitfs -v 3.8.1 -l GPL-2.0-only -u https://github.com/alpinelinux/mkinitfs
 
 WORKDIR /out
 RUN echo "mtools_skip_check=1" >> etc/mtools.conf

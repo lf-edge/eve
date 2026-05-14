@@ -1,4 +1,4 @@
-FROM lfedge/eve-alpine:1f744180283ffb4eabcc3862531aeacf1de886b3 AS build-base
+FROM lfedge/eve-alpine:41f3648ded073c351d0dcd3432322f5816c9c7b1 AS build-base
 ENV BUILD_PKGS bash binutils-dev build-base bc bison flex openssl-dev python3 swig dtc
 ENV BUILD_PKGS_amd64 python3-dev py-pip
 RUN eve-alpine-deploy.sh
@@ -69,8 +69,18 @@ RUN if [ "$(uname -m)" = aarch64 ]; then \
           cp /u-boot/arch/arm/dts/bcm2711-rpi-4-b.dtb /boot          ;\
        fi
 
+# Register u-boot in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n u-boot -v "${VERSION}" -l GPL-2.0-only -u https://www.denx.de/wiki/U-Boot
+
+# Register raspberrypi-firmware in the APK DB, mandatory for it to be included in the SBOM.
+RUN if [ "$(uname -m)" = aarch64 ]; then \
+        register-sbom-pkg.sh -n raspberrypi-firmware -v "${RASPBERRY_FIRMWARE_BLOBS_VERSION}" -l proprietary -u https://github.com/raspberrypi/firmware && \
+        register-sbom-pkg.sh -n raspberrypi-firmware-rpi5 -v "${RASPBERRY_FIRMWARE_BLOBS_VERSION_RPI5}" -l proprietary -u https://github.com/raspberrypi/firmware; \
+    fi
+
 FROM scratch
 ENTRYPOINT []
 CMD []
 COPY --from=build /u-boot/u-boot* /u-boot/
 COPY --from=build /boot /boot
+COPY --from=build /out/lib/apk/db/installed /lib/apk/db/installed

@@ -2,7 +2,7 @@
 # Copyright (c) 2025-2026 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-alpine:1f744180283ffb4eabcc3862531aeacf1de886b3 AS grub-build-base
+FROM lfedge/eve-alpine:41f3648ded073c351d0dcd3432322f5816c9c7b1 AS grub-build-base
 ENV BUILD_PKGS="automake \
                make \
                bison \
@@ -97,9 +97,13 @@ RUN case "$(uname -m)" in \
     ./grub-mkimage -O riscv64-efi -d /grub-lib/grub/riscv64-efi -o /grub-lib/BOOTRISCV64.EFI -p /EFI/BOOT ${GRUB_MODULES_PORT} ${GRUB_MODULES} ;;\
   esac
 
+# Register grub in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n grub -v "${GRUB_COMMIT}" -l GPL-3.0-only -u https://www.gnu.org/software/grub
+
 FROM scratch
 ENTRYPOINT []
 CMD []
+COPY --from=grub-build /out/lib/apk/db/installed /lib/apk/db/installed
 WORKDIR /EFI/BOOT
 COPY --from=grub-build /grub-lib/BOOT* ./
 COPY rootfs.cfg grub.cfg
