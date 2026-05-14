@@ -1,15 +1,19 @@
 # EVE Runtime Configuration Properties
 
+The single source of truth for these runtime configuration properties is
+`NewConfigItemSpecMap()` in [`pkg/pillar/types/global.go`](../pkg/pillar/types/global.go).
+This document mirrors the key names, types, defaults, and ranges defined there.
+
 | Name | Type | Default | Min Value | Max Value | Description |
 | ---- | ---- | ------- | --------- | --------- | ----------- |
-| app.allow.vnc | boolean | false (only local access) | - | - | allow access to EVE's VNC ports from external IPs |
+| app.allow.vnc | boolean | false | - | - | allow access to EVE's VNC ports from external IPs |
 | app.boot.order | string | "" | - | - | Set device-wide default boot order for VMs. Supported values: "" (default UEFI behavior), "usb" (prioritize USB devices), "nousb" (remove USB devices from boot order). Can be overridden per-VM via Controller API (VmConfig.boot_order) or LPS (/api/v1/appbootinfo). See [VM-BOOT-ORDER.md](VM-BOOT-ORDER.md) for details. |
-| app.fml.resolution | string | notset | - | - | Set system-wide value of forced resolution for applications running in FML mode, it can be one of [predefined](/pkg/pillar/types/global.go) FmlResolution* values. |
+| app.fml.resolution | string | "" | - | - | Set system-wide value of forced resolution for applications running in FML mode, it can be one of [predefined](/pkg/pillar/types/global.go) FmlResolution* values. |
 | timer.config.interval | integer in seconds | 60 (1 minute) | 5 | 86400 (1 day) | how frequently device gets config (needs a reboot to take effect) |
 | timer.cert.interval | integer in seconds | 86400 (1 day) | 60 (1 minute) | 4294967295 (max uint32) | how frequently device checks for new controller certificates |
 | timer.metric.interval | integer in seconds | 60 (1 minute) | 5 | 3600 (1 hour) | how frequently device reports metrics |
 | timer.hardwarehealth.interval | integer in seconds | 43200 (12 hours) | 21600 (6 hours) | 4294967295 (max uint32) | how frequently device reports hardware health information (ECC, SMART) to controller |
-| timer.hardwareinfo.interval | integer in seconds | 10800 (3 hours) | 10800 (3 hours) | 4294967295 (max uint32) | how frequently device reports hardware information (SMART) to controller (deprecated) |
+| timer.hardwareinfo.interval | integer in seconds | - | - | - | removed; no longer present in `NewConfigItemSpecMap()` |
 | timer.deviceinfo.interval | integer in seconds | 600 (10 minutes) | 30 | 4294967295 (max uint32) | how frequently device is forced to report device info to controller even though nothing changed (needs a reboot to take effect) |
 | timer.metric.diskscan.interval | integer in seconds | 300 (5 minutes) | 5 | 3600 (1 hour) | how frequently device should scan the disk for metrics |
 | timer.location.cloud.interval | integer in seconds | 3600 (1 hour) | 300 (5 minutes) | 4294967295 (max uint32) | how frequently device reports geographic location information to controller |
@@ -31,25 +35,29 @@
 | timer.port.testinterval | timer in seconds | 300 (5 minutes) | 300 (5 minutes) | 3600 (1 hour) | retest the current port config |
 | timer.port.timeout | timer in seconds | 15 | 0 | 3600 (1 hour) | time for each http/send |
 | timer.port.testbetterinterval | timer in seconds | 600 (10 minutes) | 0 | 4294967295 (max uint32) | test a higher prio port config |
-| network.fallback.any.eth | "enabled" or "disabled" | disabled (enabled forcefully during onboarding if no network config) | - | - | if no connectivity try any Ethernet, WiFi, or LTE with DHCP client |
+| network.fallback.any.eth | "enabled" or "disabled" | disabled | - | - | if no connectivity try any Ethernet, WiFi, or LTE with DHCP client (enabled forcefully during onboarding if no network config) |
 | network.download.max.cost | 0-255 | 0 | 0 | 255 | [max port cost for download](DEVICE-CONNECTIVITY.md) to avoid e.g., LTE ports |
 | blob.download.max.retries | 1-10 | 5 | 1 | 10 | max download retries when image verification fails. |
+| debug.disable.dhcp.all-ones.netmask | boolean | false | - | - | deprecated; retained only to avoid reporting errors for older deployments where this option is still configured |
 | debug.enable.usb | boolean | true | - | - | allow USB e.g. keyboards on device (controller by default overrides to false) |
 | debug.enable.vga | boolean | true | - | - | allow VGA console on device (controller by default overrides to false) |
-| debug.enable.ssh | authorized ssh key | empty string(ssh disabled) | - | - | allow ssh to EVE |
+| debug.enable.ssh | authorized ssh key | "" | - | - | allow ssh to EVE; empty string disables SSH |
 | debug.enable.console | boolean | true | - | - | allow console access to EVE, reboot required to disable (controller by default overrides to false) |
 | debug.enable.vnc.shim.vm | boolean | false | - | - | allow VNC access to the container application shim VM (reboot required to disable) |
 | storage.dom0.disk.minusage.percent | integer percent | 20 | 20 | 80 | min. percent of persist partition reserved for dom0 |
+| storage.dom0.disk.maxusagebytes | integer bytes | 2147483648 | 104857600 | 4294967295 (max uint32) | max bytes of persist partition that can be used by dom0 |
 | storage.zfs.reserved.percent | integer percent | 20 | 1 | 99 | min. percent of persist partition reserved for zfs performance |
 | storage.longhorn.disk.reserved.gigabytes | integer GB | 2 | 0 | 1048576 | per-disk storage reserved by Longhorn on the local node; overrides Longhorn's default 25% reservation. 0 sets storageReserved to 0 bytes (no reservation). 1048576 disables EVE's override, leaving Longhorn's current value in place |
 | storage.apps.ignore.disk.check | boolean | false | - | - | Ignore disk usage check for Apps. Allows apps to create images bigger than available disk |
 | timer.appcontainer.stats.interval | integer in seconds | 300 (5 minutes) | 1 | 4294967295 (max uint32) | collect application container stats |
 | timer.vault.ready.cutoff | integer in seconds | 300 (5 minutes) | 60 (1 minute) | 4294967295 (max uint32) | reboot after inaccessible vault |
-| maintenance.mode | "enabled" or "disabled" | "none" | - | - | don't run applications etc |
-| airgap.mode | "enabled" or "disabled" | "none" | - | - | Enable when the device is expected to operate without connectivity to the main controller and is instead managed locally via the LOC (Local Operator Console) |
+| maintenance.mode | "enabled" or "disabled" | none | - | - | don't run applications etc |
+| airgap.mode | "enabled" or "disabled" | none | - | - | Enable when the device is expected to operate without connectivity to the main controller and is instead managed locally via the LOC (Local Operator Console) |
 | force.fallback.counter | integer | 0 | 0 | 4294967295 (max uint32) | forces fallback to other image if counter is changed |
 | newlog.allow.fastupload | boolean | false | - | - | allow faster upload gzip logfiles to controller |
 | memory.apps.ignore.check | boolean | false | - | - | Ignore memory usage check for Apps |
+| memory.eve.limit.bytes | integer bytes | base.ClampToUint32(eveMemoryLimitInBytes) | base.ClampToUint32(eveMemoryLimitInBytes) | 4294967295 (max uint32) | deprecated; use memory.eve.limit.MiB instead. This legacy value is limited to 4GB and still has higher priority for backward compatibility |
+| memory.eve.limit.MiB | integer MiB | eveMemoryLimitInMiB | eveMemoryLimitInMiB | 4294967295 (max uint32) | memory limit reserved for EVE in MiB, rounded up from the detected byte limit |
 | memory.vmm.limit.MiB | integer | 0 | 0 | 1073741824 (1 PiB) | Manually override how much overhead is allocated for each running VMM |
 | gogc.memory.limit.bytes | integer | 0 | 0 | 4294967295 (max uint32) | Golang runtime soft memory limit, see details in API doc ["https://pkg.go.dev/runtime/debug#SetMemoryLimit"] |
 | gogc.percent | integer | 100 | 0 | 500 | Golang runtime garbage collector target percentage, see details in API doc ["https://pkg.go.dev/runtime/debug#SetGCPercent"] |
@@ -73,12 +81,14 @@
 | goroutine.leak.detection.keep.stats.hours | integer (hours) | 24 | 1 | 4294967295 (max uint32) | Amount of hours to keep the stats for leak detection. We keep more stats than the check window to be able to react to settings with a bigger check window via configuration. |
 | goroutine.leak.detection.cooldown.minutes | integer (minutes) | 5 | 1 | 4294967295 (max uint32) | Cooldown period in minutes after the leak detection is triggered. During this period, no stack traces are collected; only warning messages are logged. |
 | kubernetes.drain.timeout | integer | 24 | 1 | 4294967295 (max uint32) | hours to allow kubernetes to drain a node |
+| drain.skip.k8sapinotreachable.timeout | integer in seconds | 300 (5 minutes) | 1 | 4294967295 (max uint32) | how long the drain request handler retries the Kubernetes API before declaring the node unavailable and continuing device operations |
 | kubernetes.drain.allnodes.config.multiple | integer | 2 | 1 | 1000 | multiplier applied to timer.config.interval to derive the cluster-wide simultaneous-drain detection window; increase if nodes fetch config at widely staggered intervals |
+| k3s.config.override | string | "" | - | - | Base64-encoded K3s config override. Config merge behavior follows K3s config file rules. |
+| k3s.version | string | "" | - | - | User override for K3s version; takes priority over the EVE-OS baseos-defined K3s version. |
 | kubernetes.vmi.deschedule.events | string | "" | - | - | Comma-separated list of events that trigger VMI descheduling. Currently only `boot` is supported. When empty (default), no event-driven descheduling is performed. |
 | memory-monitor.enabled | boolean | false | - | - | Enable external memory monitoring and memory pressure events handling |
 | internal-memory-monitor.store.enabled | boolean | true | - | - | Enable Internal Memory Monitor (IMM) data collection and CSV storage. When enabled, the watcher service collects memory metrics (Go heap and RSS) at regular intervals and stores them in /persist/memory-monitor/output/memory_usage.csv for analysis and debugging of potential memory leaks |
 | internal-memory-monitor.analyze.enabled | boolean | true | - | - | Enable Internal Memory Monitor (IMM) leak detection analysis. When enabled, IMM analyzes collected memory metrics using statistical methods (Theil-Sen slope, Pearson/Spearman correlation) to detect memory growth patterns and compute leak scores. Requires internal-memory-monitor.store.enabled to be true |
-| debug.tui.loglevel | string | info | - | - | Set log level for EVE Text UI (TUI) monitor. Possible values are "OFF", "ERROR", "WARN", "INFO", "DEBUG", "TRACE" and are case insensitive |
 | log.dedup.window.size | integer | 0 | 0 | 4294967295 (max uint32) | The size of the log deduplicator's sliding window (in number of messages). See logging [docs](LOGGING.md#log-filtering-counting-and-deduplication) for details. If the window size is set to 0 (default), no deduplication is performed. |
 | log.count.filenames | string | "" | - | - | Comma-separated list of log's filenames to be counted and logged once instead of logging them every time. Example `/my-pkg/main.go:123,/other-pkg/code.go:42`. Empty string `""` doesn't filter anything out, however a single comma `","` will filter out all entries that don't have a filename field set (e.g. logs not coming from components written in Golang). See logging [docs](LOGGING.md#log-filtering-counting-and-deduplication) for details. |
 | log.filter.filenames | string | "" | - | - | Comma-separated list of log's filenames to be filtered out. Example `/my-pkg/main.go:123,/other-pkg/code.go:42`. Empty string `""` doesn't filter anything out, however a single comma `","` will filter out all entries that don't have a filename field set (e.g. logs not coming from components written in Golang). See logging [docs](LOGGING.md#log-filtering-counting-and-deduplication) for details. |
@@ -91,8 +101,8 @@
 | wwan.modem.recovery.watchdog | boolean | false | - | - | Enable watchdog for cellular modems. If a modem firmware crashes and fails to recover, the device will automatically reboot. |
 | wwan.modem.recovery.reload.drivers | boolean | false | - | - | If a modem firmware crashes and fails to recover, EVE will attempt to reload the MBIM/QMI/MHI drivers as a recovery step. This occurs before the watchdog mechanism is triggered (if enabled). |
 | wwan.modem.recovery.restart.modemmanager | boolean | false | - | - | If a modem firmware crash occurs and ModemManager fails to properly recognize or manage the restarted modem, EVE will attempt to restart ModemManager as a recovery step. This occurs before the watchdog mechanism is triggered (if enabled) and can be combined with driver reload recovery mechanism. |
-| diag.probe.remote.http.endpoint | string | `"http://www.google.com"` | - | - | Remote endpoint (URL, IP instead of hostname is accepted) queried over HTTP to assess the state of network connectivity whenever the controller is not reachable. Used only for diagnostics (no functional impact). Set to an empty string to disable. |
-| diag.probe.remote.https.endpoint | string | `"https://www.google.com"` | - | - | Remote endpoint (URL, IP instead of hostname is NOT accepted) queried over HTTPS to assess the state of network connectivity whenever the controller is not reachable. Used only for diagnostics (no functional impact). Set to an empty string to disable. |
+| diag.probe.remote.http.endpoint | string | www.google.com | - | - | Remote endpoint (URL, IP instead of hostname is accepted) queried over HTTP to assess the state of network connectivity whenever the controller is not reachable. Used only for diagnostics (no functional impact). Set to an empty string to disable. |
+| diag.probe.remote.https.endpoint | string | www.google.com | - | - | Remote endpoint (URL, IP instead of hostname is NOT accepted) queried over HTTPS to assess the state of network connectivity whenever the controller is not reachable. Used only for diagnostics (no functional impact). Set to an empty string to disable. |
 | app.enable.tcp.mss.clamping | bool | true | - | - | Configuration property that enables EVE to automatically adjust (clamp) the TCP MSS on forwarded application traffic to match the path MTU, preventing fragmentation and connectivity issues on lower-MTU links. |
 | scep.retry.interval | timer in seconds | 300 (5 minutes) | 60 (1 minute) | 3600 (1 hour) | Interval between retry attempts for certificates that previously failed to enroll/renew or returned PENDING from the SCEP server. |
 | pnac.dhcp.reacquire.max.retries | integer | 4 | 0 | 8 | Maximum number of DHCP reacquire retries after a PNAC (802.1X) port authentication state change. When the network switch reassigns the port to a different access VLAN, EVE retries with exponential backoff (2s, 4s, 8s, ...) until the IP subnet changes or the retry limit is reached. Setting this value to 0 disables DHCP reacquire. |
@@ -136,8 +146,8 @@ A corresponding "remote" log level can be set for each of the three components: 
 
 | Name | Type | Default | Description |
 | ---- | ---- | ------- | ----------- |
-| debug.default.loglevel | string | debug | default level of logs produced by EVE microservices. Can be overwritten by agent.*agentname*.debug.loglevel. Uses logrus log levels as described here ["https://pkg.go.dev/github.com/sirupsen/logrus"]: panic, fatal, error, warning, info, debug and trace. |
-| debug.default.remote.loglevel | string | warning | default level of logs sent by EVE microservices to the controller. Can be overwritten by agent.*agentname*.debug.remote.loglevel. Uses logrus log levels as described here ["https://pkg.go.dev/github.com/sirupsen/logrus"]: panic, fatal, error, warning, info, debug and trace. |
+| debug.default.loglevel | string | info | default level of logs produced by EVE microservices. Can be overwritten by agent.*agentname*.debug.loglevel. Uses logrus log levels as described here ["https://pkg.go.dev/github.com/sirupsen/logrus"]: panic, fatal, error, warning, info, debug and trace. |
+| debug.default.remote.loglevel | string | info | default level of logs sent by EVE microservices to the controller. Can be overwritten by agent.*agentname*.debug.remote.loglevel. Uses logrus log levels as described here ["https://pkg.go.dev/github.com/sirupsen/logrus"]: panic, fatal, error, warning, info, debug and trace. |
 | debug.syslog.loglevel | string | info | level of the produced syslog messages. System default loglevel string representation should be used as described here ["https://man7.org/linux/man-pages/man3/syslog.3.html"]: emerg, alert, crit, err, warning, notice, info, debug. |
 | debug.syslog.remote.loglevel | string | info | level of the syslog messages sent to the controller. System default loglevel string representation should be used as described here ["https://man7.org/linux/man-pages/man3/syslog.3.html"]: emerg, alert, crit, err, warning, notice, info, debug. |
 | debug.kernel.loglevel | string | info | level of the produced kernel log messages. System default loglevel string representation should be used as described here ["https://man7.org/linux/man-pages/man3/syslog.3.html"]: emerg, alert, crit, err, warning, notice, info, debug. |
@@ -150,8 +160,8 @@ The per-agent settings begin with "agent.*agentname*.*setting*":
 
 | Name | Type | Default | Description |
 | ---- | ---- | ------- | ----------- |
-| agent.*agentname*.debug.loglevel | string | if set overrides debug.default.loglevel for this particular agent | (Legacy setting debug.*agentname*.loglevel still supported) |
-| agent.*agentname*.debug.remote.loglevel | string | if set overrides debug.default.remote.loglevel for this particular agent | (Legacy setting debug.*agentname*.remote.loglevel) |
+| agent.*agentname*.debug.loglevel | string | info | if set overrides debug.default.loglevel for this particular agent (Legacy setting debug.*agentname*.loglevel still supported) |
+| agent.*agentname*.debug.remote.loglevel | string | info | if set overrides debug.default.remote.loglevel for this particular agent (Legacy setting debug.*agentname*.remote.loglevel) |
 
 Right now the following agents support per-agent log level settings:
 
