@@ -10,7 +10,7 @@
 #   git clone https://git.linaro.org/uefi/uefi-tools.git
 #   ./uefi-tools/edk2-build.sh -b DEBUG -b RELEASE all
 #
-FROM lfedge/eve-alpine:1f744180283ffb4eabcc3862531aeacf1de886b3 AS build
+FROM lfedge/eve-alpine:41f3648ded073c351d0dcd3432322f5816c9c7b1 AS build
 ENV BUILD_PKGS make gcc g++ python3 libuuid nasm util-linux-dev bash git util-linux patch
 ENV BUILD_PKGS_amd64 iasl
 ENV BUILD_PKGS_arm64 iasl
@@ -97,6 +97,15 @@ RUN case $(uname -m) in \
         ;; \
     esac
 
+# Register source-built UEFI components in the APK DB, mandatory for them to be included in the SBOM.
+RUN case "$(uname -m)" in \
+        x86_64)  register-sbom-pkg.sh -n edk2 -v "${EDK_VERSION}" -l BSD-2-Clause-Patent -u https://github.com/tianocore/edk2 -o /sbom-out && \
+                 register-sbom-pkg.sh -n VfioIgdPkg -v "${VFIOIGD_COMMIT:0:8}" -l BSD-2-Clause-Patent -u https://github.com/tomitamoeko/VfioIgdPkg -o /sbom-out ;; \
+        aarch64) register-sbom-pkg.sh -n edk2 -v "${EDK_VERSION}" -l BSD-2-Clause-Patent -u https://github.com/tianocore/edk2 -o /sbom-out ;; \
+        riscv64) register-sbom-pkg.sh -n opensbi -v "${SBI_COMMIT:0:8}" -l BSD-2-Clause -u https://github.com/riscv/opensbi -o /sbom-out ;; \
+    esac
+
 
 FROM scratch
+COPY --from=build-interim /sbom-out/lib/apk/db/installed /lib/apk/db/installed
 COPY --from=build-interim /out/* /

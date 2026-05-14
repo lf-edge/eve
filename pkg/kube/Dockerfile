@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
 
-FROM lfedge/eve-alpine:1f744180283ffb4eabcc3862531aeacf1de886b3 AS build
+FROM lfedge/eve-alpine:41f3648ded073c351d0dcd3432322f5816c9c7b1 AS build
 ARG TARGETARCH
 ENV PKGS alpine-baselayout musl-utils iproute2 iptables curl openrc \
          open-iscsi libvirt libvirt-client util-linux grep findutils jq \
@@ -14,6 +14,16 @@ RUN mkdir -p /out/usr/bin /tmp/etcdtmp && \
     cp "/tmp/etcdtmp/etcd-${ETCDCTL_VERSION}-linux-${TARGETARCH}/etcdctl" /out/usr/bin/etcdctl && \
     chmod +x /out/usr/bin/etcdctl && \
     rm -rf /tmp/etcd.tar.gz /tmp/etcdtmp
+
+# Register etcdctl in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n etcdctl -v "${ETCDCTL_VERSION}" -l Apache-2.0 -u https://github.com/etcd-io/etcd
+
+# Note: virtctl itself is downloaded and installed in the final scratch stage below;
+# the APK DB entry is added here in the build stage so it propagates via COPY /out/.
+# Keep this version aligned with VIRTCTL_VERSION in the final stage.
+ENV VIRTCTL_VERSION=v1.6.0
+# Register virtctl in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n virtctl -v "${VIRTCTL_VERSION}" -l Apache-2.0 -u https://github.com/kubevirt/kubevirt
 
 COPY eve-bridge /plugins/eve-bridge
 WORKDIR /plugins/eve-bridge

@@ -3,7 +3,7 @@
 # Copyright (c) 2023-2025 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-alpine:1f744180283ffb4eabcc3862531aeacf1de886b3 AS build
+FROM lfedge/eve-alpine:41f3648ded073c351d0dcd3432322f5816c9c7b1 AS build
 ENV BUILD_PKGS meson ninja git libc-dev glib-dev make gcc udev dbus-dev libgudev-dev
 ENV PKGS alpine-baselayout dbus glib kmod-dev libgudev
 RUN eve-alpine-deploy.sh
@@ -22,6 +22,9 @@ RUN meson build --buildtype=release --prefix=/usr --sysconfdir=/etc --libdir=/us
     ninja -C build && \
     ninja -C build install
 
+# Register libqrtr-glib in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n libqrtr-glib -v "${LIBQRTR_VERSION}" -l LGPL-2.1-only -u https://github.com/linux-mobile-broadband/libqrtr-glib
+
 ADD --keep-git-dir=true https://github.com/linux-mobile-broadband/libmbim.git#${LIBMBIM_VERSION} /libmbim
 WORKDIR /libmbim
 RUN meson build --buildtype=release --prefix=/usr --sysconfdir=/etc --libdir=/usr/lib \
@@ -29,12 +32,18 @@ RUN meson build --buildtype=release --prefix=/usr --sysconfdir=/etc --libdir=/us
     ninja -C build && \
     ninja -C build install
 
+# Register libmbim in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n libmbim -v "${LIBMBIM_VERSION}" -l LGPL-2.1-only -u https://github.com/linux-mobile-broadband/libmbim
+
 ADD --keep-git-dir=true https://github.com/linux-mobile-broadband/libqmi.git#${LIBQMI_VERSION} /libqmi
 WORKDIR /libqmi
 RUN meson build --buildtype=release --prefix=/usr --sysconfdir=/etc --libdir=/usr/lib \
           -Dbash_completion=false -Dintrospection=false -Dman=false && \
     ninja -C build && \
     ninja -C build install
+
+# Register libqmi in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n libqmi -v "${LIBQMI_VERSION}" -l LGPL-2.1-only -u https://github.com/linux-mobile-broadband/libqmi
 
 ADD --keep-git-dir=true https://github.com/linux-mobile-broadband/ModemManager.git#${MM_VERSION} /mm
 WORKDIR /mm
@@ -44,10 +53,16 @@ RUN meson build --buildtype=release --prefix=/usr --sysconfdir=/etc --libdir=/us
     ninja -C build && \
     ninja -C build install
 
+# Register ModemManager in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n ModemManager -v "${MM_VERSION}" -l GPL-2.0-only -u https://gitlab.freedesktop.org/mobile-broadband/ModemManager
+
 ADD --keep-git-dir=true https://github.com/npat-efault/picocom.git#${PICOCOM_COMMIT} /picocom
 WORKDIR /picocom
 # Need this patch to build with musl: https://github.com/npat-efault/picocom/commit/1acf1ddabaf3576b4023c4f6f09c5a3e4b086fb8
 RUN make -j "$(getconf _NPROCESSORS_ONLN)" && strip picocom && cp picocom /usr/bin/
+
+# Register picocom in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n picocom -v "${PICOCOM_COMMIT:0:8}" -l GPL-2.0-only -u https://github.com/npat-efault/picocom
 
 # Install FCC-unlock scripts/tools provided by device vendors
 ADD --keep-git-dir=true https://github.com/lenovo/lenovo-wwan-unlock.git#${LENOVO_WWAN_UNLOCK_COMMIT} /lenovo-wwan-unlock
@@ -57,6 +72,9 @@ RUN cp libdpr.so.2.0.1 /out/usr/lib/ && chmod 444 /out/usr/lib/libdpr.so.2.0.1
 RUN mkdir -p /out/opt/lenovo/ && \
     cp DPR_Fcc_unlock_service /out/opt/lenovo/ && chmod 544 /out/opt/lenovo/DPR_Fcc_unlock_service
 COPY --chown=root:root --chmod=500 fcc-unlock /out/usr/lib/ModemManager/fcc-unlock.d
+
+# Register lenovo-wwan-unlock in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n lenovo-wwan-unlock -v "${LENOVO_WWAN_UNLOCK_COMMIT:0:8}" -l proprietary -u https://github.com/lenovo/lenovo-wwan-unlock
 
 RUN strip /usr/bin/*cli /usr/libexec/*proxy
 

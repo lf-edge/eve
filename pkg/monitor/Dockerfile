@@ -49,9 +49,13 @@ RUN cargo sbom > sbom.spdx.json
 RUN cp /app/target/$CARGO_BUILD_TARGET/release/monitor /app/target/
 
 
-FROM lfedge/eve-alpine:1f744180283ffb4eabcc3862531aeacf1de886b3 AS runtime
+FROM lfedge/eve-alpine:41f3648ded073c351d0dcd3432322f5816c9c7b1 AS runtime
+ARG MONITOR_RS_VERSION
 ENV PKGS="kbd pciutils usbutils"
 RUN eve-alpine-deploy.sh
+
+# Register eve-monitor-rs in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n eve-monitor-rs -v "${MONITOR_RS_VERSION}" -l Apache-2.0 -u https://github.com/lf-edge/eve-monitor-rs
 
 FROM scratch
 COPY --from=runtime /out/usr/bin/openvt /usr/bin/openvt

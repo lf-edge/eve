@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-alpine:1f744180283ffb4eabcc3862531aeacf1de886b3 AS build-arm64
+FROM lfedge/eve-alpine:41f3648ded073c351d0dcd3432322f5816c9c7b1 AS build-arm64
 
 ARG BUILD_PKGS="bash binutils-dev bsd-compat-headers build-base bc bison \
   cmake flex openssl-dev util-linux-dev linux-headers swig git gnutls-dev \
@@ -30,6 +30,9 @@ RUN git config --global user.name 'Project EVE' && \
 RUN cmake -DCMAKE_INSTALL_PREFIX=/out/usr && \
       make -j "$(getconf _NPROCESSORS_ONLN)" && \
       make install
+
+# Register optee_client in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n optee_client -v "${OPTEE_CLIENT_VERSION}" -l BSD-2-Clause -u https://github.com/OP-TEE/optee_client
 
 FROM scratch AS output-amd64
 FROM scratch AS output-riscv64

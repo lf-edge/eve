@@ -2,7 +2,7 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-alpine:1f744180283ffb4eabcc3862531aeacf1de886b3 AS build-base
+FROM lfedge/eve-alpine:41f3648ded073c351d0dcd3432322f5816c9c7b1 AS build-base
 
 FROM build-base AS build-amd64
 FROM build-base AS build-arm64
@@ -28,5 +28,9 @@ RUN set -e && for patch in *.patch; do \
 
 RUN make -j "$(getconf _NPROCESSORS_ONLN)" && make DESTDIR="/out/opt/zededa" PREFIX="" install
 
+# Register fscrypt in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n fscrypt -v "${FSCRYPT_COMMIT}" -l Apache-2.0 -u https://github.com/google/fscrypt
+
 FROM scratch
 COPY --from=build /out/opt/zededa/bin /opt/zededa/bin
+COPY --from=build /out/lib/apk/db/installed /lib/apk/db/installed

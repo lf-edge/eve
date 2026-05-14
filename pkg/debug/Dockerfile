@@ -10,7 +10,7 @@
 # into the package: see abuild/etc/abuild.conf.
 FROM lfedge/eve-recovertpm:478513dfbf4681b19f11a9afdede6194cceea301 AS recovertpm
 FROM lfedge/eve-bpftrace:03c26b968615b09b491f71e61e35d3f2675835ef AS bpftrace
-FROM lfedge/eve-alpine:1f744180283ffb4eabcc3862531aeacf1de886b3 AS build
+FROM lfedge/eve-alpine:41f3648ded073c351d0dcd3432322f5816c9c7b1 AS build
 ENV BUILD_PKGS="abuild curl tar make linux-headers patch g++ git gcc gpg gettext gettext-static ncurses-dev jq autoconf openssl-dev zlib-dev zlib-static gpg-agent"
 # Feel free to add additional packages here, but be aware that
 # EVE's rootfs image can be no larger than 300Mb (and don't
@@ -58,6 +58,9 @@ RUN for patch in *.patch; do \
     make -j$(nproc) -C src VERSION=B.${LSHW_VERSION} NO_VERSION_CHECK=1 RPM_OPT_FLAGS=-DNONLS ZLIB=1 GZIP="busybox gzip -n9" static && \
     cp src/lshw-static /out/usr/bin/lshw && strip /out/usr/bin/lshw
 
+# Register lshw in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n lshw -v "B.${LSHW_VERSION}" -l GPL-2.0-only -u https://www.ezix.org/software/files/lshw
+
 # building hexedit
 WORKDIR /tmp/hexedit/hexedit-1.5
 # hadolint ignore=DL4006
@@ -65,6 +68,9 @@ ADD https://github.com/pixel/hexedit/archive/refs/tags/1.5.tar.gz ../1.5.tar.gz
 RUN tar -C .. -xzvf ../1.5.tar.gz
 # hadolint ignore=SC2046
 RUN ./autogen.sh && ./configure && make -j$(nproc) && make DESTDIR=/out install
+
+# Register hexedit in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n hexedit -v 1.5 -l GPL-2.0-only -u https://github.com/pixel/hexedit
 
 # tweaking various bit
 WORKDIR /out

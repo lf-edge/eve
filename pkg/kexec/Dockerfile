@@ -1,4 +1,4 @@
-FROM lfedge/eve-alpine:1f744180283ffb4eabcc3862531aeacf1de886b3 AS build
+FROM lfedge/eve-alpine:41f3648ded073c351d0dcd3432322f5816c9c7b1 AS build
 
 ENV BUILD_PKGS patch curl make gcc perl util-linux-dev git mtools linux-headers musl-dev xz-dev elfutils-dev libbz2
 ENV PKGS xz-libs util-linux elfutils-dev libbz2
@@ -13,6 +13,9 @@ RUN tar -C .. -xzvf ../kexec-tools.tgz && rm -f ../kexec-tools.tgz
 RUN ./configure --prefix /usr
 RUN make -j "$(getconf _NPROCESSORS_ONLN)"
 RUN make DESTDIR=/out install
+
+# Register kexec-tools in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n kexec-tools -v "${KEXEC_VERSION}" -l GPL-2.0-only -u https://kernel.org/pub/linux/utils/kernel/kexec
 
 FROM scratch
 COPY --from=build /out /

@@ -8,7 +8,7 @@ ARG BUILD_PKGS_BASE="git gcc linux-headers libc-dev make linux-pam-dev m4 findut
                      libintl libuuid libtirpc libblkid libcrypto3 zlib tar"
 
 # we use the same image in several places
-ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:1f744180283ffb4eabcc3862531aeacf1de886b3
+ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:41f3648ded073c351d0dcd3432322f5816c9c7b1
 
 FROM lfedge/eve-uefi:c5eb2951550c9cc112c54d49ee57fa2c858d8579 AS uefi-build
 FROM lfedge/eve-dom0-ztools:12f3be8183942a1134241414bc265f624dbaad51 AS zfs
@@ -157,6 +157,10 @@ ENV PKGS alpine-baselayout musl-utils libtasn1-progs pciutils yajl xz bash iptab
     libintl libtirpc libblkid zlib rsync chrony wireless-tools wpa_supplicant
 RUN eve-alpine-deploy.sh
 
+# Snapshot collector's own apk DB (alpine PKGS installed above) before the
+# cross-stage COPYs below would overwrite /out/lib/apk/db/installed.
+RUN cp /out/lib/apk/db/installed /tmp/apk-collector.installed
+
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 
 WORKDIR /
@@ -202,6 +206,23 @@ RUN if [ "$(uname -m)" = "aarch64" ] ; then                                     
        xargs strip                                                                     ;\
        apk del findutils binutils file                                                 ;\
     fi
+
+# Merge apk DBs from every source pkg into /out/lib/apk/db/installed so the
+# final SBOM reflects entries from every contributing pkg image.
+COPY --from=zfs /lib/apk/db/installed /tmp/apk-zfs.installed
+COPY --from=fscrypt /lib/apk/db/installed /tmp/apk-fscrypt.installed
+COPY --from=gpttools /lib/apk/db/installed /tmp/apk-gpttools.installed
+COPY --from=dnsmasq /lib/apk/db/installed /tmp/apk-dnsmasq.installed
+COPY --from=uefi-build /lib/apk/db/installed /tmp/apk-uefi.installed
+COPY --from=dhcpcd-bin /out/lib/apk/db/installed /tmp/apk-dhcpcd.installed
+RUN cat /tmp/apk-collector.installed \
+        /tmp/apk-zfs.installed \
+        /tmp/apk-fscrypt.installed \
+        /tmp/apk-gpttools.installed \
+        /tmp/apk-dnsmasq.installed \
+        /tmp/apk-uefi.installed \
+        /tmp/apk-dhcpcd.installed > /out/lib/apk/db/installed && \
+    rm -f /tmp/apk-*.installed
 
 FROM scratch
 

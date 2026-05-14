@@ -4,7 +4,7 @@
 ARG BUILD_PKGS_BASE="bash binutils-dev build-base bc bison flex openssl-dev util-linux-dev swig gnutls-dev perl python3 python3-dev py3-setuptools py3-pycryptodome py3-elftools"
 
 # we use the same image in several places
-ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:1f744180283ffb4eabcc3862531aeacf1de886b3
+ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:41f3648ded073c351d0dcd3432322f5816c9c7b1
 
 # OPTEE-OS images
 FROM lfedge/eve-optee-os:3c441f553d0037cbd49689e35b695632c2c8a9b4 AS optee-os
@@ -197,8 +197,16 @@ RUN for target in ${UBOOT_TARGETS}; do \
         [ -f "$udtb" ] && cp $udtb /bsp/ ;\
     done
 
+# Register imx-atf, firmware-imx and uboot-imx in the APK DB, mandatory for them to be included in the SBOM.
+RUN if [ "$EVE_TARGET_ARCH" = "aarch64" ]; then \
+        register-sbom-pkg.sh -n imx-atf -v "${ATF_COMMIT_imx8mp_pollux:0:8}" -l BSD-3-Clause -u https://github.com/nxp-imx/imx-atf && \
+        register-sbom-pkg.sh -n firmware-imx -v "${FIRMWARE_VER}" -l proprietary -u https://www.nxp.com && \
+        register-sbom-pkg.sh -n uboot-imx -v "${UBOOT_VERSION}" -l GPL-2.0-only -u https://github.com/nxp-imx/uboot-imx; \
+    fi
+
 FROM scratch
 ENTRYPOINT []
 CMD []
 COPY --from=build /bsp /bsp-imx
+COPY --from=build /out/lib/apk/db/installed /lib/apk/db/installed
 

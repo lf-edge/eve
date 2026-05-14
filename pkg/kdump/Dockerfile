@@ -1,6 +1,6 @@
 # Copyright (c) 2023 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
-FROM lfedge/eve-alpine:1f744180283ffb4eabcc3862531aeacf1de886b3 AS build
+FROM lfedge/eve-alpine:41f3648ded073c351d0dcd3432322f5816c9c7b1 AS build
 
 ENV BUILD_PKGS patch curl make gcc perl util-linux-dev git mtools linux-headers musl-dev xz-dev elfutils-dev libbz2
 ENV PKGS xz-libs elfutils-dev libbz2
@@ -14,6 +14,9 @@ RUN tar -C .. -xzvf 1.7.1.tar.gz
 RUN ln -s /usr/lib/libbz2.so.1 /usr/lib/libbz2.so && \
     make LINKTYPE=dynamic && \
     make DESTDIR=/out install
+
+# Register makedumpfile in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n makedumpfile -v 1.7.1 -l GPL-2.0-only -u https://github.com/makedumpfile/makedumpfile
 
 FROM scratch
 COPY --from=build /out /

@@ -3,7 +3,7 @@
 # Copyright (c) 2025 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-alpine:1f744180283ffb4eabcc3862531aeacf1de886b3 AS zfs
+FROM lfedge/eve-alpine:41f3648ded073c351d0dcd3432322f5816c9c7b1 AS zfs
 ENV BUILD_PKGS="git patch ca-certificates util-linux build-base gettext-dev libtirpc-dev automake autoconf \
     libtool linux-headers attr-dev e2fsprogs-dev glib-dev openssl-dev util-linux-dev coreutils"
 ENV PKGS="ca-certificates util-linux libintl libuuid libtirpc libblkid libcrypto3 zlib"
@@ -42,6 +42,9 @@ RUN rm -rf /tmp/zfs-out/usr/share && rm -rf /tmp/zfs-out/usr/src && \
 # hadolint ignore=DL4006
 RUN find /tmp/zfs-out -mindepth 1|sed 's@/tmp/zfs-out@@'>/out/etc/zfs-files
 RUN cp -r /tmp/zfs-out/* /out
+
+# Register zfs in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n zfs -v "${ZFS_VERSION}" -l CDDL-1.0 -u https://github.com/openzfs/zfs
 
 # Add directory for CDI files
 RUN mkdir -p /out/etc/cdi

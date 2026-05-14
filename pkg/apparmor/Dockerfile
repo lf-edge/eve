@@ -3,7 +3,7 @@
 # Copyright (c) 2023 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-alpine:1f744180283ffb4eabcc3862531aeacf1de886b3 AS build
+FROM lfedge/eve-alpine:41f3648ded073c351d0dcd3432322f5816c9c7b1 AS build
 ENV BUILD_PKGS linux-headers musl-dev musl-utils musl-libintl git gcc g++ \
                autoconf autoconf-archive automake libtool make flex bison \
                bash sed gettext
@@ -19,6 +19,9 @@ RUN make -j "$(getconf _NPROCESSORS_ONLN)"
 WORKDIR /apparmor/parser
 RUN ../common/list_af_names.sh > base_af_names.h
 RUN make CFLAGS="-Os"
+
+# Register apparmor in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n apparmor -v 4.1.3 -l GPL-2.0-only -u https://gitlab.com/apparmor/apparmor.git
 
 #Pull a selected set of artifacts into the final stage.
 FROM scratch
