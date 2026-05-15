@@ -12,6 +12,9 @@ on:
 env:
   FORCE_BUILD: FORCE_BUILD=${{ inputs.force && '--force' || '' }}
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}
   cancel-in-progress: true
