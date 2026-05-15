@@ -80,6 +80,7 @@ jobs:
         with:
           ref: ${{ inputs.tag_ref }}
           fetch-depth: 0
+          persist-credentials: false
       - name: Force fetch annotated tags (workaround)
         # Workaround for https://github.com/actions/checkout/issues/290
         run: |
