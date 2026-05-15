@@ -28,3 +28,10 @@ jobs:
         with:
           reporter: github-check
           fail_level: error
+          # Silence shellcheck info/warning codes that produce
+          # boilerplate annotations across many run: blocks and push
+          # reviewdog past GitHub's per-check annotation cap, which
+          # surfaces as a transport-level failure rather than a real
+          # lint finding. The remaining shellcheck error-level rules
+          # still fire, as do all actionlint rules themselves.
+          actionlint_flags: -shellcheck=-e=SC2086,SC2046,SC2035
