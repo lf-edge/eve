@@ -38,3 +38,12 @@ var EdgeNodeInfoPath = "/run/zedagent/EdgeNodeInfo/global.json"
 // clusterWaitFile is a sentinel placed at /run while we are blocked
 // waiting for the bootstrap server.
 var clusterWaitFile = "/run/kube/cluster-change-wait-ongoing"
+
+// multusLinkSource is the path to the multus CNI binary on the host
+// rootfs that gets symlinked into the k3s data directory.
+var multusLinkSource = "/var/lib/cni/bin/multus"
+
+// installLogPath is where `k3s check-config` stdout/stderr is
+// appended on every install/re-install. /persist so the log survives
+// reboots.
+var installLogPath = "/persist/kubelog/k3s-install.log"
