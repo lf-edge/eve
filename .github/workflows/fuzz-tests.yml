@@ -22,6 +22,9 @@ on:  # yamllint disable-line rule:truthy
       - '**/*.md'
       - '.github/**'
 
+permissions:
+  contents: read
+
 jobs:
   fuzz:
     runs-on: zededa-ubuntu-2204

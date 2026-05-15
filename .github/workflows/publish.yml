@@ -16,6 +16,9 @@ on:  # yamllint disable-line rule:truthy
       - "[0-9]+.[0-9]+.[0-9]+-lts"
       - "[0-9]+.[0-9]+.[0-9]+-rc[0-9]+"
 
+permissions:
+  contents: read
+
 jobs:
   # ════════════════════════════════════════════════════════════════════════
   # Stage 1: Build and push base generic packages for each architecture.
