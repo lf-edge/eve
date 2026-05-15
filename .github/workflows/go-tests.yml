@@ -51,6 +51,7 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
+          persist-credentials: false
       - name: Login to Docker Hub
         if: ${{ github.event.repository.full_name == 'lf-edge/eve' }}
         run: | # Runners must provide default credentials
