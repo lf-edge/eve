@@ -7,9 +7,14 @@ on:  # yamllint disable-line rule:truthy
   pull_request_target:
     types: [opened, reopened]
 
+permissions: {}
+
 jobs:
   close-master-pr:
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      issues: write
     steps:
       - name: Close PR if from master
         if: github.event.pull_request.head.ref == 'master' || github.event.pull_request.head.ref == 'main'
