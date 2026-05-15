@@ -47,3 +47,19 @@ var multusLinkSource = "/var/lib/cni/bin/multus"
 // appended on every install/re-install. /persist so the log survives
 // reboots.
 var installLogPath = "/persist/kubelog/k3s-install.log"
+
+// supervisorLogFile is where the Supervisor appends k3s server
+// stdout/stderr.
+var supervisorLogFile = "/persist/kubelog/k3s.log"
+
+// supervisorHooksDir holds executable pre-restart hooks the
+// Supervisor runs when invoked by the FSM (not on crash recovery).
+var supervisorHooksDir = "/etc/k3s-supervisor/hooks.d"
+
+// supervisorPidFile is where the Supervisor records the current
+// k3s process PID for external readers.
+var supervisorPidFile = "/run/k3s.pid"
+
+// procRoot is /proc, parameterised so tests can route the descendant
+// and port-binding scans onto a fixture tree.
+var procRoot = "/proc"
