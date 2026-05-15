@@ -89,34 +89,39 @@ always have a consistent view of device state.
 
 1. **Hardware inventory** – collected before any config is applied so the reported
    hardware info is not affected by config-driven device changes (e.g., vfio-pci
-   assignments).
+   assignments). `domainmgr` enforces this by waiting for `PhysicalIOAdapterList`
+   from `zedagent` before binding any device.
 2. **Global config initialization** – looks for a saved checkpoint in
-   `/persist/checkpoint/`.  If absent, tries a bootstrap config, then falls back to
-   `/config/GlobalConfig`. The resolved config is immediately published to pubsub so
-   all agents start with correct settings.
+   `/persist/checkpoint/`. If absent, tries `/config/bootstrap-config.pb`, then
+   `/config/GlobalConfig`, and finally falls back to the compiled-in defaults from
+   `types.DefaultConfigItemValueMap()`. The resolved config is immediately published
+   to pubsub so all agents start with correct settings.
 3. **Publications created** – all pubsub publications are registered before any
    subscription is activated, ensuring downstream agents never race against a missing
    publisher.
 4. **Onboarding gate** – subscribes to `OnboardingStatus` from `zedclient` and blocks
-   until the device UUID is known. No controller communication happens before this point.
+   until the device UUID is known. Until this gate releases, `zedagent` itself does
+   not contact the controller; `zedclient` performs an unauthenticated controller-cert
+   fetch (against `/api/v2/edgedevice/certs` with a nil UUID) as part of the
+   onboarding handshake.
 5. **Controller client initialized** – TLS context and device UUID are now available to
    construct authenticated HTTP requests.
 6. **Post-onboard subscriptions activated** – all 45+ subscriptions to other
-   microservices are set up now that the UUID is known (needed for correct pubsub topic
-   naming).
+   microservices are set up now that the controller client has a device UUID and TLS
+   context, so subsequent info/metric publishes can be authenticated.
 7. **NodeAgentStatus gate** – waits for the first `NodeAgentStatus` from `nodeagent` to
    populate reboot reason, reboot counter, and related fields before the first config
    fetch (some config fetch decisions depend on boot reason).
 8. **Cipher module initialized** – sets up the cipher context used for config
-   decryption; depends on device state obtained in the previous step.
+   decryption.
 9. **GlobalConfig gate** – waits for the GlobalConfig to arrive via self-subscription,
    confirming the publish round-tripped through pubsub and that log levels and timers
    are set before any periodic tasks start.
 10. **Zboot gate** – waits for `ZbootStatus` from `baseosmgr` before fetching config,
     avoiding config application during an active OTA update where the system may be
     in a transitional state.
-11. **DNS gate** – waits for `DeviceNetworkStatus` from `nim` confirming at least one
-    working uplink before attempting any outbound HTTP requests.
+11. **DeviceNetworkStatus gate** – waits for `DeviceNetworkStatus` from `nim`
+    confirming at least one working uplink before attempting any outbound HTTP requests.
 12. **Goroutines started** – see [Goroutine Architecture](#goroutine-architecture).
 13. **Main event loop** – `mainEventLoop()` runs indefinitely, dispatching pubsub events
     to their handlers.
@@ -124,7 +129,12 @@ always have a consistent view of device state.
 ## Goroutine Architecture
 
 After the startup gates complete, `zedagent` runs the following long-lived goroutines
-in addition to the main event loop:
+in addition to the main event loop. `mainEventLoop()` is a single `select` over the
+post-onboard subscription change channels and the watchdog ticker. It dispatches each
+pubsub change to its handler (e.g., status/metric updates from sibling microservices)
+and, when `DeviceNetworkStatus` indicates connectivity has returned, kicks the
+dedicated tasks via their trigger channels. The loop itself owns no periodic timers;
+all periodic work lives in the tasks below.
 
 | Goroutine | Purpose |
 |---|---|
@@ -152,7 +162,7 @@ buffered channels of capacity 1.  The main event loop and other goroutines write
 these channels via helper functions (`triggerPublishDevInfo`,
 `triggerPublishAllInfo`, etc.) rather than publishing directly.  Because the channel
 capacity is 1, multiple rapid triggers coalesce into a single publish, avoiding
-redundant round-trips to the controller during bursty config changes.
+redundant messages to the controller during bursty config changes.
 
 ## Config Fetch Flow
 
@@ -160,7 +170,7 @@ redundant round-trips to the controller during bursty config changes.
 configTimerTask (periodic ticker)
   └─► getLatestConfig
         ├─► requestConfigByURL (controller)
-        │     └─► HTTP GET /api/v2/edgeDevice/config
+        │     └─► HTTP GET /api/v2/edgedevice/config
         │           └─► inhaleDeviceConfig
         │                 ├─► validate UUID / epoch
         │                 └─► parseConfig
@@ -176,39 +186,52 @@ configTimerTask (periodic ticker)
 
 Key behaviours:
 
-- **Hash comparison** – `computeConfigSha` is used to detect whether the newly
-  fetched config differs from the last processed config.  Unchanged configs are
-  acknowledged to the controller but not reprocessed.
+- **No-change detection** – each `ConfigRequest` echoes the last-seen `ConfigHash`
+  (`handleconfig.go:1107`). The controller can short-circuit by returning HTTP 304
+  Not Modified, in which case nothing is parsed (`handleconfig.go:844`). If a fresh
+  response does arrive, `computeConfigSha` compares the new top-level hash with the
+  previous one; if unchanged, parsing is skipped. When the top-level hash changes,
+  per-section hashes in `parseconfig.go` (e.g., `baseOSPrevConfigHash`,
+  `networkConfigPrevConfigHash`) determine which sub-configs are reparsed and
+  republished.
 - **Config backup** – after `MintimeUpdateSuccess` has elapsed since the last config
   change without any error, the config is backed up to
   `/persist/checkpoint/lastconfig.bak`.
-- **Retry/backoff** – failed fetches are retried with exponential backoff.  The timer
-  interval is randomized ±10 % to prevent thundering-herd from large fleets.
-- **Epoch change** – when the controller increments its epoch counter, `zedagent`
-  republishes all info messages to the controller, ensuring the controller has a
-  fresh snapshot of device state.
+- **Retry/backoff** – failed fetches are retried with exponential backoff. Each tick
+  of the config fetch timer is drawn uniformly from `[0.3, 1.0] × ConfigInterval`
+  (`handleconfig.go:500`), spreading fleet-wide fetches to avoid a thundering herd.
+- **Epoch change** – info publishing is normally driven by status changes from
+  sibling microservices. When the controller increments its epoch counter, `zedagent`
+  forces a republish of all info messages (subject to per-object suppression flags
+  such as `NoUploadStatsToController`) so the controller has a fresh snapshot of
+  device state.
 
 ## Config Source Hierarchy
 
-`zedagent` processes configuration from four possible sources, in order of precedence:
+`zedagent` processes configuration from four possible sources:
 
-| Source | Description | Precedence |
+| Source | Description | When applied |
 |---|---|---|
-| **Controller** | Fetched periodically over HTTPS from the cloud controller. | Highest |
-| **LOC** (Local Operator Console) | Fetched when controller is unreachable and `LOCConfig` is active; provides a compound config. | Fallback |
-| **Bootstrap config** | Signed `BootstrapConfig` protobuf placed in the image at `/config/bootstrap-config.pb`; used on first boot before any controller contact. Controller certificate chain is verified before accepting it. | First-boot |
-| **Saved config** | `/persist/checkpoint/lastconfig` – the last successfully applied config; restored across reboots if the controller remains unreachable. | Last resort |
+| **Controller** | Fetched periodically over HTTPS from the cloud controller. | Runtime (primary) |
+| **LOC** (Local Operator Console) | Fetched when the controller is unreachable and `LOCConfig` is active; provides a compound config. | Runtime (fallback) |
+| **Saved config** | `/persist/checkpoint/lastconfig` – the last successfully applied config; loaded at boot before the controller is first reached, and ignored once a controller response has arrived. | Boot only |
+| **Bootstrap config** | Signed `BootstrapConfig` protobuf placed in the image at `/config/bootstrap-config.pb`; used on first boot when no saved config exists. Controller certificate chain is verified before accepting it. | First boot only |
 
 The `GlobalConfig` (config items / tunable parameters) follows a similar but
-separate path: the `/config/GlobalConfig` JSON file provides factory defaults, the
-controller can override individual items via the `ConfigItems` section of the device
-config, and overrides from LPS or LOC are merged on top.
+separate path: the compiled-in defaults from `types.DefaultConfigItemValueMap()`
+(see `types/global.go`) are the baseline; `/config/GlobalConfig`, if present, acts
+as a factory/installation override; the controller can override individual items via
+the `ConfigItems` section of the device config; and LOC may further override on top.
 
 ## Deferred Queue Mechanism
 
-All outbound HTTP requests to the controller are queued rather than sent inline, to
-decouple the event loop from network latency and to handle connectivity gaps.
-`zedagent` maintains three deferred queues:
+Outbound info/metric/attestation objects are queued by identity rather than as
+independent HTTP requests. Each entry in the deferred queue is keyed by an object
+identifier (e.g. `appInfo:<uuid>`); enqueuing a fresh version of an already-queued
+object overwrites the previous payload in place (`controllerconn/deferred.go:344`),
+so the controller always sees the latest state even if many updates arrived while
+the link was down. This decouples the event loop from network latency and handles
+connectivity gaps. `zedagent` maintains three deferred queues:
 
 | Queue | Policy | Used for |
 |---|---|---|
@@ -248,5 +271,5 @@ loop kicks `deferredEventQueue` to flush any pending reliable messages.
 | `handlepatchenvelopes.go` | Patch envelope status handling and info publish. |
 | `handleappInstMetadata.go` | App instance metadata (msrv) status handling. |
 | `handleblob.go` | Blob status handling for info publish. |
-| `watchdog.go` | Hardware watchdog detection helper. |
+| `watchdog.go` | Watchdog device detection helper. |
 | `validate.go` | Config UTF-8 validation (used with `-p`/`-V` CLI flags). |
