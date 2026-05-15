@@ -35,6 +35,15 @@ var ClusterConfigFile = "/run/zedagent/EdgeNodeClusterConfig/global.json"
 // /persist mirror.
 var EdgeNodeInfoPath = "/run/zedagent/EdgeNodeInfo/global.json"
 
+// KubeconfigCopyDir / KubeconfigCopy is where kube-init mirrors the
+// k3s-written kubeconfig (state.K3sKubeconfig) so that components
+// running outside the k3s container can consume it without reaching
+// into /etc/rancher.
+var (
+	KubeconfigCopyDir = "/run/.kube/k3s"
+	KubeconfigCopy    = "/run/.kube/k3s/k3s.yaml"
+)
+
 // clusterWaitFile is a sentinel placed at /run while we are blocked
 // waiting for the bootstrap server.
 var clusterWaitFile = "/run/kube/cluster-change-wait-ongoing"
