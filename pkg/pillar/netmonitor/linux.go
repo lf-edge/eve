@@ -30,6 +30,7 @@ import (
 const (
 	netlinkSubBufSize = 128 * 1024 // bytes
 	eventChanBufSize  = 64         // number of events
+	procNetBondingDir = "/proc/net/bonding"
 
 	// Give subscriber some time to receive notification.
 	// This is used despite the fact that the subscription channel
@@ -522,7 +523,7 @@ func (m *LinuxNetworkMonitor) GetBondStatus(ifIndex int) (BondStatus, error) {
 	// - Per-member aggregator ID (available via netlink but we parse it together)
 	// - Peer notification delay and ARP missed max (newer kernel attributes
 	//   not present in the vendored netlink library)
-	procInfo, err := parseProcBondInfo(bond.Attrs().Name)
+	procInfo, err := parseProcBondInfo(procNetBondingDir, bond.Attrs().Name)
 	if err != nil {
 		m.Log.Warnf("GetBondStatus: failed to parse /proc for %s: %v",
 			bond.Attrs().Name, err)
@@ -567,8 +568,8 @@ type procBondMemberInfo struct {
 
 // parseProcBondInfo parses /proc/net/bonding/<name> for bond-level LACP info
 // and per-member status (aggregator ID, churn states).
-func parseProcBondInfo(bondName string) (procBondInfo, error) {
-	data, err := os.ReadFile(fmt.Sprintf("/proc/net/bonding/%s", bondName))
+func parseProcBondInfo(bondingDir, bondName string) (procBondInfo, error) {
+	data, err := os.ReadFile(fmt.Sprintf("%s/%s", bondingDir, bondName))
 	if err != nil {
 		return procBondInfo{}, err
 	}
@@ -654,7 +655,7 @@ func (m *LinuxNetworkMonitor) GetBondMetrics(ifIndex int) (types.BondMetrics, er
 	// Parse /proc/net/bonding/<name> for LACP counters (not available via netlink).
 	var procMembers map[string]procBondMemberMetrics
 	if isLACP {
-		procMembers, err = parseProcBondMemberMetrics(bond.Attrs().Name)
+		procMembers, err = parseProcBondMemberMetrics(procNetBondingDir, bond.Attrs().Name)
 		if err != nil {
 			m.Log.Warnf("GetBondMetrics: failed to parse /proc for %s: %v",
 				bond.Attrs().Name, err)
@@ -703,8 +704,8 @@ type procBondMemberMetrics struct {
 
 // parseProcBondMemberMetrics parses /proc/net/bonding/<name> for per-member
 // LACP counters not available via netlink.
-func parseProcBondMemberMetrics(bondName string) (map[string]procBondMemberMetrics, error) {
-	data, err := os.ReadFile(fmt.Sprintf("/proc/net/bonding/%s", bondName))
+func parseProcBondMemberMetrics(bondingDir, bondName string) (map[string]procBondMemberMetrics, error) {
+	data, err := os.ReadFile(fmt.Sprintf("%s/%s", bondingDir, bondName))
 	if err != nil {
 		return nil, err
 	}
