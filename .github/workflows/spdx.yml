@@ -13,6 +13,9 @@ on:  # yamllint disable-line rule:truthy
     paths-ignore:
       - '**/*.md'
 
+permissions:
+  contents: read
+
 jobs:
   spdx-check:
     runs-on: ubuntu-latest

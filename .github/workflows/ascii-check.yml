@@ -11,6 +11,9 @@ on:  # yamllint disable-line rule:truthy
       - "[0-9]+.[0-9]+-stable"
       - "feature/*"
 
+permissions:
+  contents: read
+
 jobs:
   ascii-lint:
     name: Ensure Go code uses ASCII-only identifiers

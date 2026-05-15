@@ -22,6 +22,9 @@ on:  # yamllint disable-line rule:truthy
       - '**/*.md'
       - '.github/**'
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-24.04
