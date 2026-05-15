@@ -1,0 +1,49 @@
+# Copyright (c) 2026, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Per-rule ignore list for the Zizmor workflow audit. Each entry below
+# documents a finding that is legitimate by design and would be a
+# regression to "fix" by changing the affected workflow. Mechanical
+# findings (artipacked, excessive-permissions, template-injection,
+# secrets-outside-env) are addressed in separate PRs, not suppressed
+# here.
+#
+# unpinned-uses findings are suppressed inline in the workflow files
+# ("# zizmor: ignore[unpinned-uses]" on the affected uses: line), so the
+# suppression travels with the line instead of a fragile anchor here.
+---
+rules:
+  dangerous-triggers:
+    ignore:
+      # pull_request_target: posts an explanatory comment and closes the
+      # PR via the GitHub API. No checkout of the head ref; no shell
+      # execution touches PR-controlled content.
+      - close-master-pr.yml
+      # pull_request_target: checks out the base ref, fetches the head
+      # SHA, and only reads .github/CODEOWNERS (base-controlled). The
+      # head ref is interpolated into shell; that template-injection
+      # exposure is fixed separately, not by changing the trigger.
+      - request_codeowners_review.yml
+      # workflow_run after a successful "PR build": reads only the
+      # gate context artifact produced by the trusted workflow and
+      # forwards the PR identifier. Privileged context is needed to
+      # write commit statuses on the PR head SHA.
+      - pr-gate.yml
+      # workflow_run after a successful "PR Gate": dispatches to the
+      # lf-edge/eden reusable test workflow with a fixed payload.
+      # Privileged context is needed to update commit statuses and
+      # pull DOCKERHUB_PULL_* secrets for the eden harness.
+      - eden-trusted.yml
+      # workflow_run after a successful "PR build": dispatches to the
+      # shjala/eve-cvewatch reusable scanner with the PR head URL and
+      # SHA. No untrusted checkout in the caller workflow.
+      - cve-scan.yml
+
+  secrets-inherit:
+    ignore:
+      # Calls the lf-edge/eden reusable test workflow, which is part
+      # of the same org-controlled trust boundary as this repo.
+      # Enumerating the secrets explicitly is tracked separately; it
+      # requires aligning with the inputs declared by eden's test.yml
+      # and would not change the trust model.
+      - eden-trusted.yml
