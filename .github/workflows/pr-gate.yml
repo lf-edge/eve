@@ -15,6 +15,8 @@ env:
   BUILD_WF_NAME: PR build
   RUN_CONTEXT_FILE: run-context.json
 
+permissions: {}
+
 # one gate run per PR; new workflow_run cancels the older run, reviews do not
 concurrency:
   group: |
@@ -24,6 +26,9 @@ concurrency:
 jobs:
   eden-gate:
     name: Ready for Eden
+    permissions:
+      actions: read
+      pull-requests: read
     strategy:
       fail-fast: false
       matrix:
