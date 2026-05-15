@@ -13,7 +13,6 @@ This document mirrors the key names, types, defaults, and ranges defined there.
 | timer.cert.interval | integer in seconds | 86400 (1 day) | 60 (1 minute) | 4294967295 (max uint32) | how frequently device checks for new controller certificates |
 | timer.metric.interval | integer in seconds | 60 (1 minute) | 5 | 3600 (1 hour) | how frequently device reports metrics |
 | timer.hardwarehealth.interval | integer in seconds | 43200 (12 hours) | 21600 (6 hours) | 4294967295 (max uint32) | how frequently device reports hardware health information (ECC, SMART) to controller |
-| timer.hardwareinfo.interval | integer in seconds | - | - | - | removed; no longer present in `NewConfigItemSpecMap()` |
 | timer.deviceinfo.interval | integer in seconds | 600 (10 minutes) | 30 | 4294967295 (max uint32) | how frequently device is forced to report device info to controller even though nothing changed (needs a reboot to take effect) |
 | timer.metric.diskscan.interval | integer in seconds | 300 (5 minutes) | 5 | 3600 (1 hour) | how frequently device should scan the disk for metrics |
 | timer.location.cloud.interval | integer in seconds | 3600 (1 hour) | 300 (5 minutes) | 4294967295 (max uint32) | how frequently device reports geographic location information to controller |
@@ -34,7 +33,7 @@ This document mirrors the key names, types, defaults, and ranges defined there.
 | timer.port.testduration | integer in seconds | 30 | 10 | 3600 (1 hour) | wait for DHCP to give address |
 | timer.port.testinterval | timer in seconds | 300 (5 minutes) | 300 (5 minutes) | 3600 (1 hour) | retest the current port config |
 | timer.port.timeout | timer in seconds | 15 | 0 | 3600 (1 hour) | time for each http/send |
-| timer.port.testbetterinterval | timer in seconds | 600 (10 minutes) | 0 | 4294967295 (max uint32) | test a higher prio port config |
+| timer.port.testbetterinterval | timer in seconds | 600 (10 minutes) | 0 | 4294967295 | retry the highest-priority port configuration when the current port configuration is a lower-priority fallback |
 | network.fallback.any.eth | "enabled" or "disabled" | disabled | - | - | if no connectivity try any Ethernet, WiFi, or LTE with DHCP client (enabled forcefully during onboarding if no network config) |
 | network.download.max.cost | 0-255 | 0 | 0 | 255 | [max port cost for download](DEVICE-CONNECTIVITY.md) to avoid e.g., LTE ports |
 | blob.download.max.retries | 1-10 | 5 | 1 | 10 | max download retries when image verification fails. |
@@ -101,8 +100,8 @@ This document mirrors the key names, types, defaults, and ranges defined there.
 | wwan.modem.recovery.watchdog | boolean | false | - | - | Enable watchdog for cellular modems. If a modem firmware crashes and fails to recover, the device will automatically reboot. |
 | wwan.modem.recovery.reload.drivers | boolean | false | - | - | If a modem firmware crashes and fails to recover, EVE will attempt to reload the MBIM/QMI/MHI drivers as a recovery step. This occurs before the watchdog mechanism is triggered (if enabled). |
 | wwan.modem.recovery.restart.modemmanager | boolean | false | - | - | If a modem firmware crash occurs and ModemManager fails to properly recognize or manage the restarted modem, EVE will attempt to restart ModemManager as a recovery step. This occurs before the watchdog mechanism is triggered (if enabled) and can be combined with driver reload recovery mechanism. |
-| diag.probe.remote.http.endpoint | string | `www.google.com` | - | - | Remote endpoint (URL, IP instead of hostname is accepted) queried over HTTP to assess the state of network connectivity whenever the controller is not reachable. Used only for diagnostics (no functional impact). Set to an empty string to disable. |
-| diag.probe.remote.https.endpoint | string | `www.google.com` | - | - | Remote endpoint (URL, IP instead of hostname is NOT accepted) queried over HTTPS to assess the state of network connectivity whenever the controller is not reachable. Used only for diagnostics (no functional impact). Set to an empty string to disable. |
+| diag.probe.remote.http.endpoint | string | `www.google.com` | - | - | Remote endpoint hostname or IP address queried over HTTP to assess the state of network connectivity whenever the controller is not reachable. Used only for diagnostics (no functional impact). Set to an empty string to disable. |
+| diag.probe.remote.https.endpoint | string | `www.google.com` | - | - | Remote endpoint hostname queried over HTTPS to assess the state of network connectivity whenever the controller is not reachable. IP addresses are not accepted. Used only for diagnostics (no functional impact). Set to an empty string to disable. |
 | app.enable.tcp.mss.clamping | bool | true | - | - | Configuration property that enables EVE to automatically adjust (clamp) the TCP MSS on forwarded application traffic to match the path MTU, preventing fragmentation and connectivity issues on lower-MTU links. |
 | scep.retry.interval | timer in seconds | 300 (5 minutes) | 60 (1 minute) | 3600 (1 hour) | Interval between retry attempts for certificates that previously failed to enroll/renew or returned PENDING from the SCEP server. |
 | pnac.dhcp.reacquire.max.retries | integer | 4 | 0 | 8 | Maximum number of DHCP reacquire retries after a PNAC (802.1X) port authentication state change. When the network switch reassigns the port to a different access VLAN, EVE retries with exponential backoff (2s, 4s, 8s, ...) until the IP subnet changes or the retry limit is reached. Setting this value to 0 disables DHCP reacquire. |
@@ -160,8 +159,8 @@ The per-agent settings begin with "agent.*agentname*.*setting*":
 
 | Name | Type | Default | Description |
 | ---- | ---- | ------- | ----------- |
-| agent.*agentname*.debug.loglevel | string | info | if set overrides debug.default.loglevel for this particular agent (Legacy setting debug.*agentname*.loglevel still supported) |
-| agent.*agentname*.debug.remote.loglevel | string | info | if set overrides debug.default.remote.loglevel for this particular agent (Legacy setting debug.*agentname*.remote.loglevel) |
+| agent.*agentname*.debug.loglevel | string | "" | if set overrides debug.default.loglevel for this particular agent (Legacy setting debug.*agentname*.loglevel still supported) |
+| agent.*agentname*.debug.remote.loglevel | string | "" | if set overrides debug.default.remote.loglevel for this particular agent (Legacy setting debug.*agentname*.remote.loglevel) |
 
 Right now the following agents support per-agent log level settings:
 
