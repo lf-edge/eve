@@ -41,8 +41,9 @@ jobs:
 
       - name: Set run mode (red or yellow)
         id: mode
+        env:
+          BODY: ${{ github.event.comment.body }}
         run: |
-          BODY="${{ github.event.comment.body }}"
           if [[ "$BODY" =~ ^/rerun[[:space:]]+yellow ]]; then
             echo "mode=yellow" >> $GITHUB_OUTPUT
           elif [[ "$BODY" =~ ^/rerun[[:space:]]+red ]]; then
