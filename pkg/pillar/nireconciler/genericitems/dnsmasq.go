@@ -327,7 +327,7 @@ func (d Dnsmasq) Dependencies() (deps []dg.Dependency) {
 }
 
 const (
-	dnsmasqBinary       = "/opt/zededa/bin/dnsmasq"
+	dnsmasqBinary       = "/usr/sbin/dnsmasq"
 	dnsmasqStartTimeout = 3 * time.Second
 	dnsmasqStopTimeout  = 30 * time.Second
 )
@@ -897,7 +897,7 @@ func (c *DnsmasqConfigurator) initProcessManager(instanceName string) proc.Proce
 		Log:       c.Log,
 		PidFile:   c.dnsmasqPidFile(instanceName),
 		Cmd:       dnsmasqBinary,
-		Args:      []string{"-C", c.dnsmasqConfigPath(instanceName)},
+		Args:      []string{"-u", "nobody", "-g", "nobody", "-C", c.dnsmasqConfigPath(instanceName)},
 		WithNohup: true,
 		WillFork:  true,
 	}

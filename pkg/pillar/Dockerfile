@@ -135,9 +135,8 @@ RUN --mount=type=cache,target=/root/.cache/go-build if [ "${TEST_TOOLS}" = "y" ]
     GOBIN=/final/opt/ GOFLAGS="" go install gotest.tools/gotestsum@v1.7.0; \
 fi
 
-FROM lfedge/eve-fscrypt:cf2d03f3fb3c646639076b1f96ee8d908dec4ff3 AS fscrypt
-FROM lfedge/eve-dnsmasq:a44436ae4fd5bfb0e72c312e6bf305cbf7673017 AS dnsmasq
-FROM lfedge/eve-gpt-tools:118f6058a3cfd3204456178da448f5e2bb2975e5 AS gpttools
+FROM lfedge/eve-fscrypt:e6a8b9da0aa85206bf84cbebd3a2c6e8df959216 AS fscrypt
+FROM lfedge/eve-gpt-tools:36b9660038be7724ef1a7d2e0458a33fe4489b45 AS gpttools
 
 # dhcpcd: Alpine 3.21+ ships a sufficiently up-to-date version (10.x with required IPv6 fixes).
 # No --platform means Docker BuildKit uses the target platform, giving us the correct binary arch.
@@ -154,7 +153,7 @@ ENV BUILD_PKGS patch
 ENV PKGS alpine-baselayout musl-utils libtasn1-progs pciutils yajl xz bash iptables ip6tables iproute2 \
     coreutils dmidecode libbz2 libuuid ipset curl radvd ethtool util-linux e2fsprogs libcrypto3 xorriso \
     qemu-img jq e2fsprogs-extra keyutils ca-certificates ip6tables-openrc iptables-openrc ipset-openrc hdparm \
-    libintl libtirpc libblkid zlib rsync chrony wireless-tools wpa_supplicant
+    libintl libtirpc libblkid zlib rsync chrony wireless-tools wpa_supplicant dnsmasq
 RUN eve-alpine-deploy.sh
 
 # Snapshot collector's own apk DB (alpine PKGS installed above) before the
@@ -171,7 +170,6 @@ COPY --from=uefi-build /OVMF_VARS.fd /out/usr/lib/xen/boot/OVMF_VARS.fd
 COPY --from=zfs /out /out
 COPY --from=fscrypt /opt/zededa/bin /out/opt/zededa/bin
 COPY --from=gpttools / /out
-COPY --from=dnsmasq /usr/sbin/dnsmasq /out/opt/zededa/bin/dnsmasq
 # we use final directory and move the line to the bottom
 # to avoid conflicts and speedup re-builds
 COPY --from=build /final /out
@@ -212,14 +210,12 @@ RUN if [ "$(uname -m)" = "aarch64" ] ; then                                     
 COPY --from=zfs /lib/apk/db/installed /tmp/apk-zfs.installed
 COPY --from=fscrypt /lib/apk/db/installed /tmp/apk-fscrypt.installed
 COPY --from=gpttools /lib/apk/db/installed /tmp/apk-gpttools.installed
-COPY --from=dnsmasq /lib/apk/db/installed /tmp/apk-dnsmasq.installed
 COPY --from=uefi-build /lib/apk/db/installed /tmp/apk-uefi.installed
 COPY --from=dhcpcd-bin /out/lib/apk/db/installed /tmp/apk-dhcpcd.installed
 RUN cat /tmp/apk-collector.installed \
         /tmp/apk-zfs.installed \
         /tmp/apk-fscrypt.installed \
         /tmp/apk-gpttools.installed \
-        /tmp/apk-dnsmasq.installed \
         /tmp/apk-uefi.installed \
         /tmp/apk-dhcpcd.installed > /out/lib/apk/db/installed && \
     rm -f /tmp/apk-*.installed
