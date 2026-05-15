@@ -138,15 +138,22 @@ func AtomicWriteFile(path string, data []byte, perm os.FileMode) error {
 
 	// Fsync the parent directory so the rename is durable. Without
 	// this, the file's new name can still be lost on power loss even
-	// though its bytes are safely on disk.
-	if d, derr := os.Open(dir); derr == nil {
-		// Best-effort: a failure here doesn't unwind the rename
-		// (which already succeeded); just log via the returned error.
-		syncErr := d.Sync()
-		d.Close()
-		if syncErr != nil {
-			return fmt.Errorf("sync parent dir %s: %w", dir, syncErr)
-		}
+	// though its bytes are safely on disk. If we can't open the
+	// directory (EACCES / EMFILE / etc.) we surface that as an error
+	// rather than silently skip the sync — callers expect this
+	// function to report any failure that compromises the durability
+	// contract.
+	d, derr := os.Open(dir)
+	if derr != nil {
+		return fmt.Errorf("open parent dir %s for sync: %w", dir, derr)
+	}
+	syncErr := d.Sync()
+	closeErr := d.Close()
+	if syncErr != nil {
+		return fmt.Errorf("sync parent dir %s: %w", dir, syncErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("close parent dir %s: %w", dir, closeErr)
 	}
 	return nil
 }
