@@ -2,8 +2,7 @@
 
 This document covers subsystems of `zedagent` that are architecturally significant
 but too detailed for the main [zedagent.md](zedagent.md) overview.  It is intended
-for contributors working on the agent itself, writing eden integration tests, or
-analysing code coverage gaps.
+for contributors working on the agent itself or writing eden integration tests.
 
 ## Pubsub Map
 
@@ -19,23 +18,23 @@ analysing code coverage gaps.
 | `DatastoreConfig` | datastore UUID | `downloader` |
 | `ContentTreeConfig` | content tree UUID | `volumemgr` |
 | `VolumeConfig` | volume UUID | `volumemgr` |
-| `DevicePortConfig` | fixed key | `nim` |
-| `PhysicalIOAdapterList` | fixed key | `domainmgr` |
+| `DevicePortConfig` | `"lps"` (`types.LpsDPCKey`) | `nim` |
+| `PhysicalIOAdapterList` | `"global"` | `domainmgr` |
 | `GlobalConfig` (ConfigItemValueMap) | `"global"` | all agents (self-subscribe for log levels, timers, etc.) |
-| `ZedAgentStatus` | agent name | `baseosmgr`, `nodeagent`, `LPS/LOC` consumers |
+| `ZedAgentStatus` | `"zedagent"` (agent name) | `baseosmgr`, `nodeagent`, `LPS/LOC` consumers |
 | `ControllerCert` | cert hash | `downloader`, `nim`, other agents doing TLS |
 | `CipherContext` | cipher context UUID | `domainmgr`, `zedrouter`, `downloader`, others |
 | `SCEPProfile` | profile key | `scepclient` |
-| `LOCConfig` | fixed key | `baseosmgr` |
-| `CollectInfoCmd` | fixed key | `diag` |
-| `DisksConfig` (EdgeNodeDisks) | fixed key | `domainmgr` |
-| `EdgeNodeInfo` | fixed key | `baseosmgr` |
-| `PatchEnvelopeInfoList` | fixed key | `msrv` |
-| `EdgeNodeClusterConfig` | fixed key | `zedkube` (Kubevirt only) |
-| `AttestNonce` | fixed key | `tpmmgr` |
-| `EncryptedKeyFromController` | fixed key | `vaultmgr` |
-| `NodeDrainRequest` | fixed key | `nodeagent` |
-| `MetricsMap` | fixed key | (internal, for metrics deduplication) |
+| `LOCConfig` | `""` (empty) | `baseosmgr` |
+| `CollectInfoCmd` | `time.Now().String()` (dynamic per request) | `diag` |
+| `DisksConfig` (EdgeNodeDisks) | `"global"` | `domainmgr` |
+| `EdgeNodeInfo` | `"global"` | `baseosmgr` |
+| `PatchEnvelopeInfoList` | `"global"` | `msrv` |
+| `EdgeNodeClusterConfig` | `"global"` | `zedkube` (Kubevirt only) |
+| `AttestNonce` | hex of nonce (dynamic per request) | `tpmmgr` |
+| `EncryptedKeyFromController` | vault name (dynamic per vault) | `vaultmgr` |
+| `NodeDrainRequest` | `"global"` | `nodeagent` |
+| `MetricsMap` | `"global"` | (internal, for metrics deduplication) |
 
 ### Subscriptions (zedagent ← upstream agents)
 
@@ -53,7 +52,7 @@ analysing code coverage gaps.
 | `AppFlowMonitor` | `zedrouter` | `handleAppFlowMonitorImpl` – enqueues flow log messages |
 | `AppContainerMetrics` | `zedrouter` | `handleAppContainerMetricsImpl` – app container stats |
 | `DevicePortConfigList` | `nim` | `handleDPCLImpl` – DPC state for device info |
-| `DeviceNetworkStatus` | `nim` | `handleDNSImpl` – unblocks DNS gate; kicks deferred queue |
+| `DeviceNetworkStatus` | `nim` | `handleDNSImpl` – unblocks DeviceNetworkStatus gate; kicks deferred queue |
 | `NetworkMetrics` | `zedrouter` | (folded into `publishMetrics`) |
 | `NimMetrics` | `nim` | (folded into `publishMetrics`) |
 | `ZRouterMetrics` | `zedrouter` | (folded into `publishMetrics`) |
@@ -118,6 +117,29 @@ zedagent                 tpmmgr              controller              vaultmgr
    │                        │                    │ (vault unlocked)      │
 ```
 
+Conceptually, the security-relevant flow is end-to-end between the **controller and
+the TPM**: the controller mints a fresh nonce, the TPM bakes it into a signed quote
+over the device's PCRs, and the controller validates the resulting quote. The
+diagram above shows zedagent's internal role as the courier that routes those
+payloads — `AttestNonce` and `AttestQuote` over pubsub between `tpmmgr` and
+`zedagent`, then `ZAttestReq`/`ZAttestResponse` over the EVE API between `zedagent`
+and the controller — and that escrows the resulting vault keys via `vaultmgr`.
+
+All three FSM transitions ride a single EVE-API endpoint,
+`POST /api/v2/edgedevice/id/{deviceUUID}/attest`, with a discriminated `ZAttestReq`
+body:
+
+| Step | `ReqType` | Request payload | Response payload |
+|---|---|---|---|
+| Nonce request | `ATTEST_REQ_NONCE` | (empty) | `ZAttestNonceResp{Nonce}` |
+| Quote send | `ATTEST_REQ_QUOTE` | `ZAttestQuote{AttestData,Signature,PcrValues[0..15],Versions,TpmBinaryEventLog}` | `ZAttestQuoteResp{Response,IntegrityToken,Keys}` |
+| Escrow (non-airgapped) | `Z_ATTEST_REQ_TYPE_STORE_KEYS` | `AttestStorageKeys{IntegrityToken,Keys}` | `AttestStorageKeysResp{Response}` |
+
+Proto types live in `eve-api/go/attest/`. The controller-side semantics — nonce
+freshness, PCR policy, escrow handling — are described in the [Measured Boot and
+Remote Attestation](https://lf-edge.atlassian.net/wiki/spaces/EVE/pages/14584444/Measured+Boot+and+Remote+Attestation)
+Confluence page.
+
 Key points:
 
 - The FSM is initialized by `attestModuleInitialize` before post-onboard subscriptions
@@ -138,11 +160,11 @@ Key points:
 `zedagent` derives a single `maintenanceMode` bool from three independent sources and
 consolidates them in `mergeMaintenanceMode`:
 
-| Source | Field | Set when |
-|---|---|---|
-| Controller config API | `apiMaintenanceMode` | `ConfigItems` in device config includes `maintenance_mode: true` |
-| LocalCmdAgent | `gcpMaintenanceMode` (TriState) | LPS/LOC sends a maintenance mode command |
-| Local failure | `localMaintenanceMode` | Edge-node certificate publication is refused by controller (`edgeNodeCertsRefused`) |
+| Source | Field | Type | Set when |
+|---|---|---|---|
+| Controller config API | `apiMaintenanceMode` | `bool` | The device config's dedicated `EdgeDevConfig.MaintenanceMode` protobuf field is set (controller-supplied; `parseconfig.go:110`). |
+| GlobalConfig knob | `gcpMaintenanceMode` | `TriState` | The `maintenance.mode` global-config entry is set (`types/global.go:317`); written by controller or LOC (never LPS) via `parseConfigItems` (`parseconfig.go:3197`, `zedagent.go:2704`). |
+| Local failure (nodeagent) | `localMaintenanceMode` + `localMaintModeReasons` | `bool` + `[]MaintenanceModeReason` | `nodeagent` publishes `NodeAgentStatus.LocalMaintenanceMode=true` with one or more reasons from `types.MaintenanceModeReason` (`UserRequested`, `VaultLockedUp`, `NoDiskSpace`, `TpmEncFailure`, `TpmQuoteFailure`, `EdgeNodeCertsRefused`); enum at `types/zedagenttypes.go:404`. |
 
 `maintenanceMode = apiMaintenanceMode || (gcpMaintenanceMode == TS_TRUE) || localMaintenanceMode`
 
