@@ -45,6 +45,28 @@ const K3sKubeconfig = "/etc/rancher/k3s/k3s.yaml"
 // `const SomeFlag Marker = "/var/lib/something"` without ceremony.
 type Marker string
 
+// IsInitialized reports whether the device has completed its
+// first-boot deployment pass, by checking the
+// AllComponentsInitialized marker. Errors propagate the same way as
+// IsMarked — callers should treat a stat error as a hard failure
+// rather than "not initialized".
+func IsInitialized() (bool, error) {
+	return IsMarked(AllComponentsInitialized)
+}
+
+// MarkInitialized writes the AllComponentsInitialized marker.
+func MarkInitialized() error {
+	return Mark(AllComponentsInitialized)
+}
+
+// IsConvertToSingleNode reports whether the cluster→single-node
+// transition has armed a pending conversion that should fire on
+// the next boot. Set by clustermode.RunClusterToSingle before its
+// reboot; read by the kube-init startup to trigger RestoreVarLib.
+func IsConvertToSingleNode() (bool, error) {
+	return IsMarked(ConvertToSingleNode)
+}
+
 // IsMarked reports whether the given marker file is present.
 //
 // Returns (true, nil) when the marker exists, (false, nil) when it
