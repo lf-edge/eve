@@ -77,18 +77,20 @@ const (
 	longhornNamespace = "longhorn-system"
 )
 
-// Multus + DHCP-daemon + debug-user paths.
+// Multus + DHCP-daemon + debug-user paths. Exported because the
+// monitor package re-reads/re-creates these files in its
+// running-state health check loop.
 const (
-	multusYAMLSrc    = "/etc/multus-daemonset.yaml"
-	multusYAMLDst    = "/etc/multus-daemonset-new.yaml"
-	multusLinkSource = "/var/lib/cni/bin/multus"
-	multusLinkTarget = "/var/lib/rancher/k3s/data/current/bin/multus"
+	MultusYAMLSrc    = "/etc/multus-daemonset.yaml"
+	MultusYAMLDst    = "/etc/multus-daemonset-new.yaml"
+	MultusLinkSource = "/var/lib/cni/bin/multus"
+	MultusLinkTarget = "/var/lib/rancher/k3s/data/current/bin/multus"
 
-	dhcpBinary = "/opt/cni/bin/dhcp"
-	dhcpSocket = "/run/cni/dhcp.sock"
+	DHCPBinary = "/opt/cni/bin/dhcp"
+	DHCPSocket = "/run/cni/dhcp.sock"
 
-	k3sUserYaml = "/var/lib/rancher/k3s/user.yaml"
-	runUserYaml = "/run/.kube/k3s/user.yaml"
+	K3sUserYaml = "/var/lib/rancher/k3s/user.yaml"
+	RunUserYaml = "/run/.kube/k3s/user.yaml"
 )
 
 // NodeAddress carries the host's IPv4 + cluster prefix as a single
@@ -255,17 +257,17 @@ func ApplyMultusCNI(ctx context.Context, addr NodeAddress) error {
 	}
 
 	ipPrefix := addr.IP + addr.Prefix
-	tmpl, err := os.ReadFile(multusYAMLSrc)
+	tmpl, err := os.ReadFile(MultusYAMLSrc)
 	if err != nil {
-		return fmt.Errorf("read multus template %s: %w", multusYAMLSrc, err)
+		return fmt.Errorf("read multus template %s: %w", MultusYAMLSrc, err)
 	}
 	rendered := strings.ReplaceAll(string(tmpl), "IPAddressReplaceMe", ipPrefix)
-	if err := os.WriteFile(multusYAMLDst, []byte(rendered), 0644); err != nil {
-		return fmt.Errorf("write rendered multus yaml %s: %w", multusYAMLDst, err)
+	if err := os.WriteFile(MultusYAMLDst, []byte(rendered), 0644); err != nil {
+		return fmt.Errorf("write rendered multus yaml %s: %w", MultusYAMLDst, err)
 	}
 	log.Printf("rendered multus daemonset with IP prefix %s", ipPrefix)
 
-	if err := kubectlApply(ctx, multusYAMLDst); err != nil {
+	if err := kubectlApply(ctx, MultusYAMLDst); err != nil {
 		return fmt.Errorf("apply multus daemonset: %w", err)
 	}
 	log.Printf("multus daemonset applied")
@@ -297,13 +299,13 @@ func StartDHCPDaemon() error {
 		log.Printf("DHCP daemon already running")
 		return nil
 	}
-	if _, err := os.Stat(dhcpSocket); err == nil {
-		log.Printf("removing stale DHCP socket %s", dhcpSocket)
-		if err := os.Remove(dhcpSocket); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(DHCPSocket); err == nil {
+		log.Printf("removing stale DHCP socket %s", DHCPSocket)
+		if err := os.Remove(DHCPSocket); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("remove stale DHCP socket: %w", err)
 		}
 	}
-	cmd := exec.Command(dhcpBinary, "daemon")
+	cmd := exec.Command(DHCPBinary, "daemon")
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start DHCP daemon: %w", err)
 	}
@@ -378,13 +380,13 @@ func ConfigClusterRoles(ctx context.Context) error {
 	userCfg = replaceField(userCfg, "client-key-data:",
 		base64.StdEncoding.EncodeToString(keyData))
 
-	if err := os.WriteFile(k3sUserYaml, []byte(userCfg), 0600); err != nil {
+	if err := os.WriteFile(K3sUserYaml, []byte(userCfg), 0600); err != nil {
 		return fmt.Errorf("write user yaml: %w", err)
 	}
-	if err := os.MkdirAll(filepath.Dir(runUserYaml), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(RunUserYaml), 0755); err != nil {
 		return fmt.Errorf("mkdir for run user yaml: %w", err)
 	}
-	if err := copyFile(k3sUserYaml, runUserYaml); err != nil {
+	if err := copyFile(K3sUserYaml, RunUserYaml); err != nil {
 		return fmt.Errorf("copy user yaml to run: %w", err)
 	}
 
@@ -729,23 +731,23 @@ func copyFile(src, dst string) error {
 // (not logged-and-swallowed) so ApplyMultusCNI does not mark the
 // install complete on a half-finished setup.
 func linkMultusIntoK3s() error {
-	switch _, err := os.Lstat(multusLinkTarget); {
+	switch _, err := os.Lstat(MultusLinkTarget); {
 	case err == nil:
 		return nil // already exists
 	case errors.Is(err, os.ErrNotExist):
 		// fall through to create
 	default:
-		return fmt.Errorf("lstat %s: %w", multusLinkTarget, err)
+		return fmt.Errorf("lstat %s: %w", MultusLinkTarget, err)
 	}
-	if err := os.MkdirAll(filepath.Dir(multusLinkTarget), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(MultusLinkTarget), 0755); err != nil {
 		return fmt.Errorf("mkdir for multus link: %w", err)
 	}
-	if err := os.Symlink(multusLinkSource, multusLinkTarget); err != nil {
+	if err := os.Symlink(MultusLinkSource, MultusLinkTarget); err != nil {
 		return fmt.Errorf("symlink %s -> %s: %w",
-			multusLinkTarget, multusLinkSource, err)
+			MultusLinkTarget, MultusLinkSource, err)
 	}
 	log.Printf("symlinked multus into k3s: %s -> %s",
-		multusLinkTarget, multusLinkSource)
+		MultusLinkTarget, MultusLinkSource)
 	return nil
 }
 
@@ -853,10 +855,10 @@ func resolveNodeAddress() (NodeAddress, error) {
 	if marked, mErr := state.IsMarked(state.EdgeNodeClusterMode); mErr != nil {
 		return NodeAddress{}, fmt.Errorf("check cluster-mode marker: %w", mErr)
 	} else if marked {
-		if _, statErr := os.Stat(multusYAMLDst); statErr == nil {
+		if _, statErr := os.Stat(MultusYAMLDst); statErr == nil {
 			return NodeAddress{}, nil
 		} else if !errors.Is(statErr, os.ErrNotExist) {
-			return NodeAddress{}, fmt.Errorf("stat %s: %w", multusYAMLDst, statErr)
+			return NodeAddress{}, fmt.Errorf("stat %s: %w", MultusYAMLDst, statErr)
 		}
 	}
 	defaultIf, err := readDefaultInterface()
