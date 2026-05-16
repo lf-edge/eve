@@ -27,12 +27,27 @@ import (
 	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
 )
 
-// Filesystem paths consumed by prereqs. Vars where tests need to
-// route them onto fixtures; const otherwise.
+// Filesystem paths. Most are prereqs-internal; the ones used by
+// other packages (monitor's running-state housekeeping) are
+// exported.
 const (
-	kubeLogDir           = "/persist/kubelog"
-	containerdUserLog    = kubeLogDir + "/containerd-user.log"
-	initialK3sVersion    = kubeLogDir + "/initial_k3s_version"
+	// KubeLogDir is the persist-backed directory under which
+	// kube-init and k3s drop their log files. Exported because
+	// monitor's log rotation + crash-log capture read from it.
+	KubeLogDir = "/persist/kubelog"
+
+	// CNIBinDir / OptCNIDir / CNISrcDir are the CNI plugin
+	// directories. Exported because monitor's running-state tick
+	// recopies plugins when they go missing on a kube container
+	// restart.
+	CNIBinDir = "/var/lib/cni/bin"
+	OptCNIDir = "/opt/cni/bin"
+	CNISrcDir = "/usr/libexec/cni"
+)
+
+const (
+	containerdUserLog    = KubeLogDir + "/containerd-user.log"
+	initialK3sVersion    = KubeLogDir + "/initial_k3s_version"
 	kubeRootExt4         = "/persist/vault/kube"
 	kubeRootZFS          = "/dev/zvol/persist/etcd-storage"
 	kubeRootMountpoint   = "/var/lib"
@@ -45,11 +60,6 @@ const (
 	runcSymlink          = "/usr/bin/runc"
 	shimSymlink          = "/usr/bin/containerd-shim-runc-v2"
 	eveBridgeSrc         = "/usr/bin/eve-bridge"
-
-	// CNI plugin source + destination directories.
-	cniBinDir = "/var/lib/cni/bin"
-	optCNIDir = "/opt/cni/bin"
-	cniSrcDir = "/usr/libexec/cni"
 )
 
 // Polling cadences. Test code may shrink these via t.Cleanup.
@@ -655,18 +665,18 @@ func FixDevNull() error {
 // pre-creates the k3s config drop-in directory, and records the
 // initial k3s version once.
 func SetupLogging() error {
-	if err := mkdirAll(kubeLogDir, 0755); err != nil {
+	if err := mkdirAll(KubeLogDir, 0755); err != nil {
 		return err
 	}
-	if target, err := os.Readlink("/var/log"); err != nil || target != kubeLogDir {
+	if target, err := os.Readlink("/var/log"); err != nil || target != KubeLogDir {
 		// Best-effort: RemoveAll then symlink. A failure to remove
 		// (e.g. /var/log is a non-empty dir we lack perms to wipe)
 		// is logged via the symlink call below.
 		_ = os.RemoveAll("/var/log")
-		if err := os.Symlink(kubeLogDir, "/var/log"); err != nil {
-			return fmt.Errorf("symlink /var/log -> %s: %w", kubeLogDir, err)
+		if err := os.Symlink(KubeLogDir, "/var/log"); err != nil {
+			return fmt.Errorf("symlink /var/log -> %s: %w", KubeLogDir, err)
 		}
-		log.Printf("symlinked /var/log -> %s", kubeLogDir)
+		log.Printf("symlinked /var/log -> %s", KubeLogDir)
 	}
 	if err := mkdirAll(k3s.K3sConfigDir, 0755); err != nil {
 		return err
@@ -767,11 +777,11 @@ func waitForContainerdSock(ctx context.Context) error {
 // in the EVE-specific eve-bridge binary alongside them.
 func CopyCNIPlugins() error {
 	log.Printf("copying CNI plugins")
-	for _, dir := range []string{cniBinDir, optCNIDir} {
+	for _, dir := range []string{CNIBinDir, OptCNIDir} {
 		if err := mkdirAll(dir, 0755); err != nil {
 			return err
 		}
-		if err := copyDirContents(cniSrcDir, dir); err != nil {
+		if err := copyDirContents(CNISrcDir, dir); err != nil {
 			return fmt.Errorf("copy CNI plugins to %s: %w", dir, err)
 		}
 		dst := filepath.Join(dir, "eve-bridge")

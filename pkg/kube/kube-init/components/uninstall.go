@@ -226,7 +226,7 @@ func UninstallKubeVirt(ctx context.Context) error {
 // initialization marker.
 func UninstallMultus(ctx context.Context) error {
 	log.Printf("uninstalling Multus")
-	if _, err := kubectl("delete", "-f", multusYAMLDst, "--wait=true"); err != nil {
+	if _, err := kubectl("delete", "-f", MultusYAMLDst, "--wait=true"); err != nil {
 		log.Printf("warning: delete multus daemonset: %v", err)
 	}
 	if err := state.Unmark(state.MultusInitialized); err != nil {
