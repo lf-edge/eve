@@ -12,6 +12,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -60,6 +61,12 @@ const (
 	runcSymlink          = "/usr/bin/runc"
 	shimSymlink          = "/usr/bin/containerd-shim-runc-v2"
 	eveBridgeSrc         = "/usr/bin/eve-bridge"
+
+	// cpuManagerStateFile is kubelet's persistent record of the
+	// active CPU-manager policy. If it disagrees with the
+	// kubelet-arg cpu-manager-policy in config.yaml on next
+	// start, k3s refuses to boot. See CleanCPUManagerState.
+	cpuManagerStateFile = "/var/lib/kubelet/cpu_manager_state"
 )
 
 // Polling cadences. Test code may shrink these via t.Cleanup.
@@ -130,6 +137,13 @@ func RunAll(ctx context.Context) (deviceName, uuid, eveRelease string, err error
 	}
 
 	CheckNetwork()
+
+	if err := CleanCPUManagerState(); err != nil {
+		// Non-fatal: a corrupted state file is logged but does
+		// not block boot. k3s will fail to start later with a
+		// clearer error message that the operator can act on.
+		log.Printf("WARNING: CleanCPUManagerState: %v", err)
+	}
 
 	eveRelease, err = WaitEveRelease(ctx)
 	if err != nil {
@@ -657,6 +671,57 @@ func FixDevNull() error {
 		return fmt.Errorf("chmod /dev/null: %w", err)
 	}
 	log.Printf("set /dev/null permissions to 0666")
+	return nil
+}
+
+// CleanCPUManagerState removes /var/lib/kubelet/cpu_manager_state
+// when its recorded policyName is "none". The CPU-manager policy
+// is set via kubelet-arg in pkg/kube/config.yaml; if a previous
+// boot ran with a different policy, the on-disk state file holds
+// the OLD policy and kubelet refuses to start with the message
+// "static policy: configured but state file contains invalid
+// state".
+//
+// Why "none"? It is the historical default — devices that have
+// been upgraded from an older EVE release have this on disk. The
+// shell version of this check unconditionally deleted the file
+// on policyName=none and left other values alone so a node
+// already running the right policy (e.g. "static") keeps its
+// state.
+//
+// A missing file is a no-op (fresh kubelet will write a new
+// one). A corrupted file (unparsable JSON) is logged and left
+// alone — kubelet will surface that more clearly than we can.
+//
+// Addresses upstream commit 1927e2f28 ("Delete cpu_manager_state
+// file on every reboot"), with the policyName=="none" gate from
+// commit 6719f918c.
+func CleanCPUManagerState() error {
+	data, err := os.ReadFile(cpuManagerStateFile)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("read %s: %w", cpuManagerStateFile, err)
+	}
+	var state struct {
+		PolicyName string `json:"policyName"`
+	}
+	if err := json.Unmarshal(data, &state); err != nil {
+		log.Printf("WARNING: parse %s: %v (leaving in place)",
+			cpuManagerStateFile, err)
+		return nil
+	}
+	if state.PolicyName != "none" {
+		log.Printf("cpu_manager_state policyName=%q, no action",
+			state.PolicyName)
+		return nil
+	}
+	log.Printf("removing stale cpu_manager_state (policyName=none) from %s",
+		cpuManagerStateFile)
+	if err := os.Remove(cpuManagerStateFile); err != nil {
+		return fmt.Errorf("remove %s: %w", cpuManagerStateFile, err)
+	}
 	return nil
 }
 
