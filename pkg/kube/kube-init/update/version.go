@@ -17,8 +17,10 @@ import (
 // KubeVersion is the version this build expects to converge the
 // cluster onto. Bump when a new migration or component upgrade pass
 // must run. The applied version is persisted to AppliedKubeVersion;
-// CheckClusterComponents short-circuits when they match.
-const KubeVersion = 2
+// CheckClusterComponents short-circuits when applied >= KubeVersion
+// (i.e. node already at target, or EVE was downgraded — downgrades
+// are unsupported, see addresses upstream a67d55ce9).
+const KubeVersion = 3
 
 // kcusJSON is the minimal subset of pillar's KubeClusterUpdateStatus
 // we read to detect a failed upgrade pass targeting our KubeVersion.
@@ -125,6 +127,20 @@ func readDeviceName() string {
 		return ""
 	}
 	return info.DeviceName
+}
+
+// appliedVersionGEQ reports whether the persisted applied version
+// is >= target. The applied marker is the textual decimal written
+// by VersionSet, so this is a parsed-int compare. An unparsable
+// value is treated as "0" — same fallback as VersionGet — so a
+// corrupted marker re-triggers convergence rather than blocking
+// it.
+func appliedVersionGEQ(applied string, target int) bool {
+	n, err := strconv.Atoi(strings.TrimSpace(applied))
+	if err != nil {
+		return false
+	}
+	return n >= target
 }
 
 // readDeviceK8sName returns the device name normalised to a
