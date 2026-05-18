@@ -265,6 +265,13 @@ func (s *Supervisor) startK3s() error {
 	// we promise the caller a clean start.
 	s.cleanupPidFile()
 
+	// Remove the stale flannel.1 VXLAN device before k3s comes up.
+	// Without this, flannel v0.27.4 hits a nil-pointer SIGSEGV in
+	// watchVXLANDevice during a k3s transition. The next flannel
+	// (re-)creates the device with a clean state. See upstream
+	// commit 2c417d5fe.
+	removeStaleFlannel()
+
 	cmd := exec.Command(s.k3sBinary, s.k3sArgs...)
 	cmd.Stdout = lf
 	cmd.Stderr = lf
@@ -354,7 +361,24 @@ func (s *Supervisor) stopK3s() error {
 
 	s.cleanupPidFile()
 
+	// Symmetric with the pre-start removal in startK3s: drop
+	// flannel.1 so the next k3s start sees a clean network
+	// namespace. See upstream commit 2c417d5fe.
+	removeStaleFlannel()
+
 	return s.waitPortsReleased()
+}
+
+// removeStaleFlannel deletes the flannel.1 VXLAN device if it
+// exists. A leftover device from a previous k3s instance triggers
+// a nil-pointer SIGSEGV in flannel v0.27.4's watchVXLANDevice
+// during a transition. The next flannel (re-)creates the device
+// with the right state. Errors are intentionally swallowed:
+// "device not present" is the common case and the shell version
+// used `ip link del flannel.1 2>/dev/null || true`.
+func removeStaleFlannel() {
+	cmd := exec.Command("ip", "link", "del", "flannel.1")
+	_ = cmd.Run()
 }
 
 // cleanupPidFile removes the pid file if present. Missing-file is
