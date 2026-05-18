@@ -185,6 +185,11 @@ func (r *Runner) StepUninstallIfBase(ctx context.Context) error {
 // controller-supplied value. Only bootstrap nodes need this —
 // joining nodes pick the token up via the join config written in
 // StepProvisionConfig. k3s must still be running.
+//
+// On successful rotation it arms MasterleaseCleanupFlag so the
+// health worker's CleanupStaleMasterleases pass removes the
+// pre-conversion single-node etcd lease on a later tick (addresses
+// upstream commit d5664c079).
 func (r *Runner) StepRotateTokenIfBootstrap(ctx context.Context) error {
 	if !r.cs.IsBootstrapNode {
 		log.Printf("not bootstrap node — skipping token rotate")
@@ -192,6 +197,11 @@ func (r *Runner) StepRotateTokenIfBootstrap(ctx context.Context) error {
 	}
 	if err := k3s.RotateToNewToken(ctx, r.cs.EncryptedToken); err != nil {
 		return fmt.Errorf("rotate cluster token: %w", err)
+	}
+	if err := state.Mark(MasterleaseCleanupFlag); err != nil {
+		// Non-fatal: cleanup failing to be scheduled is worse
+		// than the transition aborting. Log loudly.
+		log.Printf("WARNING: arm masterlease-cleanup flag: %v", err)
 	}
 	return nil
 }
