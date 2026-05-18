@@ -19,6 +19,29 @@ TIE_BREAKER_NODE_LABEL="tie-breaker-node"
 TIE_BREAKER_NODE_LABEL_SET_VALUE="true"
 TIE_BREAKER_NODE_LABEL_UNSET_VALUE="false"
 
+# Persistent location for the k3s node password.
+#
+# k3s reads/writes its node identity password at /etc/rancher/node/password
+# inside the kube container. That path lives in the container's overlay
+# upper directory, which is backed by tmpfs and is cleared on every reboot.
+# Without persistence, k3s regenerates a new random password each boot, and
+# the server-side k8s secret <hostname>.node-password.k3s no longer matches
+# the freshly generated password. The server logs deferred validation
+# warnings (NodePasswordValidationFailed), and any code path that requires
+# the agent to (re)fetch a kubelet certificate from the server gets
+# blocked -- which can leave the node stuck NotReady.
+#
+# We stash the password at /var/lib/k3s-node-password inside the kube
+# container. That path is the bind-mount of /persist/vault/kube/ on the
+# host, so the file lives in the TPM-sealed vault and survives reboots
+# alongside the other /var/lib/*_initialized markers. As a bonus,
+# save_var_lib() already does `cp -a /var/lib/. <snapshot>`, so the
+# password rides along in the cluster -> single-node snapshot for free
+# (no separate snapshot helper needed).
+PERSIST_NODE_PASSWD_FILE="/var/lib/k3s-node-password"
+RUNTIME_NODE_PASSWD_FILE="/etc/rancher/node/password"
+STALE_NODE_PASSWD_FLAG="/var/lib/k3s-passwd-secret-stale"
+
 logmsg() {
         local MSG
         local TIME
@@ -201,6 +224,71 @@ remove_multus_cni() {
         kubectl delete -f /etc/multus-daemonset-new.yaml
         rm /etc/multus-daemonset-new.yaml
         rm /var/lib/multus_initialized
+}
+
+# Restore the persisted k3s node password into the location k3s expects,
+# before k3s starts. On a brand-new device the persistent file does not
+# exist yet and this is a no-op; k3s will then generate a password and
+# save_node_password() will persist it.
+restore_node_password() {
+        if [ ! -f "$PERSIST_NODE_PASSWD_FILE" ]; then
+                return 0
+        fi
+        mkdir -p "$(dirname "$RUNTIME_NODE_PASSWD_FILE")"
+        cp -p "$PERSIST_NODE_PASSWD_FILE" "$RUNTIME_NODE_PASSWD_FILE"
+        chmod 600 "$RUNTIME_NODE_PASSWD_FILE"
+        logmsg "restored node password from $PERSIST_NODE_PASSWD_FILE"
+}
+
+# Persist the k3s node password whenever the runtime file disagrees with
+# (or is newer than) the persistent copy. Specifically: save when the
+# persistent file is missing OR when its contents differ from
+# /etc/rancher/node/password. When they already match, this is a no-op
+# (so safe to call on every boot from the main loop).
+#
+# Why "different" matters and not just "missing":
+#   - Brownfield first boot under the fix: persistent file is missing,
+#     k3s has just generated a fresh password -> save it.
+#   - Steady state after restore: contents match -> no-op.
+#   - Any case where k3s writes a new password into the runtime file
+#     after we restored an older one (cert rotation paths, manual
+#     intervention, corrupted persistent copy): the persistent file is
+#     refreshed so the next boot stays consistent with what k3s is
+#     actually using.
+#
+# Brownfield remediation: on the first boot under this fix the persistent
+# file is absent, meaning k3s generated a fresh password that no longer
+# matches the hash stored in the cluster secret <hostname>.node-password.k3s.
+# We set STALE_NODE_PASSWD_FLAG so that fix_node_password_secret() can delete
+# the stale secret once the API server is ready. The delete is retried every
+# main-loop iteration (every 15s) until it succeeds, then the flag is removed.
+save_node_password() {
+        if [ ! -f "$RUNTIME_NODE_PASSWD_FILE" ]; then
+                return 0
+        fi
+        if [ -f "$PERSIST_NODE_PASSWD_FILE" ] && \
+           cmp -s "$RUNTIME_NODE_PASSWD_FILE" "$PERSIST_NODE_PASSWD_FILE"; then
+                return 0
+        fi
+        if [ ! -f "$PERSIST_NODE_PASSWD_FILE" ]; then
+                touch "$STALE_NODE_PASSWD_FLAG"
+        fi
+        cp -p "$RUNTIME_NODE_PASSWD_FILE" "$PERSIST_NODE_PASSWD_FILE"
+        chmod 600 "$PERSIST_NODE_PASSWD_FILE"
+        logmsg "persisted node password to $PERSIST_NODE_PASSWD_FILE"
+}
+
+# Delete the stale cluster secret for brownfield nodes. Called from the main
+# loop once k3s is running and the API server is reachable. Retries every loop
+# iteration until kubectl succeeds, then removes the flag.
+fix_node_password_secret() {
+        [ -f "$STALE_NODE_PASSWD_FLAG" ] || return 0
+        [ -n "$HOSTNAME" ] || return 0
+        if kubectl -n kube-system delete secret "${HOSTNAME}.node-password.k3s" \
+           --ignore-not-found >/dev/null 2>&1; then
+                logmsg "deleted stale node password secret for brownfield fix"
+                rm -f "$STALE_NODE_PASSWD_FLAG"
+        fi
 }
 
 # save the /var/lib to /persist/kube-save-var-lib
