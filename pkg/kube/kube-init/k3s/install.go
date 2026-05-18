@@ -170,7 +170,30 @@ func rebuildRuntimeSymlinksAt(binDir, usrBinDir, dataBinDir string) error {
 	if err := linkMultusAt(multusLinkSource, dataBinDir); err != nil {
 		log.Printf("runtime symlinks: multus link failed: %v", err)
 	}
+
+	if err := ensureHostLocalInPath(); err != nil {
+		log.Printf("runtime symlinks: host-local link failed: %v", err)
+	}
 	return nil
+}
+
+// ensureHostLocalInPath creates /usr/bin/host-local pointing at
+// /opt/cni/bin/host-local. k3s v1.34+ validates CNI plugins via
+// exec.LookPath during agent init; without this symlink the
+// validation fails with "host-local: executable file not found
+// in $PATH" because /opt/cni/bin is not on PATH. The k3s server
+// then never reaches Ready, blocking cluster-reset and pinning
+// the daemon in WAIT_K3S_READY forever.
+//
+// Addresses upstream commit 75fe3cd94. The shell version made
+// the symlink on every k3s start AND after k3s binary install;
+// we do it on every install pass via rebuildRuntimeSymlinks AND
+// on every supervisor start (see supervisor.startK3s) so a
+// restart that skips INSTALLING still gets the link.
+func ensureHostLocalInPath() error {
+	const src = "/opt/cni/bin/host-local"
+	const dst = "/usr/bin/host-local"
+	return ensureSymlink(src, dst)
 }
 
 // GetInstalledVersion runs `k3s --version` and parses the version
