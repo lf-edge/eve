@@ -51,9 +51,15 @@ func CheckClusterComponents(ctx context.Context) error {
 	appliedVersion := VersionGet()
 	kubeVersionStr := strconv.Itoa(KubeVersion)
 
-	if appliedVersion == kubeVersionStr {
-		log.Printf("update: cluster components already at version %s",
-			kubeVersionStr)
+	// applied >= target means either we are already converged
+	// (==) or EVE has been downgraded (<). Downgrades are not
+	// supported: skip the update pass rather than re-run
+	// migrations or component "updates" that are actually
+	// downgrades. Addresses upstream a67d55ce9 which changed the
+	// shell's "==" to "<=".
+	if appliedVersionGEQ(appliedVersion, KubeVersion) {
+		log.Printf("update: cluster components at applied=%s, target=%d — no update",
+			appliedVersion, KubeVersion)
 		return nil
 	}
 
