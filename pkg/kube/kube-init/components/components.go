@@ -51,7 +51,7 @@ const (
 	caCertPath = "/var/lib/rancher/k3s/server/tls/client-ca.crt"
 	caKeyPath  = "/var/lib/rancher/k3s/server/tls/client-ca.key"
 
-	kubevirtCRURL = "https://github.com/kubevirt/kubevirt/releases/download/v1.6.0/kubevirt-cr.yaml"
+	kubevirtCRURL = "https://github.com/kubevirt/kubevirt/releases/download/v1.7.3/kubevirt-cr.yaml"
 	cdiVersion    = "v1.57.1"
 
 	longhornWaitTimeout = 10 * time.Minute
