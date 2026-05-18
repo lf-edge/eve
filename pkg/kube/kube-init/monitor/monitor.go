@@ -281,13 +281,37 @@ func (m *Monitor) RunHealthChecks(ctx context.Context) {
 }
 
 // CheckContainerd verifies the user-containerd socket is still
-// present. Image-import operations target this socket via
-// ctr/crictl; a missing socket silently fails those calls. Logs
-// a warning rather than acting — the supervisor owns recovery.
+// present and restarts containerd if it isn't. Image-import,
+// ctr, and crictl calls all target this socket; a missing socket
+// silently breaks all of them.
+//
+// containerd is started once at boot (prereqs.StartContainerd)
+// with no per-process supervisor — if it dies, nothing else
+// brings it back. This watchdog is the recovery path: call it
+// from the health-worker tick and it auto-recovers within one
+// 15s interval.
+//
+// Addresses upstream commit ea71f1b76 ("kube: restart standalone
+// containerd if it dies"). The shell version called
+// check_start_containerd at the top of check_start_k3s on every
+// loop iteration; the Go equivalent is the health worker.
 func (m *Monitor) CheckContainerd() {
-	if _, err := os.Stat(state.ContainerdSocket); err != nil {
-		log.Printf("WARNING: containerd watchdog: socket %s not present: %v",
+	if _, err := os.Stat(state.ContainerdSocket); err == nil {
+		return
+	} else if !errors.Is(err, os.ErrNotExist) {
+		log.Printf("WARNING: containerd watchdog: stat %s: %v",
 			state.ContainerdSocket, err)
+		return
+	}
+	log.Printf("WARNING: containerd socket %s missing — restarting containerd",
+		state.ContainerdSocket)
+	// StartContainerd is idempotent; on success it returns when
+	// the socket is back. Bound with a short context: a hanging
+	// restart should not block the next health tick.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := prereqs.StartContainerd(ctx); err != nil {
+		log.Printf("WARNING: containerd restart failed: %v", err)
 	}
 }
 
