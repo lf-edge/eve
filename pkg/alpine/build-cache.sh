@@ -22,13 +22,7 @@ shift 2
 # optionally initialize the cache
 [ ! -d "$CACHE" ] && mkdir -p "$CACHE"
 
-# check for existing packages in the cache: we NEVER overwrite packages
-#shellcheck disable=SC2068
-for p in ${@}; do
-  if ! ls "$CACHE/${p}"-[0-9]*.apk >/dev/null 2>&1; then
-    PKGS="$PKGS $p"
-  fi
-done
+PKGS=${@}
 
 # fetch the missing packages
 # shellcheck disable=SC2086
