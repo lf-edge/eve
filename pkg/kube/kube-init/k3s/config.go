@@ -85,6 +85,11 @@ type ClusterStatus struct {
 	JoinServerIP     string
 	EncryptedToken   string
 	ClusterIP        string
+	// PrefixLen is the cluster network prefix length derived from
+	// the pillar EdgeNodeClusterStatus.ClusterIPPrefix.Mask field
+	// (0 if not present). Used by callers that need to compute
+	// the cluster subnet (e.g. clustermode.CleanupStaleMasterleases).
+	PrefixLen        int
 	ClusterIPIsReady bool
 	ClusterID        string
 }
@@ -130,7 +135,8 @@ type encStatusJSON struct {
 	JoinServerIP          json.RawMessage `json:"JoinServerIP"`
 	EncryptedClusterToken string          `json:"EncryptedClusterToken"`
 	ClusterIPPrefix       *struct {
-		IP json.RawMessage `json:"IP"`
+		IP   json.RawMessage `json:"IP"`
+		Mask []byte          `json:"Mask"`
 	} `json:"ClusterIPPrefix"`
 	ClusterIPIsReady bool `json:"ClusterIPIsReady"`
 	ClusterID        *struct {
@@ -269,6 +275,13 @@ func GetClusterStatus() (*ClusterStatus, error) {
 	}
 	if raw.ClusterIPPrefix != nil {
 		cs.ClusterIP = parseIPField(raw.ClusterIPPrefix.IP)
+		if len(raw.ClusterIPPrefix.Mask) > 0 {
+			// net.IPMask.Size returns (ones, bits); 0/0 means
+			// the mask is not canonical and we should ignore
+			// it rather than treat it as /0.
+			ones, _ := net.IPMask(raw.ClusterIPPrefix.Mask).Size()
+			cs.PrefixLen = ones
+		}
 	}
 	if raw.ClusterID != nil {
 		cs.ClusterID = raw.ClusterID.UUID
