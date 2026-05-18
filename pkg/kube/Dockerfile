@@ -22,9 +22,9 @@ FROM --platform=linux/amd64 ghcr.io/k8snetworkplumbingwg/sriov-cni@sha256:fce504
 FROM lfedge/eve-alpine:f9b45a5a3b3a18a8503cbe6d1258a1025450fe0e AS build
 
 ARG TARGETARCH
-ENV PKGS alpine-baselayout musl-utils iproute2 iptables curl openrc \
+ENV PKGS="alpine-baselayout musl-utils iproute2 iptables curl openrc \
          open-iscsi libvirt libvirt-client util-linux grep findutils jq \
-         cni-plugins nfs-utils inotify-tools
+         cni-plugins nfs-utils inotify-tools"
 RUN eve-alpine-deploy.sh
 
 ENV ETCDCTL_VERSION=v3.5.5
@@ -62,25 +62,25 @@ COPY stale-mount-cleanup /plugins/stale-mount-cleanup
 WORKDIR /plugins/stale-mount-cleanup
 RUN GO111MODULE=on CGO_ENABLED=0 go build -v -ldflags "-s -w" -mod=vendor -o /out/usr/bin/stale-mount-cleanup .
 
+# kube-init is the Go daemon that replaces cluster-init.sh. The
+# binary built here is the container's entrypoint; k3s-sctl is the
+# operator-facing CLI client that talks to its control socket.
+COPY kube-init /plugins/kube-init
+WORKDIR /plugins/kube-init
+RUN GO111MODULE=on CGO_ENABLED=0 go build -v -ldflags "-s -w" -mod=vendor -o /out/usr/bin/kube-init . && \
+    GO111MODULE=on CGO_ENABLED=0 go build -v -ldflags "-s -w" -mod=vendor -o /out/usr/bin/k3s-sctl ./cmd/k3s-sctl
+
 FROM scratch
 COPY --from=build /out/ /
 RUN mkdir -p /usr/bin/kube/
 
 # Kube general path for all manifests before applying to each cluster mode
 RUN mkdir -p /etc/kube/
-COPY cluster-init.sh /usr/bin/
-COPY cluster-utils.sh /usr/bin/
 COPY cgconfig.conf /etc
-COPY utils.sh /usr/bin/
-COPY pubsub.sh /usr/bin/
-COPY tie-breaker-utils.sh /usr/bin/
-COPY lib/* /usr/bin/
 RUN mkdir -p /etc/k3s-manifests
 COPY manifests/* /etc/k3s-manifests/
 
-
 # upgrades
-COPY cluster-update.sh /usr/bin/
 COPY update-component/expected_versions.yaml /etc/
 COPY update-component/settings_longhorn.yaml /etc/
 
@@ -89,22 +89,18 @@ RUN mkdir -p /etc/rancher/k3s
 COPY config.yaml /etc/rancher/k3s
 COPY debuguser-role-binding.yaml /etc/
 COPY k3s-pod-logs.sh /usr/bin/
-COPY registration-utils.sh /usr/bin/
 COPY all-kube-events.sh /usr/bin/
-COPY lib/* /usr/bin/kube/
 COPY cfg-manifests/03-enc-disable-local-path.yaml /etc/kube/
 COPY cfg-manifests/04-multinode-watch-cache.yaml /etc/kube/
 
-# kubevirt yaml files are patched files and will be removed later, look at cluster-init.sh
+# Manifests the daemon applies at first boot. Stays under /etc; the
+# Go components/ package reads them by path.
 COPY multus-daemonset.yaml /etc
 COPY kubevirt-operator.yaml /etc
 COPY kubevirt-features.yaml /etc
 COPY external-boot-image.tar /etc/
-COPY kubevirt-utils.sh /usr/bin/
-COPY vnc-proxy.sh /usr/bin/
 
 # Longhorn config
-COPY longhorn-utils.sh /usr/bin/
 COPY lh-cfg-v1.9.1.yaml /etc/
 COPY iscsid.conf /etc/iscsi/
 COPY longhorn-generate-support-bundle.sh /usr/bin/
@@ -115,7 +111,6 @@ COPY failover-events.sh /usr/bin/
 COPY cfg-manifests/longhorn-cfg.yaml /etc/
 
 # descheduler
-COPY descheduler-utils.sh /usr/bin/
 COPY descheduler_rbac.yaml /etc/
 COPY descheduler-policy-configmap.yaml /etc/
 
@@ -144,10 +139,12 @@ COPY sriov/sriov-device-plugin.yaml /etc/k3s-manifests/
 
 ARG TARGETARCH
 
-# Actual k3s install and config happens when this container starts during EVE boot up, look at cluster-init.sh
-### NOTE: the version of virtctl should match the version of kubevirt in cluster_init.sh, else PVC creation might fail due to incompatibility
+# k3s install + config happens at container start, inside kube-init.
+# k3s-control is the operator alias set (k3s-start / k3s-stop /
+# k3s-status); it just shells into k3s-sctl, which talks to the
+# daemon's control socket.
 COPY k3s-control.sh /usr/bin/k3s-control
-RUN chmod +x /usr/bin/k3s-control && \
+RUN chmod +x /usr/bin/k3s-control /usr/bin/k3s-sctl && \
     ln -s /usr/bin/k3s-control /usr/bin/k3s-stop && \
     ln -s /usr/bin/k3s-control /usr/bin/k3s-start && \
     ln -s /usr/bin/k3s-control /usr/bin/k3s-status
@@ -160,4 +157,4 @@ RUN install virtctl-${VIRTCTL_VERSION}-linux-${TARGETARCH} /usr/bin/virtctl
 RUN rm -f ./virtctl-${VIRTCTL_VERSION}-linux-${TARGETARCH}
 
 ENTRYPOINT []
-CMD ["/usr/bin/cluster-init.sh"]
+CMD ["/usr/bin/kube-init"]
