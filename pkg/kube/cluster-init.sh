@@ -335,6 +335,7 @@ check_start_k3s() {
         done
         mkdir -p /run/.kube/k3s
         cp /etc/rancher/k3s/k3s.yaml /run/.kube/k3s/k3s.yaml
+        save_node_password
         return 1
   else
         # k3s is running, reset the wait time to initial value
@@ -1255,6 +1256,21 @@ if [ -f /var/lib/convert-to-single-node ]; then
         #
         touch /var/lib/all_components_initialized
 fi
+
+# Restore the persisted k3s node password before any code path can launch
+# k3s. /etc/rancher/node/password lives on the kube container's tmpfs
+# overlay and would otherwise be regenerated to a new random value on each
+# reboot, causing the server to log NodePasswordValidationFailed against
+# the original hash stored in <hostname>.node-password.k3s.
+#
+# Must run AFTER the convert-to-single-node block so that, if restore_var_lib
+# just swapped in /var/lib/k3s-node-password from the snapshot, we hydrate
+# /etc/rancher/node/password from that snapshot version -- matching the
+# etcd state also restored in the same snapshot.
+#
+# No-op on the very first boot of a fresh device (handled later by
+# save_node_password() once k3s has generated the file).
+restore_node_password
 # since we can wait for long time, always start the containerd first
 wait_for_item "containerd"
 check_start_containerd
@@ -1607,6 +1623,7 @@ else
                 fi
         fi
 fi
+        fix_node_password_secret
         cleanup_stale_masterleases
         save_cluster_startup_rank
         check_log_file_size "k3s.log"
