@@ -1256,7 +1256,22 @@ func (d *daemon) enterClusterTransition(ctx context.Context) {
 // from a previous cycle is stopped first — a leaked instance
 // would hold the API ports and the new Start would error with
 // EADDRINUSE.
+//
+// On a cold boot in cluster mode this also applies the rank-
+// based startup stagger (clustermode.ConsumeStartupRank) so
+// simultaneous power-up of all control-plane nodes doesn't race
+// etcd joins. The rank file is consumed on read so the delay
+// only fires on the boot immediately after it was written.
 func (d *daemon) enterStartingK3s(ctx context.Context) {
+	if delay, ok := clustermode.ConsumeStartupRank(); ok {
+		log.Printf("STARTING_K3S: applying staggered delay %s", delay)
+		select {
+		case <-time.After(delay):
+		case <-ctx.Done():
+			return
+		}
+	}
+
 	if d.supervisor != nil && d.supervisor.IsRunning() {
 		log.Printf("stopping stale k3s instance before restart")
 		if err := d.supervisor.Stop(); err != nil {
@@ -1717,6 +1732,15 @@ func (d *daemon) runHealthWorker(ctx context.Context, mon *monitor.Monitor, sup 
 	}
 
 	d.runSteadyStateStorage(ctx, ct, sup)
+
+	// Persist this node's control-plane rank for the next boot's
+	// staggered startup. No-op in single-node mode and on every
+	// tick after the first successful save this boot.
+	if cs, err := k3s.GetClusterStatus(); err == nil {
+		if rankErr := clustermode.SaveStartupRank(ctx, cs); rankErr != nil {
+			log.Printf("WARNING: save startup rank: %v", rankErr)
+		}
+	}
 
 	if ct == k3s.ClusterTypeReplicated {
 		// Per-tick controller-driven k3s drift check. Base mode
