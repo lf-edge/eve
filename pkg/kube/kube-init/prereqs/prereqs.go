@@ -132,6 +132,13 @@ func RunAll(ctx context.Context) (deviceName, uuid, eveRelease string, err error
 		return "", "", "", fmt.Errorf("WaitVault: %w", err)
 	}
 
+	// Migrate any pre-vault kube-save-var-lib backup now that the
+	// vault is available. No-op on devices that never had the
+	// legacy location.
+	if err := state.MigrateVarLib(); err != nil {
+		return "", "", "", fmt.Errorf("MigrateVarLib: %w", err)
+	}
+
 	if err := MountKubeRoot(); err != nil {
 		return "", "", "", fmt.Errorf("MountKubeRoot: %w", err)
 	}

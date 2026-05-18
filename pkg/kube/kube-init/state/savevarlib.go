@@ -13,9 +13,61 @@ import (
 
 // KubeSaveVarLib is the backup location on the persistent volume
 // where /var/lib/ is snapshotted before a destructive cluster-mode
-// transition. /var/lib is tmpfs on EVE, so without this backup a
-// failed transition would lose all kube state.
-const KubeSaveVarLib = "/persist/kube-save-var-lib"
+// transition. Lives under /persist/vault so the contents are
+// encrypted at rest alongside the rest of kube state. Older EVE
+// images wrote to /persist/kube-save-var-lib — MigrateVarLib
+// relocates it on first boot after upgrade.
+const KubeSaveVarLib = "/persist/vault/kube-save-var-lib"
+
+// legacyKubeSaveVarLib is the pre-vault location. Read-only —
+// MigrateVarLib copies its contents to KubeSaveVarLib and removes
+// the source. New writes go straight to KubeSaveVarLib.
+const legacyKubeSaveVarLib = "/persist/kube-save-var-lib"
+
+// MigrateVarLib relocates a pre-vault kube-save-var-lib backup to
+// the new vault-backed location, then removes the legacy directory.
+// No-op when either (a) the legacy directory does not exist or (b)
+// the new location already has content (a prior boot already
+// migrated). Vault must be available before this is called.
+//
+// The copy is recursive because src and dst may sit on different
+// filesystems (legacy ext4 vs vault). copyTree handles symlinks
+// and permission bits via `cp -a`.
+//
+// Addresses upstream commit 647a03b2d ("Move kube-save-var-lib
+// under vault").
+func MigrateVarLib() error {
+	if _, err := os.Stat(legacyKubeSaveVarLib); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("stat %s: %w", legacyKubeSaveVarLib, err)
+	}
+	// If the vault location already exists, the migration ran on a
+	// prior boot. Just remove the legacy directory so we don't keep
+	// rechecking it forever.
+	if _, err := os.Stat(KubeSaveVarLib); err == nil {
+		log.Printf("state: legacy and vault kube-save-var-lib both present; "+
+			"removing legacy %s", legacyKubeSaveVarLib)
+		return os.RemoveAll(legacyKubeSaveVarLib)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("stat %s: %w", KubeSaveVarLib, err)
+	}
+
+	log.Printf("state: migrating kube-save-var-lib %s -> %s",
+		legacyKubeSaveVarLib, KubeSaveVarLib)
+	if err := copyTree(legacyKubeSaveVarLib+"/.",
+		KubeSaveVarLib+"/", "migrate"); err != nil {
+		return err
+	}
+	if err := os.RemoveAll(legacyKubeSaveVarLib); err != nil {
+		// Migration succeeded; legacy cleanup failure is
+		// recoverable (next boot will see both and re-clean).
+		log.Printf("WARNING: state: remove legacy %s after migrate: %v",
+			legacyKubeSaveVarLib, err)
+	}
+	return nil
+}
 
 // SaveVarLib snapshots /var/lib/ to KubeSaveVarLib so a destructive
 // cluster-mode transition can be rolled back. The contents are
