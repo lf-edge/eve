@@ -347,10 +347,14 @@ func ClusterConfig(ctx context.Context, restartCh chan<- RestartReason) error {
 			continue
 		}
 
-		_, statErr := os.Stat(k3s.EncStatusFile)
-		encExists := statErr == nil
-		if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
-			log.Printf("warning: stat %s: %v", k3s.EncStatusFile, statErr)
+		// Use ClusterStatusPresent (not bare os.Stat) so a
+		// controller-deleted cluster — which surfaces as a
+		// zero-UUID payload, not a missing file — is correctly
+		// treated as "no cluster". See k3s.ClusterStatusPresent
+		// doc for the rationale.
+		encExists, encErr := k3s.ClusterStatusPresent()
+		if encErr != nil {
+			log.Printf("warning: check %s: %v", k3s.EncStatusFile, encErr)
 			sleepCtx(ctx, clusterPollInterval)
 			continue
 		}

@@ -330,6 +330,46 @@ func IsClusterMode() (bool, error) {
 	return state.IsMarked(state.EdgeNodeClusterMode)
 }
 
+// zeroClusterUUID is the all-zeros sentinel pillar publishes in
+// EdgeNodeClusterStatus when the controller has deleted the
+// cluster config. The publication is not Persistent, so deletion
+// is signalled by an empty payload rather than file removal —
+// addresses upstream 158981334 ("eve-k: fix cluster delete
+// regression") which made the equivalent shell check.
+const zeroClusterUUID = "00000000-0000-0000-0000-000000000000"
+
+// ClusterStatusPresent reports whether the EdgeNodeClusterStatus
+// payload represents a live cluster. Returns false when the file
+// is absent OR when the payload carries the zero ClusterID UUID
+// (which is how a controller-side cluster delete surfaces).
+//
+// Read errors other than ErrNotExist are surfaced so callers can
+// decide whether to treat a wedged /run as transient — silently
+// collapsing EIO to "no cluster" would mis-fire a cluster→single
+// transition on a stat hiccup.
+func ClusterStatusPresent() (bool, error) {
+	data, err := os.ReadFile(EncStatusFile)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		return false, fmt.Errorf("read %s: %w", EncStatusFile, err)
+	}
+	var raw encStatusJSON
+	if err := json.Unmarshal(data, &raw); err != nil {
+		// Malformed payload is treated as "not-yet-published" so a
+		// transient half-write does not trip a transition. The
+		// next health tick will re-read; a persistent malformed
+		// payload is a pillar bug that surfaces elsewhere.
+		return false, nil
+	}
+	if raw.ClusterID == nil || raw.ClusterID.UUID == "" ||
+		raw.ClusterID.UUID == zeroClusterUUID {
+		return false, nil
+	}
+	return true, nil
+}
+
 // ProvisionClusterConfig writes the cluster-mode drop-ins for the
 // current node role: cluster-init for the bootstrap node, server-join
 // for everyone else. On first boot for a joining node the call blocks
