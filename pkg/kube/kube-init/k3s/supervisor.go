@@ -272,6 +272,16 @@ func (s *Supervisor) startK3s() error {
 	// commit 2c417d5fe.
 	removeStaleFlannel()
 
+	// Ensure the host-local CNI plugin is on PATH. k3s v1.34+
+	// validates CNI plugins via exec.LookPath; without this
+	// /usr/bin shim the validation fails and k3s never reaches
+	// Ready. See ensureHostLocalInPath in install.go (upstream
+	// commit 75fe3cd94). Called on every Start so a restart that
+	// skipped INSTALLING still gets the link.
+	if err := ensureHostLocalInPath(); err != nil {
+		log.Printf("WARNING: ensure host-local on PATH: %v", err)
+	}
+
 	cmd := exec.Command(s.k3sBinary, s.k3sArgs...)
 	cmd.Stdout = lf
 	cmd.Stderr = lf
