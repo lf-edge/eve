@@ -37,6 +37,12 @@ const nodeUUIDLabel = "node-uuid"
 // MasterNodeIDs being empty is treated as "controller has not yet sent the
 // list" (e.g. older zedcloud that pre-dates the field, or a transient parse
 // error) — we skip the sweep entirely so no Node is touched.
+//
+// Self-deletion is never performed: if this node's own UUID is absent from
+// MasterNodeIDs (i.e. the controller is replacing *this* node), we skip it.
+// The controller stops shipping config to the removed node directly; letting
+// the node delete itself while still running would disrupt etcd membership
+// and Longhorn replicas before a graceful exit.
 func (z *zedkube) pruneStaleMasterNodes(config *types.EdgeNodeClusterConfig) {
 	if config == nil || len(config.MasterNodeIDs) == 0 {
 		return
@@ -44,6 +50,9 @@ func (z *zedkube) pruneStaleMasterNodes(config *types.EdgeNodeClusterConfig) {
 	if !z.isKubeStatsLeader.Load() {
 		return
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	defer cancel()
 
 	clientset, err := getKubeClientSet()
 	if err != nil {
@@ -56,7 +65,7 @@ func (z *zedkube) pruneStaleMasterNodes(config *types.EdgeNodeClusterConfig) {
 		keep[u.String()] = struct{}{}
 	}
 
-	nodes, err := clientset.CoreV1().Nodes().List(context.Background(),
+	nodes, err := clientset.CoreV1().Nodes().List(ctx,
 		metav1.ListOptions{LabelSelector: controlPlaneRoleLabel})
 	if err != nil {
 		log.Errorf("pruneStaleMasterNodes: list nodes: %v", err)
@@ -74,11 +83,22 @@ func (z *zedkube) pruneStaleMasterNodes(config *types.EdgeNodeClusterConfig) {
 		if _, ok := keep[uuidLabel]; ok {
 			continue
 		}
+		if uuidLabel == z.nodeuuid {
+			// Never delete our own Node object. The controller stops
+			// shipping config to us when we are being replaced; self-
+			// deletion while still running would disrupt etcd and
+			// Longhorn replicas before we exit gracefully.
+			log.Noticef("pruneStaleMasterNodes: skipping self (uuid=%s) not in ENCC master_node_uuids",
+				uuidLabel)
+			continue
+		}
+		deleteCtx, deleteCancel := context.WithTimeout(context.Background(), kubeAPITimeout)
 		log.Noticef("pruneStaleMasterNodes: deleting stale master node %s (uuid=%s) not in ENCC master_node_uuids",
 			n.Name, uuidLabel)
-		if err := clientset.CoreV1().Nodes().Delete(context.Background(),
+		if err := clientset.CoreV1().Nodes().Delete(deleteCtx,
 			n.Name, metav1.DeleteOptions{}); err != nil {
 			log.Errorf("pruneStaleMasterNodes: delete %s: %v", n.Name, err)
 		}
+		deleteCancel()
 	}
 }
