@@ -3827,6 +3827,22 @@ func parseEdgeNodeClusterConfig(getconfigCtx *getconfigContext,
 		}
 	}
 
+	for _, idStr := range zcfgCluster.GetMasterNodeUuids() {
+		if idStr == "" {
+			continue
+		}
+		masterID, err := uuid.FromString(idStr)
+		if err != nil {
+			// A malformed UUID means we can't trust the list. Treat it as
+			// unpopulated (empty → no pruning) but still publish the rest of
+			// the cluster config, which is valid.
+			log.Errorf("parseEdgeNodeClusterConfig: failed to parse master_node_uuid %q: %v", idStr, err)
+			enClusterConfig.MasterNodeIDs = nil
+			break
+		}
+		enClusterConfig.MasterNodeIDs = append(enClusterConfig.MasterNodeIDs, masterID)
+	}
+
 	log.Functionf("parseEdgeNodeClusterConfig: ENCluster API, Config %+v, %v", zcfgCluster, enClusterConfig)
 	ctx.pubEdgeNodeClusterConfig.Publish("global", enClusterConfig)
 }

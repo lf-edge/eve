@@ -43,6 +43,12 @@ const (
 	// app-status or log collection, so a longer interval is acceptable.
 	kubeStatsInterval = 30
 	kubeCfgInterval   = 60
+	// pruneStaleMasterInterval: how often the elected leader re-evaluates the
+	// k8s control-plane Node list against EdgeNodeClusterConfig.MasterNodeIDs
+	// (seconds). Acts as a safety net for the event-driven sweep so transient
+	// kube-API failures and the boot race where ENCC arrives before leader
+	// election settles are self-healing instead of stuck-until-next-config.
+	pruneStaleMasterInterval = 600
 
 	inlineCmdKubeClusterUpdateStatus = "pubKubeClusterUpdateStatus"
 	inlineCmdVmiDetach               = "vmiDetach"
@@ -670,6 +676,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	appStatusTimer := time.NewTimer(logcollectInterval * time.Second)
 	kubeStatsTimer := time.NewTimer(kubeStatsInterval * time.Second)
 	kubeCfgTimer := time.NewTimer(kubeCfgInterval * time.Second)
+	pruneStaleMasterTimer := time.NewTimer(pruneStaleMasterInterval * time.Second)
 
 	zedkubeWdUpdate := func() {
 		ps.StillRunning(agentName, warningTime, errorTime)
@@ -715,6 +722,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		case <-kubeCfgTimer.C:
 			zedkubeCtx.applyLonghornDiskReserved()
 			kubeCfgTimer = time.NewTimer(kubeCfgInterval * time.Second)
+
+		// Timer 5: leader-only safety-net re-evaluation of the stale-master
+		// sweep. pruneStaleMasterNodes is a no-op on followers and when
+		// MasterNodeIDs is empty, so this branch is essentially free off the
+		// leader. Recovers from transient kube-API failures during the
+		// event-driven path and from the boot race where ENCC arrives
+		// before this node wins the kube-stats lease.
+		case <-pruneStaleMasterTimer.C:
+			zedkubeCtx.pruneStaleMasterNodes(&zedkubeCtx.clusterConfig)
+			pruneStaleMasterTimer = time.NewTimer(pruneStaleMasterInterval * time.Second)
 
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
