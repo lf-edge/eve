@@ -99,7 +99,7 @@ EFI_PART_SIZE=$((2 * 1024 * 1024 * 1024))
 # Warning: fixing the EVE upgrade logic, which should find
 # Warning: free space and rellocate all tables if image has
 # Warning: been bloated.
-ROOTFS_PART_SIZE_MIN=$((4 * 1024 * 1024 * 1024))
+ROOTFS_PART_SIZE_MIN=$((10 * 1024 * 1024 * 1024))
 
 # PLATFORM can be set in environment, it means we are executed using
 # docker during build time, otherwise we are executed from EVE e.g.
