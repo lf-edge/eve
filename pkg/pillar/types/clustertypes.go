@@ -94,6 +94,13 @@ type EdgeNodeClusterConfig struct {
 	// interfaces array from the protobuf; each entry holds one interface name and its
 	// first CIDR from address_cidrs.
 	LBInterfaces []LBInterfaceConfig
+
+	// MasterNodeIDs - UUIDs of all designated control-plane nodes in the cluster
+	// as known to the controller. Sourced from EdgeNodeCluster.master_node_uuids.
+	// Used by zedkube on the elected stats-leader to prune k8s Node objects
+	// (and thereby k3s embedded etcd members) for masters the controller has
+	// removed via a "replace node" operation. Workers are not included.
+	MasterNodeIDs []uuid.UUID
 }
 
 // AppKubeStatus represents this node's last view of an app's lifecycle in the

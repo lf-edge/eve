@@ -120,6 +120,7 @@ func (z *zedkube) applyClusterConfig(config, oldconfig *types.EdgeNodeClusterCon
 		}
 	}
 	z.publishKubeConfigStatus()
+	z.pruneStaleMasterNodes(config)
 }
 
 // publishKubeConfigStatus publishes the cluster config status

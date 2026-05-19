@@ -254,6 +254,60 @@ the election request is to request a 'lease' for the name "eve-kube-stats-leader
 
 If all the nodes in cluster are not connected to the cloud, then there is no need to report the stats anyway.
 
+## Stale Master Node Removal
+
+### The problem
+
+In a 3-master (HA) k3s cluster with embedded etcd, removing one master and adding a replacement is a controller-driven "replace node" operation. When the operator triggers this in the controller UI, the controller stops shipping config to the removed device and starts shipping config to a brand-new device that should join as a master.
+
+If the surviving nodes still carry the removed master as a `Node` object, k3s's view of etcd membership still includes the old member, and the new master's join attempt is rejected: k3s/etcd will not admit a new server while a stale member is in the cluster. The cluster is stuck until the stale `Node` is gone, at which point k3s's embedded-etcd controller drops the corresponding etcd member automatically and the new master can join. This was verified empirically on a live 3-master cluster — after `kubectl delete node` on the removed master, `etcdctl member list` reported only the 3 surviving members and the new master joined cleanly. EVE therefore only needs to drive the `Node` deletion; no separate `etcdctl member remove` is required.
+
+### Approach
+
+The controller is the source of truth for "which devices should currently be masters of this cluster." It now ships that list down to every surviving node as part of the edge-node cluster config; whenever the list changes, the surviving leader compares it against the local k8s view of control-plane nodes and deletes any control-plane `Node` whose UUID is no longer in the list. The decision is purely event-driven on cluster-config changes — there is no periodic sweep.
+
+Ready/NotReady is intentionally not part of the predicate. The "replace node" operation may target a still-healthy master (the operator may want to swap hardware before it fails), so a NotReady gate would block the legitimate replace path. Worker nodes are out of scope because the list contains master UUIDs only — a worker UUID never matches, so workers can never be targeted by this sweep.
+
+### Proto / type addition
+
+The eve-api proto `EdgeNodeCluster` (`proto/config/edge_node_cluster.proto`) gains a new repeated-string field:
+
+```proto
+// UUIDs of all designated master/control-plane nodes in the cluster,
+// as known to the controller. The elected kube-stats leader among
+// surviving EVE nodes uses this list to prune k8s Node objects (and
+// thereby k3s embedded etcd members) for masters the controller has
+// removed (e.g. after a "replace node" operation in the UI).
+// Workers are not listed here.
+repeated string master_node_uuids = 13;
+```
+
+zedagent's `parseEdgeNodeClusterConfig` parses each entry with `uuid.FromString` and assigns the result to a new `MasterNodeIDs []uuid.UUID` field on `types.EdgeNodeClusterConfig`. If any UUID fails to parse, `MasterNodeIDs` is cleared and the rest of the cluster config is still published (no `publishEmptyENCC`). `EdgeNodeClusterStatus` is intentionally unchanged — the list is consumed entirely inside zedkube and is not re-published.
+
+Empty `MasterNodeIDs` (older zedcloud that pre-dates the field, or a transient UUID parse error) is treated as "no opinion" and the sweep is skipped entirely.
+
+### Leader-gated removal
+
+The sweep runs from `applyClusterConfig` in `pkg/pillar/cmd/zedkube/clusterstatus.go`, at the tail of the success path, by calling `pruneStaleMasterNodes` in `pkg/pillar/cmd/zedkube/prunenodes.go`. It is **gated on the existing kube-stats leader election** described above: only the holder of the `eve-kube-stats-leader` lease performs the deletion; followers no-op. Reusing the existing lease guarantees exactly one node acts, with no new election state to manage.
+
+The sweep logic:
+
+1. Skip if `MasterNodeIDs` is empty (controller not yet upgraded).
+2. Skip if `z.isKubeStatsLeader.Load() == false` (we are not the leader).
+3. `clientset.CoreV1().Nodes().List(...)` with label selector `node-role.kubernetes.io/control-plane` — restricts the scope to master nodes; workers are never touched.
+4. For each returned node, read its `node-uuid` label (the same UUID label used elsewhere in zedkube, e.g. `getLocalNode` in `drain.go`).
+5. If that UUID is not in `MasterNodeIDs`, call `clientset.CoreV1().Nodes().Delete(...)`. Once the `Node` is gone, k3s removes the matching etcd member on its own.
+
+Because the event-driven trigger is the ENCC change, an identical re-publish is short-circuited by the `reflect.DeepEqual` guard at the top of `applyClusterConfig` and the sweep does not re-run from that path.
+
+To make rare event-driven misses self-healing, the leader also re-runs `pruneStaleMasterNodes` on a 10-minute ticker (`pruneStaleMasterInterval`) from the main loop in `zedkube.go`. The same leader/empty-list guards apply, so the branch is essentially free on followers and on nodes where the controller has not yet shipped the field. The ticker exists to cover three rare misses of the event-driven path:
+
+1. Transient kube-API errors during `Nodes().List()` / `Nodes().Delete()` when the ENCC arrived.
+2. A boot race where ENCC is published before this node has won the `eve-kube-stats-leader` lease — the event-driven sweep skips, and the `reflect.DeepEqual` short-circuit would otherwise prevent an identical re-publish from re-triggering.
+3. Leader handoff: the previous leader received the ENCC but lost the lease before completing the sweep; the new leader hasn't seen an ENCC modify since taking over.
+
+10 minutes is intentionally long: it is well above the kube-stats lease retry period and orders of magnitude smaller than typical operator patience for a stuck "replace node" operation, so the recovery window matches the failure mode without adding measurable load.
+
 ## Debugging
 
 ### PubSub NodeDrainRequest/NodeDrainStatus
