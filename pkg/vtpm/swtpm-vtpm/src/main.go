@@ -61,8 +61,16 @@ var (
 		return err == nil
 	}
 	getEncryptionKey = func() ([]byte, error) {
-		pcrSelection := etpm.GetDiskKeyPolicyPcrOrDefault(types.PolicyPcrFile)
-		return etpm.UnsealDiskKeyWithRecovery(pcrSelection)
+		if etpm.PCRBankSHA256Enabled() {
+			pcrSelection := etpm.GetDiskKeyPolicyPcrOrDefault(types.PolicyPcrFile)
+			return etpm.UnsealDiskKeyWithRecovery(pcrSelection)
+		}
+
+		// call FetchVaultKey directly, we can just call FetchSealedVaultKey
+		// and be happy and not care about the SHA256 banks, but FetchSealedVaultKey
+		// creates the missing keys if not exist, and we don't want vTPM mess
+		// with the keys and TPM state eve if the chance is close to zero.
+		return etpm.FetchVaultKey(log)
 	}
 )
 
