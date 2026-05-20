@@ -205,6 +205,19 @@ func FindDisksPartitions(log *base.LogObject) []DiskPartition {
 		log.Errorf("lsblk -J -l -o NAME,PARTLABEL,PARTTYPE,PARTUUID failed: %s", err)
 		return nil
 	}
+	parts, err := parseLsblkPartitions(out)
+	if err != nil {
+		log.Errorf("lsblk JSON decode failed: %s", err)
+		return nil
+	}
+	return parts
+}
+
+// parseLsblkPartitions decodes the JSON produced by
+// `lsblk -J -l -o NAME,PARTLABEL,PARTTYPE,PARTUUID` into DiskPartition
+// records. Split out from FindDisksPartitions so the parsing can be
+// unit-tested without shelling out to lsblk.
+func parseLsblkPartitions(out []byte) ([]DiskPartition, error) {
 	var parsed struct {
 		BlockDevices []struct {
 			Name      string `json:"name"`
@@ -214,8 +227,7 @@ func FindDisksPartitions(log *base.LogObject) []DiskPartition {
 		} `json:"blockdevices"`
 	}
 	if err := json.Unmarshal(out, &parsed); err != nil {
-		log.Errorf("lsblk JSON decode failed: %s", err)
-		return nil
+		return nil, err
 	}
 	result := make([]DiskPartition, 0, len(parsed.BlockDevices))
 	for _, e := range parsed.BlockDevices {
@@ -226,7 +238,7 @@ func FindDisksPartitions(log *base.LogObject) []DiskPartition {
 			PartitionUUID:  e.PartUUID,
 		})
 	}
-	return result
+	return result, nil
 }
 
 // FindLargestDisk determines the name of the largest disk
