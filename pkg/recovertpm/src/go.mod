@@ -7,7 +7,7 @@ toolchain go1.24.6
 require (
 	github.com/google/go-tpm v0.9.1
 	github.com/lf-edge/eve/api/go v0.0.0-20230726103732-fec97665f8c9
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260430190438-a6fc872affc6
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260521051436-614efc1c3bb7
 	github.com/schollz/progressbar/v3 v3.14.2
 	google.golang.org/protobuf v1.36.10
 )
@@ -40,7 +40,7 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	golang.org/x/crypto v0.46.0 // indirect
 	golang.org/x/net v0.48.0 // indirect
-	golang.org/x/sys v0.40.0 // indirect
+	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/term v0.38.0 // indirect
 	golang.org/x/text v0.32.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect

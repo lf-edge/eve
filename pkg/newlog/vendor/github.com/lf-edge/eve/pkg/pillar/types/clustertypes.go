@@ -4,7 +4,10 @@
 package types
 
 import (
+	"fmt"
 	"net"
+	"os"
+	"strings"
 	"time"
 
 	uuid "github.com/satori/go.uuid"
@@ -91,6 +94,13 @@ type EdgeNodeClusterConfig struct {
 	// interfaces array from the protobuf; each entry holds one interface name and its
 	// first CIDR from address_cidrs.
 	LBInterfaces []LBInterfaceConfig
+
+	// MasterNodeIDs - UUIDs of all designated control-plane nodes in the cluster
+	// as known to the controller. Sourced from EdgeNodeCluster.master_node_uuids.
+	// Used by zedkube on the elected stats-leader to prune k8s Node objects
+	// (and thereby k3s embedded etcd members) for masters the controller has
+	// removed via a "replace node" operation. Workers are not included.
+	MasterNodeIDs []uuid.UUID
 }
 
 // AppKubeStatus represents this node's last view of an app's lifecycle in the
@@ -216,5 +226,23 @@ type KubeLeaderElectInfo struct {
 type VmiVNCConfig struct {
 	VMIName   string `json:"VMIName"`
 	VNCPort   uint32 `json:"VNCPort"`
-	CallerPID int    `json:"CallerPID,omitempty"` // Set by edgeview to allow cleanup when it exits
+	AppUUID   string `json:"AppUUID,omitempty"`   // UUID of the app owning this session
+	CallerPID int    `json:"CallerPID,omitempty"` // Set by edgeview; absent for remote-console
+}
+
+// procPath is the root of the proc filesystem. Overridden in tests.
+var procPath = "/proc"
+
+// OwnerAlive reports whether CallerPID refers to a live edge-view process.
+// Returns false when CallerPID is unset (remote-console file), when the PID
+// is dead, or when the PID has been reused by a different program.
+func (c VmiVNCConfig) OwnerAlive() bool {
+	if c.CallerPID <= 0 {
+		return false
+	}
+	comm, err := os.ReadFile(fmt.Sprintf("%s/%d/comm", procPath, c.CallerPID))
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(string(comm)) == "edge-view"
 }

@@ -47,8 +47,8 @@ github.com/lf-edge/eve-api/go v0.0.0-20260520095750-2a982d0b4ddb h1:KFvz8X8V/h6N
 github.com/lf-edge/eve-api/go v0.0.0-20260520095750-2a982d0b4ddb/go.mod h1:6HxNA/qKJVEqwpuOFkcQ0h3QyotvAs/cjHLC961FPOY=
 github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d h1:tUBb9M6u42LXwHAYHyh22wJeUUQlTpDkXwRXalpRqbo=
 github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d/go.mod h1:Nn3juMJJ1G8dyHOebdZyS4jOB/fuxAd5fIajBaWjHr8=
-github.com/lf-edge/eve/pkg/pillar v0.0.0-20260430190438-a6fc872affc6 h1:W3h8QdEBOPhfoQYECnJyJfh7dx/PBeMZpuac5SD936o=
-github.com/lf-edge/eve/pkg/pillar v0.0.0-20260430190438-a6fc872affc6/go.mod h1:Dl0j4RuChK79rwfNOZGOCFKiLElzw4dWExBrvV9d1H0=
+github.com/lf-edge/eve/pkg/pillar v0.0.0-20260521051436-614efc1c3bb7 h1:hnrzxv2c6O6UZDicBmsd6dNEDdblH8KE3dlOoSy4EGM=
+github.com/lf-edge/eve/pkg/pillar v0.0.0-20260521051436-614efc1c3bb7/go.mod h1:HFvZLjsD+i+yizWd5uPqCfKD9CTBXR1LkMIOGUba3JQ=
 github.com/modern-go/concurrent v0.0.0-20180228061459-e0a39a4cb421/go.mod h1:6dJC0mAP4ikYIbvyc7fijjWJddQyLn8Ig3JB5CqoB9Q=
 github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd h1:TRLaZ9cD/w8PVh93nsPXa1VrQ6jlwL5oN8l14QlcNfg=
 github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd/go.mod h1:6dJC0mAP4ikYIbvyc7fijjWJddQyLn8Ig3JB5CqoB9Q=
@@ -107,8 +107,8 @@ golang.org/x/sys v0.0.0-20200930185726-fdedc70b468f/go.mod h1:h1NjWce9XRLGQEsW7w
 golang.org/x/sys v0.0.0-20220715151400-c0bba94af5f8/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
 golang.org/x/sys v0.2.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
 golang.org/x/sys v0.10.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
-golang.org/x/sys v0.40.0 h1:DBZZqJ2Rkml6QMQsZywtnjnnGvHza6BTfYFWY9kjEWQ=
-golang.org/x/sys v0.40.0/go.mod h1:OgkHotnGiDImocRcuBABYBEXf8A9a87e/uXjp9XT3ks=
+golang.org/x/sys v0.41.0 h1:Ivj+2Cp/ylzLiEU89QhWblYnOE9zerudt9Ftecq2C6k=
+golang.org/x/sys v0.41.0/go.mod h1:OgkHotnGiDImocRcuBABYBEXf8A9a87e/uXjp9XT3ks=
 golang.org/x/text v0.3.0/go.mod h1:NqM8EUOU14njkJ3fqMW+pc6Ldnwhi/IjpwHt7yyuwOQ=
 golang.org/x/text v0.3.3/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=
 golang.org/x/text v0.32.0 h1:ZD01bjUt1FQ9WJ0ClOL5vxgxOI/sVCNgX1YtKwcY0mU=

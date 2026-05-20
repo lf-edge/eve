@@ -286,6 +286,10 @@ const (
 	// (if enabled by WwanModemRecoveryWatchdog) and can be combined with driver reload recovery
 	// mechanism (see WwanModemRecoveryReloadDrivers).
 	WwanModemRecoveryRestartModemManager GlobalSettingKey = "wwan.modem.recovery.restart.modemmanager"
+	// KubernetesVmiDescheduleEvents : Comma-separated list of events that trigger VMI
+	// descheduling. Currently only "boot" is supported. When empty (default), no
+	// event-driven descheduling is performed.
+	KubernetesVmiDescheduleEvents GlobalSettingKey = "kubernetes.vmi.deschedule.events"
 
 	// GoroutineLeakDetectionThreshold amount of goroutines, reaching which will trigger leak detection
 	// regardless of growth rate.
@@ -423,6 +427,22 @@ const (
 	// TUIMonitorLogLevel: log level for TUI monitor
 	TUIMonitorLogLevel GlobalSettingKey = "debug.tui.loglevel"
 
+	// IGPUGOPFile: filename (basename only) of a proprietary Intel GOP
+	// Option ROM placed under /persist/vault/gop/.  Used for iGPU
+	// passthrough to provide a pre-OS UEFI framebuffer.  Empty (default)
+	// or a missing file falls back to the bundled VfioIgdPkg ROM (OS
+	// display still works; just no pre-OS framebuffer).
+	IGPUGOPFile GlobalSettingKey = "igpu.gop"
+
+	// EnableEFIDebug: when true, OVMF DEBUG() output is captured to
+	// /run/hypervisor/kvm/<dom>/efi-debug.log via QEMU's isa-debugcon at
+	// I/O port 0x402.  Off by default.  Note that DEBUG() macros are
+	// compiled out in a TARGET=RELEASE OVMF build (EVE's current
+	// default); enabling this knob on a RELEASE OVMF creates the log
+	// file but it stays empty.  Useful primarily for diagnosing iGPU
+	// passthrough firmware-side issues with a TARGET=DEBUG OVMF rebuild.
+	EnableEFIDebug GlobalSettingKey = "debug.enable.efi"
+
 	// MsrvPrometheusMetricsRequestPerSecond: limit the number of requests per second
 	MsrvPrometheusMetricsRequestPerSecond GlobalSettingKey = "msrv.prometheus.metrics.rps"
 	// MsrvPrometheusMetricsBurst: limit the burst of requests
@@ -471,6 +491,19 @@ const (
 	// However, some badly configured DHCP servers may reject unknown vendor class IDs.
 	// Set this to false to disable sending a vendor class ID.
 	DHCPEnableVendorClassID GlobalSettingKey = "dhcp.enable.vendorclassid"
+
+	// LpsProfileInterval defines interval between LPS local profile GETs.
+	LpsProfileInterval GlobalSettingKey = "timer.lps.profile.interval"
+	// LpsRadioInterval defines interval between LPS radio status POSTs.
+	LpsRadioInterval GlobalSettingKey = "timer.lps.radio.interval"
+	// LpsAppInfoInterval defines interval between LPS app info POSTs.
+	LpsAppInfoInterval GlobalSettingKey = "timer.lps.appinfo.interval"
+	// LpsDevInfoInterval defines interval between LPS device info POSTs.
+	LpsDevInfoInterval GlobalSettingKey = "timer.lps.devinfo.interval"
+	// LpsNetworkInterval defines interval between LPS network config POSTs.
+	LpsNetworkInterval GlobalSettingKey = "timer.lps.network.interval"
+	// LpsAppBootInfoInterval defines interval between LPS app boot info POSTs.
+	LpsAppBootInfoInterval GlobalSettingKey = "timer.lps.appbootinfo.interval"
 )
 
 // LonghornDiskReservedGBDisabled is the sentinel value for LonghornDiskReservedGB that
@@ -1136,6 +1169,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddBoolItem(NetworkLocalLegacyMACAddress, false)
 	configItemSpecMap.AddBoolItem(MemoryMonitorEnabled, false)
 	configItemSpecMap.AddBoolItem(DHCPEnableVendorClassID, true)
+	configItemSpecMap.AddBoolItem(EnableEFIDebug, false)
 
 	// Add TriState Items
 	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_DISABLED)
@@ -1153,6 +1187,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddStringItem(FmlCustomResolution, FmlResolutionUnset, blankValidator)
 	configItemSpecMap.AddStringItem(AppBootOrder, "", validateBootOrder)
 	configItemSpecMap.AddStringItem(TUIMonitorLogLevel, "info", blankValidator)
+	configItemSpecMap.AddStringItem(IGPUGOPFile, "", validateGOPRomFilename)
 	configItemSpecMap.AddStringItem(EdgeviewPublicKeys, "", blankValidator)
 
 	// Log deduplication and filtering settings
@@ -1191,12 +1226,22 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	//K3s Settings
 	configItemSpecMap.AddStringItem(K3sConfigOverride, "", base64Validator)
 	configItemSpecMap.AddStringItem(K3sVersionOverride, "", k3sVersionValidator)
+	configItemSpecMap.AddStringItem(KubernetesVmiDescheduleEvents, "", blankValidator)
 
 	// SCEP settings
 	configItemSpecMap.AddIntItem(SCEPRetryInterval, 5*MinuteInSec, MinuteInSec, HourInSec)
 
 	// PNAC settings
 	configItemSpecMap.AddIntItem(PnacDHCPReacquireMaxRetries, 4, 0, 8)
+
+	// LPS settings
+	configItemSpecMap.AddIntItem(LpsProfileInterval, MinuteInSec, 3, HourInSec)
+	configItemSpecMap.AddIntItem(LpsRadioInterval, 5, 3, HourInSec)
+	configItemSpecMap.AddIntItem(LpsAppInfoInterval, MinuteInSec, 3, HourInSec)
+	configItemSpecMap.AddIntItem(LpsDevInfoInterval, MinuteInSec, 3, HourInSec)
+	configItemSpecMap.AddIntItem(LpsNetworkInterval, MinuteInSec, 3, HourInSec)
+	configItemSpecMap.AddIntItem(LpsAppBootInfoInterval, MinuteInSec, 3, HourInSec)
+
 	return configItemSpecMap
 }
 
@@ -1219,6 +1264,19 @@ func validateBootOrder(bootOrder string) error {
 	default:
 		return fmt.Errorf("validateBootOrder: invalid boot order '%s', must be '', 'usb', or 'nousb'", bootOrder)
 	}
+}
+
+// validateGOPRomFilename - require a plain basename with no path separators
+// or traversal components.  Empty is allowed and means "use the bundled
+// VfioIgdPkg ROM".  The file is loaded from /persist/vault/gop/ at runtime.
+func validateGOPRomFilename(filename string) error {
+	if filename == "" {
+		return nil
+	}
+	if strings.ContainsAny(filename, `/\`) || filename == ".." || filename == "." {
+		return fmt.Errorf("validateGOPRomFilename: %q must be a basename under /persist/vault/gop (no path separators)", filename)
+	}
+	return nil
 }
 
 // validateSyslogKernelLevel - Wrapper for validating syslog and kernel
