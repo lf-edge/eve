@@ -5,6 +5,8 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 
 	"github.com/lf-edge/eve-api/go/logs"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -44,6 +46,42 @@ func parseSyslogLogLevel(loglevel string) uint32 {
 	}
 
 	return prio
+}
+
+// sanitizeGzipHeader rewrites s so it is safe to assign to gzip.Writer.Name
+// or gzip.Writer.Comment. RFC 1952 restricts those fields to ISO-8859-1
+// with no NUL byte; Go's gzip writer enforces this and returns
+// "gzip.Write: non-Latin-1 header string" from Close() otherwise, which
+// is fatal in newlogd's compression path. Each disallowed rune is
+// replaced with a Go-style \uXXXX / \UXXXXXXXX escape so the original
+// value is recoverable downstream. Latin-1 runes (including accented
+// characters in 0x80-0xFF) pass through unchanged.
+func sanitizeGzipHeader(s string) string {
+	safe := true
+	for _, r := range s {
+		if r == 0 || r > 0xff {
+			safe = false
+			break
+		}
+	}
+	if safe {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		switch {
+		case r == 0:
+			b.WriteString(`\u0000`)
+		case r > 0xffff:
+			fmt.Fprintf(&b, `\U%08x`, r)
+		case r > 0xff:
+			fmt.Fprintf(&b, `\u%04x`, r)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 func parseAgentLogLevel(loglevel string) logrus.Level {
