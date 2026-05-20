@@ -11,7 +11,6 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/zboot"
 )
 
 // node health timer functions
@@ -295,7 +294,7 @@ func scheduleNodeOperation(ctxPtr *nodeagentContext, requestedReasonStr string, 
 	// in any case, execute the reboot procedure
 	// with a delayed timer
 	log.Functionf("Creating %s at %s", "scheduleNodeOperation", agentlog.GetMyStack())
-	go handleNodeOperation(ctxPtr, op)
+	ctxPtr.startNodeOperation(op)
 }
 
 func allDomainsHalted(ctxPtr *nodeagentContext) bool {
@@ -342,7 +341,7 @@ func waitForAllDomainsHalted(ctxPtr *nodeagentContext) {
 
 func handleNodeOperation(ctxPtr *nodeagentContext, op types.DeviceOperation) {
 	// Wait for MinRebootDelay time
-	duration := time.Second * time.Duration(minRebootDelay)
+	duration := time.Second * time.Duration(ctxPtr.minRebootDelay)
 	rebootTimer := time.NewTimer(duration)
 	log.Functionf("handleNodeOperation: minRebootDelay timer %d seconds",
 		duration/time.Second)
@@ -350,7 +349,7 @@ func handleNodeOperation(ctxPtr *nodeagentContext, op types.DeviceOperation) {
 
 	if op != types.DeviceOperationShutdown {
 		// set the reboot reason
-		agentlog.RebootReason(ctxPtr.requestedRebootReason,
+		ctxPtr.rebootStore.WriteRebootReason(ctxPtr.requestedRebootReason,
 			ctxPtr.requestedBootReason, agentName, os.Getpid(), true)
 	}
 	// Wait for All Domains Halted
@@ -393,8 +392,8 @@ func handleNodeOperation(ctxPtr *nodeagentContext, op types.DeviceOperation) {
 	}()
 	agentlog.FlushCoverage(log)
 	if op == types.DeviceOperationPoweroff {
-		zboot.Poweroff(log)
+		ctxPtr.zboot.Poweroff()
 	} else {
-		zboot.Reset(log)
+		ctxPtr.zboot.Reset()
 	}
 }
