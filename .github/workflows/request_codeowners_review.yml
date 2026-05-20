@@ -21,11 +21,15 @@ jobs:
         with:
           ref: ${{ github.base_ref }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Fetch the PR's head ref
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
-          git fetch origin ${{ github.event.pull_request.head.sha }}:${{ github.event.pull_request.head.ref }}
-          git checkout ${{ github.event.pull_request.head.ref }}
+          git fetch origin "$HEAD_SHA:$HEAD_REF"
+          git checkout "$HEAD_REF"
 
       - name: Auto request review
         env:
@@ -62,7 +66,7 @@ jobs:
           pr_author="${{ github.event.pull_request.user.login }}"
           # Remove PR author from reviewers
           filtered_reviewers=()
-          for reviewer in ${reviewers_array[@]}; do
+          for reviewer in "${reviewers_array[@]}"; do
             if [[ "$reviewer" != "$pr_author" ]]; then
               filtered_reviewers+=("$reviewer")
             fi

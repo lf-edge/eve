@@ -22,6 +22,9 @@ on:  # yamllint disable-line rule:truthy
       - '**/*.md'
       - '.github/**'
 
+permissions:
+  contents: read
+
 jobs:
   fuzz:
     runs-on: zededa-ubuntu-2204
@@ -45,6 +48,7 @@ jobs:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Login to Docker Hub
         if: ${{ github.event.repository.full_name == 'lf-edge/eve' }}
         run: | # Runners must provide default credentials
