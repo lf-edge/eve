@@ -548,7 +548,17 @@ func (s KubeUserServices) Equal(s2 KubeUserServices) bool {
 		s.ServiceError.Error == s2.ServiceError.Error
 }
 
+// VmiDescheduleEventBoot is the KubernetesVmiDescheduleEvents token that
+// enables the on-boot descheduler trigger.
+const VmiDescheduleEventBoot = "boot"
+
+// VmiDescheduleConfig holds the set of trigger events for VMI descheduling.
+type VmiDescheduleConfig struct {
+	OnBoot bool // trigger descheduler once per boot
+}
+
 // KubeConfig : A root level structure to pass config from pillar to kube service container
 type KubeConfig struct {
-	K3sVersion string
+	K3sVersion          string
+	VmiDescheduleEvents VmiDescheduleConfig
 }

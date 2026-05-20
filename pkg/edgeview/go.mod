@@ -10,7 +10,7 @@ require (
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/lf-edge/eve-api/go v0.0.0-20260520095750-2a982d0b4ddb
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260430190438-a6fc872affc6
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260521051436-614efc1c3bb7
 	github.com/onsi/gomega v1.36.1
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
 	github.com/shirou/gopsutil v3.21.11+incompatible
@@ -18,7 +18,7 @@ require (
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
 	github.com/vishvananda/netlink v1.3.1
 	golang.org/x/crypto v0.46.0
-	golang.org/x/sys v0.40.0
+	golang.org/x/sys v0.41.0
 	golang.org/x/time v0.12.0
 )
 

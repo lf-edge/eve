@@ -53,6 +53,11 @@ type DomainConfig struct {
 	// It is used in EVE-K to make the VMI/Pod ReplicaSet name unique across purge cycles,
 	// preventing AlreadyExists collisions when the old ReplicaSet is still terminating.
 	PurgeCounter uint32
+	// RestartCounter is the sum of RestartCmd.Counter and LocalRestartCmd.Counter from the
+	// AppInstanceConfig. In kubevirt mode it is ORed with PurgeCounter into the doInactivate
+	// cluster-trust guard so a controller-driven Restart (which bumps RestartCmd, not PurgeCmd)
+	// is treated as a real teardown signal rather than a transient cluster-status cascade.
+	RestartCounter uint32
 	// if this node is the DNiD of the App
 	IsDNidNode bool
 
@@ -330,6 +335,15 @@ type DomainStatus struct {
 	State          SwState // BOOTING and above?
 	Activated      bool    // XXX remove??
 	AppNum         int     // From networking; makes the name unique
+	// PurgeCounter is the PurgeCounter that produced the current
+	// DomainName / kubeName binding. Used in kubevirt mode to detect a
+	// purge (kubeName change) so the old VMIRS is torn down before the
+	// new one is created.
+	PurgeCounter uint32
+	// RestartCounter is the RestartCounter currently bound to this DomainStatus.
+	// Used in kubevirt mode together with PurgeCounter to detect a controller
+	// Restart so the old VMIRS is torn down before the new one is created.
+	RestartCounter uint32
 	PendingAdd     bool
 	PendingModify  bool
 	PendingDelete  bool

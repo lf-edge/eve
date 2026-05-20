@@ -80,6 +80,7 @@ type NetworkPortStatus struct {
 
 type AddrInfo struct {
 	Addr             net.IP
+	Mask             net.IPMask
 	Geo              ipinfo.IPInfo
 	LastGeoTimestamp time.Time
 }
@@ -261,7 +262,8 @@ func (status DeviceNetworkStatus) MostlyEqual(status2 DeviceNetworkStatus) bool 
 		}
 		if !generics.EqualSetsFn(p1.AddrInfoList, p2.AddrInfoList,
 			func(a, b AddrInfo) bool {
-				return a.Addr.Equal(b.Addr)
+				return a.Addr.Equal(b.Addr) &&
+					bytes.Equal(a.Mask, b.Mask)
 			}) {
 			return false
 		}

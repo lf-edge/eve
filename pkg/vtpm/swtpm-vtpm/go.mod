@@ -3,7 +3,7 @@ module github.com/lf-edge/eve/pkg/vtpm
 go 1.24.0
 
 require (
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260430190438-a6fc872affc6
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260521051436-614efc1c3bb7
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
 	github.com/sirupsen/logrus v1.9.3
 )
@@ -33,7 +33,7 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	golang.org/x/crypto v0.46.0 // indirect
 	golang.org/x/net v0.48.0 // indirect
-	golang.org/x/sys v0.40.0 // indirect
+	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/text v0.32.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
