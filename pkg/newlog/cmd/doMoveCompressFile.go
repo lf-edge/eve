@@ -274,11 +274,19 @@ func prepareGzipToOutTempFile(gzipDirName string, fHdr fileChanInfo, now time.Ti
 	gw, _ := gzip.NewWriterLevel(writer, gzip.BestCompression)
 
 	// for app upload, use gzip header 'Name' for appName string to simplify cloud side implementation
-	// for now, the gw.Comment has the metadata for device log, and gw.Name for appName for app log
+	// for now, the gw.Comment has the metadata for device log, and gw.Name for appName for app log.
+	// RFC 1952 restricts both fields to NUL-free Latin-1, so sanitize the
+	// operator-supplied app DisplayName first or gw.Close() will fatal with
+	// "gzip.Write: non-Latin-1 header string".
+	header := sanitizeGzipHeader(fHdr.header)
+	if header != fHdr.header {
+		log.Warnf("prepareGzipToOutTempFile: header %q contains non-Latin-1 characters; escaped to %q",
+			fHdr.header, header)
+	}
 	if fHdr.isApp {
-		gw.Name = fHdr.header
+		gw.Name = header
 	} else {
-		gw.Comment = fHdr.header
+		gw.Comment = header
 	}
 	gw.ModTime = now
 
