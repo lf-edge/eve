@@ -68,6 +68,8 @@ SSH_KEY=$(CONF_DIR)/ssh.key
 NOACCEL=
 # Use TPM device (any non-empty value will trigger using it), i.e. 'make TPM=y run'
 TPM=
+# Disable SHA256 PCR bank in swtpm (set to 'N' to disable), i.e. 'make TPM=y SHA256_BANK=N run'
+SHA256_BANK=
 # Prune dangling images after build of package to reduce disk usage (any non-empty value will trigger using it)
 # Be aware that with this flag we will clean all dangling images in system, not only EVE-OS related
 PRUNE=
@@ -633,9 +635,24 @@ $(EFI_PART) $(BOOT_PART) $(INITRD_IMG) $(IPXE_IMG) $(BIOS_IMG) $(UBOOT_IMG) $(BS
 # run swtpm if TPM flag defined
 # to run it please ensure that https://github.com/stefanberger/swtpm package built/installed in your system
 # we use --terminate flag, so swtpm will terminate after qemu disconnection
+# SHA256_BANK=N will initialize the TPM state with only the SHA1 PCR bank (no SHA256).
+# This wipes any existing state in $(CURRENT_SWTPM) to ensure a clean initialization.
 SWTPM_:
 SWTPM_Y:
 	mkdir -p $(CURRENT_SWTPM)
+ifeq ($(SHA256_BANK),N)
+	@if [ "$$(cat $(CURRENT_SWTPM)/.pcr-banks 2>/dev/null)" != "sha1" ]; then \
+		echo "WARNING: SHA256_BANK=N — wiping swtpm state and reinitializing with sha1-only PCR banks"; \
+		rm -rf $(CURRENT_SWTPM)/*; \
+		swtpm_setup --tpm2 --tpmstate $(CURRENT_SWTPM) --pcr-banks sha1; \
+		echo sha1 > $(CURRENT_SWTPM)/.pcr-banks; \
+	fi
+else
+	@if [ "$$(cat $(CURRENT_SWTPM)/.pcr-banks 2>/dev/null)" = "sha1" ]; then \
+		echo "WARNING: PCR bank setting changed — wiping swtpm state and reinitializing"; \
+		rm -rf $(CURRENT_SWTPM)/* $(CURRENT_SWTPM)/.pcr-banks; \
+	fi
+endif
 	swtpm socket --daemon --terminate --tpmstate dir=$(CURRENT_SWTPM) --ctrl type=unixio,path=$(CURRENT_SWTPM)/swtpm-sock --log file=$(CURRENT_SWTPM)/swtpm.log,level=20 --pid file=$(CURRENT_SWTPM)/swtpm.pid --tpm2
 SWTPM:=SWTPM_$(TPM:%=Y)
 
