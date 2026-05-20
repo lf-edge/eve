@@ -65,7 +65,7 @@ require (
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
 	github.com/lf-edge/edge-containers v0.0.0-20251107072102-46bed3192170 // indirect
-	github.com/lf-edge/eve-api/go v0.0.0-20260420100351-253db6a73b76 // indirect
+	github.com/lf-edge/eve-api/go v0.0.0-20260520095750-2a982d0b4ddb // indirect
 	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d // indirect
 	github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20240507172735-6d37353ca1ee // indirect
 	github.com/moby/locker v1.0.1 // indirect
