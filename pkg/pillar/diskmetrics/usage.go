@@ -7,6 +7,7 @@ package diskmetrics
 import "C"
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -143,18 +144,47 @@ func diskType(log *base.LogObject, part string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// FindDisksPartitions returns the names of all disks and all partitions
-// Return an array of names like "sda", "sdb1"
-func FindDisksPartitions(log *base.LogObject) []string {
-	out, err := base.Exec(log, "lsblk", "-nlo", "NAME").Output()
+// DiskPartition is a block device or partition discovered by lsblk,
+// optionally enriched with GPT identity fields.
+type DiskPartition struct {
+	Name           string // E.g., "sda3"
+	PartitionLabel string // GPT PARTLABEL; "" for non-GPT
+	PartitionType  string // GPT partition type GUID; "" for non-GPT
+	PartitionUUID  string // GPT PARTUUID; "" for non-GPT
+}
+
+// FindDisksPartitions returns every block device and partition the kernel
+// exposes, enriched with GPT identity when available. Whole-disk entries
+// and partitions on non-GPT disks leave the partition* fields empty.
+func FindDisksPartitions(log *base.LogObject) []DiskPartition {
+	out, err := base.Exec(log, "lsblk", "-J", "-l",
+		"-o", "NAME,PARTLABEL,PARTTYPE,PARTUUID").Output()
 	if err != nil {
-		log.Errorf("lsblk -nlo NAME failed %s", err)
+		log.Errorf("lsblk -J -l -o NAME,PARTLABEL,PARTTYPE,PARTUUID failed: %s", err)
 		return nil
 	}
-	res := strings.Split(string(out), "\n")
-	// Remove blank/empty string after last CR
-	res = res[:len(res)-1]
-	return res
+	var parsed struct {
+		BlockDevices []struct {
+			Name      string `json:"name"`
+			PartLabel string `json:"partlabel"`
+			PartType  string `json:"parttype"`
+			PartUUID  string `json:"partuuid"`
+		} `json:"blockdevices"`
+	}
+	if err := json.Unmarshal(out, &parsed); err != nil {
+		log.Errorf("lsblk JSON decode failed: %s", err)
+		return nil
+	}
+	result := make([]DiskPartition, 0, len(parsed.BlockDevices))
+	for _, e := range parsed.BlockDevices {
+		result = append(result, DiskPartition{
+			Name:           e.Name,
+			PartitionLabel: e.PartLabel,
+			PartitionType:  e.PartType,
+			PartitionUUID:  e.PartUUID,
+		})
+	}
+	return result
 }
 
 // FindLargestDisk determines the name of the largest disk
@@ -166,13 +196,13 @@ func FindLargestDisk(log *base.LogObject) string {
 	var maxdisk string
 	disksAndPartitions := FindDisksPartitions(log)
 	for _, part := range disksAndPartitions {
-		if !strings.EqualFold(diskType(log, part), "disk") {
+		if !strings.EqualFold(diskType(log, part.Name), "disk") {
 			continue
 		}
-		size, _ := PartitionSize(log, part)
+		size, _ := PartitionSize(log, part.Name)
 		if size > maxsize {
 			maxsize = size
-			maxdisk = part
+			maxdisk = part.Name
 		}
 	}
 	return maxdisk
