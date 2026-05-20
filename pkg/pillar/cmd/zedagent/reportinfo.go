@@ -263,9 +263,12 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 			diskPath = diskMetric.DiskPath
 		}
 		is := info.ZInfoStorage{
-			Device:    diskPath,
-			MountPath: mountPath,
-			Total:     base.RoundToMbytes(diskMetric.TotalBytes),
+			Device:            diskPath,
+			MountPath:         mountPath,
+			Total:             base.RoundToMbytes(diskMetric.TotalBytes),
+			PartitionLabel:    diskMetric.PartitionLabel,
+			PartitionTypeGuid: diskMetric.PartitionType,
+			PartitionUuid:     diskMetric.PartitionUUID,
 		}
 		if diskMetric.DiskPath == types.PersistDir {
 			is.StorageLocation = true

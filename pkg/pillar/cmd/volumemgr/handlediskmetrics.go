@@ -157,23 +157,26 @@ func createOrUpdateDiskMetrics(ctx *volumemgrContext, wdName string) {
 	disks := diskmetrics.FindDisksPartitions(log)
 	for _, d := range disks {
 		ctx.ps.StillRunning(wdName, warningTime, errorTime)
-		size, _ := diskmetrics.PartitionSize(log, d)
-		log.Tracef("createOrUpdateDiskMetrics: Disk/partition %s size %d", d, size)
+		size, _ := diskmetrics.PartitionSize(log, d.Name)
+		log.Tracef("createOrUpdateDiskMetrics: Disk/partition %s size %d", d.Name, size)
 		var metric *types.DiskMetric
-		metric = lookupDiskMetric(ctx, d)
+		metric = lookupDiskMetric(ctx, d.Name)
 		if metric == nil {
-			log.Functionf("createOrUpdateDiskMetrics: creating new DiskMetric for %s", d)
-			metric = &(types.DiskMetric{DiskPath: d, IsDir: false})
+			log.Functionf("createOrUpdateDiskMetrics: creating new DiskMetric for %s", d.Name)
+			metric = &(types.DiskMetric{DiskPath: d.Name, IsDir: false})
 		} else {
-			log.Functionf("createOrUpdateDiskMetrics: updating DiskMetric for %s", d)
+			log.Functionf("createOrUpdateDiskMetrics: updating DiskMetric for %s", d.Name)
 		}
 		metric.TotalBytes = size
-		stat, err := disk.IOCounters(d)
+		metric.PartitionLabel = d.PartitionLabel
+		metric.PartitionType = d.PartitionType
+		metric.PartitionUUID = d.PartitionUUID
+		stat, err := disk.IOCounters(d.Name)
 		if err == nil {
-			metric.ReadBytes = stat[d].ReadBytes
-			metric.WriteBytes = stat[d].WriteBytes
-			metric.ReadCount = stat[d].ReadCount
-			metric.WriteCount = stat[d].WriteCount
+			metric.ReadBytes = stat[d.Name].ReadBytes
+			metric.WriteBytes = stat[d.Name].WriteBytes
+			metric.ReadCount = stat[d.Name].ReadCount
+			metric.WriteCount = stat[d.Name].WriteCount
 		}
 		// XXX do we have a mountpath? Combine with paths below if same?
 		diskMetricList = append(diskMetricList, metric)
