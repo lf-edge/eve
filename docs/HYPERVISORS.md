@@ -91,6 +91,12 @@ EVE relies on modern [IOMMU support](https://vfio.blogspot.com/2014/08/iommu-gro
 
 It must be noted, that given dual nature of IOMMU support in the Linux kernel itself (it can be used to optimized device drivers in addition to providing virtualization and user-space capabilities) they have an extra incentive to focus on properly enabling access controls via PCIe ACS (Access Control Services). Sadly, a lot of PCIe hardware is still [very](https://www.redhat.com/archives/vfio-users/2016-July/msg00043.html), [very](https://bugzilla.redhat.com/show_bug.cgi?id=1037684) badly broken and has to be worked around. For now, EVE takes a blunt approach of punting on fine-grained ACS controls with both [Xen](https://lists.gt.net/xen/devel/345180) and [KVM](https://lkml.org/lkml/2013/5/30/513) hypervisors.
 
+### ACS override on the kernel command line
+
+Historically EVE booted with `pcie_acs_override=downstream,multifunction` on the kernel command line. This option comes from the out-of-tree "ACS override" patch and forces the kernel to treat PCIe downstream and multifunction ports as if they implemented ACS, artificially splitting IOMMU groups so that devices which actually share isolation can still be assigned independently. It is useful for passthrough on consumer hardware where the platform does not implement ACS correctly, but it weakens the isolation guarantees that IOMMU groups are meant to express.
+
+EVE-K (the Kubernetes flavor) boots without `pcie_acs_override` — see `set_k_boot` in [`pkg/grub/rootfs.cfg`](../pkg/grub/rootfs.cfg). IOMMU groups on EVE-K therefore reflect the platform's actual ACS topology: devices that genuinely share a group remain grouped, and passthrough on such hardware must be configured deliberately rather than relying on the override to split a shared group.
+
 Further details of Xen vs. KVM IOMMU handling are [documented here](https://docs.google.com/document/d/12-z6JD41J_oNrCg_c0yAxGWg5ADBQ8_bSiP_NH6Hqwo/edit#).
 
 Hardware quirks aside, EVE uses the following hypervisor capabilities to manage IOMMU-based device assignments to domains:
