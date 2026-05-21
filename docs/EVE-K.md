@@ -18,6 +18,14 @@ To use a zfs vault specify the config grub parameter `eve_install_zfs_with_raid_
 with the requested raid level or use multiple persist disk with `eve_persist_disk`
 which will use zfs automatically.
 
+## PCIe ACS / IOMMU groups
+
+Unlike the default EVE boot path, EVE-K boots without the `pcie_acs_override`
+kernel option. IOMMU groups therefore reflect the platform's actual ACS
+topology, and PCI passthrough configurations cannot rely on the override to
+split a shared group. See [HYPERVISORS.md](./HYPERVISORS.md#acs-override-on-the-kernel-command-line)
+for the full discussion.
+
 ## Modes
 
 EVE-API controller config will define a mode
