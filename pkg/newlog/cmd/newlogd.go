@@ -1189,15 +1189,59 @@ func prepareGzipToOutTempFile(gzipDirName string, fHdr fileChanInfo, now time.Ti
 	gw, _ := gzip.NewWriterLevel(writer, gzip.BestCompression)
 
 	// for app upload, use gzip header 'Name' for appName string to simplify cloud side implementation
-	// for now, the gw.Comment has the metadata for device log, and gw.Name for appName for app log
+	// for now, the gw.Comment has the metadata for device log, and gw.Name for appName for app log.
+	// RFC 1952 restricts both fields to NUL-free Latin-1, so sanitize the
+	// operator-supplied app DisplayName first or gw.Close() will fatal with
+	// "gzip.Write: non-Latin-1 header string".
+	header := sanitizeGzipHeader(fHdr.header)
+	if header != fHdr.header {
+		log.Warnf("prepareGzipToOutTempFile: header %q contains non-Latin-1 characters; escaped to %q",
+			fHdr.header, header)
+	}
 	if fHdr.isApp {
-		gw.Name = fHdr.header
+		gw.Name = header
 	} else {
-		gw.Comment = fHdr.header
+		gw.Comment = header
 	}
 	gw.ModTime = now
 
 	return gw, writer, oTmpFile
+}
+
+// sanitizeGzipHeader rewrites s so it is safe to assign to gzip.Writer.Name
+// or gzip.Writer.Comment. RFC 1952 restricts those fields to ISO-8859-1
+// with no NUL byte; Go's gzip writer enforces this and returns
+// "gzip.Write: non-Latin-1 header string" from Close() otherwise, which
+// is fatal in newlogd's compression path. Each disallowed rune is
+// replaced with a Go-style \uXXXX / \UXXXXXXXX escape so the original
+// value is recoverable downstream. Latin-1 runes (including accented
+// characters in 0x80-0xFF) pass through unchanged.
+func sanitizeGzipHeader(s string) string {
+	safe := true
+	for _, r := range s {
+		if r == 0 || r > 0xff {
+			safe = false
+			break
+		}
+	}
+	if safe {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		switch {
+		case r == 0:
+			b.WriteString(`\u0000`)
+		case r > 0xffff:
+			fmt.Fprintf(&b, `\U%08x`, r)
+		case r > 0xff:
+			fmt.Fprintf(&b, `\u%04x`, r)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 func finalizeGzipToOutTempFile(gw *gzip.Writer, oTmpFile *os.File, outfile string) int64 {
