@@ -1112,34 +1112,36 @@ func lookupBaseOsConfigByVersion(ctxPtr *baseOsMgrContext, shortVersion string) 
 }
 
 func saveCurrentRetryUpdateCounter(ctxPtr *baseOsMgrContext) {
+	fileName := ctxPtr.paths.currentRetryUpdateCounter
 	log.Functionf("saveCurrentRetryUpdateCounter (%s) - counter: %d",
-		currentRetryUpdateCounterFile, ctxPtr.currentUpdateRetry)
-	err := fileutils.WriteRename(currentRetryUpdateCounterFile,
+		fileName, ctxPtr.currentUpdateRetry)
+	err := fileutils.WriteRename(fileName,
 		[]byte(fmt.Sprintf("%d", ctxPtr.currentUpdateRetry)))
 	if err != nil {
-		log.Errorf("saveCurrentRetryUpdateCounter write to %s: %s", currentRetryUpdateCounterFile, err)
+		log.Errorf("saveCurrentRetryUpdateCounter write to %s: %s", fileName, err)
 	}
 }
 
 func saveConfigRetryUpdateCounter(ctxPtr *baseOsMgrContext) {
+	fileName := ctxPtr.paths.configRetryUpdateCounter
 	log.Functionf("saveConfigRetryUpdateCounter (%s) - counter: %d",
-		configRetryUpdateCounterFile, ctxPtr.configUpdateRetry)
-	err := fileutils.WriteRename(configRetryUpdateCounterFile,
+		fileName, ctxPtr.configUpdateRetry)
+	err := fileutils.WriteRename(fileName,
 		[]byte(fmt.Sprintf("%d", ctxPtr.configUpdateRetry)))
 	if err != nil {
-		log.Errorf("saveConfigRetryUpdateCounter write to %s: %s", configRetryUpdateCounterFile, err)
+		log.Errorf("saveConfigRetryUpdateCounter write to %s: %s", fileName, err)
 	}
 }
 
-func readSavedConfigRetryUpdateCounter() uint32 {
-	fileName := configRetryUpdateCounterFile
+func readSavedConfigRetryUpdateCounter(ctxPtr *baseOsMgrContext) uint32 {
+	fileName := ctxPtr.paths.configRetryUpdateCounter
 	log.Tracef("readSavedConfigRetryUpdateCounter - reading %s", fileName)
 	counter, _ := fileutils.ReadSavedCounter(log, fileName)
 	return counter
 }
 
-func readSavedCurrentRetryUpdateCounter() uint32 {
-	fileName := currentRetryUpdateCounterFile
+func readSavedCurrentRetryUpdateCounter(ctxPtr *baseOsMgrContext) uint32 {
+	fileName := ctxPtr.paths.currentRetryUpdateCounter
 	log.Tracef("readSavedCurrentRetryUpdateCounter - reading %s", fileName)
 	counter, _ := fileutils.ReadSavedCounter(log, fileName)
 	return counter
