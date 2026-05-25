@@ -254,6 +254,52 @@ scp -r -P 2222 root@127.0.0.1:/persist/coverage/ /local/my-run-cov/
 
 Pass `/local/my-run-cov/` as `EXTRA_COVERAGE_DIR` to `coverage-merge`.
 
+## Step 5 — Correct aggregate block coverage
+
+`go tool cover -func=combined_coverage.txt` reports per-function and
+total percentages over the statement-weighted form of the merged
+profile. That's fine when you want statement coverage. For
+**block-level** aggregate coverage — counting each `(file, range)`
+basic block once and asking "did *any* test suite hit it?" — the
+combined file as produced by `make coverage-merge` requires
+deduplication first, since it concatenates the input profiles without
+collapsing identical blocks.
+
+`tools/compute_coverage.sh` does that deduplication and prints a
+single-line summary. It dedupes blocks by `(file, range)` key, treats
+a block as covered if any input profile reports a non-zero hit for it,
+and reports `<covered> / <total>` plus the percentage:
+
+```sh
+tools/compute_coverage.sh "unit"           pkg/pillar/coverage.txt
+tools/compute_coverage.sh "unit + eden"    pkg/pillar/coverage.txt \
+    dist/amd64/current/eden_coverage/eden_e2e_coverage.txt
+tools/compute_coverage.sh "all"            pkg/pillar/coverage.txt \
+    dist/amd64/current/eden_coverage/eden_e2e_coverage.txt \
+    /path/to/hw-test-coverage.txt
+```
+
+Worked example output:
+
+```
+unit                                                 9259 /  34275 = 27.01 %
+unit + eden                                         16203 /  35269 = 45.94 %
+all                                                 23660 /  42066 = 56.24 %
+```
+
+This is the right number for "what fraction of basic blocks are
+exercised across all coverage sources" questions. Use
+`go tool cover -func` / `-html` (against either an individual profile
+or `combined_coverage.txt`) for statement-weighted reporting and
+per-function detail.
+
+For driving multiple Eden suites in one Eden lifetime (the typical
+shape of a coverage run that wants more than just `smoke`), see
+[`../tools/README-coverage.md`](../tools/README-coverage.md) — the
+`run_eden_suites.sh` driver and the `eden_run_lib.sh` shell library it
+builds on handle pre-flight EVE-tag verification, between-suite state
+reset, and drift detection.
+
 ## Running all steps in sequence
 
 ```sh
@@ -305,6 +351,15 @@ header followed by all coverage lines from all source profiles.  Lines covering
 the same source statement from different runs are additive: `go tool cover`
 sums the hit counts when both report the same statement, giving a correct
 aggregate view of which lines were exercised by either test suite.
+
+A consequence of the simple-concatenation strategy is that a block hit
+by both unit tests and Eden e2e appears as **two lines** in the combined
+file. `go tool cover -func` aggregates these correctly for
+statement-weighted reporting, but ad-hoc `awk '$3>0{c++} END{print c}'`
+or `wc -l`-style counting over the raw file would double-count the
+blocks. For block-level aggregate coverage, use
+`tools/compute_coverage.sh` (Step 5) which dedupes by `(file, range)`
+before counting.
 
 For more sophisticated merging (e.g. deduplication or per-package
 breakdown) the `golang.org/x/tools/cmd/cover` package and third-party
