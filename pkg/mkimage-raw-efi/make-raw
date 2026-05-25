@@ -659,9 +659,16 @@ PERSIST_PART=$(( PART_OFFSET + PERSIST_PART_OFFSET ))
 INVENTORY_WIN_PART=$(( PART_OFFSET + INVENTORY_WIN_PART_OFFSET ))
 USB_CONF_PART=$(( PART_OFFSET + USB_CONF_PART_OFFSET ))
 
-# Verify the pre-sized image is big enough to hold all requested partitions.
+# Verify the target is big enough to hold all requested partitions.
+# IMGFILE may be either a regular file (build-time image creation) or a
+# real block device (installer writing to the target disk). `stat -c %s`
+# returns 0 for device nodes, so use `blockdev --getsize64` for those.
 REQUIRED_SIZE=$(calc_image_size)
-ACTUAL_SIZE=$(stat -L -c %s "$IMGFILE")
+if [ -b "$IMGFILE" ]; then
+  ACTUAL_SIZE=$(blockdev --getsize64 "$IMGFILE")
+else
+  ACTUAL_SIZE=$(stat -L -c %s "$IMGFILE")
+fi
 if [ "$REQUIRED_SIZE" -gt "$ACTUAL_SIZE" ]; then
   echo "ERROR: partition layout requires $((REQUIRED_SIZE / 1024 / 1024)) MiB but disk image is only $((ACTUAL_SIZE / 1024 / 1024)) MiB." >&2
   echo "Requested partitions: $PARTS" >&2
