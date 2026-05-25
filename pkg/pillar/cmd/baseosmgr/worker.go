@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/worker"
-	"github.com/lf-edge/eve/pkg/pillar/zboot"
 )
 
 const (
@@ -43,6 +42,7 @@ func AddWorkInstall(ctx *baseOsMgrContext, key, ref, target string) {
 
 // installWorker implementation of work.WorkFunction that installs an image to a particular location
 func installWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
+	ctx := ctxPtr.(*baseOsMgrContext)
 	d := w.Description.(installWorkDescription)
 
 	result := worker.WorkResult{
@@ -57,7 +57,7 @@ func installWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 	}
 
 	log.Functionf("installWorker to install %s to %s", d.ref, d.target)
-	err := zboot.WriteToPartition(log, d.ref, d.target)
+	err := ctx.zboot.WriteToPartition(d.ref, d.target)
 	log.Functionf("installWorker DONE install %s to %s: err %v",
 		d.ref, d.target, err)
 
