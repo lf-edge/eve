@@ -21,7 +21,7 @@ RUN register-sbom-pkg.sh -n etcdctl -v "${ETCDCTL_VERSION}" -l Apache-2.0 -u htt
 # Note: virtctl itself is downloaded and installed in the final scratch stage below;
 # the APK DB entry is added here in the build stage so it propagates via COPY /out/.
 # Keep this version aligned with VIRTCTL_VERSION in the final stage.
-ENV VIRTCTL_VERSION=v1.6.0
+ENV VIRTCTL_VERSION=v1.7.3
 # Register virtctl in the APK DB, mandatory for it to be included in the SBOM.
 RUN register-sbom-pkg.sh -n virtctl -v "${VIRTCTL_VERSION}" -l Apache-2.0 -u https://github.com/kubevirt/kubevirt
 
@@ -124,7 +124,7 @@ RUN chmod +x /usr/bin/k3s-control && \
     ln -s /usr/bin/k3s-control /usr/bin/k3s-start && \
     ln -s /usr/bin/k3s-control /usr/bin/k3s-status
 
-ENV VIRTCTL_VERSION v1.6.0
+ENV VIRTCTL_VERSION v1.7.3
 ADD https://github.com/kubevirt/kubevirt/releases/download/${VIRTCTL_VERSION}/virtctl-${VIRTCTL_VERSION}-linux-${TARGETARCH} .
 
 RUN install virtctl-${VIRTCTL_VERSION}-linux-${TARGETARCH} /usr/bin/virtctl
