@@ -133,7 +133,7 @@ jobs:
         run: |
           for file in assets/*.raw assets/collected_sources.tar; do
             [ -e "$file" ] || continue
-            zstd -T0 --rm -q "$file"
+            zstd -T0 --rm -q --long=30 "$file"
           done
       - name: Rename, create SHA256 checksums and upload files
         env:
