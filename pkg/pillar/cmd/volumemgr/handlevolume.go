@@ -218,6 +218,22 @@ func handleVolumeRestart(ctxArg interface{}, restartCount int) {
 		handleDeferredVolumeCreate(ctx, key, config)
 		delete(ctx.volumeConfigCreateDeferredMap, key)
 	}
+	// Signal restart on pubVolumeStatus on zedagent's first restart of
+	// pubVolumeConfig. By then on-disk recovery
+	// (populateExistingVolumesFormat*) plus the controller-intended
+	// set have both been reflected in VolumeStatus, so subscribers can
+	// use Restarted() to gate decisions on volume presence. Guarding on
+	// the first restart avoids inflating the restart counter if zedagent
+	// restarts again later. Note that the restart count might jump from
+	// zero to any non-zero number depending on how much is going on in
+	// zedagent.
+	if !ctx.signalledRestartedStatus {
+		if err := ctx.pubVolumeStatus.SignalRestarted(); err != nil {
+			log.Errorf("handleVolumeRestart: SignalRestarted failed: %s", err)
+		} else {
+			ctx.signalledRestartedStatus = true
+		}
+	}
 	log.Tracef("handleVolumeRestart done: %d", restartCount)
 }
 
