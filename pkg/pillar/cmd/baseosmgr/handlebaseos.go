@@ -213,19 +213,33 @@ func doBaseOsStatusUpdate(ctx *baseOsMgrContext, uuidStr string,
 	// Check to avoid upgrading from not-EVE-k (e.g., kvm) to EVE-k
 	// and vice versa since that can result in odd failures due to
 	// different /persist layout etc.
+	// The block is asymmetric because the two directions are not
+	// symmetric in what they can disturb:
+	//   - kvm -> EVE-k is allowed when no volume instances exist; without
+	//     them there is no /persist/vault/volumes/ state to disturb.
+	//   - EVE-k -> kvm is always blocked: once the vault has been migrated
+	//     to the EVE-k zvol layout there is no back-migration to a kvm
+	//     filesystem dataset, and EVE-kvm cannot read a zvol-backed vault.
 	// TBD Remove this if EVE-k in the future can have kvm personality.
+	// Until volumeStateKnown is true (both volume publishers have signalled
+	// restart), the sets below may be incomplete, so treat the volume state
+	// as if volumes exist — keep the kvm->EVE-k block conservative rather
+	// than potentially wiping existing volumes.
+	hasVolumes := !ctx.volumeStateKnown ||
+		len(ctx.subVolumeConfig.GetAll()) > 0 ||
+		len(ctx.subVolumeStatus.GetAll()) > 0
 	isCurrentKube := ctx.seams.isHVTypeKube()
 	isUpdateKube, err := ctx.seams.isVersionHVTypeKube(config.BaseOsVersion)
 	if err != nil {
 		log.Warnf("doBaseOsStatusUpdate(%s): %s",
 			config.BaseOsVersion, err)
-	} else if isCurrentKube != isUpdateKube {
+	} else if isCurrentKube != isUpdateKube && (isCurrentKube || hasVolumes) {
 		var errString string
 		if isUpdateKube {
-			errString = fmt.Sprintf("Upgrade to EVE-k (%s) from non EVE-k (%s) is not supported",
+			errString = fmt.Sprintf("Upgrade to EVE-k (%s) from non EVE-k (%s) is not supported while volumes exist",
 				config.BaseOsVersion, shortVerCurPart)
 		} else {
-			errString = fmt.Sprintf("Upgrade to non EVE-k (%s) from  EVE-k (%s) is not supported",
+			errString = fmt.Sprintf("Upgrade to non EVE-k (%s) from EVE-k (%s) is not supported",
 				config.BaseOsVersion, shortVerCurPart)
 		}
 		log.Error(errString)
