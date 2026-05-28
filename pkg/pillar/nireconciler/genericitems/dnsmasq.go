@@ -393,8 +393,16 @@ func (c *DnsmasqConfigurator) Create(ctx context.Context, item dg.Item) error {
 	return nil
 }
 
-// Modify is able to update DHCP/DNS hosts files and apply the changes simply by sending
-// the SIGHUP signal, i.e. without having to restart the dnsmasq process.
+// Modify applies host-file changes. Pure additions (new app, no app removed
+// and no app re-assigned a different IP) are reloaded with SIGHUP. If any
+// DHCP host disappeared or changed IP we must also evict the matching lease
+// from dnsmasq's in-memory state, otherwise the IP stays reserved for the
+// old MAC and a future app trying to take that IP gets a "not using
+// configured address" fallback. SIGHUP does not reload leases (it only
+// reloads dhcp-host files and updates hostnames on existing leases), and
+// dhcp_release cannot reach our dnsmasq from the host netns (see
+// restartToPruneLeases), so in that case we rewrite the lease file without
+// the stale entries and restart dnsmasq.
 func (c *DnsmasqConfigurator) Modify(ctx context.Context, oldItem, newItem dg.Item) (err error) {
 	oldDnsmasq, isDnsmasq := oldItem.(Dnsmasq)
 	if !isDnsmasq {
@@ -430,8 +438,91 @@ func (c *DnsmasqConfigurator) Modify(ctx context.Context, oldItem, newItem dg.It
 			return err
 		}
 	}
+	if len(obsoleteDHCPHosts) > 0 {
+		return c.restartToPruneLeases(ctx, newDnsmasq, obsoleteDHCPHosts)
+	}
 	pm := c.initProcessManager(newDnsmasq.Name())
 	return pm.SendSignal(syscall.SIGHUP)
+}
+
+// restartToPruneLeases stops dnsmasq, rewrites the lease file with the entries
+// for the supplied (now-obsolete) MACs removed, and starts dnsmasq back up.
+// dhcp_release(8) is not usable here: it only delivers reliably on loopback,
+// and our dnsmasq runs with SO_BINDTODEVICE on the bridge interface (one
+// DHCP interface per NI), so DHCPRELEASE packets do not reach it. A cleaner
+// long-term option would be dnsmasq's DBus DeleteDhcpLease method, but the
+// pillar container has no DBus daemon today; that becomes viable once
+// pillar moves to systemd.
+func (c *DnsmasqConfigurator) restartToPruneLeases(
+	ctx context.Context, dnsmasq Dnsmasq, obsolete []MACToIP) error {
+	done := reconciler.ContinueInBackground(ctx)
+	go func() {
+		if err := c.stopDnsmasq(ctx, dnsmasq.Name()); err != nil {
+			done(err)
+			return
+		}
+		if err := c.pruneDnsmasqLeases(dnsmasq.ListenIf.IfName, obsolete); err != nil {
+			done(err)
+			return
+		}
+		done(c.startDnsmasq(ctx, dnsmasq.Name()))
+	}()
+	return nil
+}
+
+// pruneDnsmasqLeases atomically rewrites the dnsmasq leases file for the given
+// bridge, dropping any line whose MAC matches one of the supplied entries.
+// Must only be called while dnsmasq is stopped, otherwise dnsmasq's open file
+// descriptor would overwrite our cleaned copy on the next lease change.
+//
+// Lease line format (from man dnsmasq):
+//
+//	<expire-time> <mac> <ip> <hostname> <client-id>
+func (c *DnsmasqConfigurator) pruneDnsmasqLeases(
+	bridgeIfName string, obsolete []MACToIP) error {
+	if len(obsolete) == 0 {
+		return nil
+	}
+	leasePath := types.DnsmasqLeaseFilePath(bridgeIfName)
+	content, err := os.ReadFile(leasePath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("failed to read lease file %s: %w", leasePath, err)
+	}
+	macsToDrop := make(map[string]struct{}, len(obsolete))
+	for _, h := range obsolete {
+		macsToDrop[strings.ToLower(h.MAC.String())] = struct{}{}
+	}
+	var out bytes.Buffer
+	changed := false
+	for _, line := range strings.Split(string(content), "\n") {
+		if line == "" {
+			continue
+		}
+		fields := strings.SplitN(line, " ", 3)
+		if len(fields) >= 2 {
+			if _, drop := macsToDrop[strings.ToLower(fields[1])]; drop {
+				changed = true
+				continue
+			}
+		}
+		out.WriteString(line)
+		out.WriteByte('\n')
+	}
+	if !changed {
+		return nil
+	}
+	tmpPath := leasePath + ".tmp"
+	if err := os.WriteFile(tmpPath, out.Bytes(), 0644); err != nil {
+		return fmt.Errorf("failed to write %s: %w", tmpPath, err)
+	}
+	if err := os.Rename(tmpPath, leasePath); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("failed to rename %s to %s: %w", tmpPath, leasePath, err)
+	}
+	return nil
 }
 
 // Delete stops dnsmasq.
