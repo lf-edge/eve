@@ -25,7 +25,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: zededa-ubuntu-latest
+          - os: zededa-ubuntu-2204-arm64
             arch: arm64
           - os: zededa-ubuntu-2204
             arch: amd64
@@ -134,7 +134,7 @@ jobs:
   manifest:
     # Only run for the default branch
     if: github.ref_name == github.event.repository.default_branch
-    runs-on: zededa-ubuntu-latest
+    runs-on: zededa-ubuntu-2204
     needs: packages
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
