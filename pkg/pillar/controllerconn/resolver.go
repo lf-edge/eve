@@ -118,6 +118,24 @@ func (r *ResolverWithLocalIP) getNetResolver() *net.Resolver {
 	return &net.Resolver{Dial: r.resolverDial, PreferGo: true, StrictErrors: false}
 }
 
+// NewResolverWithLocalIP constructs a ResolverWithLocalIP for callers outside
+// this package (e.g. the mgmtproxy agent for cost-aware container image pulls).
+// localIP must be a routable address on the interface whose per-port routing
+// table should be used. ifName is used only in error messages.
+func NewResolverWithLocalIP(log *base.LogObject, ifName string, localIP net.IP) *ResolverWithLocalIP {
+	return &ResolverWithLocalIP{
+		log:     log,
+		ifName:  ifName,
+		localIP: localIP,
+	}
+}
+
+// NetResolver returns a *net.Resolver wrapping this ResolverWithLocalIP so it
+// can be plugged into net.Dialer.Resolver.
+func (r *ResolverWithLocalIP) NetResolver() *net.Resolver {
+	return r.getNetResolver()
+}
+
 // DialerWithResolverCache provides DialContext function just like regular net.Dialer.
 // The difference is that it will try to avoid DNS query if the target hostname IP is already
 // resolved and stored in the cache.

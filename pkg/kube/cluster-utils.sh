@@ -1,4 +1,5 @@
 #!/bin/sh
+# shellcheck disable=SC3043  # 'local' is non-POSIX but supported by busybox ash, EVE's /bin/sh
 #
 # Copyright (c) 2024 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
@@ -50,6 +51,93 @@ logmsg() {
         echo "$TIME : $MSG"  >> "$INSTALL_LOG"
 }
 
+# mgmtproxy is pillar's cost-aware HTTP CONNECT proxy on the host loopback.
+# Containerd and the k3s installer reach it via HTTPS_PROXY so their outbound
+# pulls honor network.download.max.cost. See pkg/pillar/cmd/mgmtproxy/README.md.
+# CONNECT-only — only HTTPS_PROXY is injected; HTTP_PROXY is intentionally not set.
+#
+# IMPORTANT: HTTPS_PROXY must be injected per-command, NOT exported globally.
+# A global export would catch the k3s server process (kubelet, apiserver,
+# controller-manager, scheduler) and route intra-cluster HTTPS through the
+# proxy, which would break the cluster. Always prepend the env vars on the
+# specific containerd or curl command line, like the existing call sites do.
+# Operators in `eve enter kube` will NOT inherit HTTPS_PROXY for the same
+# reason — see the README's "How HTTPS_PROXY is scoped" section.
+MGMTPROXY_URL="http://127.0.0.1:5443"
+
+# Operator off-switch: if this file exists, cluster-init.sh skips proxy env
+# injection. Use for live triage when you suspect mgmtproxy is the issue:
+#   touch /run/kube/mgmtproxy-disable && killall containerd
+# Then containerd auto-restarts (via check_start_containerd in the main loop)
+# without HTTPS_PROXY set. Remove the file to re-enable.
+MGMTPROXY_DISABLE_FLAG="/run/kube/mgmtproxy-disable"
+
+# Well-known link-local IP assigned to cni0 on every kubevirt-enabled node.
+# CDI importer pods (created when a Rancher/Helm chart DataVolumeTemplate uses
+# source.http.url) send HTTPS_PROXY connections here to reach the local
+# mgmtproxy. Link-local addresses are not routed by flannel across nodes, so
+# each pod always hits its own node's cni0 and its own node's mgmtproxy.
+# Only used when install_kubevirt=1. Must match mgmtproxy.go:CNI0ListenAddr.
+MGMTPROXY_CNI0_IP="169.254.100.1"
+# shellcheck disable=SC2034  # used in sourced cluster-init.sh
+MGMTPROXY_CNI0_URL="http://${MGMTPROXY_CNI0_IP}:5443"
+
+# mgmtproxy_enabled: returns 0 if the proxy env should be injected, 1 if not.
+mgmtproxy_enabled() {
+        if [ -f "$MGMTPROXY_DISABLE_FLAG" ]; then
+                return 1
+        fi
+        return 0
+}
+
+# mgmtproxy_no_proxy: emit the NO_PROXY value used alongside HTTPS_PROXY.
+# Covers loopback, link-local, k3s default service/pod CIDRs, and cluster DNS
+# suffixes. The k3s service and pod CIDRs are k3s defaults (10.42.0.0/16 and
+# 10.43.0.0/16); pkg/kube/config.yaml does not override them.
+# When the cluster node IP is known, the full ClusterIPPrefix subnet is added
+# so that inter-node traffic in multi-node clusters (e.g. worker kubectl
+# talking to the control-plane cluster IP in kubeconfig) bypasses the proxy.
+# ClusterIPPrefix is user-configured, so the subnet is read dynamically via
+# get_cluster_prefix_len rather than hardcoded. The function is only available
+# after cluster-init.sh has sourced it; the type guard falls back to the bare
+# IP if it is not yet defined.
+mgmtproxy_no_proxy() {
+        local extra=""
+        if [ -n "${cluster_node_ip:-}" ]; then
+                local prefixlen=""
+                if type get_cluster_prefix_len > /dev/null 2>&1; then
+                        prefixlen=$(get_cluster_prefix_len 2>/dev/null)
+                fi
+                if [ -n "$prefixlen" ]; then
+                        extra=",${cluster_node_ip}${prefixlen}"
+                else
+                        extra=",${cluster_node_ip}"
+                fi
+        fi
+        echo "127.0.0.0/8,10.42.0.0/16,10.43.0.0/16,169.254.0.0/16,localhost,.svc,.cluster.local${extra}"
+}
+
+# mgmtproxy_run: run a command with HTTPS_PROXY/NO_PROXY env injected if
+# mgmtproxy is enabled, otherwise run unchanged. Use this for any command that
+# fetches an external HTTPS URL (kubectl apply -f https://..., etc.). Do NOT
+# use it for kubectl calls that only talk to the local apiserver — they don't
+# need the env, and adding it just adds log noise.
+#
+# Logs a single logmsg line per invocation so an operator reading the kube
+# install log can see exactly which command was routed through the proxy
+# (and which were bypassed via the off-switch). Cross-reference these with
+# pillar's "mgmtproxy: CONNECT <target> via <ifName> ..." entries to confirm
+# end-to-end the call hit the proxy and chose the expected uplink.
+mgmtproxy_run() {
+        if mgmtproxy_enabled; then
+                logmsg "mgmtproxy_run: routing through proxy ($MGMTPROXY_URL): $*"
+                HTTPS_PROXY="$MGMTPROXY_URL" NO_PROXY="$(mgmtproxy_no_proxy)" "$@"
+        else
+                logmsg "mgmtproxy_run: bypassing proxy (disabled via $MGMTPROXY_DISABLE_FLAG): $*"
+                "$@"
+        fi
+}
+
 check_network_connection () {
         # Address the case where device is installed and moved to a location with no internet access"
         # If we already installed all the components, no internet access is not an issue.
@@ -59,7 +147,12 @@ check_network_connection () {
         fi
 
         while true; do
-                ret=$(curl -o /dev/null -w "%{http_code}" -s "https://get.k3s.io")
+                if mgmtproxy_enabled; then
+                        ret=$(HTTPS_PROXY="$MGMTPROXY_URL" NO_PROXY="$(mgmtproxy_no_proxy)" \
+                                curl -o /dev/null -w "%{http_code}" -s "https://get.k3s.io")
+                else
+                        ret=$(curl -o /dev/null -w "%{http_code}" -s "https://get.k3s.io")
+                fi
                 if [ "$ret" -eq 200 ]; then
                         logmsg "Network is ready."
                         break;

@@ -1,4 +1,5 @@
 #!/bin/sh
+# shellcheck disable=SC3043  # 'local' is non-POSIX but supported by busybox ash, EVE's /bin/sh
 #
 # Copyright (c) 2023-2024 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
@@ -487,9 +488,40 @@ check_start_containerd() {
         pgrep -f "/var/lib/rancher/k3s/data/current/bin/containerd" > /dev/null 2>&1
         if [ $? -eq 1 ]; then
                 mkdir -p /run/containerd-user
-                nohup /var/lib/rancher/k3s/data/current/bin/containerd --config /etc/containerd/config-k3s.toml >> $CTRD_LOG 2>&1 &
-                containerd_pid=$!
-                logmsg "Started k3s-containerd at pid:$containerd_pid"
+                # Route containerd image pulls through pillar's cost-aware
+                # mgmtproxy. Env is scoped to this command only so the k3s
+                # server, kubelet, apiserver, etc. (launched separately in
+                # check_start_k3s) are not affected — only outbound CRI pulls.
+                # The off-switch flag (see cluster-utils.sh) lets operators
+                # disable proxy injection for live triage without a code edit.
+                if mgmtproxy_enabled; then
+                        ctrd_no_proxy="$(mgmtproxy_no_proxy)"
+                        HTTPS_PROXY="$MGMTPROXY_URL" NO_PROXY="$ctrd_no_proxy" \
+                        nohup /var/lib/rancher/k3s/data/current/bin/containerd --config /etc/containerd/config-k3s.toml >> $CTRD_LOG 2>&1 &
+                        containerd_pid=$!
+                        # Record exactly what env this launch passed to containerd.
+                        # /proc/$containerd_pid/environ won't show HTTPS_PROXY for
+                        # long: containerd's Go runtime calls os.Unsetenv("HTTPS_PROXY")
+                        # at startup after reading it for the CRI image-pull client.
+                        # This sentinel file gives operators a stable, post-hoc view.
+                        {
+                                echo "pid=$containerd_pid"
+                                echo "started=$(date -Iseconds)"
+                                echo "HTTPS_PROXY=$MGMTPROXY_URL"
+                                echo "NO_PROXY=$ctrd_no_proxy"
+                        } > /run/mgmtproxy-containerd-env
+                        logmsg "Started k3s-containerd at pid:$containerd_pid HTTPS_PROXY=$MGMTPROXY_URL NO_PROXY=$ctrd_no_proxy"
+                else
+                        nohup /var/lib/rancher/k3s/data/current/bin/containerd --config /etc/containerd/config-k3s.toml >> $CTRD_LOG 2>&1 &
+                        containerd_pid=$!
+                        {
+                                echo "pid=$containerd_pid"
+                                echo "started=$(date -Iseconds)"
+                                echo "HTTPS_PROXY=(disabled — flag $MGMTPROXY_DISABLE_FLAG present)"
+                                echo "NO_PROXY=(none)"
+                        } > /run/mgmtproxy-containerd-env
+                        logmsg "Started k3s-containerd at pid:$containerd_pid (mgmtproxy disabled via $MGMTPROXY_DISABLE_FLAG)"
+                fi
         fi
 }
 
@@ -1326,6 +1358,38 @@ else # a restart case, found all_components_initialized
   fi
 fi
 
+# setup_cni0_proxy_ip: assign the mgmtproxy link-local anchor IP to cni0 so
+# CDI importer pods can reach the local mgmtproxy via HTTPS_PROXY. Returns 1
+# if cni0 does not exist yet (flannel creates it after k3s starts and the
+# first pod is scheduled). Idempotent — safe to call on every boot and on
+# every main-loop iteration for flannel-restart recovery.
+# Only called when install_kubevirt=1 (not in base-k3s-mode, not on arm64).
+setup_cni0_proxy_ip() {
+        local anchor="${MGMTPROXY_CNI0_IP}/32"
+        if ! ip link show cni0 > /dev/null 2>&1; then
+                return 1
+        fi
+        if ip addr show dev cni0 | grep -q "${MGMTPROXY_CNI0_IP}"; then
+                return 0
+        fi
+        ip addr add "${anchor}" dev cni0
+        logmsg "setup_cni0_proxy_ip: assigned ${anchor} to cni0"
+}
+
+# patch_cdi_proxy_config: patch the CDI CR so importer pods (created when a
+# Rancher/Helm chart DataVolumeTemplate uses source.http.url or
+# source.registry.url) receive HTTPS_PROXY=MGMTPROXY_CNI0_URL. Only importer
+# pods are affected; uploader pods (used by virtctl image-upload / source.upload
+# in the EVE-managed app path) do not receive this env. Idempotent.
+patch_cdi_proxy_config() {
+        local proxy_url="${MGMTPROXY_CNI0_URL}"
+        # noProxy is a comma-separated string per the CDI ImportProxy API
+        local no_proxy="10.42.0.0/16,10.43.0.0/16,127.0.0.0/8,localhost,.svc,.cluster.local,169.254.0.0/16"
+        logmsg "patch_cdi_proxy_config: HTTPSProxy=${proxy_url}"
+        kubectl patch cdi cdi --type merge -p \
+                "{\"spec\":{\"config\":{\"importProxy\":{\"HTTPSProxy\":\"${proxy_url}\",\"noProxy\":\"${no_proxy}\"}}}}"
+}
+
 # Stagger cluster node starts to avoid etcd quorum races on simultaneous reboot
 staggered_cluster_startup_delay
 
@@ -1455,11 +1519,18 @@ if [ ! -f /var/lib/all_components_initialized ]; then
 
         if [ "$install_kubevirt" = "1" ]; then
                 if [ ! -f /var/lib/kubevirt_initialized ]; then
+                        # Assign the cni0 link-local proxy anchor before CDI
+                        # installs so the mgmtproxy cni0 listener is ready
+                        # before any importer pod can be created.
+                        while ! setup_cni0_proxy_ip; do
+                                sleep 5
+                        done
                         wait_for_item "kubevirt"
                         Kubevirt_install
 
                         wait_for_item "cdi"
                         Cdi_install
+                        patch_cdi_proxy_config
 
                         touch /var/lib/kubevirt_initialized
                         continue
@@ -1671,6 +1742,19 @@ fi
         check_kubeconfig_yaml_files
         check_and_remove_excessive_k3s_logs
         check_kubevip_lb
+        # Reapply cni0 proxy anchor in case flannel restarted and recreated
+        # cni0 without the link-local IP. No-op if already present or if cni0
+        # does not exist (returns 1 silently). Not gated on kubevirt_initialized
+        # so it also recovers after a flannel restart mid-install.
+        if [ "$install_kubevirt" = "1" ]; then
+                setup_cni0_proxy_ip
+                # Re-patch CDI proxy config on every boot in case the CDI CR
+                # was reset by an upgrade or the device was initialized before
+                # this feature was deployed (kubevirt_initialized already set).
+                if [ -f /var/lib/kubevirt_initialized ]; then
+                        patch_cdi_proxy_config
+                fi
+        fi
         wait_for_item "wait"
         sleep 15
 done

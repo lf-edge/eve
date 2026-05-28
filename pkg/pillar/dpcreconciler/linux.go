@@ -2133,6 +2133,32 @@ func (r *LinuxDpcReconciler) getIntendedFilterRules(gcp types.ConfigItemValueMap
 		}
 	}
 
+	// EVE-K only: explicitly drop inbound connections to the mgmtproxy port
+	// (5443) arriving on external (uplink) interfaces. mgmtproxy listens only
+	// on 127.0.0.1:5443 and on the cni0 link-local anchor 169.254.100.1:5443
+	// (see cmd/mgmtproxy/mgmtproxy.go), neither of which is reachable from an
+	// uplink, so this is belt-and-suspenders on top of the per-port default
+	// drop below. Scoped to L3 uplink ports so it never matches lo (host
+	// containerd/kubectl) or cni0 (CDI importer pods, source 10.42.x.x).
+	if r.HVTypeKube {
+		const mgmtProxyPort = "5443"
+		for _, port := range dpc.Ports {
+			if port.IfName == "" || !port.IsL3Port || port.InvalidConfig {
+				continue
+			}
+			blockMgmtProxy := iptables.Rule{
+				RuleLabel: fmt.Sprintf("Block mgmtproxy port on %s", port.IfName),
+				MatchOpts: []string{"-i", port.IfName, "-p", "tcp",
+					"--dport", mgmtProxyPort},
+				Target: "DROP",
+				Description: fmt.Sprintf("Drop inbound connections to the mgmtproxy "+
+					"port (%s) received via uplink port %s", mgmtProxyPort, port.IfName),
+			}
+			inputV4Rules = append(inputV4Rules, blockMgmtProxy)
+			inputV6Rules = append(inputV6Rules, blockMgmtProxy)
+		}
+	}
+
 	// Allow all traffic that belongs to an already established connection.
 	allowEstablishedConn := iptables.Rule{
 		RuleLabel:   "Allow established connection",

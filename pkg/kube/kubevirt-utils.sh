@@ -12,7 +12,7 @@ Kubevirt_install() {
     # so we download kubevirt-operator.yaml and patch it
     logmsg "Installing patched Kubevirt"
     kubectl apply -f /etc/kubevirt-operator.yaml
-    kubectl apply -f https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-cr.yaml
+    mgmtproxy_run kubectl apply -f https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-cr.yaml
     Kubevirt_config 3
     #Add kubevirt feature gates
     kubectl apply -f /etc/kubevirt-features.yaml
@@ -77,15 +77,15 @@ Kubevirt_uninstall() {
 Cdi_install() {
     #CDI (containerzed data importer) is need to convert qcow2/raw formats to Persistent Volumes and Data volumes
     logmsg "Installing CDI version $CDI_VERSION"
-    kubectl create -f https://github.com/kubevirt/containerized-data-importer/releases/download/$CDI_VERSION/cdi-operator.yaml
-    kubectl create -f https://github.com/kubevirt/containerized-data-importer/releases/download/$CDI_VERSION/cdi-cr.yaml
+    mgmtproxy_run kubectl create -f https://github.com/kubevirt/containerized-data-importer/releases/download/$CDI_VERSION/cdi-operator.yaml
+    mgmtproxy_run kubectl create -f https://github.com/kubevirt/containerized-data-importer/releases/download/$CDI_VERSION/cdi-cr.yaml
 }
 
 Cdi_uninstall() {
     #CDI (containerzed data importer) is need to convert qcow2/raw formats to Persistent Volumes and Data volumes
     logmsg "Removing CDI version $CDI_VERSION"
-    kubectl delete -f https://github.com/kubevirt/containerized-data-importer/releases/download/$CDI_VERSION/cdi-cr.yaml
-    kubectl delete -f https://github.com/kubevirt/containerized-data-importer/releases/download/$CDI_VERSION/cdi-operator.yaml
+    mgmtproxy_run kubectl delete -f https://github.com/kubevirt/containerized-data-importer/releases/download/$CDI_VERSION/cdi-cr.yaml
+    mgmtproxy_run kubectl delete -f https://github.com/kubevirt/containerized-data-importer/releases/download/$CDI_VERSION/cdi-operator.yaml
 }
 
 Cdi_config() {
