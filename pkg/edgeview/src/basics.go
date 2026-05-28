@@ -85,6 +85,7 @@ func initOpts() {
 		"edgeview",
 		"global",
 		"loguploader",
+		"mgmtproxy",
 		"msrv",
 		"newlogd",
 		"nim",

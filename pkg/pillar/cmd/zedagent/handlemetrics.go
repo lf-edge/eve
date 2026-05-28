@@ -377,6 +377,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	diagMetrics.AddInto(cms)
 	nimMetrics.AddInto(cms)
 	zrouterMetrics.AddInto(cms)
+	mgmtProxyMetrics.AddInto(cms)
 	for ifname, cm := range cms {
 		metric := metrics.ZedcloudMetric{IfName: ifname,
 			Failures:          cm.FailureCount,

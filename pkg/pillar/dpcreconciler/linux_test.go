@@ -1347,6 +1347,74 @@ func TestKubeACEService(t *testing.T) {
 	t.Log("TestKubeACEService completed successfully")
 }
 
+// findMgmtProxyDropRule scans the generated IPv4 filter rules for the explicit
+// mgmtproxy port-5443 DROP rule on the given uplink interface. Returns nil if
+// no such rule is present.
+func findMgmtProxyDropRule(acls dg.Graph, ifName string) *iptables.Rule {
+	iter := acls.Items(true)
+	for iter.Next() {
+		item, _ := iter.Item()
+		rule, ok := item.(iptables.Rule)
+		if !ok {
+			continue
+		}
+		if rule.RuleLabel == "Block mgmtproxy port on "+ifName {
+			r := rule
+			return &r
+		}
+	}
+	return nil
+}
+
+// TestMgmtProxyPortBlock verifies that on EVE-K (HVTypeKube) an explicit DROP
+// rule for the mgmtproxy port (5443) is emitted on each L3 uplink interface,
+// and that no such rule is emitted on non-kube devices. The rule must be
+// interface-scoped (-i <uplink>) so it never matches loopback (host
+// containerd/kubectl) or cni0 (CDI importer pods).
+func TestMgmtProxyPortBlock(t *testing.T) {
+	g := initTest(t)
+
+	dpc := types.DevicePortConfig{
+		Version: types.DPCIsMgmt,
+		Key:     "zedagent",
+		Ports: []types.NetworkPortConfig{
+			{
+				IfName:       "eth0",
+				Phylabel:     "eth0",
+				Logicallabel: "mock-eth0",
+				IsMgmt:       true,
+				IsL3Port:     true,
+			},
+		},
+	}
+	clusterStatus := types.EdgeNodeClusterStatus{}
+	gcp := types.DefaultConfigItemValueMap()
+	kubeServices := types.KubeUserServices{}
+
+	genRules := func() dg.Graph {
+		v4 := dg.New(dg.InitArgs{Name: "IPv4ACLs"})
+		v6 := dg.New(dg.InitArgs{Name: "IPv6ACLs"})
+		dpcReconciler.GetIntendedFilterRules(*gcp, dpc, clusterStatus, kubeServices, v4, v6)
+		return v4
+	}
+
+	// EVE-K: the rule must be present, DROP, scoped to eth0, tcp, dport 5443.
+	dpcReconciler.HVTypeKube = true
+	rule := findMgmtProxyDropRule(genRules(), "eth0")
+	g.Expect(rule).ToNot(BeNil(),
+		"mgmtproxy port-block rule should be emitted on EVE-K for an L3 uplink")
+	g.Expect(rule.Target).To(Equal("DROP"), "mgmtproxy port block should DROP")
+	g.Expect(rule.MatchOpts).To(ContainElements("-i", "eth0", "-p", "tcp", "--dport", "5443"),
+		"rule should be interface-scoped to the uplink and match tcp/5443")
+
+	// Non-kube: no mgmtproxy port-block rule (port 5443 is EVE-K only).
+	dpcReconciler.HVTypeKube = false
+	g.Expect(findMgmtProxyDropRule(genRules(), "eth0")).To(BeNil(),
+		"mgmtproxy port-block rule should not be emitted on non-kube devices")
+
+	t.Log("TestMgmtProxyPortBlock completed successfully")
+}
+
 func TestSingleEthInterfaceWithIPv6(test *testing.T) {
 	t := initTest(test)
 	eth0Mac := "02:00:00:00:00:01"
