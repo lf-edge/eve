@@ -29,6 +29,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cmd/ipcmonitor"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/ledmanager"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/loguploader"
+	"github.com/lf-edge/eve/pkg/pillar/cmd/mgmtproxy"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/monitor"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/nim"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/nodeagent"
@@ -111,6 +112,7 @@ var (
 		"usbmanager":       {f: usbmanager.Run},
 		"collectinfo":      {f: collectinfo.Run},
 		"vcomlink":         {f: vcomlink.Run},
+		"mgmtproxy":        {f: mgmtproxy.Run},
 		"monitor":          {f: monitor.Run},
 		"scepclient":       {f: scepclient.Run},
 	}

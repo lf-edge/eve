@@ -85,6 +85,7 @@ var cipherMetricsWwan types.CipherMetrics
 var diagMetrics types.MetricsMap
 var nimMetrics types.MetricsMap
 var zrouterMetrics types.MetricsMap
+var mgmtProxyMetrics types.MetricsMap
 
 // Context for handleDNSModify
 type DNSContext struct {
@@ -152,6 +153,7 @@ type zedagentContext struct {
 	subDiagMetrics            pubsub.Subscription
 	subNimMetrics             pubsub.Subscription
 	subZRouterMetrics         pubsub.Subscription
+	subMgmtProxyMetrics       pubsub.Subscription
 	subCipherMetricsDL        pubsub.Subscription
 	subCipherMetricsDM        pubsub.Subscription
 	subCipherMetricsNim       pubsub.Subscription
@@ -1047,6 +1049,16 @@ func mainEventLoop(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 					err)
 			} else {
 				zrouterMetrics = m.(types.MetricsMap)
+			}
+
+		case change := <-zedagentCtx.subMgmtProxyMetrics.MsgChan():
+			zedagentCtx.subMgmtProxyMetrics.ProcessChange(change)
+			m, err := zedagentCtx.subMgmtProxyMetrics.Get("global")
+			if err != nil {
+				log.Errorf("subMgmtProxyMetrics.Get failed: %s",
+					err)
+			} else {
+				mgmtProxyMetrics = m.(types.MetricsMap)
 			}
 
 		case change := <-zedagentCtx.subNewlogMetrics.MsgChan():
@@ -2047,6 +2059,19 @@ func initPostOnboardSubs(zedagentCtx *zedagentContext) {
 	// cloud metrics of zedrouter
 	zedagentCtx.subZRouterMetrics, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName: "zedrouter",
+		TopicImpl: types.MetricsMap{},
+		Activate:  true,
+		Ctx:       zedagentCtx,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// cloud metrics of mgmtproxy (EVE-K cost-aware HTTP CONNECT proxy). Only
+	// publishes in kubevirt builds; in other builds the agent is a no-op stub
+	// and never creates the publication, so this subscription stays empty.
+	zedagentCtx.subMgmtProxyMetrics, err = ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName: "mgmtproxy",
 		TopicImpl: types.MetricsMap{},
 		Activate:  true,
 		Ctx:       zedagentCtx,

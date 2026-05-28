@@ -405,6 +405,9 @@ func getURL() {
 	getMetricsMap("/run/zedrouter/MetricsMap/", &totalStats, true)
 	getMetricsMap("/run/nim/MetricsMap/", &totalStats, true)
 	getMetricsMap("/run/diag/MetricsMap/", &totalStats, true)
+	// mgmtproxy is the cost-aware HTTP CONNECT proxy used by EVE-K's
+	// containerd and the k3s installer. Stats only present on EVE-K.
+	getMetricsMap("/run/mgmtproxy/MetricsMap/", &totalStats, true)
 
 	printTitle(" - Total Send/Receive stats:\n", colorCYAN, false)
 	fmt.Printf("  send bytes %d, recv bytes %d, send messages %d\n",

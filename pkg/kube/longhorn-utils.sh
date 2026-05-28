@@ -35,7 +35,7 @@ Longhorn_uninstall() {
     done
     logmsg "longhorn_uninstall: set uninstall setting"
 
-    while ! kubectl create -f https://raw.githubusercontent.com/longhorn/longhorn/${LONGHORN_VERSION}/uninstall/uninstall.yaml; do
+    while ! mgmtproxy_run kubectl create -f https://raw.githubusercontent.com/longhorn/longhorn/${LONGHORN_VERSION}/uninstall/uninstall.yaml; do
         sleep 5
     done
     logmsg "longhorn_uninstall job wait begun"
@@ -54,10 +54,10 @@ Longhorn_uninstall() {
     logmsg "longhorn_uninstall job wait stopped"
 
     # Can return failure for non-fatal conditions
-    kubectl delete -f https://raw.githubusercontent.com/longhorn/longhorn/${LONGHORN_VERSION}/deploy/longhorn.yaml
+    mgmtproxy_run kubectl delete -f https://raw.githubusercontent.com/longhorn/longhorn/${LONGHORN_VERSION}/deploy/longhorn.yaml
     logmsg "longhorn_uninstall deploy deleted"
 
-    kubectl delete -f https://raw.githubusercontent.com/longhorn/longhorn/${LONGHORN_VERSION}/uninstall/uninstall.yaml
+    mgmtproxy_run kubectl delete -f https://raw.githubusercontent.com/longhorn/longhorn/${LONGHORN_VERSION}/uninstall/uninstall.yaml
     logmsg "longhorn_uninstall job deletion"
 
     lhScs=$(kubectl get sc -o jsonpath='{range .items[?(@.provisioner=="driver.longhorn.io")]}{.metadata.name}{" "}{end}')
