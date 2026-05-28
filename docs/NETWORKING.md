@@ -160,6 +160,7 @@ for further directions.
 - [Access-control for applications](NETWORK-ACLS.md)
 - [Wireless connectivity](WIRELESS.md)
 - [Metadata (incl. network info) exposed to applications](ECO-METADATA.md)
+- [Cost-aware Kubernetes/containerd downloads (HV=k)](EVE-K-COST-AWARE-CONTAINERD.md)
 - Developer's deep-dive into EVE networking-related microservices:
   - [NIM](../pkg/pillar/docs/nim.md)
   - [zedrouter](../pkg/pillar/docs/zedrouter.md)

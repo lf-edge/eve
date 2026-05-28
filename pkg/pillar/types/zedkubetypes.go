@@ -34,6 +34,7 @@ const (
 // KubeNodeStatus - Enum for the status of a Kubernetes node
 type KubeNodeStatus int8
 
+// KubeNodeStatus values.
 const (
 	KubeNodeStatusUnknown      KubeNodeStatus = iota // KubeNodeStatusUnknown - Node status is unknown
 	KubeNodeStatusReady                              // KubeNodeStatusReady - Node is in ready status
@@ -44,6 +45,7 @@ const (
 // NodeAdmission - Enum for the admission status of a node in a cluster
 type NodeAdmission uint8
 
+// NodeAdmission values.
 const (
 	NodeAdmissionUnknown      NodeAdmission = iota // NodeAdmissionUnknown - Node admission status is unknown
 	NodeAdmissionNotClustered                      // NodeAdmissionNotClustered - Node is not part of the cluster
@@ -107,6 +109,7 @@ func (kni KubeNodeInfo) ZKubeNodeInfo() *info.KubeNodeInfo {
 // KubePodStatus - Enum for the status of a Kubernetes pod
 type KubePodStatus int8
 
+// KubePodStatus values.
 const (
 	KubePodStatusUnknown   KubePodStatus = iota // KubePodStatusUnknown - Pod status is unknown
 	KubePodStatusPending                        // KubePodStatusPending - Pod is in pending status
@@ -176,6 +179,7 @@ type KubePodNameSpaceInfo struct {
 // KubeVMIStatus - Enum for the status of a VirtualMachineInstance
 type KubeVMIStatus int8
 
+// KubeVMIStatus values.
 const (
 	KubeVMIStatusUnset      KubeVMIStatus = iota // KubeVMIStatusUnset - UnSet VMI status
 	KubeVMIStatusPending                         // KubeVMIStatusPending - VMI in pending status
@@ -245,6 +249,7 @@ type KubeClusterInfo struct {
 // StorageHealthStatus - Enum for the redundancy level and replication status of a storage volume
 type StorageHealthStatus uint8
 
+// StorageHealthStatus values.
 const (
 	StorageHealthStatusUnknown                                 StorageHealthStatus = iota // StorageHealthStatusUnknown - Storage health status is unknown
 	StorageHealthStatusHealthy                                                            // StorageHealthStatusHealthy - All replicas healthy
@@ -258,6 +263,7 @@ const (
 // StorageVolumeState - Enum for the attachment state of a storage volume
 type StorageVolumeState uint8
 
+// StorageVolumeState values.
 const (
 	StorageVolumeStateUnknown   StorageVolumeState = iota // StorageVolumeStateUnknown - Volume state is unknown
 	StorageVolumeStateCreating                            // StorageVolumeStateCreating - Volume is being created
@@ -293,6 +299,7 @@ func (svs StorageVolumeState) ZStorageVolumeState() info.StorageVolumeState {
 // StorageVolumeRobustness - Enum for the replica robustness of a storage volume
 type StorageVolumeRobustness uint8
 
+// StorageVolumeRobustness values.
 const (
 	StorageVolumeRobustnessUnknown  StorageVolumeRobustness = iota // StorageVolumeRobustnessUnknown - Volume robustness is unknown
 	StorageVolumeRobustnessHealthy                                 // StorageVolumeRobustnessHealthy - All Volume replicas healthy
@@ -303,6 +310,7 @@ const (
 // StorageVolumePvcStatus - Enum for the status of a PVC associated with a volume instance
 type StorageVolumePvcStatus uint8
 
+// StorageVolumePvcStatus values.
 const (
 	StorageVolumePvcStatusUnknown   StorageVolumePvcStatus = iota // StorageVolumePvcStatusUnknown - PVC status is unknown
 	StorageVolumePvcStatusBound                                   // StorageVolumePvcStatusBound - PVC is bound
@@ -315,6 +323,7 @@ const (
 // StorageVolumeReplicaStatus - Enum for the status of a replica of a storage volume
 type StorageVolumeReplicaStatus uint8
 
+// StorageVolumeReplicaStatus values.
 const (
 	StorageVolumeReplicaStatusUnknown    StorageVolumeReplicaStatus = iota // StorageVolumeReplicaStatusUnknown - Replica status is unknown
 	StorageVolumeReplicaStatusRebuilding                                   // StorageVolumeReplicaStatusRebuilding - Replica is rebuilding
@@ -400,6 +409,7 @@ func (kvi KubeVolumeInfo) ZKubeVolumeInfo() *info.KubeVolumeInfo {
 // ServiceStatus - Enum for the status of a service
 type ServiceStatus int8
 
+// ServiceStatus values.
 const (
 	ServiceStatusUnset    ServiceStatus = iota // ServiceStatusUnset - Service status is unset
 	ServiceStatusFailed                        // ServiceStatusFailed - Service status is failed

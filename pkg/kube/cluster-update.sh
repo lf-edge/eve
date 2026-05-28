@@ -69,11 +69,26 @@ update_k3s() {
     logmsg "Installing K3S version $dst_k3s_version"
     mkdir -p /var/lib/k3s/bin
     k3s_installer=/tmp/k3s-install.sh
+    # Route k3s installer + the binary download it spawns through pillar's
+    # cost-aware mgmtproxy so they honor network.download.max.cost. The
+    # installer subprocess inherits these env vars. Honors the off-switch
+    # flag for live operator triage.
+    if mgmtproxy_enabled; then
+        k3s_https_proxy="$MGMTPROXY_URL"
+        k3s_no_proxy="$(mgmtproxy_no_proxy)"
+        logmsg "k3s installer using mgmtproxy: HTTPS_PROXY=$k3s_https_proxy NO_PROXY=$k3s_no_proxy"
+    else
+        k3s_https_proxy=""
+        k3s_no_proxy=""
+        logmsg "k3s installer running without mgmtproxy (disabled via $MGMTPROXY_DISABLE_FLAG)"
+    fi
+    HTTPS_PROXY="$k3s_https_proxy" NO_PROXY="$k3s_no_proxy" \
     /usr/bin/curl -sfL https://get.k3s.io -o "$k3s_installer" || {
         logmsg "k3s installer download failed $?"
         return 1
     }
     chmod +x "$k3s_installer"
+    HTTPS_PROXY="$k3s_https_proxy" NO_PROXY="$k3s_no_proxy" \
     INSTALL_K3S_VERSION=${dst_k3s_version} INSTALL_K3S_SKIP_ENABLE=true INSTALL_K3S_SKIP_START=true INSTALL_K3S_BIN_DIR=/var/lib/k3s/bin "$k3s_installer" || {
         logmsg "k3s installer failed $?"
         return 1

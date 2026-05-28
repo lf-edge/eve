@@ -49,10 +49,25 @@ const (
 	logMaxSize    = 10  // 10 Mbytes in size
 	logMaxBackups = 3   // old log files to retain
 	logMaxAge     = 365 // days to retain old log files
+
+	// Keep these in sync with pkg/kube/cluster-utils.sh: MGMTPROXY_URL,
+	// MGMTPROXY_DISABLE_FLAG, and the body of mgmtproxy_no_proxy().
+	// KubectlApply uses them when fetching upgrade YAMLs from external HTTPS
+	// URLs so the dynamic upgrade path honors network.download.max.cost via
+	// pillar's mgmtproxy. Local-file applies are not routed through the
+	// proxy.
+	// The ClusterIPPrefix subnet appended dynamically by the shell helper is
+	// omitted here: update-component only talks to the local apiserver via
+	// kubeconfig (127.0.0.1, already covered by 127.0.0.0/8), and the HTTPS
+	// URL fetch is the only external traffic that matters for this binary.
+	mgmtproxyURL         = "http://127.0.0.1:5443"
+	mgmtproxyDisableFlag = "/run/kube/mgmtproxy-disable"
+	mgmtproxyNoProxy     = "127.0.0.0/8,10.42.0.0/16,10.43.0.0/16,169.254.0.0/16,localhost,.svc,.cluster.local"
 )
 
 var (
-	ForceUpgrade = false // ForceUpgrade : Ignore component version constraints and request upgrade
+	// ForceUpgrade ignores component version constraints and requests upgrade.
+	ForceUpgrade = false
 	logFile      *lumberjack.Logger
 )
 
@@ -86,8 +101,44 @@ type commonComponent struct {
 	cs *kubernetes.Clientset
 }
 
+// isHTTPSURL reports whether path is an https URL kubectl will fetch over the
+// network rather than a local filesystem path. Used to decide whether the
+// kubectl subprocess needs HTTPS_PROXY for cost-aware routing. Only https is
+// matched: Go's http client consults HTTPS_PROXY exclusively for https
+// requests, and the proxy is CONNECT/https-only by design.
+func isHTTPSURL(path string) bool {
+	return strings.HasPrefix(path, "https://")
+}
+
+// mgmtproxyEnabled mirrors cluster-utils.sh:mgmtproxy_enabled — the operator
+// off-switch is the presence of /run/kube/mgmtproxy-disable. Absent file means
+// proxy injection is enabled; presence means bypass.
+func mgmtproxyEnabled() bool {
+	_, err := os.Stat(mgmtproxyDisableFlag)
+	return os.IsNotExist(err)
+}
+
 func (ctx *commonComponent) KubectlApply(path string) error {
 	cmd := exec.Command("kubectl", "apply", "-f", path)
+	switch {
+	case isHTTPSURL(path) && mgmtproxyEnabled():
+		// Inject HTTPS_PROXY/NO_PROXY so kubectl's manifest fetch routes
+		// through pillar's cost-aware mgmtproxy. Use append(os.Environ(), ...)
+		// so the parent's PATH/KUBECONFIG/HOME are preserved — kubectl needs
+		// them to find the apiserver.
+		cmd.Env = append(os.Environ(),
+			"HTTPS_PROXY="+mgmtproxyURL,
+			"NO_PROXY="+mgmtproxyNoProxy)
+		log.Printf("KubectlApply: routing through mgmtproxy (%s): %s", mgmtproxyURL, path)
+	case isHTTPSURL(path):
+		log.Printf("KubectlApply: mgmtproxy disabled (%s present), fetching direct: %s",
+			mgmtproxyDisableFlag, path)
+	case strings.HasPrefix(path, "http://"):
+		// Plain-HTTP URLs are a network fetch that mgmtproxy does not cover
+		// (HTTPS_PROXY only affects https requests; the proxy is CONNECT-only).
+		// Log so such a fetch is visible rather than silently bypassing.
+		log.Printf("KubectlApply: plain-HTTP URL not routed through mgmtproxy, fetching direct: %s", path)
+	}
 	var outStr strings.Builder
 	var errStr strings.Builder
 	cmd.Stdout = &outStr
