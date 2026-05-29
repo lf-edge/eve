@@ -475,6 +475,12 @@ const (
 	// snapshots. Default "0 0 * * *" (daily at midnight UTC). Standard 5-field cron syntax.
 	LonghornSnapshotCron GlobalSettingKey = "storage.longhorn.snapshot.cron"
 
+	// LonghornNodeDrainPolicy sets the Longhorn cluster-wide node-drain-policy setting.
+	// Valid values: "block-for-eviction", "block-for-eviction-if-contains-last-replica",
+	// "allow-if-replica-is-stopped", "always-allow".
+	// Default "block-for-eviction-if-contains-last-replica". EVE-k only.
+	LonghornNodeDrainPolicy GlobalSettingKey = "storage.longhorn.node-drain-policy"
+
 	// SCEPRetryInterval defines the time interval between retry attempts
 	// for certificates that previously failed to enroll or returned PENDING
 	// from the SCEP server.
@@ -517,6 +523,16 @@ const (
 // LonghornDiskReservedGBDisabled is the sentinel value for LonghornDiskReservedGB that
 // disables EVE's override, leaving the current Longhorn storageReserved value untouched.
 const LonghornDiskReservedGBDisabled uint32 = 1024 * 1024
+
+// Valid values for LonghornNodeDrainPolicy.
+// https://longhorn.io/docs/1.9.1/maintenance/maintenance/#node-drain-policy-recommendations
+// Please update above if pkg/kube/longhorn-utils.sh LONGHORN_VERSION=v1.9.1 changes.
+const (
+	LonghornNodeDrainPolicyBlockForEviction           = "block-for-eviction"
+	LonghornNodeDrainPolicyBlockIfContainsLastReplica = "block-for-eviction-if-contains-last-replica"
+	LonghornNodeDrainPolicyAllowIfReplicaIsStopped    = "allow-if-replica-is-stopped"
+	LonghornNodeDrainPolicyAlwaysAllow                = "always-allow"
+)
 
 // AgentSettingKey - keys for per-agent settings
 type AgentSettingKey string
@@ -1238,6 +1254,8 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddStringItem(KubernetesVmiDescheduleEvents, "", blankValidator)
 	// LonghornSnapshotCron - Default daily at midnight. Empty string = disable recurring snapshots.
 	configItemSpecMap.AddStringItem(LonghornSnapshotCron, "0 0 * * *", cronValidator)
+	configItemSpecMap.AddStringItem(LonghornNodeDrainPolicy,
+		LonghornNodeDrainPolicyBlockIfContainsLastReplica, validateLonghornNodeDrainPolicy)
 
 	// SCEP settings
 	configItemSpecMap.AddIntItem(SCEPRetryInterval, 5*MinuteInSec, MinuteInSec, HourInSec)
@@ -1274,6 +1292,18 @@ func validateBootOrder(bootOrder string) error {
 		return nil
 	default:
 		return fmt.Errorf("validateBootOrder: invalid boot order '%s', must be '', 'usb', or 'nousb'", bootOrder)
+	}
+}
+
+func validateLonghornNodeDrainPolicy(policy string) error {
+	switch policy {
+	case LonghornNodeDrainPolicyBlockForEviction,
+		LonghornNodeDrainPolicyBlockIfContainsLastReplica,
+		LonghornNodeDrainPolicyAllowIfReplicaIsStopped,
+		LonghornNodeDrainPolicyAlwaysAllow:
+		return nil
+	default:
+		return fmt.Errorf("validateLonghornNodeDrainPolicy: invalid value %q", policy)
 	}
 }
 
