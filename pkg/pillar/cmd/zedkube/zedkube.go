@@ -134,6 +134,8 @@ type zedkube struct {
 	longhornDiskReservedSet bool
 	// longhornSnapshotSet is true once the desired recurring snapshot interval has been applied
 	longhornSnapshotSet bool
+	// longhornDrainPolicySet is true once the desired node-drain-policy has been applied
+	longhornDrainPolicySet bool
 
 	// Stuck-Pending-VMI detector state (keyed by app UUID string).
 	// vmiPendingSince: first time we observed a Pending VMI with a Running
@@ -761,6 +763,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 					zedkubeCtx.reconcileSRIOVDevicePlugin(&aa)
 				}
 			}
+			zedkubeCtx.applyLonghornNodeDrainPolicy()
+
 			kubeCfgTimer = time.NewTimer(kubeCfgInterval * time.Second)
 
 		// Timer 5: leader-only safety-net re-evaluation of the stale-master
@@ -948,12 +952,21 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 			z.longhornSnapshotSet = false
 		}
 
+		newDrainPolicy := newConfigItemValueMap.GlobalValueString(types.LonghornNodeDrainPolicy)
+		existingDrainPolicy := currentConfigItemValueMap.GlobalValueString(types.LonghornNodeDrainPolicy)
+		if newDrainPolicy != existingDrainPolicy {
+			log.Functionf("handleGlobalConfigImpl: LonghornNodeDrainPolicy changed %q -> %q",
+				existingDrainPolicy, newDrainPolicy)
+			z.longhornDrainPolicySet = false
+		}
+
 		z.globalConfig = newConfigItemValueMap
 		z.applyLonghornDiskReserved()
 
 		z.handleVmiDescheduleEventsOverride(newConfigItemValueMap)
 
 		z.applyLonghornRecurringSnapshot()
+		z.applyLonghornNodeDrainPolicy()
 	}
 	log.Functionf("handleGlobalConfigImpl(%s): done", key)
 }
@@ -994,6 +1007,21 @@ func (z *zedkube) applyLonghornRecurringSnapshot() {
 		return
 	}
 	z.longhornSnapshotSet = applied
+}
+
+// applyLonghornNodeDrainPolicy sets the cluster-wide node-drain-policy Longhorn setting.
+// It is a no-op if already applied. Callers should retry until longhornDrainPolicySet is true.
+func (z *zedkube) applyLonghornNodeDrainPolicy() {
+	if z.longhornDrainPolicySet {
+		return
+	}
+	policy := z.globalConfig.GlobalValueString(types.LonghornNodeDrainPolicy)
+	applied, err := kubeapi.SetLonghornNodeDrainPolicy(policy)
+	if err != nil {
+		log.Errorf("applyLonghornNodeDrainPolicy: %v", err)
+		return
+	}
+	z.longhornDrainPolicySet = applied
 }
 
 func handleK3sConfigOverrideChanged(currentGcp *types.ConfigItemValueMap, newGcp *types.ConfigItemValueMap) {
