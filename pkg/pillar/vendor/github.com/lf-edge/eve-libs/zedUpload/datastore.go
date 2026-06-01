@@ -4,9 +4,11 @@
 package zedUpload
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
+	"regexp"
 	"sync"
 	"time"
 
@@ -84,6 +86,10 @@ type DronaCtx struct {
 	quitChan chan bool
 }
 
+// ErrInsecureAuth is returned when auth credentials would be sent over plaintext HTTP
+// without explicitly allowing insecure auth.
+var ErrInsecureAuth = errors.New("sending password over plaintext http is insecure and has to be explicitly allowed")
+
 // Keep working till we are told otherwise
 func (ctx *DronaCtx) ListenAndServe() {
 	for {
@@ -153,6 +159,20 @@ func (ctx *DronaCtx) postResponse(req *DronaRequest, status error) {
 	req.result <- req
 }
 
+func isToken(str string) bool {
+	// https://datatracker.ietf.org/doc/html/rfc7230#section-3.2.6
+	rex := regexp.MustCompile(`^[a-zA-Z0-9-._~+/!#\$%&'\*\+^` + "`" + `|']*$`)
+
+	return rex.MatchString(str)
+}
+
+func isToken68(str string) bool {
+	// https://datatracker.ietf.org/doc/html/rfc7235#appendix-C
+	rex := regexp.MustCompile(`^[a-zA-Z0-9-._~+/]*=?$`)
+
+	return rex.MatchString(str)
+}
+
 type AuthInput struct {
 	// type of auth
 	AuthType string
@@ -201,6 +221,12 @@ func (ctx *DronaCtx) NewSyncerDest(tr SyncTransportType, UrlOrRegion, nettraceDi
 	case SyncHttpTr:
 		syncEp := &HttpTransportMethod{transport: tr, hurl: UrlOrRegion, path: PathOrBkt, ctx: ctx}
 		if auth != nil {
+			if !isToken(auth.Uname) {
+				return nil, errors.New("auth.Uname is not token-conform")
+			}
+			if !isToken68(auth.Password) {
+				return nil, errors.New("auth.Password is not token68-conform")
+			}
 			syncEp.authType = auth.AuthType
 		}
 		syncEp.hClientWrap = &httpClientWrapper{}
@@ -246,6 +272,20 @@ func (ctx *DronaCtx) NewSyncerDest(tr SyncTransportType, UrlOrRegion, nettraceDi
 			return nil, err
 		}
 	}
+
+	switch ep := endpoint.(type) {
+	case *HttpTransportMethod:
+		u, err := url.Parse(UrlOrRegion)
+		if err != nil {
+			return nil, fmt.Errorf("cannot parse '%s' as URL: %w", UrlOrRegion, err)
+		}
+
+		// ep.hClientWrap.secureAuthOnly is set via opts parameter
+		if !ep.hClientWrap.insecureAuthAllowed && u.Scheme != "https" && ep.password != "" {
+			return nil, fmt.Errorf("%w for URL '%s'", ErrInsecureAuth, u.Scheme)
+		}
+	}
+
 	return endpoint, nil
 }
 

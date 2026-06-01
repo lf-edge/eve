@@ -102,6 +102,11 @@ func (ep *HttpTransportMethod) WithNetTracing(opts ...nettrace.TraceOpt) error {
 	return ep.hClientWrap.withNetTracing(opts...)
 }
 
+// AllowInsecureAuth - set this to allow basic auth via http (https is not affected)
+func (ep *HttpTransportMethod) AllowInsecureAuth(allow bool) {
+	ep.hClientWrap.allowInsecureAuth(allow)
+}
+
 // GetNetTrace returns collected network trace and packet captures.
 func (ep *HttpTransportMethod) GetNetTrace(description string) (
 	nettrace.AnyNetTrace, []nettrace.PacketCapture, error) {
@@ -251,6 +256,19 @@ func WithHTTPInactivityTimeout(timeout time.Duration) SyncerDestOption {
 			return fmt.Errorf("Invalid endpoint type")
 		}
 		httpEp.inactivityTimeout = timeout
+		return nil
+	}
+}
+
+// WithAllowInsecureAuth returns a SyncerDestOption that permits sending auth
+// credentials over plaintext HTTP when allow is true.
+func WithAllowInsecureAuth(allow bool) SyncerDestOption {
+	return func(endpoint DronaEndPoint) error {
+		if httpEp, ok := endpoint.(*HttpTransportMethod); ok {
+			httpEp.AllowInsecureAuth(allow)
+		} else {
+			return fmt.Errorf("WithAllowInsecureAuth - Invalid endpoint type")
+		}
 		return nil
 	}
 }

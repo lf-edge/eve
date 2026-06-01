@@ -728,11 +728,11 @@ func (t *Timestamp) UnmarshalJSON(b []byte) error {
 	}
 	if str[0] == '+' || str[0] == '-' {
 		// relative timestamp
-		// Cut sign and unit "ms" before calling Atoi.
+		// Cut sign and unit "ms" before parsing as an unsigned 32-bit integer.
 		if len(str) <= 3 {
 			return fmt.Errorf("invalid relative timestamp: %s", str)
 		}
-		rel, err := strconv.Atoi(str[1 : len(str)-2])
+		rel, err := strconv.ParseUint(str[1:len(str)-2], 10, 32)
 		if err != nil {
 			return err
 		}
