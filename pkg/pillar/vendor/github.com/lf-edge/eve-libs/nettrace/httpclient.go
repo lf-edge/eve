@@ -84,6 +84,7 @@ type HTTPClient struct {
 	log                  Logger
 	sourceIP             net.IP
 	skipNameserver       NameserverSelector
+	nameservers          []string
 	netProxy             func(req *http.Request) (*url.URL, error)
 	withSockTrace        bool
 	withDNSTrace         bool
@@ -158,6 +159,11 @@ type HTTPClientCfg struct {
 	// moves to the next one.
 	// Every skipped nameserver is recorded in DialTrace.SkippedNameservers.
 	SkipNameserver NameserverSelector
+	// Nameservers optionally overrides the system-configured DNS servers.
+	// Each entry should be in "host:port" format (e.g. "127.0.0.1:5353").
+	// When set, all DNS queries are directed to these servers instead of
+	// those from /etc/resolv.conf.
+	Nameservers []string
 	// Proxy specifies a callback to return an address of a network proxy that
 	// should be used for the given HTTP request.
 	// If Proxy is nil or returns a nil *URL, no proxy is used.
@@ -278,6 +284,7 @@ func NewHTTPClient(config HTTPClientCfg, uuid string, traceOpts ...TraceOpt) (*H
 		log:            &nilLogger{},
 		sourceIP:       config.SourceIP,
 		skipNameserver: config.SkipNameserver,
+		nameservers:    config.Nameservers,
 		netProxy:       config.Proxy,
 		pendingTraces:  lockfree.NewQueue(),
 		sessionUUID:    uuid,
@@ -1477,7 +1484,7 @@ func (c *HTTPClient) proxyForRequest(req *http.Request) (*url.URL, error) {
 
 func (c *HTTPClient) dial(ctx context.Context, network, addr string) (net.Conn, error) {
 	dialer := newTracedDialer(c, c.log, c.sourceIP, c.tcpHandshakeTimeout,
-		c.tcpKeepAliveInterval, c.withDNSTrace, c.skipNameserver)
+		c.tcpKeepAliveInterval, c.withDNSTrace, c.skipNameserver, c.nameservers)
 	return dialer.dial(ctx, network, addr)
 }
 
