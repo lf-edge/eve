@@ -255,7 +255,7 @@ func execCmdGet(
 		}
 		//check context error on every attempt
 		if ctx.Err() != nil {
-			appendToErrorList(ctx.Err().Error())
+			appendToErrorList("Context error: %s", ctx.Err().Error())
 			break
 		}
 		if attempt > 0 {
@@ -323,7 +323,7 @@ func execCmdGet(
 		//it indicates that server misconfigured
 		if (!withRange && resp.StatusCode != http.StatusOK) ||
 			(withRange && resp.StatusCode != http.StatusPartialContent) {
-			appendToErrorList(fmt.Sprintf("bad response code: %d", resp.StatusCode))
+			appendToErrorList("bad response code: %d", resp.StatusCode)
 			break
 		}
 
