@@ -10,7 +10,7 @@ use crate::{
     ipc::eve_types::{
         AppInstanceStatus, AppsList, DevicePortConfig, DevicePortConfigList, SwState, TpmLogs,
     },
-    ipc::monitorapi::{DownloaderStatus, ZedAgentStatus},
+    ipc::monitorapi::{AttestState, DownloaderStatus},
     model::device::tpmlog_diff::TpmLogDiff,
 };
 
@@ -99,7 +99,8 @@ pub struct MonitorModel {
     pub vault_status: VaultStatus,
     pub dpc_list: Option<DevicePortConfigList>,
     pub dpc_key: Option<String>,
-    pub z_status: Option<ZedAgentStatus>,
+    pub attest_state: Option<AttestState>,
+    pub attest_error: String,
     pub tpm: Option<TpmLogDiff>,
     pub error_log: Vec<String>,
     pub status_bar_tips: Option<String>,
@@ -187,14 +188,16 @@ impl MonitorModel {
         self.downloader = Some(status);
     }
 
-    pub fn update_node_status(&mut self, status: crate::ipc::monitorapi::NodeStatus) {
-        // app_summary is maintained by the separate AppSummary message, so update
-        // only the node-identity fields here.
+    pub fn update_device_status(&mut self, status: crate::ipc::monitorapi::DeviceStatus) {
+        // app_summary is maintained by the separate AppSummary message.
         let ns = &mut self.node_status;
         ns.server = (!status.server.is_empty()).then_some(status.server);
         ns.onboarding_status = onboarding_status_from(status.onboarded, status.node_uuid);
         ns.node_name = status.node_name;
         ns.serial = status.serial;
+        self.vault_status = VaultStatus::from(status.vault);
+        self.attest_state = Some(status.attest_state);
+        self.attest_error = status.attest_error;
     }
 
     /// Number of application instances currently in the stopped (halted) state.
@@ -220,14 +223,6 @@ impl MonitorModel {
         self.network = crate::model::device::network::interfaces_from(&net_status);
     }
 
-    pub fn update_vault_status(&mut self, vault_status: crate::ipc::monitorapi::VaultStatus) {
-        self.vault_status = VaultStatus::from(vault_status);
-    }
-
-    pub fn update_onboarding_status(&mut self, status: crate::ipc::monitorapi::OnboardingStatus) {
-        self.node_status.onboarding_status = OnboardingStatus::Onboarded(status.device_uuid);
-    }
-
     pub fn set_dpc_list(&mut self, dpc_list: DevicePortConfigList) {
         self.dpc_list = Some(dpc_list);
     }
@@ -241,9 +236,6 @@ impl MonitorModel {
         self.get_dpc_list()?.get_dpc_by_key(&key)
     }
 
-    pub fn update_zed_agent_status(&mut self, status: ZedAgentStatus) {
-        self.z_status = Some(status);
-    }
 
     pub fn update_tpm_logs(&mut self, logs: TpmLogs) {
         info!("Got TPM logs from EVE");
@@ -301,7 +293,8 @@ impl Default for MonitorModel {
             vault_status: VaultStatus::Unknown,
             dpc_list: None,
             dpc_key: None,
-            z_status: None,
+            attest_state: None,
+            attest_error: String::new(),
             tpm: None,
             error_log: Vec::new(),
             status_bar_tips: None,

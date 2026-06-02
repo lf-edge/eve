@@ -109,24 +109,25 @@ func handleOnboardingStatusModify(ctxArg interface{}, key string,
 
 func handleEdgeNodeInfoCreate(ctxArg interface{}, key string,
 	statusArg interface{}) {
-	handleEdgeNodeInfoUpdate(ctxArg)
+	handleEdgeNodeInfoUpdate(statusArg, ctxArg)
 }
 
 func handleEdgeNodeInfoModify(ctxArg interface{}, key string,
 	statusArg interface{}, _ interface{}) {
-	handleEdgeNodeInfoUpdate(ctxArg)
+	handleEdgeNodeInfoUpdate(statusArg, ctxArg)
 }
 
-func handleEdgeNodeInfoUpdate(ctxArg interface{}) {
+func handleEdgeNodeInfoUpdate(statusArg interface{}, ctxArg interface{}) {
 	ctx := ctxArg.(*monitor)
-	// EdgeNodeInfo feeds NodeName into the node status.
-	ctx.sendNodeStatus()
+	// EdgeNodeInfo feeds the node name into the device status.
+	ctx.lastEdgeNodeInfo = statusArg.(types.EdgeNodeInfo)
+	ctx.sendDeviceStatus()
 }
 
 func handleOnboardingStatusUpdate(statusArg interface{}, ctxArg interface{}) {
-	status := statusArg.(types.OnboardingStatus)
 	ctx := ctxArg.(*monitor)
-	ctx.IPCServer.sendIpcMessage("OnboardingStatus", onboardingStatusToContract(status))
+	ctx.lastOnboarding = statusArg.(types.OnboardingStatus)
+	ctx.sendDeviceStatus()
 }
 
 func handleVaultStatusCreate(ctxArg interface{}, key string,
@@ -142,7 +143,8 @@ func handleVaultStatusModify(ctxArg interface{}, key string,
 func handleVaultStatusUpdate(statusArg interface{}, ctxArg interface{}) {
 	status := statusArg.(types.VaultStatus)
 	ctx := ctxArg.(*monitor)
-	ctx.IPCServer.sendIpcMessage("VaultStatus", vaultStatusToContract(status))
+	ctx.lastVault = status
+	ctx.sendDeviceStatus()
 
 	if status.IsVaultInError() {
 		ctx.sendTpmLogs()
@@ -164,21 +166,6 @@ func handleAppInstanceSummaryUpdate(statusArg interface{}, ctxArg interface{}) {
 	ctx.IPCServer.sendIpcMessage("AppSummary", appSummaryToContract(status))
 }
 
-func handleLedBlinkCreate(ctxArg interface{}, key string,
-	statusArg interface{}) {
-	handleLedBlinkUpdate(statusArg, ctxArg)
-}
-
-func handleLedBlinkModify(ctxArg interface{}, key string,
-	statusArg interface{}, _ interface{}) {
-	handleLedBlinkUpdate(statusArg, ctxArg)
-}
-func handleLedBlinkUpdate(statusArg interface{}, ctxArg interface{}) {
-	status := statusArg.(types.LedBlinkCounter)
-	ctx := ctxArg.(*monitor)
-	ctx.IPCServer.sendIpcMessage("LedBlinkCounter", ledBlinkCounterToContract(status))
-}
-
 func handleZedAgentStatusCreate(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	handleZedAgentStatusUpdate(statusArg, ctxArg)
@@ -196,7 +183,8 @@ func handleZedAgentStatusUpdate(statusArg interface{}, ctxArg interface{}) {
 		return
 	}
 	ctx := ctxArg.(*monitor)
-	ctx.IPCServer.sendIpcMessage("ZedAgentStatus", zedAgentStatusToContract(status))
+	ctx.lastZedAgent = status
+	ctx.sendDeviceStatus()
 }
 
 func handleGlobalConfigCreate(ctxArg interface{}, key string,
@@ -373,23 +361,6 @@ func (ctx *monitor) subscribe(ps *pubsub.PubSub) error {
 		return err
 	}
 
-	subLedBlinkCounter, err := ps.NewSubscription(
-		pubsub.SubscriptionOptions{
-			AgentName:     "",
-			MyAgentName:   agentName,
-			TopicImpl:     types.LedBlinkCounter{},
-			Activate:      false,
-			Ctx:           ctx,
-			CreateHandler: handleLedBlinkCreate,
-			ModifyHandler: handleLedBlinkModify,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
-	if err != nil {
-		log.Error("Cannot create subscription for LedBlinkCounter")
-		return err
-	}
-
 	subZedAgentStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedagent",
 		MyAgentName:   agentName,
@@ -446,7 +417,6 @@ func (ctx *monitor) subscribe(ps *pubsub.PubSub) error {
 	ctx.subscriptions["AppStatus"] = subAppInstanceStatus
 	ctx.subscriptions["DownloaderStatus"] = subDownloaderStatus
 	ctx.subscriptions["AppSummary"] = subAppInstanceSummary
-	ctx.subscriptions["LedBlinkCounter"] = subLedBlinkCounter
 	ctx.subscriptions["ZedAgentStatus"] = subZedAgentStatus
 	ctx.subscriptions["GlobalConfig"] = subGlobalConfig
 	ctx.subscriptions["EdgeNodeInfo"] = subEdgeNodeInfo
@@ -457,7 +427,7 @@ func (ctx *monitor) handleClientConnected() {
 	// go over all the subscriptions and process the current state
 	log.Noticef("Client connected. Activating subscriptions")
 
-	ctx.sendNodeStatus()
+	ctx.sendDeviceStatus()
 	ctx.sendAppsList()
 
 	for _, sub := range ctx.subscriptions {

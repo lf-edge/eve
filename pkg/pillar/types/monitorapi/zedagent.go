@@ -3,17 +3,8 @@
 
 package monitorapi
 
-// ZedAgentStatus reports device-level status from zedagent (controller
-// connectivity, lifecycle state, attestation).
-type ZedAgentStatus struct {
-	ConfigStatus    ConfigGetStatus `json:"configStatus"`
-	DeviceState     DeviceState     `json:"deviceState"`
-	AttestState     AttestState     `json:"attestState"`
-	AttestError     string          `json:"attestError"`
-	BootReason      BootReason      `json:"bootReason"`
-	RebootReason    string          `json:"rebootReason"`
-	MaintenanceMode bool            `json:"maintenanceMode"`
-}
+// These enums describe zedagent-reported device lifecycle/attestation state;
+// they are fields of DeviceStatus.
 
 // ConfigGetStatus is the outcome of the last controller config fetch.
 type ConfigGetStatus string
