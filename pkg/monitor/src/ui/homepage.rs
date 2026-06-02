@@ -104,7 +104,7 @@ impl HomePage {
         .areas(contents);
 
         let download_progress = Gauge::default().percent(model.progress as u16);
-        frame.render_widget(Line::raw(format!("State: {}", model.state)), area_status);
+        frame.render_widget(Line::raw(format!("State: {:?}", model.state)), area_status);
         frame.render_widget(Line::raw(format!("File: {}", &model.name)), area_name);
         frame.render_widget(download_progress, area_progress);
     }

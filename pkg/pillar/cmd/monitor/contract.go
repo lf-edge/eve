@@ -46,12 +46,74 @@ func deviceStatusToContract(server string, ob types.OnboardingStatus, enInfo typ
 	}
 }
 
-func appSummaryToContract(s types.AppInstanceSummary) monitorapi.AppSummary {
-	return monitorapi.AppSummary{
-		Starting: uint32(s.TotalStarting),
-		Running:  uint32(s.TotalRunning),
-		Stopping: uint32(s.TotalStopping),
-		Error:    uint32(s.TotalError),
+func appsListToContract(apps []types.AppInstanceStatus) monitorapi.AppsList {
+	out := monitorapi.AppsList{Instances: make([]monitorapi.AppInstance, 0, len(apps))}
+	for _, a := range apps {
+		out.Instances = append(out.Instances, monitorapi.AppInstance{
+			UUID:    a.UUIDandVersion.UUID,
+			Name:    a.DisplayName,
+			Version: a.UUIDandVersion.Version,
+			State:   swStateToContract(a.State),
+			Error:   a.ErrorAndTimeWithSource.Error,
+		})
+	}
+	return out
+}
+
+func swStateToContract(s types.SwState) monitorapi.SwState {
+	switch s {
+	case types.RESOLVING_TAG:
+		return monitorapi.SwStateResolvingTag
+	case types.RESOLVED_TAG:
+		return monitorapi.SwStateResolvedTag
+	case types.DOWNLOADING:
+		return monitorapi.SwStateDownloading
+	case types.DOWNLOADED:
+		return monitorapi.SwStateDownloaded
+	case types.VERIFYING:
+		return monitorapi.SwStateVerifying
+	case types.VERIFIED:
+		return monitorapi.SwStateVerified
+	case types.LOADING:
+		return monitorapi.SwStateLoading
+	case types.LOADED:
+		return monitorapi.SwStateLoaded
+	case types.CREATING_VOLUME:
+		return monitorapi.SwStateCreatingVolume
+	case types.CREATED_VOLUME:
+		return monitorapi.SwStateCreatedVolume
+	case types.INSTALLED:
+		return monitorapi.SwStateInstalled
+	case types.AWAITNETWORKINSTANCE:
+		return monitorapi.SwStateAwaitNetworkInstance
+	case types.START_DELAYED:
+		return monitorapi.SwStateStartDelayed
+	case types.BOOTING:
+		return monitorapi.SwStateBooting
+	case types.RUNNING:
+		return monitorapi.SwStateRunning
+	case types.PAUSING:
+		return monitorapi.SwStatePausing
+	case types.PAUSED:
+		return monitorapi.SwStatePaused
+	case types.HALTING:
+		return monitorapi.SwStateHalting
+	case types.HALTED:
+		return monitorapi.SwStateHalted
+	case types.BROKEN:
+		return monitorapi.SwStateBroken
+	case types.UNKNOWN:
+		return monitorapi.SwStateUnknown
+	case types.PENDING:
+		return monitorapi.SwStatePending
+	case types.SCHEDULING:
+		return monitorapi.SwStateScheduling
+	case types.FAILED:
+		return monitorapi.SwStateFailed
+	case types.REMOTELOADED:
+		return monitorapi.SwStateRemoteLoaded
+	default: // INITIAL, MAXSTATE
+		return monitorapi.SwStateInitial
 	}
 }
 
@@ -62,7 +124,7 @@ func tuiConfigToContract(logLevel string) monitorapi.TUIConfig {
 func downloaderStatusToContract(s types.DownloaderStatus) monitorapi.DownloaderStatus {
 	return monitorapi.DownloaderStatus{
 		Name:        s.Name,
-		State:       s.State.String(),
+		State:       swStateToContract(s.State),
 		ContentType: s.ContentType,
 		Progress:    uint32(s.Progress),
 		CurrentSize: s.CurrentSize,

@@ -219,20 +219,9 @@ impl Application {
                 debug!("Got Network status");
                 self.model.borrow_mut().update_network_status(cfg);
             }
-            IpcMessage::AppStatus(app) => {
-                debug!("Got AppStatus");
-                self.model.borrow_mut().update_app_status(app);
-            }
-
             IpcMessage::DownloaderStatus(dnl) => {
                 debug!("Got DownloaderStatus");
                 self.model.borrow_mut().update_downloader_status(dnl);
-            }
-
-            // this event is guaranteed to be sent before periodic events
-            IpcMessage::AppSummary(summary) => {
-                debug!("Got AppSummary");
-                self.model.borrow_mut().update_app_summary(summary);
             }
 
             IpcMessage::DeviceStatus(device_status) => {

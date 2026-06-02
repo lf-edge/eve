@@ -110,16 +110,80 @@ pub enum ProxyScheme {
     Ftp,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AppSummary {
-    #[serde(rename = "starting")]
-    pub starting: u32,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SwState {
+    #[serde(rename = "initial")]
+    Initial,
+    #[serde(rename = "resolvingTag")]
+    ResolvingTag,
+    #[serde(rename = "resolvedTag")]
+    ResolvedTag,
+    #[serde(rename = "downloading")]
+    Downloading,
+    #[serde(rename = "downloaded")]
+    Downloaded,
+    #[serde(rename = "verifying")]
+    Verifying,
+    #[serde(rename = "verified")]
+    Verified,
+    #[serde(rename = "loading")]
+    Loading,
+    #[serde(rename = "loaded")]
+    Loaded,
+    #[serde(rename = "creatingVolume")]
+    CreatingVolume,
+    #[serde(rename = "createdVolume")]
+    CreatedVolume,
+    #[serde(rename = "installed")]
+    Installed,
+    #[serde(rename = "awaitNetworkInstance")]
+    AwaitNetworkInstance,
+    #[serde(rename = "startDelayed")]
+    StartDelayed,
+    #[serde(rename = "booting")]
+    Booting,
     #[serde(rename = "running")]
-    pub running: u32,
-    #[serde(rename = "stopping")]
-    pub stopping: u32,
+    Running,
+    #[serde(rename = "pausing")]
+    Pausing,
+    #[serde(rename = "paused")]
+    Paused,
+    #[serde(rename = "halting")]
+    Halting,
+    #[serde(rename = "halted")]
+    Halted,
+    #[serde(rename = "broken")]
+    Broken,
+    #[serde(rename = "unknown")]
+    Unknown,
+    #[serde(rename = "pending")]
+    Pending,
+    #[serde(rename = "scheduling")]
+    Scheduling,
+    #[serde(rename = "failed")]
+    Failed,
+    #[serde(rename = "remoteLoaded")]
+    RemoteLoaded,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AppInstance {
+    #[serde(rename = "uuid")]
+    pub uuid: Uuid,
+    #[serde(rename = "name")]
+    pub name: String,
+    #[serde(rename = "version")]
+    pub version: String,
+    #[serde(rename = "state")]
+    pub state: SwState,
     #[serde(rename = "error")]
-    pub error: u32,
+    pub error: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AppsList {
+    #[serde(rename = "instances", default, skip_serializing_if = "Vec::is_empty")]
+    pub instances: Vec<AppInstance>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -169,7 +233,7 @@ pub struct DownloaderStatus {
     #[serde(rename = "name")]
     pub name: String,
     #[serde(rename = "state")]
-    pub state: String,
+    pub state: SwState,
     #[serde(rename = "contentType")]
     pub content_type: String,
     #[serde(rename = "progress")]

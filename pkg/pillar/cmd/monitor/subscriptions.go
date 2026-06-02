@@ -91,10 +91,9 @@ func handleAppInstanceStatusDelete(ctxArg interface{}, key string,
 	ctx.sendAppsList()
 }
 
-func handleAppInstanceStatusUpdate(statusArg interface{}, ctxArg interface{}) {
-	status := statusArg.(types.AppInstanceStatus)
+func handleAppInstanceStatusUpdate(_ interface{}, ctxArg interface{}) {
 	ctx := ctxArg.(*monitor)
-	ctx.IPCServer.sendIpcMessage("AppStatus", status)
+	ctx.sendAppsList()
 }
 
 func handleOnboardingStatusCreate(ctxArg interface{}, key string,
@@ -149,21 +148,6 @@ func handleVaultStatusUpdate(statusArg interface{}, ctxArg interface{}) {
 	if status.IsVaultInError() {
 		ctx.sendTpmLogs()
 	}
-}
-
-func handleAppInstanceSummaryCreate(ctxArg interface{}, key string,
-	statusArg interface{}) {
-	handleAppInstanceSummaryUpdate(statusArg, ctxArg)
-}
-
-func handleAppInstanceSummaryModify(ctxArg interface{}, key string,
-	statusArg interface{}, _ interface{}) {
-	handleAppInstanceSummaryUpdate(statusArg, ctxArg)
-}
-func handleAppInstanceSummaryUpdate(statusArg interface{}, ctxArg interface{}) {
-	status := statusArg.(types.AppInstanceSummary)
-	ctx := ctxArg.(*monitor)
-	ctx.IPCServer.sendIpcMessage("AppSummary", appSummaryToContract(status))
 }
 
 func handleZedAgentStatusCreate(ctxArg interface{}, key string,
@@ -311,22 +295,6 @@ func (ctx *monitor) subscribe(ps *pubsub.PubSub) error {
 		return err
 	}
 
-	subAppInstanceSummary, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     "zedmanager",
-		MyAgentName:   agentName,
-		TopicImpl:     types.AppInstanceSummary{},
-		Activate:      false,
-		Ctx:           ctx,
-		CreateHandler: handleAppInstanceSummaryCreate,
-		ModifyHandler: handleAppInstanceSummaryModify,
-		WarningTime:   warningTime,
-		ErrorTime:     errorTime,
-	})
-	if err != nil {
-		log.Error("Cannot create subscription for AppInstanceSummary")
-		return err
-	}
-
 	subAppInstanceStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedmanager",
 		MyAgentName:   agentName,
@@ -416,7 +384,6 @@ func (ctx *monitor) subscribe(ps *pubsub.PubSub) error {
 	ctx.subscriptions["DPCList"] = subDevicePortConfigList
 	ctx.subscriptions["AppStatus"] = subAppInstanceStatus
 	ctx.subscriptions["DownloaderStatus"] = subDownloaderStatus
-	ctx.subscriptions["AppSummary"] = subAppInstanceSummary
 	ctx.subscriptions["ZedAgentStatus"] = subZedAgentStatus
 	ctx.subscriptions["GlobalConfig"] = subGlobalConfig
 	ctx.subscriptions["EdgeNodeInfo"] = subEdgeNodeInfo
