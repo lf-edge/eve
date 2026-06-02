@@ -96,13 +96,18 @@ fn network_status_nests_vlans_and_cellular() {
 
 #[test]
 fn small_messages_parse() {
-    let s: AppSummary = serde_json::from_str(&fixture("app_summary.json")).unwrap();
-    assert_eq!((s.running, s.error), (5, 2));
+    let a: AppsList = serde_json::from_str(&fixture("apps_list.json")).unwrap();
+    assert_eq!(a.instances.len(), 2);
+    assert_eq!(a.instances[0].name, "nginx");
+    assert_eq!(a.instances[0].state, SwState::Running);
+    assert_eq!(a.instances[1].state, SwState::Broken);
+    assert_eq!(a.instances[1].error, "image pull failed");
     let c: TuiConfig = serde_json::from_str(&fixture("tui_config.json")).unwrap();
     assert_eq!(c.log_level, "debug");
     let d: DownloaderStatus = serde_json::from_str(&fixture("downloader_status.json")).unwrap();
     assert_eq!(d.progress, 42);
     assert_eq!(d.name, "image.qcow2");
+    assert_eq!(d.state, SwState::Downloading);
 }
 
 #[test]

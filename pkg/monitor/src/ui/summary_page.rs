@@ -246,41 +246,43 @@ impl SummaryPage {
     }
 
     fn render_app_summary(&self, model: &Rc<Model>, frame: &mut Frame<'_>, app_summary_rect: Rect) {
-        let apps = &model.borrow().node_status.app_summary;
-        let stopped = model.borrow().stopped_app_count();
+        let counts = model.borrow().app_counts();
 
         let mut app_summary_text = vec![];
         app_summary_text.push(Line::from(vec![
             Span::raw("Running:  "),
             Span::styled(
-                format!("{}", apps.running),
+                format!("{}", counts.running),
                 Style::default().fg(Color::Green),
             ),
         ]));
         app_summary_text.push(Line::from(vec![
             Span::raw("Starting: "),
             Span::styled(
-                format!("{}", apps.starting),
+                format!("{}", counts.starting),
                 Style::default().fg(Color::Green),
             ),
         ]));
         app_summary_text.push(Line::from(vec![
             Span::raw("Stopping: "),
             Span::styled(
-                format!("{}", apps.stopping),
+                format!("{}", counts.stopping),
                 Style::default().fg(Color::Yellow),
             ),
         ]));
         app_summary_text.push(Line::from(vec![
             Span::raw("In error: "),
             Span::styled(
-                format!("{}", apps.error),
+                format!("{}", counts.error),
                 Style::default().fg(Color::Red),
             ),
         ]));
         app_summary_text.push(Line::from(vec![
             Span::raw("Stopped:  "),
-            Span::styled(format!("{}", stopped), Style::default().fg(Color::Gray)),
+            Span::styled(
+                format!("{}", counts.stopped),
+                Style::default().fg(Color::Gray),
+            ),
         ]));
         let app_summary = ratatui::widgets::Paragraph::new(Text::from(app_summary_text))
             .block(

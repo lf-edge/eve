@@ -137,9 +137,11 @@ fn info_row_from_app<'b>(app: &AppInstance) -> Row<'b> {
         Cell::from(app.name.clone()),
         Cell::from(app.uuid.to_string()),
         match &app.state {
-            AppInstanceState::Normal(st) => Cell::from(st.to_string()).style(Style::new().green()),
+            AppInstanceState::Normal(st) => {
+                Cell::from(format!("{:?}", st)).style(Style::new().green())
+            }
             AppInstanceState::Error(st, _err) => {
-                Cell::from(st.to_string()).style(Style::new().red())
+                Cell::from(format!("{:?}", st)).style(Style::new().red())
             }
         },
     ];

@@ -7,10 +7,10 @@ use log::{error, info};
 use uuid::Uuid;
 
 use crate::{
-    ipc::eve_types::{
-        AppInstanceStatus, AppsList, DevicePortConfig, DevicePortConfigList, SwState, TpmLogs,
+    ipc::eve_types::{DevicePortConfig, DevicePortConfigList, TpmLogs},
+    ipc::monitorapi::{
+        AppInstance as ContractAppInstance, AppsList, AttestState, DownloaderStatus, SwState,
     },
-    ipc::monitorapi::{AttestState, DownloaderStatus},
     model::device::tpmlog_diff::TpmLogDiff,
 };
 
@@ -25,31 +25,12 @@ pub enum OnboardingStatus {
     Error(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct NodeStatus {
     pub server: Option<String>,
-    pub app_summary: crate::ipc::monitorapi::AppSummary,
     pub onboarding_status: OnboardingStatus,
     pub node_name: String,
     pub serial: String,
-}
-
-impl Default for NodeStatus {
-    fn default() -> Self {
-        Self {
-            server: None,
-            // The generated contract types don't derive Default.
-            app_summary: crate::ipc::monitorapi::AppSummary {
-                starting: 0,
-                running: 0,
-                stopping: 0,
-                error: 0,
-            },
-            onboarding_status: OnboardingStatus::default(),
-            node_name: String::new(),
-            serial: String::new(),
-        }
-    }
 }
 
 impl NodeStatus {
@@ -70,6 +51,17 @@ pub struct AppInstance {
     pub uuid: Uuid,
     pub version: String,
     pub state: AppInstanceState,
+}
+
+/// Application instance counts grouped by lifecycle bucket, computed on demand
+/// from the model's current app set.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct AppCounts {
+    pub running: usize,
+    pub starting: usize,
+    pub stopping: usize,
+    pub stopped: usize,
+    pub error: usize,
 }
 
 // `time` is populated from EVE error reports; kept as intended API.
@@ -126,26 +118,18 @@ impl From<crate::ipc::monitorapi::VaultStatus> for VaultStatus {
     }
 }
 
-impl From<AppInstanceStatus> for AppInstance {
-    fn from(app: AppInstanceStatus) -> Self {
-        let state = if !app
-            .error_and_time_with_source
-            .error_description
-            .error
-            .is_empty()
-        {
-            AppInstanceState::Error(
-                app.state,
-                app.error_and_time_with_source.error_description.error,
-            )
-        } else {
+impl From<ContractAppInstance> for AppInstance {
+    fn from(app: ContractAppInstance) -> Self {
+        let state = if app.error.is_empty() {
             AppInstanceState::Normal(app.state)
+        } else {
+            AppInstanceState::Error(app.state, app.error)
         };
 
         AppInstance {
-            name: app.display_name,
-            uuid: app.uuid_and_version.uuid,
-            version: app.uuid_and_version.version,
+            name: app.name,
+            uuid: app.uuid,
+            version: app.version,
             state,
         }
     }
@@ -154,9 +138,9 @@ impl From<AppInstanceStatus> for AppInstance {
 impl From<AppsList> for HashMap<Uuid, AppInstance> {
     fn from(apps_list: AppsList) -> Self {
         apps_list
-            .apps
+            .instances
             .into_iter()
-            .map(|app| (app.uuid_and_version.uuid, AppInstance::from(app)))
+            .map(|app| (app.uuid, AppInstance::from(app)))
             .collect()
     }
 }
@@ -172,14 +156,6 @@ fn onboarding_status_from(onboarded: bool, node_uuid: Uuid) -> OnboardingStatus 
 }
 
 impl MonitorModel {
-    pub fn update_app_status(&mut self, state: AppInstanceStatus) {
-        let app_guid = &state.uuid_and_version.uuid;
-        self.apps
-            .entry(*app_guid)
-            .and_modify(|e| *e = AppInstance::from(state.clone()))
-            .or_insert(AppInstance::from(state));
-    }
-
     pub fn update_app_list(&mut self, apps_list: AppsList) {
         self.apps = HashMap::from(apps_list);
     }
@@ -189,7 +165,6 @@ impl MonitorModel {
     }
 
     pub fn update_device_status(&mut self, status: crate::ipc::monitorapi::DeviceStatus) {
-        // app_summary is maintained by the separate AppSummary message.
         let ns = &mut self.node_status;
         ns.server = (!status.server.is_empty()).then_some(status.server);
         ns.onboarding_status = onboarding_status_from(status.onboarded, status.node_uuid);
@@ -200,22 +175,28 @@ impl MonitorModel {
         self.attest_error = status.attest_error;
     }
 
-    /// Number of application instances currently in the stopped (halted) state.
-    pub fn stopped_app_count(&self) -> usize {
-        self.apps
-            .values()
-            .filter(|a| {
-                matches!(
-                    a.state,
-                    AppInstanceState::Normal(SwState::Halted)
-                        | AppInstanceState::Error(SwState::Halted, _)
-                )
-            })
-            .count()
-    }
-
-    pub fn update_app_summary(&mut self, app_summary: crate::ipc::monitorapi::AppSummary) {
-        self.node_status.app_summary = app_summary;
+    /// Aggregate application instance counts by lifecycle bucket, derived from
+    /// the current app set (the TUI no longer receives a separate summary).
+    pub fn app_counts(&self) -> AppCounts {
+        let mut c = AppCounts::default();
+        for app in self.apps.values() {
+            let (sw, reported_error) = match &app.state {
+                AppInstanceState::Normal(s) => (*s, false),
+                AppInstanceState::Error(s, _) => (*s, true),
+            };
+            if reported_error || matches!(sw, SwState::Broken | SwState::Failed | SwState::Unknown)
+            {
+                c.error += 1;
+            } else {
+                match sw {
+                    SwState::Running => c.running += 1,
+                    SwState::Halting | SwState::Pausing => c.stopping += 1,
+                    SwState::Halted | SwState::Paused => c.stopped += 1,
+                    _ => c.starting += 1,
+                }
+            }
+        }
+        c
     }
 
     pub fn update_network_status(&mut self, net_status: crate::ipc::monitorapi::NetworkStatus) {
