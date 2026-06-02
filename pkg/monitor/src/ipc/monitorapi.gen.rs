@@ -335,6 +335,20 @@ pub struct Sim {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SetInterfaceConfig {
+    #[serde(rename = "iface")]
+    pub iface: String,
+    #[serde(rename = "ip")]
+    pub ip: IpMode,
+    #[serde(rename = "proxy")]
+    pub proxy: ProxySettings,
+    #[serde(rename = "ntp", default, skip_serializing_if = "Vec::is_empty")]
+    pub ntp: Vec<String>,
+    #[serde(rename = "domain")]
+    pub domain: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StaticIpConfig {
     #[serde(rename = "ip")]
     pub ip: IpAddr,
@@ -366,6 +380,16 @@ pub struct Vlan {
     pub is_mgmt: bool,
     #[serde(rename = "network")]
     pub network: PortNetwork,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "mode", rename_all = "camelCase")]
+pub enum IpMode {
+    Dhcp,
+    Static {
+        #[serde(rename = "config")]
+        config: StaticIpConfig,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -402,6 +426,8 @@ pub enum ProxySettings {
         servers: Vec<ProxyServer>,
         #[serde(rename = "exceptions", default, skip_serializing_if = "Vec::is_empty")]
         exceptions: Vec<String>,
+        #[serde(rename = "certPem", default, skip_serializing_if = "Vec::is_empty")]
+        cert_pem: Vec<String>,
     },
     None,
     Pac {

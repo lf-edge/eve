@@ -39,6 +39,8 @@ type ProxyNone struct{}
 type ProxyManual struct {
 	Servers    []ProxyServer `json:"servers"`
 	Exceptions []string      `json:"exceptions,omitempty"`
+	// CertPEM are extra CA certificates (PEM text) to trust for the proxy.
+	CertPEM []string `json:"certPem,omitempty"`
 }
 
 // ProxyPac — proxy auto-config file.

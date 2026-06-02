@@ -1,0 +1,29 @@
+{
+  "iface": "eth0",
+  "ip": {
+    "mode": "static",
+    "config": {
+      "ip": "192.0.2.10",
+      "subnet": "192.0.2.0/24",
+      "gateway": "192.0.2.1",
+      "dnsServers": [
+        "192.0.2.53",
+        "2001:db8::53"
+      ]
+    }
+  },
+  "proxy": {
+    "mode": "manual",
+    "servers": [
+      {
+        "scheme": "http",
+        "host": "proxy",
+        "port": 8080
+      }
+    ]
+  },
+  "ntp": [
+    "pool.ntp.org"
+  ],
+  "domain": "example.com"
+}

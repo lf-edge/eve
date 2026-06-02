@@ -16,10 +16,12 @@ import (
 	"net"
 	"net/netip"
 	"strings"
+	"time"
 
 	"github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/types/monitorapi"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -498,4 +500,114 @@ func firstNonEmpty(vals ...string) string {
 		}
 	}
 	return ""
+}
+
+// --- write path (TUI -> device) -------------------------------------------
+//
+// interfaceConfigToDPC is the branch-variant inverse of the read-side network
+// mapper: the TUI sends a small SetInterfaceConfig intent and we reconstruct a
+// full manual DevicePortConfig by cloning the device's current config (base)
+// and patching only the named interface.
+
+// currentDPC returns the device's currently-active port config (the base the
+// write path patches), or nil if none has been received or the list is empty.
+func currentDPC(list *types.DevicePortConfigList) *types.DevicePortConfig {
+	if list == nil {
+		return nil
+	}
+	i := list.CurrentIndex
+	if i < 0 || i >= len(list.PortConfigList) {
+		return nil
+	}
+	return &list.PortConfigList[i]
+}
+
+func interfaceConfigToDPC(base types.DevicePortConfig, intent monitorapi.SetInterfaceConfig) types.DevicePortConfig {
+	dpc := base
+	dpc.Key = "manual"
+	dpc.TimePriority = time.Now()
+	dpc.State = types.DPCStateNone
+	dpc.TestResults = types.TestResults{}
+	dpc.LastIPAndDNS = time.Time{}
+	// Clone the ports slice so we don't mutate the subscribed base in place.
+	dpc.Ports = append([]types.NetworkPortConfig(nil), base.Ports...)
+
+	for i := range dpc.Ports {
+		if dpc.Ports[i].IfName != intent.Iface {
+			continue
+		}
+		applyIPMode(&dpc.Ports[i], intent)
+		dpc.Ports[i].ProxyConfig = proxySettingsToConfig(intent.Proxy)
+	}
+	return dpc
+}
+
+func applyIPMode(port *types.NetworkPortConfig, intent monitorapi.SetInterfaceConfig) {
+	switch ip := intent.IP.(type) {
+	case monitorapi.IPStatic:
+		port.Dhcp = types.DhcpTypeStatic
+		// AddrSubnet is the host address in CIDR form (e.g. 192.0.2.10/24):
+		// the StaticIPConfig IP with the subnet's prefix length.
+		port.AddrSubnet = netip.PrefixFrom(ip.Config.IP, ip.Config.Subnet.Bits()).String()
+		if ip.Config.Gateway != nil {
+			port.Gateway = net.IP(ip.Config.Gateway.AsSlice())
+		} else {
+			port.Gateway = nil
+		}
+		port.DomainName = intent.Domain
+		port.NTPServers = netutils.NewHostnameOrIPs(intent.NTP...)
+		var dns []net.IP
+		for _, d := range ip.Config.DNSServers {
+			dns = append(dns, net.IP(d.AsSlice()))
+		}
+		port.DNSServers = dns
+	default: // IPDhcp (and any unknown): obtain config via DHCP, clear static fields.
+		port.Dhcp = types.DhcpTypeClient
+		port.AddrSubnet = ""
+		port.Gateway = nil
+		port.DomainName = ""
+		port.NTPServers = nil
+		port.DNSServers = nil
+	}
+}
+
+func proxySettingsToConfig(p monitorapi.ProxySettings) types.ProxyConfig {
+	var cfg types.ProxyConfig
+	switch v := p.(type) {
+	case monitorapi.ProxyManual:
+		for _, s := range v.Servers {
+			cfg.Proxies = append(cfg.Proxies, types.ProxyEntry{
+				Type:   schemeToProxyType(s.Scheme),
+				Server: s.Host,
+				Port:   uint32(s.Port),
+			})
+		}
+		cfg.Exceptions = strings.Join(v.Exceptions, ",")
+		for _, c := range v.CertPEM {
+			cfg.ProxyCertPEM = append(cfg.ProxyCertPEM, []byte(c))
+		}
+	case monitorapi.ProxyPac:
+		cfg.Pacfile = v.PacFile
+	case monitorapi.ProxyWpad:
+		cfg.NetworkProxyEnable = true
+		if v.URL != nil {
+			cfg.NetworkProxyURL = *v.URL
+		}
+	case monitorapi.ProxyNone:
+		// no proxy: leave zero value
+	}
+	return cfg
+}
+
+func schemeToProxyType(s monitorapi.ProxyScheme) types.NetworkProxyType {
+	switch s {
+	case monitorapi.ProxySchemeHTTPS:
+		return types.NetworkProxyTypeHTTPS
+	case monitorapi.ProxySchemeSOCKS:
+		return types.NetworkProxyTypeSOCKS
+	case monitorapi.ProxySchemeFTP:
+		return types.NetworkProxyTypeFTP
+	default:
+		return types.NetworkProxyTypeHTTP
+	}
 }

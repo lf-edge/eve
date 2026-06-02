@@ -12,11 +12,12 @@ import (
 
 	framed "github.com/getlantern/framed"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/types/monitorapi"
 )
 
 // All messages except for Request type, have the following format:
 // where type is one of the following:
-// Request, Response, NetworkStatus, DPCList, DownloaderStatus
+// Request, Response, NetworkStatus, DownloaderStatus
 // message is a json object that can be flattened
 //   {
 //		"type": "Response",
@@ -27,9 +28,9 @@ import (
 //   }
 //
 //   {
-//    	"RequestType": "SetDPC",
+//    	"RequestType": "SetInterfaceConfig",
 //	    "RequestData": {
-//	        "dddd": "test datat"
+//	        "iface": "eth0", "ip": {"mode": "dhcp"}, "proxy": {"mode": "none"}
 //	    },
 //	    "id": 15
 //   }
@@ -48,7 +49,7 @@ func (r *request) validate() error {
 		return errors.New("RequestData is nil")
 	}
 	// check supported request types
-	if (r.RequestType != "SetDPC") && (r.RequestType != "SetServer") {
+	if (r.RequestType != "SetInterfaceConfig") && (r.RequestType != "SetServer") {
 		return errors.New("Unsupported RequestType " + r.RequestType)
 	}
 	return nil
@@ -231,12 +232,19 @@ func (r *request) malformedRequestResponse(err error) *response {
 
 func (r *request) handleRequest(ctx *monitor) *response {
 	switch r.RequestType {
-	case "SetDPC":
-		// Unmarshal the request data
-		var dpc types.DevicePortConfig
-		if err := json.Unmarshal(r.RequestData, &dpc); err != nil {
+	case "SetInterfaceConfig":
+		// Decode the TUI intent and reconstruct a full manual DPC from the
+		// device's current config (branch-variant mapping in contract.go).
+		var intent monitorapi.SetInterfaceConfig
+		if err := json.Unmarshal(r.RequestData, &intent); err != nil {
 			return r.malformedRequestResponse(err)
 		}
+		base := currentDPC(ctx.lastDPCList)
+		if base == nil {
+			return r.errResponse("Failed to apply interface config",
+				errors.New("no current device port config available"))
+		}
+		dpc := interfaceConfigToDPC(*base, intent)
 		if err := ctx.IPCServer.validateDPC(dpc); err != nil {
 			return r.errResponse("Failed to validate DPC", err)
 		}

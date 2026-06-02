@@ -111,6 +111,30 @@ fn small_messages_parse() {
 }
 
 #[test]
+fn set_interface_config_parses() {
+    // Exercises a struct carrying two internally-tagged unions (IP + Proxy).
+    let s: SetInterfaceConfig = serde_json::from_str(&fixture("set_interface_config.json")).unwrap();
+    assert_eq!(s.iface, "eth0");
+    assert_eq!(s.domain, "example.com");
+    assert_eq!(s.ntp, vec!["pool.ntp.org".to_string()]);
+    match s.ip {
+        IpMode::Static { config } => {
+            assert_eq!(config.ip.to_string(), "192.0.2.10");
+            assert_eq!(config.subnet.to_string(), "192.0.2.0/24");
+        }
+        other => panic!("expected Static, got {other:?}"),
+    }
+    match s.proxy {
+        ProxySettings::Manual { servers, .. } => {
+            assert_eq!(servers[0].scheme, ProxyScheme::Http);
+            assert_eq!(servers[0].host, "proxy");
+            assert_eq!(servers[0].port, 8080);
+        }
+        other => panic!("expected Manual, got {other:?}"),
+    }
+}
+
+#[test]
 fn vault_status_locked() {
     let v: VaultStatus = serde_json::from_str(&fixture("vault_status.json")).unwrap();
     match v {
