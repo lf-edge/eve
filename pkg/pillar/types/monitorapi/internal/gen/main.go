@@ -38,6 +38,7 @@ var fset *token.FileSet
 var scalarMap = map[string]string{
 	"string":           "String",
 	"bool":             "bool",
+	"byte":             "u8",
 	"int":              "i64",
 	"int32":            "i32",
 	"int64":            "i64",
@@ -72,6 +73,7 @@ type field struct {
 	optional  bool   // pointer
 	slice     bool
 	omitempty bool
+	base64    bool   // Go []byte: JSON base64 string, Rust Vec<u8> via serde_as
 	unionName string // non-empty if the field's type is a union interface
 }
 
@@ -226,6 +228,10 @@ func emitRust(enums []enumDef, structs []structDef, unions []*unionDef, out stri
 	}
 
 	for _, s := range structs {
+		if hasBase64(s.fields) {
+			// serde_with's serde_as attribute must precede the derive.
+			b.WriteString("#[serde_as]\n")
+		}
 		emitDerives(&b, s.fields)
 		fmt.Fprintf(&b, "pub struct %s {\n", normType(s.name))
 		for _, f := range s.fields {
@@ -275,8 +281,12 @@ func rustImports(structs []structDef, unions []*unionDef) []string {
 		"MacAddr":  "use macaddr::MacAddr;",
 	}
 	needed := map[string]bool{}
+	base64 := false
 	scan := func(fields []field) {
 		for _, f := range fields {
+			if f.base64 {
+				base64 = true
+			}
 			for token := range byToken {
 				if strings.Contains(f.rustType, token) {
 					needed[byToken[token]] = true
@@ -293,6 +303,9 @@ func rustImports(structs []structDef, unions []*unionDef) []string {
 		}
 	}
 	imports := []string{"use serde::{Deserialize, Serialize};"}
+	if base64 {
+		imports = append(imports, "use serde_with::{base64::Base64, serde_as};")
+	}
 	for _, line := range byToken {
 		if needed[line] {
 			imports = append(imports, line)
@@ -300,6 +313,15 @@ func rustImports(structs []structDef, unions []*unionDef) []string {
 	}
 	sort.Strings(imports)
 	return imports
+}
+
+func hasBase64(fields []field) bool {
+	for _, f := range fields {
+		if f.base64 {
+			return true
+		}
+	}
+	return false
 }
 
 func emitDerives(b *strings.Builder, fields []field) {
@@ -323,6 +345,13 @@ func emitRustField(b *strings.Builder, f field, indent string, withPub bool) {
 	}
 	if f.optional {
 		ty = "Option<" + ty + ">"
+	}
+	if f.base64 {
+		adaptor := "Base64"
+		if f.optional {
+			adaptor = "Option<Base64>"
+		}
+		fmt.Fprintf(b, "%s#[serde_as(as = %q)]\n", indent, adaptor)
 	}
 	fmt.Fprintf(b, "%s#[serde(rename = %q", indent, f.jsonTag)
 	switch {
@@ -512,6 +541,7 @@ func collectFields(st *ast.StructType) []field {
 		}
 		jsonTag, omit := parseTag(fl.Tag)
 		base, opt, slice := rustType(fl.Type)
+		b64 := isByteSlice(fl.Type)
 		src := exprSrc(fl.Type)
 		union := ""
 		if _, ok := unionIfaces[exprName(fl.Type)]; ok {
@@ -530,11 +560,23 @@ func collectFields(st *ast.StructType) []field {
 				optional:  opt,
 				slice:     slice,
 				omitempty: omit,
+				base64:    b64,
 				unionName: union,
 			})
 		}
 	}
 	return out
+}
+
+// isByteSlice reports whether e is a []byte (Go marshals it as a base64
+// string, which the Rust side must decode via serde_with's Base64).
+func isByteSlice(e ast.Expr) bool {
+	arr, ok := e.(*ast.ArrayType)
+	if !ok {
+		return false
+	}
+	id, ok := arr.Elt.(*ast.Ident)
+	return ok && (id.Name == "byte" || id.Name == "uint8")
 }
 
 // rustType returns (baseType, isPointer, isSlice).

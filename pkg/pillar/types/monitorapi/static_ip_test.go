@@ -256,6 +256,13 @@ func fixtures() map[string]any {
 		"vault_status.json": VaultLocked{
 			Error: "Vault key unavailable", MismatchingPCRs: []uint32{0, 7},
 		},
+		"tpm_logs.json": TpmLogs{
+			LastGoodLog:   []byte{0x01, 0x02, 0x03},
+			LastFailedLog: []byte{0xde, 0xad, 0xbe, 0xef},
+			EFIVarsSuccess: []EFIVariable{
+				{Name: "BootOrder", Value: []byte{0x00, 0x01}},
+			},
+		},
 		"set_interface_config.json": SetInterfaceConfig{
 			Iface: "eth0",
 			IP:    IPStatic{Config: validSample()},

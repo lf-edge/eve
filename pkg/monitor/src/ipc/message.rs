@@ -12,10 +12,10 @@ use log::error;
 use serde::Deserialize;
 use serde::Serialize;
 
-use super::eve_types::TpmLogs;
 use super::monitorapi::AppsList;
 use super::monitorapi::DeviceStatus;
 use super::monitorapi::SetInterfaceConfig;
+use super::monitorapi::TpmLogs;
 use super::monitorapi::DownloaderStatus;
 use super::monitorapi::NetworkStatus;
 use super::monitorapi::TuiConfig;
