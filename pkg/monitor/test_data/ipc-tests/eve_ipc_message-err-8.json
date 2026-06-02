@@ -1,0 +1,249 @@
+{
+  "type": "NetworkStatus",
+  "message": {
+    "DPCKey": "zedagent",
+    "Version": 1,
+    "Testing": false,
+    "State": 3,
+    "CurrentIndex": 0,
+    "RadioSilence": {
+      "Imposed": false,
+      "ChangeInProgress": false,
+      "ChangeRequestedAt": "2024-12-15T10:27:42.79134793Z",
+      "ConfigError": ""
+    },
+    "Ports": [
+      {
+        "IfName": "",
+        "Phylabel": "WWAN-1199:9091-7:1",
+        "Logicallabel": "WWAN-1199:9091-7:1",
+        "SharedLabels": ["all", "uplink"],
+        "Alias": "",
+        "IsMgmt": true,
+        "IsL3Port": true,
+        "InvalidConfig": false,
+        "Cost": 10,
+        "Dhcp": 4,
+        "Type": 4,
+        "Subnet": { "IP": "", "Mask": null },
+        "NtpServer": "",
+        "DomainName": "",
+        "DNSServers": null,
+        "NtpServers": null,
+        "AddrInfoList": null,
+        "Up": false,
+        "MacAddr": null,
+        "DefaultRouters": null,
+        "MTU": 0,
+        "WirelessCfg": {
+          "WType": 1,
+          "CellularV2": {
+            "AccessPoints": null,
+            "Probe": {
+              "Disable": false,
+              "UserDefinedProbe": {
+                "Method": 0,
+                "ProbeHost": "",
+                "ProbePort": 0
+              }
+            },
+            "LocationTracking": false
+          },
+          "Wifi": null,
+          "Cellular": null
+        },
+        "WirelessStatus": {
+          "WType": 1,
+          "Cellular": {
+            "LogicalLabel": "",
+            "PhysAddrs": { "Interface": "", "USB": "", "PCI": "", "Dev": "" },
+            "Module": {
+              "Name": "",
+              "IMEI": "",
+              "Model": "",
+              "Manufacturer": "",
+              "Revision": "",
+              "ControlProtocol": "",
+              "OpMode": ""
+            },
+            "SimCards": null,
+            "ConfigError": "",
+            "ProbeError": "",
+            "CurrentProvider": {
+              "PLMN": "",
+              "Description": "",
+              "CurrentServing": false,
+              "Roaming": false,
+              "Forbidden": false
+            },
+            "VisibleProviders": null,
+            "CurrentRATs": null,
+            "ConnectedAt": 0,
+            "IPSettings": {
+              "Address": null,
+              "Gateway": "",
+              "DNSServers": null,
+              "MTU": 0
+            },
+            "LocationTracking": false
+          }
+        },
+        "Proxies": null,
+        "Exceptions": "",
+        "Pacfile": "",
+        "NetworkProxyEnable": false,
+        "NetworkProxyURL": "",
+        "WpadURL": "",
+        "pubsub-large-ProxyCertPEM": null,
+        "L2Type": 0,
+        "VLAN": { "ParentPort": "", "ID": 0 },
+        "Bond": {
+          "AggregatedPorts": null,
+          "Mode": 0,
+          "LacpRate": 0,
+          "MIIMonitor": {
+            "Enabled": false,
+            "Interval": 0,
+            "UpDelay": 0,
+            "DownDelay": 0
+          },
+          "ARPMonitor": { "Enabled": false, "Interval": 0, "IPTargets": null }
+        },
+        "LastFailed": "2024-12-15T10:27:51.717411876Z",
+        "LastSucceeded": "0001-01-01T00:00:00Z",
+        "LastError": "modem  is not connected, current state: ",
+        "LastWarning": ""
+      },
+      {
+        "IfName": "eth0",
+        "Phylabel": "eth0",
+        "Logicallabel": "eth0",
+        "SharedLabels": ["all", "uplink", "freeuplink"],
+        "Alias": "",
+        "IsMgmt": true,
+        "IsL3Port": true,
+        "InvalidConfig": false,
+        "Cost": 0,
+        "Dhcp": 4,
+        "Type": 4,
+        "Subnet": { "IP": "10.208.13.0", "Mask": "////AA==" },
+        "NtpServer": "",
+        "DomainName": "",
+        "DNSServers": ["10.208.13.254"],
+        "NtpServers": ["194.164.164.175", "49.12.199.148"],
+        "AddrInfoList": [
+          {
+            "Addr": "10.208.13.185",
+            "Geo": {
+              "ip": "",
+              "hostname": "",
+              "city": "",
+              "region": "",
+              "country": "",
+              "loc": "",
+              "org": "",
+              "postal": ""
+            },
+            "LastGeoTimestamp": "0001-01-01T00:00:00Z"
+          },
+          {
+            "Addr": "fe80::ea92:f839:fd59:3f34",
+            "Geo": {
+              "ip": "",
+              "hostname": "",
+              "city": "",
+              "region": "",
+              "country": "",
+              "loc": "",
+              "org": "",
+              "postal": ""
+            },
+            "LastGeoTimestamp": "0001-01-01T00:00:00Z"
+          }
+        ],
+        "Up": true,
+        "MacAddr": "tHrxYfqn",
+        "DefaultRouters": ["10.208.13.254"],
+        "MTU": 1500,
+        "WirelessCfg": {
+          "WType": 0,
+          "CellularV2": {
+            "AccessPoints": null,
+            "Probe": {
+              "Disable": false,
+              "UserDefinedProbe": {
+                "Method": 0,
+                "ProbeHost": "",
+                "ProbePort": 0
+              }
+            },
+            "LocationTracking": false
+          },
+          "Wifi": null,
+          "Cellular": null
+        },
+        "WirelessStatus": {
+          "WType": 0,
+          "Cellular": {
+            "LogicalLabel": "",
+            "PhysAddrs": { "Interface": "", "USB": "", "PCI": "", "Dev": "" },
+            "Module": {
+              "Name": "",
+              "IMEI": "",
+              "Model": "",
+              "Manufacturer": "",
+              "Revision": "",
+              "ControlProtocol": "",
+              "OpMode": ""
+            },
+            "SimCards": null,
+            "ConfigError": "",
+            "ProbeError": "",
+            "CurrentProvider": {
+              "PLMN": "",
+              "Description": "",
+              "CurrentServing": false,
+              "Roaming": false,
+              "Forbidden": false
+            },
+            "VisibleProviders": null,
+            "CurrentRATs": null,
+            "ConnectedAt": 0,
+            "IPSettings": {
+              "Address": null,
+              "Gateway": "",
+              "DNSServers": null,
+              "MTU": 0
+            },
+            "LocationTracking": false
+          }
+        },
+        "Proxies": null,
+        "Exceptions": "",
+        "Pacfile": "",
+        "NetworkProxyEnable": false,
+        "NetworkProxyURL": "",
+        "WpadURL": "",
+        "pubsub-large-ProxyCertPEM": null,
+        "L2Type": 0,
+        "VLAN": { "ParentPort": "", "ID": 0 },
+        "Bond": {
+          "AggregatedPorts": null,
+          "Mode": 0,
+          "LacpRate": 0,
+          "MIIMonitor": {
+            "Enabled": false,
+            "Interval": 0,
+            "UpDelay": 0,
+            "DownDelay": 0
+          },
+          "ARPMonitor": { "Enabled": false, "Interval": 0, "IPTargets": null }
+        },
+        "LastFailed": "0001-01-01T00:00:00Z",
+        "LastSucceeded": "2024-12-15T10:27:51.717408344Z",
+        "LastError": "",
+        "LastWarning": ""
+      }
+    ]
+  }
+}

@@ -1,0 +1,314 @@
+{
+  "type": "DPCList",
+  "message": {
+    "CurrentIndex": 0,
+    "PortConfigList": [
+      {
+        "Version": 1,
+        "Key": "manual",
+        "TimePriority": "2025-09-01T19:01:13.628458837Z",
+        "State": 6,
+        "ShaFile": "",
+        "ShaValue": null,
+        "LastFailed": "1970-01-01T00:00:00Z",
+        "LastSucceeded": "1970-01-01T00:00:00Z",
+        "LastError": "",
+        "LastWarning": "",
+        "LastIPAndDNS": "1970-01-01T00:00:00Z",
+        "Ports": [
+          {
+            "IfName": "eth0",
+            "USBAddr": "",
+            "PCIAddr": "",
+            "Phylabel": "eth0",
+            "Logicallabel": "eth0",
+            "SharedLabels": ["all", "uplink", "freeuplink"],
+            "Alias": "",
+            "NetworkUUID": "00000000-0000-0000-0000-000000000000",
+            "IsMgmt": true,
+            "IsL3Port": true,
+            "InvalidConfig": false,
+            "Cost": 0,
+            "MTU": 0,
+            "Dhcp": 1,
+            "AddrSubnet": "192.168.100.1/24",
+            "Gateway": "192.168.100.1",
+            "DomainName": "",
+            "NTPServers": [""],
+            "DNSServers": ["192.168.100.1"],
+            "Type": 4,
+            "Proxies": [{ "type": 0, "server": "192.168.100.1", "port": 3128 }],
+            "Exceptions": "",
+            "Pacfile": "",
+            "NetworkProxyEnable": false,
+            "NetworkProxyURL": "",
+            "WpadURL": "",
+            "pubsub-large-ProxyCertPEM": null,
+            "L2Type": 0,
+            "VLAN": { "ParentPort": "", "ID": 0 },
+            "Bond": {
+              "AggregatedPorts": null,
+              "Mode": 0,
+              "LacpRate": 0,
+              "MIIMonitor": {
+                "Enabled": false,
+                "Interval": 0,
+                "UpDelay": 0,
+                "DownDelay": 0
+              },
+              "ARPMonitor": {
+                "Enabled": false,
+                "Interval": 0,
+                "IPTargets": null
+              }
+            },
+            "WirelessCfg": {
+              "WType": 0,
+              "CellularV2": {
+                "AccessPoints": null,
+                "Probe": {
+                  "Disable": false,
+                  "UserDefinedProbe": {
+                    "Method": 0,
+                    "ProbeHost": "",
+                    "ProbePort": 0
+                  }
+                },
+                "LocationTracking": false
+              },
+              "Wifi": null,
+              "Cellular": null
+            },
+            "LastFailed": "2025-09-01T19:01:18.845129554Z",
+            "LastSucceeded": "0001-01-01T00:00:00Z",
+            "LastError": "All attempts to connect to https://zedcloud.alpha.zededa.net/api/v2/edgedevice/ping failed: send via eth0 with src IP 192.168.100.1: Get \"https://zedcloud.alpha.zededa.net/api/v2/edgedevice/ping\": dial tcp: lookup zedcloud.alpha.zededa.net on 192.168.100.1:53: read udp 192.168.100.1:39185-\u003e192.168.100.1:53: read: connection refused",
+            "LastWarning": "",
+            "IgnoreDhcpNtpServers": false
+          },
+          {
+            "IfName": "eth1",
+            "USBAddr": "",
+            "PCIAddr": "",
+            "Phylabel": "eth1",
+            "Logicallabel": "eth1",
+            "SharedLabels": ["all", "uplink", "freeuplink"],
+            "Alias": "",
+            "NetworkUUID": "00000000-0000-0000-0000-000000000000",
+            "IsMgmt": true,
+            "IsL3Port": true,
+            "InvalidConfig": false,
+            "Cost": 0,
+            "MTU": 0,
+            "Dhcp": 4,
+            "AddrSubnet": "",
+            "Gateway": "",
+            "DomainName": "",
+            "NTPServers": null,
+            "DNSServers": null,
+            "Type": 4,
+            "Proxies": null,
+            "Exceptions": "",
+            "Pacfile": "",
+            "NetworkProxyEnable": false,
+            "NetworkProxyURL": "",
+            "WpadURL": "",
+            "pubsub-large-ProxyCertPEM": null,
+            "L2Type": 0,
+            "VLAN": { "ParentPort": "", "ID": 0 },
+            "Bond": {
+              "AggregatedPorts": null,
+              "Mode": 0,
+              "LacpRate": 0,
+              "MIIMonitor": {
+                "Enabled": false,
+                "Interval": 0,
+                "UpDelay": 0,
+                "DownDelay": 0
+              },
+              "ARPMonitor": {
+                "Enabled": false,
+                "Interval": 0,
+                "IPTargets": null
+              }
+            },
+            "WirelessCfg": {
+              "WType": 0,
+              "CellularV2": {
+                "AccessPoints": null,
+                "Probe": {
+                  "Disable": false,
+                  "UserDefinedProbe": {
+                    "Method": 0,
+                    "ProbeHost": "",
+                    "ProbePort": 0
+                  }
+                },
+                "LocationTracking": false
+              },
+              "Wifi": null,
+              "Cellular": null
+            },
+            "LastFailed": "2025-09-01T19:01:18.84762584Z",
+            "LastSucceeded": "0001-01-01T00:00:00Z",
+            "LastError": "link not found for interface eth1",
+            "LastWarning": "",
+            "IgnoreDhcpNtpServers": false
+          }
+        ]
+      },
+      {
+        "Version": 1,
+        "Key": "lastresort",
+        "TimePriority": "1970-01-01T00:00:00Z",
+        "State": 8,
+        "ShaFile": "",
+        "ShaValue": null,
+        "LastFailed": "2025-09-01T18:55:56.379770994Z",
+        "LastSucceeded": "2025-09-01T18:35:36.939903032Z",
+        "LastError": "All attempts to connect to zedcloud.alpha.zededa.net/api/v2/edgedevice/ping failed: send via eth1: link not found for interface eth1; interface eth0: no suitable IP address available",
+        "LastWarning": "",
+        "LastIPAndDNS": "2025-09-01T18:30:36.155113902Z",
+        "Ports": [
+          {
+            "IfName": "eth0",
+            "USBAddr": "",
+            "PCIAddr": "",
+            "Phylabel": "eth0",
+            "Logicallabel": "eth0",
+            "SharedLabels": ["all", "uplink", "freeuplink"],
+            "Alias": "",
+            "NetworkUUID": "00000000-0000-0000-0000-000000000000",
+            "IsMgmt": true,
+            "IsL3Port": true,
+            "InvalidConfig": false,
+            "Cost": 0,
+            "MTU": 0,
+            "Dhcp": 4,
+            "AddrSubnet": "",
+            "Gateway": "",
+            "DomainName": "",
+            "NTPServers": null,
+            "DNSServers": null,
+            "Type": 4,
+            "Proxies": null,
+            "Exceptions": "",
+            "Pacfile": "",
+            "NetworkProxyEnable": false,
+            "NetworkProxyURL": "",
+            "WpadURL": "",
+            "pubsub-large-ProxyCertPEM": null,
+            "L2Type": 0,
+            "VLAN": { "ParentPort": "", "ID": 0 },
+            "Bond": {
+              "AggregatedPorts": null,
+              "Mode": 0,
+              "LacpRate": 0,
+              "MIIMonitor": {
+                "Enabled": false,
+                "Interval": 0,
+                "UpDelay": 0,
+                "DownDelay": 0
+              },
+              "ARPMonitor": {
+                "Enabled": false,
+                "Interval": 0,
+                "IPTargets": null
+              }
+            },
+            "WirelessCfg": {
+              "WType": 0,
+              "CellularV2": {
+                "AccessPoints": null,
+                "Probe": {
+                  "Disable": false,
+                  "UserDefinedProbe": {
+                    "Method": 0,
+                    "ProbeHost": "",
+                    "ProbePort": 0
+                  }
+                },
+                "LocationTracking": false
+              },
+              "Wifi": null,
+              "Cellular": null
+            },
+            "LastFailed": "2025-09-01T18:55:56.376909528Z",
+            "LastSucceeded": "0001-01-01T00:00:00Z",
+            "LastError": "interface eth0: no suitable IP address available",
+            "LastWarning": "",
+            "IgnoreDhcpNtpServers": false
+          },
+          {
+            "IfName": "eth1",
+            "USBAddr": "",
+            "PCIAddr": "",
+            "Phylabel": "eth1",
+            "Logicallabel": "eth1",
+            "SharedLabels": ["all", "uplink", "freeuplink"],
+            "Alias": "",
+            "NetworkUUID": "00000000-0000-0000-0000-000000000000",
+            "IsMgmt": true,
+            "IsL3Port": true,
+            "InvalidConfig": false,
+            "Cost": 0,
+            "MTU": 0,
+            "Dhcp": 4,
+            "AddrSubnet": "",
+            "Gateway": "",
+            "DomainName": "",
+            "NTPServers": null,
+            "DNSServers": null,
+            "Type": 4,
+            "Proxies": null,
+            "Exceptions": "",
+            "Pacfile": "",
+            "NetworkProxyEnable": false,
+            "NetworkProxyURL": "",
+            "WpadURL": "",
+            "pubsub-large-ProxyCertPEM": null,
+            "L2Type": 0,
+            "VLAN": { "ParentPort": "", "ID": 0 },
+            "Bond": {
+              "AggregatedPorts": null,
+              "Mode": 0,
+              "LacpRate": 0,
+              "MIIMonitor": {
+                "Enabled": false,
+                "Interval": 0,
+                "UpDelay": 0,
+                "DownDelay": 0
+              },
+              "ARPMonitor": {
+                "Enabled": false,
+                "Interval": 0,
+                "IPTargets": null
+              }
+            },
+            "WirelessCfg": {
+              "WType": 0,
+              "CellularV2": {
+                "AccessPoints": null,
+                "Probe": {
+                  "Disable": false,
+                  "UserDefinedProbe": {
+                    "Method": 0,
+                    "ProbeHost": "",
+                    "ProbePort": 0
+                  }
+                },
+                "LocationTracking": false
+              },
+              "Wifi": null,
+              "Cellular": null
+            },
+            "LastFailed": "2025-09-01T18:55:56.378268398Z",
+            "LastSucceeded": "0001-01-01T00:00:00Z",
+            "LastError": "missing interface eth1",
+            "LastWarning": "",
+            "IgnoreDhcpNtpServers": false
+          }
+        ]
+      }
+    ]
+  }
+}
