@@ -133,6 +133,38 @@ pub struct CellProvider {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeviceStatus {
+    #[serde(rename = "server")]
+    pub server: String,
+    #[serde(rename = "nodeUuid")]
+    pub node_uuid: Uuid,
+    #[serde(rename = "onboarded")]
+    pub onboarded: bool,
+    #[serde(rename = "nodeName")]
+    pub node_name: String,
+    #[serde(rename = "serial")]
+    pub serial: String,
+    #[serde(rename = "hardwareModel")]
+    pub hardware_model: String,
+    #[serde(rename = "configStatus")]
+    pub config_status: ConfigGetStatus,
+    #[serde(rename = "deviceState")]
+    pub device_state: DeviceState,
+    #[serde(rename = "bootReason")]
+    pub boot_reason: BootReason,
+    #[serde(rename = "rebootReason")]
+    pub reboot_reason: String,
+    #[serde(rename = "maintenanceMode")]
+    pub maintenance_mode: bool,
+    #[serde(rename = "attestState")]
+    pub attest_state: AttestState,
+    #[serde(rename = "attestError")]
+    pub attest_error: String,
+    #[serde(rename = "vault")]
+    pub vault: VaultStatus,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DownloaderStatus {
     #[serde(rename = "name")]
     pub name: String,
@@ -148,12 +180,6 @@ pub struct DownloaderStatus {
     pub total_size: i64,
     #[serde(rename = "error")]
     pub error: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LedBlinkCounter {
-    #[serde(rename = "blinkCounter")]
-    pub blink_counter: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -192,28 +218,6 @@ pub struct NetworkStatus {
     pub dpc_key: String,
     #[serde(rename = "interfaces", default, skip_serializing_if = "Vec::is_empty")]
     pub interfaces: Vec<NetworkInterface>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct NodeStatus {
-    #[serde(rename = "server")]
-    pub server: String,
-    #[serde(rename = "nodeUuid")]
-    pub node_uuid: Uuid,
-    #[serde(rename = "onboarded")]
-    pub onboarded: bool,
-    #[serde(rename = "nodeName")]
-    pub node_name: String,
-    #[serde(rename = "serial")]
-    pub serial: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct OnboardingStatus {
-    #[serde(rename = "deviceUuid")]
-    pub device_uuid: Uuid,
-    #[serde(rename = "hardwareModel")]
-    pub hardware_model: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -298,24 +302,6 @@ pub struct Vlan {
     pub is_mgmt: bool,
     #[serde(rename = "network")]
     pub network: PortNetwork,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ZedAgentStatus {
-    #[serde(rename = "configStatus")]
-    pub config_status: ConfigGetStatus,
-    #[serde(rename = "deviceState")]
-    pub device_state: DeviceState,
-    #[serde(rename = "attestState")]
-    pub attest_state: AttestState,
-    #[serde(rename = "attestError")]
-    pub attest_error: String,
-    #[serde(rename = "bootReason")]
-    pub boot_reason: BootReason,
-    #[serde(rename = "rebootReason")]
-    pub reboot_reason: String,
-    #[serde(rename = "maintenanceMode")]
-    pub maintenance_mode: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

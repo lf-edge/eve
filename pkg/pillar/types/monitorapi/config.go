@@ -7,9 +7,3 @@ package monitorapi
 type TUIConfig struct {
 	LogLevel string `json:"logLevel"`
 }
-
-// LedBlinkCounter is the current LED blink-pattern code (see EVE's
-// ledmanager); the TUI may surface it as a connectivity indicator.
-type LedBlinkCounter struct {
-	BlinkCounter uint32 `json:"blinkCounter"`
-}
