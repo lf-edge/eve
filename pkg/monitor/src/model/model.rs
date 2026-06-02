@@ -3,15 +3,12 @@
 
 use std::{cell::RefCell, collections::HashMap};
 
-use chrono::{DateTime, Utc};
 use log::{error, info};
 use uuid::Uuid;
 
 use crate::{
     ipc::eve_types::{
-        AppInstanceStatus, AppsList, DataSecAtRestStatus,
-        DevicePortConfig, DevicePortConfigList, ErrorAndTime,
-        EveVaultStatus, PCRStatus, SwState, TpmLogs,
+        AppInstanceStatus, AppsList, DevicePortConfig, DevicePortConfigList, SwState, TpmLogs,
     },
     ipc::monitorapi::{DownloaderStatus, ZedAgentStatus},
     model::device::tpmlog_diff::TpmLogDiff,
@@ -76,28 +73,12 @@ pub struct AppInstance {
 }
 
 // `time` is populated from EVE error reports; kept as intended API.
-#[allow(dead_code)]
-#[derive(Debug)]
-pub struct EveError {
-    pub error: String,
-    pub time: DateTime<Utc>,
-}
-
-impl From<ErrorAndTime> for EveError {
-    fn from(error_and_time: ErrorAndTime) -> Self {
-        Self {
-            error: error_and_time.error_description.error,
-            time: error_and_time.error_description.error_time,
-        }
-    }
-}
-
 #[derive(Debug)]
 pub enum VaultStatus {
     Unknown,
-    EncryptionDisabled(EveError, bool),
+    EncryptionDisabled(String, bool),
     Unlocked(bool),
-    Locked(EveError, Option<Vec<u32>>),
+    Locked(String, Option<Vec<u32>>),
 }
 
 impl VaultStatus {
@@ -126,25 +107,19 @@ pub struct MonitorModel {
     pub ipc_connected: bool,
 }
 
-impl From<EveVaultStatus> for VaultStatus {
-    fn from(vault_status: EveVaultStatus) -> Self {
-        let tpm_used = vault_status.pcr_status == PCRStatus::PcrEnabled;
-        match vault_status.status {
-            DataSecAtRestStatus::DataSecAtRestUnknown => Self::Unknown,
-            DataSecAtRestStatus::DataSecAtRestDisabled => {
-                let reason = EveError::from(vault_status.error_and_time);
-                Self::EncryptionDisabled(reason, tpm_used)
-            }
-            DataSecAtRestStatus::DataSecAtRestEnabled => Self::Unlocked(tpm_used),
-            DataSecAtRestStatus::DataSecAtRestError => {
-                let err = EveError::from(vault_status.error_and_time);
-
-                let pcrs = if err.error.contains("Vault key unavailable") {
-                    vault_status.mismatching_pcrs
-                } else {
-                    None
-                };
-                Self::Locked(err, pcrs)
+impl From<crate::ipc::monitorapi::VaultStatus> for VaultStatus {
+    fn from(v: crate::ipc::monitorapi::VaultStatus) -> Self {
+        use crate::ipc::monitorapi::VaultStatus as V;
+        match v {
+            V::Unknown => Self::Unknown,
+            V::Disabled { tpm_used, error } => Self::EncryptionDisabled(error, tpm_used),
+            V::Unlocked { tpm_used } => Self::Unlocked(tpm_used),
+            V::Locked {
+                error,
+                mismatching_pcrs,
+            } => {
+                let pcrs = (!mismatching_pcrs.is_empty()).then_some(mismatching_pcrs);
+                Self::Locked(error, pcrs)
             }
         }
     }
@@ -245,7 +220,7 @@ impl MonitorModel {
         self.network = crate::model::device::network::interfaces_from(&net_status);
     }
 
-    pub fn update_vault_status(&mut self, vault_status: EveVaultStatus) {
+    pub fn update_vault_status(&mut self, vault_status: crate::ipc::monitorapi::VaultStatus) {
         self.vault_status = VaultStatus::from(vault_status);
     }
 

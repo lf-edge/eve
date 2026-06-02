@@ -126,6 +126,64 @@ func UnmarshalProxySettings(b []byte) (ProxySettings, error) {
 	}
 }
 
+func (v VaultDisabled) MarshalJSON() ([]byte, error) {
+	type alias VaultDisabled
+	return marshalTagged("state", "disabled", alias(v))
+}
+
+func (v VaultLocked) MarshalJSON() ([]byte, error) {
+	type alias VaultLocked
+	return marshalTagged("state", "locked", alias(v))
+}
+
+func (v VaultUnknown) MarshalJSON() ([]byte, error) {
+	type alias VaultUnknown
+	return marshalTagged("state", "unknown", alias(v))
+}
+
+func (v VaultUnlocked) MarshalJSON() ([]byte, error) {
+	type alias VaultUnlocked
+	return marshalTagged("state", "unlocked", alias(v))
+}
+
+// UnmarshalVaultStatus decodes an internally-tagged VaultStatus.
+func UnmarshalVaultStatus(b []byte) (VaultStatus, error) {
+	var disc struct {
+		Tag string `json:"state"`
+	}
+	if err := json.Unmarshal(b, &disc); err != nil {
+		return nil, err
+	}
+	switch disc.Tag {
+	case "disabled":
+		var v VaultDisabled
+		if err := json.Unmarshal(b, &v); err != nil {
+			return nil, err
+		}
+		return v, nil
+	case "locked":
+		var v VaultLocked
+		if err := json.Unmarshal(b, &v); err != nil {
+			return nil, err
+		}
+		return v, nil
+	case "unknown":
+		var v VaultUnknown
+		if err := json.Unmarshal(b, &v); err != nil {
+			return nil, err
+		}
+		return v, nil
+	case "unlocked":
+		var v VaultUnlocked
+		if err := json.Unmarshal(b, &v); err != nil {
+			return nil, err
+		}
+		return v, nil
+	default:
+		return nil, fmt.Errorf("unknown VaultStatus state %q", disc.Tag)
+	}
+}
+
 func (x *NetworkInterface) UnmarshalJSON(b []byte) error {
 	var raw struct {
 		Name    string          `json:"name"`
