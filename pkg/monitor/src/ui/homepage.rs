@@ -1,7 +1,7 @@
 // Copyright (c) 2024-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::ipc::eve_types::DownloaderStatus;
+use crate::ipc::monitorapi::DownloaderStatus;
 use crate::model::device::summary::DeviceSummary;
 use ratatui::text::Line;
 use ratatui::text::Text;

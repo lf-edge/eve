@@ -60,6 +60,124 @@ func tuiConfigToContract(logLevel string) monitorapi.TUIConfig {
 	return monitorapi.TUIConfig{LogLevel: logLevel}
 }
 
+func downloaderStatusToContract(s types.DownloaderStatus) monitorapi.DownloaderStatus {
+	return monitorapi.DownloaderStatus{
+		Name:        s.Name,
+		State:       s.State.String(),
+		ContentType: s.ContentType,
+		Progress:    uint32(s.Progress),
+		CurrentSize: s.CurrentSize,
+		TotalSize:   s.TotalSize,
+		Error:       s.Error,
+	}
+}
+
+func zedAgentStatusToContract(s types.ZedAgentStatus) monitorapi.ZedAgentStatus {
+	return monitorapi.ZedAgentStatus{
+		ConfigStatus:    configGetStatusToContract(s.ConfigGetStatus),
+		DeviceState:     deviceStateToContract(s.DeviceState),
+		AttestState:     attestStateToContract(s.AttestState),
+		AttestError:     s.AttestError,
+		BootReason:      bootReasonToContract(s.RequestedBootReason),
+		RebootReason:    s.RequestedRebootReason,
+		MaintenanceMode: s.MaintenanceMode,
+	}
+}
+
+func configGetStatusToContract(s types.ConfigGetStatus) monitorapi.ConfigGetStatus {
+	switch s {
+	case types.ConfigGetFail:
+		return monitorapi.ConfigGetStatusFail
+	case types.ConfigGetTemporaryFail:
+		return monitorapi.ConfigGetStatusTemporaryFail
+	case types.ConfigGetReadSaved:
+		return monitorapi.ConfigGetStatusReadSaved
+	default:
+		return monitorapi.ConfigGetStatusSuccess
+	}
+}
+
+func deviceStateToContract(s types.DeviceState) monitorapi.DeviceState {
+	switch s {
+	case types.DEVICE_STATE_ONLINE:
+		return monitorapi.DeviceStateOnline
+	case types.DEVICE_STATE_REBOOTING:
+		return monitorapi.DeviceStateRebooting
+	case types.DEVICE_STATE_MAINTENANCE_MODE:
+		return monitorapi.DeviceStateMaintenanceMode
+	case types.DEVICE_STATE_BASEOS_UPDATING:
+		return monitorapi.DeviceStateBaseOsUpdating
+	case types.DEVICE_STATE_BOOTING:
+		return monitorapi.DeviceStateBooting
+	case types.DEVICE_STATE_PREPARING_POWEROFF:
+		return monitorapi.DeviceStatePreparingPowerOff
+	case types.DEVICE_STATE_POWERING_OFF:
+		return monitorapi.DeviceStatePoweringOff
+	case types.DEVICE_STATE_PREPARED_POWEROFF:
+		return monitorapi.DeviceStatePreparedPowerOff
+	default:
+		return monitorapi.DeviceStateUnspecified
+	}
+}
+
+func attestStateToContract(s types.AttestState) monitorapi.AttestState {
+	switch s {
+	case types.StateNonceWait:
+		return monitorapi.AttestStateNonceWait
+	case types.StateInternalQuoteWait:
+		return monitorapi.AttestStateInternalQuoteWait
+	case types.StateInternalEscrowWait:
+		return monitorapi.AttestStateInternalEscrowWait
+	case types.StateAttestWait:
+		return monitorapi.AttestStateAttestWait
+	case types.StateAttestEscrowWait:
+		return monitorapi.AttestStateAttestEscrowWait
+	case types.StateRestartWait:
+		return monitorapi.AttestStateRestartWait
+	case types.StateComplete:
+		return monitorapi.AttestStateComplete
+	default: // StateNone, StateAny
+		return monitorapi.AttestStateNone
+	}
+}
+
+func bootReasonToContract(s types.BootReason) monitorapi.BootReason {
+	switch s {
+	case types.BootReasonFirst:
+		return monitorapi.BootReasonFirst
+	case types.BootReasonRebootCmd:
+		return monitorapi.BootReasonRebootCmd
+	case types.BootReasonUpdate:
+		return monitorapi.BootReasonUpdate
+	case types.BootReasonFallback:
+		return monitorapi.BootReasonFallback
+	case types.BootReasonDisconnect:
+		return monitorapi.BootReasonDisconnect
+	case types.BootReasonFatal:
+		return monitorapi.BootReasonFatal
+	case types.BootReasonOOM:
+		return monitorapi.BootReasonOom
+	case types.BootReasonWatchdogHung:
+		return monitorapi.BootReasonWatchdogHung
+	case types.BootReasonWatchdogPid:
+		return monitorapi.BootReasonWatchdogPid
+	case types.BootReasonKernel:
+		return monitorapi.BootReasonKernel
+	case types.BootReasonPowerFail:
+		return monitorapi.BootReasonPowerFail
+	case types.BootReasonUnknown:
+		return monitorapi.BootReasonUnknown
+	case types.BootReasonVaultFailure:
+		return monitorapi.BootReasonVaultFailure
+	case types.BootReasonPoweroffCmd:
+		return monitorapi.BootReasonPoweroffCmd
+	case types.BootReasonParseFail:
+		return monitorapi.BootReasonParseFail
+	default:
+		return monitorapi.BootReasonNone
+	}
+}
+
 // deviceNetworkStatusToContract maps the runtime network status, nesting VLAN
 // sub-interfaces under their parent physical port so the TUI gets a ready-made
 // tree instead of a flat list it must correlate.

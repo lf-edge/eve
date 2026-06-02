@@ -1,0 +1,9 @@
+{
+  "name": "image.qcow2",
+  "state": "DOWNLOADING",
+  "contentType": "application/octet-stream",
+  "progress": 42,
+  "currentSize": 4200,
+  "totalSize": 10000,
+  "error": ""
+}
