@@ -364,3 +364,25 @@ pub enum ProxySettings {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "camelCase")]
+pub enum VaultStatus {
+    Disabled {
+        #[serde(rename = "tpmUsed")]
+        tpm_used: bool,
+        #[serde(rename = "error")]
+        error: String,
+    },
+    Locked {
+        #[serde(rename = "error")]
+        error: String,
+        #[serde(rename = "mismatchingPcrs", default, skip_serializing_if = "Vec::is_empty")]
+        mismatching_pcrs: Vec<u32>,
+    },
+    Unknown,
+    Unlocked {
+        #[serde(rename = "tpmUsed")]
+        tpm_used: bool,
+    },
+}
+

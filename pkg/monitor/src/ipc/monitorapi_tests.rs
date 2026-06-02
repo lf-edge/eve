@@ -117,6 +117,18 @@ fn downloader_and_zedagent_parse() {
 }
 
 #[test]
+fn vault_status_locked() {
+    let v: VaultStatus = serde_json::from_str(&fixture("vault_status.json")).unwrap();
+    match v {
+        VaultStatus::Locked { error, mismatching_pcrs } => {
+            assert_eq!(error, "Vault key unavailable");
+            assert_eq!(mismatching_pcrs, vec![0, 7]);
+        }
+        other => panic!("expected Locked, got {other:?}"),
+    }
+}
+
+#[test]
 fn node_status_parses() {
     let n: NodeStatus = serde_json::from_str(&fixture("node_status.json")).unwrap();
     assert_eq!(n.node_name, "edge-node-01");

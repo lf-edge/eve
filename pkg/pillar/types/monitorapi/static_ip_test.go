@@ -204,6 +204,9 @@ func fixtures() map[string]any {
 			AttestState: AttestStateComplete, BootReason: BootReasonRebootCmd,
 			RebootReason: "scheduled",
 		},
+		"vault_status.json": VaultLocked{
+			Error: "Vault key unavailable", MismatchingPCRs: []uint32{0, 7},
+		},
 	}
 }
 
