@@ -10,6 +10,9 @@ pub mod message;
 #[path = "monitorapi.gen.rs"]
 pub mod monitorapi;
 
+// Hand-written helpers on the generated contract types.
+mod tpm;
+
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

@@ -111,6 +111,20 @@ fn small_messages_parse() {
 }
 
 #[test]
+fn tpm_logs_base64_round_trips() {
+    // Go marshals []byte as a base64 string; the generated serde_with Base64
+    // adaptor must decode it back to raw bytes.
+    let t: TpmLogs = serde_json::from_str(&fixture("tpm_logs.json")).unwrap();
+    assert_eq!(t.last_good_log, vec![0x01, 0x02, 0x03]);
+    assert_eq!(t.last_failed_log, vec![0xde, 0xad, 0xbe, 0xef]);
+    assert_eq!(t.efi_vars_success.len(), 1);
+    assert_eq!(t.efi_vars_success[0].name, "BootOrder");
+    assert_eq!(t.efi_vars_success[0].value, vec![0x00, 0x01]);
+    // backup logs were absent -> empty, not present on the wire
+    assert!(t.backup_good_log.is_empty());
+}
+
+#[test]
 fn set_interface_config_parses() {
     // Exercises a struct carrying two internally-tagged unions (IP + Proxy).
     let s: SetInterfaceConfig = serde_json::from_str(&fixture("set_interface_config.json")).unwrap();

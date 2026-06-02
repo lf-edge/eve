@@ -1,0 +1,10 @@
+{
+  "last_failed_log": "3q2+7w==",
+  "last_good_log": "AQID",
+  "efi_vars_success": [
+    {
+      "name": "BootOrder",
+      "value": "AAE="
+    }
+  ]
+}
