@@ -12,12 +12,10 @@ use log::error;
 use serde::Deserialize;
 use serde::Serialize;
 
-use super::eve_types::AppInstanceStatus;
-use super::eve_types::AppsList;
 use super::eve_types::DevicePortConfig;
 use super::eve_types::DevicePortConfigList;
 use super::eve_types::TpmLogs;
-use super::monitorapi::AppSummary;
+use super::monitorapi::AppsList;
 use super::monitorapi::DeviceStatus;
 use super::monitorapi::DownloaderStatus;
 use super::monitorapi::NetworkStatus;
@@ -59,8 +57,6 @@ pub enum IpcMessage {
     NetworkStatus(NetworkStatus),
     DPCList(DevicePortConfigList),
     DownloaderStatus(DownloaderStatus),
-    AppStatus(AppInstanceStatus),
-    AppSummary(AppSummary),
     AppsList(AppsList),
     TUIConfig(TuiConfig),
     TpmLogs(TpmLogs),

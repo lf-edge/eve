@@ -45,10 +45,6 @@ type tpmLogs struct {
 	EfiVarsFailed   []efiVariable `json:"efi_vars_failed,omitempty"`
 }
 
-type appInstancesStatus struct {
-	Apps []types.AppInstanceStatus `json:"apps"`
-}
-
 // sendDeviceStatus assembles and emits the aggregated node-level snapshot from
 // the latest of each input the handlers have stored. Deduped to avoid resending
 // an unchanged snapshot.
@@ -79,10 +75,7 @@ func (ctx *monitor) sendAppsList() {
 	// send the application list to the client
 	// empty list is allowed
 	appStatus := ctx.getAppInstancesStatus()
-	apps := appInstancesStatus{
-		Apps: appStatus,
-	}
-	ctx.IPCServer.sendIpcMessage("AppsList", apps)
+	ctx.IPCServer.sendIpcMessage("AppsList", appsListToContract(appStatus))
 }
 
 func readEfiVars(fsys fs.FS) ([]efiVariable, error) {
