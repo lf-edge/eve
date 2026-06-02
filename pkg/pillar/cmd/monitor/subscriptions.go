@@ -67,11 +67,10 @@ func handleDPCModify(ctxArg interface{}, key string,
 
 func handleDPCUpdate(statusArg interface{}, ctxArg interface{}) {
 	status := statusArg.(types.DevicePortConfigList)
-	if status.CurrentIndex == -1 {
-		return
-	}
 	ctx := ctxArg.(*monitor)
-	ctx.IPCServer.sendIpcMessage("DPCList", status)
+	// Keep the current port config as the base for the write path; the TUI
+	// derives the active DPC key from NetworkStatus and never needs the list.
+	ctx.lastDPCList = &status
 }
 
 func handleAppInstanceStatusCreate(ctxArg interface{}, key string,

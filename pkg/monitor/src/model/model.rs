@@ -7,7 +7,7 @@ use log::{error, info};
 use uuid::Uuid;
 
 use crate::{
-    ipc::eve_types::{DevicePortConfig, DevicePortConfigList, TpmLogs},
+    ipc::eve_types::TpmLogs,
     ipc::monitorapi::{
         AppInstance as ContractAppInstance, AppsList, AttestState, DownloaderStatus, SwState,
     },
@@ -89,7 +89,6 @@ pub struct MonitorModel {
     pub node_status: NodeStatus,
     pub apps: HashMap<Uuid, AppInstance>,
     pub vault_status: VaultStatus,
-    pub dpc_list: Option<DevicePortConfigList>,
     pub dpc_key: Option<String>,
     pub attest_state: Option<AttestState>,
     pub attest_error: String,
@@ -204,20 +203,6 @@ impl MonitorModel {
         self.network = crate::model::device::network::interfaces_from(&net_status);
     }
 
-    pub fn set_dpc_list(&mut self, dpc_list: DevicePortConfigList) {
-        self.dpc_list = Some(dpc_list);
-    }
-
-    pub fn get_dpc_list(&self) -> Option<&DevicePortConfigList> {
-        self.dpc_list.as_ref()
-    }
-
-    pub fn get_current_dpc(&self) -> Option<&DevicePortConfig> {
-        let key = self.dpc_key.clone()?;
-        self.get_dpc_list()?.get_dpc_by_key(&key)
-    }
-
-
     pub fn update_tpm_logs(&mut self, logs: TpmLogs) {
         info!("Got TPM logs from EVE");
 
@@ -272,7 +257,6 @@ impl Default for MonitorModel {
             node_status: NodeStatus::default(),
             apps: HashMap::new(),
             vault_status: VaultStatus::Unknown,
-            dpc_list: None,
             dpc_key: None,
             attest_state: None,
             attest_error: String::new(),

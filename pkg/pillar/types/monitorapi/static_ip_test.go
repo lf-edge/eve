@@ -158,6 +158,48 @@ func TestUnionRoundTrip(t *testing.T) {
 	}
 }
 
+// TestSetInterfaceConfigRoundTrip exercises a struct carrying TWO union fields
+// (IP + Proxy): the generated parent UnmarshalJSON must dispatch both.
+func TestSetInterfaceConfigRoundTrip(t *testing.T) {
+	orig := SetInterfaceConfig{
+		Iface:  "eth0",
+		IP:     IPStatic{Config: validSample()},
+		Proxy:  ProxyManual{Servers: []ProxyServer{{Scheme: ProxySchemeHTTP, Host: "p", Port: 3128}}},
+		NTP:    []string{"pool.ntp.org"},
+		Domain: "example.com",
+	}
+	b, err := json.Marshal(orig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"ip":{"mode":"static"`) ||
+		!strings.Contains(string(b), `"proxy":{"mode":"manual"`) {
+		t.Fatalf("union tags missing: %s", b)
+	}
+	var got SetInterfaceConfig
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := got.IP.(IPStatic); !ok {
+		t.Fatalf("IP dispatched to wrong variant: %T", got.IP)
+	}
+	if _, ok := got.Proxy.(ProxyManual); !ok {
+		t.Fatalf("Proxy dispatched to wrong variant: %T", got.Proxy)
+	}
+	if !reflect.DeepEqual(orig, got) {
+		t.Fatalf("round-trip mismatch:\n orig: %+v\n got:  %+v", orig, got)
+	}
+
+	// DHCP variant has no payload beyond the tag.
+	d, err := json.Marshal(SetInterfaceConfig{Iface: "eth0", IP: IPDhcp{}, Proxy: ProxyNone{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(d), `"ip":{"mode":"dhcp"}`) {
+		t.Fatalf("dhcp tag missing: %s", d)
+	}
+}
+
 // fixtures is the canonical set of wire payloads the Rust side consumes. They
 // are produced by Go (the source of truth for the wire format) — the proxy
 // entries also exercise the generated Go union marshaller.
@@ -213,6 +255,15 @@ func fixtures() map[string]any {
 		},
 		"vault_status.json": VaultLocked{
 			Error: "Vault key unavailable", MismatchingPCRs: []uint32{0, 7},
+		},
+		"set_interface_config.json": SetInterfaceConfig{
+			Iface: "eth0",
+			IP:    IPStatic{Config: validSample()},
+			Proxy: ProxyManual{
+				Servers: []ProxyServer{{Scheme: ProxySchemeHTTP, Host: "proxy", Port: 8080}},
+			},
+			NTP:    []string{"pool.ntp.org"},
+			Domain: "example.com",
 		},
 	}
 }
