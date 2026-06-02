@@ -1,0 +1,4 @@
+{
+  "mode": "pac",
+  "pacFile": "https://example.com/wpad.dat"
+}

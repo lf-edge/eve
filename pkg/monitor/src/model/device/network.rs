@@ -1,14 +1,13 @@
-// Copyright (c) 2024-2025 Zededa, Inc.
+// Copyright (c) 2024-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
-use crate::ipc::eve_types::{DhcpType, NetworkPortStatus, NetworkProxyType, WirelessType};
+use crate::ipc::monitorapi;
 use ipnet::IpNet;
 use macaddr::MacAddr;
 
-// Intended model API for network config/status; not yet wired everywhere.
-#[allow(dead_code)]
+#[allow(dead_code)] // intended API, not yet consumed by the UI
 pub struct NetworkStatus {
     pub interfaces: Vec<NetworkInterfaceStatus>,
 }
@@ -37,7 +36,6 @@ pub enum NetworkType {
 }
 
 impl NetworkType {
-    // Kept as an inherent helper rather than a Display impl to match callers.
     #[allow(clippy::inherent_to_string)]
     pub fn to_string(&self) -> String {
         match self {
@@ -48,8 +46,7 @@ impl NetworkType {
     }
 }
 
-// Intended interface-config model API; not yet wired into the UI.
-#[allow(dead_code)]
+#[allow(dead_code)] // intended API, not yet consumed by the UI
 pub enum IpConfig {
     Static {
         ip: Vec<IpAddr>,
@@ -60,8 +57,7 @@ pub enum IpConfig {
     Dhcp,
 }
 
-// Intended interface-config model API; not yet wired into the UI.
-#[allow(dead_code)]
+#[allow(dead_code)] // intended API, not yet consumed by the UI
 pub enum PhyConfig {
     Ethernet { mtu: u32 },
     WiFi { ssid: String, password: String },
@@ -97,94 +93,13 @@ pub enum ProxyConfig {
     },
 }
 
-impl ProxyConfig {
-    fn is_manual(&self) -> bool {
-        if let ProxyConfig::Manual {
-            http,
-            https,
-            ftp,
-            socks,
-        } = self
-        {
-            http.is_some() || https.is_some() || ftp.is_some() || socks.is_some()
-        } else {
-            false
-        }
-    }
-}
-
-impl From<&crate::ipc::eve_types::ProxyConfig> for ProxyConfig {
-    fn from(port_proxy_config: &crate::ipc::eve_types::ProxyConfig) -> Self {
-        let iface_proxy_config = if port_proxy_config.network_proxy_enable {
-            ProxyConfig::Wad {
-                url: port_proxy_config.network_proxy_url.clone(),
-            }
-        } else if !port_proxy_config.pacfile.is_empty() {
-            ProxyConfig::Pac {
-                url: port_proxy_config.pacfile.clone(),
-            }
-        } else if let Some(proxies) = &port_proxy_config.proxies {
-            let mut http_proxy = None;
-            let mut https_proxy = None;
-            let mut ftp_proxy = None;
-            let mut socks_proxy = None;
-
-            proxies.iter().for_each(|proxy| match proxy.proxy_type {
-                NetworkProxyType::HTTP => {
-                    http_proxy = Some(ProxyHost {
-                        server: proxy.server.clone(),
-                        port: proxy.port,
-                    });
-                }
-                NetworkProxyType::SOCKS => {
-                    socks_proxy = Some(ProxyHost {
-                        server: proxy.server.clone(),
-                        port: proxy.port,
-                    });
-                }
-                NetworkProxyType::FTP => {
-                    ftp_proxy = Some(ProxyHost {
-                        server: proxy.server.clone(),
-                        port: proxy.port,
-                    });
-                }
-                NetworkProxyType::HTTPS => {
-                    https_proxy = Some(ProxyHost {
-                        server: proxy.server.clone(),
-                        port: proxy.port,
-                    });
-                }
-                NetworkProxyType::NOPROXY => {}
-                NetworkProxyType::LAST => {}
-            });
-
-            let manual_proxies = ProxyConfig::Manual {
-                http: http_proxy,
-                https: https_proxy,
-                ftp: ftp_proxy,
-                socks: socks_proxy,
-            };
-
-            if manual_proxies.is_manual() {
-                manual_proxies
-            } else {
-                ProxyConfig::None
-            }
-        } else {
-            ProxyConfig::None
-        };
-        iface_proxy_config
-    }
-}
-
 impl Default for PhyConfig {
     fn default() -> Self {
         PhyConfig::Ethernet { mtu: 1500 }
     }
 }
 
-// Intended interface-config model API; not yet wired into the UI.
-#[allow(dead_code)]
+#[allow(dead_code)] // intended API, not yet consumed by the UI
 pub struct InterfaceConfig {
     pub name: String,
     pub ip_config: IpConfig,
@@ -219,16 +134,6 @@ pub trait ToInnerIpAddr {
     fn to_ipv6(&self) -> Option<Ipv6Addr>;
 }
 
-pub trait IpV6LinikLocal {
-    fn is_link_local(&self) -> bool;
-}
-
-impl IpV6LinikLocal for Ipv6Addr {
-    fn is_link_local(&self) -> bool {
-        self.segments()[0] == 0xfe80
-    }
-}
-
 impl ToInnerIpAddr for IpAddr {
     fn to_ipv4(&self) -> Option<Ipv4Addr> {
         match self {
@@ -245,114 +150,144 @@ impl ToInnerIpAddr for IpAddr {
     }
 }
 
-impl From<&NetworkPortStatus> for NetworkInterfaceStatus {
-    fn from(port: &NetworkPortStatus) -> Self {
-        // parse address list
-        let ipv4 = port.addr_info_list.as_ref().map(|addr_info_list| {
-            addr_info_list
-                .iter()
-                .filter(|addr_info| addr_info.addr.is_ipv4())
-                .map(|addr_info| addr_info.addr.to_ipv4().unwrap())
-                .collect()
-        });
+impl NetworkInterfaceStatus {
+    pub fn is_connected(&self) -> bool {
+        self.errors.is_none() && self.up
+    }
+}
 
-        let ipv6 = port.addr_info_list.as_ref().map(|addr_info_list| {
-            addr_info_list
-                .iter()
-                .filter(|addr_info| addr_info.addr.is_ipv6())
-                .map(|addr_info| addr_info.addr.to_ipv6().unwrap())
-                // interfaces in EVE always have link local address which are not useful for the en user
-                .filter(|addr| !addr.is_link_local())
-                .collect()
-        });
+// ---------------------------------------------------------------------------
+// Conversion from the monitorapi contract.
+//
+// The heavy parsing (address-family split, link-local filtering, proxy-mode
+// detection, wireless decoding) now happens in the Go mapper, so these are
+// largely straight field copies. The contract nests VLANs under their parent;
+// the current UI consumes a flat list, so interfaces_from flattens them (VLANs
+// become additional entries, as they appeared before). Surfacing the nesting
+// and richer cellular detail is a later display change.
+// ---------------------------------------------------------------------------
 
-        // set media type
-        let media = match port.wireless_cfg.w_type {
-            WirelessType::None => NetworkType::Ethernet,
-            WirelessType::Wifi => NetworkType::WiFi(WiFiStatus {
-                //FIXME: why we have a Vec of WifiConfig?
-                ssid: port
-                    .wireless_cfg
-                    .wifi
-                    .as_ref().map(|w| w[0].ssid.clone()),
-            }),
-            WirelessType::Cellular => NetworkType::Cellular(CellularStatus {
-                // A modem can have 0 or multiple sims
-                sims: port.wireless_cfg.cellular_v2.as_ref().and_then(|c| {
-                    c.access_points.as_ref().map(|a| a.iter()
-                                .map(|s| SimStatus {
-                                    apn: s.apn.clone(),
-                                    slot: u32::from(s.sim_slot),
-                                })
-                                .collect())
-                }),
-            }),
-        };
-
-        let is_dhcp = port.dhcp == DhcpType::Client;
-
-        // collect DNS servers
-        let dns = port.dns_servers.as_ref().map(|dns_servers| {
-            dns_servers.to_vec()
-        });
-
-        // collect NTP servers. Some may come from DHCP as IpAddr, others are FQDN from
-        // network configuration. Collect both types in the same list as strings
-
-        let mut ntp_servers = vec![];
-        // collect manually configured NTP servers
-        if let Some(configured_ntp_servers) = &port.configured_ntp_servers {
-            ntp_servers.extend(configured_ntp_servers.clone());
+/// interfaces_from flattens the nested contract into the flat list the UI uses.
+pub fn interfaces_from(status: &monitorapi::NetworkStatus) -> Vec<NetworkInterfaceStatus> {
+    let mut out = Vec::new();
+    for iface in &status.interfaces {
+        out.push(iface_from_network(
+            iface.name.clone(),
+            iface.is_mgmt,
+            iface.up,
+            iface.cost,
+            iface.mac.parse::<MacAddr>().ok(),
+            media_from(&iface.media),
+            &iface.network,
+        ));
+        for vlan in &iface.vlans {
+            out.push(iface_from_network(
+                vlan.name.clone(),
+                vlan.is_mgmt,
+                vlan.up,
+                0,
+                None,
+                NetworkType::Ethernet,
+                &vlan.network,
+            ));
         }
+    }
+    out
+}
 
-        // append NTP servers provided by DHCP
-        if is_dhcp {
-            let dhcp_ntp_servers = port.dhcp_ntp_servers.as_ref().map(|ntp_servers| {
-                ntp_servers
-                    .iter()
-                    .map(|ntp_server| ntp_server.clone().to_string())
-                    .collect::<Vec<String>>()
-            });
-            if let Some(dhcp_ntp_servers) = dhcp_ntp_servers {
-                ntp_servers.extend(dhcp_ntp_servers);
+fn iface_from_network(
+    name: String,
+    is_mgmt: bool,
+    up: bool,
+    cost: u8,
+    mac: Option<MacAddr>,
+    media: NetworkType,
+    net: &monitorapi::PortNetwork,
+) -> NetworkInterfaceStatus {
+    NetworkInterfaceStatus {
+        name,
+        is_mgmt,
+        ipv4: opt_vec(net.ipv4.iter().filter_map(|a| a.to_ipv4()).collect()),
+        ipv6: opt_vec(net.ipv6.iter().filter_map(|a| a.to_ipv6()).collect()),
+        routes: opt_vec(net.routes.clone()),
+        mac,
+        ntp_servers: opt_vec(net.ntp_servers.clone()),
+        up,
+        media,
+        dns: opt_vec(net.dns_servers.clone()),
+        subnet: net.subnet,
+        is_dhcp: net.is_dhcp,
+        proxy_config: proxy_from(&net.proxy),
+        domain: opt_str(&net.domain),
+        cost,
+        errors: opt_vec(net.errors.clone()),
+    }
+}
+
+fn media_from(m: &monitorapi::NetworkMedia) -> NetworkType {
+    match m {
+        monitorapi::NetworkMedia::Ethernet => NetworkType::Ethernet,
+        monitorapi::NetworkMedia::Wifi { ssid } => NetworkType::WiFi(WiFiStatus {
+            ssid: opt_str(ssid),
+        }),
+        monitorapi::NetworkMedia::Cellular { sims, .. } => NetworkType::Cellular(CellularStatus {
+            sims: opt_vec(
+                sims.iter()
+                    .map(|s| SimStatus {
+                        apn: s.apn.clone(),
+                        slot: s.slot,
+                    })
+                    .collect(),
+            ),
+        }),
+    }
+}
+
+fn proxy_from(p: &monitorapi::ProxySettings) -> ProxyConfig {
+    match p {
+        monitorapi::ProxySettings::None => ProxyConfig::None,
+        monitorapi::ProxySettings::Pac { pac_file } => ProxyConfig::Pac {
+            url: pac_file.clone(),
+        },
+        monitorapi::ProxySettings::Wpad { url } => ProxyConfig::Wad {
+            url: url.clone().unwrap_or_default(),
+        },
+        monitorapi::ProxySettings::Manual { servers, .. } => {
+            let (mut http, mut https, mut ftp, mut socks) = (None, None, None, None);
+            for s in servers {
+                let host = ProxyHost {
+                    server: s.host.clone(),
+                    port: u32::from(s.port),
+                };
+                match s.scheme {
+                    monitorapi::ProxyScheme::Http => http = Some(host),
+                    monitorapi::ProxyScheme::Https => https = Some(host),
+                    monitorapi::ProxyScheme::Ftp => ftp = Some(host),
+                    monitorapi::ProxyScheme::Socks => socks = Some(host),
+                }
             }
-        }
-
-        let ntp_servers = if ntp_servers.is_empty() {
-            None
-        } else {
-            Some(ntp_servers)
-        };
-
-        let last_error = &port.test_results.map_error();
-
-        NetworkInterfaceStatus {
-            name: port.if_name.clone(),
-            ipv4,
-            ipv6,
-            is_mgmt: port.is_mgmt,
-            routes: port.default_routers.clone(),
-            mac: port.mac_addr,
-            ntp_servers,
-            up: port.up,
-            media,
-            dns,
-            subnet: port.ipv4_subnet,
-            is_dhcp,
-            cost: port.cost,
-            domain: if port.domain_name.is_empty() {
-                None
-            } else {
-                Some(port.domain_name.clone())
-            },
-            proxy_config: (&port.proxy_config).into(),
-            errors: last_error.clone(),
+            ProxyConfig::Manual {
+                http,
+                https,
+                ftp,
+                socks,
+            }
         }
     }
 }
 
-impl NetworkInterfaceStatus {
-    pub fn is_connected(&self) -> bool {
-        self.errors.is_none() && self.up
+fn opt_vec<T>(v: Vec<T>) -> Option<Vec<T>> {
+    if v.is_empty() {
+        None
+    } else {
+        Some(v)
+    }
+}
+
+fn opt_str(s: &str) -> Option<String> {
+    if s.is_empty() {
+        None
+    } else {
+        Some(s.to_string())
     }
 }

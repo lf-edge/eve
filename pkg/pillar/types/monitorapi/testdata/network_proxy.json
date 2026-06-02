@@ -1,0 +1,13 @@
+{
+  "port": "eth0",
+  "proxy": {
+    "mode": "manual",
+    "servers": [
+      {
+        "scheme": "http",
+        "host": "10.0.0.1",
+        "port": 3128
+      }
+    ]
+  }
+}

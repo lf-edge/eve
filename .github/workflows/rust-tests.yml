@@ -1,0 +1,74 @@
+# Copyright (c) 2026, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+name: Rust Tests
+on:  # yamllint disable-line rule:truthy
+  push:
+    branches:
+      - "master"
+      - "[0-9]+.[0-9]+"
+      - "[0-9]+.[0-9]+-stable"
+      - "feature/*"
+    paths:
+      # Extend this list when adding a crate to the matrix below.
+      - 'pkg/monitor/**'
+      - 'pkg/pillar/types/monitorapi/**'  # contract source for pkg/monitor
+      - '.github/workflows/rust-tests.yml'
+  pull_request:
+    branches:
+      - "master"
+      - "[0-9]+.[0-9]+"
+      - "[0-9]+.[0-9]+-stable"
+      - "feature/*"
+    paths:
+      - 'pkg/monitor/**'
+      - 'pkg/pillar/types/monitorapi/**'
+      - '.github/workflows/rust-tests.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: cargo test (${{ matrix.crate }})
+    runs-on: zededa-ubuntu-2204
+    # Reuse the same Rust toolchain image the package Dockerfiles build with.
+    container:
+      image: lfedge/eve-rust:1.93.1-1
+    strategy:
+      fail-fast: false
+      matrix:
+        # To add a crate, add its directory here (and its path to the `paths`
+        # filters above). Each entry must contain a Cargo.toml.
+        crate:
+          - pkg/monitor
+          # - pkg/installer
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - name: cargo test
+        working-directory: ${{ matrix.crate }}
+        # The image configures the mold linker for the musl cross target it
+        # builds release binaries with; that can't link the host proc-macros a
+        # test build pulls in (mold: library not found: gcc). Tests run
+        # natively, so drop the cross linker flags and use the default.
+        env:
+          RUSTFLAGS: ""
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS: ""
+        run: cargo test --locked
+
+  # Verify the committed generated contract (Rust + Go union codec) matches what
+  # the generator produces. This needs both pkg/pillar and pkg/monitor, so it
+  # runs against a full checkout with Go available (EVE's `make test` builds
+  # pillar in isolation and can't see pkg/monitor).
+  generated:
+    name: generated code up to date
+    runs-on: zededa-ubuntu-2204
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417  # v6.3.0
+        with:
+          go-version-file: pkg/pillar/go.mod
+      - name: check generated contract is in sync
+        working-directory: pkg/pillar
+        run: go test ./types/monitorapi/ -run TestGeneratedUpToDate -count=1

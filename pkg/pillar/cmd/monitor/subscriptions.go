@@ -49,7 +49,7 @@ func handleNetworkStatusModify(ctxArg interface{}, key string,
 func handleNetworStatusUpdate(statusArg interface{}, ctxArg interface{}) {
 	status := statusArg.(types.DeviceNetworkStatus)
 	ctx := ctxArg.(*monitor)
-	ctx.IPCServer.sendIpcMessage("NetworkStatus", status)
+	ctx.IPCServer.sendIpcMessage("NetworkStatus", deviceNetworkStatusToContract(status))
 }
 
 func handleDownloaderStatusCreate(ctxArg interface{}, key string,
@@ -127,10 +127,26 @@ func handleOnboardingStatusModify(ctxArg interface{}, key string,
 	handleOnboardingStatusUpdate(statusArg, ctxArg)
 }
 
+func handleEdgeNodeInfoCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleEdgeNodeInfoUpdate(ctxArg)
+}
+
+func handleEdgeNodeInfoModify(ctxArg interface{}, key string,
+	statusArg interface{}, _ interface{}) {
+	handleEdgeNodeInfoUpdate(ctxArg)
+}
+
+func handleEdgeNodeInfoUpdate(ctxArg interface{}) {
+	ctx := ctxArg.(*monitor)
+	// EdgeNodeInfo feeds NodeName into the node status.
+	ctx.sendNodeStatus()
+}
+
 func handleOnboardingStatusUpdate(statusArg interface{}, ctxArg interface{}) {
 	status := statusArg.(types.OnboardingStatus)
 	ctx := ctxArg.(*monitor)
-	ctx.IPCServer.sendIpcMessage("OnboardingStatus", status)
+	ctx.IPCServer.sendIpcMessage("OnboardingStatus", onboardingStatusToContract(status))
 }
 
 func handleVaultStatusCreate(ctxArg interface{}, key string,
@@ -165,7 +181,7 @@ func handleAppInstanceSummaryModify(ctxArg interface{}, key string,
 func handleAppInstanceSummaryUpdate(statusArg interface{}, ctxArg interface{}) {
 	status := statusArg.(types.AppInstanceSummary)
 	ctx := ctxArg.(*monitor)
-	ctx.IPCServer.sendIpcMessage("AppSummary", status)
+	ctx.IPCServer.sendIpcMessage("AppSummary", appSummaryToContract(status))
 }
 
 func handleLedBlinkCreate(ctxArg interface{}, key string,
@@ -180,7 +196,7 @@ func handleLedBlinkModify(ctxArg interface{}, key string,
 func handleLedBlinkUpdate(statusArg interface{}, ctxArg interface{}) {
 	status := statusArg.(types.LedBlinkCounter)
 	ctx := ctxArg.(*monitor)
-	ctx.IPCServer.sendIpcMessage("LedBlinkCounter", status)
+	ctx.IPCServer.sendIpcMessage("LedBlinkCounter", ledBlinkCounterToContract(status))
 }
 
 func handleZedAgentStatusCreate(ctxArg interface{}, key string,
@@ -440,6 +456,26 @@ func (ctx *monitor) subscribe(ps *pubsub.PubSub) error {
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
 	})
+	if err != nil {
+		log.Error("Cannot create subscription for GlobalConfig")
+		return err
+	}
+
+	subEdgeNodeInfo, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedagent",
+		MyAgentName:   agentName,
+		TopicImpl:     types.EdgeNodeInfo{},
+		Activate:      false,
+		Ctx:           ctx,
+		CreateHandler: handleEdgeNodeInfoCreate,
+		ModifyHandler: handleEdgeNodeInfoModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Error("Cannot create subscription for EdgeNodeInfo")
+		return err
+	}
 
 	ctx.subscriptions["IOAdapters"] = subPhysicalIOAdapter
 	ctx.subscriptions["VaultStatus"] = subVaultStatus
@@ -452,6 +488,7 @@ func (ctx *monitor) subscribe(ps *pubsub.PubSub) error {
 	ctx.subscriptions["LedBlinkCounter"] = subLedBlinkCounter
 	ctx.subscriptions["ZedAgentStatus"] = subZedAgentStatus
 	ctx.subscriptions["GlobalConfig"] = subGlobalConfig
+	ctx.subscriptions["EdgeNodeInfo"] = subEdgeNodeInfo
 	return nil
 }
 
