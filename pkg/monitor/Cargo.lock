@@ -646,18 +646,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "format_serde_error"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e5837b8e6a4001f99fe4746767fb7379e8510c508a843caa136cc12ed9c0bad0"
-dependencies = [
- "colored",
- "serde",
- "serde_json",
- "unicode-segmentation",
-]
-
-[[package]]
 name = "futures"
 version = "0.3.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1136,7 +1124,6 @@ dependencies = [
  "color-eyre",
  "crossterm 0.28.1 (git+https://github.com/crossterm-rs/crossterm.git?rev=69249c88fed67ee917218dc7ccb8a866f391beed)",
  "env_logger",
- "format_serde_error",
  "futures",
  "hex",
  "human-panic",
