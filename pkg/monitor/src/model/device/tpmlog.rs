@@ -191,7 +191,7 @@ impl TpmEvent {
     }
     pub fn display(&self) -> String {
         match self {
-            TpmEvent::EfiAction(s) => format!("{}", s),
+            TpmEvent::EfiAction(s) => s.to_string(),
             TpmEvent::ActionEnterBiosSetup => "ActionEnterBiosSetup".to_string(),
             TpmEvent::CallingEfiAppFromBootOption => "CallingEfiAppFromBootOption".to_string(),
             TpmEvent::FailedToStartEfiAppFromBootOption => {
@@ -219,7 +219,7 @@ impl TpmEvent {
                 }
             }
             TpmEvent::GrubCmd { cmd, params } => format!("{}={}", cmd, params),
-            TpmEvent::GrubKernelCmdline(s) => format!("{}", s),
+            TpmEvent::GrubKernelCmdline(s) => s.to_string(),
             TpmEvent::GrubLinuxEfi(s) => format!("GrubLinuxEfi: {}", s),
             TpmEvent::GrubGenericEvent(cmd, params) => {
                 format!("{}={}", cmd, params)
@@ -239,12 +239,12 @@ impl TpmEvent {
 
 fn parse_efi_boot_variable(
     event: &TcgRawTpmEvent,
-    efi_vars: &Vec<EveEfiVariable>,
+    efi_vars: &[EveEfiVariable],
 ) -> Result<TpmEvent> {
     let var_event = TcgEfiVariableEvent::try_from(event)?;
     let name_from_event = var_event.unicode_name;
     let guid_from_event = var_event.vendor_guid;
-    let efi_var = efi_vars.into_iter().find(|v| v.name == name_from_event);
+    let efi_var = efi_vars.iter().find(|v| v.name == name_from_event);
 
     if let Some(efi_var) = efi_var {
         let re = Regex::new(r"Boot[0-9A-F]{4}").unwrap();
@@ -303,14 +303,14 @@ fn parse_grub_event(event: &TcgRawTpmEvent) -> Result<TpmEvent> {
         return Err(anyhow::anyhow!("Invalid event data for grub event"));
     }
 
-    let event_type = event_data.get(0).unwrap().to_string();
+    let event_type = event_data.first().unwrap().to_string();
     let event_data = event_data.get(1).unwrap().to_string();
 
     match event_type.as_str() {
         "grub_cmd" => {
             // split again and try to get params
             let event_data = event_data.splitn(2, ' ').collect::<Vec<&str>>();
-            let cmd = event_data.get(0).unwrap().to_string();
+            let cmd = event_data.first().unwrap().to_string();
             let params = event_data.get(1).unwrap_or(&"").to_string();
             Ok(TpmEvent::GrubCmd { cmd, params })
         }
@@ -415,7 +415,7 @@ fn parse_rootfs_measurement_event(event: &TcgRawTpmEvent) -> Result<TpmEvent> {
 impl TpmEvent {
     pub fn try_from_tcg_event(
         event: &TcgRawTpmEvent,
-        efi_vars: &Vec<EveEfiVariable>,
+        efi_vars: &[EveEfiVariable],
     ) -> Result<Self> {
         match event.event_type {
             TcgTpmEventType::EfiAction if event.pcr_index == 14 => {

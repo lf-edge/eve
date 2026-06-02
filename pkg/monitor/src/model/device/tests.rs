@@ -25,9 +25,9 @@ fn mock_boot_order_event(order: &[u16], is_type_2: bool) -> TcgRawTpmEvent {
     let event_data = efi_var.serialize();
 
     if is_type_2 {
-        return mock_tcg_tpm_event(1, TcgTpmEventType::EfiVariableBoot2, &event_data);
+        mock_tcg_tpm_event(1, TcgTpmEventType::EfiVariableBoot2, &event_data)
     } else {
-        return mock_tcg_tpm_event(1, TcgTpmEventType::EfiVariableBoot, &event_data);
+        mock_tcg_tpm_event(1, TcgTpmEventType::EfiVariableBoot, &event_data)
     }
 }
 
@@ -43,9 +43,9 @@ fn moc_boot_event(index: u16, is_type_2: bool) -> TcgRawTpmEvent {
     let event_data = efi_var.serialize();
 
     if is_type_2 {
-        return mock_tcg_tpm_event(1, TcgTpmEventType::EfiVariableBoot2, &event_data);
+        mock_tcg_tpm_event(1, TcgTpmEventType::EfiVariableBoot2, &event_data)
     } else {
-        return mock_tcg_tpm_event(1, TcgTpmEventType::EfiVariableBoot, &event_data);
+        mock_tcg_tpm_event(1, TcgTpmEventType::EfiVariableBoot, &event_data)
     }
 }
 
@@ -55,7 +55,7 @@ fn mock_pcr14_event(file: &str, exists: bool, hash: Option<&str>) -> TcgRawTpmEv
     } else {
         format!("file:{} exist:{}", file, exists)
     };
-    return mock_tcg_tpm_event(14, TcgTpmEventType::EfiAction, &event_data);
+    mock_tcg_tpm_event(14, TcgTpmEventType::EfiAction, &event_data)
 }
 
 fn mock_ipl_event(pcr: u32, data: &[u8]) -> TcgRawTpmEvent {
@@ -65,7 +65,7 @@ fn mock_ipl_event(pcr: u32, data: &[u8]) -> TcgRawTpmEvent {
         .chain(std::iter::once(&0u8))
         .copied()
         .collect::<Vec<_>>();
-    return mock_tcg_tpm_event(pcr, TcgTpmEventType::IPL, &data);
+    mock_tcg_tpm_event(pcr, TcgTpmEventType::IPL, &data)
 }
 
 // Helper to create mock events
@@ -125,7 +125,7 @@ fn test_try_from_tpm_event_action_config() {
                 hash,
                 "61e3c4e3aaee97c87c12d4dfbd699b11007e3a5900b02d53f18d978f31cfcaf8"
             );
-            assert_eq!(exists, true);
+            assert!(exists);
         }
         _ => panic!("Invalid action event"),
     }
@@ -141,7 +141,7 @@ fn test_try_from_tpm_event_action_config_not_exist() {
         TpmEvent::MeasureConfig { file, hash, exists } => {
             assert_eq!(file, "/config/authorized_keys");
             assert_eq!(hash, "");
-            assert_eq!(exists, false);
+            assert!(!exists);
         }
         _ => panic!("Invalid action event"),
     }
@@ -176,7 +176,7 @@ fn test_try_from_tpm_event_action_config_exist_no_hash() {
         TpmEvent::MeasureConfig { file, hash, exists } => {
             assert_eq!(file, "/config/authorized_keys");
             assert_eq!(hash, "");
-            assert_eq!(exists, true);
+            assert!(exists);
         }
         _ => panic!("Invalid action event"),
     }
@@ -248,7 +248,7 @@ fn test_try_from_grub_event_generic() {
             assert_eq!(data, "data");
         }
         Ok(e) => panic!("Invalid grub event: {:?}", e),
-        Err(e) => panic!("must not fail: {}", e.to_string()),
+        Err(e) => panic!("must not fail: {}", e),
     }
 }
 #[test]

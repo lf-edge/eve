@@ -21,8 +21,8 @@ pub trait ISelector {
     fn select_previous(&mut self);
     fn select_first(&mut self);
     fn select_last(&mut self);
-    fn select_forward_by(&mut self, count: usize) {}
-    fn select_backward_by(&mut self, count: usize) {}
+    fn select_forward_by(&mut self, _count: usize) {}
+    fn select_backward_by(&mut self, _count: usize) {}
     fn selected(&self) -> Option<Self::Item>;
 }
 

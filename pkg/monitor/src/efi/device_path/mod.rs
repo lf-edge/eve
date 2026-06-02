@@ -45,7 +45,7 @@ impl Node {
 
 #[derive(Debug, Display, PartialEq)]
 #[repr(u8)]
-enum DevicePathType {
+pub(crate) enum DevicePathType {
     Hardware = 0x1,
     Acpi = 0x2,
     Messaging = 0x3,
@@ -55,9 +55,9 @@ enum DevicePathType {
     Unknown(u8),
 }
 
-impl Into<u8> for DevicePathType {
-    fn into(self) -> u8 {
-        match self {
+impl From<DevicePathType> for u8 {
+    fn from(val: DevicePathType) -> Self {
+        match val {
             DevicePathType::Hardware => 0x1,
             DevicePathType::Acpi => 0x2,
             DevicePathType::Messaging => 0x3,
@@ -118,7 +118,7 @@ where
     Unknown(Node),
 }
 
-trait PathNodeTrait {
+pub(crate) trait PathNodeTrait {
     type Subtype: NodeTypeValidator + FromPrimitive + Into<u8>;
     fn get_generic_name(&self) -> &'static str;
     fn get_efi_sub_type(&self) -> Self::Subtype;
@@ -162,13 +162,6 @@ pub type PathNode =
     PathNodeT<acpi::AcpiNode, hardware::HardwareNode, media::MediaNode, messaging::MessagingNode>;
 
 impl PathNode {
-    fn is_end(&self) -> bool {
-        match self {
-            PathNode::Unknown(node) => node.is_end(),
-            _ => false,
-        }
-    }
-
     #[cfg(test)]
     fn as_node(&self) -> Node {
         match self {
@@ -265,12 +258,12 @@ pub struct DevicePath {
 impl DevicePath {
     pub fn is_usb_device_path(&self) -> bool {
         self.nodes.iter().any(|n| match n {
-            PathNode::Messaging(m) => match m {
-                MessagingNode::Usb { .. } => true,
-                MessagingNode::UsbWwid { .. } => true,
-                MessagingNode::UsbClass { .. } => true,
-                _ => false,
-            },
+            PathNode::Messaging(m) => matches!(
+                m,
+                MessagingNode::Usb { .. }
+                    | MessagingNode::UsbWwid { .. }
+                    | MessagingNode::UsbClass { .. }
+            ),
             _ => false,
         })
     }

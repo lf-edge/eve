@@ -24,9 +24,9 @@ fn test_efi_load_option() {
     let efi_load_option = EfiLoadOption::parse_linux_efi_var(&data).unwrap();
 
     assert_eq!(efi_load_option.description, "UEFI OS");
-    assert_eq!(efi_load_option.attributes.is_category_boot(), true);
-    assert_eq!(efi_load_option.attributes.is_active(), true);
-    assert_eq!(efi_load_option.attributes.is_hidden(), false);
+    assert!(efi_load_option.attributes.is_category_boot());
+    assert!(efi_load_option.attributes.is_active());
+    assert!(!efi_load_option.attributes.is_hidden());
     assert_eq!(efi_load_option.device_path_list.nodes.len(), 0x3);
 }
 
@@ -82,9 +82,9 @@ fn test_boot_inacitve() -> Result<()> {
     ];
     let efi_load_option = EfiLoadOption::parse_linux_efi_var(&data)?;
 
-    assert_eq!(efi_load_option.attributes.is_active(), false);
-    assert_eq!(efi_load_option.attributes.is_hidden(), false);
-    assert_eq!(efi_load_option.attributes.is_category_boot(), false);
+    assert!(!efi_load_option.attributes.is_active());
+    assert!(!efi_load_option.attributes.is_hidden());
+    assert!(!efi_load_option.attributes.is_category_boot());
     assert_eq!(efi_load_option.device_path_list.nodes.len(), 0x2);
     assert_eq!(
         efi_load_option.device_path_list.nodes[0],
@@ -139,20 +139,20 @@ fn test_boot_order_insafitient_data() {
 fn test_attr_all() {
     let attr: u32 = 0x0000_010B;
     let attributes = LoadOptionAttributes::try_from(attr).unwrap();
-    assert_eq!(attributes.is_active(), true);
-    assert_eq!(attributes.is_force_reconnect(), true);
-    assert_eq!(attributes.is_hidden(), true);
-    assert_eq!(attributes.is_category_app(), true);
+    assert!(attributes.is_active());
+    assert!(attributes.is_force_reconnect());
+    assert!(attributes.is_hidden());
+    assert!(attributes.is_category_app());
 }
 
 #[test]
 fn test_attr_active() {
     let attr: u32 = 0x0000_0001;
     let attributes = LoadOptionAttributes::try_from(attr).unwrap();
-    assert_eq!(attributes.is_active(), true);
-    assert_eq!(attributes.is_force_reconnect(), false);
-    assert_eq!(attributes.is_hidden(), false);
-    assert_eq!(attributes.is_category_app(), false);
+    assert!(attributes.is_active());
+    assert!(!attributes.is_force_reconnect());
+    assert!(!attributes.is_hidden());
+    assert!(!attributes.is_category_app());
 }
 
 #[test]

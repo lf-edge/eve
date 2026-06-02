@@ -10,7 +10,7 @@ pub enum NodeExpectedLength {
     Min(u16),
 }
 
-pub(super) trait NodeTypeValidator {
+pub(crate) trait NodeTypeValidator {
     fn expected_length(&self) -> NodeExpectedLength;
     fn validate_length(&self, length: u16) -> Result<()> {
         match self.expected_length() {
@@ -57,7 +57,7 @@ pub trait DevicePathReadEx: ReadBytesExt {
                 Err(e) => return Err(anyhow!("error reading null terminated string: {}", e)),
             }
         }
-        Ok(String::from_utf8(chars).context("error converting ascii string")?)
+        String::from_utf8(chars).context("error converting ascii string")
     }
 
     fn read_efi_guid(&mut self) -> Result<uuid::Uuid> {

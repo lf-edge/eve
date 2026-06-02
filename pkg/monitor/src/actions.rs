@@ -3,6 +3,8 @@
 
 use crate::ui::ipdialog::InterfaceState;
 
+// Variants carry full interface state by value by design; do not box them.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum MonActions {
     NetworkInterfaceUpdated(InterfaceState, InterfaceState),

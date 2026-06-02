@@ -90,16 +90,16 @@ impl IElementEventHandler for ButtonElement {
                     self.pushed = true;
                     info!("Button pushed");
 
-                    return Some(UiActions::ButtonClicked(self.label.clone()));
+                    Some(UiActions::ButtonClicked(self.label.clone()))
 
                 // TODO: Release event never comes if crossterm::event::PushKeyboardEnhancementFlags
                 // is not enabled.
                 } else if key.kind == crossterm::event::KeyEventKind::Release {
                     info!("Button released");
                     self.pushed = false;
-                    return None;
+                    None
                 } else {
-                    return None;
+                    None
                 }
             }
             _ => None,

@@ -69,9 +69,9 @@ pub enum PartitionType {
     Unknown(u8),
 }
 
-impl Into<u8> for &PartitionType {
-    fn into(self) -> u8 {
-        match self {
+impl From<&PartitionType> for u8 {
+    fn from(val: &PartitionType) -> Self {
+        match val {
             PartitionType::Mbr => 0x1,
             PartitionType::Gpt => 0x2,
             PartitionType::Unknown(value) => *value,

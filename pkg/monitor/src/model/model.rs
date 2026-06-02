@@ -54,6 +54,8 @@ pub struct AppInstance {
     pub state: AppInstanceState,
 }
 
+// `time` is populated from EVE error reports; kept as intended API.
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct EveError {
     pub error: String,
@@ -79,10 +81,7 @@ pub enum VaultStatus {
 
 impl VaultStatus {
     pub fn is_vault_locked(&self) -> bool {
-        match self {
-            VaultStatus::Locked(_, _) => true,
-            _ => false,
-        }
+        matches!(self, VaultStatus::Locked(_, _))
     }
 }
 
@@ -160,7 +159,7 @@ impl From<AppsList> for HashMap<Uuid, AppInstance> {
         apps_list
             .apps
             .into_iter()
-            .map(|app| (app.uuid_and_version.uuid.clone(), AppInstance::from(app)))
+            .map(|app| (app.uuid_and_version.uuid, AppInstance::from(app)))
             .collect()
     }
 }
@@ -284,8 +283,8 @@ impl MonitorModel {
 impl Default for MonitorModel {
     fn default() -> Self {
         let app_version = option_env!("GIT_VERSION")
-            .map(|v| format!("{}", v))
-            .or(option_env!("CARGO_PKG_VERSION").map(|v| format!("{}", v)))
+            .map(|v| v.to_string())
+            .or(option_env!("CARGO_PKG_VERSION").map(|v| v.to_string()))
             .unwrap_or("unknown".to_string());
 
         MonitorModel {
