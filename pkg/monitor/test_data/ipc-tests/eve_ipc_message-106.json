@@ -1,0 +1,1 @@
+{"type":"VaultStatus","message":{"Name":"Application Data Store","Status":2,"PCRStatus":1,"ConversionComplete":false,"MismatchingPCRs":null,"Error":"","ErrorTime":"0001-01-01T00:00:00Z","ErrorSeverity":0,"ErrorRetryCondition":"","ErrorEntities":null}}

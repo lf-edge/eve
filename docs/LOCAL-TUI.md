@@ -3,7 +3,7 @@
 EVE has a user-friendly TUI (Text User Interface) that can be used to interact with the system.
 The implementation is consists of two parts
 
-1. Client application responsible for rendering the TUI, sending user input to the server, and handling asynchronous server notification. The client is written in Rust and hosted at [https://github.com/lf-edge/eve-monitor-rs](https://github.com/lf-edge/eve-monitor-rs). Corresponding Dockerfile and LinuxKit build files are located at `pkg/monitor`
+1. Client application responsible for rendering the TUI, sending user input to the server, and handling asynchronous server notification. The client is written in Rust and its source, Dockerfile, and LinuxKit build files are located at `pkg/monitor` (the crate source is under `pkg/monitor/src`). It was previously developed in the standalone repo [https://github.com/lf-edge/eve-monitor-rs](https://github.com/lf-edge/eve-monitor-rs).
 2. Server part is implemented inside [pkg/pillar/cmd/monitor](../pkg/pillar/cmd/monitor/)
 
 The client communicates with the server over UNIX socket
