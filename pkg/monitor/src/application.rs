@@ -34,6 +34,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::ipc::ipc_client::IpcClient;
 use crate::ipc::message::{IpcMessage, Request};
+use crate::ipc::monitorapi::{IpMode, SetInterfaceConfig, StaticIpConfig};
 use crate::terminal::TerminalWrapper;
 use crate::ui::action::{Action, UiActions};
 
@@ -211,10 +212,6 @@ impl Application {
                 }
             }
 
-            IpcMessage::DPCList(cfg) => {
-                debug!("Got DPC list");
-                self.model.borrow_mut().set_dpc_list(cfg);
-            }
             IpcMessage::NetworkStatus(cfg) => {
                 debug!("Got Network status");
                 self.model.borrow_mut().update_network_status(cfg);
@@ -271,76 +268,55 @@ impl Application {
         }
     }
 
-    pub fn send_dpc(&mut self, old: InterfaceState, new: InterfaceState) {
-        let current_dpc = self.model.borrow().get_current_dpc().cloned();
-        if let Some(current_dpc) = current_dpc {
-            info!("send_dpc: Sending DPC for iface {}", &new.iface_name);
-            let mut new_dpc = current_dpc.to_new_dpc_with_key("manual");
+    pub fn send_dpc(&mut self, new: InterfaceState) {
+        info!(
+            "send_dpc: Sending interface config for {}",
+            &new.iface_name
+        );
 
-            // Update IP configuration based on DHCP/static selection
-            match (old.is_dhcp(), new.is_dhcp()) {
-                (false, true) => {
-                    // case 2: Static -> DHCP
-                    new_dpc
-                        .get_port_by_name_mut(&new.iface_name)
-                        .unwrap()
-                        .to_dhcp();
-                }
-                (_, false) => {
-                    let ip: IpAddr = new.ipv4.parse().unwrap();
-                    let mask: IpAddr = new.mask.parse().unwrap();
-
-                    // parse DNS server string and convert to Option<Vec<IpAddr>>
-                    let dns_servers = new
-                        .dns
-                        .split(',')
-                        .filter_map(|s| s.parse::<IpAddr>().ok())
-                        .collect::<Vec<IpAddr>>();
-
-                    // same for NTP. NTP can now be either IP or FQDN
-                    let ntp_servers = new
-                        .ntp
-                        .split(',')
-                        .map(|s| s.to_string())
-                        .collect::<Vec<String>>();
-
-                    // case 1,3: DHCP -> Static or Static -> Static
-                    new_dpc
-                        .get_port_by_name_mut(&new.iface_name)
-                        .unwrap()
-                        .to_static(
-                            IpNet::with_netmask(ip, mask).unwrap(),
-                            new.gw.parse().unwrap(),
-                            new.domain.clone(),
-                            if ntp_servers.is_empty() {
-                                None
-                            } else {
-                                Some(ntp_servers)
-                            },
-                            if dns_servers.is_empty() {
-                                None
-                            } else {
-                                Some(dns_servers)
-                            },
-                        );
-                }
-                (true, true) => {
-                    // DHCP -> DHCP: No IP configuration changes needed, but proxy settings may have changed
-                    info!(
-                        "send_dpc: DHCP -> DHCP transition for iface {}, checking for proxy changes",
-                        &new.iface_name
-                    );
-                } // IP config stays the same, proxy config will be handled below
+        // Build a small, typed intent; the device reconstructs the full DPC
+        // from its live config and applies it (see cmd/monitor contract.go).
+        let ip = if new.is_dhcp() {
+            IpMode::Dhcp
+        } else {
+            let addr: IpAddr = new.ipv4.parse().unwrap();
+            let mask: IpAddr = new.mask.parse().unwrap();
+            let subnet = IpNet::with_netmask(addr, mask).unwrap();
+            let dns_servers = new
+                .dns
+                .split(',')
+                .filter_map(|s| s.trim().parse::<IpAddr>().ok())
+                .collect::<Vec<IpAddr>>();
+            IpMode::Static {
+                config: StaticIpConfig {
+                    ip: addr,
+                    subnet,
+                    gateway: new.gw.parse::<IpAddr>().ok(),
+                    dns_servers,
+                },
             }
+        };
 
-            // Update proxy configuration regardless of DHCP/static IP settings
-            if let Some(port) = new_dpc.get_port_by_name_mut(&new.iface_name) {
-                let proxy_config = new.create_proxy_config();
-                port.set_proxy_config(proxy_config);
-            }
+        // NTP entries may be IP or FQDN; keep them as strings.
+        let ntp = new
+            .ntp
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<String>>();
 
-            self.send_ipc_message(IpcMessage::new_request(Request::SetDPC(new_dpc)), |_| {});
-        }
+        let intent = SetInterfaceConfig {
+            iface: new.iface_name.clone(),
+            ip,
+            proxy: new.create_proxy_config(),
+            ntp,
+            domain: new.domain.clone(),
+        };
+
+        self.send_ipc_message(
+            IpcMessage::new_request(Request::SetInterfaceConfig(intent)),
+            |_| {},
+        );
     }
 
     fn create_kmsg_task(
@@ -785,7 +761,7 @@ impl Application {
                     if old == new {
                         debug!("Not changed, not sending DPC");
                     } else {
-                        self.send_dpc(old, new);
+                        self.send_dpc(new);
                     }
                     self.ui.pop_layer();
                 }

@@ -12,11 +12,10 @@ use log::error;
 use serde::Deserialize;
 use serde::Serialize;
 
-use super::eve_types::DevicePortConfig;
-use super::eve_types::DevicePortConfigList;
 use super::eve_types::TpmLogs;
 use super::monitorapi::AppsList;
 use super::monitorapi::DeviceStatus;
+use super::monitorapi::SetInterfaceConfig;
 use super::monitorapi::DownloaderStatus;
 use super::monitorapi::NetworkStatus;
 use super::monitorapi::TuiConfig;
@@ -36,7 +35,7 @@ static MSG_INDEX: AtomicIdGenerator = AtomicIdGenerator(AtomicU64::new(1));
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "RequestType", content = "RequestData")]
 pub enum Request {
-    SetDPC(DevicePortConfig),
+    SetInterfaceConfig(SetInterfaceConfig),
     SetServer(String),
 }
 
@@ -55,7 +54,6 @@ pub enum IpcMessage {
     ConnectionLost,
     DeviceStatus(DeviceStatus),
     NetworkStatus(NetworkStatus),
-    DPCList(DevicePortConfigList),
     DownloaderStatus(DownloaderStatus),
     AppsList(AppsList),
     TUIConfig(TuiConfig),
