@@ -9,6 +9,96 @@ use std::net::IpAddr;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AttestState {
+    #[serde(rename = "none")]
+    None,
+    #[serde(rename = "nonceWait")]
+    NonceWait,
+    #[serde(rename = "internalQuoteWait")]
+    InternalQuoteWait,
+    #[serde(rename = "internalEscrowWait")]
+    InternalEscrowWait,
+    #[serde(rename = "attestWait")]
+    AttestWait,
+    #[serde(rename = "attestEscrowWait")]
+    AttestEscrowWait,
+    #[serde(rename = "restartWait")]
+    RestartWait,
+    #[serde(rename = "complete")]
+    Complete,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BootReason {
+    #[serde(rename = "none")]
+    None,
+    #[serde(rename = "first")]
+    First,
+    #[serde(rename = "rebootCmd")]
+    RebootCmd,
+    #[serde(rename = "update")]
+    Update,
+    #[serde(rename = "fallback")]
+    Fallback,
+    #[serde(rename = "disconnect")]
+    Disconnect,
+    #[serde(rename = "fatal")]
+    Fatal,
+    #[serde(rename = "oom")]
+    Oom,
+    #[serde(rename = "watchdogHung")]
+    WatchdogHung,
+    #[serde(rename = "watchdogPid")]
+    WatchdogPid,
+    #[serde(rename = "kernel")]
+    Kernel,
+    #[serde(rename = "powerFail")]
+    PowerFail,
+    #[serde(rename = "unknown")]
+    Unknown,
+    #[serde(rename = "vaultFailure")]
+    VaultFailure,
+    #[serde(rename = "poweroffCmd")]
+    PoweroffCmd,
+    #[serde(rename = "parseFail")]
+    ParseFail,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ConfigGetStatus {
+    #[serde(rename = "success")]
+    Success,
+    #[serde(rename = "fail")]
+    Fail,
+    #[serde(rename = "temporaryFail")]
+    TemporaryFail,
+    #[serde(rename = "readSaved")]
+    ReadSaved,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DeviceState {
+    #[serde(rename = "unspecified")]
+    Unspecified,
+    #[serde(rename = "online")]
+    Online,
+    #[serde(rename = "rebooting")]
+    Rebooting,
+    #[serde(rename = "maintenanceMode")]
+    MaintenanceMode,
+    #[serde(rename = "baseOsUpdating")]
+    BaseOsUpdating,
+    #[serde(rename = "booting")]
+    Booting,
+    #[serde(rename = "preparingPowerOff")]
+    PreparingPowerOff,
+    #[serde(rename = "poweringOff")]
+    PoweringOff,
+    #[serde(rename = "preparedPowerOff")]
+    PreparedPowerOff,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ProxyScheme {
     #[serde(rename = "http")]
     Http,
@@ -40,6 +130,24 @@ pub struct CellProvider {
     pub description: String,
     #[serde(rename = "forbidden")]
     pub forbidden: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DownloaderStatus {
+    #[serde(rename = "name")]
+    pub name: String,
+    #[serde(rename = "state")]
+    pub state: String,
+    #[serde(rename = "contentType")]
+    pub content_type: String,
+    #[serde(rename = "progress")]
+    pub progress: u32,
+    #[serde(rename = "currentSize")]
+    pub current_size: i64,
+    #[serde(rename = "totalSize")]
+    pub total_size: i64,
+    #[serde(rename = "error")]
+    pub error: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -190,6 +298,24 @@ pub struct Vlan {
     pub is_mgmt: bool,
     #[serde(rename = "network")]
     pub network: PortNetwork,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ZedAgentStatus {
+    #[serde(rename = "configStatus")]
+    pub config_status: ConfigGetStatus,
+    #[serde(rename = "deviceState")]
+    pub device_state: DeviceState,
+    #[serde(rename = "attestState")]
+    pub attest_state: AttestState,
+    #[serde(rename = "attestError")]
+    pub attest_error: String,
+    #[serde(rename = "bootReason")]
+    pub boot_reason: BootReason,
+    #[serde(rename = "rebootReason")]
+    pub reboot_reason: String,
+    #[serde(rename = "maintenanceMode")]
+    pub maintenance_mode: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

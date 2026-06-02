@@ -194,6 +194,16 @@ func fixtures() map[string]any {
 		"app_summary.json":       AppSummary{Starting: 1, Running: 5, Stopping: 0, Error: 2},
 		"tui_config.json":        TUIConfig{LogLevel: "debug"},
 		"led_blink_counter.json": LedBlinkCounter{BlinkCounter: 4},
+		"downloader_status.json": DownloaderStatus{
+			Name: "image.qcow2", State: "DOWNLOADING",
+			ContentType: "application/octet-stream",
+			Progress:    42, CurrentSize: 4200, TotalSize: 10000,
+		},
+		"zed_agent_status.json": ZedAgentStatus{
+			ConfigStatus: ConfigGetStatusSuccess, DeviceState: DeviceStateOnline,
+			AttestState: AttestStateComplete, BootReason: BootReasonRebootCmd,
+			RebootReason: "scheduled",
+		},
 	}
 }
 

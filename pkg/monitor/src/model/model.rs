@@ -10,9 +10,10 @@ use uuid::Uuid;
 use crate::{
     ipc::eve_types::{
         AppInstanceStatus, AppsList, DataSecAtRestStatus,
-        DevicePortConfig, DevicePortConfigList, DownloaderStatus, ErrorAndTime,
-        EveVaultStatus, PCRStatus, SwState, TpmLogs, ZedAgentStatus,
+        DevicePortConfig, DevicePortConfigList, ErrorAndTime,
+        EveVaultStatus, PCRStatus, SwState, TpmLogs,
     },
+    ipc::monitorapi::{DownloaderStatus, ZedAgentStatus},
     model::device::tpmlog_diff::TpmLogDiff,
 };
 
