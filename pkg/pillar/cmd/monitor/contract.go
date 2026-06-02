@@ -17,6 +17,7 @@ import (
 	"net/netip"
 	"strings"
 
+	"github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/types/monitorapi"
 	uuid "github.com/satori/go.uuid"
@@ -175,6 +176,28 @@ func bootReasonToContract(s types.BootReason) monitorapi.BootReason {
 		return monitorapi.BootReasonParseFail
 	default:
 		return monitorapi.BootReasonNone
+	}
+}
+
+// vaultStatusToContract interprets EVE's raw vault status into the contract's
+// tagged union (the .contains check mirrors the legacy TUI logic).
+func vaultStatusToContract(s types.VaultStatus) monitorapi.VaultStatus {
+	tpmUsed := s.PCRStatus == info.PCRStatus_PCR_ENABLED
+	switch s.Status {
+	case info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED:
+		return monitorapi.VaultDisabled{TPMUsed: tpmUsed, Error: s.Error}
+	case info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED:
+		return monitorapi.VaultUnlocked{TPMUsed: tpmUsed}
+	case info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR:
+		var pcrs []uint32
+		if strings.Contains(s.Error, "Vault key unavailable") {
+			for _, p := range s.MismatchingPCRs {
+				pcrs = append(pcrs, uint32(p))
+			}
+		}
+		return monitorapi.VaultLocked{Error: s.Error, MismatchingPCRs: pcrs}
+	default:
+		return monitorapi.VaultUnknown{}
 	}
 }
 
