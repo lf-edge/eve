@@ -17,7 +17,7 @@ use crate::{
         device_path::{media::MediaNode, PathNode},
         vars::{EfiBootOrder, EfiLoadOption},
     },
-    ipc::eve_types::{EveEfiVariable, TpmLogs},
+    ipc::monitorapi::{EfiVariable, TpmLogs},
     tcg::tcg_tpmlog::TcgTpmLog,
 };
 
@@ -29,7 +29,7 @@ use super::tpmlog::{EveTpmLog, TpmEvent, TpmEventRef};
 pub enum ParsedEfiVariable {
     BoorOrder(EfiBootOrder),
     BootEntry { num: u16, lo: EfiLoadOption },
-    Unparsed(EveEfiVariable),
+    Unparsed(EfiVariable),
 }
 
 #[derive(Debug)]
@@ -73,37 +73,36 @@ impl TpmLogDiff {
         self.affected_pcrs = pcrs.to_vec();
     }
     fn get_logs_pair(raw_logs: TpmLogs) -> Result<(EveTpmLog, EveTpmLog)> {
-        if raw_logs.efi_vars_success.is_none() || raw_logs.efi_vars_failed.is_none() {
+        if raw_logs.efi_vars_success.is_empty() || raw_logs.efi_vars_failed.is_empty() {
             return Err(anyhow!("EFI vars are missing in TPM logs from EVE"));
         }
-        let good = raw_logs
-            .last_good_log
-            .or(raw_logs.backup_good_log)
-            .ok_or(anyhow!("'goog' log is missing"))
-            .map(|raw_log| -> Result<EveTpmLog> {
-                Ok(EveTpmLog::new(
-                    TcgTpmLog::from_slice(&raw_log)?,
-                    raw_logs.efi_vars_success.unwrap(),
-                ))
-            })??;
+        // The byte logs are base64 on the wire; an absent log is the empty Vec.
+        // Prefer the current log, fall back to the backup.
+        let prefer = |primary: Vec<u8>, backup: Vec<u8>| {
+            if primary.is_empty() {
+                backup
+            } else {
+                primary
+            }
+        };
 
-        let bad = raw_logs
-            .last_failed_log
-            .or(raw_logs.backup_failed_log)
-            .ok_or(anyhow!("'bad' log is missing"))
-            .map(|raw_log| -> Result<EveTpmLog> {
-                Ok(EveTpmLog::new(
-                    TcgTpmLog::from_slice(&raw_log)?,
-                    raw_logs.efi_vars_failed.unwrap(),
-                ))
-            })??;
+        let good_log = prefer(raw_logs.last_good_log, raw_logs.backup_good_log);
+        if good_log.is_empty() {
+            return Err(anyhow!("'good' log is missing"));
+        }
+        let bad_log = prefer(raw_logs.last_failed_log, raw_logs.backup_failed_log);
+        if bad_log.is_empty() {
+            return Err(anyhow!("'bad' log is missing"));
+        }
 
+        let good = EveTpmLog::new(TcgTpmLog::from_slice(&good_log)?, raw_logs.efi_vars_success);
+        let bad = EveTpmLog::new(TcgTpmLog::from_slice(&bad_log)?, raw_logs.efi_vars_failed);
         Ok((good, bad))
     }
 
     fn parse_efi_vars(
         &self,
-        vars: &Vec<EveEfiVariable>,
+        vars: &Vec<EfiVariable>,
     ) -> Result<HashMap<String, ParsedEfiVariable>> {
         let re = Regex::new(r"Boot[0-9A-F]{4}").unwrap();
 

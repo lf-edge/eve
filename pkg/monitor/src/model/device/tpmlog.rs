@@ -12,7 +12,7 @@ use crate::{
         device_path::DevicePath,
         vars::{EfiBootOrder, EfiLoadOption, LoadOptionAttributes},
     },
-    ipc::eve_types::EveEfiVariable,
+    ipc::monitorapi::EfiVariable,
     tcg::{
         tcg_events::{TcgEfiActionEvent, TcgEfiVariableEvent, TcgIPLEvent, TcgUefiImageLoadEvent},
         tcg_tpmlog::{TcgRawTpmEvent, TcgTpmEventType, TcgTpmLog},
@@ -22,11 +22,11 @@ use crate::{
 #[derive(Debug)]
 pub struct EveTpmLog {
     log: TcgTpmLog,
-    pub efi_vars: Vec<EveEfiVariable>,
+    pub efi_vars: Vec<EfiVariable>,
 }
 
 impl EveTpmLog {
-    pub fn new(log: TcgTpmLog, efi_vars: Vec<EveEfiVariable>) -> Self {
+    pub fn new(log: TcgTpmLog, efi_vars: Vec<EfiVariable>) -> Self {
         Self { log, efi_vars }
     }
 
@@ -239,7 +239,7 @@ impl TpmEvent {
 
 fn parse_efi_boot_variable(
     event: &TcgRawTpmEvent,
-    efi_vars: &[EveEfiVariable],
+    efi_vars: &[EfiVariable],
 ) -> Result<TpmEvent> {
     let var_event = TcgEfiVariableEvent::try_from(event)?;
     let name_from_event = var_event.unicode_name;
@@ -415,7 +415,7 @@ fn parse_rootfs_measurement_event(event: &TcgRawTpmEvent) -> Result<TpmEvent> {
 impl TpmEvent {
     pub fn try_from_tcg_event(
         event: &TcgRawTpmEvent,
-        efi_vars: &[EveEfiVariable],
+        efi_vars: &[EfiVariable],
     ) -> Result<Self> {
         match event.event_type {
             TcgTpmEventType::EfiAction if event.pcr_index == 14 => {

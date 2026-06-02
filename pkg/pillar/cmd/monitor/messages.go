@@ -13,6 +13,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/types/monitorapi"
 )
 
 var (
@@ -30,20 +31,6 @@ func getProductSerial() string {
 }
 
 var bootVariableRe = regexp.MustCompile(`^Boot[0-9a-fA-F]{4}$`)
-
-type efiVariable struct {
-	Name  string `json:"name,omitempty"`
-	Value []byte `json:"value,omitempty"`
-}
-
-type tpmLogs struct {
-	LastFailedLog   []byte        `json:"last_failed_log,omitempty"`
-	LastGoodLog     []byte        `json:"last_good_log,omitempty"`
-	BackupFailedLog []byte        `json:"backup_failed_log,omitempty"`
-	BackupGoodLog   []byte        `json:"backup_good_log,omitempty"`
-	EfiVarsSuccess  []efiVariable `json:"efi_vars_success,omitempty"`
-	EfiVarsFailed   []efiVariable `json:"efi_vars_failed,omitempty"`
-}
 
 // sendDeviceStatus assembles and emits the aggregated node-level snapshot from
 // the latest of each input the handlers have stored. Deduped to avoid resending
@@ -78,7 +65,7 @@ func (ctx *monitor) sendAppsList() {
 	ctx.IPCServer.sendIpcMessage("AppsList", appsListToContract(appStatus))
 }
 
-func readEfiVars(fsys fs.FS) ([]efiVariable, error) {
+func readEfiVars(fsys fs.FS) ([]monitorapi.EFIVariable, error) {
 	vars, err := fs.ReadDir(fsys, ".")
 	if err != nil {
 		return nil, err
@@ -91,7 +78,7 @@ func readEfiVars(fsys fs.FS) ([]efiVariable, error) {
 	}
 
 	// read boot variables
-	bootVars := make([]efiVariable, 0)
+	bootVars := make([]monitorapi.EFIVariable, 0)
 	for _, varFile := range vars {
 		varName := varFile.Name()
 		if varFile.IsDir() || !bootVariableRe.MatchString(varName) {
@@ -101,10 +88,10 @@ func readEfiVars(fsys fs.FS) ([]efiVariable, error) {
 		if err != nil {
 			return nil, err
 		}
-		bootVars = append(bootVars, efiVariable{Name: varName, Value: varValue})
+		bootVars = append(bootVars, monitorapi.EFIVariable{Name: varName, Value: varValue})
 	}
 
-	bootVars = append(bootVars, efiVariable{Name: "BootOrder", Value: bootOrder})
+	bootVars = append(bootVars, monitorapi.EFIVariable{Name: "BootOrder", Value: bootOrder})
 
 	return bootVars, nil
 }
@@ -153,13 +140,13 @@ func (ctx *monitor) sendTpmLogs() {
 		bootVarsFailed = nil
 	}
 
-	tpmLogs := tpmLogs{
+	tpmLogs := monitorapi.TpmLogs{
 		LastFailedLog:   failedLog,
 		LastGoodLog:     goodLog,
 		BackupFailedLog: backupFailedLog,
 		BackupGoodLog:   backupGoodLog,
-		EfiVarsSuccess:  bootVarsSuccess,
-		EfiVarsFailed:   bootVarsFailed,
+		EFIVarsSuccess:  bootVarsSuccess,
+		EFIVarsFailed:   bootVarsFailed,
 	}
 
 	ctx.IPCServer.sendIpcMessage("TpmLogs", tpmLogs)
