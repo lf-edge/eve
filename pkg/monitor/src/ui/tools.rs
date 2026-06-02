@@ -39,11 +39,14 @@ pub fn centered_rect_fixed(width: u16, height: u16, r: Rect) -> Rect {
     ])
     .split(popup_layout[1])[1]
 }
+// Generic UI helper container; intended utility API not yet used by a caller.
+#[allow(dead_code)]
 #[derive(Default)]
 pub struct ElementHashMap<T> {
     layout: HashMap<String, T>,
 }
 
+#[allow(dead_code)]
 impl<T> ElementHashMap<T> {
     pub fn new() -> Self {
         Self {

@@ -1,6 +1,9 @@
 // Copyright (c) 2025-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+// Variant names (EMMC, ...) follow the UEFI device-path spec.
+#![allow(clippy::upper_case_acronyms)]
+
 use anyhow::{anyhow, Context, Result};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use macaddr::MacAddr;
@@ -513,9 +516,7 @@ impl PathNodeTrait for MessagingNode {
                 parent_port_number,
                 usb_interface,
             } => {
-                let mut data = Vec::new();
-                data.push(*parent_port_number);
-                data.push(*usb_interface);
+                let data = vec![*parent_port_number, *usb_interface];
                 Some(data)
             }
             MessagingNode::Lun(lun) => Some(vec![*lun]),
@@ -537,9 +538,9 @@ impl PathNodeTrait for MessagingNode {
             MessagingNode::MacAddr { mac_addr, if_type } => {
                 let mut data = vec![0; 32];
                 if mac_addr.is_v6() {
-                    data[0..6].copy_from_slice(&mac_addr.as_bytes());
+                    data[0..6].copy_from_slice(mac_addr.as_bytes());
                 } else {
-                    data[0..8].copy_from_slice(&mac_addr.as_bytes());
+                    data[0..8].copy_from_slice(mac_addr.as_bytes());
                 }
                 data.push(*if_type);
                 Some(data)
@@ -663,9 +664,7 @@ impl PathNodeTrait for MessagingNode {
                 }
             }
             MessagingNode::Ufs { pun, lun } => {
-                let mut data = Vec::new();
-                data.push(*pun);
-                data.push(*lun);
+                let data = vec![*pun, *lun];
                 Some(data)
             }
             MessagingNode::Unknown(node) => node.data.clone(),
@@ -751,7 +750,7 @@ fn display_usb_class(
 ) -> String {
     match device_class {
         254 => match device_subclass {
-            1 | 2 | 3 => {
+            1..=3 => {
                 let name = usb_class254_subclass_to_string(*device_subclass);
                 format!("{}({},{},{})", name, vendor_id, product_id, device_protocol)
             }
@@ -774,6 +773,8 @@ fn display_usb_class(
     }
 }
 
+// Mirrors the UEFI IPv6 device-path field layout; arg count matches the spec.
+#[allow(clippy::too_many_arguments)]
 fn display_ipv6(
     display_only: bool,
     local_ip: &Ipv6Addr,
@@ -806,6 +807,8 @@ fn display_ipv6(
     }
 }
 
+// Mirrors the UEFI IPv4 device-path field layout; arg count matches the spec.
+#[allow(clippy::too_many_arguments)]
 fn display_ip_v4(
     display_only: bool,
     local_ip: &Ipv4Addr,
@@ -839,12 +842,12 @@ fn parse_mac(padded_mac: [u8; 32]) -> Result<MacAddr> {
     // Check if the array is a 6-byte MAC followed by all zeros
     if padded_mac[6..].iter().all(|&b| b == 0) {
         let mac_bytes: [u8; 6] = padded_mac[0..6].try_into()?;
-        MacAddr::try_from(mac_bytes).context("invalid 6-byte mac address")
+        Ok(MacAddr::from(mac_bytes))
     }
     // Check if it's an 8-byte EUI-64 followed by all zeros
     else if padded_mac[8..].iter().all(|&b| b == 0) {
         let mac_bytes: [u8; 8] = padded_mac[0..8].try_into()?;
-        MacAddr::try_from(mac_bytes).context("invalid 8-byte mac address")
+        Ok(MacAddr::from(mac_bytes))
     }
     // Neither case matches
     else {
@@ -865,7 +868,7 @@ impl TryFrom<&Node> for MessagingNode {
         match subtype {
             DevicePathSubTypeMessaging::Unknown(_) => {
                 // Unknown nodes can have no data if node_length == 4
-                return Ok(MessagingNode::Unknown(value.clone()));
+                Ok(MessagingNode::Unknown(value.clone()))
             }
             DevicePathSubTypeMessaging::Uri => {
                 // Uri can be empty (length == 4) per RFC 3986 / UEFI spec
@@ -879,7 +882,7 @@ impl TryFrom<&Node> for MessagingNode {
                 // RFC 3986 URIs are ASCII (with percent-encoding for non-ASCII)
                 let uri = String::from_utf8(data.clone())
                     .context("Invalid ASCII/UTF-8 in URI - URIs must be RFC 3986 compliant")?;
-                return Ok(MessagingNode::Uri { uri });
+                Ok(MessagingNode::Uri { uri })
             }
             _ => {
                 // All other known node types require data

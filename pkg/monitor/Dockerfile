@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 ARG RUST_VERSION=lfedge/eve-rust:1.93.1-1
+# RUST_VERSION carries an explicit tag by default
+# hadolint ignore=DL3006
 FROM --platform=$BUILDPLATFORM ${RUST_VERSION} AS toolchain-base
 ARG TARGETARCH
 
@@ -14,6 +16,8 @@ ENV CARGO_BUILD_TARGET="aarch64-unknown-linux-musl"
 FROM toolchain-base AS target-riscv64
 ENV CARGO_BUILD_TARGET="riscv64gc-unknown-linux-musl"
 
+# target-$TARGETARCH is a build stage, not an image
+# hadolint ignore=DL3006
 FROM target-$TARGETARCH AS toolchain
 RUN echo "Cargo target: $CARGO_BUILD_TARGET"
 
@@ -44,7 +48,7 @@ RUN echo "Cargo target: $CARGO_BUILD_TARGET"
 
 RUN cargo build --release
 RUN cargo sbom > sbom.spdx.json
-RUN cp /app/target/$CARGO_BUILD_TARGET/release/monitor /app/target/
+RUN cp "/app/target/$CARGO_BUILD_TARGET/release/monitor" /app/target/
 # Single source of truth for the version: the crate manifest.
 RUN awk -F'"' '/^version = / {print $2; exit}' Cargo.toml > /app/monitor-version.txt
 

@@ -117,10 +117,7 @@ fn on_child_ui_action(
             _ => None,
         },
         UiActions::Input { text } => {
-            match source.as_str() {
-                "input" => w.state.content = text.clone(),
-                _ => {}
-            }
+            if source.as_str() == "input" { w.state.content = text.clone() }
             None
         }
         _ => None,
@@ -133,7 +130,8 @@ pub fn create_input_dialog(
     content: &str,
     hint: &str,
 ) -> impl IWindow {
-    let w = Window::builder(window_caption)
+
+    Window::builder(window_caption)
         .with_on_init(on_init)
         .with_layout(do_layout)
         .with_render(do_render)
@@ -145,6 +143,5 @@ pub fn create_input_dialog(
             hint: hint.to_string(),
         })
         .build()
-        .unwrap();
-    w
+        .unwrap()
 }

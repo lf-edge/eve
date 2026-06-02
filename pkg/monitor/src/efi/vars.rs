@@ -3,6 +3,8 @@
 
 use anyhow::Result;
 
+// Variant names follow the UEFI LoadOption attribute spec constants.
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug)]
 enum LoadOptionAttributesBits {
     LoadOptionActive = 0x00000001,

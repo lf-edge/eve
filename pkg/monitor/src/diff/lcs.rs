@@ -4,6 +4,8 @@
 use log::trace;
 use std::borrow::Borrow;
 
+// Public diff-op output; index payloads are intended API even if not yet read.
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum DiffOp {
     Del(usize),

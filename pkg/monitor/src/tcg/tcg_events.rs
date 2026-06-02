@@ -9,6 +9,8 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use std::io::{Cursor, Read};
 use uuid::Uuid;
 
+// Spec fields parsed from the UEFI image-load event; kept for fidelity.
+#[allow(dead_code)]
 pub struct TcgUefiImageLoadEvent {
     pub image_location_in_memory: u64,
     pub image_length_in_memory: u64,

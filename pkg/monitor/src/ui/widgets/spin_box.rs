@@ -1,6 +1,10 @@
 // Copyright (c) 2024-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+// Spin-box widget API; the Vertical layout and builder methods are intended
+// surface not yet exercised by a caller.
+#![allow(dead_code)]
+
 use log::info;
 use ratatui::{
     buffer::Buffer,
@@ -88,6 +92,7 @@ impl SpinBoxElement {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn draw_spinner(
         &mut self,
         up_arrow_rect: Rect,

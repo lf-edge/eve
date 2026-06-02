@@ -18,7 +18,8 @@ use crate::{
 
 pub struct LabelElement {
     text: String,
-    on_tick: Option<Rc<dyn Fn(&mut LabelElement) -> ()>>,
+    #[allow(clippy::type_complexity)]
+    on_tick: Option<Rc<dyn Fn(&mut LabelElement)>>,
     state_updated: bool,
 }
 

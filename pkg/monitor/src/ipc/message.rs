@@ -47,6 +47,9 @@ pub enum Request {
     SetServer(String),
 }
 
+// This is the IPC wire type; variant shapes mirror EVE messages and must not
+// be boxed, so accept the size difference.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "message")]
 pub enum IpcMessage {
@@ -109,7 +112,6 @@ fn dump_to_file(message: &str, is_error: bool) {
             .open(log_file_name)
             .unwrap();
         file.write_all(message.as_bytes()).unwrap();
-        return;
     }
 }
 

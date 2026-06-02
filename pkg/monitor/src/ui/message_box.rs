@@ -102,15 +102,14 @@ fn on_child_ui_action(
 ) -> Option<Action> {
     debug!("on_child_ui_action: {}:{:?}", source, action);
     match action {
-        UiActions::ButtonClicked(name) => match name.as_str() {
-            _ => Some(Action::new(&w.name, UiActions::DismissDialog)),
-        },
+        UiActions::ButtonClicked(_name) => Some(Action::new(&w.name, UiActions::DismissDialog)),
         _ => None,
     }
 }
 
 pub fn create_message_box(window_caption: &str, content: &str) -> impl IWindow {
-    let w = Window::builder(window_caption)
+
+    Window::builder(window_caption)
         .with_on_init(on_init)
         .with_layout(do_layout)
         .with_render(do_render)
@@ -120,8 +119,7 @@ pub fn create_message_box(window_caption: &str, content: &str) -> impl IWindow {
             content: content.to_string(),
         })
         .build()
-        .unwrap();
-    w
+        .unwrap()
 }
 
 /// Creates a system (non-dismissable) message box.
@@ -148,7 +146,8 @@ pub fn create_system_message_box(window_caption: &str, content: &str) -> impl IW
         None
     }
 
-    let w = Window::builder(window_caption)
+
+    Window::builder(window_caption)
         .with_on_init(sys_on_init)
         .with_layout(sys_do_layout)
         .with_render(do_render)
@@ -157,6 +156,5 @@ pub fn create_system_message_box(window_caption: &str, content: &str) -> impl IW
             content: content.to_string(),
         })
         .build()
-        .unwrap();
-    w
+        .unwrap()
 }

@@ -30,12 +30,12 @@ pub struct HomePage {
 
 impl HomePage {
     pub fn new() -> Self {
-        let hp = HomePage {
+
+        HomePage {
             layout: None,
             state: DeviceSummary::dummy_summary(),
             old_size: Rect::ZERO,
-        };
-        hp
+        }
     }
     pub fn do_layout(&self, area: &Rect, _model: &Rc<Model>) -> LayoutMap {
         let [left, right] =
@@ -57,8 +57,8 @@ impl HomePage {
 
     pub fn do_render(&mut self, area: &Rect, frame: &mut Frame<'_>, model: &Rc<Model>) {
         if self.layout.is_none() || self.old_size != *area {
-            self.layout = Some(self.do_layout(area, &model));
-            self.old_size = area.clone();
+            self.layout = Some(self.do_layout(area, model));
+            self.old_size = *area;
         }
         let layout = self.layout.as_ref().unwrap();
 

@@ -71,9 +71,7 @@ impl ApplicationsPage {
         // create list items from the interface
         let rows = model
             .borrow()
-            .apps
-            .iter()
-            .map(|(_, app)| info_row_from_app(app))
+            .apps.values().map(info_row_from_app)
             .collect::<Vec<_>>();
 
         self.list.size = rows.len();
@@ -121,21 +119,18 @@ impl IWindow for ApplicationsPage {}
 
 impl IEventHandler for ApplicationsPage {
     fn handle_event(&mut self, event: Event) -> Option<super::action::Action> {
-        match event {
-            Event::Key(key) => match key.code {
-                KeyCode::Up => self.list.select_previous(),
-                KeyCode::Down => self.list.select_next(),
-                KeyCode::Home if key.modifiers == KeyModifiers::CONTROL => self.list.select_first(),
-                KeyCode::End if key.modifiers == KeyModifiers::CONTROL => self.list.select_last(),
-                _ => {}
-            },
+        if let Event::Key(key) = event { match key.code {
+            KeyCode::Up => self.list.select_previous(),
+            KeyCode::Down => self.list.select_next(),
+            KeyCode::Home if key.modifiers == KeyModifiers::CONTROL => self.list.select_first(),
+            KeyCode::End if key.modifiers == KeyModifiers::CONTROL => self.list.select_last(),
             _ => {}
-        }
+        } }
         None
     }
 }
 
-fn info_row_from_app<'a, 'b>(app: &'a AppInstance) -> Row<'b> {
+fn info_row_from_app<'b>(app: &AppInstance) -> Row<'b> {
     let height = 1;
     // cells #1,2 IFace name and Link status
     let cells = vec![

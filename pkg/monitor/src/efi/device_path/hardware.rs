@@ -1,6 +1,9 @@
 // Copyright (c) 2025-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+// Variant names (PCCARD, BMC, ...) follow the UEFI device-path spec.
+#![allow(clippy::upper_case_acronyms)]
+
 use anyhow::{anyhow, Context};
 use byteorder::{LittleEndian, ReadBytesExt};
 use num_enum::{FromPrimitive, IntoPrimitive};

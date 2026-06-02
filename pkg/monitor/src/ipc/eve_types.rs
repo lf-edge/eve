@@ -1,6 +1,16 @@
 // Copyright (c) 2024-2025 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+// This is a hand-maintained mirror of EVE's Go types. Many fields/variants are
+// kept for fidelity even when not yet read, and names intentionally follow the
+// Go originals (acronym casing, enum-name prefixes, etc.), so silence the
+// corresponding lints for the whole module rather than mutating the mirror.
+#![allow(dead_code)]
+#![allow(clippy::upper_case_acronyms)]
+#![allow(clippy::enum_variant_names)]
+#![allow(clippy::wrong_self_convention)]
+#![allow(clippy::inherent_to_string_shadow_display)]
+
 use anyhow::Result;
 use base64::Engine;
 use chrono::DateTime;
@@ -14,7 +24,6 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use serde_with::base64::Base64;
 use serde_with::serde_as;
-use serde_with::DefaultOnNull;
 use serde_with::FromInto;
 use serde_with::NoneAsEmptyString;
 use std::fs::File;
@@ -904,7 +913,7 @@ impl DevicePortConfigList {
     }
 
     pub fn get_current_dpc_cloned(&self) -> Option<DevicePortConfig> {
-        self.get_current_dpc_ref().map(|dpc| dpc.clone())
+        self.get_current_dpc_ref().cloned()
     }
 }
 
