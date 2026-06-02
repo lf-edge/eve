@@ -1,0 +1,88 @@
+{
+  "type": "DPCList",
+  "message": {
+    "PortConfigList": [
+      {
+        "Version": 1,
+        "Key": "zedagent",
+        "TimePriority": "2025-11-10T13:28:09.591258287Z",
+        "State": 3,
+        "LastFailed": "0001-01-01T00:00:00Z",
+        "LastSucceeded": "2025-11-10T13:28:26.751063394Z",
+        "LastError": "",
+        "LastWarning": "",
+        "LastIPAndDNS": "2025-11-10T13:28:26.75106285Z",
+        "Ports": [
+          {
+            "IfName": "eth0",
+            "Phylabel": "eth0",
+            "Logicallabel": "eth0",
+            "SharedLabels": ["all", "uplink", "freeuplink"],
+            "NetworkUUID": "307de053-c378-4646-92ac-374a76cecf1e",
+            "IsMgmt": true,
+            "IsL3Port": true,
+            "Dhcp": 4,
+            "Type": 4,
+            "pubsub-large-ProxyCertPEM": null,
+            "VLAN": {},
+            "Bond": { "MIIMonitor": {}, "ARPMonitor": {} },
+            "WirelessCfg": {
+              "CellularV2": {
+                "Probe": {
+                  "Disable": false,
+                  "UserDefinedProbe": {
+                    "Method": 0,
+                    "ProbeHost": "",
+                    "ProbePort": 0
+                  }
+                }
+              }
+            },
+            "LastFailed": "0001-01-01T00:00:00Z",
+            "LastSucceeded": "2025-11-10T13:28:26.750996983Z",
+            "LastError": "",
+            "LastWarning": "",
+            "ConfigSource": {
+              "Origin": 1,
+              "SubmittedAt": "2025-11-10T13:28:09.591258287Z"
+            }
+          },
+          {
+            "IfName": "eth1",
+            "Phylabel": "eth1",
+            "Logicallabel": "eth1",
+            "SharedLabels": ["all", "uplink", "freeuplink"],
+            "NetworkUUID": "307de053-c378-4646-92ac-374a76cecf1e",
+            "IsMgmt": true,
+            "IsL3Port": true,
+            "Dhcp": 4,
+            "Type": 4,
+            "pubsub-large-ProxyCertPEM": null,
+            "VLAN": {},
+            "Bond": { "MIIMonitor": {}, "ARPMonitor": {} },
+            "WirelessCfg": {
+              "CellularV2": {
+                "Probe": {
+                  "Disable": false,
+                  "UserDefinedProbe": {
+                    "Method": 0,
+                    "ProbeHost": "",
+                    "ProbePort": 0
+                  }
+                }
+              }
+            },
+            "LastFailed": "0001-01-01T00:00:00Z",
+            "LastSucceeded": "2025-11-10T13:28:23.473087898Z",
+            "LastError": "",
+            "LastWarning": "",
+            "ConfigSource": {
+              "Origin": 1,
+              "SubmittedAt": "2025-11-10T13:28:09.591258287Z"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

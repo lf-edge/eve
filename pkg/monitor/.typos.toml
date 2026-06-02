@@ -1,0 +1,4 @@
+[default.extend-words]
+ratatui = "ratatui"
+[default.extend-identifiers]
+ratatui = "ratatui"

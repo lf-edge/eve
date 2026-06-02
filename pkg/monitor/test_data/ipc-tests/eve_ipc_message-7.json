@@ -1,0 +1,1 @@
+{"type":"VaultStatus","message":{"Name":"Application Data Store","Status":4,"PCRStatus":1,"ConversionComplete":false,"MismatchingPCRs":[14],"Error":"Vault key unavailable","ErrorTime":"2025-07-28T13:14:21.78881476Z","ErrorSeverity":3,"ErrorRetryCondition":"","ErrorEntities":null}}
