@@ -13,20 +13,20 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use super::eve_types::AppInstanceStatus;
-use super::eve_types::AppInstanceSummary;
 use super::eve_types::AppsList;
-use super::eve_types::DeviceNetworkStatus;
 use super::eve_types::DevicePortConfig;
 use super::eve_types::DevicePortConfigList;
 use super::eve_types::DownloaderStatus;
-use super::eve_types::EveNodeStatus;
-use super::eve_types::EveOnboardingStatus;
 use super::eve_types::EveVaultStatus;
-use super::eve_types::LedBlinkCounter;
 use super::eve_types::PhysicalIOAdapterList;
 use super::eve_types::TpmLogs;
-use super::eve_types::TuiEveConfig;
 use super::eve_types::ZedAgentStatus;
+use super::monitorapi::AppSummary;
+use super::monitorapi::LedBlinkCounter;
+use super::monitorapi::NetworkStatus;
+use super::monitorapi::NodeStatus;
+use super::monitorapi::OnboardingStatus;
+use super::monitorapi::TuiConfig;
 
 pub type RequestId = u64;
 
@@ -60,19 +60,19 @@ pub enum IpcMessage {
     /// A previously established IPC connection was lost
     /// (e.g. pillar crashed or socket closed).
     ConnectionLost,
-    NetworkStatus(DeviceNetworkStatus),
+    NetworkStatus(NetworkStatus),
     DPCList(DevicePortConfigList),
     DownloaderStatus(DownloaderStatus),
     IOAdapters(PhysicalIOAdapterList),
     AppStatus(AppInstanceStatus),
-    AppSummary(AppInstanceSummary),
+    AppSummary(AppSummary),
     VaultStatus(EveVaultStatus),
-    OnboardingStatus(EveOnboardingStatus),
+    OnboardingStatus(OnboardingStatus),
     LedBlinkCounter(LedBlinkCounter),
-    NodeStatus(EveNodeStatus),
+    NodeStatus(NodeStatus),
     AppsList(AppsList),
     ZedAgentStatus(ZedAgentStatus),
-    TUIConfig(TuiEveConfig),
+    TUIConfig(TuiConfig),
     TpmLogs(TpmLogs),
     Response {
         #[serde(flatten)]

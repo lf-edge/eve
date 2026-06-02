@@ -8,11 +8,27 @@ import (
 	"os"
 	"reflect"
 	"regexp"
+	"sync"
 
 	"github.com/lf-edge/eve/pkg/pillar/evetpm"
+	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
 )
+
+var (
+	productSerialOnce sync.Once
+	productSerial     string
+)
+
+// getProductSerial returns the hardware serial, computed once (it is static and
+// reading it shells out to dmidecode).
+func getProductSerial() string {
+	productSerialOnce.Do(func() {
+		productSerial = hardware.GetProductSerial(log)
+	})
+	return productSerial
+}
 
 var bootVariableRe = regexp.MustCompile(`^Boot[0-9a-fA-F]{4}$`)
 
@@ -30,20 +46,8 @@ type tpmLogs struct {
 	EfiVarsFailed   []efiVariable `json:"efi_vars_failed,omitempty"`
 }
 
-type nodeStatus struct {
-	Server         string                   `json:"server,omitempty"`
-	NodeUUID       uuid.UUID                `json:"node_uuid,omitempty"`
-	Onboarded      bool                     `json:"onboarded"`
-	AppSummary     types.AppInstanceSummary `json:"app_summary,omitempty"`
-	ZedAgentStatus types.ZedAgentStatus     `json:"zedagent_status,omitempty"`
-}
-
 type appInstancesStatus struct {
 	Apps []types.AppInstanceStatus `json:"apps"`
-}
-
-type tuiConfig struct {
-	LogLevel string `json:"log_level"`
 }
 
 func (ctx *monitor) isOnboarded() (bool, uuid.UUID) {
@@ -57,27 +61,20 @@ func (ctx *monitor) isOnboarded() (bool, uuid.UUID) {
 	return false, uuid.Nil
 }
 
-func (ctx *monitor) getAppSummary() types.AppInstanceSummary {
-	sub := ctx.subscriptions["AppSummary"]
-	if item, err := sub.Get("global"); err == nil {
-		appSummary := item.(types.AppInstanceSummary)
-		return appSummary
+func (ctx *monitor) getEdgeNodeInfo() types.EdgeNodeInfo {
+	if sub, ok := ctx.subscriptions["EdgeNodeInfo"]; ok {
+		if item, err := sub.Get("global"); err == nil {
+			return item.(types.EdgeNodeInfo)
+		}
 	}
-	return types.AppInstanceSummary{}
+	return types.EdgeNodeInfo{}
 }
 
 func (ctx *monitor) sendNodeStatus() {
-	// send the node status to the server
-	nodeStatus := nodeStatus{
-		Server: ctx.serverNameAndPort,
-	}
-	if onboarded, nodeUUID := ctx.isOnboarded(); onboarded {
-		nodeStatus.NodeUUID = nodeUUID
-		nodeStatus.Onboarded = true
-	}
-
-	nodeStatus.ZedAgentStatus = ctx.getZedAgentStatus()
-	nodeStatus.AppSummary = ctx.getAppSummary()
+	// send the node status to the client
+	onboarded, nodeUUID := ctx.isOnboarded()
+	nodeStatus := nodeStatusToContract(
+		ctx.serverNameAndPort, onboarded, nodeUUID, ctx.getEdgeNodeInfo(), getProductSerial())
 
 	if ctx.lastNodeStatus != nil && reflect.DeepEqual(*ctx.lastNodeStatus, nodeStatus) {
 		return
@@ -96,17 +93,6 @@ func (ctx *monitor) getAppInstancesStatus() []types.AppInstanceStatus {
 		apps = append(apps, appSummary)
 	}
 	return apps
-}
-
-func (ctx *monitor) getZedAgentStatus() types.ZedAgentStatus {
-	var err error
-	sub := ctx.subscriptions["ZedAgentStatus"]
-	if item, err := sub.Get("global"); err == nil {
-		zedAgentStatus := item.(types.ZedAgentStatus)
-		return zedAgentStatus
-	}
-	log.Errorf("Failed to get ZedAgentStatus %s", err)
-	return types.ZedAgentStatus{}
 }
 
 func (ctx *monitor) sendAppsList() {
@@ -213,9 +199,5 @@ func (ctx *monitor) processGlobalConfig(cfg *types.ConfigItemValueMap) {
 
 	logLevel := cfg.GlobalValueString(types.TUIMonitorLogLevel)
 
-	tuiConfig := tuiConfig{
-		LogLevel: logLevel,
-	}
-
-	ctx.IPCServer.sendIpcMessage("TUIConfig", tuiConfig)
+	ctx.IPCServer.sendIpcMessage("TUIConfig", tuiConfigToContract(logLevel))
 }
