@@ -1,9 +1,0 @@
-{
-  "configStatus": "success",
-  "deviceState": "online",
-  "attestState": "complete",
-  "attestError": "",
-  "bootReason": "rebootCmd",
-  "rebootReason": "scheduled",
-  "maintenanceMode": false
-}

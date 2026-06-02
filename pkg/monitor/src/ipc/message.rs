@@ -18,14 +18,10 @@ use super::eve_types::DevicePortConfig;
 use super::eve_types::DevicePortConfigList;
 use super::eve_types::TpmLogs;
 use super::monitorapi::AppSummary;
+use super::monitorapi::DeviceStatus;
 use super::monitorapi::DownloaderStatus;
-use super::monitorapi::LedBlinkCounter;
 use super::monitorapi::NetworkStatus;
-use super::monitorapi::NodeStatus;
-use super::monitorapi::OnboardingStatus;
 use super::monitorapi::TuiConfig;
-use super::monitorapi::VaultStatus;
-use super::monitorapi::ZedAgentStatus;
 
 pub type RequestId = u64;
 
@@ -59,17 +55,13 @@ pub enum IpcMessage {
     /// A previously established IPC connection was lost
     /// (e.g. pillar crashed or socket closed).
     ConnectionLost,
+    DeviceStatus(DeviceStatus),
     NetworkStatus(NetworkStatus),
     DPCList(DevicePortConfigList),
     DownloaderStatus(DownloaderStatus),
     AppStatus(AppInstanceStatus),
     AppSummary(AppSummary),
-    VaultStatus(VaultStatus),
-    OnboardingStatus(OnboardingStatus),
-    LedBlinkCounter(LedBlinkCounter),
-    NodeStatus(NodeStatus),
     AppsList(AppsList),
-    ZedAgentStatus(ZedAgentStatus),
     TUIConfig(TuiConfig),
     TpmLogs(TpmLogs),
     Response {

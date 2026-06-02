@@ -1,7 +1,0 @@
-{
-  "server": "zedcloud.example.com:443",
-  "nodeUuid": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
-  "onboarded": true,
-  "nodeName": "edge-node-01",
-  "serial": "ABC123XYZ"
-}

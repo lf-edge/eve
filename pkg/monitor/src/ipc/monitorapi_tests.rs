@@ -100,20 +100,9 @@ fn small_messages_parse() {
     assert_eq!((s.running, s.error), (5, 2));
     let c: TuiConfig = serde_json::from_str(&fixture("tui_config.json")).unwrap();
     assert_eq!(c.log_level, "debug");
-    let l: LedBlinkCounter = serde_json::from_str(&fixture("led_blink_counter.json")).unwrap();
-    assert_eq!(l.blink_counter, 4);
-}
-
-#[test]
-fn downloader_and_zedagent_parse() {
     let d: DownloaderStatus = serde_json::from_str(&fixture("downloader_status.json")).unwrap();
     assert_eq!(d.progress, 42);
     assert_eq!(d.name, "image.qcow2");
-    let z: ZedAgentStatus = serde_json::from_str(&fixture("zed_agent_status.json")).unwrap();
-    assert!(matches!(z.attest_state, AttestState::Complete));
-    assert!(matches!(z.device_state, DeviceState::Online));
-    assert!(matches!(z.boot_reason, BootReason::RebootCmd));
-    assert!(matches!(z.config_status, ConfigGetStatus::Success));
 }
 
 #[test]
@@ -129,20 +118,14 @@ fn vault_status_locked() {
 }
 
 #[test]
-fn node_status_parses() {
-    let n: NodeStatus = serde_json::from_str(&fixture("node_status.json")).unwrap();
-    assert_eq!(n.node_name, "edge-node-01");
-    assert_eq!(n.serial, "ABC123XYZ");
-    assert!(n.onboarded);
-    assert!(!n.node_uuid.is_nil());
-}
-
-#[test]
-fn onboarding_status_parses() {
-    let o: OnboardingStatus = serde_json::from_str(&fixture("onboarding_status.json")).unwrap();
-    assert_eq!(
-        o.device_uuid.to_string(),
-        "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
-    );
-    assert_eq!(o.hardware_model, "QEMU Standard PC");
+fn device_status_parses() {
+    let d: DeviceStatus = serde_json::from_str(&fixture("device_status.json")).unwrap();
+    assert_eq!(d.node_name, "edge-node-01");
+    assert_eq!(d.serial, "ABC123XYZ");
+    assert!(d.onboarded && !d.node_uuid.is_nil());
+    assert!(matches!(d.attest_state, AttestState::Complete));
+    assert!(matches!(d.device_state, DeviceState::Online));
+    assert!(matches!(d.boot_reason, BootReason::RebootCmd));
+    assert!(matches!(d.config_status, ConfigGetStatus::Success));
+    assert!(matches!(d.vault, VaultStatus::Unlocked { tpm_used: true }));
 }

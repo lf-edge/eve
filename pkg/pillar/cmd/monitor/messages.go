@@ -13,7 +13,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	uuid "github.com/satori/go.uuid"
 )
 
 var (
@@ -50,38 +49,19 @@ type appInstancesStatus struct {
 	Apps []types.AppInstanceStatus `json:"apps"`
 }
 
-func (ctx *monitor) isOnboarded() (bool, uuid.UUID) {
-	sub := ctx.subscriptions["OnboardingStatus"]
-	if item, err := sub.Get("global"); err == nil {
-		onboardingStatus := item.(types.OnboardingStatus)
-		if onboardingStatus.DeviceUUID != uuid.Nil {
-			return true, onboardingStatus.DeviceUUID
-		}
-	}
-	return false, uuid.Nil
-}
+// sendDeviceStatus assembles and emits the aggregated node-level snapshot from
+// the latest of each input the handlers have stored. Deduped to avoid resending
+// an unchanged snapshot.
+func (ctx *monitor) sendDeviceStatus() {
+	ds := deviceStatusToContract(ctx.serverNameAndPort, ctx.lastOnboarding,
+		ctx.lastEdgeNodeInfo, getProductSerial(), ctx.lastZedAgent, ctx.lastVault)
 
-func (ctx *monitor) getEdgeNodeInfo() types.EdgeNodeInfo {
-	if sub, ok := ctx.subscriptions["EdgeNodeInfo"]; ok {
-		if item, err := sub.Get("global"); err == nil {
-			return item.(types.EdgeNodeInfo)
-		}
-	}
-	return types.EdgeNodeInfo{}
-}
-
-func (ctx *monitor) sendNodeStatus() {
-	// send the node status to the client
-	onboarded, nodeUUID := ctx.isOnboarded()
-	nodeStatus := nodeStatusToContract(
-		ctx.serverNameAndPort, onboarded, nodeUUID, ctx.getEdgeNodeInfo(), getProductSerial())
-
-	if ctx.lastNodeStatus != nil && reflect.DeepEqual(*ctx.lastNodeStatus, nodeStatus) {
+	if ctx.lastDeviceStatus != nil && reflect.DeepEqual(*ctx.lastDeviceStatus, ds) {
 		return
 	}
-	ctx.lastNodeStatus = &nodeStatus
+	ctx.lastDeviceStatus = &ds
 
-	ctx.IPCServer.sendIpcMessage("NodeStatus", nodeStatus)
+	ctx.IPCServer.sendIpcMessage("DeviceStatus", ds)
 }
 
 func (ctx *monitor) getAppInstancesStatus() []types.AppInstanceStatus {

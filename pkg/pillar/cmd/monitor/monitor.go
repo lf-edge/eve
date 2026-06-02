@@ -39,8 +39,14 @@ type monitor struct {
 	pubDevicePortConfig pubsub.Publication
 	clientConnected     chan bool
 	serverNameAndPort   string
-	// cache last known data structures to avoid sending duplicate messages
-	lastNodeStatus *monitorapi.NodeStatus
+
+	// latest of each input feeding the aggregated DeviceStatus snapshot
+	lastOnboarding   types.OnboardingStatus
+	lastEdgeNodeInfo types.EdgeNodeInfo
+	lastZedAgent     types.ZedAgentStatus
+	lastVault        types.VaultStatus
+	// lastDeviceStatus dedups the assembled snapshot
+	lastDeviceStatus *monitorapi.DeviceStatus
 
 	IPCServer *monitorIPCServer
 }
@@ -125,7 +131,7 @@ func newMonitorContext() *monitor {
 	}
 	ctx.IPCServer = newIPCServer(ctx)
 	ctx.clientConnected = ctx.IPCServer.c()
-	ctx.lastNodeStatus = nil
+	ctx.lastDeviceStatus = nil
 
 	return ctx
 }
