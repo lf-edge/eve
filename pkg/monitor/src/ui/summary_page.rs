@@ -16,7 +16,7 @@ use ratatui::{
 
 use crate::{
     events::Event,
-    ipc::eve_types::{AttestState, ZedAgentStatus},
+    ipc::monitorapi::{AttestState, ZedAgentStatus},
     model::model::{Model, OnboardingStatus, VaultStatus},
     traits::{IEventHandler, IPresenter, IWindow},
     ui::action::{Action, UiActions},
@@ -41,22 +41,22 @@ impl SummaryPage {
 
     fn set_attestation_status(&mut self, z: &ZedAgentStatus) {
         match z.attest_state {
-            AttestState::StateNone => {
+            AttestState::None => {
                 self.attestation_state = "Attestation not yet started".into();
                 self.last_attest_error = "".into();
             }
-            AttestState::StateAttestWait
-            | AttestState::StateAttestEscrowWait
-            | AttestState::StateInternalQuoteWait => {
+            AttestState::AttestWait
+            | AttestState::AttestEscrowWait
+            | AttestState::InternalQuoteWait => {
                 self.attestation_state = "Attestation in progress...".into();
             }
-            AttestState::StateRestartWait => {
+            AttestState::RestartWait => {
                 self.attestation_state = "Attestation Restarted...".into();
                 if !z.attest_error.is_empty() && self.last_attest_error != z.attest_error {
                     self.last_attest_error = z.attest_error.clone();
                 }
             }
-            AttestState::StateComplete => {
+            AttestState::Complete => {
                 self.attestation_state = "Complete".into();
                 self.last_attest_error = "".into();
             }

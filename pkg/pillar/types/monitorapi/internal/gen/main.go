@@ -165,7 +165,7 @@ func main() {
 		}
 		e := enumDef{name: name}
 		for _, c := range consts {
-			e.variants = append(e.variants, [2]string{pascal(stripPrefix(c[0], name)), c[1]})
+			e.variants = append(e.variants, [2]string{normType(stripPrefix(c[0], name)), c[1]})
 		}
 		enums = append(enums, e)
 	}
