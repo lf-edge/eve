@@ -194,10 +194,20 @@ func fixtures() map[string]any {
 			Vault:         VaultUnlocked{TPMUsed: true},
 		},
 		"network_status.json": networkStatusSample(),
-		"app_summary.json":    AppSummary{Starting: 1, Running: 5, Stopping: 0, Error: 2},
-		"tui_config.json":     TUIConfig{LogLevel: "debug"},
+		"apps_list.json": AppsList{Instances: []AppInstance{
+			{
+				UUID: uuid.FromStringOrNil("9c1f2e3a-4b5c-6d7e-8f90-a1b2c3d4e5f6"),
+				Name: "nginx", Version: "1.0", State: SwStateRunning,
+			},
+			{
+				UUID: uuid.FromStringOrNil("1a2b3c4d-5e6f-7081-9293-a4b5c6d7e8f9"),
+				Name: "db", Version: "2.3", State: SwStateBroken,
+				Error: "image pull failed",
+			},
+		}},
+		"tui_config.json": TUIConfig{LogLevel: "debug"},
 		"downloader_status.json": DownloaderStatus{
-			Name: "image.qcow2", State: "DOWNLOADING",
+			Name: "image.qcow2", State: SwStateDownloading,
 			ContentType: "application/octet-stream",
 			Progress:    42, CurrentSize: 4200, TotalSize: 10000,
 		},
