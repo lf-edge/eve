@@ -328,7 +328,7 @@ impl SummaryPage {
                 ]));
                 text.push(Line::from(vec![
                     Span::styled("Error: ", Style::default().fg(Color::Red)),
-                    Span::styled(&reason.error, Style::default().fg(Color::White)),
+                    Span::styled(reason, Style::default().fg(Color::White)),
                 ]));
             }
             VaultStatus::Unlocked(tpm_used) => {
@@ -361,7 +361,7 @@ impl SummaryPage {
                 ]));
                 text.push(Line::from(vec![
                     Span::styled("Error: ", Style::default().fg(Color::Red)),
-                    Span::styled(&err.error, Style::default().fg(Color::White)),
+                    Span::styled(err, Style::default().fg(Color::White)),
                 ]));
                 text.push(Line::from(vec![
                     Span::styled("Switch to ", Style::default().fg(Color::White)),

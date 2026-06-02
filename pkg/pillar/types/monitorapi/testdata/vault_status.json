@@ -1,0 +1,8 @@
+{
+  "state": "locked",
+  "error": "Vault key unavailable",
+  "mismatchingPcrs": [
+    0,
+    7
+  ]
+}

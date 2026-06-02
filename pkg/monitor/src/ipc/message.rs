@@ -16,7 +16,6 @@ use super::eve_types::AppInstanceStatus;
 use super::eve_types::AppsList;
 use super::eve_types::DevicePortConfig;
 use super::eve_types::DevicePortConfigList;
-use super::eve_types::EveVaultStatus;
 use super::eve_types::TpmLogs;
 use super::monitorapi::AppSummary;
 use super::monitorapi::DownloaderStatus;
@@ -25,6 +24,7 @@ use super::monitorapi::NetworkStatus;
 use super::monitorapi::NodeStatus;
 use super::monitorapi::OnboardingStatus;
 use super::monitorapi::TuiConfig;
+use super::monitorapi::VaultStatus;
 use super::monitorapi::ZedAgentStatus;
 
 pub type RequestId = u64;
@@ -64,7 +64,7 @@ pub enum IpcMessage {
     DownloaderStatus(DownloaderStatus),
     AppStatus(AppInstanceStatus),
     AppSummary(AppSummary),
-    VaultStatus(EveVaultStatus),
+    VaultStatus(VaultStatus),
     OnboardingStatus(OnboardingStatus),
     LedBlinkCounter(LedBlinkCounter),
     NodeStatus(NodeStatus),
