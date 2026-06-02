@@ -35,7 +35,9 @@ use crate::{
 use super::traits::{ISelectable, ISelector};
 
 trait TpmEventDecode {
-    fn short_description(&self) -> Line;
+    fn short_description(&self) -> Line<'_>;
+    // Intended decode API alongside short_description; not yet called.
+    #[allow(dead_code)]
     fn diff(&self) -> (Vec<Row<'_>>, Vec<Row<'_>>);
 }
 
@@ -98,49 +100,46 @@ impl VaultPage {
         let mut text = vec![];
 
         // look for boot options modified
-        if let Some(bo) = parsing_result
+        if let Some(InterpretedTpmEvent::BootOptionsModified { old, new }) = parsing_result
             .tpm_log_parse_result
             .iter()
             .find(|e| matches!(e.event, InterpretedTpmEvent::BootOptionsModified { .. }))
             .map(|e| &e.event)
         {
-            match bo {
-                InterpretedTpmEvent::BootOptionsModified { old, new } => {
-                    //text.push(Line::from("Boot options were modified | "));
-                    // if any old had usb path
-                    let old_usb = old.iter().any(|b| b.from_usb);
-                    let new_usb = new.iter().any(|b| b.from_usb);
-                    if old_usb && !new_usb {
-                        text.push(Line::from(vec![
-                            Span::styled(
-                                "Boot options were modified | ",
-                                Style::default().fg(Color::White),
-                            ),
-                            Span::styled("USB drive was ", Style::default().fg(Color::White)),
-                            Span::styled("REMOVED. ", Style::default().fg(Color::Red)),
-                            Span::styled("INSERT", Style::default().fg(Color::Green)),
-                            Span::styled(
-                                " USB drive and reboot",
-                                Style::default().fg(Color::White),
-                            ),
-                        ]));
-                    } else if !old_usb && new_usb {
-                        text.push(Line::from(vec![
-                            Span::styled(
-                                "Boot options were modified | ",
-                                Style::default().fg(Color::White),
-                            ),
-                            Span::styled("USB drive was ", Style::default().fg(Color::White)),
-                            Span::styled("INSERTED. ", Style::default().fg(Color::Red)),
-                            Span::styled("REMOVE", Style::default().fg(Color::Green)),
-                            Span::styled(
-                                " USB drive and reboot",
-                                Style::default().fg(Color::White),
-                            ),
-                        ]));
-                    }
+            {
+                //text.push(Line::from("Boot options were modified | "));
+                // if any old had usb path
+                let old_usb = old.iter().any(|b| b.from_usb);
+                let new_usb = new.iter().any(|b| b.from_usb);
+                if old_usb && !new_usb {
+                    text.push(Line::from(vec![
+                        Span::styled(
+                            "Boot options were modified | ",
+                            Style::default().fg(Color::White),
+                        ),
+                        Span::styled("USB drive was ", Style::default().fg(Color::White)),
+                        Span::styled("REMOVED. ", Style::default().fg(Color::Red)),
+                        Span::styled("INSERT", Style::default().fg(Color::Green)),
+                        Span::styled(
+                            " USB drive and reboot",
+                            Style::default().fg(Color::White),
+                        ),
+                    ]));
+                } else if !old_usb && new_usb {
+                    text.push(Line::from(vec![
+                        Span::styled(
+                            "Boot options were modified | ",
+                            Style::default().fg(Color::White),
+                        ),
+                        Span::styled("USB drive was ", Style::default().fg(Color::White)),
+                        Span::styled("INSERTED. ", Style::default().fg(Color::Red)),
+                        Span::styled("REMOVE", Style::default().fg(Color::Green)),
+                        Span::styled(
+                            " USB drive and reboot",
+                            Style::default().fg(Color::White),
+                        ),
+                    ]));
                 }
-                _ => {}
             }
         }
 
@@ -218,13 +217,15 @@ impl IWindow for VaultPage {
         let tip = if self.expert_mode {
             format!("F12 - User mode | F2 - {} | F3 - {}", f2_text, f3_text)
         } else {
-            format!("F12 - Expert mode")
+            "F12 - Expert mode".to_string()
         };
         Some(tip)
     }
 }
 
-fn get_boot_efi_var_description(index: u16, vars: &Vec<EveEfiVariable>) -> Result<String> {
+// Event/EFI-variable decoding helpers; intended API used by the expert TPM view.
+#[allow(dead_code)]
+fn get_boot_efi_var_description(index: u16, vars: &[EveEfiVariable]) -> Result<String> {
     let var_name = format!("Boot{:04x}", index);
     let var = vars
         .iter()
@@ -234,14 +235,17 @@ fn get_boot_efi_var_description(index: u16, vars: &Vec<EveEfiVariable>) -> Resul
     Ok(load_options.description)
 }
 
-fn data_omitted_message(t: &TcgTpmEventType) -> String {
-    format!("<data omitted>")
+#[allow(dead_code)]
+fn data_omitted_message(_t: &TcgTpmEventType) -> String {
+    "<data omitted>".to_string()
 }
 
+#[allow(dead_code)]
 fn decoding_error_message(t: &TcgTpmEventType, e: String) -> String {
     format!("Error decoding event: {} : {}", t, e)
 }
 
+#[allow(dead_code)]
 fn decode_tcg_tpm_event(event: &TcgRawTpmEvent) -> String {
     match event.event_type {
         TcgTpmEventType::PrebootCert => data_omitted_message(&event.event_type),
@@ -250,7 +254,7 @@ fn decode_tcg_tpm_event(event: &TcgRawTpmEvent) -> String {
         TcgTpmEventType::Separator => "".to_string(),
         TcgTpmEventType::Action => TcgEfiActionEvent::try_from(event)
             .map(|e| e.get().to_string())
-            .unwrap_or_else(|a| data_omitted_message(&event.event_type)),
+            .unwrap_or_else(|_a| data_omitted_message(&event.event_type)),
         TcgTpmEventType::EventTag => data_omitted_message(&event.event_type),
         TcgTpmEventType::SCRTMContents => data_omitted_message(&event.event_type),
         TcgTpmEventType::SCRTMVersion => data_omitted_message(&event.event_type),
@@ -260,7 +264,7 @@ fn decode_tcg_tpm_event(event: &TcgRawTpmEvent) -> String {
         TcgTpmEventType::CompactHash => data_omitted_message(&event.event_type),
         TcgTpmEventType::IPL => TcgIPLEvent::try_from(event)
             .map(|e| e.get().to_string())
-            .unwrap_or_else(|e| data_omitted_message(&event.event_type)),
+            .unwrap_or_else(|_e| data_omitted_message(&event.event_type)),
         TcgTpmEventType::IPLPartitionData => data_omitted_message(&event.event_type),
         TcgTpmEventType::NonhostCode => data_omitted_message(&event.event_type),
         TcgTpmEventType::NonhostConfig => data_omitted_message(&event.event_type),
@@ -276,7 +280,7 @@ fn decode_tcg_tpm_event(event: &TcgRawTpmEvent) -> String {
         TcgTpmEventType::EfiGPTEvent => data_omitted_message(&event.event_type),
         TcgTpmEventType::EfiAction => TcgEfiActionEvent::try_from(event)
             .map(|e| e.get().to_string())
-            .unwrap_or_else(|a| data_omitted_message(&event.event_type)),
+            .unwrap_or_else(|_a| data_omitted_message(&event.event_type)),
         TcgTpmEventType::EfiPlatformFirmwareBlob => data_omitted_message(&event.event_type),
         TcgTpmEventType::EfiHandoffTables => data_omitted_message(&event.event_type),
         TcgTpmEventType::EfiPlatformFirmwareBlob2 => data_omitted_message(&event.event_type),
@@ -295,6 +299,8 @@ fn decode_tcg_tpm_event(event: &TcgRawTpmEvent) -> String {
 use itertools::{EitherOrBoth::*, Itertools};
 
 impl VaultPage {
+    // Returns the page wrapped as an IWindow by design, not Self.
+    #[allow(clippy::new_ret_no_self)]
     pub fn new() -> impl IWindow {
         VaultPage {
             user_mode_list: TpmEventList {
@@ -333,11 +339,10 @@ impl VaultPage {
             .user_mode_list
             .state
             .selected()
-            .map(|selected| {
-                let selected_event = tpm_events.iter().nth(selected);
+            .and_then(|selected| {
+                let selected_event = tpm_events.get(selected);
                 selected_event
-            })
-            .flatten();
+            });
 
         let rows = tpm_events
             .iter()
@@ -472,7 +477,7 @@ impl VaultPage {
 
                 let mut rows = vec![];
 
-                for (i, pair) in old.into_iter().zip_longest(new.into_iter()).enumerate() {
+                for (i, pair) in old.into_iter().zip_longest(new).enumerate() {
                     match pair {
                         Both(old, new) => {
                             rows.push(Row::new(vec![
@@ -566,7 +571,7 @@ impl VaultPage {
 
                 let mut rows = vec![];
 
-                for (i, pair) in old.into_iter().zip_longest(new.into_iter()).enumerate() {
+                for (i, pair) in old.into_iter().zip_longest(new).enumerate() {
                     match pair {
                         Both(old, new) => {
                             rows.push(Row::new(vec![
@@ -687,7 +692,7 @@ impl VaultPage {
         let g_m = is_grub_cfg_modified(tpm_events);
         if let Some(selected) = self.render_event_list(&pcr_event_list_rect, frame, bar, tpm_events)
         {
-            self.render_event_details(&decoding_rect, frame, bar, &selected, parsing_result);
+            self.render_event_details(&decoding_rect, frame, bar, selected, parsing_result);
         }
         self.render_user_tips(&user_tips, frame, g_m, parsing_result);
     }
@@ -734,7 +739,7 @@ impl VaultPage {
         );
     }
 
-    fn cell_for_event_op<'a, 'b>(event: &'a TpmEventRef, op: &'a DiffOp) -> Cell<'b> {
+    fn cell_for_event_op<'a, 'b>(_event: &'a TpmEventRef, op: &'a DiffOp) -> Cell<'b> {
         match op {
             DiffOp::Unchanged(_) => Cell::from("".to_string()),
             DiffOp::Add(_) => Cell::from("+".to_string()),
@@ -743,7 +748,7 @@ impl VaultPage {
         }
     }
 
-    fn style_for_event_op<'a, 'b>(op: &'a DiffOp) -> Style {
+    fn style_for_event_op(op: &DiffOp) -> Style {
         match op {
             DiffOp::Unchanged(_) => Style::default().fg(Color::White),
             DiffOp::Add(_) => Style::default().fg(Color::Green),
@@ -772,11 +777,12 @@ impl VaultPage {
         ratatui::widgets::Row::new(cells)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn render_tpm_log_expert(
         area: Rect,
         frame: &mut Frame<'_>,
-        evelt_log: &Vec<TpmEventRef>,
-        edit_ops: &Vec<DiffOp>,
+        evelt_log: &[TpmEventRef],
+        edit_ops: &[DiffOp],
         caption: &str,
         selected: bool,
         list_state: &mut TableState,
@@ -947,7 +953,7 @@ impl IPresenter for VaultPage {
     }
 }
 
-fn is_grub_cfg_modified(tpm_events: &Vec<InterpretedTpmEventRef>) -> bool {
+fn is_grub_cfg_modified(tpm_events: &[InterpretedTpmEventRef]) -> bool {
     let grub_fg_file_modified = tpm_events
         .iter()
         .filter_map(|e| if e.pcr == 14 { Some(&e.event) } else { None })
@@ -963,51 +969,47 @@ fn is_grub_cfg_modified(tpm_events: &Vec<InterpretedTpmEventRef>) -> bool {
 
 impl IEventHandler for VaultPage {
     fn handle_event(&mut self, event: Event) -> Option<super::action::Action> {
-        match event {
-            Event::Key(key) => match key.code {
-                KeyCode::Up => self.select_previous(),
-                KeyCode::Down => self.select_next(),
-                KeyCode::Home | KeyCode::PageUp if key.modifiers == KeyModifiers::CONTROL => {
-                    self.select_first()
+        if let Event::Key(key) = event { match key.code {
+            KeyCode::Up => self.select_previous(),
+            KeyCode::Down => self.select_next(),
+            KeyCode::Home | KeyCode::PageUp if key.modifiers == KeyModifiers::CONTROL => {
+                self.select_first()
+            }
+            KeyCode::End | KeyCode::PageDown if key.modifiers == KeyModifiers::CONTROL => {
+                self.select_last()
+            }
+            KeyCode::PageUp => {
+                self.select_backward_by(self.get_page_size());
+            }
+            KeyCode::PageDown => {
+                self.select_forward_by(self.get_page_size());
+            }
+            KeyCode::F(12) => {
+                self.expert_mode = !self.expert_mode;
+                if self.expert_mode {
+                    self.expert_selected_old = true;
                 }
-                KeyCode::End | KeyCode::PageDown if key.modifiers == KeyModifiers::CONTROL => {
-                    self.select_last()
-                }
-                KeyCode::PageUp => {
-                    self.select_backward_by(self.get_page_size());
-                }
-                KeyCode::PageDown => {
-                    self.select_forward_by(self.get_page_size());
-                }
-                KeyCode::F(12) => {
-                    self.expert_mode = !self.expert_mode;
-                    if self.expert_mode {
-                        self.expert_selected_old = true;
-                    }
-                }
+            }
 
-                KeyCode::F(2) if self.expert_mode => {
-                    self.expert_diff_only = !self.expert_diff_only;
+            KeyCode::F(2) if self.expert_mode => {
+                self.expert_diff_only = !self.expert_diff_only;
+            }
+            KeyCode::F(3) if self.expert_mode => {
+                self.expert_tcg_event_names = !self.expert_tcg_event_names;
+            }
+            KeyCode::Tab
+                if self.expert_mode => {
+                    self.expert_selected_old = !self.expert_selected_old;
                 }
-                KeyCode::F(3) if self.expert_mode => {
-                    self.expert_tcg_event_names = !self.expert_tcg_event_names;
-                }
-                KeyCode::Tab => {
-                    if self.expert_mode {
-                        self.expert_selected_old = !self.expert_selected_old;
-                    }
-                }
-                _ => {}
-            },
             _ => {}
-        }
+        } }
         None
     }
 }
 
-impl<'a> Into<Line<'a>> for ConfigFileStatus {
-    fn into(self) -> Line<'a> {
-        match self {
+impl<'a> From<ConfigFileStatus> for Line<'a> {
+    fn from(val: ConfigFileStatus) -> Self {
+        match val {
             ConfigFileStatus::Modified => "modified".yellow().into(),
             ConfigFileStatus::Deleted => "deleted".red().into(),
             ConfigFileStatus::Added => "created".green().into(),
@@ -1016,7 +1018,7 @@ impl<'a> Into<Line<'a>> for ConfigFileStatus {
 }
 
 impl TpmEventDecode for InterpretedTpmEvent {
-    fn short_description(&self) -> Line {
+    fn short_description(&self) -> Line<'_> {
         match self {
             InterpretedTpmEvent::ConfigFileModified { file, status } => {
                 Line::default().spans(vec![format!("{}: ", file).white(), status.to_span()])
@@ -1032,7 +1034,7 @@ impl TpmEventDecode for InterpretedTpmEvent {
                 Line::from("Boot options were changed")
             }
             InterpretedTpmEvent::Unparsed => {
-                Line::from(format!("Error decoding event:")) // {:?}", tpm_event))
+                Line::from("Error decoding event:".to_string()) // {:?}", tpm_event))
             }
             InterpretedTpmEvent::EnterBios => Line::from("BIOS Setup enter"),
         }

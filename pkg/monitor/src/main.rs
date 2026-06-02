@@ -48,7 +48,7 @@ fn remove_old_log_sessions<T: AsRef<Path>>(log_dir: T, rotate_count: usize) -> R
     // subdirectories in format %Y-%m-%d-%H-%M-%S
 
     // use walkdir to go over all subdirectories. get directory name and convert to date time object
-    let mut dirs = std::fs::read_dir(&log_dir.as_ref())?
+    let mut dirs = std::fs::read_dir(log_dir.as_ref())?
         // ignot not directories
         .filter(|entry| entry.as_ref().map(|e| e.path().is_dir()).unwrap_or(false))
         .filter_map(|entry| {
@@ -136,9 +136,9 @@ pub fn initialize_panic_handler() -> Result<()> {
         // or panic report won't be saved on EVE
         // we can remove it when human-panic is fixed
         // see https://github.com/rust-cli/human-panic/issues/167
-        let _ = std::env::var("EVE_MONITOR_LOG_DIR").and_then(|log_dir| {
+        let _ = std::env::var("EVE_MONITOR_LOG_DIR").map(|log_dir| {
             std::env::set_var("TMPDIR", log_dir);
-            Ok(())
+
         });
 
         let file_path = handle_dump(&meta, panic_info);
@@ -174,9 +174,9 @@ fn log_system_info() {
     // get current user UID and GID
     use std::os::unix::fs::MetadataExt;
     std::fs::metadata("/proc/self")
-        .and_then(|m| {
+        .map(|m| {
             info!("Current process UID: {}, GID: {}", m.uid(), m.gid());
-            Ok(())
+
         })
         .unwrap_or_else(|e| {
             info!("Failed to get current process UID and GID: {}", e);

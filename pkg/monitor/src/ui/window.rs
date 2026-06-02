@@ -1,9 +1,13 @@
 // Copyright (c) 2024-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+// Core Window framework: several helper methods are intended API, and the
+// callback fields use the framework's boxed-closure types throughout.
+#![allow(dead_code)]
+#![allow(clippy::type_complexity)]
+
 use crate::events;
 use crate::model::model::Model;
-use crate::ui::widgets::input_field::InputFieldElement;
 use std::borrow::BorrowMut;
 use std::collections::HashMap;
 use std::{fmt::Debug, rc::Rc};
@@ -176,6 +180,7 @@ impl<S> Debug for Window<S> {
 }
 
 impl<D> Window<D> {
+    #[allow(clippy::too_many_arguments)]
     pub(self) fn new<S: Into<String>>(
         name: S,
         ft: FocusTracker,
@@ -225,8 +230,8 @@ impl<D> Window<D> {
         self.widgets.get_mut(&name.into())
     }
 
-    pub fn get_widget<S: Into<String>>(&self, name: S) -> Option<&Box<dyn IWidget>> {
-        self.widgets.get(&name.into())
+    pub fn get_widget<S: Into<String>>(&self, name: S) -> Option<&dyn IWidget> {
+        self.widgets.get(&name.into()).map(|b| b.as_ref())
     }
 
     pub fn update_layout<S: Into<String>>(&mut self, name: S, rect: Rect) {
@@ -238,13 +243,13 @@ impl<D> Window<D> {
     }
 
     pub fn get_layout<S: Into<String>>(&mut self, name: S) -> Rect {
-        self.layout.get(&name.into()).unwrap().clone()
+        *self.layout.get(&name.into()).unwrap()
     }
 
     pub fn render_widget<S: Into<String>>(&mut self, name: S, frame: &mut ratatui::Frame<'_>) {
         let name = name.into();
         let focused = self.ft.get_focused_view().unwrap_or_default() == name;
-        let rect = self.layout.get(&name).unwrap().clone();
+        let rect = *self.layout.get(&name).unwrap();
         let widget = self.widgets.get_mut(&name).unwrap();
         widget.render(&rect, frame, focused);
     }
@@ -331,16 +336,11 @@ impl<D> IEventHandler for Window<D> {
                         "handle_event: key event handled by window. action: {:?}",
                         next_action
                     );
-                    match &next_action.action {
-                        ui_action => {
-                            if let Some(on_child_action) = self.on_child_ui_action.clone() {
-                                (on_child_action)(self, &next_action.source, ui_action).and_then(
-                                    |new_action| Some(new_action.source(self.name.clone())),
-                                );
-                            }
-                            return Some(next_action);
-                        }
+                    let ui_action = &next_action.action;
+                    if let Some(on_child_action) = self.on_child_ui_action.clone() {
+                        (on_child_action)(self, &next_action.source, ui_action).map(|new_action| new_action.source(self.name.clone()));
                     }
+                    return Some(next_action);
                 }
 
                 // forward the event to the focused view
@@ -351,18 +351,13 @@ impl<D> IEventHandler for Window<D> {
                     next_action
                 );
 
-                match next_action.action {
-                    ref ui_action => {
-                        if let Some(on_child_action) = self.on_child_ui_action.clone() {
-                            let next_action =
-                                (on_child_action)(self, &next_action.source, &ui_action).and_then(
-                                    |new_action| Some(new_action.source(self.name.clone())),
-                                );
-                            return next_action;
-                        }
-                        return Some(next_action);
-                    }
+                let ui_action = &next_action.action;
+                if let Some(on_child_action) = self.on_child_ui_action.clone() {
+                    let next_action =
+                        (on_child_action)(self, &next_action.source, ui_action).map(|new_action| new_action.source(self.name.clone()));
+                    return next_action;
                 }
+                return Some(next_action);
             }
             events::Event::Tick => {
                 // forward to all widgets
@@ -404,13 +399,13 @@ impl<D> IPresenter for Window<D> {
         // always do layout first. New widgets and layout entries may appear
         if let Some(layouter) = self.do_layout.borrow_mut() {
             let layouter = layouter.clone();
-            (layouter)(self, area, &model);
+            (layouter)(self, area, model);
         }
 
         // do custom rendering before we render widgets
         if let Some(custom_render) = self.do_render.borrow_mut() {
             let custom_render = custom_render.clone();
-            (custom_render)(self, area, frame, &model)
+            (custom_render)(self, area, frame, model)
         };
 
         let layout = &self.layout;

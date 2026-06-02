@@ -1,6 +1,10 @@
 // Copyright (c) 2024-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+// Intended trait API surface for the UI/presenter framework; some default
+// methods and helper traits are not yet exercised by every caller.
+#![allow(dead_code)]
+
 use std::any::Any;
 use std::rc::Rc;
 

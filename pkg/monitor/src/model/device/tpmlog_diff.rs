@@ -23,6 +23,8 @@ use crate::{
 
 use super::tpmlog::{EveTpmLog, TpmEvent, TpmEventRef};
 
+// Parse-result payloads are intended API even when not yet read.
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum ParsedEfiVariable {
     BoorOrder(EfiBootOrder),
@@ -67,8 +69,8 @@ pub struct TpmLogDiff {
 }
 
 impl TpmLogDiff {
-    pub fn set_affected_pcrs(&mut self, pcrs: &Vec<u32>) {
-        self.affected_pcrs = pcrs.clone();
+    pub fn set_affected_pcrs(&mut self, pcrs: &[u32]) {
+        self.affected_pcrs = pcrs.to_vec();
     }
     fn get_logs_pair(raw_logs: TpmLogs) -> Result<(EveTpmLog, EveTpmLog)> {
         if raw_logs.efi_vars_success.is_none() || raw_logs.efi_vars_failed.is_none() {
@@ -159,10 +161,10 @@ impl TpmLogDiff {
         })
     }
 
-    fn diff_for_pcr<'a, 'b>(
-        &'a self,
-        old: &'b Vec<TpmEventRef>,
-        new: &'b Vec<TpmEventRef>,
+    fn diff_for_pcr<'b>(
+        &self,
+        old: &'b [TpmEventRef],
+        new: &'b [TpmEventRef],
         pcr: u32,
     ) -> (
         Vec<&'b TpmEventRef>,
@@ -188,8 +190,8 @@ impl TpmLogDiff {
 
     pub fn interpret(
         &self,
-        old: &Vec<TpmEventRef>,
-        new: &Vec<TpmEventRef>,
+        old: &[TpmEventRef],
+        new: &[TpmEventRef],
         vars_old: &HashMap<String, ParsedEfiVariable>,
         vars_new: &HashMap<String, ParsedEfiVariable>,
     ) -> Result<Vec<InterpretedTpmEventRef>> {
@@ -320,6 +322,9 @@ impl Default for InterpretedTpmEventRef {
 // because we interpret events that were already decoded in get_event_key
 // detions and insertions are impossible. Only files measure-config cares about are recoded in PCR14
 // if an arbitrary file appears on /config partition it is not recorded in PCR14
+// Fields are set incrementally across match arms; default + reassign is clearer
+// here than threading a struct literal through every branch.
+#[allow(clippy::field_reassign_with_default)]
 pub(super) fn interpret_pcr14(
     _deleted_events: Vec<&TpmEventRef>,
     _added_events: Vec<&TpmEventRef>,
@@ -375,6 +380,8 @@ pub(super) fn interpret_pcr14(
     results
 }
 
+// Fields are set incrementally across branches; default + reassign is clearer.
+#[allow(clippy::field_reassign_with_default)]
 fn interpret_pcr1(
     deleted_events: Vec<&TpmEventRef>,
     new_events: Vec<&TpmEventRef>,
@@ -459,9 +466,7 @@ fn interpret_pcr1(
     }
 
     if boot_options_changed {
-        let old_boot_entries = vars_old
-            .iter()
-            .filter_map(|(_, v)| match v {
+        let old_boot_entries = vars_old.values().filter_map(|v| match v {
                 ParsedEfiVariable::BootEntry { num, lo } => Some(InterpretedBootEntry {
                     boot_num: *num,
                     description: lo.description.clone(),
@@ -471,9 +476,7 @@ fn interpret_pcr1(
             })
             .collect();
 
-        let new_boot_entries = vars_new
-            .iter()
-            .filter_map(|(_, v)| match v {
+        let new_boot_entries = vars_new.values().filter_map(|v| match v {
                 ParsedEfiVariable::BootEntry { num, lo } => Some(InterpretedBootEntry {
                     boot_num: *num,
                     description: lo.description.clone(),
@@ -519,6 +522,8 @@ fn interpret_pcr1(
 //
 // when eve is updated this evet is updated
 // - EV_IPL grub_cmd setparams Boot 0.0.0-rucoder_monitor-tpm-log-15ec5037-dirty-2025-03-04.10.17-kvm-amd64
+// Fields are set incrementally across branches; default + reassign is clearer.
+#[allow(clippy::field_reassign_with_default)]
 fn interpret_pcr8(
     _deletions: Vec<&TpmEventRef>,
     _insertions: Vec<&TpmEventRef>,
@@ -563,12 +568,14 @@ fn interpret_pcr8(
     results
 }
 
+// Fields are set incrementally across branches; default + reassign is clearer.
+#[allow(clippy::field_reassign_with_default)]
 fn interpret_pcr4(
     _deletions: Vec<&TpmEventRef>,
     insertions: Vec<&TpmEventRef>,
     _mods: Vec<(&TpmEventRef, &TpmEventRef)>,
 ) -> Vec<InterpretedTpmEventRef> {
-    let mut reult = Vec::new();
+    let mut result = Vec::new();
     for e in insertions {
         let mut event_ref = InterpretedTpmEventRef::default();
         event_ref.new_original_index = e.original_index;
@@ -581,11 +588,9 @@ fn interpret_pcr4(
             }
             TpmEvent::BootApplication(ref dp) => {
                 info!("BootApplication dp {}", dp.display(false));
-                let bios_uuids = vec![
-                    uuid!("462CAA21-7614-4503-836E-8AB6F4662331"),
+                let bios_uuids = [uuid!("462CAA21-7614-4503-836E-8AB6F4662331"),
                     uuid!("D89A7D8B-D016-4D26-93E3-EAB6B4D3B0A2"),
-                    uuid!("EEC25BDC-67F2-4D95-B1D5-F81B2039D11D"),
-                ];
+                    uuid!("EEC25BDC-67F2-4D95-B1D5-F81B2039D11D")];
                 let is_bios = dp.nodes.iter().any(|e| -> bool {
                     match e {
                         PathNode::Media(MediaNode::FvFile(uuid)) => bios_uuids.contains(uuid),
@@ -603,10 +608,10 @@ fn interpret_pcr4(
                 event_ref.event = InterpretedTpmEvent::Unparsed;
             }
         }
-        reult.push(event_ref);
+        result.push(event_ref);
     }
 
-    reult
+    result
 }
 
 #[cfg(test)]

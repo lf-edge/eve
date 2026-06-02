@@ -6,8 +6,8 @@ use std::{cell::RefCell, rc::Rc};
 use crossterm::event::{KeyCode, KeyModifiers};
 use ratatui::{
     layout::{Alignment, Constraint, Layout, Rect},
-    style::{Color, Style, Styled, Stylize},
-    text::{Line, Span, Text},
+    style::{Color, Style, Stylize},
+    text::{Line, Text},
     widgets::{
         Block, BorderType, Borders, Cell, HighlightSpacing, Padding, Paragraph, Row,
         StatefulWidget, Table, TableState,
@@ -39,6 +39,7 @@ struct NetworkPage {
     list: InterfaceList,
 }
 
+#[derive(Default)]
 struct InterfaceList {
     state: TableState,
     size: usize,
@@ -66,23 +67,14 @@ impl ISelectable for InterfaceList {
     }
 }
 
-impl Default for InterfaceList {
-    fn default() -> Self {
-        Self {
-            state: TableState::default(),
-            size: 0,
-            interface_names: vec![],
-        }
-    }
-}
 
 impl IWindow for NetworkPage {
     fn status_bar_tips(&self) -> Option<String> {
-        Some(format!("↑/↓ - navigate | Enter - edit interface"))
+        Some("↑/↓ - navigate | Enter - edit interface".to_string())
     }
 }
 
-pub fn info_row_from_iface<'a, 'b>(iface: &'a NetworkInterfaceStatus) -> Row<'b> {
+pub fn info_row_from_iface<'b>(iface: &NetworkInterfaceStatus) -> Row<'b> {
     // cells #1,2 IFace name and Link status
     let mut cells = vec![
         Cell::from(iface.name.clone()),
@@ -138,7 +130,7 @@ pub fn info_row_from_iface<'a, 'b>(iface: &'a NetworkInterfaceStatus) -> Row<'b>
     Row::new(cells).height(height as u16)
 }
 
-fn details_table_from_iface<'a, 'b>(iface: &'a NetworkInterfaceStatus) -> Vec<Row<'b>> {
+fn details_table_from_iface<'b>(iface: &NetworkInterfaceStatus) -> Vec<Row<'b>> {
     // Row 0: Interface type
     // //FIXME: doesn't work reliably
     let iface_type = iface.media.to_string();
@@ -310,7 +302,7 @@ impl NetworkPage {
             .borrow()
             .network
             .iter()
-            .map(|iface| info_row_from_iface(iface))
+            .map(info_row_from_iface)
             .collect::<Vec<_>>();
 
         self.list.size = rows.len();
@@ -393,21 +385,18 @@ impl NetworkPage {
 
 impl IEventHandler for NetworkPage {
     fn handle_event(&mut self, event: Event) -> Option<Action> {
-        match event {
-            Event::Key(key) => match key.code {
-                KeyCode::Up => self.list.select_previous(),
-                KeyCode::Down => self.list.select_next(),
-                KeyCode::Home if key.modifiers == KeyModifiers::CONTROL => self.list.select_first(),
-                KeyCode::End if key.modifiers == KeyModifiers::CONTROL => self.list.select_last(),
-                KeyCode::Enter => {
-                    if let Some(selected) = self.list.selected() {
-                        return Some(Action::new("net", UiActions::EditIfaceConfig(selected)));
-                    }
+        if let Event::Key(key) = event { match key.code {
+            KeyCode::Up => self.list.select_previous(),
+            KeyCode::Down => self.list.select_next(),
+            KeyCode::Home if key.modifiers == KeyModifiers::CONTROL => self.list.select_first(),
+            KeyCode::End if key.modifiers == KeyModifiers::CONTROL => self.list.select_last(),
+            KeyCode::Enter => {
+                if let Some(selected) = self.list.selected() {
+                    return Some(Action::new("net", UiActions::EditIfaceConfig(selected)));
                 }
-                _ => {}
-            },
+            }
             _ => {}
-        }
+        } }
         None
     }
 }

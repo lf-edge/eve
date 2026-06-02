@@ -1,6 +1,11 @@
 // Copyright (c) 2024-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+// Input-field widget API; builder methods and the callback alias are intended
+// surface. The InputModifiers variant prefix is a deliberate naming choice.
+#![allow(dead_code)]
+#![allow(clippy::enum_variant_names)]
+
 use crossterm::event::{KeyCode, KeyEvent};
 use log::trace;
 use ratatui::{
@@ -88,7 +93,7 @@ impl IWidget for InputFieldElement {
     }
 
     fn tips_in_focus(&self) -> Option<String> {
-        return self.validation_error.clone();
+        self.validation_error.clone()
     }
 }
 
@@ -261,11 +266,10 @@ impl IElementEventHandler for InputFieldElement {
 
                     if let Some(f) = self.on_char.as_mut() {
                         if let Some(c) = f(&c) {
-                            if self.input_mode == InputMode::Overwrite {
-                                if self.input_position < value.len() {
+                            if self.input_mode == InputMode::Overwrite
+                                && self.input_position < value.len() {
                                     value.remove(self.input_position);
                                 }
-                            }
                             value.insert(self.input_position, c);
                             self.input_position += 1;
                             if self.cursor_position < self.text_area.width - 1 {
@@ -301,14 +305,13 @@ impl IElementEventHandler for InputFieldElement {
                     }
                     self.cursor_position = self.cursor_position.saturating_sub(1);
                 }
-                KeyCode::Right => {
-                    if self.input_position < value.len() {
+                KeyCode::Right
+                    if self.input_position < value.len() => {
                         self.input_position += 1;
                         if self.cursor_position < self.text_area.width {
                             self.cursor_position += 1;
                         }
                     }
-                }
                 KeyCode::Enter => {
                     // do nothing for now
                     // TODO: submit the value ?

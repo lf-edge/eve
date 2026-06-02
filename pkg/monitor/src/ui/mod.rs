@@ -17,6 +17,8 @@ pub mod statusbar;
 pub mod summary_page;
 pub mod tools;
 pub mod traits;
+// `ui::ui` is an established path; keep the name rather than churn callers.
+#[allow(clippy::module_inception)]
 pub mod ui;
 pub mod vaultpage;
 pub mod widgets;

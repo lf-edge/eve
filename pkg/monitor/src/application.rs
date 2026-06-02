@@ -3,7 +3,6 @@
 
 use crate::actions::MonActions;
 use crate::events::Event;
-use crate::ipc::eve_types::TuiEveConfig;
 use crate::model::model::Model;
 use crate::model::model::MonitorModel;
 use crate::ui::ipdialog::InterfaceState;
@@ -79,15 +78,12 @@ impl AppConfig {
 
         let config_path = config_dir.join("config.json");
 
-        AppConfig::load(&config_path).map_or_else(
-            |e| {
+        AppConfig::load(&config_path).unwrap_or_else(|e| {
                 log::error!("Failed to load config: {}", e);
                 let cfg = AppConfig::new(config_path);
                 cfg.save().expect("Failed to save config");
                 cfg
-            },
-            |c| c,
-        )
+            })
     }
 }
 
@@ -101,6 +97,7 @@ pub struct Application {
     // this is our model :)
     model: Rc<Model>,
     // pending requests
+    #[allow(clippy::type_complexity)]
     pending_requests: HashMap<u64, Rc<dyn Fn(&mut Application)>>,
     config: AppConfig,
 }
@@ -130,7 +127,7 @@ impl Application {
     }
     pub fn send_ipc_message<F>(&mut self, msg: IpcMessage, handle_response: F)
     where
-        F: Fn(&mut Application) -> () + 'static,
+        F: Fn(&mut Application) + 'static,
     {
         if !self.model.borrow().ipc_connected {
             warn!(
@@ -140,12 +137,9 @@ impl Application {
             return;
         }
         if let Some(ipc_tx) = &self.ipc_tx {
-            match &msg {
-                IpcMessage::Request { request, id } => {
-                    debug!("Pending response for: {:?}", request);
-                    self.pending_requests.insert(*id, Rc::new(handle_response));
-                }
-                _ => {}
+            if let IpcMessage::Request { request, id } = &msg {
+                debug!("Pending response for: {:?}", request);
+                self.pending_requests.insert(*id, Rc::new(handle_response));
             }
 
             match ipc_tx.send(msg) {
@@ -162,10 +156,10 @@ impl Application {
     fn get_socket_path() -> String {
         // try to get XDG_RUNTIME_DIR first if we run a standalone app on development host
         if let Ok(xdg_runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
-            return format!("{}/monitor.sock", xdg_runtime_dir);
+            format!("{}/monitor.sock", xdg_runtime_dir)
         } else {
             // EVE path
-            return "/run/monitor.sock".to_string();
+            "/run/monitor.sock".to_string()
         }
     }
 
@@ -331,8 +325,7 @@ impl Application {
                     let dns_servers = new
                         .dns
                         .split(',')
-                        .map(|s| s.parse::<IpAddr>().ok())
-                        .flatten()
+                        .filter_map(|s| s.parse::<IpAddr>().ok())
                         .collect::<Vec<IpAddr>>();
 
                     // same for NTP. NTP can now be either IP or FQDN
@@ -719,11 +712,8 @@ impl Application {
                     match action {
                         Some(action) => {
                             info!("Async Action: {:?}", action);
-                            match action.action {
-                                UiActions::Quit => {
-                                    app_cancel_token.cancel();
-                                }
-                                _ => {}
+                            if action.action == UiActions::Quit {
+                                app_cancel_token.cancel();
                             }
                         }
                         None => {

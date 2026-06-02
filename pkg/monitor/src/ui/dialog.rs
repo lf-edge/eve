@@ -1,6 +1,10 @@
 // Copyright (c) 2024-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+// Generic dialog widget; part of the intended UI API even though no page
+// currently instantiates it.
+#![allow(dead_code)]
+
 use std::rc::Rc;
 
 use crate::events;
@@ -153,8 +157,7 @@ impl<D: 'static> IPresenter for Dialog<D> {
         let focused_button = self
             .focus
             .get_focused_view()
-            .or(Some("".to_string()))
-            .unwrap();
+            .unwrap_or("".to_string());
 
         debug!("focused button: {focused_button}");
 
@@ -171,7 +174,7 @@ impl<D: 'static> IPresenter for Dialog<D> {
 
         // render the content
         // if let Some(self.state){}
-        let content_area = self.layout.get("content").unwrap().clone();
+        let content_area = *self.layout.get("content").unwrap();
         self.render_contents(&content_area, frame, dialog_focused);
     }
 
@@ -222,6 +225,6 @@ impl<D> IElementEventHandler for Dialog<D> {
                 _ => return Some(action),
             }
         }
-        return None;
+        None
     }
 }

@@ -4,12 +4,12 @@
 use std::rc::Rc;
 
 use crossterm::event::{KeyCode, KeyModifiers};
-use log::{debug, info};
+use log::debug;
 use ratatui::{
     layout::{Alignment, Constraint, Layout},
     prelude::Rect,
     style::{Color, Style, Stylize},
-    text::{Line, Span, Text, ToText},
+    text::{Line, Span, Text},
     widgets::{Block, BorderType, Borders, Cell, Padding, Row, Table},
     Frame,
 };
@@ -86,9 +86,7 @@ impl SummaryPage {
 
 impl IWindow for SummaryPage {
     fn status_bar_tips(&self) -> Option<String> {
-        Some(format!(
-            "Alt + ◄ ► linux terminal | Ctrl + s change server | Ctrl + ◄ ► switch tabs"
-        ))
+        Some("Alt + ◄ ► linux terminal | Ctrl + s change server | Ctrl + ◄ ► switch tabs".to_string())
     }
 }
 
@@ -337,7 +335,7 @@ impl SummaryPage {
                             .map(|p| format!("{:?}", p))
                             .collect::<Vec<String>>()
                             .join(",");
-                        Span::styled(format!("{}", pcr), Style::default().fg(Color::Green))
+                        Span::styled(pcr.to_string(), Style::default().fg(Color::Green))
                     } else {
                         Span::styled("N/A", Style::default().fg(Color::Yellow))
                     },
@@ -440,8 +438,8 @@ impl SummaryPage {
             Span::styled(attestation_state, Style::default().fg(Color::Green)),
         ]));
 
-        if is_enabled {
-            if !self.attestation_state.is_empty() {
+        if is_enabled
+            && !self.attestation_state.is_empty() {
                 text.push(Line::from(vec![
                     Span::styled("Current state: ", Style::default().fg(Color::White)),
                     Span::styled(&self.attestation_state, Style::default().fg(Color::White)),
@@ -470,7 +468,6 @@ impl SummaryPage {
                     }
                 }
             }
-        }
 
         let attest_status_widget = ratatui::widgets::Paragraph::new(Text::from(text))
             .wrap(ratatui::widgets::Wrap { trim: true })
@@ -498,7 +495,7 @@ impl SummaryPage {
             .borrow()
             .network
             .iter()
-            .map(|iface| super::networkpage::info_row_from_iface(iface))
+            .map(super::networkpage::info_row_from_iface)
             .collect::<Vec<_>>();
 
         // create a surrounding block for the list
@@ -602,7 +599,7 @@ impl SummaryPage {
         //     Layout::horizontal(vec![Constraint::Percentage(50), Constraint::Fill(1)])
         //         .areas(iface_list_rect);
 
-        let connectivity_status_widget = ratatui::widgets::Paragraph::new(Text::from(text))
+        let connectivity_status_widget = ratatui::widgets::Paragraph::new(text)
             .style(ratatui::style::Style::default().fg(ratatui::style::Color::White));
         frame.render_widget(connectivity_status_widget, network_summary_rect);
         self.render_interface_list(model, iface_list_rect, frame);

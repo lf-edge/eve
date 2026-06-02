@@ -1,6 +1,13 @@
 // Copyright (c) 2025-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+// Mirror of TCG TPM event-log spec types. Acronym casing (TPM_ALG_*) and the
+// PCR enum naming follow the spec; several parsing helpers/types are kept as
+// intended API even when not yet used. Silence the related lints module-wide.
+#![allow(dead_code)]
+#![allow(clippy::upper_case_acronyms)]
+#![allow(clippy::enum_variant_names)]
+
 use anyhow::{anyhow, Context, Result};
 use byteorder::{LittleEndian, ReadBytesExt};
 use num_enum::TryFromPrimitive;
@@ -481,7 +488,7 @@ impl TcgTpmLog {
         let mut cursor = Cursor::new(data);
         let mut events = Vec::new();
 
-        // the very first event is always a Spec event in 'old' format wit honly SHA1 digest
+        // the very first event is always a Spec event in 'old' format with only SHA1 digest
         let log_spec = Self::read_spec_event(&mut cursor)?;
 
         while cursor.position() < data.len() as u64 {
@@ -492,7 +499,7 @@ impl TcgTpmLog {
         Ok(events)
     }
 
-    pub fn events_for_pcr_ref(&self, pcr_index: u32) -> Vec<TcgTpmEventRef> {
+    pub fn events_for_pcr_ref(&self, pcr_index: u32) -> Vec<TcgTpmEventRef<'_>> {
         self.events
             .iter()
             .enumerate()

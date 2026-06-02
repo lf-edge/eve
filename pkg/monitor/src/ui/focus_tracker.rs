@@ -1,6 +1,9 @@
 // Copyright (c) 2024-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+// Focus-tracking helper; OneShot mode and clear_focus are intended API.
+#![allow(dead_code)]
+
 use crate::ui::action::UiActions;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
@@ -46,8 +49,8 @@ impl FocusTracker {
         focused_view: Option<String>,
         focus_mode: FocusMode,
     ) -> FocusTracker {
-        let focus_tracker = FocusTracker::new(tab_order, focused_view, focus_mode);
-        focus_tracker
+
+        FocusTracker::new(tab_order, focused_view, focus_mode)
     }
 
     pub fn create_from_views(
@@ -67,8 +70,8 @@ impl FocusTracker {
         };
 
         let tab_order = collect_views();
-        let focus_tracker = FocusTracker::new(tab_order, focused_view, focus_mode);
-        focus_tracker
+
+        FocusTracker::new(tab_order, focused_view, focus_mode)
     }
 
     pub fn get_focused_view(&self) -> Option<String> {
@@ -134,9 +137,9 @@ impl FocusTracker {
                 } else {
                     self.focus_prev();
                 }
-                return Some(UiActions::Redraw);
+                Some(UiActions::Redraw)
             }
-            _ => return None,
+            _ => None,
         }
     }
 
