@@ -1,7 +1,6 @@
 // Copyright (c) 2024-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-pub mod eve_types;
 pub mod ipc_client;
 pub mod message;
 
@@ -13,7 +12,5 @@ pub mod monitorapi;
 // Hand-written helpers on the generated contract types.
 mod tpm;
 
-#[cfg(test)]
-mod tests;
 #[cfg(test)]
 mod monitorapi_tests;
