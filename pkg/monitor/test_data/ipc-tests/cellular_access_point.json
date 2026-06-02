@@ -1,0 +1,319 @@
+{
+  "type": "DPCList",
+  "message": {
+    "CurrentIndex": 0,
+    "PortConfigList": [
+      {
+        "Version": 1,
+        "Key": "zedagent",
+        "TimePriority": "2025-10-03T06:41:12.954142999Z",
+        "State": 8,
+        "ShaFile": "",
+        "ShaValue": null,
+        "LastFailed": "0001-01-01T00:00:00Z",
+        "LastSucceeded": "2025-10-03T15:28:00.406374166Z",
+        "LastError": "",
+        "LastWarning": "",
+        "LastIPAndDNS": "2025-10-03T06:42:10.690441693Z",
+        "Ports": [
+          {
+            "IfName": "eth0",
+            "USBAddr": "",
+            "PCIAddr": "0000:00:1f.6",
+            "Phylabel": "eth0",
+            "Logicallabel": "eth0",
+            "SharedLabels": ["all", "uplink", "freeuplink"],
+            "Alias": "",
+            "AllowLocalModifications": true,
+            "NetworkUUID": "2e6038c1-ece6-4ffd-b95b-a7302c219d59",
+            "IsMgmt": true,
+            "IsL3Port": true,
+            "InvalidConfig": false,
+            "Cost": 0,
+            "MTU": 0,
+            "Dhcp": 4,
+            "AddrSubnet": "",
+            "Gateway": "",
+            "DomainName": "",
+            "NTPServers": null,
+            "DNSServers": null,
+            "Type": 4,
+            "Proxies": null,
+            "Exceptions": "",
+            "Pacfile": "",
+            "NetworkProxyEnable": false,
+            "NetworkProxyURL": "",
+            "WpadURL": "",
+            "pubsub-large-ProxyCertPEM": null,
+            "L2Type": 0,
+            "VLAN": { "ParentPort": "", "ID": 0 },
+            "Bond": {
+              "AggregatedPorts": null,
+              "Mode": 0,
+              "LacpRate": 0,
+              "MIIMonitor": {
+                "Enabled": false,
+                "Interval": 0,
+                "UpDelay": 0,
+                "DownDelay": 0
+              },
+              "ARPMonitor": {
+                "Enabled": false,
+                "Interval": 0,
+                "IPTargets": null
+              }
+            },
+            "WirelessCfg": {
+              "WType": 0,
+              "CellularV2": {
+                "AccessPoints": null,
+                "Probe": {
+                  "Disable": false,
+                  "UserDefinedProbe": {
+                    "Method": 0,
+                    "ProbeHost": "",
+                    "ProbePort": 0
+                  }
+                },
+                "LocationTracking": false
+              },
+              "Wifi": null,
+              "Cellular": null
+            },
+            "LastFailed": "0001-01-01T00:00:00Z",
+            "LastSucceeded": "0001-01-01T00:00:00Z",
+            "LastError": "",
+            "LastWarning": "",
+            "IgnoreDhcpNtpServers": false,
+            "IgnoreDhcpIPAddresses": false,
+            "IgnoreDhcpGateways": false,
+            "IgnoreDhcpDNSConfig": false,
+            "ConfigSource": {
+              "Origin": 1,
+              "SubmittedAt": "2025-10-03T06:41:12.954142999Z"
+            }
+          },
+          {
+            "IfName": "wwan0",
+            "USBAddr": "1:1",
+            "PCIAddr": "0000:00:14.0",
+            "Phylabel": "modem1",
+            "Logicallabel": "modem1",
+            "SharedLabels": ["all"],
+            "Alias": "",
+            "AllowLocalModifications": false,
+            "NetworkUUID": "6d4112d6-2c8b-4296-804c-37628e5fda7f",
+            "IsMgmt": false,
+            "IsL3Port": true,
+            "InvalidConfig": false,
+            "Cost": 0,
+            "MTU": 0,
+            "Dhcp": 4,
+            "AddrSubnet": "",
+            "Gateway": "",
+            "DomainName": "",
+            "NTPServers": null,
+            "DNSServers": null,
+            "Type": 4,
+            "Proxies": null,
+            "Exceptions": "",
+            "Pacfile": "",
+            "NetworkProxyEnable": false,
+            "NetworkProxyURL": "",
+            "WpadURL": "",
+            "pubsub-large-ProxyCertPEM": null,
+            "L2Type": 0,
+            "VLAN": { "ParentPort": "", "ID": 0 },
+            "Bond": {
+              "AggregatedPorts": null,
+              "Mode": 0,
+              "LacpRate": 0,
+              "MIIMonitor": {
+                "Enabled": false,
+                "Interval": 0,
+                "UpDelay": 0,
+                "DownDelay": 0
+              },
+              "ARPMonitor": {
+                "Enabled": false,
+                "Interval": 0,
+                "IPTargets": null
+              }
+            },
+            "WirelessCfg": {
+              "WType": 1,
+              "CellularV2": {
+                "AccessPoints": [
+                  {
+                    "SIMSlot": 0,
+                    "Activated": true,
+                    "APN": "o2internet",
+                    "IPType": "ipv4v6",
+                    "AuthProtocol": "",
+                    "CleartextCredentials": { "Username": "", "Password": "" },
+                    "EncryptedCredentials": {
+                      "CipherBlockID": "",
+                      "CipherContextID": "",
+                      "InitialValue": null,
+                      "pubsub-large-CipherData": null,
+                      "ClearTextHash": null,
+                      "IsCipher": false,
+                      "CipherContext": null,
+                      "Error": "",
+                      "ErrorTime": "0001-01-01T00:00:00Z",
+                      "ErrorSeverity": 0,
+                      "ErrorRetryCondition": "",
+                      "ErrorEntities": null
+                    },
+                    "PreferredPLMNs": null,
+                    "PreferredRATs": null,
+                    "ForbidRoaming": true,
+                    "AttachAPN": "internet",
+                    "AttachIPType": "ipv6",
+                    "AttachAuthProtocol": "",
+                    "AttachCleartextCredentials": {
+                      "Username": "",
+                      "Password": ""
+                    }
+                  }
+                ],
+                "Probe": {
+                  "Disable": false,
+                  "UserDefinedProbe": {
+                    "Method": 1,
+                    "ProbeHost": "",
+                    "ProbePort": 0
+                  }
+                },
+                "LocationTracking": true
+              },
+              "Wifi": null,
+              "Cellular": null
+            },
+            "LastFailed": "0001-01-01T00:00:00Z",
+            "LastSucceeded": "0001-01-01T00:00:00Z",
+            "LastError": "",
+            "LastWarning": "",
+            "IgnoreDhcpNtpServers": false,
+            "IgnoreDhcpIPAddresses": false,
+            "IgnoreDhcpGateways": false,
+            "IgnoreDhcpDNSConfig": false,
+            "ConfigSource": {
+              "Origin": 1,
+              "SubmittedAt": "2025-10-03T06:41:12.954142999Z"
+            }
+          },
+          {
+            "IfName": "wlan0",
+            "USBAddr": "",
+            "PCIAddr": "0000:00:14.3",
+            "Phylabel": "wlan0",
+            "Logicallabel": "wlan0",
+            "SharedLabels": ["all", "uplink", "freeuplink"],
+            "Alias": "",
+            "AllowLocalModifications": false,
+            "NetworkUUID": "f309d034-68d0-435f-986d-a8f12d9b6006",
+            "IsMgmt": true,
+            "IsL3Port": true,
+            "InvalidConfig": false,
+            "Cost": 0,
+            "MTU": 0,
+            "Dhcp": 4,
+            "AddrSubnet": "",
+            "Gateway": "",
+            "DomainName": "",
+            "NTPServers": ["192.168.7.1"],
+            "DNSServers": null,
+            "Type": 5,
+            "Proxies": null,
+            "Exceptions": "",
+            "Pacfile": "",
+            "NetworkProxyEnable": false,
+            "NetworkProxyURL": "",
+            "WpadURL": "",
+            "pubsub-large-ProxyCertPEM": null,
+            "L2Type": 0,
+            "VLAN": { "ParentPort": "", "ID": 0 },
+            "Bond": {
+              "AggregatedPorts": null,
+              "Mode": 0,
+              "LacpRate": 0,
+              "MIIMonitor": {
+                "Enabled": false,
+                "Interval": 0,
+                "UpDelay": 0,
+                "DownDelay": 0
+              },
+              "ARPMonitor": {
+                "Enabled": false,
+                "Interval": 0,
+                "IPTargets": null
+              }
+            },
+            "WirelessCfg": {
+              "WType": 2,
+              "CellularV2": {
+                "AccessPoints": null,
+                "Probe": {
+                  "Disable": false,
+                  "UserDefinedProbe": {
+                    "Method": 0,
+                    "ProbeHost": "",
+                    "ProbePort": 0
+                  }
+                },
+                "LocationTracking": false
+              },
+              "Wifi": [
+                {
+                  "SSID": "Milan",
+                  "KeyScheme": 1,
+                  "Identity": "",
+                  "Password": "",
+                  "Priority": 0,
+                  "CipherBlockID": "f309d034-68d0-435f-986d-a8f12d9b6006-Milan",
+                  "CipherContextID": "e6f792c9-9786-5850-ac95-4c610aa13e15",
+                  "InitialValue": "SJJt8TIXEMz0Yxg7NfHZuA==",
+                  "pubsub-large-CipherData": "iQNwCtw4Dsmgowmd0y0yS5hPTznP0L9rqkZrkTiaXrmO8o8eBUHouh2IjTYWluK0zSjO9krHaVtFL+v8WMjjT5vC",
+                  "ClearTextHash": "R5pBGu15+9xY5MKGiTZG55lYHGE5O/IVwZzNmEIgNis=",
+                  "IsCipher": true,
+                  "CipherContext": {
+                    "ContextID": "e6f792c9-9786-5850-ac95-4c610aa13e15",
+                    "HashScheme": 1,
+                    "KeyExchangeScheme": 1,
+                    "EncryptionScheme": 1,
+                    "ControllerCertHash": "TiDpH1573EptyoyLt39fNQ==",
+                    "DeviceCertHash": "/5ql6UaGug0qF23AXxqwwA==",
+                    "Error": "",
+                    "ErrorTime": "0001-01-01T00:00:00Z",
+                    "ErrorSeverity": 0,
+                    "ErrorRetryCondition": "",
+                    "ErrorEntities": null
+                  },
+                  "Error": "",
+                  "ErrorTime": "0001-01-01T00:00:00Z",
+                  "ErrorSeverity": 0,
+                  "ErrorRetryCondition": "",
+                  "ErrorEntities": null
+                }
+              ],
+              "Cellular": null
+            },
+            "LastFailed": "0001-01-01T00:00:00Z",
+            "LastSucceeded": "0001-01-01T00:00:00Z",
+            "LastError": "",
+            "LastWarning": "",
+            "IgnoreDhcpNtpServers": false,
+            "IgnoreDhcpIPAddresses": false,
+            "IgnoreDhcpGateways": false,
+            "IgnoreDhcpDNSConfig": false,
+            "ConfigSource": {
+              "Origin": 1,
+              "SubmittedAt": "2025-10-03T06:41:12.954142999Z"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

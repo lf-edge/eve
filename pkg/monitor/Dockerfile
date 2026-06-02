@@ -1,7 +1,6 @@
 # Copyright (c) 2024-2026 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-ARG MONITOR_RS_VERSION=v0.6.3
 ARG RUST_VERSION=lfedge/eve-rust:1.93.1-1
 FROM --platform=$BUILDPLATFORM ${RUST_VERSION} AS toolchain-base
 ARG TARGETARCH
@@ -16,11 +15,10 @@ FROM toolchain-base AS target-riscv64
 ENV CARGO_BUILD_TARGET="riscv64gc-unknown-linux-musl"
 
 FROM target-$TARGETARCH AS toolchain
-ARG MONITOR_RS_VERSION
 RUN echo "Cargo target: $CARGO_BUILD_TARGET"
 
 FROM toolchain AS planer
-ADD --keep-git-dir=true https://github.com/lf-edge/eve-monitor-rs.git#${MONITOR_RS_VERSION} /app
+COPY . /app
 
 WORKDIR /app
 # create a recipe
@@ -35,7 +33,7 @@ RUN cargo chef cook --release --recipe-path recipe.json
 
 # building the final image
 FROM toolchain AS builder
-ADD --keep-git-dir=true https://github.com/lf-edge/eve-monitor-rs.git#${MONITOR_RS_VERSION} /app
+COPY . /app
 WORKDIR /app
 
 # copy prebuilt dependencies
@@ -47,15 +45,19 @@ RUN echo "Cargo target: $CARGO_BUILD_TARGET"
 RUN cargo build --release
 RUN cargo sbom > sbom.spdx.json
 RUN cp /app/target/$CARGO_BUILD_TARGET/release/monitor /app/target/
+# Single source of truth for the version: the crate manifest.
+RUN awk -F'"' '/^version = / {print $2; exit}' Cargo.toml > /app/monitor-version.txt
 
 
 FROM lfedge/eve-alpine:325b12087b386811fdb9d3c0adffa5fb94a34b95 AS runtime
-ARG MONITOR_RS_VERSION
 ENV PKGS="kbd pciutils usbutils"
 RUN eve-alpine-deploy.sh
 
-# Register eve-monitor-rs in the APK DB, mandatory for it to be included in the SBOM.
-RUN register-sbom-pkg.sh -n eve-monitor-rs -v "${MONITOR_RS_VERSION}" -l Apache-2.0 -u https://github.com/lf-edge/eve-monitor-rs
+# Register the monitor TUI in the APK DB (mandatory for SBOM inclusion). The
+# version comes from the crate manifest (Cargo.toml) — the single source of
+# truth now that the source is colocated and no longer pulled by git tag.
+COPY --from=builder /app/monitor-version.txt /tmp/monitor-version
+RUN register-sbom-pkg.sh -n eve-monitor-rs -v "$(cat /tmp/monitor-version)" -l Apache-2.0 -u https://github.com/lf-edge/eve/tree/master/pkg/monitor
 
 FROM scratch
 COPY --from=runtime /out/usr/bin/openvt /usr/bin/openvt

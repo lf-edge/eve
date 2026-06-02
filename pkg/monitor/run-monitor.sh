@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# Copyright (c) 2024 Zededa, Inc.
+# Copyright (c) 2024-2026 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
 echo "Running EVE monitor"
