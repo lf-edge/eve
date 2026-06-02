@@ -18,7 +18,7 @@ use crate::{
     diff::lcs::DiffOp,
     efi::vars::EfiLoadOption,
     events::Event,
-    ipc::eve_types::EveEfiVariable,
+    ipc::monitorapi::EfiVariable,
     model::device::{
         tpmlog::TpmEventRef,
         tpmlog_diff::{
@@ -225,7 +225,7 @@ impl IWindow for VaultPage {
 
 // Event/EFI-variable decoding helpers; intended API used by the expert TPM view.
 #[allow(dead_code)]
-fn get_boot_efi_var_description(index: u16, vars: &[EveEfiVariable]) -> Result<String> {
+fn get_boot_efi_var_description(index: u16, vars: &[EfiVariable]) -> Result<String> {
     let var_name = format!("Boot{:04x}", index);
     let var = vars
         .iter()

@@ -7,9 +7,9 @@ use log::{error, info};
 use uuid::Uuid;
 
 use crate::{
-    ipc::eve_types::TpmLogs,
     ipc::monitorapi::{
         AppInstance as ContractAppInstance, AppsList, AttestState, DownloaderStatus, SwState,
+        TpmLogs,
     },
     model::device::tpmlog_diff::TpmLogDiff,
 };

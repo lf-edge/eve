@@ -9,13 +9,15 @@ import (
 	"sort"
 	"testing"
 	"testing/fstest"
+
+	"github.com/lf-edge/eve/pkg/pillar/types/monitorapi"
 )
 
 func TestReadEfiVars(t *testing.T) {
 	tests := []struct {
 		name    string
 		fsys    fstest.MapFS
-		want    []efiVariable
+		want    []monitorapi.EFIVariable
 		wantErr bool
 	}{
 		{
@@ -27,7 +29,7 @@ func TestReadEfiVars(t *testing.T) {
 				"BootDir":   &fstest.MapFile{Mode: fs.ModeDir},        // Should be skipped
 				"Invalid":   &fstest.MapFile{Data: []byte("invalid")}, // Doesn't match regex
 			},
-			want: []efiVariable{
+			want: []monitorapi.EFIVariable{
 				{Name: "BootOrder", Value: []byte{0x01, 0x02}},
 				{Name: "Boot0001", Value: []byte("var1")},
 				{Name: "Boot0002", Value: []byte("var2")},
@@ -39,7 +41,7 @@ func TestReadEfiVars(t *testing.T) {
 			fsys: fstest.MapFS{
 				"Boot0001": &fstest.MapFile{Data: []byte("var1")},
 			},
-			want:    []efiVariable{},
+			want:    []monitorapi.EFIVariable{},
 			wantErr: true,
 		},
 		{
@@ -49,7 +51,7 @@ func TestReadEfiVars(t *testing.T) {
 				"Boot123":   &fstest.MapFile{Data: []byte("var1")}, // Doesn't match regex
 				"Boot0001":  &fstest.MapFile{Data: []byte("var1")},
 			},
-			want: []efiVariable{
+			want: []monitorapi.EFIVariable{
 				{Name: "Boot0001", Value: []byte("var1")},
 				{Name: "BootOrder", Value: []byte{0x01, 0x02}},
 			},
@@ -78,7 +80,7 @@ func TestReadEfiVars(t *testing.T) {
 }
 
 // sortBootVars sorts boot variables by Name
-func sortBootVars(vars []efiVariable) {
+func sortBootVars(vars []monitorapi.EFIVariable) {
 	sort.Slice(vars, func(i, j int) bool {
 		return vars[i].Name < vars[j].Name
 	})
