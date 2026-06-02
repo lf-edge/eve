@@ -1,0 +1,88 @@
+{
+  "dpcKey": "manual",
+  "interfaces": [
+    {
+      "name": "eth0",
+      "label": "uplink",
+      "mac": "00:11:22:33:44:55",
+      "up": true,
+      "isMgmt": true,
+      "cost": 0,
+      "media": {
+        "kind": "ethernet"
+      },
+      "network": {
+        "isDhcp": true,
+        "ipv4": [
+          "192.0.2.10"
+        ],
+        "subnet": "192.0.2.0/24",
+        "dnsServers": [
+          "192.0.2.53"
+        ],
+        "domain": "",
+        "proxy": {
+          "mode": "manual",
+          "servers": [
+            {
+              "scheme": "http",
+              "host": "proxy",
+              "port": 8080
+            }
+          ]
+        }
+      },
+      "vlans": [
+        {
+          "id": 100,
+          "name": "eth0.100",
+          "label": "office",
+          "up": true,
+          "isMgmt": false,
+          "network": {
+            "isDhcp": false,
+            "domain": "",
+            "proxy": {
+              "mode": "none"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "wwan0",
+      "label": "cell",
+      "mac": "",
+      "up": true,
+      "isMgmt": false,
+      "cost": 0,
+      "media": {
+        "kind": "cellular",
+        "modem": "Quectel EM120",
+        "imei": "",
+        "operator": "Verizon",
+        "roaming": false,
+        "rats": [
+          "LTE"
+        ],
+        "sims": [
+          {
+            "slot": 1,
+            "activated": true,
+            "state": "present",
+            "apn": "vzwinternet",
+            "iccid": "",
+            "imsi": ""
+          }
+        ]
+      },
+      "network": {
+        "isDhcp": false,
+        "domain": "",
+        "proxy": {
+          "mode": "none"
+        }
+      }
+    }
+  ]
+}

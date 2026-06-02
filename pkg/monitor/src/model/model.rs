@@ -9,9 +9,9 @@ use uuid::Uuid;
 
 use crate::{
     ipc::eve_types::{
-        AppInstanceStatus, AppInstanceSummary, AppsList, DataSecAtRestStatus, DeviceNetworkStatus,
-        DevicePortConfig, DevicePortConfigList, DownloaderStatus, ErrorAndTime, EveNodeStatus,
-        EveOnboardingStatus, EveVaultStatus, PCRStatus, SwState, TpmLogs, ZedAgentStatus,
+        AppInstanceStatus, AppsList, DataSecAtRestStatus,
+        DevicePortConfig, DevicePortConfigList, DownloaderStatus, ErrorAndTime,
+        EveVaultStatus, PCRStatus, SwState, TpmLogs, ZedAgentStatus,
     },
     model::device::tpmlog_diff::TpmLogDiff,
 };
@@ -27,11 +27,31 @@ pub enum OnboardingStatus {
     Error(String),
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct NodeStatus {
     pub server: Option<String>,
-    pub app_summary: AppInstanceSummary,
+    pub app_summary: crate::ipc::monitorapi::AppSummary,
     pub onboarding_status: OnboardingStatus,
+    pub node_name: String,
+    pub serial: String,
+}
+
+impl Default for NodeStatus {
+    fn default() -> Self {
+        Self {
+            server: None,
+            // The generated contract types don't derive Default.
+            app_summary: crate::ipc::monitorapi::AppSummary {
+                starting: 0,
+                running: 0,
+                stopping: 0,
+                error: 0,
+            },
+            onboarding_status: OnboardingStatus::default(),
+            node_name: String::new(),
+            serial: String::new(),
+        }
+    }
 }
 
 impl NodeStatus {
@@ -164,29 +184,17 @@ impl From<AppsList> for HashMap<Uuid, AppInstance> {
     }
 }
 
-impl From<EveNodeStatus> for NodeStatus {
-    fn from(node_status: EveNodeStatus) -> Self {
-        let onboarding_status = match (node_status.onboarded, node_status.node_uuid) {
-            (true, Some(uuid)) => OnboardingStatus::Onboarded(uuid),
-            (true, None) => OnboardingStatus::Error("Node UUID is missing".to_string()),
-            (false, _) => OnboardingStatus::Onboarding,
-        };
-        NodeStatus {
-            server: node_status.server.clone(),
-            app_summary: node_status.app_instance_summary.unwrap_or_default(),
-            onboarding_status,
-        }
+fn onboarding_status_from(onboarded: bool, node_uuid: Uuid) -> OnboardingStatus {
+    if !node_uuid.is_nil() {
+        OnboardingStatus::Onboarded(node_uuid)
+    } else if onboarded {
+        OnboardingStatus::Error("Node UUID is missing".to_string())
+    } else {
+        OnboardingStatus::Onboarding
     }
 }
 
 impl MonitorModel {
-    fn get_network_settings(
-        &self,
-        network_status: &DeviceNetworkStatus,
-    ) -> Option<Vec<NetworkInterfaceStatus>> {
-        let ports = network_status.ports.as_ref()?;
-        Some(ports.iter().map(|p| p.into()).collect())
-    }
     pub fn update_app_status(&mut self, state: AppInstanceStatus) {
         let app_guid = &state.uuid_and_version.uuid;
         self.apps
@@ -203,24 +211,44 @@ impl MonitorModel {
         self.downloader = Some(status);
     }
 
-    pub fn update_node_status(&mut self, status: EveNodeStatus) {
-        self.node_status = NodeStatus::from(status);
+    pub fn update_node_status(&mut self, status: crate::ipc::monitorapi::NodeStatus) {
+        // app_summary is maintained by the separate AppSummary message, so update
+        // only the node-identity fields here.
+        let ns = &mut self.node_status;
+        ns.server = (!status.server.is_empty()).then_some(status.server);
+        ns.onboarding_status = onboarding_status_from(status.onboarded, status.node_uuid);
+        ns.node_name = status.node_name;
+        ns.serial = status.serial;
     }
 
-    pub fn update_app_summary(&mut self, app_summary: AppInstanceSummary) {
+    /// Number of application instances currently in the stopped (halted) state.
+    pub fn stopped_app_count(&self) -> usize {
+        self.apps
+            .values()
+            .filter(|a| {
+                matches!(
+                    a.state,
+                    AppInstanceState::Normal(SwState::Halted)
+                        | AppInstanceState::Error(SwState::Halted, _)
+                )
+            })
+            .count()
+    }
+
+    pub fn update_app_summary(&mut self, app_summary: crate::ipc::monitorapi::AppSummary) {
         self.node_status.app_summary = app_summary;
     }
 
-    pub fn update_network_status(&mut self, net_status: DeviceNetworkStatus) {
-        self.network = self.get_network_settings(&net_status).unwrap_or_default();
-        self.dpc_key = Some(net_status.dpc_key);
+    pub fn update_network_status(&mut self, net_status: crate::ipc::monitorapi::NetworkStatus) {
+        self.dpc_key = (!net_status.dpc_key.is_empty()).then(|| net_status.dpc_key.clone());
+        self.network = crate::model::device::network::interfaces_from(&net_status);
     }
 
     pub fn update_vault_status(&mut self, vault_status: EveVaultStatus) {
         self.vault_status = VaultStatus::from(vault_status);
     }
 
-    pub fn update_onboarding_status(&mut self, status: EveOnboardingStatus) {
+    pub fn update_onboarding_status(&mut self, status: crate::ipc::monitorapi::OnboardingStatus) {
         self.node_status.onboarding_status = OnboardingStatus::Onboarded(status.device_uuid);
     }
 

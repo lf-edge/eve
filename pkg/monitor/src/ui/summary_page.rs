@@ -113,7 +113,9 @@ impl IPresenter for SummaryPage {
         let [server, onboarding_status_and_app_sunnary_rect, vault_attest_status_rect, network_summary_rect] =
             Layout::vertical(vec![
                 Constraint::Length(3),
-                Constraint::Length(6),
+                // 2 border rows + 5 content rows (App summary: Running/Starting/
+                // Stopping/In error/Stopped).
+                Constraint::Length(7),
                 Constraint::Length(7),
                 Constraint::Fill(1),
             ])
@@ -160,6 +162,8 @@ impl SummaryPage {
         onboarding_status_rect: Rect,
     ) {
         let onboarding_status = model.borrow().node_status.onboarding_status.clone();
+        let node_name = model.borrow().node_status.node_name.clone();
+        let serial = model.borrow().node_status.serial.clone();
         let mut text = Vec::new();
         let mut spans = vec![];
         spans.push(Span::styled("status: ", Style::default().fg(Color::White)));
@@ -177,6 +181,16 @@ impl SummaryPage {
         });
 
         text.push(Line::from(spans));
+
+        let or_na = |s: String| if s.is_empty() { "N/A".to_string() } else { s };
+        text.push(Line::from(vec![
+            Span::styled("Node:   ", Style::default().fg(Color::White)),
+            Span::styled(or_na(node_name), Style::default().fg(Color::White)),
+        ]));
+        text.push(Line::from(vec![
+            Span::styled("Serial: ", Style::default().fg(Color::White)),
+            Span::styled(or_na(serial), Style::default().fg(Color::White)),
+        ]));
 
         match onboarding_status {
             OnboardingStatus::Unknown => {
@@ -233,35 +247,40 @@ impl SummaryPage {
 
     fn render_app_summary(&self, model: &Rc<Model>, frame: &mut Frame<'_>, app_summary_rect: Rect) {
         let apps = &model.borrow().node_status.app_summary;
+        let stopped = model.borrow().stopped_app_count();
 
         let mut app_summary_text = vec![];
         app_summary_text.push(Line::from(vec![
             Span::raw("Running:  "),
             Span::styled(
-                format!("{}", apps.total_running),
+                format!("{}", apps.running),
                 Style::default().fg(Color::Green),
             ),
         ]));
         app_summary_text.push(Line::from(vec![
             Span::raw("Starting: "),
             Span::styled(
-                format!("{}", apps.total_starting),
+                format!("{}", apps.starting),
                 Style::default().fg(Color::Green),
             ),
         ]));
         app_summary_text.push(Line::from(vec![
             Span::raw("Stopping: "),
             Span::styled(
-                format!("{}", apps.total_stopping),
+                format!("{}", apps.stopping),
                 Style::default().fg(Color::Yellow),
             ),
         ]));
         app_summary_text.push(Line::from(vec![
             Span::raw("In error: "),
             Span::styled(
-                format!("{}", apps.total_error),
+                format!("{}", apps.error),
                 Style::default().fg(Color::Red),
             ),
+        ]));
+        app_summary_text.push(Line::from(vec![
+            Span::raw("Stopped:  "),
+            Span::styled(format!("{}", stopped), Style::default().fg(Color::Gray)),
         ]));
         let app_summary = ratatui::widgets::Paragraph::new(Text::from(app_summary_text))
             .block(
