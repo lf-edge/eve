@@ -16,7 +16,7 @@ use ratatui::{
 
 use crate::{
     events::Event,
-    ipc::monitorapi::{AttestState, ZedAgentStatus},
+    ipc::monitorapi::AttestState,
     model::model::{Model, OnboardingStatus, VaultStatus},
     traits::{IEventHandler, IPresenter, IWindow},
     ui::action::{Action, UiActions},
@@ -39,8 +39,8 @@ impl SummaryPage {
         }
     }
 
-    fn set_attestation_status(&mut self, z: &ZedAgentStatus) {
-        match z.attest_state {
+    fn set_attestation_status(&mut self, attest_state: &AttestState, attest_error: &str) {
+        match attest_state {
             AttestState::None => {
                 self.attestation_state = "Attestation not yet started".into();
                 self.last_attest_error = "".into();
@@ -52,8 +52,8 @@ impl SummaryPage {
             }
             AttestState::RestartWait => {
                 self.attestation_state = "Attestation Restarted...".into();
-                if !z.attest_error.is_empty() && self.last_attest_error != z.attest_error {
-                    self.last_attest_error = z.attest_error.clone();
+                if !attest_error.is_empty() && self.last_attest_error != attest_error {
+                    self.last_attest_error = attest_error.to_string();
                 }
             }
             AttestState::Complete => {
@@ -61,8 +61,8 @@ impl SummaryPage {
                 self.last_attest_error = "".into();
             }
             _ => {
-                if !z.attest_error.is_empty() && self.last_attest_error != z.attest_error {
-                    self.last_attest_error = z.attest_error.clone();
+                if !attest_error.is_empty() && self.last_attest_error != attest_error {
+                    self.last_attest_error = attest_error.to_string();
                 }
             }
         }
@@ -78,8 +78,8 @@ impl SummaryPage {
             return;
         }
 
-        if let Some(z) = &model.z_status {
-            self.set_attestation_status(z);
+        if let Some(state) = &model.attest_state {
+            self.set_attestation_status(state, &model.attest_error);
         }
     }
 }

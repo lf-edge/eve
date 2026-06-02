@@ -5,6 +5,7 @@ package monitorapi
 import (
 	"encoding/json"
 	"fmt"
+	uuid "github.com/satori/go.uuid"
 	"net/netip"
 )
 
@@ -182,6 +183,49 @@ func UnmarshalVaultStatus(b []byte) (VaultStatus, error) {
 	default:
 		return nil, fmt.Errorf("unknown VaultStatus state %q", disc.Tag)
 	}
+}
+
+func (x *DeviceStatus) UnmarshalJSON(b []byte) error {
+	var raw struct {
+		Server          string          `json:"server"`
+		NodeUUID        uuid.UUID       `json:"nodeUuid"`
+		Onboarded       bool            `json:"onboarded"`
+		NodeName        string          `json:"nodeName"`
+		Serial          string          `json:"serial"`
+		HardwareModel   string          `json:"hardwareModel"`
+		ConfigStatus    ConfigGetStatus `json:"configStatus"`
+		DeviceState     DeviceState     `json:"deviceState"`
+		BootReason      BootReason      `json:"bootReason"`
+		RebootReason    string          `json:"rebootReason"`
+		MaintenanceMode bool            `json:"maintenanceMode"`
+		AttestState     AttestState     `json:"attestState"`
+		AttestError     string          `json:"attestError"`
+		Vault           json.RawMessage `json:"vault"`
+	}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	x.Server = raw.Server
+	x.NodeUUID = raw.NodeUUID
+	x.Onboarded = raw.Onboarded
+	x.NodeName = raw.NodeName
+	x.Serial = raw.Serial
+	x.HardwareModel = raw.HardwareModel
+	x.ConfigStatus = raw.ConfigStatus
+	x.DeviceState = raw.DeviceState
+	x.BootReason = raw.BootReason
+	x.RebootReason = raw.RebootReason
+	x.MaintenanceMode = raw.MaintenanceMode
+	x.AttestState = raw.AttestState
+	x.AttestError = raw.AttestError
+	if len(raw.Vault) > 0 {
+		v, err := UnmarshalVaultStatus(raw.Vault)
+		if err != nil {
+			return err
+		}
+		x.Vault = v
+	}
+	return nil
 }
 
 func (x *NetworkInterface) UnmarshalJSON(b []byte) error {

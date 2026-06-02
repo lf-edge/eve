@@ -235,35 +235,15 @@ impl Application {
                 self.model.borrow_mut().update_app_summary(summary);
             }
 
-            // this event is guaranteed to be sent before periodic events
-            IpcMessage::NodeStatus(node_status) => {
-                debug!("Got NodeStatus");
-                self.model.borrow_mut().update_node_status(node_status);
-            }
-
-            IpcMessage::OnboardingStatus(o_status) => {
-                debug!("Got OnboardingStatus");
-                self.model.borrow_mut().update_onboarding_status(o_status);
-            }
-
-            IpcMessage::VaultStatus(status) => {
-                debug!("Got VaultStatus");
-                self.model.borrow_mut().update_vault_status(status);
-            }
-
-            IpcMessage::LedBlinkCounter(_led) => {
-                debug!("Got LedBlinkCounter");
+            IpcMessage::DeviceStatus(device_status) => {
+                debug!("Got DeviceStatus");
+                self.model.borrow_mut().update_device_status(device_status);
             }
 
             // this event is guaranteed to be sent before periodic events
             IpcMessage::AppsList(app_list) => {
                 debug!("Got AppsList");
                 self.model.borrow_mut().update_app_list(app_list);
-            }
-
-            IpcMessage::ZedAgentStatus(status) => {
-                debug!("Got ZedAgentStatus");
-                self.model.borrow_mut().update_zed_agent_status(status);
             }
 
             IpcMessage::TUIConfig(cfg) => {

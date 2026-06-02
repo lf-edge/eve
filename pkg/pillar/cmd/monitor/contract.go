@@ -23,24 +23,26 @@ import (
 	uuid "github.com/satori/go.uuid"
 )
 
-// onboardingStatusToContract maps the onboarding status.
-func onboardingStatusToContract(s types.OnboardingStatus) monitorapi.OnboardingStatus {
-	return monitorapi.OnboardingStatus{
-		DeviceUUID:    s.DeviceUUID,
-		HardwareModel: s.HardwareModel,
-	}
-}
-
-// nodeStatusToContract assembles node identity from its several sources
-// (server config, onboarding, EdgeNodeInfo, hardware serial).
-func nodeStatusToContract(server string, onboarded bool, nodeUUID uuid.UUID,
-	enInfo types.EdgeNodeInfo, serial string) monitorapi.NodeStatus {
-	return monitorapi.NodeStatus{
-		Server:    server,
-		NodeUUID:  nodeUUID,
-		Onboarded: onboarded,
-		NodeName:  enInfo.DeviceName,
-		Serial:    serial,
+// deviceStatusToContract assembles the node-level snapshot from its several
+// internal sources (server config, onboarding, EdgeNodeInfo, hardware serial,
+// zedagent lifecycle/attestation, vault).
+func deviceStatusToContract(server string, ob types.OnboardingStatus, enInfo types.EdgeNodeInfo,
+	serial string, z types.ZedAgentStatus, v types.VaultStatus) monitorapi.DeviceStatus {
+	return monitorapi.DeviceStatus{
+		Server:          server,
+		NodeUUID:        ob.DeviceUUID,
+		Onboarded:       ob.DeviceUUID != uuid.Nil,
+		NodeName:        enInfo.DeviceName,
+		Serial:          serial,
+		HardwareModel:   ob.HardwareModel,
+		ConfigStatus:    configGetStatusToContract(z.ConfigGetStatus),
+		DeviceState:     deviceStateToContract(z.DeviceState),
+		BootReason:      bootReasonToContract(z.RequestedBootReason),
+		RebootReason:    z.RequestedRebootReason,
+		MaintenanceMode: z.MaintenanceMode,
+		AttestState:     attestStateToContract(z.AttestState),
+		AttestError:     z.AttestError,
+		Vault:           vaultStatusToContract(v),
 	}
 }
 
@@ -51,10 +53,6 @@ func appSummaryToContract(s types.AppInstanceSummary) monitorapi.AppSummary {
 		Stopping: uint32(s.TotalStopping),
 		Error:    uint32(s.TotalError),
 	}
-}
-
-func ledBlinkCounterToContract(c types.LedBlinkCounter) monitorapi.LedBlinkCounter {
-	return monitorapi.LedBlinkCounter{BlinkCounter: uint32(c.BlinkCounter)}
 }
 
 func tuiConfigToContract(logLevel string) monitorapi.TUIConfig {
@@ -70,18 +68,6 @@ func downloaderStatusToContract(s types.DownloaderStatus) monitorapi.DownloaderS
 		CurrentSize: s.CurrentSize,
 		TotalSize:   s.TotalSize,
 		Error:       s.Error,
-	}
-}
-
-func zedAgentStatusToContract(s types.ZedAgentStatus) monitorapi.ZedAgentStatus {
-	return monitorapi.ZedAgentStatus{
-		ConfigStatus:    configGetStatusToContract(s.ConfigGetStatus),
-		DeviceState:     deviceStateToContract(s.DeviceState),
-		AttestState:     attestStateToContract(s.AttestState),
-		AttestError:     s.AttestError,
-		BootReason:      bootReasonToContract(s.RequestedBootReason),
-		RebootReason:    s.RequestedRebootReason,
-		MaintenanceMode: s.MaintenanceMode,
 	}
 }
 
