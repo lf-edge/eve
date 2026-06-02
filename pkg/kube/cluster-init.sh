@@ -1539,6 +1539,10 @@ else
                         # launch CNI dhcp service
                         /opt/cni/bin/dhcp daemon &
                 fi
+                if ! pgrep -f "stale-mount-cleanup" > /dev/null 2>&1; then
+                        logmsg "starting stale-mount-cleanup daemon"
+                        /usr/bin/stale-mount-cleanup &
+                fi
                 # setup debug user credential, role and binding
                 if [ ! -f /var/lib/debuguser-initialized ]; then
                         config_cluster_roles
