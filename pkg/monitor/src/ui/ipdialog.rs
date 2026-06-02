@@ -86,93 +86,59 @@ impl InterfaceState {
         self.ip_dhcp
     }
 
-    /// Create a ProxyConfig from the current InterfaceState
-    pub fn create_proxy_config(&self) -> crate::ipc::eve_types::ProxyConfig {
-        use crate::ipc::eve_types::{NetworkProxyType, ProxyConfig, ProxyEntry};
+    /// Build the contract ProxySettings union from the current dialog state.
+    ///
+    /// The dialog's Manual mode is explicit per-protocol servers (plus an
+    /// optional trust certificate). PAC and WPAD are distinct modes in the
+    /// contract; the dialog does not currently let the operator select them,
+    /// so they are produced only once that dialog support lands.
+    pub fn create_proxy_config(&self) -> crate::ipc::monitorapi::ProxySettings {
+        use crate::ipc::monitorapi::{ProxyScheme, ProxyServer, ProxySettings};
         use crate::ui::ipdialog::ProxyType;
 
         match self.proxy_type {
-            ProxyType::None => ProxyConfig {
-                proxies: None,
-                pacfile: String::new(),
-                network_proxy_enable: false,
-                network_proxy_url: String::new(),
-                wpad_url: String::new(),
-                exceptions: String::new(),
-                proxy_cert_pem: None,
-            },
+            ProxyType::None => ProxySettings::None,
             ProxyType::Manual => {
-                let mut proxies = Vec::new();
-
-                // Helper function to extract host and port from validated URL
-                let url_to_proxy_entry =
-                    |url: &url::Url, proxy_type: NetworkProxyType| -> Option<ProxyEntry> {
-                        if let Some(host) = url.host_str() {
-                            let default_port = match proxy_type {
-                                NetworkProxyType::HTTP => 8080,
-                                NetworkProxyType::HTTPS => 8080,
-                                NetworkProxyType::FTP => 21,
-                                NetworkProxyType::SOCKS => 1080,
-                                _ => 8080,
-                            };
-                            let port = url.port().unwrap_or(default_port) as u32;
-                            Some(ProxyEntry {
-                                proxy_type,
-                                server: host.to_string(),
-                                port,
-                            })
-                        } else {
-                            None
-                        }
+                // Extract host:port from a validated URL, applying the scheme's
+                // conventional default port when none is given.
+                let to_server = |url: &url::Url, scheme: ProxyScheme| -> Option<ProxyServer> {
+                    let host = url.host_str()?;
+                    let default_port = match scheme {
+                        ProxyScheme::Ftp => 21,
+                        ProxyScheme::Socks => 1080,
+                        _ => 8080,
                     };
+                    Some(ProxyServer {
+                        scheme,
+                        host: host.to_string(),
+                        port: url.port().unwrap_or(default_port),
+                    })
+                };
 
-                // Add HTTP proxy if specified
-                if let Some(ref url) = self.proxy_http {
-                    if let Some(entry) = url_to_proxy_entry(url, NetworkProxyType::HTTP) {
-                        proxies.push(entry);
+                let mut servers = Vec::new();
+                for (url, scheme) in [
+                    (&self.proxy_http, ProxyScheme::Http),
+                    (&self.proxy_https, ProxyScheme::Https),
+                    (&self.proxy_ftp, ProxyScheme::Ftp),
+                    (&self.proxy_socks, ProxyScheme::Socks),
+                ] {
+                    if let Some(url) = url {
+                        if let Some(server) = to_server(url, scheme) {
+                            servers.push(server);
+                        }
                     }
                 }
 
-                // Add HTTPS proxy if specified
-                if let Some(ref url) = self.proxy_https {
-                    if let Some(entry) = url_to_proxy_entry(url, NetworkProxyType::HTTPS) {
-                        proxies.push(entry);
-                    }
-                }
+                let cert_pem = if self.proxy_certificate.is_empty() {
+                    Vec::new()
+                } else {
+                    vec![self.proxy_certificate.clone()]
+                };
 
-                // Add FTP proxy if specified
-                if let Some(ref url) = self.proxy_ftp {
-                    if let Some(entry) = url_to_proxy_entry(url, NetworkProxyType::FTP) {
-                        proxies.push(entry);
-                    }
-                }
-
-                // Add SOCKS proxy if specified
-                if let Some(ref url) = self.proxy_socks {
-                    if let Some(entry) = url_to_proxy_entry(url, NetworkProxyType::SOCKS) {
-                        proxies.push(entry);
-                    }
-                }
-
-                // network_proxy_enable is only true when network_proxy_url is actually used
-                let has_network_proxy_url = !self.proxy_url.is_empty();
-
-                ProxyConfig {
-                    proxies: if !proxies.is_empty() {
-                        Some(proxies)
-                    } else {
-                        None
-                    },
-                    network_proxy_enable: has_network_proxy_url,
-                    pacfile: self.pac_file.clone(),
-                    network_proxy_url: self.proxy_url.clone(),
-                    proxy_cert_pem: if !self.proxy_certificate.is_empty() {
-                        Some(vec![self.proxy_certificate.clone().into_bytes()])
-                    } else {
-                        None
-                    },
-                    wpad_url: String::new(),
-                    exceptions: String::new(),
+                ProxySettings::Manual {
+                    servers,
+                    exceptions: Vec::new(),
+                    cert_pem,
                 }
             }
         }
@@ -182,8 +148,15 @@ impl InterfaceState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ipc::eve_types::NetworkProxyType;
+    use crate::ipc::monitorapi::{ProxyScheme, ProxyServer, ProxySettings};
     use url::Url;
+
+    fn manual_servers(proxy: &ProxySettings) -> &Vec<ProxyServer> {
+        match proxy {
+            ProxySettings::Manual { servers, .. } => servers,
+            other => panic!("expected Manual, got {other:?}"),
+        }
+    }
 
     #[test]
     fn test_create_proxy_config_none() {
@@ -209,11 +182,7 @@ mod tests {
 
         let proxy_config = interface_state.create_proxy_config();
 
-        assert_eq!(proxy_config.proxies, None);
-        assert!(!proxy_config.network_proxy_enable);
-        assert_eq!(proxy_config.pacfile, "");
-        assert_eq!(proxy_config.network_proxy_url, "");
-        assert_eq!(proxy_config.proxy_cert_pem, None);
+        assert_eq!(proxy_config, ProxySettings::None);
     }
 
     #[test]
@@ -240,52 +209,22 @@ mod tests {
 
         let proxy_config = interface_state.create_proxy_config();
 
-        assert!(proxy_config.network_proxy_enable);
-        assert_eq!(proxy_config.pacfile, "http://proxy.example.com/proxy.pac");
-        assert_eq!(
-            proxy_config.network_proxy_url,
-            "http://proxy.example.com:8080"
-        );
-        assert!(proxy_config.proxy_cert_pem.is_some());
-        assert_eq!(
-            proxy_config.proxy_cert_pem.unwrap()[0],
-            "test-cert".as_bytes()
-        );
+        let ProxySettings::Manual {
+            servers, cert_pem, ..
+        } = &proxy_config
+        else {
+            panic!("expected Manual, got {proxy_config:?}");
+        };
+        assert_eq!(cert_pem, &vec!["test-cert".to_string()]);
+        assert_eq!(servers.len(), 4);
 
-        let proxies = proxy_config.proxies.unwrap();
-        assert_eq!(proxies.len(), 4);
-
-        // Check HTTP proxy
-        let http_proxy = proxies
-            .iter()
-            .find(|p| p.proxy_type == NetworkProxyType::HTTP)
-            .unwrap();
-        assert_eq!(http_proxy.server, "proxy.example.com");
-        assert_eq!(http_proxy.port, 8080);
-
-        // Check HTTPS proxy
-        let https_proxy = proxies
-            .iter()
-            .find(|p| p.proxy_type == NetworkProxyType::HTTPS)
-            .unwrap();
-        assert_eq!(https_proxy.server, "proxy.example.com");
-        assert_eq!(https_proxy.port, 8443);
-
-        // Check FTP proxy
-        let ftp_proxy = proxies
-            .iter()
-            .find(|p| p.proxy_type == NetworkProxyType::FTP)
-            .unwrap();
-        assert_eq!(ftp_proxy.server, "proxy.example.com");
-        assert_eq!(ftp_proxy.port, 21);
-
-        // Check SOCKS proxy
-        let socks_proxy = proxies
-            .iter()
-            .find(|p| p.proxy_type == NetworkProxyType::SOCKS)
-            .unwrap();
-        assert_eq!(socks_proxy.server, "proxy.example.com");
-        assert_eq!(socks_proxy.port, 1080);
+        let find = |scheme: ProxyScheme| servers.iter().find(|s| s.scheme == scheme).unwrap();
+        let http = find(ProxyScheme::Http);
+        assert_eq!(http.host, "proxy.example.com");
+        assert_eq!(http.port, 8080);
+        assert_eq!(find(ProxyScheme::Https).port, 8443);
+        assert_eq!(find(ProxyScheme::Ftp).port, 21);
+        assert_eq!(find(ProxyScheme::Socks).port, 1080);
     }
 
     #[test]
@@ -312,15 +251,11 @@ mod tests {
 
         let proxy_config = interface_state.create_proxy_config();
 
-        assert!(!proxy_config.network_proxy_enable);
-        let proxies = proxy_config.proxies.unwrap();
-        assert_eq!(proxies.len(), 1);
-
-        // Check HTTP proxy with default port
-        let http_proxy = &proxies[0];
-        assert_eq!(http_proxy.proxy_type, NetworkProxyType::HTTP);
-        assert_eq!(http_proxy.server, "proxy.example.com");
-        assert_eq!(http_proxy.port, 8080); // Default HTTP proxy port
+        let servers = manual_servers(&proxy_config);
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0].scheme, ProxyScheme::Http);
+        assert_eq!(servers[0].host, "proxy.example.com");
+        assert_eq!(servers[0].port, 8080); // Default HTTP proxy port
     }
 
     #[test]
@@ -347,8 +282,7 @@ mod tests {
 
         let proxy_config = interface_state.create_proxy_config();
 
-        assert_eq!(proxy_config.proxies, None);
-        assert!(!proxy_config.network_proxy_enable);
+        assert!(manual_servers(&proxy_config).is_empty());
     }
 
     #[test]
@@ -373,33 +307,23 @@ mod tests {
             proxy_socks: None,
         };
 
-        // Test that create_proxy_config works and returns the expected config
+        // Manual mode carries the explicit servers and the trust certificate.
         let proxy_config = interface_state.create_proxy_config();
 
-        // Verify the created proxy config has the expected values
-        assert!(proxy_config.network_proxy_enable);
-        assert_eq!(
-            proxy_config.network_proxy_url,
-            "http://proxy.example.com:8080"
-        );
-        assert!(proxy_config.proxy_cert_pem.is_some());
-        assert_eq!(
-            proxy_config.proxy_cert_pem.unwrap()[0],
-            "test-cert".as_bytes()
-        );
+        let ProxySettings::Manual {
+            servers, cert_pem, ..
+        } = &proxy_config
+        else {
+            panic!("expected Manual, got {proxy_config:?}");
+        };
+        assert_eq!(cert_pem, &vec!["test-cert".to_string()]);
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0].scheme, ProxyScheme::Http);
+        assert_eq!(servers[0].host, "proxy.example.com");
+        assert_eq!(servers[0].port, 3128);
 
-        let proxies = proxy_config.proxies.unwrap();
-        assert_eq!(proxies.len(), 1);
-        assert_eq!(proxies[0].proxy_type, NetworkProxyType::HTTP);
-        assert_eq!(proxies[0].server, "proxy.example.com");
-        assert_eq!(proxies[0].port, 3128);
-
-        // Test that we can create a second proxy config and it's independent
-        let proxy_config2 = interface_state.create_proxy_config();
-        assert_eq!(
-            proxy_config2.network_proxy_url,
-            proxy_config.network_proxy_url
-        );
+        // Building it again is independent and equal.
+        assert_eq!(interface_state.create_proxy_config(), proxy_config);
     }
 
     #[test]
@@ -424,21 +348,15 @@ mod tests {
             proxy_socks: None,
         };
 
+        // The WPAD/network-proxy URL is a separate contract mode and is not
+        // emitted from the Manual dialog; only the explicit servers are.
         let proxy_config = interface_state.create_proxy_config();
 
-        // network_proxy_enable should be true because proxy_url is not empty
-        assert!(proxy_config.network_proxy_enable);
-        assert_eq!(
-            proxy_config.network_proxy_url,
-            "http://network-proxy.example.com:8080"
-        );
-
-        // Should also have proxy entries
-        let proxies = proxy_config.proxies.unwrap();
-        assert_eq!(proxies.len(), 1);
-        assert_eq!(proxies[0].proxy_type, NetworkProxyType::HTTP);
-        assert_eq!(proxies[0].server, "proxy.example.com");
-        assert_eq!(proxies[0].port, 3128);
+        let servers = manual_servers(&proxy_config);
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0].scheme, ProxyScheme::Http);
+        assert_eq!(servers[0].host, "proxy.example.com");
+        assert_eq!(servers[0].port, 3128);
     }
 }
 

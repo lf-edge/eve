@@ -47,6 +47,9 @@ type monitor struct {
 	lastVault        types.VaultStatus
 	// lastDeviceStatus dedups the assembled snapshot
 	lastDeviceStatus *monitorapi.DeviceStatus
+	// lastDPCList is the device's current port config, used as the base the
+	// write path (SetInterfaceConfig) patches.
+	lastDPCList *types.DevicePortConfigList
 
 	IPCServer *monitorIPCServer
 }
