@@ -58,6 +58,10 @@ COPY update-component /plugins/update-component
 WORKDIR /plugins/update-component
 RUN GO111MODULE=on go build -v -ldflags "-s -w" -mod=vendor -o /out/usr/bin/update-component .
 
+COPY stale-mount-cleanup /plugins/stale-mount-cleanup
+WORKDIR /plugins/stale-mount-cleanup
+RUN GO111MODULE=on CGO_ENABLED=0 go build -v -ldflags "-s -w" -mod=vendor -o /out/usr/bin/stale-mount-cleanup .
+
 FROM scratch
 COPY --from=build /out/ /
 RUN mkdir -p /usr/bin/kube/
