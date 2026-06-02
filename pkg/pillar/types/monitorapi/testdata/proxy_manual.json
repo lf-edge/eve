@@ -1,0 +1,10 @@
+{
+  "mode": "manual",
+  "servers": [
+    {
+      "scheme": "https",
+      "host": "proxy.example.com",
+      "port": 8080
+    }
+  ]
+}

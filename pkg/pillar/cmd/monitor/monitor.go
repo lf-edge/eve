@@ -18,6 +18,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/types/monitorapi"
 	"github.com/sirupsen/logrus"
 )
 
@@ -39,7 +40,7 @@ type monitor struct {
 	clientConnected     chan bool
 	serverNameAndPort   string
 	// cache last known data structures to avoid sending duplicate messages
-	lastNodeStatus *nodeStatus
+	lastNodeStatus *monitorapi.NodeStatus
 
 	IPCServer *monitorIPCServer
 }
