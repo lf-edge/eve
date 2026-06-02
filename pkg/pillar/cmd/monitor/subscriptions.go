@@ -11,26 +11,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
-func handlePhysicalIOAdapterCreate(ctxArg interface{}, key string,
-	statusArg interface{}) {
-	handlePhysicalIOAdapterUpdate(ctxArg, statusArg)
-}
-
-func handlePhysicalIOAdapterModify(ctxArg interface{}, key string,
-	statusArg interface{}, oldStatusArg interface{}) {
-	handlePhysicalIOAdapterUpdate(ctxArg, statusArg)
-}
-
-func handlePhysicalIOAdapterUpdate(ctxArg interface{}, statusArg interface{}) {
-	ctx := ctxArg.(*monitor)
-	status := statusArg.(types.PhysicalIOAdapterList)
-	ctx.IPCServer.sendIpcMessage("IOAdapters", status)
-}
-
-func handlePhysicalIOAdapterDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
-}
-
 func handleNetworkStatusCreate(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	handleNetworStatusUpdate(statusArg, ctxArg)
@@ -65,7 +45,7 @@ func handleDownloaderStatusModify(ctxArg interface{}, key string,
 func handleDownloaderStatusUpdate(statusArg interface{}, ctxArg interface{}) {
 	status := statusArg.(types.DownloaderStatus)
 	ctx := ctxArg.(*monitor)
-	ctx.IPCServer.sendIpcMessage("DownloaderStatus", status)
+	ctx.IPCServer.sendIpcMessage("DownloaderStatus", downloaderStatusToContract(status))
 }
 
 func handleDownloaderStatusDelete(ctxArg interface{}, key string,
@@ -216,7 +196,7 @@ func handleZedAgentStatusUpdate(statusArg interface{}, ctxArg interface{}) {
 		return
 	}
 	ctx := ctxArg.(*monitor)
-	ctx.IPCServer.sendIpcMessage("ZedAgentStatus", status)
+	ctx.IPCServer.sendIpcMessage("ZedAgentStatus", zedAgentStatusToContract(status))
 }
 
 func handleGlobalConfigCreate(ctxArg interface{}, key string,
@@ -272,24 +252,6 @@ func (ctx *monitor) subscribe(ps *pubsub.PubSub) error {
 	}
 	if err = ctx.pubDevicePortConfig.ClearRestarted(); err != nil {
 		log.Error("Cannot clear restarted for DevicePortConfig publication")
-		return err
-	}
-
-	// Look for PhysicalIOAdapter from zedagent
-	subPhysicalIOAdapter, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     "zedagent",
-		MyAgentName:   agentName,
-		TopicImpl:     types.PhysicalIOAdapterList{},
-		Activate:      false,
-		Ctx:           ctx,
-		WarningTime:   warningTime,
-		ErrorTime:     errorTime,
-		CreateHandler: handlePhysicalIOAdapterCreate,
-		ModifyHandler: handlePhysicalIOAdapterModify,
-		DeleteHandler: handlePhysicalIOAdapterDelete,
-	})
-	if err != nil {
-		log.Error("Cannot create subscription for PhysicalIOAdapter")
 		return err
 	}
 
@@ -477,7 +439,6 @@ func (ctx *monitor) subscribe(ps *pubsub.PubSub) error {
 		return err
 	}
 
-	ctx.subscriptions["IOAdapters"] = subPhysicalIOAdapter
 	ctx.subscriptions["VaultStatus"] = subVaultStatus
 	ctx.subscriptions["OnboardingStatus"] = subOnboardStatus
 	ctx.subscriptions["NetworkStatus"] = subDeviceNetworkStatus

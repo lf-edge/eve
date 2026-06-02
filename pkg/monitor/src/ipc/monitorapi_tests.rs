@@ -105,6 +105,18 @@ fn small_messages_parse() {
 }
 
 #[test]
+fn downloader_and_zedagent_parse() {
+    let d: DownloaderStatus = serde_json::from_str(&fixture("downloader_status.json")).unwrap();
+    assert_eq!(d.progress, 42);
+    assert_eq!(d.name, "image.qcow2");
+    let z: ZedAgentStatus = serde_json::from_str(&fixture("zed_agent_status.json")).unwrap();
+    assert!(matches!(z.attest_state, AttestState::Complete));
+    assert!(matches!(z.device_state, DeviceState::Online));
+    assert!(matches!(z.boot_reason, BootReason::RebootCmd));
+    assert!(matches!(z.config_status, ConfigGetStatus::Success));
+}
+
+#[test]
 fn node_status_parses() {
     let n: NodeStatus = serde_json::from_str(&fixture("node_status.json")).unwrap();
     assert_eq!(n.node_name, "edge-node-01");
