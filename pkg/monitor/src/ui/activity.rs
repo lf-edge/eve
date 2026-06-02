@@ -1,11 +1,16 @@
 // Copyright (c) 2024-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+// Intended activity-conversion API; some variants/constructors are not yet used.
+#![allow(dead_code)]
+
 use crate::ui::action::UiActions;
 use crossterm::event::KeyEvent;
 
 use super::action::Action;
 
+// Carries a UiActions by value by design; do not box it.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 pub enum Activity {
     Action(UiActions),

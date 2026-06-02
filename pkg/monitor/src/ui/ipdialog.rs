@@ -210,7 +210,7 @@ mod tests {
         let proxy_config = interface_state.create_proxy_config();
 
         assert_eq!(proxy_config.proxies, None);
-        assert_eq!(proxy_config.network_proxy_enable, false);
+        assert!(!proxy_config.network_proxy_enable);
         assert_eq!(proxy_config.pacfile, "");
         assert_eq!(proxy_config.network_proxy_url, "");
         assert_eq!(proxy_config.proxy_cert_pem, None);
@@ -348,7 +348,7 @@ mod tests {
         let proxy_config = interface_state.create_proxy_config();
 
         assert_eq!(proxy_config.proxies, None);
-        assert_eq!(proxy_config.network_proxy_enable, false);
+        assert!(!proxy_config.network_proxy_enable);
     }
 
     #[test]
@@ -693,7 +693,7 @@ fn create_widgets(w: &mut Window<IpDialogState>) {
         InputFieldElement::new(
             "HTTP",
             Some(
-                &w.state
+                w.state
                     .new_iface_state
                     .proxy_http
                     .as_ref()
@@ -708,7 +708,7 @@ fn create_widgets(w: &mut Window<IpDialogState>) {
         InputFieldElement::new(
             "HTTPs",
             Some(
-                &w.state
+                w.state
                     .new_iface_state
                     .proxy_https
                     .as_ref()
@@ -723,7 +723,7 @@ fn create_widgets(w: &mut Window<IpDialogState>) {
         InputFieldElement::new(
             "FTP",
             Some(
-                &w.state
+                w.state
                     .new_iface_state
                     .proxy_ftp
                     .as_ref()
@@ -737,7 +737,7 @@ fn create_widgets(w: &mut Window<IpDialogState>) {
         InputFieldElement::new(
             "SOCKS",
             Some(
-                &w.state
+                w.state
                     .new_iface_state
                     .proxy_socks
                     .as_ref()
@@ -965,10 +965,10 @@ fn on_child_ui_action(
                 "gw" => w.state.new_iface_state.gw = text.clone(),
                 "dns" => w.state.new_iface_state.dns = text.clone(),
                 "domain" => w.state.new_iface_state.domain = text.clone(),
-                "http" => w.state.new_iface_state.proxy_http = parse_proxy_url(&text, "http"),
-                "https" => w.state.new_iface_state.proxy_https = parse_proxy_url(&text, "https"),
-                "ftp" => w.state.new_iface_state.proxy_ftp = parse_proxy_url(&text, "ftp"),
-                "socks" => w.state.new_iface_state.proxy_socks = parse_proxy_url(&text, "socks"),
+                "http" => w.state.new_iface_state.proxy_http = parse_proxy_url(text, "http"),
+                "https" => w.state.new_iface_state.proxy_https = parse_proxy_url(text, "https"),
+                "ftp" => w.state.new_iface_state.proxy_ftp = parse_proxy_url(text, "ftp"),
+                "socks" => w.state.new_iface_state.proxy_socks = parse_proxy_url(text, "socks"),
                 "ntp" => w.state.new_iface_state.ntp = text.clone(),
                 _ => {}
             }
@@ -978,11 +978,11 @@ fn on_child_ui_action(
     }
 }
 
-fn save_restore_ft_state(w: &mut Window<IpDialogState>, old_tab: &String, selected_tab: &String) {
+fn save_restore_ft_state(w: &mut Window<IpDialogState>, old_tab: &str, selected_tab: &String) {
     // save FocusTracker state for the old tab
     w.state
         .focus_tarcker_state
-        .insert(old_tab.clone(), w.get_focused_view());
+        .insert(old_tab.to_owned(), w.get_focused_view());
 
     w.state.selected_tab = selected_tab.clone();
 
@@ -1016,16 +1016,14 @@ impl From<&NetworkInterfaceStatus> for IpDialogState {
         let ipv4 = iface
             .ipv4
             .as_ref()
-            .map(|ipv4: &Vec<std::net::Ipv4Addr>| ipv4.first().cloned())
-            .flatten()
+            .and_then(|ipv4: &Vec<std::net::Ipv4Addr>| ipv4.first().cloned())
             .map(|addr| addr.to_string())
             .unwrap_or_default();
 
         let ipv6 = iface
             .ipv6
             .as_ref()
-            .map(|ipv6: &Vec<std::net::Ipv6Addr>| ipv6.first().cloned())
-            .flatten()
+            .and_then(|ipv6: &Vec<std::net::Ipv6Addr>| ipv6.first().cloned())
             .map(|addr| addr.to_string())
             .unwrap_or_default();
 
@@ -1140,7 +1138,8 @@ impl From<&NetworkInterfaceStatus> for IpDialogState {
 
 pub fn create_ip_dialog(iface: &NetworkInterfaceStatus) -> impl IWindow {
     let state = IpDialogState::from(iface);
-    let w = Window::builder("IP configuration")
+
+    Window::builder("IP configuration")
         .with_layout(ip_dialog_layout)
         .with_render(ip_dialog_render)
         .with_on_child_ui_action(on_child_ui_action)
@@ -1148,6 +1147,5 @@ pub fn create_ip_dialog(iface: &NetworkInterfaceStatus) -> impl IWindow {
         .with_on_init(on_init)
         .with_state(state)
         .build()
-        .unwrap();
-    w
+        .unwrap()
 }

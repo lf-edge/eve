@@ -1,6 +1,9 @@
 // Copyright (c) 2024-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+// Status-bar widget; the tips field/setter are intended API not yet wired.
+#![allow(dead_code)]
+
 use ratatui::{
     layout::{Constraint, Flex, Layout, Margin},
     style::{Color, Style},
@@ -9,15 +12,11 @@ use ratatui::{
 
 use super::{widgets::label::LabelElement, window::Window};
 
+#[derive(Default)]
 pub struct StatusBarState {
     tips: Option<String>,
 }
 
-impl Default for StatusBarState {
-    fn default() -> Self {
-        Self { tips: None }
-    }
-}
 
 impl StatusBarState {
     pub fn set_tips(&mut self, tips: Option<String>) {
@@ -57,7 +56,7 @@ pub fn create_status_bar() -> Window<StatusBarState> {
             let tips = _w.get_widget_mut("Tips").unwrap();
             let label: &mut LabelElement =
                 tips.as_any_mut().downcast_mut::<LabelElement>().unwrap();
-            label.set_text(&model.status_bar_tips.clone().unwrap_or_default());
+            label.set_text(model.status_bar_tips.clone().unwrap_or_default());
 
             let blk = Block::new()
                 //.border_type(BorderType::Rounded)

@@ -7,6 +7,8 @@ use crate::ipc::eve_types::{DhcpType, NetworkPortStatus, NetworkProxyType, Wirel
 use ipnet::IpNet;
 use macaddr::MacAddr;
 
+// Intended model API for network config/status; not yet wired everywhere.
+#[allow(dead_code)]
 pub struct NetworkStatus {
     pub interfaces: Vec<NetworkInterfaceStatus>,
 }
@@ -35,6 +37,8 @@ pub enum NetworkType {
 }
 
 impl NetworkType {
+    // Kept as an inherent helper rather than a Display impl to match callers.
+    #[allow(clippy::inherent_to_string)]
     pub fn to_string(&self) -> String {
         match self {
             NetworkType::Ethernet => "Ethernet".to_string(),
@@ -44,6 +48,8 @@ impl NetworkType {
     }
 }
 
+// Intended interface-config model API; not yet wired into the UI.
+#[allow(dead_code)]
 pub enum IpConfig {
     Static {
         ip: Vec<IpAddr>,
@@ -54,6 +60,8 @@ pub enum IpConfig {
     Dhcp,
 }
 
+// Intended interface-config model API; not yet wired into the UI.
+#[allow(dead_code)]
 pub enum PhyConfig {
     Ethernet { mtu: u32 },
     WiFi { ssid: String, password: String },
@@ -175,6 +183,8 @@ impl Default for PhyConfig {
     }
 }
 
+// Intended interface-config model API; not yet wired into the UI.
+#[allow(dead_code)]
 pub struct InterfaceConfig {
     pub name: String,
     pub ip_config: IpConfig,
@@ -264,22 +274,17 @@ impl From<&NetworkPortStatus> for NetworkInterfaceStatus {
                 ssid: port
                     .wireless_cfg
                     .wifi
-                    .as_ref()
-                    .and_then(|w| Some(w[0].ssid.clone())),
+                    .as_ref().map(|w| w[0].ssid.clone()),
             }),
             WirelessType::Cellular => NetworkType::Cellular(CellularStatus {
                 // A modem can have 0 or multiple sims
                 sims: port.wireless_cfg.cellular_v2.as_ref().and_then(|c| {
-                    c.access_points.as_ref().and_then(|a| {
-                        Some(
-                            a.iter()
+                    c.access_points.as_ref().map(|a| a.iter()
                                 .map(|s| SimStatus {
                                     apn: s.apn.clone(),
                                     slot: u32::from(s.sim_slot),
                                 })
-                                .collect(),
-                        )
-                    })
+                                .collect())
                 }),
             }),
         };
@@ -288,10 +293,7 @@ impl From<&NetworkPortStatus> for NetworkInterfaceStatus {
 
         // collect DNS servers
         let dns = port.dns_servers.as_ref().map(|dns_servers| {
-            dns_servers
-                .iter()
-                .map(|dns_server| dns_server.clone())
-                .collect()
+            dns_servers.to_vec()
         });
 
         // collect NTP servers. Some may come from DHCP as IpAddr, others are FQDN from
@@ -335,7 +337,7 @@ impl From<&NetworkPortStatus> for NetworkInterfaceStatus {
             up: port.up,
             media,
             dns,
-            subnet: port.ipv4_subnet.clone(),
+            subnet: port.ipv4_subnet,
             is_dhcp,
             cost: port.cost,
             domain: if port.domain_name.is_empty() {

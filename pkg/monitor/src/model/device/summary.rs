@@ -12,6 +12,8 @@ pub fn get_name() -> String {
     "hello world".to_string() // to be replaced with fetch of hostname
 }
 
+// Public summary model; some fields are intended API not yet rendered.
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct DeviceSummary {
     pub name: String,
@@ -40,7 +42,7 @@ fn get_usb() -> Vec<String> {
         .output()
         .expect("failed to execute process");
     if cmd_out.status.success() {
-        if let Some(string) = String::from_utf8(cmd_out.stdout).ok() {
+        if let Ok(string) = String::from_utf8(cmd_out.stdout) {
             return string.split('\n').map(|s| s.to_string()).collect();
         }
     }
@@ -53,7 +55,7 @@ fn get_pci() -> Vec<String> {
         .output()
         .expect("failed to execute process");
     if cmd_out.status.success() {
-        if let Some(string) = String::from_utf8(cmd_out.stdout).ok() {
+        if let Ok(string) = String::from_utf8(cmd_out.stdout) {
             return string.split('\n').map(|s| s.to_string()).collect();
         }
     }

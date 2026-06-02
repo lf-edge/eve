@@ -71,7 +71,8 @@ impl IWidgetPresenter for TabElement {
 impl IElementEventHandler for TabElement {
     fn handle_key_event(&mut self, key: KeyEvent) -> Option<UiActions> {
         debug!("TabElement: Handling key event: {:?}", key);
-        let action = match &key.code {
+
+        match &key.code {
             KeyCode::Left if key.modifiers == KeyModifiers::CONTROL => {
                 let current = self.ft.get_focused_view().unwrap();
                 self.ft.focus_prev();
@@ -86,7 +87,6 @@ impl IElementEventHandler for TabElement {
                 Some(UiActions::TabChanged(current, new))
             }
             _ => None,
-        };
-        action
+        }
     }
 }

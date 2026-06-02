@@ -1,7 +1,13 @@
 // Copyright (c) 2024-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+// Core UI action/event API; some variants, fields and builder methods are part
+// of the intended surface even when not yet exercised by every caller.
+#![allow(dead_code)]
+
 use crate::{actions::MonActions, traits::IAction};
+// Variants carry app action state by value by design; do not box them.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum UiActions {
     Quit,

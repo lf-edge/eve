@@ -4,7 +4,7 @@
 use std::process::Command;
 
 fn main() {
-    // if .git doesnt exist then we are not in a git repo
+    // if .git doesn't exist then we are not in a git repo
     // it may happen in container builds. do not set GIT_VERSION
     if !std::path::Path::new(".git").exists() {
         return;
@@ -28,8 +28,5 @@ fn main() {
 
     // if git tool is not available e.g. not installed in the container
     // or the repository is not tagged, do nothing
-    exact_tag.or(dirty_descr).map(|version| {
-        // Set an environment variable in the Rust build output
-        println!("cargo:rustc-env=GIT_VERSION={}", version);
-    });
+    if let Some(version) = exact_tag.or(dirty_descr) { println!("cargo:rustc-env=GIT_VERSION={}", version) }
 }

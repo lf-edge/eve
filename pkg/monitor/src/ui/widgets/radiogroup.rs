@@ -1,6 +1,9 @@
 // Copyright (c) 2024-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+// Radio-group widget; intended UI API not yet instantiated by a page.
+#![allow(dead_code)]
+
 use crossterm::event::{KeyCode, KeyEvent};
 use log::{info, trace};
 use ratatui::{

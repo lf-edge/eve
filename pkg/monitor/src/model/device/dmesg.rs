@@ -63,7 +63,7 @@ impl DmesgViewer {
         match key.code {
             KeyCode::Down => {
                 self.buffer_index = cmp::min(
-                    self.buffer_index + 1 as usize,
+                    self.buffer_index + 1_usize,
                     self.buffer_len - self.lines_per_page as usize,
                 );
             }
