@@ -15,7 +15,7 @@ use crate::{
     ui::action::UiActions,
 };
 
-use ratatui::widgets::WidgetRef;
+use ratatui::widgets::Widget;
 
 //pub type ButtonElement<A> = Element<ButtonWidgetState<A>>;
 pub struct ButtonElement {
@@ -77,7 +77,7 @@ impl IWidgetPresenter for ButtonElement {
                 .alignment(Alignment::Center)
                 .block(block)
         };
-        button.render_ref(*area, frame.buffer_mut());
+        (&button).render(*area, frame.buffer_mut());
     }
 }
 
