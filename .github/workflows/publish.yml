@@ -315,7 +315,7 @@ jobs:
   trigger_assets:
     if: ${{ (startsWith(github.ref, 'refs/tags/')) && (github.event.repository.full_name == 'lf-edge/eve') }}
     needs: [manifest, eve]
-    uses: lf-edge/eve/.github/workflows/assets.yml@master
+    uses: lf-edge/eve/.github/workflows/assets.yml@16.0-stable
     secrets:
       DOCKERHUB_PULL_TOKEN: ${{ secrets.DOCKERHUB_PULL_TOKEN }}
       DOCKERHUB_PULL_USER: ${{ secrets.DOCKERHUB_PULL_USER }}
