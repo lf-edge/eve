@@ -10,7 +10,7 @@ use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
-    widgets::{Paragraph, WidgetRef},
+    widgets::{Paragraph, Widget},
     Frame,
 };
 
@@ -114,9 +114,9 @@ impl SpinBoxElement {
             .alignment(Alignment::Center)
             .style(style);
         //TODO: I separate regions to be able to draw "pressed" state on tick
-        up.render_ref(up_arrow_rect, buf);
-        down.render_ref(down_arrow_rect, buf);
-        text.render_ref(text_rect, buf);
+        (&up).render(up_arrow_rect, buf);
+        (&down).render(down_arrow_rect, buf);
+        (&text).render(text_rect, buf);
     }
 }
 

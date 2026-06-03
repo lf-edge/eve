@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crossterm::event::{KeyCode, KeyModifiers};
 use ratatui::{
     layout::{Alignment, Constraint, Rect},
-    style::{Color, Style, Stylize},
+    style::{Color, Style},
     text::Text,
     widgets::{
         Block, BorderType, Borders, Cell, HighlightSpacing, Padding, Row, StatefulWidget, Table,

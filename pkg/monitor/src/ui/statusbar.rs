@@ -7,7 +7,7 @@
 use ratatui::{
     layout::{Constraint, Flex, Layout, Margin},
     style::{Color, Style},
-    widgets::{Block, BorderType, Borders, WidgetRef},
+    widgets::{Block, BorderType, Borders, Widget},
 };
 
 use super::{widgets::label::LabelElement, window::Window};
@@ -65,7 +65,7 @@ pub fn create_status_bar() -> Window<StatusBarState> {
                 .borders(Borders::ALL)
                 .style(Style::default().bg(Color::Black));
 
-            blk.render_ref(*rect, frame.buffer_mut());
+            (&blk).render(*rect, frame.buffer_mut());
         })
         .build();
 
