@@ -9,7 +9,7 @@ use log::{info, trace};
 use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
-    widgets::{Block, Borders, Paragraph, WidgetRef},
+    widgets::{Block, Borders, Paragraph, Widget},
     Frame,
 };
 
@@ -65,7 +65,7 @@ impl IWidgetPresenter for RadioGroupElement {
             .borders(Borders::ALL)
             .border_style(style);
         let inner = block.inner(*area);
-        block.render_ref(*area, frame.buffer_mut());
+        (&block).render(*area, frame.buffer_mut());
         // create vertical layout for radio buttons
         let constraints = self.labels.iter().map(|_| Constraint::Length(1));
         let buttons_area = Layout::vertical(constraints).split(inner);
@@ -88,7 +88,7 @@ impl IWidgetPresenter for RadioGroupElement {
             }
 
             let p = Paragraph::new(label).style(style);
-            p.render_ref(buttons_area[i], frame.buffer_mut());
+            (&p).render(buttons_area[i], frame.buffer_mut());
         }
     }
 }

@@ -7,7 +7,7 @@ use log::trace;
 use ratatui::{
     layout::{Alignment, Rect},
     style::{Color, Style},
-    widgets::{Paragraph, WidgetRef},
+    widgets::{Paragraph, Widget},
     Frame,
 };
 
@@ -61,7 +61,7 @@ impl IWidgetPresenter for LabelElement {
             .alignment(Alignment::Left)
             .wrap(ratatui::widgets::Wrap { trim: true })
             .style(Style::default().fg(Color::White));
-        p.render_ref(*area, frame.buffer_mut());
+        (&p).render(*area, frame.buffer_mut());
     }
 
     fn can_focus(&self) -> bool {

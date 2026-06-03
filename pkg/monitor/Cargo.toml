@@ -26,10 +26,10 @@ crossterm = { git = "https://github.com/crossterm-rs/crossterm.git", rev = "6924
     "use-dev-tty",
 ] }
 
-ratatui = { version = "0.29.0", features = ["unstable-widget-ref"] }
+ratatui = "0.30.0"
 anyhow = "1.0.86"
 log = "0.4.22"
-strum = "0.26.3"
+strum = { version = "0.26.3", features = ["derive"] }
 async-inotify = "0.1.0"
 inotify = "0.10.2"
 log2 = "0.1.11"
