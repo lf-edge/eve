@@ -149,7 +149,9 @@ jobs:
           cd ../
           mv "$sha256_file" assets/
           mv "$sizes_file" assets/
-          # Upload files
+          # Upload files. Track failures and fail the job at the end so that
+          # all assets are attempted before the run is marked failed.
+          upload_failed=0
           for file in assets/*; do
             file_name=$(basename $file)
             echo "Uploading ${file_name}..."
@@ -161,6 +163,8 @@ jobs:
             if echo "$upload_response" | jq -e .id > /dev/null; then
               echo "$file_name uploaded successfully."
             else
-              echo "Error uploading $file_name: $upload_response"
+              echo "::error::Failed to upload $file_name: $upload_response"
+              upload_failed=1
             fi
           done
+          exit "$upload_failed"
