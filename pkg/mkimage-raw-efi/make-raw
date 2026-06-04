@@ -70,6 +70,7 @@ IMGA_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30052
 IMGB_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30053
 CONF_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30054
 IMGC_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30055
+EFI_B_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30056
 PERSIST_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30059
 INSTALLER_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30060
 
@@ -94,6 +95,8 @@ IMX8_CONF=/parts/imx8-flash.conf
 
 # EFI partition size in bytes
 EFI_PART_SIZE=$((2 * 1024 * 1024 * 1024))
+# Second (reserved) ESP-B partition size in bytes; same as ESP-A for symmetry
+EFI_B_PART_SIZE=$EFI_PART_SIZE
 # Min rootfs partition size in bytes
 # Warning: don't change the rootfs partition size, before
 # Warning: fixing the EVE upgrade logic, which should find
@@ -118,7 +121,7 @@ if [ "$PLATFORM" = "evaluation" ]; then
     # so we do not reserve any space in the partition
     ROOTFS_PART_SIZE_MIN=0
 else
-    PARTS=${*:-"efi imga imgb conf persist"}
+    PARTS=${*:-"efi efi_b imga imgb conf persist"}
     # wipe IMGB for non-evaluation platforms
     ROOTFS_IMG_B=
 fi
@@ -145,6 +148,7 @@ IMGA_PART_OFFSET=2
 IMGB_PART_OFFSET=3
 IMGC_PART_OFFSET=7
 EFI_PART_OFFSET=1
+EFI_B_PART_OFFSET=8
 CONF_PART_OFFSET=4
 PERSIST_PART_OFFSET=9
 INVENTORY_WIN_PART_OFFSET=5
@@ -241,6 +245,9 @@ calc_image_size() {
       case $p in
           efi)
               SIZE=$((SIZE + EFI_PART_SIZE))
+              ;;
+          efi_b)
+              SIZE=$((SIZE + EFI_B_PART_SIZE))
               ;;
           conf_win | conf)
               SIZE=$((SIZE + CONF_PART_SIZE))
@@ -400,6 +407,39 @@ efi_installer_extension() {
   touch /efifs/boot/.boot_repository
   od -An -x -N 16 /dev/random | tr -d ' ' > /efifs/boot/.uuid
   cp /UsbInvocationScript.txt /efifs
+}
+
+# do_efi_b creates the reserved second ESP (ESP-B). It carries no payload for now;
+# future work may populate it (e.g. EFI-variable A/B boot or a recovery OS). It is
+# pre-formatted with an empty FAT32 filesystem so that future code can simply mount
+# it and drop files on it (EVE has no runtime mkfs path for this partition, and -
+# unlike the rootfs partitions - it is not updated by writing a whole FS image).
+# It shares the "EFI System" label and ef00 type with ESP-A and is distinguished
+# only by its unique partition GUID ($EFI_B_UUID).
+do_efi_b() {
+  eval "local SEC_START=\$$1"
+  local SEC_END
+  local NUM_PART=$EFI_B_PART
+  local PART_TYPE="ef00"
+  local partlabel='EFI System'
+
+  SEC_END="$(grow_part "$SEC_START" "$EFI_B_PART_SIZE")"
+
+  sgdisk --new "$NUM_PART:$SEC_START:$SEC_END" \
+         --typecode="$NUM_PART:$PART_TYPE" \
+         --change-name="$NUM_PART:$partlabel" \
+         "$IMGFILE"
+
+  if [ -z "$RANDOM_DISK_UUIDS" ]; then
+      sgdisk --partition-guid="$NUM_PART:$EFI_B_UUID" "$IMGFILE"
+  fi
+
+  # Pre-format as an empty FAT32 filesystem (same mechanism as the other vfat
+  # partitions): build a sized empty FAT image from an empty directory and write
+  # it into the partition. No files are copied in.
+  dd if="$(dir2vfat "$(mktemp -d)" $(( (SEC_END - SEC_START) / 2 )))" of="$IMGFILE" bs=1M conv=notrunc seek="$(( SEC_START * 512 ))" oflag=seek_bytes
+
+  eval "$1=$((SEC_END + 1))"
 }
 
 # do_installer prepares an installation image:
@@ -629,7 +669,7 @@ case "$(sgdisk -p "$IMGFILE" 2>/dev/null | sed -ne '/^Number/,$s/^.* //p' | tr '
       EMBED_BOOT_START=$(sgdisk -i 6 "$IMGFILE" 2>/dev/null | awk '/First sector:/{ print $3; }')
       EMBED_BOOT_SIZE=$(sgdisk -i 6 "$IMGFILE" 2>/dev/null | awk '/Partition size:/{ print $3; }')
       ;;
-  "Name System IMGA IMGB CONFIG P3"*)
+  "Name System IMGA IMGB CONFIG"*)
       echo "Found EVE GPT partition table on $IMGFILE"
       # apparently sgdisk -Z doesn't clear MBR and keeps complaining
       dd if=/dev/zero of="$IMGFILE" bs=512 count=1 conv=notrunc
@@ -654,6 +694,7 @@ IMGA_PART=$(( PART_OFFSET + IMGA_PART_OFFSET ))
 IMGB_PART=$(( PART_OFFSET + IMGB_PART_OFFSET ))
 IMGC_PART=$(( PART_OFFSET + IMGC_PART_OFFSET ))
 EFI_PART=$(( PART_OFFSET + EFI_PART_OFFSET ))
+EFI_B_PART=$(( PART_OFFSET + EFI_B_PART_OFFSET ))
 CONF_PART=$(( PART_OFFSET + CONF_PART_OFFSET ))
 PERSIST_PART=$(( PART_OFFSET + PERSIST_PART_OFFSET ))
 INVENTORY_WIN_PART=$(( PART_OFFSET + INVENTORY_WIN_PART_OFFSET ))
