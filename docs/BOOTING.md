@@ -65,6 +65,56 @@ squashfs). Next to that 2nd stage GRUB is its own [configuration](../pkg/grub/ro
 more complex and is tasked with figuring out how to load appropriate hypervisor and control domain kernels
 (if needed).
 
+### The two EFI System partitions (ESP-A and ESP-B)
+
+EVE's GPT layout contains **two** EFI System partitions. Both carry the EFI
+System Partition type GUID `C12A7328-F81F-11D2-BA4B-00A0C93EC93B` (`sgdisk`
+typecode `ef00`) and both carry the GPT partition label `EFI System`:
+
+* **ESP-A** — partition 1, unique partition GUID `ad6871ee-...-30051`. This is
+  the active ESP: it holds the 1st stage GRUB (`BOOTX64.EFI`/`BOOTAA64.EFI`) and
+  is the partition the firmware actually boots from. Everything described in this
+  section refers to ESP-A.
+* **ESP-B** — partition 7, unique partition GUID `ad6871ee-...-30056`, 2 GiB. It
+  is created with an **empty FAT32 filesystem** and is otherwise unused. It is
+  pre-formatted (rather than left as raw space) so that future code can simply
+  mount it and add files — EVE has no runtime `mkfs` path for this partition, and
+  unlike the rootfs partitions it is not updated by writing a whole filesystem
+  image. It is reserved up front so that EVE can later adopt a second-ESP
+  capability — for example EFI-variable A/B booting of the bootloader + kernel
+  (via `BootXXXX`/`BootOrder`/`BootNext`) or a recovery OS — without having to
+  change the on-disk layout, which is immutable on already-deployed devices.
+
+Because both partitions share the same type GUID **and** the same `EFI System`
+label, they can only be told apart by their unique partition GUID (the same
+identifier a future `BootXXXX` boot entry would reference). Consequently, code
+that locates the active ESP selects ESP-A by its unique partition GUID rather
+than by label: the 1st stage GRUB's [embedded fallback](../pkg/grub/embedded.cfg)
+uses `search.part_uuid` for ESP-A, and the [installer](../pkg/installer/install)
+matches ESP-A's PARTUUID. Reserving ESP-B does not otherwise change the boot
+flow — EVE still boots the active rootfs (IMGA/IMGB) selected by `gptprio.next`,
+and ESP-B plays no role until a future change populates and uses it.
+
+Note: because `embedded.cfg` selects ESP-A by its fixed unique partition GUID,
+this fallback assumes the **fixed** partition-UUID scheme (the default). Images
+built with `make-raw -r` (`eve_install_random_disk_uuids`) randomize the GUIDs,
+so the hardcoded `search.part_uuid` would not match; that opt-in mode is not used
+in practice, and the primary `gptprio.next` boot path (keyed off the partition
+*type* GUID and attribute bits) is unaffected regardless.
+
+Compatibility with already-installed devices: the 1st stage GRUB cannot be
+upgraded after install, so a device installed before this change keeps an
+`embedded.cfg` that locates the ESP **by label** (`search.part_label "EFI
+System"`). Such a device has only one ESP today, but should a future change (e.g.
+partition resizing) ever add a second `EFI System` partition to it, the old
+label-based search stays correct: GRUB iterates GPT partitions in ascending
+partition-number order and `search … <var>` stops at the **first** match, so it
+selects the lowest-numbered `EFI System` partition. **Invariant:** the active,
+bootable ESP (ESP-A) must therefore always be the lowest-numbered ESP — which is
+why ESP-A is partition 1 and ESP-B is partition 7. (Verified against EVE's patched
+GRUB for the coreos/~2.02, 2.06 and 2.12 lineages; the EVE gpt/gptprio patches add
+a separate `lib/gpt.c` and do not change `partmap/gpt.c`'s iteration order.)
+
 After 1st stage GRUB determines which partition is active (IMGA or IMGB) it chainloads the 2nd stage GRUB.
 This chainloading is done through the mechanism that is specific to UEFI payloads and is different from
 legacy PC bootloader chainloading (read: don't try to chainload UEFI from legacy and vice versa).
@@ -170,7 +220,9 @@ The first problem presented by a legacy PC BIOS is that it doesn't understand GP
 luckily GPT specification allows for a [Hybryd MBR/GPT](https://wiki.archlinux.org/index.php/Multiboot_USB_drive#Hybrid_UEFI_GPT_+_BIOS_GPT/MBR_boot)
 scheme and we can use the MBR boot sector to bootstrap the entire sequence.
 
-Thus, in addition to creating a UEFI compatible `EFI System` partition every disk with EVE also gets:
+Thus, in addition to creating a UEFI compatible `EFI System` partition every disk with EVE also gets
+(the `EFI System` partition referenced below is always ESP-A — the active ESP at partition 1; the
+reserved ESP-B takes no part in the hybrid MBR / legacy boot scheme):
 
 * an MBR boot sector with GRUB's [stage1 one bootblock code](https://thestarman.pcministry.com/asm/mbr/GRUB.htm)
 * an MBR partition table (last 64 bytes of the MBR sector) with the following two partitions specified:
