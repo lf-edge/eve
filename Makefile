@@ -212,7 +212,7 @@ DEVICETREE_DTB_arm64=$(DIST)/dtb/eve.dtb
 DEVICETREE_DTB=$(DEVICETREE_DTB_$(ZARCH))
 
 CONF_FILES=$(shell ls -d $(CONF_DIR)/*)
-LIVE_PART_SPEC=efi conf imga
+LIVE_PART_SPEC=efi efi_b conf imga
 
 # parallels settings
 # https://github.com/qemu/qemu/blob/595123df1d54ed8fbab9e1a73d5a58c5bb71058f/docs/interop/prl-xml.txt
