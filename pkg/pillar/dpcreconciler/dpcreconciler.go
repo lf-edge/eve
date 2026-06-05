@@ -44,6 +44,13 @@ type Args struct {
 	// and lease reacquisition.
 	// Key is port logical label.
 	DHCPReacquireCounters map[string]int
+	// DNSCacheClearCounter is incremented by DpcManager to declaratively request
+	// a mgmt dnsmasq DNS cache flush (via SIGHUP) before each DPC verification pass.
+	DNSCacheClearCounter int
+	// LogDNSQueries enables dnsmasq log-queries for the mgmt dnsmasq instance.
+	// Set to true when NIM is configured with debug or trace log level so that
+	// forwarding attempts (including failures) are visible in device logs.
+	LogDNSQueries bool
 }
 
 // ReconcileStatus : state data related to config reconciliation.

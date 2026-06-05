@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"reflect"
+	"sort"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -486,6 +487,21 @@ func (config *DevicePortConfig) DoSanitize(log *base.LogObject, args DPCSanitize
 			config.Ports[i].UpdateEveDefinedSharedLabels()
 		}
 	}
+}
+
+// GetMgmtPortsSortedByCost returns all management ports sorted by cost in ascending
+// order. Ports with equal cost retain their original relative order (stable sort).
+func (config *DevicePortConfig) GetMgmtPortsSortedByCost() []NetworkPortConfig {
+	var ports []NetworkPortConfig
+	for _, port := range config.Ports {
+		if port.IsMgmt {
+			ports = append(ports, port)
+		}
+	}
+	sort.SliceStable(ports, func(i, j int) bool {
+		return ports[i].Cost < ports[j].Cost
+	})
+	return ports
 }
 
 // CountMgmtPorts returns the number of management ports

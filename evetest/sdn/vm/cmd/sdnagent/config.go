@@ -1246,12 +1246,13 @@ func (a *agent) getIntendedDNSSrvEp(dnsSrv *api.DNSServer) dg.Graph {
 		}
 	}
 	intendedCfg.PutItem(configitems.DNSServer{
-		ServerName:      logicalLabel,
-		NetNamespace:    nsName,
-		VethName:        vethName,
-		VethPeerIfName:  inIfName,
-		StaticEntries:   staticEntries,
-		UpstreamServers: upstreamServers,
+		ServerName:       logicalLabel,
+		NetNamespace:     nsName,
+		VethName:         vethName,
+		VethPeerIfName:   inIfName,
+		StaticEntries:    staticEntries,
+		UpstreamServers:  upstreamServers,
+		StaticEntriesTTL: dnsSrv.GetStaticEntriesTtl(),
 	}, nil)
 	return intendedCfg
 }

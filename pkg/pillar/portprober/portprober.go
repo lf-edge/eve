@@ -112,9 +112,8 @@ func DefaultConfig() Config {
 // A mock implementation is also provided for unit testing purposes.
 type ReachabilityProber interface {
 	// Probe reachability of <dstAddr> via the given port.
-	// If <dstAddr> is IP address and not hostname, <dnsServers> can be nil.
-	Probe(ctx context.Context, portIfName string, srcIP net.IP, dstAddr net.Addr,
-		dnsServers []net.IP) error
+	// Hostname resolution uses net.DefaultResolver (resolv.conf → mgmt dnsmasq).
+	Probe(ctx context.Context, portIfName string, srcIP net.IP, dstAddr net.Addr) error
 }
 
 // ProbeStatus is published whenever the selected port for a given multipath route
@@ -142,7 +141,6 @@ type portStatus struct {
 	isWwan       bool
 	localAddrs   []net.IP
 	nextHops     []net.IP
-	dnsServers   []net.IP
 	newlyAdded   bool
 	nhProbe      probeStatus
 	userProbes   map[types.ConnectivityProbe]*probeStatus
@@ -494,7 +492,6 @@ func (p *PortProber) applyPendingDNS() {
 				// Just update IP status.
 				port.localAddrs = getLocalIPv4s(dnsPort)
 				port.nextHops = getNextHops(dnsPort)
-				port.dnsServers = dnsPort.DNSServers
 			}
 		}
 	}
@@ -509,7 +506,6 @@ func (p *PortProber) addPort(dnsPort types.NetworkPortStatus) {
 		isWwan:       dnsPort.WirelessCfg.WType == types.WirelessTypeCellular,
 		localAddrs:   getLocalIPv4s(dnsPort),
 		nextHops:     getNextHops(dnsPort),
-		dnsServers:   getDNSServers(dnsPort),
 		// Mark as new so that the following probing will run fully
 		// and decide the UP/DOWN states.
 		newlyAdded: true,
@@ -548,7 +544,7 @@ func (p *PortProber) probePortNH(port *portStatus) {
 			}
 			ctx := context.Background()
 			ctx, cancel := context.WithTimeout(ctx, p.config.NextHopProbeTimeout)
-			err = p.reachProberICMP.Probe(ctx, port.ifName, localIP, nhAddr, nil)
+			err = p.reachProberICMP.Probe(ctx, port.ifName, localIP, nhAddr)
 			cancel()
 			if err == nil {
 				break
@@ -647,7 +643,7 @@ func (p *PortProber) probePortUserEp(port *portStatus, probe types.ConnectivityP
 		ctx := context.Background()
 		ctx, cancel := context.WithTimeout(ctx, p.config.UserProbeTimeout)
 		startTime := time.Now()
-		err = prober.Probe(ctx, port.ifName, localIP, dstAddr, port.dnsServers)
+		err = prober.Probe(ctx, port.ifName, localIP, dstAddr)
 		duration = time.Since(startTime)
 		cancel()
 		if err == nil {
@@ -957,15 +953,6 @@ func getNextHops(port types.NetworkPortStatus) (ips []net.IP) {
 			continue
 		}
 		if ip := dr.To4(); ip != nil {
-			ips = append(ips, ip)
-		}
-	}
-	return ips
-}
-
-func getDNSServers(port types.NetworkPortStatus) (ips []net.IP) {
-	for _, srv := range port.DNSServers {
-		if ip := srv.To4(); ip != nil {
 			ips = append(ips, ip)
 		}
 	}

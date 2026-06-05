@@ -21,6 +21,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	uuid "github.com/satori/go.uuid"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -115,6 +116,8 @@ type DpcManager struct {
 	enrolledCerts         []types.EnrolledCertificateStatus
 	dhcpReacquireCounters map[string]int                   // key: port logical label
 	dhcpReacquireState    map[string]*dhcpReacquireTracker // key: port logical label
+	dnsCacheClearCounter  int                              // incremented before each DPC verification pass
+	logDNSQueries         bool                             // true when NIM runs at debug/trace log level
 	// Boot-time configuration
 	dpclPresentAtBoot bool
 
@@ -541,6 +544,8 @@ func (m *DpcManager) reconcilerArgs() dpcreconciler.Args {
 		VaultReady:            m.vaultIsReady,
 		EnrolledCerts:         m.enrolledCerts,
 		DHCPReacquireCounters: m.dhcpReacquireCounters,
+		DNSCacheClearCounter:  m.dnsCacheClearCounter,
+		LogDNSQueries:         m.logDNSQueries,
 	}
 	if dpc, haveDPC := m.getCurrentDPC(); haveDPC {
 		args.DPC = dpc
@@ -823,6 +828,11 @@ func (m *DpcManager) doUpdateGCP(ctx context.Context, gcp types.ConfigItemValueM
 	airGapModeState := m.globalCfg.GlobalValueTriState(types.AirGapMode)
 	m.airGapMode = airGapModeState == types.TS_ENABLED
 	m.dhcpReacquireMaxRetries = int(m.globalCfg.GlobalValueInt(types.PnacDHCPReacquireMaxRetries))
+
+	// Enable dnsmasq log-queries when NIM local log level is debug or trace.
+	nimLevel, err := logrus.ParseLevel(
+		gcp.AgentSettingStringValue("nim", types.LogLevel))
+	m.logDNSQueries = err == nil && nimLevel >= logrus.DebugLevel
 
 	if m.dpcTestInterval != testInterval {
 		if testInterval == 0 {
