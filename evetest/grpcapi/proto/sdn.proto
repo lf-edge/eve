@@ -602,6 +602,10 @@ message DNSServer {
   // List of IP addresses of public DNS servers to forward requests to
   // (unless there is a static entry).
   repeated string upstream_servers = 3;
+
+  // TTL in seconds to use for static entries.
+  // When 0, dnsmasq's default (0s — not cached) is used.
+  uint32 static_entries_ttl = 4;
 }
 
 // Mapping between FQDN and an IP address.

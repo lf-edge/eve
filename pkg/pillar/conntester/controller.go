@@ -73,7 +73,6 @@ func (t *ControllerConnectivityTester) TestConnectivity(
 		DevSerial:           hardware.GetProductSerial(t.Log),
 		DevSoftSerial:       hardware.GetSoftSerial(t.Log),
 		NetTraceOpts:        t.netTraceOpts(dns),
-		ResolverCacheFunc:   nil,
 		NoLedManager:        false,
 	})
 
@@ -363,7 +362,6 @@ func (t *ControllerConnectivityTester) tryRemoteEndpointsWithTracing(
 		DevSerial:           "",
 		DevSoftSerial:       "",
 		NetTraceOpts:        t.netTraceOpts(dns),
-		ResolverCacheFunc:   nil,
 		NoLedManager:        false,
 	})
 	ctx, cancel := client.GetContextForAllIntfFunctions()

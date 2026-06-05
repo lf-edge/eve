@@ -34,6 +34,9 @@ type DNSServer struct {
 	// UpstreamServers : list of IP addresses of public DNS servers to forward
 	// requests to (unless there is a static entry).
 	UpstreamServers []net.IP
+	// StaticEntriesTTL : TTL in seconds for static (address=) entries.
+	// When 0, dnsmasq defaults to 0s (not cached by querying resolvers).
+	StaticEntriesTTL uint32
 }
 
 // DNSEntry : Mapping between FQDN and an IP address.
@@ -79,7 +82,8 @@ func (s DNSServer) Equal(other depgraph.Item) bool {
 	}
 	return s.NetNamespace == s2.NetNamespace &&
 		s.VethName == s2.VethName &&
-		s.VethPeerIfName == s2.VethPeerIfName
+		s.VethPeerIfName == s2.VethPeerIfName &&
+		s.StaticEntriesTTL == s2.StaticEntriesTTL
 }
 
 // External returns false.
@@ -157,8 +161,33 @@ func (c *DNSServerConfigurator) createDnsmasqConfFile(server DNSServer) error {
 	}
 	file.WriteString("no-resolv\n")
 	// Static DNS entries.
+	if len(server.StaticEntries) > 0 && server.StaticEntriesTTL > 0 {
+		_, err = fmt.Fprintf(file, "local-ttl=%d\n", server.StaticEntriesTTL)
+		if err != nil {
+			return fmt.Errorf("failed to write config file %s: %w", cfgPath, err)
+		}
+	}
+	// Collect unique FQDNs for local= directives written below.
+	seenFQDNs := make(map[string]bool)
 	for _, entry := range server.StaticEntries {
-		file.WriteString(fmt.Sprintf("address=/%s/%s\n", entry.FQDN, entry.IP.String()))
+		_, err = fmt.Fprintf(file, "address=/%s/%s\n", entry.FQDN, entry.IP.String())
+		if err != nil {
+			return fmt.Errorf("failed to write config file %s: %w", cfgPath, err)
+		}
+		seenFQDNs[entry.FQDN] = true
+	}
+	// For each statically configured FQDN, add a local= directive so that
+	// dnsmasq returns NXDOMAIN (not REFUSED) for query types that have no
+	// matching address= entry (e.g., A query when only AAAA is configured).
+	// Without this, dnsmasq would try to forward the unsatisfied query to an
+	// upstream server; with no upstream configured it returns REFUSED, and
+	// upstream dnsmasq instances treat REFUSED identically to a timeout --
+	// retrying indefinitely and blocking Go's DNS resolver goroutine.
+	for fqdn := range seenFQDNs {
+		_, err = fmt.Fprintf(file, "local=/%s/\n", fqdn)
+		if err != nil {
+			return fmt.Errorf("failed to write config file %s: %w", cfgPath, err)
+		}
 	}
 	file.WriteString("no-hosts\n")
 	if err = file.Sync(); err != nil {

@@ -108,9 +108,6 @@ type ClientOptions struct {
 	// NetTraceOpts defines options for network tracing
 	// (i.e. what to include in captured network traces).
 	NetTraceOpts []nettrace.TraceOpt
-	// ResolverCacheFunc is an optional function that can be used by Client to access
-	// cached hostname resolutions and thus avoid calling lookups for already known IPs.
-	ResolverCacheFunc ResolverCacheFunc
 	// NoLedManager, if true, disables calls to UpdateLedManagerConfig.
 	NoLedManager bool
 }
@@ -163,10 +160,27 @@ type RequestOptions struct {
 	CustomHeader http.Header
 }
 
-// ResolverCacheFunc is a callback that the caller may provide to give access
-// to cached resolved IP addresses. SendOnIntf will try to use the cached IPs
-// to avoid unnecessary DNS lookups.
-type ResolverCacheFunc func(hostname string) []types.CachedIP
+// DialerWithSrcIP provides a DialContext that binds the source IP for TCP connections
+// (source-based routing). DNS goes through resolv.conf → mgmt dnsmasq (127.0.0.1).
+type DialerWithSrcIP struct {
+	Log     *base.LogObject
+	IfName  string
+	LocalIP net.IP
+	Timeout time.Duration
+}
+
+// DialContext dials the given address with the source IP bound for routing purposes.
+func (d *DialerWithSrcIP) DialContext(
+	ctx context.Context, network, address string) (net.Conn, error) {
+	if d.Log != nil {
+		d.Log.Tracef("DialContext %v %v", network, address)
+	}
+	dialer := net.Dialer{
+		LocalAddr: &net.TCPAddr{IP: d.LocalIP},
+		Timeout:   d.Timeout,
+	}
+	return dialer.DialContext(ctx, network, address)
+}
 
 // SendAttempt - single attempt to send data made by SendOnIntf function.
 type SendAttempt struct {
@@ -773,14 +787,11 @@ func (c *Client) SendOnIntf(ctx context.Context, destURL string, intf string,
 			}
 		}
 		if !opts.WithNetTracing {
-			dialer := &DialerWithResolverCache{
-				log:              c.log,
-				ifName:           intf,
-				localIP:          srcIP,
-				skipNs:           clientConfig.SkipNameserver,
-				timeout:          clientConfig.TCPHandshakeTimeout,
-				resolverCache:    c.ResolverCacheFunc,
-				allowLoopbackDNS: opts.AllowLoopbackDNS,
+			dialer := &DialerWithSrcIP{
+				Log:     c.log,
+				IfName:  intf,
+				LocalIP: srcIP,
+				Timeout: clientConfig.TCPHandshakeTimeout,
 			}
 			transport.DialContext = dialer.DialContext
 			client = &http.Client{Transport: transport, Timeout: clientConfig.ReqTimeout}
@@ -996,14 +1007,6 @@ func (c *Client) prepareHTTPClientConfig(intf, reqURL string,
 		return clientCfg, proxyUsed, err
 	}
 
-	clientCfg.SkipNameserver = func(ip net.IP, _ uint16) (bool, string) {
-		for _, dnsServer := range dnsServers {
-			if dnsServer != nil && dnsServer.Equal(ip) {
-				return false, ""
-			}
-		}
-		return true, "DNS server is from a different network"
-	}
 	return clientCfg, proxyUsed, nil
 }
 
@@ -1266,12 +1269,11 @@ func (c *Client) SendLocal(destURL string, intf string, ipSrc net.IP,
 	// Since we recreate the transport on each call there is no benefit
 	// to keeping the connections open.
 	defer transport.CloseIdleConnections()
-	dialer := &DialerWithResolverCache{
-		log:           c.log,
-		ifName:        intf,
-		localIP:       ipSrc,
-		timeout:       c.NetworkDialTimeout,
-		resolverCache: c.ResolverCacheFunc,
+	dialer := &DialerWithSrcIP{
+		Log:     c.log,
+		IfName:  intf,
+		LocalIP: ipSrc,
+		Timeout: c.NetworkDialTimeout,
 	}
 	transport.DialContext = dialer.DialContext
 
@@ -1414,12 +1416,11 @@ func (c *Client) OpenLocalStream(
 		reqURL = "https://" + destURL
 	}
 
-	dialer := &DialerWithResolverCache{
-		log:           c.log,
-		ifName:        intf,
-		localIP:       ipSrc,
-		timeout:       c.NetworkDialTimeout,
-		resolverCache: c.ResolverCacheFunc,
+	dialer := &DialerWithSrcIP{
+		Log:     c.log,
+		IfName:  intf,
+		LocalIP: ipSrc,
+		Timeout: c.NetworkDialTimeout,
 	}
 	dialContext := func(ctx context.Context, network, address string) (net.Conn, error) {
 		conn, err := dialer.DialContext(ctx, network, address)

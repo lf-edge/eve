@@ -74,7 +74,6 @@ type loguploaderContext struct {
 	subDeviceNetworkStatus pubsub.Subscription
 	subGlobalConfig        pubsub.Subscription
 	subAppInstConfig       pubsub.Subscription
-	subCachedResolvedIPs   pubsub.Subscription
 	subZedAgentStatus      pubsub.Subscription
 	usableAddrCount        int
 	metrics                types.NewlogMetrics
@@ -85,16 +84,6 @@ type loguploaderContext struct {
 	airgapMode             bool
 	scheduleTimer          *time.Timer
 	backoffExprTimer       *time.Timer
-}
-
-func (ctx *loguploaderContext) getCachedResolvedIPs(hostname string) []types.CachedIP {
-	if ctx.subCachedResolvedIPs == nil {
-		return nil
-	}
-	if item, err := ctx.subCachedResolvedIPs.Get(hostname); err == nil {
-		return item.(types.CachedResolvedIPs).CachedIPs
-	}
-	return nil
 }
 
 // Run - an loguploader run
@@ -237,19 +226,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	log.Functionf("Have %d management ports with usable addresses", loguploaderCtx.usableAddrCount)
 
-	subCachedResolvedIPs, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "nim",
-		MyAgentName: agentName,
-		WarningTime: warningTime,
-		ErrorTime:   errorTime,
-		TopicImpl:   types.CachedResolvedIPs{},
-		Activate:    true,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	loguploaderCtx.subCachedResolvedIPs = subCachedResolvedIPs
-
 	// Publish cloud metrics
 	pubCloud, err := ps.NewPublication(
 		pubsub.PublicationOptions{
@@ -333,9 +309,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-subZedAgentStatus.MsgChan():
 			subZedAgentStatus.ProcessChange(change)
-
-		case change := <-subCachedResolvedIPs.MsgChan():
-			subCachedResolvedIPs.ProcessChange(change)
 
 		case <-publishCloudTimer.C:
 			start := time.Now()
@@ -477,7 +450,6 @@ func sendCtxInit(ps *pubsub.PubSub, ctx *loguploaderContext) {
 		NetworkSendTimeout:  time.Duration(SendTimeoutSecs) * time.Second,
 		NetworkDialTimeout:  time.Duration(DialTimeoutSecs) * time.Second,
 		AgentMetrics:        ctx.agentMetrics,
-		ResolverCacheFunc:   ctx.getCachedResolvedIPs,
 		DevSerial:           hardware.GetProductSerial(log),
 		DevSoftSerial:       hardware.GetSoftSerial(log),
 		DevUUID:             ctx.devUUID,

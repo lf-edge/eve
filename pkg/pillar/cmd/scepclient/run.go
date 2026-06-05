@@ -103,7 +103,6 @@ type SCEPClient struct {
 
 	subGlobalConfig        pubsub.Subscription
 	subDeviceNetworkStatus pubsub.Subscription
-	subCachedResolvedIPs   pubsub.Subscription
 	subOnboardStatus       pubsub.Subscription
 	subControllerCert      pubsub.Subscription
 	subEdgeNodeCert        pubsub.Subscription
@@ -273,19 +272,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject,
 	scepClient.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
-	subCachedResolvedIPs, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "nim",
-		MyAgentName: agentName,
-		TopicImpl:   types.CachedResolvedIPs{},
-		WarningTime: warningTime,
-		ErrorTime:   errorTime,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	scepClient.subCachedResolvedIPs = subCachedResolvedIPs
-	subCachedResolvedIPs.Activate()
-
 	// Look for controller certs which will be used for decryption.
 	subControllerCert, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "zedagent",
@@ -367,9 +353,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject,
 		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
 
-		case change := <-subCachedResolvedIPs.MsgChan():
-			subCachedResolvedIPs.ProcessChange(change)
-
 		case change := <-subOnboardStatus.MsgChan():
 			subOnboardStatus.ProcessChange(change)
 
@@ -411,7 +394,6 @@ func (c *SCEPClient) initHTTPClient() {
 			DeviceNetworkStatus: c.devNetworkStatus,
 			NetworkSendTimeout:  time.Duration(c.sendTimeout) * time.Second,
 			NetworkDialTimeout:  time.Duration(c.dialTimeout) * time.Second,
-			ResolverCacheFunc:   c.getCachedResolvedIPs,
 			AgentMetrics:        c.agentMetrics,
 			DevSerial:           hardware.GetProductSerial(c.log),
 			DevSoftSerial:       hardware.GetSoftSerial(c.log),
@@ -536,14 +518,4 @@ func (c *SCEPClient) handleSCEPProfileDelete(
 	_ interface{}, _ string, profile interface{}) {
 	scepProfile := profile.(types.SCEPProfile)
 	c.handleSCEPProfile(scepProfile, true)
-}
-
-func (c *SCEPClient) getCachedResolvedIPs(hostname string) []types.CachedIP {
-	if c.subCachedResolvedIPs == nil {
-		return nil
-	}
-	if item, err := c.subCachedResolvedIPs.Get(hostname); err == nil {
-		return item.(types.CachedResolvedIPs).CachedIPs
-	}
-	return nil
 }

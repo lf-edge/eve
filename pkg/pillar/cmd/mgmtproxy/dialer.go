@@ -124,18 +124,18 @@ func dialCostAware(parent context.Context, log *base.LogObject,
 	}
 }
 
-// dialFromSource binds the outbound socket to srcIP and uses a per-port DNS
-// resolver so the DNS query for the target hostname also flows through the
-// per-port routing table.
+// dialFromSource binds the outbound socket to srcIP so packets follow the
+// per-port routing table installed by NIM. DNS goes through resolv.conf →
+// mgmt dnsmasq (127.0.0.1), which forwards to the upstream servers of all
+// management ports; no per-port DNS binding is needed.
 func dialFromSource(parent context.Context, log *base.LogObject,
 	ifName string, srcIP net.IP, target string, timeout time.Duration) (net.Conn, error) {
 
-	resolver := controllerconn.NewResolverWithLocalIP(log, ifName, srcIP).NetResolver()
-
-	dialer := &net.Dialer{
-		Resolver:  resolver,
-		LocalAddr: &net.TCPAddr{IP: srcIP},
-		Timeout:   timeout,
+	dialer := &controllerconn.DialerWithSrcIP{
+		Log:     log,
+		IfName:  ifName,
+		LocalIP: srcIP,
+		Timeout: timeout,
 	}
 
 	ctx, cancel := context.WithTimeout(parent, timeout)
