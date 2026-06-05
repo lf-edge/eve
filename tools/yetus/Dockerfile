@@ -52,6 +52,11 @@ RUN rm /usr/local/bin/golangci-lint
 RUN ln -s /usr/bin/golangci-lint /usr/local/bin/golangci-lint
 RUN rm /golangci-lint.deb
 
+# Patch Yetus golangci-lint plugin to work with the new version
+COPY golangci-lint-plugin.patch /tmp/golangci-lint-plugin.patch
+WORKDIR /
+RUN patch -Np1 < /tmp/golangci-lint-plugin.patch && rm /tmp/golangci-lint-plugin.patch
+
 # Clean up
 RUN rm -r /tmp/zfs
 
