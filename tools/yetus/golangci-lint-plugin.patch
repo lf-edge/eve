@@ -1,0 +1,15 @@
+--- a/usr/lib/precommit/plugins.d/golangci.sh	2025-03-04 05:12:28.000000000 +0000
++++ b/usr/lib/precommit/plugins.d/golangci.sh	2026-06-05 08:46:31.999178321 +0000
+@@ -86,9 +86,9 @@ function golangcilint_exec
+   args+=("--max-issues-per-linter=0")
+   args+=("--max-same-issues=0")
+   args+=("--uniq-by-line=false")
+-  args+=("--out-format=line-number")
+-  args+=("--print-issued-lines=false")
+-  args+=("--color=never")
++  args+=("--output.text.path=stdout")
++  args+=("--output.text.print-issued-lines=false")
++  args+=("--output.text.colors=false")
+ 
+   if [[ -f "${GOLANGCI_CONFIG}" ]]; then
+     args+=("--config" "${GOLANGCI_CONFIG}")
