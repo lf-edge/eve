@@ -295,7 +295,7 @@ func scheduleNodeOperation(ctxPtr *nodeagentContext, requestedReasonStr string, 
 	// in any case, execute the reboot procedure
 	// with a delayed timer
 	log.Functionf("Creating %s at %s", "scheduleNodeOperation", agentlog.GetMyStack())
-	go handleNodeOperation(ctxPtr, op)
+	ctxPtr.startNodeOperation(op)
 }
 
 func allDomainsHalted(ctxPtr *nodeagentContext) bool {
