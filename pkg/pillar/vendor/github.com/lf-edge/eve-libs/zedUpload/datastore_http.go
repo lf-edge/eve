@@ -153,13 +153,9 @@ func (ep *HttpTransportMethod) processHttpUpload(req *DronaRequest) (error, int)
 
 // File download from HTTP Datastore
 func (ep *HttpTransportMethod) processHttpDownload(req *DronaRequest) (error, int) {
-	file := req.name
-	if ep.hurl != "" {
-		var err error
-		file, err = url.JoinPath(ep.hurl, ep.path, req.name)
-		if err != nil {
-			return err, 0
-		}
+	file, err := ep.concatenateFile(req)
+	if err != nil {
+		return err, 0
 	}
 	prgChan := make(types.StatsNotifChan)
 	defer close(prgChan)
@@ -176,6 +172,25 @@ func (ep *HttpTransportMethod) processHttpDownload(req *DronaRequest) (error, in
 		req.objloc, req.sizelimit, prgChan, doneParts, hClient, ep.inactivityTimeout,
 		ep.buildAuthHeader())
 	return stats.Error, resp.BodyLength
+}
+
+func (ep *HttpTransportMethod) concatenateFile(req *DronaRequest) (string, error) {
+	file := req.name
+	if ep.hurl != "" {
+		var err error
+		file, err = url.JoinPath(ep.hurl, ep.path)
+		if err != nil {
+			return "", err
+		}
+
+		file = strings.TrimSuffix(file, "/")
+		reqName := req.name
+		for strings.HasPrefix(reqName, "/") {
+			reqName = strings.TrimPrefix(reqName, "/")
+		}
+		file += "/" + reqName
+	}
+	return file, nil
 }
 
 // File delete from HTTP Datastore
@@ -208,14 +223,11 @@ func (ep *HttpTransportMethod) processHttpList(req *DronaRequest) ([]string, err
 
 // Object Metadata from HTTP datastore
 func (ep *HttpTransportMethod) processHttpObjectMetaData(req *DronaRequest) (error, int64) {
-	file := req.name
-	if ep.hurl != "" {
-		var err error
-		file, err = url.JoinPath(ep.hurl, ep.path, req.name)
-		if err != nil {
-			return err, 0
-		}
+	file, err := ep.concatenateFile(req)
+	if err != nil {
+		return err, 0
 	}
+
 	prgChan := make(types.StatsNotifChan)
 	defer close(prgChan)
 	if req.ackback {
