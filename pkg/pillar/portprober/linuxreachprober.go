@@ -9,8 +9,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	"github.com/tatsushid/go-fastping"
 )
 
@@ -44,24 +42,15 @@ func (h *HostnameAddr) String() string {
 type LinuxReachabilityProberICMP struct{}
 
 // Probe reachability of <dstAddr> using ICMP ping sent via the given port.
+// Hostname resolution uses net.DefaultResolver (resolv.conf → mgmt dnsmasq).
 func (p *LinuxReachabilityProberICMP) Probe(ctx context.Context, portIfName string,
-	srcIP net.IP, dstAddr net.Addr, dnsServers []net.IP) error {
-	// Do not use DNS servers other than those that belong to the probed
-	// network port.
-	customResolver := &dnsResolver{
-		dnsServers: dnsServers,
-		srcIP:      srcIP,
-		ifName:     portIfName,
-	}
-	resolver := customResolver.getNetResolver()
+	srcIP net.IP, dstAddr net.Addr) error {
 	var dstIPs []*net.IPAddr
 	switch addr := dstAddr.(type) {
 	case *net.IPAddr:
-		// Resolver is not needed, dstAddr is already an IP address.
 		dstIPs = append(dstIPs, addr)
 	case *HostnameAddr:
-		// Try to resolve destination hostname.
-		ips, err := resolver.LookupIP(ctx, "ip", addr.Hostname)
+		ips, err := net.DefaultResolver.LookupIP(ctx, "ip", addr.Hostname)
 		if err != nil {
 			return fmt.Errorf("failed to resolve %s: %w", dstAddr, err)
 		}
@@ -118,22 +107,15 @@ func (p *LinuxReachabilityProberICMP) Probe(ctx context.Context, portIfName stri
 type LinuxReachabilityProberTCP struct{}
 
 // Probe reachability of <dstAddr> using TCP handshake initiated via the given port.
+// Hostname resolution uses net.DefaultResolver (resolv.conf → mgmt dnsmasq).
 func (p *LinuxReachabilityProberTCP) Probe(ctx context.Context, portIfName string,
-	srcIP net.IP, dstAddr net.Addr, dnsServers []net.IP) error {
-	// Do not use DNS servers other than those that belong to the probed
-	// network port.
-	customResolver := &dnsResolver{
-		dnsServers: dnsServers,
-		srcIP:      srcIP,
-		ifName:     portIfName,
-	}
-	resolver := customResolver.getNetResolver()
+	srcIP net.IP, dstAddr net.Addr) error {
+	var resolver *net.Resolver
 	switch dstAddr.(type) {
 	case *net.TCPAddr:
-		// Resolver is not needed, dstAddr is already an IP address.
-		resolver = nil
+		// dstAddr is already an IP address; no resolver needed.
 	case *HostnameAddr:
-		// Continue...
+		resolver = net.DefaultResolver
 	default:
 		return fmt.Errorf("unexpected dstAddr type for TCP probe: %T", dstAddr)
 	}
@@ -148,55 +130,4 @@ func (p *LinuxReachabilityProberTCP) Probe(ctx context.Context, portIfName strin
 	// TCP handshake succeeded.
 	_ = conn.Close()
 	return nil
-}
-
-// dnsResolver makes sure that only defined <dnsServers> are tried to resolve
-// the given hostname.
-type dnsResolver struct {
-	srcIP      net.IP
-	dnsServers []net.IP
-	ifName     string
-}
-
-func (r *dnsResolver) getNetResolver() *net.Resolver {
-	return &net.Resolver{Dial: r.resolverDial, PreferGo: true, StrictErrors: false}
-}
-
-func (r *dnsResolver) resolverDial(
-	ctx context.Context, network, address string) (net.Conn, error) {
-	dnsHost, _, err := net.SplitHostPort(address)
-	if err != nil {
-		// No port in the address.
-		dnsHost = address
-	}
-	dnsIP := net.ParseIP(dnsHost)
-	if dnsIP == nil {
-		return nil, fmt.Errorf("failed to parse DNS server IP address '%s'", dnsHost)
-	}
-	if dnsIP.IsLoopback() {
-		// 127.0.0.1:53 is tried by Golang resolver when resolv.conf does not contain
-		// any nameservers (see defaultNS in net/dnsconfig_unix.go).
-		// There is no point in looking for DNS server on the loopback interface on EVE.
-		return nil, &types.DNSNotAvailError{IfName: r.ifName}
-	}
-	var acceptedServer bool
-	for _, dnsServer := range r.dnsServers {
-		if netutils.EqualIPs(dnsServer, dnsIP) {
-			acceptedServer = true
-			break
-		}
-	}
-	if !acceptedServer {
-		return nil, fmt.Errorf("DNS server %s is not valid for port %s", dnsIP, r.ifName)
-	}
-	switch network {
-	case "udp", "udp4", "udp6":
-		d := net.Dialer{LocalAddr: &net.UDPAddr{IP: r.srcIP}}
-		return d.DialContext(ctx, network, address)
-	case "tcp", "tcp4", "tcp6":
-		d := net.Dialer{LocalAddr: &net.TCPAddr{IP: r.srcIP}}
-		return d.DialContext(ctx, network, address)
-	default:
-		return nil, fmt.Errorf("unsupported address type: %v", network)
-	}
 }

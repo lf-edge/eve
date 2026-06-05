@@ -256,8 +256,7 @@ func TestSingleEthInterface(test *testing.T) {
 	t.Expect(status.RS.Imposed).To(BeFalse())
 	t.Expect(status.RS.ConfigError).To(BeEmpty())
 	t.Expect(status.DNS.Error).To(BeNil())
-	t.Expect(status.DNS.Servers).To(HaveKey("eth0"))
-	t.Expect(status.DNS.Servers["eth0"]).To(BeEmpty())
+	t.Expect(status.DNS.Servers).To(BeEmpty()) // no DNS servers assigned yet
 
 	ioHandle := dg.Reference(linux.PhysIf{PhysIfName: "eth0"})
 	t.Expect(itemIsCreated(ioHandle)).To(BeTrue())
@@ -271,7 +270,7 @@ func TestSingleEthInterface(test *testing.T) {
 	t.Expect(itemDescription(sshAuthKeys)).To(Equal("/run/authorized_keys with keys: mock-authorized-key"))
 	resolvConf := dg.Reference(generic.ResolvConf{})
 	t.Expect(itemIsCreated(resolvConf)).To(BeTrue())
-	t.Expect(itemDescription(resolvConf)).To(ContainSubstring("eth0: []"))
+	t.Expect(itemDescription(resolvConf)).To(ContainSubstring("127.0.0.1"))
 
 	// Simulate IP address being allocated by DHCP server
 	eth0IP := ipAddress("192.168.10.5/24")
@@ -320,8 +319,9 @@ func TestSingleEthInterface(test *testing.T) {
 	t.Expect(itemDescription(adapterAddrs)).To(Equal("Adapter mock-eth0 IP addresses: [192.168.10.5/24]"))
 	t.Expect(itemIsCreatedWithLabel("15000: from 192.168.10.5/32 to all lookup 501")).To(BeTrue())
 	t.Expect(itemIsCreatedWithLabel("IPv4 route table 501 dst <default> dev mock-eth0 via 192.168.10.1")).To(BeTrue())
-	t.Expect(itemIsCreated(resolvConf)).To(BeTrue())
-	t.Expect(itemDescription(resolvConf)).To(ContainSubstring("eth0: [8.8.8.8]"))
+	mgmtDnsmasq := dg.Reference(generic.MgmtDnsmasq{})
+	t.Expect(itemIsCreated(mgmtDnsmasq)).To(BeTrue())
+	t.Expect(itemDescription(mgmtDnsmasq)).To(ContainSubstring("8.8.8.8"))
 
 	// Simulate event of interface losing the IP address.
 	eth0.IPAddrs = nil
@@ -339,13 +339,12 @@ func TestSingleEthInterface(test *testing.T) {
 	t.Expect(status.RS.Imposed).To(BeFalse())
 	t.Expect(status.RS.ConfigError).To(BeEmpty())
 	t.Expect(status.DNS.Error).To(BeNil())
-	t.Expect(status.DNS.Servers).To(HaveKey("eth0"))
-	t.Expect(status.DNS.Servers["eth0"]).To(BeEmpty())
+	t.Expect(status.DNS.Servers).To(BeEmpty()) // DNS servers removed when interface loses IP
 	t.Expect(itemDescription(adapterAddrs)).To(Equal("Adapter mock-eth0 IP addresses: []"))
 	t.Expect(itemIsCreatedWithLabel("15000: from 192.168.10.5/32 to all lookup 501")).ToNot(BeTrue())
 	t.Expect(itemCountWithType(generic.IPv4RouteTypename)).To(Equal(0))
 	t.Expect(itemIsCreated(resolvConf)).To(BeTrue())
-	t.Expect(itemDescription(resolvConf)).To(ContainSubstring("eth0: []"))
+	t.Expect(itemDescription(resolvConf)).To(ContainSubstring("127.0.0.1"))
 
 	// Change eth0 to directly assigned to an app.
 	networkMonitor.DelInterface("eth0")
@@ -1475,8 +1474,7 @@ func TestSingleEthInterfaceWithIPv6(test *testing.T) {
 	t.Expect(status.RS.Imposed).To(BeFalse())
 	t.Expect(status.RS.ConfigError).To(BeEmpty())
 	t.Expect(status.DNS.Error).To(BeNil())
-	t.Expect(status.DNS.Servers).To(HaveKey("eth0"))
-	t.Expect(status.DNS.Servers["eth0"]).To(BeEmpty())
+	t.Expect(status.DNS.Servers).To(BeEmpty()) // no DNS servers assigned yet
 
 	ioHandle := dg.Reference(linux.PhysIf{PhysIfName: "eth0"})
 	t.Expect(itemIsCreated(ioHandle)).To(BeTrue())
@@ -1490,7 +1488,7 @@ func TestSingleEthInterfaceWithIPv6(test *testing.T) {
 	t.Expect(itemDescription(sshAuthKeys)).To(Equal("/run/authorized_keys with keys: mock-authorized-key"))
 	resolvConf := dg.Reference(generic.ResolvConf{})
 	t.Expect(itemIsCreated(resolvConf)).To(BeTrue())
-	t.Expect(itemDescription(resolvConf)).To(ContainSubstring("eth0: []"))
+	t.Expect(itemDescription(resolvConf)).To(ContainSubstring("127.0.0.1"))
 
 	// Simulate IPv6 address being assigned to eth0 using SLAAC
 	eth0IP := ipAddress("2001:1111::1/64")
@@ -1539,8 +1537,9 @@ func TestSingleEthInterfaceWithIPv6(test *testing.T) {
 	t.Expect(itemDescription(adapterAddrs)).To(Equal("Adapter mock-eth0 IP addresses: [2001:1111::1/64]"))
 	t.Expect(itemIsCreatedWithLabel("15000: from 2001:1111::1/128 to all lookup 501")).To(BeTrue())
 	t.Expect(itemIsCreatedWithLabel("IPv6 route table 501 dst <default> dev mock-eth0 via fe80::c225:2fff:fea2:dc73")).To(BeTrue())
-	t.Expect(itemIsCreated(resolvConf)).To(BeTrue())
-	t.Expect(itemDescription(resolvConf)).To(ContainSubstring("eth0: [2001:4860:4860::8888]"))
+	mgmtDnsmasq := dg.Reference(generic.MgmtDnsmasq{})
+	t.Expect(itemIsCreated(mgmtDnsmasq)).To(BeTrue())
+	t.Expect(itemDescription(mgmtDnsmasq)).To(ContainSubstring("2001:4860:4860::8888"))
 
 	// Simulate event of interface losing the IP address.
 	eth0.IPAddrs = nil
@@ -1558,13 +1557,12 @@ func TestSingleEthInterfaceWithIPv6(test *testing.T) {
 	t.Expect(status.RS.Imposed).To(BeFalse())
 	t.Expect(status.RS.ConfigError).To(BeEmpty())
 	t.Expect(status.DNS.Error).To(BeNil())
-	t.Expect(status.DNS.Servers).To(HaveKey("eth0"))
-	t.Expect(status.DNS.Servers["eth0"]).To(BeEmpty())
+	t.Expect(status.DNS.Servers).To(BeEmpty()) // DNS servers removed when interface loses IP
 	t.Expect(itemDescription(adapterAddrs)).To(Equal("Adapter mock-eth0 IP addresses: []"))
 	t.Expect(itemIsCreatedWithLabel("15000: from 2001:1111::1/128 to all lookup 501")).ToNot(BeTrue())
 	t.Expect(itemCountWithType(generic.IPv4RouteTypename)).To(Equal(0))
 	t.Expect(itemIsCreated(resolvConf)).To(BeTrue())
-	t.Expect(itemDescription(resolvConf)).To(ContainSubstring("eth0: []"))
+	t.Expect(itemDescription(resolvConf)).To(ContainSubstring("127.0.0.1"))
 
 	// Change eth0 to directly assigned to an app.
 	networkMonitor.DelInterface("eth0")

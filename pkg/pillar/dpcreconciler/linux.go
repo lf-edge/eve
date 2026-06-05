@@ -329,8 +329,11 @@ func (r *LinuxDpcReconciler) watcher(netEvents <-chan netmonitor.Event) {
 				}
 
 			case netmonitor.DNSInfoChange:
-				newGlobalCfg := r.getIntendedGlobalCfg(r.lastArgs.DPC,
-					r.lastArgs.ClusterStatus)
+				newGlobalCfg := r.getIntendedGlobalCfg(
+					r.lastArgs.DPC,
+					r.lastArgs.ClusterStatus,
+					r.lastArgs.DNSCacheClearCounter,
+					r.lastArgs.LogDNSQueries)
 				prevGlobalCfg := r.intendedState.SubGraph(GlobalSG)
 				if len(prevGlobalCfg.DiffItems(newGlobalCfg)) > 0 {
 					r.addPendingReconcile(GlobalSG, "DNS info change", true)
@@ -477,7 +480,11 @@ func (r *LinuxDpcReconciler) Reconcile(ctx context.Context, args Args) Reconcile
 		var intSG dg.Graph
 		switch reconcileSG {
 		case GlobalSG:
-			intSG = r.getIntendedGlobalCfg(args.DPC, args.ClusterStatus)
+			intSG = r.getIntendedGlobalCfg(
+				args.DPC,
+				args.ClusterStatus,
+				args.DNSCacheClearCounter,
+				args.LogDNSQueries)
 		case NetworkIoSG:
 			intSG = r.getIntendedNetworkIO(args.DPC)
 		case PhysicalIfsSG:
@@ -581,16 +588,21 @@ func (r *LinuxDpcReconciler) Reconcile(ctx context.Context, args Args) Reconcile
 		}
 	}
 
-	// Check the state of DNS
+	// Check the state of DNS (mgmt dnsmasq must be running).
 	var dnsError error
-	var resolvConf generic.ResolvConf
-	item, state, _, found := r.currentState.Item(dg.Reference(generic.ResolvConf{}))
+	var mgmtDnsmasq generic.MgmtDnsmasq
+	item, state, _, found := r.currentState.Item(dg.Reference(generic.MgmtDnsmasq{}))
 	if found {
 		dnsError = state.WithError()
-		resolvConf = item.(generic.ResolvConf)
+		mgmtDnsmasq = item.(generic.MgmtDnsmasq)
 	}
 	if !found && len(args.DPC.Ports) > 0 {
-		dnsError = errors.New("resolv.conf is not installed")
+		dnsError = errors.New("mgmt dnsmasq is not running")
+	}
+	// Build per-port DNS server map for DNSStatus (used by DPC verification).
+	dnsServers := make(map[string][]net.IP)
+	for _, port := range mgmtDnsmasq.Ports {
+		dnsServers[port.IfName] = port.DNSServers
 	}
 
 	r.resumeReconcile = make(chan struct{}, 10)
@@ -604,7 +616,7 @@ func (r *LinuxDpcReconciler) Reconcile(ctx context.Context, args Args) Reconcile
 		RS:              r.radioSilence,
 		DNS: DNSStatus{
 			Error:   dnsError,
-			Servers: resolvConf.DNSServers,
+			Servers: dnsServers,
 		},
 	}
 
@@ -921,7 +933,11 @@ func (r *LinuxDpcReconciler) updateIntendedState(args Args) {
 		Description: "Device Connectivity provided using Linux network stack",
 	}
 	r.intendedState = dg.New(graphArgs)
-	r.intendedState.PutSubGraph(r.getIntendedGlobalCfg(args.DPC, args.ClusterStatus))
+	r.intendedState.PutSubGraph(r.getIntendedGlobalCfg(
+		args.DPC,
+		args.ClusterStatus,
+		args.DNSCacheClearCounter,
+		args.LogDNSQueries))
 	r.intendedState.PutSubGraph(r.getIntendedNetworkIO(args.DPC))
 	r.intendedState.PutSubGraph(r.getIntendedPhysicalIfs(args.DPC, args.VaultReady,
 		args.EnrolledCerts))
@@ -933,8 +949,12 @@ func (r *LinuxDpcReconciler) updateIntendedState(args Args) {
 		args.FlowlogEnabled, args.KubeUserServices))
 }
 
-func (r *LinuxDpcReconciler) getIntendedGlobalCfg(dpc types.DevicePortConfig,
-	clusterStatus types.EdgeNodeClusterStatus) dg.Graph {
+func (r *LinuxDpcReconciler) getIntendedGlobalCfg(
+	dpc types.DevicePortConfig,
+	clusterStatus types.EdgeNodeClusterStatus,
+	dnsCacheClearCounter int,
+	logDNSQueries bool,
+) dg.Graph {
 	graphArgs := dg.InitArgs{
 		Name:        GlobalSG,
 		Description: "Global configuration",
@@ -971,10 +991,13 @@ func (r *LinuxDpcReconciler) getIntendedGlobalCfg(dpc types.DevicePortConfig,
 	if len(dpc.Ports) == 0 {
 		return intendedCfg
 	}
-	// Intended content of /etc/resolv.conf
-	dnsServers := make(map[string][]net.IP)
-	for _, port := range dpc.Ports {
-		if !port.IsMgmt || port.IfName == "" || port.InvalidConfig {
+	// Build mgmt dnsmasq config and resolv.conf pointing at it.
+	// Ports are sorted by cost so that dnsmasq's strict-order tries lower-cost
+	// ports first.
+	var mgmtPorts []generic.MgmtDNSPort
+	var allSearchDomains []string
+	for _, port := range dpc.GetMgmtPortsSortedByCost() {
+		if port.IfName == "" || port.InvalidConfig {
 			continue
 		}
 		ifIndex, found, err := r.NetworkMonitor.GetInterfaceIndex(port.IfName)
@@ -986,24 +1009,40 @@ func (r *LinuxDpcReconciler) getIntendedGlobalCfg(dpc types.DevicePortConfig,
 		if !found {
 			continue
 		}
-		dnsServers[port.IfName] = append([]net.IP{}, port.DNSServers...) // copy slice
-		if port.IgnoreDhcpDNSConfig {
-			continue
+		servers := append([]net.IP{}, port.DNSServers...)
+		var searchDomains []string
+		if !port.IgnoreDhcpDNSConfig {
+			dnsInfoList, err := r.NetworkMonitor.GetInterfaceDNSInfo(ifIndex)
+			if err != nil {
+				r.Log.Errorf("getIntendedGlobalCfg: failed to get DNS info for %s: %v",
+					port.IfName, err)
+			} else {
+				for _, dnsInfo := range dnsInfoList {
+					servers = append(servers, dnsInfo.DNSServers...)
+					searchDomains = append(searchDomains, dnsInfo.Domains...)
+				}
+			}
 		}
-		dnsInfoList, err := r.NetworkMonitor.GetInterfaceDNSInfo(ifIndex)
-		if err != nil {
-			r.Log.Errorf("getIntendedGlobalCfg: failed to get DNS info for %s: %v",
-				port.IfName, err)
-			continue
+		servers = generics.FilterDuplicatesFn(servers, netutils.EqualIPs)
+		searchDomains = generics.FilterDuplicates(searchDomains)
+		if len(servers) > 0 {
+			mgmtPorts = append(mgmtPorts, generic.MgmtDNSPort{
+				IfName:        port.IfName,
+				DNSServers:    servers,
+				SearchDomains: searchDomains,
+			})
 		}
-		for _, dnsInfo := range dnsInfoList {
-			dnsServers[port.IfName] = append(dnsServers[port.IfName], dnsInfo.DNSServers...)
-		}
-		dnsServers[port.IfName] = generics.FilterDuplicatesFn(
-			dnsServers[port.IfName], netutils.EqualIPs)
-
+		allSearchDomains = append(allSearchDomains, searchDomains...)
 	}
-	intendedCfg.PutItem(generic.ResolvConf{DNSServers: dnsServers}, nil)
+	allSearchDomains = generics.FilterDuplicates(allSearchDomains)
+	intendedCfg.PutItem(generic.MgmtDnsmasq{
+		Ports:             mgmtPorts,
+		CacheClearCounter: dnsCacheClearCounter,
+		LogDNSQueries:     logDNSQueries,
+	}, nil)
+	intendedCfg.PutItem(generic.ResolvConf{
+		SearchDomains: allSearchDomains,
+	}, nil)
 	return intendedCfg
 }
 

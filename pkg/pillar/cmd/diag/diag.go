@@ -1024,13 +1024,6 @@ func printOutput(ctx *diagContext, caller string) {
 				ifname)
 			continue
 		}
-		// DNS lookup - skip if an explicit (i.e. not transparent) proxy is configured.
-		// In that case it is the proxy which is responsible for domain name resolution.
-		if !controllerconn.IsExplicitProxyConfigured(port.ProxyConfig) {
-			if !tryLookupIP(ctx, ifname) {
-				continue
-			}
-		}
 		// ping and getUuid calls
 		if !tryPing(ctx, ifname, "") {
 			if len(ctx.remoteProbes) != 0 {
@@ -1049,6 +1042,10 @@ func printOutput(ctx *diagContext, caller string) {
 		}
 		ctx.ph.Print("PASS: port %s fully connected to EV controller %s\n",
 			ifname, ctx.serverName)
+	}
+	// All mgmt ports resolve via the same mgmt dnsmasq, so one DNS check covers all of them.
+	if !dpcSuccess {
+		tryLookupIP(ctx)
 	}
 	if dpcSuccess {
 		// Do nothing
@@ -1182,69 +1179,29 @@ func tryNetworkConnectivity(ctx *diagContext, ifname string) {
 	}
 }
 
-func tryLookupIP(ctx *diagContext, ifname string) bool {
-
-	addrCount, _ := types.CountLocalAddrAnyNoLinkLocalIf(*ctx.DeviceNetworkStatus, ifname)
-	if addrCount == 0 {
-		ctx.ph.Print("ERROR: %s: DNS lookup of %s not possible since no IP address\n",
-			ifname, ctx.serverName)
+// tryLookupIP performs a single DNS lookup of the controller hostname via the mgmt
+// dnsmasq (shared across all mgmt ports). Called once after the per-port loop when
+// something has failed, to help diagnose whether DNS itself is the problem.
+func tryLookupIP(ctx *diagContext) bool {
+	lookupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ips, err := net.DefaultResolver.LookupIPAddr(lookupCtx, ctx.serverName)
+	if err != nil {
+		ctx.ph.Print("ERROR: DNS lookup of %s failed: %s\n", ctx.serverName, err)
 		return false
 	}
-	for retryCount := 0; retryCount < addrCount; retryCount++ {
-		localAddr, err := types.GetLocalAddrAnyNoLinkLocal(*ctx.DeviceNetworkStatus,
-			retryCount, ifname)
-		if err != nil {
-			ctx.ph.Print("ERROR: %s: DNS lookup of %s: internal error: %s address\n",
-				ifname, ctx.serverName, err)
-			return false
-		}
-		dnsServers := types.GetDNSServers(*ctx.DeviceNetworkStatus, ifname)
-		if len(dnsServers) == 0 {
-			ctx.ph.Print("ERROR: %s: DNS lookup of %s not possible: no DNS servers available\n",
-				ifname, ctx.serverName)
-			return false
-		}
-		localUDPAddr := net.UDPAddr{IP: localAddr}
-		log.Tracef("tryLookupIP: using intf %s source %v", ifname, localUDPAddr)
-		resolverDial := func(ctx context.Context, network, address string) (net.Conn, error) {
-			log.Tracef("resolverDial %v %v", network, address)
-			// Try only DNS servers associated with this interface.
-			ip := net.ParseIP(strings.Split(address, ":")[0])
-			for _, dnsServer := range dnsServers {
-				if dnsServer != nil && dnsServer.Equal(ip) {
-					d := net.Dialer{LocalAddr: &localUDPAddr}
-					return d.Dial(network, address)
-				}
-			}
-			return nil, fmt.Errorf("DNS server %s is from a different network, skipping",
-				ip.String())
-		}
-		r := net.Resolver{Dial: resolverDial, PreferGo: true,
-			StrictErrors: false}
-		ips, err := r.LookupIPAddr(context.Background(), ctx.serverName)
-		if err != nil {
-			ctx.ph.Print("ERROR: %s: DNS lookup of %s failed: %s\n",
-				ifname, ctx.serverName, err)
-			continue
-		}
-		log.Tracef("tryLookupIP: got %d addresses", len(ips))
-		if len(ips) == 0 {
-			ctx.ph.Print("ERROR: %s: DNS lookup of %s returned no answers\n",
-				ifname, ctx.serverName)
-			return false
-		}
-		for _, ip := range ips {
-			ctx.ph.Print("INFO: %s: DNS lookup of %s returned %s\n",
-				ifname, ctx.serverName, ip.String())
-		}
-		if simulateDnsFailure {
-			ctx.ph.Print("INFO: %s: Simulate DNS lookup failure\n", ifname)
-			return false
-		}
-		return true
+	if len(ips) == 0 {
+		ctx.ph.Print("ERROR: DNS lookup of %s returned no answers\n", ctx.serverName)
+		return false
 	}
-	// Tried all in loop
-	return false
+	for _, ip := range ips {
+		ctx.ph.Print("INFO: DNS lookup of %s returned %s\n", ctx.serverName, ip.String())
+	}
+	if simulateDnsFailure {
+		ctx.ph.Print("INFO: Simulate DNS lookup failure\n")
+		return false
+	}
+	return true
 }
 
 func tryPing(ctx *diagContext, ifname string, reqURL string) bool {

@@ -482,6 +482,35 @@ func (d *EdgeDevice) GetLogs(match LogMsgMatch) []LogMsg {
 	return collector.msgs
 }
 
+// WatchLogs subscribes to device log entries and returns a buffered channel
+// that receives each new matching LogMsg as it arrives.
+// Call the returned stop function to unsubscribe and close the channel.
+func (d *EdgeDevice) WatchLogs(match LogMsgMatch) (logs <-chan LogMsg, stop func()) {
+	devUUID := d.getDevUUID()
+	collector := &logMsgCollector{match: match}
+	rawCh := make(chan *evelogs.LogEntry, watchChannelBufSize)
+	unsub, err := d.th.adamClient.SubscribeToDeviceLogs(
+		devUUID, rawCh, collector.toMatcher())
+	if err != nil {
+		d.th.t.Fatalf("WatchLogs: failed to subscribe to device logs "+
+			"for device %q: %v", d.devName, err)
+	}
+	ch := make(chan LogMsg, watchChannelBufSize)
+	go func() {
+		defer close(ch)
+		for entry := range rawCh {
+			ch <- LogMsg{
+				Severity:  entry.GetSeverity(),
+				Source:    entry.GetSource(),
+				Filename:  entry.GetFilename(),
+				Message:   entry.GetContent(),
+				Timestamp: entry.GetTimestamp().AsTime(),
+			}
+		}
+	}()
+	return ch, d.trackWatcherUnsub(unsub)
+}
+
 // GetAppLogs returns application log messages matching the provided criteria.
 func (d *EdgeDevice) GetAppLogs(appUUID uuid.UUID, match LogMsgMatch) []LogMsg {
 	devUUID := d.getDevUUID()

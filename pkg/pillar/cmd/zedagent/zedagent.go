@@ -1189,9 +1189,6 @@ func mainEventLoop(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 		case change := <-zedagentCtx.subZFSPoolMetrics.MsgChan():
 			zedagentCtx.subZFSPoolMetrics.ProcessChange(change)
 
-		case change := <-getconfigCtx.subCachedResolvedIPs.MsgChan():
-			getconfigCtx.subCachedResolvedIPs.ProcessChange(change)
-
 		case change := <-getconfigCtx.subPatchEnvelopeStatus.MsgChan():
 			getconfigCtx.subPatchEnvelopeStatus.ProcessChange(change)
 
@@ -2161,17 +2158,6 @@ func initPostOnboardSubs(zedagentCtx *zedagentContext) {
 		log.Fatal(err)
 	}
 
-	getconfigCtx.subCachedResolvedIPs, err = ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "nim",
-		MyAgentName: agentName,
-		WarningTime: warningTime,
-		ErrorTime:   errorTime,
-		TopicImpl:   types.CachedResolvedIPs{},
-		Activate:    true,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
 	zedagentCtx.subPatchEnvelopeUsage, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "msrv",
 		MyAgentName: agentName,

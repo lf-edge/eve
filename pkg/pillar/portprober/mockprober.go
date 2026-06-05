@@ -50,7 +50,7 @@ func (p *MockReachProber) SetReachabilityState(portIfName string,
 
 // Probe return fake probing results prepared using SetReachabilityState.
 func (p *MockReachProber) Probe(ctx context.Context, portIfName string,
-	srcIP net.IP, dstAddr net.Addr, dnsServers []net.IP) error {
+	srcIP net.IP, dstAddr net.Addr) error {
 	p.Lock()
 	defer p.Unlock()
 	key := p.probeKey(portIfName, dstAddr)

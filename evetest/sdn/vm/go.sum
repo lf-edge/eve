@@ -99,8 +99,8 @@ github.com/lf-edge/eve-libs v0.0.0-20260304091825-96eaa95b9f8b/go.mod h1:ltvACFo
 github.com/lf-edge/eve/pkg/pillar v0.0.0-20260421125048-8d3825045e4e h1:MGhvM4TrXHYyssTTcEkpc79zatoZ1oJRrrbjTU++ps0=
 github.com/lf-edge/eve/pkg/pillar v0.0.0-20260421125048-8d3825045e4e/go.mod h1:Zx1ZEowId6xn7o9qGVNymtxc87muRObab6SofXZCXUk=
 github.com/matttproud/golang_protobuf_extensions v1.0.1/go.mod h1:D8He9yQNgCq6Z5Ld7szi9bcBfOoFv/3dc6xSMkL2PC0=
-github.com/milan-zededa/eve/evetest v0.0.0-20260525144358-1dbfa70f7125 h1:WbZ3/yGHPS8M+BMNxPl2aFsY/DYaYMWpSaQL6QavDF4=
-github.com/milan-zededa/eve/evetest v0.0.0-20260525144358-1dbfa70f7125/go.mod h1:XWBYBnW6eJiC03tXZ2j/8fpu2NOMvkeaDKQL7CwBnQc=
+github.com/milan-zededa/eve/evetest v0.0.0-20260609075134-f80b5357fa5c h1:vHzdTcAEv1H2CWXbdQmEsxp3HpXeQhmRR/fYG/MkF4o=
+github.com/milan-zededa/eve/evetest v0.0.0-20260609075134-f80b5357fa5c/go.mod h1:XWBYBnW6eJiC03tXZ2j/8fpu2NOMvkeaDKQL7CwBnQc=
 github.com/moby/docker-image-spec v1.3.1 h1:jMKff3w6PgbfSa69GfNg+zN/XLhfXJGnEx3Nl2EsFP0=
 github.com/moby/docker-image-spec v1.3.1/go.mod h1:eKmb5VW8vQEh/BAr2yvVNvuiJuY6UIocYsFu/DxxRpo=
 github.com/moby/sys/atomicwriter v0.1.0 h1:kw5D/EqkBwsBFi0ss9v1VG3wIkVhzGvLklJ+w3A14Sw=

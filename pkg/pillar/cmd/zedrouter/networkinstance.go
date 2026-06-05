@@ -5,12 +5,12 @@ package zedrouter
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"net"
 	"strings"
 
-	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
 	"github.com/lf-edge/eve/pkg/pillar/nireconciler"
 	"github.com/lf-edge/eve/pkg/pillar/nistate"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -101,16 +101,18 @@ func (z *zedrouter) attachNTPServersToPortConfigs(portConfigs []nireconciler.Por
 				continue
 			}
 			z.pubSub.StillRunning(agentName, warningTime, errorTime)
-			dnsResponses, err := controllerconn.ResolveWithPortsLambda(
-				ntpServer.String(),
-				*z.deviceNetworkStatus,
-				controllerconn.ResolveCacheWrap(controllerconn.ResolveWithSrcIP),
-			)
+			// DNS goes through resolv.conf → mgmt dnsmasq (127.0.0.1).
+			// dnsmasq caches responses, so repeated lookups (e.g. when
+			// doUpdateActivatedNetworkInstance calls this multiple times in quick
+			// succession) are served from cache without hitting upstream servers.
+			hosts, err := net.DefaultResolver.LookupHost(context.Background(), ntpServer.String())
 			if err != nil {
 				z.log.Warnf("could not resolve '%s': %v", ntpServer, err)
 			}
-			for _, dnsResponse := range dnsResponses {
-				ntpServers = append(ntpServers, dnsResponse.IP)
+			for _, host := range hosts {
+				if ip := net.ParseIP(host); ip != nil {
+					ntpServers = append(ntpServers, ip)
+				}
 			}
 		}
 

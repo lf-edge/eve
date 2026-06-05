@@ -93,7 +93,6 @@ type nim struct {
 	pubDeviceNetworkStatus   pubsub.Publication
 	pubAgentMetrics          pubsub.Publication
 	pubCipherMetrics         pubsub.Publication
-	pubCachedResolvedIPs     pubsub.Publication
 	pubWwanConfig            pubsub.Publication
 	pubPNACMetrics           pubsub.Publication
 	pubBondMetrics           pubsub.Publication
@@ -244,10 +243,6 @@ func (n *nim) run(ctx context.Context) (err error) {
 	min := max * 0.3
 	publishTicker := flextimer.NewRangeTicker(time.Duration(min), time.Duration(max))
 	n.publishTicker = &publishTicker
-
-	// Periodically resolve the controller hostname to keep its DNS entry cached,
-	// reducing the need for DNS lookups on every controller API request.
-	go n.runResolverCacheForController()
 
 	// Activate all subscriptions now.
 	inactiveSubs := []pubsub.Subscription{
@@ -434,15 +429,6 @@ func (n *nim) initPublications() (err error) {
 		AgentName: agentName,
 		TopicType: types.CipherMetrics{},
 	})
-	if err != nil {
-		return err
-	}
-
-	n.pubCachedResolvedIPs, err = n.PubSub.NewPublication(
-		pubsub.PublicationOptions{
-			AgentName: agentName,
-			TopicType: types.CachedResolvedIPs{},
-		})
 	if err != nil {
 		return err
 	}
