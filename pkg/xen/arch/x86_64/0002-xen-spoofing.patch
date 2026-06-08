@@ -1,111 +1,109 @@
-diff --git a/arch/x86/hvm/hvm.c b/arch/x86/hvm/hvm.c
-index f49e29f..54da255 100644
---- a/arch/x86/hvm/hvm.c
-+++ b/arch/x86/hvm/hvm.c
-@@ -4332,6 +4332,12 @@ static int hvm_set_param(struct domain *d, uint32_t index, uint64_t value)
-     case HVM_PARAM_IOREQ_SERVER_PFN:
-         d->arch.hvm.ioreq_gfn.base = value;
-         break;
-+    case HVM_PARAM_SPOOF_XEN:
-+        d->arch.hvm.spoof_xen = value;
-+        break;
-+    case HVM_PARAM_SPOOF_VIRIDIAN:
-+        d->arch.hvm.spoof_viridian = value;
-+        break;
-     case HVM_PARAM_NR_IOREQ_SERVER_PAGES:
-     {
-         unsigned int i;
-
-diff --git a/arch/x86/hvm/viridian/viridian.c b/arch/x86/hvm/viridian/viridian.c
-index 21480d9..6a54abf 100644
---- a/arch/x86/hvm/viridian/viridian.c
-+++ b/arch/x86/hvm/viridian/viridian.c
-@@ -124,10 +124,10 @@ void cpuid_viridian_leaves(const struct vcpu *v, uint32_t leaf,
-     {
-     case 0:
-         res->a = 0x40000006; /* Maximum leaf */
--        memcpy(&res->b, "Micr", 4);
--        memcpy(&res->c, "osof", 4);
--        memcpy(&res->d, "t Hv", 4);
--        break;
-+       memcpy(&res->b, "Wetw", 4);
-+       memcpy(&res->c, "era ", 4);
-+       memcpy(&res->d, "Labs", 4);
-+       break;
- 
-     case 1:
-         memcpy(&res->a, "Hv#1", 4);
-
-diff --git a/arch/x86/traps.c b/arch/x86/traps.c
-index 708136f..33a02e9 100644
---- a/arch/x86/traps.c
-+++ b/arch/x86/traps.c
-@@ -1075,10 +1075,18 @@ void cpuid_hypervisor_leaves(const struct vcpu *v, uint32_t leaf,
+diff --git a/arch/x86/cpuid.c b/arch/x86/cpuid.c
+index b63a82dd38..995b960891 100644
+--- a/arch/x86/cpuid.c
++++ b/arch/x86/cpuid.c
+@@ -58,9 +58,17 @@ static void cpuid_hypervisor_leaves(const struct vcpu *v, uint32_t leaf,
      {
      case 0:
          res->a = base + limit; /* Largest leaf */
 -        res->b = XEN_CPUID_SIGNATURE_EBX;
 -        res->c = XEN_CPUID_SIGNATURE_ECX;
 -        res->d = XEN_CPUID_SIGNATURE_EDX;
--        break;
-+        if (!d->arch.hvm.spoof_xen ) {
-+                 res->b = XEN_CPUID_SIGNATURE_EBX;
-+                 res->c = XEN_CPUID_SIGNATURE_ECX;
-+                 res->d = XEN_CPUID_SIGNATURE_EDX;
-+         }
-+        else
-+        {
-+                res->b = ZEN_CPUID_SIGNATURE_EBX;
-+                res->c = ZEN_CPUID_SIGNATURE_ECX;
-+                res->d = ZEN_CPUID_SIGNATURE_EDX;
++        if (!d->arch.hvm.spoof_xen) {
++            printk("cpuid_hypervisor_leaves - real id. domid %d\n", d->domain_id);
++            res->b = XEN_CPUID_SIGNATURE_EBX;
++            res->c = XEN_CPUID_SIGNATURE_ECX;
++            res->d = XEN_CPUID_SIGNATURE_EDX;
++        } else {
++            printk("cpuid_hypervisor_leaves - spoofed id. domid %d\n", d->domain_id);
++            res->b = ZEN_CPUID_SIGNATURE_EBX;
++            res->c = ZEN_CPUID_SIGNATURE_ECX;
++            res->d = ZEN_CPUID_SIGNATURE_EDX;
 +        }
-+       break;
+         break;
  
      case 1:
-         res->a = (xen_major_version() << 16) | xen_minor_version();
-
+diff --git a/arch/x86/hvm/hvm.c b/arch/x86/hvm/hvm.c
+index 0c60faa39d..13349eebd9 100644
+--- a/arch/x86/hvm/hvm.c
++++ b/arch/x86/hvm/hvm.c
+@@ -4358,6 +4358,14 @@ static int hvm_set_param(struct domain *d, uint32_t index, uint64_t value)
+     case HVM_PARAM_IOREQ_SERVER_PFN:
+         d->arch.hvm.ioreq_gfn.base = value;
+         break;
++    case HVM_PARAM_SPOOF_XEN:
++        printk("spoof_xen %" PRId64 " - curr dom %d, dom %d\n", value, curr_d->domain_id, d->domain_id);
++        d->arch.hvm.spoof_xen = value;
++        break;
++    case HVM_PARAM_SPOOF_VIRIDIAN:
++        printk("spoof_vir %" PRId64 " - curr dom %d, dom %d\n", value, curr_d->domain_id, d->domain_id);
++        d->arch.hvm.spoof_viridian = value;
++        break;
+     case HVM_PARAM_NR_IOREQ_SERVER_PAGES:
+     {
+         unsigned int i;
+diff --git a/arch/x86/hvm/viridian/viridian.c b/arch/x86/hvm/viridian/viridian.c
+index f79cffcb37..d94bb9d9a3 100644
+--- a/arch/x86/hvm/viridian/viridian.c
++++ b/arch/x86/hvm/viridian/viridian.c
+@@ -124,9 +124,13 @@ void cpuid_viridian_leaves(const struct vcpu *v, uint32_t leaf,
+     {
+     case 0:
+         res->a = 0x40000006; /* Maximum leaf */
+-        memcpy(&res->b, "Micr", 4);
+-        memcpy(&res->c, "osof", 4);
+-        memcpy(&res->d, "t Hv", 4);
++	printk("wetware cpuid_viridian_leaves spoof_vir\n"); // "Wetware Labs"
++        //memcpy(&res->b, "Micr", 4);
++        //memcpy(&res->c, "osof", 4);
++        //memcpy(&res->d, "t Hv", 4);
++        memcpy(&res->b, "Wetw", 4);
++        memcpy(&res->c, "era ", 4);
++        memcpy(&res->d, "Labs", 4);
+         break;
+ 
+     case 1:
 diff --git a/arch/x86/include/asm/hvm/domain.h b/arch/x86/include/asm/hvm/domain.h
-index dd9d837..357cfb7 100644
+index 333501d5f2..c6c3714d05 100644
 --- a/arch/x86/include/asm/hvm/domain.h
 +++ b/arch/x86/include/asm/hvm/domain.h
-@@ -105,6 +105,8 @@ struct hvm_domain {
-     bool                   is_in_uc_mode;
+@@ -105,6 +105,9 @@ struct hvm_domain {
  
      bool                   is_s3_suspended;
-+    bool                  spoof_xen;
-+    bool                   spoof_viridian;
  
++    bool                  spoof_xen;
++    bool                  spoof_viridian;
++
      /* Compatibility setting for a bug in x2APIC LDR */
      bool bug_x2apic_ldr_vcpu_id;
-
-
+ 
 diff --git a/include/public/arch-x86/cpuid.h b/include/public/arch-x86/cpuid.h
-index 3bb0dd2..a77edf2 100644
+index 3bb0dd249f..bc71df630a 100644
 --- a/include/public/arch-x86/cpuid.h
 +++ b/include/public/arch-x86/cpuid.h
-@@ -35,6 +35,9 @@
- #define XEN_CPUID_SIGNATURE_EBX 0x566e6558 /* "XenV" */
+@@ -36,6 +36,10 @@
  #define XEN_CPUID_SIGNATURE_ECX 0x65584d4d /* "MMXe" */
  #define XEN_CPUID_SIGNATURE_EDX 0x4d4d566e /* "nVMM" */
+ 
 +#define ZEN_CPUID_SIGNATURE_EBX 0x5A6e655A /* "ZenZ" */
 +#define ZEN_CPUID_SIGNATURE_ECX 0x655A6e65 /* "enZe" */
 +#define ZEN_CPUID_SIGNATURE_EDX 0x6e655A6e /* "nZen" */
- 
++
  /*
   * Leaf 2 (0x40000x01)
-
+  * EAX[31:16]: Xen major version.
 diff --git a/include/public/hvm/params.h b/include/public/hvm/params.h
-index 99c40b4..f1c77e2 100644
+index 99c40b4287..5bec66173a 100644
 --- a/include/public/hvm/params.h
 +++ b/include/public/hvm/params.h
-@@ -290,7 +290,8 @@
+@@ -290,7 +290,9 @@
  #define HVM_PARAM_MCA_CAP 38
  #define XEN_HVM_MCA_CAP_LMCE   (xen_mk_ullong(1) << 0)
  #define XEN_HVM_MCA_CAP_MASK   XEN_HVM_MCA_CAP_LMCE
--
++#define HVM_PARAM_SPOOF_XEN 39
+ 
 -#define HVM_NR_PARAMS 39
-+#define HVM_PARAM_SPOOF_XEN    39
-+#define HVM_PARAM_SPOOF_VIRIDIAN    40
-+#define HVM_NR_PARAMS          41
++#define HVM_PARAM_SPOOF_VIRIDIAN 40
++#define HVM_NR_PARAMS 41
  
  #endif /* __XEN_PUBLIC_HVM_PARAMS_H__ */

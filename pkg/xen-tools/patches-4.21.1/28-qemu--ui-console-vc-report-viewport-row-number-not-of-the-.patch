@@ -28,22 +28,24 @@ Cc: "Marc-André Lureau" <marcandre.lureau@redhat.com>
 Cc: qemu-devel@nongnu.org
 Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
 Message-ID: <20250226075913.353676-4-r.peniaev@gmail.com>
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>  [rebased to qemu-xen-4.21.0]
+
 ---
- ui/console.c | 3 +--
+ ui/console-vc.c | 3 +--
  1 file changed, 1 insertion(+), 2 deletions(-)
 
-diff --git a/tools/qemu-xen/ui/console.c b/tools/qemu-xen/ui/console.c
-index 8226a17b37e5..10ea34aea1b1 100644
---- a/tools/qemu-xen/ui/console.c
-+++ b/tools/qemu-xen/ui/console.c
-@@ -1128,8 +1128,7 @@ static void console_putchar(QemuConsole *s, int ch)
+diff --git a/tools/qemu-xen/ui/console-vc.c b/tools/qemu-xen/ui/console-vc.c
+index e998259417..4ff541dd40 100644
+--- a/tools/qemu-xen/ui/console-vc.c
++++ b/tools/qemu-xen/ui/console-vc.c
+@@ -827,8 +827,7 @@ static void vc_putchar(VCChardev *vc, int ch)
                  case 6:
                      /* report cursor position */
                      sprintf(response, "\033[%d;%dR",
 -                           (s->y_base + s->y) % s->total_height + 1,
 -                            s->x + 1);
 +                            s->y + 1, s->x + 1);
-                     console_respond_str(s, response);
+                     vc_respond_str(vc, response);
                      break;
                  }
 -- 
