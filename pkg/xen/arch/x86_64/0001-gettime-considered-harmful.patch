@@ -1,25 +1,17 @@
 diff --git a/arch/x86/time.c b/arch/x86/time.c
-index a97d784..c25fdf7 100644
+index 3b451525a9..cae02654b9 100644
 --- a/arch/x86/time.c
 +++ b/arch/x86/time.c
-@@ -1247,19 +1247,12 @@ static void __get_cmos_time(struct rtc_time *rtc)
-
- static unsigned long get_cmos_time(void)
- {
--    unsigned long res, flags;
-+    unsigned long flags;
-     struct rtc_time rtc;
-     unsigned int seconds = 60;
-     static bool __read_mostly cmos_rtc_probe;
-     boolean_param("cmos-rtc-probe", cmos_rtc_probe);
-
--    if ( efi_enabled(EFI_RS) )
+@@ -1597,11 +1597,7 @@ static void __init probe_wallclock(void)
+         wallclock_source = WALLCLOCK_CMOS;
+         return;
+     }
+-    if ( efi_enabled(EFI_RS) && efi_get_time() )
 -    {
--        res = efi_get_time();
--        if ( res )
--            return res;
+-        wallclock_source = WALLCLOCK_EFI;
+-        return;
 -    }
--
-     if ( likely(!(acpi_gbl_FADT.boot_flags & ACPI_FADT_NO_CMOS_RTC)) )
-         cmos_rtc_probe = false;
-     else if ( system_state < SYS_STATE_smp_boot && !cmos_rtc_probe )
++    /* EVE: skip EFI wallclock — gettime via EFI considered harmful */
+ 
+     panic("No usable wallclock found, probed:%s%s%s\n%s",
+           !opt_cmos_rtc_probe && !efi_enabled(EFI_RS) ? " None" : "",
