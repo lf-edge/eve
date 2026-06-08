@@ -34,7 +34,7 @@ Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
  1 file changed, 57 insertions(+)
 
 diff --git a/tools/qemu-xen/hw/vfio/igd.c b/tools/qemu-xen/hw/vfio/igd.c
-index 1b38bfb227..8c1c456293 100644
+index 02361f9167..2bca066ce6 100644
 --- a/tools/qemu-xen/hw/vfio/igd.c
 +++ b/tools/qemu-xen/hw/vfio/igd.c
 @@ -16,6 +16,7 @@
@@ -45,9 +45,9 @@ index 1b38bfb227..8c1c456293 100644
  #include "pci.h"
  #include "trace.h"
  
-@@ -601,6 +602,62 @@ void vfio_probe_igd_bar4_quirk(VFIOPCIDevice *vdev, int nr)
-         pci_set_long(vdev->emulated_config_bits + IGD_BDSM, ~0);
-     }
+@@ -583,6 +584,62 @@ void vfio_probe_igd_bar4_quirk(VFIOPCIDevice *vdev, int nr)
+ 
+     gmch = vfio_pci_read_config(&vdev->pdev, IGD_GMCH, 4);
  
 +    /*
 +     * Diagnostic: dump the host iGPU's OpRegion to a per-domain file
@@ -106,8 +106,8 @@ index 1b38bfb227..8c1c456293 100644
 +    }
 +
      /*
-      * Clear stale GTT entries left over from host POST.  Without this,
-      * the GPU's display engine may DMA to host physical addresses via
+      * If IGD VGA Disable is clear (expected) and VGA is not already enabled,
+      * try to enable it.  Probably shouldn't be using legacy mode without VGA,
 -- 
 2.43.0
 

@@ -1,8 +1,8 @@
 diff --git a/arch/arm/domain_build.c b/arch/arm/domain_build.c
-index 669970c..d15aade 100644
+index fb8fbb1650..3a92b39ce6 100644
 --- a/arch/arm/domain_build.c
 +++ b/arch/arm/domain_build.c
-@@ -113,6 +113,14 @@ unsigned int __init dom0_max_vcpus(void)
+@@ -117,6 +117,14 @@ unsigned int __init dom0_max_vcpus(void)
      return opt_dom0_max_vcpus;
  }
  
@@ -14,10 +14,10 @@ index 669970c..d15aade 100644
 +}
 +
 +
- struct vcpu *__init alloc_dom0_vcpu0(struct domain *dom0)
- {
-     return vcpu_create(dom0, 0);
-@@ -1199,6 +1207,14 @@ int __init make_hypervisor_node(struct domain *d,
+ /*
+  * Insert the given pages into a memory bank, banks are ordered by address.
+  *
+@@ -1101,6 +1109,14 @@ int __init make_hypervisor_node(struct domain *d,
      if ( res )
          return res;
  
@@ -32,7 +32,7 @@ index 669970c..d15aade 100644
      /* Cannot use fdt_property_string due to embedded nulls */
      res = fdt_property(fdt, "compatible", compat, sizeof(compat));
      if ( res )
-@@ -2183,6 +2199,14 @@ static int __init construct_dom0(struct domain *d)
+@@ -2043,6 +2059,14 @@ int __init construct_hwdom(struct kernel_info *kinfo,
      if ( rc < 0 )
          return rc;
  
@@ -44,14 +44,14 @@ index 669970c..d15aade 100644
 +    }
 +
 +
-     return construct_domain(d, &kinfo);
+     return construct_domain(d, kinfo);
  }
-
+ 
 diff --git a/common/efi/boot.c b/common/efi/boot.c
-index efbec00..bfc07bb 100644
+index 2047d58e39..50349a826e 100644
 --- a/common/efi/boot.c
 +++ b/common/efi/boot.c
-@@ -999,12 +999,10 @@ static void __init efi_tables(void)
+@@ -1131,12 +1131,10 @@ static void __init efi_tables(void)
              esrt = (UINTN)efi_ct[i].VendorTable;
      }
  

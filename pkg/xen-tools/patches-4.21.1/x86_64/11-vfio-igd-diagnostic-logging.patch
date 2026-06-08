@@ -10,14 +10,14 @@ debug iGPU passthrough driver initialization failures.
 
 Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
 ---
- hw/vfio/igd.c | 41 +++++++++++++++++++++++++++++++++++------
- 1 file changed, 35 insertions(+), 6 deletions(-)
+ hw/vfio/igd.c | 48 ++++++++++++++++++++++++++++++++++++++++--------
+ 1 file changed, 40 insertions(+), 8 deletions(-)
 
 diff --git a/tools/qemu-xen/hw/vfio/igd.c b/tools/qemu-xen/hw/vfio/igd.c
-index 37e985da6f..1b38bfb227 100644
+index 79420c9c7d..02361f9167 100644
 --- a/tools/qemu-xen/hw/vfio/igd.c
 +++ b/tools/qemu-xen/hw/vfio/igd.c
-@@ -401,11 +401,15 @@ static uint64_t igd_bdsm_mirror_read(void *opaque, hwaddr addr, unsigned size)
+@@ -388,11 +388,15 @@ static uint64_t igd_bdsm_mirror_read(void *opaque, hwaddr addr, unsigned size)
      VFIOPCIDevice *vdev = mirror->vdev;
  
      /* Read and discard from real hardware in case it has side effects */
@@ -38,7 +38,7 @@ index 37e985da6f..1b38bfb227 100644
  }
  
  static void igd_bdsm_mirror_write(void *opaque, hwaddr addr,
-@@ -414,6 +418,9 @@ static void igd_bdsm_mirror_write(void *opaque, hwaddr addr,
+@@ -401,6 +405,9 @@ static void igd_bdsm_mirror_write(void *opaque, hwaddr addr,
      IGDBdsmMirrorQuirk *mirror = opaque;
      VFIOPCIDevice *vdev = mirror->vdev;
  
@@ -48,21 +48,12 @@ index 37e985da6f..1b38bfb227 100644
      vfio_pci_write_config(&vdev->pdev,
                            mirror->config_offset + addr, data, size);
  }
-@@ -551,6 +558,8 @@ void vfio_probe_igd_bar4_quirk(VFIOPCIDevice *vdev, int nr)
-     pci_set_long(vdev->pdev.wmask + IGD_GMCH, 0);
-     pci_set_long(vdev->emulated_config_bits + IGD_GMCH, ~0);
+@@ -436,6 +443,24 @@ void vfio_probe_igd_bar0_quirk(VFIOPCIDevice *vdev, int nr)
+     mirror->bar_offset = IGD_BDSM_MMIO_OFFSET;
+     mirror->config_offset = (gen < 11) ? IGD_BDSM : IGD_BDSM_GEN11;
  
-+    error_report("IGD quirk: emulated GMCH=0x%08x (GMS preserved)", gmch);
-+
-     /*
-      * BDSM is read-write, emulated.  Initialize to 0 here (before the BDF
-      * and LPC bridge checks) so that:
-@@ -566,6 +575,22 @@ void vfio_probe_igd_bar4_quirk(VFIOPCIDevice *vdev, int nr)
-      * register.  Emulate the correct offset so IgdAssignmentDxe and the
-      * guest driver read/write the right place.
-      */
++    /* Diagnostic: log the host BDSM that the BAR0 mirror will intercept */
 +    {
-+        /* Read host BDSM for diagnostic logging */
 +        uint64_t host_bdsm = 0;
 +        if (gen >= 11) {
 +            pread(vdev->vbasedev.fd, &host_bdsm, 8,
@@ -74,35 +65,41 @@ index 37e985da6f..1b38bfb227 100644
 +            host_bdsm = tmp;
 +        }
 +        error_report("IGD quirk: host BDSM=0x%" PRIx64 " (offset 0x%x), "
-+                     "setting emulated BDSM=0 for gen %d",
-+                     host_bdsm, (gen >= 11) ? IGD_BDSM_GEN11 : IGD_BDSM, gen);
++                     "BAR0 mirror returns emulated BDSM for gen %d",
++                     host_bdsm,
++                     (gen >= 11) ? IGD_BDSM_GEN11 : IGD_BDSM, gen);
 +    }
-     if (gen >= 11) {
-         pci_set_quad(vdev->pdev.config + IGD_BDSM_GEN11, 0);
-         pci_set_quad(vdev->pdev.wmask + IGD_BDSM_GEN11, ~0ULL);
-@@ -588,17 +613,21 @@ void vfio_probe_igd_bar4_quirk(VFIOPCIDevice *vdev, int nr)
- 
-         if (pread(vdev->vbasedev.fd, &cmd_orig, sizeof(cmd_orig),
-                   vdev->config_offset + PCI_COMMAND) == sizeof(cmd_orig)) {
-+            int gtt_max;
-             cmd = cmd_orig | PCI_COMMAND_IO;
-             pwrite(vdev->vbasedev.fd, &cmd, sizeof(cmd),
-                    vdev->config_offset + PCI_COMMAND);
- 
--            for (j = 1; j < vfio_igd_gtt_max(vdev); j += 4) {
-+            gtt_max = vfio_igd_gtt_max(vdev);
-+            error_report("IGD quirk: clearing %d GTT entries", gtt_max / 4);
-+            for (j = 1; j < gtt_max; j += 4) {
-                 vfio_region_write(&vdev->bars[4].region, 0, j, 4);
-                 vfio_region_write(&vdev->bars[4].region, 4, 0, 4);
-             }
- 
-             pwrite(vdev->vbasedev.fd, &cmd_orig, sizeof(cmd_orig),
-                    vdev->config_offset + PCI_COMMAND);
-+            error_report("IGD quirk: GTT cleared");
-         }
++
+     memory_region_init_io(&quirk->mem[0], OBJECT(vdev), &igd_bdsm_mirror_ops,
+                           mirror, "vfio-igd-bdsm-quirk",
+                           (gen < 11) ? 4 : 8);
+@@ -523,6 +548,8 @@ void vfio_probe_igd_bar4_quirk(VFIOPCIDevice *vdev, int nr)
+         return;
      }
  
++    error_report("IGD quirk: emulated GMCH=0x%08x (GMS preserved)", gmch);
++
+     /*
+      * Check whether we have all the vfio device specific regions to
+      * support legacy mode (added in Linux v4.6).  If not, bail.
+@@ -678,9 +705,14 @@ void vfio_probe_igd_bar4_quirk(VFIOPCIDevice *vdev, int nr)
+                      vdev->vbasedev.name);
+     }
+ 
+-    for (i = 1; i < vfio_igd_gtt_max(vdev); i += 4) {
+-        vfio_region_write(&vdev->bars[4].region, 0, i, 4);
+-        vfio_region_write(&vdev->bars[4].region, 4, 0, 4);
++    {
++        int gtt_max = vfio_igd_gtt_max(vdev);
++        error_report("IGD quirk: clearing %d GTT entries", gtt_max / 4);
++        for (i = 1; i < gtt_max; i += 4) {
++            vfio_region_write(&vdev->bars[4].region, 0, i, 4);
++            vfio_region_write(&vdev->bars[4].region, 4, 0, 4);
++        }
++        error_report("IGD quirk: GTT cleared");
+     }
+ 
+     if (pwrite(vdev->vbasedev.fd, &cmd_orig, sizeof(cmd_orig),
 -- 
 2.43.0
 

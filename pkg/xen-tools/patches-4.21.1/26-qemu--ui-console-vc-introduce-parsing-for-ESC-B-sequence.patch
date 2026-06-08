@@ -28,15 +28,17 @@ Cc: "Marc-André Lureau" <marcandre.lureau@redhat.com>
 Cc: qemu-devel@nongnu.org
 Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
 Message-ID: <20250226075913.353676-2-r.peniaev@gmail.com>
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>  [rebased to qemu-xen-4.21.0]
+
 ---
- ui/console.c | 16 ++++++++++++++++
+ ui/console-vc.c | 16 ++++++++++++++++
  1 file changed, 16 insertions(+)
 
-diff --git a/tools/qemu-xen/ui/console.c b/tools/qemu-xen/ui/console.c
-index 7461446e711f..d5aaa34f669b 100644
---- a/tools/qemu-xen/ui/console.c
-+++ b/tools/qemu-xen/ui/console.c
-@@ -67,6 +67,8 @@ enum TTYState {
+diff --git a/tools/qemu-xen/ui/console-vc.c b/tools/qemu-xen/ui/console-vc.c
+index 8393d532e7..6790575988 100644
+--- a/tools/qemu-xen/ui/console-vc.c
++++ b/tools/qemu-xen/ui/console-vc.c
+@@ -42,6 +42,8 @@ enum TTYState {
      TTY_STATE_NORM,
      TTY_STATE_ESC,
      TTY_STATE_CSI,
@@ -44,19 +46,19 @@ index 7461446e711f..d5aaa34f669b 100644
 +    TTY_STATE_G1,
  };
  
- typedef enum {
-@@ -997,6 +999,10 @@ static void console_putchar(QemuConsole *s, int ch)
-                 s->esc_params[i] = 0;
-             s->nb_esc_params = 0;
-             s->state = TTY_STATE_CSI;
+ typedef struct QemuTextConsole {
+@@ -694,6 +696,10 @@ static void vc_putchar(VCChardev *vc, int ch)
+                 vc->esc_params[i] = 0;
+             vc->nb_esc_params = 0;
+             vc->state = TTY_STATE_CSI;
 +        } else if (ch == '(') {
-+            s->state = TTY_STATE_G0;
++            vc->state = TTY_STATE_G0;
 +        } else if (ch == ')') {
-+            s->state = TTY_STATE_G1;
++            vc->state = TTY_STATE_G1;
          } else {
-             s->state = TTY_STATE_NORM;
+             vc->state = TTY_STATE_NORM;
          }
-@@ -1147,6 +1153,16 @@ static void console_putchar(QemuConsole *s, int ch)
+@@ -844,6 +850,16 @@ static void vc_putchar(VCChardev *vc, int ch)
              }
              break;
          }
@@ -68,7 +70,7 @@ index 7461446e711f..d5aaa34f669b 100644
 +            /* Latin-1 map */
 +            break;
 +        }
-+        s->state = TTY_STATE_NORM;
++        vc->state = TTY_STATE_NORM;
 +        break;
      }
  }

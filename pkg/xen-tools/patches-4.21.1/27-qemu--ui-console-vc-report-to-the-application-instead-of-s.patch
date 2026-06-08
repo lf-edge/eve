@@ -33,22 +33,26 @@ Cc: "Marc-André Lureau" <marcandre.lureau@redhat.com>
 Cc: qemu-devel@nongnu.org
 Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
 Message-ID: <20250226075913.353676-3-r.peniaev@gmail.com>
----
- ui/console.c | 5 +----
- 1 file changed, 1 insertion(+), 4 deletions(-)
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>  [rebased to qemu-xen-4.21.0]
 
-diff --git a/tools/qemu-xen/ui/console.c b/tools/qemu-xen/ui/console.c
-index d5aaa34f669b..8226a17b37e5 100644
---- a/tools/qemu-xen/ui/console.c
-+++ b/tools/qemu-xen/ui/console.c
-@@ -923,10 +923,7 @@ static void console_put_one(QemuConsole *s, int ch)
+---
+ ui/console-vc.c | 7 +++----
+ 1 file changed, 3 insertions(+), 4 deletions(-)
+
+diff --git a/tools/qemu-xen/ui/console-vc.c b/tools/qemu-xen/ui/console-vc.c
+index 6790575988..e998259417 100644
+--- a/tools/qemu-xen/ui/console-vc.c
++++ b/tools/qemu-xen/ui/console-vc.c
+@@ -617,10 +617,9 @@ static void vc_put_one(VCChardev *vc, int ch)
  
- static void console_respond_str(QemuConsole *s, const char *buf)
+ static void vc_respond_str(VCChardev *vc, const char *buf)
  {
 -    while (*buf) {
--        console_put_one(s, *buf);
+-        vc_put_one(vc, *buf);
 -        buf++;
 -    }
++    QemuTextConsole *s = vc->console;
++
 +    qemu_chr_be_write(s->chr, (const uint8_t *)buf, strlen(buf));
  }
  
