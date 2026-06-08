@@ -419,7 +419,6 @@ const qemuDiskTemplate = `
 {{- else}}
 [device "virtio-disk{{.DiskID}}"]
   driver = "virtio-blk-pci"
-  scsi = "off"
   bus = "pci.{{.PCIId}}"
   addr = "0x0"
 {{- end}}
