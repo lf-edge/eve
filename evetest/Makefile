@@ -34,10 +34,8 @@ DOCKER_IT := $(shell [ -t 1 ] && echo '-it' || echo '-i')
 
 .PHONY: evetest list-tests _run_protoc proto clone-eve-api _install-broker
 
-list-tests: ensure-evetest-image
-	@docker run --rm $(DOCKER_IT) \
-		-v $(REPO_ROOT)/evetest/tests:/evetest/tests \
-		$(EVETEST_IMAGE)
+list-tests:
+	go run ./cmd/list-tests/ ./tests
 
 evetest: ensure-evetest-image
 ifndef EVETEST_NAME
