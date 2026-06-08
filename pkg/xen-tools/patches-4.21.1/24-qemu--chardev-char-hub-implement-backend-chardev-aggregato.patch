@@ -43,19 +43,21 @@ Signed-off-by: Roman Penyaev <r.peniaev@gmail.com>
 Reviewed-by: "Marc-André Lureau" <marcandre.lureau@redhat.com>
 Cc: qemu-devel@nongnu.org
 Message-ID: <20250123085327.965501-3-r.peniaev@gmail.com>
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>  [rebased to qemu-xen-4.21.0]
+
 ---
- tools/qemu-xen/chardev/char-hub.c         | 301 +++++++++++++++++++++++++++++++++++++
- tools/qemu-xen/chardev/char.c             |  23 ++-
- tools/qemu-xen/chardev/chardev-internal.h |  51 ++++++-
- tools/qemu-xen/chardev/meson.build        |   1 +
- tools/qemu-xen/include/chardev/char.h     |   1 +
- tools/qemu-xen/qapi/char.json             |  27 ++++
- 6 files changed, 401 insertions(+), 3 deletions(-)
- create mode 100644 tools/qemu-xen/chardev/char-hub.c
+ chardev/char-hub.c         | 301 +++++++++++++++++++++++++++++++++++++
+ chardev/char.c             |  23 ++-
+ chardev/chardev-internal.h |  51 ++++++-
+ chardev/meson.build        |   1 +
+ include/chardev/char.h     |   1 +
+ qapi/char.json             |  25 +++
+ 6 files changed, 399 insertions(+), 3 deletions(-)
+ create mode 100644 chardev/char-hub.c
 
 diff --git a/tools/qemu-xen/chardev/char-hub.c b/tools/qemu-xen/chardev/char-hub.c
 new file mode 100644
-index 000000000000..3a4aae328972
+index 0000000000..3a4aae3289
 --- /dev/null
 +++ b/tools/qemu-xen/chardev/char-hub.c
 @@ -0,0 +1,301 @@
@@ -361,10 +363,10 @@ index 000000000000..3a4aae328972
 +
 +type_init(register_types);
 diff --git a/tools/qemu-xen/chardev/char.c b/tools/qemu-xen/chardev/char.c
-index 7705da5ad02b..5a9e9762adca 100644
+index ba847b6e9e..b9f79f8717 100644
 --- a/tools/qemu-xen/chardev/char.c
 +++ b/tools/qemu-xen/chardev/char.c
-@@ -943,7 +943,26 @@ QemuOptsList qemu_chardev_opts = {
+@@ -933,7 +933,26 @@ QemuOptsList qemu_chardev_opts = {
          },{
              .name = "chardev",
              .type = QEMU_OPT_STRING,
@@ -391,7 +393,7 @@ index 7705da5ad02b..5a9e9762adca 100644
              .name = "append",
              .type = QEMU_OPT_BOOL,
          },{
-@@ -1106,8 +1125,8 @@ ChardevReturn *qmp_chardev_change(const char *id, ChardevBackend *backend,
+@@ -1096,8 +1115,8 @@ ChardevReturn *qmp_chardev_change(const char *id, ChardevBackend *backend,
          return NULL;
      }
  
@@ -403,7 +405,7 @@ index 7705da5ad02b..5a9e9762adca 100644
      }
  
 diff --git a/tools/qemu-xen/chardev/chardev-internal.h b/tools/qemu-xen/chardev/chardev-internal.h
-index 853807f3cb88..9752dd75f714 100644
+index 4e03af3147..520c5c91d8 100644
 --- a/tools/qemu-xen/chardev/chardev-internal.h
 +++ b/tools/qemu-xen/chardev/chardev-internal.h
 @@ -29,13 +29,16 @@
@@ -421,9 +423,9 @@ index 853807f3cb88..9752dd75f714 100644
      CharBackend *backends[MAX_MUX];
 +    /* Linked backend */
      CharBackend chr;
-     unsigned long mux_bitset;
      int focus;
-@@ -53,11 +56,57 @@ struct MuxChardev {
+     int mux_cnt;
+@@ -54,11 +57,57 @@ struct MuxChardev {
      int64_t timestamps_start;
  };
  typedef struct MuxChardev MuxChardev;
@@ -480,10 +482,10 @@ index 853807f3cb88..9752dd75f714 100644
 +#define CHARDEV_IS_HUB(chr)                                \
 +    object_dynamic_cast(OBJECT(chr), TYPE_CHARDEV_HUB)
  
- bool mux_chr_attach_frontend(MuxChardev *d, CharBackend *b,
-                              unsigned int *tag, Error **errp);
+ void mux_set_focus(Chardev *chr, int focus);
+ void mux_chr_send_all_event(Chardev *chr, QEMUChrEvent event);
 diff --git a/tools/qemu-xen/chardev/meson.build b/tools/qemu-xen/chardev/meson.build
-index 70070a8279a9..56ee39ac0b01 100644
+index 70070a8279..56ee39ac0b 100644
 --- a/tools/qemu-xen/chardev/meson.build
 +++ b/tools/qemu-xen/chardev/meson.build
 @@ -3,6 +3,7 @@ chardev_ss.add(files(
@@ -495,7 +497,7 @@ index 70070a8279a9..56ee39ac0b01 100644
    'char-pipe.c',
    'char-ringbuf.c',
 diff --git a/tools/qemu-xen/include/chardev/char.h b/tools/qemu-xen/include/chardev/char.h
-index 01df55f9e8c8..429852f8d9d3 100644
+index 01df55f9e8..429852f8d9 100644
 --- a/tools/qemu-xen/include/chardev/char.h
 +++ b/tools/qemu-xen/include/chardev/char.h
 @@ -232,6 +232,7 @@ OBJECT_DECLARE_TYPE(Chardev, ChardevClass, CHARDEV)
@@ -507,10 +509,10 @@ index 01df55f9e8c8..429852f8d9d3 100644
  #define TYPE_CHARDEV_PTY "chardev-pty"
  #define TYPE_CHARDEV_CONSOLE "chardev-console"
 diff --git a/tools/qemu-xen/qapi/char.json b/tools/qemu-xen/qapi/char.json
-index e04535435034..f02b66c06b3e 100644
+index ef58445cee..e8521f7fd8 100644
 --- a/tools/qemu-xen/qapi/char.json
 +++ b/tools/qemu-xen/qapi/char.json
-@@ -315,6 +315,19 @@
+@@ -319,6 +319,19 @@
    'data': { 'chardev': 'str' },
    'base': 'ChardevCommon' }
  
@@ -530,23 +532,15 @@ index e04535435034..f02b66c06b3e 100644
  ##
  # @ChardevStdio:
  #
-@@ -425,6 +438,7 @@
- # @pipe: Since 1.5
- # @udp: Since 1.5
- # @mux: Since 1.5
-+# @hub: Since 10.0
- # @msmouse: Since 1.5
- # @wctablet: Since 2.9
- # @braille: Since 1.5
-@@ -451,6 +465,7 @@
+@@ -482,6 +495,7 @@
              'pty',
              'null',
              'mux',
 +            'hub',
              'msmouse',
              'wctablet',
-             'braille',
-@@ -514,6 +529,16 @@
+             { 'name': 'braille', 'if': 'CONFIG_BRLAPI' },
+@@ -556,6 +570,16 @@
  { 'struct': 'ChardevMuxWrapper',
    'data': { 'data': 'ChardevMux' } }
  
@@ -563,13 +557,14 @@ index e04535435034..f02b66c06b3e 100644
  ##
  # @ChardevStdioWrapper:
  #
-@@ -593,6 +618,7 @@
+@@ -653,6 +677,7 @@
              'pty': 'ChardevCommonWrapper',
              'null': 'ChardevCommonWrapper',
              'mux': 'ChardevMuxWrapper',
 +            'hub': 'ChardevHubWrapper',
              'msmouse': 'ChardevCommonWrapper',
              'wctablet': 'ChardevCommonWrapper',
-             'braille': 'ChardevCommonWrapper',
+             'braille': { 'type': 'ChardevCommonWrapper',
 -- 
 2.43.0
+
