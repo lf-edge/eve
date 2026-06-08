@@ -454,10 +454,11 @@ ifeq ($(LINUXKIT_PKG_TARGET),push)
   # only builds from master branch are allowed to be called snapshots
   # everything else gets tagged with a branch name itself UNLESS
   # we're building off of a annotated tag
-  EVE_REL_$(REPO_BRANCH)_$(REPO_TAG):=$(if $(TAGPLAT),$(REPO_TAG)-$(TAGPLAT),$(REPO_TAG))
+  EVE_REL_$(REPO_BRANCH)_$(REPO_TAG):=$(REPO_TAG)
   EVE_REL_$(REPO_BRANCH)_snapshot:=$(REPO_BRANCH)
-  EVE_REL_master_snapshot:=$(if $(TAGPLAT),$(TAGPLAT)-snapshot,snapshot)
+  EVE_REL_master_snapshot:=snapshot
   EVE_REL:=$(EVE_REL_$(REPO_BRANCH)_$(REPO_TAG))
+  # append the platform variant exactly once, as a suffix (matching ROOTFS_VERSION)
   EVE_REL:=$(EVE_REL)$(if $(TAGPLAT),-$(TAGPLAT),)
 endif
 
@@ -997,7 +998,7 @@ eve: $(INSTALLER) $(EVE_ARTIFACTS) current $(RUNME) $(BUILD_YML) | $(BUILD_DIR)
 	$(PARSE_PKGS) pkg/eve/Dockerfile.in > $|/Dockerfile
 	$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) --platforms linux/$(ZARCH) --hash-path $(CURDIR) --hash $(ROOTFS_VERSION)-$(HV) --docker $(if $(strip $(EVE_REL)),--release) $(EVE_REL)$(if $(strip $(EVE_REL)),-$(HV)) $(FORCE_BUILD) $|
 	$(QUIET)if [ -n "$(EVE_REL)" ] && [ $(HV) = $(HV_DEFAULT) ]; then \
-	   $(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) --platforms linux/$(ZARCH) --hash-path $(CURDIR) --hash $(EVE_REL)-$(if $(TAGPLAT),$(TAGPLAT)-)$(HV) --docker --release $(EVE_REL) $(FORCE_BUILD) $| ;\
+		$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) --platforms linux/$(ZARCH) --hash-path $(CURDIR) --hash $(EVE_REL)-$(HV) --docker --release $(EVE_REL) $(FORCE_BUILD) $| ;\
 	fi
 	$(QUIET): $@: Succeeded
 
