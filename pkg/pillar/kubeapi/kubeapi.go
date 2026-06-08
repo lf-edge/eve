@@ -246,7 +246,7 @@ func WaitForKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.T
 				}
 			}
 			if opts.WaitForLonghorn {
-				if err := waitForLonghornReady(client, hostname); err != nil {
+				if err := checkLonghornReady(client, hostname); err != nil {
 					return false, nil
 				}
 			}
@@ -268,7 +268,7 @@ func WaitForKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.T
 	return nodeReadyErr
 }
 
-func waitForLonghornReady(client kubernetes.Interface, hostname string) error {
+func checkLonghornReady(client kubernetes.Interface, nodeName string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), kubeAPITimeout)
 	defer cancel()
 	// First we'll gate on the longhorn daemonsets existing
@@ -297,7 +297,7 @@ func waitForLonghornReady(client kubernetes.Interface, hostname string) error {
 			labelSelectors = append(labelSelectors, dsLabelK+"="+dsLabelV)
 		}
 		pods, err := client.CoreV1().Pods("longhorn-system").List(ctx, metav1.ListOptions{
-			FieldSelector: "spec.nodeName=" + hostname,
+			FieldSelector: "spec.nodeName=" + nodeName,
 			LabelSelector: strings.Join(labelSelectors, ","),
 		})
 		if err != nil {
@@ -325,6 +325,54 @@ func waitForLonghornReady(client kubernetes.Interface, hostname string) error {
 	}
 
 	return nil
+}
+
+// WaitForLonghornReady blocks until all required Longhorn daemonsets are running
+// and ready on this node, or until ctx is cancelled. It is safe to call from a
+// worker goroutine; it never touches pubsub or the watchdog.
+// All setup steps (kubeconfig, client, node name lookup) are retried inside the
+// loop so that a slow k3s start after a reboot is handled transparently.
+func WaitForLonghornReady(ctx context.Context, log *base.LogObject) error {
+	devUUID, err := os.Hostname()
+	if err != nil {
+		return fmt.Errorf("WaitForLonghornReady: hostname: %v", err)
+	}
+
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			// Retry kubeconfig and client setup each tick: k3s may not have written
+			// the kubeconfig file yet if called early after a reboot.
+			config, err := GetKubeConfig()
+			if err != nil {
+				log.Noticef("WaitForLonghornReady: kubeconfig not ready: %v", err)
+				continue
+			}
+			client, err := kubernetes.NewForConfig(config)
+			if err != nil {
+				log.Noticef("WaitForLonghornReady: client error: %v", err)
+				continue
+			}
+			// Resolve the k3s node name from the device UUID label — the OS hostname
+			// is the device UUID, not the Kubernetes node name used in pod field selectors.
+			nodeName, err := waitForNodeReady(client, devUUID)
+			if err != nil {
+				log.Noticef("WaitForLonghornReady: node not ready: %v", err)
+				continue
+			}
+			if err := checkLonghornReady(client, nodeName); err != nil {
+				log.Noticef("WaitForLonghornReady: not ready yet: %v", err)
+				continue
+			}
+			log.Noticef("WaitForLonghornReady: Longhorn is ready on node %s", nodeName)
+			return nil
+		}
+	}
 }
 
 func waitForKubevirtReady(kubeConfig *rest.Config) error {
