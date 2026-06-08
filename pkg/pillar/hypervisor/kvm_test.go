@@ -242,7 +242,6 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 
 [device "virtio-disk0"]
   driver = "virtio-blk-pci"
-  scsi = "off"
   bus = "pci.4"
   addr = "0x0"
   drive = "drive-virtio-disk0"
@@ -277,7 +276,6 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 
 [device "virtio-disk2"]
   driver = "virtio-blk-pci"
-  scsi = "off"
   bus = "pci.6"
   addr = "0x0"
   drive = "drive-virtio-disk2"
@@ -513,7 +511,6 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 
 [device "virtio-disk0"]
   driver = "virtio-blk-pci"
-  scsi = "off"
   bus = "pci.4"
   addr = "0x0"
   drive = "drive-virtio-disk0"
@@ -548,7 +545,6 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 
 [device "virtio-disk2"]
   driver = "virtio-blk-pci"
-  scsi = "off"
   bus = "pci.6"
   addr = "0x0"
   drive = "drive-virtio-disk2"
@@ -754,7 +750,6 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 
 [device "virtio-disk0"]
   driver = "virtio-blk-pci"
-  scsi = "off"
   bus = "pci.4"
   addr = "0x0"
   drive = "drive-virtio-disk0"
@@ -789,7 +784,6 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 
 [device "virtio-disk2"]
   driver = "virtio-blk-pci"
-  scsi = "off"
   bus = "pci.6"
   addr = "0x0"
   drive = "drive-virtio-disk2"
@@ -1360,7 +1354,6 @@ func domConfigArm64() string {
 
 [device "virtio-disk0"]
   driver = "virtio-blk-pci"
-  scsi = "off"
   bus = "pci.4"
   addr = "0x0"
   drive = "drive-virtio-disk0"
@@ -1395,7 +1388,6 @@ func domConfigArm64() string {
 
 [device "virtio-disk2"]
   driver = "virtio-blk-pci"
-  scsi = "off"
   bus = "pci.6"
   addr = "0x0"
   drive = "drive-virtio-disk2"
@@ -1651,7 +1643,6 @@ func domConfigAmd64FML() string {
 
 [device "virtio-disk0"]
   driver = "virtio-blk-pci"
-  scsi = "off"
   bus = "pci.4"
   addr = "0x0"
   drive = "drive-virtio-disk0"
@@ -1686,7 +1677,6 @@ func domConfigAmd64FML() string {
 
 [device "virtio-disk2"]
   driver = "virtio-blk-pci"
-  scsi = "off"
   bus = "pci.6"
   addr = "0x0"
   drive = "drive-virtio-disk2"
@@ -2223,7 +2213,6 @@ func domConfigAmd64() string {
 
 [device "virtio-disk0"]
   driver = "virtio-blk-pci"
-  scsi = "off"
   bus = "pci.4"
   addr = "0x0"
   drive = "drive-virtio-disk0"
@@ -2258,7 +2247,6 @@ func domConfigAmd64() string {
 
 [device "virtio-disk2"]
   driver = "virtio-blk-pci"
-  scsi = "off"
   bus = "pci.6"
   addr = "0x0"
   drive = "drive-virtio-disk2"
@@ -2534,7 +2522,6 @@ func domConfigContainerVNC() string {
 
 [device "virtio-disk1"]
   driver = "virtio-blk-pci"
-  scsi = "off"
   bus = "pci.5"
   addr = "0x0"
   drive = "drive-virtio-disk1"
