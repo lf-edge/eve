@@ -90,7 +90,7 @@ func isDeschedulerReadyWithClient(log *base.LogObject, client kubernetes.Interfa
 		return false, nil
 	}
 
-	if err := waitForLonghornReady(client, nodeName); err != nil {
+	if err := checkLonghornReady(client, nodeName); err != nil {
 		log.Noticef("IsDeschedulerReady: longhorn not ready: %v", err)
 		return false, nil
 	}
