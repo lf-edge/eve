@@ -1,5 +1,6 @@
+
 diff --git a/tools/firmware/hvmloader/hvmloader.c b/tools/firmware/hvmloader/hvmloader.c
-index f8af88f..8dbb0cf 100644
+index 6d23150fc9..038d76e3ab 100644
 --- a/tools/firmware/hvmloader/hvmloader.c
 +++ b/tools/firmware/hvmloader/hvmloader.c
 @@ -136,10 +136,10 @@ static void init_hypercalls(void)
@@ -16,10 +17,10 @@ index f8af88f..8dbb0cf 100644
      cpuid(base + 2, &eax, &ebx, &ecx, &edx);
      for ( i = 0; i < eax; i++ )
 diff --git a/tools/libs/light/libxl_create.c b/tools/libs/light/libxl_create.c
-index 32d45dc..283b41b 100644
+index bfc9149096..6a0fedd29c 100644
 --- a/tools/libs/light/libxl_create.c
 +++ b/tools/libs/light/libxl_create.c
-@@ -320,6 +320,8 @@ int libxl__domain_build_info_setdefault(libxl__gc *gc,
+@@ -308,6 +308,8 @@ int libxl__domain_build_info_setdefault(libxl__gc *gc,
          libxl_defbool_setdefault(&b_info->u.hvm.acpi_laptop_slate,  false);
          libxl_defbool_setdefault(&b_info->u.hvm.nx,                 true);
          libxl_defbool_setdefault(&b_info->u.hvm.viridian,           false);
@@ -27,8 +28,8 @@ index 32d45dc..283b41b 100644
 +        libxl_defbool_setdefault(&b_info->u.hvm.spoof_xen,          false);
          libxl_defbool_setdefault(&b_info->u.hvm.hpet,               true);
          libxl_defbool_setdefault(&b_info->u.hvm.vpt_align,          true);
-         libxl_defbool_setdefault(&b_info->u.hvm.altp2m,             false);
-@@ -1545,6 +1547,10 @@ static void domcreate_launch_dm(libxl__egc *egc, libxl__multidev *multidev,
+         libxl_defbool_setdefault(&b_info->u.hvm.usb,                false);
+@@ -1791,6 +1793,10 @@ static void domcreate_launch_dm(libxl__egc *egc, libxl__multidev *multidev,
          console.backend_domid = state->console_domid;
          libxl__device_console_add(gc, domid, &console, state, &device);
          libxl__device_console_dispose(&console);
@@ -37,13 +38,26 @@ index 32d45dc..283b41b 100644
 +                                        libxl_defbool_val(d_config->b_info.u.hvm.spoof_viridian)
 +                         );
  
-         if (libxl_defbool_val(d_config->b_info.u.hvm.vkb_device)) {
-             libxl_device_vkb_init(&vkb);
+         dcs->sdss.dm.guest_domid = domid;
+         if (libxl_defbool_val(d_config->b_info.device_model_stubdomain))
+diff --git a/tools/libs/light/libxl_types.idl b/tools/libs/light/libxl_types.idl
+index d64a573ff3..d5e7f7b8a8 100644
+--- a/tools/libs/light/libxl_types.idl
++++ b/tools/libs/light/libxl_types.idl
+@@ -664,6 +664,8 @@ libxl_domain_build_info = Struct("domain_build_info",[
+                                        ("viridian",         libxl_defbool),
+                                        ("viridian_enable",  libxl_bitmap),
+                                        ("viridian_disable", libxl_bitmap),
++                                       ("spoof_viridian",   libxl_defbool),
++                                       ("spoof_xen",        libxl_defbool),
+                                        ("timeoffset",       string),
+                                        ("hpet",             libxl_defbool),
+                                        ("vpt_align",        libxl_defbool),
 diff --git a/tools/libs/light/libxl_x86.c b/tools/libs/light/libxl_x86.c
-index cdb294a..ed3ac19 100644
+index 60d4e8661c..a079b3a316 100644
 --- a/tools/libs/light/libxl_x86.c
 +++ b/tools/libs/light/libxl_x86.c
-@@ -414,6 +414,16 @@
+@@ -425,6 +425,16 @@ static int hvm_set_conf_params(libxl__gc *gc, uint32_t domid,
              LOG(ERROR, "Couldn't set HVM_PARAM_VPT_ALIGN");
              goto out;
          }
@@ -60,56 +74,83 @@ index cdb294a..ed3ac19 100644
          if (info->u.hvm.mca_caps &&
              xc_hvm_param_set(CTX->xch, domid, HVM_PARAM_MCA_CAP,
                               info->u.hvm.mca_caps)) {
-diff --git a/tools/libs/light/libxl_types.idl b/tools/libs/light/libxl_types.idl
-index 7921950..246e128 100644
---- a/tools/libs/light/libxl_types.idl
-+++ b/tools/libs/light/libxl_types.idl
-@@ -569,6 +569,8 @@ libxl_domain_build_info = Struct("domain_build_info",[
-                                        ("viridian",         libxl_defbool),
-                                        ("viridian_enable",  libxl_bitmap),
-                                        ("viridian_disable", libxl_bitmap),
-+                                       ("spoof_viridian",   libxl_defbool),
-+                                       ("spoof_xen",        libxl_defbool),
-                                        ("timeoffset",       string),
-                                        ("hpet",             libxl_defbool),
-                                        ("vpt_align",        libxl_defbool),
 diff --git a/tools/misc/xen-detect.c b/tools/misc/xen-detect.c
-index fd187a4..7752219 100644
+index 4f74c41557..26d02b291b 100644
 --- a/tools/misc/xen-detect.c
 +++ b/tools/misc/xen-detect.c
-@@ -83,6 +83,8 @@
-
+@@ -85,6 +85,8 @@ static int check_for_xen(int pv_context)
+ 
          if ( !strcmp("XenVMMXenVMM", signature) && (regs[0] >= (base + 2)) )
              goto found;
 +        if ( !strcmp("ZenZenZenZen", signature) && (regs[0] >= (base + 2)) )
 +            goto found;
-
+ 
          /* Higher base addresses are possible only with HVM. */
          if ( pv_context )
+diff --git a/tools/xl/xl_parse.c b/tools/xl/xl_parse.c
+index af86d3186d..0643bf0775 100644
+--- a/tools/xl/xl_parse.c
++++ b/tools/xl/xl_parse.c
+@@ -1873,6 +1873,10 @@ void parse_config_data(const char *config_source,
+         xlu_cfg_get_defbool(config, "apic", &b_info->apic, 0);
+         xlu_cfg_get_defbool(config, "hvm_pirq", &b_info->u.hvm.pirq, 0);
+ 
++        /* For spoofing Xen */
++        xlu_cfg_get_defbool(config, "spoof_xen", &b_info->u.hvm.spoof_xen, 0);
++        xlu_cfg_get_defbool(config, "spoof_viridian", &b_info->u.hvm.spoof_viridian, 0);
++
+         switch (xlu_cfg_get_list(config, "viridian",
+                                  &viridian, &num_viridian, 1))
+         {
+diff --git a/xen/arch/x86/cpuid.c b/xen/arch/x86/cpuid.c
+index b63a82dd38..995b960891 100644
+--- a/xen/arch/x86/cpuid.c
++++ b/xen/arch/x86/cpuid.c
+@@ -58,9 +58,17 @@ static void cpuid_hypervisor_leaves(const struct vcpu *v, uint32_t leaf,
+     {
+     case 0:
+         res->a = base + limit; /* Largest leaf */
+-        res->b = XEN_CPUID_SIGNATURE_EBX;
+-        res->c = XEN_CPUID_SIGNATURE_ECX;
+-        res->d = XEN_CPUID_SIGNATURE_EDX;
++        if (!d->arch.hvm.spoof_xen) {
++            printk("cpuid_hypervisor_leaves - real id. domid %d\n", d->domain_id);
++            res->b = XEN_CPUID_SIGNATURE_EBX;
++            res->c = XEN_CPUID_SIGNATURE_ECX;
++            res->d = XEN_CPUID_SIGNATURE_EDX;
++        } else {
++            printk("cpuid_hypervisor_leaves - spoofed id. domid %d\n", d->domain_id);
++            res->b = ZEN_CPUID_SIGNATURE_EBX;
++            res->c = ZEN_CPUID_SIGNATURE_ECX;
++            res->d = ZEN_CPUID_SIGNATURE_EDX;
++        }
+         break;
+ 
+     case 1:
 diff --git a/xen/arch/x86/hvm/hvm.c b/xen/arch/x86/hvm/hvm.c
-index 4723f5d..311e8a5 100644
+index 0c60faa39d..13349eebd9 100644
 --- a/xen/arch/x86/hvm/hvm.c
 +++ b/xen/arch/x86/hvm/hvm.c
-@@ -4274,6 +4274,14 @@ static int hvmop_set_param(
+@@ -4358,6 +4358,14 @@ static int hvm_set_param(struct domain *d, uint32_t index, uint64_t value)
      case HVM_PARAM_IOREQ_SERVER_PFN:
-         d->arch.hvm.ioreq_gfn.base = a.value;
+         d->arch.hvm.ioreq_gfn.base = value;
          break;
 +    case HVM_PARAM_SPOOF_XEN:
-+        printk("spoof_xen %" PRId64 " - curr dom %d, dom %d\n", a.value, curr_d->domain_id, d->domain_id);
-+        d->arch.hvm.spoof_xen = a.value;
++        printk("spoof_xen %" PRId64 " - curr dom %d, dom %d\n", value, curr_d->domain_id, d->domain_id);
++        d->arch.hvm.spoof_xen = value;
 +        break;
 +    case HVM_PARAM_SPOOF_VIRIDIAN:
-+        printk("spoof_vir %" PRId64 " - curr dom %d, dom %d\n", a.value, curr_d->domain_id, d->domain_id);
-+        d->arch.hvm.spoof_viridian = a.value;
++        printk("spoof_vir %" PRId64 " - curr dom %d, dom %d\n", value, curr_d->domain_id, d->domain_id);
++        d->arch.hvm.spoof_viridian = value;
 +        break;
      case HVM_PARAM_NR_IOREQ_SERVER_PAGES:
      {
          unsigned int i;
 diff --git a/xen/arch/x86/hvm/viridian/viridian.c b/xen/arch/x86/hvm/viridian/viridian.c
-index 44c8e6c..b45bdbf 100644
+index f79cffcb37..d94bb9d9a3 100644
 --- a/xen/arch/x86/hvm/viridian/viridian.c
 +++ b/xen/arch/x86/hvm/viridian/viridian.c
-@@ -121,9 +121,13 @@ void cpuid_viridian_leaves(const struct vcpu *v, uint32_t leaf,
+@@ -124,9 +124,13 @@ void cpuid_viridian_leaves(const struct vcpu *v, uint32_t leaf,
      {
      case 0:
          res->a = 0x40000006; /* Maximum leaf */
@@ -126,39 +167,25 @@ index 44c8e6c..b45bdbf 100644
          break;
  
      case 1:
-diff --git a/xen/arch/x86/traps.c b/xen/arch/x86/traps.c
-index 97499a0..b500095 100644
---- a/xen/arch/x86/traps.c
-+++ b/xen/arch/x86/traps.c
-@@ -892,9 +892,19 @@ void cpuid_hypervisor_leaves(const struct vcpu *v, uint32_t leaf,
-     {
-     case 0:
-         res->a = base + limit; /* Largest leaf */
--        res->b = XEN_CPUID_SIGNATURE_EBX;
--        res->c = XEN_CPUID_SIGNATURE_ECX;
--        res->d = XEN_CPUID_SIGNATURE_EDX;
-+        if (!d->arch.hvm.spoof_xen ) {
-+            printk("cpuid_hypervisor_leaves - real id. domid %d\n",d->domain_id);
-+               res->b = XEN_CPUID_SIGNATURE_EBX;
-+               res->c = XEN_CPUID_SIGNATURE_ECX;
-+               res->d = XEN_CPUID_SIGNATURE_EDX;
-+        } else
-+        {
-+            printk("cpuid_hypervisor_leaves - spoofed id. domid %d\n",d->domain_id);
-+               res->b = ZEN_CPUID_SIGNATURE_EBX;
-+               res->c = ZEN_CPUID_SIGNATURE_ECX;
-+               res->d = ZEN_CPUID_SIGNATURE_EDX;
-+        }
-+
-         break;
+diff --git a/xen/arch/x86/include/asm/hvm/domain.h b/xen/arch/x86/include/asm/hvm/domain.h
+index 333501d5f2..c6c3714d05 100644
+--- a/xen/arch/x86/include/asm/hvm/domain.h
++++ b/xen/arch/x86/include/asm/hvm/domain.h
+@@ -105,6 +105,9 @@ struct hvm_domain {
  
-     case 1:
-
+     bool                   is_s3_suspended;
+ 
++    bool                  spoof_xen;
++    bool                  spoof_viridian;
++
+     /* Compatibility setting for a bug in x2APIC LDR */
+     bool bug_x2apic_ldr_vcpu_id;
+ 
 diff --git a/xen/include/public/arch-x86/cpuid.h b/xen/include/public/arch-x86/cpuid.h
-index ce46305..7e63c55 100644
+index 3bb0dd249f..bc71df630a 100644
 --- a/xen/include/public/arch-x86/cpuid.h
 +++ b/xen/include/public/arch-x86/cpuid.h
-@@ -53,6 +53,10 @@
+@@ -36,6 +36,10 @@
  #define XEN_CPUID_SIGNATURE_ECX 0x65584d4d /* "MMXe" */
  #define XEN_CPUID_SIGNATURE_EDX 0x4d4d566e /* "nVMM" */
  
@@ -170,7 +197,7 @@ index ce46305..7e63c55 100644
   * Leaf 2 (0x40000x01)
   * EAX[31:16]: Xen major version.
 diff --git a/xen/include/public/hvm/params.h b/xen/include/public/hvm/params.h
-index 99c40b4..5bec661 100644
+index 99c40b4287..5bec66173a 100644
 --- a/xen/include/public/hvm/params.h
 +++ b/xen/include/public/hvm/params.h
 @@ -290,7 +290,9 @@
@@ -184,34 +211,3 @@ index 99c40b4..5bec661 100644
 +#define HVM_NR_PARAMS 41
  
  #endif /* __XEN_PUBLIC_HVM_PARAMS_H__ */
-
-diff --git a/tools/xl/xl_parse.c b/tools/xl/xl_parse.c
-index 36832e4..2be4178 100644
---- a/tools/xl/xl_parse.c
-+++ b/tools/xl/xl_parse.c
-@@ -1670,6 +1670,10 @@
-         xlu_cfg_get_defbool(config, "vpt_align", &b_info->u.hvm.vpt_align, 0);
-         xlu_cfg_get_defbool(config, "apic", &b_info->apic, 0);
- 
-+        /* For spoofing Xen */
-+        xlu_cfg_get_defbool(config, "spoof_xen", &b_info->u.hvm.spoof_xen, 0);
-+        xlu_cfg_get_defbool(config, "spoof_viridian", &b_info->u.hvm.spoof_viridian, 0);
-+
-         switch (xlu_cfg_get_list(config, "viridian",
-                                  &viridian, &num_viridian, 1))
-         {
-
-diff --git a/xen/arch/x86/include/asm/hvm/domain.h b/xen/arch/x86/include/asm/hvm/domain.h
-index dd9d837..9f2e863 100644
---- a/xen/arch/x86/include/asm/hvm/domain.h
-+++ b/xen/arch/x86/include/asm/hvm/domain.h
-@@ -106,6 +106,9 @@ struct hvm_domain {
- 
-     bool                   is_s3_suspended;
- 
-+    bool                  spoof_xen;
-+    bool                  spoof_virdian;
-+
-     /* Compatibility setting for a bug in x2APIC LDR */
-     bool bug_x2apic_ldr_vcpu_id;
-
