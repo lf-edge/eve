@@ -6,6 +6,7 @@
 package kubeapi
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -70,5 +71,10 @@ func GetStorageClassForReplicaCount(count int) string {
 
 // EnsureVMsDeschedulerAnnotated is a stub for non EVE-k builds.
 func EnsureVMsDeschedulerAnnotated(*base.LogObject) error {
+	return nil
+}
+
+// WaitForLonghornReady is a stub for non EVE-k builds.
+func WaitForLonghornReady(ctx context.Context, log *base.LogObject) error {
 	return nil
 }
