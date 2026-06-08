@@ -57,8 +57,35 @@ func (handler *volumeHandlerCSI) UsageFromStatus() uint64 {
 }
 
 func (handler *volumeHandlerCSI) PrepareVolume() error {
-	handler.log.Noticef("PrepareVolume called for PVC %s", handler.status.GetPVCName())
-	return nil
+	pvcName := handler.status.GetPVCName()
+	handler.log.Noticef("PrepareVolume: waiting for Longhorn before creating PVC %s", pvcName)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{}, 1)
+	defer func() {
+		done <- struct{}{}
+	}()
+
+	// Cancel the Longhorn wait if VolumeStatus disappears (volume config deleted while waiting).
+	go func() {
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				if handler.volumeManager.LookupVolumeStatus(handler.status.Key()) == nil {
+					handler.log.Warnf("PrepareVolume: VolumeStatus(%s) disappeared, cancelling Longhorn wait", pvcName)
+					cancel()
+					return
+				}
+			case <-done:
+				cancel()
+				return
+			}
+		}
+	}()
+
+	return kubeapi.WaitForLonghornReady(ctx, handler.log)
 }
 
 func (handler *volumeHandlerCSI) HandlePrepared() (bool, error) {
@@ -120,6 +147,14 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 		pvcSize = uint64(handler.status.TotalSize)
 	}
 	handler.log.Noticef("CreateVolume called for PVC %s size %v", pvcName, pvcSize)
+
+	// Guard against re-creation on reboot: if the PVC already exists (created in a
+	// prior boot where VolumeStatus was not persisted as CREATED_VOLUME), skip the
+	// entire create path — the content is already in place.
+	if found, err := kubeapi.FindPVC(pvcName, handler.log); err == nil && found {
+		handler.log.Noticef("CreateVolume: PVC %s already exists, skipping creation", pvcName)
+		return pvcName, nil
+	}
 
 	repCount, err := kubeapi.GetSupportedReplicaCountForCluster()
 	if err != nil {
@@ -249,6 +284,19 @@ func (handler *volumeHandlerCSI) DestroyVolume() (string, error) {
 	return pvcName, nil
 }
 
+// Populate reports whether the PVC for this volume already exists.
+// It never returns a non-nil error: all failure cases are treated as
+// "not yet created" ((false, nil)) so that handleDeferredVolumeCreate
+// routes the volume through the normal create path (PrepareVolume →
+// CreateVolume) rather than setting a hard error on VolumeStatus with
+// no retry mechanism. Specifically:
+//   - Non-replicated, PVC found:            (true,  nil)
+//   - Non-replicated, PVC not found (404):  (false, nil)
+//   - Non-replicated, any other error:      (false, nil) — transient (kubeconfig
+//     unavailable, API server not ready, etc.); CreateVolume guards against
+//     double-creation with its own FindPVC check.
+//   - Replicated, WaitForPVCReady succeeds: (true,  nil)
+//   - Replicated, WaitForPVCReady error:    (false, nil) — loops or returns nil
 func (handler *volumeHandlerCSI) Populate() (bool, error) {
 	pvcName := handler.status.GetPVCName()
 	isReplicated := handler.status.IsReplicated
@@ -286,9 +334,13 @@ func (handler *volumeHandlerCSI) Populate() (bool, error) {
 			if kerr.IsNotFound(err) {
 				handler.log.Noticef("PVC %s not found", pvcName)
 				return false, nil
-			} else {
-				return false, err
 			}
+			// Any other error (kubeconfig unavailable, API server not ready, etc.)
+			// is transient — return (false, nil) so handleDeferredVolumeCreate
+			// routes this through the normal create path (which waits in PrepareVolume)
+			// rather than setting a hard error on VolumeStatus with no retry.
+			handler.log.Noticef("Populate: FindPVC(%s) transient error, treating as not-yet-created: %v", pvcName, err)
+			return false, nil
 		}
 	}
 	return true, nil
