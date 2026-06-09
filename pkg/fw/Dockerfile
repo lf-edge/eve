@@ -27,10 +27,6 @@ FROM build-base AS generic
 ENV NVIDIA_FW_TEGRA=${JETPACK5_DEB}
 ENV NVIDIA_FW_URL=${JETPACK5_URL}
 
-FROM build-base AS evaluation
-ENV NVIDIA_FW_TEGRA=${JETPACK5_DEB}
-ENV NVIDIA_FW_URL=${JETPACK5_URL}
-
 FROM build-base AS nvidia-jp5
 ENV NVIDIA_FW_TEGRA=${JETPACK5_DEB}
 ENV NVIDIA_FW_URL=${JETPACK5_URL}
@@ -258,7 +254,6 @@ FROM compactor-common AS compactor-generic
 FROM compactor-common AS compactor-nvidia-jp5
 FROM compactor-common AS compactor-nvidia-jp6
 FROM compactor-common AS compactor-nvidia-jp7
-FROM compactor-full AS compactor-evaluation
 
 FROM compactor-${PLATFORM} AS compactor
 
