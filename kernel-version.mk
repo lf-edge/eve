@@ -16,11 +16,10 @@ KERNEL_COMPILER=gcc
 
 # kernel may have severla config files eve-<KERNEL_CONFIG_FLAVOR>_defconfig
 # this variable can be passed to the make command line to select
-# 'evaluation' platform has hardcoded config flavors for different rootfs images
 # by default the flavor is empty to keep compatibility with the old EVE version
 KERNEL_CONFIG_FLAVOR ?=
 
-PLATFORMS_amd64=generic rt evaluation
+PLATFORMS_amd64=generic rt
 PLATFORMS_arm64=generic nvidia-jp5 nvidia-jp6 nvidia-jp7 imx8mp_pollux imx8mp_epc_r3720 imx8mq_evk
 PLATFORMS_riscv64=generic
 ARCHS=amd64 arm64 riscv64
@@ -34,8 +33,6 @@ endif
 ifeq (, $(filter $(PLATFORM), $(PLATFORMS_$(ZARCH))))
     $(error "Unsupported combination of ZARCH=$(ZARCH) and PLATFORM=$(PLATFORM)")
 endif
-
-KERNEL_LTS_VERSION=next
 
 ifeq ($(ZARCH), amd64)
     KERNEL_VERSION=v6.12.49
@@ -82,16 +79,6 @@ KERNEL_COMMIT=$(KERNEL_COMMIT_$(ZARCH)_$(KERNEL_VERSION)_$(KERNEL_FLAVOR))
 KERNEL_BRANCH = eve-kernel-$(ZARCH)-$(KERNEL_VERSION)-$(KERNEL_FLAVOR)
 KERNEL_DOCKER_TAG = $(KERNEL_BRANCH)-$(KERNEL_CONFIG_FLAVOR)$(KERNEL_COMMIT)-$(KERNEL_COMPILER)
 
-KERNEL_LTS_COMMIT=$(KERNEL_COMMIT_$(ZARCH)_$(KERNEL_LTS_VERSION)_$(KERNEL_FLAVOR))
-KERNEL_LTS_BRANCH = eve-kernel-$(ZARCH)-next
-
 # one can override the whole tag from the command line and set it to
 # output of make -f Makefile.eve docker-tag-${KERNEL_COMPILER} in github.com/lf-edge/eve-kernel
 KERNEL_TAG ?= docker.io/lfedge/eve-kernel:$(KERNEL_DOCKER_TAG)
-
-# these tags are valid for evaluation platforms only
-KERNEL_EVAL_HWE_DOCKER_TAG = $(KERNEL_BRANCH)-hwe-$(KERNEL_COMMIT)-$(KERNEL_COMPILER)
-KERNEL_EVAL_LTS_HWE_DOCKER_TAG = $(KERNEL_LTS_BRANCH)-hwe-$(KERNEL_LTS_COMMIT)-$(KERNEL_COMPILER)
-
-KERNEL_EVAL_HWE_TAG ?= docker.io/lfedge/eve-kernel:$(KERNEL_EVAL_HWE_DOCKER_TAG)
-KERNEL_EVAL_LTS_HWE_TAG ?= docker.io/lfedge/eve-kernel:$(KERNEL_EVAL_LTS_HWE_DOCKER_TAG)
