@@ -1,8 +1,8 @@
 module github.com/lf-edge/eve/pkg/edgeview
 
-go 1.24.0
+go 1.25.0
 
-toolchain go1.24.5
+toolchain go1.25.11
 
 require (
 	github.com/coreos/go-semver v0.3.1
