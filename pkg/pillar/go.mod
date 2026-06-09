@@ -58,6 +58,7 @@ require (
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
 	github.com/vishvananda/netlink v1.3.1
 	github.com/zededa/ghw v0.0.0-20260427124750-9a7dc80ae71c
+	go.etcd.io/bbolt v1.3.11
 	go.uber.org/mock v0.5.1
 	golang.org/x/crypto v0.52.0
 	golang.org/x/net v0.55.0
@@ -266,7 +267,6 @@ require (
 	github.com/spiffe/go-spiffe/v2 v2.7.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xlab/treeprint v1.2.0 // indirect
-	go.etcd.io/bbolt v1.3.11 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/detectors/gcp v1.44.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.44.0 // indirect
