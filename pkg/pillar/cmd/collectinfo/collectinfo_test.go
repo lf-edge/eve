@@ -4,6 +4,8 @@
 package collectinfo
 
 import (
+	"encoding/base64"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -218,6 +220,16 @@ func TestIsToken68(t *testing.T) {
 			}
 		})
 	}
+}
+
+func FuzzIsToken68(f *testing.F) {
+	f.Fuzz(func(t *testing.T, username, password string) {
+		bs := []byte(fmt.Sprintf("%s:%s", username, password))
+		str64 := base64.StdEncoding.EncodeToString(bs)
+		if !isToken68(str64) {
+			t.Fatalf("encoding of %s/%s '%s' failed:", username, password, str64)
+		}
+	})
 }
 
 func TestCreateHttpURLFromDatastore(t *testing.T) {

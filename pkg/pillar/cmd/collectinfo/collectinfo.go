@@ -89,7 +89,7 @@ func isToken(str string) bool {
 
 func isToken68(str string) bool {
 	// https://datatracker.ietf.org/doc/html/rfc7235#appendix-C
-	rex := regexp.MustCompile(`^[a-zA-Z0-9-._~+/]*=?$`)
+	rex := regexp.MustCompile(`^[a-zA-Z0-9-._~+/]*={0,2}$`)
 
 	return rex.MatchString(str)
 }
