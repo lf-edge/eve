@@ -2,6 +2,8 @@ module github.com/lf-edge/eve/evetest
 
 go 1.25.2
 
+toolchain go1.25.11
+
 require (
 	github.com/distribution/reference v0.6.0
 	github.com/docker/cli v29.2.0+incompatible

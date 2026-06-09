@@ -1,6 +1,8 @@
 module github.com/lf-edge/eve/pkg/vtpm
 
-go 1.24.0
+go 1.25.0
+
+toolchain go1.25.11
 
 require (
 	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260521051436-614efc1c3bb7

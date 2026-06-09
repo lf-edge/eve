@@ -1,8 +1,8 @@
 module github.com/lf-edge/eve/pkg/pillar
 
-go 1.24.0
+go 1.25.0
 
-toolchain go1.24.1
+toolchain go1.25.11
 
 require (
 	github.com/Masterminds/semver v1.5.0

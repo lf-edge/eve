@@ -1,6 +1,8 @@
 module github.com/lf-edge/eve/pkg/kube
 
-go 1.24.1
+go 1.25.0
+
+toolchain go1.25.11
 
 require (
 	github.com/containernetworking/cni v1.1.2
@@ -11,6 +13,7 @@ require (
 
 require (
 	github.com/coreos/go-iptables v0.6.0 // indirect
+	github.com/kr/pretty v0.3.1 // indirect
 	github.com/safchain/ethtool v0.3.0 // indirect
 	github.com/satori/go.uuid v1.2.0 // indirect
 	github.com/vishvananda/netlink v1.2.1-beta.2 // indirect
