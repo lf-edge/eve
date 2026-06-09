@@ -1,8 +1,8 @@
 module recovertpm
 
-go 1.24.0
+go 1.25.0
 
-toolchain go1.24.6
+toolchain go1.25.11
 
 require (
 	github.com/google/go-tpm v0.9.1

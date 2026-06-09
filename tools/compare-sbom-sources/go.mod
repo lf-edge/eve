@@ -1,6 +1,8 @@
 module github.com/lf-edge/eve/tools/compare-sbom-sources
 
-go 1.20
+go 1.25.0
+
+toolchain go1.25.11
 
 require github.com/spf13/cobra v1.7.0
 

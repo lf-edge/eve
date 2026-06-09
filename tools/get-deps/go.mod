@@ -2,6 +2,8 @@ module get-deps
 
 go 1.25.0
 
+toolchain go1.25.11
+
 require (
 	github.com/containerd/platforms v1.0.0-rc.2
 	github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20250915124940-43200ea63425
