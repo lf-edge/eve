@@ -1439,10 +1439,6 @@ install_sriov_manifests() {
 #Forever loop every 15 secs
 while true;
 do
-        # Re-apply optional manifests on every iteration so EVE upgrades pick
-        # them up without forcing a cluster re-init (the
-        # all_components_initialized guard would otherwise skip the copy below).
-        install_sriov_manifests
 if [ ! -f /var/lib/all_components_initialized ]; then
         if [ ! -f /var/lib/k3s_installed_unpacked ]; then
                 #
@@ -1735,6 +1731,9 @@ else
                 fi
         fi
 fi
+        # Re-apply optional manifests on every iteration so EVE upgrades pick
+        # them up without forcing a cluster re-init
+        install_sriov_manifests
         fix_node_password_secret
         cleanup_stale_masterleases
         save_cluster_startup_rank
