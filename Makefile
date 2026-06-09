@@ -175,36 +175,21 @@ ROOTFS=$(INSTALLER)/rootfs
 ROOTFS_FULL_NAME=$(INSTALLER)/rootfs-$(ROOTFS_VERSION)
 ROOTFS_COMPLETE=$(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT)
 ROOTFS_IMG_BASE=$(ROOTFS)
-ROOTFS_IMG_EVAL_HWE=$(ROOTFS_IMG_BASE)-evaluation-hwe.img
-ROOTFS_IMG_EVAL_LTS=$(ROOTFS_IMG_BASE)-evaluation-lts.img
 
-ROOTFS_IMGS= $(if $(findstring evaluation,$(PLATFORM)), \
-	$(ROOTFS_IMG_BASE).img $(ROOTFS_IMG_BASE)-b.img $(ROOTFS_IMG_BASE)-c.img, \
-	$(ROOTFS_IMG_BASE).img)
+ROOTFS_IMGS=$(ROOTFS_IMG_BASE).img
 
-ROOTFS_GENERIC_IMG_INTERMEDIATE:=$(if $(findstring evaluation,$(PLATFORM)), \
-	$(ROOTFS_IMG_BASE)-evaluation-generic.img, \
-	$(ROOTFS_IMG_BASE)-$(PLATFORM).img)
+ROOTFS_GENERIC_IMG_INTERMEDIATE:=$(ROOTFS_IMG_BASE)-$(PLATFORM).img
 
-# we need intermediate image names with -<PLATFORM>-<ROOTFS FLAVOR> so we can use pattern rules to generate
-# rootfs image(s) but scripts expect the rootfs image to be called rootfs[-b|c].img and it is hard to
+# we need an intermediate image name with -<PLATFORM> so we can use pattern rules to generate
+# the rootfs image but scripts expect the rootfs image to be called rootfs.img and it is hard to
 # pass the names down the pipeline
 $(ROOTFS_IMG_BASE).img: $(ROOTFS_GENERIC_IMG_INTERMEDIATE)
-	mv $< $@
-$(ROOTFS_IMG_BASE)-b.img: $(ROOTFS_IMG_EVAL_HWE)
-	mv $< $@
-$(ROOTFS_IMG_BASE)-c.img: $(ROOTFS_IMG_EVAL_LTS)
 	mv $< $@
 
 # ROOTFS_TAR is in BUILD_DIR, not installer, so it does not get installed
 ROOTFS_TAR_BASE=$(BUILD_DIR)/rootfs
-ROOTFS_TAR_EVAL_HWE=$(ROOTFS_TAR_BASE)-evaluation-hwe.tar
-ROOTFS_TAR_EVAL_LTS=$(ROOTFS_TAR_BASE)-evaluation-lts.tar
 
-# for evaluation platform we generate 3 rootfs tarballs:
-ROOTFS_TARS= $(if $(findstring evaluation,$(PLATFORM)), \
-	$(ROOTFS_TAR_BASE)-evaluation-generic.tar $(ROOTFS_TAR_EVAL_HWE) $(ROOTFS_TAR_EVAL_LTS), \
-	$(ROOTFS_TAR_BASE)-$(PLATFORM).tar)
+ROOTFS_TARS=$(ROOTFS_TAR_BASE)-$(PLATFORM).tar
 
 CONFIG_IMG=$(INSTALLER)/config.img
 INITRD_IMG=$(INSTALLER)/initrd.img
@@ -219,8 +204,7 @@ EFI_PART=$(INSTALLER)/EFI
 BOOT_PART=$(INSTALLER)/boot
 BSP_IMX_PART=$(INSTALLER)/bsp-imx
 
-SBOM?=$(if $(findstring evaluation,$(PLATFORM)), $(ROOTFS)-evaluation-generic.spdx.json $(ROOTFS)-evaluation-hwe.spdx.json \
-    $(ROOTFS)-evaluation-lts.spdx.json , $(ROOTFS)-$(PLATFORM).spdx.json)
+SBOM?=$(ROOTFS)-$(PLATFORM).spdx.json
 SOURCES_DIR=$(BUILD_DIR)/sources
 COLLECTED_SOURCES=$(SOURCES_DIR)/collected_sources.tar.gz
 DEVICETREE_DTB_amd64=
@@ -228,7 +212,7 @@ DEVICETREE_DTB_arm64=$(DIST)/dtb/eve.dtb
 DEVICETREE_DTB=$(DEVICETREE_DTB_$(ZARCH))
 
 CONF_FILES=$(shell ls -d $(CONF_DIR)/*)
-LIVE_PART_SPEC=$(if $(findstring evaluation,$(PLATFORM)), efi conf imga imgb imgc, efi conf imga)
+LIVE_PART_SPEC=efi conf imga
 
 # parallels settings
 # https://github.com/qemu/qemu/blob/595123df1d54ed8fbab9e1a73d5a58c5bb71058f/docs/interop/prl-xml.txt
@@ -372,7 +356,7 @@ DOCKER_GO = _() { $(SET_X); mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ; mkdir -p $
     $$docker_go_line "$$1" ; } ; _
 
 PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) KERNEL_TAG=$(KERNEL_TAG) \
-    KERNEL_EVAL_HWE_TAG=$(KERNEL_EVAL_HWE_TAG) KERNEL_EVAL_LTS_HWE_TAG=$(KERNEL_EVAL_LTS_HWE_TAG) PLATFORM=$(PLATFORM) ./tools/parse-pkgs.sh
+    PLATFORM=$(PLATFORM) ./tools/parse-pkgs.sh
 
 LINUXKIT_PKG_TARGET=build
 
@@ -475,11 +459,8 @@ ifeq ($(HV),k)
 else
         #kube container will not be in non-k builds
         PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources|kube|external-boot-image$$")
-        # evaluation platform is not limited by rootfs size, set to some large value
-        ifeq ($(PLATFORM),evaluation)
-            ROOTFS_MAXSIZE_MB=9999
         # nvidia platform requires more space
-        else ifeq (, $(findstring nvidia,$(PLATFORM)))
+        ifeq (, $(findstring nvidia,$(PLATFORM)))
             ROOTFS_MAXSIZE_MB=290
         else
             ROOTFS_MAXSIZE_MB=10240
@@ -958,24 +939,6 @@ pkgs: RESCAN_DEPS=
 pkgs: $(LINUXKIT) $(PKGS) $(LK_POSSIBLE_BUILD_ARG_TARGETS)
 	@echo Done building packages
 
-# The evaluation platform produces 3 rootfs flavors: generic, hwe, lts.
-# The generic flavor uses a modifier (rootfs-generic.yq) that substitutes FW_TAG
-# with FW_GENERIC_TAG, which resolves to eve-fw:HASH-generic via
-# build-evaluation-generic.yml. We must build this variant in addition to the
-# default eve-fw:HASH-evaluation so the image is available locally and in CI cache.
-ifeq ($(PLATFORM),evaluation)
-.PHONY: eve-fw-evaluation-generic
-eve-fw-evaluation-generic: eve-fw
-	$(QUIET): "$@: Begin"
-	$(QUIET)$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) $(FORCE_BUILD) --platforms linux/$(ZARCH) --build-yml build-evaluation-generic.yml pkg/fw
-	$(QUIET)if [ -n "$(PRUNE)" ]; then \
-		flock $(PARALLEL_BUILD_LOCK) docker image prune -f; \
-	fi
-	$(QUIET): "$@: Succeeded"
-
-pkgs: eve-fw-evaluation-generic
-endif
-
 # No-op target for get-deps which looks at
 # external-boot-image and sees a dep for eve-kernel
 # and attempts to build pkg/kernel, which is in
@@ -1304,29 +1267,22 @@ endef
 
 # Find modifiers for a rootfs .yml filename
 # the $1 contains the target name in following format:
-# <HV>-<PLATFORM>-<FLAVOR>
+# <HV>-<PLATFORM>
 # NOTE: PLATFORM may contains dashes, so we read platform from $(PLATFORM) variable
 # the rules are following:
 # 1. if the file <HV>.yq exists in the images/modifiers/hv directory, it will be added to the list
 # of the files we return
-# 2. if the file rootfs-<FLAVOR>.yq exists in the images/modifiers/platform directory, it will be added to the list
-# 3. if the file $(PLATFORM).yq exists in the images/modifiers/platform directory, it will be added to the list
+# 2. if the file $(PLATFORM).yq exists in the images/modifiers/platform directory, it will be added to the list
 define find-modifiers-rootfs
 $(eval _hv := $(firstword $(subst -, ,$1))) \
-$(eval _rootfs-flavor := $(subst -,,$(subst $(_hv)-$(PLATFORM),,$1))) \
 $(info [INFO] HV=$(_hv)) \
 $(info [INFO] PLATFORM=$(PLATFORM)) \
-$(info [INFO] rootfs flavor=$(_rootfs-flavor)) \
 $(if $(wildcard images/modifiers/hv/$(_hv).yq), \
 	$(info [INFO] Found hv modifier file images/modifiers/hv/$(_hv).yq) \
 	images/modifiers/hv/$(_hv).yq \
 ) \
 $(if $(wildcard images/modifiers/platform/$(PLATFORM)/), \
 	$(info [INFO] Found platform directory images/modifiers/platform/$(PLATFORM)) \
-	$(if $(wildcard images/modifiers/platform/$(PLATFORM)/rootfs-$(_rootfs-flavor).yq), \
-		$(info [INFO] Found rootfs flavor modifier file images/modifiers/platform/$(PLATFORM)/rootfs-$(_rootfs-flavor).yq) \
-		images/modifiers/platform/$(PLATFORM)/rootfs-$(_rootfs-flavor).yq \
-	) \
 	$(if $(wildcard images/modifiers/platform/$(PLATFORM)/$(PLATFORM).yq), \
 		$(info [INFO] Found platform modifier file images/modifiers/platform/$(PLATFORM)/$(PLATFORM).yq) \
 		images/modifiers/platform/$(PLATFORM)/$(PLATFORM).yq \

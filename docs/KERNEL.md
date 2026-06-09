@@ -180,20 +180,6 @@ The "next" branch is prepared for the next LTS kernel version, not for current d
 - Example: `eve-kernel-amd64-next`
 - Represents the next planned LTS version (at time of writing, the next LTS version is not yet defined)
 - All current patches are applied to next as well as stable branches
-- Used in EVE's evaluation images for continuous testing
-
-**Evaluation EVE Strategy:**
-Evaluation EVE has 3 partitions where IMGA and IMGB run the current stable LTS (e.g., v6.12.x) but use different kernel config flavors:
-
-- IMGA uses the `core` flavor
-- IMGB uses the `hwe` flavor
-- The third partition runs the `next` branch kernel
-
-This setup enables:
-
-- Testing of the upcoming LTS kernel alongside stable versions
-- Continuous validation of patches on the next LTS
-- Smoke testing of new kernel versions before they become official
 
 **LTS Transition Process:**
 When time comes to move to a new LTS:
@@ -201,7 +187,6 @@ When time comes to move to a new LTS:
 1. The floating `next` branch content is used to create a new versioned branch (e.g., eve-kernel-amd64-v6.13.x-generic)
 2. The old stable version (e.g., v6.12.x) is replaced with this new version
 3. The `next` branch is rebased on top of the next upcoming LTS
-4. Evaluation EVE continues testing with the new stable + new next
 
 This strategy ensures EVE is always prepared for kernel updates in terms of CI, patch rework, and smoke testing.
 
@@ -231,20 +216,6 @@ identical patch sets.
 - `core`: Standard EVE kernel configuration with essential drivers
 - `hwe`: Hardware Enablement - includes many additional drivers for broader hardware support
 - `rt`: Real-time kernel configuration with RT patches for deterministic latency
-
-**Usage in EVE:**
-
-Evaluation EVE images use three partitions with different kernel configurations:
-
-- **IMGA**: Runs current stable LTS with `core` flavor (minimal drivers)
-- **IMGB**: Runs current stable LTS with `hwe` flavor (many drivers for broad hardware support)
-- **Third partition**: Runs the `next` branch (preparing for next LTS)
-
-This multi-partition approach allows:
-
-- Testing and comparing different kernel configurations on the same hardware
-- Continuous validation of the next LTS kernel before official adoption
-- Quick rollback if issues are found with specific flavors
 
 **Not all flavors are available on all branches.** The flavor determines which defconfig file is used:
 

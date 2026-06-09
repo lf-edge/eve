@@ -12,8 +12,6 @@ DEFAULT_NVIDIA_INSTALLER_IMG_SIZE=8192
 DEFAULT_NVIDIA_LIVE_IMG_SIZE=28762
 DEFAULT_K_INSTALLER_IMG_SIZE=8192
 DEFAULT_K_LIVE_IMG_SIZE=28762
-DEFAULT_EVALUATION_INSTALLER_IMG_SIZE=10240
-DEFAULT_EVALUATION_LIVE_IMG_SIZE=28762
 
 bail() {
   echo "$@"
@@ -153,9 +151,6 @@ do_build_config() {
 
 do_live() {
   PART_SPEC="efi conf imga"
-  if [ "$PLATFORM" = "evaluation" ]; then
-    PART_SPEC="efi conf imga imgb imgc"
-  fi
   # each live image is expected to have a soft serial number that
   # typically gets provisioned by an installer -- since we're
   # shortcutting the installer step here we need to generate it
@@ -251,10 +246,6 @@ prepare_for_platform() {
     nvidia-jp*)
         DEFAULT_LIVE_IMG_SIZE=$DEFAULT_NVIDIA_LIVE_IMG_SIZE
         DEFAULT_INSTALLER_IMG_SIZE=$DEFAULT_NVIDIA_INSTALLER_IMG_SIZE
-        ;;
-    evaluation)
-        DEFAULT_LIVE_IMG_SIZE=$DEFAULT_EVALUATION_LIVE_IMG_SIZE
-        DEFAULT_INSTALLER_IMG_SIZE=$DEFAULT_EVALUATION_INSTALLER_IMG_SIZE
         ;;
     *) #shellcheck disable=SC2039,SC2104
         break

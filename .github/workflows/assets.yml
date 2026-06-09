@@ -74,9 +74,6 @@ jobs:
           - arch: arm64
             platform: "nvidia-jp7"
             hv: "k"
-          - arch: amd64
-            platform: "evaluation"
-            hv: "kvm"
     steps:
       - name: checkout repo
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
@@ -122,24 +119,20 @@ jobs:
       - name: Generate EVE binary assets
         run: |
           docker run "$EVE" installer_raw > assets/installer.raw
-          if [ "${{ matrix.platform }}" != "evaluation" ]; then
-             docker run "$EVE" rootfs > assets/rootfs.img
-             docker run "$EVE" live > assets/live.raw
-          fi
+          docker run "$EVE" rootfs > assets/rootfs.img
+          docker run "$EVE" live > assets/live.raw
           if [ "${{ matrix.platform }}" == "generic" ]; then
              docker run "$EVE" installer_iso > assets/installer.iso
              docker run "$EVE" installer_net > assets/installer-net.tar
           fi
       - name: Export eve-sources to assets/collected_sources.tar
         run: |
-          if [ "${{ matrix.platform }}" != "evaluation" ]; then
-            HV=${{ matrix.hv }}
-            EVE_SOURCES=lfedge/eve-sources:${TAG}-${{ env.PLATFORMVER }}${HV}-${{ env.ARCH }}
-            docker pull "$EVE_SOURCES"
-            docker create --name eve_sources "$EVE_SOURCES" bash
-            docker export --output assets/collected_sources.tar eve_sources
-            docker rm eve_sources
-          fi
+          HV=${{ matrix.hv }}
+          EVE_SOURCES=lfedge/eve-sources:${TAG}-${{ env.PLATFORMVER }}${HV}-${{ env.ARCH }}
+          docker pull "$EVE_SOURCES"
+          docker create --name eve_sources "$EVE_SOURCES" bash
+          docker export --output assets/collected_sources.tar eve_sources
+          docker rm eve_sources
       - name: Compress large assets with zstd
         # installer.raw, live.raw, and collected_sources.tar can exceed the
         # GitHub release asset size limit (2 GiB). These compress extremely
