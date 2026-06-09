@@ -596,6 +596,12 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 	// In case this was a failed update we make sure we mark
 	// that !active partition as unused (in case it is inprogress),
 	// so that we can retry the same update.
+	// We also fire this when the other partition is "updating": the
+	// image was written and SetOtherPartitionStateUpdating() was called,
+	// but the BaseOsConfig was deleted before we rebooted into it. Without
+	// the rollback the next reboot would still pick up the now-stale
+	// image. ShortVersion is not yet refreshed in that window so we
+	// detect this case via the partition state directly.
 	if status.PartitionLabel != "" {
 		partName := status.PartitionLabel
 		partStatus := getZbootStatus(ctx, partName)
@@ -604,10 +610,13 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 				status.BaseOsVersion, uuidStr)
 			return changed, del
 		}
-		if status.BaseOsVersion == partStatus.ShortVersion &&
-			!partStatus.CurrentPartition {
-			log.Functionf("doBaseOsUninstall(%s) for %s, currently on other %s",
-				status.BaseOsVersion, uuidStr, partName)
+		versionMatchOnOther := status.BaseOsVersion == partStatus.ShortVersion &&
+			!partStatus.CurrentPartition
+		updatingOnOther := partStatus.PartitionState == "updating" &&
+			!partStatus.CurrentPartition
+		if versionMatchOnOther || updatingOnOther {
+			log.Functionf("doBaseOsUninstall(%s) for %s, currently on other %s (state %s)",
+				status.BaseOsVersion, uuidStr, partName, partStatus.PartitionState)
 			curPartState := getPartitionState(ctx,
 				zboot.GetCurrentPartition())
 			if curPartState == "active" {
