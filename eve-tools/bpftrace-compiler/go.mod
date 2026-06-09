@@ -2,6 +2,8 @@ module bpftrace-compiler
 
 go 1.25.0
 
+toolchain go1.25.11
+
 require (
 	github.com/creack/pty v1.1.24
 	github.com/opencontainers/image-spec v1.1.1

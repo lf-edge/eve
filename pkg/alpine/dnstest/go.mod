@@ -1,6 +1,8 @@
 module dnstest
 
-go 1.24.6
+go 1.25.0
+
+toolchain go1.25.11
 
 require (
 	github.com/miekg/dns v1.1.43

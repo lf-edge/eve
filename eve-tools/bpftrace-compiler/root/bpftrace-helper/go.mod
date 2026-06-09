@@ -1,6 +1,8 @@
 module bpftrace-helper
 
-go 1.24.6
+go 1.25.0
+
+toolchain go1.25.11
 
 require (
 	github.com/pmorjan/kmod v1.1.1

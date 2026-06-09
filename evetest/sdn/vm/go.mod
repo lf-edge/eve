@@ -2,6 +2,8 @@ module github.com/lf-edge/eve/evetest/sdn/vm
 
 go 1.25.2
 
+toolchain go1.25.11
+
 require (
 	github.com/elazarl/goproxy v1.7.2
 	github.com/elazarl/goproxy/ext v0.0.0-20250305112401-088f758167d2

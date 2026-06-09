@@ -2,6 +2,8 @@ module dockerfile-from-checker
 
 go 1.25.5
 
+toolchain go1.25.11
+
 require (
 	github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20250625185947-3f54a80824cc
 	github.com/moby/buildkit v0.28.1
