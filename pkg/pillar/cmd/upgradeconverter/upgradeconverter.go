@@ -54,6 +54,10 @@ var postVaultconversionHandlers = []ConversionHandler{
 		description: "Move old files to user containerd",
 		handlerFunc: moveToUserContainerd,
 	},
+	{
+		description: "Port user-containerd namespace from eve-user-apps to k8s.io on EVE-k",
+		handlerFunc: portContainerdNamespaceForKube,
+	},
 }
 
 type ucContext struct {
