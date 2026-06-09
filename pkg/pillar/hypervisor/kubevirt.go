@@ -431,6 +431,20 @@ func (ctx kubevirtContext) CreateReplicaVMIConfig(domainName string, config type
 		Type: "virtio",
 	}
 
+	// Attach a USB tablet so VNC sends absolute pointer coordinates to the
+	// guest. With no explicit input device, libvirt falls back to an
+	// emulated PS/2 mouse, which only reports relative deltas — the
+	// resulting coordinate mismatch makes the VNC cursor drift, jump, fail
+	// to reach screen edges, and lag (most visibly on Windows guests).
+	// USB tablet is supported in-box by all common guest OSes.
+	vmi.Spec.Domain.Devices.Inputs = []v1.Input{
+		{
+			Name: "tablet",
+			Type: v1.InputTypeTablet,
+			Bus:  v1.InputBusUSB,
+		},
+	}
+
 	// Disable app log collection if user asked for it
 	if config.DisableLogs {
 		vmi.Spec.Domain.Devices.LogSerialConsole = ptrBool(false)
