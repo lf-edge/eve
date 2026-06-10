@@ -300,8 +300,7 @@ func (ep *AwsTransportMethod) processS3List(req *DronaRequest) ([]string, error,
 		sc = sc.WithLogger(req.logger)
 	}
 
-	prefix := req.name
-	list, err := sc.ListImagesWithPrefix(ep.bucket, prefix, prgChan)
+	list, err := sc.ListImages(ep.bucket, prgChan)
 	if err != nil {
 		return s, err, 0
 	}

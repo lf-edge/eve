@@ -63,7 +63,9 @@ func getHref(token html.Token) (ok bool, href string) {
 }
 
 // ExecCmd performs various commands such as "ls", "get", etc.
-// Note that "host" needs to contain the URL in the case of a get
+// Note that "host" needs to contain the URL in the case of a get.
+// If authHeader is non-empty it is set as the Authorization request header verbatim,
+// allowing callers to use any scheme (e.g. "Basic …" or "Bearer …").
 func ExecCmd(
 	ctx context.Context,
 	cmd, host, remoteFile, localFile string,
@@ -72,6 +74,7 @@ func ExecCmd(
 	doneParts types.DownloadedParts,
 	client *http.Client,
 	inactivityTimeout time.Duration,
+	authHeader string,
 ) (types.UpdateStats, Resp) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -89,6 +92,9 @@ func ExecCmd(
 			stats.Error = fmt.Errorf("request failed for ls %s: %s",
 				host, err)
 			return stats, rsp
+		}
+		if authHeader != "" {
+			req.Header.Set("Authorization", authHeader)
 		}
 		resp, err := client.Do(req)
 		if err != nil {
@@ -128,7 +134,7 @@ func ExecCmd(
 		rsp.List = imgList
 		return stats, rsp
 	case "get":
-		return execCmdGet(ctx, objSize, localFile, host, client, doneParts, prgNotify, inactivityTimeout)
+		return execCmdGet(ctx, objSize, localFile, host, client, doneParts, prgNotify, inactivityTimeout, authHeader)
 	case "post":
 		file, err := os.Open(localFile)
 		if err != nil {
@@ -157,6 +163,9 @@ func ExecCmd(
 		req.Header.Set("User-Agent", userAgent)
 		req.Header.Set("Accept", "*/*")
 		req.Header.Set("Content-Type", writer.FormDataContentType())
+		if authHeader != "" {
+			req.Header.Set("Authorization", authHeader)
+		}
 		resp, err := client.Do(req)
 		if err != nil {
 			stats.Error = fmt.Errorf("request failed for post %s: %s",
@@ -186,6 +195,9 @@ func ExecCmd(
 		}
 		req.Header.Set("User-Agent", userAgent)
 		req.Header.Set("Content-Type", "application/octet-stream")
+		if authHeader != "" {
+			req.Header.Set("Authorization", authHeader)
+		}
 
 		resp, err := client.Do(req)
 		if err != nil {
@@ -211,6 +223,7 @@ func execCmdGet(
 	doneParts types.DownloadedParts,
 	prgNotify types.StatsNotifChan,
 	inactivityTimeout time.Duration,
+	authHeader string,
 ) (stats types.UpdateStats, rsp Resp) {
 	copiedSize := doneParts.PartSize
 
@@ -287,6 +300,9 @@ func execCmdGet(
 		}
 		req.Header.Set("User-Agent", userAgent)
 		req.Header.Set("Content-Type", "application/octet-stream")
+		if authHeader != "" {
+			req.Header.Set("Authorization", authHeader)
+		}
 
 		withRange := false
 		//add Range header if server supports it and we already receive data
