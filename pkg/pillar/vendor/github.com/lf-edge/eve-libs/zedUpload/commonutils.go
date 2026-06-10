@@ -87,6 +87,9 @@ type httpClientWrapper struct {
 	nettraceSink    *ntStore.BoltBatchSink
 	nettraceDirPath string
 
+	// disable basic auth over http
+	insecureAuthAllowed bool
+
 	sessionUUID string
 }
 
@@ -247,6 +250,10 @@ func (c *httpClientWrapper) withTrustedCerts(certs [][]byte) error {
 func (c *httpClientWrapper) withProxy(proxy *url.URL) error {
 	c.proxy = proxy
 	return nil
+}
+
+func (c *httpClientWrapper) allowInsecureAuth(insecure bool) {
+	c.insecureAuthAllowed = insecure
 }
 
 func (c *httpClientWrapper) withNetTracing(opts ...nettrace.TraceOpt) error {

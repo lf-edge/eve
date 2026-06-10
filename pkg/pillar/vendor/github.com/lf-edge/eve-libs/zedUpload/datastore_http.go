@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/lf-edge/eve-libs/nettrace"
@@ -24,11 +25,25 @@ type HttpTransportMethod struct {
 	path      string
 
 	authType string
+	uname    string
+	password string
 
 	failPostTime      time.Time
 	ctx               *DronaCtx
 	hClientWrap       *httpClientWrapper
 	inactivityTimeout time.Duration
+}
+
+// buildAuthHeader returns the value for the Authorization request header.
+// uname holds the auth scheme (e.g. "Bearer", "Basic", "NTLM") and password
+// holds the corresponding credential token.  The header value is simply
+// "<scheme> <credential>", trimmed of surrounding whitespace.  An empty string
+// is returned when no credentials are configured.
+func (ep *HttpTransportMethod) buildAuthHeader() string {
+	if ep.uname == "" && ep.password == "" {
+		return ""
+	}
+	return strings.TrimSpace(ep.uname + " " + ep.password)
 }
 
 // Action : execute selected action targeting HTTP datastore.
@@ -102,6 +117,11 @@ func (ep *HttpTransportMethod) WithNetTracing(opts ...nettrace.TraceOpt) error {
 	return ep.hClientWrap.withNetTracing(opts...)
 }
 
+// AllowInsecureAuth - set this to allow basic auth via http (https is not affected)
+func (ep *HttpTransportMethod) AllowInsecureAuth(allow bool) {
+	ep.hClientWrap.allowInsecureAuth(allow)
+}
+
 // GetNetTrace returns collected network trace and packet captures.
 func (ep *HttpTransportMethod) GetNetTrace(description string) (
 	nettrace.AnyNetTrace, []nettrace.PacketCapture, error) {
@@ -126,19 +146,16 @@ func (ep *HttpTransportMethod) processHttpUpload(req *DronaRequest) (error, int)
 
 	doneParts := req.GetDoneParts()
 	stats, resp := zedHttp.ExecCmd(req.cancelContext, "post", postUrl, req.name,
-		req.objloc, req.sizelimit, prgChan, doneParts, hClient, ep.inactivityTimeout)
+		req.objloc, req.sizelimit, prgChan, doneParts, hClient, ep.inactivityTimeout,
+		ep.buildAuthHeader())
 	return stats.Error, resp.BodyLength
 }
 
 // File download from HTTP Datastore
 func (ep *HttpTransportMethod) processHttpDownload(req *DronaRequest) (error, int) {
-	file := req.name
-	if ep.hurl != "" {
-		var err error
-		file, err = url.JoinPath(ep.hurl, ep.path, req.name)
-		if err != nil {
-			return err, 0
-		}
+	file, err := ep.concatenateFile(req)
+	if err != nil {
+		return err, 0
 	}
 	prgChan := make(types.StatsNotifChan)
 	defer close(prgChan)
@@ -152,8 +169,28 @@ func (ep *HttpTransportMethod) processHttpDownload(req *DronaRequest) (error, in
 
 	doneParts := req.GetDoneParts()
 	stats, resp := zedHttp.ExecCmd(req.cancelContext, "get", file, "",
-		req.objloc, req.sizelimit, prgChan, doneParts, hClient, ep.inactivityTimeout)
+		req.objloc, req.sizelimit, prgChan, doneParts, hClient, ep.inactivityTimeout,
+		ep.buildAuthHeader())
 	return stats.Error, resp.BodyLength
+}
+
+func (ep *HttpTransportMethod) concatenateFile(req *DronaRequest) (string, error) {
+	file := req.name
+	if ep.hurl != "" {
+		var err error
+		file, err = url.JoinPath(ep.hurl, ep.path)
+		if err != nil {
+			return "", err
+		}
+
+		file = strings.TrimSuffix(file, "/")
+		reqName := req.name
+		for strings.HasPrefix(reqName, "/") {
+			reqName = strings.TrimPrefix(reqName, "/")
+		}
+		file += "/" + reqName
+	}
+	return file, nil
 }
 
 // File delete from HTTP Datastore
@@ -179,20 +216,18 @@ func (ep *HttpTransportMethod) processHttpList(req *DronaRequest) ([]string, err
 
 	doneParts := req.GetDoneParts()
 	stats, resp := zedHttp.ExecCmd(req.cancelContext, "ls", listUrl, "", "",
-		req.sizelimit, prgChan, doneParts, hClient, ep.inactivityTimeout)
+		req.sizelimit, prgChan, doneParts, hClient, ep.inactivityTimeout,
+		ep.buildAuthHeader())
 	return resp.List, stats.Error
 }
 
 // Object Metadata from HTTP datastore
 func (ep *HttpTransportMethod) processHttpObjectMetaData(req *DronaRequest) (error, int64) {
-	file := req.name
-	if ep.hurl != "" {
-		var err error
-		file, err = url.JoinPath(ep.hurl, ep.path, req.name)
-		if err != nil {
-			return err, 0
-		}
+	file, err := ep.concatenateFile(req)
+	if err != nil {
+		return err, 0
 	}
+
 	prgChan := make(types.StatsNotifChan)
 	defer close(prgChan)
 	if req.ackback {
@@ -205,7 +240,8 @@ func (ep *HttpTransportMethod) processHttpObjectMetaData(req *DronaRequest) (err
 
 	doneParts := req.GetDoneParts()
 	stats, resp := zedHttp.ExecCmd(req.cancelContext, "meta", file, "", req.objloc,
-		req.sizelimit, prgChan, doneParts, hClient, ep.inactivityTimeout)
+		req.sizelimit, prgChan, doneParts, hClient, ep.inactivityTimeout,
+		ep.buildAuthHeader())
 	return stats.Error, resp.ContentLength
 }
 func (ep *HttpTransportMethod) getContext() *DronaCtx {
@@ -251,6 +287,19 @@ func WithHTTPInactivityTimeout(timeout time.Duration) SyncerDestOption {
 			return fmt.Errorf("Invalid endpoint type")
 		}
 		httpEp.inactivityTimeout = timeout
+		return nil
+	}
+}
+
+// WithAllowInsecureAuth returns a SyncerDestOption that permits sending auth
+// credentials over plaintext HTTP when allow is true.
+func WithAllowInsecureAuth(allow bool) SyncerDestOption {
+	return func(endpoint DronaEndPoint) error {
+		if httpEp, ok := endpoint.(*HttpTransportMethod); ok {
+			httpEp.AllowInsecureAuth(allow)
+		} else {
+			return fmt.Errorf("WithAllowInsecureAuth - Invalid endpoint type")
+		}
 		return nil
 	}
 }

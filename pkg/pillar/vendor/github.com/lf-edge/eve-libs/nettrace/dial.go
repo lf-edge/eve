@@ -27,6 +27,7 @@ type tracedDialer struct {
 	keepAliveInterval time.Duration
 	withDNSTrace      bool
 	skipNameserver    NameserverSelector
+	nameservers       []string
 }
 
 // tracedResolver publishes traces from nameserver dialing.
@@ -89,7 +90,7 @@ func (ResolverCloseTraceEnv) isInternalNetTrace() {}
 
 func newTracedDialer(tracer tracerWithDial, log Logger, sourceIP net.IP,
 	handshakeTimeout, keepAliveInterval time.Duration, withDNSTrace bool,
-	skipNameserver NameserverSelector) *tracedDialer {
+	skipNameserver NameserverSelector, nameservers []string) *tracedDialer {
 	dialID := IDGenerator()
 	return &tracedDialer{
 		dialID: dialID,
@@ -104,6 +105,7 @@ func newTracedDialer(tracer tracerWithDial, log Logger, sourceIP net.IP,
 		keepAliveInterval: keepAliveInterval,
 		withDNSTrace:      withDNSTrace,
 		skipNameserver:    skipNameserver,
+		nameservers:       nameservers,
 	}
 }
 
@@ -196,6 +198,10 @@ func (tr *tracedResolver) netResolver() *net.Resolver {
 }
 
 func (tr *tracedResolver) dial(ctx context.Context, network, address string) (net.Conn, error) {
+	// Override nameserver address if custom nameservers are configured.
+	if len(tr.caller.nameservers) > 0 {
+		address = tr.caller.nameservers[0]
+	}
 	ip, port, err := parseHostAddr(address)
 	if err != nil {
 		return nil, fmt.Errorf("nettrace: networkTracer id=%s: %w",
