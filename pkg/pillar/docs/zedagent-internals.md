@@ -18,7 +18,7 @@ for contributors working on the agent itself or writing eden integration tests.
 | `DatastoreConfig` | datastore UUID | `downloader` |
 | `ContentTreeConfig` | content tree UUID | `volumemgr` |
 | `VolumeConfig` | volume UUID | `volumemgr` |
-| `DevicePortConfig` | `"lps"` (`types.LpsDPCKey`) | `nim` |
+| `DevicePortConfig` | `"zedagent"` (config from controller) and `"lps"` (`types.LpsDPCKey`, config from LPS) | `nim` |
 | `PhysicalIOAdapterList` | `"global"` | `domainmgr` |
 | `GlobalConfig` (ConfigItemValueMap) | `"global"` | all agents (self-subscribe for log levels, timers, etc.) |
 | `ZedAgentStatus` | `"zedagent"` (agent name) | `baseosmgr`, `nodeagent`, `LPS/LOC` consumers |
