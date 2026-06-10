@@ -653,7 +653,7 @@ Add dedicated partitions for Extension Image, mirroring the IMGA/IMGB A/B scheme
 Disk: [EFI][IMGA][IMGB][EXTA][EXTB][CONFIG][P3...]
 ```
 
-**Not chosen for Phase 1.** While this provides the cleanest security model (GRUB can `measurefs` into PCR 12, same trust level as Core), it has practical issues:
+**Not chosen for Phase 1.** While this provides the cleanest trust model (firmware-rooted `measurefs` into PCR 12, same tier as Core — though dm-verity already secures the Extension at runtime regardless), it has practical issues:
 
 - **Requires partition layout changes** to `make-raw`, `storage-init`, installer, and GRUB config.
 - **Existing ext4 devices** need P3 (PERSIST) shrunk via `resize2fs` + `sgdisk` to free space. Feasible but adds a migration step.
@@ -1533,7 +1533,7 @@ Once service split is stable, consider moving non-boot-critical drivers:
 
 ### Measuring Extension Image from GRUB
 
-Currently, the Extension Image lives on the plaintext PERSIST root and is measured into PCR 12 by the Extension Loader in userspace. A stronger approach would be to measure it from GRUB, the same way the Core rootfs is measured into PCR 13. This requires moving the Extension Image from PERSIST to a dedicated partition.
+Currently, the Extension Image lives on the plaintext PERSIST root and is measured into PCR 12 by the Extension Loader in userspace. A *cleaner* approach would be to measure it from GRUB, the same way the Core rootfs is measured into PCR 13 — it would be firmware-rooted (same trust tier as Core) and would remove the seal/attest ordering dependency on extsloader. Note this is not a *stronger* integrity guarantee: dm-verity already anchors the Extension to the Core's measured root hash (PCR 13) and verifies every block at runtime, whereas a one-time GRUB measurement does not. It would require moving the Extension Image from PERSIST to a dedicated partition.
 
 **Prerequisites:**
 - Extension Image must be on a known partition at boot time (not on `/persist`)
@@ -1544,7 +1544,7 @@ Currently, the Extension Image lives on the plaintext PERSIST root and is measur
 - Extension measurement happens in the boot chain (before kernel), same trust level as Core
 - Enables adding PCR 12 to the sealing set if desired
 - Eliminates dependency on userspace measurement
-- No longer needs vault for offline tamper protection (GRUB measurement provides stronger guarantees)
+- Firmware-rooted PCR 12 — no reliance on userspace (extsloader) for the measurement (this does not strengthen integrity; dm-verity already protects the Extension at runtime and is not replaced)
 
 **Trade-offs:**
 - Requires changes to `make-raw`, `storage-init`, installer, and GRUB config
@@ -1565,8 +1565,8 @@ Currently, the Extension Image lives on the plaintext PERSIST root and is measur
    - After measuring Core rootfs into PCR 13
    - Measure Extension partition into PCR 12: measurefs $ext_root --pcr 12
 3. Extension Loader still mounts and starts services
-   - But verification is now redundant (GRUB already measured)
-   - Can optionally keep userspace digest check as defense-in-depth
+   - dm-verity is still required at runtime (per-block integrity; the
+     one-time GRUB measurement does not replace it)
 4. Consider adding PCR 12 to sealing set (trade-off: no graceful degradation)
 5. Migration: on first boot with EXTA partition available, copy Extension from
    /persist to EXTA and switch to partition-based loading
