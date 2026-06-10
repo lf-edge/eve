@@ -527,6 +527,21 @@ func populateInitBlobStatus(ctx *volumemgrContext) {
 		log.Errorf("populateInitBlobStatus: exception while fetching existing media types from CAS: %v", err)
 		return
 	}
+	// In Kubevirt eve, we share the user containerd repository between eve
+	// and k3s. To avoid publishing BlobStatus for k3s/longhorn/etc. pod
+	// images, we filter blobs by the EVEDownloadedLabel that pillar's CAS
+	// sets at write time. The label is only set on manifest-shaped blobs
+	// (and on the named image), not on the individual layer blobs the
+	// manifest references. To recognize layer blobs as eve-owned we walk
+	// containerd.io/gc.ref.content.* labels transitively from each
+	// directly-labeled blob — those refs are how containerd's GC retains
+	// the layers, and they are the same set of blobs pillar pulled.
+	var eveOwnedDigests map[string]bool
+	if ctx.hvTypeKube {
+		eveOwnedDigests = transitivelyEVEDownloaded(blobInfoList)
+		log.Noticef("populateInitBlobStatus: %d blob(s) in CAS are eve-owned (directly labeled + transitively GC-referenced)",
+			len(eveOwnedDigests))
+	}
 	newBlobStatus := make([]*types.BlobStatus, 0)
 	for _, blobInfo := range blobInfoList {
 		mediaType, ok := mediaMap[blobInfo.Digest]
@@ -535,12 +550,8 @@ func populateInitBlobStatus(ctx *volumemgrContext) {
 			log.Functionf("populateInitBlobStatus: blob %s in CAS could not get mediaType", blobInfo.Digest)
 			continue
 		}
-		// In Kubevirt eve, we share same user containerd repository between eve and k3s containers.
-		// So volumemgr should ignore publishing blobs which are not downloaded through eve download mechanism
-		// In /run/volumemgr/BlobStatus we should only see the blobs downloaded by eve.
 		if ctx.hvTypeKube {
-			label := blobInfo.Labels
-			if _, found := label[types.EVEDownloadedLabel]; !found {
+			if !eveOwnedDigests[blobInfo.Digest] {
 				log.Noticef("populateInitBlobStatus: Ignoring the blob %s not downloaded by eve", blobInfo.Digest)
 				continue
 			}
@@ -634,4 +645,67 @@ func gcImagesFromCAS(ctx *volumemgrContext) {
 func lookupImageCAS(reference string, client cas.CAS) bool {
 	hash, err := client.GetImageHash(reference)
 	return err == nil && hash != ""
+}
+
+// gcRefLabelPrefix is the prefix containerd uses on metadata labels that
+// declare a blob's references to other blobs. The keys take forms like
+//
+//	containerd.io/gc.ref.content.0
+//	containerd.io/gc.ref.content.1
+//	containerd.io/gc.ref.content.config
+//	containerd.io/gc.ref.content.l.0
+//
+// and the value is the referenced blob's digest. Containerd's GC keeps
+// referenced blobs alive when the referencing blob is reachable.
+const gcRefLabelPrefix = "containerd.io/gc.ref.content."
+
+// transitivelyEVEDownloaded returns the set of blob digests that pillar
+// considers its own — every blob whose Labels carry the EVEDownloadedLabel,
+// plus every blob transitively reachable from those via containerd.io/
+// gc.ref.content.* labels.
+//
+// Why the transitive walk: pillar's CAS write path (cas/containerd.go)
+// sets the EVEDownloadedLabel on the manifest blob (and on the named image
+// entry), but NOT on the individual layer blobs the manifest references.
+// On EVE-k, where the user containerd is shared with k3s, the populate
+// path filters by the label per-blob and would reject every layer with
+// "Ignoring the blob ... not downloaded by eve" — forcing a full
+// re-download even though the blobs are physically present on /persist.
+// The manifest's containerd.io/gc.ref.content.* labels identify exactly
+// the layer set pillar pulled, so following them recovers the correct
+// answer.
+func transitivelyEVEDownloaded(blobs []*cas.BlobInfo) map[string]bool {
+	byDigest := make(map[string]map[string]string, len(blobs))
+	for _, b := range blobs {
+		byDigest[b.Digest] = b.Labels
+	}
+	owned := make(map[string]bool, len(blobs))
+	work := make([]string, 0, len(blobs))
+	for _, b := range blobs {
+		if _, ok := b.Labels[types.EVEDownloadedLabel]; ok {
+			owned[b.Digest] = true
+			work = append(work, b.Digest)
+		}
+	}
+	for len(work) > 0 {
+		cur := work[0]
+		work = work[1:]
+		for k, v := range byDigest[cur] {
+			if !strings.HasPrefix(k, gcRefLabelPrefix) {
+				continue
+			}
+			if v == "" || owned[v] {
+				continue
+			}
+			if _, present := byDigest[v]; !present {
+				// Reference points at a digest we didn't get from
+				// ListBlobInfo — skip rather than seed work with a
+				// missing key whose label map is empty.
+				continue
+			}
+			owned[v] = true
+			work = append(work, v)
+		}
+	}
+	return owned
 }
