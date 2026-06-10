@@ -31,7 +31,7 @@ RUN cp "/usr/local/my-installer/target/$CARGO_BUILD_TARGET/release/installer" /u
 FROM lfedge/eve-debug:fd937fa82a11106e1c2fadee5f1cca338b5e0421 AS debug
 
 # Dockerfile to build installer img initrd
-FROM lfedge/eve-alpine:325b12087b386811fdb9d3c0adffa5fb94a34b95 AS build
+FROM lfedge/eve-alpine:956e170f3908aa5148b0ddb130e60fd862c7988b AS build
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 ENV BUILD_PKGS="mkinitfs grep patch make coreutils musl-dev gcc g++ perl \
     autoconf automake libtool file bsd-compat-headers libc-dev \
