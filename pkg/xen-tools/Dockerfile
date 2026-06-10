@@ -3,7 +3,7 @@
 # Copyright (c) 2023-2026 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-uefi:382f2b44657fe57bb2c941c1571c0b27e5a9ddf0 AS uefi-build
+FROM lfedge/eve-uefi:8be0c3b7d20653510ff1548e495e94fee83cf402 AS uefi-build
 FROM lfedge/eve-alpine:956e170f3908aa5148b0ddb130e60fd862c7988b AS runx-build
 ENV BUILD_PKGS="mkinitfs gcc musl-dev e2fsprogs chrony agetty"
 RUN eve-alpine-deploy.sh
