@@ -5,7 +5,7 @@ ARG EVE_KERNEL
 # hadolint ignore=DL3006
 FROM ${EVE_KERNEL} AS kernel
 
-FROM lfedge/eve-bpftrace:01911eb980cc03b8bfd8f80b68892574f4b2e09d AS eve-bpftrace
+FROM lfedge/eve-bpftrace:15731d2b62cd209d8fcc306fd0a7104364ab5ba2 AS eve-bpftrace
 
 FROM lfedge/eve-alpine:956e170f3908aa5148b0ddb130e60fd862c7988b AS bpftrace
 
