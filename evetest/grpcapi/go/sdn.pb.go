@@ -2975,8 +2975,11 @@ type DNSServer struct {
 	// List of IP addresses of public DNS servers to forward requests to
 	// (unless there is a static entry).
 	UpstreamServers []string `protobuf:"bytes,3,rep,name=upstream_servers,json=upstreamServers,proto3" json:"upstream_servers,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// TTL in seconds to use for static entries.
+	// When 0, dnsmasq's default (0s — not cached) is used.
+	StaticEntriesTtl uint32 `protobuf:"varint,4,opt,name=static_entries_ttl,json=staticEntriesTtl,proto3" json:"static_entries_ttl,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *DNSServer) Reset() {
@@ -3028,6 +3031,13 @@ func (x *DNSServer) GetUpstreamServers() []string {
 		return x.UpstreamServers
 	}
 	return nil
+}
+
+func (x *DNSServer) GetStaticEntriesTtl() uint32 {
+	if x != nil {
+		return x.StaticEntriesTtl
+	}
+	return 0
 }
 
 // Mapping between FQDN and an IP address.
@@ -4460,11 +4470,12 @@ const file_sdn_proto_rawDesc = "" +
 	"\x02ip\x18\x02 \x01(\tR\x02ip\"D\n" +
 	"\x11DirectL2EpConnect\x12\x16\n" +
 	"\x06bridge\x18\x01 \x01(\tR\x06bridge\x12\x17\n" +
-	"\avlan_id\x18\x02 \x01(\rR\x06vlanId\"\xb5\x01\n" +
+	"\avlan_id\x18\x02 \x01(\rR\x06vlanId\"\xe3\x01\n" +
 	"\tDNSServer\x128\n" +
 	"\bendpoint\x18\x01 \x01(\v2\x1c.org.lfedge.evetest.EndpointR\bendpoint\x12C\n" +
 	"\x0estatic_entries\x18\x02 \x03(\v2\x1c.org.lfedge.evetest.DNSEntryR\rstaticEntries\x12)\n" +
-	"\x10upstream_servers\x18\x03 \x03(\tR\x0fupstreamServers\"\xe7\x01\n" +
+	"\x10upstream_servers\x18\x03 \x03(\tR\x0fupstreamServers\x12,\n" +
+	"\x12static_entries_ttl\x18\x04 \x01(\rR\x10staticEntriesTtl\"\xe7\x01\n" +
 	"\bDNSEntry\x12#\n" +
 	"\ffqdn_literal\x18\x01 \x01(\tH\x00R\vfqdnLiteral\x12,\n" +
 	"\x11endpoint_fqdn_ref\x18\x02 \x01(\tH\x00R\x0fendpointFqdnRef\x12\x1f\n" +

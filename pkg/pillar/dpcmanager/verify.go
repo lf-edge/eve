@@ -23,6 +23,9 @@ const (
 
 func (m *DpcManager) restartVerify(ctx context.Context, reason string) {
 	m.Log.Noticef("DPC verify: Restarting verification, reason: %s", reason)
+	// Increment to signal mgmt dnsmasq (via the dep-graph) to flush its DNS cache
+	// before the connectivity test, ensuring fresh resolution against the new DPC.
+	m.dnsCacheClearCounter++
 
 	if m.dpcVerify.inProgress {
 		m.Log.Noticef("DPC verify: DPC list verification in progress")

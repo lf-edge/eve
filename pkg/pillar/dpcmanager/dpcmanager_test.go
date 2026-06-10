@@ -273,19 +273,21 @@ func ipRoutesCb(table int, ipv6 bool) func() []linux.Route {
 func dnsServers(ifName string) []net.IP {
 	currentState, release := dpcReconciler.GetCurrentState()
 	defer release()
-	itemRef := dg.Reference(generic.ResolvConf{})
+	itemRef := dg.Reference(generic.MgmtDnsmasq{})
 	item, _, _, found := currentState.Item(itemRef)
 	if !found {
 		return nil
 	}
-	resolvConf, ok := item.(generic.ResolvConf)
+	mgmtDnsmasq, ok := item.(generic.MgmtDnsmasq)
 	if !ok {
 		return nil
 	}
-	if resolvConf.DNSServers == nil {
-		return nil
+	for _, port := range mgmtDnsmasq.Ports {
+		if port.IfName == ifName {
+			return port.DNSServers
+		}
 	}
-	return resolvConf.DNSServers[ifName]
+	return nil
 }
 
 func dnsServersCb(ifName string) func() []net.IP {

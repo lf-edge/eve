@@ -115,7 +115,6 @@ type getconfigContext struct {
 	pubEdgeNodeInfo            pubsub.Publication
 	pubPatchEnvelopeInfo       pubsub.Publication
 	subPatchEnvelopeStatus     pubsub.Subscription
-	subCachedResolvedIPs       pubsub.Subscription
 	NodeAgentStatus            *types.NodeAgentStatus
 	configProcessingRV         configProcessingRetval
 	lastReceivedConfig         time.Time // controller or local clocks
@@ -157,16 +156,6 @@ type getconfigContext struct {
 	currentMetricInterval uint32
 
 	configEdgeview *types.EdgeviewConfig // edge-view config save
-}
-
-func (ctx *getconfigContext) getCachedResolvedIPs(hostname string) []types.CachedIP {
-	if ctx.subCachedResolvedIPs == nil {
-		return nil
-	}
-	if item, err := ctx.subCachedResolvedIPs.Get(hostname); err == nil {
-		return item.(types.CachedResolvedIPs).CachedIPs
-	}
-	return nil
 }
 
 // current devUUID from OnboardingStatus
@@ -452,7 +441,6 @@ func initZedcloudContext(getconfigCtx *getconfigContext,
 		DevSoftSerial:       hardware.GetSoftSerial(log),
 		DevUUID:             devUUID,
 		AgentName:           agentName,
-		ResolverCacheFunc:   getconfigCtx.getCachedResolvedIPs,
 		// Enable all net traces but packet capture, which is already covered
 		// by NIM (for the ping request).
 		NetTraceOpts: []nettrace.TraceOpt{

@@ -43,4 +43,7 @@ const (
 	// WpaSupplicantTypename : typename for wpa_supplicant program
 	// (Wi-Fi Protected Access client and IEEE 802.1X supplicant).
 	WpaSupplicantTypename = "WPA-Supplicant"
+	// MgmtDnsmasqTypename : typename for singleton item representing the management
+	// dnsmasq instance that forwards DNS queries for management traffic.
+	MgmtDnsmasqTypename = "Mgmt-Dnsmasq"
 )

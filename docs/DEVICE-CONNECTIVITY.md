@@ -203,6 +203,38 @@ management plane and the deployed applications.
 > This should not be treated as a permanent solution — the correct long-term fix is to
 > update or correct the DHCP server configuration rather than relying on overrides.
 
+## DNS Resolution for Management Traffic
+
+EVE may have multiple management ports, each with its own DNS servers (provided by DHCP,
+configured statically, or both). To ensure reliable hostname resolution for all management
+traffic regardless of how many DNS servers are configured, EVE runs a management DNS forwarder
+on `127.0.0.1:53`. All processes on the device, including EVE management code, shell tools,
+and diagnostics, resolve hostnames through this forwarder.
+
+`/etc/resolv.conf` always contains a single nameserver entry pointing to the forwarder:
+
+```text
+nameserver 127.0.0.1
+```
+
+The forwarder pools DNS servers from all management ports. When resolving a hostname, servers
+from lower-cost ports are tried first, following the same cost ordering described in
+[Load spreading and failover](#load-spreading-and-failover). If a lower-cost port’s DNS server
+is unavailable or unresponsive, the forwarder falls back to higher-cost port servers.
+
+**Search domains**: DHCP-provided search domains are collected from all management ports and
+written to the `search` line in `/etc/resolv.conf`. This allows unqualified hostnames to be
+expanded with the configured search domains before DNS resolution. The association between
+each search domain and its source port is preserved: queries for names that fall within a
+port's search domain are forwarded to that port's DNS servers. This keeps private DNS zones
+on different networks isolated even when search domains from multiple ports are active
+simultaneously.
+
+**Per-port DNS errors**: Because all management ports share one DNS pool, a port whose own
+DNS servers cannot resolve the controller hostname will not be flagged with a per-port DNS
+error if another management port’s servers resolve it successfully. Per-port error reporting
+therefore reflects network reachability rather than per-port DNS resolution ability.
+
 ## Load spreading and failover
 
 Load spreading means that there are two or more similar uplink networks, for instance
@@ -840,6 +872,11 @@ Interface Manager (NIM for short):
  DPC. For every port it shows the currently assigned IP addresses, DNS servers, IP-based geolocation
  info, MAC address, administrative status (up/down), WiFi/cellular-specific details for wireless
  interfaces and more.
+
+- `/run/nim/dnsmasq.mgmt.servers`: lists the upstream DNS servers currently used by the management
+ DNS forwarder, grouped by port in cost-ascending order. Useful for verifying which DNS servers
+ are in effect and in what priority order. See [DNS Resolution for Management Traffic](#dns-resolution-for-management-traffic)
+ for more context.
 
 Additionally, NIM outputs the current and the intended state of the configuration into
 `/run/nim-current-state.dot` and `/run/nim-intended-state.dot`, respectively.
