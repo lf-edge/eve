@@ -10,7 +10,7 @@ FROM lfedge/eve-dom0-ztools:d5f5afd215f264447472b3bf329af23d67244662 AS dom0
 # These use autoconf/automake with many -dev dependencies, so for now they
 # remain under QEMU emulation when cross-building.
 # ===========================================================================
-FROM lfedge/eve-alpine:325b12087b386811fdb9d3c0adffa5fb94a34b95 AS build-c
+FROM lfedge/eve-alpine:956e170f3908aa5148b0ddb130e60fd862c7988b AS build-c
 ENV BUILD_PKGS="gcc g++ autoconf automake libtool make openssl-dev libtasn1-dev \
     json-glib-dev gnutls bash expect gawk socat libseccomp-dev gmp-dev \
     musl-utils autoconf-archive git json-c json-c-dev libcurl curl-dev \
@@ -99,7 +99,7 @@ RUN rm /out/usr/lib/libprotoc.so*
 # This avoids QEMU, which is known to deadlock on go vet / go build.
 # ===========================================================================
 # hadolint ignore=DL3029
-FROM --platform=$BUILDPLATFORM lfedge/eve-alpine:325b12087b386811fdb9d3c0adffa5fb94a34b95 AS build-go
+FROM --platform=$BUILDPLATFORM lfedge/eve-alpine:956e170f3908aa5148b0ddb130e60fd862c7988b AS build-go
 ARG TARGETARCH
 
 WORKDIR /vtpm-build
