@@ -666,7 +666,7 @@ This remains a viable option for a future phase (see [Future: GRUB-Based Extensi
 
 Store the Extension Image as a file on the PERSIST partition, with A/B copies managed by `baseosmgr`.
 
-**Chosen.** This approach works for both installation and updates with no partition layout changes. The security analysis below explains how integrity is maintained despite PERSIST being a read-write partition.
+**Chosen.** This approach works for both installation and updates with no partition layout changes. The security analysis below explains how integrity and authenticity are maintained (via dm-verity) despite PERSIST being a read-write partition.
 
 **How PERSIST encryption works (and why it matters):**
 
@@ -674,73 +674,59 @@ Only `/persist/vault/` is encrypted (via fscrypt on ext4 or native ZFS encryptio
 
 The PERSIST partition is mounted early by `storage-init.sh`, **before** vault unsealing and before most pillar agents start. This means Extension Loader can access the Extension Image early in the boot process, without waiting for TPM/vault operations.
 
-**Placement within PERSIST — two sub-options:**
+**Placement within PERSIST — plaintext root (as built):**
 
-**A) Plaintext on PERSIST root (`/persist/ext-imga.img`, `/persist/ext-imgb.img`)**
+The Extension Image is stored at `/persist/ext-imga.img` / `/persist/ext-imgb.img` — plaintext on the PERSIST root, **not** inside the vault:
 
 ```
-Boot ordering:
+Boot ordering (as built):
   storage-init mounts /persist     ← Extension Image accessible HERE
       ↓
-  extsloader verifies + mounts     ← runs immediately, no vault dependency
+  extsloader verifies + mounts     ← runs early, no vault dependency;
+                                     measures the Extension into PCR 12
       ↓
-  vaultmgr unseals vault           ← happens in parallel, not a blocker
+  vaultmgr unseals vault           ← WAITS for extsloader to finish first,
+                                     so PCR 12 is final before seal/unseal
 ```
 
-- Extension services start early (before vault unlock)
-- No dependency on TPM/vault for Extension loading
-- Digest verification catches any tampering at boot
+- Extension services start early, with no dependency on TPM/vault for loading.
+- **The ordering is deliberately inverted from a "wait for vault" model.** Because the Extension is measured into PCR 12 and PCR 12 is part of the disk-key sealing policy, `vaultmgr` (and `zedagent` attestation) **wait for extsloader to reach a terminal state** before sealing/unsealing/attesting. The Extension therefore *cannot* live inside the vault — it must be readable and measurable before the vault is unlocked. Plaintext placement is a requirement of this ordering, not just a convenience.
+- Integrity and authenticity come from **dm-verity** (see below), not from vault encryption.
 
-**B) Inside vault (`/persist/vault/ext-imga.img`, `/persist/vault/ext-imgb.img`)**
-
-```
-Boot ordering:
-  storage-init mounts /persist     ← vault/ encrypted, Extension NOT accessible
-      ↓
-  vaultmgr unseals vault           ← must complete first
-      ↓
-  extsloader verifies + mounts     ← can only run AFTER vault unlock
-```
-
-- Extension services start later (after vault unlock)
-- Adds offline tamper protection: an attacker who boots from USB cannot read or modify the Extension Image (encrypted by TPM-sealed key)
-- Prevents offline DoS attack: attacker cannot delete/corrupt Extension Image to force degraded mode
-- **Trade-off during updates:** when PCRs change after an OS update, the vault cannot be unsealed until the controller provides the backup key. During this window, Extension Image is inaccessible. However, Core services (including controller communication) run independently of vault, so recovery proceeds normally.
-
-**Decision: Vault placement (option B) is preferred** for its offline DoS prevention properties. The later startup is acceptable because Extension services are non-critical by design. The update-time vault recovery works because Core services handle controller communication independently.
+**Why not inside the vault:** vault placement would force extsloader to run *after* vault unlock, which is incompatible with measuring the Extension into PCR 12 *before* the disk key is sealed/unsealed. It would also stall the Extension during the post-update window when PCRs have changed and the vault is waiting on the controller's backup key. The only property vault placement would add is offline *confidentiality* of the Extension — and the Extension contains only EVE service images, no secrets, so that property is not needed.
 
 **A/B naming convention on PERSIST:**
 
 ```
-/persist/vault/ext-imga.img  ← Extension for when IMGA is active
-/persist/vault/ext-imgb.img  ← Extension for when IMGB is active
+/persist/ext-imga.img  ← Extension for when IMGA is active
+/persist/ext-imgb.img  ← Extension for when IMGB is active
 ```
 
 Extension Loader determines which file to load based on the currently active partition (from `zboot.GetCurrentPartition()`). During updates, `baseosmgr` writes the new Extension Image to the file corresponding to the inactive partition, alongside writing the new Core to the inactive IMGA/IMGB.
 
 **Security on a read-write partition:**
 
-The Extension Image lives on a writable filesystem. This is addressed by multiple layers:
+The Extension Image lives on a writable, plaintext filesystem. Trust comes from **dm-verity**, not from where the file sits:
 
-| Attack | Without vault | With vault |
-|--------|--------------|------------|
-| Offline attacker replaces Extension | Modified file fails digest → degraded mode (DoS only) | Cannot access encrypted directory |
-| Offline attacker deletes Extension | Missing file → degraded mode (DoS only) | Cannot access encrypted directory |
-| Runtime attacker replaces Extension | Caught on next boot by digest; current boot unaffected (already mounted read-only) | Same (vault is unlocked at runtime) |
+| Attack | Outcome |
+|--------|---------|
+| Offline attacker replaces or modifies Extension | dm-verity root hash (anchored in Core) no longer matches → `veritysetup open` / block reads fail → Extension not loaded → degraded mode (DoS only) |
+| Offline attacker deletes Extension | Missing file → degraded mode (DoS only); extsloader self-heals by re-extracting the Extension from the base-OS image in the local containerd CAS |
+| Runtime attacker modifies the mounted Extension | dm-verity returns an I/O error on the first tampered block read — per-block verification protects the image continuously, not just at load time |
+| Offline attacker reads Extension contents | Possible (plaintext), but the Extension holds only EVE service images — no secrets — so confidentiality is not required |
 
-The digest verification (SHA256 embedded in Core Image, which is measured into PCR 13) ensures that a tampered Extension Image is **never loaded**. The attacker cannot run malicious code via a modified Extension — they can only cause a denial of service (degraded mode). Vault placement prevents even that DoS for offline attackers.
-
-Runtime integrity (detecting tampering of the Extension file while the system is running) is provided by erofs + dm-verity — see [Image Format](#2-image-format).
+The dm-verity root hash is embedded in the Core Image (`/etc/ext-verity-roothash`), and the Core is measured into PCR 13 by GRUB. The root hash is therefore the trust anchor: only the exact Extension built alongside that Core verifies. A tampered or substituted Extension is **never loaded**, so an attacker cannot run malicious code via the Extension — at most a denial of service (degraded mode), and even that is mitigated by CAS self-heal. extsloader additionally measures the verified Extension into PCR 12 — see [Image Format](#2-image-format).
 
 **Summary: Why PERSIST over alternatives**
 
-| Requirement | PERSIST (vault) | IMGA/IMGB append | EXTA/EXTB |
+| Requirement | PERSIST (plaintext + dm-verity) | IMGA/IMGB append | EXTA/EXTB |
 |-------------|----------------|-------------------|-----------|
 | Works on old 300MB devices | Yes | No (too tight) | Needs migration |
 | Works on ZFS devices | Yes | N/A | No (can't shrink) |
 | No partition layout changes | Yes | Yes | No |
 | A/B rollback | Via naming convention | Free | Free |
-| Offline tamper protection | Yes (vault encrypted) | No (raw partition) | Possible (GRUB measure) |
+| Tamper protection | Yes (dm-verity, per-block at runtime) | No (raw partition) | Possible (GRUB measure) |
+| PCR 12 measurement before vault unseal | Yes (plaintext, read early) | Yes | Yes |
 | GRUB-level measurement | No (userspace PCR 12) | No | Yes |
 | Same path for install + update | Yes | Yes | Yes |
 
@@ -790,17 +776,18 @@ Split the monolithic rootfs into two images:
 1. UEFI loads GRUB                    (measured into PCRs 0-7)
 2. GRUB loads kernel                  (measured into PCR 4)
 3. Kernel mounts Core Image           (already measured into PCR 13 by GRUB)
-4. storage-init mounts /persist       (plaintext accessible; vault still locked)
+4. storage-init mounts /persist       (plaintext; Extension accessible here)
 5. Core services start (pillar, nim, zedagent, vaultmgr, extsloader)
-6. vaultmgr unseals /persist/vault/   (TPM releases key based on PCRs)
-7. Extension Loader runs (after vault unlock):
+6. Extension Loader runs early (no vault dependency):
    a. Determine active partition (IMGA or IMGB)
-   b. Find Extension Image at /persist/vault/ext-{active}.img
+   b. Find Extension Image at /persist/ext-{active}.img
    c. Read dm-verity root hash from /hostfs/etc/ext-verity-roothash
-   d. Set up loop device + dm-verity (veritysetup)
+   d. Set up dm-verity (veritysetup open, single-file --hash-offset)
    e. Measure Extension Image into PCR 12          ← NEW
    f. Mount verified erofs read-only
    g. Start services via containerd
+7. vaultmgr seals/unseals /persist/vault/ — WAITS for extsloader first,
+   so PCR 12 is final before the key operation (TPM key based on PCRs)
 8. Attestation sends all PCRs (including PCR 12) to controller
 ```
 
@@ -889,12 +876,12 @@ The Extension Loader verifies the Extension Image using dm-verity before mountin
 │     (embedded in Core squashfs at build time,                   │
 │      Core squashfs measured into PCR 13 by GRUB)                │
 │                                                                 │
-│  2. Find Extension Image at /persist/vault/ext-{active}.img     │
+│  2. Find Extension Image at /persist/ext-{active}.img           │
 │                                                                 │
-│  3. Set up loop device on the Extension Image file              │
+│  3. Open dm-verity on the file (no loop device)                 │
 │                                                                 │
-│  4. Set up dm-verity: veritysetup open loop-dev ext-verified    │
-│     --root-hash <trusted-hash>                                  │
+│  4. Set up dm-verity: veritysetup open <img> ext-verified       │
+│     <root-hash> --hash-offset <data-size>                       │
 │     ├─► Success: dm-verity device /dev/mapper/ext-verified      │
 │     └─► Failure: root hash mismatch → run degraded              │
 │                                                                 │
@@ -920,7 +907,7 @@ The Extension Image exists in different locations depending on the lifecycle sta
 | **Staging** | Temporary location while preparing for use | (may not be needed if discover = load) |
 | **Load** | Where the image is actually mounted and used | The partition device (e.g., same as discover) |
 
-**Key requirement:** Integrity MUST be verified at the Load location (not just at discover). The digest check and PCR 12 measurement happen on the image that is actually mounted.
+**Key requirement:** Integrity MUST be verified at the Load location (not just at discover). The dm-verity verification and PCR 12 measurement happen on the image that is actually mounted.
 
 #### Workflows by Use Case
 
@@ -928,22 +915,20 @@ The Extension Image exists in different locations depending on the lifecycle sta
 ```
 1. Installer writes Core Image to IMGA partition (same as today's rootfs)
 2. Installer initializes PERSIST partition (ext4 or ZFS)
-3. vaultmgr creates /persist/vault/ on first boot
-4. Installer (or first-boot script) writes Extension Image to /persist/vault/ext-imga.img
-   → extension.img is included in the installer media at /bits/extension.img
-5. Extension Loader waits for vault unlock
-6. Sets up dm-verity (root hash from Core squashfs) → measures PCR 12 → mounts erofs → starts services
+3. Installer writes Extension Image to /persist/ext-imga.img
+   → rootfs-ext.img is included in the installer media at /bits/rootfs-ext.img
+4. On first boot, Extension Loader runs early (no vault dependency)
+5. Sets up dm-verity (root hash from Core squashfs) → measures PCR 12 → mounts erofs → starts services
 ```
 
 **Regular Boot (after installation):**
 ```
 1. GRUB boots Core Image from active partition (e.g., IMGA)
 2. storage-init mounts /persist
-3. Core services start (pillar, nim, zedagent, vaultmgr)
-4. vaultmgr unseals vault (TPM releases key because PCRs match)
-5. Extension Loader discovers /persist/vault/ext-imga.img
-6. Sets up dm-verity (root hash from Core) → measures PCR 12 → mounts erofs read-only → starts services
-7. Core + Extension operate as one system
+3. Core services start (pillar, nim, zedagent, vaultmgr, extsloader)
+4. Extension Loader discovers /persist/ext-imga.img (runs early, no vault dependency)
+5. Sets up dm-verity (root hash from Core) → measures PCR 12 → mounts erofs read-only → starts services
+6. vaultmgr unseals vault after extsloader has settled PCR 12; Core + Extension operate as one system
 ```
 
 **System Update (Core + Extension):**
@@ -951,13 +936,14 @@ The Extension Image exists in different locations depending on the lifecycle sta
 1. Controller pushes new EVE version (Core + Extension bundled)
 2. baseosmgr downloads and verifies the bundle via volumemgr (same as today)
 3. baseosmgr writes new Core Image to inactive partition (IMGB if IMGA is active)
-4. baseosmgr writes new Extension Image to /persist/vault/ext-imgb.img
+4. baseosmgr writes new Extension Image to /persist/ext-imgb.img
+   (extracts the OCI disk-0 from CAS; non-fatal on failure — extsloader self-heals from CAS post-reboot)
 5. Device reboots into IMGB
-6. vaultmgr recovers vault key (PCRs changed → controller provides backup key)
-7. Extension Loader sets up dm-verity for /persist/vault/ext-imgb.img (root hash from new Core) → measures → mounts erofs
-8. Testing window (same as current baseosmgr flow)
-9. On success: mark IMGB active; old /persist/vault/ext-imga.img preserved for rollback
-10. On failure: reboot into IMGA; old Core + old /persist/vault/ext-imga.img load normally
+6. Extension Loader sets up dm-verity for /persist/ext-imgb.img (root hash from new Core) → measures PCR 12 → mounts erofs
+7. vaultmgr recovers vault key after extsloader settles PCR 12 (PCRs changed → controller provides backup key)
+8. Testing window (gated on extsloader readiness; same baseosmgr flow otherwise)
+9. On success: mark IMGB active; old /persist/ext-imga.img preserved for rollback
+10. On failure: reboot into IMGA; old Core + old /persist/ext-imga.img load normally
 ```
 
 Note: Core and Extension are always the same version. There are no Extension-only updates.
@@ -967,8 +953,8 @@ Note: Core and Extension are always the same version. There are no Extension-onl
 Core + Extension are logically one unit. The A/B mechanism for Extension uses file naming on PERSIST:
 
 ```
-/persist/vault/ext-imga.img  ← Extension for IMGA (partition A)
-/persist/vault/ext-imgb.img  ← Extension for IMGB (partition B)
+/persist/ext-imga.img  ← Extension for IMGA (partition A)
+/persist/ext-imgb.img  ← Extension for IMGB (partition B)
 ```
 
 - Extension Loader reads `zboot.GetCurrentPartition()` to determine which file to load
@@ -1043,22 +1029,30 @@ If Extension Image fails (missing, corrupted, tampered), the device enters degra
 | Malicious OCI spec in Extension container | Mitigated | Extension Image is built by the same build system and verified by digest; spec is embedded in the verified image |
 | Extension service resource exhaustion | No (not applicable) | After loading, Core + Extension operate as one system; same resource model as today |
 
-### Current POC Gap
+### POC Gap — reconciled 2026-06-10
 
-The current POC (`pkg/pillar/cmd/extsloader/`) does NOT implement the full security model:
+The Extension Loader (`pkg/pillar/cmd/extsloader/`) now implements the full
+**runtime** security model in code — dm-verity, erofs, and PCR 12 measurement
+are all present. The remaining gap is **kernel-side** (see the note below the
+table).
 
-| Feature | Design | POC Status |
+| Feature | Design | Status |
 |---------|--------|------------|
 | Find Extension Image | ✓ | ✓ Implemented |
-| Set up dm-verity | Required | ✗ Missing |
-| Mount erofs | Required | ✗ Missing (uses squashfs) |
-| Measure into PCR 12 | Required | ✗ Missing |
+| Set up dm-verity | Required | ✓ Implemented (`veritysetup open`, single-file `--hash-offset`) |
+| Mount erofs | Required | ✓ Implemented (erofs, read-only) |
+| Measure into PCR 12 | Required | ✓ Implemented (sentinels: `starting` / `image-verified` / `services-running` / `failed`) |
 | Start services | ✓ | ✓ Implemented |
 | Universal HV selection | ✓ | ✓ Implemented (CONFIG-based) |
 | Installer support | ✓ | ✓ Implemented (`installer-split` target) |
 | ZFlash HV selection UI | ✓ | ✓ Implemented |
 
-**Before production, Extension Loader must be updated to use dm-verity/erofs and measure PCR 12.**
+**Remaining gap (kernel):** the stock pinned eve-kernel does **not** enable
+`CONFIG_EROFS_FS` or `CONFIG_DM_VERITY` (verified 2026-06-10 against
+`eve-kernel-amd64-v6.12.49-generic`, `arch/x86/configs/eve-core_defconfig`),
+so the erofs + dm-verity path requires a **custom kernel build** today.
+Enabling these in the stock kernel (Phase 1 below) is the last step before
+the feature can run on a stock image.
 
 See [POC Implementation Status](#poc-implementation-status) for details on what has been implemented.
 
@@ -1297,22 +1291,33 @@ See [Graceful Degradation](#graceful-degradation) for detailed behavior.
 
 ### 6. Extension Image Placement
 
-**Decision: On PERSIST partition, inside vault, with A/B naming convention.**
+**Decision: On PERSIST partition, plaintext root (not the vault), with A/B naming convention; trust via dm-verity.**
 
 See [Extension Image Placement Analysis](#extension-image-placement-analysis) for the full comparison of alternatives (IMGA/IMGB append, EXTA/EXTB partitions, PERSIST plaintext, PERSIST vault).
 
 Summary of the decision:
 
-- **Location**: `/persist/vault/ext-imga.img` and `/persist/vault/ext-imgb.img`
+- **Location**: `/persist/ext-imga.img` and `/persist/ext-imgb.img` (plaintext PERSIST root)
 - **A/B mechanism**: File naming tied to active partition; `baseosmgr` manages both files
-- **Vault**: Provides offline DoS prevention (encrypted, TPM-sealed)
+- **Not the vault**: the Extension is measured into PCR 12 and that measurement must complete *before* vault seal/unseal, so it must be readable before vault unlock; `vaultmgr`/`zedagent` therefore wait for extsloader. Vault would only add offline confidentiality, which is unneeded (the Extension holds no secrets).
 - **Why not IMGA/IMGB append**: Does not fit on old 300MB devices; GRUB `measurefs` only covers squashfs content
 - **Why not EXTA/EXTB**: Requires partition layout changes; ZFS devices cannot shrink P3; deferred to future phase
-- **Runtime integrity**: Addressed by erofs + dm-verity (see [Image Format](#2-image-format))
+- **Integrity & authenticity**: dm-verity (root hash in Core, per-block runtime verification); see [Image Format](#2-image-format)
 
 ---
 
 ## Implementation Plan
+
+> **Reconciled 2026-06-10 against the implementation.** Most of Phase 1
+> (build) and all of Phase 2 are now implemented; markers updated below.
+> Two as-built divergences from the original plan: (1) the Extension lives
+> on **plain PERSIST** (`/persist/ext-{slot}.img`), not inside the vault —
+> extsloader must read and measure it before vault unlock, so the ordering
+> is inverted (vaultmgr/zedagent **wait for extsloader** so PCR 12 is final
+> before seal/unseal/attest); (2) Core + Extension ship in a **single OCI
+> image** (Extension as `org.lfedge.eci.artifact.disk-0`), not a separate
+> bundled file format. The one true remaining gap is the **kernel config**
+> (`CONFIG_EROFS_FS`, `CONFIG_DM_VERITY`) — see the POC Gap note above.
 
 ### POC Phase (Complete)
 - [x] CONFIG-based HV override (GRUB, storage-init, onboot.sh)
@@ -1328,32 +1333,34 @@ Summary of the decision:
 - [x] QEMU boot test (`make UNIVERSAL=1 run-split`)
 
 ### Phase 1: Kernel + Build System Preparation
-- [ ] Enable `CONFIG_EROFS_FS=y` in EVE kernel build (eve-kernel repo)
-- [ ] Verify `CONFIG_DM_VERITY=y` in EVE kernel (likely already present)
-- [ ] Add `mkfs.erofs` to build tools (`erofs-utils` Alpine package)
-- [ ] Verify `veritysetup` available at runtime (part of `cryptsetup`)
-- [ ] Migrate Extension Image from squashfs to erofs
-- [ ] Generate dm-verity hash tree for Extension Image at build time
-- [ ] Embed dm-verity root hash in Core Image (`/etc/ext-verity-roothash`)
-- [ ] Create bundled update format (Core squashfs + Extension erofs)
+- [ ] Enable `CONFIG_EROFS_FS=y` in EVE kernel build (eve-kernel repo) — NOT done; stock `eve-core_defconfig` lacks it
+- [ ] Enable `CONFIG_DM_VERITY=y` in EVE kernel — NOT done; verified **absent** from stock `eve-core_defconfig` (it is *not* "already present")
+- [x] Add `mkfs.erofs` to build tools (new `pkg/mkrootfs-erofs`)
+- [x] Verify `veritysetup` available at runtime (`cryptsetup` added to Core)
+- [x] Migrate Extension Image from squashfs to erofs (`ROOTFS_EXT_FORMAT=erofs`)
+- [x] Generate dm-verity hash tree for Extension Image at build time (`tools/make-ext-verity.sh`)
+- [x] Embed dm-verity root hash in Core Image (`/etc/ext-verity-roothash`)
+- [x] Create bundled update format — Core + Extension in one OCI image (Extension as `org.lfedge.eci.artifact.disk-0`, `make eve-split`)
 
 ### Phase 2: Extension Loader + Integration
-- [ ] Extension Loader: wait for vault unlock, load from `/persist/vault/ext-{active}.img`
-- [ ] Extension Loader: A/B file selection based on `zboot.GetCurrentPartition()`
-- [ ] Extension Loader: set up loop device + dm-verity (`veritysetup open`)
-- [ ] Extension Loader: mount verified erofs read-only
-- [ ] Add PCR 12 measurement to Extension Loader
-- [ ] PCR 12 sentinel measurements (starting, loaded, failed)
-- [ ] Update `baseosmgr`: write Extension Image to `/persist/vault/ext-{inactive}.img` during updates
+- [x] Extension Loader: load Extension from `/persist/ext-{slot}.img` (plain PERSIST, **not** the vault — must read/measure before vault unlock; ordering inverted: vaultmgr/zedagent wait for extsloader)
+- [x] Extension Loader: A/B file selection based on `zboot.GetCurrentPartition()` (`ext-imga.img` / `ext-imgb.img`)
+- [x] Extension Loader: dm-verity setup (`veritysetup open`, single-file `--hash-offset`; no loop device needed)
+- [x] Extension Loader: mount verified erofs read-only (`/persist/exts`)
+- [x] Add PCR 12 measurement to Extension Loader
+- [x] PCR 12 sentinel measurements (`starting`, `image-verified`, `services-running`, `failed`)
+- [x] Update `baseosmgr`: write Extension to `/persist/ext-{inactive}.img` during updates (`WriteExtensionToPersist`, extracts OCI disk-0 from CAS; non-fatal — extsloader self-heals from CAS post-reboot)
 
 ### Phase 3: Testing
-- [ ] Verify attestation includes PCR 12
-- [ ] Test degraded mode (missing/corrupted Extension)
-- [ ] Test update scenarios (A/B on PERSIST, vault recovery)
-- [ ] Test rollback (old Core + old Extension loaded correctly)
-- [ ] Test offline tamper resistance (vault prevents modification)
-- [ ] Test dm-verity runtime integrity (tamper Extension file while mounted)
-- [ ] Benchmark erofs + dm-verity vs. squashfs performance
+> Covered by Eden driver scripts (`tests/eden/`), not Go unit tests and not in CI.
+- [ ] Verify attestation includes PCR 12 — extsloader-wait gate implemented (vaultmgr/zedagent); controller-side baseline acceptance still open
+- [~] Test degraded mode (missing/corrupted Extension) — Eden `prepare-broken-split-image.sh`
+- [~] Test update scenarios (monolith→split, OTA v1→v2) — Eden `prepare-split-rootfs-test.sh`
+- [~] Test rollback (broken Extension → testing-window expiry → rollback) — Eden script
+- [ ] Test offline tamper resistance — integrity now comes from dm-verity (I/O error on tampered block), not vault encryption; Extension is on plain PERSIST
+- [~] Test dm-verity runtime integrity (tamper Extension while mounted) — partial, via broken-image Eden test
+- [ ] Benchmark erofs + dm-verity vs. squashfs performance — NOT done
+- [ ] Go unit tests for extsloader / CAS extension extraction / baseosmgr extension handling — NOT done (no unit coverage)
 
 ### Phase 4: Integration
 - [ ] Controller-side PCR 12 awareness (if needed)
@@ -1526,7 +1533,7 @@ Once service split is stable, consider moving non-boot-critical drivers:
 
 ### Measuring Extension Image from GRUB
 
-Currently (Phase 1-2), the Extension Image lives on PERSIST (inside vault) and is measured into PCR 12 by the Extension Loader in userspace. A stronger approach would be to measure it from GRUB, the same way the Core rootfs is measured into PCR 13. This requires moving the Extension Image from PERSIST to a dedicated partition.
+Currently, the Extension Image lives on the plaintext PERSIST root and is measured into PCR 12 by the Extension Loader in userspace. A stronger approach would be to measure it from GRUB, the same way the Core rootfs is measured into PCR 13. This requires moving the Extension Image from PERSIST to a dedicated partition.
 
 **Prerequisites:**
 - Extension Image must be on a known partition at boot time (not on `/persist`)
@@ -1562,7 +1569,7 @@ Currently (Phase 1-2), the Extension Image lives on PERSIST (inside vault) and i
    - Can optionally keep userspace digest check as defense-in-depth
 4. Consider adding PCR 12 to sealing set (trade-off: no graceful degradation)
 5. Migration: on first boot with EXTA partition available, copy Extension from
-   /persist/vault/ to EXTA and switch to partition-based loading
+   /persist to EXTA and switch to partition-based loading
 ```
 
 This is planned for a future phase after the PERSIST-based split rootfs with erofs + dm-verity is stable.
