@@ -1747,6 +1747,15 @@ func (d *daemon) runHealthWorker(ctx context.Context, mon *monitor.Monitor, sup 
 		log.Printf("WARNING: registration check/apply: %v", err)
 	}
 
+	// SR-IOV manifest staging is per-tick + idempotent: hardware
+	// detection via /sys/bus/pci, content-compare to avoid
+	// rewriting the in-use sriov-cni binary, and the k3s auto-
+	// deploy dir picks up the DaemonSet on next k3s reconcile.
+	// No-op on non-SR-IOV hardware.
+	if err := components.InstallSRIOVManifests(); err != nil {
+		log.Printf("WARNING: install SR-IOV manifests: %v", err)
+	}
+
 	// Brownfield remediation: if SaveNodePassword detected a
 	// first-boot fresh-password case, it left a flag for us. Delete
 	// the now-stale cluster secret so k3s regenerates it against
