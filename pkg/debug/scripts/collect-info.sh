@@ -694,6 +694,13 @@ fi
 ln -s /persist/certs        "$DIR/persist-certs"
 ln -s /persist/status       "$DIR/persist-status"
 ln -s /persist/log          "$DIR/persist-log"
+# qemu trace files (per-VM simpletrace binary) live under /persist/log/qemu-trace/
+# and are already picked up via the persist-log symlink above.  Record a manifest
+# (filename + size) here so a reader of the bundle can spot them at a glance and
+# knows to decode with `scripts/simpletrace.py /usr/share/qemu-xen/trace-events-all`.
+if [ -d /persist/log/qemu-trace ]; then
+    ls -la /persist/log/qemu-trace/ > "$DIR/qemu-trace-manifest" 2>/dev/null
+fi
 [ -d /persist/kubelog ] && ln -s /persist/kubelog "$DIR/persist-kubelog"
 ln -s /persist/netdump      "$DIR/persist-netdump"
 ln -s /persist/kcrashes     "$DIR/persist-kcrashes"
