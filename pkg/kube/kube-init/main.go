@@ -48,6 +48,7 @@ import (
 
 	"github.com/lf-edge/eve/pkg/kube/kube-init/clustermode"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/components"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/edgenodeinfo"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/images"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/k3s"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/mgmtproxy"
@@ -492,8 +493,26 @@ func main() {
 	}
 	log.Printf("pubsub manager constructed (agent=%s)", pubsubclient.AgentName)
 
+	// Register all topic subscribers before psMgr.Run starts —
+	// the Manager activates registered subscriptions at Run time
+	// so the order of registration calls doesn't matter, but
+	// every subscriber must be registered first.
+	if err := edgenodeinfo.Register(psMgr); err != nil {
+		log.Fatalf("register EdgeNodeInfo subscription: %v", err)
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// Drive the pubsub event loop on its own goroutine. Returns
+	// when ctx is cancelled (signal handler below). The Run loop
+	// blocks until then; subscribers see deliveries as soon as
+	// pillar has published.
+	go func() {
+		if err := psMgr.Run(ctx); err != nil && ctx.Err() == nil {
+			log.Printf("pubsub run loop exited unexpectedly: %v", err)
+		}
+	}()
 
 	d := &daemon{
 		installKubevirt: true,

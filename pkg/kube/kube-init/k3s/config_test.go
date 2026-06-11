@@ -21,7 +21,7 @@ import (
 // shadowPaths reroutes the package's well-known paths onto tmp dirs
 // for the lifetime of a single test. The returned configDir is the
 // new value of K3sConfigDir.
-func shadowPaths(t *testing.T) (configDir, userOverrideSrc, encStatus, clusterCfg, edgeNodeInfo string) {
+func shadowPaths(t *testing.T) (configDir, userOverrideSrc, encStatus, clusterCfg string) {
 	t.Helper()
 	dir := t.TempDir()
 	configDir = filepath.Join(dir, "k3s-cfg")
@@ -31,22 +31,19 @@ func shadowPaths(t *testing.T) (configDir, userOverrideSrc, encStatus, clusterCf
 	userOverrideSrc = filepath.Join(dir, "user-override.yaml")
 	encStatus = filepath.Join(dir, "EdgeNodeClusterStatus.json")
 	clusterCfg = filepath.Join(dir, "EdgeNodeClusterConfig.json")
-	edgeNodeInfo = filepath.Join(dir, "EdgeNodeInfo.json")
 
-	origCD, origUO, origES, origCC, origENI, origCW :=
-		K3sConfigDir, UserOverrideSrc, EncStatusFile, ClusterConfigFile, EdgeNodeInfoPath, clusterWaitFile
+	origCD, origUO, origES, origCC, origCW :=
+		K3sConfigDir, UserOverrideSrc, EncStatusFile, ClusterConfigFile, clusterWaitFile
 	K3sConfigDir = configDir
 	UserOverrideSrc = userOverrideSrc
 	EncStatusFile = encStatus
 	ClusterConfigFile = clusterCfg
-	EdgeNodeInfoPath = edgeNodeInfo
 	clusterWaitFile = filepath.Join(dir, "cluster-wait")
 	t.Cleanup(func() {
 		K3sConfigDir = origCD
 		UserOverrideSrc = origUO
 		EncStatusFile = origES
 		ClusterConfigFile = origCC
-		EdgeNodeInfoPath = origENI
 		clusterWaitFile = origCW
 	})
 	return
@@ -148,7 +145,7 @@ func TestClusterTypeIsValid(t *testing.T) {
 }
 
 func TestGetClusterStatusRoundTrip(t *testing.T) {
-	_, _, encStatus, _, _ := shadowPaths(t)
+	_, _, encStatus, _ := shadowPaths(t)
 	payload := `{
         "ClusterInterface": "eth0",
         "BootstrapNode": true,
@@ -184,7 +181,7 @@ func TestGetClusterStatusMissingFile(t *testing.T) {
 }
 
 func TestGetClusterTypeBranches(t *testing.T) {
-	_, _, _, clusterCfg, _ := shadowPaths(t)
+	_, _, _, clusterCfg := shadowPaths(t)
 
 	// Missing file → Replicated, no error.
 	ct, err := GetClusterType()
@@ -224,7 +221,7 @@ func TestGetClusterTypeBranches(t *testing.T) {
 }
 
 func TestWriteNodeName(t *testing.T) {
-	configDir, _, _, _, _ := shadowPaths(t)
+	configDir, _, _, _ := shadowPaths(t)
 	if err := WriteNodeName("My_Node_01"); err != nil {
 		t.Fatalf("WriteNodeName: %v", err)
 	}
@@ -238,7 +235,7 @@ func TestWriteNodeName(t *testing.T) {
 }
 
 func TestApplyUserOverridesBranches(t *testing.T) {
-	configDir, userOverride, _, _, _ := shadowPaths(t)
+	configDir, userOverride, _, _ := shadowPaths(t)
 	dst := filepath.Join(configDir, UserOverrideConfig)
 
 	// No src, no dst → no change, no error.
@@ -297,7 +294,7 @@ func TestApplyUserOverridesBranches(t *testing.T) {
 }
 
 func TestProvisionDisableLocalPathBranches(t *testing.T) {
-	configDir, _, _, clusterCfg, _ := shadowPaths(t)
+	configDir, _, _, clusterCfg := shadowPaths(t)
 	dlp := filepath.Join(configDir, DisableLocalPath)
 
 	cases := []struct {
@@ -441,7 +438,7 @@ func TestWriteJoinConfigShape(t *testing.T) {
 }
 
 func TestWaitForBootstrapServerHappyPath(t *testing.T) {
-	_, _, encStatus, _, _ := shadowPaths(t)
+	_, _, encStatus, _ := shadowPaths(t)
 
 	// EncStatusFile must exist so the in-loop stat doesn't trip the
 	// withdrawn-config path.
@@ -466,7 +463,7 @@ func TestWaitForBootstrapServerHappyPath(t *testing.T) {
 }
 
 func TestWaitForBootstrapServerUUIDMismatchRetries(t *testing.T) {
-	_, _, encStatus, _, _ := shadowPaths(t)
+	_, _, encStatus, _ := shadowPaths(t)
 	if err := os.WriteFile(encStatus, []byte("{}"), 0644); err != nil {
 		t.Fatalf("seed: %v", err)
 	}

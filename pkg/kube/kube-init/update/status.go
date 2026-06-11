@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+
+	"github.com/lf-edge/eve/pkg/kube/kube-init/edgenodeinfo"
 )
 
 // Per-component lifecycle stages reported back to pillar. These
@@ -39,7 +41,7 @@ func PublishUpdateStatus(component, status, errorStr string) {
 		return
 	}
 
-	nodeName := readDeviceName()
+	nodeName := edgenodeinfo.DeviceName()
 	if nodeName == "" {
 		log.Printf("update: cannot publish %s/%s, device name unavailable",
 			component, status)

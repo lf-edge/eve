@@ -20,12 +20,6 @@ var (
 	// pubsub payload. Read for a desired k3sVersion override.
 	KubeConfigPath = "/persist/status/zedkube/KubeConfig/global.json"
 
-	// EdgeNodeInfoPath holds the EdgeNodeInfo status the daemon
-	// uses to derive the local node's Kubernetes name when
-	// publishing per-node update status. The publication is not
-	// Persistent so it lives only under /run.
-	EdgeNodeInfoPath = "/run/zedagent/EdgeNodeInfo/global.json"
-
 	// kcusFilePath is the KubeClusterUpdateStatus pubsub file. The
 	// publisher's AgentName is "zedagent" (see zedkube.go's
 	// NewPublication call), so the file lives under .../zedagent/,

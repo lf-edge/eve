@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/kube/kube-init/edgenodeinfo"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
 )
 
@@ -148,23 +149,12 @@ type encConfigJSON struct {
 	ClusterType *int `json:"ClusterType"`
 }
 
-// edgeNodeInfo is the minimal subset of pillar's EdgeNodeInfo
-// pubsub payload we need. Field names MUST stay in sync with
-// pkg/pillar/types/edgenodetypes.go: a rename there will silently
-// zero our reads. We avoid importing pillar/types here because
-// that package pulls in eve-api, pubsub, netlink, satori-uuid,
-// and ~100 other files — a heavy dependency for two string reads.
-type edgeNodeInfo struct {
-	DeviceName string `json:"DeviceName"`
-	DeviceID   string `json:"DeviceID"`
-}
-
 // Configure renders every k3s drop-in needed for this device.
 // Idempotent: safe to re-run.
 func Configure(ctx context.Context) error {
-	deviceName, err := readDeviceName()
-	if err != nil {
-		return fmt.Errorf("read device name: %w", err)
+	deviceName := edgenodeinfo.DeviceName()
+	if deviceName == "" {
+		return fmt.Errorf("EdgeNodeInfo subscription has not delivered yet (DeviceName empty)")
 	}
 
 	initialized, err := state.IsMarked(state.AllComponentsInitialized)
@@ -745,41 +735,6 @@ func provisionDisableLocalPath() error {
 	// leaving the existing drop-in in an indeterminate state.
 	log.Printf("unknown ClusterType %d: defaulting to replicated behaviour", ct)
 	return state.AtomicWriteFile(dlpPath, []byte(disableLocalPathContent), 0644)
-}
-
-// readEdgeNodeInfo reads the EdgeNodeInfo pubsub payload and
-// returns (DeviceName, DeviceID). Both fields are required —
-// EdgeNodeInfo is only published once onboarding completes, so a
-// missing field at this stage signals a corrupted payload, not a
-// transient race.
-//
-// Source of UUID matters: pillar sets the kernel hostname to the
-// device *serial* before onboarding and only switches it to the
-// UUID afterwards, so os.Hostname() is not a safe source from
-// inside the kube container.
-func readEdgeNodeInfo() (deviceName, deviceID string, err error) {
-	data, err := os.ReadFile(EdgeNodeInfoPath)
-	if err != nil {
-		return "", "", fmt.Errorf("read %s: %w", EdgeNodeInfoPath, err)
-	}
-	var info edgeNodeInfo
-	if err := json.Unmarshal(data, &info); err != nil {
-		return "", "", fmt.Errorf("parse %s: %w", EdgeNodeInfoPath, err)
-	}
-	if info.DeviceName == "" {
-		return "", "", fmt.Errorf("DeviceName is empty in %s", EdgeNodeInfoPath)
-	}
-	if info.DeviceID == "" {
-		return "", "", fmt.Errorf("DeviceID is empty in %s", EdgeNodeInfoPath)
-	}
-	return info.DeviceName, info.DeviceID, nil
-}
-
-// readDeviceName returns just the DeviceName from EdgeNodeInfo,
-// for callers (e.g. Configure) that do not need the UUID yet.
-func readDeviceName() (string, error) {
-	name, _, err := readEdgeNodeInfo()
-	return name, err
 }
 
 // bracketIPv6 wraps an IPv6 address in square brackets for use inside

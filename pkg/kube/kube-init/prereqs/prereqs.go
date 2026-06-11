@@ -24,6 +24,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/kube/kube-init/edgenodeinfo"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/k3s"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/mgmtproxy"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
@@ -89,11 +90,6 @@ var kernelModules = []string{"tun", "vhost_net", "fuse", "iscsi_tcp"}
 // uuidRegexp validates an RFC-4122 UUID string (lowercase or upper).
 var uuidRegexp = regexp.MustCompile(
 	`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
-
-// edgeNodeInfo is the subset of EdgeNodeInfo JSON we consume.
-type edgeNodeInfo struct {
-	DeviceName string `json:"DeviceName"`
-}
 
 // RunAll orchestrates every prerequisite in the order the FSM needs:
 // logging+filesystem layout → kernel modules → cgroups → network →
@@ -514,27 +510,21 @@ func MountKubeRoot() error {
 // Device identity + EVE release
 // ---------------------------------------------------------------------------
 
-// WaitDeviceName blocks until EdgeNodeInfo arrives, returning the
-// operator-chosen DeviceName and the device UUID (from /bin/hostname,
-// validated against the RFC-4122 shape).
+// WaitDeviceName blocks until the EdgeNodeInfo subscription
+// delivers its first payload, returning the operator-chosen
+// DeviceName and the device UUID (from /bin/hostname, validated
+// against the RFC-4122 shape).
 //
 // The Kubernetes node-name drop-in is rendered later by k3s.Configure
 // — this function only resolves identity.
 func WaitDeviceName(ctx context.Context) (deviceName, uuid string, err error) {
 	log.Printf("waiting for device name from controller")
-	if err := waitForFile(ctx, k3s.EdgeNodeInfoPath, defaultPollInterval); err != nil {
-		return "", "", err
-	}
-	data, err := os.ReadFile(k3s.EdgeNodeInfoPath)
+	info, err := edgenodeinfo.WaitForFirst(ctx)
 	if err != nil {
-		return "", "", fmt.Errorf("read %s: %w", k3s.EdgeNodeInfoPath, err)
-	}
-	var info edgeNodeInfo
-	if err := json.Unmarshal(data, &info); err != nil {
-		return "", "", fmt.Errorf("parse %s: %w", k3s.EdgeNodeInfoPath, err)
+		return "", "", fmt.Errorf("wait for EdgeNodeInfo: %w", err)
 	}
 	if info.DeviceName == "" {
-		return "", "", fmt.Errorf("DeviceName is empty in %s", k3s.EdgeNodeInfoPath)
+		return "", "", fmt.Errorf("DeviceName is empty in EdgeNodeInfo subscription")
 	}
 	log.Printf("device name: %s", info.DeviceName)
 

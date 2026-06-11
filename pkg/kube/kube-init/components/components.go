@@ -13,7 +13,6 @@ package components
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -24,7 +23,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/kube/kube-init/deploy"
-	"github.com/lf-edge/eve/pkg/kube/kube-init/k3s"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/edgenodeinfo"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kubectlx"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
 )
@@ -1009,22 +1008,14 @@ spec:
 	return nil
 }
 
-// readDeviceK8sName reads EdgeNodeInfo and returns the device name
-// in Kubernetes-node-name form. Returns "" on any read or parse
-// failure — callers treat "" as "not yet available, try again later".
+// readDeviceK8sName returns the device name in Kubernetes-node-
+// name form, sourced from the EdgeNodeInfo subscription cache.
+// Returns "" if the subscription has not delivered yet — callers
+// treat "" as "not yet available, try again later".
 func readDeviceK8sName() string {
-	data, err := os.ReadFile(k3s.EdgeNodeInfoPath)
-	if err != nil {
+	name := edgenodeinfo.DeviceName()
+	if name == "" {
 		return ""
 	}
-	var info struct {
-		DeviceName string `json:"DeviceName"`
-	}
-	if err := json.Unmarshal(data, &info); err != nil {
-		return ""
-	}
-	if info.DeviceName == "" {
-		return ""
-	}
-	return state.ToK8sName(info.DeviceName)
+	return state.ToK8sName(name)
 }
