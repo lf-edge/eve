@@ -227,6 +227,45 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 }
 
+// zvolReconcileAction is the outcome decided for a stored zVolDeviceEvent.
+type zvolReconcileAction int
+
+const (
+	// zvolRetry leaves the event in the map to re-examine on the next tick.
+	zvolRetry zvolReconcileAction = iota
+	// zvolPublish (re)publishes ZVolStatus and then drops the event.
+	zvolPublish
+	// zvolUnpublish removes a published ZVolStatus and then drops the event.
+	zvolUnpublish
+	// zvolDrop discards the event without changing any ZVolStatus.
+	zvolDrop
+)
+
+// decideZVolAction reconciles a stored device event against reality.
+//
+// The stored event is only a trigger. fsnotify Create/Remove events are kept
+// in a map keyed by device path, so a Remove can overwrite a still-unprocessed
+// Create for the same path when a zvol is removed and recreated in quick
+// succession (e.g. an app purge that recreates the volume, with mdev churning
+// the /dev/zvol symlink). Trusting such a coalesced Remove would leave the
+// live device without a ZVolStatus, stranding volumemgr (and the app) forever.
+// The actual on-disk presence of the device is therefore authoritative, not
+// event.delete: publish whenever the device exists, and only unpublish when it
+// is really gone.
+func decideZVolAction(event zVolDeviceEvent, devicePresent, statusPublished bool) zvolReconcileAction {
+	if devicePresent {
+		return zvolPublish
+	}
+	if !event.delete {
+		// Create event but the device has not appeared yet: wait for it.
+		return zvolRetry
+	}
+	if statusPublished {
+		return zvolUnpublish
+	}
+	return zvolDrop
+}
+
 // processZVolDeviceEvents iterates over saved zVolDeviceEvent, check for device existence and publish ZVolStatus
 func processZVolDeviceEvents(ctxPtr *zfsContext) {
 	var processedKeys []string
@@ -235,41 +274,51 @@ func processZVolDeviceEvents(ctxPtr *zfsContext) {
 		if !ok {
 			log.Fatalf("unexpected type for key: %s", key)
 		}
+		log.Functionf("key %s event %+v", key, event)
+
+		// The device path deterministically maps to its dataset; recompute
+		// it because a coalesced Remove event carries an empty dataset and
+		// ZVolStatus.Key() (hence publish/unpublish) is derived from it.
+		dataset := zfs.GetDatasetByDevice(key)
+		if dataset == "" {
+			log.Errorf("cannot determine dataset for device: %s", key)
+			processedKeys = append(processedKeys, key)
+			return true
+		}
 		zvolStatus := types.ZVolStatus{
 			Device:  key,
-			Dataset: event.dataset,
+			Dataset: dataset,
 		}
-		log.Functionf("key %s event %+v", key, event)
-		if event.delete {
-			if el, _ := ctxPtr.zVolStatusPub.Get(zvolStatus.Key()); el == nil {
-				processedKeys = append(processedKeys, key)
+
+		devicePresent := false
+		if l, err := filepath.EvalSymlinks(key); err == nil {
+			if _, err := os.Stat(l); err == nil {
+				devicePresent = true
+			}
+		}
+		el, _ := ctxPtr.zVolStatusPub.Get(zvolStatus.Key())
+		statusPublished := el != nil
+
+		switch decideZVolAction(event, devicePresent, statusPublished) {
+		case zvolPublish:
+			if err := ctxPtr.zVolStatusPub.Publish(zvolStatus.Key(), zvolStatus); err != nil {
+				log.Errorf("cannot publish device: %s", err)
 				return true
 			}
+			log.Functionf("processed add for %s", key)
+		case zvolUnpublish:
 			if err := ctxPtr.zVolStatusPub.Unpublish(zvolStatus.Key()); err != nil {
 				log.Errorf("cannot unpublish device: %s", err)
 				return true
 			}
-			processedKeys = append(processedKeys, key)
 			log.Functionf("processed delete for %s", key)
+		case zvolRetry:
+			log.Warnf("device %s not present yet; will retry", key)
 			return true
-		}
-		l, err := filepath.EvalSymlinks(key)
-		if err != nil {
-			log.Warnf("failed to EvalSymlinks: %s", err)
-			return true
-		}
-		_, err = os.Stat(l)
-		if err != nil {
-			log.Warnf("failed to Stat device: %s", err)
-			return true
-		}
-
-		if err := ctxPtr.zVolStatusPub.Publish(zvolStatus.Key(), zvolStatus); err != nil {
-			log.Errorf("cannot publish device: %s", err)
-			return true
+		case zvolDrop:
+			// Nothing to (un)publish; just forget the stale event.
 		}
 		processedKeys = append(processedKeys, key)
-		log.Functionf("processed add for %s", key)
 		return true
 	}
 	ctxPtr.zVolDeviceEvents.Range(checker)
