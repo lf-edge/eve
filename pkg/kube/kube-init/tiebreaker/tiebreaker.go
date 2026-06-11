@@ -29,10 +29,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
 	"strings"
 
-	"github.com/lf-edge/eve/pkg/kube/kube-init/k3s"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/encconfig"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kubectlx"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
 )
@@ -52,50 +51,24 @@ const (
 	clusterNodeCount = 3
 )
 
-// enccJSON mirrors the subset of EdgeNodeClusterConfig the
-// tie-breaker reads (TieBreakerNodeID).
-type enccJSON struct {
-	TieBreakerNodeID *struct {
-		UUID string `json:"UUID"`
-	} `json:"TieBreakerNodeID"`
-}
-
-func readENCC() (*enccJSON, error) {
-	data, err := os.ReadFile(k3s.ClusterConfigFile)
-	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", k3s.ClusterConfigFile, err)
-	}
-	var encc enccJSON
-	if err := json.Unmarshal(data, &encc); err != nil {
-		return nil, fmt.Errorf("parse %s: %w", k3s.ClusterConfigFile, err)
-	}
-	return &encc, nil
-}
-
-// ConfigIsSet reports whether the ENCC file exists AND carries a
-// non-empty TieBreakerNodeID. A missing-or-malformed file collapses
+// ConfigIsSet reports whether the EdgeNodeClusterConfig
+// subscription has delivered a payload with a non-empty
+// TieBreakerNodeID. No delivery yet OR a zero UUID both collapse
 // to false — the caller is expected to skip tie-breaker work in
 // that case.
 func ConfigIsSet() bool {
-	encc, err := readENCC()
-	if err != nil {
-		return false
-	}
-	return encc.TieBreakerNodeID != nil && encc.TieBreakerNodeID.UUID != ""
+	return encconfig.TieBreakerUUID() != ""
 }
 
-// ConfigGetNodeUUID returns the tie-breaker's device UUID from the
-// ENCC file.
+// ConfigGetNodeUUID returns the tie-breaker's device UUID from
+// the cached EdgeNodeClusterConfig.
 func ConfigGetNodeUUID() (string, error) {
-	encc, err := readENCC()
-	if err != nil {
-		return "", err
+	id := encconfig.TieBreakerUUID()
+	if id == "" {
+		return "", fmt.Errorf(
+			"TieBreakerNodeID is not set in EdgeNodeClusterConfig subscription")
 	}
-	if encc.TieBreakerNodeID == nil || encc.TieBreakerNodeID.UUID == "" {
-		return "", fmt.Errorf("TieBreakerNodeID is not set in %s",
-			k3s.ClusterConfigFile)
-	}
-	return encc.TieBreakerNodeID.UUID, nil
+	return id, nil
 }
 
 // StatusIsSelf reports whether the tie-breaker UUID is the local

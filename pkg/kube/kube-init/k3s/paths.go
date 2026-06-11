@@ -22,13 +22,6 @@ var UserOverrideSrc = "/persist/vault/k3s-user-override.yaml"
 // /persist/status/zedkube/EdgeNodeClusterStatus/ never appears.
 var EncStatusFile = "/run/zedkube/EdgeNodeClusterStatus/global.json"
 
-// ClusterConfigFile is the controller-delivered EdgeNodeClusterConfig
-// JSON. zedagent publishes it under /run; the Persistent mirror
-// under /persist/status/zedagent/ is NOT written, so reading from
-// /persist would stall the daemon waiting for a file that never
-// appears.
-var ClusterConfigFile = "/run/zedagent/EdgeNodeClusterConfig/global.json"
-
 // KubeconfigCopyDir / KubeconfigCopy is where kube-init mirrors the
 // k3s-written kubeconfig (state.K3sKubeconfig) so that components
 // running outside the k3s container can consume it without reaching
