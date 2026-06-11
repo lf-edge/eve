@@ -16,14 +16,6 @@ var (
 	// applied version already matches.
 	AppliedKubeVersion = "/var/lib/applied-kube-version"
 
-	// kcusFilePath is the KubeClusterUpdateStatus pubsub file. The
-	// publisher's AgentName is "zedagent" (see zedkube.go's
-	// NewPublication call), so the file lives under .../zedagent/,
-	// not .../zedkube/. The shell cluster-update.sh hard-coded the
-	// wrong path; this Go port intentionally diverges so
-	// updateFailed actually gates retries.
-	kcusFilePath = "/persist/status/zedagent/KubeClusterUpdateStatus/global.json"
-
 	// compUpdatePath is the helper binary that knows how to
 	// version-compare and upgrade individual cluster components.
 	compUpdatePath = "/usr/bin/update-component"

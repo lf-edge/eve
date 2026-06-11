@@ -50,6 +50,7 @@ import (
 	"github.com/lf-edge/eve/pkg/kube/kube-init/components"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/edgenodeinfo"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/images"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/kcus"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kubeconfig"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/k3s"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/mgmtproxy"
@@ -503,6 +504,9 @@ func main() {
 	}
 	if err := kubeconfig.Register(psMgr); err != nil {
 		log.Fatalf("register KubeConfig subscription: %v", err)
+	}
+	if err := kcus.Register(psMgr); err != nil {
+		log.Fatalf("register KubeClusterUpdateStatus subscription: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

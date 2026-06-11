@@ -4,12 +4,13 @@
 package update
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/lf-edge/eve/pkg/kube/kube-init/kcus"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 // TestParseHashFile covers the sha256sum-style parser used to
@@ -148,68 +149,67 @@ func TestParseK3sVersion(t *testing.T) {
 	}
 }
 
-// TestUpdateFailed pins the retry-gate semantics. The kcusFilePath
-// var is already test-friendly so we override it onto a temp dir.
+// TestUpdateFailed pins the retry-gate semantics. The cached
+// KubeClusterUpdateStatus is staged via kcus.SetForTest so the
+// test exercises updateFailed's logic without touching the
+// pubsub layer.
 //
 // The load-bearing case is "Status==failed for a DIFFERENT
 // destination version" — that must NOT block the current
-// generation. Equally important: any read/parse fault must NOT
-// block convergence either (we err on the side of retrying rather
-// than stranding the device).
+// generation. Equally important: no cached status (subscription
+// hasn't delivered, or delete) must NOT block convergence either
+// — we err on the side of retrying rather than stranding the
+// device.
 func TestUpdateFailed(t *testing.T) {
-	currentVerStr := strconv.Itoa(KubeVersion)
-	otherVerStr := strconv.Itoa(KubeVersion + 1)
-
 	cases := []struct {
-		name    string
-		seed    *string // nil = no file
-		want    bool
+		name string
+		seed *types.KubeClusterUpdateStatus // nil = no delivery yet
+		want bool
 	}{
 		{
-			name: "no file -> not failed",
+			name: "no delivery -> not failed",
 			seed: nil,
 			want: false,
 		},
 		{
 			name: "Status=failed and version matches -> failed",
-			seed: ptr(fmt.Sprintf(`{"Status":%d,"DestinationKubeUpdateVersion":%q}`,
-				kcusStatusFailed, currentVerStr)),
+			seed: &types.KubeClusterUpdateStatus{
+				Status:                       types.CompStatusFailed,
+				DestinationKubeUpdateVersion: uint32(KubeVersion),
+			},
 			want: true,
 		},
 		{
 			name: "Status=failed but version is for a previous generation -> not failed",
-			seed: ptr(fmt.Sprintf(`{"Status":%d,"DestinationKubeUpdateVersion":%q}`,
-				kcusStatusFailed, otherVerStr)),
+			seed: &types.KubeClusterUpdateStatus{
+				Status:                       types.CompStatusFailed,
+				DestinationKubeUpdateVersion: uint32(KubeVersion + 1),
+			},
 			want: false,
 		},
 		{
 			name: "Status=success for our version -> not failed",
-			seed: ptr(fmt.Sprintf(`{"Status":0,"DestinationKubeUpdateVersion":%q}`,
-				currentVerStr)),
+			seed: &types.KubeClusterUpdateStatus{
+				Status:                       types.CompStatusCompleted,
+				DestinationKubeUpdateVersion: uint32(KubeVersion),
+			},
 			want: false,
 		},
 		{
-			name: "corrupt JSON -> not failed (must not strand device)",
-			seed: ptr(`{not json`),
-			want: false,
-		},
-		{
-			name: "empty body -> not failed",
-			seed: ptr(``),
+			name: "Status=in-progress for our version -> not failed",
+			seed: &types.KubeClusterUpdateStatus{
+				Status:                       types.CompStatusInProgress,
+				DestinationKubeUpdateVersion: uint32(KubeVersion),
+			},
 			want: false,
 		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			path := filepath.Join(t.TempDir(), "kcus.json")
-			origPath := kcusFilePath
-			kcusFilePath = path
-			t.Cleanup(func() { kcusFilePath = origPath })
-
+			kcus.ResetForTest()
+			t.Cleanup(kcus.ResetForTest)
 			if c.seed != nil {
-				if err := os.WriteFile(path, []byte(*c.seed), 0644); err != nil {
-					t.Fatalf("seed: %v", err)
-				}
+				kcus.SetForTest(*c.seed)
 			}
 			if got := updateFailed(); got != c.want {
 				t.Errorf("got %v, want %v", got, c.want)
