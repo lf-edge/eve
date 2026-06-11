@@ -354,7 +354,7 @@ func ClusterConfig(ctx context.Context, restartCh chan<- RestartReason) error {
 		// doc for the rationale.
 		encExists, encErr := k3s.ClusterStatusPresent()
 		if encErr != nil {
-			log.Printf("warning: check %s: %v", k3s.EncStatusFile, encErr)
+			log.Printf("warning: check EdgeNodeClusterStatus: %v", encErr)
 			sleepCtx(ctx, clusterPollInterval)
 			continue
 		}

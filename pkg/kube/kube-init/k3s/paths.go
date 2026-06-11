@@ -16,12 +16,6 @@ var K3sConfigDir = "/etc/rancher/k3s/config.yaml.d"
 // and consumed by ApplyUserOverrides.
 var UserOverrideSrc = "/persist/vault/k3s-user-override.yaml"
 
-// EncStatusFile is the pubsub-published EdgeNodeClusterStatus JSON
-// written by zedkube when the device is part of an HA cluster.
-// Lives under /run because the publication is not Persistent —
-// /persist/status/zedkube/EdgeNodeClusterStatus/ never appears.
-var EncStatusFile = "/run/zedkube/EdgeNodeClusterStatus/global.json"
-
 // KubeconfigCopyDir / KubeconfigCopy is where kube-init mirrors the
 // k3s-written kubeconfig (state.K3sKubeconfig) so that components
 // running outside the k3s container can consume it without reaching
