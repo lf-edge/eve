@@ -111,13 +111,14 @@ type NodeAddress struct {
 // first reconcile, otherwise it races against an empty StorageClass
 // list. Everything else can run concurrently.
 //
-// kubevirt + cdi are BestEffort: their phase=Deployed wait can take
-// minutes on a fresh boot, and the FSM's steady-state ticks
-// reconcile any apply failure. BestEffort prevents them from
-// blocking the rest of the deploy. BestEffortWaitReadyTimeout is
-// set per-node so the operator-specific budget (10 min for the CR
-// to converge) is respected; without it the deploy package's
-// 30-second default would fire prematurely.
+// kubevirt + cdi + longhorn are BestEffort: their phase=Deployed
+// (or DaemonSet-ready) wait can take minutes on a fresh boot, and
+// the FSM's steady-state ticks reconcile any apply failure.
+// BestEffort prevents them from blocking the rest of the deploy
+// and the transition to RUNNING. BestEffortWaitReadyTimeout is
+// set per-node so each operator's convergence budget (10 min) is
+// respected; without it the deploy package's 30-second default
+// would fire prematurely.
 //
 // MaxParallel=0 (unbounded). If we observe API-server pressure on
 // real hardware we can cap without touching Deps edges. The k3s
@@ -195,10 +196,22 @@ func buildDeployGraph(deviceName string, addr NodeAddress, installKubevirt bool)
 			{
 				// Longhorn needs storage-classes.yaml in the auto-deploy
 				// dir before its config is applied (real dep).
-				Name:      "longhorn",
-				Deps:      []string{"manifests"},
-				Apply:     func(c context.Context) error { return InstallLonghorn(c, deviceName) },
-				WaitReady: WaitLonghornReady,
+				//
+				// BestEffort with the full 10-min wait timeout — Apply
+				// still runs synchronously and writes
+				// state.LonghornInitialized, but WaitReady is
+				// downgraded so the rest of the deploy (and the
+				// FSM's transition to RUNNING) doesn't block on
+				// Longhorn's CR convergence. runHealthWorker's
+				// LonghornPostInstallConfig gates its work on
+				// Longhorn_is_ready, so steady-state ticks
+				// reconcile any apply that hasn't converged yet.
+				Name:                       "longhorn",
+				Deps:                       []string{"manifests"},
+				Apply:                      func(c context.Context) error { return InstallLonghorn(c, deviceName) },
+				WaitReady:                  WaitLonghornReady,
+				BestEffort:                 true,
+				BestEffortWaitReadyTimeout: longhornWaitTimeout,
 			},
 			{
 				Name:  "descheduler",
