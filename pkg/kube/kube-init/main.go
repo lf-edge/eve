@@ -1756,6 +1756,17 @@ func (d *daemon) runHealthWorker(ctx context.Context, mon *monitor.Monitor, sup 
 		log.Printf("WARNING: install SR-IOV manifests: %v", err)
 	}
 
+	// Keep the stale-mount-cleanup daemon alive. It shares the
+	// kubelet mount namespace (inside the kube container) and
+	// reaps stale Longhorn CSI block-volume staging mounts that
+	// would otherwise pin a deleted device inode and break every
+	// subsequent NodePublishVolume against that PV. Restart-on-
+	// exit is the desired behaviour; the per-tick call provides
+	// it without a watchdog.
+	if err := components.StartStaleMountCleanup(); err != nil {
+		log.Printf("WARNING: start stale-mount-cleanup: %v", err)
+	}
+
 	// Brownfield remediation: if SaveNodePassword detected a
 	// first-boot fresh-password case, it left a flag for us. Delete
 	// the now-stale cluster secret so k3s regenerates it against
