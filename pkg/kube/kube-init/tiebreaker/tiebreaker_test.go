@@ -5,12 +5,12 @@ package tiebreaker
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/lf-edge/eve/pkg/kube/kube-init/k3s"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/encconfig"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	uuid "github.com/satori/go.uuid"
 )
 
 func TestStatusIsSelf(t *testing.T) {
@@ -44,68 +44,66 @@ func TestNodeSelectorPatch(t *testing.T) {
 	}
 }
 
-// TestReadENCC covers the JSON parsing branch via shadowed
-// k3s.ClusterConfigFile.
-func TestReadENCC(t *testing.T) {
-	dir := t.TempDir()
-	encc := filepath.Join(dir, "encc.json")
-	orig := k3s.ClusterConfigFile
-	k3s.ClusterConfigFile = encc
-	t.Cleanup(func() { k3s.ClusterConfigFile = orig })
+// TestConfigIsSetAndGet covers the ConfigIsSet/ConfigGetNodeUUID
+// branches via the encconfig package's test helpers. ResetForTest
+// in t.Cleanup pins isolation between cases.
+func TestConfigIsSetAndGet(t *testing.T) {
+	want := uuid.FromStringOrNil("11111111-2222-3333-4444-555555555555")
 
-	// Missing file → error.
-	if _, err := readENCC(); err == nil {
-		t.Error("expected error for missing ENCC file")
+	cases := []struct {
+		name  string
+		seed  *types.EdgeNodeClusterConfig // nil = no delivery
+		set   bool
+		uuid  string
+		err   bool
+	}{
+		{
+			name: "no delivery",
+			set:  false,
+			err:  true,
+		},
+		{
+			name: "TieBreakerNodeID absent",
+			seed: &types.EdgeNodeClusterConfig{},
+			set:  false,
+			err:  true,
+		},
+		{
+			name: "TieBreakerNodeID has nil UUID",
+			seed: &types.EdgeNodeClusterConfig{
+				TieBreakerNodeID: types.UUIDandVersion{},
+			},
+			set: false,
+			err: true,
+		},
+		{
+			name: "TieBreakerNodeID set",
+			seed: &types.EdgeNodeClusterConfig{
+				TieBreakerNodeID: types.UUIDandVersion{UUID: want},
+			},
+			set:  true,
+			uuid: want.String(),
+			err:  false,
+		},
 	}
-	if ConfigIsSet() {
-		t.Error("ConfigIsSet should be false when ENCC missing")
-	}
-
-	// Malformed JSON → error.
-	if err := os.WriteFile(encc, []byte("{not json"), 0644); err != nil {
-		t.Fatalf("seed malformed: %v", err)
-	}
-	if _, err := readENCC(); err == nil {
-		t.Error("expected parse error for malformed JSON")
-	}
-
-	// Valid but TieBreakerNodeID absent.
-	if err := os.WriteFile(encc, []byte(`{}`), 0644); err != nil {
-		t.Fatalf("seed empty: %v", err)
-	}
-	if ConfigIsSet() {
-		t.Error("ConfigIsSet should be false when TieBreakerNodeID absent")
-	}
-	if _, err := ConfigGetNodeUUID(); err == nil {
-		t.Error("ConfigGetNodeUUID should error when TieBreakerNodeID absent")
-	}
-
-	// Valid with TieBreakerNodeID empty UUID.
-	if err := os.WriteFile(encc,
-		[]byte(`{"TieBreakerNodeID":{"UUID":""}}`), 0644); err != nil {
-		t.Fatalf("seed empty UUID: %v", err)
-	}
-	if ConfigIsSet() {
-		t.Error("ConfigIsSet should be false when UUID is empty")
-	}
-	if _, err := ConfigGetNodeUUID(); err == nil {
-		t.Error("ConfigGetNodeUUID should error when UUID empty")
-	}
-
-	// Valid with a UUID.
-	if err := os.WriteFile(encc,
-		[]byte(`{"TieBreakerNodeID":{"UUID":"abc-123"}}`), 0644); err != nil {
-		t.Fatalf("seed valid: %v", err)
-	}
-	if !ConfigIsSet() {
-		t.Error("ConfigIsSet should be true")
-	}
-	uuid, err := ConfigGetNodeUUID()
-	if err != nil {
-		t.Fatalf("ConfigGetNodeUUID: %v", err)
-	}
-	if uuid != "abc-123" {
-		t.Errorf("uuid = %q, want %q", uuid, "abc-123")
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			encconfig.ResetForTest()
+			t.Cleanup(encconfig.ResetForTest)
+			if c.seed != nil {
+				encconfig.SetForTest(*c.seed)
+			}
+			if got := ConfigIsSet(); got != c.set {
+				t.Errorf("ConfigIsSet() = %v, want %v", got, c.set)
+			}
+			got, err := ConfigGetNodeUUID()
+			if (err != nil) != c.err {
+				t.Errorf("ConfigGetNodeUUID err = %v, wantErr = %v", err, c.err)
+			}
+			if !c.err && got != c.uuid {
+				t.Errorf("ConfigGetNodeUUID = %q, want %q", got, c.uuid)
+			}
+		})
 	}
 }
 
@@ -132,19 +130,6 @@ func TestLonghornNodeDisksParsing(t *testing.T) {
 	}
 	if _, ok := n.Spec.Disks["ssd-disk-2"]; !ok {
 		t.Errorf("missing ssd-disk-2")
-	}
-}
-
-// TestEnccJSONFieldNames smoke-tests the TieBreakerNodeID parse
-// path with the canonical TitleCase keys zedagent writes.
-func TestEnccJSONFieldNames(t *testing.T) {
-	body := `{"TieBreakerNodeID":{"UUID":"x"}}`
-	var e enccJSON
-	if err := json.Unmarshal([]byte(body), &e); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if e.TieBreakerNodeID == nil || e.TieBreakerNodeID.UUID != "x" {
-		t.Errorf("parsed = %+v, want UUID=x", e)
 	}
 }
 

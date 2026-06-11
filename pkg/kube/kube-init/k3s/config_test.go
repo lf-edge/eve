@@ -16,12 +16,15 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/lf-edge/eve/pkg/kube/kube-init/encconfig"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 // shadowPaths reroutes the package's well-known paths onto tmp dirs
 // for the lifetime of a single test. The returned configDir is the
 // new value of K3sConfigDir.
-func shadowPaths(t *testing.T) (configDir, userOverrideSrc, encStatus, clusterCfg string) {
+func shadowPaths(t *testing.T) (configDir, userOverrideSrc, encStatus string) {
 	t.Helper()
 	dir := t.TempDir()
 	configDir = filepath.Join(dir, "k3s-cfg")
@@ -30,20 +33,17 @@ func shadowPaths(t *testing.T) (configDir, userOverrideSrc, encStatus, clusterCf
 	}
 	userOverrideSrc = filepath.Join(dir, "user-override.yaml")
 	encStatus = filepath.Join(dir, "EdgeNodeClusterStatus.json")
-	clusterCfg = filepath.Join(dir, "EdgeNodeClusterConfig.json")
 
-	origCD, origUO, origES, origCC, origCW :=
-		K3sConfigDir, UserOverrideSrc, EncStatusFile, ClusterConfigFile, clusterWaitFile
+	origCD, origUO, origES, origCW :=
+		K3sConfigDir, UserOverrideSrc, EncStatusFile, clusterWaitFile
 	K3sConfigDir = configDir
 	UserOverrideSrc = userOverrideSrc
 	EncStatusFile = encStatus
-	ClusterConfigFile = clusterCfg
 	clusterWaitFile = filepath.Join(dir, "cluster-wait")
 	t.Cleanup(func() {
 		K3sConfigDir = origCD
 		UserOverrideSrc = origUO
 		EncStatusFile = origES
-		ClusterConfigFile = origCC
 		clusterWaitFile = origCW
 	})
 	return
@@ -145,7 +145,7 @@ func TestClusterTypeIsValid(t *testing.T) {
 }
 
 func TestGetClusterStatusRoundTrip(t *testing.T) {
-	_, _, encStatus, _ := shadowPaths(t)
+	_, _, encStatus := shadowPaths(t)
 	payload := `{
         "ClusterInterface": "eth0",
         "BootstrapNode": true,
@@ -181,37 +181,38 @@ func TestGetClusterStatusMissingFile(t *testing.T) {
 }
 
 func TestGetClusterTypeBranches(t *testing.T) {
-	_, _, _, clusterCfg := shadowPaths(t)
+	encconfig.ResetForTest()
+	t.Cleanup(encconfig.ResetForTest)
 
-	// Missing file → Replicated, no error.
+	// No subscription delivery yet → Replicated, no error
+	// (the kube-init default for devices the controller has not
+	// configured yet).
 	ct, err := GetClusterType()
 	if err != nil {
-		t.Fatalf("missing file: %v", err)
+		t.Fatalf("no delivery: %v", err)
 	}
 	if ct != ClusterTypeReplicated {
-		t.Errorf("missing file -> %v, want Replicated", ct)
+		t.Errorf("no delivery -> %v, want Replicated", ct)
 	}
 
 	cases := []struct {
-		name    string
-		payload string
-		want    ClusterType
-		wantErr bool
+		name string
+		seed types.ClusterType
+		want ClusterType
 	}{
-		{"explicit base", `{"ClusterType": 1}`, ClusterTypeBase, false},
-		{"explicit replicated", `{"ClusterType": 2}`, ClusterTypeReplicated, false},
-		{"omitted field defaults to replicated", `{}`, ClusterTypeReplicated, false},
-		{"unknown int passes through", `{"ClusterType": 99}`, ClusterType(99), false},
-		{"malformed json", `not-json`, ClusterTypeReplicated, true},
+		{"explicit base", types.ClusterTypeK3sBase, ClusterTypeBase},
+		{"explicit replicated", types.ClusterTypeReplicatedStorage, ClusterTypeReplicated},
+		{"none defaults to replicated", types.ClusterTypeNone, ClusterTypeReplicated},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if err := os.WriteFile(clusterCfg, []byte(c.payload), 0644); err != nil {
-				t.Fatalf("seed: %v", err)
-			}
+			encconfig.ResetForTest()
+			encconfig.SetForTest(types.EdgeNodeClusterConfig{
+				ClusterType: c.seed,
+			})
 			ct, err := GetClusterType()
-			if (err != nil) != c.wantErr {
-				t.Errorf("err=%v wantErr=%v", err, c.wantErr)
+			if err != nil {
+				t.Errorf("unexpected err: %v", err)
 			}
 			if ct != c.want {
 				t.Errorf("ct = %v, want %v", ct, c.want)
@@ -221,7 +222,7 @@ func TestGetClusterTypeBranches(t *testing.T) {
 }
 
 func TestWriteNodeName(t *testing.T) {
-	configDir, _, _, _ := shadowPaths(t)
+	configDir, _, _ := shadowPaths(t)
 	if err := WriteNodeName("My_Node_01"); err != nil {
 		t.Fatalf("WriteNodeName: %v", err)
 	}
@@ -235,7 +236,7 @@ func TestWriteNodeName(t *testing.T) {
 }
 
 func TestApplyUserOverridesBranches(t *testing.T) {
-	configDir, userOverride, _, _ := shadowPaths(t)
+	configDir, userOverride, _ := shadowPaths(t)
 	dst := filepath.Join(configDir, UserOverrideConfig)
 
 	// No src, no dst → no change, no error.
@@ -294,40 +295,39 @@ func TestApplyUserOverridesBranches(t *testing.T) {
 }
 
 func TestProvisionDisableLocalPathBranches(t *testing.T) {
-	configDir, _, _, clusterCfg := shadowPaths(t)
+	configDir, _, _ := shadowPaths(t)
 	dlp := filepath.Join(configDir, DisableLocalPath)
 
 	cases := []struct {
 		name         string
-		clusterCfg   string // empty = no file
+		seedCT       *types.ClusterType // nil = no delivery
 		wantExists   bool
 		wantContent  string
 		preSeedExist bool
 	}{
-		{"missing file defaults to replicated -> dlp written",
-			"", true, disableLocalPathContent, false},
+		{"no delivery defaults to replicated -> dlp written",
+			nil, true, disableLocalPathContent, false},
 		{"replicated -> dlp written",
-			`{"ClusterType":2}`, true, disableLocalPathContent, false},
-		{"unspecified -> dlp written",
-			`{"ClusterType":0}`, true, disableLocalPathContent, false},
+			ptrCT(types.ClusterTypeReplicatedStorage), true, disableLocalPathContent, false},
+		{"none -> dlp written (default to replicated)",
+			ptrCT(types.ClusterTypeNone), true, disableLocalPathContent, false},
 		{"base -> dlp removed",
-			`{"ClusterType":1}`, false, "", true},
-		{"unknown -> dlp written (default to replicated)",
-			`{"ClusterType":99}`, true, disableLocalPathContent, false},
+			ptrCT(types.ClusterTypeK3sBase), false, "", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			_ = os.Remove(dlp)
-			_ = os.Remove(clusterCfg)
+			encconfig.ResetForTest()
+			t.Cleanup(encconfig.ResetForTest)
 			if c.preSeedExist {
 				if err := os.WriteFile(dlp, []byte("stale"), 0644); err != nil {
 					t.Fatalf("seed dlp: %v", err)
 				}
 			}
-			if c.clusterCfg != "" {
-				if err := os.WriteFile(clusterCfg, []byte(c.clusterCfg), 0644); err != nil {
-					t.Fatalf("seed cfg: %v", err)
-				}
+			if c.seedCT != nil {
+				encconfig.SetForTest(types.EdgeNodeClusterConfig{
+					ClusterType: *c.seedCT,
+				})
 			}
 			if err := provisionDisableLocalPath(); err != nil {
 				t.Fatalf("provisionDisableLocalPath: %v", err)
@@ -346,6 +346,10 @@ func TestProvisionDisableLocalPathBranches(t *testing.T) {
 		})
 	}
 }
+
+// ptrCT is a small helper to take the address of a types.ClusterType
+// literal in struct-literal-heavy tests.
+func ptrCT(v types.ClusterType) *types.ClusterType { return &v }
 
 func TestWriteBootstrapConfigShape(t *testing.T) {
 	dir := t.TempDir()
@@ -438,7 +442,7 @@ func TestWriteJoinConfigShape(t *testing.T) {
 }
 
 func TestWaitForBootstrapServerHappyPath(t *testing.T) {
-	_, _, encStatus, _ := shadowPaths(t)
+	_, _, encStatus := shadowPaths(t)
 
 	// EncStatusFile must exist so the in-loop stat doesn't trip the
 	// withdrawn-config path.
@@ -463,7 +467,7 @@ func TestWaitForBootstrapServerHappyPath(t *testing.T) {
 }
 
 func TestWaitForBootstrapServerUUIDMismatchRetries(t *testing.T) {
-	_, _, encStatus, _ := shadowPaths(t)
+	_, _, encStatus := shadowPaths(t)
 	if err := os.WriteFile(encStatus, []byte("{}"), 0644); err != nil {
 		t.Fatalf("seed: %v", err)
 	}

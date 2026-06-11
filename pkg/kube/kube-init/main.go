@@ -49,6 +49,7 @@ import (
 	"github.com/lf-edge/eve/pkg/kube/kube-init/clustermode"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/components"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/edgenodeinfo"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/encconfig"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/images"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kcus"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kubeconfig"
@@ -507,6 +508,9 @@ func main() {
 	}
 	if err := kcus.Register(psMgr); err != nil {
 		log.Fatalf("register KubeClusterUpdateStatus subscription: %v", err)
+	}
+	if err := encconfig.Register(psMgr); err != nil {
+		log.Fatalf("register EdgeNodeClusterConfig subscription: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

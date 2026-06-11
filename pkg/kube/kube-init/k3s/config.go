@@ -21,7 +21,9 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/kube/kube-init/edgenodeinfo"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/encconfig"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 // Drop-in config files written to K3sConfigDir. k3s reads every
@@ -143,10 +145,6 @@ type encStatusJSON struct {
 	ClusterID        *struct {
 		UUID string `json:"UUID"`
 	} `json:"ClusterID"`
-}
-
-type encConfigJSON struct {
-	ClusterType *int `json:"ClusterType"`
 }
 
 // Configure renders every k3s drop-in needed for this device.
@@ -302,29 +300,22 @@ func (cs *ClusterStatus) validate() error {
 	return nil
 }
 
-// GetClusterType reads ClusterType from the persisted
-// EdgeNodeClusterConfig. If the file is missing OR the field is
-// absent, ClusterTypeReplicated is returned — that was the
-// historical default before the controller began emitting the field.
-// If the file is present but malformed, the same default is returned
-// alongside a non-nil error so callers can choose to treat it as
-// hard-failure.
+// GetClusterType reads ClusterType from the cached
+// EdgeNodeClusterConfig subscription. On no delivery yet (or
+// after a Delete), ClusterTypeReplicated is returned — that was
+// the historical default before the controller began emitting
+// the field, and matches the file-reading port's behaviour for
+// the "missing file" case.
+//
+// The second return value is always nil today; the signature is
+// kept for callers that still err-handle it (and so future
+// versions can surface a real error without a signature change).
 func GetClusterType() (ClusterType, error) {
-	data, err := os.ReadFile(ClusterConfigFile)
-	switch {
-	case errors.Is(err, os.ErrNotExist):
-		return ClusterTypeReplicated, nil
-	case err != nil:
-		return ClusterTypeReplicated, fmt.Errorf("read %s: %w", ClusterConfigFile, err)
-	}
-	var raw encConfigJSON
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return ClusterTypeReplicated, fmt.Errorf("parse %s: %w", ClusterConfigFile, err)
-	}
-	if raw.ClusterType == nil {
+	ct := encconfig.ClusterType()
+	if ct == types.ClusterTypeNone {
 		return ClusterTypeReplicated, nil
 	}
-	return ClusterType(*raw.ClusterType), nil
+	return ClusterType(ct), nil
 }
 
 // IsClusterMode reports whether the device is currently configured
