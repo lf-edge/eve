@@ -270,12 +270,20 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// Apply the log levels from the last known global config before any log
+	// message is processed. The ConfigItemValueMap publication of zedagent
+	// is in-memory only and zedagent starts much later than newlogd, so the
+	// cache is the only source of the configured log levels during early
+	// boot.
+	if logLevels := loadLogLevelsCache(); logLevels != nil {
+		applyLogLevels(logLevels)
+	}
+
 	// Look for global config such as log levels
 	subGlobalConfig, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedagent",
 		TopicImpl:     types.ConfigItemValueMap{},
-		Persistent:    true,
-		Activate:      false, // needs to be activated separately, since getting the config depends on the subscription already existing
+		Activate:      false, // needs to be activated separately, since the handlers depend on the subscription already existing
 		CreateHandler: handleGlobalConfigCreate,
 		ModifyHandler: handleGlobalConfigModify,
 		WarningTime:   warningTime,
@@ -284,7 +292,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	// Activate calls populate() internally to retrieve persistent data (if any) and call handlers
 	err = subGlobalConfig.Activate()
 	if err != nil {
 		log.Fatal(err)
@@ -551,6 +558,12 @@ func handleGlobalConfigImp(ctxArg interface{}, key string, statusArg interface{}
 	gcp := agentlog.HandleGlobalConfig(log, subGlobalConfig, agentName, false, logger)
 
 	if gcp != nil {
+		logLevels := logLevelsFromGlobalConfig(gcp)
+		applyLogLevels(logLevels)
+
+		// The settings below are applied from the live config only and are
+		// not cached for the next boot.
+
 		enabled := gcp.GlobalValueBool(types.AllowLogFastupload)
 		if enableFastUpload != enabled {
 			if enabled {
@@ -561,41 +574,13 @@ func handleGlobalConfigImp(ctxArg interface{}, key string, statusArg interface{}
 		}
 		enableFastUpload = enabled
 
-		// get user specified disk quota for logs and cap at 10% of /persist space
-		limitGzipFilesMbyts = gcp.GlobalValueInt(types.LogRemainToSendMBytes)
-		if limitGzipFilesMbyts > uint32(persistMbytes/10) {
-			limitGzipFilesMbyts = uint32(persistMbytes / 10)
-		}
-
-		// parse agent's individual remote log levels
-		for agentName := range gcp.AgentSettings {
-			loglevel := getRemoteLogLevelImpl(gcp, agentName)
-			agentsRemoteLogLevel.Store(agentName, parseAgentLogLevel(loglevel))
-		}
-
-		// parse agent's default remote log level
-		loglevel := gcp.GlobalValueString(types.DefaultRemoteLogLevel)
-		agentDefaultRemoteLogLevel.Store(parseAgentLogLevel(loglevel))
-
-		// parse syslog log level
-		syslogPrioStr := gcp.GlobalValueString(types.SyslogLogLevel)
-		atomic.StoreUint32(&syslogPrio, parseSyslogLogLevel(syslogPrioStr))
-
-		// parse kernel log level
-		kernelPrioStr := gcp.GlobalValueString(types.KernelLogLevel)
-		atomic.StoreUint32(&kernelPrio, parseSyslogLogLevel(kernelPrioStr))
-
-		// parse syslog remote log level
-		syslogRemotePrioStr := gcp.GlobalValueString(types.SyslogRemoteLogLevel)
-		atomic.StoreUint32(&syslogRemotePrio, parseSyslogLogLevel(syslogRemotePrioStr))
-
-		// parse kernel remote log level
-		kernelRemotePrioStr := gcp.GlobalValueString(types.KernelRemoteLogLevel)
-		atomic.StoreUint32(&kernelRemotePrio, parseSyslogLogLevel(kernelRemotePrioStr))
+		// cap the user specified disk quota for logs at 10% of /persist space
+		limitGzipFilesMbyts = min(gcp.GlobalValueInt(types.LogRemainToSendMBytes),
+			uint32(persistMbytes/10))
 
 		// set log deduplication and filtering settings
 		dedupWindowSize.Store(gcp.GlobalValueInt(types.LogDedupWindowSize))
-		log.Functionf("handleGlobalConfigModify: set dedupWindowSize to %d", dedupWindowSize.Load())
+		log.Functionf("handleGlobalConfigImp: set dedupWindowSize to %d", dedupWindowSize.Load())
 
 		// parse a comma separated list of log filenames to count
 		var filenamesToCount []string
@@ -603,7 +588,7 @@ func handleGlobalConfigImp(ctxArg interface{}, key string, statusArg interface{}
 			filenamesToCount = strings.Split(gcp.GlobalValueString(types.LogFilenamesToCount), ",")
 		}
 		logsToCount.Store(filenamesToCount)
-		log.Functionf("handleGlobalConfigModify: gonna count the logs from the following lines %v", filenamesToCount)
+		log.Functionf("handleGlobalConfigImp: gonna count the logs from the following lines %v", filenamesToCount)
 
 		// parse a comma separated list of log filenames to filter
 		newFilenameFilter := make(map[string]struct{})
@@ -613,8 +598,12 @@ func handleGlobalConfigImp(ctxArg interface{}, key string, statusArg interface{}
 			}
 		}
 		filenameFilter.Store(newFilenameFilter)
-		log.Functionf("handleGlobalConfigModify: gonna filter out the logs from the following lines %v", newFilenameFilter)
+		log.Functionf("handleGlobalConfigImp: gonna filter out the logs from the following lines %v", newFilenameFilter)
 
+		// Cache the log levels so that they survive a reboot and can be
+		// applied at the next startup before zedagent publishes the live
+		// config.
+		saveLogLevelsCache(logLevels)
 	}
 	log.Tracef("handleGlobalConfigModify done for %s, fastupload enabled %v", key, enableFastUpload)
 }
@@ -633,6 +622,31 @@ func parseAgentLogLevel(loglevel string) logrus.Level {
 		}
 		return level
 	}
+}
+
+// applyLogLevels applies the log levels of the global config.
+func applyLogLevels(levels *cachedLogLevels) {
+	// apply newlogd's own log level (in the pubsub path this is already
+	// done by agentlog.HandleGlobalConfig)
+	if levels.LogLevel != "" {
+		logger.SetLevel(parseAgentLogLevel(levels.LogLevel))
+	}
+
+	// parse agent's individual remote log levels
+	for agent, loglevel := range levels.AgentRemoteLogLevels {
+		agentsRemoteLogLevel.Store(agent, parseAgentLogLevel(loglevel))
+	}
+
+	// parse agent's default remote log level
+	if levels.DefaultRemoteLogLevel != "" {
+		agentDefaultRemoteLogLevel.Store(parseAgentLogLevel(levels.DefaultRemoteLogLevel))
+	}
+
+	// parse local and remote syslog and kernel log levels
+	atomic.StoreUint32(&syslogPrio, parseSyslogLogLevel(levels.SyslogLogLevel))
+	atomic.StoreUint32(&kernelPrio, parseSyslogLogLevel(levels.KernelLogLevel))
+	atomic.StoreUint32(&syslogRemotePrio, parseSyslogLogLevel(levels.SyslogRemoteLogLevel))
+	atomic.StoreUint32(&kernelRemotePrio, parseSyslogLogLevel(levels.KernelRemoteLogLevel))
 }
 
 func getRemoteLogLevelImpl(gc *types.ConfigItemValueMap, agentName string) string {
