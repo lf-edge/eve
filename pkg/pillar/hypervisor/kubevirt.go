@@ -776,6 +776,24 @@ func (ctx kubevirtContext) Create(domainName string, cfgFilename string, config 
 	return ctx.vmiList[domainName].domainID, nil
 }
 
+// podListToSchedulingState derives the node-placement decision from a
+// pre-fetched list of virt-launcher pods. Spec.NodeName is the authoritative
+// signal for node assignment; Status.Phase is deliberately not used because a
+// pod in Init:0/1 carries Phase="Pending" even after it has been bound to a
+// node by the scheduler.
+func podListToSchedulingState(pods []k8sv1.Pod, nodeName string) (onMe bool, anyNode bool, err error) {
+	for _, p := range pods {
+		if p.ObjectMeta.DeletionTimestamp != nil {
+			continue
+		}
+		if p.Spec.NodeName == "" {
+			continue
+		}
+		return p.Spec.NodeName == nodeName, true, nil
+	}
+	return false, false, fmt.Errorf("unhandled scheduling state")
+}
+
 // replicaVmiScheduledOnMe is the VMI replicaset implementation of scheduledOnMe()
 func (ctx kubevirtContext) replicaVmiScheduledOnMe(vmirsName string) (scheduledOnMe bool, scheduledOnNone bool, err error) {
 	err = getConfig(&ctx)
@@ -838,23 +856,7 @@ func (ctx kubevirtContext) replicaVmiScheduledOnMe(vmirsName string) (scheduledO
 	if len(vlPods.Items) == 0 {
 		return false, false, nil
 	}
-	for _, vlPod := range vlPods.Items {
-		if vlPod.ObjectMeta.DeletionTimestamp != nil {
-			// copy is terminating
-			// could be a leftover from a vmi currently failing over
-			continue
-		}
-		if vlPod.Status.Phase == "Pending" {
-			return false, true, nil
-		}
-		if vlPod.Spec.NodeName == "" {
-			// Not scheduled yet, move on
-			continue
-		}
-		return (vlPod.Spec.NodeName == nodeName), true, nil
-	}
-	// No VMI or virt-launcher pod (which isn't terminating)
-	return false, false, fmt.Errorf("Unhandled scheduling state")
+	return podListToSchedulingState(vlPods.Items, nodeName)
 }
 
 // replicaPodScheduledOnMe is the ReplicaSet Pod implementation of scheduledOnMe()
