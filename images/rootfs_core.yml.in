@@ -1,6 +1,8 @@
 # Core EVE rootfs template - experimental (PoC)
 # Contains universal pillar (PILLAR_K_TAG) with only critical services.
-# Non-critical services (kube, vector, debug, wwan, wlan, guacd, edgeview,
+# wwan is kept here in the Core so cellular connectivity does not depend on the
+# Extension being loaded and verified.
+# Non-critical services (kube, vector, debug, wlan, guacd, edgeview,
 # vtpm, memory-monitor, node-exporter) are in rootfs_ext.yml.in.
 
 kernel:
@@ -67,6 +69,10 @@ services:
   - name: xen-tools
     image: XENTOOLS_TAG
     cgroupsPath: /eve/services/xen-tools
+    oomScoreAdj: -999
+  - name: wwan
+    image: WWAN_TAG
+    cgroupsPath: /eve/services/wwan
     oomScoreAdj: -999
 files:
   - path: /etc/eve-release
