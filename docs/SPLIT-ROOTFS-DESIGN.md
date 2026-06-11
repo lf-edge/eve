@@ -86,7 +86,7 @@ Analysis shows which packages can move to a separate image:
 
 All variants fit under 300MB after moving non-critical services to an Extension Image. Generic variants need only 35-38MB moved; specialized variants (nvidia, kubevirt) benefit more significantly.
 
-Note: eve-wwan was decided to stay in Core (see [Architectural Decisions](#architectural-decisions)). Actual savings are ~5MB less than shown above for variants that include it.
+Note: eve-wwan is kept in the Core (see [Architectural Decisions](#architectural-decisions)) so cellular connectivity does not depend on the Extension being loaded and verified. This is now implemented in the rootfs templates (wwan is in `rootfs_core.yml.in`, removed from `rootfs_ext.yml.in`). Measured cost on the universal Core: +20.9MB (224.0MB without wwan → 244.8MB with it), still ~55MB under the 300MB budget. The per-variant savings above are therefore ~21MB smaller for variants that include wwan.
 
 ---
 
@@ -1259,8 +1259,8 @@ runtime block-level verification that a simple digest check cannot offer.
 
 | Requirement | Status | Effort |
 |-------------|--------|--------|
-| `CONFIG_EROFS_FS=y` in kernel | Missing (containerd logs: `modprobe erofs` fails) | Kernel config change in eve-kernel repo |
-| `CONFIG_DM_VERITY=y` in kernel | Likely present (device-mapper used in EVE) | Verify |
+| `CONFIG_EROFS_FS=y` in kernel | Missing — confirmed at runtime on a booted split image (containerd logs "EROFS unsupported, please modprobe erofs", and the erofs differ plugin skips on missing mkfs.erofs) | Kernel config change in eve-kernel repo |
+| `CONFIG_DM_VERITY=y` in kernel | Missing — verified absent from `eve-core_defconfig` (@`638c9c2df657`). The device-mapper base (`CONFIG_MD=y`, `CONFIG_BLK_DEV_DM=y`) is present, but `DM_VERITY` itself is not enabled | Kernel config change in eve-kernel repo |
 | `mkfs.erofs` in build tools | Missing | `erofs-utils` Alpine package |
 | `veritysetup` at runtime | Likely available via `cryptsetup` | Verify |
 | dm-verity root hash in Core Image | New | Build system change |

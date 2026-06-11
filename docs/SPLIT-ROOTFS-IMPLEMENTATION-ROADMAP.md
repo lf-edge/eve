@@ -178,6 +178,13 @@ for new installations, but devices deployed before that release still have the o
 layout. Resizing requires maintenance windows that operators may not schedule for urgent
 CVE patches. The installed base of 300MB devices is a hard constraint.
 
+The build enforces this directly: the Core squashfs is checked against
+`CORE_MAXSIZE_MB` (300) regardless of HV, and the universal/split OCI image —
+which embeds the Core plus the Extension `disk-0` layer — is checked against
+`OCI_IMAGE_MAXSIZE_MB` (4096). Previously the only guard compared the Core
+against `ROOTFS_MAXSIZE_MB`, which is 4096 for `HV=k`/universal builds, so a
+Core that overran the 300MB partition would have passed unnoticed.
+
 ### The Strategic Problem
 
 EVE currently produces many different builds for different hypervisor and hardware
