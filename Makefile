@@ -491,6 +491,15 @@ else
         endif
 endif
 
+# The bootable Core squashfs (split-rootfs IMGA/IMGB) must fit the legacy 300MB
+# rootfs partition regardless of HV, independent of ROOTFS_MAXSIZE_MB (which is
+# 4096 for k/universal). Overridable for platform variants.
+CORE_MAXSIZE_MB ?= 300
+# For the universal/split case the deliverable is one OCI image that embeds the
+# Core (as rootfs.img) plus the Extension (as the disk-0 layer). Bound that
+# combined total; the Core alone is still separately capped at CORE_MAXSIZE_MB.
+OCI_IMAGE_MAXSIZE_MB ?= 4096
+
 PKGS_riscv64=pkg/ipxe pkg/mkconf pkg/mkimage-iso-efi pkg/grub     \
              pkg/mkimage-raw-efi pkg/uefi pkg/u-boot pkg/cross-compilers \
 	     pkg/debug pkg/dom0-ztools pkg/gpt-tools pkg/storage-init pkg/mkrootfs-squash \
@@ -976,6 +985,12 @@ EVE_SPLIT_ARTIFACTS=$(BIOS_IMG) $(EFI_PART) $(CONFIG_IMG) $(PERSIST_IMG) $(INITR
 ifeq ($(HV),uni)
 eve-split: $(ROOTFS_CORE_IMG) $(ROOTFS_EXT_IMG) $(EVE_SPLIT_ARTIFACTS) current $(RUNME) $(BUILD_YML) | $(BUILD_DIR)
 	$(QUIET): "$@: Begin: EVE_REL=$(EVE_REL), HV=$(HV)"
+	@core_b=$$(wc -c < $(ROOTFS_CORE_IMG)); ext_b=$$(wc -c < $(ROOTFS_EXT_IMG)); \
+	total_b=$$(( core_b + ext_b )); max_b=$$(( $(OCI_IMAGE_MAXSIZE_MB) * 1024 * 1024 )); \
+	echo "split OCI image: core=$$(( core_b/1024/1024 ))MB + ext=$$(( ext_b/1024/1024 ))MB = $$(( total_b/1024/1024 ))MB (limit $(OCI_IMAGE_MAXSIZE_MB)MB)"; \
+	if [ "$$total_b" -gt "$$max_b" ]; then \
+	        echo "ERROR: split OCI image total $$(( total_b/1024/1024 ))MB exceeds $(OCI_IMAGE_MAXSIZE_MB)MB"; exit 1; \
+	fi
 	cp -f $(INSTALLER)/rootfs-core.img $(INSTALLER)/rootfs.img
 	cp images/out/*.yml $|
 	$(PARSE_PKGS) pkg/eve/Dockerfile.in > $|/Dockerfile
@@ -1086,10 +1101,15 @@ endif
 		fi; \
 	fi
 	@echo "size of $@ is $$(wc -c < "$@")B"
-ifeq ($(ROOTFS_FORMAT),squash)
-	@[ $$(wc -c < "$@") -gt $$(( $(ROOTFS_MAXSIZE_MB) * 1024 * 1024 )) ] && \
-	        echo "ERROR: size of $@ is greater than $(ROOTFS_MAXSIZE_MB)MB (bigger than allocated partition)" && exit 1 || :
-endif
+	@if [ "$(ROOTFS_FORMAT)" = "squash" ]; then \
+	    max_mb=$(ROOTFS_MAXSIZE_MB); \
+	    [ "$*" = "core" ] && max_mb=$(CORE_MAXSIZE_MB); \
+	    sz=$$(wc -c < "$@"); \
+	    if [ "$$sz" -gt $$(( max_mb * 1024 * 1024 )) ]; then \
+	        echo "ERROR: size of $@ is $$(( sz / 1024 / 1024 ))MB, greater than $${max_mb}MB (bigger than allocated partition)"; \
+	        exit 1; \
+	    fi; \
+	fi
 	$(QUIET): $@: Succeeded
 
 # EVE Single Image / multi-rootfs - bootstrap rootfs image
