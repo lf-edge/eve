@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/kube/kube-init/edgenodeinfo"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kubectlx"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
 )
@@ -42,11 +43,18 @@ func WaitReady(ctx context.Context, timeout time.Duration) error {
 		return fmt.Errorf("wait kubeconfig: %w", err)
 	}
 
-	deviceName, uuid, err := readEdgeNodeInfo()
-	if err != nil {
-		return fmt.Errorf("read EdgeNodeInfo: %w", err)
+	info, ok := edgenodeinfo.Get()
+	if !ok {
+		return fmt.Errorf("EdgeNodeInfo not yet published; subscription has not delivered")
 	}
-	nodeName := state.ToK8sName(deviceName)
+	if info.DeviceName == "" {
+		return fmt.Errorf("EdgeNodeInfo.DeviceName is empty (corrupted payload)")
+	}
+	uuid := info.DeviceID.String()
+	if uuid == "" {
+		return fmt.Errorf("EdgeNodeInfo.DeviceID is empty (corrupted payload)")
+	}
+	nodeName := state.ToK8sName(info.DeviceName)
 
 	if err := waitNodeReady(ctx, nodeName); err != nil {
 		return fmt.Errorf("wait node ready: %w", err)

@@ -29,12 +29,6 @@ var EncStatusFile = "/run/zedkube/EdgeNodeClusterStatus/global.json"
 // appears.
 var ClusterConfigFile = "/run/zedagent/EdgeNodeClusterConfig/global.json"
 
-// EdgeNodeInfoPath holds the EdgeNodeInfo status (DeviceName, etc.)
-// kube-init reads at config time to derive the Kubernetes node
-// name. Same caveat as ClusterConfigFile: live in /run only, no
-// /persist mirror.
-var EdgeNodeInfoPath = "/run/zedagent/EdgeNodeInfo/global.json"
-
 // KubeconfigCopyDir / KubeconfigCopy is where kube-init mirrors the
 // k3s-written kubeconfig (state.K3sKubeconfig) so that components
 // running outside the k3s container can consume it without reaching

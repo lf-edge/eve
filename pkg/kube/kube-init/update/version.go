@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/lf-edge/eve/pkg/kube/kube-init/edgenodeinfo"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
 )
 
@@ -110,25 +111,6 @@ func updateFailed() bool {
 		status.DestinationKubeUpdateVersion == strconv.Itoa(KubeVersion)
 }
 
-// readDeviceName parses EdgeNodeInfo for the local device's name,
-// returning "" if the file is missing or malformed. Duplicated
-// across update / k3s / prereqs / components; the helper is small
-// enough that the duplication is cheaper than a new shared package
-// whose only consumers are these one-line readers.
-func readDeviceName() string {
-	data, err := os.ReadFile(EdgeNodeInfoPath)
-	if err != nil {
-		return ""
-	}
-	var info struct {
-		DeviceName string `json:"DeviceName"`
-	}
-	if err := json.Unmarshal(data, &info); err != nil {
-		return ""
-	}
-	return info.DeviceName
-}
-
 // appliedVersionGEQ reports whether the persisted applied version
 // is >= target. The applied marker is the textual decimal written
 // by VersionSet, so this is a parsed-int compare. An unparsable
@@ -144,9 +126,12 @@ func appliedVersionGEQ(applied string, target int) bool {
 }
 
 // readDeviceK8sName returns the device name normalised to a
-// Kubernetes-compatible DNS label, or "" when unavailable.
+// Kubernetes-compatible DNS label, or "" when unavailable. The
+// name comes from the EdgeNodeInfo subscription cache; an empty
+// return means the subscription hasn't delivered yet (very early
+// boot) or was deleted.
 func readDeviceK8sName() string {
-	name := readDeviceName()
+	name := edgenodeinfo.DeviceName()
 	if name == "" {
 		return ""
 	}
