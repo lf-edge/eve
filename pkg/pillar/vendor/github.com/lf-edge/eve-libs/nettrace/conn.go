@@ -85,7 +85,7 @@ func (tc *tracedConn) parseDNSQuery(data []byte, sentAt Timestamp) {
 			tc.log.Warningf(
 				"nettrace: networkTracer id=%s: failed to parse DNS query question: %v "+
 					"(conn %v)", tc.tracer.getTracerID(), err, tc)
-			continue
+			break
 		}
 		resType := DNSResType(q.Type)
 		if _, recognized := DNSResTypeToString[resType]; !recognized {
@@ -102,7 +102,7 @@ func (tc *tracedConn) parseDNSQuery(data []byte, sentAt Timestamp) {
 	var udpMaxSize uint16
 	for {
 		ad, err := p.AdditionalHeader()
-		if err == dnsmessage.ErrSectionDone {
+		if err != nil {
 			break
 		}
 		if ad.Type == dnsmessage.TypeOPT {
@@ -145,7 +145,7 @@ func (tc *tracedConn) parseDNSReply(data []byte, recvAt Timestamp) {
 			tc.log.Warningf(
 				"nettrace: networkTracer id=%s: failed to parse DNS reply answer: %v "+
 					"(conn %v)", tc.tracer.getTracerID(), err, tc)
-			continue
+			break
 		}
 		var resolvedVal string
 		switch a.Type {
@@ -155,6 +155,7 @@ func (tc *tracedConn) parseDNSReply(data []byte, recvAt Timestamp) {
 				tc.log.Warningf(
 					"nettrace: networkTracer id=%s: failed to parse A resource from DNS "+
 						"reply: %v (conn %v)", tc.tracer.getTracerID(), err, tc)
+				_ = p.SkipAnswer()
 				continue
 			}
 			resolvedVal = net.IP(r.A[:]).String()
@@ -164,6 +165,7 @@ func (tc *tracedConn) parseDNSReply(data []byte, recvAt Timestamp) {
 				tc.log.Warningf(
 					"nettrace: networkTracer id=%s: failed to parse AAAA resource from DNS "+
 						"reply: %v (conn %v)", tc.tracer.getTracerID(), err, tc)
+				_ = p.SkipAnswer()
 				continue
 			}
 			resolvedVal = net.IP(r.AAAA[:]).String()
@@ -173,6 +175,7 @@ func (tc *tracedConn) parseDNSReply(data []byte, recvAt Timestamp) {
 				tc.log.Warningf(
 					"nettrace: networkTracer id=%s: failed to parse CNAME resource from DNS "+
 						"reply: %v (conn %v)", tc.tracer.getTracerID(), err, tc)
+				_ = p.SkipAnswer()
 				continue
 			}
 			resolvedVal = r.CNAME.String()
@@ -182,6 +185,7 @@ func (tc *tracedConn) parseDNSReply(data []byte, recvAt Timestamp) {
 				tc.log.Warningf(
 					"nettrace: networkTracer id=%s: failed to parse NS resource from DNS "+
 						"reply: %v (conn %v)", tc.tracer.getTracerID(), err, tc)
+				_ = p.SkipAnswer()
 				continue
 			}
 			resolvedVal = r.NS.String()
@@ -191,6 +195,7 @@ func (tc *tracedConn) parseDNSReply(data []byte, recvAt Timestamp) {
 				tc.log.Warningf(
 					"nettrace: networkTracer id=%s: failed to parse PTR resource from DNS "+
 						"reply: %v (conn %v)", tc.tracer.getTracerID(), err, tc)
+				_ = p.SkipAnswer()
 				continue
 			}
 			resolvedVal = r.PTR.String()
@@ -200,6 +205,7 @@ func (tc *tracedConn) parseDNSReply(data []byte, recvAt Timestamp) {
 				tc.log.Warningf(
 					"nettrace: networkTracer id=%s: failed to parse MX resource from DNS "+
 						"reply: %v (conn %v)", tc.tracer.getTracerID(), err, tc)
+				_ = p.SkipAnswer()
 				continue
 			}
 			resolvedVal = r.MX.String()

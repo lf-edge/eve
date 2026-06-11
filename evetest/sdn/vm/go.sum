@@ -94,8 +94,8 @@ github.com/kylelemons/godebug v1.1.0 h1:RPNrshWIDI6G2gRW9EHilWtl7Z6Sb1BR0xunSBf0
 github.com/kylelemons/godebug v1.1.0/go.mod h1:9/0rRGxNHcop5bhtWyNeEfOS8JIWk580+fNqagV/RAw=
 github.com/lf-edge/eve-api/go v0.0.0-20260420100351-253db6a73b76 h1:VD3iREtFSb5Nz+5bHCoZdSm7rux8lkky0cATB4ImY3M=
 github.com/lf-edge/eve-api/go v0.0.0-20260420100351-253db6a73b76/go.mod h1:6HxNA/qKJVEqwpuOFkcQ0h3QyotvAs/cjHLC961FPOY=
-github.com/lf-edge/eve-libs v0.0.0-20260304091825-96eaa95b9f8b h1:9aYAlHrCPf/w7SmODoT94o9PezYDl8pMFXJ6cX2VnLY=
-github.com/lf-edge/eve-libs v0.0.0-20260304091825-96eaa95b9f8b/go.mod h1:ltvACFoIkGSeuuK+4Gl5+or3dbIxG2np6K0PQYkk6hU=
+github.com/lf-edge/eve-libs v0.0.0-20260605082929-e518b59e99d2 h1:Q15Ycd0cq1aNTGlAst/IMLgkAagfu9CIwESWaaqmPD4=
+github.com/lf-edge/eve-libs v0.0.0-20260605082929-e518b59e99d2/go.mod h1:AfK4OlUgnJymZnPEuqzm7sJoCCtRgFhKtRU1kib+VBY=
 github.com/lf-edge/eve/pkg/pillar v0.0.0-20260421125048-8d3825045e4e h1:MGhvM4TrXHYyssTTcEkpc79zatoZ1oJRrrbjTU++ps0=
 github.com/lf-edge/eve/pkg/pillar v0.0.0-20260421125048-8d3825045e4e/go.mod h1:Zx1ZEowId6xn7o9qGVNymtxc87muRObab6SofXZCXUk=
 github.com/matttproud/golang_protobuf_extensions v1.0.1/go.mod h1:D8He9yQNgCq6Z5Ld7szi9bcBfOoFv/3dc6xSMkL2PC0=

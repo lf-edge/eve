@@ -159,16 +159,20 @@ func (ctx *DronaCtx) postResponse(req *DronaRequest, status error) {
 	req.result <- req
 }
 
-func isToken(str string) bool {
+// IsToken checks whether the given string is a valid HTTP token
+// as defined in RFC 7230, Section 3.2.6.
+func IsToken(str string) bool {
 	// https://datatracker.ietf.org/doc/html/rfc7230#section-3.2.6
 	rex := regexp.MustCompile(`^[a-zA-Z0-9-._~+/!#\$%&'\*\+^` + "`" + `|']*$`)
 
 	return rex.MatchString(str)
 }
 
-func isToken68(str string) bool {
+// IsToken68 checks whether the given string is a valid token68
+// as defined in RFC 7235, Appendix C.
+func IsToken68(str string) bool {
 	// https://datatracker.ietf.org/doc/html/rfc7235#appendix-C
-	rex := regexp.MustCompile(`^[a-zA-Z0-9-._~+/]*=?$`)
+	rex := regexp.MustCompile(`^[a-zA-Z0-9-._~+/]*={0,2}$`)
 
 	return rex.MatchString(str)
 }
@@ -221,10 +225,10 @@ func (ctx *DronaCtx) NewSyncerDest(tr SyncTransportType, UrlOrRegion, nettraceDi
 	case SyncHttpTr:
 		syncEp := &HttpTransportMethod{transport: tr, hurl: UrlOrRegion, path: PathOrBkt, ctx: ctx}
 		if auth != nil {
-			if !isToken(auth.Uname) {
+			if !IsToken(auth.Uname) {
 				return nil, errors.New("auth.Uname is not token-conform")
 			}
-			if !isToken68(auth.Password) {
+			if !IsToken68(auth.Password) {
 				return nil, errors.New("auth.Password is not token68-conform")
 			}
 			syncEp.authType = auth.AuthType
