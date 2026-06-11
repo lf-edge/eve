@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/kube/kube-init/k3s"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/mgmtproxy"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
 )
 
@@ -771,6 +772,20 @@ func SetupLogging() error {
 // User containerd
 // ---------------------------------------------------------------------------
 
+// readClusterAddrForProxy returns the local node's cluster IP and
+// prefix length for mgmtproxy NO_PROXY assembly, or ("", 0) if the
+// EdgeNodeClusterStatus has not been published yet (cold boot,
+// single-node device). Best-effort: any read error is silently
+// swallowed because mgmtproxy.NoProxy degrades to the base CIDR
+// list and that is correct (slightly broader) behaviour.
+func readClusterAddrForProxy() (string, int) {
+	cs, err := k3s.GetClusterStatus()
+	if err != nil || cs == nil {
+		return "", 0
+	}
+	return cs.ClusterIP, cs.PrefixLen
+}
+
 // StartContainerd brings up the user-side containerd that k3s'
 // kubelet talks to. Sets up runc/shim symlinks, starts containerd
 // as a detached process if not already running, and waits for the
@@ -803,11 +818,34 @@ func StartContainerd(ctx context.Context) error {
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+	// Route containerd's CRI image-pull client through pillar's
+	// cost-aware mgmtproxy. Env is scoped to this command only —
+	// the k3s server (kubelet, apiserver, controller-manager,
+	// scheduler) is launched separately by the supervisor and must
+	// NOT see HTTPS_PROXY, otherwise intra-cluster HTTPS gets
+	// routed through the proxy and breaks the cluster.
+	//
+	// Cluster IP+prefix come from EdgeNodeClusterStatus when
+	// available; absent (very early boot, single-node) yields just
+	// the base NO_PROXY list and is harmless.
+	clusterIP, prefixLen := readClusterAddrForProxy()
+	cmd.Env = append(os.Environ(), mgmtproxy.Env(clusterIP, prefixLen)...)
+
 	if err := cmd.Start(); err != nil {
 		logFile.Close()
 		return fmt.Errorf("start containerd: %w", err)
 	}
 	log.Printf("started user containerd (PID %d)", cmd.Process.Pid)
+
+	// Sentinel for operators: containerd unsets HTTPS_PROXY after
+	// reading it for the CRI client, so /proc/<pid>/environ becomes
+	// unreliable. The sentinel file documents exactly what was
+	// passed at launch. Failure to write is non-fatal.
+	if err := mgmtproxy.WriteContainerdSentinel(
+		cmd.Process.Pid, clusterIP, prefixLen); err != nil {
+		log.Printf("WARNING: write mgmtproxy sentinel: %v", err)
+	}
 	// Reap the immediate child so the kernel doesn't accumulate
 	// zombies if containerd later exits. The detached process keeps
 	// its own fd on the log file.
