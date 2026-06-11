@@ -4,7 +4,6 @@
 package update
 
 import (
-	"encoding/json"
 	"errors"
 	"log"
 	"os"
@@ -12,7 +11,9 @@ import (
 	"strings"
 
 	"github.com/lf-edge/eve/pkg/kube/kube-init/edgenodeinfo"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/kcus"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 // KubeVersion is the version this build expects to converge the
@@ -22,25 +23,6 @@ import (
 // (i.e. node already at target, or EVE was downgraded — downgrades
 // are unsupported, see addresses upstream a67d55ce9).
 const KubeVersion = 3
-
-// kcusJSON is the minimal subset of pillar's KubeClusterUpdateStatus
-// we read to detect a failed upgrade pass targeting our KubeVersion.
-//
-// MUST stay in sync with the canonical type in pillar
-// (pkg/pillar/types/kubeclusterupdate.go: KubeClusterUpdateStatus
-// and KubeClusterUpdateStatusType). A field rename on the pillar
-// side will silently zero our Status / DestinationKubeUpdateVersion
-// reads and disable the failed-upgrade guard.
-type kcusJSON struct {
-	Status                       int    `json:"Status"`
-	DestinationKubeUpdateVersion string `json:"DestinationKubeUpdateVersion"`
-}
-
-// kcusStatusFailed mirrors pillar's KubeClusterUpdateStatusFailed.
-// We hold the magic number locally to avoid pulling in the heavy
-// pkg/pillar/types reverse dependency; it must move in lockstep
-// with that enum if pillar ever reorders it.
-const kcusStatusFailed = 4
 
 // VersionGet returns the last applied KubeVersion as a string, or
 // "0" if the marker file is missing or unreadable.
@@ -93,22 +75,12 @@ func VersionSet() error {
 // and the next status publish from pillar will rewrite the file
 // cleanly.
 func updateFailed() bool {
-	data, err := os.ReadFile(kcusFilePath)
-	if err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			log.Printf("update: read %s: %v (treating as no prior failure)",
-				kcusFilePath, err)
-		}
+	status, ok := kcus.Get()
+	if !ok {
 		return false
 	}
-	var status kcusJSON
-	if err := json.Unmarshal(data, &status); err != nil {
-		log.Printf("update: parse %s: %v (treating as no prior failure)",
-			kcusFilePath, err)
-		return false
-	}
-	return status.Status == kcusStatusFailed &&
-		status.DestinationKubeUpdateVersion == strconv.Itoa(KubeVersion)
+	return status.Status == types.CompStatusFailed &&
+		status.DestinationKubeUpdateVersion == uint32(KubeVersion)
 }
 
 // appliedVersionGEQ reports whether the persisted applied version
