@@ -211,8 +211,9 @@ func componentIsInstalled(ctx context.Context, comp string) (bool, error) {
 		return true, nil
 	}
 
-	cmd := exec.CommandContext(ctx, "kubectl", "get", "namespace", ns)
-	cmd.Env = append(os.Environ(), "KUBECONFIG="+state.K3sKubeconfig)
+	// Route through kubectlx so the binary path is `k3s kubectl` —
+	// the kube container does not ship a standalone kubectl.
+	cmd := kubectlx.CmdContext(ctx, "get", "namespace", ns)
 	out, err := cmd.CombinedOutput()
 	if err == nil {
 		return true, nil

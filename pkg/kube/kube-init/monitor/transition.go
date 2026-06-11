@@ -8,11 +8,11 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/kube/kube-init/kubectlx"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
 )
 
@@ -116,13 +116,14 @@ func CheckClusterTransitionDone(ctx context.Context) bool {
 	return true
 }
 
-// countReadyNodes runs `kubectl get nodes` (with KUBECONFIG
-// injected) and counts rows whose status column starts with
-// "Ready". Cordoned nodes ("Ready,SchedulingDisabled") count too
-// — they're schedulable for control-plane purposes.
+// countReadyNodes runs `k3s kubectl get nodes` and counts rows
+// whose status column starts with "Ready". Cordoned nodes
+// ("Ready,SchedulingDisabled") count too — they're schedulable
+// for control-plane purposes.
 func countReadyNodes(ctx context.Context) int {
-	cmd := exec.CommandContext(ctx, "kubectl", "get", "nodes", "--no-headers")
-	cmd.Env = append(os.Environ(), "KUBECONFIG="+state.K3sKubeconfig)
+	// Route through kubectlx so the binary path is `k3s kubectl` —
+	// the kube container does not ship a standalone kubectl.
+	cmd := kubectlx.CmdContext(ctx, "get", "nodes", "--no-headers")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return 0
@@ -176,4 +177,3 @@ func parseTransitionMarker(path string) (int64, int, error) {
 	}
 	return ts, count, nil
 }
-
