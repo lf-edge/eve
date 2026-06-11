@@ -10,11 +10,11 @@ import (
 	"net/url"
 	"path"
 	"reflect"
-	"regexp"
 	"strings"
 	"time"
 
 	zconfig "github.com/lf-edge/eve-api/go/config"
+	"github.com/lf-edge/eve-libs/zedUpload"
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
@@ -78,20 +78,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	ci.process(ps)
 
 	return 0
-}
-
-func isToken(str string) bool {
-	// https://datatracker.ietf.org/doc/html/rfc7230#section-3.2.6
-	rex := regexp.MustCompile(`^[a-zA-Z0-9-._~+/!#\$%&'\*\+^` + "`" + `|']*$`)
-
-	return rex.MatchString(str)
-}
-
-func isToken68(str string) bool {
-	// https://datatracker.ietf.org/doc/html/rfc7235#appendix-C
-	rex := regexp.MustCompile(`^[a-zA-Z0-9-._~+/]*=?$`)
-
-	return rex.MatchString(str)
 }
 
 type uploadInfo struct {
@@ -171,10 +157,10 @@ func (ci *collectInfo) retrieveDSUploadInfo() (uploadInfo, error) {
 		return uploadInfo{}, fmt.Errorf("no datastore with upload URL found")
 	}
 
-	if !isToken68(apiPassword) {
+	if !zedUpload.IsToken68(apiPassword) {
 		return uploadInfo{}, fmt.Errorf("DsPassword is not token68-conform")
 	}
-	if !isToken(apiKey) {
+	if !zedUpload.IsToken(apiKey) {
 		return uploadInfo{}, fmt.Errorf("DsAPIKey is not token-conform")
 	}
 
