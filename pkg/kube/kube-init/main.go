@@ -1272,6 +1272,16 @@ func (d *daemon) enterStartingK3s(ctx context.Context) {
 		}
 	}
 
+	// Restore the persisted k3s node password before any code path
+	// can launch k3s. /etc/rancher/node/password lives on the kube
+	// container's tmpfs overlay and would otherwise be regenerated
+	// to a new random value on each reboot, causing the server to
+	// log NodePasswordValidationFailed against the original hash
+	// stored in <hostname>.node-password.k3s.
+	if err := k3s.RestoreNodePassword(); err != nil {
+		log.Printf("WARNING: restore node password: %v", err)
+	}
+
 	if d.supervisor != nil && d.supervisor.IsRunning() {
 		log.Printf("stopping stale k3s instance before restart")
 		if err := d.supervisor.Stop(); err != nil {
@@ -1335,6 +1345,15 @@ func (d *daemon) enterRunning(ctx context.Context) {
 	// One-shot status line so operators can see the registration
 	// state without scrolling through silent health-tick output.
 	components.LogRegistrationStatus()
+
+	// k3s is up and the supervisor is talking to it — persist the
+	// node password it generated (or confirm the one we restored
+	// still matches). Idempotent: equal contents = no-op. On a
+	// brownfield first boot under this fix, this also arms the
+	// stale-secret cleanup that runHealthWorker retries every tick.
+	if err := k3s.SaveNodePassword(); err != nil {
+		log.Printf("WARNING: save node password: %v", err)
+	}
 
 	// Start the CNI DHCP daemon eagerly. On PhaseSteady the
 	// DeployAll graph (which used to launch the daemon as a
@@ -1725,6 +1744,14 @@ func (d *daemon) runHealthWorker(ctx context.Context, mon *monitor.Monitor, sup 
 
 	if err := components.RegistrationCheckApply(); err != nil {
 		log.Printf("WARNING: registration check/apply: %v", err)
+	}
+
+	// Brownfield remediation: if SaveNodePassword detected a
+	// first-boot fresh-password case, it left a flag for us. Delete
+	// the now-stale cluster secret so k3s regenerates it against
+	// the password we persisted. No-op on every other boot.
+	if err := k3s.FixNodePasswordSecret(ctx); err != nil {
+		log.Printf("WARNING: fix node password secret: %v", err)
 	}
 
 	if _, err := k3s.ApplyUserOverrides(); err != nil {
