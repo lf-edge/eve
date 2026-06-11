@@ -291,7 +291,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject,
 		AgentName:   "zedagent",
 		MyAgentName: agentName,
 		TopicImpl:   types.ControllerCert{},
-		Persistent:  true,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
 	})
