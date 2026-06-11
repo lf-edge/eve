@@ -49,6 +49,7 @@ import (
 	"github.com/lf-edge/eve/pkg/kube/kube-init/components"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/images"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/k3s"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/mgmtproxy"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/monitor"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/prereqs"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
@@ -1752,6 +1753,31 @@ func (d *daemon) runHealthWorker(ctx context.Context, mon *monitor.Monitor, sup 
 	// the password we persisted. No-op on every other boot.
 	if err := k3s.FixNodePasswordSecret(ctx); err != nil {
 		log.Printf("WARNING: fix node password secret: %v", err)
+	}
+
+	// mgmtproxy cni0 anchor: ensure CDI importer pods can reach the
+	// local mgmtproxy via HTTPS_PROXY=CNI0URL. Two parts run every
+	// tick because both are recovery paths for upgrades and flannel
+	// restarts:
+	//   - SetupCNI0ProxyIP re-applies the link-local anchor on cni0
+	//     if it's missing (no-op if already present, skipped on
+	//     cold boot before flannel creates cni0).
+	//   - PatchCDIProxyConfig re-asserts the CDI CR's importProxy
+	//     spec so importer pods get the proxy env; safe to repeat
+	//     because kubectl patch is idempotent.
+	// Both are gated on kubevirt being requested for this device —
+	// base-k3s-mode and arm64 don't carry CDI.
+	if d.installKubevirt {
+		if res, err := mgmtproxy.SetupCNI0ProxyIP(); err != nil {
+			log.Printf("WARNING: setup cni0 proxy anchor: %v", err)
+		} else if res == mgmtproxy.CNI0Assigned {
+			log.Printf("mgmtproxy: assigned %s/32 to cni0", mgmtproxy.CNI0IP)
+		}
+		if marked, err := state.IsMarked(state.KubevirtInitialized); err == nil && marked {
+			if err := mgmtproxy.PatchCDIProxyConfig(ctx); err != nil {
+				log.Printf("WARNING: patch CDI proxy config: %v", err)
+			}
+		}
 	}
 
 	if _, err := k3s.ApplyUserOverrides(); err != nil {
