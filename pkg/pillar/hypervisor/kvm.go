@@ -937,6 +937,10 @@ func (ctx KvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 				args = append(args, traceArgs...)
 			}
 		}
+		if globalConfig.GlobalValueBool(types.QemuGdb) {
+			gdbSock := kvmStateDir + domainName + "/gdb"
+			args = append(args, "-gdb", "unix:"+gdbSock+",server=on,wait=off")
+		}
 	}
 
 	// Add CPUs affinity as a parameter to qemu.
@@ -1913,7 +1917,7 @@ func (ctx KvmContext) Start(domainName string) error {
 
 	logrus.Debugf("starting qmpEventHandler")
 	logrus.Infof("Creating %s at %s", "qmpEventHandler", agentlog.GetMyStack())
-	go qmpEventHandler(getQmpListenerSocket(domainName), GetQmpExecutorSocket(domainName))
+	go qmpEventHandler(getQmpListenerSocket(domainName), GetQmpExecutorSocket(domainName), domainName)
 
 	annotations, err := ctx.ctrdContext.Annotations(domainName)
 	if err != nil {

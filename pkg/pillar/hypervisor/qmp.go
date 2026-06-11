@@ -91,6 +91,62 @@ func execQuit(socket string) error {
 	return err
 }
 
+// readQemuRunState issues a one-shot QMP query-status and returns the
+// raw run-state string ("running", "internal-error", "paused", …).
+// Used by qmpEventHandler on STOP because the STOP event itself
+// carries no reason field.  Returns "" on any error.
+func readQemuRunState(socket string) string {
+	raw, err := execRawCmd(socket, `{ "execute": "query-status" }`, false)
+	if err != nil {
+		logrus.Debugf("readQemuRunState: %v", err)
+		return ""
+	}
+	var resp struct {
+		Return struct {
+			Status string `json:"status"`
+		} `json:"return"`
+	}
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		logrus.Debugf("readQemuRunState: parse: %v", err)
+		return ""
+	}
+	return resp.Return.Status
+}
+
+// readPauseOnCrashFlag reads the current value of the
+// debug.qemu.pause.on.crash global config item directly from pillar's
+// on-disk pubsub publication.  qmpEventHandler runs in a goroutine
+// without a Subscription, so we side-step the pubsub channel and just
+// read the JSON.  Returns false on any error (missing file, parse
+// failure, key not set).
+func readPauseOnCrashFlag() bool {
+	const path = "/run/global/ConfigItemValueMap/global.json"
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		logrus.Debugf("readPauseOnCrashFlag: %v", err)
+		return false
+	}
+	var cfg types.ConfigItemValueMap
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		logrus.Warnf("readPauseOnCrashFlag: parse %s: %v", path, err)
+		return false
+	}
+	return cfg.GlobalValueBool(types.QemuPauseOnCrash)
+}
+
+// execDumpGuestMemory triggers qemu's `dump-guest-memory` QMP command,
+// writing the guest's physical RAM in ELF core format to outPath.
+// The `paging=false` flag means "don't perform the guest pagewalk to
+// produce a 'virtual' dump — just the raw GPA layout"; this is what
+// WinDbg / crash can ingest after we tell them where the Windows
+// kernel image landed (from the dump's note section).
+func execDumpGuestMemory(socket, outPath string) error {
+	cmd := fmt.Sprintf(`{ "execute": "dump-guest-memory", "arguments": { "paging": false, "protocol": "file:%s" } }`, outPath)
+	logrus.Infof("executing QMP command: %s", cmd)
+	_, err := execRawCmd(socket, cmd, true)
+	return err
+}
+
 func execVNCPassword(socket string, password string) error {
 	vncSetPwd := fmt.Sprintf(`{ "execute": "change-vnc-password", "arguments": { "password": "%s" } }`, password)
 	// But log this:
@@ -206,7 +262,7 @@ func getQemuStatus(socket string) (types.SwState, error) {
 	return state, errs
 }
 
-func qmpEventHandler(listenerSocket, executorSocket string) {
+func qmpEventHandler(listenerSocket, executorSocket, domainName string) {
 	monitor, err := qmp.NewSocketMonitor("unix", listenerSocket, sockTimeout)
 	if err != nil {
 		logrus.Errorf("qmpEventHandler: Exception while getting monitor of listenerSocket: %s. %s", listenerSocket, err.Error())
@@ -240,8 +296,41 @@ func qmpEventHandler(listenerSocket, executorSocket string) {
 			if err := execQuit(executorSocket); err != nil {
 				logrus.Errorf("qmpEventHandler: Exception while quitting domain with socket: %s. %s", executorSocket, err.Error())
 			}
+		case "STOP":
+			// QMP's STOP event itself carries no reason field; the
+			// reason for the stop is exposed via query-status as the
+			// VM's run state.  After KVM_RUN -> -EFAULT, qemu's
+			// accel/kvm/kvm-all.c calls vm_stop(RUN_STATE_INTERNAL_ERROR)
+			// which fires this STOP and then `query-status` returns
+			// {"status": "internal-error"}.  Capture the guest's
+			// physical RAM as an ELF core file in that case, before
+			// pillar's outer loop notices BROKEN and tears qemu down.
+			// Other STOP reasons (paused-by-operator, watchdog, ...)
+			// are ignored.
+			runState := readQemuRunState(executorSocket)
+			logrus.Infof("qmpEventHandler: STOP event runState=%q for %s", runState, domainName)
+			if runState == "internal-error" {
+				dumpPath := qemuTraceDir + domainName + ".guestmem.elf"
+				if err := os.MkdirAll(qemuTraceDir, 0755); err != nil {
+					logrus.Errorf("qmpEventHandler: mkdir %s failed: %v", qemuTraceDir, err)
+				} else if err := execDumpGuestMemory(executorSocket, dumpPath); err != nil {
+					logrus.Errorf("qmpEventHandler: dump-guest-memory failed for %s: %v", domainName, err)
+				} else {
+					logrus.Warnf("qmpEventHandler: guest memory dumped to %s (qemu now in RUN_STATE_INTERNAL_ERROR)", dumpPath)
+				}
+				// Pause-on-crash: read directly from the on-disk pubsub
+				// publication of GlobalConfig (pillar maintains this at
+				// /run/global/ConfigItemValueMap/global.json).  When
+				// debug.qemu.pause.on.crash is true, leave qemu alive
+				// so an operator can attach gdb / pull more dumps /
+				// inspect VFIO state.  Pillar's outer loop still marks
+				// the domain BROKEN.
+				if readPauseOnCrashFlag() {
+					logrus.Warnf("qmpEventHandler: pause-on-crash enabled, leaving qemu paused for %s (operator must clean up manually)", domainName)
+				}
+			}
 		default:
-			//Not handling the following events: RESUME, NIC_RX_FILTER_CHANGED, RTC_CHANGE, POWERDOWN, STOP
+			//Not handling the following events: RESUME, NIC_RX_FILTER_CHANGED, RTC_CHANGE, POWERDOWN
 			logrus.Warnf("qmpEventHandler: Unhandled event: %s from QMP socket: %s", event.Event, listenerSocket)
 		}
 	}
