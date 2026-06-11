@@ -16,10 +16,6 @@ var (
 	// applied version already matches.
 	AppliedKubeVersion = "/var/lib/applied-kube-version"
 
-	// KubeConfigPath is the controller-published KubeConfig
-	// pubsub payload. Read for a desired k3sVersion override.
-	KubeConfigPath = "/persist/status/zedkube/KubeConfig/global.json"
-
 	// kcusFilePath is the KubeClusterUpdateStatus pubsub file. The
 	// publisher's AgentName is "zedagent" (see zedkube.go's
 	// NewPublication call), so the file lives under .../zedagent/,
