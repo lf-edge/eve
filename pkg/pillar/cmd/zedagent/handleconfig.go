@@ -341,47 +341,62 @@ func indicateInvalidBootstrapConfig(getconfigCtx *getconfigContext) {
 	getconfigCtx.ledBlinkCount = types.LedBlinkInvalidBootstrapConfig
 }
 
-// Load /config/GlobalConfig/ json file with ConfigItemValueMap provided that:
-//   - the file exists
+// loadGlobalConfig loads /config/GlobalConfig and/or
+// /config/authorized_keys at boot. Precedence:
+//   - GlobalConfig present: authoritative, even with empty
+//     debug.enable.ssh; authorized_keys is ignored.
+//   - GlobalConfig missing: fall back to authorized_keys as the
+//     bootstrap-SSH source on un-onboarded devices.
+//   - Neither present: nothing to load.
 //
-// Note that we need to re-load on each boot since the loaded file content
-// is not persisted anywhere in /persist. Once the device has been onboarded
-// and we have a /persist/checkpoint/lastconfig this file is ignored (by the caller).
-//
-// The function will only load the ConfigItemValueMap items into
-// zedagentCtx,globalConfig. The caller is responsible for publishing those
-// if this returns true
+// Returns true iff zedagentCtx.globalConfig was overwritten; the
+// caller publishes it in that case. Re-runs on every boot; content
+// is not persisted to /persist. Once /persist/checkpoint/lastconfig
+// exists the caller skips this.
 func loadGlobalConfig(getconfigCtx *getconfigContext) bool {
 	return loadGlobalConfigImpl(getconfigCtx, types.ImportGlobalConfigFile, types.BaseAuthorizedKeysFile)
 }
 
-// loadGlobalConfigImpl is the testable core of loadGlobalConfig.
+// loadGlobalConfigImpl is the testable core of loadGlobalConfig
+// with explicit file paths.
 func loadGlobalConfigImpl(getconfigCtx *getconfigContext, globalConfigFile, authorizedKeysFile string) bool {
-	if !fileutils.FileExists(log, globalConfigFile) {
+	globalConfigExists := fileutils.FileExists(log, globalConfigFile)
+	authKeysExists := fileutils.FileExists(log, authorizedKeysFile)
+	if !globalConfigExists && !authKeysExists {
 		return false
 	}
 
 	newConfigPtr := types.DefaultConfigItemValueMap()
-	contents, err := os.ReadFile(globalConfigFile)
-	if err != nil {
-		log.Errorf("Failed to read global config: %v", err)
-		return false
-	}
 
-	var config types.ConfigItemValueMap
-	err = json.Unmarshal(contents, &config)
-	if err != nil {
-		log.Errorf("Could not unmarshall data in file %s: %s", globalConfigFile, err)
-		return false
-	}
-	log.Noticef("/config/GlobalConfig contains: %v", config)
-	newConfigPtr.UpdateItemValues(&config)
-
-	keyData, keyDataValid := readAuthorizedKeys(authorizedKeysFile)
-	if len(keyData) != 0 && keyDataValid {
-		log.Noticef("Found the key data in %s: %v", authorizedKeysFile, keyData)
+	if globalConfigExists {
+		contents, err := os.ReadFile(globalConfigFile)
+		if err != nil {
+			log.Errorf("Failed to read global config: %v", err)
+			return false
+		}
+		var config types.ConfigItemValueMap
+		if err := json.Unmarshal(contents, &config); err != nil {
+			log.Errorf("Could not unmarshall data in file %s: %s",
+				globalConfigFile, err)
+			return false
+		}
+		log.Noticef("/config/GlobalConfig contains: %v", config)
+		newConfigPtr.UpdateItemValues(&config)
+		if authKeysExists {
+			log.Noticef("Ignoring %s: GlobalConfig is authoritative",
+				authorizedKeysFile)
+		}
+	} else {
+		// Bootstrap-SSH path: only authorized_keys, no GlobalConfig.
+		keyData, keyDataValid := readAuthorizedKeys(authorizedKeysFile)
+		if len(keyData) == 0 || !keyDataValid {
+			return false
+		}
+		log.Noticef("Loaded bootstrap SSH keys from %s: %v",
+			authorizedKeysFile, keyData)
 		newConfigPtr.SetGlobalValueString(types.SSHAuthorizedKeys, keyData)
 	}
+
 	getconfigCtx.zedagentCtx.globalConfig = *newConfigPtr
 	return true
 }
