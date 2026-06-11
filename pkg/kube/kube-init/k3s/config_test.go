@@ -5,7 +5,6 @@ package k3s
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net"
 	"net/http"
@@ -18,13 +17,15 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/kube/kube-init/encconfig"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/encstatus"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	uuid "github.com/satori/go.uuid"
 )
 
 // shadowPaths reroutes the package's well-known paths onto tmp dirs
 // for the lifetime of a single test. The returned configDir is the
 // new value of K3sConfigDir.
-func shadowPaths(t *testing.T) (configDir, userOverrideSrc, encStatus string) {
+func shadowPaths(t *testing.T) (configDir, userOverrideSrc string) {
 	t.Helper()
 	dir := t.TempDir()
 	configDir = filepath.Join(dir, "k3s-cfg")
@@ -32,18 +33,15 @@ func shadowPaths(t *testing.T) (configDir, userOverrideSrc, encStatus string) {
 		t.Fatalf("mkdir configDir: %v", err)
 	}
 	userOverrideSrc = filepath.Join(dir, "user-override.yaml")
-	encStatus = filepath.Join(dir, "EdgeNodeClusterStatus.json")
 
-	origCD, origUO, origES, origCW :=
-		K3sConfigDir, UserOverrideSrc, EncStatusFile, clusterWaitFile
+	origCD, origUO, origCW :=
+		K3sConfigDir, UserOverrideSrc, clusterWaitFile
 	K3sConfigDir = configDir
 	UserOverrideSrc = userOverrideSrc
-	EncStatusFile = encStatus
 	clusterWaitFile = filepath.Join(dir, "cluster-wait")
 	t.Cleanup(func() {
 		K3sConfigDir = origCD
 		UserOverrideSrc = origUO
-		EncStatusFile = origES
 		clusterWaitFile = origCW
 	})
 	return
@@ -66,29 +64,6 @@ func TestBracketIPv6(t *testing.T) {
 		if got := bracketIPv6(tc.in); got != tc.want {
 			t.Errorf("bracketIPv6(%q) = %q, want %q", tc.in, got, tc.want)
 		}
-	}
-}
-
-func TestParseIPField(t *testing.T) {
-	cases := []struct {
-		name string
-		raw  string
-		want string
-	}{
-		{"empty", "", ""},
-		{"ipv4 string", `"10.0.0.1"`, "10.0.0.1"},
-		{"ipv6 string", `"2001:db8::1"`, "2001:db8::1"},
-		{"null", "null", ""},
-		{"object", `{"a":1}`, ""},
-		{"number", "42", ""},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := parseIPField(json.RawMessage(tc.raw))
-			if got != tc.want {
-				t.Errorf("parseIPField(%q) = %q, want %q", tc.raw, got, tc.want)
-			}
-		})
 	}
 }
 
@@ -145,38 +120,41 @@ func TestClusterTypeIsValid(t *testing.T) {
 }
 
 func TestGetClusterStatusRoundTrip(t *testing.T) {
-	_, _, encStatus := shadowPaths(t)
-	payload := `{
-        "ClusterInterface": "eth0",
-        "BootstrapNode": true,
-        "JoinServerIP": "10.0.0.1",
-        "EncryptedClusterToken": "ZW5jcnlwdGVk",
-        "ClusterIPPrefix": {"IP": "10.1.0.1"},
-        "ClusterIPIsReady": true,
-        "ClusterID": {"UUID": "abc-123"}
-    }`
-	if err := os.WriteFile(encStatus, []byte(payload), 0644); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
+	encstatus.ResetForTest()
+	t.Cleanup(encstatus.ResetForTest)
+	cid := uuid.FromStringOrNil("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+	encstatus.SetForTest(types.EdgeNodeClusterStatus{
+		ClusterInterface: "eth0",
+		BootstrapNode:    true,
+		JoinServerIP:     net.ParseIP("10.0.0.1"),
+		EncryptedClusterToken: "ZW5jcnlwdGVk",
+		ClusterIPPrefix: &net.IPNet{
+			IP:   net.ParseIP("10.1.0.1"),
+			Mask: net.CIDRMask(24, 32),
+		},
+		ClusterIPIsReady: true,
+		ClusterID:        types.UUIDandVersion{UUID: cid},
+	})
 	cs, err := GetClusterStatus()
 	if err != nil {
 		t.Fatalf("GetClusterStatus: %v", err)
 	}
 	if cs.ClusterInterface != "eth0" || cs.JoinServerIP != "10.0.0.1" ||
-		cs.ClusterIP != "10.1.0.1" || cs.ClusterID != "abc-123" ||
-		!cs.IsBootstrapNode {
+		cs.ClusterIP != "10.1.0.1" || cs.ClusterID != cid.String() ||
+		cs.PrefixLen != 24 || !cs.IsBootstrapNode {
 		t.Errorf("parsed wrong: %+v", cs)
 	}
 }
 
-func TestGetClusterStatusMissingFile(t *testing.T) {
-	shadowPaths(t)
+func TestGetClusterStatusNoDelivery(t *testing.T) {
+	encstatus.ResetForTest()
+	t.Cleanup(encstatus.ResetForTest)
 	_, err := GetClusterStatus()
 	if err == nil {
-		t.Fatal("expected error on missing file, got nil")
+		t.Fatal("expected error on no delivery, got nil")
 	}
-	if !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("expected os.ErrNotExist in chain, got %v", err)
+	if !errors.Is(err, ErrClusterStatusUnavailable) {
+		t.Errorf("expected ErrClusterStatusUnavailable in chain, got %v", err)
 	}
 }
 
@@ -222,7 +200,7 @@ func TestGetClusterTypeBranches(t *testing.T) {
 }
 
 func TestWriteNodeName(t *testing.T) {
-	configDir, _, _ := shadowPaths(t)
+	configDir, _ := shadowPaths(t)
 	if err := WriteNodeName("My_Node_01"); err != nil {
 		t.Fatalf("WriteNodeName: %v", err)
 	}
@@ -236,7 +214,7 @@ func TestWriteNodeName(t *testing.T) {
 }
 
 func TestApplyUserOverridesBranches(t *testing.T) {
-	configDir, userOverride, _ := shadowPaths(t)
+	configDir, userOverride := shadowPaths(t)
 	dst := filepath.Join(configDir, UserOverrideConfig)
 
 	// No src, no dst → no change, no error.
@@ -295,7 +273,7 @@ func TestApplyUserOverridesBranches(t *testing.T) {
 }
 
 func TestProvisionDisableLocalPathBranches(t *testing.T) {
-	configDir, _, _ := shadowPaths(t)
+	configDir, _ := shadowPaths(t)
 	dlp := filepath.Join(configDir, DisableLocalPath)
 
 	cases := []struct {
@@ -442,13 +420,17 @@ func TestWriteJoinConfigShape(t *testing.T) {
 }
 
 func TestWaitForBootstrapServerHappyPath(t *testing.T) {
-	_, _, encStatus := shadowPaths(t)
+	_, _ = shadowPaths(t)
 
-	// EncStatusFile must exist so the in-loop stat doesn't trip the
-	// withdrawn-config path.
-	if err := os.WriteFile(encStatus, []byte("{}"), 0644); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
+	// EncStatus must be Present so the in-loop check doesn't trip
+	// the withdrawn-config path. Use a non-nil ClusterID UUID.
+	encstatus.ResetForTest()
+	t.Cleanup(encstatus.ResetForTest)
+	encstatus.SetForTest(types.EdgeNodeClusterStatus{
+		ClusterID: types.UUIDandVersion{
+			UUID: uuid.FromStringOrNil("11111111-2222-3333-4444-555555555555"),
+		},
+	})
 
 	expectedUUID := "the-uuid"
 	api := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -467,10 +449,14 @@ func TestWaitForBootstrapServerHappyPath(t *testing.T) {
 }
 
 func TestWaitForBootstrapServerUUIDMismatchRetries(t *testing.T) {
-	_, _, encStatus := shadowPaths(t)
-	if err := os.WriteFile(encStatus, []byte("{}"), 0644); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
+	_, _ = shadowPaths(t)
+	encstatus.ResetForTest()
+	t.Cleanup(encstatus.ResetForTest)
+	encstatus.SetForTest(types.EdgeNodeClusterStatus{
+		ClusterID: types.UUIDandVersion{
+			UUID: uuid.FromStringOrNil("11111111-2222-3333-4444-555555555555"),
+		},
+	})
 
 	api := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -498,8 +484,10 @@ func TestWaitForBootstrapServerUUIDMismatchRetries(t *testing.T) {
 
 func TestWaitForBootstrapServerWithdrawnConfig(t *testing.T) {
 	shadowPaths(t)
-	// Do NOT seed EncStatusFile; the first probe should detect the
-	// missing file and return ErrClusterStatusWithdrawn.
+	// Do NOT seed encstatus; the first probe should detect the
+	// missing payload and return ErrClusterStatusWithdrawn.
+	encstatus.ResetForTest()
+	t.Cleanup(encstatus.ResetForTest)
 
 	api := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

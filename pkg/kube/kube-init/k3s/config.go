@@ -7,7 +7,6 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -22,8 +21,10 @@ import (
 
 	"github.com/lf-edge/eve/pkg/kube/kube-init/edgenodeinfo"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/encconfig"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/encstatus"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	uuid "github.com/satori/go.uuid"
 )
 
 // Drop-in config files written to K3sConfigDir. k3s reads every
@@ -128,25 +129,6 @@ func (c ClusterType) IsValid() bool {
 	return false
 }
 
-// encStatusJSON mirrors the on-disk EdgeNodeClusterStatus JSON.
-// net.IP fields are captured as RawMessage and decoded via
-// parseIPField so a future encoding change does not break the rest
-// of the parser.
-type encStatusJSON struct {
-	ClusterInterface      string          `json:"ClusterInterface"`
-	BootstrapNode         bool            `json:"BootstrapNode"`
-	JoinServerIP          json.RawMessage `json:"JoinServerIP"`
-	EncryptedClusterToken string          `json:"EncryptedClusterToken"`
-	ClusterIPPrefix       *struct {
-		IP   json.RawMessage `json:"IP"`
-		Mask []byte          `json:"Mask"`
-	} `json:"ClusterIPPrefix"`
-	ClusterIPIsReady bool `json:"ClusterIPIsReady"`
-	ClusterID        *struct {
-		UUID string `json:"UUID"`
-	} `json:"ClusterID"`
-}
-
 // Configure renders every k3s drop-in needed for this device.
 // Idempotent: safe to re-run.
 func Configure(ctx context.Context) error {
@@ -242,43 +224,53 @@ func ApplyUserOverrides() (changed bool, err error) {
 	return true, nil
 }
 
-// GetClusterStatus reads and validates the EdgeNodeClusterStatus
-// JSON. The returned ClusterStatus has every essential string field
-// non-empty; missing or empty fields surface as an error.
+// GetClusterStatus returns the cached EdgeNodeClusterStatus,
+// translated and validated into kube-init's local ClusterStatus
+// shape. The returned ClusterStatus has every essential string
+// field non-empty; missing or empty fields surface as an error.
+// "No delivery yet" returns ErrClusterStatusUnavailable so the
+// caller can distinguish that from a malformed payload.
 func GetClusterStatus() (*ClusterStatus, error) {
-	data, err := os.ReadFile(EncStatusFile)
-	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", EncStatusFile, err)
-	}
-	var raw encStatusJSON
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return nil, fmt.Errorf("parse %s: %w", EncStatusFile, err)
+	raw, ok := encstatus.Get()
+	if !ok {
+		return nil, ErrClusterStatusUnavailable
 	}
 	cs := &ClusterStatus{
 		ClusterInterface: raw.ClusterInterface,
 		IsBootstrapNode:  raw.BootstrapNode,
 		EncryptedToken:   raw.EncryptedClusterToken,
 		ClusterIPIsReady: raw.ClusterIPIsReady,
-		JoinServerIP:     parseIPField(raw.JoinServerIP),
+	}
+	if raw.JoinServerIP != nil {
+		cs.JoinServerIP = raw.JoinServerIP.String()
 	}
 	if raw.ClusterIPPrefix != nil {
-		cs.ClusterIP = parseIPField(raw.ClusterIPPrefix.IP)
+		if raw.ClusterIPPrefix.IP != nil {
+			cs.ClusterIP = raw.ClusterIPPrefix.IP.String()
+		}
 		if len(raw.ClusterIPPrefix.Mask) > 0 {
 			// net.IPMask.Size returns (ones, bits); 0/0 means
 			// the mask is not canonical and we should ignore
 			// it rather than treat it as /0.
-			ones, _ := net.IPMask(raw.ClusterIPPrefix.Mask).Size()
+			ones, _ := raw.ClusterIPPrefix.Mask.Size()
 			cs.PrefixLen = ones
 		}
 	}
-	if raw.ClusterID != nil {
-		cs.ClusterID = raw.ClusterID.UUID
+	if raw.ClusterID.UUID != uuid.Nil {
+		cs.ClusterID = raw.ClusterID.UUID.String()
 	}
 	if err := cs.validate(); err != nil {
-		return nil, fmt.Errorf("validate %s: %w", EncStatusFile, err)
+		return nil, fmt.Errorf("validate EdgeNodeClusterStatus: %w", err)
 	}
 	return cs, nil
 }
+
+// ErrClusterStatusUnavailable is returned by GetClusterStatus
+// when the EdgeNodeClusterStatus subscription has not delivered
+// yet OR was deleted. Callers that want to distinguish a
+// not-yet-arrived state from a malformed payload check
+// errors.Is(err, ErrClusterStatusUnavailable).
+var ErrClusterStatusUnavailable = errors.New("EdgeNodeClusterStatus unavailable")
 
 // validate has a pointer receiver only to match the rest of this
 // file's *ClusterStatus shapes; it does not mutate the receiver.
@@ -324,44 +316,16 @@ func IsClusterMode() (bool, error) {
 	return state.IsMarked(state.EdgeNodeClusterMode)
 }
 
-// zeroClusterUUID is the all-zeros sentinel pillar publishes in
-// EdgeNodeClusterStatus when the controller has deleted the
-// cluster config. The publication is not Persistent, so deletion
-// is signalled by an empty payload rather than file removal —
-// addresses upstream 158981334 ("eve-k: fix cluster delete
-// regression") which made the equivalent shell check.
-const zeroClusterUUID = "00000000-0000-0000-0000-000000000000"
-
 // ClusterStatusPresent reports whether the EdgeNodeClusterStatus
-// payload represents a live cluster. Returns false when the file
-// is absent OR when the payload carries the zero ClusterID UUID
-// (which is how a controller-side cluster delete surfaces).
+// subscription holds a payload representing a live cluster.
+// Returns false on no delivery yet OR when the payload carries
+// the zero ClusterID UUID (which is how a controller-side
+// cluster delete surfaces on this non-Persistent topic).
 //
-// Read errors other than ErrNotExist are surfaced so callers can
-// decide whether to treat a wedged /run as transient — silently
-// collapsing EIO to "no cluster" would mis-fire a cluster→single
-// transition on a stat hiccup.
+// The error return is preserved for the signature compatibility
+// with the file-reading port; it is always nil today.
 func ClusterStatusPresent() (bool, error) {
-	data, err := os.ReadFile(EncStatusFile)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return false, nil
-		}
-		return false, fmt.Errorf("read %s: %w", EncStatusFile, err)
-	}
-	var raw encStatusJSON
-	if err := json.Unmarshal(data, &raw); err != nil {
-		// Malformed payload is treated as "not-yet-published" so a
-		// transient half-write does not trip a transition. The
-		// next health tick will re-read; a persistent malformed
-		// payload is a pillar bug that surfaces elsewhere.
-		return false, nil
-	}
-	if raw.ClusterID == nil || raw.ClusterID.UUID == "" ||
-		raw.ClusterID.UUID == zeroClusterUUID {
-		return false, nil
-	}
-	return true, nil
+	return encstatus.Present(), nil
 }
 
 // ProvisionClusterConfig writes the cluster-mode drop-ins for the
@@ -530,13 +494,13 @@ func waitForBootstrapServer(ctx context.Context, apiURL, statusURL, expectedClus
 
 	probe := func(attempt int) (done bool, err error) {
 		// Bail loudly if the cluster status payload was withdrawn
-		// while we were waiting — the controller revoked the cluster
-		// config and continuing to poll is wrong.
-		if _, statErr := os.Stat(EncStatusFile); statErr != nil {
-			if errors.Is(statErr, os.ErrNotExist) {
-				return true, fmt.Errorf("%w: %s missing", ErrClusterStatusWithdrawn, EncStatusFile)
-			}
-			return true, fmt.Errorf("stat %s: %w", EncStatusFile, statErr)
+		// while we were waiting — the controller revoked the
+		// cluster config and continuing to poll is wrong. The
+		// non-Persistent topic signals withdrawal by zero
+		// ClusterID, which encstatus.Present folds into "not
+		// present".
+		if !encstatus.Present() {
+			return true, ErrClusterStatusWithdrawn
 		}
 
 		// 1. API endpoint reachable?
@@ -737,24 +701,6 @@ func bracketIPv6(addr string) string {
 		return addr
 	}
 	return "[" + addr + "]"
-}
-
-// parseIPField extracts an IP address string from a JSON-encoded
-// net.IP value. Returns "" on any decode failure; downstream
-// validate() will then catch the missing-or-malformed case
-// uniformly. A decode failure is logged so the breadcrumb is
-// available even though the empty string makes the case look like
-// "field absent".
-func parseIPField(raw json.RawMessage) string {
-	if len(raw) == 0 {
-		return ""
-	}
-	var s string
-	if err := json.Unmarshal(raw, &s); err != nil {
-		log.Printf("parseIPField: unmarshal failed: %v", err)
-		return ""
-	}
-	return s
 }
 
 // RemoveServerTLSDir deletes the k3s server CA/key material so the
