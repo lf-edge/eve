@@ -50,6 +50,7 @@ import (
 	"github.com/lf-edge/eve/pkg/kube/kube-init/components"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/edgenodeinfo"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/images"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/kubeconfig"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/k3s"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/mgmtproxy"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/monitor"
@@ -499,6 +500,9 @@ func main() {
 	// every subscriber must be registered first.
 	if err := edgenodeinfo.Register(psMgr); err != nil {
 		log.Fatalf("register EdgeNodeInfo subscription: %v", err)
+	}
+	if err := kubeconfig.Register(psMgr); err != nil {
+		log.Fatalf("register KubeConfig subscription: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

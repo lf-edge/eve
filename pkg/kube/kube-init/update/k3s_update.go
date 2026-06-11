@@ -7,7 +7,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/lf-edge/eve/pkg/kube/kube-init/k3s"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/kubeconfig"
 )
 
 // k3sGitHubReleasesURL is the base URL for k3s binary releases.
@@ -44,16 +44,6 @@ const k3sZeroVersion = "v0.0.0+k3s0"
 // and returns an error otherwise.
 type Stopper interface {
 	Stop() error
-}
-
-// kubeConfigJSON is the minimal subset of the controller-delivered
-// KubeConfig pubsub payload we read for a k3sVersion override.
-//
-// MUST stay in sync with pillar's types.KubeConfig — a field rename
-// will silently zero K3sVersion and force every device onto the
-// compile-time default.
-type kubeConfigJSON struct {
-	K3sVersion string `json:"k3sVersion"`
 }
 
 // k3sGetVersion runs the installed k3s binary with --version and
@@ -101,31 +91,21 @@ func parseK3sVersion(out string) string {
 }
 
 // getDesiredK3sVersion returns the controller-specified k3sVersion
-// from the KubeConfig pubsub file, falling back to the build's
-// compile-time k3s.K3sVersion when the file is missing, malformed,
-// or carries an empty override. Non-ErrNotExist read errors are
-// logged: without that, an operator-pushed version override that
-// happens to land on an unreadable file silently downgrades to the
-// build default with no diagnostic.
+// from the KubeConfig pubsub subscription, falling back to the
+// build's compile-time k3s.K3sVersion when the subscription has
+// not delivered yet or carries an empty override.
+//
+// The KubeConfig subscription is registered at startup
+// (main.go -> kubeconfig.Register). Get returns ok=false until the
+// first delivery; once delivered, K3sVersion may legitimately be
+// empty (controller has explicitly not set an override) — both
+// states fall through to the compile-time default.
 func getDesiredK3sVersion() string {
-	data, err := os.ReadFile(KubeConfigPath)
-	if err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			log.Printf("update: read %s: %v (using compile-time default %s)",
-				KubeConfigPath, err, k3s.K3sVersion)
-		}
+	v := kubeconfig.K3sVersion()
+	if v == "" {
 		return k3s.K3sVersion
 	}
-	var cfg kubeConfigJSON
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		log.Printf("update: parse KubeConfig: %v (using compile-time default %s)",
-			err, k3s.K3sVersion)
-		return k3s.K3sVersion
-	}
-	if cfg.K3sVersion == "" {
-		return k3s.K3sVersion
-	}
-	return cfg.K3sVersion
+	return v
 }
 
 // CheckNodeComponents compares the running k3s version against the
