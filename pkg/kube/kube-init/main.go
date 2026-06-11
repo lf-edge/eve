@@ -43,6 +43,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/sirupsen/logrus"
 	"gopkg.in/natefinch/lumberjack.v2"
 
 	"github.com/lf-edge/eve/pkg/kube/kube-init/clustermode"
@@ -51,6 +52,7 @@ import (
 	"github.com/lf-edge/eve/pkg/kube/kube-init/k3s"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/mgmtproxy"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/monitor"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/pubsubclient"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/prereqs"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/update"
@@ -437,6 +439,11 @@ type daemon struct {
 
 	monRestartCh chan monitor.RestartReason
 
+	// psMgr is the shared pubsub subscription manager. Subscribers
+	// across kube-init packages register topics on it before the
+	// run loop is started in main.
+	psMgr *pubsubclient.Manager
+
 	// enterStateFn is the state-entry dispatcher. Defaults to
 	// d.enterState; tests replace it with a no-op to isolate the
 	// transition graph from real work.
@@ -466,6 +473,25 @@ func main() {
 	log.Printf("starting kube-init daemon (pid=%d, arch=%s)",
 		os.Getpid(), runtime.GOARCH)
 
+	// Construct the pubsub manager. kube-init uses this to
+	// subscribe to EdgeNodeClusterStatus / KubeConfig /
+	// KubeClusterUpdateStatus / EdgeNodeInfo /
+	// EdgeNodeClusterConfig instead of polling the JSON files
+	// those topics drop under /run and /persist. The manager
+	// pattern (mirroring pkg/pillar/cmd/monitor) lets each
+	// subscriber package register its topic+handlers separately,
+	// then a single goroutine drives them all through
+	// pubsub.MultiChannelWatch. Subscriptions themselves come in
+	// follow-up commits; this is the foundation that ensures the
+	// pubsub library is reachable from inside the kube container.
+	psLogger := logrus.New()
+	psLogger.SetOutput(io.MultiWriter(os.Stderr, lj))
+	psMgr, err := pubsubclient.New(psLogger)
+	if err != nil {
+		log.Fatalf("pubsub init: %v", err)
+	}
+	log.Printf("pubsub manager constructed (agent=%s)", pubsubclient.AgentName)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -475,6 +501,7 @@ func main() {
 		backoff:         minBackoff,
 		eventCh:         make(chan Event, 32),
 		monRestartCh:    make(chan monitor.RestartReason, 4),
+		psMgr:           psMgr,
 	}
 
 	initialized, err := state.IsInitialized()
