@@ -343,6 +343,22 @@ not, the pre-load finds nothing, or stale files left behind by an older EVE
 version. The `<persistent>` field of the `hello` message allows the
 subscriber to detect this mismatch and report it.
 
+Two more safeguards protect this contract. In CI, the
+`make check-pubsub-persistence` check (`pkg/pillar/tools/pubsubcheck`)
+cross-references the `Persistent` flags of all publications and
+subscriptions. At boot, before any pubsub process starts, `upgradeconverter`
+(pre-vault) removes the directories under `/persist/status` that belong to a
+topic which is non-persistent in the running EVE version, so that a pre-load
+can never consume state left behind by a previous version whose publication
+was persistent while the current one is not. The list of non-persistent
+topics it consults is extracted from the sources by the same `pubsubcheck`
+tool while the pillar container image is built, so it can never go out of
+sync with the code. Only topics statically known to be non-persistent are
+removed: state of publishers removed entirely, of non-Go components, or of
+publications declared outside the pillar sources is intentionally left in
+place, since the generated list cannot see them and leaving unknown state
+alone is the safe direction.
+
 #### `socketdriver.Subscriber` Subscriptions
 
 Upon receiving a request to subscribe to a table, `socketdriver.Subscriber` determines the filename for the Unix domain socket using the same

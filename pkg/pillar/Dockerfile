@@ -117,6 +117,18 @@ RUN --mount=type=cache,target=/root/.cache/go-build echo "Running go vet" && mak
        if [ -n "$ERR" ] ; then printf 'go fmt Failed - ERR: %s' "$ERR" ; exit 1 ; fi && \
        make ZARCH=${TARGETARCH} HV="$HV" DEV="$DEV" COVER="$COVER" RSTATS=$RSTATS RSTATS_ENDPOINT=$RSTATS_ENDPOINT RSTATS_TAG=$RSTATS_TAG IMM_PROFILING=$IMM_PROFILING ARTIFICIAL_LEAK=$ARTIFICIAL_LEAK DISTDIR=/final/opt/zededa/bin BUILD_VERSION=${GOPKGVERSION} build
 
+# Generate the list of non-persistent pubsub topics from the sources being
+# built; upgradeconverter removes the matching directories under
+# /persist/status at boot (see docs/IPC.md). Generating it here keeps the
+# list in sync with the code by construction. The build fails on an empty
+# list as a sanity check: pillar always has non-persistent publications, so
+# an empty list means the generator is broken (the resulting failure mode is
+# benign - upgradeconverter would simply clean up nothing).
+RUN --mount=type=cache,target=/root/.cache/go-build mkdir -p /final/opt/zededa/etc && \
+    GOOS='' GOARCH='' go run ./tools/pubsubcheck -list-non-persistent . \
+      > /final/opt/zededa/etc/non-persistent-pubsub-topics && \
+    test -s /final/opt/zededa/etc/non-persistent-pubsub-topics
+
 WORKDIR /
 
 ENV DELVE_VERSION 1.20.1
@@ -126,7 +138,7 @@ ADD ${DELVE_SOURCE} /delve.tar.gz
 RUN if [ ${DEV} = "y" ]; then tar --absolute-names -xz < /delve.tar.gz; fi
 WORKDIR /delve-${DELVE_VERSION}
 RUN --mount=type=cache,target=/root/.cache/go-build if [ ${DEV} = "y" ]; then \
-    GOFLAGS= CGO_ENABLED=0 go build -ldflags "-s -w -extldflags '-static'" github.com/go-delve/delve/cmd/dlv && \
+    GOFLAGS='' CGO_ENABLED=0 go build -ldflags "-s -w -extldflags '-static'" github.com/go-delve/delve/cmd/dlv && \
     cp dlv /final/opt/ ; \
 fi
 WORKDIR /
@@ -157,7 +169,7 @@ ENV PKGS alpine-baselayout musl-utils libtasn1-progs pciutils yajl xz bash iptab
 RUN eve-alpine-deploy.sh
 
 # Snapshot collector's own apk DB (alpine PKGS installed above) before the
-# cross-stage COPYs below would overwrite /out/lib/apk/db/installed.
+# cross-stage COPY instructions below would overwrite /out/lib/apk/db/installed.
 RUN cp /out/lib/apk/db/installed /tmp/apk-collector.installed
 
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
