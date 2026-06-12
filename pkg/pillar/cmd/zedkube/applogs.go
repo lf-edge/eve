@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Zededa, Inc.
+// Copyright (c) 2024-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 //go:build k
@@ -9,8 +9,6 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"io"
-	"regexp"
 	"strings"
 	"time"
 
@@ -36,17 +34,27 @@ func (z *zedkube) collectAppLogs() {
 		return
 	}
 
-	// "Thu Aug 17 05:39:04 UTC 2023"
-	timestampRegex := regexp.MustCompile(`(\w{3} \w{3} \d{2} \d{2}:\d{2}:\d{2} \w+ \d{4})`)
-	nowStr := time.Now().String()
-
 	var sinceSec int64
 	sinceSec = logcollectInterval
+
+	// Cache all pods once and separate into virt-launcher pods (for VMI apps) and other pods (for native containers).
+	podsAllList, err := clientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		logrus.Errorf("collectAppLogs: can't list pods in namespace %s: %v", kubeapi.EVEKubeNameSpace, err)
+		return
+	}
+	virtLauncherPods := make([]corev1.Pod, 0)
+	nativePods := make([]corev1.Pod, 0)
+	for _, p := range podsAllList.Items {
+		if strings.HasPrefix(p.ObjectMeta.Name, "virt-launcher-") {
+			virtLauncherPods = append(virtLauncherPods, p)
+		} else {
+			nativePods = append(nativePods, p)
+		}
+	}
+
 	for _, item := range items {
 		aiconfig := item.(types.AppInstanceConfig)
-		if aiconfig.FixedResources.VirtualizationMode != types.NOHYPER {
-			continue
-		}
 		if !aiconfig.IsDesignatedNodeID {
 			continue
 		}
@@ -61,19 +69,49 @@ func (z *zedkube) collectAppLogs() {
 			z.appLogStarted = true
 		}
 
-		pods, err := clientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).List(context.TODO(), metav1.ListOptions{
-			LabelSelector: fmt.Sprintf("app=%s", kubeName),
-		})
-		if err != nil {
-			logrus.Errorf("checkReplicaSetMetrics: can't get pod %v", err)
-			continue
-		}
-		for _, pod := range pods.Items {
+		// First try the normal app pods (native containers) from the cached list
+		found := false
+		for _, pod := range nativePods {
 			if strings.HasPrefix(pod.ObjectMeta.Name, kubeName) {
 				contName = pod.ObjectMeta.Name
+				found = true
 				break
 			}
 		}
+
+		// If not found and this is a VMI-backed app, search the cached virt-launcher pods
+		// and read the guest console container logs.
+		if !found && aiconfig.FixedResources.VirtualizationMode != types.NOHYPER {
+			// virt-launcher-<displayName>-<uuidprefix>-<suffix>
+			// where <uuidprefix> is the first 5 chars of the UUID.
+			// the virt-launcher pod has a init-container 'guest-console-log' to tail -f VMI console logs.
+			// the section is to get those logs only from this container
+			uuidStr := aiconfig.UUIDandVersion.UUID.String()
+			uuidNoDash := strings.ReplaceAll(uuidStr, "-", "")
+			uuidPrefix := uuidNoDash
+			if len(uuidPrefix) > 5 {
+				uuidPrefix = uuidPrefix[:5]
+			}
+			vmiPrefix := fmt.Sprintf("virt-launcher-%s-%s", aiconfig.DisplayName, uuidPrefix)
+			for _, pod := range virtLauncherPods {
+				if strings.HasPrefix(pod.ObjectMeta.Name, vmiPrefix) {
+					contName = pod.ObjectMeta.Name
+					// instruct GetLogs to fetch the guest console container
+					if opt == nil {
+						opt = &corev1.PodLogOptions{}
+					}
+					opt.Container = "guest-console-log"
+					found = true
+					break
+				}
+			}
+		}
+
+		if !found {
+			// No matching pod found for this app; skip
+			continue
+		}
+
 		req := clientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).GetLogs(contName, opt)
 		podLogs, err := req.Stream(context.Background())
 		if err != nil {
@@ -86,29 +124,14 @@ func (z *zedkube) collectAppLogs() {
 		for scanner.Scan() {
 			logLine := scanner.Text()
 
-			matches := timestampRegex.FindStringSubmatch(logLine)
-			var timeStr string
-			if len(matches) > 0 {
-				timeStr = matches[0]
-				ts := strings.Split(logLine, timeStr)
-				if len(ts) > 1 {
-					logLine = ts[0]
-				}
-			} else {
-				timeStr = nowStr
-			}
 			// Process and print the log line here
 			aiLogger := z.appContainerLogger.WithFields(logrus.Fields{
-				"appuuid":       aiconfig.UUIDandVersion.UUID.String(),
-				"containername": contName,
-				"eventtime":     timeStr,
+				"appuuid": aiconfig.UUIDandVersion.UUID.String(),
 			})
 			aiLogger.Infof("%s", logLine)
 		}
-		if scanner.Err() != nil {
-			if scanner.Err() == io.EOF {
-				break // Break out of the loop when EOF is reached
-			}
+		if err := scanner.Err(); err != nil {
+			log.Errorf("collectAppLogs: scanner error for pod %s: %v", contName, err)
 		}
 	}
 }

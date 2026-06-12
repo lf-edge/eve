@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Zededa, Inc.
+// Copyright (c) 2025-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package main
@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	ansi = "\u001B\\[[0-9;]*[A-Za-z]|\u001B[\\(\\)\\[\\]#;?]*[A-Za-z0-9]|\u009B[0-9;]*[A-Za-z]"
+	ansi = "(?:\u001B|\\\\u001[bB])\\[[0-9;]*[A-Za-z]|(?:\u001B|\\\\u001[bB])[\\(\\)\\[\\]#;?]*[A-Za-z0-9]|(?:\u009B|\\\\u009[bB])[0-9;]*[A-Za-z]"
 )
 
 var (
@@ -95,7 +95,7 @@ func parseMemlogEntry(rawBytes []byte) (inputEntry, error) {
 	logInfo := parseLogInfo(logEntry)
 
 	// don't process kube logs, since they are handled separately in /persist/kubelog
-	if logInfo.Source == "kube" {
+	if logInfo.Source == "kube" || logInfo.Source == "kube.out" {
 		return inputEntry{}, nil
 	}
 
@@ -139,14 +139,14 @@ func parseMemlogEntry(rawBytes []byte) (inputEntry, error) {
 
 // parseLogInfo extracts structured log information from a MemlogLogEntry.
 // It handles different log formats including JSON, key=value pairs, and plain text.
-func parseLogInfo(logEntry MemlogLogEntry) Loginfo {
+func parseLogInfo(memlogEntry MemlogLogEntry) Loginfo {
 	var logInfo Loginfo
 	// Start with the envelope - if there is no additional info inside msg, then just use the envelope info
-	logInfo.Source = logEntry.Source
-	logInfo.Time = logEntry.Time
-	logInfo.Msg = logEntry.Msg
+	logInfo.Source = memlogEntry.Source
+	logInfo.Time = memlogEntry.Time
+	logInfo.Msg = memlogEntry.Msg
 
-	switch logEntry.Source {
+	switch memlogEntry.Source {
 	// most logs coming from our services have one of these three formats:
 	// 1. JSON with logrus fields
 	// 2. key=value pairs (logrus's standard text format)
@@ -160,23 +160,24 @@ func parseLogInfo(logEntry MemlogLogEntry) Loginfo {
 		// (Vector's JSON format doesn't produce valid JSON (key collision), so we're not using it)
 
 	default:
+		cleanMsg := cleanForLogParsing(memlogEntry.Msg)
 		// These messages come from golang's logrus package
-		if err := json.Unmarshal([]byte(logEntry.Msg), &logInfo); err == nil {
+		if err := json.Unmarshal([]byte(cleanMsg), &logInfo); err == nil {
 			// Use the inner JSON struct
 			// Go back to the envelope for anything not in the inner JSON
 			if logInfo.Time == "" {
-				logInfo.Time = logEntry.Time
+				logInfo.Time = memlogEntry.Time
 			}
 			if logInfo.Source == "" {
-				logInfo.Source = logEntry.Source
+				logInfo.Source = memlogEntry.Source
 			}
-			// and keep the original message text and fields
-			logInfo.Msg = logEntry.Msg
+			// and keep the cleaned message text and fields
+			logInfo.Msg = cleanMsg
 		} else {
 			// Some messages have attr=val syntax
 			// If the inner message has Level, Time or Msg set they take
 			// precedence over the envelope
-			level, timeStr, msg := parseLevelTimeMsg(logEntry.Msg)
+			level, timeStr, msg := parseLevelTimeMsg(memlogEntry.Msg)
 			if level != "" {
 				logInfo.Level = level
 			}
