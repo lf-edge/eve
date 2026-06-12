@@ -1259,12 +1259,15 @@ runtime block-level verification that a simple digest check cannot offer.
 
 | Requirement | Status | Effort |
 |-------------|--------|--------|
-| `CONFIG_EROFS_FS=y` in kernel | Missing — confirmed at runtime on a booted split image (containerd logs "EROFS unsupported, please modprobe erofs", and the erofs differ plugin skips on missing mkfs.erofs) | Kernel config change in eve-kernel repo |
-| `CONFIG_DM_VERITY=y` in kernel | Missing — verified absent from `eve-core_defconfig` (@`638c9c2df657`). The device-mapper base (`CONFIG_MD=y`, `CONFIG_BLK_DEV_DM=y`) is present, but `DM_VERITY` itself is not enabled | Kernel config change in eve-kernel repo |
-| `mkfs.erofs` in build tools | Missing | `erofs-utils` Alpine package |
-| `veritysetup` at runtime | Likely available via `cryptsetup` | Verify |
-| dm-verity root hash in Core Image | New | Build system change |
-| Containerd EROFS snapshotter | Present but skipped (missing kernel module) | Enabled by kernel config |
+| `CONFIG_EROFS_FS=y` in kernel | **Enabled & verified end-to-end.** Absent from stock `eve-core_defconfig` (booted-image proof: containerd logged "EROFS unsupported, please modprobe erofs"). Added in `eriknordmark/eve-kernel:split-erofs-verity` | Kernel config change in eve-kernel repo |
+| `CONFIG_EROFS_FS_ZIP=y` in kernel | **Enabled & verified.** Required because the Extension is built `mkfs.erofs -zlz4hc,9` (LZ4-compressed) — base `EROFS_FS` alone cannot mount it. Added in the custom kernel | Kernel config change in eve-kernel repo |
+| `CONFIG_DM_VERITY=y` in kernel | **Enabled & verified.** Absent from stock `eve-core_defconfig` (@`638c9c2df657`); the device-mapper base (`CONFIG_MD`, `CONFIG_BLK_DEV_DM`, `CONFIG_CRYPTO_SHA256_SSSE3`) was already present. Added in the custom kernel | Kernel config change in eve-kernel repo |
+| `mkfs.erofs` in build tools | Present — `pkg/mkrootfs-erofs` builds the ext (`mkfs.erofs -zlz4hc,9`). (The containerd erofs *differ* still skips at runtime on missing `mkfs.erofs`, but extsloader mounts the pre-built ext, so that is irrelevant) | — |
+| `veritysetup` at runtime | **Confirmed present** — extsloader ran `veritysetup open` successfully on the booted device (`/dev/mapper/exts-verity-ext-imga-img`, `device-mapper: verity: sha256`) | — |
+| dm-verity root hash in Core Image | Implemented — `/etc/ext-verity-roothash`, single-file `--hash-offset` | Build system change |
+| Containerd EROFS snapshotter | Snapshotter + mount-handler **load on the custom kernel** (skipped on stock) | Enabled by kernel config |
+
+> **Verified end-to-end 2026-06-12.** With `CONFIG_EROFS_FS` + `CONFIG_EROFS_FS_ZIP` + `CONFIG_DM_VERITY` enabled (custom kernel `eriknordmark/eve-kernel:split-erofs-verity`), a booted split image: copied `ext-imga.img` to `/persist` → `veritysetup open` → mounted the erofs Extension at `/persist/exts` → overlay-mounted all extension services (`extsloader` `state=ready`); the device then onboarded to the controller and ran an app instance. The kernel config was the only blocker to running the split feature on a stock build.
 
 ### 3. Delivery Mechanism
 
@@ -1333,8 +1336,8 @@ Summary of the decision:
 - [x] QEMU boot test (`make UNIVERSAL=1 run-split`)
 
 ### Phase 1: Kernel + Build System Preparation
-- [ ] Enable `CONFIG_EROFS_FS=y` in EVE kernel build (eve-kernel repo) — NOT done; stock `eve-core_defconfig` lacks it
-- [ ] Enable `CONFIG_DM_VERITY=y` in EVE kernel — NOT done; verified **absent** from stock `eve-core_defconfig` (it is *not* "already present")
+- [x] Enable `CONFIG_EROFS_FS=y` (+ `CONFIG_EROFS_FS_ZIP=y` for the lz4hc ext) in EVE kernel build — done & verified in `eriknordmark/eve-kernel:split-erofs-verity`; **not yet upstreamed** to lf-edge/eve-kernel + `kernel-commits.mk`, so stock builds still lack it
+- [x] Enable `CONFIG_DM_VERITY=y` in EVE kernel — done & verified in the same custom kernel; **not yet upstreamed** (stock `eve-core_defconfig` still lacks it)
 - [x] Add `mkfs.erofs` to build tools (new `pkg/mkrootfs-erofs`)
 - [x] Verify `veritysetup` available at runtime (`cryptsetup` added to Core)
 - [x] Migrate Extension Image from squashfs to erofs (`ROOTFS_EXT_FORMAT=erofs`)
