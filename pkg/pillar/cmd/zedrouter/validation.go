@@ -209,17 +209,13 @@ func (z *zedrouter) validateAppNetworkConfig(appNetConfig types.AppNetworkConfig
 }
 
 func (z *zedrouter) validateAppNetworkConfigForModify(
-	newConfig types.AppNetworkConfig, oldConfig types.AppNetworkConfig) error {
-	// XXX What about changing the number of interfaces as part of an inactive/active
-	// transition?
-	// XXX We could allow the addition of interfaces if the domU would find out through
-	// some hotplug event.
-	// But deletion is hard.
-	// For now don't allow any adds or deletes.
-	if len(newConfig.AppNetAdapterList) != len(oldConfig.AppNetAdapterList) {
-		return fmt.Errorf("changing number of AppNetAdapters (for %s) is unsupported",
-			newConfig.UUIDandVersion)
-	}
+	newConfig types.AppNetworkConfig) error {
+	// Changing the number of AppNetAdapters is supported: VIFs are added or
+	// removed inside the network stack by the reconciler, and zedmanager
+	// purges (recreates) the application domain so the guest comes up with the
+	// new set of interfaces. We do not hotplug interfaces into a running guest.
+	// checkAppNetworkModifyAppIntfNums() (de)allocates the per-interface
+	// numbers for the added/removed adapters.
 	return z.validateAppNetworkConfig(newConfig)
 }
 
