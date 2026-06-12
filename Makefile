@@ -567,6 +567,16 @@ check-docker-hashes-consistency: $(DOCKERFILE_FROM_CHECKER)
 		$(IGNORE_DOCKERFILE_EVETEST_DIR) \
 		$(IGNORE_DOCKERFILE_DIST_DIR)
 
+# checks that the Persistent flag of pubsub subscriptions matches the
+# Persistent flag of the publications they subscribe to, and that all
+# persistent publications live in pkg/pillar, from which the pillar image
+# build generates the boot-time cleanup list of upgradeconverter
+# (see docs/IPC.md)
+.PHONY: check-pubsub-persistence
+check-pubsub-persistence:
+	@echo "Checking pubsub publications and subscriptions for persistence mismatches"
+	cd pkg/pillar && go run ./tools/pubsubcheck ../../pkg
+
 yetus:
 	@echo Running yetus
 	mkdir -p yetus-output
@@ -1378,6 +1388,7 @@ help:
 	@echo "                                    MYETUS_DBRANCH, in addition if MYETUS_VERBOSE is set to"
 	@echo "                                    Y, the output will be echoed to the console"
 	@echo "   check-docker-hashes-consistency  check for Dockerfile image inconsistencies"
+	@echo "   check-pubsub-persistence  check pubsub publications/subscriptions for persistence mismatches"
 	@echo "   kernel-tag                       show current KERNEL_TAG"
 	@echo
 	@echo "Eden testing targets:"

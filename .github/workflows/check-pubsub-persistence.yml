@@ -1,0 +1,47 @@
+# Copyright (c) 2026, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+name: Check PubSub Persistence Consistency
+on:  # yamllint disable-line rule:truthy
+  push:
+    branches:
+      - "master"
+      - "[0-9]+.[0-9]+"
+      - "[0-9]+.[0-9]+-stable"
+      - "feature/*"
+    paths-ignore:
+      - '**/*.md'
+      - '.github/**'
+  pull_request:
+    branches:
+      - "master"
+      - "[0-9]+.[0-9]+"
+      - "[0-9]+.[0-9]+-stable"
+      - "feature/*"
+    paths-ignore:
+      - '**/*.md'
+      - '.github/**'
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Setup Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417  # v6.3.0
+        with:
+          go-version-file: pkg/pillar/go.mod
+
+      - name: Run pubsubcheck unit tests
+        shell: bash
+        run: |
+          go -C pkg/pillar test ./tools/pubsubcheck/
+
+      - name: Check pubsub persistence consistency
+        shell: bash
+        run: |
+          make check-pubsub-persistence
