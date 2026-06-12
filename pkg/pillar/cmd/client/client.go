@@ -30,7 +30,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
-	"github.com/lf-edge/eve/pkg/pillar/utils/wait"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
@@ -207,12 +206,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	clientCtx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
-
-	// Wait for EvalStatus from evalmgr that allows onboarding
-	err = wait.ForEvalStatus(ps, log, agentName, warningTime, errorTime)
-	if err != nil {
-		log.Fatal(err)
-	}
 
 	sendTimeoutSecs := clientCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout)
 	dialTimeoutSecs := clientCtx.globalConfig.GlobalValueInt(types.NetworkDialTimeout)

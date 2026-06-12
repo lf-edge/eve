@@ -134,7 +134,7 @@ Every agent embeds `agentbase` (`agentbase/agent.go`): `agentbase.Init(...)` wir
 
 ### Per-agent docs
 
-Implementation docs live in `pkg/pillar/docs/` — consult the matching file before changing an agent: `zedagent.md`/`zedagent-internals.md`, `zedmanager.md`, `zedrouter.md`, `domainmgr.md`, `nim.md`, `zedkube.md`, `volumemgr.md`, `vaultmgr.md`, `tpmmgr.md`, `usbmanager.md`, `vcomlink.md`, `evalmgr.md`, `monitor.md`, `watcher.md`, plus topic docs `boot-order-internals.md`, `failover.md`, `radio-silence.md`, `app-snapshot.md`, `vnc-workflows.md`, `types-architecture.md`.
+Implementation docs live in `pkg/pillar/docs/` — consult the matching file before changing an agent: `zedagent.md`/`zedagent-internals.md`, `zedmanager.md`, `zedrouter.md`, `domainmgr.md`, `nim.md`, `zedkube.md`, `volumemgr.md`, `vaultmgr.md`, `tpmmgr.md`, `usbmanager.md`, `vcomlink.md`, `monitor.md`, `watcher.md`, plus topic docs `boot-order-internals.md`, `failover.md`, `radio-silence.md`, `app-snapshot.md`, `vnc-workflows.md`, `types-architecture.md`.
 
 ### Standalone agent build check
 

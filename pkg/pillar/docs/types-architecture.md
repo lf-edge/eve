@@ -1970,7 +1970,6 @@ assert.Contains(t, err2.Error(), "no DNS server")
 | `cipherinfotypes.go` | 11 | Cipher block status methods |
 | `attesttypes.go` | 12 | AttestState.String, Key methods |
 | `patchenvelopestypes.go` | 14 | PatchEnvelope status methods |
-| `evaluation.go` | 9+ | Configuration evaluation types |
 
 ### Packages to import in test files
 

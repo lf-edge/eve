@@ -177,8 +177,6 @@ const (
 	AppMACGeneratorLogType LogObjectType = "app_mac_generator"
 	// KubeAppFailover
 	KubeAppFailover LogObjectType = "kube_app_failover"
-	// EvalStatusLogType : type for EvalStatus log entries
-	EvalStatusLogType LogObjectType = "eval_status"
 )
 
 // RelationObjectType :
