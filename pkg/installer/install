@@ -52,12 +52,6 @@ BOOT_DIR="${ARTIFACTS_DIR}/boot"
 
 ROOTFS_PARTITIONS="imga imgb"
 
-# if we have a third rootfs, we will use it as the third partition
-if [ -f "${ARTIFACTS_DIR}/rootfs-c.img" ]; then
-  logmsg "Found rootfs-c.img, will use it as the third partition (IMGC)"
-  ROOTFS_PARTITIONS="$ROOTFS_PARTITIONS imgc"
-fi
-
 # This is a temp file to capture various stages of install
 # the contents of this file are saved to $REPORT/installer.log
 # After the USB install, users can see the installation status under /Volumes/INVENTORY/<serial#>/installer.log
