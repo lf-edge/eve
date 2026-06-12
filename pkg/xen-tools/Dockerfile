@@ -62,7 +62,7 @@ RUN strip /out/usr/lib/* || :
 RUN register-sbom-pkg.sh -n liburing -v "${LIBURING_VERSION}" -l LGPL-2.1-only -u https://github.com/axboe/liburing
 
 # When changing this version, also update SEABIOS_UPSTREAM_REVISION to whatever is in `Config.mk` in the xen source
-ENV XEN_VERSION=4.19.0
+ENV XEN_VERSION=4.21.1
 ENV XEN_SOURCE=https://downloads.xenproject.org/release/xen/${XEN_VERSION}/xen-${XEN_VERSION}.tar.gz
 ENV EXTRA_QEMUU_CONFIGURE_ARGS="--enable-libusb --enable-linux-aio \
     --enable-vhost-net --enable-vhost-kernel \
@@ -75,6 +75,70 @@ WORKDIR /
 # hadolint ignore=DL3020
 ADD ${XEN_SOURCE} /xen.tar.gz
 RUN [ -f "$(basename ${XEN_SOURCE})" ] || tar --absolute-names -xz < /xen.tar.gz && mv "/xen-${XEN_VERSION}" /xen
+
+# Starting with xen 4.21, the release tarball no longer bundles tools/qemu-xen/
+# in-tree (4.19 did).  Fetch the qemu source separately so our local patches in
+# patches-${XEN_VERSION} that touch tools/qemu-xen/ have something to apply
+# against, and so the xen build uses our patched tree instead of cloning a
+# fresh one.
+#
+# We pull the official upstream qemu release tarball rather than cloning
+# xenbits.xen.org/qemu-xen.git so that every source line in the resulting
+# image can be attributed to a discrete URL + sha256 by the buildkit SBOM
+# scanner.  A `RUN git clone` would be opaque to that tooling.
+#
+# qemu-xen-4.21.0 ≡ upstream qemu v9.1.0 plus two small Xen-bus patches
+# (xs_node_read helper, %ms scanf fix); we carry those as 02-/03- patches in
+# patches-${XEN_VERSION}/ so the resulting tree is functionally identical to
+# qemu-xen-4.21.0.
+ENV QEMU_VERSION=9.1.0
+ENV QEMU_SOURCE=https://download.qemu.org/qemu-${QEMU_VERSION}.tar.xz
+# hadolint ignore=DL3020
+ADD ${QEMU_SOURCE} /qemu.tar.xz
+RUN mkdir -p /xen/tools/qemu-xen && \
+    tar --absolute-names -xJf /qemu.tar.xz --strip-components=1 -C /xen/tools/qemu-xen && \
+    rm -f /qemu.tar.xz && \
+    rm -rf /xen/tools/qemu-xen/roms
+
+# Meson subprojects.  qemu's release tarball ships .wrap files (not the
+# subproject source itself); without these, the meson build step in the
+# qemu configure phase would try to `git clone` each from gitlab.com at
+# build time, which (a) leaks the source URL out of the SBOM, and (b)
+# requires `network: yes` in build.yml.
+#
+# Instead, ADD each subproject's tarball at the exact SHA the wrap pins
+# (one ADD per source = one SBOM record per source) and stage them under
+# subprojects/<name>/ where meson expects them.  Meson short-circuits the
+# wrap fetch when the target directory already exists.
+# hadolint ignore=DL3020
+ADD https://gitlab.com/qemu-project/berkeley-softfloat-3/-/archive/b64af41c3276f97f0e181920400ee056b9c88037/berkeley-softfloat-3-b64af41c3276f97f0e181920400ee056b9c88037.tar.gz /subprojects/berkeley-softfloat-3.tar.gz
+# hadolint ignore=DL3020
+ADD https://gitlab.com/qemu-project/berkeley-testfloat-3/-/archive/e7af9751d9f9fd3b47911f51a5cfd08af256a9ab/berkeley-testfloat-3-e7af9751d9f9fd3b47911f51a5cfd08af256a9ab.tar.gz /subprojects/berkeley-testfloat-3.tar.gz
+# hadolint ignore=DL3020
+ADD https://gitlab.com/qemu-project/dtc/-/archive/b6910bec11614980a21e46fbccc35934b671bd81/dtc-b6910bec11614980a21e46fbccc35934b671bd81.tar.gz /subprojects/dtc.tar.gz
+# hadolint ignore=DL3020
+ADD https://gitlab.com/qemu-project/keycodemapdb/-/archive/f5772a62ec52591ff6870b7e8ef32482371f22c6/keycodemapdb-f5772a62ec52591ff6870b7e8ef32482371f22c6.tar.gz /subprojects/keycodemapdb.tar.gz
+# hadolint ignore=DL3020
+ADD https://gitlab.com/libblkio/libblkio/-/archive/f84cc963a444e4cb34813b2dcfc5bf8526947dc0/libblkio-f84cc963a444e4cb34813b2dcfc5bf8526947dc0.tar.gz /subprojects/libblkio.tar.gz
+# hadolint ignore=DL3020
+ADD https://gitlab.com/qemu-project/libvfio-user/-/archive/0b28d205572c80b568a1003db2c8f37ca333e4d7/libvfio-user-0b28d205572c80b568a1003db2c8f37ca333e4d7.tar.gz /subprojects/libvfio-user.tar.gz
+# hadolint ignore=DL3020
+ADD https://gitlab.freedesktop.org/slirp/libslirp/-/archive/26be815b86e8d49add8c9a8b320239b9594ff03d/libslirp-26be815b86e8d49add8c9a8b320239b9594ff03d.tar.gz /subprojects/slirp.tar.gz
+RUN cd /xen/tools/qemu-xen/subprojects && \
+    for name in berkeley-softfloat-3 berkeley-testfloat-3 dtc keycodemapdb libblkio libvfio-user slirp; do \
+        rm -rf "$name" && mkdir "$name" && \
+        tar --absolute-names -xzf "/subprojects/$name.tar.gz" -C "$name" --strip-components=1; \
+    done && \
+    # berkeley-softfloat-3 / berkeley-testfloat-3 .wrap files declare
+    # `patch_directory = <name>`, telling meson to overlay
+    # subprojects/packagefiles/<name>/ (a meson.build that qemu provides for
+    # this otherwise-build-system-less upstream) onto the extracted source.
+    # When meson skips the wrap fetch (because we pre-extracted), it also
+    # skips the overlay — apply it manually here.
+    for name in berkeley-softfloat-3 berkeley-testfloat-3; do \
+        cp -r packagefiles/"$name"/. "$name"/; \
+    done && \
+    rm -rf /subprojects
 
 # Apply local patches
 COPY patches-${XEN_VERSION} /patches

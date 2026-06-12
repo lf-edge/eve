@@ -1,0 +1,74 @@
+From: Mikhail Malyshev <mike.malyshev@gmail.com>
+Subject: [PATCH] testing: add inject-kvm-internal-error QMP command
+
+Add a debug-only QMP command that drives qemu into the same observable
+state a real KVM_RUN -> -EFAULT does (see accel/kvm/kvm-all.c:
+kvm_cpu_exec): same CPU register dump on stderr, same "kvm run failed
+Bad address" log line, same vm_stop(RUN_STATE_INTERNAL_ERROR) and
+STOP QMP event with reason="internal-error".
+
+Used by EVE to validate the host-side crash-handling chain (auto
+guest-memory dump on internal-error, pause-on-crash, gdbstub access)
+without having to reproduce the underlying VFIO + intel-iommu
+mapping-tear-down race that triggers it in the wild.
+
+Marked 'unstable' per QAPI conventions; do not use in production.
+
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
+---
+diff --git a/tools/qemu-xen/qapi/machine.json b/tools/qemu-xen/qapi/machine.json
+--- a/tools/qemu-xen/qapi/machine.json	2026-06-11 19:15:24.549547671 +0000
++++ b/tools/qemu-xen/qapi/machine.json	2026-06-11 19:23:23.348854509 +0000
+@@ -453,6 +453,27 @@
+ { 'command': 'inject-nmi' }
+ 
+ ##
++# @inject-kvm-internal-error:
++#
++# Simulate the qemu state that follows a real KVM_RUN -> -EFAULT from
++# the host kernel: emit the same CPU register dump on stderr, log the
++# same "kvm run failed Bad address" line, and transition the VM into
++# RUN_STATE_INTERNAL_ERROR (firing a STOP QMP event with
++# reason="internal-error").  Intended only for testing the host-side
++# crash-handling chain (auto guest-memory dump, pause-on-crash, etc.);
++# do NOT enable this in production.
++#
++# Features:
++#
++# @unstable: This is a debugging aid carried as an EVE-local patch on
++#     top of upstream qemu-xen-4.21.0; not for general use.
++#
++# Since: 9.1
++##
++{ 'command': 'inject-kvm-internal-error',
++  'features': [ 'unstable' ] }
++
++##
+ # @KvmInfo:
+ #
+ # Information about support for KVM acceleration
+diff --git a/tools/qemu-xen/system/cpus.c b/tools/qemu-xen/system/cpus.c
+--- a/tools/qemu-xen/system/cpus.c	2026-06-11 19:15:24.555547638 +0000
++++ b/tools/qemu-xen/system/cpus.c	2026-06-11 19:16:00.559348312 +0000
+@@ -876,3 +876,21 @@
+     nmi_monitor_handle(monitor_get_cpu_index(monitor_cur()), errp);
+ }
+ 
++/*
++ * Testing aid: drive qemu into the same observable state a real
++ * KVM_RUN -> -EFAULT does (see accel/kvm/kvm-all.c:kvm_cpu_exec).
++ * Used to validate host-side crash-handling plumbing (guest-memory
++ * dump on STOP/internal-error, pause-on-crash, gdbstub access)
++ * without having to reproduce the real underlying bug.
++ */
++void qmp_inject_kvm_internal_error(Error **errp)
++{
++    CPUState *cpu = first_cpu;
++
++    if (cpu) {
++        cpu_dump_state(cpu, stderr, CPU_DUMP_CODE);
++    }
++    error_report("kvm run failed Bad address");
++    vm_stop(RUN_STATE_INTERNAL_ERROR);
++}
++

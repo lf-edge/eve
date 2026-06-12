@@ -443,6 +443,44 @@ const (
 	// passthrough firmware-side issues with a TARGET=DEBUG OVMF rebuild.
 	EnableEFIDebug GlobalSettingKey = "debug.enable.efi"
 
+	// QemuTraceEvents: comma-separated list of qemu trace events (or globs,
+	// e.g. "vtd_*") to enable per-VM via qemu's `-trace` flag.  Empty
+	// (default) disables tracing.  When non-empty, qemu writes a
+	// simpletrace-format binary log per VM to
+	// /persist/log/qemu-trace/<domain-name>.trace; decode with
+	// `scripts/simpletrace.py /usr/share/qemu-xen/trace-events-all <file>`.
+	// Diagnostic only — leaves a growing on-disk log, and the trace event
+	// firing can have non-trivial overhead on hot paths.  Useful event
+	// sets for debugging VFIO + intel-iommu issues:
+	//   "vtd_inv_desc,vtd_iommu_replay,vfio_iommu_map,vfio_iommu_unmap"
+	QemuTraceEvents GlobalSettingKey = "debug.qemu.trace.events"
+
+	// QemuDumpGuestCore: when true, qemu sets `dump-guest-core = "on"`
+	// on the machine config so that if qemu itself crashes (segfault,
+	// SIGABRT, internal-error after KVM_RUN -EFAULT) the guest's RAM is
+	// included in qemu's core dump.  Disabled by default because the
+	// dump can be very large (= the VM's RAM size) and contain guest
+	// secrets.  Pair with a kernel core_pattern that writes dumps to
+	// /persist/kcrashes/ so the dump survives qemu's host-side death.
+	QemuDumpGuestCore GlobalSettingKey = "debug.qemu.dump.guest.core"
+
+	// QemuGdb: when true, qemu is started with `-gdb unix:<sock>,server,nowait`
+	// where <sock> is /run/hypervisor/kvm/<domain>/gdb.  Lets an operator
+	// connect with gdb (`target remote /run/hypervisor/kvm/<domain>/gdb`)
+	// to inspect vCPU registers and read guest memory while the VM is
+	// running or paused — especially useful when paired with
+	// debug.qemu.pause.on.crash to keep qemu alive after KVM_RUN -EFAULT.
+	// Off by default.
+	QemuGdb GlobalSettingKey = "debug.qemu.gdb"
+
+	// QemuPauseOnCrash: when true, on a STOP event with reason=internal-error
+	// pillar does NOT issue quit/shutdown to qemu.  qemu stays paused
+	// holding all guest RAM, VFIO mappings, and the gdbstub (if enabled)
+	// so post-mortem inspection is possible.  The domain status is still
+	// marked BROKEN; operator must manually clean up via the controller
+	// when done.  Off by default.
+	QemuPauseOnCrash GlobalSettingKey = "debug.qemu.pause.on.crash"
+
 	// MsrvPrometheusMetricsRequestPerSecond: limit the number of requests per second
 	MsrvPrometheusMetricsRequestPerSecond GlobalSettingKey = "msrv.prometheus.metrics.rps"
 	// MsrvPrometheusMetricsBurst: limit the burst of requests
@@ -1178,6 +1216,9 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddBoolItem(MemoryMonitorEnabled, false)
 	configItemSpecMap.AddBoolItem(DHCPEnableVendorClassID, true)
 	configItemSpecMap.AddBoolItem(EnableEFIDebug, false)
+	configItemSpecMap.AddBoolItem(QemuDumpGuestCore, false)
+	configItemSpecMap.AddBoolItem(QemuGdb, false)
+	configItemSpecMap.AddBoolItem(QemuPauseOnCrash, false)
 	configItemSpecMap.AddBoolItem(DataStoreAllowInsecureAuth, false)
 
 	// Add TriState Items
@@ -1197,6 +1238,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddStringItem(AppBootOrder, "", validateBootOrder)
 	configItemSpecMap.AddStringItem(TUIMonitorLogLevel, "info", blankValidator)
 	configItemSpecMap.AddStringItem(IGPUGOPFile, "", validateGOPRomFilename)
+	configItemSpecMap.AddStringItem(QemuTraceEvents, "", blankValidator)
 	configItemSpecMap.AddStringItem(EdgeviewPublicKeys, "", blankValidator)
 
 	// Log deduplication and filtering settings

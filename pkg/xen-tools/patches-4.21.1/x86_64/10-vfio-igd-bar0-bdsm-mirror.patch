@@ -23,10 +23,10 @@ Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
  3 files changed, 83 insertions(+)
 
 diff --git a/tools/qemu-xen/hw/vfio/igd.c b/tools/qemu-xen/hw/vfio/igd.c
-index 3b52c471fc..37e985da6f 100644
+index d320d032a7..79420c9c7d 100644
 --- a/tools/qemu-xen/hw/vfio/igd.c
 +++ b/tools/qemu-xen/hw/vfio/igd.c
-@@ -378,6 +378,87 @@ static const MemoryRegionOps vfio_igd_index_quirk = {
+@@ -365,6 +365,92 @@ static const MemoryRegionOps vfio_igd_index_quirk = {
      .endianness = DEVICE_LITTLE_ENDIAN,
  };
  
@@ -77,6 +77,11 @@ index 3b52c471fc..37e985da6f 100644
 +};
 +
 +#define IGD_BDSM_MMIO_OFFSET 0x1080C0
++/* PCI config offset of the 64-bit BDSM on Gen11+ iGPUs (not defined in
++ * qemu-xen 4.21.0; introduced in upstream qemu after 9.1.0). */
++#ifndef IGD_BDSM_GEN11
++#define IGD_BDSM_GEN11 0xc0
++#endif
 +
 +void vfio_probe_igd_bar0_quirk(VFIOPCIDevice *vdev, int nr)
 +{

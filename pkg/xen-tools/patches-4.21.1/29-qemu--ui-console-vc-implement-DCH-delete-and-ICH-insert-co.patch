@@ -34,15 +34,17 @@ Cc: "Marc-André Lureau" <marcandre.lureau@redhat.com>
 Cc: qemu-devel@nongnu.org
 Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
 Message-ID: <20250226075913.353676-6-r.peniaev@gmail.com>
----
- tools/qemu-xen/ui/console.c | 104 ++++++++++++++++++++++++++++++++++++++++++++++++---
- 1 file changed, 98 insertions(+), 6 deletions(-)
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>  [rebased to qemu-xen-4.21.0]
 
-diff --git a/tools/qemu-xen/ui/console.c b/tools/qemu-xen/ui/console.c
-index a8eb28b937a1..a7aa23be328b 100644
---- a/tools/qemu-xen/ui/console.c
-+++ b/tools/qemu-xen/ui/console.c
-@@ -946,6 +952,86 @@ static void set_cursor(QemuConsole *s, int x, int y)
+---
+ ui/console-vc.c | 88 +++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 88 insertions(+)
+
+diff --git a/tools/qemu-xen/ui/console-vc.c b/tools/qemu-xen/ui/console-vc.c
+index 4ff541dd40..642ad3306c 100644
+--- a/tools/qemu-xen/ui/console-vc.c
++++ b/tools/qemu-xen/ui/console-vc.c
+@@ -644,6 +644,88 @@ static void vc_set_cursor(VCChardev *vc, int x, int y)
      s->y = y;
  }
  
@@ -52,8 +54,9 @@ index a8eb28b937a1..a7aa23be328b 100644
 + * characters between the cursor and right margin move to the
 + * left. Character attributes move with the characters.
 + */
-+static void vc_csi_P(struct QemuConsole *s, unsigned int nr)
++static void vc_csi_P(struct VCChardev *vc, unsigned int nr)
 +{
++    QemuTextConsole *s = vc->console;
 +    TextCell *c1, *c2;
 +    unsigned int x1, x2, y;
 +    unsigned int end, len;
@@ -77,12 +80,12 @@ index a8eb28b937a1..a7aa23be328b 100644
 +        c2 = &s->cells[y * s->width + x2];
 +        memmove(c1, c2, len * sizeof(*c1));
 +        for (end = x1 + len; x1 < end; x1++) {
-+            update_xy(s, x1, s->y);
++            vc_update_xy(vc, x1, s->y);
 +        }
 +    }
 +    /* Clear the rest */
 +    for (; x1 < s->width; x1++) {
-+        console_clear_xy(s, x1, s->y);
++        vc_clear_xy(vc, x1, s->y);
 +    }
 +}
 +
@@ -92,8 +95,9 @@ index a8eb28b937a1..a7aa23be328b 100644
 + * blank characters. Text between the cursor and right margin moves to
 + * the right. Characters scrolled past the right margin are lost.
 + */
-+static void vc_csi_at(struct QemuConsole *s, unsigned int nr)
++static void vc_csi_at(struct VCChardev *vc, unsigned int nr)
 +{
++    QemuTextConsole *s = vc->console;
 +    TextCell *c1, *c2;
 +    unsigned int x1, x2, y;
 +    unsigned int end, len;
@@ -117,34 +121,34 @@ index a8eb28b937a1..a7aa23be328b 100644
 +        c2 = &s->cells[y * s->width + x2];
 +        memmove(c1, c2, len * sizeof(*c1));
 +        for (end = x1 + len; x1 < end; x1++) {
-+            update_xy(s, x1, s->y);
++            vc_update_xy(vc, x1, s->y);
 +        }
 +    }
 +    /* Insert blanks */
 +    for (x1 = s->x; x1 < s->x + nr; x1++) {
-+        console_clear_xy(s, x1, s->y);
++        vc_clear_xy(vc, x1, s->y);
 +    }
 +}
 +
- static void console_putchar(QemuConsole *s, int ch)
+ static void vc_putchar(VCChardev *vc, int ch)
  {
-     int i;
-@@ -1116,6 +1202,9 @@ static void console_putchar(QemuConsole *s, int ch)
+     QemuTextConsole *s = vc->console;
+@@ -815,6 +897,9 @@ static void vc_putchar(VCChardev *vc, int ch)
                      break;
                  }
                  break;
 +            case 'P':
-+                vc_csi_P(s, s->esc_params[0]);
++                vc_csi_P(vc, vc->esc_params[0]);
 +                break;
              case 'm':
-                 console_handle_escape(s);
+                 vc_handle_escape(vc);
                  break;
-@@ -1143,6 +1232,9 @@ static void console_putchar(QemuConsole *s, int ch)
-                 s->x = s->x_saved;
-                 s->y = s->y_saved;
+@@ -842,6 +927,9 @@ static void vc_putchar(VCChardev *vc, int ch)
+                 s->x = vc->x_saved;
+                 s->y = vc->y_saved;
                  break;
 +            case '@':
-+                vc_csi_at(s, s->esc_params[0]);
++                vc_csi_at(vc, vc->esc_params[0]);
 +                break;
              default:
                  trace_console_putchar_unhandled(ch);

@@ -694,6 +694,28 @@ fi
 ln -s /persist/certs        "$DIR/persist-certs"
 ln -s /persist/status       "$DIR/persist-status"
 ln -s /persist/log          "$DIR/persist-log"
+# qemu guest-memory dumps (per-VM ELF cores written automatically on
+# KVM_RUN -EFAULT / RUN_STATE_INTERNAL_ERROR; see
+# docs/QEMU-GUEST-CRASH-DEBUGGING.md) are zero-page-heavy and compress
+# ~12x with zstd.  Ride them along compressed; exclude the raw .elf
+# from the tar below so the bundle stays small.  Original raw .elf
+# stays on the node for local analysis with gdb / crash.  Trace files
+# (.trace) ride along uncompressed via the persist-log symlink.
+if [ -d /persist/log/qemu-trace ]; then
+    ls -la /persist/log/qemu-trace/ > "$DIR/qemu-trace-manifest" 2>/dev/null
+fi
+if ls /persist/log/qemu-trace/*.guestmem.elf >/dev/null 2>&1; then
+    mkdir -p "$DIR/qemu-trace-compressed"
+    for elf in /persist/log/qemu-trace/*.guestmem.elf; do
+        base=$(basename "$elf")
+        echo "- compressing qemu guest-mem dump: $base"
+        if command -v zstd >/dev/null 2>&1; then
+            zstd -3 -q -o "$DIR/qemu-trace-compressed/$base.zst" "$elf" 2>/dev/null
+        else
+            gzip -c "$elf" > "$DIR/qemu-trace-compressed/$base.gz"
+        fi
+    done
+fi
 [ -d /persist/kubelog ] && ln -s /persist/kubelog "$DIR/persist-kubelog"
 ln -s /persist/netdump      "$DIR/persist-netdump"
 ln -s /persist/kcrashes     "$DIR/persist-kcrashes"
@@ -731,9 +753,9 @@ fi
 # --dereference                        follow symlinks
 echo "- tar/gzip"
 if check_tar_flags; then
-  tar -C "$TMP_DIR" --exclude='root-run/run' --exclude='root-run/containerd-user' --ignore-failed-read --warning=none --dereference -czf "$TARBALL_FILE" "$INFO_DIR_SUFFIX"
+  tar -C "$TMP_DIR" --exclude='root-run/run' --exclude='root-run/containerd-user' --exclude='persist-log/qemu-trace/*.guestmem.elf' --ignore-failed-read --warning=none --dereference -czf "$TARBALL_FILE" "$INFO_DIR_SUFFIX"
 else
-  tar -C "$TMP_DIR" --exclude='root-run/run' --exclude='root-run/containerd-user' --dereference -czf "$TARBALL_FILE" "$INFO_DIR_SUFFIX"
+  tar -C "$TMP_DIR" --exclude='root-run/run' --exclude='root-run/containerd-user' --exclude='persist-log/qemu-trace/*.guestmem.elf' --dereference -czf "$TARBALL_FILE" "$INFO_DIR_SUFFIX"
 fi
 rm -rf "$TMP_DIR"
 sync
