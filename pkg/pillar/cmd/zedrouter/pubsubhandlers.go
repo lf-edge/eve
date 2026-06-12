@@ -541,8 +541,11 @@ func (z *zedrouter) handleAppNetworkCreate(ctxArg interface{}, key string,
 	z.log.Functionf("handleAppNetworkCreate(%s) done for %s", key, config.DisplayName)
 }
 
-// handleAppNetworkModify cannot handle any change.
-// For example, the number of AppNetAdapters can not be changed.
+// handleAppNetworkModify applies a change to an existing application network.
+// This includes changing the number of AppNetAdapters: the corresponding VIFs
+// are added or removed inside the network stack by the reconciler. The guest is
+// not hotplugged; zedmanager purges (recreates) the application domain so that it
+// comes up with the new set of interfaces.
 func (z *zedrouter) handleAppNetworkModify(ctxArg interface{}, key string,
 	configArg interface{}, oldConfigArg interface{}) {
 	newConfig := configArg.(types.AppNetworkConfig)
@@ -574,7 +577,7 @@ func (z *zedrouter) handleAppNetworkModify(ctxArg interface{}, key string,
 	}()
 
 	// Check for unsupported/invalid changes.
-	if err := z.validateAppNetworkConfigForModify(newConfig, oldConfig); err != nil {
+	if err := z.validateAppNetworkConfigForModify(newConfig); err != nil {
 		z.log.Errorf("handleAppNetworkModify(%v): validation failed: %v",
 			newConfig.UUIDandVersion.UUID, err)
 		z.addAppNetworkError(status, "handleAppNetworkModify", err)

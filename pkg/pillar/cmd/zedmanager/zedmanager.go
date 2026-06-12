@@ -1587,11 +1587,16 @@ func handleDelete(ctx *zedmanagerContext, key string,
 	log.Functionf("handleDelete done for %s", status.DisplayName)
 }
 
-// Returns needRestart, needPurge, plus a string for each.
-// If there is a change to the disks, adapters, or network interfaces
-// it returns needPurge.
-// If there is a change to the CPU etc resources it returns needRestart
-// Changes to ACLs don't result in either being returned.
+// Returns needPurge, needRestart, plus a reason string for each.
+// needPurge (recreates volumes) is returned for a change to the volumes or the
+// IoAdapterList.
+// needRestart (recreates the domain only) is returned for a change to CPU/memory
+// and other FixedResources.
+// A change to the network adapters - their number, or an existing adapter's
+// network/IP/MAC - returns neither: the new adapter set is staged but only
+// applied when the user restarts the application (we do not auto-restart or
+// hotplug the guest).
+// Changes to ACLs don't result in either being returned (applied live).
 func quantifyChanges(config types.AppInstanceConfig, oldConfig types.AppInstanceConfig,
 	status types.AppInstanceStatus) (bool, bool, string, string) {
 
@@ -1626,32 +1631,36 @@ func quantifyChanges(config types.AppInstanceConfig, oldConfig types.AppInstance
 		str := fmt.Sprintf("number of AppNetAdapter changed from %d to %d",
 			len(oldConfig.AppNetAdapterList),
 			len(config.AppNetAdapterList))
-		log.Function(str)
-		needPurge = true
-		purgeReason += str + "\n"
+		// Changing the number of network adapters does not recreate volumes
+		// (so it is not a purge) and is deliberately NOT auto-applied: we set
+		// neither needPurge nor needRestart. The new AppNetworkConfig is still
+		// published so zedrouter prepares the VIFs, but the running domain keeps
+		// its current interfaces until the user restarts the application, at
+		// which point it is recreated with the new set of VIFs.
+		log.Functionf("%s - will be applied on next application restart", str)
 	} else {
+		// A change to an existing adapter's network/IP/MAC is staged like a
+		// change to the number of adapters above: it does not recreate volumes
+		// (not a purge) and is not auto-applied. zedrouter prepares the new
+		// VIFs, but the running domain keeps its current interfaces until the
+		// user restarts the application. ACL changes are applied live by
+		// zedrouter and need neither purge nor restart.
 		for i, uc := range config.AppNetAdapterList {
 			old := oldConfig.AppNetAdapterList[i]
 			if old.AppMacAddr.String() != uc.AppMacAddr.String() {
-				str := fmt.Sprintf("AppMacAddr changed from %v to %v",
+				log.Functionf("AppMacAddr changed from %v to %v - "+
+					"will be applied on next application restart",
 					old.AppMacAddr, uc.AppMacAddr)
-				log.Function(str)
-				needPurge = true
-				purgeReason += str + "\n"
 			}
 			if !old.AppIPAddr.Equal(uc.AppIPAddr) {
-				str := fmt.Sprintf("AppIPAddr changed from %v to %v",
+				log.Functionf("AppIPAddr changed from %v to %v - "+
+					"will be applied on next application restart",
 					old.AppIPAddr, uc.AppIPAddr)
-				log.Function(str)
-				needPurge = true
-				purgeReason += str + "\n"
 			}
 			if old.Network != uc.Network {
-				str := fmt.Sprintf("Network changed from %v to %v",
+				log.Functionf("Network changed from %v to %v - "+
+					"will be applied on next application restart",
 					old.Network, uc.Network)
-				log.Function(str)
-				needPurge = true
-				purgeReason += str + "\n"
 			}
 			if !cmp.Equal(old.ACLs, uc.ACLs) {
 				log.Functionf("FYI ACLs changed: %v",

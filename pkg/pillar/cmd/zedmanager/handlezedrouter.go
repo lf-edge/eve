@@ -6,11 +6,21 @@ package zedmanager
 import (
 	"bytes"
 	"reflect"
+	"slices"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 // MaybeAddAppNetworkConfig ensures we have an AppNetworkConfig
+//
+// A change to the application's network adapters (their number, their order,
+// or any field of an existing adapter other than ACLs) reconfigures the
+// network stack (bridge, dnsmasq, VIFs). While the application is running such
+// a change is withheld from
+// zedrouter (stageNetwork below) so the network is not reconfigured underneath
+// the running guest; it is published instead on the next restart (or when the
+// app is being started), so zedrouter reconfigures the network as part of the
+// (re)start. ACL and other field changes are applied live.
 func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 	aiConfig types.AppInstanceConfig, aiStatus *types.AppInstanceStatus) {
 
@@ -22,13 +32,19 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 	effectiveActivate := effectiveActivateCombined(aiConfig, ctx)
 
 	changed := false
+	stageNetwork := false
 	m := lookupAppNetworkConfig(ctx, key)
 	if m != nil {
 		log.Functionf("appNetwork config already exists for %s", key)
-		if len(aiConfig.AppNetAdapterList) != len(m.AppNetAdapterList) {
-			log.Errorln("Unsupported: Changed number of AppNetAdapter for ",
-				aiConfig.UUIDandVersion)
-			return
+		if !reflect.DeepEqual(m.AppNetAdapterList, aiConfig.AppNetAdapterList) {
+			log.Functionf("MaybeAddAppNetworkConfig: AppNetAdapters changed "+
+				"from %+v to %+v for %s", m.AppNetAdapterList,
+				aiConfig.AppNetAdapterList, aiConfig.UUIDandVersion)
+			changed = true
+			if adapterChangeNeedsRestart(m.AppNetAdapterList,
+				aiConfig.AppNetAdapterList) {
+				stageNetwork = true
+			}
 		}
 		if m.Activate != effectiveActivate {
 			log.Functionf("MaybeAddAppNetworkConfig Activate changed from %v to %v",
@@ -53,39 +69,58 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 			log.Functionf("MaybeAddAppNetworkConfig: CipherBlockStatus.CipherData changed")
 			changed = true
 		}
-		for i, new := range aiConfig.AppNetAdapterList {
-			old := m.AppNetAdapterList[i]
-			if !reflect.DeepEqual(new.ACLs, old.ACLs) {
-				log.Functionf("Under ACLs changed from %v to %v",
-					old.ACLs, new.ACLs)
-				changed = true
-				break
-			}
-		}
 	} else {
 		log.Tracef("appNetwork config add for %s", key)
 		changed = true
 	}
-	if changed {
-		nc := types.AppNetworkConfig{
-			UUIDandVersion:    aiConfig.UUIDandVersion,
-			DisplayName:       aiConfig.DisplayName,
-			Activate:          effectiveActivate,
-			GetStatsIPAddr:    aiConfig.CollectStatsIPAddr,
-			CloudInitUserData: aiConfig.CloudInitUserData,
-			CipherBlockStatus: aiConfig.CipherBlockStatus,
-			MetaDataType:      aiConfig.MetaDataType,
-			DeploymentType:    aiConfig.DeploymentType, // can not be dynamically changed
-		}
-		nc.AppNetAdapterList = make([]types.AppNetAdapterConfig,
-			len(aiConfig.AppNetAdapterList))
-		for i, ulc := range aiConfig.AppNetAdapterList {
-			ul := &nc.AppNetAdapterList[i]
-			*ul = ulc
-		}
-		publishAppNetworkConfig(ctx, &nc)
+	if !changed {
+		log.Functionf("MaybeAddAppNetworkConfig done (no change) for %s", key)
+		return
 	}
+	// Stage network-reconfiguring changes while the guest is running; they are
+	// applied on the next restart (when RestartInprogress is set). If the app is
+	// not currently activated it is being started, so there is no running guest
+	// to protect and the change is applied immediately.
+	if stageNetwork && aiStatus.Activated &&
+		aiStatus.RestartInprogress == types.NotInprogress {
+		log.Noticef("MaybeAddAppNetworkConfig(%s): network adapter change staged; "+
+			"will be applied when the application is restarted", key)
+		return
+	}
+	nc := types.AppNetworkConfig{
+		UUIDandVersion:    aiConfig.UUIDandVersion,
+		DisplayName:       aiConfig.DisplayName,
+		Activate:          effectiveActivate,
+		GetStatsIPAddr:    aiConfig.CollectStatsIPAddr,
+		CloudInitUserData: aiConfig.CloudInitUserData,
+		CipherBlockStatus: aiConfig.CipherBlockStatus,
+		MetaDataType:      aiConfig.MetaDataType,
+		DeploymentType:    aiConfig.DeploymentType, // can not be dynamically changed
+	}
+	nc.AppNetAdapterList = slices.Clone(aiConfig.AppNetAdapterList)
+	publishAppNetworkConfig(ctx, &nc)
 	log.Functionf("MaybeAddAppNetworkConfig done for %s", key)
+}
+
+// adapterChangeNeedsRestart reports whether the difference between the old and
+// the new adapter list cannot be applied to a running application. Only ACL
+// changes are applied live by zedrouter; any other difference (the number of
+// adapters, or an adapter's name, network, IP, MAC, interface order, VLAN, ...)
+// reconfigures the network stack and therefore has to wait until the
+// application is restarted. Note that the adapter lists are sorted by
+// IntfOrder (see zedagent's parseAppNetAdapterConfig), so a pure reordering
+// also shows up as a difference here, as it must: it changes the order in
+// which the guest enumerates its NICs.
+func adapterChangeNeedsRestart(oldList, newList []types.AppNetAdapterConfig) bool {
+	withoutACLs := func(adapters []types.AppNetAdapterConfig) []types.AppNetAdapterConfig {
+		stripped := make([]types.AppNetAdapterConfig, len(adapters))
+		copy(stripped, adapters)
+		for i := range stripped {
+			stripped[i].ACLs = nil
+		}
+		return stripped
+	}
+	return !reflect.DeepEqual(withoutACLs(oldList), withoutACLs(newList))
 }
 
 func lookupAppNetworkConfig(ctx *zedmanagerContext, key string) *types.AppNetworkConfig {
