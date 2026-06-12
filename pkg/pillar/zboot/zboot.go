@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"slices"
@@ -424,6 +425,48 @@ func GetOtherPartitionDevName() string {
 	return GetPartitionDevname(partName)
 }
 
+// partitionLimitWriter wraps the partition device writer and bounds the write
+// to the partition's capacity, so an oversized rootfs is reported with a clear
+// error instead of a low-level device write failure.
+//
+// It deliberately never returns an error from Write. The edge-containers/oras
+// pull pipeline feeds this writer through an io.Pipe (PassthroughWriter): if the
+// destination writer errors mid-stream, the transform goroutine exits without
+// closing the pipe reader, and the producer side blocks forever on the pipe
+// write (a deadlock that hangs the install worker with no error surfaced).
+// Instead we consume every byte so the pipe always drains, write only what fits
+// on the device, and record overflow / device errors for WriteToPartition to
+// turn into a clean error after Pull returns.
+type partitionLimitWriter struct {
+	w        io.Writer
+	written  uint64
+	max      uint64
+	exceeded bool
+	werr     error
+}
+
+func (p *partitionLimitWriter) Write(b []byte) (int, error) {
+	if p.max != 0 && p.written+uint64(len(b)) > p.max {
+		p.exceeded = true
+		// Write only the part that still fits on the device; discard the rest.
+		if p.written < p.max {
+			if _, err := p.w.Write(b[:p.max-p.written]); err != nil && p.werr == nil {
+				p.werr = err
+			}
+		}
+		p.written += uint64(len(b))
+		// Claim full success so the pull pipeline keeps draining the pipe.
+		return len(b), nil
+	}
+	n, err := p.w.Write(b)
+	p.written += uint64(n)
+	if err != nil && p.werr == nil {
+		p.werr = err
+	}
+	// Never return an error mid-stream; see the type comment.
+	return len(b), nil
+}
+
 // WriteToPartition write the image to partition partName
 func WriteToPartition(log *base.LogObject, image string, partName string) error {
 
@@ -486,8 +529,25 @@ func WriteToPartition(log *base.LogObject, image string, partName string) error 
 	}
 	defer f.Close()
 
-	if _, _, err := puller.Pull(&registry.FilesTarget{Root: f, AcceptHash: true}, 0, false, os.Stderr, resolver); err != nil {
+	// Bound the write to the partition capacity so an oversized rootfs (the
+	// disk-root that is written here, not the whole image) fails with a clear
+	// error rather than a low-level device write failure.
+	rootWriter := &partitionLimitWriter{w: f, max: GetPartitionSizeInBytes(partName)}
+	if _, _, err := puller.Pull(&registry.FilesTarget{Root: rootWriter, AcceptHash: true}, 0, false, os.Stderr, resolver); err != nil {
 		errStr := fmt.Sprintf("error pulling %s from containerd: %v", image, err)
+		log.Error(errStr)
+		return errors.New(errStr)
+	}
+	// partitionLimitWriter never errors mid-pull (to avoid deadlocking the
+	// pull pipeline); surface any deferred error here instead.
+	if rootWriter.werr != nil {
+		errStr := fmt.Sprintf("error writing rootfs to partition %s: %v", partName, rootWriter.werr)
+		log.Error(errStr)
+		return errors.New(errStr)
+	}
+	if rootWriter.exceeded {
+		errStr := fmt.Sprintf("rootfs does not fit: %d bytes exceeds partition %s size %d bytes",
+			rootWriter.written, partName, rootWriter.max)
 		log.Error(errStr)
 		return errors.New(errStr)
 	}
