@@ -22,7 +22,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cas"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/sirupsen/logrus" // Used for log.Fatal only
 )
 
@@ -48,11 +47,8 @@ func init() {
 		logrus.Fatal("Mutex Init")
 	}
 
-	// Initialize valid partition labels based on platform
+	// Initialize valid partition labels
 	validPartitionLabels = []string{"IMGA", "IMGB"}
-	if utils.IsEvaluationPlatform() {
-		validPartitionLabels = append(validPartitionLabels, "IMGC")
-	}
 	logrus.Infof("zboot: initialized valid partitions: %v", validPartitionLabels)
 }
 
