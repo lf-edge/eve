@@ -308,7 +308,11 @@ func (s *Publisher) serveConnection(conn net.Conn, instance int) {
 		return
 	}
 
-	_, err = conn.Write([]byte(fmt.Sprintf("hello %s", s.topic)))
+	// Advertise our persistence so that the subscriber can detect a mismatch
+	// between its Persistent option and ours. Older subscribers ignore the
+	// extra field.
+	hello := fmt.Sprintf("hello %s %t", s.topic, s.persistent)
+	_, err = conn.Write([]byte(hello))
 	if err != nil {
 		s.log.Errorf("serveConnection(%s/%d) failed %s\n", s.name, instance, err)
 		return

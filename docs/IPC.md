@@ -312,6 +312,53 @@ This uses the same `<name>` algorithm as above.
 
 This socket is unique to this table; each table has its own socket.
 
+#### Wire Protocol
+
+The messages exchanged over the socket connection are space-separated plain
+text, sent as individual `unixpacket` datagrams. Keys and values are
+base64-encoded so that they cannot contain spaces. The subscriber opens the
+conversation by requesting the topic; the publisher answers with a greeting,
+a dump of the current table state and then a stream of incremental updates:
+
+| Direction | Message | Meaning |
+|-----------|---------|---------|
+| subscriber → publisher | `request <topic>` | Request the initial state and subsequent updates of the topic. |
+| publisher → subscriber | `hello <topic> <persistent>` | Greeting. `<persistent>` (`true`/`false`) advertises whether the publication is persistent, so that the subscriber can detect a mismatch with its own `Persistent` option. Older publishers omit this field and older subscribers ignore it. |
+| publisher → subscriber | `update <topic> <key> <value>` | A new or modified table entry. |
+| publisher → subscriber | `delete <topic> <key>` | The entry with `<key>` was removed. |
+| publisher → subscriber | `complete <topic>` | The initial dump of the table is complete; the subscription is synchronized. |
+| publisher → subscriber | `restarted <topic> <counter>` | The publisher marked the topic as restarted. |
+
+After `complete`, further `update`, `delete` and `restarted` messages are sent
+as the table changes.
+
+A persistent subscription participates in this conversation like any other:
+when the publisher comes up, the subscriber receives the full table dump over
+the socket (entries identical to already-known state are filtered out before
+the agent's handlers are invoked). In addition, however, it pre-loads the
+persisted files of the publication at activation time, so that it has the
+last known state available even before the publisher runs. This pre-load
+silently depends on the publication actually being persistent — if it is
+not, the pre-load finds nothing, or stale files left behind by an older EVE
+version. The `<persistent>` field of the `hello` message allows the
+subscriber to detect this mismatch and report it.
+
+Two more safeguards protect this contract. In CI, the
+`make check-pubsub-persistence` check (`pkg/pillar/tools/pubsubcheck`)
+cross-references the `Persistent` flags of all publications and
+subscriptions. At boot, before any pubsub process starts, `upgradeconverter`
+(pre-vault) removes the directories under `/persist/status` that belong to a
+topic which is non-persistent in the running EVE version, so that a pre-load
+can never consume state left behind by a previous version whose publication
+was persistent while the current one is not. The list of non-persistent
+topics it consults is extracted from the sources by the same `pubsubcheck`
+tool while the pillar container image is built, so it can never go out of
+sync with the code. Only topics statically known to be non-persistent are
+removed: state of publishers removed entirely, of non-Go components, or of
+publications declared outside the pillar sources is intentionally left in
+place, since the generated list cannot see them and leaving unknown state
+alone is the safe direction.
+
 #### `socketdriver.Subscriber` Subscriptions
 
 Upon receiving a request to subscribe to a table, `socketdriver.Subscriber` determines the filename for the Unix domain socket using the same

@@ -29,6 +29,7 @@ type Subscriber struct {
 	sockName         string   // there is one socket per publishing agent
 	sock             net.Conn // For socket subscriptions
 	subscribeFromDir bool     // Handle special case of file only info
+	persistent       bool     // initial Load() is from the persistent dir
 	name             string
 	topic            string
 	dirName          string
@@ -308,6 +309,9 @@ func (s *Subscriber) read() (string, string, []byte) {
 	switch msg {
 	case "hello", "complete":
 		s.log.Tracef("connectAndRead(%s) Got message %s type %s\n", s.name, msg, t)
+		if msg == "hello" && count >= 3 {
+			s.checkPublisherPersistence(reply[2])
+		}
 		return msg, "", nil
 
 	case "restarted":
@@ -371,10 +375,31 @@ func (s *Subscriber) read() (string, string, []byte) {
 	}
 }
 
+// checkPublisherPersistence compares the publisher's persistence, as
+// advertised in its hello message, with the Persistent option of this
+// subscription. A persistent subscription to a non-persistent publication is
+// a bug: the initial Load() done by Activate() reads from the persistent
+// directory which the publisher never writes, so it silently loads nothing,
+// or worse, stale state left behind by an older EVE version.
+func (s *Subscriber) checkPublisherPersistence(pubPersistent string) {
+	persistent, err := strconv.ParseBool(pubPersistent)
+	if err != nil {
+		s.log.Errorf("checkPublisherPersistence(%s): malformed persistence flag %q in hello message",
+			s.name, pubPersistent)
+		return
+	}
+	if s.persistent && !persistent {
+		s.log.Errorf("checkPublisherPersistence(%s): subscription for topic %s is persistent, "+
+			"but the publisher is not; the initial load of this subscription is unreliable "+
+			"(empty or stale data); fix the Persistent flag on one of the two sides",
+			s.name, s.topic)
+	}
+}
+
 // translate takes file notifications from a file watcher and converts them
 // pubsub operations. Normally this is 1-1 but since the file watcher can not
 // ensure ordering for the restarted file we delay those until a bit to ensure
-// they are delivered after any notifictions for other files.
+// they are delivered after any notifications for other files.
 func (s *Subscriber) translate(in <-chan string, out chan<- pubsub.Change) {
 	statusDirName := s.dirName
 	gotRestarted := false
@@ -382,10 +407,10 @@ func (s *Subscriber) translate(in <-chan string, out chan<- pubsub.Change) {
 
 	// Delay sending restarted until we have seen other changes
 	interval := 3 * time.Second
-	max := float64(interval)
-	min := max / 3
-	ticker := flextimer.NewRangeTicker(time.Duration(1000*min),
-		time.Duration(1000*max))
+	maxDelay := float64(interval)
+	minDelay := maxDelay / 3
+	ticker := flextimer.NewRangeTicker(time.Duration(1000*minDelay),
+		time.Duration(1000*maxDelay))
 
 	for {
 		select {
@@ -399,8 +424,8 @@ func (s *Subscriber) translate(in <-chan string, out chan<- pubsub.Change) {
 				restartedValue)
 			gotRestarted = false
 			restartedValue = ""
-			ticker.UpdateRangeTicker(time.Duration(1000*min),
-				time.Duration(1000*max))
+			ticker.UpdateRangeTicker(time.Duration(1000*minDelay),
+				time.Duration(1000*maxDelay))
 
 		case change, ok := <-in:
 			if !ok {
@@ -446,9 +471,9 @@ func (s *Subscriber) translate(in <-chan string, out chan<- pubsub.Change) {
 				restartedValue = string(cb)
 				s.log.Functionf("Starting timer restarted %s for %v %v",
 					restartedValue,
-					time.Duration(min), time.Duration(max))
-				ticker.UpdateRangeTicker(time.Duration(min),
-					time.Duration(max))
+					time.Duration(minDelay), time.Duration(maxDelay))
+				ticker.UpdateRangeTicker(time.Duration(minDelay),
+					time.Duration(maxDelay))
 
 			case !strings.HasSuffix(fileName, ".json"):
 				// s.log.Tracef("Ignoring file <%s> operation %s\n",

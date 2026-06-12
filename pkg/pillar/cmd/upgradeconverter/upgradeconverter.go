@@ -36,6 +36,13 @@ var preVaultconversionHandlers = []ConversionHandler{
 		description: "Move /status/zedrouter/AppInstMetaData to /status/msrv/AppInstMetaData",
 		handlerFunc: movePersistPubsub,
 	},
+	{
+		// Must run last: earlier handlers move/convert persistent
+		// pubsub state and this one removes whatever stale state the
+		// previous EVE version (or the handlers above) left behind.
+		description: "Remove stale persistent pubsub topics",
+		handlerFunc: removeStalePersistentTopics,
+	},
 }
 
 // postVaultconversionHandlers run after vault is setup
@@ -62,10 +69,11 @@ type ucContext struct {
 	noFlag    bool
 
 	// FilePaths. These are defined here instead of consts for easier unit tests
-	persistDir       string
-	persistConfigDir string
-	persistStatusDir string
-	ps               *pubsub.PubSub
+	persistDir              string
+	persistConfigDir        string
+	persistStatusDir        string
+	nonPersistentTopicsFile string
+	ps                      *pubsub.PubSub
 	// cli options
 	persistPtr *string
 	noFlagPtr  *bool
@@ -142,10 +150,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	logger = loggerArg
 	log = logArg
 	ctx := &ucContext{agentName: "upgradeconverter",
-		persistDir:       types.PersistDir,
-		persistConfigDir: types.PersistConfigDir,
-		persistStatusDir: types.PersistStatusDir,
-		ps:               ps,
+		persistDir:              types.PersistDir,
+		persistConfigDir:        types.PersistConfigDir,
+		persistStatusDir:        types.PersistStatusDir,
+		nonPersistentTopicsFile: nonPersistentTopicsFile,
+		ps:                      ps,
 	}
 	agentbase.Init(ctx, logger, log, agentName,
 		agentbase.WithPidFile(),
@@ -192,10 +201,11 @@ func RunPostVaultHandlers(moduleName string,
 	logger = loggerArg
 	log = logArg
 	ctx := &ucContext{agentName: moduleName,
-		persistDir:       types.PersistDir,
-		persistConfigDir: types.PersistConfigDir,
-		persistStatusDir: types.PersistStatusDir,
-		ps:               ps,
+		persistDir:              types.PersistDir,
+		persistConfigDir:        types.PersistConfigDir,
+		persistStatusDir:        types.PersistStatusDir,
+		nonPersistentTopicsFile: nonPersistentTopicsFile,
+		ps:                      ps,
 	}
 	runPhase(ctx, UCPhasePostVault)
 	log.Notice("RunPostVaultHandlers completed, notifying caller")
@@ -215,10 +225,11 @@ func RunPreVaultHandlers(moduleName string,
 	logger = loggerArg
 	log = logArg
 	ctx := &ucContext{agentName: moduleName,
-		persistDir:       types.PersistDir,
-		persistConfigDir: types.PersistConfigDir,
-		persistStatusDir: types.PersistStatusDir,
-		ps:               ps,
+		persistDir:              types.PersistDir,
+		persistConfigDir:        types.PersistConfigDir,
+		persistStatusDir:        types.PersistStatusDir,
+		nonPersistentTopicsFile: nonPersistentTopicsFile,
+		ps:                      ps,
 	}
 	runPhase(ctx, UCPhasePreVault)
 	log.Notice("RunPreVaultHandlers completed, notifying caller")
