@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/cas"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
@@ -102,33 +103,9 @@ func loadImageArchive(ctx *volumemgrContext, status *types.ContentTreeStatus,
 	// The import wrote the index and all its descendants (manifest, config,
 	// layers) into the CAS. Build LOADED BlobStatuses for them and make the
 	// content tree reference the index instead of the bare archive blob.
-	hashes, err := collectImageBlobTree(ctx, indexSha)
+	newBlobs, err := buildLoadedBlobStatuses(ctx.casClient, indexSha)
 	if err != nil {
 		return err
-	}
-	mediaMap, err := ctx.casClient.ListBlobsMediaTypes()
-	if err != nil {
-		return fmt.Errorf("loadImageArchive: cannot list CAS media types: %v", err)
-	}
-
-	newBlobs := make([]*types.BlobStatus, 0, len(hashes))
-	for _, h := range hashes {
-		full := "sha256:" + h
-		var size int64
-		if info, err := ctx.casClient.GetBlobInfo(full); err == nil {
-			size = info.Size
-		}
-		newBlobs = append(newBlobs, &types.BlobStatus{
-			Sha256:                 h,
-			State:                  types.LOADED,
-			MediaType:              mediaMap[full],
-			Size:                   uint64(size),
-			CurrentSize:            size,
-			TotalSize:              size,
-			Progress:               100,
-			CreateTime:             time.Now(),
-			LastRefCountChangeTime: time.Now(),
-		})
 	}
 	publishBlobStatus(ctx, newBlobs...)
 	AddRefToBlobStatus(ctx, newBlobs...)
@@ -155,17 +132,52 @@ func loadImageArchive(ctx *volumemgrContext, status *types.ContentTreeStatus,
 	return nil
 }
 
+// buildLoadedBlobStatuses enumerates the index blob and all its descendants
+// (manifest, config, layers) already present in the CAS and returns LOADED
+// BlobStatuses for them, index first. It has no side effects, which makes the
+// CAS-content-to-BlobStatus mapping unit-testable with a fake CAS.
+func buildLoadedBlobStatuses(casClient cas.CAS, indexSha string) ([]*types.BlobStatus, error) {
+	hashes, err := collectImageBlobTree(casClient, indexSha)
+	if err != nil {
+		return nil, err
+	}
+	mediaMap, err := casClient.ListBlobsMediaTypes()
+	if err != nil {
+		return nil, fmt.Errorf("buildLoadedBlobStatuses: cannot list CAS media types: %v", err)
+	}
+	blobs := make([]*types.BlobStatus, 0, len(hashes))
+	for _, h := range hashes {
+		full := "sha256:" + h
+		var size int64
+		if info, err := casClient.GetBlobInfo(full); err == nil {
+			size = info.Size
+		}
+		blobs = append(blobs, &types.BlobStatus{
+			Sha256:                 h,
+			State:                  types.LOADED,
+			MediaType:              mediaMap[full],
+			Size:                   uint64(size),
+			CurrentSize:            size,
+			TotalSize:              size,
+			Progress:               100,
+			CreateTime:             time.Now(),
+			LastRefCountChangeTime: time.Now(),
+		})
+	}
+	return blobs, nil
+}
+
 // collectImageBlobTree returns the index blob and all of its descendant blob
 // hashes (manifest, config, layers) by walking CAS children breadth-first.
 // Hashes are returned without the "sha256:" prefix, index first.
-func collectImageBlobTree(ctx *volumemgrContext, indexSha string) ([]string, error) {
+func collectImageBlobTree(casClient cas.CAS, indexSha string) ([]string, error) {
 	ordered := []string{indexSha}
 	seen := map[string]bool{indexSha: true}
 	queue := []string{indexSha}
 	for len(queue) > 0 {
 		cur := queue[0]
 		queue = queue[1:]
-		children, err := ctx.casClient.Children("sha256:" + cur)
+		children, err := casClient.Children("sha256:" + cur)
 		if err != nil {
 			return nil, fmt.Errorf("collectImageBlobTree: children of %s: %v", cur, err)
 		}
