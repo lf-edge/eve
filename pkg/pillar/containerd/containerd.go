@@ -23,6 +23,7 @@ import (
 	"github.com/containerd/containerd/content"
 	"github.com/containerd/containerd/errdefs"
 	"github.com/containerd/containerd/images"
+	"github.com/containerd/containerd/images/archive"
 	"github.com/containerd/containerd/leases"
 	"github.com/containerd/containerd/mount"
 	"github.com/containerd/containerd/namespaces"
@@ -178,6 +179,30 @@ func (client *Client) CtrWriteBlob(ctx context.Context, blobHash string, expecte
 		return fmt.Errorf("CtrWriteBlob: Exception while writing blob: %s. %s", blobHash, err.Error())
 	}
 	return nil
+}
+
+// CtrImportImageArchive imports an OCI image-layout or docker-save archive
+// (read from reader; the caller is responsible for any decompression) into the
+// content store, writing all referenced blobs (index, manifests, config and
+// layers), and returns the top-level index/manifest descriptor. The caller must
+// root the imported blobs with an image reference before releasing the ctx
+// lease, otherwise they may be garbage collected.
+func (client *Client) CtrImportImageArchive(ctx context.Context, reader io.Reader) (imagespecs.Descriptor, error) {
+	if err := client.verifyCtr(ctx, true); err != nil {
+		return imagespecs.Descriptor{}, fmt.Errorf("CtrImportImageArchive: exception while verifying ctrd client: %s", err.Error())
+	}
+	// ImportIndex writes blobs; require a lease on ctx so they are not GCed
+	// before the caller creates an image reference to them.
+	leaseID, _ := leases.FromContext(ctx)
+	leaseList, _ := client.ctrdClient.LeasesService().List(ctx, fmt.Sprintf("id==%s", leaseID))
+	if len(leaseList) < 1 {
+		return imagespecs.Descriptor{}, fmt.Errorf("CtrImportImageArchive: could not find lease: %s", leaseID)
+	}
+	desc, err := archive.ImportIndex(ctx, client.contentStore, reader)
+	if err != nil {
+		return imagespecs.Descriptor{}, fmt.Errorf("CtrImportImageArchive: exception while importing archive: %s", err.Error())
+	}
+	return desc, nil
 }
 
 // CtrUpdateBlobInfo updates blobs info

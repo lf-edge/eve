@@ -1,7 +1,9 @@
 package cas
 
 import (
+	"bufio"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -511,6 +513,48 @@ func (c *containerdCAS) CreateImage(reference, mediaType, blobHash string) error
 		return fmt.Errorf("CreateImage: Exception while creating reference: %s. %s", reference, err.Error())
 	}
 	return nil
+}
+
+// ImportImageArchive imports a packaged image archive (OCI image-layout or
+// docker-save, optionally gzip-compressed) from archivePath into the blob store
+// and creates 'reference' pointing at the imported index/manifest. Returns the
+// index/manifest digest of format sha256:<hash>.
+func (c *containerdCAS) ImportImageArchive(reference, archivePath string) (string, error) {
+	f, err := os.Open(archivePath)
+	if err != nil {
+		return "", fmt.Errorf("ImportImageArchive: cannot open %s: %v", archivePath, err)
+	}
+	defer f.Close()
+
+	// Transparently de-gzip; the eserver/S3 artifact is a .tar.gz.
+	br := bufio.NewReader(f)
+	var reader io.Reader = br
+	if magic, _ := br.Peek(2); len(magic) == 2 && magic[0] == 0x1f && magic[1] == 0x8b {
+		zr, err := gzip.NewReader(br)
+		if err != nil {
+			return "", fmt.Errorf("ImportImageArchive: cannot create gzip reader for %s: %v", archivePath, err)
+		}
+		defer zr.Close()
+		reader = zr
+	}
+
+	// Use a leased context so the imported blobs are not garbage collected
+	// before we create the image reference rooting them.
+	ctrdCtx, done, err := c.ctrdClient.CtrNewUserServicesCtxWithLease()
+	if err != nil {
+		return "", fmt.Errorf("ImportImageArchive: cannot get lease context: %v", err)
+	}
+	defer done()
+
+	desc, err := c.ctrdClient.CtrImportImageArchive(ctrdCtx, reader)
+	if err != nil {
+		return "", fmt.Errorf("ImportImageArchive: import of %s failed: %v", archivePath, err)
+	}
+	// Root the imported blobs with an image reference before the lease is released.
+	if err := c.CreateImage(reference, string(desc.MediaType), desc.Digest.String()); err != nil {
+		return "", fmt.Errorf("ImportImageArchive: CreateImage(%s) failed: %v", reference, err)
+	}
+	return desc.Digest.String(), nil
 }
 
 // GetImageHash: returns a blob hash of format sha256:<hash> which the given 'reference' is pointing to.
