@@ -89,18 +89,34 @@ jobs:
           RUN_ID: ${{ steps.meta.outputs.original_run_id }}
           GH_REPO: ${{ github.repository }}
           BUILD_JOB_NAME: "eve (${{ matrix.arch }}, ${{ matrix.hv }}, ${{ matrix.platform }})"
+          COVER_BUILD_JOB_NAME: "eve (${{ matrix.arch }}, ${{ matrix.hv }}, ${{ matrix.platform }}, cover)"
         run: |
-          build_conclusion=$(gh api \
-            /repos/$GH_REPO/actions/runs/$RUN_ID/jobs \
-            -X GET \
-            -q ".jobs[] | select(.name == \"$BUILD_JOB_NAME\") | .conclusion" ) || api_status=$?
+          jobs_json=$(gh api "/repos/$GH_REPO/actions/runs/$RUN_ID/jobs") || api_status=$?
 
           if [[ "${api_status:-0}" -ne 0 ]]; then
             echo "::error::Failed to fetch build job status for run $RUN_ID"
             echo "build_ok=false" >>"$GITHUB_OUTPUT"
-          else
-            echo "build_ok=$([[ "$build_conclusion" == 'success' ]] && echo true || echo false)" >>"$GITHUB_OUTPUT"
+            exit 0
           fi
+
+          # On the pull_request_review trigger this step may run while the
+          # coverage-instrumented build is still in flight. If the cover job
+          # exists (label present) and is not yet in a terminal state, hold
+          # the gate -- otherwise eden-trusted's tests-master-cover would
+          # start before the eve-cover-* artifact is ready. When the label
+          # is absent the cover job is marked "skipped" at workflow start,
+          # which is already a terminal state.
+          cover_status=$(echo "$jobs_json" | \
+            jq -r ".jobs[] | select(.name == \"$COVER_BUILD_JOB_NAME\") | .status")
+          if [[ -n "$cover_status" && "$cover_status" != "completed" ]]; then
+            echo "Cover build status=$cover_status; gate waits for completion"
+            echo "build_ok=false" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          build_conclusion=$(echo "$jobs_json" | \
+            jq -r ".jobs[] | select(.name == \"$BUILD_JOB_NAME\") | .conclusion")
+          echo "build_ok=$([[ "$build_conclusion" == 'success' ]] && echo true || echo false)" >>"$GITHUB_OUTPUT"
 
       - name: Check Gate Condition
         id: check

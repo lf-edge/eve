@@ -160,6 +160,36 @@ jobs:
           hv: kvm
           cache-artifact: linuxkit-cache-amd64-generic
 
+  # Coverage-instrumented build. Opt-in via the `coverage` PR label so the
+  # extra ~1× build cost only lands on PRs that want a coverage signal from
+  # the Eden test matrix. The Eden trusted workflow's tests-master-cover job
+  # consumes the eve-cover-* artifact this produces.
+  eve-amd64-kvm-generic-cover:
+    name: "eve (amd64, kvm, generic, cover)"
+    needs: pkgs-amd64-generic
+    if: ${{ contains(github.event.pull_request.labels.*.name, 'coverage') }}
+    runs-on: zededa-ubuntu-2204
+    timeout-minutes: 1440
+    steps:
+      - name: Clear repository
+        shell: bash
+        run: |
+          sudo rm -fr "$GITHUB_WORKSPACE" && mkdir "$GITHUB_WORKSPACE"
+          rm -fr ~/.linuxkit
+          docker system prune --all --force --volumes
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - uses: ./.github/actions/build-eve
+        with:
+          arch: amd64
+          platform: generic
+          hv: kvm
+          cache-artifact: linuxkit-cache-amd64-generic
+          cover: 'true'
+
   # ── amd64 rt ──
 
   eve-amd64-kvm-rt:
