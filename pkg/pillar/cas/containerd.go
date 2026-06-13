@@ -538,21 +538,18 @@ func (c *containerdCAS) ImportImageArchive(reference, archivePath string) (strin
 		reader = zr
 	}
 
-	// Use a leased context so the imported blobs are not garbage collected
-	// before we create the image reference rooting them.
-	ctrdCtx, done, err := c.ctrdClient.CtrNewUserServicesCtxWithLease()
-	if err != nil {
-		return "", fmt.Errorf("ImportImageArchive: cannot get lease context: %v", err)
-	}
+	// CtrImportImageArchive (high-level containerd Import) ingests the blobs,
+	// sets gc.ref labels so they survive GC, and creates the image 'reference'.
+	// It manages its own lease, so a plain namespaced context is enough here.
+	ctrdCtx, done := c.ctrdClient.CtrNewUserServicesCtx()
 	defer done()
 
-	desc, err := c.ctrdClient.CtrImportImageArchive(ctrdCtx, reader)
+	desc, err := c.ctrdClient.CtrImportImageArchive(ctrdCtx, reference, reader)
 	if err != nil {
 		return "", fmt.Errorf("ImportImageArchive: import of %s failed: %v", archivePath, err)
 	}
-	// Root the imported blobs with an image reference before the lease is released.
-	if err := c.CreateImage(reference, string(desc.MediaType), desc.Digest.String()); err != nil {
-		return "", fmt.Errorf("ImportImageArchive: CreateImage(%s) failed: %v", reference, err)
+	if desc.Digest == "" {
+		return "", fmt.Errorf("ImportImageArchive: import of %s returned an empty index digest", archivePath)
 	}
 	return desc.Digest.String(), nil
 }
