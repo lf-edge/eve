@@ -327,6 +327,23 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 		// to add a manifest to it.
 		log.Functionf("doUpdateContentTree(%s) checking if we need to add a manifest, have %d blobs", status.Key(), len(blobStatuses))
 		if len(blobStatuses) == 1 && !blobStatuses[0].IsManifest() && !blobStatuses[0].IsIndex() {
+			rootBlob := blobStatuses[0]
+			// A single downloaded file from a non-OCI datastore (S3/HTTP) may
+			// actually be a packaged image archive (OCI image-layout or
+			// docker-save). If so, import it so the real multi-layer manifest is
+			// used instead of wrapping the whole archive as one raw disk-root blob.
+			if detectImageArchive(rootBlob.Path) != notImageArchive {
+				if err := loadImageArchive(ctx, status, rootBlob, refID); err != nil {
+					err = fmt.Errorf("doUpdateContentTree(%s): failed to load image archive: %s",
+						status.ContentID, err.Error())
+					log.Error(err.Error())
+					status.SetErrorWithSource(err.Error(), types.ContentTreeStatus{}, time.Now())
+					return changed, false
+				}
+				log.Functionf("doUpdateContentTree(%s): imported image archive, content tree LOADED", status.Key())
+				publishContentTreeStatus(ctx, status)
+				return true, status.State == types.LOADED
+			}
 			blobs, err := getManifestsForBareBlob(ctx, refID, blobStatuses[0].Sha256, int64(blobStatuses[0].Size))
 			if err != nil {
 				err = fmt.Errorf("doUpdateContentTree(%s): Exception while getting manifest and config for bare blob: %s",
