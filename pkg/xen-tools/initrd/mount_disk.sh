@@ -3,14 +3,45 @@
 # we expect the same order in block device enumeration (we put them in order in VM's configuration)
 # and in /mnt/mountPoints file (where mount points defined)
 
+# On HV=k the container PVC is the boot block device — it's already mounted at
+# /mnt and must be skipped here, otherwise it would be treated as the first
+# extra volume: that either remounts the rootfs on top of itself, or (worse)
+# consumes mountPoints line 1 and shifts every subsequent device-to-path
+# mapping down by one. On HV=kvm/xen root=9p, /proc/mounts has no block device
+# at /mnt so boot_dev stays empty and the guard is a no-op.
+boot_dev=$(awk '$2 == "/mnt" {print $1; exit}' /proc/mounts | sed 's|^/dev/||')
+
+# /mnt/mountPoints is written by:
+#   - HV=kvm/xen: pkg/pillar/containerd/oci.go:AddLoader at domain-create time
+#     from disk.MountDir entries in the OCI spec.
+#   - HV=k:      init-initrd rewrites it from #EVE_VOLMOUNT cidata markers
+#                emitted by domainmgr's mountDirsToUserData, also at domain-
+#                create time.
+# If neither path produced a file (no extra volumes attached), there's nothing
+# to mount — exit cleanly instead of erroring on every enumerated block device.
+if [ ! -f /mnt/mountPoints ]; then
+  echo "No /mnt/mountPoints present — no volumes to mount."
+  exit 0
+fi
+
 mountPointLineNo=1
 find /sys/block/ -maxdepth 1 -regex '.*[sv]d.*' -exec basename '{}' ';'| sort | while read -r disk ; do
+  if [ -n "$boot_dev" ] && [ "$disk" = "$boot_dev" ]; then
+    echo "Skipping boot device $disk (already mounted at /mnt)"
+    continue
+  fi
   echo "Processing $disk"
   targetDir=$(sed "${mountPointLineNo}q;d" /mnt/mountPoints)
-  if [ -z "$targetDir" ]
-    then
-      echo "Error while mounting: No Mount-Point found for $disk."
-      exit 0
+  # An empty mountPoints line means the user attached this volume as a raw
+  # block device (no MountDir). domainmgr's mountDirsToUserData still emits a
+  # line for it so the positional mapping for *subsequent* devices stays
+  # correct — advance the cursor and skip this device. The same empty result
+  # also happens past the end of the file when extra block devices appear
+  # unexpectedly; the message below covers both.
+  if [ -z "$targetDir" ]; then
+    echo "No mount target on line $mountPointLineNo for $disk — skipping"
+    mountPointLineNo=$((mountPointLineNo + 1))
+    continue
   fi
 
   #Checking and creating a ext4 file system inside the partition
