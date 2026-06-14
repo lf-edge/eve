@@ -10,6 +10,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -515,6 +516,30 @@ func (ctx kubevirtContext) CreateReplicaVMIConfig(domainName string, config type
 						HostDisk: &v1.HostDisk{
 							Path: ds.FileLocation,
 							Type: "Disk",
+						},
+					},
+				}
+			} else if ds.Devtype == "cloudinit-nocloud" {
+				// Container shim-VMI path only: domainmgr passes env-vars
+				// inline via CustomMeta and we let kubevirt synthesize the
+				// cidata ISO inside the launcher pod. Regular VM apps use the
+				// standard HostDisk-backed cdrom branch above (same as HV=kvm).
+				// Use UserDataBase64 so the payload does not appear in
+				// plaintext in `kubectl describe vmi`; the launcher decodes
+				// before exposing the cidata cdrom to the guest.
+				disks[i] = v1.Disk{
+					Name: diskName,
+					DiskDevice: v1.DiskDevice{
+						CDRom: &v1.CDRomTarget{
+							Bus: "sata",
+						},
+					},
+				}
+				vols[i] = v1.Volume{
+					Name: diskName,
+					VolumeSource: v1.VolumeSource{
+						CloudInitNoCloud: &v1.CloudInitNoCloudSource{
+							UserDataBase64: base64.StdEncoding.EncodeToString([]byte(ds.CustomMeta)),
 						},
 					},
 				}

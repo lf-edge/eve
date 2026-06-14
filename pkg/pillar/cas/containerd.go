@@ -731,19 +731,28 @@ func (c *containerdCAS) PrepareContainerRootDir(rootPath, reference, _ string) e
 
 func (c *containerdCAS) prepareContainerRootDirForKubevirt(clientImageSpec *ocispec.Image, snapshotID string, rootPath string) error {
 
-	// On EVE 'k' we also write the mountpoints and cmdline files to the rootPath.
+	// On EVE 'k' we also write the cmdline / env / ug files to the rootPath.
 	// Once rootPath is populated with all necessary files, this rootPath directory will be
-	// converted to a PVC and passed in to domainmgr to attach to VM as rootdisk
+	// converted to a PVC and passed in to domainmgr to attach to VM as rootdisk.
 	// NOTE: For kvm eve these files are generated and passed to bootloader in pkg/pillar/containerd/oci.go:AddLoader()
+	//
+	// The mountPoints file is NOT written here. It is delivered at domain-create
+	// time via the cloud-init NoCloud cdrom (see configToStatus in domainmgr) so
+	// that it reflects the user-attached disks' MountDir values in the same
+	// order as kubevirt will enumerate them as /dev/vd[b,c,...] inside the shim
+	// VMI — mirroring what containerd/oci.go:UpdateMounts does for HV=kvm/xen.
+	// The image-declared OCI VOLUMEs (clientImageSpec.Config.Volumes) are not
+	// used: an iteration over a map is unordered so the positional mapping
+	// mount_disk.sh relies on would be wrong, and they don't reflect what the
+	// user actually attached.
 
-	mountpoints := clientImageSpec.Config.Volumes
 	execpath := clientImageSpec.Config.Entrypoint
 	cmd := clientImageSpec.Config.Cmd
 	workdir := clientImageSpec.Config.WorkingDir
 	unProcessedEnv := clientImageSpec.Config.Env
 	user := clientImageSpec.Config.User
-	logrus.Infof("PrepareContainerRootDir: mountPoints %+v execpath %+v cmd %+v workdir %+v env %+v user %+v",
-		mountpoints, execpath, cmd, workdir, unProcessedEnv, user)
+	logrus.Infof("PrepareContainerRootDir: execpath %+v cmd %+v workdir %+v env %+v user %+v",
+		execpath, cmd, workdir, unProcessedEnv, user)
 
 	// Mount the snapshot
 	// Do not unmount the rootfs in this code path, we need this containerdir to generate a qcow2->PVC from it in
@@ -751,11 +760,6 @@ func (c *containerdCAS) prepareContainerRootDirForKubevirt(clientImageSpec *ocis
 	// Once qcow2 is successfully created, this directory will be unmounted in csihandler.go
 	if err := c.MountSnapshot(snapshotID, GetRoofFsPath(rootPath)); err != nil {
 		return fmt.Errorf("PrepareContainerRootDir error mount of snapshot: %s. %w", snapshotID, err)
-	}
-
-	err := c.writeKubevirtMountpointsFile(mountpoints, rootPath)
-	if err != nil {
-		return err
 	}
 
 	// create env manifest
@@ -812,32 +816,7 @@ func (c *containerdCAS) prepareContainerRootDirForKubevirt(clientImageSpec *ocis
 		return err
 	}
 
-	err = os.MkdirAll(filepath.Join(rootPath, "modules"), 0600)
-	return err
-}
-
-func (*containerdCAS) writeKubevirtMountpointsFile(mountpoints map[string]struct{}, rootPath string) error {
-	if len(mountpoints) > 0 {
-		f, err := os.OpenFile(filepath.Join(rootPath, "mountPoints"), os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
-		if err != nil {
-			err = fmt.Errorf("PrepareContainerRootDir: Exception while creating file  mountpoints to %v %w",
-				rootPath, err)
-			logrus.Error(err.Error())
-			return err
-		}
-
-		defer f.Close()
-		for m := range mountpoints {
-			m += "\n"
-			if _, err := f.WriteString(m); err != nil {
-				err = fmt.Errorf("PrepareContainerRootDir: Exception while writing mountpoints to %v %w",
-					rootPath, err)
-				logrus.Error(err.Error())
-				return err
-			}
-		}
-	}
-	return nil
+	return os.MkdirAll(filepath.Join(rootPath, "modules"), 0600)
 }
 
 // UnmountContainerRootDir unmounts container's rootPath

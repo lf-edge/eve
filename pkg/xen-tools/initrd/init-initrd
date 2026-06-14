@@ -137,9 +137,76 @@ mkdir -p /mnt/rootfs/tmp/modules.upper
 mkdir -p /mnt/rootfs/tmp/modules.work
 mount -t overlay -o rw,relatime,lowerdir=/mnt/modules,upperdir=/mnt/rootfs/tmp/modules.upper,workdir=/mnt/rootfs/tmp/modules.work overlay /mnt/rootfs/lib/modules
 
+# HV=k shim-VMI path only: root=9p signals HV=kvm/xen where domainmgr already
+# projects env vars into /environment and writes /mountPoints on the rootfs
+# disk via the OCI spec, so we skip the cidata probe to avoid accidentally
+# picking up a user volume that happens to share the "cidata" label. On
+# kubevirt root=/dev/vda is the read-only container PVC, so the only way to
+# deliver cloud-init env vars and the user-attached volume mount targets is
+# the NoCloud cdrom attached by domainmgr — merge its user-data here. iso9660
+# is built into the eve-external-boot-image kernel, so no modprobe is needed.
+#
+# cidata user-data carries two kinds of lines, written by domainmgr:
+#   #EVE_VOLMOUNT=<path>   — one per virtio user volume attached to the VMI,
+#                            in the order kubevirt enumerates them as
+#                            /dev/vd[b,c,...]; rewritten into /mnt/mountPoints
+#                            here so the subsequent mount_disk.sh call can map
+#                            each extra block device to its target dir. Path
+#                            may be empty if the user attached the volume as a
+#                            raw block device (no MountDir).
+#   KEY="value"            — env vars, sourced as `export KEY=value` into
+#                            /mnt/environment.
+# We process volume markers BEFORE running mount_disk.sh; env vars are merged
+# AFTER, matching the existing /environment-after-mount ordering for HV=kvm/xen.
+ci_mounted=
+if [ "$root" != "9p" ]; then
+    # Busybox `blkid -L cidata` returns empty in some builds even when the
+    # device is enumerated with LABEL="cidata", so parse raw blkid output
+    # instead. Take the first device whose LABEL field is exactly "cidata".
+    ci_dev=$(blkid 2>/dev/null | awk -F: '/LABEL="cidata"/ {print $1; exit}')
+    if [ -n "$ci_dev" ]; then
+        mkdir -p /cidata
+        if mount -t iso9660 -o ro "$ci_dev" /cidata 2>/dev/null; then
+            ci_mounted=1
+            # First pass: rewrite /mnt/mountPoints from #EVE_VOLMOUNT lines,
+            # but only if at least one such marker is present. If there are
+            # no markers, leave whatever the PVC shipped with alone — domainmgr
+            # only emits markers when the user actually attached virtio volumes.
+            if [ -f /cidata/user-data ] && grep -q '^#EVE_VOLMOUNT=' /cidata/user-data; then
+                echo "Rewriting /mnt/mountPoints from cidata #EVE_VOLMOUNT markers"
+                : > /mnt/mountPoints
+                while IFS= read -r ci_line || [ -n "$ci_line" ]; do
+                    case "$ci_line" in
+                        \#EVE_VOLMOUNT=*)
+                            echo "${ci_line#\#EVE_VOLMOUNT=}" >> /mnt/mountPoints
+                            ;;
+                    esac
+                done < /cidata/user-data
+            fi
+        else
+            echo "Warning: failed to mount cidata device $ci_dev"
+        fi
+    fi
+fi
+
 # Mounting requested volumes
 echo "Executing /mount_disk.sh"
 /mount_disk.sh
+
+if [ -n "$ci_mounted" ]; then
+    if [ -f /cidata/user-data ]; then
+        echo "Merging cloud-init env vars from /cidata/user-data into /mnt/environment"
+        while IFS= read -r ci_line || [ -n "$ci_line" ]; do
+            case "$ci_line" in
+                ''|\#*) ;;
+                [A-Za-z_]*=*)
+                    printf 'export %s\n' "$ci_line" >> /mnt/environment
+                    ;;
+            esac
+        done < /cidata/user-data
+    fi
+    umount /cidata
+fi
 
 # Check if the environment file can be successfully processed by the shell,
 # otherwise write an error message and exit with the input data error code
