@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	v1types "github.com/google/go-containerregistry/pkg/v1/types"
 	"github.com/lf-edge/eve/pkg/pillar/cas"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
@@ -170,26 +171,52 @@ func buildLoadedBlobStatuses(casClient cas.CAS, indexSha string) ([]*types.BlobS
 // collectImageBlobTree returns the index blob and all of its descendant blob
 // hashes (manifest, config, layers) by walking CAS children breadth-first.
 // Hashes are returned without the "sha256:" prefix, index first.
+//
+// It recurses only into index and manifest blobs. Config and layer blobs are
+// leaves: CAS.Children mis-parses them (it speculatively parses any blob as a
+// manifest, so a config blob yields a bogus empty Config.Digest), which would
+// otherwise inject an empty "sha256:" digest into the walk and fail it. The
+// blob's media type (from the image just imported) tells us whether recursing
+// is meaningful.
 func collectImageBlobTree(casClient cas.CAS, indexSha string) ([]string, error) {
-	ordered := []string{indexSha}
-	seen := map[string]bool{indexSha: true}
+	mediaMap, err := casClient.ListBlobsMediaTypes()
+	if err != nil {
+		return nil, fmt.Errorf("collectImageBlobTree: cannot list CAS media types: %v", err)
+	}
+	ordered := []string{}
+	seen := map[string]bool{}
 	queue := []string{indexSha}
 	for len(queue) > 0 {
 		cur := queue[0]
 		queue = queue[1:]
+		if cur == "" || seen[cur] {
+			continue
+		}
+		seen[cur] = true
+		ordered = append(ordered, cur)
+		// Only index/manifest blobs reference children worth recursing into.
+		if !isImageIndexOrManifest(mediaMap["sha256:"+cur]) {
+			continue
+		}
 		children, err := casClient.Children("sha256:" + cur)
 		if err != nil {
 			return nil, fmt.Errorf("collectImageBlobTree: children of %s: %v", cur, err)
 		}
 		for _, child := range children {
-			ch := strings.TrimPrefix(child, "sha256:")
-			if seen[ch] {
-				continue
-			}
-			seen[ch] = true
-			ordered = append(ordered, ch)
-			queue = append(queue, ch)
+			queue = append(queue, strings.TrimPrefix(child, "sha256:"))
 		}
 	}
 	return ordered, nil
+}
+
+// isImageIndexOrManifest reports whether the media type is an image index or
+// manifest (a blob that legitimately has child descriptors).
+func isImageIndexOrManifest(mediaType string) bool {
+	switch v1types.MediaType(mediaType) {
+	case v1types.OCIImageIndex, v1types.DockerManifestList,
+		v1types.OCIManifestSchema1, v1types.DockerManifestSchema2,
+		v1types.DockerManifestSchema1, v1types.DockerManifestSchema1Signed:
+		return true
+	}
+	return false
 }

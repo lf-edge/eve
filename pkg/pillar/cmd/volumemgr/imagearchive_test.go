@@ -117,11 +117,14 @@ func TestDetectImageArchive(t *testing.T) {
 func splitRootfsFakeCAS() *fakeCAS {
 	return &fakeCAS{
 		children: map[string][]string{
-			"sha256:idx":       {"sha256:man"},
-			"sha256:man":       {"sha256:cfg", "sha256:rootlayer", "sha256:extlayer"},
-			"sha256:cfg":       nil,
-			"sha256:rootlayer": nil,
-			"sha256:extlayer":  nil,
+			"sha256:idx": {"sha256:man"},
+			"sha256:man": {"sha256:cfg", "sha256:rootlayer", "sha256:extlayer"},
+			// Leaves: the real CAS.Children mis-parses a config/layer blob and
+			// returns a bogus empty digest. The walk must NOT recurse here
+			// (guarded by media type); if it does, this "sha256:" leaks in.
+			"sha256:cfg":       {"sha256:"},
+			"sha256:rootlayer": {"sha256:"},
+			"sha256:extlayer":  {"sha256:"},
 		},
 		mediaTypes: map[string]string{
 			"sha256:idx":       "application/vnd.oci.image.index.v1+json",
@@ -154,6 +157,11 @@ func TestCollectImageBlobTree(t *testing.T) {
 			t.Fatalf("got %v, want %v (index first, BFS)", got, want)
 		}
 	}
+	for _, h := range got {
+		if h == "" {
+			t.Fatalf("walk recursed into a leaf blob and produced an empty digest: %v", got)
+		}
+	}
 }
 
 func TestCollectImageBlobTreeDedup(t *testing.T) {
@@ -163,6 +171,12 @@ func TestCollectImageBlobTreeDedup(t *testing.T) {
 			"sha256:idx":  {"sha256:man1", "sha256:man2"},
 			"sha256:man1": {"sha256:shared"},
 			"sha256:man2": {"sha256:shared"},
+		},
+		mediaTypes: map[string]string{
+			"sha256:idx":    "application/vnd.oci.image.index.v1+json",
+			"sha256:man1":   "application/vnd.oci.image.manifest.v1+json",
+			"sha256:man2":   "application/vnd.oci.image.manifest.v1+json",
+			"sha256:shared": "application/vnd.oci.image.config.v1+json",
 		},
 	}
 	got, err := collectImageBlobTree(f, "idx")
