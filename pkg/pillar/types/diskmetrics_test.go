@@ -34,8 +34,8 @@ func TestDiskMetricLogKey(t *testing.T) {
 // AppDiskMetric.Key / LogKey
 
 func TestAppDiskMetricLogKey(t *testing.T) {
-	m := AppDiskMetric{DiskPath: "/persist/volumes/vol1"}
-	assert.Equal(t, PathToKey("/persist/volumes/vol1"), m.Key())
+	m := AppDiskMetric{DiskPath: "/persist/vault/volumes/vol1"}
+	assert.Equal(t, PathToKey("/persist/vault/volumes/vol1"), m.Key())
 	assert.Contains(t, m.LogKey(), m.Key())
 }
 
@@ -60,7 +60,7 @@ func TestAppDiskMetricLogCreateModifyDelete(t *testing.T) {
 	logger.SetOutput(&buf)
 	logger.SetLevel(logrus.TraceLevel)
 	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
-	m := AppDiskMetric{DiskPath: "/persist/volumes/vol1"}
+	m := AppDiskMetric{DiskPath: "/persist/vault/volumes/vol1"}
 	m.LogCreate(log)
 	assert.NotEmpty(t, buf.String())
 	m.LogModify(log, m)
