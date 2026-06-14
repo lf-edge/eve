@@ -3,8 +3,29 @@
 # we expect the same order in block device enumeration (we put them in order in VM's configuration)
 # and in /mnt/mountPoints file (where mount points defined)
 
+# On HV=k the container PVC is the boot block device — it's already mounted at
+# /mnt and must be skipped here, otherwise it would be treated as the first
+# extra volume: that either remounts the rootfs on top of itself, or (worse)
+# consumes mountPoints line 1 and shifts every subsequent device-to-path
+# mapping down by one. On HV=kvm/xen root=9p, /proc/mounts has no block device
+# at /mnt so boot_dev stays empty and the guard is a no-op.
+boot_dev=$(awk '$2 == "/mnt" {print $1; exit}' /proc/mounts | sed 's|^/dev/||')
+
+# If the container image declared no VOLUMEs, pillar does not write a
+# mountPoints file (see writeKubevirtMountpointsFile in
+# pkg/pillar/cas/containerd.go), so there is nothing to mount. Exit cleanly
+# instead of erroring on every enumerated block device.
+if [ ! -f /mnt/mountPoints ]; then
+  echo "No /mnt/mountPoints present — no volumes to mount."
+  exit 0
+fi
+
 mountPointLineNo=1
 find /sys/block/ -maxdepth 1 -regex '.*[sv]d.*' -exec basename '{}' ';'| sort | while read -r disk ; do
+  if [ -n "$boot_dev" ] && [ "$disk" = "$boot_dev" ]; then
+    echo "Skipping boot device $disk (already mounted at /mnt)"
+    continue
+  fi
   echo "Processing $disk"
   targetDir=$(sed "${mountPointLineNo}q;d" /mnt/mountPoints)
   if [ -z "$targetDir" ]
