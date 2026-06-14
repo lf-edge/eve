@@ -19,6 +19,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -2461,14 +2462,32 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 				}
 				status.EnvVariables = envList
 			}
-		} else { // If AppInstance is a VM, we need to create a cloud-init ISO
-			switch config.MetaDataType {
-			case types.MetaDataDrive, types.MetaDataDriveMultipart:
-				ds, err := createCloudInitISO(ctx, config, ciStr)
-				if err != nil {
-					return err
+			// On HV=k a container with VirtualizationMode != NOHYPER is launched
+			// as a shim VMI via eve-external-boot-image. The container rootfs is
+			// a PVC built at volume-creation time, so the snapshot-mount path
+			// that normally writes /environment is skipped (see Format_CONTAINER
+			// in doActivate). Deliver cloud-init env vars via the kubevirt-
+			// native CloudInitNoCloud volume — kubevirt synthesizes the cidata
+			// ISO inside the launcher pod, which the eve-external-boot-image
+			// initrd then probes via `blkid -L cidata` and sources as exports.
+			// The payload is the parsed env-var map rendered as shell
+			// KEY="value" lines, not the raw user-data, because the initrd
+			// sources cidata's user-data file as shell — no cloud-config parser.
+			// VM apps and HV=kvm container shims continue to use the standard
+			// HostDisk-backed ISO path via appendCloudInitDisk below.
+			if ctx.hvTypeKube && config.VirtualizationMode != types.NOHYPER {
+				envUserData := envVarsToUserData(status.EnvVariables)
+				if envUserData != "" {
+					status.DiskStatusList = append(status.DiskStatusList, types.DiskStatus{
+						Devtype:    "cloudinit-nocloud",
+						CustomMeta: envUserData,
+						ReadOnly:   true,
+					})
 				}
-				status.DiskStatusList = append(status.DiskStatusList, *ds)
+			}
+		} else { // If AppInstance is a VM, attach the cloud-init disk
+			if err := appendCloudInitDisk(ctx, config, ciStr, status); err != nil {
+				return err
 			}
 		}
 	}
@@ -3222,6 +3241,60 @@ func getCloudInitVersion(config types.DomainConfig) string {
 // 2) only needed if we run as a VM, and 3) the data might be changed
 // by the controller when reactivating hence
 // more short-lived than other volumes/virtual disks.
+// appendCloudInitDisk builds a cloud-init ISO from userData and appends it to
+// status.DiskStatusList as a cdrom-type disk. The hypervisor backends pick it
+// up the same way: kvm/xen emits it as an attached cdrom drive; kubevirt mounts
+// it as a HostDisk-backed cdrom (the virt-launcher reads it from the host's
+// /run via the privileged virt-handler bind-mount, same path the existing
+// user-supplied cdrom HostDisk branch in kubevirt.go relies on).
+//
+// This is the standard path for VM apps (raw cloud-config userData) and for
+// HV=kvm container shim VMs (which today never actually call this function —
+// their env vars reach the rootfs via the OCI spec path in containerd/oci.go).
+// HV=k container shim VMIs use a separate NoCloud-disk DiskStatus emitted by
+// the caller (the rootfs PVC is read-only at activate time, so we cannot bake
+// /environment into it; the eve-external-boot-image initrd reads the attached
+// cidata disk instead — see configToStatus and pkg/xen-tools/initrd).
+func appendCloudInitDisk(ctx *domainContext, config types.DomainConfig,
+	userData string, status *types.DomainStatus) error {
+	switch config.MetaDataType {
+	case types.MetaDataDrive, types.MetaDataDriveMultipart:
+	default:
+		return nil
+	}
+	ds, err := createCloudInitISO(ctx, config, userData)
+	if err != nil {
+		return err
+	}
+	status.DiskStatusList = append(status.DiskStatusList, *ds)
+	return nil
+}
+
+// envVarsToUserData renders an env-var map as shell KEY="value" lines, sorted
+// by key for determinism. Used to build the user-data payload for a container
+// shim-VMI's cloud-init NoCloud disk; the eve-external-boot-image initrd
+// sources these as `export KEY=value` before launching the container.
+func envVarsToUserData(envVars map[string]string) string {
+	if len(envVars) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(envVars))
+	for k := range envVars {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var sb strings.Builder
+	for _, k := range keys {
+		// Wrap the value in double quotes and escape embedded double quotes
+		// and backslashes so the initrd's shell parser handles values with
+		// spaces or special characters safely.
+		v := strings.ReplaceAll(envVars[k], `\`, `\\`)
+		v = strings.ReplaceAll(v, `"`, `\"`)
+		fmt.Fprintf(&sb, "%s=\"%s\"\n", k, v)
+	}
+	return sb.String()
+}
+
 func createCloudInitISO(ctx *domainContext,
 	config types.DomainConfig, ciStr string) (*types.DiskStatus, error) {
 
