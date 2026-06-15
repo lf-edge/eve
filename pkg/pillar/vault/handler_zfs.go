@@ -259,7 +259,11 @@ func (h *ZFSHandler) getVaultStatus(vaultName, vaultPath string) *types.VaultSta
 					status.MismatchingPCRs = pcrs
 				}
 			}
-			status.SetErrorDescription(types.ErrorDescription{Error: err.Error()})
+			errStr := err.Error()
+			if pcrsStr := types.FormatMismatchingPCRs(status.MismatchingPCRs); pcrsStr != "" {
+				errStr += "; " + pcrsStr
+			}
+			status.SetErrorDescription(types.ErrorDescription{Error: errStr})
 		} else {
 			h.log.Functionf("checkOperStatus returns ok for %s", vaultPath)
 			status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED

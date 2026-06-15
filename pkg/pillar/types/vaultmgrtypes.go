@@ -4,6 +4,8 @@
 package types
 
 import (
+	"fmt"
+
 	"github.com/lf-edge/eve-api/go/info"
 
 	"github.com/google/go-cmp/cmp"
@@ -197,4 +199,17 @@ func (key EncryptedVaultKeyFromController) LogKey() string {
 // IsVaultInError :
 func (status VaultStatus) IsVaultInError() bool {
 	return (status.Status == info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR) && len(status.MismatchingPCRs) > 0
+}
+
+// FormatMismatchingPCRs returns a human-readable clause naming the PCR indexes
+// that probably prevented the sealed vault key from being unsealed, or an empty
+// string when none are known. The wording is shared by vaultmgr (which folds it
+// into VaultStatus.Error) and nodeagent (which adds it to the reboot reason), so
+// the explanation reads the same wherever it surfaces - VaultStatus, diag, and
+// the controller-visible BaseOsStatus error.
+func FormatMismatchingPCRs(mismatchingPCRs []int) string {
+	if len(mismatchingPCRs) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("possibly mismatching PCR indexes %v", mismatchingPCRs)
 }

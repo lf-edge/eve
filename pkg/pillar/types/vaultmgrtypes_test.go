@@ -29,6 +29,18 @@ func TestVaultStatusIsVaultInError(t *testing.T) {
 	assert.True(t, s.IsVaultInError())
 }
 
+// FormatMismatchingPCRs
+
+func TestFormatMismatchingPCRs(t *testing.T) {
+	// No mismatching PCRs → empty string so callers can omit the clause
+	assert.Equal(t, "", FormatMismatchingPCRs(nil))
+	assert.Equal(t, "", FormatMismatchingPCRs([]int{}))
+
+	// Known mismatching PCRs → descriptive clause with the "possibly" qualifier
+	assert.Equal(t, "possibly mismatching PCR indexes [4 8 9 13 14]",
+		FormatMismatchingPCRs([]int{4, 8, 9, 13, 14}))
+}
+
 // VaultConfig / VaultStatus / EncryptedVaultKeyFromDevice / EncryptedVaultKeyFromController Key / LogKey
 
 func TestVaultConfigKey(t *testing.T) {

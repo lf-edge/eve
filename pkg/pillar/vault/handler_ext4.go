@@ -433,7 +433,11 @@ func (h *Ext4Handler) getVaultStatus(vaultName string, vaultPath string,
 						status.MismatchingPCRs = pcrs
 					}
 				}
-				status.SetErrorDescription(types.ErrorDescription{Error: "Vault key unavailable"})
+				errStr := "Vault key unavailable"
+				if pcrsStr := types.FormatMismatchingPCRs(status.MismatchingPCRs); pcrsStr != "" {
+					errStr += "; " + pcrsStr
+				}
+				status.SetErrorDescription(types.ErrorDescription{Error: errStr})
 			}
 		}
 	}

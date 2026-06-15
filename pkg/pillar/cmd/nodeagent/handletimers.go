@@ -125,8 +125,12 @@ func handleRebootOnVaultLocked(ctxPtr *nodeagentContext) {
 	if timePassed > vaultCutOffTime {
 		if ctxPtr.updateInprogress {
 			// fail the upgrade by rebooting now
-			errStr := fmt.Sprintf("Exceeded time for vault to be ready %d by %d seconds, rebooting",
+			errStr := fmt.Sprintf("Exceeded time for vault to be ready %d by %d seconds",
 				vaultCutOffTime, timePassed-vaultCutOffTime)
+			if pcrsStr := types.FormatMismatchingPCRs(ctxPtr.vaultMismatchingPCRs); pcrsStr != "" {
+				errStr += "; " + pcrsStr
+			}
+			errStr += ", rebooting"
 			log.Error(errStr)
 			scheduleNodeOperation(ctxPtr, errStr, types.BootReasonVaultFailure,
 				types.DeviceOperationReboot)
