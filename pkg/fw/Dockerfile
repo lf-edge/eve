@@ -1,5 +1,11 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
 ARG PLATFORM=generic
+# Firmware source selector: "upstream" (Alpine + kernel.org tarball, the default for
+# kvm/xen/mini/nvidia) or "ubuntu" (apt-installed full linux-firmware, used by HV=k).
+ARG FW_SOURCE=upstream
+# ubuntu:24.04 pinned by digest (the tag floats across point releases). Declared once
+# here and referenced by every ubuntu stage below so a bump is a single-line change.
+ARG UBUNTU_DIGEST=sha256:786a8b558f7be160c6c8c4a54f9a57274f3b4fb1491cf65146521ae77ff1dc54
 
 FROM lfedge/eve-alpine:956e170f3908aa5148b0ddb130e60fd862c7988b AS build-base
 
@@ -257,11 +263,67 @@ FROM compactor-common AS compactor-nvidia-jp7
 
 FROM compactor-${PLATFORM} AS compactor
 
-FROM scratch
+# =============================================================================
+# Ubuntu firmware variant (FW_SOURCE=ubuntu) — used by HV=k builds.
+# Ships the FULL Ubuntu linux-firmware set (no per-device filtering, no SBOM),
+# plus firmware that is not part of Ubuntu's linux-firmware package:
+# wireless-regdb (regulatory.db — a separate Ubuntu package) and the Hailo-8
+# accelerator blob (third-party, not in any Ubuntu package).
+# ubuntu:24.04 pinned by digest (tag floats across point releases).
+# =============================================================================
+FROM ubuntu:24.04@${UBUNTU_DIGEST} AS fwsrc-ubuntu
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+        linux-firmware firmware-sof-signed wireless-regdb \
+ && rm -rf /var/lib/apt/lists/*
+# Ubuntu is usr-merged: firmware lands under /usr/lib/firmware.
+
+# Hailo-8 AI accelerator firmware — not shipped by Ubuntu, fetched directly.
+ENV HAILO_FW_VERSION=4.21.0
+ADD https://hailo-hailort.s3.eu-west-2.amazonaws.com/Hailo8/${HAILO_FW_VERSION}/FW/hailo8_fw.${HAILO_FW_VERSION}.bin /usr/lib/firmware/hailo/hailo8_fw.bin
+
+# --- Ubuntu microcode (x86_64 only) -----------------------------------------
+FROM ubuntu:24.04@${UBUNTU_DIGEST} AS ucode-ubuntu-amd64
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+        intel-microcode amd64-microcode iucode-tool cpio \
+ && rm -rf /var/lib/apt/lists/*
+RUN mkdir -p /boot /tmp/ucode/amd/kernel/x86/microcode /usr/share/licenses/ucode \
+ && iucode_tool -l --write-earlyfw=/tmp/ucode/intel-ucode.img --overwrite \
+        /usr/lib/firmware/intel-ucode/ \
+ && cat /usr/lib/firmware/amd-ucode/microcode_amd*.bin \
+        > /tmp/ucode/amd/kernel/x86/microcode/AuthenticAMD.bin \
+ && ( cd /tmp/ucode/amd && echo kernel/x86/microcode/AuthenticAMD.bin \
+        | cpio -o -H newc -R 0:0 > /tmp/ucode/amd/amd-ucode.img ) \
+ && cat /tmp/ucode/intel-ucode.img /tmp/ucode/amd/amd-ucode.img > /boot/ucode.img \
+ && cp /usr/share/doc/intel-microcode/copyright /usr/share/licenses/ucode/intel-license.txt \
+ && cp /usr/share/doc/amd64-microcode/copyright /usr/share/licenses/ucode/amd-license.txt
+
+# No microcode on non-x86 — provide empty /boot and license dir so the COPY below works.
+FROM ubuntu:24.04@${UBUNTU_DIGEST} AS ucode-ubuntu-arm64
+RUN mkdir -p /boot /usr/share/licenses/ucode
+
+FROM ubuntu:24.04@${UBUNTU_DIGEST} AS ucode-ubuntu-riscv64
+RUN mkdir -p /boot /usr/share/licenses/ucode
+
+FROM ucode-ubuntu-${TARGETARCH} AS ucode-ubuntu
+
+# Existing (upstream) assembly — unchanged content, now a named stage.
+FROM scratch AS out-upstream
 ENTRYPOINT []
 WORKDIR /
-
 COPY --from=compactor /lib/firmware /lib/firmware
 COPY --from=compactor /lib/apk/db/installed /lib/apk/db/installed
 COPY --from=ucode-build /boot/ /boot/
 COPY --from=ucode-build /usr/share/licenses/ucode /usr/share/licenses/ucode
+
+# Ubuntu assembly — full firmware + Ubuntu ucode, no SBOM apk db.
+FROM scratch AS out-ubuntu
+ENTRYPOINT []
+WORKDIR /
+COPY --from=fwsrc-ubuntu /usr/lib/firmware /lib/firmware
+COPY --from=ucode-ubuntu /boot/ /boot/
+COPY --from=ucode-ubuntu /usr/share/licenses/ucode /usr/share/licenses/ucode
+
+# Final image = the selected assembly.
+FROM out-${FW_SOURCE}

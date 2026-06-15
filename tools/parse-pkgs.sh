@@ -97,6 +97,7 @@ cat <<EOF
 CURDIR=$(pwd)
 KERNEL_TAG=${KERNEL_TAG}
 FW_TAG=${FW_TAG}
+FW_K_TAG=${FW_K_TAG}
 XENTOOLS_TAG=${XENTOOLS_TAG}
 NODE_EXPORTER_TAG=${NODE_EXPORTER_TAG}
 VECTOR_TAG=${VECTOR_TAG}
@@ -143,6 +144,7 @@ EOF
 }
 
 FW_TAG=$(linuxkit_fw_tag pkg/fw)
+FW_K_TAG=$(linuxkit_k_tag pkg/fw)
 NODE_EXPORTER_TAG=$(linuxkit_tag pkg/node-exporter)
 VECTOR_TAG=$(linuxkit_tag pkg/vector)
 XENTOOLS_TAG=$(linuxkit_tag pkg/xen-tools)
