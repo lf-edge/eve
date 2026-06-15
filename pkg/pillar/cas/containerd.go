@@ -544,6 +544,44 @@ func (c *containerdCAS) GetImageHash(reference string) (string, error) {
 	return image.Target().Digest.String(), nil
 }
 
+// GetImageLayers returns the layers of the manifest that 'reference' points to.
+// If the reference is an index, the platform-matching manifest is selected
+// (falling back to the first); if it is a plain manifest, its layers are
+// returned directly.
+func (c *containerdCAS) GetImageLayers(reference string) ([]ImageLayer, error) {
+	hash, err := c.GetImageHash(reference)
+	if err != nil {
+		return nil, err
+	}
+	manifestHash := hash
+	// Descend through an index to the (platform) manifest. A plain manifest
+	// parses as an index with no entries, in which case we use it directly.
+	if index, ierr := getIndexManifest(c, hash); ierr == nil && len(index.Manifests) > 0 {
+		manifestHash = index.Manifests[0].Digest.String()
+		for _, m := range index.Manifests {
+			if m.Platform != nil && m.Platform.OS == runtime.GOOS &&
+				m.Platform.Architecture == runtime.GOARCH {
+				manifestHash = m.Digest.String()
+				break
+			}
+		}
+	}
+	manifest, err := getManifest(c, manifestHash)
+	if err != nil {
+		return nil, err
+	}
+	layers := make([]ImageLayer, 0, len(manifest.Layers))
+	for _, l := range manifest.Layers {
+		layers = append(layers, ImageLayer{
+			Digest:      l.Digest.String(),
+			MediaType:   string(l.MediaType),
+			Size:        l.Size,
+			Annotations: l.Annotations,
+		})
+	}
+	return layers, nil
+}
+
 // GetImageLabels returns the Image Labels of the reference
 // Returns error if the given 'reference' is not found.
 func (c *containerdCAS) GetImageLabels(reference string) (map[string]string, error) {
