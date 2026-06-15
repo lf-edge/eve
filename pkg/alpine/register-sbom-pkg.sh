@@ -53,6 +53,10 @@ APK_DB="${OUTDIR}/lib/apk/db/installed"
 mkdir -p "$(dirname "$APK_DB")"
 [ -e "$APK_DB" ] || touch "$APK_DB"
 
+# FIX-ME : disabled for now: writing to /lib/apk/db/installed causes "apk add" to segfault
+# will revert back once the fix has landed in upstream
+exit 0
+
 # Init-only mode: if no package fields were supplied, we just ensured the
 # file exists and we're done.
 if [ -z "$PKG_NAME" ] && [ -z "$PKG_VERSION" ] && [ -z "$PKG_LICENSE" ] && [ -z "$PKG_URL" ]; then
