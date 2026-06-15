@@ -328,35 +328,45 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 		// to add a manifest to it.
 		log.Functionf("doUpdateContentTree(%s) checking if we need to add a manifest, have %d blobs", status.Key(), len(blobStatuses))
 		if len(blobStatuses) == 1 && !blobStatuses[0].IsManifest() && !blobStatuses[0].IsIndex() {
-			blobs, err := getManifestsForBareBlob(ctx, refID, blobStatuses[0].Sha256, int64(blobStatuses[0].Size))
-			if err != nil {
-				err = fmt.Errorf("doUpdateContentTree(%s): Exception while getting manifest and config for bare blob: %s",
-					status.ContentID, err.Error())
-				log.Error(err.Error())
-				status.SetErrorWithSource(err.Error(), types.ContentTreeStatus{}, time.Now())
-				return changed, false
-			}
-			// if we have any, append them
-			if len(blobs) > 0 {
-				publishBlobStatus(ctx, blobs...)
-				// order is important; prepend to existing
-				blobStatuses = append(blobs, blobStatuses...)
-
-				// we changed it, so update the ContentTreeStatus
-				blobHashes := []string{}
-				for _, b := range blobStatuses {
-					blobHashes = append(blobHashes, b.Sha256)
+			// A single downloaded file from a non-OCI datastore (HTTP, AWS S3,
+			// Azure Blob Storage, Google Cloud Storage, SFTP) may actually be a
+			// packaged image archive (OCI image-layout or docker-save). If so,
+			// leave the single blob in place; once VERIFIED it is imported into
+			// the CAS asynchronously (via the import worker) so the real
+			// multi-layer manifest is used instead of wrapping the whole archive
+			// as one raw disk-root blob. Only a genuine bare blob gets a
+			// synthesized manifest/config here.
+			if !contentTreeIsImageArchive(ctx, status) {
+				blobs, err := getManifestsForBareBlob(ctx, refID, blobStatuses[0].Sha256, int64(blobStatuses[0].Size))
+				if err != nil {
+					err = fmt.Errorf("doUpdateContentTree(%s): Exception while getting manifest and config for bare blob: %s",
+						status.ContentID, err.Error())
+					log.Error(err.Error())
+					status.SetErrorWithSource(err.Error(), types.ContentTreeStatus{}, time.Now())
+					return changed, false
 				}
-				status.Blobs = blobHashes
-				// Adding a blob to ContentTreeStatus and incrementing the refcount of that blob should be atomic as
-				// we would depend on that while we remove a blob from ContentTreeStatus and decrement
-				// the RefCount of that blob. In case if the blobs in a ContentTreeStatus in not in sync with the
-				// corresponding Blob's Refcount, then that would lead to Fatal error.
-				// If the same sha appears in multiple places in the ContentTree we intentionally add it twice to the list of
-				// Blobs so that we can have two reference counts on that blob.
-				// Add for the new ones
-				for _, b := range blobs {
-					AddRefToBlobStatus(ctx, b)
+				// if we have any, append them
+				if len(blobs) > 0 {
+					publishBlobStatus(ctx, blobs...)
+					// order is important; prepend to existing
+					blobStatuses = append(blobs, blobStatuses...)
+
+					// we changed it, so update the ContentTreeStatus
+					blobHashes := []string{}
+					for _, b := range blobStatuses {
+						blobHashes = append(blobHashes, b.Sha256)
+					}
+					status.Blobs = blobHashes
+					// Adding a blob to ContentTreeStatus and incrementing the refcount of that blob should be atomic as
+					// we would depend on that while we remove a blob from ContentTreeStatus and decrement
+					// the RefCount of that blob. In case if the blobs in a ContentTreeStatus in not in sync with the
+					// corresponding Blob's Refcount, then that would lead to Fatal error.
+					// If the same sha appears in multiple places in the ContentTree we intentionally add it twice to the list of
+					// Blobs so that we can have two reference counts on that blob.
+					// Add for the new ones
+					for _, b := range blobs {
+						AddRefToBlobStatus(ctx, b)
+					}
 				}
 			}
 		}
@@ -370,6 +380,19 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 
 	// at this point, the image is VERIFIED or higher
 	if status.State == types.VERIFIED {
+		// A single bare blob that is really a packaged image archive is
+		// imported into the CAS by the import worker (de-gzip plus writing the
+		// multi-gigabyte layers blocks for minutes, so it must not run on the
+		// main loop). Kick that off and move to LOADING; the result is handled
+		// in the LOADING branch below.
+		if contentTreeIsImageArchive(ctx, status) {
+			archiveBlob := lookupBlobStatuses(ctx, status.Blobs...)[0]
+			log.Functionf("doUpdateContentTree(%s): VERIFIED image archive, starting async import", status.Key())
+			status.State = types.LOADING
+			publishContentTreeStatus(ctx, status)
+			AddWorkImportArchive(ctx, status, status.ReferenceID(), archiveBlob.Path)
+			return true, false
+		}
 		// we need to check root blob state to wait for another loading process if exists
 		blobStatuses := lookupBlobStatuses(ctx, status.Blobs...)
 		root := blobStatuses[0]
@@ -400,6 +423,37 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 	// if it is LOADING, check each blob until all are loaded
 	if status.State == types.LOADING {
 		log.Functionf("doUpdateContentTree(%s): ContentTree status is LOADING", status.Key())
+
+		// An image archive is still represented by its single bare blob until
+		// the import worker finishes. Once it has, swap the bare blob for the
+		// imported index/manifest/config/layer blobs; the generic blob loop
+		// below then marks the content tree LOADED.
+		if contentTreeIsImageArchive(ctx, status) {
+			ires := popImportArchiveWorkResult(ctx, status.Key())
+			if ires == nil {
+				// Import still running; wait for the worker to complete.
+				return changed, false
+			}
+			if ires.Error != nil {
+				err := fmt.Errorf("doUpdateContentTree(%s): failed to import image archive: %v", status.Key(), ires.Error)
+				log.Error(err.Error())
+				status.SetErrorWithSource(err.Error(), types.ContentTreeStatus{}, ires.ErrorTime)
+				changed = true
+				return changed, false
+			}
+			archiveBlob := lookupBlobStatuses(ctx, status.Blobs...)[0]
+			if err := finalizeImageArchive(ctx, status, archiveBlob, ires.indexDigest); err != nil {
+				err = fmt.Errorf("doUpdateContentTree(%s): failed to finalize image archive: %v", status.Key(), err)
+				log.Error(err.Error())
+				status.SetErrorWithSource(err.Error(), types.ContentTreeStatus{}, time.Now())
+				changed = true
+				return changed, false
+			}
+			changed = true
+			// status.Blobs now references the imported, already-LOADED blobs;
+			// fall through to the generic loop to confirm and mark LOADED.
+		}
+
 		// get the work result - see if it succeeded
 		wres := popCasIngestWorkResult(ctx, status.Key())
 		if wres != nil {
