@@ -6,12 +6,110 @@
 package kubeapi
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	lhv1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+// -- mock types for populateKVIInner --
+
+type funcPVCGetter struct {
+	fn func(string) (*corev1.PersistentVolumeClaim, error)
+}
+
+func (m funcPVCGetter) Get(_ context.Context, name string, _ metav1.GetOptions) (*corev1.PersistentVolumeClaim, error) {
+	return m.fn(name)
+}
+
+type funcLHVolGetter struct {
+	fn func(string) (*lhv1beta2.Volume, error)
+}
+
+func (m funcLHVolGetter) Get(_ context.Context, name string, _ metav1.GetOptions) (*lhv1beta2.Volume, error) {
+	return m.fn(name)
+}
+
+type funcLHReplicaLister struct {
+	fn func(metav1.ListOptions) (*lhv1beta2.ReplicaList, error)
+}
+
+func (m funcLHReplicaLister) List(_ context.Context, opts metav1.ListOptions) (*lhv1beta2.ReplicaList, error) {
+	return m.fn(opts)
+}
+
+type funcLHEngineGetter struct {
+	fn func(string) (*lhv1beta2.Engine, error)
+}
+
+func (m funcLHEngineGetter) Get(_ context.Context, name string, _ metav1.GetOptions) (*lhv1beta2.Engine, error) {
+	return m.fn(name)
+}
+
+// -- helper constructors --
+
+func fakePVC(pvcName, volName string) *corev1.PersistentVolumeClaim {
+	return &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: pvcName},
+		Spec:       corev1.PersistentVolumeClaimSpec{VolumeName: volName},
+		Status:     corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimBound},
+	}
+}
+
+func fakeLHVol(robustness lhv1beta2.VolumeRobustness) *lhv1beta2.Volume {
+	return &lhv1beta2.Volume{
+		Status: lhv1beta2.VolumeStatus{
+			Robustness: robustness,
+			State:      lhv1beta2.VolumeStateAttached,
+		},
+	}
+}
+
+// fakeReplica creates a replica with OwnerID and CurrentImage set (has fs backing).
+func fakeReplica(name, engineName, ip string, port int, state lhv1beta2.InstanceState) lhv1beta2.Replica {
+	return lhv1beta2.Replica{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec:       lhv1beta2.ReplicaSpec{EngineName: engineName},
+		Status: lhv1beta2.ReplicaStatus{
+			InstanceStatus: lhv1beta2.InstanceStatus{
+				OwnerID:      "node1",
+				CurrentImage: "longhorn-engine:latest",
+				IP:           ip,
+				Port:         port,
+				CurrentState: state,
+			},
+		},
+	}
+}
+
+func fakeEngine(
+	name string,
+	modeMap map[string]lhv1beta2.ReplicaMode,
+	rebuildStatus map[string]*lhv1beta2.RebuildStatus,
+	addrMap map[string]string,
+) *lhv1beta2.Engine {
+	return &lhv1beta2.Engine{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Status: lhv1beta2.EngineStatus{
+			ReplicaModeMap:           modeMap,
+			RebuildStatus:            rebuildStatus,
+			CurrentReplicaAddressMap: addrMap,
+		},
+	}
+}
+
+func findReplica(kvi *types.KubeVolumeInfo, name string) *types.KubeVolumeReplicaInfo {
+	for i := range kvi.Replicas {
+		if kvi.Replicas[i].Name == name {
+			return &kvi.Replicas[i]
+		}
+	}
+	return nil
+}
 
 func snap(name string, size int64, markRemoved bool) lhv1beta2.Snapshot {
 	return lhv1beta2.Snapshot{
@@ -84,7 +182,7 @@ func TestReplicaModeProgress(t *testing.T) {
 			name:           "not in mode map: not yet registered with engine",
 			inModeMap:      false,
 			wantPct:        0,
-			wantStatus:     types.StorageVolumeReplicaStatusOnline,
+			wantStatus:     types.StorageVolumeReplicaStatusUnknown,
 			wantConsistent: false,
 		},
 		{
@@ -96,8 +194,8 @@ func TestReplicaModeProgress(t *testing.T) {
 			wantConsistent: true,
 		},
 		{
-			// This is the false-100% bug case: WO with no RebuildStatus entry yet.
-			// Old code returned 100% here; correct behavior is 0% (queued, not started).
+			// WO with no RebuildStatus entry: transfer is queued but not yet started.
+			// There is no progress to report; the replica is not consistent.
 			name:            "WO without rebuild entry: transfer queued, not started",
 			inModeMap:       true,
 			mode:            lhv1beta2.ReplicaModeWO,
@@ -236,6 +334,16 @@ func TestRobustnessSubstate(t *testing.T) {
 			consistent:   0,
 			wantSubstate: types.StorageHealthStatusUnknown,
 		},
+		{
+			// Longhorn volume is Healthy but one Running replica is not yet confirmed
+			// RW in ReplicaModeMap (engine-lag window). Guard falls through to Degraded
+			// branch to prevent a false Healthy signal.
+			name:         "healthy volume with unconfirmed replica falls through to degraded",
+			robustness:   H,
+			online:       2,
+			consistent:   1,
+			wantSubstate: types.StorageHealthStatusDegraded1ReplicaAvailableReplicating,
+		},
 	}
 
 	for _, tc := range tests {
@@ -243,6 +351,368 @@ func TestRobustnessSubstate(t *testing.T) {
 			got := robustnessSubstate(tc.robustness, tc.online, tc.consistent)
 			if got != tc.wantSubstate {
 				t.Errorf("robustnessSubstate: got %v, want %v", got, tc.wantSubstate)
+			}
+		})
+	}
+}
+
+func TestReplicaHasNoFsBacking(t *testing.T) {
+	tests := []struct {
+		name    string
+		replica lhv1beta2.Replica
+		want    bool
+	}{
+		{
+			name:    "all empty: no backing",
+			replica: lhv1beta2.Replica{},
+			want:    true,
+		},
+		{
+			name: "OwnerID set: has backing",
+			replica: lhv1beta2.Replica{
+				Status: lhv1beta2.ReplicaStatus{
+					InstanceStatus: lhv1beta2.InstanceStatus{OwnerID: "node1"},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "InstanceManagerName set: has backing",
+			replica: lhv1beta2.Replica{
+				Status: lhv1beta2.ReplicaStatus{
+					InstanceStatus: lhv1beta2.InstanceStatus{InstanceManagerName: "im-1"},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "CurrentImage set: has backing",
+			replica: lhv1beta2.Replica{
+				Status: lhv1beta2.ReplicaStatus{
+					InstanceStatus: lhv1beta2.InstanceStatus{CurrentImage: "longhorn-engine:latest"},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "all three set: has backing",
+			replica: lhv1beta2.Replica{
+				Status: lhv1beta2.ReplicaStatus{
+					InstanceStatus: lhv1beta2.InstanceStatus{
+						OwnerID:             "node1",
+						InstanceManagerName: "im-1",
+						CurrentImage:        "longhorn-engine:latest",
+					},
+				},
+			},
+			want: false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := replicaHasNoFsBacking(tc.replica); got != tc.want {
+				t.Errorf("replicaHasNoFsBacking = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestPopulateKVIInner(t *testing.T) {
+	const (
+		testPVC   = "test-pvc"
+		testVol   = "test-vol"
+		eng1      = "engine-1"
+		r1RawAddr = "10.0.0.1:8502" // currentReplicaAddressMap value format (no tcp://)
+		r2RawAddr = "10.0.0.2:8502"
+		r2TcpAddr = "tcp://10.0.0.2:8502" // rebuildStatus key format (with tcp://)
+	)
+
+	noSnapBytes := func(string) (int64, error) { return 0, nil }
+
+	r1 := fakeReplica("r1", eng1, "10.0.0.1", 8502, lhv1beta2.InstanceStateRunning)
+	r2 := fakeReplica("r2", eng1, "10.0.0.2", 8502, lhv1beta2.InstanceStateRunning)
+
+	stdPVC := funcPVCGetter{fn: func(string) (*corev1.PersistentVolumeClaim, error) {
+		return fakePVC(testPVC, testVol), nil
+	}}
+
+	lhVolHealthy := funcLHVolGetter{fn: func(string) (*lhv1beta2.Volume, error) {
+		return fakeLHVol(lhv1beta2.VolumeRobustnessHealthy), nil
+	}}
+	lhVolDegraded := funcLHVolGetter{fn: func(string) (*lhv1beta2.Volume, error) {
+		return fakeLHVol(lhv1beta2.VolumeRobustnessDegraded), nil
+	}}
+
+	tests := []struct {
+		name         string
+		pvcs         pvcGetter
+		lhVols       lhVolumeGetter
+		replicas     lhReplicaLister
+		engines      lhEngineGetter
+		wantSubstate types.StorageHealthStatus
+		wantErr      bool
+		checkFn      func(*testing.T, *types.KubeVolumeInfo)
+	}{
+		{
+			// ReplicaModeMap must be looked up by replica name; CurrentReplicaAddressMap
+			// provides the name→address mapping for RebuildStatus lookups only.
+			name:   "2 RW replicas Degraded vol - modeMap keyed by replica name",
+			pvcs:   stdPVC,
+			lhVols: lhVolDegraded,
+			replicas: funcLHReplicaLister{fn: func(metav1.ListOptions) (*lhv1beta2.ReplicaList, error) {
+				return &lhv1beta2.ReplicaList{Items: []lhv1beta2.Replica{r1, r2}}, nil
+			}},
+			engines: funcLHEngineGetter{fn: func(string) (*lhv1beta2.Engine, error) {
+				return fakeEngine(eng1,
+					map[string]lhv1beta2.ReplicaMode{"r1": lhv1beta2.ReplicaModeRW, "r2": lhv1beta2.ReplicaModeRW},
+					nil,
+					map[string]string{"r1": r1RawAddr, "r2": r2RawAddr},
+				), nil
+			}},
+			wantSubstate: types.StorageHealthStatusDegraded2ReplicaAvailableNotReplicating,
+		},
+		{
+			name:   "2 RW replicas Healthy",
+			pvcs:   stdPVC,
+			lhVols: lhVolHealthy,
+			replicas: funcLHReplicaLister{fn: func(metav1.ListOptions) (*lhv1beta2.ReplicaList, error) {
+				return &lhv1beta2.ReplicaList{Items: []lhv1beta2.Replica{r1, r2}}, nil
+			}},
+			engines: funcLHEngineGetter{fn: func(string) (*lhv1beta2.Engine, error) {
+				return fakeEngine(eng1,
+					map[string]lhv1beta2.ReplicaMode{"r1": lhv1beta2.ReplicaModeRW, "r2": lhv1beta2.ReplicaModeRW},
+					nil,
+					map[string]string{"r1": r1RawAddr, "r2": r2RawAddr},
+				), nil
+			}},
+			wantSubstate: types.StorageHealthStatusHealthy,
+		},
+		{
+			// A WO replica with no RebuildStatus entry is queued but not yet
+			// transferring; it must not be counted as consistent (0% Rebuilding).
+			name:   "WO no RebuildStatus entry",
+			pvcs:   stdPVC,
+			lhVols: lhVolDegraded,
+			replicas: funcLHReplicaLister{fn: func(metav1.ListOptions) (*lhv1beta2.ReplicaList, error) {
+				return &lhv1beta2.ReplicaList{Items: []lhv1beta2.Replica{r1, r2}}, nil
+			}},
+			engines: funcLHEngineGetter{fn: func(string) (*lhv1beta2.Engine, error) {
+				return fakeEngine(eng1,
+					map[string]lhv1beta2.ReplicaMode{"r1": lhv1beta2.ReplicaModeRW, "r2": lhv1beta2.ReplicaModeWO},
+					nil,
+					map[string]string{"r1": r1RawAddr, "r2": r2RawAddr},
+				), nil
+			}},
+			wantSubstate: types.StorageHealthStatusDegraded1ReplicaAvailableReplicating,
+			checkFn: func(t *testing.T, kvi *types.KubeVolumeInfo) {
+				r := findReplica(kvi, "r2")
+				if r == nil {
+					t.Fatal("r2 not found")
+				}
+				if r.Status != types.StorageVolumeReplicaStatusRebuilding {
+					t.Errorf("r2.Status = %v, want Rebuilding", r.Status)
+				}
+				if r.RebuildProgressPercentage != 0 {
+					t.Errorf("r2.RebuildProgressPercentage = %d, want 0", r.RebuildProgressPercentage)
+				}
+			},
+		},
+		{
+			name:   "WO RebuildStatus 47%",
+			pvcs:   stdPVC,
+			lhVols: lhVolDegraded,
+			replicas: funcLHReplicaLister{fn: func(metav1.ListOptions) (*lhv1beta2.ReplicaList, error) {
+				return &lhv1beta2.ReplicaList{Items: []lhv1beta2.Replica{r1, r2}}, nil
+			}},
+			engines: funcLHEngineGetter{fn: func(string) (*lhv1beta2.Engine, error) {
+				return fakeEngine(eng1,
+					map[string]lhv1beta2.ReplicaMode{"r1": lhv1beta2.ReplicaModeRW, "r2": lhv1beta2.ReplicaModeWO},
+					map[string]*lhv1beta2.RebuildStatus{r2TcpAddr: {Progress: 47}},
+					map[string]string{"r1": r1RawAddr, "r2": r2RawAddr},
+				), nil
+			}},
+			wantSubstate: types.StorageHealthStatusDegraded1ReplicaAvailableReplicating,
+			checkFn: func(t *testing.T, kvi *types.KubeVolumeInfo) {
+				r := findReplica(kvi, "r2")
+				if r == nil {
+					t.Fatal("r2 not found")
+				}
+				if r.RebuildProgressPercentage != 47 {
+					t.Errorf("r2.RebuildProgressPercentage = %d, want 47", r.RebuildProgressPercentage)
+				}
+			},
+		},
+		{
+			// Transfer complete but engine has not yet promoted the replica to RW.
+			// It is still not consistent.
+			name:   "WO RebuildStatus 100% not yet promoted",
+			pvcs:   stdPVC,
+			lhVols: lhVolDegraded,
+			replicas: funcLHReplicaLister{fn: func(metav1.ListOptions) (*lhv1beta2.ReplicaList, error) {
+				return &lhv1beta2.ReplicaList{Items: []lhv1beta2.Replica{r1, r2}}, nil
+			}},
+			engines: funcLHEngineGetter{fn: func(string) (*lhv1beta2.Engine, error) {
+				return fakeEngine(eng1,
+					map[string]lhv1beta2.ReplicaMode{"r1": lhv1beta2.ReplicaModeRW, "r2": lhv1beta2.ReplicaModeWO},
+					map[string]*lhv1beta2.RebuildStatus{r2TcpAddr: {Progress: 100}},
+					map[string]string{"r1": r1RawAddr, "r2": r2RawAddr},
+				), nil
+			}},
+			wantSubstate: types.StorageHealthStatusDegraded1ReplicaAvailableReplicating,
+			checkFn: func(t *testing.T, kvi *types.KubeVolumeInfo) {
+				r := findReplica(kvi, "r2")
+				if r == nil {
+					t.Fatal("r2 not found")
+				}
+				if r.Status != types.StorageVolumeReplicaStatusRebuilding {
+					t.Errorf("r2.Status = %v, want Rebuilding", r.Status)
+				}
+				if r.RebuildProgressPercentage != 100 {
+					t.Errorf("r2.RebuildProgressPercentage = %d, want 100", r.RebuildProgressPercentage)
+				}
+			},
+		},
+		{
+			// r2 absent from CurrentReplicaAddressMap; code falls back to constructing
+			// IP:Port from replica status fields, prepends tcp:// for RebuildStatus lookup,
+			// and looks up ReplicaModeMap by replica name regardless.
+			name:   "replica not in CurrentReplicaAddressMap fallback",
+			pvcs:   stdPVC,
+			lhVols: lhVolDegraded,
+			replicas: funcLHReplicaLister{fn: func(metav1.ListOptions) (*lhv1beta2.ReplicaList, error) {
+				return &lhv1beta2.ReplicaList{Items: []lhv1beta2.Replica{r1, r2}}, nil
+			}},
+			engines: funcLHEngineGetter{fn: func(string) (*lhv1beta2.Engine, error) {
+				return fakeEngine(eng1,
+					map[string]lhv1beta2.ReplicaMode{"r1": lhv1beta2.ReplicaModeRW, "r2": lhv1beta2.ReplicaModeWO},
+					map[string]*lhv1beta2.RebuildStatus{r2TcpAddr: {Progress: 50}},
+					map[string]string{"r1": r1RawAddr}, // r2 absent
+				), nil
+			}},
+			wantSubstate: types.StorageHealthStatusDegraded1ReplicaAvailableReplicating,
+			checkFn: func(t *testing.T, kvi *types.KubeVolumeInfo) {
+				r := findReplica(kvi, "r2")
+				if r == nil {
+					t.Fatal("r2 not found")
+				}
+				if r.RebuildProgressPercentage != 50 {
+					t.Errorf("r2.RebuildProgressPercentage = %d, want 50", r.RebuildProgressPercentage)
+				}
+			},
+		},
+		{
+			// No-backing replica has no OwnerID/InstanceManagerName/CurrentImage set.
+			// It should be skipped entirely and not counted toward replicas or onlineReps.
+			name:   "no-backing replica skipped one RW",
+			pvcs:   stdPVC,
+			lhVols: lhVolHealthy,
+			replicas: funcLHReplicaLister{fn: func(metav1.ListOptions) (*lhv1beta2.ReplicaList, error) {
+				noBacking := lhv1beta2.Replica{ObjectMeta: metav1.ObjectMeta{Name: "r2-no-backing"}}
+				return &lhv1beta2.ReplicaList{Items: []lhv1beta2.Replica{r1, noBacking}}, nil
+			}},
+			engines: funcLHEngineGetter{fn: func(string) (*lhv1beta2.Engine, error) {
+				return fakeEngine(eng1,
+					map[string]lhv1beta2.ReplicaMode{"r1": lhv1beta2.ReplicaModeRW},
+					nil,
+					map[string]string{"r1": r1RawAddr},
+				), nil
+			}},
+			wantSubstate: types.StorageHealthStatusHealthy,
+			checkFn: func(t *testing.T, kvi *types.KubeVolumeInfo) {
+				if len(kvi.Replicas) != 1 {
+					t.Errorf("len(Replicas) = %d, want 1 (no-backing replica must be excluded)", len(kvi.Replicas))
+				}
+			},
+		},
+		{
+			// Error-state replica gets Failed status but does not contribute to onlineReps.
+			// If Longhorn marks the volume Healthy (e.g. 3-replica setup with quorum), the
+			// substate is still Healthy.
+			name:   "one replica error state volume healthy",
+			pvcs:   stdPVC,
+			lhVols: lhVolHealthy,
+			replicas: funcLHReplicaLister{fn: func(metav1.ListOptions) (*lhv1beta2.ReplicaList, error) {
+				r2err := fakeReplica("r2", eng1, "10.0.0.2", 8502, lhv1beta2.InstanceStateError)
+				return &lhv1beta2.ReplicaList{Items: []lhv1beta2.Replica{r1, r2err}}, nil
+			}},
+			engines: funcLHEngineGetter{fn: func(string) (*lhv1beta2.Engine, error) {
+				return fakeEngine(eng1,
+					map[string]lhv1beta2.ReplicaMode{"r1": lhv1beta2.ReplicaModeRW},
+					nil,
+					map[string]string{"r1": r1RawAddr},
+				), nil
+			}},
+			wantSubstate: types.StorageHealthStatusHealthy,
+			checkFn: func(t *testing.T, kvi *types.KubeVolumeInfo) {
+				r := findReplica(kvi, "r2")
+				if r == nil {
+					t.Fatal("r2 not found")
+				}
+				if r.Status != types.StorageVolumeReplicaStatusFailed {
+					t.Errorf("r2.Status = %v, want Failed", r.Status)
+				}
+			},
+		},
+		{
+			name:   "engine fetch error",
+			pvcs:   stdPVC,
+			lhVols: lhVolHealthy,
+			replicas: funcLHReplicaLister{fn: func(metav1.ListOptions) (*lhv1beta2.ReplicaList, error) {
+				return &lhv1beta2.ReplicaList{Items: []lhv1beta2.Replica{r1}}, nil
+			}},
+			engines: funcLHEngineGetter{fn: func(string) (*lhv1beta2.Engine, error) {
+				return nil, errors.New("engine not found")
+			}},
+			wantErr: true,
+		},
+		{
+			name: "PVC not found",
+			pvcs: funcPVCGetter{fn: func(string) (*corev1.PersistentVolumeClaim, error) {
+				return nil, errors.New("pvc not found")
+			}},
+			lhVols:   lhVolHealthy,
+			replicas: funcLHReplicaLister{fn: func(metav1.ListOptions) (*lhv1beta2.ReplicaList, error) { return &lhv1beta2.ReplicaList{}, nil }},
+			engines:  funcLHEngineGetter{fn: func(string) (*lhv1beta2.Engine, error) { return nil, nil }},
+			wantErr:  true,
+		},
+		{
+			name: "LH volume not found",
+			pvcs: stdPVC,
+			lhVols: funcLHVolGetter{fn: func(string) (*lhv1beta2.Volume, error) {
+				return nil, errors.New("vol not found")
+			}},
+			replicas: funcLHReplicaLister{fn: func(metav1.ListOptions) (*lhv1beta2.ReplicaList, error) { return &lhv1beta2.ReplicaList{}, nil }},
+			engines:  funcLHEngineGetter{fn: func(string) (*lhv1beta2.Engine, error) { return nil, nil }},
+			wantErr:  true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			kvi := &types.KubeVolumeInfo{Name: testPVC}
+			result, err := populateKVIInner(
+				context.Background(),
+				kvi,
+				tc.pvcs,
+				tc.lhVols,
+				tc.replicas,
+				tc.engines,
+				noSnapBytes,
+			)
+			if tc.wantErr {
+				if err == nil {
+					t.Error("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if result.RobustnessSubstate != tc.wantSubstate {
+				t.Errorf("RobustnessSubstate = %v, want %v", result.RobustnessSubstate, tc.wantSubstate)
+			}
+			if tc.checkFn != nil {
+				tc.checkFn(t, result)
 			}
 		})
 	}
