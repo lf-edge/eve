@@ -424,6 +424,28 @@ func GetOtherPartitionDevName() string {
 	return GetPartitionDevname(partName)
 }
 
+// diskRootLayerSize returns the size in bytes of the image's disk-root layer —
+// the rootfs that WriteToPartition writes to this partition. For a split-rootfs
+// image this is only the Core (rootfs); the Extension and any other disks the
+// image carries are not written here, so the whole-image size is not a valid
+// bound. The rootfs is a squashfs stored as a raw (uncompressed) OCI layer, so
+// the manifest descriptor size equals the bytes written to the partition.
+//
+// found is false when the image has no disk-root layer (an unexpected manifest
+// shape); the caller then skips the size check rather than blocking the install.
+func diskRootLayerSize(casClient cas.CAS, image string) (size int64, found bool, err error) {
+	layers, err := casClient.GetImageLayers(image)
+	if err != nil {
+		return 0, false, err
+	}
+	for _, l := range layers {
+		if l.Annotations[registry.AnnotationRole] == registry.RoleRootDisk {
+			return l.Size, true, nil
+		}
+	}
+	return 0, false, nil
+}
+
 // WriteToPartition write the image to partition partName
 func WriteToPartition(log *base.LogObject, image string, partName string) error {
 
@@ -468,6 +490,24 @@ func WriteToPartition(log *base.LogObject, image string, partName string) error 
 		return errors.New(errStr)
 	}
 
+	// Reject an oversized rootfs before pulling and writing gigabytes: compare
+	// the disk-root layer size (what actually lands in the partition) against
+	// the partition capacity. This is exact for the squashfs rootfs and avoids
+	// wrongly rejecting an image whose extra disks (e.g. a split-rootfs
+	// Extension) push the whole-image size beyond the partition.
+	if size, found, derr := diskRootLayerSize(casClient, image); derr != nil {
+		log.Warnf("WriteToPartition(%s): cannot determine rootfs size (%v); relying on partition write bound", partName, derr)
+	} else if found {
+		partSize := GetPartitionSizeInBytes(partName)
+		if partSize > 0 && uint64(size) > partSize {
+			errStr := fmt.Sprintf("rootfs does not fit: rootfs %d bytes exceeds partition %s size %d bytes",
+				size, partName, partSize)
+			log.Error(errStr)
+			return errors.New(errStr)
+		}
+		log.Functionf("WriteToPartition(%s): rootfs %d bytes fits partition size %d", partName, size, partSize)
+	}
+
 	// Make sure we have nothing mounted on the target
 	for {
 		if err := syscall.Unmount(devName, 0); err != nil {
@@ -486,6 +526,8 @@ func WriteToPartition(log *base.LogObject, image string, partName string) error 
 	}
 	defer f.Close()
 
+	// The rootfs fit was checked above against the partition capacity, so write
+	// the disk-root layer straight to the partition device.
 	if _, _, err := puller.Pull(&registry.FilesTarget{Root: f, AcceptHash: true}, 0, false, os.Stderr, resolver); err != nil {
 		errStr := fmt.Sprintf("error pulling %s from containerd: %v", image, err)
 		log.Error(errStr)
