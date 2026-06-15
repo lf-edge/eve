@@ -84,6 +84,14 @@ type CAS interface {
 	// Arg 'blobHash' should be of format <algo>:<hash> (currently supporting only sha256:<hash>).
 	// Returns error if no blob is found matching the given 'blobHash' or if the given 'blobHash' does not belong to an index.
 	CreateImage(reference, mediaType, blobHash string) error
+	// ImportImageArchive: imports a packaged image archive (an OCI image-layout
+	// or docker-save archive, optionally gzip-compressed) read from the file at
+	// 'archivePath' into the blob store, and creates 'reference' pointing at the
+	// imported index/manifest. Used when a packaged image is served by a non-OCI
+	// datastore (S3/HTTP) as a single file, so its real multi-layer manifest is
+	// used rather than wrapping the whole archive as one bare blob.
+	// Returns the index/manifest digest of format <algo>:<hash>.
+	ImportImageArchive(reference, archivePath string) (string, error)
 	// GetImageHash: returns a blob hash of format <algo>:<hash> (currently supporting only sha256:<hash>) which the given 'reference' is pointing to.
 	// Returns error if the given 'reference' is not found.
 	GetImageHash(reference string) (string, error)

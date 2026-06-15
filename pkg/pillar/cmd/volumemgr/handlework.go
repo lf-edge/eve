@@ -14,9 +14,10 @@ import (
 )
 
 const (
-	workCreate  = "create"
-	workIngest  = "ingest"
-	workPrepare = "prepare"
+	workCreate        = "create"
+	workIngest        = "ingest"
+	workPrepare       = "prepare"
+	workImportArchive = "importarchive"
 )
 
 // volumeWorkDescription volume creation/deletion work we feed into the worker go routine.
@@ -57,6 +58,25 @@ type volumePrepareResult struct {
 type casIngestWorkResult struct {
 	worker.WorkResult // Error etc
 	loaded            []string
+}
+
+// importArchiveWorkDescription describes the work of importing a downloaded
+// image archive (an OCI image-layout or docker-save tar served as a single
+// file by a non-OCI datastore) into the CAS. The blocking part of the import
+// (de-gzip plus writing the multi-gigabyte layers into containerd) runs in the
+// worker goroutine so it does not stall volumemgr's main loop and trip the
+// watchdog.
+type importArchiveWorkDescription struct {
+	refID       string
+	archivePath string
+	// used for results
+	indexDigest string
+}
+
+// importArchiveWorkResult result of importing an image archive
+type importArchiveWorkResult struct {
+	worker.WorkResult // Error etc
+	indexDigest       string
 }
 
 // AddWorkCreate adds a Work job to create a volume
@@ -124,6 +144,30 @@ func DeleteWorkPrepare(ctx *volumemgrContext, status *types.VolumeStatus) {
 
 // DeleteWorkLoad is called by user when work is done
 func DeleteWorkLoad(ctx *volumemgrContext, key string) {
+	ctx.worker.Cancel(key)
+}
+
+// AddWorkImportArchive adds a Work job to import a downloaded image archive
+// into the CAS. The blocking de-gzip and CAS write happen in the worker.
+func AddWorkImportArchive(ctx *volumemgrContext, status *types.ContentTreeStatus, refID, archivePath string) {
+	d := importArchiveWorkDescription{
+		refID:       refID,
+		archivePath: archivePath,
+	}
+	w := worker.Work{Kind: workImportArchive, Key: status.Key(), Description: d}
+	// Don't fail on errors to make idempotent (Submit returns an error if
+	// the work was already submitted)
+	done, err := ctx.worker.TrySubmit(w)
+	if err != nil {
+		log.Errorf("TrySubmit %s failed: %s", status.Key(), err)
+	} else if !done {
+		log.Fatalf("Failed to submit work due to queue length for %s",
+			status.Key())
+	}
+}
+
+// DeleteWorkImportArchive is called by user when work is done
+func DeleteWorkImportArchive(ctx *volumemgrContext, key string) {
 	ctx.worker.Cancel(key)
 }
 
@@ -254,6 +298,26 @@ func casIngestWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 	return result
 }
 
+// importArchiveWorker implementation of work.WorkFunction that imports a
+// downloaded image archive into the CAS. It only touches the CAS (no pubsub),
+// so it is safe to run in the worker goroutine.
+func importArchiveWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
+	ctx := ctxPtr.(*volumemgrContext)
+	d := w.Description.(importArchiveWorkDescription)
+
+	indexDigest, err := ctx.casClient.ImportImageArchive(d.refID, d.archivePath)
+	d.indexDigest = indexDigest
+	result := worker.WorkResult{
+		Key:         w.Key,
+		Description: d,
+	}
+	if err != nil {
+		result.Error = err
+		result.ErrorTime = time.Now()
+	}
+	return result
+}
+
 // volumePrepareWorker implementation of work.WorkFunction that prepares volume creation
 func volumePrepareWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 	ctx := ctxPtr.(*volumemgrContext)
@@ -317,6 +381,38 @@ func processCasIngestWorkResult(ctxPtr interface{}, res worker.WorkResult) error
 	}
 	updateStatusByBlob(ctx, d.status.Blobs...)
 	return nil
+}
+
+// processImportArchiveWorkResult handles the work result of an image-archive
+// import. The actual finalization (swapping the content tree's bare blob for
+// the imported index/manifest/config/layer blobs) happens in doUpdateContentTree
+// when it re-runs; here we just re-trigger that evaluation, mirroring
+// processCasIngestWorkResult.
+func processImportArchiveWorkResult(ctxPtr interface{}, res worker.WorkResult) error {
+	ctx := ctxPtr.(*volumemgrContext)
+	status := ctx.LookupContentTreeStatus(res.Key)
+	if status == nil {
+		log.Functionf("processImportArchiveWorkResult(%s): ContentTreeStatus not found", res.Key)
+		return nil
+	}
+	// The content tree still references the single bare archive blob; re-run
+	// its state machine so doUpdateContentTree pops the import result and
+	// swaps in the imported index/manifest/config/layer blobs.
+	updateStatusByBlob(ctx, status.Blobs...)
+	return nil
+}
+
+// popImportArchiveWorkResult get the result exactly once
+func popImportArchiveWorkResult(ctx *volumemgrContext, key string) *importArchiveWorkResult {
+	res := ctx.worker.Pop(key)
+	if res == nil {
+		return nil
+	}
+	d := res.Description.(importArchiveWorkDescription)
+	return &importArchiveWorkResult{
+		WorkResult:  *res,
+		indexDigest: d.indexDigest,
+	}
 }
 
 // popasIngestWorkResult get the result exactly once
