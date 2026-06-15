@@ -19,7 +19,7 @@
 # hadolint ignore=DL3029
 FROM --platform=linux/amd64 ghcr.io/k8snetworkplumbingwg/sriov-cni@sha256:fce504e683275ab59215065ddf6433ca80d1b4b53f0d4b0cdf037da6701c7cb4 AS sriov-cni-bin
 
-FROM lfedge/eve-alpine:956e170f3908aa5148b0ddb130e60fd862c7988b AS build
+FROM lfedge/eve-alpine:39f46094f640424c345164420ed789afd8a4088b AS build
 
 ARG TARGETARCH
 ENV PKGS alpine-baselayout musl-utils iproute2 iptables curl openrc \
