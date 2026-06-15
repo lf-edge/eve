@@ -1,4 +1,4 @@
-FROM lfedge/eve-alpine:956e170f3908aa5148b0ddb130e60fd862c7988b AS build-base
+FROM lfedge/eve-alpine:39f46094f640424c345164420ed789afd8a4088b AS build-base
 ENV BUILD_PKGS bash binutils-dev build-base bc bison flex openssl-dev python3 swig dtc
 ENV BUILD_PKGS_amd64 python3-dev py-pip
 RUN eve-alpine-deploy.sh
