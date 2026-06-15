@@ -111,6 +111,7 @@ type nodeagentContext struct {
 	rebootTime                  time.Time        // From last reboot
 	restartCounter              uint32
 	vaultOperational            types.TriState                   // Is the vault fully operational?
+	vaultMismatchingPCRs        []int                            // PCR indexes that probably blocked unsealing the vault key
 	vaultTestStartTime          uint32                           // Time at which we should start waiting for vault to be operational
 	maintMode                   bool                             // whether Maintenance mode should be triggered
 	maintModeReasons            types.MaintenanceModeMultiReason // reasons for entering Maintenance mode
@@ -796,6 +797,7 @@ func handleVaultStatusImpl(ctxArg interface{}, key string,
 		return
 	}
 	if vault.Status != info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR {
+		ctx.vaultMismatchingPCRs = nil
 		if vault.ConversionComplete {
 			ctx.vaultOperational = types.TS_ENABLED
 			// Do we need to clear maintenance?
@@ -806,6 +808,9 @@ func handleVaultStatusImpl(ctxArg interface{}, key string,
 		}
 	} else {
 		ctx.vaultOperational = types.TS_DISABLED
+		// Remember why the vault could not be unlocked so we can record it in
+		// the reboot reason if the vault never becomes operational.
+		ctx.vaultMismatchingPCRs = vault.MismatchingPCRs
 	}
 }
 
