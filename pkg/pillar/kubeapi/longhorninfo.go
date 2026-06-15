@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Zededa, Inc.
+// Copyright (c) 2025-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 //go:build k
@@ -117,7 +117,7 @@ func replicaHasNoFsBacking(lhReplica lhv1beta2.Replica) bool {
 
 // replicaModeProgress maps the engine's ReplicaModeMap entry for a single replica
 // to the three KubeVolumeReplicaInfo fields that populateKVIFromPVCName needs to set.
-// It always returns a definitive repStatus (Online for modes that do not change it).
+// It always returns a definitive repStatus for each mode map state.
 // isConsistent is true only for RW replicas that should be counted toward consistentReps.
 func replicaModeProgress(
 	inModeMap bool,
@@ -128,7 +128,10 @@ func replicaModeProgress(
 	repStatus = types.StorageVolumeReplicaStatusOnline
 	switch {
 	case !inModeMap:
-		// Running but not yet registered in the engine — not yet consistent.
+		// Running but not yet registered in the engine's ReplicaModeMap — sync
+		// state is unknown; report Unknown rather than Online to avoid a false
+		// healthy signal during the brief window before the engine registers the replica.
+		repStatus = types.StorageVolumeReplicaStatusUnknown
 	case mode == lhv1beta2.ReplicaModeRW:
 		// Fully synced read-write: the only state that genuinely means 100%.
 		percentage = 100
@@ -151,11 +154,25 @@ func replicaModeProgress(
 // the function is pure so it can be unit-tested without a live cluster.
 func robustnessSubstate(robustness types.StorageVolumeRobustness, onlineReps, consistentReps int) types.StorageHealthStatus {
 	switch robustness {
-	case types.StorageVolumeRobustnessHealthy:
-		return types.StorageHealthStatusHealthy
 	case types.StorageVolumeRobustnessFaulted:
 		return types.StorageHealthStatusFailed
+	case types.StorageVolumeRobustnessHealthy:
+		// Only report Healthy when every Running replica is confirmed RW.
+		// If any Running replica is absent from ReplicaModeMap or in a non-RW
+		// mode, consistentReps < onlineReps and we fall through to the Degraded
+		// branch so the engine-lag window cannot produce a false Healthy signal.
+		// onlineReps == 0 && consistentReps == 0 satisfies this condition and
+		// returns Healthy — Longhorn never marks a volume Healthy with zero
+		// running replicas, so we trust that invariant rather than guarding it.
+		if consistentReps == onlineReps {
+			return types.StorageHealthStatusHealthy
+		}
+		fallthrough
 	case types.StorageVolumeRobustnessDegraded:
+		// The cases below cover EVE's supported replica range (1–3). For a
+		// Healthy volume that falls through (unconfirmed replicas) with ≥4
+		// replicas, none of the conditions match and Unknown is returned — an
+		// acceptable outcome since EVE does not configure volumes with >3 replicas.
 		if onlineReps == 1 {
 			return types.StorageHealthStatusDegraded1ReplicaAvailableNotReplicating
 		}
@@ -179,25 +196,39 @@ func robustnessSubstate(robustness types.StorageVolumeRobustness, onlineReps, co
 	return types.StorageHealthStatusUnknown
 }
 
-// PopulateKVIFromPVCName uses the longhorn api to retrieve volume and replica health
-// to be sent out to the controller as info messages
-func populateKVIFromPVCName(kvi *types.KubeVolumeInfo) (*types.KubeVolumeInfo, error) {
-	config, err := GetKubeConfig()
-	if err != nil {
-		return kvi, fmt.Errorf("PopulateKVIFromPVCName can't get kubeconfig %v", err)
-	}
+// pvcGetter is a minimal subset of the k8s PVC client used by populateKVIInner.
+type pvcGetter interface {
+	Get(ctx context.Context, name string, opts metav1.GetOptions) (*corev1.PersistentVolumeClaim, error)
+}
 
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		return kvi, fmt.Errorf("PopulateKVIFromPVCName can't get clientset %v", err)
-	}
+// lhVolumeGetter is a minimal subset of the Longhorn volume client.
+type lhVolumeGetter interface {
+	Get(ctx context.Context, name string, opts metav1.GetOptions) (*lhv1beta2.Volume, error)
+}
 
-	lhClient, err := versioned.NewForConfig(config)
-	if err != nil {
-		return kvi, fmt.Errorf("PopulateKVIFromPVCName can't get versioned config: %v", err)
-	}
+// lhReplicaLister is a minimal subset of the Longhorn replica client.
+type lhReplicaLister interface {
+	List(ctx context.Context, opts metav1.ListOptions) (*lhv1beta2.ReplicaList, error)
+}
 
-	pvc, err := clientset.CoreV1().PersistentVolumeClaims(EVEKubeNameSpace).Get(context.Background(), kvi.Name, metav1.GetOptions{})
+// lhEngineGetter is a minimal subset of the Longhorn engine client.
+type lhEngineGetter interface {
+	Get(ctx context.Context, name string, opts metav1.GetOptions) (*lhv1beta2.Engine, error)
+}
+
+// populateKVIInner is the testable core of populateKVIFromPVCName.
+// All Longhorn and k8s I/O is injected through the four interface arguments so
+// unit tests can supply hand-written mocks without a live cluster.
+func populateKVIInner(
+	ctx context.Context,
+	kvi *types.KubeVolumeInfo,
+	pvcs pvcGetter,
+	lhVols lhVolumeGetter,
+	lhReplicas lhReplicaLister,
+	lhEngines lhEngineGetter,
+	snapshotBytes func(string) (int64, error),
+) (*types.KubeVolumeInfo, error) {
+	pvc, err := pvcs.Get(ctx, kvi.Name, metav1.GetOptions{})
 	if err != nil {
 		return kvi, fmt.Errorf("PopulateKVIFromPVCName can't get pvc:%s err:%v", kvi.Name, err)
 	}
@@ -214,12 +245,12 @@ func populateKVIFromPVCName(kvi *types.KubeVolumeInfo) (*types.KubeVolumeInfo, e
 	}
 	lhVolName := pvc.Spec.VolumeName
 
-	lhVol, err := lhClient.LonghornV1beta2().Volumes(longhornNamespace).Get(context.Background(), lhVolName, metav1.GetOptions{})
+	lhVol, err := lhVols.Get(ctx, lhVolName, metav1.GetOptions{})
 	if err != nil {
 		return kvi, fmt.Errorf("PopulateKVIFromPVCName can't get lh vol err:%v", err)
 	}
 	kvi.AllocatedBytes = uint64(lhVol.Status.ActualSize)
-	if snapBytes, snapErr := LonghornVolumeSnapshotBytes(lhVolName); snapErr == nil && snapBytes > 0 {
+	if snapBytes, snapErr := snapshotBytes(lhVolName); snapErr == nil && snapBytes > 0 {
 		kvi.AllocatedBytes += uint64(snapBytes)
 	}
 
@@ -249,7 +280,7 @@ func populateKVIFromPVCName(kvi *types.KubeVolumeInfo) (*types.KubeVolumeInfo, e
 		kvi.State = types.StorageVolumeStateDeleting
 	}
 
-	replicas, err := lhClient.LonghornV1beta2().Replicas(longhornNamespace).List(context.Background(), metav1.ListOptions{
+	replicas, err := lhReplicas.List(ctx, metav1.ListOptions{
 		LabelSelector: "longhornvolume=" + lhVolName,
 	})
 	if err != nil {
@@ -279,28 +310,25 @@ func populateKVIFromPVCName(kvi *types.KubeVolumeInfo) (*types.KubeVolumeInfo, e
 			kviRep.Status = types.StorageVolumeReplicaStatusOnline
 			kviRep.OwnerNode = lhReplica.Status.OwnerID
 
-			engine, err := lhClient.LonghornV1beta2().Engines(longhornNamespace).Get(context.Background(), replicaEngineName, metav1.GetOptions{})
+			engine, err := lhEngines.Get(ctx, replicaEngineName, metav1.GetOptions{})
 			if err != nil {
 				return kvi, fmt.Errorf("PopulateKVIFromPVCName can't get replica engine: %v", err)
 			}
 
-			// Use the canonical address from the engine's own CurrentReplicaAddressMap
-			// rather than constructing tcp://IP:PORT from replica status.  The engine's
-			// ReplicaModeMap and RebuildStatus are both keyed by the address the engine
-			// process itself uses; constructing from replica.Status.IP/Port can diverge
-			// after a pod restart or IP reassignment, causing the lookup to silently miss.
-			replicaAddr, inEngineMap := engine.Status.CurrentReplicaAddressMap[lhReplica.Name]
-			if !inEngineMap {
-				replicaAddr = "tcp://" + net.JoinHostPort(replicaEngineIP, strconv.Itoa(replicaEnginePort))
+			// CurrentReplicaAddressMap values are "IP:PORT" (no tcp:// prefix).
+			// RebuildStatus is keyed by "tcp://IP:PORT"
+			// ReplicaModeMap is keyed by replica name.
+			replicaRawAddr := net.JoinHostPort(replicaEngineIP, strconv.Itoa(replicaEnginePort))
+			if addr, ok := engine.Status.CurrentReplicaAddressMap[lhReplica.Name]; ok {
+				replicaRawAddr = addr
 			}
+			rebuildAddr := "tcp://" + replicaRawAddr
 
-			// ReplicaModeMap is the authoritative oracle for replica sync state.
-			// RebuildStatus is ephemeral: it is absent before the rebuild transfer
-			// starts and cleared when the engine restarts, so "absent from RebuildStatus"
-			// does NOT mean the replica is consistent — it only means consistent when the
-			// replica is in RW mode.
-			replicaMode, inModeMap := engine.Status.ReplicaModeMap[replicaAddr]
-			rebuildEntry, hasRebuildEntry := engine.Status.RebuildStatus[replicaAddr]
+			// ReplicaModeMap is the authoritative sync oracle. RebuildStatus is
+			// ephemeral: absent before transfer starts and cleared on restart —
+			// only RW in ReplicaModeMap means the replica is consistent.
+			replicaMode, inModeMap := engine.Status.ReplicaModeMap[lhReplica.Name]
+			rebuildEntry, hasRebuildEntry := engine.Status.RebuildStatus[rebuildAddr]
 			rebuildProgress := 0
 			if hasRebuildEntry {
 				rebuildProgress = rebuildEntry.Progress
@@ -330,6 +358,35 @@ func populateKVIFromPVCName(kvi *types.KubeVolumeInfo) (*types.KubeVolumeInfo, e
 
 	kvi.RobustnessSubstate = robustnessSubstate(kvi.Robustness, onlineReps, consistentReps)
 	return kvi, nil
+}
+
+// populateKVIFromPVCName uses the longhorn api to retrieve volume and replica health
+// to be sent out to the controller as info messages
+func populateKVIFromPVCName(kvi *types.KubeVolumeInfo) (*types.KubeVolumeInfo, error) {
+	config, err := GetKubeConfig()
+	if err != nil {
+		return kvi, fmt.Errorf("PopulateKVIFromPVCName can't get kubeconfig %v", err)
+	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return kvi, fmt.Errorf("PopulateKVIFromPVCName can't get clientset %v", err)
+	}
+
+	lhClient, err := versioned.NewForConfig(config)
+	if err != nil {
+		return kvi, fmt.Errorf("PopulateKVIFromPVCName can't get versioned config: %v", err)
+	}
+
+	return populateKVIInner(
+		context.Background(),
+		kvi,
+		clientset.CoreV1().PersistentVolumeClaims(EVEKubeNameSpace),
+		lhClient.LonghornV1beta2().Volumes(longhornNamespace),
+		lhClient.LonghornV1beta2().Replicas(longhornNamespace),
+		lhClient.LonghornV1beta2().Engines(longhornNamespace),
+		LonghornVolumeSnapshotBytes,
+	)
 }
 
 // Return transitionTime and health
