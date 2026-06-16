@@ -18,7 +18,6 @@
 #   eve_pause_before_install
 #   eve_pause_after_install
 #   eve_reboot_after_install
-#   eve_install_random_disk_uuids
 #   eve_install_skip_config
 #   eve_install_skip_persist
 #   eve_install_skip_rootfs
@@ -397,11 +396,6 @@ for i in rootfs config persist; do
    cmdline "eve_install_skip_$i" && trunc "${ARTIFACTS_DIR}/$i.img"
 done
 
-# Do we want random or fixed disk and partition UUIDs?
-RANDOM_DISK_UUIDS=
-cmdline eve_install_random_disk_uuids && RANDOM_DISK_UUIDS="-r"
-logmsg "INFO: RANDOM_DISK_UUIDS = $RANDOM_DISK_UUIDS"
-
 # User may have requested to skip the zfs requirements checks.
 SKIP_ZFS_CHECKS=false
 cmdline eve_install_skip_zfs_checks && SKIP_ZFS_CHECKS=true
@@ -503,9 +497,7 @@ if [ "$INSTALL_DEV" != "$INSTALL_PERSIST" ]; then
      sgdisk -Z --clear "$PDEV" 2>/dev/null || :
      sgdisk --new 1:2048:0 --typecode=1:5f24425a-2dfa-11e8-a270-7b663faccc2c --change-name=1:P3 "$PDEV"
      sgdisk -v "$PDEV"
-     if [ -z "$RANDOM_DISK_UUIDS" ]; then
-        sgdisk --partition-guid="1:$PERSIST_UUID" "$PDEV"
-     fi
+     sgdisk --partition-guid="1:$PERSIST_UUID" "$PDEV"
      # force make-raw to skip persist
      MAKE_RAW_PARTS="efi efi_b $ROOTFS_PARTITIONS conf"
      # We will be here if persist is being installed on single disk. In ZFS case update pool creation command
@@ -526,7 +518,7 @@ fi
 # MAKE_RAW_PARTS="efi imga imgb conf persist" or MAKE_RAW_PARTS="efi imga imgb conf"
 # for some reason, it now is blank.
 # shellcheck disable=SC2086
-cmdline eve_blackbox || make_raw $RANDOM_DISK_UUIDS "/dev/$INSTALL_DEV" $MAKE_RAW_PARTS || bail "Installation failed. Entering shell..."
+cmdline eve_blackbox || make_raw "/dev/$INSTALL_DEV" $MAKE_RAW_PARTS || bail "Installation failed. Entering shell..."
 
 if [ "$INSTALL_ZFS" = true ]; then
   if [ "$DISK_WITH_P3" != "" ]; then
@@ -547,15 +539,13 @@ if [ "$INSTALL_ZFS" = true ]; then
   logmsg "Creating ZFS pool with raid level: $RAID_LEVEL"
   logmsg "Pool creation command: $POOL_CREATION_COMMAND_SUFFIX $INSTALL_CLUSTERED_STORAGE $RESERVE_EVE_STORAGE_SIZEGB"
   prepare_mounts_and_zfs_pool "$POOL_CREATION_COMMAND_SUFFIX" "$INSTALL_CLUSTERED_STORAGE" "$RESERVE_EVE_STORAGE_SIZEGB"
-  if [ -z "$RANDOM_DISK_UUIDS" ]; then
-      # Walk disks and set fixed UUIDs
-      # We assume that as part of adding to the zpool there is partition 1 and 9
-      for dev in $PDEV_LIST; do
-          sgdisk --disk-guid=$DISK_UUID "$dev"
-          sgdisk --partition-guid="1:$EFI_UUID" "$dev"
-          sgdisk --partition-guid="9:$PERSIST_UUID" "$dev"
-      done
-  fi
+  # Walk disks and set fixed UUIDs
+  # We assume that as part of adding to the zpool there is partition 1 and 9
+  for dev in $PDEV_LIST; do
+      sgdisk --disk-guid=$DISK_UUID "$dev"
+      sgdisk --partition-guid="1:$EFI_UUID" "$dev"
+      sgdisk --partition-guid="9:$PERSIST_UUID" "$dev"
+  done
 else
   P3="$(find_part P3 "$INSTALL_PERSIST")"
   [ -z "$P3" ] && bail "Installation failed. Cannot found P3. Entering shell..."
