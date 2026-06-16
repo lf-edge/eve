@@ -13,6 +13,9 @@ on:  # yamllint disable-line rule:truthy
 jobs:
   yetus:
     runs-on: ubuntu-24.04
+    env:
+      YETUS_IMG: lfedge/eve-yetus:0.15.1-eve-2
+      UPSTREAM_BRANCH: 14.5-stable
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
@@ -28,14 +31,14 @@ jobs:
           git fetch upstream ${{ github.base_ref }}
           # Now diff against the correct base
           git diff upstream/${{ github.base_ref }}...HEAD > ${{ github.workspace }}/pr.patch
-          # Get back to upstream master so patch can be applied
-          git checkout upstream/master
+          # Get back to upstream branch so patch can be applied
+          git checkout "upstream/${UPSTREAM_BRANCH}"
 
       - name: Yetus
         run: |
           docker run --rm \
             -v ${{ github.workspace }}:/workspace \
-            lfedge/eve-yetus:0.15.1-eve-2 \
+            "${YETUS_IMG}" \
             test-patch \
             --basedir=/workspace/src \
             --patch-dir=/workspace/out \
