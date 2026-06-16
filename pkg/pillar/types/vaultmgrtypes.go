@@ -12,6 +12,44 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
+// VaultUnlockMethod records how a vault was unlocked this boot, so an operator
+// can tell a clean local TPM unseal apart from a controller-key recovery (both
+// of which end with Status enabled).
+type VaultUnlockMethod uint8
+
+const (
+	// VaultUnlockNone means the vault is not (yet) unlocked.
+	VaultUnlockNone VaultUnlockMethod = iota
+	// VaultUnlockTPMLocalSealed means the locally TPM-sealed key unsealed
+	// against the current PCRs, with no controller involvement.
+	VaultUnlockTPMLocalSealed
+	// VaultUnlockControllerKey means the local unseal failed (e.g. a PCR policy
+	// mismatch) and the controller-provided escrowed key was used instead.
+	VaultUnlockControllerKey
+	// VaultUnlockNoTPM means the platform has no TPM; the key is not sealed.
+	VaultUnlockNoTPM
+	// VaultUnlockRecreated means the local unseal failed and the controller had
+	// no escrowed key to return, so the vault was wiped and recreated empty. No
+	// key unlocked the existing vault; its prior contents were lost.
+	VaultUnlockRecreated
+)
+
+// String implements fmt.Stringer.
+func (m VaultUnlockMethod) String() string {
+	switch m {
+	case VaultUnlockTPMLocalSealed:
+		return "tpm-local-sealed"
+	case VaultUnlockControllerKey:
+		return "controller-key"
+	case VaultUnlockNoTPM:
+		return "no-tpm"
+	case VaultUnlockRecreated:
+		return "recreated"
+	default:
+		return "none"
+	}
+}
+
 // VaultStatus represents running status of a Vault
 type VaultStatus struct {
 	Name               string
@@ -20,6 +58,14 @@ type VaultStatus struct {
 	ConversionComplete bool
 	// only valid if TPM is enabled and Sealed key is used
 	MismatchingPCRs []int
+	// UnlockMethod records how the vault was unlocked this boot (local TPM key,
+	// controller-provided key, no TPM, or a wipe-and-recreate). VaultUnlockNone
+	// until unlocked. VaultUnlockTPMLocalSealed means the locally TPM-sealed key
+	// unsealed on the first attempt; VaultUnlockControllerKey means the local
+	// unseal failed and the device is relying on the controller-key fallback;
+	// VaultUnlockRecreated means the local unseal failed with no escrowed key, so
+	// the vault was wiped and recreated (prior contents lost).
+	UnlockMethod VaultUnlockMethod
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
 }
