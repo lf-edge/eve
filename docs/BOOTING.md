@@ -93,14 +93,9 @@ than by label: the 1st stage GRUB's [embedded fallback](../pkg/grub/embedded.cfg
 uses `search.part_uuid` for ESP-A, and the [installer](../pkg/installer/install)
 matches ESP-A's PARTUUID. Reserving ESP-B does not otherwise change the boot
 flow — EVE still boots the active rootfs (IMGA/IMGB) selected by `gptprio.next`,
-and ESP-B plays no role until a future change populates and uses it.
-
-Note: because `embedded.cfg` selects ESP-A by its fixed unique partition GUID,
-this fallback assumes the **fixed** partition-UUID scheme (the default). Images
-built with `make-raw -r` (`eve_install_random_disk_uuids`) randomize the GUIDs,
-so the hardcoded `search.part_uuid` would not match; that opt-in mode is not used
-in practice, and the primary `gptprio.next` boot path (keyed off the partition
-*type* GUID and attribute bits) is unaffected regardless.
+and ESP-B plays no role until a future change populates and uses it. Partition
+GUIDs are always the fixed values listed above, so `search.part_uuid` reliably
+resolves ESP-A.
 
 Compatibility with already-installed devices: the 1st stage GRUB cannot be
 upgraded after install, so a device installed before this change keeps an
