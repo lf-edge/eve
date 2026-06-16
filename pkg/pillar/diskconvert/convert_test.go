@@ -9,18 +9,18 @@ import (
 )
 
 type fakeRunner struct {
-	check       CheckResult
-	checkErr    error
-	growErr     error
-	backupErr   error
-	growCalls   []string // bootDisk
-	backupCalls []string // target
+	check        CheckResult
+	checkErr     error
+	armGrowErr   error
+	backupErr    error
+	armGrowCalls int
+	backupCalls  []string // target
 }
 
 func (f *fakeRunner) Check(string) (CheckResult, error) { return f.check, f.checkErr }
-func (f *fakeRunner) Grow(bootDisk string) error {
-	f.growCalls = append(f.growCalls, bootDisk)
-	return f.growErr
+func (f *fakeRunner) ArmGrow() error {
+	f.armGrowCalls++
+	return f.armGrowErr
 }
 func (f *fakeRunner) Backup(target string) error {
 	f.backupCalls = append(f.backupCalls, target)
@@ -49,23 +49,23 @@ func TestRunDecisionMatrix(t *testing.T) {
 		if err != nil || r.Outcome != OutcomeProceed {
 			t.Fatalf("got outcome=%v err=%v, want proceed/nil", r.Outcome, err)
 		}
-		if len(f.growCalls) != 0 || len(f.backupCalls) != 0 {
-			t.Errorf("proceed must not call resize/backup: resize=%v backup=%v", f.growCalls, f.backupCalls)
+		if f.armGrowCalls != 0 || len(f.backupCalls) != 0 {
+			t.Errorf("proceed must not arm/backup: armGrow=%d backup=%v", f.armGrowCalls, f.backupCalls)
 		}
 	})
 
-	t.Run("grow: resize online, then proceed", func(t *testing.T) {
+	t.Run("grow: arm grow-only flag, then reboot (offline grow)", func(t *testing.T) {
 		f := &fakeRunner{check: checkWith(DecisionGrow, 0)}
 		c := &Converter{Runner: f}
 		r, err := c.Run("/dev/sda")
-		if err != nil || r.Outcome != OutcomeProceed {
-			t.Fatalf("got outcome=%v err=%v, want proceed/nil", r.Outcome, err)
+		if err != nil || r.Outcome != OutcomeRebootForRepartition {
+			t.Fatalf("got outcome=%v err=%v, want reboot-for-repartition/nil", r.Outcome, err)
 		}
-		if len(f.growCalls) != 1 || f.growCalls[0] != "/dev/sda" {
-			t.Errorf("grow must resize online with no shrink: %v", f.growCalls)
+		if f.armGrowCalls != 1 {
+			t.Errorf("grow must arm the grow-only flag once: armGrow=%d", f.armGrowCalls)
 		}
 		if len(f.backupCalls) != 0 {
-			t.Errorf("grow must not back up: %v", f.backupCalls)
+			t.Errorf("grow-only must not back up: %v", f.backupCalls)
 		}
 	})
 
@@ -73,8 +73,8 @@ func TestRunDecisionMatrix(t *testing.T) {
 		f := &fakeRunner{check: checkWith(DecisionShrink, 100)} // 100G persist, need 22G -> 78G
 		c := &Converter{Runner: f}
 		r, err := c.Run("/dev/sda")
-		if err != nil || r.Outcome != OutcomeRebootForShrink {
-			t.Fatalf("got outcome=%v err=%v, want reboot-for-shrink/nil", r.Outcome, err)
+		if err != nil || r.Outcome != OutcomeRebootForRepartition {
+			t.Fatalf("got outcome=%v err=%v, want reboot-for-repartition/nil", r.Outcome, err)
 		}
 		want := sizeK((100 << 30) - (22 << 30)) // 78 GiB in KiB
 		if r.ShrinkTarget != want {
@@ -83,8 +83,8 @@ func TestRunDecisionMatrix(t *testing.T) {
 		if len(f.backupCalls) != 1 || f.backupCalls[0] != want {
 			t.Errorf("backup must be called once with the target: %v", f.backupCalls)
 		}
-		if len(f.growCalls) != 0 {
-			t.Errorf("shrink path defers resize to the offline boot, must not resize online: %v", f.growCalls)
+		if f.armGrowCalls != 0 {
+			t.Errorf("shrink path must not arm the grow-only flag: armGrow=%d", f.armGrowCalls)
 		}
 	})
 
@@ -95,8 +95,8 @@ func TestRunDecisionMatrix(t *testing.T) {
 		if err == nil || r.Outcome != OutcomeInsufficient {
 			t.Fatalf("got outcome=%v err=%v, want insufficient/error", r.Outcome, err)
 		}
-		if len(f.growCalls) != 0 || len(f.backupCalls) != 0 {
-			t.Errorf("insufficient must not act: resize=%v backup=%v", f.growCalls, f.backupCalls)
+		if f.armGrowCalls != 0 || len(f.backupCalls) != 0 {
+			t.Errorf("insufficient must not act: armGrow=%d backup=%v", f.armGrowCalls, f.backupCalls)
 		}
 	})
 }
@@ -109,6 +109,18 @@ func TestRunCheckErrorPropagates(t *testing.T) {
 	}
 }
 
+func TestRunGrowArmFailureSurfaces(t *testing.T) {
+	f := &fakeRunner{check: checkWith(DecisionGrow, 0), armGrowErr: errors.New("config full")}
+	c := &Converter{Runner: f}
+	r, err := c.Run("/dev/sda")
+	if err == nil {
+		t.Fatal("expected arm-grow failure to surface (must not reboot without the flag)")
+	}
+	if r.Outcome == OutcomeRebootForRepartition {
+		t.Error("must not signal reboot when arming the grow flag failed")
+	}
+}
+
 func TestRunShrinkBackupFailureSurfaces(t *testing.T) {
 	f := &fakeRunner{check: checkWith(DecisionShrink, 100), backupErr: errors.New("config full")}
 	c := &Converter{Runner: f}
@@ -116,7 +128,7 @@ func TestRunShrinkBackupFailureSurfaces(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected backup failure to surface (must not reboot without a backup)")
 	}
-	if r.Outcome == OutcomeRebootForShrink {
+	if r.Outcome == OutcomeRebootForRepartition {
 		t.Error("must not signal reboot when the backup failed")
 	}
 }

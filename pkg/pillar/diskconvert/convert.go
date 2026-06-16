@@ -54,12 +54,15 @@ type Runner interface {
 	Check(bootDisk string) (CheckResult, error)
 	// Backup copies the connectivity-, ssh-, and device-identity-critical files
 	// (including the /persist/certs/ attestation/decryption keys) to /config and
-	// writes the shrink flag file (target size), to be consumed by the offline
-	// resize after the reboot.
+	// writes the repartition flag file (the shrink target size), to be consumed by
+	// the offline resize after the reboot.
 	Backup(target string) error
-	// Grow repartitions the boot disk online (the no-shrink case): grow
-	// ESP/IMGA/IMGB into the boot-disk free tail.
-	Grow(bootDisk string) error
+	// ArmGrow writes the repartition flag file with the grow-only sentinel; no
+	// backup is needed because the grow is non-destructive. storage-init performs
+	// the actual grow offline after the reboot — the boot disk's partition table
+	// cannot be re-read live while its own rootfs is mounted, the same constraint
+	// that forces the shrink offline.
+	ArmGrow() error
 }
 
 // Outcome tells the caller (baseosmgr) what to do next.
@@ -68,9 +71,12 @@ type Outcome int
 const (
 	// OutcomeProceed means the geometry is (now) correct; continue the A/B install.
 	OutcomeProceed Outcome = iota
-	// OutcomeRebootForShrink means the backup + flag file are written; reboot so
-	// storage-init runs the offline shrink+grow, then re-evaluate on the next boot.
-	OutcomeRebootForShrink
+	// OutcomeRebootForRepartition means the flag file is written (and, on the
+	// shrink path, the backup); reboot so storage-init runs the offline resize
+	// (shrink+grow, or grow-only), then re-evaluate on the next boot. The
+	// repartition always runs offline because the boot disk's partition table
+	// cannot be re-read live while its rootfs is mounted.
+	OutcomeRebootForRepartition
 	// OutcomeInsufficient means room cannot be made; abort the conversion, stay put.
 	OutcomeInsufficient
 )
@@ -79,8 +85,8 @@ func (o Outcome) String() string {
 	switch o {
 	case OutcomeProceed:
 		return "proceed"
-	case OutcomeRebootForShrink:
-		return "reboot-for-shrink"
+	case OutcomeRebootForRepartition:
+		return "reboot-for-repartition"
 	case OutcomeInsufficient:
 		return "insufficient"
 	default:
@@ -105,8 +111,8 @@ type Converter struct {
 // Run executes one conversion step: check, then the selected action.
 //
 //	proceed      -> OutcomeProceed (no action)
-//	grow         -> resize online,    OutcomeProceed
-//	shrink       -> backup + flag file, OutcomeRebootForShrink (caller reboots)
+//	grow         -> arm grow-only flag, OutcomeRebootForRepartition (caller reboots)
+//	shrink       -> backup + flag file, OutcomeRebootForRepartition (caller reboots)
 //	insufficient -> OutcomeInsufficient + error
 func (c *Converter) Run(bootDisk string) (Result, error) {
 	label := c.PersistLabel
@@ -125,10 +131,15 @@ func (c *Converter) Run(bootDisk string) (Result, error) {
 		return r, nil
 
 	case DecisionGrow:
-		if err := c.Runner.Grow(bootDisk); err != nil {
-			return r, fmt.Errorf("grow: %w", err)
+		// The grow runs OFFLINE in storage-init, not here: the boot disk's GPT
+		// cannot be re-read live while its rootfs is mounted (the kernel returns
+		// EBUSY on the partition-table re-read), so an online grow can never apply.
+		// Arm the grow-only flag and let the caller reboot into the offline grow,
+		// exactly as the shrink path does.
+		if err := c.Runner.ArmGrow(); err != nil {
+			return r, fmt.Errorf("arm grow-only repartition: %w", err)
 		}
-		r.Outcome = OutcomeProceed
+		r.Outcome = OutcomeRebootForRepartition
 		return r, nil
 
 	case DecisionShrink:
@@ -140,7 +151,7 @@ func (c *Converter) Run(bootDisk string) (Result, error) {
 		if err := c.Runner.Backup(r.ShrinkTarget); err != nil {
 			return r, fmt.Errorf("backup before shrink: %w", err)
 		}
-		r.Outcome = OutcomeRebootForShrink
+		r.Outcome = OutcomeRebootForRepartition
 		return r, nil
 
 	case DecisionInsufficient:
@@ -226,9 +237,11 @@ func (b BinaryRunner) Backup(target string) error {
 	return runQuiet(b.bin(), args...)
 }
 
-// Grow runs `storage-resizer grow --disk <bootDisk>`.
-func (b BinaryRunner) Grow(bootDisk string) error {
-	return runQuiet(b.bin(), "grow", "--disk", bootDisk)
+// ArmGrow runs `storage-resizer backup --grow-only [config flags]`, which writes
+// the repartition flag with the grow-only sentinel and copies no backup. The
+// grow itself runs offline in storage-init after the reboot.
+func (b BinaryRunner) ArmGrow() error {
+	return runQuiet(b.bin(), append([]string{"backup", "--grow-only"}, b.configFlags()...)...)
 }
 
 func runQuiet(name string, args ...string) error {
