@@ -66,6 +66,8 @@ type diagContext struct {
 	subDevicePortConfigList pubsub.Subscription
 	subZedAgentStatus       pubsub.Subscription
 	zedagentStatus          types.ZedAgentStatus
+	subVaultStatus          pubsub.Subscription
+	vaultStatus             types.VaultStatus
 	subAppInstanceSummary   pubsub.Subscription
 	appInstanceSummary      types.AppInstanceSummary
 	subAppInstanceStatus    pubsub.Subscription
@@ -330,6 +332,25 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	ctx.subZedAgentStatus = subZedAgentStatus
 	subZedAgentStatus.Activate()
 
+	// Look for VaultStatus from vaultmgr, to show how the vault was unlocked
+	// (local TPM seal vs controller-provided key).
+	subVaultStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "vaultmgr",
+		MyAgentName:   agentName,
+		TopicImpl:     types.VaultStatus{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleVaultStatusCreate,
+		ModifyHandler: handleVaultStatusModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subVaultStatus = subVaultStatus
+	subVaultStatus.Activate()
+
 	// Look for AppInstanceSummary from zedmanager
 	subAppInstanceSummary, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedmanager",
@@ -427,6 +448,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-subZedAgentStatus.MsgChan():
 			subZedAgentStatus.ProcessChange(change)
+
+		case change := <-subVaultStatus.MsgChan():
+			subVaultStatus.ProcessChange(change)
 
 		case change := <-subAppInstanceSummary.MsgChan():
 			subAppInstanceSummary.ProcessChange(change)
@@ -528,6 +552,29 @@ func handleZedAgentStatusImpl(ctxArg interface{}, key string,
 	// or modify
 	triggerPrintOutput(ctx, "DeviceState")
 	ctx.zedagentStatus = status
+}
+
+func handleVaultStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleVaultStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleVaultStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleVaultStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleVaultStatusImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*diagContext)
+	status := statusArg.(types.VaultStatus)
+	// only the default vault feeds the summary line
+	if status.Name != types.DefaultVaultName {
+		return
+	}
+	ctx.vaultStatus = status
+	triggerPrintOutput(ctx, "VaultStatus")
 }
 
 func handleAppInstanceSummaryCreate(ctxArg interface{}, key string,
@@ -794,6 +841,20 @@ func printOutput(ctx *diagContext, caller string) {
 		ctx.zedagentStatus.VaultStatus != info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED {
 		level = "ERROR"
 		vaultStatus += " error " + ctx.zedagentStatus.VaultErr
+	}
+	// Show how the vault was unlocked this boot (from vaultmgr's VaultStatus).
+	// A controller-key unlock means the local TPM unseal failed (PCR mismatch),
+	// which is worth flagging even though the vault ends up enabled.
+	if ctx.vaultStatus.UnlockMethod != types.VaultUnlockNone {
+		vaultStatus += " unlock:" + ctx.vaultStatus.UnlockMethod.String()
+		if ctx.vaultStatus.UnlockMethod == types.VaultUnlockControllerKey {
+			if level == "INFO" {
+				level = "WARNING"
+			}
+			if len(ctx.vaultStatus.MismatchingPCRs) > 0 {
+				vaultStatus += fmt.Sprintf(" mismatchPCRs:%v", ctx.vaultStatus.MismatchingPCRs)
+			}
+		}
 	}
 	pcrStatus := strings.TrimPrefix(ctx.zedagentStatus.PCRStatus.String(),
 		"PCR_")

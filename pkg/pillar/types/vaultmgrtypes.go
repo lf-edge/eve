@@ -10,6 +10,38 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
+// VaultUnlockMethod records how a vault was unlocked this boot, so an operator
+// can tell a clean local TPM unseal apart from a controller-key recovery (both
+// of which end with Status enabled).
+type VaultUnlockMethod uint8
+
+const (
+	// VaultUnlockNone means the vault is not (yet) unlocked.
+	VaultUnlockNone VaultUnlockMethod = iota
+	// VaultUnlockTPMLocalSealed means the locally TPM-sealed key unsealed
+	// against the current PCRs, with no controller involvement.
+	VaultUnlockTPMLocalSealed
+	// VaultUnlockControllerKey means the local unseal failed (e.g. a PCR policy
+	// mismatch) and the controller-provided escrowed key was used instead.
+	VaultUnlockControllerKey
+	// VaultUnlockNoTPM means the platform has no TPM; the key is not sealed.
+	VaultUnlockNoTPM
+)
+
+// String implements fmt.Stringer.
+func (m VaultUnlockMethod) String() string {
+	switch m {
+	case VaultUnlockTPMLocalSealed:
+		return "tpm-local-sealed"
+	case VaultUnlockControllerKey:
+		return "controller-key"
+	case VaultUnlockNoTPM:
+		return "no-tpm"
+	default:
+		return "none"
+	}
+}
+
 // VaultStatus represents running status of a Vault
 type VaultStatus struct {
 	Name               string
@@ -18,6 +50,14 @@ type VaultStatus struct {
 	ConversionComplete bool
 	// only valid if TPM is enabled and Sealed key is used
 	MismatchingPCRs []int
+	// UnlockMethod records how the vault was unlocked this boot (local TPM key,
+	// controller-provided key, or no TPM). VaultUnlockNone until unlocked.
+	UnlockMethod VaultUnlockMethod
+	// LocalUnsealSucceeded is true when the locally TPM-sealed key unsealed on
+	// the first attempt this boot (the sealed PCRs matched); false when the
+	// unlock required the controller key. Lets an operator detect that a device
+	// is silently relying on the controller-key fallback.
+	LocalUnsealSucceeded bool
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
 }
