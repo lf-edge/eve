@@ -69,7 +69,7 @@ func gatherDirs(dir string) ([]string, []string) {
 		if err != nil {
 			log.Fatal(err)
 		}
-		if info.Name() == "Dockerfile" {
+		if info.Name() == "Dockerfile" || info.Name() == "Dockerfile.in" {
 			_, ok := ignorePaths[absPath]
 			if !ok {
 				// path is not on ignore list
