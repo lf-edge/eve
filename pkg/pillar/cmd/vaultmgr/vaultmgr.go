@@ -13,8 +13,8 @@
 //in clear text, but instead be encrypted using a TPM based key, so that,
 //the key is protected from being exposed in the Controller. To that requirement,
 //in this PR, we add support to encrypt (aka key wrapping), the vault key
-//using a TPM based key (we re-use ECDH key here) the device public key. Basically
-//we are re-using a simplified ECDH exchange here, with both the parties being
+//using a TPM based key (we reuse ECDH key here) the device public key. Basically
+//we are reusing a simplified ECDH exchange here, with both the parties being
 //the same device. To decrypt the key, one has to be on the same device with
 //access to the same TPM, where the private part of the ECDH key resides.
 //publishVaultKey and handleVaultKeyFromControllerModify are the relevant
@@ -56,8 +56,13 @@ type vaultMgrContext struct {
 	GCInitialized             bool // GlobalConfig initialized
 	defaultVaultUnlocked      bool
 	vaultUCDone               bool
-	ps                        *pubsub.PubSub
-	ucChan                    chan struct{}
+	// How the default vault was unlocked this boot, surfaced on VaultStatus.
+	unlockMethod types.VaultUnlockMethod
+	// PCRs that did not match on a failed local unseal; retained so it is still
+	// reported after the controller-key recovery re-seals.
+	lastMismatchingPCRs []int
+	ps                  *pubsub.PubSub
+	ucChan              chan struct{}
 	// cli options
 	args []string
 }
@@ -287,10 +292,31 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// if TPM available, this sets up the fscrypt and eventually calls FetchSealedVaultKey
 	if err := handler.SetupDefaultVault(); err != nil {
 		log.Errorf("SetupDefaultVault failed, err: %v", err)
+		// Local unseal failed. On a TPM device this is usually a PCR policy
+		// mismatch; record which PCRs differ so it is visible on VaultStatus and
+		// in one clear log line, instead of being inferable only from the unseal
+		// error. The vault will be unlocked later via the controller key.
+		if tpmEnabled {
+			if mism, perr := etpm.FindMismatchingPCRs(); perr == nil {
+				ctx.lastMismatchingPCRs = mism
+				log.Noticef("vault %s local TPM unseal FAILED; mismatching PCRs=%v; awaiting controller key",
+					types.DefaultVaultName, mism)
+			} else {
+				log.Warnf("vault %s local TPM unseal FAILED; could not determine mismatching PCRs: %v",
+					types.DefaultVaultName, perr)
+			}
+		}
 		getAndPublishAllVaultStatuses(&ctx)
 	} else {
 		log.Noticef("vault is setup and unlocked successfully")
 		ctx.defaultVaultUnlocked = true
+		if tpmEnabled {
+			ctx.unlockMethod = types.VaultUnlockTPMLocalSealed
+		} else {
+			ctx.unlockMethod = types.VaultUnlockNoTPM
+		}
+		log.Noticef("vault %s unlocked: method=%s",
+			types.DefaultVaultName, ctx.unlockMethod)
 	}
 	if ctx.defaultVaultUnlocked || !tpmEnabled {
 		// Now that vault is unlocked, run any upgrade converter handler if needed
@@ -472,6 +498,13 @@ func handleVaultKeyFromControllerImpl(ctxArg interface{}, key string,
 			return
 		}
 
+		// The local unseal had failed (that is why we are here); record that the
+		// unlock came from the controller key, so the distinction is visible on
+		// VaultStatus rather than only inferable from the log sequence.
+		ctx.unlockMethod = types.VaultUnlockControllerKey
+		log.Noticef("vault %s unlocked: method=controller-key mismatchingPCRs=%v",
+			types.DefaultVaultName, ctx.lastMismatchingPCRs)
+
 		//Log the type of key used for unlocking default vault
 		log.Noticef("%s unlocked using key type %s", types.DefaultVaultName,
 			etpm.CompareLegacyandSealedKey(log).String())
@@ -501,6 +534,7 @@ func handleVaultKeyFromControllerImpl(ctxArg interface{}, key string,
 			return
 		}
 		ctx.defaultVaultUnlocked = true
+		ctx.unlockMethod = types.VaultUnlockRecreated
 		log.Noticef("%s re-created", types.DefaultVaultName)
 	}
 
@@ -574,6 +608,19 @@ func getAndPublishAllVaultStatuses(ctx *vaultMgrContext) {
 	for _, status := range statuses {
 		// adjust ConversionComplete field with information from context
 		status.ConversionComplete = ctx.vaultUCDone
+		// The unlock method and retained mismatching PCRs are tracked only for
+		// the default vault; the deprecated vaults returned here have no unlock
+		// method of their own, so leave their fields untouched.
+		if status.Name == types.DefaultVaultName {
+			// surface how the vault was unlocked this boot
+			status.UnlockMethod = ctx.unlockMethod
+			// If a local unseal failed, keep reporting the mismatching PCRs even
+			// after the controller-key recovery unlocked (and re-sealed) the vault,
+			// so the diagnostic is not lost the moment recovery succeeds.
+			if len(status.MismatchingPCRs) == 0 && len(ctx.lastMismatchingPCRs) > 0 {
+				status.MismatchingPCRs = ctx.lastMismatchingPCRs
+			}
+		}
 		publishVaultStatus(ctx, *status)
 	}
 }
