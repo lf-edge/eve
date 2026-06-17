@@ -28,10 +28,10 @@ RUN cargo sbom > sbom.spdx.json
 
 RUN cp "/usr/local/my-installer/target/$CARGO_BUILD_TARGET/release/installer" /usr/local/my-installer/target/installer
 
-FROM lfedge/eve-debug:2eecb77c2a7b039e5896c2ca433d6ac6add938ff AS debug
+FROM lfedge/eve-debug:c93b81769b7a15a0893815d3a52d5cf4b0919171 AS debug
 
 # Dockerfile to build installer img initrd
-FROM lfedge/eve-alpine:b79fd3384162534a9bdb99506adb2f19f60f26db AS build
+FROM lfedge/eve-alpine:d1cee9f3e9b1a2f336a61ec1178121a968b4710d AS build
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 ENV BUILD_PKGS="mkinitfs grep patch make coreutils musl-dev gcc g++ perl \
     autoconf automake libtool file bsd-compat-headers libc-dev \
