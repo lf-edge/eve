@@ -1,4 +1,4 @@
-FROM lfedge/eve-alpine:32c9b42d3bee7681d4fd38619e2cc1f6f238909e AS build
+FROM lfedge/eve-alpine:39f46094f640424c345164420ed789afd8a4088b AS build
 
 ARG EROFS_UTILS_VERSION=v1.7.1
 ARG LZ4_VERSION=v1.9.4
