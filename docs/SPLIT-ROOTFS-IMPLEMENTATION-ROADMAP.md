@@ -995,6 +995,15 @@ When rolling back from a split-rootfs version to a pre-split monolithic version:
 | Testing window criteria | Require Extension health (extsloader readiness state) for successful activation |
 | No API change | Same `content_tree_uuid`, same ContentTree, same download/verify flow |
 
+**Prerequisite (upstream bug):** `doBaseOsActivate` compared the *whole* base-OS
+content tree size (`MaxDownloadSize` = Core + the `disk-0` Extension layer) against
+the rootfs partition, so a split image is wrongly rejected with "Image size … greater
+than partition size" on any device running EVE ≥ 10.2.0 (when the check was added).
+Only the Core lands in the partition; the Extension goes to `/persist`. Fixed in
+master by **PR lf-edge/eve#6044**, which removes that pre-check and instead bounds the
+bytes actually written in `zboot.WriteToPartition` via a `partitionLimitWriter`
+(split-agnostic). The split-rootfs branch inherits it on merge.
+
 ## 9. ZFlash Integration
 
 ZFlash prepares USB installer media. It does not execute installation logic itself.
