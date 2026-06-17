@@ -6,19 +6,26 @@ package zedagent
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
+	"strings"
 	"testing"
+	"time"
 
 	. "github.com/onsi/gomega"
 	"github.com/sirupsen/logrus"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/lf-edge/eve-api/go/config"
 	zconfig "github.com/lf-edge/eve-api/go/config"
 	zcommon "github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/localcommand"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/sriov"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -2379,4 +2386,373 @@ func TestBondMemberSwap(t *testing.T) {
 	bond2Port = dpc.LookupPortByLogicallabel("bond2")
 	g.Expect(bond2Port).ToNot(BeNil())
 	g.Expect(bond2Port.L2LinkConfig.Bond.AggregatedPorts).To(ConsistOf("eth1", "eth3"))
+}
+
+// newPublication is a small helper that creates a pubsub.Publication on top of
+// the EmptyDriver, failing the test on error.
+func newPublication(tb testing.TB, ps *pubsub.PubSub, topicType interface{}) pubsub.Publication {
+	tb.Helper()
+	pub, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: topicType,
+	})
+	if err != nil {
+		tb.Fatalf("NewPublication(%T): %v", topicType, err)
+	}
+	return pub
+}
+
+// mustPublish publishes item under key, failing the test on error.
+func mustPublish(tb testing.TB, pub pubsub.Publication, key string, item interface{}) {
+	tb.Helper()
+	if err := pub.Publish(key, item); err != nil {
+		tb.Fatalf("Publish(%s, %T): %v", key, item, err)
+	}
+}
+
+// newSubscription is a small helper that creates a pubsub.Subscription on top of
+// the EmptyDriver, failing the test on error. It is intentionally left inactive
+// (Activate:false): the parse path only ever calls GetAll() on these, which is
+// safe regardless of activation, and the EmptyDriver reports no items so GetAll()
+// yields an empty map.
+func newSubscription(tb testing.TB, ps *pubsub.PubSub, ctx interface{},
+	srcAgent string, topicImpl interface{}) pubsub.Subscription {
+	tb.Helper()
+	sub, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   srcAgent,
+		MyAgentName: agentName,
+		TopicImpl:   topicImpl,
+		Activate:    false,
+		Ctx:         ctx,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		tb.Fatalf("NewSubscription(%T): %v", topicImpl, err)
+	}
+	return sub
+}
+
+// newFuzzGetConfigCtx builds a getconfigContext populated with everything that
+// parseConfig (and all of its callees) dereference, so that fuzzing the config
+// parser exercises the actual parsing logic instead of crashing on nil pubsub
+// handles, nil maps, the nil cipherCtx, or the nil localCmdAgent pointer. It
+// returns the context together with the list of publications it created, so the
+// caller can wipe accumulated state between fuzz iterations (see resetFuzzState).
+//
+// Publications/subscriptions are backed by pubsub.MemoryDriver. Most carry no
+// data (nothing is published into them), but the MemoryDriver - unlike the
+// EmptyDriver - lets us round-trip a few published items into a subscription,
+// which is needed to seed subZbootStatus with a realistic current partition (see
+// below).
+//
+// The context is built ONCE and reused across fuzz iterations. This is deliberate:
+// NewLocalCmdAgent creates several flextimer range tickers, and each of those
+// starts a background goroutine that is only stopped by the (never-called) task
+// shutdown path. Rebuilding the context per iteration would therefore leak a
+// handful of goroutines per call. Reuse is safe because Go's fuzzing engine
+// invokes the fuzz target sequentially within a worker process (no concurrent
+// calls), and resetFuzzState makes each iteration independent.
+//
+// The zedagentCtx.trigger* channels are left nil on purpose: every send to them is
+// guarded by select/default, so a nil channel just skips the (parsing-irrelevant)
+// info trigger. Likewise localCmdAgent's per-LPS-change ticker pokes go through
+// flextimer.TickNow, which is itself a non-blocking select/default, so they never
+// block even though no task goroutine is consuming the ticks here.
+func newFuzzGetConfigCtx(tb testing.TB) (*getconfigContext, []pubsub.Publication) {
+	tb.Helper()
+	logger = logrus.StandardLogger()
+	// Keep the fuzzer output quiet; parseConfig logs verbosely on bad input.
+	logger.SetLevel(logrus.FatalLevel)
+	log = base.NewSourceLogObject(logger, "zedagent", 1234)
+	ps := pubsub.New(pubsub.NewMemoryDriver(), logger, log)
+
+	zedagentCtx := &zedagentContext{
+		ps:                   ps,
+		physicalIoAdapterMap: make(map[string]types.PhysicalIOAdapter),
+		globalConfig:         *types.DefaultConfigItemValueMap(),
+		specMap:              types.NewConfigItemSpecMap(),
+		assignableAdapters:   &types.AssignableAdapters{},
+		DevicePortConfigList: &types.DevicePortConfigList{},
+	}
+	getconfigCtx := &getconfigContext{
+		zedagentCtx: zedagentCtx,
+	}
+	zedagentCtx.getconfigCtx = getconfigCtx
+	// cipherCtx is dereferenced by handleControllerCertsSha / parseCipherContext.
+	// Its trigger channels are left nil: every send is guarded by select/default.
+	zedagentCtx.cipherCtx = &cipherContext{zedagentCtx: zedagentCtx}
+
+	// Publications owned by zedagentContext.
+	zedagentCtx.pubGlobalConfig = newPublication(tb, ps, types.ConfigItemValueMap{})
+	zedagentCtx.pubMetricsMap = newPublication(tb, ps, types.MetricsMap{})
+	zedagentCtx.pubEdgeNodeClusterConfig = newPublication(tb, ps, types.EdgeNodeClusterConfig{})
+
+	// Publications owned by getconfigContext.
+	getconfigCtx.pubZedAgentStatus = newPublication(tb, ps, types.ZedAgentStatus{})
+	getconfigCtx.pubPhysicalIOAdapters = newPublication(tb, ps, types.PhysicalIOAdapterList{})
+	getconfigCtx.pubSCEPProfile = newPublication(tb, ps, types.SCEPProfile{})
+	getconfigCtx.pubDevicePortConfig = newPublication(tb, ps, types.DevicePortConfig{})
+	getconfigCtx.pubNetworkXObjectConfig = newPublication(tb, ps, types.NetworkXObjectConfig{})
+	getconfigCtx.pubNetworkInstanceConfig = newPublication(tb, ps, types.NetworkInstanceConfig{})
+	getconfigCtx.pubAppInstanceConfig = newPublication(tb, ps, types.AppInstanceConfig{})
+	getconfigCtx.pubAppNetworkConfig = newPublication(tb, ps, types.AppNetworkConfig{})
+	getconfigCtx.pubBaseOsConfig = newPublication(tb, ps, types.BaseOsConfig{})
+	getconfigCtx.pubDatastoreConfig = newPublication(tb, ps, types.DatastoreConfig{})
+	getconfigCtx.pubLOCConfig = newPublication(tb, ps, types.LOCConfig{})
+	getconfigCtx.pubCollectInfoCmd = newPublication(tb, ps, types.CollectInfoCmd{})
+	getconfigCtx.pubControllerCert = newPublication(tb, ps, types.ControllerCert{})
+	getconfigCtx.pubCipherContext = newPublication(tb, ps, types.CipherContext{})
+	getconfigCtx.pubContentTreeConfig = newPublication(tb, ps, types.ContentTreeConfig{})
+	getconfigCtx.pubVolumeConfig = newPublication(tb, ps, types.VolumeConfig{})
+	getconfigCtx.pubDisksConfig = newPublication(tb, ps, types.EdgeNodeDisks{})
+	getconfigCtx.pubEdgeNodeInfo = newPublication(tb, ps, types.EdgeNodeInfo{})
+	getconfigCtx.pubPatchEnvelopeInfo = newPublication(tb, ps, types.PatchEnvelopeInfoList{})
+
+	allPubs := []pubsub.Publication{
+		zedagentCtx.pubGlobalConfig, zedagentCtx.pubMetricsMap,
+		zedagentCtx.pubEdgeNodeClusterConfig,
+		getconfigCtx.pubZedAgentStatus, getconfigCtx.pubPhysicalIOAdapters,
+		getconfigCtx.pubSCEPProfile, getconfigCtx.pubDevicePortConfig,
+		getconfigCtx.pubNetworkXObjectConfig, getconfigCtx.pubNetworkInstanceConfig,
+		getconfigCtx.pubAppInstanceConfig, getconfigCtx.pubAppNetworkConfig,
+		getconfigCtx.pubBaseOsConfig, getconfigCtx.pubDatastoreConfig,
+		getconfigCtx.pubLOCConfig, getconfigCtx.pubCollectInfoCmd,
+		getconfigCtx.pubControllerCert, getconfigCtx.pubCipherContext,
+		getconfigCtx.pubContentTreeConfig, getconfigCtx.pubVolumeConfig,
+		getconfigCtx.pubDisksConfig, getconfigCtx.pubEdgeNodeInfo,
+		getconfigCtx.pubPatchEnvelopeInfo,
+	}
+
+	// Subscriptions read (via GetAll) by the parse path; empty is fine for these.
+	getconfigCtx.subAppInstanceStatus = newSubscription(tb, ps, zedagentCtx,
+		"zedmanager", types.AppInstanceStatus{})
+	getconfigCtx.subContentTreeStatus = newSubscription(tb, ps, zedagentCtx,
+		"volumemgr", types.ContentTreeStatus{})
+	getconfigCtx.subVolumeStatus = newSubscription(tb, ps, zedagentCtx,
+		"volumemgr", types.VolumeStatus{})
+
+	// parseBaseOS reads subZbootStatus (via getZbootCurrentPartition /
+	// getZbootPartitionStatus) and dereferences the returned *ZbootStatus. On a
+	// real device baseosmgr always publishes the IMGA/IMGB partition statuses, so
+	// seed the subscription with a realistic current partition; an empty one would
+	// make getZbootPartitionStatus return nil and crash parseBaseOS. The statuses
+	// are published and then loaded into the (persistent, activated) subscription
+	// by the MemoryDriver - keyed by partition label, which is what Get() uses.
+	zbootPub, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: "baseosmgr",
+		TopicType: types.ZbootStatus{},
+	})
+	if err != nil {
+		tb.Fatalf("NewPublication(ZbootStatus): %v", err)
+	}
+	mustPublish(tb, zbootPub, "IMGA", types.ZbootStatus{
+		PartitionLabel:   "IMGA",
+		PartitionState:   "active",
+		ShortVersion:     "0.0.0-fuzz",
+		CurrentPartition: true,
+	})
+	mustPublish(tb, zbootPub, "IMGB", types.ZbootStatus{
+		PartitionLabel: "IMGB",
+		PartitionState: "inprogress",
+		ShortVersion:   "0.0.0-other",
+	})
+	subZboot, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "baseosmgr",
+		MyAgentName: agentName,
+		TopicImpl:   types.ZbootStatus{},
+		Persistent:  true, // so Activate() loads the published statuses via the driver
+		Activate:    true,
+		Ctx:         zedagentCtx,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		tb.Fatalf("NewSubscription(ZbootStatus): %v", err)
+	}
+	zedagentCtx.subZbootStatus = subZboot
+
+	// parseConfig calls localCmdAgent.Pause()/UpdateLpsConfig()/IsAppRunningLps();
+	// the field is a concrete *LocalCmdAgent, so it must be a real (initialized)
+	// instance. ps satisfies the Watchdog interface and zedagentCtx the ConfigAgent
+	// interface, mirroring the production wiring in zedagent.go.
+	getconfigCtx.localCmdAgent = localcommand.NewLocalCmdAgent(
+		localcommand.ConstructorArgs{
+			Log:         log,
+			Watchdog:    ps,
+			ConfigAgent: zedagentCtx,
+		})
+
+	resetFuzzState(getconfigCtx, allPubs)
+	return getconfigCtx, allPubs
+}
+
+// resetFuzzState makes a reused getconfigContext behave as if freshly built, so
+// that each fuzz iteration is independent of the inputs that preceded it. Without
+// this:
+//   - published items would accumulate forever in the (in-memory) publications,
+//     growing memory without bound over a long fuzzing campaign, and
+//   - a single input carrying a far-future ConfigTimestamp would latch
+//     lastConfigTimestamp, making every later input get rejected early as an
+//     "obsolete configuration" and starving the rest of parseConfig of coverage.
+//
+// It also resets the maintenance-mode flags (recomputed from each config) and the
+// package-level config-hash caches that gate re-parsing of individual sections.
+func resetFuzzState(getconfigCtx *getconfigContext, allPubs []pubsub.Publication) {
+	for _, pub := range allPubs {
+		for key := range pub.GetAll() {
+			_ = pub.Unpublish(key)
+		}
+	}
+
+	getconfigCtx.lastConfigTimestamp = time.Time{}
+	getconfigCtx.lastReceivedConfig = time.Time{}
+	getconfigCtx.lastProcessedConfig = time.Time{}
+	getconfigCtx.lastConfigSource = fromController
+
+	getconfigCtx.zedagentCtx.apiMaintenanceMode = false
+	getconfigCtx.zedagentCtx.maintenanceMode = false
+
+	deviceIoListPrevConfigHash = nil
+	bondsPrevConfigHash = nil
+	vlansPrevConfigHash = nil
+	networkConfigPrevConfigHash = nil
+}
+
+func FuzzParseConfig(f *testing.F) {
+	getconfigCtx, allPubs := newFuzzGetConfigCtx(f)
+
+	exampleConfigs := []*zconfig.EdgeDevConfig{
+		{},
+		{
+			Id:                       &zconfig.UUIDandVersion{},
+			Apps:                     []*zconfig.AppInstanceConfig{},
+			Networks:                 []*zconfig.NetworkConfig{},
+			Datastores:               []*zconfig.DatastoreConfig{},
+			Base:                     []*zconfig.BaseOSConfig{},
+			Reboot:                   &zconfig.DeviceOpsCmd{},
+			Backup:                   &zconfig.DeviceOpsCmd{},
+			ConfigItems:              []*zconfig.ConfigItem{},
+			SystemAdapterList:        []*zconfig.SystemAdapter{},
+			DeviceIoList:             []*zconfig.PhysicalIO{},
+			Manufacturer:             "",
+			ProductName:              "",
+			NetworkInstances:         []*zconfig.NetworkInstanceConfig{},
+			CipherContexts:           []*zcommon.CipherContext{},
+			ContentInfo:              []*zconfig.ContentTree{},
+			Volumes:                  []*zconfig.Volume{},
+			ControllercertConfighash: "",
+			MaintenanceMode:          false,
+			ControllerEpoch:          0,
+			Baseos:                   &zconfig.BaseOS{},
+			GlobalProfile:            "",
+			LocalProfileServer:       "",
+			ProfileServerToken:       "",
+			Vlans:                    []*zconfig.VlanAdapter{},
+			Bonds:                    []*zconfig.BondAdapter{},
+			Edgeview:                 &zconfig.EdgeViewConfig{},
+			Disks:                    &zconfig.DisksConfig{},
+			Shutdown:                 &zconfig.DeviceOpsCmd{},
+			DeviceName:               "",
+			ProjectName:              "",
+			ProjectId:                "",
+			EnterpriseName:           "",
+			EnterpriseId:             "",
+			ConfigTimestamp:          &timestamppb.Timestamp{},
+			LocConfig:                &zconfig.LOCConfig{},
+			PatchEnvelopes:           []*zconfig.EvePatchEnvelope{},
+			Cluster:                  &zconfig.EdgeNodeCluster{},
+			Pnacs:                    []*zconfig.PNAC{},
+			ScepProfiles:             []*zconfig.SCEPProfile{},
+		}}
+
+	for _, exampleConfig := range exampleConfigs {
+		exampleConfigJSON, err := marshalJSONIgnoreOmitEmpty(exampleConfig)
+		if err != nil {
+			f.Fatal(err)
+		}
+
+		f.Add(string(exampleConfigJSON), uint8(0))
+	}
+	f.Add("", uint8(0))
+
+	f.Fuzz(func(t *testing.T, edgeDevJSON string, cs uint8) {
+		config := &zconfig.EdgeDevConfig{}
+		err := json.Unmarshal([]byte(edgeDevJSON), config)
+		if err != nil {
+			return
+		}
+
+		source := cs % uint8(civmOnly+1)
+
+		resetFuzzState(getconfigCtx, allPubs)
+		parseConfig(getconfigCtx, config, configSource(source))
+	})
+}
+
+// TestParseConfigHarness validates that newFuzzGetConfigCtx mocks everything
+// parseConfig needs: it drives a minimal but valid config through parseConfig for
+// every configSource and asserts that none of them panics or hangs. The fuzzer
+// itself cannot prove this, because it stops at the first crashing seed (currently
+// an empty config, which trips a genuine nil-pointer bug in parseEdgeNodeInfo on
+// config.GetId().Uuid). Setting a non-nil Id steers past that real bug so the
+// remainder of the parse path - including localCmdAgent.UpdateLpsConfig and the
+// per-section parsers - is exercised here deterministically.
+func TestParseConfigHarness(t *testing.T) {
+	getconfigCtx, allPubs := newFuzzGetConfigCtx(t)
+
+	const deviceUUID = "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+	validID := &zconfig.UUIDandVersion{Uuid: deviceUUID, Version: "1"}
+
+	configs := map[string]*zconfig.EdgeDevConfig{
+		"minimal": {Id: validID},
+		// Exercises localCmdAgent.UpdateLpsConfig's "LPS address changed" branch,
+		// which fires the (non-blocking) ticker pokes.
+		"with-lps": {Id: validID, LocalProfileServer: "192.0.2.1:8888", GlobalProfile: "prod"},
+		// Toggles maintenance mode so mergeMaintenanceMode runs.
+		"maint-mode": {Id: validID, MaintenanceMode: true},
+		// Exercises parseBaseOS's populated path (getZbootCurrentPartition /
+		// getZbootPartitionStatus), which reads subZbootStatus.
+		"with-baseos": {Id: validID, Baseos: &zconfig.BaseOS{BaseOsVersion: "9.9.9", Activate: true}},
+	}
+
+	sources := []configSource{fromController, fromLOC, savedConfig, fromBootstrap, civmOnly}
+	for name, config := range configs {
+		for _, source := range sources {
+			t.Run(fmt.Sprintf("%s/%v", name, source), func(t *testing.T) {
+				resetFuzzState(getconfigCtx, allPubs)
+				// A panic here is a harness gap (a missing mock) or a genuine
+				// nil-deref in the parse code - either way the test fails loudly.
+				parseConfig(getconfigCtx, config, source)
+			})
+		}
+	}
+}
+
+// marshalJSONIgnoreOmitEmpty marshals an EdgeDevConfig to JSON like encoding/json would, except
+// that it ignores the ",omitempty" option on the (top-level) struct fields, so
+// zero-valued fields are emitted instead of dropped. This produces a "fat" JSON
+// document naming every top-level field, which is useful as a FuzzParseConfig seed.
+//
+// It works by rebuilding the struct type with the omitempty option stripped from
+// each json tag and marshaling a value converted to that type. Note this only
+// strips omitempty at the top level; fields of nested messages keep theirs.
+func marshalJSONIgnoreOmitEmpty(u *config.EdgeDevConfig) ([]byte, error) {
+	// Dereference through the pointer with Elem() rather than copying via
+	// reflect.ValueOf(*u): EdgeDevConfig embeds a sync.Mutex and must not be copied.
+	value := reflect.ValueOf(u).Elem()
+	t := value.Type()
+	fields := make([]reflect.StructField, t.NumField())
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		if jsonTag, ok := field.Tag.Lookup("json"); ok {
+			// Keep just the json name, dropping ",omitempty" (and any other
+			// options) so the field is always emitted.
+			name, _, _ := strings.Cut(jsonTag, ",")
+			field.Tag = reflect.StructTag(fmt.Sprintf(`json:"%s"`, name))
+		}
+		fields[i] = field
+	}
+	newType := reflect.StructOf(fields)
+	return json.Marshal(value.Convert(newType).Interface())
 }
