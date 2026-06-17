@@ -654,7 +654,11 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 		appinstancePrevConfigHash, configHash, Apps)
 	appinstancePrevConfigHash = configHash
 
-	devUUIDStr := config.GetId().Uuid
+	devUUIDStr := config.GetId().GetUuid()
+	if devUUIDStr == "" {
+		log.Warn("received empty UUID from config")
+		return
+	}
 
 	// First look for deleted ones. Look for Apps that exists on EVE OS, but not in the config
 	// file from the server. If yes, we will remove the App from the EVE OS.

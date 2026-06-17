@@ -15,7 +15,12 @@ func parseEdgeNodeInfo(ctx *getconfigContext,
 
 	log.Tracef("Started parsing edge node information")
 
-	deviceID, _ := uuid.FromString(config.GetId().Uuid)
+	uuidStr := config.GetId().GetUuid()
+	if uuidStr == "" {
+		log.Warn("received empty UUID from config")
+		return
+	}
+	deviceID, _ := uuid.FromString(uuidStr)
 	projectID, _ := uuid.FromString(config.GetProjectId())
 	enInfo := types.EdgeNodeInfo{}
 	enInfo = types.EdgeNodeInfo{
