@@ -1,0 +1,7 @@
+# built binaries (see README for the go build command)
+/resize-bench
+/resize-bench-amd64
+/resize-bench-arm64
+/resize-bench-scratch/
+# sweep-floor.sh output
+/floor-results/
