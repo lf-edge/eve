@@ -30,6 +30,7 @@ const (
 	compatibleFile    = "/proc/device-tree/compatible"
 	cpuInfoFile       = "/proc/cpuinfo"
 	socSerialFile     = "/sys/devices/soc0/serial_number"
+	socIDFile         = "/sys/devices/soc0/soc_id"
 	modelOverrideFile = types.PersistStatusDir + "/hardwaremodel"
 	softSerialFile    = types.IdentityDirname + "/soft_serial"
 )
@@ -144,6 +145,17 @@ func getCPUSerial(log *base.LogObject) string {
 			contents, err := os.ReadFile(socSerialFile)
 			if err == nil {
 				serial = strings.TrimSuffix(string(contents), "\n")
+			}
+			// On Qualcomm platforms, the SoC's serial number might not be
+			// unique across different models, so when soc_id is available,
+			// let's produce a serial number by concatenating soc_id +
+			// serial_number so we ensure devices with different SoCs will not
+			// have the same serial.
+			if strings.Contains(GetCompatible(log), "qcom") {
+				contents, err = os.ReadFile(socIDFile)
+				if err == nil {
+					serial = strings.TrimSuffix(string(contents), "\n") + serial
+				}
 			}
 		}
 	}
