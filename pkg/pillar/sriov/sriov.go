@@ -17,9 +17,12 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
+// NicLinuxPath is the sysfs root for network devices. It is a var rather than
+// a const so tests can repoint GetVf at a fake sysfs tree.
+var NicLinuxPath = "/sys/class/net/"
+
 // constants for Linux paths for devices
 const (
-	NicLinuxPath      = "/sys/class/net/"
 	NumVfsDevicePath  = "/device/sriov_numvfs"
 	TotalVfsPath      = "/device/sriov_totalvfs"
 	AutoprobePath     = "/device/sriov_drivers_autoprobe"
