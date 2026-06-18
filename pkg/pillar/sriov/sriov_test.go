@@ -4,7 +4,11 @@
 package sriov
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 )
 
 // TestParseVfIfaceName covers the round-trip with GetVfIfaceName plus a few
@@ -48,6 +52,68 @@ func TestParseVfIfaceName(t *testing.T) {
 				t.Errorf("pf=%q want %q", pf, tc.wantPF)
 			}
 		})
+	}
+}
+
+// TestGetVfByTimeoutMissingDevice is a regression test for the old AsyncGetVF
+// implementation: GetVf returns (nil, err) when the PF sysfs path is absent,
+// and AsyncGetVF dereferenced the result unconditionally (len(vfs.Data)),
+// panicking in a background goroutine. GetVfByTimeout must instead surface a
+// timeout error and never panic. timeout=0 expires the deadline right after
+// the first failing poll, so the test is fast and never hits the 1s sleep.
+func TestGetVfByTimeoutMissingDevice(t *testing.T) {
+	vfs, err := GetVfByTimeout(0, "definitely-not-a-real-nic", 2)
+	if err == nil {
+		t.Fatalf("expected timeout error, got vfs=%+v", vfs)
+	}
+	if vfs != nil {
+		t.Errorf("expected nil VFList on timeout, got %+v", vfs)
+	}
+}
+
+// TestGetVfByTimeoutFindsVFs builds a fake PF sysfs tree and checks that
+// GetVfByTimeout polls GetVf and returns once the expected number of VFs is
+// present. GetVf discovers VFs via virtfnN symlinks whose canonical target
+// path ends in a PCI BDF, so the fake tree mirrors that layout.
+func TestGetVfByTimeoutFindsVFs(t *testing.T) {
+	root := t.TempDir()
+	netDir := filepath.Join(root, "net")
+	devDir := filepath.Join(netDir, "eth9", "device")
+	if err := os.MkdirAll(devDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	bdfs := []string{"0000:03:10.0", "0000:03:10.1"}
+	for i, bdf := range bdfs {
+		pciDir := filepath.Join(root, "pci", bdf)
+		if err := os.MkdirAll(pciDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		link := filepath.Join(devDir, fmt.Sprintf("virtfn%d", i))
+		if err := os.Symlink(pciDir, link); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	old := NicLinuxPath
+	NicLinuxPath = netDir + "/"
+	defer func() { NicLinuxPath = old }()
+
+	vfs, err := GetVfByTimeout(2*time.Second, "eth9", uint8(len(bdfs)))
+	if err != nil {
+		t.Fatalf("GetVfByTimeout: %v", err)
+	}
+	if vfs == nil || int(vfs.Count) != len(bdfs) {
+		t.Fatalf("expected %d VFs, got %+v", len(bdfs), vfs)
+	}
+	got := make(map[string]bool, len(vfs.Data))
+	for _, vf := range vfs.Data {
+		got[vf.PciLong] = true
+	}
+	for _, bdf := range bdfs {
+		if !got[bdf] {
+			t.Errorf("missing VF %s in %+v", bdf, vfs.Data)
+		}
 	}
 }
 
