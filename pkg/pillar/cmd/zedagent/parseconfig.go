@@ -1605,10 +1605,10 @@ func parseDeviceIoListConfig(getconfigCtx *getconfigContext,
 	phyIoAdapterList := types.PhysicalIOAdapterList{}
 	phyIoAdapterList.AdapterList = make([]types.PhysicalIOAdapter, 0)
 
-	for indx, ioDevicePtr := range deviceIoList {
+	for index, ioDevicePtr := range deviceIoList {
 		if ioDevicePtr == nil {
-			log.Errorf("parseDeviceIoListConfig: nil ioDevicePtr at indx %d",
-				indx)
+			log.Errorf("parseDeviceIoListConfig: nil ioDevicePtr at index %d",
+				index)
 			continue
 		}
 		port := types.PhysicalIOAdapter{
