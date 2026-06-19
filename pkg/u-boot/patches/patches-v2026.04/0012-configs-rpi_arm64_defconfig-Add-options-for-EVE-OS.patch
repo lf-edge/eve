@@ -1,0 +1,55 @@
+From 4cfa4f2b6ad9fd249a258c3a02d6609b3d934536 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Tue, 9 Jun 2026 16:59:32 +0200
+Subject: [PATCH 12/21] configs: rpi_arm64_defconfig: Add options for EVE-OS
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+---
+ configs/rpi_arm64_defconfig | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/configs/rpi_arm64_defconfig b/configs/rpi_arm64_defconfig
+index 73eea7fac1b..6126a1f1833 100644
+--- a/configs/rpi_arm64_defconfig
++++ b/configs/rpi_arm64_defconfig
+@@ -27,6 +27,8 @@ CONFIG_CMD_MMC=y
+ CONFIG_CMD_PCI=y
+ CONFIG_CMD_USB=y
+ CONFIG_CMD_EFIDEBUG=y
++CONFIG_CMD_TPM=y
++CONFIG_CMD_TPM_TEST=y
+ CONFIG_CMD_FS_UUID=y
+ CONFIG_ENV_FAT_DEVICE_AND_PART="0:1"
+ CONFIG_ENV_VARS_UBOOT_RUNTIME_CONFIG=y
+@@ -49,11 +51,19 @@ CONFIG_RESET_BRCMSTB=y
+ CONFIG_RESET_BRCMSTB_RESCAL=y
+ CONFIG_RNG_IPROC200=y
+ # CONFIG_REQUIRE_SERIAL_CONSOLE is not set
++CONFIG_SPI=y
++CONFIG_DM_SPI=y
++CONFIG_SOFT_SPI=y
+ CONFIG_SYSINFO=y
+ CONFIG_SYSINFO_SMBIOS=y
++CONFIG_TPM2_TIS_SPI=y
+ CONFIG_USB=y
+ CONFIG_USB_XHCI_HCD=y
++CONFIG_USB_XHCI_DWC3=y
++CONFIG_USB_XHCI_DWC3_OF_SIMPLE=y
++CONFIG_USB_XHCI_GENERIC=y
+ CONFIG_USB_XHCI_PCI=y
++CONFIG_USB_XHCI_BRCM=y
+ CONFIG_USB_DWC2=y
+ CONFIG_USB_KEYBOARD=y
+ CONFIG_USB_HOST_ETHER=y
+@@ -66,4 +76,5 @@ CONFIG_SYS_WHITE_ON_BLACK=y
+ CONFIG_VIDEO_BCM2835=y
+ CONFIG_CONSOLE_SCROLL_LINES=10
+ CONFIG_PHYS_TO_BUS=y
++CONFIG_TPM=y
+ # CONFIG_HEXDUMP is not set
+-- 
+2.53.0
+
