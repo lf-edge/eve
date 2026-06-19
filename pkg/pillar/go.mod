@@ -18,7 +18,7 @@ require (
 	github.com/facebook/time v0.0.0-20260421154427-cee44983d290
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/getlantern/framed v0.0.0-20190601192238-ceb6431eeede
-	github.com/go-chi/chi/v5 v5.2.2
+	github.com/go-chi/chi/v5 v5.2.4
 	github.com/go-playground/validator/v10 v10.15.5
 	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/golang/protobuf v1.5.4
@@ -54,7 +54,6 @@ require (
 	github.com/sirupsen/logrus v1.9.3
 	github.com/smallstep/pkcs7 v0.2.1
 	github.com/smallstep/scep v0.0.0-20250318231241-a25cabb69492
-	github.com/spf13/afero v1.10.0
 	github.com/spf13/cobra v1.10.1
 	github.com/stretchr/testify v1.11.1
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
