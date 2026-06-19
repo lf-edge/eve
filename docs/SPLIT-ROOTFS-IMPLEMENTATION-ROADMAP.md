@@ -386,8 +386,10 @@ The monolithic rootfs is split into two images:
   Extension Loader. Lives on IMGA/IMGB partitions. Measured into PCR 13 by GRUB.
 
 - **Extension Image** (erofs + dm-verity): Non-critical services — eve-debug, eve-vtpm,
-  eve-wwan, eve-vector, memory-monitor, edgeview, guacd, node-exporter, eve-kube (HV=k
+  eve-vector, memory-monitor, edgeview, guacd, node-exporter, eve-kube (HV=k
   only). Lives on PERSIST partition. Loaded after boot by Extension Loader.
+  (eve-wwan stays in Core — cellular connectivity must not depend on the
+  Extension; see §5 "Core vs Extension Service Allocation".)
 
 ### Image Format
 
@@ -530,10 +532,11 @@ when part of the platform is not verified.
 ### Core vs Extension Service Allocation
 
 **Core Image**: kernel, init, firmware, pillar (nim, zedagent, domainmgr, volumemgr,
-baseosmgr, etc.), containerd, networking (wlan, dnsmasq), Extension Loader
-(extsloader), watchdog, monitor, apparmor, measure-config.
+baseosmgr, etc.), containerd, networking (wlan, wwan, dnsmasq), Extension Loader
+(extsloader), watchdog, monitor, apparmor, measure-config. eve-wwan is in Core so
+cellular-only devices stay manageable even if the Extension fails to load.
 
-**Extension Image** (from `images/rootfs_ext.yml.in`): eve-debug, eve-vtpm, eve-wwan,
+**Extension Image** (from `images/rootfs_ext.yml.in`): eve-debug, eve-vtpm,
 eve-vector, memory-monitor, node-exporter, edgeview, guacd, eve-kube (HV=k only).
 
 ### Kernel Module and Firmware Deferred Loading
@@ -851,8 +854,9 @@ degraded mode and update should fail testing window -> rollback to prior slot.
 Today, nodeagent marks an update as successful (transitions from `testing` to `active`)
 when the device can connect to the controller and attestation completes. For split-rootfs,
 this is insufficient: an update that boots Core successfully but fails to load Extension
-leaves the device without debug access, logging, monitoring, and workload networking
-(wwan, guacd, etc.).
+leaves the device without debug access, logging, monitoring, and ancillary services
+(guacd, vector, edgeview, etc.). Core connectivity — including cellular (eve-wwan) —
+is unaffected because those services live in Core.
 
 **Proposed success criteria:**
 

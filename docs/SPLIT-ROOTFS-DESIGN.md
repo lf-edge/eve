@@ -1022,8 +1022,9 @@ If Extension Image fails (missing, corrupted, tampered), the device enters degra
 | Extension Image replaced with older version | Yes | Old version's dm-verity root hash won't match current Core's embedded hash |
 | Core + Extension rollback attack | Yes | Same A/B + testing mechanism as current rootfs prevents rollback |
 | Attacker forces degraded mode (corrupts Extension) | Partially | Controller detects via PCR 12; device stays reachable; no workloads run |
-| Offline attacker corrupts/deletes Extension (DoS) | Yes | Vault encryption prevents access without TPM-sealed key |
-| Offline attacker replaces Extension with malicious image | Yes | Vault encryption + digest verification (even without vault, digest catches it) |
+| Offline attacker corrupts Extension | Yes | dm-verity root hash (embedded in Core) won't match → mount fails; device boots Core and stays manageable in degraded mode |
+| Offline attacker deletes Extension (DoS) | Partially | Physical-access deletion is an acknowledged DoS; device still boots Core and remains reachable, but workloads do not run until the Extension is rehydrated |
+| Offline attacker replaces Extension with malicious image | Yes | dm-verity root hash verification — the Extension is plaintext on PERSIST, integrity comes from dm-verity, not encryption |
 | Runtime attacker replaces Extension file on PERSIST | Yes | dm-verity returns I/O error on any tampered block read; current mount is protected at block level |
 | Compromised Core loads bad Extension | No (by design) | Extension trust depends on Core integrity, which is guaranteed by boot chain |
 | Malicious OCI spec in Extension container | Mitigated | Extension Image is built by the same build system and verified by digest; spec is embedded in the verified image |
