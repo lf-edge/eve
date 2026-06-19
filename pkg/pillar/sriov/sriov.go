@@ -156,15 +156,39 @@ func GetVfIfaceName(index uint8, ifname string) string {
 	return fmt.Sprintf("%svf%d", ifname, index)
 }
 
-// ParseVfIfaceName returns index of VF and its PF from name
+// ParseVfIfaceName splits a VF iface/phylabel like "eth2vf5" into its PF name
+// ("eth2") and VF index (5).  Mirrors the inverse of GetVfIfaceName.
+//
+// Implementation note: the previous version used fmt.Sscanf with format
+// "%svf%d", which is broken — Go's %s verb is greedy and consumes the entire
+// input, leaving nothing for the literal "vf" or the trailing %d to match.
+// Sscanf returns an error and zero values for both fields.  Use a manual
+// split on the LAST "vf" occurrence instead, so "eth2vf5" parses correctly
+// and the (extremely unusual) case of a PF named "...vf..." is handled by
+// only treating the final "vf<digits>" as the suffix.
 func ParseVfIfaceName(ifname string) (uint8, string, error) {
-	var iface string
-	var index uint8
-	n, err := fmt.Sscanf(ifname, "%svf%d", &iface, &index)
-	if n != 2 {
-		err = fmt.Errorf("ParseVfIfaceName: could not parse all arguments for %s expected 2, got %d", ifname, n)
+	// Scan backwards for the last "vf" that's followed by a valid uint8.
+	// i is the position where the digit suffix begins; we need at least
+	// two characters before it (for "vf") and at least one char after.
+	for i := len(ifname) - 1; i >= 2; i-- {
+		if ifname[i-2:i] != "vf" {
+			continue
+		}
+		suffix := ifname[i:]
+		if suffix == "" {
+			continue
+		}
+		idx, err := strconv.ParseUint(suffix, 10, 8)
+		if err != nil {
+			continue
+		}
+		pf := ifname[:i-2]
+		if pf == "" {
+			return 0, "", fmt.Errorf("ParseVfIfaceName: empty PF in %q", ifname)
+		}
+		return uint8(idx), pf, nil
 	}
-	return index, iface, err
+	return 0, "", fmt.Errorf("ParseVfIfaceName: no 'vf<digits>' suffix in %q", ifname)
 }
 
 // GetVf retrieve information about VFs for NIC given
