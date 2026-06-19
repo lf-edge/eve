@@ -14,6 +14,8 @@ import (
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // k3sPem is used for a mock k3s.yaml file
@@ -36,6 +38,83 @@ users:
   user:
     client-certificate-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJrVENDQVRlZ0F3SUJBZ0lJRG1FcTFOaTZGdDR3Q2dZSUtvWkl6ajBFQXdJd0l6RWhNQjhHQTFVRUF3d1kKYXpOekxXTnNhV1Z1ZEMxallVQXhOekk0TkRFek16YzFNQjRYRFRJME1UQXdPREU0TkRrek5Wb1hEVEkxTVRBdwpPREU0TkRrek5Wb3dNREVYTUJVR0ExVUVDaE1PYzNsemRHVnRPbTFoYzNSbGNuTXhGVEFUQmdOVkJBTVRESE41CmMzUmxiVHBoWkcxcGJqQlpNQk1HQnlxR1NNNDlBZ0VHQ0NxR1NNNDlBd0VIQTBJQUJGR01VS2R4VFJobVR2MlcKNm50Z2UyVm9VUXRuWFRpeWpBTUptL01STTdkbnRTa3g5OXRGWGJUNUMxSUhkQmVLMXFSZ3RXclpjMmlZcWNMYQpzTTVVTlg2alNEQkdNQTRHQTFVZER3RUIvd1FFQXdJRm9EQVRCZ05WSFNVRUREQUtCZ2dyQmdFRkJRY0RBakFmCkJnTlZIU01FR0RBV2dCUzRIZjU3TjU1Nzl6ajRyTVdqK0hvSWp0MWcyakFLQmdncWhrak9QUVFEQWdOSUFEQkYKQWlCK0d2cDMwQnJJazk4UzZUeVdXbzI0VmRNZU1JZkdheW90REhhb0NsTnFrQUloQUxZTnZQK3dwTVFFV2pHRApkMDRvTWh0ckN3akNUblZFT3pvMXRtV3lQK0ZOCi0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0KLS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJkakNDQVIyZ0F3SUJBZ0lCQURBS0JnZ3Foa2pPUFFRREFqQWpNU0V3SHdZRFZRUUREQmhyTTNNdFkyeHAKWlc1MExXTmhRREUzTWpnME1UTXpOelV3SGhjTk1qUXhNREE0TVRnME9UTTFXaGNOTXpReE1EQTJNVGcwT1RNMQpXakFqTVNFd0h3WURWUVFEREJock0zTXRZMnhwWlc1MExXTmhRREUzTWpnME1UTXpOelV3V1RBVEJnY3Foa2pPClBRSUJCZ2dxaGtqT1BRTUJCd05DQUFRaXBVL3BoeWtINHFBYThsK3VwZmhtUk43M2tsbFI3VnhiZ1FGMU5GemcKTVRvUk5zSkxaYnFIY1NpMkk4RnMvNnBPZ1g4TlBlUHVOb01YYlFqaGJJTW9vMEl3UURBT0JnTlZIUThCQWY4RQpCQU1DQXFRd0R3WURWUjBUQVFIL0JBVXdBd0VCL3pBZEJnTlZIUTRFRmdRVXVCMytlemVlZS9jNCtLekZvL2g2CkNJN2RZTm93Q2dZSUtvWkl6ajBFQXdJRFJ3QXdSQUlnZklMeDNVUTlwZ2Z3VmZCRmh5aEo2YUhMeGkyQk03aGQKZ0YwalNhc1U1UndDSUE0OFN6NXpkaVhoNFJpdTVlZ2NtRnBXdkpyMXRKc1dCS25PQWt3clExdFgKLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo=
     client-key-data: LS0tLS1CRUdJTiBFQyBQUklWQVRFIEtFWS0tLS0tCk1IY0NBUUVFSUNRK1NkV2QrdkwwaE5DOU4yeTVFMUxmMzF6a0I2SHdvTUw3UlVFTkZVTWpvQW9HQ0NxR1NNNDkKQXdFSG9VUURRZ0FFVVl4UXAzRk5HR1pPL1picWUyQjdaV2hSQzJkZE9MS01Bd21iOHhFenQyZTFLVEgzMjBWZAp0UGtMVWdkMEY0cldwR0MxYXRsemFKaXB3dHF3emxRMWZnPT0KLS0tLS1FTkQgRUMgUFJJVkFURSBLRVktLS0tLQo=`
+
+func TestPodListToSchedulingState(t *testing.T) {
+	const node = "andrew-cherry"
+
+	mkPod := func(specNode string, phase corev1.PodPhase) corev1.Pod {
+		return corev1.Pod{
+			Spec:   corev1.PodSpec{NodeName: specNode},
+			Status: corev1.PodStatus{Phase: phase},
+		}
+	}
+
+	tests := []struct {
+		name        string
+		pods        []corev1.Pod
+		wantOnMe    bool
+		wantAnyNode bool
+		wantErr     bool
+	}{
+		{
+			name:        "Pending phase with NodeName set (Init:0/1) on this node",
+			pods:        []corev1.Pod{mkPod(node, corev1.PodPending)},
+			wantOnMe:    true,
+			wantAnyNode: true,
+		},
+		{
+			name:        "Pending phase with NodeName set (Init:0/1) on another node",
+			pods:        []corev1.Pod{mkPod("other-node", corev1.PodPending)},
+			wantOnMe:    false,
+			wantAnyNode: true,
+		},
+		{
+			name:        "Running pod on this node",
+			pods:        []corev1.Pod{mkPod(node, corev1.PodRunning)},
+			wantOnMe:    true,
+			wantAnyNode: true,
+		},
+		{
+			name:        "Running pod on another node",
+			pods:        []corev1.Pod{mkPod("other-node", corev1.PodRunning)},
+			wantOnMe:    false,
+			wantAnyNode: true,
+		},
+		{
+			name:        "Pending pod with NodeName empty (not yet scheduled)",
+			pods:        []corev1.Pod{mkPod("", corev1.PodPending)},
+			wantOnMe:    false,
+			wantAnyNode: true,
+		},
+		{
+			name:    "No pods",
+			pods:    nil,
+			wantErr: true,
+		},
+		{
+			name: "Terminating pod only — skipped",
+			pods: []corev1.Pod{func() corev1.Pod {
+				p := mkPod(node, corev1.PodRunning)
+				now := metav1.Now()
+				p.DeletionTimestamp = &now
+				return p
+			}()},
+			wantErr: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			onMe, anyNode, err := podListToSchedulingState(tc.pods, node)
+			if tc.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, tc.wantOnMe, onMe)
+			assert.Equal(t, tc.wantAnyNode, anyNode)
+		})
+	}
+}
 
 // TestCreateReplicaPodConfig tests the CreateReplicaPodConfig function
 func TestCreateReplicaPodConfig(t *testing.T) {
