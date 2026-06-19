@@ -520,7 +520,7 @@ currentversion:
 	#echo $(shell readlink $(CURRENT) | sed -E 's/rootfs-(.*)\.[^.]*$/\1/')
 	@cat $(CURRENT_DIR)/installer/eve_version
 
-test: $(LINUXKIT) pkg/pillar | $(DIST)
+test: $(LINUXKIT) pkg/pillar pkg/alpine pkg/bpftrace | $(DIST)
 	@echo Running tests on $(GOMODULE)
 	make -C pkg/pillar test
 	cp pkg/pillar/results.json $(DIST)/

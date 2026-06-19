@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Zededa, Inc.
+# Copyright (c) 2026 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
 .PHONY: clean test all
