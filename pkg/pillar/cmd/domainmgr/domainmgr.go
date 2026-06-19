@@ -1168,6 +1168,20 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			status.State = types.RUNNING
 			status.KubeTrustLoggedState = 0
 			publishDomainStatus(ctx, status)
+		} else if status.Activated &&
+			(domainStatus == types.SCHEDULING || domainStatus == types.PENDING) &&
+			status.State != types.BOOTING {
+			// Domain was running but has re-entered a pre-running phase
+			// (e.g. virt-launcher pod stuck in Init after a reschedule).
+			// Report BOOTING — the same state doActivateTail uses for this
+			// transitional window — so AppInstanceStatus stops reflecting
+			// stale RUNNING state. Activated=false primes the recovery path
+			// to promote back to RUNNING once Info() observes RUNNING again.
+			log.Noticef("verifyDomain(%s) domain rescheduling (%s): state %s -> BOOTING",
+				status.Key(), domainStatus, status.State)
+			status.Activated = false
+			status.State = types.BOOTING
+			publishDomainStatus(ctx, status)
 		} else if domainID != status.DomainId {
 			// XXX shutdown + create?
 			log.Warnf("verifyDomain(%s) domainID changed from %d to %d",

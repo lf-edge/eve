@@ -114,13 +114,7 @@ func (z *zedkube) checkStuckPendingVMI() {
 			continue
 		}
 
-		if vmi.Status.Phase == virtv1.Running {
-			delete(z.vmiPendingSince, appUUID)
-			delete(z.vmiDeleteCount, appUUID)
-			continue
-		}
-
-		if vmi.Status.Phase != virtv1.Pending {
+		if !vmiPhaseIsPreRunning(vmi.Status.Phase) {
 			delete(z.vmiPendingSince, appUUID)
 			delete(z.vmiDeleteCount, appUUID)
 			continue
@@ -185,12 +179,47 @@ func findAppVMI(vmis []virtv1.VirtualMachineInstance, appKubeName string) *virtv
 	return nil
 }
 
+// vmiPhaseIsPreRunning reports whether the VMI phase represents a not-yet-running
+// state. Returns true for Pending and Scheduling — both indicate the VM has not
+// started. All other phases (Running, Succeeded, Failed, Unknown) return false.
+func vmiPhaseIsPreRunning(phase virtv1.VirtualMachineInstancePhase) bool {
+	return phase == virtv1.Pending || phase == virtv1.Scheduling
+}
+
+// virtLauncherPodIsActiveOnNode reports whether any virt-launcher pod for
+// appKubeName is assigned to nodeName and in an active state. Active means
+// the pod is Running, Failed, has a container-level error, or is in the
+// Pending phase with Spec.NodeName already set (i.e. the init container is
+// running but has not yet completed — Init:0/1 in kubectl STATUS).
+//
+// Pods are matched by name prefix rather than label selector because the
+// App-Domain-Name label is set to the domain name (UUID.Version.AppNum),
+// not appKubeName.
+func virtLauncherPodIsActiveOnNode(pods []corev1.Pod, appKubeName, nodeName string) bool {
+	vlPrefix := base.VMIPodNamePrefix + appKubeName
+	for _, p := range pods {
+		if !strings.HasPrefix(p.Name, vlPrefix) {
+			continue
+		}
+		if p.Spec.NodeName != nodeName {
+			continue
+		}
+		if isPodTerminating(p) {
+			continue
+		}
+		if p.Status.Phase == corev1.PodRunning ||
+			p.Status.Phase == corev1.PodFailed ||
+			podHasContainerError(p) ||
+			p.Status.Phase == corev1.PodPending {
+			return true
+		}
+	}
+	return false
+}
+
 // virtLauncherActiveOnThisNode returns true iff a virt-launcher pod for the
-// given app is on the local node and either in Running phase or in a pod-level
-// error state (Failed, or Running with a container stuck in CrashLoopBackOff /
-// error-waiting / terminated-with-error). In all of these, the cluster has
-// placed the launcher here but the VMI is not making progress, which is the
-// signature of the kubevirt/longhorn stuck-Pending-VMI condition.
+// given app is on the local node and in an active state. See
+// virtLauncherPodIsActiveOnNode for the full definition of active.
 //
 // The pod is identified by name prefix "virt-launcher-<appKubeName>" since the
 // App-Domain-Name label is set to status.DomainName (UUID.Version.AppNum)
@@ -208,24 +237,7 @@ func (z *zedkube) virtLauncherActiveOnThisNode(appKubeName string) bool {
 		log.Errorf("virtLauncherActiveOnThisNode: list pods: %v", err)
 		return false
 	}
-	vlPrefix := base.VMIPodNamePrefix + appKubeName
-	for _, p := range pods.Items {
-		if !strings.HasPrefix(p.Name, vlPrefix) {
-			continue
-		}
-		if p.Spec.NodeName != z.nodeName {
-			continue
-		}
-		if isPodTerminating(p) {
-			continue
-		}
-		if p.Status.Phase == corev1.PodRunning ||
-			p.Status.Phase == corev1.PodFailed ||
-			podHasContainerError(p) {
-			return true
-		}
-	}
-	return false
+	return virtLauncherPodIsActiveOnNode(pods.Items, appKubeName, z.nodeName)
 }
 
 // podHasContainerError returns true if any container in the pod is in a
