@@ -4,11 +4,6 @@
 # Our kernels are located on a Linux partition. Chainload U-Boot to load them.
 kernel=u-boot.bin
 
-# Use 32 MB for GPU for all RPis (Min 16 - Max 192 MB)
-# We don't need that much memory reserved for it, because we drive most hardware
-# from Linux, not the VPU OS
-gpu_mem=32
-
 # Turbo mode: 0 = enable dynamic freq/voltage - 1 = always max
 force_turbo=0
 # Start in turbo mode for 30 seconds or until cpufreq sets a frequency
@@ -20,17 +15,38 @@ over_voltage=0
 # Fix mini UART input frequency, and setup/enable up the UART.
 enable_uart=1
 
+[pi4]
 # Uncomment dtoverlay=raspberrypi-uno-220 if you use advantech uno-220 board,
 # this overlay overwrites the SMBIOS information.
 #dtoverlay=raspberrypi-uno-220
 
-# This overlay adds support for the slb9670 tpm module to uboot
-# Some boards can have different ce(address), we can set ce by param,
-# for most popular TPM modules that based on slb9670 we use default ce param value (0x01),
-# but for advantech uno-220 we need to set ce to 0x00
-# https://github.com/Advantech-IIoT/UNO-220-POE-/tree/master/srcs/dtbo/tpm#notes
-# PS: Comment this line for OnLogic FR201 device
+# SLB9670 TPM over SPI. The overlay differs per board, so gate with filters.
+#
+# Pi 4 (BCM2711): EVE's bit-banged (spi-gpio) overlay, which u-boot can drive
+# for measured boot. Some boards use a different ce(address): default ce=0x01;
+# Advantech UNO-220 needs ce=0x00.
+# WARNING: Comment this line for OnLogic FR201 device.
 dtoverlay=bcm2711-spi-tpm-slb9670,ce=0x01
+
+# Pi 5 (BCM2712): the bit-banged Pi 4 overlay can't bind here since the GPIO/SPI
+# controllers live on the RP1 chip (over PCIe), not in the SoC. So use the
+# stock, board-agnostic tpm-slb9670 overlay; overlay_map.dtb binds it to RP1
+# hardware SPI0 at CE1 (GPIO7) on the same header pins, giving the Linux kernel
+# the TPM. There is no support for the RP1 chip on u-boot yet, so the TPM won't
+# be available for boot measurement.
+[pi5]
+dtoverlay=tpm-slb9670
+
+[all]
+
+# KMS DRM driver
+dtoverlay=vc4-kms-v3d
+max_framebuffers=2
+hdmi_group=2 # 1=CEA (TVs), 2=DMT (monitors)
+hdmi_mode=82 # 82 = 1080p60 in DMT
+hdmi_force_hotplug=1
+framebuffer_depth=32
+framebuffer_ignore_alpha=1
 
 # Disable warning overlays as they don't work well together with linux's graphical output
 avoid_warnings=1

@@ -1,0 +1,39 @@
+From a331b5c7a0d375f7141fbb4b16099feaeac87c18 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Thu, 25 Jun 2026 16:18:21 +0200
+Subject: [PATCH 21/21] configs: Enable NVMe options for Raspberry Pi
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Enable NVMe related options for Raspberry Pi.
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+---
+ configs/rpi_arm64_defconfig | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/configs/rpi_arm64_defconfig b/configs/rpi_arm64_defconfig
+index 98502821d1d..8e8a6191dcd 100644
+--- a/configs/rpi_arm64_defconfig
++++ b/configs/rpi_arm64_defconfig
+@@ -21,7 +21,7 @@ CONFIG_RESET_TO_RETRY=y
+ CONFIG_OF_BOARD_SETUP=y
+ CONFIG_FDT_SIMPLEFB=y
+ CONFIG_USE_PREBOOT=y
+-CONFIG_PREBOOT="pci enum; usb start;"
++CONFIG_PREBOOT="pci enum; nvme scan; usb start;"
+ CONFIG_SYS_PBSIZE=1049
+ # CONFIG_DISPLAY_CPUINFO is not set
+ # CONFIG_DISPLAY_BOARDINFO is not set
+@@ -50,6 +50,7 @@ CONFIG_MMC_SDHCI_SDMA=y
+ CONFIG_MMC_SDHCI_BCM2835=y
+ CONFIG_MMC_SDHCI_BCMSTB=y
+ CONFIG_BCMGENET=y
++CONFIG_NVME_PCI=y
+ CONFIG_PCI_BRCMSTB=y
+ CONFIG_PINCTRL=y
+ # CONFIG_PINCTRL_GENERIC is not set
+-- 
+2.53.0
+

@@ -1,7 +1,7 @@
-From 10fc8ae49098fb444917e88af64fd6143cc31247 Mon Sep 17 00:00:00 2001
+From 1828ac91a25ebe6418fbaf1f341821d03a13f9f2 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
 Date: Mon, 7 Jul 2025 20:45:42 +0200
-Subject: [PATCH 6/7] drivers/sysinfo: Add driver to expose OnLogic FR201
+Subject: [PATCH 13/21] drivers/sysinfo: Add driver to expose OnLogic FR201
  device information
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -25,10 +25,10 @@ Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
  create mode 100644 drivers/sysinfo/fr201-serial.c
 
 diff --git a/drivers/sysinfo/Kconfig b/drivers/sysinfo/Kconfig
-index 2030e4babc..95e9ce8655 100644
+index df83df69ffb..1c980ca5565 100644
 --- a/drivers/sysinfo/Kconfig
 +++ b/drivers/sysinfo/Kconfig
-@@ -52,4 +52,11 @@ config SYSINFO_GPIO
+@@ -59,4 +59,11 @@ config SYSINFO_GPIO
  	  This ternary number is then mapped to a board revision name using
  	  device tree properties.
  
@@ -41,17 +41,17 @@ index 2030e4babc..95e9ce8655 100644
 +
  endif
 diff --git a/drivers/sysinfo/Makefile b/drivers/sysinfo/Makefile
-index 680dde77fe..0132fddfba 100644
+index 26ca3150999..fb2af3afc5b 100644
 --- a/drivers/sysinfo/Makefile
 +++ b/drivers/sysinfo/Makefile
-@@ -8,3 +8,4 @@ obj-$(CONFIG_SYSINFO_GPIO) += gpio.o
+@@ -9,3 +9,4 @@ obj-$(CONFIG_SYSINFO_IOT2050) += iot2050.o
  obj-$(CONFIG_SYSINFO_RCAR3) += rcar3.o
  obj-$(CONFIG_SYSINFO_SANDBOX) += sandbox.o
  obj-$(CONFIG_SYSINFO_SMBIOS) += smbios.o
 +obj-$(CONFIG_FR201_SYSINFO_SN) += fr201-serial.o
 diff --git a/drivers/sysinfo/fr201-serial.c b/drivers/sysinfo/fr201-serial.c
 new file mode 100644
-index 0000000000..ba4eef9e79
+index 00000000000..e4feda491ce
 --- /dev/null
 +++ b/drivers/sysinfo/fr201-serial.c
 @@ -0,0 +1,201 @@
@@ -169,22 +169,22 @@ index 0000000000..ba4eef9e79
 +	size_t len;
 +
 +	switch (id) {
-+	case SYSINFO_ID_SMBIOS_SYSTEM_MANUFACTURER:
++	case SYSID_SM_SYSTEM_MANUFACTURER:
 +		str = FR201_SYSTEM_MANUFACTURER;
 +		break;
-+	case SYSINFO_ID_SMBIOS_SYSTEM_PRODUCT:
++	case SYSID_SM_SYSTEM_PRODUCT:
 +		str = FR201_SYSTEM_PRODUCT;
 +		break;
-+	case SYSINFO_ID_SMBIOS_SYSTEM_SERIAL:
++	case SYSID_SM_SYSTEM_SERIAL:
 +		str = priv->serial;
 +		break;
-+	case SYSINFO_ID_SMBIOS_BASEBOARD_MANUFACTURER:
++	case SYSID_SM_BASEBOARD_MANUFACTURER:
 +		str = FR201_BASEBOARD_MANUFACTURER;
 +		break;
-+	case SYSINFO_ID_SMBIOS_BASEBOARD_PRODUCT:
++	case SYSID_SM_BASEBOARD_PRODUCT:
 +		str = FR201_BASEBOARD_PRODUCT;
 +		break;
-+	case SYSINFO_ID_SMBIOS_BASEBOARD_SERIAL:
++	case SYSID_SM_BASEBOARD_SERIAL:
 +		str = priv->board_serial;
 +		break;
 +	default:
@@ -257,5 +257,5 @@ index 0000000000..ba4eef9e79
 +	.priv_auto = sizeof(struct sysinfo_fr201_serial_priv),
 +};
 -- 
-2.47.2
+2.53.0
 
