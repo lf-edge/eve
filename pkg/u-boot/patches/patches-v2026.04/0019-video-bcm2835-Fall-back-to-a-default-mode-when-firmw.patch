@@ -1,0 +1,76 @@
+From aba37a15a1a00ebb3bc4975884fab53e095172e7 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Wed, 24 Jun 2026 11:22:59 +0200
+Subject: [PATCH 19/21] video: bcm2835: Fall back to a default mode when
+ firmware reports no resolution
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+On the Raspberry Pi 5 (BCM2712) the VideoCore firmware is KMS-only and does
+not report a current display mode via the mailbox GET_PHYSICAL_W_H tag, so
+bcm2835_get_video_size() returns 0x0 and the probe aborted with -EIO -- no
+U-Boot video output on HDMI.
+
+The mailbox framebuffer allocation (ALLOCATE_BUFFER) does work on the Pi 5
+and the firmware scans the result out, so when the mode query returns
+nothing, fall back to a default 1920x1080 request and let
+bcm2835_set_video_params() allocate and light up the framebuffer. The
+firmware returns the actual mode, which is then used. Validate the returned
+framebuffer base/size before use.
+
+No effect on Pi 4 and earlier, where the firmware reports a valid mode.
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+---
+ drivers/video/bcm2835.c | 21 ++++++++++++++++++---
+ 1 file changed, 18 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/video/bcm2835.c b/drivers/video/bcm2835.c
+index 0e0cc1979eb..80e514f9ea9 100644
+--- a/drivers/video/bcm2835.c
++++ b/drivers/video/bcm2835.c
+@@ -10,6 +10,13 @@
+ #include <asm/arch/msg.h>
+ #include <asm/cache.h>
+ 
++/*
++ * Fallback mode used when the firmware does not report a current resolution
++ * over the mailbox (e.g. the Pi 5 / BCM2712, which is KMS-only).
++ */
++#define BCM2835_DEFAULT_FB_WIDTH	1920
++#define BCM2835_DEFAULT_FB_HEIGHT	1080
++
+ static int bcm2835_video_probe(struct udevice *dev)
+ {
+ 	struct video_uc_plat *plat = dev_get_uclass_plat(dev);
+@@ -20,14 +27,22 @@ static int bcm2835_video_probe(struct udevice *dev)
+ 
+ 	debug("bcm2835: Query resolution...\n");
+ 	ret = bcm2835_get_video_size(&w, &h);
+-	if (ret || w == 0 || h == 0)
+-		return -EIO;
++	if (ret || w == 0 || h == 0) {
++		/*
++		 * The firmware may not report a current mode over the mailbox
++		 * (e.g. the Pi 5 / BCM2712, which is KMS-only). Fall back to a
++		 * default resolution; bcm2835_set_video_params() below still
++		 * allocates and lights up a framebuffer.
++		 */
++		w = BCM2835_DEFAULT_FB_WIDTH;
++		h = BCM2835_DEFAULT_FB_HEIGHT;
++	}
+ 
+ 	debug("bcm2835: Setting up display for %d x %d\n", w, h);
+ 	ret = bcm2835_set_video_params(&w, &h, 32, BCM2835_MBOX_PIXEL_ORDER_RGB,
+ 				       BCM2835_MBOX_ALPHA_MODE_IGNORED,
+ 				       &fb_base, &fb_size, &pitch);
+-	if (ret)
++	if (ret || !fb_base || !fb_size || w == 0 || h == 0)
+ 		return -EIO;
+ 
+ 	debug("bcm2835: Final resolution is %d x %d\n", w, h);
+-- 
+2.53.0
+

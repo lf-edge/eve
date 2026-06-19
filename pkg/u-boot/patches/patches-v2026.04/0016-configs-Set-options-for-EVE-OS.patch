@@ -1,0 +1,80 @@
+From 1f69fb862a31f383e7cd02c23e772a6c2914ddfc Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Fri, 19 Jun 2026 17:59:41 +0200
+Subject: [PATCH 16/21] configs: Set options for EVE-OS
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Enable the following options on all EVE-OS supported architectures:
+
+- CONFIG_SYSINFO
+- CONFIG_SYSINFO_SMBIOS
+- CONFIG_FS_SQUASHFS
+- CONFIG_CMD_SQUASHFS
+- CONFIG_SYS_USB_EVENT_POLL_VIA_CONTROL_EP (to improve USB keyboard and
+  other devices enumeration)
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+---
+ configs/qemu-riscv64_smode_defconfig | 6 ++++++
+ configs/qemu-x86_64_defconfig        | 1 +
+ configs/rpi_arm64_defconfig          | 2 ++
+ 3 files changed, 9 insertions(+)
+
+diff --git a/configs/qemu-riscv64_smode_defconfig b/configs/qemu-riscv64_smode_defconfig
+index 2ef67d40269..8e9e418e71c 100644
+--- a/configs/qemu-riscv64_smode_defconfig
++++ b/configs/qemu-riscv64_smode_defconfig
+@@ -18,10 +18,16 @@ CONFIG_DISPLAY_BOARDINFO=y
+ CONFIG_CMD_BOOTEFI_SELFTEST=y
+ CONFIG_CMD_NVEDIT_EFI=y
+ # CONFIG_CMD_MII is not set
++CONFIG_CMD_SQUASHFS=y
+ CONFIG_CMD_SPAWN=y
+ CONFIG_ENV_RELOC_GD_ENV_ADDR=y
+ CONFIG_DM_MTD=y
+ CONFIG_FLASH_SHOW_PROGRESS=0
+ CONFIG_SYS_MAX_FLASH_BANKS=2
++CONFIG_SYSINFO=y
++CONFIG_SYSINFO_SMBIOS=y
++CONFIG_VIDEO_DT_SIMPLEFB=y
++CONFIG_BMP=y
++CONFIG_VIDEO_BMP_GZIP=y
+ CONFIG_UTHREAD=y
+ CONFIG_UNIT_TEST=y
+diff --git a/configs/qemu-x86_64_defconfig b/configs/qemu-x86_64_defconfig
+index c16fa5726b6..19a97073bf9 100644
+--- a/configs/qemu-x86_64_defconfig
++++ b/configs/qemu-x86_64_defconfig
+@@ -58,6 +58,7 @@ CONFIG_CMD_EFIDEBUG=y
+ CONFIG_CMD_TIME=y
+ CONFIG_CMD_BOOTSTAGE=y
+ CONFIG_CMD_EXT4_WRITE=y
++CONFIG_CMD_SQUASHFS=y
+ CONFIG_ENV_OVERWRITE=y
+ CONFIG_ENV_IS_IN_FAT=y
+ CONFIG_ENV_FAT_INTERFACE="virtio"
+diff --git a/configs/rpi_arm64_defconfig b/configs/rpi_arm64_defconfig
+index d55be07a944..880d1af17f5 100644
+--- a/configs/rpi_arm64_defconfig
++++ b/configs/rpi_arm64_defconfig
+@@ -29,6 +29,7 @@ CONFIG_CMD_USB=y
+ CONFIG_CMD_EFIDEBUG=y
+ CONFIG_CMD_TPM=y
+ CONFIG_CMD_TPM_TEST=y
++CONFIG_CMD_SQUASHFS=y
+ CONFIG_CMD_FS_UUID=y
+ CONFIG_ENV_FAT_DEVICE_AND_PART="0:1"
+ CONFIG_ENV_VARS_UBOOT_RUNTIME_CONFIG=y
+@@ -67,6 +68,7 @@ CONFIG_USB_XHCI_PCI=y
+ CONFIG_USB_XHCI_BRCM=y
+ CONFIG_USB_DWC2=y
+ CONFIG_USB_KEYBOARD=y
++CONFIG_SYS_USB_EVENT_POLL_VIA_CONTROL_EP=y
+ CONFIG_USB_HOST_ETHER=y
+ CONFIG_USB_ETHER_LAN78XX=y
+ CONFIG_USB_ETHER_SMSC95XX=y
+-- 
+2.53.0
+

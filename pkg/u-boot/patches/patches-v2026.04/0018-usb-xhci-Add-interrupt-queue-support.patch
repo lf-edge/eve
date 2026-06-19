@@ -1,0 +1,274 @@
+From e2064c7e96f3d769d6df2e40c848db87ec6d10c2 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Tue, 23 Jun 2026 18:38:07 +0200
+Subject: [PATCH 18/21] usb: xhci: Add interrupt queue support
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The xHCI driver only implemented blocking interrupt transfers via
+xhci_bulk_tx() and provided no create/poll/destroy_int_queue ops. This
+made USB keyboard polling problematic on xHCI hosts:
+
+  - CONFIG_SYS_USB_EVENT_POLL issues a blocking interrupt transfer on
+    every poll. Since _xhci_submit_int_msg() ignores the nonblock flag
+    and waits up to XHCI_TIMEOUT (5s), an idle keyboard stalls the
+    console for seconds on each poll.
+  - CONFIG_SYS_USB_EVENT_POLL_VIA_INT_QUEUE was unusable because the ops
+    were absent, so create_int_queue() returned NULL and the keyboard
+    was rejected at probe.
+
+Implement create/poll/destroy_int_queue for xHCI. An interrupt transfer
+is a single TRB queued on the endpoint transfer ring whose completion is
+reported on the shared event ring, so poll_int_queue() only needs to
+check the event ring non-blockingly and match the queued TRB. Wire the
+new ops into xhci_usb_ops (shared by xhci-pci, xhci-brcm and xhci-dwc3)
+and switch rpi_arm64_defconfig to INT_QUEUE polling.
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+---
+ configs/rpi_arm64_defconfig  |   2 +-
+ drivers/usb/host/xhci-ring.c | 147 +++++++++++++++++++++++++++++++++++
+ drivers/usb/host/xhci.c      |  23 ++++++
+ include/usb/xhci.h           |   5 ++
+ 4 files changed, 176 insertions(+), 1 deletion(-)
+
+diff --git a/configs/rpi_arm64_defconfig b/configs/rpi_arm64_defconfig
+index 880d1af17f5..5b3df5fabb4 100644
+--- a/configs/rpi_arm64_defconfig
++++ b/configs/rpi_arm64_defconfig
+@@ -68,7 +68,7 @@ CONFIG_USB_XHCI_PCI=y
+ CONFIG_USB_XHCI_BRCM=y
+ CONFIG_USB_DWC2=y
+ CONFIG_USB_KEYBOARD=y
+-CONFIG_SYS_USB_EVENT_POLL_VIA_CONTROL_EP=y
++CONFIG_SYS_USB_EVENT_POLL_VIA_INT_QUEUE=y
+ CONFIG_USB_HOST_ETHER=y
+ CONFIG_USB_ETHER_LAN78XX=y
+ CONFIG_USB_ETHER_SMSC95XX=y
+diff --git a/drivers/usb/host/xhci-ring.c b/drivers/usb/host/xhci-ring.c
+index 6f5c4ec97b6..71787512ef5 100644
+--- a/drivers/usb/host/xhci-ring.c
++++ b/drivers/usb/host/xhci-ring.c
+@@ -15,6 +15,7 @@
+ 
+ #include <cpu_func.h>
+ #include <log.h>
++#include <malloc.h>
+ #include <asm/byteorder.h>
+ #include <usb.h>
+ #include <watchdog.h>
+@@ -831,6 +832,152 @@ again:
+ 	return (udev->status != USB_ST_NOT_PROC) ? 0 : -1;
+ }
+ 
++/*
++ * An interrupt queue for xHCI. Unlike EHCI/OHCI/UHCI, xHCI has no separate
++ * periodic schedule: an interrupt transfer is a single TRB queued on the
++ * endpoint's transfer ring whose completion is reported on the shared event
++ * ring. We therefore only need to remember the queued TRB so poll() can match
++ * the completion event without blocking. Only single-element queues (as used
++ * by the USB keyboard driver) are supported.
++ */
++struct int_queue {
++	unsigned long pipe;
++	void *buffer;
++	int length;
++	u64 buf_64;
++	dma_addr_t trb_addr;
++	bool done;
++};
++
++struct int_queue *_xhci_create_int_queue(struct usb_device *udev,
++		unsigned long pipe, int queuesize, int elementsize,
++		void *buffer, int interval)
++{
++	struct xhci_ctrl *ctrl = xhci_get_ctrl(udev);
++	int slot_id = udev->slot_id;
++	int ep_index = usb_pipe_ep_index(pipe);
++	struct xhci_virt_device *virt_dev = ctrl->devs[slot_id];
++	struct xhci_ep_ctx *ep_ctx;
++	struct xhci_ring *ring;
++	struct int_queue *queue;
++	struct xhci_generic_trb *start_trb;
++	int start_cycle;
++	u32 field, length_field;
++	u32 trb_fields[4];
++	int ret;
++
++	if (queuesize != 1) {
++		printf("xHCI int queue only supports a single element\n");
++		return NULL;
++	}
++
++	xhci_inval_cache((uintptr_t)virt_dev->out_ctx->bytes,
++			 virt_dev->out_ctx->size);
++	ep_ctx = xhci_get_ep_ctx(ctrl, virt_dev->out_ctx, ep_index);
++
++	if ((le32_to_cpu(ep_ctx->ep_info) & EP_STATE_MASK) == EP_STATE_HALTED)
++		reset_ep(udev, ep_index);
++
++	ring = virt_dev->eps[ep_index].ring;
++	if (!ring)
++		return NULL;
++
++	ret = prepare_ring(ctrl, ring,
++			   le32_to_cpu(ep_ctx->ep_info) & EP_STATE_MASK);
++	if (ret < 0)
++		return NULL;
++
++	queue = malloc(sizeof(*queue));
++	if (!queue)
++		return NULL;
++
++	queue->pipe = pipe;
++	queue->buffer = buffer;
++	queue->length = elementsize;
++	queue->buf_64 = xhci_dma_map(ctrl, buffer, elementsize);
++	queue->done = false;
++
++	start_trb = &ring->enqueue->generic;
++	start_cycle = ring->cycle_state;
++
++	xhci_flush_cache((uintptr_t)buffer, elementsize);
++
++	field = 0;
++	if (start_cycle == 0)
++		field |= TRB_CYCLE;
++	field |= TRB_IOC;
++	/* Only set interrupt on short packet for IN endpoints */
++	if (usb_pipein(pipe))
++		field |= TRB_ISP;
++
++	length_field = TRB_LEN(elementsize) | TRB_TD_SIZE(0U) |
++		       TRB_INTR_TARGET(0);
++
++	trb_fields[0] = lower_32_bits(queue->buf_64);
++	trb_fields[1] = upper_32_bits(queue->buf_64);
++	trb_fields[2] = length_field;
++	trb_fields[3] = field | TRB_TYPE(TRB_NORMAL);
++
++	queue->trb_addr = queue_trb(ctrl, ring, false, trb_fields);
++
++	giveback_first_trb(udev, ep_index, start_cycle, start_trb);
++
++	return queue;
++}
++
++void *_xhci_poll_int_queue(struct usb_device *udev, struct int_queue *queue)
++{
++	struct xhci_ctrl *ctrl = xhci_get_ctrl(udev);
++	union xhci_trb *event;
++
++	if (queue->done)
++		return NULL;
++
++	/* Non-blocking: consume completed transfer events without waiting */
++	while (event_ready(ctrl)) {
++		event = ctrl->event_ring->dequeue;
++
++		if (TRB_FIELD_TO_TYPE(le32_to_cpu(event->event_cmd.flags)) !=
++		    TRB_TRANSFER ||
++		    (uintptr_t)le64_to_cpu(event->trans_event.buffer) !=
++		    (uintptr_t)queue->trb_addr) {
++			/*
++			 * Not our transfer completion (e.g. a stale completion
++			 * or a port-status change). Discard it, mirroring
++			 * xhci_wait_for_event(), so polling never stalls.
++			 */
++			xhci_acknowledge_event(ctrl);
++			continue;
++		}
++
++		record_transfer_result(udev, event, queue->length);
++		xhci_acknowledge_event(ctrl);
++		xhci_inval_cache((uintptr_t)queue->buffer, queue->length);
++		xhci_dma_unmap(ctrl, queue->buf_64, queue->length);
++		queue->done = true;
++
++		return queue->buffer;
++	}
++
++	return NULL;
++}
++
++int _xhci_destroy_int_queue(struct usb_device *udev, struct int_queue *queue)
++{
++	struct xhci_ctrl *ctrl = xhci_get_ctrl(udev);
++	int ep_index = usb_pipe_ep_index(queue->pipe);
++
++	/* If the TRB never completed, stop the endpoint to reclaim it */
++	if (!queue->done) {
++		abort_td(udev, ep_index);
++		xhci_dma_unmap(ctrl, queue->buf_64, queue->length);
++	}
++
++	free(queue);
++
++	return 0;
++}
++
+ /**
+  * Queues up the Control Transfer Request
+  *
+diff --git a/drivers/usb/host/xhci.c b/drivers/usb/host/xhci.c
+index c3986dac3e8..a4d4392f3f3 100644
+--- a/drivers/usb/host/xhci.c
++++ b/drivers/usb/host/xhci.c
+@@ -1342,6 +1342,26 @@ static int xhci_submit_int_msg(struct udevice *dev, struct usb_device *udev,
+ 				    nonblock);
+ }
+ 
++static struct int_queue *xhci_create_int_queue(struct udevice *dev,
++		struct usb_device *udev, unsigned long pipe, int queuesize,
++		int elementsize, void *buffer, int interval)
++{
++	return _xhci_create_int_queue(udev, pipe, queuesize, elementsize,
++				      buffer, interval);
++}
++
++static void *xhci_poll_int_queue(struct udevice *dev, struct usb_device *udev,
++				 struct int_queue *queue)
++{
++	return _xhci_poll_int_queue(udev, queue);
++}
++
++static int xhci_destroy_int_queue(struct udevice *dev, struct usb_device *udev,
++				  struct int_queue *queue)
++{
++	return _xhci_destroy_int_queue(udev, queue);
++}
++
+ static int xhci_alloc_device(struct udevice *dev, struct usb_device *udev)
+ {
+ 	debug("%s: dev='%s', udev=%p\n", __func__, dev->name, udev);
+@@ -1478,6 +1498,9 @@ struct dm_usb_ops xhci_usb_ops = {
+ 	.control = xhci_submit_control_msg,
+ 	.bulk = xhci_submit_bulk_msg,
+ 	.interrupt = xhci_submit_int_msg,
++	.create_int_queue = xhci_create_int_queue,
++	.poll_int_queue = xhci_poll_int_queue,
++	.destroy_int_queue = xhci_destroy_int_queue,
+ 	.alloc_device = xhci_alloc_device,
+ 	.update_hub_device = xhci_update_hub_device,
+ 	.get_max_xfer_size  = xhci_get_max_xfer_size,
+diff --git a/include/usb/xhci.h b/include/usb/xhci.h
+index ba065311df5..831049bce30 100644
+--- a/include/usb/xhci.h
++++ b/include/usb/xhci.h
+@@ -1257,6 +1257,11 @@ int xhci_bulk_tx(struct usb_device *udev, unsigned long pipe,
+ 		 int length, void *buffer);
+ int xhci_ctrl_tx(struct usb_device *udev, unsigned long pipe,
+ 		 struct devrequest *req, int length, void *buffer);
++struct int_queue *_xhci_create_int_queue(struct usb_device *udev,
++		unsigned long pipe, int queuesize, int elementsize,
++		void *buffer, int interval);
++void *_xhci_poll_int_queue(struct usb_device *udev, struct int_queue *queue);
++int _xhci_destroy_int_queue(struct usb_device *udev, struct int_queue *queue);
+ int xhci_check_maxpacket(struct usb_device *udev);
+ void xhci_flush_cache(uintptr_t addr, u32 type_len);
+ void xhci_inval_cache(uintptr_t addr, u32 type_len);
+-- 
+2.53.0
+

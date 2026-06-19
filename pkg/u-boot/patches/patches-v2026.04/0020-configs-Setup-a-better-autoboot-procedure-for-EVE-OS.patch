@@ -1,0 +1,57 @@
+From 81090bbb5fbe456f888c06c183496ced6a44009a Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Thu, 25 Jun 2026 12:27:28 +0200
+Subject: [PATCH 20/21] configs: Setup a better autoboot procedure for EVE-OS
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+On some boards, u-boot can treat garbage from serial console as a key
+press event, stopping the autoboot. This commit improves the setup for
+the autboot as the following:
+
+1. Set only <space> key as the stopper for autoboot
+2. Set up a 30s timeout if boot fails
+3. Reset the board in order to retry the boot
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+---
+ configs/rpi_arm64_defconfig | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/configs/rpi_arm64_defconfig b/configs/rpi_arm64_defconfig
+index 5b3df5fabb4..98502821d1d 100644
+--- a/configs/rpi_arm64_defconfig
++++ b/configs/rpi_arm64_defconfig
+@@ -12,6 +12,12 @@ CONFIG_PCI=y
+ CONFIG_EFI_RUNTIME_UPDATE_CAPSULE=y
+ CONFIG_EFI_CAPSULE_FIRMWARE_RAW=y
+ CONFIG_BOOTSTD_DEFAULTS=y
++CONFIG_AUTOBOOT_KEYED=y
++CONFIG_AUTOBOOT_PROMPT="Press <space> to stop autoboot in %d seconds\n"
++CONFIG_AUTOBOOT_STOP_STR=" "
++CONFIG_BOOT_RETRY=y
++CONFIG_BOOT_RETRY_TIME=30
++CONFIG_RESET_TO_RETRY=y
+ CONFIG_OF_BOARD_SETUP=y
+ CONFIG_FDT_SIMPLEFB=y
+ CONFIG_USE_PREBOOT=y
+@@ -47,7 +53,6 @@ CONFIG_BCMGENET=y
+ CONFIG_PCI_BRCMSTB=y
+ CONFIG_PINCTRL=y
+ # CONFIG_PINCTRL_GENERIC is not set
+-CONFIG_DM_RNG=y
+ CONFIG_RESET_BRCMSTB=y
+ CONFIG_RESET_BRCMSTB_RESCAL=y
+ CONFIG_RNG_IPROC200=y
+@@ -73,7 +78,6 @@ CONFIG_USB_HOST_ETHER=y
+ CONFIG_USB_ETHER_LAN78XX=y
+ CONFIG_USB_ETHER_SMSC95XX=y
+ CONFIG_VIDEO=y
+-CONFIG_VIDEO_LOGO=y
+ # CONFIG_VIDEO_BPP8 is not set
+ # CONFIG_VIDEO_BPP16 is not set
+ CONFIG_SYS_WHITE_ON_BLACK=y
+-- 
+2.53.0
+

@@ -1,14 +1,20 @@
-From 41fe3e8f9f943bc53562a3f91f2cf48d3c7d0294 Mon Sep 17 00:00:00 2001
+From ba8c6b46329e1ac3a1c618ca65162c1841d0c8c4 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
 Date: Tue, 6 Aug 2024 15:03:02 +0200
-Subject: [PATCH 2/3] 0007-tweak-uefi-dt-selection.patch
+Subject: [PATCH 11/21] 0007-tweak-uefi-dt-selection.patch
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
 
+Provide ${fdt_addr} as DTB address if ${fdt_addr_r} is not set.
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
 ---
  include/config_distro_bootcmd.h | 2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/include/config_distro_bootcmd.h b/include/config_distro_bootcmd.h
-index 2a136b96a6..97a0ce3986 100644
+index 7b6ac6eed9d..aa02bdd653b 100644
 --- a/include/config_distro_bootcmd.h
 +++ b/include/config_distro_bootcmd.h
 @@ -144,7 +144,7 @@
@@ -21,5 +27,5 @@ index 2a136b96a6..97a0ce3986 100644
  #else
  #define BOOTENV_EFI_BOOTMGR
 -- 
-2.43.0
+2.53.0
 
