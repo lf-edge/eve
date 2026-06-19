@@ -26,6 +26,19 @@ import (
 
 const longhornNamespace = "longhorn-system"
 
+// VolumeDirInternalEntriesMap returns filenames placed in volume directories
+// (VolumeEncryptedDirName, VolumeClearDirName) by subsystems other than
+// volumemgr. gcObjects skips these entries to avoid spurious errors during
+// garbage collection. Add an entry here when a new subsystem co-locates
+// files alongside EVE volumes.
+func VolumeDirInternalEntriesMap() map[string]struct{} {
+	return map[string]struct{}{
+		"longhorn-disk.cfg": {},
+		"replicas":          {},
+		"backing-images":    {},
+	}
+}
+
 // LonghornVolumeSizeDetails returns the provisionedBytes and allocatedBytes size values for a longhorn volume
 func LonghornVolumeSizeDetails(longhornVolumeName string) (provisionedBytes uint64, allocatedBytes uint64, err error) {
 	apiExists, err := longhornAPIExists()
@@ -214,6 +227,13 @@ type lhReplicaLister interface {
 // lhEngineGetter is a minimal subset of the Longhorn engine client.
 type lhEngineGetter interface {
 	Get(ctx context.Context, name string, opts metav1.GetOptions) (*lhv1beta2.Engine, error)
+}
+
+// lhNodeGetUpdater is a minimal subset of the Longhorn node client used by
+// setLonghornNodeDiskReservedInner.
+type lhNodeGetUpdater interface {
+	Get(ctx context.Context, name string, opts metav1.GetOptions) (*lhv1beta2.Node, error)
+	Update(ctx context.Context, node *lhv1beta2.Node, opts metav1.UpdateOptions) (*lhv1beta2.Node, error)
 }
 
 // populateKVIInner is the testable core of populateKVIFromPVCName.
@@ -645,6 +665,8 @@ func longhornVolumeSetNode(lhVolName string, kubeNodeName string) error {
 // SetLonghornNodeDiskReserved sets StorageReserved on every disk of the named Longhorn node.
 // Returns (false, nil) if the Longhorn API is absent or the node object does not exist yet,
 // so callers should retry until (true, nil) is returned.
+// Returns (true, nil) for non-schedulable (tie-breaker) nodes: the reservation is not
+// needed and the Longhorn admission webhook would reject any update attempt.
 func SetLonghornNodeDiskReserved(nodeName string, reservedBytes int64) (bool, error) {
 	apiExists, err := longhornAPIExists()
 	if !apiExists && err == nil {
@@ -666,13 +688,37 @@ func SetLonghornNodeDiskReserved(nodeName string, reservedBytes int64) (bool, er
 
 	lhCtx, lhCancel := context.WithTimeout(context.Background(), kubeAPITimeout)
 	defer lhCancel()
-	node, err := lhClient.LonghornV1beta2().Nodes(longhornNamespace).Get(
-		lhCtx, nodeName, metav1.GetOptions{})
+	return setLonghornNodeDiskReservedInner(lhCtx, nodeName, reservedBytes,
+		lhClient.LonghornV1beta2().Nodes(longhornNamespace))
+}
+
+// setLonghornNodeDiskReservedInner is the testable core of SetLonghornNodeDiskReserved.
+// All Longhorn node I/O is injected through the nodes interface argument so unit tests
+// can supply hand-written mocks without a live cluster.
+func setLonghornNodeDiskReservedInner(ctx context.Context, nodeName string,
+	reservedBytes int64, nodes lhNodeGetUpdater) (bool, error) {
+	node, err := nodes.Get(ctx, nodeName, metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return false, nil
 		}
 		return false, fmt.Errorf("SetLonghornNodeDiskReserved: get node %s: %v", nodeName, err)
+	}
+
+	// Tie breaker nodes will have a non-deployed engine and the longhorn
+	// validator will return an error.
+	// example:
+	// 'admission webhook "validator.longhorn.io" denied the request:
+	// spec and status of disks on node <node> are being syncing
+	// and please retry later.'
+	//
+	// Skip this node, the reservation isn't necessary here.
+	// Return true so the caller stops retrying — the reservation is not needed.
+	for _, cond := range node.Status.Conditions {
+		if cond.Type == lhv1beta2.NodeConditionTypeSchedulable &&
+			cond.Status != lhv1beta2.ConditionStatusTrue {
+			return true, nil
+		}
 	}
 
 	changed := false
@@ -687,8 +733,7 @@ func SetLonghornNodeDiskReserved(nodeName string, reservedBytes int64) (bool, er
 		return true, nil
 	}
 
-	_, err = lhClient.LonghornV1beta2().Nodes(longhornNamespace).Update(
-		lhCtx, node, metav1.UpdateOptions{})
+	_, err = nodes.Update(ctx, node, metav1.UpdateOptions{})
 	if err != nil {
 		return false, fmt.Errorf("SetLonghornNodeDiskReserved: update node %s: %v", nodeName, err)
 	}

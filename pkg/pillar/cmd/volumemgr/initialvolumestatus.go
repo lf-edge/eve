@@ -101,6 +101,12 @@ func gcObjects(ctx *volumemgrContext, dirName string) {
 	}
 	var locations []string
 	for _, location := range locationsFileInfo {
+		// Skip entries belonging to other subsystems (e.g. Longhorn's
+		// longhorn-disk.cfg and replicas/) to avoid spurious
+		// "found unknown format volume" errors from getVolumeStatusByLocation.
+		if _, skip := kubeapi.VolumeDirInternalEntriesMap()[location.Name()]; skip {
+			continue
+		}
 		locations = append(locations, filepath.Join(dirName, location.Name()))
 	}
 	gcVolumes(ctx, locations)
