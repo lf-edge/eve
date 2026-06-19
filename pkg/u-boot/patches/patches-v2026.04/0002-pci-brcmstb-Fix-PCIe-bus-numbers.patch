@@ -1,0 +1,39 @@
+From 910805f543a5cdcddcfa624a6be2a9b795002722 Mon Sep 17 00:00:00 2001
+From: Andrea della Porta <andrea.porta@suse.com>
+Date: Mon, 1 Jun 2026 12:39:23 +0200
+Subject: [PATCH 02/21] pci: brcmstb: Fix PCIe bus numbers
+
+The linux kernel assigns a new domain for every Root Complex where bus
+numbering starts from 0 for each domain. U-Boot does not have domains
+and uses a flattened bus numbering scheme instead. This means that any
+device or bridge on the second enumerated RC will receive a bus number
+equal to the last assigned one +1. This bus number contributes to the
+address written into the index register, which will select the
+configuration space to be read. Compensate for this contribution by
+subtracting the base bus number.
+
+Signed-off-by: Andrea della Porta <andrea.porta@suse.com>
+Signed-off-by: Torsten Duwe <duwe@suse.de>
+Tested-by: Pedro Falcato <pfalcato@suse.de>
+Reviewed-by: Peter Robinson <pbrobinson@gmail.com>
+(cherry picked from commit b24c620e5e129277d50cceac2d758e8c5bf53293)
+---
+ drivers/pci/pcie_brcmstb.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/pci/pcie_brcmstb.c b/drivers/pci/pcie_brcmstb.c
+index f089c48f028..47c0802df23 100644
+--- a/drivers/pci/pcie_brcmstb.c
++++ b/drivers/pci/pcie_brcmstb.c
+@@ -125,7 +125,7 @@ static int brcm_pcie_config_address(const struct udevice *dev, pci_dev_t bdf,
+ 				    uint offset, void **paddress)
+ {
+ 	struct brcm_pcie *pcie = dev_get_priv(dev);
+-	unsigned int pci_bus = PCI_BUS(bdf);
++	unsigned int pci_bus = PCI_BUS(bdf) - dev_seq(dev);
+ 	unsigned int pci_dev = PCI_DEV(bdf);
+ 	unsigned int pci_func = PCI_FUNC(bdf);
+ 	int idx;
+-- 
+2.53.0
+

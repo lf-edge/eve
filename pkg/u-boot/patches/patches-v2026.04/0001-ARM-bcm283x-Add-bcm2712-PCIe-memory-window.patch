@@ -1,0 +1,49 @@
+From 856d6fc8659d87ec6157b973b886ea6b62db4ff4 Mon Sep 17 00:00:00 2001
+From: Torsten Duwe <duwe@suse.de>
+Date: Mon, 1 Jun 2026 12:39:20 +0200
+Subject: [PATCH 01/21] ARM: bcm283x: Add bcm2712 PCIe memory window
+
+Add a mapping region for the PCIe bus address spaces to the BCM2712
+memory controller setup. Generously merging the PCIe address spaces
+works sufficiently well for a boot loader.
+
+Signed-off-by: Torsten Duwe <duwe@suse.de>
+Co-authored-by: Oleksii Moisieiev <oleksii_moisieiev@epam.com>
+Tested-by: Pedro Falcato <pfalcato@suse.de>
+Reviewed-by: Peter Robinson <pbrobinson@gmail.com>
+(cherry picked from commit b20ce94bb9d06c0bffe6cf0b2795fb021f7c0052)
+---
+ arch/arm/mach-bcm283x/init.c | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm/mach-bcm283x/init.c b/arch/arm/mach-bcm283x/init.c
+index 7a1de22e0ae..7a2faaa4de6 100644
+--- a/arch/arm/mach-bcm283x/init.c
++++ b/arch/arm/mach-bcm283x/init.c
+@@ -18,7 +18,7 @@
+ #ifdef CONFIG_ARM64
+ #include <asm/armv8/mmu.h>
+ 
+-#define MEM_MAP_MAX_ENTRIES (4)
++#define MEM_MAP_MAX_ENTRIES (5)
+ 
+ static struct mm_region bcm283x_mem_map[MEM_MAP_MAX_ENTRIES] = {
+ 	{
+@@ -83,6 +83,14 @@ static struct mm_region bcm2712_mem_map[MEM_MAP_MAX_ENTRIES] = {
+ 		.attrs = PTE_BLOCK_MEMTYPE(MT_DEVICE_NGNRNE) |
+ 			 PTE_BLOCK_NON_SHARE |
+ 			 PTE_BLOCK_PXN | PTE_BLOCK_UXN
++	}, {
++		/* Whole PCIe section */
++		.virt = 0x1800000000UL,
++		.phys = 0x1800000000UL,
++		.size = 0x0800000000UL,
++		.attrs = PTE_BLOCK_MEMTYPE(MT_DEVICE_NGNRNE) |
++			 PTE_BLOCK_NON_SHARE |
++			 PTE_BLOCK_PXN | PTE_BLOCK_UXN
+ 	}, {
+ 		/* SoC bus */
+ 		.virt = 0x107c000000UL,
+-- 
+2.53.0
+

@@ -1,0 +1,67 @@
+From 50057622aef42e8adffe903e01b1a15bf1070357 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Tue, 23 Jun 2026 17:47:31 +0200
+Subject: [PATCH 17/21] usb: dwc3: Return in case of fail for probing
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Return from xhci_dwc3_probe() when it fails to initialize. Without the
+fix from this commit, Raspberry Pi 5 crashes at boot:
+
+  DRAM:  8 GiB
+  RPI 5 Model B (0xd04170)
+  Core:  31 devices, 13 uclasses, devicetree: board
+  MMC:   mmc@fff000: 0, mmc@1100000: 1
+  Loading Environment from FAT... Error: unknown compression type.
+  Unable to read "uboot.env" from mmc0:1...
+  In:    serial,usbkbd
+  Out:   serial,vidconsole
+  Err:   serial,vidconsole
+  Net:   No ethernet found.
+
+  PCIe BRCM: link up, 5.0 Gbps x4 (!SSC)
+  starting USB...
+  this is not a DesignWare USB3 DRD Core
+  "Synchronous Abort" handler, esr 0x96000021, far 0x1f00200103
+  elr: 000000000004979c lr : 000000000004a920 (reloc)
+  elr: 000000003fb7379c lr : 000000003fb74920
+  x0 : 0000001f002000ff x1 : 0000001f00200000
+  x2 : 0000001f002000ff x3 : 0000000000000005
+  x4 : 0000000000000000 x5 : 000000003f71c084
+  x6 : 0000000000009d64 x7 : 0000000000009d59
+  x8 : 0000000000000003 x9 : 000000003f7122f0
+  x10: 000000003f711d7c x11: 0000000000009d50
+  x12: 0000000000003fdc x13: 000000003f711ddc
+  x14: 000000003f7122f0 x15: 000000003f711f10
+  x16: 000000003fb4a798 x17: 0000000000000000
+  x18: 000000003f725d90 x19: 0000001f002000ff
+  x20: 000000003f7274e0 x21: 0000001f002000ff
+  x22: 0000001f00200000 x23: 000000003fbda597
+  x24: 000000003fbead20 x25: 0000000000000000
+  x26: 0000000000000000 x27: 0000000000000000
+  x28: 000000003f7313d0 x29: 000000003f711ec0
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+---
+ drivers/usb/host/xhci-dwc3.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/usb/host/xhci-dwc3.c b/drivers/usb/host/xhci-dwc3.c
+index 8ad07a4b98c..a7c4b8ec0a2 100644
+--- a/drivers/usb/host/xhci-dwc3.c
++++ b/drivers/usb/host/xhci-dwc3.c
+@@ -184,7 +184,9 @@ static int xhci_dwc3_probe(struct udevice *dev)
+ 
+ 	dwc3_reg = (struct dwc3 *)((char *)(hccr) + DWC3_REG_OFFSET);
+ 
+-	dwc3_core_init(dwc3_reg);
++	ret = dwc3_core_init(dwc3_reg);
++	if (ret)
++		return ret;
+ 
+ 	/* Set dwc3 usb2 phy config */
+ 	reg = readl(&dwc3_reg->g_usb2phycfg[0]);
+-- 
+2.53.0
+
