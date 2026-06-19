@@ -73,21 +73,42 @@ const (
 
 // VM instance meta data structure.
 type vmiMetaData struct {
-	repPod           *appsv1.ReplicaSet                   // Handle to the replicaSetof pod
-	repVMI           *v1.VirtualMachineInstanceReplicaSet // Handle to the replicaSet of VMI
-	domainID         int                                  // DomainID understood by domainmgr in EVE
-	mtype            MetaDataType                         // switch on is ReplicaSet, Pod or is VMI
-	name             string                               // Display-Name(all lower case) + first 5 bytes of domainName
-	cputotal         uint64                               // total CPU in NS so far
-	maxmem           uint32                               // total Max memory usage in MB so far
-	startUnknownTime time.Time                            // time when the domain returned as unknown status
-	memOverhead      uint64                               // VMM memory overhead in bytes
+	repPod              *appsv1.ReplicaSet                   // Handle to the replicaSetof pod
+	repVMI              *v1.VirtualMachineInstanceReplicaSet // Handle to the replicaSet of VMI
+	domainID            int                                  // DomainID understood by domainmgr in EVE
+	mtype               MetaDataType                         // switch on is ReplicaSet, Pod or is VMI
+	name                string                               // Display-Name(all lower case) + first 5 bytes of domainName
+	cputotal            uint64                               // total CPU in NS so far
+	maxmem              uint32                               // total Max memory usage in MB so far
+	startUnknownTime    time.Time                            // time when the domain returned as unknown status
+	memOverhead         uint64                               // VMM memory overhead in bytes
+	lastVMIPhase        string                               // last VMI phase logged; used to suppress repeated status logs
+	lastVMIBeingDeleted bool                                 // last deletion state logged; DeletionTimestamp nil→non-nil is a loggable transition
+	lastVMIUID          string                               // UID of the VMI object last logged; a new UID means VMIRS replaced the VMI
 	// sriovVFs lists the (PF ifname, VF index) of every SR-IOV VF this VMI
 	// was wired with via attachSRIOVInterfaces.  Used on Stop/Delete/Cleanup
 	// to clear the per-VF admin MAC on the PF — sriov-cni's DEL path doesn't
 	// reliably clear it when the VF is pre-bound to vfio-pci, so EVE owns
 	// the cleanup.
 	sriovVFs []sriovVFRef
+}
+
+// recordPhase updates the tracked observable state of a VMI and returns true
+// if anything changed since the last call. It owns the definition of what
+// "changed" means: either the:
+// - kubevirt phase string
+// - deletion state (DeletionTimestamp nil→non-nil or vice-versa)
+// - or the object uid
+// counts as a transition.
+func (m *vmiMetaData) recordPhase(vmi *v1.VirtualMachineInstance) bool {
+	phase := fmt.Sprintf("%v", vmi.Status.Phase)
+	beingDeleted := vmi.ObjectMeta.DeletionTimestamp != nil
+	uid := string(vmi.ObjectMeta.UID)
+	changed := phase != m.lastVMIPhase || beingDeleted != m.lastVMIBeingDeleted || uid != m.lastVMIUID
+	m.lastVMIPhase = phase
+	m.lastVMIBeingDeleted = beingDeleted
+	m.lastVMIUID = uid
+	return changed
 }
 
 // sriovVFRef identifies a single VF on a Physical Function for cleanup
@@ -1241,12 +1262,12 @@ func getVMIStatus(vmis *vmiMetaData, nodeName string) (string, error) {
 	var nonLocalStatus string
 	var targetVMI *v1.VirtualMachineInstance
 	for _, vmi := range vmiList.Items {
-		logrus.Infof("getVMIStatus: repVmi:%s nodeName:%s vmiList vmi.ObjectMeta.Name:%s vmi.Status.NodeName:%s vmi.ObjectMeta.DeletionTimestamp:%v vmi.Status.Phase:%s",
+		logrus.Debugf("getVMIStatus: repVmi:%s nodeName:%s vmiList vmi.ObjectMeta.Name:%s vmi.Status.NodeName:%s vmi.ObjectMeta.DeletionTimestamp:%v vmi.Status.Phase:%s",
 			repVmiName, nodeName, vmi.ObjectMeta.Name, vmi.Status.NodeName, vmi.ObjectMeta.DeletionTimestamp, vmi.Status.Phase)
 		if vmi.Status.NodeName == nodeName {
 			if vmi.GenerateName == repVmiName {
 				targetVMI = &vmi
-				logrus.Infof("getVMIStatus: repVmi:%s nodeName:%s picked vmi", repVmiName, nodeName)
+				logrus.Debugf("getVMIStatus: repVmi:%s nodeName:%s picked vmi", repVmiName, nodeName)
 				break
 			}
 		} else {
@@ -1258,18 +1279,19 @@ func getVMIStatus(vmis *vmiMetaData, nodeName string) (string, error) {
 	if targetVMI == nil {
 		if nonLocalStatus != "" {
 			_, _ = checkAndReturnStatus(vmis, false) // reset the unknown timestamp
-			logrus.Infof("getVMIStatus: repVmi:%s nodeName:%s nonLocalStatus:%s", repVmiName, nodeName, nonLocalStatus)
+			logrus.Debugf("getVMIStatus: repVmi:%s nodeName:%s nonLocalStatus:%s", repVmiName, nodeName, nonLocalStatus)
 			return nonLocalStatus, nil
 		}
 		retStatus, err2 := checkAndReturnStatus(vmis, true)
 		logError("getVMIStatus: No VMI %s found with the given nodeName %s, return %s", repVmiName, nodeName, retStatus)
 		return retStatus, err2
 	}
-	res := fmt.Sprintf("%v", targetVMI.Status.Phase)
-	logrus.Infof("getVMIStatus: repVmi:%s nodeName:%s targetVMI.ObjectMeta.Name:%s targetVMI.Status.NodeName:%s targetVMI.ObjectMeta.DeletionTimestamp:%v targetVMI.Status.Phase:%s res:%s",
-		repVmiName, nodeName, targetVMI.ObjectMeta.Name, targetVMI.Status.NodeName, targetVMI.ObjectMeta.DeletionTimestamp, targetVMI.Status.Phase, res)
+	if vmis.recordPhase(targetVMI) {
+		logrus.Infof("getVMIStatus: repVmi:%s nodeName:%s vmi:%s phase:%s deletionTimestamp:%v",
+			repVmiName, nodeName, targetVMI.ObjectMeta.Name, targetVMI.Status.Phase, targetVMI.ObjectMeta.DeletionTimestamp)
+	}
 	_, _ = checkAndReturnStatus(vmis, false) // reset the unknown timestamp
-	return res, nil
+	return fmt.Sprintf("%v", targetVMI.Status.Phase), nil
 }
 
 // Inspired from kvm.go
@@ -1945,7 +1967,7 @@ func checkReplicaPodMetrics(ctx kubevirtContext, res map[string]types.DomainMetr
 		}
 	}
 
-	logrus.Infof("checkReplicaPodMetrics: done with vmiList")
+	logrus.Debugf("checkReplicaPodMetrics: done with vmiList")
 }
 
 func getPodMetrics(clientset *metricsv.Clientset, pod k8sv1.Pod, vmis *vmiMetaData,

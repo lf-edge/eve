@@ -10,6 +10,21 @@ import (
 	"testing"
 )
 
+// TestLonghornGetMajorMinorMapsNotFound verifies that a missing /dev/longhorn
+// (e.g. tie-breaker node) returns empty maps with a nil error rather than failing.
+func TestLonghornGetMajorMinorMapsNotFound(t *testing.T) {
+	if _, err := os.Stat(longhornDevPath); err == nil {
+		t.Skip("longhorn dev path exists, skipping not-found test")
+	}
+	mmMap, lhVolMap, err := LonghornGetMajorMinorMaps()
+	if err != nil {
+		t.Fatalf("expected nil error when longhorn path absent, got: %v", err)
+	}
+	if mmMap == nil || lhVolMap == nil {
+		t.Fatal("expected non-nil empty maps, got nil")
+	}
+}
+
 func TestLonghornGetMajorMinorMaps(t *testing.T) {
 	if _, err := os.Stat(longhornDevPath); err != nil {
 		t.Skipf("No local longhorn")
