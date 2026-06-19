@@ -54,6 +54,22 @@ ifeq ($(COVER),y)
 	COVERFLAGS:=-cover -covermode=atomic
 endif
 
+# Controls gotestsum display format. Override on the command line for per-test detail.
+#   pkgname          (default) one line per package: ✓ cmd/zedkube (1.1s)
+#   standard-verbose one line per test:  --- PASS: TestFoo/case (0.00s)
+#   testdox          human-readable test names grouped by package
+#   dots             a dot per test, compact for large suites
+GOTESTSUM_FORMAT ?= pkgname
+
+# Restrict which packages are tested. Default is all packages.
+# Example: make TESTPKGS=./cmd/domainmgr/... test
+TESTPKGS ?= ./...
+
+# Filter tests by name (passed to go test -run). Default runs all tests.
+# Example: make TESTRUN=TestVerifyStatus test
+# Example: make TESTPKGS=./cmd/domainmgr/... TESTRUN=TestVerifyStatus test
+TESTRUN ?=
+
 ifneq ($(HV),)
        LDFLAGS=-extldflags '-fuse-ld=bfd -no-pie'
 else
@@ -108,10 +124,11 @@ test: build-docker-test
 		--mount type=bind,source=./results.xml,target=/pillar/results.xml \
 		--mount type=bind,source=./coverage.txt,target=/pillar/coverage.txt \
 		--entrypoint /final/opt/gotestsum $(DOCKER_TAG) \
+		--format $(GOTESTSUM_FORMAT) \
 		--jsonfile /pillar/results.json \
 		--junitfile /pillar/results.xml \
 		--raw-command -- go test -tags k -coverprofile=coverage.txt -covermode=atomic -race -json \
-		./...
+		$(if $(TESTRUN),-run $(TESTRUN)) $(TESTPKGS)
 
 fuzz-test: build-docker-test
 	docker run --platform linux/$(ZARCH) -w /pillar \
