@@ -114,7 +114,7 @@ Tie_breaker_configApply() {
         Cdi_config
 
         logmsg "tie-breaker config-apply:longhorn"
-        longhorn_node_set_sched "${node}" "false"
+        longhorn_node_set_sched "${tie_breaker_k8s_node_name}" "false"
         longhorn_rescale 2
 
         logmsg "evicting tie-breaker nodeId:${tie_breaker_node_uuid} node:${tie_breaker_k8s_node_name}"

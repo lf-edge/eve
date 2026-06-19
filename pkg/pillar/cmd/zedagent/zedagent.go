@@ -2307,7 +2307,7 @@ func handleKubeClusterInfoImpl(ctxArg interface{}, key string,
 }
 
 func triggerPublishKubeClusterInfoToDest(ctxPtr *zedagentContext, dest destinationBitset) {
-	log.Notice("Triggered PublishKubeClusterInfo")
+	log.Function("Triggered PublishKubeClusterInfo")
 	select {
 	case ctxPtr.triggerClusterInfo <- dest:
 
