@@ -13,7 +13,9 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	lhv1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 // -- mock types for populateKVIInner --
@@ -713,6 +715,186 @@ func TestPopulateKVIInner(t *testing.T) {
 			}
 			if tc.checkFn != nil {
 				tc.checkFn(t, result)
+			}
+		})
+	}
+}
+
+// -- mock for setLonghornNodeDiskReservedInner --
+
+type funcLHNodeGetUpdater struct {
+	getFn    func(string) (*lhv1beta2.Node, error)
+	updateFn func(*lhv1beta2.Node) (*lhv1beta2.Node, error)
+}
+
+func (m funcLHNodeGetUpdater) Get(_ context.Context, name string, _ metav1.GetOptions) (*lhv1beta2.Node, error) {
+	return m.getFn(name)
+}
+
+func (m funcLHNodeGetUpdater) Update(_ context.Context, node *lhv1beta2.Node, _ metav1.UpdateOptions) (*lhv1beta2.Node, error) {
+	return m.updateFn(node)
+}
+
+func lhNodeWithDisks(reserved int64) *lhv1beta2.Node {
+	return &lhv1beta2.Node{
+		Spec: lhv1beta2.NodeSpec{
+			Disks: map[string]lhv1beta2.DiskSpec{
+				"disk-0": {StorageReserved: reserved},
+			},
+		},
+	}
+}
+
+func schedulableCondition(status lhv1beta2.ConditionStatus) lhv1beta2.Condition {
+	return lhv1beta2.Condition{
+		Type:   lhv1beta2.NodeConditionTypeSchedulable,
+		Status: status,
+	}
+}
+
+func TestSetLonghornNodeDiskReservedInner(t *testing.T) {
+	const (
+		nodeName     = "test-node"
+		wantReserved = int64(10 * 1024 * 1024 * 1024)
+		alreadySet   = wantReserved
+		differentVal = int64(5 * 1024 * 1024 * 1024)
+	)
+
+	nodeNotFound := k8serrors.NewNotFound(schema.GroupResource{Resource: "nodes"}, nodeName)
+
+	tests := []struct {
+		name        string
+		getFn       func(string) (*lhv1beta2.Node, error)
+		updateFn    func(*lhv1beta2.Node) (*lhv1beta2.Node, error)
+		wantApplied bool
+		wantErr     bool
+		// updateCalled asserts whether Update was (or was not) invoked.
+		wantUpdateCalled bool
+	}{
+		{
+			// Non-schedulable node (tie-breaker): reservation is not needed and
+			// the Longhorn admission webhook would reject any update. Return true
+			// so the caller stops retrying.
+			name: "non-schedulable node returns true without updating",
+			getFn: func(string) (*lhv1beta2.Node, error) {
+				node := lhNodeWithDisks(differentVal)
+				node.Status.Conditions = []lhv1beta2.Condition{
+					schedulableCondition(lhv1beta2.ConditionStatusFalse),
+				}
+				return node, nil
+			},
+			updateFn:         func(n *lhv1beta2.Node) (*lhv1beta2.Node, error) { return n, nil },
+			wantApplied:      true,
+			wantErr:          false,
+			wantUpdateCalled: false,
+		},
+		{
+			// Schedulable condition present and True: normal node, proceeds to disk check.
+			name: "schedulable=True node with correct reservation is a no-op",
+			getFn: func(string) (*lhv1beta2.Node, error) {
+				node := lhNodeWithDisks(alreadySet)
+				node.Status.Conditions = []lhv1beta2.Condition{
+					schedulableCondition(lhv1beta2.ConditionStatusTrue),
+				}
+				return node, nil
+			},
+			updateFn:         func(n *lhv1beta2.Node) (*lhv1beta2.Node, error) { return n, nil },
+			wantApplied:      true,
+			wantErr:          false,
+			wantUpdateCalled: false,
+		},
+		{
+			// No schedulable condition at all (node not yet registered by Longhorn): treat as
+			// schedulable and proceed to disk check.
+			name: "no schedulable condition, reservation already set — no-op",
+			getFn: func(string) (*lhv1beta2.Node, error) {
+				return lhNodeWithDisks(alreadySet), nil
+			},
+			updateFn:         func(n *lhv1beta2.Node) (*lhv1beta2.Node, error) { return n, nil },
+			wantApplied:      true,
+			wantErr:          false,
+			wantUpdateCalled: false,
+		},
+		{
+			// Disks have the wrong reservation: Update must be called with the
+			// corrected value and the function must return (true, nil).
+			name: "disks need update — Update called with corrected value",
+			getFn: func(string) (*lhv1beta2.Node, error) {
+				return lhNodeWithDisks(differentVal), nil
+			},
+			updateFn: func(n *lhv1beta2.Node) (*lhv1beta2.Node, error) {
+				for _, disk := range n.Spec.Disks {
+					if disk.StorageReserved != wantReserved {
+						return nil, errors.New("disk not updated to wantReserved")
+					}
+				}
+				return n, nil
+			},
+			wantApplied:      true,
+			wantErr:          false,
+			wantUpdateCalled: true,
+		},
+		{
+			// Node object not yet created by Longhorn: signal retry with (false, nil).
+			name: "node not found returns false without error",
+			getFn: func(string) (*lhv1beta2.Node, error) {
+				return nil, nodeNotFound
+			},
+			updateFn:         func(n *lhv1beta2.Node) (*lhv1beta2.Node, error) { return n, nil },
+			wantApplied:      false,
+			wantErr:          false,
+			wantUpdateCalled: false,
+		},
+		{
+			name: "Get returns non-NotFound error",
+			getFn: func(string) (*lhv1beta2.Node, error) {
+				return nil, errors.New("kube api unavailable")
+			},
+			updateFn:         func(n *lhv1beta2.Node) (*lhv1beta2.Node, error) { return n, nil },
+			wantApplied:      false,
+			wantErr:          true,
+			wantUpdateCalled: false,
+		},
+		{
+			name: "Update returns error",
+			getFn: func(string) (*lhv1beta2.Node, error) {
+				return lhNodeWithDisks(differentVal), nil
+			},
+			updateFn: func(n *lhv1beta2.Node) (*lhv1beta2.Node, error) {
+				return nil, errors.New("webhook denied")
+			},
+			wantApplied:      false,
+			wantErr:          true,
+			wantUpdateCalled: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			updateCalled := false
+			wrappedUpdate := func(n *lhv1beta2.Node) (*lhv1beta2.Node, error) {
+				updateCalled = true
+				return tc.updateFn(n)
+			}
+			mock := funcLHNodeGetUpdater{getFn: tc.getFn, updateFn: wrappedUpdate}
+
+			applied, err := setLonghornNodeDiskReservedInner(
+				context.Background(), nodeName, wantReserved, mock)
+
+			if tc.wantErr {
+				if err == nil {
+					t.Error("expected error, got nil")
+				}
+			} else {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+			}
+			if applied != tc.wantApplied {
+				t.Errorf("applied = %v, want %v", applied, tc.wantApplied)
+			}
+			if updateCalled != tc.wantUpdateCalled {
+				t.Errorf("updateCalled = %v, want %v", updateCalled, tc.wantUpdateCalled)
 			}
 		})
 	}

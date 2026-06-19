@@ -81,19 +81,24 @@ func LonghornGetMajorMinorMaps() (map[string]string, map[string]string, error) {
 	lhNameToMajMinMap := make(map[string]string) // kube-pv-name/lh-volume-name -> maj:min
 
 	lhPvcList, err := os.ReadDir(longhornDevPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Longhorn not active on this node (e.g. tie-breaker); empty maps are valid.
+			return lhMajMinToNameMap, lhNameToMajMinMap, nil
+		}
+		return lhMajMinToNameMap, lhNameToMajMinMap, fmt.Errorf("unable to read longhorn devs: %w", err)
+	}
 	for _, lhDirEnt := range lhPvcList {
 		var lhStat syscall.Stat_t
 		err := syscall.Stat(longhornDevPath+"/"+lhDirEnt.Name(), &lhStat)
-
 		if err != nil {
 			continue
 		}
 		majMinKey := getMajorMinorStr(lhStat)
 		lhMajMinToNameMap[majMinKey] = lhDirEnt.Name()
 		lhNameToMajMinMap[lhDirEnt.Name()] = majMinKey
-
 	}
-	return lhMajMinToNameMap, lhNameToMajMinMap, fmt.Errorf("unable to read longhorn devs: %w", err)
+	return lhMajMinToNameMap, lhNameToMajMinMap, nil
 }
 
 // SCSIGetMajMinMaps builds two maps to assist linking with other devices

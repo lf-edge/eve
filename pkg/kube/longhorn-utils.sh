@@ -148,38 +148,48 @@ Longhorn_is_ready() {
         return 1
     fi
 
-    # ndm has all nodes
-    ndm=$(kubectl -n longhorn-system get engineimage -o json | jq .items[].status.nodeDeploymentMap)
-    dep=$(echo "$ndm" | jq --arg n "$node" '.[$n]')
-    if [ "$dep" != "true" ]; then
-        logmsg "lh node:$node engine not deployed"
-        # find engine pod name
-        pod=$(kubectl -n longhorn-system get pod -l longhorn.io/component=engine-image -o json | jq -r --arg n "$node" '.items[] | select(.spec.nodeName==$n) | .metadata.name')
-        if [ "$pod" = "" ]; then
-                # maybe restarting or not yet created (new install)
+    # Tie breaker nodes disable scheduling for a node, use the longhorn api to avoid an unnecessary dependency here.
+    # This avoids a regular "not deployed" print.
+    ndm=""
+    schedulable=$(kubectl -n longhorn-system get nodes.longhorn.io "$node" -o json | jq -r '.status.conditions[] | select(.type=="Schedulable") | .status')
+    if [ "$schedulable" = "True" ]; then
+        # ndm has all nodes
+        ndm=$(kubectl -n longhorn-system get engineimage -o json | jq .items[].status.nodeDeploymentMap)
+        dep=$(echo "$ndm" | jq --arg n "$node" '.[$n]')
+        if [ "$dep" != "true" ]; then
+                logmsg "lh node:$node engine not deployed"
+                # find engine pod name
+                pod=$(kubectl -n longhorn-system get pod -l longhorn.io/component=engine-image -o json | jq -r --arg n "$node" '.items[] | select(.spec.nodeName==$n) | .metadata.name')
+                if [ "$pod" = "" ]; then
+                        # maybe restarting or not yet created (new install)
+                        return 1
+                fi
+                phase=$(kubectl -n longhorn-system get "pod/${pod}" -o json | jq -r .status.phase)
+                if [ "$phase" != "Running" ]; then
+                        # maybe restarting
+                        return 1
+                fi
+                # delete it
+                kubectl -n longhorn-system delete "pod/${pod}"
+                logmsg "lh node:$node engine:$pod deleted for re-init due to ndm inconsistency"
+
+                # Find the owner of the node deployment map and cycle that pod so it regenerates.
+                ndmOwnerID=$(kubectl -n longhorn-system get engineimage -o json | jq -r .items[].status.ownerID)
+                if [ "$ndmOwnerID" != "" ]; then
+                    ndmMgrPod=$(kubectl -n longhorn-system get pod -l app=longhorn-manager  -o json | jq -r --arg n "$ndmOwnerID" '.items[] | select(.spec.nodeName==$n) | .metadata.name')
+                    if [ "$ndmMgrPod" != "" ]; then
+                        logmsg "lh ownerID node:$ndmOwnerID manager:$ndmMgrPod deleted for re-init due to ndm inconsistency"
+                        kubectl -n longhorn-system delete "pod/${ndmMgrPod}"
+                    fi
+                fi
+
                 return 1
         fi
-        phase=$(kubectl -n longhorn-system get "pod/${pod}" -o json | jq -r .status.phase)
-        if [ "$phase" != "Running" ]; then
-                # maybe restarting
-                return 1
-        fi
-        # delete it
-        kubectl -n longhorn-system delete "pod/${pod}"
-        logmsg "lh node:$node engine:$pod deleted for re-init due to ndm inconsistency"
-
-        # Find the owner of the node deployment map and cycle that pod so it regenerates.
-        ndmOwnerID=$(kubectl -n longhorn-system get engineimage -o json | jq -r .items[].status.ownerID)
-        if [ "$ndmOwnerID" != "" ]; then
-            ndmMgrPod=$(kubectl -n longhorn-system get pod -l app=longhorn-manager  -o json | jq -r --arg n "$ndmOwnerID" '.items[] | select(.spec.nodeName==$n) | .metadata.name')
-            if [ "$ndmMgrPod" != "" ]; then
-                logmsg "lh ownerID node:$ndmOwnerID manager:$ndmMgrPod deleted for re-init due to ndm inconsistency"
-                kubectl -n longhorn-system delete "pod/${ndmMgrPod}"
-            fi
-        fi
-
+    elif [ "$schedulable" != "False" ]; then
+        logmsg "Unable to determine lh node $node Schedulable status, Condition missing or unexpected value, not ready yet"
         return 1
     fi
+
     if [ -z "${bootLhRdyComplete}" ]; then
         logmsg "longhorn ds ready, node:$node nodedeploymentmap:$(echo "$ndm" | tr -d '\n')"
         bootLhRdyComplete="1"

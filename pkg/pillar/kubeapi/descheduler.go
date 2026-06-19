@@ -75,7 +75,9 @@ func isDeschedulerReadyWithClient(log *base.LogObject, client kubernetes.Interfa
 		return false, fmt.Errorf("IsDeschedulerReady: get node %s: %w", nodeName, err)
 	}
 	if node.Spec.Unschedulable {
-		log.Noticef("IsDeschedulerReady: node %s is unschedulable", nodeName)
+		// Unschedulable is a permanent state on tie-breaker nodes; suppress
+		// repeated Notice logs since this check runs every 15s for 30 minutes.
+		log.Functionf("IsDeschedulerReady: node %s is unschedulable", nodeName)
 		return false, nil
 	}
 	nodeReady := false

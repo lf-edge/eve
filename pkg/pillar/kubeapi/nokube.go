@@ -78,3 +78,9 @@ func EnsureVMsDeschedulerAnnotated(*base.LogObject) error {
 func WaitForLonghornReady(ctx context.Context, log *base.LogObject) error {
 	return nil
 }
+
+// VolumeDirInternalEntriesMap is a stub for non EVE-k builds; returns empty map
+// since Longhorn does not co-locate files in non-k configurations.
+func VolumeDirInternalEntriesMap() map[string]struct{} {
+	return map[string]struct{}{}
+}
