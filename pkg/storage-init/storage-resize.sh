@@ -134,6 +134,16 @@ maybe_offline_disk_resize() {
         log "storage-resizer: prior resize failed under this image ($(_running_eve_release)); not retrying (resize-failed.json present)"
         return 0
     fi
+
+    # We are now committed to a resize attempt. Keep the hardware watchdog fed for
+    # the whole attempt: the shrink/grow can run longer than the watchdog timeout,
+    # and where firmware armed the watchdog the kernel only feeds it until
+    # open_timeout elapses. Hold and pet /dev/watchdog from here until the resize
+    # is done (killed below, which disarms it); the resize_reboot/resize_abort
+    # paths reset the device, which stops the feeder regardless.
+    storage-resizer run-watchdog --timeout 60 >/dev/console 2>&1 &
+    _wd_pid=$!
+
     _bootdev=$(disk_of_partlabel IMGA) || _bootdev=""
     if [ -z "$_bootdev" ]; then
         log "storage-resizer: cannot find boot disk (IMGA); aborting resize"
@@ -184,6 +194,7 @@ maybe_offline_disk_resize() {
         resize_abort "grow" "$_rc"
     fi
     partprobe "$_bootdev"
+    [ -n "${_wd_pid:-}" ] && kill "$_wd_pid" 2>/dev/null   # disarms the watchdog (magic close)
     log "storage-resizer: repartition complete on $_bootdev"
 }
 
