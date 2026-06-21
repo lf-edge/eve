@@ -13,7 +13,7 @@ adjust_parent_oom_score() {
 }
 
 reload_watchdog() {
-    # Firs thinsg first: kill it!
+    # First things first: kill it!
     if [ -f /var/run/watchdog.pid ]; then
         wp=$(cat /var/run/watchdog.pid)
         log "Killing watchdog $wp"
@@ -56,6 +56,23 @@ run_watchdog() {
    done
 }
 
+# record_hw_watchdog_bootstatus captures the hardware watchdog boot status
+# (WDIOC_GETBOOTSTATUS) once, before the watchdog daemon takes over the device.
+# The boot status latches the cause of the *previous* reset; a CARDRESET flag
+# means the watchdog timer expired and reset the board. nodeagent reads this
+# file to attribute the reboot reason. Flag names whose boot-status column is 1
+# are written one per line; an empty file means nothing was latched or the
+# driver does not report a boot status (e.g. Intel iTCO always reports zero).
+#
+# NOTE: opening /dev/watchdog can arm the timer on some drivers. This runs
+# immediately before run_watchdog starts watchdog(8), which then keeps petting
+# the device, so the exposure window is short; validate per target platform.
+record_hw_watchdog_bootstatus() {
+    wdctl /dev/watchdog 2>/dev/null | awk 'NR > 1 && $NF == 1 { print $1 }' \
+        > /persist/hw_watchdog_bootstatus
+    log "Recorded hardware watchdog boot status: $(tr '\n' ' ' < /persist/hw_watchdog_bootstatus)"
+}
+
 # Lets get this party started
 
 if [ -z "${WATCHDOG_CHANGE_TIME}" ]; then
@@ -64,6 +81,7 @@ if [ -z "${WATCHDOG_CHANGE_TIME}" ]; then
 fi
 
 if [ -c /dev/watchdog ]; then
+    record_hw_watchdog_bootstatus
     if [ $USE_HW_WATCHDOG = 0 ]; then
         log "Disabling use of /dev/watchdog"
         wdctl /dev/watchdog
