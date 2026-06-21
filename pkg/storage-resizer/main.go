@@ -39,6 +39,8 @@ func main() {
 		os.Exit(cmdRestore(os.Args[2:]))
 	case "cleanup":
 		os.Exit(cmdCleanup(os.Args[2:]))
+	case "run-watchdog":
+		os.Exit(cmdRunWatchdog(os.Args[2:]))
 	default:
 		usage()
 		os.Exit(2)
@@ -53,6 +55,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "  storage-resizer grow    --disk <path> [--esp 2G] [--imga 10G] [--imgb 10G] [--dry-run]                     (baseosmgr/online)")
 	fmt.Fprintln(os.Stderr, "  storage-resizer restore [--persist /persist] [--backup-dir /config/backup-persist] [--flag-file /config/repartition-inprogress] [--failure-marker /config/resize-failed.json] [--persist-recreated] [--cleanup]")
 	fmt.Fprintln(os.Stderr, "  storage-resizer cleanup [--backup-dir /config/backup-persist] [--flag-file /config/repartition-inprogress]")
+	fmt.Fprintln(os.Stderr, "  storage-resizer run-watchdog [--timeout 30] [--interval 10s] [--no-pet]   (background; feeds /dev/watchdog until signaled)")
 }
 
 // checkReport is the machine-readable result of the pre-flight check.
