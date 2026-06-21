@@ -82,6 +82,11 @@ is delegated to `baseosmgr`/`zboot` and `zedagent`.
     when no reboot reason was recorded, to distinguish a dirty power-off
     (counter incremented) from a kernel panic / watchdog reset
     (counter unchanged),
+  * `/persist/hw_watchdog_bootstatus` — hardware watchdog boot status flags
+    recorded by `pkg/watchdog` at boot; a `CARDRESET` entry attributes a
+    reset with no other recorded reason to the hardware watchdog
+    (`BootReasonHWWatchdog`) instead of guessing a kernel panic. Only
+    populated on platforms whose watchdog driver reports the flag,
   * `/run/global/first-boot` — marker dropped by the installer on the very
     first boot; presence sets the boot reason to `BootReasonFirst`,
   * `/persist/installer/installer.log` plus
