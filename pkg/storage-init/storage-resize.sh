@@ -135,15 +135,6 @@ maybe_offline_disk_resize() {
         return 0
     fi
 
-    # We are now committed to a resize attempt. Keep the hardware watchdog fed for
-    # the whole attempt: the shrink/grow can run longer than the watchdog timeout,
-    # and where firmware armed the watchdog the kernel only feeds it until
-    # open_timeout elapses. Hold and pet /dev/watchdog from here until the resize
-    # is done (killed below, which disarms it); the resize_reboot/resize_abort
-    # paths reset the device, which stops the feeder regardless.
-    storage-resizer run-watchdog --timeout 60 >/dev/console 2>&1 &
-    _wd_pid=$!
-
     _bootdev=$(disk_of_partlabel IMGA) || _bootdev=""
     if [ -z "$_bootdev" ]; then
         log "storage-resizer: cannot find boot disk (IMGA); aborting resize"
@@ -157,6 +148,17 @@ maybe_offline_disk_resize() {
         log "storage-resizer: resize did not converge after $_n reboots; aborting"
         resize_abort "too-many-reboots" "$_n"
     fi
+
+    # Run a hardware watchdog across the offline resize, started here once we have
+    # the attempt count ($_n) and are past the max-reboots abort, and killed after
+    # the resize (which disarms it). STRESS MODE: --no-pet --attempt escalates the
+    # timeout with the reboot count -- short+random early so the watchdog actually
+    # fires and tests recovery, 600s by the 4th try so a slow-but-progressing
+    # resize converges. The resize_reboot/resize_abort paths reset the device,
+    # stopping the feeder regardless.
+    storage-resizer run-watchdog --no-pet --attempt "$_n" >/dev/console 2>&1 &
+    _wd_pid=$!
+
     _cd=/tmp/config_count
     if _mount_config_rw "$_cd"; then
         echo $((_n + 1)) > "$_cd/resize-reboots" 2>/dev/null
@@ -194,7 +196,7 @@ maybe_offline_disk_resize() {
         resize_abort "grow" "$_rc"
     fi
     partprobe "$_bootdev"
-    [ -n "${_wd_pid:-}" ] && kill "$_wd_pid" 2>/dev/null   # disarms the watchdog (magic close)
+    [ -n "${_wd_pid:-}" ] && kill "$_wd_pid" 2>/dev/null   # resize done -- stop the watchdog feeder
     log "storage-resizer: repartition complete on $_bootdev"
 }
 
