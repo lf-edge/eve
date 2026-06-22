@@ -187,7 +187,7 @@ func clientTCPtunnel(here net.Conn, idx, chNum int, rport int) {
 
 	buf := make([]byte, chunkSize)
 	var justEnterVNC bool
-	if rport >= 5900 && rport <= 5910 { // VNC does not send any data initially
+	if rport >= vncPortMin && rport <= vncPortMax { // VNC does not send any data initially
 		justEnterVNC = true
 	}
 	var reqLen int
