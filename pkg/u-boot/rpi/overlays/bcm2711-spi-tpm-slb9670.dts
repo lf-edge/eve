@@ -8,10 +8,13 @@
 
 / {
 	compatible = "brcm,bcm2711";
+
+	// Fragments 0 and 1 are only for u-boot, that needs to use the spi-gpio
+	// (bit-banged) driver. Kernel doesn't have a spi-gpio driver.
 	fragment@0 {
 		target = <&spi>;
 		__overlay__ {
-			compatible = "brcm,bcm2835-spi", "spi-gpio";
+			compatible = "spi-gpio";
 			pinctrl-names = "default";
 			pinctrl-0 = <&spi0_pins &spi0_cs_pins>;
 			gpio-sck = <&gpio 11 0>;
@@ -23,8 +26,8 @@
 			#size-cells = <0>;
 			status = "okay";
 
-			slb9670: slb9670@1 {
-				compatible = "infineon,slb9670", "tis,tpm2-spi", "tcg,tpm_tis-spi";
+			slb9670u: slb9670u@1 {
+				compatible = "tcg,tpm_tis-spi";
 				reg = <1>;
 				#address-cells = <1>;
 				#size-cells = <0>;
@@ -49,6 +52,33 @@
 				brcm,pins = <8 7>;
 				brcm,function = <1>;
 			};
+		};
+	};
+
+	// Fragments 2 and 3 are going to be consumed by the kernel, u-boot doesn't
+	// have infineon,slb9670 driver
+	fragment@2 {
+		target = <&spi0>;
+		__overlay__ {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "okay";
+
+			slb9670: slb9670@1 {
+				compatible = "infineon,slb9670";
+				reg = <1>;	/* CE1 */
+				#address-cells = <1>;
+				#size-cells = <0>;
+				spi-max-frequency = <32000000>;
+				status = "okay";
+			};
+		};
+	};
+
+	fragment@3 {
+		target = <&spidev1>;
+		__overlay__ {
+			status = "disabled";
 		};
 	};
 };
