@@ -24,6 +24,16 @@ const (
 	tcpSyntaxErr = "TCP syntax error"
 )
 
+const (
+	// vncPortMin is the TCP port of the first VNC display (display :0).
+	vncPortMin = 5900
+	// vncPortCount is the number of consecutive VNC ports supported,
+	// matching the controller's 64-bit VNC display bitmap.
+	vncPortCount = 1 << 6
+	// vncPortMax is the TCP port of the last supported VNC display (5963).
+	vncPortMax = vncPortMin + vncPortCount - 1
+)
+
 var (
 	devIntfIPs []string
 	appIntfIPs []appIPvnc
@@ -321,7 +331,7 @@ func checkAppConsole(addr, port string) (bool, bool, string) {
 	if err != nil {
 		return false, false, ""
 	}
-	if portnum < 5900 || portnum > 5915 {
+	if portnum < vncPortMin || portnum > vncPortMax {
 		return false, false, ""
 	}
 
@@ -329,7 +339,7 @@ func checkAppConsole(addr, port string) (bool, bool, string) {
 	var appName string
 
 	for _, a := range appIntfIPs {
-		if a.vncPort+5900 == portnum {
+		if a.vncPort+vncPortMin == portnum {
 			allowVNC = a.vncEnable
 			appName = a.appName
 			break
