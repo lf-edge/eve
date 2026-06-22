@@ -23,6 +23,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"os/signal"
 	"syscall"
@@ -39,10 +40,16 @@ var watchdogDevice = "/dev/watchdog"
 // terminated by a signal.
 func cmdRunWatchdog(args []string) int {
 	fs := flag.NewFlagSet("run-watchdog", flag.ExitOnError)
-	timeout := fs.Int("timeout", 30, "hardware watchdog timeout in seconds")
+	timeout := fs.Int("timeout", 30, "hardware watchdog timeout in seconds (overridden by --attempt escalation)")
 	interval := fs.Duration("interval", 0, "pet interval (default: timeout/3, min 2s)")
 	noPet := fs.Bool("no-pet", false, "hold the watchdog open but do NOT pet it (test only: demonstrates a fire)")
+	attempt := fs.Int("attempt", -1, "resize attempt (0-based); when >=0, escalate the timeout with it -- short+random early so a hung resize is caught fast, 600s by the 4th try so a slow-but-progressing one finishes")
 	_ = fs.Parse(args)
+
+	wdTimeout := *timeout
+	if *attempt >= 0 {
+		wdTimeout = escalatedTimeout(*attempt)
+	}
 
 	f, err := os.OpenFile(watchdogDevice, os.O_WRONLY, 0)
 	if err != nil {
@@ -54,7 +61,7 @@ func cmdRunWatchdog(args []string) int {
 	}
 	fd := int(f.Fd())
 	// Best effort: not all drivers honor SETTIMEOUT; read back what stuck.
-	_ = unix.IoctlSetPointerInt(fd, unix.WDIOC_SETTIMEOUT, *timeout)
+	_ = unix.IoctlSetPointerInt(fd, unix.WDIOC_SETTIMEOUT, wdTimeout)
 	eff, _ := unix.IoctlGetInt(fd, unix.WDIOC_GETTIMEOUT)
 
 	// Terminate (and disarm) on the signals the orchestrator sends to stop us.
@@ -88,5 +95,24 @@ func cmdRunWatchdog(args []string) int {
 			return 0
 		case <-t.C:
 		}
+	}
+}
+
+// escalatedTimeout grows the (no-pet) watchdog timeout with the resize attempt:
+// short and random early so a hung resize is reset quickly, widening on retries
+// so a slow-but-progressing one eventually gets an uninterrupted window, and
+// effectively non-firing by the 4th try. The iTCO is two-stage, so the real
+// reset is ~2x these values; tuned against a ~minute shrink+grow. Randomized so
+// repeated stress runs vary which step gets cut.
+func escalatedTimeout(attempt int) int {
+	switch {
+	case attempt <= 0:
+		return 10 + rand.IntN(11) // ~10-20s (reset ~20-40s): fires during the shrink
+	case attempt == 1:
+		return 20 + rand.IntN(21) // ~20-40s
+	case attempt == 2:
+		return 45 + rand.IntN(46) // ~45-90s: usually survives
+	default:
+		return 600 // 4th run onward: won't fire; the resize completes
 	}
 }

@@ -20,3 +20,24 @@ func TestRunWatchdogNoDevice(t *testing.T) {
 		t.Fatalf("cmdRunWatchdog with no device = %d, want 0", rc)
 	}
 }
+
+// TestEscalatedTimeout: the no-pet stress timeout grows with the attempt and is
+// random within each band, reaching the effectively-non-firing 600s by the 4th
+// try (attempt index 3).
+func TestEscalatedTimeout(t *testing.T) {
+	cases := []struct{ attempt, lo, hi int }{
+		{0, 10, 20},
+		{1, 20, 40},
+		{2, 45, 90},
+		{3, 600, 600},
+		{5, 600, 600},
+	}
+	for _, c := range cases {
+		for i := 0; i < 500; i++ {
+			got := escalatedTimeout(c.attempt)
+			if got < c.lo || got > c.hi {
+				t.Fatalf("escalatedTimeout(%d) = %d, want [%d,%d]", c.attempt, got, c.lo, c.hi)
+			}
+		}
+	}
+}
