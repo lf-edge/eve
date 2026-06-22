@@ -504,6 +504,10 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 	unpublishDeletedNetworkInstanceConfig(ctx, networkInstances)
 
 	for _, apiConfigEntry := range networkInstances {
+		if apiConfigEntry.Uuidandversion == nil {
+			log.Error("NetworkInstanceConfig: No UUID given. ignored")
+			continue
+		}
 		id, err := uuid.FromString(apiConfigEntry.Uuidandversion.Uuid)
 		version := apiConfigEntry.Uuidandversion.Version
 		if err != nil {
