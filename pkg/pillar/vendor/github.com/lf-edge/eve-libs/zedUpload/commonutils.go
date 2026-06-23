@@ -180,6 +180,11 @@ func (c *httpClientWrapper) unwrap() (*http.Client, error) {
 				localTCPAddr := &net.TCPAddr{IP: c.srcIP}
 				localUDPAddr := &net.UDPAddr{IP: c.srcIP}
 				resolverDial := func(ctx context.Context, network, address string) (net.Conn, error) {
+					// Skip source IP binding for loopback DNS servers.
+					host, _, _ := net.SplitHostPort(address)
+					if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+						return (&net.Dialer{}).DialContext(ctx, network, address)
+					}
 					switch network {
 					case "udp", "udp4", "udp6":
 						d := net.Dialer{LocalAddr: localUDPAddr}

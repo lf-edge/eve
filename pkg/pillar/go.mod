@@ -33,12 +33,11 @@ require (
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.5.0
 	github.com/lf-edge/edge-containers v0.0.0-20260502192833-bdbe764faf59
 	github.com/lf-edge/eve-api/go v0.0.0-20260520095750-2a982d0b4ddb
-	github.com/lf-edge/eve-libs v0.0.0-20260605082929-e518b59e99d2
+	github.com/lf-edge/eve-libs v0.0.0-20260623133124-1c3a4208858c
 	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d
 	github.com/lf-edge/go-qemu v0.0.0-20231121152149-4c467eda0c56
 	github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20240507172735-6d37353ca1ee
 	github.com/longhorn/longhorn-manager v1.9.1
-	github.com/miekg/dns v1.1.43
 	github.com/moby/sys/mountinfo v0.7.2
 	github.com/multiplay/go-edac v1.0.1
 	github.com/onsi/gomega v1.36.1
@@ -59,7 +58,6 @@ require (
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
 	github.com/vishvananda/netlink v1.3.1
 	github.com/zededa/ghw v0.0.0-20260427124750-9a7dc80ae71c
-	go.uber.org/goleak v1.3.0
 	go.uber.org/mock v0.5.1
 	golang.org/x/crypto v0.46.0
 	golang.org/x/net v0.48.0
@@ -247,6 +245,7 @@ require (
 	github.com/jinzhu/copier v0.4.0 // indirect
 	github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0 // indirect
 	github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de // indirect
+	github.com/miekg/dns v1.1.43 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/spdystream v0.5.1 // indirect
