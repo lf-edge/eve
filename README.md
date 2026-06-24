@@ -271,19 +271,24 @@ make run CONF_PART=/path/to/partition
 
 Note that the directory must exist to be mounted; if not, it will be ignored. The most common use case is a config directory output on the run of [adam](https://github.com/zededa/adam).
 
-While running everything on your laptop with QEMU could be fun, nothing beats real hardware. The most cost-effective option, not surprisingly, is ARM. We recommend two popular board [HiKey](http://www.lenovator.com/product/90.html) and [Raspberry Pi 4](https://www.raspberrypi.org/products/raspberry-pi-4-model-b/). The biggest difference between the two is that on Raspberry Pi (since it doesn't have any built-in flash storage) you won't be able to utilize EVE's installer and you'll have to build a live image. With HiKey you can use a standard EVE's installer. The steps to do both are outlined below:
+While running everything on your laptop with QEMU could be fun, nothing beats real hardware. The most cost-effective option, not surprisingly, is ARM. We recommend a [Raspberry Pi 4 Model B](https://www.raspberrypi.org/products/raspberry-pi-4-model-b/) or a Raspberry Pi 5 for discovering and experiment EVE.
 
-## How to use on a Raspberry Pi 4 ARM board
+## How to use on Raspberry Pi 4 and 5 ARM boards
 
-Raspberry Pi 4 is a tiny, but capable enough ARM board that allows EVE to run with either Xen or KVM hypervisors. While EVE would run in the lowest memory configuration (1GB) if you plan to use it for actual EVE development we strongly recommend buying a 4GB RAM option.
+Raspberry Pi is a tiny, but capable enough ARM board that allows EVE to run with either Xen or KVM hypervisors. While EVE would run in the lowest memory configuration (1GB) if you plan to use it for actual EVE development we strongly recommend buying a 4GB/8GB RAM option.
 
-Since a full Raspberry Pi 4 support is only available in upstream Linux kernels starting from 5.6.0, you'll have to use that bleeding edge kernel for your build. Another peculiar aspect of this board is that it doesn't use a standard [bootloader (e.g. u-boot or UEFI)](https://www.raspberrypi.org/documentation/configuration/boot_folder.md) so we need to trick it into using our own u-boot as UEFI environment. Thankfully, our Makefile logic tries to automate as much of it as possible. Thus, putting it all together, here are the steps to run EVE on Raspberry Pi 4:
+EVE provides support for Raspberry Pi 4 Model B (including Compute Module variant) and Raspberry Pi 5 only in its kernel. Another peculiar aspect of this board is that it doesn't use a standard [bootloader (e.g. u-boot or UEFI)](https://www.raspberrypi.org/documentation/configuration/boot_folder.md) so we need to trick it into using our own u-boot as UEFI environment. Thankfully, our Makefile logic tries to automate as much of it as possible. Thus, putting it all together, here are the steps to run EVE on Raspberry Pi 4 and 5:
 
 1. Make sure you have a clean build directory (since this is a non-standard build) `rm -rf dist/arm64`
 2. Build a live image `make ZARCH=arm64 HV=kvm live-raw` (or `make ZARCH=arm64 HV=xen live-raw` if you want XEN by default)
 3. Flash the `dist/arm64/current/live.raw` live EVE image onto your SD card by [following these instructions](#how-to-write-the-eve-image-and-installer-onto-storage-media)
 
-Once your Raspberry Pi 4 is happily running an EVE image you can start using EVE controller for further updates (so that you don't ever have to take an SD card out of your board). Build your rootfs by running `make ZARCH=arm64 HV=xen rootfs` (or `make ZARCH=arm64 HV=kvm rootfs` if you want KVM by default) and give resulting `dist/arm64/current/installer/rootfs.img` to the controller.
+Once your Raspberry Pi is happily running an EVE image you can start using EVE controller for further updates (so that you don't ever have to take an SD card out of your board). Build your rootfs by running `make ZARCH=arm64 HV=xen rootfs` (or `make ZARCH=arm64 HV=kvm rootfs` if you want KVM by default) and give resulting `dist/arm64/current/installer/rootfs.img` to the controller.
+
+### Raspberry Pi 5 U-boot support
+
+Notice that the support for Raspberry Pi 5 on U-boot is still limited. USB is currently not available during the boot stage.
+This is due to the new RP1 south-bridge chip, which requires a proprietary firmware and driver not yet supported by U-Boot.
 
 ### How to use on an Onlogic FR201 ARM device
 
@@ -312,19 +317,21 @@ Finally, boot or install EVE, using the USB 3.0 port. The installer will install
 Edit the file `config.txt` of the 1st partition of the live/installer image, two lines must be changed, as shown by the diff syntax below:
 
 ```diff
---- config.txt_OLD      2024-10-21 14:01:02.782670479 +0300
-+++ config.txt  2024-10-21 14:01:11.042670420 +0300
-@@ -30,7 +30,7 @@
- # but for advantech uno-220 we need to set ce to 0x00
- # https://github.com/Advantech-IIoT/UNO-220-POE-/tree/master/srcs/dtbo/tpm#notes
- # PS: Comment this line for OnLogic FR201 device
+diff --git a/pkg/u-boot/rpi/config.txt b/pkg/u-boot/rpi/config.txt
+index c5de6cfa5..89a6ec8f0 100755
+--- config.txt
++++ config.txt
+@@ -26,7 +26,7 @@ enable_uart=1
+ # for measured boot. Some boards use a different ce(address): default ce=0x01;
+ # Advantech UNO-220 needs ce=0x00.
+ # WARNING: Comment this line for OnLogic FR201 device.
 -dtoverlay=bcm2711-spi-tpm-slb9670,ce=0x01
 +#dtoverlay=bcm2711-spi-tpm-slb9670,ce=0x01
-
- # Disable warning overlays as they don't work well together with linux's graphical output
- avoid_warnings=1
-@@ -49,4 +49,4 @@
-
+ 
+ # Pi 5 (BCM2712): the bit-banged Pi 4 overlay can't bind here since the GPIO/SPI
+ # controllers live on the RP1 chip (over PCIe), not in the SoC. So use the
+@@ -65,4 +65,4 @@ include extraconfig.txt
+ 
  # Uncomment for the following line for OnLogic FR201
  # Please, don't forget to disable overlay bcm2711-spi-tpm-slb9670
 -#include fr201.txt
