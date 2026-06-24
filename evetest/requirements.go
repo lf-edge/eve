@@ -62,6 +62,21 @@ func (h *Hypervisor) FromString(s string) error {
 	return nil
 }
 
+// toAPIType converts a Hypervisor to the corresponding api.HypervisorType.
+// Defaults to HV_KVM for HypervisorUndefined.
+func (h Hypervisor) toAPIType() api.HypervisorType {
+	switch h {
+	case HypervisorKVM, HypervisorUndefined:
+		return api.HypervisorType_HV_KVM
+	case HypervisorXen:
+		return api.HypervisorType_HV_XEN
+	case HypervisorKubevirt:
+		return api.HypervisorType_HV_KUBEVIRT
+	default:
+		return api.HypervisorType_HV_KVM
+	}
+}
+
 // Filesystem identifies the filesystem type required or detected on an EVE device.
 type Filesystem int
 

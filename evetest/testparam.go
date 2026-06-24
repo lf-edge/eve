@@ -236,6 +236,55 @@ func GetHypervisorParameterValue() Hypervisor {
 	return GetTestParameter[Hypervisor](HypervisorParameterKey)
 }
 
+// EVEVersionParameterKey is the key used for the EVE version parameter.
+// This is the EVETEST_EVE_VERSION environment variable, which defaults to the
+// HEAD of the checked-out EVE repo when not set (determined by the evetest
+// Makefile).
+// Most tests do not need to explicitly use this parameter and will automatically
+// get EVE device(s) running the version defined by the EVETEST_EVE_VERSION variable.
+// Only needed when a test must start from a different EVE version and then later
+// upgrade to the version selected by EVETEST_EVE_VERSION, or when a test suite
+// needs to override the EVE version for a specific sub-test variant.
+const EVEVersionParameterKey = "EVE_VERSION"
+
+// EVEVersionParameter is a predefined TestParameterDefinition for the EVE version.
+func EVEVersionParameter() TestParameterDefinition {
+	return TestParameterDefinition{
+		Key:          EVEVersionParameterKey,
+		DefaultValue: "",
+		Description: TestParameterDescription{
+			Summary: "EVE version to run on the device (e.g. \"16.0.0-lts\")",
+			Default: "HEAD of the checked-out EVE repo (determined by the evetest Makefile)",
+		},
+	}
+}
+
+// GetEVEVersionParameterValue returns the value set for the EVE version parameter.
+func GetEVEVersionParameterValue() string {
+	return GetTestParameter[string](EVEVersionParameterKey)
+}
+
+// DiskSizeMiBParameterKey is the key used for the DiskSizeMiB parameter.
+const DiskSizeMiBParameterKey = "DISK_SIZE_MB"
+
+// DiskSizeMiBParameter is a predefined TestParameterDefinition for the device disk size.
+// A value of 0 means the framework default (36864 MiB) is used.
+func DiskSizeMiBParameter() TestParameterDefinition {
+	return TestParameterDefinition{
+		Key:          DiskSizeMiBParameterKey,
+		DefaultValue: uint32(0),
+		Description: TestParameterDescription{
+			Summary: "Device disk size in MiB",
+			Default: "0 (use framework default 36864 MiB)",
+		},
+	}
+}
+
+// GetDiskSizeMiBParameterValue returns the value set for the DiskSizeMiB parameter.
+func GetDiskSizeMiBParameterValue() uint32 {
+	return GetTestParameter[uint32](DiskSizeMiBParameterKey)
+}
+
 // SkipIfHypervisorKubevirt skips the current test if the resolved HYPERVISOR
 // parameter is HypervisorKubevirt. Kubevirt is only supported by tests under
 // `evetest/tests/cluster`; non-cluster tests should call this helper right
