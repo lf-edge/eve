@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -22,6 +23,7 @@ import (
 	evemetrics "github.com/lf-edge/eve-api/go/metrics"
 	api "github.com/lf-edge/eve/evetest/grpcapi/go"
 	"github.com/lf-edge/eve/evetest/logger"
+	"github.com/lf-edge/eve/evetest/utils"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	uuid "github.com/satori/go.uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -349,10 +351,227 @@ func (d *EdgeDevice) GetDeviceIPAddress(netAdapterLogicalLabel string) []net.IP 
 }
 
 // UpgradeEVE upgrades the EVE OS to the specified version and optionally
-// waits until the upgrade completes.
-func (d *EdgeDevice) UpgradeEVE(eveVersion string, waitUntilUpgraded bool) {
-	// TODO (do not forget to log progress)
-	d.th.t.Fatalf("UpgradeEVE is not implemented")
+// waits until the upgrade completes or reverts.
+// When expectRevert is true, the upgrade is expected to fail and EVE to revert
+// to the previous version -- the function then waits for the target version to
+// show a FAILED status instead of waiting for it to become active.
+// A reverted upgrade causes two reboots (one to try the new version, one to
+// revert), so the expected reboot count is incremented accordingly.
+func (d *EdgeDevice) UpgradeEVE(targetEVEVersion string, targetEVEHypervisor Hypervisor,
+	waitUntilUpgraded bool, expectRevert bool) {
+
+	// Read current device arch (set during Setup).
+	d.th.devicesM.Lock()
+	devState, found := d.th.devices[d.devName]
+	if !found {
+		d.th.devicesM.Unlock()
+		d.th.t.Fatalf("Unknown device %q", d.devName)
+	}
+	currentImageRef := devState.imageRef
+	d.th.devicesM.Unlock()
+
+	targetImageRef := &api.ImageRef{
+		Repo:       currentImageRef.Repo,
+		Version:    targetEVEVersion,
+		Hypervisor: targetEVEHypervisor.toAPIType(),
+		Arch:       currentImageRef.Arch,
+	}
+	imageName, err := utils.EVEDockerImageName(targetImageRef)
+	if err != nil {
+		d.th.t.Fatalf("Invalid target image ref: %v", err)
+	}
+	d.th.log.Infof("Pulling EVE image %s", imageName)
+
+	ctx, cancel := context.WithTimeout(d.th.ctx, eveImagePullTimeout)
+	defer cancel()
+
+	logger := d.th.log.WithField("component", "upgrade")
+	err = utils.PullDockerImage(ctx, logger, imageName)
+	if err != nil {
+		d.th.t.Fatalf("Failed to pull EVE image %s: %v", imageName, err)
+	}
+
+	archStr := "amd64"
+	if currentImageRef.Arch == api.ArchType_ARCH_ARM64 {
+		archStr = "arm64"
+	}
+	platform := "linux/" + archStr
+
+	// Get the actual short version string from the image.
+	versionOut, err := utils.RunDockerCommand(
+		ctx, logger, imageName, "version", nil, platform)
+	if err != nil {
+		d.th.t.Fatalf("Failed to get version from image %s: %v",
+			imageName, err)
+	}
+	shortVersion := strings.TrimSpace(versionOut)
+	d.th.log.Debugf("Target EVE short version is %q", shortVersion)
+
+	// Extract rootfs (cache by short version to avoid re-extraction on reuse).
+	rootfsFilename := "rootfs-" + shortVersion + ".img"
+	rootfsPath := filepath.Join(d.th.imgServerDir, rootfsFilename)
+	if _, statErr := os.Stat(rootfsPath); os.IsNotExist(statErr) {
+		d.th.log.Infof("Extracting EVE rootfs from %s", imageName)
+		_, err = utils.RunDockerCommand(ctx, logger, imageName,
+			"-f raw rootfs",
+			map[string]string{"/out": d.th.imgServerDir},
+			platform)
+		if err != nil {
+			d.th.t.Fatalf("Failed to extract EVE rootfs from %s: %v",
+				imageName, err)
+		}
+		defaultOut := filepath.Join(d.th.imgServerDir, "rootfs.img")
+		if renErr := os.Rename(defaultOut, rootfsPath); renErr != nil {
+			d.th.t.Fatalf("Failed to rename EVE rootfs: %v", renErr)
+		}
+	} else {
+		d.th.log.Infof("Reusing cached rootfs %s", rootfsFilename)
+	}
+
+	sha256hex, fileSize, err := utils.FileHashAndSize(rootfsPath)
+	if err != nil {
+		d.th.t.Fatalf("UpgradeEVE: failed to hash rootfs %s: %v", rootfsPath, err)
+	}
+
+	// Build upgrade device config from a clone of the current config.
+	config := d.GetConfig()
+	config.SetBaseOS(HTTPStorage{
+		ImageFormat:       eveconfig.Format_RAW,
+		ImageSHA256:       sha256hex,
+		MaxDownloadBytes:  uint64(fileSize),
+		ImageRelativePath: rootfsFilename,
+		ServerAddress:     GetImageServerIPv4().String(),
+		ServerPort:        GetImageServerPort(),
+	}, shortVersion)
+
+	d.th.log.Infof("Applying EVE upgrade config (target=%s)", shortVersion)
+	// A successful upgrade reboots once; a reverted upgrade reboots twice
+	// (once to try the new version, once to revert to the previous one).
+	d.th.incExpectedRebootCount(d.devName)
+	if expectRevert {
+		d.th.incExpectedRebootCount(d.devName)
+	}
+	d.th.devicesM.Lock()
+	d.th.devices[d.devName].wasUpgraded = true
+	d.th.devicesM.Unlock()
+	d.ApplyConfig(config, false, false)
+
+	if waitUntilUpgraded {
+		if expectRevert {
+			d.waitForRevert(shortVersion)
+		} else {
+			d.waitForUpgrade(shortVersion)
+		}
+	}
+}
+
+// waitForUpgrade blocks until the device's SwList contains an entry for
+// targetShortVersion with PartitionState=="active", or fatals on failure/timeout.
+func (d *EdgeDevice) waitForUpgrade(targetShortVersion string) {
+	d.th.log.Infof("Waiting for device %q to upgrade to %s",
+		d.devName, targetShortVersion)
+	devUUID := d.getDevUUID()
+
+	infoCh := make(chan *eveinfo.ZInfoMsg, 20)
+	unsub, err := d.th.adamClient.SubscribeToDeviceInfoMsgs(devUUID,
+		func(msg *eveinfo.ZInfoMsg) bool {
+			return msg.GetZtype() == eveinfo.ZInfoTypes_ZiDevice
+		},
+		infoCh)
+	if err != nil {
+		d.th.t.Fatalf("Failed to subscribe to info messages: %v", err)
+	}
+	defer unsub()
+
+	ctx, cancel := context.WithTimeout(d.th.ctx, eveUpgradeTimeout)
+	defer cancel()
+
+	var lastLoggedState, lastLoggedStatus string
+	for {
+		select {
+		case msg, ok := <-infoCh:
+			if !ok {
+				d.th.t.Fatalf("Device info subscription closed unexpectedly")
+			}
+			for _, sw := range msg.GetDinfo().GetSwList() {
+				if sw.GetShortVersion() != targetShortVersion {
+					continue
+				}
+				if sw.GetUserStatus() == eveinfo.BaseOsStatus_FAILED {
+					d.th.t.Fatalf("EVE upgrade to %s failed: %s",
+						targetShortVersion, sw.GetSubStatusStr())
+				}
+				if sw.GetPartitionState() == "active" {
+					d.th.log.Infof("Device %q successfully upgraded to %s",
+						d.devName, targetShortVersion)
+					return
+				}
+				state := sw.GetPartitionState()
+				status := sw.GetUserStatus().String()
+				if state != lastLoggedState || status != lastLoggedStatus {
+					d.th.log.Infof("EVE upgrade in progress for device %s "+
+						"(state=%s, status=%s)", d.devName, state, status)
+					lastLoggedState, lastLoggedStatus = state, status
+				}
+			}
+		case <-ctx.Done():
+			d.th.t.Fatalf("Timed out waiting for device %q to upgrade to %s",
+				d.devName, targetShortVersion)
+		}
+	}
+}
+
+// waitForRevert blocks until the device's SwList shows the target version with
+// a FAILED status (indicating EVE rejected it and reverted to the previous version),
+// or fatals on timeout.
+func (d *EdgeDevice) waitForRevert(targetShortVersion string) {
+	d.th.log.Infof("Waiting for device %q to revert from failed upgrade to %s",
+		d.devName, targetShortVersion)
+	devUUID := d.getDevUUID()
+
+	infoCh := make(chan *eveinfo.ZInfoMsg, 20)
+	unsub, err := d.th.adamClient.SubscribeToDeviceInfoMsgs(devUUID,
+		func(msg *eveinfo.ZInfoMsg) bool {
+			return msg.GetZtype() == eveinfo.ZInfoTypes_ZiDevice
+		},
+		infoCh)
+	if err != nil {
+		d.th.t.Fatalf("Failed to subscribe to info messages: %v", err)
+	}
+	defer unsub()
+
+	ctx, cancel := context.WithTimeout(d.th.ctx, eveUpgradeTimeout)
+	defer cancel()
+
+	var lastLoggedState, lastLoggedStatus string
+	for {
+		select {
+		case msg, ok := <-infoCh:
+			if !ok {
+				d.th.t.Fatalf("Device info subscription closed unexpectedly")
+			}
+			for _, sw := range msg.GetDinfo().GetSwList() {
+				if sw.GetShortVersion() != targetShortVersion {
+					continue
+				}
+				if sw.GetUserStatus() == eveinfo.BaseOsStatus_FAILED {
+					d.th.log.Infof("Device %q successfully reverted from %s: %s",
+						d.devName, targetShortVersion, sw.GetSubStatusStr())
+					return
+				}
+				state := sw.GetPartitionState()
+				status := sw.GetUserStatus().String()
+				if state != lastLoggedState || status != lastLoggedStatus {
+					d.th.log.Infof("Upgrade revert in progress (state=%s, status=%s)",
+						state, status)
+					lastLoggedState, lastLoggedStatus = state, status
+				}
+			}
+		case <-ctx.Done():
+			d.th.t.Fatalf("Timed out waiting for device %q to revert from upgrade to %s",
+				d.devName, targetShortVersion)
+		}
+	}
 }
 
 // RequestReboot requests a device reboot via configuration and optionally

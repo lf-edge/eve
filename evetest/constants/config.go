@@ -77,6 +77,14 @@ const (
 	// This is read by the evetest container.
 	EVERepoEnv = "EVE_REPO"
 
+	// HomeDirEnv specifies the evetest data directory on the host ($HOME/.evetest).
+	// It is passed by the Makefile as EVETEST_HOME=$(HOME)/.evetest and must be
+	// bind-mounted into the container at the same path so that Docker bind-mounts
+	// issued from inside the container (e.g. for rootfs extraction) resolve
+	// correctly on the host.
+	// This is read by the evetest container.
+	HomeDirEnv = "HOME"
+
 	// PreferredArchEnv specifies the preferred CPU architecture for EVE devices.
 	// Accepted values: "amd64", "arm64" (case-insensitive).
 	// The framework will use this architecture if the broker supports it;
