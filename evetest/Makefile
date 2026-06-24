@@ -62,12 +62,20 @@ endif
 	$(eval BROKER_IMAGE_MOUNT :=)
 	$(eval BROKER_IMAGE_ENV :=)
 	$(eval BROKER_PROXY_CA_MOUNT :=)
+	@# Always mount the evetest data directory so that Docker bind-mounts issued
+	@# from inside the container (e.g. rootfs extraction for upgrades) resolve
+	@# correctly on the host.
+	$(eval EVETEST_HOME_DIR := $(HOME)/.evetest)
+	$(eval EVETEST_HOME_MOUNT := -v $(EVETEST_HOME_DIR):$(EVETEST_HOME_DIR))
+	@mkdir -p $(EVETEST_HOME_DIR)
 ifndef EVETEST_BROKER_ADDRESS
 	@# Broker runs inside the container; it stores per-VM disk images on the
 	@# host. Default to <home-dir>/.evetest because /tmp is usually on the small
 	@# root partition (or tmpfs) and quickly fills up with three-node clusters.
-	$(eval IMAGE_DIR := $(or $(EVETEST_BROKER_IMAGE_DIR),$(HOME)/.evetest))
-	$(eval BROKER_IMAGE_MOUNT := -v $(IMAGE_DIR):$(IMAGE_DIR))
+	$(eval IMAGE_DIR := $(or $(EVETEST_BROKER_IMAGE_DIR),$(EVETEST_HOME_DIR)))
+	@# Only add a broker image mount when the image dir differs from EVETEST_HOME_DIR
+	@# to avoid a duplicate bind-mount error.
+	$(eval BROKER_IMAGE_MOUNT := $(if $(filter-out $(EVETEST_HOME_DIR),$(IMAGE_DIR)),-v $(IMAGE_DIR):$(IMAGE_DIR),))
 	$(eval BROKER_IMAGE_ENV := -e EVETEST_BROKER_IMAGE_DIR=$(IMAGE_DIR))
 ifneq ($(EVETEST_BROKER_PROXY_CA_CHAIN),)
 	$(eval BROKER_PROXY_CA_MOUNT := -v $(EVETEST_BROKER_PROXY_CA_CHAIN):/etc/evetest/proxy/ca-chain.pem:ro)
@@ -127,6 +135,7 @@ endif
 		--device=/dev/net/tun \
 		$(KVM_DEVICE) \
 		$(ARTIFACTS_MOUNT) \
+		$(EVETEST_HOME_MOUNT) \
 		$(BROKER_IMAGE_MOUNT) \
 		$(BROKER_PROXY_CA_MOUNT) \
 		$(GO_CACHE_MOUNT) \
@@ -136,6 +145,7 @@ endif
 		$(BROKER_IMAGE_ENV) \
 		$(GO_CACHE_ENV) \
 		-e EVETEST_NAME=$(EVETEST_NAME) \
+		-e EVETEST_HOME=$(EVETEST_HOME_DIR) \
 		-e EVETEST_HOST_UID=$(EVETEST_HOST_UID) \
 		-e EVETEST_HOST_GID=$(EVETEST_HOST_GID) \
 		$(EVETEST_ORG)/evetest:$(EVETEST_VERSION)-adam-$(EVETEST_ADAM_VERSION)

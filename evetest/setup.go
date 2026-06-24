@@ -472,6 +472,10 @@ func (th *TestHarness) openTunnelToSDN() {
 						DstNetwork: GetControllerIPv6().String() + "/128",
 						Gateway:    sdnTunContainerIPv6.String(),
 					},
+					{
+						DstNetwork: GetImageServerIPv4().String() + "/32",
+						Gateway:    sdnTunContainerIPv4.String(),
+					},
 				},
 			},
 		},
@@ -978,6 +982,12 @@ func (th *TestHarness) maybeReuseDevices(
 
 		dev, devFound := th.devices[devName]
 		if !devFound {
+			th.devicesM.Unlock()
+			return false
+		}
+		if dev.wasUpgraded {
+			// EVE was upgraded on this device; the running version no longer
+			// matches the original requirement, so reuse is not safe.
 			th.devicesM.Unlock()
 			return false
 		}

@@ -29,6 +29,7 @@ import (
 type paramInfo struct {
 	key           string
 	defValue      string // from Description.Default
+	hasDefault    bool   // true when Description.Default was explicitly set (even if "")
 	allowedValues string // from Description.AllowedValues (e.g. "kvm|xen|kubevirt")
 	typeHint      string // inferred from DefaultValue literal: "bool", "string", "int", …
 }
@@ -69,6 +70,7 @@ type testInfo struct {
 type pkgContext struct {
 	constValues  map[string]string // string const name → string value (for key resolution)
 	constStrings map[string]string // const name → String() return value (for variant display)
+	allConsts    map[string]string // all simple const name → literal value (for variant display)
 	varParams    map[string]paramInfo
 }
 
@@ -81,7 +83,7 @@ func main() {
 	// Parse the evetest framework package (parent of testsDir) to discover
 	// all functions that return TestParameterDefinition.
 	evetestDir := filepath.Dir(testsDir)
-	paramFuncs := buildParamFuncs(evetestDir)
+	paramFuncs, evetestConstValues := buildParamFuncs(evetestDir)
 
 	// Group _test.go files by directory (= Go package).
 	dirFiles := map[string][]string{}
@@ -116,6 +118,11 @@ func main() {
 		}
 
 		ctx := buildPkgContext(parsedFiles)
+		// Inject evetest package string constants with "evetest." prefix so that
+		// SelectorExpr references like evetest.DiskSizeMiBParameterKey are resolved.
+		for k, v := range evetestConstValues {
+			ctx.constValues["evetest."+k] = v
+		}
 
 		for _, f := range parsedFiles {
 			for _, decl := range f.Decls {
@@ -203,8 +210,12 @@ func formatParams(params []paramInfo) string {
 		case pi.typeHint != "":
 			annotation = "(" + pi.typeHint + ")"
 		}
-		if pi.defValue != "" {
-			parts[i] = key + annotation + ", default: " + pi.defValue
+		if pi.hasDefault {
+			displayDefault := pi.defValue
+			if displayDefault == "" {
+				displayDefault = `""`
+			}
+			parts[i] = key + annotation + ", default: " + displayDefault
 		} else {
 			parts[i] = key + annotation
 		}
@@ -231,15 +242,16 @@ func buildPkgContext(files []*ast.File) pkgContext {
 	ctx := pkgContext{
 		constValues:  map[string]string{},
 		constStrings: map[string]string{},
+		allConsts:    map[string]string{},
 		varParams:    map[string]paramInfo{},
 	}
 
-	// Pass 1: collect string const values.
+	// Pass 1: collect const values (package-level and function-local).
 	for _, f := range files {
-		for _, decl := range f.Decls {
-			gd, ok := decl.(*ast.GenDecl)
+		ast.Inspect(f, func(n ast.Node) bool {
+			gd, ok := n.(*ast.GenDecl)
 			if !ok || gd.Tok != token.CONST {
-				continue
+				return true
 			}
 			for _, spec := range gd.Specs {
 				vs, ok := spec.(*ast.ValueSpec)
@@ -247,15 +259,21 @@ func buildPkgContext(files []*ast.File) pkgContext {
 					continue
 				}
 				for i, name := range vs.Names {
-					if i < len(vs.Values) {
-						lit, ok := vs.Values[i].(*ast.BasicLit)
-						if ok && lit.Kind == token.STRING {
-							ctx.constValues[name.Name] = unquote(lit.Value)
-						}
+					if i >= len(vs.Values) {
+						continue
+					}
+					// String consts go into constValues (used for key resolution).
+					if lit, ok := vs.Values[i].(*ast.BasicLit); ok && lit.Kind == token.STRING {
+						ctx.constValues[name.Name] = unquote(lit.Value)
+					}
+					// All simple literal consts go into allConsts (used for display).
+					if v, ok := extractConstLiteralValue(vs.Values[i]); ok {
+						ctx.allConsts[name.Name] = v
 					}
 				}
 			}
-		}
+			return true
+		})
 	}
 
 	// Pass 2: parse String() methods to get human-readable const representations.
@@ -351,11 +369,12 @@ func returnsSingleString(fd *ast.FuncDecl) bool {
 
 // buildParamFuncs parses the non-test Go source files in sourceDir and returns
 // a map from function name to the paramInfo it produces for every function
-// whose sole return type is TestParameterDefinition.
-func buildParamFuncs(sourceDir string) map[string]paramInfo {
+// whose sole return type is TestParameterDefinition, plus the package's string
+// constant map (used by callers to resolve evetest.XxxKey references).
+func buildParamFuncs(sourceDir string) (map[string]paramInfo, map[string]string) {
 	entries, err := os.ReadDir(sourceDir)
 	if err != nil {
-		return nil
+		return nil, nil
 	}
 	fset := token.NewFileSet()
 	var files []*ast.File
@@ -395,7 +414,7 @@ func buildParamFuncs(sourceDir string) map[string]paramInfo {
 			})
 		}
 	}
-	return result
+	return result, ctx.constValues
 }
 
 // returnsParamDef reports whether fd's sole return value is TestParameterDefinition.
@@ -474,6 +493,7 @@ func extractParamDefLit(expr ast.Expr, ctx pkgContext) (paramInfo, bool) {
 		return paramInfo{}, false
 	}
 	var key, defValue, allowedValues, typeHint string
+	var hasDefault bool
 	for _, elt := range comp.Elts {
 		kv, ok := elt.(*ast.KeyValueExpr)
 		if !ok {
@@ -505,6 +525,7 @@ func extractParamDefLit(expr ast.Expr, ctx pkgContext) (paramInfo, bool) {
 				switch descField.Name {
 				case "Default":
 					defValue = resolveStringExpr(descKV.Value, ctx)
+					hasDefault = true
 				case "AllowedValues":
 					allowedValues = resolveStringExpr(descKV.Value, ctx)
 				}
@@ -515,7 +536,7 @@ func extractParamDefLit(expr ast.Expr, ctx pkgContext) (paramInfo, bool) {
 		return paramInfo{}, false
 	}
 	return paramInfo{
-		key: key, defValue: defValue,
+		key: key, defValue: defValue, hasDefault: hasDefault,
 		allowedValues: allowedValues, typeHint: typeHint,
 	}, true
 }
@@ -553,7 +574,7 @@ func isParamDefType(expr ast.Expr) bool {
 }
 
 // resolveStringExpr extracts a string value from an expression expected to be
-// a string constant (literal or named const).
+// a string constant (literal or named const, possibly from another package).
 func resolveStringExpr(expr ast.Expr, ctx pkgContext) string {
 	switch e := expr.(type) {
 	case *ast.BasicLit:
@@ -563,6 +584,12 @@ func resolveStringExpr(expr ast.Expr, ctx pkgContext) string {
 	case *ast.Ident:
 		if v, ok := ctx.constValues[e.Name]; ok {
 			return v
+		}
+	case *ast.SelectorExpr:
+		if pkg, ok := e.X.(*ast.Ident); ok {
+			if v, ok := ctx.constValues[pkg.Name+"."+e.Sel.Name]; ok {
+				return v
+			}
 		}
 	}
 	return ""
@@ -710,6 +737,9 @@ func resolveDisplayValue(expr ast.Expr, ctx pkgContext) string {
 		if s, ok := ctx.constStrings[id.Name]; ok {
 			return s
 		}
+		if s, ok := ctx.allConsts[id.Name]; ok {
+			return s
+		}
 		return id.Name
 	}
 	switch e := expr.(type) {
@@ -723,8 +753,42 @@ func resolveDisplayValue(expr ast.Expr, ctx pkgContext) string {
 			return s
 		}
 		return e.Sel.Name
+	case *ast.CallExpr:
+		// Handle inline type conversions like uint32(20480).
+		if len(e.Args) == 1 {
+			if v, ok := extractConstLiteralValue(e.Args[0]); ok {
+				return v
+			}
+		}
 	}
 	return "?"
+}
+
+// extractConstLiteralValue returns the display string for a simple constant
+// initializer expression (string/numeric literal, bool ident, or a single-arg
+// type-conversion call such as uint32(20480)).
+func extractConstLiteralValue(expr ast.Expr) (string, bool) {
+	switch e := expr.(type) {
+	case *ast.BasicLit:
+		if e.Kind == token.STRING {
+			return unquote(e.Value), true
+		}
+		return e.Value, true
+	case *ast.Ident:
+		if e.Name == "true" || e.Name == "false" {
+			return e.Name, true
+		}
+	case *ast.CallExpr:
+		if len(e.Args) == 1 {
+			if inner, ok := e.Args[0].(*ast.BasicLit); ok {
+				if inner.Kind == token.STRING {
+					return unquote(inner.Value), true
+				}
+				return inner.Value, true
+			}
+		}
+	}
+	return "", false
 }
 
 func unquote(s string) string {
