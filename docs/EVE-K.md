@@ -32,8 +32,17 @@ EVE-API controller config will define a mode
 [`EdgeNodeCluster.cluster_type`](https://github.com/lf-edge/eve-api/blob/2d9b92e761a24f5def0dfe2dcfea363e95efcfdf/proto/config/edge_node_cluster.proto#L42)
 for EVE-k's k3s instance running in the kube service container.
 
-- CLUSTER_TYPE_K3S_BASE : Only k3s + multus installed.
+- CLUSTER_TYPE_K3S_BASE : Only k3s + multus installed. Enables native Kubernetes
+  orchestration of user workloads (controller-supplied registration manifest +
+  kube-vip load balancer). Being phased out; prefer the opt-in flag below.
 - CLUSTER_TYPE_REPLICATED_STORAGE : (k3s + multus) and kubevirt, cdi, longhorn.
+
+`EdgeNodeCluster.enable_native_k8s_orchestration` is an opt-in boolean valid only on a
+`CLUSTER_TYPE_REPLICATED_STORAGE` cluster. When set, EVE additionally enables the
+native Kubernetes orchestration behaviors of `CLUSTER_TYPE_K3S_BASE` (registration
+manifest + kube-vip load balancer) while keeping the full replicated-storage stack
+(kubevirt, cdi, longhorn) installed — unlike `CLUSTER_TYPE_K3S_BASE`, those components
+are NOT removed.
 
 ## k3s Config
 

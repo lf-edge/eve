@@ -3789,8 +3789,10 @@ func parseEdgeNodeClusterConfig(getconfigCtx *getconfigContext,
 		BootstrapNode:    isJoinNode,
 		// XXX EncryptedClusterToken is only for gcp config
 
-		ClusterType: types.ClusterType(zcfgCluster.ClusterType),
+		ClusterType:                  types.ClusterType(zcfgCluster.ClusterType),
+		EnableNativeK8SOrchestration: zcfgCluster.GetEnableNativeK8SOrchestration(),
 	}
+
 	enClusterConfig.CipherToken, err = parseCipherBlock(getconfigCtx,
 		enClusterConfig.Key(), zcfgCluster.GetEncryptedClusterToken())
 	if err != nil {
@@ -3812,10 +3814,12 @@ func parseEdgeNodeClusterConfig(getconfigCtx *getconfigContext,
 		enClusterConfig.TieBreakerNodeID = types.UUIDandVersion{UUID: tieBreakerNodeID}
 	}
 
-	// Parse LoadBalancerService — only supported for ClusterTypeK3sBase clusters.
-	// Each proto interface contributes one LBInterfaceConfig entry using its first CIDR.
+	// Parse LoadBalancerService — supported when native k8s orchestration is
+	// enabled (ClusterTypeK3sBase, or ClusterTypeReplicatedStorage with the
+	// EnableNativeK8SOrchestration opt-in). Each proto interface contributes one
+	// LBInterfaceConfig entry using its first CIDR.
 	lbSvc := zcfgCluster.GetLoadBalancerService()
-	if lbSvc != nil && enClusterConfig.ClusterType == types.ClusterTypeK3sBase {
+	if lbSvc != nil && enClusterConfig.NativeK8sOrchestrationEnabled() {
 		for _, iface := range lbSvc.GetInterfaces() {
 			ifName := iface.GetInterfaceName()
 			cidrs := iface.GetAddressCidrs()

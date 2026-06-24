@@ -89,10 +89,19 @@ type EdgeNodeClusterConfig struct {
 	// TieBreakerNodeID - uuid of a node which will be unscheduled for all workloads
 	TieBreakerNodeID UUIDandVersion
 
+	// EnableNativeK8SOrchestration, when true on a ClusterTypeReplicatedStorage
+	// cluster, enables native Kubernetes orchestration of user workloads
+	// (registration manifest + kube-vip load balancer) in addition to the
+	// EVE-API-managed scheduling. Unlike ClusterTypeK3sBase it does NOT remove
+	// longhorn/kubevirt; the full replicated-storage stack keeps running.
+	// Sourced from EdgeNodeCluster.enable_native_k8s_orchestration.
+	EnableNativeK8SOrchestration bool
+
 	// LBInterfaces - load balancer interface configurations from the controller.
-	// Populated only for ClusterTypeK3sBase clusters. Mirrors the LoadBalancerService
-	// interfaces array from the protobuf; each entry holds one interface name and its
-	// first CIDR from address_cidrs.
+	// Populated when native k8s orchestration is enabled (see
+	// NativeK8sOrchestrationEnabled). Mirrors the LoadBalancerService interfaces
+	// array from the protobuf; each entry holds one interface name and its first
+	// CIDR from address_cidrs.
 	LBInterfaces []LBInterfaceConfig
 
 	// MasterNodeIDs - UUIDs of all designated control-plane nodes in the cluster
@@ -160,6 +169,20 @@ func (enc ENClusterAppStatus) Equal(newEnc ENClusterAppStatus) bool {
 // Key - returns the key for the config of EdgeNodeClusterConfig
 func (config EdgeNodeClusterConfig) Key() string {
 	return config.ClusterID.UUID.String()
+}
+
+// NativeK8sOrchestrationEnabled reports whether native Kubernetes orchestration
+// of user workloads is active for this cluster: always for the legacy
+// ClusterTypeK3sBase, and for ClusterTypeReplicatedStorage when the controller
+// opts in via EnableNativeK8SOrchestration. It gates the registration manifest
+// and the kube-vip load balancer. The replicated-storage opt-in, unlike
+// K3sBase, keeps longhorn/kubevirt installed.
+func (config EdgeNodeClusterConfig) NativeK8sOrchestrationEnabled() bool {
+	if config.ClusterType == ClusterTypeK3sBase {
+		return true
+	}
+	return config.ClusterType == ClusterTypeReplicatedStorage &&
+		config.EnableNativeK8SOrchestration
 }
 
 // EdgeNodeClusterStatus - Status of the multi-node cluster published by zedkube

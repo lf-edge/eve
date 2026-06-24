@@ -45,6 +45,33 @@ func TestEdgeNodeClusterConfigKey(t *testing.T) {
 	assert.Equal(t, cfg.ClusterID.UUID.String(), cfg.Key())
 }
 
+// EdgeNodeClusterConfig.NativeK8sOrchestrationEnabled
+
+func TestNativeK8sOrchestrationEnabled(t *testing.T) {
+	cases := []struct {
+		name        string
+		clusterType ClusterType
+		flag        bool
+		want        bool
+	}{
+		{"k3s-base is always native", ClusterTypeK3sBase, false, true},
+		{"k3s-base with flag is native", ClusterTypeK3sBase, true, true},
+		{"replicated storage without flag", ClusterTypeReplicatedStorage, false, false},
+		{"replicated storage with flag", ClusterTypeReplicatedStorage, true, true},
+		{"none without flag", ClusterTypeNone, false, false},
+		{"none with flag is not native", ClusterTypeNone, true, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := EdgeNodeClusterConfig{
+				ClusterType:                  tc.clusterType,
+				EnableNativeK8SOrchestration: tc.flag,
+			}
+			assert.Equal(t, tc.want, cfg.NativeK8sOrchestrationEnabled())
+		})
+	}
+}
+
 func TestVmiVNCConfig_JSONRoundTrip(t *testing.T) {
 	cases := []struct {
 		name        string
