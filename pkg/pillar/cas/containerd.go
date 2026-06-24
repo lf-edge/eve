@@ -268,16 +268,30 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 			logrus.Error(err.Error())
 			return loadedBlobs, err
 		case blobFile != "":
-			fileReader, err := os.Open(blobFile)
-			if err != nil {
+			fileReader, openErr := os.Open(blobFile)
+			if openErr != nil {
+				// The verified file may have been deleted by the verifier:
+				// when two content trees share a layer blob, the first tree to
+				// finish loading it into CAS drops the last verifier reference,
+				// which deletes the shared verified file. That deletion only
+				// happens after the blob has been committed to CAS, so a missing
+				// file here means the blob is already present and this ingest is
+				// a no-op. Treat it as a successful (idempotent) load instead of
+				// failing the sibling tree's deployment.
+				if c.CheckBlobExists(sha) {
+					logrus.Infof("IngestBlob(%s): blob file %s missing but blob already present in CAS, treating as loaded",
+						blob.Sha256, blobFile)
+					blob.State = types.LOADED
+					loadedBlobs = append(loadedBlobs, blob)
+					continue
+				}
 				err = fmt.Errorf("IngestBlob(%s): could not open blob file for reading at %s: %+s",
-					blob.Sha256, blobFile, err.Error())
+					blob.Sha256, blobFile, openErr.Error())
 				logrus.Error(err.Error())
 				return loadedBlobs, err
 			}
 			defer fileReader.Close()
 			contentReader = fileReader
-			defer fileReader.Close()
 		default:
 			contentReader = bytes.NewReader(blob.Content)
 		}
