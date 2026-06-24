@@ -109,7 +109,7 @@ Longhorn_is_ready() {
     if [ -f /tmp/replicated-storage-uninstall-inprogress ]; then
         return 1
     fi
-    if [ -f /var/lib/base-k3s-mode ]; then
+    if [ -f /var/lib/native-kubernetes-mode ]; then
         return 0
     fi
 

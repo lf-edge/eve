@@ -37,6 +37,36 @@ Registration_Cleanup() {
     return 0
 }
 
+# Registration_ApplyIfReady applies the controller-supplied native-orchestration
+# registration manifest when it is present and not yet applied. It is idempotent
+# (the Registration_Exists guard makes repeat calls a no-op) so it can run on
+# every main-loop iteration as well as during the cluster-join transition.
+#
+# K3sBase clusters defer application until the base-mode conversion (uninstall of
+# the replicated-storage components) completes, gated by /var/lib/native-kubernetes-mode.
+# All other cluster types - including ReplicatedStorage with native k8s
+# orchestration enabled - apply immediately; in that mode there is no uninstall
+# delay, so relying solely on the one-shot transition path could miss the
+# manifest if zedkube writes it after the transition window.
+Registration_ApplyIfReady() {
+    # Nothing inflated by zedkube yet.
+    Registration_ConfigExists || return 0
+    # Already copied to the k3s-monitored manifests dir.
+    Registration_Exists && return 0
+
+    Config_cluster_type_get
+    cluster_type=$?
+    if [ "$cluster_type" -eq "$CLUSTER_TYPE_K3S_BASE" ]; then
+        # Hold on, don't apply yet, complete conversion to base mode first.
+        if [ -e /var/lib/native-kubernetes-mode ]; then
+            Registration_CheckApply
+        fi
+    else
+        # ReplicatedStorage (incl. native-orchestration opt-in): apply immediately.
+        Registration_CheckApply
+    fi
+}
+
 # Registration_Exists checks if the local eve fs contains
 # a registration file, this will only exist on one node.
 Registration_Exists() {
