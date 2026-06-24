@@ -42,7 +42,7 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
-	github.com/lf-edge/eve-api/go v0.0.0-20260420100351-253db6a73b76 // indirect
+	github.com/lf-edge/eve-api/go v0.0.0-20260622100545-186e61c68f39 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
