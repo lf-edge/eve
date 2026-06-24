@@ -1759,6 +1759,9 @@ func (dc *EdgeDeviceConfig) setDefaultConfigProperties() {
 		{Key: string(pillartypes.LocationCloudInterval), Value: "300"},
 		{Key: string(pillartypes.AllowLogFastupload), Value: "true"},
 		{Key: string(pillartypes.DownloadRetryTime), Value: "60"},
+
+		// Reduce the post-upgrade testing period so upgrades complete faster in tests.
+		{Key: string(pillartypes.MintimeUpdateSuccess), Value: "60"},
 	}
 
 	// Do not overwrite test-defined values.
@@ -2307,5 +2310,40 @@ func (dc *EdgeDeviceConfig) DeleteSCEPProfile(profileName string) {
 	}
 	if !found {
 		dc.th.t.Fatalf("SCEP profile with name %q was not found", profileName)
+	}
+}
+
+// SetBaseOS configures an EVE OS upgrade from the given image storage source.
+// shortVersion is the full EVE short version string (e.g. "12.1.0-kvm-amd64")
+// that EVE will report in ZInfoDevSW.ShortVersion after the upgrade.
+// Calling this again on the same config replaces the previously set BaseOS entry.
+func (dc *EdgeDeviceConfig) SetBaseOS(storage ApplicationImageStorage, shortVersion string) {
+	// Remove content tree and datastores from any previous SetBaseOS call.
+	if dc.Baseos != nil {
+		prevContentTreeUUID := dc.Baseos.ContentTreeUuid
+		var prevDsUUIDs []string
+		dc.ContentInfo = generics.FilterList(dc.ContentInfo,
+			func(ct *eveconfig.ContentTree) bool {
+				if ct.Uuid == prevContentTreeUUID {
+					prevDsUUIDs = ct.DsIdsList
+					return false
+				}
+				return true
+			})
+		dc.Datastores = generics.FilterList(dc.Datastores,
+			func(ds *eveconfig.DatastoreConfig) bool {
+				return !generics.ContainsItem(prevDsUUIDs, ds.Id)
+			})
+	}
+	contentTreeUUID := dc.th.newUUID("baseos content tree")
+	datastoreUUID := dc.th.newUUID("baseos datastore")
+	contentTree, dsConfig := storage.toProto(dc.th, dc.log, dc.DeviceName,
+		contentTreeUUID, datastoreUUID, "eve baseos")
+	dc.ContentInfo = append(dc.ContentInfo, contentTree)
+	dc.Datastores = append(dc.Datastores, dsConfig)
+	dc.Baseos = &eveconfig.BaseOS{
+		ContentTreeUuid: contentTreeUUID.String(),
+		Activate:        true,
+		BaseOsVersion:   shortVersion,
 	}
 }

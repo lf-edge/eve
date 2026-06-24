@@ -4,6 +4,8 @@
 package utils
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"io/fs"
@@ -70,6 +72,21 @@ func CopyFile(src string, dst string) (err error) {
 	}
 	err = out.Sync()
 	return
+}
+
+// FileHashAndSize computes the SHA-256 hex digest and byte size of the file at path.
+func FileHashAndSize(path string) (sha256hex string, size int64, err error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", 0, err
+	}
+	defer f.Close()
+	h := sha256.New()
+	n, err := io.Copy(h, f)
+	if err != nil {
+		return "", 0, err
+	}
+	return hex.EncodeToString(h.Sum(nil)), n, nil
 }
 
 // CopyFolder from source to destination

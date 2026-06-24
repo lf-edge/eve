@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -125,10 +126,19 @@ const (
 
 	// If download progress does not advance for this long, WaitUntilAppIsRunning fails.
 	downloadStalledTimeout = time.Minute
+
+	// Timeout for pulling an EVE docker image and extracting its rootfs.
+	eveImagePullTimeout = 15 * time.Minute
+
+	// Timeout for an EVE device to complete an OS upgrade (download, install, reboot,
+	// complete the testing period, and mark the new partition as active).
+	eveUpgradeTimeout = 20 * time.Minute
 )
 
 const (
 	controllerIntfName = "controller"
+	imgServerIntfName  = "img-server"
+	imgServerPort      = 80
 
 	sdnTunName = "sdn-tun"
 	sdnTunMTU  = 1500
@@ -153,6 +163,8 @@ var (
 
 	controllerIPv4 = net.ParseIP("245.245.245.245").To4()
 	controllerIPv6 = net.ParseIP("fd24:1ac2:e355::1").To16()
+
+	imgServerIPv4 = net.ParseIP("244.244.244.244").To4()
 )
 
 const (
@@ -206,6 +218,10 @@ type TestHarness struct {
 	// Controller
 	adamClient   *controller.AdamClient
 	adamStatusCh chan controller.AdamState
+
+	// Image server (HTTP file server serving EVE and app images).
+	imgServerListener net.Listener
+	imgServerDir      string // temp dir under $HOME/.evetest; removed in Close()
 
 	// SDN
 	sdnConn   *grpc.ClientConn
@@ -323,6 +339,10 @@ type deviceState struct {
 	lastBootTime        time.Time
 	rebootCount         int
 	expectedRebootCount int
+
+	// wasUpgraded is set to true once UpgradeEVE has applied an upgrade config.
+	// Upgraded devices must not be reused across tests.
+	wasUpgraded bool
 }
 
 // Global test harness instance.
@@ -504,6 +524,37 @@ func Init(t *testing.T) *T {
 	th.wg.Add(1)
 	go th.processDeviceStateEvents()
 
+	// Create the HTTP image server on a dedicated dummy interface.
+	// The serving directory is a temp dir under EVETEST_HOME (= $HOME/.evetest on the
+	// host), which is bind-mounted at the same path inside the container so that
+	// Docker bind-mounts issued via RunDockerCommand resolve correctly on the host.
+	imgCacheParent := viper.GetString(constants.HomeDirEnv)
+	if err = os.MkdirAll(imgCacheParent, 0755); err != nil {
+		th.t.Fatalf("failed to create image cache parent dir: %v", err)
+	}
+	th.imgServerDir, err = os.MkdirTemp(imgCacheParent, "img-cache-")
+	if err != nil {
+		th.t.Fatalf("failed to create image server directory: %v", err)
+	}
+	imgServerIPNets := []net.IPNet{
+		{IP: GetImageServerIPv4(), Mask: net.CIDRMask(32, 32)},
+	}
+	err = utils.CreateDummyInterface(imgServerIntfName, imgServerIPNets)
+	if err != nil {
+		th.t.Fatalf("failed to create image server interface: %v", err)
+	}
+	imgListenAddr := net.JoinHostPort(imgServerIPv4.String(), strconv.Itoa(imgServerPort))
+	th.imgServerListener, err = net.Listen("tcp", imgListenAddr)
+	if err != nil {
+		th.t.Fatalf("failed to listen on image server address %s: %v", imgListenAddr, err)
+	}
+	go func() {
+		mux := http.NewServeMux()
+		mux.Handle("/", http.FileServer(http.Dir(th.imgServerDir)))
+		_ = http.Serve(th.imgServerListener, mux)
+	}()
+	th.log.Infof("Image server listening on http://%s/ (serving %s)", imgListenAddr, th.imgServerDir)
+
 	// Create broker client.
 	brokerAddr := viper.GetString(constants.BrokerAddressEnv)
 	if brokerAddr == "" {
@@ -645,6 +696,18 @@ func Close() error {
 		th.log.Warnf("Failed to close broker connection: %v", err)
 	} else {
 		th.log.Infof("Closed broker connection")
+	}
+
+	// Stop the image server and remove its cache directory.
+	if th.imgServerListener != nil {
+		if err := th.imgServerListener.Close(); err != nil {
+			th.log.Warnf("Failed to close image server listener: %v", err)
+		}
+	}
+	if th.imgServerDir != "" {
+		if err := os.RemoveAll(th.imgServerDir); err != nil {
+			th.log.Warnf("Failed to remove image cache dir %s: %v", th.imgServerDir, err)
+		}
 	}
 
 	// Stop the Adam controller.
@@ -1007,6 +1070,16 @@ func GetControllerIPv4() net.IP {
 // associated with the container's default IPv6 route, if present.
 func GetControllerIPv6() net.IP {
 	return controllerIPv6
+}
+
+// GetImageServerIPv4 returns the IPv4 address of the HTTP image server.
+func GetImageServerIPv4() net.IP {
+	return imgServerIPv4
+}
+
+// GetImageServerPort returns the port of the HTTP image server.
+func GetImageServerPort() uint16 {
+	return imgServerPort
 }
 
 // GetSrcIPv4ForInternetAccess returns the first non-link-local IPv4 address
