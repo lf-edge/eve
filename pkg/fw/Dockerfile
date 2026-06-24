@@ -73,6 +73,19 @@ RUN ln -s ../cypress/cyfmac43430-sdio.bin /lib/firmware/brcm/brcmfmac43430-sdio.
 RUN ln -s brcmfmac4356-pcie.gpd-win-pocket.txt '/lib/firmware/brcm/brcmfmac4356-pcie.Kontron America-Agora Gateway 403.txt'
 RUN ln -s brcmfmac4356-pcie.bin '/lib/firmware/brcm/brcmfmac4356-pcie.Kontron America-.bin'
 RUN ln -s brcmfmac4356-pcie.gpd-win-pocket.txt /lib/firmware/brcm/brcmfmac4356-pcie.txt
+# symlinks for Raspberry Pi
+RUN ln -s ../cypress/cyfmac43455-sdio.bin /lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,4-model-b.bin
+RUN ln -s ../cypress/cyfmac43455-sdio.bin /lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,4-compute-module.bin
+RUN ln -s ../cypress/cyfmac43455-sdio.clm_blob /lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,4-compute-module.clm_blob
+RUN ln -s ../cypress/cyfmac43455-sdio.clm_blob /lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,4-model-b.clm_blob
+RUN ln -s ../cypress/cyfmac43455-sdio.bin /lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,500.bin
+RUN ln -s ../cypress/cyfmac43455-sdio.clm_blob /lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,500.clm_blob
+RUN ln -s brcmfmac43455-sdio.raspberrypi,4-model-b.txt /lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,500.txt
+RUN ln -s ../cypress/cyfmac43455-sdio.bin /lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-compute-module.bin
+RUN ln -s ../cypress/cyfmac43455-sdio.clm_blob /lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-compute-module.clm_blob
+RUN ln -s brcmfmac43455-sdio.raspberrypi,4-model-b.txt /lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-compute-module.txt
+RUN ln -s ../cypress/cyfmac43455-sdio.bin /lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-model-b.bin
+RUN ln -s ../cypress/cyfmac43455-sdio.clm_blob /lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-model-b.clm_blob
 
 ENV RPI_FIRMWARE_VERSION=2c8f665254899a52260788dd902083bb57a99738
 ENV RPI_FIRMWARE_URL=https://github.com/RPi-Distro/firmware-nonfree/archive
@@ -199,7 +212,7 @@ COPY --from=build /lib/firmware/iwlwifi-cc-a0* /lib/firmware/
 COPY --from=build /lib/firmware/iwlwifi-QuZ-a0-hr-b0* /lib/firmware/
 # RTL8111/8168/8411 PCI Express Gigabit Ethernet Controller
 COPY --from=build /lib/firmware/rtl_nic/* /lib/firmware/rtl_nic/
-# Firmware for Raspberry Pi4 and Broadcom wifi
+# Firmware for Raspberry Pi 4/5 and Broadcom wifi
 COPY --from=build /lib/firmware/brcm /lib/firmware/brcm
 COPY --from=build /lib/firmware/cypress /lib/firmware/cypress
 # ath10k firmware
