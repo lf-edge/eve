@@ -20,8 +20,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-var excludePatternsEnabled = false
-
 type parseRequest struct {
 	command    string
 	args       []string
@@ -33,10 +31,10 @@ type parseRequest struct {
 	comments   []string
 }
 
-var parseRunPreHooks []func(*RunCommand, parseRequest) error
-var parseRunPostHooks []func(*RunCommand, parseRequest) error
-
-var parentsEnabled = false
+var (
+	parseRunPreHooks  []func(*RunCommand, parseRequest) error
+	parseRunPostHooks []func(*RunCommand, parseRequest) error
+)
 
 func nodeArgs(node *parser.Node) []string {
 	result := []string{}
@@ -72,6 +70,8 @@ func ParseInstruction(node *parser.Node) (v any, err error) {
 
 // ParseInstruction converts an AST to a typed instruction (either a command or a build stage beginning when encountering a `FROM` statement)
 func ParseInstructionWithLinter(node *parser.Node, lint *linter.Linter) (v any, err error) {
+	lint = lint.WithMergedConfigFromComments(node.PrevComment)
+
 	defer func() {
 		if err != nil {
 			err = parser.WithLocation(err, node.Location())
@@ -313,24 +313,9 @@ func parseSourcesAndDest(req parseRequest, command string) (*SourcesAndDest, err
 	}, nil
 }
 
-func stringValuesFromFlagIfPossible(f *Flag) []string {
-	if f == nil {
-		return nil
-	}
-
-	return f.StringValues
-}
-
 func parseAdd(req parseRequest) (*AddCommand, error) {
 	if len(req.args) < 2 {
 		return nil, errNoDestinationArgument("ADD")
-	}
-
-	var flExcludes *Flag
-
-	// silently ignore if not -labs
-	if excludePatternsEnabled {
-		flExcludes = req.flags.AddStrings("exclude")
 	}
 
 	flChown := req.flags.AddString("chown", "")
@@ -339,6 +324,7 @@ func parseAdd(req parseRequest) (*AddCommand, error) {
 	flKeepGitDir := req.flags.AddBool("keep-git-dir", false)
 	flChecksum := req.flags.AddString("checksum", "")
 	flUnpack := req.flags.AddBool("unpack", false)
+	flExcludes := req.flags.AddStrings("exclude")
 	if err := req.flags.Parse(); err != nil {
 		return nil, err
 	}
@@ -354,15 +340,21 @@ func parseAdd(req parseRequest) (*AddCommand, error) {
 		unpack = &b
 	}
 
+	var keepGit *bool
+	if _, ok := req.flags.used["keep-git-dir"]; ok {
+		b := flKeepGitDir.Value == "true"
+		keepGit = &b
+	}
+
 	return &AddCommand{
 		withNameAndCode: newWithNameAndCode(req),
 		SourcesAndDest:  *sourcesAndDest,
 		Chown:           flChown.Value,
 		Chmod:           flChmod.Value,
 		Link:            flLink.Value == "true",
-		KeepGitDir:      flKeepGitDir.Value == "true",
+		KeepGitDir:      keepGit,
 		Checksum:        flChecksum.Value,
-		ExcludePatterns: stringValuesFromFlagIfPossible(flExcludes),
+		ExcludePatterns: flExcludes.StringValues,
 		Unpack:          unpack,
 	}, nil
 }
@@ -372,20 +364,12 @@ func parseCopy(req parseRequest) (*CopyCommand, error) {
 		return nil, errNoDestinationArgument("COPY")
 	}
 
-	var flExcludes *Flag
-	var flParents *Flag
-
-	if excludePatternsEnabled {
-		flExcludes = req.flags.AddStrings("exclude")
-	}
-	if parentsEnabled {
-		flParents = req.flags.AddBool("parents", false)
-	}
-
 	flChown := req.flags.AddString("chown", "")
 	flFrom := req.flags.AddString("from", "")
 	flChmod := req.flags.AddString("chmod", "")
 	flLink := req.flags.AddBool("link", false)
+	flExcludes := req.flags.AddStrings("exclude")
+	flParents := req.flags.AddBool("parents", false)
 
 	if err := req.flags.Parse(); err != nil {
 		return nil, err
@@ -403,8 +387,8 @@ func parseCopy(req parseRequest) (*CopyCommand, error) {
 		Chown:           flChown.Value,
 		Chmod:           flChmod.Value,
 		Link:            flLink.Value == "true",
-		Parents:         flParents != nil && flParents.Value == "true",
-		ExcludePatterns: stringValuesFromFlagIfPossible(flExcludes),
+		Parents:         flParents.Value == "true",
+		ExcludePatterns: flExcludes.StringValues,
 	}, nil
 }
 
@@ -428,7 +412,8 @@ func parseFrom(req parseRequest) (*Stage, error) {
 		Commands:   []Command{},
 		Platform:   flPlatform.Value,
 		Location:   req.location,
-		Comment:    getComment(req.comments, stageName),
+		Comments:   req.comments,
+		DocComment: getDocComment(req.comments, stageName),
 	}, nil
 }
 
@@ -465,8 +450,15 @@ func parseOnBuild(req parseRequest) (*OnbuildCommand, error) {
 	}
 
 	original := regexp.MustCompile(`(?i)^\s*ONBUILD\s*`).ReplaceAllString(req.original, "")
-	for _, heredoc := range req.heredocs {
-		original += "\n" + heredoc.Content + heredoc.Name
+	if len(req.heredocs) > 0 {
+		var b strings.Builder
+		b.WriteString(original)
+		for _, heredoc := range req.heredocs {
+			b.WriteByte('\n')
+			b.WriteString(heredoc.Content)
+			b.WriteString(heredoc.Name)
+		}
+		original = b.String()
 	}
 
 	return &OnbuildCommand{
@@ -596,6 +588,7 @@ func parseOptInterval(f *Flag) (time.Duration, error) {
 	}
 	return d, nil
 }
+
 func parseHealthcheck(req parseRequest) (*HealthCheckCommand, error) {
 	if len(req.args) == 0 {
 		return nil, errAtLeastOneArgument("HEALTHCHECK")
@@ -778,7 +771,7 @@ func parseArg(req parseRequest) (*ArgCommand, error) {
 		} else {
 			kvpo.Key = arg
 		}
-		kvpo.Comment = getComment(req.comments, kvpo.Key)
+		kvpo.DocComment = getDocComment(req.comments, kvpo.Key)
 		pairs[i] = kvpo
 	}
 
@@ -834,7 +827,7 @@ func errTooManyArguments(command string) error {
 	return errors.Errorf("Bad input to %s, too many arguments", command)
 }
 
-func getComment(comments []string, name string) string {
+func getDocComment(comments []string, name string) string {
 	if name == "" {
 		return ""
 	}
