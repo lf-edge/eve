@@ -24,7 +24,7 @@ Kubevirt_install() {
 # Uses a targeted merge patch on developerConfiguration.featureGates only, so that
 # permittedHostDevices (PCIe/GPU/USB passthrough) is never disturbed.
 Kubevirt_migrate_feature_gates() {
-    if [ -f /var/lib/base-k3s-mode ]; then
+    if [ -f /var/lib/native-kubernetes-mode ]; then
         return 0
     fi
     current_gates=$(kubectl get kubevirt kubevirt -n kubevirt \
