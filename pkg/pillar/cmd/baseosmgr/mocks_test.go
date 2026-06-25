@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/diskconvert"
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -265,6 +266,11 @@ type testCtx struct {
 	currentIsKube    bool
 	versionIsKube    map[string]bool
 	versionIsKubeErr error
+
+	// Boot-disk conversion pre-flight knobs; the default "shrink" keeps
+	// the kvm -> EVE-k volume gate closed.
+	convDecision    string
+	convDecisionErr error
 }
 
 // newTestCtx builds a baseOsMgrContext suitable for handler tests:
@@ -297,6 +303,7 @@ func newTestCtx(t *testing.T) *testCtx {
 		wk:                   newMockWorker(),
 		tmpDir:               tmp,
 		versionIsKube:        map[string]bool{},
+		convDecision:         diskconvert.DecisionShrink,
 	}
 	ctx := &baseOsMgrContext{
 		globalConfig: types.DefaultConfigItemValueMap(),
@@ -339,6 +346,9 @@ func newTestCtx(t *testing.T) *testCtx {
 			requestNodeDrain: func(_ pubsub.Publication, requester kubeapi.DrainRequester, _ string) error {
 				tc.drainRequestCalls = append(tc.drainRequestCalls, requester)
 				return tc.drainRequestErr
+			},
+			conversionDecision: func() (string, error) {
+				return tc.convDecision, tc.convDecisionErr
 			},
 		},
 	}

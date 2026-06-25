@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/diskconvert"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
@@ -204,6 +205,36 @@ func TestDoBaseOsStatusUpdate_RejectsKubeSwitchWithVolumes(t *testing.T) {
 			}
 			if !strings.Contains(st.Error, "while volumes exist") {
 				t.Fatalf("error text doesn't name the volume gate: %q", st.Error)
+			}
+		})
+	}
+}
+
+// With volumes present, kvm -> EVE-k is allowed only when the boot-disk
+// conversion leaves /persist intact; an unreadable disk is refused.
+func TestDoBaseOsStatusUpdate_KubeSwitchWithVolumesByDecision(t *testing.T) {
+	tests := []struct {
+		name     string
+		decision string
+		err      error
+		reject   bool
+	}{
+		{name: "Proceed", decision: diskconvert.DecisionProceed},
+		{name: "Grow", decision: diskconvert.DecisionGrow},
+		{name: "Insufficient", decision: diskconvert.DecisionInsufficient},
+		{name: "CheckError", err: errBoom, reject: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tc := newTestCtx(t)
+			cfg, st := tc.seedKubeMixSwitch()
+			tc.ctx.volumeStateKnown = true
+			tc.subVolumeStatus.items["vol-1"] = types.VolumeStatus{}
+			tc.convDecision, tc.convDecisionErr = tt.decision, tt.err
+
+			doBaseOsStatusUpdate(tc.ctx, "uuid-x", cfg, &st)
+			if st.HasError() != tt.reject {
+				t.Fatalf("reject=%v, want %v: %q", st.HasError(), tt.reject, st.Error)
 			}
 		})
 	}

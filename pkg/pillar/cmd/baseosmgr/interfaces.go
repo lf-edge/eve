@@ -20,6 +20,7 @@ type seams struct {
 	isVersionHVTypeKube func(version string) (bool, error)
 	getNodeDrainStatus  func(sub pubsub.Subscription) *kubeapi.NodeDrainStatus
 	requestNodeDrain    func(pub pubsub.Publication, requester kubeapi.DrainRequester, ctxStr string) error
+	conversionDecision  func() (string, error)
 }
 
 // defaultSeams returns the production-default seams. Run() captures
@@ -31,7 +32,8 @@ func defaultSeams(logArg *base.LogObject) seams {
 		getNodeDrainStatus: func(sub pubsub.Subscription) *kubeapi.NodeDrainStatus {
 			return kubeapi.GetNodeDrainStatus(sub, logArg)
 		},
-		requestNodeDrain: kubeapi.RequestNodeDrain,
+		requestNodeDrain:   kubeapi.RequestNodeDrain,
+		conversionDecision: conversionDecision,
 	}
 }
 
