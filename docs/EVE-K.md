@@ -101,15 +101,17 @@ this list. nmap does not report the VXLAN port as open, since VXLAN sends no rep
 
 Upgrades of `HV=k` EVE-OS are supported through the existing interfaces.
 
-Upgrading a device from another `HV=` type to `HV=k` is supported only while
-the device holds no volumes: the `/persist/vault/volumes` layout differs
-between the flavors, so baseosmgr refuses the update while the controller has
-any volume configured for the device or volumemgr still reports one — an app
-deleted shortly beforehand keeps the update refused until its volume has
-finished being purged. Content trees and blobs already on `/persist` do not
-refuse the update; they are carried across the flavor change and reused rather
-than re-downloaded. A device that is not receiving configuration cannot
-establish its volume set, and is refused for that reason.
+Upgrading a device from another `HV=` type to `HV=k` is supported with app
+volumes in place as long as the conversion does not shrink `/persist`: a
+conversion that grows `/persist` into free space, or that finds the large
+geometry already in place, leaves the volumes where they are and carries them
+across (see below). A conversion that has to shrink `/persist` is refused while
+the controller has any volume configured for the device or volumemgr still
+reports one — an app deleted shortly beforehand keeps the update refused until
+its volume has finished being purged. Content trees and blobs already on
+`/persist` are carried across the flavor change and reused rather than
+re-downloaded. A device that is not receiving configuration cannot establish its
+volume set, and is refused for that reason.
 
 The new rootfs must also fit the device's existing IMGA/IMGB partition, which
 an installation predating EVE 17.0.0 is unlikely to satisfy. Converting such a

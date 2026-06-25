@@ -141,3 +141,41 @@ func TestShrinkTargetMissingPersist(t *testing.T) {
 		t.Fatal("expected an error when the persist partition size is unknown")
 	}
 }
+
+func TestWillShrinkPersist(t *testing.T) {
+	// Only "shrink" resizes /persist; "proceed"/"grow" do not, "insufficient"
+	// performs no conversion, and anything unrecognized is not a shrink.
+	cases := map[string]bool{
+		DecisionShrink:       true,
+		DecisionProceed:      false,
+		DecisionGrow:         false,
+		DecisionInsufficient: false,
+		"":                   false,
+		"bogus":              false,
+	}
+	for decision, want := range cases {
+		if got := WillShrinkPersist(decision); got != want {
+			t.Errorf("WillShrinkPersist(%q) = %v, want %v", decision, got, want)
+		}
+	}
+}
+
+func TestCheckOnlyReturnsDecisionNoAction(t *testing.T) {
+	f := &fakeRunner{check: checkWith(DecisionGrow, 0)}
+	c := &Converter{Runner: f}
+	decision, err := c.CheckOnly("/dev/sda")
+	if err != nil || decision != DecisionGrow {
+		t.Fatalf("CheckOnly = %q, %v; want %q, nil", decision, err, DecisionGrow)
+	}
+	if f.armGrowCalls != 0 || len(f.backupCalls) != 0 {
+		t.Errorf("CheckOnly must not arm/backup: armGrow=%d backup=%v", f.armGrowCalls, f.backupCalls)
+	}
+}
+
+func TestCheckOnlyError(t *testing.T) {
+	f := &fakeRunner{checkErr: errors.New("no disk")}
+	c := &Converter{Runner: f}
+	if _, err := c.CheckOnly("/dev/sda"); err == nil {
+		t.Fatal("expected CheckOnly to surface the check error")
+	}
+}
