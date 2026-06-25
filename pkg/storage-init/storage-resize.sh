@@ -44,7 +44,7 @@ disk_of_partlabel() {
 #     baseosmgr reports the decline and clears the marker when the running image
 #     changes (a new image may carry a fixed resizer) or the target is withdrawn.
 RESIZE_REBOOT_TO_APPLY=64
-RESIZE_MAX_REBOOTS=5
+RESIZE_MAX_REBOOTS=8
 
 # _mount_config_rw mounts the CONFIG partition read-write at $1. The runtime
 # /config is a read-only tmpfs RAM copy, so durable writes (failure marker,
