@@ -389,6 +389,15 @@ func deviceWatcherLoop(ctxPtr *zfsContext) {
 			// processing a remove event.
 		}
 		if event.Op&fsnotify.Create != 0 {
+			// Only the zvol device symlinks created by mdev carry a
+			// ZVolStatus. Intermediate directories under ZVolDevicePrefix
+			// (persist, vault, volumes) also raise Create events and are
+			// watched above, but publishing them yields bogus ZVolStatus
+			// entries, so skip anything that is not a symlink (mirrors the
+			// filter in processRecursive).
+			if fi, err := os.Lstat(fileName); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+				continue
+			}
 			dataset := zfs.GetDatasetByDevice(fileName)
 			if dataset == "" {
 				log.Errorf("cannot determine dataset for device: %s", fileName)
