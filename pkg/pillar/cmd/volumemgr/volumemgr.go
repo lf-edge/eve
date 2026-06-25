@@ -766,7 +766,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 // gcUnusedInitObjects this method will garbage collect all unused resource during init
 func gcUnusedInitObjects(ctx *volumemgrContext) {
-	log.Functionf("gcUnusedInitObjects")
+	log.Noticef("BLOBGC gcUnusedInitObjects: running one-shot init GC")
 	gcBlobStatus(ctx)
 	gcVerifyImageConfig(ctx)
 	gcImagesFromCAS(ctx)

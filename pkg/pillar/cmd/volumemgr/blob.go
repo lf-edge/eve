@@ -5,6 +5,7 @@ package volumemgr
 
 import (
 	"fmt"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -138,8 +139,8 @@ func RemoveRefFromBlobStatus(ctx *volumemgrContext, blobStatus ...*types.BlobSta
 		log.Functionf("RemoveRefFromBlobStatus: RefCount to %d for Blob %s",
 			blob.RefCount, blob.Sha256)
 		if blob.RefCount == 0 {
-			log.Functionf("RemoveRefFromBlobStatus: unpublishing Blob %s since no object is referring it.",
-				blob.Sha256)
+			log.Noticef("BLOBGC RemoveRefFromBlobStatus: unpublishing Blob %s (state=%s) since no object is referring it.",
+				blob.Sha256, blob.State)
 			unpublishBlobStatus(ctx, blob)
 			// blob potentially deleted
 			continue
@@ -478,7 +479,7 @@ func unpublishBlobStatus(ctx *volumemgrContext, blobs ...*types.BlobStatus) {
 	errs := []error{}
 	for _, blob := range blobs {
 		key := blob.Sha256
-		log.Functionf("unpublishBlobStatus(%s)", key)
+		log.Noticef("BLOBGC unpublishBlobStatus(%s) state=%s refcount=%d", key, blob.State, blob.RefCount)
 
 		// Drop references. Note that we never publish the resulting
 		// BlobStatus since we unpublish it below.
@@ -492,6 +493,8 @@ func unpublishBlobStatus(ctx *volumemgrContext, blobs ...*types.BlobStatus) {
 		}
 		//If blob is loaded, then remove it from CAS
 		if blob.State == types.LOADED {
+			log.Noticef("BLOBGC RemoveBlob sha=%s state=%s refcount=%d caller=\n%s",
+				blob.Sha256, blob.State, blob.RefCount, string(debug.Stack()))
 			if err := ctx.casClient.RemoveBlob(cas.CheckAndCorrectBlobHash(blob.Sha256)); err != nil {
 				err := fmt.Errorf("unpublishBlobStatus: Exception while removing loaded blob %s: %s",
 					blob.Sha256, err.Error())
@@ -557,7 +560,7 @@ func populateInitBlobStatus(ctx *volumemgrContext) {
 			}
 		}
 		if ctx.LookupBlobStatus(blobInfo.Digest) == nil {
-			log.Functionf("populateInitBlobStatus: Found blob %s in CAS", blobInfo.Digest)
+			log.Noticef("BLOBGC populateInitBlobStatus: Found blob %s in CAS (adopting LOADED)", blobInfo.Digest)
 			blobStatus := &types.BlobStatus{
 				Sha256:                 strings.TrimPrefix(blobInfo.Digest, "sha256:"),
 				Size:                   uint64(blobInfo.Size),
@@ -571,7 +574,7 @@ func populateInitBlobStatus(ctx *volumemgrContext) {
 			}
 			newBlobStatus = append(newBlobStatus, blobStatus)
 		} else {
-			log.Functionf("populateInitBlobStatus: Found existing blob %s in CAS", blobInfo.Digest)
+			log.Noticef("BLOBGC populateInitBlobStatus: Found existing blob %s in CAS", blobInfo.Digest)
 		}
 	}
 	if len(newBlobStatus) > 0 {
@@ -596,7 +599,7 @@ func gcBlobStatus(ctx *volumemgrContext) {
 	for _, blobStatusInt := range pub.GetAll() {
 		blobStatus := blobStatusInt.(types.BlobStatus)
 		if blobStatus.State == types.LOADED && blobStatus.RefCount == 0 {
-			log.Functionf("gcBlobStatus: removing blob %s which has no refObjects", blobStatus.Sha256)
+			log.Noticef("BLOBGC gcBlobStatus: removing blob %s (state=%s) which has no refObjects", blobStatus.Sha256, blobStatus.State)
 			unpublishBlobStatus(ctx, &blobStatus)
 		}
 	}
@@ -633,7 +636,7 @@ func gcImagesFromCAS(ctx *volumemgrContext) {
 				}
 			}
 
-			log.Functionf("gcImagesFromCAS: removing image %s from CAS since no ContentTreeStatus ref found", image)
+			log.Noticef("BLOBGC gcImagesFromCAS: removing image %s from CAS since no ContentTreeStatus ref found", image)
 			if err := ctx.casClient.RemoveImage(image); err != nil {
 				log.Errorf("gcImagesFromCAS: Exception while removing image from CAS. %s", err)
 			}

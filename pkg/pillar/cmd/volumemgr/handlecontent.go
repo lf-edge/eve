@@ -308,7 +308,8 @@ var deferredDelete = make([]timeAndContentTreeStatus, 0)
 
 // deleteContentTree optionally delays the delete using the above slice
 func deleteContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus, deferContentDelete uint32) {
-	log.Functionf("deleteContentTree for %v", status.ContentID)
+	log.Noticef("BLOBGC deleteContentTree for %v (state=%s deferContentDelete=%d)",
+		status.ContentID, status.State, deferContentDelete)
 
 	// Clean up in case it was never resolved
 	deleteResolveConfig(ctx, status.ResolveKey())
@@ -317,6 +318,8 @@ func deleteContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus, d
 	// no defer, then delete. Otherwise honor defer time to to avoid
 	// delete then re-download
 	if status.State < types.LOADED || deferContentDelete == 0 {
+		log.Noticef("BLOBGC deleteContentTree %s: IMMEDIATE delete (state=%s deferContentDelete=%d)",
+			status.Key(), status.State, deferContentDelete)
 		doDeleteContentTree(ctx, status)
 	} else {
 		expiry := time.Now().Add(time.Duration(deferContentDelete) * time.Second)
@@ -324,7 +327,7 @@ func deleteContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus, d
 			deleteTime: expiry,
 			status:     status,
 		}
-		log.Noticef("Deferring delete of %s to %v",
+		log.Noticef("BLOBGC Deferring delete of %s to %v",
 			status.Key(), expiry)
 		deferredDelete = append(deferredDelete, tc)
 	}
@@ -334,7 +337,7 @@ func checkDeferredDelete(ctx *volumemgrContext) {
 	newDD := make([]timeAndContentTreeStatus, 0)
 	for _, tc := range deferredDelete {
 		if time.Now().After(tc.deleteTime) {
-			log.Noticef("Handling deferred delete of %s",
+			log.Noticef("BLOBGC Handling deferred delete of %s",
 				tc.status.Key())
 			doDeleteContentTree(ctx, tc.status)
 		} else {
@@ -345,7 +348,7 @@ func checkDeferredDelete(ctx *volumemgrContext) {
 }
 
 func doDeleteContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus) {
-	log.Functionf("doDeleteContentTree for %v", status.ContentID)
+	log.Noticef("BLOBGC doDeleteContentTree for %v (state=%s blobs=%d)", status.ContentID, status.State, len(status.Blobs))
 	RemoveAllBlobsFromContentTreeStatus(ctx, status, status.Blobs...)
 	//We create a reference when we load the blobs. We should remove that reference when we delete the contentTree.
 	refName := status.ReferenceID()
