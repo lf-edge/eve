@@ -170,40 +170,27 @@ func (p *LibvirtProvider) SetupDevice(
 		interfaces = append(interfaces, ifaceXML)
 	}
 
-	// Disk definition (local qcow2 or raw). Optionally configure UEFI firmware
-	// if UEFIFirmwareDirPath is set on the device spec.
+	// Disk definitions. Optionally configure UEFI firmware if
+	// UEFIFirmwareDirPath is set on the device spec.
 	var disks []libvirtxml.DomainDisk
 
-	// Ensure we have exactly one image specified
-	if spec.Qcow2ImagePath == "" && spec.RawImagePath == "" {
-		err := fmt.Errorf(
-			"no disk image specified: either Qcow2ImagePath or RawImagePath must be set")
+	if len(spec.Disks) == 0 {
+		err := fmt.Errorf("no disk images specified for device %q", name)
 		log.Error(err)
 		return err
 	}
-	if spec.Qcow2ImagePath != "" && spec.RawImagePath != "" {
-		err := fmt.Errorf(
-			"both Qcow2ImagePath and RawImagePath are set; only one must be defined")
-		log.Error(err)
-		return err
-	}
-
-	var imagePath, diskType string
-	if spec.Qcow2ImagePath != "" {
-		imagePath = spec.Qcow2ImagePath
-		diskType = "qcow2"
-	} else {
-		imagePath = spec.RawImagePath
-		diskType = "raw"
-	}
-	imageAbsPath, err := utils.ResolveFile(imagePath)
-	if err != nil {
-		err = fmt.Errorf("failed to resolve path %q: %w", imagePath, err)
-		log.Error(err)
-		return err
-	}
-	disks = []libvirtxml.DomainDisk{
-		{
+	for i, disk := range spec.Disks {
+		diskType := "qcow2"
+		if disk.Format == DiskImageFormatRaw {
+			diskType = "raw"
+		}
+		absPath, err := utils.ResolveFile(disk.Path)
+		if err != nil {
+			err = fmt.Errorf("failed to resolve disk path %q: %w", disk.Path, err)
+			log.Error(err)
+			return err
+		}
+		disks = append(disks, libvirtxml.DomainDisk{
 			Device: "disk",
 			Driver: &libvirtxml.DomainDiskDriver{
 				Name: "qemu",
@@ -211,14 +198,14 @@ func (p *LibvirtProvider) SetupDevice(
 			},
 			Source: &libvirtxml.DomainDiskSource{
 				File: &libvirtxml.DomainDiskSourceFile{
-					File: imageAbsPath,
+					File: absPath,
 				},
 			},
 			Target: &libvirtxml.DomainDiskTarget{
-				Dev: "vda",
+				Dev: fmt.Sprintf("vd%c", rune('a'+i)),
 				Bus: "virtio",
 			},
-		},
+		})
 	}
 
 	// Console definition
@@ -901,6 +888,96 @@ func (p *LibvirtProvider) lookupDomainByName(name string) (*libvirt.Domain, erro
 	return dom, nil
 }
 
+// ReconfigureDeviceDisks updates the disk list of a stopped domain by
+// undefining and redefining it with a new disk set. The domain UUID is
+// preserved so libvirt's swtpm state (keyed by UUID) survives the operation.
+// UEFI NVRAM is preserved by undefining without the NVRAM flag.
+// The domain must be in the stopped (shut-off) state before calling this.
+func (p *LibvirtProvider) ReconfigureDeviceDisks(
+	ctx context.Context, name string, newDisks []DiskImage) error {
+	log := logger.FromContext(ctx)
+
+	dom, err := p.lookupDomainByName(name)
+	if err != nil {
+		return fmt.Errorf("failed to lookup domain %q: %w", name, err)
+	}
+	defer dom.Free()
+
+	state, _, err := dom.GetState()
+	if err != nil {
+		return fmt.Errorf("failed to get state of domain %q: %w", name, err)
+	}
+	if state != libvirt.DOMAIN_SHUTOFF {
+		err = fmt.Errorf(
+			"domain %q must be stopped before reconfiguring disks (state: %v)",
+			name, state)
+		return err
+	}
+
+	xmlDesc, err := dom.GetXMLDesc(0)
+	if err != nil {
+		return fmt.Errorf("failed to get XML description for domain %q: %w", name, err)
+	}
+	var domain libvirtxml.Domain
+	if err := domain.Unmarshal(xmlDesc); err != nil {
+		return fmt.Errorf("failed to unmarshal domain XML for %q: %w", name, err)
+	}
+
+	// Rebuild virtio data disks; leave any non-virtio entries (e.g. CDROMs) in place.
+	var keep []libvirtxml.DomainDisk
+	for _, d := range domain.Devices.Disks {
+		if d.Target == nil || d.Target.Bus != "virtio" {
+			keep = append(keep, d)
+		}
+	}
+	for i, disk := range newDisks {
+		diskType := "qcow2"
+		if disk.Format == DiskImageFormatRaw {
+			diskType = "raw"
+		}
+		absPath, err := utils.ResolveFile(disk.Path)
+		if err != nil {
+			return fmt.Errorf("failed to resolve disk path %q: %w", disk.Path, err)
+		}
+		keep = append(keep, libvirtxml.DomainDisk{
+			Device: "disk",
+			Driver: &libvirtxml.DomainDiskDriver{
+				Name: "qemu",
+				Type: diskType,
+			},
+			Source: &libvirtxml.DomainDiskSource{
+				File: &libvirtxml.DomainDiskSourceFile{
+					File: absPath,
+				},
+			},
+			Target: &libvirtxml.DomainDiskTarget{
+				Dev: fmt.Sprintf("vd%c", rune('a'+i)),
+				Bus: "virtio",
+			},
+		})
+	}
+	domain.Devices.Disks = keep
+
+	updatedXML, err := domain.Marshal()
+	if err != nil {
+		return fmt.Errorf("failed to marshal updated domain XML for %q: %w", name, err)
+	}
+
+	// Keep NVRAM so OVMF_VARS.fd survives the undefine/redefine cycle.
+	if err := dom.UndefineFlags(libvirt.DOMAIN_UNDEFINE_KEEP_NVRAM); err != nil {
+		return fmt.Errorf("failed to undefine domain %q: %w", name, err)
+	}
+
+	if _, err := p.conn.DomainDefineXML(updatedXML); err != nil {
+		// Best-effort rollback: restore the original definition so teardown can proceed.
+		_, _ = p.conn.DomainDefineXML(xmlDesc)
+		return fmt.Errorf("failed to redefine domain %q after disk reconfiguration: %w",
+			name, err)
+	}
+	log.Infof("Reconfigured disk list for domain %q (%d disk(s))", name, len(newDisks))
+	return nil
+}
+
 // getDeviceConsoleLogFile returns the filesystem path for storing the console log
 // for a given device name.
 func (p *LibvirtProvider) getDeviceConsoleLogFile(name string) string {
@@ -1134,12 +1211,14 @@ func (p *LibvirtProvider) domainLifecycleCallback(
 		// ignore domains we can't identify
 		return
 	}
+	// libvirt returns the full prefixed name; watchers are keyed by unprefixed name.
+	name := unprefixedName(domName)
 	status := deviceStatusFromLibvirtEvent(*event)
 
 	// Send the status update to all registered watchers for this domain
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
-	for _, ch := range p.watchers[domName] {
+	for _, ch := range p.watchers[name] {
 		select {
 		case ch <- status:
 		default:
@@ -1173,8 +1252,7 @@ func deviceStatusFromLibvirtEvent(event libvirt.DomainEventLifecycle) DeviceStat
 	switch event.Event {
 	case libvirt.DOMAIN_EVENT_STARTED:
 		return DeviceStatusRunning
-	case libvirt.DOMAIN_EVENT_STOPPED,
-		libvirt.DOMAIN_EVENT_SHUTDOWN:
+	case libvirt.DOMAIN_EVENT_STOPPED:
 		return DeviceStatusStopped
 	case libvirt.DOMAIN_EVENT_CRASHED:
 		return DeviceStatusCrashed

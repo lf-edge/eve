@@ -444,87 +444,14 @@ func (p *QemuProvider) SetupDevice(
 		log.Warnf("Failed to enable LACP forwarding: %v", err)
 	}
 
-	// Build arguments for the Qemu process.
-	dev.args = []string{
-		"-enable-kvm",
-		"-machine", "q35",
-		"-cpu", "host",
-		"-smp", fmt.Sprintf("%d", dev.spec.CPUs),
-		"-m", fmt.Sprintf("%d", dev.spec.MemoryBytes>>20),
-		"-nographic",
-	}
-
-	// -> SMBIOS (system serial number)
-	if spec.SerialNumber != "" {
-		dev.args = append(dev.args,
-			"-smbios", fmt.Sprintf("type=1,serial=%s", spec.SerialNumber),
-		)
-	}
-
-	if spec.WithTPM {
-		tpmDev := "tpm-tis"
-		if qemuArch() == "arm64" {
-			tpmDev = "tpm-tis-device"
-		}
-		dev.args = append(dev.args,
-			"-chardev", fmt.Sprintf("socket,id=chrtpm,path=%s", dev.tpm.socket),
-			"-tpmdev", "emulator,id=tpm0,chardev=chrtpm",
-			"-device", fmt.Sprintf("%s,tpmdev=tpm0", tpmDev),
-		)
-	}
-
-	// -> disks (virtio)
-	if dev.spec.Qcow2ImagePath != "" {
-		dev.args = append(dev.args,
-			"-drive", fmt.Sprintf("file=%s,if=virtio,format=qcow2",
-				dev.spec.Qcow2ImagePath))
-	} else {
-		dev.args = append(dev.args,
-			"-drive", fmt.Sprintf("file=%s,if=virtio,format=raw",
-				dev.spec.RawImagePath))
-	}
-
-	// -> UEFI (pflash)
-	if dev.spec.UEFIFirmwareDirPath != "" {
-		code := filepath.Join(dev.spec.UEFIFirmwareDirPath, "OVMF_CODE.fd")
-		vars := filepath.Join(dev.spec.UEFIFirmwareDirPath, "OVMF_VARS.fd")
-		dev.args = append(dev.args,
-			"-drive", fmt.Sprintf("if=pflash,format=raw,readonly=on,file=%s", code),
-			"-drive", fmt.Sprintf("if=pflash,format=raw,file=%s", vars),
-		)
-	}
-
-	// -> networking (virtio-net-pci)
-	for i, tap := range dev.taps {
-		dev.args = append(dev.args,
-			"-netdev", fmt.Sprintf(
-				"tap,id=net%d,ifname=%s,script=no,downscript=no", i, tap.name),
-			"-device", fmt.Sprintf(
-				"virtio-net-pci,netdev=net%d,mac=%s,speed=1000,duplex=full",
-				i, tap.guestMAC.String()),
-		)
-	}
-
-	// Console: TCP telnet socket + output file
+	// Allocate the console port now so buildArgs can embed it.
 	consolePort, err := utils.FindUnusedPort(ipv4Loopback)
 	if err != nil {
 		log.Error(err)
 		return err
 	}
 	dev.consolePort = consolePort
-
-	dev.args = append(dev.args,
-		"-chardev", fmt.Sprintf(
-			"socket,id=char0,host=127.0.0.1,port=%d,server=on,wait=off,telnet=on,"+
-				"logfile=%s,logappend=on", consolePort, dev.consoleLog,
-		),
-		"-serial", "chardev:char0",
-	)
-
-	// -> QMP used for shutdown/reboot/status
-	dev.args = append(dev.args,
-		"-qmp", "unix:"+dev.qmpSocket+",server,nowait",
-	)
+	dev.args = dev.buildArgs()
 	log.Debugf("Device %q arguments: %s", name, dev.args)
 
 	p.devices[name] = dev
@@ -1046,17 +973,19 @@ func (p *QemuProvider) WatchDeviceStatus(
 
 	go func() {
 		defer func() {
-			// Remove watcher from the list when context is canceled
+			// Remove this watcher from the list and close the channel.
+			// If teardownStoppedDevice already closed and removed it, skip the close
+			// to avoid a double-close panic.
 			p.mutex.Lock()
 			defer p.mutex.Unlock()
 			wlist := p.watchers[name]
 			for i, c := range wlist {
 				if c == ch {
 					p.watchers[name] = append(wlist[:i], wlist[i+1:]...)
+					close(ch)
 					break
 				}
 			}
-			close(ch)
 		}()
 
 		// Send initial status
@@ -1108,6 +1037,30 @@ func (p *QemuProvider) TeardownAll(ctx context.Context) error {
 
 	// Garbage-collect unused networks
 	p.teardownUnusedNetworks(ctx, log)
+	return nil
+}
+
+// ReconfigureDeviceDisks swaps the disk list of a stopped device in place.
+// The swtpm state, UEFI NVRAM, console socket, and network taps are all
+// preserved because the same qemuDevice entry is reused.
+func (p *QemuProvider) ReconfigureDeviceDisks(
+	ctx context.Context, name string, newDisks []DiskImage) error {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	log := logger.FromContext(ctx)
+
+	dev, ok := p.devices[name]
+	if !ok {
+		return fmt.Errorf("device %q not found", name)
+	}
+	if dev.cmd != nil {
+		return fmt.Errorf("device %q is running; stop it before reconfiguring disks",
+			name)
+	}
+
+	dev.spec.Disks = newDisks
+	dev.args = dev.buildArgs()
+	log.Infof("Reconfigured disk list for device %q (%d disk(s))", name, len(newDisks))
 	return nil
 }
 
@@ -1394,6 +1347,11 @@ func (p *QemuProvider) teardownStoppedDevice(log *logrus.Entry, dev *qemuDevice)
 	dev.taps = nil
 
 	_ = os.RemoveAll(dev.tmpDir)
+	// Close all watcher channels so callers blocked on WatchDeviceStatus unblock.
+	for _, ch := range p.watchers[dev.name] {
+		close(ch)
+	}
+	delete(p.watchers, dev.name)
 	delete(p.devices, dev.name)
 	log.Infof("Device %q was torn-down", dev.name)
 	return nil
@@ -1529,6 +1487,78 @@ func qemuArch() string {
 	default:
 		return runtime.GOARCH
 	}
+}
+
+// buildArgs assembles the full QEMU command-line argument list from the
+// current device spec. It must be called after dev.consolePort is set.
+func (dev *qemuDevice) buildArgs() []string {
+	args := []string{
+		"-enable-kvm",
+		"-machine", "q35",
+		"-cpu", "host",
+		"-smp", fmt.Sprintf("%d", dev.spec.CPUs),
+		"-m", fmt.Sprintf("%d", dev.spec.MemoryBytes>>20),
+		"-nographic",
+	}
+
+	if dev.spec.SerialNumber != "" {
+		args = append(args,
+			"-smbios", fmt.Sprintf("type=1,serial=%s", dev.spec.SerialNumber),
+		)
+	}
+
+	if dev.spec.WithTPM {
+		tpmDev := "tpm-tis"
+		if qemuArch() == "arm64" {
+			tpmDev = "tpm-tis-device"
+		}
+		args = append(args,
+			"-chardev", fmt.Sprintf("socket,id=chrtpm,path=%s", dev.tpm.socket),
+			"-tpmdev", "emulator,id=tpm0,chardev=chrtpm",
+			"-device", fmt.Sprintf("%s,tpmdev=tpm0", tpmDev),
+		)
+	}
+
+	for _, disk := range dev.spec.Disks {
+		format := "qcow2"
+		if disk.Format == DiskImageFormatRaw {
+			format = "raw"
+		}
+		args = append(args, "-drive",
+			fmt.Sprintf("file=%s,if=virtio,format=%s", disk.Path, format))
+	}
+
+	if dev.spec.UEFIFirmwareDirPath != "" {
+		code := filepath.Join(dev.spec.UEFIFirmwareDirPath, "OVMF_CODE.fd")
+		vars := filepath.Join(dev.spec.UEFIFirmwareDirPath, "OVMF_VARS.fd")
+		args = append(args,
+			"-drive", fmt.Sprintf("if=pflash,format=raw,readonly=on,file=%s", code),
+			"-drive", fmt.Sprintf("if=pflash,format=raw,file=%s", vars),
+		)
+	}
+
+	for i, tap := range dev.taps {
+		args = append(args,
+			"-netdev", fmt.Sprintf(
+				"tap,id=net%d,ifname=%s,script=no,downscript=no", i, tap.name),
+			"-device", fmt.Sprintf(
+				"virtio-net-pci,netdev=net%d,mac=%s,speed=1000,duplex=full",
+				i, tap.guestMAC.String()),
+		)
+	}
+
+	args = append(args,
+		"-chardev", fmt.Sprintf(
+			"socket,id=char0,host=127.0.0.1,port=%d,server=on,wait=off,telnet=on,"+
+				"logfile=%s,logappend=on", dev.consolePort, dev.consoleLog,
+		),
+		"-serial", "chardev:char0",
+	)
+
+	args = append(args,
+		"-qmp", "unix:"+dev.qmpSocket+",server,nowait",
+	)
+	return args
 }
 
 func (p *QemuProvider) deviceArtifactDir(name string) string {

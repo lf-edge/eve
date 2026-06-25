@@ -46,7 +46,7 @@ FROM alpine:${ALPINE_VERSION}
 
 # Install runtime dependencies
 # hadolint ignore=DL3018
-RUN apk add --no-cache libvirt iptables ip6tables
+RUN apk add --no-cache libvirt iptables ip6tables qemu-img
 
 # Copy the built broker binary from builder
 COPY --from=builder /go/bin/evetest-broker /usr/local/bin/evetest-broker

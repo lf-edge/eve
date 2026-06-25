@@ -197,9 +197,10 @@ See `HypervisorParameter` for an example.
 ### Test Requirements and Setup
 
 `evetest.Setup(requirements...)` declares what the test needs. The framework handles
-all the behind-the-scenes work: building EVE images, creating VMs, configuring
-networks, waiting for devices to boot and onboard, and establishing tunnels for
-seamless connectivity between EVE devices, Adam controller and the test framework itself.
+all the behind-the-scenes work: building EVE images (live or installer), creating VMs,
+running the two-step installer boot when requested, configuring networks, waiting for
+devices to boot and onboard, and establishing tunnels for seamless connectivity between
+EVE devices, starting and initializing the Adam controller and the test framework itself.
 
 **RequireEdgeDevice** -- deploy an EVE device VM:
 
@@ -207,8 +208,8 @@ seamless connectivity between EVE devices, Adam controller and the test framewor
 evetest.RequireEdgeDevice{
     Name:              "dev1",          // logical name to reference the device
     MinCPUs:           4,               // default: 4
-    MinRAMInMB:        8192,            // default: 8192
-    MinDiskSizeInMB:   28576,           // default: 28576
+    MinRAMInMiB:       8192,            // default: 8 GiB
+    MinDiskSizeInMiB:  36864,           // default: 36 GiB
     WithHypervisor:    evetest.HypervisorKVM,
     WithFilesystem:    evetest.FilesystemZFS,
     WithTPM:           true,

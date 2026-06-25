@@ -124,9 +124,9 @@ func (th *TestHarness) prepareImageForEVEDevice(dev *deviceState) {
 		th.t.Fatalf("Invalid EVE image reference %v: %v", dev.imageRef, err)
 	}
 
-	diskSizeInMB := dev.requirement.MinDiskSizeInMB
-	if diskSizeInMB == 0 {
-		diskSizeInMB = constants.DefaultEVEDeviceDiskSizeInMB
+	diskSizeInMiB := dev.requirement.MinDiskSizeInMiB
+	if diskSizeInMiB == 0 {
+		diskSizeInMiB = constants.DefaultEVEDeviceDiskSizeInMiB
 	}
 
 	onboardKeyPEM, err := utils.ECDSAPrivateKeyToPEM(dev.onboardKey)
@@ -223,7 +223,7 @@ func (th *TestHarness) prepareImageForEVEDevice(dev *deviceState) {
 		DeviceName:    dev.name,
 		Image:         dev.imageRef,
 		MakeInstaller: dev.requirement.DeviceReusePolicy == CreateFromScratchWithInstaller,
-		DiskBytes:     uint64(diskSizeInMB) << 20,
+		DiskBytes:     uint64(diskSizeInMiB) << 20,
 		Config: &api.EveConfig{
 			ServerName:        fmt.Sprintf("%s:%d", GetControllerHostname(), GetControllerPort()),
 			SoftSerial:        dev.requirement.WithSoftSerial,
@@ -403,9 +403,9 @@ func (th *TestHarness) setupEVEDevices(
 		if cpus == 0 {
 			cpus = constants.DefaultEVEDeviceCPUs
 		}
-		memSizeInMB := dev.requirement.MinRAMInMB
-		if memSizeInMB == 0 {
-			memSizeInMB = constants.DefaultEVEDeviceRAMInMB
+		memSizeInMiB := dev.requirement.MinRAMInMiB
+		if memSizeInMiB == 0 {
+			memSizeInMiB = constants.DefaultEVEDeviceRAMInMiB
 		}
 		var interfaces []*api.EVEInterface
 		for i, port := range netModel.Ports {
@@ -420,7 +420,7 @@ func (th *TestHarness) setupEVEDevices(
 		dev.spec = &api.EVEDevice{
 			DeviceName:   dev.requirement.Name,
 			Cpus:         uint32(cpus),
-			MemoryBytes:  uint64(memSizeInMB) << 20,
+			MemoryBytes:  uint64(memSizeInMiB) << 20,
 			SerialNumber: dev.serial,
 			WithTpm:      dev.requirement.WithTPM,
 			Image:        dev.imageRef,
@@ -429,7 +429,14 @@ func (th *TestHarness) setupEVEDevices(
 		setupReq.Devices = append(setupReq.Devices, dev.spec)
 	}
 
-	ctx, cancel := context.WithTimeout(th.ctx, brokerSetupDevicesTimeout)
+	setupTimeout := brokerSetupDevicesTimeout
+	for _, dev := range devices {
+		if dev.requirement.DeviceReusePolicy == CreateFromScratchWithInstaller {
+			setupTimeout += constants.EVEInstallationTimeout
+			break
+		}
+	}
+	ctx, cancel := context.WithTimeout(th.ctx, setupTimeout)
 	th.log.Debugf("Submitting request to setup devices: %s", setupReq)
 	setupResp, err := th.brokerClient.SetupDevices(ctx, setupReq)
 	cancel()
@@ -990,8 +997,8 @@ func (th *TestHarness) maybeReuseDevices(
 		// Cannot reuse device if requirements changed.
 		prevReq := dev.requirement
 		equalReqs := newReq.MinCPUs == prevReq.MinCPUs &&
-			newReq.MinRAMInMB == prevReq.MinRAMInMB &&
-			newReq.MinDiskSizeInMB == prevReq.MinDiskSizeInMB &&
+			newReq.MinRAMInMiB == prevReq.MinRAMInMiB &&
+			newReq.MinDiskSizeInMiB == prevReq.MinDiskSizeInMiB &&
 			newReq.WithEVEVersion == prevReq.WithEVEVersion &&
 			newReq.WithHypervisor == prevReq.WithHypervisor &&
 			newReq.WithFilesystem == prevReq.WithFilesystem &&

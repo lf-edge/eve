@@ -207,7 +207,7 @@ func TestAccessVLANs(test *testing.T) {
 		},
 		VirtualizationMode: eveconfig.VmMode_HVM,
 		CPUs:               1,
-		MemoryBytes:        500 * evetest.MB,
+		MemoryBytes:        500 * evetest.MiB,
 		NetworkAdapters:    []evetest.AppNetworkAdapter{app1Vif},
 	}
 	app1UUID := devConfig.AddApplication(app1Config)
@@ -232,7 +232,7 @@ func TestAccessVLANs(test *testing.T) {
 		},
 		VirtualizationMode: eveconfig.VmMode_HVM,
 		CPUs:               1,
-		MemoryBytes:        500 * evetest.MB,
+		MemoryBytes:        500 * evetest.MiB,
 		NetworkAdapters:    []evetest.AppNetworkAdapter{app2Vif},
 	}
 	app2UUID := devConfig.AddApplication(app2Config)
@@ -733,7 +733,7 @@ func TestVLANSubinterfaces(test *testing.T) {
 		},
 		VirtualizationMode: eveconfig.VmMode_HVM,
 		CPUs:               1,
-		MemoryBytes:        500 * evetest.MB,
+		MemoryBytes:        500 * evetest.MiB,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
 				LogicalLabel:        "vif0",
@@ -765,7 +765,7 @@ func TestVLANSubinterfaces(test *testing.T) {
 		},
 		VirtualizationMode: eveconfig.VmMode_HVM,
 		CPUs:               1,
-		MemoryBytes:        500 * evetest.MB,
+		MemoryBytes:        500 * evetest.MiB,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
 				LogicalLabel:        "vif0",
@@ -1145,7 +1145,7 @@ func TestVLANSubinterfacesOnTopOfLAGs(test *testing.T) {
 		},
 		VirtualizationMode: eveconfig.VmMode_HVM,
 		CPUs:               1,
-		MemoryBytes:        500 * evetest.MB,
+		MemoryBytes:        500 * evetest.MiB,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
 				LogicalLabel:        "vif0",
@@ -1178,7 +1178,7 @@ func TestVLANSubinterfacesOnTopOfLAGs(test *testing.T) {
 		},
 		VirtualizationMode: eveconfig.VmMode_HVM,
 		CPUs:               1,
-		MemoryBytes:        500 * evetest.MB,
+		MemoryBytes:        500 * evetest.MiB,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
 				LogicalLabel:        "vif0",
@@ -1206,7 +1206,7 @@ func TestVLANSubinterfacesOnTopOfLAGs(test *testing.T) {
 		},
 		VirtualizationMode: eveconfig.VmMode_HVM,
 		CPUs:               1,
-		MemoryBytes:        500 * evetest.MB,
+		MemoryBytes:        500 * evetest.MiB,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
 				LogicalLabel:        "vif0",

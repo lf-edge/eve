@@ -101,6 +101,11 @@ func (p *LibvirtProvider) TeardownAll(_ context.Context) error {
 	panic("unreachable")
 }
 
+// ReconfigureDeviceDisks is not implemented in CGO-disabled builds.
+func (p *LibvirtProvider) ReconfigureDeviceDisks(_ context.Context, _ string, _ []DiskImage) error {
+	panic("unreachable")
+}
+
 // Close is not implemented in CGO-disabled builds.
 func (p *LibvirtProvider) Close() error {
 	panic("unreachable")
