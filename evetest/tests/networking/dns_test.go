@@ -347,7 +347,7 @@ func TestDNSFunctionality(test *testing.T) {
 			Tag:       "1.0",
 		},
 		CPUs:        1,
-		MemoryBytes: 500 * evetest.MB,
+		MemoryBytes: 500 * evetest.MiB,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
 				LogicalLabel:        "vif0",

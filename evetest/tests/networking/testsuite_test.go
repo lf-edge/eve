@@ -59,6 +59,14 @@ func TestBootstrapSuite(test *testing.T) {
 						{Key: lastResortParamKey, Value: true},
 					},
 				},
+				// Add at least one bootstrap test exercising EVE installation.
+				{
+					Name: "TestBootstrapWithInstaller",
+					Parameters: []evetest.TestParameterValue{
+						{Key: lastResortParamKey, Value: false},
+						{Key: useInstallerParamKey, Value: true},
+					},
+				},
 			},
 		},
 		evetest.TestCase{

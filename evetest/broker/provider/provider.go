@@ -34,8 +34,11 @@ type DeviceProvider interface {
 	//   - Resource allocation fails
 	SetupDevice(ctx context.Context, name string, spec DeviceSpec) error
 
-	// TeardownDevice stops the device (if running) and removes it completely,
-	// including all associated resources (disks, network interfaces, etc.).
+	// TeardownDevice stops the device (if running) and removes the device definition
+	// from the provider (e.g. undefines the libvirt domain). It also removes any
+	// provider-managed side-files such as NVRAM (OVMF_VARS.fd) and unused virtual
+	// networks. It does NOT delete the disk image files referenced in DeviceSpec.Disks;
+	// disk cleanup is the caller's responsibility.
 	TeardownDevice(ctx context.Context, name string) error
 
 	// PowerOnDevice starts a previously created device.
@@ -94,42 +97,48 @@ type DeviceProvider interface {
 	// TeardownAll removes all VMs, networks, etc., created by the provider.
 	TeardownAll(ctx context.Context) error
 
+	// ReconfigureDeviceDisks updates the disk list of a stopped device in place,
+	// without tearing it down and recreating it. All other device state (TPM,
+	// UEFI NVRAM, console port, network interfaces) is preserved.
+	//
+	// Intended for the EVE installer two-step flow: after the installer VM has
+	// finished writing EVE to disk, call this to drop the installer image from
+	// the disk list so the next PowerOnDevice boots directly into EVE.
+	//
+	// The device must be set up and powered off when this is called.
+	ReconfigureDeviceDisks(ctx context.Context, name string, newDisks []DiskImage) error
+
 	// Close releases all resources associated with the provider connection.
 	Close() error
 }
 
-// ImageSpec defines the input disk images and UEFI firmware needed to
-// provision a virtual device.
-//
-// Either Qcow2ImagePath or RawImagePath should be specified, but not both.
-// Qcow2ImagePath refers to a QCOW2 disk image, while RawImagePath refers to
-// a raw disk image. UEFIFirmwareDirPath points to a directory containing the
-// UEFI firmware binaries required to boot QCOW2-based devices.
-type ImageSpec struct {
-	// Qcow2ImagePath is the path to the base qcow2 image to use for the device.
-	Qcow2ImagePath string
+// DiskImageFormat is the on-disk format of a disk image file.
+type DiskImageFormat int32
 
-	// UEFIFirmwareDirPath specifies the path to a directory containing UEFI
-	// firmware binaries (e.g., OVMF_CODE.fd, OVMF_VARS.fd) used by the provider
-	// to boot a QCOW2-based machine.
-	UEFIFirmwareDirPath string
+const (
+	// DiskImageFormatQcow2 is the QCOW2 disk image format.
+	DiskImageFormatQcow2 DiskImageFormat = iota
+	// DiskImageFormatRaw is the raw disk image format.
+	DiskImageFormatRaw
+)
 
-	// RawImagePath specifies the path to a RAW disk image.
-	// Either this or Qcow2ImagePath should be defined, but not both.
-	RawImagePath string
-}
-
-// ImageFilePath returns the actual disk image path for the device.
-func (spec ImageSpec) ImageFilePath() string {
-	if spec.Qcow2ImagePath != "" {
-		return spec.Qcow2ImagePath
-	}
-	return spec.RawImagePath
+// DiskImage describes a single disk to attach to a device.
+type DiskImage struct {
+	// Format is the on-disk format of the image file.
+	Format DiskImageFormat
+	// Path is the filesystem path to the image file.
+	// The file must already exist when SetupDevice is called.
+	Path string
 }
 
 // DeviceSpec defines the configuration for a compute device.
 type DeviceSpec struct {
-	ImageSpec
+	// Disks is an ordered list of disk images to attach to the device, in boot order.
+	Disks []DiskImage
+
+	// UEFIFirmwareDirPath is the path to a directory containing UEFI firmware
+	// binaries (OVMF_CODE.fd, OVMF_VARS.fd). Leave empty to omit UEFI.
+	UEFIFirmwareDirPath string
 
 	// CPU architecture.
 	Arch api.ArchType
@@ -149,9 +158,6 @@ type DeviceSpec struct {
 
 	// NetworkInterfaces defines the network configuration for the device.
 	NetworkInterfaces []NetworkInterfaceSpec
-
-	// Future considerations:
-	// - AdditionalDisks []DiskSpec // For multiple disks
 }
 
 // NetworkInterfaceSpec defines a single network interface for a device.
@@ -214,7 +220,7 @@ const (
 	TransportProtocolUDP TransportProtocol = "udp"
 )
 
-// DeviceStatus represents the current state of a device.
+// DeviceStatus represents the current power/lifecycle state of a device.
 type DeviceStatus string
 
 const (

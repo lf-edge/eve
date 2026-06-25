@@ -70,6 +70,7 @@ RUN apk add --no-cache iptables dnsmasq radvd swtpm
 # hadolint ignore=DL3018
 RUN apk add --no-cache \
     qemu \
+    qemu-img \
     qemu-system-x86_64 \
     qemu-system-aarch64
 

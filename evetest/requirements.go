@@ -166,9 +166,9 @@ type RequireEdgeDevice struct {
 
 	// Zero values mean that the test does not care about the particular resource size.
 	// None of these will be ever created with zero count - not even ethernet interfaces.
-	MinCPUs         uint8  // Default will be 4.
-	MinRAMInMB      uint32 // Default will be 8192 MB.
-	MinDiskSizeInMB uint32 // Default will be 28576 MB.
+	MinCPUs          uint8  // Default will be 4.
+	MinRAMInMiB      uint32 // Default will be 8 GiB (8192 MiB).
+	MinDiskSizeInMiB uint32 // Default will be 36 GiB (36864 MiB).
 
 	WithEVEVersion string
 	WithHypervisor Hypervisor

@@ -23,7 +23,8 @@ import (
 )
 
 const (
-	lastResortParamKey = "LAST_RESORT_ENABLED"
+	lastResortParamKey   = "LAST_RESORT_ENABLED"
+	useInstallerParamKey = "USE_INSTALLER"
 )
 
 var (
@@ -35,9 +36,23 @@ var (
 			Default: "false",
 		},
 	}
+
+	useInstallerParam = evetest.TestParameterDefinition{
+		Key:          useInstallerParamKey,
+		DefaultValue: false,
+		Description: evetest.TestParameterDescription{
+			Summary: "Use EVE installer instead of live image",
+			Default: "false",
+		},
+	}
 )
 
-func deviceRequirementsForBootstrap(devName string) evetest.RequireEdgeDevice {
+func deviceRequirementsForBootstrap(
+	devName string, useInstaller bool) evetest.RequireEdgeDevice {
+	reusePolicy := evetest.CreateFromScratchWithLiveImage
+	if useInstaller {
+		reusePolicy = evetest.CreateFromScratchWithInstaller
+	}
 	return evetest.RequireEdgeDevice{
 		Name:           devName,
 		WithHypervisor: evetest.HypervisorKVM,
@@ -49,7 +64,7 @@ func deviceRequirementsForBootstrap(devName string) evetest.RequireEdgeDevice {
 			"set_global hv_eve_cpu_settings \"eve_max_vcpus=3\"",
 			"set_global hv_ctrd_cpu_settings \"ctrd_max_vcpus=3\""},
 		// We start from scratch to test device connectivity bootstrapping.
-		DeviceReusePolicy: evetest.CreateFromScratchWithLiveImage,
+		DeviceReusePolicy: reusePolicy,
 	}
 }
 
@@ -112,14 +127,16 @@ func TestBootstrapWithLastResort(test *testing.T) {
 	// Define configurable parameters available for the test.
 	evetest.DefineTestParameters(
 		lastResortParam,
+		useInstallerParam,
 	)
 
 	// Get parameter values set for this test execution.
 	lastResortExplicitlyEnabled := evetest.GetTestParameter[bool](lastResortParamKey)
+	useInstaller := evetest.GetTestParameter[bool](useInstallerParamKey)
 
 	// Set up the test harness and specify the test prerequisites.
 	devName := "edge-dev"
-	requiredDevice := deviceRequirementsForBootstrap(devName)
+	requiredDevice := deviceRequirementsForBootstrap(devName, useInstaller)
 	requiredNetModel := evetest.RequireNetworkModel{
 		NetworkModel: netmodels.SingleEthWithDHCP,
 	}
@@ -242,10 +259,12 @@ func TestBootstrapWithStaticIP(test *testing.T) {
 	// Define configurable parameters available for the test.
 	evetest.DefineTestParameters(
 		useOverrideJSONParam,
+		useInstallerParam,
 	)
 
 	// Get parameter values set for this test execution.
 	useOverrideJSON := evetest.GetTestParameter[bool](useOverrideJSONParamKey)
+	useInstaller := evetest.GetTestParameter[bool](useInstallerParamKey)
 
 	// Build bootstrap configuration.
 	devName := "edge-dev"
@@ -270,7 +289,7 @@ func TestBootstrapWithStaticIP(test *testing.T) {
 		})
 
 	// Set up the test harness and specify test prerequisites.
-	requiredDevice := deviceRequirementsForBootstrap(devName)
+	requiredDevice := deviceRequirementsForBootstrap(devName, useInstaller)
 	if useOverrideJSON {
 		requiredDevice.WithInjectedNetworkOverride = &pillartypes.DevicePortConfig{
 			Version:      1,
@@ -449,11 +468,13 @@ func TestBootstrapWithProxy(test *testing.T) {
 	// Define configurable parameters available for the test.
 	evetest.DefineTestParameters(
 		useOverrideJSONParam,
+		useInstallerParam,
 		proxyConfigTypeParam,
 	)
 
 	// Get parameter values set for this test execution.
 	useOverrideJSON := evetest.GetTestParameter[bool](useOverrideJSONParamKey)
+	useInstaller := evetest.GetTestParameter[bool](useInstallerParamKey)
 	proxyConfigType := evetest.GetTestParameter[ProxyConfigType](proxyConfigTypeParamKey)
 
 	// Build bootstrap configuration.
@@ -504,7 +525,7 @@ func TestBootstrapWithProxy(test *testing.T) {
 		})
 
 	// Set up the test harness and specify test prerequisites.
-	requiredDevice := deviceRequirementsForBootstrap(devName)
+	requiredDevice := deviceRequirementsForBootstrap(devName, useInstaller)
 	if useOverrideJSON {
 		var proxyConfig pillartypes.ProxyConfig
 		switch proxyConfigType {
@@ -659,10 +680,12 @@ func TestBootstrapWithMgmtVLAN(test *testing.T) {
 	// Define configurable parameters available for the test.
 	evetest.DefineTestParameters(
 		useOverrideJSONParam,
+		useInstallerParam,
 	)
 
 	// Get parameter values set for this test execution.
 	useOverrideJSON := evetest.GetTestParameter[bool](useOverrideJSONParamKey)
+	useInstaller := evetest.GetTestParameter[bool](useInstallerParamKey)
 
 	// Build bootstrap configuration.
 	devName := "edge-dev"
@@ -688,7 +711,7 @@ func TestBootstrapWithMgmtVLAN(test *testing.T) {
 		})
 
 	// Set up the test harness and specify test prerequisites.
-	requiredDevice := deviceRequirementsForBootstrap(devName)
+	requiredDevice := deviceRequirementsForBootstrap(devName, useInstaller)
 	if useOverrideJSON {
 		requiredDevice.WithInjectedNetworkOverride = &pillartypes.DevicePortConfig{
 			Version:      1,
@@ -803,10 +826,12 @@ func TestBootstrapWithLACPBond(test *testing.T) {
 	// Define configurable parameters available for the test.
 	evetest.DefineTestParameters(
 		useOverrideJSONParam,
+		useInstallerParam,
 	)
 
 	// Get parameter values set for this test execution.
 	useOverrideJSON := evetest.GetTestParameter[bool](useOverrideJSONParamKey)
+	useInstaller := evetest.GetTestParameter[bool](useInstallerParamKey)
 
 	// Build bootstrap configuration with an LACP bond.
 	// With bootstrap config, EVE creates the bond at boot time, before
@@ -848,7 +873,7 @@ func TestBootstrapWithLACPBond(test *testing.T) {
 		})
 
 	// Set up the test harness and specify test prerequisites.
-	requiredDevice := deviceRequirementsForBootstrap(devName)
+	requiredDevice := deviceRequirementsForBootstrap(devName, useInstaller)
 	if useOverrideJSON {
 		requiredDevice.WithInjectedNetworkOverride = &pillartypes.DevicePortConfig{
 			Version:      1,

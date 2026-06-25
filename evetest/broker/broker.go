@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -83,6 +84,17 @@ type device struct {
 	// Flag to indicate that device has been successfully set up and should be eventually
 	// torn down.
 	created bool
+
+	// installerImage is set only for devices that boot an EVE installer image first.
+	// When non-nil, SetupDevices runs the installer VM (which writes EVE onto the
+	// target disk), then reconfigures the device to boot from disks only.
+	// Nil for live (non-installer) devices and for the SDN device.
+	installerImage *provider.DiskImage
+
+	// disks holds the persistent disk image(s). For live devices this is the
+	// live QCOW2; for installer devices this is the blank target QCOW2 that the
+	// installer writes EVE into. Also set for the SDN device.
+	disks []provider.DiskImage
 }
 
 func newBroker(log *logrus.Logger, provider provider.DeviceProvider,
@@ -395,7 +407,7 @@ func (b *broker) BuildImage(
 
 	// Check if image already exists for this device
 	eveDevice, exists := clientSession.eveDevices[req.DeviceName]
-	if exists && (eveDevice.Qcow2ImagePath != "" || eveDevice.RawImagePath != "") {
+	if exists && len(eveDevice.Disks) > 0 {
 		err := fmt.Errorf("image for EVE device %q already exists", req.DeviceName)
 		log.Error(err)
 		return nil, err
@@ -429,8 +441,14 @@ func (b *broker) BuildImage(
 	// Build QCOW2 or RAW image
 	providerDevName := fmt.Sprintf("eve-%s-%s", clientSession.clientID, req.DeviceName)
 	imageDirPath := filepath.Join(b.imageDir, providerDevName)
-	imageSpec, err := buildEVEImage(ctx, log, imageDirPath, dockerImageName,
-		req.Config, b.proxyCACerts, req.DiskBytes, req.MakeInstaller)
+	eveImage, err := buildEVEImage(ctx, log, buildEVEImageParams{
+		imageDirPath:    imageDirPath,
+		dockerImageName: dockerImageName,
+		config:          req.Config,
+		proxyCACerts:    b.proxyCACerts,
+		diskSize:        req.DiskBytes,
+		installer:       req.MakeInstaller,
+	})
 	if err != nil {
 		err = fmt.Errorf("failed to build EVE image for device %q: %v",
 			req.DeviceName, err)
@@ -438,11 +456,19 @@ func (b *broker) BuildImage(
 		return nil, err
 	}
 
-	// Register the new device image
+	// For installer builds, prepend the installer image to disks for the first boot.
+	firstBootDisks := eveImage.disks
+	if eveImage.installerImage != nil {
+		firstBootDisks = append(
+			[]provider.DiskImage{*eveImage.installerImage}, eveImage.disks...)
+	}
+
+	// Register the new device image.
 	eveDevice = &device{
 		DeviceSpec: provider.DeviceSpec{
-			ImageSpec: imageSpec,
-			Arch:      imageArch,
+			Disks:               firstBootDisks,
+			UEFIFirmwareDirPath: eveImage.firmwareDir,
+			Arch:                imageArch,
 
 			// These fields are set by SetupDevices.
 			CPUs:              0,
@@ -451,12 +477,13 @@ func (b *broker) BuildImage(
 		},
 		deviceName:      req.DeviceName,
 		providerDevName: providerDevName,
+		installerImage:  eveImage.installerImage,
+		disks:           eveImage.disks,
 		created:         false, // device is created by SetupDevices
 	}
 	clientSession.eveDevices[req.DeviceName] = eveDevice
 
-	log.Infof("Built EVE image for device %q at %q", req.DeviceName,
-		imageSpec.ImageFilePath())
+	log.Infof("Built EVE image for device %q at %q", req.DeviceName, imageDirPath)
 	return &api.BuildImageResponse{MissingEveContainerImage: false}, nil
 }
 
@@ -688,7 +715,7 @@ func (b *broker) SetupDevices(
 
 	// Build the SDN Qcow2 image.
 	sdnImageDirPath := filepath.Join(b.imageDir, sdnProvDevName)
-	sdnImageSpec, err := buildSdnImage(ctx, log, sdnImageDirPath, sdnDockerImageName, arch)
+	sdnDisks, err := buildSdnImage(ctx, log, sdnImageDirPath, sdnDockerImageName, arch)
 	if err != nil {
 		err = fmt.Errorf("failed to build SDN image: %w", err)
 		log.Error(err)
@@ -697,8 +724,9 @@ func (b *broker) SetupDevices(
 	sdnDevice := &device{
 		deviceName:      constants.SDNDeviceName,
 		providerDevName: sdnProvDevName,
+		disks:           sdnDisks,
 		DeviceSpec: provider.DeviceSpec{
-			ImageSpec:   sdnImageSpec,
+			Disks:       sdnDisks,
 			Arch:        arch,
 			CPUs:        constants.SDNDeviceCPUCount,
 			MemoryBytes: constants.SDNDeviceMemBytes,
@@ -717,8 +745,7 @@ func (b *broker) SetupDevices(
 		// The BuildImage step should have created the QCOW2 image for this device.
 		deviceName := eveDevice.DeviceName
 		dev, exists := clientSession.eveDevices[deviceName]
-		if !exists ||
-			(dev.DeviceSpec.Qcow2ImagePath == "" && dev.DeviceSpec.RawImagePath == "") {
+		if !exists || len(dev.DeviceSpec.Disks) == 0 {
 			err = fmt.Errorf("disk image for EVE device %q not found", deviceName)
 			log.Error(err)
 			b.teardownDevices(ctx, clientSession)
@@ -779,18 +806,12 @@ func (b *broker) SetupDevices(
 				})
 		}
 
-		// Create EVE device
-		err := b.provider.SetupDevice(ctx, dev.providerDevName, dev.DeviceSpec)
-		if err != nil {
-			err = fmt.Errorf("failed to setup EVE device %q: %w",
-				deviceName, err)
-			log.Error(err)
-			b.teardownDevices(ctx, clientSession)
-			return nil, err
-		}
-		dev.created = true
-		log.Infof("EVE device %q provisioned using %s with name %q",
-			deviceName, b.providerName, dev.providerDevName)
+	}
+
+	// Provision all EVE devices in parallel (live or installer).
+	if err = b.provisionEVEDevices(ctx, log, clientSession); err != nil {
+		b.teardownDevices(ctx, clientSession)
+		return nil, err
 	}
 
 	// Add uplink interface connecting SDN with the host network.
@@ -866,6 +887,114 @@ func (b *broker) SetupDevices(
 	}, nil
 }
 
+// provisionEVEDevices provisions all EVE devices in the client session in parallel.
+// Each device is handled by provisionEVEDevice, which selects the appropriate
+// flow (live one-step or installer two-step). Called from SetupDevices while
+// b.mutex is held; goroutines only call provider methods (provider has its own
+// mutex) so there is no deadlock.
+func (b *broker) provisionEVEDevices(ctx context.Context, log *logrus.Entry,
+	clientSession *session) error {
+	errCh := make(chan error, len(clientSession.eveDevices))
+	for _, dev := range clientSession.eveDevices {
+		dev := dev
+		go func() {
+			errCh <- b.provisionEVEDevice(ctx, log, dev)
+		}()
+	}
+	var errs []string
+	for range clientSession.eveDevices {
+		if err := <-errCh; err != nil {
+			errs = append(errs, err.Error())
+		}
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("%s", strings.Join(errs, ", "))
+	}
+	return nil
+}
+
+// provisionEVEDevice provisions a single EVE device. For live (non-installer) devices
+// it calls provider.SetupDevice directly. For installer devices it delegates to
+// runDeviceInstaller, which runs the full two-step installation flow.
+func (b *broker) provisionEVEDevice(ctx context.Context, log *logrus.Entry,
+	dev *device) error {
+	if dev.installerImage == nil {
+		if err := b.provider.SetupDevice(ctx, dev.providerDevName, dev.DeviceSpec); err != nil {
+			return fmt.Errorf("failed to setup EVE device %q: %w", dev.deviceName, err)
+		}
+		dev.created = true
+		log.Infof("EVE device %q provisioned using %s with name %q",
+			dev.deviceName, b.providerName, dev.providerDevName)
+		return nil
+	}
+	return b.runDeviceInstaller(ctx, log, dev)
+}
+
+// runDeviceInstaller performs the EVE installer two-step for a single device:
+//  1. Set up the device with the installer image prepended to the disk list.
+//  2. Power it on and wait for the installer to stop (installation complete).
+//  3. Reconfigure the disk list to remove the installer image.
+//
+// Reusing the same provider device across both phases preserves TPM state,
+// UEFI NVRAM, and all other device-local state without any explicit migration.
+func (b *broker) runDeviceInstaller(ctx context.Context, log *logrus.Entry,
+	dev *device) error {
+	log.Infof("Running EVE installer for device %q", dev.deviceName)
+
+	if err := b.provider.SetupDevice(ctx, dev.providerDevName, dev.DeviceSpec); err != nil {
+		return fmt.Errorf("failed to setup device %q for installation: %w",
+			dev.deviceName, err)
+	}
+	if err := b.provider.PowerOnDevice(ctx, dev.providerDevName); err != nil {
+		if err2 := b.provider.TeardownDevice(ctx, dev.providerDevName); err2 != nil {
+			log.Warnf("Failed to teardown device %q after power-on failure: %v",
+				dev.deviceName, err2)
+		}
+		return fmt.Errorf("failed to power on installer for device %q: %w",
+			dev.deviceName, err)
+	}
+	log.Infof("EVE installer running for device %q, waiting for completion...",
+		dev.deviceName)
+
+	installCtx, cancel := context.WithTimeout(ctx, constants.EVEInstallationTimeout)
+	defer cancel()
+	statusCh := b.provider.WatchDeviceStatus(installCtx, dev.providerDevName)
+	installed := false
+	for status := range statusCh {
+		if status == provider.DeviceStatusStopped {
+			installed = true
+			break
+		}
+	}
+	if !installed {
+		if err2 := b.provider.TeardownDevice(ctx, dev.providerDevName); err2 != nil {
+			log.Warnf("Failed to teardown device %q after installation timeout: %v",
+				dev.deviceName, err2)
+		}
+		return fmt.Errorf("EVE installation timed out or failed for device %q",
+			dev.deviceName)
+	}
+	log.Infof("EVE installation completed for device %q", dev.deviceName)
+
+	// Reconfigure the device to boot from the persistent disks only (no installer).
+	dev.DeviceSpec.Disks = dev.disks
+	dev.installerImage = nil
+	err := b.provider.ReconfigureDeviceDisks(ctx, dev.providerDevName, dev.DeviceSpec.Disks)
+	if err != nil {
+		if err2 := b.provider.TeardownDevice(ctx, dev.providerDevName); err2 != nil {
+			log.Warnf("Failed to teardown device %q after disk reconfiguration failure: %v",
+				dev.deviceName, err2)
+		}
+		return fmt.Errorf("failed to reconfigure disks for device %q "+
+			"after installation: %w", dev.deviceName, err)
+	}
+
+	dev.created = true
+	log.Infof("EVE device %q provisioned after installation using %s",
+		dev.deviceName, b.providerName)
+	return nil
+}
+
 // generateSDNUplinkMAC generates a unique MAC address for an SDN uplink port.
 // The first 3 bytes are the fixed prefix. The last 3 bytes are randomly generated.
 // Ensures uniqueness across all client sessions in this broker process.
@@ -934,7 +1063,7 @@ func (b *broker) teardownDevices(ctx context.Context, clientSession *session) {
 				log.Infof("EVE device %q was torn down", deviceName)
 			}
 		}
-		imageDir := filepath.Dir(dev.ImageFilePath())
+		imageDir := filepath.Join(b.imageDir, dev.providerDevName)
 		if imageDir != "" {
 			err := os.RemoveAll(imageDir)
 			if err != nil {
@@ -959,7 +1088,7 @@ func (b *broker) teardownDevices(ctx context.Context, clientSession *session) {
 				log.Infof("SDN device was torn down")
 			}
 		}
-		imageDir := filepath.Dir(clientSession.sdnDevice.ImageFilePath())
+		imageDir := filepath.Join(b.imageDir, clientSession.sdnDevice.providerDevName)
 		if imageDir != "" {
 			err := os.RemoveAll(imageDir)
 			if err != nil {

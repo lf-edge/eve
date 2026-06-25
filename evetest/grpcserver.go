@@ -795,7 +795,9 @@ func (th *TestHarness) ConnectConsoleToEVE(
 	th.devicesM.Unlock()
 	defer func() {
 		th.devicesM.Lock()
-		th.devices[devName].consoleInUse = false
+		if th.devices[devName] != nil {
+			th.devices[devName].consoleInUse = false
+		}
 		th.devicesM.Unlock()
 	}()
 

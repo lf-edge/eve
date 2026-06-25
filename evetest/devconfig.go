@@ -25,14 +25,14 @@ import (
 
 const (
 	_ = iota
-	// KB is the number of bytes in a kilobyte.
-	KB uint64 = 1 << (10 * iota)
-	// MB is the number of bytes in a megabyte.
-	MB
-	// GB is the number of bytes in a gigabyte.
-	GB
-	// TB is the number of bytes in a terabyte.
-	TB
+	// KiB is the number of bytes in a kibibyte.
+	KiB uint64 = 1 << (10 * iota)
+	// MiB is the number of bytes in a mebibyte.
+	MiB
+	// GiB is the number of bytes in a gibibyte.
+	GiB
+	// TiB is the number of bytes in a tebibyte.
+	TiB
 )
 
 // NilUUID is special form of UUID that is specified to have all
@@ -839,7 +839,7 @@ func (config ApplicationInstanceConfig) toProto(th *TestHarness, devName string,
 		EnforceNetworkInterfaceOrder: config.EnforceNetIntfOrder,
 	}
 	if config.MemoryBytes != 0 {
-		vmConfig.Memory = uint32(config.MemoryBytes / KB)
+		vmConfig.Memory = uint32(config.MemoryBytes / KiB)
 	}
 	appInstConfig := &eveconfig.AppInstanceConfig{
 		Uuidandversion: &eveconfig.UUIDandVersion{

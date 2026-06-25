@@ -213,7 +213,7 @@ func TestSwitchNIWithMultiplePorts(test *testing.T) {
 		},
 		VirtualizationMode: eveconfig.VmMode_HVM, // PV does not work in xen
 		CPUs:               1,
-		MemoryBytes:        500 * evetest.MB,
+		MemoryBytes:        500 * evetest.MiB,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
 				LogicalLabel:        "vif0",

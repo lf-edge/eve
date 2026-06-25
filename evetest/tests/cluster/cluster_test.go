@@ -25,10 +25,6 @@ func clusterDeviceRequirements(devName string, withTPM bool) evetest.RequireEdge
 		Name:           devName,
 		WithTPM:        withTPM,
 		WithHypervisor: evetest.HypervisorKubevirt,
-		// The eve-kvm default (28576 MB) is too small for eve-k: system pods
-		// (k3s, KubeVirt, CDI, Longhorn) collectively fill the disk enough to
-		// trigger the "DiskPressure" node condition and cause pod evictions.
-		MinDiskSizeInMB: 36864,
 		// We want to test cluster creation.
 		DeviceReusePolicy: evetest.CreateFromScratchWithLiveImage,
 		WithFilesystem:    evetest.FilesystemZFS,
@@ -56,8 +52,7 @@ func clusterDeviceRequirements(devName string, withTPM bool) evetest.RequireEdge
 // --------------------
 //   - clusterDeviceRequirements (top of this file): WithHypervisor=Kubevirt,
 //     DeviceReusePolicy=CreateFromScratchWithLiveImage (we want to test
-//     fresh cluster formation), MinRAMInMB=8192, MinCPUs=4,
-//     MinDiskSizeInMB=24576, WithFilesystem=ZFS, plus grub options that
+//     fresh cluster formation), WithFilesystem=ZFS, plus grub options that
 //     cap dom0/eve/ctrd vcpus so cluster formation onboarding is fast.
 //   - SystemAdapter on eth0 (DHCP, mgmt+app, NetworkType=V4Only).
 //   - One Local NI "local-ni" (10.11.12.0/24, EnableFlowlog=true) and one
@@ -184,7 +179,7 @@ func TestSingleNodeCluster(test *testing.T) {
 			Tag:       "1.0",
 		},
 		CPUs:        1,
-		MemoryBytes: 500 * evetest.MB,
+		MemoryBytes: 500 * evetest.MiB,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
 				LogicalLabel:        "vif0",
@@ -395,7 +390,7 @@ func TestThreeNodesCluster(test *testing.T) {
 				Tag:       "1.0",
 			},
 			CPUs:        1,
-			MemoryBytes: 500 * evetest.MB,
+			MemoryBytes: 500 * evetest.MiB,
 			NetworkAdapters: []evetest.AppNetworkAdapter{
 				evetest.VirtualNetworkAdapter{
 					LogicalLabel:        "vif0",

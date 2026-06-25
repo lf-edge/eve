@@ -245,7 +245,7 @@ func TestPropagatedRoutes(test *testing.T) {
 		},
 		VirtualizationMode:  eveconfig.VmMode_HVM,
 		CPUs:                1,
-		MemoryBytes:         500 * evetest.MB,
+		MemoryBytes:         500 * evetest.MiB,
 		EnforceNetIntfOrder: true,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
@@ -620,7 +620,7 @@ func TestLocalNIWithMultiplePorts(test *testing.T) {
 		},
 		VirtualizationMode:  eveconfig.VmMode_HVM,
 		CPUs:                1,
-		MemoryBytes:         500 * evetest.MB,
+		MemoryBytes:         500 * evetest.MiB,
 		EnforceNetIntfOrder: true,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
@@ -1072,7 +1072,7 @@ func TestApplicationGateway(test *testing.T) {
 		Image:               appImage,
 		VirtualizationMode:  eveconfig.VmMode_HVM,
 		CPUs:                1,
-		MemoryBytes:         500 * evetest.MB,
+		MemoryBytes:         500 * evetest.MiB,
 		EnforceNetIntfOrder: true,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
@@ -1107,7 +1107,7 @@ func TestApplicationGateway(test *testing.T) {
 		Image:               appImage,
 		VirtualizationMode:  eveconfig.VmMode_HVM,
 		CPUs:                1,
-		MemoryBytes:         500 * evetest.MB,
+		MemoryBytes:         500 * evetest.MiB,
 		EnforceNetIntfOrder: true,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
@@ -1143,7 +1143,7 @@ func TestApplicationGateway(test *testing.T) {
 		Image:               appImage,
 		VirtualizationMode:  eveconfig.VmMode_HVM,
 		CPUs:                1,
-		MemoryBytes:         500 * evetest.MB,
+		MemoryBytes:         500 * evetest.MiB,
 		EnforceNetIntfOrder: true,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
