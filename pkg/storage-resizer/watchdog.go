@@ -107,12 +107,12 @@ func cmdRunWatchdog(args []string) int {
 func escalatedTimeout(attempt int) int {
 	switch {
 	case attempt <= 0:
-		return 10 + rand.IntN(11) // ~10-20s (reset ~20-40s): fires during the shrink
+		return 5 + rand.IntN(6) // set 5-10 -> reset ~10-20s: fires early in the shrink
 	case attempt == 1:
-		return 20 + rand.IntN(21) // ~20-40s
+		return 10 + rand.IntN(11) // set 10-20 -> reset ~20-40s: fires
 	case attempt == 2:
-		return 45 + rand.IntN(46) // ~45-90s: usually survives
+		return 22 + rand.IntN(22) // set 22-43 -> reset ~44-86s: fires (< the ~90s resize)
 	default:
-		return 600 // 4th run onward: won't fire; the resize completes
+		return 600 // 4th run onward: ~1200s reset; won't fire, the resize completes
 	}
 }

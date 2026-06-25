@@ -26,9 +26,9 @@ func TestRunWatchdogNoDevice(t *testing.T) {
 // try (attempt index 3).
 func TestEscalatedTimeout(t *testing.T) {
 	cases := []struct{ attempt, lo, hi int }{
-		{0, 10, 20},
-		{1, 20, 40},
-		{2, 45, 90},
+		{0, 5, 10},
+		{1, 10, 20},
+		{2, 22, 43},
 		{3, 600, 600},
 		{5, 600, 600},
 	}
