@@ -147,6 +147,25 @@ flattening the per-sha subdirectory and lowercasing the sha.
 `/persist/containerd` to `/persist/vault/containerd` so the
 content-store lives inside the encrypted vault.
 
+**Relocate EVE-kvm volumes out of the Longhorn data path**
+(`relocateKvmVolumesForKube`) — On the first EVE-k boot after a
+kvm-to-k conversion, which EVE-kvm's baseosmgr records in
+`/persist/status/kvm-to-k-pending`, moves everything in
+`/persist/vault/volumes` to `/persist/vault/volumes-kvm` so Longhorn
+gets an empty data directory, then removes the marker. On ZFS the kvm
+volumes are zvols that stay where they are, so only the marker is
+removed.
+
+**Restore EVE-kvm volumes on rollback** (`restoreKvmVolumesOnDowngrade`)
+— On an EVE-kvm boot, moves `/persist/vault/volumes-kvm` back to
+`/persist/vault/volumes`, undoing the relocation after a fallback from
+an uncommitted EVE-k partition. It runs first in the phase, before
+anything scans the volumes directory. A no-op on ZFS, where vaultmgr's
+vault recovery restores the kvm vault and its zvols.
+
+How the carried volumes are consumed and cleaned up is described in
+[EVE-K.md](../../../docs/EVE-K.md#carrying-app-volumes-from-eve-kvm).
+
 ## Design points that matter for correctness and testing
 
 - **Checkpoint dependency.** `convertPersistVolumes` cannot map old
