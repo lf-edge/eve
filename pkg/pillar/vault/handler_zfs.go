@@ -99,8 +99,38 @@ func (h *ZFSHandler) RemoveDefaultVault() error {
 func (h *ZFSHandler) SetupDefaultVault() error {
 	if !etpm.IsTpmEnabled() {
 		if base.IsHVTypeKube() {
+			// A migration interrupted by power loss can leave the vault path
+			// absent with the data under a staging/backup dataset; recover
+			// before the dataset-exists check below would create an empty vault.
+			if err := h.recoverInterruptedVaultMigration(types.SealedDataset); err != nil {
+				return err
+			}
 			if zfs.DatasetExist(h.log, types.SealedDataset) {
-				return MountVaultZvol(h.log, types.SealedDataset)
+				// A device converted from EVE-kvm carries a filesystem-dataset
+				// vault here, not the native EVE-k zvol+etcd layout. Migrate it
+				// so a converted no-TPM device ends up with the same layout a
+				// fresh EVE-k install has, including the etcd-storage zvol. Once
+				// migrated the vault is a zvol and we just mount it. (Field
+				// devices take the TPM path in unlockVault instead.)
+				isZvol, err := zfs.IsDatasetTypeZvol(types.SealedDataset)
+				if err != nil {
+					return fmt.Errorf("error checking vault dataset type for %s: %v",
+						types.SealedDataset, err)
+				}
+				if vaultNeedsZvolMigration(true, isZvol) {
+					// Mount the carried-over fs vault as the copy source, then
+					// migrate to the zvol layout unencrypted: no-TPM ZFS vaults
+					// carry no key.
+					if mounted, merr := zfs.IsDatasetMounted(types.SealedDataset); merr != nil {
+						return merr
+					} else if !mounted {
+						if err := zfs.MountDataset(types.SealedDataset); err != nil {
+							return err
+						}
+					}
+					return h.migrateVaultFsToZvol(types.SealedDataset, "", false)
+				}
+				return h.mountVaultByDatasetType(types.SealedDataset)
 			}
 			if err := CreateZvolEtcd(h.log, types.EtcdZvol, "", false); err != nil {
 				return fmt.Errorf("error creating zfs etcd zvol %s, error=%v",
@@ -151,6 +181,36 @@ func (h *ZFSHandler) unlockVault(vaultPath string) error {
 
 	// zfs mount
 	if base.IsHVTypeKube() {
+		// A migration whose swap completed but whose cleanup was interrupted
+		// can leave vaultPath as the migrated zvol with a leftover .old backup.
+		// Recover before deciding the native vs migration path.
+		if err := h.recoverInterruptedVaultMigration(vaultPath); err != nil {
+			return err
+		}
+		isZvol, err := zfs.IsDatasetTypeZvol(vaultPath)
+		if err != nil {
+			h.log.Errorf("Error checking vault dataset type for %s: %v", vaultPath, err)
+			return err
+		}
+		if vaultNeedsZvolMigration(true, isZvol) {
+			// Carried-over kvm filesystem vault on an EVE-k device (the device
+			// was converted from EVE-kvm). Mount it as a filesystem so the
+			// device boots, then migrate it in place to the zvol layout EVE-k
+			// expects. The unlock key is still staged for the encrypted creates.
+			h.log.Noticef("Detected carried-over kvm filesystem vault %s on EVE-k; migrating to zvol layout",
+				vaultPath)
+			if mounted, merr := zfs.IsDatasetMounted(vaultPath); merr != nil {
+				h.log.Errorf("Error checking mount state of %s: %v", vaultPath, merr)
+				return merr
+			} else if !mounted {
+				if err := zfs.MountDataset(vaultPath); err != nil {
+					h.log.Errorf("Error mounting carried-over fs vault %s: %v", vaultPath, err)
+					return err
+				}
+			}
+			return h.migrateVaultFsToZvol(vaultPath, zfsKeyFile, true)
+		}
+		// Native EVE-k zvol vault.
 		// zfs load-key here separately for types.EtcdZvol because we don't mount it here, only in kube.
 		args := []string{"load-key", types.EtcdZvol}
 		if stdOut, stdErr, err := execCmd(types.ZFSBinary, args...); err != nil {
@@ -169,6 +229,246 @@ func (h *ZFSHandler) unlockVault(vaultPath string) error {
 		}
 	}
 
+	return nil
+}
+
+// vaultNeedsZvolMigration reports whether a just-unlocked ZFS vault must be
+// migrated from the EVE-kvm filesystem-dataset layout to the EVE-k zvol
+// layout. It is true only on EVE-k when the existing vault is a filesystem
+// dataset (i.e. carried over from a kvm install during a cross-flavor update).
+func vaultNeedsZvolMigration(isKube bool, vaultIsZvol bool) bool {
+	return isKube && !vaultIsZvol
+}
+
+// mountVaultByDatasetType mounts vaultPath according to its actual ZFS dataset
+// type: as a zvol-backed ext4 filesystem if it is a zvol (the native EVE-k
+// layout), otherwise as a ZFS filesystem dataset (a carried-over EVE-kvm vault
+// not yet migrated to the zvol layout). It assumes any required key is already
+// loaded. Used where the type is not known up front (the no-TPM
+// SetupDefaultVault path); unlockVault drives the type-aware migration itself.
+func (h *ZFSHandler) mountVaultByDatasetType(vaultPath string) error {
+	isZvol, err := zfs.IsDatasetTypeZvol(vaultPath)
+	if err != nil {
+		h.log.Errorf("mountVaultByDatasetType: IsDatasetTypeZvol(%s) failed: %v; assuming filesystem",
+			vaultPath, err)
+	}
+	if isZvol {
+		return MountVaultZvol(h.log, vaultPath)
+	}
+	h.log.Noticef("mountVaultByDatasetType: %s is a filesystem dataset (carried-over EVE-kvm vault); mounting as filesystem",
+		vaultPath)
+	return zfs.MountDataset(vaultPath)
+}
+
+// vaultMigrateMountpoint is the temporary mountpoint used while copying the
+// carried-over filesystem vault into the new zvol-backed ext4 during migration.
+const vaultMigrateMountpoint = "/run/vaultmgr/vault-migrate"
+
+// migrateVaultFsToZvol migrates a carried-over EVE-kvm filesystem vault to the
+// EVE-k zvol+ext4 layout, preserving the vault contents (containerd content
+// store and metadata, downloader, verifier, configs). It must be called with
+// the source filesystem vault mounted at /<vaultPath>. When encrypt is true the
+// new zvols are created encrypted, which requires the vault unlock key already
+// staged (the TPM path via unlockVault); when false they are created
+// unencrypted (the no-TPM path via SetupDefaultVault).
+//
+// The sequence stages a new zvol "<vaultPath>2", copies the vault contents into
+// it, then swaps it into place: the old filesystem vault is renamed to
+// "<vaultPath>.old", the staging zvol is renamed to "<vaultPath>", and only
+// then is the old vault destroyed. The caller reaches this only when a
+// filesystem vault is present at vaultPath (i.e. the source is intact), so a
+// leftover staging/backup dataset left by an interrupted copy attempt is safe
+// to drop here. Interruption mid-swap (vaultPath briefly absent) is recovered
+// by recoverInterruptedVaultMigration at the EVE-k call sites.
+func (h *ZFSHandler) migrateVaultFsToZvol(vaultPath, keyFile string, encrypt bool) error {
+	stagingDataset := vaultPath + "2"
+	backupDataset := vaultPath + ".old"
+
+	// Re-entrancy: the source fs vault at vaultPath is intact, so any leftover
+	// staging/backup dataset from an interrupted copy attempt is safe to drop.
+	if zfs.DatasetExist(h.log, stagingDataset) {
+		h.log.Warnf("Removing stale migration zvol %s from a previous attempt", stagingDataset)
+		_ = unix.Unmount(vaultMigrateMountpoint, 0)
+		_ = zfs.UnmountDataset(stagingDataset)
+		if err := zfs.DestroyDataset(stagingDataset); err != nil {
+			return fmt.Errorf("cannot remove stale migration zvol %s: %v", stagingDataset, err)
+		}
+	}
+	if zfs.DatasetExist(h.log, backupDataset) {
+		h.log.Warnf("Removing stale migration backup %s from a previous attempt", backupDataset)
+		_ = zfs.UnmountDataset(backupDataset)
+		if err := zfs.DestroyDataset(backupDataset); err != nil {
+			return fmt.Errorf("cannot remove stale migration backup %s: %v", backupDataset, err)
+		}
+	}
+
+	// Empty etcd zvol: etcd/k3s start fresh on EVE-k, there is nothing to carry
+	// over. Skip if a prior attempt already created it.
+	if !zfs.DatasetExist(h.log, types.EtcdZvol) {
+		if err := CreateZvolEtcd(h.log, types.EtcdZvol, keyFile, encrypt); err != nil {
+			return fmt.Errorf("error creating etcd zvol %s: %v", types.EtcdZvol, err)
+		}
+	}
+
+	// Size the staging zvol to the currently-free pool space (the source vault
+	// is still present). Reusing CreateVaultVolumeDataset gives the staging zvol
+	// the same treatment a fresh-install EVE-k vault gets, just sized to free
+	// space rather than the whole pool; peak usage is then ~the vault contents.
+	availBytes, err := zfs.GetDatasetAvailableBytes(types.PersistDataset)
+	if err != nil {
+		return fmt.Errorf("cannot read %s available bytes: %v", types.PersistDataset, err)
+	}
+	if availBytes <= zfs.VolBlockSizeBytes {
+		return fmt.Errorf("insufficient free space (%d bytes) to migrate vault %s",
+			availBytes, vaultPath)
+	}
+	sizeBytes := availBytes - zfs.VolBlockSizeBytes
+	// Decline up front when the free space cannot hold a second copy of the
+	// vault: the copy below would run out of room part-way, and since the
+	// source is left intact every following boot would retry and fail the same
+	// way. A marginal pass can still hit ENOSPC because the ext4 on the zvol
+	// spends some of its capacity on metadata; that leaves the source intact
+	// too, it just reports the failure later.
+	usedBytes, err := zfs.GetDatasetUsedBytes(vaultPath)
+	if err != nil {
+		return fmt.Errorf("cannot read %s used bytes: %v", vaultPath, err)
+	}
+	if sizeBytes < usedBytes {
+		return fmt.Errorf("insufficient free space to migrate vault %s: %d bytes free, %d bytes in use",
+			vaultPath, sizeBytes, usedBytes)
+	}
+	if err := zfs.CreateVaultVolumeDataset(h.log, stagingDataset, keyFile, encrypt,
+		sizeBytes, "zstd", zfs.VolBlockSizeBytes); err != nil {
+		return fmt.Errorf("error creating migration zvol %s: %v", stagingDataset, err)
+	}
+
+	devPath := zfs.GetZvolPath(stagingDataset)
+	if err := waitPath(h.log, devPath, vaultZvolPathWaitSeconds); err != nil {
+		return fmt.Errorf("migration zvol dev path missing: %v", err)
+	}
+	if err := formatZvol(h.log, devPath, vaultFsType); err != nil {
+		return fmt.Errorf("migration zvol format error: %v", err)
+	}
+
+	if err := os.MkdirAll(vaultMigrateMountpoint, 0755); err != nil {
+		return fmt.Errorf("cannot create migration mountpoint %s: %v", vaultMigrateMountpoint, err)
+	}
+	mountFlags := uintptr(unix.MS_DIRSYNC | unix.MS_NOATIME)
+	if noDirsyncRequested() {
+		mountFlags = unix.MS_NOATIME
+	}
+	if err := unix.Mount(devPath, vaultMigrateMountpoint, vaultFsType, mountFlags, ""); err != nil {
+		return fmt.Errorf("mount of migration zvol %s at %s: %v", devPath, vaultMigrateMountpoint, err)
+	}
+
+	// Copy the carried-over vault contents into the new zvol-backed ext4. The
+	// destination is the already-mounted zvol; fileutils.CopyDir cannot be used
+	// here because it requires the destination not to exist and silently drops
+	// symlinks. cp -a copies into the existing mountpoint and preserves
+	// symlinks, permissions, and xattrs, which the containerd content store and
+	// metadata DB depend on.
+	srcDir := "/" + vaultPath
+	ctx := context.Background()
+	if out, err := base.Exec(h.log, "/bin/cp", "-a", srcDir+"/.", vaultMigrateMountpoint+"/").
+		WithContext(ctx).WithUnlimitedTimeout(3600 * time.Second).CombinedOutput(); err != nil {
+		_ = unix.Unmount(vaultMigrateMountpoint, 0)
+		return fmt.Errorf("copy vault contents %s -> %s: %v (%s)", srcDir, vaultMigrateMountpoint, err, out)
+	}
+
+	// Swap: unmount both, then rename the old fs vault out of the way, rename
+	// the staging zvol into place, and only then destroy the old vault.
+	// Renaming (not destroying) the old vault first means no window leaves
+	// vaultPath absent with the only surviving copy in a differently-named
+	// dataset: power loss at any point leaves the old data under
+	// <vaultPath>.old and/or the migrated data under the staging zvol or
+	// vaultPath, and the next boot recovers it via
+	// recoverInterruptedVaultMigration.
+	if err := unix.Unmount(vaultMigrateMountpoint, 0); err != nil {
+		return fmt.Errorf("unmount migration zvol at %s: %v", vaultMigrateMountpoint, err)
+	}
+	if err := zfs.UnmountDataset(vaultPath); err != nil {
+		return fmt.Errorf("unmount old fs vault %s: %v", vaultPath, err)
+	}
+	if err := zfs.RenameDataset(vaultPath, backupDataset); err != nil {
+		return fmt.Errorf("rename %s -> %s: %v", vaultPath, backupDataset, err)
+	}
+	if err := zfs.RenameDataset(stagingDataset, vaultPath); err != nil {
+		return fmt.Errorf("rename %s -> %s: %v", stagingDataset, vaultPath, err)
+	}
+	// Best effort: the migrated zvol is now at vaultPath, so the old vault may
+	// be torn down. On failure it is left as an .old leftover for the next
+	// boot's recovery to clean up.
+	if err := zfs.UnmountDataset(backupDataset); err != nil {
+		h.log.Warnf("migrateVaultFsToZvol: unmount leftover %s: %v", backupDataset, err)
+	}
+	if err := zfs.DestroyDataset(backupDataset); err != nil {
+		h.log.Warnf("migrateVaultFsToZvol: destroy leftover %s: %v", backupDataset, err)
+	}
+
+	// Mount the migrated zvol vault at /<vaultPath> for the rest of this boot.
+	if err := MountVaultZvol(h.log, vaultPath); err != nil {
+		return fmt.Errorf("mount migrated zvol vault %s: %v", vaultPath, err)
+	}
+
+	h.log.Noticef("Migrated ZFS vault %s from kvm filesystem layout to EVE-k zvol layout", vaultPath)
+	return nil
+}
+
+// recoverInterruptedVaultMigration reconstructs a ZFS vault migration that
+// was interrupted by power loss mid-swap, so the EVE-k callers do not mistake
+// it for a fresh install and create an empty vault (losing all blobs) or fail
+// to unlock. It is a no-op when no migration staging/backup datasets are
+// present.
+//
+// In migrateVaultFsToZvol the swap renames the old fs vault to
+// <vaultPath>.old, then renames the staging zvol to <vaultPath>. If power is
+// lost between those two renames, vaultPath is absent while the migrated data
+// sits under the staging zvol (and the old data under .old). This finishes
+// that swap; if only the old vault survived, it is restored so migration can
+// restart.
+func (h *ZFSHandler) recoverInterruptedVaultMigration(vaultPath string) error {
+	staging := vaultPath + "2"
+	backup := vaultPath + ".old"
+	stagingExists := zfs.DatasetExist(h.log, staging)
+	backupExists := zfs.DatasetExist(h.log, backup)
+	if !stagingExists && !backupExists {
+		return nil
+	}
+	vaultExists := zfs.DatasetExist(h.log, vaultPath)
+	h.log.Noticef("recoverInterruptedVaultMigration(%s): leftover migration state (staging=%v backup=%v vault=%v)",
+		vaultPath, stagingExists, backupExists, vaultExists)
+
+	if !vaultExists {
+		if stagingExists {
+			// Swap interrupted after the old vault was renamed away but before
+			// the migrated zvol landed at vaultPath; finish it.
+			if err := zfs.RenameDataset(staging, vaultPath); err != nil {
+				return fmt.Errorf("finish interrupted migration rename %s -> %s: %v", staging, vaultPath, err)
+			}
+		} else if backupExists {
+			// Only the old vault survives; restore it so migration restart.
+			if err := zfs.RenameDataset(backup, vaultPath); err != nil {
+				return fmt.Errorf("restore interrupted migration rename %s -> %s: %v", backup, vaultPath, err)
+			}
+		}
+	}
+
+	// Clean up any leftover backup or redundant staging dataset now that
+	// vaultPath is valid. Re-check existence since a rename above may have
+	// moved the data; a destroy here is best-effort and a failure just leaves
+	// the leftover for the next boot.
+	if zfs.DatasetExist(h.log, backup) {
+		_ = zfs.UnmountDataset(backup)
+		if err := zfs.DestroyDataset(backup); err != nil {
+			h.log.Warnf("recoverInterruptedVaultMigration: destroy leftover %s: %v", backup, err)
+		}
+	}
+	if zfs.DatasetExist(h.log, staging) {
+		_ = zfs.UnmountDataset(staging)
+		if err := zfs.DestroyDataset(staging); err != nil {
+			h.log.Warnf("recoverInterruptedVaultMigration: destroy leftover %s: %v", staging, err)
+		}
+	}
 	return nil
 }
 
@@ -214,6 +514,14 @@ func (h *ZFSHandler) checkZfsKeyStatus(vaultPath string) error {
 }
 
 func (h *ZFSHandler) setupVault(vaultPath string) error {
+	// A migration interrupted by power loss can leave vaultPath absent with
+	// the data under a staging/backup dataset; recover before deciding this is
+	// a fresh install, which would create an empty vault and lose the blobs.
+	if base.IsHVTypeKube() {
+		if err := h.recoverInterruptedVaultMigration(vaultPath); err != nil {
+			return err
+		}
+	}
 	// zfs get keystatus returns success as long as vaultPath is a dataset,
 	// (even if not mounted yet), so use it to check dataset presence
 	if err := h.checkZfsKeyStatus(vaultPath); err == nil {

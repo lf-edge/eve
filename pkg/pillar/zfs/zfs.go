@@ -143,6 +143,25 @@ func GetDatasetAvailableBytes(datasetName string) (uint64, error) {
 	return size, nil
 }
 
+// GetDatasetUsedBytes Read Zfs dataset 'used' space property (the dataset, its
+// descendants and its snapshots), parse as uint64
+func GetDatasetUsedBytes(datasetName string) (uint64, error) {
+	ds, err := libzfs.DatasetOpen(datasetName)
+	if err != nil {
+		return 0, fmt.Errorf("Open dataset %s failure: %v", datasetName, err)
+	}
+	defer ds.Close()
+	propUsed, err := ds.GetProperty(libzfs.DatasetPropUsed)
+	if err != nil {
+		return 0, fmt.Errorf("Read dataset %s used space failure: %v", datasetName, err)
+	}
+	size, err := strconv.ParseUint(propUsed.Value, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("dataset %s used space parse failure: %v", datasetName, err)
+	}
+	return size, nil
+}
+
 // GetZvolPath Helper to build the /dev/zvol/<dataset> path
 func GetZvolPath(datasetName string) string {
 	return types.ZVolDevicePrefix + "/" + datasetName
@@ -236,6 +255,30 @@ func DestroyDataset(datasetName string) error {
 	}
 
 	return err
+}
+
+// IsDatasetMounted returns true if the dataset is currently mounted.
+func IsDatasetMounted(datasetName string) (bool, error) {
+	dataset, err := libzfs.DatasetOpen(datasetName)
+	if err != nil {
+		return false, err
+	}
+	defer dataset.Close()
+	mounted, _ := dataset.IsMounted()
+	return mounted, nil
+}
+
+// RenameDataset renames a dataset from oldName to newName. The dataset
+// must not be mounted (mountpoints follow the dataset name).
+func RenameDataset(oldName, newName string) error {
+	dataset, err := libzfs.DatasetOpen(oldName)
+	if err != nil {
+		return err
+	}
+	defer dataset.Close()
+
+	// recur=false (single dataset), forceUnmount=false (caller unmounts first)
+	return dataset.Rename(newName, false, false)
 }
 
 // DatasetExist return true if dataset exists or false when it does not exist
