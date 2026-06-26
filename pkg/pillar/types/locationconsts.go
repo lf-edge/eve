@@ -166,6 +166,11 @@ const (
 	// changing this file does not change the actual policy, hence
 	// needs not be protected.
 	PolicyPcrFile = PersistStatusDir + "/policy-pcr.json"
+
+	// KvmToKubePendingFilename - marker under PersistStatusDir that EVE-kvm's
+	// baseosmgr writes before converting the device to EVE-k. The first EVE-k
+	// boot relocates the carried-over kvm volumes and removes it.
+	KvmToKubePendingFilename = "kvm-to-k-pending"
 )
 
 var (

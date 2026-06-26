@@ -50,6 +50,10 @@ var preVaultconversionHandlers = []ConversionHandler{
 // should be in preVaultconversionHandlers
 var postVaultconversionHandlers = []ConversionHandler{
 	{
+		description: "Restore EVE-kvm volumes relocated by an EVE-k upgrade on rollback",
+		handlerFunc: restoreKvmVolumesOnDowngrade,
+	},
+	{
 		description: "Move volumes to /persist/vault",
 		handlerFunc: convertPersistVolumes,
 	},
@@ -64,6 +68,10 @@ var postVaultconversionHandlers = []ConversionHandler{
 	{
 		description: "Port user-containerd namespace from eve-user-apps to k8s.io on EVE-k",
 		handlerFunc: portContainerdNamespaceForKube,
+	},
+	{
+		description: "Relocate EVE-kvm volumes out of the Longhorn data path on EVE-k upgrade",
+		handlerFunc: relocateKvmVolumesForKube,
 	},
 }
 
