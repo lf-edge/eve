@@ -13,6 +13,7 @@ type pathConfig struct {
 	currentRetryUpdateCounter string
 	configRetryUpdateCounter  string
 	forceFallbackCounter      string
+	kvmToKubePending          string
 }
 
 // defaultPathConfig returns the production paths under /persist/.
@@ -21,5 +22,6 @@ func defaultPathConfig() *pathConfig {
 		currentRetryUpdateCounter: types.PersistStatusDir + "/current_retry_update_counter",
 		configRetryUpdateCounter:  types.PersistStatusDir + "/config_retry_update_counter",
 		forceFallbackCounter:      types.CheckpointDirname + "/forceFallbackCounter",
+		kvmToKubePending:          types.PersistStatusDir + "/" + types.KvmToKubePendingFilename,
 	}
 }

@@ -5,6 +5,7 @@ package baseosmgr
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -271,6 +272,11 @@ type testCtx struct {
 	// the kvm -> EVE-k volume gate closed.
 	convDecision    string
 	convDecisionErr error
+
+	// maybeConvert seam: records whether the kvm-to-k marker was already on
+	// disk at each call, and reports the conversion as still pending.
+	convertCalls        int
+	markerAtConvertCall []bool
 }
 
 // newTestCtx builds a baseOsMgrContext suitable for handler tests:
@@ -311,6 +317,7 @@ func newTestCtx(t *testing.T) *testCtx {
 			currentRetryUpdateCounter: filepath.Join(tmp, "current_retry_update_counter"),
 			configRetryUpdateCounter:  filepath.Join(tmp, "config_retry_update_counter"),
 			forceFallbackCounter:      filepath.Join(tmp, "forceFallbackCounter"),
+			kvmToKubePending:          filepath.Join(tmp, types.KvmToKubePendingFilename),
 		},
 		pubBaseOsStatus:      tc.pubBaseOsStatus,
 		pubZbootStatus:       tc.pubZbootStatus,
@@ -349,6 +356,12 @@ func newTestCtx(t *testing.T) *testCtx {
 			},
 			conversionDecision: func() (string, error) {
 				return tc.convDecision, tc.convDecisionErr
+			},
+			maybeConvert: func(ctx *baseOsMgrContext, _ *types.BaseOsStatus) bool {
+				tc.convertCalls++
+				_, err := os.Stat(ctx.paths.kvmToKubePending)
+				tc.markerAtConvertCall = append(tc.markerAtConvertCall, err == nil)
+				return false
 			},
 		},
 	}

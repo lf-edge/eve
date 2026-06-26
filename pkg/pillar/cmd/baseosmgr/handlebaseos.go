@@ -304,7 +304,18 @@ func doBaseOsStatusUpdate(ctx *baseOsMgrContext, uuidStr string,
 	// pre-staged image must not trigger. Block activation until the geometry is
 	// ready.
 	if err == nil && isCurrentKube != isUpdateKube {
-		if !maybeConvert(ctx, status) {
+		// Tells the first EVE-k boot to stage this device's kvm volumes for
+		// migration into Longhorn PVCs. Written before conversion starts since
+		// that reboots. Deliberately not in storage-resizer's /config backup: the
+		// shrink that backup guards runs only on devices without volumes.
+		if err := fileutils.WriteRename(ctx.paths.kvmToKubePending, nil); err != nil {
+			errString := fmt.Sprintf("Upgrade to EVE-k (%s): cannot record pending conversion: %s",
+				config.BaseOsVersion, err)
+			log.Error(errString)
+			status.SetErrorNow(errString)
+			return true
+		}
+		if !ctx.seams.maybeConvert(ctx, status) {
 			changed = true
 			return changed
 		}
