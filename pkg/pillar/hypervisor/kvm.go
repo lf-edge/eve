@@ -6,6 +6,7 @@ package hypervisor
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -17,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"text/template"
 	"time"
 
@@ -2059,22 +2061,99 @@ func (ctx KvmContext) Stop(domainName string, _ bool) error {
 	return nil
 }
 
+// qemuExitGrace is how long Delete waits for the qemu process to exit after a
+// QMP `quit`, and again after a SIGKILL, before giving up.
+const qemuExitGrace = 5 * time.Second
+
+// waitProcessGone returns true once pid is no longer a live process, or false if
+// it is still alive after timeout.
+func waitProcessGone(pid int, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	warned := false
+	for {
+		// Signal 0 probes for existence: only ESRCH means the process is
+		// gone. Other errors (EPERM, EINVAL) mean the probe failed while the
+		// process may still exist, so don't report it as gone.
+		if err := syscall.Kill(pid, 0); err != nil {
+			if errors.Is(err, syscall.ESRCH) {
+				return true
+			}
+			if !warned {
+				logrus.Warnf("waitProcessGone(%d): unexpected error probing pid: %v", pid, err)
+				warned = true
+			}
+		}
+		if !time.Now().Before(deadline) {
+			return false
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
 // Delete deletes a domain
 func (ctx KvmContext) Delete(domainName string) (result error) {
-	//Sending a stop signal to then domain before quitting. This is done to freeze the domain before quitting it.
+	// Capture the qemu pid before tearing down state, so we can guarantee the
+	// process is gone even if the QMP quit below fails or hangs.
+	pid, pidErr := procutils.GetPidFromFile(kvmStateDir + domainName + "/pid")
+
+	// Issue a QMP `stop` command (not a process signal) to pause the vCPUs,
+	// freezing the guest before we quit it.
 	_, err := os.Stat(GetQmpExecutorSocket(domainName))
 	if err == nil {
 		execStop(GetQmpExecutorSocket(domainName))
 		if err = execQuit(GetQmpExecutorSocket(domainName)); err != nil {
-			return logError("failed to execute quit command %v", err)
+			logError("failed to execute quit command %v", err)
 		}
 	}
-	// we may want to wait a little bit here and actually kill qemu process if it gets wedged
+
+	// Backstop: make sure qemu has actually exited and released its resources
+	// (memory, assigned PCI devices). quit over QMP can fail or hang if the
+	// monitor is wedged; without a hard kill the caller would keep seeing the
+	// domain as present and never free its resources (the lf-edge/eve#5916
+	// stall). Wait briefly for a clean exit, then SIGKILL.
+	if pidErr == nil {
+		if !waitProcessGone(pid, qemuExitGrace) {
+			logrus.Warnf("Delete(%s): qemu pid %d still alive after quit; sending SIGKILL",
+				domainName, pid)
+			_ = syscall.Kill(pid, syscall.SIGKILL)
+			if !waitProcessGone(pid, qemuExitGrace) {
+				logrus.Errorf("Delete(%s): qemu pid %d survived SIGKILL", domainName, pid)
+			}
+		}
+	}
+
 	if err := os.RemoveAll(kvmStateDir + domainName); err != nil {
 		return logError("failed to clean up domain state directory %s (%v)", domainName, err)
 	}
 
 	return nil
+}
+
+// decideKvmState maps the containerd task state and the QMP run-state into the
+// SwState domainmgr should act on.
+//
+// qemu runs with -no-shutdown, so when the guest completes its ACPI poweroff the
+// qemu process does not exit: it pauses in QMP run-state "shutdown" (which
+// getQemuStatus maps to types.HALTING) while still holding its memory and any
+// assigned PCI devices, and the containerd task stays RUNNING. Surfacing HALTING
+// lets domainmgr reap the paused domain promptly (quit + cleanup, which frees the
+// resources and reaches HALTED) instead of polling out the graceful-shutdown
+// timers. It is deliberately not reported as HALTED here: the process is still
+// alive and its resources are not yet released.
+func decideKvmState(ctrdState, qmpState types.SwState, qmpErr error) types.SwState {
+	// The sole caller (Info) only reaches here with ctrdState == RUNNING, so
+	// this guard is unreachable in production; it is kept for defensive
+	// programming and so the helper can be unit-tested in isolation.
+	if ctrdState != types.RUNNING {
+		return ctrdState
+	}
+	if qmpErr != nil {
+		return types.BROKEN
+	}
+	if qmpState == types.HALTING {
+		return types.HALTING
+	}
+	return ctrdState
 }
 
 // Info returns information of a domain
@@ -2085,13 +2164,14 @@ func (ctx KvmContext) Info(domainName string) (int, types.SwState, error) {
 		return effectiveDomainID, effectiveDomainState, err
 	}
 
-	_, err = getQemuStatus(GetQmpExecutorSocket(domainName))
-	if err != nil {
-		return effectiveDomainID, types.BROKEN,
-			logError("couldn't retrieve status for domain %s: %v", domainName, err)
+	qmpState, qmpErr := getQemuStatus(GetQmpExecutorSocket(domainName))
+	state := decideKvmState(effectiveDomainState, qmpState, qmpErr)
+	if qmpErr != nil {
+		return effectiveDomainID, state,
+			logError("couldn't retrieve status for domain %s: %v", domainName, qmpErr)
 	}
 
-	return effectiveDomainID, effectiveDomainState, nil
+	return effectiveDomainID, state, nil
 }
 
 // Cleanup cleans up a domain
