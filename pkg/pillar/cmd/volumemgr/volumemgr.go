@@ -62,6 +62,7 @@ type volumemgrContext struct {
 	pubResolveConfig        pubsub.Publication
 	subContentTreeConfig    pubsub.Subscription
 	pubContentTreeStatus    pubsub.Publication
+	pubDeferredDelete       pubsub.Publication
 	subVolumeConfig         pubsub.Subscription
 	pubVolumeStatus         pubsub.Publication
 	subVolumeRefConfig      pubsub.Subscription
@@ -394,6 +395,19 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatal(err)
 	}
 	ctx.pubContentTreeToHash = pubContentTreeToHash
+
+	// Persistent so a deferred content-tree delete survives a reboot (e.g. the
+	// EVE-kvm->EVE-k boot-disk conversion); the boot-time GC keeps the listed
+	// blobs/image until the deferral expires.
+	pubDeferredDelete, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		Persistent: true,
+		TopicType:  types.DeferredContentDeleteStatus{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubDeferredDelete = pubDeferredDelete
 
 	pubBlobStatus, err := ps.NewPublication(
 		pubsub.PublicationOptions{
