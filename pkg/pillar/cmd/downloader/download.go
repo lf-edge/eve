@@ -168,6 +168,15 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	}
 	defer dEndPoint.Close()
 
+	if len(certs) > 0 {
+		log.Functionf("%s: Set trusted certs", trType)
+		err = dEndPoint.WithTrustedCerts(certs)
+		if err != nil {
+			log.Errorf("Set trusted certificates failed: %s", err)
+			return "", cancel, tracedReq, err
+		}
+	}
+
 	// Configure the network client.
 	err = dEndPoint.WithSrcIP(ipSrc)
 	if err != nil {
@@ -178,14 +187,6 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		// With other (currently supported) datastore types this call will not fail.
 		log.Errorf("Set source IP failed: %s", err)
 		err = nil
-	}
-	if len(certs) > 0 {
-		log.Functionf("%s: Set trusted certs", trType)
-		err = dEndPoint.WithTrustedCerts(certs)
-		if err != nil {
-			log.Errorf("Set trusted certificates failed: %s", err)
-			return "", cancel, tracedReq, err
-		}
 	}
 	// check for proxies on the selected management port interface
 	proxyLookupURL := controllerconn.IntfLookupProxyCfg(log, &ctx.deviceNetworkStatus, ifname, downloadURL, trType)
@@ -369,7 +370,7 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 // interfaces or IP addresses.
 func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	syncOp zedUpload.SyncOpType, downloadURL, netTraceFolder string,
-	auth *zedUpload.AuthInput, dpath, region string, ifname string,
+	auth *zedUpload.AuthInput, dpath, region string, certs [][]byte, ifname string,
 	ipSrc net.IP, filename string, receiveChan chan<- CancelChannel) (string, bool, error) {
 
 	// create Endpoint
@@ -389,6 +390,13 @@ func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	}
 	defer dEndPoint.Close()
 
+	if len(certs) > 0 {
+		log.Functionf("%s: Set trusted certs", trType)
+		if err := dEndPoint.WithTrustedCerts(certs); err != nil {
+			log.Errorf("Set trusted certificates failed: %s", err)
+			return sha256, cancel, err
+		}
+	}
 	// Configure the network client.
 	dEndPoint.WithSrcIP(ipSrc)
 	// check for proxies on the selected management port interface
