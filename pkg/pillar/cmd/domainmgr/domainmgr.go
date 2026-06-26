@@ -1101,7 +1101,12 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 	}
 
 	domainID, domainStatus, err := hyper.Task(status).Info(status.DomainName)
-	if err != nil || domainStatus == types.HALTED {
+	// HALTING here means the guest powered off on its own but the hypervisor
+	// process is still paused holding resources (qemu -no-shutdown); treat it
+	// like HALTED so we tear it down and free the resources rather than leaving
+	// it parked. (Info only reports HALTING once the guest has actually powered
+	// off, so an in-progress shutdown is not cut short.)
+	if err != nil || domainStatus == types.HALTED || domainStatus == types.HALTING {
 		if status.Activated && configActivate {
 			if err == nil {
 				err = fmt.Errorf("unexpected state %s", domainStatus.String())
@@ -2872,6 +2877,16 @@ func waitForDomainGone(status types.DomainStatus, maxDelay time.Duration) bool {
 				status.UUIDandVersion, status.DisplayName,
 				state.String())
 			return true
+		}
+		if state == types.HALTING {
+			// The guest has powered off but the hypervisor process is still
+			// paused holding its resources (e.g. qemu -no-shutdown). Stop
+			// waiting and let the caller reap it (Delete) now rather than
+			// polling out the graceful-shutdown budget. Not "gone" yet: the
+			// process still has to be quit and its resources released.
+			log.Noticef("waitForDomainGone(%v) for %s: guest powered off (state %s); reaping now",
+				status.UUIDandVersion, status.DisplayName, state.String())
+			return false
 		}
 		log.Functionf("waitForDomainGone(%v) for %s state still %s waited %v",
 			status.UUIDandVersion, status.DisplayName,
