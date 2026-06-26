@@ -269,7 +269,7 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig,
 			ipSrc, ifname, dsCtx.TransportMethod)
 
 		sha256, cancelled, err = objectMetadata(ctx, trType, syncOp, serverURL, auth,
-			dsCtx.Dpath, dsCtx.Region,
+			dsCtx.Dpath, dsCtx.Region, dst.DsCertPEM,
 			ifname, ipSrc, remoteName, receiveChan)
 		if err != nil {
 			if cancelled {
