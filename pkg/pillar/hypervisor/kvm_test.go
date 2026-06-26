@@ -3394,3 +3394,31 @@ func TestCreateDomConfigProcessCoreGuestRAM(t *testing.T) {
 		t.Fatalf("guest.ram on: expected dump-guest-core on, got:\n%s", got)
 	}
 }
+
+func TestDecideKvmState(t *testing.T) {
+	g := NewGomegaWithT(t)
+	qmpErr := fmt.Errorf("qmp unreachable")
+	tests := []struct {
+		name     string
+		ctrd     types.SwState
+		qmp      types.SwState
+		qmpErr   error
+		expected types.SwState
+	}{
+		{"running guest", types.RUNNING, types.RUNNING, nil, types.RUNNING},
+		// guest finished ACPI poweroff; qemu paused under -no-shutdown -> reap
+		{"guest powered off, qemu paused", types.RUNNING, types.HALTING, nil, types.HALTING},
+		// other transient QMP run-states (e.g. migration) are not a poweroff
+		{"running task, qmp paused", types.RUNNING, types.PAUSED, nil, types.RUNNING},
+		{"running task, qmp unreachable", types.RUNNING, types.UNKNOWN, qmpErr, types.BROKEN},
+		// containerd already reports a non-running task: trust it, ignore QMP
+		{"task halted", types.HALTED, types.UNKNOWN, nil, types.HALTED},
+		{"task broken", types.BROKEN, types.UNKNOWN, nil, types.BROKEN},
+		{"task installed", types.INSTALLED, types.UNKNOWN, nil, types.INSTALLED},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			g.Expect(decideKvmState(tc.ctrd, tc.qmp, tc.qmpErr)).To(Equal(tc.expected))
+		})
+	}
+}
