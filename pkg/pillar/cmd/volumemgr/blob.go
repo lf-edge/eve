@@ -478,6 +478,16 @@ func unpublishBlobStatus(ctx *volumemgrContext, blobs ...*types.BlobStatus) {
 	errs := []error{}
 	for _, blob := range blobs {
 		key := blob.Sha256
+		// Keep blobs that an unexpired deferred-delete record protects, so they
+		// remain in CAS for reuse (e.g. across the EVE-kvm->EVE-k conversion)
+		// instead of being deleted then re-downloaded. Persist the (possibly
+		// decremented) RefCount rather than dropping it, so a later within-boot
+		// expiry sees the real count.
+		if blobDeferredProtected(ctx, blob.Sha256) {
+			log.Noticef("unpublishBlobStatus(%s): kept (refcount=%d), protected by deferred-delete record", key, blob.RefCount)
+			publishBlobStatus(ctx, blob)
+			continue
+		}
 		log.Functionf("unpublishBlobStatus(%s)", key)
 
 		// Drop references. Note that we never publish the resulting
@@ -622,6 +632,11 @@ func gcImagesFromCAS(ctx *volumemgrContext) {
 				}
 			}
 
+			// Keep images that an unexpired deferred-delete record protects.
+			if imageDeferredProtected(ctx, image) {
+				log.Noticef("gcImagesFromCAS: keeping image %s, protected by deferred-delete record", image)
+				continue
+			}
 			log.Functionf("gcImagesFromCAS: removing image %s from CAS since no ContentTreeStatus ref found", image)
 			if err := ctx.casClient.RemoveImage(image); err != nil {
 				log.Errorf("gcImagesFromCAS: Exception while removing image from CAS. %s", err)

@@ -185,6 +185,9 @@ func populateDatastoreFields(ctx *volumemgrContext, config types.ContentTreeConf
 func createContentTreeStatus(ctx *volumemgrContext, config types.ContentTreeConfig) *types.ContentTreeStatus {
 
 	log.Functionf("createContentTreeStatus for %v", config.ContentID)
+	// If this content was pending a deferred delete, cancel it: the blobs kept
+	// in CAS are about to be reused rather than reaped at the deferral expiry.
+	cancelDeferredDelete(ctx, config.ContentID.String())
 	status := ctx.LookupContentTreeStatus(config.Key())
 	if status == nil {
 		status = &types.ContentTreeStatus{
@@ -298,50 +301,138 @@ func updateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus) {
 	log.Functionf("updateContentTree for %v Done", status.ContentID)
 }
 
-type timeAndContentTreeStatus struct {
-	deleteTime time.Time
-	status     *types.ContentTreeStatus
-}
-
-// deferredDelete has entries in time order
-var deferredDelete = make([]timeAndContentTreeStatus, 0)
-
-// deleteContentTree optionally delays the delete using the above slice
+// deleteContentTree optionally defers the delete, keeping the content's CAS
+// blobs and image for possible reuse (timer.defer.content.delete) instead of
+// deleting then re-downloading. The deferral is recorded in a Persistent
+// DeferredContentDeleteStatus, so it survives a reboot — in particular the
+// EVE-kvm->EVE-k boot-disk conversion, which deletes the running app before
+// repartitioning and reboots. While the record is unexpired, blobDeferredProtected
+// keeps the blobs in CAS even though no ContentTreeStatus references them; on
+// expiry checkDeferredDelete reaps them, and a re-created content tree cancels
+// the deferral and reuses them.
 func deleteContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus, deferContentDelete uint32) {
 	log.Functionf("deleteContentTree for %v", status.ContentID)
 
 	// Clean up in case it was never resolved
 	deleteResolveConfig(ctx, status.ResolveKey())
 
-	// If the content tree did not complete, or knob is at default of
-	// no defer, then delete. Otherwise honor defer time to to avoid
-	// delete then re-download
+	// If the content tree did not complete, or the knob is at the default of
+	// no defer, delete immediately.
 	if status.State < types.LOADED || deferContentDelete == 0 {
 		doDeleteContentTree(ctx, status)
-	} else {
-		expiry := time.Now().Add(time.Duration(deferContentDelete) * time.Second)
-		tc := timeAndContentTreeStatus{
-			deleteTime: expiry,
-			status:     status,
-		}
-		log.Noticef("Deferring delete of %s to %v",
-			status.Key(), expiry)
-		deferredDelete = append(deferredDelete, tc)
+		return
+	}
+
+	// Defer: publish a Persistent record naming the blobs and image to keep,
+	// then drop the live ContentTreeStatus and its blob references. The blobs
+	// stay in CAS at RefCount 0, protected by blobDeferredProtected, until the
+	// record expires or the content tree is re-created.
+	expiry := time.Now().Add(time.Duration(deferContentDelete) * time.Second)
+	rec := types.DeferredContentDeleteStatus{
+		ContentID:         status.ContentID,
+		GenerationCounter: status.GenerationCounter,
+		ReferenceID:       status.ReferenceID(),
+		Blobs:             append([]string{}, status.Blobs...),
+		DeleteTime:        expiry,
+	}
+	log.Noticef("Deferring delete of %s (%d blobs) to %v",
+		status.Key(), len(rec.Blobs), expiry)
+	if err := ctx.pubDeferredDelete.Publish(rec.Key(), rec); err != nil {
+		log.Errorf("deleteContentTree: publish deferred delete %s: %s", rec.Key(), err)
+	}
+	refreshDeferredProtection(ctx)
+
+	RemoveAllBlobsFromContentTreeStatus(ctx, status, status.Blobs...)
+	unpublishContentTreeStatus(ctx, status)
+}
+
+// cancelDeferredDelete drops any pending deferred delete for the given content
+// ID. Called when a content tree is (re-)created so its now-referenced blobs are
+// not reaped at the original expiry.
+func cancelDeferredDelete(ctx *volumemgrContext, key string) {
+	if item, _ := ctx.pubDeferredDelete.Get(key); item != nil {
+		log.Noticef("cancelDeferredDelete: content %s re-created, cancelling deferred delete", key)
+		ctx.pubDeferredDelete.Unpublish(key)
+		refreshDeferredProtection(ctx)
 	}
 }
 
+// refreshDeferredProtection rebuilds the cached sets of blob shas and image
+// references named by unexpired deferred-delete records. Callers of
+// blobDeferredProtected/imageDeferredProtected consult those sets, so this must
+// run whenever the pubDeferredDelete set changes (publish, cancel, expiry) to
+// keep the guards O(1) per lookup instead of scanning every record.
+func refreshDeferredProtection(ctx *volumemgrContext) {
+	now := time.Now()
+	blobs := make(map[string]bool)
+	images := make(map[string]bool)
+	for _, item := range ctx.pubDeferredDelete.GetAll() {
+		rec := item.(types.DeferredContentDeleteStatus)
+		if now.After(rec.DeleteTime) {
+			continue
+		}
+		for _, b := range rec.Blobs {
+			blobs[b] = true
+		}
+		images[rec.ReferenceID] = true
+	}
+	ctx.deferredProtectedBlobs = blobs
+	ctx.deferredProtectedImages = images
+}
+
+// blobDeferredProtected reports whether the blob sha is named by any unexpired
+// deferred-delete record, i.e. must be kept in CAS for possible reuse.
+func blobDeferredProtected(ctx *volumemgrContext, sha string) bool {
+	return ctx.deferredProtectedBlobs[sha]
+}
+
+// imageDeferredProtected reports whether the CAS image reference is named by any
+// unexpired deferred-delete record.
+func imageDeferredProtected(ctx *volumemgrContext, referenceID string) bool {
+	return ctx.deferredProtectedImages[referenceID]
+}
+
+// checkDeferredDelete performs the actual delete for every deferred-delete
+// record whose expiry has passed.
 func checkDeferredDelete(ctx *volumemgrContext) {
-	newDD := make([]timeAndContentTreeStatus, 0)
-	for _, tc := range deferredDelete {
-		if time.Now().After(tc.deleteTime) {
-			log.Noticef("Handling deferred delete of %s",
-				tc.status.Key())
-			doDeleteContentTree(ctx, tc.status)
-		} else {
-			newDD = append(newDD, tc)
+	now := time.Now()
+	for _, item := range ctx.pubDeferredDelete.GetAll() {
+		rec := item.(types.DeferredContentDeleteStatus)
+		if now.After(rec.DeleteTime) {
+			log.Noticef("Handling deferred delete of %s", rec.Key())
+			doDeferredContentDelete(ctx, rec)
 		}
 	}
-	deferredDelete = newDD
+}
+
+// doDeferredContentDelete reaps the blobs and image named by an expired
+// deferred-delete record and removes the record. Blobs that a re-created content
+// tree now references (RefCount != 0), or that another unexpired record still
+// protects, are left in place.
+func doDeferredContentDelete(ctx *volumemgrContext, rec types.DeferredContentDeleteStatus) {
+	// Drop the record first so its protection no longer applies to these blobs;
+	// any other unexpired record still protects shared blobs via unpublishBlobStatus.
+	ctx.pubDeferredDelete.Unpublish(rec.Key())
+	refreshDeferredProtection(ctx)
+
+	for _, sha := range rec.Blobs {
+		blob := ctx.LookupBlobStatus(sha)
+		if blob == nil {
+			// The blob is gone from CAS ahead of us (evicted or never
+			// recorded); nothing to unpublish. Any leftover CAS bytes are
+			// reaped by the next ordinary GC sweep.
+			log.Warnf("doDeferredContentDelete: blob %s of %s has no BlobStatus, skipping", sha, rec.Key())
+			continue
+		}
+		if blob.RefCount != 0 {
+			continue
+		}
+		unpublishBlobStatus(ctx, blob)
+	}
+	if err := ctx.casClient.RemoveImage(rec.ReferenceID); err != nil {
+		log.Errorf("doDeferredContentDelete: removing image %s: %s", rec.ReferenceID, err)
+	}
+	deleteLatchContentTreeHash(ctx, rec.ContentID, uint32(rec.GenerationCounter))
 }
 
 func doDeleteContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus) {
