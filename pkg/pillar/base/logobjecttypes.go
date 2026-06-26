@@ -77,6 +77,8 @@ const (
 	ContentTreeConfigLogType LogObjectType = "contenttree_config"
 	// ContentTreeStatusLogType :
 	ContentTreeStatusLogType LogObjectType = "contenttree_status"
+	// DeferredContentDeleteStatusLogType :
+	DeferredContentDeleteStatusLogType LogObjectType = "deferred_content_delete_status"
 	// DevicePortConfig : object being logged
 	DevicePortConfigLogType LogObjectType = "deviceport_config"
 	// DevicePortConfigList :
