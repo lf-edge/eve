@@ -96,6 +96,10 @@ func isDeschedulerReadyWithClient(log *base.LogObject, client kubernetes.Interfa
 		log.Noticef("IsDeschedulerReady: longhorn not ready: %v", err)
 		return false, nil
 	}
+	if err := checkLonghornSchedulable(nodeName); err != nil {
+		log.Noticef("IsDeschedulerReady: longhorn not schedulable: %v", err)
+		return false, nil
+	}
 
 	_, err = client.CoreV1().Namespaces().Get(ctx, "kubevirt", metav1.GetOptions{})
 	if err == nil {
