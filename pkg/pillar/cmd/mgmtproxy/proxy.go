@@ -14,9 +14,11 @@ import (
 	"net/http"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"golang.org/x/sys/unix"
 )
 
 // newProxyHandler returns the http.Handler installed on the loopback listener.
@@ -184,30 +186,36 @@ func handleConnect(ctx *mgmtProxyContext, w http.ResponseWriter, req *http.Reque
 // tunnel performs a bidirectional copy with an idle timeout and accounts
 // bytes per direction. On close it logs a single Functionf line with the
 // totals — visible if operators bump the level to debug a specific pull.
+//
+// The copy is io.Copy in each direction: between two *net.TCPConn it takes the
+// kernel splice() zero-copy path, so payload never round-trips through a
+// userspace buffer. splice keeps draining the receive socket promptly, which
+// is what keeps TCP receive-window autotuning growing the window toward the
+// kernel ceiling (tcp_rmem[2], ~6 MiB by default) — the lever for image-pull
+// throughput on high-RTT internet paths (see README.md).
 func tunnel(ctx *mgmtProxyContext, target, ifName string, a, b net.Conn, dialStart time.Time) {
 	idleCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	activity := make(chan struct{}, 4)
 	idleClosed := atomic.Bool{}
-	go idleWatchdog(idleCtx, &idleClosed, activity, a, b)
+	go idleWatchdog(idleCtx, &idleClosed, idleTimeout, a, b)
 
 	var wg sync.WaitGroup
-	var bytesA2B, bytesB2A uint64
+	var bytesA2B, bytesB2A int64
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		bytesA2B = copyAndSignal(b, a, activity)
+		bytesA2B = copyTunnel(b, a)
 		_ = a.Close()
 	}()
 	go func() {
 		defer wg.Done()
-		bytesB2A = copyAndSignal(a, b, activity)
+		bytesB2A = copyTunnel(a, b)
 		_ = b.Close()
 	}()
 	wg.Wait()
-	ctx.stats.bytesUp.Add(bytesA2B)
-	ctx.stats.bytesDown.Add(bytesB2A)
+	ctx.stats.bytesUp.Add(uint64(bytesA2B))
+	ctx.stats.bytesDown.Add(uint64(bytesB2A))
 	if idleClosed.Load() {
 		ctx.stats.tunnelIdleClosed.Add(1)
 	}
@@ -220,64 +228,109 @@ func tunnel(ctx *mgmtProxyContext, target, ifName string, a, b net.Conn, dialSta
 	// /healthz tunnelIdleClosed counter and the bytes=0 in edgeview tell
 	// the rest of the story without double-counting.
 	ctx.agentMetrics.RecordSuccess(log, ifName, target,
-		int64(bytesA2B), int64(bytesB2A), durationMs, false)
+		bytesA2B, bytesB2A, durationMs, false)
 	log.Functionf("mgmtproxy: tunnel %s via %s closed: up=%d down=%d duration=%v idle=%v",
 		target, ifName, bytesA2B, bytesB2A,
 		time.Duration(durationMs)*time.Millisecond, idleClosed.Load())
 }
 
-// copyAndSignal copies src→dst and pokes the activity channel periodically so
-// the idle watchdog can tell the tunnel from a stalled one. Returns total
-// bytes copied (best-effort — partial writes on error still counted).
-func copyAndSignal(dst io.Writer, src io.Reader, activity chan<- struct{}) uint64 {
-	buf := make([]byte, 32*1024)
-	var total uint64
-	for {
-		n, err := src.Read(buf)
-		if n > 0 {
-			w, werr := dst.Write(buf[:n])
-			total += uint64(w)
-			if werr != nil {
-				return total
-			}
-			select {
-			case activity <- struct{}{}:
-			default:
-			}
-		}
-		if err != nil {
-			if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
-				log.Tracef("mgmtproxy: tunnel read: %v", err)
-			}
-			return total
-		}
+// copyTunnel copies src→dst for one direction of the tunnel and returns the
+// number of bytes copied. Between two *net.TCPConn io.Copy takes the kernel
+// splice() zero-copy path. EOF and the errors that fire when the peer half is
+// closed during teardown (net.ErrClosed) are the normal way a tunnel ends; any
+// other error is logged at Trace as a debugging signal (matching the prior
+// manual copy loop) without failing the relay.
+func copyTunnel(dst io.Writer, src io.Reader) int64 {
+	n, err := io.Copy(dst, src)
+	if err != nil && !errors.Is(err, net.ErrClosed) && !errors.Is(err, io.EOF) {
+		log.Tracef("mgmtproxy: tunnel copy: %v", err)
 	}
+	return n
 }
 
+// idleWatchdog closes the tunnel connections if no payload bytes are received
+// on either socket for timeout. The splice() path in tunnel never surfaces
+// per-chunk progress to userspace, so instead of a per-write activity signal we
+// poll each socket's TCP_INFO.tcpi_bytes_received and close once the combined
+// count has not advanced for a full timeout. The poll runs every timeout/4, so
+// the actual close fires between timeout and timeout+timeout/4 after the last
+// observed progress.
+//
+// If neither connection exposes TCP_INFO (e.g. a non-TCP conn in tests), idle
+// enforcement is skipped rather than risking a false close of an active tunnel.
 func idleWatchdog(ctx context.Context, idleClosed *atomic.Bool,
-	activity <-chan struct{}, conns ...net.Conn) {
+	timeout time.Duration, conns ...net.Conn) {
 
-	timer := time.NewTimer(idleTimeout)
-	defer timer.Stop()
+	interval := timeout / 4
+	if interval <= 0 {
+		interval = time.Millisecond
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	var lastBytes uint64
+	lastChange := time.Now()
+	seenBytes := false
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-activity:
-			if !timer.Stop() {
-				select {
-				case <-timer.C:
-				default:
+		case <-ticker.C:
+			var total uint64
+			readable := 0
+			for _, c := range conns {
+				if n, ok := tcpBytesReceived(c); ok {
+					total += n
+					readable++
 				}
 			}
-			timer.Reset(idleTimeout)
-		case <-timer.C:
-			log.Warnf("mgmtproxy: tunnel idle for %v, closing", idleTimeout)
-			idleClosed.Store(true)
-			for _, c := range conns {
-				_ = c.Close()
+			if readable == 0 {
+				// Can't observe progress on these conns; don't risk
+				// closing a tunnel that may well be active.
+				lastChange = time.Now()
+				continue
 			}
-			return
+			if !seenBytes || total != lastBytes {
+				seenBytes = true
+				lastBytes = total
+				lastChange = time.Now()
+				continue
+			}
+			if time.Since(lastChange) >= timeout {
+				log.Warnf("mgmtproxy: tunnel idle for %v, closing", timeout)
+				idleClosed.Store(true)
+				for _, c := range conns {
+					_ = c.Close()
+				}
+				return
+			}
 		}
 	}
+}
+
+// tcpBytesReceived returns the cumulative payload bytes the kernel has received
+// on conn's socket (TCP_INFO.tcpi_bytes_received). ok is false if conn is not a
+// TCP socket or the counter can't be read — callers treat that as "unknown",
+// never as "idle".
+func tcpBytesReceived(conn net.Conn) (uint64, bool) {
+	sc, ok := conn.(syscall.Conn)
+	if !ok {
+		return 0, false
+	}
+	raw, err := sc.SyscallConn()
+	if err != nil {
+		return 0, false
+	}
+	var bytes uint64
+	var got bool
+	if cerr := raw.Control(func(fd uintptr) {
+		info, gerr := unix.GetsockoptTCPInfo(int(fd), unix.IPPROTO_TCP, unix.TCP_INFO)
+		if gerr == nil {
+			bytes = info.Bytes_received
+			got = true
+		}
+	}); cerr != nil {
+		return 0, false
+	}
+	return bytes, got
 }
