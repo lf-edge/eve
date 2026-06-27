@@ -451,6 +451,49 @@ If `/healthz` shows the proxy choosing a port that NIM marks `LastError`,
 it's a fallback after `WithoutFailed` was empty — usually transient, but
 worth investigating if persistent.
 
+## Throughput tuning
+
+The proxy is a plain TCP relay (CONNECT — it never terminates TLS), so per-stream
+throughput is bounded by the usual TCP bandwidth-delay product: `window / RTT`. Image
+pulls go to internet registries (quay.io, ghcr, github) at tens of ms RTT, so a small
+receive window throttles a large layer badly — e.g. a ~32 KiB window over a ~90 ms path
+caps a single stream near 0.35 MB/s regardless of available bandwidth.
+
+The relay copies each direction with `io.Copy`. Between two `*net.TCPConn` that takes the
+kernel `splice()` zero-copy path: payload moves socket→pipe→socket without a userspace
+buffer, and the kernel keeps draining the receive socket promptly. That prompt drain is
+what lets Linux TCP receive-window autotuning grow the advertised window toward its ceiling
+`net.ipv4.tcp_rmem[2]` (~6 MiB by default) instead of leaving it pinned small — the lever
+for image-pull throughput on high-RTT paths.
+
+Because `splice()` keeps the payload in-kernel, the tunnel's idle watchdog cannot watch a
+per-write signal; it polls each socket's `TCP_INFO.tcpi_bytes_received` (every
+`idleTimeout/4`) and closes the tunnel once the combined count has not advanced for a full
+`idleTimeout` (so the close fires between `idleTimeout` and `idleTimeout + idleTimeout/4`
+after the last observed progress). If a connection is not a TCP socket (e.g. in tests),
+idle enforcement is skipped rather than risking a false close of an active tunnel.
+
+To diagnose a slow pull, confirm it is actually the proxy and not the client's own
+pipeline (containerd TLS-decrypt + decompress + disk): pull the **same** object both
+ways and compare —
+
+```sh
+curl -o /dev/null https://<object>                              # direct baseline
+curl -o /dev/null --proxy http://127.0.0.1:5443 https://<object> # via mgmtproxy
+```
+
+If the via-proxy rate trails the direct rate, inspect the upstream socket while a pull
+runs and read the real window/RTT instead of guessing:
+
+```sh
+ss -tinp 'dport = :443'   # watch rwnd / cwnd / Recv-Q on the mgmtproxy→registry socket
+```
+
+A small `rwnd` with `Recv-Q` *not* full points at the receive-window ceiling (the
+buffers above are the lever). A full `Recv-Q` points at downstream backpressure
+(containerd not draining the loopback side fast enough) — bigger upstream buffers won't
+help that; look at the client side.
+
 ## Known v1 limitations / follow-ups
 
 - **Stale `NO_PROXY` on cluster-node-IP change.** Containerd does not reload

@@ -9,10 +9,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -321,47 +323,6 @@ func TestProxyHandlerHealthz(t *testing.T) {
 	}
 }
 
-// --- copyAndSignal ---------------------------------------------------------
-
-func TestCopyAndSignal(t *testing.T) {
-	src := strings.NewReader("hello mgmtproxy tunnel")
-	var dst strings.Builder
-	activity := make(chan struct{}, 4)
-
-	n := copyAndSignal(&dst, src, activity)
-	if int(n) != len("hello mgmtproxy tunnel") {
-		t.Errorf("copied %d bytes, want %d", n, len("hello mgmtproxy tunnel"))
-	}
-	if dst.String() != "hello mgmtproxy tunnel" {
-		t.Errorf("dst = %q, want the source string", dst.String())
-	}
-	select {
-	case <-activity:
-		// expected: at least one activity poke for the single read.
-	default:
-		t.Error("expected an activity signal after a non-empty copy")
-	}
-}
-
-// errAfterWriter fails the write after recording how many bytes it accepted,
-// so we can assert copyAndSignal returns the best-effort partial total.
-type errAfterWriter struct{ accepted int }
-
-func (w *errAfterWriter) Write(p []byte) (int, error) {
-	w.accepted = len(p)
-	return len(p), errors.New("write error")
-}
-
-func TestCopyAndSignalWriteError(t *testing.T) {
-	src := strings.NewReader("partial payload")
-	w := &errAfterWriter{}
-	activity := make(chan struct{}, 4)
-	n := copyAndSignal(w, src, activity)
-	if int(n) != w.accepted {
-		t.Errorf("returned %d, want best-effort %d", n, w.accepted)
-	}
-}
-
 // --- dialCostAware (network-free paths) ------------------------------------
 
 func TestDialCostAwareNoMgmtInterfaces(t *testing.T) {
@@ -447,6 +408,105 @@ func TestDialCostAwareOrdersByCost(t *testing.T) {
 			t.Errorf("attempt[%d] = %s, want %s (cost order)", i, attempts[i].IfName, want)
 		}
 	}
+}
+
+// --- idleWatchdog ----------------------------------------------------------
+
+// tcpConnPair returns the two ends of a single loopback TCP connection. Real
+// TCP sockets are required (not net.Pipe) so the watchdog's TCP_INFO read works.
+func tcpConnPair(t *testing.T) (net.Conn, net.Conn) {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+	type res struct {
+		c   net.Conn
+		err error
+	}
+	ch := make(chan res, 1)
+	go func() {
+		c, err := ln.Accept()
+		ch <- res{c, err}
+	}()
+	c1, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	r := <-ch
+	if r.err != nil {
+		t.Fatalf("accept: %v", r.err)
+	}
+	return c1, r.c
+}
+
+// TestIdleWatchdogClosesStalledTunnel: with no bytes ever received on either
+// socket, the watchdog must flip idleClosed and close the conns after timeout.
+func TestIdleWatchdogClosesStalledTunnel(t *testing.T) {
+	c1, c2 := tcpConnPair(t)
+	defer c1.Close()
+	defer c2.Close()
+
+	var idleClosed atomic.Bool
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan struct{})
+	go func() {
+		idleWatchdog(ctx, &idleClosed, 300*time.Millisecond, c1, c2)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("watchdog did not close a stalled tunnel within 3s")
+	}
+	if !idleClosed.Load() {
+		t.Error("idleClosed = false, want true for a stalled tunnel")
+	}
+}
+
+// TestIdleWatchdogKeepsActiveTunnelOpen: a tunnel that keeps receiving bytes
+// must not be closed, even past several timeout windows.
+func TestIdleWatchdogKeepsActiveTunnelOpen(t *testing.T) {
+	c1, c2 := tcpConnPair(t)
+	defer c1.Close()
+	defer c2.Close()
+	// Drain c2 so writes never block on a full window.
+	go io.Copy(io.Discard, c2)
+
+	var idleClosed atomic.Bool
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		idleWatchdog(ctx, &idleClosed, 300*time.Millisecond, c1, c2)
+		close(done)
+	}()
+
+	// Keep traffic flowing on the c1→c2 leg for ~3 timeout windows.
+	stop := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(50 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+				_, _ = c1.Write([]byte("x"))
+			}
+		}
+	}()
+
+	time.Sleep(900 * time.Millisecond)
+	if idleClosed.Load() {
+		t.Error("idleClosed = true, want false for an active tunnel")
+	}
+	close(stop)
+	cancel()
+	<-done
 }
 
 // --- tunnel ----------------------------------------------------------------
