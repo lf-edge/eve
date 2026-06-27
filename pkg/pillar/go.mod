@@ -9,7 +9,7 @@ require (
 	github.com/anatol/smart.go v0.0.0-20241126061019-f03d79b340d2
 	github.com/andrewd-zededa/go-libzfs v0.0.0-20251014191158-755aaeb96a92
 	github.com/containerd/cgroups v1.1.0
-	github.com/containerd/containerd v1.7.32
+	github.com/containerd/containerd v1.7.33
 	github.com/containerd/containerd/api v1.8.0
 	github.com/containerd/typeurl v1.0.2
 	github.com/docker/docker v28.5.2+incompatible
