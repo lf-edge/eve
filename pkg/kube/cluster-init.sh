@@ -1385,6 +1385,17 @@ patch_cdi_proxy_config() {
         local proxy_url="${MGMTPROXY_CNI0_URL}"
         # noProxy is a comma-separated string per the CDI ImportProxy API
         local no_proxy="10.42.0.0/16,10.43.0.0/16,127.0.0.0/8,localhost,.svc,.cluster.local,169.254.0.0/16"
+        # Skip (and stay silent) when the CDI CR already carries the desired
+        # importProxy config. This function is called on every main-loop
+        # iteration (~16s) for upgrade/reset recovery, so logging or patching
+        # unconditionally would spam k3s-install.log and issue a pointless
+        # kubectl patch each time. Only act when something actually differs.
+        local cur_proxy cur_no_proxy
+        cur_proxy=$(kubectl get cdi cdi -o jsonpath='{.spec.config.importProxy.HTTPSProxy}' 2>/dev/null)
+        cur_no_proxy=$(kubectl get cdi cdi -o jsonpath='{.spec.config.importProxy.noProxy}' 2>/dev/null)
+        if [ "${cur_proxy}" = "${proxy_url}" ] && [ "${cur_no_proxy}" = "${no_proxy}" ]; then
+                return 0
+        fi
         logmsg "patch_cdi_proxy_config: HTTPSProxy=${proxy_url}"
         kubectl patch cdi cdi --type merge -p \
                 "{\"spec\":{\"config\":{\"importProxy\":{\"HTTPSProxy\":\"${proxy_url}\",\"noProxy\":\"${no_proxy}\"}}}}"
