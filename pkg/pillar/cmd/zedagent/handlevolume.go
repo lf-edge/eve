@@ -55,9 +55,9 @@ func parseVolumeConfig(ctx *getconfigContext,
 		var cfgVolume *zconfig.Volume
 		for _, cfgVolume = range cfgVolumeList {
 			// Search by UUID and (remote) Generation counter, ignore local gen. counter.
-			if cfgVolume.Uuid == uuid {
+			if cfgVolume.GetUuid() == uuid {
 				foundVolume = true
-				sameGenCounter = cfgVolume.GenerationCount == genCounter
+				sameGenCounter = cfgVolume.GetGenerationCount() == genCounter
 				break
 			}
 		}
@@ -121,8 +121,21 @@ func parseVolumeConfig(ctx *getconfigContext,
 		// Looks for NOHYPER type in VirtualizationMode.
 		appInstanceList := config.GetApps()
 		for _, ai := range appInstanceList {
+			if ai == nil {
+				log.Notice("ignoring empty app instance in config")
+				continue
+			}
+			if ai.Fixedresources == nil {
+				log.Noticef("ignoring app (%s / %+v) without Fixedresources set", ai.Displayname, ai.Uuidandversion)
+				continue
+			}
+
 			if ai.Fixedresources.VirtualizationMode == zconfig.VmMode_NOHYPER {
 				for _, vr := range ai.VolumeRefList {
+					if vr == nil {
+						log.Noticef("ignoring empty volume reference of %s / %+v", ai.Displayname, ai.Uuidandversion)
+						continue
+					}
 					if vr.Uuid == volumeConfig.VolumeID.String() && volumeConfig.ContentID != uuid.Nil {
 						volumeConfig.IsNativeContainer = true
 						// Native containers are downloaded to every node, so set isreplciated to false
@@ -157,9 +170,9 @@ func checkVolumeHasNoAppReferences(ctx *getconfigContext, cfgVolume *zconfig.Vol
 
 	appInstanceList := devConfig.GetApps()
 	for _, el := range appInstanceList {
-		for _, vr := range el.VolumeRefList {
-			if vr.Uuid == cfgVolume.GetUuid() &&
-				vr.GenerationCount == cfgVolume.GenerationCount {
+		for _, vr := range el.GetVolumeRefList() {
+			if vr.GetUuid() == cfgVolume.GetUuid() &&
+				vr.GetGenerationCount() == cfgVolume.GetGenerationCount() {
 				return false
 			}
 		}
