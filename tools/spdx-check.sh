@@ -3,11 +3,17 @@
 # Copyright (c) 2024 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-BASE_COMMIT=$1
 IGNORE_FILE=".spdxignore"
+if [ -f "$1" ];
+then
+    files="$1"
+else
+    BASE_COMMIT=$1
 
-# List of files to check, excluding vendor directories
-files=$(git diff --name-only --diff-filter=A "${BASE_COMMIT}"..HEAD)
+    # List of files to check, excluding vendor directories
+    files=$(git diff --name-only --diff-filter=A "${BASE_COMMIT}"..HEAD)
+fi
+
 
 check_branch_rebased() {
   local base_commit="$1"
