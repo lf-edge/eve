@@ -161,6 +161,11 @@ type zedkube struct {
 	// conflict, avoiding spurious pubsub publishes (pubsub uses deep equality).
 	// Also used by collectLBPoolStatus to surface per-node conflicts on non-bootstrap nodes.
 	lbConflictError types.ErrorDescription
+
+	// bootImgMigrator advances the one-shot state machine that patches existing
+	// VMIRSes from versioned eve-external-boot-image tags to :latest after a
+	// baseOS upgrade.  Zero value starts in the WaitReady state.
+	bootImgMigrator bootImgMigrator
 }
 
 func inlineUsage() int {
@@ -764,7 +769,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 				}
 			}
 			zedkubeCtx.applyLonghornNodeDrainPolicy()
-
+			// Skip once migration is complete so we don't rebuild a kubevirt
+			// client (and re-read kubeconfig) every tick for a no-op.
+			if !zedkubeCtx.bootImgMigrator.isDone() {
+				if virtClient, err := getVirtClient(); err != nil {
+					log.Warnf("bootImgMigrate: get virtClient: %v", err)
+				} else {
+					zedkubeCtx.bootImgMigrator.step(zedkubeCtx.nodeName, kubeapi.EVEKubeNameSpace, virtClient)
+				}
+			}
 			kubeCfgTimer = time.NewTimer(kubeCfgInterval * time.Second)
 
 		// Timer 5: leader-only safety-net re-evaluation of the stale-master
