@@ -159,6 +159,11 @@ type zedkube struct {
 	// conflict, avoiding spurious pubsub publishes (pubsub uses deep equality).
 	// Also used by collectLBPoolStatus to surface per-node conflicts on non-bootstrap nodes.
 	lbConflictError types.ErrorDescription
+
+	// bootImgMigrator advances the one-shot state machine that patches existing
+	// VMIRSes from versioned eve-external-boot-image tags to :latest after a
+	// baseOS upgrade.  Zero value starts in the WaitImage state.
+	bootImgMigrator bootImgMigrator
 }
 
 func inlineUsage() int {
@@ -760,6 +765,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 				if aa, ok := v.(types.AssignableAdapters); ok {
 					zedkubeCtx.reconcileSRIOVDevicePlugin(&aa)
 				}
+			}
+			if virtClient, err := getVirtClient(); err != nil {
+				log.Warnf("bootImgMigrate: get virtClient: %v", err)
+			} else {
+				zedkubeCtx.bootImgMigrator.step(zedkubeCtx.nodeName, kubeapi.EVEKubeNameSpace, virtClient)
 			}
 			kubeCfgTimer = time.NewTimer(kubeCfgInterval * time.Second)
 

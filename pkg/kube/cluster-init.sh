@@ -443,6 +443,10 @@ external_boot_image_import() {
                 logmsg "re-tag external-boot-image failed"
                 return 1
         fi
+        if ! /var/lib/k3s/bin/k3s ctr -a /run/containerd-user/containerd.sock image tag "$eve_external_boot_img" "${eve_external_boot_img_name}:latest"; then
+                logmsg "re-tag external-boot-image as latest failed"
+                return 1
+        fi
         logmsg "Successfully installed external-boot-image $import_name_tag as $eve_external_boot_img"
 
         # Clean up old eve-external-boot-image versions that don't match current release
@@ -459,7 +463,7 @@ cleanup_old_external_boot_images() {
         logmsg "Cleaning up old external-boot-image versions, keeping tag: $current_tag"
 
         # List all images and filter for eve-external-boot-image
-        old_images=$(/var/lib/k3s/bin/k3s ctr -a /run/containerd-user/containerd.sock images list -q | grep "^${img_name}:" | grep -v ":${current_tag}$")
+        old_images=$(/var/lib/k3s/bin/k3s ctr -a /run/containerd-user/containerd.sock images list -q | grep "^${img_name}:" | grep -v ":${current_tag}$" | grep -v ":latest$")
 
         if [ -z "$old_images" ]; then
                 logmsg "No old external-boot-image versions to clean up"

@@ -487,12 +487,7 @@ func (ctx kubevirtContext) CreateReplicaVMIConfig(domainName string, config type
 				// Include both tty0 (video) and ttyS0 (serial) consoles so that logs are captured
 				// by kubevirt's guest-console-log container
 				kernelArgs := "console=tty0 console=ttyS0 root=/dev/vda dhcp=1 rootfstype=ext4"
-				eveRelease, err := os.ReadFile("/run/eve-release")
-				if err != nil {
-					return logError("Failed to fetch eve-release %v", err)
-				}
-				tag := strings.TrimRight(string(eveRelease), "\n")
-				scratchImage := "docker.io/lfedge/eve-external-boot-image:" + tag
+				scratchImage := "docker.io/lfedge/eve-external-boot-image:latest"
 				kernelPath := "/kernel"
 				initrdPath := "/runx-initrd"
 
