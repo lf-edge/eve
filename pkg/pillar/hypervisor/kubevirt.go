@@ -508,12 +508,13 @@ func (ctx kubevirtContext) CreateReplicaVMIConfig(domainName string, config type
 				// Include both tty0 (video) and ttyS0 (serial) consoles so that logs are captured
 				// by kubevirt's guest-console-log container
 				kernelArgs := "console=tty0 console=ttyS0 root=/dev/vda dhcp=1 rootfstype=ext4"
-				eveRelease, err := os.ReadFile("/run/eve-release")
-				if err != nil {
-					return logError("Failed to fetch eve-release %v", err)
-				}
-				tag := strings.TrimRight(string(eveRelease), "\n")
-				scratchImage := "docker.io/lfedge/eve-external-boot-image:" + tag
+				// :latest is a local k3s-containerd tag (re)created by cluster-init.sh
+				// each boot, never a registry pull (imagePullPolicy: Never below). Keep
+				// :latest, not a versioned tag: those are pruned on upgrade and wedge.
+				// If image is not yet available early in boot the virt-launcher pod
+				// will show ErrImageNeverPull and kubelet will retry until
+				// pkg/kube imports the image.
+				scratchImage := "docker.io/lfedge/eve-external-boot-image:latest"
 				kernelPath := "/kernel"
 				initrdPath := "/runx-initrd"
 
@@ -2248,9 +2249,12 @@ func addKernelBootContainer(spec *v1.VirtualMachineInstanceSpec, image, kernelAr
 	spec.Domain.Firmware.KernelBoot = &v1.KernelBoot{
 		KernelArgs: kernelArgs,
 		Container: &v1.KernelBootContainer{
-			Image:           image,
-			KernelPath:      kernelPath,
-			InitrdPath:      initrdPath,
+			Image:      image,
+			KernelPath: kernelPath,
+			InitrdPath: initrdPath,
+			// Must stay PullNever: the image is provisioned locally by
+			// cluster-init.sh. Any other policy makes a :latest image pull
+			// from docker.io, which must never happen.
 			ImagePullPolicy: k8sv1.PullNever,
 		},
 	}
