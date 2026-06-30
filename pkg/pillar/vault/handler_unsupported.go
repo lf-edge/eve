@@ -5,6 +5,7 @@ package vault
 
 import (
 	"os"
+	"time"
 
 	"github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -36,6 +37,11 @@ func (h *UnsupportedHandler) GetVaultStatuses() []*types.VaultStatus {
 
 // SetupDeprecatedVaults is dummy for UnsupportedHandler
 func (h *UnsupportedHandler) SetupDeprecatedVaults() error {
+	return nil
+}
+
+// TrimVault is dummy for UnsupportedHandler
+func (h *UnsupportedHandler) TrimVault(_ time.Duration) error {
 	return nil
 }
 

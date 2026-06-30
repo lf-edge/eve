@@ -50,7 +50,12 @@ func (handler *volumeHandlerCSI) GetVolumeDetails() (uint64, uint64, string, boo
 }
 
 func (handler *volumeHandlerCSI) UsageFromStatus() uint64 {
-	// use MaxVolSize for PVC
+	cfg := handler.volumeManager.LookupVolumeConfig(handler.status.Key())
+	if handler.status.ReadOnly || cfg == nil || cfg.HasNoAppReferences {
+		handler.log.Noticef("UsageFromStatus: Volume %s use CurrentSize (ReadOnly=%v cfg==nil:%v)",
+			handler.status.GetPVCName(), handler.status.ReadOnly, cfg == nil)
+		return uint64(handler.status.CurrentSize)
+	}
 	handler.log.Noticef("UsageFromStatus: Use MaxVolSize for PVC %s",
 		handler.status.GetPVCName())
 	return handler.status.MaxVolSize
