@@ -4,6 +4,8 @@
 package vault
 
 import (
+	"time"
+
 	"github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -25,6 +27,13 @@ type Handler interface {
 	GetVaultStatuses() []*types.VaultStatus
 	SetHandlerOptions(HandlerOptions)
 	GetOperationalInfo() (info.DataSecAtRestStatus, string)
+	// TrimVault reclaims blocks freed in the vault filesystem that were not
+	// returned to the underlying storage (e.g. a ZFS zvol mounted without
+	// discard). It is a no-op for handlers/platforms where this does not apply.
+	// timeout is the maximum duration to wait; 0 means run to completion.
+	// May block for the duration of the trim; callers run it off the agent's
+	// main goroutine.
+	TrimVault(timeout time.Duration) error
 }
 
 // GetHandler returns Handler implementation for the current persist type

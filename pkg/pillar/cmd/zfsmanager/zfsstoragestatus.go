@@ -184,6 +184,7 @@ func collectAndPublishStorageStatus(ctxPtr *zfsContext) {
 			status.CompressionRatio = compressratio
 			status.CountZvols = countZvolume
 			status.StorageState = storageState
+			status.TrimStatus = ctxPtr.getTrimStatus()
 			if err := ctxPtr.storageStatusPub.Publish(status.Key(), *status); err != nil {
 				log.Errorf("error in publishing of storageStatus: %s", err)
 			}

@@ -177,6 +177,16 @@ const (
 	StorageStatusSuspended   StorageStatus = 7 // A pool that is waiting for device connectivity to be restored.
 )
 
+// PoolTrimStatus records when the most recent zpool trim was initiated.
+// Nested inside ZFSPoolStatus. zpool trim returns immediately and performs
+// NVMe work in the background, so only the start time is tracked; use
+// `zpool status persist` to check background progress.
+type PoolTrimStatus struct {
+	// LastStartTime is when zpool trim was last invoked.
+	// Zero if no trim has run this boot. EVE-k ZFS nodes only.
+	LastStartTime time.Time
+}
+
 // ZFSPoolStatus stores collected information about zpool
 type ZFSPoolStatus struct {
 	PoolName         string
@@ -191,6 +201,11 @@ type ZFSPoolStatus struct {
 	Children         []*StorageChildren
 	PoolStatusMsg    PoolStatus // pool status value from ZFS
 	PoolStatusMsgStr string     // pool status value from ZFS in string format
+	// TrimStatus holds the start time of the most recent zpool trim.
+	// EVE-k ZFS nodes only. zpool trim returns immediately and runs NVMe
+	// work in the background, so no end time or error is tracked here;
+	// use `zpool status persist` to check background progress.
+	TrimStatus PoolTrimStatus
 }
 
 // Key for pubsub

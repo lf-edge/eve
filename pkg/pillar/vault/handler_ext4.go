@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -131,6 +132,12 @@ func (h *Ext4Handler) RemoveDefaultVault() error {
 }
 
 // SetupDeprecatedVaults to support some very old releases (< 5.6.2 )
+// TrimVault is a no-op for the ext4/fscrypt handler; block reclaim is only
+// needed for the EVE-k zvol-backed vault.
+func (h *Ext4Handler) TrimVault(_ time.Duration) error {
+	return nil
+}
+
 func (h *Ext4Handler) SetupDeprecatedVaults() error {
 	if err := h.setupFscryptEnv(); err != nil {
 		return fmt.Errorf("error in setting up fscrypt environment: %s",
