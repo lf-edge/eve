@@ -342,6 +342,38 @@ func waitPath(log *base.LogObject, path string, seconds int64) error {
 	return fmt.Errorf("waitPath path %s not found after %d seconds", path, seconds)
 }
 
+// TrimVault reclaims blocks freed by ext4 that were never returned to the
+// underlying ZFS zvol (ghost blocks). Only /persist/vault is trimmed here;
+// the etcd-storage zvol is mounted at /var/lib inside the kube container,
+// not the pillar container, so it is not reachable from this call site.
+// No-op on non-EVE-k/non-ZFS handlers. timeout bounds the fstrim run;
+// 0 means run to completion. Callers run this off the main goroutine.
+func (h *ZFSHandler) TrimVault(timeout time.Duration) error {
+	if !base.IsHVTypeKube() {
+		return nil
+	}
+
+	timeoutDur := timeout
+	timeoutDesc := timeout.String()
+	if timeoutDur == 0 {
+		timeoutDur = 365 * 24 * time.Hour
+		timeoutDesc = "unlimited"
+	}
+
+	mountPoint := "/" + types.SealedDataset
+	h.log.Noticef("TrimVault: starting fstrim %s (timeout %s)", mountPoint, timeoutDesc)
+	start := time.Now()
+	out, err := base.Exec(h.log, "fstrim", mountPoint).
+		WithUnlimitedTimeout(timeoutDur).CombinedOutput()
+	elapsed := time.Since(start)
+	if err != nil {
+		h.log.Errorf("TrimVault: fstrim %s failed after %s: %v (%s)", mountPoint, elapsed, err, out)
+		return fmt.Errorf("fstrim %s failed after %s: %v (%s)", mountPoint, elapsed, err, out)
+	}
+	h.log.Noticef("TrimVault: fstrim %s completed in %s", mountPoint, elapsed)
+	return nil
+}
+
 // MountVaultZvol Wrapper with wait for device
 func MountVaultZvol(log *base.LogObject, datasetPath string) error {
 	devPath := zfs.GetZvolPath(datasetPath)

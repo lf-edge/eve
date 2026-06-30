@@ -59,6 +59,11 @@ type zfsContext struct {
 	zfsIterLock            sync.Mutex
 	globalConfig           *types.ConfigItemValueMap
 	GCInitialized          bool
+	// trimMu guards trimStatus and the cached trimCron, which are read from
+	// the pool trim goroutine and written from the main/publisher goroutines.
+	trimMu     sync.Mutex
+	trimStatus types.PoolTrimStatus
+	trimCron   string
 }
 
 // Run - an zfs run
@@ -199,6 +204,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 
 	go processDisksTask(ctxPtr)
+
+	runPoolTrimSchedule(ctxPtr)
 
 	go deviceWatcher(ctxPtr)
 
@@ -432,6 +439,7 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		maybeUpdateConfigItems(ctx, gcp)
 		ctx.globalConfig = gcp
 		ctx.GCInitialized = true
+		ctx.refreshTrimConfig()
 	}
 	log.Functionf("handleGlobalConfigImpl done for %s", key)
 }
@@ -448,6 +456,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		ctx.CLIParams().DebugOverride, logger)
 	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
+	ctx.refreshTrimConfig()
 	log.Functionf("handleGlobalConfigDelete done for %s", key)
 }
 

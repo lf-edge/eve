@@ -1,5 +1,6 @@
 #!/bin/sh
 # shellcheck disable=SC3043  # 'local' is non-POSIX but supported by busybox ash, EVE's /bin/sh
+# shellcheck disable=SC1091  # sourced scripts exist only at device runtime, not in the repo tree
 #
 # Copyright (c) 2023-2024 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
@@ -175,7 +176,7 @@ mount_kube_root() {
                 do
                         sleep 1
                 done
-                mount "$KUBE_ROOT_ZFS" "$KUBE_ROOT_MOUNTPOINT"  ## This is where we persist the cluster components (etcd)
+                mount "$KUBE_ROOT_ZFS" "$KUBE_ROOT_MOUNTPOINT"
                 logmsg "persist/etcd-storage available"
         elif [ "$persistType" = "ext4" ]; then
                 logmsg "Using EXT4 persistent storage"
