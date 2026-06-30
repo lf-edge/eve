@@ -52,9 +52,11 @@ const (
 	brokerPushEVEImageTimeout = 10 * time.Minute
 
 	// Timeout for the broker to set up requested devices.
-	// This includes starting the SDN VM and waiting for it to acquire
-	// IP addresses via DHCP.
-	brokerSetupDevicesTimeout = 5 * time.Minute
+	// This includes building a disk image for every requested EVE device
+	// (with the libvirt provider, a multi-device cluster can spend well over
+	// a minute per device on this alone), starting the SDN VM and waiting
+	// for it to acquire IP addresses via DHCP.
+	brokerSetupDevicesTimeout = 15 * time.Minute
 
 	// Timeout for powering on an EVE VM (not for waiting for it to boot).
 	brokerPowerOnEVEDeviceTimeout = 20 * time.Second
