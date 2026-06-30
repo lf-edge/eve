@@ -283,8 +283,17 @@ func (p *LibvirtProvider) SetupDevice(
 		},
 	}
 
+	// Unlike QEMU run directly (where ACPI is enabled by default), libvirt
+	// disables ACPI unless it is explicitly requested. Without ACPI, a q35
+	// guest cannot bring PCIe devices behind root ports out of the D3cold
+	// power state ("can't change power state from D3cold to D0"), leaving
+	// e.g. virtio NICs of the BIOS-booted SDN VM undetected.
+	features := &libvirtxml.DomainFeatureList{
+		ACPI: &libvirtxml.DomainFeature{},
+		APIC: &libvirtxml.DomainFeatureAPIC{},
+	}
+
 	// If UEFI firmware was configured, attach loader + nvram.
-	var features *libvirtxml.DomainFeatureList
 	if spec.UEFIFirmwareDirPath != "" {
 		codePath := filepath.Join(spec.UEFIFirmwareDirPath, "OVMF_CODE.fd")
 		varsPath := filepath.Join(spec.UEFIFirmwareDirPath, "OVMF_VARS.fd")
@@ -309,10 +318,6 @@ func (p *LibvirtProvider) SetupDevice(
 		}
 		domainOS.NVRam = &libvirtxml.DomainNVRam{
 			NVRam: varsPath,
-		}
-		features = &libvirtxml.DomainFeatureList{
-			ACPI: &libvirtxml.DomainFeature{},
-			APIC: &libvirtxml.DomainFeatureAPIC{},
 		}
 	}
 
