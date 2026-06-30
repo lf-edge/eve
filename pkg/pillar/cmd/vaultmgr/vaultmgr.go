@@ -58,6 +58,8 @@ type vaultMgrContext struct {
 	vaultUCDone               bool
 	ps                        *pubsub.PubSub
 	ucChan                    chan struct{}
+	globalConfig              *types.ConfigItemValueMap
+	trimStatus                types.VaultTrimStatus
 	// cli options
 	args []string
 }
@@ -178,8 +180,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	// Context to pass around
 	ctx := vaultMgrContext{
-		ps:     ps,
-		ucChan: make(chan struct{}),
+		ps:           ps,
+		ucChan:       make(chan struct{}),
+		globalConfig: types.DefaultConfigItemValueMap(),
 	}
 
 	// do we run a single command, or long-running service?
@@ -293,12 +296,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		ctx.defaultVaultUnlocked = true
 	}
 	if ctx.defaultVaultUnlocked || !tpmEnabled {
-		// Now that vault is unlocked, run any upgrade converter handler if needed
-		// In case of non-TPM platforms, we do this irrespective of
-		// defaultVaultUnlocked
-		log.Notice("Starting upgradeconverter(post-vault)")
-		go uc.RunPostVaultHandlers(agentName, ps, logger, log,
-			ctx.CLIParams().DebugOverride, ctx.ucChan)
+		// Now that vault is unlocked, run upgrade converter and schedule
+		// periodic vault trim. In case of non-TPM platforms, we do this
+		// irrespective of defaultVaultUnlocked.
+		startPostVaultReconcile(&ctx)
+		startVaultTrimSchedule(&ctx)
 	}
 
 	// publish vault key to Controller, if required
@@ -363,6 +365,7 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		ctx.CLIParams().DebugOverride, logger)
 	if gcp != nil {
 		ctx.GCInitialized = true
+		ctx.globalConfig = gcp
 	}
 	log.Functionf("handleGlobalConfigImpl done for %s\n", key)
 }
@@ -378,6 +381,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Functionf("handleGlobalConfigDelete for %s\n", key)
 	agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		ctx.CLIParams().DebugOverride, logger)
+	ctx.globalConfig = types.DefaultConfigItemValueMap()
 	log.Functionf("handleGlobalConfigDelete done for %s\n", key)
 }
 
@@ -515,12 +519,11 @@ func handleVaultKeyFromControllerImpl(ctxArg interface{}, key string,
 	// Publish current status of vault
 	getAndPublishAllVaultStatuses(ctx)
 
-	// Now that vault is unlocked, run any upgrade converter handler if needed
-	// The main select loop which is waiting on ucChan event, will publish
-	// the latest status of vault(s) once RunPostVaultHandlers is complete.
-	log.Notice("Starting upgradeconverter(post-vault)")
-	go uc.RunPostVaultHandlers(agentName, ctx.ps, logger, log,
-		ctx.CLIParams().DebugOverride, ctx.ucChan)
+	// Now that vault is unlocked, run upgrade converter and schedule periodic
+	// vault trim. The main select loop, waiting on ucChan, will publish the
+	// latest vault status once the reconcile is complete.
+	startPostVaultReconcile(ctx)
+	startVaultTrimSchedule(ctx)
 }
 
 func publishVaultKey(ctx *vaultMgrContext, vaultName string) error {
@@ -569,11 +572,72 @@ func publishVaultKey(ctx *vaultMgrContext, vaultName string) error {
 	return nil
 }
 
+// startPostVaultReconcile runs post-unlock vault reconciliation off the main
+// goroutine and signals ctx.ucChan when complete. That signal gates
+// VaultStatus.ConversionComplete, which vaultmgr's waitUnsealed command — and
+// therefore k3s startup in cluster-init.sh — blocks on.
+//
+// The vault fstrim runs first so that reclaiming a large backlog of stale
+// blocks does not contend with k3s application I/O once the vault is reported
+// ready. TrimVault is a no-op on non-EVE-k/non-ZFS handlers and is bounded
+// by VaultTrimMaxSecs, so it cannot block startup indefinitely.
+func startPostVaultReconcile(ctx *vaultMgrContext) {
+	trimTimeout := time.Duration(ctx.globalConfig.GlobalValueInt(types.VaultTrimMaxSecs)) * time.Second
+	log.Notice("Starting post-vault reconcile (vault trim + upgradeconverter)")
+	go func() {
+		ctx.trimStatus = types.VaultTrimStatus{LastStartTime: time.Now()}
+		getAndPublishAllVaultStatuses(ctx)
+		if err := handler.TrimVault(trimTimeout); err != nil {
+			log.Errorf("TrimVault failed: %v", err)
+			ctx.trimStatus.LastEndTime = time.Now()
+			ctx.trimStatus.LastError = err.Error()
+		} else {
+			ctx.trimStatus.LastEndTime = time.Now()
+		}
+		getAndPublishAllVaultStatuses(ctx)
+		uc.RunPostVaultHandlers(agentName, ctx.ps, logger, log,
+			ctx.CLIParams().DebugOverride, ctx.ucChan)
+	}()
+}
+
+// startVaultTrimSchedule runs fstrim on a cron schedule for ongoing ghost
+// block maintenance after the boot-time trim in startPostVaultReconcile.
+// Runs fully async and does not gate ConversionComplete or k3s startup.
+// TrimVault is a no-op on non-EVE-k/non-ZFS handlers.
+func startVaultTrimSchedule(ctx *vaultMgrContext) {
+	cronSpec := ctx.globalConfig.GlobalValueString(types.VaultTrimCron)
+	if cronSpec == "" {
+		return
+	}
+	go func() {
+		timeout := time.Duration(ctx.globalConfig.GlobalValueInt(
+			types.VaultTrimMaxSecs)) * time.Second
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+		var lastFired time.Time
+		for t := range ticker.C {
+			if types.CronShouldFire(cronSpec, t, &lastFired) {
+				log.Noticef("startVaultTrimSchedule: scheduled trim starting")
+				ctx.trimStatus = types.VaultTrimStatus{LastStartTime: time.Now()}
+				getAndPublishAllVaultStatuses(ctx)
+				if err := handler.TrimVault(timeout); err != nil {
+					log.Errorf("startVaultTrimSchedule: scheduled trim: %v", err)
+					ctx.trimStatus.LastEndTime = time.Now()
+					ctx.trimStatus.LastError = err.Error()
+				} else {
+					ctx.trimStatus.LastEndTime = time.Now()
+				}
+				getAndPublishAllVaultStatuses(ctx)
+			}
+		}
+	}()
+}
+
 func getAndPublishAllVaultStatuses(ctx *vaultMgrContext) {
 	statuses := handler.GetVaultStatuses()
 	for _, status := range statuses {
-		// adjust ConversionComplete field with information from context
 		status.ConversionComplete = ctx.vaultUCDone
+		status.TrimStatus = ctx.trimStatus
 		publishVaultStatus(ctx, *status)
 	}
 }
