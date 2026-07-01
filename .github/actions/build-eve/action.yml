@@ -14,6 +14,10 @@ inputs:
   cache-artifact:
     required: true
     description: "Name of the linuxkit cache artifact to download"
+  cover:
+    required: false
+    default: 'false'
+    description: "Build pillar with COVER=y so zedbox is coverage-instrumented"
 
 runs:
   using: composite
@@ -40,14 +44,30 @@ runs:
       shell: bash
       env:
         PR_ID: ${{ github.event.pull_request.number }}
+        COVER: ${{ inputs.cover }}
       run: |
         COMMIT_ID=$(git describe --abbrev=8 --always)
-        echo "VERSION=0.0.0-pr$PR_ID-$COMMIT_ID" >> $GITHUB_ENV
-        echo "TAG=evebuild/pr:$PR_ID" >> $GITHUB_ENV
-    - name: Build EVE ${{ inputs.hv }}-${{ inputs.arch }}-${{ inputs.platform }}
+        if [ "$COVER" = "true" ]; then
+          echo "VERSION=0.0.0-pr$PR_ID-$COMMIT_ID-cover" >> "$GITHUB_ENV"
+          echo "TAG=evebuild/pr-cover:$PR_ID" >> "$GITHUB_ENV"
+          echo "ARTIFACT_BASE=eve-cover-${{ inputs.hv }}-${{ inputs.arch }}-${{ inputs.platform }}" >> "$GITHUB_ENV"
+        else
+          echo "VERSION=0.0.0-pr$PR_ID-$COMMIT_ID" >> "$GITHUB_ENV"
+          echo "TAG=evebuild/pr:$PR_ID" >> "$GITHUB_ENV"
+          echo "ARTIFACT_BASE=eve-${{ inputs.hv }}-${{ inputs.arch }}-${{ inputs.platform }}" >> "$GITHUB_ENV"
+        fi
+    - name: Rebuild pillar with coverage instrumentation
+      if: ${{ inputs.cover == 'true' }}
       shell: bash
       run: |
-        make V=1 ROOTFS_VERSION="$VERSION" PLATFORM=${{ inputs.platform }} \
+        make V=1 ROOTFS_VERSION="$VERSION" COVER=y PLATFORM=${{ inputs.platform }} \
+          HV=${{ inputs.hv }} ZARCH=${{ inputs.arch }} eve-pillar
+    - name: Build EVE ${{ inputs.hv }}-${{ inputs.arch }}-${{ inputs.platform }}
+      shell: bash
+      env:
+        COVER_FLAG: ${{ inputs.cover == 'true' && 'COVER=y' || '' }}
+      run: |
+        make V=1 ROOTFS_VERSION="$VERSION" $COVER_FLAG PLATFORM=${{ inputs.platform }} \
           HV=${{ inputs.hv }} ZARCH=${{ inputs.arch }} eve
     - name: Post build report
       shell: bash
@@ -59,13 +79,13 @@ runs:
       run: |
         make cache-export ZARCH=${{ inputs.arch }} \
           IMAGE=lfedge/eve:$VERSION-${{ inputs.hv }} \
-          OUTFILE=eve-${{ inputs.hv }}-${{ inputs.arch }}-${{ inputs.platform }}.tar \
+          OUTFILE=$ARTIFACT_BASE.tar \
           IMAGE_NAME=$TAG-${{ inputs.hv }}-${{ inputs.arch }}
     - name: Upload EVE image
       uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
       with:
-        name: eve-${{ inputs.hv }}-${{ inputs.arch }}-${{ inputs.platform }}
-        path: eve-${{ inputs.hv }}-${{ inputs.arch }}-${{ inputs.platform }}.tar
+        name: ${{ env.ARTIFACT_BASE }}
+        path: ${{ env.ARTIFACT_BASE }}.tar
     - name: Clean
       if: always()
       shell: bash
