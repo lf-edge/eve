@@ -106,26 +106,64 @@ subjects:
     kind: User
     name: debugging-user
 ---
+# Allow debugging-user to exec/attach/port-forward into pods cluster-wide. Access to
+# infrastructure namespaces is then denied by the ValidatingAdmissionPolicy below, so the
+# net effect is "allowed in every namespace except the system ones". RBAC is allow-only and
+# cannot express such an exclusion on its own; the dynamic set of user/ZKS namespaces makes a
+# per-namespace allow-list impractical, so a deny-list on the small fixed set of system
+# namespaces is used instead.
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: ClusterRole
 metadata:
   name: debugging-exec-role
-  namespace: eve-kube-app
 rules:
   - apiGroups: [""]
-    resources: ['pods/exec']
+    resources: ['pods/exec', 'pods/attach', 'pods/portforward']
     verbs: ["create"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
+kind: ClusterRoleBinding
 metadata:
   name: debugging-exec-role-binding
-  namespace: eve-kube-app
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: Role
+  kind: ClusterRole
   name: debugging-exec-role
 subjects:
   - apiGroup: rbac.authorization.k8s.io
     kind: User
     name: debugging-user
+---
+# Deny exec/attach/port-forward by debugging-user in infrastructure namespaces. These are
+# CONNECT operations on pod subresources, so they pass through admission control and can be
+# blocked declaratively here (read access, which is not admission-controlled, is unaffected and
+# stays cluster-wide). The policy is scoped to debugging-user so system components (kubevirt,
+# longhorn, descheduler, etc.) that exec into these namespaces are not affected.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: debugging-user-deny-system-ns-exec
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CONNECT"]
+        resources: ["pods/exec", "pods/attach", "pods/portforward"]
+  matchConditions:
+    - name: only-debugging-user
+      expression: "request.userInfo.username == 'debugging-user'"
+  validations:
+    - expression: >-
+        !(request.namespace in ['kube-system','kube-public','kube-node-lease',
+        'kubevirt','cdi','longhorn-system','zks-fleet-system','cattle-system'])
+      message: "exec/attach/port-forward by debugging-user is not permitted in system namespaces"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: debugging-user-deny-system-ns-exec-binding
+spec:
+  policyName: debugging-user-deny-system-ns-exec
+  validationActions: ["Deny"]
