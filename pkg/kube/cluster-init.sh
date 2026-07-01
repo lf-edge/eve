@@ -1083,6 +1083,27 @@ check_kubevip_lb() {
     fi
 }
 
+# maybe_set_basek3s_from_encc: if the controller has published an ENCC whose
+# ClusterType is CLUSTER_TYPE_K3S_BASE, set /var/lib/base-k3s-mode up front so
+# the longhorn / kubevirt / descheduler install blocks in the main loop skip
+# the install rather than installing and later removing them via
+# uninstall_components. Returns 0 if the flag was just set or was already set
+# (caller can treat as "we are in base-k3s mode"); returns 1 otherwise.
+maybe_set_basek3s_from_encc() {
+        # Already in base-k3s mode (this boot or a prior one): nothing to do.
+        [ -f /var/lib/base-k3s-mode ] && return 0
+        Config_cluster_type_get
+        ct=$?
+        [ "$ct" -eq "$CLUSTER_TYPE_K3S_BASE" ] || return 1
+        logmsg "ENCC ClusterType=K3S_BASE; setting /var/lib/base-k3s-mode before any install"
+        touch /var/lib/base-k3s-mode
+        # k3s default local-path-provisioner backs PVCs in K3S_BASE mode, so
+        # remove the disable-local-path drop-in if a prior run installed it.
+        rm -f "${K3S_CONFIG_DIR}/${K3S_CONFIG_FILE_DISABLE_LOCAL_PATH}"
+        install_kubevirt=0
+        return 0
+}
+
 # started when we detect registration addition
 # start cleaning up some components
 # these are cluster-wide operations, only one nodes initiates it
@@ -1496,6 +1517,10 @@ if [ ! -f /var/lib/all_components_initialized ]; then
         fi
         All_PODS_READY=true
 
+        # Decide K3S_BASE up front so we never install longhorn/kubevirt only
+        # to remove them later via uninstall_components.
+        maybe_set_basek3s_from_encc
+
         if [ ! -f /var/lib/multus_initialized ]; then
                 if [ ! -f /etc/multus-daemonset-new.yaml ]; then
                         assign_multus_nodeip "$cluster_node_ip"
@@ -1563,33 +1588,37 @@ if [ ! -f /var/lib/all_components_initialized ]; then
         # picked up on upgrades without requiring a re-init of the cluster.
 
         #
-        # Longhorn
+        # Longhorn — skipped in base-k3s mode (PVCs use local-path-provisioner)
         #
-        wait_for_item "longhorn"
-        if [ ! -f /var/lib/longhorn_initialized ]; then
-                if ! longhorn_install "$HOSTNAME"; then
-                        continue
+        if [ ! -f /var/lib/base-k3s-mode ]; then
+                wait_for_item "longhorn"
+                if [ ! -f /var/lib/longhorn_initialized ]; then
+                        if ! longhorn_install "$HOSTNAME"; then
+                                continue
+                        fi
+                        if ! Longhorn_is_ready; then
+                                # It can take a moment for the new pods to get to ContainerCreating
+                                # Just back off until they are caught by the earlier are_all_pods_ready
+                                sleep 30
+                                continue
+                        fi
+                        logmsg "longhorn ready"
+                        touch /var/lib/longhorn_initialized
                 fi
-                if ! Longhorn_is_ready; then
-                        # It can take a moment for the new pods to get to ContainerCreating
-                        # Just back off until they are caught by the earlier are_all_pods_ready
-                        sleep 30
-                        continue
-                fi
-                logmsg "longhorn ready"
-                touch /var/lib/longhorn_initialized
         fi
 
         #
-        # Descheduler
+        # Descheduler — skipped in base-k3s mode
         #
-        wait_for_item "descheduler"
-        logmsg "Applying Descheduler ${DESCHEDULER_VERSION}"
-        if ! descheduler_install; then
-                continue
+        if [ ! -f /var/lib/base-k3s-mode ]; then
+                wait_for_item "descheduler"
+                logmsg "Applying Descheduler ${DESCHEDULER_VERSION}"
+                if ! descheduler_install; then
+                        continue
+                fi
         fi
 
-        if [ -f /var/lib/longhorn_initialized ]; then
+        if [ -f /var/lib/longhorn_initialized ] || [ -f /var/lib/base-k3s-mode ]; then
                 sleep 5
                 logmsg "stop the k3s server and wait for copy /var/lib"
                 terminate_k3s
