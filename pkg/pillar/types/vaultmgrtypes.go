@@ -5,12 +5,25 @@ package types
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/lf-edge/eve-api/go/info"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 )
+
+// VaultTrimStatus records the outcome of the most recent vault fstrim
+// operation. Nested inside VaultStatus. All fields are zero/empty if no trim
+// has run since boot. EVE-k ZFS nodes only.
+type VaultTrimStatus struct {
+	// LastStartTime is when the most recent fstrim began.
+	LastStartTime time.Time
+	// LastEndTime is when it completed. Zero while in progress or never run.
+	LastEndTime time.Time
+	// LastError is the error from the most recent fstrim, or empty on success.
+	LastError string
+}
 
 // VaultStatus represents running status of a Vault
 type VaultStatus struct {
@@ -20,6 +33,9 @@ type VaultStatus struct {
 	ConversionComplete bool
 	// only valid if TPM is enabled and Sealed key is used
 	MismatchingPCRs []int
+	// TrimStatus holds the result of the most recent vault fstrim.
+	// Populated on EVE-k ZFS nodes only; zero otherwise.
+	TrimStatus VaultTrimStatus
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
 }

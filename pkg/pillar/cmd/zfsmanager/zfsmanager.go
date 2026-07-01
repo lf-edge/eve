@@ -58,6 +58,7 @@ type zfsContext struct {
 	zfsIterLock            sync.Mutex
 	globalConfig           *types.ConfigItemValueMap
 	GCInitialized          bool
+	trimStatus             types.PoolTrimStatus
 }
 
 // Run - an zfs run
@@ -198,6 +199,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 
 	go processDisksTask(ctxPtr)
+
+	runPoolTrimSchedule(ctxPtr)
 
 	go deviceWatcher(ctxPtr)
 
