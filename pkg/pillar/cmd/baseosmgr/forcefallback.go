@@ -8,12 +8,6 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
-	"github.com/lf-edge/eve/pkg/pillar/zboot"
-)
-
-const (
-	// XXX move to locationconst.go?
-	forcefallbackFilename = types.CheckpointDirname + "/forceFallbackCounter"
 )
 
 // handle zedagent status events to look if the ForceFallbackCounter changes
@@ -51,12 +45,12 @@ func handleZedAgentStatusDelete(ctxArg interface{}, key string,
 // This update to ZbootStatus will make nodeagent trigger a reboot.
 func handleForceFallback(ctxPtr *baseOsMgrContext, status types.ZedAgentStatus) {
 
-	counter, found := readForceFallbackCounter()
+	counter, found := readForceFallbackCounter(ctxPtr)
 	if !found {
 		// Just write the current value
 		log.Functionf("Saving initial ForceFallbackCounter %d",
 			status.ForceFallbackCounter)
-		writeForceFallbackCounter(status.ForceFallbackCounter)
+		writeForceFallbackCounter(ctxPtr, status.ForceFallbackCounter)
 		return
 	}
 	if counter == status.ForceFallbackCounter {
@@ -66,7 +60,7 @@ func handleForceFallback(ctxPtr *baseOsMgrContext, status types.ZedAgentStatus) 
 	log.Noticef("Handle ForceFallbackCounter update from %d to %d",
 		counter, status.ForceFallbackCounter)
 
-	curPartName := zboot.GetCurrentPartition()
+	curPartName := ctxPtr.zboot.GetCurrentPartition()
 	partStatus := getZbootStatus(ctxPtr, curPartName)
 	if partStatus == nil {
 		log.Warnf("No current partition status for %s; ignoring ForceFallback",
@@ -79,7 +73,7 @@ func handleForceFallback(ctxPtr *baseOsMgrContext, status types.ZedAgentStatus) 
 		return
 	}
 	shortVerCurPart := partStatus.ShortVersion
-	otherPartName := zboot.GetOtherPartition()
+	otherPartName := ctxPtr.zboot.GetOtherPartition()
 	partStatus = getZbootStatus(ctxPtr, otherPartName)
 	if partStatus == nil {
 		log.Warnf("No other partition status for %s; ignoring ForceFallback",
@@ -99,7 +93,7 @@ func handleForceFallback(ctxPtr *baseOsMgrContext, status types.ZedAgentStatus) 
 	log.Noticef("ForceFallback from %s to %s",
 		shortVerCurPart, shortVerOtherPart)
 
-	zboot.SetOtherPartitionStateUpdating(log)
+	ctxPtr.zboot.SetOtherPartitionStateUpdating()
 	updateAndPublishZbootStatus(ctxPtr,
 		partStatus.PartitionLabel, false)
 	baseOsStatus := lookupBaseOsStatusByPartLabel(ctxPtr, partStatus.PartitionLabel)
@@ -108,20 +102,20 @@ func handleForceFallback(ctxPtr *baseOsMgrContext, status types.ZedAgentStatus) 
 			partStatus.PartitionLabel)
 		publishBaseOsStatus(ctxPtr, baseOsStatus)
 	}
-	writeForceFallbackCounter(status.ForceFallbackCounter)
+	writeForceFallbackCounter(ctxPtr, status.ForceFallbackCounter)
 }
 
 // readForceFallbackCounter reads the persistent file
 // If the file doesn't exist or doesn't contain an integer it returns false
-func readForceFallbackCounter() (uint32, bool) {
-	return fileutils.ReadSavedCounter(log, forcefallbackFilename)
+func readForceFallbackCounter(ctxPtr *baseOsMgrContext) (uint32, bool) {
+	return fileutils.ReadSavedCounter(log, ctxPtr.paths.forceFallbackCounter)
 }
 
 // writeForceFallbackCounter writes the persistent file
 // Errors are logged but otherwise ignored
-func writeForceFallbackCounter(fallbackCounter uint32) {
+func writeForceFallbackCounter(ctxPtr *baseOsMgrContext, fallbackCounter uint32) {
 	b := []byte(strconv.FormatUint(uint64(fallbackCounter), 10))
-	err := fileutils.WriteRename(forcefallbackFilename, b)
+	err := fileutils.WriteRename(ctxPtr.paths.forceFallbackCounter, b)
 	if err != nil {
 		log.Errorf("writeForceFallbackCounter write: %s", err)
 	}
