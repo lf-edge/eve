@@ -10,12 +10,69 @@
 
 LONGHORN_VERSION=v1.9.1
 
+# Filesystem path Longhorn is told to use as its default disk (on /persist).
+LONGHORN_DISK_PATH="/persist/vault/volumes"
+
+# Resource floors below which Longhorn is unlikely to come up / schedule
+# replicas reliably. These drive the pre-flight warnings in
+# longhorn_preflight_check(); they are advisory (logged, not fatal).
+#   - Memory: Longhorn documents a 4 GiB per-node minimum, and that is for
+#     Longhorn alone - it runs alongside k3s and kubevirt here, so a node at
+#     the floor is already tight (https://longhorn.io/docs/1.9.1/best-practices/).
+#   - Storage: Longhorn refuses to schedule replicas once a disk drops below
+#     storageMinimalAvailablePercentage (default 25%) of its capacity. On a
+#     small /persist (e.g. a 32 GiB boot disk) EVE's own usage pushes available
+#     under that floor and no replica can be placed; a 64 GiB boot disk leaves
+#     enough headroom. We warn when the schedulable slice is below
+#     LONGHORN_MIN_SCHEDULABLE_GIB.
+LONGHORN_MIN_MEM_GIB=4
+LONGHORN_MIN_STORAGE_PCT=25
+LONGHORN_MIN_SCHEDULABLE_GIB=16
+
 # Used to gate logging only once in Longhorn_is_ready
 bootLhRdyComplete=""
+
+# longhorn_preflight_check warns (to the k3s install log) when node memory or the
+# schedulable space on the Longhorn default-disk path is below what Longhorn needs
+# to start and place replicas. Advisory only: it never fails the install (returns 0).
+longhorn_preflight_check() {
+    mem_kib=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null)
+    if [ -n "$mem_kib" ]; then
+        mem_gib=$((mem_kib / 1024 / 1024))
+        if [ "$mem_gib" -lt "$LONGHORN_MIN_MEM_GIB" ]; then
+            logmsg "WARNING: node has ${mem_gib} GiB RAM; Longhorn needs at least ${LONGHORN_MIN_MEM_GIB} GiB per node (and more running alongside k3s/kubevirt). Longhorn may fail to start reliably; provision more memory."
+        fi
+    else
+        logmsg "WARNING: could not read MemTotal from /proc/meminfo; skipping Longhorn memory pre-flight check"
+    fi
+
+    disk_path="$LONGHORN_DISK_PATH"
+    [ -d "$disk_path" ] || disk_path="/persist"
+    # -P guarantees single-line POSIX output, so columns are fixed: 2=total, 4=available.
+    # shellcheck disable=SC2046 # intentional split of df's two-number output
+    set -- $(df -kP "$disk_path" 2>/dev/null | awk 'NR==2 {print $2, $4}')
+    if [ "$#" -eq 2 ]; then
+        total_kib=$1
+        avail_kib=$2
+        total_gib=$((total_kib / 1024 / 1024))
+        avail_gib=$((avail_kib / 1024 / 1024))
+        reserve_kib=$((total_kib * LONGHORN_MIN_STORAGE_PCT / 100))
+        sched_kib=$((avail_kib - reserve_kib))
+        [ "$sched_kib" -lt 0 ] && sched_kib=0
+        sched_gib=$((sched_kib / 1024 / 1024))
+        if [ "$sched_gib" -lt "$LONGHORN_MIN_SCHEDULABLE_GIB" ]; then
+            logmsg "WARNING: Longhorn default disk ${disk_path} has ${avail_gib} GiB free of ${total_gib} GiB; after the ${LONGHORN_MIN_STORAGE_PCT}% Longhorn reserve only ~${sched_gib} GiB is schedulable (< ${LONGHORN_MIN_SCHEDULABLE_GIB} GiB). Replicas may fail to schedule; a 64 GiB boot disk is recommended for EVE-k."
+        fi
+    else
+        logmsg "WARNING: could not read df output for ${disk_path}; skipping Longhorn storage pre-flight check"
+    fi
+    return 0
+}
 
 longhorn_install() {
     node_name=$1
     logmsg "Installing longhorn version ${LONGHORN_VERSION}"
+    longhorn_preflight_check
     apply_longhorn_disk_config "$node_name"
     lhCfgPath=/etc/lh-cfg-${LONGHORN_VERSION}.yaml
     if ! grep -q 'create-default-disk-labeled-nodes: true' "$lhCfgPath"; then
@@ -200,7 +257,7 @@ Longhorn_is_ready() {
 apply_longhorn_disk_config() {
         node=$1
         kubectl label node "$node" node.longhorn.io/create-default-disk='config'
-        kubectl annotate node "$node" node.longhorn.io/default-disks-config='[ { "path":"/persist/vault/volumes", "allowScheduling":true }]'
+        kubectl annotate node "$node" node.longhorn.io/default-disks-config="[ { \"path\":\"${LONGHORN_DISK_PATH}\", \"allowScheduling\":true }]"
 }
 
 check_overwrite_nsmounter() {
