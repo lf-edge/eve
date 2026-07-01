@@ -22,6 +22,18 @@ type BlobInfo struct {
 	Labels map[string]string
 }
 
+// ImageLayer describes one layer of an image as recorded in its manifest.
+type ImageLayer struct {
+	// Digest of the layer blob, format <algo>:<hash>.
+	Digest string
+	// MediaType of the layer.
+	MediaType string
+	// Size of the layer blob in bytes.
+	Size int64
+	// Annotations on the layer descriptor in the manifest.
+	Annotations map[string]string
+}
+
 // CAS provides methods to interact with CAS clients
 // Context handling should be taken care by the underlying implementor.
 //
@@ -72,9 +84,22 @@ type CAS interface {
 	// Arg 'blobHash' should be of format <algo>:<hash> (currently supporting only sha256:<hash>).
 	// Returns error if no blob is found matching the given 'blobHash' or if the given 'blobHash' does not belong to an index.
 	CreateImage(reference, mediaType, blobHash string) error
+	// ImportImageArchive: imports a packaged image archive (an OCI image-layout
+	// or docker-save archive, optionally gzip-compressed) read from the file at
+	// 'archivePath' into the blob store, and creates 'reference' pointing at the
+	// imported index/manifest. Used when a packaged image is served by a non-OCI
+	// datastore (S3/HTTP) as a single file, so its real multi-layer manifest is
+	// used rather than wrapping the whole archive as one bare blob.
+	// Returns the index/manifest digest of format <algo>:<hash>.
+	ImportImageArchive(reference, archivePath string) (string, error)
 	// GetImageHash: returns a blob hash of format <algo>:<hash> (currently supporting only sha256:<hash>) which the given 'reference' is pointing to.
 	// Returns error if the given 'reference' is not found.
 	GetImageHash(reference string) (string, error)
+	// GetImageLayers returns the layers of the manifest that 'reference' points
+	// to, in manifest order. If the reference points at a multi-manifest index,
+	// the platform-matching manifest is used (falling back to the first).
+	// Returns error if the reference is not found or its manifest cannot be read.
+	GetImageLayers(reference string) ([]ImageLayer, error)
 	// GetImageLabels  returns the labels set on the image.
 	// Returns error if the given reference is not found
 	GetImageLabels(reference string) (map[string]string, error)

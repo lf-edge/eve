@@ -1,7 +1,9 @@
 package cas
 
 import (
+	"bufio"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -527,6 +529,45 @@ func (c *containerdCAS) CreateImage(reference, mediaType, blobHash string) error
 	return nil
 }
 
+// ImportImageArchive imports a packaged image archive (OCI image-layout or
+// docker-save, optionally gzip-compressed) from archivePath into the blob store
+// and creates 'reference' pointing at the imported index/manifest. Returns the
+// index/manifest digest of format sha256:<hash>.
+func (c *containerdCAS) ImportImageArchive(reference, archivePath string) (string, error) {
+	f, err := os.Open(archivePath)
+	if err != nil {
+		return "", fmt.Errorf("ImportImageArchive: cannot open %s: %v", archivePath, err)
+	}
+	defer f.Close()
+
+	// Transparently de-gzip; the eserver/S3 artifact is a .tar.gz.
+	br := bufio.NewReader(f)
+	var reader io.Reader = br
+	if magic, _ := br.Peek(2); len(magic) == 2 && magic[0] == 0x1f && magic[1] == 0x8b {
+		zr, err := gzip.NewReader(br)
+		if err != nil {
+			return "", fmt.Errorf("ImportImageArchive: cannot create gzip reader for %s: %v", archivePath, err)
+		}
+		defer zr.Close()
+		reader = zr
+	}
+
+	// CtrImportImageArchive (high-level containerd Import) ingests the blobs,
+	// sets gc.ref labels so they survive GC, and creates the image 'reference'.
+	// It manages its own lease, so a plain namespaced context is enough here.
+	ctrdCtx, done := c.ctrdClient.CtrNewUserServicesCtx()
+	defer done()
+
+	desc, err := c.ctrdClient.CtrImportImageArchive(ctrdCtx, reference, reader)
+	if err != nil {
+		return "", fmt.Errorf("ImportImageArchive: import of %s failed: %v", archivePath, err)
+	}
+	if desc.Digest == "" {
+		return "", fmt.Errorf("ImportImageArchive: import of %s returned an empty index digest", archivePath)
+	}
+	return desc.Digest.String(), nil
+}
+
 // GetImageHash: returns a blob hash of format sha256:<hash> which the given 'reference' is pointing to.
 // Returns error if the given 'reference' is not found.
 func (c *containerdCAS) GetImageHash(reference string) (string, error) {
@@ -542,6 +583,44 @@ func (c *containerdCAS) GetImageHash(reference string) (string, error) {
 		return "", fmt.Errorf("GetImageHash: Exception while getting image: %s. %s", reference, err.Error())
 	}
 	return image.Target().Digest.String(), nil
+}
+
+// GetImageLayers returns the layers of the manifest that 'reference' points to.
+// If the reference is an index, the platform-matching manifest is selected
+// (falling back to the first); if it is a plain manifest, its layers are
+// returned directly.
+func (c *containerdCAS) GetImageLayers(reference string) ([]ImageLayer, error) {
+	hash, err := c.GetImageHash(reference)
+	if err != nil {
+		return nil, err
+	}
+	manifestHash := hash
+	// Descend through an index to the (platform) manifest. A plain manifest
+	// parses as an index with no entries, in which case we use it directly.
+	if index, ierr := getIndexManifest(c, hash); ierr == nil && len(index.Manifests) > 0 {
+		manifestHash = index.Manifests[0].Digest.String()
+		for _, m := range index.Manifests {
+			if m.Platform != nil && m.Platform.OS == runtime.GOOS &&
+				m.Platform.Architecture == runtime.GOARCH {
+				manifestHash = m.Digest.String()
+				break
+			}
+		}
+	}
+	manifest, err := getManifest(c, manifestHash)
+	if err != nil {
+		return nil, err
+	}
+	layers := make([]ImageLayer, 0, len(manifest.Layers))
+	for _, l := range manifest.Layers {
+		layers = append(layers, ImageLayer{
+			Digest:      l.Digest.String(),
+			MediaType:   string(l.MediaType),
+			Size:        l.Size,
+			Annotations: l.Annotations,
+		})
+	}
+	return layers, nil
 }
 
 // GetImageLabels returns the Image Labels of the reference

@@ -325,9 +325,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	// Create the background worker
 	ctx.worker = worker.NewPool(log, &ctx, 20, map[string]worker.Handler{
-		workCreate:  {Request: volumeWorker, Response: processVolumeWorkResult},
-		workIngest:  {Request: casIngestWorker, Response: processCasIngestWorkResult},
-		workPrepare: {Request: volumePrepareWorker, Response: processVolumePrepareResult},
+		workCreate:        {Request: volumeWorker, Response: processVolumeWorkResult},
+		workIngest:        {Request: casIngestWorker, Response: processCasIngestWorkResult},
+		workPrepare:       {Request: volumePrepareWorker, Response: processVolumePrepareResult},
+		workImportArchive: {Request: importArchiveWorker, Response: processImportArchiveWorkResult},
 	})
 
 	// Set up our publications before the subscriptions so ctx is set
