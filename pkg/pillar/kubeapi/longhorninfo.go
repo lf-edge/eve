@@ -456,6 +456,46 @@ func getDsServiceStatus(ds appsv1.DaemonSet) (time.Time, types.ServiceStatus) {
 	return latestTime, types.ServiceStatusDegraded
 }
 
+// longhornStorageUnschedulable reports whether any Longhorn node has a disk
+// whose "Schedulable" condition is False. Longhorn flips that condition to
+// False (reason "DiskPressure") once a disk's available space falls below its
+// storage-minimal-available floor - the state a too-small /persist reaches on
+// EVE-k, where the longhorn-manager pods stay Ready but no replica can be
+// placed. Reported so KubeStorageInfo.Health can reflect unschedulable storage
+// instead of appearing Healthy. The returned reason (node/disk/reason) is for
+// logging; it is not propagated in KubeStorageInfo.
+func longhornStorageUnschedulable() (bool, string) {
+	config, err := GetKubeConfig()
+	if err != nil {
+		return false, ""
+	}
+	lhClient, err := versioned.NewForConfig(config)
+	if err != nil {
+		return false, ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	defer cancel()
+	nodes, err := lhClient.LonghornV1beta2().Nodes(longhornNamespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return false, ""
+	}
+	for _, node := range nodes.Items {
+		for diskName, ds := range node.Status.DiskStatus {
+			if ds == nil {
+				continue
+			}
+			for _, cond := range ds.Conditions {
+				if cond.Type == lhv1beta2.DiskConditionTypeSchedulable &&
+					cond.Status == lhv1beta2.ConditionStatusFalse {
+					return true, fmt.Sprintf("node %s disk %s unschedulable: %s",
+						node.ObjectMeta.Name, diskName, cond.Reason)
+				}
+			}
+		}
+	}
+	return false, ""
+}
+
 // PopulateKSI retrieve cluster-wide PVC health data which
 // will be sent out to the controller as info messages
 func PopulateKSI() (types.KubeStorageInfo, error) {
@@ -487,6 +527,14 @@ func PopulateKSI() (types.KubeStorageInfo, error) {
 		healthTime, dsStat := getDsServiceStatus(ds)
 		ksi.Health = min(ksi.Health, dsStat)
 		ksi.TransitionTime = healthTime
+	}
+
+	// A too-small /persist keeps the longhorn-manager pods Ready (so the
+	// daemonset check above stays Healthy) yet leaves the Longhorn disk
+	// unschedulable, so no replica can be placed. Reflect that as degraded
+	// storage health rather than reporting Healthy.
+	if unschedulable, _ := longhornStorageUnschedulable(); unschedulable {
+		ksi.Health = min(ksi.Health, types.ServiceStatusDegraded)
 	}
 
 	pvcs, err := clientset.CoreV1().PersistentVolumeClaims(EVEKubeNameSpace).List(context.Background(), metav1.ListOptions{})
