@@ -2729,6 +2729,62 @@ func TestParseConfigHarness(t *testing.T) {
 	}
 }
 
+// TestParseEdgeNodeClusterLB verifies that the LoadBalancerService is parsed
+// into EdgeNodeClusterConfig.LBInterfaces exactly when native k8s orchestration
+// is enabled: always for K3S_BASE, and for REPLICATED_STORAGE only when the
+// enable_native_k8s_orchestration flag is set.
+func TestParseEdgeNodeClusterLB(t *testing.T) {
+	g := NewGomegaWithT(t)
+	getconfigCtx, allPubs := newFuzzGetConfigCtx(t)
+
+	const clusterID = "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+	lbSvc := &zconfig.LoadBalancerService{
+		Interfaces: []*zconfig.LoadBalancerInterface{
+			{InterfaceName: "eth1", AddressCidrs: []string{"192.168.1.24/29"}},
+		},
+	}
+
+	cases := []struct {
+		name        string
+		clusterType zconfig.ClusterType
+		flag        bool
+		wantLB      bool
+	}{
+		{"k3s-base populates LB", zconfig.ClusterType_CLUSTER_TYPE_K3S_BASE, false, true},
+		{"replicated-storage without flag drops LB", zconfig.ClusterType_CLUSTER_TYPE_REPLICATED_STORAGE, false, false},
+		{"replicated-storage with flag populates LB", zconfig.ClusterType_CLUSTER_TYPE_REPLICATED_STORAGE, true, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resetFuzzState(getconfigCtx, allPubs)
+			devConfig := &zconfig.EdgeDevConfig{
+				Cluster: &zconfig.EdgeNodeCluster{
+					ClusterId:                    clusterID,
+					ClusterIpPrefix:              "10.0.0.1/24",
+					JoinServerIp:                 "10.0.0.1",
+					ClusterType:                  tc.clusterType,
+					EnableNativeK8SOrchestration: tc.flag,
+					LoadBalancerService:          lbSvc,
+				},
+			}
+			parseEdgeNodeClusterConfig(getconfigCtx, devConfig)
+
+			item, err := getconfigCtx.zedagentCtx.pubEdgeNodeClusterConfig.Get("global")
+			g.Expect(err).ToNot(HaveOccurred())
+			cfg := item.(types.EdgeNodeClusterConfig)
+			g.Expect(cfg.Valid).To(BeTrue())
+			g.Expect(cfg.EnableNativeK8SOrchestration).To(Equal(tc.flag))
+			if tc.wantLB {
+				g.Expect(cfg.LBInterfaces).To(HaveLen(1))
+				g.Expect(cfg.LBInterfaces[0].Interface).To(Equal("eth1"))
+				g.Expect(cfg.LBInterfaces[0].IPPrefix).To(Equal("192.168.1.24/29"))
+			} else {
+				g.Expect(cfg.LBInterfaces).To(BeEmpty())
+			}
+		})
+	}
+}
+
 // marshalJSONIgnoreOmitEmpty marshals an EdgeDevConfig to JSON like encoding/json would, except
 // that it ignores the ",omitempty" option on the (top-level) struct fields, so
 // zero-valued fields are emitted instead of dropped. This produces a "fat" JSON

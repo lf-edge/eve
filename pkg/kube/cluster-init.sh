@@ -825,7 +825,7 @@ change_to_new_token() {
 #
 # 4. ALREADY IN DESIRED MODE: No action taken
 #
-# 5. POST-CONVERSION REGISTRATION: If base-k3s-mode flag exists, uninstall kubevirt, longhorn, apply registration
+# 5. POST-CONVERSION REGISTRATION: If native-kubernetes-mode flag exists, uninstall kubevirt, longhorn, apply registration
 #
 # REBOOT SCENARIOS:
 # - Cluster-to-single: Always reboots after cleanup
@@ -853,7 +853,7 @@ check_cluster_config_change() {
           return 0
         fi
         Registration_Cleanup
-        rm /var/lib/base-k3s-mode
+        rm /var/lib/native-kubernetes-mode
         touch /var/lib/convert-to-single-node
         # We're transitioning from cluster mode to single node, so reboot is still needed
         reboot_with_reason "Transition from cluster mode to single node"
@@ -874,7 +874,7 @@ check_cluster_config_change() {
             cluster_type=$?
             if [ "$cluster_type" -eq "$CLUSTER_TYPE_K3S_BASE" ]; then
                 # Hold on, don't apply yet, complete conversion to base mode first
-                if [ ! -f /var/lib/base-k3s-mode ]; then
+                if [ ! -f /var/lib/native-kubernetes-mode ]; then
                         uninstall_components
                 fi
             fi
@@ -915,7 +915,7 @@ check_cluster_config_change() {
             # we need to get out of this loop and go back to single node mode
             if [ $provision_status -eq 1 ]; then
               logmsg "EdgeNodeClusterStatus file disappeared, reset the status and back to single node and reboot"
-              rm /var/lib/base-k3s-mode
+              rm /var/lib/native-kubernetes-mode
               touch /var/lib/convert-to-single-node
               reboot_with_reason "EdgeNodeClusterStatus file disappeared during cluster join, revert to single node"
             fi
@@ -954,18 +954,9 @@ check_cluster_config_change() {
     fi
     logmsg "Check cluster config change done"
 
-    # Registration can exist in multiple types, if in base mode, wait for uninstall
-    Config_cluster_type_get
-    cluster_type=$?
-    if [ "$cluster_type" -eq "$CLUSTER_TYPE_K3S_BASE" ]; then
-        # Hold on, don't apply yet, complete conversion to base mode first
-        if [ -e /var/lib/base-k3s-mode ]; then
-                Registration_CheckApply
-        fi
-    else
-        # if replicated storage mode, apply immediately
-        Registration_CheckApply
-    fi
+    # Apply the registration manifest if the controller supplied one. Also run
+    # from the steady-state main loop so a late zedkube write is not missed.
+    Registration_ApplyIfReady
 }
 
 # Function to check if the cluster transition is complete
@@ -1126,7 +1117,7 @@ uninstall_components() {
         logmsg "convert-to-basek3s: complete"
         rm /tmp/replicated-storage-uninstall-inprogress
 
-        touch /var/lib/base-k3s-mode
+        touch /var/lib/native-kubernetes-mode
         touch /var/lib/replicated-storage-uninstall-complete
 }
 
@@ -1262,6 +1253,16 @@ DATESTR=$(date)
 mkdir -p "$K3S_LOG_DIR"
 echo "========================== $DATESTR ==========================" >> $INSTALL_LOG
 
+# Migrate the legacy conversion-gate flag name. Devices that completed the
+# base-mode conversion under an older EVE image have /var/lib/base-k3s-mode;
+# the flag is now /var/lib/native-kubernetes-mode and is only written by the
+# (one-shot) convert path, so without this rename the new code would treat an
+# already-converted device as un-converted (e.g. re-enable install_kubevirt).
+if [ -f /var/lib/base-k3s-mode ] && [ ! -f /var/lib/native-kubernetes-mode ]; then
+        logmsg "migrating legacy flag /var/lib/base-k3s-mode -> /var/lib/native-kubernetes-mode"
+        mv /var/lib/base-k3s-mode /var/lib/native-kubernetes-mode
+fi
+
 setup_prereqs
 
 wait_for_item "k3s-install"
@@ -1363,7 +1364,7 @@ fi
 # if cni0 does not exist yet (flannel creates it after k3s starts and the
 # first pod is scheduled). Idempotent — safe to call on every boot and on
 # every main-loop iteration for flannel-restart recovery.
-# Only called when install_kubevirt=1 (not in base-k3s-mode, not on arm64).
+# Only called when install_kubevirt=1 (not in native-kubernetes-mode, not on arm64).
 setup_cni0_proxy_ip() {
         local anchor="${MGMTPROXY_CNI0_IP}/32"
         if ! ip link show cni0 > /dev/null 2>&1; then
@@ -1413,7 +1414,7 @@ if ! is_amd64; then
 fi
 
 # In basek3s cluster mode KubeVirt has been removed; skip external boot image import
-if [ -f /var/lib/base-k3s-mode ]; then
+if [ -f /var/lib/native-kubernetes-mode ]; then
         install_kubevirt=0
 fi
 
@@ -1756,6 +1757,10 @@ fi
         check_kubeconfig_yaml_files
         check_and_remove_excessive_k3s_logs
         check_kubevip_lb
+        # Apply a late-arriving native-orchestration registration manifest.
+        # Idempotent; complements the one-shot transition-path call so the
+        # manifest is not missed when there is no base-mode uninstall delay.
+        Registration_ApplyIfReady
         # Reapply cni0 proxy anchor in case flannel restarted and recreated
         # cni0 without the link-local IP. No-op if already present or if cni0
         # does not exist (returns 1 silently). Not gated on kubevirt_initialized

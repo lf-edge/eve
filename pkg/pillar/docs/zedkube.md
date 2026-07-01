@@ -434,14 +434,19 @@ The Network Interface Manager (`nim`) microservice subscribes to the `KubeUserSe
 
 This implementation ensures that external traffic to Kubernetes services and ingresses is properly identified and can be subjected to appropriate traffic control policies.
 
-### Kube-VIP Load Balancer Service (K3S_BASE)
+### Kube-VIP Load Balancer Service (native k8s orchestration)
 
-For `CLUSTER_TYPE_K3S_BASE` clusters, EVE supports controller-driven Kubernetes
-`LoadBalancer` services via [kube-vip](https://kube-vip.io/). The controller configures
-a network interface and an IP CIDR pool; kube-vip then allocates IPs from that pool to
-`LoadBalancer`-type services and advertises them via ARP on the specified interface.
-Because kube-vip operates in ARP mode, all cluster nodes must be on the same Layer 2
-network segment.
+For clusters with native Kubernetes orchestration enabled — `CLUSTER_TYPE_K3S_BASE`, or
+`CLUSTER_TYPE_REPLICATED_STORAGE` with `EdgeNodeCluster.enable_native_k8s_orchestration`
+set — EVE supports controller-driven Kubernetes `LoadBalancer` services via
+[kube-vip](https://kube-vip.io/). The controller configures a network interface and an IP
+CIDR pool; kube-vip then allocates IPs from that pool to `LoadBalancer`-type services and
+advertises them via ARP on the specified interface. Because kube-vip operates in ARP mode,
+all cluster nodes must be on the same Layer 2 network segment.
+
+`zedagent` populates `EdgeNodeClusterConfig.LBInterfaces` from `LoadBalancerService`
+whenever `EdgeNodeClusterConfig.NativeK8sOrchestrationEnabled()` is true, so the rest of
+the pipeline below is identical for both cases.
 
 #### Architecture Overview
 
