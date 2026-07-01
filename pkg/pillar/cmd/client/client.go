@@ -66,7 +66,6 @@ type clientContext struct {
 	usableAddressCount     int
 	networkState           types.DPCState
 	subGlobalConfig        pubsub.Subscription
-	subCachedResolvedIPs   pubsub.Subscription
 	globalConfig           *types.ConfigItemValueMap
 	getCertsTimer          *time.Timer
 	ctrlClient             *controllerconn.Client
@@ -92,16 +91,6 @@ func (ctxPtr *clientContext) ProcessAgentSpecificCLIFlags(flagSet *flag.FlagSet)
 				"[-o] [<operations>...]")
 		}
 	}
-}
-
-func (ctxPtr *clientContext) getCachedResolvedIPs(hostname string) []types.CachedIP {
-	if ctxPtr.subCachedResolvedIPs == nil {
-		return nil
-	}
-	if item, err := ctxPtr.subCachedResolvedIPs.Get(hostname); err == nil {
-		return item.(types.CachedResolvedIPs).CachedIPs
-	}
-	return nil
 }
 
 var (
@@ -177,19 +166,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	clientCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	subCachedResolvedIPs, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "nim",
-		MyAgentName: agentName,
-		WarningTime: warningTime,
-		ErrorTime:   errorTime,
-		TopicImpl:   types.CachedResolvedIPs{},
-		Activate:    true,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	clientCtx.subCachedResolvedIPs = subCachedResolvedIPs
-
 	subDeviceNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		CreateHandler: handleDNSCreate,
 		ModifyHandler: handleDNSModify,
@@ -213,7 +189,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		DeviceNetworkStatus: clientCtx.deviceNetworkStatus,
 		NetworkSendTimeout:  time.Duration(sendTimeoutSecs) * time.Second,
 		NetworkDialTimeout:  time.Duration(dialTimeoutSecs) * time.Second,
-		ResolverCacheFunc:   clientCtx.getCachedResolvedIPs,
 		AgentMetrics:        clientCtx.agentMetrics,
 		DevSerial:           hardware.GetProductSerial(log),
 		DevSoftSerial:       hardware.GetSoftSerial(log),
@@ -367,9 +342,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 				log.Errorf("tryRegister failed %d", ret)
 				return ret
 			}
-
-		case change := <-subCachedResolvedIPs.MsgChan():
-			subCachedResolvedIPs.ProcessChange(change)
 
 		case <-ticker.C:
 			// Check in case /config/server changes while running

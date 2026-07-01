@@ -9,7 +9,7 @@ require (
 	github.com/elazarl/goproxy/ext v0.0.0-20250305112401-088f758167d2
 	github.com/inconshreveable/go-vhost v1.0.0
 	github.com/lf-edge/eve-libs v0.0.0-20260304091825-96eaa95b9f8b
-	github.com/lf-edge/eve/evetest v0.0.0-00010101000000-000000000000
+	github.com/lf-edge/eve/evetest v0.0.0-20260605135048-4260a857492f
 	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260421125048-8d3825045e4e
 	github.com/sirupsen/logrus v1.9.4
 	github.com/vishvananda/netlink v1.3.1
@@ -75,5 +75,5 @@ require (
 	gotest.tools/v3 v3.5.2 // indirect
 )
 
-// TODO: this is necessary until evetest is merged into the upstream eve repository.
-replace github.com/lf-edge/eve/evetest => github.com/milan-zededa/eve/evetest v0.0.0-20260525144358-1dbfa70f7125
+// TODO: this is necessary until this commit is merged into the upstream eve repository.
+replace github.com/lf-edge/eve/evetest => github.com/milan-zededa/eve/evetest v0.0.0-20260609075134-f80b5357fa5c

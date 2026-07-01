@@ -18,6 +18,7 @@ func RegisterItems(log *base.LogObject, registry *reconciler.DefaultRegistry,
 	}
 	configurators := []configurator{
 		{c: &DhcpcdConfigurator{Log: log}, t: DhcpcdTypename},
+		{c: &MgmtDnsmasqConfigurator{Log: log}, t: MgmtDnsmasqTypename},
 		{c: &ResolvConfConfigurator{Log: log}, t: ResolvConfTypename},
 		{c: &SSHAuthKeysConfigurator{Log: log}, t: SSHAuthKeysTypename},
 		{c: &WwanConfigurator{Log: log, PubWwanConfig: pubWwanConfig}, t: WwanTypename},

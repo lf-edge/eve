@@ -882,7 +882,7 @@ github.com/lf-edge/eve-api/go/nestedappinstancemetrics
 github.com/lf-edge/eve-api/go/profile
 github.com/lf-edge/eve-api/go/proxy
 github.com/lf-edge/eve-api/go/register
-# github.com/lf-edge/eve-libs v0.0.0-20260605082929-e518b59e99d2
+# github.com/lf-edge/eve-libs v0.0.0-20260623133124-1c3a4208858c
 ## explicit; go 1.25.0
 github.com/lf-edge/eve-libs/depgraph
 github.com/lf-edge/eve-libs/nettrace
@@ -1305,10 +1305,6 @@ go.opentelemetry.io/otel/trace
 go.opentelemetry.io/otel/trace/embedded
 go.opentelemetry.io/otel/trace/internal/telemetry
 go.opentelemetry.io/otel/trace/noop
-# go.uber.org/goleak v1.3.0
-## explicit; go 1.20
-go.uber.org/goleak
-go.uber.org/goleak/internal/stack
 # go.uber.org/mock v0.5.1
 ## explicit; go 1.22
 go.uber.org/mock/gomock

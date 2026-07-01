@@ -75,25 +75,24 @@ const (
 //     config and starts posting NetworkInfo (HTTP 200 on
 //     /manage/v1/network).
 //  4. Submit a localNetworkConfig via the LPS management API that
-//     overrides DNS for eth0 (8.8.8.8, 1.1.1.1) and MTU for eth1 (9000).
-//     Assert via `Eventually` (configChangeTimeout):
+//     overrides DNS for eth0 (dns-server0-alt, 10.16.18.25) and MTU for
+//     eth1 (9000). Assert via `Eventually` (configChangeTimeout):
 //     - NetworkInfo.LocalConfig.Ports has entries for both adapters.
 //     - eth0 entry: ErrorMessage contains "not permitted",
 //     ConfigApplied=false.
 //     - eth1 entry: no "not permitted" error, ConfigApplied=true, Mtu
 //     in the LocalConfig reflects 9000.
 //     - Runtime PortStatus for eth0: LinkUp, IPs assigned, DNS does NOT
-//     include the rejected 8.8.8.8 / 1.1.1.1 entries.
+//     include the rejected 10.16.18.25.
 //     - Runtime PortStatus for eth1: Mtu=9000.
-//     - On EVE itself via SSH: /etc/resolv.conf does NOT contain
-//     8.8.8.8, /sys/class/net/eth1/mtu == "9000".
+//     - On EVE itself: /run/nim/dnsmasq.mgmt.servers does NOT contain
+//     10.16.18.25, /sys/class/net/eth1/mtu == "9000".
 //  5. Enable AllowLocalModifications=true on eth0 via UpdateNetworkAdapter
 //     and re-ApplyConfig. Assert:
 //     - LocalConfig.Ports[eth0]: no "not permitted" error,
 //     ConfigApplied=true.
-//     - PortStatus for eth0: DNS now includes 8.8.8.8 and 1.1.1.1.
-//     - On EVE via SSH: /etc/resolv.conf now contains 8.8.8.8 and
-//     1.1.1.1.
+//     - PortStatus for eth0: DNS now includes 10.16.18.25.
+//     - On EVE: /run/nim/dnsmasq.mgmt.servers now contains 10.16.18.25.
 //  6. Push an empty config via the LPS management API
 //     ({"serverToken":..., "ports":[]}). Assert that both ports revert
 //     to the controller-supplied config:
@@ -101,8 +100,8 @@ const (
 //     no longer 9000.
 //     - PortStatus for eth0: DNS no longer contains the LPS-supplied
 //     entries; PortStatus for eth1: Mtu back to 1500.
-//     - On EVE via SSH: resolv.conf no longer mentions 8.8.8.8 /
-//     1.1.1.1; /sys/class/net/eth1/mtu == "1500".
+//     - On EVE: dnsmasq.mgmt.servers no longer contains 10.16.18.25;
+//     /sys/class/net/eth1/mtu == "1500".
 //
 // Helpers used
 // ------------
@@ -280,7 +279,7 @@ func TestNetworkLocalChanges(test *testing.T) {
 			{
 				"logicalLabel": "ethernet0",
 				"useDhcp": true,
-				"dnsServers": ["8.8.8.8", "1.1.1.1"]
+				"dnsServers": ["10.16.18.25"]
 			},
 			{
 				"logicalLabel": "ethernet1",
@@ -333,17 +332,15 @@ func TestNetworkLocalChanges(test *testing.T) {
 		t.Expect(eth1Status.IpAddresses).ToNot(BeEmpty())
 		t.Expect(eth1Status.Mtu).To(Equal(uint32(9000)),
 			"eth1 MTU in PortStatus should be 9000")
-		t.Expect(eth0Status.DnsServers).ToNot(ContainElement("8.8.8.8"),
-			"eth0 DNS servers should not include the rejected override")
-		t.Expect(eth0Status.DnsServers).ToNot(ContainElement("1.1.1.1"),
+		t.Expect(eth0Status.DnsServers).ToNot(ContainElement("10.16.18.25"),
 			"eth0 DNS servers should not include the rejected override")
 
 		// Verify on the EVE device itself: eth0 should NOT have custom DNS,
 		// eth1 should have MTU 9000.
 		output, _, err = device.RunShellScript(
-			"cat /etc/resolv.conf", sshTimeout, 0)
+			"cat /run/nim/dnsmasq.mgmt.servers", sshTimeout, 0)
 		t.Expect(err).ToNot(HaveOccurred())
-		t.Expect(output).ToNot(ContainSubstring("8.8.8.8"),
+		t.Expect(output).ToNot(ContainSubstring("10.16.18.25"),
 			"eth0 DNS should not be applied")
 
 		output, _, err = device.RunShellScript(
@@ -385,18 +382,14 @@ func TestNetworkLocalChanges(test *testing.T) {
 		// Runtime port status must reflect the newly-accepted override:
 		// eth0's resolver now includes the DNS servers we submitted.
 		eth0Status := portStatusByLabel(t, netInfo, "ethernet0")
-		t.Expect(eth0Status.DnsServers).To(ContainElement("8.8.8.8"),
-			"eth0 PortStatus should include the applied DNS override")
-		t.Expect(eth0Status.DnsServers).To(ContainElement("1.1.1.1"),
+		t.Expect(eth0Status.DnsServers).To(ContainElement("10.16.18.25"),
 			"eth0 PortStatus should include the applied DNS override")
 
 		// Verify on the EVE device: eth0 should now have custom DNS.
 		output, _, err = device.RunShellScript(
-			"cat /etc/resolv.conf", sshTimeout, 0)
+			"cat /run/nim/dnsmasq.mgmt.servers", sshTimeout, 0)
 		t.Expect(err).ToNot(HaveOccurred())
-		t.Expect(output).To(ContainSubstring("8.8.8.8"),
-			"eth0 DNS should now be applied")
-		t.Expect(output).To(ContainSubstring("1.1.1.1"),
+		t.Expect(output).To(ContainSubstring("10.16.18.25"),
 			"eth0 DNS should now be applied")
 	}, configChangeTimeout, polling).Should(Succeed())
 
@@ -435,20 +428,16 @@ func TestNetworkLocalChanges(test *testing.T) {
 		// override on eth0, MTU back to the default on eth1.
 		eth0Status := portStatusByLabel(t, netInfo, "ethernet0")
 		eth1Status := portStatusByLabel(t, netInfo, "ethernet1")
-		t.Expect(eth0Status.DnsServers).ToNot(ContainElement("8.8.8.8"),
-			"eth0 PortStatus DNS should have reverted")
-		t.Expect(eth0Status.DnsServers).ToNot(ContainElement("1.1.1.1"),
+		t.Expect(eth0Status.DnsServers).ToNot(ContainElement("10.16.18.25"),
 			"eth0 PortStatus DNS should have reverted")
 		t.Expect(eth1Status.Mtu).To(Equal(uint32(1500)),
 			"eth1 PortStatus MTU should be back to 1500")
 
 		// Verify on the EVE device: DNS reverted, MTU back to 1500.
 		output, _, err = device.RunShellScript(
-			"cat /etc/resolv.conf", sshTimeout, 0)
+			"cat /run/nim/dnsmasq.mgmt.servers", sshTimeout, 0)
 		t.Expect(err).ToNot(HaveOccurred())
-		t.Expect(output).ToNot(ContainSubstring("8.8.8.8"),
-			"eth0 DNS should have reverted")
-		t.Expect(output).ToNot(ContainSubstring("1.1.1.1"),
+		t.Expect(output).ToNot(ContainSubstring("10.16.18.25"),
 			"eth0 DNS should have reverted")
 
 		output, _, err = device.RunShellScript(

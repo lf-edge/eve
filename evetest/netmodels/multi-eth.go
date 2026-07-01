@@ -99,6 +99,33 @@ var TwoMgmtPorts = &api.NetworkModel{
 				UpstreamServers: []string{"8.8.8.8", "1.1.1.1"},
 			},
 			{
+				// Alternative DNS server for eth0's network reachable from
+				// bridge0 but not advertised via DHCP. Used in tests that
+				// need to override eth0 DNS without breaking controller
+				// reachability (public servers like 8.8.8.8 return NXDOMAIN
+				// for SDN-internal names such as adam.evetest).
+				Endpoint: &api.Endpoint{
+					LogicalLabel: "dns-server0-alt",
+					Fqdn:         "dns-server0-alt.test",
+					Ipv4: &api.EndpointIPConfig{
+						Subnet: "10.16.18.0/24",
+						Ip:     "10.16.18.25",
+					},
+				},
+				StaticEntries: []*api.DNSEntry{
+					{
+						FqdnSource: &api.DNSEntry_FqdnLiteral{
+							FqdnLiteral: evetest.GetControllerHostname(),
+						},
+						IpSource: &api.DNSEntry_IpLiteral{
+							IpLiteral: evetest.GetControllerIPv4().String(),
+						},
+					},
+				},
+				UpstreamServers:  []string{"8.8.8.8", "1.1.1.1"},
+				StaticEntriesTtl: 60,
+			},
+			{
 				Endpoint: &api.Endpoint{
 					LogicalLabel: "dns-server1",
 					Fqdn:         "dns-server1.test",
@@ -672,7 +699,8 @@ var ManyDNSServers = &api.NetworkModel{
 						},
 					},
 				},
-				UpstreamServers: []string{"8.8.8.8", "1.1.1.1"},
+				UpstreamServers:  []string{"8.8.8.8", "1.1.1.1"},
+				StaticEntriesTtl: 60,
 			},
 			{
 				Endpoint: &api.Endpoint{
@@ -704,7 +732,8 @@ var ManyDNSServers = &api.NetworkModel{
 						},
 					},
 				},
-				UpstreamServers: []string{"8.8.8.8", "1.1.1.1"},
+				UpstreamServers:  []string{"8.8.8.8", "1.1.1.1"},
+				StaticEntriesTtl: 60,
 			},
 			{
 				Endpoint: &api.Endpoint{
@@ -736,7 +765,8 @@ var ManyDNSServers = &api.NetworkModel{
 						},
 					},
 				},
-				UpstreamServers: []string{"8.8.8.8", "1.1.1.1"},
+				UpstreamServers:  []string{"8.8.8.8", "1.1.1.1"},
+				StaticEntriesTtl: 60,
 			},
 			{
 				Endpoint: &api.Endpoint{
@@ -768,7 +798,8 @@ var ManyDNSServers = &api.NetworkModel{
 						},
 					},
 				},
-				UpstreamServers: []string{"8.8.8.8", "1.1.1.1"},
+				UpstreamServers:  []string{"8.8.8.8", "1.1.1.1"},
+				StaticEntriesTtl: 60,
 			},
 			{
 				// bad-dns3 has no static entries and no upstream servers — resolves nothing.
@@ -811,7 +842,8 @@ var ManyDNSServers = &api.NetworkModel{
 						},
 					},
 				},
-				UpstreamServers: []string{"8.8.8.8", "1.1.1.1"},
+				UpstreamServers:  []string{"8.8.8.8", "1.1.1.1"},
+				StaticEntriesTtl: 60,
 			},
 			{
 				Endpoint: &api.Endpoint{
@@ -843,7 +875,8 @@ var ManyDNSServers = &api.NetworkModel{
 						},
 					},
 				},
-				UpstreamServers: []string{"8.8.8.8", "1.1.1.1"},
+				UpstreamServers:  []string{"8.8.8.8", "1.1.1.1"},
+				StaticEntriesTtl: 60,
 			},
 			{
 				Endpoint: &api.Endpoint{
@@ -875,7 +908,8 @@ var ManyDNSServers = &api.NetworkModel{
 						},
 					},
 				},
-				UpstreamServers: []string{"8.8.8.8", "1.1.1.1"},
+				UpstreamServers:  []string{"8.8.8.8", "1.1.1.1"},
+				StaticEntriesTtl: 60,
 			},
 		},
 		HttpServers: []*api.HTTPServer{
