@@ -1,5 +1,8 @@
-ARG GOVER=1.20.1
-FROM golang:${GOVER}-alpine
+ARG GOVER=1.25.11
+# Pin the Alpine minor version to match eve-alpine (3.22) so this builder tracks
+# the same toolchain/libc as the real EVE build; the unpinned golang:*-alpine
+# tag floats to whatever Alpine is newest.
+FROM golang:${GOVER}-alpine3.22
 ARG USER
 ARG GROUP
 ARG UID
@@ -23,7 +26,7 @@ RUN echo "${USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${USER}
 # coreutils's uname -o breaks above url generation.
 # hadolint ignore=DL3018
 RUN apk add --no-cache coreutils
-ENV ZFS_VERSION=2.3.3
+ENV ZFS_VERSION=2.3.6
 ENV ZFS_COMMIT=zfs-${ZFS_VERSION}
 ENV ZFS_REPO=https://github.com/openzfs/zfs
 
@@ -64,3 +67,7 @@ RUN mv /go/bin/* /usr/bin
 ENV HOME /home/${USER}
 ENV GOFLAGS=-mod=vendor
 ENV GO111MODULE=on
+# go-libzfs pulls in the OpenZFS libspl headers, which still call the glibc
+# LFS64 symbols fstat64/stat64. musl (>=1.2.4) dropped those, so remap them to
+# the plain 64-bit fstat/stat -- same as pkg/pillar/Dockerfile.
+ENV CGO_CFLAGS="-Dfstat64=fstat -Dstat64=stat"
