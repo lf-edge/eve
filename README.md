@@ -290,6 +290,15 @@ Once your Raspberry Pi is happily running an EVE image you can start using EVE c
 Notice that the support for Raspberry Pi 5 on U-boot is still limited. USB is currently not available during the boot stage.
 This is due to the new RP1 south-bridge chip, which requires a proprietary firmware and driver not yet supported by U-Boot.
 
+#### How to install EVE to an NVMe on Raspberry Pi 5
+
+Since USB is not supported on u-boot for Raspberry Pi 5, the installation should be performed from an SD Card:
+
+1. Make sure to enable `dtparam=pciex1` in your config.txt
+2. Flash the EVE installer RAW image to an SD Card
+3. Boot from the SD Card and let the installation process finish
+4. Remove the SD Card
+
 ### How to use on an Onlogic FR201 ARM device
 
 Onlogic Factor 201 (FR201) is a device based on the Raspberry Pi Compute Module 4 (CM4). There are two methods to install EVE on the FR201: flashing a live image directly using rpiboot, or using the USB installer.
