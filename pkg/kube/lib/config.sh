@@ -23,6 +23,9 @@ K3S_CLUSTER_CONFIG_FILE="${K3S_CONFIG_DIR}/01-clusterconfig.yaml"
 # 02-nodename skipped, defined in cluster-utils.sh
 # shellcheck disable=SC2034
 K3S_CONFIG_FILE_DISABLE_LOCAL_PATH="03-enc-disable-local-path.yaml"
+# Disables the apiserver watch cache; installed on multi-node clusters only.
+# shellcheck disable=SC2034
+K3S_CONFIG_FILE_WATCH_CACHE="04-multinode-watch-cache.yaml"
 # shellcheck disable=SC2034
 K3S_USER_OVERRIDE_CONFIG_SRC="/persist/vault/k3s-user-override.yaml"
 # shellcheck disable=SC2034
