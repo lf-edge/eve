@@ -5,7 +5,7 @@
 
 FROM lfedge/eve-alpine:39f46094f640424c345164420ed789afd8a4088b AS build
 ENV BUILD_PKGS meson ninja git libc-dev glib-dev make gcc udev dbus-dev libgudev-dev
-ENV PKGS alpine-baselayout dbus glib kmod-dev libgudev
+ENV PKGS alpine-baselayout dbus glib kmod kmod-dev libgudev
 RUN eve-alpine-deploy.sh
 
 ENV MM_VERSION=1.22.0
