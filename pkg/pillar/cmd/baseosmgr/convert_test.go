@@ -117,8 +117,8 @@ func TestRunningEveRelease(t *testing.T) {
 func TestAdvanceSubState(t *testing.T) {
 	var st types.BaseOsStatus // ConvertSubState defaults to UNSPECIFIED
 
-	advanceSubState(&st, types.DEVICE_SUBSTATE_CONVERT_CREATING_PARTITIONS)
-	if st.ConvertSubState != types.DEVICE_SUBSTATE_CONVERT_CREATING_PARTITIONS {
+	advanceSubState(&st, types.DEVICE_SUBSTATE_CONVERT_REBOOTING_TO_RESIZE)
+	if st.ConvertSubState != types.DEVICE_SUBSTATE_CONVERT_REBOOTING_TO_RESIZE {
 		t.Fatalf("advance from UNSPECIFIED: got %v", st.ConvertSubState)
 	}
 
@@ -129,7 +129,7 @@ func TestAdvanceSubState(t *testing.T) {
 
 	// An earlier phase must not roll the sub-state back: the no-shrink grow
 	// path re-checks as proceed on the next update and must not regress.
-	advanceSubState(&st, types.DEVICE_SUBSTATE_CONVERT_CREATING_PARTITIONS)
+	advanceSubState(&st, types.DEVICE_SUBSTATE_CONVERT_REBOOTING_TO_RESIZE)
 	if st.ConvertSubState != types.DEVICE_SUBSTATE_CONVERT_INSTALLING {
 		t.Errorf("sub-state rolled back to %v; advance must be monotonic", st.ConvertSubState)
 	}
