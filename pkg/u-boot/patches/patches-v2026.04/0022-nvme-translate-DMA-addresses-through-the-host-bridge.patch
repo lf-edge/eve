@@ -1,0 +1,197 @@
+From 5454954298640f70d956a286b81d9d22350876ad Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Thu, 2 Jul 2026 15:58:21 +0200
+Subject: [PATCH 22/23] nvme: translate DMA addresses through the host bridge
+ dma-ranges
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The NVMe driver programmed the controller with raw CPU physical
+addresses for the admin/IO queues, PRP lists and data buffers. That
+only works when the PCIe host bridge maps system memory into PCI space
+as an identity map.
+
+On BCM2712 (Raspberry Pi 5) the external PCIe controller's inbound
+window maps system memory at PCI bus offset 0x10_0000_0000 (see the
+controller's dma-ranges). Handing the device a raw CPU address made
+every submission-queue fetch target an unclaimed low PCI address, which
+the root complex answers with an Unsupported Request; the controller
+then sets CSTS.CFS and the admin command times out (-ETIMEDOUT).
+
+Derive the phys->bus offset from the host bridge's first dma-range and
+add it (dma_shift) to every address the controller consumes. The offset
+is zero on identity-mapped platforms, so behaviour there is unchanged.
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+---
+ drivers/nvme/nvme.c     | 37 +++++++++++++++++++++++--------------
+ drivers/nvme/nvme.h     |  1 +
+ drivers/nvme/nvme_pci.c | 15 +++++++++++++++
+ 3 files changed, 39 insertions(+), 14 deletions(-)
+
+diff --git a/drivers/nvme/nvme.c b/drivers/nvme/nvme.c
+index 2b14437f69c..efa83ef077c 100644
+--- a/drivers/nvme/nvme.c
++++ b/drivers/nvme/nvme.c
+@@ -44,6 +44,15 @@ static int nvme_wait_csts(struct nvme_dev *dev, u32 mask, u32 val)
+ 	return -ETIME;
+ }
+ 
++/*
++ * Translate a CPU physical address to the PCI bus address the controller must
++ * use for DMA. dev->dma_shift is 0 on identity-mapped platforms.
++ */
++static inline u64 nvme_dma(struct nvme_dev *dev, u64 phys)
++{
++	return phys + dev->dma_shift;
++}
++
+ static int nvme_setup_prps(struct nvme_dev *dev, u64 *prp2,
+ 			   int total_len, u64 dma_addr)
+ {
+@@ -66,7 +75,7 @@ static int nvme_setup_prps(struct nvme_dev *dev, u64 *prp2,
+ 		dma_addr += (page_size - offset);
+ 
+ 	if (length <= page_size) {
+-		*prp2 = dma_addr;
++		*prp2 = nvme_dma(dev, dma_addr);
+ 		return 0;
+ 	}
+ 
+@@ -91,16 +100,16 @@ static int nvme_setup_prps(struct nvme_dev *dev, u64 *prp2,
+ 	i = 0;
+ 	while (nprps) {
+ 		if ((i == (prps_per_page - 1)) && nprps > 1) {
+-			*(prp_pool + i) = cpu_to_le64((ulong)prp_pool +
+-					page_size);
++			*(prp_pool + i) = cpu_to_le64(nvme_dma(dev,
++					(ulong)prp_pool + page_size));
+ 			i = 0;
+ 			prp_pool += page_size;
+ 		}
+-		*(prp_pool + i++) = cpu_to_le64(dma_addr);
++		*(prp_pool + i++) = cpu_to_le64(nvme_dma(dev, dma_addr));
+ 		dma_addr += page_size;
+ 		nprps--;
+ 	}
+-	*prp2 = (ulong)dev->prp_pool;
++	*prp2 = nvme_dma(dev, (ulong)dev->prp_pool);
+ 
+ 	flush_dcache_range((ulong)dev->prp_pool, (ulong)dev->prp_pool +
+ 			   num_pages * page_size);
+@@ -393,8 +402,8 @@ static int nvme_configure_admin_queue(struct nvme_dev *dev)
+ 	dev->ctrl_config |= NVME_CC_IOSQES | NVME_CC_IOCQES;
+ 
+ 	writel(aqa, &dev->bar->aqa);
+-	nvme_writeq((ulong)nvmeq->sq_cmds, &dev->bar->asq);
+-	nvme_writeq((ulong)nvmeq->cqes, &dev->bar->acq);
++	nvme_writeq(nvme_dma(dev, (ulong)nvmeq->sq_cmds), &dev->bar->asq);
++	nvme_writeq(nvme_dma(dev, (ulong)nvmeq->cqes), &dev->bar->acq);
+ 
+ 	result = nvme_enable_ctrl(dev);
+ 	if (result)
+@@ -420,7 +429,7 @@ static int nvme_alloc_cq(struct nvme_dev *dev, u16 qid,
+ 
+ 	memset(&c, 0, sizeof(c));
+ 	c.create_cq.opcode = nvme_admin_create_cq;
+-	c.create_cq.prp1 = cpu_to_le64((ulong)nvmeq->cqes);
++	c.create_cq.prp1 = cpu_to_le64(nvme_dma(dev, (ulong)nvmeq->cqes));
+ 	c.create_cq.cqid = cpu_to_le16(qid);
+ 	c.create_cq.qsize = cpu_to_le16(nvmeq->q_depth - 1);
+ 	c.create_cq.cq_flags = cpu_to_le16(flags);
+@@ -437,7 +446,7 @@ static int nvme_alloc_sq(struct nvme_dev *dev, u16 qid,
+ 
+ 	memset(&c, 0, sizeof(c));
+ 	c.create_sq.opcode = nvme_admin_create_sq;
+-	c.create_sq.prp1 = cpu_to_le64((ulong)nvmeq->sq_cmds);
++	c.create_sq.prp1 = cpu_to_le64(nvme_dma(dev, (ulong)nvmeq->sq_cmds));
+ 	c.create_sq.sqid = cpu_to_le16(qid);
+ 	c.create_sq.qsize = cpu_to_le16(nvmeq->q_depth - 1);
+ 	c.create_sq.sq_flags = cpu_to_le16(flags);
+@@ -458,14 +467,14 @@ int nvme_identify(struct nvme_dev *dev, unsigned nsid,
+ 	memset(&c, 0, sizeof(c));
+ 	c.identify.opcode = nvme_admin_identify;
+ 	c.identify.nsid = cpu_to_le32(nsid);
+-	c.identify.prp1 = cpu_to_le64(dma_addr);
++	c.identify.prp1 = cpu_to_le64(nvme_dma(dev, dma_addr));
+ 
+ 	length -= (page_size - offset);
+ 	if (length <= 0) {
+ 		c.identify.prp2 = 0;
+ 	} else {
+ 		dma_addr += (page_size - offset);
+-		c.identify.prp2 = cpu_to_le64(dma_addr);
++		c.identify.prp2 = cpu_to_le64(nvme_dma(dev, dma_addr));
+ 	}
+ 
+ 	c.identify.cns = cpu_to_le32(cns);
+@@ -490,7 +499,7 @@ int nvme_get_features(struct nvme_dev *dev, unsigned fid, unsigned nsid,
+ 	memset(&c, 0, sizeof(c));
+ 	c.features.opcode = nvme_admin_get_features;
+ 	c.features.nsid = cpu_to_le32(nsid);
+-	c.features.prp1 = cpu_to_le64(dma_addr);
++	c.features.prp1 = cpu_to_le64(nvme_dma(dev, dma_addr));
+ 	c.features.fid = cpu_to_le32(fid);
+ 
+ 	ret = nvme_submit_admin_cmd(dev, &c, result);
+@@ -516,7 +525,7 @@ int nvme_set_features(struct nvme_dev *dev, unsigned fid, unsigned dword11,
+ 
+ 	memset(&c, 0, sizeof(c));
+ 	c.features.opcode = nvme_admin_set_features;
+-	c.features.prp1 = cpu_to_le64(dma_addr);
++	c.features.prp1 = cpu_to_le64(nvme_dma(dev, dma_addr));
+ 	c.features.fid = cpu_to_le32(fid);
+ 	c.features.dword11 = cpu_to_le32(dword11);
+ 
+@@ -785,7 +794,7 @@ static ulong nvme_blk_rw(struct udevice *udev, lbaint_t blknr,
+ 		c.rw.slba = cpu_to_le64(slba);
+ 		slba += lbas;
+ 		c.rw.length = cpu_to_le16(lbas - 1);
+-		c.rw.prp1 = cpu_to_le64(temp_buffer);
++		c.rw.prp1 = cpu_to_le64(nvme_dma(dev, temp_buffer));
+ 		c.rw.prp2 = cpu_to_le64(prp2);
+ 		status = nvme_submit_sync_cmd(dev->queues[NVME_IO_Q],
+ 				&c, NULL, IO_TIMEOUT);
+diff --git a/drivers/nvme/nvme.h b/drivers/nvme/nvme.h
+index bc1d612dde4..5c2b34b71cc 100644
+--- a/drivers/nvme/nvme.h
++++ b/drivers/nvme/nvme.h
+@@ -621,6 +621,7 @@ struct nvme_dev {
+ 	u64 *prp_pool;
+ 	u32 prp_entry_num;
+ 	u32 nn;
++	u64 dma_shift;
+ };
+ 
+ /* Admin queue and a single I/O queue. */
+diff --git a/drivers/nvme/nvme_pci.c b/drivers/nvme/nvme_pci.c
+index c24f8cf1eb1..eb29bd266b6 100644
+--- a/drivers/nvme/nvme_pci.c
++++ b/drivers/nvme/nvme_pci.c
+@@ -34,6 +34,21 @@ static int nvme_probe(struct udevice *udev)
+ 	/* Turn on bus-mastering */
+ 	dm_pci_clrset_config16(udev, PCI_COMMAND, 0, PCI_COMMAND_MASTER);
+ 
++	/*
++	 * The controller's DMA sees host memory through the host bridge's
++	 * inbound window (dma-ranges), which on some SoCs (e.g. BCM2712 /
++	 * Raspberry Pi 5) is not an identity map. Derive the phys->bus offset
++	 * from the controller's first dma-range so queue/PRP/data addresses
++	 * handed to the device are translated. Identity maps give 0.
++	 */
++	{
++		struct udevice *ctlr = pci_get_controller(udev);
++		struct pci_region region;
++
++		if (ctlr && !pci_get_dma_regions(ctlr, &region, 0))
++			ndev->dma_shift = region.bus_start - region.phys_start;
++	}
++
+ 	return nvme_init(udev);
+ }
+ 
+-- 
+2.53.0
+
