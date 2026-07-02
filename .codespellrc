@@ -4,4 +4,4 @@
 
 [codespell]
 skip = ./.git/*,*/vendor/*,./conf/v2tlsbaseroot-certificates.pem,./pkg/gpt-tools/patches/*,./pkg/new-kernel/*,./pkg/kernel/*,./pkg/fw/*,./evetest/cert/eve_rsa*,./evetest/constants/eve.go
-ignore-words-list = uptodate,synopsys,crate,UE,ratatui,archtype
+ignore-words-list = uptodate,synopsys,crate,UE,ratatui,archtype,nd
