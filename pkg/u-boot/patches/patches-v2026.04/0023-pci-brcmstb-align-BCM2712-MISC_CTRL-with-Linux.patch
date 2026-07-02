@@ -1,0 +1,69 @@
+From 98eba5a86a4fbcc743cd0e20e22beeea0ccbdcb1 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Thu, 2 Jul 2026 15:58:21 +0200
+Subject: [PATCH 23/23] pci: brcmstb: align BCM2712 MISC_CTRL with Linux
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Match the mainline Linux pcie-brcmstb driver for the 7712/2712 variant:
+enable PCIE_RCB_64B mode, use max-burst 0x2, and stop programming the
+SCB0 memory-controller window size. 7712/2712 route inbound DMA through
+the per-BAR UBUS remap registers rather than the SCB memory-controller
+windows, so leaving an SCB size enabled sets up a conflicting inbound
+window.
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+---
+ drivers/pci/pcie_brcmstb.c | 19 ++++++++++++++-----
+ 1 file changed, 14 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/pci/pcie_brcmstb.c b/drivers/pci/pcie_brcmstb.c
+index 1b03b0a7b05..ac774a11dd1 100644
+--- a/drivers/pci/pcie_brcmstb.c
++++ b/drivers/pci/pcie_brcmstb.c
+@@ -72,6 +72,7 @@
+ #define PCIE_MISC_UBUS_BAR2_CONFIG_REMAP		0x40b4
+ #define  PCIE_MISC_UBUS_BAR2_CONFIG_REMAP_ACCESS_ENABLE_MASK	BIT(0)
+ #define  MISC_CTRL_PCIE_RCB_MPS_MODE_MASK		0x400
++#define  MISC_CTRL_PCIE_RCB_64B_MODE_MASK		0x80
+ 
+ enum {
+ 	RGR1_SW_INIT_1,
+@@ -635,10 +636,12 @@ static int brcm_pcie_probe(struct udevice *dev)
+ 		writel(tmp, base + PCIE_RC_PL_PHY_CTL_15);
+ 	}
+ 
+-	tmp = (pcie->pcie_cfg->type == BCM2712) ?
+-			MISC_CTRL_MAX_BURST_SIZE_128_2712 :
+-			MISC_CTRL_MAX_BURST_SIZE_128;
+ 	/* Set SCB_MAX_BURST_SIZE, CFG_READ_UR_MODE, SCB_ACCESS_EN */
++	if (pcie->pcie_cfg->type == BCM2712)
++		/* Match Linux 7712: burst 0x2 and RCB 64-byte mode */
++		tmp = (0x2 << 20) | MISC_CTRL_PCIE_RCB_64B_MODE_MASK;
++	else
++		tmp = MISC_CTRL_MAX_BURST_SIZE_128;
+ 	clrsetbits_le32(base + PCIE_MISC_MISC_CTRL,
+ 			MISC_CTRL_MAX_BURST_SIZE_MASK,
+ 			MISC_CTRL_SCB_ACCESS_EN_MASK |
+@@ -648,8 +651,14 @@ static int brcm_pcie_probe(struct udevice *dev)
+ 
+ 	tmp = readl(base + PCIE_MISC_MISC_CTRL);
+ 	if (pcie->pcie_cfg->type == BCM2712) {
+-		/* BCM2712: fixed 32GB SCB0 window */
+-		u32p_replace_bits(&tmp, 20, MISC_CTRL_SCB0_SIZE_MASK);
++		/*
++		 * 7712/2712 route inbound DMA through the per-BAR UBUS remap
++		 * registers, not the SCB memory-controller windows. An enabled
++		 * SCB size creates a conflicting inbound window that makes the
++		 * device's upstream reads fail, so disable it. Linux never
++		 * programs SCBx_SIZE on 7712.
++		 */
++		tmp &= ~MISC_CTRL_SCB0_SIZE_MASK;
+ 	} else {
+ 		/* Pre-BCM2712: size SCB0 to match the actual DMA region.
+ 		 * rc_bar2_size must be a power of two; ilog2(size) - 15
+-- 
+2.53.0
+
