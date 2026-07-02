@@ -37,6 +37,9 @@ dtoverlay=bcm2711-spi-tpm-slb9670,ce=0x01
 [pi5]
 dtoverlay=tpm-slb9670
 
+# Uncomment to enable the PCIe x1 port (used by NVMe HATs)
+#dtparam=pciex1
+
 [all]
 
 # KMS DRM driver
