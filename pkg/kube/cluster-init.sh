@@ -251,7 +251,10 @@ config_cluster_roles() {
         cp "$user_yaml_path" /run/.kube/k3s/user.yaml
 
         # apply kubernetes and kubevirt roles and binding to debugging-user
-        kubectl apply -f /etc/debuguser-role-binding.yaml
+        if ! kubectl apply -f /etc/debuguser-role-binding.yaml; then
+                logmsg "Failed to apply debuguser-role-binding.yaml"
+                return 1
+        fi
         touch /var/lib/debuguser-initialized
 }
 

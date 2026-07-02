@@ -157,7 +157,8 @@ spec:
   validations:
     - expression: >-
         !(request.namespace in ['kube-system','kube-public','kube-node-lease',
-        'kubevirt','cdi','longhorn-system','zks-fleet-system','cattle-system'])
+        'kubevirt','cdi','longhorn-system','zks-fleet-system',
+        'zks-system','zks-impersonation-system'])
       message: "exec/attach/port-forward by debugging-user is not permitted in system namespaces"
 ---
 apiVersion: admissionregistration.k8s.io/v1
