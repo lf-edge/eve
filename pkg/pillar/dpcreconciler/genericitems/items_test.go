@@ -92,11 +92,9 @@ func TestResolvConfDependencies(t *testing.T) {
 }
 
 func TestResolvConfEqual(t *testing.T) {
-	dns1 := net.ParseIP("8.8.8.8")
-	dns2 := net.ParseIP("1.1.1.1")
-	r1 := ResolvConf{DNSServers: map[string][]net.IP{"eth0": {dns1}}}
-	r2Same := ResolvConf{DNSServers: map[string][]net.IP{"eth0": {dns1}}}
-	r3Diff := ResolvConf{DNSServers: map[string][]net.IP{"eth0": {dns2}}}
+	r1 := ResolvConf{SearchDomains: []string{"local", "test"}}
+	r2Same := ResolvConf{SearchDomains: []string{"test", "local"}}
+	r3Diff := ResolvConf{SearchDomains: []string{"local"}}
 	r4Empty := ResolvConf{}
 	tests := []struct {
 		name  string
@@ -105,7 +103,7 @@ func TestResolvConfEqual(t *testing.T) {
 		want  bool
 	}{
 		{"identical", r1, r2Same, true},
-		{"different IP", r1, r3Diff, false},
+		{"different search domains", r1, r3Diff, false},
 		{"both empty", r4Empty, r4Empty, true},
 		{"one empty", r1, r4Empty, false},
 		{"wrong type", r1, NetIO{}, false},
