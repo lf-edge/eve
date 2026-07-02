@@ -608,6 +608,11 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 	if rebootReason == "" {
 		rebootTime = time.Now()
 		dateStr := rebootTime.Format(time.RFC3339Nano)
+		// The hardware watchdog latches WDIOF_CARDRESET when it reset the
+		// device. Recorded at boot by pkg/watchdog; used to disambiguate the
+		// reboots that SMART power-cycle counters and EVE's own bookkeeping
+		// cannot otherwise explain.
+		hwWatchdogReset := hwWatchdogCardReset()
 		var reason string
 		if fileutils.FileExists(log, firstbootFile) {
 			reason = fmt.Sprintf("NORMAL: First boot of device - at %s",
@@ -624,11 +629,19 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 				reason = fmt.Sprintf("Reboot reason - device powered off. Restarted at %s",
 					dateStr)
 				bootReason = types.BootReasonPowerFail
+			} else if hwWatchdogReset {
+				reason = fmt.Sprintf("Reboot reason - hardware watchdog reset the device - at %s",
+					dateStr)
+				bootReason = types.BootReasonHWWatchdog
 			} else {
 				reason = fmt.Sprintf("Reboot reason - system reset, reboot or kernel panic due to watchdog or kernel bug (no kdump) - at %s",
 					dateStr)
 				bootReason = types.BootReasonKernel
 			}
+		} else if hwWatchdogReset && bootReason == types.BootReasonNone {
+			reason = fmt.Sprintf("Reboot reason - hardware watchdog reset the device - at %s",
+				dateStr)
+			bootReason = types.BootReasonHWWatchdog
 		} else {
 			reason = fmt.Sprintf("Unknown reboot reason - power failure or crash - at %s",
 				dateStr)
@@ -864,6 +877,30 @@ func parseSMARTData() {
 
 	parseData(currentSMARTfilename, smartData)
 	parseData(previousSMARTfilename, previousSmartData)
+}
+
+// hwWatchdogCardReset reports whether the hardware watchdog reset the device
+// on the previous boot. It reads the boot status recorded by pkg/watchdog,
+// which lists the WDIOF_* flag names that were set; CARDRESET is the flag the
+// kernel sets when the watchdog timer expired and reset the board. Platforms
+// whose watchdog driver does not report this flag never produce the entry, so
+// a missing or absent file simply yields false.
+func hwWatchdogCardReset() bool {
+	data, err := fileutils.ReadWithMaxSize(log, types.HWWatchdogBootStatusFile,
+		maxReadSize)
+	if err != nil {
+		// Expected on platforms with no hardware watchdog or none that
+		// reports a boot status; not an error worth flagging.
+		log.Functionf("hwWatchdogCardReset: %s not readable: %v",
+			types.HWWatchdogBootStatusFile, err)
+		return false
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.TrimSpace(line) == "CARDRESET" {
+			return true
+		}
+	}
+	return false
 }
 
 func handleTpmStatusCreate(ctxArg interface{}, key string,

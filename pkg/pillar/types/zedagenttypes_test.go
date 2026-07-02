@@ -39,6 +39,7 @@ func TestBootReasonFromString(t *testing.T) {
 		{"BootReasonVaultFailure", BootReasonVaultFailure},
 		{"BootReasonPoweroffCmd", BootReasonPoweroffCmd},
 		{"BootReasonKubeTransition", BootReasonKubeTransition},
+		{"BootReasonHWWatchdog", BootReasonHWWatchdog},
 		{"BadValue", BootReasonParseFail},
 		// Whitespace trimming
 		{"  BootReasonFirst\n", BootReasonFirst},
@@ -127,6 +128,7 @@ func TestBootReasonString(t *testing.T) {
 		{BootReasonVaultFailure, "BootReasonVaultFailure"},
 		{BootReasonPoweroffCmd, "BootReasonPoweroffCmd"},
 		{BootReasonKubeTransition, "BootReasonKubeTransition"},
+		{BootReasonHWWatchdog, "BootReasonHWWatchdog"},
 		{BootReason(99), fmt.Sprintf("Unknown BootReason %d", 99)},
 	}
 	for _, tc := range cases {
@@ -149,7 +151,8 @@ func TestBootReasonStartWithSavedConfig(t *testing.T) {
 	for _, br := range []BootReason{
 		BootReasonNone, BootReasonFirst, BootReasonFallback,
 		BootReasonFatal, BootReasonOOM, BootReasonWatchdogHung,
-		BootReasonWatchdogPid, BootReasonVaultFailure, BootReason(99),
+		BootReasonWatchdogPid, BootReasonVaultFailure, BootReasonHWWatchdog,
+		BootReason(99),
 	} {
 		assert.False(t, br.StartWithSavedConfig(), "br=%s", br)
 	}

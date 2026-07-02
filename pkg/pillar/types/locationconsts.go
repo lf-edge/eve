@@ -45,6 +45,10 @@ const (
 	PersistCachePatchEnvelopes = PersistDir + "/patchEnvelopesCache"
 	// PersistCachePatchEnvelopesUsage - folder to store patch envelopes usage stat per app
 	PersistCachePatchEnvelopesUsage = PersistDir + "/patchEnvelopesUsageCache"
+	// HWWatchdogBootStatusFile holds the hardware watchdog boot status flag
+	// names (one per line) recorded by pkg/watchdog at boot. A "CARDRESET"
+	// entry means the watchdog reset the device on the previous boot.
+	HWWatchdogBootStatusFile = PersistDir + "/hw_watchdog_bootstatus"
 
 	// IdentityDirname - Config dir
 	IdentityDirname = "/config"
