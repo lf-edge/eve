@@ -131,9 +131,13 @@ func (s *eveSSHClient) startSSHClient(sshHost string, privKey string) {
 		HostKeyCallback: func(hostname string, remote net.Addr, key ssh.PublicKey) error {
 			err := hostKeyCallback(hostname, remote, key)
 			if err != nil {
-				log.Warnf("!! could not verify host key: %v, press [RETURN] to cancel or wait 3 seconds to continue", err)
-				if waitForKeyFromStdin(3 * time.Second) {
-					return fmt.Errorf("user cancelled verifying host")
+				var keyErr *knownhosts.KeyError
+				if errors.As(err, &keyErr) && len(keyErr.Want) > 0 {
+					log.Warnf("!! actual key expected is: %+v", keyErr.Want)
+				}
+				log.Warnf("!! could not verify host key: %v, press [RETURN] to continue anyway, otherwise the connection will be cancelled in 10 seconds", err)
+				if !waitForKeyFromStdin(10 * time.Second) {
+					return err
 				}
 			}
 			return nil
