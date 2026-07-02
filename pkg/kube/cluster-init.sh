@@ -1169,6 +1169,9 @@ EOF
             logmsg "possible unhandled cluster type $cluster_type in (provision_cluster_config_file)"
     fi
 
+    # Multi-node only; rationale is in 04-multinode-watch-cache.yaml.
+    cp "${KUBE_MANIFESTS_SRC_DIR}/${K3S_CONFIG_FILE_WATCH_CACHE}" "${K3S_CONFIG_DIR}/${K3S_CONFIG_FILE_WATCH_CACHE}"
+
     # we have 2 conditions, one is we are the bootstrap node or not, the other is we are
     # the first time configure k3s cluster or not. If both are true, then we need bootstrap config
     # otherwise, we just need normal server config to join the existing cluster

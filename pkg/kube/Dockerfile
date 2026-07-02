@@ -93,6 +93,7 @@ COPY registration-utils.sh /usr/bin/
 COPY all-kube-events.sh /usr/bin/
 COPY lib/* /usr/bin/kube/
 COPY cfg-manifests/03-enc-disable-local-path.yaml /etc/kube/
+COPY cfg-manifests/04-multinode-watch-cache.yaml /etc/kube/
 
 # kubevirt yaml files are patched files and will be removed later, look at cluster-init.sh
 COPY multus-daemonset.yaml /etc
