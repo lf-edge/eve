@@ -13,6 +13,9 @@ on:  # yamllint disable-line rule:truthy
     paths-ignore:
       - '**/*.md'
 
+permissions:
+  contents: read
+
 jobs:
   spdx-check:
     runs-on: ubuntu-latest
@@ -22,11 +25,15 @@ jobs:
         with:
           ref: ${{ github.base_ref }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Fetch the PR's head ref
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
-          git fetch origin ${{ github.event.pull_request.head.sha }}:${{ github.event.pull_request.head.ref }}
-          git checkout ${{ github.event.pull_request.head.ref }}
+          git fetch origin "$HEAD_SHA:$HEAD_REF"
+          git checkout "$HEAD_REF"
 
       - name: Run SPDX check
         run: |

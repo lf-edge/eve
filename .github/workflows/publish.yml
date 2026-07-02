@@ -16,6 +16,9 @@ on:  # yamllint disable-line rule:truthy
       - "[0-9]+.[0-9]+.[0-9]+-lts"
       - "[0-9]+.[0-9]+.[0-9]+-rc[0-9]+"
 
+permissions:
+  contents: read
+
 jobs:
   # ════════════════════════════════════════════════════════════════════════
   # Stage 1: Build and push base generic packages for each architecture.
@@ -38,6 +41,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Force fetch annotated tags (workaround)
         run: |
           git fetch --force --tags
@@ -90,6 +94,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Force fetch annotated tags (workaround)
         run: |
           git fetch --force --tags
@@ -204,6 +209,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Install qemu for cross-arch build
         if: matrix.arch == 'riscv64'
         run: |
@@ -251,6 +257,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: ./.github/actions/run-make
         with:
           command: "V=1 LINUXKIT_PKG_TARGET=manifest pkgs"
@@ -269,6 +276,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Login to Docker Hub
         run: |
           docker login
