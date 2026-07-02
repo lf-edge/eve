@@ -14,8 +14,16 @@ COPY etc/udev/rules.d/* /out/etc/udev/rules.d/
 RUN rm /out/usr/lib/udev/rules.d/*
 
 FROM scratch
+
 COPY --from=build /out/bin/udevadm /bin/
 COPY --from=build /out/sbin/udevd /sbin/
+COPY --from=build /out/bin/kmod /bin/
+COPY --from=build /out/sbin/depmod /sbin/
+COPY --from=build /out/sbin/insmod /sbin/
+COPY --from=build /out/sbin/lsmod /sbin/
+COPY --from=build /out/sbin/modinfo /sbin/
+COPY --from=build /out/sbin/modprobe /sbin/
+COPY --from=build /out/sbin/rmmod /sbin/
 COPY --from=build /out/usr/lib/udev /usr/lib/udev
 COPY --from=build /out/etc/udev /etc/udev
 COPY --from=build /out/etc/init.d/*  /etc/init.d/
@@ -23,6 +31,7 @@ COPY --from=build /out/usr/lib/libblkid.so.1 /lib/
 COPY --from=build /out/usr/lib/libkmod.so.2 /lib/
 COPY --from=build /out/usr/lib/libzstd.so.1 /usr/lib/
 COPY --from=build /out/usr/lib/liblzma.so.5 /usr/lib/
+COPY --from=build /out/usr/lib/libcrypto.so.3 /usr/lib/
 COPY --from=build /out/usr/lib/libz.so.1 /lib/
 COPY --from=build /out/usr/lib/libcrypto.so.3 /usr/lib
 
