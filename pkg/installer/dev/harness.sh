@@ -20,9 +20,9 @@ die() { printf '[harness] ERROR: %s\n' "$*" >&2; exit 1; }
 # Echo "CODE_PATH VARS_TEMPLATE_PATH" for the first OVMF pair found.
 _find_ovmf() {
   local codes=(/usr/share/OVMF/OVMF_CODE_4M.fd /usr/share/OVMF/OVMF_CODE.fd \
-               /usr/share/edk2/x64/OVMF_CODE.4m.fd /usr/share/ovmf/OVMF.fd)
+               /usr/share/edk2/x64/OVMF_CODE.4m.fd)
   local vars=(/usr/share/OVMF/OVMF_VARS_4M.fd /usr/share/OVMF/OVMF_VARS.fd \
-              /usr/share/edk2/x64/OVMF_VARS.4m.fd /usr/share/OVMF/OVMF_VARS.fd)
+              /usr/share/edk2/x64/OVMF_VARS.4m.fd)
   local i
   for i in "${!codes[@]}"; do
     if [ -f "${codes[$i]}" ] && [ -f "${vars[$i]}" ]; then
@@ -51,7 +51,7 @@ cmd_build() {
   sed "s#__SSH_PUBKEY__#$(cat "$WORK_DIR/id_ed25519.pub")#" \
     "$CI_DIR/user-data.tmpl" > "$WORK_DIR/user-data"
   genisoimage -output "$WORK_DIR/seed.iso" -volid cidata -joliet -rock \
-    "$WORK_DIR/user-data" "$CI_DIR/meta-data" >/dev/null 2>&1
+    "$WORK_DIR/user-data" "$CI_DIR/meta-data" >/dev/null
   log "build complete (base image, ssh key, seed ready)"
 }
 
@@ -73,8 +73,18 @@ cmd_up() {
   [ -f "$WORK_DIR/base.img" ] || die "run 'harness.sh build' first"
   [ -f "$WORK_DIR/qemu.pid" ] && kill -0 "$(cat "$WORK_DIR/qemu.pid")" 2>/dev/null \
     && die "already up (run: harness.sh down)"
+  [ "$disks" -le 24 ] || die "up: --disks $disks exceeds max of 24 (device letters vdb..vdz)"
 
-  read -r OVMF_CODE OVMF_VARS_TMPL < <(_find_ovmf)
+  # clean up a stale swtpm left behind by a prior crashed session (e.g. qemu
+  # died but swtpm kept running)
+  if [ -f "$WORK_DIR/swtpm/pid" ]; then
+    kill "$(cat "$WORK_DIR/swtpm/pid")" 2>/dev/null || true
+    rm -f "$WORK_DIR/swtpm/pid"
+  fi
+  rm -f "$WORK_DIR/swtpm/sock"
+
+  read -r OVMF_CODE OVMF_VARS_TMPL < <(_find_ovmf) || die "OVMF firmware not found (run: harness.sh build)"
+  [ -n "$OVMF_CODE" ] || die "OVMF firmware not found (run: harness.sh build)"
   cp -f "$OVMF_VARS_TMPL" "$WORK_DIR/OVMF_VARS.fd"
 
   # OS overlay: provisioned once, reused for fast subsequent boots
@@ -144,10 +154,10 @@ cmd_down() {
   if [ -f "$WORK_DIR/qemu.pid" ]; then
     hssh sudo poweroff 2>/dev/null || true
     sleep 3
-    kill "$(cat "$WORK_DIR/qemu.pid")" 2>/dev/null || true
+    kill "$(cat "$WORK_DIR/qemu.pid" 2>/dev/null)" 2>/dev/null || true
     rm -f "$WORK_DIR/qemu.pid"
   fi
-  [ -f "$WORK_DIR/swtpm/pid" ] && { kill "$(cat "$WORK_DIR/swtpm/pid")" 2>/dev/null || true; }
+  [ -f "$WORK_DIR/swtpm/pid" ] && { kill "$(cat "$WORK_DIR/swtpm/pid" 2>/dev/null)" 2>/dev/null || true; }
   rm -f "$WORK_DIR"/disk*.img "$WORK_DIR/harness-env" "$WORK_DIR/serial.log"
   if [ "$purge" = 1 ]; then
     rm -rf "$WORK_DIR/os.qcow2" "$WORK_DIR/swtpm" "$WORK_DIR/OVMF_VARS.fd"
@@ -175,10 +185,15 @@ cmd_selftest() {
   # shellcheck disable=SC1091
   . "$WORK_DIR/harness-env"
   local dev="${TEST_DISKS%% *}"   # /dev/vdb
+  local dev2="${TEST_DISKS#* }"   # /dev/vdc
 
   log "disk fidelity: test disk is TYPE=disk"
-  hssh "lsblk -dno TYPE $dev | grep -qx disk" \
+  hssh "lsblk -dno TYPE \"$dev\" | grep -qx disk" \
     || { cmd_down; die "SELFTEST FAIL: $dev is not TYPE=disk"; }
+
+  log "disk fidelity: second test disk is TYPE=disk"
+  hssh "lsblk -dno TYPE \"$dev2\" | grep -qx disk" \
+    || { cmd_down; die "SELFTEST FAIL: $dev2 is not TYPE=disk"; }
 
   log "boot disk present and distinct"
   hssh "test -b /dev/vda && [ '$dev' != /dev/vda ]" \
@@ -194,15 +209,15 @@ cmd_selftest() {
 
   log "partition + ext4 round-trip on $dev"
   hssh "set -e
-    sudo sgdisk -Z $dev
-    sudo sgdisk --new 1:0:0 --change-name 1:HARNESS $dev
-    sudo partprobe $dev
-    sudo mkfs.ext4 -F -q ${dev}1
-    sudo mkdir -p /mnt/h && sudo mount ${dev}1 /mnt/h
+    sudo sgdisk -Z \"$dev\"
+    sudo sgdisk --new 1:0:0 --change-name 1:HARNESS \"$dev\"
+    sudo partprobe \"$dev\"
+    sudo mkfs.ext4 -F -q \"${dev}1\"
+    sudo mkdir -p /mnt/h && sudo mount \"${dev}1\" /mnt/h
     echo hello-harness | sudo tee /mnt/h/marker >/dev/null
     sudo grep -q hello-harness /mnt/h/marker
     sudo umount /mnt/h
-    sudo sgdisk -p $dev | grep -q HARNESS" \
+    sudo sgdisk -p \"$dev\" | grep -q HARNESS" \
     || { cmd_down; die "SELFTEST FAIL: partition/ext4 round-trip failed"; }
 
   cmd_down
