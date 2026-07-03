@@ -4,13 +4,13 @@
  */
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
 use super::screen::{Nav, Screen};
 use super::state::WizardState;
+use super::theme;
 use super::util::human_size;
 use crate::config::{Fs, RaidLevel};
 use crate::plan::raid_min_disks;
@@ -97,11 +97,7 @@ impl PersistScreen {
         let mut lines: Vec<Line> = Vec::new();
         let row_span = |row: usize, cursor: usize, text: String| -> Line {
             let cur = if row == cursor { "> " } else { "  " };
-            let style = if row == cursor {
-                Style::default().add_modifier(Modifier::REVERSED)
-            } else {
-                Style::default()
-            };
+            let style = if row == cursor { theme::selected() } else { theme::dialog() };
             Line::from(Span::styled(format!("{cur}{text}"), style))
         };
         let radio = |on: bool| if on { "(o)" } else { "( )" };
@@ -130,7 +126,10 @@ impl PersistScreen {
             ));
         }
         lines.push(Line::from(""));
-        lines.push(Line::from("↑/↓ move · Enter select · n next · b back · q quit"));
+        lines.push(Line::styled(
+            "↑/↓ move · Enter select · n next · b back · q quit",
+            theme::hint(),
+        ));
         lines
     }
 
@@ -160,11 +159,7 @@ impl PersistScreen {
                 human_size(d.size_bytes),
                 tail
             );
-            let style = if pos == self.cursor {
-                Style::default().add_modifier(Modifier::REVERSED)
-            } else {
-                Style::default()
-            };
+            let style = if pos == self.cursor { theme::selected() } else { theme::dialog() };
             lines.push(Line::from(Span::styled(text, style)));
         }
         // Show the boot disk grayed out so it is clear why it is not selectable.
@@ -172,14 +167,17 @@ impl PersistScreen {
             if let Some(d) = state.disks.iter().find(|d| d.name == boot) {
                 lines.push(Line::from(Span::styled(
                     format!("  [ ] {}  {}  (boot — unavailable)", d.name, human_size(d.size_bytes)),
-                    Style::default().add_modifier(Modifier::DIM),
+                    theme::disabled(),
                 )));
             }
         }
         let have = Self::selected_count(state);
         lines.push(Line::from(format!("selected: {have} / need ≥ {need}")));
         lines.push(Line::from(""));
-        lines.push(Line::from("↑/↓ move · Space toggle · n next · b back · q quit"));
+        lines.push(Line::styled(
+            "↑/↓ move · Space toggle · n next · b back · q quit",
+            theme::hint(),
+        ));
         lines
     }
 
@@ -264,7 +262,7 @@ impl Screen for PersistScreen {
         } else {
             self.render_single(state)
         };
-        let para = Paragraph::new(lines).block(Block::default().borders(Borders::ALL));
+        let para = Paragraph::new(lines).style(theme::dialog());
         f.render_widget(para, area);
     }
 

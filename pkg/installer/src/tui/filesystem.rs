@@ -4,13 +4,13 @@
  */
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
 use super::screen::{Nav, Screen};
 use super::state::WizardState;
+use super::theme;
 use crate::config::{Fs, RaidLevel};
 
 // Row identities in the vertical list. The two fs rows are always present; the
@@ -117,13 +117,13 @@ impl Screen for FilesystemScreen {
         let radio = |on: bool| if on { "(o)" } else { "( )" };
         let row_line = |row: usize, text: String, dim: bool| -> Line {
             let marker = if Some(row) == cursor_row { " > " } else { "   " };
-            let mut style = Style::default();
-            if dim {
-                style = style.add_modifier(Modifier::DIM);
-            }
-            if Some(row) == cursor_row {
-                style = style.add_modifier(Modifier::REVERSED);
-            }
+            let style = if Some(row) == cursor_row {
+                theme::selected()
+            } else if dim {
+                theme::disabled()
+            } else {
+                theme::dialog()
+            };
             Line::from(Span::styled(format!("{marker}{text}"), style))
         };
 
@@ -149,11 +149,12 @@ impl Screen for FilesystemScreen {
             lines.push(row_line(row, format!("      {} {name}", radio(sel)), !is_zfs));
         }
         lines.push(Line::from(""));
-        lines.push(Line::from(
+        lines.push(Line::styled(
             "↑/↓ move · Enter/Space choose · n next · b back · q quit",
+            theme::hint(),
         ));
 
-        let para = Paragraph::new(lines).block(Block::default().borders(Borders::ALL));
+        let para = Paragraph::new(lines).style(theme::dialog());
         f.render_widget(para, area);
     }
 

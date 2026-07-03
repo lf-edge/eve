@@ -9,6 +9,7 @@ pub mod overview;
 pub mod persist;
 pub mod screen;
 pub mod state;
+pub mod theme;
 pub mod util;
 
 use anyhow::Result;
@@ -17,10 +18,10 @@ use ratatui::crossterm::execute;
 use ratatui::crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
-use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::layout::{Alignment, Rect};
 use ratatui::prelude::CrosstermBackend;
-use ratatui::style::{Modifier, Style};
-use ratatui::widgets::Paragraph;
+use ratatui::text::Line;
+use ratatui::widgets::{Block, BorderType, Borders, Clear, Padding};
 use ratatui::{Terminal, TerminalOptions, Viewport};
 use std::fs::OpenOptions;
 use std::io::{stdout, Write};
@@ -31,7 +32,7 @@ use crate::disk::Disk;
 use crate::plan::HardwareFacts;
 use screen::{Nav, Screen};
 pub use state::{Outcome, WizardState};
-use util::step_title;
+use util::{centered_rect, step_title};
 
 /// A terminal we render the wizard to. Boxed writer so the primary (stdout on
 /// tty2) and the serial devices share one type.
@@ -76,24 +77,36 @@ impl Drop for TermGuard {
     }
 }
 
-/// Render the current screen (with the step header) to every attached terminal.
+/// Render the current screen as a centered, bordered dialog over a blue
+/// backdrop, to every attached terminal. The driver owns all the chrome
+/// (backdrop, popup frame, title); screens draw only their content into the
+/// dialog's inner area.
 fn draw_all(
     terminals: &mut [WizTerminal],
     screens: &mut [Box<dyn Screen>],
     index: usize,
     state: &WizardState,
 ) -> Result<()> {
+    let title = step_title(index, screens.len(), screens[index].title());
     for t in terminals.iter_mut() {
         t.draw(|f| {
-            // Split off a one-line step indicator above the current screen.
-            let chunks =
-                Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(f.area());
-            let header = step_title(index, screens.len(), screens[index].title());
-            f.render_widget(
-                Paragraph::new(header).style(Style::default().add_modifier(Modifier::BOLD)),
-                chunks[0],
-            );
-            screens[index].render(f, chunks[1], state);
+            let area = f.area();
+            // Blue backdrop, then a centered popup with the backdrop showing
+            // around it.
+            f.render_widget(Block::default().style(theme::backdrop()), area);
+            let dialog = centered_rect(area, 76, 22);
+            f.render_widget(Clear, dialog);
+            let block = Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .border_style(theme::border())
+                .style(theme::dialog())
+                .padding(Padding::new(2, 2, 1, 0))
+                .title(Line::styled(format!(" {title} "), theme::title()))
+                .title_alignment(Alignment::Center);
+            let inner = block.inner(dialog);
+            f.render_widget(block, dialog);
+            screens[index].render(f, inner, state);
         })?;
     }
     Ok(())

@@ -4,13 +4,13 @@
  */
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::text::Line;
+use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
 use super::screen::{Nav, Screen};
 use super::state::WizardState;
+use super::theme;
 use crate::config::Fs;
 use crate::disk::Disk;
 use crate::plan::{plan, InstallPlan, NukePlan, PersistDevice, PersistPlan, PlanOutcome, PoolMember};
@@ -85,24 +85,18 @@ impl OverviewScreen {
         lines.push(Line::from(format!("Nuke:        {nuke}")));
 
         for a in &p.advisories {
-            lines.push(Line::from(Span::styled(
-                format!("! {a}"),
-                Style::default().fg(Color::Yellow),
-            )));
+            lines.push(Line::styled(format!("! {a}"), theme::advisory()));
         }
         lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled(
-            "Enter/c confirm · b back · q quit",
-            Style::default().add_modifier(Modifier::BOLD),
-        )));
+        lines.push(Line::styled("Enter/c confirm · b back · q quit", theme::hint()));
         lines
     }
 
     fn format_blocked(reason: String) -> Vec<Line<'static>> {
         vec![
-            Line::from(Span::styled(reason, Style::default().fg(Color::Red))),
+            Line::styled(reason, theme::error()),
             Line::from(""),
-            Line::from("b back · q quit"),
+            Line::styled("b back · q quit", theme::hint()),
         ]
     }
 }
@@ -124,7 +118,7 @@ impl Screen for OverviewScreen {
             Ok(PlanOutcome::Rejected(r)) => Self::format_blocked(format!("Cannot install: {r}")),
             Err(e) => Self::format_blocked(format!("Configuration incomplete: {e}")),
         };
-        let para = Paragraph::new(lines).block(Block::default().borders(Borders::ALL));
+        let para = Paragraph::new(lines).style(theme::dialog());
         f.render_widget(para, area);
     }
 

@@ -4,13 +4,13 @@
  */
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
 use super::screen::{Nav, Screen};
 use super::state::WizardState;
+use super::theme;
 use super::util::human_size;
 
 pub struct DisksScreen {
@@ -75,24 +75,32 @@ impl Screen for DisksScreen {
                 label.push_str("  (boot)");
             }
             let style = if is_cursor {
-                Style::default().add_modifier(Modifier::REVERSED)
+                theme::selected()
+            } else if is_boot {
+                theme::disabled()
             } else {
-                Style::default()
+                theme::dialog()
             };
             lines.push(Line::from(Span::styled(label, style)));
             for p in &d.partitions {
-                lines.push(Line::from(format!(
-                    "      - {}  {}  {}  {}",
-                    p.name,
-                    human_size(p.size_bytes),
-                    p.fstype.as_deref().unwrap_or("-"),
-                    p.label.as_deref().unwrap_or("-"),
+                lines.push(Line::from(Span::styled(
+                    format!(
+                        "      - {}  {}  {}  {}",
+                        p.name,
+                        human_size(p.size_bytes),
+                        p.fstype.as_deref().unwrap_or("-"),
+                        p.label.as_deref().unwrap_or("-"),
+                    ),
+                    theme::disabled(),
                 )));
             }
         }
         lines.push(Line::from(""));
-        lines.push(Line::from("↑/↓ move · Enter select install disk · n next · q quit"));
-        let para = Paragraph::new(lines).block(Block::default().borders(Borders::ALL));
+        lines.push(Line::styled(
+            "↑/↓ move · Enter select · n next · q quit",
+            theme::hint(),
+        ));
+        let para = Paragraph::new(lines).style(theme::dialog());
         f.render_widget(para, area);
     }
 
