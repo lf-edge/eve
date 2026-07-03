@@ -234,9 +234,81 @@ impl InstallConfig {
     }
 }
 
+/// Resolve the effective config for the unattended path: read the first
+/// existing candidate file (INVENTORY then /config, by convention), parse it,
+/// and merge it over the cmdline (`json ▷ cmdline`). Absent/unreadable files
+/// are skipped; the first file that exists "wins" even if it parses empty.
+/// The only I/O performed by this module.
+pub fn load(json_candidates: &[&Path], cmdline: &str) -> (InstallConfig, Vec<Warning>) {
+    let (cmd_cfg, mut warnings) = parse_cmdline(cmdline);
+
+    let mut json_cfg = InstallConfig::default();
+    for path in json_candidates {
+        match fs::read_to_string(path) {
+            Ok(text) => {
+                let (cfg, mut w) = parse_json(&text);
+                warnings.append(&mut w);
+                json_cfg = cfg;
+                break; // first existing file wins
+            }
+            Err(_) => continue, // absent/unreadable: try the next candidate
+        }
+    }
+
+    (json_cfg.or(cmd_cfg), warnings)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn write_temp(name: &str, contents: &str) -> std::path::PathBuf {
+        use std::io::Write;
+        let mut p = std::env::temp_dir();
+        p.push(format!("sp1_cfg_{}_{}", std::process::id(), name));
+        let mut f = std::fs::File::create(&p).unwrap();
+        f.write_all(contents.as_bytes()).unwrap();
+        p
+    }
+
+    #[test]
+    fn load_first_existing_candidate_wins() {
+        let inv = write_temp("inv.json", r#"{"install_disk":"from_inv"}"#);
+        let cfg = write_temp("cfg.json", r#"{"install_disk":"from_config"}"#);
+        let missing = std::path::Path::new("/nonexistent/sp1/none.json");
+        let (c, w) = load(&[missing, &inv, &cfg], "eve_install_server=ctrl");
+        assert_eq!(c.install_disk.as_deref(), Some("from_inv")); // inv wins over cfg
+        assert_eq!(c.install_server.as_deref(), Some("ctrl")); // from cmdline
+        assert!(w.is_empty());
+        std::fs::remove_file(inv).ok();
+        std::fs::remove_file(cfg).ok();
+    }
+
+    #[test]
+    fn load_all_absent_is_cmdline_only() {
+        let missing = std::path::Path::new("/nonexistent/sp1/none.json");
+        let (c, w) = load(&[missing], "eve_install_disk=sda");
+        assert_eq!(c.install_disk.as_deref(), Some("sda"));
+        assert!(w.is_empty());
+    }
+
+    #[test]
+    fn load_garbage_first_file_is_cmdline_only_with_warning() {
+        let bad = write_temp("bad.json", "not json");
+        let (c, w) = load(&[&bad], "eve_install_disk=sda");
+        assert_eq!(c.install_disk.as_deref(), Some("sda")); // cmdline still applied
+        assert_eq!(w.len(), 1);
+        assert!(matches!(w[0], Warning::BadJson(_)));
+        std::fs::remove_file(bad).ok();
+    }
+
+    #[test]
+    fn load_json_beats_cmdline_for_same_field() {
+        let inv = write_temp("prec.json", r#"{"install_disk":"from_json"}"#);
+        let (c, _) = load(&[&inv], "eve_install_disk=from_cmdline");
+        assert_eq!(c.install_disk.as_deref(), Some("from_json"));
+        std::fs::remove_file(inv).ok();
+    }
 
     #[test]
     fn default_config_is_all_none_and_serializes_empty() {
