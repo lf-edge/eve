@@ -91,28 +91,62 @@ func execQuit(socket string) error {
 	return err
 }
 
+// qmpCommand mirrors the wire format of a QMP command. Marshalling it with
+// encoding/json guarantees that string arguments (VNC passwords, device ids,
+// etc.) are properly escaped, so a value containing a quote or backslash can
+// never break out of the JSON and inject additional arguments or commands.
+type qmpCommand struct {
+	Execute   string      `json:"execute"`
+	Arguments interface{} `json:"arguments,omitempty"`
+}
+
+// buildQMPCommand marshals a QMP command with the given arguments into valid,
+// properly escaped JSON. Pass nil arguments for commands that take none.
+func buildQMPCommand(execute string, arguments interface{}) ([]byte, error) {
+	cmd, err := json.Marshal(qmpCommand{Execute: execute, Arguments: arguments})
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal QMP command %q: %w", execute, err)
+	}
+	return cmd, nil
+}
+
 func execVNCPassword(socket string, password string) error {
-	vncSetPwd := fmt.Sprintf(`{ "execute": "change-vnc-password", "arguments": { "password": "%s" } }`, password)
-	// But log this:
-	cmd := `{ "execute": "change-vnc-password", "arguments": { "password": <redacted> } }`
-	logrus.Debugf("executing QMP command: %s", cmd)
-	_, err := execRawCmd(socket, vncSetPwd, true)
+	vncSetPwd, err := buildQMPCommand("change-vnc-password",
+		map[string]string{"password": password})
+	if err != nil {
+		return err
+	}
+	// Never log the password itself.
+	logrus.Debugf(`executing QMP command: { "execute": "change-vnc-password", "arguments": { "password": <redacted> } }`)
+	_, err = execRawCmd(socket, string(vncSetPwd), true)
 	return err
 }
 
 // QmpExecDeviceDelete removes a device
 func QmpExecDeviceDelete(socket, id string) error {
-	qmpString := fmt.Sprintf(`{ "execute": "device_del", "arguments": { "id": "%s"}}`, id)
+	qmpString, err := buildQMPCommand("device_del",
+		map[string]string{"id": id})
+	if err != nil {
+		return err
+	}
 	logrus.Debugf("executing QMP command: %s", qmpString)
-	_, err := execRawCmd(socket, qmpString, true)
+	_, err = execRawCmd(socket, string(qmpString), true)
 	return err
 }
 
 // QmpExecDeviceAdd adds a usb device via busnum/devnum
 func QmpExecDeviceAdd(socket, id string, busnum, devnum uint16) error {
-	qmpString := fmt.Sprintf(`{ "execute": "device_add", "arguments": { "driver": "usb-host", "hostbus": %d, "hostaddr": %d, "id": "%s"} }`, busnum, devnum, id)
+	qmpString, err := buildQMPCommand("device_add", map[string]interface{}{
+		"driver":   "usb-host",
+		"hostbus":  busnum,
+		"hostaddr": devnum,
+		"id":       id,
+	})
+	if err != nil {
+		return err
+	}
 	logrus.Debugf("executing QMP command: %s", qmpString)
-	_, err := execRawCmd(socket, qmpString, true)
+	_, err = execRawCmd(socket, string(qmpString), true)
 	return err
 }
 
