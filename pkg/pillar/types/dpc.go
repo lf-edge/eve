@@ -169,6 +169,10 @@ const (
 
 	// LpsDPCKey : key used for DPC containing local configuration changes submitted by LPS.
 	LpsDPCKey = "lps"
+
+	// ControllerDPCKey : key used for DPC submitted by zedagent, based on
+	// configuration received from the controller (or LOC).
+	ControllerDPCKey = "zedagent"
 )
 
 // DevicePortConfig is a misnomer in that it includes the total test results
@@ -609,6 +613,13 @@ func (config DevicePortConfig) IsDPCUntested() bool {
 func (config DevicePortConfig) IsDPCUsable() bool {
 	mgmtCount := config.CountMgmtPorts(true)
 	return mgmtCount > 0
+}
+
+// IsFromController returns true if this DPC originates from the controller
+// (submitted by zedagent, based on configuration received from the
+// controller or LOC).
+func (config DevicePortConfig) IsFromController() bool {
+	return config.Key == ControllerDPCKey
 }
 
 // WasDPCWorking - Check if the last results for the DPC was Success

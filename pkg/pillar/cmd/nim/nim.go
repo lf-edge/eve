@@ -777,12 +777,6 @@ func (n *nim) handleDPCImpl(key string, configArg interface{}, fromFile bool) {
 		SanitizeSharedLabels: true,
 	})
 
-	// if device can connect to controller it may get a new DPC in global config. This global DPC
-	// will have higher priority but can be invalid and the device will loose connectivity again
-	// at least temporarily while DPC is being tested. To avoid this we reset the timestamp on
-	// the Manual DPC to the current time
-	// TODO: do it. or check for ManualDPCKey in DPCManager
-	// TODO 2: we should not try lastresort DPC if the user set the DPC to manual
 	n.dpcManager.AddDPC(dpc)
 }
 

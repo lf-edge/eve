@@ -1161,6 +1161,487 @@ func TestDPCFallback(test *testing.T) {
 	//printCurrentState()
 }
 
+func TestAllDPCsFailParkAtLatest(test *testing.T) {
+	// Avoid the automatic "lastresort" DPC (it would succeed here, since real
+	// interfaces are registered below and no error is injected for it).
+	expectBootstrapDPC := true
+	t := initTest(test, expectBootstrapDPC)
+	t.Expect(dpcManager.GetDNS().DPCKey).To(BeEmpty())
+
+	eth0 := mockEth0()
+	eth1 := mockEth1()
+	networkMonitor.AddOrUpdateInterface(eth0)
+	networkMonitor.AddOrUpdateInterface(eth1)
+	aa := makeAA(selectedIntfs{eth0: true, eth1: true})
+	dpcManager.UpdateAA(aa)
+	dpcManager.UpdateGCP(globalConfig()) // lastresort disabled
+
+	// Older DPC (distinct key from the one below, so the two are not
+	// compressed into just the newest one) over eth0. It never manages to
+	// connect to the controller.
+	connTester.SetConnectivityError("override", "eth0", fmt.Errorf("failed to connect"))
+	timePrio1 := time.Now()
+	dpc1 := makeDPC("override", timePrio1, selectedIntfs{eth0: true})
+	dpcManager.AddDPC(dpc1)
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateFailWithIPAndDNS))
+
+	// The reconciler should have actually applied dpc1's port (eth0) config.
+	eth0Dhcpcd := dg.Reference(generic.Dhcpcd{AdapterIfName: "eth0"})
+	eth1Dhcpcd := dg.Reference(generic.Dhcpcd{AdapterIfName: "eth1"})
+	t.Expect(itemIsCreated(eth0Dhcpcd)).To(BeTrue())
+	t.Expect(itemIsCreated(eth1Dhcpcd)).To(BeFalse())
+
+	// Wait for dpc1's failure cooldown (DpcMinTimeSinceFailure, 3s in this
+	// test harness) to expire, so that when dpc2 below is added, the
+	// verification round actually re-tries dpc1 too (advancing CurrentIndex
+	// away from 0) before finally giving up on both - exercising the real
+	// "advance, fail, wrap around, park" logic rather than a trivial
+	// single-candidate round.
+	time.Sleep(4 * time.Second)
+
+	// Newer "zedagent" DPC over eth1, which also never connects. It becomes
+	// the highest-priority (index 0) entry. The manager should end up parked
+	// on this, the latest DPC, rather than stuck on (or falling back to) the
+	// older one.
+	connTester.SetConnectivityError("zedagent", "eth1", fmt.Errorf("failed to connect"))
+	timePrio2 := time.Now()
+	dpc2 := makeDPC("zedagent", timePrio2, selectedIntfs{eth1: true})
+	dpcManager.AddDPC(dpc2)
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateFailWithIPAndDNS))
+
+	idx, dpcList := getDPCList()
+	t.Expect(idx).To(Equal(0))
+	t.Expect(dpcList).To(HaveLen(2))
+	t.Expect(dpcList[0].Key).To(Equal("zedagent"))
+	t.Expect(dpcList[0].TimePriority.Equal(timePrio2)).To(BeTrue())
+	t.Expect(dpcList[0].State).To(Equal(types.DPCStateFailWithIPAndDNS))
+	t.Expect(dpcList[1].Key).To(Equal("override"))
+	t.Expect(dpcList[1].TimePriority.Equal(timePrio1)).To(BeTrue())
+	t.Expect(dpcList[1].State).To(Equal(types.DPCStateFailWithIPAndDNS))
+
+	// Should remain parked at index 0 (the latest DPC), not oscillate.
+	t.Consistently(dpcIdxCb()).Should(Equal(0))
+	t.Expect(itemIsCreated(eth0Dhcpcd)).To(BeFalse())
+	t.Expect(itemIsCreated(eth1Dhcpcd)).To(BeTrue())
+}
+
+// TestZedagentAlwaysOutranksManualOnArrival reproduces the original reported
+// onboarding bug: a controller ("zedagent") DPC whose TimePriority predates
+// an already-applied "manual" DPC (e.g. pre-provisioned on the controller
+// before the device ever booted) must still structurally outrank it.
+func TestZedagentAlwaysOutranksManualOnArrival(test *testing.T) {
+	expectBootstrapDPC := true
+	t := initTest(test, expectBootstrapDPC)
+	t.Expect(dpcManager.GetDNS().DPCKey).To(BeEmpty())
+
+	eth0 := mockEth0()
+	networkMonitor.AddOrUpdateInterface(eth0)
+	aa := makeAA(selectedIntfs{eth0: true})
+	dpcManager.UpdateAA(aa)
+	dpcManager.UpdateGCP(globalConfig())
+
+	// Manual DPC (from TUI) is applied and works.
+	manualTimePrio := time.Now()
+	manualDPC := makeDPC("manual", manualTimePrio, selectedIntfs{eth0: true})
+	dpcManager.AddDPC(manualDPC)
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dpcKeyCb(0)).Should(Equal("manual"))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+
+	// A "zedagent" DPC arrives with an OLDER TimePriority than manual's -
+	// simulating a config pre-provisioned on the controller before the
+	// device ever booted. It should structurally outrank manual anyway.
+	zedagentTimePrio := manualTimePrio.Add(-1 * time.Hour)
+	zedagentDPC := makeDPC("zedagent", zedagentTimePrio, selectedIntfs{eth0: true})
+	dpcManager.AddDPC(zedagentDPC)
+
+	t.Eventually(dpcListLenCb()).Should(Equal(2))
+	_, dpcList := getDPCList()
+	t.Expect(dpcList[0].Key).To(Equal("zedagent"))
+	t.Expect(dpcList[1].Key).To(Equal("manual"))
+
+	// Once zedagent succeeds, manual is no longer needed and gets compressed away.
+	t.Eventually(dpcKeyCb(0)).Should(Equal("zedagent"))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+	t.Eventually(dpcListLenCb()).Should(Equal(1))
+}
+
+// TestZedagentAlwaysOutranksOverrideWithFutureTimestamp proves that an
+// override.json DPC with an arbitrary (even future) user-entered timestamp
+// can no longer permanently block the controller config from taking over.
+func TestZedagentAlwaysOutranksOverrideWithFutureTimestamp(test *testing.T) {
+	expectBootstrapDPC := true
+	t := initTest(test, expectBootstrapDPC)
+	t.Expect(dpcManager.GetDNS().DPCKey).To(BeEmpty())
+
+	eth0 := mockEth0()
+	networkMonitor.AddOrUpdateInterface(eth0)
+	aa := makeAA(selectedIntfs{eth0: true})
+	dpcManager.UpdateAA(aa)
+	dpcManager.UpdateGCP(globalConfig())
+
+	// "override" DPC with an arbitrary, far-future TimePriority (as could
+	// happen with a user-entered override.json) is applied and works.
+	overrideTimePrio := time.Now().AddDate(10, 0, 0)
+	overrideDPC := makeDPC("override", overrideTimePrio, selectedIntfs{eth0: true})
+	dpcManager.AddDPC(overrideDPC)
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dpcKeyCb(0)).Should(Equal("override"))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+
+	// A "zedagent" DPC arrives with an ordinary (current) TimePriority -
+	// nominally "older" than override's future timestamp - yet it should
+	// still structurally outrank it.
+	zedagentTimePrio := time.Now()
+	zedagentDPC := makeDPC("zedagent", zedagentTimePrio, selectedIntfs{eth0: true})
+	dpcManager.AddDPC(zedagentDPC)
+
+	t.Eventually(dpcListLenCb()).Should(Equal(2))
+	_, dpcList := getDPCList()
+	t.Expect(dpcList[0].Key).To(Equal("zedagent"))
+	t.Expect(dpcList[1].Key).To(Equal("override"))
+
+	t.Eventually(dpcKeyCb(0)).Should(Equal("zedagent"))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+}
+
+// TestManualCanStillOvertakeExistingZedagent confirms fix 6 doesn't disturb
+// the normal, desired manual-override path: a freshly-submitted manual DPC
+// (with a genuinely newer TimePriority) still overtakes an existing
+// controller DPC, based on timestamp as before.
+func TestManualCanStillOvertakeExistingZedagent(test *testing.T) {
+	expectBootstrapDPC := true
+	t := initTest(test, expectBootstrapDPC)
+	t.Expect(dpcManager.GetDNS().DPCKey).To(BeEmpty())
+
+	eth0 := mockEth0()
+	eth1 := mockEth1()
+	networkMonitor.AddOrUpdateInterface(eth0)
+	networkMonitor.AddOrUpdateInterface(eth1)
+	aa := makeAA(selectedIntfs{eth0: true, eth1: true})
+	dpcManager.UpdateAA(aa)
+	dpcManager.UpdateGCP(globalConfig())
+
+	// Established "zedagent" DPC over eth0 succeeds and is current.
+	zedagentTimePrio := time.Now()
+	zedagentDPC := makeDPC("zedagent", zedagentTimePrio, selectedIntfs{eth0: true})
+	dpcManager.AddDPC(zedagentDPC)
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dpcKeyCb(0)).Should(Equal("zedagent"))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+
+	// A "manual" DPC (newer TimePriority) is submitted, e.g. to switch to eth1.
+	manualTimePrio := time.Now()
+	manualDPC := makeDPC("manual", manualTimePrio, selectedIntfs{eth1: true})
+	dpcManager.AddDPC(manualDPC)
+
+	// Manual, being newer, still ranks above the existing zedagent DPC in
+	// list order (a separate, synchronous fact from CurrentIndex tracking,
+	// which transitions asynchronously as manual gets verified).
+	t.Eventually(dpcListLenCb()).Should(Equal(2))
+	_, dpcList := getDPCList()
+	t.Expect(dpcList[0].Key).To(Equal("manual"))
+	t.Expect(dpcList[1].Key).To(Equal("zedagent"))
+
+	t.Eventually(dpcKeyCb(0)).Should(Equal("manual"))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+}
+
+// TestManualNeverFallsBackPastItself proves the fallback block is now
+// unconditional: even an older DPC that has previously worked must never be
+// reached once a failing "manual" DPC is current - only an explicit revert
+// can move off of it.
+func TestManualNeverFallsBackPastItself(test *testing.T) {
+	expectBootstrapDPC := true
+	t := initTest(test, expectBootstrapDPC)
+	t.Expect(dpcManager.GetDNS().DPCKey).To(BeEmpty())
+
+	eth0 := mockEth0()
+	eth1 := mockEth1()
+	networkMonitor.AddOrUpdateInterface(eth0)
+	networkMonitor.AddOrUpdateInterface(eth1)
+	aa := makeAA(selectedIntfs{eth0: true, eth1: true})
+	dpcManager.UpdateAA(aa)
+	dpcManager.UpdateGCP(globalConfig())
+
+	// Older "override" DPC over eth0 succeeds first, so it has a proven
+	// working history, then gets overridden below.
+	overrideTimePrio := time.Now()
+	overrideDPC := makeDPC("override", overrideTimePrio, selectedIntfs{eth0: true})
+	dpcManager.AddDPC(overrideDPC)
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+
+	// A newer "manual" DPC over eth1 fails to connect.
+	connTester.SetConnectivityError("manual", "eth1", fmt.Errorf("failed to connect"))
+	manualTimePrio := time.Now()
+	manualDPC := makeDPC("manual", manualTimePrio, selectedIntfs{eth1: true})
+	dpcManager.AddDPC(manualDPC)
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcKeyCb(0)).Should(Equal("manual"))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateFailWithIPAndDNS))
+
+	// Even though the older "override" DPC previously worked and its retry
+	// cooldown will have long expired, the manager must never advance past
+	// the failing manual DPC to it - only an explicit revert can do that.
+	t.Consistently(dpcIdxCb()).Should(Equal(0))
+	t.Consistently(dpcKeyCb(0)).Should(Equal("manual"))
+}
+
+// TestNewControllerConfigTestedWhileManualActive confirms that fix 4 only
+// blocks moving past manual to something lower-priority - testing (and
+// potentially switching to) a newer, higher-priority controller config
+// while manual is active and healthy is still allowed and expected.
+func TestNewControllerConfigTestedWhileManualActive(test *testing.T) {
+	expectBootstrapDPC := true
+	t := initTest(test, expectBootstrapDPC)
+	t.Expect(dpcManager.GetDNS().DPCKey).To(BeEmpty())
+
+	eth0 := mockEth0()
+	eth1 := mockEth1()
+	networkMonitor.AddOrUpdateInterface(eth0)
+	networkMonitor.AddOrUpdateInterface(eth1)
+	aa := makeAA(selectedIntfs{eth0: true, eth1: true})
+	dpcManager.UpdateAA(aa)
+	dpcManager.UpdateGCP(globalConfig())
+
+	// Manual DPC over eth0 succeeds and is current.
+	manualTimePrio := time.Now()
+	manualDPC := makeDPC("manual", manualTimePrio, selectedIntfs{eth0: true})
+	dpcManager.AddDPC(manualDPC)
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+
+	// A new "zedagent" DPC arrives over eth1 - structurally placed above
+	// manual (fix 6), regardless of its raw TimePriority.
+	zedagentTimePrio := manualTimePrio.Add(-1 * time.Hour)
+	zedagentDPC := makeDPC("zedagent", zedagentTimePrio, selectedIntfs{eth1: true})
+	dpcManager.AddDPC(zedagentDPC)
+
+	// It structurally lands above manual in list order (fix 6)...
+	t.Eventually(dpcListLenCb()).Should(Equal(2))
+	_, dpcList := getDPCList()
+	t.Expect(dpcList[0].Key).To(Equal("zedagent"))
+
+	// ...and it must actually get tested (and, since it works, taken over)
+	// rather than being blocked just because manual is active.
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dpcKeyCb(0)).Should(Equal("zedagent"))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+}
+
+// TestFallsBackToWorkingManualWhenNewerControllerConfigFails confirms
+// "falling back to manual" still works: when a newer controller config gets
+// tested (per fix 6) and fails, the manager correctly returns to a manual
+// DPC that was previously providing working connectivity.
+func TestFallsBackToWorkingManualWhenNewerControllerConfigFails(test *testing.T) {
+	expectBootstrapDPC := true
+	t := initTest(test, expectBootstrapDPC)
+	t.Expect(dpcManager.GetDNS().DPCKey).To(BeEmpty())
+
+	eth0 := mockEth0()
+	eth1 := mockEth1()
+	networkMonitor.AddOrUpdateInterface(eth0)
+	networkMonitor.AddOrUpdateInterface(eth1)
+	aa := makeAA(selectedIntfs{eth0: true, eth1: true})
+	dpcManager.UpdateAA(aa)
+	dpcManager.UpdateGCP(globalConfig())
+
+	// Manual DPC over eth0 succeeds and is current.
+	manualTimePrio := time.Now()
+	manualDPC := makeDPC("manual", manualTimePrio, selectedIntfs{eth0: true})
+	dpcManager.AddDPC(manualDPC)
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+
+	// A new "zedagent" DPC arrives over eth1, structurally above manual, but
+	// it fails to connect.
+	connTester.SetConnectivityError("zedagent", "eth1", fmt.Errorf("failed to connect"))
+	zedagentTimePrio := manualTimePrio.Add(-1 * time.Hour)
+	zedagentDPC := makeDPC("zedagent", zedagentTimePrio, selectedIntfs{eth1: true})
+	dpcManager.AddDPC(zedagentDPC)
+
+	// It gets tested first (index 0), fails, and the manager falls back to
+	// the still-working "manual" DPC rather than parking on the failed
+	// zedagent DPC.
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcIdxCb()).Should(Equal(1))
+	t.Eventually(dpcKeyCb(1)).Should(Equal("manual"))
+	t.Eventually(dpcStateCb(1)).Should(Equal(types.DPCStateSuccess))
+
+	idx, dpcList := getDPCList()
+	t.Expect(idx).To(Equal(1))
+	t.Expect(dpcList).To(HaveLen(2))
+	t.Expect(dpcList[0].Key).To(Equal("zedagent"))
+	t.Expect(dpcList[0].State).To(Equal(types.DPCStateFailWithIPAndDNS))
+	t.Expect(dpcList[1].Key).To(Equal("manual"))
+	t.Expect(dpcList[1].State).To(Equal(types.DPCStateSuccess))
+}
+
+// TestDeleteDPCMidVerification: reverting the current "manual" DPC while the
+// only remaining DPC ("override") is still within its own failure cooldown
+// means nothing is testable right at that moment. restartVerify's
+// "nothing testable" bail-out used to leave CurrentIndex at -1 (no DPC
+// applied at all) and never re-arm the periodic retry timer, so recovery
+// only happened whenever some unrelated event (e.g. an interface state
+// change) happened to trigger another restartVerify/runVerify call. It must
+// now park at the highest-priority DPC immediately and resume periodic
+// retries on its own.
+func TestRestartVerifyParksWhenNothingCurrentlyTestable(test *testing.T) {
+	expectBootstrapDPC := true
+	t := initTest(test, expectBootstrapDPC)
+	t.Expect(dpcManager.GetDNS().DPCKey).To(BeEmpty())
+	// Keep override's failure cooldown comfortably longer than this test, so
+	// it is guaranteed to still be "not testable" at the moment DelDPC(manual)
+	// below is processed - a short/default cooldown would race with (and
+	// could be masked by) the periodic dpcTestTimer/testConnectivityToController
+	// retry, which runs independently of this fix and would otherwise recover
+	// on its own within a couple of seconds either way.
+	dpcManager.DpcMinTimeSinceFailure = time.Minute
+
+	eth0 := mockEth0()
+	eth1 := mockEth1()
+	networkMonitor.AddOrUpdateInterface(eth0)
+	networkMonitor.AddOrUpdateInterface(eth1)
+	aa := makeAA(selectedIntfs{eth0: true, eth1: true})
+	dpcManager.UpdateAA(aa)
+	dpcManager.UpdateGCP(globalConfig())
+
+	// "override" DPC over eth0 fails; its own failure cooldown has NOT
+	// elapsed yet (and, per above, will not for the duration of this test).
+	connTester.SetConnectivityError("override", "eth0", fmt.Errorf("failed to connect"))
+	overrideTimePrio := time.Now()
+	overrideDPC := makeDPC("override", overrideTimePrio, selectedIntfs{eth0: true})
+	dpcManager.AddDPC(overrideDPC)
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateFailWithIPAndDNS))
+
+	// A newer "manual" DPC over eth1 also fails to connect and is current.
+	connTester.SetConnectivityError("manual", "eth1", fmt.Errorf("failed to connect"))
+	manualTimePrio := time.Now()
+	manualDPC := makeDPC("manual", manualTimePrio, selectedIntfs{eth1: true})
+	dpcManager.AddDPC(manualDPC)
+	t.Eventually(dpcKeyCb(0)).Should(Equal("manual"))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateFailWithIPAndDNS))
+
+	// Revert manual - "override" is still well within its own cooldown at
+	// this point, so nothing in the list is currently testable.
+	dpcManager.DelDPC(manualDPC)
+
+	// Even though nothing is testable right this moment, the manager must
+	// park at "override" (index 0) rather than leaving CurrentIndex at -1.
+	// The fix parks synchronously while processing the deletion, so this
+	// must be observable almost immediately - checked with a short timeout,
+	// well under the 2s periodic dpcTestTimer interval (see globalConfig),
+	// so a regression here cannot be masked by that unrelated, pre-existing
+	// recovery path.
+	t.Eventually(dpcListLenCb()).Should(Equal(1))
+	t.Eventually(dpcKeyCb(0)).Should(Equal("override"))
+	t.Eventually(dpcIdxCb(), 500*time.Millisecond, 20*time.Millisecond).Should(Equal(0))
+}
+
+// TestParksAtManualWhenEverythingFails proves the refined fix-1 "park at
+// manual, not at latest" behavior: when literally nothing in the list
+// currently works, the manager settles specifically on "manual" (the user's
+// active local session), not on whatever else happens to occupy index 0.
+func TestParksAtManualWhenEverythingFails(test *testing.T) {
+	expectBootstrapDPC := true
+	t := initTest(test, expectBootstrapDPC)
+	t.Expect(dpcManager.GetDNS().DPCKey).To(BeEmpty())
+
+	// Avoid a previously-failed DPC becoming testable again mid-test.
+	dpcManager.DpcMinTimeSinceFailure = time.Minute
+
+	eth0 := mockEth0()
+	eth1 := mockEth1()
+	networkMonitor.AddOrUpdateInterface(eth0)
+	networkMonitor.AddOrUpdateInterface(eth1)
+	aa := makeAA(selectedIntfs{eth0: true, eth1: true})
+	dpcManager.UpdateAA(aa)
+	dpcManager.UpdateGCP(globalConfig())
+
+	// Older "override" DPC over eth0 previously worked, then breaks.
+	overrideTimePrio := time.Now()
+	overrideDPC := makeDPC("override", overrideTimePrio, selectedIntfs{eth0: true})
+	dpcManager.AddDPC(overrideDPC)
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+	connTester.SetConnectivityError("override", "eth0", fmt.Errorf("failed to connect"))
+
+	// Manual DPC over eth1 fails.
+	connTester.SetConnectivityError("manual", "eth1", fmt.Errorf("failed to connect"))
+	manualTimePrio := time.Now()
+	manualDPC := makeDPC("manual", manualTimePrio, selectedIntfs{eth1: true})
+	dpcManager.AddDPC(manualDPC)
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcKeyCb(0)).Should(Equal("manual"))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateFailWithIPAndDNS))
+
+	// A newer "zedagent" DPC (structurally above manual) also fails.
+	connTester.SetConnectivityError("zedagent", "eth0", fmt.Errorf("failed to connect"))
+	zedagentTimePrio := manualTimePrio.Add(-1 * time.Hour)
+	zedagentDPC := makeDPC("zedagent", zedagentTimePrio, selectedIntfs{eth0: true})
+	dpcManager.AddDPC(zedagentDPC)
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+
+	// Literally nothing works - the manager should park specifically on
+	// "manual", not on whatever happens to be index 0 (the failed zedagent).
+	currentKey := func() string {
+		idx, dpcList := getDPCList()
+		if idx < 0 || idx >= len(dpcList) {
+			return ""
+		}
+		return dpcList[idx].Key
+	}
+	_, dpcList := getDPCList()
+	t.Expect(dpcList[0].Key).To(Equal("zedagent"))
+	t.Expect(dpcList).To(HaveLen(3))
+	t.Eventually(currentKey).Should(Equal("manual"))
+	t.Consistently(currentKey).Should(Equal("manual"))
+}
+
+// TestManualDPCDroppedAfterNewerDPCWorks verifies that compressDPCL removes
+// a "manual" (TUI) DPC once a higher-priority DPC has proven to work,
+// end-to-end through the normal AddDPC/verify/compress pipeline.
+func TestManualDPCDroppedAfterNewerDPCWorks(test *testing.T) {
+	// Avoid the automatic "lastresort" DPC interfering with this scenario.
+	expectBootstrapDPC := true
+	t := initTest(test, expectBootstrapDPC)
+	t.Expect(dpcManager.GetDNS().DPCKey).To(BeEmpty())
+
+	eth0 := mockEth0()
+	networkMonitor.AddOrUpdateInterface(eth0)
+	aa := makeAA(selectedIntfs{eth0: true})
+	dpcManager.UpdateAA(aa)
+	dpcManager.UpdateGCP(globalConfig())
+
+	// Manual DPC (from TUI) is applied and works.
+	timePrio1 := time.Now()
+	dpc1 := makeDPC("manual", timePrio1, selectedIntfs{eth0: true})
+	dpcManager.AddDPC(dpc1)
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dpcKeyCb(0)).Should(Equal("manual"))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+
+	// A newer "zedagent" DPC arrives and also works.
+	timePrio2 := time.Now()
+	dpc2 := makeDPC("zedagent", timePrio2, selectedIntfs{eth0: true})
+	dpcManager.AddDPC(dpc2)
+
+	// The manual DPC is no longer needed and should be compressed out.
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dpcKeyCb(0)).Should(Equal("zedagent"))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+	t.Eventually(dpcListLenCb()).Should(Equal(1))
+}
+
 func TestDPCWithMultipleEths(test *testing.T) {
 	t := initTest(test)
 	t.Expect(dpcManager.GetDNS().DPCKey).To(BeEmpty())

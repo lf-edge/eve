@@ -508,8 +508,8 @@ and failed, or is otherwise unusable.
 
 Network configs are sorted in priority-decreasing order, i.e. the highest-prio config
 is at the index 0.
-Priority is assigned to DPC using a `TimePriority` timestamp field — newer timestamps indicate
-higher priority (basically newer network config is preferred over an older one).
+Priority is assigned to DPC using a `TimePriority` timestamp field, where newer timestamps
+indicate higher priority (basically newer network config is preferred over an older one).
 
 Depending on the source of the configuration, the timestamp is assigned differently:
 
@@ -521,6 +521,28 @@ Depending on the source of the configuration, the timestamp is assigned differen
 - Legacy override config file: must contain a manually set `TimePriority` (prone to user error).
 - Last-resort config: assigned the lowest possible timestamp (Jan 1, 1970), effectively
   the lowest priority.
+
+Comparing `TimePriority` directly across sources is not always reliable, since a
+controller-provided timestamp is set by the controller's clock, while a manually
+entered or override-file timestamp uses the device's local (or an arbitrary, possibly
+incorrect) clock. To avoid ordering mistakes caused by clock skew, DPC insertion applies
+two source- and arrival-order-aware rules before falling back to plain `TimePriority`
+comparison:
+
+- A newly-submitted `manual` (TUI) DPC always becomes the highest-priority entry
+  immediately upon arrival, regardless of any other entry's `TimePriority`. This
+  ensures a locally-entered change always takes effect right away, and that a
+  hand-edited override config with a bogus (even future-dated) `TimePriority` can
+  never permanently block a manual config from taking over.
+- A newly-received controller DPC always outranks whatever non-controller DPC
+  (`manual`, override, last-resort, etc.) is currently in the list, regardless of
+  `TimePriority`. This ensures a config pre-provisioned on the controller before
+  the device's first boot (and therefore possibly carrying an older timestamp than
+  a locally-applied config) still takes priority once received.
+
+Outside of those two rules, for example among multiple `zedagent` DPCs, or between
+two non-controller, non-`manual` DPCs, ordering is decided purely by `TimePriority`,
+with the newer one winning, as described above.
 
 ### Network config retention policy
 
@@ -544,10 +566,25 @@ To balance reliability with resource constraints, the following entries are reta
 - If there is no DPC from the controller (key `zedagent`), or if none of
   the controller-provided DPCs have ever succeeded in a connectivity test,
   retain the most recent DPC from each source to ensure fallback options remain available
-- A manually injected DPC (via TUI) — identified by the key `manual`
+- A manually injected DPC (via TUI), identified by the key `manual`
 - The last resort configuration (key `lastresort`), if `network.fallback.any.eth` is `enabled`
 
 All other entries are pruned during a compression process, triggered on any relevant DPCL change.
+
+The `manual` DPC is a special case: it is retained even while untested or repeatedly
+failing, since it is often used to fix or troubleshoot connectivity, or to test a local
+config change (e.g. switching to a different DNS server) without EVE silently falling
+back to some older, lower-priority DPC. EVE never automatically fallbacks below a `manual`
+DPC to something with lower priority while it is current, though testing a newer,
+higher-priority candidate (e.g. a freshly received controller config) is still allowed
+and happens normally. The `manual` DPC is removed from the DPCL once one of the following
+happens:
+
+- A higher-priority DPC (per the ordering rules above) has proven to work, in which case
+  it is compressed out automatically, same as any other superseded entry.
+- The user explicitly reverts it via the TUI's "revert" action, which unpublishes the
+  `manual` DPC and lets the manager fall back to (and re-apply) the next-highest-priority
+  DPC.
 
 ## Testing device connectivity
 
