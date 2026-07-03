@@ -11,6 +11,7 @@ use anyhow::Result;
 mod actions;
 mod config;
 mod data;
+mod disk;
 mod error;
 mod installer;
 mod state;
