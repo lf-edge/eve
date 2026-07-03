@@ -218,6 +218,7 @@ mod tests {
             serial: None,
             read_only: ro,
             virtual_dev: false,
+            partitions: vec![],
         }
     }
     fn hw(mem: u64, flavor: &str) -> HardwareFacts {

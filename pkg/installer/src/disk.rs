@@ -49,9 +49,20 @@ pub struct Disk {
     pub serial: Option<String>,
     pub read_only: bool,
     pub virtual_dev: bool,
+    pub partitions: Vec<Partition>,
 }
 
-// Raw lsblk -J -b -o NAME,TYPE,SIZE,TRAN,MODEL,SERIAL,RO entry.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Partition {
+    pub name: String,
+    pub path: String,
+    pub size_bytes: u64,
+    pub fstype: Option<String>,
+    pub label: Option<String>,
+    pub partlabel: Option<String>,
+}
+
+// Raw lsblk -J -b -o NAME,TYPE,SIZE,TRAN,MODEL,SERIAL,RO,FSTYPE,LABEL,PARTLABEL entry.
 #[derive(Deserialize)]
 struct LsblkOut {
     blockdevices: Vec<LsblkDev>,
@@ -71,6 +82,14 @@ struct LsblkDev {
     serial: Option<String>,
     #[serde(default)]
     ro: Option<bool>,
+    #[serde(default)]
+    fstype: Option<String>,
+    #[serde(default)]
+    label: Option<String>,
+    #[serde(default)]
+    partlabel: Option<String>,
+    #[serde(default)]
+    children: Vec<LsblkDev>,
 }
 
 // Accept the byte count whether lsblk emits it as a JSON number or a string.
@@ -96,6 +115,21 @@ pub fn parse_lsblk(json: &str) -> (Vec<Disk>, Vec<String>) {
         .into_iter()
         .filter_map(|d| {
             let name = d.name?;
+            let partitions = d
+                .children
+                .into_iter()
+                .filter_map(|c| {
+                    let cname = c.name?;
+                    Some(Partition {
+                        path: format!("/dev/{cname}"),
+                        size_bytes: c.size,
+                        fstype: c.fstype,
+                        label: c.label,
+                        partlabel: c.partlabel,
+                        name: cname,
+                    })
+                })
+                .collect();
             Some(Disk {
                 path: format!("/dev/{name}"),
                 kind: d.kind.unwrap_or_default(),
@@ -105,6 +139,7 @@ pub fn parse_lsblk(json: &str) -> (Vec<Disk>, Vec<String>) {
                 serial: d.serial,
                 read_only: d.ro.unwrap_or(false),
                 virtual_dev: false,
+                partitions,
                 name,
             })
         })
@@ -269,7 +304,7 @@ pub fn detect_boot_disk() -> Option<String> {
 pub fn discover() -> (Vec<Disk>, Option<String>, Vec<String>) {
     let mut warnings = Vec::new();
     let out = Command::new("lsblk")
-        .args(["-J", "-b", "-o", "NAME,TYPE,SIZE,TRAN,MODEL,SERIAL,RO"])
+        .args(["-J", "-b", "-o", "NAME,TYPE,SIZE,TRAN,MODEL,SERIAL,RO,FSTYPE,LABEL,PARTLABEL"])
         .output();
     let json = match out {
         Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).into_owned(),
@@ -318,6 +353,7 @@ mod tests {
             serial: None,
             read_only: false,
             virtual_dev: virt,
+            partitions: vec![],
         }
     }
 
@@ -492,6 +528,7 @@ mod tests {
             serial: None,
             read_only: true,
             virtual_dev: false,
+            partitions: vec![],
         }];
         match resolve(&InstallConfig::default(), &disks, None) {
             DiskResolution::Resolved { install, warnings, .. } => {
@@ -544,5 +581,28 @@ mod tests {
     fn discover_does_not_panic() {
         // Smoke: on any host this returns without panicking (contents are host-dependent).
         let (_disks, _boot, _w) = discover();
+    }
+
+    #[test]
+    fn parse_lsblk_captures_partitions() {
+        let json = r#"{"blockdevices":[
+          {"name":"vda","type":"disk","size":40000000000,"tran":"virtio","ro":false,
+           "children":[
+             {"name":"vda1","type":"part","size":2000000000,"fstype":"vfat","label":"EFI","partlabel":"EFI System"},
+             {"name":"vda2","type":"part","size":38000000000,"fstype":"ext4","label":"root","partlabel":"P3"}
+           ]},
+          {"name":"vdb","type":"disk","size":8000000000,"tran":"virtio","ro":false}
+        ]}"#;
+        let (disks, w) = parse_lsblk(json);
+        assert!(w.is_empty());
+        let vda = disks.iter().find(|d| d.name == "vda").unwrap();
+        assert_eq!(vda.partitions.len(), 2);
+        assert_eq!(vda.partitions[0].name, "vda1");
+        assert_eq!(vda.partitions[0].path, "/dev/vda1");
+        assert_eq!(vda.partitions[0].fstype.as_deref(), Some("vfat"));
+        assert_eq!(vda.partitions[0].partlabel.as_deref(), Some("EFI System"));
+        assert_eq!(vda.partitions[1].fstype.as_deref(), Some("ext4"));
+        let vdb = disks.iter().find(|d| d.name == "vdb").unwrap();
+        assert!(vdb.partitions.is_empty());
     }
 }

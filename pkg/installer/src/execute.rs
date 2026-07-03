@@ -206,6 +206,7 @@ mod tests {
             serial: None,
             read_only: false,
             virtual_dev,
+            partitions: vec![],
         }
     }
     fn base_plan(persist: PersistPlan, parts: &[&str], nuke: NukePlan) -> InstallPlan {
