@@ -74,8 +74,11 @@ pub fn raid_min_disks(level: RaidLevel) -> usize {
 
 /// PLACEHOLDER for the disk-too-small guard. Real check (minimum size computed
 /// from make-raw's partition constants, ~24 GiB base) is TODO, likely with SP-4
-/// / make-raw unification. Returns None (rejects nothing) for now.
-fn disk_size_ok(_install: &Disk) -> Option<String> {
+/// / make-raw unification. The real minimum depends on which parts are present
+/// (e.g. whether a `persist` partition is included), hence `_make_raw_parts` is
+/// already threaded through even though it's unused today. Returns None
+/// (rejects nothing) for now.
+fn disk_size_ok(_install: &Disk, _make_raw_parts: &[String]) -> Option<String> {
     None
 }
 
@@ -102,10 +105,6 @@ pub fn plan(
     }
     if persist.is_empty() {
         return PlanOutcome::Rejected("no persist disk resolved".to_string());
-    }
-    // ---- hard reject: disk too small (placeholder no-op) ----
-    if let Some(reason) = disk_size_ok(install) {
-        return PlanOutcome::Rejected(reason);
     }
 
     let mut advisories: Vec<String> = Vec::new();
@@ -141,6 +140,13 @@ pub fn plan(
         ["efi", "efi_b", "imga", "imgb", "conf"].iter().map(|s| s.to_string()).collect();
     if install_is_persist_member {
         make_raw_parts.push("persist".to_string());
+    }
+
+    // ---- hard reject: disk too small (placeholder no-op) ----
+    // Runs after make_raw_parts is built: the size floor depends on which
+    // parts are present (e.g. whether a `persist` partition is included).
+    if let Some(reason) = disk_size_ok(install, &make_raw_parts) {
+        return PlanOutcome::Rejected(reason);
     }
 
     let persist_plan = match fs {
@@ -415,6 +421,35 @@ mod tests {
         assert!(matches!(
             plan(&tiny, &[tiny.clone()], Some("vda"), &InstallConfig::default(), &hw(8, "kvm")),
             PlanOutcome::Ready(_)
+        ));
+    }
+
+    #[test]
+    fn advisory_readonly_persist_non_install() {
+        let vdb = disk("vdb", 40 * GB, false); // install, not read-only
+        let vdc = disk("vdc", 40 * GB, true); // persist member, read-only, not the install disk
+        let p = ready(plan(&vdb, &[vdb.clone(), vdc.clone()], Some("vda"), &InstallConfig::default(), &hw(64, "kvm")));
+        assert_eq!(p.fs, Fs::Zfs); // multi-disk -> zfs
+        assert!(p.advisories.iter().any(|a| a.contains("vdc") && a.contains("read-only")));
+    }
+
+    #[test]
+    fn single_disk_zfs_raid_level_alone_selects_zfs() {
+        // SP-1 cmdline-vs-JSON asymmetry: zfs_raid_level set, persist_fs left unset.
+        let vdb = disk("vdb", 40 * GB, false);
+        let mut cfg = InstallConfig::default();
+        cfg.zfs_raid_level = Some(RaidLevel::None); // None => raid_min_disks == 1, satisfied by single disk
+        assert!(cfg.persist_fs.is_none());
+        let p = ready(plan(&vdb, &[vdb.clone()], Some("vda"), &cfg, &hw(64, "kvm")));
+        assert_eq!(p.fs, Fs::Zfs);
+    }
+
+    #[test]
+    fn reject_empty_persist_list() {
+        let vdb = disk("vdb", 40 * GB, false);
+        assert!(matches!(
+            plan(&vdb, &[], Some("vda"), &InstallConfig::default(), &hw(8, "kvm")),
+            PlanOutcome::Rejected(_)
         ));
     }
 }
