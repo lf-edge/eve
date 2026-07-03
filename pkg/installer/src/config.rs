@@ -205,6 +205,35 @@ pub fn parse_json(text: &str) -> (InstallConfig, Vec<Warning>) {
     }
 }
 
+impl InstallConfig {
+    /// Field-wise merge. `self` is the higher-precedence layer: for each field,
+    /// keep `self`'s value if present, otherwise take `lower`'s.
+    pub fn or(self, lower: InstallConfig) -> InstallConfig {
+        InstallConfig {
+            install_disk: self.install_disk.or(lower.install_disk),
+            persist_disk: self.persist_disk.or(lower.persist_disk),
+            install_server: self.install_server.or(lower.install_server),
+            soft_serial: self.soft_serial.or(lower.soft_serial),
+            persist_fs: self.persist_fs.or(lower.persist_fs),
+            zfs_raid_level: self.zfs_raid_level.or(lower.zfs_raid_level),
+            k3s_etcd_size_gb: self.k3s_etcd_size_gb.or(lower.k3s_etcd_size_gb),
+            skip_config: self.skip_config.or(lower.skip_config),
+            skip_persist: self.skip_persist.or(lower.skip_persist),
+            skip_rootfs: self.skip_rootfs.or(lower.skip_rootfs),
+            skip_zfs_checks: self.skip_zfs_checks.or(lower.skip_zfs_checks),
+            disable_verify: self.disable_verify.or(lower.disable_verify),
+            skip_dev_cert: self.skip_dev_cert.or(lower.skip_dev_cert),
+            reboot_after_install: self.reboot_after_install.or(lower.reboot_after_install),
+            nuke_disks: self.nuke_disks.or(lower.nuke_disks),
+            nuke_all_disks: self.nuke_all_disks.or(lower.nuke_all_disks),
+            blackbox: self.blackbox.or(lower.blackbox),
+            pause_before_install: self.pause_before_install.or(lower.pause_before_install),
+            pause_after_install: self.pause_after_install.or(lower.pause_after_install),
+            install_debug: self.install_debug.or(lower.install_debug),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -315,5 +344,35 @@ mod tests {
         assert_eq!(c, InstallConfig::default());
         assert_eq!(w.len(), 1);
         assert!(matches!(w[0], Warning::BadJson(_)));
+    }
+
+    #[test]
+    fn or_prefers_self_then_lower() {
+        let high = InstallConfig {
+            install_disk: Some("sda".into()),
+            ..Default::default()
+        };
+        let low = InstallConfig {
+            install_disk: Some("sdb".into()),
+            install_server: Some("ctrl".into()),
+            ..Default::default()
+        };
+        let merged = high.or(low);
+        assert_eq!(merged.install_disk.as_deref(), Some("sda")); // self wins
+        assert_eq!(merged.install_server.as_deref(), Some("ctrl")); // filled from lower
+    }
+
+    #[test]
+    fn or_composes_tui_over_json_over_cmdline() {
+        let (cmd, _) = parse_cmdline("eve_install_disk=sda eve_install_server=cmdctrl");
+        let (json, _) = parse_json(r#"{"install_server":"jsonctrl"}"#);
+        let tui = InstallConfig {
+            install_disk: Some("nvme0n1".into()),
+            ..Default::default()
+        };
+        // interactive precedence: TUI ▷ (json ▷ cmdline)
+        let merged = tui.or(json.or(cmd));
+        assert_eq!(merged.install_disk.as_deref(), Some("nvme0n1")); // from TUI
+        assert_eq!(merged.install_server.as_deref(), Some("jsonctrl")); // json beats cmdline
     }
 }
