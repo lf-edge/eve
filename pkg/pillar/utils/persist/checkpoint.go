@@ -106,13 +106,18 @@ func ExistsSavedConfig(log *base.LogObject, filename string) bool {
 // MaybeSaveControllerCerts saves a checkpoint of a verified chain
 // of controller certificates if it differs from the currently saved chain.
 // If so, the previous controllercerts file is moved to controllercerts.bak
-// without changing its modification time.
+// without changing its modification time. On the very first save there is no
+// previous file to move, so it additionally creates controllercerts.bak from
+// the saved file when none exists yet (this also backfills devices installed
+// before a backup was kept). That way ReadControllerCerts always has a fallback
+// if the primary is later truncated or corrupted.
 // Since the order of the certs in the protobuf encoded contents can differ
 // even though the certs are the same, the caller needs to verify that
 // there was an actual change. This function does a basic bytes.Equal to
 // handle any other spurious calls.
 func MaybeSaveControllerCerts(log *base.LogObject, contents []byte) {
 	filename := "controllercerts"
+	backupname := filename + ".bak"
 	oldContents, ts, err := ReadSavedConfig(log, filename)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -121,6 +126,11 @@ func MaybeSaveControllerCerts(log *base.LogObject, contents []byte) {
 	} else {
 		if bytes.Equal(oldContents, contents) {
 			log.Functionf("MaybeSaveControllerCerts: same content as saved at %v", ts)
+			// Backfill the backup if it is missing (e.g. certs unchanged
+			// since an install that predated keeping controllercerts.bak).
+			if !ExistsSavedConfig(log, backupname) {
+				CloneContentAndTimes(log, filename, backupname)
+			}
 			return
 		}
 	}
@@ -130,6 +140,12 @@ func MaybeSaveControllerCerts(log *base.LogObject, contents []byte) {
 		// Can occur if no space in filesystem
 		log.Errorf("MaybeSaveControllerCerts failed: %s", err)
 		return
+	}
+	// On the first save WriteRenameWithBackup had no prior controllercerts to
+	// move to controllercerts.bak, so create the backup from the just-written
+	// file.
+	if !ExistsSavedConfig(log, backupname) {
+		CloneContentAndTimes(log, filename, backupname)
 	}
 	log.Notice("MaybeSaveControllerCerts updated the certs")
 }
