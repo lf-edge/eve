@@ -12,6 +12,7 @@ mod disk;
 mod execute;
 mod facts;
 mod plan;
+mod tui;
 
 fn cmd_disks() -> Result<()> {
     let (disks, boot, mut warnings) = crate::disk::discover();
