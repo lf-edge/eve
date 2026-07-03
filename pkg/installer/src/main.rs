@@ -13,6 +13,7 @@ mod config;
 mod data;
 mod disk;
 mod error;
+mod facts;
 mod installer;
 mod plan;
 mod state;
