@@ -232,6 +232,18 @@ impl InstallConfig {
             install_debug: self.install_debug.or(lower.install_debug),
         }
     }
+
+    /// Serialize this config for save-back/cloning to another node, stripping
+    /// fields that must not be cloned: `soft_serial` (per-device identity) and
+    /// the diagnostic/pause flags. `skip_serializing_if` keeps absent fields out.
+    pub fn to_unattended(&self) -> String {
+        let mut clone = self.clone();
+        clone.soft_serial = None;
+        clone.pause_before_install = None;
+        clone.pause_after_install = None;
+        clone.install_debug = None;
+        serde_json::to_string_pretty(&clone).unwrap_or_else(|_| "{}".to_string())
+    }
 }
 
 /// Resolve the effective config for the unattended path: read the first
@@ -446,5 +458,45 @@ mod tests {
         let merged = tui.or(json.or(cmd));
         assert_eq!(merged.install_disk.as_deref(), Some("nvme0n1")); // from TUI
         assert_eq!(merged.install_server.as_deref(), Some("jsonctrl")); // json beats cmdline
+    }
+
+    #[test]
+    fn to_unattended_strips_per_device_fields() {
+        let c = InstallConfig {
+            install_disk: Some("sda".into()),
+            install_server: Some("ctrl".into()),
+            nuke_all_disks: Some(true),
+            soft_serial: Some("UNIQUE-123".into()),
+            pause_before_install: Some(true),
+            pause_after_install: Some(true),
+            install_debug: Some(true),
+            ..Default::default()
+        };
+        let json = c.to_unattended();
+        // excluded fields absent
+        assert!(!json.contains("soft_serial"));
+        assert!(!json.contains("UNIQUE-123"));
+        assert!(!json.contains("pause_before_install"));
+        assert!(!json.contains("pause_after_install"));
+        assert!(!json.contains("install_debug"));
+        // cloned fields present
+        assert!(json.contains("install_disk"));
+        assert!(json.contains("install_server"));
+        assert!(json.contains("nuke_all_disks"));
+    }
+
+    #[test]
+    fn to_unattended_reparses_to_same_retained_fields() {
+        let c = InstallConfig {
+            install_disk: Some("sda".into()),
+            soft_serial: Some("UNIQUE-123".into()),
+            install_debug: Some(true),
+            ..Default::default()
+        };
+        let (reparsed, w) = parse_json(&c.to_unattended());
+        assert!(w.is_empty());
+        assert_eq!(reparsed.install_disk.as_deref(), Some("sda"));
+        assert!(reparsed.soft_serial.is_none()); // stripped
+        assert!(reparsed.install_debug.is_none()); // stripped
     }
 }
