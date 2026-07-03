@@ -95,6 +95,11 @@ Upgrading from `HV=k` to another `HV=` type is not supported in any case: a
 vault migrated to the `HV=k` zvol layout has no path back to a filesystem
 dataset the other flavors can read.
 
+Converting an in-field device to `HV=k` requires the larger EVE-k boot-disk
+geometry, which older (small-partition) devices do not have. The boot-disk
+repartition that enables such a conversion — and how it stays robust across
+power outages — is described in [STORAGE-RESIZING.md](./STORAGE-RESIZING.md).
+
 ## Tie Breaker Node
 
 ### Overview
