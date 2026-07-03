@@ -156,6 +156,59 @@ cmd_down() {
   log "down"
 }
 
+cmd_run() { hssh "$@"; }
+
+cmd_inspect() {
+  # shellcheck disable=SC1091
+  . "$WORK_DIR/harness-env"
+  local d
+  for d in $TEST_DISKS; do
+    log "== $d =="
+    hssh "sudo sgdisk -p $d 2>/dev/null; lsblk $d"
+  done
+}
+
+# L1 acceptance: disks + tooling + TPM + UEFI + round-trip, no EVE artifacts.
+cmd_selftest() {
+  cmd_down >/dev/null 2>&1 || true
+  cmd_up --disks 2
+  # shellcheck disable=SC1091
+  . "$WORK_DIR/harness-env"
+  local dev="${TEST_DISKS%% *}"   # /dev/vdb
+
+  log "disk fidelity: test disk is TYPE=disk"
+  hssh "lsblk -dno TYPE $dev | grep -qx disk" \
+    || { cmd_down; die "SELFTEST FAIL: $dev is not TYPE=disk"; }
+
+  log "boot disk present and distinct"
+  hssh "test -b /dev/vda && [ '$dev' != /dev/vda ]" \
+    || { cmd_down; die "SELFTEST FAIL: boot disk /dev/vda missing"; }
+
+  log "UEFI: efivarfs mounted"
+  hssh "mount | grep -q efivarfs" \
+    || { cmd_down; die "SELFTEST FAIL: efivarfs not present (OVMF/UEFI)"; }
+
+  log "TPM: swtpm reachable at /dev/tpmrm0"
+  hssh "test -c /dev/tpmrm0 && sudo tpm2_startup -c" \
+    || { cmd_down; die "SELFTEST FAIL: emulated TPM not responding"; }
+
+  log "partition + ext4 round-trip on $dev"
+  hssh "set -e
+    sudo sgdisk -Z $dev
+    sudo sgdisk --new 1:0:0 --change-name 1:HARNESS $dev
+    sudo partprobe $dev
+    sudo mkfs.ext4 -F -q ${dev}1
+    sudo mkdir -p /mnt/h && sudo mount ${dev}1 /mnt/h
+    echo hello-harness | sudo tee /mnt/h/marker >/dev/null
+    sudo grep -q hello-harness /mnt/h/marker
+    sudo umount /mnt/h
+    sudo sgdisk -p $dev | grep -q HARNESS" \
+    || { cmd_down; die "SELFTEST FAIL: partition/ext4 round-trip failed"; }
+
+  cmd_down
+  log "SELFTEST PASS"
+}
+
 usage() {
   cat >&2 <<EOF
 usage: harness.sh <command>
@@ -171,9 +224,12 @@ EOF
 }
 
 case "${1:-}" in
-  build) shift; cmd_build "$@";;
-  up)    shift; cmd_up "$@";;
-  down)  shift; cmd_down "$@";;
-  ssh)   shift; hssh "$@";;
-  *)     usage;;
+  build)    shift; cmd_build "$@";;
+  up)       shift; cmd_up "$@";;
+  down)     shift; cmd_down "$@";;
+  ssh)      shift; hssh "$@";;
+  run)      shift; cmd_run "$@";;
+  inspect)  shift; cmd_inspect "$@";;
+  selftest) shift; cmd_selftest "$@";;
+  *)        usage;;
 esac
