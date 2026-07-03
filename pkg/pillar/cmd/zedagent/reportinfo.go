@@ -647,6 +647,11 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 		publishZedAgentStatus(ctx.getconfigCtx)
 	}
 	ReportDeviceInfo.State = info.ZDeviceState(devState)
+	if devState == types.DEVICE_STATE_CONVERTING {
+		if _, sub := isConverting(ctx); sub != types.DEVICE_SUBSTATE_UNSPECIFIED {
+			ReportDeviceInfo.SubState = info.ZDeviceSubState(sub)
+		}
+	}
 
 	// TODO: Enhance capability reporting with a bitmap-like approach for increased granularity.
 	// We report the snapshot capability despite the fact that we support snapshots only
@@ -1288,9 +1293,30 @@ func getBaseosUpdateCounter(ctx *zedagentContext) uint32 {
 	return status.CurrentRetryUpdateCounter
 }
 
+// isConverting reports whether a boot-disk flavor conversion (EVE-kvm <-> EVE-k)
+// is in progress, and the furthest-reached sub-state, as signalled by baseosmgr
+// on BaseOsStatus.
+func isConverting(ctx *zedagentContext) (bool, types.DeviceSubState) {
+	if ctx.subBaseOsStatus == nil {
+		return false, types.DEVICE_SUBSTATE_UNSPECIFIED
+	}
+	for _, st := range ctx.subBaseOsStatus.GetAll() {
+		bos := st.(types.BaseOsStatus)
+		if bos.Converting {
+			return true, bos.ConvertSubState
+		}
+	}
+	return false, types.DEVICE_SUBSTATE_UNSPECIFIED
+}
+
 func getDeviceState(ctx *zedagentContext) types.DeviceState {
 	if ctx.maintenanceMode {
 		return types.DEVICE_STATE_MAINTENANCE_MODE
+	}
+	// A flavor conversion is a special base-OS update; report it distinctly and
+	// before the generic BASEOS_UPDATING below.
+	if converting, _ := isConverting(ctx); converting {
+		return types.DEVICE_STATE_CONVERTING
 	}
 	if isUpdating(ctx) || isKubeClusterUpdating(ctx) {
 		return types.DEVICE_STATE_BASEOS_UPDATING
