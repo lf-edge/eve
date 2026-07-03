@@ -74,6 +74,7 @@ type nodeagentContext struct {
 	subGlobalConfig             pubsub.Subscription
 	subZbootStatus              pubsub.Subscription
 	subZedAgentStatus           pubsub.Subscription
+	subBaseOsStatus             pubsub.Subscription
 	subDomainStatus             pubsub.Subscription
 	subVaultStatus              pubsub.Subscription
 	subVolumeMgrStatus          pubsub.Subscription
@@ -386,6 +387,26 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	ctxPtr.subZedAgentStatus = subZedAgentStatus
 	subZedAgentStatus.Activate()
 
+	// subscribe to baseos status events, to react to a boot-disk conversion
+	// (EVE-kvm <-> EVE-k) that needs a reboot into the offline shrink.
+	subBaseOsStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "baseosmgr",
+		MyAgentName:   agentName,
+		TopicImpl:     types.BaseOsStatus{},
+		Activate:      false,
+		Ctx:           ctxPtr,
+		CreateHandler: handleBaseOsStatusCreate,
+		ModifyHandler: handleBaseOsStatusModify,
+		DeleteHandler: handleBaseOsStatusDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctxPtr.subBaseOsStatus = subBaseOsStatus
+	subBaseOsStatus.Activate()
+
 	initNodeDrainPubSub(ps, ctxPtr)
 
 	log.Functionf("zedbox event loop")
@@ -402,6 +423,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-subZedAgentStatus.MsgChan():
 			subZedAgentStatus.ProcessChange(change)
+
+		case change := <-subBaseOsStatus.MsgChan():
+			subBaseOsStatus.ProcessChange(change)
 
 		case <-ctxPtr.tickerTimer.C:
 			handleDeviceTimers(ctxPtr)
