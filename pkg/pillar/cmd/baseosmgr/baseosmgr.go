@@ -258,6 +258,12 @@ func handleBaseOsConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	handleBaseOsConfigDeleteByStatus(ctx, key, status)
+	// The conversion target is being withdrawn; drop any resize-failure marker so
+	// a later re-push can retry even on an unchanged EVE version (the marker
+	// otherwise suppresses retries until the running image changes).
+	if resizeFailedMarkerPresent() {
+		clearResizeFailedMarker()
+	}
 	log.Functionf("handleBaseOsConfigDelete(%s) done", key)
 }
 
@@ -299,6 +305,17 @@ func handleBaseOsConfigModify(ctxArg interface{}, key string, configArg interfac
 
 	log.Functionf("handleBaseOsConfigModify(%s) Activate %v",
 		config.Key(), config.Activate)
+
+	// A change to a different target image is a fresh attempt: drop any stale
+	// resize-failure marker so the new image is tried even on an unchanged EVE
+	// version (the marker otherwise suppresses retries). An Activate/retry-counter
+	// modify keeps the same target and must not clear it. A caller with no prior
+	// config cannot show the target is unchanged, so the zero value below makes
+	// it compare as changed.
+	oldConfig, _ := oldConfigArg.(types.BaseOsConfig)
+	if baseOsTargetChanged(oldConfig, config) && resizeFailedMarkerPresent() {
+		clearResizeFailedMarker()
+	}
 
 	// Check content tree provided
 	err := validateBaseOsConfig(ctx, config)
