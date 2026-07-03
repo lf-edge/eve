@@ -1,0 +1,19 @@
+{
+    "extends": ["config:recommended"],
+    "ignoreTests": false,
+    "packageRules": [
+        {
+            "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+            "automerge": true
+        },
+        {
+            "description": "Opt-out of minimum Go version updates",
+            "matchManagers": ["gomod"],
+            "matchDepTypes": ["golang"],
+            "enabled": false
+        }
+    ],
+    "gomod": {
+        "postUpdateOptions": ["gomodUpdateImportPaths", "gomodTidy"]
+    }
+}

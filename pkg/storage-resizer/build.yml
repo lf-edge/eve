@@ -1,0 +1,4 @@
+image: eve-storage-resizer
+org: lfedge
+# Fully vendored; no network needed at build time.
+network: no
