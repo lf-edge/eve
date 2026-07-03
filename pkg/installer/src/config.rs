@@ -251,6 +251,17 @@ impl InstallConfig {
 /// and merge it over the cmdline (`json ▷ cmdline`). Absent/unreadable files
 /// are skipped; the first file that exists "wins" even if it parses empty.
 /// The only I/O performed by this module.
+///
+/// Note on `persist_fs` inference asymmetry: `parse_cmdline` infers
+/// `persist_fs = Some(Fs::Zfs)` when a `zfs_raid_level` is present on the
+/// cmdline, but `parse_json` performs no such inference, and this function
+/// does not re-derive `persist_fs` after merging json over cmdline. So an
+/// `unattended.json` that sets `zfs_raid_level` without also setting
+/// `persist_fs` will yield `persist_fs: None` in the merged config even
+/// though `zfs_raid_level` is `Some(_)`. This is per spec (JSON must state
+/// `persist_fs` explicitly); SP-2 consumers must decide how to treat that
+/// combination (e.g. treat a set `zfs_raid_level` as implying zfs even when
+/// `persist_fs` is `None`, or treat it as a config error).
 pub fn load(json_candidates: &[&Path], cmdline: &str) -> (InstallConfig, Vec<Warning>) {
     let (cmd_cfg, mut warnings) = parse_cmdline(cmdline);
 
@@ -498,5 +509,101 @@ mod tests {
         assert_eq!(reparsed.install_disk.as_deref(), Some("sda"));
         assert!(reparsed.soft_serial.is_none()); // stripped
         assert!(reparsed.install_debug.is_none()); // stripped
+    }
+
+    /// Table-driven coverage of every `eve_*` cmdline token (spec §9: "each
+    /// token" must be tested). Each entry pairs the exact token string with a
+    /// closure that asserts the one field it must set; a wrong match arm in
+    /// `parse_cmdline` will make some entry's closure return `false`.
+    #[test]
+    fn cmdline_every_token_maps_to_its_field() {
+        let cases: Vec<(&str, Box<dyn Fn(&InstallConfig) -> bool>)> = vec![
+            // value tokens
+            (
+                "eve_install_disk=sda",
+                Box::new(|c: &InstallConfig| c.install_disk == Some("sda".to_string())),
+            ),
+            (
+                "eve_persist_disk=sdb",
+                Box::new(|c: &InstallConfig| c.persist_disk == Some(vec!["sdb".to_string()])),
+            ),
+            (
+                "eve_install_server=ctrl",
+                Box::new(|c: &InstallConfig| c.install_server == Some("ctrl".to_string())),
+            ),
+            (
+                "eve_soft_serial=serial123",
+                Box::new(|c: &InstallConfig| c.soft_serial == Some("serial123".to_string())),
+            ),
+            (
+                "eve_nuke_disks=sde",
+                Box::new(|c: &InstallConfig| c.nuke_disks == Some(vec!["sde".to_string()])),
+            ),
+            (
+                "eve_install_zfs_with_raid_level=raid1",
+                Box::new(|c: &InstallConfig| {
+                    c.zfs_raid_level == Some(RaidLevel::Raid1) && c.persist_fs == Some(Fs::Zfs)
+                }),
+            ),
+            (
+                "eve_install_k3s_etcd_sizeGB=10",
+                Box::new(|c: &InstallConfig| c.k3s_etcd_size_gb == Some(10)),
+            ),
+            // bare presence flags
+            (
+                "eve_install_skip_config",
+                Box::new(|c: &InstallConfig| c.skip_config == Some(true)),
+            ),
+            (
+                "eve_install_skip_persist",
+                Box::new(|c: &InstallConfig| c.skip_persist == Some(true)),
+            ),
+            (
+                "eve_install_skip_rootfs",
+                Box::new(|c: &InstallConfig| c.skip_rootfs == Some(true)),
+            ),
+            (
+                "eve_install_skip_zfs_checks",
+                Box::new(|c: &InstallConfig| c.skip_zfs_checks == Some(true)),
+            ),
+            (
+                "eve_disable_verify",
+                Box::new(|c: &InstallConfig| c.disable_verify == Some(true)),
+            ),
+            (
+                "eve_skip_dev_cert",
+                Box::new(|c: &InstallConfig| c.skip_dev_cert == Some(true)),
+            ),
+            (
+                "eve_reboot_after_install",
+                Box::new(|c: &InstallConfig| c.reboot_after_install == Some(true)),
+            ),
+            (
+                "eve_nuke_all_disks",
+                Box::new(|c: &InstallConfig| c.nuke_all_disks == Some(true)),
+            ),
+            (
+                "eve_blackbox",
+                Box::new(|c: &InstallConfig| c.blackbox == Some(true)),
+            ),
+            (
+                "eve_pause_before_install",
+                Box::new(|c: &InstallConfig| c.pause_before_install == Some(true)),
+            ),
+            (
+                "eve_pause_after_install",
+                Box::new(|c: &InstallConfig| c.pause_after_install == Some(true)),
+            ),
+            (
+                "eve_install_debug",
+                Box::new(|c: &InstallConfig| c.install_debug == Some(true)),
+            ),
+        ];
+
+        for (token, check) in &cases {
+            let (c, w) = parse_cmdline(token);
+            assert!(check(&c), "token {:?} did not set the expected field: {:?}", token, c);
+            assert!(w.is_empty(), "token {:?} produced unexpected warnings: {:?}", token, w);
+        }
     }
 }
