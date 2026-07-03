@@ -31,11 +31,20 @@ jobs:
           git diff upstream/${{ github.base_ref }}...HEAD > ${{ github.workspace }}/pr.patch
           # Get back to upstream master so patch can be applied
           git checkout upstream/master
+          git submodule update --init --recursive
+
+      - name: Prepare gitconfig for container
+        run: |
+          cat > /tmp/gitconfig <<'EOF'
+          [safe]
+              directory = *
+          EOF
 
       - name: Yetus
         run: |
           docker run --rm \
             -v ${{ github.workspace }}:/workspace \
+            -v /tmp/gitconfig:/etc/gitconfig \
             lfedge/eve-yetus:0.15.1-eve-2 \
             test-patch \
             --basedir=/workspace/src \
