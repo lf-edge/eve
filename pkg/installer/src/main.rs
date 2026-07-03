@@ -14,6 +14,7 @@ mod data;
 mod disk;
 mod error;
 mod installer;
+mod plan;
 mod state;
 mod utils;
 mod views;
