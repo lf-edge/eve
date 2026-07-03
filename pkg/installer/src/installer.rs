@@ -50,7 +50,3 @@ pub fn config(in_json: Value) {
 
     c.run()
 }
-
-pub fn run() {
-    println!("Installing EVE");
-}

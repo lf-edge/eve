@@ -9,6 +9,7 @@ use crate::utils::read_installer_json;
 use anyhow::Result;
 
 mod actions;
+mod config;
 mod data;
 mod error;
 mod installer;
@@ -44,7 +45,6 @@ fn main() -> Result<()>{
 
     println!("Initializing EVE config!");
     installer::config(installer_json);
-    installer::run();
 
     Ok(())
 }
