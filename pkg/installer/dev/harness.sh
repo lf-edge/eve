@@ -99,6 +99,13 @@ cmd_up() {
     --ctrl "type=unixio,path=$WORK_DIR/swtpm/sock" --tpm2 \
     --daemon --pid "file=$WORK_DIR/swtpm/pid"
 
+  # if anything below fails before the VM is confirmed up, don't leave
+  # swtpm (or qemu) running unattended
+  trap '
+    [ -f "$WORK_DIR/qemu.pid" ] && { kill "$(cat "$WORK_DIR/qemu.pid")" 2>/dev/null || true; rm -f "$WORK_DIR/qemu.pid"; }
+    [ -f "$WORK_DIR/swtpm/pid" ] && { kill "$(cat "$WORK_DIR/swtpm/pid")" 2>/dev/null || true; rm -f "$WORK_DIR/swtpm/pid"; }
+  ' ERR
+
   log "booting VM"
   qemu-system-x86_64 -enable-kvm -m 2048 -smp 2 \
     -drive "if=pflash,format=raw,readonly=on,file=$OVMF_CODE" \
@@ -122,6 +129,7 @@ cmd_up() {
     sleep 2
     [ "$i" = 180 ] && { cmd_down; die "VM did not come up (see $WORK_DIR/serial.log)"; }
   done
+  trap - ERR RETURN
 
   cat > "$WORK_DIR/harness-env" <<EOF
 TEST_DISKS="$test_devs"
