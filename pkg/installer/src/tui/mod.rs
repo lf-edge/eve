@@ -4,6 +4,7 @@
  */
 pub mod disks;
 pub mod filesystem;
+pub mod io;
 pub mod overview;
 pub mod persist;
 pub mod screen;
@@ -11,17 +12,19 @@ pub mod state;
 pub mod util;
 
 use anyhow::Result;
-use ratatui::crossterm::event::{self, Event};
+use ratatui::crossterm::cursor::{Hide, Show};
 use ratatui::crossterm::execute;
 use ratatui::crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
-use ratatui::layout::{Constraint, Layout};
+use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::prelude::CrosstermBackend;
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::Paragraph;
-use ratatui::Terminal;
-use std::io::{stdout, Stdout};
+use ratatui::{Terminal, TerminalOptions, Viewport};
+use std::fs::OpenOptions;
+use std::io::{stdout, Write};
+use std::os::unix::io::AsRawFd;
 
 use crate::config::InstallConfig;
 use crate::disk::Disk;
@@ -29,6 +32,10 @@ use crate::plan::HardwareFacts;
 use screen::{Nav, Screen};
 pub use state::{Outcome, WizardState};
 use util::step_title;
+
+/// A terminal we render the wizard to. Boxed writer so the primary (stdout on
+/// tty2) and the serial devices share one type.
+type WizTerminal = Terminal<CrosstermBackend<Box<dyn Write + Send>>>;
 
 /// Pure wizard-navigation step. Returned to the driver to advance/finish/cancel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,15 +60,15 @@ pub fn apply_nav(nav: Nav, index: usize, n_screens: usize) -> NavResult {
     }
 }
 
-/// Restore the terminal: leave raw mode and the alternate screen. Idempotent, so
-/// it is safe to run from both the panic hook and the RAII guard.
+/// Restore the primary terminal (tty2): leave raw mode and the alternate screen,
+/// show the cursor. Idempotent, so it is safe from both the panic hook and the
+/// RAII guard. Serial devices restore their own termios via their guards.
 fn restore_terminal() {
     let _ = disable_raw_mode();
-    let _ = execute!(stdout(), LeaveAlternateScreen);
+    let _ = execute!(stdout(), LeaveAlternateScreen, Show);
 }
 
-/// RAII guard: restores the terminal on drop (covers normal exit, error, and
-/// panic unwinding).
+/// RAII guard: restores the primary terminal on drop (normal exit, error, panic).
 struct TermGuard;
 impl Drop for TermGuard {
     fn drop(&mut self) {
@@ -69,30 +76,95 @@ impl Drop for TermGuard {
     }
 }
 
+/// Render the current screen (with the step header) to every attached terminal.
+fn draw_all(
+    terminals: &mut [WizTerminal],
+    screens: &mut [Box<dyn Screen>],
+    index: usize,
+    state: &WizardState,
+) -> Result<()> {
+    for t in terminals.iter_mut() {
+        t.draw(|f| {
+            // Split off a one-line step indicator above the current screen.
+            let chunks =
+                Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(f.area());
+            let header = step_title(index, screens.len(), screens[index].title());
+            f.render_widget(
+                Paragraph::new(header).style(Style::default().add_modifier(Modifier::BOLD)),
+                chunks[0],
+            );
+            screens[index].render(f, chunks[1], state);
+        })?;
+    }
+    Ok(())
+}
+
+/// Run the wizard, rendering to the primary terminal (stdout — tty2 when launched
+/// via `openvt`) and to every device in `serial_consoles` simultaneously, with
+/// input merged from all of them. `serial_consoles` are device paths (e.g.
+/// `/dev/ttyS0`), never `/dev/console`.
 pub fn run(
     disks: Vec<Disk>,
     boot: Option<String>,
     config: InstallConfig,
     hw: HardwareFacts,
+    serial_consoles: &[String],
 ) -> Result<Outcome> {
     enable_raw_mode()?;
     // Construct the restore guard immediately, BEFORE entering the alternate
     // screen: if EnterAlternateScreen fails, Drop still disables raw mode so we
     // never leave the terminal wedged.
     let _guard = TermGuard;
-    // Restore-first panic hook: a panic inside the alternate screen would
-    // otherwise print its message where the user can't see it. Restore the
-    // terminal, then chain the previous hook so the message lands on a normal
-    // screen. (This is a short-lived CLI, so leaving the hook installed on the
-    // normal-exit path is fine.)
+    // Restore-first panic hook so a panic message survives the alternate screen.
+    // (Short-lived CLI, so leaving the hook installed on normal exit is fine.)
     let prev_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         restore_terminal();
         prev_hook(info);
     }));
-    execute!(stdout(), EnterAlternateScreen)?;
-    let mut terminal: Terminal<CrosstermBackend<Stdout>> =
-        Terminal::new(CrosstermBackend::new(stdout()))?;
+    execute!(stdout(), EnterAlternateScreen, Hide)?;
+
+    // Primary terminal: stdout, which is tty2 when launched under `openvt`.
+    let mut terminals: Vec<WizTerminal> =
+        vec![Terminal::new(CrosstermBackend::new(Box::new(stdout()) as Box<dyn Write + Send>))?];
+    let mut input_fds = vec![libc::STDIN_FILENO];
+    // Kept alive so their fds (used for input polling) stay open until run exits.
+    let mut serial_readers: Vec<std::fs::File> = Vec::new();
+    // Declared AFTER terminals so, on unwind, guards drop (restore termios)
+    // while the device fds are still open.
+    let mut termios_guards: Vec<io::TermiosGuard> = Vec::new();
+
+    for path in serial_consoles {
+        match OpenOptions::new().read(true).write(true).open(path) {
+            Ok(file) => {
+                let fd = file.as_raw_fd();
+                // Best-effort raw mode + a sane size; a serial line that can't be
+                // configured still gets a terminal, just cooked/80x24.
+                if let Ok(g) = unsafe { io::TermiosGuard::make_raw(fd) } {
+                    termios_guards.push(g);
+                }
+                let (cols, rows) = unsafe { io::ensure_winsize(fd) };
+                match file.try_clone() {
+                    Ok(mut wf) => {
+                        let _ = execute!(wf, EnterAlternateScreen, Hide);
+                        let backend = CrosstermBackend::new(Box::new(wf) as Box<dyn Write + Send>);
+                        // Serial size can't be read via crossterm (it queries the
+                        // controlling tty), so pin a fixed viewport to this device.
+                        let opts = TerminalOptions {
+                            viewport: Viewport::Fixed(Rect::new(0, 0, cols, rows)),
+                        };
+                        if let Ok(t) = Terminal::with_options(backend, opts) {
+                            terminals.push(t);
+                            input_fds.push(fd);
+                            serial_readers.push(file);
+                        }
+                    }
+                    Err(e) => eprintln!("[tui] cannot clone {path}: {e}"),
+                }
+            }
+            Err(e) => eprintln!("[tui] cannot open console {path}: {e}"),
+        }
+    }
 
     let mut state = WizardState { disks, boot, config, hw };
     let mut screens: Vec<Box<dyn Screen>> = vec![
@@ -104,31 +176,34 @@ pub fn run(
     let mut index = 0usize;
     screens[index].on_enter(&mut state);
 
-    loop {
-        terminal.draw(|f| {
-            // Split off a one-line step indicator above the current screen.
-            let chunks = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(f.area());
-            let header = step_title(index, screens.len(), screens[index].title());
-            f.render_widget(
-                Paragraph::new(header).style(Style::default().add_modifier(Modifier::BOLD)),
-                chunks[0],
-            );
-            screens[index].render(f, chunks[1], &state);
-        })?;
-        if let Event::Key(key) = event::read()? {
-            let nav = screens[index].handle_key(key, &mut state);
-            match apply_nav(nav, index, screens.len()) {
-                NavResult::Continue(i) => {
-                    if i != index {
-                        index = i;
-                        screens[index].on_enter(&mut state);
-                    }
+    let reader = io::InputReader::spawn(input_fds);
+
+    draw_all(&mut terminals, &mut screens, index, &state)?;
+    let outcome = loop {
+        let key = match reader.rx.recv() {
+            Ok(k) => k,
+            Err(_) => break Outcome::Cancelled, // all input devices gone
+        };
+        let nav = screens[index].handle_key(key, &mut state);
+        match apply_nav(nav, index, screens.len()) {
+            NavResult::Continue(i) => {
+                if i != index {
+                    index = i;
+                    screens[index].on_enter(&mut state);
                 }
-                NavResult::Finish => return Ok(Outcome::Completed(state.config)),
-                NavResult::Cancel => return Ok(Outcome::Cancelled),
             }
+            NavResult::Finish => break Outcome::Completed(state.config.clone()),
+            NavResult::Cancel => break Outcome::Cancelled,
         }
+        draw_all(&mut terminals, &mut screens, index, &state)?;
+    };
+
+    // Leave the alternate screen on the serial terminals explicitly (the primary
+    // is handled by TermGuard on drop).
+    for t in terminals.iter_mut().skip(1) {
+        let _ = execute!(t.backend_mut(), LeaveAlternateScreen, Show);
     }
+    Ok(outcome)
 }
 
 #[cfg(test)]

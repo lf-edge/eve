@@ -32,38 +32,64 @@ fn cmd_disks() -> Result<()> {
     Ok(())
 }
 
+/// Serial/hypervisor console device paths (`/dev/<name>`) from the kernel
+/// cmdline's `console=` tokens. Deny-list by design: it drops only the VGA
+/// virtual-console meta (`tty0`/`tty`) and keeps everything else, so ARM
+/// (`ttyAMA0`), i.MX (`ttymxc*`), hypervisor (`hvc0`), USB (`ttyUSB*`), x86
+/// (`ttyS0`), etc. all flow through without per-arch enumeration. Never yields
+/// `/dev/console`; the screen is driven separately on tty2. The baud/options
+/// suffix (`ttyS0,115200n8`) is stripped and duplicates removed.
+fn serial_consoles_from_cmdline(cmdline: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for tok in cmdline.split_whitespace() {
+        let Some(val) = tok.strip_prefix("console=") else { continue };
+        let name = val.split(',').next().unwrap_or(val);
+        if name.is_empty() || name == "tty0" || name == "tty" {
+            continue;
+        }
+        let path = format!("/dev/{name}");
+        if !out.contains(&path) {
+            out.push(path);
+        }
+    }
+    out
+}
+
 fn cmd_install(dry_run: bool) -> Result<()> {
-    if std::env::args().any(|a| a == "--interactive") {
-        // Prefill the wizard from unattended.json ▷ cmdline, gather facts for the
-        // Overview plan preview, then run the wizard. SP-3b stops at the resulting
-        // config; wiring the plan into execute is SP-3c.
-        let cmdline = std::fs::read_to_string("/proc/cmdline").unwrap_or_default();
-        let cfg_candidates = [
-            std::path::Path::new("/run/INVENTORY/unattended.json"),
-            std::path::Path::new("/config/unattended.json"),
-        ];
-        let (cfg, cfg_warns) = crate::config::load(&cfg_candidates, &cmdline);
-        for w in &cfg_warns {
-            eprintln!("[config] {w:?}");
-        }
-        let hw = crate::facts::gather();
-        let (disks, boot, disc_warns) = crate::disk::discover();
-        for w in &disc_warns {
-            eprintln!("[disk] {w}");
-        }
-        return match crate::tui::run(disks, boot, cfg, hw)? {
-            crate::tui::Outcome::Completed(cfg) => {
-                println!("{}", serde_json::to_string_pretty(&cfg)?);
-                Ok(())
-            }
-            crate::tui::Outcome::Cancelled => {
-                eprintln!("installation cancelled");
-                Ok(())
-            }
-        };
+    let interactive = std::env::args().any(|a| a == "--interactive");
+    let mode = if dry_run { crate::execute::Mode::DryRun } else { crate::execute::Mode::Execute };
+
+    // Prefill config (unattended.json ▷ cmdline), gather facts, discover disks —
+    // shared by both the interactive and unattended paths.
+    let cmdline = std::fs::read_to_string("/proc/cmdline").unwrap_or_default();
+    let cfg_candidates = [
+        std::path::Path::new("/run/INVENTORY/unattended.json"),
+        std::path::Path::new("/config/unattended.json"),
+    ];
+    let (mut cfg, cfg_warns) = crate::config::load(&cfg_candidates, &cmdline);
+    for w in &cfg_warns {
+        eprintln!("[config] {w:?}");
     }
 
-    let mode = if dry_run { crate::execute::Mode::DryRun } else { crate::execute::Mode::Execute };
+    let hw = crate::facts::gather();
+    let (disks, boot, disc_warns) = crate::disk::discover();
+    for w in &disc_warns {
+        eprintln!("[disk] {w}");
+    }
+
+    // Interactive: run the wizard (rendered to tty2 + every serial console) and
+    // adopt the confirmed config. Cancelling exits cleanly. The wizard gets
+    // clones so the discovered disks remain available for the execute tail.
+    if interactive {
+        let serial = serial_consoles_from_cmdline(&cmdline);
+        match crate::tui::run(disks.clone(), boot.clone(), cfg.clone(), hw.clone(), &serial)? {
+            crate::tui::Outcome::Completed(c) => cfg = c,
+            crate::tui::Outcome::Cancelled => {
+                eprintln!("installation cancelled");
+                return Ok(());
+            }
+        }
+    }
 
     if !dry_run && !crate::facts::is_eve_env(&crate::facts::eve_root()) {
         anyhow::bail!(
@@ -71,22 +97,6 @@ fn cmd_install(dry_run: bool) -> Result<()> {
              (missing {}/etc/eve-release + eve-hv-type). Use --dry-run to preview.",
             crate::facts::eve_root().display()
         );
-    }
-
-    let hw = crate::facts::gather();
-    let cmdline = std::fs::read_to_string("/proc/cmdline").unwrap_or_default();
-    let cfg_candidates = [
-        std::path::Path::new("/run/INVENTORY/unattended.json"),
-        std::path::Path::new("/config/unattended.json"),
-    ];
-    let (cfg, cfg_warns) = crate::config::load(&cfg_candidates, &cmdline);
-    for w in &cfg_warns {
-        eprintln!("[config] {w:?}");
-    }
-
-    let (disks, boot, disc_warns) = crate::disk::discover();
-    for w in &disc_warns {
-        eprintln!("[disk] {w}");
     }
 
     let (install, persist) = match crate::disk::resolve(&cfg, &disks, boot.as_deref()) {
@@ -118,6 +128,25 @@ fn cmd_install(dry_run: bool) -> Result<()> {
     }
     eprintln!("install {}", if dry_run { "(dry-run) complete" } else { "complete" });
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::serial_consoles_from_cmdline;
+
+    #[test]
+    fn parses_serial_consoles_excluding_vga_and_dedup() {
+        let cmdline = "root=/dev/sda1 console=ttyS0,115200n8 console=tty0 console=ttyAMA0 console=ttyS0";
+        assert_eq!(
+            serial_consoles_from_cmdline(cmdline),
+            vec!["/dev/ttyS0".to_string(), "/dev/ttyAMA0".to_string()]
+        );
+    }
+
+    #[test]
+    fn no_console_tokens_yields_empty() {
+        assert!(serial_consoles_from_cmdline("root=/dev/sda1 quiet").is_empty());
+    }
 }
 
 fn main() -> Result<()> {
