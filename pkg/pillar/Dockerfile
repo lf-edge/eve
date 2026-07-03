@@ -152,6 +152,7 @@ fi
 
 FROM lfedge/eve-fscrypt:b848338a69957ca1aee2f47143f8b6245bde0d01 AS fscrypt
 FROM lfedge/eve-gpt-tools:2943833db352b192ef207fecc742f77659d12b0b AS gpttools
+FROM lfedge/eve-storage-resizer:af6f8349494145cec64da95bb4399bc8c39f68ea AS storage-resizer
 
 # dhcpcd: Alpine 3.21+ ships a sufficiently up-to-date version (10.x with required IPv6 fixes).
 # No --platform means Docker BuildKit uses the target platform, giving us the correct binary arch.
@@ -185,6 +186,9 @@ COPY --from=uefi-build /OVMF_VARS.fd /out/usr/lib/xen/boot/OVMF_VARS.fd
 COPY --from=zfs /out /out
 COPY --from=fscrypt /opt/zededa/bin /out/opt/zededa/bin
 COPY --from=gpttools / /out
+# baseosmgr execs /usr/bin/storage-resizer for the online check/backup/grow steps
+# of the EVE-kvm<->EVE-k boot-disk conversion (pkg/pillar/diskconvert).
+COPY --from=storage-resizer /usr/bin/storage-resizer /out/usr/bin/storage-resizer
 # we use final directory and move the line to the bottom
 # to avoid conflicts and speedup re-builds
 COPY --from=build /final /out
