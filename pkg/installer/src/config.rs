@@ -195,6 +195,16 @@ pub fn parse_cmdline(cmdline: &str) -> (InstallConfig, Vec<Warning>) {
     (cfg, warnings)
 }
 
+/// Parse an `unattended.json` document into a partial `InstallConfig`.
+/// Tolerant: unknown keys are ignored; any deserialize error degrades to an
+/// empty config plus a `BadJson` warning (we never pre-validate/abort).
+pub fn parse_json(text: &str) -> (InstallConfig, Vec<Warning>) {
+    match serde_json::from_str::<InstallConfig>(text) {
+        Ok(cfg) => (cfg, Vec::new()),
+        Err(e) => (InstallConfig::default(), vec![Warning::BadJson(e.to_string())]),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -273,5 +283,37 @@ mod tests {
         assert!(c.install_disk.is_none());
         assert!(c.persist_disk.is_none());
         assert!(w.is_empty());
+    }
+
+    #[test]
+    fn json_parses_full_and_partial() {
+        let (c, w) = parse_json(r#"{"install_disk":"nvme0n1","persist_fs":"zfs","skip_config":true}"#);
+        assert_eq!(c.install_disk.as_deref(), Some("nvme0n1"));
+        assert_eq!(c.persist_fs, Some(Fs::Zfs));
+        assert_eq!(c.skip_config, Some(true));
+        assert!(c.install_server.is_none());
+        assert!(w.is_empty());
+    }
+
+    #[test]
+    fn json_empty_object_is_default() {
+        let (c, w) = parse_json("{}");
+        assert_eq!(c, InstallConfig::default());
+        assert!(w.is_empty());
+    }
+
+    #[test]
+    fn json_unknown_keys_are_ignored() {
+        let (c, w) = parse_json(r#"{"install_disk":"sda","totally_unknown":42}"#);
+        assert_eq!(c.install_disk.as_deref(), Some("sda"));
+        assert!(w.is_empty());
+    }
+
+    #[test]
+    fn json_garbage_degrades_to_empty_with_warning() {
+        let (c, w) = parse_json("not json at all");
+        assert_eq!(c, InstallConfig::default());
+        assert_eq!(w.len(), 1);
+        assert!(matches!(w[0], Warning::BadJson(_)));
     }
 }
