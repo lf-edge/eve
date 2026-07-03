@@ -40,6 +40,42 @@ func doZbootBaseOsInstallationComplete(ctxPtr *nodeagentContext,
 	}
 }
 
+// handleBaseOsStatus* watch baseosmgr's BaseOsStatus for an EVE-kvm <-> EVE-k
+// boot-disk conversion that needs a reboot into the offline shrink. baseosmgr
+// advances the sub-state to CONVERT_REBOOTING_TO_RESIZE once the /config shrink
+// flag is written; nodeagent then performs a graceful reboot.
+func handleBaseOsStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleBaseOsStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleBaseOsStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleBaseOsStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleBaseOsStatusImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	ctxPtr := ctxArg.(*nodeagentContext)
+	status := statusArg.(types.BaseOsStatus)
+	if !status.Converting ||
+		status.ConvertSubState != types.DEVICE_SUBSTATE_CONVERT_REBOOTING_TO_RESIZE {
+		return
+	}
+	if ctxPtr.deviceReboot || ctxPtr.devicePoweroff {
+		return
+	}
+	infoStr := fmt.Sprintf("NORMAL: baseos-conversion(%s) reboot to repartition boot disk", key)
+	log.Function(infoStr)
+	scheduleNodeOperation(ctxPtr, infoStr, types.BootReasonUpdate,
+		types.DeviceOperationReboot)
+}
+
+func handleBaseOsStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	log.Functionf("handleBaseOsStatusDelete(%s)", key)
+}
+
 // baseos upgrade validation and activation path
 // mark the controller health/connectivity test complete flag
 // for baseosmgr to pick up and complete the partition activation
