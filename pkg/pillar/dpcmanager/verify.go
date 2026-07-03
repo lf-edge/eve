@@ -51,15 +51,19 @@ func (m *DpcManager) restartVerify(ctx context.Context, reason string) {
 	// LastSucceeded and a recent LastFailed (a minute or less).
 	nextIndex := m.getNextTestableDPCIndex(0)
 	if nextIndex == -1 {
-		m.Log.Noticef("DPC verify: nothing testable")
-		if m.PubDeviceNetworkStatus != nil {
-			m.deviceNetStatus.Testing = false
-			m.deviceNetStatus.CurrentIndex = m.dpcList.CurrentIndex
-			err := m.PubDeviceNetworkStatus.Publish("global", m.deviceNetStatus)
-			if err != nil {
-				m.Log.Errorf("DPC verify: failed to publish DNS: %v", err)
-			}
+		// Nothing is currently testable (e.g. every entry is still within its
+		// own failure cooldown). Never leave CurrentIndex at -1 (i.e. no DPC
+		// applied at all) while at least one DPC exists. Re-arm dpcTestTimer
+		// so a retry is picked up once something becomes testable again,
+		// instead of silently stalling until an unrelated event happens to
+		// call restartVerify/runVerify.
+		parkIndex, changed := m.parkAtManualOrHighestPriority(ctx)
+		m.Log.Noticef("DPC verify: nothing testable; parking at index %d", parkIndex)
+		if changed {
+			m.compressAndPublishDPCL()
 		}
+		m.updateDNS()
+		m.dpcTestTimer = time.NewTimer(m.dpcTestInterval)
 		return
 	}
 	m.setupVerify(nextIndex, reason)
@@ -67,18 +71,26 @@ func (m *DpcManager) restartVerify(ctx context.Context, reason string) {
 	m.compressAndPublishDPCL()
 }
 
-func (m *DpcManager) setupVerify(index int, reason string) {
-	m.Log.Noticef("DPC verify: Setting up verification for DPC at index %d, reason: %s",
-		index, reason)
+// switchCurrentDPC points CurrentIndex at the given DPC list entry and
+// refreshes the state that depends on which DPC is current: discovered wwan
+// interface names and the LPS config merge (and its applied/err bookkeeping
+// in m.lpsConfig).
+func (m *DpcManager) switchCurrentDPC(index int) {
 	m.dpcList.CurrentIndex = index
-	m.dpcVerify.inProgress = true
-	m.dpcVerify.startedAt = time.Now()
 	if baseDPC := m.getCurrentBaseDPCRef(); baseDPC != nil {
 		m.setDiscoveredWwanIfNames(baseDPC)
 		m.mergeWithLpsConfig(*baseDPC)
 	} else {
 		m.revertLpsConfig()
 	}
+}
+
+func (m *DpcManager) setupVerify(index int, reason string) {
+	m.Log.Noticef("DPC verify: Setting up verification for DPC at index %d, reason: %s",
+		index, reason)
+	m.switchCurrentDPC(index)
+	m.dpcVerify.inProgress = true
+	m.dpcVerify.startedAt = time.Now()
 	m.Log.Functionf("DPC verify: Started testing DPC (index %d): %v",
 		m.dpcList.CurrentIndex, m.dpcList.PortConfigList[m.dpcList.CurrentIndex])
 }
@@ -138,12 +150,15 @@ func (m *DpcManager) runVerify(ctx context.Context, reason string) {
 			}
 
 			// Move to next index (including wrap around).
-			// Skip entries with LastFailed after LastSucceeded and a recent LastFailed
-			// (a minute or less).
+			// Skip entries with LastFailed after LastSucceeded and a recent
+			// LastFailed (a minute or less). Never advances past a "manual"
+			// (TUI-submitted) DPC, if one exists - see getNextTestableDPCIndex.
 			nextIndex := m.getNextTestableDPCIndex(m.dpcList.CurrentIndex + 1)
 			if nextIndex == -1 {
-				m.Log.Errorf("DPC verify: No testable DPC found, working with DPC "+
-					"found at index %d for now.", m.dpcList.CurrentIndex)
+				previousIndex := m.dpcList.CurrentIndex
+				parkIndex, _ := m.parkAtManualOrHighestPriority(ctx)
+				m.Log.Errorf("DPC verify: No testable DPC found; parking at "+
+					"index %d (was testing index %d).", parkIndex, previousIndex)
 				endloop = true
 			} else {
 				m.setupVerify(nextIndex, "previous DPC failed")
@@ -478,10 +493,54 @@ func (m *DpcManager) testConnectivityToController(ctx context.Context) error {
 	return err
 }
 
+// manualDPCIndex returns the index of the "manual" (TUI-submitted) DPC in
+// the list, or -1 if there is none.
+func (m *DpcManager) manualDPCIndex() int {
+	for i, dpc := range m.dpcList.PortConfigList {
+		if dpc.Key == types.ManualDPCKey {
+			return i
+		}
+	}
+	return -1
+}
+
+// parkAtManualOrHighestPriority points CurrentIndex at the "manual" DPC if
+// one is present in the list (so the user's active local test/fix session
+// is what EVE settles back on when nothing else works), or otherwise at the
+// highest-priority (index 0) DPC. Used whenever nothing in the list is
+// currently testable.
+//
+// Returns the index parked at (-1 if the list is empty, i.e. nothing to
+// park at) and whether CurrentIndex actually changed as a result.
+func (m *DpcManager) parkAtManualOrHighestPriority(
+	ctx context.Context) (parkIndex int, changed bool) {
+	if len(m.dpcList.PortConfigList) == 0 {
+		return -1, false
+	}
+	parkIndex = m.manualDPCIndex()
+	if parkIndex < 0 {
+		parkIndex = 0
+	}
+	if m.dpcList.CurrentIndex == parkIndex {
+		return parkIndex, false
+	}
+	m.switchCurrentDPC(parkIndex)
+	m.reconcileStatus = m.DpcReconciler.Reconcile(ctx, m.reconcilerArgs())
+	return parkIndex, true
+}
+
 // Move to next index (including wrap around).
 // Skip entries with LastFailed after LastSucceeded and a recent
 // LastFailed (a minute or less).
 // Also skip entries with no management IP addresses.
+// Never returns an index positioned after (i.e. lower priority than) a
+// "manual" (TUI-submitted) DPC, if one exists - EVE never automatically
+// falls back to something with lower priority than a manual override, even
+// if the manual DPC itself is not currently testable (e.g. within its own
+// failure cooldown). Testing/using DPCs with priority at or above manual
+// (earlier in the list, e.g. a newly received controller config) remains
+// completely unrestricted - this only blocks moving further down the list,
+// past manual, never advancing/climbing back up.
 func (m *DpcManager) getNextTestableDPCIndex(start int) int {
 	m.Log.Functionf("getNextTestableDPCIndex: start %d\n", start)
 	// We want to wrap around, but should not keep looping around.
@@ -494,10 +553,12 @@ func (m *DpcManager) getNextTestableDPCIndex(start int) int {
 			m.dpcList.CurrentIndex, newIndex)
 		return newIndex
 	}
+	manualIndex := m.manualDPCIndex()
 	count := 0
 	newIndex := start % dpcListLen
 	for count < dpcListLen {
-		if m.dpcList.PortConfigList[newIndex].IsDPCTestable(m.DpcMinTimeSinceFailure) {
+		withinBounds := manualIndex < 0 || newIndex <= manualIndex
+		if withinBounds && m.dpcList.PortConfigList[newIndex].IsDPCTestable(m.DpcMinTimeSinceFailure) {
 			break
 		}
 		m.Log.Functionf("getNextTestableDPCIndex: DPC %v is not testable",
@@ -506,6 +567,8 @@ func (m *DpcManager) getNextTestableDPCIndex(start int) int {
 		count++
 	}
 	if count == dpcListLen {
+		newIndex = -1
+	} else if manualIndex >= 0 && newIndex > manualIndex {
 		newIndex = -1
 	}
 	m.Log.Functionf("getNextTestableDPCIndex: current index %d new %d\n",
