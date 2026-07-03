@@ -5,28 +5,13 @@
 
 use serde_json::json;
 use std::env;
-use crate::utils::read_installer_json;
 use anyhow::Result;
 
-mod actions;
 mod config;
-mod data;
 mod disk;
-mod error;
 mod execute;
 mod facts;
-mod installer;
 mod plan;
-mod state;
-mod utils;
-mod views;
-
-fn help() {
-    println!(
-        "Usage: tui-cursive <installer.json>
-    input file <installer.json> is optional."
-    );
-}
 
 fn cmd_disks() -> Result<()> {
     let (disks, boot, mut warnings) = crate::disk::discover();
@@ -104,34 +89,14 @@ fn cmd_install(dry_run: bool) -> Result<()> {
     Ok(())
 }
 
-fn main() -> Result<()>{
-    let mut installer_json = json!(null);
+fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
-    if args.get(1).map(String::as_str) == Some("disks") {
-        return cmd_disks();
-    }
-    if args.get(1).map(String::as_str) == Some("install") {
-        let dry_run = args.iter().any(|a| a == "--dry-run");
-        return cmd_install(dry_run);
-    }
-
-    match args.len() {
-        // no arguments passed
-        1 => {
-            println!("Interactive installer mode!");
-        }
-        2 => {
-            installer_json = read_installer_json(&args[1])?
-        }
-        // all the other cases
+    match args.get(1).map(String::as_str) {
+        Some("disks") => cmd_disks(),
+        Some("install") => cmd_install(args.iter().any(|a| a == "--dry-run")),
         _ => {
-            // show a help message
-            help();
+            eprintln!("usage: installer <disks|install [--dry-run]>");
+            Ok(())
         }
     }
-
-    println!("Initializing EVE config!");
-    installer::config(installer_json);
-
-    Ok(())
 }
