@@ -134,7 +134,15 @@ pub fn run(
     // while the device fds are still open.
     let mut termios_guards: Vec<io::TermiosGuard> = Vec::new();
 
+    // Don't drive a serial console that is already the primary terminal (the
+    // headless case, where stdout is itself the serial line) — that would render
+    // it twice.
+    let primary = io::primary_tty_path();
+
     for path in serial_consoles {
+        if primary.as_deref() == Some(path.as_str()) {
+            continue;
+        }
         match OpenOptions::new().read(true).write(true).open(path) {
             Ok(file) => {
                 let fd = file.as_raw_fd();

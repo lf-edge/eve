@@ -251,18 +251,28 @@ cmdline eve_pause_before_install && pause "start the installation"
 
 logmsg "EVE-OS installation started"
 if cmdline interactive; then
-  echo "stop rungetty.sh to not re-run login"
-  killall -STOP rungetty.sh
-  echo "killing login"
-  killall login
-  echo "Running RUST installer"
-  RUST_BACKTRACE=full /sbin/installer
-  echo "resume rungetty.sh"
-  killall -CONT rungetty.sh
-
-  logmsg "Interactive mode"
-  bash ./parse-installer-conf.sh
-  CMDLINEFILE=/tmp/newcmdline
+  # SP-3c: launch the new Rust wizard (ratatui) on tty2 (the screen, via openvt)
+  # AND every serial console at the same time. This is a TUI preview: it runs the
+  # interactive install with --dry-run so nothing is written to disk. Drop
+  # --dry-run to perform a real install once the Rust install path is complete.
+  # The unattended shell-install flow below is intentionally skipped here.
+  echo "Running RUST installer (interactive TUI on tty2 + serial)"
+  # Quiesce getty/login so our terminal backends own the console input.
+  killall -STOP rungetty.sh 2>/dev/null || true
+  killall login 2>/dev/null || true
+  if ! openvt -c 2 -s -f -w -- /sbin/installer install --interactive --dry-run; then
+    # No usable virtual console (headless): drive the first serial console
+    # directly. Never /dev/console.
+    S=$(tr ' ' '\n' < /proc/cmdline | sed -n 's/^console=//p' | cut -d, -f1 | grep -v '^tty0$' | head -n1)
+    if [ -n "$S" ] && [ -e "/dev/$S" ]; then
+      /sbin/installer install --interactive --dry-run <"/dev/$S" >"/dev/$S" 2>&1
+    else
+      echo "no usable console for the interactive installer" >/dev/console
+    fi
+  fi
+  killall -CONT rungetty.sh 2>/dev/null || true
+  logmsg "interactive TUI preview finished"
+  exit 0
 fi
 
 # do this just in case

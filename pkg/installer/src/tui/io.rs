@@ -72,6 +72,19 @@ pub fn decode(buf: &[u8]) -> Vec<KeyEvent> {
     out
 }
 
+/// Device path of the primary terminal (stdout), e.g. "/dev/tty2" under openvt
+/// or "/dev/ttyS0" when driven directly on a serial line. Used to avoid opening
+/// a serial console a second time when it is already the primary terminal.
+pub fn primary_tty_path() -> Option<String> {
+    unsafe {
+        let p = libc::ttyname(libc::STDOUT_FILENO);
+        if p.is_null() {
+            return None;
+        }
+        std::ffi::CStr::from_ptr(p).to_str().ok().map(str::to_string)
+    }
+}
+
 /// Saved termios for a device fd; restores the original settings on drop so the
 /// terminal is left usable even on panic/unwind.
 pub struct TermiosGuard {
