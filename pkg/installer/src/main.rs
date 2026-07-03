@@ -34,10 +34,26 @@ fn cmd_disks() -> Result<()> {
 
 fn cmd_install(dry_run: bool) -> Result<()> {
     if std::env::args().any(|a| a == "--interactive") {
-        let (disks, boot, _w) = crate::disk::discover();
-        return match crate::tui::run(disks, boot)? {
+        // Prefill the wizard from unattended.json ▷ cmdline, gather facts for the
+        // Overview plan preview, then run the wizard. SP-3b stops at the resulting
+        // config; wiring the plan into execute is SP-3c.
+        let cmdline = std::fs::read_to_string("/proc/cmdline").unwrap_or_default();
+        let cfg_candidates = [
+            std::path::Path::new("/run/INVENTORY/unattended.json"),
+            std::path::Path::new("/config/unattended.json"),
+        ];
+        let (cfg, cfg_warns) = crate::config::load(&cfg_candidates, &cmdline);
+        for w in &cfg_warns {
+            eprintln!("[config] {w:?}");
+        }
+        let hw = crate::facts::gather();
+        let (disks, boot, disc_warns) = crate::disk::discover();
+        for w in &disc_warns {
+            eprintln!("[disk] {w}");
+        }
+        return match crate::tui::run(disks, boot, cfg, hw)? {
             crate::tui::Outcome::Completed(cfg) => {
-                println!("selected install disk: {:?}", cfg.install_disk);
+                println!("{}", serde_json::to_string_pretty(&cfg)?);
                 Ok(())
             }
             crate::tui::Outcome::Cancelled => {

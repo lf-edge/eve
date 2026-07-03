@@ -41,6 +41,20 @@ impl Default for DisksScreen {
 }
 
 impl Screen for DisksScreen {
+    fn title(&self) -> &str {
+        "Select install disk"
+    }
+
+    fn on_enter(&mut self, state: &mut WizardState) {
+        // Put the cursor on the already-selected (e.g. prefilled) install disk.
+        let sel = self.selectable(state);
+        if let Some(name) = state.config.install_disk.as_deref() {
+            if let Some(pos) = sel.iter().position(|&i| state.disks[i].name == name) {
+                self.cursor = pos;
+            }
+        }
+    }
+
     fn render(&mut self, f: &mut Frame, area: Rect, state: &WizardState) {
         let sel = self.selectable(state);
         let cursor_disk = sel.get(self.cursor).copied();
@@ -78,8 +92,7 @@ impl Screen for DisksScreen {
         }
         lines.push(Line::from(""));
         lines.push(Line::from("↑/↓ move · Enter select install disk · n next · q quit"));
-        let para = Paragraph::new(lines)
-            .block(Block::default().borders(Borders::ALL).title("Select install disk"));
+        let para = Paragraph::new(lines).block(Block::default().borders(Borders::ALL));
         f.render_widget(para, area);
     }
 
@@ -122,8 +135,13 @@ mod tests {
     use super::*;
     use crate::config::InstallConfig;
     use crate::disk::{Disk, Partition};
+    use crate::plan::HardwareFacts;
     use ratatui::crossterm::event::{KeyCode, KeyEvent};
     use ratatui::{backend::TestBackend, Terminal};
+
+    fn hw() -> HardwareFacts {
+        HardwareFacts { memory_gb: 8, eve_flavor: "kvm".into(), platform: "generic".into() }
+    }
 
     fn disk(name: &str, size: u64, parts: Vec<Partition>) -> Disk {
         Disk { name: name.into(), path: format!("/dev/{name}"), kind: "disk".into(),
@@ -135,7 +153,7 @@ mod tests {
             name: "vda1".into(), path: "/dev/vda1".into(), size_bytes: 2_000_000_000,
             fstype: Some("vfat".into()), label: Some("EFI".into()), partlabel: Some("EFI System".into()) }]);
         let vdb = disk("vdb", 8_000_000_000, vec![]);
-        WizardState { disks: vec![vda, vdb], boot: Some("vda".into()), config: InstallConfig::default() }
+        WizardState { disks: vec![vda, vdb], boot: Some("vda".into()), config: InstallConfig::default(), hw: hw() }
     }
     fn key(c: KeyCode) -> KeyEvent { KeyEvent::from(c) }
     fn buf_text(t: &Terminal<TestBackend>) -> String {
