@@ -175,9 +175,10 @@ pub fn resolve(cfg: &crate::config::InstallConfig, disks: &[Disk], boot: Option<
         warnings.push(format!("install disk {} is read-only", install.name));
     }
 
-    // Persist disk(s).
+    // Persist disk(s). An explicit empty list (possible via JSON config) is
+    // treated the same as unset: default to the install disk.
     let persist: Vec<Disk> = match cfg.persist_disk.as_ref() {
-        Some(ids) => {
+        Some(ids) if !ids.is_empty() => {
             let mut out = Vec::new();
             for id in ids {
                 match find(disks, id) {
@@ -189,7 +190,7 @@ pub fn resolve(cfg: &crate::config::InstallConfig, disks: &[Disk], boot: Option<
             }
             out
         }
-        None => vec![install.clone()],
+        _ => vec![install.clone()],
     };
 
     DiskResolution::Resolved { install, persist, warnings }
@@ -230,6 +231,13 @@ fn disk_for_devnum(devnum: &str) -> Option<String> {
     None
 }
 
+// Decode a glibc-encoded dev_t into "major:minor" (see makedev(3)/gnu_dev_major).
+fn devnum(dev: u64) -> String {
+    let major = (dev >> 8) & 0xfff;
+    let minor = (dev & 0xff) | ((dev >> 12) & !0xff);
+    format!("{major}:{minor}")
+}
+
 /// Determine the disk the installer booted from (to exclude it as a target).
 /// Order: EVE_INSTALL_BOOT_DISK override -> /dev/root -> device backing /bits.
 pub fn detect_boot_disk() -> Option<String> {
@@ -242,18 +250,14 @@ pub fn detect_boot_disk() -> Option<String> {
     // /dev/root -> real device -> major:minor
     if let Ok(meta) = std::fs::metadata("/dev/root") {
         use std::os::unix::fs::MetadataExt;
-        let rdev = meta.rdev();
-        let devnum = format!("{}:{}", (rdev >> 8) & 0xfff, rdev & 0xff | ((rdev >> 12) & !0xff));
-        if let Some(d) = disk_for_devnum(&devnum) {
+        if let Some(d) = disk_for_devnum(&devnum(meta.rdev())) {
             return Some(d);
         }
     }
     // fallback: the device that /bits lives on
     if let Ok(meta) = std::fs::metadata("/bits") {
         use std::os::unix::fs::MetadataExt;
-        let dev = meta.dev();
-        let devnum = format!("{}:{}", (dev >> 8) & 0xff, dev & 0xff);
-        if let Some(d) = disk_for_devnum(&devnum) {
+        if let Some(d) = disk_for_devnum(&devnum(meta.dev())) {
             return Some(d);
         }
     }
@@ -278,8 +282,12 @@ pub fn discover() -> (Vec<Disk>, Option<String>, Vec<String>) {
             String::new()
         }
     };
-    let (mut disks, mut w) = parse_lsblk(&json);
-    warnings.append(&mut w);
+    let mut disks = Vec::new();
+    if !json.is_empty() {
+        let (d, mut w) = parse_lsblk(&json);
+        disks = d;
+        warnings.append(&mut w);
+    }
     for d in &mut disks {
         d.virtual_dev = is_virtual(&d.name);
     }
@@ -436,11 +444,94 @@ mod tests {
     }
 
     #[test]
+    fn resolve_persist_multi_element() {
+        let disks = vec![
+            disk("vdb", "disk", 8, Transport::Virtio, false),
+            disk("vdc", "disk", 8, Transport::Virtio, false),
+        ];
+        let mut cfg = InstallConfig::default();
+        cfg.install_disk = Some("vdb".into());
+        cfg.persist_disk = Some(vec!["vdb".into(), "vdc".into()]);
+        match resolve(&cfg, &disks, None) {
+            DiskResolution::Resolved { persist, .. } => {
+                assert_eq!(persist.len(), 2);
+                assert_eq!(persist[0].name, "vdb");
+                assert_eq!(persist[1].name, "vdc");
+            }
+            _ => panic!("expected Resolved"),
+        }
+    }
+
+    #[test]
+    fn resolve_empty_persist_list_defaults_to_install() {
+        let disks = vec![
+            disk("vdb", "disk", 8, Transport::Virtio, false),
+            disk("vdc", "disk", 8, Transport::Virtio, false),
+        ];
+        let mut cfg = InstallConfig::default();
+        cfg.install_disk = Some("vdb".into());
+        cfg.persist_disk = Some(vec![]); // only reachable via JSON config
+        match resolve(&cfg, &disks, None) {
+            DiskResolution::Resolved { persist, .. } => {
+                assert_eq!(persist.len(), 1);
+                assert_eq!(persist[0].name, "vdb");
+            }
+            _ => panic!("expected Resolved"),
+        }
+    }
+
+    #[test]
+    fn resolve_readonly_target_warns() {
+        let disks = vec![Disk {
+            name: "vdb".to_string(),
+            path: "/dev/vdb".to_string(),
+            kind: "disk".to_string(),
+            size_bytes: 8,
+            transport: Some(Transport::Virtio),
+            model: None,
+            serial: None,
+            read_only: true,
+            virtual_dev: false,
+        }];
+        match resolve(&InstallConfig::default(), &disks, None) {
+            DiskResolution::Resolved { install, warnings, .. } => {
+                assert_eq!(install.name, "vdb");
+                assert!(warnings.iter().any(|w| w.contains("read-only")));
+            }
+            _ => panic!("expected Resolved"),
+        }
+    }
+
+    #[test]
+    fn resolve_autoguess_orders_virtio_before_other() {
+        let disks = vec![
+            disk("mmcblk0", "disk", 8, Transport::Other("mmc".into()), false),
+            disk("vdb", "disk", 8, Transport::Virtio, false),
+        ];
+        match resolve(&InstallConfig::default(), &disks, None) {
+            DiskResolution::Resolved { install, .. } => assert_eq!(install.name, "vdb"),
+            _ => panic!("expected Resolved"),
+        }
+    }
+
+    #[test]
     fn detect_boot_disk_honors_env_override() {
         // SAFETY: single-threaded test; set + remove within the test.
         std::env::set_var("EVE_INSTALL_BOOT_DISK", "/dev/vda");
         assert_eq!(detect_boot_disk().as_deref(), Some("vda"));
         std::env::remove_var("EVE_INSTALL_BOOT_DISK");
+    }
+
+    #[test]
+    fn devnum_glibc_decode() {
+        // major=8, minor=257 (minor >= 256 would truncate under the old 16-bit decode).
+        let encoded: u64 = ((8 & 0xfff) << 8) | (257 & 0xff) | ((257 & !0xff) << 12);
+        assert_eq!(encoded, 1050625);
+        assert_eq!(devnum(encoded), "8:257");
+        // small case: major=8, minor=1.
+        let encoded_small: u64 = ((8 & 0xfff) << 8) | (1 & 0xff) | ((1 & !0xff) << 12);
+        assert_eq!(encoded_small, 2049);
+        assert_eq!(devnum(encoded_small), "8:1");
     }
 
     #[test]
