@@ -195,6 +195,98 @@ pub fn resolve(cfg: &crate::config::InstallConfig, disks: &[Disk], boot: Option<
     DiskResolution::Resolved { install, persist, warnings }
 }
 
+use std::path::Path;
+use std::process::Command;
+
+/// True if /sys/devices/virtual/block/<name> exists (loop/dm/etc.).
+pub fn is_virtual(name: &str) -> bool {
+    Path::new(&format!("/sys/devices/virtual/block/{name}")).exists()
+}
+
+// Given a "major:minor" string, return the base disk name from /sys/block, if any.
+fn disk_for_devnum(devnum: &str) -> Option<String> {
+    let block = Path::new("/sys/block");
+    let entries = std::fs::read_dir(block).ok()?;
+    for e in entries.flatten() {
+        let name = e.file_name().to_string_lossy().to_string();
+        // whole-disk dev
+        if let Ok(s) = std::fs::read_to_string(block.join(&name).join("dev")) {
+            if s.trim() == devnum {
+                return Some(name);
+            }
+        }
+        // partition dev (e.g. /sys/block/sda/sda1/dev)
+        if let Ok(sub) = std::fs::read_dir(block.join(&name)) {
+            for p in sub.flatten() {
+                let pn = p.file_name().to_string_lossy().to_string();
+                if let Ok(s) = std::fs::read_to_string(block.join(&name).join(&pn).join("dev")) {
+                    if s.trim() == devnum {
+                        return Some(name);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Determine the disk the installer booted from (to exclude it as a target).
+/// Order: EVE_INSTALL_BOOT_DISK override -> /dev/root -> device backing /bits.
+pub fn detect_boot_disk() -> Option<String> {
+    if let Ok(v) = std::env::var("EVE_INSTALL_BOOT_DISK") {
+        let v = v.trim();
+        if !v.is_empty() {
+            return Some(v.strip_prefix("/dev/").unwrap_or(v).to_string());
+        }
+    }
+    // /dev/root -> real device -> major:minor
+    if let Ok(meta) = std::fs::metadata("/dev/root") {
+        use std::os::unix::fs::MetadataExt;
+        let rdev = meta.rdev();
+        let devnum = format!("{}:{}", (rdev >> 8) & 0xfff, rdev & 0xff | ((rdev >> 12) & !0xff));
+        if let Some(d) = disk_for_devnum(&devnum) {
+            return Some(d);
+        }
+    }
+    // fallback: the device that /bits lives on
+    if let Ok(meta) = std::fs::metadata("/bits") {
+        use std::os::unix::fs::MetadataExt;
+        let dev = meta.dev();
+        let devnum = format!("{}:{}", (dev >> 8) & 0xff, dev & 0xff);
+        if let Some(d) = disk_for_devnum(&devnum) {
+            return Some(d);
+        }
+    }
+    None
+}
+
+/// Run lsblk, parse, fill virtual_dev, and detect the boot disk. The only I/O
+/// entry point; everything else in this module is pure.
+pub fn discover() -> (Vec<Disk>, Option<String>, Vec<String>) {
+    let mut warnings = Vec::new();
+    let out = Command::new("lsblk")
+        .args(["-J", "-b", "-o", "NAME,TYPE,SIZE,TRAN,MODEL,SERIAL,RO"])
+        .output();
+    let json = match out {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).into_owned(),
+        Ok(o) => {
+            warnings.push(format!("lsblk failed: {}", String::from_utf8_lossy(&o.stderr).trim()));
+            String::new()
+        }
+        Err(e) => {
+            warnings.push(format!("lsblk not runnable: {e}"));
+            String::new()
+        }
+    };
+    let (mut disks, mut w) = parse_lsblk(&json);
+    warnings.append(&mut w);
+    for d in &mut disks {
+        d.virtual_dev = is_virtual(&d.name);
+    }
+    let boot = detect_boot_disk();
+    (disks, boot, warnings)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -341,5 +433,25 @@ mod tests {
         }
         cfg.persist_disk = Some(vec!["ghost".into()]);
         assert!(matches!(resolve(&cfg, &disks, None), DiskResolution::NeedInteractive(_)));
+    }
+
+    #[test]
+    fn detect_boot_disk_honors_env_override() {
+        // SAFETY: single-threaded test; set + remove within the test.
+        std::env::set_var("EVE_INSTALL_BOOT_DISK", "/dev/vda");
+        assert_eq!(detect_boot_disk().as_deref(), Some("vda"));
+        std::env::remove_var("EVE_INSTALL_BOOT_DISK");
+    }
+
+    #[test]
+    fn is_virtual_is_total() {
+        // Must not panic regardless of host; a clearly-absent device is not virtual.
+        assert!(!is_virtual("definitely-not-a-real-device-xyz"));
+    }
+
+    #[test]
+    fn discover_does_not_panic() {
+        // Smoke: on any host this returns without panicking (contents are host-dependent).
+        let (_disks, _boot, _w) = discover();
     }
 }
