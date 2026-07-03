@@ -31,6 +31,11 @@ impl Runner {
         Runner { mode, log: Vec::new() }
     }
 
+    /// Record a non-fatal warning in the action log (e.g. best-effort nuke failures).
+    fn warn(&mut self, msg: String) {
+        self.log.push(msg);
+    }
+
     fn cmd(&mut self, program: &str, args: &[&str]) -> Result<()> {
         self.log.push(format!("{} {}", program, args.join(" ")));
         match self.mode {
@@ -135,8 +140,16 @@ pub fn run(
             }
         }
         NukePlan::AllDisks => {
+            // Mirror the shell installer's nuke-all (install:305-310): only real,
+            // non-empty, non-virtual disks, and best-effort (a single failing
+            // device must not abort the whole install).
             for d in all_disks {
-                nuke_disk(&mut r, &d.name)?;
+                if d.kind != "disk" || d.size_bytes == 0 || d.virtual_dev {
+                    continue;
+                }
+                if let Err(e) = nuke_disk(&mut r, &d.name) {
+                    r.warn(format!("warning: nuke of {} failed: {e}", d.name));
+                }
             }
         }
     }
@@ -154,9 +167,16 @@ pub fn run(
         unreachable!("zfs refused above");
     };
     let p3 = match device {
-        PersistDevice::P3OnInstallDisk => r.find_p3(&install.name)?,
+        PersistDevice::P3OnInstallDisk => {
+            // Re-read the partition table before looking up P3, so a stale
+            // kernel view (from the make-raw write above) doesn't cause a
+            // spurious "P3 partition not found".
+            r.cmd("partprobe", &[install.path.as_str()])?;
+            r.find_p3(&install.name)?
+        }
         PersistDevice::SeparateDisk(dev) => {
             create_separate_p3(&mut r, dev)?;
+            r.cmd("partprobe", &[dev.as_str()])?;
             r.find_p3(dev.strip_prefix("/dev/").unwrap_or(dev))?
         }
     };
@@ -172,16 +192,20 @@ mod tests {
     use crate::config::{Fs, RaidLevel};
 
     fn disk(name: &str) -> Disk {
+        disk_ex(name, "disk", 40 * 1024 * 1024 * 1024, false)
+    }
+
+    fn disk_ex(name: &str, kind: &str, size_bytes: u64, virtual_dev: bool) -> Disk {
         Disk {
             name: name.to_string(),
             path: format!("/dev/{name}"),
-            kind: "disk".to_string(),
-            size_bytes: 40 * 1024 * 1024 * 1024,
+            kind: kind.to_string(),
+            size_bytes,
             transport: None,
             model: None,
             serial: None,
             read_only: false,
-            virtual_dev: false,
+            virtual_dev,
         }
     }
     fn base_plan(persist: PersistPlan, parts: &[&str], nuke: NukePlan) -> InstallPlan {
@@ -250,6 +274,26 @@ mod tests {
         );
         let s2 = joined(&run(&plan_all, &vdb, &[vdb.clone()], &[vdb.clone(), vdc.clone()], Mode::DryRun).unwrap());
         assert!(s2.contains("of=/dev/vdb") && s2.contains("of=/dev/vdc"));
+    }
+
+    #[test]
+    fn dryrun_nuke_all_skips_non_disk_and_zero_size() {
+        let real = disk_ex("vdb", "disk", 40 * 1024 * 1024 * 1024, false);
+        let rom = disk_ex("sr0", "rom", 1024 * 1024 * 1024, false);
+        let zero = disk_ex("vdc", "disk", 0, false);
+        let virt = disk_ex("vdd", "disk", 40 * 1024 * 1024 * 1024, true);
+        let plan = base_plan(
+            PersistPlan::Ext4 { device: PersistDevice::P3OnInstallDisk },
+            &["efi"],
+            NukePlan::AllDisks,
+        );
+        let all = [real.clone(), rom, zero, virt];
+        let log = run(&plan, &real, &[real.clone()], &all, Mode::DryRun).unwrap();
+        let s = joined(&log);
+        assert!(s.contains("dd") && s.contains("of=/dev/vdb"));
+        assert!(!s.contains("of=/dev/sr0"));
+        assert!(!s.contains("of=/dev/vdc"));
+        assert!(!s.contains("of=/dev/vdd"));
     }
 
     #[test]

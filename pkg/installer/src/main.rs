@@ -52,7 +52,7 @@ fn cmd_install(dry_run: bool) -> Result<()> {
     if !dry_run && !crate::facts::is_eve_env(&crate::facts::eve_root()) {
         anyhow::bail!(
             "refusing to install: not an EVE installer environment \
-             (missing {}/etc/eve-release). Use --dry-run to preview.",
+             (missing {}/etc/eve-release + eve-hv-type). Use --dry-run to preview.",
             crate::facts::eve_root().display()
         );
     }
