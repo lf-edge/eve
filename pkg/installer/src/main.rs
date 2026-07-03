@@ -25,9 +25,30 @@ fn help() {
     );
 }
 
+fn cmd_disks() -> Result<()> {
+    let (disks, boot, mut warnings) = crate::disk::discover();
+    let cmdline = std::fs::read_to_string("/proc/cmdline").unwrap_or_default();
+    let (cfg, w2) = crate::config::parse_cmdline(&cmdline);
+    // `config::Warning` has no Display/Serialize impl; render via Debug so it
+    // fits the same `Vec<String>` warnings channel `disk::discover` uses.
+    warnings.extend(w2.into_iter().map(|w| format!("{:?}", w)));
+    let resolution = crate::disk::resolve(&cfg, &disks, boot.as_deref());
+    let out = json!({
+        "disks": disks,
+        "boot_disk": boot,
+        "resolution": resolution,
+        "warnings": warnings,
+    });
+    println!("{}", serde_json::to_string_pretty(&out)?);
+    Ok(())
+}
+
 fn main() -> Result<()>{
     let mut installer_json = json!(null);
     let args: Vec<String> = env::args().collect();
+    if args.get(1).map(String::as_str) == Some("disks") {
+        return cmd_disks();
+    }
 
     match args.len() {
         // no arguments passed
