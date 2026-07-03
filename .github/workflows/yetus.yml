@@ -35,6 +35,13 @@ jobs:
           # Get back to upstream branch so patch can be applied
           git checkout "upstream/${UPSTREAM_BRANCH}"
 
+      - name: Prepare gitconfig for container
+        run: |
+          cat > /tmp/gitconfig <<'EOF'
+          [safe]
+              directory = *
+          EOF
+
       - name: Yetus
         run: |
           docker run --rm \
