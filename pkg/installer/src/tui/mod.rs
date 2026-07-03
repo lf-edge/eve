@@ -57,8 +57,11 @@ impl Drop for TermGuard {
 
 pub fn run(disks: Vec<Disk>, boot: Option<String>) -> Result<Outcome> {
     enable_raw_mode()?;
-    execute!(stdout(), EnterAlternateScreen)?;
+    // Construct the restore guard immediately, BEFORE entering the alternate
+    // screen: if EnterAlternateScreen fails, Drop still disables raw mode so we
+    // never leave the terminal wedged.
     let _guard = TermGuard;
+    execute!(stdout(), EnterAlternateScreen)?;
     let mut terminal: Terminal<CrosstermBackend<Stdout>> =
         Terminal::new(CrosstermBackend::new(stdout()))?;
 
