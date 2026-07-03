@@ -172,11 +172,12 @@ maybe_offline_disk_resize() {
 
     # Run a hardware watchdog across the offline resize, started here once we have
     # the attempt count ($_n) and are past the max-reboots abort, and killed after
-    # the resize (which disarms it). It feeds /dev/watchdog so a legitimate long
-    # resize is not reset; the resize_reboot/resize_abort paths reset the device,
-    # stopping the feeder regardless. (The --no-pet stress test that intentionally
-    # fires the watchdog belongs to the kvm-to-k-resize effort, not this workspace.)
-    storage-resizer run-watchdog >/dev/console 2>&1 &
+    # the resize (which disarms it). STRESS MODE: --no-pet --attempt escalates the
+    # timeout with the reboot count -- short+random early so the watchdog actually
+    # fires and tests recovery, 600s by the 4th try so a slow-but-progressing
+    # resize converges. The resize_reboot/resize_abort paths reset the device,
+    # stopping the feeder regardless.
+    storage-resizer run-watchdog --no-pet --attempt "$_n" >/dev/console 2>&1 &
     _wd_pid=$!
 
     _cd=/tmp/config_count
