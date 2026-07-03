@@ -33,12 +33,21 @@ jobs:
           git diff upstream/${{ github.base_ref }}...HEAD > ${{ github.workspace }}/pr.patch
           # Get back to upstream branch so patch can be applied
           git checkout "upstream/${UPSTREAM_BRANCH}"
+          git submodule update --init --recursive
+
+      - name: Prepare gitconfig for container
+        run: |
+          cat > /tmp/gitconfig <<'EOF'
+          [safe]
+              directory = *
+          EOF
 
       - name: Yetus
         run: |
           docker run --rm \
             -v ${{ github.workspace }}:/workspace \
             "${YETUS_IMG}" \
+            -v /tmp/gitconfig:/etc/gitconfig \
             test-patch \
             --basedir=/workspace/src \
             --patch-dir=/workspace/out \
