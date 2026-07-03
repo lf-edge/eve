@@ -33,6 +33,20 @@ fn cmd_disks() -> Result<()> {
 }
 
 fn cmd_install(dry_run: bool) -> Result<()> {
+    if std::env::args().any(|a| a == "--interactive") {
+        let (disks, boot, _w) = crate::disk::discover();
+        return match crate::tui::run(disks, boot)? {
+            crate::tui::Outcome::Completed(cfg) => {
+                println!("selected install disk: {:?}", cfg.install_disk);
+                Ok(())
+            }
+            crate::tui::Outcome::Cancelled => {
+                eprintln!("installation cancelled");
+                Ok(())
+            }
+        };
+    }
+
     let mode = if dry_run { crate::execute::Mode::DryRun } else { crate::execute::Mode::Execute };
 
     if !dry_run && !crate::facts::is_eve_env(&crate::facts::eve_root()) {
