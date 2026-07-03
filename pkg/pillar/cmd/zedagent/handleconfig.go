@@ -1038,6 +1038,15 @@ func getLatestConfig(getconfigCtx *getconfigContext, iteration int,
 
 func saveReceivedProtoMessage(contents []byte) {
 	persist.SaveConfig(log, "lastconfig", contents)
+	// Ensure a lastconfig.bak fallback exists from the very first save.
+	// Otherwise it is only created by backupSavedConfig() after
+	// MintimeUpdateSuccess, so a /persist recreate or corruption before then
+	// leaves no known-good config to fall back to (the restore path keeps a
+	// truncated/corrupt lastconfig, since it has no per-type validator).
+	// backupSavedConfig() still refreshes it as the proven-good rollback copy.
+	if !persist.ExistsSavedConfig(log, "lastconfig.bak") {
+		persist.CloneContentAndTimes(log, "lastconfig", "lastconfig.bak")
+	}
 }
 
 // This is called after types.MintimeUpdateSuccess
