@@ -112,9 +112,93 @@ pub fn parse_lsblk(json: &str) -> (Vec<Disk>, Vec<String>) {
     (disks, Vec::new())
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub enum DiskResolution {
+    Resolved {
+        install: Disk,
+        persist: Vec<Disk>,
+        warnings: Vec<String>,
+    },
+    NeedInteractive(String),
+}
+
+// Match a disk by bare name ("vdb") or full path ("/dev/vdb").
+fn find<'a>(disks: &'a [Disk], id: &str) -> Option<&'a Disk> {
+    let bare = id.strip_prefix("/dev/").unwrap_or(id);
+    disks.iter().find(|d| d.name == bare)
+}
+
+/// Resolve the install target + persist disk(s) from config and discovered disks.
+/// Returns NeedInteractive (drop to TUI) when no usable target can be determined.
+pub fn resolve(cfg: &crate::config::InstallConfig, disks: &[Disk], boot: Option<&str>) -> DiskResolution {
+    let mut warnings = Vec::new();
+
+    // Candidate = real disk, nonzero size, not virtual, not the boot disk.
+    let boot_bare = boot.map(|b| b.strip_prefix("/dev/").unwrap_or(b));
+    let mut candidates: Vec<&Disk> = disks
+        .iter()
+        .filter(|d| d.kind == "disk" && d.size_bytes > 0 && !d.virtual_dev)
+        .filter(|d| Some(d.name.as_str()) != boot_bare)
+        .collect();
+
+    // Install target.
+    let install: Disk = match cfg.install_disk.as_deref() {
+        Some(id) => match find(disks, id) {
+            Some(d) => d.clone(),
+            None => return DiskResolution::NeedInteractive(format!("install disk {id} not found")),
+        },
+        None => {
+            // stable order: transport priority, then name
+            candidates.sort_by(|a, b| {
+                let pa = a.transport.as_ref().map(|t| t.priority()).unwrap_or(u8::MAX);
+                let pb = b.transport.as_ref().map(|t| t.priority()).unwrap_or(u8::MAX);
+                pa.cmp(&pb).then(a.name.cmp(&b.name))
+            });
+            match candidates.first() {
+                Some(d) => {
+                    if candidates.len() > 1 {
+                        let names: Vec<&str> = candidates.iter().map(|c| c.name.as_str()).collect();
+                        warnings.push(format!(
+                            "multiple free disks ({}), using {}",
+                            names.join(", "),
+                            d.name
+                        ));
+                    }
+                    (*d).clone()
+                }
+                None => return DiskResolution::NeedInteractive("no free disk found".to_string()),
+            }
+        }
+    };
+
+    if install.read_only {
+        warnings.push(format!("install disk {} is read-only", install.name));
+    }
+
+    // Persist disk(s).
+    let persist: Vec<Disk> = match cfg.persist_disk.as_ref() {
+        Some(ids) => {
+            let mut out = Vec::new();
+            for id in ids {
+                match find(disks, id) {
+                    Some(d) => out.push(d.clone()),
+                    None => {
+                        return DiskResolution::NeedInteractive(format!("persist disk {id} not found"))
+                    }
+                }
+            }
+            out
+        }
+        None => vec![install.clone()],
+    };
+
+    DiskResolution::Resolved { install, persist, warnings }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::InstallConfig;
 
     const LSBLK_VM: &str = r#"{"blockdevices":[
       {"name":"vda","type":"disk","size":21474836480,"tran":"virtio","model":null,"serial":null,"ro":false},
@@ -122,6 +206,20 @@ mod tests {
       {"name":"sr0","type":"rom","size":1048576,"tran":"sata","model":"QEMU","serial":null,"ro":true},
       {"name":"loop0","type":"loop","size":1234,"tran":null,"model":null,"serial":null,"ro":true}
     ]}"#;
+
+    fn disk(name: &str, kind: &str, size: u64, tran: Transport, virt: bool) -> Disk {
+        Disk {
+            name: name.to_string(),
+            path: format!("/dev/{name}"),
+            kind: kind.to_string(),
+            size_bytes: size,
+            transport: Some(tran),
+            model: None,
+            serial: None,
+            read_only: false,
+            virtual_dev: virt,
+        }
+    }
 
     #[test]
     fn parse_lsblk_maps_fields_and_types() {
@@ -161,5 +259,87 @@ mod tests {
         assert!(Transport::Sata.priority() < Transport::Usb.priority());
         assert!(Transport::Usb.priority() < Transport::Virtio.priority());
         assert!(Transport::Virtio.priority() < Transport::Other("x".into()).priority());
+    }
+
+    #[test]
+    fn resolve_excludes_boot_virtual_nondisk_and_zero_size() {
+        let disks = vec![
+            disk("vda", "disk", 20, Transport::Virtio, false), // boot
+            disk("vdb", "disk", 8, Transport::Virtio, false),  // candidate
+            disk("sr0", "rom", 1, Transport::Sata, false),     // not disk
+            disk("loop0", "loop", 1, Transport::Other("".into()), true), // virtual+loop
+            disk("vdz", "disk", 0, Transport::Virtio, false),  // zero size
+        ];
+        let r = resolve(&InstallConfig::default(), &disks, Some("vda"));
+        match r {
+            DiskResolution::Resolved { install, persist, .. } => {
+                assert_eq!(install.name, "vdb");
+                assert_eq!(persist.len(), 1);
+                assert_eq!(persist[0].name, "vdb"); // persist defaults to install
+            }
+            _ => panic!("expected Resolved"),
+        }
+    }
+
+    #[test]
+    fn resolve_autoguess_prefers_transport_priority_and_warns_on_multiple() {
+        let disks = vec![
+            disk("sdb", "disk", 8, Transport::Usb, false),
+            disk("nvme0n1", "disk", 8, Transport::Nvme, false),
+            disk("sda", "disk", 8, Transport::Sata, false),
+        ];
+        let r = resolve(&InstallConfig::default(), &disks, None);
+        match r {
+            DiskResolution::Resolved { install, warnings, .. } => {
+                assert_eq!(install.name, "nvme0n1"); // nvme wins
+                assert!(warnings.iter().any(|w| w.contains("multiple")));
+            }
+            _ => panic!("expected Resolved"),
+        }
+    }
+
+    #[test]
+    fn resolve_no_candidate_needs_interactive() {
+        let disks = vec![disk("vda", "disk", 20, Transport::Virtio, false)];
+        assert!(matches!(
+            resolve(&InstallConfig::default(), &disks, Some("vda")),
+            DiskResolution::NeedInteractive(_)
+        ));
+    }
+
+    #[test]
+    fn resolve_named_install_disk_found_and_missing() {
+        let disks = vec![
+            disk("vdb", "disk", 8, Transport::Virtio, false),
+            disk("vdc", "disk", 8, Transport::Virtio, false),
+        ];
+        let mut cfg = InstallConfig::default();
+        cfg.install_disk = Some("vdc".into());
+        match resolve(&cfg, &disks, None) {
+            DiskResolution::Resolved { install, .. } => assert_eq!(install.name, "vdc"),
+            _ => panic!("expected Resolved"),
+        }
+        cfg.install_disk = Some("nope".into());
+        assert!(matches!(resolve(&cfg, &disks, None), DiskResolution::NeedInteractive(_)));
+    }
+
+    #[test]
+    fn resolve_persist_list_and_missing() {
+        let disks = vec![
+            disk("vdb", "disk", 8, Transport::Virtio, false),
+            disk("vdc", "disk", 8, Transport::Virtio, false),
+        ];
+        let mut cfg = InstallConfig::default();
+        cfg.install_disk = Some("vdb".into());
+        cfg.persist_disk = Some(vec!["vdc".into()]);
+        match resolve(&cfg, &disks, None) {
+            DiskResolution::Resolved { persist, .. } => {
+                assert_eq!(persist.len(), 1);
+                assert_eq!(persist[0].name, "vdc");
+            }
+            _ => panic!("expected Resolved"),
+        }
+        cfg.persist_disk = Some(vec!["ghost".into()]);
+        assert!(matches!(resolve(&cfg, &disks, None), DiskResolution::NeedInteractive(_)));
     }
 }
