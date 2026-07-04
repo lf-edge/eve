@@ -658,6 +658,10 @@ func initializeControllerCerts(ctx *zedagentContext, ctrlClient *controllerconn.
 	if ctrlClient == nil {
 		log.Fatal("nil ctrlClient in initializeControllerCerts")
 	}
+	// If the primary controllercerts is corrupt but controllercerts.bak is
+	// good, restore the primary first, so a later cert update does not move
+	// the corrupt primary onto the good backup (see the helper for details).
+	maybeHealControllerCertsFromBackup()
 	useBackup := false
 	err := ctrlClient.LoadSavedServerSigningCert(useBackup)
 	certChainBytes := ctrlClient.GetCertChainBytes()

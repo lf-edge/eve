@@ -43,6 +43,36 @@ type cipherContext struct {
 
 var controllerCertHash []byte
 
+// isControllerCertsDecodable reports whether the checkpointed controller certs file
+// (e.g. "controllercerts") decodes structurally as a ZControllerCert. Chain
+// verification is intentionally skipped, so this distinguishes a
+// corrupt/truncated/missing file (returns false) from an intact file that
+// merely fails verification -- for example an expired but well-formed signing
+// chain (returns true). Only the former is safe to restore from a backup.
+func isControllerCertsDecodable(filename string) bool {
+	contents, _, err := persist.ReadSavedConfig(log, filename)
+	if err != nil || len(contents) == 0 {
+		return false
+	}
+	return proto.Unmarshal(contents, &zcert.ZControllerCert{}) == nil
+}
+
+// maybeHealControllerCertsFromBackup restores controllercerts from
+// controllercerts.bak when the primary is corrupt (does not decode) but the
+// backup is good. Without this a later cert update would move the corrupt
+// primary onto the good backup (WriteRenameWithBackup in
+// MaybeSaveControllerCerts), leaving no valid controller certs to fall back to.
+func maybeHealControllerCertsFromBackup() {
+	if isControllerCertsDecodable("controllercerts") {
+		return // primary intact (or only fails verification); leave it
+	}
+	if !isControllerCertsDecodable("controllercerts.bak") {
+		return // no good backup to restore from
+	}
+	log.Warnf("Restoring corrupt controllercerts from controllercerts.bak")
+	persist.CloneContentAndTimes(log, "controllercerts.bak", "controllercerts")
+}
+
 // parse and update controller certs
 // Returns true if there was a change to the set of certs.
 func parsePublishControllerCerts(ctx *zedagentContext, contents []byte) (changed bool, err error) {
