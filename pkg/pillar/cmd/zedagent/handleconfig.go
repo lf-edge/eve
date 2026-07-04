@@ -803,6 +803,7 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 			// can be used to enable the local keyboard etc for
 			// debugging purposes.
 			confName := "lastconfig"
+			fellBackToBackup := false
 			if !ctx.bootReason.StartWithSavedConfig() {
 				log.Warnf("Use backup config due to boot reason %s",
 					ctx.bootReason.String())
@@ -820,6 +821,7 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 				log.Errorf("getconfig %s: %v", confName, err)
 				if confName == "lastconfig" {
 					confName = "lastconfig.bak"
+					fellBackToBackup = true
 					continue
 				}
 				return invalidConfig, rv.TracedReqs
@@ -827,6 +829,19 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 			if config != nil {
 				log.Noticef("Using saved config %s dated %s",
 					confName, ts.Format(time.RFC3339Nano))
+
+				// We fell back to lastconfig.bak and it is valid. If the
+				// primary lastconfig is corrupt (does not decode), restore it
+				// from the backup so a later backupSavedConfig() does not clone
+				// the corrupt primary over the good backup, which would leave
+				// no valid config to fall back to on the next boot. Only a
+				// decode failure counts as corruption: a primary that decodes
+				// but failed verification (e.g. controllercerts not loaded yet)
+				// is intact and must be left alone.
+				if fellBackToBackup && !isSavedConfigDecodable(ctrlClient, "lastconfig") {
+					log.Warnf("Restoring corrupt lastconfig from lastconfig.bak")
+					persist.CloneContentAndTimes(log, "lastconfig.bak", "lastconfig")
+				}
 
 				cfgRetval := inhaleDeviceConfig(getconfigCtx, config, savedConfig)
 				if cfgRetval != configOK {
@@ -1080,6 +1095,28 @@ func saveSentHardwareInventoryProtoMessage(contents []byte) {
 // XXX for debug we track these
 func saveSentAppInfoProtoMessage(contents []byte) {
 	persist.SaveConfig(log, "lastappinfo", contents)
+}
+
+// isSavedConfigDecodable reports whether the checkpointed config file (e.g.
+// "lastconfig") decodes structurally: the auth envelope unmarshals and its
+// payload unmarshals as a ConfigResponse. Verification is intentionally
+// skipped, so this distinguishes a corrupt/truncated/missing file (returns
+// false) from an intact file that merely fails verification -- for example
+// when controllercerts are not loaded yet, or the signing chain has expired
+// (returns true). Only the former is safe to restore from a backup.
+func isSavedConfigDecodable(ctrlClient *controllerconn.Client, filename string) bool {
+	contents, _, err := persist.ReadSavedConfig(log, filename)
+	if err != nil || len(contents) == 0 {
+		return false
+	}
+	sendRV := controllerconn.SendRetval{RespContents: contents}
+	if err := ctrlClient.RemoveAndVerifyAuthContainer(&sendRV, true); err != nil {
+		return false
+	}
+	if err := proto.Unmarshal(sendRV.RespContents, &zconfig.ConfigResponse{}); err != nil {
+		return false
+	}
+	return true
 }
 
 // If the file exists then read the config, and return is modify time
