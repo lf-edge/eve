@@ -15,6 +15,7 @@ use serde::Serialize;
 use super::monitorapi::AppsList;
 use super::monitorapi::DeviceStatus;
 use super::monitorapi::SetInterfaceConfig;
+use super::monitorapi::RevertManualConfig;
 use super::monitorapi::TpmLogs;
 use super::monitorapi::DownloaderStatus;
 use super::monitorapi::NetworkStatus;
@@ -37,6 +38,7 @@ static MSG_INDEX: AtomicIdGenerator = AtomicIdGenerator(AtomicU64::new(1));
 pub enum Request {
     SetInterfaceConfig(SetInterfaceConfig),
     SetServer(String),
+    RevertManualConfig(RevertManualConfig),
 }
 
 // This is the IPC wire type; variant shapes mirror EVE messages and must not
@@ -161,5 +163,28 @@ impl From<IpcMessage> for Bytes {
 impl From<BytesMut> for IpcMessage {
     fn from(bytes: BytesMut) -> Self {
         Self::from_reader(bytes.freeze())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn revert_manual_config_serializes_with_non_null_request_data() {
+        // The pillar-side request.validate() (pkg/pillar/cmd/monitor/ipc_server.go)
+        // rejects any request whose RequestData is nil - RevertManualConfig has no
+        // real payload, but must still serialize an explicit (empty) object rather
+        // than omitting the field or emitting `null`.
+        let msg = IpcMessage::new_request(Request::RevertManualConfig(RevertManualConfig {}));
+        let json = serde_json::to_value(&msg).unwrap();
+
+        assert_eq!(json["RequestType"], "RevertManualConfig");
+        assert!(
+            json.get("RequestData").is_some_and(|v| !v.is_null()),
+            "RequestData must be present and non-null, got: {json}"
+        );
+        assert_eq!(json["RequestData"], serde_json::json!({}));
+        assert!(json.get("id").is_some());
     }
 }

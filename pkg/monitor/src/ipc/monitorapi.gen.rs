@@ -332,6 +332,10 @@ pub struct ProxyServer {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RevertManualConfig {
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Sim {
     #[serde(rename = "slot")]
     pub slot: u32,

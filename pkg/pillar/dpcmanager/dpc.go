@@ -256,6 +256,17 @@ func (m *DpcManager) doDelDPC(ctx context.Context, dpc types.DevicePortConfig) {
 		m.Log.Functionf("doDelDPC: System current. No change detected.\n")
 		return
 	}
+	// Deleting the DPC currently being verified (e.g. an explicit revert of
+	// "manual" while its verification is still stuck mid-flight, e.g.
+	// waiting for IP/DNS) must not be deferred to that now-orphaned
+	// verification attempt: its target index no longer refers to a valid
+	// entry (updateDPCListAndPublish already reset CurrentIndex to -1 in
+	// that case), so runVerify's own "nothing to verify" guard would just
+	// return without ever clearing dpcVerify.inProgress, permanently
+	// wedging restartVerify's re-entrancy guard. Force a fresh restart here,
+	// exactly like every other DPC list mutation (doAddDPC, and the LPS
+	// case above) already does.
+	m.dpcVerify.inProgress = false
 	m.restartVerify(ctx, fmt.Sprintf("removed DPC (%s/%v)", dpc.Key, dpc.TimePriority))
 }
 

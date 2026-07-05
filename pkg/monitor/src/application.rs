@@ -34,7 +34,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::ipc::ipc_client::IpcClient;
 use crate::ipc::message::{IpcMessage, Request};
-use crate::ipc::monitorapi::{IpMode, SetInterfaceConfig, StaticIpConfig};
+use crate::ipc::monitorapi::{IpMode, SetInterfaceConfig, StaticIpConfig, RevertManualConfig};
 use crate::terminal::TerminalWrapper;
 use crate::ui::action::{Action, UiActions};
 
@@ -753,6 +753,20 @@ impl Application {
                     self.ui.show_server_url_dialog(&url);
                 }
             }
+            UiActions::RevertManualConfig => {
+                if self.model.borrow().dpc_key.as_deref() == Some("manual") {
+                    self.ui.show_confirm_dialog(
+                        "CONFIRM",
+                        "Discard your local network configuration?",
+                        MonActions::ManualConfigReverted,
+                    );
+                } else {
+                    self.ui.message_box(
+                        "NOTICE",
+                        "There is no manual network configuration to revert.",
+                    );
+                }
+            }
             UiActions::AppAction(app_action) => match app_action {
                 MonActions::NetworkInterfaceUpdated(old, new) => {
                     debug!("Setting DPC for {}", &old.iface_name);
@@ -772,6 +786,16 @@ impl Application {
                         move |app| {
                             app.model.borrow_mut().node_status.server = Some(url.clone());
                         },
+                    );
+                    self.ui.pop_layer();
+                }
+                MonActions::ManualConfigReverted => {
+                    debug!("Reverting manual network configuration");
+                    self.send_ipc_message(
+                        IpcMessage::new_request(Request::RevertManualConfig(
+                            RevertManualConfig {},
+                        )),
+                        |_app| {},
                     );
                     self.ui.pop_layer();
                 }
