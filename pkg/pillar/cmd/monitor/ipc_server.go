@@ -49,7 +49,9 @@ func (r *request) validate() error {
 		return errors.New("RequestData is nil")
 	}
 	// check supported request types
-	if (r.RequestType != "SetInterfaceConfig") && (r.RequestType != "SetServer") {
+	switch r.RequestType {
+	case "SetInterfaceConfig", "SetServer", "RevertManualConfig":
+	default:
 		return errors.New("Unsupported RequestType " + r.RequestType)
 	}
 	return nil
@@ -262,6 +264,19 @@ func (r *request) handleRequest(ctx *monitor) *response {
 		}
 		if err := ctx.updateServerFile(server); err != nil {
 			return r.errResponse("Failed to update server file", err)
+		}
+		return r.okResponse()
+
+	case "RevertManualConfig":
+		var intent monitorapi.RevertManualConfig
+		if err := json.Unmarshal(r.RequestData, &intent); err != nil {
+			return r.malformedRequestResponse(err)
+		}
+		// Unpublish the "manual" (TUI-submitted) DPC, if one is currently
+		// published. nim observes the pubsub delete and removes it from the
+		// DevicePortConfigList, falling back to the next-highest-priority DPC.
+		if err := ctx.pubDevicePortConfig.Unpublish(types.ManualDPCKey); err != nil {
+			return r.errResponse("Failed to revert manual network config", err)
 		}
 		return r.okResponse()
 

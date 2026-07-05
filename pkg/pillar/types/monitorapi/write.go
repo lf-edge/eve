@@ -36,3 +36,9 @@ type SetInterfaceConfig struct {
 	NTP    []string      `json:"ntp,omitempty"`
 	Domain string        `json:"domain,omitempty"`
 }
+
+// RevertManualConfig asks the device to discard the "manual" (TUI-submitted)
+// DevicePortConfig, falling back to the next-highest-priority one. It has no
+// fields of its own; it exists only so the request carries a well-typed
+// (empty) payload, consistent with every other request in this package.
+type RevertManualConfig struct{}

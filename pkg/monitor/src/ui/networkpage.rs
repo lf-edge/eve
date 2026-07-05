@@ -37,6 +37,9 @@ pub const CTRL_STATUS_LENGTH: u16 = 12;
 #[derive(Default)]
 struct NetworkPage {
     list: InterfaceList,
+    // Cached from the model on each render so status_bar_tips (which has no
+    // model access) can decide whether to advertise the revert action.
+    dpc_is_manual: bool,
 }
 
 #[derive(Default)]
@@ -70,7 +73,11 @@ impl ISelectable for InterfaceList {
 
 impl IWindow for NetworkPage {
     fn status_bar_tips(&self) -> Option<String> {
-        Some("↑/↓ - navigate | Enter - edit interface".to_string())
+        let mut tips = "↑/↓ - navigate | Enter - edit interface".to_string();
+        if self.dpc_is_manual {
+            tips.push_str(" | R - revert manual config");
+        }
+        Some(tips)
     }
 }
 
@@ -355,6 +362,7 @@ impl NetworkPage {
 
     fn render_dpc_info(&mut self, model: &Rc<Model>, rect: Rect, frame: &mut Frame) {
         let dpc_key = model.borrow().dpc_key.clone().unwrap_or("N/A".to_string());
+        self.dpc_is_manual = dpc_key == "manual";
 
         let configuration_string = match dpc_key.as_str() {
             "zedagent" => "From controller".green(),
@@ -370,8 +378,13 @@ impl NetworkPage {
 
         let mut text = Text::from(dpc_info);
 
-        if dpc_key == "manual" {
-            text.push_line(vec!["WARNING: ".red(),"the configuratiion set locally will be overwritten by working configuration from the controller".white()]);
+        if self.dpc_is_manual {
+            text.push_line(vec![
+                "Note: ".yellow(),
+                "this local configuration stays active until a new working controller \
+                 config arrives and takes over automatically, or you revert it (press R)."
+                    .white(),
+            ]);
         }
 
         // create paragraph with the DPC key
@@ -395,6 +408,9 @@ impl IEventHandler for NetworkPage {
                     return Some(Action::new("net", UiActions::EditIfaceConfig(selected)));
                 }
             }
+            KeyCode::Char('r') | KeyCode::Char('R') => {
+                return Some(Action::new("net", UiActions::RevertManualConfig));
+            }
             _ => {}
         } }
         None
@@ -402,7 +418,5 @@ impl IEventHandler for NetworkPage {
 }
 
 pub fn create_network_page() -> impl IWindow {
-    NetworkPage {
-        list: InterfaceList::default(),
-    }
+    NetworkPage::default()
 }

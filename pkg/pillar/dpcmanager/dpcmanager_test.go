@@ -1607,6 +1607,112 @@ func TestParksAtManualWhenEverythingFails(test *testing.T) {
 	t.Consistently(currentKey).Should(Equal("manual"))
 }
 
+// TestRevertManualDPC mirrors TestDeleteDPC's AddDPC/DelDPC round-trip
+// pattern via a "manual" DPC - this is the DpcManager-level mechanism behind
+// the TUI's "revert local network config changes" action. It confirms that
+// deleting a manual DPC that fix 4 was blocking fallback from correctly
+// falls back to (and re-applies) the previously-blocked, still-working
+// "zedagent" DPC.
+func TestRevertManualDPC(test *testing.T) {
+	expectBootstrapDPC := true
+	t := initTest(test, expectBootstrapDPC)
+	t.Expect(dpcManager.GetDNS().DPCKey).To(BeEmpty())
+
+	eth0 := mockEth0()
+	eth1 := mockEth1()
+	networkMonitor.AddOrUpdateInterface(eth0)
+	networkMonitor.AddOrUpdateInterface(eth1)
+	aa := makeAA(selectedIntfs{eth0: true, eth1: true})
+	dpcManager.UpdateAA(aa)
+	dpcManager.UpdateGCP(globalConfig())
+
+	// Older "zedagent" DPC over eth0 succeeds first.
+	zedagentTimePrio := time.Now()
+	zedagentDPC := makeDPC("zedagent", zedagentTimePrio, selectedIntfs{eth0: true})
+	dpcManager.AddDPC(zedagentDPC)
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+
+	// A newer "manual" DPC over eth1 fails to connect - blocked from
+	// automatic fallback (fix 4), the manager stays parked on it.
+	connTester.SetConnectivityError("manual", "eth1", fmt.Errorf("failed to connect"))
+	manualTimePrio := time.Now()
+	manualDPC := makeDPC("manual", manualTimePrio, selectedIntfs{eth1: true})
+	dpcManager.AddDPC(manualDPC)
+	t.Eventually(dpcKeyCb(0)).Should(Equal("manual"))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateFailWithIPAndDNS))
+	t.Consistently(dpcKeyCb(0)).Should(Equal("manual"))
+
+	// Revert the manual DPC (what the TUI's "revert" action does).
+	dpcManager.DelDPC(manualDPC)
+
+	// The manager falls back to (and re-applies) the previously-blocked,
+	// still-working "zedagent" DPC.
+	t.Eventually(dpcListLenCb()).Should(Equal(1))
+	t.Eventually(dpcKeyCb(0)).Should(Equal("zedagent"))
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+}
+
+// TestDeleteDPCMidVerification reproduces a bug where reverting a "manual"
+// DPC while its verification is still stuck mid-flight (e.g. waiting for
+// IP/DNS - exactly what the TUI's "revert" action can race with) left the
+// manager permanently wedged: CurrentIndex stuck at -1 and dpcVerify's
+// re-entrancy guard stuck "in progress" forever, since runVerify's own
+// "nothing to verify" bail-out (hit because CurrentIndex became -1) never
+// cleared it, and restartVerify's guard then always deferred to that
+// now-dead in-progress state. doDelDPC now force-clears dpcVerify.inProgress
+// before restarting verification, matching the pattern already used by
+// doAddDPC and the LPS branch of doDelDPC.
+func TestDeleteDPCMidVerification(test *testing.T) {
+	expectBootstrapDPC := true
+	t := initTest(test, expectBootstrapDPC)
+	t.Expect(dpcManager.GetDNS().DPCKey).To(BeEmpty())
+
+	eth0 := mockEth0()
+	networkMonitor.AddOrUpdateInterface(eth0)
+	aa := makeAA(selectedIntfs{eth0: true, eth1: true})
+	dpcManager.UpdateAA(aa)
+	dpcManager.UpdateGCP(globalConfig())
+
+	// "override" DPC over eth0 fails and its retry cooldown fully elapses,
+	// so it is testable again by the time "manual" gets reverted below.
+	connTester.SetConnectivityError("override", "eth0", fmt.Errorf("failed to connect"))
+	overrideTimePrio := time.Now()
+	overrideDPC := makeDPC("override", overrideTimePrio, selectedIntfs{eth0: true})
+	dpcManager.AddDPC(overrideDPC)
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateFailWithIPAndDNS))
+	time.Sleep(dpcManager.DpcMinTimeSinceFailure + time.Second)
+
+	// "manual" DPC over eth1 gets stuck mid-verification, waiting for
+	// IP/DNS (eth1 has no IP address yet) - dpcVerify.inProgress stays true
+	// indefinitely, exactly as it would while genuinely waiting on a slow
+	// DHCP lease or DNS propagation on real hardware.
+	eth1 := mockEth1()
+	eth1.IPAddrs = nil
+	eth1.DNS = []netmonitor.DNSInfo{}
+	networkMonitor.AddOrUpdateInterface(eth1)
+	manualTimePrio := time.Now()
+	manualDPC := makeDPC("manual", manualTimePrio, selectedIntfs{eth1: true})
+	dpcManager.AddDPC(manualDPC)
+	t.Eventually(dpcKeyCb(0)).Should(Equal("manual"))
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Expect(getDPC(0).State).To(Equal(types.DPCStateIPDNSWait))
+	t.Consistently(testingInProgressCb(), 2*time.Second).Should(BeTrue())
+
+	// Revert the manual DPC (what the TUI's "revert" action does) while it
+	// is still stuck mid-verification.
+	dpcManager.DelDPC(manualDPC)
+
+	// The manager must not get wedged: it should resume and settle back on
+	// "override" (the only remaining DPC), not get stuck forever with no
+	// DPC selected and testing permanently (but falsely) "in progress".
+	t.Eventually(dpcListLenCb()).Should(Equal(1))
+	t.Eventually(dpcKeyCb(0)).Should(Equal("override"))
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+}
+
 // TestManualDPCDroppedAfterNewerDPCWorks verifies that compressDPCL removes
 // a "manual" (TUI) DPC once a higher-priority DPC has proven to work,
 // end-to-end through the normal AddDPC/verify/compress pipeline.

@@ -9,4 +9,5 @@ use crate::ui::ipdialog::InterfaceState;
 pub enum MonActions {
     NetworkInterfaceUpdated(InterfaceState, InterfaceState),
     ServerUpdated(String),
+    ManualConfigReverted,
 }

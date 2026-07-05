@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    actions::MonActions,
     model::device::network::NetworkInterfaceStatus,
     traits::{IPresenter, IWindow},
     ui::{input_dialog::create_input_dialog, ipdialog::create_ip_dialog},
@@ -323,6 +324,11 @@ impl Ui {
 
     pub fn message_box(&mut self, title: &str, message: &str) {
         let d = super::message_box::create_message_box(title, message);
+        self.push_layer(d);
+    }
+
+    pub fn show_confirm_dialog(&mut self, title: &str, message: &str, confirm_action: MonActions) {
+        let d = super::message_box::create_confirm_dialog(title, message, confirm_action);
         self.push_layer(d);
     }
 }
