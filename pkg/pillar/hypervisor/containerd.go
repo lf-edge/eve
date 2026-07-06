@@ -5,6 +5,7 @@ package hypervisor
 
 import (
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -224,6 +225,23 @@ func (ctx ctrdContext) Annotations(domainName string) (map[string]string, error)
 	ctrdCtx, done := ctx.ctrdClient.CtrNewUserServicesCtx()
 	defer done()
 	return ctx.ctrdClient.CtrGetAnnotations(ctrdCtx, domainName)
+}
+
+// WatchCrash: containers have no VM-crash (mode A) concept; the default is no
+// crash channel. KvmContext overrides this. Also the embedded default for the
+// kubevirt and xen contexts.
+func (ctx ctrdContext) WatchCrash(_ string) <-chan types.DomainCrashEvent {
+	return nil
+}
+
+// DumpGuestMemory is a KVM/QMP-only primitive; unsupported for plain containers.
+func (ctx ctrdContext) DumpGuestMemory(_ string, _ io.Writer) error {
+	return fmt.Errorf("DumpGuestMemory not supported by this hypervisor")
+}
+
+// GetDomainRunState has no meaning for a container task.
+func (ctx ctrdContext) GetDomainRunState(_ string) (string, error) {
+	return "", nil
 }
 
 func (ctx ctrdContext) Info(domainName string) (int, types.SwState, error) {

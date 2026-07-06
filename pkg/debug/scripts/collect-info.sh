@@ -697,6 +697,8 @@ ln -s /persist/log          "$DIR/persist-log"
 [ -d /persist/kubelog ] && ln -s /persist/kubelog "$DIR/persist-kubelog"
 ln -s /persist/netdump      "$DIR/persist-netdump"
 ln -s /persist/kcrashes     "$DIR/persist-kcrashes"
+# qemu/guest crash dumps live in the (decrypted) vault; collect them for devs.
+[ -d /persist/vault/qemu-trace ] && ln -s /persist/vault/qemu-trace "$DIR/persist-qemu-trace"
 [ -d /persist/memory-monitor/output ] && ln -s /persist/memory-monitor/output "$DIR/persist-memory-monitor-output"
 [ -f /persist/agentdebug/watcher/sigusr1 ] && cp /persist/agentdebug/watcher/sigusr1 "$DIR/goroutin-leak-detector-stacks-dump"
 ln -s /run                  "$DIR/root-run"

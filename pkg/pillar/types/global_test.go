@@ -312,6 +312,13 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		LonghornSnapshotCron,
 		DataStoreAllowInsecureAuth,
 		LonghornNodeDrainPolicy,
+		QemuProcessCore,
+		QemuGuestCore,
+		QemuProcessCoreGuestRAM,
+		QemuPauseOnCrash,
+		QemuTraceEvents,
+		QemuGdb,
+		QemuIgpuNoMmap,
 	}
 	if len(specMap.GlobalSettings) != len(gsKeys) {
 		t.Errorf("GlobalSettings has more (%d) than expected keys (%d)",

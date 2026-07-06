@@ -5,6 +5,7 @@ package hypervisor
 
 import (
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -130,6 +131,21 @@ func (ctx nullContext) Delete(domainName string) error {
 // Cleanup is noop for null hypervisor
 func (ctx nullContext) Cleanup(_ string) error {
 	return nil
+}
+
+// WatchCrash: the null hypervisor has no VM-crash notion.
+func (ctx nullContext) WatchCrash(_ string) <-chan types.DomainCrashEvent {
+	return nil
+}
+
+// DumpGuestMemory is unsupported for the null hypervisor.
+func (ctx nullContext) DumpGuestMemory(_ string, _ io.Writer) error {
+	return fmt.Errorf("DumpGuestMemory not supported by null hypervisor")
+}
+
+// GetDomainRunState is unsupported for the null hypervisor.
+func (ctx nullContext) GetDomainRunState(_ string) (string, error) {
+	return "", nil
 }
 
 func (ctx nullContext) Info(domainName string) (int, types.SwState, error) {
