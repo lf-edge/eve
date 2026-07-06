@@ -161,6 +161,13 @@ COPY gmp.patch /xen/stubdom
 
 WORKDIR /xen
 
+# DEBUG-ONLY: to build the qemu fault injector (x-inject-internal-error QMP
+# command, patch x86_64/14-*) into qemu-xen, uncomment the ENV line below to
+# define CONFIG_EVE_CRASH_INJECTOR. linuxkit `pkg build` cannot pass a
+# --build-arg, so this manual edit is the toggle. Left OFF for production
+# builds — the injector code stays inert (guarded) and out of the QMP schema.
+# ENV EXTRA_QEMUU_CONFIGURE_ARGS="${EXTRA_QEMUU_CONFIGURE_ARGS} --extra-cflags=-DCONFIG_EVE_CRASH_INJECTOR"
+
 # disable golang as it does not play well together with musl (stderr is defined as FILE* const and fails to compile)
 RUN ./configure --prefix=/usr --disable-xen --disable-golang --disable-qemu-traditional --disable-docs --enable-9pfs \
     --with-system-ovmf=/usr/lib/xen/boot/ovmf.bin --disable-stubdom --disable-openbios \

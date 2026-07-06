@@ -7,7 +7,8 @@
 -	$$source/configure --enable-xen --target-list=i386-softmmu \
 +	$$source/configure --enable-xen --target-list=i386-softmmu,$$(uname -m)-softmmu \
  		$(QEMU_XEN_ENABLE_DEBUG) \
- 		$$enable_trace_backend \
+-		$$enable_trace_backend \
++		--enable-trace-backends=log,simple \
  		--prefix=$(prefix) \
 @@ -251,7 +251,6 @@
  		--mandir=$(LIBEXEC)/share/man \

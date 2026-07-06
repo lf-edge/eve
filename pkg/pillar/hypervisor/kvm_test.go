@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -3352,4 +3353,44 @@ func TestPCIAddressAllocator(t *testing.T) {
 	fmt.Println(err.Error())
 	g.Expect(err.Error()).To(ContainSubstring("User-defined network interface order " +
 		"disrupts the function sequence of the multifunction PCI devices 0000:06:00 and 0000:08:00"))
+}
+
+// debug.qemu.process.core.guest.ram toggles the qemu `dump-guest-core` machine
+// property, which decides whether a qemu process core includes guest RAM.
+func TestCreateDomConfigProcessCoreGuestRAM(t *testing.T) {
+	id, err := uuid.NewV4()
+	if err != nil {
+		t.Fatalf("NewV4 failed: %v", err)
+	}
+	config := types.DomainConfig{
+		UUIDandVersion: types.UUIDandVersion{UUID: id, Version: "1.0"},
+		VmConfig:       types.VmConfig{Kernel: "/boot/kernel", Memory: 1024 * 1024, VCpus: 1},
+	}
+	aa := &types.AssignableAdapters{Initialized: true}
+
+	render := func(t *testing.T, guestRAM bool) string {
+		conf, err := os.CreateTemp("/tmp", "config")
+		if err != nil {
+			t.Fatalf("CreateTemp: %v", err)
+		}
+		defer os.Remove(conf.Name())
+		gc := types.DefaultConfigItemValueMap()
+		gc.SetGlobalValueBool(types.QemuProcessCoreGuestRAM, guestRAM)
+		if err := kvmIntel.CreateDomConfig(DefaultDomainName, config, types.DomainStatus{},
+			nil, aa, gc, swtpmCtrlSock, conf); err != nil {
+			t.Fatalf("CreateDomConfig failed: %v", err)
+		}
+		out, err := os.ReadFile(conf.Name())
+		if err != nil {
+			t.Fatalf("read: %v", err)
+		}
+		return string(out)
+	}
+
+	if got := render(t, false); !strings.Contains(got, `dump-guest-core = "off"`) {
+		t.Fatalf("guest.ram off: expected dump-guest-core off, got:\n%s", got)
+	}
+	if got := render(t, true); !strings.Contains(got, `dump-guest-core = "on"`) {
+		t.Fatalf("guest.ram on: expected dump-guest-core on, got:\n%s", got)
+	}
 }

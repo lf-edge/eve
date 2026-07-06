@@ -1,0 +1,60 @@
+Mode-A (guest internal-error) fault injector (DEBUG-ONLY).
+
+Adds an x-inject-internal-error QMP command to qemu-xen that stops the VM into
+RUN_STATE_INTERNAL_ERROR (emitting a QMP STOP), emulating the KVM_RUN -EFAULT
+path so the guest-core crash-dump capture can be validated deterministically
+without reproducing the hardware race.
+
+Compiled in ONLY when CONFIG_EVE_CRASH_INJECTOR is defined; the qapi command
+carries the same 'if' condition. Never present in a production qemu.
+
+diff --git a/tools/qemu-xen/hw/vfio/pci.c b/tools/qemu-xen/hw/vfio/pci.c
+index 2407720c35..9069c674a2 100644
+--- a/tools/qemu-xen/hw/vfio/pci.c
++++ b/tools/qemu-xen/hw/vfio/pci.c
+@@ -3473,6 +3473,22 @@ static const TypeInfo vfio_pci_nohotplug_dev_info = {
+     .class_init = vfio_pci_nohotplug_dev_class_init,
+ };
+ 
++#if defined(CONFIG_EVE_CRASH_INJECTOR)
++#include "qapi/qapi-commands-vfio.h"
++/*
++ * DEBUG-ONLY fault injector. Stops the VM into RUN_STATE_INTERNAL_ERROR (which
++ * emits a QMP STOP), emulating the KVM_RUN -EFAULT path, so the guest-core
++ * crash-dump capture can be validated deterministically without reproducing
++ * the hardware race. Compiled in only when CONFIG_EVE_CRASH_INJECTOR is defined
++ * (EVE enables it via the xen-tools qemu build); the matching QMP command in
++ * qapi/vfio.json carries the same 'if' condition. Never present in production.
++ */
++void qmp_x_inject_internal_error(Error **errp)
++{
++    vm_stop(RUN_STATE_INTERNAL_ERROR);
++}
++#endif /* CONFIG_EVE_CRASH_INJECTOR */
++
+ static void register_vfio_pci_dev_type(void)
+ {
+     type_register_static(&vfio_pci_dev_info);
+diff --git a/tools/qemu-xen/qapi/vfio.json b/tools/qemu-xen/qapi/vfio.json
+index eccca82068..fbeb2ae217 100644
+--- a/tools/qemu-xen/qapi/vfio.json
++++ b/tools/qemu-xen/qapi/vfio.json
+@@ -65,3 +65,18 @@
+       'qom-path': 'str',
+       'device-state': 'VfioMigrationState'
+   } }
++
++##
++# @x-inject-internal-error:
++#
++# DEBUG-ONLY. Stop the VM into RUN_STATE_INTERNAL_ERROR (emits QMP STOP),
++# emulating the KVM_RUN -EFAULT path, to validate guest-core crash-dump
++# capture without reproducing the hardware race.
++#
++# .. qmp-example::
++#
++#     -> { "execute": "x-inject-internal-error" }
++#     <- { "return": {} }
++##
++{ 'command': 'x-inject-internal-error',
++  'if': 'CONFIG_EVE_CRASH_INJECTOR' }
