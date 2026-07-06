@@ -62,7 +62,7 @@ RUN cargo build --release $VECTOR_FEATURES
 RUN cargo sbom > sbom.spdx.json
 RUN cp "/app/target/$CARGO_BUILD_TARGET/release/vector" /app/target/
 
-FROM lfedge/eve-alpine:39f46094f640424c345164420ed789afd8a4088b AS runtime
+FROM lfedge/eve-alpine:f9b45a5a3b3a18a8503cbe6d1258a1025450fe0e AS runtime
 ENV PKGS="inotify-tools"
 RUN eve-alpine-deploy.sh
 
