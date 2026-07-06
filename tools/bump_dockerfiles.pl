@@ -5,7 +5,9 @@
 
 use 5.12.0;
 
--d ".git" or die "Please run from the root directory of the repository";
+# .git is a directory in a plain checkout but a file in a git worktree; -e
+# matches both, and .git only exists at the repository/worktree root.
+-e ".git" or die "Please run from the root directory of the repository";
 
 say "Be aware of the two shortcomings of this tool:";
 say "1. pkg/eve/Dockerfile.in is not bumped";

@@ -54,8 +54,9 @@ shift $((OPTIND -1))
 
 echo "[+] Running mini-yetus"
 
-# check if we are in the root of the repository
-if [ ! -d .git ]; then
+# check if we are in the root of the repository (works for a plain checkout,
+# where .git is a directory, and for a git worktree, where .git is a file)
+if [ "$(git rev-parse --show-toplevel 2>/dev/null)" != "$(pwd -P)" ]; then
     echo "[!] Error: This script must be run from the root of the EVE repository."
     exit 1
 fi
