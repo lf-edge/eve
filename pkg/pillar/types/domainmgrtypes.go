@@ -5,6 +5,7 @@ package types
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"strconv"
@@ -327,6 +328,51 @@ type Task interface {
 	Delete(string) error
 	Info(string) (int, SwState, error)
 	Cleanup(string) error
+	// WatchCrash returns a channel on which the hypervisor reports that the
+	// domain's virtual machine has crashed into a capturable, still-alive
+	// state (KVM: QMP STOP with run-state internal-error — "mode A"). It lets
+	// domainmgr own crash policy while the QMP details stay in the hypervisor
+	// package. Returns nil for hypervisors without this capability (all but
+	// KVM); a nil channel blocks forever in a select, which is the intent.
+	WatchCrash(domainName string) <-chan DomainCrashEvent
+	// DumpGuestMemory writes the guest's physical RAM as an ELF core to the
+	// io.Writer (streamed, so pillar can compress and quota it on the fly). It
+	// is a policy-free primitive; the caller decides when to dump and what to
+	// do afterwards. includeUnusedRAM controls dump-guest-memory's paging
+	// flag. Not supported (returns an error) on non-KVM hypervisors.
+	DumpGuestMemory(domainName string, w io.Writer) error
+	// GetDomainRunState returns the raw hypervisor run-state string
+	// ("running", "internal-error", "paused", …) as a pollable backstop for a
+	// missed WatchCrash event. Empty string / error on hypervisors without it.
+	GetDomainRunState(domainName string) (string, error)
+}
+
+// CrashHandlingState tracks where a domain is in domainmgr's capture-first
+// crash state machine. Any value other than CrashNone freezes reconcile for
+// the domain so neither the reconcile loop nor an incoming controller config
+// tears down or restarts qemu while a dump is in flight or the domain is held
+// for inspection.
+type CrashHandlingState uint8
+
+const (
+	// CrashNone means the domain is not handling a crash (the normal state).
+	CrashNone CrashHandlingState = iota
+	// CrashCaptureInProgress means a guest-core dump is being taken; teardown
+	// must wait for it to finish or fail.
+	CrashCaptureInProgress
+	// CrashCaptured means the dump completed (or failed) and policy has
+	// been/will be applied.
+	CrashCaptured
+	// CrashHeld means pause-on-crash is holding qemu alive for live inspection.
+	CrashHeld
+)
+
+// DomainCrashEvent is the hypervisor-agnostic notification that a domain's VM
+// crashed into a capturable state (mode A). RunState is the raw run-state that
+// identified the crash (e.g. "internal-error").
+type DomainCrashEvent struct {
+	RunState string
+	When     time.Time
 }
 
 type DomainStatus struct {
@@ -385,6 +431,23 @@ type DomainStatus struct {
 	// emitted the "trusting cluster to recover" log line. Used to deduplicate
 	// that log to state transitions only. Zero = not yet logged. KubeVirt only.
 	KubeTrustLoggedState SwState `json:"-"`
+
+	// Crash-dump handling (KVM "mode A" crash).
+	// CrashState != CrashNone is the authoritative freeze flag: while set,
+	// reconcile must not tear down or restart the domain.
+	CrashState CrashHandlingState
+	// CrashRunState is the hypervisor run-state that identified the crash
+	// (e.g. "internal-error").
+	CrashRunState string
+	// GuestCoreDumpPath is the vault path of the most recent guest core.
+	GuestCoreDumpPath string
+	// LastDumpTaken is set once a guest core has been captured for the current
+	// crash, so releasing a held domain does not needlessly re-dump.
+	LastDumpTaken bool `json:"-"`
+	// HoldUntil is when a pause-on-crash hold auto-releases (mode A).
+	HoldUntil time.Time
+	// GdbSocket is the gdbstub UNIX socket exposed for a held domain, if any.
+	GdbSocket string
 }
 
 func (status DomainStatus) Key() string {

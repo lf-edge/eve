@@ -458,6 +458,51 @@ const (
 	// passthrough firmware-side issues with a TARGET=DEBUG OVMF rebuild.
 	EnableEFIDebug GlobalSettingKey = "debug.enable.efi"
 
+	// QemuProcessCore: when true (default), the qemu process gets a large
+	// RLIMIT_CORE and the host kernel core_pattern points at the encrypted
+	// vault, so if qemu dies on a fatal signal (SIGBUS/SIGSEGV/SIGABRT — the
+	// "mode B" case) the kernel writes a process core that pillar then
+	// compresses and rotates.
+	QemuProcessCore GlobalSettingKey = "debug.qemu.process.core"
+
+	// QemuGuestCore: when true (default), pillar dumps the guest's physical RAM
+	// (QMP dump-guest-memory, ELF) when qemu enters RUN_STATE_INTERNAL_ERROR
+	// after KVM_RUN -EFAULT (the "mode A" case).
+	QemuGuestCore GlobalSettingKey = "debug.qemu.guest.core"
+
+	// QemuProcessCoreGuestRAM: when true, qemu sets `dump-guest-core = "on"` on
+	// the machine config so a qemu process core (QemuProcessCore) *includes*
+	// the guest's RAM.  Off by default: it makes the core as large as the VM's
+	// RAM and it can hold guest secrets, and the guest RAM is already captured
+	// far more cheaply by the mode-A guest core (QemuGuestCore).
+	QemuProcessCoreGuestRAM GlobalSettingKey = "debug.qemu.process.core.guest.ram"
+
+	// QemuPauseOnCrash: when true, on a mode-A crash domainmgr holds the domain
+	// (keeps qemu alive, freezes reconcile) for live inspection instead of
+	// tearing it down, until an operator releases it or a timeout expires. Off
+	// by default — an opt-in inspection aid layered on top of the always-on
+	// guest-core dump.
+	QemuPauseOnCrash GlobalSettingKey = "debug.qemu.pause.on.crash"
+
+	// QemuTraceEvents: a comma-separated list of qemu trace-event names/globs
+	// and/or @<preset> macros (e.g. "@vfio,@iommu,vfio_pci_write_config"). When
+	// non-empty, qemu runs with -trace writing a binary simpletrace log per VM
+	// to the encrypted vault. Empty (default) disables tracing. Presets are
+	// expanded by qemuTracePresets in kvm.go.
+	QemuTraceEvents GlobalSettingKey = "debug.qemu.trace.events"
+
+	// QemuGdb: when true, qemu exposes a per-domain gdbstub UNIX socket for live
+	// vCPU inspection (and for a pause-on-crash hold). Off by default.
+	QemuGdb GlobalSettingKey = "debug.qemu.gdb"
+
+	// QemuIgpuNoMmap: when true, add x-no-mmap=on to the Intel iGPU vfio-pci
+	// device so every BAR access traps into qemu instead of being mmap'd direct
+	// to hardware. Debug-only: it makes the guest's iGPU MMIO writes visible in
+	// the qemu trace (and lets us test whether the scanout corruption is an
+	// mmap/BAR-remap fast-path race). Large performance cost; off by default.
+	// Only affects the iGPU device.
+	QemuIgpuNoMmap GlobalSettingKey = "debug.qemu.igpu.no.mmap"
+
 	// MsrvPrometheusMetricsRequestPerSecond: limit the number of requests per second
 	MsrvPrometheusMetricsRequestPerSecond GlobalSettingKey = "msrv.prometheus.metrics.rps"
 	// MsrvPrometheusMetricsBurst: limit the burst of requests
@@ -1214,6 +1259,13 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddBoolItem(MemoryMonitorEnabled, false)
 	configItemSpecMap.AddBoolItem(DHCPEnableVendorClassID, true)
 	configItemSpecMap.AddBoolItem(EnableEFIDebug, false)
+	configItemSpecMap.AddBoolItem(QemuProcessCore, true)
+	configItemSpecMap.AddBoolItem(QemuGuestCore, true)
+	configItemSpecMap.AddBoolItem(QemuProcessCoreGuestRAM, false)
+	configItemSpecMap.AddBoolItem(QemuPauseOnCrash, false)
+	configItemSpecMap.AddStringItem(QemuTraceEvents, "", blankValidator)
+	configItemSpecMap.AddBoolItem(QemuGdb, false)
+	configItemSpecMap.AddBoolItem(QemuIgpuNoMmap, false)
 	configItemSpecMap.AddBoolItem(DataStoreAllowInsecureAuth, false)
 
 	// Add TriState Items
