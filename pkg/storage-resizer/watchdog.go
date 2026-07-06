@@ -86,8 +86,25 @@ func cmdRunWatchdog(args []string) int {
 	fmt.Fprintf(os.Stderr, "run-watchdog: feeding %s every %s (timeout=%ds)\n", watchdogDevice, iv, eff)
 	t := time.NewTicker(iv)
 	defer t.Stop()
+	paused := false
 	for {
-		_, _ = f.Write([]byte{0}) // any byte other than a lone 'V' is a keepalive
+		// Coupling for the chaos GPT-write stress: while the resizer holds the
+		// pause-pet marker (it does so around a delayed GPT block write, see
+		// partitionresizer delaybackend_chaos.go) withhold pets so the reset
+		// lands INSIDE that write. No-op in the field: the marker never appears
+		// unless a -tags chaos resizer is delaying with RESIZER_GPT_WRITE_DELAY.
+		if pausePetActive() {
+			if !paused {
+				fmt.Fprintf(os.Stderr, "run-watchdog: pause-pet marker present; WITHHOLDING pets (letting the watchdog count down) — chaos test\n")
+				paused = true
+			}
+		} else {
+			if paused {
+				fmt.Fprintf(os.Stderr, "run-watchdog: pause-pet cleared; resuming pets\n")
+				paused = false
+			}
+			_, _ = f.Write([]byte{0}) // any byte other than a lone 'V' is a keepalive
+		}
 		select {
 		case <-sigc:
 			_, _ = f.Write([]byte("V")) // magic close: disarm
@@ -96,6 +113,16 @@ func cmdRunWatchdog(args []string) int {
 		case <-t.C:
 		}
 	}
+}
+
+// pausePetMarker is the file the chaos GPT-write delay (partitionresizer
+// delaybackend_chaos.go) creates around a delayed GPT block write to make the
+// feeder withhold pets. Keep the path in sync with that file.
+const pausePetMarker = "/run/storage-resizer-pause-pet"
+
+func pausePetActive() bool {
+	_, err := os.Stat(pausePetMarker)
+	return err == nil
 }
 
 // escalatedTimeout spreads the (no-pet) watchdog timeout LINEARLY across the

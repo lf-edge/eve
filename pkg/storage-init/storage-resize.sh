@@ -170,6 +170,13 @@ maybe_offline_disk_resize() {
         resize_abort "too-many-reboots" "$_n"
     fi
 
+    # STRESS/CHAOS knobs (test-only), injected via /config for the
+    # watchdog-during-GPT-write test: RESIZER_GPT_WRITE_DELAY + RESIZER_GPT_DELAY_NTH
+    # (consumed by a -tags chaos storage-resizer's partitionresizer backend) and
+    # RESIZER_WD_TIMEOUT. No-op in the field (file absent). The env file uses
+    # `export`, so the shrink/grow children below inherit the GPT-delay knobs.
+    [ -f "$CONFIGDIR/resize-chaos.env" ] && . "$CONFIGDIR/resize-chaos.env"
+
     # Run a hardware watchdog across the offline resize, started here once we have
     # the attempt count ($_n) and are past the max-reboots abort, and killed after
     # the resize (which disarms it). STRESS MODE: --no-pet --attempt escalates the
@@ -177,7 +184,14 @@ maybe_offline_disk_resize() {
     # fires and tests recovery, 600s by the 4th try so a slow-but-progressing
     # resize converges. The resize_reboot/resize_abort paths reset the device,
     # stopping the feeder regardless.
-    storage-resizer run-watchdog --no-pet --attempt "$_n" >/dev/console 2>&1 &
+    # CHAOS MODE (RESIZER_WD_TIMEOUT set): feed NORMALLY but honor the resizer's
+    # pause-pet marker with a short timeout, so the reset lands INSIDE a delayed
+    # GPT block write rather than at an unrelated wall-clock deadline.
+    if [ -n "${RESIZER_WD_TIMEOUT:-}" ]; then
+        storage-resizer run-watchdog --timeout "$RESIZER_WD_TIMEOUT" >/dev/console 2>&1 &
+    else
+        storage-resizer run-watchdog --no-pet --attempt "$_n" >/dev/console 2>&1 &
+    fi
     _wd_pid=$!
 
     _cd=/tmp/config_count
