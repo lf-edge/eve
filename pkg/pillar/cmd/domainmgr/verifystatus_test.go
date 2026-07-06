@@ -7,6 +7,7 @@ package domainmgr
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"testing"
 
@@ -97,10 +98,15 @@ func (m *mockKubeTask) OemWindowsLicenseKeySetup(_ *types.OemWindowsLicenseKeyIn
 func (m *mockKubeTask) Create(_ string, _ string, _ *types.DomainConfig) (int, error) {
 	return 0, nil
 }
-func (m *mockKubeTask) Start(_ string) error        { return nil }
-func (m *mockKubeTask) Stop(_ string, _ bool) error { return nil }
-func (m *mockKubeTask) Delete(_ string) error       { return nil }
-func (m *mockKubeTask) Cleanup(_ string) error      { return nil }
+func (m *mockKubeTask) Start(_ string) error                              { return nil }
+func (m *mockKubeTask) Stop(_ string, _ bool) error                       { return nil }
+func (m *mockKubeTask) Delete(_ string) error                             { return nil }
+func (m *mockKubeTask) Cleanup(_ string) error                            { return nil }
+func (m *mockKubeTask) WatchCrash(_ string) <-chan types.DomainCrashEvent { return nil }
+func (m *mockKubeTask) DumpGuestMemory(_ string, _ io.Writer) error {
+	return fmt.Errorf("DumpGuestMemory not supported")
+}
+func (m *mockKubeTask) GetDomainRunState(_ string) (string, error) { return "", nil }
 
 // ---------------------------------------------------------------------------
 // Minimal mock: hypervisor.Hypervisor — only Task() is called by verifyStatus

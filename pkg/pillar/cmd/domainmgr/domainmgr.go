@@ -42,6 +42,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	"github.com/lf-edge/eve/pkg/pillar/qemudump"
 	"github.com/lf-edge/eve/pkg/pillar/sema"
 	"github.com/lf-edge/eve/pkg/pillar/sriov"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -156,6 +157,15 @@ type domainContext struct {
 	// Is it EVE 'k'
 	hvTypeKube bool
 	nodeName   string
+
+	// Crash-dump handling. dumpMgr owns the
+	// vault dump storage (compression/quota/rotation); nil if unavailable.
+	// The three flags mirror the debug.qemu.* global settings.
+	dumpMgr          *qemudump.Manager
+	qemuProcessCore  bool
+	qemuGuestCore    bool
+	qemuPauseOnCrash bool
+	qemuGdb          bool
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -644,6 +654,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	log.Functionf("processed vault status")
 
+	// The vault is unlocked now, so the encrypted dump directory is reachable.
+	// Build the dump-storage manager and install the qemu core_pattern.
+	domainCtx.dumpMgr = setupDumpManager()
+
 	if err := containerd.StartUserContainerdInstance(); err != nil {
 		log.Fatalf("StartUserContainerdInstance: failed %v", err)
 	}
@@ -1030,8 +1044,20 @@ func runHandler(ctx *domainContext, key string, configChannel <-chan Notify, cpu
 	ticker := flextimer.NewRangeTicker(time.Duration(minInterval),
 		time.Duration(maxInterval))
 
+	// captureDone carries the result of an async guest-core capture (mode A)
+	// back into this goroutine so crash policy is always applied here, never in
+	// the capture goroutine. Buffered so that goroutine never blocks.
+	captureDone := make(chan captureResult, 1)
+
 	closed := false
 	for !closed {
+		// Watch for a mode-A crash while the domain is activated and not already
+		// being handled. A nil channel (non-KVM, or already crash-frozen) never
+		// fires in the select.
+		var crashCh <-chan types.DomainCrashEvent
+		if st := lookupDomainStatus(ctx, key); st != nil && st.Activated && st.CrashState == types.CrashNone {
+			crashCh = hyper.Task(st).WatchCrash(st.DomainName)
+		}
 		select {
 		case _, ok := <-configChannel:
 			if ok {
@@ -1043,6 +1069,13 @@ func runHandler(ctx *domainContext, key string, configChannel <-chan Notify, cpu
 				}
 				config := c.(types.DomainConfig)
 				status := lookupDomainStatus(ctx, key)
+				if status != nil && crashFrozen(status) {
+					// A crash dump is in flight or the domain is held for
+					// inspection; defer config changes so reconcile cannot
+					// restart or kill the frozen qemu.
+					log.Noticef("runHandler(%s): deferring config change while crash-frozen", key)
+					continue
+				}
 				if status == nil {
 					handleCreate(ctx, key, &config)
 				} else {
@@ -1073,18 +1106,39 @@ func runHandler(ctx *domainContext, key string, configChannel <-chan Notify, cpu
 					log.Errorf("No Status for %s", config.DisplayName)
 					continue
 				}
+				if crashFrozen(status) {
+					continue
+				}
 				if !config.VmConfig.CPUsPinned {
 					if err = updateNonPinnedCPUs(ctx, &config, status); err != nil {
 						log.Warnf("failed to redistribute CPUs in %s", config.DisplayName)
 					}
 				}
 			}
+		case ev := <-crashCh:
+			// Mode-A crash (guest internal-error): capture the guest core
+			// before any teardown, then apply policy.
+			if status := lookupDomainStatus(ctx, key); status != nil {
+				beginCrashCapture(ctx, status, ev, captureDone)
+			}
+		case res := <-captureDone:
+			if status := lookupDomainStatus(ctx, key); status != nil {
+				finishCrashCapture(ctx, status, res)
+			}
 		case <-ticker.C:
 			log.Tracef("runHandler(%s) timer", key)
 			status := lookupDomainStatus(ctx, key)
 			if status != nil {
-				verifyStatus(ctx, status)
-				maybeRetry(ctx, status)
+				switch status.CrashState {
+				case types.CrashHeld:
+					maybeReleaseHold(ctx, status)
+				case types.CrashNone:
+					verifyStatus(ctx, status)
+					maybeRetry(ctx, status)
+				default:
+					// CrashCaptureInProgress / CrashCaptured: the capture
+					// goroutine will drive finishCrashCapture; do not reconcile.
+				}
 			}
 		}
 	}
@@ -1093,6 +1147,12 @@ func runHandler(ctx *domainContext, key string, configChannel <-chan Notify, cpu
 
 // Check if it is still running
 func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
+	// Never reconcile a domain whose crash is being handled: a dump may be in
+	// flight, or the domain may be held for inspection. Tearing it down here
+	// would race the capture / kill the held qemu.
+	if crashFrozen(status) {
+		return
+	}
 	// Check config.Active to avoid spurious errors when shutting down
 	configActivate := false
 	config := lookupDomainConfig(ctx, status.Key())
@@ -1124,7 +1184,16 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			if domainStatus == types.BROKEN {
 				err := fmt.Errorf("one of the %s tasks has crashed (%v)", status.Key(), err)
 				log.Error(err.Error())
-				status.SetErrorNow("one of the application's tasks has crashed - please restart application instance")
+				// Mode B: qemu died on a fatal signal and the kernel wrote a
+				// process core via core_pattern. Pick it up (compress into the
+				// vault) while DomainId still holds the dead qemu's pid, before
+				// the teardown below zeroes it. A non-empty path means it was a
+				// qemu VM with a core; otherwise it's a plain container app.
+				if corePath := pickupProcessCore(ctx, status); corePath != "" {
+					status.SetErrorNow("QEMU process crashed, core dump saved")
+				} else {
+					status.SetErrorNow("one of the application's tasks has crashed - please restart application instance")
+				}
 				status.State = types.BROKEN
 			} else {
 				//schedule for retry boot
@@ -3119,6 +3188,10 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 			ctx.metricInterval = metricInterval
 		}
 		ctx.processCloudInitMultiPart = gcp.GlobalValueBool(types.ProcessCloudInitMultiPart)
+		ctx.qemuProcessCore = gcp.GlobalValueBool(types.QemuProcessCore)
+		ctx.qemuGuestCore = gcp.GlobalValueBool(types.QemuGuestCore)
+		ctx.qemuPauseOnCrash = gcp.GlobalValueBool(types.QemuPauseOnCrash)
+		ctx.qemuGdb = gcp.GlobalValueBool(types.QemuGdb)
 		ctx.GCInitialized = true
 	}
 	log.Functionf("handleGlobalConfigImpl done for %s. "+

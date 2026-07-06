@@ -206,7 +206,7 @@ func getQemuStatus(socket string) (types.SwState, error) {
 	return state, errs
 }
 
-func qmpEventHandler(listenerSocket, executorSocket string) {
+func qmpEventHandler(listenerSocket, executorSocket, domainName string) {
 	monitor, err := qmp.NewSocketMonitor("unix", listenerSocket, sockTimeout)
 	if err != nil {
 		logrus.Errorf("qmpEventHandler: Exception while getting monitor of listenerSocket: %s. %s", listenerSocket, err.Error())
@@ -240,8 +240,23 @@ func qmpEventHandler(listenerSocket, executorSocket string) {
 			if err := execQuit(executorSocket); err != nil {
 				logrus.Errorf("qmpEventHandler: Exception while quitting domain with socket: %s. %s", executorSocket, err.Error())
 			}
+		case "STOP":
+			// STOP carries no reason; query-status distinguishes an operator
+			// pause ("paused") from a KVM_RUN -EFAULT crash ("internal-error",
+			// mode A). On a crash, hand an abstract event to domainmgr, which
+			// owns capture-first-then-policy — this goroutine stays a
+			// translator and never dumps or tears down.
+			runState, err := readQemuRunState(executorSocket)
+			if err != nil {
+				logrus.Errorf("qmpEventHandler: STOP for %s but query-status failed: %v", domainName, err)
+				continue
+			}
+			logrus.Infof("qmpEventHandler: STOP event runState=%q for %s", runState, domainName)
+			if runState == "internal-error" {
+				crashRegistry.emit(domainName, runState)
+			}
 		default:
-			//Not handling the following events: RESUME, NIC_RX_FILTER_CHANGED, RTC_CHANGE, POWERDOWN, STOP
+			//Not handling the following events: RESUME, NIC_RX_FILTER_CHANGED, RTC_CHANGE, POWERDOWN
 			logrus.Warnf("qmpEventHandler: Unhandled event: %s from QMP socket: %s", event.Event, listenerSocket)
 		}
 	}
