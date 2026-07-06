@@ -304,13 +304,23 @@ func (t *ControllerConnectivityTester) getPortsNotReady(
 				}
 			}
 			var dnsErr *net.DNSError
+			// Note that net.DNSError doesn't wrap the underlying syscall error,
+			// it only copies the error message string, meaning that errors.As()
+			// will not match it as a SyscallError.
 			if errors.As(attempt.Err, &dnsErr) {
-				if dnsErr.IsTemporary {
-					// This flag is set when the resolver hits a socket errno
-					// (e.g., EADDRNOTAVAIL).
-					// Note that net.DNSError doesn't wrap the underlying syscall error,
-					// it only copies the error message string, meaning that errors.As()
-					// will not match it as a SyscallError.
+				if dnsErr.IsTemporary && !dnsErr.IsTimeout {
+					// IsTemporary is set by Go's resolver for any net.OpError
+					// hit while querying the DNS server, not just the narrow
+					// socket errno case this was originally meant for (e.g.
+					// EADDRNOTAVAIL).
+					// A genuine timeout (IsTimeout) must not be treated the
+					// same way: EVE queries a local "mgmt dnsmasq" forwarder
+					// on 127.0.0.1:53 (see dpcreconciler/genericitems/mgmtdnsmasq.go),
+					// which is always up, so a timeout talking to it means
+					// dnsmasq itself is still waiting on a genuinely
+					// unreachable upstream server, i.e. a real connectivity
+					// failure, not a transient "DNS not ready yet" condition
+					// worth retrying under DPCStateIPDNSWait.
 					portMap[portLabel] = struct{}{}
 				}
 			}
