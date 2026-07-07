@@ -9,7 +9,7 @@ require (
 	github.com/distribution/reference v0.6.0
 	github.com/docker/cli v29.2.0+incompatible
 	github.com/google/uuid v1.6.0
-	github.com/lf-edge/eve-api/go v0.0.0-20260420100351-253db6a73b76
+	github.com/lf-edge/eve-api/go v0.0.0-20260622100545-186e61c68f39
 	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260421125048-8d3825045e4e
 	github.com/moby/moby/api v1.55.0
 	github.com/moby/moby/client v0.5.0
