@@ -1,11 +1,17 @@
 # Copyright (c) 2026 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-EVETEST_VERSION := $(shell grep -v '^\#' VERSION | head -n1)
+# \# is make's escape for a literal '#'; expand it via a variable so the shell
+# does not receive the backslash (newer grep warns about stray '\' before '#').
+HASH := \#
+EVETEST_VERSION := $(shell grep -v '^$(HASH)' VERSION | head -n1)
 EVETEST_ORG ?= lfedge
 
 EVETEST_ADAM_VERSION ?= 0.0.75
 EVETEST_ADAM_REPO ?= lfedge/adam
+
+# Repository holding built EVE images (mirrors constants.DefaultEVERepo).
+EVETEST_EVE_REPO ?= lfedge/eve
 
 EVETEST_IMAGE := $(EVETEST_ORG)/evetest:$(EVETEST_VERSION)
 EVETEST_API_PORT ?= 50021
@@ -48,8 +54,32 @@ endif
 endif
 	$(eval EVE_VERSION_ENV :=)
 ifndef EVETEST_EVE_VERSION
+	@# Resolve which EVE version to test. On a dirty tree 'make version' embeds
+	@# the wall-clock minute of *this* invocation, so it almost never matches
+	@# the timestamp baked into the image tag by an earlier 'make eve' run.
+	@# In that case fall back to the version recorded by the last completed
+	@# build (dist/<arch>/current, read via 'make currentversion'), provided it
+	@# is a dirty build of the same commit and its EVE Docker image exists
+	@# locally. 'make currentversion' reports the full version including the
+	@# hypervisor/arch suffix; strip it by anchoring on the dirty timestamp.
 	$(eval EVETEST_EVE_VERSION := $(strip $(shell \
-		$(MAKE) -s -C $(REPO_ROOT) version 2>/dev/null \
+		v="$$($(MAKE) -s -C $(REPO_ROOT) version 2>/dev/null)"; \
+		if echo "$$v" | grep -q -e '-dirty-' && \
+			! docker images --format '{{.Tag}}' "$(EVETEST_EVE_REPO)" 2>/dev/null \
+				| grep -q "^$$v-"; then \
+			base="$${v%%-dirty-*}-dirty-"; \
+			cur="$$($(MAKE) -s -C $(REPO_ROOT) currentversion 2>/dev/null \
+				| sed -E 's/(-dirty-[0-9]{4}-[0-9]{2}-[0-9]{2}\.[0-9]{2}\.[0-9]{2}).*/\1/')"; \
+			if [ -n "$$cur" ] && [ "$${cur#"$$base"}" != "$$cur" ] && \
+				docker images --format '{{.Tag}}' "$(EVETEST_EVE_REPO)" 2>/dev/null \
+					| grep -q "^$$cur-"; then \
+				echo "NOTE: no local EVE image for dirty version $$v;" \
+					"falling back to last built version $$cur (from dist/current)." >&2; \
+				echo "NOTE: run 'make eve' first if EVE sources changed since that build." >&2; \
+				v="$$cur"; \
+			fi; \
+		fi; \
+		echo "$$v" \
 	)))
 	$(eval EVE_VERSION_ENV := -e EVETEST_EVE_VERSION=$(EVETEST_EVE_VERSION))
 endif
