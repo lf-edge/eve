@@ -666,7 +666,7 @@ func (msrv *Msrv) handlePatchFileDownload() func(http.ResponseWriter, *http.Requ
 		e := envelopes.FindPatchEnvelopeByID(patchID)
 		if e != nil {
 			if idx := types.CompletedBinaryBlobIdxByName(e.BinaryBlobs, fileName); idx != -1 {
-				http.ServeFile(w, r, e.BinaryBlobs[idx].URL)
+				msrv.serveBinaryBlob(w, r, e.BinaryBlobs[idx])
 				msrv.increasePatchEnvelopeDownloadCounter(appUUID, *e)
 				return
 			} else if idx := types.CompletedCipherBlobIdxByName(e.CipherBlobs, fileName); idx != -1 {
@@ -685,6 +685,64 @@ func (msrv *Msrv) handlePatchFileDownload() func(http.ResponseWriter, *http.Requ
 		}
 
 		sendError(w, http.StatusNotFound, "patch is not found")
+	}
+}
+
+// serveBinaryBlob serves a patch-envelope binary blob to an app instance.
+//
+// For regular files it defers to http.ServeFile, which derives Content-Length
+// from os.Stat() and also supports Range and conditional requests - preserving
+// the existing behavior for file/qcow-backed volumes.
+//
+// A volume-backed blob may instead live on a block device (e.g. a ZFS zvol),
+// where os.Stat().Size() reports 0. http.ServeFile would then answer with
+// Content-Length: 0 and an empty body, so the in-VM downloader receives an
+// empty artifact and never deploys the app. For such non-regular files we
+// serve exactly blob.Size content bytes (VolumeStatus.TotalSize, i.e. the
+// content-tree size). Serving exactly blob.Size also avoids the block-device
+// padding that trails the real content (a zvol is rounded up to the volume
+// block size), which would otherwise corrupt the artifact's checksum.
+func (msrv *Msrv) serveBinaryBlob(w http.ResponseWriter, r *http.Request, blob types.BinaryBlobCompleted) {
+	fi, err := os.Stat(blob.URL)
+	if err != nil {
+		msrv.Log.Errorf("serveBinaryBlob: stat %s failed: %v", blob.URL, err)
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		return
+	}
+
+	if fi.Mode().IsRegular() {
+		http.ServeFile(w, r, blob.URL)
+		return
+	}
+
+	// Non-regular file (block device, fifo, ...): os.Stat size is unreliable,
+	// so we must know the content length up front.
+	if blob.Size <= 0 {
+		msrv.Log.Errorf("serveBinaryBlob: %s is not a regular file and blob size is unknown (%d)",
+			blob.URL, blob.Size)
+		http.Error(w, http.StatusText(http.StatusInternalServerError),
+			http.StatusInternalServerError)
+		return
+	}
+
+	f, err := os.Open(blob.URL)
+	if err != nil {
+		msrv.Log.Errorf("serveBinaryBlob: open %s failed: %v", blob.URL, err)
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		return
+	}
+	defer f.Close()
+
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", blob.Size))
+	w.WriteHeader(http.StatusOK)
+
+	if n, err := io.CopyN(w, f, blob.Size); err != nil {
+		// Headers (including Content-Length) are already flushed, so the error
+		// cannot be surfaced via status code; the client will observe a short
+		// body. Log it for diagnosis.
+		msrv.Log.Errorf("serveBinaryBlob: served %d of %d bytes from %s: %v",
+			n, blob.Size, blob.URL, err)
 	}
 }
 
