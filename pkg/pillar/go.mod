@@ -59,7 +59,7 @@ require (
 	github.com/vishvananda/netlink v1.3.1
 	github.com/zededa/ghw v0.0.0-20260427124750-9a7dc80ae71c
 	go.uber.org/mock v0.5.1
-	golang.org/x/crypto v0.51.0
+	golang.org/x/crypto v0.52.0
 	golang.org/x/net v0.55.0
 	golang.org/x/sys v0.45.0
 	google.golang.org/grpc v1.79.3
