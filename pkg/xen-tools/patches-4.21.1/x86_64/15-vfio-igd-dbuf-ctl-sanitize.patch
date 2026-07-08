@@ -1,0 +1,162 @@
+From b40c1440cb2cddb14026cc2e90e6ca2199c26699 Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mike.malyshev@gmail.com>
+Date: Tue, 7 Jul 2026 16:09:55 +0000
+Subject: [PATCH] vfio/igd: sanitize DBUF_CTL POWER_STATE for iGPU passthrough
+
+On some hosts the firmware POST modeset leaves the display data buffer
+(DBUF) powered, so the passed-through iGPU's DBUF_CTL registers read
+back POWER_STATE=1 while POWER_REQUEST=0 -- an inconsistent leftover that
+never occurs under GVT, which emulates the register so POWER_STATE
+follows POWER_REQUEST.
+
+A guest display driver samples POWER_STATE to determine which DBUF
+slices are already enabled; seeing the stale "powered" bit it never
+issues POWER_REQUEST, so DBUF actually powers down, the plane FIFO
+underruns, and scanout is corrupted (vertical stripes) until a full
+modeset (e.g. a display sleep/wake) re-requests power.
+
+Present a consistent view like GVT: trap the DBUF_CTL slice registers
+(S1..S4, only as many as the generation exposes) in BAR0 and clear
+POWER_STATE on read whenever POWER_REQUEST is not set.  Writes pass
+straight through to the device.
+
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
+---
+ hw/vfio/igd.c | 114 ++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 114 insertions(+)
+
+diff --git a/tools/qemu-xen/hw/vfio/igd.c b/tools/qemu-xen/hw/vfio/igd.c
+index fae1606e1d..8997611920 100644
+--- a/tools/qemu-xen/hw/vfio/igd.c
++++ b/tools/qemu-xen/hw/vfio/igd.c
+@@ -439,6 +439,94 @@ static const MemoryRegionOps igd_bdsm_mirror_ops = {
+ #define IGD_BDSM_GEN11 0xc0
+ #endif
+ 
++/*
++ * IGD BAR0 DBUF_CTL sanitize quirk.
++ *
++ * On hosts where the firmware POST modeset left the display engine powered,
++ * DBUF_CTL reads back POWER_STATE=1 while POWER_REQUEST=0 -- an inconsistent
++ * leftover that never occurs under GVT (which emulates the register so STATE
++ * follows REQUEST).  A passed-through guest driver samples POWER_STATE to
++ * decide which DBUF slices are already enabled, sees this stale "powered"
++ * bit, and therefore never issues POWER_REQUEST.  DBUF then powers down, the
++ * plane FIFO underruns, and scanout is corrupted until a full modeset (e.g.
++ * a display sleep/wake) re-requests power.
++ *
++ * Present a consistent view like GVT: intercept DBUF_CTL reads and clear
++ * POWER_STATE whenever POWER_REQUEST is not set.  Writes pass straight
++ * through to the device.
++ */
++#define IGD_DBUF_POWER_REQUEST  (1u << 31)
++#define IGD_DBUF_POWER_STATE    (1u << 30)
++
++/* DBUF_CTL slice registers within BAR0, in slice order (i915 numbers these
++ * S1..S4).  How many slices exist is generation-dependent, so only the first
++ * igd_dbuf_ctl_nslices(gen) entries are real DBUF_CTL registers on a given
++ * part; the rest are unrelated registers and must not be trapped. */
++static const uint32_t igd_dbuf_ctl_offsets[] = {
++    0x45008, /* S1 */ 0x44FE8, /* S2 */ 0x44300, /* S3 */ 0x44304, /* S4 */
++};
++
++/*
++ * DBUF slice count by generation, matching i915 dbuf.slice_mask:
++ * gen9/10 = 1 (S1), gen11 = 2 (S1-S2), gen12+ = 4 (S1-S4).
++ *
++ * Within gen12 the slice count is actually per-platform, not per-gen: ADL-P /
++ * RPL-P / DG2 expose 4 slices, but TGL / RKL / ADL-S have only 2.  We return 4
++ * for all gen12+ (igd_gen() can't distinguish them), so on a <4-slice gen12
++ * part S3/S4 (0x44300/0x44304) are over-trapped.  This is harmless in practice:
++ * the read handler only mutates a value when POWER_REQUEST=0 && POWER_STATE=1,
++ * which whatever register lives at those offsets is very unlikely to present.
++ * A fully-correct count would have to key off the PCI device ID.
++ */
++static int igd_dbuf_ctl_nslices(int gen)
++{
++    if (gen <= 10) {
++        return 1;
++    }
++    if (gen == 11) {
++        return 2;
++    }
++    return 4;
++}
++
++typedef struct IGDDbufCtlQuirk {
++    VFIOPCIDevice *vdev;
++    uint32_t bar_offset;    /* offset within BAR0 MMIO */
++    uint8_t bar;
++} IGDDbufCtlQuirk;
++
++static uint64_t igd_dbuf_ctl_read(void *opaque, hwaddr addr, unsigned size)
++{
++    IGDDbufCtlQuirk *q = opaque;
++    VFIOPCIDevice *vdev = q->vdev;
++    uint64_t val = vfio_region_read(&vdev->bars[q->bar].region,
++                                    addr + q->bar_offset, size);
++
++    if (size == 4 && !(val & IGD_DBUF_POWER_REQUEST) &&
++        (val & IGD_DBUF_POWER_STATE)) {
++        val &= ~(uint64_t)IGD_DBUF_POWER_STATE;
++        error_report_once("IGD quirk: DBUF_CTL@0x%x cleared stale "
++                          "POWER_STATE (POWER_REQUEST=0)", q->bar_offset);
++    }
++    return val;
++}
++
++static void igd_dbuf_ctl_write(void *opaque, hwaddr addr,
++                               uint64_t data, unsigned size)
++{
++    IGDDbufCtlQuirk *q = opaque;
++    VFIOPCIDevice *vdev = q->vdev;
++
++    vfio_region_write(&vdev->bars[q->bar].region,
++                      addr + q->bar_offset, data, size);
++}
++
++static const MemoryRegionOps igd_dbuf_ctl_ops = {
++    .read = igd_dbuf_ctl_read,
++    .write = igd_dbuf_ctl_write,
++    .endianness = DEVICE_LITTLE_ENDIAN,
++};
++
+ void vfio_probe_igd_bar0_quirk(VFIOPCIDevice *vdev, int nr)
+ {
+     IGDBdsmMirrorQuirk *mirror;
+@@ -488,6 +576,32 @@ void vfio_probe_igd_bar0_quirk(VFIOPCIDevice *vdev, int nr)
+                                         &quirk->mem[0], 1);
+ 
+     QLIST_INSERT_HEAD(&vdev->bars[nr].quirks, quirk, next);
++
++    /*
++     * DBUF_CTL sanitize quirk (gen9+): trap the DBUF_CTL slice registers so
++     * POWER_STATE is reported consistently with POWER_REQUEST (see
++     * igd_dbuf_ctl_read()).  Only trap slices that actually exist on this
++     * generation -- the remaining offsets are unrelated registers.
++     */
++    if (gen >= 9) {
++        int i, nslices = igd_dbuf_ctl_nslices(gen);
++
++        for (i = 0; i < nslices; i++) {
++            VFIOQuirk *dquirk = vfio_quirk_alloc(1);
++            IGDDbufCtlQuirk *dq = dquirk->data = g_malloc0(sizeof(*dq));
++
++            dq->vdev = vdev;
++            dq->bar = nr;
++            dq->bar_offset = igd_dbuf_ctl_offsets[i];
++            memory_region_init_io(&dquirk->mem[0], OBJECT(vdev),
++                                  &igd_dbuf_ctl_ops, dq,
++                                  "vfio-igd-dbuf-ctl-quirk", 4);
++            memory_region_add_subregion_overlap(vdev->bars[nr].region.mem,
++                                                igd_dbuf_ctl_offsets[i],
++                                                &dquirk->mem[0], 1);
++            QLIST_INSERT_HEAD(&vdev->bars[nr].quirks, dquirk, next);
++        }
++    }
+ }
+ 
+ void vfio_probe_igd_bar4_quirk(VFIOPCIDevice *vdev, int nr)
+-- 
+2.43.0
+
