@@ -828,6 +828,14 @@ change_to_new_token() {
 #
 # 5. POST-CONVERSION REGISTRATION: If native-kubernetes-mode flag exists, uninstall kubevirt, longhorn, apply registration
 #
+# NOTE: /var/lib/native-kubernetes-mode here is the legacy CLUSTER_TYPE_K3S_BASE
+# conversion-complete gate (that cluster type is being phased out in favor of
+# CLUSTER_TYPE_REPLICATED_STORAGE). It is unrelated to the EdgeNodeClusterConfig
+# EnableNativeK8SOrchestration opt-in below, which enables native k8s
+# orchestration (kube-vip LB + registration manifest) on a ReplicatedStorage
+# cluster while always keeping kubevirt/longhorn installed. The shared
+# "native kubernetes" wording is coincidental, not a shared meaning.
+#
 # REBOOT SCENARIOS:
 # - Cluster-to-single: Always reboots after cleanup
 # - Single-to-cluster: Only non-bootstrap nodes may reboot if join fails (see check_cluster_transition_done) repeatedly
