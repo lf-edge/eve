@@ -134,7 +134,7 @@ VfioIgdPkg builds `igd.rom`, an EFI Option ROM containing:
 
 ### Changes to QEMU's vfio-igd quirk
 
-The QEMU patches in `pkg/xen-tools` (patches 08–11) rework `hw/vfio/igd.c`:
+The QEMU patches in `pkg/xen-tools` (patches 08–11 and 15) rework `hw/vfio/igd.c`:
 
 **Patch 08 — igd_gen() backport**: upstream's `igd_gen()` returns correct generation
 numbers for Gen7 through Gen12 (Haswell through Raptor Lake).  The old function returned
@@ -171,6 +171,23 @@ Based on upstream QEMU commits:
   "vfio/igd: add new bar0 quirk to emulate BDSM mirror" by Corvin Köhne
 - [`f926baa0`](https://github.com/qemu/qemu/commit/f926baa03b7babb8291ea4c1cbeadaf224977dae)
   "vfio/igd: emulate BDSM in mmio bar0 for gen 6-10 devices" by Tomita Moeko
+
+**Patch 15 — DBUF_CTL POWER_STATE sanitize** (Gen9+): on some hosts the firmware
+POST modeset leaves the display data buffer (DBUF) powered, so the passed-through
+`DBUF_CTL` slice registers (S1..S4) read back `POWER_STATE` (bit30) = 1 while
+`POWER_REQUEST` (bit31) = 0 — a legitimate-but-inconsistent leftover (the device
+is not display-reset on assignment; `POWER_STATE` is a read-only status latch fed
+by the display power well, independent of the `POWER_REQUEST` input). The guest's
+Intel driver samples `POWER_STATE` to decide which DBUF slices are already
+enabled, sees the stale "powered" bit, and never issues `POWER_REQUEST`; DBUF
+then powers down, the plane FIFO underruns, and scanout is corrupted (vertical
+stripes) until a full modeset (e.g. a display sleep/wake) re-requests power. The
+quirk traps the `DBUF_CTL` slice registers (as many as the generation exposes) in BAR0 and clears `POWER_STATE` on read whenever
+`POWER_REQUEST` is not set, presenting a consistent register — the same approach
+Intel's own GVT device model uses (`gen9_dbuf_ctl_mmio_write`). The guest then
+issues the power request and the real power well brings DBUF up. Native Linux
+i915 does not hit this because it force-drives `POWER_REQUEST` at load regardless
+of the readout; the Windows driver trusts the readout.
 
 ---
 
@@ -290,6 +307,36 @@ BDB offset), and the BDB block list with recognised names. Useful for
 side-by-side comparison across host platforms (e.g. TGL vs RPL-P) when
 diagnosing GOP / connector init differences. Multiple dumps can be passed
 in one invocation; the decoder is read-only.
+
+### Debugging scanout corruption (iGPU MMIO register diff)
+
+Scanout corruption on a passed-through iGPU is usually a display-engine register
+left in a bad state. Because the device is bound to `vfio-pci` the host cannot
+read its BARs directly (the sysfs `resourceN` mmap is refused, and
+`/proc/<qemu>/mem` reads of the vfio BAR fault). Read the live MMIO through QEMU
+instead: `pmemsave` on the guest-physical BAR0 address dumps the register block
+to a file (QEMU maps the vfio BAR as a `ram_device` region). The helpers live in
+`tools/qemu/`:
+
+- `igpu-dump.py` — runs inside the `debug` container; snapshots the BAR0
+  display-register block (`0x40000..0x80000`) via QMP `pmemsave`.
+- `igpu-capture.sh` — from a workstation, captures two snapshots of the current
+  state and pulls them locally (set `NODE=root@<edge-node-ip>`).
+- `igpu-regdiff.py` — decodes and diffs two states, filtering volatile registers,
+  with a Gen12/RPL display-register name map.
+- `qmp.py` — minimal QMP/HMP helper (e.g. `info pci`, `xp`).
+
+Capture a corrupted state and a recovered state, then diff — the registers that
+differ are the prime suspects:
+
+```sh
+NODE=root@<edge-node-ip> tools/qemu/igpu-capture.sh bad     # while corrupted
+# ... recover (e.g. trigger a display sleep/wake) ...
+NODE=root@<edge-node-ip> tools/qemu/igpu-capture.sh good    # after recovery
+tools/qemu/igpu-regdiff.py --a igpu-dumps/bad*.bin --b igpu-dumps/good*.bin
+```
+
+This is how the DBUF_CTL `POWER_STATE` issue (patch 15) was found and verified.
 
 ---
 
