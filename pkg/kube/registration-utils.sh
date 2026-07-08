@@ -43,11 +43,13 @@ Registration_Cleanup() {
 # every main-loop iteration as well as during the cluster-join transition.
 #
 # K3sBase clusters defer application until the base-mode conversion (uninstall of
-# the replicated-storage components) completes, gated by /var/lib/native-kubernetes-mode.
-# All other cluster types - including ReplicatedStorage with native k8s
-# orchestration enabled - apply immediately; in that mode there is no uninstall
-# delay, so relying solely on the one-shot transition path could miss the
-# manifest if zedkube writes it after the transition window.
+# the replicated-storage components) completes, gated by /var/lib/native-kubernetes-mode
+# (the legacy K3S_BASE conversion-complete flag, being phased out - see the note
+# in cluster-init.sh above check_cluster_config_change). All other cluster types
+# - including ReplicatedStorage with native k8s orchestration enabled - apply
+# immediately; in that mode there is no uninstall delay, so relying solely on
+# the one-shot transition path could miss the manifest if zedkube writes it
+# after the transition window.
 Registration_ApplyIfReady() {
     # Nothing inflated by zedkube yet.
     Registration_ConfigExists || return 0
