@@ -121,6 +121,31 @@ type getconfigContext struct {
 	lastConfigTimestamp        time.Time // controller clocks (zero if not available)
 	lastConfigSource           configSource
 
+	// clusterDeparting is set when this node is leaving an ENC cluster (the
+	// EdgeNodeClusterConfig flips Valid:true->false while we were clustered) and
+	// cleared if the cluster is restored (Valid:true) before the node reboots.
+	// While set, the app/volume/content-tree delete loops suppress unpublishing
+	// removed items, so volumemgr/domainmgr do not delete the still-shared PVC /
+	// app before the node reboots into single-node mode. The transition-to-
+	// single-node reboot wipes this flag; the post-reboot single-node reconcile
+	// then does the now-harmless cleanup. Touched only from the config-processing
+	// goroutine (parseConfig), so no locking is needed.
+	clusterDeparting bool
+
+	// wasInValidCluster tracks whether the node was last known to be in a valid
+	// ENC cluster, independent of the published EdgeNodeClusterConfig. It is set
+	// true on every successful (fully parsed) cluster config and false on a
+	// genuine departure (zcfgCluster == nil). Unlike the published ENCC, it is
+	// deliberately left untouched by the isDeparture=false parse-error paths in
+	// parseEdgeNodeClusterConfig (bad CIDR/JoinServerIP/ClusterId/cipher
+	// token/tie-breaker UUID), so a transient parse failure can't clobber the
+	// "was previously valid" signal that publishEmptyENCC uses to arm
+	// clusterDeparting -- otherwise a hiccup right before a genuine departure
+	// push would silently defeat the arming and re-introduce the data-loss this
+	// mechanism exists to prevent. Touched only from the config-processing
+	// goroutine (parseConfig), so no locking is needed.
+	wasInValidCluster bool
+
 	// App instance configuration publication and its synchronization.
 	// pubAppInstanceConfig is written by multiple goroutines:
 	// - Main event loop: parseAppInstanceConfig(), ApplyDevicePropertyBootOrder()

@@ -676,6 +676,10 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 			}
 		}
 		if !found {
+			if getconfigCtx.clusterDeparting {
+				log.Noticef("Suppressing app config removal %s: node leaving cluster", uuidStr)
+				continue
+			}
 			log.Functionf("Remove app config %s", uuidStr)
 			getconfigCtx.pubAppInstanceConfig.Unpublish(uuidStr)
 			getconfigCtx.localCmdAgent.DelLocalAppCmds(uuidStr)
@@ -3747,14 +3751,15 @@ func parseEdgeNodeClusterConfig(getconfigCtx *getconfigContext,
 	ctx := getconfigCtx.zedagentCtx
 	zcfgCluster := config.GetCluster()
 	if zcfgCluster == nil {
-		// Tell subscribers we have at least processed the initial config
-		publishEmptyENCC(ctx)
+		// The controller has genuinely dropped cluster config for this node:
+		// this is the real departure signal.
+		publishEmptyENCC(ctx, true)
 		return
 	}
 	ipAddr, ipNet, err := net.ParseCIDR(zcfgCluster.GetClusterIpPrefix())
 	if err != nil {
 		log.Errorf("parseEdgeNodeClusterConfig: ParseCIDR failed %s", err)
-		publishEmptyENCC(ctx)
+		publishEmptyENCC(ctx, false)
 		return
 	}
 	ipNet.IP = ipAddr
@@ -3762,7 +3767,7 @@ func parseEdgeNodeClusterConfig(getconfigCtx *getconfigContext,
 	joinServerIP := net.ParseIP(zcfgCluster.GetJoinServerIp())
 	if joinServerIP == nil {
 		log.Errorf("parseEdgeNodeClusterConfig: parse JoinServerIP failed")
-		publishEmptyENCC(ctx)
+		publishEmptyENCC(ctx, false)
 		return
 	}
 	var isJoinNode bool
@@ -3774,7 +3779,7 @@ func parseEdgeNodeClusterConfig(getconfigCtx *getconfigContext,
 	id, err := uuid.FromString(zcfgCluster.GetClusterId())
 	if err != nil {
 		log.Errorf("parseEdgeNodeClusterConfig: failed to parse UUID: %v", err)
-		publishEmptyENCC(ctx)
+		publishEmptyENCC(ctx, false)
 		return
 	}
 	enClusterConfig := types.EdgeNodeClusterConfig{
@@ -3798,7 +3803,7 @@ func parseEdgeNodeClusterConfig(getconfigCtx *getconfigContext,
 	if err != nil {
 		// TODO: Flag enClusterConfig with an error and propagate it to the controller.
 		log.Errorf("parseEdgeNodeClusterConfig: failed to parse encrypted cluster token: %v", err)
-		publishEmptyENCC(ctx)
+		publishEmptyENCC(ctx, false)
 		return
 	}
 	// These share a cipherblock
@@ -3808,7 +3813,7 @@ func parseEdgeNodeClusterConfig(getconfigCtx *getconfigContext,
 		tieBreakerNodeID, err := uuid.FromString(zcfgCluster.GetTieBreakerNodeId())
 		if err != nil {
 			log.Errorf("parseEdgeNodeClusterConfig: failed to parse tie breaker UUID: %v", err)
-			publishEmptyENCC(ctx)
+			publishEmptyENCC(ctx, false)
 			return
 		}
 		enClusterConfig.TieBreakerNodeID = types.UUIDandVersion{UUID: tieBreakerNodeID}
@@ -3856,11 +3861,63 @@ func parseEdgeNodeClusterConfig(getconfigCtx *getconfigContext,
 	}
 
 	log.Functionf("parseEdgeNodeClusterConfig: ENCluster API, Config %+v, %v", zcfgCluster, enClusterConfig)
+	// The cluster is valid again. If we had armed departure suppression (e.g. a
+	// node-replace that was then aborted), cancel it and reconcile the previously
+	// suppressed items in this same parseConfig pass.
+	if getconfigCtx.clusterDeparting {
+		log.Noticef("parseEdgeNodeClusterConfig: cluster restored (Valid=true); cancelling departure suppression")
+		cancelClusterDeparture(getconfigCtx)
+	}
+	getconfigCtx.wasInValidCluster = true
 	ctx.pubEdgeNodeClusterConfig.Publish("global", enClusterConfig)
 }
 
-func publishEmptyENCC(ctx *zedagentContext) {
+// cancelClusterDeparture undoes an armed departure suppression when the cluster
+// becomes valid again (e.g. an aborted node-replace). It clears the flag and
+// invalidates the per-subtree SHA caches so parseContentInfoConfig /
+// parseVolumeConfig / parseAppInstanceConfig re-run in this same parseConfig pass
+// (they all follow parseEdgeNodeClusterConfig within the non-bootstrap block) and
+// reconcile the previously-suppressed items against the current config: deleting
+// them if still absent, or keeping them if the abort re-added them. Without the
+// cache reset those parsers would short-circuit on the unchanged (still-empty)
+// subtree and the suppressed items would linger indefinitely, since a cancelled
+// departure does not reboot the node. Mirrors the cache reset in resetFuzzState.
+func cancelClusterDeparture(getconfigCtx *getconfigContext) {
+	getconfigCtx.clusterDeparting = false
+	appinstancePrevConfigHash = nil
+	volumeHash = nil
+	contentInfoHash = nil
+}
+
+// publishEmptyENCC publishes an empty (Initialized-only) EdgeNodeClusterConfig.
+// isDeparture must be true only when the caller knows this reflects a genuine
+// controller-initiated cluster removal (zcfgCluster == nil), not a local parse
+// failure on an otherwise-present cluster config: a parse error does not mean
+// the controller intends this node to leave the cluster, so it must not arm
+// departure suppression on its own.
+func publishEmptyENCC(ctx *zedagentContext, isDeparture bool) {
 	log.Functionf("parseEdgeNodeClusterConfig: empty EdgeNodeClusterConfig")
+	// Detect the cluster-departure edge on a kube node so the app/volume/
+	// content-tree delete loops suppress unpublishing removed items until the
+	// node reboots into single-node mode. See clusterDeparting in
+	// getconfigContext. The flag persists until the node reboots or the cluster is
+	// restored, so a departure signalled in one config push still covers app/volume
+	// removals arriving in a later push.
+	//
+	// isDeparture is only true when the caller knows zcfgCluster == nil, i.e. a
+	// genuine controller-initiated removal -- never for the parse-error paths.
+	// Arming is keyed off wasInValidCluster rather than the previously published
+	// ENCC's Valid field: the parse-error paths also publish Valid:false (via
+	// this same function, with isDeparture=false), which would otherwise
+	// clobber the "previously valid" signal a later genuine departure relies on.
+	if isDeparture {
+		if ctx.hvTypeKube && !ctx.getconfigCtx.clusterDeparting && ctx.getconfigCtx.wasInValidCluster {
+			ctx.getconfigCtx.clusterDeparting = true
+			log.Noticef("parseEdgeNodeClusterConfig: cluster departing (Valid true->false); " +
+				"suppressing app/volume/content-tree deletion until single-node reboot")
+		}
+		ctx.getconfigCtx.wasInValidCluster = false
+	}
 	enClusterConfig := types.EdgeNodeClusterConfig{
 		Initialized: true,
 	}
