@@ -4,7 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 
+	diskfs "github.com/diskfs/go-diskfs"
 	"github.com/diskfs/go-diskfs/disk"
 	"github.com/diskfs/go-diskfs/filesystem"
 	"github.com/diskfs/go-diskfs/partition/gpt"
@@ -109,6 +112,10 @@ func updatePartitions(d *disk.Disk, resizes []partitionResizeTarget, preserveNum
 	sectorSize := int64(table.LogicalSectorSize)
 	removeStart := make(map[uint64]bool)
 	for _, r := range resizes {
+		if r.create {
+			// created partitions are appended below, not relocated from an original
+			continue
+		}
 		if r.original.start == r.target.start {
 			// shrunk in place: not relocated, so no identity move or removal
 			continue
@@ -144,6 +151,34 @@ func updatePartitions(d *disk.Disk, resizes []partitionResizeTarget, preserveNum
 		}
 		table.Partitions = kept
 	}
+	// Publish any created partitions (e.g. the reserved ESP-B) in this same
+	// final write, so a create never appears in the GPT before its filesystem
+	// has been laid down. Skip one already present at its GUID (a completed
+	// prior run), keeping the write idempotent.
+	for _, r := range resizes {
+		if !r.create {
+			continue
+		}
+		already := false
+		for _, p := range table.Partitions {
+			if p.Type != gpt.Unused && p.GUID == r.target.uuid {
+				already = true
+				break
+			}
+		}
+		if already {
+			continue
+		}
+		log.Printf("publishing created partition %d %q (GUID %s) at start %d size %d", r.target.number, r.target.label, r.target.uuid, r.target.start, r.target.size)
+		table.Partitions = append(table.Partitions, &gpt.Partition{
+			Start: uint64(r.target.start / sectorSize),
+			Size:  uint64(r.target.size),
+			Type:  gpt.Type(r.target.typeGUID),
+			Name:  r.target.label,
+			GUID:  r.target.uuid,
+			Index: r.target.number,
+		})
+	}
 	if err := d.Partition(table); err != nil {
 		if errors.Is(err, disk.ErrReReadDeferred) {
 			return ErrRebootToApply
@@ -151,6 +186,48 @@ func updatePartitions(d *disk.Disk, resizes []partitionResizeTarget, preserveNum
 		return fmt.Errorf("failed to write updated partition table: %v", err)
 	}
 	return nil
+}
+
+// createEmptyFilesystem lays down an empty filesystem for a create target in its
+// allocated region, without publishing a GPT entry. The partition has no number
+// yet (its entry is written only by the final updatePartitions), so the
+// filesystem is built in a temp file sized to the region and copied to the
+// region's byte offset -- the same mechanism the installer uses for the reserved
+// ESP. FSNone leaves the region untouched.
+func createEmptyFilesystem(d *disk.Disk, r partitionResizeTarget) error {
+	if r.fsType == FSNone {
+		return nil
+	}
+	var fsType filesystem.Type
+	switch r.fsType {
+	case FSFAT32:
+		fsType = filesystem.TypeFat32
+	case FSExt4:
+		fsType = filesystem.TypeExt4
+	default:
+		return fmt.Errorf("unsupported create filesystem type %v", r.fsType)
+	}
+	device := d.Backend.Path()
+	if device == "" {
+		return fmt.Errorf("disk backend has no path")
+	}
+	tmpDir, err := os.MkdirTemp("", "createfs")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+	tmpName := filepath.Join(tmpDir, "fs.img")
+	tmpDisk, err := diskfs.Create(tmpName, r.target.size, diskfs.SectorSize512)
+	if err != nil {
+		return fmt.Errorf("create temp disk: %w", err)
+	}
+	if _, err := tmpDisk.CreateFilesystem(disk.FilesystemSpec{Partition: 0, FSType: fsType, VolumeLabel: r.target.label}); err != nil {
+		_ = tmpDisk.Close()
+		return fmt.Errorf("create %v: %w", fsType, err)
+	}
+	_ = tmpDisk.Close()
+	log.Printf("laying down empty %v for %q at start %d size %d", fsType, r.target.label, r.target.start, r.target.size)
+	return CopyRange(tmpName, device, 0, r.target.start, r.target.size, 0)
 }
 
 // createPartitions creates new partitions as per the resize targets, taking
@@ -175,6 +252,11 @@ func createPartitions(d *disk.Disk, resizes []partitionResizeTarget) error {
 		labelMap[p.Name] = true
 	}
 	for _, r := range resizes {
+		if r.create {
+			// A create has no interim relocated partition; its GPT entry is
+			// published only by the final updatePartitions write.
+			continue
+		}
 		// no change in start, just copy over, it already was handled
 		if r.original.start == r.target.start {
 			log.Printf("partition %d %s: no location change, no need to create additional partition", r.original.number, r.original.label)
@@ -220,6 +302,15 @@ func copyFilesystems(d *disk.Disk, resizes []partitionResizeTarget) error {
 	// - squashfs, ext4, unknown: raw data copy
 	// - fat32: use filesystem copy
 	for _, r := range resizes {
+		if r.create {
+			// No source to copy: lay down an empty filesystem in the allocated
+			// region by offset, without publishing a GPT entry (that happens in
+			// the final write).
+			if err := createEmptyFilesystem(d, r); err != nil {
+				return fmt.Errorf("failed to create filesystem for new partition %q: %v", r.target.label, err)
+			}
+			continue
+		}
 		if r.original.start == r.target.start {
 			log.Printf("partition %d %s: no location change, no need to copy filesystem", r.original.number, r.original.label)
 			continue
@@ -459,6 +550,9 @@ func checkSourceFilesystems(d *disk.Disk, resizes []partitionResizeTarget, fixEr
 	}
 	checked := map[int]bool{}
 	for _, r := range resizes {
+		if r.create {
+			continue // no source filesystem to check
+		}
 		if checked[r.original.number] {
 			continue
 		}

@@ -45,19 +45,45 @@ partition.
 Shrink partition named sda3 (ext4) to make space, grow partition named sda1 to 20G, grow partition labeled "Data" to 100G on /dev/sda:
 
 ```sh
-resizer --shrink-partition name:sda3 --grow-partition name:sda1:20G --grow-partition label:Data:100G /dev/sda
+resizer resize --shrink-partition name:sda3 --grow-partition name:sda1:20G --grow-partition label:Data:100G /dev/sda
 ```
 
 Grow partition named sda2 to 50G on disk image file disk.img:
 
 ```sh
-resizer --grow-partition name:sda2:50G disk.img
+resizer resize --grow-partition name:sda2:50G disk.img
 ```
+
+### Creating a partition with `apply`
+
+`apply` reconciles a disk to a set of desired partitions, each matched by GUID.
+An existing partition is grown to at least its `minsize` (never shrunk); a GUID
+not present on the disk is **created** at `minsize` with an empty filesystem. A
+single `apply` can grow, create, and shrink in one pass — `--shrink` names the
+only partition that may be reduced, to free space for the grows and creates.
+
+Grow IMGA, create a new 2G FAT32 "EFI System" partition (a second ESP) at
+partition number 7, and shrink "Data" to 100G to make room — all on /dev/sda:
+
+```sh
+resizer apply \
+  --partition "guid=AD6871EE-31F9-4CF3-9E09-6F7A25C30051,minsize=200M,label=IMGA,type=0FC63DAF-8483-4772-8E79-3D69D8477DE4" \
+  --partition "guid=AD6871EE-31F9-4CF3-9E09-6F7A25C30056,minsize=2G,label=EFI System,type=C12A7328-F81F-11D2-BA4B-00A0C93EC93B,index=7,fs=fat32" \
+  --shrink label:Data:100G \
+  /dev/sda
+```
+
+The second `--partition` names a GUID not yet on the disk, so it is created:
+`index=7` places it at partition slot 7, `fs=fat32` lays down an empty FAT32
+filesystem. Partitions not listed are left untouched; `--shrink` is optional and
+is the only operation that ever reduces a partition.
 
 ## Options
 
+### resize
+
 ```
-resizer [flags] <disk>
+resizer resize [flags] <disk>
 ```
 
 `<disk>` is the disk image file or block device to operate on.
@@ -72,6 +98,21 @@ resizer [flags] <disk>
 
 Partitions are identified by `name` (e.g. `name:sda1`) or `label` (e.g.
 `label:EFI System`). Sizes accept `B`, `K`, `M`, `G`, or `T` suffixes.
+
+### apply
+
+```
+resizer apply [flags] <disk>
+```
+
+Reconciles `<disk>` to a desired set of partitions, growing or creating as needed.
+
+| Flag | Description |
+| --- | --- |
+| `--partition guid=…,minsize=…[,label=…,type=…,index=…,fs=fat32\|ext4\|none]` | A desired partition. `guid=` and `minsize=` are required. If the GUID already exists it is grown to at least `minsize`; if not, it is created at `minsize` with filesystem `fs=` (default `none`). `index=` requests a specific partition number for a create. Repeatable. |
+| `--shrink identifier:value:size` | Optional single partition to shrink to make room (e.g. `label:Data:100G` or `uuid:<GUID>:78G`). The only operation that reduces a partition. |
+| `--fix-errors` | Repair source filesystem errors instead of aborting. |
+| `--dry-run` | Plan the reconcile and log it, but make no changes. |
 
 ## Library use
 

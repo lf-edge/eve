@@ -1,6 +1,7 @@
 package partitionresizer
 
 import (
+	"fmt"
 	"sort"
 
 	"github.com/diskfs/go-diskfs/partition/gpt"
@@ -38,6 +39,17 @@ func calculateResizes(size int64, parts []*gpt.Partition, partitionResizes []par
 	for _, p := range parts {
 		usedPartitionNumbers[int(p.Index)] = true
 	}
+	// Reserve any explicitly requested partition numbers (create targets that ask
+	// for a specific slot, e.g. ESP-B at #7) up front, so the lowest-free
+	// assignment for relocated grows below cannot claim them.
+	for _, gp := range partitionResizes {
+		if gp.create && gp.target.number != 0 {
+			if usedPartitionNumbers[gp.target.number] {
+				return nil, fmt.Errorf("requested partition number %d for %q is already in use", gp.target.number, gp.target.label)
+			}
+			usedPartitionNumbers[gp.target.number] = true
+		}
+	}
 
 	// now go through each of the grow partitions and find space for them
 	for i, gp := range partitionResizes {
@@ -69,12 +81,17 @@ func calculateResizes(size int64, parts []*gpt.Partition, partitionResizes []par
 				if u.start > u.end {
 					unused = append(unused[:j], unused[j+1:]...)
 				}
-				// find the lowest available partition number
-				for pn := 1; ; pn++ {
-					if !usedPartitionNumbers[pn] {
-						gp.target.number = pn
-						usedPartitionNumbers[pn] = true
-						break
+				// A create that requested a specific number keeps it (reserved
+				// above). Everything else (relocated grows) takes the lowest free
+				// number; updatePartitions renumbers relocated grows back to their
+				// original number afterwards.
+				if !gp.create || gp.target.number == 0 {
+					for pn := 1; ; pn++ {
+						if !usedPartitionNumbers[pn] {
+							gp.target.number = pn
+							usedPartitionNumbers[pn] = true
+							break
+						}
 					}
 				}
 				found = true

@@ -230,38 +230,7 @@ func planResizes(
 	// (diskfs/partitionresizer#13). Split the grows already created from those
 	// still pending, and reuse the existing partition's geometry as the target
 	// for the created ones.
-	existingByName := make(map[string]*gpt.Partition)
-	for _, p := range table.Partitions {
-		if p.Type == gpt.Unused {
-			continue
-		}
-		existingByName[p.Name] = p
-	}
-	var done, pending []partitionResizeTarget
-	for _, pr := range prTargets {
-		// Already at the requested size: nothing to do. This is a grow that a
-		// prior, interrupted run already finished (the label now resolves to the
-		// finalized, grown partition), or simply a no-op request. A genuine
-		// shrink (original larger than target) is left to calculateResizes.
-		if pr.original.size == pr.target.size {
-			continue
-		}
-		alt, ok := existingByName[getAlternateLabel(pr.original.label)]
-		if !ok {
-			pending = append(pending, pr)
-			continue
-		}
-		start := alt.GetStart()
-		size := int64(alt.GetSize())
-		pr.target = partitionData{
-			label:  alt.Name,
-			size:   size,
-			start:  start,
-			end:    start + size - 1,
-			number: alt.Index,
-		}
-		done = append(done, pr)
-	}
+	done, pending := splitResumedGrows(table, prTargets)
 
 	// every grow is already created: nothing left to allocate or shrink
 	if len(pending) == 0 {

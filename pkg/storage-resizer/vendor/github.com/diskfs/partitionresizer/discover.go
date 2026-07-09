@@ -185,9 +185,13 @@ func findDisks(disk, syspath string) (map[string][]partitionData, error) {
 			}
 			ue := parseKeyValueLines(ueventData)
 			label := ue["PARTNAME"]
+			// go-diskfs (image path) reports GUIDs upper-cased; match it so
+			// the same identifier compares equal on both discovery paths.
+			uuid := strings.ToUpper(ue["PARTUUID"])
 			pd := partitionData{
 				name:   name,
 				label:  label,
+				uuid:   uuid,
 				size:   size * blockSize,
 				start:  start * blockSize,
 				end:    end * blockSize,

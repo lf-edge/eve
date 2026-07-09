@@ -149,7 +149,7 @@ fi
 
 FROM lfedge/eve-fscrypt:0dd2ac10c7085f60e5b141fecd5210517495f6bc AS fscrypt
 FROM lfedge/eve-gpt-tools:956a746b8cb504331313783535d7ff0206f528e1 AS gpttools
-FROM lfedge/eve-storage-resizer:d010f6eac5e6f98fc155a1c16b03fd78b4e18e0e AS storage-resizer
+FROM lfedge/eve-storage-resizer:3eeaf245b9a2c0134ff5997950a17ec964375d6a AS storage-resizer
 
 # dhcpcd: Alpine 3.21+ ships a sufficiently up-to-date version (10.x with required IPv6 fixes).
 # No --platform means Docker BuildKit uses the target platform, giving us the correct binary arch.

@@ -25,7 +25,7 @@ github.com/diskfs/go-diskfs/util/bitmap
 github.com/diskfs/go-diskfs/util/slices
 github.com/diskfs/go-diskfs/util/timestamp
 github.com/diskfs/go-diskfs/version
-# github.com/diskfs/partitionresizer v1.0.1-0.20260619090936-1f93724e4407
+# github.com/diskfs/partitionresizer v1.0.1-0.20260619090936-1f93724e4407 => github.com/eriknordmark/partitionresizer v0.0.0-20260708234439-358f8d8b78bb
 ## explicit; go 1.25.7
 github.com/diskfs/partitionresizer
 # github.com/djherbis/times v1.6.0
@@ -70,3 +70,4 @@ github.com/ulikunitz/xz/lzma
 ## explicit; go 1.25.0
 golang.org/x/sys/unix
 golang.org/x/sys/windows
+# github.com/diskfs/partitionresizer => github.com/eriknordmark/partitionresizer v0.0.0-20260708234439-358f8d8b78bb

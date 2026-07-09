@@ -2,7 +2,10 @@ module github.com/lf-edge/eve/pkg/storage-resizer
 
 go 1.25.7
 
-require github.com/diskfs/partitionresizer v1.0.1-0.20260619090936-1f93724e4407
+require (
+	github.com/diskfs/partitionresizer v1.0.1-0.20260619090936-1f93724e4407
+	golang.org/x/sys v0.46.0
+)
 
 require (
 	github.com/anchore/go-lzo v0.1.0 // indirect
@@ -15,5 +18,6 @@ require (
 	github.com/pkg/xattr v0.4.12 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/ulikunitz/xz v0.5.15 // indirect
-	golang.org/x/sys v0.46.0 // indirect
 )
+
+replace github.com/diskfs/partitionresizer => github.com/eriknordmark/partitionresizer v0.0.0-20260708234439-358f8d8b78bb
