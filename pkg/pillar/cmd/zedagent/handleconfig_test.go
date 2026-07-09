@@ -400,6 +400,29 @@ func TestLoadGlobalConfigBootstrapFromAuthorizedKeys(t *testing.T) {
 		To(gomega.Equal(testSSHKey))
 }
 
+// TestLoadGlobalConfigBootstrapMultipleAuthorizedKeys: multiple keys in
+// authorized_keys must be preserved as separate newline-separated lines
+// (sshd requires one key per line). Also exercises comment/blank-line
+// skipping and a final key with no trailing newline.
+func TestLoadGlobalConfigBootstrapMultipleAuthorizedKeys(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+	ctx := initGetConfigCtx(g)
+
+	const secondSSHKey = "ssh-rsa AAAAB3NzaC1yc2ESecondTestKey second@example.com"
+
+	dir := t.TempDir()
+	globalFile := filepath.Join(dir, "global.json") // intentionally absent
+	authKeysFile := filepath.Join(dir, "authorized_keys")
+	// A comment, a blank line, and a final key without a trailing newline.
+	contents := "# a comment\n" + testSSHKey + "\n\n" + secondSSHKey
+	g.Expect(os.WriteFile(authKeysFile, []byte(contents), 0644)).To(gomega.Succeed())
+
+	result := loadGlobalConfigImpl(ctx, globalFile, authKeysFile)
+	g.Expect(result).To(gomega.BeTrue())
+	g.Expect(ctx.zedagentCtx.globalConfig.GlobalValueString(types.SSHAuthorizedKeys)).
+		To(gomega.Equal(testSSHKey + "\n" + secondSSHKey))
+}
+
 // TestLoadGlobalConfigBootstrapEmptyAuthKeys: empty authorized_keys
 // with no GlobalConfig must not publish a default ConfigItemValueMap.
 func TestLoadGlobalConfigBootstrapEmptyAuthKeys(t *testing.T) {

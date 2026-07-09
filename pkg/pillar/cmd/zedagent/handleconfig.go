@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -396,31 +395,34 @@ func readAuthorizedKeys(filename string) (string, bool) {
 	}
 
 	fileDesc, err := os.Open(filename)
-	keyData := ""
 	if err != nil {
 		log.Warnf("readAuthorizedKeys: File (%s) open error: %s", filename, err)
-	} else {
-		reader := bufio.NewReader(fileDesc)
-		for {
-			line, err := reader.ReadString('\n')
-			if err != nil {
-				log.Traceln(err)
-				if err != io.EOF {
-					log.Errorf("readAuthorizedKeys: ReadString (%s) error: %s", filename, err)
-					return "", false
-				}
-				break
-			}
-			// remove trailing "\n" from line
-			line = line[0 : len(line)-1]
-
-			// Is it a comment or a key?
-			if strings.HasPrefix(line, "#") {
-				continue
-			}
-			keyData += string(line)
-		}
+		return "", false
 	}
+	defer fileDesc.Close()
+
+	// Collect keys and join them with newlines. sshd requires one key
+	// per line, so the separator must be preserved: concatenating the
+	// keys directly would mash them into a single invalid line.
+	var keys []string
+	scanner := bufio.NewScanner(fileDesc)
+	for scanner.Scan() {
+		// bufio.Scanner strips the trailing newline (and a trailing
+		// "\r"), and yields the final line even without a trailing
+		// newline.
+		line := scanner.Text()
+
+		// Skip comments and blank lines.
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		keys = append(keys, line)
+	}
+	if err := scanner.Err(); err != nil {
+		log.Errorf("readAuthorizedKeys: scan (%s) error: %s", filename, err)
+		return "", false
+	}
+	keyData := strings.Join(keys, "\n")
 	if len(keyData) != 0 {
 		return keyData, true
 	}
