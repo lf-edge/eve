@@ -33,8 +33,11 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 		}
 
 		if status.IsOCIRegistry {
-			if len(status.DatastoreIDList) > 1 {
-				err := fmt.Sprintf("doUpdateContentTree(%s) name %s: OCI registry along with the fallback datastores list is not supported",
+			// An OCI registry datastore can be combined with fallback
+			// datastores, but only if all of them are OCI registries too.
+			// Mixing OCI and non-OCI datastores is not supported.
+			if !status.AllDatastoresAreOCIRegistry() {
+				err := fmt.Sprintf("doUpdateContentTree(%s) name %s: mixing OCI registry with non-OCI (fallback) datastores is not supported",
 					status.Key(), status.DisplayName)
 				log.Error(err)
 				status.SetErrorDescription(types.ErrorDescription{Error: err})
