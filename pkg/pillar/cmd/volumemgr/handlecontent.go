@@ -45,17 +45,33 @@ func handleContentTreeModify(ctxArg interface{}, key string,
 		log.Fatalf("Missing ContentTreeStatus for %s", config.Key())
 	}
 
+	// becomingLocal is true when a cluster DNID reassignment (e.g. node
+	// replacement) makes this node newly responsible for downloading the
+	// content: the existing status is parked at LOADED without ever having
+	// downloaded anything, so it must go through the same delete+recreate
+	// path as a content change to actually (re)enter the download pipeline.
+	becomingLocal := config.IsLocal && !oldConfig.IsLocal
+
 	// if the change is significant, i.e. the content has changed, then
 	// delete the whole content tree (incl blobs) and create a new one
 	// otherwise, just update the status and proceed normally
 	if config.RelativeURL != oldConfig.RelativeURL ||
 		config.Format != oldConfig.Format ||
-		config.ContentSha256 != oldConfig.ContentSha256 {
+		config.ContentSha256 != oldConfig.ContentSha256 ||
+		becomingLocal {
 
 		deleteContentTree(ctx, status, 0) // make sure the delete is immediate
 		status = createContentTreeStatus(ctx, config)
 	} else {
 		status.UpdateFromContentTreeConfig(config)
+		if config.IsLocal != status.IsLocal {
+			// Losing designation: no local content to reconcile here, just
+			// update the bookkeeping so future actions (e.g. Delete) target
+			// the node that is now actually responsible for this content.
+			log.Noticef("handleContentTreeModify(%s): IsLocal changed from %v to %v (DNID reassignment)",
+				config.Key(), status.IsLocal, config.IsLocal)
+			status.IsLocal = config.IsLocal
+		}
 	}
 
 	updateContentTree(ctx, status)

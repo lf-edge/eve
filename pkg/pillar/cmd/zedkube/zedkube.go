@@ -772,6 +772,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			zedkubeCtx.checkStuckVolumeMount()
 			zedkubeWdUpdate()
 			zedkubeCtx.checkAppsStatus()
+			zedkubeCtx.reconcileVMIRSAffinity(zedkubeWdUpdate)
 			appStatusTimer = time.NewTimer(logcollectInterval * time.Second)
 
 		// Timer 3: cluster-wide stats and service health (leader-only, less frequent).
