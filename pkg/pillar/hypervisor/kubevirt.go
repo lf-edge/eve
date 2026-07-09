@@ -686,7 +686,7 @@ func (ctx kubevirtContext) CreateReplicaVMIConfig(domainName string, config type
 	}
 
 	// Set the affinity to this node the VMI is preferred to run on
-	affinity := setKubeAffinity(nodeName, config.AffinityType)
+	affinity := SetKubeAffinity(nodeName, config.AffinityType)
 
 	// Set tolerations to handle node conditions
 	tolerations := setKubeToleration(int64(tolerateSec))
@@ -1648,7 +1648,7 @@ func (ctx kubevirtContext) CreateReplicaPodConfig(domainName string, config type
 				},
 				Spec: k8sv1.PodSpec{
 					Tolerations: setKubeToleration(int64(tolerateSec)),
-					Affinity:    setKubeAffinity(nodeName, config.AffinityType),
+					Affinity:    SetKubeAffinity(nodeName, config.AffinityType),
 					Containers: []k8sv1.Container{
 						{
 							Name:            kubeName,
@@ -1745,7 +1745,12 @@ func (ctx kubevirtContext) CreateReplicaPodConfig(domainName string, config type
 	return nil
 }
 
-func setKubeAffinity(nodeName string, affinityType types.Affinity) *k8sv1.Affinity {
+// SetKubeAffinity builds the node affinity for a VMI/pod template that
+// prefers (or requires) scheduling onto nodeName. Exported so callers outside
+// this package (e.g. zedkube, which reconciles an already-existing VMIRS's
+// affinity after a cluster DNID reassignment) build the identical affinity
+// this package uses at creation time, rather than duplicating the logic.
+func SetKubeAffinity(nodeName string, affinityType types.Affinity) *k8sv1.Affinity {
 	matchExpressions := []k8sv1.NodeSelectorRequirement{
 		{
 			Key:      "kubernetes.io/hostname",

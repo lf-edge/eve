@@ -1454,6 +1454,20 @@ func handleModify(ctxArg interface{}, key string,
 	}
 
 	status.UUIDandVersion = config.UUIDandVersion
+	if config.IsDesignatedNodeID != status.IsDesignatedNodeID {
+		// A cluster DNID reassignment (e.g. node replacement) changed which
+		// node owns this app. Resync in place: publishAppInstanceStatus's
+		// fallback path (used when zedkube hasn't published ENClusterAppStatus
+		// for this app yet, e.g. right after the reassignment) trusts this
+		// field to decide whether this node should report status to the
+		// controller. Leaving it stale can mean no node reports during that
+		// window: the old node correctly stays quiet, and the newly
+		// designated node also stays quiet because it doesn't yet know it's
+		// the designated node.
+		log.Noticef("handleModify(%s): IsDesignatedNodeID changed from %v to %v (DNID reassignment)",
+			status.Key(), status.IsDesignatedNodeID, config.IsDesignatedNodeID)
+		status.IsDesignatedNodeID = config.IsDesignatedNodeID
+	}
 	publishAppInstanceStatus(ctx, status)
 
 	changed := doUpdate(ctx, config, status)
