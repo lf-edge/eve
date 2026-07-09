@@ -63,8 +63,26 @@ func handleVolumeModify(ctxArg interface{}, key string,
 				status.DisplayName, config.DisplayName, config.VolumeID)
 			status.DisplayName = config.DisplayName
 		}
+		needUpdateVol := false
+		if config.IsReplicated != status.IsReplicated {
+			// A cluster DNID reassignment (e.g. node replacement) changed
+			// which node owns this volume. Update the bookkeeping in place;
+			// the underlying PVC (if any) already exists cluster-wide via
+			// Longhorn, so no re-creation is needed here. doUpdateVol below
+			// re-evaluates so a genuinely-missing volume still gets created
+			// on the node that just became the owner.
+			log.Noticef("handleVolumeModify(%s): IsReplicated changed from %v to %v (DNID reassignment)",
+				config.Key(), status.IsReplicated, config.IsReplicated)
+			status.IsReplicated = config.IsReplicated
+			needUpdateVol = true
+		}
 		updateVolumeStatusRefCount(ctx, status)
 		publishVolumeStatus(ctx, status)
+		if needUpdateVol {
+			if changed, _ := doUpdateVol(ctx, status); changed {
+				publishVolumeStatus(ctx, status)
+			}
+		}
 		updateVolumeRefStatus(ctx, status)
 		if err := createOrUpdateAppDiskMetrics(ctx, agentName, status); err != nil {
 			log.Errorf("handleVolumeModify(%s): exception while publishing diskmetric. %s", key, err.Error())
