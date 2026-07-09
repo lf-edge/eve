@@ -62,6 +62,15 @@ func parseVolumeConfig(ctx *getconfigContext,
 			}
 		}
 		if !foundVolume || !sameGenCounter {
+			// Suppress the true-removal case (volume gone from config) while the
+			// node is leaving the cluster, so volumemgr does not delete the
+			// still-shared PVC before the single-node reboot. A generation-counter
+			// bump (foundVolume && !sameGenCounter) is an in-place replace, not a
+			// departure, so it always proceeds.
+			if !foundVolume && ctx.clusterDeparting {
+				log.Noticef("parseVolumeConfig: suppressing removal %s: node leaving cluster", volume.Key())
+				continue
+			}
 			// volume not found, delete
 			log.Functionf("parseVolumeConfig: deleting %s\n", volume.Key())
 			unpublishVolumeConfig(ctx.pubVolumeConfig, volume.Key())

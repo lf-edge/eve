@@ -81,6 +81,10 @@ func parseContentInfoConfig(ctx *getconfigContext,
 		}
 		// content tree not found, delete
 		if !found {
+			if ctx.clusterDeparting {
+				log.Noticef("parseContentInfo: suppressing removal %s: node leaving cluster", idStr)
+				continue
+			}
 			log.Functionf("parseContentInfo: deleting %s\n", idStr)
 			unpublishContentTreeConfig(ctx, idStr)
 		}
