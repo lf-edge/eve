@@ -2378,6 +2378,37 @@ func (dc *EdgeDeviceConfig) DeleteApplication(appUUID uuid.UUID) {
 	}
 }
 
+// AddBlankVolume adds a standalone empty (VCOT_BLANK) volume of the requested
+// size to the device configuration and returns its UUID.
+//
+// A blank volume is created by volumemgr as an empty block device of the given
+// size, with no content downloaded into it and no application reference
+// required (volumemgr creates standalone volumes; see the
+// VolumeConfig.HasNoAppReferences handling in volumemgr). On a device whose
+// /persist is ZFS, a non-container, non-ISO volume is backed by a ZFS zvol
+// whose "volsize" property equals sizeBytes (rounded up to the ZFS
+// volblocksize). That volsize is the provisioned size volumemgr reports in
+// AppDiskMetric.ProvisionedBytes, which zedagent surfaces to the controller as
+// ZMetricVolume.TotalBytes and VolumeResources.MaxSizeBytes.
+//
+// The volume is created in clear text so that it does not depend on the vault
+// being unlocked, keeping the volume-creation path independent of vault
+// readiness.
+func (dc *EdgeDeviceConfig) AddBlankVolume(
+	displayName string, sizeBytes uint64) uuid.UUID {
+	volumeUUID := dc.th.newUUID("blank volume")
+	dc.Volumes = append(dc.Volumes, &eveconfig.Volume{
+		Uuid: volumeUUID.String(),
+		Origin: &eveconfig.VolumeContentOrigin{
+			Type: eveconfig.VolumeContentOriginType_VCOT_BLANK,
+		},
+		Maxsizebytes: int64(sizeBytes),
+		DisplayName:  displayName,
+		ClearText:    true,
+	})
+	return volumeUUID
+}
+
 // SetLPS configures the Local Profile Server (LPS) settings for the device.
 func (dc *EdgeDeviceConfig) SetLPS(config LPSConfig) {
 	dc.GlobalProfile = config.GlobalProfile
