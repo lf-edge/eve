@@ -23,11 +23,15 @@ to move to the most recent, aka the highest-priority configuration.
     or config from the controller), the `/config` partition with `override.json`,
     specially formatted USB stick with `usb.json` and even from NIM itself,
     which builds and publishes the *last-resort* config if enabled. If `monitor` application is enabled the user can also change current network settings manually from the local TUI. In this case [monitor](./monitor.md) service sets a DPC with a key set to `manual`. Only one instance of the DPC with key `manual` may exists at a given time thus it is always overwritten when the user changes network settings
+  * NIM also receives a DPC with key `lps` from zedagent. This carries port-level
+    overrides submitted to the device by a Local Profile Server (LPS) and is
+    merged on top of the controller DPC; see [LPS local port overrides](#lps-local-port-overrides) below.
 * global configuration properties
   * an instance of `ConfigItemValueMap` struct received from zedagent
-  * used to determine if last-resort should be enabled, also to obtain time
-    intervals/timeouts to apply for DPC verification and finally to get parameters
-    for SSH access
+  * used to determine if last-resort should be enabled, to obtain time
+    intervals/timeouts to apply for DPC verification, to discover the list of
+    diagnostic remote endpoints used by `ControllerConnectivityTester`,
+    to set the metric publish interval, and to get parameters for SSH access
 * a list of assignable adapters
   * an instance of `AssignableAdapters` struct received from domainmgr
   * used to determine if a given interface is assigned to pciback or if it is available
@@ -35,9 +39,42 @@ to move to the most recent, aka the highest-priority configuration.
 * zedagent status
   * an instance of `ZedAgentStatus` received from zedagent
   * used to determine the intended state of the [Radio-Silence mode](./radio-silence.md)
+    and the URL of the Local Operator Console (LOC), which the connectivity
+    tester probes instead of the controller when air-gap mode is enabled
 * status of cellular connectivity
   * an instance of the `WwanStatus` struct received from `mmagent` (wwan microservice)
   * used to update `NetworkPortStatus` of cellular ports
+* onboarding status
+  * an instance of `OnboardingStatus` from zedclient
+  * DpcManager uses the device UUID only to tell whether the device is
+    onboarded, which selects the pre- vs post-onboarding netdump publish interval
+* network instance configuration
+  * `NetworkInstanceConfig` from zedagent
+  * NIM only inspects whether at least one network instance has flowlog enabled,
+    and forwards that boolean to DpcReconciler so the iptables ACL subgraph
+    enables conntrack logging accordingly
+* edge-node cluster status
+  * `EdgeNodeClusterStatus` from zedkube
+  * carries the cluster interface and the cluster IP address that DpcReconciler
+    must assign statically (in addition to whatever the DPC requests)
+* Kubernetes user services
+  * `KubeUserServices` from zedkube
+  * lists user-facing Kubernetes services and ingresses that need firewall
+    pin-holes; consumed by the ACL subgraph of DpcReconciler
+* vault status
+  * `VaultStatus` from vaultmgr
+  * NIM tracks whether the default vault is unlocked. Until the vault is ready,
+    private keys of SCEP-enrolled certificates are not readable, so 802.1x
+    (PNAC) port authentication that depends on those keys must wait
+* enrolled-certificate status
+  * `EnrolledCertificateStatus` from scepclient (persistent)
+  * lists certificates obtained via SCEP, indexed by enrollment-profile name;
+    used to render the wpa_supplicant configuration for 802.1x ports
+* controller and edge-node certificates
+  * `ControllerCert` from zedagent and `EdgeNodeCert` from tpmmgr (the latter a
+    persistent subscription)
+  * passed through to DpcReconciler so it can decrypt encrypted fields in the
+    DPC (e.g. WiFi PSK or 802.1x credentials) before applying them
 
 **NIM publishes**:
 
@@ -51,6 +88,15 @@ to move to the most recent, aka the highest-priority configuration.
 * configuration for cellular modems
   * an instance of the `WwanConfig` struct
   * consumed by `mmagent` from the wwan microservice
+* cipher block status and cipher metrics
+  * `CipherBlockStatus` records the success or failure of decrypting any
+    encrypted DPC fields; `CipherMetrics` aggregates decryption counters
+* agent metrics for the controller-connectivity tester
+  * `MetricsMap` keyed by `nim` summarizing HTTP test latencies and outcomes
+* PNAC and bond metrics
+  * `PNACMetricsList` (one entry per 802.1x-enabled port) and `BondMetricsList`
+    (one entry per L2 bond port) are republished on a flexible ticker driven by
+    the configured metric interval
 
 ## Components
 
@@ -165,6 +211,94 @@ the issue with the remote endpoint will be resolved at the other end eventually.
 Provided is implementation for Linux network stack based on the netlink interface.
 Also available is a *mock* NetworkMonitor, allowing to simulate a state of a fake
 network stack for the sake of unit-testing of other NIM components.
+
+## DPC sources and priority
+
+The `DevicePortConfig` (DPC) sources NIM ingests, the `Key` value that
+identifies each source, how the working list is ordered by priority, and how the
+persisted `DevicePortConfigList` is retained and compressed are documented in
+[DEVICE-CONNECTIVITY.md](../../../docs/DEVICE-CONNECTIVITY.md) — see
+[Sources of configuration](../../../docs/DEVICE-CONNECTIVITY.md#sources-of-configuration)
+and
+[List of persisted network configurations](../../../docs/DEVICE-CONNECTIVITY.md#list-of-persisted-network-configurations).
+
+## LPS local port overrides
+
+The `lps`-keyed DPC carries the latest set of *local* port-level
+configuration overrides delivered to the device through a Local Profile
+Server; see [LPS.md](../../../docs/LPS.md) for the LPS protocol and the
+`/api/v1/network` endpoint that carries these overrides. Within NIM,
+`DpcManager.mergeWithLpsConfig()` produces an effective DPC by, for each port,
+choosing between the controller-supplied configuration and the LPS-supplied
+configuration according to:
+
+* the port's `AllowLocalModifications` flag — set by the controller per port;
+* a wireless-type compatibility check (LPS may not flip a port between WiFi and
+  cellular);
+* whether the LPS DPC actually contains an entry for that port.
+
+For each port the manager records whether the local override was applied or
+rejected (with an error string). When *every* management port is using
+LPS-supplied configuration, fallback to a lower-priority controller/last-resort
+DPC is suppressed: otherwise an LPS-induced misconfiguration could be reverted
+silently to a stale config the operator has already replaced.
+
+## Vault, SCEP, cluster and Kubernetes integration
+
+A handful of DpcManager update methods (`UpdateVaultReadiness`,
+`UpdateEnrolledCerts`, `UpdateClusterStatus`, `UpdateKubeUserServices`,
+`UpdateLOCUrl`, `UpdateFlowlogState`) feed information from sibling
+microservices into the DPC reconciler. The end-to-end 802.1X/SCEP design
+(bootstrap VLAN, certificate enrollment, `wpa_supplicant` EAP-TLS, the
+certificate lifecycle in the vault, and PNAC status/metrics) is documented in
+[DEVICE-CONNECTIVITY.md](../../../docs/DEVICE-CONNECTIVITY.md#port-based-network-access-control-8021x-and-scep-certificate-enrollment);
+the points below cover only how NIM plumbs those signals into reconciliation:
+
+* **Vault readiness** — the SCEP-enrolled private key is stored in the
+  encrypted vault (`/persist/vault/pnac`), so `scepclient` blocks on the vault
+  before it can enroll, and the key is unreadable until the vault is unlocked.
+  (Decrypting the object-encrypted SCEP profile itself does not need the vault —
+  that uses the controller/edge-node certificate cipher path.) A vault-readiness
+  change therefore triggers a reconciliation of the physical-interfaces
+  (`PhysicalIfsSG`) subgraph: only once the key is available can NIM render the
+  `wpa_supplicant` config for 802.1x (PNAC) ports, so certificate-based port
+  authentication cannot complete before then.
+* **Enrolled certificates** — additions, removals or refreshes of the
+  `EnrolledCertificateStatus` set drive a regeneration of `wpa_supplicant`
+  configuration for 802.1x ports.
+* **Cluster status** — when running as a member of an EVE Kubernetes cluster,
+  `EdgeNodeClusterStatus` provides the cluster interface and the cluster IP.
+  DpcReconciler statically assigns this IP in addition to whatever the DPC
+  configures, and a cluster-status change triggers a full reconciliation.
+* **Kube user services** — `KubeUserServices` lists user-facing Kubernetes
+  services and ingresses. NIM passes the list to DpcReconciler's ACL subgraph
+  so iptables rules permit the corresponding inbound traffic on management
+  uplinks.
+* **LOC URL** — when air-gap mode is enabled, `ControllerConnectivityTester`
+  probes the Local Operator Console first on the next test cycle; a reachable
+  LOC counts as connectivity and the controller probe is then skipped.
+* **Flowlog state** — toggling on/off causes a partial ACLs reconciliation to
+  enable or disable conntrack logging.
+
+## Metric publishing
+
+On a flexible ticker driven by the GCP `metric.interval` value (defaulting to
+the value of `metric.interval` for nim, jittered between 30% and 100%) NIM
+publishes:
+
+* `CipherMetrics` — accumulated decryption counters for cipher blocks embedded
+  in DPCs (WiFi PSK, 802.1x credentials, etc.).
+* `MetricsMap` (`nim`-keyed) — HTTP probe latencies and outcomes from
+  `ControllerConnectivityTester`.
+* `PNACMetricsList` — for every 802.1x-enabled port present in the current
+  `DeviceNetworkStatus`, NIM looks up the kernel ifindex via
+  `NetworkMonitor.GetInterfaceIndex` and reads counters via
+  `NetworkMonitor.GetPNACMetrics`.
+* `BondMetricsList` — for every L2-bond port in the DNS, NIM resolves the
+  underlying bond interface (which may have been renamed to `k<port>` if the
+  port is bridged by NIM) and reads counters via
+  `NetworkMonitor.GetBondMetrics`. Member counters are annotated with the
+  member port's logical label by reverse-looking-up the DNS.
 
 ## Control-flow
 
