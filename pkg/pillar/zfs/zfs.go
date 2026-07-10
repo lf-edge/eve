@@ -432,6 +432,15 @@ func fillImgInfo(dataset libzfs.Dataset, datasetFullName string, imgInfo *types.
 	if err != nil {
 		return fmt.Errorf("GetZFSVolumeInfo: failed to parse Usedbydataset: %s", err)
 	}
+	// Provisioned size for zvol volumes comes from the "volsize" property.
+	// Filesystem datasets have no volsize (value "-"), so this is best-effort:
+	// on any error or non-numeric value we leave VirtualSize at 0 rather than
+	// failing, to avoid dropping non-volume datasets in GetAllZFSVolumeInfo.
+	if propVolSize, verr := dataset.GetProperty(libzfs.DatasetPropVolsize); verr == nil {
+		if volSize, perr := strconv.ParseUint(propVolSize.Value, 10, 64); perr == nil {
+			imgInfo.VirtualSize = volSize
+		}
+	}
 	return nil
 }
 
