@@ -2188,12 +2188,16 @@ func TestDPCWithAssignedInterface(test *testing.T) {
 	t.Expect(dpcList[0].LastError).To(Equal("port eth1 in PCIBack is used by ccf4c2f8-1d0f-4b44-b55a-220f7a138f6d"))
 
 	// eth1 was released from the application but it is still in PCIBack.
-	aa.IoBundleList[1].UsedByUUID = uuid.UUID{}
+	// Build a fresh AA instead of mutating the list already handed over to
+	// DpcManager; the manager reads it from its own goroutine, so mutating
+	// the shared backing array here would be a data race.
+	aa = makeAA(selectedIntfs{eth0: true, eth1: true})
+	aa.IoBundleList[1].IsPCIBack = true
 	dpcManager.UpdateAA(aa)
 	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStatePCIWait))
 
 	// Finally the eth1 is released from PCIBack.
-	aa.IoBundleList[1].IsPCIBack = false
+	aa = makeAA(selectedIntfs{eth0: true, eth1: true})
 	dpcManager.UpdateAA(aa)
 	eth1 := mockEth1()
 	networkMonitor.AddOrUpdateInterface(eth1)
