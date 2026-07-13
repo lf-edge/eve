@@ -71,6 +71,7 @@ type ipcMessage struct {
 
 type monitorIPCServer struct {
 	codec *framed.ReadWriteCloser
+	conn  net.Conn // current client connection (used to tear down on replace)
 	// dataReady chan bool
 	ctx *monitor
 	sync.Mutex
@@ -90,38 +91,41 @@ func (s *monitorIPCServer) c() chan bool {
 }
 
 func (s *monitorIPCServer) handleConnection(conn net.Conn) {
-	s.Lock()
-	defer s.Unlock()
 	// the format of the frame is length + data
 	// where the length is 32 bit unsigned integer
-	s.codec = framed.NewReadWriteCloser(conn)
-	s.codec.EnableBigFrames()
+	codec := framed.NewReadWriteCloser(conn)
+	codec.EnableBigFrames()
+
+	s.Lock()
+	// Only one client is expected at a time. Close any previous connection so
+	// its reader goroutine (blocked in ReadFrame) exits instead of leaking.
+	if s.conn != nil {
+		s.conn.Close()
+	}
+	s.conn = conn
+	s.codec = codec
+	s.Unlock()
 
 	go func() {
-		defer s.close()
-		s.run()
+		defer conn.Close()
+		s.run(codec)
 	}()
 
 	// notify the monitor that the client is connected
 	s.ctx.clientConnected <- true
 }
 
-// close the server
-func (s *monitorIPCServer) close() {
-	s.codec.Close()
-}
-
 // main loop
-func (s *monitorIPCServer) run() {
+func (s *monitorIPCServer) run(codec *framed.ReadWriteCloser) {
 	// we never exit from the loop until the connection is closed
 	// other errors are logged and we continue
 	for {
 		// read request
-		req, err := s.readRequest()
+		req, err := s.readRequest(codec)
 		if err != nil {
 			log.Warnf("Error reading request: %v", err)
-			// exit if EOF
-			if errors.Is(err, io.EOF) {
+			// exit if the connection is closed (EOF) or torn down.
+			if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
 				return
 			}
 			continue
@@ -141,8 +145,8 @@ func (s *monitorIPCServer) run() {
 }
 
 // read request
-func (s *monitorIPCServer) readRequest() (*request, error) {
-	frame, err := s.codec.ReadFrame()
+func (s *monitorIPCServer) readRequest(codec *framed.ReadWriteCloser) (*request, error) {
+	frame, err := codec.ReadFrame()
 	if err != nil {
 		return nil, err
 	}
