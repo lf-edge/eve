@@ -177,6 +177,8 @@ func (z *zedrouter) getAppContainerStats(cli *client.Client,
 		}
 
 		acStats, err := z.processAppContainerStats(stats, container, startTime)
+		// Close the stats body to release its connection and read goroutine.
+		stats.Body.Close()
 		if err != nil {
 			z.log.Errorf("getAppContainerStats: process stats for %s, error %v\n",
 				container.Names[0], err)
@@ -261,6 +263,8 @@ func (z *zedrouter) getAppContainerLogs(status types.AppNetworkStatus,
 		}
 
 		stdcopy.StdCopy(&buf, &buf, io.LimitReader(out, 100000))
+		// Close the log stream so its connection and read goroutine are freed.
+		out.Close()
 		logLines := strings.Split(buf.String(), "\n")
 		numlogs += len(logLines)
 		z.log.Tracef("getAppContainerLogs: container %s, lasttime %s, lines %d",
@@ -354,6 +358,7 @@ func (z *zedrouter) getIotEdgeMetricsAndLogs(status types.AppNetworkStatus,
 			err)
 		return
 	}
+	defer cli.Close()
 	*acNum += len(containers)
 
 	// collect container stats, and publish to zedclient
