@@ -245,7 +245,7 @@ func (b *broker) Connect(
 		}
 
 		clientLogger := b.globalLog.WithField("client_id", clientID)
-		logHook := &logger.LogrusGrpcHook{}
+		logHook := logger.NewLogrusGrpcHook(clientID)
 		clientLogger.Logger.AddHook(logHook)
 
 		clientSession = &session{
