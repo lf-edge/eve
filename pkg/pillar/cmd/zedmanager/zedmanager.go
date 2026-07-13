@@ -612,35 +612,56 @@ func checkDelayedStartApps(ctx *zedmanagerContext) {
 	}
 }
 
+// highPriorityAppsPending reports whether any high-priority app instance (one
+// that was active before the last reboot, listed in activeMap) has yet to reach
+// a running state while the post-boot startup window is still open. Low-priority
+// apps are held back only while this holds, so that high-priority apps get
+// resources first; once it returns false there is nothing left to wait for.
+func highPriorityAppsPending(ctx *zedmanagerContext, activeMap map[string]struct{}) bool {
+	if len(activeMap) == 0 {
+		return false
+	}
+	if time.Now().After(ctx.delayBaseTime.Add(waitForAppsToStartTimeout)) {
+		return false
+	}
+	return countRunningAppsForUUIDs(ctx, activeMap) < uint(len(activeMap))
+}
+
+// loadActiveAppInstanceMap returns the set of app instance UUIDs that were
+// active before the last reboot. A load failure is treated as an empty set.
+func loadActiveAppInstanceMap() map[string]struct{} {
+	activeAppsUUIDs, err := activeapp.LoadActiveAppInstanceUUIDs(log)
+	if err != nil {
+		log.Warningf("loadActiveAppInstanceMap: failed to load active app instance UUIDs: %v", err)
+	}
+	activeMap := make(map[string]struct{}, len(activeAppsUUIDs))
+	for _, uuid := range activeAppsUUIDs {
+		activeMap[uuid] = struct{}{}
+	}
+	return activeMap
+}
+
 // Handle the applications in Low Priority state ready to be started.
 // Get the list of the Apps in High priority state and check if they are running.
 // If all the High priority apps are running or the timeout has expired, then
 // we can start the Low priority apps.
 func checkLowPriorityApps(ctx *zedmanagerContext) {
-	activeAppsUUIDs, err := activeapp.LoadActiveAppInstanceUUIDs(log)
-	if err != nil {
-		log.Warningf("checkLowPriorityApps: failed to load active app instance UUIDs: %v", err)
-		activeAppsUUIDs = []string{} // Fallback to an empty list
-	}
-	activeMap := make(map[string]struct{})
-	for _, uuid := range activeAppsUUIDs {
-		activeMap[uuid] = struct{}{}
-	}
+	activeMap := loadActiveAppInstanceMap()
 	log.Functionf("check low priority apps: %v", activeMap)
-	runningCount := countRunningAppsForUUIDs(ctx, activeMap)
-	if runningCount >= uint(len(activeMap)) || time.Now().After(ctx.delayBaseTime.Add(waitForAppsToStartTimeout)) {
-		configs := ctx.subAppInstanceConfig.GetAll()
-		for _, c := range configs {
-			config := c.(types.AppInstanceConfig)
-			if localConfig := lookupLocalAppInstanceConfig(ctx, config.Key()); localConfig != nil {
-				config = *localConfig
-			}
-			status := lookupAppInstanceStatus(ctx, config.Key())
-			if status != nil && status.NoBootPriority {
-				doUpdate(ctx, config, status)
-				status.NoBootPriority = false
-				publishAppInstanceStatus(ctx, status)
-			}
+	if highPriorityAppsPending(ctx, activeMap) {
+		return
+	}
+	configs := ctx.subAppInstanceConfig.GetAll()
+	for _, c := range configs {
+		config := c.(types.AppInstanceConfig)
+		if localConfig := lookupLocalAppInstanceConfig(ctx, config.Key()); localConfig != nil {
+			config = *localConfig
+		}
+		status := lookupAppInstanceStatus(ctx, config.Key())
+		if status != nil && status.NoBootPriority {
+			doUpdate(ctx, config, status)
+			status.NoBootPriority = false
+			publishAppInstanceStatus(ctx, status)
 		}
 	}
 }

@@ -43,11 +43,16 @@ func DelLocalAppActiveFile(log *base.LogObject, appUUID string) {
 
 // LoadActiveAppInstanceUUIDs reads all JSON files from the specified directory,
 // extracts the UUID from each filename (by removing the ".json" extension),
-// and returns a slice of UUIDs.
+// and returns a slice of UUIDs. A missing directory is not an error: it is the
+// normal state before any app instance has become active, and is reported as an
+// empty list.
 func LoadActiveAppInstanceUUIDs(log *base.LogObject) ([]string, error) {
 	// Read all directory entries using os.ReadDir.
 	entries, err := os.ReadDir(types.LocalActiveAppConfigDir)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
 		return nil, err
 	}
 
