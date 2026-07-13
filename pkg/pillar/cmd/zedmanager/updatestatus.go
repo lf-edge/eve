@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/activeapp"
 	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	uuid "github.com/satori/go.uuid"
 
@@ -187,23 +186,12 @@ func doUpdate(ctx *zedmanagerContext,
 		}
 	}
 
-	// Check if the App is low priority.
-	// Load the UUIDs of the apps that were previously (before the reboot) in the ACTIVE state.
-	var hasPriority bool
-	activeAppsUUIDs, err := activeapp.LoadActiveAppInstanceUUIDs(log)
-	if err != nil {
-		log.Warningf("checkLowPriorityApps: failed to load active app instance UUIDs: %v", err)
-		activeAppsUUIDs = []string{} // Fallback to an empty list
-	}
-	// Check if the app is in the active list
-	log.Functionf("Processing AppInstanceConfig for app with UUID: %s", config.UUIDandVersion.UUID.String())
-	for _, uuid := range activeAppsUUIDs {
-		log.Functionf("active app instance UUID: %s", uuid)
-		if uuid == config.UUIDandVersion.UUID.String() {
-			hasPriority = true
-		}
-	}
-	if !hasPriority && !status.NoBootPriority {
+	// An app that was not active before the reboot is low-priority, but it is
+	// only held back while high-priority apps are still coming up. Outside that
+	// window (steady state, or no high-priority apps at all) it starts at once.
+	activeMap := loadActiveAppInstanceMap()
+	_, hasPriority := activeMap[config.UUIDandVersion.UUID.String()]
+	if !hasPriority && !status.NoBootPriority && highPriorityAppsPending(ctx, activeMap) {
 		log.Functionf("low priority app %s", uuidStr)
 		status.NoBootPriority = true
 		return true
