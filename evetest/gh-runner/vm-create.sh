@@ -249,7 +249,7 @@ fi
 echo ""
 echo "EVETEST_BROKER_ADDRESS=$BROKER_ADDR is set inside the runner."
 echo "Make sure the broker is running on this host:"
-echo "  make -C .. run-broker-container"
+echo "  make -C .. libvirt-run-broker-container"
 
 # ── Write env file for evetest CLI ──────────────────────────────────────────
 # A child process cannot export variables to the parent shell, so we write an

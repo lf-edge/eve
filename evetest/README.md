@@ -252,6 +252,16 @@ evetest.RequireInternetConnectivity{
 }
 ```
 
+**RequireIPv6OnlyRegistryMirrors** -- for IPv6-only devices, only use configured
+registry mirror addresses that are themselves IPv6 (an IPv4-only mirror is unreachable
+to such a device). A registry with no IPv6 mirror configured is simply not mirrored for
+that app (falls back to the real, un-mirrored registry) rather than failing or skipping
+the test:
+
+```go
+evetest.RequireIPv6OnlyRegistryMirrors{}
+```
+
 If any requirement cannot be satisfied, the test is marked as skipped.
 
 ### Building and Applying Configuration
@@ -663,6 +673,7 @@ evetest eve scp --from-device src dst   # copy files from EVE
 evetest eve scp --to-device src dst     # copy files to EVE
 evetest eve console                     # enter interactive console (telnet)
 evetest eve collect-info                # collect diagnostic tarball
+evetest eve kubectl [kubectl-args...]   # interact with K3s running on EVE-k
 
 evetest eve hard-reboot                 # hard reboot
 evetest eve soft-reboot                 # soft reboot
@@ -702,12 +713,12 @@ non-default behavior.
 | `EVETEST_LOG_LEVEL` | Framework log level (`debug`, `info`, `warn`) | `info` |
 | `EVETEST_COLLECT_ARTIFACTS` | Host path for artifacts (logs, collect-info) | -- |
 | `EVETEST_COLLECT_COVERAGE` | Collect Go coverage profiles (requires `EVETEST_COLLECT_ARTIFACTS` and EVE built with `COVER=y`) | `false` |
-| `EVETEST_REGISTRY_MIRROR_DOCKER` | Pull-through cache URL (`[scheme://]host:port[/path]`) for docker.io | -- |
-| `EVETEST_REGISTRY_MIRROR_GHCR` | Pull-through cache URL for ghcr.io | -- |
-| `EVETEST_REGISTRY_MIRROR_QUAY` | Pull-through cache URL for quay.io | -- |
-| `EVETEST_REGISTRY_MIRROR_K8S` | Pull-through cache URL for registry.k8s.io | -- |
-| `EVETEST_REGISTRY_MIRROR_GCR` | Pull-through cache URL for gcr.io | -- |
-| `EVETEST_REGISTRY_MIRROR_MCR` | Pull-through cache URL for mcr.microsoft.com | -- |
+| `EVETEST_REGISTRY_MIRROR_DOCKER` | Pull-through cache URL(s) for docker.io — one or more comma-separated `[scheme://]host:port[/path]` (IPv6 hosts bracketed, e.g. `http://[fd11::5]:5000`); see `RequireIPv6OnlyRegistryMirrors` | -- |
+| `EVETEST_REGISTRY_MIRROR_GHCR` | Pull-through cache URL(s) for ghcr.io | -- |
+| `EVETEST_REGISTRY_MIRROR_QUAY` | Pull-through cache URL(s) for quay.io | -- |
+| `EVETEST_REGISTRY_MIRROR_K8S` | Pull-through cache URL(s) for registry.k8s.io | -- |
+| `EVETEST_REGISTRY_MIRROR_GCR` | Pull-through cache URL(s) for gcr.io | -- |
+| `EVETEST_REGISTRY_MIRROR_MCR` | Pull-through cache URL(s) for mcr.microsoft.com | -- |
 
 ### Debugging Variables
 
@@ -723,7 +734,7 @@ non-default behavior.
 |----------|-------------|---------|
 | `EVETEST_BROKER_ADDRESS` | Broker IP (unset = embedded broker) | -- |
 | `EVETEST_BROKER_PORT` | Broker gRPC port | `50221` |
-| `EVETEST_BROKER_DEVICE_PROVIDER` | `libvirt` or `qemu` | `libvirt` |
+| `EVETEST_BROKER_DEVICE_PROVIDER` | `qemu`, `libvirt`, or `proxmox` | `libvirt` |
 | `EVETEST_API_PORT` | gRPC API port exposed by evetest container | `50021` |
 | `EVETEST_API_ADDRESS` | IP/hostname of the machine running the evetest container, used by the CLI to connect remotely (unset = `localhost`) | -- |
 
@@ -744,13 +755,40 @@ same terminal session beforehand.
 
 ### Broker Variables (for distributed mode)
 
+These are read by `evetest-broker` itself, not the evetest container -- set them in the
+broker's own environment (`make libvirt-run-broker-container`, or the Proxmox broker
+VM's `/etc/evetest/broker.env`, written by the [Proxmox broker
+installer](deploy/proxmox/README.md)). Which ones apply depends on
+`EVETEST_BROKER_DEVICE_PROVIDER`.
+
+Common to every provider:
+
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `EVETEST_BROKER_LIBVIRT_URI` | Libvirt connection URI | `qemu:///system` |
-| `EVETEST_BROKER_IMAGE_DIR` | VM image storage directory | `$HOME/.evetest` (all-in-one / qemu provider), `/home/eve-broker/images` (libvirt provider; created and configured by `make setup-broker-user`) |
+| `EVETEST_BROKER_IMAGE_DIR` | VM image storage directory | `$HOME/.evetest` (all-in-one / qemu provider), `/home/eve-broker/images` (libvirt provider; created and configured by `make libvirt-setup-broker-user`), `/root/.evetest/images` (proxmox provider; set by the Proxmox broker installer) |
 | `EVETEST_SDN_UPLINK_IPV4_SUBNET` | IPv4 subnet for SDN uplink | `192.168.170.0/24` |
 | `EVETEST_SDN_UPLINK_IPV6_SUBNET` | IPv6 subnet for SDN uplink | `fd11:778b:03dd:2222::/64` |
 | `EVETEST_BROKER_PROXY_CA_CHAIN` | Proxy CA certificate chain file | -- |
+| `EVETEST_BROKER_MAX_CLIENTS` | Max concurrent evetest clients the broker will accept; new connections are rejected with an error once this many are already connected (reconnects of existing clients are never blocked) | `-1` (unlimited) |
+
+**`libvirt` provider only:**
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `EVETEST_BROKER_LIBVIRT_URI` | Libvirt connection URI (not yet configurable -- the provider always uses this value) | `qemu:///system` |
+
+**`proxmox` provider only** (see [deploy/proxmox/README.md](deploy/proxmox/README.md)
+for the full setup guide; in normal use these are generated for you by the Proxmox
+broker installer, not set by hand):
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `EVETEST_BROKER_PROXMOX_API_URL` | Proxmox VE REST API base URL, e.g. `https://192.168.1.50:8006/api2/json` | -- (required) |
+| `EVETEST_BROKER_PROXMOX_PASSWORD` | Password for the `root@pam` Proxmox user. Must be the literal `root@pam` account, not an API token -- Proxmox hardcodes some VM options (`hookscript`, `args`) as settable only by a real `root@pam` session regardless of a token's ACLs | -- (required) |
+| `EVETEST_BROKER_PROXMOX_NODE` | Proxmox node name to create VMs on | auto-detected on a single-node install; required for multi-node clusters |
+| `EVETEST_BROKER_PROXMOX_STORAGE` | Proxmox storage ID used for VM disks, e.g. `local-lvm` | -- (required) |
+| `EVETEST_BROKER_PROXMOX_IMPORT_STORAGE` | Proxmox storage ID (with the `import` content type enabled) that VM disk images are uploaded to before being imported into VM disk storage | `local` |
+| `EVETEST_BROKER_PROXMOX_TLS_SKIP_VERIFY` | Disable TLS certificate verification for the Proxmox API connection (useful with the default self-signed PVE certificate) | `false` |
 
 ## Deployment Modes
 
@@ -790,21 +828,30 @@ laptop) while the broker runs on a separate, (typically more powerful) hyperviso
 EVE VMs run directly on the host hypervisor, avoiding nested virtualization
 (which would occur in All-in-One Mode when executed inside a virtualized CI runner).
 
-The broker uses its device provider (typically libvirt) to create VMs and acts as a
-tunnel proxy, forwarding IP packets between the evetest container and the SDN VM.
-From the test's perspective, this is transparent -- the same test code works in both
-modes.
+The broker uses a device provider (`libvirt` or `proxmox`; see [Broker
+(`evetest-broker`)](#broker-evetest-broker) below) to create VMs and acts as a tunnel
+proxy, forwarding IP packets between the evetest container and the SDN VM. From the
+test's perspective, this is transparent -- the same test code works in both modes.
 
 ![Distributed evetest setup](pics/evetest-distributed.png)
 
+With the **libvirt** provider, the broker runs as a container on the hypervisor host
+itself:
+
 ```bash
 # One-time setup on the hypervisor server:
-sudo make setup-broker-user
-make run-broker-container
+sudo make libvirt-setup-broker-user
+make libvirt-run-broker-container
 
 # On the runner/laptop (192.168.1.100 is example of the server IP address):
 EVETEST_BROKER_ADDRESS=192.168.1.100 make evetest NAME=TestDHCPIPv4Only
 ```
+
+With the **proxmox** provider, the broker instead runs inside a VM on the Proxmox
+host, talking to the Proxmox API to create/manage EVE and SDN VMs -- see
+[deploy/proxmox/README.md](deploy/proxmox/README.md) for the installer that sets this
+up end to end (no manual broker setup step; it prints the `EVETEST_BROKER_ADDRESS` to
+use once ready).
 
 Best for:
 
@@ -835,9 +882,10 @@ The container is the execution environment where tests run. Inside it you'll fin
 - Optionally, an **embedded broker** (in all-in-one mode)
 
 The container has the evetest framework and its dependencies baked in. Only
-`evetest/tests/` is mounted at runtime (allowing live test edits without rebuilding
-the image). Optionally, `/artifacts` is mounted for collecting outputs. It runs
-with `NET_ADMIN` capability for network configuration and tunnel management.
+`evetest/tests/` and `evetest/netmodels` are mounted at runtime (allowing live test
+edits without rebuilding the image). Optionally, `/artifacts` is mounted for collecting
+outputs. It runs with `NET_ADMIN` capability for network configuration and tunnel
+management.
 
 Running tests inside a container ensures a consistent, isolated, and reproducible
 environment. All dependencies (including QEMU) are encapsulated within the container,
@@ -856,7 +904,12 @@ platforms.
 The broker currently supports the following **device providers**:
 
 - **QEMU** — direct QEMU invocation, used in all-in-one mode
-- **libvirt** — uses libvirt APIs, used in distributed mode
+- **libvirt** — uses libvirt APIs, used in distributed mode; the broker runs as a
+  container on the hypervisor host (see `make libvirt-setup-broker-user` /
+  `make libvirt-run-broker-container` above)
+- **proxmox** — uses the Proxmox VE REST API, used in distributed mode; the broker
+  itself runs inside a VM on the Proxmox host, set up end to end by the installer in
+  [deploy/proxmox/README.md](deploy/proxmox/README.md)
 
 It manages the VM lifecycle (create, power on/off, reboot, destroy), caches EVE images
 for reuse across tests, and acts as a tunnel proxy forwarding IP packets between the
@@ -909,8 +962,9 @@ and the framework subscribes to Adam's data streams to keep device state up to d
 | `make build-test-apps` | Build all test apps under `testapps/` by invoking each app's `build` target; supports the same `DOCKER_PLATFORM`, `DOCKER_TARGET`, and `EVETEST_ORG` variables |
 | `make install-cli` | Install the `evetest` CLI binary |
 | `make proto` | Regenerate protobuf Go code from `.proto` files (Docker-based) |
-| `make setup-broker-user` | One-time setup for libvirt broker (requires sudo) |
-| `make run-broker-container` | Start the broker container (distributed mode) |
+| `make libvirt-setup-broker-user` | One-time setup for the libvirt broker (requires sudo) |
+| `make libvirt-run-broker-container` | Start the broker container for the libvirt provider (distributed mode) |
+| `make proxmox-broker-installer` | Assemble the self-contained Proxmox broker installer script (see [deploy/proxmox/README.md](deploy/proxmox/README.md)) |
 
 ## Advanced Host Setup
 
@@ -923,6 +977,13 @@ variables route image pulls for specific registries through a local pull-through
 
 Each variable accepts a full mirror URL including scheme and, if needed, a path
 (e.g. a Harbor proxy-cache project): `[scheme://]host:port[/path]`.
+
+> **proxmox provider:** none of the manual setup below is needed. Pass
+> `--with-oci-registry-mirrors` to the [Proxmox broker
+> installer](deploy/proxmox/README.md) and it runs its own pull-through cache
+> containers on the broker VM and sends their addresses to every evetest client
+> automatically -- no `EVETEST_REGISTRY_MIRROR_*` variables to set by hand. Set one of
+> them yourself only to override a specific registry's mirror.
 
 The mirror is applied in two places automatically:
 
@@ -1106,9 +1167,15 @@ However, tests that require IPv6 Internet access
 (`RequireInternetConnectivity{RequireIPv6: true}`) will be skipped if the host
 does not have IPv6 connectivity.
 
+> **proxmox provider:** the steps below don't apply -- IPv6 for the SDN uplink is
+> provided by Proxmox's own SDN zone (DHCPv6 + SNAT), not by Docker/host NAT66. The
+> [Proxmox broker installer](deploy/proxmox/README.md) sets this up automatically as
+> part of creating the `evu` uplink VNet; see that doc's Prerequisites section for the
+> (different) host-level IPv6 requirements specific to Proxmox SDN.
+
 For tests requiring IPv6 Internet access, you must also:
 
-1. **Enable IPv6 in Docker**
+1. **Enable IPv6 in Docker** -- all-in-one mode only, skip for distributed modes:
 
    ```bash
    # Add to the docker daemon config (generate subnet using https://unique-local-ipv6.com/):
@@ -1121,7 +1188,9 @@ For tests requiring IPv6 Internet access, you must also:
    sudo systemctl restart docker
    ```
 
-2. **Enable IPv6 forwarding and NAT66 on the host**
+2. **Enable IPv6 forwarding and NAT66 on the host** -- needed for all-in-one mode and
+   for distributed mode with the libvirt provider (there, apply this on the host
+   running libvirt, not the host running the evetest container):
 
    ```bash
    sudo sysctl -w net.ipv6.conf.all.forwarding=1
@@ -1138,7 +1207,7 @@ For tests requiring IPv6 Internet access, you must also:
 ```text
 evetest/
 ├── broker/             # Broker binary (VM lifecycle, tunnel proxy)
-│   └── provider/       # Device provider implementations (QEMU, libvirt)
+│   └── provider/       # Device provider implementations (QEMU, libvirt, Proxmox)
 ├── cli/                # evetest CLI binary
 ├── constants/          # Shared constants and Viper config
 ├── controller/         # Adam controller client (Go wrapper around Adam REST API)

@@ -79,6 +79,20 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to create qemu device provider: %v", err)
 		}
+	case "proxmox":
+		conf := provider.ProxmoxProviderConf{
+			CommonProviderConf: commonProviderConf,
+			APIURL:             viper.GetString(constants.BrokerProxmoxAPIURLEnv),
+			Password:           viper.GetString(constants.BrokerProxmoxPasswordEnv),
+			Node:               viper.GetString(constants.BrokerProxmoxNodeEnv),
+			Storage:            viper.GetString(constants.BrokerProxmoxStorageEnv),
+			ImportStorage:      viper.GetString(constants.BrokerProxmoxImportStorageEnv),
+			TLSSkipVerify:      viper.GetBool(constants.BrokerProxmoxTLSSkipVerifyEnv),
+		}
+		deviceProvider, err = provider.NewProxmoxProvider(conf)
+		if err != nil {
+			log.Fatalf("Failed to create proxmox device provider: %v", err)
+		}
 	default:
 		log.Fatalf("Unsupported device provider: %q", providerName)
 	}
@@ -87,7 +101,8 @@ func main() {
 	// Instantiate evetest broker.
 	sdnGrpcPort := viper.GetUint16(constants.SDNPortEnv)
 	imageDir := viper.GetString(constants.BrokerImageDirEnv)
-	broker, err := newBroker(log, deviceProvider, providerName, imageDir, sdnGrpcPort)
+	maxClients := viper.GetInt(constants.BrokerMaxClientsEnv)
+	broker, err := newBroker(log, deviceProvider, providerName, imageDir, sdnGrpcPort, maxClients)
 	if err != nil {
 		log.Fatal(err)
 	}

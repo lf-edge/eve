@@ -1,0 +1,105 @@
+#cloud-config
+# Copyright (c) 2026 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Cloud-init user-data template for the evetest broker VM. The installer
+# (install-broker) substitutes:
+#   __BROKER_ENV_B64__     - base64 of the broker's /etc/evetest/broker.env
+#                            (the EVETEST_BROKER_PROXMOX_* / EVETEST_SDN_*
+#                            values)
+#   __BROKER_IMAGE__       - the broker container image:tag to run
+#   __MIRRORS_SCRIPT_B64__ - base64 of the OCI registry mirrors setup script;
+#                            a no-op unless --with-oci-registry-mirrors was
+#                            passed to the installer. Writes the
+#                            EVETEST_REGISTRY_MIRROR_* values itself, to
+#                            /etc/evetest/broker-mirrors.env, since it also
+#                            discovers the broker VM's IPv6 uplink address
+#                            (unknown at install time) -- see
+#                            evetest-broker.service below.
+#   __SSH_AUTHORIZED_KEYS__ - YAML flow sequence, e.g. ["ssh-ed25519 AAAA... me@host"]
+#                             or [] if --broker-vm-ssh-pubkey was not passed
+#   __DOCKER_CONFIG_JSON_B64__ - base64 of /root/.docker/config.json; holds the
+#                            registry credentials from --docker-username/
+#                            --docker-password, or {"auths":{}} if not passed
+#
+# It installs Docker and runs the broker container with host networking so the
+# broker gRPC binds on the VM's own NICs (the VM is dual-homed: LAN + SDN uplink).
+# The broker itself drives Docker (docker-out-of-docker, to build EVE/SDN images),
+# so it needs the host's Docker socket, the host's registry credentials, and a
+# bind-mounted image directory at the SAME path inside and outside the broker
+# container -- when the broker asks the host's Docker daemon to bind-mount that
+# directory into a sibling container, the path has to resolve on the host, not
+# inside the broker's own container namespace.
+
+---
+ssh_authorized_keys: __SSH_AUTHORIZED_KEYS__
+
+write_files:
+  - path: /etc/evetest/broker.env
+    encoding: b64
+    permissions: '0600'
+    content: __BROKER_ENV_B64__
+  - path: /etc/evetest/broker-mirrors.env
+    permissions: '0600'
+    content: ""
+  - path: /root/.docker/config.json
+    encoding: b64
+    permissions: '0600'
+    content: __DOCKER_CONFIG_JSON_B64__
+  - path: /usr/local/bin/evetest-setup-registry-mirrors.sh
+    encoding: b64
+    permissions: '0755'
+    content: __MIRRORS_SCRIPT_B64__
+  - path: /etc/systemd/system/evetest-broker.service
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=evetest broker
+      Wants=network-online.target docker.service evetest-registry-mirrors.service
+      After=network-online.target docker.service evetest-registry-mirrors.service
+      Requires=docker.service
+
+      [Service]
+      ExecStartPre=-/usr/bin/docker rm -f evetest-broker
+      ExecStartPre=/usr/bin/mkdir -p /root/.evetest/images
+      ExecStartPre=/usr/bin/docker pull __BROKER_IMAGE__
+      ExecStart=/usr/bin/docker run --rm --name evetest-broker \
+        --env-file /etc/evetest/broker.env \
+        --env-file /etc/evetest/broker-mirrors.env --network host \
+        -v /var/run/docker.sock:/var/run/docker.sock \
+        -v /root/.docker:/root/.docker:ro \
+        -v /root/.evetest/images:/root/.evetest/images \
+        __BROKER_IMAGE__
+      Restart=no
+
+      [Install]
+      WantedBy=multi-user.target
+  - path: /etc/systemd/system/evetest-registry-mirrors.service
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=evetest OCI registry pull-through cache mirrors
+      Wants=network-online.target docker.service
+      After=network-online.target docker.service
+      Requires=docker.service
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/usr/local/bin/evetest-setup-registry-mirrors.sh
+
+      [Install]
+      WantedBy=multi-user.target
+
+packages:
+  # qemu-guest-agent lets the PVE host query the VM (e.g. its LAN IP via
+  # `qm guest cmd <vmid> network-get-interfaces`); the VM is created with agent=1.
+  - qemu-guest-agent
+
+runcmd:
+  - [systemctl, enable, --now, qemu-guest-agent.service]
+  - [sh, -c, "curl -fsSL https://get.docker.com | sh"]
+  - [usermod, -aG, docker, ubuntu]
+  - [systemctl, daemon-reload]
+  - [systemctl, enable, --now, evetest-registry-mirrors.service]
+  - [systemctl, enable, --now, evetest-broker.service]

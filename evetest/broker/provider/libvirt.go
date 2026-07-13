@@ -30,8 +30,9 @@ import (
 )
 
 // LibvirtProvider manages the lifecycle of VMs and networks using libvirt.
-// It creates domains and networks with a fixed prefix (see namePrefix) and
-// provides methods for setup, teardown, status watching, and cleanup.
+// It creates domains with a fixed prefix (see namePrefix) and networks with a
+// fixed, shorter prefix (see networkPrefix), and provides methods for setup,
+// teardown, status watching, and cleanup.
 type LibvirtProvider struct {
 	conf  LibvirtProviderConf
 	conn  *libvirt.Connect
@@ -119,6 +120,13 @@ func (p *LibvirtProvider) GetSupportedDeviceArchs() ([]api.ArchType, error) {
 	}
 }
 
+// Capabilities returns the full capability set: the libvirt provider runs on the
+// local host and applies the host-level tweaks required to forward link-local
+// L2 protocols, and supports emulated TPM.
+func (p *LibvirtProvider) Capabilities() []api.Capability {
+	return fullCapabilitySet()
+}
+
 // SetupDevice creates a VM in a powered-off state.
 func (p *LibvirtProvider) SetupDevice(
 	ctx context.Context, name string, spec DeviceSpec) error {
@@ -130,9 +138,8 @@ func (p *LibvirtProvider) SetupDevice(
 		var netName string
 		switch {
 		case iface.Connection.Uplink != nil:
-			uplink := iface.Connection.Uplink
-			netName, _ = uplinkNetworkName(uplink.EnableIPv6)
-			if err := p.ensureUplinkNetwork(log, uplink.EnableIPv6); err != nil {
+			netName = uplinkNetwork
+			if err := p.ensureUplinkNetwork(log); err != nil {
 				return err
 			}
 
@@ -695,8 +702,7 @@ func (p *LibvirtProvider) GetDeviceUplinkIPs(
 		if iface.Source == nil || iface.Source.Network == nil {
 			continue
 		}
-		netName := unprefixedName(iface.Source.Network.Network)
-		if netName != uplinkIPv4OnlyNetwork && netName != uplinkDualStackNetwork {
+		if iface.Source.Network.Network != uplinkNetwork {
 			continue
 		}
 		if iface.MAC == nil || iface.MAC.Address == "" {
@@ -706,14 +712,14 @@ func (p *LibvirtProvider) GetDeviceUplinkIPs(
 		// Lookup network
 		netObj, err := p.conn.LookupNetworkByName(iface.Source.Network.Network)
 		if err != nil {
-			log.Warnf("failed to lookup network %q: %v", netName, err)
+			log.Warnf("failed to lookup network %q: %v", uplinkNetwork, err)
 			continue
 		}
 
 		leases, err := netObj.GetDHCPLeases()
 		netObj.Free()
 		if err != nil {
-			log.Warnf("failed to get DHCP leases for network %q: %v", netName, err)
+			log.Warnf("failed to get DHCP leases for network %q: %v", uplinkNetwork, err)
 			continue
 		}
 
@@ -836,10 +842,9 @@ func (p *LibvirtProvider) TeardownAll(ctx context.Context) error {
 	}
 	for _, n := range nets {
 		name, _ := n.GetName()
-		if strings.HasPrefix(name, namePrefix) {
+		if strings.HasPrefix(name, networkPrefix) {
 			if err = p.removeNetwork(log, name); err != nil {
-				log.Warnf("failed to remove network %q: %v",
-					unprefixedName(name), err)
+				log.Warnf("failed to remove network %q: %v", name, err)
 			}
 		}
 		n.Free()
@@ -1020,10 +1025,9 @@ func (p *LibvirtProvider) getDeviceConsolePort(name string) (int, error) {
 
 // ensureUplinkNetwork creates or ensures a NAT network used for uplink connectivity
 // exists.
-func (p *LibvirtProvider) ensureUplinkNetwork(log *logrus.Entry, ipv6Enabled bool) error {
-	prefixedNetName, brName := uplinkNetworkName(ipv6Enabled)
-	netName := unprefixedName(prefixedNetName)
-	network, err := p.conn.LookupNetworkByName(prefixedNetName)
+func (p *LibvirtProvider) ensureUplinkNetwork(log *logrus.Entry) error {
+	netName := uplinkNetwork
+	network, err := p.conn.LookupNetworkByName(netName)
 	if err == nil {
 		defer network.Free()
 		return nil // already exists
@@ -1031,59 +1035,41 @@ func (p *LibvirtProvider) ensureUplinkNetwork(log *logrus.Entry, ipv6Enabled boo
 
 	// Build network XML
 	networkXML := &libvirtxml.Network{
-		Name: prefixedNetName,
+		Name: netName,
 		Forward: &libvirtxml.NetworkForward{
 			Mode: "nat",
 		},
 		Bridge: &libvirtxml.NetworkBridge{
-			Name: brName,
+			Name: netName,
 		},
 	}
 
-	if ipv6Enabled && p.conf.SDNUplinkIPv6Subnet != nil {
-		// Dual-stack uplink network.
-		bridgeIP := utils.GetFirstHostIP(p.conf.SDNUplinkIPv4DualStackSubnet)
-		dhcpStart := utils.GetNextIP(bridgeIP)
-		dhcpEnd := utils.GetLastHostIP(p.conf.SDNUplinkIPv4DualStackSubnet)
-		bridgeIPv6 := utils.GetFirstHostIP(p.conf.SDNUplinkIPv6Subnet)
-		networkXML.IPs = append(networkXML.IPs,
-			libvirtxml.NetworkIP{
-				Family:  "ipv4",
-				Address: bridgeIP.String(),
-				Netmask: net.IP(p.conf.SDNUplinkIPv4DualStackSubnet.Mask).String(),
-				DHCP: &libvirtxml.NetworkDHCP{
-					Ranges: []libvirtxml.NetworkDHCPRange{
-						{
-							Start: dhcpStart.String(),
-							End:   dhcpEnd.String(),
-						},
+	bridgeIP := utils.GetFirstHostIP(p.conf.SDNUplinkIPv4Subnet)
+	dhcpStart := utils.GetNextIP(bridgeIP)
+	dhcpEnd := utils.GetLastHostIP(p.conf.SDNUplinkIPv4Subnet)
+	networkXML.IPs = append(networkXML.IPs,
+		libvirtxml.NetworkIP{
+			Family:  "ipv4",
+			Address: bridgeIP.String(),
+			Netmask: net.IP(p.conf.SDNUplinkIPv4Subnet.Mask).String(),
+			DHCP: &libvirtxml.NetworkDHCP{
+				Ranges: []libvirtxml.NetworkDHCPRange{
+					{
+						Start: dhcpStart.String(),
+						End:   dhcpEnd.String(),
 					},
 				},
 			},
+		},
+	)
+
+	if p.conf.SDNUplinkIPv6Subnet != nil {
+		bridgeIPv6 := utils.GetFirstHostIP(p.conf.SDNUplinkIPv6Subnet)
+		networkXML.IPs = append(networkXML.IPs,
 			libvirtxml.NetworkIP{
 				Family:  "ipv6",
 				Address: bridgeIPv6.String(),
 				Prefix:  utils.GetSubnetPrefixLen(p.conf.SDNUplinkIPv6Subnet),
-			},
-		)
-	} else {
-		// Ipv4-only uplink network.
-		bridgeIP := utils.GetFirstHostIP(p.conf.SDNUplinkIPv4OnlySubnet)
-		dhcpStart := utils.GetNextIP(bridgeIP)
-		dhcpEnd := utils.GetLastHostIP(p.conf.SDNUplinkIPv4OnlySubnet)
-		networkXML.IPs = append(networkXML.IPs,
-			libvirtxml.NetworkIP{
-				Family:  "ipv4",
-				Address: bridgeIP.String(),
-				Netmask: net.IP(p.conf.SDNUplinkIPv4OnlySubnet.Mask).String(),
-				DHCP: &libvirtxml.NetworkDHCP{
-					Ranges: []libvirtxml.NetworkDHCPRange{
-						{
-							Start: dhcpStart.String(),
-							End:   dhcpEnd.String(),
-						},
-					},
-				},
 			},
 		)
 	}
@@ -1120,10 +1106,8 @@ func (p *LibvirtProvider) ensureUplinkNetwork(log *logrus.Entry, ipv6Enabled boo
 // ensureXConnectNetwork creates or ensures a bridge network exists for
 // a point-to-point link.
 func (p *LibvirtProvider) ensureXConnectNetwork(log *logrus.Entry,
-	prefixedName string) error {
-	netName := unprefixedName(prefixedName)
-	brName := generateXConnectBridgeName(prefixedName)
-	net, err := p.conn.LookupNetworkByName(prefixedName)
+	netName string) error {
+	net, err := p.conn.LookupNetworkByName(netName)
 	if err == nil {
 		defer net.Free()
 		return nil // already exists
@@ -1131,9 +1115,9 @@ func (p *LibvirtProvider) ensureXConnectNetwork(log *logrus.Entry,
 
 	// bridge network XML
 	netXML := libvirtxml.Network{
-		Name: prefixedName,
+		Name: netName,
 		Bridge: &libvirtxml.NetworkBridge{
-			Name: brName,
+			Name: netName,
 			STP:  "off",
 		},
 	}
@@ -1170,10 +1154,10 @@ func (p *LibvirtProvider) ensureXConnectNetwork(log *logrus.Entry,
 	// (kernel rejects BR_GROUPFWD_RESTRICTED). It is enabled separately via
 	// the per-port IFLA_BRPORT_GROUP_FWD_MASK in enableLACPForwardingOnXConnectBridges.
 	groupFwdMask := "0x4008" // EAPOL + LLDP
-	path := fmt.Sprintf("/sys/class/net/%s/bridge/group_fwd_mask", brName)
+	path := fmt.Sprintf("/sys/class/net/%s/bridge/group_fwd_mask", netName)
 	if err := os.WriteFile(path, []byte(groupFwdMask), 0o644); err != nil {
-		err = fmt.Errorf("failed to set group_fwd_mask (%s) on bridge %q "+
-			"for network %q: %w", groupFwdMask, brName, netName, err)
+		err = fmt.Errorf("failed to set group_fwd_mask (%s) on bridge %q: %w",
+			groupFwdMask, netName, err)
 		log.Error(err)
 		return err
 	}
@@ -1181,10 +1165,9 @@ func (p *LibvirtProvider) ensureXConnectNetwork(log *logrus.Entry,
 	// Prevent the host from answering ARP for its own IPs on this bridge.
 	// Without this, VMs resolve the host's management IP to the bridge MAC and
 	// send traffic directly to the host instead of through the SDN VM.
-	arpIgnorePath := fmt.Sprintf("/proc/sys/net/ipv4/conf/%s/arp_ignore", brName)
+	arpIgnorePath := fmt.Sprintf("/proc/sys/net/ipv4/conf/%s/arp_ignore", netName)
 	if err := os.WriteFile(arpIgnorePath, []byte("1"), 0o644); err != nil {
-		err = fmt.Errorf("failed to set arp_ignore on bridge %q "+
-			"for network %q: %w", brName, netName, err)
+		err = fmt.Errorf("failed to set arp_ignore on bridge %q: %w", netName, err)
 		log.Error(err)
 		return err
 	}
@@ -1194,9 +1177,9 @@ func (p *LibvirtProvider) ensureXConnectNetwork(log *logrus.Entry,
 	// result, Docker's DNAT rules in nat PREROUTING intercept bridged packets
 	// before they reach the SDN VM. Insert a RETURN rule ahead of Docker's rules
 	// in both iptables and ip6tables to skip DNAT for all traffic on this bridge.
-	if err := ensureXConnectNATReturn(brName); err != nil {
-		err = fmt.Errorf("failed to add iptables RETURN rule for bridge %q "+
-			"for network %q: %w", brName, netName, err)
+	if err := ensureXConnectNATReturn(netName); err != nil {
+		err = fmt.Errorf("failed to add iptables RETURN rule for bridge %q: %w",
+			netName, err)
 		log.Error(err)
 		return err
 	}
@@ -1271,7 +1254,7 @@ func deviceStatusFromLibvirtEvent(event libvirt.DomainEventLifecycle) DeviceStat
 
 // isNetworkInUse checks if any domain still uses the given network.
 func (p *LibvirtProvider) isNetworkInUse(log *logrus.Entry,
-	prefixedName string) (bool, error) {
+	netName string) (bool, error) {
 	doms, err := p.conn.ListAllDomains(0)
 	if err != nil {
 		err = fmt.Errorf("failed to list domains: %w", err)
@@ -1295,7 +1278,7 @@ func (p *LibvirtProvider) isNetworkInUse(log *logrus.Entry,
 		}
 		for _, iface := range domCfg.Devices.Interfaces {
 			if iface.Source != nil && iface.Source.Network != nil &&
-				iface.Source.Network.Network == prefixedName {
+				iface.Source.Network.Network == netName {
 				return true, nil
 			}
 		}
@@ -1306,9 +1289,8 @@ func (p *LibvirtProvider) isNetworkInUse(log *logrus.Entry,
 // removeNetwork destroys and undefines a libvirt network with the given prefixed name.
 // If the network does not exist, it silently returns without error.
 // Logs success or any errors encountered during destruction or undefinition.
-func (p *LibvirtProvider) removeNetwork(log *logrus.Entry, prefixedName string) error {
-	netName := unprefixedName(prefixedName)
-	net, err := p.conn.LookupNetworkByName(prefixedName)
+func (p *LibvirtProvider) removeNetwork(log *logrus.Entry, netName string) error {
+	net, err := p.conn.LookupNetworkByName(netName)
 	if err != nil {
 		var lverr libvirt.Error
 		if errors.As(err, &lverr) {
@@ -1327,11 +1309,10 @@ func (p *LibvirtProvider) removeNetwork(log *logrus.Entry, prefixedName string) 
 		log.Error(err)
 		return err
 	}
-	if strings.Contains(prefixedName, "xconnect") {
-		brName := generateXConnectBridgeName(prefixedName)
-		if err := deleteXConnectNATReturn(brName); err != nil {
+	if strings.HasPrefix(netName, xconnectBridgePrefix) {
+		if err := deleteXConnectNATReturn(netName); err != nil {
 			log.Warnf("Failed to remove iptables RETURN rule for bridge %q: %v",
-				brName, err)
+				netName, err)
 		}
 	}
 	log.Infof("Removed network %q", netName)
@@ -1411,7 +1392,7 @@ func (p *LibvirtProvider) teardownUnusedNetworks(log *logrus.Entry) {
 		if err != nil {
 			continue
 		}
-		if !strings.HasPrefix(name, namePrefix) {
+		if !strings.HasPrefix(name, networkPrefix) {
 			continue
 		}
 		inUse, err := p.isNetworkInUse(log, name)

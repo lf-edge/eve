@@ -39,7 +39,6 @@ service SDN {
 message SDNConfig {
   string image_repo = 1; // e.g. "lfedge/evetest-sdn"
   string image_version = 2; // e.g. "v1.0.0"
-  bool enable_ipv6 = 3;
 }
 
 // Request for SDN operations.

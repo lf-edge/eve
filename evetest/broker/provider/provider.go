@@ -20,6 +20,12 @@ type DeviceProvider interface {
 	// this device provider (and the host it is running on in case of virtualization).
 	GetSupportedDeviceArchs() ([]api.ArchType, error)
 
+	// Capabilities returns the set of optional, provider-specific features that
+	// this provider supports (e.g. forwarding of link-local L2 protocols, TPM
+	// attachment). Tests declare required capabilities and are skipped when the
+	// active provider does not advertise them.
+	Capabilities() []api.Capability
+
 	// SetupDevice creates a new device in a powered-off state with the specified configuration.
 	// The device must be created but not started, allowing for additional configuration
 	// before power-on if needed.
@@ -191,11 +197,10 @@ type ConnectionSpec struct {
 	XConnect *XConnectSpec
 }
 
-// UplinkSpec defines connection to the host network.
+// UplinkSpec defines connection to the host network. It carries no fields;
+// its presence (non-nil) is what selects the uplink connection type in
+// ConnectionSpec.
 type UplinkSpec struct {
-	// EnableIPv6 is used to enable IPv6 (additionally to IPv4) on the uplink interface
-	// (if available).
-	EnableIPv6 bool
 }
 
 // XConnectSpec defines a direct cross-connect to another device's interface.

@@ -80,15 +80,14 @@ type qemuDevice struct {
 }
 
 type qemuNetwork struct {
-	name        string
-	bridge      string
-	isUplink    bool
-	ipv6Enabled bool
-	dir         string
-	dnsmasqPid  int
-	dnsmasqCmd  *exec.Cmd
-	radvdPid    int
-	radvdCmd    *exec.Cmd
+	name       string
+	bridge     string
+	isUplink   bool
+	dir        string
+	dnsmasqPid int
+	dnsmasqCmd *exec.Cmd
+	radvdPid   int
+	radvdCmd   *exec.Cmd
 }
 
 type qemuTap struct {
@@ -335,6 +334,13 @@ func (p *QemuProvider) GetSupportedDeviceArchs() ([]api.ArchType, error) {
 	return archFromRuntime()
 }
 
+// Capabilities returns the full capability set: the qemu provider runs on the
+// local host and applies the host-level tweaks required to forward link-local
+// L2 protocols, and supports emulated TPM.
+func (p *QemuProvider) Capabilities() []api.Capability {
+	return fullCapabilitySet()
+}
+
 // SetupDevice creates a VM configuration and prepares network resources,
 // but does not start the VM (powered-off state).
 func (p *QemuProvider) SetupDevice(
@@ -394,17 +400,16 @@ func (p *QemuProvider) SetupDevice(
 		var network *qemuNetwork
 		switch {
 		case iface.Connection.Uplink != nil:
-			uplink := iface.Connection.Uplink
-			network, err = p.ensureUplinkNetwork(log, uplink.EnableIPv6)
+			network, err = p.ensureUplinkNetwork(log)
 			if err != nil {
 				return err
 			}
 
 		case iface.Connection.XConnect != nil:
 			xconnect := iface.Connection.XConnect
-			prefixedNetName := xconnectNetworkName(
+			netName := xconnectNetworkName(
 				name, iface.Name, xconnect.PeerDeviceName, xconnect.PeerInterfaceName)
-			network, err = p.ensureXConnectNetwork(log, prefixedNetName)
+			network, err = p.ensureXConnectNetwork(log, netName)
 			if err != nil {
 				return err
 			}
@@ -1074,23 +1079,16 @@ func (p *QemuProvider) ReconfigureDeviceDisks(
 //   - iptables/ip6tables NAT rules for outbound connectivity
 //
 // QemuProvider.mutex must be held by the caller.
-func (p *QemuProvider) ensureUplinkNetwork(
-	log *logrus.Entry, ipv6Enabled bool) (*qemuNetwork, error) {
+func (p *QemuProvider) ensureUplinkNetwork(log *logrus.Entry) (*qemuNetwork, error) {
 
-	// Resolve deterministic network + bridge names.
-	prefixedNetName, brName := uplinkNetworkName(ipv6Enabled)
-	netName := unprefixedName(prefixedNetName)
+	netName := uplinkNetwork
 
 	// Fast path: network already exists.
 	if network, ok := p.networks[netName]; ok {
 		return network, nil
 	}
 
-	// Select IPv4 subnet depending on single-stack vs dual-stack mode.
-	v4Subnet := p.conf.SDNUplinkIPv4OnlySubnet
-	if ipv6Enabled {
-		v4Subnet = p.conf.SDNUplinkIPv4DualStackSubnet
-	}
+	v4Subnet := p.conf.SDNUplinkIPv4Subnet
 
 	// Calculate bridge IPs and DHCP range.
 	bridgeIPv4 := utils.GetFirstHostIP(v4Subnet)
@@ -1102,16 +1100,15 @@ func (p *QemuProvider) ensureUplinkNetwork(
 	}
 
 	var bridgeIPv6 net.IP
-	if ipv6Enabled && p.conf.SDNUplinkIPv6Subnet != nil {
+	if p.conf.SDNUplinkIPv6Subnet != nil {
 		bridgeIPv6 = utils.GetFirstHostIP(p.conf.SDNUplinkIPv6Subnet)
 		brIPs = append(brIPs,
 			utils.NewIPNet(bridgeIPv6, p.conf.SDNUplinkIPv6Subnet))
 	}
 
 	// Create and bring up the Linux bridge with assigned IPs.
-	if err := utils.CreateBridge(brName, brIPs, 0); err != nil {
-		err = fmt.Errorf("failed to create bridge %q for network %q: %w",
-			brName, netName, err)
+	if err := utils.CreateBridge(netName, brIPs, 0); err != nil {
+		err = fmt.Errorf("failed to create bridge %q: %w", netName, err)
 		log.Error(err)
 		return nil, err
 	}
@@ -1160,7 +1157,7 @@ server=8.8.4.4
 server=1.1.1.1
 server=1.0.0.1
 `,
-		brName,
+		netName,
 		dhcpStart.String(),
 		dhcpEnd.String(),
 		leaseFile,
@@ -1169,7 +1166,7 @@ server=1.0.0.1
 	))
 
 	// IPv6 DNS support.
-	if ipv6Enabled && bridgeIPv6 != nil {
+	if bridgeIPv6 != nil {
 		conf.WriteString(`
 # Upstream IPv6 DNS
 server=2001:4860:4860::8888
@@ -1195,17 +1192,16 @@ server=2606:4700:4700::1001
 	}
 
 	network := &qemuNetwork{
-		name:        netName,
-		bridge:      brName,
-		isUplink:    true,
-		ipv6Enabled: ipv6Enabled,
-		dir:         dir,
-		dnsmasqCmd:  cmd,
-		dnsmasqPid:  cmd.Process.Pid,
+		name:       netName,
+		bridge:     netName,
+		isUplink:   true,
+		dir:        dir,
+		dnsmasqCmd: cmd,
+		dnsmasqPid: cmd.Process.Pid,
 	}
 
 	// Configure and start radvd for IPv6 RA.
-	if ipv6Enabled && p.conf.SDNUplinkIPv6Subnet != nil {
+	if p.conf.SDNUplinkIPv6Subnet != nil {
 		radvdConf := filepath.Join(dir, "radvd.conf")
 		radvdData := fmt.Sprintf(`
 interface %s {
@@ -1221,7 +1217,7 @@ interface %s {
 		AdvRDNSSLifetime 600;
 	};
 };
-`, brName, p.conf.SDNUplinkIPv6Subnet.String(), bridgeIPv6.String())
+`, netName, p.conf.SDNUplinkIPv6Subnet.String(), bridgeIPv6.String())
 
 		if err := os.WriteFile(radvdConf, []byte(radvdData), 0o644); err != nil {
 			err = fmt.Errorf("failed to write radvd config file %q for network %q: %w",
@@ -1245,7 +1241,7 @@ interface %s {
 
 	// Enable forwarding.
 	_ = exec.Command("sysctl", "-w", "net.ipv4.ip_forward=1").Run()
-	if ipv6Enabled {
+	if p.conf.SDNUplinkIPv6Subnet != nil {
 		_ = exec.Command("sysctl", "-w", "net.ipv6.conf.all.forwarding=1").Run()
 	}
 
@@ -1261,7 +1257,7 @@ interface %s {
 	}
 
 	// Configure IPv6 NAT (NAT66).
-	if ipv6Enabled && p.conf.SDNUplinkIPv6Subnet != nil {
+	if p.conf.SDNUplinkIPv6Subnet != nil {
 		if err := exec.Command(
 			"ip6tables", "-t", "nat", "-A", "POSTROUTING",
 			"-s", p.conf.SDNUplinkIPv6Subnet.String(), "-j", "MASQUERADE",
@@ -1284,11 +1280,7 @@ interface %s {
 // VMs exists.
 // QemuProvider.mutex must be held by the caller.
 func (p *QemuProvider) ensureXConnectNetwork(
-	log *logrus.Entry, prefixedName string) (*qemuNetwork, error) {
-
-	// Resolve deterministic network + bridge names.
-	netName := unprefixedName(prefixedName)
-	brName := generateXConnectBridgeName(prefixedName)
+	log *logrus.Entry, netName string) (*qemuNetwork, error) {
 
 	// Fast path: network already exists.
 	if network, ok := p.networks[netName]; ok {
@@ -1302,16 +1294,15 @@ func (p *QemuProvider) ensureXConnectNetwork(
 	// (kernel rejects BR_GROUPFWD_RESTRICTED). It is enabled separately via
 	// the per-port IFLA_BRPORT_GROUP_FWD_MASK in enableLACPForwardingOnXConnectBridges.
 	groupFwdMask := uint16(0x4008) // EAPOL + LLDP
-	if err := utils.CreateBridge(brName, nil, groupFwdMask); err != nil {
-		err = fmt.Errorf("failed to create bridge %q for network %q: %w",
-			brName, netName, err)
+	if err := utils.CreateBridge(netName, nil, groupFwdMask); err != nil {
+		err = fmt.Errorf("failed to create bridge %q: %w", netName, err)
 		log.Error(err)
 		return nil, err
 	}
 
 	network := &qemuNetwork{
 		name:   netName,
-		bridge: brName,
+		bridge: netName,
 	}
 	p.networks[netName] = network
 	log.Infof("Created xconnect network %q", netName)
@@ -1412,11 +1403,7 @@ func (p *QemuProvider) teardownUnusedNetworks(ctx context.Context, log *logrus.E
 		// Remove NAT rules for uplink networks.
 		if network.isUplink {
 			// Remove IPv4 NAT (MASQUERADE) rule.
-			subnet := p.conf.SDNUplinkIPv4OnlySubnet
-			if network.ipv6Enabled {
-				subnet = p.conf.SDNUplinkIPv4DualStackSubnet
-			}
-
+			subnet := p.conf.SDNUplinkIPv4Subnet
 			if subnet != nil {
 				if err := exec.Command(
 					"iptables",
@@ -1431,7 +1418,7 @@ func (p *QemuProvider) teardownUnusedNetworks(ctx context.Context, log *logrus.E
 			}
 
 			// Remove IPv6 NAT (NAT66) rule if applicable.
-			if network.ipv6Enabled && p.conf.SDNUplinkIPv6Subnet != nil {
+			if p.conf.SDNUplinkIPv6Subnet != nil {
 				if err := exec.Command(
 					"ip6tables",
 					"-t", "nat",

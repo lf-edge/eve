@@ -165,38 +165,3 @@ func NewIPNet(ip net.IP, subnet *net.IPNet) *net.IPNet {
 		Mask: subnet.Mask,
 	}
 }
-
-// SplitIPv4Subnet splits an IPv4 subnet into two equal subnets.
-func SplitIPv4Subnet(subnet *net.IPNet) (*net.IPNet, *net.IPNet, error) {
-	ones, bits := subnet.Mask.Size()
-	if bits != 32 {
-		return nil, nil, fmt.Errorf("not an IPv4 subnet: %s", subnet.String())
-	}
-	if ones == 32 {
-		return nil, nil, fmt.Errorf("cannot split subnet %s further", subnet.String())
-	}
-
-	// new mask length
-	newOnes := ones + 1
-	newMask := net.CIDRMask(newOnes, 32)
-
-	// first subnet: same base, new mask
-	first := &net.IPNet{
-		IP:   subnet.IP.Mask(newMask),
-		Mask: newMask,
-	}
-
-	// second subnet: set the new bit in the base address
-	secondIP := make(net.IP, len(subnet.IP))
-	copy(secondIP, subnet.IP)
-	bitIndex := ones
-	byteIndex := bitIndex / 8
-	bitInByte := 7 - (bitIndex % 8)
-	secondIP[byteIndex] |= 1 << bitInByte
-
-	second := &net.IPNet{
-		IP:   secondIP.Mask(newMask),
-		Mask: newMask,
-	}
-	return first, second, nil
-}

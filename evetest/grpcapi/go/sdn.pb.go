@@ -474,7 +474,6 @@ type SDNConfig struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ImageRepo     string                 `protobuf:"bytes,1,opt,name=image_repo,json=imageRepo,proto3" json:"image_repo,omitempty"`          // e.g. "lfedge/evetest-sdn"
 	ImageVersion  string                 `protobuf:"bytes,2,opt,name=image_version,json=imageVersion,proto3" json:"image_version,omitempty"` // e.g. "v1.0.0"
-	EnableIpv6    bool                   `protobuf:"varint,3,opt,name=enable_ipv6,json=enableIpv6,proto3" json:"enable_ipv6,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -521,13 +520,6 @@ func (x *SDNConfig) GetImageVersion() string {
 		return x.ImageVersion
 	}
 	return ""
-}
-
-func (x *SDNConfig) GetEnableIpv6() bool {
-	if x != nil {
-		return x.EnableIpv6
-	}
-	return false
 }
 
 // Request for SDN operations.
@@ -4292,13 +4284,11 @@ var File_sdn_proto protoreflect.FileDescriptor
 
 const file_sdn_proto_rawDesc = "" +
 	"\n" +
-	"\tsdn.proto\x12\x12org.lfedge.evetest\x1a\fcommon.proto\"p\n" +
+	"\tsdn.proto\x12\x12org.lfedge.evetest\x1a\fcommon.proto\"O\n" +
 	"\tSDNConfig\x12\x1d\n" +
 	"\n" +
 	"image_repo\x18\x01 \x01(\tR\timageRepo\x12#\n" +
-	"\rimage_version\x18\x02 \x01(\tR\fimageVersion\x12\x1f\n" +
-	"\venable_ipv6\x18\x03 \x01(\bR\n" +
-	"enableIpv6\"\f\n" +
+	"\rimage_version\x18\x02 \x01(\tR\fimageVersion\"\f\n" +
 	"\n" +
 	"SDNRequest\"w\n" +
 	"\x11SDNStatusResponse\x12\x19\n" +

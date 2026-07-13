@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 	"github.com/lf-edge/eve/evetest/utils"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
@@ -887,76 +889,152 @@ func eveConsoleCmd() *cobra.Command {
 		Use:   "console",
 		Short: "Connect to the EVE console",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ln, err := net.Listen("tcp", "127.0.0.1:0")
+			stream, err := client.ConnectConsoleToEVE(context.Background())
 			if err != nil {
-				return fmt.Errorf("failed to start local console listener: %w", err)
+				return fmt.Errorf("ConnectConsoleToEVE: %w", err)
 			}
-			localPort := ln.Addr().(*net.TCPAddr).Port
-			doneCh := make(chan error, 1)
-
-			go func() {
-				conn, err := ln.Accept()
-				if err != nil {
-					doneCh <- nil // listener closed
-					return
-				}
-				defer conn.Close()
-
-				stream, err := client.ConnectConsoleToEVE(context.Background())
-				if err != nil {
-					doneCh <- fmt.Errorf("ConnectConsoleToEVE: %w", err)
-					return
-				}
-				if err := stream.Send(&pb.ConnectConsoleToEVERequest{
-					Payload: &pb.ConnectConsoleToEVERequest_Connect{
-						Connect: &pb.EVEDeviceRequest{DeviceName: eveDeviceName},
-					},
-				}); err != nil {
-					doneCh <- fmt.Errorf("send connect: %w", err)
-					return
-				}
-				_, err = stream.Recv()
-				if err != nil {
-					doneCh <- fmt.Errorf("receive console properties: %w", err)
-					return
-				}
-
-				grpcPipe := utils.GrpcClientPipe[
-					pb.ConnectConsoleToEVERequest, pb.ConnectConsoleToEVEResponse]{
-					MakeRequest: func(data []byte) *pb.ConnectConsoleToEVERequest {
-						return &pb.ConnectConsoleToEVERequest{
-							Payload: &pb.ConnectConsoleToEVERequest_Data{Data: data},
-						}
-					},
-					Stream: stream,
-				}
-				connPipe := utils.ReadWriterPipe{
-					PipeName: "local telnet connection",
-					RW:       conn,
-					Buf:      make([]byte, os.Getpagesize()),
-				}
-				utils.RunPipeProxy(context.Background(),
-					log.WithField("component", "eve-console"),
-					"EVE console", grpcPipe, connPipe)
-				doneCh <- nil
-			}()
-
-			// Run the telnet command.
-			telnetArgs := []string{
-				"127.0.0.1",
-				strconv.Itoa(localPort),
+			if err := stream.Send(&pb.ConnectConsoleToEVERequest{
+				Payload: &pb.ConnectConsoleToEVERequest_Connect{
+					Connect: &pb.EVEDeviceRequest{DeviceName: eveDeviceName},
+				},
+			}); err != nil {
+				return fmt.Errorf("send connect: %w", err)
 			}
-			err = utils.RunCommandForeground(
-				"telnet", telnetArgs, utils.SetThisProcessStdin())
-			ln.Close()
-			_ = <-doneCh
+			resp, err := stream.Recv()
 			if err != nil {
-				return fmt.Errorf("telnet command failed: %w", err)
+				return fmt.Errorf("receive console properties: %w", err)
 			}
-			return nil
+			props := resp.GetConnectReply()
+
+			grpcPipe := utils.GrpcClientPipe[
+				pb.ConnectConsoleToEVERequest, pb.ConnectConsoleToEVEResponse]{
+				MakeRequest: func(data []byte) *pb.ConnectConsoleToEVERequest {
+					return &pb.ConnectConsoleToEVERequest{
+						Payload: &pb.ConnectConsoleToEVERequest_Data{Data: data},
+					}
+				},
+				Stream: stream,
+			}
+
+			if props.GetTelnet() {
+				return runConsoleViaTelnet(grpcPipe)
+			}
+			return runConsoleRaw(grpcPipe)
 		},
 	}
 	return cmd
+}
+
+// runConsoleViaTelnet bridges the console gRPC stream to a local TCP port and
+// hands it to a real telnet client, letting it negotiate the Telnet protocol
+// with the remote end.
+func runConsoleViaTelnet(grpcPipe utils.GrpcClientPipe[
+	pb.ConnectConsoleToEVERequest, pb.ConnectConsoleToEVEResponse]) error {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return fmt.Errorf("failed to start local console listener: %w", err)
+	}
+	localPort := ln.Addr().(*net.TCPAddr).Port
+	doneCh := make(chan error, 1)
+
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			doneCh <- nil // listener closed
+			return
+		}
+		defer conn.Close()
+
+		connPipe := utils.ReadWriterPipe{
+			PipeName: "local telnet connection",
+			RW:       conn,
+			Buf:      make([]byte, os.Getpagesize()),
+		}
+		utils.RunPipeProxy(context.Background(),
+			log.WithField("component", "eve-console"),
+			"EVE console", grpcPipe, connPipe)
+		doneCh <- nil
+	}()
+
+	telnetArgs := []string{
+		"127.0.0.1",
+		strconv.Itoa(localPort),
+	}
+	err = utils.RunCommandForeground(
+		"telnet", telnetArgs, utils.SetThisProcessStdin())
+	ln.Close()
+	_ = <-doneCh
+	if err != nil {
+		return fmt.Errorf("telnet command failed: %w", err)
+	}
+	return nil
+}
+
+// escapeKey ends an interactive raw console session when read from the local
+// terminal (Ctrl-]), mirroring telnet's classic escape character since there
+// is no Telnet protocol here to negotiate a proper detach sequence.
+const escapeKey = 0x1d
+
+// escapeReader forwards bytes read from r until it sees escapeKey, at which
+// point it reports io.EOF instead of forwarding that byte (or anything read
+// afterward).
+type escapeReader struct {
+	r         io.Reader
+	triggered bool
+}
+
+func (e *escapeReader) Read(p []byte) (int, error) {
+	if e.triggered {
+		return 0, io.EOF
+	}
+	n, err := e.r.Read(p)
+	if n > 0 {
+		if idx := bytes.IndexByte(p[:n], escapeKey); idx >= 0 {
+			e.triggered = true
+			if idx == 0 {
+				return 0, io.EOF
+			}
+			return idx, nil
+		}
+	}
+	return n, err
+}
+
+// stdioReadWriter adapts the process's separate stdin/stdout streams to the
+// single io.ReadWriter that ReadWriterPipe expects.
+type stdioReadWriter struct {
+	io.Reader
+	io.Writer
+}
+
+// runConsoleRaw bridges the console gRPC stream directly to the local
+// terminal, without any Telnet protocol negotiation. If stdin is an
+// interactive terminal it is put into raw mode (no local echo or line
+// buffering) so keystrokes pass through untouched for the remote side (which
+// already echoes them back) to handle, and Ctrl-] detaches cleanly.
+func runConsoleRaw(grpcPipe utils.GrpcClientPipe[
+	pb.ConnectConsoleToEVERequest, pb.ConnectConsoleToEVEResponse]) error {
+	var stdin io.Reader = os.Stdin
+	stdinFd := int(os.Stdin.Fd())
+	if term.IsTerminal(stdinFd) {
+		oldState, err := term.MakeRaw(stdinFd)
+		if err != nil {
+			return fmt.Errorf("failed to set local terminal to raw mode: %w", err)
+		}
+		defer func() { _ = term.Restore(stdinFd, oldState) }()
+		stdin = &escapeReader{r: os.Stdin}
+		fmt.Fprint(os.Stderr, "Connected to EVE console. Press Ctrl-] to exit.\r\n")
+	}
+
+	stdioPipe := utils.ReadWriterPipe{
+		PipeName: "local terminal",
+		RW:       stdioReadWriter{Reader: stdin, Writer: os.Stdout},
+		Buf:      make([]byte, os.Getpagesize()),
+	}
+	utils.RunPipeProxy(context.Background(),
+		log.WithField("component", "eve-console"),
+		"EVE console", grpcPipe, stdioPipe)
+	return nil
 }
 
 func eveKubectlCmd() *cobra.Command {

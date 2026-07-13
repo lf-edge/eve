@@ -363,7 +363,12 @@ func TestLACPBond(test *testing.T) {
 	requiredNetModel := evetest.RequireNetworkModel{
 		NetworkModel: netmodels.TwoMgmtPortsOneBridge,
 	}
-	evetest.Setup(requiredDevice, requiredNetModel)
+	// LACP requires the provider to forward LACPDUs across the simulated
+	// links between EVE and the SDN; skip on providers that cannot.
+	requiredCaps := evetest.RequireCapabilities{
+		Capabilities: []api.Capability{api.Capability_CAPABILITY_FORWARD_LACP},
+	}
+	evetest.Setup(requiredDevice, requiredNetModel, requiredCaps)
 
 	device := evetest.GetEdgeDevice(devName)
 	evetest.Checkpoint("setup-done")

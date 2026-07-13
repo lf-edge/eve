@@ -7,7 +7,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"encoding/base64"
+	"encoding/hex"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -31,29 +31,38 @@ import (
 )
 
 const (
-	// If the broker does not receive any keep-alive messages from a client for 10 minutes,
+	// If the broker does not receive any keep-alive messages from a client for 5 minutes,
 	// the client session and all associated resources are automatically released.
-	keepAliveTimeout = 10 * time.Minute
+	keepAliveTimeout = 5 * time.Minute
 	// proxyChainPath is the default path where the optional proxy CA chain PEM file
 	// is expected. If present, its certificates will be loaded and appended to each EVE
 	// device trusted TLS roots. This is useful when running a transparent caching proxy
 	// to avoid re-downloading application images and Docker containers from remote
 	// registries or data stores.
 	proxyChainPath = "/etc/evetest/proxy/ca-chain.pem"
+	// sdnConnectTimeout bounds how long ConnectTunnelToSDN retries dialing the SDN's
+	// gRPC service before giving up -- the SDN VM takes time to finish booting, so
+	// early attempts are expected to fail. Bounds only the connect retry loop, not
+	// the tunnel stream itself.
+	sdnConnectTimeout       = 5 * time.Minute
+	sdnConnectRetryInterval = 3 * time.Second
 )
 
 type broker struct {
 	api.UnimplementedBrokerServer
-	globalLog      *logrus.Logger
-	provider       provider.DeviceProvider
-	providerName   string
-	imageDir       string
-	sdnGrpcPort    uint16
-	supportedArchs []api.ArchType
-	proxyCACerts   []*pem.Block
-	mutex          sync.Mutex
-	sessions       map[string]*session      // key: client ID
-	imageUploads   map[string]chan struct{} // key: docker image name; closed on completion
+	globalLog       *logrus.Logger
+	provider        provider.DeviceProvider
+	providerName    string
+	imageDir        string
+	sdnGrpcPort     uint16
+	supportedArchs  []api.ArchType
+	capabilities    []api.Capability
+	proxyCACerts    []*pem.Block
+	registryMirrors map[string][]string // key: registry hostname
+	maxClients      int                 // -1 means unlimited
+	mutex           sync.Mutex
+	sessions        map[string]*session      // key: client ID
+	imageUploads    map[string]chan struct{} // key: docker image name; closed on completion
 }
 
 type session struct {
@@ -98,7 +107,7 @@ type device struct {
 }
 
 func newBroker(log *logrus.Logger, provider provider.DeviceProvider,
-	providerName, imageDir string, sdnGrpcPort uint16) (*broker, error) {
+	providerName, imageDir string, sdnGrpcPort uint16, maxClients int) (*broker, error) {
 	supportedArchs, err := provider.GetSupportedDeviceArchs()
 	if err != nil {
 		return nil, fmt.Errorf("cannot retrieve supported device architectures: %w", err)
@@ -124,27 +133,33 @@ func newBroker(log *logrus.Logger, provider provider.DeviceProvider,
 			len(proxyCACerts), proxyChainPath)
 	}
 	return &broker{
-		globalLog:      log,
-		provider:       provider,
-		providerName:   providerName,
-		imageDir:       imageDir,
-		sdnGrpcPort:    sdnGrpcPort,
-		supportedArchs: supportedArchs,
-		proxyCACerts:   proxyCACerts,
-		sessions:       make(map[string]*session),
-		imageUploads:   make(map[string]chan struct{}),
+		globalLog:       log,
+		provider:        provider,
+		providerName:    providerName,
+		imageDir:        imageDir,
+		sdnGrpcPort:     sdnGrpcPort,
+		supportedArchs:  supportedArchs,
+		capabilities:    provider.Capabilities(),
+		proxyCACerts:    proxyCACerts,
+		registryMirrors: constants.LoadRegistryMirrors(),
+		maxClients:      maxClients,
+		sessions:        make(map[string]*session),
+		imageUploads:    make(map[string]chan struct{}),
 	}, nil
 }
 
-// generateClientID generates a short, URL-safe client ID.
-// 4 random bytes → 6 characters in base64 (URL-safe, no padding).
+// generateClientID generates a short client ID. It gets embedded directly into
+// generated VM names (e.g. "eve-<client-id>-<device-name>"), so hex is used
+// rather than base64: some providers (Proxmox) require VM names to look like
+// valid DNS labels, which rules out base64's '_' and '-' altogether -- hex's
+// alphabet ([0-9a-f]) is always safe there.
 func generateClientID() (string, error) {
 	const length = 4
 	b := make([]byte, length)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
-	return base64.URLEncoding.WithPadding(base64.NoPadding).EncodeToString(b), nil
+	return hex.EncodeToString(b), nil
 }
 
 func sdnProviderDevNameForClient(clientID string) string {
@@ -157,6 +172,10 @@ func clientNotFoundErr(clientID string) error {
 
 func eveDevNotFoundErr(devName string) error {
 	return fmt.Errorf("EVE device %q not found", devName)
+}
+
+func maxClientsReachedErr(current, limit int) error {
+	return fmt.Errorf("broker is at maximum client capacity (%d/%d); try again later", current, limit)
 }
 
 // generateUniqueClientID generates a unique client ID that doesn't exist
@@ -196,6 +215,11 @@ func (b *broker) Connect(
 		clientSession.log.Info("Reconnecting existing client")
 	} else {
 		// New client
+		if b.maxClients >= 0 && len(b.sessions) >= b.maxClients {
+			err := maxClientsReachedErr(len(b.sessions), b.maxClients)
+			b.globalLog.Error(err)
+			return nil, err
+		}
 		var err error
 		clientID, err = b.generateUniqueClientID()
 		if err != nil {
@@ -225,11 +249,22 @@ func (b *broker) Connect(
 		proxyCaCerts = append(proxyCaCerts, string(pemData))
 	}
 
+	// Advertise configured OCI registry mirrors in a stable order.
+	var registryMirrors []*api.RegistryMirror
+	for _, e := range constants.RegistryMirrorEntries {
+		if urls, ok := b.registryMirrors[e.Registry]; ok {
+			registryMirrors = append(registryMirrors,
+				&api.RegistryMirror{Registry: e.Registry, Urls: urls})
+		}
+	}
+
 	return &api.ConnectResponse{
-		ClientId:       clientID,
-		BrokerVersion:  version,
-		SupportedArchs: b.supportedArchs,
-		ProxyCaCerts:   proxyCaCerts,
+		ClientId:             clientID,
+		BrokerVersion:        version,
+		SupportedArchs:       b.supportedArchs,
+		ProviderCapabilities: b.capabilities,
+		ProxyCaCerts:         proxyCaCerts,
+		RegistryMirrors:      registryMirrors,
 	}, nil
 }
 
@@ -624,7 +659,7 @@ func (b *broker) PushEVEContainerImage(
 	}()
 
 	// Load image directly from streamed gzip
-	if err := utils.LoadDockerImageFromReader(ctx, log, pr); err != nil {
+	if err := utils.LoadDockerImageFromReader(ctx, log, pr, dockerImageName); err != nil {
 		err = fmt.Errorf("failed to load Docker image from stream: %w", err)
 		log.Error(err)
 		return err
@@ -827,9 +862,7 @@ func (b *broker) SetupDevices(
 			Name:       constants.SDNUplinkPortName,
 			MACAddress: uplinkMAC,
 			Connection: provider.ConnectionSpec{
-				Uplink: &provider.UplinkSpec{
-					EnableIPv6: req.SdnConfig.GetEnableIpv6(),
-				},
+				Uplink: &provider.UplinkSpec{},
 			},
 		})
 
@@ -1328,11 +1361,64 @@ func (b *broker) ConnectConsoleToDevice(
 	return nil
 }
 
+// sdnTunnelClientStream and sdnTunnelServerStream shorten the long generic
+// instantiations used throughout the SDN tunnel connect/retry logic below.
+type (
+	sdnTunnelClientStream = grpc.BidiStreamingClient[
+		api.ConnectTunnelToSDNRequest, api.ConnectTunnelToSDNResponse]
+	sdnTunnelServerStream = grpc.BidiStreamingServer[
+		api.ConnectTunnelToSDNRequest, api.ConnectTunnelToSDNResponse]
+)
+
+// connectSDNTunnel dials the SDN's gRPC endpoint at sdnAddr, opens the
+// ConnectTunnel stream, forwards the client's initial connect request, and
+// waits for the tunnel properties response. On any failure it cleans up and
+// returns an error, so the caller can just retry the whole thing on the next
+// attempt.
+func (b *broker) connectSDNTunnel(
+	ctx context.Context, sdnAddr string, initMsg *api.ConnectTunnelToSDNRequest) (
+	conn *grpc.ClientConn,
+	sdnStream sdnTunnelClientStream,
+	resp *api.ConnectTunnelToSDNResponse,
+	err error,
+) {
+	// Note: no I/O is performed by grpc.NewClient, connection to SDN
+	// is established with the first RPC call, which is ConnectTunnel() below.
+	conn, err = grpc.NewClient(sdnAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		err = fmt.Errorf("failed to create SDN client: %w", err)
+		return nil, nil, nil, err
+	}
+	sdnClient := api.NewSDNClient(conn)
+
+	sdnStream, err = sdnClient.ConnectTunnel(ctx)
+	if err != nil {
+		_ = conn.Close()
+		err = fmt.Errorf("failed to establish tunnel to SDN: %w", err)
+		return nil, nil, nil, err
+	}
+
+	if err = sdnStream.Send(initMsg); err != nil {
+		_ = conn.Close()
+		err = fmt.Errorf("failed to send connect request: %w", err)
+		return nil, nil, nil, err
+	}
+
+	resp, err = sdnStream.Recv()
+	if err != nil {
+		_ = conn.Close()
+		err = fmt.Errorf("failed to receive tunnel properties: %w", err)
+		return nil, nil, nil, err
+	}
+
+	return conn, sdnStream, resp, nil
+}
+
 // ConnectTunnelToSDN establishes a bidirectional gRPC tunnel for carrying
 // raw IP packets between the client and the SDN.
 // The tunnel allows full-duplex communication over a point-to-point link.
-func (b *broker) ConnectTunnelToSDN(
-	stream grpc.BidiStreamingServer[api.ConnectTunnelToSDNRequest, api.ConnectTunnelToSDNResponse]) error {
+func (b *broker) ConnectTunnelToSDN(stream sdnTunnelServerStream) error {
 	// Receive the first message from the client to extract the client ID.
 	initMsg, err := stream.Recv()
 	if err != nil {
@@ -1371,42 +1457,44 @@ func (b *broker) ConnectTunnelToSDN(
 	sdnIPs = clientSession.sdnDevice.uplinkIPs
 	b.mutex.Unlock()
 
-	// Connect to SDN gRPC endpoint; try every uplink IP address.
+	// Connect to SDN gRPC endpoint and complete its initial handshake; try every
+	// uplink IP, retrying until one succeeds or sdnConnectTimeout elapses -- the
+	// SDN VM takes real wall-clock time to finish booting and its mgmt agent to
+	// become ready, so early attempts can fail at any step, not just the dial.
+	connectCtx, cancel := context.WithTimeout(ctx, sdnConnectTimeout)
+	defer cancel()
 	var (
 		lastErr   error
 		conn      *grpc.ClientConn
-		sdnClient api.SDNClient
-		sdnStream grpc.BidiStreamingClient[
-			api.ConnectTunnelToSDNRequest, api.ConnectTunnelToSDNResponse]
+		sdnStream sdnTunnelClientStream
+		resp      *api.ConnectTunnelToSDNResponse
 	)
-	for _, sdnIP := range sdnIPs {
-		sdnAddr := net.JoinHostPort(sdnIP.String(), strconv.Itoa(int(b.sdnGrpcPort)))
+connectLoop:
+	for {
+		for _, sdnIP := range sdnIPs {
+			select {
+			case <-connectCtx.Done():
+				break connectLoop
+			default:
+			}
 
-		// Note: no I/O is performed by grpc.NewClient, connection to SDN
-		// is established with the first RPC call, which is ConnectTunnel() -- see below.
-		conn, lastErr = grpc.NewClient(sdnAddr,
-			grpc.WithTransportCredentials(insecure.NewCredentials()))
-		if lastErr != nil {
-			conn = nil
-			lastErr = fmt.Errorf("failed to create SDN client: %w", lastErr)
-			log.Warn(lastErr)
-			continue
-		}
-		sdnClient = api.NewSDNClient(conn)
+			sdnAddr := net.JoinHostPort(sdnIP.String(), strconv.Itoa(int(b.sdnGrpcPort)))
+			conn, sdnStream, resp, lastErr = b.connectSDNTunnel(ctx, sdnAddr, initMsg)
+			if lastErr != nil {
+				log.Warnf("Failed to connect to SDN gRPC at %s (will retry): %v",
+					sdnAddr, lastErr)
+				continue
+			}
 
-		// Send ConnectTunnel to SDN to establish point-to-point tunnel
-		sdnStream, lastErr = sdnClient.ConnectTunnel(ctx)
-		if lastErr != nil {
-			sdnClient = nil
-			_ = conn.Close()
-			conn = nil
-			lastErr = fmt.Errorf("failed to establish tunnel to SDN: %w", lastErr)
-			log.Warn(lastErr)
-			continue
+			log.Infof("Connected to SDN gRPC at %s", sdnAddr)
+			break connectLoop
 		}
 
-		log.Infof("Connected to SDN gRPC at %s", sdnAddr)
-		break
+		select {
+		case <-connectCtx.Done():
+			break connectLoop
+		case <-time.After(sdnConnectRetryInterval):
+		}
 	}
 	if conn == nil || sdnStream == nil {
 		err = fmt.Errorf(
@@ -1418,20 +1506,7 @@ func (b *broker) ConnectTunnelToSDN(
 	defer conn.Close()
 	defer sdnStream.CloseSend()
 
-	// Forward the initial request from the client to the SDN.
-	if err = sdnStream.Send(initMsg); err != nil {
-		err = fmt.Errorf("failed to send connect request: %w", err)
-		log.Error(err)
-		return err
-	}
-
-	// Receive and forward tunnel properties.
-	resp, err := sdnStream.Recv()
-	if err != nil {
-		err = fmt.Errorf("failed to receive tunnel properties: %w", err)
-		log.Error(err)
-		return err
-	}
+	// Forward the tunnel properties received from the SDN back to the client.
 	if err := stream.Send(resp); err != nil {
 		err = fmt.Errorf("failed to send SDN tunnel properties: %v", err)
 		log.Error(err)

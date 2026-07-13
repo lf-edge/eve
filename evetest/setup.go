@@ -385,14 +385,12 @@ func (th *TestHarness) pushEVEImageToBroker(imageRef *api.ImageRef) {
 // from DHCP server during the SDN setup. Any failure is considered fatal for
 // the test and will terminate execution.
 func (th *TestHarness) setupEVEDevices(
-	devices map[string]*deviceState, netModel *api.NetworkModel,
-	withIPv6 bool) (sdnUplinkIPs []string) {
+	devices map[string]*deviceState, netModel *api.NetworkModel) (sdnUplinkIPs []string) {
 	setupReq := &api.SetupDevicesRequest{
 		ClientId: th.brokerClientID,
 		SdnConfig: &api.SDNConfig{
 			ImageRepo:    viper.GetString(constants.SDNRepoEnv),
 			ImageVersion: viper.GetString(constants.SDNVersionEnv),
-			EnableIpv6:   withIPv6,
 		},
 	}
 
@@ -1304,7 +1302,8 @@ func (th *TestHarness) applyK3sRegistryMirrorIfConfigured() {
 //
 // /run is shared between EVE containers, so the script is staged there and then
 // executed inside the kube container via "eve exec" (nsenter-based, no TTY needed).
-func (th *TestHarness) configureContainerdRegistryMirror(devName string, mirrors map[string]string) {
+func (th *TestHarness) configureContainerdRegistryMirror(
+	devName string, mirrors map[string][]string) {
 	const (
 		certsD     = "/etc/containerd/certs.d"
 		ctrdConfig = "/etc/containerd/config-k3s.toml"
@@ -1314,7 +1313,11 @@ func (th *TestHarness) configureContainerdRegistryMirror(devName string, mirrors
 	var sb strings.Builder
 	// Iterate in stable order using RegistryMirrorEntries.
 	for _, e := range constants.RegistryMirrorEntries {
-		mirrorURL, ok := mirrors[e.Registry]
+		addrs, ok := mirrors[e.Registry]
+		if !ok {
+			continue
+		}
+		mirrorURL, ok := constants.SelectRegistryMirror(addrs, th.ipv6OnlyRegistryMirrors)
 		if !ok {
 			continue
 		}

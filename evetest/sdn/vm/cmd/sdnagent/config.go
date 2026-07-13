@@ -207,7 +207,6 @@ func (a *agent) getIntendedHostConnectivity() dg.Graph {
 		},
 		Usage:   configitems.IfUsageL3,
 		AdminUP: true,
-		MTU:     maxMTU,
 	}, nil)
 	intendedCfg.PutItem(configitems.Sysctl{
 		EnableIPv4Forwarding:  true,

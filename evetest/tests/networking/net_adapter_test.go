@@ -17,6 +17,7 @@ import (
 	eveinfo "github.com/lf-edge/eve-api/go/info"
 	evemetrics "github.com/lf-edge/eve-api/go/metrics"
 	"github.com/lf-edge/eve/evetest"
+	api "github.com/lf-edge/eve/evetest/grpcapi/go"
 	"github.com/lf-edge/eve/evetest/matchers"
 	"github.com/lf-edge/eve/evetest/netmodels"
 	pillartypes "github.com/lf-edge/eve/pkg/pillar/types"
@@ -264,7 +265,12 @@ func TestPNAC(test *testing.T) {
 	requiredNetModel := evetest.RequireNetworkModel{
 		NetworkModel: netmodels.SingleEthWithPNAC(requireSCEPProxy),
 	}
-	evetest.Setup(requiredDevice, requiredNetModel)
+	// 802.1X port authentication exchanges EAPOL frames across the simulated
+	// link between EVE and the SDN; skip on providers that cannot forward them.
+	requiredCaps := evetest.RequireCapabilities{
+		Capabilities: []api.Capability{api.Capability_CAPABILITY_FORWARD_EAPOL},
+	}
+	evetest.Setup(requiredDevice, requiredNetModel, requiredCaps)
 	device := evetest.GetEdgeDevice(devName)
 	evetest.Checkpoint("setup-done")
 

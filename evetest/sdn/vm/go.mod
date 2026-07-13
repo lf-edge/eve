@@ -9,7 +9,7 @@ require (
 	github.com/elazarl/goproxy/ext v0.0.0-20250305112401-088f758167d2
 	github.com/inconshreveable/go-vhost v1.0.0
 	github.com/lf-edge/eve-libs v0.0.0-20260304091825-96eaa95b9f8b
-	github.com/lf-edge/eve/evetest v0.0.0-20260701080440-c3225bd4593d
+	github.com/lf-edge/eve/evetest v0.0.0-20260708123554-006d204a691a
 	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260421125048-8d3825045e4e
 	github.com/sirupsen/logrus v1.9.4
 	github.com/vishvananda/netlink v1.3.1
@@ -59,6 +59,3 @@ require (
 	golang.org/x/text v0.37.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260401024825-9d38bb4040a9 // indirect
 )
-
-// TODO: this is necessary until this commit is merged into the upstream eve repository.
-replace github.com/lf-edge/eve/evetest => github.com/milan-zededa/eve/evetest v0.0.0-20260701143902-540581be0e46
