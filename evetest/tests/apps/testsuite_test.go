@@ -58,5 +58,8 @@ func TestAppsSuite(test *testing.T) {
 		evetest.TestCase{
 			Test: TestAppLogs,
 		},
+		evetest.TestCase{
+			Test: TestAppRestart,
+		},
 	)
 }
