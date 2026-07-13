@@ -32,7 +32,7 @@ DOCKER_PLATFORM ?= $(shell uname -s | tr '[A-Z]' '[a-z]')/$(subst aarch64,arm64,
 # Allocate a pseudo-TTY only when stdout is a terminal (i.e. interactive use).
 DOCKER_IT := $(shell [ -t 1 ] && echo '-it' || echo '-i')
 
-.PHONY: evetest list-tests _run_protoc proto clone-eve-api _install-broker
+.PHONY: evetest list-tests _run_protoc proto clone-eve-api _install-broker proxmox-broker-installer
 
 list-tests: ensure-evetest-image
 	@docker run --rm $(DOCKER_IT) \
@@ -218,12 +218,12 @@ build-broker-container:
 # (default: /home/eve-broker/images, which lives on /home - usually a larger
 # partition than /var). Note: sudo strips environment variables, so set it
 # on the make command line, e.g.:
-#     sudo make setup-broker-user EVETEST_BROKER_IMAGE_DIR=/data/evetest
-setup-broker-user:
+#     sudo make libvirt-setup-broker-user EVETEST_BROKER_IMAGE_DIR=/data/evetest
+libvirt-setup-broker-user:
 	@echo "Setting up eve-broker user and groups..."
 	@if [ "$$(id -u)" -ne 0 ]; then \
 		echo "Error: This target must be run as root."; \
-		echo "       Please rerun with: sudo make setup-broker-user"; \
+		echo "       Please rerun with: sudo make libvirt-setup-broker-user"; \
 		exit 1; \
 	fi
 	@if ! id -u eve-broker >/dev/null 2>&1; then \
@@ -251,10 +251,10 @@ setup-broker-user:
 			echo "         Check parent directory permissions or pick a different EVETEST_BROKER_IMAGE_DIR."; \
 		fi; \
 	fi
-	@echo "setup-broker-user complete. You can now run the container safely as eve-broker."
+	@echo "libvirt-setup-broker-user complete. You can now run the container safely as eve-broker."
 
 # Run broker container for the libvirt provider.
-run-broker-container:
+libvirt-run-broker-container:
 	@echo "Running Evetest Broker version $(EVETEST_VERSION)..."
 	# Capture EVETEST_* and DOCKER_* environment variables
 	$(eval EV_VARS := $(shell env | grep -E '^(EVETEST|DOCKER)_' | sed 's/^/-e /'))
@@ -274,7 +274,7 @@ endif
 		USER_OPT="-u $(EVE_BROKER_UID):$(EVE_BROKER_GID)"; \
 	else \
 		echo "Warning: eve-broker user not found. Running as root."; \
-		echo "         To improve security, run: sudo make setup-broker-user"; \
+		echo "         To improve security, run: sudo make libvirt-setup-broker-user"; \
 		USER_OPT=""; \
 	fi; \
 	# Run the broker container in privileged mode to allow enabling
@@ -300,6 +300,24 @@ _install-broker:
 	@echo "Installing evetest Broker version $(EVETEST_VERSION)..."
 	cd ./broker && go build -ldflags "-X main.version=$(EVETEST_VERSION)" -o $(GOBIN)/evetest-broker
 	@echo "Installed evetest Broker to $(GOBIN)/evetest-broker"
+
+# Assemble the self-contained Proxmox broker installer by embedding the
+# hookscript and cloud-init user-data into the installer template. The resulting
+# single script is what users download and run on the Proxmox host.
+PROXMOX_DEPLOY := deploy/proxmox
+PROXMOX_INSTALLER := $(PROXMOX_DEPLOY)/evetest-broker-proxmox-installer.sh
+proxmox-broker-installer:
+	@awk '\
+	  /@@TEMPLATE_NOTE_BEGIN@@/ { skip=1; next } \
+	  /@@TEMPLATE_NOTE_END@@/   { skip=0; next } \
+	  skip { next } \
+	  /^@@HOOKSCRIPT@@$$/     { f="$(PROXMOX_DEPLOY)/evetest-hook.pl";             while ((getline l < f) > 0) print l; close(f); next } \
+	  /^@@CLOUDINIT@@$$/      { f="$(PROXMOX_DEPLOY)/broker-cloudinit.yaml";       while ((getline l < f) > 0) print l; close(f); next } \
+	  /^@@MIRRORS_SCRIPT@@$$/ { f="$(PROXMOX_DEPLOY)/broker-registry-mirrors.sh";  while ((getline l < f) > 0) print l; close(f); next } \
+	  { print }' $(PROXMOX_DEPLOY)/installer.sh.tmpl \
+	  | sed 's|@@VERSION@@|$(EVETEST_VERSION)|g' > $(PROXMOX_INSTALLER)
+	@chmod +x $(PROXMOX_INSTALLER)
+	@echo "Assembled $(PROXMOX_INSTALLER) (broker image tag: $(EVETEST_VERSION))"
 
 install-cli:
 	@echo "Installing evetest CLI version $(EVETEST_VERSION)..."

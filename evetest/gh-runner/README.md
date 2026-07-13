@@ -2,7 +2,7 @@
 
 Scripts for creating and destroying a local KVM/libvirt Ubuntu VM that runs
 as a GitHub self-hosted runner, pre-configured for use with the evetest
-framework in distributed mode.
+framework in distributed mode with the libvirt provider.
 
 Intended for local experimentation only — not part of the production CI pipeline.
 
@@ -24,7 +24,7 @@ Intended for local experimentation only — not part of the production CI pipeli
 
   ```bash
   cd evetest   # from the EVE repo root
-  sudo make setup-broker-user
+  sudo make libvirt-setup-broker-user
   ```
 
 - Internet access (to download the Ubuntu cloud image on first run)
@@ -47,7 +47,7 @@ source ./evetest-runner.env  # sets EVETEST_API_ADDRESS to the VM's IP
 
 # 3. Start the broker on your laptop (in a separate terminal)
 cd ..  # Run from the evetest directory
-make run-broker-container
+make libvirt-run-broker-container
 
 # 4. Destroy the runner when done
 ./vm-destroy.sh --user ${GH_USERNAME} --pat ${GH_PAT}

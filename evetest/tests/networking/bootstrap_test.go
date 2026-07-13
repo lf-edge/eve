@@ -17,6 +17,7 @@ import (
 	"github.com/lf-edge/eve-api/go/evecommon"
 	eveinfo "github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/evetest"
+	api "github.com/lf-edge/eve/evetest/grpcapi/go"
 	"github.com/lf-edge/eve/evetest/matchers"
 	"github.com/lf-edge/eve/evetest/netmodels"
 	pillartypes "github.com/lf-edge/eve/pkg/pillar/types"
@@ -923,7 +924,12 @@ func TestBootstrapWithLACPBond(test *testing.T) {
 	requiredNetModel := evetest.RequireNetworkModel{
 		NetworkModel: netmodels.TwoMgmtPortsWithLACPBond,
 	}
-	evetest.Setup(requiredDevice, requiredNetModel)
+	// The SDN-side LACP bond requires the provider to forward LACPDUs across
+	// the simulated links between EVE and the SDN; skip on providers that cannot.
+	requiredCaps := evetest.RequireCapabilities{
+		Capabilities: []api.Capability{api.Capability_CAPABILITY_FORWARD_LACP},
+	}
+	evetest.Setup(requiredDevice, requiredNetModel, requiredCaps)
 
 	// If we got here, device was able to bootstrap controller connectivity using
 	// the bootstrap config or override.json.

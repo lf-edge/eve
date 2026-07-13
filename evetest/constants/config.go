@@ -114,7 +114,7 @@ const (
 
 	// SDNUplinkIPv4SubnetEnv specifies the IPv4 subnet to use for allocating IPv4
 	// addresses for SDN VM uplink interfaces.
-	// Maximum allowed prefix length is /29.
+	// Maximum allowed prefix length is /30.
 	// This is read by evetest-broker.
 	SDNUplinkIPv4SubnetEnv = "SDN_UPLINK_IPV4_SUBNET"
 
@@ -132,9 +132,50 @@ const (
 	// NOT YET SUPPORTED: LibvirtProvider always uses "qemu:///system" URI.
 	BrokerLibvirtURIEnv = "BROKER_LIBVIRT_URI"
 
+	// BrokerProxmoxAPIURLEnv specifies the Proxmox VE REST API base URL
+	// (e.g. "https://192.168.1.50:8006/api2/json"). Read by evetest-broker when
+	// proxmox is the selected device provider.
+	BrokerProxmoxAPIURLEnv = "BROKER_PROXMOX_API_URL"
+
+	// BrokerProxmoxPasswordEnv specifies the password for the "root@pam" Proxmox
+	// user. Read by evetest-broker for the proxmox provider. Must authenticate as
+	// the literal root@pam user, not an API token: Proxmox hardcodes several VM
+	// config options (e.g. "hookscript", "args") as settable only by a real
+	// "root@pam" session, regardless of a token's assigned privileges/ACLs :(
+	BrokerProxmoxPasswordEnv = "BROKER_PROXMOX_PASSWORD"
+
+	// BrokerProxmoxNodeEnv specifies the Proxmox node name on which to create VMs
+	// (e.g. "pve"). Optional: if unset, the broker auto-detects the node on a
+	// single-node installation; it is only required for multi-node clusters.
+	// Read by evetest-broker for the proxmox provider.
+	BrokerProxmoxNodeEnv = "BROKER_PROXMOX_NODE"
+
+	// BrokerProxmoxStorageEnv specifies the Proxmox storage ID used for VM disks
+	// (e.g. "local-lvm"). Read by evetest-broker for the proxmox provider.
+	BrokerProxmoxStorageEnv = "BROKER_PROXMOX_STORAGE"
+
+	// BrokerProxmoxImportStorageEnv specifies the Proxmox storage ID (with the
+	// "import" content type enabled, e.g. "local") that VM disk images are
+	// uploaded to before being imported into the VM disk storage.
+	// Defaults to "local". Read by evetest-broker for the proxmox provider.
+	BrokerProxmoxImportStorageEnv = "BROKER_PROXMOX_IMPORT_STORAGE"
+
+	// BrokerProxmoxTLSSkipVerifyEnv, when set to a truthy value, disables TLS
+	// certificate verification for the Proxmox API connection (useful with the
+	// default self-signed PVE certificate). Read by evetest-broker for the
+	// proxmox provider.
+	BrokerProxmoxTLSSkipVerifyEnv = "BROKER_PROXMOX_TLS_SKIP_VERIFY"
+
 	// BrokerImageDirEnv specifies the directory where evetest-broker
 	// should store the EVE and SDN disk images.
 	BrokerImageDirEnv = "BROKER_IMAGE_DIR"
+
+	// BrokerMaxClientsEnv specifies the maximum number of concurrent evetest clients
+	// the broker will serve. Once this many clients are connected, Connect calls
+	// for brand-new clients fail with an error until a session frees up (reconnects
+	// of already-connected clients are never blocked by this limit).
+	// -1 (default) means unlimited. Read by evetest-broker.
+	BrokerMaxClientsEnv = "BROKER_MAX_CLIENTS"
 
 	// ExternalArtifactDirEnv specifies a host-side directory path where all test
 	// artifacts should be collected.
@@ -153,33 +194,39 @@ const (
 	// by the user.
 	InternalArtifactDirEnv = "ARTIFACT_DIR"
 
-	// RegistryMirrorDockerEnv specifies a pull-through cache URL
-	// ([scheme://]host:port[/path]) for docker.io image pulls.
+	// RegistryMirrorDockerEnv specifies one or more comma-separated
+	// pull-through cache URLs ([scheme://]host:port[/path], IPv6 hosts
+	// bracketed, e.g. "http://[fd11::5]:5000") for docker.io image pulls.
 	// This is read by the evetest container.
 	RegistryMirrorDockerEnv = "REGISTRY_MIRROR_DOCKER"
 
-	// RegistryMirrorGhcrEnv specifies a pull-through cache URL
-	// ([scheme://]host:port[/path]) for ghcr.io image pulls.
+	// RegistryMirrorGhcrEnv specifies one or more comma-separated
+	// pull-through cache URLs ([scheme://]host:port[/path], IPv6 hosts
+	// bracketed) for ghcr.io image pulls.
 	// This is read by the evetest container.
 	RegistryMirrorGhcrEnv = "REGISTRY_MIRROR_GHCR"
 
-	// RegistryMirrorQuayEnv specifies a pull-through cache URL
-	// ([scheme://]host:port[/path]) for quay.io image pulls.
+	// RegistryMirrorQuayEnv specifies one or more comma-separated
+	// pull-through cache URLs ([scheme://]host:port[/path], IPv6 hosts
+	// bracketed) for quay.io image pulls.
 	// This is read by the evetest container.
 	RegistryMirrorQuayEnv = "REGISTRY_MIRROR_QUAY"
 
-	// RegistryMirrorK8sEnv specifies a pull-through cache URL
-	// ([scheme://]host:port[/path]) for registry.k8s.io image pulls.
+	// RegistryMirrorK8sEnv specifies one or more comma-separated
+	// pull-through cache URLs ([scheme://]host:port[/path], IPv6 hosts
+	// bracketed) for registry.k8s.io image pulls.
 	// This is read by the evetest container.
 	RegistryMirrorK8sEnv = "REGISTRY_MIRROR_K8S"
 
-	// RegistryMirrorGcrEnv specifies a pull-through cache URL
-	// ([scheme://]host:port[/path]) for gcr.io image pulls.
+	// RegistryMirrorGcrEnv specifies one or more comma-separated
+	// pull-through cache URLs ([scheme://]host:port[/path], IPv6 hosts
+	// bracketed) for gcr.io image pulls.
 	// This is read by the evetest container.
 	RegistryMirrorGcrEnv = "REGISTRY_MIRROR_GCR"
 
-	// RegistryMirrorMcrEnv specifies a pull-through cache URL
-	// ([scheme://]host:port[/path]) for mcr.microsoft.com image pulls.
+	// RegistryMirrorMcrEnv specifies one or more comma-separated
+	// pull-through cache URLs ([scheme://]host:port[/path], IPv6 hosts
+	// bracketed) for mcr.microsoft.com image pulls.
 	// This is read by the evetest container.
 	RegistryMirrorMcrEnv = "REGISTRY_MIRROR_MCR"
 )
@@ -242,11 +289,14 @@ const (
 
 	// DefaultBrokerImageDir is the default location for EVE and SDN disk images.
 	// It is under the home directory of the eve-broker user (created by the
-	// setup-broker-user Makefile target) because /home is typically a separate,
+	// libvirt-setup-broker-user Makefile target) because /home is typically a separate,
 	// larger partition than /var (where libvirt's stock storage pool lives),
 	// and /home/eve-broker is already accessible to libvirt-qemu via the
-	// group memberships configured by setup-broker-user.
+	// group memberships configured by libvirt-setup-broker-user.
 	DefaultBrokerImageDir = "/home/eve-broker/images"
+
+	// DefaultBrokerMaxClients means "unlimited" -- no cap on concurrent clients.
+	DefaultBrokerMaxClients = -1
 )
 
 // InitViperConfig initializes the Viper configuration with default values.
@@ -292,6 +342,7 @@ func InitViperConfig() {
 	viper.SetDefault(BrokerProviderEnv, DefaultBrokerProvider)
 	viper.SetDefault(BrokerLibvirtURIEnv, DefaultBrokerLibvirtURI)
 	viper.SetDefault(BrokerImageDirEnv, DefaultBrokerImageDir)
+	viper.SetDefault(BrokerMaxClientsEnv, DefaultBrokerMaxClients)
 
 	// Per-registry pull-through cache mirrors
 	for _, e := range RegistryMirrorEntries {
@@ -317,14 +368,74 @@ var RegistryMirrorEntries = []RegistryMirrorEntry{
 	{"mcr.microsoft.com", RegistryMirrorMcrEnv},
 }
 
-// LoadRegistryMirrors returns a map of registry hostname → mirror URL
-// for all per-registry mirror env vars that are currently set.
-func LoadRegistryMirrors() map[string]string {
-	mirrors := make(map[string]string)
+// LoadRegistryMirrors returns a map of registry hostname → mirror URLs for
+// all per-registry mirror env vars that are currently set. Each env var may
+// hold a comma-separated list of URLs (e.g. one IPv4 and one IPv6 address for
+// the same mirror); use SelectRegistryMirror to pick one.
+func LoadRegistryMirrors() map[string][]string {
+	mirrors := make(map[string][]string)
 	for _, e := range RegistryMirrorEntries {
-		if url := viper.GetString(e.EnvVar); url != "" {
-			mirrors[e.Registry] = url
+		raw := viper.GetString(e.EnvVar)
+		if raw == "" {
+			continue
+		}
+		var urls []string
+		for _, url := range strings.Split(raw, ",") {
+			if url = strings.TrimSpace(url); url != "" {
+				urls = append(urls, url)
+			}
+		}
+		if len(urls) > 0 {
+			mirrors[e.Registry] = urls
 		}
 	}
 	return mirrors
+}
+
+// isIPv6MirrorURL reports whether a mirror URL's host is a bracketed IPv6
+// literal (e.g. "http://[fd11::5]:5000"), as opposed to an IPv4 or hostname
+// address.
+func isIPv6MirrorURL(url string) bool {
+	return strings.Contains(url, "://[")
+}
+
+// SelectRegistryMirror picks one address from a registry's configured mirror
+// URLs (as returned by LoadRegistryMirrors).
+//
+// If ipv6Only is true, it returns the first IPv6 URL, or ok=false if none of
+// the given addresses are IPv6 -- callers should treat that as "no mirror
+// available" for this registry rather than falling back to an address the
+// device can't reach.
+//
+// Otherwise it prefers the first non-IPv6 (IPv4/hostname) URL, falling back
+// to the first URL of any kind if only IPv6 addresses are configured.
+func SelectRegistryMirror(urls []string, ipv6Only bool) (url string, ok bool) {
+	if ipv6Only {
+		for _, u := range urls {
+			if isIPv6MirrorURL(u) {
+				return u, true
+			}
+		}
+		return "", false
+	}
+	for _, u := range urls {
+		if !isIPv6MirrorURL(u) {
+			return u, true
+		}
+	}
+	if len(urls) > 0 {
+		return urls[0], true
+	}
+	return "", false
+}
+
+// RegistryMirrorEnvVar returns the env var name that configures the
+// pull-through cache mirror for the given registry hostname.
+func RegistryMirrorEnvVar(registry string) (string, bool) {
+	for _, e := range RegistryMirrorEntries {
+		if e.Registry == registry {
+			return e.EnvVar, true
+		}
+	}
+	return "", false
 }

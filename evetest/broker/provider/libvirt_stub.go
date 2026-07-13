@@ -35,6 +35,11 @@ func (p *LibvirtProvider) GetSupportedDeviceArchs() ([]api.ArchType, error) {
 	panic("unreachable")
 }
 
+// Capabilities is not implemented in CGO-disabled builds.
+func (p *LibvirtProvider) Capabilities() []api.Capability {
+	panic("unreachable")
+}
+
 // SetupDevice is not implemented in CGO-disabled builds.
 func (p *LibvirtProvider) SetupDevice(_ context.Context, _ string, _ DeviceSpec) error {
 	panic("unreachable")

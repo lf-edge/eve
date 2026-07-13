@@ -16,6 +16,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -44,6 +45,14 @@ const (
 	// Timeout for closing a broker connection, including tearing down
 	// all resources associated with the client.
 	brokerCloseTimeout = time.Minute
+
+	// Interval between KeepAlive pings sent to the broker. This is what keeps
+	// the underlying gRPC connection from going idle -- some network paths
+	// between the evetest container and a remote broker (e.g. NAT/firewalls)
+	// silently drop a TCP connection that's been quiet for less than a
+	// minute, even mid-RPC (surfacing later as a "connection reset by peer" on
+	// whichever call/stream tries to use it next). Kept well under that.
+	brokerKeepAlivePingInterval = 15 * time.Second
 
 	// Timeout for the broker to build an EVE VM image.
 	brokerBuildImageTimeout = 5 * time.Minute
@@ -197,6 +206,11 @@ type TestHarness struct {
 	test  testState
 	suite *testSuiteState // nil if running a single test
 
+	// ipv6OnlyRegistryMirrors is set for the currently running test from its
+	// RequireIPv6OnlyRegistryMirrors requirement (or false if not declared;
+	// reset on every Setup() call so it never leaks into the next test).
+	ipv6OnlyRegistryMirrors bool
+
 	// Go routines management
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -216,6 +230,7 @@ type TestHarness struct {
 	brokerClient         api.BrokerClient
 	brokerClientID       string
 	brokerSupportedArchs []api.ArchType
+	brokerCapabilities   []api.Capability
 
 	// Controller
 	adamClient   *controller.AdamClient
@@ -584,9 +599,27 @@ func Init(t *testing.T) *T {
 	}
 	th.brokerClientID = connectResp.ClientId
 	th.brokerSupportedArchs = connectResp.SupportedArchs
-	th.log.Infof("Connected to broker at %s (client_id=%s, version=%s, archs=%v)",
+	th.brokerCapabilities = connectResp.ProviderCapabilities
+	th.log.Infof("Connected to broker at %s (client_id=%s, version=%s, archs=%v, capabilities=%v)",
 		brokerAddr, th.brokerClientID, connectResp.BrokerVersion,
-		th.brokerSupportedArchs)
+		th.brokerSupportedArchs, th.brokerCapabilities)
+
+	// Apply broker-provided OCI registry mirrors, unless the user already
+	// set the corresponding REGISTRY_MIRROR_* env var on this container.
+	for _, m := range connectResp.RegistryMirrors {
+		envVar, ok := constants.RegistryMirrorEnvVar(m.Registry)
+		if !ok {
+			continue
+		}
+		if os.Getenv(constants.EnvPrefix+envVar) != "" {
+			th.log.Debugf("Ignoring broker-provided registry mirror for %s: "+
+				"%s is already set", m.Registry, envVar)
+			continue
+		}
+		urls := strings.Join(m.Urls, ",")
+		viper.Set(envVar, urls)
+		th.log.Infof("Applied broker-provided registry mirror for %s: %s", m.Registry, urls)
+	}
 
 	// Run broker keep-alive stream.
 	th.wg.Add(1)
@@ -756,9 +789,25 @@ func Logger() *logrus.Logger {
 // SDN virtual machines, establish connectivity to the SDN gRPC service using
 // a broker-proxied IP-over-TCP tunnel, and apply the requested network model.
 //
-// When Setup returns successfully, all requirements are satisfied and the
-// EVE device(s) is/are powered on and onboarded into the controller. Any failure
-// during setup results in the test being failed or skipped.
+// requireCapabilities skips the current test if the active device provider
+// (as advertised by the broker at connect time) does not support all of the
+// given capabilities. Duplicate and unspecified entries are ignored.
+func (th *TestHarness) requireCapabilities(required []api.Capability) {
+	for _, cap := range required {
+		if cap == api.Capability_CAPABILITY_UNSPECIFIED {
+			continue
+		}
+		if !generics.ContainsItem(th.brokerCapabilities, cap) {
+			th.t.Skipf("the active device provider does not support required "+
+				"capability %s", cap)
+		}
+	}
+}
+
+// Setup processes the given requirements. When it returns successfully, all
+// requirements are satisfied and the EVE device(s) is/are powered on and
+// onboarded into the controller. Any failure during setup results in the
+// test being failed or skipped.
 func Setup(requirements ...Requirement) {
 	th := getTestHarness()
 	defer th.log.Infof("Setup complete")
@@ -767,6 +816,8 @@ func Setup(requirements ...Requirement) {
 	edgeDevReqs := make(map[string]RequireEdgeDevice) // key: device name
 	var netModel *api.NetworkModel
 	var internetReq *RequireInternetConnectivity
+	var requiredCaps []api.Capability
+	th.ipv6OnlyRegistryMirrors = false
 
 	for _, requirement := range requirements {
 		switch req := requirement.(type) {
@@ -775,14 +826,25 @@ func Setup(requirements ...Requirement) {
 				th.t.Fatalf("Duplicate edge device name: %s", req.Name)
 			}
 			edgeDevReqs[req.Name] = req
+			// A device that requires a TPM needs a provider able to attach one.
+			if req.WithTPM {
+				requiredCaps = append(requiredCaps, api.Capability_CAPABILITY_TPM)
+			}
 		case RequireNetworkModel:
 			netModel = proto.CloneOf(req.NetworkModel)
 		case RequireInternetConnectivity:
 			internetReq = &req
+		case RequireCapabilities:
+			requiredCaps = append(requiredCaps, req.Capabilities...)
+		case RequireIPv6OnlyRegistryMirrors:
+			th.ipv6OnlyRegistryMirrors = true
 		default:
 			th.t.Fatalf("Unsupported requirement: %T", req)
 		}
 	}
+
+	// Skip the test if the active provider does not advertise a required capability.
+	th.requireCapabilities(requiredCaps)
 
 	// Validate edge device requirement.
 	if len(edgeDevReqs) == 0 {
@@ -860,14 +922,13 @@ func Setup(requirements ...Requirement) {
 
 	// Setup EVE devices.
 	devices := make(map[string]*deviceState)
-	withIPv6 := internetReq != nil && internetReq.RequireIPv6
 	for devName, devReq := range edgeDevReqs {
 		devState := &deviceState{name: devName, requirement: devReq}
 		devices[devName] = devState
 		th.prepareEVEDeviceForOnboarding(devState)
 		th.prepareImageForEVEDevice(devState)
 	}
-	sdnUplinkIPs := th.setupEVEDevices(devices, netModel, withIPv6)
+	sdnUplinkIPs := th.setupEVEDevices(devices, netModel)
 	th.devicesM.Lock()
 	th.devices = devices
 	th.devicesM.Unlock()
@@ -1181,7 +1242,7 @@ func (th *TestHarness) runBrokerKeepAlive() {
 		return
 	}
 
-	ticker := time.NewTicker(time.Minute)
+	ticker := time.NewTicker(brokerKeepAlivePingInterval)
 	defer ticker.Stop()
 
 	// Loop to send periodic pings and receive pongs

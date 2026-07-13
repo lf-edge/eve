@@ -256,6 +256,9 @@ func TestApplicationIPv6Connectivity(test *testing.T) {
 		// IPv6 internet access is required: the device is IPv6-only, so the
 		// app image must be pulled over IPv6.
 		evetest.RequireInternetConnectivity{RequireIPv6: true},
+		// The device has no IPv4 route, so an IPv4-only registry mirror is
+		// unreachable; only use mirror addresses that are themselves IPv6.
+		evetest.RequireIPv6OnlyRegistryMirrors{},
 	)
 	device := evetest.GetEdgeDevice(devName)
 	evetest.Checkpoint("setup-done")

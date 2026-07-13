@@ -24,6 +24,27 @@ enum HypervisorType {
   HV_KUBEVIRT = 3;
 }
 
+// Capability describes an optional, provider-specific feature that a device
+// provider may or may not support. Tests declare the capabilities they need as
+// requirements; a test is skipped when the active provider does not advertise a
+// required capability. Mostly used for special features that are not universally
+// available across all providers (e.g. forwarding of link-local L2 protocols,
+// which some providers can only enable via host-level tweaks).
+enum Capability {
+  CAPABILITY_UNSPECIFIED = 0;
+  // Forwarding of LACP (802.3ad link aggregation control) frames across the
+  // simulated point-to-point links between the EVE device and the SDN.
+  CAPABILITY_FORWARD_LACP = 1;
+  // Forwarding of EAPOL (Extensible Authentication Protocol over LAN, used by
+  // IEEE 802.1X port-based authentication) frames across the simulated links.
+  CAPABILITY_FORWARD_EAPOL = 2;
+  // Forwarding of LLDP (Link Layer Discovery Protocol) frames across the
+  // simulated links.
+  CAPABILITY_FORWARD_LLDP = 3;
+  // Attachment of an emulated TPM (Trusted Platform Module) to the device.
+  CAPABILITY_TPM = 4;
+}
+
 // Reference to a specific EVE image used for provisioning or testing.
 message ImageRef {
   string repo = 1; // e.g. "lfedge/eve"

@@ -13,6 +13,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	cerrdefs "github.com/containerd/errdefs"
 	"github.com/distribution/reference"
@@ -160,7 +161,8 @@ func StreamDockerImageGzip(ctx context.Context, imageName string) (io.ReadCloser
 //
 // Image data is consumed incrementally and decompressed on the fly, allowing
 // large images to be loaded without buffering the entire archive in memory.
-func LoadDockerImageFromReader(ctx context.Context, log *logrus.Entry, r io.Reader) error {
+func LoadDockerImageFromReader(
+	ctx context.Context, log *logrus.Entry, r io.Reader, imageName string) error {
 	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
 		return fmt.Errorf("failed to create docker client: %w", err)
@@ -178,7 +180,7 @@ func LoadDockerImageFromReader(ctx context.Context, log *logrus.Entry, r io.Read
 	}
 	defer resp.Close()
 
-	if err := logDockerResp(log, resp); err != nil {
+	if err := logDockerResp(log, resp, imageName); err != nil {
 		log.Warnf("failed to log ImageLoad response: %v", err)
 	}
 	return nil
@@ -210,7 +212,7 @@ func PullDockerImage(ctx context.Context, log *logrus.Entry, imageName string) e
 	}
 	defer resp.Close()
 
-	if err = logDockerResp(log, resp); err != nil {
+	if err = logDockerResp(log, resp, imageName); err != nil {
 		log.Warnf("Failed to log ImagePull response: %v", err)
 	}
 	return nil
@@ -487,20 +489,104 @@ func getEncodedAuth(log *logrus.Entry, image string) (string, error) {
 	return base64.StdEncoding.EncodeToString(encodedJSON), nil
 }
 
-// logDockerResp reads a Docker API response from resp and logs each line to log.Debug.
+// logDockerResp reads a Docker API response from resp and logs each line to
+// log.Debug. Docker reports per-layer pull/push/extract progress as one JSON
+// line per layer per update, which is far too noisy to log individually (many
+// lines a second); those are aggregated into a single overall percentage for
+// imageName, logged at most once per second. Any other line (status messages
+// without progress detail) is logged as-is.
 // Ensures the response body is closed when done.
 // Returns an error if reading fails.
-func logDockerResp(log *logrus.Entry, resp io.ReadCloser) error {
+func logDockerResp(log *logrus.Entry, resp io.ReadCloser, imageName string) error {
 	defer resp.Close()
+
+	type layerProgress struct {
+		Current int64 `json:"current"`
+		Total   int64 `json:"total"`
+	}
+	type dockerMsg struct {
+		ID       string         `json:"id,omitempty"`
+		Status   string         `json:"status,omitempty"`
+		Progress *layerProgress `json:"progressDetail,omitempty"`
+	}
+
+	const logInterval = time.Second
+	// seenLayerIDs tracks every distinct layer ID Docker has mentioned so far,
+	// including bare status lines with no progressDetail yet (e.g. "Pulling fs
+	// layer"). Docker reports one such line per layer up front, before any real
+	// download progress begins, so this lets the aggregate percentage below
+	// wait until every layer has been accounted for -- otherwise an early
+	// progressDetail for just one (possibly tiny) layer would get reported as
+	// "100%" against a total that doesn't yet include the rest of the image.
+	seenLayerIDs := make(map[string]struct{})
+	// skippedLayerIDs holds layers that need no download at all (already
+	// present locally, reported as "Already exists" with no further messages
+	// for that ID) -- they must not count toward download bytes, but must
+	// still count as "accounted for" below, or the gate would wait forever
+	// for a "Downloading" message that will never come.
+	skippedLayerIDs := make(map[string]struct{})
+	layers := make(map[string]layerProgress)
+	var lastLogged time.Time
+	var loggedFinal bool
+
 	rd := bufio.NewReader(resp)
 	for {
 		n, _, err := rd.ReadLine()
-		if err != nil && err == io.EOF {
-			break
-		} else if err != nil {
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
 			return err
 		}
-		log.Debug(string(n))
+
+		var msg dockerMsg
+		// The very first line of any pull is a repo-level status ("Pulling
+		// from <repo>") whose "id" is actually the tag being pulled, not a
+		// layer digest -- it never gets a matching progressDetail, so it must
+		// not be tracked as a layer or seenLayerIDs would never be satisfied.
+		if jsonErr := json.Unmarshal(n, &msg); jsonErr != nil || msg.ID == "" ||
+			strings.HasPrefix(msg.Status, "Pulling from ") {
+			log.Debug(string(n))
+			continue
+		}
+		seenLayerIDs[msg.ID] = struct{}{}
+		if msg.Status == "Already exists" {
+			skippedLayerIDs[msg.ID] = struct{}{}
+			log.Trace(string(n))
+			continue
+		}
+		// Only aggregate the "Downloading" phase. Docker reports progress for
+		// the same layer ID in multiple phases (Downloading: compressed bytes
+		// transferred; Extracting: uncompressed bytes written to disk, a
+		// different and usually larger total) that overwrite each other in
+		// the map below -- mixing them in would make the aggregate total/
+		// percentage jump around as different layers move between phases,
+		// rather than monotonically reflecting download progress.
+		if msg.Progress == nil || msg.Status != "Downloading" {
+			log.Trace(string(n))
+			continue
+		}
+		layers[msg.ID] = *msg.Progress
+		if len(layers)+len(skippedLayerIDs) < len(seenLayerIDs) {
+			// Still waiting to hear about every layer (either its download
+			// progress, or that it needs no download at all).
+			continue
+		}
+
+		var current, total int64
+		for _, p := range layers {
+			current += p.Current
+			total += p.Total
+		}
+		if total == 0 || loggedFinal {
+			continue
+		}
+		if done := current >= total; done || time.Since(lastLogged) >= logInterval {
+			log.Infof("Pull progress for %q: %.1f%% (%d/%d bytes, %d layers)",
+				imageName, float64(current)/float64(total)*100, current, total, len(layers))
+			lastLogged = time.Now()
+			loggedFinal = done
+		}
 	}
 	return nil
 }

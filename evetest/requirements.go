@@ -216,3 +216,23 @@ type RequireInternetConnectivity struct {
 }
 
 func (r RequireInternetConnectivity) isRequirement() {}
+
+// RequireCapabilities : requirement for one or more optional, provider-specific
+// capabilities (e.g. forwarding of link-local L2 protocols). A test declaring
+// this requirement is skipped when the active device provider does not advertise
+// all of the listed capabilities.
+type RequireCapabilities struct {
+	Capabilities []api.Capability
+}
+
+func (r RequireCapabilities) isRequirement() {}
+
+// RequireIPv6OnlyRegistryMirrors : requirement to only use IPv6 addresses of
+// configured OCI registry mirrors when building app image datastore configs
+// (for tests where the device itself is IPv6-only). A registry with no IPv6
+// mirror address configured is simply not mirrored for that app (falls back
+// to pulling from the real, un-mirrored registry) rather than failing or
+// skipping the test -- a missing mirror is only a performance optimization.
+type RequireIPv6OnlyRegistryMirrors struct{}
+
+func (r RequireIPv6OnlyRegistryMirrors) isRequirement() {}

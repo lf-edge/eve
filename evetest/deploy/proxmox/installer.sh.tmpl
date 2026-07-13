@@ -1,0 +1,546 @@
+#!/bin/sh
+# Copyright (c) 2026 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
+# evetest broker installer for Proxmox VE.
+#
+# @@TEMPLATE_NOTE_BEGIN@@
+# This is a TEMPLATE. The `make proxmox-broker-installer` target assembles the
+# self-contained `evetest-broker-proxmox-installer.sh` by replacing the
+# whole-line HOOKSCRIPT, CLOUDINIT and MIRRORS_SCRIPT markers below with the
+# contents of evetest-hook.pl, broker-cloudinit.yaml and
+# broker-registry-mirrors.sh. The assembled script is what users download and
+# run on the Proxmox host:
+# @@TEMPLATE_NOTE_END@@
+#   ssh root@<pve-host>
+#   wget <release-url>/evetest-broker-proxmox-installer.sh
+#   chmod +x evetest-broker-proxmox-installer.sh
+#   ./evetest-broker-proxmox-installer.sh [flags]
+#
+# It runs as root on the PVE host and: installs the hookscript, pre-provisions
+# the evetest SDN zone + uplink VNet/subnet, and creates+starts the dual-homed
+# broker VM (LAN NIC for its gRPC + SDN-uplink NIC to reach SDN VMs). The broker
+# inside the VM talks to the Proxmox API as root@pam, using the URL/password below.
+#
+# See `evetest/deploy/proxmox/README.md` for the prerequisites required to run
+# this script.
+
+set -eu
+
+# ----- defaults -------------------------------------------------------------
+DESTROY=false
+VM_NAME="evetest-broker"
+DEFAULT_UPLINK_SUBNET="192.168.170.0/24"
+API_URL=""
+NODE=""
+STORAGE="local-lvm"
+IMPORT_STORAGE="local"
+TLS_SKIP_VERIFY="true"
+UPLINK_SUBNET="$DEFAULT_UPLINK_SUBNET"
+# IPv6 uplink subnet added to the uplink VNet (evu). Must be of the form
+# "<prefix>::/64" (an internal ULA). Empty to skip IPv6. Auto-disabled below
+# (unless explicitly passed via --uplink-ipv6-subnet) if the host has no IPv6
+# route to the internet, since PVE needs one to set up the subnet's SNAT rule.
+UPLINK_IPV6_SUBNET="fd11:778b:03dd:2222::/64"
+UPLINK_IPV6_SUBNET_EXPLICIT=false
+LAN_BRIDGE="vmbr0"
+UPLINK_VNET="evu"
+# @@VERSION@@ is replaced with evetest/VERSION when the installer is assembled
+# (make proxmox-broker-installer), e.g. lfedge/evetest-broker:v0.0.1.
+# TODO: Replace the image repository with lfedge once it has been created.
+BROKER_IMAGE="milan4zededa/evetest-broker:@@VERSION@@"
+BROKER_VM_CORES="4"
+BROKER_VM_MEMORY="8192"
+BROKER_VM_DISK="64"          # GiB; hosts all the pulled/cached Docker images
+BROKER_VM_SSH_PUBKEY=""
+BROKER_VM_IMAGE_URL="https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img"
+# Empty means the broker uses its own default (INFO); e.g. "debug" for verbose logs.
+BROKER_LOG_LEVEL=""
+# -1 means unlimited (the broker's own default). Caps how many evetest clients the
+# broker will accept concurrently, as a simple guard against hypervisor overprovisioning.
+BROKER_MAX_CLIENTS="-1"
+# When enabled, the broker VM also runs six registry:2 pull-through cache
+# containers (one per registry in evetest's REGISTRY_MIRROR_* set), listening
+# on the uplink NIC, and their addresses are written into broker.env so the
+# broker advertises them to evetest clients over Connect.
+WITH_OCI_MIRRORS="false"
+REGISTRY_MIRROR_BASE_PORT="5000"
+# Registry credentials for the broker's own Docker-out-of-Docker image builds
+# (docker-out-of-docker; the broker drives the host's Docker daemon to build
+# EVE/SDN images). Written to /root/.docker/config.json on the broker VM.
+DOCKER_USERNAME=""
+DOCKER_PASSWORD=""
+DOCKER_REGISTRY="https://index.docker.io/v1/"
+# Shared directory for the broker's Docker-out-of-Docker image builds; must be
+# bind-mounted at this SAME path on both sides (see broker-cloudinit.yaml).
+BROKER_IMAGE_DIR="/root/.evetest/images"
+
+SDN_ZONE="evetest"
+SNIPPETS_DIR="/var/lib/vz/snippets"
+HOOK_VOLID="local:snippets/evetest-hook.pl"
+CLOUDINIT_VOLID="local:snippets/evetest-broker-cloudinit.yaml"
+
+usage() {
+    cat <<USAGE
+Usage: evetest-broker-proxmox-installer.sh [flags]
+
+Broker -> Proxmox API (written into the broker VM's /etc/evetest/broker.env):
+  The broker authenticates as root@pam; you will be prompted for its password
+  interactively (input is masked, never accepted as a flag).
+  --api-url URL               Default https://<detected-host-ip>:8006/api2/json
+  --node NAME                 Default: this host's node name.
+  --storage ID                VM disk storage. Default: local-lvm
+  --import-storage ID         Storage (with 'import' content) for image uploads.
+                              Default: local
+  --tls-skip-verify BOOL      Default: true (self-signed PVE cert)
+  --uplink-subnet CIDR        SDN uplink IPv4 subnet. Default: 192.168.170.0/24
+  --uplink-ipv6-subnet CIDR   IPv6 subnet added to the uplink VNet (evu), of
+                              the form <prefix>::/64. Default: fd11:778b:03dd:2222::/64,
+                              auto-disabled if this host has no IPv6 route to the
+                              internet (required by PVE to set up the subnet's SNAT
+                              rule). Pass explicitly to force it on. Empty to skip IPv6.
+
+Broker VM shape:
+  --lan-bridge NAME             External LAN bridge for the broker VM net0. Default: vmbr0
+  --uplink-vnet NAME            SDN uplink VNet for the broker VM net1. Default: evu
+  --broker-image IMAGE          Broker container image:tag. Default: $BROKER_IMAGE
+  --broker-vm-cores N           Default: 4
+  --broker-vm-memory MiB        Default: 8192
+  --broker-vm-disk GiB          Default: 64 (hosts all the pulled/cached Docker images)
+  --broker-vm-ssh-pubkey FILE   Public key injected into the broker VM's default
+                                "ubuntu" user (optional; root SSH login is disabled).
+  --broker-vm-image-url URL     Ubuntu cloud image. Default: Ubuntu 24.04 amd64.
+  --broker-log-level LEVEL      Broker's own log verbosity (e.g. debug, info, warn,
+                                error). Default: the broker's own default (info).
+  --broker-max-clients N        Max concurrent evetest clients the broker will accept;
+                                new connections are rejected once this many are already
+                                connected. Default: -1 (unlimited).
+
+OCI registry mirrors:
+  --with-oci-registry-mirrors        Run a registry:2 pull-through cache on the
+                                     broker VM for each of docker.io, ghcr.io, quay.io,
+                                     registry.k8s.io, gcr.io and mcr.microsoft.com,
+                                     listening on the uplink NIC. Their addresses are
+                                     sent to evetest clients automatically via the
+                                     broker's Connect response. Default: disabled.
+  --registry-mirror-base-port PORT   First of six consecutive ports used by
+                                     the mirror containers. Default: 5000.
+
+Registry credentials (for the broker's own Docker-out-of-Docker image builds --
+the broker drives the host's Docker daemon to build EVE/SDN images, and needs
+credentials for any private/rate-limited images it pulls this way; separate from
+the OCI registry mirrors above, which only cache pulls made by evetest clients):
+  --docker-username USER   Registry username. Must be paired with --docker-password.
+  --docker-password PASS   Registry password/token.
+  --docker-registry SERVER Default: Docker Hub (https://index.docker.io/v1/).
+
+Other:
+  --destroy     Tear everything down: stop+destroy the broker VM, delete
+                the evetest SDN zone + its uplink/xconnect VNets, and
+                remove the installed snippets. (Best-effort.)
+  -h, --help    Show this help.
+USAGE
+}
+
+# ----- arg parsing ----------------------------------------------------------
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --api-url)                   API_URL="$2"; shift 2 ;;
+        --node)                      NODE="$2"; shift 2 ;;
+        --storage)                   STORAGE="$2"; shift 2 ;;
+        --import-storage)            IMPORT_STORAGE="$2"; shift 2 ;;
+        --tls-skip-verify)           TLS_SKIP_VERIFY="$2"; shift 2 ;;
+        --uplink-subnet)             UPLINK_SUBNET="$2"; shift 2 ;;
+        --uplink-ipv6-subnet)        UPLINK_IPV6_SUBNET="$2"; UPLINK_IPV6_SUBNET_EXPLICIT=true; shift 2 ;;
+        --lan-bridge)                LAN_BRIDGE="$2"; shift 2 ;;
+        --uplink-vnet)               UPLINK_VNET="$2"; shift 2 ;;
+        --broker-image)              BROKER_IMAGE="$2"; shift 2 ;;
+        --broker-vm-cores)           BROKER_VM_CORES="$2"; shift 2 ;;
+        --broker-vm-memory)          BROKER_VM_MEMORY="$2"; shift 2 ;;
+        --broker-vm-disk)            BROKER_VM_DISK="$2"; shift 2 ;;
+        --broker-vm-ssh-pubkey)      BROKER_VM_SSH_PUBKEY="$2"; shift 2 ;;
+        --broker-vm-image-url)       BROKER_VM_IMAGE_URL="$2"; shift 2 ;;
+        --broker-log-level)          BROKER_LOG_LEVEL="$2"; shift 2 ;;
+        --broker-max-clients)        BROKER_MAX_CLIENTS="$2"; shift 2 ;;
+        --with-oci-registry-mirrors) WITH_OCI_MIRRORS=true; shift ;;
+        --registry-mirror-base-port) REGISTRY_MIRROR_BASE_PORT="$2"; shift 2 ;;
+        --docker-username)           DOCKER_USERNAME="$2"; shift 2 ;;
+        --docker-password)           DOCKER_PASSWORD="$2"; shift 2 ;;
+        --docker-registry)           DOCKER_REGISTRY="$2"; shift 2 ;;
+        --destroy)                   DESTROY=true; shift ;;
+        -h|--help)                   usage; exit 0 ;;
+        *) echo "error: unknown flag: $1" >&2; usage >&2; exit 2 ;;
+    esac
+done
+
+die() { echo "error: $*" >&2; exit 1; }
+need() { command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"; }
+need qm; need pvesh; need awk
+
+# read_password prompts on the terminal with input hidden (no echo at all, like
+# sudo/ssh), never touching shell history or argv. dash's own `read` has no -s,
+# so this shells out to bash for just this one read. Sets $REPLY.
+read_password() {   # $1 = prompt
+    printf '%s' "$1" >&2
+    REPLY="$(bash -c 'read -r -s pw; printf %s "$pw"')"
+    printf '\n' >&2
+}
+
+[ "$(id -u)" -eq 0 ] || die "must run as root on the Proxmox host"
+if [ -n "$DOCKER_USERNAME" ] || [ -n "$DOCKER_PASSWORD" ]; then
+    [ -n "$DOCKER_USERNAME" ] && [ -n "$DOCKER_PASSWORD" ] \
+        || die "--docker-username and --docker-password must be used together"
+fi
+
+# delete_vnet removes an SDN VNet after removing its subnets (PVE requires
+# bottom-up deletion). Best-effort.
+delete_vnet() {   # $1 = vnet
+    for sub in $(pvesh get "/cluster/sdn/vnets/$1/subnets" --output-format json 2>/dev/null \
+        | tr ',{' '\n' | sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'); do
+        pvesh delete "/cluster/sdn/vnets/$1/subnets/$sub" >/dev/null 2>&1 || true
+    done
+    pvesh delete "/cluster/sdn/vnets/$1" >/dev/null 2>&1 || true
+}
+
+# destroy_all tears down the broker VM, the evetest SDN objects, and the snippets.
+destroy_all() {
+    vmid="$(qm list 2>/dev/null | awk -v n="$VM_NAME" '$2==n {print $1; exit}')"
+    if [ -n "$vmid" ]; then
+        qm stop "$vmid" >/dev/null 2>&1 || true
+        qm destroy "$vmid" --purge --destroy-unreferenced-disks 1 >/dev/null 2>&1 || true
+        echo "Destroyed broker VM $vmid ($VM_NAME)"
+    else
+        echo "No broker VM named $VM_NAME found"
+    fi
+    # Destroy any per-test EVE/SDN device VMs left behind by an interrupted or
+    # crashed broker (named "ev-*", see provider/common.go's namePrefix) --
+    # otherwise they keep their evx*/evu NICs attached and the VNet deletion
+    # below either fails or leaves them in a broken network state.
+    for devvmid in $(qm list 2>/dev/null | awk -v n="$VM_NAME" '$2!=n && $2~/^ev-/ {print $1}'); do
+        qm stop "$devvmid" >/dev/null 2>&1 || true
+        qm destroy "$devvmid" --purge --destroy-unreferenced-disks 1 >/dev/null 2>&1 || true
+        echo "Destroyed leftover device VM $devvmid"
+    done
+    # Delete all VNets belonging to the evetest deployment (uplinks + xconnects),
+    # then the zone.
+    for vnet in $(pvesh get /cluster/sdn/vnets --output-format json 2>/dev/null \
+        | tr ',{' '\n' | sed -n 's/.*"vnet"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'); do
+        case "$vnet" in
+            evu|evx*) delete_vnet "$vnet" ;;
+        esac
+    done
+    pvesh delete "/cluster/sdn/zones/${SDN_ZONE}" >/dev/null 2>&1 || true
+    pvesh set /cluster/sdn >/dev/null 2>&1 || true
+    # Deleting the zone stops dnsmasq and removes its generated config, but
+    # leaves its DHCP lease database on disk untouched (dnsmasq's own runtime
+    # state, not something PVE's zone lifecycle manages). With every subnet
+    # using an infinite lease time, a stale lease from a since-destroyed VM
+    # (e.g. the broker, recreated with a new MAC/DUID each install) never
+    # expires on its own and can permanently block that same address from
+    # being reassigned to whatever reuses it next -- so a fresh install must
+    # start from a genuinely empty lease file, not just a fresh zone.
+    rm -f "/var/lib/misc/dnsmasq.${SDN_ZONE}.leases"
+    rm -f "${SNIPPETS_DIR}/evetest-hook.pl" \
+          "${SNIPPETS_DIR}/evetest-broker-cloudinit.yaml"
+    echo "Removed SDN zone ${SDN_ZONE}, its VNets, DHCP leases, and installed snippets."
+    echo "Note: the downloaded Ubuntu image is left in place."
+}
+
+if [ "$DESTROY" = "true" ]; then
+    destroy_all
+    exit 0
+fi
+
+need pvesm   # only needed for the install path (enabling snippets content)
+need dnsmasq # PVE SDN's DHCP backend for the uplink VNet; not installed by default
+need bash    # for the masked root@pam password prompt below (dash's read has no -s)
+
+# ----- IPv4 helpers ---------------------------------------------------------
+# The full --uplink-subnet backs the single uplink VNet (evu). It gets:
+# gateway = base+1, a reserved broker VM address base+2 (static, so the broker
+# VM's uplink NIC takes NO default route -- default stays on the LAN NIC), and
+# a DHCP range base+3 .. last-host for the SDN VMs.
+ip_to_int() { IFS=. read -r a b c d <<EOF
+$1
+EOF
+    echo $(( (a * 16777216) + (b * 65536) + (c * 256) + d )); }
+
+int_to_ip() { i=$1; echo "$(( (i/16777216)%256 )).$(( (i/65536)%256 )).$(( (i/256)%256 )).$(( i%256 ))"; }
+
+case "$UPLINK_SUBNET" in
+    */*) : ;;
+    *) die "--uplink-subnet must be CIDR (e.g. 192.168.170.0/24)" ;;
+esac
+BASE="${UPLINK_SUBNET%/*}"
+PREFIX="${UPLINK_SUBNET#*/}"
+[ "$PREFIX" -lt 30 ] 2>/dev/null || die "--uplink-subnet prefix must be < /30"
+HOSTS=$(( 1 << (32 - PREFIX) ))                 # addresses in the subnet
+BASE_INT=$(ip_to_int "$BASE")
+
+V4_SUBNET="$UPLINK_SUBNET"
+V4_GATEWAY=$(int_to_ip $(( BASE_INT + 1 )))
+V4_BROKER_IP=$(int_to_ip $(( BASE_INT + 2 )))
+V4_DHCP_START=$(int_to_ip $(( BASE_INT + 3 )))
+V4_DHCP_END=$(int_to_ip $(( BASE_INT + HOSTS - 2 )))
+
+# ----- derive defaults ------------------------------------------------------
+[ -n "$NODE" ] || NODE="$(hostname -s)"
+if [ -z "$API_URL" ]; then
+    HOST_IP="$(ip -4 -o route get 1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}')"
+    [ -n "$HOST_IP" ] || die "could not detect host IP; pass --api-url"
+    API_URL="https://${HOST_IP}:8006/api2/json"
+fi
+
+# The broker authenticates to the Proxmox API as the actual root@pam user (not an
+# API token -- see Password's doc comment on ProxmoxProviderConf for why), so it
+# needs that account's real password. Prompted interactively so it never ends up
+# in shell history or a process listing.
+read_password "root@pam password for the broker: "
+ROOT_PASSWORD="$REPLY"
+[ -n "$ROOT_PASSWORD" ] || die "root@pam password must not be empty"
+
+# ----- 1. install the hookscript + cloud-init snippets ----------------------
+mkdir -p "$SNIPPETS_DIR"
+# Ensure the 'local' storage exposes the 'snippets' content type (needed for the
+# hookscript and cloud-init user-data).
+CUR_CONTENT="$(pvesh get /storage/local --output-format json 2>/dev/null | sed -n 's/.*"content"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+case ",$CUR_CONTENT," in
+    *,snippets,*) : ;;
+    *) pvesm set local --content "${CUR_CONTENT:+$CUR_CONTENT,}snippets" ;;
+esac
+
+cat > "${SNIPPETS_DIR}/evetest-hook.pl" <<'EVETEST_HOOK_EOF'
+@@HOOKSCRIPT@@
+EVETEST_HOOK_EOF
+chmod +x "${SNIPPETS_DIR}/evetest-hook.pl"
+echo "Installed hookscript at ${SNIPPETS_DIR}/evetest-hook.pl (${HOOK_VOLID})"
+
+# ----- 2. build broker.env and render cloud-init ----------------------------
+BROKER_ENV="$(cat <<EOF
+EVETEST_BROKER_DEVICE_PROVIDER=proxmox
+EVETEST_BROKER_PROXMOX_API_URL=${API_URL}
+EVETEST_BROKER_PROXMOX_PASSWORD=${ROOT_PASSWORD}
+EVETEST_BROKER_PROXMOX_NODE=${NODE}
+EVETEST_BROKER_PROXMOX_STORAGE=${STORAGE}
+EVETEST_BROKER_PROXMOX_IMPORT_STORAGE=${IMPORT_STORAGE}
+EVETEST_BROKER_PROXMOX_TLS_SKIP_VERIFY=${TLS_SKIP_VERIFY}
+EVETEST_BROKER_IMAGE_DIR=${BROKER_IMAGE_DIR}
+EVETEST_SDN_UPLINK_IPV4_SUBNET=${UPLINK_SUBNET}
+EVETEST_BROKER_MAX_CLIENTS=${BROKER_MAX_CLIENTS}
+EOF
+)"
+if [ -n "$BROKER_LOG_LEVEL" ]; then
+    BROKER_ENV="$(printf '%s\nEVETEST_LOG_LEVEL=%s\n' "$BROKER_ENV" "$BROKER_LOG_LEVEL")"
+fi
+BROKER_ENV_B64="$(printf '%s\n' "$BROKER_ENV" | base64 | tr -d '\n')"
+
+# Registry mirror setup script run on the broker VM. Copied verbatim (quoted
+# heredoc) and only its __WITH_MIRRORS__/__UPLINK_IP__/__BASE_PORT__
+# placeholders substituted below, so the rest of the script -- its own
+# "$1"/"$2"/"${UPLINK_IP}" etc. -- is left untouched for /bin/sh on the VM to
+# interpret at runtime.
+cat > /tmp/evetest-mirrors-script.tmpl <<'EVETEST_MIRRORS_EOF'
+@@MIRRORS_SCRIPT@@
+EVETEST_MIRRORS_EOF
+MIRRORS_SCRIPT="$(sed -e "s|__WITH_MIRRORS__|${WITH_OCI_MIRRORS}|g" \
+    -e "s|__UPLINK_IP__|${V4_BROKER_IP}|g" \
+    -e "s|__BASE_PORT__|${REGISTRY_MIRROR_BASE_PORT}|g" \
+    /tmp/evetest-mirrors-script.tmpl)"
+MIRRORS_SCRIPT_B64="$(printf '%s\n' "$MIRRORS_SCRIPT" | base64 | tr -d '\n')"
+
+# `qm set --sshkeys` only feeds PVE's own auto-generated cloud-init user-data,
+# which we replace wholesale below via --cicustom user=... -- so the key has to
+# be embedded directly in our own cloud-config instead, as a single-line YAML
+# flow sequence (avoids multi-line sed substitution).
+if [ -n "$BROKER_VM_SSH_PUBKEY" ]; then
+    [ -r "$BROKER_VM_SSH_PUBKEY" ] || die "--broker-vm-ssh-pubkey: cannot read $BROKER_VM_SSH_PUBKEY"
+    SSH_KEY_ESCAPED="$(sed 's/\\/\\\\/g; s/"/\\"/g' "$BROKER_VM_SSH_PUBKEY")"
+    SSH_AUTHORIZED_KEYS_YAML="[\"${SSH_KEY_ESCAPED}\"]"
+else
+    SSH_AUTHORIZED_KEYS_YAML="[]"
+fi
+
+# Registry credentials for the broker VM's /root/.docker/config.json (used for its
+# own Docker-out-of-Docker image builds). {"auths":{}} (valid, empty) if none given.
+if [ -n "$DOCKER_USERNAME" ]; then
+    DOCKER_AUTH_B64="$(printf '%s:%s' "$DOCKER_USERNAME" "$DOCKER_PASSWORD" | base64 | tr -d '\n')"
+    DOCKER_CONFIG_JSON="{\"auths\":{\"${DOCKER_REGISTRY}\":{\"auth\":\"${DOCKER_AUTH_B64}\"}}}"
+else
+    DOCKER_CONFIG_JSON="{\"auths\":{}}"
+fi
+DOCKER_CONFIG_JSON_B64="$(printf '%s' "$DOCKER_CONFIG_JSON" | base64 | tr -d '\n')"
+
+cat > /tmp/evetest-broker-cloudinit.tmpl <<'EVETEST_CLOUDINIT_EOF'
+@@CLOUDINIT@@
+EVETEST_CLOUDINIT_EOF
+sed -e "s|__BROKER_ENV_B64__|${BROKER_ENV_B64}|g" \
+    -e "s|__BROKER_IMAGE__|${BROKER_IMAGE}|g" \
+    -e "s|__MIRRORS_SCRIPT_B64__|${MIRRORS_SCRIPT_B64}|g" \
+    -e "s|__SSH_AUTHORIZED_KEYS__|${SSH_AUTHORIZED_KEYS_YAML}|g" \
+    -e "s|__DOCKER_CONFIG_JSON_B64__|${DOCKER_CONFIG_JSON_B64}|g" \
+    /tmp/evetest-broker-cloudinit.tmpl > "${SNIPPETS_DIR}/evetest-broker-cloudinit.yaml"
+echo "Installed cloud-init at ${SNIPPETS_DIR}/evetest-broker-cloudinit.yaml"
+
+# ----- 3. pre-provision SDN (zone + uplink VNet + subnets) ------------------
+# The uplink VNet is fully owned by the installer (the always-running broker VM
+# is attached to it); the broker provider never creates or deletes it. It carries
+# the full IPv4 uplink subnet plus, if configured, an internal-ULA IPv6 subnet
+# (making it dual-stack). The IPv4 subnet reserves base+2 for the broker VM
+# (static, outside the DHCP range) so the broker VM's uplink NIC carries no
+# default route.
+ensure_vnet() {     # $1=vnet
+    pvesh get "/cluster/sdn/vnets/$1" >/dev/null 2>&1 || \
+        pvesh create /cluster/sdn/vnets --vnet "$1" --zone "$SDN_ZONE"
+}
+ensure_subnet() {   # $1=vnet $2=subnet $3=gateway $4=dhcp_start $5=dhcp_end
+    pvesh get "/cluster/sdn/vnets/$1/subnets" --output-format json 2>/dev/null | grep -qF "$2" || \
+        pvesh create "/cluster/sdn/vnets/$1/subnets" \
+            --subnet "$2" --type subnet --gateway "$3" --snat 1 \
+            --dhcp-range "start-address=$4,end-address=$5"
+}
+# mtu=65520 (PVE's max) applies to every VNet bridge in this zone, both the
+# uplink (evu) and the broker's per-test xconnect links (evx*). A higher bridge
+# MTU ceiling is harmless for evu -- it doesn't force larger frames, only allows
+# them -- and xconnect links need the room so the SDN agent can configure
+# whatever MTU a test calls for without PVE's bridge-inherited default capping it.
+pvesh get "/cluster/sdn/zones/${SDN_ZONE}" >/dev/null 2>&1 || \
+    pvesh create /cluster/sdn/zones --zone "$SDN_ZONE" --type simple --ipam pve --dhcp dnsmasq
+pvesh set "/cluster/sdn/zones/${SDN_ZONE}" --mtu 65520
+ensure_vnet "$UPLINK_VNET"
+ensure_subnet "$UPLINK_VNET" "$V4_SUBNET" "$V4_GATEWAY" "$V4_DHCP_START" "$V4_DHCP_END"
+
+# IPv6 subnet (internal ULA; independent of external LAN IPv6). Only the
+# "<prefix>::/64" form is derived automatically. PVE needs a real IPv6 route to
+# the internet to set up this subnet's SNAT rule (it auto-detects the outbound
+# interface via a route lookup against a public address); without one, that
+# lookup throws and aborts local network config generation for the WHOLE zone,
+# silently leaving the uplink VNet's bridge never created. So skip IPv6 by
+# default on hosts with no IPv6 route, unless the caller forced it on.
+if [ -n "$UPLINK_IPV6_SUBNET" ] && [ "$UPLINK_IPV6_SUBNET_EXPLICIT" != "true" ] \
+    && ! ip -6 route get 2001:4860:4860::8888 >/dev/null 2>&1; then
+    echo "warning: host has no IPv6 route to the internet; skipping --uplink-ipv6-subnet" >&2
+    UPLINK_IPV6_SUBNET=""
+fi
+if [ -n "$UPLINK_IPV6_SUBNET" ]; then
+    case "$UPLINK_IPV6_SUBNET" in
+        *::/*)
+            V6_BASE="${UPLINK_IPV6_SUBNET%::/*}"
+            ensure_subnet "$UPLINK_VNET" "$UPLINK_IPV6_SUBNET" \
+                "${V6_BASE}::1" "${V6_BASE}::100" "${V6_BASE}::1ff" ;;
+        *) echo "warning: --uplink-ipv6-subnet not in <prefix>::/64 form; skipping IPv6" >&2 ;;
+    esac
+fi
+pvesh set /cluster/sdn
+echo "SDN ready: zone=${SDN_ZONE}"
+echo "  ${UPLINK_VNET}: ${V4_SUBNET} (+IPv6 ${UPLINK_IPV6_SUBNET}) gw=${V4_GATEWAY} broker=${V4_BROKER_IP} dhcp=${V4_DHCP_START}-${V4_DHCP_END}"
+
+# ----- 4. create + start the broker VM --------------------------------------
+IMG="/var/lib/vz/template/iso/evetest-broker-base.img"
+if [ ! -f "$IMG" ]; then
+    echo "Downloading Ubuntu cloud image ..."
+    mkdir -p "$(dirname "$IMG")"
+    wget -q -O "$IMG" "$BROKER_VM_IMAGE_URL"
+fi
+
+VMID="$(qm list 2>/dev/null | awk -v n="$VM_NAME" '$2==n {print $1; exit}')"
+if [ -n "$VMID" ]; then
+    echo "Reusing existing broker VM ${VMID} (${VM_NAME}) ..."
+else
+    VMID="$(pvesh get /cluster/nextid)"
+    echo "Creating broker VM ${VMID} ..."
+    # Roll back the VM created below if anything fails before it is fully up, so a
+    # failed/interrupted run doesn't leave a stray half-configured VM behind for
+    # the next run to pile onto (VMIDs always increment via /cluster/nextid).
+    trap 'qm destroy "$VMID" --purge --destroy-unreferenced-disks 1 >/dev/null 2>&1 || true' EXIT
+    # net0 = external LAN (DHCP, provides the default route); net1 = the SDN uplink
+    # with a static address and NO gateway, so it is on-link to the SDN subnet
+    # without competing for the default route.
+    qm create "$VMID" \
+        --name "$VM_NAME" \
+        --cores "$BROKER_VM_CORES" --memory "$BROKER_VM_MEMORY" \
+        --cpu host --machine q35 --ostype l26 --scsihw virtio-scsi-single \
+        --net0 "virtio,bridge=${LAN_BRIDGE}" \
+        --net1 "virtio,bridge=${UPLINK_VNET}" \
+        --serial0 socket --agent 1
+    qm set "$VMID" --scsi0 "${STORAGE}:0,import-from=${IMG}"
+    # The imported disk is exactly the base cloud image's size (a few GiB) --
+    # grow it to fit Docker + pulled images. Ubuntu cloud images run cloud-init's
+    # growpart/resizefs modules by default on first boot, so the guest filesystem
+    # picks up the new size automatically; no in-guest action needed.
+    qm resize "$VMID" scsi0 "${BROKER_VM_DISK}G"
+    qm set "$VMID" --ide2 "${STORAGE}:cloudinit"
+    qm set "$VMID" --boot "order=scsi0"
+fi
+qm set "$VMID" \
+    --ipconfig0 "ip=dhcp" \
+    --ipconfig1 "ip=${V4_BROKER_IP}/${PREFIX}"
+qm set "$VMID" --cicustom "user=${CLOUDINIT_VOLID}"
+[ "$(qm status "$VMID" | awk '{print $2}')" = "running" ] || qm start "$VMID"
+trap - EXIT
+
+# ----- 5. wait for the broker VM's LAN NIC (net0) to get a DHCP address ----
+# The guest agent comes up early in cloud-init (qemu-guest-agent is a plain
+# "packages:" entry, installed/started well before the slower "curl | sh"
+# Docker install), so this is normally quick; the timeout below just covers
+# slow image pulls / first-boot package installs on a loaded host.
+NET0_MAC="$(qm config "$VMID" 2>/dev/null | awk -F'[=,]' '/^net0:/{print $2}' | tr 'A-Z' 'a-z')"
+BROKER_IP_WAIT_SECS=300
+echo
+printf 'Waiting for broker VM %s to get a LAN IP (guest agent + DHCP; up to %ss) ' "$VMID" "$BROKER_IP_WAIT_SECS"
+BROKER_LAN_IP=""
+waited=0
+while [ "$waited" -lt "$BROKER_IP_WAIT_SECS" ]; do
+    IFACES="$(qm guest cmd "$VMID" network-get-interfaces 2>/dev/null)" || IFACES=""
+    if [ -n "$IFACES" ]; then
+        BROKER_LAN_IP="$(printf '%s\n' "$IFACES" | awk -v mac="$NET0_MAC" '
+            /"hardware-address"/ {
+                cur=$0; sub(/.*"hardware-address" *: *"/,"",cur); sub(/".*/,"",cur); cur_mac=cur; pending=""
+            }
+            cur_mac==mac && /"ip-address"/ {
+                ip=$0; sub(/.*"ip-address" *: *"/,"",ip); sub(/".*/,"",ip); pending=ip
+            }
+            cur_mac==mac && /"ip-address-type"/ {
+                t=$0; sub(/.*"ip-address-type" *: *"/,"",t); sub(/".*/,"",t)
+                if (t == "ipv4" && pending != "") { print pending; exit }
+            }
+        ')"
+        [ -n "$BROKER_LAN_IP" ] && break
+    fi
+    printf '.'
+    sleep 5
+    waited=$((waited + 5))
+done
+echo
+
+if [ -n "$BROKER_LAN_IP" ]; then
+    cat <<EOF
+
+Broker VM ${VMID} is up at ${BROKER_LAN_IP} (LAN). Point evetest at it:
+  export EVETEST_BROKER_ADDRESS=${BROKER_LAN_IP}
+
+The broker gRPC listens on :50221 (ensure it is allowed by any firewall). The broker
+container itself may still be pulling its image for a bit longer after this.
+EOF
+else
+    cat <<EOF
+
+Broker VM ${VMID} started, but its LAN IP wasn't available within ${BROKER_IP_WAIT_SECS}s
+(cloud-init/Docker install may still be in progress, or the guest agent isn't up yet).
+Check it and point evetest at it once ready:
+  qm guest cmd ${VMID} network-get-interfaces   # once the guest agent is up
+  export EVETEST_BROKER_ADDRESS=<broker-VM-LAN-IP>
+
+The broker gRPC listens on :50221 (ensure it is allowed by any firewall).
+EOF
+fi
+
+if [ "$WITH_OCI_MIRRORS" = "true" ]; then
+    cat <<EOF
+OCI registry mirrors requested: six registry:2 pull-through caches will come
+up on ${V4_BROKER_IP}, ports ${REGISTRY_MIRROR_BASE_PORT}-$((REGISTRY_MIRROR_BASE_PORT+5))
+(docker.io, ghcr.io, quay.io, registry.k8s.io, gcr.io, mcr.microsoft.com in
+that order). evetest clients receive their addresses automatically from the
+broker; no action needed unless you want to override one via the
+corresponding EVETEST_REGISTRY_MIRROR_* env var on the evetest container.
+EOF
+fi
