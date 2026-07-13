@@ -2334,7 +2334,9 @@ func makeRequestAsync(client *http.Client, endpoint, id string, rChan chan<- vtp
 }
 
 func makeRequest(client *http.Client, wk *procutils.WatchdogKicker, endpoint, id string) (body string, err error) {
-	rChan := make(chan vtpmRequestResult)
+	// Buffered so makeRequestAsync can always deliver its result and exit,
+	// even after this function returns via the timeout branch below.
+	rChan := make(chan vtpmRequestResult, 1)
 	go makeRequestAsync(client, endpoint, id, rChan)
 
 	startTime := time.Now()
