@@ -71,6 +71,10 @@ type zedmanagerContext struct {
 	currentTotalMemoryMB      uint64
 	// The time from which the configured applications delays should be counted
 	delayBaseTime time.Time
+	// priorityStartTimer fires once, waitForAppsToStartTimeout after
+	// delayBaseTime, to release low-priority apps even if the high-priority
+	// apps never reach a running state (e.g. they failed to start).
+	priorityStartTimer *time.Timer
 	// cli options
 	// hypervisorPtr is the name of the hypervisor to use
 	hypervisorPtr      *string
@@ -452,7 +456,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	// The ticker that triggers a check for the applications in the START_DELAYED state
 	delayedStartTicker := time.NewTicker(1 * time.Second)
-	priorityStartTicker := time.NewTicker(5 * time.Second)
+
+	// Low-priority apps are released by an event: either a high-priority app
+	// reaching a running state (observed via subAppInstanceStatus below) or the
+	// priorityStartTimer expiring. Create it stopped; it is armed when
+	// delayBaseTime is first set in handleZedAgentStatusImpl.
+	ctx.priorityStartTimer = time.NewTimer(waitForAppsToStartTimeout)
+	if !ctx.priorityStartTimer.Stop() {
+		<-ctx.priorityStartTimer.C
+	}
 
 	log.Functionf("Handling all inputs")
 	for {
@@ -483,6 +495,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-subAppInstanceStatus.MsgChan():
 			subAppInstanceStatus.ProcessChange(change)
+			// A high-priority app may have just reached a running state; this
+			// is the point where subAppInstanceStatus reflects it, so re-check
+			// whether low-priority apps can now be released.
+			checkLowPriorityApps(&ctx)
 
 		case change := <-subVolumesSnapshotStatus.MsgChan():
 			subVolumesSnapshotStatus.ProcessChange(change)
@@ -510,7 +526,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		case <-delayedStartTicker.C:
 			checkDelayedStartApps(&ctx)
 
-		case <-priorityStartTicker.C:
+		case <-ctx.priorityStartTimer.C:
 			checkLowPriorityApps(&ctx)
 		case <-stillRunning.C:
 		}
@@ -627,6 +643,18 @@ func highPriorityAppsPending(ctx *zedmanagerContext, activeMap map[string]struct
 	return countRunningAppsForUUIDs(ctx, activeMap) < uint(len(activeMap))
 }
 
+// hasPendingLowPriorityApps reports whether any app instance is currently held
+// back waiting for high-priority apps. It is a cheap guard so the release check
+// can be driven by status-change events without doing real work on every one.
+func hasPendingLowPriorityApps(ctx *zedmanagerContext) bool {
+	for _, s := range ctx.subAppInstanceStatus.GetAll() {
+		if s.(types.AppInstanceStatus).NoBootPriority {
+			return true
+		}
+	}
+	return false
+}
+
 // loadActiveAppInstanceMap returns the set of app instance UUIDs that were
 // active before the last reboot. A load failure is treated as an empty set.
 func loadActiveAppInstanceMap() map[string]struct{} {
@@ -646,6 +674,9 @@ func loadActiveAppInstanceMap() map[string]struct{} {
 // If all the High priority apps are running or the timeout has expired, then
 // we can start the Low priority apps.
 func checkLowPriorityApps(ctx *zedmanagerContext) {
+	if !hasPendingLowPriorityApps(ctx) {
+		return
+	}
 	activeMap := loadActiveAppInstanceMap()
 	log.Functionf("check low priority apps: %v", activeMap)
 	if highPriorityAppsPending(ctx, activeMap) {
@@ -1730,6 +1761,11 @@ func handleZedAgentStatusImpl(ctxArg interface{}, key string,
 	if status.ConfigGetStatus == types.ConfigGetSuccess || status.ConfigGetStatus == types.ConfigGetReadSaved {
 		if ctxPtr.delayBaseTime.IsZero() {
 			ctxPtr.delayBaseTime = time.Now()
+			// Arm the fallback that releases low-priority apps once the
+			// startup window closes. The extra margin keeps the timer from
+			// firing a hair before highPriorityAppsPending sees the deadline
+			// as passed, which would leave apps held with no further wakeup.
+			ctxPtr.priorityStartTimer.Reset(waitForAppsToStartTimeout + time.Second)
 		}
 	}
 
