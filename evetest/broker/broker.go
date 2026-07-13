@@ -4,7 +4,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -60,13 +59,29 @@ type broker struct {
 	proxyCACerts    []*pem.Block
 	registryMirrors map[string][]string // key: registry hostname
 	maxClients      int                 // -1 means unlimited
-	mutex           sync.Mutex
-	sessions        map[string]*session      // key: client ID
-	imageUploads    map[string]chan struct{} // key: docker image name; closed on completion
+	// mutex protects only broker-global state: sessions, imageUploads
+	// and usedSDNUplinkMACs. It is always held briefly. Per-session state
+	// (session.eveDevices, session.sdnDevice) is protected by that session's
+	// own mutex instead, so slow work for one client never blocks unrelated clients.
+	//
+	// Lock ordering invariant: if a call path needs both locks, acquire a
+	// session's mutex BEFORE this one, never the reverse (see generateSDNUplinkMAC/
+	// usedSDNUplinkMACs, which briefly take this mutex while a caller holds its own
+	// session's mutex) -- this avoids an AB-BA deadlock between two sessions.
+	mutex             sync.Mutex
+	sessions          map[string]*session      // key: client ID
+	imageUploads      map[string]chan struct{} // key: docker image name; closed on completion
+	usedSDNUplinkMACs map[string]struct{}      // key: MAC address
 }
 
 type session struct {
-	clientID   string
+	clientID string
+	// mutex protects sdnDevice and eveDevices below, and serializes this
+	// session's own device operations (BuildImage, SetupDevices,
+	// TeardownDevices, power controls, console/tunnel device lookups). It
+	// never blocks a different session. See the lock ordering invariant on
+	// broker.mutex.
+	mutex      sync.Mutex
 	sdnDevice  *device
 	eveDevices map[string]*device // key: deviceName
 	log        *logrus.Entry
@@ -133,18 +148,19 @@ func newBroker(log *logrus.Logger, provider provider.DeviceProvider,
 			len(proxyCACerts), proxyChainPath)
 	}
 	return &broker{
-		globalLog:       log,
-		provider:        provider,
-		providerName:    providerName,
-		imageDir:        imageDir,
-		sdnGrpcPort:     sdnGrpcPort,
-		supportedArchs:  supportedArchs,
-		capabilities:    provider.Capabilities(),
-		proxyCACerts:    proxyCACerts,
-		registryMirrors: constants.LoadRegistryMirrors(),
-		maxClients:      maxClients,
-		sessions:        make(map[string]*session),
-		imageUploads:    make(map[string]chan struct{}),
+		globalLog:         log,
+		provider:          provider,
+		providerName:      providerName,
+		imageDir:          imageDir,
+		sdnGrpcPort:       sdnGrpcPort,
+		supportedArchs:    supportedArchs,
+		capabilities:      provider.Capabilities(),
+		proxyCACerts:      proxyCACerts,
+		registryMirrors:   constants.LoadRegistryMirrors(),
+		maxClients:        maxClients,
+		sessions:          make(map[string]*session),
+		imageUploads:      make(map[string]chan struct{}),
+		usedSDNUplinkMACs: make(map[string]struct{}),
 	}, nil
 }
 
@@ -271,28 +287,40 @@ func (b *broker) Connect(
 // Close terminates an active client session.
 func (b *broker) Close(
 	ctx context.Context, req *api.CloseRequest) (*api.CloseResponse, error) {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
-	clientSession, exists := b.sessions[req.ClientId]
-	if !exists {
+	clientSession := b.removeSession(req.ClientId)
+	if clientSession == nil {
 		err := clientNotFoundErr(req.ClientId)
 		b.globalLog.Error(err)
 		return nil, err
 	}
-	b.closeLocked(ctx, clientSession)
+	b.closeSession(ctx, clientSession)
 	return &api.CloseResponse{}, nil
 }
 
-func (b *broker) closeLocked(ctx context.Context, clientSession *session) {
-	if _, exists := b.sessions[clientSession.clientID]; !exists {
-		// NOOP
-		return
+// removeSession atomically removes and returns the session for clientID, or nil
+// if it doesn't exist (e.g. already removed by a racing Close/timeout/CloseAll).
+// Only b.sessions is touched here; the actual (possibly slow) per-session
+// teardown happens in closeSession, without holding b.mutex, so it never blocks
+// unrelated clients.
+func (b *broker) removeSession(clientID string) *session {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	clientSession, exists := b.sessions[clientID]
+	if !exists {
+		return nil
 	}
-	// Teardown all remaining devices created for the client.
-	b.teardownDevices(ctx, clientSession)
+	delete(b.sessions, clientID)
+	return clientSession
+}
 
-	// Remove session from the broker map.
-	delete(b.sessions, clientSession.clientID)
+// closeSession tears down all devices for a session already removed from
+// b.sessions (via removeSession) and signals clientSession.closed. Since the
+// session was already removed, concurrent lookups for this client fail fast
+// instead of blocking on clientSession.mutex.
+func (b *broker) closeSession(ctx context.Context, clientSession *session) {
+	clientSession.mutex.Lock()
+	b.teardownDevices(ctx, clientSession)
+	clientSession.mutex.Unlock()
 
 	// Signal any goroutines (e.g. KeepAlive timer) that the session is gone.
 	close(clientSession.closed)
@@ -301,11 +329,16 @@ func (b *broker) closeLocked(ctx context.Context, clientSession *session) {
 // CloseAll closes all active sessions.
 func (b *broker) CloseAll(ctx context.Context) {
 	b.mutex.Lock()
-	defer b.mutex.Unlock()
+	sessions := make([]*session, 0, len(b.sessions))
 	for _, clientSession := range b.sessions {
-		b.closeLocked(ctx, clientSession)
+		sessions = append(sessions, clientSession)
 	}
-	return
+	b.sessions = make(map[string]*session)
+	b.mutex.Unlock()
+
+	for _, clientSession := range sessions {
+		b.closeSession(ctx, clientSession)
+	}
 }
 
 // KeepAlive is a bidirectional stream used by the client to maintain an active session
@@ -341,12 +374,10 @@ func (b *broker) KeepAlive(
 	go func() {
 		select {
 		case <-timer.C:
-			b.mutex.Lock()
-			if _, exists := b.sessions[clientID]; exists {
+			if removedSession := b.removeSession(clientID); removedSession != nil {
 				log.Infof("KeepAlive timeout exceeded, closing client session %s", clientID)
-				b.closeLocked(context.Background(), clientSession)
+				b.closeSession(context.Background(), removedSession)
 			}
-			b.mutex.Unlock()
 		case <-clientSession.closed:
 			timer.Stop()
 		}
@@ -419,13 +450,15 @@ func (b *broker) StreamLogs(
 func (b *broker) BuildImage(
 	ctx context.Context, req *api.BuildImageRequest) (*api.BuildImageResponse, error) {
 	b.mutex.Lock()
-	defer b.mutex.Unlock()
 	clientSession, exists := b.sessions[req.ClientId]
+	b.mutex.Unlock()
 	if !exists {
 		err := clientNotFoundErr(req.ClientId)
 		b.globalLog.Error(err)
 		return nil, err
 	}
+	clientSession.mutex.Lock()
+	defer clientSession.mutex.Unlock()
 	log := clientSession.log
 
 	imageArch := req.GetImage().GetArch()
@@ -675,13 +708,15 @@ func (b *broker) PushEVEContainerImage(
 func (b *broker) SetupDevices(
 	ctx context.Context, req *api.SetupDevicesRequest) (*api.SetupDevicesResponse, error) {
 	b.mutex.Lock()
-	defer b.mutex.Unlock()
 	clientSession, exists := b.sessions[req.ClientId]
+	b.mutex.Unlock()
 	if !exists {
 		err := clientNotFoundErr(req.ClientId)
 		b.globalLog.Error(err)
 		return nil, err
 	}
+	clientSession.mutex.Lock()
+	defer clientSession.mutex.Unlock()
 
 	log := clientSession.log
 	ctx = logger.WithLogger(ctx, log)
@@ -923,8 +958,8 @@ func (b *broker) SetupDevices(
 // provisionEVEDevices provisions all EVE devices in the client session in parallel.
 // Each device is handled by provisionEVEDevice, which selects the appropriate
 // flow (live one-step or installer two-step). Called from SetupDevices while
-// b.mutex is held; goroutines only call provider methods (provider has its own
-// mutex) so there is no deadlock.
+// clientSession.mutex is held; goroutines only call provider methods (provider has
+// its own mutex) so there is no deadlock.
 func (b *broker) provisionEVEDevices(ctx context.Context, log *logrus.Entry,
 	clientSession *session) error {
 	errCh := make(chan error, len(clientSession.eveDevices))
@@ -1030,9 +1065,15 @@ func (b *broker) runDeviceInstaller(ctx context.Context, log *logrus.Entry,
 
 // generateSDNUplinkMAC generates a unique MAC address for an SDN uplink port.
 // The first 3 bytes are the fixed prefix. The last 3 bytes are randomly generated.
-// Ensures uniqueness across all client sessions in this broker process.
-// Function assumes that the broker is in the locked state.
+// Uniqueness is tracked via b.usedSDNUplinkMACs (guarded by b.mutex) rather than by
+// scanning other sessions' sdnDevice directly: the caller (SetupDevices) holds its
+// own session's mutex while calling this, and peeking at another session's sdnDevice
+// would require that other session's mutex too -- risking an AB-BA deadlock against
+// its own concurrent SetupDevices call. See the lock ordering invariant on
+// broker.mutex.
 func (b *broker) generateSDNUplinkMAC() (net.HardwareAddr, error) {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
 	for {
 		mac := make(net.HardwareAddr, 6)
 		copy(mac, constants.SDNHostPortMACPrefix)
@@ -1040,23 +1081,23 @@ func (b *broker) generateSDNUplinkMAC() (net.HardwareAddr, error) {
 		if _, err := rand.Read(mac[3:6]); err != nil {
 			return nil, fmt.Errorf("failed to generate random MAC: %v", err)
 		}
-		var collision bool
-		for _, session := range b.sessions {
-			if session.sdnDevice == nil {
-				continue
-			}
-			for _, intf := range session.sdnDevice.NetworkInterfaces {
-				if bytes.Equal(mac, intf.MACAddress) {
-					collision = true
-					break
-				}
-			}
-			if collision {
-				break
-			}
-		}
-		if !collision {
+		key := mac.String()
+		if _, used := b.usedSDNUplinkMACs[key]; !used {
+			b.usedSDNUplinkMACs[key] = struct{}{}
 			return mac, nil
+		}
+	}
+}
+
+// releaseSDNUplinkMAC frees the SDN uplink MAC reserved for sdnDevice (if any) so
+// it can be reused by a future session. Called from teardownDevices.
+func (b *broker) releaseSDNUplinkMAC(sdnDevice *device) {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	for _, intf := range sdnDevice.NetworkInterfaces {
+		if intf.Name == constants.SDNUplinkPortName {
+			delete(b.usedSDNUplinkMACs, intf.MACAddress.String())
+			return
 		}
 	}
 }
@@ -1065,13 +1106,15 @@ func (b *broker) generateSDNUplinkMAC() (net.HardwareAddr, error) {
 func (b *broker) TeardownDevices(
 	ctx context.Context, req *api.TeardownDevicesRequest) (*api.TeardownDevicesResponse, error) {
 	b.mutex.Lock()
-	defer b.mutex.Unlock()
 	clientSession, exists := b.sessions[req.ClientId]
+	b.mutex.Unlock()
 	if !exists {
 		err := clientNotFoundErr(req.ClientId)
 		b.globalLog.Error(err)
 		return nil, err
 	}
+	clientSession.mutex.Lock()
+	defer clientSession.mutex.Unlock()
 	b.teardownDevices(ctx, clientSession)
 	return &api.TeardownDevicesResponse{}, nil
 }
@@ -1121,6 +1164,7 @@ func (b *broker) teardownDevices(ctx context.Context, clientSession *session) {
 				log.Infof("SDN device was torn down")
 			}
 		}
+		b.releaseSDNUplinkMAC(clientSession.sdnDevice)
 		imageDir := filepath.Join(b.imageDir, clientSession.sdnDevice.providerDevName)
 		if imageDir != "" {
 			err := os.RemoveAll(imageDir)
@@ -1140,13 +1184,15 @@ func (b *broker) teardownDevices(ctx context.Context, clientSession *session) {
 func (b *broker) PowerOnDevice(
 	ctx context.Context, req *api.DeviceControlRequest) (*api.DeviceControlResponse, error) {
 	b.mutex.Lock()
-	defer b.mutex.Unlock()
 	clientSession, exists := b.sessions[req.ClientId]
+	b.mutex.Unlock()
 	if !exists {
 		err := clientNotFoundErr(req.ClientId)
 		b.globalLog.Error(err)
 		return nil, err
 	}
+	clientSession.mutex.Lock()
+	defer clientSession.mutex.Unlock()
 
 	log := clientSession.log
 	ctx = logger.WithLogger(ctx, log)
@@ -1174,13 +1220,15 @@ func (b *broker) PowerOnDevice(
 func (b *broker) PowerOffDevice(
 	ctx context.Context, req *api.DeviceControlRequest) (*api.DeviceControlResponse, error) {
 	b.mutex.Lock()
-	defer b.mutex.Unlock()
 	clientSession, exists := b.sessions[req.ClientId]
+	b.mutex.Unlock()
 	if !exists {
 		err := clientNotFoundErr(req.ClientId)
 		b.globalLog.Error(err)
 		return nil, err
 	}
+	clientSession.mutex.Lock()
+	defer clientSession.mutex.Unlock()
 
 	log := clientSession.log
 	ctx = logger.WithLogger(ctx, log)
@@ -1208,13 +1256,15 @@ func (b *broker) PowerOffDevice(
 func (b *broker) RebootDevice(
 	ctx context.Context, req *api.DeviceControlRequest) (*api.DeviceControlResponse, error) {
 	b.mutex.Lock()
-	defer b.mutex.Unlock()
 	clientSession, exists := b.sessions[req.ClientId]
+	b.mutex.Unlock()
 	if !exists {
 		err := clientNotFoundErr(req.ClientId)
 		b.globalLog.Error(err)
 		return nil, err
 	}
+	clientSession.mutex.Lock()
+	defer clientSession.mutex.Unlock()
 
 	log := clientSession.log
 	ctx = logger.WithLogger(ctx, log)
@@ -1242,13 +1292,15 @@ func (b *broker) RebootDevice(
 func (b *broker) GetDeviceConsoleOutput(
 	ctx context.Context, req *api.DeviceControlRequest) (*api.ConsoleOutputResponse, error) {
 	b.mutex.Lock()
-	defer b.mutex.Unlock()
 	clientSession, exists := b.sessions[req.ClientId]
+	b.mutex.Unlock()
 	if !exists {
 		err := clientNotFoundErr(req.ClientId)
 		b.globalLog.Error(err)
 		return nil, err
 	}
+	clientSession.mutex.Lock()
+	defer clientSession.mutex.Unlock()
 
 	log := clientSession.log
 	ctx = logger.WithLogger(ctx, log)
@@ -1295,8 +1347,8 @@ func (b *broker) ConnectConsoleToDevice(
 
 	b.mutex.Lock()
 	clientSession, clientExists := b.sessions[clientID]
+	b.mutex.Unlock()
 	if !clientExists {
-		b.mutex.Unlock()
 		err := clientNotFoundErr(clientID)
 		b.globalLog.Error(err)
 		return err
@@ -1304,15 +1356,18 @@ func (b *broker) ConnectConsoleToDevice(
 	log := clientSession.log
 	ctx := logger.WithLogger(stream.Context(), log)
 
+	clientSession.mutex.Lock()
 	eveDev, devExists := clientSession.eveDevices[devName]
+	var providerDevName string
+	if devExists {
+		providerDevName = eveDev.providerDevName
+	}
+	clientSession.mutex.Unlock()
 	if !devExists {
-		b.mutex.Unlock()
 		err = eveDevNotFoundErr(devName)
 		log.Error(err)
 		return err
 	}
-	providerDevName := eveDev.providerDevName
-	b.mutex.Unlock()
 
 	// Attach to provider’s console stream.
 	consoleStream, echoed, telnet, err := b.provider.AttachToDeviceConsole(
@@ -1434,9 +1489,9 @@ func (b *broker) ConnectTunnelToSDN(stream sdnTunnelServerStream) error {
 	}
 	clientID := connectReq.GetClientId()
 
-	var sdnIPs []net.IP
 	b.mutex.Lock()
 	clientSession, exists := b.sessions[clientID]
+	b.mutex.Unlock()
 	if !exists {
 		err := clientNotFoundErr(clientID)
 		b.globalLog.Error(err)
@@ -1444,18 +1499,24 @@ func (b *broker) ConnectTunnelToSDN(stream sdnTunnelServerStream) error {
 	}
 	log := clientSession.log
 	ctx := logger.WithLogger(stream.Context(), log)
-	if clientSession.sdnDevice == nil {
+
+	clientSession.mutex.Lock()
+	var sdnIPs []net.IP
+	if clientSession.sdnDevice != nil {
+		sdnIPs = clientSession.sdnDevice.uplinkIPs
+	}
+	sdnDeviceSetUp := clientSession.sdnDevice != nil
+	clientSession.mutex.Unlock()
+	if !sdnDeviceSetUp {
 		err := fmt.Errorf("SDN device is not set up for this session")
 		log.Error(err)
 		return err
 	}
-	if len(clientSession.sdnDevice.uplinkIPs) == 0 {
+	if len(sdnIPs) == 0 {
 		err := fmt.Errorf("SDN management IP is not available")
 		log.Error(err)
 		return err
 	}
-	sdnIPs = clientSession.sdnDevice.uplinkIPs
-	b.mutex.Unlock()
 
 	// Connect to SDN gRPC endpoint and complete its initial handshake; try every
 	// uplink IP, retrying until one succeeds or sdnConnectTimeout elapses -- the
