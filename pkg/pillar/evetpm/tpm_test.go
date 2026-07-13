@@ -79,11 +79,67 @@ func TestDriveSessionKey(t *testing.T) {
 	}
 }
 
+// extendFirmwareAnchorPCRs extends the firmware anchor PCRs (criticalFirmwarePCRs,
+// i.e. 0 and 4) in the SHA-256 bank so SealDiskKey's TPM Carte Blanche guard is
+// satisfied, mimicking a platform where firmware measured the boot chain. Safe to
+// call more than once.
+func extendFirmwareAnchorPCRs(t *testing.T) {
+	t.Helper()
+	rw, err := tpm2.OpenTPM(TpmDevicePath)
+	if err != nil {
+		t.Fatalf("OpenTPM failed with err: %v", err)
+	}
+	defer rw.Close()
+
+	val := bytes.Repeat([]byte{0xA5}, sha256.Size)
+	for _, pcr := range criticalFirmwarePCRs {
+		if err := tpm2.PCRExtend(rw, tpmutil.Handle(pcr), tpm2.AlgSHA256, val, ""); err != nil {
+			t.Fatalf("Failed to extend firmware anchor PCR %d: %v", pcr, err)
+		}
+	}
+}
+
+func TestSealRefusesunextendedCriticalPCRs(t *testing.T) {
+	if !SimTpmAvailable() {
+		t.Skip("TPM is not available, skipping the test.")
+	}
+
+	// This refusal path only holds on a fresh TPM where the firmware anchor PCRs
+	// are still all-zero. Standard PCRs cannot be reset without a TPM restart, so
+	// if a prior test already extended them, skip rather than fail.
+	zeroed, err := unextendedCriticalPCRs()
+	if err != nil {
+		t.Fatalf("unextendedCriticalPCRs failed with err: %v", err)
+	}
+	if len(zeroed) == 0 {
+		t.Skip("firmware anchor PCRs already extended by a prior test; refusal path needs fresh PCRs")
+	}
+
+	// With all-zero firmware anchor PCRs, SealDiskKey must refuse to seal.
+	if err := SealDiskKey(logger, []byte("secret"), DefaultDiskKeySealingPCRs); err == nil {
+		t.Fatalf("SealDiskKey should refuse to seal against all-zero firmware PCRs, got nil")
+	}
+
+	// After extending the anchors, the guard is satisfied and sealing succeeds.
+	extendFirmwareAnchorPCRs(t)
+	if remaining, err := unextendedCriticalPCRs(); err != nil {
+		t.Fatalf("unextendedCriticalPCRs failed with err: %v", err)
+	} else if len(remaining) != 0 {
+		t.Fatalf("expected no all-zero firmware PCRs after extending, got %v", remaining)
+	}
+	if err := SealDiskKey(logger, []byte("secret"), DefaultDiskKeySealingPCRs); err != nil {
+		t.Fatalf("SealDiskKey failed after extending firmware anchor PCRs: %v", err)
+	}
+}
+
 func TestSealUnseal(t *testing.T) {
 	_, err := os.Stat(TpmDevicePath)
 	if err != nil {
 		t.Skip("TPM is not available, skipping the test.")
 	}
+
+	// firmware anchor PCRs must be extended or SealDiskKey refuses (TPM Carte Blanche attack)
+	extendFirmwareAnchorPCRs(t)
 
 	dataToSeal := []byte("secret")
 	if err := SealDiskKey(logger, dataToSeal, DefaultDiskKeySealingPCRs); err != nil {
@@ -110,6 +166,9 @@ func TestSealUnsealMismatchReport(t *testing.T) {
 		t.Fatalf("OpenTPM failed with err: %v", err)
 	}
 	defer rw.Close()
+
+	// firmware anchor PCRs must be extended or SealDiskKey refuses (TPM Carte Blanche attack)
+	extendFirmwareAnchorPCRs(t)
 
 	dataToSeal := []byte("secret")
 	if err := SealDiskKey(logger, dataToSeal, DefaultDiskKeySealingPCRs); err != nil {
@@ -141,6 +200,9 @@ func TestSealUnsealTpmEventLogCollect(t *testing.T) {
 		t.Fatalf("OpenTPM failed with err: %v", err)
 	}
 	defer rw.Close()
+
+	// firmware anchor PCRs must be extended or SealDiskKey refuses (TPM Carte Blanche attack)
+	extendFirmwareAnchorPCRs(t)
 
 	// this should write tpm event log to measurementLogSealSuccess file
 	dataToSeal := []byte("secret")
