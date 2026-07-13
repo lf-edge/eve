@@ -34,6 +34,9 @@ import (
 //     version and survives an app restart.
 //   - TestAppLogs -- application stdout is collected and delivered to the
 //     controller, including after the app is stopped and started again.
+//   - TestAppRestart -- controller-requested restarts (restart counter
+//     bumps, no purge) bring the app back to RUNNING; regression test for
+//     a stale QMP handler quitting the re-created domain.
 func TestAppsSuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
@@ -57,6 +60,9 @@ func TestAppsSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestAppLogs,
+		},
+		evetest.TestCase{
+			Test: TestAppRestart,
 		},
 	)
 }
