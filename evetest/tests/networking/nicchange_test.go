@@ -39,8 +39,8 @@ import (
 //     both the app info and the NI status, verify it is reachable over SSH
 //     and write a file to the app disk (purge canary).
 //  2. Add a second Local NI with a second app NIC (the restart counter is
-//     bumped by UpdateApplication); the guest must see both NICs and the
-//     canary must survive.
+//     bumped by UpdateApplication); the guest must see both NICs, both NICs
+//     must be reported with an IP address and the canary must survive.
 //  3. Swap the two adapters in the configuration; the guest's eth0 must
 //     switch from the first to the second adapter's MAC address.
 //  4. Reboot the device; the app must come back with both NICs.
@@ -82,6 +82,8 @@ func TestNICCountChange(test *testing.T) {
 	evetest.Checkpoint("adding another NI to app")
 	tc.verifyGuestSeesBothNICs()
 	evetest.Checkpoint("app has two interfaces")
+	tc.verifyBothNICsReportedWithIP()
+	evetest.Checkpoint("both NICs reported with IP")
 	tc.verifyCanary()
 	evetest.Checkpoint("app disk has not been purged")
 
@@ -310,6 +312,7 @@ func (tc *nicCountChangeTest) addSecondNIC() {
 			},
 		})
 	tc.devConfig.UpdateApplication(tc.appUUID, tc.appConfig)
+	tc.appUpdates, tc.stopAppWatch = tc.device.WatchAppInfo(tc.appUUID)
 	tc.device.ApplyConfig(tc.devConfig, true, true)
 }
 
@@ -325,6 +328,17 @@ func (tc *nicCountChangeTest) verifyGuestSeesBothNICs() {
 		t.Expect(output).To(ContainSubstring(tc.appMACs[0]))
 		t.Expect(output).To(ContainSubstring(tc.appMACs[1]))
 	}, tc.timeout, tc.polling).Should(Succeed())
+}
+
+// verifyBothNICsReportedWithIP (phase 2) verifies that both NICs are
+// reported to the controller with an IP address.
+func (tc *nicCountChangeTest) verifyBothNICsReportedWithIP() {
+	tc.t.Eventually(tc.appUpdates, tc.timeout).Should(Receive(matchers.SatisfyPredicate(
+		"Both NICs are reported with an IP address",
+		func(info *eveinfo.ZInfoApp) bool {
+			return reportedIPsForMACs(info, tc.appMACs)
+		}).StopIf(appHasError)))
+	tc.stopAppWatch()
 }
 
 // verifyCanary (phases 2 and 5) verifies the file written in phase 1 is
