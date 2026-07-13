@@ -359,29 +359,38 @@ func maxLEDBrightness(log *base.LogObject, ledName string) []byte {
 	return []byte("1")
 }
 
+// startBlink creates the stop/ack channels and launches the blink goroutine.
+// The channels are created here (synchronously, in the caller's goroutine)
+// rather than inside executeBlinkLoop so that ctx.BlinkSendStop/BlinkRecvStop
+// are guaranteed to be set as soon as this returns. The ledmanager handler
+// decides whether to stop a running blink loop by checking
+// ctx.BlinkSendStop != nil; if those fields were only set asynchronously from
+// within the goroutine, two closely-spaced updates could both observe them as
+// nil, spawn two blink goroutines, and leak one of them on the unbuffered
+// BlinkRecvStop send (also risking a send on a closed channel).
+func startBlink(log *base.LogObject, ctx *BlinkContext, color string, leds []string) {
+	// sendStop is closed by the sender to request a stop; recvStop is used by
+	// the receiver to acknowledge.
+	sendStop := make(chan string, 1)
+	recvStop := make(chan string)
+	ctx.BlinkSendStop = sendStop
+	ctx.BlinkRecvStop = recvStop
+	go executeBlinkLoop(log, color, leds, sendStop, recvStop)
+}
+
 // Execute blink forever until there is a message to stop
-func executeBlinkLoop(log *base.LogObject, ctx *BlinkContext, color string, leds []string) {
+func executeBlinkLoop(log *base.LogObject, color string, leds []string,
+	sendStop, recvStop chan string) {
 
 	log.Functionf("Started blink thread for color %s", color)
-	// Both of these channels are created here. This routine is considered as a receiver.
-	// But closing of these channels happens as follows:
-	// blinkSendStop will be closed by the sender and that signal is received by this routine to exit the loop
-	// blinkRecvStop will be closed by the sender after this routine sends done message.
-	ctx.BlinkRecvStop = make(chan string)
-	ctx.BlinkSendStop = make(chan string, 1)
-	var ok, valid bool
 	for {
-
 		select {
-		case _, valid = <-ctx.BlinkSendStop:
-			ok = true
+		case _, valid := <-sendStop:
+			if !valid { // channel closed -> stop requested
+				recvStop <- "done"
+				return
+			}
 		default:
-			ok = false
-		}
-
-		if ok && !valid { // This channel was closed
-			ctx.BlinkRecvStop <- "done"
-			return
 		}
 
 		switch color {
@@ -398,16 +407,11 @@ func executeBlinkLoop(log *base.LogObject, ctx *BlinkContext, color string, leds
 			doLedAction(log, leds[0], true) // Green on
 			time.Sleep(200 * time.Millisecond)
 		default:
-			log.Noticef("Unsupported Color")
-			close(ctx.BlinkRecvStop)
-			close(ctx.BlinkSendStop)
-			ctx.BlinkRecvStop = nil
-			ctx.BlinkSendStop = nil
+			// Only Orange and Green are ever started blinking, so unreachable.
+			log.Noticef("Unsupported blink color %s", color)
 			return
 		}
-
 	}
-
 }
 
 // ExecuteAppStatusDisplayFunc sets the appStatusArgs
@@ -421,14 +425,14 @@ func ExecuteAppStatusDisplayFunc(log *base.LogObject, ctx *BlinkContext, appStat
 		doLedAction(log, appStatusArgs[0], true) // Green on
 		doLedAction(log, appStatusArgs[1], true) // Red on
 		if blink == true {
-			go executeBlinkLoop(log, ctx, "Orange", appStatusArgs)
+			startBlink(log, ctx, "Orange", appStatusArgs)
 		}
 
 	case "Green": // Green can blink or solid
 		doLedAction(log, appStatusArgs[1], false) // Red off
 		doLedAction(log, appStatusArgs[0], true)  // Green on
 		if blink == true {
-			go executeBlinkLoop(log, ctx, "Green", appStatusArgs)
+			startBlink(log, ctx, "Green", appStatusArgs)
 		}
 	default: // Turn off both red and green
 		doLedAction(log, appStatusArgs[0], false)
