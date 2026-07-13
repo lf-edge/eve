@@ -49,6 +49,9 @@ type WSConnection struct {
 	ws              *websocket.Conn // websocket connection
 	tun             *WSTunnelClient // link back to tunnel
 	localConnection net.Conn        // connection to local relay
+	// done is closed when this connection is torn down, signalling
+	// per-connection goroutines (e.g. processResponses) to exit.
+	done chan struct{}
 }
 
 var wsWriterMutex sync.Mutex // mutex to allow a single goroutine to send a response at a time
@@ -71,12 +74,7 @@ func InitializeTunnelClient(log *base.LogObject, serverNameAndPort string, local
 // Start triggers workflow to establish the websocket
 // session with remote tunnel server
 func (t *WSTunnelClient) Start() {
-	log := t.log
-	log.Functionf("Creating %s at %s", "func", agentlog.GetMyStack())
-	go func() {
-		t.startSession()
-		<-make(chan struct{}, 0)
-	}()
+	t.startSession()
 }
 
 // TestConnection validates the configured parameters for correctness
@@ -186,7 +184,7 @@ func (t *WSTunnelClient) startSession() error {
 				}
 				t.retryOnFailCount++
 			} else {
-				t.conn = &WSConnection{ws: ws, tun: t}
+				t.conn = &WSConnection{ws: ws, tun: t, done: make(chan struct{})}
 				// Safety setting
 				ws.SetReadLimit(100 * 1024 * 1024)
 				// Request Loop
@@ -195,15 +193,14 @@ func (t *WSTunnelClient) startSession() error {
 				t.conn.handleRequests()
 				t.Connected = false
 			}
-			// check whether we need to exit
+			// Throttle reconnects, but return (not break) on Stop() so we
+			// exit the loop rather than just the select.
 			select {
 			case <-t.exitChan:
-				break
-			default: // non-blocking receive
+				timer.Stop()
+				return
+			case <-timer.C:
 			}
-
-			// ensure we don't open connections too rapidly,
-			<-timer.C
 		}
 	}()
 
@@ -213,7 +210,10 @@ func (t *WSTunnelClient) startSession() error {
 // Stop tunnel client
 func (t *WSTunnelClient) Stop() {
 	t.log.Function("Shutting down WS tunnel client and exiting.")
-	t.exitChan <- struct{}{}
+	// Close (not send) so every goroutine waiting on exitChan is released;
+	// a single send would wake only one. Stop() runs at most once per
+	// instance, so the close can't happen twice.
+	close(t.exitChan)
 }
 
 // handleRequests reads a request from the socket, then forks
@@ -263,6 +263,12 @@ func (wsc *WSConnection) handleRequests() {
 			log.Tracef("[id=%d] Encountered WS request to process with no payload", id)
 		}
 
+	}
+	// Connection is dead: signal per-connection goroutines to exit and drop
+	// the local relay connection so its fd isn't leaked.
+	close(wsc.done)
+	if wsc.localConnection != nil {
+		wsc.localConnection.Close()
 	}
 	// delay a few seconds to allow for writes to drain and then force-close the socket
 	log.Functionf("Creating %s at %s", "func", agentlog.GetMyStack())
@@ -420,7 +426,18 @@ func (wsc *WSConnection) processResponses() {
 
 	var id int64
 	ticker := time.NewTicker(100 * time.Millisecond)
-	for range ticker.C {
+	defer ticker.Stop()
+	for {
+		// Exit when this connection is torn down (wsc.done) or the tunnel is
+		// stopped (exitChan); return rather than break to leave the loop.
+		select {
+		case <-wsc.done:
+			return
+		case <-wsc.tun.exitChan:
+			return
+		case <-ticker.C:
+		}
+
 		responseBuffer := make([]byte, 524288)
 		wsc.localConnection.SetReadDeadline(time.Now().Add(90 * time.Millisecond))
 		num, _ := wsc.localConnection.Read(responseBuffer)
@@ -430,13 +447,6 @@ func (wsc *WSConnection) processResponses() {
 
 			wsc.writeResponseMessage(id, bytes.NewBuffer(response))
 			id++
-		}
-
-		// check whether we need to exit
-		select {
-		case <-wsc.tun.exitChan:
-			break
-		default: // non-blocking receive
 		}
 	}
 }
