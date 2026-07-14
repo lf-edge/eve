@@ -125,6 +125,15 @@ are written into the broker VM's `/etc/evetest/broker.env`. The broker container
 tag is **baked into the installer** from `evetest/VERSION` at assembly time (e.g.
 `lfedge/evetest-broker:v0.0.1`); override with `--broker-image`.
 
+### Stable LAN IP across reinstalls
+
+By default Proxmox assigns net0 (the LAN NIC) a random MAC on VM creation, so
+recreating the broker VM from scratch (e.g. after `--destroy`) usually gets it a
+different DHCP lease/IP. Pass `--broker-lan-mac MAC` to pin a specific MAC address
+instead, and add a matching static DHCP reservation on your network, so the broker
+always comes up at the same IP. Only applies when creating a new VM (has no effect
+when the installer reuses an existing one).
+
 ### Docker registry credentials
 
 The broker uses Docker to pull EVE and evetest-SDN images. Pass `--docker-username
