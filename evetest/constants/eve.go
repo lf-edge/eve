@@ -11,9 +11,10 @@ const (
 	// DefaultEVEDeviceRAMInMiB is the default amount of RAM (in MiB) for an EVE device VM.
 	DefaultEVEDeviceRAMInMiB = 8192
 	// DefaultEVEDeviceDiskSizeInMiB is the default disk size (in MiB) for an EVE device VM.
-	// 36 GiB ensures /persist has enough free space above EVE's 4096 MiB cleanup threshold
-	// regardless of image type (live or installer) and HV type (including eve-k system pods).
-	DefaultEVEDeviceDiskSizeInMiB = 36864
+	// 64 GiB ensures /persist has enough free space above EVE's 4096 MiB cleanup threshold
+	// regardless of image type (live or installer) and HV type (including eve-k system pods),
+	// with enough headroom left over to accommodate smaller test applications.
+	DefaultEVEDeviceDiskSizeInMiB = 65536
 	// EVEInstallationTimeout is the maximum time allowed for the EVE installer to complete.
 	// Used by both the broker (to bound the installer wait) and the harness (to extend
 	// the SetupDevices RPC deadline when installation is requested).
