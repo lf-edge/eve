@@ -1,0 +1,11 @@
+# EVE-OS udev rules for NVIDIA GB10 platform
+
+# Ensure fb0 file device to be present in the system (otherwise OCI spec will fail)
+KERNEL=="fb", RUN+="/bin/mknod -m 660 /dev/fb0 c %M 0"
+
+# NVIDIA modules
+ACTION=="add", SUBSYSTEM=="module", KERNEL=="nvidia", RUN+="/bin/mknod -m 660 /dev/nvidiactl c 195 255"
+ACTION=="add", SUBSYSTEM=="module", KERNEL=="nvidia", RUN+="/bin/mknod -m 660 /dev/nvidia0 c 195 0"
+ACTION=="add", SUBSYSTEM=="module", KERNEL=="nvidia_modeset", RUN+="/bin/mknod -m 660 /dev/nvidia-modeset c 195 254"
+ACTION=="add", SUBSYSTEM=="module", KERNEL=="nvidia_uvm", RUN+="/opt/vendor/nvidia/bin/nv-dev-nodes.sh nvidia_uvm"
+

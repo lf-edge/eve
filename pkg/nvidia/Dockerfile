@@ -6,7 +6,7 @@
 ARG PLATFORM=generic
 
 FROM lfedge/eve-alpine:5f1c625e658308db22e936e3e5498167ed7b9081 AS build-base
-ENV BUILD_PKGS="autoconf automake build-base coreutils gettext git glib-dev libtool libmd-dev ncurses-dev tar xz-dev yq zstd-dev dpkg"
+ENV BUILD_PKGS="autoconf automake bash build-base coreutils gettext git glib-dev libtool libmd-dev m4 ncurses-dev tar xz-dev yq zstd-dev dpkg"
 
 RUN eve-alpine-deploy.sh
 
@@ -32,22 +32,51 @@ FROM build-base AS amd64-generic
 FROM build-base AS amd64-nvidia-jp5
 FROM build-base AS amd64-nvidia-jp6
 FROM build-base AS amd64-nvidia-jp7
+FROM build-base AS amd64-nvidia-gb
 FROM build-base AS riscv64-generic
 FROM build-base AS riscv64-nvidia-jp5
 FROM build-base AS riscv64-nvidia-jp6
 FROM build-base AS riscv64-nvidia-jp7
+FROM build-base AS riscv64-nvidia-gb
 
 FROM build-base AS arm64-nvidia-jp5
 ENV NVIDIA_LINUX=${JETSON_JP5}
 ENV NVIDIA_VER=jp5
+# hadolint ignore=DL3020
+ADD ${NVIDIA_LINUX} /nvidia_linux.tbz2
 
 FROM build-base AS arm64-nvidia-jp6
 ENV NVIDIA_LINUX=${JETSON_JP6}
 ENV NVIDIA_VER=jp6
+# hadolint ignore=DL3020
+ADD ${NVIDIA_LINUX} /nvidia_linux.tbz2
 
 FROM build-base AS arm64-nvidia-jp7
 ENV NVIDIA_LINUX=${JETSON_JP7}
 ENV NVIDIA_VER=jp7
+# hadolint ignore=DL3020
+ADD ${NVIDIA_LINUX} /nvidia_linux.tbz2
+
+FROM build-base AS arm64-nvidia-gb
+ENV NVIDIA_VER=gb
+ARG NVIDIA_DRIVER_BRANCH=595
+ARG NVIDIA_DRIVER_RELEASE=595.99.02
+ARG NVIDIA_DRIVER_VERSION=${NVIDIA_DRIVER_RELEASE}-0ubuntu0.24.04.1
+# The build stage needs the release to name libnvidia-ml.so.<release>
+ENV NVIDIA_DRIVER_RELEASE=${NVIDIA_DRIVER_RELEASE}
+
+ADD https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/sbsa/./libnvidia-egl-wayland1_1.1.21-1ubuntu1_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
+ADD http://ports.ubuntu.com/ubuntu-ports/pool/restricted/n/nvidia-graphics-drivers-${NVIDIA_DRIVER_BRANCH}/libnvidia-cfg1-${NVIDIA_DRIVER_BRANCH}_${NVIDIA_DRIVER_VERSION}_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
+ADD http://ports.ubuntu.com/ubuntu-ports/pool/restricted/n/nvidia-graphics-drivers-${NVIDIA_DRIVER_BRANCH}/libnvidia-compute-${NVIDIA_DRIVER_BRANCH}_${NVIDIA_DRIVER_VERSION}_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
+ADD http://ports.ubuntu.com/ubuntu-ports/pool/restricted/n/nvidia-graphics-drivers-${NVIDIA_DRIVER_BRANCH}/libnvidia-decode-${NVIDIA_DRIVER_BRANCH}_${NVIDIA_DRIVER_VERSION}_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
+ADD http://ports.ubuntu.com/ubuntu-ports/pool/restricted/n/nvidia-graphics-drivers-${NVIDIA_DRIVER_BRANCH}/libnvidia-encode-${NVIDIA_DRIVER_BRANCH}_${NVIDIA_DRIVER_VERSION}_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
+ADD http://ports.ubuntu.com/ubuntu-ports/pool/restricted/n/nvidia-graphics-drivers-${NVIDIA_DRIVER_BRANCH}/libnvidia-extra-${NVIDIA_DRIVER_BRANCH}_${NVIDIA_DRIVER_VERSION}_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
+ADD http://ports.ubuntu.com/ubuntu-ports/pool/restricted/n/nvidia-graphics-drivers-${NVIDIA_DRIVER_BRANCH}/libnvidia-fbc1-${NVIDIA_DRIVER_BRANCH}_${NVIDIA_DRIVER_VERSION}_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
+ADD http://ports.ubuntu.com/ubuntu-ports/pool/restricted/n/nvidia-graphics-drivers-${NVIDIA_DRIVER_BRANCH}/libnvidia-gl-${NVIDIA_DRIVER_BRANCH}_${NVIDIA_DRIVER_VERSION}_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
+ADD http://ports.ubuntu.com/ubuntu-ports/pool/restricted/n/nvidia-graphics-drivers-${NVIDIA_DRIVER_BRANCH}/nvidia-compute-utils-${NVIDIA_DRIVER_BRANCH}_${NVIDIA_DRIVER_VERSION}_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
+ADD http://ports.ubuntu.com/ubuntu-ports/pool/restricted/n/nvidia-graphics-drivers-${NVIDIA_DRIVER_BRANCH}/nvidia-firmware-${NVIDIA_DRIVER_BRANCH}-${NVIDIA_DRIVER_RELEASE}_${NVIDIA_DRIVER_VERSION}_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
+ADD http://ports.ubuntu.com/ubuntu-ports/pool/restricted/n/nvidia-graphics-drivers-${NVIDIA_DRIVER_BRANCH}/nvidia-utils-${NVIDIA_DRIVER_BRANCH}_${NVIDIA_DRIVER_VERSION}_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
+ADD http://ports.ubuntu.com/ubuntu-ports/pool/restricted/n/nvidia-graphics-drivers-${NVIDIA_DRIVER_BRANCH}/xserver-xorg-video-nvidia-${NVIDIA_DRIVER_BRANCH}_${NVIDIA_DRIVER_VERSION}_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
 
 FROM ${TARGETARCH}-${PLATFORM} AS build
 
@@ -56,14 +85,12 @@ RUN echo "${EVE_PLATFORM}" > /eve-platform
 # CDI Files
 COPY cdi/${NVIDIA_VER} /cdi
 
-ADD ${NVIDIA_LINUX} /nvidia_linux.tbz2
-
-# Extract tarball
+# Extract tarball (when needed)
 WORKDIR /
-RUN tar -xjf /nvidia_linux.tbz2
+RUN test -f /nvidia_linux.tbz2 && tar -xjf /nvidia_linux.tbz2 || true
 
 # Build nvidia-ctk
-ENV NVIDIA_CONTAINER_TOOLKIT_REV=v1.16.2
+ENV NVIDIA_CONTAINER_TOOLKIT_REV=v1.19.0
 ADD --keep-git-dir=true https://github.com/NVIDIA/nvidia-container-toolkit.git#${NVIDIA_CONTAINER_TOOLKIT_REV} /nvct
 
 WORKDIR /nvct
@@ -99,11 +126,9 @@ RUN case "${NVIDIA_VER}" in \
         jp7) JL_VER=r38.4.0 ;; \
         *)   JL_VER="${NVIDIA_VER}" ;; \
     esac && \
-    if [ "${NVIDIA_VER:0:2}" == "jp" ]; then \
-        register-sbom-pkg.sh -n jetson-linux -v "${JL_VER}" -l proprietary -u https://developer.nvidia.com/embedded/jetson-linux -o /sbom-out; \
-    else \
-        true; \
-    fi && \
+    case "${NVIDIA_VER}" in \
+        jp*) register-sbom-pkg.sh -n jetson-linux -v "${JL_VER}" -l proprietary -u https://developer.nvidia.com/embedded/jetson-linux -o /sbom-out ;; \
+    esac && \
     register-sbom-pkg.sh -n nvidia-container-toolkit -v "${NVIDIA_CONTAINER_TOOLKIT_REV}" -l Apache-2.0 -u https://github.com/NVIDIA/nvidia-container-toolkit -o /sbom-out && \
     register-sbom-pkg.sh -n libc-bin -v 2.31-0ubuntu9 -l LGPL-2.1-or-later -u http://ports.ubuntu.com/ubuntu-ports/pool/main/g/glibc -o /sbom-out
 
@@ -122,22 +147,30 @@ RUN mkdir -p /ldconfig-bin /nvfanctrl/dist /nvct/dist /cdi /rootfs-dist /cdi-dis
         for x in /cdi/*.yaml; do \
             OUTFILE=/cdi-dist/$(basename "$x") ; \
             /process-cdi.sh "$x" /rootfs /rootfs-dist &&  \
-            yq '. | (.devices[].containerEdits.hooks[] | select(.path == "/usr/bin/nvidia-ctk")).path = "/opt/vendor/nvidia/bin/nvidia-ctk"' -i "$x" && \
-            yq '. | (.devices[].containerEdits.hooks[] | select(.path == "/usr/bin/nvidia-cdi-hook")).path = "/opt/vendor/nvidia/bin/nvidia-cdi-hook"' -i "$x" && \
-            yq '. | (.devices[].containerEdits.hooks[] | select(.path == "/usr/bin/nvidia-container-runtime")).path = "/opt/vendor/nvidia/bin/nvidia-container-runtime"' -i "$x" && \
-            yq '. | (.devices[].containerEdits.hooks[] | select(.path == "/usr/bin/nvidia-container-runtime-hook")).path = "/opt/vendor/nvidia/bin/nvidia-container-runtime-hook"' -i "$x" && \
+            yq '. | (.. | select(has("path")) | select(.path == "/usr/bin/nvidia-ctk")).path = "/opt/vendor/nvidia/bin/nvidia-ctk"' -i "$x" && \
+            yq '. | (.. | select(has("path")) | select(.path == "/usr/bin/nvidia-cdi-hook")).path = "/opt/vendor/nvidia/bin/nvidia-cdi-hook"' -i "$x" && \
+            yq '. | (.. | select(has("path")) | select(.path == "/usr/bin/nvidia-container-runtime")).path = "/opt/vendor/nvidia/bin/nvidia-container-runtime"' -i "$x" && \
+            yq '. | (.. | select(has("path")) | select(.path == "/usr/bin/nvidia-container-runtime-hook")).path = "/opt/vendor/nvidia/bin/nvidia-container-runtime-hook"' -i "$x" && \
             /nvct/dist/nvidia-ctk cdi transform root --relative-to host \
                 --from /usr --to /opt/vendor/nvidia/dist/usr --input "$x" | \
             /nvct/dist/nvidia-ctk cdi transform root --relative-to host \
                 --from /etc --to /opt/vendor/nvidia/dist/etc | \
             /nvct/dist/nvidia-ctk cdi transform root --relative-to host \
                 --from /lib --to /opt/vendor/nvidia/dist/lib --output "$OUTFILE" && \
-            yq '. | (.devices[].containerEdits.hooks[] | select(.args[] == "update-ldcache")).args += ["--ldconfig-path", "/opt/vendor/nvidia/bin/ldconfig-glibc"]' -i "$OUTFILE" ; \
+            yq '. | (.. | select(has("args")) | select(.args[] == "update-ldcache")).args += ["--ldconfig-path", "/opt/vendor/nvidia/bin/ldconfig-glibc"]' -i "$OUTFILE" ; \
         done ; \
     fi && \
     rm -rf /rootfs/*
 
+# Create libnvidia-ml.so.1 if doesn't exist
+RUN if [ "${NVIDIA_VER}" = "gb" ] && \
+       [ ! -f /rootfs-dist/usr/lib/aarch64-linux-gnu/libnvidia-ml.so.1 ]; then \
+        cp /rootfs-dist/usr/lib/aarch64-linux-gnu/"libnvidia-ml.so.${NVIDIA_DRIVER_RELEASE}" \
+           /rootfs-dist/usr/lib/aarch64-linux-gnu/libnvidia-ml.so.1 ; \
+    fi
+
 FROM scratch AS out-jetson
+
 COPY --from=build /cdi-dist/*.yaml /etc/cdi/
 COPY --from=build /rules.d/* /opt/vendor/nvidia/etc/udev/rules.d/
 COPY --from=build /rootfs-dist/ /opt/vendor/nvidia/dist/
@@ -267,6 +300,7 @@ FROM out-jetson AS final-generic
 FROM out-jetson AS final-nvidia-jp5
 FROM out-jetson AS final-nvidia-jp6
 FROM out-jetson AS final-nvidia-jp7
+FROM out-jetson AS final-nvidia-gb
 FROM out-dgpu AS final-ai-generic
 # hadolint ignore=DL3006
 FROM final-${PLATFORM}
