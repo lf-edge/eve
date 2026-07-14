@@ -17,6 +17,8 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	lhv1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -50,6 +52,110 @@ func CreatePVC(pvcName string, size uint64, log *base.LogObject, storageClass st
 
 	log.Noticef("Created PVC: %s\n", result.ObjectMeta.Name)
 	return nil
+}
+
+// cdiControlPlaneDeployments are the CDI Deployments (namespace "cdi") that must
+// each have an available replica before a CDI image upload can succeed.
+var cdiControlPlaneDeployments = []string{"cdi-apiserver", "cdi-deployment", "cdi-uploadproxy"}
+
+// ClusterStorageReadyForVolumes reports whether the EVE-k cluster storage stack is
+// ready to create app volumes: the `longhorn` StorageClass exists and the Longhorn
+// control-plane daemonsets are running on this node, the CDI upload proxy Service
+// has a ClusterIP, and the CDI control-plane Deployments (cdi-apiserver,
+// cdi-deployment, cdi-uploadproxy) each have at least one available replica.
+// Callers use this to DEFER volume creation quietly until longhorn/CDI are
+// up -- which can take tens of minutes whenever an app volume is requested while the
+// EVE-k cluster is still coming up: on a freshly installed node's first boot when the
+// controller's EdgeDevConfig already contains the app instance, or in the minutes
+// after a kvm->k conversion. Without the gate these attempts fail with "storageclass
+// not found" / "no upload pod annotation" / RolloutDiskToPVC "attempts to upload
+// image failed".
+//
+// The uploadproxy ClusterIP is assigned at Service creation, well before the CDI
+// pods are Ready and before CDI can create/annotate a per-PVC upload pod, so the
+// Service check alone is necessary but NOT sufficient; the Deployment-availability
+// check closes that gap so RolloutDiskToPVC's upload is not attempted prematurely.
+// Best-effort: any API error or missing/unavailable component => not ready (false).
+// nodeName is this device's Kubernetes node name (derived by the caller from
+// EdgeNodeInfo.DeviceName), used for the per-node Longhorn checks below — not
+// os.Hostname().
+func ClusterStorageReadyForVolumes(log *base.LogObject, nodeName string) bool {
+	clientset, err := GetClientSet()
+	if err != nil {
+		log.Functionf("ClusterStorageReadyForVolumes: no clientset yet: %v", err)
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	defer cancel()
+	if _, err := clientset.StorageV1().StorageClasses().
+		Get(ctx, VolumeCSIClusterStorageClass, metav1.GetOptions{}); err != nil {
+		log.Functionf("ClusterStorageReadyForVolumes: StorageClass %s not ready: %v",
+			VolumeCSIClusterStorageClass, err)
+		return false
+	}
+	// The StorageClass can exist before Longhorn's control plane is running, so
+	// also require the Longhorn daemonsets to be ready on this node.
+	if err := checkLonghornReady(clientset, nodeName); err != nil {
+		log.Functionf("ClusterStorageReadyForVolumes: longhorn not ready: %v", err)
+		return false
+	}
+	// Daemonsets Running is necessary but not sufficient: Longhorn refuses to
+	// schedule replicas -- leaving a new volume unattachable -- unless at least one
+	// disk on this node reports Schedulable=True.
+	if err := checkLonghornSchedulable(nodeName); err != nil {
+		log.Functionf("ClusterStorageReadyForVolumes: %v", err)
+		return false
+	}
+	svc, err := clientset.CoreV1().Services("cdi").
+		Get(ctx, "cdi-uploadproxy", metav1.GetOptions{})
+	if err != nil || svc.Spec.ClusterIP == "" {
+		log.Functionf("ClusterStorageReadyForVolumes: cdi-uploadproxy Service not ready: %v", err)
+		return false
+	}
+	// A ClusterIP alone does not mean CDI can serve an upload: require the CDI
+	// control-plane Deployments to each have an available replica so the upload
+	// pod can be created and annotated before RolloutDiskToPVC attempts the upload.
+	for _, dep := range cdiControlPlaneDeployments {
+		d, err := clientset.AppsV1().Deployments("cdi").Get(ctx, dep, metav1.GetOptions{})
+		if err != nil || d.Status.AvailableReplicas < 1 {
+			log.Functionf("ClusterStorageReadyForVolumes: CDI deployment %s not available yet: %v",
+				dep, err)
+			return false
+		}
+	}
+	return true
+}
+
+// checkLonghornSchedulable returns nil if at least one Longhorn disk on nodeName
+// reports Schedulable=True. Longhorn refuses to schedule replicas -- leaving a new
+// volume unattachable -- when every disk is below storage-minimal-available-percentage
+// (e.g. a nearly-full /persist), so this is the per-node disk-schedulable signal, not
+// just the daemonsets. Shared by ClusterStorageReadyForVolumes and the node descheduler
+// readiness check.
+func checkLonghornSchedulable(nodeName string) error {
+	config, err := GetKubeConfig()
+	if err != nil {
+		return fmt.Errorf("no kubeconfig yet: %w", err)
+	}
+	lhClient, err := lhclientset.NewForConfig(config)
+	if err != nil {
+		return fmt.Errorf("longhorn client: %w", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	defer cancel()
+	lhNode, err := lhClient.LonghornV1beta2().Nodes("longhorn-system").Get(ctx, nodeName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("longhorn node %s not ready: %w", nodeName, err)
+	}
+	for _, ds := range lhNode.Status.DiskStatus {
+		for _, cond := range ds.Conditions {
+			if cond.Type == lhv1beta2.DiskConditionTypeSchedulable &&
+				cond.Status == lhv1beta2.ConditionStatusTrue {
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("longhorn node %s has no schedulable disk", nodeName)
 }
 
 // DeletePVC : deletes PVC of the given name.
