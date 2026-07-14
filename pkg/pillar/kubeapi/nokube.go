@@ -22,7 +22,7 @@ type WaitForKubernetesOptions struct {
 }
 
 // WaitForKubernetes in this file is just stub for non EVE-k builds.
-func WaitForKubernetes(string, *pubsub.PubSub, *time.Ticker, WaitForKubernetesOptions,
+func WaitForKubernetes(string, *pubsub.PubSub, *time.Ticker, string, WaitForKubernetesOptions,
 	...pubsub.ChannelWatch) error {
 	panic("WaitForKubernetes is not built")
 }
@@ -75,7 +75,7 @@ func EnsureVMsDeschedulerAnnotated(*base.LogObject) error {
 }
 
 // WaitForLonghornReady is a stub for non EVE-k builds.
-func WaitForLonghornReady(ctx context.Context, log *base.LogObject) error {
+func WaitForLonghornReady(ctx context.Context, log *base.LogObject, nodeName string) error {
 	return nil
 }
 

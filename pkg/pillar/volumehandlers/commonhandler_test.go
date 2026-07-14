@@ -42,6 +42,10 @@ func (m *mockVolumeMgr) GetCasClient() cas.CAS {
 	return nil
 }
 
+func (m *mockVolumeMgr) GetNodeName() string {
+	return ""
+}
+
 func newTestLog(t *testing.T) *base.LogObject {
 	t.Helper()
 	logger := logrus.New()

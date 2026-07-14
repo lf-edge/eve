@@ -51,6 +51,9 @@ type VolumeMgr interface {
 	LookupZVolStatusByDataset(dataset string) *types.ZVolStatus
 	GetCapabilities() *types.Capabilities
 	GetCasClient() cas.CAS
+	// GetNodeName returns this device's Kubernetes node name (EVE-k), derived from
+	// EdgeNodeInfo.DeviceName. Empty off EVE-k.
+	GetNodeName() string
 }
 
 func useVhost(log *base.LogObject, volumeManager VolumeMgr) bool {

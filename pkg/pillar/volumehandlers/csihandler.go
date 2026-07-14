@@ -90,7 +90,7 @@ func (handler *volumeHandlerCSI) PrepareVolume() error {
 		}
 	}()
 
-	return kubeapi.WaitForLonghornReady(ctx, handler.log)
+	return kubeapi.WaitForLonghornReady(ctx, handler.log, handler.volumeManager.GetNodeName())
 }
 
 func (handler *volumeHandlerCSI) HandlePrepared() (bool, error) {
