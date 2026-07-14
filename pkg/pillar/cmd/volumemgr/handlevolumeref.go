@@ -124,7 +124,7 @@ func handleVolumeRefDelete(ctxArg interface{}, key string,
 		publishVolumeStatus(ctx, vs)
 		updateVolumeRefStatus(ctx, vs)
 		maybeDeleteVolume(ctx, vs)
-		maybeSpaceAvailable(ctx)
+		reevaluatePendingVolumes(ctx)
 	}
 	log.Functionf("handleVolumeRefDelete(%s) Done", key)
 }
