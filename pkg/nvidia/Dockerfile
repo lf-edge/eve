@@ -23,9 +23,9 @@ ENV JETSON_JP5=https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v
 ENV JETSON_JP6=https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v3.0/release/jetson_linux_r36.3.0_aarch64.tbz2
 ENV JETSON_JP7=https://developer.nvidia.com/downloads/embedded/L4T/r38_Release_v4.0/release/Jetson_Linux_R38.4.0_aarch64.tbz2
 
-# Default Jetpack version
-ENV JETSON_LINUX=${JETSON_JP5}
-ENV JETPACK_VER=jp5
+# Default NVIDIA distro version
+ENV NVIDIA_LINUX=${JETSON_JP5}
+ENV NVIDIA_VER=jp5
 
 # This is an arm64 (only) package, nothing to do for other architectures
 FROM build-base AS amd64-generic
@@ -38,29 +38,29 @@ FROM build-base AS riscv64-nvidia-jp6
 FROM build-base AS riscv64-nvidia-jp7
 
 FROM build-base AS arm64-nvidia-jp5
-ENV JETSON_LINUX=${JETSON_JP5}
-ENV JETPACK_VER=jp5
+ENV NVIDIA_LINUX=${JETSON_JP5}
+ENV NVIDIA_VER=jp5
 
 FROM build-base AS arm64-nvidia-jp6
-ENV JETSON_LINUX=${JETSON_JP6}
-ENV JETPACK_VER=jp6
+ENV NVIDIA_LINUX=${JETSON_JP6}
+ENV NVIDIA_VER=jp6
 
 FROM build-base AS arm64-nvidia-jp7
-ENV JETSON_LINUX=${JETSON_JP7}
-ENV JETPACK_VER=jp7
+ENV NVIDIA_LINUX=${JETSON_JP7}
+ENV NVIDIA_VER=jp7
 
 FROM ${TARGETARCH}-${PLATFORM} AS build
 
 RUN echo "${EVE_PLATFORM}" > /eve-platform
 
 # CDI Files
-COPY cdi/${JETPACK_VER} /cdi
+COPY cdi/${NVIDIA_VER} /cdi
 
-ADD ${JETSON_LINUX} /jetson_linux.tbz2
+ADD ${NVIDIA_LINUX} /nvidia_linux.tbz2
 
 # Extract tarball
 WORKDIR /
-RUN tar -xjf /jetson_linux.tbz2
+RUN tar -xjf /nvidia_linux.tbz2
 
 # Build nvidia-ctk
 ENV NVIDIA_CONTAINER_TOOLKIT_REV=v1.16.2
@@ -93,22 +93,26 @@ RUN mkdir -p /ldconfig-bin && \
 
 # Register source-built / downloaded NVIDIA components in the APK DB, mandatory
 # for them to be included in the SBOM.
-RUN case "${JETPACK_VER}" in \
+RUN case "${NVIDIA_VER}" in \
         jp5) JL_VER=r35.5.0 ;; \
         jp6) JL_VER=r36.3.0 ;; \
         jp7) JL_VER=r38.4.0 ;; \
-        *)   JL_VER="${JETPACK_VER}" ;; \
+        *)   JL_VER="${NVIDIA_VER}" ;; \
     esac && \
-    register-sbom-pkg.sh -n jetson-linux -v "${JL_VER}" -l proprietary -u https://developer.nvidia.com/embedded/jetson-linux -o /sbom-out && \
+    if [ "${NVIDIA_VER:0:2}" == "jp" ]; then \
+        register-sbom-pkg.sh -n jetson-linux -v "${JL_VER}" -l proprietary -u https://developer.nvidia.com/embedded/jetson-linux -o /sbom-out; \
+    else \
+        true; \
+    fi && \
     register-sbom-pkg.sh -n nvidia-container-toolkit -v "${NVIDIA_CONTAINER_TOOLKIT_REV}" -l Apache-2.0 -u https://github.com/NVIDIA/nvidia-container-toolkit -o /sbom-out && \
     register-sbom-pkg.sh -n libc-bin -v 2.31-0ubuntu9 -l LGPL-2.1-or-later -u http://ports.ubuntu.com/ubuntu-ports/pool/main/g/glibc -o /sbom-out
 
 # Copy udev rules
-COPY udev/${JETPACK_VER}/rules.d/* /rules.d/
+COPY udev/${NVIDIA_VER}/rules.d/* /rules.d/
 
 # Copy scripts to processing CDI files and initialization
 COPY scripts/*.sh /
-COPY scripts/${JETPACK_VER}/* /
+COPY scripts/${NVIDIA_VER}/* /
 
 # Process CDI files
 WORKDIR /
