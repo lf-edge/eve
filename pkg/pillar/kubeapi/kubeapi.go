@@ -178,7 +178,7 @@ type WaitForKubernetesOptions struct {
 // The caller supplies ClusterType in opts; this function does not create any
 // pubsub subscriptions.
 func WaitForKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.Ticker,
-	opts WaitForKubernetesOptions, alsoWatch ...pubsub.ChannelWatch) (err error) {
+	nodeName string, opts WaitForKubernetesOptions, alsoWatch ...pubsub.ChannelWatch) (err error) {
 
 	var watches []pubsub.ChannelWatch
 	stillRunningWatch := pubsub.ChannelWatch{
@@ -226,18 +226,14 @@ func WaitForKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.T
 		return err
 	}
 
-	devUUID, err := os.Hostname()
-	if err != nil {
-		return err
-	}
-
 	// Wait for the node to be Ready and for any optional components declared by opts.
+	// nodeName is the caller-supplied EVE-k node name (from EdgeNodeInfo.DeviceName),
+	// not os.Hostname().
 	var nodeReadyErr error
 	doneCh := make(chan struct{}, 1)
 	go func() {
 		nodeReadyErr = wait.PollImmediate(time.Second, time.Minute*20, func() (bool, error) {
-			hostname, err := waitForNodeReady(client, devUUID)
-			if err != nil {
+			if err := nodeReadyByName(client, nodeName); err != nil {
 				return false, nil
 			}
 			if opts.WaitForKubevirt {
@@ -246,7 +242,7 @@ func WaitForKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.T
 				}
 			}
 			if opts.WaitForLonghorn {
-				if err := checkLonghornReady(client, hostname); err != nil {
+				if err := checkLonghornReady(client, nodeName); err != nil {
 					return false, nil
 				}
 			}
@@ -327,17 +323,24 @@ func checkLonghornReady(client kubernetes.Interface, nodeName string) error {
 	return nil
 }
 
+// nodeReadyByName confirms this device's Kubernetes node object exists. nodeName is the
+// EVE-k node name derived from EdgeNodeInfo.DeviceName (supplied by the caller) — the name
+// k3s registered the node under — NOT os.Hostname() (the device UUID). Looking the node up
+// by name avoids the node-uuid label indirection, which wedged the old lookup when a
+// device's UUID changed and the label went stale.
+func nodeReadyByName(client kubernetes.Interface, nodeName string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	defer cancel()
+	_, err := client.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+	return err
+}
+
 // WaitForLonghornReady blocks until all required Longhorn daemonsets are running
 // and ready on this node, or until ctx is cancelled. It is safe to call from a
 // worker goroutine; it never touches pubsub or the watchdog.
 // All setup steps (kubeconfig, client, node name lookup) are retried inside the
 // loop so that a slow k3s start after a reboot is handled transparently.
-func WaitForLonghornReady(ctx context.Context, log *base.LogObject) error {
-	devUUID, err := os.Hostname()
-	if err != nil {
-		return fmt.Errorf("WaitForLonghornReady: hostname: %v", err)
-	}
-
+func WaitForLonghornReady(ctx context.Context, log *base.LogObject, nodeName string) error {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
@@ -358,10 +361,7 @@ func WaitForLonghornReady(ctx context.Context, log *base.LogObject) error {
 				log.Noticef("WaitForLonghornReady: client error: %v", err)
 				continue
 			}
-			// Resolve the k3s node name from the device UUID label — the OS hostname
-			// is the device UUID, not the Kubernetes node name used in pod field selectors.
-			nodeName, err := waitForNodeReady(client, devUUID)
-			if err != nil {
+			if err := nodeReadyByName(client, nodeName); err != nil {
 				log.Noticef("WaitForLonghornReady: node not ready: %v", err)
 				continue
 			}
@@ -392,25 +392,6 @@ func waitForKubevirtReady(kubeConfig *rest.Config) error {
 		}
 	}
 	return fmt.Errorf("KubeVirt CR not yet Available")
-}
-
-func waitForNodeReady(client *kubernetes.Clientset, devUUID string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), kubeAPITimeout)
-	defer cancel()
-	labelSelector := metav1.LabelSelector{
-		MatchLabels: map[string]string{"node-uuid": devUUID},
-	}
-	options := metav1.ListOptions{
-		LabelSelector: metav1.FormatLabelSelector(&labelSelector),
-	}
-	nodes, err := client.CoreV1().Nodes().List(ctx, options)
-	if err != nil {
-		return "", err
-	}
-	for _, node := range nodes.Items {
-		return node.Name, nil
-	}
-	return "", fmt.Errorf("node not found by label uuid %s", devUUID)
 }
 
 // WaitForPVCReady : Loop until PVC is ready for timeout

@@ -115,6 +115,10 @@ type volumemgrContext struct {
 
 	// EVE 'k' mode
 	hvTypeKube bool
+	// nodeName is this device's Kubernetes node name (EVE-k), derived from
+	// EdgeNodeInfo.DeviceName; passed to the kubeapi readiness helpers instead of
+	// relying on os.Hostname().
+	nodeName string
 }
 
 func (ctxPtr *volumemgrContext) lookupVolumeStatusByUUID(id string) *types.VolumeStatus {
@@ -131,6 +135,11 @@ func (ctxPtr *volumemgrContext) lookupVolumeStatusByUUID(id string) *types.Volum
 
 func (ctxPtr *volumemgrContext) GetCasClient() cas.CAS {
 	return ctxPtr.casClient
+}
+
+// GetNodeName returns this device's Kubernetes node name (EVE-k), or "" off EVE-k.
+func (ctxPtr *volumemgrContext) GetNodeName() string {
+	return ctxPtr.nodeName
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -293,12 +302,22 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			}
 		}
 
+		// Resolve this node's Kubernetes node name from EdgeNodeInfo.DeviceName,
+		// used by the kubeapi readiness helpers instead of os.Hostname(). Proceed
+		// with an empty name on timeout; the readiness gate simply stays deferred.
+		nodeName, err := wait.WaitForNodeName(ps, log, agentName,
+			warningTime, errorTime, 60*time.Second)
+		if err != nil {
+			log.Warnf("volumemgr: %v", err)
+		}
+		ctx.nodeName = nodeName
+
 		// Assume single node: where kubevirt is running
 		waitForLhFlag := true
 		if encc.Valid && encc.ClusterType != types.ClusterTypeReplicatedStorage {
 			waitForLhFlag = false
 		}
-		err := kubeapi.WaitForKubernetes(agentName, ps, stillRunning,
+		err = kubeapi.WaitForKubernetes(agentName, ps, stillRunning, ctx.nodeName,
 			kubeapi.WaitForKubernetesOptions{
 				WaitForLonghorn: waitForLhFlag,
 			})
@@ -307,7 +326,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		} else {
 			log.Noticef("volumemgr run: kubernetes node ready, longhorn ready")
 		}
-
 	}
 
 	if ctx.persistType == types.PersistZFS {

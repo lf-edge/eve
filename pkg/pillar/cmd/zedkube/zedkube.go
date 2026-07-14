@@ -663,7 +663,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	zedkubeCtx.subAssignableAdapters = subAssignableAdapters
 	subAssignableAdapters.Activate()
 
-	err = kubeapi.WaitForKubernetes(agentName, ps, stillRunning,
+	err = kubeapi.WaitForKubernetes(agentName, ps, stillRunning, zedkubeCtx.nodeName,
 		kubeapi.WaitForKubernetesOptions{},
 		// Make sure we keep ClusterIPIsReady up to date while we wait
 		// for Kubernetes to come up.
