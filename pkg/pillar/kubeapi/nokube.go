@@ -69,6 +69,11 @@ func GetStorageClassForReplicaCount(count int) string {
 	return ""
 }
 
+// ClusterStorageReadyForVolumes is a stub for non EVE-k builds (no cluster storage).
+func ClusterStorageReadyForVolumes(*base.LogObject, string) bool {
+	return true
+}
+
 // EnsureVMsDeschedulerAnnotated is a stub for non EVE-k builds.
 func EnsureVMsDeschedulerAnnotated(*base.LogObject) error {
 	return nil
