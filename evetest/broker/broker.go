@@ -59,6 +59,12 @@ type broker struct {
 	proxyCACerts    []*pem.Block
 	registryMirrors map[string][]string // key: registry hostname
 	maxClients      int                 // -1 means unlimited
+
+	// Periodic Docker image cleanup
+	imgRetention     time.Duration
+	diskThresholdPct int
+	imageUsage       *imageUsageTracker
+
 	// mutex protects only broker-global state: sessions, imageUploads
 	// and usedSDNUplinkMACs. It is always held briefly. Per-session state
 	// (session.eveDevices, session.sdnDevice) is protected by that session's
@@ -122,7 +128,8 @@ type device struct {
 }
 
 func newBroker(log *logrus.Logger, provider provider.DeviceProvider,
-	providerName, imageDir string, sdnGrpcPort uint16, maxClients int) (*broker, error) {
+	providerName, imageDir string, sdnGrpcPort uint16, maxClients int,
+	imgRetention time.Duration, diskThresholdPct int) (*broker, error) {
 	supportedArchs, err := provider.GetSupportedDeviceArchs()
 	if err != nil {
 		return nil, fmt.Errorf("cannot retrieve supported device architectures: %w", err)
@@ -147,7 +154,7 @@ func newBroker(log *logrus.Logger, provider provider.DeviceProvider,
 		log.Infof("Loaded %d proxy CA certificates from %s",
 			len(proxyCACerts), proxyChainPath)
 	}
-	return &broker{
+	b := &broker{
 		globalLog:         log,
 		provider:          provider,
 		providerName:      providerName,
@@ -158,10 +165,21 @@ func newBroker(log *logrus.Logger, provider provider.DeviceProvider,
 		proxyCACerts:      proxyCACerts,
 		registryMirrors:   constants.LoadRegistryMirrors(),
 		maxClients:        maxClients,
+		imgRetention:      imgRetention,
+		diskThresholdPct:  diskThresholdPct,
+		imageUsage:        newImageUsageTracker(imageDir),
 		sessions:          make(map[string]*session),
 		imageUploads:      make(map[string]chan struct{}),
 		usedSDNUplinkMACs: make(map[string]struct{}),
-	}, nil
+	}
+	// The qemu provider runs the broker embedded inside the short-lived evetest
+	// container itself (all-in-one mode), so it exits when the test ends -- there's
+	// no accumulated state worth periodically cleaning up, and no long-lived Docker
+	// storage to protect.
+	if providerName != "qemu" {
+		go b.runImageCleanupLoop()
+	}
+	return b, nil
 }
 
 // generateClientID generates a short client ID. It gets embedded directly into
@@ -505,6 +523,7 @@ func (b *broker) BuildImage(
 			return &api.BuildImageResponse{MissingEveContainerImage: true}, nil
 		}
 	}
+	b.imageUsage.touch(dockerImageName)
 
 	// Build QCOW2 or RAW image
 	providerDevName := fmt.Sprintf("eve-%s-%s", clientSession.clientID, req.DeviceName)
@@ -630,6 +649,7 @@ func (b *broker) PushEVEContainerImage(
 	}
 	if haveImage {
 		b.mutex.Unlock()
+		b.imageUsage.touch(dockerImageName)
 		log.Infof("Image %q already present in Docker image store",
 			dockerImageName)
 		return stream.SendAndClose(&api.PushImageResponse{
@@ -698,6 +718,7 @@ func (b *broker) PushEVEContainerImage(
 		return err
 	}
 
+	b.imageUsage.touch(dockerImageName)
 	log.Infof("Loaded EVE docker image: %s", dockerImageName)
 	return stream.SendAndClose(&api.PushImageResponse{
 		AlreadyExists: false,
@@ -754,6 +775,7 @@ func (b *broker) SetupDevices(
 			return nil, err
 		}
 	}
+	b.imageUsage.touch(sdnDockerImageName)
 
 	// Determine and validate the device architecture.
 	// All EVE devices in a single setup request must use the same architecture.

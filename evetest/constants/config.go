@@ -92,11 +92,6 @@ const (
 	// This is read by the evetest container.
 	PreferredArchEnv = "PREFERRED_ARCH"
 
-	// EVEImgRetentionEnv defines the retention time (in minutes) for an EVE image pulled
-	// by the broker. This allows reusing the same image in future test runs.
-	// This is read by the broker.
-	EVEImgRetentionEnv = "EVE_IMG_RETENTION_MINUTES"
-
 	// AdamVersionEnv specifies the version of the Adam controller to use.
 	// This is read by the evetest container.
 	AdamVersionEnv = "ADAM_VERSION"
@@ -176,6 +171,20 @@ const (
 	// of already-connected clients are never blocked by this limit).
 	// -1 (default) means unlimited. Read by evetest-broker.
 	BrokerMaxClientsEnv = "BROKER_MAX_CLIENTS"
+
+	// BrokerDockerImageRetentionEnv specifies how long (in minutes) an unused
+	// Docker image (not referenced by any existing container) is kept before
+	// the broker's periodic cleanup removes it. This lets a pulled EVE/SDN
+	// image be reused across test runs for a while, without letting years'
+	// worth of old image versions accumulate on disk. Read by evetest-broker.
+	BrokerDockerImageRetentionEnv = "BROKER_DOCKER_IMAGE_RETENTION"
+
+	// BrokerDockerDiskUsageThresholdEnv specifies the disk usage percentage
+	// (on the filesystem backing Docker's storage) at or above which the
+	// broker aggressively evicts the oldest unused Docker images, regardless
+	// of BrokerDockerImageRetentionEnv, until usage drops back under it.
+	// Read by evetest-broker.
+	BrokerDockerDiskUsageThresholdEnv = "BROKER_DOCKER_DISK_USAGE_THRESHOLD"
 
 	// ExternalArtifactDirEnv specifies a host-side directory path where all test
 	// artifacts should be collected.
@@ -262,9 +271,6 @@ const (
 	// TODO: change to lfedge once the repo is created
 	DefaultSDNRepo = "milan4zededa/evetest-sdn"
 
-	// DefaultEVEImgRetentionMinutes is the default time to retain unused EVE images.
-	DefaultEVEImgRetentionMinutes = 60
-
 	// DefaultAdamVersion specifies the Adam version to use by default.
 	DefaultAdamVersion = "0.0.75"
 
@@ -297,6 +303,14 @@ const (
 
 	// DefaultBrokerMaxClients means "unlimited" -- no cap on concurrent clients.
 	DefaultBrokerMaxClients = -1
+
+	// DefaultBrokerDockerImageRetentionMinutes is 7 days.
+	DefaultBrokerDockerImageRetentionMinutes = 7 * 24 * 60
+
+	// DefaultBrokerDockerDiskUsageThresholdPercent triggers aggressive Docker
+	// image cleanup once the filesystem backing Docker's storage is at least
+	// this full.
+	DefaultBrokerDockerDiskUsageThresholdPercent = 80
 )
 
 // InitViperConfig initializes the Viper configuration with default values.
@@ -326,7 +340,6 @@ func InitViperConfig() {
 	viper.SetDefault(EVEVersionEnv, "") // Empty = derive from repo
 	viper.SetDefault(EVERepoEnv, DefaultEVERepo)
 	viper.SetDefault(PreferredArchEnv, DefaultPreferredArch)
-	viper.SetDefault(EVEImgRetentionEnv, DefaultEVEImgRetentionMinutes)
 
 	// Adam image config
 	viper.SetDefault(AdamVersionEnv, DefaultAdamVersion)
@@ -343,6 +356,8 @@ func InitViperConfig() {
 	viper.SetDefault(BrokerLibvirtURIEnv, DefaultBrokerLibvirtURI)
 	viper.SetDefault(BrokerImageDirEnv, DefaultBrokerImageDir)
 	viper.SetDefault(BrokerMaxClientsEnv, DefaultBrokerMaxClients)
+	viper.SetDefault(BrokerDockerImageRetentionEnv, DefaultBrokerDockerImageRetentionMinutes)
+	viper.SetDefault(BrokerDockerDiskUsageThresholdEnv, DefaultBrokerDockerDiskUsageThresholdPercent)
 
 	// Per-registry pull-through cache mirrors
 	for _, e := range RegistryMirrorEntries {

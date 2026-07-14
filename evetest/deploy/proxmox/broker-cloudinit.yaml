@@ -63,13 +63,16 @@ write_files:
       ExecStartPre=-/usr/bin/docker rm -f evetest-broker
       ExecStartPre=/usr/bin/mkdir -p /root/.evetest/images
       ExecStartPre=/usr/bin/docker pull __BROKER_IMAGE__
-      ExecStart=/usr/bin/docker run --rm --name evetest-broker \
+      ExecStart=/bin/sh -c '\
+        DOCKER_ROOT=$(docker info -f {{.DockerRootDir}}) && \
+        exec /usr/bin/docker run --rm --name evetest-broker \
         --env-file /etc/evetest/broker.env \
         --env-file /etc/evetest/broker-mirrors.env --network host \
         -v /var/run/docker.sock:/var/run/docker.sock \
         -v /root/.docker:/root/.docker:ro \
         -v /root/.evetest/images:/root/.evetest/images \
-        __BROKER_IMAGE__
+        -v "$DOCKER_ROOT":"$DOCKER_ROOT":ro \
+        __BROKER_IMAGE__'
       Restart=no
 
       [Install]

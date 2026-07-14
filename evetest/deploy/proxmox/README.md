@@ -145,6 +145,20 @@ against hypervisor over-provisioning: once `N` evetest clients are connected, th
 rejects any further new `Connect` calls with an error until a session frees up. Default
 is `-1` (unlimited).
 
+### Docker image cleanup
+
+The broker periodically removes old, unused Docker images (EVE/SDN image versions
+pulled over time) so they don't fill up the VM's disk. Pass
+`--docker-image-retention MINUTES` (default `10080`, 7 days) to change how long an
+unused image is kept, and `--docker-disk-usage-threshold PERCENT` (default `80`) to
+change the disk usage percentage at or above which the broker aggressively evicts the
+oldest unused images regardless of the retention setting. Only images the broker
+itself pulled or built are ever eligible for removal -- anything else on the VM (an
+image currently backing any container, running or stopped, such as the broker's own
+image and the OCI registry mirrors; or an image the broker never touched, e.g. one you
+pulled manually for something unrelated) is never removed, no matter how old or unused
+it looks.
+
 ### OCI registry mirrors
 
 Pass `--with-oci-registry-mirrors` (and optionally `--registry-mirror-base-port`,
