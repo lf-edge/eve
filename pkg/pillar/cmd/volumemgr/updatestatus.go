@@ -575,6 +575,10 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 				}
 				return changed, false
 			}
+			if ctx.hvTypeKube && !clusterStorageReady(ctx) {
+				log.Noticef("doUpdateVol(%s): deferring blank volume create until cluster storage (longhorn/CDI) ready", status.Key())
+				return changed, false
+			}
 			status.State = types.CREATING_VOLUME
 			status.ReferenceName = "" //set empty for blank volume
 			status.ContentFormat = blankVolumeFormat
@@ -649,6 +653,10 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 				return changed, false
 			}
 
+			if ctx.hvTypeKube && !clusterStorageReady(ctx) {
+				log.Noticef("doUpdateVol(%s): deferring volume create until cluster storage (longhorn/CDI) ready", status.Key())
+				return changed, false
+			}
 			status.State = types.CREATING_VOLUME
 			// first blob is always the root
 			if len(ctStatus.Blobs) < 1 {

@@ -764,6 +764,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 				gcUnusedInitObjects(&ctx)
 				ctx.initGced = true
 			}
+			// Re-drive volumes deferred pre-create waiting on EVE-k cluster
+			// storage readiness so they proceed once longhorn/CDI come up. Only
+			// EVE-k defers here; on other HVs the disk-space deferral is already
+			// re-driven by the event-driven callers, so skip the periodic pass.
+			if ctx.hvTypeKube {
+				reevaluatePendingVolumes(&ctx)
+			}
 			ps.CheckMaxTimeTopic(agentName, "gc", start,
 				warningTime, errorTime)
 
