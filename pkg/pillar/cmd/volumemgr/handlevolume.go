@@ -109,7 +109,7 @@ func handleVolumeDelete(ctxArg interface{}, key string,
 		}
 		updateVolumeStatusRefCount(ctx, status)
 		maybeDeleteVolume(ctx, status)
-		maybeSpaceAvailable(ctx)
+		reevaluatePendingVolumes(ctx)
 	}
 	log.Functionf("handleVolumeDelete(%s) Done", key)
 }
@@ -339,8 +339,11 @@ func maybeDeleteVolume(ctx *volumemgrContext, status *types.VolumeStatus) {
 	log.Functionf("maybeDeleteVolume for %v Done", status.Key())
 }
 
-// maybeSpaceAvailable iterates over VolumeStatus and call doUpdateVol if state is less than CREATING_VOLUME
-func maybeSpaceAvailable(ctx *volumemgrContext) {
+// reevaluatePendingVolumes re-drives every VolumeStatus still below
+// CREATING_VOLUME through doUpdateVol. It is called whenever something may have
+// unblocked a deferred volume -- disk space freeing up, or EVE-k cluster storage
+// (longhorn/CDI) becoming ready.
+func reevaluatePendingVolumes(ctx *volumemgrContext) {
 	for _, s := range ctx.pubVolumeStatus.GetAll() {
 		status := s.(types.VolumeStatus)
 		if status.State >= types.CREATING_VOLUME {
@@ -354,7 +357,7 @@ func maybeSpaceAvailable(ctx *volumemgrContext) {
 			publishVolumeStatus(ctx, &status)
 			updateVolumeRefStatus(ctx, &status)
 			if err := createOrUpdateAppDiskMetrics(ctx, agentName, &status); err != nil {
-				log.Errorf("maybeSpaceAvailable(%s): exception while publishing diskmetric. %s", status.Key(), err.Error())
+				log.Errorf("reevaluatePendingVolumes(%s): exception while publishing diskmetric. %s", status.Key(), err.Error())
 			}
 		}
 	}
