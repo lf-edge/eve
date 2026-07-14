@@ -726,7 +726,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			WaitForKubevirt: waitForKubevirtFlag,
 		}
 		for {
-			err = kubeapi.WaitForKubernetes(agentName, ps, stillRunning, kubeOpts)
+			err = kubeapi.WaitForKubernetes(agentName, ps, stillRunning, domainCtx.nodeName, kubeOpts)
 			if err == nil {
 				break
 			}
