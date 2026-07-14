@@ -771,6 +771,23 @@ EVE publishes the following information to the controller:
   EAPOL-Start and EAPOL-Logoff frames, EAP-Request/Response frames, and counts of invalid
   or malformed frames.
 
+### Availability during EVE-OS updates
+
+On networks that gate management access with 802.1X, the non-authenticated
+(bootstrap) VLAN described above must remain available not only for initial
+enrollment but also across EVE-OS updates. An update changes the measured-boot
+PCR values, so the device's TPM can no longer locally unseal the vault key: the
+device must reach the controller to complete remote attestation and receive the
+encrypted backup key before it can unlock the vault (see
+[Encrypted Data Store](SECURITY-ARCHITECTURE.md#encrypted-data-store)). Because
+the 802.1X client certificate's private key is itself kept in the vault, the
+port cannot be authenticated until *after* the vault is unlocked — so this
+controller round-trip depends entirely on the bootstrap VLAN, exactly as during
+first enrollment. If the network does not give unauthenticated EVE devices
+connectivity to the controller, a device that reboots into an updated image
+cannot complete attestation, cannot unlock its vault, and loses controller
+connectivity until the network is reconfigured.
+
 ## Air-Gap Mode
 
 Air-Gap mode allows a device to operate without connectivity to the main controller,
