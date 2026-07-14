@@ -259,6 +259,11 @@ libvirt-run-broker-container:
 	# Capture EVETEST_* and DOCKER_* environment variables
 	$(eval EV_VARS := $(shell env | grep -E '^(EVETEST|DOCKER)_' | sed 's/^/-e /'))
 	$(eval IMAGE_DIR := $(or $(EVETEST_BROKER_IMAGE_DIR),/home/eve-broker/images))
+	# Bind-mount the host's actual Docker storage directory into the container at
+	# the same path, so the broker's periodic image-cleanup routine (which asks
+	# the Docker daemon for its own DockerRootDir rather than assuming a fixed
+	# path like /var/lib/docker) can statfs it from inside the container too.
+	$(eval DOCKER_ROOT := $(shell docker info -f '{{.DockerRootDir}}'))
 	# Optionally mount (docker registry and/or app image datastore) proxy CA chain if provided.
 ifneq ($(EVETEST_BROKER_PROXY_CA_CHAIN),)
 	$(eval PROXY_CA_MOUNT := -v $(EVETEST_BROKER_PROXY_CA_CHAIN):/etc/evetest/proxy/ca-chain.pem:ro)
@@ -292,6 +297,7 @@ endif
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-v ~/.docker:/root/.docker:ro \
 		-v $(IMAGE_DIR):$(IMAGE_DIR) \
+		-v $(DOCKER_ROOT):$(DOCKER_ROOT):ro \
 		$(EVETEST_ORG)/evetest-broker:$(EVETEST_VERSION)
 
 # Internal target: invoked by Dockerfile.broker inside the builder container.

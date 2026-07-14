@@ -102,7 +102,10 @@ func main() {
 	sdnGrpcPort := viper.GetUint16(constants.SDNPortEnv)
 	imageDir := viper.GetString(constants.BrokerImageDirEnv)
 	maxClients := viper.GetInt(constants.BrokerMaxClientsEnv)
-	broker, err := newBroker(log, deviceProvider, providerName, imageDir, sdnGrpcPort, maxClients)
+	imgRetention := time.Duration(viper.GetInt(constants.BrokerDockerImageRetentionEnv)) * time.Minute
+	diskThresholdPct := viper.GetInt(constants.BrokerDockerDiskUsageThresholdEnv)
+	broker, err := newBroker(log, deviceProvider, providerName, imageDir, sdnGrpcPort, maxClients,
+		imgRetention, diskThresholdPct)
 	if err != nil {
 		log.Fatal(err)
 	}

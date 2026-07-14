@@ -59,6 +59,13 @@ BROKER_LOG_LEVEL=""
 # -1 means unlimited (the broker's own default). Caps how many evetest clients the
 # broker will accept concurrently, as a simple guard against hypervisor overprovisioning.
 BROKER_MAX_CLIENTS="-1"
+# How long (minutes) an unused, not-currently-referenced-by-any-container Docker
+# image is kept before the broker's periodic cleanup removes it. Default: 7 days.
+DOCKER_IMAGE_RETENTION="10080"
+# Disk usage percentage (on the filesystem backing Docker's storage) at or above
+# which the broker aggressively evicts the oldest unused Docker images, regardless
+# of the retention setting above, until usage drops back under it.
+DOCKER_DISK_USAGE_THRESHOLD="80"
 # When enabled, the broker VM also runs six registry:2 pull-through cache
 # containers (one per registry in evetest's REGISTRY_MIRROR_* set), listening
 # on the uplink NIC, and their addresses are written into broker.env so the
@@ -115,6 +122,14 @@ Broker VM shape:
   --broker-max-clients N        Max concurrent evetest clients the broker will accept;
                                 new connections are rejected once this many are already
                                 connected. Default: -1 (unlimited).
+  --docker-image-retention MINUTES
+                                How long an unused Docker image is kept before the
+                                broker's periodic cleanup removes it. Default: 10080
+                                (7 days).
+  --docker-disk-usage-threshold PERCENT
+                                Disk usage percent (on Docker's storage filesystem) at
+                                or above which the broker aggressively evicts the
+                                oldest unused Docker images. Default: 80.
 
 OCI registry mirrors:
   --with-oci-registry-mirrors        Run a registry:2 pull-through cache on the
@@ -145,30 +160,32 @@ USAGE
 # ----- arg parsing ----------------------------------------------------------
 while [ $# -gt 0 ]; do
     case "$1" in
-        --api-url)                   API_URL="$2"; shift 2 ;;
-        --node)                      NODE="$2"; shift 2 ;;
-        --storage)                   STORAGE="$2"; shift 2 ;;
-        --import-storage)            IMPORT_STORAGE="$2"; shift 2 ;;
-        --tls-skip-verify)           TLS_SKIP_VERIFY="$2"; shift 2 ;;
-        --uplink-subnet)             UPLINK_SUBNET="$2"; shift 2 ;;
-        --uplink-ipv6-subnet)        UPLINK_IPV6_SUBNET="$2"; UPLINK_IPV6_SUBNET_EXPLICIT=true; shift 2 ;;
-        --lan-bridge)                LAN_BRIDGE="$2"; shift 2 ;;
-        --uplink-vnet)               UPLINK_VNET="$2"; shift 2 ;;
-        --broker-image)              BROKER_IMAGE="$2"; shift 2 ;;
-        --broker-vm-cores)           BROKER_VM_CORES="$2"; shift 2 ;;
-        --broker-vm-memory)          BROKER_VM_MEMORY="$2"; shift 2 ;;
-        --broker-vm-disk)            BROKER_VM_DISK="$2"; shift 2 ;;
-        --broker-vm-ssh-pubkey)      BROKER_VM_SSH_PUBKEY="$2"; shift 2 ;;
-        --broker-vm-image-url)       BROKER_VM_IMAGE_URL="$2"; shift 2 ;;
-        --broker-log-level)          BROKER_LOG_LEVEL="$2"; shift 2 ;;
-        --broker-max-clients)        BROKER_MAX_CLIENTS="$2"; shift 2 ;;
-        --with-oci-registry-mirrors) WITH_OCI_MIRRORS=true; shift ;;
-        --registry-mirror-base-port) REGISTRY_MIRROR_BASE_PORT="$2"; shift 2 ;;
-        --docker-username)           DOCKER_USERNAME="$2"; shift 2 ;;
-        --docker-password)           DOCKER_PASSWORD="$2"; shift 2 ;;
-        --docker-registry)           DOCKER_REGISTRY="$2"; shift 2 ;;
-        --destroy)                   DESTROY=true; shift ;;
-        -h|--help)                   usage; exit 0 ;;
+        --api-url)                     API_URL="$2"; shift 2 ;;
+        --node)                        NODE="$2"; shift 2 ;;
+        --storage)                     STORAGE="$2"; shift 2 ;;
+        --import-storage)              IMPORT_STORAGE="$2"; shift 2 ;;
+        --tls-skip-verify)             TLS_SKIP_VERIFY="$2"; shift 2 ;;
+        --uplink-subnet)               UPLINK_SUBNET="$2"; shift 2 ;;
+        --uplink-ipv6-subnet)          UPLINK_IPV6_SUBNET="$2"; UPLINK_IPV6_SUBNET_EXPLICIT=true; shift 2 ;;
+        --lan-bridge)                  LAN_BRIDGE="$2"; shift 2 ;;
+        --uplink-vnet)                 UPLINK_VNET="$2"; shift 2 ;;
+        --broker-image)                BROKER_IMAGE="$2"; shift 2 ;;
+        --broker-vm-cores)             BROKER_VM_CORES="$2"; shift 2 ;;
+        --broker-vm-memory)            BROKER_VM_MEMORY="$2"; shift 2 ;;
+        --broker-vm-disk)              BROKER_VM_DISK="$2"; shift 2 ;;
+        --broker-vm-ssh-pubkey)        BROKER_VM_SSH_PUBKEY="$2"; shift 2 ;;
+        --broker-vm-image-url)         BROKER_VM_IMAGE_URL="$2"; shift 2 ;;
+        --broker-log-level)            BROKER_LOG_LEVEL="$2"; shift 2 ;;
+        --broker-max-clients)          BROKER_MAX_CLIENTS="$2"; shift 2 ;;
+        --docker-image-retention)      DOCKER_IMAGE_RETENTION="$2"; shift 2 ;;
+        --docker-disk-usage-threshold) DOCKER_DISK_USAGE_THRESHOLD="$2"; shift 2 ;;
+        --with-oci-registry-mirrors)   WITH_OCI_MIRRORS=true; shift ;;
+        --registry-mirror-base-port)   REGISTRY_MIRROR_BASE_PORT="$2"; shift 2 ;;
+        --docker-username)             DOCKER_USERNAME="$2"; shift 2 ;;
+        --docker-password)             DOCKER_PASSWORD="$2"; shift 2 ;;
+        --docker-registry)             DOCKER_REGISTRY="$2"; shift 2 ;;
+        --destroy)                     DESTROY=true; shift ;;
+        -h|--help)                     usage; exit 0 ;;
         *) echo "error: unknown flag: $1" >&2; usage >&2; exit 2 ;;
     esac
 done
@@ -327,6 +344,8 @@ EVETEST_BROKER_PROXMOX_TLS_SKIP_VERIFY=${TLS_SKIP_VERIFY}
 EVETEST_BROKER_IMAGE_DIR=${BROKER_IMAGE_DIR}
 EVETEST_SDN_UPLINK_IPV4_SUBNET=${UPLINK_SUBNET}
 EVETEST_BROKER_MAX_CLIENTS=${BROKER_MAX_CLIENTS}
+EVETEST_BROKER_DOCKER_IMAGE_RETENTION=${DOCKER_IMAGE_RETENTION}
+EVETEST_BROKER_DOCKER_DISK_USAGE_THRESHOLD=${DOCKER_DISK_USAGE_THRESHOLD}
 EOF
 )"
 if [ -n "$BROKER_LOG_LEVEL" ]; then
