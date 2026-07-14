@@ -292,7 +292,7 @@ func processVolumeWorkResult(ctxPtr interface{}, res worker.WorkResult) error {
 		log.Functionf("processVolumeWorkResult for %v, VolumeStatus found", d.status.Key())
 		updateVolumeStatusRefCount(ctx, status)
 		maybeDeleteVolume(ctx, status)
-		maybeSpaceAvailable(ctx)
+		reevaluatePendingVolumes(ctx)
 	}
 	return nil
 }
