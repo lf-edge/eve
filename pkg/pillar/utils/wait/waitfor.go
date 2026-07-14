@@ -4,6 +4,8 @@
 package wait
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
 	info "github.com/lf-edge/eve-api/go/info"
@@ -146,4 +148,95 @@ func handleOnboardStatusImpl(ctxArg interface{}, key string,
 	}
 	ctx.Status = status
 	ctx.Initialized = true
+}
+
+// NodeNameFromDeviceName converts an EdgeNodeInfo.DeviceName into the Kubernetes
+// node name that k3s registers this node under: lower-cased with underscores
+// replaced by hyphens. This normalization must match the one in cluster-utils.sh;
+// keep them in sync.
+func NodeNameFromDeviceName(deviceName string) string {
+	return strings.ReplaceAll(strings.ToLower(deviceName), "_", "-")
+}
+
+// nodeNameContext carries the resolved node name out of the EdgeNodeInfo handlers.
+type nodeNameContext struct {
+	nodeName string
+	found    bool
+}
+
+// WaitForNodeName waits for zedagent to publish an EdgeNodeInfo with a non-empty
+// DeviceName and returns the derived Kubernetes node name (see NodeNameFromDeviceName).
+// If timeout > 0 it returns an error should the name not arrive within that window;
+// timeout == 0 waits indefinitely. The watchdog is kicked throughout.
+//
+// TODO: domainmgr and zedkube still resolve the node name with their own
+// EdgeNodeInfo subscriptions and copies of the DeviceName normalization; convert
+// them to this helper so the derivation lives in one place.
+//
+//revive:disable-next-line:exported // WaitFor* naming matches WaitForVault/WaitForOnboarded in this package
+func WaitForNodeName(ps *pubsub.PubSub, log *base.LogObject, agentName string,
+	warningTime, errorTime, timeout time.Duration) (string, error) {
+
+	nctx := &nodeNameContext{}
+	sub, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedagent",
+		MyAgentName:   agentName,
+		TopicImpl:     types.EdgeNodeInfo{},
+		Activate:      false,
+		Ctx:           nctx,
+		CreateHandler: handleEdgeNodeInfoCreate,
+		ModifyHandler: handleEdgeNodeInfoModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		return "", err
+	}
+	sub.Activate()
+	defer sub.Close()
+
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(25 * time.Second)
+	defer stillRunning.Stop()
+	ps.StillRunning(agentName, warningTime, errorTime)
+
+	var timeoutCh <-chan time.Time
+	if timeout > 0 {
+		timer := time.NewTimer(timeout)
+		defer timer.Stop()
+		timeoutCh = timer.C
+	}
+
+	for !nctx.found {
+		log.Functionf("Waiting for EdgeNodeInfo DeviceName")
+		select {
+		case change := <-sub.MsgChan():
+			sub.ProcessChange(change)
+		case <-timeoutCh:
+			return "", fmt.Errorf("timeout waiting for EdgeNodeInfo DeviceName")
+		case <-stillRunning.C:
+		}
+		ps.StillRunning(agentName, warningTime, errorTime)
+	}
+	return nctx.nodeName, nil
+}
+
+func handleEdgeNodeInfoCreate(ctxArg interface{}, key string, statusArg interface{}) {
+	handleEdgeNodeInfoImpl(ctxArg, statusArg)
+}
+
+func handleEdgeNodeInfoModify(ctxArg interface{}, key string, statusArg interface{}, _ interface{}) {
+	handleEdgeNodeInfoImpl(ctxArg, statusArg)
+}
+
+func handleEdgeNodeInfoImpl(ctxArg interface{}, statusArg interface{}) {
+	ctx := ctxArg.(*nodeNameContext)
+	enInfo := statusArg.(types.EdgeNodeInfo)
+	if enInfo.DeviceName == "" {
+		return
+	}
+	if nodeName := NodeNameFromDeviceName(enInfo.DeviceName); nodeName != "" {
+		ctx.nodeName = nodeName
+		ctx.found = true
+	}
 }
