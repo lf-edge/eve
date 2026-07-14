@@ -317,6 +317,39 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		} else {
 			log.Noticef("volumemgr run: kubernetes node ready, longhorn ready")
 		}
+
+		// Then block until cluster storage (Longhorn + CDI) can actually serve a
+		// volume, using the same readiness predicate the per-volume gate uses
+		// (kubeapi.ClusterStorageReadyForVolumes via clusterStorageReady). Bounded
+		// so a cluster that never converges cannot wedge volumemgr; any volume
+		// requested afterwards still defers and retries through the gate.
+		//
+		// PROVISIONAL: this up-front wait and the per-volume defer/retry gate
+		// deliberately coexist so we can observe how often the gate/retry fires
+		// after this wait has passed. Once we decide whether the retry earns its
+		// keep, drop one of the two so a volume is gated in a single place.
+		storageDeadline := time.NewTimer(20 * time.Minute)
+		storageReady := false
+	storageWait:
+		for {
+			if clusterStorageReady(&ctx) {
+				storageReady = true
+				break
+			}
+			select {
+			case <-storageDeadline.C:
+				break storageWait
+			case <-stillRunning.C:
+				ps.StillRunning(agentName, warningTime, errorTime)
+			}
+		}
+		storageDeadline.Stop()
+		if storageReady {
+			log.Noticef("volumemgr run: cluster storage (longhorn+CDI) ready")
+		} else {
+			log.Warnf("volumemgr run: timeout waiting for cluster storage; " +
+				"volumes will defer and retry")
+		}
 	}
 
 	if ctx.persistType == types.PersistZFS {
