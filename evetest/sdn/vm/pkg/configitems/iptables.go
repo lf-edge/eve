@@ -41,7 +41,7 @@ type IptablesRule struct {
 
 func equalRules(r1, r2 IptablesRule) bool {
 	return generics.EqualLists(r1.Args, r2.Args) &&
-		r1.Description == r1.Description
+		r1.Description == r2.Description
 }
 
 // Name returns the name of the iptables chain item.
