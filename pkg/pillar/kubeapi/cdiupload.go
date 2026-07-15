@@ -77,3 +77,20 @@ func cdiUploadIsComplete(log *base.LogObject, pvc *corev1.PersistentVolumeClaim)
 	}
 	return true
 }
+
+// IsPVCUploadComplete reports whether the CDI image upload into the named PVC has
+// finished. A non-nil error means the PVC could not be queried; callers should
+// treat that as "not known complete". Used after a reboot that left a PVC behind
+// to decide whether the upload still needs to be re-driven against it.
+func IsPVCUploadComplete(pvcName string, log *base.LogObject) (bool, error) {
+	clientset, err := GetClientSet()
+	if err != nil {
+		return false, fmt.Errorf("failed to get clientset: %v", err)
+	}
+	pvc, err := clientset.CoreV1().PersistentVolumeClaims(EVEKubeNameSpace).
+		Get(context.Background(), pvcName, metav1.GetOptions{})
+	if err != nil {
+		return false, fmt.Errorf("failed to get PVC %s: %v", pvcName, err)
+	}
+	return cdiUploadIsComplete(log, pvc), nil
+}

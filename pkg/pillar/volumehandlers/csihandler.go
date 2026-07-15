@@ -154,11 +154,23 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 	handler.log.Noticef("CreateVolume called for PVC %s size %v", pvcName, pvcSize)
 
 	// Guard against re-creation on reboot: if the PVC already exists (created in a
-	// prior boot where VolumeStatus was not persisted as CREATED_VOLUME), skip the
-	// entire create path — the content is already in place.
+	// prior boot where VolumeStatus was not persisted as CREATED_VOLUME) the
+	// content is normally already in place. The exception is a prior attempt that
+	// created the PVC but did not finish the CDI image upload (e.g. the cluster
+	// was still coming up): fall through and re-drive the upload against the
+	// existing PVC rather than declaring the volume done with no data.
+	pvcExists := false
 	if found, err := kubeapi.FindPVC(pvcName, handler.log); err == nil && found {
-		handler.log.Noticef("CreateVolume: PVC %s already exists, skipping creation", pvcName)
-		return pvcName, nil
+		pvcExists = true
+		if handler.status.ReferenceName == "" {
+			handler.log.Noticef("CreateVolume: PVC %s already exists, skipping creation", pvcName)
+			return pvcName, nil
+		}
+		if uploaded, uerr := kubeapi.IsPVCUploadComplete(pvcName, handler.log); uerr == nil && uploaded {
+			handler.log.Noticef("CreateVolume: PVC %s already exists and upload complete, skipping creation", pvcName)
+			return pvcName, nil
+		}
+		handler.log.Noticef("CreateVolume: PVC %s exists but upload not complete, re-driving upload", pvcName)
 	}
 
 	repCount, err := kubeapi.GetSupportedReplicaCountForCluster()
@@ -220,7 +232,7 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 			}
 
 			// Convert to PVC
-			pvcerr := kubeapi.RolloutDiskToPVC(createContext, handler.log, false, rawImgFile, pvcName, false, pvcSize, storageClassName)
+			pvcerr := kubeapi.RolloutDiskToPVC(createContext, handler.log, pvcExists, rawImgFile, pvcName, false, pvcSize, storageClassName)
 
 			// Since we succeeded or failed to create PVC above, no point in keeping the rawImgFile.
 			// Delete it to save space.
@@ -231,10 +243,10 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 			}
 
 			if pvcerr != nil {
-				errStr := fmt.Sprintf("Error converting %s to PVC %s: %v",
+				err := fmt.Errorf("Error converting %s to PVC %s: %w",
 					rawImgFile, pvcName, pvcerr)
-				handler.log.Error(errStr)
-				return pvcName, errors.New(errStr)
+				handler.log.Error(err)
+				return pvcName, err
 			}
 		} else {
 			qcowFile, err := handler.getVolumeFilePath()
@@ -245,21 +257,21 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 				return pvcName, errors.New(errStr)
 			}
 			// Convert qcow2 to PVC
-			err = kubeapi.RolloutDiskToPVC(createContext, handler.log, false, qcowFile, pvcName, false, pvcSize, storageClassName)
+			err = kubeapi.RolloutDiskToPVC(createContext, handler.log, pvcExists, qcowFile, pvcName, false, pvcSize, storageClassName)
 
 			if err != nil {
-				errStr := fmt.Sprintf("Error converting %s to PVC %s: %v",
+				err = fmt.Errorf("Error converting %s to PVC %s: %w",
 					qcowFile, pvcName, err)
-				handler.log.Error(errStr)
-				return pvcName, errors.New(errStr)
+				handler.log.Error(err)
+				return pvcName, err
 			}
 		}
 	} else {
 		err := kubeapi.CreatePVC(pvcName, pvcSize, handler.log, storageClassName)
 		if err != nil {
-			errStr := fmt.Sprintf("Error creating PVC %s", pvcName)
-			handler.log.Error(errStr)
-			return "", errors.New(errStr)
+			err = fmt.Errorf("Error creating PVC %s: %w", pvcName, err)
+			handler.log.Error(err)
+			return "", err
 		}
 	}
 
