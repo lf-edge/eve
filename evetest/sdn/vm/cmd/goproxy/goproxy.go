@@ -85,7 +85,11 @@ func main() {
 		if err != nil {
 			log.Fatalf("failed to write PID file %s: %v", proxyConfig.PidFile, err)
 		}
-		defer os.Remove(proxyConfig.PidFile)
+		defer func() {
+			if err := os.Remove(proxyConfig.PidFile); err != nil {
+				log.Warnf("Failed to remove PID file %s: %v", proxyConfig.PidFile, err)
+			}
+		}()
 	}
 	if proxyConfig.CACertPEM != "" {
 		log.Infof("Installing CA cert and key")

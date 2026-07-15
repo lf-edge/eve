@@ -149,7 +149,7 @@ func (a *agent) validatePorts(netModel *parsedNetModel) (err error) {
 func (a *agent) validateBridges(netModel *parsedNetModel) (err error) {
 	for _, bridge := range netModel.GetBridges() {
 		pnac := bridge.GetPnac()
-		if pnac == nil || pnac.GetEnable_8021X() == false {
+		if pnac == nil || !pnac.GetEnable_8021X() {
 			continue
 		}
 		for _, eapUser := range pnac.GetUsers() {

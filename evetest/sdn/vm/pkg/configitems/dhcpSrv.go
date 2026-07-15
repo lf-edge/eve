@@ -218,15 +218,41 @@ func (c *DhcpServerConfigurator) createDnsmasqConfFile(server DhcpServer) error 
 		log.Error(err)
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		if cerr := f.Close(); cerr != nil {
+			log.Warnf("Failed to close config file %s: %v", cfgPath, cerr)
+		}
+	}()
+
+	writeLine := func(format string, args ...interface{}) error {
+		if _, err := fmt.Fprintf(f, format, args...); err != nil {
+			err = fmt.Errorf("failed to write config file %s: %w", cfgPath, err)
+			log.Error(err)
+			return err
+		}
+		return nil
+	}
 
 	// Base configuration
-	fmt.Fprintf(f, "pid-file=%s\n", dnsmasqPidFile(srvName))
-	fmt.Fprintf(f, "dhcp-leasefile=%s\n", dnsmasqLeaseFile(srvName))
-	fmt.Fprintf(f, "log-dhcp\n")
-	fmt.Fprintf(f, "log-facility=%s\n", dnsmasqLogFile(srvName))
-	fmt.Fprintf(f, "port=0\n") // To disable dnsmasq's DNS server functionality.
-	fmt.Fprintf(f, "interface=%s\n", server.VethPeerIfName)
+	if err := writeLine("pid-file=%s\n", dnsmasqPidFile(srvName)); err != nil {
+		return err
+	}
+	if err := writeLine("dhcp-leasefile=%s\n", dnsmasqLeaseFile(srvName)); err != nil {
+		return err
+	}
+	if err := writeLine("log-dhcp\n"); err != nil {
+		return err
+	}
+	if err := writeLine("log-facility=%s\n", dnsmasqLogFile(srvName)); err != nil {
+		return err
+	}
+	// To disable dnsmasq's DNS server functionality.
+	if err := writeLine("port=0\n"); err != nil {
+		return err
+	}
+	if err := writeLine("interface=%s\n", server.VethPeerIfName); err != nil {
+		return err
+	}
 
 	// IPv4 DHCP range
 	if server.IPv4Subnet != nil {
@@ -236,23 +262,33 @@ func (c *DhcpServerConfigurator) createDnsmasqConfFile(server DhcpServer) error 
 		if server.IPv4LeaseTime > 0 {
 			leaseTime = fmt.Sprintf("%ds", int(server.IPv4LeaseTime.Seconds()))
 		}
-		fmt.Fprintf(f, "dhcp-range=%s,%s,%s\n", start4, end4, leaseTime)
+		if err := writeLine("dhcp-range=%s,%s,%s\n", start4, end4, leaseTime); err != nil {
+			return err
+		}
 
 		if server.GatewayIPv4 != nil {
 			// DHCP option 3.
-			fmt.Fprintf(f, "dhcp-option=option:router,%s\n", server.GatewayIPv4.String())
+			if err := writeLine("dhcp-option=option:router,%s\n", server.GatewayIPv4.String()); err != nil {
+				return err
+			}
 		}
 		if server.DomainName != "" {
 			// DHCP option 15.
-			fmt.Fprintf(f, "dhcp-option=option:domain-name,%s\n", server.DomainName)
+			if err := writeLine("dhcp-option=option:domain-name,%s\n", server.DomainName); err != nil {
+				return err
+			}
 		}
 		if server.IPv4NTPServer != "" {
 			// DHCP option 42.
-			fmt.Fprintf(f, "dhcp-option=option:ntp-server,%s\n", server.IPv4NTPServer)
+			if err := writeLine("dhcp-option=option:ntp-server,%s\n", server.IPv4NTPServer); err != nil {
+				return err
+			}
 		}
 		if server.WPAD != "" {
 			// DHCP option 252: WPAD.
-			fmt.Fprintf(f, "dhcp-option=252,%s\n", server.WPAD)
+			if err := writeLine("dhcp-option=252,%s\n", server.WPAD); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -265,15 +301,21 @@ func (c *DhcpServerConfigurator) createDnsmasqConfFile(server DhcpServer) error 
 		if server.IPv6LeaseTime > 0 {
 			leaseTime6 = fmt.Sprintf("%ds", int(server.IPv6LeaseTime.Seconds()))
 		}
-		fmt.Fprintf(f, "dhcp-range=%s,%s,%d,%s\n", start6, end6, prefixLen, leaseTime6)
+		if err := writeLine("dhcp-range=%s,%s,%d,%s\n", start6, end6, prefixLen, leaseTime6); err != nil {
+			return err
+		}
 
 		if server.DomainName != "" {
 			// DHCPv6 option 24.
-			fmt.Fprintf(f, "dhcp-option=option6:domain-search,%s\n", server.DomainName)
+			if err := writeLine("dhcp-option=option6:domain-search,%s\n", server.DomainName); err != nil {
+				return err
+			}
 		}
 		if server.IPv6NTPServer != "" {
 			// DHCPv6 option 56.
-			fmt.Fprintf(f, "dhcp-option=option6:ntp-server,[%s]\n", server.IPv6NTPServer)
+			if err := writeLine("dhcp-option=option6:ntp-server,[%s]\n", server.IPv6NTPServer); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -289,11 +331,15 @@ func (c *DhcpServerConfigurator) createDnsmasqConfFile(server DhcpServer) error 
 	}
 	if len(dns4) > 0 && server.IPv4Subnet != nil {
 		// DHCP option 6.
-		fmt.Fprintf(f, "dhcp-option=option:dns-server,%s\n", strings.Join(dns4, ","))
+		if err := writeLine("dhcp-option=option:dns-server,%s\n", strings.Join(dns4, ",")); err != nil {
+			return err
+		}
 	}
 	if len(dns6) > 0 && server.IPv6Subnet != nil {
 		// DHCPv6 option 23.
-		fmt.Fprintf(f, "dhcp-option=option6:dns-server,%s\n", strings.Join(dns6, ","))
+		if err := writeLine("dhcp-option=option6:dns-server,%s\n", strings.Join(dns6, ",")); err != nil {
+			return err
+		}
 	}
 
 	// Static host entries
@@ -301,9 +347,13 @@ func (c *DhcpServerConfigurator) createDnsmasqConfFile(server DhcpServer) error 
 		mac := entry.MAC.String()
 		ip := entry.IP.String()
 		if entry.IP.To4() != nil {
-			fmt.Fprintf(f, "dhcp-host=%s,%s\n", mac, ip)
+			if err := writeLine("dhcp-host=%s,%s\n", mac, ip); err != nil {
+				return err
+			}
 		} else {
-			fmt.Fprintf(f, "dhcp-host=%s,[%s]\n", mac, ip)
+			if err := writeLine("dhcp-host=%s,[%s]\n", mac, ip); err != nil {
+				return err
+			}
 		}
 	}
 

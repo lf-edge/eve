@@ -1503,11 +1503,6 @@ func (a *agent) endpointVethName(logicalLabel string) (
 	return
 }
 
-func (a *agent) getNetwork(logicalLabel string) *api.Network {
-	item := a.netModel.items.getItem((&api.Network{}).ItemType(), logicalLabel)
-	return item.LabeledItem.(*api.Network)
-}
-
 func (a *agent) getEndpoint(logicalLabel string) *api.Endpoint {
 	item := a.netModel.items.getItem((&api.Endpoint{}).ItemType(), logicalLabel)
 	return a.labeledItemToEndpoint(item)
