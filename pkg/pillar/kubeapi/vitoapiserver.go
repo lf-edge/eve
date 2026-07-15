@@ -20,6 +20,7 @@ import (
 	lhv1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -45,7 +46,16 @@ func CreatePVC(pvcName string, size uint64, log *base.LogObject, storageClass st
 	result, err := clientset.CoreV1().PersistentVolumeClaims(pvc.Namespace).
 		Create(context.Background(), pvc, metav1.CreateOptions{})
 	if err != nil {
-		err = fmt.Errorf("failed to CreatePVC %s: %v", pvcName, err)
+		if k8serrors.IsAlreadyExists(err) {
+			// Idempotent: a prior attempt (e.g. one that created the PVC but
+			// then failed at the CDI upload because the cluster was not ready)
+			// already left this PVC. Treat it as success so a retry proceeds to
+			// the image upload against the existing PVC (RolloutDiskToPVC then
+			// uses --no-create) instead of dying here with AlreadyExists.
+			log.Noticef("CreatePVC: PVC %s already exists, reusing it", pvcName)
+			return nil
+		}
+		err = asTransient(fmt.Errorf("failed to CreatePVC %s: %w", pvcName, err))
 		log.Error(err)
 		return err
 	}
@@ -326,30 +336,36 @@ func RolloutDiskToPVC(ctx context.Context, log *base.LogObject, exists bool,
 	// Get the Kubernetes clientset
 	clientset, err := GetClientSet()
 	if err != nil {
-		err = fmt.Errorf("failed to get clientset %v", err)
+		err = transientf("failed to get clientset %v", err)
 		log.Error(err)
 		return err
 	}
 
 	var service *corev1.Service
-	// Get the Service from Kubernetes API.
-	i := 5
-	for {
+	// Fetch the cdi-uploadproxy Service, retrying a bounded number of times while
+	// the cluster API is briefly unreachable. Honor ctx (not context.Background())
+	// so a volume-config delete (createCancel) aborts a stuck create instead of
+	// pinning the worker, and cap the attempts so any persistent error returns
+	// rather than spinning forever. The transient return is safe because the outer
+	// retryFailedClusterVolumeCreate is itself bounded.
+	const svcMaxRetries = 5
+	for i := 0; ; i++ {
 		service, err = clientset.CoreV1().Services("cdi").
-			Get(context.Background(), "cdi-uploadproxy", metav1.GetOptions{})
-
-		if err != nil {
-			if strings.Contains(err.Error(), "dial tcp 127.0.0.1:6443") && i <= 0 {
-				err = fmt.Errorf("failed to get Service cdi/cdi-uploadproxy: %v\n", err)
-				log.Error(err)
-				return err
-			}
-			time.Sleep(10 * time.Second)
-			log.Noticef("RolloutDiskToPVC loop (%d), wait for 10 sec, err %v", i, err)
-		} else {
+			Get(ctx, "cdi-uploadproxy", metav1.GetOptions{})
+		if err == nil {
 			break
 		}
-		i = i - 1
+		if i >= svcMaxRetries {
+			err = transientf("failed to get Service cdi/cdi-uploadproxy after %d tries: %v", i, err)
+			log.Error(err)
+			return err
+		}
+		log.Noticef("RolloutDiskToPVC: get cdi-uploadproxy Service failed (try %d/%d), retry in 10s: %v", i, svcMaxRetries, err)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(10 * time.Second):
+		}
 	}
 
 	// Get the ClusterIP of the Service.
@@ -382,7 +398,7 @@ func RolloutDiskToPVC(ctx context.Context, log *base.LogObject, exists bool,
 	if !exists {
 		err = CreatePVC(pvcName, pvcSize, log, storageClass)
 		if err != nil {
-			err = fmt.Errorf("Error creating PVC %s", pvcName)
+			err = fmt.Errorf("Error creating PVC %s: %w", pvcName, err)
 			log.Error(err)
 			return err
 		}
@@ -464,7 +480,7 @@ func RolloutDiskToPVC(ctx context.Context, log *base.LogObject, exists bool,
 		err = waitForPVCUploadComplete(ctx, pvcName, log)
 		waitCdiAnnotationDuration := time.Since(waitCdiAnnotationStart)
 		if err != nil {
-			err = fmt.Errorf("RolloutDiskToPVC: error wait for PVC %v", err)
+			err = transientf("RolloutDiskToPVC: error wait for PVC %v", err)
 			log.Error(err)
 			return err
 		}
@@ -483,34 +499,41 @@ func RolloutDiskToPVC(ctx context.Context, log *base.LogObject, exists bool,
 	// 1. Use the PVC as our starting point to diagnose, we have it's name
 	pvc, err := PVCGet(pvcName, log)
 	if err != nil {
-		return fmt.Errorf("PVC Upload for pvc:%s attempts to upload image failed, pvc not created", pvcName)
+		return transientf("PVC Upload for pvc:%s attempts to upload image failed, pvc not created", pvcName)
 	}
 	pvName := pvc.Spec.VolumeName
 	// 2. Check if the uploader marked its annotation on the pvc
 	cdiUploadPodName, exists := pvc.ObjectMeta.Annotations["cdi.kubevirt.io/storage.uploadPodName"]
 	if !exists {
-		return fmt.Errorf("PVC Upload for pvc:%s attempts to upload image failed, no upload pod annotation", pvcName)
+		return transientf("PVC Upload for pvc:%s attempts to upload image failed, no upload pod annotation", pvcName)
 	}
 	// 3. Did the uploader get created?
 	pod, err := PODGet(cdiUploadPodName, log)
 	if err != nil {
-		return fmt.Errorf("PVC Upload for pvc:%s attempts to upload image failed, upload pod:%s does not exist", pvcName, cdiUploadPodName)
+		return transientf("PVC Upload for pvc:%s attempts to upload image failed, upload pod:%s does not exist", pvcName, cdiUploadPodName)
 	}
 	uploadNodeName := pod.Spec.NodeName
 	// 4. Did the PVC claim get a backing pv?
 	lhVol, err := lhVolGet(pvName)
 	if err != nil {
-		return fmt.Errorf("PVC Upload for pvc:%s attempts to upload image failed, pv:%s does not exist", pvcName, pvName)
+		return transientf("PVC Upload for pvc:%s attempts to upload image failed, pv:%s does not exist", pvcName, pvName)
 	}
 	lhVolEi := lhVol.Status.CurrentImage
 	// 5. Does the backing vol have an engine? Is that engine deployed on the node where the uploader is?
 	deployed, err := lhEiDeployedOnNode(lhVolEi, uploadNodeName)
 	if !deployed {
-		return fmt.Errorf("PVC Upload for pvc:%s attempts to upload image failed, engine not deployed on node:%s %v", pvcName, uploadNodeName, err)
+		return transientf("PVC Upload for pvc:%s attempts to upload image failed, engine not deployed on node:%s %v", pvcName, uploadNodeName, err)
 	}
 
-	// Fallback to generic failure message
-	return fmt.Errorf("RolloutDiskToPVC pvc:%s attempts to upload image failed", pvcName)
+	// The upload failed after every attempt for a reason none of the diagnostics
+	// above pinned down. Keep it transient: a sustained upload-proxy / CDI outage
+	// with otherwise-healthy infra lands here and IS recoverable once it clears, so
+	// classifying it permanent would strand a retryable volume. The forever-loop a
+	// genuinely permanent failure (e.g. an unusable image) would otherwise cause is
+	// bounded not here but by retryFailedClusterVolumeCreate's maxClusterVolumeRetries
+	// cap, which parks the volume in a terminal error after a finite number of
+	// re-drives -- so this stays transient and the bound provides the escape hatch.
+	return transientf("RolloutDiskToPVC pvc:%s attempts to upload image failed", pvcName)
 }
 
 // GetPVFromPVC : Returns volume name (PV) from the PVC name
