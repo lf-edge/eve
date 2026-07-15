@@ -184,34 +184,27 @@ func (c *AdapterConfigurator) Create(ctx context.Context, item depgraph.Item) er
 		c.Log.Error(err)
 		return err
 	}
-	// Make sure the ethernet interface is DOWN before renaming
-	// and changing the MAC address, otherwise we get error
-	// `Device or resource busy`.
+	// Make sure the ethernet interface is DOWN before renaming,
+	// otherwise we get error `Device or resource busy`.
 	if err := netlink.LinkSetDown(link); err != nil {
 		err = fmt.Errorf("netlink.LinkSetDown(%s) failed: %v",
 			adapter.IfName, err)
 		c.Log.Error(err)
 		return err
 	}
-	// Get MAC address and create the alternate with the group bit toggled.
+	// Save the physical port's MAC; the ethN bridge is given the same
+	// address below.
 	macAddr := link.Attrs().HardwareAddr
-	altMacAddr := c.alternativeMAC(link.Attrs().HardwareAddr)
-	if len(altMacAddr) != 0 {
-		// Toggle MAC address - set to altMacAddr
-		if err := netlink.LinkSetHardwareAddr(link, altMacAddr); err != nil {
-			err = fmt.Errorf("netlink.LinkSetHardwareAddr(%s, %s) failed: %v",
-				adapter.IfName, altMacAddr, err)
-			c.Log.Error(err)
-			return err
-		}
-	}
 	if err := types.IfRename(c.Log, adapter.IfName, kernIfname); err != nil {
 		err = fmt.Errorf("IfRename(%s, %s) failed: %v",
 			adapter.IfName, kernIfname, err)
 		c.Log.Error(err)
 		return err
 	}
-	// Create bridge and name it ethN, use macAddr.
+	// Create the bridge, name it ethN, and give it the same MAC as the
+	// underlying port (now renamed kethN). Sharing the address is safe:
+	// NIM assigns IP config — including the IPv6 link-local — only to the
+	// ethN bridge, never to kethN, so the two never collide on the link.
 	attrs := netlink.NewLinkAttrs()
 	attrs.Name = adapter.IfName
 	attrs.HardwareAddr = macAddr
@@ -309,17 +302,6 @@ func (c *AdapterConfigurator) updateAdapterStaticIPs(link netlink.Link,
 	return nil
 }
 
-// Create alternate MAC address with the group bit toggled.
-func (c *AdapterConfigurator) alternativeMAC(mac net.HardwareAddr) net.HardwareAddr {
-	var altMacAddr net.HardwareAddr
-	if len(mac) != 0 {
-		altMacAddr = make([]byte, len(mac))
-		copy(altMacAddr, mac)
-		altMacAddr[0] = altMacAddr[0] ^ 2
-	}
-	return altMacAddr
-}
-
 // Modify is able to update the MTU attribute and the set of static IPs.
 func (c *AdapterConfigurator) Modify(_ context.Context, oldItem, newItem depgraph.Item) (err error) {
 	oldAdapter, isAdapter := oldItem.(Adapter)
@@ -390,24 +372,13 @@ func (c *AdapterConfigurator) Delete(ctx context.Context, item depgraph.Item) er
 		c.Log.Error(err)
 		return err
 	}
-	// Make sure the ethernet interface is DOWN before renaming
-	// and changing the MAC address, otherwise we get error
-	// `Device or resource busy`.
+	// Make sure the ethernet interface is DOWN before renaming,
+	// otherwise we get error `Device or resource busy`.
 	if err := netlink.LinkSetDown(kernLink); err != nil {
 		err = fmt.Errorf("netlink.LinkSetDown(%s) failed: %v",
 			kernIfname, err)
 		c.Log.Error(err)
 		return err
-	}
-	// Toggle MAC address of the interface back to the original.
-	altMacAddr := c.alternativeMAC(kernLink.Attrs().HardwareAddr)
-	if len(altMacAddr) != 0 {
-		if err := netlink.LinkSetHardwareAddr(kernLink, altMacAddr); err != nil {
-			err = fmt.Errorf("netlink.LinkSetHardwareAddr(%s, %s) failed: %v",
-				kernIfname, altMacAddr, err)
-			c.Log.Error(err)
-			return err
-		}
 	}
 	// Rename the interface back to the original name.
 	if err := types.IfRename(c.Log, kernIfname, adapter.IfName); err != nil {
