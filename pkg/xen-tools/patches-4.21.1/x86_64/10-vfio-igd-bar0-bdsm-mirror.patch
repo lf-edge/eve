@@ -23,10 +23,10 @@ Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
  3 files changed, 83 insertions(+)
 
 diff --git a/tools/qemu-xen/hw/vfio/igd.c b/tools/qemu-xen/hw/vfio/igd.c
-index d320d032a7..79420c9c7d 100644
+index 3b52c471fc..5a1b1471de 100644
 --- a/tools/qemu-xen/hw/vfio/igd.c
 +++ b/tools/qemu-xen/hw/vfio/igd.c
-@@ -365,6 +365,92 @@ static const MemoryRegionOps vfio_igd_index_quirk = {
+@@ -378,6 +378,92 @@ static const MemoryRegionOps vfio_igd_index_quirk = {
      .endianness = DEVICE_LITTLE_ENDIAN,
  };
  
@@ -143,6 +143,3 @@ index bf67df2fbc..5ad090a229 100644
  void vfio_probe_igd_bar4_quirk(VFIOPCIDevice *vdev, int nr);
  
  extern const PropertyInfo qdev_prop_nv_gpudirect_clique;
--- 
-2.43.0
-

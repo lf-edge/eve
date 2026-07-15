@@ -20,10 +20,10 @@ Message-ID: <20250123085327.965501-5-r.peniaev@gmail.com>
  1 file changed, 45 insertions(+), 4 deletions(-)
 
 diff --git a/tools/qemu-xen/qemu-options.hx b/tools/qemu-xen/qemu-options.hx
-index d19bf533d696..ec0090dfe229 100644
+index d94e2cbbae..3b8be4b15a 100644
 --- a/tools/qemu-xen/qemu-options.hx
 +++ b/tools/qemu-xen/qemu-options.hx
-@@ -3733,7 +3733,7 @@ SRST
+@@ -3782,7 +3782,7 @@ SRST
  The general form of a character device option is:
  
  ``-chardev backend,id=id[,mux=on|off][,options]``
@@ -32,7 +32,7 @@ index d19bf533d696..ec0090dfe229 100644
      ``vc``, ``ringbuf``, ``file``, ``pipe``, ``console``, ``serial``,
      ``pty``, ``stdio``, ``braille``, ``parallel``,
      ``spicevmc``, ``spiceport``. The specific backend will determine the
-@@ -3790,9 +3790,10 @@ The general form of a character device option is:
+@@ -3839,9 +3839,10 @@ The general form of a character device option is:
      the QEMU monitor, and ``-nographic`` also multiplexes the console
      and the monitor to stdio.
  
@@ -46,7 +46,7 @@ index d19bf533d696..ec0090dfe229 100644
  
      Every backend supports the ``logfile`` option, which supplies the
      path to a file to record all data transmitted via the backend. The
-@@ -3892,6 +3893,46 @@ The available backends are:
+@@ -3941,6 +3942,46 @@ The available backends are:
      Forward QEMU's emulated msmouse events to the guest. ``msmouse``
      does not take any options.
  
@@ -93,6 +93,3 @@ index d19bf533d696..ec0090dfe229 100644
  ``-chardev vc,id=id[[,width=width][,height=height]][[,cols=cols][,rows=rows]]``
      Connect to a QEMU text console. ``vc`` may optionally be given a
      specific size.
--- 
-2.43.0
-
