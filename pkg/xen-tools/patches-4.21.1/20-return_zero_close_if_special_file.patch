@@ -3,10 +3,10 @@ Date: Mon, 19 Sep 2024 11:20:00 +0530
 Subject: [PATCH] 20-return_zero_close_if_special_file.patch removes a CVE fix
 
 diff --git a/tools/qemu-xen/fsdev/virtfs-proxy-helper.c b/tools/qemu-xen/fsdev/virtfs-proxy-helper.c
-index d9511f4..657b632 100644
+index 144aaf585a..7b14944f9b 100644
 --- a/tools/qemu-xen/fsdev/virtfs-proxy-helper.c
 +++ b/tools/qemu-xen/fsdev/virtfs-proxy-helper.c
-@@ -354,10 +354,6 @@ static int open_regular(const char *pathname, int flags, mode_t mode)
+@@ -359,10 +359,6 @@ static int open_regular(const char *pathname, int flags, mode_t mode)
          return fd;
      }
  
@@ -18,7 +18,7 @@ index d9511f4..657b632 100644
  }
  
 diff --git a/tools/qemu-xen/hw/9pfs/9p-util.h b/tools/qemu-xen/hw/9pfs/9p-util.h
-index df1b583..b8ce93f 100644
+index 51c94b0116..204514f35f 100644
 --- a/tools/qemu-xen/hw/9pfs/9p-util.h
 +++ b/tools/qemu-xen/hw/9pfs/9p-util.h
 @@ -111,38 +111,6 @@ static inline void close_preserve_errno(int fd)
