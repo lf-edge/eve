@@ -1,8 +1,8 @@
 diff --git a/tools/qemu-xen/net/tap.c b/tools/qemu-xen/net/tap.c
-index 1bf085d..1887c4a 100644
+index 3f90022c0b..3defed22a7 100644
 --- a/tools/qemu-xen/net/tap.c
 +++ b/tools/qemu-xen/net/tap.c
-@@ -63,7 +63,7 @@ typedef struct TAPState {
+@@ -64,7 +64,7 @@ typedef struct TAPState {
      Notifier exit;
  } TAPState;
  
@@ -11,7 +11,7 @@ index 1bf085d..1887c4a 100644
                            int fd, Error **errp);
  
  static void tap_send(void *opaque);
-@@ -323,7 +323,7 @@ static void tap_exit_notify(Notifier *notifier, void *data)
+@@ -279,7 +279,7 @@ static void tap_exit_notify(Notifier *notifier, void *data)
      Error *err = NULL;
  
      if (s->down_script[0]) {
@@ -20,8 +20,8 @@ index 1bf085d..1887c4a 100644
          if (err) {
              error_report_err(err);
          }
-@@ -431,7 +431,7 @@ static TAPState *net_tap_fd_init(NetClientState *peer,
-     return s;
+@@ -403,7 +403,7 @@ static void close_all_fds_after_fork(int excluded_fd)
+     qemu_close_all_open_fd(skip_fd, nskip);
  }
  
 -static void launch_script(const char *setup_script, const char *ifname,
@@ -29,7 +29,7 @@ index 1bf085d..1887c4a 100644
                            int fd, Error **errp)
  {
      int pid, status;
-@@ -456,6 +456,7 @@ static void launch_script(const char *setup_script, const char *ifname,
+@@ -422,6 +422,7 @@ static void launch_script(const char *setup_script, const char *ifname,
          parg = args;
          *parg++ = (char *)setup_script;
          *parg++ = (char *)ifname;
@@ -37,7 +37,7 @@ index 1bf085d..1887c4a 100644
          *parg = NULL;
          execv(setup_script, args);
          _exit(1);
-@@ -648,8 +649,8 @@ int net_init_bridge(const Netdev *netdev, const char *name,
+@@ -608,8 +609,8 @@ int net_init_bridge(const Netdev *netdev, const char *name,
  }
  
  static int net_tap_init(const NetdevTapOptions *tap, int *vnet_hdr,
@@ -48,7 +48,7 @@ index 1bf085d..1887c4a 100644
  {
      Error *err = NULL;
      int fd, vnet_hdr_required;
-@@ -671,7 +672,7 @@ static int net_tap_init(const NetdevTapOptions *tap, int *vnet_hdr,
+@@ -631,7 +632,7 @@ static int net_tap_init(const NetdevTapOptions *tap, int *vnet_hdr,
      if (setup_script &&
          setup_script[0] != '\0' &&
          strcmp(setup_script, "no") != 0) {
@@ -57,9 +57,9 @@ index 1bf085d..1887c4a 100644
          if (err) {
              error_propagate(errp, err);
              close(fd);
-@@ -1003,8 +1004,14 @@ free_fail:
+@@ -951,8 +952,14 @@ free_fail:
          }
-
+ 
          for (i = 0; i < queues; i++) {
 -            fd = net_tap_init(tap, &vnet_hdr, i >= 1 ? "no" : script,
 -                              ifname, sizeof ifname, queues > 1, errp);
