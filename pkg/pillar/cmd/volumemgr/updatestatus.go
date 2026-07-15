@@ -9,6 +9,7 @@ import (
 	"time"
 
 	zconfig "github.com/lf-edge/eve-api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/volumehandlers"
@@ -749,12 +750,18 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 			if vr.Error != nil {
 				log.Errorf("doUpdate: Error received from the volume worker %v",
 					vr.Error)
+				// Record whether kubeapi classified this as a transient EVE-k
+				// cluster-storage failure, so retryFailedClusterVolumeCreate can
+				// re-drive only those once storage is ready.
+				status.ClusterStorageTransientErr = kubeapi.IsTransient(vr.Error)
 				status.SetErrorWithSource(vr.Error.Error(),
 					types.VolumeStatus{}, vr.ErrorTime)
 				changed = true
 				return changed, false
 			} else if status.IsErrorSource(types.VolumeStatus{}) {
 				log.Functionf("doUpdateContentTree: Clearing volume error %s", status.Error)
+				status.ClusterStorageTransientErr = false
+				status.ClusterStorageRetryCount = 0
 				status.ClearErrorWithSource()
 				changed = true
 			}
