@@ -14,10 +14,10 @@ Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
  1 file changed, 40 insertions(+), 8 deletions(-)
 
 diff --git a/tools/qemu-xen/hw/vfio/igd.c b/tools/qemu-xen/hw/vfio/igd.c
-index 79420c9c7d..02361f9167 100644
+index 5a1b1471de..9ad1ad0717 100644
 --- a/tools/qemu-xen/hw/vfio/igd.c
 +++ b/tools/qemu-xen/hw/vfio/igd.c
-@@ -388,11 +388,15 @@ static uint64_t igd_bdsm_mirror_read(void *opaque, hwaddr addr, unsigned size)
+@@ -401,11 +401,15 @@ static uint64_t igd_bdsm_mirror_read(void *opaque, hwaddr addr, unsigned size)
      VFIOPCIDevice *vdev = mirror->vdev;
  
      /* Read and discard from real hardware in case it has side effects */
@@ -38,7 +38,7 @@ index 79420c9c7d..02361f9167 100644
  }
  
  static void igd_bdsm_mirror_write(void *opaque, hwaddr addr,
-@@ -401,6 +405,9 @@ static void igd_bdsm_mirror_write(void *opaque, hwaddr addr,
+@@ -414,6 +418,9 @@ static void igd_bdsm_mirror_write(void *opaque, hwaddr addr,
      IGDBdsmMirrorQuirk *mirror = opaque;
      VFIOPCIDevice *vdev = mirror->vdev;
  
@@ -48,7 +48,7 @@ index 79420c9c7d..02361f9167 100644
      vfio_pci_write_config(&vdev->pdev,
                            mirror->config_offset + addr, data, size);
  }
-@@ -436,6 +443,24 @@ void vfio_probe_igd_bar0_quirk(VFIOPCIDevice *vdev, int nr)
+@@ -454,6 +461,24 @@ void vfio_probe_igd_bar0_quirk(VFIOPCIDevice *vdev, int nr)
      mirror->bar_offset = IGD_BDSM_MMIO_OFFSET;
      mirror->config_offset = (gen < 11) ? IGD_BDSM : IGD_BDSM_GEN11;
  
@@ -73,7 +73,7 @@ index 79420c9c7d..02361f9167 100644
      memory_region_init_io(&quirk->mem[0], OBJECT(vdev), &igd_bdsm_mirror_ops,
                            mirror, "vfio-igd-bdsm-quirk",
                            (gen < 11) ? 4 : 8);
-@@ -523,6 +548,8 @@ void vfio_probe_igd_bar4_quirk(VFIOPCIDevice *vdev, int nr)
+@@ -654,6 +679,8 @@ void vfio_probe_igd_bar4_quirk(VFIOPCIDevice *vdev, int nr)
          return;
      }
  
@@ -82,7 +82,7 @@ index 79420c9c7d..02361f9167 100644
      /*
       * Check whether we have all the vfio device specific regions to
       * support legacy mode (added in Linux v4.6).  If not, bail.
-@@ -678,9 +705,14 @@ void vfio_probe_igd_bar4_quirk(VFIOPCIDevice *vdev, int nr)
+@@ -792,9 +819,14 @@ void vfio_probe_igd_bar4_quirk(VFIOPCIDevice *vdev, int nr)
                       vdev->vbasedev.name);
      }
  
@@ -100,6 +100,3 @@ index 79420c9c7d..02361f9167 100644
      }
  
      if (pwrite(vdev->vbasedev.fd, &cmd_orig, sizeof(cmd_orig),
--- 
-2.43.0
-
