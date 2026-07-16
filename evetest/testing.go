@@ -43,8 +43,12 @@ const (
 func (t *T) fail(msg string, now bool) {
 	t.Helper()
 
-	// Log the error message with the red color.
-	t.Log(redColor + "TEST FAILURE: " + msg + resetColor)
+	// Log the error message, highlighted in red when colors are enabled.
+	failureMsg := "TEST FAILURE: " + msg
+	if t.th.colorOutput {
+		failureMsg = redColor + failureMsg + resetColor
+	}
+	t.Log(failureMsg)
 
 	// Log stacktrace at the point of failure for easier debugging.
 	t.Logf("STACKTRACE:\n%s", debug.Stack())
