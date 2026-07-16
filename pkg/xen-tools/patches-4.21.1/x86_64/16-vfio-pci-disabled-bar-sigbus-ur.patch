@@ -1,0 +1,261 @@
+From b3e4cd12c04834e31b51ae292efc84c12e53f7cb Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mikem@zededa.com>
+Date: Thu, 16 Jul 2026 10:37:36 +0000
+Subject: [PATCH] hw/vfio: recover from disabled-BAR mmap SIGBUS as Unsupported
+ Request
+
+A guest that clears PCI_COMMAND.MEM on a passed-through device makes vfio-pci
+invalidate the device's BAR mmaps in the kernel: any access to them then faults
+with BUS_ADRERR. A vCPU MMIO access that races the resulting BAR teardown can
+reach memory_region_ram_device_{read,write}() against a mmap the kernel has
+already invalidated and take SIGBUS, which qemu turns into a fatal abort of the
+whole VM.
+
+On real hardware an access to a BAR whose memory decode is disabled is answered
+by the PCIe layer with an Unsupported Request: reads return all-ones, writes are
+dropped, and the instruction completes. Emulate that instead of aborting.
+
+Record each ram_device mmap host range as it is (un)mapped, arm a per-thread
+sigsetjmp checkpoint around the raw load/store in the ram_device ops, and have
+the SIGBUS handler longjmp back to it when a non-MCE fault address falls in one
+of those ranges. Mirrors the SIGBUS-recovery idiom already used by
+qemu_prealloc_mem(). MCE and non-vfio SIGBUS are unaffected.
+
+Notes:
+- A compiler barrier() brackets the guarded load/store so the ram_device_active
+  guard is ordered around the faulting access rather than depending on codegen.
+- Overflowing the mmap range table warns rather than silently leaving a range
+  untracked (which would reintroduce the abort).
+- sigsetjmp saves the signal mask (an rt_sigprocmask per trapped access); it
+  cannot be dropped without leaving SIGBUS blocked after siglongjmp, so it is a
+  deliberate cost on the trapped-MMIO slow path only, never the EPT fast path.
+
+Signed-off-by: Mikhail Malyshev <mikem@zededa.com>
+---
+ hw/vfio/helpers.c     |   5 ++
+ include/exec/memory.h |  10 ++++
+ system/cpus.c         |   8 +++
+ system/memory.c       | 125 +++++++++++++++++++++++++++++++++++++++++-
+ 4 files changed, 147 insertions(+), 1 deletion(-)
+
+diff --git a/tools/qemu-xen/hw/vfio/helpers.c b/tools/qemu-xen/hw/vfio/helpers.c
+index ea15c79db0a..b0cc13ab89a 100644
+--- a/tools/qemu-xen/hw/vfio/helpers.c
++++ b/tools/qemu-xen/hw/vfio/helpers.c
+@@ -388,6 +388,7 @@ static void vfio_subregion_unmap(VFIORegion *region, int index)
+                             region->mmaps[index].offset +
+                             region->mmaps[index].size - 1);
+     memory_region_del_subregion(region->mem, &region->mmaps[index].mem);
++    memory_region_ram_device_del_range(region->mmaps[index].mmap);
+     munmap(region->mmaps[index].mmap, region->mmaps[index].size);
+     object_unparent(OBJECT(&region->mmaps[index].mem));
+     region->mmaps[index].mmap = NULL;
+@@ -435,6 +436,9 @@ int vfio_region_mmap(VFIORegion *region)
+                                           memory_region_owner(region->mem),
+                                           name, region->mmaps[i].size,
+                                           region->mmaps[i].mmap);
++        /* track the mmap host range for disabled-BAR SIGBUS -> UR recovery */
++        memory_region_ram_device_add_range(region->mmaps[i].mmap,
++                                           region->mmaps[i].size);
+         g_free(name);
+         memory_region_add_subregion(region->mem, region->mmaps[i].offset,
+                                     &region->mmaps[i].mem);
+@@ -490,6 +494,7 @@ void vfio_region_finalize(VFIORegion *region)
+ 
+     for (i = 0; i < region->nr_mmaps; i++) {
+         if (region->mmaps[i].mmap) {
++            memory_region_ram_device_del_range(region->mmaps[i].mmap);
+             munmap(region->mmaps[i].mmap, region->mmaps[i].size);
+             object_unparent(OBJECT(&region->mmaps[i].mem));
+         }
+diff --git a/tools/qemu-xen/include/exec/memory.h b/tools/qemu-xen/include/exec/memory.h
+index 296fd068c0b..9a27fc7f786 100644
+--- a/tools/qemu-xen/include/exec/memory.h
++++ b/tools/qemu-xen/include/exec/memory.h
+@@ -1461,6 +1461,16 @@ void memory_region_init_ram_device_ptr(MemoryRegion *mr,
+                                        uint64_t size,
+                                        void *ptr);
+ 
++/*
++ * vfio disabled-BAR SIGBUS recovery (see system/memory.c). vfio registers each
++ * BAR mmap host range so a racing MMIO into a just-invalidated mmap can be
++ * completed as an Unsupported Request instead of aborting qemu.
++ */
++void memory_region_ram_device_add_range(void *host, size_t size);
++void memory_region_ram_device_del_range(void *host);
++/* called from the SIGBUS handler; longjmps (no return) when it recovers */
++bool memory_region_ram_device_on_sigbus(void *addr);
++
+ /**
+  * memory_region_init_alias: Initialize a memory region that aliases all or a
+  *                           part of another memory region.
+diff --git a/tools/qemu-xen/system/cpus.c b/tools/qemu-xen/system/cpus.c
+index 1c818ff6828..1b4a66a3c4c 100644
+--- a/tools/qemu-xen/system/cpus.c
++++ b/tools/qemu-xen/system/cpus.c
+@@ -371,6 +371,14 @@ static void sigbus_reraise(void)
+ static void sigbus_handler(int n, siginfo_t *siginfo, void *ctx)
+ {
+     if (siginfo->si_code != BUS_MCEERR_AO && siginfo->si_code != BUS_MCEERR_AR) {
++        /*
++         * Not an MCE. If this is a racing MMIO into a passed-through vfio BAR
++         * whose PCI_COMMAND.MEM was just cleared (mmap invalidated by the
++         * kernel), complete it as an Unsupported Request instead of aborting.
++         * memory_region_ram_device_on_sigbus() longjmps back into the
++         * ram_device access and does not return when it recovers.
++         */
++        memory_region_ram_device_on_sigbus(siginfo->si_addr);
+         sigbus_reraise();
+     }
+ 
+diff --git a/tools/qemu-xen/system/memory.c b/tools/qemu-xen/system/memory.c
+index 5e6eb459d5d..48d1bbca4f9 100644
+--- a/tools/qemu-xen/system/memory.c
++++ b/tools/qemu-xen/system/memory.c
+@@ -1335,11 +1335,125 @@ const MemoryRegionOps unassigned_mem_ops = {
+     .endianness = DEVICE_NATIVE_ENDIAN,
+ };
+ 
++/*
++ * vfio passthrough disabled-BAR SIGBUS recovery.
++ *
++ * When a guest clears PCI_COMMAND.MEM on a passed-through device, vfio-pci in
++ * the kernel invalidates the BAR's mmap: any access faults with BUS_ADRERR. A
++ * vCPU MMIO access that races the teardown reaches the ram_device ops below
++ * against the just-invalidated mmap and takes SIGBUS, which qemu would turn
++ * into an abort. On real hardware an access to a MEM=0 BAR is answered with an
++ * Unsupported Request (reads return all-ones, writes are dropped).
++ *
++ * Recover to those semantics: record each ram_device mmap host range, arm a
++ * sigsetjmp checkpoint around the raw load/store, and let the SIGBUS handler
++ * (system/cpus.c) longjmp back here when the fault address is one of our
++ * ranges. Same idiom as qemu_prealloc_mem() in util/oslib-posix.c.
++ */
++typedef struct RamDeviceRange {
++    uintptr_t start;
++    uintptr_t end;
++} RamDeviceRange;
++#define RAM_DEVICE_MAX_RANGES 64
++static RamDeviceRange ram_device_ranges[RAM_DEVICE_MAX_RANGES];
++/*
++ * Mutated only from the vfio mmap/munmap paths (device (un)realize), which run
++ * under the BQL; read locklessly from the SIGBUS handler on the faulting vCPU
++ * thread. The range set is tied to the device mmap lifecycle, not to the
++ * MEM-toggle path that triggers the fault, so a fault never races an add/del
++ * of its own range. (If a non-BQL ram_device dispatch or vfio unmap path were
++ * ever added, this swap-remove would need to become atomic.)
++ */
++static int ram_device_nranges;
++
++void memory_region_ram_device_add_range(void *host, size_t size)
++{
++    if (!host) {
++        return;
++    }
++    if (ram_device_nranges >= RAM_DEVICE_MAX_RANGES) {
++        /*
++         * Don't drop it silently: an untracked mmap reintroduces the fatal
++         * abort this recovery prevents, so make the failure mode observable.
++         */
++        warn_report("ram_device SIGBUS recovery: range table full (%d); host %p "
++                    "(0x%zx) left untracked, a racing MMIO to it while its BAR "
++                    "is disabled would abort qemu", RAM_DEVICE_MAX_RANGES,
++                    host, size);
++        return;
++    }
++    ram_device_ranges[ram_device_nranges].start = (uintptr_t)host;
++    ram_device_ranges[ram_device_nranges].end = (uintptr_t)host + size;
++    ram_device_nranges++;
++}
++
++void memory_region_ram_device_del_range(void *host)
++{
++    int i;
++    for (i = 0; i < ram_device_nranges; i++) {
++        if (ram_device_ranges[i].start == (uintptr_t)host) {
++            ram_device_ranges[i] = ram_device_ranges[--ram_device_nranges];
++            return;
++        }
++    }
++}
++
++static bool ram_device_addr_known(uintptr_t addr)
++{
++    int i, n = ram_device_nranges; /* snapshot for the lockless signal-context read */
++
++    for (i = 0; i < n; i++) {
++        if (addr >= ram_device_ranges[i].start &&
++            addr < ram_device_ranges[i].end) {
++            return true;
++        }
++    }
++    return false;
++}
++
++/* per-thread checkpoint, armed around the raw mmap access below */
++static __thread sigjmp_buf ram_device_env;
++static __thread volatile sig_atomic_t ram_device_active;
++
++/*
++ * Called from the SIGBUS handler on the faulting thread. If a ram_device
++ * access is in flight on this thread and the fault hit one of our mmap ranges,
++ * jump back to the checkpoint (does not return); otherwise return false.
++ */
++bool memory_region_ram_device_on_sigbus(void *addr)
++{
++    if (ram_device_active && ram_device_addr_known((uintptr_t)addr)) {
++        siglongjmp(ram_device_env, 1);
++    }
++    return false;
++}
++
+ static uint64_t memory_region_ram_device_read(void *opaque,
+                                               hwaddr addr, unsigned size)
+ {
+     MemoryRegion *mr = opaque;
+-    uint64_t data = ldn_he_p(mr->ram_block->host + addr, size);
++    uint64_t data;
++
++    /*
++     * sigsetjmp(env, 1) saves the signal mask (an rt_sigprocmask on glibc) on
++     * every trapped ram_device access. It can't be dropped: siglongjmp out of
++     * the SIGBUS handler must restore the mask or SIGBUS stays blocked on the
++     * thread. This is a deliberate per-access cost, incurred only on the
++     * trapped-MMIO slow path (quirked/sub-page BARs, teardown), never on the
++     * EPT fast path.
++     */
++    if (sigsetjmp(ram_device_env, 1)) {
++        /* mmap faulted (BUS_ADRERR): BAR MEM disabled -> Unsupported Request */
++        ram_device_active = 0;
++        data = (size >= 8) ? ~(uint64_t)0 : (((uint64_t)1 << (size * 8)) - 1);
++        trace_memory_region_ram_device_read(get_cpu_index(), mr, addr, data, size);
++        return data;
++    }
++    ram_device_active = 1;
++    barrier(); /* the guard must be set before the faulting load, reset after */
++    data = ldn_he_p(mr->ram_block->host + addr, size);
++    barrier();
++    ram_device_active = 0;
+ 
+     trace_memory_region_ram_device_read(get_cpu_index(), mr, addr, data, size);
+ 
+@@ -1353,7 +1467,16 @@ static void memory_region_ram_device_write(void *opaque, hwaddr addr,
+ 
+     trace_memory_region_ram_device_write(get_cpu_index(), mr, addr, data, size);
+ 
++    if (sigsetjmp(ram_device_env, 1)) {
++        /* mmap faulted (BUS_ADRERR): BAR MEM disabled -> drop write (UR) */
++        ram_device_active = 0;
++        return;
++    }
++    ram_device_active = 1;
++    barrier(); /* the guard must be set before the faulting store, reset after */
+     stn_he_p(mr->ram_block->host + addr, size, data);
++    barrier();
++    ram_device_active = 0;
+ }
+ 
+ static const MemoryRegionOps ram_device_mem_ops = {
+-- 
+2.43.0
+
