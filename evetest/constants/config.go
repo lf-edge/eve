@@ -165,6 +165,11 @@ const (
 	// should store the EVE and SDN disk images.
 	BrokerImageDirEnv = "BROKER_IMAGE_DIR"
 
+	// BrokerPprofPortEnv specifies the port on which the broker exposes its Go
+	// net/http/pprof debug endpoint (listening on all interfaces). 0 (default)
+	// disables it. Read by evetest-broker.
+	BrokerPprofPortEnv = "BROKER_PPROF_PORT"
+
 	// BrokerMaxClientsEnv specifies the maximum number of concurrent evetest clients
 	// the broker will serve. Once this many clients are connected, Connect calls
 	// for brand-new clients fail with an error until a session frees up (reconnects
@@ -355,6 +360,7 @@ func InitViperConfig() {
 	viper.SetDefault(BrokerProviderEnv, DefaultBrokerProvider)
 	viper.SetDefault(BrokerLibvirtURIEnv, DefaultBrokerLibvirtURI)
 	viper.SetDefault(BrokerImageDirEnv, DefaultBrokerImageDir)
+	viper.SetDefault(BrokerPprofPortEnv, 0)
 	viper.SetDefault(BrokerMaxClientsEnv, DefaultBrokerMaxClients)
 	viper.SetDefault(BrokerDockerImageRetentionEnv, DefaultBrokerDockerImageRetentionMinutes)
 	viper.SetDefault(BrokerDockerDiskUsageThresholdEnv, DefaultBrokerDockerDiskUsageThresholdPercent)

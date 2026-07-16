@@ -66,6 +66,9 @@ BROKER_LOG_LEVEL=""
 # -1 means unlimited (the broker's own default). Caps how many evetest clients the
 # broker will accept concurrently, as a simple guard against hypervisor overprovisioning.
 BROKER_MAX_CLIENTS="-1"
+# 0 (the broker's own default) disables the net/http/pprof debug endpoint.
+# Set to a port number to enable it (e.g. for diagnosing memory/goroutine growth).
+BROKER_PPROF_PORT="0"
 # How long (minutes) an unused, not-currently-referenced-by-any-container Docker
 # image is kept before the broker's periodic cleanup removes it. Default: 7 days.
 DOCKER_IMAGE_RETENTION="10080"
@@ -133,6 +136,9 @@ Broker VM shape:
   --broker-max-clients N        Max concurrent evetest clients the broker will accept;
                                 new connections are rejected once this many are already
                                 connected. Default: -1 (unlimited).
+  --broker-pprof-port PORT      Enable the broker's net/http/pprof debug endpoint on
+                                this port (e.g. for diagnosing memory/goroutine growth).
+                                Default: 0 (disabled).
   --docker-image-retention MINUTES
                                 How long an unused Docker image is kept before the
                                 broker's periodic cleanup removes it. Default: 10080
@@ -189,6 +195,7 @@ while [ $# -gt 0 ]; do
         --broker-vm-image-url)         BROKER_VM_IMAGE_URL="$2"; shift 2 ;;
         --broker-log-level)            BROKER_LOG_LEVEL="$2"; shift 2 ;;
         --broker-max-clients)          BROKER_MAX_CLIENTS="$2"; shift 2 ;;
+        --broker-pprof-port)           BROKER_PPROF_PORT="$2"; shift 2 ;;
         --docker-image-retention)      DOCKER_IMAGE_RETENTION="$2"; shift 2 ;;
         --docker-disk-usage-threshold) DOCKER_DISK_USAGE_THRESHOLD="$2"; shift 2 ;;
         --with-oci-registry-mirrors)   WITH_OCI_MIRRORS=true; shift ;;
@@ -356,6 +363,7 @@ EVETEST_BROKER_PROXMOX_TLS_SKIP_VERIFY=${TLS_SKIP_VERIFY}
 EVETEST_BROKER_IMAGE_DIR=${BROKER_IMAGE_DIR}
 EVETEST_SDN_UPLINK_IPV4_SUBNET=${UPLINK_SUBNET}
 EVETEST_BROKER_MAX_CLIENTS=${BROKER_MAX_CLIENTS}
+EVETEST_BROKER_PPROF_PORT=${BROKER_PPROF_PORT}
 EVETEST_BROKER_DOCKER_IMAGE_RETENTION=${DOCKER_IMAGE_RETENTION}
 EVETEST_BROKER_DOCKER_DISK_USAGE_THRESHOLD=${DOCKER_DISK_USAGE_THRESHOLD}
 EOF

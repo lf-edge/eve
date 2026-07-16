@@ -772,6 +772,7 @@ Common to every provider:
 | `EVETEST_BROKER_MAX_CLIENTS` | Max concurrent evetest clients the broker will accept; new connections are rejected with an error once this many are already connected (reconnects of existing clients are never blocked) | `-1` (unlimited) |
 | `EVETEST_BROKER_DOCKER_IMAGE_RETENTION` | How long, in minutes, an unused, evetest-managed Docker image (one the broker itself pulled or built) is kept before the broker's periodic cleanup removes it | `10080` (7 days) |
 | `EVETEST_BROKER_DOCKER_DISK_USAGE_THRESHOLD` | Disk usage percent (on the filesystem backing Docker's storage) at or above which the broker aggressively evicts the oldest unused, evetest-managed Docker images, regardless of the retention setting above | `80` |
+| `EVETEST_BROKER_PPROF_PORT` | Port for the broker's `net/http/pprof` debug endpoint (listens on all interfaces); `0` disables it | `0` (disabled) |
 
 **`libvirt` provider only:**
 
