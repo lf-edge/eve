@@ -7,6 +7,9 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
+	// Registers its handlers on http.DefaultServeMux; served via pprofAddr below.
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
@@ -41,6 +44,17 @@ func main() {
 	})
 	log.SetLevel(logLevel)
 	log.Infof("Starting Evetest Broker version %q", version)
+
+	// Optionally expose net/http/pprof for debugging memory/goroutine growth.
+	if pprofPort := viper.GetInt(constants.BrokerPprofPortEnv); pprofPort != 0 {
+		pprofAddr := fmt.Sprintf(":%d", pprofPort)
+		go func() {
+			log.Infof("Starting pprof debug endpoint on %s", pprofAddr)
+			if err := http.ListenAndServe(pprofAddr, nil); err != nil {
+				log.Errorf("pprof debug endpoint failed: %v", err)
+			}
+		}()
+	}
 
 	// Start TCP listener for the gRPC API.
 	port := viper.GetInt(constants.BrokerPortEnv)
