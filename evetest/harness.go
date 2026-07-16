@@ -189,10 +189,11 @@ const (
 type TestHarness struct {
 	api.UnimplementedEvetestServer
 
-	t         *T
-	log       *logrus.Logger
-	userLog   *logrus.Logger
-	brokerLog *logrus.Logger
+	t           *T
+	log         *logrus.Logger
+	userLog     *logrus.Logger
+	brokerLog   *logrus.Logger
+	colorOutput bool
 
 	artifactDir string
 
@@ -374,6 +375,15 @@ func getTestHarness() *TestHarness {
 	return _globalTH
 }
 
+// prefixColor returns the given log-prefix color when colorized output is
+// enabled, PrefixColorNone otherwise.
+func (th *TestHarness) prefixColor(c logger.PrefixColor) logger.PrefixColor {
+	if th.colorOutput {
+		return c
+	}
+	return logger.PrefixColorNone
+}
+
 // Init initializes the test harness and must be called exactly once per test.
 // When used inside a test suite, Init may be called multiple times, once per
 // test case, but only a single harness instance will be created.
@@ -436,16 +446,17 @@ func Init(t *testing.T) *T {
 	if err != nil {
 		th.t.Fatalf("Failed to parse log level %q: %v", logLevelStr, err)
 	}
+	th.colorOutput = viper.GetBool(constants.ColorOutputEnv)
 	th.log = logrus.New()
 	th.log.SetFormatter(&logger.PrefixedFormatter{
 		Prefix: "HARNESS ",
-		Color:  logger.PrefixColorBlue,
+		Color:  th.prefixColor(logger.PrefixColorBlue),
 	})
 	th.log.SetLevel(logLevel)
 	th.userLog = logrus.New()
 	th.userLog.SetFormatter(&logger.PrefixedFormatter{
 		Prefix: "TEST    ",
-		Color:  logger.PrefixColorCyan,
+		Color:  th.prefixColor(logger.PrefixColorCyan),
 	})
 	th.userLog.SetLevel(logLevel)
 
@@ -453,7 +464,7 @@ func Init(t *testing.T) *T {
 	th.brokerLog = logrus.New()
 	th.brokerLog.SetFormatter(&logger.PrefixedFormatter{
 		Prefix: "BROKER  ",
-		Color:  logger.PrefixColorPurple,
+		Color:  th.prefixColor(logger.PrefixColorPurple),
 	})
 	th.brokerLog.SetLevel(logLevel)
 

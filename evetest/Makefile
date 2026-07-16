@@ -120,6 +120,12 @@ endif
 		echo ""; \
 		exit 1; \
 	fi >&2
+	@# Colorize framework log output only when stdout is a terminal. The test
+	@# runs inside the container where stdout is never a TTY (go test pipes it),
+	@# so the detection must happen here. It also cannot use $(shell [ -t 1 ])
+	@# because within $(shell) stdout is make's capture pipe, never a terminal;
+	@# only a recipe shell sees make's real stdout.
+	[ -t 1 ] && COLOR=true || COLOR=false; \
 	docker run --rm $(DOCKER_IT) \
 		--name evetest-$(EVETEST_API_PORT) \
 		-p $(EVETEST_API_PORT):$(EVETEST_API_PORT) \
@@ -140,6 +146,7 @@ endif
 		$(BROKER_PROXY_CA_MOUNT) \
 		$(GO_CACHE_MOUNT) \
 		$(DOCKER_CONFIG_MOUNT) \
+		-e EVETEST_COLOR_OUTPUT=$$COLOR \
 		$(ENV_VARS) \
 		$(EVE_VERSION_ENV) \
 		$(BROKER_IMAGE_ENV) \

@@ -711,6 +711,7 @@ non-default behavior.
 | `EVETEST_EVE_VERSION` | EVE version to test | current repo HEAD |
 | `EVETEST_PREFERRED_ARCH` | Preferred CPU architecture (`amd64`, `arm64`) | `amd64` |
 | `EVETEST_LOG_LEVEL` | Framework log level (`debug`, `info`, `warn`) | `info` |
+| `EVETEST_COLOR_OUTPUT` | Colorize framework log output with ANSI escape codes (`true`/`false`) | auto: enabled only when stdout is a terminal, disabled when piped or redirected |
 | `EVETEST_COLLECT_ARTIFACTS` | Host path for artifacts (logs, collect-info) | -- |
 | `EVETEST_COLLECT_COVERAGE` | Collect Go coverage profiles (requires `EVETEST_COLLECT_ARTIFACTS` and EVE built with `COVER=y`) | `false` |
 | `EVETEST_REGISTRY_MIRROR_DOCKER` | Pull-through cache URL(s) for docker.io — one or more comma-separated `[scheme://]host:port[/path]` (IPv6 hosts bracketed, e.g. `http://[fd11::5]:5000`); see `RequireIPv6OnlyRegistryMirrors` | -- |
