@@ -24,7 +24,7 @@ import (
 const (
 	initialEVEVersionParamKey = "INITIAL_EVE_VERSION"
 	initialHypervisorParamKey = "INITIAL_HYPERVISOR"
-	expectRevertParamKey     = "EXPECT_REVERT"
+	expectRevertParamKey      = "EXPECT_REVERT"
 
 	appSSHUser     = "root"
 	appSSHPassword = "testpassword"

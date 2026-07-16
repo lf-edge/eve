@@ -4,6 +4,7 @@
 package evetest
 
 import (
+	"bytes"
 	"context"
 	"crypto/x509"
 	"encoding/json"
@@ -1302,6 +1303,10 @@ func (th *TestHarness) applyK3sRegistryMirrorIfConfigured() {
 //
 // /run is shared between EVE containers, so the script is staged there and then
 // executed inside the kube container via "eve exec" (nsenter-based, no TTY needed).
+//
+// Registry mirrors are a pull-through cache used purely to speed up image
+// pulls; they are not required for correctness. So any failure here is logged
+// as a warning and the function just returns, rather than failing the test.
 func (th *TestHarness) configureContainerdRegistryMirror(
 	devName string, mirrors map[string][]string) {
 	const (
@@ -1358,13 +1363,15 @@ func (th *TestHarness) configureContainerdRegistryMirror(
 
 	tmpFile, err := os.CreateTemp("", "setup-containerd-mirror-*.sh")
 	if err != nil {
-		th.t.Fatalf(
+		th.log.Warnf(
 			"configureContainerdRegistryMirror: failed to create temp file: %v", err)
+		return
 	}
 	defer os.Remove(tmpFile.Name())
 	if _, err = tmpFile.WriteString(sb.String()); err != nil {
-		th.t.Fatalf(
+		th.log.Warnf(
 			"configureContainerdRegistryMirror: failed to write temp file: %v", err)
+		return
 	}
 	tmpFile.Close()
 
@@ -1372,17 +1379,21 @@ func (th *TestHarness) configureContainerdRegistryMirror(
 	err = th.scpToEVE(ctx, devName, tmpFile.Name(), scriptPath, false)
 	cancel()
 	if err != nil {
-		th.t.Fatalf("configureContainerdRegistryMirror: failed to scp script to %q: %v",
+		th.log.Warnf("configureContainerdRegistryMirror: failed to scp script to %q: %v",
 			devName, err)
+		return
 	}
 
+	var stdoutBuf, stderrBuf bytes.Buffer
 	ctx, cancel = context.WithTimeout(th.ctx, quickSSHCommandTimeout)
 	err = th.runScriptOnEVEOverSSH(ctx, devName,
-		"eve exec kube sh "+scriptPath, nil, nil, 0)
+		"eve exec kube sh "+scriptPath, &stdoutBuf, &stderrBuf, 0)
 	cancel()
 	if err != nil {
-		th.t.Fatalf("configureContainerdRegistryMirror: script failed on %q: %v",
-			devName, err)
+		th.log.Warnf("configureContainerdRegistryMirror: script failed on %q: %v "+
+			"(stdout: %s, stderr: %s)", devName, err, stdoutBuf.String(),
+			stderrBuf.String())
+		return
 	}
 	th.log.Infof("Containerd registry mirrors configured on device %q", devName)
 }
