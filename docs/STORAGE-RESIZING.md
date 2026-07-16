@@ -34,6 +34,9 @@ device recovers automatically by recreating an empty `/persist` and restoring
 critical parts of `/persist` — such as the device's identity, network
 configuration, and ssh configuration — from the backup taken before the shrink,
 so it stays bootable and remotely manageable. No failure mode bricks the device.
+A milder interruption can instead leave `/persist` intact but with the repaired
+subtrees reconnected under `/persist/lost+found`, whose usage EVE reports and
+reclaims during the low-disk boot cleanup.
 
 ## The four-way decision
 
