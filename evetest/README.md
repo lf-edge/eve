@@ -1160,6 +1160,41 @@ by the host.
 sudo systemctl restart NetworkManager
 ```
 
+### Docker Bridge MTU vs. a Lower-MTU Network Path
+
+In distributed deployment mode, traffic between the evetest container and the broker
+travels over whatever network path connects the two hosts. If that path has a lower
+MTU than Docker's default bridge MTU (1500) -- e.g. a VPN tunnel between the
+test-runner host and the broker's network -- large gRPC responses can silently stall:
+TCP segments sized for the full 1500-byte MTU get dropped on the lower-MTU link, and if
+the path also blocks the ICMP "Fragmentation Needed" messages that would normally let
+TCP discover and adapt to the real path MTU (common behind corporate firewalls), the
+same oversized segment gets retransmitted and dropped repeatedly until the connection
+is eventually reset. Symptom: a test fails partway through a long-running RPC (e.g.
+`BuildImage`) with `rpc error: code = Unavailable desc = error reading from server:
+... connection reset by peer`, even though small messages (including gRPC keepalive
+pings) keep flowing fine right up until the failure.
+
+Check for a mismatch:
+
+```bash
+ip link show <vpn-interface>   # e.g. ppp0, tun0, wg0
+ip link show docker0
+```
+
+If the VPN/tunnel interface's MTU is lower than `docker0`'s (1500), lower Docker's
+bridge MTU to match (or a little under) it in `/etc/docker/daemon.json`:
+
+```json
+{
+    "mtu": 1400
+}
+```
+
+Then restart Docker (`sudo systemctl restart docker`) and recreate any evetest
+containers/networks -- this only affects the default bridge and networks created
+afterward, not ones already running.
+
 ### Enabling IPv6 Connectivity Tests
 
 In all-in-one deployment mode, IPv6 connectivity between EVE devices and the controller
