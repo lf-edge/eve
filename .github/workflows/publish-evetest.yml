@@ -1,0 +1,81 @@
+# Copyright (c) 2026, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+name: Publish Evetest
+on:  # yamllint disable-line rule:truthy
+  push:
+    branches:
+      - "master"
+    paths:
+      - "evetest/**"
+      # tests/, netmodels/ and matchers/ are not baked into the evetest
+      # container image -- they are bind-mounted at runtime from the checked
+      # out eve repo, so changes here don't require rebuilding/republishing.
+      - "!evetest/tests/**"
+      - "!evetest/netmodels/**"
+      - "!evetest/matchers/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  # ════════════════════════════════════════════════════════════════════════
+  # Build and push every evetest image (multi-arch: amd64 + arm64), one
+  # matrix entry per image, in parallel.
+  # ════════════════════════════════════════════════════════════════════════
+  publish:
+    if: github.event.repository.full_name == 'lf-edge/eve'
+    runs-on: zededa-ubuntu-2204
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: sdn
+            dir: evetest/sdn
+            target: build
+            needs_linuxkit: true
+          - name: evetest
+            dir: evetest
+            target: build-container
+            needs_linuxkit: false
+          - name: broker
+            dir: evetest
+            target: build-broker-container
+            needs_linuxkit: false
+          - name: testapps
+            dir: evetest/testapps
+            target: build
+            needs_linuxkit: false
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          fetch-depth: 0
+      - name: Ensure linuxkit is available
+        if: matrix.needs_linuxkit
+        run: |
+          if command -v linuxkit >/dev/null 2>&1; then
+            echo "LINUXKIT=$(command -v linuxkit)" >> "$GITHUB_ENV"
+          else
+            make build-tools
+            echo "LINUXKIT=$(pwd)/build-tools/bin/linuxkit" >> "$GITHUB_ENV"
+          fi
+      - name: Login to Docker Hub
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2  # v4.0.0
+        with:
+          username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+          password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+      - name: Build and push ${{ matrix.name }} image
+        working-directory: ${{ matrix.dir }}
+        run: |
+          make ${{ matrix.target }} DOCKER_TARGET=push \
+            DOCKER_PLATFORM=linux/amd64,linux/arm64
+      - name: Clean
+        if: ${{ always() }}
+        run: |
+          docker system prune -f -a --volumes
+          rm -rf ~/.linuxkit

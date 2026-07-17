@@ -909,7 +909,14 @@ The broker currently supports the following **device providers**:
 - **QEMU** — direct QEMU invocation, used in all-in-one mode
 - **libvirt** — uses libvirt APIs, used in distributed mode; the broker runs as a
   container on the hypervisor host (see `make libvirt-setup-broker-user` /
-  `make libvirt-run-broker-container` above)
+  `make libvirt-run-broker-container` above). Requires CGO, which is only
+  enabled for a **native** broker build (build host arch == target arch) --
+  building `make build-broker-container` directly on an amd64 or arm64 host
+  gets full libvirt support either way. The **published** arm64 broker image
+  is *cross-compiled* from an amd64 CI runner, so it is built with
+  `CGO_ENABLED=0` and falls back to a stub that returns an error if the
+  libvirt provider is selected (see the note on `make build-broker-container`
+  below)
 - **proxmox** — uses the Proxmox VE REST API, used in distributed mode; the broker
   itself runs inside a VM on the Proxmox host, set up end to end by the installer in
   [deploy/proxmox/README.md](deploy/proxmox/README.md)
@@ -960,7 +967,7 @@ and the framework subscribes to Adam's data streams to keep device state up to d
 | `make list-tests` | List all available tests and test suites with their configurable parameters |
 | `make evetest` | Run a test (requires `NAME=...`) |
 | `make build-container` | Build the evetest container; set `DOCKER_PLATFORM=linux/<arch>` to cross-compile for a different architecture (Go build stage runs natively on the host, no QEMU emulation); use `DOCKER_TARGET=push` to publish to a registry instead of loading locally |
-| `make build-broker-container` | Build broker Docker image only; set `DOCKER_PLATFORM=linux/<arch>` to build for a different architecture (the builder runs under QEMU emulation since the broker requires CGO for libvirt); use `DOCKER_TARGET=push` to publish to a registry instead of loading locally |
+| `make build-broker-container` | Build broker Docker image only; set `DOCKER_PLATFORM=linux/<arch>` to cross-compile for a different architecture (Go build stage runs natively on the host, no QEMU emulation); CGO (and therefore the libvirt provider) is only enabled when `DOCKER_PLATFORM` matches the build host's own arch -- e.g. building on an arm64 host with the default `DOCKER_PLATFORM` gets full libvirt support, but cross-compiling to a *different* arch than the host (as CI does to publish the arm64 image from an amd64 runner) sets `CGO_ENABLED=0` and drops libvirt (qemu and proxmox providers are unaffected either way); use `DOCKER_TARGET=push` to publish to a registry instead of loading locally |
 | `make build-sdn-container` | Build SDN VM container (requires linuxkit, with the `LINUXKIT` variable pointing to the binary); set `DOCKER_PLATFORM=linux/<arch>` to cross-compile for a different architecture (Go build stage runs natively on the host, no QEMU emulation); use `DOCKER_TARGET=push` to publish to a registry instead of loading locally |
 | `make build-test-apps` | Build all test apps under `testapps/` by invoking each app's `build` target; supports the same `DOCKER_PLATFORM`, `DOCKER_TARGET`, and `EVETEST_ORG` variables |
 | `make install-cli` | Install the `evetest` CLI binary |
