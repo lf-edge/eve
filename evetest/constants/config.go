@@ -273,14 +273,13 @@ const (
 	DefaultAdamRepo = "lfedge/adam"
 
 	// DefaultSDNRepo is the default SDN image repository.
-	// TODO: change to lfedge once the repo is created
-	DefaultSDNRepo = "milan4zededa/evetest-sdn"
+	DefaultSDNRepo = "lfedge/evetest-sdn"
 
 	// DefaultAdamVersion specifies the Adam version to use by default.
 	DefaultAdamVersion = "0.0.75"
 
 	// DefaultSDNVersion specifies the SDN version to use by default.
-	DefaultSDNVersion = "v0.0.1"
+	DefaultSDNVersion = "1.0"
 
 	// DefaultSDNUplinkIPv4Subnet species the IPv4 subnet used for SDN uplink
 	// interfaces by default.

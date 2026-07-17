@@ -53,9 +53,8 @@ LAN_BRIDGE="vmbr0"
 BROKER_LAN_MAC=""
 UPLINK_VNET="evu"
 # @@VERSION@@ is replaced with evetest/VERSION when the installer is assembled
-# (make proxmox-broker-installer), e.g. lfedge/evetest-broker:v0.0.1.
-# TODO: Replace the image repository with lfedge once it has been created.
-BROKER_IMAGE="milan4zededa/evetest-broker:@@VERSION@@"
+# (make proxmox-broker-installer), e.g. lfedge/evetest-broker:1.0.
+BROKER_IMAGE="lfedge/evetest-broker:@@VERSION@@"
 BROKER_VM_CORES="4"
 BROKER_VM_MEMORY="8192"
 BROKER_VM_DISK="64"          # GiB; hosts all the pulled/cached Docker images

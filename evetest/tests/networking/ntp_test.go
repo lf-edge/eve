@@ -131,7 +131,7 @@ func TestDeviceNTPConfig(test *testing.T) {
 //     entry pointing to "ntp-local-ni". The NI's dnsmasq must merge port
 //     NTP servers and the NI NTP server and advertise the union to apps.
 //   - One container app on the NI (default-allow + port-fwd 2222->22).
-//     Use the existing milan4zededa/evetest-ubuntu-ctr image; it ships
+//     Use the existing lfedge/evetest-ubuntu-ctr image; it ships
 //     with chronyd which will sync against whatever DHCP delivers.
 //
 // Assertions

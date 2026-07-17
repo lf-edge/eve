@@ -750,8 +750,18 @@ same terminal session beforehand.
 |----------|-------------|---------|
 | `EVETEST_ORG` | Docker Hub organization for evetest and evetest-broker images | `lfedge` |
 | `EVETEST_EVE_REPO` | EVE image repository | `lfedge/eve` |
-| `EVETEST_ADAM_VERSION` | Adam controller version | `0.0.75` |
-| `EVETEST_SDN_VERSION` | SDN emulator version | `v0.0.1` |
+| `EVETEST_ADAM_VERSION` | Adam controller version *(build-time only, see note below)* | `0.0.75` |
+| `EVETEST_SDN_VERSION` | SDN emulator version | `1.0` |
+
+> **`EVETEST_ADAM_VERSION` requires evetest container rebuild.** Unlike the other
+> variables above, Adam's binary is baked into the evetest image at build time
+> (`Dockerfile.evetest` copies it in from `lfedge/adam:$EVETEST_ADAM_VERSION`);
+> the evetest image tag is just `evetest:<EVETEST_VERSION>`, so it does not encode
+> which Adam version is inside. Setting `EVETEST_ADAM_VERSION` as a runtime environment
+> variable before `make evetest` has **no effect** on which Adam binary actually runs.
+> To test against a different (e.g. custom-built) Adam version, rebuild the image first:
+> `make build-container EVETEST_ADAM_VERSION=<version>`, then run tests as usual
+> against that locally-built image.
 
 ### Broker Variables (for distributed mode)
 

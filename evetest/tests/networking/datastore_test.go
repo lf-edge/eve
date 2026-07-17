@@ -77,7 +77,7 @@ import "testing"
 //     environment variables (test parameters). Skip the test if the parameters
 //     are not set, rather than failing -- these tests should be opt-in.
 //
-//   - For container registries: use a small public image. milan4zededa/evetest-*
+//   - For container registries: use a small public image. lfedge/evetest-*
 //     test images are already used elsewhere; reuse the smallest one.
 //
 // TestHTTPDatastore validates that EVE can download a content tree served over
@@ -198,7 +198,7 @@ func TestAzureDatastore(test *testing.T) {
 // public registry (Docker Hub by default).
 //
 // Recommended image: a small, fixed-tag image already used by other evetest
-// tests, e.g. milan4zededa/evetest-ubuntu-ctr:1.0 or an even smaller test
+// tests, e.g. lfedge/evetest-ubuntu-ctr:1.0 or an even smaller test
 // image (busybox). Keep the tag pinned to avoid reproducibility regressions
 // when the registry mutates :latest.
 //

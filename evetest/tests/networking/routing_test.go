@@ -70,7 +70,7 @@ import (
 //     the NI bridge IP 10.50.1.1 when advertising via DHCP option 121).
 //     - ni-eth2 (10.50.2.0/24, bridge 10.50.2.1): PropagateConnectedRoutes=false,
 //     static route 10.22.22.0/24 via 10.50.2.1.
-//     One container app (milan4zededa/evetest-ubuntu-ctr:1.0) with three
+//     One container app (lfedge/evetest-ubuntu-ctr:1.0) with three
 //     VIFs (vif0..vif2), one per NI, EnforceNetIntfOrder=true for
 //     deterministic vif-to-interface mapping inside the app, default-allow
 //     ACL on each VIF, and a TCP 2222->22 port-forward on vif0.
@@ -240,7 +240,7 @@ func TestPropagatedRoutes(test *testing.T) {
 		DisplayName: "multi-ni-app",
 		Activate:    true,
 		Image: evetest.DockerContainer{
-			ImageName: "milan4zededa/evetest-ubuntu-ctr",
+			ImageName: "lfedge/evetest-ubuntu-ctr",
 			Tag:       "1.0",
 		},
 		VirtualizationMode:  eveconfig.VmMode_HVM,
@@ -453,7 +453,7 @@ func TestPropagatedRoutes(test *testing.T) {
 //     NI: 0.0.0.0/0 via label "internet" with gateway ping (GwPingMaxCost=5,
 //     PreferLowerCost=true); 10.88.88.0/24 via label "httpserver" with TCP
 //     probe to 10.88.88.70:80 (PreferLowerCost=true). One container app
-//     (milan4zededa/evetest-ubuntu-ctr:1.0) with a VIF on the NI, a TCP
+//     (lfedge/evetest-ubuntu-ctr:1.0) with a VIF on the NI, a TCP
 //     2222->22 port-forward scoped to shared label "portfwd" (eth3 lacks
 //     "portfwd" and does not forward), and a default-allow ACL.
 //  2. Initial routing: WatchNetworkInstanceInfo waits until the NI is ONLINE
@@ -615,7 +615,7 @@ func TestLocalNIWithMultiplePorts(test *testing.T) {
 		DisplayName: "multi-port-app",
 		Activate:    true,
 		Image: evetest.DockerContainer{
-			ImageName: "milan4zededa/evetest-ubuntu-ctr",
+			ImageName: "lfedge/evetest-ubuntu-ctr",
 			Tag:       "1.0",
 		},
 		VirtualizationMode:  eveconfig.VmMode_HVM,
@@ -882,7 +882,7 @@ func findRoute(routes []*eveinfo.IPRoute, dst string) *eveinfo.IPRoute {
 //     10.21.21.0/24 via 172.28.1.2, DNSServers=[10.16.16.25]); airgap2
 //     (Local, no uplink, 172.28.2.0/24, StaticRoute 0.0.0.0/0 via 172.28.2.2,
 //     DNSServers=[172.28.2.1], StaticDNSEntries=[http-server-2.test, http-server-1.test]).
-//     Three container apps (milan4zededa/evetest-ubuntu-ctr:1.0) with
+//     Three container apps (lfedge/evetest-ubuntu-ctr:1.0) with
 //     default-allow ACLs: app-gw (3 VIFs: vif0→ni-eth1 MAC 02:16:3e:01:00:00,
 //     vif1→airgap1 static 172.28.1.2, vif2→airgap2 static 172.28.2.2);
 //     app-client1 (2 VIFs: vif0→ni-eth0 portfwd 2222→22, vif1→airgap1 static
@@ -1051,7 +1051,7 @@ func TestApplicationGateway(test *testing.T) {
 	)
 
 	appImage := evetest.DockerContainer{
-		ImageName: "milan4zededa/evetest-ubuntu-ctr",
+		ImageName: "lfedge/evetest-ubuntu-ctr",
 		Tag:       "1.0",
 	}
 

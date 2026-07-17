@@ -83,7 +83,7 @@ import (
 //   - Switch NI "switch-ni" with Port="switch-ports" (resolves to ethernet1,
 //     ethernet2, ethernet3). BPDU enabled for ethernet3 by referencing
 //     the "edge-port" label.
-//   - One container app (milan4zededa/evetest-ubuntu-ctr:1.0) with one VIF
+//   - One container app (lfedge/evetest-ubuntu-ctr:1.0) with one VIF
 //     on the NI and allow-all ACL. The SDN router on bridge1 provides DHCP,
 //     so the app obtains an IP from 10.51.0.0/24.
 //
@@ -208,7 +208,7 @@ func TestSwitchNIWithMultiplePorts(test *testing.T) {
 		DisplayName: "container-app",
 		Activate:    true,
 		Image: evetest.DockerContainer{
-			ImageName: "milan4zededa/evetest-ubuntu-ctr",
+			ImageName: "lfedge/evetest-ubuntu-ctr",
 			Tag:       "1.0",
 		},
 		VirtualizationMode: eveconfig.VmMode_HVM, // PV does not work in xen
