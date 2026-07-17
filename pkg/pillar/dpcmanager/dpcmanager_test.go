@@ -964,6 +964,83 @@ func makeAA(intfs selectedIntfs) types.AssignableAdapters {
 	return aa
 }
 
+// TestPortPciLongInDNS verifies that a port's PCI address is recorded in the
+// device network status. The interface name is chosen so it cannot resolve to
+// a real PCI device on the test host, which exercises the fallback to the PCI
+// address carried in the port config. This PCI identity is what lets domainmgr
+// recognize a live port even when its kernel-assigned name differs from the
+// model name, instead of reserving the device to pciback.
+func TestPortPciLongInDNS(test *testing.T) {
+	t := initTest(test)
+
+	const ifname = "nictest0"
+	const pciAddr = "0000:06:00.0"
+
+	mockIf := netmonitor.MockInterface{
+		Attrs: netmonitor.IfAttrs{
+			IfIndex:       42,
+			IfName:        ifname,
+			IfType:        "device",
+			WithBroadcast: true,
+			AdminUp:       true,
+			LowerUp:       true,
+		},
+		IPAddrs: []*net.IPNet{ipAddress("192.168.77.5/24")},
+		HwAddr:  macAddress("02:00:00:00:00:77"),
+	}
+	networkMonitor.AddOrUpdateInterface(mockIf)
+
+	dpcManager.UpdateGCP(globalConfig())
+
+	aa := types.AssignableAdapters{
+		Initialized: true,
+		IoBundleList: []types.IoBundle{
+			{
+				Type:         types.IoNetEth,
+				Phylabel:     ifname,
+				Logicallabel: "mock-nic",
+				Usage:        evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+				Ifname:       ifname,
+				PciLong:      pciAddr,
+				MacAddr:      mockIf.HwAddr.String(),
+				IsPort:       true,
+			},
+		},
+	}
+	dpc := types.DevicePortConfig{
+		Version:      types.DPCIsMgmt,
+		Key:          "zedagent",
+		TimePriority: time.Now(),
+		Ports: []types.NetworkPortConfig{
+			{
+				IfName:       ifname,
+				Phylabel:     ifname,
+				Logicallabel: "mock-nic",
+				PCIAddr:      pciAddr,
+				IsMgmt:       true,
+				IsL3Port:     true,
+				DhcpConfig: types.DhcpConfig{
+					Dhcp: types.DhcpTypeClient,
+					Type: types.NetworkTypeIPv4,
+				},
+				ConfigSource: types.PortConfigSource{
+					Origin: types.NetworkConfigOriginController,
+				},
+			},
+		},
+	}
+	dpcManager.UpdateAA(aa)
+	dpcManager.AddDPC(dpc)
+
+	t.Eventually(func() string {
+		dns := getDNS()
+		if len(dns.Ports) == 0 {
+			return ""
+		}
+		return dns.Ports[0].PciLong
+	}).Should(Equal(pciAddr))
+}
+
 func TestSingleDPC(test *testing.T) {
 	t := initTest(test)
 	t.Expect(dpcManager.GetDNS().DPCKey).To(BeEmpty())

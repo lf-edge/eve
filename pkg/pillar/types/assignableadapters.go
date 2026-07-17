@@ -213,12 +213,6 @@ func (iobe *IOBundleError) RemoveByType(e error) {
 	iobe.removeByType(e)
 }
 
-// Clear clears all errors
-func (iobe *IOBundleError) Clear() {
-	iobe.Errors = make([]ioBundleErrorBase, 0)
-	iobe.TimeOfError = time.Time{}
-}
-
 // AggregatedIoBundleError is the combined error state of an assignment group,
 // ready for reporting in a single ZioBundle.
 type AggregatedIoBundleError struct {
