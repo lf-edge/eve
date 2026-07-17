@@ -152,32 +152,28 @@ func handleOnboardStatusImpl(ctxArg interface{}, key string,
 
 // NodeNameFromDeviceName converts an EdgeNodeInfo.DeviceName into the Kubernetes
 // node name that k3s registers this node under: lower-cased with underscores
-// replaced by hyphens. This normalization must match the one in cluster-utils.sh;
-// keep them in sync.
+// replaced by hyphens. This normalization must match convert_to_k8s_compatible
+// in pkg/kube/cluster-utils.sh; keep them in sync.
 func NodeNameFromDeviceName(deviceName string) string {
 	return strings.ReplaceAll(strings.ToLower(deviceName), "_", "-")
 }
 
-// nodeNameContext carries the resolved node name out of the EdgeNodeInfo handlers.
-type nodeNameContext struct {
-	nodeName string
-	found    bool
+// edgeNodeInfoContext carries the resolved EdgeNodeInfo out of the handlers.
+type edgeNodeInfoContext struct {
+	info  types.EdgeNodeInfo
+	found bool
 }
 
-// WaitForNodeName waits for zedagent to publish an EdgeNodeInfo with a non-empty
-// DeviceName and returns the derived Kubernetes node name (see NodeNameFromDeviceName).
-// If timeout > 0 it returns an error should the name not arrive within that window;
-// timeout == 0 waits indefinitely. The watchdog is kicked throughout.
-//
-// TODO: domainmgr and zedkube still resolve the node name with their own
-// EdgeNodeInfo subscriptions and copies of the DeviceName normalization; convert
-// them to this helper so the derivation lives in one place.
-//
-//revive:disable-next-line:exported // WaitFor* naming matches WaitForVault/WaitForOnboarded in this package
-func WaitForNodeName(ps *pubsub.PubSub, log *base.LogObject, agentName string,
-	warningTime, errorTime, timeout time.Duration) (string, error) {
+// WaitForEdgeNodeInfo waits for zedagent to publish an EdgeNodeInfo with a
+// non-empty DeviceName and returns it. EdgeNodeInfo is static for the lifetime
+// of a boot, so a single up-front wait is enough; callers need not keep a
+// long-lived subscription to react to later updates. If timeout > 0 it returns
+// an error should the info not arrive within that window; timeout == 0 waits
+// indefinitely. The watchdog is kicked throughout.
+func WaitForEdgeNodeInfo(ps *pubsub.PubSub, log *base.LogObject, agentName string,
+	warningTime, errorTime, timeout time.Duration) (types.EdgeNodeInfo, error) {
 
-	nctx := &nodeNameContext{}
+	nctx := &edgeNodeInfoContext{}
 	sub, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedagent",
 		MyAgentName:   agentName,
@@ -190,7 +186,7 @@ func WaitForNodeName(ps *pubsub.PubSub, log *base.LogObject, agentName string,
 		ErrorTime:     errorTime,
 	})
 	if err != nil {
-		return "", err
+		return types.EdgeNodeInfo{}, err
 	}
 	sub.Activate()
 	defer sub.Close()
@@ -213,12 +209,27 @@ func WaitForNodeName(ps *pubsub.PubSub, log *base.LogObject, agentName string,
 		case change := <-sub.MsgChan():
 			sub.ProcessChange(change)
 		case <-timeoutCh:
-			return "", fmt.Errorf("timeout waiting for EdgeNodeInfo DeviceName")
+			return types.EdgeNodeInfo{}, fmt.Errorf("timeout waiting for EdgeNodeInfo DeviceName")
 		case <-stillRunning.C:
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
-	return nctx.nodeName, nil
+	return nctx.info, nil
+}
+
+// WaitForNodeName waits for a non-empty EdgeNodeInfo.DeviceName and returns the
+// derived Kubernetes node name (see NodeNameFromDeviceName). Timeout and watchdog
+// semantics match WaitForEdgeNodeInfo.
+//
+//revive:disable-next-line:exported // WaitFor* naming matches WaitForVault/WaitForOnboarded in this package
+func WaitForNodeName(ps *pubsub.PubSub, log *base.LogObject, agentName string,
+	warningTime, errorTime, timeout time.Duration) (string, error) {
+
+	enInfo, err := WaitForEdgeNodeInfo(ps, log, agentName, warningTime, errorTime, timeout)
+	if err != nil {
+		return "", err
+	}
+	return NodeNameFromDeviceName(enInfo.DeviceName), nil
 }
 
 func handleEdgeNodeInfoCreate(ctxArg interface{}, key string, statusArg interface{}) {
@@ -230,13 +241,11 @@ func handleEdgeNodeInfoModify(ctxArg interface{}, key string, statusArg interfac
 }
 
 func handleEdgeNodeInfoImpl(ctxArg interface{}, statusArg interface{}) {
-	ctx := ctxArg.(*nodeNameContext)
+	ctx := ctxArg.(*edgeNodeInfoContext)
 	enInfo := statusArg.(types.EdgeNodeInfo)
 	if enInfo.DeviceName == "" {
 		return
 	}
-	if nodeName := NodeNameFromDeviceName(enInfo.DeviceName); nodeName != "" {
-		ctx.nodeName = nodeName
-		ctx.found = true
-	}
+	ctx.info = enInfo
+	ctx.found = true
 }
