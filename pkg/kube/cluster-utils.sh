@@ -281,7 +281,9 @@ check_and_remove_excessive_k3s_logs() {
     fi
 }
 
-# kubernetes's name must be lower case and '-' instead of '_'
+# Convert a device name to its Kubernetes node name: lower case with '_'
+# replaced by '-'. Must match NodeNameFromDeviceName in
+# pkg/pillar/utils/wait/waitfor.go; keep them in sync.
 convert_to_k8s_compatible() {
         echo "$1" | tr '[:upper:]_' '[:lower:]-'
 }

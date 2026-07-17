@@ -119,7 +119,6 @@ type domainContext struct {
 	pubDomainStatus        pubsub.Publication
 	subGlobalConfig        pubsub.Subscription
 	subZFSPoolStatus       pubsub.Subscription
-	subEdgeNodeInfo        pubsub.Subscription
 	pubAssignableAdapters  pubsub.Publication
 	pubDomainMetric        pubsub.Publication
 	pubHostMemory          pubsub.Publication
@@ -471,24 +470,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	domainCtx.subZFSPoolStatus = subZFSPoolStatus
 
-	// Look for edge node info
-	subEdgeNodeInfo, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "zedagent",
-		MyAgentName: agentName,
-		TopicImpl:   types.EdgeNodeInfo{},
-		Persistent:  false,
-		Activate:    false,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	domainCtx.subEdgeNodeInfo = subEdgeNodeInfo
-	_ = subEdgeNodeInfo.Activate()
-
-	// Wait for ConfigIntemValueMap and EdgeNodeInfo (if kube)
-	edgenodeInfoInitialized := false
-	for !domainCtx.GCComplete || (domainCtx.hvTypeKube && !edgenodeInfoInitialized) {
-		log.Noticef("waiting for GCComplete and EdgeNodeInfo")
+	// Wait for ConfigItemValueMap
+	for !domainCtx.GCComplete {
+		log.Noticef("waiting for GCComplete")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
@@ -496,15 +480,22 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		case <-domainCtx.publishTicker.C:
 			publishProcessesHandler(&domainCtx)
 
-		case change := <-subEdgeNodeInfo.MsgChan():
-			subEdgeNodeInfo.ProcessChange(change)
-			edgenodeInfoInitialized = domainCtx.checkAndSaveEdgeNodeInfo()
-
 		case <-stillRunning.C:
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Noticef("processed GCComplete")
+
+	// The Kubernetes node name is derived from EdgeNodeInfo, which is static
+	// for the lifetime of a boot; resolve it once up front.
+	if domainCtx.hvTypeKube {
+		domainCtx.nodeName, err = wait.WaitForNodeName(ps, log, agentName,
+			warningTime, errorTime, 0)
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Noticef("Got nodeName %s", domainCtx.nodeName)
+	}
 
 	if !domainCtx.setInitialUsbAccess {
 		log.Functionf("GCComplete but not setInitialUsbAccess => first boot")
@@ -587,9 +578,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-subZFSPoolStatus.MsgChan():
 			subZFSPoolStatus.ProcessChange(change)
-
-		case change := <-subEdgeNodeInfo.MsgChan():
-			subEdgeNodeInfo.ProcessChange(change)
 
 		case <-domainCtx.publishTicker.C:
 			publishProcessesHandler(&domainCtx)
@@ -816,9 +804,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-subPhysicalIOAdapter.MsgChan():
 			subPhysicalIOAdapter.ProcessChange(change)
-
-		case change := <-subEdgeNodeInfo.MsgChan():
-			subEdgeNodeInfo.ProcessChange(change)
 
 		case <-domainCtx.publishTicker.C:
 			start := time.Now()
@@ -4463,25 +4448,6 @@ func lookupCapabilities(ctx *domainContext) (*types.Capabilities, error) {
 		log.Fatalf("Unexpected type from pubCapabilities: %T", c)
 	}
 	return &capabilities, nil
-}
-
-// checkAndSaveEdgeNodeInfo checks if the device name is set in the EdgeNodeInfo
-// it returns true if we got the valid EdgeNodeInfo update
-func (ctx *domainContext) checkAndSaveEdgeNodeInfo() bool {
-	items := ctx.subEdgeNodeInfo.GetAll()
-	if len(items) > 0 {
-		for _, item := range items {
-			enInfo := item.(types.EdgeNodeInfo)
-			if enInfo.DeviceName != "" {
-				log.Noticef("checkAndSaveEdgeNodeInfo: found devicename %s", enInfo.DeviceName)
-				ctx.nodeName = strings.ReplaceAll(strings.ToLower(enInfo.DeviceName), "_", "-")
-				if ctx.nodeName != "" {
-					return true
-				}
-			}
-		}
-	}
-	return false
 }
 
 func getDmiSystemInfo(dmi *types.DmiSystemInfo) {
