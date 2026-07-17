@@ -198,10 +198,7 @@ build-container:
 		-f Dockerfile.evetest .
 
 build-test-apps:
-	@for app in testapps/*/; do \
-		echo "Building $$app..."; \
-		$(MAKE) -C $$app build || exit 1; \
-	done
+	@$(MAKE) -C testapps build
 
 build-broker-container:
 	@echo "Building Docker image $(EVETEST_ORG)/evetest-broker:$(EVETEST_VERSION)"

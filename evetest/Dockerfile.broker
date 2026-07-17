@@ -6,20 +6,44 @@ ARG GOLANG_VERSION=1.25
 
 ###########################
 # Build stage
+# Runs natively on the build host using --platform=$BUILDPLATFORM so that Go
+# executes without QEMU emulation. CGO (and therefore the libvirt provider)
+# is only enabled when the target arch matches the build host's own arch
+# (native build): a real amd64 or arm64 dev machine building its own arch
+# gets a full CGO-enabled binary with libvirt support, since the native gcc/
+# libvirt-dev installed below actually matches what's being linked. Cross-
+# compiling (e.g. building an arm64 image from an amd64 host) would need
+# a foreign cross toolchain plus foreign libvirt headers, which isn't worth
+# maintaining now that Proxmox (not libvirt) is our primary distributed-mode
+# provider -- so a cross-build instead sets CGO_ENABLED=0 and falls back to
+# the libvirt provider's stub (see broker/provider/libvirt_stub.go), the
+# same mechanism Dockerfile.evetest already relies on for its own
+# CGO_ENABLED=0 build. The proxmox and qemu providers are unaffected and
+# fully supported in every case.
 ###########################
-FROM golang:${GOLANG_VERSION}-alpine${ALPINE_VERSION} AS builder
+# hadolint ignore=DL3029
+FROM --platform=$BUILDPLATFORM golang:${GOLANG_VERSION}-alpine${ALPINE_VERSION} AS builder
 
 # Set build-time "version" variable.
 ARG EVETEST_VERSION=dev
 ENV EVETEST_VERSION=${EVETEST_VERSION}
 
+ARG TARGETOS
+ARG TARGETARCH
+ARG BUILDARCH
+
 # Set up working directory and GOBIN
 WORKDIR /broker
 ENV GOBIN=/go/bin
+ENV GOOS=$TARGETOS
+ENV GOARCH=$TARGETARCH
 # Use the pre-downloaded module cache; ignore vendor/ even if it appears in the build context.
 ENV GOFLAGS="-mod=readonly"
 
-# Install build dependencies
+# Install build dependencies. gcc/musl-dev/pkgconfig/libvirt-dev only end up
+# actually used when CGO is enabled below (native build); installing them
+# unconditionally keeps this Dockerfile simple, and they match the build
+# host's own arch either way since this stage is pinned to $BUILDPLATFORM.
 # hadolint ignore=DL3018
 RUN apk add --no-cache \
     make \
@@ -36,8 +60,12 @@ RUN go mod download
 # Copy source code and build the broker
 COPY . .
 
-# Run Makefile target to install evetest-broker
-RUN make _install-broker
+# Run Makefile target to install evetest-broker. CGO_ENABLED=1 (full libvirt
+# support) when building for the host's own native arch; CGO_ENABLED=0
+# (libvirt provider excluded, see broker/provider/libvirt_stub.go) for any
+# cross-build to a different target arch.
+RUN if [ "$TARGETARCH" = "$BUILDARCH" ]; then export CGO_ENABLED=1; else export CGO_ENABLED=0; fi && \
+    make _install-broker
 
 ###########################
 # Runtime image
