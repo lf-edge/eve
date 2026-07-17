@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -541,6 +542,122 @@ func TestExpandControllers(t *testing.T) {
 	}
 }
 
+// TestIOBundleErrorWarning covers the advisory-warning path used to report
+// device-model inconsistencies EVE works around: IsOnlyWarnings distinguishes a
+// warnings-only bundle from one that also carries a hard error.
+func TestIOBundleErrorWarning(t *testing.T) {
+	var e IOBundleError
+	assert.False(t, e.IsOnlyWarnings(), "empty error should not be only-warnings")
+
+	e.AppendWarning(errors.New("model ifname does not match kernel; matched by PCI"))
+	assert.False(t, e.Empty())
+	assert.True(t, e.IsOnlyWarnings(), "a lone warning should be only-warnings")
+	assert.True(t, strings.Contains(e.String(), "matched by PCI"))
+
+	e.Append(errors.New("hard error"))
+	assert.False(t, e.IsOnlyWarnings(), "a hard error must downgrade from only-warnings")
+}
+
+// TestAppendEntryDedup covers the duplicate-suppression in the append path:
+// re-adding an identical entry does not grow the list, but entries differing in
+// text, warning flag, or group scope are kept distinct.
+func TestAppendEntryDedup(t *testing.T) {
+	var e IOBundleError
+	e.Append(errors.New("same"))
+	e.Append(errors.New("same"))
+	assert.Equal(t, 1, len(e.Errors), "identical hard errors should dedup")
+
+	e.AppendWarning(errors.New("same"))
+	assert.Equal(t, 2, len(e.Errors), "warning differs from hard error of same text")
+
+	e.AppendGroupError(errors.New("same"))
+	assert.Equal(t, 3, len(e.Errors), "group-scoped differs from member-scoped")
+
+	e.AppendGroupError(errors.New("same"))
+	assert.Equal(t, 3, len(e.Errors), "identical group-scoped errors should dedup")
+}
+
+// TestRemoveByTypePreservesWarning verifies that clearing a specific error type
+// leaves advisory warnings (and other error types) in place.
+func TestRemoveByTypePreservesWarning(t *testing.T) {
+	var e IOBundleError
+	e.AppendWarning(errors.New("renamed to match model"))
+	e.Append(ErrIoBundleMissingDevice{msg: "PCI device does not exist"})
+	assert.Equal(t, 2, len(e.Errors))
+
+	e.RemoveByType(ErrIoBundleMissingDevice{})
+	assert.Equal(t, 1, len(e.Errors), "only the missing-device error should be removed")
+	assert.True(t, e.IsOnlyWarnings(), "the surviving entry is the warning")
+	assert.Contains(t, e.String(), "renamed to match model")
+}
+
+// TestAggregateIoBundleGroupErrors covers the reporting aggregation: group-scoped
+// entries reported once without attribution, member-scoped entries attributed to
+// their member, and severity derived from whether every entry is a warning.
+func TestAggregateIoBundleGroupErrors(t *testing.T) {
+	// Empty group.
+	agg := AggregateIoBundleGroupErrors(nil)
+	assert.True(t, agg.Empty)
+	assert.False(t, agg.OnlyWarnings)
+
+	// A group-scoped collision stored (identically) on both members must be
+	// reported once, unattributed; a member-scoped warning on one member must be
+	// attributed to that member.
+	m1 := &IoBundle{Logicallabel: "eth0"}
+	m2 := &IoBundle{Logicallabel: "eth1"}
+	m1.Error.AppendGroupError(errors.New("pci collision among group members"))
+	m2.Error.AppendGroupError(errors.New("pci collision among group members"))
+	m1.Error.AppendWarning(errors.New("renamed to match model"))
+
+	agg = AggregateIoBundleGroupErrors([]*IoBundle{m1, m2})
+	assert.False(t, agg.Empty)
+	// The collision is a hard (group-scoped) error, so severity is error.
+	assert.False(t, agg.OnlyWarnings)
+	assert.Equal(t, 1, strings.Count(agg.Description, "pci collision among group members"),
+		"group-scoped entry reported exactly once")
+	assert.Contains(t, agg.Description, "eth0: renamed to match model",
+		"member-scoped entry attributed to its member")
+
+	// Warnings-only group -> OnlyWarnings true.
+	w1 := &IoBundle{Logicallabel: "eth0"}
+	w1.Error.AppendWarning(errors.New("matched by PCI"))
+	aggW := AggregateIoBundleGroupErrors([]*IoBundle{w1})
+	assert.True(t, aggW.OnlyWarnings)
+	assert.Contains(t, aggW.Description, "eth0: matched by PCI")
+}
+
+// TestSetSourceErrors covers the reconcile semantics a source uses to refresh
+// its own entries each pass: add/keep/remove, a stable timestamp while the set
+// is unchanged (or only shrinks), a bump on add, reset when emptied, and no
+// effect on other sources' entries.
+func TestSetSourceErrors(t *testing.T) {
+	var e IOBundleError
+	owner := ErrIoBundleModelInconsistency{}
+
+	// Initial add.
+	assert.True(t, e.SetSourceErrors(owner, true, false, []string{"a", "b"}))
+	assert.Equal(t, 2, len(e.Errors))
+	t0 := e.TimeOfError
+	assert.False(t, t0.IsZero())
+
+	// Re-set with the same desired set: no change, timestamp untouched.
+	assert.False(t, e.SetSourceErrors(owner, true, false, []string{"a", "b"}))
+	assert.Equal(t, t0, e.TimeOfError, "unchanged set must not move the timestamp")
+
+	// Remove one (no add): changed, but timestamp not bumped.
+	assert.True(t, e.SetSourceErrors(owner, true, false, []string{"a"}))
+	assert.Equal(t, 1, len(e.Errors))
+	assert.Equal(t, t0, e.TimeOfError, "removal-only must not bump the timestamp")
+
+	// A different source's entry is untouched by this source's reconcile.
+	e.Append(ErrOwnParent{})
+	assert.True(t, e.HasErrorByType(ErrOwnParent{}))
+	e.SetSourceErrors(owner, true, false, nil) // clear this source
+	assert.False(t, e.HasErrorByType(owner), "own entries cleared")
+	assert.True(t, e.HasErrorByType(ErrOwnParent{}), "other source preserved")
+	assert.False(t, e.TimeOfError.IsZero(), "still has the other source's error")
+}
+
 func alternativeCheckBadUSBBundlesImpl(bundles []IoBundle) {
 	for i := range bundles {
 		for j := range bundles {
@@ -855,11 +972,11 @@ func TestCheckBadUSBBundles(t *testing.T) {
 			bundleWithError: []bundleWithError{
 				{
 					bundle:        IoBundle{Phylabel: "1", UsbAddr: "1:1", UsbProduct: "a:a", PciLong: "1:1"},
-					expectedError: "ioBundle collision:||phylabel 1 - usbaddr: 1:1 usbproduct: a:a pcilong: 1:1 assigngrp: ||phylabel 2 - usbaddr: 1:1 usbproduct: a:a pcilong: 1:1 assigngrp: ||",
+					expectedError: "ioBundle collision: 1 (usbaddr 1:1, usbproduct a:a, pcilong 1:1); 2 (usbaddr 1:1, usbproduct a:a, pcilong 1:1)",
 				},
 				{
 					bundle:        IoBundle{Phylabel: "2", UsbAddr: "1:1", UsbProduct: "a:a", PciLong: "1:1"},
-					expectedError: "ioBundle collision:||phylabel 1 - usbaddr: 1:1 usbproduct: a:a pcilong: 1:1 assigngrp: ||phylabel 2 - usbaddr: 1:1 usbproduct: a:a pcilong: 1:1 assigngrp: ||",
+					expectedError: "ioBundle collision: 1 (usbaddr 1:1, usbproduct a:a, pcilong 1:1); 2 (usbaddr 1:1, usbproduct a:a, pcilong 1:1)",
 				},
 			},
 		},
@@ -867,11 +984,11 @@ func TestCheckBadUSBBundles(t *testing.T) {
 			bundleWithError: []bundleWithError{
 				{
 					bundle:        IoBundle{Phylabel: "3", UsbAddr: "1:1", UsbProduct: "a:a"},
-					expectedError: "ioBundle collision:||phylabel 3 - usbaddr: 1:1 usbproduct: a:a pcilong:  assigngrp: ||phylabel 4 - usbaddr: 1:1 usbproduct: a:a pcilong:  assigngrp: ||",
+					expectedError: "ioBundle collision: 3 (usbaddr 1:1, usbproduct a:a); 4 (usbaddr 1:1, usbproduct a:a)",
 				},
 				{
 					bundle:        IoBundle{Phylabel: "4", UsbAddr: "1:1", UsbProduct: "a:a"},
-					expectedError: "ioBundle collision:||phylabel 3 - usbaddr: 1:1 usbproduct: a:a pcilong:  assigngrp: ||phylabel 4 - usbaddr: 1:1 usbproduct: a:a pcilong:  assigngrp: ||",
+					expectedError: "ioBundle collision: 3 (usbaddr 1:1, usbproduct a:a); 4 (usbaddr 1:1, usbproduct a:a)",
 				},
 				{
 					bundle:        IoBundle{Phylabel: "5", UsbAddr: "1:1", UsbProduct: ""},
@@ -883,11 +1000,11 @@ func TestCheckBadUSBBundles(t *testing.T) {
 			bundleWithError: []bundleWithError{
 				{
 					bundle:        IoBundle{Phylabel: "6", UsbAddr: "1:1", UsbProduct: ""},
-					expectedError: "ioBundle collision:||phylabel 6 - usbaddr: 1:1 usbproduct:  pcilong:  assigngrp: ||phylabel 7 - usbaddr: 1:1 usbproduct:  pcilong:  assigngrp: ||",
+					expectedError: "ioBundle collision: 6 (usbaddr 1:1); 7 (usbaddr 1:1)",
 				},
 				{
 					bundle:        IoBundle{Phylabel: "7", UsbAddr: "1:1", UsbProduct: ""},
-					expectedError: "ioBundle collision:||phylabel 6 - usbaddr: 1:1 usbproduct:  pcilong:  assigngrp: ||phylabel 7 - usbaddr: 1:1 usbproduct:  pcilong:  assigngrp: ||",
+					expectedError: "ioBundle collision: 6 (usbaddr 1:1); 7 (usbaddr 1:1)",
 				},
 			},
 		},
@@ -895,11 +1012,11 @@ func TestCheckBadUSBBundles(t *testing.T) {
 			bundleWithError: []bundleWithError{
 				{
 					bundle:        IoBundle{Phylabel: "8", UsbAddr: "", UsbProduct: "a:a"},
-					expectedError: "ioBundle collision:||phylabel 8 - usbaddr:  usbproduct: a:a pcilong:  assigngrp: ||phylabel 9 - usbaddr:  usbproduct: a:a pcilong:  assigngrp: ||",
+					expectedError: "ioBundle collision: 8 (usbproduct a:a); 9 (usbproduct a:a)",
 				},
 				{
 					bundle:        IoBundle{Phylabel: "9", UsbAddr: "", UsbProduct: "a:a"},
-					expectedError: "ioBundle collision:||phylabel 8 - usbaddr:  usbproduct: a:a pcilong:  assigngrp: ||phylabel 9 - usbaddr:  usbproduct: a:a pcilong:  assigngrp: ||",
+					expectedError: "ioBundle collision: 8 (usbproduct a:a); 9 (usbproduct a:a)",
 				},
 			},
 		},
