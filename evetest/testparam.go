@@ -268,14 +268,14 @@ func GetEVEVersionParameterValue() string {
 const DiskSizeMiBParameterKey = "DISK_SIZE_MB"
 
 // DiskSizeMiBParameter is a predefined TestParameterDefinition for the device disk size.
-// A value of 0 means the framework default (36864 MiB) is used.
+// A value of 0 means the framework default (65536 MiB) is used.
 func DiskSizeMiBParameter() TestParameterDefinition {
 	return TestParameterDefinition{
 		Key:          DiskSizeMiBParameterKey,
 		DefaultValue: uint32(0),
 		Description: TestParameterDescription{
 			Summary: "Device disk size in MiB",
-			Default: "0 (use framework default 36864 MiB)",
+			Default: "0 (use framework default 65536 MiB)",
 		},
 	}
 }

@@ -48,7 +48,7 @@ const (
 //   - INITIAL_EVE_VERSION: initial EVE version the device starts on (required,
 //     e.g. "16.0.0-lts")
 //   - INITIAL_HYPERVISOR: initial hypervisor for the starting device (default: kvm)
-//   - DISK_SIZE_MB: device disk size in MiB (0 = framework default 36864 MiB)
+//   - DISK_SIZE_MB: device disk size in MiB (0 = framework default 65536 MiB)
 //   - EXPECT_REVERT: if true, the upgrade is expected to fail and EVE to revert
 //     to the previous version (default: false)
 //
