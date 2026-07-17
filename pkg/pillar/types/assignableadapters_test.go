@@ -762,8 +762,9 @@ func TestClearingUSBCollision(t *testing.T) {
 		}
 	}
 
+	// Break the collision; CheckBadUSBBundles must clear the stale collision
+	// error on its own (reconcile), without a manual clear.
 	aa.IoBundleList[0].UsbAddr = "1:2"
-	aa.IoBundleList[0].Error.Clear()
 
 	aa.CheckBadUSBBundles()
 	for _, ioBundle := range aa.IoBundleList {
