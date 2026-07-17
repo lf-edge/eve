@@ -442,6 +442,12 @@ type NetworkAdapterConfig struct {
 	Usage         evecommon.PhyIoMemberUsage
 	PNAC          PNAC
 
+	// AssignmentGroup overrides the PhysicalIO assignment group. Defaults to
+	// LogicalLabel when empty.
+	AssignmentGroup string
+	// ParentAssignmentGroup sets the parent assignment group (empty if none).
+	ParentAssignmentGroup string
+
 	// AllowLocalModifications enables the Local Profile Server (LPS) to modify
 	// the network configuration of this adapter.
 	AllowLocalModifications bool
@@ -488,13 +494,69 @@ func (config NetworkAdapterConfig) toPhysicalIOProto() *eveconfig.PhysicalIO {
 	default:
 		phyIoType = evecommon.PhyIoType_PhyIoNetEth
 	}
+	assigngrp := config.AssignmentGroup
+	if assigngrp == "" {
+		assigngrp = config.LogicalLabel
+	}
 	return &eveconfig.PhysicalIO{
-		Ptype:        phyIoType,
-		Logicallabel: config.LogicalLabel,
-		Assigngrp:    config.LogicalLabel,
-		Phylabel:     config.PhysicalLabel,
-		Phyaddrs:     physAddrs,
-		Usage:        config.Usage,
+		Ptype:           phyIoType,
+		Logicallabel:    config.LogicalLabel,
+		Assigngrp:       assigngrp,
+		Parentassigngrp: config.ParentAssignmentGroup,
+		Phylabel:        config.PhysicalLabel,
+		Phyaddrs:        physAddrs,
+		Usage:           config.Usage,
+	}
+}
+
+// PhysicalIOConfig represents a raw PhysicalIO (assignable I/O) device in the
+// device model. Use it for non-network devices and for deliberately
+// inconsistent device models that AddNetworkAdapter cannot express (a specific
+// Ptype, a phantom device at a chosen PCI address, a custom assignment group,
+// etc.). A given logical label is owned by exactly one of AddNetworkAdapter or
+// AddPhysicalIO.
+type PhysicalIOConfig struct {
+	LogicalLabel  string
+	PhysicalLabel string
+	Type          evecommon.PhyIoType
+	// AssignmentGroup defaults to LogicalLabel when empty.
+	AssignmentGroup       string
+	ParentAssignmentGroup string
+	Usage                 evecommon.PhyIoMemberUsage
+	// Physical addresses; every non-empty field is written into Phyaddrs.
+	PCIAddress    string
+	USBAddress    string
+	InterfaceName string
+	Serial        string
+}
+
+// toPhysicalIOProto returns the EVE protobuf PhysicalIO for this device.
+func (config PhysicalIOConfig) toPhysicalIOProto() *eveconfig.PhysicalIO {
+	physAddrs := map[string]string{}
+	if config.PCIAddress != "" {
+		physAddrs["pcilong"] = config.PCIAddress
+	}
+	if config.USBAddress != "" {
+		physAddrs["usbaddr"] = config.USBAddress
+	}
+	if config.InterfaceName != "" {
+		physAddrs["ifname"] = config.InterfaceName
+	}
+	if config.Serial != "" {
+		physAddrs["serial"] = config.Serial
+	}
+	assigngrp := config.AssignmentGroup
+	if assigngrp == "" {
+		assigngrp = config.LogicalLabel
+	}
+	return &eveconfig.PhysicalIO{
+		Ptype:           config.Type,
+		Logicallabel:    config.LogicalLabel,
+		Assigngrp:       assigngrp,
+		Parentassigngrp: config.ParentAssignmentGroup,
+		Phylabel:        config.PhysicalLabel,
+		Phyaddrs:        physAddrs,
+		Usage:           config.Usage,
 	}
 }
 
@@ -1625,6 +1687,12 @@ func (dc *EdgeDeviceConfig) AddNetworkAdapter(config NetworkAdapterConfig) {
 				"by a bond adapter", config.LogicalLabel)
 		}
 	}
+	for _, physIO := range dc.DeviceIoList {
+		if physIO.Logicallabel == config.LogicalLabel {
+			dc.th.t.Fatalf("Network adapter logical label %q is already in use "+
+				"by an I/O device", config.LogicalLabel)
+		}
+	}
 	dc.checkAdapterNetwork(config)
 	dc.DeviceIoList = append(dc.DeviceIoList, config.toPhysicalIOProto())
 	if config.PNAC.Enable {
@@ -1632,6 +1700,44 @@ func (dc *EdgeDeviceConfig) AddNetworkAdapter(config NetworkAdapterConfig) {
 	}
 	if config.NetworkUUID != NilUUID {
 		dc.SystemAdapterList = append(dc.SystemAdapterList, config.toSystemAdapterProto())
+	}
+}
+
+// AddPhysicalIO adds a raw PhysicalIO (assignable I/O) device to the device
+// configuration. Use it for non-network devices and for device-model
+// inconsistencies that AddNetworkAdapter cannot express. A given logical label
+// is owned by exactly one of AddNetworkAdapter or AddPhysicalIO.
+func (dc *EdgeDeviceConfig) AddPhysicalIO(config PhysicalIOConfig) {
+	dc.checkIOLogicalLabelFree(config.LogicalLabel)
+	dc.DeviceIoList = append(dc.DeviceIoList, config.toPhysicalIOProto())
+}
+
+// checkIOLogicalLabelFree fails the test if logicalLabel is already used by any
+// I/O device, system adapter, VLAN or bond adapter.
+func (dc *EdgeDeviceConfig) checkIOLogicalLabelFree(logicalLabel string) {
+	for _, physIO := range dc.DeviceIoList {
+		if physIO.Logicallabel == logicalLabel {
+			dc.th.t.Fatalf("I/O device with logical label %q already exists",
+				logicalLabel)
+		}
+	}
+	for _, adapter := range dc.SystemAdapterList {
+		if adapter.Name == logicalLabel {
+			dc.th.t.Fatalf("logical label %q is already in use by a system adapter",
+				logicalLabel)
+		}
+	}
+	for _, vlan := range dc.Vlans {
+		if vlan.Logicallabel == logicalLabel {
+			dc.th.t.Fatalf("logical label %q is already in use by a VLAN adapter",
+				logicalLabel)
+		}
+	}
+	for _, bond := range dc.Bonds {
+		if bond.Logicallabel == logicalLabel {
+			dc.th.t.Fatalf("logical label %q is already in use by a bond adapter",
+				logicalLabel)
+		}
 	}
 }
 
