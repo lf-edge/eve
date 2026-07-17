@@ -26,6 +26,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	utils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	"github.com/lf-edge/eve/pkg/pillar/utils/wait"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"k8s.io/client-go/rest"
@@ -73,7 +74,6 @@ type zedkube struct {
 	subGlobalConfig          pubsub.Subscription
 	subDeviceNetworkStatus   pubsub.Subscription
 	subEdgeNodeClusterConfig pubsub.Subscription
-	subEdgeNodeInfo          pubsub.Subscription
 	subZedAgentStatus        pubsub.Subscription
 
 	subControllerCert    pubsub.Subscription
@@ -465,20 +465,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	zedkubeCtx.pubCipherMetrics = pubCipherMetrics
 
-	// Look for edge node info
-	subEdgeNodeInfo, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "zedagent",
-		MyAgentName: agentName,
-		TopicImpl:   types.EdgeNodeInfo{},
-		Persistent:  false,
-		Activate:    false,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	zedkubeCtx.subEdgeNodeInfo = subEdgeNodeInfo
-	subEdgeNodeInfo.Activate()
-
 	// start the leader election
 	zedkubeCtx.electionNotifyCh = make(chan struct{}, 1)
 	go zedkubeCtx.handleLeaderElection()
@@ -573,17 +559,34 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	log.Noticef("Got EdgeNodeClusterConfig")
 
-	// Wait for the certs and nodeInfo needed to decrypt the cluster token and for other
+	// The Kubernetes node name and node UUID are derived from EdgeNodeInfo, which
+	// is static for the lifetime of a boot; resolve it once up front.
+	enInfo, err := wait.WaitForEdgeNodeInfo(ps, log, agentName, warningTime, errorTime, 0)
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedkubeCtx.nodeName = wait.NodeNameFromDeviceName(enInfo.DeviceName)
+	zedkubeCtx.nodeuuid = enInfo.DeviceID.String()
+	log.Noticef("zedkube run: got nodeName %s nodeuuid %s",
+		zedkubeCtx.nodeName, zedkubeCtx.nodeuuid)
+	// Re-enable the local node and apply the longhorn disk reservation now that
+	// our identity is known.
+	if !zedkubeCtx.onBootUncordonCheckComplete {
+		go nodeOnBootHealthStatusWatcher(&zedkubeCtx)
+	}
+	zedkubeCtx.applyLonghornDiskReserved()
+
+	// Wait for the certs needed to decrypt the cluster token and for other
 	// operations. We wait after ENCC so we can gate specifically on the ECDH cert required
 	// for decryption, rather than accepting any controller cert.
 	needECDHCert := zedkubeCtx.clusterConfig.CipherToken.IsCipher &&
 		zedkubeCtx.clusterConfig.CipherToken.CipherContext != nil
-	var edgenodeCertInitialized, edgenodeInfoInitialized bool
+	var edgenodeCertInitialized bool
 	ecdhCertInitialized := !needECDHCert
-	for !edgenodeCertInitialized || !edgenodeInfoInitialized || !ecdhCertInitialized {
+	for !edgenodeCertInitialized || !ecdhCertInitialized {
 		log.Noticef("zedkube run: waiting for edgenode cert (initialized=%t), "+
-			"edgenode info (initialized=%t), ecdh cert (initialized=%t)",
-			edgenodeCertInitialized, edgenodeInfoInitialized, ecdhCertInitialized)
+			"ecdh cert (initialized=%t)",
+			edgenodeCertInitialized, ecdhCertInitialized)
 		select {
 		case change := <-subControllerCert.MsgChan():
 			subControllerCert.ProcessChange(change)
@@ -599,10 +602,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			if len(subEdgeNodeCert.GetAll()) > 0 {
 				edgenodeCertInitialized = true
 			}
-
-		case change := <-subEdgeNodeInfo.MsgChan():
-			subEdgeNodeInfo.ProcessChange(change)
-			edgenodeInfoInitialized = zedkubeCtx.checkAndSaveEdgeNodeInfo()
 
 		case <-stillRunning.C:
 		}
@@ -676,7 +675,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// Launch the VMI descheduler watcher once kubernetes is ready. GlobalConfig
 	// (which sets OnBoot) is processed as early as the ENCC wait loop above, so
 	// pubKubeConfig already reflects the operator's intent by the time we reach
-	// here. nodeName is also guaranteed set — the EdgeNodeInfo init loop completed
+	// here. nodeName is also guaranteed set — WaitForEdgeNodeInfo completed
 	// before WaitForKubernetes.
 	//
 	// NOTE: if the operator enables types.KubernetesVmiDescheduleEvents after
@@ -793,9 +792,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			subEdgeNodeCert.ProcessChange(change)
 			// Additional edgenode cert updates
 			zedkubeCtx.applyCertsChange("edgenode")
-
-		case change := <-subEdgeNodeInfo.MsgChan():
-			subEdgeNodeInfo.ProcessChange(change)
 
 		case change := <-subZedAgentStatus.MsgChan():
 			subZedAgentStatus.ProcessChange(change)
@@ -1192,32 +1188,6 @@ func handleZedAgentStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	// do nothing
 	log.Functionf("handleZedAgentStatusDelete(%s) done", key)
-}
-
-// checkAndSaveEdgeNodeInfo checks if the device name is set in the EdgeNodeInfo
-// it returns true if we got the valid EdgeNodeInfo update
-func (z *zedkube) checkAndSaveEdgeNodeInfo() bool {
-	items := z.subEdgeNodeInfo.GetAll()
-	if len(items) > 0 {
-		for _, item := range items {
-			enInfo := item.(types.EdgeNodeInfo)
-			if enInfo.DeviceName != "" {
-				log.Noticef("checkAndSaveEdgeNodeInfo: found devicename %s", enInfo.DeviceName)
-				z.nodeName = strings.ReplaceAll(strings.ToLower(enInfo.DeviceName), "_", "-")
-				z.nodeuuid = enInfo.DeviceID.String()
-				if z.nodeName != "" && z.nodeuuid != "" {
-					//Re-enable local node
-					if !z.onBootUncordonCheckComplete {
-						go nodeOnBootHealthStatusWatcher(z)
-					}
-
-					z.applyLonghornDiskReserved()
-					return true
-				}
-			}
-		}
-	}
-	return false
 }
 
 // It may be a while until the node is ready to be uncordoned
