@@ -20,14 +20,21 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
-func clusterDeviceRequirements(devName string, withTPM bool) evetest.RequireEdgeDevice {
+func clusterDeviceRequirements(
+	devName string, withTPM bool, filesystem evetest.Filesystem) evetest.RequireEdgeDevice {
 	return evetest.RequireEdgeDevice{
 		Name:           devName,
 		WithTPM:        withTPM,
 		WithHypervisor: evetest.HypervisorKubevirt,
 		// We want to test cluster creation.
 		DeviceReusePolicy: evetest.CreateFromScratchWithLiveImage,
-		WithFilesystem:    evetest.FilesystemZFS,
+		// Filesystem is configurable via the FILESYSTEM parameter and defaults
+		// to ext4. EVE-k formation is fsync-heavy (k3s/etcd WAL, Longhorn/CDI/
+		// KubeVirt image extraction); ZFS's synchronous ZIL commit adds enough
+		// fsync latency to crash-loop the in-process apiserver during the
+		// single->multi-node etcd transition, whereas ext4 stays healthy. Kept
+		// configurable because a lot of EVE-k behaves differently per filesystem.
+		WithFilesystem: filesystem,
 		WithGrubOptions: []string{
 			// Application performance is not a primary concern; instead, we focus
 			// on minimizing device onboarding time and accelerating cluster formation.
@@ -52,8 +59,9 @@ func clusterDeviceRequirements(devName string, withTPM bool) evetest.RequireEdge
 // --------------------
 //   - clusterDeviceRequirements (top of this file): WithHypervisor=Kubevirt,
 //     DeviceReusePolicy=CreateFromScratchWithLiveImage (we want to test
-//     fresh cluster formation), WithFilesystem=ZFS, plus grub options that
-//     cap dom0/eve/ctrd vcpus so cluster formation onboarding is fast.
+//     fresh cluster formation), default ext4 (changeable via the FILESYSTEM
+//     parameter), plus grub options that cap dom0/eve/ctrd vcpus so
+//     cluster formation is fast.
 //   - SystemAdapter on eth0 (DHCP, mgmt+app, NetworkType=V4Only).
 //   - One Local NI "local-ni" (10.11.12.0/24, EnableFlowlog=true) and one
 //     container app with default-allow + port-fwd 2222->22.
@@ -61,6 +69,7 @@ func clusterDeviceRequirements(devName string, withTPM bool) evetest.RequireEdge
 // Test parameters
 // ---------------
 //   - TPM (bool) via evetest.TPMParameter().
+//   - FILESYSTEM (ext4|zfs, defaults to ext4) via evetest.FilesystemParameter().
 //
 // Phases
 // ------
@@ -95,14 +104,16 @@ func TestSingleNodeCluster(test *testing.T) {
 	// Define configurable parameters available for the test.
 	evetest.DefineTestParameters(
 		evetest.TPMParameter(),
+		evetest.FilesystemParameter(),
 	)
 
 	// Get parameter values set for this test execution.
 	withTPM := evetest.GetTPMParameterValue()
+	filesystem := evetest.GetFilesystemParameterValue()
 
 	// Set up the test harness and specify the test prerequisites.
 	devName := "edge-dev"
-	requiredDevice := clusterDeviceRequirements(devName, withTPM)
+	requiredDevice := clusterDeviceRequirements(devName, withTPM, filesystem)
 	requiredNetModel := evetest.RequireNetworkModel{
 		NetworkModel: netmodels.SingleEthWithDHCP,
 	}
@@ -252,7 +263,8 @@ func TestSingleNodeCluster(test *testing.T) {
 // --------------------
 //   - Three RequireEdgeDevice entries built via clusterDeviceRequirements
 //     (same params as TestSingleNodeCluster: Kubevirt, fresh image,
-//     ZFS, 8 GB RAM, 4 vCPUs, vcpu-cap grub options).
+//     ext4 by default / configurable via FILESYSTEM, 8 GB RAM, 4 vCPUs,
+//     vcpu-cap grub options).
 //   - ClusterConfig (evetest.NewEdgeClusterConfig) with three
 //     ClusterNode entries: each device gets a distinct ClusterIP from
 //     10.244.244.0/24 (.2, .3, .4) on ClusterInterface="ethernet1".
@@ -267,6 +279,7 @@ func TestSingleNodeCluster(test *testing.T) {
 // Test parameters
 // ---------------
 //   - TPM via evetest.TPMParameter().
+//   - FILESYSTEM (ext4|zfs, defaults to ext4) via evetest.FilesystemParameter().
 //
 // Phases
 // ------
@@ -298,17 +311,19 @@ func TestThreeNodesCluster(test *testing.T) {
 	// Define configurable parameters available for the test.
 	evetest.DefineTestParameters(
 		evetest.TPMParameter(),
+		evetest.FilesystemParameter(),
 	)
 
 	// Get parameter values set for this test execution.
 	withTPM := evetest.GetTPMParameterValue()
+	filesystem := evetest.GetFilesystemParameterValue()
 
 	// Set up the test harness and specify the test prerequisites.
 	var requiredDevices [3]evetest.Requirement
 	var devName [3]string
 	for i := 0; i < 3; i++ {
 		devName[i] = fmt.Sprintf("edge-dev%d", i+1)
-		requiredDevices[i] = clusterDeviceRequirements(devName[i], withTPM)
+		requiredDevices[i] = clusterDeviceRequirements(devName[i], withTPM, filesystem)
 	}
 
 	requiredNetModel := evetest.RequireNetworkModel{
