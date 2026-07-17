@@ -107,6 +107,13 @@ type volumemgrContext struct {
 	deferredProtectedBlobs  map[string]bool
 	deferredProtectedImages map[string]bool
 
+	// volumeDeleteRetryCount tracks how many times a volume whose destroy
+	// (PVC/Longhorn volume deletion) failed has been re-driven. Key is
+	// VolumeStatus.Key(). Entries are added/incremented by
+	// retryFailedVolumeDelete off the gc tick and cleared once the volume is
+	// confirmed gone (or given up on after maxVolumeDeleteRetries).
+	volumeDeleteRetryCount map[string]int
+
 	persistType types.PersistType
 
 	capabilities *types.Capabilities
@@ -598,6 +605,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	subContentTreeConfig.Activate()
 
 	ctx.volumeConfigCreateDeferredMap = make(map[string]*types.VolumeConfig)
+	ctx.volumeDeleteRetryCount = make(map[string]int)
 
 	subVolumeConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		CreateHandler:  handleVolumeCreate,
@@ -843,6 +851,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			// error (longhorn/CDI not ready yet, common right after a kvm->k
 			// conversion) so they recover once the cluster is up.
 			retryFailedClusterVolumeCreate(&ctx)
+			// Re-drive volumes whose delete (PVC/Longhorn volume) failed so a
+			// transient error - or an unreachable owner node during a purge or
+			// cluster update - does not leak the underlying storage forever.
+			retryFailedVolumeDelete(&ctx)
 			// Re-drive volumes deferred pre-create waiting on EVE-k cluster
 			// storage readiness so they proceed once longhorn/CDI come up. Only
 			// EVE-k defers here; on other HVs the disk-space deferral is already
