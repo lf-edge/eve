@@ -170,6 +170,8 @@ type edgeNodeInfoContext struct {
 // long-lived subscription to react to later updates. If timeout > 0 it returns
 // an error should the info not arrive within that window; timeout == 0 waits
 // indefinitely. The watchdog is kicked throughout.
+//
+//revive:disable-next-line:exported // WaitFor* naming matches WaitForVault/WaitForOnboarded in this package
 func WaitForEdgeNodeInfo(ps *pubsub.PubSub, log *base.LogObject, agentName string,
 	warningTime, errorTime, timeout time.Duration) (types.EdgeNodeInfo, error) {
 
