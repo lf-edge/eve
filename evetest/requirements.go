@@ -168,7 +168,7 @@ type RequireEdgeDevice struct {
 	// None of these will be ever created with zero count - not even ethernet interfaces.
 	MinCPUs          uint8  // Default will be 4.
 	MinRAMInMiB      uint32 // Default will be 8 GiB (8192 MiB).
-	MinDiskSizeInMiB uint32 // Default will be 36 GiB (36864 MiB).
+	MinDiskSizeInMiB uint32 // Default will be 64 GiB (65536 MiB).
 
 	WithEVEVersion string
 	WithHypervisor Hypervisor

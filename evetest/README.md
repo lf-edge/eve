@@ -209,7 +209,7 @@ evetest.RequireEdgeDevice{
     Name:              "dev1",          // logical name to reference the device
     MinCPUs:           4,               // default: 4
     MinRAMInMiB:       8192,            // default: 8 GiB
-    MinDiskSizeInMiB:  36864,           // default: 36 GiB
+    MinDiskSizeInMiB:  65536,           // default: 64 GiB
     WithHypervisor:    evetest.HypervisorKVM,
     WithFilesystem:    evetest.FilesystemZFS,
     WithTPM:           true,
