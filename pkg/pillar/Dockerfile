@@ -89,6 +89,8 @@ ARG IMM_PROFILING=n
 ENV IMM_PROFILING=${IMM_PROFILING}
 ARG ARTIFICIAL_LEAK=n
 ENV ARTIFICIAL_LEAK=${ARTIFICIAL_LEAK}
+ARG FAULT_INJECTION=n
+ENV FAULT_INJECTION=${FAULT_INJECTION}
 ARG COVER=n
 
 # we need zfs files during build
@@ -109,13 +111,14 @@ ARG GOPKGVERSION
 # make LK build args affect a layer, so value change will invalidate cache
 RUN echo "IMM_PROFILING: ${IMM_PROFILING}"
 RUN echo "ARTIFICIAL_LEAK: ${ARTIFICIAL_LEAK}"
+RUN echo "FAULT_INJECTION: ${FAULT_INJECTION}"
 RUN echo "COVER: ${COVER}"
 
 # hadolint ignore=DL4006
 RUN --mount=type=cache,target=/root/.cache/go-build echo "Running go vet" && make HV="$HV" vet && \
     echo "Running go fmt" && ERR="$(find . -name \*.go | grep -v /vendor/ | xargs gofmt -d -e -l -s)" && \
        if [ -n "$ERR" ] ; then printf 'go fmt Failed - ERR: %s' "$ERR" ; exit 1 ; fi && \
-       make ZARCH=${TARGETARCH} HV="$HV" DEV="$DEV" COVER="$COVER" RSTATS=$RSTATS RSTATS_ENDPOINT=$RSTATS_ENDPOINT RSTATS_TAG=$RSTATS_TAG IMM_PROFILING=$IMM_PROFILING ARTIFICIAL_LEAK=$ARTIFICIAL_LEAK DISTDIR=/final/opt/zededa/bin BUILD_VERSION=${GOPKGVERSION} build
+       make ZARCH=${TARGETARCH} HV="$HV" DEV="$DEV" COVER="$COVER" RSTATS=$RSTATS RSTATS_ENDPOINT=$RSTATS_ENDPOINT RSTATS_TAG=$RSTATS_TAG IMM_PROFILING=$IMM_PROFILING ARTIFICIAL_LEAK=$ARTIFICIAL_LEAK FAULT_INJECTION=$FAULT_INJECTION DISTDIR=/final/opt/zededa/bin BUILD_VERSION=${GOPKGVERSION} build
 
 # Generate the list of non-persistent pubsub topics from the sources being
 # built; upgradeconverter removes the matching directories under
