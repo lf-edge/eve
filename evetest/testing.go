@@ -76,6 +76,10 @@ func (t *T) fail(msg string, now bool) {
 	t.th.testM.Lock()
 	if t.th.test.failedCh != nil {
 		close(t.th.test.failedCh)
+		// Clear so a re-entrant fail() does not close it again. This happens
+		// when a Fatal triggers cleanup (Close -> checkRebootCounts) that
+		// itself reports an error.
+		t.th.test.failedCh = nil
 	}
 	t.th.testM.Unlock()
 
