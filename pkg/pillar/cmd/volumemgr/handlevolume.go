@@ -293,17 +293,20 @@ func maybeDeleteVolume(ctx *volumemgrContext, status *types.VolumeStatus) {
 			if !vr.VolumeCreated {
 				readyToUnPublish = true
 			} else {
-				var err string
+				var errStr string
 				if vr.Error != nil {
-					err = vr.Error.Error()
+					errStr = vr.Error.Error()
 				} else {
-					err = fmt.Sprintf("unexpected WorkDestroy return for %s", status.Key())
+					errStr = fmt.Sprintf("unexpected WorkDestroy return for %s", status.Key())
 				}
-				log.Errorf("maybeDeleteVolume: %s", err)
-				status.SetErrorDescription(types.ErrorDescription{Error: vr.Error.Error()})
-				// we have no retrial mechanism for volume delete now
-				// so let publish error in status and log and unpublish the volume
-				readyToUnPublish = true
+				// Delete failed, keep the status published in the Deleting
+				// sub-state; retryFailedVolumeDelete re-drives it off the
+				// gc tick (bounded by maxVolumeDeleteRetries).
+				log.Errorf("maybeDeleteVolume: delete of %s failed, will retry: %s",
+					status.Key(), errStr)
+				status.SetErrorDescription(types.ErrorDescription{Error: errStr})
+				publishVolumeStatus(ctx, status)
+				return
 			}
 		}
 	} else {
@@ -312,6 +315,8 @@ func maybeDeleteVolume(ctx *volumemgrContext, status *types.VolumeStatus) {
 	if readyToUnPublish {
 		// we are not interested in result
 		_ = popVolumeWorkResult(ctx, status.Key())
+		// The volume is gone, drop any delete-retry bookkeeping for it.
+		delete(ctx.volumeDeleteRetryCount, status.Key())
 		publishVolumeStatus(ctx, status)
 		unpublishVolumeStatus(ctx, status)
 		if appDiskMetric := lookupAppDiskMetric(ctx, status.FileLocation); appDiskMetric != nil {
