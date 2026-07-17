@@ -7,7 +7,7 @@ EVETEST_ORG ?= lfedge
 EVETEST_ADAM_VERSION ?= 0.0.75
 EVETEST_ADAM_REPO ?= lfedge/adam
 
-EVETEST_IMAGE := $(EVETEST_ORG)/evetest:$(EVETEST_VERSION)-adam-$(EVETEST_ADAM_VERSION)
+EVETEST_IMAGE := $(EVETEST_ORG)/evetest:$(EVETEST_VERSION)
 EVETEST_API_PORT ?= 50021
 
 PROTOC_VERSION ?= 31.1
@@ -53,7 +53,7 @@ ifndef EVETEST_EVE_VERSION
 	)))
 	$(eval EVE_VERSION_ENV := -e EVETEST_EVE_VERSION=$(EVETEST_EVE_VERSION))
 endif
-	@echo "Running evetest $(EVETEST_NAME) for EVE $(EVETEST_EVE_VERSION) with evetest image version $(EVETEST_VERSION)-adam-$(EVETEST_ADAM_VERSION)..."
+	@echo "Running evetest $(EVETEST_NAME) for EVE $(EVETEST_EVE_VERSION) with evetest image version $(EVETEST_VERSION) (adam $(EVETEST_ADAM_VERSION))..."
 	$(eval ENV_VARS := $(shell env | grep '^EVETEST_' | grep -v '^EVETEST_NAME=' | sed 's/^/-e /'))
 	$(eval ARTIFACTS_MOUNT :=)
 ifneq ($(EVETEST_COLLECT_ARTIFACTS),)
@@ -148,7 +148,7 @@ endif
 		-e EVETEST_HOME=$(EVETEST_HOME_DIR) \
 		-e EVETEST_HOST_UID=$(EVETEST_HOST_UID) \
 		-e EVETEST_HOST_GID=$(EVETEST_HOST_GID) \
-		$(EVETEST_ORG)/evetest:$(EVETEST_VERSION)-adam-$(EVETEST_ADAM_VERSION)
+		$(EVETEST_IMAGE)
 
 ensure-evetest-image:
 	@if ! docker image inspect $(EVETEST_IMAGE) >/dev/null 2>&1; then \
@@ -194,7 +194,7 @@ build-container:
 		--build-arg EVETEST_VERSION=$(EVETEST_VERSION) \
 		--build-arg EVETEST_ADAM_REPO=$(EVETEST_ADAM_REPO) \
 		--build-arg EVETEST_ADAM_VERSION=$(EVETEST_ADAM_VERSION) \
-		-t $(EVETEST_ORG)/evetest:$(EVETEST_VERSION)-adam-$(EVETEST_ADAM_VERSION) \
+		-t $(EVETEST_IMAGE) \
 		-f Dockerfile.evetest .
 
 build-test-apps:

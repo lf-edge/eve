@@ -54,7 +54,7 @@ const (
 //   - SystemAdapter for eth1 (DHCP, mgmt+app) with
 //     AllowLocalModifications=true.
 //   - Local NI "local-ni" (10.11.12.0/24, MTU=1500) on eth0.
-//   - LPS application "lps-app" (milan4zededa/evetest-lps:1.0) on the NI
+//   - LPS application "lps-app" (lfedge/evetest-lps:1.0) on the NI
 //     with two port-fwd rules:
 //   - 2222->22 for the test framework to drive curl-against-LPS commands
 //     via SSH inside the app,
@@ -177,7 +177,7 @@ func TestNetworkLocalChanges(test *testing.T) {
 		DisplayName: "lps-app",
 		Activate:    true,
 		Image: evetest.DockerContainer{
-			ImageName: "milan4zededa/evetest-lps",
+			ImageName: "lfedge/evetest-lps",
 			Tag:       "1.0",
 		},
 		CPUs:        1,

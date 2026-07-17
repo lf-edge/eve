@@ -175,7 +175,7 @@ func TestPortFailover(test *testing.T) {
 		DisplayName: "failover-app",
 		Activate:    true,
 		Image: evetest.DockerContainer{
-			ImageName: "milan4zededa/evetest-ubuntu-ctr",
+			ImageName: "lfedge/evetest-ubuntu-ctr",
 			Tag:       "1.0",
 		},
 		VirtualizationMode: eveconfig.VmMode_HVM,

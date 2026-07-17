@@ -85,7 +85,7 @@ import (
 //     fall back to the previous DPC (CurrentIndex == 1, new DPC lastError
 //     non-empty).
 //  4. Per-NI DNS isolation: creates a Local NI ("local-ni") on ethernet1
-//     and deploys a container app (milan4zededa/evetest-ubuntu-ctr:1.0)
+//     and deploys a container app (lfedge/evetest-ubuntu-ctr:1.0)
 //     with port-forward 2222->22. From inside the app:
 //     - nslookup <controller>: resolves to the controller IP.
 //     - nslookup http-server1.test: succeeds (all ethernet1 DNS servers
@@ -483,7 +483,7 @@ func TestDNSFunctionality(test *testing.T) {
 		DisplayName: "dns-test-app",
 		Activate:    true,
 		Image: evetest.DockerContainer{
-			ImageName: "milan4zededa/evetest-ubuntu-ctr",
+			ImageName: "lfedge/evetest-ubuntu-ctr",
 			Tag:       "1.0",
 		},
 		CPUs:        1,

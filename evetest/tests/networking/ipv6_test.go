@@ -199,7 +199,7 @@ func TestDeviceIPv6Connectivity(test *testing.T) {
 // ------
 //  1. Apply DHCPNetworkConfig{V6Only} on ethernet0 (mgmt+app). Add a Switch
 //     NI ("switch-ni-v6") on ethernet0 with MTU=1500. Deploy container app
-//     (milan4zededa/evetest-ubuntu-ctr:1.0, VmMode_HVM) on the switch NI
+//     (lfedge/evetest-ubuntu-ctr:1.0, VmMode_HVM) on the switch NI
 //     with a fixed MAC and an allow-all IPv6 ACL (::/0).
 //     WaitUntilAppIsRunning.
 //  2. Watch app info: the VIF eventually reports at least one global-unicast
@@ -291,7 +291,7 @@ func TestApplicationIPv6Connectivity(test *testing.T) {
 		DisplayName: "container-app",
 		Activate:    true,
 		Image: evetest.DockerContainer{
-			ImageName: "milan4zededa/evetest-ubuntu-ctr",
+			ImageName: "lfedge/evetest-ubuntu-ctr",
 			Tag:       "1.0",
 		},
 		VirtualizationMode: eveconfig.VmMode_HVM,

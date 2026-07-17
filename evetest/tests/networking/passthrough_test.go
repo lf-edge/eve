@@ -55,7 +55,7 @@ import "testing"
 //     wraps containers in a shim VM for isolation (see APP-CONNECTIVITY.md
 //     "Virtual network interfaces" and "Container App VIF MTU"), so the
 //     shim VM is the passthrough target and the container inside it sees
-//     the NIC directly. The existing milan4zededa/evetest-ubuntu-ctr
+//     the NIC directly. The existing lfedge/evetest-ubuntu-ctr
 //     image used by TestLocalNI / TestSwitchNI is therefore suitable
 //     here too; using it avoids pulling a separate cloud image.
 //   - Optionally a Local NI on eth0 and a virtual VIF for the app, so the
@@ -81,7 +81,7 @@ import "testing"
 //     accept any name and instead match by MAC or by the order in
 //     which it appears after the mgmt interface).
 //     b) Acquire an IP from the SDN-side DHCP server for the eth1
-//     network. With the milan4zededa/evetest-ubuntu-ctr image the
+//     network. With the lfedge/evetest-ubuntu-ctr image the
 //     shim VM's init script runs DHCP on every recognized interface
 //     by default, so the address should be present as soon as the
 //     link appears; in a VM cloud image variant, run `dhclient

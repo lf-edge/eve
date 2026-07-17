@@ -57,7 +57,7 @@ import (
 //  3. NI delete: assert the state returns to ZNETINST_STATE_UNSPECIFIED.
 //  4. NI + app: recreate the NI (subnet 10.11.12.0/24 again, this time
 //     EnableFlowlog=true) and deploy a container app
-//     (milan4zededa/evetest-ubuntu-ctr:1.0) with a single
+//     (lfedge/evetest-ubuntu-ctr:1.0) with a single
 //     VirtualNetworkAdapter on the NI, a fixed MAC 02:16:3e:00:00:01, a
 //     port-fwd 2222->22 ACE, and an allow-all ACL. VirtualizationMode=HVM
 //     (PV does not work on Xen because the shim VM fails to start there).
@@ -269,7 +269,7 @@ func TestLocalNI(test *testing.T) {
 		DisplayName: "container-app",
 		Activate:    true,
 		Image: evetest.DockerContainer{
-			ImageName: "milan4zededa/evetest-ubuntu-ctr",
+			ImageName: "lfedge/evetest-ubuntu-ctr",
 			Tag:       "1.0",
 		},
 		VirtualizationMode: eveconfig.VmMode_HVM, // PV does not work in xen, shim VM fails to start
@@ -468,7 +468,7 @@ func TestLocalNI(test *testing.T) {
 //     bridge, MTU=2000.
 //  3. NI delete: state returns to ZNETINST_STATE_UNSPECIFIED.
 //  4. NI + app: recreate the NI on ethernet0 and deploy a container app
-//     (milan4zededa/evetest-ubuntu-ctr:1.0) with one VirtualNetworkAdapter
+//     (lfedge/evetest-ubuntu-ctr:1.0) with one VirtualNetworkAdapter
 //     on the NI, fixed MAC 02:16:3e:00:00:01, allow-all ACL.
 //     VirtualizationMode=HVM (same Xen-PV caveat as TestLocalNI).
 //     WaitUntilAppIsRunning, then assert:
@@ -653,7 +653,7 @@ func TestSwitchNI(test *testing.T) {
 		DisplayName: "container-app",
 		Activate:    true,
 		Image: evetest.DockerContainer{
-			ImageName: "milan4zededa/evetest-ubuntu-ctr",
+			ImageName: "lfedge/evetest-ubuntu-ctr",
 			Tag:       "1.0",
 		},
 		VirtualizationMode: eveconfig.VmMode_HVM, // PV does not work in xen, shim VM fails to start

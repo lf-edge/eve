@@ -123,7 +123,7 @@ token), so the installer always prompts you interactively for that account's pas
 (masked, never accepted as a flag, never touching shell history). The password/URL/etc.
 are written into the broker VM's `/etc/evetest/broker.env`. The broker container image
 tag is **baked into the installer** from `evetest/VERSION` at assembly time (e.g.
-`lfedge/evetest-broker:v0.0.1`); override with `--broker-image`.
+`lfedge/evetest-broker:1.0`); override with `--broker-image`.
 
 ### Stable LAN IP across reinstalls
 

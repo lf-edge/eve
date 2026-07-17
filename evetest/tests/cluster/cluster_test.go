@@ -175,7 +175,7 @@ func TestSingleNodeCluster(test *testing.T) {
 		DisplayName: "container-app",
 		Activate:    true,
 		Image: evetest.DockerContainer{
-			ImageName: "milan4zededa/evetest-ubuntu-ctr",
+			ImageName: "lfedge/evetest-ubuntu-ctr",
 			Tag:       "1.0",
 		},
 		CPUs:        1,
@@ -274,7 +274,7 @@ func TestSingleNodeCluster(test *testing.T) {
 //     with a 30-min budget. K3s must form across the three nodes via the
 //     dedicated cluster network.
 //  2. app-config-is-submitted: add a Local NI + a container app
-//     (milan4zededa/evetest-ubuntu-ctr:1.0) as a
+//     (lfedge/evetest-ubuntu-ctr:1.0) as a
 //     ClusterApplicationInstanceConfig with
 //     DesignatedNodeName=devName[0] and Affinity=PREFERRED -- the
 //     scheduler should prefer node 1 but is allowed to pick a different
@@ -386,7 +386,7 @@ func TestThreeNodesCluster(test *testing.T) {
 			DisplayName: "container-app",
 			Activate:    true,
 			Image: evetest.DockerContainer{
-				ImageName: "milan4zededa/evetest-ubuntu-ctr",
+				ImageName: "lfedge/evetest-ubuntu-ctr",
 				Tag:       "1.0",
 			},
 			CPUs:        1,
