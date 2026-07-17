@@ -170,6 +170,13 @@ func checkLonghornSchedulable(nodeName string) error {
 
 // DeletePVC : deletes PVC of the given name.
 func DeletePVC(pvcName string, log *base.LogObject) error {
+	// Fault injection: while the marker file exists, fail the PVC delete to
+	// simulate a k8s-API-level delete failure. See DeletePVCFaultPath.
+	if DeletePVCFaultInjected() {
+		err := fmt.Errorf("fault-injected DeletePVC failure for %s", pvcName)
+		log.Warnf("%v", err)
+		return err
+	}
 	// Get the Kubernetes clientset
 	clientset, err := GetClientSet()
 	if err != nil {

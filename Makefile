@@ -376,7 +376,7 @@ endif
 
 # For all possible env variable that later can be handle by a Dockerfile as a build-arg-file of
 # a given package, we create a target of the form lk-extra-opt/<pkg-name>/<env-var-name>
-LK_POSSIBLE_PKG_PLUS_BUILD_ARGS := pillar/IMM_PROFILING pillar/ARTIFICIAL_LEAK pillar/COVER
+LK_POSSIBLE_PKG_PLUS_BUILD_ARGS := pillar/IMM_PROFILING pillar/ARTIFICIAL_LEAK pillar/COVER pillar/FAULT_INJECTION
 LK_POSSIBLE_BUILD_ARG_TARGETS := $(addprefix lk-extra-opt/,$(LK_POSSIBLE_PKG_PLUS_BUILD_ARGS))
 
 .PHONY: lk-extra-opt/%
