@@ -76,8 +76,14 @@ func (iobt ioBundleTree) groupParents(assigngrp string) []string {
 		return ret
 	}
 
+	visited := map[*ioBundlesElem]struct{}{}
 	ioBundleElem = ioBundleElem.parent
 	for ioBundleElem != nil {
+		if _, seen := visited[ioBundleElem]; seen {
+			// Cyclic parent chain; stop to avoid an unbounded loop.
+			break
+		}
+		visited[ioBundleElem] = struct{}{}
 		ret = append(ret, ioBundleElem.assignmentGroup)
 		ioBundleElem = ioBundleElem.parent
 	}
@@ -107,6 +113,11 @@ func (iobt ioBundleTree) groupDependendentsImpl(groups map[string]struct{}, ioBu
 	}
 
 	for _, childioBundlesElem := range ioBundlesElem.children {
+		if _, seen := groups[childioBundlesElem.assignmentGroup]; seen {
+			// Already visited this group; skip to avoid unbounded recursion on
+			// a cyclic parentassigngrp graph (e.g. a self-parent tree self-loop).
+			continue
+		}
 		groups[childioBundlesElem.assignmentGroup] = struct{}{}
 		iobt.groupDependendentsImpl(groups, childioBundlesElem)
 	}
@@ -150,6 +161,17 @@ func (iobt *ioBundleTree) removeIOBundle(ioBundle *types.IoBundle) {
 }
 
 func (iobt *ioBundleTree) addIOBundle(ioBundle *types.IoBundle) {
+	if ioBundle.AssignmentGroup != "" &&
+		ioBundle.AssignmentGroup == ioBundle.ParentAssignmentGroup {
+		// A group that is its own parent would build a self-referential tree node
+		// (children[grp] == self), which the dependents walk would recurse on
+		// forever. The circular-dependency check below cannot catch this because
+		// a group is never among its own descendants before it is inserted.
+		log.Warnf("ioBundle %s has parentassigngrp equal to its assigngrp %q; "+
+			"not adding to avoid a self-referential dependency", ioBundle.Phylabel,
+			ioBundle.AssignmentGroup)
+		return
+	}
 	dependents := iobt.groupDependendents(ioBundle.AssignmentGroup)
 	for _, dependee := range dependents {
 		if dependee == ioBundle.ParentAssignmentGroup {
