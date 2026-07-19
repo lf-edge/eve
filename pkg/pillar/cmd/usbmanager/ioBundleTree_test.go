@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -599,4 +600,61 @@ func TestAddIOBundleDeadlock(t *testing.T) {
 	iobt.addIOBundle(&ioBundles[0])
 	iobt.addIOBundle(&ioBundles[1])
 
+}
+
+// runsWithin runs fn and fails t if it does not return within d.
+func runsWithin(t *testing.T, d time.Duration, fn func()) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() {
+		fn()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(d):
+		t.Fatalf("operation did not terminate within %v (unbounded recursion/loop?)", d)
+	}
+}
+
+// TestSelfParentAssigngrpRejected verifies that an ioBundle whose parentassigngrp
+// equals its own assigngrp is not added to the tree. Adding it would build a
+// self-referential node (children[grp] == self), and the dependents walk would
+// then recurse on it forever, growing the goroutine stack until the pillar
+// memory cgroup OOMs. The circular-dependency check in addIOBundle cannot catch
+// this because a group is never among its own descendants before insertion.
+func TestSelfParentAssigngrpRejected(t *testing.T) {
+	iobt := newIOBundleTree()
+	iobt.addIOBundle(&types.IoBundle{
+		Phylabel:              "phantom-parent",
+		AssignmentGroup:       "grpx",
+		ParentAssignmentGroup: "grpx",
+	})
+	if iobt.ioBundle("phantom-parent") != nil {
+		t.Fatal("self-parent ioBundle should have been rejected, but it was added")
+	}
+	if iobt.elementsByAssignmentGroup["grpx"] != nil {
+		t.Fatal("no tree element should exist for the rejected self-parent group")
+	}
+	runsWithin(t, 2*time.Second, func() { iobt.groupDependendents("grpx") })
+}
+
+// TestTreeWalksGuardCycles verifies the tree walks terminate even if a cyclic
+// tree slips past addIOBundle: a self-loop element is built by hand and both
+// walks must complete rather than recurse/loop forever.
+func TestTreeWalksGuardCycles(t *testing.T) {
+	iobt := newIOBundleTree()
+	loop := &ioBundlesElem{
+		ioBundlesMap:    map[string]*types.IoBundle{},
+		assignmentGroup: "loop",
+		children:        map[string]*ioBundlesElem{},
+	}
+	loop.children["loop"] = loop // self-loop in children
+	loop.parent = loop           // self-loop in parent chain
+	iobt.elementsByAssignmentGroup["loop"] = loop
+
+	runsWithin(t, 2*time.Second, func() {
+		iobt.groupDependendents("loop")
+		iobt.groupParents("loop")
+	})
 }
