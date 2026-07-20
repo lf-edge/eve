@@ -1,4 +1,4 @@
-// This file is drived from the code available in linuxkit project under Apache License v2
+// This file is derived from the code available in linuxkit project under Apache License v2
 //    https://github.com/linuxkit/linuxkit/blob/master/pkg/init/cmd/service/logging.go
 
 package containerd
