@@ -19,6 +19,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
@@ -79,7 +80,11 @@ func (v *Verifier) MarkObjectAsVerifying(
 	tmpID uuid.UUID) (int64, string, error) {
 
 	verifierDirname := v.GetVerifierDir()
-	pendingFilename, verifierFilename, _ := v.ImageVerifierFilenames(location, digest, tmpID.String(), mediaType)
+	pendingFilename, verifierFilename, _, err := v.ImageVerifierFilenames(location, digest, tmpID.String(), mediaType)
+	if err != nil {
+		v.logger.Error(err)
+		return 0, "", err
+	}
 
 	// Move to verifier directory which is RO
 	// XXX should have dom0 do this and/or have RO mounts
@@ -124,7 +129,10 @@ func (v *Verifier) MarkObjectAsVerifying(
 func (v *Verifier) MarkObjectAsVerified(location, digest, mediaType string, tmpID uuid.UUID) (string, error) {
 
 	verifiedDirname := v.GetVerifiedDir()
-	_, verifierFilename, verifiedFilename := v.ImageVerifierFilenames(location, digest, tmpID.String(), mediaType)
+	_, verifierFilename, verifiedFilename, err := v.ImageVerifierFilenames(location, digest, tmpID.String(), mediaType)
+	if err != nil {
+		return "", err
+	}
 	// Move directory from DownloadDirname/verifier to
 	// DownloadDirname/verified
 	// XXX should have dom0 do this and/or have RO mounts
@@ -167,11 +175,22 @@ func (v *Verifier) MarkObjectAsVerified(location, digest, mediaType string, tmpI
 // lost during a reboot. We need that information to be persistent and survive reboot,
 // so we can reconstruct it. Hence, we preserve it in the filename. It is PathEscape'd
 // so it is filename-safe.
-func (v *Verifier) ImageVerifierFilenames(infile, sha256, tmpID, mediaType string) (string, string, string) {
+//
+// The sha256 digest is controller-provided and becomes part of the on-disk
+// filename. Unlike mediaType it is not escaped, so a crafted value such as
+// "../../../persist/secret" would, after path.Join cleans it, escape the
+// verifier/verified directories and let a downloaded blob be written outside
+// the intended tree (path traversal). To prevent that, reject any digest that
+// is not a strict 64-character hex SHA-256.
+func (v *Verifier) ImageVerifierFilenames(infile, sha256, tmpID, mediaType string) (string, string, string, error) {
+	if !utils.IsValidSHA256(sha256) {
+		return "", "", "", fmt.Errorf(
+			"invalid sha256 %q: must be 64 hexadecimal characters", sha256)
+	}
 	verifierDirname, verifiedDirname := v.GetVerifierDir(), v.GetVerifiedDir()
 	// Handle names which are paths
 	mediaTypeSafe := url.PathEscape(mediaType)
 	verifierFilename := strings.Join([]string{tmpID, sha256, mediaTypeSafe}, ".")
 	verifiedFilename := strings.Join([]string{sha256, mediaTypeSafe}, ".")
-	return infile, path.Join(verifierDirname, verifierFilename), path.Join(verifiedDirname, verifiedFilename)
+	return infile, path.Join(verifierDirname, verifierFilename), path.Join(verifiedDirname, verifiedFilename), nil
 }
