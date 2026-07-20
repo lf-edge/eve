@@ -27,6 +27,20 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 	changed := false
 	addedBlobs := []string{}
 
+	// The content sha256 (controller-supplied via ContentTreeConfig, or later
+	// resolved from an OCI tag) becomes part of the on-disk filenames used by the
+	// downloader and verifier. Reject a malformed digest here, before it is used to
+	// build any path, and surface it through the status so the controller learns why
+	// the content tree failed instead of the request being dropped silently. An empty
+	// digest is allowed: an OCI tag that has not yet been resolved to a digest.
+	if status.ContentSha256 != "" && !utils.IsValidSHA256(status.ContentSha256) {
+		err := fmt.Sprintf("doUpdateContentTree(%s) name %s: malformed content sha256 %q: must be 64 hexadecimal characters",
+			status.Key(), status.DisplayName, status.ContentSha256)
+		log.Error(err)
+		status.SetErrorDescription(types.ErrorDescription{Error: err})
+		return true, false
+	}
+
 	if status.State < types.VERIFIED {
 		if !status.AllDatastoresResolved {
 			log.Functionf("contentTreeStatus(%s) does not have a datastore type yet, deferring", status.ContentID)
