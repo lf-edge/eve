@@ -38,7 +38,7 @@ endif
 KERNEL_LTS_VERSION=next
 
 ifeq ($(ZARCH), amd64)
-    KERNEL_VERSION=v6.12.49
+    KERNEL_VERSION=v6.12.96
     KERNEL_FLAVOR=generic
     ifeq ($(PLATFORM), rt)
         KERNEL_CONFIG_FLAVOR=rt
