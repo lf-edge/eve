@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -18,6 +19,7 @@ import (
 	containerderrdefs "github.com/containerd/containerd/errdefs"
 	"github.com/containerd/containerd/images"
 	"github.com/containerd/containerd/mount"
+	"github.com/containerd/containerd/oci"
 	snapshot "github.com/containerd/containerd/snapshots"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	v1types "github.com/google/go-containerregistry/pkg/v1/types"
@@ -27,6 +29,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/moby/sys/mountinfo"
+	"github.com/moby/sys/user"
 	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/sirupsen/logrus"
@@ -816,21 +819,66 @@ func (c *containerdCAS) prepareContainerRootDirForKubevirt(clientImageSpec *ocis
 		return err
 	}
 
-	// Userid and GID are same
-	ug := "0 0"
-	if user != "" {
-		uid, converr := strconv.Atoi(user)
-		if converr != nil {
-			return converr
-		}
-		ug = fmt.Sprintf("%d %d", uid, uid)
+	uid, gid, err := resolveUserGroup(GetRoofFsPath(rootPath), user)
+	if err != nil {
+		return fmt.Errorf("PrepareContainerRootDir: cannot resolve user %q: %w", user, err)
 	}
+	ug := fmt.Sprintf("%d %d", uid, gid)
 	if err := os.WriteFile(filepath.Join(rootPath, "ug"),
 		[]byte(ug), 0644); err != nil {
 		return err
 	}
 
 	return os.MkdirAll(filepath.Join(rootPath, "modules"), 0600)
+}
+
+// resolveUserGroup maps an OCI image Config.User string to numeric uid/gid.
+// User or group *names* are resolved against /etc/passwd and /etc/group in the
+// container's rootfs (rootfs must already be mounted). It accepts the same
+// forms as the OCI runtime and the HV=kvm/xen path (containerd's oci.WithUser):
+// "", "uid", "user", "uid:gid", "user:group", "uid:group", "user:gid". An empty
+// user yields 0/0. When only a numeric uid is given, gid defaults to that user's
+// primary group from /etc/passwd, falling back to 0 if the rootfs has no
+// matching entry.
+func resolveUserGroup(rootfs, userstr string) (uid, gid uint32, err error) {
+	if userstr == "" {
+		return 0, 0, nil
+	}
+	userPart, groupPart, hasGroup := strings.Cut(userstr, ":")
+
+	if v, aerr := strconv.Atoi(userPart); aerr == nil {
+		if v < 0 || v > math.MaxInt32 {
+			return 0, 0, fmt.Errorf("uid %q out of range", userPart)
+		}
+		uid = uint32(v)
+		// Default gid to the user's primary group; a missing rootfs entry
+		// is not an error for a numeric uid, matching oci.WithUserID.
+		if u, ferr := oci.UserFromPath(rootfs, func(u user.User) bool { return u.Uid == v }); ferr == nil {
+			gid = uint32(u.Gid)
+		}
+	} else {
+		u, ferr := oci.UserFromPath(rootfs, func(u user.User) bool { return u.Name == userPart })
+		if ferr != nil {
+			return 0, 0, ferr
+		}
+		uid, gid = uint32(u.Uid), uint32(u.Gid)
+	}
+
+	if hasGroup && groupPart != "" {
+		if v, aerr := strconv.Atoi(groupPart); aerr == nil {
+			if v < 0 || v > math.MaxInt32 {
+				return 0, 0, fmt.Errorf("gid %q out of range", groupPart)
+			}
+			gid = uint32(v)
+		} else {
+			g, ferr := oci.GIDFromPath(rootfs, func(g user.Group) bool { return g.Name == groupPart })
+			if ferr != nil {
+				return 0, 0, ferr
+			}
+			gid = g
+		}
+	}
+	return uid, gid, nil
 }
 
 // UnmountContainerRootDir unmounts container's rootPath
