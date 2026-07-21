@@ -16,6 +16,22 @@ EVETEST_EVE_REPO ?= lfedge/eve
 EVETEST_IMAGE := $(EVETEST_ORG)/evetest:$(EVETEST_VERSION)
 EVETEST_API_PORT ?= 50021
 
+# Label on the evetest image recording the framework content signature it was
+# built from; used by ensure-evetest-image to detect stale images.
+FRAMEWORK_SIG_LABEL := org.lfedge.evetest.framework-sig
+
+# Framework paths baked into the evetest image. tests/, netmodels/ and
+# matchers/ are bind-mounted into the container at run time and testapps/
+# images are built separately, so changes there never require a rebuild.
+FRAMEWORK_PATHSPEC := . ':(exclude)tests' ':(exclude)netmodels' ':(exclude)matchers' ':(exclude)testapps'
+
+# Content signature of the framework sources: the last commit touching them
+# plus any uncommitted (staged or unstaged) changes. Git-based, so a git
+# fsmonitor daemon keeps it fast; untracked files are not considered until
+# they are added to git. Constant outside a git checkout.
+FRAMEWORK_SIG = $(shell { git log -1 --format=%H -- $(FRAMEWORK_PATHSPEC); \
+	git diff HEAD -- $(FRAMEWORK_PATHSPEC); } 2>/dev/null | sha256sum | cut -d' ' -f1)
+
 PROTOC_VERSION ?= 31.1
 PROTOC_GEN_GO_VERSION ?= 1.36.6
 PROTOC_GEN_GO_GRPC_VERSION ?= 1.5.1
@@ -187,13 +203,24 @@ endif
 		-e EVETEST_HOST_GID=$(EVETEST_HOST_GID) \
 		$(EVETEST_IMAGE)
 
+# Ensure a usable evetest image exists locally: pull or build when it is
+# missing, and rebuild when the framework signature recorded in the image
+# label no longer matches the current sources (an image without the label,
+# e.g. one predating this check, is always considered stale).
 ensure-evetest-image:
 	@if ! docker image inspect $(EVETEST_IMAGE) >/dev/null 2>&1; then \
 		echo "Docker image $(EVETEST_IMAGE) not found locally, trying to pull..."; \
 		if ! docker pull $(EVETEST_IMAGE); then \
 			echo "Pull failed, building image locally..."; \
 			$(MAKE) build-container; \
+			exit 0; \
 		fi; \
+	fi; \
+	if [ "$$(docker image inspect \
+			-f '{{index .Config.Labels "$(FRAMEWORK_SIG_LABEL)"}}' \
+			$(EVETEST_IMAGE) 2>/dev/null)" != "$(FRAMEWORK_SIG)" ]; then \
+		echo "evetest framework sources changed, rebuilding $(EVETEST_IMAGE)..."; \
+		$(MAKE) build-container; \
 	fi
 
 # Internal target: invoked by proto inside the builder container.
@@ -228,6 +255,7 @@ build-container:
 	docker buildx build \
 		--$(DOCKER_TARGET) \
 		--platform $(DOCKER_PLATFORM) \
+		--label $(FRAMEWORK_SIG_LABEL)=$(FRAMEWORK_SIG) \
 		--build-arg EVETEST_VERSION=$(EVETEST_VERSION) \
 		--build-arg EVETEST_ADAM_REPO=$(EVETEST_ADAM_REPO) \
 		--build-arg EVETEST_ADAM_VERSION=$(EVETEST_ADAM_VERSION) \
