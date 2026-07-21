@@ -318,7 +318,7 @@ func populateKVIInner(
 
 		kviRep := types.KubeVolumeReplicaInfo{}
 		kviRep.Name = lhReplica.ObjectMeta.Name
-		kviRep.OwnerNode = ""
+		kviRep.OwnerNode = lhReplica.Spec.NodeID
 		kviRep.RebuildProgressPercentage = 0
 
 		replicaEngineName := lhReplica.Spec.EngineName
@@ -328,7 +328,6 @@ func populateKVIInner(
 		switch lhReplica.Status.CurrentState {
 		case lhv1beta2.InstanceStateRunning:
 			kviRep.Status = types.StorageVolumeReplicaStatusOnline
-			kviRep.OwnerNode = lhReplica.Status.OwnerID
 
 			engine, err := lhEngines.Get(ctx, replicaEngineName, metav1.GetOptions{})
 			if err != nil {

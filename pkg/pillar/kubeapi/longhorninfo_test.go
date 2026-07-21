@@ -656,6 +656,56 @@ func TestPopulateKVIInner(t *testing.T) {
 			},
 		},
 		{
+			// Regression: an offline (Stopped) replica must report the node its
+			// data lives on (Spec.NodeID), not Status.OwnerID. When the data node
+			// is down, Longhorn reassigns Status.OwnerID to a surviving manager
+			// node, so sourcing OwnerNode from OwnerID would misattribute the
+			// offline replica to the wrong node. A running replica keeps reporting
+			// its own node.
+			name:   "offline replica reports data node not owner survivor",
+			pvcs:   stdPVC,
+			lhVols: lhVolDegraded,
+			replicas: funcLHReplicaLister{fn: func(metav1.ListOptions) (*lhv1beta2.ReplicaList, error) {
+				// OwnerID is set to a different node than NodeID on BOTH replicas
+				// so either assertion below fails if OwnerNode is sourced from
+				// Status.OwnerID instead of Spec.NodeID.
+				rRun := fakeReplica("r1", eng1, "10.0.0.1", 8502, lhv1beta2.InstanceStateRunning)
+				rRun.Spec.NodeID = "node-a"
+				rRun.Status.OwnerID = "node-survivor"
+				rOffline := fakeReplica("r2", eng1, "10.0.0.2", 8502, lhv1beta2.InstanceStateStopped)
+				rOffline.Spec.NodeID = "node-b"           // data placement (down node)
+				rOffline.Status.OwnerID = "node-survivor" // survivor manager reconciling the CR
+				return &lhv1beta2.ReplicaList{Items: []lhv1beta2.Replica{rRun, rOffline}}, nil
+			}},
+			engines: funcLHEngineGetter{fn: func(string) (*lhv1beta2.Engine, error) {
+				return fakeEngine(eng1,
+					map[string]lhv1beta2.ReplicaMode{"r1": lhv1beta2.ReplicaModeRW},
+					nil,
+					map[string]string{"r1": r1RawAddr},
+				), nil
+			}},
+			wantSubstate: types.StorageHealthStatusDegraded1ReplicaAvailableNotReplicating,
+			checkFn: func(t *testing.T, kvi *types.KubeVolumeInfo) {
+				rRun := findReplica(kvi, "r1")
+				if rRun == nil {
+					t.Fatal("r1 not found")
+				}
+				if rRun.OwnerNode != "node-a" {
+					t.Errorf("r1.OwnerNode = %q, want %q", rRun.OwnerNode, "node-a")
+				}
+				rOff := findReplica(kvi, "r2")
+				if rOff == nil {
+					t.Fatal("r2 not found")
+				}
+				if rOff.Status != types.StorageVolumeReplicaStatusOffline {
+					t.Errorf("r2.Status = %v, want Offline", rOff.Status)
+				}
+				if rOff.OwnerNode != "node-b" {
+					t.Errorf("r2.OwnerNode = %q, want %q (data node, not owner survivor)", rOff.OwnerNode, "node-b")
+				}
+			},
+		},
+		{
 			name:   "engine fetch error",
 			pvcs:   stdPVC,
 			lhVols: lhVolHealthy,
