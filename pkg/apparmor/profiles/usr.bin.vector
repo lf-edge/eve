@@ -3,15 +3,29 @@
 
 #include <tunables/global>
 
-profile vector /usr/bin/vector {
+# attach_disconnected: vector runs in its own mount/network namespace, so the
+# sink sockets below (bound by newlogd in the host namespace) resolve as a
+# "disconnected path" during AppArmor mediation. Without this flag such paths
+# are reported relative, never match the absolute rules, and are denied.
+profile vector /usr/bin/vector flags=(attach_disconnected) {
     #include <abstractions/base>
+
+    # the prometheus_exporter sink opens a TCP listener; kernels with af_unix /
+    # network_v9 mediation mediate inet socket creation, so it must be granted.
+    network inet stream,
+    network inet6 stream,
 
     # allow access to vector's config and buffers
     owner /persist/vector/** rwk,
 
-    # allow to access the sockets to communicate with newlogd
+    # sockets used to communicate with newlogd. vector binds the *source*
+    # sockets (create only -> w). vector connect()s to the *sink* sockets; a
+    # unix stream connect is mediated as "wr" on kernels with af_unix mediation,
+    # so those need rw.
     owner /run/devKeep_source.sock w,
     owner /run/devUpload_source.sock w,
+    owner /run/devKeep_sink.sock rw,
+    owner /run/devUpload_sink.sock rw,
 
     # allow to inspect it's own state / environment
     owner /proc/*/cgroup r,
