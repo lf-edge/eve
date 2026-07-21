@@ -17,11 +17,20 @@ func TestCloudConfig(t *testing.T) {
 
 	log := base.NewSourceLogObject(logrus.StandardLogger(), "cloudconfig", 0)
 	// create a temporary directory to write files to
-	rootPath, err := os.MkdirTemp("", "cloudconfig_test")
+	baseDir, err := os.MkdirTemp("", "cloudconfig_test")
 	if err != nil {
 		t.Fatalf("failed to create temporary directory: %v", err)
 	}
-	t.Cleanup(func() { os.RemoveAll(rootPath) })
+	t.Cleanup(func() { os.RemoveAll(baseDir) })
+
+	// Mirror cas.GetRoofFsPath, whose filepath.Join drops the trailing
+	// separator so rootPath ends in a bare "rootfs" component. This lets the
+	// "sibling directory traversal" case below exercise the prefix bypass: a
+	// sibling such as "rootfs_evil" shares "rootfs" as a leading string.
+	rootPath := filepath.Join(baseDir, "rootfs")
+	if err := os.MkdirAll(rootPath, 0755); err != nil {
+		t.Fatalf("failed to create root path: %v", err)
+	}
 
 	// define the test cases
 	testCases := []struct {
@@ -135,6 +144,21 @@ write_files:
 			expected: []cloudconfig.WritableFile{},
 			errParse: nil,
 			errWrite: fmt.Errorf("detected possible attempt to write file outside of root path. invalid path %s", "../../etc/passwd"),
+		},
+		{
+			// A sibling directory that merely shares a leading string with
+			// rootPath (e.g. "rootfs" vs "rootfs_evil") is still outside it
+			// and must be rejected.
+			name: "sibling directory traversal",
+			input: `#cloud-config
+write_files:
+- path: ../rootfs_evil/etc/profile.d/x.sh
+  content: cHduZWQK
+  permissions: "0644"
+  encoding: b64`,
+			expected: []cloudconfig.WritableFile{},
+			errParse: nil,
+			errWrite: fmt.Errorf("detected possible attempt to write file outside of root path. invalid path %s", "../rootfs_evil/etc/profile.d/x.sh"),
 		},
 		{
 			name: "gzip encoding",
