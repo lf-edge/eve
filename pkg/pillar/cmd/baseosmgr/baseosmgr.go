@@ -48,6 +48,8 @@ type baseOsMgrContext struct {
 	subBaseOsConfig      pubsub.Subscription
 	subZbootConfig       pubsub.Subscription
 	subContentTreeStatus pubsub.Subscription
+	subVolumeConfig      pubsub.Subscription
+	subVolumeStatus      pubsub.Subscription
 	subNodeAgentStatus   pubsub.Subscription
 	subZedAgentStatus    pubsub.Subscription
 	subNodeDrainStatus   pubsub.Subscription
@@ -140,6 +142,26 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	log.Functionf("user containerd ready")
 
+	// Wait for the Volume publishers to signal restart, i.e. zedagent
+	// has parsed its first EdgeDevConfig and volumemgr has reflected
+	// that plus its on-disk recovery into VolumeStatus. Restarted()
+	// is the right primitive here: Synchronized() only confirms the
+	// socket handshake and can fire before zedagent's first parse.
+	for !ctx.subVolumeConfig.Restarted() || !ctx.subVolumeStatus.Restarted() {
+		log.Functionf("waiting for Volume publishers to signal restart")
+		select {
+		case change := <-ctx.subGlobalConfig.MsgChan():
+			ctx.subGlobalConfig.ProcessChange(change)
+		case change := <-ctx.subVolumeConfig.MsgChan():
+			ctx.subVolumeConfig.ProcessChange(change)
+		case change := <-ctx.subVolumeStatus.MsgChan():
+			ctx.subVolumeStatus.ProcessChange(change)
+		case <-stillRunning.C:
+		}
+		ps.StillRunning(agentName, warningTime, errorTime)
+	}
+	log.Functionf("Volume publishers restarted")
+
 	// start the forever loop for event handling
 	for {
 		select {
@@ -154,6 +176,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-ctx.subContentTreeStatus.MsgChan():
 			ctx.subContentTreeStatus.ProcessChange(change)
+
+		case change := <-ctx.subVolumeConfig.MsgChan():
+			ctx.subVolumeConfig.ProcessChange(change)
+
+		case change := <-ctx.subVolumeStatus.MsgChan():
+			ctx.subVolumeStatus.ProcessChange(change)
 
 		case change := <-ctx.subNodeAgentStatus.MsgChan():
 			ctx.subNodeAgentStatus.ProcessChange(change)
@@ -442,6 +470,24 @@ func initializeZedagentHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 	}
 	ctx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
+
+	// VolumeConfig and VolumeStatus are read via GetAll() to gate the
+	// EVE-k vs non-EVE-k upgrade block; no per-event handlers needed.
+	subVolumeConfig, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:   "zedagent",
+			MyAgentName: agentName,
+			TopicImpl:   types.VolumeConfig{},
+			Activate:    false,
+			Ctx:         ctx,
+			WarningTime: warningTime,
+			ErrorTime:   errorTime,
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subVolumeConfig = subVolumeConfig
+	subVolumeConfig.Activate()
 }
 
 func initializeVolumemgrHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
@@ -464,6 +510,22 @@ func initializeVolumemgrHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 	}
 	ctx.subContentTreeStatus = subContentTreeStatus
 	subContentTreeStatus.Activate()
+
+	subVolumeStatus, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:   "volumemgr",
+			MyAgentName: agentName,
+			TopicImpl:   types.VolumeStatus{},
+			Activate:    false,
+			Ctx:         ctx,
+			WarningTime: warningTime,
+			ErrorTime:   errorTime,
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subVolumeStatus = subVolumeStatus
+	subVolumeStatus.Activate()
 }
 
 func handleNodeAgentStatusCreate(ctxArg interface{}, key string,
