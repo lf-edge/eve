@@ -242,15 +242,19 @@ func (z *zedkube) virtLauncherActiveOnThisNode(appKubeName string) bool {
 
 // podHasContainerError returns true if any container in the pod is in a
 // waiting state with an error-indicating reason (CrashLoopBackOff,
-// ImagePullBackOff, ErrImagePull, CreateContainerError, RunContainerError)
-// or has terminated with a non-zero exit code. These surface as "Error" or
-// similar in kubectl's STATUS column even when Pod.Status.Phase=Running.
+// ImagePullBackOff, ErrImagePull, CreateContainerError,
+// CreateContainerConfigError, RunContainerError) or has terminated with a
+// non-zero exit code. These surface as "Error" or similar in kubectl's STATUS
+// column even when Pod.Status.Phase=Running. CreateContainerConfigError in
+// particular covers a pod blocked on a missing Secret/ConfigMap (e.g. an
+// orphaned CDI upload pod whose TLS secret was deleted), which must not be
+// mistaken for a volume-mount wedge.
 func podHasContainerError(p corev1.Pod) bool {
 	for _, cs := range p.Status.ContainerStatuses {
 		if w := cs.State.Waiting; w != nil {
 			switch w.Reason {
 			case "CrashLoopBackOff", "ImagePullBackOff", "ErrImagePull",
-				"CreateContainerError", "RunContainerError":
+				"CreateContainerError", "CreateContainerConfigError", "RunContainerError":
 				return true
 			}
 		}
