@@ -315,6 +315,15 @@ func TestDeviceConnectivitySuite(test *testing.T) {
 //   - TestAccessVLANs -- VLAN-aware Switch NI (stub scenario).
 //   - TestNetworkAdapterPassthrough -- direct adapter assignment to an
 //     app (stub scenario; needs broker QEMU flag tweak).
+//   - TestStagedNICChange -- a NIC added to a running app without a
+//     restart command stays staged (no effect on device or guest) until
+//     the app is restarted.
+//   - TestNICCountChange -- a NIC is added, the two NICs are swapped and
+//     one is removed again, each applied through a restart (no purge); the
+//     guest, the reported state and the app volume follow.
+//   - TestNICCountChangeOrderedInterface -- the same no-purge NIC addition
+//     with explicitly pinned interface orders: the added adapter must be
+//     enumerated by the guest at the position its order dictates.
 func TestApplicationConnectivitySuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
@@ -406,6 +415,15 @@ func TestApplicationConnectivitySuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestNetworkAdapterPassthrough,
+		},
+		evetest.TestCase{
+			Test: TestStagedNICChange,
+		},
+		evetest.TestCase{
+			Test: TestNICCountChange,
+		},
+		evetest.TestCase{
+			Test: TestNICCountChangeOrderedInterface,
 		},
 	)
 }

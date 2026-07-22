@@ -4,6 +4,7 @@
 package networking_test
 
 import (
+	"fmt"
 	"net"
 	"testing"
 	"time"
@@ -21,6 +22,159 @@ import (
 	// revive:disable:dot-imports
 	. "github.com/onsi/gomega"
 )
+
+func TestNICCountChangeOrderedInterface(test *testing.T) {
+	evetestT := evetest.Init(test)
+	log := evetest.Logger()
+	t := NewGomegaWithT(evetestT)
+	defer evetest.Close()
+
+	appAuth := evetest.UsernamePasswordAuth{
+		Username: "root",
+		Password: "testpassword",
+	}
+	// Define configurable parameters available for the test.
+	evetest.DefineTestParameters(evetest.HypervisorParameter())
+
+	// Get parameter values set for this test execution.
+	hypervisor := evetest.GetHypervisorParameterValue()
+
+	// Set up the test harness and specify the test prerequisites.
+	devName := "edge-dev"
+	requiredDevice := evetest.RequireEdgeDevice{
+		Name:              devName,
+		WithHypervisor:    hypervisor,
+		DeviceReusePolicy: evetest.ResetDeviceConfig,
+	}
+	requiredNetModel := evetest.RequireNetworkModel{
+		NetworkModel: netmodels.SingleEthWithDHCP,
+	}
+	evetest.Setup(requiredDevice, requiredNetModel)
+	devConfig := evetest.NewEdgeDeviceConfig(devName)
+	evetest.Checkpoint("setup-done")
+
+	dhcpNet := devConfig.AddNetwork(
+		evetest.DHCPNetworkConfig{
+			NetworkType: evecommon.NetworkType_V4Only,
+		})
+
+	netAdapters := make([]evetest.AppNetworkAdapter, 0, 3)
+	for i := range 5 {
+		netAdapter := addNetwork(i, devConfig, dhcpNet)
+		ifaceOrder := uint32(i * 10)
+		netAdapter.InterfaceOrder = &ifaceOrder
+		netAdapters = append(netAdapters, netAdapter)
+	}
+	appConfig := evetest.ApplicationInstanceConfig{
+		DisplayName: "container-app",
+		Activate:    true,
+		Image: evetest.DockerContainer{
+			ImageName: "lfedge/evetest-ubuntu-ctr",
+			Tag:       "1.0",
+		},
+		VirtualizationMode:  eveconfig.VmMode_HVM,
+		CPUs:                1,
+		MemoryBytes:         500 * evetest.MiB,
+		NetworkAdapters:     netAdapters,
+		EnforceNetIntfOrder: true,
+	}
+	appUUID := devConfig.AddApplication(appConfig)
+
+	device := evetest.GetEdgeDevice(devName)
+	device.ApplyConfig(devConfig, true, true)
+
+	device.WaitUntilAppIsRunning(appUUID, 3*time.Minute)
+
+	t.Eventually(func(t Gomega) {
+		log.Infof("Waiting for app SSH daemon to start and become reachable...")
+		stdout, stderr, err := device.RunShellScriptInsideApp(appUUID, appAuth, "ip a",
+			time.Minute, 0)
+		t.Expect(err).ToNot(HaveOccurred())
+		log.Printf("stdout: \n%s\n", stdout)
+		log.Printf("stderr: \n%s\n", stderr)
+	}, 10*time.Minute, 20*time.Second).Should(Succeed())
+
+	netAdapter := addNetwork(8, devConfig, dhcpNet)
+	ifaceOrder := uint32(25)
+	netAdapter.InterfaceOrder = &ifaceOrder
+	appConfig.NetworkAdapters = append(appConfig.NetworkAdapters, netAdapter)
+	devConfig.UpdateApplication(appUUID, appConfig)
+	device.ApplyConfig(devConfig, true, true)
+
+	device.WaitUntilAppIsRunning(appUUID, 5*time.Minute)
+
+	// The added NIC and its position among the others are both properties of
+	// the same boot, so a single wait covers them: once the guest is back with
+	// six interfaces, the interface order it enumerated them in is already
+	// final and needs no further wait of its own.
+	t.Eventually(func(t Gomega) {
+		log.Infof("Waiting for the restarted app to come back with the added NIC...")
+		stdout, stderr, err := device.RunShellScriptInsideApp(appUUID, appAuth,
+			"ip -o link show", time.Minute, 0)
+		t.Expect(err).ToNot(HaveOccurred())
+		log.Printf("stdout: \n%s\n", stdout)
+		log.Printf("stderr: \n%s\n", stderr)
+		t.Expect(stdout).To(ContainSubstring("eth5"))
+		// The adapter added with interface order 25 falls between the orders
+		// 20 and 30 of the initial five, so the guest must enumerate it as its
+		// fourth interface.
+		t.Expect(stdout).To(MatchRegexp(`eth3:.*` + netAdapter.MAC.String()))
+	}, 10*time.Minute, 20*time.Second).Should(Succeed())
+}
+
+func addNetwork(i int, devConfig *evetest.EdgeDeviceConfig, dhcpNet uuid.UUID) evetest.VirtualNetworkAdapter {
+	mac := net.HardwareAddr{0x2, 0x16, 0x3e, 0x00, 0x00, 0x1 + byte(i)}
+	gateway := net.IP{10, 11, 12 + byte(i), 1}
+	dhcpRange := types.IPRange{
+		Start: net.IP{10, 11, 12 + byte(i), 2},
+		End:   net.IP{10, 11, 12 + byte(i), 254},
+	}
+	subnet := net.IPNet{
+		IP:   net.IP{10, 11, 12 + byte(i), 0},
+		Mask: net.IPMask{255, 255, 255, 0},
+	}
+	devConfig.AddNetworkAdapter(
+		evetest.NetworkAdapterConfig{
+			LogicalLabel:  fmt.Sprintf("ethernet%d", i),
+			PhysicalLabel: fmt.Sprintf("eth%d", i),
+			InterfaceName: fmt.Sprintf("eth%d", i),
+			NetworkUUID:   dhcpNet,
+			Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+		})
+
+	niuuid := devConfig.AddNetworkInstance(evetest.LocalNetworkInstanceConfig{
+		DisplayName: fmt.Sprintf("local-ni%d", i),
+		Port:        fmt.Sprintf("ethernet%d", i),
+		Subnet:      &subnet,
+		DHCPRange:   dhcpRange,
+		Gateway:     gateway,
+		MTU:         1500,
+		ForwardLLDP: false,
+	})
+
+	interfaceOrder := uint32(i)
+	netAdapter := evetest.VirtualNetworkAdapter{
+		LogicalLabel:        fmt.Sprintf("vif%d", i),
+		NetworkInstanceUUID: niuuid,
+		MAC:                 mac,
+		PortFwdRules: []evetest.PortFwdRule{
+			{
+				Protocol:     evetest.NetworkProtocolTCP,
+				EdgeNodePort: 2222 + uint16(i),
+				AppPort:      22,
+			},
+		},
+		ACLAllowRules: []evetest.ACLAllowRule{
+			{
+				Protocol:     evetest.NetworkProtocolAny,
+				RemoteSubnet: evetest.IPSubnet("0.0.0.0/0"),
+			},
+		},
+		InterfaceOrder: &interfaceOrder,
+	}
+
+	return netAdapter
+}
 
 // TestNICCountChange exercises changing the set of network adapters of a
 // running application through restarts (no purge): a NIC is added, the two
