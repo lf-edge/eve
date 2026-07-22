@@ -513,6 +513,26 @@ func RolloutDiskToPVC(ctx context.Context, log *base.LogObject, exists bool,
 		return transientf("PVC Upload for pvc:%s attempts to upload image failed, upload pod:%s does not exist", pvcName, cdiUploadPodName)
 	}
 	uploadNodeName := pod.Spec.NodeName
+	// 3b. The upload pod can reach Ready yet get torn down by CDI (pod.phase Failed /
+	// ContainerStatusUnknown) with the local-path scratch PVC left stuck Terminating —
+	// a wedge the data-vol/PV/engine checks below do not surface, so log it explicitly.
+	log.Noticef("RolloutDiskToPVC pvc:%s upload pod:%s phase:%s cdi.pod.phase:%q cdi.running.reason:%q cdi.running.msg:%q",
+		pvcName, cdiUploadPodName, pod.Status.Phase,
+		pvc.ObjectMeta.Annotations["cdi.kubevirt.io/storage.pod.phase"],
+		pvc.ObjectMeta.Annotations["cdi.kubevirt.io/storage.condition.running.reason"],
+		pvc.ObjectMeta.Annotations["cdi.kubevirt.io/storage.condition.running.message"])
+	scratchName := pvcName + "-scratch"
+	if scratchPvc, scratchErr := PVCGet(scratchName, log); scratchErr != nil {
+		log.Noticef("RolloutDiskToPVC pvc:%s scratch PVC %s not found: %v", pvcName, scratchName, scratchErr)
+	} else {
+		scratchSC := ""
+		if scratchPvc.Spec.StorageClassName != nil {
+			scratchSC = *scratchPvc.Spec.StorageClassName
+		}
+		log.Noticef("RolloutDiskToPVC pvc:%s scratch PVC %s phase:%s terminating:%t storageClass:%q finalizers:%v",
+			pvcName, scratchName, scratchPvc.Status.Phase,
+			scratchPvc.ObjectMeta.DeletionTimestamp != nil, scratchSC, scratchPvc.ObjectMeta.Finalizers)
+	}
 	// 4. Did the PVC claim get a backing pv?
 	lhVol, err := lhVolGet(pvName)
 	if err != nil {
