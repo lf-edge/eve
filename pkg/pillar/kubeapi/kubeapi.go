@@ -230,22 +230,28 @@ func WaitForKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.T
 	// nodeName is the caller-supplied EVE-k node name (from EdgeNodeInfo.DeviceName),
 	// not os.Hostname().
 	var nodeReadyErr error
+	// Record the last failing sub-check; PollImmediate's timeout error alone does not say which of node/kubevirt/longhorn was unmet.
+	var lastUnmet error
 	doneCh := make(chan struct{}, 1)
 	go func() {
 		nodeReadyErr = wait.PollImmediate(time.Second, time.Minute*20, func() (bool, error) {
 			if err := nodeReadyByName(client, nodeName); err != nil {
+				lastUnmet = fmt.Errorf("node not ready: %w", err)
 				return false, nil
 			}
 			if opts.WaitForKubevirt {
 				if err := waitForKubevirtReady(config); err != nil {
+					lastUnmet = fmt.Errorf("kubevirt not ready: %w", err)
 					return false, nil
 				}
 			}
 			if opts.WaitForLonghorn {
 				if err := checkLonghornReady(client, nodeName); err != nil {
+					lastUnmet = fmt.Errorf("longhorn not ready: %w", err)
 					return false, nil
 				}
 			}
+			lastUnmet = nil
 			return true, nil
 		})
 		doneCh <- struct{}{}
@@ -261,6 +267,9 @@ func WaitForKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.T
 	})
 	watches = append(watches, alsoWatch...)
 	pubsub.MultiChannelWatch(watches)
+	if nodeReadyErr != nil && lastUnmet != nil {
+		return fmt.Errorf("%w (last unmet condition: %v)", nodeReadyErr, lastUnmet)
+	}
 	return nodeReadyErr
 }
 

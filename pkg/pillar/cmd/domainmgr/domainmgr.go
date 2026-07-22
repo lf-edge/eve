@@ -719,7 +719,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 				break
 			}
 			if waitForKubevirtFlag {
-				log.Warnf("Domainmgr: WaitForKubernetes kubevirt not ready: %v, retrying", err)
+				log.Warnf("Domainmgr: WaitForKubernetes not satisfied: %v, retrying", err)
 				continue
 			}
 			log.Errorf("Domainmgr: WaitForKubernetes error %v", err)
