@@ -80,6 +80,15 @@ make check-docker-hashes-consistency # Check if packages are pointing to the lat
 
 `mini-yetus` accepts `MYETUS_SBRANCH`, `MYETUS_DBRANCH`, `MYETUS_VERBOSE=Y`. CI workflows live under `.github/workflows/` — `pr-gate.yml`, `go-tests.yml`, `yetus.yml`, `codeql.yml`, `build.yml`. The shellcheck config (`shellcheckrc`) disables SC3043.
 
+## Debugging on a live device
+
+- `eve version`, `zboot curpart` — running version and active IMGA/IMGB partition.
+- EVE services cgroups: `/sys/fs/cgroup/memory/eve/services/<pillar|newlogd|...>/memory.usage_in_bytes`; per-app cgroups under `/eve-user-apps/<uuid>.<x>.<y>`.
+- QMP sockets: `/run/hypervisor/kvm/<app-uuid>.<x>.<y>/qmp` (domain names are `<uuid>.<gen>.<instance>`).
+- Pubsub state on disk: `/run/<agent>/<topic>/*.json` (ephemeral), `/persist/status/...` (persistent).
+- Memory analysis docs: `docs/MEMORY-SETTINGS.md`, `docs/INTERNAL-MEMORY-MONITOR.md`, `pkg/memory-monitor/`. Config knob reference: `docs/CONFIG-PROPERTIES.md` (e.g. `debug.enable.ssh`, `memory.apps.ignore.check`, `memory.eve.limit.MiB`).
+- Fault injection: `docs/FAULT-INJECTION.md`. QEMU crash debugging: `docs/QEMU-CRASH-DEBUGGING.md`.
+
 ## Pillar architecture (the part you'll touch most)
 
 `pkg/pillar` is a Go monolith that contains ~34 microservices ("agents") in `pkg/pillar/cmd/`. They are all linked into a single binary, **`zedbox`**, and dispatched via symlinks (BusyBox-style). To add an agent you must register its `types.AgentRunner` in the `entrypoints` map in `pkg/pillar/zedbox/zedbox.go`. The per-agent design pattern is documented in `pkg/pillar/cmd/README.md`.
@@ -156,7 +165,7 @@ Pillar vendors deps (`go mod vendor`). **Do not** use `replace` directives point
 - `build-tools/` — vendored linuxkit + cross-compilers; `make build-tools` populates `build-tools/bin/`.
 - `tools/` — shell/Python helper scripts referenced by Makefile targets.
 - `conf/` — default config partition contents.
-- `docs/` — design and operational docs. Start with `docs/BUILD.md`, `docs/MICROSERVICE-CLASSIFICATION.md`, `docs/HYPERVISORS.md`, `docs/NETWORKING.md`, `docs/DEBUGGING.md`, `docs/EVE-K.md`, `docs/LPS.md`, plus per-agent docs under `pkg/pillar/docs/`.
+- `docs/` — design and operational docs. Start with `docs/BUILD.md`, `docs/MICROSERVICE-CLASSIFICATION.md`, `docs/HYPERVISORS.md`, `docs/NETWORKING.md`, `docs/DEBUGGING.md`, `docs/EVE-K.md`, `docs/LPS.md`, plus per-agent docs under `pkg/pillar/docs/`. Also useful: `docs/CONFIG-PROPERTIES.md` (all config knobs), `docs/MEMORY-SETTINGS.md`, `docs/INTERNAL-MEMORY-MONITOR.md`, `docs/FAULT-INJECTION.md`, `docs/QEMU-CRASH-DEBUGGING.md`.
 - `tests/` — coverage, Eden harness pointers, tpm tests, semgrep rules.
 - `eve-tools/` — auxiliary CLI tools (e.g. `bpftrace-compiler`).
 - `kernel-commits.mk` / `kernel-version.mk` — kernel branch/commit pins per arch; coordinate kernel changes across all active `eve-kernel-*` branches (see `CONTRIBUTING.md` "Kernel development" and `tools/update_kernel_commits.py`).
@@ -167,6 +176,8 @@ From `CONTRIBUTING.md` / `.github/pull_request_template.md`:
 
 - Commits **must** be DCO-signed: use `git commit -s` so a `Signed-off-by` trailer is appended. PRs without this are rejected.
 - Rebase, don't merge, when updating against master. Squash to logical units (typically one commit per PR).
+- When fixing a batch of independent findings (e.g. from an audit), make one commit per logical fix rather than one big commit.
+- When generating code, avoid excessive comments inside function bodies. In-function comments should be as summarized as possible — comment only non-obvious constraints or tricky logic, never narrate what each line does.
 - Backport PRs follow a specific title format `[<stable-branch>] Original title`, with a body line `Backport of #<original-PR-number>` and `git cherry-pick -x` to preserve the source SHA.
 - `mini-yetus` is the cheap pre-push check; full `make yetus` mirrors CI but is slow.
 - Any changes on vendor files should always be committed on a dedicated commit. For eve-api, eve-libs, edge-containers and pillar there are specific make targets to automate bumping versions:
