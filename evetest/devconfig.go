@@ -1047,6 +1047,10 @@ func (config ApplicationInstanceConfig) toProto(th *TestHarness, devName string,
 					Id: aclID,
 				})
 			}
+			interfaceOrder := uint32(i)
+			if adapter.InterfaceOrder != nil {
+				interfaceOrder = *adapter.InterfaceOrder
+			}
 			appInstConfig.Interfaces = append(appInstConfig.Interfaces,
 				&eveconfig.NetworkAdapter{
 					Name:           adapter.LogicalLabel,
@@ -1055,7 +1059,7 @@ func (config ApplicationInstanceConfig) toProto(th *TestHarness, devName string,
 					MacAddress:     adapter.MAC.String(),
 					Acls:           acls,
 					AccessVlanId:   uint32(adapter.AccessVLAN),
-					InterfaceOrder: uint32(i),
+					InterfaceOrder: interfaceOrder,
 				})
 		}
 	}
@@ -1397,6 +1401,7 @@ type VirtualNetworkAdapter struct {
 	AccessVLAN          uint16
 	PortFwdRules        []PortFwdRule
 	ACLAllowRules       []ACLAllowRule
+	InterfaceOrder      *uint32
 }
 
 func (VirtualNetworkAdapter) isAppNetworkAdapter() {}
