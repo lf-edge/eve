@@ -255,6 +255,17 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	log.Functionf("processed Vault Status")
 
+	// On EVE-k, user containerd is started by pkg/kube cluster-init.sh, which
+	// blocks until the Longhorn disk dir (/persist/vault/volumes) exists -- and
+	// that dir is created by initializeDirs(). So it must be created before
+	// WaitForUserContainerd below, otherwise volumemgr waits for containerd
+	// while cluster-init waits for the dir (deadlock). The vault is unsealed at
+	// this point, so MkdirAll under it is safe; the later call in the
+	// persistType switch is idempotent and becomes a no-op.
+	if ctx.hvTypeKube {
+		initializeDirs()
+	}
+
 	if err := containerd.WaitForUserContainerd(ps, log, agentName, warningTime, errorTime); err != nil {
 		log.Fatal(err)
 	}

@@ -166,6 +166,18 @@ wait_for_vault() {
         logmsg "Vault ready"
 }
 
+# Longhorn is told to use LONGHORN_DISK_PATH as its default disk but only stats
+# it, never creating it; pillar's volumemgr creates it once the vault is
+# unsealed. Block here so we never install/annotate Longhorn against a missing
+# path, which would leave its disk unschedulable.
+wait_for_longhorn_disk_path() {
+        logmsg "Starting wait for Longhorn disk path ${LONGHORN_DISK_PATH}"
+        while [ ! -d "$LONGHORN_DISK_PATH" ]; do
+                sleep 1
+        done
+        logmsg "Longhorn disk path ${LONGHORN_DISK_PATH} ready"
+}
+
 mount_kube_root() {
         persistType=$(cat /run/eve.persist_type)
         if [ "$persistType" = "zfs" ]; then
@@ -217,6 +229,7 @@ setup_prereqs () {
         wait_for_device_name
         chmod o+rw /dev/null
         wait_for_vault
+        wait_for_longhorn_disk_path
         migrate_var_lib
         mount_kube_root
         # We need /var/lib to be mounted before we go for network connection check.
