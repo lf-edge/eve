@@ -161,6 +161,12 @@ type zedkube struct {
 	// window is live, preventing a false-positive delete of a new VMI that is
 	// legitimately Pending during failover start-up.
 	vmiFailoverSuppressUntil map[string]time.Time
+	// Stuck-volume-mount detector state (node-scoped). stuckMountRecoverCount
+	// counts recovery attempts within the current wedge episode (reset when a
+	// tick observes no wedged pod); stuckMountSuppressUntil is the cooldown
+	// after an attempt so the detector cannot thrash a kubelet restart.
+	stuckMountRecoverCount  int
+	stuckMountSuppressUntil time.Time
 	// lbConfigError is set by resolveLBInterfaces when an LB CIDR from the
 	// controller overlaps with a management port IP. When set, the offending
 	// entry is omitted from EdgeNodeClusterStatus.LBInterfaces and the error
@@ -709,9 +715,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatalf("zedkube: initKubePrefixes %v", err)
 	}
 	// Three separate periodic timers replace the former single appLogTimer.
-	// Each branch runs at most two functions with a watchdog touch in between,
-	// so no single select case can block longer than ~2*kubeAPITimeout (60s) —
-	// well within errorTime (3 min) and safely bracketed by StillRunning calls.
+	// Each branch touches the watchdog between its blocking calls, so no
+	// stretch between two StillRunning calls covers more than two of them and
+	// cannot exceed ~2*kubeAPITimeout (60s) — well within errorTime (3 min).
 	appLogTimer := time.NewTimer(logcollectInterval * time.Second)
 	appStatusTimer := time.NewTimer(logcollectInterval * time.Second)
 	kubeStatsTimer := time.NewTimer(kubeStatsInterval * time.Second)
@@ -744,11 +750,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			appLogTimer = time.NewTimer(logcollectInterval * time.Second)
 
 		// Timer 2: failover detection and per-app cluster status.
-		// zedkubeWdUpdate between the two calls resets the watchdog budget
-		// so each function gets its own kubeAPITimeout window.
+		// zedkubeWdUpdate between the calls resets the watchdog budget so each
+		// function gets its own kubeAPITimeout window. checkStuckVolumeMount
+		// needs its own because a recovery attempt adds the supervisor-socket
+		// handshake on top of its pod LIST.
 		case <-appStatusTimer.C:
 			zedkubeCtx.checkAppsFailover(zedkubeWdUpdate)
 			zedkubeCtx.checkStuckPendingVMI()
+			zedkubeWdUpdate()
+			zedkubeCtx.checkStuckVolumeMount()
 			zedkubeWdUpdate()
 			zedkubeCtx.checkAppsStatus()
 			zedkubeCtx.reconcileVMIRSAffinity(zedkubeWdUpdate)
