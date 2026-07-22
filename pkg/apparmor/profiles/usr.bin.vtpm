@@ -20,6 +20,11 @@ profile vtpm /usr/bin/vtpm {
     /dev/tpm0                       rw,
     /dev/tpmrm0                     rw,
 
+    # etpm.IsTpmEnabled() stats these to detect TPM-backed identity, which
+    # gates SHA256 PCR bank detection and the sealed disk-key path.
+    /config/device.cert.pem         r,
+    /config/device.key.pem          r,
+
     # allow executing swtpm
     /usr/bin/swtpm                  Px,
 
