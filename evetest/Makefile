@@ -13,6 +13,13 @@ EVETEST_ADAM_REPO ?= lfedge/adam
 # Repository holding built EVE images (mirrors constants.DefaultEVERepo).
 EVETEST_EVE_REPO ?= lfedge/eve
 
+# linuxkit comes from the EVE repo's build tools, exactly as in the top-level
+# Makefile (see ../Makefile and ../mk/linuxkit.mk); it is built on demand via
+# the root's "linuxkit" target.
+BUILDTOOLS_BIN := $(abspath $(CURDIR)/../build-tools/bin)
+LINUXKIT := $(BUILDTOOLS_BIN)/linuxkit
+PATH := $(BUILDTOOLS_BIN):$(PATH)
+
 EVETEST_IMAGE := $(EVETEST_ORG)/evetest:$(EVETEST_VERSION)
 EVETEST_API_PORT ?= 50021
 
@@ -392,5 +399,8 @@ install-cli:
 	cd ./cli && go build -ldflags "-X main.version=$(EVETEST_VERSION)" -o $(GOBIN)/evetest
 	@echo "Installed evetest CLI to $(GOBIN)/evetest"
 
-build-sdn-container:
-	@$(MAKE) -C sdn build
+$(LINUXKIT):
+	@$(MAKE) -C $(CURDIR)/.. linuxkit
+
+build-sdn-container: $(LINUXKIT)
+	@$(MAKE) -C sdn LINUXKIT=$(LINUXKIT) build
