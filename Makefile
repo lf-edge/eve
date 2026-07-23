@@ -43,8 +43,20 @@ PROTO_LANGS=go python
 HV=$(HV_DEFAULT)
 # Enable development build (disabled by default)
 DEV=n
-# How large to we want the disk to be in Mb
+# How large to we want the disk to be in Mb.
+#
+# EVE-k (HV=k) runs Longhorn on /persist and refuses to place replicas
+# once the disk drops below its storageMinimalAvailablePercentage (25%)
+# reserve. On the 32 GiB default, /persist ends up small enough that
+# Longhorn's install-time pre-flight check warns and replicas fail to
+# schedule; kube-init documents 64 GiB as the recommended floor. Bump
+# the HV=k default accordingly. Explicit MEDIA_SIZE=... on the command
+# line still wins.
+ifeq ($(HV),k)
+MEDIA_SIZE?=65536
+else
 MEDIA_SIZE?=32768
+endif
 # Image type for final disk images
 IMG_FORMAT=qcow2
 ifdef LIVE_UPDATE
@@ -301,7 +313,7 @@ QEMU_OPTS_NO_DISPLAY=-display none
 QEMU_OPTS_VGA_DISPLAY_amd64=-vga std
 QEMU_OPTS_VGA_DISPLAY_arm64=-device virtio-gpu-pci -usb -device usb-ehci,id=ehci -device usb-kbd,bus=ehci.0
 QEMU_OPTS_VGA_DISPLAY_riscv64=-vga std
-QEMU_OPTS_COMMON= -m $(QEMU_MEMORY) -smp 4  $(QEMU_OPTS_BIOS) \
+QEMU_OPTS_COMMON= -m $(QEMU_MEMORY) -smp 8  $(QEMU_OPTS_BIOS) \
         -pidfile $(QEMU_PID_FILE) \
         -serial mon:stdio      \
         -global ICH9-LPC.noreboot=false -watchdog-action reset \
