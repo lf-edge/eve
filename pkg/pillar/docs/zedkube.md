@@ -15,7 +15,7 @@ WebSocket protocol onto a local TCP port.
 Two independent paths trigger this proxy:
 
 | | **Remote Console** | **Edgeview VNC** |
-|---|---|---|
+| --- | --- | --- |
 | Initiator | zedkube (`runAppVNC`) | edgeview (`setAndStartProxyTCP`) |
 | Trigger | `AppInstanceConfig.RemoteConsole=true` | TCP command `appUUID:4822` |
 | Client | Guacamole (controller UI) | edgeview TCP relay |
@@ -113,6 +113,76 @@ This collection is specific for the kubernetes status and stats. Although EVE ha
 ### Handle Domain Apps Status in domainmgr
 
 When the application is launched and managed in KubeVirt mode, the Kubernetes cluster is provisioned for this application, being a VMI (Virtual Machine Instance) replicaSet object or a Pod replicaSet object. It uses a declarative approach to manage the desired state of the applications. The configurations are saved in the Kubernetes database for the Kubernetes controller to use to ensure the objects eventually achieve the correct state if possible. Any particular VMI/Pod state of a domain may not be in working condition at the time when EVE domainmgr checks. In the domainmgr code running in KubeVirt mode, if it can not contact the Kubernetes API server to query about the application, or if the application itself has not be started yet in the cluster, the kubervirt.go will return the 'Unknown' status back. It will keep a 'Unknown' status starting timestamp per application. If the 'Unknown' status lasts longer then 5 minutes, the status functions in kubevirt.go will return 'Halting' status back to domainmgr. The timestamp will be cleared once it can get the application status from the kubernetes.
+
+## External Boot Image Migration
+
+### Background
+
+A container application in KubeVirt mode runs as a "container shim VMI": a
+`VirtualMachineInstanceReplicaSet` (VMIRS) whose `Firmware.KernelBoot.Container`
+points at the `eve-external-boot-image`, an EVE-bundled image supplying the
+kernel and initrd for the guest. That image is imported into the k3s containerd
+store by `external_boot_image_import` in `pkg/kube/cluster-init.sh` and is never
+pulled from a registry — the pod spec uses `ImagePullPolicy: PullNever`, so the
+tag must already exist locally.
+
+Historically each VMIRS embedded the *versioned* tag
+(`eve-external-boot-image:<eve-version>`, read from `/run/eve-release` at VMIRS
+creation). On a baseOS upgrade this broke: `cluster-init.sh` imports the new
+version and `cleanup_old_external_boot_images` deletes the previous version's
+tag. The VMIRS survives in etcd across the reboot, still referencing the deleted
+tag; `domainmgr`'s `Start()` sees `IsAlreadyExists` and leaves it unchanged. Any
+new virt-launcher pod (restart, failover, or failback) then fails permanently
+with `ErrImageNeverPull`.
+
+### Fix: stable `:latest` tag + one-time migration
+
+The image lifecycle (versioned tags) is decoupled from the VMIRS reference
+(stable tag):
+
+- `cluster-init.sh` tags each imported image as both `:<eve-version>` **and**
+  `:latest` (with `ctr image tag --force`, since `:latest` already exists from
+  the previous version — the image store is persistent under
+  `/persist/vault/containerd`), and excludes `:latest` from cleanup.
+- `hypervisor/kubevirt.go` (`CreateReplicaVMIConfig`) references `:latest`, so
+  newly created VMIRSes never embed a version-specific tag.
+- `zedkube`'s `bootImgMigrator` (`bootimgmigrate.go`) patches VMIRSes created by
+  older EVE that still hold a versioned tag.
+
+### `bootImgMigrator` state machine
+
+Driven once per `kubeCfgTimer` tick (60s) from the zedkube event loop until it
+reaches `Done`, after which the loop skips it (`isDone()`).
+
+| State | Behaviour |
+| --- | --- |
+| `WaitReady` | Poll — independently, in any order — until `eve-external-boot-image:latest` is present in k3s containerd **and** the KubeVirt CR reports `Available`. Also requires `nodeName` (from `EdgeNodeInfo`) to be known; advancing with an empty `nodeName` would skip every VMIRS. Each condition is cached once true. |
+| `Migrate` | List VMIRSes and patch (JSON merge patch) those whose `kubernetes.io/hostname` node affinity matches this node and whose boot image is still a versioned tag, setting it to `:latest`. Retried on any failure. |
+| `Done` | Terminal; nothing left to do. |
+
+Once both readiness conditions are met, `step()` collapses
+`WaitReady → Migrate → Done` within a single tick rather than one transition per
+tick, to minimise the race window described below.
+
+### Node scoping and the descheduler race
+
+The migration is scoped to VMIRSes whose affinity names the local node. The
+affinity encodes the app's *designated node* (see [failover.md](failover.md)),
+and the descheduler only pulls an app back to its designated node — so the node
+running this migrator is exactly the node onto which its matching VMIRSes will be
+(re)scheduled, and the node that holds the freshly imported `:latest`. Patching
+another node's VMIRS would be unsafe mid-upgrade, since that node may not yet
+have imported `:latest`.
+
+This migration races the descheduler. In a rolling upgrade the just-upgraded
+designated node can evict an app from a surviving node and reschedule it here
+before the VMIRS is patched; the new pod then hits `ErrImageNeverPull`. This
+self-heals: `checkStuckPendingVMI` (`pendingvmi.go`) force-deletes the stuck
+`Pending` VMI, and the ReplicaSet recreates it from the template — which the
+migrator patches to `:latest` within the same window. Collapsing the state
+transitions keeps that window short. Note `ErrImageNeverPull` is not in
+`podHasContainerError`'s reason set; the stuck pod is caught only by the
+`PodPending`-phase branch of `virtLauncherPodIsActiveOnNode`.
 
 ## Kubernetes Node Draining
 
