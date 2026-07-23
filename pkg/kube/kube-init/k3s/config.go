@@ -516,7 +516,7 @@ func waitForBootstrapServer(ctx context.Context, apiURL, statusURL, expectedClus
 				attempt, apiURL, cls, getErr)
 			return false, nil
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		// 2. Status endpoint reachable + reporting cluster UUID?
 		statusBody, statusErr := fetchClusterStatus(httpClient, statusURL)
@@ -592,7 +592,7 @@ func fetchClusterStatus(c *http.Client, statusURL string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode/100 != 2 {
 		return "", fmt.Errorf("status endpoint returned HTTP %d", resp.StatusCode)
 	}

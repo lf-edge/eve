@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lf-edge/eve/pkg/kube/kube-init/edgenodeinfo"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kcus"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -97,15 +96,3 @@ func appliedVersionGEQ(applied string, target int) bool {
 	return n >= target
 }
 
-// readDeviceK8sName returns the device name normalised to a
-// Kubernetes-compatible DNS label, or "" when unavailable. The
-// name comes from the EdgeNodeInfo subscription cache; an empty
-// return means the subscription hasn't delivered yet (very early
-// boot) or was deleted.
-func readDeviceK8sName() string {
-	name := edgenodeinfo.DeviceName()
-	if name == "" {
-		return ""
-	}
-	return state.ToK8sName(name)
-}

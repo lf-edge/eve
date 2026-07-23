@@ -42,7 +42,7 @@ func main() {
 			socketPath, err)
 		os.Exit(1)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	if _, err := fmt.Fprintln(conn, cmd); err != nil {
 		fmt.Fprintf(os.Stderr, "k3s-sctl: write %s: %v\n", socketPath, err)

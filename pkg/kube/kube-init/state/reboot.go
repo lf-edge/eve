@@ -121,11 +121,11 @@ func writeFirstBootReason(path string) error {
 	case err == nil:
 		// We are the first writer.
 		if _, werr := f.WriteString(BootReasonKubeTransition); werr != nil {
-			f.Close()
+			_ = f.Close()
 			return fmt.Errorf("write boot reason to %s: %w", path, werr)
 		}
 		if serr := f.Sync(); serr != nil {
-			f.Close()
+			_ = f.Close()
 			return fmt.Errorf("sync boot reason file %s: %w", path, serr)
 		}
 		if cerr := f.Close(); cerr != nil {
@@ -158,11 +158,11 @@ func appendRebootReason(path, reason string) error {
 		time.Now().Format("2006-01-02 15:04:05"),
 		BootReasonKubeTransition, reason)
 	if _, err := f.WriteString(line); err != nil {
-		f.Close()
+		_ = f.Close()
 		return fmt.Errorf("write reboot reason to %s: %w", path, err)
 	}
 	if err := f.Sync(); err != nil {
-		f.Close()
+		_ = f.Close()
 		return fmt.Errorf("sync reboot reason file %s: %w", path, err)
 	}
 	if err := f.Close(); err != nil {

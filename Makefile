@@ -301,7 +301,7 @@ QEMU_OPTS_NO_DISPLAY=-display none
 QEMU_OPTS_VGA_DISPLAY_amd64=-vga std
 QEMU_OPTS_VGA_DISPLAY_arm64=-device virtio-gpu-pci -usb -device usb-ehci,id=ehci -device usb-kbd,bus=ehci.0
 QEMU_OPTS_VGA_DISPLAY_riscv64=-vga std
-QEMU_OPTS_COMMON= -m $(QEMU_MEMORY) -smp 4  $(QEMU_OPTS_BIOS) \
+QEMU_OPTS_COMMON= -m $(QEMU_MEMORY) -smp 8  $(QEMU_OPTS_BIOS) \
         -pidfile $(QEMU_PID_FILE) \
         -serial mon:stdio      \
         -global ICH9-LPC.noreboot=false -watchdog-action reset \

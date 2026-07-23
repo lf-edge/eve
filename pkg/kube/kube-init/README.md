@@ -49,6 +49,7 @@ which wraps `k3s kubectl` / `k3s ctr` / `crictl`.
 | `kcus` | Subscription to `KubeClusterUpdateStatus` (upgrade retry gating). |
 | `encconfig` | Subscription to `EdgeNodeClusterConfig` (cluster shape, tie-breaker UUID). |
 | `encstatus` | Subscription to `EdgeNodeClusterStatus` (bootstrap server, cluster UUID). |
+| `kubeinitstatus` | Self-published topic: kube-init's own lifecycle phase (currently `AllComponentsInitialized`). Used by the cluster-config monitor to wake event-driven instead of polling state markers. |
 | `kubectlx` | Thin wrappers around `k3s kubectl` / `k3s ctr` / `crictl`. |
 
 ## Pubsub migration status
@@ -97,27 +98,7 @@ carries the data).
   so the 1 s poll cost is essentially nil; this is a "for purity"
   fix rather than a performance one.
 
-### 2. Make `monitor.ClusterConfig` push-based end-to-end
-
-The cluster-config monitor still runs on `clusterPollInterval` (5 s)
-because its decision mixes the `EdgeNodeClusterStatus` subscription
-(now push-based) with two kube-init-internal markers
-(`AllComponentsInitialized`, `EdgeNodeClusterMode`) and a periodic
-`CheckClusterTransitionDone` retry.
-
-To make it fully push-driven:
-
-- Convert the markers to in-process channel signals — the write site
-  (`state.Mark` callers) notifies subscribed handlers. No filesystem
-  polling needed for marker reads.
-- Keep a small ticker just for `CheckClusterTransitionDone` (which
-  genuinely needs cadence — it polls kubectl for Ready node count).
-- The ENC-status part becomes a `pubsub.SubscriptionOptions.ModifyHandler`
-  on `encstatus` that fires `restartCh` directly.
-
-This is a kube-init-internal refactor — no pillar work.
-
-### 3. Drop the bootstrap-probe `InsecureSkipVerify`
+### 2. Drop the bootstrap-probe `InsecureSkipVerify`
 
 `k3s.waitForBootstrapServer` dials the bootstrap node's self-signed
 cert with TLS verification disabled (documented + CodeQL-suppressed
@@ -132,7 +113,7 @@ fingerprint of the bootstrap node's k3s server cert in
 `EdgeNodeClusterStatus`. Substantial pillar work; deferred until
 someone wants to push hard on the audit finding.
 
-### 4. Subscribe instead of file-watch for `eve-release`
+### 3. Subscribe instead of file-watch for `eve-release`
 
 If the eve-release file gets a pubsub topic (see item 1), the
 `waitForFile` + `os.ReadFile` in `prereqs.RunAll` becomes a
@@ -140,7 +121,7 @@ If the eve-release file gets a pubsub topic (see item 1), the
 of `edgenodeinfo.WaitForFirst`. The shared `pubsubclient.Manager`
 makes adding the wiring a single-Register call.
 
-### 5. Push-ify the user-override apply loop
+### 4. Push-ify the user-override apply loop
 
 `monitor.UserOverridesLoop` polls `UserOverrideSrc` at
 `overridePollInterval`. If item 1 lands, that file becomes a
@@ -148,7 +129,7 @@ subscription and the loop becomes a `ModifyHandler` that fires the
 restart channel directly — same shape as the proposed
 `monitor.ClusterConfig` cleanup.
 
-### 6. Consolidate the `*JSON` test seeding patterns
+### 5. Consolidate the `*JSON` test seeding patterns
 
 The current encconfig/encstatus/kubeconfig/kcus/edgenodeinfo packages
 each export their own `SetForTest`/`ResetForTest` helpers. The
@@ -159,7 +140,7 @@ real subscription's CreateHandler via reflection, removing the
 per-package boilerplate. Low priority — the current pattern works
 and stays out of production code.
 
-### 7. CI drift check for the pillar pseudo-version
+### 6. CI drift check for the pillar pseudo-version
 
 `go.mod` pins `github.com/lf-edge/eve/pkg/pillar` at a specific
 upstream commit. When pillar's published types change, kube-init's
@@ -173,7 +154,7 @@ specifically — repo-wide concern.
 
 The kube-init Go module is self-contained:
 
-```
+```sh
 cd pkg/kube/kube-init
 go build ./...
 go test ./...

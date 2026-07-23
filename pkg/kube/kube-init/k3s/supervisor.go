@@ -290,7 +290,7 @@ func (s *Supervisor) startK3s() error {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	if err := cmd.Start(); err != nil {
-		lf.Close()
+		_ = lf.Close()
 		return fmt.Errorf("start k3s: %w", err)
 	}
 

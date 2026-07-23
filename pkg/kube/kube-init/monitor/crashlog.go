@@ -99,7 +99,7 @@ func gzipLastRestartPart(srcFile, dstFile string) (retErr error) {
 	if err != nil {
 		return fmt.Errorf("open source %s: %w", srcFile, err)
 	}
-	defer sf.Close()
+	defer func() { _ = sf.Close() }()
 
 	searchString := "Starting k3s " + k3s.K3sVersion
 

@@ -242,7 +242,7 @@ func hasDefaultRoute() bool {
 	if err != nil {
 		return false
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	return scanForDefaultRoute(f)
 }
 
@@ -273,7 +273,7 @@ func isMounted(mountpoint string) bool {
 	if err != nil {
 		return false
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	return scanForMountpoint(f, mountpoint)
 }
 
@@ -344,7 +344,7 @@ func copyFile(src, dst string) (retErr error) {
 	if err != nil {
 		return fmt.Errorf("open %s: %w", src, err)
 	}
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 	info, err := in.Stat()
 	if err != nil {
 		return fmt.Errorf("stat %s: %w", src, err)
@@ -623,7 +623,7 @@ func SetupCgroup() error {
 	if err != nil {
 		return fmt.Errorf("open %s for append: %w", fstabPath, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	if _, err := fmt.Fprintln(f, cgroupEntry); err != nil {
 		return fmt.Errorf("write cgroup entry: %w", err)
 	}
@@ -823,7 +823,7 @@ func StartContainerd(ctx context.Context) error {
 	cmd.Env = append(os.Environ(), mgmtproxy.Env(clusterIP, prefixLen)...)
 
 	if err := cmd.Start(); err != nil {
-		logFile.Close()
+		_ = logFile.Close()
 		return fmt.Errorf("start containerd: %w", err)
 	}
 	log.Printf("started user containerd (PID %d)", cmd.Process.Pid)
@@ -841,7 +841,14 @@ func StartContainerd(ctx context.Context) error {
 	// its own fd on the log file.
 	go func() {
 		_ = cmd.Wait()
-		logFile.Close()
+		// A failed close here means we just leaked an fd on
+		// containerd's old log. Operationally non-fatal — the
+		// caller treats containerd exit as a restart trigger —
+		// but worth surfacing because repeated leaks would
+		// eventually exhaust the daemon's fd table.
+		if err := logFile.Close(); err != nil {
+			log.Printf("WARNING: close containerd log: %v", err)
+		}
 	}()
 	return waitForContainerdSock(ctx)
 }

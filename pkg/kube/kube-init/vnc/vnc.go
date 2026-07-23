@@ -116,7 +116,7 @@ func (m *Manager) clearRunningLocked() {
 	m.virtctlCmd = nil
 	m.exitCh = nil
 	if m.logFile != nil {
-		m.logFile.Close()
+		_ = m.logFile.Close()
 		m.logFile = nil
 	}
 }
@@ -188,7 +188,7 @@ func (m *Manager) startVirtctl(cfg *vncConfig) error {
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	if err := cmd.Start(); err != nil {
-		logFile.Close()
+		_ = logFile.Close()
 		return fmt.Errorf("start virtctl: %w", err)
 	}
 
@@ -203,7 +203,7 @@ func (m *Manager) startVirtctl(cfg *vncConfig) error {
 	for time.Now().Before(deadline) {
 		select {
 		case <-exitCh:
-			logFile.Close()
+			_ = logFile.Close()
 			return fmt.Errorf("virtctl exited before port was ready")
 		case <-tick.C:
 			if portListening(cfg.VNCPort) {
@@ -223,7 +223,7 @@ func (m *Manager) startVirtctl(cfg *vncConfig) error {
 	// Port never came up — kill and reap.
 	_ = cmd.Process.Kill()
 	<-exitCh
-	logFile.Close()
+	_ = logFile.Close()
 	return fmt.Errorf("port %d not listening after %v", cfg.VNCPort, portWaitTimeout)
 }
 
@@ -281,7 +281,7 @@ func portListening(port int) bool {
 	if err != nil {
 		return false
 	}
-	conn.Close()
+	_ = conn.Close()
 	return true
 }
 

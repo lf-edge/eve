@@ -103,7 +103,7 @@ func TestPrepareRebootAppendsReasonsAcrossCalls(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open reboot reason: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var captured []string
 	scanner := bufio.NewScanner(f)

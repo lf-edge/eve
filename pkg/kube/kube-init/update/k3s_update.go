@@ -191,7 +191,7 @@ func updateK3s(ctx context.Context, dstVersion string) error {
 	if err := curlDownload(ctx, hashURL, hashFile); err != nil {
 		return fmt.Errorf("download k3s hash: %w", err)
 	}
-	defer os.Remove(hashFile)
+	defer func() { _ = os.Remove(hashFile) }()
 
 	expectedHash, err := parseHashFile(hashFile, "k3s"+binSuffix)
 	if err != nil {
@@ -205,7 +205,7 @@ func updateK3s(ctx context.Context, dstVersion string) error {
 	if err := curlDownload(ctx, binURL, tmpBin); err != nil {
 		return fmt.Errorf("download k3s binary: %w", err)
 	}
-	defer os.Remove(tmpBin)
+	defer func() { _ = os.Remove(tmpBin) }()
 
 	log.Printf("update: verifying binary hash")
 	actualHash, err := sha256File(tmpBin)
@@ -235,7 +235,7 @@ func curlDownload(ctx context.Context, url, dst string) error {
 	cmd := exec.CommandContext(ctx, "curl", "-sfL", "-o", dst, url)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		os.Remove(dst)
+		_ = os.Remove(dst)
 		return fmt.Errorf("curl %s: %w (output: %s)",
 			url, err, truncateForLog(string(out), 4096))
 	}
@@ -300,7 +300,7 @@ func sha256File(path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("open %s: %w", path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
 		return "", fmt.Errorf("read %s: %w", path, err)
@@ -318,7 +318,7 @@ func installBinaryDurable(src, dst string, perm os.FileMode) error {
 	if err != nil {
 		return fmt.Errorf("open src %s: %w", src, err)
 	}
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 
 	dir := filepath.Dir(dst)
 	tmp, err := os.CreateTemp(dir, ".k3s-install-*")
@@ -329,17 +329,17 @@ func installBinaryDurable(src, dst string, perm os.FileMode) error {
 	cleanupTmp := func() { _ = os.Remove(tmpName) }
 
 	if _, err := io.Copy(tmp, in); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		cleanupTmp()
 		return fmt.Errorf("copy to %s: %w", tmpName, err)
 	}
 	if err := tmp.Chmod(perm); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		cleanupTmp()
 		return fmt.Errorf("chmod %s: %w", tmpName, err)
 	}
 	if err := tmp.Sync(); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		cleanupTmp()
 		return fmt.Errorf("fsync %s: %w", tmpName, err)
 	}

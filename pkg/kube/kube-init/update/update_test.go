@@ -244,6 +244,4 @@ func TestK3sArchSuffixOnlyAcceptsKnownArches(t *testing.T) {
 	}
 }
 
-func ptr(s string) *string { return &s }
-
 func contains(s, sub string) bool { return strings.Contains(s, sub) }

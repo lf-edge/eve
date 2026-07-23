@@ -149,7 +149,7 @@ RUN chmod +x /usr/bin/k3s-control /usr/bin/k3s-sctl && \
     ln -s /usr/bin/k3s-control /usr/bin/k3s-start && \
     ln -s /usr/bin/k3s-control /usr/bin/k3s-status
 
-ENV VIRTCTL_VERSION v1.7.3
+ENV VIRTCTL_VERSION=v1.7.3
 ADD https://github.com/kubevirt/kubevirt/releases/download/${VIRTCTL_VERSION}/virtctl-${VIRTCTL_VERSION}-linux-${TARGETARCH} .
 
 RUN install virtctl-${VIRTCTL_VERSION}-linux-${TARGETARCH} /usr/bin/virtctl

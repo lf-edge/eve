@@ -1584,7 +1584,7 @@ func (d *daemon) listenSocket(ctx context.Context) {
 		// rather than running headless.
 		log.Fatalf("listen on %s: %v", socketPath, err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	// World-writable so any in-container process can talk to it.
 	if err := os.Chmod(socketPath, 0666); err != nil {
@@ -1595,7 +1595,7 @@ func (d *daemon) listenSocket(ctx context.Context) {
 
 	go func() {
 		<-ctx.Done()
-		listener.Close()
+		_ = listener.Close()
 	}()
 
 	for {
@@ -1612,8 +1612,15 @@ func (d *daemon) listenSocket(ctx context.Context) {
 }
 
 func (d *daemon) handleSocketConn(conn net.Conn) {
-	defer conn.Close()
-	conn.SetDeadline(time.Now().Add(5 * time.Second))
+	defer func() { _ = conn.Close() }()
+	// SetDeadline on a freshly-Accepted connection only fails if
+	// the conn is already closed (race with shutdown). In that
+	// case there is no work to do; bail out before trying to read
+	// from a doomed conn.
+	if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		log.Printf("control socket: SetDeadline: %v", err)
+		return
+	}
 
 	scanner := bufio.NewScanner(conn)
 	if !scanner.Scan() {
@@ -1641,7 +1648,7 @@ func (d *daemon) handleSocketConn(conn net.Conn) {
 		_, _ = conn.Write([]byte("OK: stopping\n"))
 
 	default:
-		_, _ = conn.Write([]byte(fmt.Sprintf("ERR: unknown command: %s\n", cmd)))
+		_, _ = fmt.Fprintf(conn, "ERR: unknown command: %s\n", cmd)
 	}
 }
 

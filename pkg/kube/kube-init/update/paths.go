@@ -24,14 +24,6 @@ var (
 	// that update-component reads.
 	versionsFile = "/etc/expected_versions.yaml"
 
-	// deschedulerJobYAML is the descheduler job manifest.
-	deschedulerJobYAML = "/etc/descheduler-job.yaml"
-
-	// deschedulerBootMarker prevents re-running the descheduler
-	// job more than once per boot. /tmp clears on every boot so
-	// the marker is naturally scoped to this boot cycle.
-	deschedulerBootMarker = "/tmp/descheduler-ran-onboot"
-
 	// pillarRootfs is where the pillar container's rootfs is
 	// mounted into the host namespace. The zedkube binary used to
 	// publish update status lives inside it and depends on shared
