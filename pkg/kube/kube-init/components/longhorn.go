@@ -85,13 +85,45 @@ func LonghornIsReady(ctx context.Context) (bool, error) {
 		}
 		return false, nil
 	}
-	if !longhornEngineDeployedOnNode(ctx, nodeName) {
+	// Tie-breaker nodes carry Schedulable=False by design; the
+	// engine image is never deployed there. Gate the deployment
+	// check on Schedulable=True so tie-breakers stop emitting the
+	// per-tick "engine not deployed" log without special-casing
+	// the node role here. Redoes intent from upstream 679a3ac7c.
+	sched, err := longhornNodeSchedulable(nodeName)
+	if err != nil {
+		log.Printf("warning: read longhorn node %s Schedulable: %v", nodeName, err)
+		return false, nil
+	}
+	switch sched {
+	case "True":
+		if !longhornEngineDeployedOnNode(ctx, nodeName) {
+			return false, nil
+		}
+	case "False":
+		// Tie-breaker path: scheduling disabled, no engine expected.
+	default:
+		log.Printf("longhorn node %s: Schedulable=%q (expected True/False), not ready yet",
+			nodeName, sched)
 		return false, nil
 	}
 	longhornReadyOnce.Do(func() {
 		log.Printf("Longhorn is ready on node %s", nodeName)
 	})
 	return true, nil
+}
+
+// longhornNodeSchedulable reads the Longhorn node's Schedulable
+// condition status. Returns "True", "False", or the raw value
+// (including empty string when the condition is not yet present).
+func longhornNodeSchedulable(nodeName string) (string, error) {
+	out, err := kubectl("get", "nodes.longhorn.io", nodeName,
+		"-n", longhornNamespace,
+		"-o", `jsonpath={.status.conditions[?(@.type=="Schedulable")].status}`)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
 }
 
 // engineImageList captures just the fields longhornEngineDeployedOnNode
