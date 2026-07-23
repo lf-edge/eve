@@ -85,7 +85,13 @@ var (
 // kernelModules lists modules to modprobe at startup. Individual
 // failures are logged but not fatal — some modules may not exist on
 // every platform variant.
-var kernelModules = []string{"tun", "vhost_net", "fuse", "iscsi_tcp"}
+//
+// dm_crypt is required by Longhorn 1.9.1+ for encrypted volumes; the
+// KernelModulesLoaded node condition stays False without it. The
+// module is built (CONFIG_DM_CRYPT=m) and shipped under
+// /lib/modules/…/kernel/drivers/md/dm-crypt.ko.xz on the EVE image —
+// it just needs to be loaded here.
+var kernelModules = []string{"tun", "vhost_net", "fuse", "iscsi_tcp", "dm_crypt"}
 
 // uuidRegexp validates an RFC-4122 UUID string (lowercase or upper).
 var uuidRegexp = regexp.MustCompile(
