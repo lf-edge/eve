@@ -108,8 +108,18 @@ const cdiImportProxyNoProxy = "10.42.0.0/16,10.43.0.0/16,127.0.0.0/8," +
 // steady-state tick — that's how we recover if an upgrade resets
 // the CDI CR.
 //
-// Mirrors patch_cdi_proxy_config() from upstream commit 7ec6f2a64.
+// Mirrors patch_cdi_proxy_config() from upstream commits 7ec6f2a64
+// and c3225bd45 (the "skip when config already matches" guard).
 func PatchCDIProxyConfig(ctx context.Context) error {
+	// Skip (and stay silent) when the CDI CR already carries the
+	// desired importProxy config. This runs every steady-state tick
+	// for upgrade/reset recovery; patching unconditionally would
+	// spam k3s-install.log and issue a pointless kubectl patch each
+	// iteration. Fall through on any query error — the patch is
+	// itself idempotent, so worst case we do one unneeded write.
+	if cdiProxyConfigMatches(ctx, CNI0URL, cdiImportProxyNoProxy) {
+		return nil
+	}
 	patch := buildCDIProxyPatch(CNI0URL, cdiImportProxyNoProxy)
 	cmd := kubectlx.CmdContext(ctx, "patch", "cdi", "cdi",
 		"--type", "merge", "-p", patch)
@@ -118,6 +128,35 @@ func PatchCDIProxyConfig(ctx context.Context) error {
 			err, strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+// cdiProxyConfigMatches reports whether the CDI CR's importProxy
+// spec already equals the desired (httpsProxy, noProxy) pair. Any
+// kubectl error is treated as "not matching" so the caller falls
+// through to the (idempotent) patch attempt.
+func cdiProxyConfigMatches(ctx context.Context, httpsProxy, noProxy string) bool {
+	cur, err := cdiProxyGet(ctx, "{.spec.config.importProxy.HTTPSProxy}")
+	if err != nil || cur != httpsProxy {
+		return false
+	}
+	cur, err = cdiProxyGet(ctx, "{.spec.config.importProxy.noProxy}")
+	if err != nil || cur != noProxy {
+		return false
+	}
+	return true
+}
+
+// cdiProxyGet reads a single jsonpath from the CDI CR. Empty
+// string with nil error is possible when the field is unset; the
+// caller treats that as a mismatch.
+func cdiProxyGet(ctx context.Context, jsonpath string) (string, error) {
+	cmd := kubectlx.CmdContext(ctx, "get", "cdi", "cdi",
+		"-o", "jsonpath="+jsonpath)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 // buildCDIProxyPatch returns the merge-patch JSON for the CDI CR's
