@@ -419,3 +419,53 @@ func TestDatastoreSuite(test *testing.T) {
 		},
 	)
 }
+
+// TestPcibackErrorSuite drives every assignable-adapter / PhysicalIO
+// error-reporting scenario: EVE detects an inconsistency in the model
+// (phantom PCI address, self-parent assign-group, USB address collision,
+// interface-name mismatch, cross-group PCI conflict, warning+error bundle)
+// and reports it to the controller with the correct severity, then clears
+// it once the model is fixed. The suite does not parameterize the
+// hypervisor -- no application is deployed, so the hypervisor is hardcoded
+// to KVM like the other Device-suite tests.
+//
+// Every scenario but the last runs on the TwoMgmtPorts model and reuses
+// the same device via ResetDeviceConfig. TestReportWarningsOnly needs the
+// four-port ManyDNSServers model; a differing network model forces the
+// framework to recreate and reonboard the device, so it runs last to incur
+// that cost once rather than twice (switching away and back mid-suite).
+//
+// Subtests
+// --------
+//   - TestReportMissingDevice -- phantom device with a non-existent PCI
+//     address (error).
+//   - TestReportParentAssigngrp -- self-parent assignment group (error).
+//   - TestReportCycleDetected -- parentassigngrp cycle (error).
+//   - TestReportCollision -- USB address collision within a group
+//     (single group-level error).
+//   - TestReportIfnameMismatch -- model interface name disagrees with the
+//     kernel (warning; kept in host and matched by PCI).
+//   - TestReportAssignmentGroupConflict -- device shares an in-use port's
+//     PCI in another group (error).
+//   - TestReportWarningPlusError -- bundle carrying both a warning and a
+//     hard error (reported as error).
+//   - TestReportClearsOnFix -- inconsistency is reported and then clears
+//     once the model is corrected.
+//   - TestReportWarningsOnly -- warnings-only across multiple ports
+//     (four-port model; runs last).
+func TestPcibackErrorSuite(test *testing.T) {
+	evetest.Init(test)
+	defer evetest.Close()
+
+	evetest.RunTestSuite(
+		evetest.TestCase{Test: TestReportMissingDevice},
+		evetest.TestCase{Test: TestReportParentAssigngrp},
+		evetest.TestCase{Test: TestReportCycleDetected},
+		evetest.TestCase{Test: TestReportCollision},
+		evetest.TestCase{Test: TestReportIfnameMismatch},
+		evetest.TestCase{Test: TestReportAssignmentGroupConflict},
+		evetest.TestCase{Test: TestReportWarningPlusError},
+		evetest.TestCase{Test: TestReportClearsOnFix},
+		evetest.TestCase{Test: TestReportWarningsOnly},
+	)
+}
