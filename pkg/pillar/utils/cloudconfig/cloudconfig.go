@@ -74,8 +74,11 @@ func WriteFile(log *base.LogObject, file WritableFile, rootPath string) error {
 	mode := os.FileMode(perm)
 
 	writePath := filepath.Join(rootPath, file.Path)
-	// sanitize path
-	if !strings.HasPrefix(filepath.Clean(writePath), rootPath) {
+	// Reject any write that escapes rootPath. filepath.Rel expresses the
+	// resolved writePath relative to rootPath: a contained path yields a
+	// normal subpath, while an escape yields ".." or a "../"-prefixed result.
+	rel, err := filepath.Rel(rootPath, writePath)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
 		return fmt.Errorf("detected possible attempt to write file outside of root path. invalid path %s", file.Path)
 	}
 
