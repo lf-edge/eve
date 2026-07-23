@@ -214,20 +214,24 @@ func doBaseOsStatusUpdate(ctx *baseOsMgrContext, uuidStr string,
 
 	// Check to avoid upgrading from not-EVE-k (e.g., kvm) to EVE-k
 	// and vice versa since that can result in odd failures due to
-	// different /persist layout etc.
+	// different /persist layout etc. The block only applies when the
+	// device has volume instances — without them there is no
+	// /persist/vault/volumes/ state to disturb.
 	// TBD Remove this if EVE-k in the future can have kvm personality.
+	hasVolumes := len(ctx.subVolumeConfig.GetAll()) > 0 ||
+		len(ctx.subVolumeStatus.GetAll()) > 0
 	isCurrentKube := base.IsHVTypeKube()
 	isUpdateKube, err := base.IsVersionHVTypeKube(config.BaseOsVersion)
 	if err != nil {
 		log.Warnf("doBaseOsStatusUpdate(%s): %s",
 			config.BaseOsVersion, err)
-	} else if isCurrentKube != isUpdateKube {
+	} else if isCurrentKube != isUpdateKube && hasVolumes {
 		var errString string
 		if isUpdateKube {
-			errString = fmt.Sprintf("Upgrade to EVE-k (%s) from non EVE-k (%s) is not supported",
+			errString = fmt.Sprintf("Upgrade to EVE-k (%s) from non EVE-k (%s) is not supported while volumes exist",
 				config.BaseOsVersion, shortVerCurPart)
 		} else {
-			errString = fmt.Sprintf("Upgrade to non EVE-k (%s) from  EVE-k (%s) is not supported",
+			errString = fmt.Sprintf("Upgrade to non EVE-k (%s) from EVE-k (%s) is not supported while volumes exist",
 				config.BaseOsVersion, shortVerCurPart)
 		}
 		log.Error(errString)
@@ -240,6 +244,19 @@ func doBaseOsStatusUpdate(ctx *baseOsMgrContext, uuidStr string,
 	changed = changed || c
 	if !proceed {
 		return changed
+	}
+
+	// A cross-flavor (EVE-kvm <-> EVE-k) update is allowed above only when the
+	// device has no volumes. The image is now downloaded and verified (the
+	// doBaseOsInstall step waited for ContentTreeStatus); before writing it to
+	// the A/B partition, repartition the boot disk to the EVE-k geometry. The
+	// download must precede this because the shrink path reboots into an offline
+	// resize with no network. Block activation until the geometry is ready.
+	if err == nil && isCurrentKube != isUpdateKube {
+		if !maybeConvert(ctx, status) {
+			changed = true
+			return changed
+		}
 	}
 
 	if !config.Activate {
@@ -347,6 +364,11 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 		}
 	}
 
+	if status.Converting &&
+		status.ConvertSubState < types.DEVICE_SUBSTATE_CONVERT_INSTALLING {
+		advanceSubState(status, types.DEVICE_SUBSTATE_CONVERT_INSTALLING)
+		publishBaseOsStatus(ctx, status)
+	}
 	// install the image at proper partition; dd etc
 	changed, proceed, err = installDownloadedObjects(ctx, uuidStr, status.PartitionLabel,
 		status.ContentTreeUUID)
@@ -368,6 +390,10 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 				status.PartitionLabel, false)
 			baseOsSetPartitionInfoInStatus(ctx, status,
 				status.PartitionLabel)
+			// The install was rolled back (partition set unused); abort the
+			// conversion so the device does not stay reported as CONVERTING.
+			status.Converting = false
+			status.ConvertSubState = types.DEVICE_SUBSTATE_UNSPECIFIED
 			publishBaseOsStatus(ctx, status)
 			return changed
 		}
@@ -378,6 +404,12 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 			status.PartitionLabel, false)
 		baseOsSetPartitionInfoInStatus(ctx, status,
 			status.PartitionLabel)
+		// The other partition is now "updating"; nodeagent reboots into it
+		// next. This is the last sub-state the current image reports before
+		// the reboot into the target flavor.
+		if status.Converting {
+			advanceSubState(status, types.DEVICE_SUBSTATE_CONVERT_REBOOTING_TO_TARGET)
+		}
 		publishBaseOsStatus(ctx, status)
 	} else {
 		log.Functionf("Waiting for image to be mounted")
