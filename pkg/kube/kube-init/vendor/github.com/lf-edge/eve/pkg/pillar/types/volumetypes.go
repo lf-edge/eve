@@ -143,6 +143,18 @@ type VolumeStatus struct {
 	// We find that info from NOHYPER flag set in appinstance.
 	IsNativeContainer bool
 
+	// ClusterStorageTransientErr is set when the current volume-create Error came
+	// from the EVE-k cluster storage stack (Longhorn/CDI/k8s API) while it was
+	// still coming up, and is therefore worth retrying once it is ready. Set from
+	// the typed kubeapi verdict when the error is recorded; false on other HVs.
+	ClusterStorageTransientErr bool
+
+	// ClusterStorageRetryCount counts how many times retryFailedClusterVolumeCreate
+	// has re-driven this volume after a transient cluster-storage failure. It bounds
+	// the retry so an un-typeable or misclassified failure cannot loop forever;
+	// reset to 0 when the volume-create succeeds.
+	ClusterStorageRetryCount int
+
 	ErrorAndTimeWithSource
 }
 

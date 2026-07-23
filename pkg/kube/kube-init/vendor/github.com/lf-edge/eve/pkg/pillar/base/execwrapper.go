@@ -79,8 +79,10 @@ func (c *Command) execCommand() ([]byte, error) {
 		return nil, fmt.Errorf("execCommand(%v): error while starting command: %s", c.command.Args, err.Error())
 	}
 
-	// Use a channel to signal completion so we can use a select statement
-	done := make(chan error)
+	// Use a channel to signal completion so we can use a select statement.
+	// Buffered so the Wait() goroutine can always deliver its result and exit,
+	// even if execCommand already returned via the ctx-cancel or timeout branch.
+	done := make(chan error, 1)
 	go func() { done <- c.command.Wait() }()
 	stillRunning := time.NewTicker(25 * time.Second)
 	defer stillRunning.Stop()

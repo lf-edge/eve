@@ -4,11 +4,64 @@
 package types
 
 import (
+	"fmt"
+	"time"
+
 	"github.com/lf-edge/eve-api/go/info"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 )
+
+// VaultUnlockMethod records how a vault was unlocked this boot, so an operator
+// can tell a clean local TPM unseal apart from a controller-key recovery (both
+// of which end with Status enabled).
+type VaultUnlockMethod uint8
+
+const (
+	// VaultUnlockNone means the vault is not (yet) unlocked.
+	VaultUnlockNone VaultUnlockMethod = iota
+	// VaultUnlockTPMLocalSealed means the locally TPM-sealed key unsealed
+	// against the current PCRs, with no controller involvement.
+	VaultUnlockTPMLocalSealed
+	// VaultUnlockControllerKey means the local unseal failed (e.g. a PCR policy
+	// mismatch) and the controller-provided escrowed key was used instead.
+	VaultUnlockControllerKey
+	// VaultUnlockNoTPM means the platform has no TPM; the key is not sealed.
+	VaultUnlockNoTPM
+	// VaultUnlockRecreated means the local unseal failed and the controller had
+	// no escrowed key to return, so the vault was wiped and recreated empty. No
+	// key unlocked the existing vault; its prior contents were lost.
+	VaultUnlockRecreated
+)
+
+// String implements fmt.Stringer.
+func (m VaultUnlockMethod) String() string {
+	switch m {
+	case VaultUnlockTPMLocalSealed:
+		return "tpm-local-sealed"
+	case VaultUnlockControllerKey:
+		return "controller-key"
+	case VaultUnlockNoTPM:
+		return "no-tpm"
+	case VaultUnlockRecreated:
+		return "recreated"
+	default:
+		return "none"
+	}
+}
+
+// VaultTrimStatus records the outcome of the most recent vault fstrim
+// operation. Nested inside VaultStatus. All fields are zero/empty if no trim
+// has run since boot. EVE-k ZFS nodes only.
+type VaultTrimStatus struct {
+	// LastStartTime is when the most recent fstrim began.
+	LastStartTime time.Time
+	// LastEndTime is when it completed. Zero while in progress or never run.
+	LastEndTime time.Time
+	// LastError is the error from the most recent fstrim, or empty on success.
+	LastError string
+}
 
 // VaultStatus represents running status of a Vault
 type VaultStatus struct {
@@ -18,6 +71,17 @@ type VaultStatus struct {
 	ConversionComplete bool
 	// only valid if TPM is enabled and Sealed key is used
 	MismatchingPCRs []int
+	// UnlockMethod records how the vault was unlocked this boot (local TPM key,
+	// controller-provided key, no TPM, or a wipe-and-recreate). VaultUnlockNone
+	// until unlocked. VaultUnlockTPMLocalSealed means the locally TPM-sealed key
+	// unsealed on the first attempt; VaultUnlockControllerKey means the local
+	// unseal failed and the device is relying on the controller-key fallback;
+	// VaultUnlockRecreated means the local unseal failed with no escrowed key, so
+	// the vault was wiped and recreated (prior contents lost).
+	UnlockMethod VaultUnlockMethod
+	// TrimStatus holds the result of the most recent vault fstrim.
+	// Populated on EVE-k ZFS nodes only; zero otherwise.
+	TrimStatus VaultTrimStatus
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
 }
@@ -197,4 +261,17 @@ func (key EncryptedVaultKeyFromController) LogKey() string {
 // IsVaultInError :
 func (status VaultStatus) IsVaultInError() bool {
 	return (status.Status == info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR) && len(status.MismatchingPCRs) > 0
+}
+
+// FormatMismatchingPCRs returns a human-readable clause naming the PCR indexes
+// that probably prevented the sealed vault key from being unsealed, or an empty
+// string when none are known. The wording is shared by vaultmgr (which folds it
+// into VaultStatus.Error) and nodeagent (which adds it to the reboot reason), so
+// the explanation reads the same wherever it surfaces - VaultStatus, diag, and
+// the controller-visible BaseOsStatus error.
+func FormatMismatchingPCRs(mismatchingPCRs []int) string {
+	if len(mismatchingPCRs) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("possibly mismatching PCR indexes %v", mismatchingPCRs)
 }

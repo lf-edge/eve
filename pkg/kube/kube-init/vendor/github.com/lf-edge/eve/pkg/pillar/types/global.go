@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Masterminds/semver"
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -223,6 +224,20 @@ const (
 	AppContainerStatsInterval GlobalSettingKey = "timer.appcontainer.stats.interval"
 	// VaultReadyCutOffTime global setting key
 	VaultReadyCutOffTime GlobalSettingKey = "timer.vault.ready.cutoff"
+	// VaultTrimMaxSecs is the maximum seconds per fstrim run on the vault
+	// zvol. 0 means no timeout (run to completion). Note: the boot-time trim
+	// runs before ConversionComplete is reported, which gates vaultmgr's
+	// waitUnsealed and therefore k3s startup on EVE-k. With 0 (unbounded) a
+	// slow first-boot trim can delay vault-ready reporting and block k3s
+	// startup for as long as the trim takes; keep this non-zero to bound it.
+	VaultTrimMaxSecs GlobalSettingKey = "timer.vault.trim.max.secs"
+	// VaultTrimCron is the cron schedule for periodic fstrim of the vault and
+	// zvol on EVE-k ZFS nodes. Empty string disables the timer.
+	// Standard 5-field cron syntax; cronValidator enforced.
+	VaultTrimCron GlobalSettingKey = "timer.vault.trim.cron"
+	// ZFSPoolTrimCron is the cron schedule for periodic zpool trim of the
+	// persist pool on EVE-k ZFS nodes. Empty string disables the timer.
+	ZFSPoolTrimCron GlobalSettingKey = "timer.zfs.pool.trim.cron"
 	// LogRemainToSendMBytes Max gzip log files remain on device to be sent in Mbytes
 	LogRemainToSendMBytes GlobalSettingKey = "newlog.gzipfiles.ondisk.maxmegabytes"
 
@@ -443,6 +458,51 @@ const (
 	// passthrough firmware-side issues with a TARGET=DEBUG OVMF rebuild.
 	EnableEFIDebug GlobalSettingKey = "debug.enable.efi"
 
+	// QemuProcessCore: when true (default), the qemu process gets a large
+	// RLIMIT_CORE and the host kernel core_pattern points at the encrypted
+	// vault, so if qemu dies on a fatal signal (SIGBUS/SIGSEGV/SIGABRT — the
+	// "mode B" case) the kernel writes a process core that pillar then
+	// compresses and rotates.
+	QemuProcessCore GlobalSettingKey = "debug.qemu.process.core"
+
+	// QemuGuestCore: when true (default), pillar dumps the guest's physical RAM
+	// (QMP dump-guest-memory, ELF) when qemu enters RUN_STATE_INTERNAL_ERROR
+	// after KVM_RUN -EFAULT (the "mode A" case).
+	QemuGuestCore GlobalSettingKey = "debug.qemu.guest.core"
+
+	// QemuProcessCoreGuestRAM: when true, qemu sets `dump-guest-core = "on"` on
+	// the machine config so a qemu process core (QemuProcessCore) *includes*
+	// the guest's RAM.  Off by default: it makes the core as large as the VM's
+	// RAM and it can hold guest secrets, and the guest RAM is already captured
+	// far more cheaply by the mode-A guest core (QemuGuestCore).
+	QemuProcessCoreGuestRAM GlobalSettingKey = "debug.qemu.process.core.guest.ram"
+
+	// QemuPauseOnCrash: when true, on a mode-A crash domainmgr holds the domain
+	// (keeps qemu alive, freezes reconcile) for live inspection instead of
+	// tearing it down, until an operator releases it or a timeout expires. Off
+	// by default — an opt-in inspection aid layered on top of the always-on
+	// guest-core dump.
+	QemuPauseOnCrash GlobalSettingKey = "debug.qemu.pause.on.crash"
+
+	// QemuTraceEvents: a comma-separated list of qemu trace-event names/globs
+	// and/or @<preset> macros (e.g. "@vfio,@iommu,vfio_pci_write_config"). When
+	// non-empty, qemu runs with -trace writing a binary simpletrace log per VM
+	// to the encrypted vault. Empty (default) disables tracing. Presets are
+	// expanded by qemuTracePresets in kvm.go.
+	QemuTraceEvents GlobalSettingKey = "debug.qemu.trace.events"
+
+	// QemuGdb: when true, qemu exposes a per-domain gdbstub UNIX socket for live
+	// vCPU inspection (and for a pause-on-crash hold). Off by default.
+	QemuGdb GlobalSettingKey = "debug.qemu.gdb"
+
+	// QemuIgpuNoMmap: when true, add x-no-mmap=on to the Intel iGPU vfio-pci
+	// device so every BAR access traps into qemu instead of being mmap'd direct
+	// to hardware. Debug-only: it makes the guest's iGPU MMIO writes visible in
+	// the qemu trace (and lets us test whether the scanout corruption is an
+	// mmap/BAR-remap fast-path race). Large performance cost; off by default.
+	// Only affects the iGPU device.
+	QemuIgpuNoMmap GlobalSettingKey = "debug.qemu.igpu.no.mmap"
+
 	// MsrvPrometheusMetricsRequestPerSecond: limit the number of requests per second
 	MsrvPrometheusMetricsRequestPerSecond GlobalSettingKey = "msrv.prometheus.metrics.rps"
 	// MsrvPrometheusMetricsBurst: limit the burst of requests
@@ -474,6 +534,12 @@ const (
 	// used as delta-rebuild baselines after node power loss. Empty string disables recurring
 	// snapshots. Default "0 0 * * *" (daily at midnight UTC). Standard 5-field cron syntax.
 	LonghornSnapshotCron GlobalSettingKey = "storage.longhorn.snapshot.cron"
+
+	// LonghornNodeDrainPolicy sets the Longhorn cluster-wide node-drain-policy setting.
+	// Valid values: "block-for-eviction", "block-for-eviction-if-contains-last-replica",
+	// "allow-if-replica-is-stopped", "always-allow".
+	// Default "block-for-eviction-if-contains-last-replica". EVE-k only.
+	LonghornNodeDrainPolicy GlobalSettingKey = "storage.longhorn.node-drain-policy"
 
 	// SCEPRetryInterval defines the time interval between retry attempts
 	// for certificates that previously failed to enroll or returned PENDING
@@ -517,6 +583,16 @@ const (
 // LonghornDiskReservedGBDisabled is the sentinel value for LonghornDiskReservedGB that
 // disables EVE's override, leaving the current Longhorn storageReserved value untouched.
 const LonghornDiskReservedGBDisabled uint32 = 1024 * 1024
+
+// Valid values for LonghornNodeDrainPolicy.
+// https://longhorn.io/docs/1.9.1/maintenance/maintenance/#node-drain-policy-recommendations
+// Please update above if pkg/kube/longhorn-utils.sh LONGHORN_VERSION=v1.9.1 changes.
+const (
+	LonghornNodeDrainPolicyBlockForEviction           = "block-for-eviction"
+	LonghornNodeDrainPolicyBlockIfContainsLastReplica = "block-for-eviction-if-contains-last-replica"
+	LonghornNodeDrainPolicyAllowIfReplicaIsStopped    = "allow-if-replica-is-stopped"
+	LonghornNodeDrainPolicyAlwaysAllow                = "always-allow"
+)
 
 // AgentSettingKey - keys for per-agent settings
 type AgentSettingKey string
@@ -1111,6 +1187,11 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(Dom0MinDiskUsagePercent, 20, 20, 80)
 	configItemSpecMap.AddIntItem(AppContainerStatsInterval, 5*MinuteInSec, 1, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(VaultReadyCutOffTime, 5*MinuteInSec, MinuteInSec, 0xFFFFFFFF)
+	// VaultTrimMaxSecs: default 30 min; 0 = unlimited (run to completion)
+	configItemSpecMap.AddIntItem(VaultTrimMaxSecs, 30*MinuteInSec, 0, 0xFFFFFFFF)
+	// VaultTrimCron / ZFSPoolTrimCron: weekends at 02:00 / 03:00 (staggered)
+	configItemSpecMap.AddStringItem(VaultTrimCron, "0 2 * * 6,0", cronValidator)
+	configItemSpecMap.AddStringItem(ZFSPoolTrimCron, "0 3 * * 6,0", cronValidator)
 	// Dom0DiskUsageMaxBytes - Default is 2GB, min is 100MB
 	configItemSpecMap.AddIntItem(Dom0DiskUsageMaxBytes, 2*1024*1024*1024,
 		100*1024*1024, 0xFFFFFFFF)
@@ -1178,6 +1259,13 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddBoolItem(MemoryMonitorEnabled, false)
 	configItemSpecMap.AddBoolItem(DHCPEnableVendorClassID, true)
 	configItemSpecMap.AddBoolItem(EnableEFIDebug, false)
+	configItemSpecMap.AddBoolItem(QemuProcessCore, true)
+	configItemSpecMap.AddBoolItem(QemuGuestCore, true)
+	configItemSpecMap.AddBoolItem(QemuProcessCoreGuestRAM, false)
+	configItemSpecMap.AddBoolItem(QemuPauseOnCrash, false)
+	configItemSpecMap.AddStringItem(QemuTraceEvents, "", blankValidator)
+	configItemSpecMap.AddBoolItem(QemuGdb, false)
+	configItemSpecMap.AddBoolItem(QemuIgpuNoMmap, false)
 	configItemSpecMap.AddBoolItem(DataStoreAllowInsecureAuth, false)
 
 	// Add TriState Items
@@ -1238,6 +1326,8 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddStringItem(KubernetesVmiDescheduleEvents, "", blankValidator)
 	// LonghornSnapshotCron - Default daily at midnight. Empty string = disable recurring snapshots.
 	configItemSpecMap.AddStringItem(LonghornSnapshotCron, "0 0 * * *", cronValidator)
+	configItemSpecMap.AddStringItem(LonghornNodeDrainPolicy,
+		LonghornNodeDrainPolicyBlockIfContainsLastReplica, validateLonghornNodeDrainPolicy)
 
 	// SCEP settings
 	configItemSpecMap.AddIntItem(SCEPRetryInterval, 5*MinuteInSec, MinuteInSec, HourInSec)
@@ -1274,6 +1364,18 @@ func validateBootOrder(bootOrder string) error {
 		return nil
 	default:
 		return fmt.Errorf("validateBootOrder: invalid boot order '%s', must be '', 'usb', or 'nousb'", bootOrder)
+	}
+}
+
+func validateLonghornNodeDrainPolicy(policy string) error {
+	switch policy {
+	case LonghornNodeDrainPolicyBlockForEviction,
+		LonghornNodeDrainPolicyBlockIfContainsLastReplica,
+		LonghornNodeDrainPolicyAllowIfReplicaIsStopped,
+		LonghornNodeDrainPolicyAlwaysAllow:
+		return nil
+	default:
+		return fmt.Errorf("validateLonghornNodeDrainPolicy: invalid value %q", policy)
 	}
 }
 
@@ -1371,6 +1473,106 @@ func GetDiagRemoteEndpointURLs(log *base.LogObject, gcp *ConfigItemValueMap) []*
 // blankValidator - A validator that accepts any string
 func blankValidator(s string) error {
 	return nil
+}
+
+// CronMatch reports whether t matches a 5-field cron spec that has already
+// passed cronValidator. Supports *, numeric values, comma lists, and ranges.
+// Weekday field treats both 0 and 7 as Sunday.
+func CronMatch(spec string, t time.Time) bool {
+	if spec == "" {
+		return false
+	}
+	fields := strings.Fields(spec)
+	if len(fields) != 5 {
+		return false
+	}
+	vals := [5]int{t.Minute(), t.Hour(), t.Day(), int(t.Month()), int(t.Weekday())}
+	// [lo, hi] inclusive range per field; used as the base/bound for "*" and
+	// "*/n" so a step starts at the field minimum (1 for day-of-month/month),
+	// matching standard cron. Must stay in sync with cronValidator.
+	fieldRanges := [5][2]int{{0, 59}, {0, 23}, {1, 31}, {1, 12}, {0, 7}}
+	for i, f := range fields {
+		if !cronFieldMatch(f, vals[i], fieldRanges[i][0], fieldRanges[i][1], i == 4) {
+			return false
+		}
+	}
+	return true
+}
+
+// CronShouldFire reports whether a scheduled action should fire at time t.
+// It combines CronMatch with single-minute deduplication: the action fires
+// only when the spec matches AND the truncated minute differs from *lastFired.
+// On a match, *lastFired is updated. Designed for use inside a
+// time.NewTicker(time.Minute) loop; spec="" is always false.
+func CronShouldFire(spec string, t time.Time, lastFired *time.Time) bool {
+	tMin := t.Truncate(time.Minute)
+	if CronMatch(spec, t) && tMin != *lastFired {
+		*lastFired = tMin
+		return true
+	}
+	return false
+}
+
+// cronFieldMatch reports whether val matches a single cron field token.
+// fieldLo/fieldHi are the field's inclusive valid range, used as the base and
+// bound for "*"/"*/n". isWeekday causes both 0 and 7 to match Sunday (val
+// always 0-6 from time).
+func cronFieldMatch(field string, val, fieldLo, fieldHi int, isWeekday bool) bool {
+	for _, atom := range strings.Split(field, ",") {
+		if cronAtomMatch(atom, val, fieldLo, fieldHi, isWeekday) {
+			return true
+		}
+	}
+	return false
+}
+
+func cronAtomMatch(atom string, val, fieldLo, fieldHi int, isWeekday bool) bool {
+	if atom == "*" {
+		return true
+	}
+	// Step: */n or lo-hi/n
+	step := 1
+	if idx := strings.Index(atom, "/"); idx >= 0 {
+		s, err := strconv.Atoi(atom[idx+1:])
+		if err != nil || s <= 0 {
+			return false
+		}
+		step = s
+		atom = atom[:idx]
+	}
+	// Range: lo-hi or single value
+	var lo, hi int
+	if idx := strings.Index(atom, "-"); idx >= 0 {
+		var err1, err2 error
+		lo, err1 = strconv.Atoi(atom[:idx])
+		hi, err2 = strconv.Atoi(atom[idx+1:])
+		if err1 != nil || err2 != nil {
+			return false
+		}
+	} else if atom == "*" {
+		// Bare "*" (with a step): iterate the full field range so "*/n"
+		// starts at the field minimum, matching standard cron.
+		lo, hi = fieldLo, fieldHi
+	} else {
+		n, err := strconv.Atoi(atom)
+		if err != nil {
+			return false
+		}
+		if isWeekday && n == 7 {
+			n = 0
+		}
+		lo, hi = n, n
+	}
+	for v := lo; v <= hi; v += step {
+		check := v
+		if isWeekday && check == 7 {
+			check = 0
+		}
+		if check == val {
+			return true
+		}
+	}
+	return false
 }
 
 // cronValidator accepts empty (feature disabled) or standard 5-field cron expressions.
