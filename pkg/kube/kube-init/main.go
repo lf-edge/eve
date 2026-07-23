@@ -54,6 +54,7 @@ import (
 	"github.com/lf-edge/eve/pkg/kube/kube-init/images"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kcus"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kubeconfig"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/kubeinitstatus"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/k3s"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/mgmtproxy"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/monitor"
@@ -515,6 +516,26 @@ func main() {
 	}
 	if err := encstatus.Register(psMgr); err != nil {
 		log.Fatalf("register EdgeNodeClusterStatus subscription: %v", err)
+	}
+	// kube-init publishes + subscribes to its own lifecycle topic
+	// so cluster-config (and future) loops can wake event-driven
+	// rather than polling state markers.
+	if err := kubeinitstatus.RegisterPublisher(psMgr); err != nil {
+		log.Fatalf("register KubeInitStatus publisher: %v", err)
+	}
+	if err := kubeinitstatus.RegisterSubscriber(psMgr); err != nil {
+		log.Fatalf("register KubeInitStatus subscription: %v", err)
+	}
+	// Seed the published state from the on-disk marker before the
+	// pubsub loop activates: a daemon restart with components
+	// already initialized should observe the post-bootstrap phase
+	// immediately, not poll for it.
+	if initialized, _ := state.IsInitialized(); initialized {
+		if err := kubeinitstatus.Publish(kubeinitstatus.KubeInitStatus{
+			AllComponentsInitialized: true,
+		}); err != nil {
+			log.Fatalf("seed KubeInitStatus from marker: %v", err)
+		}
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1211,6 +1232,8 @@ func (d *daemon) workInit(workCtx context.Context) error {
 		// idempotent.
 		if err := state.MarkInitialized(); err != nil {
 			log.Printf("WARNING: mark initialized after restore: %v (first-boot deploy will re-run)", err)
+		} else {
+			publishInitialized()
 		}
 	}
 
@@ -1277,12 +1300,28 @@ func (d *daemon) workDeploy(workCtx context.Context) error {
 	if err := state.MarkInitialized(); err != nil {
 		return fmt.Errorf("mark initialized: %w", err)
 	}
+	publishInitialized()
 	if err := state.Mark(state.NodeLabelsInitialized); err != nil {
 		log.Printf("WARNING: mark node labels initialized: %v", err)
 	}
 
 	log.Printf("first-time initialization complete")
 	return nil
+}
+
+// publishInitialized publishes the post-bootstrap phase on the
+// KubeInitStatus topic. Called immediately after the on-disk
+// marker is written so subscribers (cluster-config monitor) wake
+// without polling. Failure to publish is logged but not fatal:
+// the file marker is still the durable record and the
+// subscription seeding in main re-establishes the phase on the
+// next daemon start.
+func publishInitialized() {
+	if err := kubeinitstatus.Publish(kubeinitstatus.KubeInitStatus{
+		AllComponentsInitialized: true,
+	}); err != nil {
+		log.Printf("WARNING: publish KubeInitStatus: %v", err)
+	}
 }
 
 // enterClusterTransition launches the async transition worker.

@@ -25,8 +25,10 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/kube/kube-init/components"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/encstatus"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/k3s"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kubectlx"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/kubeinitstatus"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/prereqs"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/tiebreaker"
@@ -36,8 +38,13 @@ import (
 // Per-loop intervals. Vars so tests can shrink them.
 var (
 	healthCheckInterval  = 15 * time.Second
-	clusterPollInterval  = 15 * time.Second
 	overridePollInterval = 15 * time.Second
+	// clusterJoinRetryInterval bounds how often
+	// CheckClusterTransitionDone re-runs while the single→cluster
+	// transition is mid-flight. Only active during a transition;
+	// the cluster-config monitor is otherwise fully event-driven on
+	// EdgeNodeClusterStatus pubsub edges.
+	clusterJoinRetryInterval = 15 * time.Second
 )
 
 // maxLogSize is the rotation threshold for k3s.log and friends.
@@ -319,88 +326,134 @@ func (m *Monitor) CheckContainerd() {
 // Cluster-config + user-override watchers
 // ---------------------------------------------------------------------------
 
-// ClusterConfig polls the EdgeNodeClusterStatus file and
-// detects single ↔ cluster transitions. On a detected edge it
-// sends a RestartReason on restartCh and continues polling; the
-// FSM owns the actual transition runner.
+// ClusterConfig watches EdgeNodeClusterStatus and the daemon's
+// own KubeInitStatus topic, signalling single ↔ cluster
+// transitions on restartCh. The FSM owns the actual transition
+// runner; this loop only detects edges.
+//
+// The loop is fully event-driven:
+//
+//   - Boot phase: blocks on a KubeInitStatus subscription until
+//     AllComponentsInitialized goes true. No polling.
+//
+//   - Steady state: wakes only on EdgeNodeClusterStatus pubsub
+//     edges or on a slow retry tick that is active *only* while
+//     a single→cluster join is in flight (the join may need
+//     several polls of CheckClusterTransitionDone before the
+//     transition marker clears).
+//
+// EdgeNodeClusterMode is read once from the on-disk marker at
+// startup; from then on the loop tracks its own in-memory copy
+// because it is the sole writer.
 func ClusterConfig(ctx context.Context, restartCh chan<- RestartReason) error {
 	log.Printf("cluster config monitor started")
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
 
-		allInitialized, err := state.IsMarked(state.AllComponentsInitialized)
-		if err != nil {
-			// Don't proceed: a transient marker-read failure here
-			// would otherwise paralyse the cluster-config watcher.
-			// Log and retry next tick.
-			log.Printf("warning: check all-components marker, retrying next tick: %v",
-				err)
-			sleepCtx(ctx, clusterPollInterval)
-			continue
-		}
-		if !allInitialized {
-			sleepCtx(ctx, clusterPollInterval)
-			continue
-		}
+	if err := waitForInitialized(ctx); err != nil {
+		return err
+	}
 
-		// Use ClusterStatusPresent (not bare os.Stat) so a
-		// controller-deleted cluster — which surfaces as a
-		// zero-UUID payload, not a missing file — is correctly
-		// treated as "no cluster". See k3s.ClusterStatusPresent
-		// doc for the rationale.
+	encCh, cancelEnc := encstatus.Subscribe()
+	defer cancelEnc()
+
+	inClusterMode, err := state.IsMarked(state.EdgeNodeClusterMode)
+	if err != nil {
+		// A stat error on this marker is a hard fault: misreading
+		// it would otherwise mis-fire either transition direction.
+		return fmt.Errorf("check cluster-mode marker: %w", err)
+	}
+
+	// Retry ticker — only enabled while a join is in flight.
+	var joinTicker *time.Ticker
+	var joinTickC <-chan time.Time
+	startJoinTicker := func() {
+		if joinTicker == nil {
+			joinTicker = time.NewTicker(clusterJoinRetryInterval)
+			joinTickC = joinTicker.C
+		}
+	}
+	stopJoinTicker := func() {
+		if joinTicker != nil {
+			joinTicker.Stop()
+			joinTicker = nil
+			joinTickC = nil
+		}
+	}
+	defer stopJoinTicker()
+
+	evaluate := func() {
+		// ClusterStatusPresent folds file-missing and zero-UUID
+		// delete into a single "no live cluster" answer. See its
+		// doc for why os.Stat alone is wrong here.
 		encExists, encErr := k3s.ClusterStatusPresent()
 		if encErr != nil {
 			log.Printf("warning: check EdgeNodeClusterStatus: %v", encErr)
-			sleepCtx(ctx, clusterPollInterval)
-			continue
+			return
 		}
-
-		inClusterMode, err := state.IsMarked(state.EdgeNodeClusterMode)
-		if err != nil {
-			// Don't proceed: a stale marker read could otherwise
-			// mis-fire RestartSingleToCluster if encExists is true
-			// while the (real) cluster-mode marker is set but
-			// unreadable.
-			log.Printf("warning: check cluster-mode marker, retrying next tick: %v",
-				err)
-			sleepCtx(ctx, clusterPollInterval)
-			continue
-		}
-
 		switch {
 		case !encExists && inClusterMode:
-			// EdgeNodeClusterStatus withdrawn while we were in
-			// cluster mode → controller revoked the cluster.
-			// Unmark cluster mode before signalling so subsequent
-			// polls don't re-fire the same edge forever — the FSM
-			// owns the actual transition, and our marker should
-			// reflect "no longer in cluster mode" immediately.
 			log.Printf("EdgeNodeClusterStatus missing while in cluster mode — " +
 				"signalling cluster→single transition")
 			if err := state.Unmark(state.EdgeNodeClusterMode); err != nil {
 				log.Printf("warning: unmark cluster mode: %v", err)
 			}
+			inClusterMode = false
+			stopJoinTicker()
 			trySend(restartCh, RestartClusterToSingle, "cluster→single")
 		case encExists && !inClusterMode:
-			// EdgeNodeClusterStatus appeared → joining cluster.
-			// Mark cluster mode immediately so we don't re-fire
-			// the edge on every poll while the FSM is still
-			// running the transition.
 			log.Printf("EdgeNodeClusterStatus found, node not in cluster mode — " +
 				"signalling single→cluster transition")
 			if err := state.Mark(state.EdgeNodeClusterMode); err != nil {
 				log.Printf("warning: mark cluster mode: %v", err)
 			}
+			inClusterMode = true
+			startJoinTicker()
 			trySend(restartCh, RestartSingleToCluster, "single→cluster")
 		case encExists && inClusterMode:
-			// Joining-in-progress retry handled in transition.go.
+			// Join in progress: CheckClusterTransitionDone is
+			// idempotent and clears the in-flight marker once
+			// kube-apiserver reports the node count we expect.
 			CheckClusterTransitionDone(ctx)
+			startJoinTicker()
+		case !encExists && !inClusterMode:
+			stopJoinTicker()
 		}
-		sleepCtx(ctx, clusterPollInterval)
+	}
+
+	evaluate()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-encCh:
+			evaluate()
+		case <-joinTickC:
+			evaluate()
+		}
+	}
+}
+
+// waitForInitialized blocks until kubeinitstatus reports
+// AllComponentsInitialized. Implemented as a one-time
+// subscription wait so the cluster-config loop doesn't start
+// polling the on-disk marker. Returns ctx.Err() on cancellation.
+//
+// The cache is seeded by main.go at startup from the on-disk
+// marker, so a daemon restart past bootstrap returns immediately.
+func waitForInitialized(ctx context.Context) error {
+	if kubeinitstatus.Get().AllComponentsInitialized {
+		return nil
+	}
+	ch, cancel := kubeinitstatus.Subscribe()
+	defer cancel()
+	for {
+		if kubeinitstatus.Get().AllComponentsInitialized {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ch:
+		}
 	}
 }
 
@@ -960,12 +1013,12 @@ func streamCopy(src, dst string) error {
 	if err != nil {
 		return fmt.Errorf("open %s: %w", src, err)
 	}
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		return fmt.Errorf("create %s: %w", dst, err)
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 	if _, err := io.Copy(out, in); err != nil {
 		return fmt.Errorf("copy %s → %s: %w", src, dst, err)
 	}

@@ -43,9 +43,10 @@ const SubscriptionLabel = "EdgeNodeClusterStatus"
 const publisherAgentName = "zedkube"
 
 var (
-	mu     sync.RWMutex
-	have   bool
-	cached types.EdgeNodeClusterStatus
+	mu          sync.RWMutex
+	have        bool
+	cached      types.EdgeNodeClusterStatus
+	subscribers []chan struct{}
 )
 
 // Register creates the EdgeNodeClusterStatus subscription on
@@ -76,14 +77,55 @@ func handleDelete(_ interface{}, _ string, _ interface{}) {
 	mu.Lock()
 	have = false
 	cached = types.EdgeNodeClusterStatus{}
+	subs := append([]chan struct{}(nil), subscribers...)
 	mu.Unlock()
+	notify(subs)
 }
 
 func setCached(v types.EdgeNodeClusterStatus) {
 	mu.Lock()
 	cached = v
 	have = true
+	subs := append([]chan struct{}(nil), subscribers...)
 	mu.Unlock()
+	notify(subs)
+}
+
+// notify fans out a non-blocking edge to every subscriber. The
+// channel is buffered size-1 so a slow consumer still gets at
+// least one wake-up per burst; further edges coalesce harmlessly.
+func notify(subs []chan struct{}) {
+	for _, ch := range subs {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// Subscribe returns a buffered (size-1) channel that receives an
+// empty struct on every cache change (create, modify, or delete).
+// The cancel function removes the channel from the fan-out list;
+// callers MUST invoke it on shutdown to avoid leaking subscribers.
+//
+// The channel is coalescing: bursts of changes deliver at most
+// one wake-up. Consumers read the current state with Get/Present
+// after each wake.
+func Subscribe() (ch <-chan struct{}, cancel func()) {
+	c := make(chan struct{}, 1)
+	mu.Lock()
+	subscribers = append(subscribers, c)
+	mu.Unlock()
+	return c, func() {
+		mu.Lock()
+		for i, x := range subscribers {
+			if x == c {
+				subscribers = append(subscribers[:i], subscribers[i+1:]...)
+				break
+			}
+		}
+		mu.Unlock()
+	}
 }
 
 // Get returns the cached EdgeNodeClusterStatus. The bool is

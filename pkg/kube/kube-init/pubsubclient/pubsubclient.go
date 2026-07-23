@@ -100,6 +100,21 @@ func (m *Manager) Register(label string, opts pubsub.SubscriptionOptions) (pubsu
 	return sub, nil
 }
 
+// NewPublication creates a publication on the Manager's PubSub
+// handle. kube-init publishes its own kubeinitstatus topic so the
+// cluster-config and similar loops can wake up event-driven rather
+// than polling state markers. Symmetric to Register: must be called
+// before Run, and the resulting Publication is owned by the caller
+// (the kubeinitstatus package stashes it in a package-local var).
+func (m *Manager) NewPublication(opts pubsub.PublicationOptions) (pubsub.Publication, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.running {
+		return nil, fmt.Errorf("pubsubclient: NewPublication after Run started")
+	}
+	return m.ps.NewPublication(opts)
+}
+
 // Sub returns the subscription registered under label. Panics if
 // absent — Sub is meant for handler bodies that need to call
 // sub.Get(...) by key on the topic that fired them, where the
