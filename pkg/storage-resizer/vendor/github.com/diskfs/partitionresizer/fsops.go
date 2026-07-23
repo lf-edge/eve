@@ -13,7 +13,6 @@ import (
 	"strings"
 
 	"github.com/diskfs/go-diskfs/disk"
-	"github.com/diskfs/go-diskfs/partition/gpt"
 )
 
 const (
@@ -200,94 +199,6 @@ func checkFilesystem(device string, fsData partitionData, fsck func(string, bool
 		return fmt.Errorf("unknown device type for %s", device)
 	}
 	return nil
-}
-
-// planResizes computes the resize plan, including both growing the relevant partitions as well as
-// optionally performing an ext4 shrink, if there is insufficient space initially.
-// Returns the final plan or an error.
-func planResizes(
-	d *disk.Disk,
-	table *gpt.Table,
-	diskPartitionData []partitionData,
-	growPartitions []PartitionChange,
-	shrinkPartition *PartitionIdentifier,
-) (
-	[]partitionResizeTarget,
-	error,
-) {
-	// map PartitionChange to partitionResizeTarget
-	prTargets, err := partitionChangesToResizeTarget(table, diskPartitionData, growPartitions)
-	if err != nil {
-		return nil, err
-	}
-
-	// Resume support: an interrupted run may already have created the relocated
-	// "<label>_resized2" partition for some grows. Those targets already occupy
-	// their final space, so they must be excluded from (re)planning. If we
-	// instead fed them back through calculateResizes, their space would count as
-	// occupied, the grow would no longer fit, and a second shrink of the shrink
-	// partition would be planned -- driving its size negative
-	// (diskfs/partitionresizer#13). Split the grows already created from those
-	// still pending, and reuse the existing partition's geometry as the target
-	// for the created ones.
-	done, pending := splitResumedGrows(table, prTargets)
-
-	// every grow is already created: nothing left to allocate or shrink
-	if len(pending) == 0 {
-		return done, nil
-	}
-
-	// try to calculate without shrinking, for the pending grows only
-	resizes, err := calculateResizes(d.Size, table.Partitions, pending)
-	if err == nil {
-		return append(done, resizes...), nil
-	}
-	var spaceErr *InsufficientSpaceError
-	if !errors.As(err, &spaceErr) {
-		return nil, err
-	}
-
-	// need to shrink: ensure shrinkPartition provided
-	if shrinkPartition == nil {
-		return nil, fmt.Errorf("insufficient space to perform requested partition grows, and no shrink partition specified")
-	}
-
-	// compute total space to grow (rounded up to next GB) for the pending grows
-	var totalGrow int64
-	for _, gp := range pending {
-		totalGrow += gp.target.size
-	}
-	if totalGrow%GB != 0 {
-		totalGrow = ((totalGrow / GB) + 1) * GB
-	}
-
-	// locate shrink partition data
-	shrinkDataList, err := partitionIdentifiersToData(table, diskPartitionData, []PartitionIdentifier{*shrinkPartition})
-	if err != nil {
-		return nil, err
-	}
-	if len(shrinkDataList) != 1 {
-		return nil, fmt.Errorf("could not find shrink partition data")
-	}
-	shrinkData := shrinkDataList[0]
-
-	// mark the shrink as first for the resize
-	target := shrinkData
-	target.size = shrinkData.size - totalGrow
-	target.end = shrinkData.end - totalGrow
-	shrink := partitionResizeTarget{
-		original: shrinkData,
-		target:   target,
-	}
-	prTargetsWithShrink := []partitionResizeTarget{shrink}
-	prTargetsWithShrink = append(prTargetsWithShrink, pending...)
-
-	// recalculate resizes with shrinking
-	resizes, err = calculateResizes(d.Size, table.Partitions, prTargetsWithShrink)
-	if err != nil {
-		return nil, err
-	}
-	return append(done, resizes...), nil
 }
 
 // partitionDevicePath maps a whole-disk path (e.g. "/dev/sda") and a

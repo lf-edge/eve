@@ -1,7 +1,13 @@
 # Partition Resizer
 
-This is a tool to resize GPT disk partitions and their filesystems. It can grow multiple partitions,
-primarily by copying the partitions to new, larger partitions in available free space on the disk.
+This is a tool to reconcile a GPT disk to a desired set of partitions. It grows multiple
+partitions (primarily by copying them to new, larger partitions in available free space),
+creates partitions that are absent, and optionally shrinks one partition to free space —
+all in a single, idempotent, restart-safe pass.
+
+You declare the partitions you want; each is grown to at least its size, or created if
+absent, and one named partition may be shrunk to make room. A partition already at least
+its size is left untouched — nothing is ever shrunk except the designated shrink partition.
 
 If insufficient free space is available, and you give it an optional shrink partition that is ext4,
 it will shrink the ext4 filesystem and its partition to find space, if it can.
@@ -42,32 +48,38 @@ partition.
 
 ## Examples
 
-Shrink partition named sda3 (ext4) to make space, grow partition named sda1 to 20G, grow partition labeled "Data" to 100G on /dev/sda:
+Grow the partition labeled `sda1` to 20G and the one labeled "Data" to 100G,
+shrinking `sda3` (ext4) to make space if needed, on /dev/sda:
 
 ```sh
-resizer resize --shrink-partition name:sda3 --grow-partition name:sda1:20G --grow-partition label:Data:100G /dev/sda
+resizer \
+  --partition match=name:sda1,minsize=20G \
+  --partition match=label:Data,minsize=100G \
+  --shrink name:sda3 \
+  /dev/sda
 ```
 
-Grow partition named sda2 to 50G on disk image file disk.img:
+`--shrink name:sda3` with no size is *shrink-to-fit*: sda3 is shrunk only if the
+grows do not otherwise fit, and only by as much as they need. Give an explicit
+size (`--shrink name:sda3:78G`) to always shrink to that size.
+
+Grow the partition labeled sda2 to 50G on a disk image file:
 
 ```sh
-resizer resize --grow-partition name:sda2:50G disk.img
+resizer --partition match=label:sda2,minsize=50G disk.img
 ```
 
-### Creating a partition with `apply`
+### Creating a partition
 
-`apply` reconciles a disk to a set of desired partitions, each matched by GUID.
-An existing partition is grown to at least its `minsize` (never shrunk); a GUID
-not present on the disk is **created** at `minsize` with an empty filesystem. A
-single `apply` can grow, create, and shrink in one pass — `--shrink` names the
-only partition that may be reduced, to free space for the grows and creates.
-
-Grow IMGA, create a new 2G FAT32 "EFI System" partition (a second ESP) at
-partition number 7, and shrink "Data" to 100G to make room — all on /dev/sda:
+A `--partition` identified by `guid=` grows the partition with that GUID if it
+exists, or **creates** it if absent, at `minsize` with an empty filesystem.
+This example grows IMGA, creates a new 2G FAT32 "EFI System" partition (a second
+ESP) at partition number 7, and shrinks "Data" to 100G to make room — all on
+/dev/sda:
 
 ```sh
-resizer apply \
-  --partition "guid=AD6871EE-31F9-4CF3-9E09-6F7A25C30051,minsize=200M,label=IMGA,type=0FC63DAF-8483-4772-8E79-3D69D8477DE4" \
+resizer \
+  --partition "guid=AD6871EE-31F9-4CF3-9E09-6F7A25C30051,minsize=200M,label=IMGA,type=0FC63DAF-8483-4772-8E79-3D69D8477DE4,index=2" \
   --partition "guid=AD6871EE-31F9-4CF3-9E09-6F7A25C30056,minsize=2G,label=EFI System,type=C12A7328-F81F-11D2-BA4B-00A0C93EC93B,index=7,fs=fat32" \
   --shrink label:Data:100G \
   /dev/sda
@@ -80,43 +92,30 @@ is the only operation that ever reduces a partition.
 
 ## Options
 
-### resize
-
 ```
-resizer resize [flags] <disk>
+resizer [flags] [disk]
 ```
 
-`<disk>` is the disk image file or block device to operate on.
+`[disk]` is the disk image file or block device to operate on. It may be omitted,
+in which case the disk is discovered from the `match=`/`--shrink` identifiers
+(they must all resolve to the same disk).
 
 | Flag | Description |
 | --- | --- |
-| `--grow-partition identifier:partition:size` | Partition to grow and its target size, in `identifier:partition:size` form (e.g. `name:sda1:20G`, `label:Data:100M`). Repeatable; at least one is required. |
-| `--shrink-partition identifier:partition` | Optional ext4 partition to shrink to make space, used only if there is not enough free space for the grows. |
+| `--partition <keys>` | A desired partition, as comma-separated `key=value` pairs (repeatable). `minsize=` is required. Identify an existing partition to grow with either `guid=` or `match=<identifier>` (`match=name:sda1`, `match=label:Data`, `match=uuid:<GUID>`); a `guid=` not present on the disk is **created**. Optional: `label=`, `type=` (GPT type GUID, asserted on a match), `index=` (requested partition number), `fs=fat32\|ext4\|none` (filesystem for a create; default `none`). |
+| `--shrink identifier:value[:size]` | Optional single partition to shrink to make room (e.g. `label:Data:100G`, `uuid:<GUID>:78G`, or `label:Data` for shrink-to-fit). The only operation that reduces a partition. |
 | `--fix-errors` | Repair filesystem errors found while checking the source filesystems (ext4 via `e2fsck -y`, FAT32 via `fsck.fat -a`) instead of aborting on an inconsistent source. Default is a read-only check that aborts on any inconsistency. |
-| `--dry-run` | Plan the resize and log it, but make no changes. |
-| `--preserve-numbers` | Renumber a relocated (grown) partition back to its original partition number, so consumers that reference it by number (e.g. `/dev/sda2`) still find it. |
-
-Partitions are identified by `name` (e.g. `name:sda1`) or `label` (e.g.
-`label:EFI System`). Sizes accept `B`, `K`, `M`, `G`, or `T` suffixes.
-
-### apply
-
-```
-resizer apply [flags] <disk>
-```
-
-Reconciles `<disk>` to a desired set of partitions, growing or creating as needed.
-
-| Flag | Description |
-| --- | --- |
-| `--partition guid=…,minsize=…[,label=…,type=…,index=…,fs=fat32\|ext4\|none]` | A desired partition. `guid=` and `minsize=` are required. If the GUID already exists it is grown to at least `minsize`; if not, it is created at `minsize` with filesystem `fs=` (default `none`). `index=` requests a specific partition number for a create. Repeatable. |
-| `--shrink identifier:value:size` | Optional single partition to shrink to make room (e.g. `label:Data:100G` or `uuid:<GUID>:78G`). The only operation that reduces a partition. |
-| `--fix-errors` | Repair source filesystem errors instead of aborting. |
 | `--dry-run` | Plan the reconcile and log it, but make no changes. |
+
+Partitions are identified by `name` (e.g. `name:sda1`, resolved via sysfs on a
+block device), `label` (e.g. `label:EFI System`), or `uuid`. Sizes accept `B`,
+`K`, `M`, `G`, or `T` suffixes. Grown partitions keep their original partition
+number, so consumers that reference a partition by number (e.g. `/dev/sda2`)
+still find it after a resize.
 
 ## Library use
 
-resizer is also importable as a Go package. The entry point is `Run`, which
+resizer is also importable as a Go package. The entry point is `Apply`, which
 performs the same operation as the CLI:
 
 ```go
@@ -127,40 +126,44 @@ import (
 )
 
 func main() {
-	// optional ext4 partition to shrink for space; pass nil to disable shrinking
-	shrink := resizer.NewPartitionIdentifier(resizer.IdentifierByName, "sda3")
-
-	// partitions to grow, with their target sizes (in bytes)
-	grows := []resizer.PartitionChange{
-		resizer.NewPartitionChange(resizer.IdentifierByName, "sda1", 20*resizer.GB),
-		resizer.NewPartitionChange(resizer.IdentifierByLabel, "Data", 100*resizer.GB),
+	// desired partitions: each is grown to at least MinSize, or created if the
+	// GUID is absent. An existing partition to grow is located by Match
+	// (name/label/uuid) or, when Match is nil, by GUID.
+	desired := []resizer.PartitionSpec{
+		{Match: resizer.NewPartitionIdentifier(resizer.IdentifierByName, "sda1"), MinSize: 20 * resizer.GB},
+		{Match: resizer.NewPartitionIdentifier(resizer.IdentifierByLabel, "Data"), MinSize: 100 * resizer.GB},
 	}
 
-	// Run(disk, shrink, grows, fixErrors, dryRun, preserveNumbers)
-	//   disk            -- image file path or block device
-	//   fixErrors       -- repair filesystem errors (e2fsck -y / fsck.fat -a) instead of read-only checks
-	//   dryRun          -- plan only, make no changes
-	//   preserveNumbers -- renumber a relocated partition back to its original number
-	if err := resizer.Run("/dev/sda", &shrink, grows, false, false, true); err != nil {
-		log.Fatalf("resize failed: %v", err)
+	// optional single partition to shrink for space; nil disables shrinking.
+	// Size 0 == shrink-to-fit; a positive Size shrinks to exactly that size.
+	shrink := &resizer.ShrinkSpec{ID: resizer.NewPartitionIdentifier(resizer.IdentifierByName, "sda3")}
+
+	// Apply(disk, desired, shrink, fixErrors, dryRun)
+	//   disk      -- image file path or block device; "" to auto-discover from the identifiers
+	//   fixErrors -- repair filesystem errors (e2fsck -y / fsck.fat -a) instead of read-only checks
+	//   dryRun    -- plan only, make no changes
+	if err := resizer.Apply("/dev/sda", desired, shrink, false, false); err != nil {
+		log.Fatalf("apply failed: %v", err)
 	}
 }
 ```
 
-Partitions are selected with `IdentifierByName`, `IdentifierByLabel`, or
-`IdentifierByUUID`. Sizes passed to `NewPartitionChange` are in bytes; the
-exported `KB`, `MB`, and `GB` constants are convenient multipliers.
+To create a partition, give a `PartitionSpec` with a `GUID` not present on the
+disk (leaving `Match` nil), plus `Label`, `TypeGUID`, `Index`, and `FS`.
+Identifiers use `IdentifierByName`, `IdentifierByLabel`, or `IdentifierByUUID`;
+sizes are in bytes, with the exported `KB`, `MB`, and `GB` constants as
+convenient multipliers. Grown partitions keep their original partition number.
 
 ### Errors
 
-`Run` returns a non-nil `error` for any failure. The error wraps the failing
+`Apply` returns a non-nil `error` for any failure. The error wraps the failing
 tool's exit status and, for the filesystem tools, includes the tail of their
 stderr, so a caller gets the reason — not just `exit status N`. Tool output is
 also streamed live to the process's stdout/stderr.
 
 ### Pre-flight integrity checks
 
-Before making any change, `Run` integrity-checks every source filesystem it will
+Before making any change, `Apply` integrity-checks every source filesystem it will
 read or modify — the shrink partition and each grow source. ext4 sources are
 checked with `e2fsck` and FAT32 sources with `fsck.fat`. By default the checks
 are read-only and an inconsistent filesystem aborts the resize; pass `fixErrors`

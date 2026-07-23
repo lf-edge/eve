@@ -13,22 +13,10 @@ type PartitionIdentifier interface {
 	Value() string
 }
 
-type PartitionChange interface {
-	PartitionIdentifier
-	Size() int64 // in bytes
-}
-
 func NewPartitionIdentifier(by Identifier, value string) PartitionIdentifier {
 	return &partitionIdentifierImpl{
 		by:    by,
 		value: value,
-	}
-}
-
-func NewPartitionChange(by Identifier, value string, size int64) PartitionChange {
-	return &partitionChangeImpl{
-		identifier: NewPartitionIdentifier(by, value),
-		size:       size,
 	}
 }
 
@@ -42,22 +30,6 @@ func (p *partitionIdentifierImpl) By() Identifier {
 }
 func (p *partitionIdentifierImpl) Value() string {
 	return p.value
-}
-
-type partitionChangeImpl struct {
-	identifier PartitionIdentifier
-	size       int64 // in bytes
-}
-
-func (p *partitionChangeImpl) By() Identifier {
-	return p.identifier.By()
-}
-
-func (p *partitionChangeImpl) Value() string {
-	return p.identifier.Value()
-}
-func (p *partitionChangeImpl) Size() int64 {
-	return p.size
 }
 
 type partitionData struct {
@@ -97,10 +69,18 @@ const (
 // PartitionSpec declares a partition that must exist with the given identity
 // and at least MinSize bytes. It is monotonically non-destructive: an absent
 // partition is created, a smaller one is grown, and one already at least
-// MinSize is left unchanged (never shrunk). A matching partition is located by
-// GUID; its type and label are asserted against the spec. Index requests a
-// specific GPT partition number (0 = lowest free).
+// MinSize is left unchanged (never shrunk). Index requests a specific GPT
+// partition number (0 = lowest free).
+//
+// Match selects the existing partition to grow. When set, the partition is
+// located by that identifier (name, label, or uuid) and must exist -- an absent
+// Match target is an error, never a create. When Match is nil the partition is
+// located by GUID instead, and an absent GUID is created (so a create is always
+// expressed by GUID, which becomes the created partition's identity). In both
+// cases a matched partition's type and label, when non-empty in the spec, are
+// asserted so Apply never operates on an unexpected disk.
 type PartitionSpec struct {
+	Match    PartitionIdentifier
 	Label    string
 	TypeGUID string
 	GUID     string
@@ -110,9 +90,14 @@ type PartitionSpec struct {
 }
 
 // ShrinkSpec is the sole destructive operation: it permits shrinking the one
-// identified partition to at most Size bytes to free space for the desired
+// identified partition (by name, label, or uuid) to free space for the desired
 // partitions. It is optional; when nil, no partition may be shrunk, so a
 // grow+create-only invocation cannot shrink anything by accident.
+//
+// Size is the target size in bytes. Size == 0 requests shrink-to-fit: the
+// partition is shrunk only if the grows and creates do not otherwise fit, and
+// then only by as much as they need (rounded up to a whole GB). A positive Size
+// shrinks to exactly that size whenever the partition is currently larger.
 type ShrinkSpec struct {
 	ID   PartitionIdentifier
 	Size int64
