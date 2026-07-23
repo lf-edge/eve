@@ -7,6 +7,7 @@ package baseosmgr
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -142,6 +143,28 @@ func baseOsHandleStatusUpdate(ctx *baseOsMgrContext, config *types.BaseOsConfig,
 	}
 }
 
+// existingVolumeNames returns a sorted, human-readable list of the volumes
+// currently known to volumemgr (VolumeStatus, falling back to VolumeConfig), for
+// the fault-injection WARNING logged when a shrink is allowed to proceed with
+// volumes present. TEST-ONLY helper.
+func existingVolumeNames(ctx *baseOsMgrContext) string {
+	var names []string
+	for _, st := range ctx.subVolumeStatus.GetAll() {
+		if vs, ok := st.(types.VolumeStatus); ok {
+			names = append(names, fmt.Sprintf("%s (%s)", vs.DisplayName, vs.VolumeID))
+		}
+	}
+	if len(names) == 0 {
+		for _, cf := range ctx.subVolumeConfig.GetAll() {
+			if vc, ok := cf.(types.VolumeConfig); ok {
+				names = append(names, fmt.Sprintf("%s (%s)", vc.DisplayName, vc.VolumeID))
+			}
+		}
+	}
+	sort.Strings(names)
+	return strings.Join(names, ", ")
+}
+
 func doBaseOsStatusUpdate(ctx *baseOsMgrContext, uuidStr string,
 	config types.BaseOsConfig, status *types.BaseOsStatus) bool {
 
@@ -252,8 +275,10 @@ func doBaseOsStatusUpdate(ctx *baseOsMgrContext, uuidStr string,
 				errString = fmt.Sprintf("Upgrade to EVE-k (%s) blocked while volumes exist: cannot determine whether /persist must be shrunk: %s",
 					config.BaseOsVersion, derr)
 			case diskconvert.WillShrinkPersist(decision):
-				errString = fmt.Sprintf("Upgrade to EVE-k (%s) from non EVE-k (%s) is not supported while volumes exist (boot-disk conversion would shrink /persist)",
-					config.BaseOsVersion, shortVerCurPart)
+				// FAULT-INJECTION, TEST ONLY.
+				log.Warnf("doBaseOsStatusUpdate(%s): TEST fault-injection: allowing cross-flavor update that will SHRINK /persist while %d volume(s) exist; their data may be corrupted by an interrupted shrink: %s",
+					config.BaseOsVersion, len(ctx.subVolumeStatus.GetAll()),
+					existingVolumeNames(ctx))
 			default:
 				// "proceed"/"grow" leave /persist intact; "insufficient"
 				// performs no conversion at all and is reported later by
