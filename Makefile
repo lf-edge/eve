@@ -43,8 +43,14 @@ PROTO_LANGS=go python
 HV=$(HV_DEFAULT)
 # Enable development build (disabled by default)
 DEV=n
-# How large to we want the disk to be in Mb
+# How large to we want the disk to be in Mb.
+# HV=k defaults larger so Longhorn on /persist has room after its
+# 25% reserve; kube-init's pre-flight warns otherwise.
+ifeq ($(HV),k)
+MEDIA_SIZE?=65536
+else
 MEDIA_SIZE?=32768
+endif
 # Image type for final disk images
 IMG_FORMAT=qcow2
 ifdef LIVE_UPDATE
