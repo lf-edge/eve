@@ -45,6 +45,9 @@ endif
 ifeq ($(COVER),y)
 	TAGS+=cover
 endif
+ifeq ($(FAULT_INJECTION),y)
+	TAGS+=faultinjection
+endif
 ifneq ($(TAGS),)
 	TAGS:=-tags "$(TAGS)"
 endif

@@ -282,6 +282,15 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 func (handler *volumeHandlerCSI) DestroyVolume() (string, error) {
 	pvcName := handler.status.GetPVCName()
 	handler.log.Noticef("DestroyVolume called for PVC %s", pvcName)
+	// Fault injection: while the marker file exists, fail the destroy to
+	// simulate an unreachable owner node at delete time. Fires before the
+	// replicated skip so it can exercise the retry loop for replicated volumes
+	// too. See kubeapi.VolumeDestroyFaultPath.
+	if kubeapi.VolumeDestroyFaultInjected() {
+		err := fmt.Errorf("fault-injected DestroyVolume failure for PVC %s", pvcName)
+		handler.log.Warnf("DestroyVolume: %v", err)
+		return pvcName, err
+	}
 	// if this is a replicated volume, do not delete PVC on this node.
 	if !handler.status.IsReplicated {
 		err := kubeapi.DeletePVC(pvcName, handler.log)
