@@ -479,6 +479,17 @@ func main() {
 	log.Printf("starting kube-init daemon (pid=%d, arch=%s)",
 		os.Getpid(), runtime.GOARCH)
 
+	// Migrate the legacy K3sBase conversion-complete flag from
+	// /var/lib/base-k3s-mode to /var/lib/native-kubernetes-mode.
+	// Devices that completed the conversion under an older EVE
+	// image carry the legacy name; without this rename the new
+	// code would treat an already-converted device as un-converted
+	// (re-enabling KubeVirt install). Must run before any consumer
+	// of state.NativeKubernetesMode reads the marker.
+	if err := state.MigrateLegacyBaseK3sMode(); err != nil {
+		log.Fatalf("migrate legacy base-k3s-mode marker: %v", err)
+	}
+
 	// Construct the pubsub manager. kube-init uses this to
 	// subscribe to EdgeNodeClusterStatus / KubeConfig /
 	// KubeClusterUpdateStatus / EdgeNodeInfo /
@@ -1198,12 +1209,12 @@ func (d *daemon) workInit(workCtx context.Context) error {
 		res.installKubevirt = false
 	}
 
-	baseMode, err := state.IsMarked(state.BaseK3sMode)
+	nkm, err := state.IsMarked(state.NativeKubernetesMode)
 	if err != nil {
-		return fmt.Errorf("check base-k3s mode: %w", err)
+		return fmt.Errorf("check native-kubernetes-mode marker: %w", err)
 	}
-	if baseMode {
-		log.Printf("base-k3s mode — KubeVirt disabled")
+	if nkm {
+		log.Printf("native-kubernetes-mode (post K3sBase conversion) — KubeVirt disabled")
 		res.installKubevirt = false
 	}
 
@@ -1851,8 +1862,12 @@ func (d *daemon) runHealthWorker(ctx context.Context, mon *monitor.Monitor, sup 
 		return
 	}
 
-	if err := components.RegistrationCheckApply(); err != nil {
-		log.Printf("WARNING: registration check/apply: %v", err)
+	// K3sBase clusters defer registration until the replicated-
+	// storage uninstall completes (signalled by NativeKubernetesMode);
+	// every other cluster type stages the manifest as soon as it
+	// appears. Idempotent; silent on the no-op path.
+	if err := components.RegistrationApplyIfReady(ct == k3s.ClusterTypeBase); err != nil {
+		log.Printf("WARNING: registration apply if ready: %v", err)
 	}
 
 	// SR-IOV manifest staging is per-tick + idempotent: hardware
@@ -1894,7 +1909,7 @@ func (d *daemon) runHealthWorker(ctx context.Context, mon *monitor.Monitor, sup 
 	//     spec so importer pods get the proxy env; safe to repeat
 	//     because kubectl patch is idempotent.
 	// Both are gated on kubevirt being requested for this device —
-	// base-k3s-mode and arm64 don't carry CDI.
+	// native-kubernetes-mode and arm64 don't carry CDI.
 	if d.installKubevirt {
 		if res, err := mgmtproxy.SetupCNI0ProxyIP(); err != nil {
 			log.Printf("WARNING: setup cni0 proxy anchor: %v", err)

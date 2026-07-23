@@ -43,14 +43,16 @@ const (
 // ErrLonghornUninstallTimedOut is returned by UninstallLonghorn
 // when the uninstall Job did not complete inside the poll budget.
 // UninstallAll aborts on this sentinel rather than continuing to
-// BaseK3sMode marking: declaring base-k3s mode while Longhorn
+// NativeKubernetesMode marking: declaring the mode while Longhorn
 // volumes are half-shredded would leave the cluster in a worse
 // state than failing loud.
 var ErrLonghornUninstallTimedOut = errors.New("longhorn uninstall job did not complete within poll budget")
 
-// UninstallAll runs the full base-k3s-mode conversion: drains the
-// API, uninstalls every component in reverse dependency order, and
-// sets the BaseK3sMode marker on success.
+// UninstallAll runs the full K3sBase conversion: drains the API,
+// uninstalls every component in reverse dependency order, and sets
+// the NativeKubernetesMode marker on success (the legacy K3sBase
+// conversion-complete gate — see state/markers.go for how it
+// relates to the EnableNativeK8SOrchestration opt-in).
 //
 // Per-component failures are normally warnings — uninstall
 // continues across stale state so partial-uninstall scenarios
@@ -58,12 +60,12 @@ var ErrLonghornUninstallTimedOut = errors.New("longhorn uninstall job did not co
 // component.
 //
 // Exception: ErrLonghornUninstallTimedOut from UninstallLonghorn
-// aborts the flow. Marking BaseK3sMode while Longhorn's data-shred
+// aborts the flow. Marking the mode while Longhorn's data-shred
 // Job is still running would leave volumes in an inconsistent
 // state; better to surface the timeout to the FSM so it can
 // retry on the next tick.
 func UninstallAll(ctx context.Context) error {
-	log.Printf("starting component uninstall for base-k3s mode conversion")
+	log.Printf("starting component uninstall for K3sBase conversion")
 
 	if err := state.Mark(longhornUninstallGuard); err != nil {
 		return fmt.Errorf("mark uninstall in progress: %w", err)
@@ -98,13 +100,13 @@ func UninstallAll(ctx context.Context) error {
 	if err := state.Unmark(longhornUninstallGuard); err != nil {
 		log.Printf("warning: unmark uninstall guard: %v", err)
 	}
-	if err := state.Mark(state.BaseK3sMode); err != nil {
-		return fmt.Errorf("mark base-k3s mode: %w", err)
+	if err := state.Mark(state.NativeKubernetesMode); err != nil {
+		return fmt.Errorf("mark native-kubernetes-mode: %w", err)
 	}
 	if err := state.Mark(replicatedStorageUninstallComplete); err != nil {
 		log.Printf("warning: mark uninstall complete: %v", err)
 	}
-	log.Printf("component uninstall complete, base-k3s mode set")
+	log.Printf("component uninstall complete, native-kubernetes-mode set")
 	return nil
 }
 
@@ -384,7 +386,7 @@ type nodeMetadata struct {
 // "kubevirt.io" from every node. Per-node failures are logged AND
 // counted; the function returns an error when any node was not
 // successfully scrubbed, so the caller can decide whether to
-// surface it (the base-k3s-mode cluster carrying stale
+// surface it (a native-kubernetes-mode cluster carrying stale
 // kubevirt.io labels is a real misconfiguration, not a no-op).
 func removeKubeVirtNodeLabels(ctx context.Context) error {
 	out, err := kubectl("get", "node", "-o", "NAME")

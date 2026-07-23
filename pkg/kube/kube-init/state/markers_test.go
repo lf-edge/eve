@@ -22,7 +22,7 @@ func TestComponentMarkerPaths(t *testing.T) {
 		DebugUserInitialized:         "/var/lib/debuguser-initialized",
 		NodeLabelsInitialized:        "/var/lib/node-labels-initialized",
 		EdgeNodeClusterMode:          "/var/lib/edge-node-cluster-mode",
-		BaseK3sMode:                  "/var/lib/base-k3s-mode",
+		NativeKubernetesMode:         "/var/lib/native-kubernetes-mode",
 		ConvertToSingleNode:          "/var/lib/convert-to-single-node",
 		TransitionToCluster:          "/var/lib/transition-to-cluster",
 		RequestRetouchMultus:         "/var/lib/request-retouch-multus",

@@ -56,11 +56,13 @@ func LonghornIsReady(ctx context.Context) (bool, error) {
 	if uninstalling {
 		return false, nil
 	}
-	baseMode, err := state.IsMarked(state.BaseK3sMode)
+	nkm, err := state.IsMarked(state.NativeKubernetesMode)
 	if err != nil {
-		return false, fmt.Errorf("check base-k3s marker: %w", err)
+		return false, fmt.Errorf("check native-kubernetes-mode marker: %w", err)
 	}
-	if baseMode {
+	if nkm {
+		// Post-K3sBase-conversion: Longhorn has been uninstalled.
+		// Report ready so callers stop waiting.
 		return true, nil
 	}
 	if _, err := kubectl("get", "namespace/longhorn-system"); err != nil {

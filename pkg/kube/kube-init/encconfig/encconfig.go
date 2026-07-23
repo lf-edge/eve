@@ -108,6 +108,22 @@ func ClusterType() types.ClusterType {
 	return cfg.ClusterType
 }
 
+// NativeK8sOrchestrationEnabled reports whether native Kubernetes
+// orchestration of user workloads (registration manifest + kube-vip
+// load balancer) is active for this cluster. True for the legacy
+// ClusterTypeK3sBase, and for ClusterTypeReplicatedStorage when the
+// controller opts in via EdgeNodeClusterConfig.EnableNativeK8SOrchestration.
+// Mirrors pillar/types.EdgeNodeClusterConfig.NativeK8sOrchestrationEnabled;
+// kept here so kube-init callers do not need to reach into the
+// pillar types directly.
+func NativeK8sOrchestrationEnabled() bool {
+	cfg, ok := Get()
+	if !ok {
+		return false
+	}
+	return cfg.NativeK8sOrchestrationEnabled()
+}
+
 // TieBreakerUUID returns the tie-breaker node's UUID from the
 // cached config, or "" if no delivery has arrived or the field
 // is unset.

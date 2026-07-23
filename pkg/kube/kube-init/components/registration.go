@@ -10,6 +10,8 @@ import (
 	"log"
 	"os"
 	"strings"
+
+	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
 )
 
 // Registration manifest paths. The source lives on /persist (so the
@@ -24,6 +26,46 @@ const (
 	appliedRegistrationYamlFileName = appliedRegistrationYamlName + ".yaml"
 	appliedRegistrationYamlFilePath = manifestsDst + appliedRegistrationYamlFileName
 )
+
+// RegistrationApplyIfReady stages the controller-supplied
+// registration manifest, subject to the cluster's readiness for it.
+//
+// K3sBase (legacy) clusters must complete the replicated-storage
+// uninstall — signalled by state.NativeKubernetesMode — before the
+// registration AddOn is safe to apply; the uninstall path is what
+// removes the pods the AddOn would otherwise collide with. Every
+// other cluster type (including ClusterTypeReplicatedStorage with
+// EnableNativeK8SOrchestration=true) has no such delay and the
+// manifest is applied as soon as zedkube writes the source file.
+//
+// Idempotent (RegistrationCheckApply skips when already staged);
+// silent on the no-op path. Called from the health worker's
+// steady-state tick so a late zedkube write is picked up without
+// waiting for the next daemon restart.
+//
+// Mirrors Registration_ApplyIfReady() from upstream commit 234230266.
+func RegistrationApplyIfReady(clusterIsK3sBase bool) error {
+	if !RegistrationConfigExists() {
+		return nil
+	}
+	if RegistrationExists() {
+		// Already staged. Short-circuits the byte-compare in
+		// RegistrationCheckApply on the hot path.
+		return nil
+	}
+	if clusterIsK3sBase {
+		converted, err := state.IsMarked(state.NativeKubernetesMode)
+		if err != nil {
+			return fmt.Errorf("check native-kubernetes-mode marker: %w", err)
+		}
+		if !converted {
+			// K3sBase conversion not complete; hold off on the
+			// registration AddOn until the uninstall path lands.
+			return nil
+		}
+	}
+	return RegistrationCheckApply()
+}
 
 // RegistrationCheckApply stages the operator-supplied registration
 // manifest from /persist into the k3s server-manifests dir if

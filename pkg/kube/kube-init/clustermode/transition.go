@@ -350,8 +350,9 @@ func (r *Runner) StepApplyRegistration(_ context.Context) error {
 //
 // Steps:
 //  1. Drop any controller-delivered registration manifest.
-//  2. Clear the base-k3s-mode marker so the post-reboot single
-//     node uninstalls base-mode components on its own.
+//  2. Clear the native-kubernetes-mode marker so the post-reboot
+//     single node uninstalls K3sBase-conversion components on its
+//     own.
 //  3. Mark ConvertToSingleNode so the next boot triggers
 //     RestoreVarLib. THIS marker is load-bearing — without it the
 //     restored /var/lib stays in cluster-mode state and the single
@@ -360,17 +361,18 @@ func (r *Runner) StepApplyRegistration(_ context.Context) error {
 //  4. Reboot.
 //
 // If RebootWithReason itself returns an error (e.g. /sbin/reboot
-// is missing), the BaseK3sMode unmark and ConvertToSingleNode mark
-// are already on disk. The caller must retry — the next attempt
-// will be a no-op on the markers and try the reboot again.
+// is missing), the NativeKubernetesMode unmark and
+// ConvertToSingleNode mark are already on disk. The caller must
+// retry — the next attempt will be a no-op on the markers and try
+// the reboot again.
 func RunClusterToSingle() error {
 	log.Printf("cluster transition: cluster → single starting")
 
 	if err := components.RegistrationCleanup(); err != nil {
 		log.Printf("warning: registration cleanup: %v", err)
 	}
-	if err := state.Unmark(state.BaseK3sMode); err != nil {
-		log.Printf("warning: unmark base-k3s mode: %v", err)
+	if err := state.Unmark(state.NativeKubernetesMode); err != nil {
+		log.Printf("warning: unmark native-kubernetes-mode: %v", err)
 	}
 	if err := state.Mark(state.ConvertToSingleNode); err != nil {
 		// Load-bearing marker: without it the post-reboot
