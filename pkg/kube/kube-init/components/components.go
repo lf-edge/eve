@@ -620,6 +620,7 @@ func InstallLonghorn(ctx context.Context, deviceName string) error {
 	}
 
 	log.Printf("installing Longhorn")
+	longhornPreflightCheck()
 	applyLonghornDiskConfig(deviceName)
 
 	cfgData, err := os.ReadFile(longhornCfg)
@@ -936,8 +937,10 @@ func applyLonghornDiskConfig(deviceName string) {
 		"node.longhorn.io/create-default-disk=config", "--overwrite"); err != nil {
 		log.Printf("warning: label node for longhorn disk: %v", err)
 	}
-	if _, err := kubectl("annotate", "node", nodeName,
-		`node.longhorn.io/default-disks-config=[ { "path":"/persist/vault/volumes", "allowScheduling":true }]`,
+	annotation := fmt.Sprintf(
+		`node.longhorn.io/default-disks-config=[ { "path":%q, "allowScheduling":true }]`,
+		longhornDiskPath)
+	if _, err := kubectl("annotate", "node", nodeName, annotation,
 		"--overwrite"); err != nil {
 		log.Printf("warning: annotate node for longhorn disk: %v", err)
 	}
