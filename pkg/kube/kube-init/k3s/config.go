@@ -36,10 +36,20 @@ const (
 	ClusterConfig    = "01-clusterconfig.yaml"
 	DisableLocalPath = "03-enc-disable-local-path.yaml"
 
+	// MultiNodeWatchCache disables the kube-apiserver in-memory
+	// watch cache so every LIST/WATCH is served from etcd. Staged
+	// on multi-node clusters only; rationale is in the YAML body.
+	MultiNodeWatchCache = "04-multinode-watch-cache.yaml"
+
 	// UserOverrideConfig wins lexical-order conflicts with the
 	// kube-init-rendered drop-ins above (prefix 99).
 	UserOverrideConfig = "99-k3s-config-user-overrides.yaml"
 )
+
+// multiNodeWatchCacheSrc is where the container image lands the
+// YAML the Dockerfile COPYs from pkg/kube/cfg-manifests/. Kept
+// package-local since only provisionMultiNodeWatchCache reads it.
+const multiNodeWatchCacheSrc = "/etc/kube/" + MultiNodeWatchCache
 
 const (
 	// disableLocalPathContent is the YAML body for the DisableLocalPath
@@ -341,6 +351,9 @@ func ProvisionClusterConfig(ctx context.Context, isFirstBoot bool) error {
 	if err := provisionDisableLocalPath(); err != nil {
 		return fmt.Errorf("provision disable-local-path: %w", err)
 	}
+	if err := provisionMultiNodeWatchCache(); err != nil {
+		return fmt.Errorf("provision multi-node watch cache: %w", err)
+	}
 	clusterCfgPath := filepath.Join(K3sConfigDir, ClusterConfig)
 	if cs.IsBootstrapNode {
 		return writeBootstrapConfig(clusterCfgPath, cs, isFirstBoot)
@@ -358,6 +371,10 @@ func ProvisionSingleNodeConfig(deviceName string) error {
 	dlpPath := filepath.Join(K3sConfigDir, DisableLocalPath)
 	if err := removeIfExists(dlpPath); err != nil {
 		log.Printf("warning: remove %s: %v", dlpPath, err)
+	}
+	wcPath := filepath.Join(K3sConfigDir, MultiNodeWatchCache)
+	if err := removeIfExists(wcPath); err != nil {
+		log.Printf("warning: remove %s: %v", wcPath, err)
 	}
 	log.Printf("single-node config for %s: node-name only",
 		state.ToK8sName(deviceName))
@@ -667,6 +684,20 @@ func logEveryNAttempts(attempt, every int, format string, args ...interface{}) {
 	if attempt%every == 1 {
 		log.Printf(format, args...)
 	}
+}
+
+// provisionMultiNodeWatchCache stages the multi-node watch-cache
+// drop-in from the image-baked source into K3sConfigDir. Called
+// only from the cluster-mode branch of Configure, so the mere
+// presence of the drop-in is the "this is a multi-node cluster"
+// signal to k3s. Redoes intent from upstream commit 27496ff23.
+func provisionMultiNodeWatchCache() error {
+	body, err := os.ReadFile(multiNodeWatchCacheSrc)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", multiNodeWatchCacheSrc, err)
+	}
+	dst := filepath.Join(K3sConfigDir, MultiNodeWatchCache)
+	return state.AtomicWriteFile(dst, body, 0644)
 }
 
 // provisionDisableLocalPath writes or removes the disable-local-path
