@@ -367,10 +367,6 @@ func trigMoveToGzip(stats *statsLogFile, appUUID string, moveChan chan fileChanI
 		return
 	}
 
-	if err := stats.file.Close(); err != nil {
-		log.Fatal(err)
-	}
-
 	fileinfo := fileChanInfo{
 		isApp:     appUUID != "",
 		inputSize: stats.size,
@@ -378,12 +374,34 @@ func trigMoveToGzip(stats *statsLogFile, appUUID string, moveChan chan fileChanI
 		notUpload: stats.notUpload,
 	}
 
+	// Non-blocking send to moveChan. If the main goroutine is busy
+	// with gzip compression, moveChan may be full. In that case we
+	// must not block — blocking here freezes writelogFile, which
+	// blocks the downstream channels (appLogChan, uploadLogChan,
+	// keepLogChan), which blocks sendLogsToVector, which fills
+	// loggerChan, which blocks getKernelMsg from reading /dev/kmsg,
+	// causing the kernel ring buffer to overflow and silently drop
+	// the earliest messages.
+	// Instead, keep the current file open and let it grow beyond the
+	// size limit until the next trigger attempt succeeds.
+	select {
+	case moveChan <- fileinfo:
+		// Successfully queued for compression.
+	default:
+		log.Warnf("trigMoveToGzip: moveChan full, deferring gzip move for %s (size %d)",
+			stats.file.Name(), stats.size)
+		return
+	}
+
+	if err := stats.file.Close(); err != nil {
+		log.Fatal(err)
+	}
+
 	if timerTrig {
 		log.Function("Move log file ", stats.file.Name(), " to gzip. Size: ", stats.size, " Reason timer")
 	} else {
 		log.Function("Move log file ", stats.file.Name(), " to gzip. Size: ", stats.size, " Reason size")
 	}
-	moveChan <- fileinfo
 
 	if fileinfo.isApp { // appM stats and logfile is created when needed
 		delete(appStatsMap, appUUID)
