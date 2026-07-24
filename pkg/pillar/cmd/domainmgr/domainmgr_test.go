@@ -652,3 +652,52 @@ func TestConfigEnableUsbUpdatePortAndPciBackIoBundle(t *testing.T) {
 		}
 	}
 }
+
+// TestMistypedNetworkPortKeptInHost covers a device model that assigns a device
+// a non-network type (here a GPU) even though its PCI address is in fact backing
+// a network port. The device must be kept in the host rather than reserved to
+// pciback, which would unbind the live port.
+func TestMistypedNetworkPortKeptInHost(t *testing.T) {
+	const pciLong = "0000:06:00.0"
+	assignableAdapters := types.AssignableAdapters{
+		IoBundleList: []types.IoBundle{
+			{
+				Phylabel:        "mislabeled",
+				Logicallabel:    "mislabeled",
+				Type:            types.IoHDMI,
+				AssignmentGroup: "1",
+				PciLong:         pciLong,
+			},
+		},
+	}
+	ctx := &domainContext{
+		assignableAdapters: &assignableAdapters,
+		deviceNetworkStatus: types.DeviceNetworkStatus{
+			Ports: []types.NetworkPortStatus{
+				{IfName: "eth0", PciLong: pciLong},
+			},
+		},
+	}
+	ib := &types.IoBundle{AssignmentGroup: "1"}
+
+	updatePortAndPciBackIoBundle(ctx, ib)
+
+	for _, b := range ctx.assignableAdapters.IoBundleList {
+		if b.Phylabel != "mislabeled" {
+			continue
+		}
+		if !b.KeepInHost {
+			t.Fatalf("IoBundle %+v should be kept in host: its PCI address is in "+
+				"use as a network port", b)
+		}
+		// The model/hardware inconsistency must be reported to the controller as
+		// an advisory warning (not a hard error).
+		if b.Error.Empty() || !b.Error.IsOnlyWarnings() {
+			t.Fatalf("IoBundle %+v should carry a warning about the type mismatch, got %q",
+				b, b.Error.String())
+		}
+		if !strings.Contains(b.Error.String(), pciLong) {
+			t.Fatalf("warning should identify the PCI address %s, got %q", pciLong, b.Error.String())
+		}
+	}
+}

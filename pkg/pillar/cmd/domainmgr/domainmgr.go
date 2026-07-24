@@ -99,7 +99,7 @@ var currentTTY = 0
 func isPort(ctx *domainContext, ifname string) bool {
 	ctx.dnsLock.Lock()
 	defer ctx.dnsLock.Unlock()
-	return types.IsPort(ctx.deviceNetworkStatus, ifname)
+	return types.IsPort(ctx.deviceNetworkStatus, ifname, "")
 }
 
 // Information for handleCreate/Modify/Delete
@@ -3573,11 +3573,11 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 			ib := types.IoBundleFromPhyAdapter(log, phyAdapter)
 			// Fill in PCIlong, macaddr, unique
 			_, err := checkAndFillIoBundle(ib)
+			var missing []string
 			if err != nil {
-				ib.Error.Append(err)
-			} else {
-				ib.Error.Clear()
+				missing = []string{err.Error()}
 			}
+			ib.Error.SetSourceErrors(types.ErrIoBundleMissingDevice{}, false, false, missing)
 			// We assume AddOrUpdateIoBundle will preserve any
 			// existing IsPort/IsPCIBack/UsedByUUID
 			aa.AddOrUpdateIoBundle(log, *ib)
@@ -3643,11 +3643,11 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 		ib := types.IoBundleFromPhyAdapter(log, phyAdapter)
 		// Fill in PCIlong, macaddr, unique
 		_, err := checkAndFillIoBundle(ib)
+		var missing []string
 		if err != nil {
-			ib.Error.Append(err)
-		} else {
-			ib.Error.Clear()
+			missing = []string{err.Error()}
 		}
+		ib.Error.SetSourceErrors(types.ErrIoBundleMissingDevice{}, false, false, missing)
 		currentIbPtr := aa.LookupIoBundlePhylabel(phyAdapter.Phylabel)
 		if currentIbPtr == nil || currentIbPtr.HasAdapterChanged(log, phyAdapter) {
 
@@ -3850,6 +3850,17 @@ func updatePortAndPciBackIoBundle(ctx *domainContext, ib *types.IoBundle) (chang
 		list = append(list, ib)
 	}
 
+	// The group being processed, and the members the controller's model actually
+	// listed in it, so members EVE adds via ExpandControllers can be flagged.
+	reqGroup := ib.AssignmentGroup
+	origGroup := make(map[*types.IoBundle]bool, len(list))
+	for _, m := range list {
+		origGroup[m] = true
+	}
+	// Per-bundle advisories for model inconsistencies worked around below;
+	// recorded as warnings on ib.Error so the controller is informed.
+	modelWarnings := map[*types.IoBundle][]string{}
+
 	keepInHostUsbControllers := usbControllersWithoutPCIReserve(ctx.assignableAdapters.IoBundleList)
 
 	// Is any member a network port?
@@ -3866,9 +3877,42 @@ func updatePortAndPciBackIoBundle(ctx *domainContext, ib *types.IoBundle) (chang
 	// EVE controller doesn't know it
 	list = aa.ExpandControllers(log, list, hyper.PCISameController)
 	for _, ib := range list {
-		if types.IsPort(ctx.deviceNetworkStatus, ib.Ifname) && ib.Type.IsNet() {
+		if !origGroup[ib] {
+			// EVE pulled this member into the group (ExpandControllers) because
+			// it shares a PCI controller with a member the controller listed.
+			modelWarnings[ib] = append(modelWarnings[ib], fmt.Sprintf(
+				"adapter %s (logicallabel %s, ifname %q, PCI %s) was added to "+
+					"assignment group %q because it shares a PCI controller with a "+
+					"group member, though the controller's model did not list it there",
+				ib.Phylabel, ib.Logicallabel, ib.Ifname, ib.PciLong, reqGroup))
+		}
+		switch {
+		case ib.Type.IsNet() &&
+			types.IsPort(ctx.deviceNetworkStatus, ib.Ifname, ib.PciLong):
+			// Match by PCI as well as ifname: recognize an in-use port even
+			// when the kernel name differs from the model (ethN vs enpNsN), so
+			// it is not wrongly reserved to pciback.
 			isPort = true
 			keepInHost = true
+			if ib.PciLong != "" &&
+				!types.IsPort(ctx.deviceNetworkStatus, ib.Ifname, "") {
+				// Matched by PCI only — model ifname doesn't match the kernel.
+				modelWarnings[ib] = append(modelWarnings[ib], fmt.Sprintf(
+					"adapter %s (logicallabel %s, model ifname %q, PCI %s) does not "+
+						"match the kernel-assigned interface name; matched to the "+
+						"in-use network port by PCI address and kept in the host",
+					ib.Phylabel, ib.Logicallabel, ib.Ifname, ib.PciLong))
+			}
+		case ib.PciLong != "" && !ib.Type.IsNet() &&
+			types.IsPort(ctx.deviceNetworkStatus, "", ib.PciLong):
+			// Model types this device as non-network, but its PCI backs a live
+			// network port; keep it in the host rather than reserve to pciback.
+			keepInHost = true
+			modelWarnings[ib] = append(modelWarnings[ib], fmt.Sprintf(
+				"adapter %s (logicallabel %s, ifname %q, PCI %s) is modeled as "+
+					"non-network type %d but that PCI address is in use as a network "+
+					"port; kept in the host instead of assigning it to pciback",
+				ib.Phylabel, ib.Logicallabel, ib.Ifname, ib.PciLong, ib.Type))
 		}
 		if ib.Type == types.IoNetWLAN || ib.Type == types.IoNetWWAN {
 			// Do not put unused wireless devices (unassigned and not associated with any network) into pciback,
@@ -3916,11 +3960,17 @@ func updatePortAndPciBackIoBundle(ctx *domainContext, ib *types.IoBundle) (chang
 		}
 		changed, err := updatePortAndPciBackIoMember(ctx, ib, isPort, keepInHost)
 		anyChanged = anyChanged || changed
+		// Reconcile only this loop's own error sources; leave others
+		// (collision, assignment-group, missing-device, rename) to their owners.
+		var pcibackErr []string
 		if err != nil {
-			ib.Error.Append(err)
+			pcibackErr = []string{err.Error()}
 			log.Error(err)
-		} else {
-			ib.Error.Clear()
+		}
+		ib.Error.SetSourceErrors(types.ErrIoBundlePcibackOp{}, false, false, pcibackErr)
+		ib.Error.SetSourceErrors(types.ErrIoBundleModelInconsistency{}, true, false, modelWarnings[ib])
+		for _, w := range modelWarnings[ib] {
+			log.Warn(w)
 		}
 	}
 	return anyChanged

@@ -51,6 +51,12 @@ func (m *DpcManager) updateDNS() {
 		m.deviceNetStatus.Ports[ix].IfName = port.IfName
 		m.deviceNetStatus.Ports[ix].Phylabel = port.Phylabel
 		m.deviceNetStatus.Ports[ix].Logicallabel = port.Logicallabel
+		// Record the PCI address backing this port so consumers (e.g. domainmgr
+		// deciding whether to reserve a device to pciback) can match a port to
+		// a physical device by stable PCI identity rather than by the
+		// kernel-assigned interface name. Seed from the config; the live value
+		// resolved from the interface below takes precedence when available.
+		m.deviceNetStatus.Ports[ix].PciLong = port.PCIAddr
 		m.deviceNetStatus.Ports[ix].SharedLabels = port.SharedLabels
 		m.deviceNetStatus.Ports[ix].Alias = port.Alias
 		m.deviceNetStatus.Ports[ix].IsMgmt = port.IsMgmt
@@ -90,6 +96,11 @@ func (m *DpcManager) updateDNS() {
 			wwanNetStatus := m.wwanStatus.GetNetworkStatus(port.Logicallabel)
 			if wwanNetStatus != nil {
 				m.deviceNetStatus.Ports[ix].WirelessStatus.Cellular = *wwanNetStatus
+				// A modem's PCI can't be derived from its interface; use the
+				// address the wwan microservice resolved.
+				if wwanNetStatus.PhysAddrs.PCI != "" {
+					m.deviceNetStatus.Ports[ix].PciLong = wwanNetStatus.PhysAddrs.PCI
+				}
 			}
 		}
 		// Do not try to get state data for interface which is in PCIback.
@@ -120,6 +131,14 @@ func (m *DpcManager) updateDNS() {
 				m.deviceNetStatus.Ports[ix].RecordFailure(err.Error())
 			}
 			continue
+		}
+		// Prefer the PCI resolved from the live interface: it reflects the
+		// device actually backing the port, regardless of the model's ifname.
+		// Cellular is excluded (see above; IfNameToPci can't resolve a modem).
+		if port.WirelessCfg.WType != types.WirelessTypeCellular {
+			if pciLong, _, err := types.IfNameToPciAndUsbAddr(m.Log, port.IfName); err == nil {
+				m.deviceNetStatus.Ports[ix].PciLong = pciLong
+			}
 		}
 		ifAttrs, err := m.NetworkMonitor.GetInterfaceAttrs(ifindex)
 		if err != nil {

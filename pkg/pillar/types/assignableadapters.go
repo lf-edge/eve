@@ -32,6 +32,12 @@ type AssignableAdapters struct {
 type ioBundleErrorBase struct {
 	ErrStr  string `json:",omitempty"`
 	TypeStr string `json:",omitempty"`
+	// Warning marks an advisory entry: a model inconsistency EVE worked around.
+	// Reported to the controller as a warning, not an error.
+	Warning bool `json:",omitempty"`
+	// GroupScoped marks an entry describing the whole assignment group (e.g. a
+	// collision). Stored on every member but reported once, without attribution.
+	GroupScoped bool `json:",omitempty"`
 }
 
 func (i ioBundleErrorBase) Error() string {
@@ -60,21 +66,106 @@ func (iobe *IOBundleError) String() string {
 	return strings.Join(errorStrings, "; ")
 }
 
-// Append converts an error to ioBundleErrorBase and adds it
-func (iobe *IOBundleError) Append(err error) {
+// appendEntry adds entry unless an identical one exists, refreshing the
+// timestamp. Dedup keeps the list bounded when a condition is re-detected.
+func (iobe *IOBundleError) appendEntry(entry ioBundleErrorBase) {
 	if iobe.Errors == nil {
 		iobe.Errors = make([]ioBundleErrorBase, 0, 1)
 	}
-
-	typeStr := reflect.TypeOf(err).String()
-	baseErr := ioBundleErrorBase{
-		ErrStr:  err.Error(),
-		TypeStr: typeStr,
+	for _, e := range iobe.Errors {
+		if e.ErrStr == entry.ErrStr && e.TypeStr == entry.TypeStr &&
+			e.Warning == entry.Warning && e.GroupScoped == entry.GroupScoped {
+			// Already present; leave the timestamp so a persistent error
+			// keeps its original time.
+			return
+		}
 	}
-
-	iobe.Errors = append(iobe.Errors, baseErr)
-
+	iobe.Errors = append(iobe.Errors, entry)
 	iobe.TimeOfError = time.Now()
+}
+
+// SetSourceErrors reconciles the entries owned by owner's type to exactly the
+// desired strings (all classified alike by warning/groupScoped). Unchanged
+// entries are left in place; TimeOfError advances only when an entry is added,
+// and resets when the last entry is removed. An empty desired clears the source.
+// This lets each source refresh its own errors every reconciliation pass without
+// churning the timestamp of a persistent error or touching other sources.
+// Returns true if the entry set changed.
+func (iobe *IOBundleError) SetSourceErrors(owner error, warning, groupScoped bool, desired []string) bool {
+	typeStr := reflect.TypeOf(owner).String()
+	want := make(map[string]bool, len(desired))
+	for _, s := range desired {
+		want[s] = true
+	}
+	have := make(map[string]bool)
+	changed := false
+	kept := iobe.Errors[:0]
+	for _, e := range iobe.Errors {
+		if e.TypeStr == typeStr && !want[e.ErrStr] {
+			changed = true // stale entry of this source: drop
+			continue
+		}
+		if e.TypeStr == typeStr {
+			have[e.ErrStr] = true
+		}
+		kept = append(kept, e)
+	}
+	iobe.Errors = kept
+	added := false
+	for _, s := range desired {
+		if !have[s] {
+			iobe.Errors = append(iobe.Errors, ioBundleErrorBase{
+				ErrStr: s, TypeStr: typeStr, Warning: warning, GroupScoped: groupScoped,
+			})
+			added = true
+		}
+	}
+	if len(iobe.Errors) == 0 {
+		iobe.TimeOfError = time.Time{}
+	} else if added {
+		iobe.TimeOfError = time.Now()
+	}
+	return changed || added
+}
+
+// Append adds a member-scoped hard error.
+func (iobe *IOBundleError) Append(err error) {
+	iobe.appendEntry(ioBundleErrorBase{
+		ErrStr:  err.Error(),
+		TypeStr: reflect.TypeOf(err).String(),
+	})
+}
+
+// AppendWarning adds a member-scoped advisory warning (see Warning).
+func (iobe *IOBundleError) AppendWarning(err error) {
+	iobe.appendEntry(ioBundleErrorBase{
+		ErrStr:  err.Error(),
+		TypeStr: reflect.TypeOf(err).String(),
+		Warning: true,
+	})
+}
+
+// AppendGroupError adds a group-scoped hard error (see GroupScoped).
+func (iobe *IOBundleError) AppendGroupError(err error) {
+	iobe.appendEntry(ioBundleErrorBase{
+		ErrStr:      err.Error(),
+		TypeStr:     reflect.TypeOf(err).String(),
+		GroupScoped: true,
+	})
+}
+
+// IsOnlyWarnings returns true if there is at least one entry and every entry is
+// an advisory warning (no hard errors). Used to pick the reported severity.
+func (iobe *IOBundleError) IsOnlyWarnings() bool {
+	if len(iobe.Errors) == 0 {
+		return false
+	}
+	for _, err := range iobe.Errors {
+		if !err.Warning {
+			return false
+		}
+	}
+	return true
 }
 
 // Empty returns true if no error has been added
@@ -117,10 +208,81 @@ func (iobe *IOBundleError) removeByType(e error) {
 	}
 }
 
-// Clear clears all errors
-func (iobe *IOBundleError) Clear() {
-	iobe.Errors = make([]ioBundleErrorBase, 0)
-	iobe.TimeOfError = time.Time{}
+// RemoveByType clears entries of type e, leaving other errors and warnings.
+func (iobe *IOBundleError) RemoveByType(e error) {
+	iobe.removeByType(e)
+}
+
+// AggregatedIoBundleError is the combined error state of an assignment group,
+// ready for reporting in a single ZioBundle.
+type AggregatedIoBundleError struct {
+	Description  string    // combined text
+	OnlyWarnings bool      // every entry is a warning (picks WARNING vs ERROR)
+	Empty        bool      // no member carries an entry
+	ErrorTime    time.Time // most recent error time across members
+}
+
+// AggregateIoBundleGroupErrors combines a group's members' entries for reporting:
+// group-scoped entries once and unattributed, member-scoped entries prefixed with
+// their member's label. Duplicates are suppressed; nil members ignored.
+func AggregateIoBundleGroupErrors(members []*IoBundle) AggregatedIoBundleError {
+	var parts []string
+	seenGroup := map[string]bool{}
+	onlyWarnings := true
+	anyEntry := false
+	var latest time.Time
+	// Group-scoped entries first, deduplicated across members.
+	for _, m := range members {
+		if m == nil {
+			continue
+		}
+		if m.Error.TimeOfError.After(latest) {
+			latest = m.Error.TimeOfError
+		}
+		for _, e := range m.Error.Errors {
+			if !e.GroupScoped {
+				continue
+			}
+			key := e.TypeStr + "\x00" + e.ErrStr
+			if seenGroup[key] {
+				continue
+			}
+			seenGroup[key] = true
+			anyEntry = true
+			if !e.Warning {
+				onlyWarnings = false
+			}
+			parts = append(parts, e.ErrStr)
+		}
+	}
+	// Member-scoped entries, attributed to the owning member.
+	for _, m := range members {
+		if m == nil {
+			continue
+		}
+		seenMember := map[string]bool{}
+		for _, e := range m.Error.Errors {
+			if e.GroupScoped {
+				continue
+			}
+			key := e.TypeStr + "\x00" + e.ErrStr
+			if seenMember[key] {
+				continue
+			}
+			seenMember[key] = true
+			anyEntry = true
+			if !e.Warning {
+				onlyWarnings = false
+			}
+			parts = append(parts, fmt.Sprintf("%s: %s", m.Logicallabel, e.ErrStr))
+		}
+	}
+	return AggregatedIoBundleError{
+		Description:  strings.Join(parts, "; "),
+		OnlyWarnings: anyEntry && onlyWarnings,
+		Empty:        !anyEntry,
+		ErrorTime:    latest,
+	}
 }
 
 // IoBundle has one entry per individual receptacle with a reference
@@ -604,76 +766,103 @@ func (ErrCycleDetected) Error() string {
 	return "Cycle detected, please check provided parentassigngrp/assigngrp"
 }
 
-// CheckParentAssigngrp finds dependency loops between ioBundles and sets/clears the error
+// The following empty types are owner markers for SetSourceErrors: they identify
+// which source produced an entry so each source clears only its own.
+
+// ErrIoBundleAssignmentGroupConflict owns CheckBadAssignmentGroups errors.
+type ErrIoBundleAssignmentGroupConflict struct{}
+
+func (ErrIoBundleAssignmentGroupConflict) Error() string { return "assignment-group conflict" }
+
+// ErrIoBundleModelInconsistency owns updatePortAndPciBackIoBundle warnings.
+type ErrIoBundleModelInconsistency struct{}
+
+func (ErrIoBundleModelInconsistency) Error() string { return "device-model inconsistency" }
+
+// ErrIoBundleRename owns the interface-rename warning from IoBundleToPci.
+type ErrIoBundleRename struct{}
+
+func (ErrIoBundleRename) Error() string { return "interface renamed to match model" }
+
+// ErrIoBundlePcibackOp owns errors from moving a device in/out of pciback.
+type ErrIoBundlePcibackOp struct{}
+
+func (ErrIoBundlePcibackOp) Error() string { return "pciback operation failed" }
+
+// ErrIoBundleMissingDevice means the device backing an IoBundle was not found.
+// Typed so callers can clear it (RemoveByType) once resolvable, keeping warnings.
+type ErrIoBundleMissingDevice struct {
+	msg string
+}
+
+func (e ErrIoBundleMissingDevice) Error() string {
+	return e.msg
+}
+
+// CheckParentAssigngrp validates the parentassigngrp/assigngrp graph and records
+// the applicable per-bundle error (self-parent, parent mismatch, empty-group with
+// parent, or a dependency cycle). Errors are reconciled through SetSourceErrors so
+// a persistent error keeps a stable timestamp across reconciliation passes instead
+// of being churned by a remove-then-re-add; a churning timestamp republishes
+// AssignableAdapters every pass and spins nim's DPC verification. Returns true if
+// the error set changed.
 func (aa *AssignableAdapters) CheckParentAssigngrp() bool {
 	assigngrp2parent := make(map[string]string)
+	ownParent := make(map[int]bool)
+	mismatch := make(map[int]bool)
+	emptyWithParent := make(map[int]bool)
 
 	for i := range aa.IoBundleList {
-		ioBundle := &aa.IoBundleList[i]
-		for _, parentAssigngrpErr := range []error{
-			ErrOwnParent{},
-			ErrParentAssigngrpMismatch{},
-			ErrEmptyAssigngrpWithParent{},
-			ErrCycleDetected{},
-		} {
-			ioBundle.Error.removeByType(parentAssigngrpErr)
+		ib := &aa.IoBundleList[i]
+		if ib.AssignmentGroup == ib.ParentAssignmentGroup && ib.AssignmentGroup != "" {
+			ownParent[i] = true
+			continue
 		}
+		if parent, ok := assigngrp2parent[ib.AssignmentGroup]; ok && parent != ib.ParentAssignmentGroup {
+			mismatch[i] = true
+			continue
+		}
+		if ib.AssignmentGroup == "" && ib.ParentAssignmentGroup != "" {
+			emptyWithParent[i] = true
+			continue
+		}
+		assigngrp2parent[ib.AssignmentGroup] = ib.ParentAssignmentGroup
 	}
 
-	var cycleDetectedAssigngrp string
-	for i := range aa.IoBundleList {
-		ioBundle := &aa.IoBundleList[i]
-
-		if ioBundle.AssignmentGroup == ioBundle.ParentAssignmentGroup && ioBundle.AssignmentGroup != "" {
-			ioBundle.Error.Append(ErrOwnParent{})
-			return true
-		}
-		parentassigngrp, ok := assigngrp2parent[ioBundle.AssignmentGroup]
-		if ok && parentassigngrp != ioBundle.ParentAssignmentGroup {
-			ioBundle.Error.Append(ErrParentAssigngrpMismatch{})
-			return true
-		}
-
-		if ioBundle.AssignmentGroup == "" && ioBundle.ParentAssignmentGroup != "" {
-			ioBundle.Error.Append(ErrEmptyAssigngrpWithParent{})
-			return true
-		}
-		assigngrp2parent[ioBundle.AssignmentGroup] = ioBundle.ParentAssignmentGroup
-	}
-
+	// A group is in a cycle if following parent links from it returns to an
+	// already-visited group. Self-parents are excluded above, so they are
+	// reported as ErrOwnParent rather than ErrCycleDetected.
+	cycleGroups := make(map[string]bool)
 	for assigngrp := range assigngrp2parent {
-		visitedAssigngrp := make(map[string]struct{})
-		visitedAssigngrp[assigngrp] = struct{}{}
-
-		for {
-			if assigngrp == "" {
+		visited := map[string]struct{}{assigngrp: {}}
+		for g := assigngrp; g != ""; {
+			g = assigngrp2parent[g]
+			if _, seen := visited[g]; seen {
+				cycleGroups[g] = true
 				break
 			}
-
-			assigngrp = assigngrp2parent[assigngrp]
-			_, visitedBefore := visitedAssigngrp[assigngrp]
-			if visitedBefore {
-				// cycle detected
-				cycleDetectedAssigngrp = assigngrp
-				break
-			}
-
-			visitedAssigngrp[assigngrp] = struct{}{}
+			visited[g] = struct{}{}
 		}
 	}
 
-	if cycleDetectedAssigngrp == "" {
-		return false
+	changed := false
+	setErr := func(ib *IoBundle, owner error, want bool) {
+		var desired []string
+		if want {
+			desired = []string{owner.Error()}
+		}
+		if ib.Error.SetSourceErrors(owner, false, false, desired) {
+			changed = true
+		}
 	}
-
 	for i := range aa.IoBundleList {
-		ioBundle := &aa.IoBundleList[i]
-		if ioBundle.AssignmentGroup == cycleDetectedAssigngrp {
-			ioBundle.Error.Append(ErrCycleDetected{})
-		}
+		ib := &aa.IoBundleList[i]
+		setErr(ib, ErrOwnParent{}, ownParent[i])
+		setErr(ib, ErrParentAssigngrpMismatch{}, mismatch[i])
+		setErr(ib, ErrEmptyAssigngrpWithParent{}, emptyWithParent[i])
+		setErr(ib, ErrCycleDetected{}, cycleGroups[ib.AssignmentGroup])
 	}
-
-	return true
+	return changed
 }
 
 // IOBundleCollision has the members IoBundles can collide on
@@ -686,7 +875,23 @@ type IOBundleCollision struct {
 }
 
 func (i IOBundleCollision) String() string {
-	return fmt.Sprintf("phylabel %s - usbaddr: %s usbproduct: %s pcilong: %s assigngrp: %s", i.Phylabel, i.USBAddr, i.USBProduct, i.PCILong, i.Assigngrp)
+	var parts []string
+	if i.USBAddr != "" {
+		parts = append(parts, "usbaddr "+i.USBAddr)
+	}
+	if i.USBProduct != "" {
+		parts = append(parts, "usbproduct "+i.USBProduct)
+	}
+	if i.PCILong != "" {
+		parts = append(parts, "pcilong "+i.PCILong)
+	}
+	if i.Assigngrp != "" {
+		parts = append(parts, "assigngrp "+i.Assigngrp)
+	}
+	if len(parts) == 0 {
+		return i.Phylabel
+	}
+	return fmt.Sprintf("%s (%s)", i.Phylabel, strings.Join(parts, ", "))
 }
 
 // ErrIOBundleCollision describes an error where an IoBundle collides with another IoBundle
@@ -695,15 +900,11 @@ type ErrIOBundleCollision struct {
 }
 
 func (i ErrIOBundleCollision) Error() string {
-	collisionErrStrPrefix := "ioBundle collision:"
-
 	collisionStrs := make([]string, 0, len(i.Collisions))
 	for _, collision := range i.Collisions {
 		collisionStrs = append(collisionStrs, collision.String())
 	}
-	collisionErrStrBody := strings.Join(collisionStrs, "||")
-
-	return fmt.Sprintf("%s||%s||", collisionErrStrPrefix, collisionErrStrBody)
+	return "ioBundle collision: " + strings.Join(collisionStrs, "; ")
 }
 
 func newIoBundleCollisionErr() ErrIOBundleCollision {
@@ -717,29 +918,22 @@ func (aa *AssignableAdapters) CheckBadUSBBundles() {
 	usbProductsAddressMap := make(map[[4]string][]*IoBundle)
 	for i := range aa.IoBundleList {
 		ioBundle := &aa.IoBundleList[i]
-		ioBundle.Error.removeByType(ErrIOBundleCollision{})
-	}
-
-	for i := range aa.IoBundleList {
-		ioBundle := &aa.IoBundleList[i]
 		if ioBundle.UsbAddr == "" && ioBundle.UsbProduct == "" && ioBundle.PciLong == "" {
 			continue
 		}
 
 		id := [4]string{ioBundle.UsbAddr, ioBundle.UsbProduct, ioBundle.PciLong, ioBundle.AssignmentGroup}
-		if usbProductsAddressMap[id] == nil {
-			usbProductsAddressMap[id] = make([]*IoBundle, 0)
-		}
 		usbProductsAddressMap[id] = append(usbProductsAddressMap[id], ioBundle)
 	}
 
+	// Collision text per colliding bundle (a group-scoped error listing every
+	// colliding member; identical for all members of the collision).
+	collisionText := make(map[*IoBundle]string)
 	for _, bundles := range usbProductsAddressMap {
 		if len(bundles) <= 1 {
 			continue
 		}
-
 		collisionErr := newIoBundleCollisionErr()
-
 		for _, bundle := range bundles {
 			collisionErr.Collisions = append(collisionErr.Collisions, IOBundleCollision{
 				Phylabel:   bundle.Phylabel,
@@ -750,8 +944,17 @@ func (aa *AssignableAdapters) CheckBadUSBBundles() {
 			})
 		}
 		for _, bundle := range bundles {
-			bundle.Error.Append(collisionErr)
+			collisionText[bundle] = collisionErr.Error()
 		}
+	}
+
+	for i := range aa.IoBundleList {
+		ib := &aa.IoBundleList[i]
+		var desired []string
+		if s, ok := collisionText[ib]; ok {
+			desired = []string{s}
+		}
+		ib.Error.SetSourceErrors(ErrIOBundleCollision{}, false, true, desired)
 	}
 }
 
@@ -762,6 +965,7 @@ func (aa *AssignableAdapters) CheckBadAssignmentGroups(log *base.LogObject, PCIS
 	changed := false
 	for i := range aa.IoBundleList {
 		ib := &aa.IoBundleList[i]
+		var desired []string
 		for _, ib2 := range aa.IoBundleList {
 			if ib2.Phylabel == ib.Phylabel {
 				continue
@@ -777,12 +981,14 @@ func (aa *AssignableAdapters) CheckBadAssignmentGroups(log *base.LogObject, PCIS
 				continue
 			}
 			if PCISameController != nil && PCISameController(ib.PciLong, ib2.PciLong) {
-				err := fmt.Errorf("CheckBadAssignmentGroup: %s same PCI controller as %s; pci long %s vs %s",
+				s := fmt.Sprintf("CheckBadAssignmentGroup: %s same PCI controller as %s; pci long %s vs %s",
 					ib2.Ifname, ib.Ifname, ib2.PciLong, ib.PciLong)
-				log.Error(err)
-				ib.Error.Append(err)
-				changed = true
+				log.Error(s)
+				desired = append(desired, s)
 			}
+		}
+		if ib.Error.SetSourceErrors(ErrIoBundleAssignmentGroupConflict{}, false, true, desired) {
+			changed = true
 		}
 	}
 
@@ -817,8 +1023,12 @@ func (aa *AssignableAdapters) ExpandControllers(log *base.LogObject, list []*IoB
 				continue
 			}
 			if PCISameController != nil && PCISameController(ib.PciLong, ib2.PciLong) {
-				log.Warnf("ExpandController found %s matching %s; long %s long %s",
-					ib2.Phylabel, ib.Phylabel, ib2.PciLong, ib.PciLong)
+				log.Warnf("ExpandController: adapter %s (logicallabel %s, ifname %q, "+
+					"PCI %s) shares a PCI controller with %s (logicallabel %s, ifname %q, "+
+					"PCI %s) and is pulled into the same assignment group %q, which the "+
+					"controller's model did not include",
+					ib2.Phylabel, ib2.Logicallabel, ib2.Ifname, ib2.PciLong,
+					ib.Phylabel, ib.Logicallabel, ib.Ifname, ib.PciLong, ib.AssignmentGroup)
 				elist = append(elist, ib2)
 			}
 		}

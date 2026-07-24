@@ -535,12 +535,18 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 		} else if ib.KeepInHost {
 			reportAA.UsedByBaseOS = true
 		}
-		if !ib.Error.Empty() {
+		// Combine all group members' errors into the single ZioBundle error slot.
+		aggErr := types.AggregateIoBundleGroupErrors(list)
+		if !aggErr.Empty {
 			errInfo := new(info.ErrorInfo)
-			errInfo.Description = ib.Error.String()
-			errInfo.Severity = info.Severity_SEVERITY_ERROR
-			if !ib.Error.ErrorTime().IsZero() {
-				errInfo.Timestamp = timestamppb.New(ib.Error.ErrorTime())
+			errInfo.Description = aggErr.Description
+			if aggErr.OnlyWarnings {
+				errInfo.Severity = info.Severity_SEVERITY_WARNING
+			} else {
+				errInfo.Severity = info.Severity_SEVERITY_ERROR
+			}
+			if !aggErr.ErrorTime.IsZero() {
+				errInfo.Timestamp = timestamppb.New(aggErr.ErrorTime)
 			}
 			reportAA.Err = errInfo
 		}
@@ -893,6 +899,11 @@ func encodeNetworkPortStatus(ctx *zedagentContext,
 	devicePort.Err = encodeTestResults(port.TestResults)
 	if ioBundle != nil {
 		devicePort.Usage = ioBundle.Usage
+		// A port that is also an assignable adapter can carry model /
+		// pciback errors on its IoBundle in addition to any connectivity
+		// error from network testing. Fold those into the port error so
+		// they surface in the port view, not only under assignableAdapters.
+		mergeIoBundleErrIntoPort(devicePort.Err, ioBundle)
 	}
 	devicePort.Cost = uint32(port.Cost)
 	devicePort.IsMgmt = port.IsMgmt
@@ -1006,6 +1017,39 @@ func encodeNetworkPortStatus(ctx *zedagentContext,
 		devicePort.BondStatus = encodeBondStatus(&port.BondStatus)
 	}
 	return devicePort
+}
+
+// mergeIoBundleErrIntoPort folds an assignable-adapter port's IoBundle error
+// (model inconsistency, rename, pciback op, ...) into the port ErrorInfo, which
+// otherwise carries only the network TestResults error. Descriptions are
+// concatenated and the reported severity is the more severe of the two, so a
+// model error is never masked by a healthy network result and vice versa.
+func mergeIoBundleErrIntoPort(errInfo *info.ErrorInfo, ioBundle *types.IoBundle) {
+	aggErr := types.AggregateIoBundleGroupErrors([]*types.IoBundle{ioBundle})
+	if aggErr.Empty {
+		return
+	}
+	bundleSeverity := info.Severity_SEVERITY_ERROR
+	if aggErr.OnlyWarnings {
+		bundleSeverity = info.Severity_SEVERITY_WARNING
+	}
+	if errInfo.Description == "" {
+		// Port carries no network error; adopt the IoBundle error wholesale.
+		errInfo.Description = aggErr.Description
+		errInfo.Severity = bundleSeverity
+		if !aggErr.ErrorTime.IsZero() {
+			errInfo.Timestamp = timestamppb.New(aggErr.ErrorTime)
+		}
+		return
+	}
+	errInfo.Description += "; " + aggErr.Description
+	if errInfo.Severity < bundleSeverity {
+		errInfo.Severity = bundleSeverity
+	}
+	if !aggErr.ErrorTime.IsZero() &&
+		(errInfo.Timestamp == nil || aggErr.ErrorTime.After(errInfo.Timestamp.AsTime())) {
+		errInfo.Timestamp = timestamppb.New(aggErr.ErrorTime)
+	}
 }
 
 func encodeBondStatus(bs *types.BondStatus) *info.BondStatus {

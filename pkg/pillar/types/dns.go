@@ -33,6 +33,12 @@ type NetworkPortStatus struct {
 	IfName       string
 	Phylabel     string // Physical name set by controller/model
 	Logicallabel string
+	// PciLong is the long-form PCI address (e.g. "0000:06:00.0") of the
+	// physical device backing this port, when it has one. It gives the port a
+	// stable identity independent of the kernel-assigned interface name, which
+	// can differ from the model (e.g. ethN vs enpNsN) or change across driver
+	// re-binds. Empty for ports not backed by a PCI device (e.g. USB NICs).
+	PciLong string
 	// Unlike the logicallabel, which is defined in the device model and unique
 	// for each port, these user-configurable "shared" labels are potentially
 	// assigned to multiple ports so that they can be used all together with
@@ -675,13 +681,22 @@ func getLocalAddrListImpl(dns DeviceNetworkStatus,
 	return addrs, nil
 }
 
-// Check if an interface name is a port owned by nim
-func IsPort(dns DeviceNetworkStatus, ifname string) bool {
+// IsPort reports whether the named interface, or the physical device at the
+// given PCI address, is currently used as a device port owned by nim. Matching
+// on pciLong (when non-empty) in addition to the interface name makes the check
+// robust to the kernel-assigned name differing from the model (e.g. ethN vs
+// enpNsN) or changing across driver re-binds. Either argument may be empty and
+// an empty argument never matches, so passing an empty ifname with a non-empty
+// pciLong matches purely on the PCI address (useful for a device whose modeled
+// type is not network but which is in fact backing a network port).
+func IsPort(dns DeviceNetworkStatus, ifname, pciLong string) bool {
 	for _, us := range dns.Ports {
-		if us.IfName != ifname {
-			continue
+		if ifname != "" && us.IfName == ifname {
+			return true
 		}
-		return true
+		if pciLong != "" && us.PciLong == pciLong {
+			return true
+		}
 	}
 	return false
 }
