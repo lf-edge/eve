@@ -1,8 +1,13 @@
 #!/bin/sh
 
 infinite_loop() {
-	while true; do
-		$@
+	stop=0
+	child=""
+	trap 'stop=1; [ -n "$child" ] && kill -9 $child 2> /dev/null' USR1
+	while [ "$stop" -eq 0 ]; do
+		$@ &
+		child=$!
+		wait "$child"
 	done
 }
 

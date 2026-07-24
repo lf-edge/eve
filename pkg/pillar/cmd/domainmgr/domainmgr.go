@@ -515,8 +515,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	if !domainCtx.setInitialConsoleAccess {
 		log.Functionf("GCComplete but not setInitialConsoleAccess => first boot")
-		// Enable Console
-		domainCtx.consoleAccess = true
+		// Auto-enable the console only while the device is not yet
+		// onboarded to a controller.
+		domainCtx.consoleAccess = !isDeviceOnboarded(ps)
 		updateConsoleAccess(&domainCtx)
 		domainCtx.setInitialConsoleAccess = true
 	}
@@ -3392,7 +3393,7 @@ func mountDirsToUserData(diskStatusList []types.DiskStatus) string {
 		return ""
 	}
 	var sb strings.Builder
-	any := false
+	found := false
 	for i := 1; i < len(diskStatusList); i++ {
 		ds := diskStatusList[i]
 		if ds.Devtype == "cdrom" {
@@ -3400,10 +3401,10 @@ func mountDirsToUserData(diskStatusList []types.DiskStatus) string {
 		}
 		fmt.Fprintf(&sb, "#EVE_VOLMOUNT=%s\n", ds.MountDir)
 		if ds.MountDir != "" {
-			any = true
+			found = true
 		}
 	}
-	if !any {
+	if !found {
 		return ""
 	}
 	return sb.String()
@@ -4279,10 +4280,41 @@ func updateVgaAccess(ctx *domainContext) {
 
 func updateConsoleAccess(ctx *domainContext) {
 	log.Functionf("updateConsoleAccess(%t)", ctx.consoleAccess)
-	// FIXME: explore the way to stop getty/login
 	if ctx.consoleAccess {
 		startGetty(log)
+	} else {
+		stopGetty(log)
 	}
+}
+
+// isDeviceOnboarded reports whether the device has already been onboarded to a
+// controller.
+func isDeviceOnboarded(ps *pubsub.PubSub) bool {
+	sub, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zedclient",
+		MyAgentName: agentName,
+		TopicImpl:   types.OnboardingStatus{},
+		Persistent:  true,
+		Activate:    false,
+	})
+	if err != nil {
+		log.Errorf("isDeviceOnboarded: subscription failed: %v", err)
+		return false
+	}
+	defer sub.Close()
+	// Activate() populates a persistent subscription synchronously from the
+	// on-disk JSON, so GetAll() below observes the persisted status.
+	if err := sub.Activate(); err != nil {
+		log.Errorf("isDeviceOnboarded: activate failed: %v", err)
+		return false
+	}
+	for _, st := range sub.GetAll() {
+		if status, ok := st.(types.OnboardingStatus); ok &&
+			status.DeviceUUID != nilUUID {
+			return true
+		}
+	}
+	return false
 }
 
 // Track which ones of these are loaded
