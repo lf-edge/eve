@@ -160,6 +160,8 @@ jobs:
   trigger_assets:
     if: ${{ (startsWith(github.ref, 'refs/tags/')) && (github.event.repository.full_name == 'lf-edge/eve') }}
     needs: [manifest, eve]
+    permissions:
+      contents: write
     uses: lf-edge/eve/.github/workflows/assets.yml@13.4-stable
     with:
       tag_ref: ${{ github.ref_name }}
