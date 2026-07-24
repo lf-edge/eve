@@ -3407,7 +3407,7 @@ func mountDirsToUserData(diskStatusList []types.DiskStatus) string {
 		return ""
 	}
 	var sb strings.Builder
-	any := false
+	found := false
 	for i := 1; i < len(diskStatusList); i++ {
 		ds := diskStatusList[i]
 		if ds.Devtype == "cdrom" {
@@ -3415,10 +3415,10 @@ func mountDirsToUserData(diskStatusList []types.DiskStatus) string {
 		}
 		fmt.Fprintf(&sb, "#EVE_VOLMOUNT=%s\n", ds.MountDir)
 		if ds.MountDir != "" {
-			any = true
+			found = true
 		}
 	}
-	if !any {
+	if !found {
 		return ""
 	}
 	return sb.String()
