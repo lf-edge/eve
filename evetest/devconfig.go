@@ -886,7 +886,18 @@ type ApplicationInstanceConfig struct {
 	UserData            string
 	NetworkAdapters     []AppNetworkAdapter
 	EnforceNetIntfOrder bool
+	// DataVolumes are additional blank (empty) volumes attached to the app beyond
+	// its image. Each has no content tree — EVE creates an empty disk of the given
+	// size (VCOT_BLANK) and mounts it at MountDir.
+	DataVolumes []DataVolumeConfig
 	// Many more parameters can be configured; they will be added later as needed.
+}
+
+// DataVolumeConfig describes one blank data volume attached to an application.
+type DataVolumeConfig struct {
+	SizeBytes uint64 // volume size in bytes (Maxsizebytes)
+	MountDir  string // mount point inside the app (default: /mnt/vol<N>)
+	ReadOnly  bool
 }
 
 func (config ApplicationInstanceConfig) toProto(th *TestHarness, devName string,
@@ -2272,6 +2283,32 @@ func (dc *EdgeDeviceConfig) addApplicationWithUUIDs(
 		contentTreeUUID, datastoreUUID, config.DisplayName)
 	dc.ContentInfo = append(dc.ContentInfo, contentTree)
 	dc.Datastores = append(dc.Datastores, dsConfig)
+
+	// Attach any blank data volumes: a VCOT_BLANK Volume (no content tree or
+	// datastore) plus a VolumeRef mounting it into the app. appInstConfig is a
+	// pointer already stored in dc.Apps, so extending its VolumeRefList here is
+	// reflected in the stored config.
+	for i, dv := range config.DataVolumes {
+		dvUUID := dc.th.newUUID("application data volume")
+		mountDir := dv.MountDir
+		if mountDir == "" {
+			mountDir = fmt.Sprintf("/mnt/vol%d", i)
+		}
+		appInstConfig.VolumeRefList = append(appInstConfig.VolumeRefList,
+			&eveconfig.VolumeRef{
+				Uuid:     dvUUID.String(),
+				MountDir: mountDir,
+			})
+		dc.Volumes = append(dc.Volumes, &eveconfig.Volume{
+			Uuid: dvUUID.String(),
+			Origin: &eveconfig.VolumeContentOrigin{
+				Type: eveconfig.VolumeContentOriginType_VCOT_BLANK,
+			},
+			Maxsizebytes: int64(dv.SizeBytes),
+			Readonly:     dv.ReadOnly,
+			DisplayName:  fmt.Sprintf("%s-data%d", config.DisplayName, i),
+		})
+	}
 }
 
 // UpdateApplication updates an existing application instance identified
