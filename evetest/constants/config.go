@@ -23,6 +23,13 @@ const (
 	// This is read by both the evetest container and the broker.
 	LogLevelEnv = "LOG_LEVEL"
 
+	// ColorOutputEnv determines whether framework log output is colorized
+	// with ANSI escape codes. When unset, the Makefile (or, as a fallback,
+	// the container entrypoint) enables colors only if stdout is attached
+	// to a terminal, so that piped or redirected output stays free of
+	// escape codes.
+	ColorOutputEnv = "COLOR_OUTPUT"
+
 	// APIAddressEnv specifies the IP address on which the evetest container exposes
 	// its gRPC API.
 	// This is used by the evetest CLI to connect to a running evetest instance.
@@ -325,6 +332,10 @@ func InitViperConfig() {
 
 	// Logging
 	viper.SetDefault(LogLevelEnv, DefaultLogLevel)
+	// The Makefile and the entrypoint script override this based on TTY
+	// presence; the default only applies when the framework is run outside
+	// the evetest container.
+	viper.SetDefault(ColorOutputEnv, true)
 
 	// gRPC API ports and addresses
 	viper.SetDefault(APIAddressEnv, "")

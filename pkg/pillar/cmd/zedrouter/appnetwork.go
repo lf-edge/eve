@@ -215,9 +215,8 @@ func (z *zedrouter) doCopyAppNetworkConfigToStatus(
 	status.AppNetAdapterList = make([]types.AppNetAdapterStatus, ulcount)
 	for i, netConfig := range config.AppNetAdapterList {
 		// Preserve previous VIF status unless it was moved to another network.
-		// Note that adding or removing VIF is not currently supported
-		// (such change would be rejected by config validation methods,
-		// see zedrouter/validation.go).
+		// Adding or removing a VIF is supported; the new/removed adapters
+		// simply have no matching previous status to preserve here.
 		if i < len(prevNetStatus) && prevNetStatus[i].Network == netConfig.Network {
 			status.AppNetAdapterList[i] = prevNetStatus[i]
 		}
@@ -311,15 +310,20 @@ func (z *zedrouter) doUpdateActivatedAppNetwork(oldConfig, newConfig types.AppNe
 	z.log.Functionf("Updated activated application network %s (%s)",
 		newConfig.UUIDandVersion.UUID, newConfig.DisplayName)
 
-	// Update state data collecting parameters.
-	z.checkAppContainerStatsCollecting(&newConfig, status)
-	z.updateVIFsForStateCollecting(&oldConfig, &newConfig)
-
 	// Update app network status as well as status of connected network instances.
 	z.processAppConnReconcileStatus(appConnRecStatus, status)
 	z.reloadStatusOfAssignedIPs(status)
 	z.publishAppNetworkStatus(status)
 	z.updateNIStatusAfterAppNetworkActivate(status)
+
+	// Update state data collecting parameters. This must come after
+	// publishAppNetworkStatus: getArgsForNIStateCollecting builds the
+	// collector's VIF list from the *published* AppNetworkStatus, so
+	// registering earlier re-registers the collectors with the pre-modify
+	// adapter list -- an added NIC never gets its IP attributed and a
+	// removed one is watched forever. Same order as doActivateAppNetwork.
+	z.checkAppContainerStatsCollecting(&newConfig, status)
+	z.updateVIFsForStateCollecting(&oldConfig, &newConfig)
 }
 
 func (z *zedrouter) doInactivateAppNetwork(config types.AppNetworkConfig,
@@ -356,73 +360,76 @@ func (z *zedrouter) doInactivateAppNetwork(config types.AppNetworkConfig,
 	z.publishAppNetworkStatus(status)
 }
 
-// Check if any references to network instances have changed and potentially update
-// allocated application interface numbers.
-// Adds errors to status if there is a failure.
+// Reconcile the per-interface numbers allocated for the application's VIFs with
+// the (possibly changed) set of AppNetAdapters in the new config. An interface is
+// identified by the network instance it connects to together with the per-network
+// interface index (IfIdx). Numbers are freed for adapters that were removed (or
+// moved to a different network/index) and allocated for newly added adapters;
+// adapters present in both the old and new set keep their already-allocated number.
+// Adds errors to status if an allocation fails.
 func (z *zedrouter) checkAppNetworkModifyAppIntfNums(config types.AppNetworkConfig,
 	status *types.AppNetworkStatus) {
+	appID := config.UUIDandVersion.UUID
 
-	// Check if any AppNetAdapter have changes to the Networks they use
+	type intfRef struct {
+		network uuid.UUID
+		ifIdx   uint32
+	}
+
+	// Interfaces required by the new config.
+	newRefs := make(map[intfRef]types.AppNetAdapterConfig)
 	for i := range config.AppNetAdapterList {
-		adapterConfig := &config.AppNetAdapterList[i]
-		adapterStatus := &status.AppNetAdapterList[i]
-		if adapterConfig.Network == adapterStatus.Network {
+		adapterConfig := config.AppNetAdapterList[i]
+		newRefs[intfRef{adapterConfig.Network, adapterConfig.IfIdx}] = adapterConfig
+	}
+	// Interfaces for which a number is currently allocated (based on status).
+	oldRefs := make(map[intfRef]struct{})
+	for i := range status.AppNetAdapterList {
+		adapterStatus := status.AppNetAdapterList[i]
+		oldRefs[intfRef{adapterStatus.Network, adapterStatus.IfIdx}] = struct{}{}
+	}
+
+	// Free numbers for interfaces that are no longer present.
+	affectedNIs := make(map[uuid.UUID]struct{})
+	for ref := range oldRefs {
+		if _, stillUsed := newRefs[ref]; stillUsed {
 			continue
 		}
-		z.log.Functionf(
-			"checkAppNetworkModifyAppIntfNums(%v) for %s: change from %s to %s",
-			config.UUIDandVersion, config.DisplayName,
-			adapterStatus.Network, adapterConfig.Network)
-		// update the reference to the network instance
-		err := z.doAppNetworkModifyAppIntfNum(
-			status.UUIDandVersion.UUID, adapterConfig, adapterStatus)
-		if err != nil {
-			err = fmt.Errorf("failed to modify appIntfNum: %v", err)
-			z.log.Errorf(
-				"checkAppNetworkModifyAppIntfNums(%v/%v): %v",
+		if err := z.freeAppIntfNum(ref.network, appID, ref.ifIdx); err != nil {
+			z.log.Error(err)
+			// Continue anyway, try to (de)allocate as many as possible.
+		}
+		affectedNIs[ref.network] = struct{}{}
+	}
+
+	// Allocate numbers for newly added interfaces.
+	for ref, adapterConfig := range newRefs {
+		if _, alreadyAllocated := oldRefs[ref]; alreadyAllocated {
+			continue
+		}
+		withStaticIP := adapterConfig.AppIPAddr != nil
+		if err := z.allocateAppIntfNum(
+			ref.network, appID, ref.ifIdx, withStaticIP); err != nil {
+			err = fmt.Errorf("failed to allocate appIntfNum: %v", err)
+			z.log.Errorf("checkAppNetworkModifyAppIntfNums(%v/%v): %v",
 				config.UUIDandVersion.UUID, config.DisplayName, err)
 			z.addAppNetworkError(status, "checkAppNetworkModifyAppIntfNums", err)
 			// Continue anyway...
 		}
 	}
-}
 
-// handle a change to the network UUID for one AppNetAdapterConfig.
-// Assumes the caller has checked that such a change is present.
-// Release the current appIntfNum and acquire appIntfNum on the new network instance.
-func (z *zedrouter) doAppNetworkModifyAppIntfNum(appID uuid.UUID,
-	adapterConfig *types.AppNetAdapterConfig,
-	adapterStatus *types.AppNetAdapterStatus) error {
-
-	newNetworkID := adapterConfig.Network
-	oldNetworkID := adapterStatus.Network
-	newIfIdx := adapterConfig.IfIdx
-	oldIfIdx := adapterStatus.IfIdx
-
-	// Try to release the app number on the old network.
-	err := z.freeAppIntfNum(oldNetworkID, appID, oldIfIdx)
-	if err != nil {
-		z.log.Error(err)
-		// Continue anyway...
-	}
-
-	// Allocate an app number on the new network.
-	withStaticIP := adapterConfig.AppIPAddr != nil
-	err = z.allocateAppIntfNum(newNetworkID, appID, newIfIdx, withStaticIP)
-	if err != nil {
-		z.log.Error(err)
-		return err
-	}
-
-	// Did the freeAppIntfNum release any last reference from app to NI?
-	netstatus := z.lookupNetworkInstanceStatus(oldNetworkID.String())
-	if netstatus != nil {
+	// Freeing a number may have removed the last reference from the app to a
+	// network instance, which then may be deleted or inactivated.
+	for niID := range affectedNIs {
+		netstatus := z.lookupNetworkInstanceStatus(niID.String())
+		if netstatus == nil {
+			continue
+		}
 		if z.maybeDelOrInactivateNetworkInstance(netstatus) {
-			z.log.Functionf("Deleted/Inactivated NI %s as a result of moving app %s "+
-				"to another network %s", oldNetworkID, appID, newNetworkID)
+			z.log.Functionf("Deleted/Inactivated NI %s as a result of "+
+				"removing interface(s) of app %s", niID, appID)
 		}
 	}
-	return nil
 }
 
 // For app already deployed (before node reboot), keep using the same MAC address

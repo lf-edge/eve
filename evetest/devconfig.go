@@ -2288,24 +2288,24 @@ func (dc *EdgeDeviceConfig) UpdateApplication(
 			if !proto.Equal(app.Fixedresources, newProtoConfig.Fixedresources) {
 				dc.th.t.Fatalf("It is not allowed to change application Fixedresources")
 			}
-			var needPurge bool
+			var needRestart bool
 			equalAdapter := func(a1, a2 *eveconfig.Adapter) bool {
 				return proto.Equal(a1, a2)
 			}
 			if !generics.EqualSetsFn(app.Adapters, newProtoConfig.Adapters, equalAdapter) {
-				needPurge = true
+				needRestart = true
 			}
 			equalNetAdapter := func(a1, a2 *eveconfig.NetworkAdapter) bool {
 				return proto.Equal(a1, a2)
 			}
 			if !generics.EqualSetsFn(app.Interfaces, newProtoConfig.Interfaces, equalNetAdapter) {
-				needPurge = true
+				needRestart = true
 			}
-			if needPurge {
-				if app.Purge == nil {
-					app.Purge = &eveconfig.InstanceOpsCmd{Counter: 0}
+			if needRestart {
+				if app.Restart == nil {
+					app.Restart = &eveconfig.InstanceOpsCmd{Counter: 0}
 				}
-				app.Purge.Counter++
+				app.Restart.Counter++
 			}
 			dc.Apps[i].Activate = newProtoConfig.Activate
 			dc.Apps[i].ProfileList = newProtoConfig.ProfileList

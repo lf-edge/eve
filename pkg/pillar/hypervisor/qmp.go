@@ -110,6 +110,27 @@ func buildQMPCommand(execute string, arguments interface{}) ([]byte, error) {
 	return cmd, nil
 }
 
+// execStopOnce and execQuitOnce issue the command with a single dial attempt
+// instead of the usual retry loop. They are meant for qmpEventHandler, which
+// reacts to an event just received from a live qemu instance: if a single
+// attempt fails, that instance is already gone. Retrying the dial would be
+// actively harmful there -- a domain restarted without purge reuses the same
+// domain name and hence the same socket path, so a retried command can
+// connect to the freshly re-created qemu instance and terminate it instead.
+func execStopOnce(socket string) error {
+	cmd := `{ "execute": "stop" }`
+	logrus.Debugf("executing QMP command once: %s", cmd)
+	_, err := execRawCmd(socket, cmd, false)
+	return err
+}
+
+func execQuitOnce(socket string) error {
+	cmd := `{ "execute": "quit" }`
+	logrus.Debugf("executing QMP command once: %s", cmd)
+	_, err := execRawCmd(socket, cmd, false)
+	return err
+}
+
 func execVNCPassword(socket string, password string) error {
 	vncSetPwd, err := buildQMPCommand("change-vnc-password",
 		map[string]string{"password": password})
@@ -267,11 +288,22 @@ func qmpEventHandler(listenerSocket, executorSocket, domainName string) {
 		}
 		switch event.Event {
 		case "SHUTDOWN":
+			// qemu runs with -no-shutdown: only a guest-initiated shutdown
+			// (power-off, panic) needs a host-side quit so the containerd
+			// task exits. A host-initiated one (e.g. reason "host-qmp-quit"
+			// from the teardown path) means qemu is already quitting --
+			// reacting to it can instead kill a new qemu instance that was
+			// just re-created under the same domain name and socket path
+			// (restart without purge).
+			if guest, ok := event.Data["guest"].(bool); ok && !guest {
+				logrus.Infof("qmpEventHandler: ignoring host-initiated SHUTDOWN (%v) on socket: %s", event.Data, listenerSocket)
+				continue
+			}
 			logrus.Infof("qmpEventHandler: Received event: %s event details: %v. Calling quit on socket: %s", event.Event, event.Data, executorSocket)
-			if err := execStop(executorSocket); err != nil {
+			if err := execStopOnce(executorSocket); err != nil {
 				logrus.Errorf("qmpEventHandler: Exception while stopping domain with socket: %s. %s", executorSocket, err.Error())
 			}
-			if err := execQuit(executorSocket); err != nil {
+			if err := execQuitOnce(executorSocket); err != nil {
 				logrus.Errorf("qmpEventHandler: Exception while quitting domain with socket: %s. %s", executorSocket, err.Error())
 			}
 		case "STOP":
