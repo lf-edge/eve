@@ -151,6 +151,12 @@ type zedkube struct {
 	// window is live, preventing a false-positive delete of a new VMI that is
 	// legitimately Pending during failover start-up.
 	vmiFailoverSuppressUntil map[string]time.Time
+	// Stuck-volume-mount detector state (node-scoped). stuckMountRecoverCount
+	// counts recovery attempts within the current wedge episode (reset when a
+	// tick observes no wedged pod); stuckMountSuppressUntil is the cooldown
+	// after an attempt so the detector cannot thrash a kubelet restart.
+	stuckMountRecoverCount  int
+	stuckMountSuppressUntil time.Time
 	// lbConfigError is set by resolveLBInterfaces when an LB CIDR from the
 	// controller overlaps with a management port IP. When set, the offending
 	// entry is omitted from EdgeNodeClusterStatus.LBInterfaces and the error
@@ -734,6 +740,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		case <-appStatusTimer.C:
 			zedkubeCtx.checkAppsFailover(zedkubeWdUpdate)
 			zedkubeCtx.checkStuckPendingVMI()
+			zedkubeCtx.checkStuckVolumeMount()
 			zedkubeWdUpdate()
 			zedkubeCtx.checkAppsStatus()
 			zedkubeCtx.reconcileVMIRSAffinity(zedkubeWdUpdate)
