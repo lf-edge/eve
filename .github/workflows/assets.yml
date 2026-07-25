@@ -7,9 +7,13 @@ on:  # yamllint disable-line rule:truthy
         required: true
         type: string
 
+permissions: {}
+
 jobs:
   create_release:
     runs-on: zededa-ubuntu-2204
+    permissions:
+      contents: write
     outputs:
       release_id: ${{ steps.create_release.outputs.release_id }}
       upload_url: ${{ steps.create_release.outputs.upload_url }}
@@ -36,6 +40,8 @@ jobs:
   build:
     runs-on: zededa-ubuntu-2204
     needs: create_release
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
