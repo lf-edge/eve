@@ -14,9 +14,13 @@ on:  # yamllint disable-line rule:truthy
       DOCKERHUB_PULL_USER:
         required: true
 
+permissions: {}
+
 jobs:
   create_release:
     runs-on: zededa-ubuntu-2204
+    permissions:
+      contents: write
     outputs:
       release_id: ${{ steps.create_release.outputs.release_id }}
       upload_url: ${{ steps.create_release.outputs.upload_url }}
@@ -43,6 +47,8 @@ jobs:
   build:
     runs-on: zededa-ubuntu-2204
     needs: create_release
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
