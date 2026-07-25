@@ -29,8 +29,9 @@ jobs:
         id: create_release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_REF: ${{ inputs.tag_ref }}
         run: |
-          response=$(curl -s -X POST \
+          response=$(curl -s --show-error -X POST \
             -H "Authorization: Bearer $GITHUB_TOKEN" \
             -H "Content-Type: application/json" \
             -d '{
@@ -39,9 +40,13 @@ jobs:
               "draft": false,
               "prerelease": true
             }' https://api.github.com/repos/${{ github.repository }}/releases)
-          release_id=$(echo "$response" | jq -r .id)
-          upload_url=$(echo "$response" | jq -r .upload_url | sed -e "s/{?name,label}//")
-          echo $upload_url
+          release_id=$(echo "$response" | jq -r '.id // empty')
+          upload_url=$(echo "$response" | jq -r '.upload_url // empty' | sed -e "s/{?name,label}//")
+          if [ -z "$release_id" ] || [ -z "$upload_url" ]; then
+            echo "::error::Creating release $TAG_REF failed: $response"
+            exit 1
+          fi
+          echo "$upload_url"
           echo "release_id=$release_id" >> "$GITHUB_OUTPUT"
           echo "upload_url=$upload_url" >> "$GITHUB_OUTPUT"
   build:
@@ -180,12 +185,14 @@ jobs:
           for file in assets/*; do
             file_name=$(basename $file)
             echo "Uploading ${file_name}..."
-            upload_response=$(curl -s -X POST \
-              -H "Authorization: Bearer $GITHUB_TOKEN" \
-              -H "Content-Type: application/octet-stream" \
-              -T "$file" \
-              "$UPLOAD_URL?name=$file_name")
-            if echo "$upload_response" | jq -e .id > /dev/null; then
+            # The assignment sits inside the `if` so that a curl exit code does
+            # not trip `bash -e` and abandon the assets queued behind this one.
+            if upload_response=$(curl -s --show-error -X POST \
+                 -H "Authorization: Bearer $GITHUB_TOKEN" \
+                 -H "Content-Type: application/octet-stream" \
+                 -T "$file" \
+                 "$UPLOAD_URL?name=$file_name") \
+               && echo "$upload_response" | jq -e .id > /dev/null; then
               echo "$file_name uploaded successfully."
             else
               echo "::error::Failed to upload $file_name: $upload_response"
