@@ -11,8 +11,8 @@ To quickly build a custom kernel for development (example shows disabling `MODUL
 git clone https://github.com/lf-edge/eve-kernel/
 cd eve-kernel
 
-# Checkout the branch you want to modify (example for amd64 v6.12.49)
-git checkout eve-kernel-amd64-v6.12.49-generic
+# Checkout the branch you want to modify (example for amd64 v6.12.96)
+git checkout eve-kernel-amd64-v6.12.96-generic
 
 # Generate base config (see "Kernel Config Flavors" section for other options: rt, hwe)
 make eve-core_defconfig
@@ -64,7 +64,7 @@ platform (`PLATFORM`).
 
 ### Current Kernel Versions
 
-- **amd64**: v6.12.49 (generic and rt platforms)
+- **amd64**: v6.12.96 (generic and rt platforms)
 - **arm64**:
   - v6.1.155 (generic)
   - v5.10.192 (nvidia-jp5)
@@ -83,7 +83,7 @@ Where `<FLAVOR>` corresponds to the EVE `PLATFORM` variable.
 
 Examples:
 
-- `eve-kernel-amd64-v6.12.49-generic` (PLATFORM=generic)
+- `eve-kernel-amd64-v6.12.96-generic` (PLATFORM=generic)
 - `eve-kernel-arm64-v5.10.192-nvidia-jp5` (PLATFORM=nvidia-jp5)
 - `eve-kernel-arm64-v5.15.136-nvidia-jp6` (PLATFORM=nvidia-jp6)
 - `eve-kernel-amd64-next` (next LTS development branch)
@@ -100,7 +100,7 @@ This file contains the specific commit hashes for each kernel branch that EVE us
 maps a combination of architecture, version, and flavor to a specific commit:
 
 ```makefile
-KERNEL_COMMIT_amd64_v6.12.49_generic = ef7ccc4d151c
+KERNEL_COMMIT_amd64_v6.12.96_generic = bfc617435842
 KERNEL_COMMIT_arm64_v5.10.192_nvidia-jp5 = b4464b03583e
 KERNEL_COMMIT_arm64_v6.1.155_generic = ece043d8b403
 KERNEL_COMMIT_riscv64_v6.1.112_generic = 18e1d313b90b
@@ -121,7 +121,7 @@ This file defines the kernel version selection logic based on architecture and p
 
 **Key Variables:**
 
-- `KERNEL_VERSION`: The kernel version (e.g., v6.12.49)
+- `KERNEL_VERSION`: The kernel version (e.g., v6.12.96)
 - `KERNEL_FLAVOR`: The kernel flavor matching the EVE `PLATFORM` (e.g., generic, nvidia-jp5, nvidia-jp6)
 - `KERNEL_CONFIG_FLAVOR`: Config variant (e.g., core, rt, hwe) - see detailed description below
 - `KERNEL_COMMIT`: The specific commit hash from kernel-commits.mk
@@ -148,7 +148,7 @@ This Python script automates the process of updating kernel commits in EVE.
 ./tools/update_kernel_commits.py
 
 # Update specific branch
-./tools/update_kernel_commits.py --branch eve-kernel-amd64-v6.12.49-generic
+./tools/update_kernel_commits.py --branch eve-kernel-amd64-v6.12.96-generic
 
 # Dry run to see what would change
 ./tools/update_kernel_commits.py --test
@@ -168,7 +168,7 @@ EVE's kernel repository uses a multi-branch strategy:
 
 These track specific stable kernel versions:
 
-- Example: `eve-kernel-amd64-v6.12.49-generic`
+- Example: `eve-kernel-amd64-v6.12.96-generic`
 - Based on upstream stable kernel releases
 - Receive backported fixes and EVE-specific patches
 - Used for production EVE releases
@@ -202,7 +202,7 @@ The appropriate branch is automatically selected based on:
 
 **⚠️ Important Distinction:** `KERNEL_FLAVOR` and `KERNEL_CONFIG_FLAVOR` are different concepts and can be confusing:
 
-- **`KERNEL_FLAVOR`** (also called just `FLAVOR` in branch names): Corresponds to the EVE `PLATFORM` variable and determines the kernel branch (e.g., generic, nvidia-jp5, nvidia-jp6). This is part of the branch name like `eve-kernel-amd64-v6.12.49-generic`.
+- **`KERNEL_FLAVOR`** (also called just `FLAVOR` in branch names): Corresponds to the EVE `PLATFORM` variable and determines the kernel branch (e.g., generic, nvidia-jp5, nvidia-jp6). This is part of the branch name like `eve-kernel-amd64-v6.12.96-generic`.
 - **`KERNEL_CONFIG_FLAVOR`**: Controls which configuration variant is used when building from a specific branch (e.g., core, rt, hwe). This is NOT part of the branch name but determines which defconfig file is used.
 
 The `KERNEL_CONFIG_FLAVOR` variable controls which kernel configuration variant to use. This allows
@@ -369,7 +369,7 @@ This must be done on the same machine where you built the kernel.
 
    ```bash
    cd /path/to/eve
-   ./tools/update_kernel_commits.py --branch eve-kernel-amd64-v6.12.49-generic
+   ./tools/update_kernel_commits.py --branch eve-kernel-amd64-v6.12.96-generic
    git add kernel-commits.mk
    git commit -F kernel-update-commit-message.txt
    ```
