@@ -21,7 +21,7 @@ RUN git config --global user.email 'builder@projecteve.dev' && \
 # Jetpack tarballs
 ENV JETSON_JP5=https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v5.0/release/jetson_linux_r35.5.0_aarch64.tbz2
 ENV JETSON_JP6=https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v3.0/release/jetson_linux_r36.3.0_aarch64.tbz2
-ENV JETSON_JP7=https://developer.nvidia.com/downloads/embedded/L4T/r38_Release_v4.0/release/Jetson_Linux_R38.4.0_aarch64.tbz2
+ENV JETSON_JP7=https://developer.nvidia.com/downloads/embedded/L4T/r39_Release_v2.0/release/Jetson_Linux_R39.2.0_aarch64.tbz2
 
 # Default Jetpack version
 ENV JETSON_LINUX=${JETSON_JP5}
@@ -96,7 +96,7 @@ RUN mkdir -p /ldconfig-bin && \
 RUN case "${JETPACK_VER}" in \
         jp5) JL_VER=r35.5.0 ;; \
         jp6) JL_VER=r36.3.0 ;; \
-        jp7) JL_VER=r38.4.0 ;; \
+        jp7) JL_VER=r39.2.0 ;; \
         *)   JL_VER="${JETPACK_VER}" ;; \
     esac && \
     register-sbom-pkg.sh -n jetson-linux -v "${JL_VER}" -l proprietary -u https://developer.nvidia.com/embedded/jetson-linux -o /sbom-out && \
