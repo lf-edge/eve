@@ -163,9 +163,6 @@ func (b bpftraceHandler) runInDebugContainer(clientCtx context.Context, w io.Wri
 	pspec := specs.Process{
 		Args: args,
 		Cwd:  "/",
-		Scheduler: &specs.Scheduler{
-			Deadline: uint64(time.Now().Add(timeout).Unix()),
-		},
 	}
 	taskID := fmt.Sprintf("bpftrace-%d", rand.Int()) // TODO: avoid collision
 	stderrBuf := bytes.Buffer{}
