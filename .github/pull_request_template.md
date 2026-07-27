@@ -62,15 +62,17 @@ so, please, do not omit it.
 
 Here is the list of current LTS branches (it should be always up to date):
 
+- 17.0-stable
 - 16.0-stable
 - 14.5-stable
 - 13.4-stable
 
-For example, if this PR fixes a bug in a feature that was introduced in 14.5,
+For example, if this PR fixes a bug in a feature that was introduced in 17.0,
 you can write:
 
 ```text
-- 16.0-stable: To be backported.
+- 17.0-stable: To be backported.
+- 16.0-stable: No, as the feature is not available there.
 - 14.5-stable: No, as the feature is not available there.
 - 13.4-stable: No, as the feature is not available there.
 ```
