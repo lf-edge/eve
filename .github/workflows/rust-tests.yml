@@ -33,9 +33,6 @@ jobs:
   test:
     name: cargo test (${{ matrix.crate }})
     runs-on: zededa-ubuntu-2204
-    # Reuse the same Rust toolchain image the package Dockerfiles build with.
-    container:
-      image: lfedge/eve-rust:1.93.1-1
     strategy:
       fail-fast: false
       matrix:
@@ -47,15 +44,24 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
       - name: cargo test
-        working-directory: ${{ matrix.crate }}
+        # Reuse the same Rust toolchain image the package Dockerfiles build
+        # with. Run it with the runner's UID/GID so files created in the
+        # mounted workspace remain owned by the runner.
+        #
         # The image configures the mold linker for the musl cross target it
         # builds release binaries with; that can't link the host proc-macros a
         # test build pulls in (mold: library not found: gcc). Tests run
         # natively, so drop the cross linker flags and use the default.
-        env:
-          RUSTFLAGS: ""
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS: ""
-        run: cargo test --locked
+        run: |
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -e HOME=/tmp \
+            -e RUSTFLAGS="" \
+            -e CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="" \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            -w "/workspace/${{ matrix.crate }}" \
+            lfedge/eve-rust:1.93.1-1 \
+            cargo test --locked
 
   # Verify the committed generated contract (Rust + Go union codec) matches what
   # the generator produces. This needs both pkg/pillar and pkg/monitor, so it
