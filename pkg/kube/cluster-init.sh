@@ -186,6 +186,50 @@ mount_kube_root() {
 }
 
 #Prereqs
+# Jetpack 7 ships one CDI spec per supported board family, each with its own
+# kind (nvidia.com/thor-gpu, nvidia.com/orin-gpu), so unlike the single
+# nvidia.com/gpu of jp5 and jp6 the kind cannot be baked into config.toml. The
+# k8s device plugin requests devices unqualified and nvidia-container-runtime
+# resolves those through default-kind, so point it at the spec belonging to the
+# board we booted on.
+#
+# config.toml lives on the kube container's own filesystem, so this has to run
+# on every container start rather than once at cluster init.
+set_nvidia_cdi_default_kind() {
+        local ctk_config="/etc/nvidia-container-runtime/config.toml"
+        local cdi_spec cdi_kind
+
+        [ -d /opt/vendor/nvidia ] || return 0
+        [ -f "$ctk_config" ] || return 0
+
+        # jp5 and jp6 declare nvidia.com/gpu, which is already the built-in
+        # default. Leave those released platforms alone.
+        [ "$(cat /opt/vendor/nvidia/eve-platform 2>/dev/null)" = "nvidia-jp7" ] || return 0
+
+        case "$(tr '\0' '\n' < /proc/device-tree/compatible 2>/dev/null)" in
+                *nvidia,tegra264*) cdi_spec="/etc/cdi/jetson-thor.yaml" ;;
+                *nvidia,tegra234*) cdi_spec="/etc/cdi/jetson-orin.yaml" ;;
+                *)
+                        logmsg "NVIDIA CDI: unrecognized Jetson SoC, leaving default-kind unchanged"
+                        return 0
+                        ;;
+        esac
+
+        if [ ! -f "$cdi_spec" ]; then
+                logmsg "NVIDIA CDI: $cdi_spec not present, leaving default-kind unchanged"
+                return 0
+        fi
+
+        cdi_kind=$(sed -n 's/^kind:[[:space:]]*//p' "$cdi_spec" | head -1)
+        if [ -z "$cdi_kind" ]; then
+                logmsg "NVIDIA CDI: no kind in $cdi_spec, leaving default-kind unchanged"
+                return 0
+        fi
+
+        sed -i "s|^default-kind = .*|default-kind = \"${cdi_kind}\"|" "$ctk_config"
+        logmsg "NVIDIA CDI: default-kind set to $cdi_kind from $cdi_spec"
+}
+
 setup_prereqs () {
         if [ ! -f "${K3S_LOG_DIR}/initial_k3s_version" ]; then
                 # Record the k3s version the node is initialized at, this is an important record:
@@ -220,6 +264,8 @@ setup_prereqs () {
         # We need /var/lib to be mounted before we go for network connection check.
         check_network_connection
         check_and_clean_cpu_manager_state
+        # Must happen before containerd starts using nvidia-container-runtime.
+        set_nvidia_cdi_default_kind
 }
 
 config_cluster_roles() {
