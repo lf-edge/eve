@@ -2,4 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 ---
 # Use longhorn storage
-disable: local-storage
+#
+# appends to the base config.yaml's "disable" list
+disable+: local-storage
