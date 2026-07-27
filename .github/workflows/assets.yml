@@ -30,16 +30,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_REF: ${{ inputs.tag_ref }}
+          REPO: ${{ github.repository }}
         run: |
+          payload=$(jq -n --arg tag "$TAG_REF" \
+            '{tag_name: $tag, name: $tag, draft: false, prerelease: true}')
           response=$(curl -s --show-error -X POST \
             -H "Authorization: Bearer $GITHUB_TOKEN" \
             -H "Content-Type: application/json" \
-            -d '{
-              "tag_name": "${{ inputs.tag_ref }}",
-              "name": "${{ inputs.tag_ref }}",
-              "draft": false,
-              "prerelease": true
-            }' https://api.github.com/repos/${{ github.repository }}/releases)
+            -d "$payload" \
+            "https://api.github.com/repos/$REPO/releases")
           release_id=$(echo "$response" | jq -r '.id // empty')
           upload_url=$(echo "$response" | jq -r '.upload_url // empty' | sed -e "s/{?name,label}//")
           if [ -z "$release_id" ] || [ -z "$upload_url" ]; then
