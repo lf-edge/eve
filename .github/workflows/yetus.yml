@@ -34,7 +34,7 @@ jobs:
           # Now diff against the correct base
           git diff upstream/${{ github.base_ref }}...HEAD > ${{ github.workspace }}/pr.patch
           # Get back to upstream master so patch can be applied
-          git checkout upstream/master
+          git checkout upstream/${{ github.base_ref }} -b ${{ github.base_ref }}
           git submodule update --init --recursive
 
       - name: Prepare gitconfig for container
