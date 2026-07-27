@@ -1,7 +1,7 @@
 # How to use EVE-OS on a NVIDIA Jetson platform
 
 NVIDIA Jetpack is the NVIDIA's software stack for Jetson modules and
-developer kits. EVE supports three versions of the Jetpack: 5.1.3, 6.0, and 7.1.
+developer kits. EVE supports three versions of the Jetpack: 5.1.3, 6.0, and 7.2.
 These versions covers different devices from different Jetson platforms, as
 shown by the Tables __1__ and __2__.
 
@@ -14,9 +14,16 @@ Table __1__: Jetpack support. _Source: [Jetson Linux Archive](https://developer.
 
 |            | Jetson T5000 | Jetson T4000 | Jetson AGX Orin | Jetson Orin NX | Jetson Orin Nano |
 |------------|--------------|--------------|-----------------|----------------|------------------|
-| Jetpack 7.1 |:heavy_check_mark:|:heavy_check_mark:| | | |
+| Jetpack 7.2 |:heavy_check_mark:|:heavy_check_mark:| | | |
 
-Table __2__: Jetpack 7.1 support. _Source: [Jetson Linux Archive](https://developer.nvidia.com/embedded/jetson-linux-archive)._
+Table __2__: Jetpack 7.2 support in EVE. _Source: [Jetson Linux Archive](https://developer.nvidia.com/embedded/jetson-linux-archive)._
+
+Note that Jetpack 7.2 (Jetson Linux 39.2) is the first 7.x release covering the
+Jetson Orin family as well, but EVE does not support Orin on the `nvidia-jp7`
+platform yet: use `nvidia-jp6` for Orin devices. Jetpack 7 also drives the Orin
+GPU through a different driver model than Thor does (`nvgpu` rather than
+`openrm`), so the two boards need different kernel modules, firmware and CDI
+specs even though they share one Jetpack release.
 
 For each Jetpack version supported, EVE provides all default libraries and
 related files present in a regular installation of Jetpack under
@@ -58,7 +65,7 @@ See [NVIDIA-NX.md](./NVIDIA-NX.md) for instructions on how to build and deploy E
 
 ## How to use on a Jetson Thor device
 
-EVE supports Nvidia Jetpack 7.1 on the [Jetson Thor device](https://www.nvidia.com/en-us/autonomous-machines/embedded-systems/jetson-thor/). The installation process is pretty standard:
+EVE supports Nvidia Jetpack 7.2 on the [Jetson Thor device](https://www.nvidia.com/en-us/autonomous-machines/embedded-systems/jetson-thor/). The installation process is pretty standard:
 
 1. Build an installation raw image `make ZARCH=arm64 HV=<kvm or k> PLATFORM=nvidia-jp7 installer-raw` (`xen` is not supported)
 1. Flash the `dist/arm64/current/installer.raw` install EVE image onto an USB Stick [following these instructions](../README.md#3-flash-the-image-to-the-device)

@@ -27,10 +27,23 @@ The output container will provide a directory /opt/vendor/nvidia, where:
 
 All supported CDI files will be available at /etc/cdi.
 
-The following CDI files are provided:
+One CDI file is provided per board family, under `cdi/<jetpack version>/`:
 
-* jetson-xavier-nx.yaml: For devices based on Jetson Xavier NX
-* jetson-orin-nano.yaml: For devices based on Jetson Orin Nano
+| File                      | Jetpack | Devices          | CDI kind              |
+|---------------------------|---------|------------------|-----------------------|
+| jp5/jetson-xavier-nx.yaml | 5.1.3   | Jetson Xavier NX | nvidia.com/xavier-gpu |
+| jp5/jetson-orin-nano.yaml | 5.1.3   | Jetson Orin Nano | nvidia.com/gpu        |
+| jp6/jetson-orin.yaml      | 6.0     | Jetson Orin      | nvidia.com/gpu        |
+| jp7/jetson-thor.yaml      | 7.2     | Jetson AGX Thor  | nvidia.com/thor-gpu   |
+
+New board families follow the `nvidia.com/<board>-gpu` convention. The bare
+nvidia.com/gpu of the jp5 Orin Nano and jp6 Orin specs predates it and is
+kept so that deployed device models keep working.
+
+The kind must be unique across every file installed in /etc/cdi. Two specs
+declaring the same qualified device name are treated as a conflict by the
+CDI registry, which then drops the device from both of them, disabling the
+GPU on every board involved.
 
 ## CDI generation
 
@@ -80,8 +93,21 @@ should be considered:
 1. Ensure EVE's NVIDIA custom kernel is compatible with the new Jetpack version
 1. Update NVIDIA firmwares on pkg/fw (if required)
 1. Update the Jetpack tarball URL at pkg/nvidia/Dockerfile (JETSON_LINUX)
-1. Generate the CDI yaml files on a running (bare-metal) Jetpack
-1. Adjust device names inside each CDI file (e.g., _nvidia.com/gpu_, etc)
+1. Update the Jetson Linux version in the SBOM registration (JL_VER) at
+   pkg/nvidia/Dockerfile
+1. Generate the CDI yaml files on a running (bare-metal) Jetpack, using the
+   same nvidia-container-toolkit revision as NVIDIA_CONTAINER_TOOLKIT_REV in
+   pkg/nvidia/Dockerfile, and keeping the emitted cdiVersion within the range
+   supported by the CDI library vendored in pillar
+1. Set the kind of each CDI file to `nvidia.com/<board>-gpu`, keeping it unique
+   across all the files installed in /etc/cdi
+1. If the CDI kind of a board changes, check pkg/kube: the default-kind of
+   the nvidia-container-runtime config is derived from the shipped spec, and
+   cluster-init.sh maps a board to its CDI file by name
+1. From Jetpack 7 on, a single Jetpack release can drive different boards with
+   different GPU driver models (Thor uses openrm, Orin uses nvgpu). Those
+   boards need their own kernel modules, firmware packages, udev rules,
+   module load list and CDI spec, even though they share one Jetpack.
 
 ## References
 

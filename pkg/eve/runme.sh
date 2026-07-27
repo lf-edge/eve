@@ -116,7 +116,7 @@ options.
 
 Note that NVIDIA images are only valid for a specific plataform. For
 instance: nvidia-jp6 images cannot be used with any other platform other
-than nvidia-jp6. The same applies for nvidia-jp5.
+than nvidia-jp6. The same applies for nvidia-jp5 and nvidia-jp7.
 
 Example:
 docker run --rm lfedge/eve -f raw -p imx8mq_evk live > live.raw

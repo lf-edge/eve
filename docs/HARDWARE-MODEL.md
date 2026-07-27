@@ -255,6 +255,24 @@ containers can access the GPU on a Jetson Xavier platform through the following 
 }
 ```
 
+### CDI kind naming
+
+The kind is board specific, so the string used in the device model depends on which Jetson board the image targets:
+
+| Platform     | Board            | CDI kind                |
+|--------------|------------------|-------------------------|
+| `nvidia-jp7` | Jetson AGX Thor  | `nvidia.com/thor-gpu`   |
+| `nvidia-jp6` | Jetson Orin      | `nvidia.com/gpu`        |
+| `nvidia-jp5` | Jetson Orin Nano | `nvidia.com/gpu`        |
+| `nvidia-jp5` | Jetson Xavier NX | `nvidia.com/xavier-gpu` |
+
+New boards follow the `nvidia.com/<board>-gpu` convention. The bare `nvidia.com/gpu` of the jp5 Orin Nano and jp6 Orin
+specs predates it and is kept for compatibility with device models already deployed.
+
+Two CDI files must never declare the same kind and device name. The CDI registry treats a duplicated qualified device
+name as a conflict and drops the device from *both* specs, so the GPU would stop being injectable on every board
+involved. This is why a platform supporting several board families gives each one its own kind.
+
 Notice that the CDI mechanism is available only for container Edge Applications running through the __HV_NOHYPER__
 virtualization mode (bare metal). Since it's intend to be used for GPU direct access, only I/O adapters of type HDMI can
 use the CDI string in the device model. Serial devices can also be exposed to bare metal containers in the same way done
