@@ -14,9 +14,6 @@ on:  # yamllint disable-line rule:truthy
 jobs:
   yetus:
     runs-on: ubuntu-24.04
-    env:
-      YETUS_IMG: lfedge/eve-yetus:0.15.1-eve-2
-      UPSTREAM_BRANCH: 16.0-stable
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
@@ -32,8 +29,9 @@ jobs:
           git fetch upstream ${{ github.base_ref }}
           # Now diff against the correct base
           git diff upstream/${{ github.base_ref }}...HEAD > ${{ github.workspace }}/pr.patch
-          # Get back to upstream branch so patch can be applied
-          git checkout "upstream/${UPSTREAM_BRANCH}"
+          # Get back to upstream master so patch can be applied
+          git checkout upstream/${{ github.base_ref }} -b ${{ github.base_ref }}
+          git submodule update --init --recursive
 
       - name: Prepare gitconfig for container
         run: |
@@ -46,12 +44,15 @@ jobs:
         run: |
           docker run --rm \
             -v ${{ github.workspace }}:/workspace \
-            "${YETUS_IMG}" \
+            -v /tmp/gitconfig:/etc/gitconfig \
+            lfedge/eve-yetus:0.15.1-eve-2 \
             test-patch \
             --basedir=/workspace/src \
             --patch-dir=/workspace/out \
             --build-tool=nobuild \
             --continuous-improvement=true \
+            --buf-basedir=/workspace/src/evetest \
+            --user-plugins=/workspace/src/.yetus/plugins.d \
             --plugins='all,-asflicense,-author,-findbugs,-gitlab,-jira,-shelldocs' \
             --revive-config=.revive.toml \
             --brief-report-file=/workspace/out/brief.txt \
