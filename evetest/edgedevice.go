@@ -38,6 +38,9 @@ type EdgeDevice struct {
 	// Set of app UUIDs (strings) for which WaitUntilAppIsRunning is active.
 	// Used by WatchAppInfo to suppress duplicate state logging.
 	appsBeingWaited sync.Map
+	// Per-handle override of how long to wait for an upgrade; see
+	// SetUpgradeTimeout. Zero means use the package default.
+	upgradeTimeout time.Duration
 }
 
 // GetEdgeDevice returns a handle to an onboarded EdgeDevice identified by devName.
@@ -483,7 +486,7 @@ func (d *EdgeDevice) waitForUpgrade(targetShortVersion string) {
 	}
 	defer unsub()
 
-	ctx, cancel := context.WithTimeout(d.th.ctx, eveUpgradeTimeout)
+	ctx, cancel := context.WithTimeout(d.th.ctx, d.upgradeWaitTimeout())
 	defer cancel()
 
 	var lastLoggedState, lastLoggedStatus string
@@ -636,6 +639,28 @@ func (d *EdgeDevice) ExpectAdditionalReboots(n int) {
 	for i := 0; i < n; i++ {
 		d.th.incExpectedRebootCount(d.devName)
 	}
+}
+
+// SetUpgradeTimeout overrides how long UpgradeEVE waits for the device to come
+// back running the target version, for this handle only.
+//
+// The default is sized for an ordinary base-OS upgrade: download, one reboot,
+// done. A cross-flavor boot-disk conversion is a different animal — it also runs
+// an offline shrink+grow across several reboots and then brings up a whole
+// container-cluster stack — and it lands close enough to the default that a
+// healthy conversion and an expired budget are decided by a couple of minutes of
+// host load. A test driving one should raise the timeout, otherwise it reports a
+// conversion that was still progressing as a failure.
+func (d *EdgeDevice) SetUpgradeTimeout(timeout time.Duration) {
+	d.upgradeTimeout = timeout
+}
+
+// upgradeWaitTimeout is the effective upgrade wait for this handle.
+func (d *EdgeDevice) upgradeWaitTimeout() time.Duration {
+	if d.upgradeTimeout > 0 {
+		return d.upgradeTimeout
+	}
+	return eveUpgradeTimeout
 }
 
 // rebootAndWait executes triggerFn to initiate a device reboot and, if
