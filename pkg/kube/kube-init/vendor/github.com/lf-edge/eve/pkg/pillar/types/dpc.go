@@ -1,0 +1,1447 @@
+// Copyright (c) 2023 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+package types
+
+import (
+	"bytes"
+	"encoding/binary"
+	"fmt"
+	"net"
+	"os"
+	"reflect"
+	"sort"
+	"time"
+
+	"github.com/google/go-cmp/cmp"
+	"github.com/lf-edge/eve-api/go/evecommon"
+	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
+	uuid "github.com/satori/go.uuid"
+	"google.golang.org/protobuf/types/known/timestamppb"
+)
+
+// DevicePortConfigVersion is used to track major changes in DPC semantics.
+type DevicePortConfigVersion uint32
+
+// When new fields and/or new semantics are added to DevicePortConfig a new
+// version value is added here.
+const (
+	DPCInitial DevicePortConfigVersion = iota
+	DPCIsMgmt                          // Require IsMgmt to be set for management ports
+)
+
+// DPCState tracks the progression a DPC verification.
+type DPCState uint8
+
+const (
+	// DPCStateNone : undefined state.
+	DPCStateNone DPCState = iota
+	// DPCStateFail : DPC verification failed.
+	DPCStateFail
+	// DPCStateFailWithIPAndDNS : failed to reach controller but has IP/DNS.
+	DPCStateFailWithIPAndDNS
+	// DPCStateSuccess : DPC verification succeeded.
+	DPCStateSuccess
+	// DPCStateIPDNSWait : waiting for interface IP address(es) and/or DNS server(s).
+	DPCStateIPDNSWait
+	// DPCStatePCIWait : waiting for some interface to come from pciback.
+	DPCStatePCIWait
+	// DPCStateIntfWait : waiting for some interface to appear in the network stack.
+	DPCStateIntfWait
+	// DPCStateRemoteWait : DPC verification failed because controller is down
+	// or has old certificate.
+	DPCStateRemoteWait
+	// DPCStateAsyncWait : waiting for some config operations to finalize which are
+	// running asynchronously in the background.
+	DPCStateAsyncWait
+	// DPCStateWwanWait : waiting for the wwan microservice to apply the latest
+	// cellular configuration.
+	DPCStateWwanWait
+)
+
+// String returns the string name
+func (status DPCState) String() string {
+	switch status {
+	case DPCStateNone:
+		return ""
+	case DPCStateFail:
+		return "DPC_FAIL"
+	case DPCStateFailWithIPAndDNS:
+		return "DPC_FAIL_WITH_IPANDDNS"
+	case DPCStateSuccess:
+		return "DPC_SUCCESS"
+	case DPCStateIPDNSWait:
+		return "DPC_IPDNS_WAIT"
+	case DPCStatePCIWait:
+		return "DPC_PCI_WAIT"
+	case DPCStateIntfWait:
+		return "DPC_INTF_WAIT"
+	case DPCStateRemoteWait:
+		return "DPC_REMOTE_WAIT"
+	case DPCStateAsyncWait:
+		return "DPC_ASYNC_WAIT"
+	case DPCStateWwanWait:
+		return "DPC_WWAN_WAIT"
+	default:
+		return fmt.Sprintf("Unknown status %d", status)
+	}
+}
+
+// Describe returns a short human-readable description of the current DPC state.
+func (status DPCState) Describe() string {
+	switch status {
+	case DPCStateNone:
+		return "undefined state"
+	case DPCStateFail:
+		return "DPC verification failed"
+	case DPCStateFailWithIPAndDNS:
+		return "DPC verification failed, but interface has IP and DNS"
+	case DPCStateSuccess:
+		return "DPC verification succeeded"
+	case DPCStateIPDNSWait:
+		return "waiting for interface IP address(es) and/or DNS server(s)"
+	case DPCStatePCIWait:
+		return "waiting for interface from pciback"
+	case DPCStateIntfWait:
+		return "waiting for interface to appear in network stack"
+	case DPCStateRemoteWait:
+		return "controller encountered an internal error or is using an outdated certificate"
+	case DPCStateAsyncWait:
+		return "waiting for asynchronous config operations to complete"
+	case DPCStateWwanWait:
+		return "waiting for wwan microservice to apply cellular configuration"
+	default:
+		return fmt.Sprintf("unknown state %d", status)
+	}
+}
+
+// InProgress returns true if the DPC verification is still in progress
+// (i.e., the state is not final).
+func (status DPCState) InProgress() bool {
+	switch status {
+	case DPCStateIPDNSWait,
+		DPCStatePCIWait,
+		DPCStateIntfWait,
+		DPCStateAsyncWait,
+		DPCStateWwanWait:
+		return true
+	case DPCStateNone,
+		DPCStateFail,
+		DPCStateFailWithIPAndDNS,
+		DPCStateSuccess,
+		// Although we wait for the controller to be fixed, connectivity testing
+		// has actually completed.
+		DPCStateRemoteWait:
+		return false
+	default:
+		return false
+	}
+}
+
+const (
+	// PortCostMin is the lowest cost
+	PortCostMin = uint8(0)
+	// PortCostMax is the highest cost
+	PortCostMax = uint8(255)
+)
+
+const (
+	// DefaultMTU : the default Ethernet MTU of 1500 bytes.
+	DefaultMTU = 1500
+	// MinMTU : minimum accepted MTU value.
+	// As per RFC 8200, the MTU must not be less than 1280 bytes to accommodate IPv6 packets.
+	MinMTU = 1280
+	// MaxMTU : maximum accepted MTU value.
+	// The Total Length field of IPv4 and the Payload Length field of IPv6 each have a size
+	// of 16 bits, thus allowing data of up to 65535 octets.
+	// For now, we will not support IPv6 jumbograms.
+	MaxMTU = 65535
+)
+
+const (
+	// LastResortKey : key used for the Last-Resort DPC.
+	LastResortKey = "lastresort"
+
+	// ManualDPCKey : key used for DPC submitted from TUI.
+	ManualDPCKey = "manual"
+
+	// LpsDPCKey : key used for DPC containing local configuration changes submitted by LPS.
+	LpsDPCKey = "lps"
+
+	// ControllerDPCKey : key used for DPC submitted by zedagent, based on
+	// configuration received from the controller (or LOC).
+	ControllerDPCKey = "zedagent"
+)
+
+// DevicePortConfig is a misnomer in that it includes the total test results
+// plus the test results for a given port. The complete status with
+// IP addresses lives in DeviceNetworkStatus
+type DevicePortConfig struct {
+	Version      DevicePortConfigVersion `json:",omitempty"`
+	Key          string                  `json:",omitempty"`
+	TimePriority time.Time               `json:",omitempty"` // All zero's is fallback lowest priority
+	State        DPCState                `json:",omitempty"`
+	TestResults
+	LastIPAndDNS time.Time `json:",omitempty"` // Time when we got some IP addresses and DNS
+
+	Ports []NetworkPortConfig `json:",omitempty"`
+}
+
+// PubKey is used for pubsub. Key string plus TimePriority
+func (config DevicePortConfig) PubKey() string {
+	return config.Key + "@" + config.TimePriority.UTC().Format(time.RFC3339Nano)
+}
+
+// LogCreate :
+func (config DevicePortConfig) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.DevicePortConfigLogType, "",
+		nilUUID, config.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.CloneAndAddField("ports-int64", len(config.Ports)).
+		AddField("last-failed", config.LastFailed).
+		AddField("last-succeeded", config.LastSucceeded).
+		AddField("last-error", config.LastError).
+		AddField("last-warning", config.LastWarning).
+		AddField("state", config.State.String()).
+		Noticef("DevicePortConfig create")
+	for _, p := range config.Ports {
+		// XXX different logobject for a particular port?
+		logObject.CloneAndAddField("ifname", p.IfName).
+			AddField("last-error", p.LastError).
+			AddField("last-warning", p.LastWarning).
+			AddField("last-succeeded", p.LastSucceeded).
+			AddField("last-failed", p.LastFailed).
+			Noticef("DevicePortConfig port create")
+	}
+}
+
+// LogModify :
+func (config DevicePortConfig) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.DevicePortConfigLogType, "",
+		nilUUID, config.LogKey())
+
+	oldConfig, ok := old.(DevicePortConfig)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of DevicePortConfig type")
+	}
+	if len(oldConfig.Ports) != len(config.Ports) ||
+		oldConfig.LastFailed != config.LastFailed ||
+		oldConfig.LastSucceeded != config.LastSucceeded ||
+		oldConfig.LastError != config.LastError ||
+		oldConfig.LastWarning != config.LastWarning ||
+		oldConfig.State != config.State {
+
+		logData := logObject.CloneAndAddField("ports-int64", len(config.Ports)).
+			AddField("last-failed", config.LastFailed).
+			AddField("last-succeeded", config.LastSucceeded).
+			AddField("last-error", config.LastError).
+			AddField("last-warning", config.LastWarning).
+			AddField("state", config.State.String()).
+			AddField("old-ports-int64", len(oldConfig.Ports)).
+			AddField("old-last-failed", oldConfig.LastFailed).
+			AddField("old-last-succeeded", oldConfig.LastSucceeded).
+			AddField("old-last-error", oldConfig.LastError).
+			AddField("old-last-warning", oldConfig.LastWarning).
+			AddField("old-state", oldConfig.State.String())
+		if len(oldConfig.Ports) == len(config.Ports) &&
+			config.LastFailed == oldConfig.LastFailed &&
+			config.LastError == oldConfig.LastError &&
+			config.LastWarning == oldConfig.LastWarning &&
+			oldConfig.State == config.State &&
+			config.LastSucceeded.After(oldConfig.LastFailed) &&
+			oldConfig.LastSucceeded.After(oldConfig.LastFailed) {
+			// if we have success again, reduce log level
+			logData.Function("DevicePortConfig modify")
+		} else {
+			logData.Notice("DevicePortConfig modify")
+		}
+	}
+	// XXX which fields to compare/log?
+	for i, p := range config.Ports {
+		if len(oldConfig.Ports) <= i {
+			continue
+		}
+		op := oldConfig.Ports[i]
+		// XXX different logobject for a particular port?
+		if p.HasError() != op.HasError() ||
+			p.LastFailed != op.LastFailed ||
+			p.LastSucceeded != op.LastSucceeded ||
+			p.LastError != op.LastError ||
+			p.LastWarning != op.LastWarning {
+			logData := logObject.CloneAndAddField("ifname", p.IfName).
+				AddField("last-error", p.LastError).
+				AddField("last-warning", p.LastWarning).
+				AddField("last-succeeded", p.LastSucceeded).
+				AddField("last-failed", p.LastFailed).
+				AddField("old-last-error", op.LastError).
+				AddField("old-last-warning", op.LastWarning).
+				AddField("old-last-succeeded", op.LastSucceeded).
+				AddField("old-last-failed", op.LastFailed)
+			if p.HasError() == op.HasError() &&
+				p.LastError == op.LastError &&
+				p.LastWarning == op.LastWarning {
+				// if we have success or the same error again, reduce log level
+				logData.Function("DevicePortConfig port modify")
+			} else {
+				logData.Notice("DevicePortConfig port modify")
+			}
+		}
+	}
+}
+
+// LogDelete :
+func (config DevicePortConfig) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.DevicePortConfigLogType, "",
+		nilUUID, config.LogKey())
+	logObject.CloneAndAddField("ports-int64", len(config.Ports)).
+		AddField("last-failed", config.LastFailed).
+		AddField("last-succeeded", config.LastSucceeded).
+		AddField("last-error", config.LastError).
+		AddField("last-warning", config.LastWarning).
+		AddField("state", config.State.String()).
+		Noticef("DevicePortConfig delete")
+	for _, p := range config.Ports {
+		// XXX different logobject for a particular port?
+		logObject.CloneAndAddField("ifname", p.IfName).
+			AddField("last-error", p.LastError).
+			AddField("last-warning", p.LastWarning).
+			AddField("last-succeeded", p.LastSucceeded).
+			AddField("last-failed", p.LastFailed).
+			Noticef("DevicePortConfig port delete")
+	}
+
+	base.DeleteLogObject(logBase, config.LogKey())
+}
+
+// LogKey :
+func (config DevicePortConfig) LogKey() string {
+	return string(base.DevicePortConfigLogType) + "-" + config.PubKey()
+}
+
+// LookupPortByIfName returns port configuration for the given interface.
+func (config *DevicePortConfig) LookupPortByIfName(ifName string) *NetworkPortConfig {
+	for i := range config.Ports {
+		port := &config.Ports[i]
+		if ifName == port.IfName {
+			return port
+		}
+	}
+	return nil
+}
+
+// LookupPortByLogicallabel returns port configuration referenced by the logical label.
+func (config *DevicePortConfig) LookupPortByLogicallabel(
+	label string) *NetworkPortConfig {
+	for i := range config.Ports {
+		port := &config.Ports[i]
+		if port.Logicallabel == label {
+			return port
+		}
+	}
+	return nil
+}
+
+// LookupPortsByLabel returns all port configurations with the given label assigned
+// (can be logical label or shared label).
+func (config *DevicePortConfig) LookupPortsByLabel(
+	label string) (ports []*NetworkPortConfig) {
+	for i := range config.Ports {
+		port := &config.Ports[i]
+		if port.Logicallabel == label || generics.ContainsItem(port.SharedLabels, label) {
+			ports = append(ports, port)
+		}
+	}
+	return ports
+}
+
+// RecordPortSuccess - Record for given ifname in PortConfig
+func (config *DevicePortConfig) RecordPortSuccess(ifname string) {
+	portPtr := config.LookupPortByIfName(ifname)
+	if portPtr != nil {
+		portPtr.RecordSuccess()
+	}
+}
+
+// RecordPortFailure - Record for given ifname in PortConfig
+func (config *DevicePortConfig) RecordPortFailure(ifname string, errStr string) {
+	portPtr := config.LookupPortByIfName(ifname)
+	if portPtr != nil {
+		portPtr.RecordFailure(errStr)
+	}
+}
+
+// IsPortUsedAsVlanParent - returns true if port with the given logical label
+// is used as a VLAN parent interface.
+func (config DevicePortConfig) IsPortUsedAsVlanParent(portLabel string) bool {
+	for _, port2 := range config.Ports {
+		if port2.L2Type == L2LinkTypeVLAN && port2.VLAN.ParentPort == portLabel {
+			return true
+		}
+	}
+	return false
+}
+
+// IsPortAggregatedByBond - returns true if port with the given logical label
+// is aggregated by a Bond (LAG).
+func (config DevicePortConfig) IsPortAggregatedByBond(portLabel string) bool {
+	for _, port2 := range config.Ports {
+		if port2.L2Type == L2LinkTypeBond {
+			for _, aggrPort := range port2.Bond.AggregatedPorts {
+				if aggrPort == portLabel {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// DPCSanitizeArgs : arguments for DevicePortConfig.DoSanitize().
+type DPCSanitizeArgs struct {
+	SanitizeTimePriority bool
+	SanitizeKey          bool
+	KeyToUseIfEmpty      string
+	SanitizeName         bool
+	SanitizeL3Port       bool
+	SanitizeSharedLabels bool
+}
+
+// DoSanitize ensures that some of the DPC attributes that could be missing
+// in a user-injected override.json or after an EVE upgrade are filled in.
+func (config *DevicePortConfig) DoSanitize(log *base.LogObject, args DPCSanitizeArgs) {
+	if args.SanitizeKey {
+		if config.Key == "" {
+			config.Key = args.KeyToUseIfEmpty
+			log.Noticef("DoSanitize: Forcing Key for %s TS %v\n",
+				config.Key, config.TimePriority)
+		}
+	}
+	if args.SanitizeTimePriority {
+		zeroTime := time.Time{}
+		if config.TimePriority == zeroTime {
+			// A json override file should really contain a
+			// timepriority field so we can determine whether
+			// it or the information received from the controller
+			// is more current.
+			// If we can stat the file we use 1980, otherwise
+			// we use 1970; using the modify time of the file
+			// is too unpredictable.
+			_, err1 := os.Stat(fmt.Sprintf("%s/DevicePortConfig/%s.json",
+				TmpDirname, config.Key))
+			_, err2 := os.Stat(fmt.Sprintf("%s/DevicePortConfig/%s.json",
+				IdentityDirname, config.Key))
+			if err1 == nil || err2 == nil {
+				config.TimePriority = time.Date(1980,
+					time.January, 1, 0, 0, 0, 0, time.UTC)
+			} else {
+				config.TimePriority = time.Date(1970,
+					time.January, 1, 0, 0, 0, 0, time.UTC)
+			}
+			log.Warnf("DoSanitize: Forcing TimePriority for %s to %v",
+				config.Key, config.TimePriority)
+		}
+	}
+	if args.SanitizeName {
+		// In case Phylabel isn't set we make it match IfName. Ditto for Logicallabel
+		// XXX still needed?
+		for i := range config.Ports {
+			port := &config.Ports[i]
+			if port.Phylabel == "" {
+				port.Phylabel = port.IfName
+				log.Functionf("DoSanitize: Setting missing Phylabel to match ifname for %s ifname %s",
+					config.Key, port.IfName)
+			}
+			if port.Logicallabel == "" {
+				port.Logicallabel = port.IfName
+				log.Functionf("DoSanitize: Setting missing Logicallabel to match ifname for %s ifname %s",
+					config.Key, port.IfName)
+			}
+		}
+	}
+	if args.SanitizeL3Port {
+		// IsL3Port flag was introduced to NetworkPortConfig in 7.3.0
+		// It is used to differentiate between L3 ports (with IP/DNS config)
+		// and intermediate L2-only ports (bond slaves, VLAN parents, etc.).
+		// Before 7.3.0, EVE didn't support L2-only adapters and all uplink ports
+		// were L3 endpoints.
+		// However, even with VLANs and bonds there has to be at least one L3
+		// port (L2 adapters are only intermediates with L3 endpoint(s) at the top).
+		// This means that to support upgrade from older EVE versions,
+		// we can simply check if there is at least one L3 port, and if not, it means
+		// that we are dealing with an older persisted/override DPC, where all
+		// ports should be marked as L3.
+		var hasL3Port bool
+		for _, port := range config.Ports {
+			hasL3Port = hasL3Port || port.IsL3Port
+		}
+		if !hasL3Port {
+			for i := range config.Ports {
+				config.Ports[i].IsL3Port = true
+			}
+		}
+	}
+	if args.SanitizeSharedLabels {
+		// When upgrading from older EVE version or importing override.json,
+		// shared labels can be missing.
+		for i := range config.Ports {
+			config.Ports[i].UpdateEveDefinedSharedLabels()
+		}
+	}
+}
+
+// GetMgmtPortsSortedByCost returns all management ports sorted by cost in ascending
+// order. Ports with equal cost retain their original relative order (stable sort).
+func (config *DevicePortConfig) GetMgmtPortsSortedByCost() []NetworkPortConfig {
+	var ports []NetworkPortConfig
+	for _, port := range config.Ports {
+		if port.IsMgmt {
+			ports = append(ports, port)
+		}
+	}
+	sort.SliceStable(ports, func(i, j int) bool {
+		return ports[i].Cost < ports[j].Cost
+	})
+	return ports
+}
+
+// CountMgmtPorts returns the number of management ports
+// Exclude any broken ones with Dhcp = DhcpTypeNone
+// Optionally exclude mgmt ports with invalid config
+func (config *DevicePortConfig) CountMgmtPorts(onlyValidConfig bool) int {
+	count := 0
+	for _, port := range config.Ports {
+		if port.IsMgmt && port.Dhcp != DhcpTypeNone &&
+			!(onlyValidConfig && port.InvalidConfig) {
+			count++
+		}
+	}
+	return count
+}
+
+// MostlyEqual compares two DevicePortConfig but skips things that are
+// more of status such as the timestamps and the TestResults
+// XXX Compare Version or not?
+// We compare the Ports in array order.
+func (config *DevicePortConfig) MostlyEqual(config2 *DevicePortConfig) bool {
+
+	if config.Key != config2.Key {
+		return false
+	}
+	if len(config.Ports) != len(config2.Ports) {
+		return false
+	}
+	for i, p1 := range config.Ports {
+		p2 := config2.Ports[i]
+		if p1.IfName != p2.IfName ||
+			p1.PCIAddr != p2.PCIAddr ||
+			p1.USBAddr != p2.USBAddr ||
+			p1.Phylabel != p2.Phylabel ||
+			p1.Logicallabel != p2.Logicallabel ||
+			!generics.EqualSets(p1.SharedLabels, p2.SharedLabels) ||
+			p1.Alias != p2.Alias ||
+			p1.IsMgmt != p2.IsMgmt ||
+			p1.Cost != p2.Cost ||
+			p1.MTU != p2.MTU ||
+			p1.AllowLocalModifications != p2.AllowLocalModifications ||
+			p1.ConfigSource.Origin != p2.ConfigSource.Origin {
+			return false
+		}
+		if !reflect.DeepEqual(p1.DhcpConfig, p2.DhcpConfig) ||
+			!reflect.DeepEqual(p1.ProxyConfig, p2.ProxyConfig) ||
+			!reflect.DeepEqual(p1.WirelessCfg, p2.WirelessCfg) {
+			return false
+		}
+		if !p1.L2LinkConfig.Equal(p2.L2LinkConfig) {
+			return false
+		}
+		if p1.IgnoreDhcpNtpServers != p2.IgnoreDhcpNtpServers ||
+			p1.IgnoreDhcpIPAddresses != p2.IgnoreDhcpIPAddresses ||
+			p1.IgnoreDhcpGateways != p2.IgnoreDhcpGateways ||
+			p1.IgnoreDhcpDNSConfig != p2.IgnoreDhcpDNSConfig {
+			return false
+		}
+		if p1.PNAC.Enabled != p2.PNAC.Enabled ||
+			p1.PNAC.CertEnrollmentProfileName != p2.PNAC.CertEnrollmentProfileName ||
+			p1.PNAC.EAPMethod != p2.PNAC.EAPMethod ||
+			p1.PNAC.EAPIdentity != p2.PNAC.EAPIdentity ||
+			!generics.EqualSetsFn(p1.PNAC.CACertPEM, p2.PNAC.CACertPEM, bytes.Equal) {
+			return false
+		}
+	}
+	return true
+}
+
+// IsDPCTestable - Return false if recent failure (less than "minTimeSinceFailure")
+// Also returns false if it isn't usable
+func (config DevicePortConfig) IsDPCTestable(minTimeSinceFailure time.Duration) bool {
+	if !config.IsDPCUsable() {
+		return false
+	}
+	if config.LastFailed.IsZero() {
+		return true
+	}
+	if config.LastSucceeded.After(config.LastFailed) {
+		return true
+	}
+	if config.LastFailed.After(time.Now()) {
+		// Clocks are not in sync - most likely they are still around
+		// the start of the epoch.
+		// Network is likely needed to synchronize the clocks using NTP,
+		// and we should attempt to establish network connectivity using
+		// any DPC available.
+		return true
+	}
+	return time.Since(config.LastFailed) >= minTimeSinceFailure
+}
+
+// IsDPCUntested - returns true if this is something we might want to test now.
+// Checks if it is Usable since there is no point in testing unusable things.
+func (config DevicePortConfig) IsDPCUntested() bool {
+	if config.LastFailed.IsZero() && config.LastSucceeded.IsZero() &&
+		config.IsDPCUsable() {
+		return true
+	}
+	return false
+}
+
+// IsDPCUsable - checks whether something is invalid; no management IP
+// addresses means it isn't usable hence we return false if none.
+func (config DevicePortConfig) IsDPCUsable() bool {
+	mgmtCount := config.CountMgmtPorts(true)
+	return mgmtCount > 0
+}
+
+// IsFromController returns true if this DPC originates from the controller
+// (submitted by zedagent, based on configuration received from the
+// controller or LOC).
+func (config DevicePortConfig) IsFromController() bool {
+	return config.Key == ControllerDPCKey
+}
+
+// WasDPCWorking - Check if the last results for the DPC was Success
+func (config DevicePortConfig) WasDPCWorking() bool {
+
+	if config.LastSucceeded.IsZero() {
+		return false
+	}
+	if config.LastSucceeded.After(config.LastFailed) {
+		return true
+	}
+	return false
+}
+
+// LastTestTime returns the most recent test time.
+func (config DevicePortConfig) LastTestTime() time.Time {
+	if config.LastFailed.After(config.LastSucceeded) {
+		return config.LastFailed
+	}
+	return config.LastSucceeded
+}
+
+// UpdatePortStatusFromIntfStatusMap - Set TestResults for ports in DevicePortConfig to
+// those from intfStatusMap. If a port is not found in intfStatusMap, it means
+// the port was not tested, so we retain the original TestResults for the port.
+func (config *DevicePortConfig) UpdatePortStatusFromIntfStatusMap(
+	intfStatusMap IntfStatusMap) {
+	for index := range config.Ports {
+		portPtr := &config.Ports[index]
+		tr, ok := intfStatusMap.StatusMap[portPtr.IfName]
+		if ok {
+			portPtr.TestResults.Update(tr)
+		}
+		// Else - Port not tested hence no change
+	}
+}
+
+// IsAnyPortInPciBack checks if any of the Ports are part of IO bundles which are in PCIback.
+//
+//	If true, it also returns the ifName ( NOT bundle name )
+//	Also returns whether it is currently used by an application by
+//	returning a UUID. If the UUID is zero it is in PCIback but available.
+//	Use filterUnassigned to filter out unassigned ports.
+func (config *DevicePortConfig) IsAnyPortInPciBack(
+	log *base.LogObject, aa *AssignableAdapters, filterUnassigned bool) (bool, string, uuid.UUID) {
+	if aa == nil {
+		log.Functionf("IsAnyPortInPciBack: nil aa")
+		return false, "", uuid.UUID{}
+	}
+	log.Functionf("IsAnyPortInPciBack: aa init %t, %d bundles, %d ports",
+		aa.Initialized, len(aa.IoBundleList), len(config.Ports))
+	for _, port := range config.Ports {
+		ioBundle := aa.LookupIoBundleIfName(port.IfName)
+		if ioBundle == nil {
+			// It is not guaranteed that all Ports are part of Assignable Adapters
+			// If not found, the adapter is not capable of being assigned at
+			// PCI level. So it cannot be in PCI back.
+			log.Functionf("IsAnyPortInPciBack: ifname %s not found",
+				port.IfName)
+			continue
+		}
+		if ioBundle.IsPCIBack && (!filterUnassigned || ioBundle.UsedByUUID != nilUUID) {
+			return true, port.IfName, ioBundle.UsedByUUID
+		}
+	}
+	return false, "", uuid.UUID{}
+}
+
+// NetworkPortConfig has the configuration and some status like TestResults
+// for one IfName.
+// XXX odd to have ParseErrors and/or TestResults here but we don't have
+// a corresponding Status struct.
+// Note that if fields are added the MostlyEqual function needs to be updated.
+type NetworkPortConfig struct {
+	IfName       string `json:",omitempty"`
+	USBAddr      string `json:",omitempty"`
+	PCIAddr      string `json:",omitempty"`
+	Phylabel     string `json:",omitempty"` // Physical name set by controller/model
+	Logicallabel string `json:",omitempty"` // SystemAdapter's name which is logical label in phyio
+	// Unlike the logicallabel, which is defined in the device model and unique
+	// for each port, these user-configurable "shared" labels are potentially
+	// assigned to multiple ports so that they can be used all together with
+	// some config object (e.g. multiple ports assigned to NI).
+	// Some special shared labels, such as "uplink" or "freeuplink", are assigned
+	// to particular ports automatically.
+	SharedLabels []string `json:",omitempty"`
+	Alias        string   `json:",omitempty"` // From SystemAdapter's alias
+	// Allow the local operator to make (limited) configuration changes to this
+	// network adapter using Local Profile Server.
+	AllowLocalModifications bool `json:",omitempty"`
+	// NetworkUUID - UUID of the Network Object configured for the port.
+	NetworkUUID uuid.UUID `json:",omitempty"`
+	IsMgmt      bool      `json:",omitempty"` // Used to talk to controller
+	IsL3Port    bool      `json:",omitempty"` // True if port is applicable to operate on the network layer
+	// InvalidConfig is used to flag port config which failed parsing or (static) validation
+	// checks, such as: malformed IP address, undefined required field, IP address not inside
+	// the subnet, etc.
+	InvalidConfig bool   `json:",omitempty"`
+	Cost          uint8  `json:",omitempty"` // Zero is free
+	MTU           uint16 `json:",omitempty"`
+	DhcpConfig
+	ProxyConfig
+	L2LinkConfig
+	WirelessCfg WirelessConfig `json:",omitempty"`
+	PNAC        PNACConfig     `json:",omitempty"`
+	// TestResults - Errors from parsing plus success/failure from testing
+	TestResults
+	IgnoreDhcpNtpServers  bool             `json:",omitempty"` // Ignore NTP servers from DHCP
+	IgnoreDhcpIPAddresses bool             `json:",omitempty"` // Ignore IP addresses from DHCP
+	IgnoreDhcpGateways    bool             `json:",omitempty"` // Ignore gateways from DHCP
+	IgnoreDhcpDNSConfig   bool             `json:",omitempty"` // Ignore DNS config (DomainName + DNSServers) from DHCP
+	ConfigSource          PortConfigSource `json:",omitempty"`
+}
+
+// EVE-defined port labels.
+const (
+	// AllPortsLabel references all device ports.
+	AllPortsLabel = "all"
+	// UplinkLabel references all management ports.
+	UplinkLabel = "uplink"
+	// FreeUplinkLabel references all management ports with 0 cost.
+	FreeUplinkLabel = "freeuplink"
+)
+
+// NetworkConfigOrigin enumerates all possible origins of a network port configuration.
+// The values directly match those from the corresponding proto definition
+// (evecommon.NetworkConfigOrigin).
+type NetworkConfigOrigin uint8
+
+const (
+	// NetworkConfigOriginUnspecified : unknown or unset origin.
+	NetworkConfigOriginUnspecified NetworkConfigOrigin = iota
+	// NetworkConfigOriginController : config received from the controller.
+	NetworkConfigOriginController
+	// NetworkConfigOriginBootstrap : initial device config embedded in the EVE installer,
+	// signed by the controller.
+	NetworkConfigOriginBootstrap
+	// NetworkConfigOriginOverride : manually created JSON config injected into
+	// the installer.
+	NetworkConfigOriginOverride
+	// NetworkConfigOriginLastResort : fallback configuration automatically generated
+	// to enable DHCP on all Ethernet ports when no network config is available or when
+	// "network.fallback.any.eth" is enabled and none of the existing configs provide
+	// controller connectivity.
+	NetworkConfigOriginLastResort
+	// NetworkConfigOriginTUI : config entered via the terminal UI (TUI).
+	NetworkConfigOriginTUI
+	// NetworkConfigOriginLOC : configuration signed by the controller and delivered
+	// through the Local Operator Console (LOC) in an air-gapped environment.
+	NetworkConfigOriginLOC
+	// NetworkConfigOriginLPS : config changes made locally through the Local Profile
+	// Server (LPS).
+	NetworkConfigOriginLPS
+)
+
+// PortConfigSource describes the origin of the configuration used for a network port.
+// It helps distinguish between controller-provided, locally-modified, or initial configs.
+type PortConfigSource struct {
+	// Indicates where EVE obtained the network config.
+	Origin NetworkConfigOrigin `json:",omitempty"`
+
+	// Timestamp when the port’s configuration was originally submitted
+	// or created at its source.
+	//
+	// Meaning depends on the origin:
+	// - Controller, LOC, bootstrap: timestamp provided by the controller.
+	// - Local override.json: when the file was first loaded by EVE.
+	// - Last-resort: when EVE generated the fallback config.
+	// - LPS modifications: when the modified config was received.
+	// - TUI: when the user submitted the configuration.
+	//
+	// This is different from DevicePortConfig.TimePriority, which is used
+	// to compare and prioritize different sources of network configuration
+	// (and may be synthetic for some sources, e.g. year 2000 for override.json,
+	// epoch 0 for last-resort). By contrast, SubmittedAt represents when the
+	// port’s configuration first came into existence, regardless of when or whether
+	// the device applied it.
+	//
+	// Note: this is a per-port timestamp. The underlying network config may
+	// cover multiple ports, but only the portion relevant to this port is
+	// reflected here.
+	SubmittedAt time.Time `json:",omitempty"`
+}
+
+// ToProto converts PortConfigSource into its protobuf representation.
+func (src PortConfigSource) ToProto() *evecommon.PortConfigSource {
+	return &evecommon.PortConfigSource{
+		Origin:      evecommon.NetworkConfigOrigin(src.Origin),
+		SubmittedAt: timestamppb.New(src.SubmittedAt),
+	}
+}
+
+// Equal compares two PortConfigSource instances for equality.
+func (src PortConfigSource) Equal(src2 PortConfigSource) bool {
+	return src.Origin == src2.Origin &&
+		src.SubmittedAt.Equal(src2.SubmittedAt)
+}
+
+// IsEveDefinedPortLabel returns true if the given port label is defined by EVE
+// and not by the user.
+func IsEveDefinedPortLabel(label string) bool {
+	switch label {
+	case AllPortsLabel, UplinkLabel, FreeUplinkLabel:
+		return true
+	}
+	return false
+}
+
+// UpdateEveDefinedSharedLabels updates EVE-defined shared labels that this port
+// should have based on its properties.
+func (port *NetworkPortConfig) UpdateEveDefinedSharedLabels() {
+	// First remove any EVE-defined shared labels from the list.
+	isUserLabel := func(label string) bool {
+		return !IsEveDefinedPortLabel(label)
+	}
+	port.SharedLabels = generics.FilterList(port.SharedLabels, isUserLabel)
+	// (Re-)Add shared labels that this port should have based on its config.
+	port.SharedLabels = append(port.SharedLabels, AllPortsLabel)
+	if port.IsMgmt {
+		port.SharedLabels = append(port.SharedLabels, UplinkLabel)
+	}
+	if port.IsMgmt && port.Cost == 0 {
+		port.SharedLabels = append(port.SharedLabels, FreeUplinkLabel)
+	}
+	port.SharedLabels = generics.FilterDuplicates(port.SharedLabels)
+}
+
+// DhcpType decides how EVE should obtain IP address for a given network port.
+type DhcpType uint8
+
+const (
+	// DhcpTypeNOOP : DHCP type is undefined.
+	DhcpTypeNOOP DhcpType = iota
+	// DhcpTypeStatic : static IP config.
+	DhcpTypeStatic
+	// DhcpTypeNone : DHCP passthrough for switch NI
+	// (between app VIF and external DHCP server).
+	DhcpTypeNone
+	// DhcpTypeDeprecated : defined here just to match deprecated value in EVE API.
+	DhcpTypeDeprecated
+	// DhcpTypeClient : run a DHCP client to obtain an IP address.
+	// For IPv6, we also use dhcpcd, but its behavior is RA-driven:
+	//   - dhcpcd listens to Router Advertisement (RA) messages.
+	//   - If the RA contains the M (Managed) flag, it runs stateful DHCPv6 to get an address.
+	//   - If the RA contains the O (Other) flag, it may run stateless DHCPv6 (e.g., for DNS).
+	//   - If neither flag is set, it uses only SLAAC and does not run DHCPv6.
+	DhcpTypeClient
+)
+
+// NetworkType decided IP version(s) that EVE should use for a given network port.
+type NetworkType uint8
+
+const (
+	// NetworkTypeNOOP : network type is undefined.
+	NetworkTypeNOOP NetworkType = 0
+	// NetworkTypeIPv4 : IPv4 addresses.
+	NetworkTypeIPv4 NetworkType = 4
+	// NetworkTypeIPV6 : IPv6 addresses.
+	NetworkTypeIPV6 NetworkType = 6
+
+	// EVE has been running with Dual stack DHCP behavior with both IPv4 & IPv6 specific networks.
+	// There can be users who are currently benefiting from this behavior.
+	// It makes sense to introduce two new types IPv4_ONLY & IPv6_ONLY and allow
+	// the same family selection from UI for the use cases where only one of the IP families
+	// is required on management/app-shared adapters.
+
+	// NetworkTypeIpv4Only : IPv4 addresses only
+	NetworkTypeIpv4Only NetworkType = 5
+	// NetworkTypeIpv6Only : IPv6 addresses only
+	NetworkTypeIpv6Only NetworkType = 7
+	// NetworkTypeDualStack : Run with dual stack
+	NetworkTypeDualStack NetworkType = 8
+)
+
+// DhcpConfig : DHCP configuration for network port.
+type DhcpConfig struct {
+	Dhcp DhcpType `json:",omitempty"` // If DhcpTypeStatic use below; if DhcpTypeNone do nothing
+	// AddrSubnet is in CIDR format (e.g., 192.168.1.44/24).
+	// It's a string (rather than *net.IPNet) to allow unmarshalling from
+	// user-edited override.json, since *net.IPNet does not implement
+	// encoding.TextUnmarshaler. (net.IP does, and is therefore used for
+	// Gateway and DNSServers)
+	AddrSubnet string                  `json:",omitempty"`
+	Gateway    net.IP                  `json:",omitempty"`
+	DomainName string                  `json:",omitempty"`
+	NTPServers []netutils.HostnameOrIP `json:",omitempty"`
+	DNSServers []net.IP                `json:",omitempty"` // If not set we use Gateway as DNS server
+	Type       NetworkType             `json:",omitempty"` // IPv4 or IPv6 or Dual stack
+}
+
+// EveOSVendorClassID is the DHCP Vendor Class Identifier (Option 60)
+// used by EVE OS to identify itself to DHCP servers, which may use it
+// for policy decisions such as address assignment or network access.
+// For example, a network may grant access to the EVE controller when
+// it detects an EVE device through this vendor class identifier.
+const EveOSVendorClassID = "LFEDGE-EVE"
+
+// NetworkProxyType is used to differentiate proxies for different network protocols.
+type NetworkProxyType uint8
+
+// Values if these definitions should match the values
+// given to the types in zapi.ProxyProto
+const (
+	NetworkProxyTypeHTTP NetworkProxyType = iota
+	NetworkProxyTypeHTTPS
+	NetworkProxyTypeSOCKS
+	NetworkProxyTypeFTP
+	NetworkProxyTypeNOPROXY
+	NetworkProxyTypeLAST = 255
+)
+
+// ProxyEntry is used to store address of a single network proxy.
+type ProxyEntry struct {
+	Type   NetworkProxyType `json:"type,omitempty"`
+	Server string           `json:"server,omitempty"`
+	Port   uint32           `json:"port,omitempty"`
+}
+
+// FromProto populates a ProxyEntry from its protobuf representation.
+func (pe *ProxyEntry) FromProto(proxy *evecommon.ProxyServer) {
+	if proxy == nil {
+		return
+	}
+	pe.Server = proxy.Server
+	pe.Port = proxy.Port
+	switch proxy.Proto {
+	case evecommon.ProxyProto_PROXY_HTTP:
+		pe.Type = NetworkProxyTypeHTTP
+	case evecommon.ProxyProto_PROXY_HTTPS:
+		pe.Type = NetworkProxyTypeHTTPS
+	case evecommon.ProxyProto_PROXY_SOCKS:
+		pe.Type = NetworkProxyTypeSOCKS
+	case evecommon.ProxyProto_PROXY_FTP:
+		pe.Type = NetworkProxyTypeFTP
+	}
+}
+
+// ToProto converts a ProxyEntry to its protobuf representation.
+func (pe ProxyEntry) ToProto() *evecommon.ProxyServer {
+	var protoType evecommon.ProxyProto
+	switch pe.Type {
+	case NetworkProxyTypeHTTP:
+		protoType = evecommon.ProxyProto_PROXY_HTTP
+	case NetworkProxyTypeHTTPS:
+		protoType = evecommon.ProxyProto_PROXY_HTTPS
+	case NetworkProxyTypeSOCKS:
+		protoType = evecommon.ProxyProto_PROXY_SOCKS
+	case NetworkProxyTypeFTP:
+		protoType = evecommon.ProxyProto_PROXY_FTP
+	default:
+		protoType = evecommon.ProxyProto_PROXY_OTHER
+	}
+	return &evecommon.ProxyServer{
+		Proto:  protoType,
+		Server: pe.Server,
+		Port:   pe.Port,
+	}
+}
+
+// ProxyConfig : proxy configuration for a network port.
+type ProxyConfig struct {
+	Proxies    []ProxyEntry `json:",omitempty"`
+	Exceptions string       `json:",omitempty"`
+	Pacfile    string       `json:",omitempty"`
+	// If Enable is set we use WPAD. If the URL is not set we try
+	// the various DNS suffixes until we can download a wpad.dat file
+	NetworkProxyEnable bool   `json:",omitempty"` // Enable WPAD
+	NetworkProxyURL    string `json:",omitempty"` // Complete URL i.e., with /wpad.dat
+	WpadURL            string `json:",omitempty"` // The URL determined from DNS
+	// List of certs which will be added to TLS trust
+	ProxyCertPEM [][]byte `json:"pubsub-large-ProxyCertPEM"` //nolint:tagliatelle
+}
+
+// WifiKeySchemeType - types of key management
+type WifiKeySchemeType uint8
+
+// FromProto sets the WifiKeySchemeType from the protobuf value.
+// Returns an error if the protobuf value is unrecognized.
+func (kt *WifiKeySchemeType) FromProto(protoKeyScheme evecommon.WiFiKeyScheme) error {
+	switch protoKeyScheme {
+	case evecommon.WiFiKeyScheme_SchemeNOOP:
+		*kt = KeySchemeNone
+	case evecommon.WiFiKeyScheme_WPAPSK:
+		*kt = KeySchemeWpaPsk
+	case evecommon.WiFiKeyScheme_WPAEAP:
+		*kt = KeySchemeWpaEap
+	default:
+		*kt = KeySchemeOther
+		return fmt.Errorf("unrecognized WiFi key scheme: %v", protoKeyScheme)
+	}
+	return nil
+}
+
+// ToProto converts a WifiKeySchemeType to its protobuf representation.
+func (kt WifiKeySchemeType) ToProto() evecommon.WiFiKeyScheme {
+	switch kt {
+	case KeySchemeNone:
+		return evecommon.WiFiKeyScheme_SchemeNOOP
+	case KeySchemeWpaPsk:
+		return evecommon.WiFiKeyScheme_WPAPSK
+	case KeySchemeWpaEap:
+		return evecommon.WiFiKeyScheme_WPAEAP
+	default:
+		return evecommon.WiFiKeyScheme_SchemeNOOP
+	}
+}
+
+// Key Scheme type
+const (
+	KeySchemeNone WifiKeySchemeType = iota // enum for key scheme
+	KeySchemeWpaPsk
+	KeySchemeWpaEap
+	KeySchemeOther
+)
+
+// WirelessType - types of wireless media
+type WirelessType uint8
+
+// enum wireless type
+const (
+	WirelessTypeNone WirelessType = iota // enum for wireless type
+	WirelessTypeCellular
+	WirelessTypeWifi
+)
+
+// String returns a human-readable representation of WirelessType.
+func (wt WirelessType) String() string {
+	switch wt {
+	case WirelessTypeNone:
+		return "none"
+	case WirelessTypeCellular:
+		return "cellular"
+	case WirelessTypeWifi:
+		return "wifi"
+	default:
+		return fmt.Sprintf("unknown(%d)", wt)
+	}
+}
+
+// WirelessConfig - wireless structure
+type WirelessConfig struct {
+	// WType : Wireless Type, either Cellular or WiFi.
+	WType WirelessType `json:",omitempty"`
+	// CellularV2 : configuration for Cellular connectivity.
+	// This is version 2 of the cellular APIs. With the introduction of support
+	// for multiple modems and multiple SIMs, the previously used CellConfig
+	// structure was no longer suitable for storing all the new config attributes.
+	CellularV2 CellNetPortConfig `json:",omitempty"`
+	// Wifi : configuration for WiFi connectivity.
+	Wifi []WifiConfig `json:",omitempty"`
+	// Cellular : old and now deprecated structure for the cellular connectivity
+	// configuration (aka version 1).
+	// It is kept here only for backward-compatibility, i.e. to support upgrades from
+	// EVE versions which still use this structure.
+	Cellular []DeprecatedCellConfig `json:",omitempty"`
+}
+
+// IsEmpty returns true if the wireless config is empty.
+func (wc WirelessConfig) IsEmpty() bool {
+	switch wc.WType {
+	case WirelessTypeWifi:
+		return len(wc.Wifi) == 0
+	case WirelessTypeCellular:
+		return len(wc.CellularV2.AccessPoints) == 0 &&
+			len(wc.Cellular) == 0
+	}
+	return true
+}
+
+// WifiConfig - Wifi structure
+type WifiConfig struct {
+	SSID      string            `json:",omitempty"` // wifi SSID
+	KeyScheme WifiKeySchemeType `json:",omitempty"` // such as WPA-PSK, WPA-EAP
+
+	// XXX: to be deprecated, use CipherBlockStatus instead
+	Identity string `json:",omitempty"` // identity or username for WPA-EAP
+
+	// XXX: to be deprecated, use CipherBlockStatus instead
+	Password string `json:",omitempty"` // string of pass phrase or password hash
+	Priority int32  `json:",omitempty"`
+
+	// CipherBlockStatus, for encrypted credentials
+	CipherBlockStatus
+}
+
+// DeprecatedCellConfig : old and now deprecated structure for storing cellular
+// network port config. It is preserved only to support upgrades from older EVE
+// versions where this is still being used (under the original struct name "CellConfig")
+type DeprecatedCellConfig struct {
+	APN              string `json:",omitempty"`
+	ProbeAddr        string `json:",omitempty"`
+	DisableProbe     bool   `json:",omitempty"`
+	LocationTracking bool   `json:",omitempty"`
+}
+
+// CellNetPortConfig - configuration for cellular network port (part of DPC).
+type CellNetPortConfig struct {
+	// Parameters to apply for connecting to cellular networks.
+	// Configured separately for every SIM card inserted into the modem.
+	AccessPoints []CellularAccessPoint `json:",omitempty"`
+	// Probe used to detect broken connection.
+	Probe WwanProbe `json:",omitempty"`
+	// Enable to get location info from the GNSS receiver of the cellular modem.
+	LocationTracking bool `json:",omitempty"`
+}
+
+// CellularAccessPoint contains config parameters for connecting to a cellular network.
+type CellularAccessPoint struct {
+	// SIM card slot to which this configuration applies.
+	// 0 - unspecified (apply to currently activated or the only available)
+	// 1 - config for SIM card in the first slot
+	// 2 - config for SIM card in the second slot
+	// etc.
+	SIMSlot uint8 `json:",omitempty"`
+	// If true, then this configuration is currently activated.
+	Activated bool `json:",omitempty"`
+	// Access Point Network for the default bearer.
+	APN string `json:",omitempty"`
+	// The IP addressing type to use for the default bearer.
+	IPType WwanIPType `json:",omitempty"`
+	// Authentication protocol used for the default bearer.
+	AuthProtocol WwanAuthProtocol `json:",omitempty"`
+	// Cleartext user credentials for the default bearer.
+	// Used only for network configuration submitted via Local Profile Server.
+	CleartextCredentials WwanCleartextCredentials `json:",omitempty"`
+	// Encrypted user credentials for the default bearer and/or the attach bearer
+	// (when required).
+	EncryptedCredentials CipherBlockStatus
+	// The set of cellular network operators that modem should preferably try to register
+	// and connect into.
+	// Network operator should be referenced by PLMN (Public Land Mobile Network) code.
+	PreferredPLMNs []string `json:",omitempty"`
+	// The list of preferred Radio Access Technologies (RATs) to use for connecting
+	// to the network.
+	PreferredRATs []WwanRAT `json:",omitempty"`
+	// If true, then modem will avoid connecting to networks with roaming.
+	ForbidRoaming bool `json:",omitempty"`
+	// Access Point Network for the attach (aka initial) bearer.
+	AttachAPN string `json:",omitempty"`
+	// The IP addressing type to use for the attach bearer.
+	AttachIPType WwanIPType `json:",omitempty"`
+	// Authentication protocol used for the attach bearer.
+	AttachAuthProtocol WwanAuthProtocol `json:",omitempty"`
+	// Cleartext user credentials for the attach bearer.
+	// Used only for network configuration submitted via Local Profile Server.
+	AttachCleartextCredentials WwanCleartextCredentials `json:",omitempty"`
+}
+
+// Equal compares two instances of CellularAccessPoint for equality.
+func (ap CellularAccessPoint) Equal(ap2 CellularAccessPoint) bool {
+	if ap.SIMSlot != ap2.SIMSlot ||
+		ap.Activated != ap2.Activated ||
+		ap.APN != ap2.APN ||
+		ap.IPType != ap2.IPType ||
+		ap.AuthProtocol != ap2.AuthProtocol ||
+		ap.CleartextCredentials != ap2.CleartextCredentials ||
+		!ap.EncryptedCredentials.Equal(ap2.EncryptedCredentials) {
+		return false
+	}
+	if !generics.EqualLists(ap.PreferredPLMNs, ap2.PreferredPLMNs) ||
+		!generics.EqualLists(ap.PreferredRATs, ap2.PreferredRATs) ||
+		ap.ForbidRoaming != ap2.ForbidRoaming {
+		return false
+	}
+	if ap.AttachAPN != ap2.AttachAPN ||
+		ap.AttachIPType != ap2.AttachIPType ||
+		ap.AttachAuthProtocol != ap2.AttachAuthProtocol ||
+		ap.AttachCleartextCredentials != ap2.AttachCleartextCredentials {
+		return false
+	}
+	return true
+}
+
+// L2LinkType - supported types of an L2 link
+type L2LinkType uint8
+
+const (
+	// L2LinkTypeNone : not an L2 link (used for physical network adapters).
+	L2LinkTypeNone L2LinkType = iota
+	// L2LinkTypeVLAN : VLAN sub-interface
+	L2LinkTypeVLAN
+	// L2LinkTypeBond : Bond interface
+	L2LinkTypeBond
+)
+
+// L2LinkConfig - contains either VLAN or Bond interface configuration,
+// depending on the L2Type.
+type L2LinkConfig struct {
+	L2Type L2LinkType `json:",omitempty"`
+	VLAN   VLANConfig `json:",omitempty"`
+	Bond   BondConfig `json:",omitempty"`
+}
+
+// Equal compares two L2LinkConfig values for equality.
+func (l L2LinkConfig) Equal(l2 L2LinkConfig) bool {
+	if l.L2Type != l2.L2Type {
+		return false
+	}
+	switch l.L2Type {
+	case L2LinkTypeVLAN:
+		return l.VLAN == l2.VLAN
+	case L2LinkTypeBond:
+		return l.Bond.Equal(l2.Bond)
+	default:
+		return true
+	}
+}
+
+// VLANConfig - VLAN sub-interface configuration.
+type VLANConfig struct {
+	// Logical name of the parent port.
+	ParentPort string `json:",omitempty"`
+	// VLAN ID.
+	ID uint16 `json:",omitempty"`
+}
+
+// DevicePortConfigList is an array in timestamp aka priority order;
+// first one is the most desired config to use
+// It includes test results hence is misnamed - should have a separate status
+// This is only published under the key "global"
+type DevicePortConfigList struct {
+	CurrentIndex   int                `json:",omitempty"`
+	PortConfigList []DevicePortConfig `json:",omitempty"`
+}
+
+// MostlyEqual - Equal if everything else other than timestamps is equal.
+func (config DevicePortConfigList) MostlyEqual(config2 DevicePortConfigList) bool {
+
+	if len(config.PortConfigList) != len(config2.PortConfigList) {
+		return false
+	}
+	if config.CurrentIndex != config2.CurrentIndex {
+		return false
+	}
+	for i, c1 := range config.PortConfigList {
+		c2 := config2.PortConfigList[i]
+
+		if !c1.MostlyEqual(&c2) || c1.State != c2.State {
+			return false
+		}
+	}
+	return true
+}
+
+// PubKey is used for pubsub
+func (config DevicePortConfigList) PubKey() string {
+	return "global"
+}
+
+// LogCreate :
+func (config DevicePortConfigList) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.DevicePortConfigListLogType, "",
+		nilUUID, config.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.CloneAndAddField("current-index-int64", config.CurrentIndex).
+		AddField("num-portconfig-int64", len(config.PortConfigList)).
+		Noticef("DevicePortConfigList create")
+}
+
+// LogModify :
+func (config DevicePortConfigList) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.DevicePortConfigListLogType, "",
+		nilUUID, config.LogKey())
+
+	oldConfig, ok := old.(DevicePortConfigList)
+	if !ok {
+		logObject.Clone().Errorf("LogModify: Old object interface passed is not of DevicePortConfigList type")
+		return
+	}
+	if oldConfig.CurrentIndex != config.CurrentIndex ||
+		len(oldConfig.PortConfigList) != len(config.PortConfigList) {
+
+		logObject.CloneAndAddField("current-index-int64", config.CurrentIndex).
+			AddField("num-portconfig-int64", len(config.PortConfigList)).
+			AddField("old-current-index-int64", oldConfig.CurrentIndex).
+			AddField("old-num-portconfig-int64", len(oldConfig.PortConfigList)).
+			Noticef("DevicePortConfigList modify")
+	} else {
+		// Log at Trace level - most likely just a timestamp change
+		logObject.CloneAndAddField("diff", cmp.Diff(oldConfig, config)).
+			Tracef("DevicePortConfigList modify other change")
+	}
+
+}
+
+// LogDelete :
+func (config DevicePortConfigList) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.DevicePortConfigListLogType, "",
+		nilUUID, config.LogKey())
+	logObject.CloneAndAddField("current-index-int64", config.CurrentIndex).
+		AddField("num-portconfig-int64", len(config.PortConfigList)).
+		Noticef("DevicePortConfigList delete")
+
+	base.DeleteLogObject(logBase, config.LogKey())
+}
+
+// LogKey :
+func (config DevicePortConfigList) LogKey() string {
+	return string(base.DevicePortConfigListLogType) + "-" + config.PubKey()
+}
+
+// NetworkXObjectConfig is extracted from the protobuf NetworkConfig.
+// Used by zedagent as an intermediate structure when parsing network config
+// from protobuf API into DevicePortConfig.
+// XXX replace by inline once we have device model
+type NetworkXObjectConfig struct {
+	UUID uuid.UUID   `json:",omitempty"`
+	Type NetworkType `json:",omitempty"`
+	Dhcp DhcpType    `json:",omitempty"`
+
+	// Subnet, Gateway, NTPServers, DomainName, and DNSServers can all be configured
+	// even when Dhcp == DhcpTypeClient. By default, DHCP-provided and statically
+	// configured values are merged. Setting the corresponding Ignore* flag causes
+	// the static value(s) to override DHCP for that field.
+
+	// IP addresses.
+	Subnet                *net.IPNet `json:",omitempty"`
+	DhcpRange             IPRange    `json:",omitempty"`
+	IgnoreDhcpIPAddresses bool       `json:",omitempty"`
+
+	// IP gateway.
+	Gateway            net.IP `json:",omitempty"`
+	IgnoreDhcpGateways bool   `json:",omitempty"`
+
+	// DNS configuration.
+	DomainName string `json:",omitempty"`
+	// If Dhcp=DhcpTypeStatic and DNSServers are not set, Gateway is used as DNS server.
+	DNSServers          []net.IP      `json:",omitempty"`
+	DNSNameToIPList     []DNSNameToIP `json:",omitempty"` // Used for DNS and ACL ipset
+	IgnoreDhcpDNSConfig bool          `json:",omitempty"`
+
+	// NTP servers.
+	NTPServers           []netutils.HostnameOrIP `json:",omitempty"`
+	IgnoreDhcpNtpServers bool                    `json:",omitempty"`
+
+	Proxy       *ProxyConfig   `json:",omitempty"`
+	WirelessCfg WirelessConfig `json:",omitempty"`
+	MTU         uint16         `json:",omitempty"`
+	// Any errors from the parser
+	// ErrorAndTime provides SetErrorNow() and ClearError()
+	ErrorAndTime
+}
+
+// DNSNameToIP : static mapping between hostname and IP addresses.
+type DNSNameToIP struct {
+	HostName string   `json:",omitempty"`
+	IPs      []net.IP `json:",omitempty"`
+}
+
+// IPRange : range of consecutive IP addresses.
+type IPRange struct {
+	Start net.IP `json:",omitempty"`
+	End   net.IP `json:",omitempty"`
+}
+
+// Contains used to evaluate whether an IP address
+// is within the range
+func (ipRange IPRange) Contains(ipAddr net.IP) bool {
+	if bytes.Compare(ipAddr, ipRange.Start) >= 0 &&
+		bytes.Compare(ipAddr, ipRange.End) <= 0 {
+		return true
+	}
+	return false
+}
+
+// Size returns addresses count inside IPRange
+func (ipRange IPRange) Size() uint32 {
+	//TBD:XXX, IPv6 handling
+	ip1v4 := ipRange.Start.To4()
+	ip2v4 := ipRange.End.To4()
+	if ip1v4 == nil || ip2v4 == nil {
+		return 0
+	}
+	ip1Int := binary.BigEndian.Uint32(ip1v4)
+	ip2Int := binary.BigEndian.Uint32(ip2v4)
+	if ip1Int > ip2Int {
+		return ip1Int - ip2Int
+	}
+	return ip2Int - ip1Int
+}
+
+// Key : called to get the key for pubsub
+func (config NetworkXObjectConfig) Key() string {
+	return config.UUID.String()
+}
+
+// LogCreate :
+func (config NetworkXObjectConfig) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.NetworkXObjectConfigLogType, "",
+		config.UUID, config.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Noticef("NetworkXObject config create")
+}
+
+// LogModify :
+func (config NetworkXObjectConfig) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.NetworkXObjectConfigLogType, "",
+		config.UUID, config.LogKey())
+
+	oldConfig, ok := old.(NetworkXObjectConfig)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of NetworkXObjectConfig type")
+	}
+	// XXX remove?
+	logObject.CloneAndAddField("diff", cmp.Diff(oldConfig, config)).
+		Noticef("NetworkXObject config modify")
+}
+
+// LogDelete :
+func (config NetworkXObjectConfig) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.NetworkXObjectConfigLogType, "",
+		config.UUID, config.LogKey())
+	logObject.Noticef("NetworkXObject config delete")
+
+	base.DeleteLogObject(logBase, config.LogKey())
+}
+
+// LogKey :
+func (config NetworkXObjectConfig) LogKey() string {
+	return string(base.NetworkXObjectConfigLogType) + "-" + config.Key()
+}
