@@ -626,6 +626,18 @@ func (d *EdgeDevice) HardReboot(waitUntilRebooted bool) {
 	})
 }
 
+// ExpectAdditionalReboots tells the harness to expect n more device-initiated
+// reboots beyond those it already accounts for (UpgradeEVE counts one reboot per
+// upgrade). A cross-flavor boot-disk conversion that runs an offline shrink/grow
+// reboots additional times; the number is known only to the test driving it (a
+// plain kvm<->k conversion with no resize reboots differently than a shrink+grow),
+// so the test declares it here to keep the teardown reboot-count check accurate.
+func (d *EdgeDevice) ExpectAdditionalReboots(n int) {
+	for i := 0; i < n; i++ {
+		d.th.incExpectedRebootCount(d.devName)
+	}
+}
+
 // rebootAndWait executes triggerFn to initiate a device reboot and, if
 // wait is true, blocks until the device confirms the reboot by reporting
 // a ZInfoDevice.lastRebootTime strictly after the moment triggerFn was called.
