@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	uuid "github.com/satori/go.uuid"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -68,6 +69,41 @@ func TestNativeK8sOrchestrationEnabled(t *testing.T) {
 				EnableNativeK8SOrchestration: tc.flag,
 			}
 			assert.Equal(t, tc.want, cfg.NativeK8sOrchestrationEnabled())
+		})
+	}
+}
+
+// EdgeNodeClusterConfig.IsTieBreakerNode
+
+func TestIsTieBreakerNode(t *testing.T) {
+	const (
+		tieBreaker = "5a0283de-d69a-4d4a-877f-63f9fcfcb929"
+		otherNode  = "e3342f18-c354-49e7-9a00-f3ff3a2f3db0"
+	)
+	tbUUID, err := uuid.FromString(tieBreaker)
+	assert.NoError(t, err)
+
+	cases := []struct {
+		name       string
+		configured uuid.UUID
+		nodeUUID   string
+		want       bool
+	}{
+		{"designated tie-breaker matches", tbUUID, tieBreaker, true},
+		{"tie-breaker matches upper case", tbUUID, strings.ToUpper(tieBreaker), true},
+		{"storage node does not match", tbUUID, otherNode, false},
+		// No tie-breaker designated: no node may be treated as one, otherwise a
+		// node with an empty UUID would match the zero value.
+		{"no tie-breaker designated", uuid.Nil, otherNode, false},
+		{"no tie-breaker designated, empty node uuid", uuid.Nil, "", false},
+		{"unparsable node uuid", tbUUID, "not-a-uuid", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := EdgeNodeClusterConfig{
+				TieBreakerNodeID: UUIDandVersion{UUID: tc.configured},
+			}
+			assert.Equal(t, tc.want, cfg.IsTieBreakerNode(tc.nodeUUID))
 		})
 	}
 }

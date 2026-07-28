@@ -185,6 +185,30 @@ func (config EdgeNodeClusterConfig) NativeK8sOrchestrationEnabled() bool {
 		config.EnableNativeK8SOrchestration
 }
 
+// IsTieBreakerNode reports whether nodeUUID is the tie-breaker node the
+// controller designated for this cluster. A tie-breaker node exists only to
+// hold a quorum vote: it is kept cordoned, runs no workloads and carries no
+// Longhorn replicas, so node-local storage configuration does not apply to it.
+//
+// This is the authoritative test. Do not infer tie-breaker-ness from a node
+// being unschedulable: Longhorn drives its node Schedulable condition off the
+// Kubernetes cordon, which every node passes through at boot and during
+// drains, so that signal would misclassify ordinary storage nodes.
+//
+// Returns false when the controller designated no tie-breaker (zero UUID) or
+// nodeUUID does not parse, so a node is only treated as the tie-breaker on
+// positive evidence from the EVE API config.
+func (config EdgeNodeClusterConfig) IsTieBreakerNode(nodeUUID string) bool {
+	if config.TieBreakerNodeID.UUID == uuid.Nil {
+		return false
+	}
+	parsed, err := uuid.FromString(nodeUUID)
+	if err != nil {
+		return false
+	}
+	return parsed == config.TieBreakerNodeID.UUID
+}
+
 // EdgeNodeClusterStatus - Status of the multi-node cluster published by zedkube
 type EdgeNodeClusterStatus struct {
 	ClusterName string
