@@ -7,9 +7,11 @@ metadata:
 spec:
   configuration:
     permittedHostDevices:
-      pciHostDevices:   # <- PCIe passthrough devices like nvme drives/NIC
-      mediatedDevices:  # <- GPUs
-      usb:              # <- USB passthrough
+      # Explicit empty arrays — the CRD schema requires arrays, and
+      # bare keys parse as `null` which server-side apply rejects.
+      pciHostDevices: []   # <- PCIe passthrough devices like nvme drives/NIC
+      mediatedDevices: []  # <- GPUs
+      usb: []              # <- USB passthrough
     developerConfiguration:
       featureGates:
         - HostDisk
