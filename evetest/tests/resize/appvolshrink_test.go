@@ -16,6 +16,7 @@ import (
 
 	eveconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve-api/go/evecommon"
+	eveinfo "github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/evetest"
 	"github.com/lf-edge/eve/evetest/constants"
 	"github.com/lf-edge/eve/evetest/matchers"
@@ -332,7 +333,7 @@ func TestAppVolumeShrinkCorruption(test *testing.T) {
 		waitLonghornSC(t, device)
 	}
 	log.Infof("(d) waiting for the app to reach RUNNING on the target")
-	device.WaitUntilAppIsRunning(appUUID, 65*time.Minute)
+	waitAppRunningWithPVCRecovery(t, device, appUUID, dataVolMiB)
 	appSSHOK := false
 	defer func() {
 		if !appSSHOK {
@@ -448,6 +449,106 @@ exit 1`, mountDir, volverifyCommitDir, volumeStatePattern, volumeStateBlank)
 		evetest.Logger().Infof("data volume state %s:\n%s", state, strings.TrimSpace(stdout))
 	}, 5*time.Minute, 15*time.Second).Should(Succeed())
 	return state
+}
+
+// Rounds of "wait, then try the documented PVC recovery" allowed before the app
+// is declared stuck, and how long each round waits.
+const (
+	pvcRecoveryRounds = 3
+	pvcRecoveryWait   = 12 * time.Minute
+)
+
+// waitAppRunningWithPVCRecovery waits for the app to reach RUNNING on EVE-k,
+// applying the documented recovery for the known app-PVC wedge between attempts.
+//
+// The wedge is a Longhorn CSI create/verify race that leaves a PVC Pending
+// forever: it is "stuck, not slow", so simply waiting longer never rescues it.
+// Deleting the PVC lets the provisioner re-drive it cleanly, which is what makes
+// data volumes above ~256 MiB usable at all — below that the race is rare, above
+// it the wedge is the norm.
+func waitAppRunningWithPVCRecovery(t Gomega, device *evetest.EdgeDevice,
+	appUUID uuid.UUID, dataVolMiB uint32) {
+	log := evetest.Logger()
+	for round := 1; round <= pvcRecoveryRounds; round++ {
+		if waitAppRunningQuietly(device, appUUID, pvcRecoveryWait) {
+			return
+		}
+		log.Errorf("app not RUNNING after %s (round %d/%d) — trying the PVC-wedge recovery",
+			pvcRecoveryWait, round, pvcRecoveryRounds)
+		if !recoverWedgedAppPVCs(device, dataVolMiB) {
+			log.Errorf("nothing safe to recover this round")
+		}
+	}
+	t.Expect(appIsRunning(device, appUUID)).To(BeTrue(),
+		"app never reached RUNNING after %d PVC-wedge recovery attempts", pvcRecoveryRounds)
+}
+
+// appIsRunning reports the app's current state without asserting.
+func appIsRunning(device *evetest.EdgeDevice, appUUID uuid.UUID) bool {
+	info := device.GetAppInfo(appUUID)
+	return info != nil && info.GetState() == eveinfo.ZSwState_RUNNING
+}
+
+// waitAppRunningQuietly polls until the app is RUNNING or the timeout expires,
+// returning whether it got there. Unlike the framework's waiter it does not fail
+// the test on timeout, so the caller can intervene and keep waiting.
+func waitAppRunningQuietly(device *evetest.EdgeDevice, appUUID uuid.UUID, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if appIsRunning(device, appUUID) {
+			return true
+		}
+		time.Sleep(15 * time.Second)
+	}
+	return appIsRunning(device, appUUID)
+}
+
+// recoverWedgedAppPVCs deletes Pending PVCs in the app namespace so the
+// provisioner re-drives them, and reports whether it deleted any.
+//
+// It must never delete the data volume's PVC or that volume's CDI scratch: the
+// data volume holds the pattern this test verifies, and EVE recreates a deleted
+// volume BLANK — the verify would then find an empty volume and the run would
+// report a clean pass, a false negative wearing the clothes of a result. So the
+// size check is deliberately biased towards protecting: anything within reach of
+// the data volume's size is left alone, and if that is the wedged PVC then no
+// recovery happens and the run is allowed to fail honestly.
+//
+// The discriminator is size because the harness does not know the volume UUIDs
+// EVE assigns. That is sound while the data volume is comfortably larger than the
+// app's image PVC (a few hundred MiB) — which is exactly the case where recovery
+// is needed. At data-volume sizes near the image size the app's own PVC gets
+// protected too and recovery no-ops; the classification is logged so that is
+// visible rather than silent.
+func recoverWedgedAppPVCs(device *evetest.EdgeDevice, dataVolMiB uint32) bool {
+	log := evetest.Logger()
+	script := fmt.Sprintf(`set -u
+DV=%d
+LIST=$(eve exec kube kubectl -n eve-kube-app get pvc \
+  -o custom-columns=N:.metadata.name,P:.status.phase,R:.spec.resources.requests.storage \
+  --no-headers 2>/dev/null)
+[ -z "$LIST" ] && { echo NO-PVCS; exit 0; }
+echo "$LIST" | sed 's/^/PVC: /'
+VICTIMS=$(echo "$LIST" | awk -v dv="$DV" '
+  function mib(s) {
+    if (s ~ /Gi$/) { sub(/Gi$/, "", s); return s * 1024 }
+    if (s ~ /Mi$/) { sub(/Mi$/, "", s); return s + 0 }
+    return 0
+  }
+  $2 == "Pending" {
+    if (mib($3) >= dv - 32) { printf "PROTECTED %%s (%%s)\n", $1, $3; next }
+    printf "VICTIM %%s (%%s)\n", $1, $3
+  }')
+echo "$VICTIMS"
+NAMES=$(echo "$VICTIMS" | awk '$1=="VICTIM" {print $2}')
+[ -z "$NAMES" ] && { echo NOTHING-TO-RECOVER; exit 0; }
+for v in $NAMES; do
+  echo "RECOVERING $v"
+  eve exec kube kubectl -n eve-kube-app delete pvc "$v" --wait=false 2>&1 | sed 's/^/  /'
+done`, dataVolMiB)
+	out, errOut, err := device.RunShellScript(script, 3*time.Minute, 0)
+	log.Errorf("[pvc-recovery]\n%s%s(err=%v)", strings.TrimSpace(out), errOut, err)
+	return strings.Contains(out, "RECOVERING ")
 }
 
 // assertWatchdogDriverBound fails the run if no watchdog driver is bound in the
