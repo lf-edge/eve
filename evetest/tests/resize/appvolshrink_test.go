@@ -234,8 +234,14 @@ func TestAppVolumeShrinkCorruption(test *testing.T) {
 	})
 	device.ApplyConfig(devConfig, false, false)
 
+	// The conversion is several reboots plus an EVE-k bring-up and runs close to
+	// the framework's default upgrade budget, so give it room; without this a
+	// conversion that is merely slow is reported as a failed one.
+	device.SetUpgradeTimeout(45 * time.Minute)
+
 	log.Infof("baseline: asserting SMALL boot-disk geometry")
 	assertSmallGeometry(t, device)
+	assertWatchdogPresent(t, device)
 	evetest.Checkpoint("baseline-small")
 
 	log.Infof("kvm→kvm hop: upgrading to the conversion-capable build %s (kvm)", convVersion)
@@ -444,25 +450,47 @@ exit 1`, mountDir, volverifyCommitDir, volumeStatePattern, volumeStateBlank)
 	return state
 }
 
+// assertWatchdogPresent fails the run if the guest has no watchdog device.
+//
+// This is a check on the QEMU setup, not on EVE. The stress build's resizer arms
+// /dev/watchdog and then deliberately stops feeding it, which is how this test
+// interrupts the offline resize — but when the device node is missing the resizer
+// exits quietly and the interruption never happens. The conversion then completes
+// cleanly and the volume verifies perfectly, which reads exactly like evidence
+// that an interrupted shrink preserves the data. Assert it up front, on the
+// baseline, so a misconfigured guest fails in seconds instead of producing a
+// reassuring result an hour later.
+func assertWatchdogPresent(t Gomega, device *evetest.EdgeDevice) {
+	t.Eventually(func(g Gomega) {
+		out, err := runEVE(device,
+			`[ -c /dev/watchdog ] && echo WATCHDOG-PRESENT || echo WATCHDOG-MISSING; wdctl /dev/watchdog 2>&1 | head -8`)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(out).To(ContainSubstring("WATCHDOG-PRESENT"),
+			"guest has no /dev/watchdog, so the stress resizer cannot interrupt the "+
+				"resize and a clean result here would mean nothing; check that QEMU "+
+				"exposes a watchdog and that the chipset is allowed to reset:\n%s", out)
+		evetest.Logger().Infof("watchdog device present:\n%s", strings.TrimSpace(out))
+	}, 2*time.Minute, 10*time.Second).Should(Succeed())
+}
+
 // captureResizeEvidence records whether the offline resize was actually
 // interrupted, which is the whole premise of this test and is otherwise
 // invisible: a clean conversion and a fault-injected one that happened to
 // converge look identical from the harness side.
 //
-// The decisive artifact is the resize attempt counter on the CONFIG partition —
-// storage-resize.sh increments it once per resize boot, so a value above 1 means
-// the resize was re-driven, i.e. something cut it. The stress watchdog can only
-// cut anything if the guest has a watchdog device at all (the resizer's
-// run-watchdog exits quietly when /dev/watchdog is absent), so the device node
-// and the recorded reboot reasons are captured next to it.
+// Note the resize attempt counter on the CONFIG partition is NOT usable here:
+// storage-resize.sh deletes it on the success path, so by the time the conversion
+// has finished it always reads empty regardless of how many attempts it took. The
+// durable evidence is what EVE recorded about why it rebooted — a watchdog reset
+// is reported as its own boot reason — plus whatever the resizer left in the logs.
 func captureResizeEvidence(device *evetest.EdgeDevice) {
 	log := evetest.Logger()
 	log.Errorf("=== offline-resize fault evidence ===")
 	probes := []struct{ what, script string }{
-		{"resize attempt counter", `cat /config/resize-reboots 2>/dev/null || echo ABSENT`},
+		{"boot / reboot reasons", `for f in /persist/boot-reason /persist/reboot-reason /persist/status/boot-reason /persist/status/reboot-reason /persist/log/reboot-reason.log; do [ -f "$f" ] && { echo "--- $f"; cat "$f"; }; done 2>/dev/null || echo NONE`},
+		{"watchdog boot reason in logs", `eve exec pillar sh -c 'grep -ahoE "BootReason[A-Za-z]+" /persist/newlog/collect/*.log 2>/dev/null | sort | uniq -c | sort -rn | head' || echo none`},
 		{"resize-failed.json", `cat /config/resize-failed.json 2>/dev/null || echo NONE`},
-		{"watchdog device present?", `ls -l /dev/watchdog* 2>&1; eve exec pillar wdctl /dev/watchdog 2>&1 | head -20`},
-		{"reboot reasons", `cat /persist/reboot-reason.log 2>/dev/null || eve exec pillar sh -c 'cat /persist/log/reboot-reason.log 2>/dev/null' || echo NONE`},
+		{"watchdog device", `[ -c /dev/watchdog ] && echo PRESENT || echo MISSING; wdctl /dev/watchdog 2>&1 | head -8`},
 		{"resizer/watchdog log lines", `eve exec pillar sh -c 'grep -ahiE "run-watchdog|storage-resizer|resize did not converge|watchdog" /persist/newlog/collect/*.log 2>/dev/null | tail -30' || echo none`},
 	}
 	for _, p := range probes {
