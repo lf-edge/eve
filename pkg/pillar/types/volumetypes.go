@@ -619,8 +619,14 @@ func (status VolumeCreatePending) LogDelete(logBase *base.LogObject) {
 
 // VolumeMgrStatus :
 type VolumeMgrStatus struct {
-	Name           string
-	Initialized    bool
+	Name        string
+	Initialized bool
+	// UnmetCondition names the readiness gate still outstanding when
+	// Initialized is false, e.g. "longhorn not ready: longhorn missing
+	// daemonset:engine-image". Empty when Initialized is true. Informational:
+	// it exists so an operator can tell a converging cluster from a stuck one
+	// without correlating agent logs.
+	UnmetCondition string
 	RemainingSpace uint64 // In bytes. Takes into account "reserved" for dom0
 }
 

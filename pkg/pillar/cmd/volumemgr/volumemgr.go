@@ -89,6 +89,13 @@ type volumemgrContext struct {
 	gcRunning            bool
 	initGced             bool // Will be marked true after initObjects are garbage collected
 
+	// storageReady is false only on an EVE-k node whose cluster storage never
+	// came up; storageUnmet then carries the outstanding gate. Both are
+	// reported through VolumeMgrStatus. Written once during startup, before
+	// the disk-metrics task that reads them is launched.
+	storageReady bool
+	storageUnmet string
+
 	globalConfig       *types.ConfigItemValueMap
 	GCInitialized      bool
 	vdiskGCTime        uint32 // In seconds; XXX delete when OldVolumeStatus is deleted
@@ -169,6 +176,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		globalConfig:       types.DefaultConfigItemValueMap(),
 		persistType:        persist.ReadPersistType(),
 		hvTypeKube:         base.IsHVTypeKube(),
+		// Only an EVE-k node has cluster storage to wait for; everywhere else
+		// storage is usable as soon as volumemgr is up.
+		storageReady: !base.IsHVTypeKube(),
 	}
 	agentbase.Init(&ctx, logger, log, agentName,
 		agentbase.WithPidFile(),
@@ -341,6 +351,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			})
 		if err != nil {
 			log.Errorf("volumemgr run: wait for kubernetes error %v", err)
+			ctx.storageUnmet = err.Error()
 		} else {
 			log.Noticef("volumemgr run: kubernetes node ready, longhorn ready")
 		}
@@ -371,9 +382,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			}
 		}
 		storageDeadline.Stop()
+		ctx.storageReady = storageReady
 		if storageReady {
+			ctx.storageUnmet = ""
 			log.Noticef("volumemgr run: cluster storage (longhorn+CDI) ready")
 		} else {
+			if ctx.storageUnmet == "" {
+				ctx.storageUnmet = "cluster storage (longhorn+CDI) not ready"
+			}
 			log.Warnf("volumemgr run: timeout waiting for cluster storage; " +
 				"volumes will defer and retry")
 		}
