@@ -140,12 +140,20 @@ func generateAndPublishVolumeMgrStatus(ctx *volumemgrContext) {
 		log.Error(err)
 		return
 	}
-	st := types.VolumeMgrStatus{
+	st := ctx.volumeMgrStatus(remaining)
+	ctx.pubVolumeMgrStatus.Publish(st.Key(), st)
+}
+
+// volumeMgrStatus describes volumemgr itself: whether storage ever became
+// usable, the gate still outstanding when it did not, and the space left for
+// volumes after everything reserved for EVE has been subtracted.
+func (ctxPtr *volumemgrContext) volumeMgrStatus(remaining uint64) types.VolumeMgrStatus {
+	return types.VolumeMgrStatus{
 		Name:           agentName,
-		Initialized:    true,
+		Initialized:    ctxPtr.storageReady,
+		UnmetCondition: ctxPtr.storageUnmet,
 		RemainingSpace: remaining,
 	}
-	ctx.pubVolumeMgrStatus.Publish(st.Key(), st)
 }
 
 // createOrUpdateDiskMetrics creates or updates metrics for all disks, mountpaths and volumeStatuses
