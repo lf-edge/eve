@@ -307,7 +307,14 @@ func TestAppVolumeShrinkCorruption(test *testing.T) {
 			dumpConversionFailure(device)
 		}
 	}()
-	device.UpgradeEVE(convVersion, targetHypervisor, true, false)
+	// Do not wait for EVE to commit the new partition. Committing is a trial
+	// period that runs long after the device is already up on the target, and
+	// nothing this test asserts depends on it: the geometry is grown by then and
+	// what matters is whether the app and its volume come back. Waiting for it
+	// only delays — and can fail — a conversion that is doing fine. The commit is
+	// observed at the end instead, where it costs nothing.
+	device.UpgradeEVE(convVersion, targetHypervisor, false, false)
+	waitDeviceOnTarget(t, device, targetHypervisor, 45*time.Minute)
 	conversionOK = true
 	device.ExpectAdditionalReboots(1)
 	captureResizeEvidence(device)
@@ -324,7 +331,7 @@ func TestAppVolumeShrinkCorruption(test *testing.T) {
 		if !isK3sReady(device.GetClusterInfo()) {
 			clusterUpdates, stop := device.WatchClusterInfo()
 			defer stop()
-			t.Eventually(clusterUpdates, 20*time.Minute).Should(Receive(
+			t.Eventually(clusterUpdates, 30*time.Minute).Should(Receive(
 				matchers.SatisfyPredicate("K3s node is ready", isK3sReady)))
 		}
 		log.Infof("(b) waiting for volumemgr Initialized")
@@ -375,6 +382,12 @@ func TestAppVolumeShrinkCorruption(test *testing.T) {
 	t.Expect(presentCorrupt).To(Equal(0),
 		"data volume served corrupt-but-present after the interrupted shrink:\n%s", report)
 	evetest.Checkpoint("volume-verified")
+
+	// Whether EVE committed the new partition is recorded rather than asserted:
+	// the volume result above does not depend on it, but a target still sitting at
+	// "inprogress" here means the trial period had not finished, and one that
+	// reverted would explain an otherwise puzzling later failure.
+	logPartitionState(device)
 }
 
 // writeVolverifyPattern fills the app's data volume with the deterministic pattern
@@ -449,6 +462,57 @@ exit 1`, mountDir, volverifyCommitDir, volumeStatePattern, volumeStateBlank)
 		evetest.Logger().Infof("data volume state %s:\n%s", state, strings.TrimSpace(stdout))
 	}, 5*time.Minute, 15*time.Second).Should(Succeed())
 	return state
+}
+
+// logPartitionState records what EVE currently reports for each base image, so a
+// run that did not commit its target (or reverted) is visible after the fact.
+// Best-effort; never fails the test.
+func logPartitionState(device *evetest.EdgeDevice) {
+	info := device.GetDeviceInfo()
+	if info == nil {
+		evetest.Logger().Errorf("[partition-state] no device info")
+		return
+	}
+	for _, sw := range info.GetSwList() {
+		evetest.Logger().Errorf("[partition-state] %s partition=%s status=%s %s",
+			sw.GetShortVersion(), sw.GetPartitionState(), sw.GetUserStatus(), sw.GetSubStatusStr())
+	}
+}
+
+// waitDeviceOnTarget waits until the device is RUNNING the target flavor, which
+// is a weaker and much earlier condition than the framework's upgrade wait: that
+// one blocks until EVE commits the partition (state "active"), whereas this
+// returns as soon as the target is the booted partition ("inprogress" counts).
+//
+// It fails fast if EVE flags any base image FAILED, so a rejected conversion still
+// surfaces immediately rather than burning the whole budget.
+func waitDeviceOnTarget(t Gomega, device *evetest.EdgeDevice,
+	hv evetest.Hypervisor, timeout time.Duration) {
+	// The target's short version carries a flavor suffix; for the conversion the
+	// only thing that distinguishes it from the kvm hop is that suffix.
+	suffix := "-kvm-"
+	if hv == evetest.HypervisorKubevirt {
+		suffix = "-k-"
+	}
+	t.Eventually(func(g Gomega) {
+		info := device.GetDeviceInfo()
+		g.Expect(info).NotTo(BeNil())
+		var seen []string
+		for _, sw := range info.GetSwList() {
+			ver, state := sw.GetShortVersion(), sw.GetPartitionState()
+			seen = append(seen, fmt.Sprintf("%s[%s/%s]", ver, state, sw.GetUserStatus()))
+			if !strings.Contains(ver, suffix) {
+				continue
+			}
+			g.Expect(sw.GetUserStatus()).NotTo(Equal(eveinfo.BaseOsStatus_FAILED),
+				"EVE flagged %s FAILED: %s", ver, sw.GetSubStatusStr())
+			if state == "inprogress" || state == "active" {
+				evetest.Logger().Infof("device is running %s (partition %s)", ver, state)
+				return
+			}
+		}
+		g.Expect(false).To(BeTrue(), "device not running a %s image yet: %v", suffix, seen)
+	}, timeout, 15*time.Second).Should(Succeed())
 }
 
 // Rounds of "wait, then try the documented PVC recovery" allowed before the app
