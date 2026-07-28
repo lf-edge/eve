@@ -663,10 +663,19 @@ func longhornVolumeSetNode(lhVolName string, kubeNodeName string) error {
 }
 
 // SetLonghornNodeDiskReserved sets StorageReserved on every disk of the named Longhorn node.
-// Returns (false, nil) if the Longhorn API is absent or the node object does not exist yet,
-// so callers should retry until (true, nil) is returned.
-// Returns (true, nil) for non-schedulable (tie-breaker) nodes: the reservation is not
-// needed and the Longhorn admission webhook would reject any update attempt.
+// It reads the node on every call and only issues an Update when a disk differs from
+// reservedBytes, so it is cheap to call repeatedly and is meant to be driven as a standing
+// reconcile rather than once per boot. Longhorn recreates the node object (with its own
+// 30% default reservation) whenever the node leaves and rejoins the cluster, and only a
+// standing reconcile notices that.
+//
+// Returns (true, nil) when an Update was issued, (false, nil) when the node already matched,
+// when Longhorn is not installed yet, or when the Longhorn node object does not exist yet.
+//
+// This function deliberately makes no attempt to recognize tie-breaker nodes. Callers must
+// skip those themselves using EdgeNodeClusterConfig.IsTieBreakerNode: a node's Longhorn
+// Schedulable condition is not a usable proxy, since Longhorn sets it False for any
+// Kubernetes cordon — including the boot-time cordon every node passes through.
 func SetLonghornNodeDiskReserved(nodeName string, reservedBytes int64) (bool, error) {
 	apiExists, err := longhornAPIExists()
 	if !apiExists && err == nil {
@@ -694,7 +703,8 @@ func SetLonghornNodeDiskReserved(nodeName string, reservedBytes int64) (bool, er
 
 // setLonghornNodeDiskReservedInner is the testable core of SetLonghornNodeDiskReserved.
 // All Longhorn node I/O is injected through the nodes interface argument so unit tests
-// can supply hand-written mocks without a live cluster.
+// can supply hand-written mocks without a live cluster. The returned bool reports
+// whether an Update was issued, so a steady state costs one Get per call.
 func setLonghornNodeDiskReservedInner(ctx context.Context, nodeName string,
 	reservedBytes int64, nodes lhNodeGetUpdater) (bool, error) {
 	node, err := nodes.Get(ctx, nodeName, metav1.GetOptions{})
@@ -703,22 +713,6 @@ func setLonghornNodeDiskReservedInner(ctx context.Context, nodeName string,
 			return false, nil
 		}
 		return false, fmt.Errorf("SetLonghornNodeDiskReserved: get node %s: %v", nodeName, err)
-	}
-
-	// Tie breaker nodes will have a non-deployed engine and the longhorn
-	// validator will return an error.
-	// example:
-	// 'admission webhook "validator.longhorn.io" denied the request:
-	// spec and status of disks on node <node> are being syncing
-	// and please retry later.'
-	//
-	// Skip this node, the reservation isn't necessary here.
-	// Return true so the caller stops retrying — the reservation is not needed.
-	for _, cond := range node.Status.Conditions {
-		if cond.Type == lhv1beta2.NodeConditionTypeSchedulable &&
-			cond.Status != lhv1beta2.ConditionStatusTrue {
-			return true, nil
-		}
 	}
 
 	changed := false
@@ -730,7 +724,8 @@ func setLonghornNodeDiskReservedInner(ctx context.Context, nodeName string,
 		}
 	}
 	if !changed {
-		return true, nil
+		// Already in sync; nothing to write.
+		return false, nil
 	}
 
 	_, err = nodes.Update(ctx, node, metav1.UpdateOptions{})

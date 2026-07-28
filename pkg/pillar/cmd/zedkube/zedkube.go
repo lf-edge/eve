@@ -49,6 +49,12 @@ const (
 	// kube-API failures and the boot race where ENCC arrives before leader
 	// election settles are self-healing instead of stuck-until-next-config.
 	pruneStaleMasterInterval = 600
+	// longhornDiskReservedErrRelogInterval: how often a still-unchanged
+	// applyLonghornDiskReserved failure is re-logged at Error level. That
+	// reconcile runs every kubeCfgInterval forever with no success latch, so
+	// unthrottled logging would bury the journal during any lengthy kube-API
+	// or Longhorn outage.
+	longhornDiskReservedErrRelogInterval = 30 * time.Minute
 
 	inlineCmdKubeClusterUpdateStatus = "pubKubeClusterUpdateStatus"
 	inlineCmdVmiDetach               = "vmiDetach"
@@ -130,8 +136,12 @@ type zedkube struct {
 	deschedulerOnBootStarted bool
 	receivedENCC             bool
 
-	// longhornDiskReservedSet is true once the desired reservation has been applied to the Longhorn node
-	longhornDiskReservedSet bool
+	// longhornDiskReservedErr / longhornDiskReservedErrLogged throttle the error
+	// logging in applyLonghornDiskReserved. That reconcile has no success latch,
+	// so a persistent failure would otherwise log identically every
+	// kubeCfgInterval for as long as it lasts.
+	longhornDiskReservedErr       string
+	longhornDiskReservedErrLogged time.Time
 	// longhornSnapshotSet is true once the desired recurring snapshot interval has been applied
 	longhornSnapshotSet bool
 	// longhornDrainPolicySet is true once the desired node-drain-policy has been applied
@@ -939,9 +949,10 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		newReservedGB := newConfigItemValueMap.GlobalValueInt(types.LonghornDiskReservedGB)
 		existingReservedGB := currentConfigItemValueMap.GlobalValueInt(types.LonghornDiskReservedGB)
 		if newReservedGB != existingReservedGB {
+			// No latch to clear: applyLonghornDiskReserved below reconciles
+			// against the new value, as does every kubeCfgTimer tick after it.
 			log.Functionf("handleGlobalConfigImpl: LonghornDiskReservedGB changed %d -> %d",
 				existingReservedGB, newReservedGB)
-			z.longhornDiskReservedSet = false
 		}
 
 		newSnapshotCron := newConfigItemValueMap.GlobalValueString(types.LonghornSnapshotCron)
@@ -971,26 +982,63 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 	log.Functionf("handleGlobalConfigImpl(%s): done", key)
 }
 
-// applyLonghornDiskReserved attempts to set the per-disk reserved space on the local Longhorn
-// node. It is a no-op if the node name is not yet known or the value has already been applied.
-// Callers should retry periodically until longhornDiskReservedSet is true.
+// applyLonghornDiskReserved reconciles the per-disk reserved space on the local Longhorn
+// node with storage.longhorn.disk.reserved.gigabytes.
+//
+// This runs on every kubeCfgTimer tick and deliberately keeps no "already applied" latch.
+// Longhorn deletes and recreates the node object whenever this node leaves and rejoins the
+// cluster, and the recreated object comes back carrying Longhorn's own default reservation
+// (30% of the disk, per storage-reserved-percentage-for-default-disk). A latched apply
+// would never notice, leaving the EVE value silently unenforced until zedbox restarts —
+// and on a full disk that difference is what stops new replicas from being scheduled.
+// Steady state costs one Get per interval; an Update is only issued on drift.
 func (z *zedkube) applyLonghornDiskReserved() {
-	if z.nodeName == "" || z.longhornDiskReservedSet {
+	if z.nodeName == "" {
+		return
+	}
+	// The tie-breaker node holds no Longhorn replicas, so a disk reservation is
+	// meaningless there and the Longhorn validating webhook rejects the update
+	// anyway. Identify it from the controller's cluster config only — the node's
+	// Longhorn Schedulable condition tracks the Kubernetes cordon, which every
+	// node passes through at boot until nodeOnBootHealthStatusWatcher uncordons
+	// it, and during every drain.
+	if z.clusterConfig.IsTieBreakerNode(z.nodeuuid) {
 		return
 	}
 	reservedGB := z.globalConfig.GlobalValueInt(types.LonghornDiskReservedGB)
 	if reservedGB == types.LonghornDiskReservedGBDisabled {
 		// Operator disabled EVE's override; leave Longhorn's current value in place.
-		z.longhornDiskReservedSet = true
 		return
 	}
 	reservedBytes := int64(reservedGB) * 1024 * 1024 * 1024
-	applied, err := kubeapi.SetLonghornNodeDiskReserved(z.nodeName, reservedBytes)
+	updated, err := kubeapi.SetLonghornNodeDiskReserved(z.nodeName, reservedBytes)
 	if err != nil {
-		log.Errorf("applyLonghornDiskReserved: %v", err)
+		z.logLonghornDiskReservedErr(err)
 		return
 	}
-	z.longhornDiskReservedSet = applied
+	z.longhornDiskReservedErr = ""
+	if updated {
+		log.Noticef("applyLonghornDiskReserved: set reserved space to %d GB on node %s",
+			reservedGB, z.nodeName)
+	}
+}
+
+// logLonghornDiskReservedErr logs a reconcile failure at Error the first time it is seen
+// and then at most once per longhornDiskReservedErrRelogInterval while the same failure
+// persists; repeats in between drop to Function level. Without this an unreachable kube
+// API would emit one identical Error every kubeCfgInterval indefinitely, since
+// applyLonghornDiskReserved never stops retrying.
+func (z *zedkube) logLonghornDiskReservedErr(err error) {
+	msg := err.Error()
+	now := time.Now()
+	if msg == z.longhornDiskReservedErr &&
+		now.Sub(z.longhornDiskReservedErrLogged) < longhornDiskReservedErrRelogInterval {
+		log.Functionf("applyLonghornDiskReserved: %v", err)
+		return
+	}
+	z.longhornDiskReservedErr = msg
+	z.longhornDiskReservedErrLogged = now
+	log.Errorf("applyLonghornDiskReserved: %v", err)
 }
 
 // applyLonghornRecurringSnapshot creates or updates the Longhorn recurring snapshot job
