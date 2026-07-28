@@ -303,6 +303,7 @@ func TestAppVolumeShrinkCorruption(test *testing.T) {
 	device.UpgradeEVE(convVersion, targetHypervisor, true, false)
 	conversionOK = true
 	device.ExpectAdditionalReboots(1)
+	captureResizeEvidence(device)
 	evetest.Checkpoint("conversion-complete")
 
 	assertGrownShrink(t, device)
@@ -441,6 +442,33 @@ exit 1`, mountDir, volverifyCommitDir, volumeStatePattern, volumeStateBlank)
 		evetest.Logger().Infof("data volume state %s:\n%s", state, strings.TrimSpace(stdout))
 	}, 5*time.Minute, 15*time.Second).Should(Succeed())
 	return state
+}
+
+// captureResizeEvidence records whether the offline resize was actually
+// interrupted, which is the whole premise of this test and is otherwise
+// invisible: a clean conversion and a fault-injected one that happened to
+// converge look identical from the harness side.
+//
+// The decisive artifact is the resize attempt counter on the CONFIG partition —
+// storage-resize.sh increments it once per resize boot, so a value above 1 means
+// the resize was re-driven, i.e. something cut it. The stress watchdog can only
+// cut anything if the guest has a watchdog device at all (the resizer's
+// run-watchdog exits quietly when /dev/watchdog is absent), so the device node
+// and the recorded reboot reasons are captured next to it.
+func captureResizeEvidence(device *evetest.EdgeDevice) {
+	log := evetest.Logger()
+	log.Errorf("=== offline-resize fault evidence ===")
+	probes := []struct{ what, script string }{
+		{"resize attempt counter", `cat /config/resize-reboots 2>/dev/null || echo ABSENT`},
+		{"resize-failed.json", `cat /config/resize-failed.json 2>/dev/null || echo NONE`},
+		{"watchdog device present?", `ls -l /dev/watchdog* 2>&1; eve exec pillar wdctl /dev/watchdog 2>&1 | head -20`},
+		{"reboot reasons", `cat /persist/reboot-reason.log 2>/dev/null || eve exec pillar sh -c 'cat /persist/log/reboot-reason.log 2>/dev/null' || echo NONE`},
+		{"resizer/watchdog log lines", `eve exec pillar sh -c 'grep -ahiE "run-watchdog|storage-resizer|resize did not converge|watchdog" /persist/newlog/collect/*.log 2>/dev/null | tail -30' || echo none`},
+	}
+	for _, p := range probes {
+		out, errOut, err := device.RunShellScript(p.script, 60*time.Second, 0)
+		log.Errorf("[resize:%s]\n%s%s(err=%v)", p.what, strings.TrimSpace(out), errOut, err)
+	}
 }
 
 // captureVolManifest reports whether the post-resize volume-manifest check ran and
