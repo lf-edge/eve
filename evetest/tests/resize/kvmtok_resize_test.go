@@ -208,6 +208,11 @@ func TestKvmToKResize(test *testing.T) {
 	})
 	device.ApplyConfig(devConfig, false, false)
 
+	// The conversion is several reboots plus an EVE-k bring-up and runs close to
+	// the framework's default upgrade budget, so give it room; without this a
+	// conversion that is merely slow is reported as a failed one.
+	device.SetUpgradeTimeout(45 * time.Minute)
+
 	// Step 1: baseline — the boot disk must be SMALL, else the conversion is a no-op.
 	log.Infof("baseline: asserting SMALL boot-disk geometry")
 	assertSmallGeometry(t, device)
