@@ -241,7 +241,7 @@ func TestAppVolumeShrinkCorruption(test *testing.T) {
 
 	log.Infof("baseline: asserting SMALL boot-disk geometry")
 	assertSmallGeometry(t, device)
-	assertWatchdogPresent(t, device)
+	assertWatchdogDriverBound(t, device)
 	evetest.Checkpoint("baseline-small")
 
 	log.Infof("kvm→kvm hop: upgrading to the conversion-capable build %s (kvm)", convVersion)
@@ -450,26 +450,34 @@ exit 1`, mountDir, volverifyCommitDir, volumeStatePattern, volumeStateBlank)
 	return state
 }
 
-// assertWatchdogPresent fails the run if the guest has no watchdog device.
+// assertWatchdogDriverBound fails the run if no watchdog driver is bound in the
+// guest. It checks sysfs rather than the device node: a /dev/watchdog character
+// node can exist with nothing behind it, so its presence alone proves nothing,
+// whereas an entry under /sys/class/watchdog means a driver registered. It does
+// not try to open the node — once EVE's watchdog service is up it holds it, and
+// EBUSY here would be a false alarm.
 //
-// This is a check on the QEMU setup, not on EVE. The stress build's resizer arms
+// This checks the QEMU setup, not EVE. The stress build's resizer arms
 // /dev/watchdog and then deliberately stops feeding it, which is how this test
-// interrupts the offline resize — but when the device node is missing the resizer
-// exits quietly and the interruption never happens. The conversion then completes
-// cleanly and the volume verifies perfectly, which reads exactly like evidence
-// that an interrupted shrink preserves the data. Assert it up front, on the
-// baseline, so a misconfigured guest fails in seconds instead of producing a
-// reassuring result an hour later.
-func assertWatchdogPresent(t Gomega, device *evetest.EdgeDevice) {
+// interrupts the offline resize — but if the resizer cannot open the device it
+// exits quietly and nothing is interrupted. The conversion then completes and the
+// volume verifies perfectly, which reads exactly like evidence that an interrupted
+// shrink preserves the data.
+//
+// Necessary but not sufficient: this runs with the system fully up, whereas the
+// resizer runs from an onboot container much earlier. Only the resizer's own
+// console output confirms it armed the watchdog on that path.
+func assertWatchdogDriverBound(t Gomega, device *evetest.EdgeDevice) {
 	t.Eventually(func(g Gomega) {
 		out, err := runEVE(device,
-			`[ -c /dev/watchdog ] && echo WATCHDOG-PRESENT || echo WATCHDOG-MISSING; wdctl /dev/watchdog 2>&1 | head -8`)
+			`ls /sys/class/watchdog/ 2>/dev/null | grep -q watchdog && echo WATCHDOG-DRIVER-BOUND || echo WATCHDOG-DRIVER-MISSING; `+
+				`ls /sys/class/watchdog/ 2>&1; cat /sys/class/watchdog/watchdog0/identity 2>/dev/null`)
 		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(out).To(ContainSubstring("WATCHDOG-PRESENT"),
-			"guest has no /dev/watchdog, so the stress resizer cannot interrupt the "+
-				"resize and a clean result here would mean nothing; check that QEMU "+
-				"exposes a watchdog and that the chipset is allowed to reset:\n%s", out)
-		evetest.Logger().Infof("watchdog device present:\n%s", strings.TrimSpace(out))
+		g.Expect(out).To(ContainSubstring("WATCHDOG-DRIVER-BOUND"),
+			"no watchdog driver bound in the guest, so the stress resizer cannot "+
+				"interrupt the resize and a clean result here would mean nothing; check "+
+				"that QEMU exposes a watchdog and the chipset may reset:\n%s", out)
+		evetest.Logger().Infof("watchdog driver:\n%s", strings.TrimSpace(out))
 	}, 2*time.Minute, 10*time.Second).Should(Succeed())
 }
 
