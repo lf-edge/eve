@@ -129,14 +129,27 @@ check_for_multus_link_request() {
 }
 
 apply_multus_cni() {
+        local apply_out
         # remove get_default_intf_IP_prefix
         #get_default_intf_IP_prefix
         if ! kubectl get namespace eve-kube-app > /dev/null 2>&1; then
                 kubectl create namespace eve-kube-app
         fi
         logmsg "Apply multus-daemonset-new.yaml"
-        if ! kubectl apply -f /etc/multus-daemonset-new.yaml > /dev/null 2>&1; then
-                logmsg "Apply Multus, has failed, jump out now"
+        # The manifest carries both the NetworkAttachmentDefinition CRD and an
+        # instance of it. kubectl does not wait for a CRD to be established
+        # before creating a CR of that kind, so the instance can fail with
+        # 'no matches for kind "NetworkAttachmentDefinition"' while everything
+        # else applies. Establish the CRD, then re-apply to pick up whatever
+        # lost that race; apply is idempotent.
+        apply_out=$(kubectl apply -f /etc/multus-daemonset-new.yaml 2>&1)
+        if ! kubectl wait --for condition=established --timeout=60s \
+                crd/network-attachment-definitions.k8s.cni.cncf.io > /dev/null 2>&1; then
+                logmsg "Apply Multus, NAD CRD not established: $apply_out"
+                return 1
+        fi
+        if ! apply_out=$(kubectl apply -f /etc/multus-daemonset-new.yaml 2>&1); then
+                logmsg "Apply Multus, has failed, jump out now: $apply_out"
                 return 1
         fi
         logmsg "Done applying Multus"
