@@ -1553,12 +1553,11 @@ if [ ! -f /var/lib/all_components_initialized ]; then
                         assign_multus_nodeip "$cluster_node_ip"
                 fi
                 apply_multus_cni
-                continue
                 if [ ! -f /var/lib/multus_initialized ]; then
                         logmsg "Failed to apply multus cni, wait a while"
                         sleep 10
-                        continue
                 fi
+                continue
         fi
         check_for_multus_link_request
         if ! pidof dhcp; then
