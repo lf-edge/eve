@@ -235,14 +235,21 @@ func TestAppVolumeShrinkCorruption(test *testing.T) {
 	appAuth := evetest.UsernamePasswordAuth{Username: appSSHUser, Password: appSSHPassword}
 
 	// Fill the volume with the deterministic pattern before the shrink. The write
-	// of a multi-GiB volume can take a while, so allow a generous timeout.
+	// of a multi-GiB volume can take a while, so allow a generous timeout. It stops
+	// at Ops or when the volume fills (whichever first) and reports the committed
+	// high-water mark, which the post-shrink verify must expect.
 	writeCmd := fmt.Sprintf("volverify write --dir %s --seed %d --ops %d --block-size %d",
 		dataMountDir, seed, ops, blockSize)
 	log.Infof("Filling data volume: %s", writeCmd)
+	writtenCommitted := -1
 	t.Eventually(func(t Gomega) {
-		_, stderr, err := device.RunShellScriptInsideApp(appUUID, appAuth, writeCmd, 60*time.Minute, 0)
+		stdout, stderr, err := device.RunShellScriptInsideApp(appUUID, appAuth, writeCmd, 60*time.Minute, 0)
 		t.Expect(err).NotTo(HaveOccurred(), "write stderr: %s", stderr)
+		writtenCommitted = reportField(stdout, "committed")
+		t.Expect(writtenCommitted).To(BeNumerically(">=", 0),
+			"write did not report a committed index:\n%s", stdout)
 	}, 65*time.Minute, 10*time.Second).Should(Succeed())
+	log.Infof("volume filled through committed op %d", writtenCommitted)
 	evetest.Checkpoint("volume-filled")
 
 	// Drive the watchdog-interrupted kvm→k conversion (shrink relocates the volume).
@@ -260,11 +267,11 @@ func TestAppVolumeShrinkCorruption(test *testing.T) {
 	}
 	device.WaitUntilAppIsRunning(appUUID, 5*time.Minute)
 
-	// Re-verify. The on-volume commit lives on the shrunk filesystem and may be
-	// cleared by fsck along with data, so pass the harness high-water mark
-	// (ops-1) as an off-volume floor (design §4.2).
+	// Re-verify against the write's high-water mark. The on-volume commit lives on
+	// the shrunk filesystem and may be cleared by fsck along with data, so pass the
+	// committed index the pre-shrink write reported as an off-volume floor (§4.2).
 	verifyCmd := fmt.Sprintf("volverify verify --dir %s --seed %d --ops %d --block-size %d --expect-committed %d",
-		dataMountDir, seed, ops, blockSize, ops-1)
+		dataMountDir, seed, ops, blockSize, writtenCommitted)
 	log.Infof("Verifying data volume: %s", verifyCmd)
 	var report string
 	t.Eventually(func(t Gomega) {
