@@ -4,6 +4,7 @@
 package resize_test
 
 import (
+	"encoding/base64"
 	"fmt"
 	"strings"
 	"testing"
@@ -17,6 +18,8 @@ import (
 	eveconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve-api/go/evecommon"
 	eveinfo "github.com/lf-edge/eve-api/go/info"
+	pillartypes "github.com/lf-edge/eve/pkg/pillar/types"
+
 	"github.com/lf-edge/eve/evetest"
 	"github.com/lf-edge/eve/evetest/constants"
 	"github.com/lf-edge/eve/evetest/matchers"
@@ -41,6 +44,19 @@ const (
 	// presence identifies the data volume among the guest's block devices after
 	// the conversion, when the volume is no longer mounted at its MountDir.
 	volverifyCommitDir = ".vv-commit"
+
+	fillPeakPctParamKey = "FILL_PEAK_PCT"
+	fillKeepGiBParamKey = "FILL_KEEP_GIB"
+
+	// Fill /persist to this percentage before the app is deployed, then trim back
+	// to this many GiB once its volume is written. The peak has to sit well above
+	// the shrink boundary (~38 GiB of a 61.7 GiB /persist on a 64 GiB boot disk) so
+	// that the volume, allocated last, lands above it; the keep figure has to stay
+	// under the resizer's own limit (~34 GiB) and leave room for EVE-k's images
+	// (~8 GiB measured), while still leaving enough high-residing data that the
+	// shrink runs long enough for the watchdog to interrupt it.
+	defaultFillPeakPct = 90
+	defaultFillKeepGiB = 15
 
 	// stageCDataVolMiB is the data-volume size this test defaults to. The app
 	// redeploy on EVE-k wedges in a Longhorn CSI CreateVolume race above ~256 MiB
@@ -103,6 +119,22 @@ func TestAppVolumeShrinkCorruption(test *testing.T) {
 			Description: evetest.TestParameterDescription{
 				Summary: "App data-volume size in MiB (stay <= 256 to avoid the EVE-k CSI create race)",
 				Default: "256",
+			},
+		},
+		evetest.TestParameterDefinition{
+			Key:          fillPeakPctParamKey,
+			DefaultValue: uint32(defaultFillPeakPct),
+			Description: evetest.TestParameterDescription{
+				Summary: "Fill /persist to this % before deploying the app, so its volume lands in the blocks the shrink evacuates (0 disables)",
+				Default: "90",
+			},
+		},
+		evetest.TestParameterDefinition{
+			Key:          fillKeepGiBParamKey,
+			DefaultValue: uint32(defaultFillKeepGiB),
+			Description: evetest.TestParameterDescription{
+				Summary: "Trim /persist back to this many GiB after the volume is written (must leave room for EVE-k)",
+				Default: "15",
 			},
 		},
 		evetest.TestParameterDefinition{
@@ -190,6 +222,11 @@ func TestAppVolumeShrinkCorruption(test *testing.T) {
 	seed := evetest.GetTestParameter[uint64](seedParamKey)
 	ops := evetest.GetTestParameter[uint64](opsParamKey)
 	volverifyImage := evetest.GetTestParameter[string](volverifyImageParamKey)
+	fillPeakPct := evetest.GetTestParameter[uint32](fillPeakPctParamKey)
+	fillKeepGiB := evetest.GetTestParameter[uint32](fillKeepGiBParamKey)
+	if fillPeakPct > 0 {
+		t.Expect(fillKeepGiB).To(BeNumerically(">", 0), "FILL_KEEP_GIB must be set when filling")
+	}
 
 	// Cap a single file at a sixteenth of the volume. volverify's default large-file
 	// bound is 256 MiB, which on a volume this size would let one op consume the
@@ -225,6 +262,17 @@ func TestAppVolumeShrinkCorruption(test *testing.T) {
 		volverifyImage, dataVolMiB, maxBlocks)
 
 	devConfig := evetest.NewEdgeDeviceConfig(devName)
+	if fillPeakPct > 0 {
+		// The volume is deliberately created on a nearly-full /persist, which EVE
+		// would otherwise refuse: volumemgr declines a volume whose size exceeds the
+		// remaining space, counting a dom0 reservation of 20% on top. The fill is
+		// transient and trimmed away before the conversion, so the check is what is
+		// wrong here, not the request.
+		devConfig.ConfigItems = append(devConfig.ConfigItems, &eveconfig.ConfigItem{
+			Key:   string(pillartypes.IgnoreDiskCheckForApps),
+			Value: "true",
+		})
+	}
 	networkUUID := devConfig.AddNetwork(evetest.DHCPNetworkConfig{NetworkType: evecommon.NetworkType_V4})
 	devConfig.AddNetworkAdapter(evetest.NetworkAdapterConfig{
 		LogicalLabel:  "eth0",
@@ -254,6 +302,16 @@ func TestAppVolumeShrinkCorruption(test *testing.T) {
 	log.Infof("settling vault to a local TPM unlock")
 	settleVaultLocal(t, device)
 	evetest.Checkpoint("vault-settled")
+
+	// Fill /persist before the app exists, so its data volume is allocated at the
+	// top of the filesystem — inside the range the shrink has to evacuate. On an
+	// almost-empty /persist the volume lands low, the shrink finishes in about a
+	// second, and the watchdog only ever interrupts the grow.
+	if fillPeakPct > 0 {
+		log.Infof("filling /persist to %d%% so the app's volume lands in the shrink's evacuation zone", fillPeakPct)
+		fillPersistToPct(t, device, int(fillPeakPct))
+		evetest.Checkpoint("persist-filled")
+	}
 
 	// Switch (L2-bridged) NI: the carried app gets its own DHCP address on the eth0
 	// segment and is reached directly. A local NI does not reconverge onto the
@@ -297,6 +355,17 @@ func TestAppVolumeShrinkCorruption(test *testing.T) {
 	log.Infof("pre-conversion: filling the data volume with the volverify pattern")
 	writtenCommitted := writeVolverifyPattern(t, device, appUUID, appAuth, volverifyArgs)
 	log.Infof("volume filled through committed op %d", writtenCommitted)
+
+	// Free the low blocks now that the volume is placed. This is what lets the
+	// shrink fit at all, and it leaves the relocation work — including the volume —
+	// concentrated above the boundary.
+	if fillPeakPct > 0 {
+		log.Infof("trimming /persist back to %d GiB (lowest blocks first)", fillKeepGiB)
+		trimPersistToGiB(t, device, int(fillKeepGiB))
+		log.Infof("asserting the data volume actually lies above the shrink boundary")
+		assertVolumeAboveShrinkBoundary(t, device)
+		evetest.Checkpoint("volume-placed-high")
+	}
 	capturePersist(device, "pre-conversion EVE-kvm (volume filled)")
 	evetest.Checkpoint("volume-filled")
 
@@ -462,6 +531,128 @@ exit 1`, mountDir, volverifyCommitDir, volumeStatePattern, volumeStateBlank)
 		evetest.Logger().Infof("data volume state %s:\n%s", state, strings.TrimSpace(stdout))
 	}, 5*time.Minute, 15*time.Second).Should(Succeed())
 	return state
+}
+
+// runOnEVEScript runs a shell script on EVE inside the pillar container, passing
+// it through base64 so nothing has to survive the ssh → `eve exec pillar sh -c`
+// quoting layers (the same trick the eden scripts use). args are appended as $1…
+func runOnEVEScript(device *evetest.EdgeDevice, script string,
+	timeout time.Duration, args ...string) (string, error) {
+	b64 := base64.StdEncoding.EncodeToString([]byte(script))
+	cmd := fmt.Sprintf(
+		`eve exec pillar sh -c 'echo %s | base64 -d > /tmp/evetest-frag.sh; sh /tmp/evetest-frag.sh %s; rm -f /tmp/evetest-frag.sh'`,
+		b64, strings.Join(args, " "))
+	out, errOut, err := device.RunShellScript(cmd, timeout, 0)
+	if err != nil {
+		return out + errOut, err
+	}
+	return out, nil
+}
+
+// fillPersistToPct fills /persist with incompressible files until it is pct% full,
+// so that the app's data volume — created afterwards, while the filesystem is at
+// its peak — is allocated in the high block groups that the shrink must evacuate.
+//
+// The bytes have to be incompressible. Zeroes would let the qcow2 backing file
+// store the blocks sparsely, and the relocation would then read and write nothing,
+// leaving the shrink as fast as it is on an empty filesystem — which is the whole
+// problem this is here to fix.
+func fillPersistToPct(t Gomega, device *evetest.EdgeDevice, pct int) {
+	const script = `set -u
+PCT=$1
+DIR=/persist/tmp/stressfill
+rm -rf "$DIR"; mkdir -p "$DIR"
+cap=$(df -k /persist | tail -1 | awk '{print $2}')
+want=$(( cap * PCT / 100 ))
+n=0
+while [ "$(df -k /persist | tail -1 | awk '{print $3}')" -lt "$want" ]; do
+  f=$(printf "%s/%06d" "$DIR" "$n")
+  dd if=/dev/urandom of="$f" bs=1M count=256 2>/dev/null || break
+  n=$((n + 1))
+done
+sync
+echo "FILLED files=$n $(df -h /persist | tail -1)"`
+	out, err := runOnEVEScript(device, script, 40*time.Minute, fmt.Sprintf("%d", pct))
+	t.Expect(err).NotTo(HaveOccurred(), "filling /persist failed:\n%s", out)
+	t.Expect(out).To(ContainSubstring("FILLED"), "fill did not report completion:\n%s", out)
+	evetest.Logger().Infof("filled /persist to ~%d%%: %s", pct, strings.TrimSpace(out))
+}
+
+// trimPersistToGiB deletes the LOWEST-numbered fill files until /persist usage is
+// down to keepGiB, which leaves the survivors — and the data volume created at peak
+// — concentrated in the high blocks above the future shrink boundary.
+//
+// Trimming is what makes the shrink possible at all: the resizer refuses when the
+// filesystem cannot fit in the target size, and EVE-k needs room afterwards for
+// its own images. Deleting from the bottom is what keeps the relocation work high.
+func trimPersistToGiB(t Gomega, device *evetest.EdgeDevice, keepGiB int) {
+	const script = `set -u
+KEEP_KB=$(( $1 * 1024 * 1024 ))
+DIR=/persist/tmp/stressfill
+[ -d "$DIR" ] || { echo "TRIMMED no-fill-dir"; exit 0; }
+for f in $(ls -1 "$DIR" 2>/dev/null | sort); do
+  [ "$(df -k /persist | tail -1 | awk '{print $3}')" -le "$KEEP_KB" ] && break
+  rm -f "$DIR/$f"
+done
+sync
+echo "TRIMMED remaining=$(ls -1 "$DIR" 2>/dev/null | wc -l) $(df -h /persist | tail -1)"`
+	out, err := runOnEVEScript(device, script, 10*time.Minute, fmt.Sprintf("%d", keepGiB))
+	t.Expect(err).NotTo(HaveOccurred(), "trimming /persist failed:\n%s", out)
+	t.Expect(out).To(ContainSubstring("TRIMMED"), "trim did not report completion:\n%s", out)
+	evetest.Logger().Infof("trimmed /persist to ~%d GiB: %s", keepGiB, strings.TrimSpace(out))
+}
+
+// assertVolumeAboveShrinkBoundary fails the run unless the app's data volume has
+// blocks above the size the shrink will cut /persist down to — i.e. unless the
+// shrink will actually have to relocate it.
+//
+// Without this the test can pass for the wrong reason: a volume that sits entirely
+// below the boundary is untouched by the shrink, so a clean verify says nothing
+// about whether an interrupted relocation corrupts data. The boundary comes from
+// the resizer's own check (TargetBytes) rather than an assumption, and the block
+// placement from filefrag, which reports physical extents relative to the
+// filesystem the file lives on.
+func assertVolumeAboveShrinkBoundary(t Gomega, device *evetest.EdgeDevice) {
+	disk, err := bootDiskPath(device)
+	t.Expect(err).NotTo(HaveOccurred())
+	out, err := runEVE(device, "eve exec pillar /usr/bin/storage-resizer check --disk "+disk+" --json")
+	t.Expect(err).NotTo(HaveOccurred())
+	// TargetBytes is the post-shrink filesystem size.
+	var target int64
+	if i := strings.Index(out, `"TargetBytes"`); i >= 0 {
+		fmt.Sscanf(out[i:], `"TargetBytes": %d`, &target)
+	}
+	t.Expect(target).To(BeNumerically(">", 0),
+		"could not read TargetBytes from the resizer check:\n%s", out)
+
+	const script = `set -u
+FF=/usr/sbin/filefrag
+[ -x "$FF" ] || FF=$(command -v filefrag 2>/dev/null || echo filefrag)
+max=0
+for d in /persist/vault/volumes /persist/clear/volumes; do
+  [ -d "$d" ] || continue
+  for f in "$d"/*; do
+    [ -f "$f" ] || continue
+    e=$("$FF" -b4096 -v "$f" 2>/dev/null | awk '$1 ~ /^[0-9]+:$/ {gsub(/\.\./," ",$4); print $4}' | tr -d ':' | sort -n | tail -1)
+    [ -n "$e" ] || continue
+    echo "VOL $f top4k=$e"
+    [ "$e" -gt "$max" ] && max=$e
+  done
+done
+echo "MAXTOP4K $max"`
+	fragOut, err := runOnEVEScript(device, script, 5*time.Minute)
+	t.Expect(err).NotTo(HaveOccurred(), "reading volume block placement failed:\n%s", fragOut)
+	var top4k int64
+	if i := strings.Index(fragOut, "MAXTOP4K "); i >= 0 {
+		fmt.Sscanf(fragOut[i:], "MAXTOP4K %d", &top4k)
+	}
+	topByte := top4k * 4096
+	evetest.Logger().Infof("volume top block %d (%.1f GiB) vs shrink target %.1f GiB\n%s",
+		top4k, float64(topByte)/(1<<30), float64(target)/(1<<30), strings.TrimSpace(fragOut))
+	t.Expect(topByte).To(BeNumerically(">", target),
+		"the data volume lies entirely below the shrink boundary (top %.1f GiB vs target %.1f GiB), "+
+			"so the shrink would not relocate it and a clean verify would prove nothing",
+		float64(topByte)/(1<<30), float64(target)/(1<<30))
 }
 
 // logPartitionState records what EVE currently reports for each base image, so a
