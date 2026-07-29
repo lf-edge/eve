@@ -1,4 +1,4 @@
-ARG GOVER=1.25.11
+ARG GOVER=1.25.12
 # Pin the Alpine minor version to match eve-alpine (3.22) so this builder tracks
 # the same toolchain/libc as the real EVE build; the unpinned golang:*-alpine
 # tag floats to whatever Alpine is newest.
