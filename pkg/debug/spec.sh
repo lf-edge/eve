@@ -200,8 +200,8 @@ cat <<__EOT__
     "leds": "0"
   },
   "logo": {
-    "logo_back":"/workspace/spec/logo_back_.jpg",
-    "logo_front":"/workspace/spec/logo_front_.jpg"
+    "logo_back":"",
+    "logo_front":""
   },
   "ioMemberList": [
 __EOT__
