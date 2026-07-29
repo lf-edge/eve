@@ -425,8 +425,16 @@ func TestAppVolumeShrinkCorruption(test *testing.T) {
 
 	log.Infof("(f) post-conversion: re-verifying the data-volume pattern")
 	captureVolManifest(device)
+
+	// Check the filesystem before anything mounts it, so the structural verdict can
+	// be set against the content verdict below. A mount would replay the journal and
+	// could repair what is being measured.
+	volDev := findDataVolumeDevice(t, device, appUUID, appAuth, dataVolMiB)
+	fsckRC, fsckOut := fsckDataVolume(device, appUUID, appAuth, volDev)
+
 	state := mountDataVolumeRO(t, device, appUUID, appAuth, dataMountDir)
 	if state == volumeStateBlank {
+		recordVolumeOutcome(dataVolMiB, state, fsckRC, "", fsckOut)
 		// The pattern is gone but the volume is intact and empty: either the
 		// post-resize manifest check found the volume torn and removed it, so EVE
 		// recreated it blank, or the shrink destroyed the filesystem outright. The
@@ -440,6 +448,7 @@ func TestAppVolumeShrinkCorruption(test *testing.T) {
 
 	report := verifyVolverifyPattern(t, device, appUUID, appAuth, volverifyArgs, writtenCommitted)
 	log.Infof("volverify report:\n%s", report)
+	recordVolumeOutcome(dataVolMiB, state, fsckRC, report, fsckOut)
 
 	// present-corrupt is the silent case: a torn-but-present volume that EVE would
 	// serve to the app as-is, invisible to fsck and to qemu-img. orphaned and lost
@@ -483,6 +492,88 @@ const (
 	volumeStatePattern = "PATTERN" // mounted and still carrying the volverify pattern
 	volumeStateBlank   = "BLANK"   // the volume exists but the pattern is gone
 )
+
+// recordVolumeOutcome emits one line pairing what the filesystem check concluded
+// with what the content verify found, which is the row a soak accumulates over
+// many iterations. Read on its own, either verdict is ambiguous; together they say
+// whether corruption occurred and whether a structural check would have noticed.
+//
+// The line is deliberately single and grep-friendly, since the point is to compare
+// hundreds of these rather than to read one.
+func recordVolumeOutcome(dataVolMiB uint32, state string, fsckRC int, report, fsckOut string) {
+	fsckVerdict := fmt.Sprintf("rc=%d", fsckRC)
+	switch fsckRC {
+	case 0:
+		fsckVerdict += "(clean)"
+	case 4:
+		fsckVerdict += "(errors-found)"
+	}
+	if strings.Contains(fsckOut, "FILE SYSTEM WAS MODIFIED") {
+		fsckVerdict += "+modified"
+	}
+	if report == "" {
+		report = "no-content-verify"
+	}
+	evetest.Logger().Errorf("[VOLUME-OUTCOME] datavolMiB=%d state=%s fsck=%s verify=[%s]",
+		dataVolMiB, state, fsckVerdict, strings.ReplaceAll(report, "\n", " | "))
+}
+
+// fsckDataVolume runs a read-only filesystem check on the data volume's block
+// device and returns e2fsck's exit status and output.
+//
+// This is the counterpart to the content verify, and the pair is the point: a
+// structural check is blind to data blocks that were relocated wrongly but left
+// self-consistent, so the interesting result is fsck reporting a clean filesystem
+// while the content verify finds files quietly full of zeroes. Recording only one
+// of the two would lose exactly the comparison this test exists to make.
+//
+// It must run before anything mounts the volume — a mount can replay the journal
+// and repair the very damage being measured — and with -n so the check itself
+// changes nothing. Exit status 0 means fsck saw a clean filesystem; 4 means it
+// found errors it was not allowed to fix.
+func fsckDataVolume(device *evetest.EdgeDevice, appUUID uuid.UUID,
+	auth evetest.AuthMethod, dev string) (int, string) {
+	script := fmt.Sprintf("e2fsck -fn %s 2>&1; echo FSCK_RC=$?", dev)
+	out, _, _ := device.RunShellScriptInsideApp(appUUID, auth, script, 20*time.Minute, 0)
+	rc := -1
+	if i := strings.Index(out, "FSCK_RC="); i >= 0 {
+		fmt.Sscanf(out[i:], "FSCK_RC=%d", &rc)
+	}
+	evetest.Logger().Errorf("[fsck] %s exit=%d\n%s", dev, rc, strings.TrimSpace(out))
+	return rc, strings.TrimSpace(out)
+}
+
+// findDataVolumeDevice returns the guest block device holding the app's data
+// volume, identified by size rather than by mounting anything, so the caller can
+// check the filesystem before it is touched. The app's own root disk differs in
+// size by orders of magnitude, so a size match is unambiguous here.
+func findDataVolumeDevice(t Gomega, device *evetest.EdgeDevice, appUUID uuid.UUID,
+	auth evetest.AuthMethod, dataVolMiB uint32) string {
+	script := fmt.Sprintf(`set -u
+WANT=%d
+for d in /dev/vd[b-z] /dev/sd[b-z]; do
+  [ -b "$d" ] || continue
+  sz=$(blockdev --getsize64 "$d" 2>/dev/null) || continue
+  mib=$(( sz / 1048576 ))
+  echo "CAND $d ${mib}MiB"
+  diff=$(( mib - WANT )); [ "$diff" -lt 0 ] && diff=$(( -diff ))
+  [ "$diff" -le 128 ] && { echo "DEV=$d"; break; }
+done`, dataVolMiB)
+	var dev string
+	t.Eventually(func(g Gomega) {
+		out, _, err := device.RunShellScriptInsideApp(appUUID, auth, script, 2*time.Minute, 0)
+		g.Expect(err).NotTo(HaveOccurred(), "listing guest block devices failed:\n%s", out)
+		for _, tok := range strings.Fields(out) {
+			if d, ok := strings.CutPrefix(tok, "DEV="); ok {
+				dev = d
+			}
+		}
+		g.Expect(dev).NotTo(BeEmpty(),
+			"no guest block device close to %d MiB — the data volume is not attached:\n%s", dataVolMiB, out)
+	}, 5*time.Minute, 15*time.Second).Should(Succeed())
+	evetest.Logger().Infof("data volume device: %s", dev)
+	return dev
+}
 
 // mountDataVolumeRO finds the app's data volume among the guest's block devices
 // and mounts it at mountDir, returning which of the states above it is in. EVE-k
