@@ -617,13 +617,13 @@ func assertVolumeAboveShrinkBoundary(t Gomega, device *evetest.EdgeDevice) {
 	t.Expect(err).NotTo(HaveOccurred())
 	out, err := runEVE(device, "eve exec pillar /usr/bin/storage-resizer check --disk "+disk+" --json")
 	t.Expect(err).NotTo(HaveOccurred())
-	// TargetBytes is the post-shrink filesystem size.
+	// targetBytes is the post-shrink filesystem size (ShrinkResult.TargetBytes).
 	var target int64
-	if i := strings.Index(out, `"TargetBytes"`); i >= 0 {
-		fmt.Sscanf(out[i:], `"TargetBytes": %d`, &target)
+	if i := strings.Index(out, `"targetBytes"`); i >= 0 {
+		fmt.Sscanf(out[i:], `"targetBytes": %d`, &target)
 	}
 	t.Expect(target).To(BeNumerically(">", 0),
-		"could not read TargetBytes from the resizer check:\n%s", out)
+		"could not read targetBytes from the resizer check:\n%s", out)
 
 	const script = `set -u
 FF=/usr/sbin/filefrag
