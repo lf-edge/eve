@@ -625,15 +625,23 @@ func assertVolumeAboveShrinkBoundary(t Gomega, device *evetest.EdgeDevice) {
 	t.Expect(target).To(BeNumerically(">", 0),
 		"could not read targetBytes from the resizer check:\n%s", out)
 
+	// The physical range is the third column once any space inside "start.. end"
+	// is closed up, which keeps the parse independent of filefrag's alignment; the
+	// second half of that range is the file's highest block. Verified against real
+	// filefrag output for both spacings and for a file with no extents.
 	const script = `set -u
+sync
 FF=/usr/sbin/filefrag
 [ -x "$FF" ] || FF=$(command -v filefrag 2>/dev/null || echo filefrag)
 max=0
-for d in /persist/vault/volumes /persist/clear/volumes; do
+for d in /persist/vault/volumes /persist/clear/volumes /persist/vault/volumes-kvm /persist/clear/volumes-kvm; do
   [ -d "$d" ] || continue
   for f in "$d"/*; do
     [ -f "$f" ] || continue
-    e=$("$FF" -b4096 -v "$f" 2>/dev/null | awk '$1 ~ /^[0-9]+:$/ {gsub(/\.\./," ",$4); print $4}' | tr -d ':' | sort -n | tail -1)
+    e=$("$FF" -b4096 -v "$f" 2>/dev/null | awk '
+      { line=$0; gsub(/\.\.[ \t]+/, "..", line); $0=line }
+      $1 ~ /^[0-9]+:$/ { split($3, r, /\.\./); x=r[2]; sub(/:$/, "", x); if (x+0 > m) m=x+0 }
+      END { print m+0 }')
     [ -n "$e" ] || continue
     echo "VOL $f top4k=$e"
     [ "$e" -gt "$max" ] && max=$e
@@ -775,6 +783,12 @@ func waitAppRunningQuietly(device *evetest.EdgeDevice, appUUID uuid.UUID, timeou
 // is needed. At data-volume sizes near the image size the app's own PVC gets
 // protected too and recovery no-ops; the classification is logged so that is
 // visible rather than silent.
+//
+// Sizes arrive in whatever form kubectl prints, which for these PVCs is a plain
+// byte count rather than the Gi/Mi suffixes one might expect, so every form is
+// handled and anything unrecognised is protected rather than deleted. Getting this
+// wrong is not a missed recovery but a destroyed volume followed by a run that
+// passes because the volume came back empty.
 func recoverWedgedAppPVCs(device *evetest.EdgeDevice, dataVolMiB uint32) bool {
 	log := evetest.Logger()
 	script := fmt.Sprintf(`set -u
@@ -786,12 +800,16 @@ LIST=$(eve exec kube kubectl -n eve-kube-app get pvc \
 echo "$LIST" | sed 's/^/PVC: /'
 VICTIMS=$(echo "$LIST" | awk -v dv="$DV" '
   function mib(s) {
-    if (s ~ /Gi$/) { sub(/Gi$/, "", s); return s * 1024 }
-    if (s ~ /Mi$/) { sub(/Mi$/, "", s); return s + 0 }
-    return 0
+    if (s ~ /^[0-9]+$/)   { return s / 1048576 }
+    if (s ~ /^[0-9]+Ki$/) { sub(/Ki$/, "", s); return s / 1024 }
+    if (s ~ /^[0-9]+Mi$/) { sub(/Mi$/, "", s); return s + 0 }
+    if (s ~ /^[0-9]+Gi$/) { sub(/Gi$/, "", s); return s * 1024 }
+    if (s ~ /^[0-9]+Ti$/) { sub(/Ti$/, "", s); return s * 1048576 }
+    return -1
   }
   $2 == "Pending" {
-    if (mib($3) >= dv - 32) { printf "PROTECTED %%s (%%s)\n", $1, $3; next }
+    v = mib($3)
+    if (v < 0 || v >= dv - 32) { printf "PROTECTED %%s (%%s)\n", $1, $3; next }
     printf "VICTIM %%s (%%s)\n", $1, $3
   }')
 echo "$VICTIMS"
