@@ -2,12 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # hadolint ignore=DL3006
-FROM lfedge/eve-alpine:f9b45a5a3b3a18a8503cbe6d1258a1025450fe0e AS runtime
+FROM lfedge/eve-alpine:b79fd3384162534a9bdb99506adb2f19f60f26db AS runtime
 ENV PKGS coreutils
 RUN eve-alpine-deploy.sh
 
 # hadolint ignore=DL3029
-FROM --platform=$BUILDPLATFORM lfedge/eve-alpine:f9b45a5a3b3a18a8503cbe6d1258a1025450fe0e AS build
+FROM --platform=$BUILDPLATFORM lfedge/eve-alpine:b79fd3384162534a9bdb99506adb2f19f60f26db AS build
 ARG TARGETARCH
 
 COPY go.mod /newlog/
