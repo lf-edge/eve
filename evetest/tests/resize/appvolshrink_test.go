@@ -434,7 +434,7 @@ func TestAppVolumeShrinkCorruption(test *testing.T) {
 
 	state := mountDataVolumeRO(t, device, appUUID, appAuth, dataMountDir)
 	if state == volumeStateBlank {
-		recordVolumeOutcome(dataVolMiB, state, fsckRC, "", fsckOut)
+		recordVolumeOutcome(dataVolMiB, state, fsckRC, "", fsckOut, -1, "")
 		// The pattern is gone but the volume is intact and empty: either the
 		// post-resize manifest check found the volume torn and removed it, so EVE
 		// recreated it blank, or the shrink destroyed the filesystem outright. The
@@ -448,7 +448,13 @@ func TestAppVolumeShrinkCorruption(test *testing.T) {
 
 	report := verifyVolverifyPattern(t, device, appUUID, appAuth, volverifyArgs, writtenCommitted)
 	log.Infof("volverify report:\n%s", report)
-	recordVolumeOutcome(dataVolMiB, state, fsckRC, report, fsckOut)
+
+	// Content is captured, so the filesystem can now be checked with the journal
+	// replayed — the only reading that distinguishes real damage from the stale
+	// accounting an unclean unmount leaves behind.
+	log.Infof("re-checking the volume filesystem with the journal replayed")
+	replayRC, replayOut := fsckDataVolumeAfterVerify(device, appUUID, appAuth, volDev, dataMountDir)
+	recordVolumeOutcome(dataVolMiB, state, fsckRC, report, fsckOut, replayRC, replayOut)
 
 	// present-corrupt is the silent case: a torn-but-present volume that EVE would
 	// serve to the app as-is, invisible to fsck and to qemu-img. orphaned and lost
@@ -500,22 +506,40 @@ const (
 //
 // The line is deliberately single and grep-friendly, since the point is to compare
 // hundreds of these rather than to read one.
-func recordVolumeOutcome(dataVolMiB uint32, state string, fsckRC int, report, fsckOut string) {
-	fsckVerdict := fmt.Sprintf("rc=%d", fsckRC)
+func recordVolumeOutcome(dataVolMiB uint32, state string, fsckRC int, report, fsckOut string,
+	replayRC int, replayOut string) {
+	// Before the journal is replayed, count mismatches are expected and mean
+	// nothing; after it, anything found is real.
+	dirty := fmt.Sprintf("rc=%d", fsckRC)
 	switch fsckRC {
 	case 0:
-		fsckVerdict += "(clean)"
+		dirty += "(clean)"
 	case 4:
-		fsckVerdict += "(errors-found)"
+		dirty += "(errors-unreplayed)"
 	}
-	if strings.Contains(fsckOut, "FILE SYSTEM WAS MODIFIED") {
-		fsckVerdict += "+modified"
+	if strings.Contains(fsckOut, "skipping journal recovery") {
+		dirty += "+journal-not-replayed"
+	}
+	replayed := "not-run"
+	if replayRC >= 0 {
+		replayed = fmt.Sprintf("rc=%d", replayRC)
+		switch replayRC {
+		case 0:
+			replayed += "(clean)"
+		case 1, 2:
+			replayed += "(REAL-DAMAGE-FIXED)"
+		case 4:
+			replayed += "(errors-left)"
+		}
+		if strings.Contains(replayOut, "FILE SYSTEM WAS MODIFIED") {
+			replayed += "+modified"
+		}
 	}
 	if report == "" {
 		report = "no-content-verify"
 	}
-	evetest.Logger().Errorf("[VOLUME-OUTCOME] datavolMiB=%d state=%s fsck=%s verify=[%s]",
-		dataVolMiB, state, fsckVerdict, strings.ReplaceAll(report, "\n", " | "))
+	evetest.Logger().Errorf("[VOLUME-OUTCOME] datavolMiB=%d state=%s fsck-dirty=%s fsck-replayed=%s verify=[%s]",
+		dataVolMiB, state, dirty, replayed, strings.ReplaceAll(report, "\n", " | "))
 }
 
 // fsckDataVolume runs a read-only filesystem check on the data volume's block
@@ -540,6 +564,32 @@ func fsckDataVolume(device *evetest.EdgeDevice, appUUID uuid.UUID,
 		fmt.Sscanf(out[i:], "FSCK_RC=%d", &rc)
 	}
 	evetest.Logger().Errorf("[fsck] %s exit=%d\n%s", dev, rc, strings.TrimSpace(out))
+	return rc, strings.TrimSpace(out)
+}
+
+// fsckDataVolumeAfterVerify unmounts the volume and checks it again, this time
+// letting e2fsck replay the journal and repair what it finds.
+//
+// The read-only check taken before the mount cannot distinguish real damage from
+// bookkeeping: the volume was never cleanly unmounted, so its journal is unreplayed
+// and the superblock's free counts necessarily disagree with the disk. That check
+// therefore reports errors on every run and says nothing on its own. Replaying
+// first removes that noise, so whatever is still wrong here is genuine — at the
+// cost of modifying the filesystem, which is why it runs only after the content
+// verify has already been recorded.
+//
+// Exit 0 means clean once the journal was applied; 1 means e2fsck found and fixed
+// real structural damage.
+func fsckDataVolumeAfterVerify(device *evetest.EdgeDevice, appUUID uuid.UUID,
+	auth evetest.AuthMethod, dev, mountDir string) (int, string) {
+	script := fmt.Sprintf(
+		"umount %s 2>/dev/null; e2fsck -fy %s 2>&1; echo FSCK_RC=$?", mountDir, dev)
+	out, _, _ := device.RunShellScriptInsideApp(appUUID, auth, script, 20*time.Minute, 0)
+	rc := -1
+	if i := strings.Index(out, "FSCK_RC="); i >= 0 {
+		fmt.Sscanf(out[i:], "FSCK_RC=%d", &rc)
+	}
+	evetest.Logger().Errorf("[fsck-replayed] %s exit=%d\n%s", dev, rc, strings.TrimSpace(out))
 	return rc, strings.TrimSpace(out)
 }
 
