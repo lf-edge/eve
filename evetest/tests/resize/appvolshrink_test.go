@@ -395,6 +395,11 @@ func TestAppVolumeShrinkCorruption(test *testing.T) {
 	stopPersistSampler := startPersistSampler(device, 45*time.Second)
 	defer stopPersistSampler()
 
+	// Take the verdict here, before Longhorn can ingest the volume and long before
+	// the app is asked to boot. This is the only reading that survives the
+	// post-conversion app wedge, which has cost every verdict it has hit.
+	verifyRelocatedVolumeOnDevice(t, device, dataVolMiB, seed, ops, maxBlocks, writtenCommitted)
+
 	if targetHypervisor == evetest.HypervisorKubevirt {
 		log.Infof("(a) waiting for k3s node ready")
 		if !isK3sReady(device.GetClusterInfo()) {
@@ -482,6 +487,101 @@ func TestAppVolumeShrinkCorruption(test *testing.T) {
 	// "inprogress" here means the trial period had not finished, and one that
 	// reverted would explain an otherwise puzzling later failure.
 	logPartitionState(device)
+}
+
+// devsideVerifyScript checks the carried-over volume on the device itself.
+//
+// upgradeconverter moves the pre-conversion app volumes out of
+// /persist/vault/volumes — which Longhorn must own on EVE-k — into
+// /persist/vault/volumes-kvm, and volumemgr rolls them into PVCs lazily once the
+// cluster is up. In between, and for as long as that import keeps failing, the file
+// sits there as a plain ext4 image holding the volume exactly as the shrink left it.
+// The data-volume path in csihandler returns on a failed RolloutDiskToPVC without
+// removing the source, so a wedged import preserves it rather than consuming it.
+//
+// volverify does not have to be shipped in: containerd has already unpacked the app
+// image, so the same statically-linked binary the app would run is on disk. Args:
+// seed, ops, max-blocks, expect-committed.
+const devsideVerifyScript = `set -u
+VV=$(find /persist/vault/containerd -path '*usr/local/bin/volverify' 2>/dev/null | head -1)
+[ -n "$VV" ] || { echo "DEVSIDE=no-volverify"; exit 0; }
+F=$(ls /persist/vault/volumes-kvm/*.raw /persist/clear/volumes-kvm/*.raw 2>/dev/null | head -1)
+[ -n "$F" ] || { echo "DEVSIDE=no-relocated-volume"; exit 0; }
+echo "DEVSIDE-FILE=$F size=$(stat -c %s "$F")"
+# Read the filesystem before anything mounts it: a mount replays the journal and can
+# repair the very damage being measured.
+e2fsck -fn "$F" > /tmp/dsfsck.out 2>&1
+echo "DEVSIDE-FSCK-RC=$?"
+sed -n '1,40p' /tmp/dsfsck.out
+mkdir -p /tmp/dsmnt
+L=$(losetup -r -f --show "$F" 2>&1) || { echo "DEVSIDE=losetup-failed:$L"; exit 0; }
+if mount -o ro,noload "$L" /tmp/dsmnt 2>&1; then
+  # Redirect rather than pipe, so the status is volverify's and not the pager's.
+  "$VV" verify --dir /tmp/dsmnt --seed "$1" --ops "$2" \
+      --block-size 4096 --max-blocks "$3" --expect-committed "$4" > /tmp/dsvv.out 2>&1
+  echo "DEVSIDE-VERIFY-RC=$?"
+  grep -aE 'committed=|verify:' /tmp/dsvv.out | tail -4
+  umount /tmp/dsmnt || true
+else
+  echo "DEVSIDE=mount-failed"
+fi
+losetup -d "$L" || true
+rm -rf /tmp/dsmnt /tmp/dsvv.out /tmp/dsfsck.out`
+
+// verifyRelocatedVolumeOnDevice records the volume verdict without involving the app,
+// Longhorn, CDI or a completed PVC import — see devsideVerifyScript.
+//
+// It is deliberately non-fatal about not finding anything to check: on a clear-volume
+// or ZFS layout the file may not be where this looks, and that must not fail a run
+// whose app-side verdict is still to come. A volume it does read and find corrupt is
+// a different matter and fails the test, since that is the finding being hunted.
+func verifyRelocatedVolumeOnDevice(t Gomega, device *evetest.EdgeDevice, dataVolMiB uint32,
+	seed, ops uint64, maxBlocks uint64, expectCommitted int) {
+	log := evetest.Logger()
+	out, err := runOnEVEScript(device, devsideVerifyScript, 15*time.Minute,
+		fmt.Sprintf("%d", seed), fmt.Sprintf("%d", ops),
+		fmt.Sprintf("%d", maxBlocks), fmt.Sprintf("%d", expectCommitted))
+	if err != nil {
+		log.Errorf("device-side volume verify could not run:\n%s", out)
+		return
+	}
+	log.Infof("device-side volume verify:\n%s", strings.TrimSpace(out))
+
+	if i := strings.Index(out, "DEVSIDE="); i >= 0 {
+		var reason string
+		fmt.Sscanf(out[i:], "DEVSIDE=%s", &reason)
+		log.Errorf("device-side volume verify skipped: %s", reason)
+		return
+	}
+
+	fsckRC, verifyRC := -1, -1
+	if i := strings.Index(out, "DEVSIDE-FSCK-RC="); i >= 0 {
+		fmt.Sscanf(out[i:], "DEVSIDE-FSCK-RC=%d", &fsckRC)
+	}
+	if i := strings.Index(out, "DEVSIDE-VERIFY-RC="); i >= 0 {
+		fmt.Sscanf(out[i:], "DEVSIDE-VERIFY-RC=%d", &verifyRC)
+	}
+	evetest.Logger().Infof("[DEVICE-VOLUME-OUTCOME] datavolMiB=%d app-independent=true "+
+		"fsck-rc=%d structural-damage=%t verify-rc=%d verify=[%s]",
+		dataVolMiB, fsckRC, fsckFoundStructuralDamage(out), verifyRC, volverifySummary(out))
+	evetest.Checkpoint("devside-volume-verified")
+
+	presentCorrupt := reportField(out, "present-corrupt")
+	t.Expect(presentCorrupt).To(BeNumerically("<=", 0),
+		"the relocated pre-conversion volume is present but CORRUPT (present-corrupt=%d) — "+
+			"the interrupted shrink tore data the filesystem check cannot see:\n%s",
+		presentCorrupt, out)
+}
+
+// volverifySummary pulls volverify's one-line tally out of the device-side output so
+// the outcome record carries the counts rather than the whole transcript.
+func volverifySummary(out string) string {
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "committed=") && strings.Contains(line, "ok=") {
+			return strings.TrimSpace(line)
+		}
+	}
+	return "no-summary"
 }
 
 // writeVolverifyPattern fills the app's data volume with the deterministic pattern
