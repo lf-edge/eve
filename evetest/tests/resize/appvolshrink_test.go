@@ -527,7 +527,17 @@ func recordVolumeOutcome(dataVolMiB uint32, state string, fsckRC int, report, fs
 		case 0:
 			replayed += "(clean)"
 		case 1, 2:
-			replayed += "(REAL-DAMAGE-FIXED)"
+			// A non-zero status is not by itself damage. A volume captured while it
+			// was still being written to has stale superblock counters, an orphan
+			// flag and extent trees e2fsck would rather rewrite, and it repairs all
+			// of those on every run while saying nothing about the data. Only
+			// findings that imply lost, crossed or unreachable blocks mean the
+			// interrupted shrink actually hurt the volume.
+			if fsckFoundStructuralDamage(replayOut) {
+				replayed += "(STRUCTURAL-DAMAGE)"
+			} else {
+				replayed += "(accounting-only)"
+			}
 		case 4:
 			replayed += "(errors-left)"
 		}
@@ -565,6 +575,43 @@ func fsckDataVolume(device *evetest.EdgeDevice, appUUID uuid.UUID,
 	}
 	evetest.Logger().Errorf("[fsck] %s exit=%d\n%s", dev, rc, strings.TrimSpace(out))
 	return rc, strings.TrimSpace(out)
+}
+
+// fsckFoundStructuralDamage reports whether an e2fsck transcript contains findings
+// that mean blocks or inodes were actually lost, crossed or orphaned — as opposed
+// to the accounting an unclean capture always produces.
+//
+// Repairing stale free-block and free-inode counters, clearing the orphan-file
+// feature flag and narrowing extent trees all happen on a volume that was simply
+// snapshotted mid-write; treating those as damage would mark every iteration of a
+// soak as a hit and bury the real signal. The patterns below are the ones that
+// imply data actually went missing.
+func fsckFoundStructuralDamage(out string) bool {
+	damage := []string{
+		"Unattached inode",
+		"Unattached zero-length inode",
+		"multiply-claimed",
+		"Multiply-claimed",
+		"illegal block",
+		"Illegal block",
+		"illegal indirect block",
+		"lost+found",
+		"Inode bitmap differences",
+		"Block bitmap differences",
+		"Directory inode",
+		"has an incorrect filesize",
+		"Entry '",
+		"deleted/unused inode",
+		"root inode is not a directory",
+		"Corrupt",
+		"corrupted",
+	}
+	for _, d := range damage {
+		if strings.Contains(out, d) {
+			return true
+		}
+	}
+	return false
 }
 
 // fsckDataVolumeAfterVerify unmounts the volume and checks it again, this time
