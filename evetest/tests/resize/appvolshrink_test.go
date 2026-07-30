@@ -408,15 +408,25 @@ func TestAppVolumeShrinkCorruption(test *testing.T) {
 		log.Infof("(c) waiting for longhorn StorageClass ready")
 		waitLonghornSC(t, device)
 	}
-	log.Infof("(d) waiting for the app to reach RUNNING on the target")
-	waitAppRunningWithPVCRecovery(t, device, appUUID, dataVolMiB)
+	// Registered above the wait, not below it: the app failing to reach RUNNING is the
+	// most common way this test fails, and a defer set up after the wait never runs on
+	// that path — which is exactly where the wedge evidence is needed.
+	appRunning := false
 	appSSHOK := false
 	defer func() {
-		if !appSSHOK {
-			captureAppNet(device, "post-conversion EVE-k (app net FAILED)")
-			captureAppNetFailure(device, appUUID)
+		if appSSHOK {
+			return
 		}
+		stage := "never reached RUNNING"
+		if appRunning {
+			stage = "RUNNING but unreachable"
+		}
+		captureAppNet(device, "post-conversion EVE-k (app "+stage+")")
+		captureAppNetFailure(device, appUUID)
 	}()
+	log.Infof("(d) waiting for the app to reach RUNNING on the target")
+	waitAppRunningWithPVCRecovery(t, device, appUUID, dataVolMiB)
+	appRunning = true
 	log.Infof("(e0) post-conversion: waiting up to 10m for the app to report a routable IPv4")
 	waitAppHasRoutableIPv4(t, device, appUUID, 10*time.Minute)
 	log.Infof("(e) post-conversion: app must be SSH-reachable")
