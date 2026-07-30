@@ -256,9 +256,9 @@ func (z *zedrouter) updateNIPorts(niConfig types.NetworkInstanceConfig,
 	newNTPServers = generics.FilterDuplicatesFn(newNTPServers, netutils.EqualHostnameOrIPs)
 	changed = changed || !generics.EqualSets(niStatus.Ports, validatedPortLLs)
 	niStatus.Ports = validatedPortLLs
-	changed = changed || !generics.EqualSetsFn(niStatus.NTPServers, newNTPServers,
+	changed = changed || !generics.EqualSetsFn(niStatus.CombinedNTPServers, newNTPServers,
 		netutils.EqualHostnameOrIPs)
-	niStatus.NTPServers = newNTPServers
+	niStatus.CombinedNTPServers = newNTPServers
 	// Update BridgeMac for Switch NI bridge created by NIM.
 	if z.niBridgeIsCreatedByNIM(niConfig) {
 		// Only switch NI with single port may have the bridge created by NIM.
