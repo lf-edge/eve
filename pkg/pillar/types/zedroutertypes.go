@@ -1090,10 +1090,14 @@ type NetworkInstanceStatus struct {
 	// Labels of device ports used for external connectivity.
 	// The list is empty for air-gapped network instances.
 	Ports []string
-	// List of NTP servers published to applications connected to this network instance.
-	// This includes the NTP server from the NI config (if any) and all NTP servers
-	// associated with ports used by the network instance for external connectivity.
-	NTPServers []netutils.HostnameOrIP
+	// CombinedNTPServers is the list of NTP servers published to applications
+	// connected to this network instance. It combines the NTP server from the
+	// NI config (if any) with all NTP servers associated with ports used by
+	// the network instance for external connectivity. Named distinctly from
+	// the embedded NetworkInstanceConfig.NtpServers (the NI-only raw config)
+	// since the two previously differed only by case, which let a caller
+	// silently read the wrong one through field promotion.
+	CombinedNTPServers []netutils.HostnameOrIP
 	// The intended state of the routing table.
 	// Includes user-configured static routes and potentially also automatically
 	// generated default route.
