@@ -505,8 +505,20 @@ func TestAppVolumeShrinkCorruption(test *testing.T) {
 const devsideVerifyScript = `set -u
 VV=$(find /persist/vault/containerd -path '*usr/local/bin/volverify' 2>/dev/null | head -1)
 [ -n "$VV" ] || { echo "DEVSIDE=no-volverify"; exit 0; }
-F=$(ls /persist/vault/volumes-kvm/*.raw /persist/clear/volumes-kvm/*.raw 2>/dev/null | head -1)
+# Wait for the relocation rather than sampling once. The device reports itself on the
+# target before upgradeconverter's post-vault phase has necessarily moved the volumes,
+# so an immediate check races it and loses — silently, since a missing file is treated
+# as "nothing to verify". Encrypted volumes land in vault/volumes-kvm; clear ones stay
+# in clear/volumes, which is what kvmMigratedSourcePath reads.
+F=""
+i=0
+while [ "$i" -lt 60 ]; do
+  F=$(ls /persist/vault/volumes-kvm/*.raw /persist/clear/volumes/*.raw 2>/dev/null | head -1)
+  [ -n "$F" ] && break
+  i=$((i + 1)); sleep 10
+done
 [ -n "$F" ] || { echo "DEVSIDE=no-relocated-volume"; exit 0; }
+echo "DEVSIDE-WAITED=${i}0s"
 echo "DEVSIDE-FILE=$F size=$(stat -c %s "$F")"
 # Read the filesystem before anything mounts it: a mount replays the journal and can
 # repair the very damage being measured.
