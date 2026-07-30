@@ -1,0 +1,85 @@
+# Copyright (c) 2025, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
+# NOTE that this is the only workflow that requires access to the
+# GitHub token. However, it is safe since in EVE repo itself we
+# only trigger this workflow on pull requests and as such making
+# it effectively read-only.
+# yamllint disable rule:line-length
+#   https://docs.github.com/en/free-pro-team@latest/actions/reference/authentication-in-a-workflow#permissions-for-the-github_token
+# yamllint enable rule:line-length
+---
+name: Super Linter
+on:  # yamllint disable-line rule:truthy
+  pull_request:
+    branches:
+      - "master"
+      - "[0-9]+.[0-9]+"
+      - "[0-9]+.[0-9]+-stable"
+      - "feature/*"
+
+permissions: {}
+
+jobs:
+  build:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: read
+      # To report GitHub Actions status checks
+      statuses: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          # super-linter needs the full git history to get the
+          # list of files that changed across commits
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Super-linter
+        uses: super-linter/super-linter@2bdd90ed3262e023ac84bf8fe35dc480721fc1f2 # v8.2.1
+        env:
+          # To report GitHub Actions status checks
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Only lint changed files on PRs/pushes
+          VALIDATE_ALL_CODEBASE: false
+          # Enable only the linters we care about
+          VALIDATE_ARM: true
+          VALIDATE_BASH: true
+          VALIDATE_BASH_EXEC: true
+          VALIDATE_CPP: true
+          VALIDATE_CLANG_FORMAT: true
+          VALIDATE_DOCKERFILE_HADOLINT: true
+          VALIDATE_EDITORCONFIG: true
+          VALIDATE_ENV: true
+          VALIDATE_GIT_COMMITLINT: true
+          VALIDATE_GITHUB_ACTIONS: true
+          VALIDATE_GITHUB_ACTIONS_ZIZMOR: true
+          VALIDATE_GITLEAKS: true
+          VALIDATE_GO: true
+          VALIDATE_JSON: true
+          VALIDATE_KUBERNETES_KUBECONFORM: true
+          VALIDATE_LATEX: true
+          VALIDATE_LUA: true
+          VALIDATE_MARKDOWN: true
+          VALIDATE_NATURAL_LANGUAGE: true
+          VALIDATE_OPENAPI: true
+          VALIDATE_PROTOBUF: true
+          VALIDATE_PYTHON: true
+          VALIDATE_PYTHON_BLACK: true
+          VALIDATE_PYTHON_FLAKE8: true
+          VALIDATE_PYTHON_ISORT: true
+          VALIDATE_PYTHON_MYPY: true
+          VALIDATE_PYTHON_PYLINT: true
+          VALIDATE_RUST_2021: true
+          VALIDATE_RUST_CLIPPY: true
+          VALIDATE_SHELL_SHFMT: true
+          # VALIDATE_TRIVY: true # is useful to run sometimes, but not one every PR
+          VALIDATE_YAML: true
+          # cgo config for musl/Alpine case
+          CGO_ENABLED: "1"
+          CGO_CFLAGS: "-D_LARGEFILE64_SOURCE"
