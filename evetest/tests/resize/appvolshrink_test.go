@@ -1068,10 +1068,10 @@ func captureResizeEvidence(device *evetest.EdgeDevice) {
 	log.Errorf("=== offline-resize fault evidence ===")
 	probes := []struct{ what, script string }{
 		{"boot / reboot reasons", `for f in /persist/boot-reason /persist/reboot-reason /persist/status/boot-reason /persist/status/reboot-reason /persist/log/reboot-reason.log; do [ -f "$f" ] && { echo "--- $f"; cat "$f"; }; done 2>/dev/null || echo NONE`},
-		{"watchdog boot reason in logs", `eve exec pillar sh -c 'grep -ahoE "BootReason[A-Za-z]+" /persist/newlog/collect/*.log 2>/dev/null | sort | uniq -c | sort -rn | head' || echo none`},
+		{"watchdog boot reason in logs", newlogProbe(`grep -ahoE "BootReason[A-Za-z]+" | sort | uniq -c | sort -rn | head`)},
 		{"resize-failed.json", `cat /config/resize-failed.json 2>/dev/null || echo NONE`},
 		{"watchdog device", `[ -c /dev/watchdog ] && echo PRESENT || echo MISSING; wdctl /dev/watchdog 2>&1 | head -8`},
-		{"resizer/watchdog log lines", `eve exec pillar sh -c 'grep -ahiE "run-watchdog|storage-resizer|resize did not converge|watchdog" /persist/newlog/collect/*.log 2>/dev/null | tail -30' || echo none`},
+		{"resizer/watchdog log lines", newlogProbe(`grep -ahiE "run-watchdog|storage-resizer|resize did not converge|watchdog" | tail -30`)},
 	}
 	for _, p := range probes {
 		out, errOut, err := device.RunShellScript(p.script, 60*time.Second, 0)
@@ -1088,7 +1088,7 @@ func captureVolManifest(device *evetest.EdgeDevice) {
 	log.Errorf("=== volume-manifest (post-resize detect+recreate) ===")
 	probes := []struct{ what, script string }{
 		{"manifest files on /persist", `eve exec pillar sh -c 'ls -l /persist/vault/volumes/.sha256 /persist/clear/volumes/.sha256 2>&1'`},
-		{"volmanifest / recreate signatures (newlog)", `eve exec pillar sh -c 'grep -ahiE "volmanifest|recreateCorruptVolumes|verifyVolumes|torn by the resize" /persist/newlog/collect/*.log 2>/dev/null | tail -40' || echo none`},
+		{"volmanifest / recreate signatures (newlog)", newlogProbe(`grep -ahiE "volmanifest|recreateCorruptVolumes|verifyVolumes|torn by the resize" | tail -40`)},
 		{"app volume files", `eve exec pillar sh -c 'ls -l /persist/vault/volumes /persist/clear/volumes 2>&1'`},
 	}
 	for _, p := range probes {

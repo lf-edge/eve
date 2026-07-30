@@ -405,6 +405,22 @@ func captureAppNet(device *evetest.EdgeDevice, label string) {
 // engaged: the scratch/data PVC state (Terminating? storageClass?), the cdi-upload
 // pod phase/reason, Longhorn volume+attachment state, the CDI upload-controller
 // reconcile errors, and the volumemgr / MOUNT-WEDGE-RECOVERY newlog signatures.
+// newlogCat emits every device log record newlogd has kept, for a grep to consume.
+// This is the retrieval form from the eve-device-logs skill (see also
+// kvm-to-k-conversion-testing/scripts/assert-seal-v2.sh) — do not hand-roll another.
+// Narrowing to collect/ finds almost nothing: newlogd moves a collect file into the
+// gzipped queues once it passes 550000 bytes or a 300 s timer, so that directory is a
+// ~5-minute window rather than a boot's worth of records. -exec … \; runs one zcat
+// per file, which both keeps -f safe on the plaintext chunks and avoids an argument
+// list that a device with tens of thousands of chunks overflows.
+const newlogCat = `find /persist/newlog -name "dev.log.*" -exec zcat -f {} \; 2>/dev/null`
+
+// newlogProbe builds a diagnostic-table entry running pipeline over that history.
+// pipeline must not contain single quotes.
+func newlogProbe(pipeline string) string {
+	return `eve exec pillar sh -c '` + newlogCat + ` | ` + pipeline + `' || echo none`
+}
+
 func captureAppNetFailure(device *evetest.EdgeDevice, appUUID uuid.UUID) {
 	log := evetest.Logger()
 	log.Errorf("=== EVE-k app-pvc-not-ready / CDI-wedge diagnostics (app %s) ===", appUUID)
@@ -419,8 +435,8 @@ func captureAppNetFailure(device *evetest.EdgeDevice, appUUID uuid.UUID) {
 		{"longhorn StorageClass (replicas/config)", `eve exec kube kubectl get sc longhorn -o yaml 2>/dev/null || echo none`},
 		{"longhorn version (manager ds image)", `eve exec kube kubectl -n longhorn-system get ds longhorn-manager -o wide 2>/dev/null || echo none`},
 		{"CDI upload-controller log", `eve exec kube kubectl -n cdi logs deployment/cdi-deployment --tail=60 2>/dev/null || echo none`},
-		{"volumemgr RolloutDiskToPVC / V5 signature (newlog)", `eve exec pillar sh -c 'grep -aiE "RolloutDiskToPVC|retryFailedClusterVolumeCreate|terminating:true|local-path" /persist/newlog/collect/*.log 2>/dev/null | tail -30' || echo none`},
-		{"MOUNT-WEDGE-RECOVERY (detector fired?)", `eve exec pillar sh -c 'grep -ai MOUNT-WEDGE-RECOVERY /persist/newlog/collect/*.log 2>/dev/null | tail -10' || echo none`},
+		{"volumemgr RolloutDiskToPVC / V5 signature (newlog)", newlogProbe(`grep -aiE "RolloutDiskToPVC|retryFailedClusterVolumeCreate|terminating:true|local-path" | tail -30`)},
+		{"MOUNT-WEDGE-RECOVERY (detector fired?)", newlogProbe(`grep -ai MOUNT-WEDGE-RECOVERY | tail -10`)},
 		{"kubevirt vmi -A", `eve exec kube kubectl get vmi -A -o wide 2>/dev/null || echo none`},
 	}
 	for _, p := range probes {
