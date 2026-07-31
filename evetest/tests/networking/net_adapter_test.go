@@ -25,10 +25,11 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 )
 
-func deviceRequirementsForNetAdapterTests(devName string) evetest.RequireEdgeDevice {
+func deviceRequirementsForNetAdapterTests(
+	devName string, hypervisor evetest.Hypervisor) evetest.RequireEdgeDevice {
 	return evetest.RequireEdgeDevice{
 		Name:           devName,
-		WithHypervisor: evetest.HypervisorKVM,
+		WithHypervisor: hypervisor,
 		MinCPUs:        4,
 		WithGrubOptions: []string{
 			// No applications are deployed in these network adapter tests.
@@ -64,9 +65,14 @@ func TestDHCPIPv4Only(test *testing.T) {
 	t := NewGomegaWithT(evetestT)
 	defer evetest.Close()
 
+	evetest.DefineTestParameters(
+		evetest.HypervisorParameter(),
+	)
+	hypervisor := evetest.GetHypervisorParameterValue()
+
 	// Set up the test harness and specify the test prerequisites.
 	devName := "edge-dev"
-	requiredDevice := deviceRequirementsForNetAdapterTests(devName)
+	requiredDevice := deviceRequirementsForNetAdapterTests(devName, hypervisor)
 	requiredNetModel := evetest.RequireNetworkModel{
 		NetworkModel: netmodels.SingleEthWithDHCPAndIPv6,
 	}
@@ -89,6 +95,9 @@ func TestDHCPIPv4Only(test *testing.T) {
 			Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
 		})
 	device.ApplyConfig(devConfig, true, true)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
 	evetest.Checkpoint("config-applied")
 
 	log := evetest.Logger()
@@ -131,9 +140,14 @@ func TestStaticIPv4Only(test *testing.T) {
 	t := NewGomegaWithT(evetestT)
 	defer evetest.Close()
 
+	evetest.DefineTestParameters(
+		evetest.HypervisorParameter(),
+	)
+	hypervisor := evetest.GetHypervisorParameterValue()
+
 	// Set up the test harness and specify the test prerequisites.
 	devName := "edge-dev"
-	requiredDevice := deviceRequirementsForNetAdapterTests(devName)
+	requiredDevice := deviceRequirementsForNetAdapterTests(devName, hypervisor)
 	requiredNetModel := evetest.RequireNetworkModel{
 		NetworkModel: netmodels.SingleEthWithDHCPAndIPv6,
 	}
@@ -160,6 +174,9 @@ func TestStaticIPv4Only(test *testing.T) {
 			StaticIP:      evetest.IPAddress("172.20.20.100"),
 		})
 	device.ApplyConfig(devConfig, true, true)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
 	evetest.Checkpoint("config-applied")
 
 	log := evetest.Logger()
@@ -253,15 +270,17 @@ func TestPNAC(test *testing.T) {
 
 	// Define configurable parameters available for the test.
 	evetest.DefineTestParameters(
+		evetest.HypervisorParameter(),
 		requireSCEPProxyParam,
 	)
 
 	// Get parameter values set for this test execution.
+	hypervisor := evetest.GetHypervisorParameterValue()
 	requireSCEPProxy := evetest.GetTestParameter[bool](requireSCEPProxyParamKey)
 
 	// Set up the test harness and specify the test prerequisites.
 	devName := "edge-dev"
-	requiredDevice := deviceRequirementsForNetAdapterTests(devName)
+	requiredDevice := deviceRequirementsForNetAdapterTests(devName, hypervisor)
 	requiredNetModel := evetest.RequireNetworkModel{
 		NetworkModel: netmodels.SingleEthWithPNAC(requireSCEPProxy),
 	}
@@ -329,6 +348,9 @@ func TestPNAC(test *testing.T) {
 	defer stopDevMetricsWatch()
 	configAppliedAt := time.Now()
 	device.ApplyConfig(devConfig, true, true)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
 	evetest.Checkpoint("config-applied")
 
 	timeout := 3 * time.Minute

@@ -41,13 +41,17 @@ import (
 // it. volumemgr creates standalone (app-unreferenced) volumes on its own, so no
 // application is needed to trigger creation.
 //
-// Requires a KVM device whose /persist is ZFS: a non-container, non-ISO volume
+// Requires a device whose /persist is ZFS: a non-container, non-ISO volume
 // is only backed by a zvol when /persist is ZFS. On EXT4 there is no zvol and
 // the code path under test does not run, so the test skips.
 //
+// Test params
+// -----------
+//   - HYPERVISOR (defaults to KVM).
+//
 // Phases
 // ------
-//  1. Set up a KVM + ZFS device with a single DHCP mgmt port.
+//  1. Set up a ZFS device with a single DHCP mgmt port.
 //  2. Apply a config that declares one standalone empty 1 GiB block-device
 //     volume (no app, no network instance).
 //  3. Wait for volumemgr to create the volume (state CREATED_VOLUME) and,
@@ -60,6 +64,11 @@ func TestZVolProvisionedSizeReported(test *testing.T) {
 	t := NewGomegaWithT(evetestT)
 	defer evetest.Close()
 
+	evetest.DefineTestParameters(
+		evetest.HypervisorParameter(),
+	)
+	hypervisor := evetest.GetHypervisorParameterValue()
+
 	// A 1 GiB volume is an exact multiple of the ZFS volblocksize (16 KiB), so
 	// the resulting zvol volsize -- and therefore the reported provisioned size
 	// -- is exactly 1 GiB with no block-size rounding.
@@ -71,7 +80,7 @@ func TestZVolProvisionedSizeReported(test *testing.T) {
 	evetest.Setup(
 		evetest.RequireEdgeDevice{
 			Name:              devName,
-			WithHypervisor:    evetest.HypervisorKVM,
+			WithHypervisor:    hypervisor,
 			WithFilesystem:    evetest.FilesystemZFS,
 			DeviceReusePolicy: evetest.ResetDeviceConfig,
 		},
@@ -106,6 +115,9 @@ func TestZVolProvisionedSizeReported(test *testing.T) {
 	volInfoUpdates, stopVolInfoWatch := device.WatchVolumeInfo(volUUID)
 	defer stopVolInfoWatch()
 	device.ApplyConfig(devConfig, true, true)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
 	evetest.Checkpoint("blank-volume-config-applied")
 
 	// Wait for the volume to be created. CREATED_VOLUME is the volume-equivalent

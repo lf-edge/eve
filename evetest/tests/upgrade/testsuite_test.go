@@ -26,8 +26,7 @@ func TestUpgradeSuite(test *testing.T) {
 		initialEVEVersionForKVM = "16.0.0-lts"
 
 		// EVE-K (k3s/kubevirt-based EVE) is officially supported starting from 17.0.0.
-		// TODO: strip the rc suffix once 17.0.0 is released.
-		initialEVEVersionForKubevirt = "17.0.0-rc2"
+		initialEVEVersionForKubevirt = "17.0.0-lts"
 
 		// Enough for the pre-10GB partition layout, but not enough for EVE 17.0.0+,
 		// which is why *WithSmallDisk variants expect revert.
@@ -52,6 +51,19 @@ func TestUpgradeSuite(test *testing.T) {
 						{Key: initialHypervisorParamKey, Value: evetest.HypervisorKVM},
 						// Target
 						{Key: evetest.HypervisorParameterKey, Value: evetest.HypervisorKVM},
+					},
+				},
+				{
+					Name: "TestEVEUpgradeKVMtoKVMWithOCIDatastore",
+					Parameters: []evetest.TestParameterValue{
+						// Initial
+						{Key: initialEVEVersionParamKey, Value: initialEVEVersionForKVM},
+						{Key: initialHypervisorParamKey, Value: evetest.HypervisorKVM},
+						// Target
+						{Key: evetest.HypervisorParameterKey, Value: evetest.HypervisorKVM},
+						// Have EVE pull the target rootfs directly from its OCI registry
+						// instead of the default evetest-hosted HTTP datastore.
+						{Key: datastoreTypeParamKey, Value: evetest.BaseOSDatastoreOCI},
 					},
 				},
 				{

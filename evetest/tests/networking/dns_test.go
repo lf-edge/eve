@@ -12,6 +12,7 @@ import (
 	// revive:disable:dot-imports
 	. "github.com/onsi/gomega"
 
+	eveconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve-api/go/evecommon"
 	eveinfo "github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/evetest"
@@ -101,6 +102,10 @@ import (
 //     - nslookup http-server2.test: succeeds (ethernet2's exclusive DNS
 //     server knows it), confirming dnsmasq rebuilt its upstream list after
 //     the uplink change.
+//
+// Test params
+// -----------
+//   - HYPERVISOR (defaults to KVM).
 func TestDNSFunctionality(test *testing.T) {
 	// DNS server IPs and FQDNs as defined in netmodels.ManyDNSServers.
 	const (
@@ -127,11 +132,16 @@ func TestDNSFunctionality(test *testing.T) {
 	t := NewGomegaWithT(evetestT)
 	defer evetest.Close()
 
+	evetest.DefineTestParameters(
+		evetest.HypervisorParameter(),
+	)
+	hypervisor := evetest.GetHypervisorParameterValue()
+
 	// Set up the test harness and specify test prerequisites.
 	devName := "edge-dev"
 	requiredDevice := evetest.RequireEdgeDevice{
 		Name:              devName,
-		WithHypervisor:    evetest.HypervisorKVM,
+		WithHypervisor:    hypervisor,
 		DeviceReusePolicy: evetest.ResetDeviceConfig,
 	}
 	requiredNetModel := evetest.RequireNetworkModel{
@@ -217,6 +227,9 @@ func TestDNSFunctionality(test *testing.T) {
 	})
 
 	device.ApplyConfig(devConfig, true, true)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
 	evetest.Checkpoint("config-applied")
 
 	// ------------------------------------------------------------------
@@ -486,8 +499,9 @@ func TestDNSFunctionality(test *testing.T) {
 			ImageName: "lfedge/evetest-ubuntu-ctr",
 			Tag:       "1.0",
 		},
-		CPUs:        1,
-		MemoryBytes: 500 * evetest.MiB,
+		VirtualizationMode: eveconfig.VmMode_HVM,
+		CPUs:               1,
+		MemoryBytes:        500 * evetest.MiB,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
 				LogicalLabel:        "vif0",

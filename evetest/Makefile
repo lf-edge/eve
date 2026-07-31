@@ -4,7 +4,7 @@
 EVETEST_VERSION := $(shell grep -v '^\#' VERSION | head -n1)
 EVETEST_ORG ?= lfedge
 
-EVETEST_ADAM_VERSION ?= 0.0.75
+EVETEST_ADAM_VERSION ?= 0.0.81
 EVETEST_ADAM_REPO ?= lfedge/adam
 
 EVETEST_IMAGE := $(EVETEST_ORG)/evetest:$(EVETEST_VERSION)

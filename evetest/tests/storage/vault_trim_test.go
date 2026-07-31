@@ -28,22 +28,37 @@ import (
 //
 // The test writes 256 MiB of incompressible data (/dev/urandom bypasses ZFS
 // zstd compression), deletes it to create ghost blocks, then verifies that
-// fstrim causes logicalused to drop. Skipped on non-kubevirt or non-ZFS nodes.
+// fstrim causes logicalused to drop. Requires a ZFS node; the underlying bug
+// was found on EVE-K (Longhorn replica churn), but the mechanism is purely a
+// ZFS/fstrim concern and applies equally to EVE-KVM, so the hypervisor is a
+// parameter rather than hard-coded.
+//
+// Parameters
+// ----------
+//   - HYPERVISOR (defaults to KVM).
 func TestVaultZvolTrimReclaimsBlocks(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
 	defer evetest.Close()
 
+	evetest.DefineTestParameters(
+		evetest.HypervisorParameter(),
+	)
+	hypervisor := evetest.GetHypervisorParameterValue()
+
 	devName := "edge-dev"
 	evetest.Setup(
 		evetest.RequireEdgeDevice{
 			Name:              devName,
-			WithHypervisor:    evetest.HypervisorKubevirt,
+			WithHypervisor:    hypervisor,
 			WithFilesystem:    evetest.FilesystemZFS,
 			DeviceReusePolicy: evetest.UseAsIs,
 		},
 	)
 	device := evetest.GetEdgeDevice(devName)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
 
 	// evetest.Setup returns once the device is onboarded and has fetched its
 	// config; it does NOT wait for the vault to be unlocked/mounted. Gate the
@@ -51,20 +66,14 @@ func TestVaultZvolTrimReclaimsBlocks(test *testing.T) {
 	// write lands on the parent persist dataset's mountpoint directory (the
 	// ext4-on-zvol is not mounted yet) and logicalused on the zvol never moves.
 
-	// Wait for vaultmgr to report the default vault ConversionComplete. Read
-	// the VaultStatus pubsub JSON on-device via a shell (not ReadPublication):
-	// ReadPublication/ReadFile Fatalf on a not-yet-published file, and the
-	// pubsub key "Application Data Store" contains spaces that break scp's
-	// remote path. A failed cat just fails the poll and we retry.
-	vaultStatusPath := `/run/vaultmgr/VaultStatus/` + pillartypes.DefaultVaultName + `.json`
+	// Wait for vaultmgr to report the default vault ConversionComplete.
 	t.Eventually(func() bool {
-		out, _, err := device.RunShellScript(
-			`eve exec pillar cat "`+vaultStatusPath+`"`, 15*time.Second, 0)
-		if err != nil {
+		var status pillartypes.VaultStatus
+		if !evetest.ReadPublication(device, "vaultmgr", false,
+			pillartypes.DefaultVaultName, &status) {
 			return false // status not published yet
 		}
-		return strings.Contains(strings.ReplaceAll(out, " ", ""),
-			`"ConversionComplete":true`)
+		return status.ConversionComplete
 	}, 5*time.Minute, 5*time.Second).Should(BeTrue(),
 		"vaultmgr must report the default vault ConversionComplete before writing")
 

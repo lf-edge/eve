@@ -25,6 +25,7 @@ const (
 	initialEVEVersionParamKey = "INITIAL_EVE_VERSION"
 	initialHypervisorParamKey = "INITIAL_HYPERVISOR"
 	expectRevertParamKey      = "EXPECT_REVERT"
+	datastoreTypeParamKey     = "DATASTORE_TYPE"
 
 	appSSHUser     = "root"
 	appSSHPassword = "testpassword"
@@ -51,6 +52,10 @@ const (
 //   - DISK_SIZE_MB: device disk size in MiB (0 = framework default 65536 MiB)
 //   - EXPECT_REVERT: if true, the upgrade is expected to fail and EVE to revert
 //     to the previous version (default: false)
+//   - DATASTORE_TYPE: how the target rootfs is delivered to the device --
+//     "http" (evetest extracts the rootfs and serves it over its own embedded
+//     HTTP image server) or "oci" (EVE pulls the target image directly from
+//     its OCI registry, e.g. Docker Hub) (default: "http")
 //
 // A container app (evetest-ubuntu-ctr) is deployed before the upgrade and verified
 // to be healthy both before and after the upgrade (or revert).
@@ -90,6 +95,16 @@ func TestEVEUpgrade(test *testing.T) {
 				Default: "false",
 			},
 		},
+		evetest.TestParameterDefinition{
+			Key:          datastoreTypeParamKey,
+			DefaultValue: evetest.BaseOSDatastoreHTTP,
+			Description: evetest.TestParameterDescription{
+				Summary: "How the target rootfs is delivered to the device: evetest-hosted " +
+					"HTTP, or an OCI registry pull performed directly by EVE",
+				Default:       "http",
+				AllowedValues: "http|oci",
+			},
+		},
 	)
 
 	// Get parameter values set for this test execution.
@@ -104,6 +119,7 @@ func TestEVEUpgrade(test *testing.T) {
 	targetVersion := evetest.GetEVEVersionParameterValue()
 	targetHypervisor := evetest.GetHypervisorParameterValue()
 	expectRevert := evetest.GetTestParameter[bool](expectRevertParamKey)
+	datastoreType := evetest.GetTestParameter[evetest.BaseOSDatastoreType](datastoreTypeParamKey)
 
 	// The pre-upgrade device pins INITIAL_EVE_VERSION, so it always boots that
 	// released version from a container image; the live transport applies to the
@@ -230,7 +246,7 @@ func TestEVEUpgrade(test *testing.T) {
 
 	evetest.Checkpoint("pre-upgrade")
 
-	device.UpgradeEVE(targetVersion, targetHypervisor, true, expectRevert)
+	device.UpgradeEVE(targetVersion, targetHypervisor, datastoreType, true, expectRevert)
 
 	if expectRevert {
 		evetest.Checkpoint("upgrade-reverted")

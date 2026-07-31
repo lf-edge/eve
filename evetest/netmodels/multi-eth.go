@@ -180,6 +180,121 @@ var TwoMgmtPorts = &api.NetworkModel{
 	},
 }
 
+// TwoMgmtPortsWithPublicNTP is a network model with two ethernet ports, each
+// on its own bridge/network with DHCP and access to the controller (same
+// layout as TwoMgmtPorts), plus a distinct real public NTP server IP
+// advertised via DHCP option 42 on each network (api.DHCP.PublicNtp,
+// dnsmasq's "public_ntp" -- a real address, not an SDN-hosted endpoint). This
+// lets NTP tests exercise EVE's DHCP+static NTP server merging (and actually
+// observe chronyd syncing) without SDN having to run an NTP daemon of its own.
+//
+// network0 (eth0) advertises Cloudflare's primary NTP anycast address
+// (162.159.200.1); network1 (eth1) advertises Google's time1.google.com
+// address (216.239.35.0). Both are long-stable, single, documented IPs (not
+// pool.ntp.org-style rotating addresses), so tests can assert on them exactly.
+var TwoMgmtPortsWithPublicNTP = &api.NetworkModel{
+	Ports: []*api.Port{
+		{
+			LogicalLabel: "eth0",
+			AdminUp:      true,
+		},
+		{
+			LogicalLabel: "eth1",
+			AdminUp:      true,
+		},
+	},
+	Bridges: []*api.Bridge{
+		{
+			LogicalLabel: "bridge0",
+			Ports:        []string{"eth0"},
+		},
+		{
+			LogicalLabel: "bridge1",
+			Ports:        []string{"eth1"},
+		},
+	},
+	Networks: []*api.Network{
+		{
+			LogicalLabel: "network0",
+			Bridge:       "bridge0",
+			Ipv4: &api.NetworkIPConfig{
+				Subnet: "172.20.20.0/24",
+				GwIp:   "172.20.20.1",
+				Dhcp: &api.DHCP{
+					Enable:     true,
+					DomainName: "test",
+					Dns: &api.DNSClientConfig{
+						PrivateDns: []string{"dns-server0"},
+					},
+					NtpSource: &api.DHCP_PublicNtp{PublicNtp: "162.159.200.1"},
+				},
+			},
+		},
+		{
+			LogicalLabel: "network1",
+			Bridge:       "bridge1",
+			Ipv4: &api.NetworkIPConfig{
+				Subnet: "172.20.21.0/24",
+				GwIp:   "172.20.21.1",
+				Dhcp: &api.DHCP{
+					Enable:     true,
+					DomainName: "test",
+					Dns: &api.DNSClientConfig{
+						PrivateDns: []string{"dns-server1"},
+					},
+					NtpSource: &api.DHCP_PublicNtp{PublicNtp: "216.239.35.0"},
+				},
+			},
+		},
+	},
+	Endpoints: &api.Endpoints{
+		DnsServers: []*api.DNSServer{
+			{
+				Endpoint: &api.Endpoint{
+					LogicalLabel: "dns-server0",
+					Fqdn:         "dns-server0.test",
+					Ipv4: &api.EndpointIPConfig{
+						Subnet: "10.16.16.0/24",
+						Ip:     "10.16.16.25",
+					},
+				},
+				StaticEntries: []*api.DNSEntry{
+					{
+						FqdnSource: &api.DNSEntry_FqdnLiteral{
+							FqdnLiteral: evetest.GetControllerHostname(),
+						},
+						IpSource: &api.DNSEntry_IpLiteral{
+							IpLiteral: evetest.GetControllerIPv4().String(),
+						},
+					},
+				},
+				UpstreamServers: []string{"8.8.8.8", "1.1.1.1"},
+			},
+			{
+				Endpoint: &api.Endpoint{
+					LogicalLabel: "dns-server1",
+					Fqdn:         "dns-server1.test",
+					Ipv4: &api.EndpointIPConfig{
+						Subnet: "10.16.17.0/24",
+						Ip:     "10.16.17.25",
+					},
+				},
+				StaticEntries: []*api.DNSEntry{
+					{
+						FqdnSource: &api.DNSEntry_FqdnLiteral{
+							FqdnLiteral: evetest.GetControllerHostname(),
+						},
+						IpSource: &api.DNSEntry_IpLiteral{
+							IpLiteral: evetest.GetControllerIPv4().String(),
+						},
+					},
+				},
+				UpstreamServers: []string{"8.8.8.8", "1.1.1.1"},
+			},
+		},
+	},
+}
+
 // TwoMgmtPortsOneBridge is a network model with two ethernet ports on a single
 // bridge and network with DHCP and access to the controller. It is intended
 // for bond (link aggregation) tests where both ports must reach the same network.
@@ -1808,6 +1923,112 @@ var AppGatewayTopology = &api.NetworkModel{
 						Content:     "Hello from HTTP server 2!\n",
 					},
 				},
+			},
+		},
+	},
+}
+
+// MgmtViaAppTopology is a two-port network model for routing EVE's own
+// device-management traffic through an application acting as a NAT gateway.
+//
+//   - eth0 ("wan-network", 10.60.10.0/24): app-shared Switch NI port, fully
+//     reachable (controller, dns-server). DHCP with a static reservation:
+//     MAC 02:16:3e:02:00:00 -> 10.60.10.150. The gateway app's WAN VIF must
+//     use this MAC to receive the deterministic IP.
+//   - eth1 ("lan-network", 10.60.20.0/24): management port, but the network
+//     itself has no outside reachability and (WithoutDefaultRoute) hands out
+//     no router option -- it only provides L2 connectivity between EVE's own
+//     static IP and the gateway app's LAN VIF. DHCP with a static
+//     reservation: MAC 02:16:3e:02:00:01 -> 10.60.20.150. The gateway app's
+//     LAN VIF must use this MAC so EVE can target it as a fixed gateway IP.
+//
+// The dns-server (10.16.16.25) is reachable only via eth0/wan-network and
+// resolves the controller hostname.
+var MgmtViaAppTopology = &api.NetworkModel{
+	Ports: []*api.Port{
+		{LogicalLabel: "eth0", AdminUp: true},
+		{LogicalLabel: "eth1", AdminUp: true},
+	},
+	Bridges: []*api.Bridge{
+		{LogicalLabel: "bridge0", Ports: []string{"eth0"}},
+		{LogicalLabel: "bridge1", Ports: []string{"eth1"}},
+	},
+	Networks: []*api.Network{
+		{
+			// WAN leg: the app's outbound (MASQUERADE'd) traffic exits here.
+			LogicalLabel: "wan-network",
+			Bridge:       "bridge0",
+			Ipv4: &api.NetworkIPConfig{
+				Subnet: "10.60.10.0/24",
+				GwIp:   "10.60.10.1",
+				Dhcp: &api.DHCP{
+					Enable: true,
+					IpRange: &api.IPRange{
+						FromIp: "10.60.10.100", ToIp: "10.60.10.140"},
+					StaticEntries: []*api.MACToIP{
+						{Mac: "02:16:3e:02:00:00", Ip: "10.60.10.150"},
+					},
+					DomainName: "test",
+					Dns: &api.DNSClientConfig{
+						PrivateDns: []string{"dns-server"},
+					},
+				},
+			},
+			Router: &api.Router{
+				OutsideReachability: true,
+				ReachableEndpoints:  []string{"dns-server"},
+			},
+		},
+		{
+			// LAN leg: isolated at the SDN level -- EVE's own static IP and the
+			// app's LAN VIF are directly L2-adjacent on this bridge, with no
+			// router-provided path to anywhere else. WithoutDefaultRoute keeps
+			// the app's own DHCP-assigned VIF from picking up a bogus default
+			// route via this segment (its real default route must go via the
+			// WAN leg instead).
+			LogicalLabel: "lan-network",
+			Bridge:       "bridge1",
+			Ipv4: &api.NetworkIPConfig{
+				Subnet: "10.60.20.0/24",
+				GwIp:   "10.60.20.1",
+				Dhcp: &api.DHCP{
+					Enable: true,
+					IpRange: &api.IPRange{
+						FromIp: "10.60.20.100", ToIp: "10.60.20.140"},
+					DomainName:          "test",
+					WithoutDefaultRoute: true,
+					StaticEntries: []*api.MACToIP{
+						{Mac: "02:16:3e:02:00:01", Ip: "10.60.20.150"},
+					},
+				},
+			},
+			Router: &api.Router{
+				OutsideReachability: false,
+			},
+		},
+	},
+	Endpoints: &api.Endpoints{
+		DnsServers: []*api.DNSServer{
+			{
+				Endpoint: &api.Endpoint{
+					LogicalLabel: "dns-server",
+					Fqdn:         "dns-server.test",
+					Ipv4: &api.EndpointIPConfig{
+						Subnet: "10.16.16.0/24",
+						Ip:     "10.16.16.25",
+					},
+				},
+				StaticEntries: []*api.DNSEntry{
+					{
+						FqdnSource: &api.DNSEntry_FqdnLiteral{
+							FqdnLiteral: evetest.GetControllerHostname(),
+						},
+						IpSource: &api.DNSEntry_IpLiteral{
+							IpLiteral: evetest.GetControllerIPv4().String(),
+						},
+					},
+				},
+				UpstreamServers: []string{"8.8.8.8", "1.1.1.1"},
 			},
 		},
 	},
