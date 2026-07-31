@@ -271,6 +271,13 @@ func (c *DhcpServerConfigurator) createDnsmasqConfFile(server DhcpServer) error 
 			if err := writeLine("dhcp-option=option:router,%s\n", server.GatewayIPv4.String()); err != nil {
 				return err
 			}
+		} else {
+			// Explicitly suppress option 3. Without this, dnsmasq falls back
+			// to advertising its own listening address on this subnet as the
+			// router.
+			if err := writeLine("dhcp-option=option:router\n"); err != nil {
+				return err
+			}
 		}
 		if server.DomainName != "" {
 			// DHCP option 15.
