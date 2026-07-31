@@ -520,12 +520,13 @@ currentversion:
 	#echo $(shell readlink $(CURRENT) | sed -E 's/rootfs-(.*)\.[^.]*$/\1/')
 	@cat $(CURRENT_DIR)/installer/eve_version
 
-test: $(LINUXKIT) pkg/pillar | $(DIST)
+test: $(LINUXKIT) pkg/pillar pkg/alpine pkg/bpftrace | $(DIST)
 	@echo Running tests on $(GOMODULE)
 	make -C pkg/pillar test
 	cp pkg/pillar/results.json $(DIST)/
 	cp pkg/pillar/results.xml $(DIST)/
-	make -C eve-tools/bpftrace-compiler test
+	make -C tools/git-change-exec
+	./tools/git-change-exec/cmd/git-exec/git-exec run tools/git-change-exec/actions/tests/git-change-exec/main.gce.lua eve-tools
 	make -C pkg/alpine/dnstest test
 	make -C pkg/debug test
 	make -C pkg/vtpm test

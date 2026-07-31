@@ -55,6 +55,17 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
           persist-credentials: false
+      # The checkout above takes the PR head from the contributor's fork, which
+      # leaves origin/master pointing at the fork's copy of master - usually
+      # stale by months. tools/git-change-exec derives its diff base from
+      # origin, so re-point origin at the base repository; otherwise it
+      # compares against the fork's master and reports the whole upstream
+      # delta as changed. Re-pointing the URL (rather than just fetching the
+      # refs) is required because git-change-exec fetches origin itself.
+      - name: Point origin at the base repository
+        run: |
+          git remote set-url origin "https://github.com/${{ github.repository }}.git"
+          git fetch --no-tags --force origin
       - name: Login to Docker Hub
         if: ${{ github.event.repository.full_name == 'lf-edge/eve' }}
         run: | # Runners must provide default credentials
