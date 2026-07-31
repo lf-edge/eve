@@ -72,6 +72,11 @@ const (
 	// Timeout for powering on an EVE VM (not for waiting for it to boot).
 	brokerPowerOnEVEDeviceTimeout = 20 * time.Second
 
+	// Timeout for powering off an EVE VM. The broker RPC blocks until the
+	// provider confirms the VM is stopped, so this must accommodate a
+	// graceful ACPI-less hard power-off, not just issuing the request.
+	brokerPowerOffEVEDeviceTimeout = 20 * time.Second
+
 	// Timeout for triggering an EVE VM reboot (not for waiting for it to boot).
 	brokerRebootEVEDeviceTimeout = 20 * time.Second
 

@@ -31,6 +31,7 @@ import (
 
 	evecerts "github.com/lf-edge/eve-api/go/certs"
 	eveconfig "github.com/lf-edge/eve-api/go/config"
+	eveflowlog "github.com/lf-edge/eve-api/go/flowlog"
 	eveinfo "github.com/lf-edge/eve-api/go/info"
 	evelogs "github.com/lf-edge/eve-api/go/logs"
 	evemetrics "github.com/lf-edge/eve-api/go/metrics"
@@ -166,6 +167,16 @@ type InfoMsgIterator interface {
 // and propagates the error to the caller.
 type MetricMsgIterator interface {
 	Iterate(msg *evemetrics.ZMetricMsg) (stop bool, err error)
+}
+
+// FlowMsgIterator iterates over device flow log messages (FlowMessage), each
+// of which carries both flow records and DNS request records for one
+// application VIF. Iterate is called for each message that passes the match
+// filter. Returning stop=true signals that no further messages are needed
+// and iteration should stop cleanly. Returning a non-nil error aborts
+// iteration and propagates the error to the caller.
+type FlowMsgIterator interface {
+	Iterate(msg *eveflowlog.FlowMessage) (stop bool, err error)
 }
 
 // NewAdamClient creates a new AdamClient.
@@ -1661,6 +1672,220 @@ func (ac *AdamClient) SubscribeToDeviceMetrics(devUUID uuid.UUID,
 					if err := protojson.Unmarshal(raw, msg); err != nil {
 						ac.log.Errorf(
 							"failed to proto-unmarshal streamed metric message: %v", err)
+						continue
+					}
+					select {
+					case channel <- msg:
+					case <-streamCtx.Done():
+						return
+					}
+				}
+			}()
+			current = nil
+		}
+	}()
+
+	var once sync.Once
+	unsubscribe = func() {
+		once.Do(func() {
+			cancel()
+			wg.Wait()
+		})
+	}
+	return unsubscribe, nil
+}
+
+// IterateDeviceFlowLogs retrieves flow log messages (FlowMessage) published
+// by the specified device and passes matching messages to iterator. Flow
+// messages are stored and served per-device, not per-app (each one carries
+// a Scope identifying which app/VIF it belongs to), so callers that only
+// care about one application filter by msg.GetScope().GetUuid() in match (or
+// inside iterator) themselves.
+//
+// It first performs a one-shot GET request to fetch all currently available
+// messages. If follow is true, it then subscribes to the streaming endpoint
+// and continues delivering new messages until ctx is canceled.
+//
+// If match is non-nil, only messages for which match(msg) returns true are
+// iterated. If match is nil, all messages are iterated.
+func (ac *AdamClient) IterateDeviceFlowLogs(ctx context.Context, devUUID uuid.UUID,
+	match func(msg *eveflowlog.FlowMessage) bool, iterator FlowMsgIterator,
+	follow bool) error {
+	if err := ac.checkAdamRunning(); err != nil {
+		return err
+	}
+
+	ac.mutex.Lock()
+	_, known := ac.knownDevices[devUUID]
+	ac.mutex.Unlock()
+	if !known {
+		return fmt.Errorf("unknown device UUID %q", devUUID)
+	}
+
+	// -------- Initial GET --------
+
+	url := ac.adminURL("device/" + devUUID.String() + "/flowlogs")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create GET %s request: %w", url, err)
+	}
+
+	resp, err := ac.httpClient().Do(req)
+	if err != nil {
+		return fmt.Errorf("GET %s failed: %w", url, err)
+	}
+	defer resp.Body.Close()
+
+	// No flow logs recorded yet for this device.
+	if resp.StatusCode != http.StatusNotFound {
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("unexpected status from GET %s: %d", url, resp.StatusCode)
+		}
+
+		dec := json.NewDecoder(resp.Body)
+		for {
+			var raw json.RawMessage
+			if err := dec.Decode(&raw); err != nil {
+				if errors.Is(err, io.EOF) {
+					break
+				}
+				return fmt.Errorf("failed to decode flow message JSON: %w", err)
+			}
+
+			msg := &eveflowlog.FlowMessage{}
+			if err := protojson.Unmarshal(raw, msg); err != nil {
+				return fmt.Errorf("failed to proto-unmarshal flow message: %w", err)
+			}
+			if match == nil || match(msg) {
+				stop, iterErr := iterator.Iterate(msg)
+				if iterErr != nil {
+					return fmt.Errorf("failed to iterate flow message: %w", iterErr)
+				}
+				if stop {
+					return nil
+				}
+			}
+		}
+	}
+
+	// -------- Follow mode --------
+
+	if !follow {
+		return nil
+	}
+
+	flowMsgCh := make(chan *eveflowlog.FlowMessage, 100)
+	unsubscribe, err := ac.SubscribeToDeviceFlowLogs(devUUID, match, flowMsgCh)
+	if err != nil {
+		return err
+	}
+	defer unsubscribe()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case msg := <-flowMsgCh:
+			stop, iterErr := iterator.Iterate(msg)
+			if iterErr != nil {
+				return fmt.Errorf("failed to iterate flow message: %w", iterErr)
+			}
+			if stop {
+				return nil
+			}
+		}
+	}
+}
+
+// SubscribeToDeviceFlowLogs subscribes to flow log messages (FlowMessage)
+// emitted by the specified device and delivers matching messages to
+// channel. Flow messages are stored and served per-device, not per-app; see
+// IterateDeviceFlowLogs.
+//
+// If match is non-nil, only messages for which match(msg) returns true are
+// forwarded. If match is nil, all messages are delivered.
+//
+// The streaming connection is opened synchronously: by the time this method
+// returns, Adam has accepted the request and any subsequent flow messages
+// for the device will be delivered. On transient failures after the initial
+// connection, a background goroutine reconnects with a fixed retry delay.
+//
+// The returned unsubscribe function stops the background stream and waits
+// for it to exit. It is safe to call multiple times. The channel is closed
+// when the subscription ends.
+func (ac *AdamClient) SubscribeToDeviceFlowLogs(devUUID uuid.UUID,
+	match func(msg *eveflowlog.FlowMessage) bool,
+	channel chan<- *eveflowlog.FlowMessage) (unsubscribe func(), err error) {
+	const retryDelay = 3 * time.Second
+
+	if err = ac.checkAdamRunning(); err != nil {
+		return nil, err
+	}
+
+	ac.mutex.Lock()
+	_, known := ac.knownDevices[devUUID]
+	ac.mutex.Unlock()
+	if !known {
+		return nil, fmt.Errorf("unknown device UUID %q", devUUID)
+	}
+
+	streamCtx, cancel := context.WithCancel(context.Background())
+	url := ac.adminURL("device/" + devUUID.String() + "/flowlogs")
+
+	resp, err := ac.openStream(streamCtx, url)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer close(channel)
+
+		current := resp
+		for {
+			if current == nil {
+				select {
+				case <-time.After(retryDelay):
+				case <-streamCtx.Done():
+					return
+				}
+				r, err := ac.openStream(streamCtx, url)
+				if err != nil {
+					if streamCtx.Err() != nil {
+						return
+					}
+					ac.log.Errorf("failed to reopen flow log stream: %v", err)
+					continue
+				}
+				current = r
+			}
+
+			func() {
+				defer current.Body.Close()
+				dec := json.NewDecoder(current.Body)
+				for {
+					var raw json.RawMessage
+					if err := dec.Decode(&raw); err != nil {
+						if streamCtx.Err() != nil {
+							return
+						}
+						if errors.Is(err, io.EOF) {
+							ac.log.Warn("flow log stream closed by server")
+							return
+						}
+						ac.log.Errorf("failed to decode streamed flow message: %v", err)
+						return
+					}
+					msg := &eveflowlog.FlowMessage{}
+					if err := protojson.Unmarshal(raw, msg); err != nil {
+						ac.log.Errorf(
+							"failed to proto-unmarshal streamed flow message: %v", err)
+						continue
+					}
+					if match != nil && !match(msg) {
 						continue
 					}
 					select {

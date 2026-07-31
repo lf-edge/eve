@@ -5,6 +5,7 @@ go 1.25.2
 toolchain go1.25.11
 
 require (
+	github.com/amitbet/vncproxy v0.0.0-20200118084310-ea8f9b510913
 	github.com/containerd/errdefs v1.0.0
 	github.com/distribution/reference v0.6.0
 	github.com/docker/cli v29.2.0+incompatible

@@ -285,19 +285,6 @@ func GetDiskSizeMiBParameterValue() uint32 {
 	return GetTestParameter[uint32](DiskSizeMiBParameterKey)
 }
 
-// SkipIfHypervisorKubevirt skips the current test if the resolved HYPERVISOR
-// parameter is HypervisorKubevirt. Kubevirt is only supported by tests under
-// `evetest/tests/cluster`; non-cluster tests should call this helper right
-// after defining the HypervisorParameter to ensure they are not accidentally
-// exercised on a Kubevirt-flavored EVE build.
-func SkipIfHypervisorKubevirt() {
-	th := getTestHarness()
-	if GetHypervisorParameterValue() == HypervisorKubevirt {
-		th.t.Skipf("Kubevirt hypervisor is only supported by cluster tests " +
-			"(under evetest/tests/cluster); use kvm or xen")
-	}
-}
-
 // FilesystemParameterKey is the key used for the Filesystem parameter.
 const FilesystemParameterKey = "FILESYSTEM"
 

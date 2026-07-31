@@ -111,8 +111,9 @@ func TestEVEUpgrade(test *testing.T) {
 	// survive an upgrade from the last release?". Naming a target version and
 	// asking for the live transport is only contradictory when that version is
 	// not one of the local builds, which UpgradeEVE reports.
+	log := evetest.Logger()
 	if evetest.LocalLiveImageRequested() {
-		evetestT.Logf("Upgrading to the local EVE build (%s%s is set); the "+
+		log.Infof("Upgrading to the local EVE build (%s%s is set); the "+
 			"pre-upgrade version %q still comes from a container image",
 			constants.EnvPrefix, constants.EVELiveImageEnv, initialVersion)
 	}
@@ -219,7 +220,6 @@ func TestEVEUpgrade(test *testing.T) {
 	// Verify the app is reachable before the upgrade.
 	appAuth := evetest.UsernamePasswordAuth{Username: appSSHUser, Password: appSSHPassword}
 	sshTimeout := 20 * time.Second
-	log := evetest.Logger()
 	log.Infof("Verifying app is reachable before upgrade")
 	t.Eventually(func(t Gomega) {
 		out, _, err := device.RunShellScriptInsideApp(

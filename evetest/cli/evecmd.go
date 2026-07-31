@@ -468,22 +468,27 @@ func eveAppFlowLogsCmd() *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("stream error: %w", err)
 				}
-				var lines []string
+				var newEntries []string
 				for _, ipFlow := range resp.IpFlows {
-					lines = append(lines, fmt.Sprintf("IP flow: %s", ipFlow.String()))
+					newEntries = append(newEntries,
+						fmt.Sprintf("IP flow: %s", ipFlow.String()))
 				}
 				for _, dnsReq := range resp.DnsRequests {
-					lines = append(lines, fmt.Sprintf("DNS request: %s", dnsReq.String()))
+					newEntries = append(newEntries,
+						fmt.Sprintf("DNS request: %s", dnsReq.String()))
 				}
-				entry := strings.Join(lines, "\n")
 				if tail > 0 {
-					entries = append(entries, entry)
+					entries = append(entries, newEntries...)
 				} else {
-					fmt.Println(entry)
+					for _, entry := range newEntries {
+						fmt.Println(entry)
+						fmt.Println()
+					}
 				}
 			}
 			for _, e := range tailEntries(entries, tail) {
 				fmt.Println(e)
+				fmt.Println()
 			}
 			return nil
 		},
