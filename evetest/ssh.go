@@ -17,6 +17,7 @@ import (
 	"github.com/lf-edge/eve/evetest/utils"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/knownhosts"
 )
 
 type watchdogWriter struct {
@@ -61,8 +62,13 @@ func (th *TestHarness) runScriptOverSSH(ctx context.Context,
 	addr string, auth AuthMethod, script string,
 	stdout, stderr io.Writer, stdoutWatchdogTimeout time.Duration) error {
 
+	hostKeyCallback, err := knownhosts.New("/root/.ssh/known_hosts")
+	if err != nil {
+		return fmt.Errorf("failed to initialize SSH known_hosts callback: %w", err)
+	}
+
 	sshConfig := &ssh.ClientConfig{
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		HostKeyCallback: hostKeyCallback,
 		Timeout:         5 * time.Second,
 	}
 
