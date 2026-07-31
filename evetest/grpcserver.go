@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	eveflowlog "github.com/lf-edge/eve-api/go/flowlog"
 	eveinfo "github.com/lf-edge/eve-api/go/info"
 	evemetrics "github.com/lf-edge/eve-api/go/metrics"
 	"github.com/lf-edge/eve/evetest/constants"
@@ -61,6 +62,23 @@ func (s *syncStream[T]) Send(msg *T) error {
 }
 
 func (w *metricMsgGrpcIterator[T]) Iterate(msg *evemetrics.ZMetricMsg) (bool, error) {
+	resp, err := w.mapper(msg)
+	if err != nil {
+		return false, err
+	}
+	if resp == nil {
+		return false, nil
+	}
+	return false, w.stream.Send(resp)
+}
+
+type flowMsgGrpcIterator[T any] struct {
+	stream grpc.ServerStreamingServer[T]
+	// mapper extracts a response from a flow message; returns nil to skip.
+	mapper func(*eveflowlog.FlowMessage) (*T, error)
+}
+
+func (w *flowMsgGrpcIterator[T]) Iterate(msg *eveflowlog.FlowMessage) (bool, error) {
 	resp, err := w.mapper(msg)
 	if err != nil {
 		return false, err
@@ -396,8 +414,38 @@ func (th *TestHarness) GetAppLogs(
 // GetAppFlowLogs streams flow logs and DNS request logs for an application.
 func (th *TestHarness) GetAppFlowLogs(
 	req *api.AppRequest, stream api.Evetest_GetAppFlowLogsServer) error {
-	// TODO
-	return errors.New("not implemented")
+	if err := th.errIfAdamNotReady(); err != nil {
+		return err
+	}
+	devName, devUUID, err := th.resolveEVEDeviceName(req.GetDeviceName())
+	if err != nil {
+		return err
+	}
+	if devUUID == uuid.Nil {
+		return fmt.Errorf("device %q is not onboarded", devName)
+	}
+	appUUID, err := th.resolveAppUUID(stream.Context(), devUUID, req.GetAppNameOrUuid())
+	if err != nil {
+		return err
+	}
+	appUUIDStr := appUUID.String()
+	match := func(msg *eveflowlog.FlowMessage) bool {
+		return msg.GetScope().GetUuid() == appUUIDStr
+	}
+	iterator := &flowMsgGrpcIterator[api.AppFlowLogsResponse]{
+		stream: stream,
+		mapper: func(msg *eveflowlog.FlowMessage) (*api.AppFlowLogsResponse, error) {
+			if len(msg.GetFlows()) == 0 && len(msg.GetDnsReqs()) == 0 {
+				return nil, nil
+			}
+			return &api.AppFlowLogsResponse{
+				IpFlows:     msg.GetFlows(),
+				DnsRequests: msg.GetDnsReqs(),
+			}, nil
+		},
+	}
+	return th.adamClient.IterateDeviceFlowLogs(
+		stream.Context(), devUUID, match, iterator, req.GetFollow())
 }
 
 // GetNIInfo streams info (ZInfoNetworkInstance) about a network instance (NI).

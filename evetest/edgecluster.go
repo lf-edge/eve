@@ -11,7 +11,6 @@ import (
 	"time"
 
 	eveinfo "github.com/lf-edge/eve-api/go/info"
-	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -86,8 +85,16 @@ func (ec *EdgeCluster) WaitUntilNodesAreReady(timeout time.Duration) {
 	closeOnce := sync.Once{}
 	RunParallel(len(ec.devices), func(i int) {
 		dev := ec.devices[i]
+		// Subscribe before taking the initial snapshot, so a transition
+		// landing between the two calls can never be missed.
 		updates, stop := dev.WatchClusterInfo()
 		defer stop()
+		if info := dev.GetClusterInfo(); info != nil && allNodesReady(info, expectedNodes) {
+			ec.th.log.Infof("All cluster nodes already ready per device %q",
+				dev.devName)
+			closeOnce.Do(func() { close(doneCh) })
+			return
+		}
 		var tickerCh <-chan time.Time
 		if i == 0 {
 			ticker := time.NewTicker(1 * time.Minute)
@@ -121,20 +128,36 @@ func (ec *EdgeCluster) WaitUntilNodesAreReady(timeout time.Duration) {
 	})
 }
 
-// allNodesReady returns true if the cluster info reports every node in
-// expectedNodes as Ready.
+// allNodesReady returns true if the cluster storage is healthy and every
+// node in expectedNodes is reported as Ready.
 func allNodesReady(info *eveinfo.ZInfoKubeCluster, expectedNodes []string) bool {
-	const nodeReadyCond = eveinfo.KubeNodeConditionType_KUBE_NODE_CONDITION_TYPE_READY
-	var readyNodes []string
-	for _, node := range info.GetNodes() {
-		for _, cond := range node.GetConditions() {
-			if cond.GetType() == nodeReadyCond && cond.GetSet() {
-				readyNodes = append(readyNodes, node.GetName())
-				break
-			}
+	for _, name := range expectedNodes {
+		if !clusterNodeReady(info, name) {
+			return false
 		}
 	}
-	return generics.EqualSets(readyNodes, expectedNodes)
+	return true
+}
+
+// clusterNodeReady returns true if the given cluster info reports the named
+// node as Ready and the cluster's storage as healthy.
+func clusterNodeReady(info *eveinfo.ZInfoKubeCluster, nodeName string) bool {
+	const nodeReadyCond = eveinfo.KubeNodeConditionType_KUBE_NODE_CONDITION_TYPE_READY
+	if info.GetStorage().GetHealth() != eveinfo.ServiceStatus_SERVICE_STATUS_HEALTHY {
+		return false
+	}
+	for _, node := range info.GetNodes() {
+		if node.GetName() != nodeName {
+			continue
+		}
+		for _, cond := range node.GetConditions() {
+			if cond.GetType() == nodeReadyCond {
+				return cond.GetSet()
+			}
+		}
+		return false
+	}
+	return false
 }
 
 // FindDeviceHostingApp finds the cluster device that hosts the given application.
