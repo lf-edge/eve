@@ -75,8 +75,7 @@ const enableFlowlogParamKey = "ENABLE_FLOWLOG"
 //
 // Test params
 // -----------
-//   - HYPERVISOR. The test calls evetest.SkipIfHypervisorKubevirt() -- Kubevirt
-//     is reserved for cluster tests.
+//   - HYPERVISOR (defaults to KVM).
 //   - ENABLE_FLOWLOG: enable flow logging on the Local NI (default: false).
 func TestLocalNetInstanceACLs(test *testing.T) {
 	evetestT := evetest.Init(test)
@@ -96,7 +95,6 @@ func TestLocalNetInstanceACLs(test *testing.T) {
 	)
 
 	hypervisor := evetest.GetHypervisorParameterValue()
-	evetest.SkipIfHypervisorKubevirt()
 	enableFlowlog := evetest.GetTestParameter[bool](enableFlowlogParamKey)
 
 	devName := "edge-dev"
@@ -125,6 +123,9 @@ func TestLocalNetInstanceACLs(test *testing.T) {
 		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
 	})
 	device.ApplyConfig(devConfig, true, true)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
 
 	const (
 		niGateway   = "10.11.12.1"
@@ -490,8 +491,7 @@ func TestLocalNetInstanceACLs(test *testing.T) {
 //
 // Test params
 // -----------
-//   - HYPERVISOR. The test calls evetest.SkipIfHypervisorKubevirt() -- Kubevirt is
-//     reserved for cluster tests.
+//   - HYPERVISOR (defaults to KVM).
 //   - ENABLE_FLOWLOG: enable flow logging on the Switch NI (default: false).
 func TestSwitchNetInstanceACLs(test *testing.T) {
 	evetestT := evetest.Init(test)
@@ -511,7 +511,6 @@ func TestSwitchNetInstanceACLs(test *testing.T) {
 	)
 
 	hypervisor := evetest.GetHypervisorParameterValue()
-	evetest.SkipIfHypervisorKubevirt()
 	enableFlowlog := evetest.GetTestParameter[bool](enableFlowlogParamKey)
 
 	devName := "edge-dev"
@@ -540,6 +539,9 @@ func TestSwitchNetInstanceACLs(test *testing.T) {
 		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
 	})
 	device.ApplyConfig(devConfig, true, true)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
 
 	const (
 		app1MACAddr = "02:16:3e:00:00:03"

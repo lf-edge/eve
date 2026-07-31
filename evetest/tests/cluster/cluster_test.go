@@ -13,9 +13,7 @@ import (
 
 	eveconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve-api/go/evecommon"
-	eveinfo "github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/evetest"
-	"github.com/lf-edge/eve/evetest/matchers"
 	"github.com/lf-edge/eve/evetest/netmodels"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
@@ -74,13 +72,13 @@ func clusterDeviceRequirements(
 // Phases
 // ------
 //  1. setup-done -> initial-config-applied: apply the bare device config
-//     (no app yet) and start watching ClusterInfo.
-//  2. k3s-is-ready: ZInfoKubeCluster eventually reports a single node
-//     whose NodeReady condition is true AND
-//     Storage.Health=SERVICE_STATUS_HEALTHY. Then assert ClusterId is
-//     non-empty, the node is RoleServer + Schedulable, and that no
-//     EveApps / EveVmApps / PodNameSpaces have been created yet
-//     (clean-slate cluster, no workload).
+//     (no app yet).
+//  2. k3s-is-ready: device.WaitForClusterNodeIsReady waits until this
+//     device reports itself as a Ready node with healthy cluster storage.
+//     Then assert there is exactly one node, ClusterId is non-empty, the
+//     node is RoleServer + Schedulable, and that no EveApps / EveVmApps /
+//     PodNameSpaces have been created yet (clean-slate cluster, no
+//     workload).
 //  3. app-config-is-submitted: add the local NI + the container app to the
 //     config and re-apply.
 //  4. app-is-deployed: WaitUntilAppIsRunning (the helper tracks
@@ -135,31 +133,13 @@ func TestSingleNodeCluster(test *testing.T) {
 			Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
 		})
 	device := evetest.GetEdgeDevice(devName)
-	clusterUpdates, stopClusterWatch := device.WatchClusterInfo()
-	defer stopClusterWatch()
 	device.ApplyConfig(devConfig, true, true)
 	evetest.Checkpoint("initial-config-applied")
 
 	timeout := 20 * time.Minute
-	var clusterInfo *eveinfo.ZInfoKubeCluster
-	const nodeReadyCond = eveinfo.KubeNodeConditionType_KUBE_NODE_CONDITION_TYPE_READY
-	t.Eventually(clusterUpdates, timeout).Should(Receive(matchers.SatisfyPredicate(
-		"K3s is ready",
-		func(info *eveinfo.ZInfoKubeCluster) bool {
-			clusterInfo = info
-			if len(info.Nodes) != 1 {
-				return false
-			}
-			if clusterInfo.Storage.Health != eveinfo.ServiceStatus_SERVICE_STATUS_HEALTHY {
-				return false
-			}
-			for _, cond := range info.Nodes[0].GetConditions() {
-				if cond.GetType() == nodeReadyCond {
-					return cond.GetSet()
-				}
-			}
-			return false
-		})))
+	device.WaitForClusterNodeIsReady(timeout)
+	clusterInfo := device.GetClusterInfo()
+	t.Expect(clusterInfo.Nodes).To(HaveLen(1))
 	t.Expect(clusterInfo.ClusterId).NotTo(BeEmpty())
 	t.Expect(clusterInfo.Nodes[0].RoleServer).To(BeTrue())
 	t.Expect(clusterInfo.Nodes[0].Schedulable).To(BeTrue())

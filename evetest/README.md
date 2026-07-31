@@ -857,7 +857,7 @@ same terminal session beforehand.
 |----------|-------------|---------|
 | `EVETEST_ORG` | Docker Hub organization for evetest and evetest-broker images | `lfedge` |
 | `EVETEST_EVE_REPO` | EVE image repository | `lfedge/eve` |
-| `EVETEST_ADAM_VERSION` | Adam controller version *(build-time only, see note below)* | `0.0.75` |
+| `EVETEST_ADAM_VERSION` | Adam controller version *(build-time only, see note below)* | `0.0.81` |
 | `EVETEST_SDN_VERSION` | SDN emulator version | `1.1` |
 
 > **`EVETEST_ADAM_VERSION` requires evetest container rebuild.** Unlike the other

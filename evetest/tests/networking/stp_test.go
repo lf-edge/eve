@@ -119,8 +119,7 @@ import (
 //
 // Test params
 // -----------
-//   - HYPERVISOR. The test calls evetest.SkipIfHypervisorKubevirt() right
-//     after reading the parameter -- Kubevirt is reserved for cluster tests.
+//   - HYPERVISOR (defaults to KVM).
 func TestSwitchNIWithMultiplePorts(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
@@ -130,8 +129,6 @@ func TestSwitchNIWithMultiplePorts(test *testing.T) {
 		evetest.HypervisorParameter(),
 	)
 	hypervisor := evetest.GetHypervisorParameterValue()
-	// Kubevirt is only supported by cluster tests.
-	evetest.SkipIfHypervisorKubevirt()
 
 	devName := "edge-dev"
 	requiredDevice := evetest.RequireEdgeDevice{
@@ -191,6 +188,9 @@ func TestSwitchNIWithMultiplePorts(test *testing.T) {
 
 	// Apply the base adapter configuration.
 	device.ApplyConfig(devConfig, true, true)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
 
 	// Add Switch NI with all three app-shared ports.
 	// BPDU guard is enabled on eth3 ("edge-port" label).

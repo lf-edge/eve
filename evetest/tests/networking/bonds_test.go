@@ -70,20 +70,23 @@ import (
 //     failed member.
 //   - Restore the SDN model (link back up).
 //
-// Hypervisor
-// ----------
-//   - Hardcoded WithHypervisor=HypervisorKVM in RequireEdgeDevice -- this
-//     test lives in TestDeviceConnectivitySuite and does not parameterize
-//     the hypervisor.
+// Test params
+// -----------
+//   - HYPERVISOR (defaults to KVM).
 func TestActiveBackupBond(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
 	defer evetest.Close()
 
+	evetest.DefineTestParameters(
+		evetest.HypervisorParameter(),
+	)
+	hypervisor := evetest.GetHypervisorParameterValue()
+
 	devName := "edge-dev"
 	requiredDevice := evetest.RequireEdgeDevice{
 		Name:              devName,
-		WithHypervisor:    evetest.HypervisorKVM,
+		WithHypervisor:    hypervisor,
 		DeviceReusePolicy: evetest.ResetDeviceConfig,
 	}
 	// Active-backup bond is transparent to the network switch -- only one
@@ -143,6 +146,9 @@ func TestActiveBackupBond(test *testing.T) {
 	devMetrics, stopDevMetricsWatch := device.WatchDeviceMetrics()
 	defer stopDevMetricsWatch()
 	device.ApplyConfig(devConfig, true, true)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
 	evetest.Checkpoint("config-applied")
 
 	// Wait for device info to report the bond interface with an IP address,
@@ -339,20 +345,23 @@ func TestActiveBackupBond(test *testing.T) {
 //     ethernet0 and ethernet1 in its Members list, and every member has
 //     LACP sub-metrics populated.
 //
-// Hypervisor
-// ----------
-//   - Hardcoded WithHypervisor=HypervisorKVM in RequireEdgeDevice -- this
-//     test lives in TestDeviceConnectivitySuite and does not parameterize
-//     the hypervisor.
+// Test params
+// -----------
+//   - HYPERVISOR (defaults to KVM).
 func TestLACPBond(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
 	defer evetest.Close()
 
+	evetest.DefineTestParameters(
+		evetest.HypervisorParameter(),
+	)
+	hypervisor := evetest.GetHypervisorParameterValue()
+
 	devName := "edge-dev"
 	requiredDevice := evetest.RequireEdgeDevice{
 		Name:              devName,
-		WithHypervisor:    evetest.HypervisorKVM,
+		WithHypervisor:    hypervisor,
 		DeviceReusePolicy: evetest.ResetDeviceConfig,
 	}
 	// Start with individual ports on a bridge so that EVE can onboard
@@ -413,6 +422,9 @@ func TestLACPBond(test *testing.T) {
 	// waitUntilConfirmed=false: after the model switch below, EVE may temporarily
 	// lose controller connectivity while the LACP bond negotiates.
 	device.ApplyConfig(devConfig, true, false)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
 	// Give EVE a moment to process the bond config before switching the SDN side.
 	time.Sleep(10 * time.Second)
 	evetest.Checkpoint("config-applied")

@@ -61,10 +61,19 @@ import (
 //     - ip -6 route show contains a default route via a fe80:: link-local
 //     address (RA-derived routes always use the router's link-local address).
 //     - ip -4 addr show dev eth0 contains no "inet" lines (no IPv4).
+//
+// Test params
+// -----------
+//   - HYPERVISOR (defaults to KVM).
 func TestDeviceIPv6Connectivity(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
 	defer evetest.Close()
+
+	evetest.DefineTestParameters(
+		evetest.HypervisorParameter(),
+	)
+	hypervisor := evetest.GetHypervisorParameterValue()
 
 	devName := "edge-dev"
 	// Clone the shared model so we can modify it without side effects.
@@ -78,7 +87,7 @@ func TestDeviceIPv6Connectivity(test *testing.T) {
 	evetest.Setup(
 		evetest.RequireEdgeDevice{
 			Name:              devName,
-			WithHypervisor:    evetest.HypervisorKVM,
+			WithHypervisor:    hypervisor,
 			DeviceReusePolicy: evetest.ResetDeviceConfig,
 		},
 		evetest.RequireNetworkModel{
@@ -102,6 +111,9 @@ func TestDeviceIPv6Connectivity(test *testing.T) {
 	devUpdates, stopDevWatch := device.WatchDeviceInfo()
 	defer stopDevWatch()
 	device.ApplyConfig(devConfig, true, true)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
 	evetest.Checkpoint("config-applied")
 
 	log := evetest.Logger()
@@ -225,8 +237,7 @@ func TestDeviceIPv6Connectivity(test *testing.T) {
 //
 // Test params
 // -----------
-//   - HYPERVISOR. evetest.SkipIfHypervisorKubevirt() is called after reading
-//     the parameter -- Kubevirt is reserved for cluster tests.
+//   - HYPERVISOR (defaults to KVM).
 func TestApplicationIPv6Connectivity(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
@@ -236,8 +247,6 @@ func TestApplicationIPv6Connectivity(test *testing.T) {
 		evetest.HypervisorParameter(),
 	)
 	hypervisor := evetest.GetHypervisorParameterValue()
-	// Kubevirt is only supported by cluster tests.
-	evetest.SkipIfHypervisorKubevirt()
 
 	// IPv6 address of the SDN HTTP server and DNS server defined in netmodels.SingleEthIPv6Only.
 	const httpServerIPv6 = "fdde:55a:74d4::7"
@@ -317,6 +326,9 @@ func TestApplicationIPv6Connectivity(test *testing.T) {
 	appUpdates, stopAppWatch := device.WatchAppInfo(appUUID)
 	defer stopAppWatch()
 	device.ApplyConfig(devConfig, true, true)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
 
 	timeoutExcludingDownload := 5 * time.Minute
 	device.WaitUntilAppIsRunning(appUUID, timeoutExcludingDownload)
