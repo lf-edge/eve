@@ -40,6 +40,11 @@ func (p *LibvirtProvider) Capabilities() []api.Capability {
 	panic("unreachable")
 }
 
+// DiskImageStrategy is not implemented in CGO-disabled builds.
+func (p *LibvirtProvider) DiskImageStrategy() DiskImageStrategy {
+	panic("unreachable")
+}
+
 // SetupDevice is not implemented in CGO-disabled builds.
 func (p *LibvirtProvider) SetupDevice(_ context.Context, _ string, _ DeviceSpec) error {
 	panic("unreachable")

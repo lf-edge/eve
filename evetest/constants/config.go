@@ -191,6 +191,24 @@ const (
 	// Read by evetest-broker.
 	BrokerDockerDiskUsageThresholdEnv = "BROKER_DOCKER_DISK_USAGE_THRESHOLD"
 
+	// BrokerTemplateRetentionEnv specifies how long (in minutes) an unused EVE
+	// disk-image template is kept before the broker's periodic cleanup removes
+	// it. Templates let consecutive test runs against the same EVE version skip
+	// the image build entirely, so this is deliberately generous; a template
+	// still backing a live VM is never removed regardless of this value.
+	// Zero or negative disables age-based eviction entirely; the
+	// disk-usage-based eviction (BrokerTemplateDiskUsageThresholdEnv) still
+	// applies regardless, so this cannot be used to disable all cleanup.
+	// Read by evetest-broker.
+	BrokerTemplateRetentionEnv = "BROKER_TEMPLATE_RETENTION"
+
+	// BrokerTemplateDiskUsageThresholdEnv specifies the disk usage percentage
+	// (on the filesystem backing the broker's image directory) at or above
+	// which the broker evicts the oldest unreferenced EVE image templates,
+	// regardless of BrokerTemplateRetentionEnv, until usage drops back under
+	// it. Read by evetest-broker.
+	BrokerTemplateDiskUsageThresholdEnv = "BROKER_TEMPLATE_DISK_USAGE_THRESHOLD"
+
 	// ExternalArtifactDirEnv specifies a host-side directory path where all test
 	// artifacts should be collected.
 	// This variable is optional and may be set by the user.
@@ -315,6 +333,22 @@ const (
 	// image cleanup once the filesystem backing Docker's storage is at least
 	// this full.
 	DefaultBrokerDockerDiskUsageThresholdPercent = 80
+
+	// DefaultBrokerTemplateRetentionMinutes is 7 days, matching the Docker
+	// image retention default.
+	DefaultBrokerTemplateRetentionMinutes = 7 * 24 * 60
+
+	// DefaultBrokerTemplateDiskUsageThresholdPercent triggers aggressive
+	// template eviction once the filesystem backing the broker's image
+	// directory is at least this full.
+	//
+	// Deliberately higher than DefaultBrokerDockerDiskUsageThresholdPercent: a
+	// broker host with ample free space can still idle above 80% full, and at
+	// that threshold every unreferenced template would be evicted on every
+	// pass, so the cache would never be warm. Templates are also the wrong
+	// thing to give up first -- one is 1-2 GB, where the Docker image store is
+	// tens of GB.
+	DefaultBrokerTemplateDiskUsageThresholdPercent = 90
 )
 
 // InitViperConfig initializes the Viper configuration with default values.
@@ -363,6 +397,8 @@ func InitViperConfig() {
 	viper.SetDefault(BrokerMaxClientsEnv, DefaultBrokerMaxClients)
 	viper.SetDefault(BrokerDockerImageRetentionEnv, DefaultBrokerDockerImageRetentionMinutes)
 	viper.SetDefault(BrokerDockerDiskUsageThresholdEnv, DefaultBrokerDockerDiskUsageThresholdPercent)
+	viper.SetDefault(BrokerTemplateRetentionEnv, DefaultBrokerTemplateRetentionMinutes)
+	viper.SetDefault(BrokerTemplateDiskUsageThresholdEnv, DefaultBrokerTemplateDiskUsageThresholdPercent)
 
 	// Per-registry pull-through cache mirrors
 	for _, e := range RegistryMirrorEntries {

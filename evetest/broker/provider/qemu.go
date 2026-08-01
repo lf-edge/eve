@@ -341,6 +341,13 @@ func (p *QemuProvider) Capabilities() []api.Capability {
 	return fullCapabilitySet()
 }
 
+// DiskImageStrategy returns DiskImageLegacyBuild. The qemu provider attaches
+// local files and could use DiskImageOverlay, but that has not been validated
+// here yet.
+func (p *QemuProvider) DiskImageStrategy() DiskImageStrategy {
+	return DiskImageLegacyBuild
+}
+
 // SetupDevice creates a VM configuration and prepares network resources,
 // but does not start the VM (powered-off state).
 func (p *QemuProvider) SetupDevice(

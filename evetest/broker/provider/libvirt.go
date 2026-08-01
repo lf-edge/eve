@@ -127,6 +127,13 @@ func (p *LibvirtProvider) Capabilities() []api.Capability {
 	return fullCapabilitySet()
 }
 
+// DiskImageStrategy returns DiskImageOverlay: libvirt attaches local files
+// directly, so a QCOW2 backed by a cached template works and is near-instant
+// to create.
+func (p *LibvirtProvider) DiskImageStrategy() DiskImageStrategy {
+	return DiskImageOverlay
+}
+
 // SetupDevice creates a VM in a powered-off state.
 func (p *LibvirtProvider) SetupDevice(
 	ctx context.Context, name string, spec DeviceSpec) error {

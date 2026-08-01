@@ -72,9 +72,13 @@ RUN if [ "$TARGETARCH" = "$BUILDARCH" ]; then export CGO_ENABLED=1; else export 
 ###########################
 FROM alpine:${ALPINE_VERSION}
 
-# Install runtime dependencies
+# Install runtime dependencies.
+# qemu-img provides qemu-img/qemu-io/qemu-nbd; mtools provides mcopy, used to
+# overlay a device's config files onto the EVE config partition image exactly
+# as pkg/eve/runme.sh does. bash is not used by the broker itself -- it is for
+# interactive debugging via `docker exec`, where BusyBox ash is painful.
 # hadolint ignore=DL3018
-RUN apk add --no-cache libvirt iptables ip6tables qemu-img
+RUN apk add --no-cache libvirt iptables ip6tables qemu-img mtools bash
 
 # Copy the built broker binary from builder
 COPY --from=builder /go/bin/evetest-broker /usr/local/bin/evetest-broker

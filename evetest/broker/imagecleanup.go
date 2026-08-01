@@ -143,6 +143,7 @@ func (b *broker) runImageCleanupLoop() {
 	defer ticker.Stop()
 	for range ticker.C {
 		b.cleanupDockerImages(context.Background())
+		b.cleanupTemplates(context.Background())
 	}
 }
 
@@ -267,17 +268,95 @@ func (b *broker) dockerDiskUsagePercent(ctx context.Context, cli *client.Client)
 		err = fmt.Errorf("docker did not report its root directory")
 		return 0, "", err
 	}
+	percent, err = diskUsagePercent(dockerRoot)
+	return percent, dockerRoot, err
+}
+
+// diskUsagePercent returns the used-space percentage of the filesystem backing path.
+func diskUsagePercent(path string) (int, error) {
 	var stat syscall.Statfs_t
-	if err := syscall.Statfs(dockerRoot, &stat); err != nil {
-		err = fmt.Errorf("failed to stat %q: %w", dockerRoot, err)
-		return 0, dockerRoot, err
+	if err := syscall.Statfs(path, &stat); err != nil {
+		return 0, fmt.Errorf("failed to stat %q: %w", path, err)
 	}
 	total := stat.Blocks * uint64(stat.Bsize) //nolint:unconvert
 	free := stat.Bfree * uint64(stat.Bsize)   //nolint:unconvert
 	if total == 0 {
-		err = fmt.Errorf("statfs reported zero total blocks for %q", dockerRoot)
-		return 0, dockerRoot, err
+		return 0, fmt.Errorf("statfs reported zero total blocks for %q", path)
 	}
-	used := total - free
-	return int(used * 100 / total), dockerRoot, nil
+	return int((total - free) * 100 / total), nil
+}
+
+// cleanupTemplates runs one template cleanup pass, mirroring
+// cleanupDockerImages: an age-based sweep (skipped when b.tmplRetention is
+// non-positive, an explicit "disable age-based eviction"), then a
+// disk-pressure sweep that removes the oldest remaining templates until usage
+// is back under the threshold -- run regardless of b.tmplRetention, since a
+// disabled age sweep must not also disable the broker's only protection
+// against filling the disk. Templates still referenced by a live working copy
+// are never candidates.
+func (b *broker) cleanupTemplates(_ context.Context) {
+	log := b.globalLog
+	if b.templates == nil {
+		return
+	}
+	candidates := b.templates.candidates()
+	if len(candidates) == 0 {
+		return
+	}
+
+	evict := func(key, reason string) bool {
+		if err := b.templates.evict(key); err != nil {
+			log.Warnf("Template cleanup: %v", err)
+			return false
+		}
+		log.Infof("Template cleanup: removed unused template %q (%s)", key, reason)
+		return true
+	}
+
+	evicted := make(map[string]struct{})
+	if b.tmplRetention > 0 {
+		ageExpired := selectAgeExpiredImages(candidates, time.Now(), b.tmplRetention)
+		for _, key := range ageExpired {
+			if evict(key, "age") {
+				evicted[key] = struct{}{}
+			}
+		}
+	}
+
+	usagePercent, err := b.imageDirUsagePercent()
+	if err != nil {
+		log.Warnf("Template cleanup: failed to check disk usage: %v", err)
+		return
+	}
+	if usagePercent < b.tmplDiskThresholdPct {
+		return
+	}
+	log.Warnf("Template cleanup: disk usage at %d%% on %s (threshold %d%%), "+
+		"evicting oldest unused templates",
+		usagePercent, b.imageDir, b.tmplDiskThresholdPct)
+
+	var remaining []imageCandidate
+	for _, c := range candidates {
+		if _, done := evicted[c.ID]; !done {
+			remaining = append(remaining, c)
+		}
+	}
+	for _, key := range orderImagesOldestFirst(remaining) {
+		evict(key, "disk pressure")
+		usagePercent, err = b.imageDirUsagePercent()
+		if err != nil {
+			log.Warnf("Template cleanup: failed to re-check disk usage: %v", err)
+			return
+		}
+		if usagePercent < b.tmplDiskThresholdPct {
+			return
+		}
+	}
+}
+
+// imageDirUsagePercent returns the disk usage percentage of the filesystem
+// backing the broker's image directory, which is where templates and working
+// copies live -- not necessarily the same filesystem as Docker's storage.
+func (b *broker) imageDirUsagePercent() (int, error) {
+	return diskUsagePercent(b.imageDir)
 }
