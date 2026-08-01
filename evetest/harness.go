@@ -54,8 +54,10 @@ const (
 	// whichever call/stream tries to use it next). Kept well under that.
 	brokerKeepAlivePingInterval = 15 * time.Second
 
-	// Timeout for the broker to build an EVE VM image.
-	brokerBuildImageTimeout = 5 * time.Minute
+	// brokerBuildImageTimeout bounds a BuildImage call. It covers not only this
+	// client's own image build but also waiting for another client's in-flight
+	// build of a shared EVE image template, so it is deliberately generous.
+	brokerBuildImageTimeout = 20 * time.Minute
 
 	// Timeout for uploading an EVE Docker image to the broker.
 	brokerPushEVEImageTimeout = 10 * time.Minute

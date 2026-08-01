@@ -65,6 +65,11 @@ type broker struct {
 	diskThresholdPct int
 	imageUsage       *imageUsageTracker
 
+	// Periodic EVE image template cleanup
+	templates            *templateCache
+	tmplRetention        time.Duration
+	tmplDiskThresholdPct int
+
 	// mutex protects only broker-global state: sessions, imageUploads
 	// and usedSDNUplinkMACs. It is always held briefly. Per-session state
 	// (session.eveDevices, session.sdnDevice) is protected by that session's
@@ -125,11 +130,17 @@ type device struct {
 	// live QCOW2; for installer devices this is the blank target QCOW2 that the
 	// installer writes EVE into. Also set for the SDN device.
 	disks []provider.DiskImage
+
+	// templateKey identifies the cached EVE image template backing this
+	// device's disk, if any. Empty for legacy-build devices and for the SDN
+	// device. Teardown releases the template reference recorded under this key.
+	templateKey string
 }
 
 func newBroker(log *logrus.Logger, provider provider.DeviceProvider,
 	providerName, imageDir string, sdnGrpcPort uint16, maxClients int,
-	imgRetention time.Duration, diskThresholdPct int) (*broker, error) {
+	imgRetention time.Duration, diskThresholdPct int,
+	tmplRetention time.Duration, tmplDiskThresholdPct int) (*broker, error) {
 	supportedArchs, err := provider.GetSupportedDeviceArchs()
 	if err != nil {
 		return nil, fmt.Errorf("cannot retrieve supported device architectures: %w", err)
@@ -155,22 +166,41 @@ func newBroker(log *logrus.Logger, provider provider.DeviceProvider,
 			len(proxyCACerts), proxyChainPath)
 	}
 	b := &broker{
-		globalLog:         log,
-		provider:          provider,
-		providerName:      providerName,
-		imageDir:          imageDir,
-		sdnGrpcPort:       sdnGrpcPort,
-		supportedArchs:    supportedArchs,
-		capabilities:      provider.Capabilities(),
-		proxyCACerts:      proxyCACerts,
-		registryMirrors:   constants.LoadRegistryMirrors(),
-		maxClients:        maxClients,
-		imgRetention:      imgRetention,
-		diskThresholdPct:  diskThresholdPct,
-		imageUsage:        newImageUsageTracker(imageDir),
-		sessions:          make(map[string]*session),
-		imageUploads:      make(map[string]chan struct{}),
-		usedSDNUplinkMACs: make(map[string]struct{}),
+		globalLog:            log,
+		provider:             provider,
+		providerName:         providerName,
+		imageDir:             imageDir,
+		sdnGrpcPort:          sdnGrpcPort,
+		supportedArchs:       supportedArchs,
+		capabilities:         provider.Capabilities(),
+		proxyCACerts:         proxyCACerts,
+		registryMirrors:      constants.LoadRegistryMirrors(),
+		maxClients:           maxClients,
+		imgRetention:         imgRetention,
+		diskThresholdPct:     diskThresholdPct,
+		imageUsage:           newImageUsageTracker(imageDir),
+		templates:            newTemplateCache(imageDir, log),
+		tmplRetention:        tmplRetention,
+		tmplDiskThresholdPct: tmplDiskThresholdPct,
+		sessions:             make(map[string]*session),
+		imageUploads:         make(map[string]chan struct{}),
+		usedSDNUplinkMACs:    make(map[string]struct{}),
+	}
+	// Claim the image directory before the cleanup goroutine starts: it reads
+	// b.templates.owner, so the lock must be taken first. A second broker
+	// sharing the directory runs in non-owner mode and never deletes anything.
+	if err := b.templates.tryLock(); err != nil {
+		return nil, err
+	}
+	// Client sessions do not survive a broker restart, so every reference on
+	// disk is stale and any in-progress build was abandoned. Both are no-ops
+	// unless this broker owns the directory: a non-owner must never delete
+	// another broker's in-progress build or its live VMs' refs.
+	if err := b.templates.removeStaleTmpDirs(); err != nil {
+		log.Warnf("Failed to sweep stale template builds: %v", err)
+	}
+	if err := b.templates.clearAllRefs(); err != nil {
+		log.Warnf("Failed to clear stale template references: %v", err)
 	}
 	// The qemu provider runs the broker embedded inside the short-lived evetest
 	// container itself (all-in-one mode), so it exits when the test ends -- there's
@@ -525,17 +555,41 @@ func (b *broker) BuildImage(
 	}
 	b.imageUsage.touch(dockerImageName)
 
-	// Build QCOW2 or RAW image
 	providerDevName := fmt.Sprintf("eve-%s-%s", clientSession.clientID, req.DeviceName)
 	imageDirPath := filepath.Join(b.imageDir, providerDevName)
-	eveImage, err := buildEVEImage(ctx, log, buildEVEImageParams{
-		imageDirPath:    imageDirPath,
-		dockerImageName: dockerImageName,
-		config:          req.Config,
-		proxyCACerts:    b.proxyCACerts,
-		diskSize:        req.DiskBytes,
-		installer:       req.MakeInstaller,
-	})
+	softSerial := resolveSoftSerial(req.GetConfig().GetSoftSerial())
+
+	var eveImage buildEVEImageResult
+	var templateKey string
+	if b.provider.DiskImageStrategy() == provider.DiskImageLegacyBuild {
+		eveImage, err = buildEVEImage(ctx, log, buildEVEImageParams{
+			imageDirPath:    imageDirPath,
+			dockerImageName: dockerImageName,
+			config:          req.Config,
+			proxyCACerts:    b.proxyCACerts,
+			softSerial:      softSerial,
+			diskSize:        req.DiskBytes,
+			installer:       req.MakeInstaller,
+		})
+	} else {
+		var dockerImageID string
+		dockerImageID, err = utils.DockerImageID(ctx, dockerImageName)
+		if err == nil {
+			eveImage, templateKey, err = makeDeviceImage(ctx, log, b.templates,
+				providerDevName, makeDeviceImageParams{
+					imageDirPath:    imageDirPath,
+					dockerImageName: dockerImageName,
+					dockerImageID:   dockerImageID,
+					arch:            imageArch,
+					config:          req.Config,
+					proxyCACerts:    b.proxyCACerts,
+					softSerial:      softSerial,
+					diskSize:        req.DiskBytes,
+					installer:       req.MakeInstaller,
+					overlay:         b.provider.DiskImageStrategy() == provider.DiskImageOverlay,
+				})
+		}
+	}
 	if err != nil {
 		err = fmt.Errorf("failed to build EVE image for device %q: %v",
 			req.DeviceName, err)
@@ -566,6 +620,7 @@ func (b *broker) BuildImage(
 		providerDevName: providerDevName,
 		installerImage:  eveImage.installerImage,
 		disks:           eveImage.disks,
+		templateKey:     templateKey,
 		created:         false, // device is created by SetupDevices
 	}
 	clientSession.eveDevices[req.DeviceName] = eveDevice
@@ -1170,6 +1225,12 @@ func (b *broker) teardownDevices(ctx context.Context, clientSession *session) {
 			} else {
 				log.Infof("Removed image directory for EVE device %q at %q",
 					deviceName, imageDir)
+			}
+		}
+		if dev.templateKey != "" {
+			if err := b.templates.removeRef(dev.templateKey, dev.providerDevName); err != nil {
+				log.Warnf("Failed to release template ref for EVE device %q: %v",
+					deviceName, err)
 			}
 		}
 	}

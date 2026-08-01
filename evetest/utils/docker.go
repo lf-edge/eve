@@ -95,6 +95,25 @@ func HaveDockerImage(ctx context.Context, log *logrus.Entry, image string) (bool
 	return err == nil, nil
 }
 
+// DockerImageID returns the content-addressable ID of a local Docker image.
+// Callers that cache artifacts derived from an image must key on this rather
+// than on the image name: the normal development loop rebuilds EVE and pushes
+// it under an unchanged tag, so a name-keyed cache would serve stale results.
+func DockerImageID(ctx context.Context, imageName string) (string, error) {
+	cli, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		return "", fmt.Errorf("failed to create docker client: %w", err)
+	}
+	resp, err := cli.ImageInspect(ctx, imageName)
+	if err != nil {
+		return "", fmt.Errorf("failed to inspect docker image %q: %w", imageName, err)
+	}
+	if resp.ID == "" {
+		return "", fmt.Errorf("docker reported no ID for image %q", imageName)
+	}
+	return resp.ID, nil
+}
+
 // IsErrDockerImageNotFound returns true if err indicates that a Docker image
 // does not exist in the local Docker daemon (i.e. "No such image").
 func IsErrDockerImageNotFound(err error) bool {

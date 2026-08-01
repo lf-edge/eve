@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/lf-edge/eve/evetest/broker/provider"
 	api "github.com/lf-edge/eve/evetest/grpcapi/go"
 	"github.com/lf-edge/eve/evetest/utils"
@@ -117,13 +118,20 @@ type buildEVEImageParams struct {
 	diskSize uint64
 	// installer, when true, builds a RAW installer image instead of a live QCOW2 image.
 	installer bool
+	// softSerial is the device's soft serial number. Always non-empty; see
+	// resolveSoftSerial.
+	softSerial string
 }
 
-// buildEVEImageResult holds the outputs of buildEVEImage (excluding the error).
+// buildEVEImageResult holds the outputs of either device-image producer
+// (buildEVEImage, the legacy per-device build, or makeDeviceImage, the
+// template-backed overlay build) excluding the error.
 type buildEVEImageResult struct {
-	// installerImage is non-nil only for installer builds. It points to the RAW
-	// installer image that is prepended to disks for the first (installer) boot,
-	// then discarded — subsequent boots use only disks.
+	// installerImage is non-nil only for installer builds. It is prepended to
+	// disks for the first (installer) boot, then discarded — subsequent boots
+	// use only disks. Its Format depends on which producer filled this struct:
+	// RAW from the legacy buildEVEImage path, QCOW2 from the template-backed
+	// makeDeviceImage path, where it must be QCOW2 to be a template overlay.
 	installerImage *provider.DiskImage
 	// disks is the list of persistent disk images for the device. Currently always
 	// a single disk (live QCOW2 for live builds, blank target QCOW2 for installer
@@ -172,7 +180,7 @@ func buildEVEImage(ctx context.Context, log *logrus.Entry,
 	// mounted at the same path) and can be passed to docker-out-of-docker.
 	var configDir string
 	configDir, err = makeEVEConfigDir(
-		params.imageDirPath, params.config, params.proxyCACerts)
+		params.imageDirPath, params.config, params.proxyCACerts, params.softSerial)
 	if err != nil {
 		err = fmt.Errorf("failed to prepare EVE config dir: %w", err)
 		return result, err
@@ -283,10 +291,13 @@ func buildEVEImage(ctx context.Context, log *logrus.Entry,
 //
 // Certificates are validated before writing. Proxy CA certificates passed in
 // proxyCACerts are appended to v2tlsbaseroot-certificates.pem.
-func makeEVEConfigDir(parentDir string,
-	config *api.EveConfig, proxyCACerts []*pem.Block) (dirPath string, err error) {
+//
+// softSerial is passed separately rather than read from config because it is
+// never empty: see resolveSoftSerial.
+func makeEVEConfigDir(parentDir string, config *api.EveConfig,
+	proxyCACerts []*pem.Block, softSerial string) (dirPath string, err error) {
 
-	if config == nil && len(proxyCACerts) == 0 {
+	if config == nil && len(proxyCACerts) == 0 && softSerial == "" {
 		return "", nil
 	}
 
@@ -316,42 +327,42 @@ func makeEVEConfigDir(parentDir string,
 		return nil
 	}
 
-	err = writeFile("server", []byte(config.ServerName))
+	err = writeFile("soft_serial", []byte(softSerial))
 	if err != nil {
 		return "", err
 	}
-	err = writeFile("soft_serial", []byte(config.SoftSerial))
+	err = writeFile("server", []byte(config.GetServerName()))
 	if err != nil {
 		return "", err
 	}
 
-	if len(config.OnboardCertPem) > 0 {
-		_, err = utils.ValidatePEMCerts([]byte(config.OnboardCertPem), true)
+	if len(config.GetOnboardCertPem()) > 0 {
+		_, err = utils.ValidatePEMCerts([]byte(config.GetOnboardCertPem()), true)
 		if err != nil {
 			return "", fmt.Errorf("onboard certificate invalid: %w", err)
 		}
-		err = writeFile("onboard.cert.pem", []byte(config.OnboardCertPem))
+		err = writeFile("onboard.cert.pem", []byte(config.GetOnboardCertPem()))
 		if err != nil {
 			return "", err
 		}
 	}
-	if len(config.OnboardKeyPem) > 0 {
-		err = utils.ValidatePEMPrivateKeyECDSA([]byte(config.OnboardKeyPem))
+	if len(config.GetOnboardKeyPem()) > 0 {
+		err = utils.ValidatePEMPrivateKeyECDSA([]byte(config.GetOnboardKeyPem()))
 		if err != nil {
 			return "", fmt.Errorf("onboard key invalid: %w", err)
 		}
-		err = writeFile("onboard.key.pem", []byte(config.OnboardKeyPem))
+		err = writeFile("onboard.key.pem", []byte(config.GetOnboardKeyPem()))
 		if err != nil {
 			return "", err
 		}
 	}
 
-	if len(config.RootCertPem) > 0 {
-		_, err = utils.ValidatePEMCerts([]byte(config.RootCertPem), true)
+	if len(config.GetRootCertPem()) > 0 {
+		_, err = utils.ValidatePEMCerts([]byte(config.GetRootCertPem()), true)
 		if err != nil {
 			return "", fmt.Errorf("root certificate invalid: %w", err)
 		}
-		err = writeFile("root-certificate.pem", []byte(config.RootCertPem))
+		err = writeFile("root-certificate.pem", []byte(config.GetRootCertPem()))
 		if err != nil {
 			return "", err
 		}
@@ -362,7 +373,7 @@ func makeEVEConfigDir(parentDir string,
 	writeV2TLS := false
 
 	// Validate and append V2TlsCertsPem
-	for _, pemStr := range config.V2TlsCertsPem {
+	for _, pemStr := range config.GetV2TlsCertsPem() {
 		_, err = utils.ValidatePEMCerts([]byte(pemStr), true)
 		if err != nil {
 			return "", fmt.Errorf("v2 TLS certificate invalid: %w", err)
@@ -392,36 +403,359 @@ func makeEVEConfigDir(parentDir string,
 		}
 	}
 
-	if len(config.SshKeys) > 0 {
-		keysData := strings.Join(config.SshKeys, "\n")
+	if len(config.GetSshKeys()) > 0 {
+		keysData := strings.Join(config.GetSshKeys(), "\n")
 		err = writeFile("authorized_keys", []byte(keysData))
 		if err != nil {
 			return "", err
 		}
 	}
 
-	if len(config.GrubOptions) > 0 {
-		grubConfig := strings.Join(config.GrubOptions, "\n")
+	if len(config.GetGrubOptions()) > 0 {
+		grubConfig := strings.Join(config.GetGrubOptions(), "\n")
 		err = writeFile("grub.cfg", []byte(grubConfig))
 		if err != nil {
 			return "", err
 		}
 	}
 
-	err = writeFile("GlobalConfig/global.json", []byte(config.GlobalJson))
+	err = writeFile("GlobalConfig/global.json", []byte(config.GetGlobalJson()))
 	if err != nil {
 		return "", err
 	}
-	err = writeFile("DevicePortConfig/override.json", []byte(config.OverrideJson))
+	err = writeFile("DevicePortConfig/override.json", []byte(config.GetOverrideJson()))
 	if err != nil {
 		return "", err
 	}
-	if len(config.BootstrapConfigPb) > 0 {
-		err = writeFile("bootstrap-config.pb", config.BootstrapConfigPb)
+	if len(config.GetBootstrapConfigPb()) > 0 {
+		err = writeFile("bootstrap-config.pb", config.GetBootstrapConfigPb())
 		if err != nil {
 			return "", err
 		}
 	}
 
 	return dirPath, nil
+}
+
+// resolveSoftSerial returns the soft serial number to write into a device's
+// config partition.
+//
+// pkg/eve/runme.sh:158-162 generates one whenever /bits/config.img has none,
+// but that runs once per *template* now rather than once per device, so every
+// device would otherwise inherit the same serial. Generating here keeps cluster
+// nodes distinct. A serial explicitly requested by the test (RequireEdgeDevice.
+// WithSoftSerial) is passed through unchanged.
+func resolveSoftSerial(requested string) string {
+	if requested != "" {
+		return requested
+	}
+	return uuid.NewString()
+}
+
+// mcopyArgs builds the mtools invocation that overlays a device's config files
+// onto a copy of the pristine config partition image. It mirrors
+// pkg/eve/runme.sh:337 -- `mcopy -o -i /bits/config.img -s /in/* ::/` -- with
+// the shell glob replaced by an explicit list, so no shell is involved.
+func mcopyArgs(cfgImgPath string, configDirEntries []string) []string {
+	args := make([]string, 0, len(configDirEntries)+5)
+	args = append(args, "-o", "-i", cfgImgPath, "-s")
+	args = append(args, configDirEntries...)
+	return append(args, "::/")
+}
+
+// writeConfigPartition produces the device's config partition image at outPath:
+// a copy of the template's pristine config.img with the device's config files
+// overlaid onto it.
+func writeConfigPartition(ctx context.Context, log *logrus.Entry,
+	templateConfigImg, configDir, outPath string) (err error) {
+
+	if err = utils.CopyFile(templateConfigImg, outPath); err != nil {
+		return fmt.Errorf("failed to copy config partition image: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			if removeErr := os.Remove(outPath); removeErr != nil {
+				log.Warnf("Failed to remove config partition image %q: %v",
+					outPath, removeErr)
+			}
+		}
+	}()
+	entries, err := os.ReadDir(configDir)
+	if err != nil {
+		return fmt.Errorf("failed to read config dir %q: %w", configDir, err)
+	}
+	if len(entries) == 0 {
+		return fmt.Errorf("config dir %q is empty", configDir)
+	}
+	paths := make([]string, 0, len(entries))
+	for _, e := range entries {
+		paths = append(paths, filepath.Join(configDir, e.Name()))
+	}
+	cmd := exec.CommandContext(ctx, "mcopy", mcopyArgs(outPath, paths)...)
+	// The 5 MiB FAT image has a geometry mtools considers suspicious; the EVE
+	// build sets the same skip in /etc/mtools.conf (pkg/mkconf/make-config).
+	cmd.Env = append(os.Environ(), "MTOOLS_SKIP_CHECK=1")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("mcopy into %q failed: %v: %s", outPath, err, out)
+	}
+	log.Debugf("Wrote config partition image %q from %d config entries",
+		outPath, len(paths))
+	return nil
+}
+
+// injectConfigPartition writes a config partition image into the CONFIG
+// partition of a QCOW2 disk. qemu-io is used rather than nbd or libguestfs
+// because it needs no kernel module, no /dev access and no privileged
+// container -- and it ships in the same Alpine qemu-img package as qemu-img.
+func injectConfigPartition(ctx context.Context, log *logrus.Entry,
+	diskPath, cfgImgPath string, part gptPartition) error {
+
+	info, err := os.Stat(cfgImgPath)
+	if err != nil {
+		return fmt.Errorf("failed to stat config partition image: %w", err)
+	}
+	if info.Size() > part.Length {
+		return fmt.Errorf(
+			"config partition image is %d bytes, larger than the %d-byte CONFIG partition",
+			info.Size(), part.Length)
+	}
+	// qemu-io tokenizes the -c argument itself, so a path containing
+	// whitespace would be split into separate arguments.
+	if strings.ContainsAny(cfgImgPath, " \t") {
+		return fmt.Errorf("config partition image path %q contains whitespace", cfgImgPath)
+	}
+	script := fmt.Sprintf("write -s %s %d %d", cfgImgPath, part.Offset, info.Size())
+	out, err := exec.CommandContext(ctx, "qemu-io",
+		"-f", "qcow2", "-c", script, diskPath).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("qemu-io write into %q failed: %v: %s", diskPath, err, out)
+	}
+	log.Debugf("Injected %d bytes of config partition at offset %d of %q",
+		info.Size(), part.Offset, diskPath)
+	return nil
+}
+
+// buildTemplateDisk runs the EVE container once to produce a
+// configuration-independent disk image, and extracts the pristine config
+// partition image and UEFI firmware alongside it. This is the expensive step
+// the template cache exists to avoid repeating.
+//
+// No /in volume is mounted, so the disk carries the EVE image's default config
+// partition; per-device configuration is written into the working copy later.
+func buildTemplateDisk(ctx context.Context, log *logrus.Entry,
+	dockerImageName string, diskSize uint64, installer bool,
+	dstDir string) (gptPartition, error) {
+
+	var none gptPartition
+
+	err := utils.ExtractFromDockerImage(ctx, log, dockerImageName, dstDir, "/bits/firmware")
+	if err != nil {
+		return none, fmt.Errorf("failed to extract UEFI firmware from %s: %w",
+			dockerImageName, err)
+	}
+	err = utils.ExtractFromDockerImage(ctx, log, dockerImageName, dstDir, "/bits/config.img")
+	if err != nil {
+		return none, fmt.Errorf("failed to extract config partition image from %s: %w",
+			dockerImageName, err)
+	}
+
+	var builtName, cmd string
+	if installer {
+		// Built as QCOW2 rather than RAW so it can back an overlay -- and so a
+		// sparse 8 GiB installer stops materialising in full per device.
+		builtName = "installer.raw.qcow2"
+		cmd = "-f qcow2 installer_raw"
+	} else {
+		builtName = "live.raw.qcow2"
+		cmd = "-f qcow2 live"
+		if diskSize != 0 {
+			cmd += fmt.Sprintf(" %d", diskSize>>20)
+		}
+	}
+
+	log.Infof("Building EVE image template disk in %q", dstDir)
+	dockerOutput, err := utils.RunDockerCommand(
+		ctx, log, dockerImageName, cmd, map[string]string{"/out": dstDir}, "")
+	if err != nil {
+		return none, fmt.Errorf("failed to run docker command for EVE image build: %w", err)
+	}
+	builtPath := filepath.Join(dstDir, builtName)
+	info, err := os.Stat(builtPath)
+	if err != nil {
+		log.Infof("Docker output:\n%s", dockerOutput)
+		return none, fmt.Errorf("expected EVE image file %q not found: %w", builtPath, err)
+	}
+	if info.Size() == 0 {
+		log.Infof("Docker output:\n%s", dockerOutput)
+		return none, fmt.Errorf("EVE image file %q is empty", builtPath)
+	}
+	diskPath := filepath.Join(dstDir, templateDiskFile)
+	if err := os.Rename(builtPath, diskPath); err != nil {
+		return none, fmt.Errorf("failed to rename %q to %q: %w", builtPath, diskPath, err)
+	}
+
+	head, err := readDiskHead(ctx, diskPath)
+	if err != nil {
+		return none, fmt.Errorf("failed to read GPT of %q: %w", diskPath, err)
+	}
+	part, err := findGPTPartition(head, gptConfigPartName)
+	if err != nil {
+		return none, fmt.Errorf("failed to locate the CONFIG partition in %q: %w", diskPath, err)
+	}
+	cfgInfo, err := os.Stat(filepath.Join(dstDir, templateConfigImgFile))
+	if err != nil {
+		return none, fmt.Errorf("failed to stat the extracted config partition image: %w", err)
+	}
+	if cfgInfo.Size() > part.Length {
+		return none, fmt.Errorf(
+			"config partition image is %d bytes but the CONFIG partition is only %d",
+			cfgInfo.Size(), part.Length)
+	}
+	log.Infof("EVE image template disk built: CONFIG partition at offset %d, length %d",
+		part.Offset, part.Length)
+	return part, nil
+}
+
+// makeDeviceImageParams groups the inputs to makeDeviceImage.
+type makeDeviceImageParams struct {
+	// imageDirPath is the per-device output directory.
+	imageDirPath string
+	// dockerImageName is the EVE container image to build the template from.
+	dockerImageName string
+	// dockerImageID is that image's content ID, which the template is keyed on.
+	dockerImageID string
+	// arch is the device architecture.
+	arch api.ArchType
+	// config provides server, certificates, keys and JSON configs. May be nil.
+	config *api.EveConfig
+	// proxyCACerts are trusted proxy CA certificates to add to the image.
+	proxyCACerts []*pem.Block
+	// softSerial is the device's soft serial. Always non-empty.
+	softSerial string
+	// diskSize is the desired disk size in bytes. Zero means the image default.
+	diskSize uint64
+	// installer, when true, produces an installer image plus a blank target disk.
+	installer bool
+	// overlay selects a QCOW2 backing-file working copy over a standalone copy.
+	overlay bool
+}
+
+// makeDeviceImage derives a device's disk image from a cached template: it
+// creates the working copy, assembles the device's config partition and writes
+// it into the disk's CONFIG partition. The returned templateKey must be passed
+// to templateCache.removeRef when the device is torn down.
+func makeDeviceImage(ctx context.Context, log *logrus.Entry, cache *templateCache,
+	refName string, params makeDeviceImageParams) (
+	result buildEVEImageResult, templateKey string, err error) {
+
+	tmpl, err := cache.ensureTemplate(ctx, log, templateKeyParams{
+		DockerImageID: params.dockerImageID,
+		DiskBytes:     params.diskSize,
+		Installer:     params.installer,
+		Arch:          params.arch,
+	}, func(ctx context.Context, log *logrus.Entry, dstDir string) (gptPartition, error) {
+		return buildTemplateDisk(ctx, log, params.dockerImageName,
+			params.diskSize, params.installer, dstDir)
+	})
+	if err != nil {
+		return result, "", err
+	}
+
+	if err = os.MkdirAll(params.imageDirPath, 0o755); err != nil {
+		return result, "", fmt.Errorf("failed to create device image dir %q: %w",
+			params.imageDirPath, err)
+	}
+	// From here on the device dir and the template ref are both owned by the
+	// caller's teardown path only once we return successfully.
+	defer func() {
+		if err != nil {
+			if rmErr := os.RemoveAll(params.imageDirPath); rmErr != nil {
+				log.Warnf("Failed to remove device image dir %q: %v",
+					params.imageDirPath, rmErr)
+			}
+			if rmErr := cache.removeRef(tmpl.Key, refName); rmErr != nil {
+				log.Warnf("Failed to release template ref: %v", rmErr)
+			}
+		}
+	}()
+	if err = cache.addRef(tmpl.Key, refName); err != nil {
+		return result, "", err
+	}
+
+	diskPath := filepath.Join(params.imageDirPath, "disk.qcow2")
+	if params.overlay {
+		out, cmdErr := exec.CommandContext(ctx, "qemu-img", "create",
+			"-f", "qcow2", "-b", tmpl.diskPath(), "-F", "qcow2", diskPath).CombinedOutput()
+		if cmdErr != nil {
+			err = fmt.Errorf("failed to create overlay %q: %v: %s", diskPath, cmdErr, out)
+			return result, "", err
+		}
+	} else if err = utils.CopyFile(tmpl.diskPath(), diskPath); err != nil {
+		err = fmt.Errorf("failed to copy template disk to %q: %w", diskPath, err)
+		return result, "", err
+	}
+
+	var configDir string
+	configDir, err = makeEVEConfigDir(
+		params.imageDirPath, params.config, params.proxyCACerts, params.softSerial)
+	if err != nil {
+		err = fmt.Errorf("failed to prepare EVE config dir: %w", err)
+		return result, "", err
+	}
+	defer os.RemoveAll(configDir)
+
+	// The config partition image is staged outside the device directory: its
+	// path is passed through qemu-io's own tokenizer, and the device directory
+	// name embeds a test-supplied device name.
+	var cfgDir string
+	cfgDir, err = os.MkdirTemp("", "evetest-cfgpart-*")
+	if err != nil {
+		err = fmt.Errorf("failed to create temp dir for the config partition: %w", err)
+		return result, "", err
+	}
+	defer os.RemoveAll(cfgDir)
+	cfgImgPath := filepath.Join(cfgDir, "config.img")
+	if err = writeConfigPartition(ctx, log, tmpl.configImgPath(), configDir, cfgImgPath); err != nil {
+		return result, "", err
+	}
+	if err = injectConfigPartition(ctx, log, diskPath, cfgImgPath, tmpl.configPartition()); err != nil {
+		return result, "", err
+	}
+
+	// OVMF_VARS.fd is attached as libvirt NVRAM and written by the running VM,
+	// so each device needs its own copy of the firmware directory.
+	result.firmwareDir = filepath.Join(params.imageDirPath, templateFirmwareDir)
+	if err = utils.CopyFolder(tmpl.firmwareDir(), result.firmwareDir); err != nil {
+		err = fmt.Errorf("failed to copy UEFI firmware: %w", err)
+		return result, "", err
+	}
+
+	if !params.installer {
+		result.disks = []provider.DiskImage{
+			{Format: provider.DiskImageFormatQcow2, Path: diskPath},
+		}
+		return result, tmpl.Key, nil
+	}
+
+	if params.diskSize == 0 {
+		err = fmt.Errorf("diskSize must be non-zero for installer builds")
+		return result, "", err
+	}
+	targetDiskPath := filepath.Join(params.imageDirPath, "installed.qcow2")
+	diskSizeMiB := params.diskSize >> 20
+	out, cmdErr := exec.CommandContext(ctx, "qemu-img", "create", "-f", "qcow2",
+		targetDiskPath, fmt.Sprintf("%dM", diskSizeMiB)).CombinedOutput()
+	if cmdErr != nil {
+		err = fmt.Errorf("failed to create installer target disk %q: %v: %s",
+			targetDiskPath, cmdErr, out)
+		return result, "", err
+	}
+	installerImage := provider.DiskImage{
+		Format: provider.DiskImageFormatQcow2, Path: diskPath}
+	result.installerImage = &installerImage
+	result.disks = []provider.DiskImage{
+		{Format: provider.DiskImageFormatQcow2, Path: targetDiskPath},
+	}
+	return result, tmpl.Key, nil
 }

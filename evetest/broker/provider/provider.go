@@ -26,6 +26,10 @@ type DeviceProvider interface {
 	// active provider does not advertise them.
 	Capabilities() []api.Capability
 
+	// DiskImageStrategy reports how the broker should produce per-device disk
+	// images for this provider. See DiskImageStrategy.
+	DiskImageStrategy() DiskImageStrategy
+
 	// SetupDevice creates a new device in a powered-off state with the specified configuration.
 	// The device must be created but not started, allowing for additional configuration
 	// before power-on if needed.
@@ -126,6 +130,23 @@ const (
 	DiskImageFormatQcow2 DiskImageFormat = iota
 	// DiskImageFormatRaw is the raw disk image format.
 	DiskImageFormatRaw
+)
+
+// DiskImageStrategy describes how the broker should produce a per-device disk
+// image for a given provider.
+type DiskImageStrategy int
+
+const (
+	// DiskImageLegacyBuild runs a full per-device EVE container build. The
+	// default for providers not yet validated against the template cache.
+	DiskImageLegacyBuild DiskImageStrategy = iota
+	// DiskImageStandalone derives the device disk from a cached template by
+	// copying it, for providers that move the image elsewhere before use --
+	// Proxmox uploads it to the PVE node, where a backing file would not exist.
+	DiskImageStandalone
+	// DiskImageOverlay derives the device disk as a QCOW2 whose backing file is
+	// the cached template, for providers that attach local files directly.
+	DiskImageOverlay
 )
 
 // DiskImage describes a single disk to attach to a device.
