@@ -247,6 +247,19 @@ Longhorn_is_ready() {
         return 1
     fi
 
+    # Longhorn runs a volume's engine and replica processes inside the
+    # instance-manager pod, so the node cannot serve a volume until one is
+    # running. It is owned by an InstanceManager CR rather than a DaemonSet,
+    # so the daemonset sweep above cannot observe it.
+    imState=$(kubectl -n longhorn-system get instancemanagers.longhorn.io -o json | jq -r --arg n "$node" '[.items[] | select(.spec.nodeID==$n) | .status.currentState] | index("running")')
+    if [ "$imState" = "null" ]; then
+        if [ -n "${bootLhRdyComplete}" ]; then
+                # Allow the final ready log message when its reached.
+                bootLhRdyComplete=""
+        fi
+        return 1
+    fi
+
     if [ -z "${bootLhRdyComplete}" ]; then
         logmsg "longhorn ds ready, node:$node nodedeploymentmap:$(echo "$ndm" | tr -d '\n')"
         bootLhRdyComplete="1"
