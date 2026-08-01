@@ -344,7 +344,7 @@ func checkLonghornReady(client kubernetes.Interface, nodeName string) error {
 		}
 	}
 
-	return nil
+	return instanceManagerReady(ctx, nodeName)
 }
 
 // nodeReadyByName confirms this device's Kubernetes node object exists. nodeName is the

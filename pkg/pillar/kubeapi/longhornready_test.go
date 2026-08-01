@@ -6,6 +6,7 @@
 package kubeapi
 
 import (
+	"context"
 	"testing"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -58,7 +59,18 @@ func healthyLonghornObjects() []runtime.Object {
 	return objs
 }
 
+// stubInstanceManagerGate satisfies the instance-manager gate for the tests that
+// exercise the daemonset sweep. The real gate builds a Longhorn client from the
+// on-device kubeconfig, which a fake clientset cannot supply, so a test that
+// wants to reach a positive verdict has to substitute it.
+func stubInstanceManagerGate(t *testing.T) {
+	saved := instanceManagerReady
+	t.Cleanup(func() { instanceManagerReady = saved })
+	instanceManagerReady = func(context.Context, string) error { return nil }
+}
+
 func TestCheckLonghornReadyHealthy(t *testing.T) {
+	stubInstanceManagerGate(t)
 	client := fake.NewSimpleClientset(healthyLonghornObjects()...)
 	if err := checkLonghornReady(client, lhTestNode); err != nil {
 		t.Fatalf("expected ready, got %v", err)
@@ -69,6 +81,7 @@ func TestCheckLonghornReadyHealthy(t *testing.T) {
 // collect-info leaves a SupportBundle agent daemonset behind in this namespace
 // which never becomes ready, and it used to block every volume on the node.
 func TestCheckLonghornReadyIgnoresStrayDaemonset(t *testing.T) {
+	stubInstanceManagerGate(t)
 	objs := healthyLonghornObjects()
 	objs = append(objs, lhDaemonset("longhorn-support-bundle-agent"))
 	client := fake.NewSimpleClientset(objs...)
