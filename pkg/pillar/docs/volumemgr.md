@@ -47,6 +47,8 @@ Volume Manager interacts with the Cloud controller (e.g. zedcontrol) indirectly 
 
 Both VolumeStatus and VolumeConfig use the agentScope mechanism to keep the baseosmgr and zedmanager use separately.
 
+Volume Manager also publishes a single VolumeMgrStatus describing itself rather than any one volume. `RemainingSpace` drives nodeagent's decision to enter MaintenanceMode when the device is out of disk space. `Initialized` says whether storage is usable at all: on an EVE-k node it is the outcome of waiting for cluster storage (Longhorn and CDI) to come up, and when it is false `UnmetCondition` names the gate that was still outstanding, which diag prints on the console.
+
 Volume Manager in turn requests work from downloader and verifier. This consists of a set of objects (all using the agentScope mechanism):
 
 - DownloaderConfig is published by volumemgr and subscribed to by downloader. This specifies the desire to find a downloaded blob for a particular object.
