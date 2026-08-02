@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -440,6 +441,17 @@ func (p *LibvirtProvider) SetupDevice(
 	return nil
 }
 
+// nvramTagPattern matches a domain XML "<nvram>" element opening tag, with or
+// without attributes. Real libvirt always emits attributes on this element (e.g.
+// format='raw', template='...', type='file'), so the match must not require a bare
+// "<nvram>" -- that never occurs in practice and would silently defeat detection.
+var nvramTagPattern = regexp.MustCompile(`<nvram[ >/]`)
+
+// domainHasNvram reports whether a domain's XML description declares an NVRAM element.
+func domainHasNvram(xmlDesc string) bool {
+	return nvramTagPattern.MatchString(xmlDesc)
+}
+
 // TeardownDevice stops the device (if running) and removes it completely,
 // including all associated resources (disks, network interfaces, NVRAM, etc.).
 func (p *LibvirtProvider) TeardownDevice(ctx context.Context, name string) error {
@@ -470,16 +482,20 @@ func (p *LibvirtProvider) TeardownDevice(ctx context.Context, name string) error
 		log.Warnf("Failed to get XML description for domain %q: %v", name, err)
 	}
 
-	hasNvram := strings.Contains(xmlDesc, "<nvram>")
+	hasNvram := domainHasNvram(xmlDesc)
 	log.Debugf("Domain %q has NVRAM: %t", name, hasNvram)
 
-	// Undefine domain, including NVRAM if present
+	// Undefine domain, including NVRAM if present. libvirt errors out either way if the
+	// flag doesn't match reality: DOMAIN_UNDEFINE_NVRAM on a domain with no nvram fails
+	// with "cannot undefine domain with no nvram", and omitting it on a domain that has
+	// one fails with "cannot undefine domain with nvram" -- so this must be conditional.
 	var undefineFlags libvirt.DomainUndefineFlagsValues
 	if hasNvram {
 		undefineFlags = libvirt.DOMAIN_UNDEFINE_NVRAM
 	}
 	if err := dom.UndefineFlags(undefineFlags); err != nil {
-		err = fmt.Errorf("failed to undefine domain %q: %w", name, err)
+		err = fmt.Errorf("failed to undefine domain %q, its definition leaked and will "+
+			"collide with \"already exists\" on a later run of the same test: %w", name, err)
 		log.Error(err)
 		return err
 	}
