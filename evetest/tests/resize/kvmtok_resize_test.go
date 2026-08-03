@@ -435,7 +435,33 @@ func captureAppNetFailure(device *evetest.EdgeDevice, appUUID uuid.UUID) {
 		{"longhorn StorageClass (replicas/config)", `eve exec kube kubectl get sc longhorn -o yaml 2>/dev/null || echo none`},
 		{"longhorn version (manager ds image)", `eve exec kube kubectl -n longhorn-system get ds longhorn-manager -o wide 2>/dev/null || echo none`},
 		{"CDI upload-controller log", `eve exec kube kubectl -n cdi logs deployment/cdi-deployment --tail=60 2>/dev/null || echo none`},
-		{"volumemgr RolloutDiskToPVC / V5 signature (newlog)", newlogProbe(`grep -aiE "RolloutDiskToPVC|retryFailedClusterVolumeCreate|terminating:true|local-path" | tail -30`)},
+		// The upload SERVER, not the controller: this is the process that receives the
+		// transfer, and the one observed Ready and idle while the upload never
+		// completes. Its own logs were never captured, so every wedge so far has been
+		// diagnosed without looking at the component that stalls.
+		// --previous as well as the live log: on a 512 MiB reproduction the upload pod
+		// reported Succeeded and was gone by the time this ran, so the live fetch
+		// returned nothing and the component's own account of the transfer was lost.
+		{"CDI upload-server pod log (the stalling component)", `eve exec kube kubectl -n eve-kube-app logs -l cdi.kubevirt.io=cdi-upload-server --tail=120 --prefix 2>/dev/null; eve exec kube kubectl -n eve-kube-app logs -l cdi.kubevirt.io=cdi-upload-server --tail=120 --prefix --previous 2>/dev/null; echo "--- end upload-server logs"`},
+		// Warning events outlive the pods that caused them, so they survive an upload
+		// pod that terminated. This is where an attach failure shows up — the observed
+		// end state is a Bound claim whose Longhorn volume is detached, which no
+		// pod-scoped probe explains.
+		{"eve-kube-app warning events (attach/mount failures)", `eve exec kube kubectl -n eve-kube-app get events --field-selector type=Warning --sort-by=.lastTimestamp 2>/dev/null | tail -40 || echo none`},
+		{"longhorn-system warning events", `eve exec kube kubectl -n longhorn-system get events --field-selector type=Warning --sort-by=.lastTimestamp 2>/dev/null | tail -30 || echo none`},
+		// How far the transfer got. Stuck at 0% means it never started (proxy/route),
+		// stuck partway means it began and stalled — different faults entirely.
+		{"CDI upload progress annotations", `eve exec kube kubectl -n eve-kube-app get pvc -o custom-columns=NAME:.metadata.name,PHASE:.status.phase,PROGRESS:'.metadata.annotations.cdi\.kubevirt\.io/storage\.pod\.progress',PODPHASE:'.metadata.annotations.cdi\.kubevirt\.io/storage\.pod\.phase',RUNNING:'.metadata.annotations.cdi\.kubevirt\.io/storage\.condition\.running' 2>/dev/null || echo none`},
+		// Whether the target volume is actually attachable underneath: an upload can
+		// idle because Longhorn never brought the volume up on the uploader's node.
+		{"longhorn volume detail for the upload target", `eve exec kube kubectl -n longhorn-system get volumes.longhorn.io -o custom-columns=NAME:.metadata.name,STATE:.status.state,ROBUST:.status.robustness,NODE:.status.currentNodeID,SIZE:.spec.size 2>/dev/null || echo none`},
+		// A wedged import re-drives this call for tens of minutes, so 30 lines is all
+		// retry noise: on every wedged run of 2026-07-31 the window came back exactly
+		// full, crowding out the one line that said whether the recovery below had
+		// run. An absent line then cannot be told from a truncated one.
+		{"volumemgr RolloutDiskToPVC / V5 signature (newlog)", newlogProbe(`grep -aiE "RolloutDiskToPVC|retryFailedClusterVolumeCreate|terminating:true|local-path" | tail -200`)},
+		// Recovery actions get their own probe so retry spam cannot bury them.
+		{"PVC recovery actions taken (scratch/target delete)", newlogProbe(`grep -aiE "deleted wedged scratch PVC|could not delete wedged scratch|deleted wedged target PVC" | tail -40`)},
 		{"MOUNT-WEDGE-RECOVERY (detector fired?)", newlogProbe(`grep -ai MOUNT-WEDGE-RECOVERY | tail -10`)},
 		{"kubevirt vmi -A", `eve exec kube kubectl get vmi -A -o wide 2>/dev/null || echo none`},
 	}
@@ -461,6 +487,19 @@ func capturePersist(device *evetest.EdgeDevice, label string) {
 		{"longhorn node -o wide", `eve exec kube kubectl -n longhorn-system get nodes.longhorn.io -o wide 2>/dev/null || echo none`},
 		{"longhorn storage settings", `eve exec kube kubectl -n longhorn-system get settings.longhorn.io -o custom-columns=NAME:.metadata.name,VALUE:.value 2>/dev/null | grep -aiE "NAME|reserved|over-provisioning|minimal-available|soft-anti-affinity" || echo none`},
 		{"eve-kube-app pvc (requested sizes)", `eve exec kube kubectl -n eve-kube-app get pvc 2>/dev/null || echo none`},
+	}
+	// The same pre-flight baseosmgr runs to decide the conversion. When it declines,
+	// the controller carries only the one-line reason ("persist is too full to free
+	// the needed space"); the JSON carries the numbers behind it — needed/target/used
+	// bytes, the resize2fs floor estimate and the maxFullPercent policy — which is the
+	// difference between knowing that it declined and knowing why.
+	if disk, err := bootDiskPath(device); err == nil {
+		probes = append(probes, struct{ what, script string }{
+			"storage-resizer check (conversion pre-flight)",
+			"eve exec pillar /usr/bin/storage-resizer check --disk " + disk + " --json 2>&1 || echo none",
+		})
+	} else {
+		log.Errorf("[persist:%s] storage-resizer check: could not resolve boot disk: %v", label, err)
 	}
 	for _, p := range probes {
 		out, errOut, err := device.RunShellScript(p.script, 60*time.Second, 0)
