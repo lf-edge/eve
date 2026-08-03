@@ -800,8 +800,13 @@ func (ctx kubevirtContext) Start(domainName string) error {
 			break
 		}
 		if errors.IsAlreadyExists(err) {
-			// VMI could have been already started, for example failover from other node.
+			// VMI could have been already started, for example failover from
+			// other node. An interrupted DetachUtilVmirsReplicaReset can leave
+			// the existing object scaled to 0 replicas; ensure it is not.
 			logrus.Warnf("VMI replicaset %v already exists", repvmi)
+			if ensureErr := ensureVmirsReplicas(virtClient, vmis.name); ensureErr != nil {
+				return logError("Start domain %s: failed to ensure vmirs %s replicas: %v", domainName, vmis.name, ensureErr)
+			}
 			break
 		}
 		if retries <= 0 {
@@ -843,22 +848,29 @@ func (ctx kubevirtContext) replicaVmiScheduledOnMe(vmirsName string) (scheduledO
 	if err != nil {
 		return false, false, err
 	}
-	kubeconfig := ctx.kubeConfig
 
-	nodeName, ok := ctx.nodeNameMap["nodename"]
-	if !ok {
-		return false, false, fmt.Errorf("Failed to get nodeName")
-	}
-
-	virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(kubeconfig)
+	virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(ctx.kubeConfig)
 	if err != nil {
 		logrus.Errorf("couldn't get the kubernetes client API config: %v", err)
 		return false, false, err
 	}
 
-	vmirs, err := virtClient.ReplicaSet(kubeapi.EVEKubeNameSpace).Get(context.Background(), vmirsName, metav1.GetOptions{})
+	vmirs, err := getVmirs(virtClient, vmirsName)
 	if err != nil {
 		return false, false, err
+	}
+	return ctx.vmiScheduledOnMeFromVmirs(virtClient, vmirs)
+}
+
+// vmiScheduledOnMeFromVmirs is the tail of replicaVmiScheduledOnMe, taking an
+// already-fetched VMIRS instead of fetching its own copy. Shared with Info(),
+// which already fetched the VMIRS for the stranded-replica check and would
+// otherwise Get the same object a second time in the same call.
+func (ctx kubevirtContext) vmiScheduledOnMeFromVmirs(virtClient kubecli.KubevirtClient,
+	vmirs *v1.VirtualMachineInstanceReplicaSet) (scheduledOnMe bool, scheduledOnNone bool, err error) {
+	nodeName, ok := ctx.nodeNameMap["nodename"]
+	if !ok {
+		return false, false, fmt.Errorf("Failed to get nodeName")
 	}
 	appDomainNameSelector := vmirs.Status.LabelSelector
 
@@ -1099,14 +1111,98 @@ func StopReplicaVMI(kubeconfig *rest.Config, repVmiName string) error {
 	// Stop the VMI ReplicaSet
 
 	err = virtClient.ReplicaSet(kubeapi.EVEKubeNameSpace).Delete(context.Background(), repVmiName, metav1.DeleteOptions{})
+	if err == nil {
+		logrus.Infof("Stop VMI Replicaset %s deleted", repVmiName)
+		return nil
+	}
 	if errors.IsNotFound(err) {
 		logrus.Infof("Stop VMI Replicaset, Domain already deleted: %v", repVmiName)
-	} else {
-		logrus.Errorf("Stop VMI Replicaset error %v\n", err)
-		return err
+		return nil
 	}
+	logrus.Errorf("Stop VMI Replicaset error %v\n", err)
+	return err
+}
 
-	return nil
+// getVmirs fetches the named VMIRS. Split out from vmirsDesiredReplicas so
+// Info() can reuse the fetched object for the scheduling check afterward
+// instead of fetching the same VMIRS twice.
+func getVmirs(virtClient kubecli.KubevirtClient, vmiRsName string) (*v1.VirtualMachineInstanceReplicaSet, error) {
+	getCtx, getCancel := context.WithTimeout(context.Background(), kubeapi.KubeAPITimeout())
+	defer getCancel()
+	return virtClient.ReplicaSet(kubeapi.EVEKubeNameSpace).Get(getCtx, vmiRsName, metav1.GetOptions{})
+}
+
+// vmirsDesiredReplicas returns the VMIRS Spec.Replicas value. A nil
+// Spec.Replicas is reported as 1, matching the KubeVirt default.
+func vmirsDesiredReplicas(vmirs *v1.VirtualMachineInstanceReplicaSet) int32 {
+	if vmirs.Spec.Replicas == nil {
+		return 1
+	}
+	return *vmirs.Spec.Replicas
+}
+
+// vmirsStranded reports whether a VMIRS exists but is scaled to zero
+// replicas. This is never a legitimate steady state in EVE: StopReplicaVMI
+// deletes the VMIRS rather than scaling it, so zero means an interrupted
+// replica reset (see DetachUtilVmirsReplicaReset).
+func vmirsStranded(desiredReplicas int32) bool {
+	return desiredReplicas == 0
+}
+
+// ensureVmirsReplicaRetries bounds the Get/mutate/Update retry loop in
+// ensureVmirsReplicas. The budget covers exactly one error: a 409 Conflict on
+// the Update, meaning another writer -- KubeVirt's VMIRS controller, or
+// zedkube's own vmirsReplicaCountSet -- advanced resourceVersion between our
+// Get and our Update. A conflicted body cannot be resent as-is, so the loop
+// has to re-Get and re-decide rather than retry the write; that re-Get is the
+// only reason the Get lives inside the loop.
+//
+// Every other error -- NotFound, transient apiserver failures, an expired
+// context -- returns immediately and consumes none of this budget. Retrying
+// those is the caller's concern, not this loop's.
+const ensureVmirsReplicaRetries = 3
+
+// ensureVmirsReplicas repairs a stranded VMIRS by setting Spec.Replicas to 1.
+// An interrupted DetachUtilVmirsReplicaReset can leave it at 0, which no other
+// code path restores.
+//
+// Zero is the only value treated as broken, via the same vmirsStranded check
+// Info() uses, so the two cannot disagree about what "stranded" means. EVE only
+// ever creates a VMIRS with Replicas=1 and nothing scales it up, so a value
+// above 1 is not a state EVE produces; if one is observed anyway it is left
+// alone rather than scaled in. That keeps every write this function makes an
+// upward one, which is what lets concurrent callers converge -- a downward write
+// would both fight the other writers of this field (KubeVirt's controller,
+// zedkube's vmirsReplicaCountSet) and delete a VMI that may be the one actually
+// serving the app.
+func ensureVmirsReplicas(virtClient kubecli.KubevirtClient, vmiRsName string) error {
+	for attempt := 1; attempt <= ensureVmirsReplicaRetries; attempt++ {
+		getCtx, getCancel := context.WithTimeout(context.Background(), kubeapi.KubeAPITimeout())
+		vmirs, err := virtClient.ReplicaSet(kubeapi.EVEKubeNameSpace).Get(getCtx, vmiRsName, metav1.GetOptions{})
+		getCancel()
+		if err != nil {
+			return err
+		}
+		if !vmirsStranded(vmirsDesiredReplicas(vmirs)) {
+			return nil
+		}
+
+		reps := int32(1)
+		vmirs.Spec.Replicas = &reps
+		updateCtx, updateCancel := context.WithTimeout(context.Background(), kubeapi.KubeAPITimeout())
+		_, err = virtClient.ReplicaSet(kubeapi.EVEKubeNameSpace).Update(updateCtx, vmirs, metav1.UpdateOptions{})
+		updateCancel()
+		if err == nil {
+			return nil
+		}
+		if !errors.IsConflict(err) {
+			return err
+		}
+		logrus.Warnf("ensureVmirsReplicas: conflict updating vmirs %s, retrying (%d/%d)",
+			vmiRsName, attempt, ensureVmirsReplicaRetries)
+	}
+	return fmt.Errorf("ensureVmirsReplicas: exhausted %d retries updating vmirs %s replicas",
+		ensureVmirsReplicaRetries, vmiRsName)
 }
 
 func (ctx kubevirtContext) Info(domainName string) (int, types.SwState, error) {
@@ -1134,7 +1230,40 @@ func (ctx kubevirtContext) Info(domainName string) (int, types.SwState, error) {
 		}
 	}
 
-	onMe, _, err := ctx.scheduledOnMe(vmis.mtype, vmis.name)
+	// Check for a stranded VMIRS before the scheduledOnMe/!onMe short-circuit
+	// below: with zero replicas there is no VMI and no virt-launcher pod, so
+	// onMe would be false and this domain would otherwise be reported as
+	// UNKNOWN forever instead of recovering. The VMIRS fetched here is reused
+	// for the scheduling check below instead of fetching it a second time.
+	var vmirs *v1.VirtualMachineInstanceReplicaSet
+	var virtClient kubecli.KubevirtClient
+	if vmis.mtype == IsMetaReplicaVMI {
+		var verr error
+		virtClient, verr = kubecli.GetKubevirtClientFromRESTConfig(ctx.kubeConfig)
+		if verr != nil {
+			return 0, types.BROKEN, logError("couldn't get the kubernetes client API config: %v", verr)
+		}
+		var rerr error
+		vmirs, rerr = getVmirs(virtClient, vmis.name)
+		if rerr != nil {
+			if isK3sUnreachable(rerr) {
+				return 0, types.UNKNOWN, nil
+			}
+			// Non-unreachable Get failure: fall through to scheduledOnMe's own
+			// independent fetch attempt below, same as before this reuse was
+			// added -- vmirs stays nil so the generic dispatch runs.
+			vmirs = nil
+		} else if vmirsStranded(vmirsDesiredReplicas(vmirs)) {
+			return 0, types.HALTED, logError("domain %s vmirs %s scaled to 0 replicas", domainName, vmis.name)
+		}
+	}
+
+	var onMe bool
+	if vmirs != nil {
+		onMe, _, err = ctx.vmiScheduledOnMeFromVmirs(virtClient, vmirs)
+	} else {
+		onMe, _, err = ctx.scheduledOnMe(vmis.mtype, vmis.name)
+	}
 	if err != nil {
 		if isK3sUnreachable(err) {
 			return 0, types.UNKNOWN, nil
