@@ -218,7 +218,7 @@ jobs:
     name: ${{ needs.context.outputs.eden_parent_job_title }} for 17.0-stable
     needs: context
     if: needs.context.outputs.skip_run == 'false' && needs.context.outputs.pr_base_ref == '17.0-stable'
-    uses: lf-edge/eden/.github/workflows/test.yml@1.0.15
+    uses: lf-edge/eden/.github/workflows/test.yml@1.0.15  # zizmor: ignore[unpinned-uses] eden release tag versioned with our EVE release branches; a SHA pin would force a cross-repo bump on every eden patch release
     secrets: inherit
     with:
       eve_image: "evebuild/pr:${{ needs.context.outputs.pr_id }}"
@@ -242,7 +242,7 @@ jobs:
 
   finalize:
     name: Eden Tests Complete
-    needs: [context, tests-13-4-stable, tests-14-5-stable, tests-16-0-stable, tests-master]
+    needs: [context, tests-13-4-stable, tests-14-5-stable, tests-16-0-stable, tests-17-0-stable, tests-master]
     if: always() && needs.context.outputs.skip_run == 'false'
     runs-on: ubuntu-latest
     steps:
@@ -256,6 +256,8 @@ jobs:
             result="${{ needs.tests-14-5-stable.result }}"
           elif [[ "${{ needs.tests-16-0-stable.result }}" != "skipped" ]]; then
             result="${{ needs.tests-16-0-stable.result }}"
+          elif [[ "${{ needs.tests-17-0-stable.result }}" != "skipped" ]]; then
+            result="${{ needs.tests-17-0-stable.result }}"
           else
             result="${{ needs.tests-master.result }}"
           fi
