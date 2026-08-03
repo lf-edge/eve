@@ -9,7 +9,7 @@ FROM ghcr.io/apache/yetus:0.15.1 as build
 
 ARG TARGETARCH
 
-ENV PKG_DEPS="alien autoconf automake build-essential debhelper dh-autoreconf dh-python dkms fakeroot gawk git libaio-dev libattr1-dev libblkid-dev libcurl4-openssl-dev libelf-dev libffi-dev libpam0g-dev libssl-dev libtirpc-dev libtool libudev-dev linux-headers-generic parallel po-debconf python3 python3-all-dev python3-cffi python3-dev python3-packaging python3-setuptools python3-sphinx uuid-dev zlib1g-dev"
+ENV PKG_DEPS="alien autoconf automake build-essential debhelper dh-autoreconf dh-python dkms fakeroot gawk git libaio-dev libattr1-dev libblkid-dev libcurl4-openssl-dev libelf-dev libffi-dev libpam0g-dev libssl-dev libtirpc-dev libtool libudev-dev libvirt-dev linux-headers-generic parallel pkg-config po-debconf python3 python3-all-dev python3-cffi python3-dev python3-packaging python3-setuptools python3-sphinx uuid-dev zlib1g-dev"
 
 # should be aligned with kernel
 #  * ZFS on Linux
