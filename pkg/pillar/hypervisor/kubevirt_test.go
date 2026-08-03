@@ -6,6 +6,7 @@
 package hypervisor
 
 import (
+	"context"
 	"net"
 	"os"
 	"testing"
@@ -14,8 +15,13 @@ import (
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+	gomock "go.uber.org/mock/gomock"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	virtv1 "kubevirt.io/api/core/v1"
+	"kubevirt.io/client-go/kubecli"
 )
 
 // k3sPem is used for a mock k3s.yaml file
@@ -114,6 +120,137 @@ func TestPodListToSchedulingState(t *testing.T) {
 			assert.Equal(t, tc.wantAnyNode, anyNode)
 		})
 	}
+}
+
+func mkVmirs(name string, replicas *int32) *virtv1.VirtualMachineInstanceReplicaSet {
+	return &virtv1.VirtualMachineInstanceReplicaSet{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec:       virtv1.VirtualMachineInstanceReplicaSetSpec{Replicas: replicas},
+	}
+}
+
+func int32Ptr(v int32) *int32 { return &v }
+
+func TestVmirsStranded(t *testing.T) {
+	tests := []struct {
+		name     string
+		replicas int32
+		want     bool
+	}{
+		{"zero replicas is stranded", 0, true},
+		{"one replica is healthy", 1, false},
+		{"two replicas is healthy", 2, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, vmirsStranded(tc.replicas))
+		})
+	}
+}
+
+func TestVmirsDesiredReplicas(t *testing.T) {
+	const name = "test-vmirs"
+
+	t.Run("nil Spec.Replicas defaults to 1", func(t *testing.T) {
+		assert.Equal(t, int32(1), vmirsDesiredReplicas(mkVmirs(name, nil)))
+	})
+
+	t.Run("explicit replicas returned as-is", func(t *testing.T) {
+		assert.Equal(t, int32(0), vmirsDesiredReplicas(mkVmirs(name, int32Ptr(0))))
+		assert.Equal(t, int32(2), vmirsDesiredReplicas(mkVmirs(name, int32Ptr(2))))
+	})
+}
+
+func TestGetVmirs(t *testing.T) {
+	const name = "test-vmirs"
+
+	t.Run("returns the fetched object", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mc := kubecli.NewMockKubevirtClient(ctrl)
+		mrs := kubecli.NewMockReplicaSetInterface(ctrl)
+		mc.EXPECT().ReplicaSet(gomock.Any()).Return(mrs)
+		mrs.EXPECT().Get(gomock.Any(), name, metav1.GetOptions{}).Return(mkVmirs(name, int32Ptr(1)), nil)
+
+		vmirs, err := getVmirs(mc, name)
+		assert.NoError(t, err)
+		assert.Equal(t, name, vmirs.Name)
+	})
+
+	t.Run("get error propagates", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mc := kubecli.NewMockKubevirtClient(ctrl)
+		mrs := kubecli.NewMockReplicaSetInterface(ctrl)
+		mc.EXPECT().ReplicaSet(gomock.Any()).Return(mrs)
+		mrs.EXPECT().Get(gomock.Any(), name, metav1.GetOptions{}).Return(
+			nil, k8serrors.NewServiceUnavailable("unreachable"))
+
+		_, err := getVmirs(mc, name)
+		assert.Error(t, err)
+	})
+}
+
+func TestEnsureVmirsReplicas(t *testing.T) {
+	const name = "test-vmirs"
+	conflictErr := k8serrors.NewConflict(schema.GroupResource{}, name, assert.AnError)
+
+	t.Run("zero replicas triggers update to one", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mc := kubecli.NewMockKubevirtClient(ctrl)
+		mrs := kubecli.NewMockReplicaSetInterface(ctrl)
+		mc.EXPECT().ReplicaSet(gomock.Any()).Return(mrs).Times(2)
+		mrs.EXPECT().Get(gomock.Any(), name, metav1.GetOptions{}).Return(mkVmirs(name, int32Ptr(0)), nil)
+		mrs.EXPECT().Update(gomock.Any(), gomock.Any(), metav1.UpdateOptions{}).DoAndReturn(
+			func(_ context.Context, vmirs *virtv1.VirtualMachineInstanceReplicaSet, _ metav1.UpdateOptions) (*virtv1.VirtualMachineInstanceReplicaSet, error) {
+				assert.Equal(t, int32(1), *vmirs.Spec.Replicas)
+				return vmirs, nil
+			})
+
+		assert.NoError(t, ensureVmirsReplicas(mc, name))
+	})
+
+	t.Run("already at one replica: no update", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mc := kubecli.NewMockKubevirtClient(ctrl)
+		mrs := kubecli.NewMockReplicaSetInterface(ctrl)
+		mc.EXPECT().ReplicaSet(gomock.Any()).Return(mrs)
+		mrs.EXPECT().Get(gomock.Any(), name, metav1.GetOptions{}).Return(mkVmirs(name, int32Ptr(1)), nil)
+		// No Update expectation: gomock fails the test if Update is called.
+
+		assert.NoError(t, ensureVmirsReplicas(mc, name))
+	})
+
+	t.Run("conflict once then succeeds", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mc := kubecli.NewMockKubevirtClient(ctrl)
+		mrs := kubecli.NewMockReplicaSetInterface(ctrl)
+		mc.EXPECT().ReplicaSet(gomock.Any()).Return(mrs).Times(4)
+		// A fresh object per Get call: ensureVmirsReplicas mutates Spec.Replicas
+		// on the returned object in place, so a shared/reused mock return value
+		// would carry that mutation into the next Get.
+		mrs.EXPECT().Get(gomock.Any(), name, metav1.GetOptions{}).DoAndReturn(
+			func(context.Context, string, metav1.GetOptions) (*virtv1.VirtualMachineInstanceReplicaSet, error) {
+				return mkVmirs(name, int32Ptr(0)), nil
+			}).Times(2)
+		mrs.EXPECT().Update(gomock.Any(), gomock.Any(), metav1.UpdateOptions{}).Return(nil, conflictErr)
+		mrs.EXPECT().Update(gomock.Any(), gomock.Any(), metav1.UpdateOptions{}).Return(mkVmirs(name, int32Ptr(1)), nil)
+
+		assert.NoError(t, ensureVmirsReplicas(mc, name))
+	})
+
+	t.Run("conflict past retry budget returns error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mc := kubecli.NewMockKubevirtClient(ctrl)
+		mrs := kubecli.NewMockReplicaSetInterface(ctrl)
+		mc.EXPECT().ReplicaSet(gomock.Any()).Return(mrs).Times(ensureVmirsReplicaRetries * 2)
+		mrs.EXPECT().Get(gomock.Any(), name, metav1.GetOptions{}).DoAndReturn(
+			func(context.Context, string, metav1.GetOptions) (*virtv1.VirtualMachineInstanceReplicaSet, error) {
+				return mkVmirs(name, int32Ptr(0)), nil
+			}).Times(ensureVmirsReplicaRetries)
+		mrs.EXPECT().Update(gomock.Any(), gomock.Any(), metav1.UpdateOptions{}).Return(
+			nil, conflictErr).Times(ensureVmirsReplicaRetries)
+
+		assert.Error(t, ensureVmirsReplicas(mc, name))
+	})
 }
 
 // TestCreateReplicaPodConfig tests the CreateReplicaPodConfig function

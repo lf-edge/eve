@@ -78,6 +78,13 @@ const (
 	detachUtilVmirsReplicaResetTimeout = 2 * time.Minute
 )
 
+// KubeAPITimeout returns the budget this package uses for a single k8s API
+// call, so other packages (e.g. hypervisor) can bound their own k8s API
+// calls with the same budget instead of redeclaring it.
+func KubeAPITimeout() time.Duration {
+	return kubeAPITimeout
+}
+
 // GetKubeConfig : Get handle to Kubernetes config
 func GetKubeConfig() (*rest.Config, error) {
 	// Build the configuration from the kubeconfig file
@@ -997,7 +1004,9 @@ func DetachOldWorkload(log *base.LogObject, failedNodeName string, appDomainName
 
 	// Push the kubevirt control plane to schedule new pod, otherwise this can be a larger delay
 	if vmiRsName != "" {
-		DetachUtilVmirsReplicaReset(log, vmiRsName)
+		if err := DetachUtilVmirsReplicaReset(log, vmiRsName); err != nil {
+			log.Errorf("DetachOldWorkload vmirs scale reset failed for %s: %v", vmiRsName, err)
+		}
 	}
 
 	// Delete virt-launcher pod on failed node
