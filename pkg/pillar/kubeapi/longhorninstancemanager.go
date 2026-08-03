@@ -8,11 +8,35 @@ package kubeapi
 import (
 	"context"
 	"fmt"
+	"time"
 
 	lhv1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+const (
+	// baseComponentsReadyTimeout bounds the wait for the node object plus any
+	// optional components when Longhorn is not among them.
+	baseComponentsReadyTimeout = 20 * time.Minute
+
+	// longhornComponentsReadyTimeout applies once Longhorn is in the predicate.
+	// The node cannot serve a volume until the instance-manager pod runs, and
+	// that pod pulls a ~440 MB image: measured at 8m20s and 8m41s on single-disk
+	// topologies but over 20 minutes on two-disk ZFS, which alone exhausts the
+	// base budget and leaves nothing for the node and kubevirt checks ahead of
+	// it. Sized to clear the slowest observed pull with room to spare.
+	longhornComponentsReadyTimeout = 45 * time.Minute
+)
+
+// componentsReadyTimeout returns the deadline for the readiness poll, widened
+// when the caller waits on Longhorn.
+func componentsReadyTimeout(opts WaitForKubernetesOptions) time.Duration {
+	if opts.WaitForLonghorn {
+		return longhornComponentsReadyTimeout
+	}
+	return baseComponentsReadyTimeout
+}
 
 // instanceManagerLister is the subset of the generated Longhorn client this
 // file needs, kept narrow so the state logic below can be exercised without a
