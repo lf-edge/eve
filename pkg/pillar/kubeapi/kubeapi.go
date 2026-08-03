@@ -241,7 +241,7 @@ func WaitForKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.T
 	var lastUnmet error
 	doneCh := make(chan struct{}, 1)
 	go func() {
-		nodeReadyErr = wait.PollImmediate(time.Second, time.Minute*20, func() (bool, error) {
+		nodeReadyErr = wait.PollImmediate(time.Second, componentsReadyTimeout(opts), func() (bool, error) {
 			if err := nodeReadyByName(client, nodeName); err != nil {
 				lastUnmet = fmt.Errorf("node not ready: %w", err)
 				return false, nil
