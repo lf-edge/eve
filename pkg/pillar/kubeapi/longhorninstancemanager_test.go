@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	lhv1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	appsv1 "k8s.io/api/apps/v1"
@@ -106,6 +107,20 @@ func TestInstanceManagerRunningOnNodeListError(t *testing.T) {
 	}
 	if ready {
 		t.Error("ready = true on list error, want false")
+	}
+}
+
+// The instance-manager pull is the slowest thing in the readiness predicate, so
+// adding it to checkLonghornReady must come with a budget that can absorb it --
+// the two-disk ZFS leg regressed on the un-widened 20m deadline.
+func TestComponentsReadyTimeout(t *testing.T) {
+	withLH := componentsReadyTimeout(WaitForKubernetesOptions{WaitForLonghorn: true})
+	withoutLH := componentsReadyTimeout(WaitForKubernetesOptions{})
+	if withLH <= withoutLH {
+		t.Errorf("longhorn timeout %v must exceed base %v", withLH, withoutLH)
+	}
+	if withLH < 30*time.Minute {
+		t.Errorf("longhorn timeout %v too small for a 20m+ instance-manager pull", withLH)
 	}
 }
 
