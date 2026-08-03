@@ -180,6 +180,50 @@ func (client *Client) CtrWriteBlob(ctx context.Context, blobHash string, expecte
 	return nil
 }
 
+// CtrImportImageArchive imports an OCI image-layout or docker-save archive
+// (read from reader; the caller is responsible for any decompression) into the
+// content store and creates the image reference 'reference' pointing at the
+// imported index. It returns that index descriptor.
+//
+// It uses the high-level containerd Import (not the low-level
+// archive.ImportIndex) on purpose: Import sets the containerd.io/gc.ref.content
+// labels on the index -> manifest -> config/layers chain, so the ingested blobs
+// stay referenced and survive garbage collection. The earlier low-level path
+// left those blobs unreferenced, so GC reaped everything except the index and
+// the subsequent blob walk failed.
+func (client *Client) CtrImportImageArchive(ctx context.Context, reference string, reader io.Reader) (imagespecs.Descriptor, error) {
+	if err := client.verifyCtr(ctx, true); err != nil {
+		return imagespecs.Descriptor{}, fmt.Errorf("CtrImportImageArchive: exception while verifying ctrd client: %s", err.Error())
+	}
+	// Import does its own lease, ingests all blobs, sets gc.ref labels, and
+	// creates an image named `reference` (WithIndexName) pointing at the index.
+	imgs, err := client.ctrdClient.Import(ctx, reader, containerd.WithIndexName(reference))
+	if err != nil {
+		return imagespecs.Descriptor{}, fmt.Errorf("CtrImportImageArchive: exception while importing archive: %s", err.Error())
+	}
+	// The archive's per-manifest annotations (e.g. io.containerd.image.name) make
+	// Import also create image refs we do not own. Drop everything except
+	// `reference` so the content tree alone controls the image lifecycle and
+	// removing the content tree later frees the blobs (no leak).
+	is := client.ctrdClient.ImageService()
+	var target imagespecs.Descriptor
+	var found bool
+	for _, img := range imgs {
+		if img.Name == reference {
+			target = img.Target
+			found = true
+			continue
+		}
+		if err := is.Delete(ctx, img.Name); err != nil && !errdefs.IsNotFound(err) {
+			logrus.Warnf("CtrImportImageArchive: could not remove extra image ref %s: %v", img.Name, err)
+		}
+	}
+	if !found {
+		return imagespecs.Descriptor{}, fmt.Errorf("CtrImportImageArchive: imported image %s not found in result", reference)
+	}
+	return target, nil
+}
+
 // CtrUpdateBlobInfo updates blobs info
 func (client *Client) CtrUpdateBlobInfo(ctx context.Context, updatedContentInfo content.Info, updatedFields []string) error {
 	if err := client.verifyCtr(ctx, true); err != nil {
