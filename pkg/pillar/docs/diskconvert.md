@@ -93,6 +93,7 @@ type Result struct {
 | **shrink target size** | **computed by diskconvert** (persist partition size − needed) | `Result.ShrinkTarget` **and** written to `/config/repartition-inprogress` by `backup --target` | `"<KiB>K"` | baseosmgr (log/observe) **and** the offline `shrink --flag-file` after reboot |
 | **insufficient error string** | `check` → `decisionReason` | `Result.Reason` **and** the returned `error` | string | baseosmgr → *(integration)* `BaseOsStatus.Error` → controller |
 | backup files (certs, lastconfig, DPC list) | `backup` | `/config/backup-persist/<relpath>` | file copies | `restore` after `/persist` remount |
+| pre-shrink digests | `backup` (after the copies) | `/config/backup-persist/.sha256sums` | `sha256sum(1)` lines | `restore` digest check |
 | shrink flag file | `backup` (written **last**) | `/config/repartition-inprogress` | `"<size>\n"` | storage-init `shrink --flag-file` |
 | new partition geometry | `shrink`/`grow` | boot-disk GPT | partition table | kernel / baseosmgr A/B install |
 
@@ -104,7 +105,7 @@ type Result struct {
 | `backup` | — | `backed up N file(s)…; wrote <flag-file>=<target>` | 0 / 1 / 2 | `/config/backup-persist/*`, then the `/config/repartition-inprogress` flag file |
 | `shrink` | — | `shrink <label> to <size>` | 0 / 1 / 2 | shrinks the persist partition, rewrites GPT |
 | `grow` | — | `grow <label>=…` | 0 / 1 / 2 | grows ESP/IMGA/IMGB, rewrites GPT |
-| `restore` | — | `restored N file(s) …` | 0 / 1 | restores backed-up files whose live copy is missing/empty/invalid into `/persist`; flag file absent → GCs the backup dir; `--cleanup` removes the flag file then the backup dir |
+| `restore` | — | `digest check: checked=… mismatch=…` then `restored N file(s) …` | 0 / 1 | restores backed-up files whose live copy is missing/empty/invalid into `/persist`; flag file absent → GCs the backup dir; `--cleanup` removes the flag file then the backup dir |
 | `cleanup` | — | `cleanup: …` on refusal | 0 / 1 | removes the backup dir once the flag file is gone; refuses (exit 1) while the flag file is present |
 
 The `check --json` schema (fields diskconvert reads in **bold**):
@@ -124,6 +125,15 @@ The `check --json` schema (fields diskconvert reads in **bold**):
   files copied before the destructive shrink, including the `/persist/certs/`
   attestation/decryption keys the device needs to re-attest and recover its vault
   key (see `storage-resizer` backup set), restored afterwards.
+- `/config/backup-persist/.sha256sums` — the digest of each copy, taken while
+  `/persist` was still intact. `restore` re-hashes the live copies before
+  restoring anything and reports the comparison on the console. It catches what
+  the per-type validators cannot: an interrupted relocation can leave a file at
+  its original size and structurally valid while holding a partially-copied mix
+  of old and new bytes. It reports only — a mismatch on a file EVE rewrites on
+  its own (`checkpoint/lastconfig*`, the DPC list) is an ordinary newer version,
+  and overwriting it with the stale backup would lose the ssh keys and network
+  config it carries, so the restore decision stays with the validators.
 
 ## SEE ALSO
 

@@ -46,11 +46,16 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -75,6 +80,26 @@ var defaultBackupPatterns = []string{
 // file for the grow-only (no-shrink) path: storage-init skips the shrink and runs
 // only the grow. Any other non-empty value is a shrink target size.
 const repartitionGrowOnly = "grow-only"
+
+// manifestName is the digest manifest `backup` writes and `restore` checks, in
+// sha256sum(1) format so it can also be verified by hand on-device
+// (`cd <backup-dir> && sha256sum -c <name>`). It lives INSIDE the backup dir so
+// the existing cleanup paths remove it with the copies — a stray /config file
+// would perturb the measure-config PCR — and restore skips it rather than
+// restoring it into /persist.
+const manifestName = ".sha256sums"
+
+// volatileBackupPatterns are the backed-up files EVE itself rewrites, matched
+// against the path relative to the persist root. The device keeps running
+// between `backup` and the reboot into the offline resize, so a digest change
+// here is an ordinary newer version rather than evidence of shrink damage. The
+// rest of the set is written once (the identity certs, the onboarding UUID) or
+// only when the controller rotates it (controllercerts), so a change there has
+// no benign explanation and is reported as a mismatch.
+var volatileBackupPatterns = []string{
+	"checkpoint/lastconfig*",
+	"status/nim/DevicePortConfigList/*",
+}
 
 func cmdBackup(args []string) int {
 	fs := flag.NewFlagSet("backup", flag.ExitOnError)
@@ -111,13 +136,24 @@ func cmdBackup(args []string) int {
 		fmt.Fprintln(os.Stderr, "backup failed:", err)
 		return 1
 	}
+	// Record the pre-shrink digests. This is the reference `restore` compares the
+	// post-shrink /persist against, and it is taken here because `backup` runs
+	// exactly once per conversion while /persist is still intact — the offline
+	// shrink re-runs on every reboot, so it could only ever hash damage as its own
+	// baseline. Diagnostic, so a failure must not abort a conversion whose backup
+	// already succeeded.
+	digests, err := writeBackupManifest(*backupDir)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "backup: digest manifest (continuing):", err)
+	}
 	// Write the flag file LAST: the read side treats an absent/empty flag file as
 	// "not started" and ignores a partial backup dir.
 	if err := writeFileAtomic(*flagFile, []byte(*target+"\n")); err != nil {
 		fmt.Fprintln(os.Stderr, "backup: write flag file:", err)
 		return 1
 	}
-	fmt.Fprintf(os.Stderr, "backed up %d file(s) to %s; wrote %s=%s\n", n, *backupDir, *flagFile, *target)
+	fmt.Fprintf(os.Stderr, "backed up %d file(s) (%d digest(s)) to %s; wrote %s=%s\n",
+		n, digests, *backupDir, *flagFile, *target)
 	return 0
 }
 
@@ -141,6 +177,17 @@ func cmdRestore(args []string) int {
 			return 1
 		}
 		return 0
+	}
+
+	// Compare against the pre-shrink digests BEFORE restoring, so the report
+	// describes what the shrink left behind rather than what restore just
+	// rewrote. This runs from storage-init, before pillar starts, so nothing has
+	// yet rewritten the live copies on this boot.
+	if rep, err := verifyPersistAgainstManifest(*backupDir, *persist); err != nil {
+		// Report the error alone: the partial counts would read as a clean result.
+		fmt.Fprintln(os.Stderr, "restore: digest check failed:", err)
+	} else {
+		rep.report(os.Stderr)
 	}
 
 	restored, err := restorePersistFiles(*backupDir, *persist)
@@ -247,6 +294,176 @@ func backupPersistFiles(persist, backupDir string, patterns []string) (int, erro
 	return count, nil
 }
 
+// writeBackupManifest hashes every file already copied into backupDir and writes
+// the manifest named by manifestName. Returns the number of entries. Hashing the
+// backup copies rather than the /persist originals means the manifest describes
+// the reference bytes that were actually persisted, so a later mismatch is
+// unambiguous.
+func writeBackupManifest(backupDir string) (int, error) {
+	sums := map[string]string{}
+	err := filepath.Walk(backupDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(backupDir, path)
+		if err != nil {
+			return err
+		}
+		if rel == manifestName {
+			return nil // a re-armed backup must not hash the previous manifest
+		}
+		sum, err := sha256File(path)
+		if err != nil {
+			return err
+		}
+		sums[filepath.ToSlash(rel)] = sum
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	rels := make([]string, 0, len(sums))
+	for rel := range sums {
+		rels = append(rels, rel)
+	}
+	sort.Strings(rels) // stable output: the manifest is diffed across boots by hand
+	var b strings.Builder
+	for _, rel := range rels {
+		fmt.Fprintf(&b, "%s  %s\n", sums[rel], rel)
+	}
+	return len(rels), writeFileAtomic(filepath.Join(backupDir, manifestName), []byte(b.String()))
+}
+
+// readBackupManifest parses the digest manifest into digest-by-relative-path.
+// Returns a nil map and no error when the backup carries no manifest, which is
+// the case for one written by a resizer predating it.
+func readBackupManifest(backupDir string) (map[string]string, error) {
+	b, err := os.ReadFile(filepath.Join(backupDir, manifestName))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	sums := map[string]string{}
+	for _, line := range strings.Split(string(b), "\n") {
+		if line == "" {
+			continue
+		}
+		sum, rel, ok := strings.Cut(line, "  ")
+		if !ok {
+			return nil, fmt.Errorf("malformed manifest line %q", line)
+		}
+		sums[rel] = sum
+	}
+	return sums, nil
+}
+
+// sha256File returns the hex SHA-256 of the file at path. The error is returned
+// unwrapped so the caller can test it with errors.Is(err, os.ErrNotExist).
+func sha256File(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = f.Close() }()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// digestReport is the outcome of comparing the live /persist copies against the
+// digests recorded before the shrink.
+type digestReport struct {
+	checked  int
+	matched  int
+	changed  []string // volatile files EVE may legitimately have rewritten
+	mismatch []string // files nothing rewrites, so the change is unexplained
+	missing  []string // live copy gone; the restore repairs it
+	skipped  bool     // backup carried no manifest
+}
+
+// verifyPersistAgainstManifest compares the live copy under persist of every file
+// recorded in the backup's digest manifest against its pre-shrink digest. It
+// detects the damage the per-type validators cannot: an interrupted relocation
+// can leave a file at its original size, structurally valid, and still hold a
+// partially-copied mix of old and new bytes.
+//
+// It reports and never repairs. A volatile file (see volatileBackupPatterns) may
+// differ for an ordinary reason, and overwriting a newer lastconfig with the
+// stale backup would lose the ssh keys and network config it carries, so the
+// decision to restore stays with needsRestore.
+func verifyPersistAgainstManifest(backupDir, persist string) (digestReport, error) {
+	var rep digestReport
+	want, err := readBackupManifest(backupDir)
+	if err != nil {
+		return rep, err
+	}
+	if want == nil {
+		rep.skipped = true
+		return rep, nil
+	}
+	rels := make([]string, 0, len(want))
+	for rel := range want {
+		rels = append(rels, rel)
+	}
+	sort.Strings(rels)
+	for _, rel := range rels {
+		rep.checked++
+		got, err := sha256File(filepath.Join(persist, filepath.FromSlash(rel)))
+		switch {
+		case errors.Is(err, os.ErrNotExist):
+			rep.missing = append(rep.missing, rel)
+		case err != nil:
+			return rep, fmt.Errorf("hash %s: %w", rel, err)
+		case got == want[rel]:
+			rep.matched++
+		case isVolatileBackupFile(rel):
+			rep.changed = append(rep.changed, rel)
+		default:
+			rep.mismatch = append(rep.mismatch, rel)
+		}
+	}
+	return rep, nil
+}
+
+// isVolatileBackupFile reports whether rel (slash-separated, relative to the
+// persist root) is one of the files EVE rewrites on its own.
+func isVolatileBackupFile(rel string) bool {
+	for _, p := range volatileBackupPatterns {
+		if ok, err := filepath.Match(p, rel); err == nil && ok {
+			return true
+		}
+	}
+	return false
+}
+
+// report writes the digest comparison to w, one line per unexplained mismatch
+// followed by a machine-readable summary (the soak harness greps `mismatch=`).
+func (r digestReport) report(w io.Writer) {
+	if r.skipped {
+		fmt.Fprintln(w, "digest check: skipped (backup has no manifest)")
+		return
+	}
+	for _, rel := range r.mismatch {
+		fmt.Fprintf(w, "digest MISMATCH: %s differs from its pre-shrink content\n", rel)
+	}
+	for _, rel := range r.missing {
+		fmt.Fprintf(w, "digest missing: %s absent from persist\n", rel)
+	}
+	line := fmt.Sprintf("digest check: checked=%d match=%d mismatch=%d changed-volatile=%d missing=%d",
+		r.checked, r.matched, len(r.mismatch), len(r.changed), len(r.missing))
+	if len(r.changed) > 0 {
+		line += " changed=" + strings.Join(r.changed, ",")
+	}
+	fmt.Fprintln(w, line)
+}
+
 // restorePersistFiles walks backupDir and copies each file into persist at the
 // same relative path when the live copy is missing, empty, or fails its content
 // validity check (see needsRestore). Returns the number of files written.
@@ -265,6 +482,9 @@ func restorePersistFiles(backupDir, persist string) (int, error) {
 		rel, err := filepath.Rel(backupDir, path)
 		if err != nil {
 			return err
+		}
+		if rel == manifestName {
+			return nil // describes the backup; not a /persist file
 		}
 		dst := filepath.Join(persist, rel)
 		need, err := needsRestore(rel, dst)

@@ -186,6 +186,243 @@ func TestRestoreNoBackupDirIsNoop(t *testing.T) {
 	}
 }
 
+func TestBackupManifestCoversEveryBackedUpFile(t *testing.T) {
+	persist := t.TempDir()
+	backup := filepath.Join(t.TempDir(), "backup-persist")
+	writePersist(t, persist, persistFixture)
+	if _, err := backupPersistFiles(persist, backup, defaultBackupPatterns); err != nil {
+		t.Fatalf("backup: %v", err)
+	}
+
+	n, err := writeBackupManifest(backup)
+	if err != nil {
+		t.Fatalf("writeBackupManifest: %v", err)
+	}
+	if n != len(backedUpRels) {
+		t.Errorf("manifest has %d entries, want %d", n, len(backedUpRels))
+	}
+	sums, err := readBackupManifest(backup)
+	if err != nil {
+		t.Fatalf("readBackupManifest: %v", err)
+	}
+	for _, rel := range backedUpRels {
+		want, err := sha256File(filepath.Join(persist, rel))
+		if err != nil {
+			t.Fatalf("hash fixture %s: %v", rel, err)
+		}
+		if sums[rel] != want {
+			t.Errorf("%s digest = %q, want %q", rel, sums[rel], want)
+		}
+	}
+	if _, ok := sums[manifestName]; ok {
+		t.Error("the manifest must not list itself")
+	}
+	// Re-arming over an existing backup must not fold the old manifest in.
+	if n2, err := writeBackupManifest(backup); err != nil || n2 != n {
+		t.Errorf("re-run: n=%d err=%v, want %d/nil", n2, err, n)
+	}
+}
+
+// The case the per-type validators cannot see: an interrupted relocation leaves a
+// cert at its original size and still structurally valid (its "-----END" marker
+// intact), so needsRestore keeps it — only the digest reveals the changed bytes.
+func TestDigestCatchesSilentCorruptionValidatorsMiss(t *testing.T) {
+	persist := t.TempDir()
+	backup := filepath.Join(t.TempDir(), "backup-persist")
+	writePersist(t, persist, persistFixture)
+	if _, err := backupPersistFiles(persist, backup, defaultBackupPatterns); err != nil {
+		t.Fatalf("backup: %v", err)
+	}
+	if _, err := writeBackupManifest(backup); err != nil {
+		t.Fatalf("writeBackupManifest: %v", err)
+	}
+
+	const rel = "certs/ecdh.cert.pem"
+	orig := persistFixture[rel]
+	torn := strings.Replace(orig, "BBBB", "XXXX", 1) // same length, still ends with -----END
+	if len(torn) != len(orig) {
+		t.Fatalf("fixture setup: corruption changed the size (%d vs %d)", len(torn), len(orig))
+	}
+	mustWrite(t, filepath.Join(persist, rel), torn)
+
+	// establish that the existing validator is blind to this
+	need, err := needsRestore(rel, filepath.Join(persist, rel))
+	if err != nil {
+		t.Fatalf("needsRestore: %v", err)
+	}
+	if need {
+		t.Fatal("fixture setup: needsRestore already catches this, so it proves nothing")
+	}
+
+	rep, err := verifyPersistAgainstManifest(backup, persist)
+	if err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	if len(rep.mismatch) != 1 || rep.mismatch[0] != rel {
+		t.Errorf("mismatch = %v, want [%s]", rep.mismatch, rel)
+	}
+	if rep.checked != len(backedUpRels) || rep.matched != len(backedUpRels)-1 {
+		t.Errorf("checked=%d matched=%d, want %d/%d", rep.checked, rep.matched,
+			len(backedUpRels), len(backedUpRels)-1)
+	}
+	if len(rep.changed) != 0 || len(rep.missing) != 0 {
+		t.Errorf("changed=%v missing=%v, want both empty", rep.changed, rep.missing)
+	}
+}
+
+// EVE keeps running between backup and the reboot, so a rewritten lastconfig or
+// DPCL is expected and must not be reported as a mismatch.
+func TestDigestTreatsEveRewritesAsExpected(t *testing.T) {
+	persist := t.TempDir()
+	backup := filepath.Join(t.TempDir(), "backup-persist")
+	writePersist(t, persist, persistFixture)
+	if _, err := backupPersistFiles(persist, backup, defaultBackupPatterns); err != nil {
+		t.Fatalf("backup: %v", err)
+	}
+	if _, err := writeBackupManifest(backup); err != nil {
+		t.Fatalf("writeBackupManifest: %v", err)
+	}
+
+	mustWrite(t, filepath.Join(persist, "checkpoint/lastconfig"), "edgedevconfig-with-a-new-ssh-key")
+	mustWrite(t, filepath.Join(persist, "status/nim/DevicePortConfigList/global.json"), `{"dpc":"newer"}`)
+
+	rep, err := verifyPersistAgainstManifest(backup, persist)
+	if err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	if len(rep.mismatch) != 0 {
+		t.Errorf("mismatch = %v, want empty (both files are volatile)", rep.mismatch)
+	}
+	if len(rep.changed) != 2 {
+		t.Errorf("changed = %v, want 2 entries", rep.changed)
+	}
+}
+
+// A wiped /persist is reported as missing rather than mismatched — the restore
+// that follows is what repairs it.
+func TestDigestReportsWipedPersistAsMissing(t *testing.T) {
+	persist := t.TempDir()
+	backup := filepath.Join(t.TempDir(), "backup-persist")
+	writePersist(t, persist, persistFixture)
+	if _, err := backupPersistFiles(persist, backup, defaultBackupPatterns); err != nil {
+		t.Fatalf("backup: %v", err)
+	}
+	if _, err := writeBackupManifest(backup); err != nil {
+		t.Fatalf("writeBackupManifest: %v", err)
+	}
+
+	rep, err := verifyPersistAgainstManifest(backup, t.TempDir())
+	if err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	if len(rep.missing) != len(backedUpRels) || len(rep.mismatch) != 0 || rep.matched != 0 {
+		t.Errorf("missing=%d mismatch=%d matched=%d, want %d/0/0",
+			len(rep.missing), len(rep.mismatch), rep.matched, len(backedUpRels))
+	}
+}
+
+// A backup written by a resizer that predates the manifest must verify as skipped,
+// not as a wall of mismatches.
+func TestDigestSkippedWithoutManifest(t *testing.T) {
+	persist := t.TempDir()
+	backup := filepath.Join(t.TempDir(), "backup-persist")
+	writePersist(t, persist, persistFixture)
+	if _, err := backupPersistFiles(persist, backup, defaultBackupPatterns); err != nil {
+		t.Fatalf("backup: %v", err)
+	}
+
+	rep, err := verifyPersistAgainstManifest(backup, persist)
+	if err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	if !rep.skipped || rep.checked != 0 {
+		t.Errorf("skipped=%v checked=%d, want true/0", rep.skipped, rep.checked)
+	}
+}
+
+// The manifest lives in the backup dir, so restore must skip it rather than
+// dropping it into /persist.
+func TestRestoreDoesNotRestoreTheManifest(t *testing.T) {
+	persist := t.TempDir()
+	backup := filepath.Join(t.TempDir(), "backup-persist")
+	writePersist(t, persist, persistFixture)
+	if _, err := backupPersistFiles(persist, backup, defaultBackupPatterns); err != nil {
+		t.Fatalf("backup: %v", err)
+	}
+	if _, err := writeBackupManifest(backup); err != nil {
+		t.Fatalf("writeBackupManifest: %v", err)
+	}
+
+	wiped := t.TempDir()
+	restored, err := restorePersistFiles(backup, wiped)
+	if err != nil {
+		t.Fatalf("restore: %v", err)
+	}
+	if restored != len(backedUpRels) {
+		t.Errorf("restored %d, want %d (the manifest must not be counted)", restored, len(backedUpRels))
+	}
+	if _, err := os.Stat(filepath.Join(wiped, manifestName)); !os.IsNotExist(err) {
+		t.Error("the manifest must not be restored into persist")
+	}
+}
+
+// The summary line is what the soak harness greps out of the console, so its
+// shape is part of the contract.
+func TestDigestReportSummaryLine(t *testing.T) {
+	var b strings.Builder
+	digestReport{
+		checked: 10, matched: 7,
+		mismatch: []string{"certs/ek.cert.pem"},
+		changed:  []string{"checkpoint/lastconfig"},
+		missing:  []string{"certs/ecdh.cert.pem"},
+	}.report(&b)
+	out := b.String()
+	for _, want := range []string{
+		"digest MISMATCH: certs/ek.cert.pem",
+		"digest missing: certs/ecdh.cert.pem",
+		"digest check: checked=10 match=7 mismatch=1 changed-volatile=1 missing=1",
+		"changed=checkpoint/lastconfig",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("report missing %q; got:\n%s", want, out)
+		}
+	}
+
+	b.Reset()
+	digestReport{skipped: true}.report(&b)
+	if !strings.Contains(b.String(), "digest check: skipped") {
+		t.Errorf("skipped report = %q", b.String())
+	}
+}
+
+// End-to-end through the subcommands: backup arms the manifest, restore verifies
+// it and then cleans up, leaving nothing on /config to perturb the PCR.
+func TestCmdBackupThenRestoreVerifiesAndCleansUp(t *testing.T) {
+	persist := t.TempDir()
+	backup := filepath.Join(t.TempDir(), "backup-persist")
+	flagFile := filepath.Join(t.TempDir(), "repartition-inprogress")
+	writePersist(t, persist, persistFixture)
+
+	if rc := cmdBackup([]string{"--persist", persist, "--backup-dir", backup,
+		"--flag-file", flagFile, "--target", "40G"}); rc != 0 {
+		t.Fatalf("cmdBackup rc=%d", rc)
+	}
+	if _, err := os.Stat(filepath.Join(backup, manifestName)); err != nil {
+		t.Fatalf("backup must write the manifest: %v", err)
+	}
+
+	if rc := cmdRestore([]string{"--persist", persist, "--backup-dir", backup,
+		"--flag-file", flagFile, "--cleanup"}); rc != 0 {
+		t.Fatalf("cmdRestore rc=%d", rc)
+	}
+	if _, err := os.Stat(backup); !os.IsNotExist(err) {
+		t.Error("--cleanup must remove the backup dir, manifest included")
+	}
+	if _, err := os.Stat(flagFile); !os.IsNotExist(err) {
+		t.Error("--cleanup must remove the flag file")
+	}
+}
+
 func TestCmdBackupGrowOnlyArmsFlagNoBackup(t *testing.T) {
 	persist := t.TempDir()
 	// a file that WOULD be backed up on the shrink path, to prove grow-only skips it
