@@ -45,7 +45,7 @@ func (h *UnsupportedHandler) SetupDefaultVault() error {
 	if os.IsNotExist(err) {
 		// No TPM or TPM lacks required features
 		// Vault is just a plain folder in those cases
-		return os.MkdirAll(defaultVault, 755)
+		return os.MkdirAll(defaultVault, 0755)
 	}
 	return nil
 }

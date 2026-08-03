@@ -341,7 +341,7 @@ func MountVaultZvol(log *base.LogObject, datasetPath string) error {
 	_, err = os.Stat("/" + types.SealedDataset)
 	if err != nil {
 		if os.IsNotExist(err) {
-			err = os.Mkdir("/"+types.SealedDataset, os.FileMode(755))
+			err = os.Mkdir("/"+types.SealedDataset, 0755)
 			if err != nil {
 				return fmt.Errorf("MountVaultZvol path %s creation error: %v", "/"+types.SealedDataset, err)
 			}
