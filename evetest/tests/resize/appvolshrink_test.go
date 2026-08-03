@@ -47,6 +47,7 @@ const (
 
 	fillPeakPctParamKey = "FILL_PEAK_PCT"
 	fillKeepGiBParamKey = "FILL_KEEP_GIB"
+	devsideOnlyParamKey = "DEVSIDE_ONLY"
 
 	// Fill /persist to this percentage before the app is deployed, then trim back
 	// to this many GiB once its volume is written. The peak has to sit well above
@@ -135,6 +136,14 @@ func TestAppVolumeShrinkCorruption(test *testing.T) {
 			Description: evetest.TestParameterDescription{
 				Summary: "Trim /persist back to this many GiB after the volume is written (must leave room for EVE-k)",
 				Default: "15",
+			},
+		},
+		evetest.TestParameterDefinition{
+			Key:          devsideOnlyParamKey,
+			DefaultValue: false,
+			Description: evetest.TestParameterDescription{
+				Summary: "Stop once the volume verdict is taken, skipping the app-side checks",
+				Default: "false",
 			},
 		},
 		evetest.TestParameterDefinition{
@@ -309,7 +318,7 @@ func TestAppVolumeShrinkCorruption(test *testing.T) {
 	// second, and the watchdog only ever interrupts the grow.
 	if fillPeakPct > 0 {
 		log.Infof("filling /persist to %d%% so the app's volume lands in the shrink's evacuation zone", fillPeakPct)
-		fillPersistToPct(t, device, int(fillPeakPct))
+		fillPersistToPct(t, device, int(fillPeakPct), dataVolMiB)
 		evetest.Checkpoint("persist-filled")
 	}
 
@@ -369,6 +378,17 @@ func TestAppVolumeShrinkCorruption(test *testing.T) {
 	capturePersist(device, "pre-conversion EVE-kvm (volume filled)")
 	evetest.Checkpoint("volume-filled")
 
+	// EVE's post-resize check hashes each volume against a pre-resize manifest and
+	// DELETES any that mismatches, so a torn volume is gone before this test can look
+	// at it — which is why nine 8 GiB corruptions were recorded as "nothing to
+	// measure". The marker makes baseosmgr quarantine it as <name>.corrupt instead,
+	// leaving the damaged bytes for fsck and volverify to characterize.
+	markerOut, _, markerErr := device.RunShellScript(
+		`eve exec pillar touch /persist/volmanifest-keep-corrupt`, eveShellTimeout, 0)
+	t.Expect(markerErr).NotTo(HaveOccurred(),
+		"could not arm the corrupt-volume quarantine marker:\n%s", markerOut)
+	log.Infof("armed /persist/volmanifest-keep-corrupt so a torn volume is kept, not deleted")
+
 	log.Infof("kvm→k conversion: upgrading to %s (%s) — triggers the offline shrink+grow", convVersion, targetHypervisor)
 	conversionOK := false
 	defer func() {
@@ -399,6 +419,21 @@ func TestAppVolumeShrinkCorruption(test *testing.T) {
 	// the app is asked to boot. This is the only reading that survives the
 	// post-conversion app wedge, which has cost every verdict it has hit.
 	verifyRelocatedVolumeOnDevice(t, device, dataVolMiB, seed, ops, maxBlocks, writtenCommitted)
+
+	// The volume verdict is complete here, about 32 minutes into a run whose
+	// remaining 48 minutes are the app-side checks. At data-volume sizes where the
+	// post-conversion app reliably wedges, those 48 minutes re-derive a known
+	// failure, so a corruption soak can stop here and collect roughly two and a
+	// half times as many volume verdicts per day.
+	//
+	// This forfeits the wedge diagnostics, which are produced by the app-failure
+	// path and nowhere else: leave it off when the run is meant to investigate why
+	// the app does not come back.
+	if evetest.GetTestParameter[bool](devsideOnlyParamKey) {
+		log.Infof("DEVSIDE_ONLY: volume verdict taken; skipping the app-side checks")
+		evetest.Checkpoint("devside-only-complete")
+		return
+	}
 
 	if targetHypervisor == evetest.HypervisorKubevirt {
 		log.Infof("(a) waiting for k3s node ready")
@@ -514,11 +549,31 @@ F=""
 i=0
 while [ "$i" -lt 60 ]; do
   [ -n "$VV" ] || VV=$(find /persist/vault/containerd -path '*usr/local/bin/volverify' 2>/dev/null | head -1)
-  [ -n "$F" ] || F=$(ls /persist/vault/volumes-kvm/*.raw /persist/clear/volumes/*.raw 2>/dev/null | head -1)
+  # A *.raw.corrupt is EVE's post-resize hash check having caught the interrupted
+  # shrink tearing this volume, quarantined instead of deleted (see the marker this
+  # test drops before the conversion). That is the finding, not a missing volume:
+  # verify it exactly like an intact one, so fsck and volverify can say whether the
+  # damage is structurally visible or silent.
+  [ -n "$F" ] || F=$(ls /persist/vault/volumes-kvm/*.raw /persist/clear/volumes/*.raw \
+      /persist/vault/volumes-kvm/*.raw.corrupt /persist/clear/volumes/*.raw.corrupt \
+      2>/dev/null | head -1)
   [ -n "$VV" ] && [ -n "$F" ] && break
   i=$((i + 1)); sleep 10
 done
 echo "DEVSIDE-WAITED=${i}0s"
+# Giving up is only actionable with the layout that defeated the search: an 8 GiB run
+# put ~8 GiB somewhere under /persist/vault inside the wait window, yet matched nothing
+# here, and du -d1 could not say where. List the candidates so the next occurrence
+# reports the actual path instead of only that it is not the expected one.
+if [ -z "$VV" ] || [ -z "$F" ]; then
+  echo "DEVSIDE-LAYOUT:"
+  for d in /persist/vault/volumes-kvm /persist/vault/volumes /persist/clear/volumes; do
+    echo "  $d:"
+    ls -l "$d" 2>&1
+  done
+  echo "  largest under /persist/vault:"
+  du -x -B1 -d2 /persist/vault 2>/dev/null | sort -rn | head -12
+fi
 [ -n "$VV" ] || { echo "DEVSIDE=no-volverify"; exit 0; }
 [ -n "$F" ] || { echo "DEVSIDE=no-relocated-volume"; exit 0; }
 echo "DEVSIDE-FILE=$F size=$(stat -c %s "$F")"
@@ -545,10 +600,13 @@ rm -rf /tmp/dsmnt /tmp/dsvv.out /tmp/dsfsck.out`
 // verifyRelocatedVolumeOnDevice records the volume verdict without involving the app,
 // Longhorn, CDI or a completed PVC import — see devsideVerifyScript.
 //
-// It is deliberately non-fatal about not finding anything to check: on a clear-volume
-// or ZFS layout the file may not be where this looks, and that must not fail a run
-// whose app-side verdict is still to come. A volume it does read and find corrupt is
-// a different matter and fails the test, since that is the finding being hunted.
+// Not finding anything to check is non-fatal ONLY when the app-side verdict is still to
+// come: on a clear-volume or ZFS layout the file may not be where this looks. Under
+// DEVSIDE_ONLY there is no second verdict, so the same silence means the iteration
+// measured nothing — and a run that measures nothing must not report PASS, or a soak
+// banks clean-looking rows that never examined a volume.
+// A volume it does read and find corrupt fails the test either way; that is the finding
+// being hunted.
 func verifyRelocatedVolumeOnDevice(t Gomega, device *evetest.EdgeDevice, dataVolMiB uint32,
 	seed, ops uint64, maxBlocks uint64, expectCommitted int) {
 	log := evetest.Logger()
@@ -565,6 +623,27 @@ func verifyRelocatedVolumeOnDevice(t Gomega, device *evetest.EdgeDevice, dataVol
 		var reason string
 		fmt.Sscanf(out[i:], "DEVSIDE=%s", &reason)
 		log.Errorf("device-side volume verify skipped: %s", reason)
+		// The volume was present and written before the conversion, so its absence
+		// afterwards is upgradeconverter's account to give: stageKvmVolumes logs
+		// "relocated N, skipped M" per run, plus a line for each entry it declined to
+		// move and for the sentinel short-circuit. Without this the layout dump can
+		// only say the volume is not there, not whether it was moved elsewhere,
+		// skipped, or never seen.
+		for _, p := range []struct{ what, pipeline string }{
+			{"upgradeconverter volume relocation", "grep -a stageKvmVolumes | tail -20"},
+			{"upgradeconverter kube entry", "grep -a relocateKvmVolumesForKube | tail -10"},
+			// stageKvmVolumes reports relocating everything it finds, so the volume is
+			// already gone when it runs. Grep for the file itself rather than any one
+			// agent's wording: whoever removed it had to name it.
+			{"every mention of a volume file", `grep -a "#0.raw" | tail -40`},
+			{"volumemgr delete path", `grep -a volumemgr | grep -aiE "delete|destroy|purge|remov" | tail -30`},
+		} {
+			o, _, e := device.RunShellScript(newlogProbe(p.pipeline), 90*time.Second, 0)
+			log.Errorf("[devside-miss] %s:\n%s(err=%v)", p.what, strings.TrimSpace(o), e)
+		}
+		t.Expect(evetest.GetTestParameter[bool](devsideOnlyParamKey)).To(BeFalse(),
+			"DEVSIDE_ONLY run banked no volume verdict (%s): this iteration measured "+
+				"nothing about shrink corruption:\n%s", reason, out)
 		return
 	}
 
@@ -575,9 +654,15 @@ func verifyRelocatedVolumeOnDevice(t Gomega, device *evetest.EdgeDevice, dataVol
 	if i := strings.Index(out, "DEVSIDE-VERIFY-RC="); i >= 0 {
 		fmt.Sscanf(out[i:], "DEVSIDE-VERIFY-RC=%d", &verifyRC)
 	}
+	// eve-detected records whether EVE's own post-resize hash check had already
+	// condemned this volume: the file it hands us is then the quarantined copy. A
+	// clean volverify on such a file would mean the two checks disagree, so the
+	// distinction has to survive into the row rather than being inferred from a path.
+	eveDetected := strings.Contains(out, ".raw"+".corrupt")
 	evetest.Logger().Infof("[DEVICE-VOLUME-OUTCOME] datavolMiB=%d app-independent=true "+
-		"fsck-rc=%d structural-damage=%t verify-rc=%d verify=[%s]",
-		dataVolMiB, fsckRC, fsckFoundStructuralDamage(out), verifyRC, volverifySummary(out))
+		"eve-detected-corrupt=%t fsck-rc=%d structural-damage=%t verify-rc=%d verify=[%s]",
+		dataVolMiB, eveDetected, fsckRC, fsckFoundStructuralDamage(out), verifyRC,
+		volverifySummary(out))
 	evetest.Checkpoint("devside-volume-verified")
 
 	presentCorrupt := reportField(out, "present-corrupt")
@@ -869,13 +954,28 @@ func runOnEVEScript(device *evetest.EdgeDevice, script string,
 // store the blocks sparsely, and the relocation would then read and write nothing,
 // leaving the shrink as fast as it is on an empty filesystem — which is the whole
 // problem this is here to fix.
-func fillPersistToPct(t Gomega, device *evetest.EdgeDevice, pct int) {
+// reserveMiB is the size of the data volume written next: the fill stops that much
+// short of pct, so the peak INCLUDING the volume is the requested percentage. Filling
+// all the way to pct and then writing the volume into what little is left collapses the
+// allowance volumemgr grants apps — the filler counts as dom0 usage, which is subtracted
+// from it — and at RemainingSpace 0 the device enters
+// MAINTENANCE_MODE_REASON_LOW_DISK_SPACE and reboots. Observed 3/3 at 8 GiB (peak 95%,
+// 3.0 GiB free) and 0/3 at 2 GiB, where the volume still fit in the slack.
+func fillPersistToPct(t Gomega, device *evetest.EdgeDevice, pct int, reserveMiB uint32) {
+	// The filler lives under /persist/log, NOT /persist/tmp: onboot.sh removes
+	// /persist/tmp unconditionally on every boot (no threshold, no df), so a reboot
+	// anywhere between the fill and the trim silently voids the placement this step
+	// exists to create. /persist/log survives a boot and is still the first entry in
+	// onboot.sh's PERSIST_CLEANUPS list, so a device that genuinely runs out of space
+	// reclaims it instead of wedging.
 	const script = `set -u
 PCT=$1
-DIR=/persist/tmp/stressfill
+RESERVE_KB=$(( $2 * 1024 ))
+DIR=/persist/log/stressfill
 rm -rf "$DIR"; mkdir -p "$DIR"
 cap=$(df -k /persist | tail -1 | awk '{print $2}')
-want=$(( cap * PCT / 100 ))
+want=$(( cap * PCT / 100 - RESERVE_KB ))
+[ "$want" -lt 0 ] && want=0
 n=0
 while [ "$(df -k /persist | tail -1 | awk '{print $3}')" -lt "$want" ]; do
   f=$(printf "%s/%06d" "$DIR" "$n")
@@ -884,7 +984,8 @@ while [ "$(df -k /persist | tail -1 | awk '{print $3}')" -lt "$want" ]; do
 done
 sync
 echo "FILLED files=$n $(df -h /persist | tail -1)"`
-	out, err := runOnEVEScript(device, script, 40*time.Minute, fmt.Sprintf("%d", pct))
+	out, err := runOnEVEScript(device, script, 40*time.Minute,
+		fmt.Sprintf("%d", pct), fmt.Sprintf("%d", reserveMiB))
 	t.Expect(err).NotTo(HaveOccurred(), "filling /persist failed:\n%s", out)
 	t.Expect(out).To(ContainSubstring("FILLED"), "fill did not report completion:\n%s", out)
 	evetest.Logger().Infof("filled /persist to ~%d%%: %s", pct, strings.TrimSpace(out))
@@ -900,8 +1001,11 @@ echo "FILLED files=$n $(df -h /persist | tail -1)"`
 func trimPersistToGiB(t Gomega, device *evetest.EdgeDevice, keepGiB int) {
 	const script = `set -u
 KEEP_KB=$(( $1 * 1024 * 1024 ))
-DIR=/persist/tmp/stressfill
-[ -d "$DIR" ] || { echo "TRIMMED no-fill-dir"; exit 0; }
+DIR=/persist/log/stressfill
+# A missing filler means the volume was not placed in the evacuation zone, so the
+# iteration cannot say anything about shrink safety. Fail rather than continue: the
+# silent version of this produced three clean-looking rows that had measured nothing.
+[ -d "$DIR" ] || { echo "TRIM-FAILED no-fill-dir"; exit 1; }
 for f in $(ls -1 "$DIR" 2>/dev/null | sort); do
   [ "$(df -k /persist | tail -1 | awk '{print $3}')" -le "$KEEP_KB" ] && break
   rm -f "$DIR/$f"
