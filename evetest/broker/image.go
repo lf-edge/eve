@@ -453,11 +453,13 @@ func resolveSoftSerial(requested string) string {
 	return uuid.NewString()
 }
 
-// resizeOverlay grows a device's overlay to wantBytes. The backing template is
-// untouched -- verified: growing an overlay leaves the backing file's virtual
-// size unchanged and allocates nothing, and reads past the backing file's end
-// return zeros. Shrinking is refused because it would truncate the GPT and data.
-func resizeOverlay(ctx context.Context, diskPath string, wantBytes, haveBytes int64) error {
+// resizeDeviceDisk grows a device's disk to wantBytes, whether that disk is a
+// QCOW2 overlay on a template or a standalone copy of one. For an overlay the
+// backing template is untouched -- verified: growing an overlay leaves the
+// backing file's virtual size unchanged and allocates nothing, and reads past
+// the backing file's end return zeros. Shrinking is refused because it would
+// truncate the GPT and data.
+func resizeDeviceDisk(ctx context.Context, diskPath string, wantBytes, haveBytes int64) error {
 	if wantBytes == 0 || wantBytes == haveBytes {
 		return nil
 	}
@@ -747,15 +749,21 @@ func makeDeviceImage(ctx context.Context, log *logrus.Entry, cache *templateCach
 			err = fmt.Errorf("failed to create overlay %q: %v: %s", diskPath, cmdErr, out)
 			return result, "", err
 		}
-		if params.liveImageSHA256 != "" {
-			if resizeErr := resizeOverlay(ctx, diskPath, int64(params.diskSize), tmpl.Meta.DiskVirtualBytes); resizeErr != nil {
-				err = resizeErr
-				return result, "", err
-			}
-		}
 	} else if err = utils.CopyFile(tmpl.diskPath(), diskPath); err != nil {
 		err = fmt.Errorf("failed to copy template disk to %q: %w", diskPath, err)
 		return result, "", err
+	}
+	// Only the live path needs this, and it needs it for a standalone copy just
+	// as much as for an overlay: a live template is deliberately keyed without
+	// the disk size (see liveTemplateKeyParams), so one template serves every
+	// requested size and the per-device disk is what carries it. A template built
+	// from the EVE container is already built at params.diskSize.
+	if params.liveImageSHA256 != "" {
+		if resizeErr := resizeDeviceDisk(ctx, diskPath,
+			int64(params.diskSize), tmpl.Meta.DiskVirtualBytes); resizeErr != nil {
+			err = resizeErr
+			return result, "", err
+		}
 	}
 
 	var configDir string

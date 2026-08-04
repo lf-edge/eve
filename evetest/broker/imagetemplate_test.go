@@ -181,7 +181,7 @@ func TestLoadTemplateMetaMissingFile(t *testing.T) {
 
 // TestLoadTemplateMetaRejectsMissingDiskVirtualBytes covers a template written
 // before the field existed: it must be a clean miss and get rebuilt, rather
-// than loading with a zero baseline that silently defeats resizeOverlay's
+// than loading with a zero baseline that silently defeats resizeDeviceDisk's
 // shrink check.
 func TestLoadTemplateMetaRejectsMissingDiskVirtualBytes(t *testing.T) {
 	dir := t.TempDir()

@@ -301,12 +301,12 @@ func (p *ProxmoxProvider) Capabilities() []api.Capability {
 	return fullCapabilitySet()
 }
 
-// DiskImageStrategy returns DiskImageLegacyBuild. Proxmox can never use
-// DiskImageOverlay because uploadDiskImages ships the image to the PVE node,
-// where a backing file would not exist; DiskImageStandalone would work and
-// would still skip the container build, but has not been validated yet.
+// DiskImageStrategy returns DiskImageStandalone: uploadDiskImages ships each
+// device's disk to the PVE node, where a backing file would not exist, so an
+// overlay is out -- but a standalone copy of a cached template is self-contained
+// and still skips the per-device container build.
 func (p *ProxmoxProvider) DiskImageStrategy() DiskImageStrategy {
-	return DiskImageLegacyBuild
+	return DiskImageStandalone
 }
 
 // SetupDevice creates a VM in a powered-off state with the given configuration.

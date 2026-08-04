@@ -557,9 +557,9 @@ Two constraints to be aware of:
   installer flow, so a test that also requests an installer
   (`CreateFromScratchWithInstaller`) fails immediately with a clear error instead of
   silently falling back to the container path.
-- **The broker must advertise `CAPABILITY_LOCAL_LIVE_IMAGE`.** A broker too old to
-  support this feature, or one whose device provider still builds images per device
-  (currently `proxmox`; see
+- **The broker must advertise `CAPABILITY_LOCAL_LIVE_IMAGE`.** All three providers do
+  today; a broker too old to support the feature, or a future provider that still builds
+  images per device (see
   [The EVE Image Template Cache](#the-eve-image-template-cache)), fails the test with a
   clear error rather than quietly falling back and testing a different EVE build than
   the one requested.
@@ -1044,9 +1044,16 @@ it across every device and every test run that matches:
   disk pressure (`EVETEST_BROKER_TEMPLATE_DISK_USAGE_THRESHOLD`), mirroring the existing
   Docker image cleanup.
 
-The `libvirt` and `qemu` providers use overlays, since both attach local image files
-directly. The `proxmox` provider cannot: it uploads the image to the PVE node, where a
-backing file would not exist, so it keeps the old per-device build path.
+Every provider uses the cache; they differ only in how a device's disk is derived from a
+template. `libvirt` and `qemu` use **overlays**, since both attach local image files
+directly. `proxmox` uses a **standalone copy**: it uploads each device's disk to the PVE
+node, where a backing file would not exist. A live-image template is deliberately keyed
+without the disk size, so the per-device disk -- overlay or copy -- is grown to the
+requested size instead.
+
+With the `proxmox` provider that copy is what the broker uploads, so the per-device cost
+there is one full-size copy plus the upload to the node, against a ~4-minute container
+build per device before.
 
 With the `qemu` provider the broker lives inside the short-lived evetest container, so
 its 30-minute cleanup loop would rarely tick before the container exits. There the sweep
