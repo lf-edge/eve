@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -452,6 +453,27 @@ func resolveSoftSerial(requested string) string {
 	return uuid.NewString()
 }
 
+// resizeOverlay grows a device's overlay to wantBytes. The backing template is
+// untouched -- verified: growing an overlay leaves the backing file's virtual
+// size unchanged and allocates nothing, and reads past the backing file's end
+// return zeros. Shrinking is refused because it would truncate the GPT and data.
+func resizeOverlay(ctx context.Context, diskPath string, wantBytes, haveBytes int64) error {
+	if wantBytes == 0 || wantBytes == haveBytes {
+		return nil
+	}
+	if wantBytes < haveBytes {
+		return fmt.Errorf(
+			"requested disk size %d is smaller than the EVE image's %d; shrinking "+
+				"would truncate the partition table", wantBytes, haveBytes)
+	}
+	out, err := exec.CommandContext(ctx, "qemu-img", "resize",
+		diskPath, strconv.FormatInt(wantBytes, 10)).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("qemu-img resize of %q failed: %v: %s", diskPath, err, out)
+	}
+	return nil
+}
+
 // mcopyArgs builds the mtools invocation that overlays a device's config files
 // onto a copy of the pristine config partition image. It mirrors
 // pkg/eve/runme.sh:337 -- `mcopy -o -i /bits/config.img -s /in/* ::/` -- with
@@ -639,6 +661,16 @@ type makeDeviceImageParams struct {
 	installer bool
 	// overlay selects a QCOW2 backing-file working copy over a standalone copy.
 	overlay bool
+	// liveImageSHA256, when non-empty, selects the live path: the template is
+	// installed by unpacking liveTarPath instead of running the EVE container,
+	// and dockerImageName/dockerImageID are ignored.
+	liveImageSHA256 string
+	// liveTarPath is the staged upload to unpack when liveImageSHA256 is set.
+	liveTarPath string
+	// liveSource, when set, points at the client's own live image files, which
+	// this broker can read directly; the template is installed from those and
+	// liveTarPath is never touched.
+	liveSource *api.LocalLiveImageSource
 }
 
 // makeDeviceImage derives a device's disk image from a cached template: it
@@ -649,15 +681,39 @@ func makeDeviceImage(ctx context.Context, log *logrus.Entry, cache *templateCach
 	refName string, params makeDeviceImageParams) (
 	result buildEVEImageResult, templateKey string, err error) {
 
-	tmpl, err := cache.ensureTemplate(ctx, log, templateKeyParams{
+	build := func(ctx context.Context, log *logrus.Entry, dstDir string) (gptPartition, error) {
+		return buildTemplateDisk(ctx, log, params.dockerImageName,
+			params.diskSize, params.installer, dstDir)
+	}
+	keyParams := templateKeyParams{
 		DockerImageID: params.dockerImageID,
 		DiskBytes:     params.diskSize,
 		Installer:     params.installer,
 		Arch:          params.arch,
-	}, func(ctx context.Context, log *logrus.Entry, dstDir string) (gptPartition, error) {
-		return buildTemplateDisk(ctx, log, params.dockerImageName,
-			params.diskSize, params.installer, dstDir)
-	})
+	}
+	if params.liveImageSHA256 != "" {
+		build = unpackLiveTemplate(params.liveTarPath, params.liveImageSHA256)
+		if params.liveSource != nil {
+			build = installLocalLiveTemplate(params.liveSource, params.liveImageSHA256)
+		}
+		keyParams = liveTemplateKeyParams(
+			params.liveImageSHA256, params.arch, params.diskSize)
+	}
+
+	tmpl, err := cache.ensureTemplate(ctx, log, keyParams, build)
+	if params.liveImageSHA256 != "" {
+		// Removed on both success and failure: a tar that failed to install is
+		// unusable and must not wedge this hash for every later request until the
+		// broker restarts. Attempted even when the template came from the client's
+		// own files, so an earlier run's upload of this same hash does not sit
+		// there unclaimed. On a cache hit, or with no upload involved at all, no
+		// tar was staged for this call, so the miss is expected and silent;
+		// anything else is worth a warning.
+		if rmErr := os.Remove(params.liveTarPath); rmErr != nil && !os.IsNotExist(rmErr) {
+			log.Warnf("Failed to remove staged live image upload %q: %v",
+				params.liveTarPath, rmErr)
+		}
+	}
 	if err != nil {
 		return result, "", err
 	}
@@ -690,6 +746,12 @@ func makeDeviceImage(ctx context.Context, log *logrus.Entry, cache *templateCach
 		if cmdErr != nil {
 			err = fmt.Errorf("failed to create overlay %q: %v: %s", diskPath, cmdErr, out)
 			return result, "", err
+		}
+		if params.liveImageSHA256 != "" {
+			if resizeErr := resizeOverlay(ctx, diskPath, int64(params.diskSize), tmpl.Meta.DiskVirtualBytes); resizeErr != nil {
+				err = resizeErr
+				return result, "", err
+			}
 		}
 	} else if err = utils.CopyFile(tmpl.diskPath(), diskPath); err != nil {
 		err = fmt.Errorf("failed to copy template disk to %q: %w", diskPath, err)

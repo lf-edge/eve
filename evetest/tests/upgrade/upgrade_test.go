@@ -105,6 +105,15 @@ func TestEVEUpgrade(test *testing.T) {
 	targetHypervisor := evetest.GetHypervisorParameterValue()
 	expectRevert := evetest.GetTestParameter[bool](expectRevertParamKey)
 
+	// Both ends of the upgrade are published EVE versions: the device boots
+	// INITIAL_EVE_VERSION and is upgraded to EVE_VERSION, so a locally built
+	// live image has nowhere to be used here and would be silently ignored.
+	if evetest.LocalLiveImageRequested() {
+		evetestT.Fatalf("Live image override is not supported for the upgrade "+
+			"test; unset %s%s to run it",
+			constants.EnvPrefix, constants.EVELiveImageEnv)
+	}
+
 	const devName = "edge-dev"
 	evetest.Setup(
 		evetest.RequireEdgeDevice{

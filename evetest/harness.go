@@ -311,18 +311,25 @@ type testSuiteState struct {
 }
 
 type deviceState struct {
-	name         string
-	requirement  RequireEdgeDevice
-	imageRef     *api.ImageRef
-	imageName    string
-	spec         *api.EVEDevice
-	ID           uuid.UUID
-	onboardCert  *x509.Certificate
-	onboardKey   *ecdsa.PrivateKey
-	ecdhCert     *x509.Certificate
-	serial       string
-	config       *EdgeDeviceConfig
-	consoleInUse bool
+	name        string
+	requirement RequireEdgeDevice
+	imageRef    *api.ImageRef
+	imageName   string
+	// liveImage is set only when EVETEST_EVE_LIVE_IMAGE selects a locally
+	// built live.qcow2 in place of an EVE container image.
+	liveImage *api.LiveImageRef
+	// liveImageSource accompanies liveImage with the paths behind it, so a
+	// broker sharing this filesystem installs the template by reading them
+	// instead of taking an upload of bytes it can already see.
+	liveImageSource *api.LocalLiveImageSource
+	spec            *api.EVEDevice
+	ID              uuid.UUID
+	onboardCert     *x509.Certificate
+	onboardKey      *ecdsa.PrivateKey
+	ecdhCert        *x509.Certificate
+	serial          string
+	config          *EdgeDeviceConfig
+	consoleInUse    bool
 
 	unsubscribeInfo    func()
 	unsubscribeReq     func()

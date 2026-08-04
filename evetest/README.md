@@ -487,6 +487,86 @@ EVETEST_COLLECT_ARTIFACTS=/tmp/evetest-artifacts \
     make evetest NAME=TestDHCPIPv4Only
 ```
 
+### Testing a Local EVE Build
+
+A developer iterating on EVE can point evetest at their own `make live` output instead
+of pulling or building an EVE container image:
+
+```bash
+make live                                               # build EVE locally
+EVETEST_EVE_LIVE_IMAGE=true make evetest NAME=<TestName>
+```
+
+**Two independent settings.** Which EVE build runs and how its bits get delivered are
+separate questions:
+
+| | setting | values |
+|---|---|---|
+| **which build** | `EVETEST_EVE_VERSION` | a version (`16.0.0-lts`), or unset |
+| **how it is delivered** | `EVETEST_EVE_LIVE_IMAGE` | `true` = the artifacts `make live` wrote; unset/`false` = an EVE container image |
+
+A local build is not a transport: `make eve` produces a local *container* image, and the
+harness pushes it to the broker when the broker does not have it. So
+`EVETEST_EVE_LIVE_IMAGE` says only *how*, never *which* — it is a plain boolean and takes
+no path.
+
+With the live transport on, the version selects the build directory under
+`EVETEST_EVE_DIST_DIR` (set automatically by `make evetest`):
+
+- **`EVETEST_EVE_VERSION` unset** — the newest build, via `dist/<arch>/current`; the run
+  reports whatever version that turns out to be. Note the symlink is **arch-scoped**
+  (`dist/amd64/current`, not `dist/current`).
+- **`EVETEST_EVE_VERSION=<v>`** — `dist/<arch>/<v>/`. If that version is not built here,
+  the run **fails** rather than quietly fetching it from a registry: you asked for a
+  specific build *and* for the live transport, and silently delivering different bits is
+  the kind of thing that costs an afternoon to notice.
+- A version pinned by the test itself (`RequireEdgeDevice.WithEVEVersion`, e.g.
+  `TestEVEUpgrade`'s pre-upgrade version) names a *released* build and always comes from
+  a container image, whatever the transport setting.
+
+The harness content-hashes the image, then tells the broker both the hash and where the
+files are (`live.qcow2`, `installer/config.img`, `installer/firmware/*`), and the broker
+picks how to get them:
+
+- **It can read those paths itself** -- all-in-one mode, or a broker you started by hand
+  on your own machine. It installs the template straight from the dist directory, and
+  nothing is uploaded at all. Whether the paths are readable is decided by the broker,
+  by looking; the harness does not guess from its deployment mode.
+- **It cannot** (the usual distributed setup, where the broker is a different machine).
+  It reports the image as missing and the harness uploads it as a tar, exactly as
+  before.
+
+Either way the upload/read happens only when the broker does not already hold that hash,
+and the template is then installed through the machinery described in
+[The EVE Image Template Cache](#the-eve-image-template-cache). The version reported for the
+run is the resolved build directory's name (e.g. `0.0.0-my-branch-abc123`), which is the
+authority on what was actually delivered.
+
+A local read is only ever used when the file's size **and** its sha256 match what the
+harness declared, so a broker can never install different content under a hash another
+run will later ask for -- the same check the upload path applies to received bytes.
+
+This is dramatically faster than the container path: there is no container build and no
+multi-gigabyte pull. Rebuilding with `make live` produces a qcow2 with different content
+and therefore a new hash, so the next run performs exactly one new upload -- nothing is
+re-uploaded until the image actually changes.
+
+Two constraints to be aware of:
+
+- **Installer-based tests cannot use this path.** A live qcow2 cannot produce an
+  installer flow, so a test that also requests an installer
+  (`CreateFromScratchWithInstaller`) fails immediately with a clear error instead of
+  silently falling back to the container path.
+- **The broker must advertise `CAPABILITY_LOCAL_LIVE_IMAGE`.** A broker too old to
+  support this feature, or one whose device provider still builds images per device
+  (currently `proxmox`; see
+  [The EVE Image Template Cache](#the-eve-image-template-cache)), fails the test with a
+  clear error rather than quietly falling back and testing a different EVE build than
+  the one requested.
+
+See [Essential Variables](#essential-variables) for the full reference on
+`EVETEST_EVE_LIVE_IMAGE`, `EVETEST_EVE_DIST_DIR`, and `EVETEST_EVE_FIRMWARE_DIR`.
+
 ### Code Coverage
 
 When EVE is built with `COVER=y`, the `zedbox` binary is instrumented for
@@ -709,6 +789,9 @@ non-default behavior.
 | `EVETEST_NAME` | Test or suite name to run (**required**) | -- |
 | `EVETEST_OUTPUT_FORMAT` | `go test` output format: `json` (machine-readable, for `gotestfmt`) or `quiet` (compact, no `-v`); default is verbose (`-v`). **Do not combine `quiet` with `EVETEST_PAUSE_ON_FAILURE` or `EVETEST_PAUSE_ON_CHECKPOINT`** — without `-v`, `go test` buffers all output until the test completes, so a pause appears frozen with no visible output. | -- |
 | `EVETEST_EVE_VERSION` | EVE version to test | current repo HEAD |
+| `EVETEST_EVE_LIVE_IMAGE` | **How** EVE's bits reach a device: `true` delivers the artifacts `make live` wrote under `EVETEST_EVE_DIST_DIR`, unset/`false` uses an EVE container image. A boolean only -- **which** build to run is `EVETEST_EVE_VERSION`'s business, so this takes no path, and a non-boolean value is an error. See [Testing a Local EVE Build](#testing-a-local-eve-build) | `false` |
+| `EVETEST_EVE_DIST_DIR` | EVE build output directory whose `<arch>/<version>/` subdirectories (and the `<arch>/current` symlink) hold the local builds. Must be an absolute path (the harness runs inside a container). Set automatically by `make evetest` when a local `dist/` directory exists | -- |
+| `EVETEST_EVE_FIRMWARE_DIR` | Overrides firmware discovery for a local live image, which otherwise looks for `OVMF*.fd` in `installer/firmware` next to the resolved qcow2 | -- |
 | `EVETEST_PREFERRED_ARCH` | Preferred CPU architecture (`amd64`, `arm64`) | `amd64` |
 | `EVETEST_LOG_LEVEL` | Framework log level (`debug`, `info`, `warn`) | `info` |
 | `EVETEST_COLLECT_ARTIFACTS` | Host path for artifacts (logs, collect-info) | -- |
@@ -782,6 +865,8 @@ Common to every provider:
 | `EVETEST_BROKER_MAX_CLIENTS` | Max concurrent evetest clients the broker will accept; new connections are rejected with an error once this many are already connected (reconnects of existing clients are never blocked) | `-1` (unlimited) |
 | `EVETEST_BROKER_DOCKER_IMAGE_RETENTION` | How long, in minutes, an unused, evetest-managed Docker image (one the broker itself pulled or built) is kept before the broker's periodic cleanup removes it | `10080` (7 days) |
 | `EVETEST_BROKER_DOCKER_DISK_USAGE_THRESHOLD` | Disk usage percent (on the filesystem backing Docker's storage) at or above which the broker aggressively evicts the oldest unused, evetest-managed Docker images, regardless of the retention setting above | `80` |
+| `EVETEST_BROKER_TEMPLATE_RETENTION` | How long, in minutes, an unused EVE disk-image template (see [The EVE Image Template Cache](#the-eve-image-template-cache)) is kept before the broker's periodic cleanup removes it. Deliberately generous, since templates let consecutive runs against the same EVE version skip the image build entirely; zero or negative disables age-based eviction, but disk-usage-based eviction still applies regardless. A template still backing a live VM is never removed regardless of this value | `10080` (7 days) |
+| `EVETEST_BROKER_TEMPLATE_DISK_USAGE_THRESHOLD` | Disk usage percent (on the filesystem backing the broker's image directory) at or above which the broker evicts the oldest unreferenced EVE image templates, regardless of the retention setting above. Deliberately higher than `EVETEST_BROKER_DOCKER_DISK_USAGE_THRESHOLD`: broker hosts routinely idle above 80%, so an 80% threshold would evict every unreferenced template on every pass and the cache would never stay warm; templates are also the wrong thing to give up first -- one is 1-2 GB, where the Docker image store is tens of GB | `90` |
 | `EVETEST_BROKER_PPROF_PORT` | Port for the broker's `net/http/pprof` debug endpoint (listens on all interfaces); `0` disables it | `0` (disabled) |
 
 **`libvirt` provider only:**
@@ -935,6 +1020,37 @@ It manages the VM lifecycle (create, power on/off, reboot, destroy), caches EVE 
 for reuse across tests, and acts as a tunnel proxy forwarding IP packets between the
 evetest container and the SDN VM. This tunneling allows the evetest container to operate
 without direct network connectivity to the VMs -- it only needs access to the broker.
+
+#### The EVE Image Template Cache
+
+Building an EVE image used to mean one full container build per device -- roughly 4
+minutes and 2 GB of I/O -- run serially, even though most of that work (unpacking the
+container, laying out the disk) does not depend on anything device-specific like the
+onboarding certificate. The broker now builds a **configuration-independent template**
+once per distinct (docker image content ID, disk size, installer flag, arch) and reuses
+it across every device and every test run that matches:
+
+- Templates are cached under `$EVETEST_BROKER_IMAGE_DIR/templates/<key>/`, keyed by
+  content rather than by EVE version string, so identical image content built under a
+  different tag still hits the cache.
+- Each device gets its own qcow2 copy-on-write overlay backed by the template's disk,
+  with that device's own 5 MiB FAT config partition written into the overlay's CONFIG
+  partition -- the template itself is never modified.
+- Templates are reference-counted: one currently backing a live VM is never deleted,
+  regardless of age or disk pressure.
+- An image-directory-wide `flock` guards template creation and eviction, so two brokers
+  sharing the same `EVETEST_BROKER_IMAGE_DIR` cannot destroy each other's state.
+- Unreferenced templates are evicted by age (`EVETEST_BROKER_TEMPLATE_RETENTION`) and by
+  disk pressure (`EVETEST_BROKER_TEMPLATE_DISK_USAGE_THRESHOLD`), mirroring the existing
+  Docker image cleanup.
+
+The `libvirt` and `qemu` providers use overlays, since both attach local image files
+directly. The `proxmox` provider cannot: it uploads the image to the PVE node, where a
+backing file would not exist, so it keeps the old per-device build path.
+
+With the `qemu` provider the broker lives inside the short-lived evetest container, so
+its 30-minute cleanup loop would rarely tick before the container exits. There the sweep
+runs once at broker startup instead -- same age and disk-pressure rules, same variables.
 
 ### SDN (Software Defined Network)
 

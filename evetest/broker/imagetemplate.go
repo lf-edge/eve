@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"math/rand/v2"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -64,32 +65,49 @@ const (
 // passes -p to the EVE container; if that changes, it must be added here.
 type templateKeyParams struct {
 	DockerImageID string
-	DiskBytes     uint64
-	Installer     bool
-	Arch          api.ArchType
+	// LiveImageSHA256 identifies a locally built live image. Exactly one of
+	// this and DockerImageID is set. Note DiskBytes is left zero on this path:
+	// size is applied per device by resizing the overlay, so one template
+	// serves every requested size.
+	LiveImageSHA256 string
+	DiskBytes       uint64
+	Installer       bool
+	Arch            api.ArchType
 }
 
 // computeTemplateKey derives the cache key. The hash is truncated to 32 hex
 // characters: it names a directory, and collisions are not adversarial here.
 func computeTemplateKey(p templateKeyParams) string {
 	h := sha256.New()
-	fmt.Fprintf(h, "v%d\n%s\n%d\n%t\n%s\n",
-		templateFormatVersion, p.DockerImageID, p.DiskBytes, p.Installer, p.Arch)
+	fmt.Fprintf(h, "v%d\n%s\n%s\n%d\n%t\n%s\n",
+		templateFormatVersion, p.DockerImageID, p.LiveImageSHA256,
+		p.DiskBytes, p.Installer, p.Arch)
 	return hex.EncodeToString(h.Sum(nil))[:32]
+}
+
+// liveTemplateKeyParams builds the cache key inputs for a locally built live
+// image. diskSize is accepted and deliberately dropped: the live path sizes
+// each device by resizing its overlay, so one template serves every requested
+// size.
+func liveTemplateKeyParams(sha256 string, arch api.ArchType, diskSize uint64) templateKeyParams {
+	_ = diskSize
+	return templateKeyParams{LiveImageSHA256: sha256, Arch: arch}
 }
 
 // templateMeta is the on-disk description of a built template.
 type templateMeta struct {
-	FormatVersion int       `json:"formatVersion"`
-	Key           string    `json:"key"`
-	DockerImageID string    `json:"dockerImageId"`
-	DiskBytes     uint64    `json:"diskBytes"`
-	Installer     bool      `json:"installer"`
-	Arch          string    `json:"arch"`
-	ConfigOffset  int64     `json:"configOffset"`
-	ConfigLength  int64     `json:"configLength"`
-	BuiltAt       time.Time `json:"builtAt"`
-	LastUsed      time.Time `json:"lastUsed"`
+	FormatVersion    int       `json:"formatVersion"`
+	Key              string    `json:"key"`
+	DockerImageID    string    `json:"dockerImageId"`
+	LiveImageSHA256  string    `json:"liveImageSha256"`
+	DiskBytes        uint64    `json:"diskBytes"`
+	Installer        bool      `json:"installer"`
+	Arch             string    `json:"arch"`
+	ConfigOffset     int64     `json:"configOffset"`
+	ConfigLength     int64     `json:"configLength"`
+	DiskVirtualBytes int64     `json:"diskVirtualBytes"`
+	BuiltAt          time.Time `json:"builtAt"`
+	LastUsed         time.Time `json:"lastUsed"`
 }
 
 // save writes the metadata into a template directory.
@@ -130,6 +148,9 @@ func loadTemplateMeta(dir string) (templateMeta, error) {
 	if m.ConfigLength <= 0 {
 		return m, fmt.Errorf("template %q records a non-positive CONFIG length %d",
 			dir, m.ConfigLength)
+	}
+	if m.DiskVirtualBytes <= 0 {
+		return m, fmt.Errorf("template %q has no recorded disk virtual size", dir)
 	}
 	return m, nil
 }
@@ -183,6 +204,17 @@ type templateCache struct {
 	// while a build runs.
 	mutex    sync.Mutex
 	inFlight map[string]*templateBuildState
+
+	// refsMutex guards addRef, removeRef, and evict's check-and-delete of a
+	// template's refs directory, as one critical section. It is deliberately
+	// not mutex: hasRefs is reachable via loadInstalledLocked ->
+	// discardUnusable while mutex is held, and Go mutexes are not reentrant,
+	// so guarding hasRefs with mutex would self-deadlock.
+	//
+	// Lock ordering: mutex may be held while acquiring refsMutex (that is
+	// exactly the loadInstalledLocked -> discardUnusable -> hasRefs path).
+	// Nothing holding refsMutex may ever acquire mutex.
+	refsMutex sync.Mutex
 }
 
 // templateBuildState lets concurrent callers wanting the same template wait on
@@ -229,7 +261,7 @@ func (c *templateCache) ensureTemplateAttempt(ctx context.Context, log *logrus.E
 	key := computeTemplateKey(params)
 
 	c.mutex.Lock()
-	if ref, ok := c.loadInstalled(log, key); ok {
+	if ref, ok := c.loadInstalledLocked(log, key, true); ok {
 		c.mutex.Unlock()
 		log.Infof("Reusing cached EVE image template %q", key)
 		return ref, nil
@@ -267,7 +299,13 @@ func (c *templateCache) ensureTemplateAttempt(ctx context.Context, log *logrus.E
 		log.Warnf("This broker does not own the image directory %q and will not clear "+
 			"stale references or evict templates; building without housekeeping", c.imageDir)
 	}
-	log.Infof("Building EVE image template %q", key)
+	if params.LiveImageSHA256 != "" {
+		// Which live image source is used -- an upload, or the client's own files
+		// read in place -- is the builder's business; it logs that itself.
+		log.Infof("Installing EVE image template %q from an EVE live image", key)
+	} else {
+		log.Infof("Building EVE image template %q", key)
+	}
 	state.ref, state.err = c.buildAndInstall(ctx, log, key, params, build)
 
 	c.mutex.Lock()
@@ -278,9 +316,23 @@ func (c *templateCache) ensureTemplateAttempt(ctx context.Context, log *logrus.E
 	return state.ref, state.err
 }
 
-// loadInstalled returns an already-installed template, or false if it is
-// absent, incomplete or unreadable. Callers must hold c.mutex.
-func (c *templateCache) loadInstalled(log *logrus.Entry, key string) (*templateRef, bool) {
+// hasTemplate reports whether a usable template for these params is
+// installed. It is a read-only predicate: it must not refresh LastUsed, so it
+// does not compete with real lookups for a meta.json write while c.mutex is
+// held.
+func (c *templateCache) hasTemplate(params templateKeyParams) bool {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	_, ok := c.loadInstalledLocked(c.log.WithField("check", "hasTemplate"),
+		computeTemplateKey(params), false)
+	return ok
+}
+
+// loadInstalledLocked returns an already-installed template, or false if it is
+// absent, incomplete or unreadable. Callers must hold c.mutex. touch is false
+// only for hasTemplate's read-only check; every genuine lookup passes true so
+// LastUsed keeps tracking real access, since age-based eviction depends on it.
+func (c *templateCache) loadInstalledLocked(log *logrus.Entry, key string, touch bool) (*templateRef, bool) {
 	dir := c.templateDir(key)
 	meta, err := loadTemplateMeta(dir)
 	if err != nil {
@@ -298,9 +350,11 @@ func (c *templateCache) loadInstalled(log *logrus.Entry, key string) (*templateR
 			return nil, false
 		}
 	}
-	meta.LastUsed = time.Now()
-	if err := meta.save(dir); err != nil {
-		log.Warnf("Failed to record last-used time for template %q: %v", key, err)
+	if touch {
+		meta.LastUsed = time.Now()
+		if err := meta.save(dir); err != nil {
+			log.Warnf("Failed to record last-used time for template %q: %v", key, err)
+		}
 	}
 	ref.Meta = meta
 	return ref, true
@@ -327,6 +381,21 @@ func (c *templateCache) discardUnusable(log *logrus.Entry, key, reason string) {
 		return
 	}
 	log.Infof("Removed unusable EVE image template %q (%s)", key, reason)
+}
+
+// readDiskVirtualSize reads the virtual size of a QCOW2 disk using qemu-img info.
+func readDiskVirtualSize(ctx context.Context, diskPath string) (int64, error) {
+	out, err := exec.CommandContext(ctx, "qemu-img", "info", "--output=json", diskPath).CombinedOutput()
+	if err != nil {
+		return 0, fmt.Errorf("qemu-img info failed: %v: %s", err, out)
+	}
+	var info struct {
+		VirtualSize int64 `json:"virtual-size"`
+	}
+	if err := json.Unmarshal(out, &info); err != nil {
+		return 0, fmt.Errorf("failed to parse qemu-img output: %w", err)
+	}
+	return info.VirtualSize, nil
 }
 
 // buildAndInstall builds into a temporary directory and renames it into place,
@@ -358,18 +427,25 @@ func (c *templateCache) buildAndInstall(ctx context.Context, log *logrus.Entry,
 	if err := os.MkdirAll(filepath.Join(tmpDir, templateRefsDir), 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create refs dir: %w", err)
 	}
+	diskPath := filepath.Join(tmpDir, templateDiskFile)
+	diskVirtualSize, err := readDiskVirtualSize(ctx, diskPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read disk virtual size: %w", err)
+	}
 	now := time.Now()
 	meta := templateMeta{
-		FormatVersion: templateFormatVersion,
-		Key:           key,
-		DockerImageID: params.DockerImageID,
-		DiskBytes:     params.DiskBytes,
-		Installer:     params.Installer,
-		Arch:          params.Arch.String(),
-		ConfigOffset:  configPart.Offset,
-		ConfigLength:  configPart.Length,
-		BuiltAt:       now,
-		LastUsed:      now,
+		FormatVersion:    templateFormatVersion,
+		Key:              key,
+		DockerImageID:    params.DockerImageID,
+		LiveImageSHA256:  params.LiveImageSHA256,
+		DiskBytes:        params.DiskBytes,
+		Installer:        params.Installer,
+		Arch:             params.Arch.String(),
+		ConfigOffset:     configPart.Offset,
+		ConfigLength:     configPart.Length,
+		DiskVirtualBytes: diskVirtualSize,
+		BuiltAt:          now,
+		LastUsed:         now,
 	}
 	if err := meta.save(tmpDir); err != nil {
 		return nil, err
@@ -386,7 +462,7 @@ func (c *templateCache) buildAndInstall(ctx context.Context, log *logrus.Entry,
 			return nil, fmt.Errorf("failed to install template into %q: %w", dstDir, err)
 		}
 		c.mutex.Lock()
-		ref, ok := c.loadInstalled(log, key)
+		ref, ok := c.loadInstalledLocked(log, key, true)
 		c.mutex.Unlock()
 		if !ok {
 			return nil, fmt.Errorf(
@@ -480,6 +556,22 @@ func validRefName(refName string) error {
 	return nil
 }
 
+// validLiveImageSHA256 rejects anything that is not a plain hex digest. The
+// value arrives from the client and is used as a path component, so it must be
+// validated before it reaches filepath.Join -- the same reasoning as
+// validRefName.
+func validLiveImageSHA256(sha string) error {
+	if len(sha) != 64 {
+		return fmt.Errorf("invalid live image sha256 %q: expected 64 hex characters", sha)
+	}
+	for _, c := range sha {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return fmt.Errorf("invalid live image sha256 %q: not lowercase hex", sha)
+		}
+	}
+	return nil
+}
+
 // addRef records that a live working copy is backed by this template. A
 // template with any refs is never evicted. The template must already exist:
 // otherwise this would create a bare refs directory that no template ever
@@ -488,6 +580,8 @@ func (c *templateCache) addRef(key, refName string) error {
 	if err := validRefName(refName); err != nil {
 		return err
 	}
+	c.refsMutex.Lock()
+	defer c.refsMutex.Unlock()
 	templateDir := c.templateDir(key)
 	if _, err := os.Stat(templateDir); err != nil {
 		return fmt.Errorf("failed to add ref: template %q: %w", key, err)
@@ -509,6 +603,8 @@ func (c *templateCache) removeRef(key, refName string) error {
 	if err := validRefName(refName); err != nil {
 		return err
 	}
+	c.refsMutex.Lock()
+	defer c.refsMutex.Unlock()
 	path := filepath.Join(c.templateDir(key), templateRefsDir, refName)
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to remove template ref %q: %w", path, err)
@@ -520,6 +616,15 @@ func (c *templateCache) removeRef(key, refName string) error {
 // unreadable refs dir is reported as referenced, so an I/O problem can never
 // cause a template to be deleted out from under a running VM.
 func (c *templateCache) hasRefs(key string) bool {
+	c.refsMutex.Lock()
+	defer c.refsMutex.Unlock()
+	return c.hasRefsLocked(key)
+}
+
+// hasRefsLocked is hasRefs' body. Callers must hold refsMutex; evict uses this
+// directly so its reference check and the delete that follows form one
+// critical section with addRef.
+func (c *templateCache) hasRefsLocked(key string) bool {
 	dir := filepath.Join(c.templateDir(key), templateRefsDir)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -575,6 +680,12 @@ func (c *templateCache) clearAllRefs() error {
 // unreferenced. imageCandidate is reused so the age and disk-pressure
 // selection helpers in imagecleanup.go serve both docker images and templates.
 // A non-owner broker never offers candidates: only the owner evicts.
+//
+// Deliberately unguarded by refsMutex: this only builds a snapshot, which can
+// go stale the instant it is taken regardless of locking, and evict()
+// re-checks authoritatively before it deletes anything. Do not add refsMutex
+// here -- candidates() runs under no lock that could create an ordering cycle
+// with mutex today, and it should stay that way.
 func (c *templateCache) candidates() []imageCandidate {
 	if !c.owner {
 		return nil
@@ -610,11 +721,18 @@ func (c *templateCache) candidates() []imageCandidate {
 // returns a snapshot, and a client can acquire a reference after that snapshot
 // while the sweep is still running. It also re-checks ownership so the
 // non-owner guarantee does not depend on candidates() being the only entry point.
+//
+// The check and the delete happen under a single refsMutex critical section
+// so no addRef can land between them: without that, hasRefs could see an
+// empty refs dir, addRef could then create a marker, and this would still
+// delete a template a device just took a reference on.
 func (c *templateCache) evict(key string) error {
 	if !c.owner {
 		return nil
 	}
-	if c.hasRefs(key) {
+	c.refsMutex.Lock()
+	defer c.refsMutex.Unlock()
+	if c.hasRefsLocked(key) {
 		c.log.Infof("Template cleanup: %q acquired a reference during the sweep; keeping it", key)
 		return nil
 	}

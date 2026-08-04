@@ -43,6 +43,11 @@ enum Capability {
   CAPABILITY_FORWARD_LLDP = 3;
   // Attachment of an emulated TPM (Trusted Platform Module) to the device.
   CAPABILITY_TPM = 4;
+  // Deriving a device's disk from a locally built EVE live image uploaded by
+  // the client, instead of building it from an EVE container image. Requires a
+  // provider that attaches the qcow2 directly, so it tracks the provider's disk
+  // image strategy.
+  CAPABILITY_LOCAL_LIVE_IMAGE = 5;
 }
 
 // Reference to a specific EVE image used for provisioning or testing.
@@ -51,6 +56,14 @@ message ImageRef {
   string version = 2; // e.g. "14.5.0-lts"
   HypervisorType hypervisor = 3;
   ArchType arch = 4;
+}
+
+// Reference to a locally built EVE live disk image, identified by content
+// rather than by tag: the developer's build is rebuilt under an unchanged
+// name, so only the hash distinguishes one from the next.
+message LiveImageRef {
+  string sha256 = 1;  // hex sha256 of live.qcow2
+  string version = 2; // EVE version, from the dist directory name; may be empty
 }
 
 // Severity levels for logs generated during test or device operation.

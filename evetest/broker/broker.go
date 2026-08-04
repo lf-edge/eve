@@ -137,6 +137,22 @@ type device struct {
 	templateKey string
 }
 
+// brokerCapabilities composes the full capability set advertised to clients:
+// the provider's own capabilities plus CAPABILITY_LOCAL_LIVE_IMAGE whenever
+// diskStrategy is not DiskImageLegacyBuild. A provider never builds or
+// receives an EVE image, so whether an uploaded live image can be consumed is
+// the broker's determination; it depends on the provider only through its
+// disk image strategy, which is why that decision lives here rather than in
+// provider.Capabilities().
+func brokerCapabilities(
+	providerCaps []api.Capability, diskStrategy provider.DiskImageStrategy) []api.Capability {
+	caps := append([]api.Capability{}, providerCaps...)
+	if diskStrategy != provider.DiskImageLegacyBuild {
+		caps = append(caps, api.Capability_CAPABILITY_LOCAL_LIVE_IMAGE)
+	}
+	return caps
+}
+
 func newBroker(log *logrus.Logger, provider provider.DeviceProvider,
 	providerName, imageDir string, sdnGrpcPort uint16, maxClients int,
 	imgRetention time.Duration, diskThresholdPct int,
@@ -172,7 +188,7 @@ func newBroker(log *logrus.Logger, provider provider.DeviceProvider,
 		imageDir:             imageDir,
 		sdnGrpcPort:          sdnGrpcPort,
 		supportedArchs:       supportedArchs,
-		capabilities:         provider.Capabilities(),
+		capabilities:         brokerCapabilities(provider.Capabilities(), provider.DiskImageStrategy()),
 		proxyCACerts:         proxyCACerts,
 		registryMirrors:      constants.LoadRegistryMirrors(),
 		maxClients:           maxClients,
@@ -201,6 +217,9 @@ func newBroker(log *logrus.Logger, provider provider.DeviceProvider,
 	}
 	if err := b.templates.clearAllRefs(); err != nil {
 		log.Warnf("Failed to clear stale template references: %v", err)
+	}
+	if err := b.templates.removeStaleLiveUploads(); err != nil {
+		log.Warnf("Failed to sweep stale live image uploads: %v", err)
 	}
 	// The qemu provider runs the broker embedded inside the short-lived evetest
 	// container itself (all-in-one mode), so it exits when the test ends -- there's
@@ -534,7 +553,9 @@ func (b *broker) BuildImage(
 		return nil, err
 	}
 
-	// Resolve Docker image name from ImageRef
+	// Resolve Docker image name from ImageRef. Still resolved on the live path
+	// too: the harness always sends an ImageRef for reporting, and this is a
+	// pure string computation, no I/O.
 	dockerImageName, err := utils.EVEDockerImageName(req.Image)
 	if err != nil {
 		err = fmt.Errorf("invalid image reference: %w", err)
@@ -542,23 +563,72 @@ func (b *broker) BuildImage(
 		return nil, err
 	}
 
-	// Check if the Docker image exists locally
-	haveImage, err := utils.HaveDockerImage(ctx, log, dockerImageName)
-	if err != nil {
-		err = fmt.Errorf("failed to check for image %q presence: %w",
-			dockerImageName, err)
-		log.Error(err)
-		return nil, err
-	}
-	if !haveImage {
-		log.Infof("Docker image %q not found locally, trying to pull...", dockerImageName)
-		err = utils.PullDockerImage(ctx, log, dockerImageName)
-		if err != nil {
-			log.Warnf("Failed to pull Docker image %q: %v", dockerImageName, err)
-			return &api.BuildImageResponse{MissingEveContainerImage: true}, nil
+	// A local live image may exist with no EVE container image on this broker
+	// at all, so its preconditions and miss check must be resolved before any
+	// docker image I/O is attempted: a HaveDockerImage/PullDockerImage below
+	// would otherwise waste (or fail) a multi-GB pull that the live path
+	// never needed.
+	// liveSource is set when this broker can read the client's live image files
+	// itself, which makes the upload pointless.
+	var liveSource *api.LocalLiveImageSource
+	if live := req.GetLiveImage(); live != nil {
+		if req.MakeInstaller {
+			err := fmt.Errorf(
+				"device %q requests an installer image, which a local live image "+
+					"cannot provide; unset EVETEST_EVE_LIVE_IMAGE to use the container path",
+				req.DeviceName)
+			log.Error(err)
+			return nil, err
 		}
+		if b.provider.DiskImageStrategy() == provider.DiskImageLegacyBuild {
+			err := fmt.Errorf(
+				"device %q requests a local live image, but the %T provider still uses "+
+					"the per-device container build path and cannot consume one; unset "+
+					"EVETEST_EVE_LIVE_IMAGE to build from the EVE container image",
+				req.DeviceName, b.provider)
+			log.Error(err)
+			return nil, err
+		}
+		if err := validLiveImageSHA256(live.GetSha256()); err != nil {
+			log.Error(err)
+			return nil, err
+		}
+		// Checked before the staged upload and the template cache, and kept even
+		// on a cache hit: a template evicted between this check and the install
+		// then still has a source to be rebuilt from, and asking for an upload
+		// this broker does not need is never right.
+		if localLiveSourceUsable(log, req.GetLiveImageSource()) {
+			liveSource = req.GetLiveImageSource()
+		} else {
+			tarPath := liveUploadPath(b.imageDir, live.GetSha256())
+			if _, statErr := os.Stat(tarPath); statErr != nil {
+				if !b.templates.hasTemplate(templateKeyParams{
+					LiveImageSHA256: live.GetSha256(),
+					Arch:            imageArch,
+				}) {
+					return &api.BuildImageResponse{MissingEveLiveImage: true}, nil
+				}
+			}
+		}
+	} else {
+		// Check if the Docker image exists locally
+		haveImage, err := utils.HaveDockerImage(ctx, log, dockerImageName)
+		if err != nil {
+			err = fmt.Errorf("failed to check for image %q presence: %w",
+				dockerImageName, err)
+			log.Error(err)
+			return nil, err
+		}
+		if !haveImage {
+			log.Infof("Docker image %q not found locally, trying to pull...", dockerImageName)
+			err = utils.PullDockerImage(ctx, log, dockerImageName)
+			if err != nil {
+				log.Warnf("Failed to pull Docker image %q: %v", dockerImageName, err)
+				return &api.BuildImageResponse{MissingEveContainerImage: true}, nil
+			}
+		}
+		b.imageUsage.touch(dockerImageName)
 	}
-	b.imageUsage.touch(dockerImageName)
 
 	providerDevName := fmt.Sprintf("eve-%s-%s", clientSession.clientID, req.DeviceName)
 	imageDirPath := filepath.Join(b.imageDir, providerDevName)
@@ -577,8 +647,14 @@ func (b *broker) BuildImage(
 			installer:       req.MakeInstaller,
 		})
 	} else {
+		// No EVE container image need exist on this broker at all on the live
+		// path, so its content ID is never inspected. The cache key comes from
+		// liveImageSHA256 via liveTemplateKeyParams instead; dockerImageID stays
+		// empty and unused.
 		var dockerImageID string
-		dockerImageID, err = utils.DockerImageID(ctx, dockerImageName)
+		if req.GetLiveImage() == nil {
+			dockerImageID, err = utils.DockerImageID(ctx, dockerImageName)
+		}
 		if err == nil {
 			eveImage, templateKey, err = makeDeviceImage(ctx, log, b.templates,
 				providerDevName, makeDeviceImageParams{
@@ -592,6 +668,9 @@ func (b *broker) BuildImage(
 					diskSize:        req.DiskBytes,
 					installer:       req.MakeInstaller,
 					overlay:         b.provider.DiskImageStrategy() == provider.DiskImageOverlay,
+					liveImageSHA256: req.GetLiveImage().GetSha256(),
+					liveTarPath:     liveUploadPath(b.imageDir, req.GetLiveImage().GetSha256()),
+					liveSource:      liveSource,
 				})
 		}
 	}
@@ -781,6 +860,139 @@ func (b *broker) PushEVEContainerImage(
 	b.imageUsage.touch(dockerImageName)
 	log.Infof("Loaded EVE docker image: %s", dockerImageName)
 	return stream.SendAndClose(&api.PushImageResponse{
+		AlreadyExists: false,
+	})
+}
+
+// PushEVELiveImage receives a locally built EVE live image, uploaded as a tar
+// stream (disk.qcow2, config.img, firmware/*), and stages it at
+// liveUploadPath for BuildImage's retry to install via unpackLiveTemplate.
+//
+// Modelled on PushEVEContainerImage: the first message carries metadata, the
+// rest are raw tar bytes. The stream is written to a ".part" file and renamed
+// into place only once it completes without error, so a client disconnect or
+// broker crash mid-upload never leaves a tar that looks complete -- the
+// partial is removed on every error return instead.
+func (b *broker) PushEVELiveImage(
+	stream grpc.ClientStreamingServer[api.PushLiveImageChunk, api.PushLiveImageResponse]) error {
+	// Receive first message (metadata)
+	firstChunk, err := stream.Recv()
+	if err != nil {
+		err = fmt.Errorf("failed to receive live image metadata: %v", err)
+		b.globalLog.Error(err)
+		return err
+	}
+
+	req := firstChunk.GetRequest()
+	if req == nil {
+		err = fmt.Errorf("first message must contain live image metadata")
+		b.globalLog.Error(err)
+		return err
+	}
+
+	// Lookup client session
+	b.mutex.Lock()
+	clientSession, exists := b.sessions[req.ClientId]
+	b.mutex.Unlock()
+	if !exists {
+		err = clientNotFoundErr(req.ClientId)
+		b.globalLog.Error(err)
+		return err
+	}
+	log := clientSession.log
+
+	sha := req.GetLiveImage().GetSha256()
+	if err = validLiveImageSHA256(sha); err != nil {
+		log.Error(err)
+		return err
+	}
+	tarPath := liveUploadPath(b.imageDir, sha)
+
+	// The staged tar is keyed only on content hash, so this check is enough on
+	// its own to skip a redundant 2.1 GB upload -- no need to also drain the
+	// stream first. SendAndClose without draining is safe, as in
+	// PushEVEContainerImage: the client handles the early close by breaking out
+	// of its send loop and calling CloseAndRecv.
+	if _, statErr := os.Stat(tarPath); statErr == nil {
+		log.Infof("Live image %q is already staged, skipping upload", sha)
+		return stream.SendAndClose(&api.PushLiveImageResponse{AlreadyExists: true})
+	}
+
+	if err = os.MkdirAll(filepath.Dir(tarPath), 0o755); err != nil {
+		err = fmt.Errorf("failed to create live image upload dir: %w", err)
+		log.Error(err)
+		return err
+	}
+
+	// Unique per upload: two clients streaming the same hash concurrently must
+	// not share a part file, or each O_TRUNC would truncate the other's inode
+	// and the two streams would interleave into one garbled tar. os.Rename onto
+	// tarPath is atomic on Linux, so whichever upload finishes last still wins
+	// with correct (for a given hash, identical) content.
+	uploadID := make([]byte, 8)
+	if _, err = rand.Read(uploadID); err != nil {
+		err = fmt.Errorf("failed to generate upload id: %w", err)
+		log.Error(err)
+		return err
+	}
+	partPath := fmt.Sprintf("%s.%s.part", tarPath, hex.EncodeToString(uploadID))
+	f, err := os.OpenFile(partPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		err = fmt.Errorf("failed to create %q: %w", partPath, err)
+		log.Error(err)
+		return err
+	}
+	defer f.Close()
+
+	installed := false
+	defer func() {
+		if !installed {
+			if rmErr := os.Remove(partPath); rmErr != nil && !os.IsNotExist(rmErr) {
+				log.Warnf("Failed to remove partial live image upload %q: %v",
+					partPath, rmErr)
+			}
+		}
+	}()
+
+	for {
+		chunk, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			err = fmt.Errorf("failed to receive live image chunk: %w", err)
+			log.Error(err)
+			return err
+		}
+		data := chunk.GetDataChunk()
+		if len(data) == 0 {
+			// The client's chunking io.Writer can legitimately emit a
+			// zero-length Write (e.g. from archive/tar or io.CopyBuffer);
+			// tolerate it rather than aborting a multi-gigabyte transfer
+			// over a message that carries no bytes.
+			continue
+		}
+		if _, err := f.Write(data); err != nil {
+			err = fmt.Errorf("failed to write %q: %w", partPath, err)
+			log.Error(err)
+			return err
+		}
+	}
+
+	if err = f.Close(); err != nil {
+		err = fmt.Errorf("failed to close %q: %w", partPath, err)
+		log.Error(err)
+		return err
+	}
+	if err = os.Rename(partPath, tarPath); err != nil {
+		err = fmt.Errorf("failed to install uploaded live image %q: %w", tarPath, err)
+		log.Error(err)
+		return err
+	}
+	installed = true
+
+	log.Infof("Received uploaded EVE live image %q at %q", sha, tarPath)
+	return stream.SendAndClose(&api.PushLiveImageResponse{
 		AlreadyExists: false,
 	})
 }

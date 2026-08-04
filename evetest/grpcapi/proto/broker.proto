@@ -30,6 +30,9 @@ service Broker {
   rpc BuildImage(BuildImageRequest) returns (BuildImageResponse);
   // PushEVEContainerImage streams a pre-built EVE container image to the broker.
   rpc PushEVEContainerImage(stream PushImageChunk) returns (PushImageResponse);
+  // Uploads a locally built EVE live image as a tar stream containing
+  // live.qcow2, config.img and firmware/*.
+  rpc PushEVELiveImage(stream PushLiveImageChunk) returns (PushLiveImageResponse);
 
   // Provision and start up EVE devices and SDN for the client.
   rpc SetupDevices(SetupDevicesRequest) returns (SetupDevicesResponse);
@@ -142,11 +145,34 @@ message BuildImageRequest {
   bool make_installer = 4; // "live" image otherwise
   uint64 disk_bytes = 5;
   EveConfig config = 6;
+  // When set, the broker builds from this local live image and ignores `image`.
+  LiveImageRef live_image = 7;
+  // Where the client's live image files are, so a broker sharing the
+  // filesystem installs the template by reading them instead of having the
+  // client upload bytes it can already see. Advisory only -- see
+  // LocalLiveImageSource.
+  LocalLiveImageSource live_image_source = 8;
+}
+
+// LocalLiveImageSource points at the files behind a LiveImageRef on the
+// client's filesystem. It is purely an optimization hint: a broker that cannot
+// use these paths -- they do not exist, the size disagrees, or the content does
+// not hash to the declared sha256 -- reports missing_eve_live_image and takes
+// the upload instead. The content check is what makes trusting the paths safe:
+// a file is only ever installed as the template when it hashes to the value the
+// client already declared, so a wrong or hostile path cannot substitute a
+// different image, it can only fail.
+message LocalLiveImageSource {
+  string disk_path = 1;       // absolute path to live.qcow2
+  uint64 disk_bytes = 2;      // its size, checked before its content is read
+  string config_img_path = 3; // absolute path to installer/config.img
+  string firmware_dir = 4;    // absolute path to the dir holding OVMF*.fd
 }
 
 // Response to a BuildImageRequest, indicating if broker is missing the EVE container image.
 message BuildImageResponse {
   bool missing_eve_container_image = 1;
+  bool missing_eve_live_image = 2;
 }
 
 // PushImageChunk represents a single message in the EVE docker image upload stream.
@@ -170,6 +196,29 @@ message PushImageRequest {
 
 // PushImageResponse is returned after the EVE docker image upload completes.
 message PushImageResponse {
+  bool already_exists = 1;
+}
+
+// PushLiveImageChunk is one message in the live-image upload stream. The first
+// message MUST be a PushLiveImageRequest; the rest are tar bytes.
+message PushLiveImageChunk {
+  oneof payload {
+    PushLiveImageRequest request = 1;
+    // Raw tar bytes -- deliberately not gzipped. The qcow2 inside is already
+    // zlib-compressed by `qemu-img convert -c`, so re-compressing costs CPU
+    // for almost nothing.
+    bytes data_chunk = 2;
+  }
+}
+
+// PushLiveImageRequest contains metadata describing the EVE live image to be uploaded.
+message PushLiveImageRequest {
+  string client_id = 1;
+  LiveImageRef live_image = 2;
+}
+
+// PushLiveImageResponse is returned after the EVE live image upload completes.
+message PushLiveImageResponse {
   bool already_exists = 1;
 }
 

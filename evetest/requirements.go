@@ -77,6 +77,19 @@ func (h Hypervisor) toAPIType() api.HypervisorType {
 	}
 }
 
+// hypervisorFromAPIType is the inverse of toAPIType, for deciding what a device
+// that is already running reports itself as.
+func hypervisorFromAPIType(t api.HypervisorType) Hypervisor {
+	switch t {
+	case api.HypervisorType_HV_XEN:
+		return HypervisorXen
+	case api.HypervisorType_HV_KUBEVIRT:
+		return HypervisorKubevirt
+	default:
+		return HypervisorKVM
+	}
+}
+
 // Filesystem identifies the filesystem type required or detected on an EVE device.
 type Filesystem int
 
