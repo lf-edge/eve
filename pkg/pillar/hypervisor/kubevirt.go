@@ -1309,14 +1309,12 @@ func (ctx kubevirtContext) Stop(domainName string, force bool) error {
 	}
 	kubeconfig := ctx.kubeConfig
 
-	keyToDelete := domainName
 	vmis, ok := ctx.vmiList[domainName]
 	if !ok {
 		if stale, oldKey := ctx.lookupVMIByUUIDPrefix(domainName); stale != nil {
 			logrus.Warnf("Stop: domainName %s not in vmiList; using stale entry under %s",
 				domainName, oldKey)
 			vmis = stale
-			keyToDelete = oldKey
 		} else {
 			return logError("domain %s failed to get vmlist", domainName)
 		}
@@ -1344,10 +1342,9 @@ func (ctx kubevirtContext) Stop(domainName string, force bool) error {
 
 	ctx.clearSRIOVAdminMACs(vmis)
 
-	delete(ctx.vmiList, keyToDelete)
-
-	delete(ctx.prevDomainMetric, keyToDelete)
-
+	// The vmiList entry must outlive Stop: Info() needs it to read the guest's
+	// phase, and without it can only report SCHEDULING while domainmgr polls
+	// for the domain to stop. Delete() and Cleanup() own the removal.
 	return nil
 }
 
@@ -1743,16 +1740,28 @@ func (ctx kubevirtContext) Cleanup(domainName string) error {
 	}
 
 	var err error
+	key := domainName
 	vmis, ok := ctx.vmiList[domainName]
 	if !ok {
 		if stale, oldKey := ctx.lookupVMIByUUIDPrefix(domainName); stale != nil {
 			logrus.Warnf("Cleanup: domainName %s not in vmiList; using stale entry under %s",
 				domainName, oldKey)
 			vmis = stale
+			key = oldKey
 		} else {
 			return logError("cleanup domain %s failed to get vmlist", domainName)
 		}
 	}
+
+	// Cleanup is the unconditional tail of doInactivate, whereas Delete only
+	// runs while DomainId is still set, so the bookkeeping is released here.
+	// Deferred so a Cleanup that fails partway still releases it rather than
+	// leaking the entry for the lifetime of the agent.
+	defer func() {
+		delete(ctx.vmiList, key)
+		delete(ctx.prevDomainMetric, key)
+	}()
+
 	if vmis.mtype == IsMetaReplicaPod {
 		_, err = InfoReplicaSetContainer(ctx, vmis)
 		if err == nil {
