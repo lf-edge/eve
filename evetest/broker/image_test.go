@@ -10,11 +10,14 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"encoding/pem"
 	"io"
 	"math/big"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -167,8 +170,8 @@ func TestInjectConfigPartitionRejectsWhitespacePath(t *testing.T) {
 	}
 }
 
-func TestResizeOverlayRejectsShrink(t *testing.T) {
-	err := resizeOverlay(context.Background(), "/nonexistent.qcow2", 1<<30, 4<<30)
+func TestResizeDeviceDiskRejectsShrink(t *testing.T) {
+	err := resizeDeviceDisk(context.Background(), "/nonexistent.qcow2", 1<<30, 4<<30)
 	if err == nil {
 		t.Fatal("expected an error when the requested size is smaller than the image")
 	}
@@ -177,13 +180,55 @@ func TestResizeOverlayRejectsShrink(t *testing.T) {
 	}
 }
 
-// TestResizeOverlayNoopWhenEqual covers the common case: no qemu-img call at
+// TestResizeDeviceDiskNoopWhenEqual covers the common case: no qemu-img call at
 // all, so a nonexistent path is fine.
-func TestResizeOverlayNoopWhenEqual(t *testing.T) {
-	if err := resizeOverlay(context.Background(), "/nonexistent.qcow2", 4<<30, 4<<30); err != nil {
+func TestResizeDeviceDiskNoopWhenEqual(t *testing.T) {
+	if err := resizeDeviceDisk(context.Background(), "/nonexistent.qcow2", 4<<30, 4<<30); err != nil {
 		t.Fatalf("equal sizes should be a no-op, got: %v", err)
 	}
-	if err := resizeOverlay(context.Background(), "/nonexistent.qcow2", 0, 4<<30); err != nil {
+	if err := resizeDeviceDisk(context.Background(), "/nonexistent.qcow2", 0, 4<<30); err != nil {
 		t.Fatalf("zero request should be a no-op, got: %v", err)
+	}
+}
+
+// TestResizeDeviceDiskGrowsStandaloneCopy covers the standalone strategy, where
+// the device disk is a plain copy of the template rather than an overlay on it.
+// A live template is keyed without the disk size, so this resize is the only
+// thing that gives such a device the size the test asked for -- a copy that is
+// never grown silently boots at the template's size instead.
+func TestResizeDeviceDiskGrowsStandaloneCopy(t *testing.T) {
+	const haveBytes = 64 << 20
+	const wantBytes = 128 << 20
+	diskPath := filepath.Join(t.TempDir(), "disk.qcow2")
+	out, err := exec.Command("qemu-img", "create", "-f", "qcow2",
+		diskPath, strconv.Itoa(haveBytes)).CombinedOutput()
+	if err != nil {
+		t.Fatalf("qemu-img create: %v: %s", err, out)
+	}
+
+	if err := resizeDeviceDisk(
+		context.Background(), diskPath, wantBytes, haveBytes); err != nil {
+		t.Fatalf("resizeDeviceDisk: %v", err)
+	}
+
+	out, err = exec.Command("qemu-img", "info", "--output=json", diskPath).Output()
+	if err != nil {
+		t.Fatalf("qemu-img info: %v", err)
+	}
+	var info struct {
+		VirtualSize   int64  `json:"virtual-size"`
+		BackingFile   string `json:"backing-filename"`
+		ActualSize    int64  `json:"actual-size"`
+		ClusterSize   int64  `json:"cluster-size"`
+		DirtyFlagFlag bool   `json:"dirty-flag"`
+	}
+	if err := json.Unmarshal(out, &info); err != nil {
+		t.Fatalf("parse qemu-img info: %v", err)
+	}
+	if info.VirtualSize != wantBytes {
+		t.Errorf("virtual size = %d, want %d", info.VirtualSize, wantBytes)
+	}
+	if info.BackingFile != "" {
+		t.Errorf("a standalone copy must have no backing file, got %q", info.BackingFile)
 	}
 }
