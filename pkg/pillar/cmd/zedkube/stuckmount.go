@@ -18,6 +18,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 )
 
 const (
@@ -37,6 +38,14 @@ const (
 	// stuckMountDevPath is where the Longhorn CSI node plugin materializes the
 	// block device once the volume is attached to this node.
 	stuckMountDevPath = "/dev/longhorn"
+	// stuckMountRecoveryMarker is a distinctive, greppable string emitted on
+	// every recovery so operators can spot mount-wedge restarts in the logs.
+	stuckMountRecoveryMarker = "MOUNT-WEDGE-RECOVERY"
+	// procRootDir is where the host PID namespace's process list is mounted.
+	procRootDir = "/proc"
+)
+
+var (
 	// stuckMountDryRun gates the recovery action. When true the detector only
 	// logs what it would do and takes NO action; when false it restarts k3s to
 	// give kubelet a fresh volume manager.
@@ -48,9 +57,13 @@ const (
 	// kube container. Nothing in this tree reads it — here the kube-init daemon
 	// supervises k3s — so it matters only where the SIGTERM path below is live.
 	stuckMountK3sStartFlag = "/run/kube/k3s-start"
-	// stuckMountRecoveryMarker is a distinctive, greppable string emitted on
-	// every recovery so operators can spot mount-wedge restarts in the logs.
-	stuckMountRecoveryMarker = "MOUNT-WEDGE-RECOVERY"
+	// The cluster and host lookups the wedge signature and the recovery action
+	// depend on, indirected so tests can drive both without a live cluster and
+	// without signaling a real k3s. Overridden only in tests.
+	pvcGet                   = kubeapi.PVCGet
+	volumeAttachmentAttached = kubeapi.GetVolumeAttachmentAttached
+	devicePresent            = longhornDevicePresent
+	signalK3s                = signalK3sServer
 )
 
 // checkStuckVolumeMount detects the kubelet volume-mount wedge: a pod scheduled
@@ -74,6 +87,14 @@ func (z *zedkube) checkStuckVolumeMount() {
 		log.Errorf("checkStuckVolumeMount: get clientset: %v", err)
 		return
 	}
+	z.checkStuckVolumeMountWithClient(clientset, time.Now())
+}
+
+// checkStuckVolumeMountWithClient is the body of one detector tick: it collects
+// the wedged pods this node currently has and, subject to the per-episode
+// attempt cap and cooldown, triggers recovery. now is passed in so the episode
+// rate limiting is exercisable without a wall clock.
+func (z *zedkube) checkStuckVolumeMountWithClient(clientset kubernetes.Interface, now time.Time) {
 	ctx, cancel := context.WithTimeout(context.Background(), kubeAPITimeout)
 	defer cancel()
 	// Restrict the LIST server-side: only Pending pods on this node can exhibit
@@ -87,7 +108,6 @@ func (z *zedkube) checkStuckVolumeMount() {
 		return
 	}
 
-	now := time.Now()
 	var wedged []string
 	for i := range pods.Items {
 		if desc, ok := z.podMountWedge(pods.Items[i], now); ok {
@@ -140,18 +160,18 @@ func (z *zedkube) podMountWedge(p corev1.Pod, now time.Time) (string, bool) {
 		if vol.PersistentVolumeClaim == nil {
 			continue
 		}
-		pvc, err := kubeapi.PVCGet(vol.PersistentVolumeClaim.ClaimName, log)
+		pvc, err := pvcGet(vol.PersistentVolumeClaim.ClaimName, log)
 		if err != nil || pvc.Spec.VolumeName == "" {
 			continue
 		}
 		pvName := pvc.Spec.VolumeName
-		// longhornDevicePresent is a local stat while GetVolumeAttachmentAttached
-		// lists every VolumeAttachment in the cluster, and this runs on every
-		// tick, so let the cheap check reject the volume first.
-		if !longhornDevicePresent(pvName) {
+		// devicePresent is a local stat while volumeAttachmentAttached lists
+		// every VolumeAttachment in the cluster, and this runs on every tick,
+		// so let the cheap check reject the volume first.
+		if !devicePresent(pvName) {
 			continue
 		}
-		attached, err := kubeapi.GetVolumeAttachmentAttached(pvName, z.nodeName, log)
+		attached, err := volumeAttachmentAttached(pvName, z.nodeName, log)
 		if err != nil || !attached {
 			continue
 		}
@@ -217,7 +237,7 @@ func (z *zedkube) recoverKubeletMountWedge(wedged []string) {
 		f.Close()
 	}
 
-	pids, err := signalK3sServer()
+	pids, err := signalK3s()
 	if err != nil {
 		log.Errorf("%s: attempt %d/%d FAILED to enumerate k3s: %v; wedge: %s",
 			stuckMountRecoveryMarker, z.stuckMountRecoverCount, stuckMountMaxRecover, err, detail)
@@ -236,35 +256,15 @@ func (z *zedkube) recoverKubeletMountWedge(wedged []string) {
 // returns the PIDs signaled. zedkube shares the host PID namespace, so the k3s
 // process started in the kube container is visible and signalable here; the
 // cluster-init.sh supervisor relaunches k3s once it exits, yielding a fresh
-// kubelet volume manager.
-//
-// k3s rewrites its process title to the single string "k3s server", so
-// /proc/<pid>/cmdline is one NUL-terminated token "k3s server" rather than the
-// separate "k3s"/"server" argv elements exec would leave. We therefore tokenize
-// the whole cmdline on whitespace and match basename(fields[0])=="k3s" &&
-// fields[1]=="server" — this matches both that retitled form and a
-// path-launched "<dir>/k3s server ...", while excluding a shell that merely
-// mentions the string in a later argument (its fields[0] is the shell).
+// kubelet volume manager. A PID whose signal fails is left out of the returned
+// set, so an empty return means nothing was actually terminated.
 func signalK3sServer() ([]int, error) {
-	entries, err := os.ReadDir("/proc")
+	pids, err := k3sServerPids(procRootDir)
 	if err != nil {
 		return nil, err
 	}
 	var signaled []int
-	for _, e := range entries {
-		pid, err := strconv.Atoi(e.Name())
-		if err != nil {
-			continue // not a PID directory
-		}
-		raw, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
-		if err != nil {
-			continue // process gone or unreadable
-		}
-		cmdline := strings.ReplaceAll(strings.TrimRight(string(raw), "\x00"), "\x00", " ")
-		fields := strings.Fields(cmdline)
-		if len(fields) < 2 || filepath.Base(fields[0]) != "k3s" || fields[1] != "server" {
-			continue
-		}
+	for _, pid := range pids {
 		if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
 			log.Errorf("%s: SIGTERM pid %d failed: %v", stuckMountRecoveryMarker, pid, err)
 			continue
@@ -272,4 +272,45 @@ func signalK3sServer() ([]int, error) {
 		signaled = append(signaled, pid)
 	}
 	return signaled, nil
+}
+
+// k3sServerPids returns the PIDs of the "k3s server" processes visible under
+// procRoot. A process that disappears mid-scan, or whose cmdline is unreadable,
+// is skipped; only an unreadable procRoot is an error.
+func k3sServerPids(procRoot string) ([]int, error) {
+	entries, err := os.ReadDir(procRoot)
+	if err != nil {
+		return nil, err
+	}
+	var pids []int
+	for _, e := range entries {
+		pid, err := strconv.Atoi(e.Name())
+		if err != nil {
+			continue // not a PID directory
+		}
+		raw, err := os.ReadFile(filepath.Join(procRoot, e.Name(), "cmdline"))
+		if err != nil {
+			continue // process gone or unreadable
+		}
+		if !isK3sServerCmdline(raw) {
+			continue
+		}
+		pids = append(pids, pid)
+	}
+	return pids, nil
+}
+
+// isK3sServerCmdline reports whether a raw /proc/<pid>/cmdline belongs to the
+// k3s server process.
+//
+// k3s rewrites its process title to the single string "k3s server", so cmdline
+// is one NUL-terminated token "k3s server" rather than the separate
+// "k3s"/"server" argv elements exec would leave. Tokenizing the whole cmdline on
+// whitespace therefore matches both that retitled form and a path-launched
+// "<dir>/k3s server ...", while excluding a shell that merely mentions the
+// string in a later argument (its first token is the shell).
+func isK3sServerCmdline(raw []byte) bool {
+	cmdline := strings.ReplaceAll(strings.TrimRight(string(raw), "\x00"), "\x00", " ")
+	fields := strings.Fields(cmdline)
+	return len(fields) >= 2 && filepath.Base(fields[0]) == "k3s" && fields[1] == "server"
 }
