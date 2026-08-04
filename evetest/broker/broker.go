@@ -204,9 +204,14 @@ func newBroker(log *logrus.Logger, provider provider.DeviceProvider,
 	}
 	// The qemu provider runs the broker embedded inside the short-lived evetest
 	// container itself (all-in-one mode), so it exits when the test ends -- there's
-	// no accumulated state worth periodically cleaning up, and no long-lived Docker
-	// storage to protect.
-	if providerName != "qemu" {
+	// no long-lived Docker storage to protect, and a 30-minute periodic loop would
+	// usually never tick. Templates do outlive it, though: the image directory is a
+	// host mount shared by every run. Sweep them once here instead, right after
+	// clearAllRefs, where nothing is referenced yet and the whole cache is visible
+	// to the age and disk-pressure passes.
+	if providerName == "qemu" {
+		b.cleanupTemplates(context.Background())
+	} else {
 		go b.runImageCleanupLoop()
 	}
 	return b, nil
