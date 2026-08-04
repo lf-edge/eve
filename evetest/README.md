@@ -551,6 +551,30 @@ multi-gigabyte pull. Rebuilding with `make live` produces a qcow2 with different
 and therefore a new hash, so the next run performs exactly one new upload -- nothing is
 re-uploaded until the image actually changes.
 
+#### Upgrading *to* a local build
+
+`TestEVEUpgrade` boots `INITIAL_EVE_VERSION` and upgrades to `EVE_VERSION`, and the two
+axes make both useful shapes fall out without any special-casing:
+
+```bash
+# A released version upgraded to another released version
+EVETEST_INITIAL_EVE_VERSION=16.0.0-lts EVETEST_EVE_VERSION=16.1.0-lts \
+    make evetest NAME=TestEVEUpgrade
+
+# A released version upgraded to your working tree
+make live
+EVETEST_INITIAL_EVE_VERSION=16.0.0-lts EVETEST_EVE_LIVE_IMAGE=true \
+    make evetest NAME=TestEVEUpgrade
+```
+
+The pre-upgrade device pins `INITIAL_EVE_VERSION`, so it always comes from a container
+image — a released build is the point of that field. Only the *target* uses the live
+transport, and it needs a different artifact than a fresh device does: an upgrade installs
+a base OS image, so the harness serves the build's own `installer/rootfs.img` from its HTTP
+image server and takes the version EVE will report from `installer/eve_version`. No
+container is pulled and the broker is not involved at all, since the rootfs goes straight
+from the harness to the device.
+
 Two constraints to be aware of:
 
 - **Installer-based tests cannot use this path.** A live qcow2 cannot produce an

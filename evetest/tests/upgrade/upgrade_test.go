@@ -105,13 +105,16 @@ func TestEVEUpgrade(test *testing.T) {
 	targetHypervisor := evetest.GetHypervisorParameterValue()
 	expectRevert := evetest.GetTestParameter[bool](expectRevertParamKey)
 
-	// Both ends of the upgrade are published EVE versions: the device boots
-	// INITIAL_EVE_VERSION and is upgraded to EVE_VERSION, so a locally built
-	// live image has nowhere to be used here and would be silently ignored.
+	// The pre-upgrade device pins INITIAL_EVE_VERSION, so it always boots that
+	// released version from a container image; the live transport applies to the
+	// upgrade target only, which is the useful direction -- "does my working tree
+	// survive an upgrade from the last release?". Naming a target version and
+	// asking for the live transport is only contradictory when that version is
+	// not one of the local builds, which UpgradeEVE reports.
 	if evetest.LocalLiveImageRequested() {
-		evetestT.Fatalf("Live image override is not supported for the upgrade "+
-			"test; unset %s%s to run it",
-			constants.EnvPrefix, constants.EVELiveImageEnv)
+		evetestT.Logf("Upgrading to the local EVE build (%s%s is set); the "+
+			"pre-upgrade version %q still comes from a container image",
+			constants.EnvPrefix, constants.EVELiveImageEnv, initialVersion)
 	}
 
 	const devName = "edge-dev"
