@@ -554,8 +554,11 @@ while [ "$i" -lt 60 ]; do
   # test drops before the conversion). That is the finding, not a missing volume:
   # verify it exactly like an intact one, so fsck and volverify can say whether the
   # damage is structurally visible or silent.
-  [ -n "$F" ] || F=$(ls /persist/vault/volumes-kvm/*.raw /persist/clear/volumes/*.raw \
-      /persist/vault/volumes-kvm/*.raw.corrupt /persist/clear/volumes/*.raw.corrupt \
+  # Quarantined copies are listed first: a *.raw.corrupt IS the finding, so picking
+  # an intact sibling ahead of it would report a clean verdict for a conversion that
+  # had already been caught tearing a volume.
+  [ -n "$F" ] || F=$(ls /persist/vault/volumes-kvm/*.raw.corrupt /persist/clear/volumes/*.raw.corrupt \
+      /persist/vault/volumes-kvm/*.raw /persist/clear/volumes/*.raw \
       2>/dev/null | head -1)
   [ -n "$VV" ] && [ -n "$F" ] && break
   i=$((i + 1)); sleep 10
@@ -577,6 +580,11 @@ fi
 [ -n "$VV" ] || { echo "DEVSIDE=no-volverify"; exit 0; }
 [ -n "$F" ] || { echo "DEVSIDE=no-relocated-volume"; exit 0; }
 echo "DEVSIDE-FILE=$F size=$(stat -c %s "$F")"
+# Whether the selection above had a choice at all: >1 means head -1 discarded a
+# candidate and the verdict may describe the wrong volume.
+echo "DEVSIDE-CANDIDATES=$(ls /persist/vault/volumes-kvm/*.raw.corrupt \
+    /persist/clear/volumes/*.raw.corrupt /persist/vault/volumes-kvm/*.raw \
+    /persist/clear/volumes/*.raw 2>/dev/null | wc -l)"
 # Read the filesystem before anything mounts it: a mount replays the journal and can
 # repair the very damage being measured.
 e2fsck -fn "$F" > /tmp/dsfsck.out 2>&1
@@ -665,11 +673,30 @@ func verifyRelocatedVolumeOnDevice(t Gomega, device *evetest.EdgeDevice, dataVol
 		volverifySummary(out))
 	evetest.Checkpoint("devside-volume-verified")
 
+	// volverify exits non-zero on ANY anomaly, so its status is the catch-all: a
+	// verdict class not named individually below still fails the run.
+	t.Expect(verifyRC).To(BeNumerically("==", 0),
+		"volverify rejected the relocated volume (DEVSIDE-VERIFY-RC=%d):\n%s", verifyRC, out)
+
 	presentCorrupt := reportField(out, "present-corrupt")
+	// An absent field reads as -1, which would satisfy the bound below and bank a
+	// clean-looking row for a run that measured nothing.
+	t.Expect(presentCorrupt).To(BeNumerically(">=", 0),
+		"volverify produced no present-corrupt count, so this iteration measured "+
+			"nothing about shrink corruption:\n%s", out)
 	t.Expect(presentCorrupt).To(BeNumerically("<=", 0),
 		"the relocated pre-conversion volume is present but CORRUPT (present-corrupt=%d) — "+
 			"the interrupted shrink tore data the filesystem check cannot see:\n%s",
 		presentCorrupt, out)
+	// Losing a committed file outright, or resurrecting a committed-deleted one, is
+	// data loss just as much as torn content. Orphaned is excluded: recovery into
+	// lost+found self-heals to a blank/content-tree recreate.
+	for _, key := range []string{"lost", "resurrected"} {
+		n := reportField(out, key)
+		t.Expect(n).To(BeNumerically("<=", 0),
+			"the relocated pre-conversion volume lost committed data (%s=%d):\n%s",
+			key, n, out)
+	}
 }
 
 // volverifySummary pulls volverify's one-line tally out of the device-side output so
