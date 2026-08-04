@@ -208,6 +208,14 @@ type RequireEdgeDevice struct {
 	WithUSBPassthrough []USBDevice // TODO
 	WithPCIPassthrough []PCIDevice // TODO
 
+	// ExtraDisks specifies additional blank disks (size in bytes each) to
+	// attach to the device's VM, beyond its main boot disk (MinDiskSizeInMiB).
+	// Each entry becomes one extra virtio-blk disk, in the given order (i.e.
+	// the first extra disk is the device's second disk overall). Intended for
+	// tests that configure EVE-level disk layout/RAID via
+	// EdgeDeviceConfig.SetDisksConfig.
+	ExtraDisks []uint64
+
 	// What to do if EdgeDevice is already available (and still manageable)
 	// from the previous test:
 	DeviceReusePolicy ExistingEdgeDeviceReusePolicy

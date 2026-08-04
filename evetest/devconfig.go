@@ -896,7 +896,40 @@ type ApplicationInstanceConfig struct {
 	UserData            string
 	NetworkAdapters     []AppNetworkAdapter
 	EnforceNetIntfOrder bool
+	// Mounts are additional volumes attached to the application alongside its
+	// root disk (built from Image/DiskBytes). Each entry references an
+	// existing, independently created volume (see EdgeDeviceConfig.AddVolume
+	// / AddBlankVolume) -- AddApplication/UpdateApplication only wire up (or
+	// rewire) the app's VolumeRefList to point at it; they never create or
+	// remove the volume itself.
+	Mounts []MountConfig
 	// Many more parameters can be configured; they will be added later as needed.
+}
+
+// MountConfig attaches an existing volume to an application, in addition to
+// its root disk. The volume must already exist in the device configuration
+// (created via EdgeDeviceConfig.AddVolume or AddBlankVolume) --
+// AddApplication/UpdateApplication fail if VolumeUUID does not reference one.
+// The volume's lifecycle is independent of any application that mounts it:
+// deleting the application does not delete it (use DeleteVolume explicitly),
+// and DeleteVolume itself fails while any application still mounts it.
+type MountConfig struct {
+	// VolumeUUID is the UUID of an existing volume, as returned by AddVolume
+	// or AddBlankVolume.
+	VolumeUUID uuid.UUID
+	// MountDir is the path where the volume is mounted inside the guest.
+	// Empty means the volume is attached as a raw block device instead: no
+	// guest-side mount is performed, and the disk shows up as a plain block
+	// device (e.g. /dev/sdX for a VM, or a device node under
+	// /dev/eve/volumes/by-id for a container) -- see VolumeRefConfig.MountDir
+	// handling in pillar's zedmanager/domainmgr/containerd.
+	MountDir string
+	// ReadOnly marks the volume as read-only inside the guest. This sets
+	// Volume.Readonly, a property of the volume itself (the EVE API has no
+	// separate per-reference read-only flag) -- so mounting the same volume
+	// read-write from one application and read-only from another is not
+	// possible; the last MountConfig applied wins.
+	ReadOnly bool
 }
 
 func (config ApplicationInstanceConfig) toProto(th *TestHarness, devName string,
@@ -2283,13 +2316,63 @@ func (dc *EdgeDeviceConfig) addApplicationWithUUIDs(
 		contentTreeUUID, datastoreUUID, config.DisplayName)
 	dc.ContentInfo = append(dc.ContentInfo, contentTree)
 	dc.Datastores = append(dc.Datastores, dsConfig)
+
+	// appInstConfig.VolumeRefList currently holds only the root disk (index
+	// 0); append one VolumeRef per mount, referencing already-existing
+	// volumes (see MountConfig / buildMountRefs).
+	appInstConfig.VolumeRefList = append(appInstConfig.VolumeRefList,
+		dc.buildMountRefs(config.DisplayName, config.Mounts)...)
+}
+
+// findVolume returns the Volume with the given UUID, or nil if not found.
+func (dc *EdgeDeviceConfig) findVolume(volUUID string) *eveconfig.Volume {
+	for _, v := range dc.Volumes {
+		if v.Uuid == volUUID {
+			return v
+		}
+	}
+	return nil
+}
+
+// buildMountRefs validates config.Mounts against the device's existing
+// volumes (see AddVolume/AddBlankVolume) and returns the corresponding
+// VolumeRefs. It fails the test if a mount references a volume that does not
+// exist, or if the same volume is mounted more than once by appDisplayName.
+// It does not create or remove any volume -- that is the caller's
+// responsibility via AddVolume/AddBlankVolume/DeleteVolume.
+func (dc *EdgeDeviceConfig) buildMountRefs(
+	appDisplayName string, mounts []MountConfig) []*eveconfig.VolumeRef {
+	seen := make(map[string]bool, len(mounts))
+	refs := make([]*eveconfig.VolumeRef, 0, len(mounts))
+	for _, mount := range mounts {
+		volUUIDStr := mount.VolumeUUID.String()
+		volume := dc.findVolume(volUUIDStr)
+		if volume == nil {
+			dc.th.t.Fatalf(
+				"Application %q mount references non-existent volume %q "+
+					"(create it first with AddVolume/AddBlankVolume)",
+				appDisplayName, volUUIDStr)
+		}
+		if seen[volUUIDStr] {
+			dc.th.t.Fatalf("Application %q mounts volume %q more than once",
+				appDisplayName, volUUIDStr)
+		}
+		seen[volUUIDStr] = true
+		volume.Readonly = mount.ReadOnly
+		refs = append(refs, &eveconfig.VolumeRef{
+			Uuid:     volUUIDStr,
+			MountDir: mount.MountDir,
+		})
+	}
+	return refs
 }
 
 // UpdateApplication updates an existing application instance identified
 // by its UUID.
 func (dc *EdgeDeviceConfig) UpdateApplication(
 	appUUID uuid.UUID, newConfig ApplicationInstanceConfig) {
-	// For now, we will only allow to change Activation flag, profile list and adapters.
+	// For now, we will only allow to change Activation flag, profile list,
+	// adapters, and mounts.
 	for i, app := range dc.Apps {
 		if app.Uuidandversion.Uuid == appUUID.String() {
 			newProtoConfig := newConfig.toProto(dc.th, dc.DeviceName, appUUID, NilUUID)
@@ -2312,6 +2395,17 @@ func (dc *EdgeDeviceConfig) UpdateApplication(
 			if !generics.EqualSetsFn(app.Interfaces, newProtoConfig.Interfaces, equalNetAdapter) {
 				needPurge = true
 			}
+			// The root ref (VolumeRefList[0]) is always left untouched;
+			// buildMountRefs only ever references existing volumes, it does
+			// not create or remove any. Any change to the mount refs
+			// (add/remove/move) requires a purge.
+			newMountRefs := dc.buildMountRefs(newConfig.DisplayName, newConfig.Mounts)
+			equalVolumeRef := func(a1, a2 *eveconfig.VolumeRef) bool {
+				return proto.Equal(a1, a2)
+			}
+			if !generics.EqualSetsFn(app.VolumeRefList[1:], newMountRefs, equalVolumeRef) {
+				needPurge = true
+			}
 			if needPurge {
 				if app.Purge == nil {
 					app.Purge = &eveconfig.InstanceOpsCmd{Counter: 0}
@@ -2322,6 +2416,7 @@ func (dc *EdgeDeviceConfig) UpdateApplication(
 			dc.Apps[i].ProfileList = newProtoConfig.ProfileList
 			dc.Apps[i].Adapters = newProtoConfig.Adapters
 			dc.Apps[i].Interfaces = newProtoConfig.Interfaces
+			dc.Apps[i].VolumeRefList = append(app.VolumeRefList[:1:1], newMountRefs...)
 			return
 		}
 	}
@@ -2330,14 +2425,19 @@ func (dc *EdgeDeviceConfig) UpdateApplication(
 }
 
 // DeleteApplication removes an application instance identified by its UUID
-// and cleans up all associated resources.
+// and its root volume (the one created together with it from
+// ApplicationInstanceConfig.Image/DiskBytes). Any volumes referenced through
+// Mounts are left untouched -- their lifecycle is independent of the
+// application (see MountConfig); remove them explicitly with DeleteVolume.
 func (dc *EdgeDeviceConfig) DeleteApplication(appUUID uuid.UUID) {
 	var found bool
-	var volumeRefs []*eveconfig.VolumeRef
+	var rootVolUUID string
 	uuidStr := appUUID.String()
 	for i, app := range dc.Apps {
 		if app.Uuidandversion.Uuid == uuidStr {
-			volumeRefs = app.VolumeRefList
+			if len(app.VolumeRefList) > 0 {
+				rootVolUUID = app.VolumeRefList[0].Uuid
+			}
 			// Remove the application instance from the slice.
 			dc.Apps = append(dc.Apps[:i], dc.Apps[i+1:]...)
 			found = true
@@ -2347,46 +2447,49 @@ func (dc *EdgeDeviceConfig) DeleteApplication(appUUID uuid.UUID) {
 	if !found {
 		dc.th.t.Fatalf("Application instance with UUID %q was not found", uuidStr)
 	}
+	if rootVolUUID != "" {
+		dc.deleteVolumeAndDeps(rootVolUUID)
+	}
+}
 
-	// Remove volumes for the app.
-	var contentTreeIDs []string
-	for _, volumeRef := range volumeRefs {
-		for i, volume := range dc.Volumes {
-			if volume.Uuid == volumeRef.Uuid {
-				if volume.Origin.Type == eveconfig.VolumeContentOriginType_VCOT_DOWNLOAD {
-					contentTreeIDs = append(contentTreeIDs,
-						volume.Origin.DownloadContentTreeID)
-				}
-				// Remove the volume from the slice.
-				dc.Volumes = append(dc.Volumes[:i], dc.Volumes[i+1:]...)
-				break
+// deleteVolumeAndDeps removes the Volume with the given UUID from the device
+// configuration and, if it is a VCOT_DOWNLOAD volume, its ContentTree and the
+// Datastores that ContentTree referenced. Returns whether the volume was
+// found.
+func (dc *EdgeDeviceConfig) deleteVolumeAndDeps(volUUID string) bool {
+	var contentTreeID string
+	var found bool
+	for i, volume := range dc.Volumes {
+		if volume.Uuid == volUUID {
+			if volume.Origin.Type == eveconfig.VolumeContentOriginType_VCOT_DOWNLOAD {
+				contentTreeID = volume.Origin.DownloadContentTreeID
 			}
+			dc.Volumes = append(dc.Volumes[:i], dc.Volumes[i+1:]...)
+			found = true
+			break
 		}
 	}
+	if !found || contentTreeID == "" {
+		return found
+	}
 
-	// Remove content trees created for the app.
 	var datastoreIDs []string
-	for _, contentTreeID := range contentTreeIDs {
-		for i, contentTree := range dc.ContentInfo {
-			if contentTree.Uuid == contentTreeID {
-				datastoreIDs = append(datastoreIDs, contentTree.DsIdsList...)
-				// Remove the content tree from the slice.
-				dc.ContentInfo = append(dc.ContentInfo[:i], dc.ContentInfo[i+1:]...)
-				break
-			}
+	for i, contentTree := range dc.ContentInfo {
+		if contentTree.Uuid == contentTreeID {
+			datastoreIDs = append(datastoreIDs, contentTree.DsIdsList...)
+			dc.ContentInfo = append(dc.ContentInfo[:i], dc.ContentInfo[i+1:]...)
+			break
 		}
 	}
-
-	// Remove datastore configs created for the app.
 	for _, datastoreID := range datastoreIDs {
 		for i, datastore := range dc.Datastores {
 			if datastore.Id == datastoreID {
-				// Remove the datastore config from the slice.
 				dc.Datastores = append(dc.Datastores[:i], dc.Datastores[i+1:]...)
 				break
 			}
 		}
 	}
+	return true
 }
 
 // AddBlankVolume adds a standalone empty (VCOT_BLANK) volume of the requested
@@ -2418,6 +2521,180 @@ func (dc *EdgeDeviceConfig) AddBlankVolume(
 		ClearText:    true,
 	})
 	return volumeUUID
+}
+
+// AddVolume adds a standalone (app-unreferenced) VCOT_DOWNLOAD volume of the
+// requested size, with content sourced from image, and returns its UUID.
+//
+// Unlike AddBlankVolume, the volume's content is populated by a real
+// download (e.g. from a docker registry, or evetest's built-in HTTP/SFTP
+// image server -- see CreateBlankImageFile), so this exercises the
+// download and (for non-raw formats) disk-format conversion path in
+// volumemgr, rather than the empty zero-content path.
+func (dc *EdgeDeviceConfig) AddVolume(
+	displayName string, image ApplicationImageStorage, sizeBytes uint64) uuid.UUID {
+	volumeUUID := dc.th.newUUID("volume")
+	contentTreeUUID := dc.th.newUUID("volume content tree")
+	datastoreUUID := dc.th.newUUID("volume datastore")
+	dc.Volumes = append(dc.Volumes, &eveconfig.Volume{
+		Uuid: volumeUUID.String(),
+		Origin: &eveconfig.VolumeContentOrigin{
+			Type:                  eveconfig.VolumeContentOriginType_VCOT_DOWNLOAD,
+			DownloadContentTreeID: contentTreeUUID.String(),
+		},
+		Maxsizebytes: int64(sizeBytes),
+		DisplayName:  displayName,
+	})
+	contentTree, dsConfig := image.toProto(dc.th, dc.log, dc.DeviceName,
+		contentTreeUUID, datastoreUUID, displayName)
+	dc.ContentInfo = append(dc.ContentInfo, contentTree)
+	dc.Datastores = append(dc.Datastores, dsConfig)
+	return volumeUUID
+}
+
+// DeleteVolume removes a standalone volume (created via AddVolume or
+// AddBlankVolume) and its associated ContentTree/Datastore, if any, from the
+// device configuration. The volume must not currently be referenced by any
+// application; detach it first with DetachVolume.
+func (dc *EdgeDeviceConfig) DeleteVolume(volumeUUID uuid.UUID) {
+	uuidStr := volumeUUID.String()
+	for _, app := range dc.Apps {
+		for _, ref := range app.VolumeRefList {
+			if ref.Uuid == uuidStr {
+				dc.th.t.Fatalf(
+					"Cannot delete volume %q: still attached to application %q",
+					uuidStr, app.Displayname)
+			}
+		}
+	}
+	if !dc.deleteVolumeAndDeps(uuidStr) {
+		dc.th.t.Fatalf("Volume with UUID %q was not found", uuidStr)
+	}
+}
+
+// DiskLayoutType is the desired ZFS/RAID disk-array layout for
+// EdgeDeviceConfig.SetDisksLayout.
+type DiskLayoutType int
+
+const (
+	// DiskLayoutUnspecified leaves EVE's automatic (default) disk selection
+	// in place -- no explicit layout is configured.
+	DiskLayoutUnspecified DiskLayoutType = iota
+	// DiskLayoutRAID1 mirrors 2 disks.
+	DiskLayoutRAID1
+	// DiskLayoutRAID10 stripes 2 RAID1 mirrors (4 disks total).
+	DiskLayoutRAID10
+)
+
+// DisksLayout describes the desired ZFS/RAID disk-array layout of a device's
+// extra (non-boot) virtio disks (see RequireEdgeDevice.ExtraDisks), mirroring
+// eden's own disks-layout model (pkg/device/disksLayout.go in the eden
+// repo, adapted here since evetest's broker only ever attaches virtio
+// disks -- see DiskName). Disk slot indices below (0..3 for RAID10, 0..1 for
+// RAID1) refer to positions within the layout, not the device's overall
+// extra-disk list.
+type DisksLayout struct {
+	LayoutType DiskLayoutType
+	// OfflineDisks marks disk slots as ZFS_OFFLINE.
+	OfflineDisks []uint
+	// UnusedDisks marks disk slots as UNUSED (removed from the array).
+	UnusedDisks []uint
+	// ReplaceDisks requests replacing the disk currently at the given slot
+	// with a spare disk, selected in order from the device's extra disks
+	// beyond what the layout itself occupies (e.g. for RAID1, slot 0's
+	// replacement is the device's 3rd extra disk).
+	ReplaceDisks []uint
+}
+
+// DiskName returns the virtio device name (e.g. "/dev/vdc") of the
+// zero-based extraDiskIdx-th extra (non-boot) disk requested via
+// RequireEdgeDevice.ExtraDisks: extraDiskIdx 0 is /dev/vdb, since /dev/vda is
+// always the device's boot disk.
+func DiskName(extraDiskIdx uint) string {
+	return fmt.Sprintf("/dev/vd%c", rune('b'+extraDiskIdx))
+}
+
+// maxDisks returns how many disk slots this layout occupies.
+func (layout DisksLayout) maxDisks() uint {
+	switch layout.LayoutType {
+	case DiskLayoutRAID1:
+		return 2
+	case DiskLayoutRAID10:
+		return 4
+	default:
+		return 0
+	}
+}
+
+func (layout DisksLayout) diskState(slot uint) eveconfig.DiskConfigType {
+	for _, s := range layout.OfflineDisks {
+		if s == slot {
+			return eveconfig.DiskConfigType_DISK_CONFIG_TYPE_ZFS_OFFLINE
+		}
+	}
+	for _, s := range layout.UnusedDisks {
+		if s == slot {
+			return eveconfig.DiskConfigType_DISK_CONFIG_TYPE_UNUSED
+		}
+	}
+	return eveconfig.DiskConfigType_DISK_CONFIG_TYPE_ZFS_ONLINE
+}
+
+func (layout DisksLayout) diskConfig(slot uint) *eveconfig.DiskConfig {
+	cfg := &eveconfig.DiskConfig{
+		Disk:       &evecommon.DiskDescription{Name: DiskName(slot)},
+		DiskConfig: layout.diskState(slot),
+	}
+	for i, s := range layout.ReplaceDisks {
+		if s == slot {
+			cfg.OldDisk = cfg.Disk
+			cfg.Disk = &evecommon.DiskDescription{
+				Name: DiskName(layout.maxDisks() + uint(i)),
+			}
+			break
+		}
+	}
+	return cfg
+}
+
+// SetDisksLayout configures the device's ZFS/RAID disk-array layout for its
+// extra (non-boot) virtio disks (see RequireEdgeDevice.ExtraDisks).
+//
+// Both DiskLayoutRAID1 and DiskLayoutRAID10 are represented, at the EVE API
+// level, as a top-level DisksConfig with ArrayType RAID0 (stripe) whose
+// Children are the individual RAID1 mirrors -- a single mirror for RAID1, two
+// mirrors for RAID10 -- exactly matching how eden itself builds this
+// structure (pkg/device/disksLayout.go, GetDisksConfig).
+func (dc *EdgeDeviceConfig) SetDisksLayout(layout DisksLayout) {
+	var cfg eveconfig.DisksConfig
+	switch layout.LayoutType {
+	case DiskLayoutUnspecified:
+		// Nothing to configure.
+	case DiskLayoutRAID1:
+		cfg.ArrayType = eveconfig.DisksArrayType_DISKS_ARRAY_TYPE_RAID0
+		cfg.Children = append(cfg.Children, &eveconfig.DisksConfig{
+			ArrayType: eveconfig.DisksArrayType_DISKS_ARRAY_TYPE_RAID1,
+			Disks: []*eveconfig.DiskConfig{
+				layout.diskConfig(0), layout.diskConfig(1)},
+		})
+	case DiskLayoutRAID10:
+		cfg.ArrayType = eveconfig.DisksArrayType_DISKS_ARRAY_TYPE_RAID0
+		cfg.Children = append(cfg.Children,
+			&eveconfig.DisksConfig{
+				ArrayType: eveconfig.DisksArrayType_DISKS_ARRAY_TYPE_RAID1,
+				Disks: []*eveconfig.DiskConfig{
+					layout.diskConfig(0), layout.diskConfig(1)},
+			},
+			&eveconfig.DisksConfig{
+				ArrayType: eveconfig.DisksArrayType_DISKS_ARRAY_TYPE_RAID1,
+				Disks: []*eveconfig.DiskConfig{
+					layout.diskConfig(2), layout.diskConfig(3)},
+			},
+		)
+	default:
+		dc.th.t.Fatalf("Unsupported disk layout type: %v", layout.LayoutType)
+	}
+	dc.Disks = &cfg
 }
 
 // SetLPS configures the Local Profile Server (LPS) settings for the device.

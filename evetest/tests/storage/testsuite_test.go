@@ -10,13 +10,6 @@ import (
 )
 
 // TestStorageSuite drives storage-layer regression tests.
-//
-// Subtests
-// --------
-//   - TestZVolProvisionedSizeReported -- regression test for a volumemgr bug
-//     where a ZFS zvol-backed volume always reported a provisioned size of 0.
-//   - TestVaultZvolTrimReclaimsBlocks -- verifies fstrim on /persist/vault
-//     reclaims ghost blocks on a ZFS node.
 func TestStorageSuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
@@ -26,11 +19,28 @@ func TestStorageSuite(test *testing.T) {
 	)
 
 	evetest.RunTestSuite(
+		// Non-ZFS tests first, grouped together so the device can be reused
+		// across all of them.
+		evetest.TestCase{
+			Test: TestVolumes,
+		},
+		evetest.TestCase{
+			Test: TestMountedVolumes,
+		},
+		evetest.TestCase{
+			Test: TestExtraDiskAttach,
+		},
+		// ZFS tests next, grouped together for the same reason.
 		evetest.TestCase{
 			Test: TestZVolProvisionedSizeReported,
 		},
 		evetest.TestCase{
 			Test: TestVaultZvolTrimReclaimsBlocks,
+		},
+		// Last: needs its own freshly created device with extra disks, so
+		// placement relative to the other tests does not matter for reuse.
+		evetest.TestCase{
+			Test: TestZFSDiskLayout,
 		},
 	)
 }

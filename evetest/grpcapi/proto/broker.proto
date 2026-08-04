@@ -152,6 +152,11 @@ message BuildImageRequest {
   // client upload bytes it can already see. Advisory only -- see
   // LocalLiveImageSource.
   LocalLiveImageSource live_image_source = 8;
+  // Sizes (in bytes) of additional blank disks to attach to the device's VM,
+  // beyond its main boot disk (disk_bytes). Each entry becomes one extra
+  // virtio-blk disk, in the given order, e.g. for device-side disk
+  // layout/RAID testing (see EdgeDevConfig.disks).
+  repeated uint64 extra_disk_bytes = 9;
 }
 
 // LocalLiveImageSource points at the files behind a LiveImageRef on the

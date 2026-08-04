@@ -645,6 +645,7 @@ func (b *broker) BuildImage(
 			softSerial:      softSerial,
 			diskSize:        req.DiskBytes,
 			installer:       req.MakeInstaller,
+			extraDiskBytes:  req.ExtraDiskBytes,
 		})
 	} else {
 		// No EVE container image need exist on this broker at all on the live
@@ -671,6 +672,7 @@ func (b *broker) BuildImage(
 					liveImageSHA256: req.GetLiveImage().GetSha256(),
 					liveTarPath:     liveUploadPath(b.imageDir, req.GetLiveImage().GetSha256()),
 					liveSource:      liveSource,
+					extraDiskBytes:  req.ExtraDiskBytes,
 				})
 		}
 	}

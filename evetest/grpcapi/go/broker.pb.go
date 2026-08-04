@@ -565,8 +565,13 @@ type BuildImageRequest struct {
 	// client upload bytes it can already see. Advisory only -- see
 	// LocalLiveImageSource.
 	LiveImageSource *LocalLiveImageSource `protobuf:"bytes,8,opt,name=live_image_source,json=liveImageSource,proto3" json:"live_image_source,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Sizes (in bytes) of additional blank disks to attach to the device's VM,
+	// beyond its main boot disk (disk_bytes). Each entry becomes one extra
+	// virtio-blk disk, in the given order, e.g. for device-side disk
+	// layout/RAID testing (see EdgeDevConfig.disks).
+	ExtraDiskBytes []uint64 `protobuf:"varint,9,rep,packed,name=extra_disk_bytes,json=extraDiskBytes,proto3" json:"extra_disk_bytes,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *BuildImageRequest) Reset() {
@@ -651,6 +656,13 @@ func (x *BuildImageRequest) GetLiveImage() *LiveImageRef {
 func (x *BuildImageRequest) GetLiveImageSource() *LocalLiveImageSource {
 	if x != nil {
 		return x.LiveImageSource
+	}
+	return nil
+}
+
+func (x *BuildImageRequest) GetExtraDiskBytes() []uint64 {
+	if x != nil {
+		return x.ExtraDiskBytes
 	}
 	return nil
 }
@@ -1648,7 +1660,7 @@ const file_broker_proto_rawDesc = "" +
 	"globalJson\x12#\n" +
 	"\roverride_json\x18\n" +
 	" \x01(\tR\foverrideJson\x12.\n" +
-	"\x13bootstrap_config_pb\x18\v \x01(\fR\x11bootstrapConfigPb\"\x99\x03\n" +
+	"\x13bootstrap_config_pb\x18\v \x01(\fR\x11bootstrapConfigPb\"\xc3\x03\n" +
 	"\x11BuildImageRequest\x12\x1b\n" +
 	"\tclient_id\x18\x01 \x01(\tR\bclientId\x12\x1f\n" +
 	"\vdevice_name\x18\x02 \x01(\tR\n" +
@@ -1660,7 +1672,8 @@ const file_broker_proto_rawDesc = "" +
 	"\x06config\x18\x06 \x01(\v2\x1d.org.lfedge.evetest.EveConfigR\x06config\x12?\n" +
 	"\n" +
 	"live_image\x18\a \x01(\v2 .org.lfedge.evetest.LiveImageRefR\tliveImage\x12T\n" +
-	"\x11live_image_source\x18\b \x01(\v2(.org.lfedge.evetest.LocalLiveImageSourceR\x0fliveImageSource\"\x9d\x01\n" +
+	"\x11live_image_source\x18\b \x01(\v2(.org.lfedge.evetest.LocalLiveImageSourceR\x0fliveImageSource\x12(\n" +
+	"\x10extra_disk_bytes\x18\t \x03(\x04R\x0eextraDiskBytes\"\x9d\x01\n" +
 	"\x14LocalLiveImageSource\x12\x1b\n" +
 	"\tdisk_path\x18\x01 \x01(\tR\bdiskPath\x12\x1d\n" +
 	"\n" +
