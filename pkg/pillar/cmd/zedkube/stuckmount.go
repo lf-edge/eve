@@ -72,7 +72,12 @@ func (z *zedkube) checkStuckVolumeMount() {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), kubeAPITimeout)
 	defer cancel()
-	pods, err := clientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).List(ctx, metav1.ListOptions{})
+	// Restrict the LIST server-side: only Pending pods on this node can exhibit
+	// the wedge, and a multi-node cluster's other nodes are none of our business.
+	pods, err := clientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).List(ctx, metav1.ListOptions{
+		FieldSelector: "spec.nodeName=" + z.nodeName +
+			",status.phase=" + string(corev1.PodPending),
+	})
 	if err != nil {
 		log.Errorf("checkStuckVolumeMount: list pods: %v", err)
 		return
