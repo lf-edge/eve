@@ -34,6 +34,46 @@ func TestVMIPhaseIsPreRunning(t *testing.T) {
 	}
 }
 
+func TestPodHasContainerError(t *testing.T) {
+	mk := func(state corev1.ContainerState) corev1.Pod {
+		return corev1.Pod{Status: corev1.PodStatus{
+			ContainerStatuses: []corev1.ContainerStatus{{State: state}},
+		}}
+	}
+	waiting := func(reason string) corev1.ContainerState {
+		return corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{Reason: reason}}
+	}
+
+	tests := []struct {
+		name string
+		pod  corev1.Pod
+		want bool
+	}{
+		{"CrashLoopBackOff", mk(waiting("CrashLoopBackOff")), true},
+		{"ImagePullBackOff", mk(waiting("ImagePullBackOff")), true},
+		{"ErrImagePull", mk(waiting("ErrImagePull")), true},
+		{"CreateContainerError", mk(waiting("CreateContainerError")), true},
+		// A pod blocked on a deleted Secret/ConfigMap, e.g. an orphaned CDI
+		// upload pod: Pending forever, but not a volume-mount wedge.
+		{"CreateContainerConfigError", mk(waiting("CreateContainerConfigError")), true},
+		{"RunContainerError", mk(waiting("RunContainerError")), true},
+		{"ContainerCreating", mk(waiting("ContainerCreating")), false},
+		{"PodInitializing", mk(waiting("PodInitializing")), false},
+		{"empty reason", mk(waiting("")), false},
+		{"running", mk(corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}), false},
+		{"terminated ok", mk(corev1.ContainerState{
+			Terminated: &corev1.ContainerStateTerminated{ExitCode: 0}}), false},
+		{"terminated non-zero", mk(corev1.ContainerState{
+			Terminated: &corev1.ContainerStateTerminated{ExitCode: 1}}), true},
+		{"no containers", corev1.Pod{}, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, podHasContainerError(tc.pod))
+		})
+	}
+}
+
 func TestVirtLauncherPodIsActiveOnNode(t *testing.T) {
 	const node = "andrew-cherry"
 	const appKubeName = "enc-a2-84c66"
