@@ -66,11 +66,14 @@ ENV GOFLAGS="-mod=readonly"
 # hadolint ignore=DL3018
 RUN apk add --no-cache iptables dnsmasq radvd swtpm
 
-# Install QEMU
+# Install QEMU. qemu-img also provides qemu-io/qemu-nbd; mtools provides mcopy,
+# used together to assemble a device's config partition and write it into a
+# template-backed disk image (see Dockerfile.broker).
 # hadolint ignore=DL3018
 RUN apk add --no-cache \
     qemu \
     qemu-img \
+    mtools \
     qemu-system-x86_64 \
     qemu-system-aarch64
 

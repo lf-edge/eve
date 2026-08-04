@@ -341,11 +341,11 @@ func (p *QemuProvider) Capabilities() []api.Capability {
 	return fullCapabilitySet()
 }
 
-// DiskImageStrategy returns DiskImageLegacyBuild. The qemu provider attaches
-// local files and could use DiskImageOverlay, but that has not been validated
-// here yet.
+// DiskImageStrategy returns DiskImageOverlay: qemu attaches local files
+// directly, so a device disk can be a QCOW2 overlay on a shared template
+// (-drive file=<overlay>,format=qcow2 resolves the backing file itself).
 func (p *QemuProvider) DiskImageStrategy() DiskImageStrategy {
-	return DiskImageLegacyBuild
+	return DiskImageOverlay
 }
 
 // SetupDevice creates a VM configuration and prepares network resources,
