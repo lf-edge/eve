@@ -370,6 +370,17 @@ func (d *EdgeDevice) UpgradeEVE(targetEVEVersion string, targetEVEHypervisor Hyp
 	currentImageRef := devState.imageRef
 	d.th.devicesM.Unlock()
 
+	// The live transport delivers an upgrade as the raw rootfs the local build
+	// already contains, rather than pulling a container image to extract the same
+	// file from. Which build that is comes from the version axis exactly as it
+	// does for a fresh device, so an explicitly requested target version is
+	// honoured (and must be built locally) while an unset one means the newest.
+	if LocalLiveImageRequested() {
+		d.upgradeEVEFromLocalBuild(targetEVEVersion, currentImageRef.Arch,
+			currentImageRef.Hypervisor, waitUntilUpgraded, expectRevert)
+		return
+	}
+
 	targetImageRef := &api.ImageRef{
 		Repo:       currentImageRef.Repo,
 		Version:    targetEVEVersion,
@@ -427,6 +438,81 @@ func (d *EdgeDevice) UpgradeEVE(targetEVEVersion string, targetEVEHypervisor Hyp
 	} else {
 		d.th.log.Infof("Reusing cached rootfs %s", rootfsFilename)
 	}
+
+	d.applyUpgrade(rootfsPath, rootfsFilename, shortVersion,
+		waitUntilUpgraded, expectRevert)
+}
+
+// upgradeEVEFromLocalBuild delivers an upgrade from a local build's own
+// installer/rootfs.img instead of pulling a container image to extract the same
+// file out of. targetEVEVersion selects which local build, empty meaning the
+// newest; the target hypervisor is not a choice here, since a build is delivered
+// as it was built.
+func (d *EdgeDevice) upgradeEVEFromLocalBuild(targetEVEVersion string,
+	arch api.ArchType, runningHypervisor api.HypervisorType,
+	waitUntilUpgraded, expectRevert bool) {
+
+	zarch, err := zarchDirName(arch)
+	if err != nil {
+		d.th.t.Fatalf("UpgradeEVE: %v", err)
+	}
+	img, err := resolveLocalLiveImage(zarch, targetEVEVersion)
+	if err != nil {
+		d.th.t.Fatalf("UpgradeEVE: failed to resolve the local EVE build: %v", err)
+	}
+	if img == nil {
+		// Unreachable: this path is only taken when the live transport is on.
+		d.th.t.Fatalf("UpgradeEVE: the live image transport is not configured")
+	}
+	if img.RootfsPath == "" {
+		d.th.t.Fatalf("UpgradeEVE: local EVE build %q has no installer/rootfs.img "+
+			"to upgrade to", img.Version)
+	}
+	if img.ShortVersion == "" {
+		d.th.t.Fatalf("UpgradeEVE: local EVE build %q records no "+
+			"installer/eve_version, so the upgraded version could not be "+
+			"recognised in the device's reported software list", img.Version)
+	}
+	// Whether an upgrade may change hypervisor flavor is EVE's call, not the test
+	// framework's -- today EVE rejects it (the rootfs has to fit partitions sized
+	// for the flavor that made them), and that is expected to change. So this
+	// delivers the build either way and only leaves a breadcrumb, because EVE
+	// reports the rejection as a FAILED base OS with an empty sub-status, which
+	// says nothing about the cause.
+	if buildHV, known := liveImageHypervisor(img.ShortVersion); known {
+		if runningHV := hypervisorFromAPIType(runningHypervisor); runningHV != buildHV {
+			d.th.log.Warnf("Device %q runs %s and the local EVE build being "+
+				"delivered (%s) is %s; EVE may reject a base OS that changes "+
+				"hypervisor flavor", d.devName, runningHV, img.Version, buildHV)
+		}
+	}
+
+	// Staged as a copy rather than a link: the file is served for the whole
+	// download, and rebuilding in place (LIVE_UPDATE=1) would otherwise change it
+	// under the device mid-transfer. Named by version so consecutive tests
+	// against the same build reuse it, exactly as the container path does.
+	rootfsFilename := "rootfs-" + img.ShortVersion + ".img"
+	rootfsPath := filepath.Join(d.th.imgServerDir, rootfsFilename)
+	if _, statErr := os.Stat(rootfsPath); os.IsNotExist(statErr) {
+		d.th.log.Infof("Staging local EVE rootfs %s for the upgrade", img.RootfsPath)
+		if copyErr := utils.CopyFile(img.RootfsPath, rootfsPath); copyErr != nil {
+			d.th.t.Fatalf("UpgradeEVE: failed to stage rootfs %q: %v",
+				img.RootfsPath, copyErr)
+		}
+	} else {
+		d.th.log.Infof("Reusing staged rootfs %s", rootfsFilename)
+	}
+
+	d.applyUpgrade(rootfsPath, rootfsFilename, img.ShortVersion,
+		waitUntilUpgraded, expectRevert)
+}
+
+// applyUpgrade points the device's BaseOS config at a rootfs image already
+// staged in the harness's HTTP image server and, optionally, waits for the
+// outcome. Shared by both transports: they differ only in how rootfsPath got
+// there.
+func (d *EdgeDevice) applyUpgrade(rootfsPath, rootfsFilename, shortVersion string,
+	waitUntilUpgraded, expectRevert bool) {
 
 	sha256hex, fileSize, err := utils.FileHashAndSize(rootfsPath)
 	if err != nil {

@@ -135,6 +135,16 @@ func resolveLocalLiveImageIn(distRoot, zarch, eveVersion, firmwareOverride strin
 	if base := filepath.Base(verDir); eveVersionDir.MatchString(base) {
 		img.Version = base
 	}
+	// Both are only needed to deliver this build as an upgrade target, so a
+	// build without them is still perfectly usable for a fresh device; whoever
+	// needs them reports their absence.
+	rootfs := filepath.Join(verDir, "installer", "rootfs.img")
+	if info, err := os.Stat(rootfs); err == nil && info.Mode().IsRegular() {
+		img.RootfsPath = rootfs
+	}
+	if data, err := os.ReadFile(filepath.Join(verDir, "installer", "eve_version")); err == nil {
+		img.ShortVersion = strings.TrimSpace(string(data))
+	}
 
 	info, err := os.Stat(img.ConfigImgPath)
 	if err != nil {
