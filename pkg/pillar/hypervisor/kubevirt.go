@@ -1370,6 +1370,11 @@ func (ctx kubevirtContext) Delete(domainName string) (result error) {
 	}
 
 	onMe, scheduledOnNone, err := ctx.scheduledOnMe(vmis.mtype, vmis.name)
+	if err != nil {
+		// A failed lookup reports onMe=false, which is indistinguishable
+		// from the "scheduled elsewhere" case below.
+		return err
+	}
 	if !onMe && !scheduledOnNone {
 		// Not scheduled on me, but is scheduled elsewhere.
 		return nil
