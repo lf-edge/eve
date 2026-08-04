@@ -67,15 +67,38 @@ const (
 	// This is read by the evetest container.
 	PauseOnFailureEnv = "PAUSE_ON_FAILURE"
 
-	// EVEVersionEnv specifies the version of EVE to test.
+	// EVEVersionEnv specifies the version of EVE to test. This is the *which
+	// build* setting, independent of how its bits are delivered (see
+	// EVELiveImageEnv).
 	// If unset, the EVE version from the local repository is used (including
-	// any uncommitted changes).
+	// any uncommitted changes) -- except under EVELiveImageEnv, where unset
+	// means the newest local build (dist/<arch>/current), which reports its
+	// own version.
 	// This is read by the evetest container.
 	EVEVersionEnv = "EVE_VERSION"
 
 	// EVERepoEnv defines the container image repository to use for pulling EVE images.
 	// This is read by the evetest container.
 	EVERepoEnv = "EVE_REPO"
+
+	// EVELiveImageEnv selects how EVE's bits reach a device: with it set, from
+	// the artifacts `make live` wrote under EVEDistDirEnv; unset or false, from
+	// an EVE container image. A boolean and nothing more -- *which* build to run
+	// is EVEVersionEnv's business, so this deliberately carries no path. A
+	// non-boolean value is an error rather than a silent fallback.
+	// This is read by the evetest container.
+	EVELiveImageEnv = "EVE_LIVE_IMAGE"
+
+	// EVEFirmwareDirEnv overrides firmware discovery, which otherwise looks in
+	// <build-dir>/installer/firmware.
+	EVEFirmwareDirEnv = "EVE_FIRMWARE_DIR"
+
+	// EVEDistDirEnv locates the EVE build output directory, whose
+	// <arch>/<version>/ subdirectories (and the <arch>/current symlink) hold the
+	// local builds EVELiveImageEnv delivers. It must be an absolute path: the
+	// harness runs inside a container, so a relative path would resolve against
+	// the container's working directory rather than the developer's checkout.
+	EVEDistDirEnv = "EVE_DIST_DIR"
 
 	// HomeDirEnv specifies the evetest data directory on the host ($HOME/.evetest).
 	// It is passed by the Makefile as EVETEST_HOME=$(HOME)/.evetest and must be
@@ -377,6 +400,9 @@ func InitViperConfig() {
 	// EVE image config
 	viper.SetDefault(EVEVersionEnv, "") // Empty = derive from repo
 	viper.SetDefault(EVERepoEnv, DefaultEVERepo)
+	viper.SetDefault(EVELiveImageEnv, "")
+	viper.SetDefault(EVEFirmwareDirEnv, "")
+	viper.SetDefault(EVEDistDirEnv, "")
 	viper.SetDefault(PreferredArchEnv, DefaultPreferredArch)
 
 	// Adam image config

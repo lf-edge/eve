@@ -149,6 +149,11 @@ const (
 	Capability_CAPABILITY_FORWARD_LLDP Capability = 3
 	// Attachment of an emulated TPM (Trusted Platform Module) to the device.
 	Capability_CAPABILITY_TPM Capability = 4
+	// Deriving a device's disk from a locally built EVE live image uploaded by
+	// the client, instead of building it from an EVE container image. Requires a
+	// provider that attaches the qcow2 directly, so it tracks the provider's disk
+	// image strategy.
+	Capability_CAPABILITY_LOCAL_LIVE_IMAGE Capability = 5
 )
 
 // Enum value maps for Capability.
@@ -159,13 +164,15 @@ var (
 		2: "CAPABILITY_FORWARD_EAPOL",
 		3: "CAPABILITY_FORWARD_LLDP",
 		4: "CAPABILITY_TPM",
+		5: "CAPABILITY_LOCAL_LIVE_IMAGE",
 	}
 	Capability_value = map[string]int32{
-		"CAPABILITY_UNSPECIFIED":   0,
-		"CAPABILITY_FORWARD_LACP":  1,
-		"CAPABILITY_FORWARD_EAPOL": 2,
-		"CAPABILITY_FORWARD_LLDP":  3,
-		"CAPABILITY_TPM":           4,
+		"CAPABILITY_UNSPECIFIED":      0,
+		"CAPABILITY_FORWARD_LACP":     1,
+		"CAPABILITY_FORWARD_EAPOL":    2,
+		"CAPABILITY_FORWARD_LLDP":     3,
+		"CAPABILITY_TPM":              4,
+		"CAPABILITY_LOCAL_LIVE_IMAGE": 5,
 	}
 )
 
@@ -418,6 +425,61 @@ func (x *ImageRef) GetArch() ArchType {
 	return ArchType_ARCH_UNKNOWN
 }
 
+// Reference to a locally built EVE live disk image, identified by content
+// rather than by tag: the developer's build is rebuilt under an unchanged
+// name, so only the hash distinguishes one from the next.
+type LiveImageRef struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Sha256        string                 `protobuf:"bytes,1,opt,name=sha256,proto3" json:"sha256,omitempty"`   // hex sha256 of live.qcow2
+	Version       string                 `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"` // EVE version, from the dist directory name; may be empty
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LiveImageRef) Reset() {
+	*x = LiveImageRef{}
+	mi := &file_common_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LiveImageRef) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LiveImageRef) ProtoMessage() {}
+
+func (x *LiveImageRef) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LiveImageRef.ProtoReflect.Descriptor instead.
+func (*LiveImageRef) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *LiveImageRef) GetSha256() string {
+	if x != nil {
+		return x.Sha256
+	}
+	return ""
+}
+
+func (x *LiveImageRef) GetVersion() string {
+	if x != nil {
+		return x.Version
+	}
+	return ""
+}
+
 // A single log message, emitted by a device, edge app, or evetest component.
 type LogMessage struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -431,7 +493,7 @@ type LogMessage struct {
 
 func (x *LogMessage) Reset() {
 	*x = LogMessage{}
-	mi := &file_common_proto_msgTypes[1]
+	mi := &file_common_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -443,7 +505,7 @@ func (x *LogMessage) String() string {
 func (*LogMessage) ProtoMessage() {}
 
 func (x *LogMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[1]
+	mi := &file_common_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -456,7 +518,7 @@ func (x *LogMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogMessage.ProtoReflect.Descriptor instead.
 func (*LogMessage) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{1}
+	return file_common_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *LogMessage) GetMessage() string {
@@ -503,7 +565,7 @@ type EVEDevice struct {
 
 func (x *EVEDevice) Reset() {
 	*x = EVEDevice{}
-	mi := &file_common_proto_msgTypes[2]
+	mi := &file_common_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -515,7 +577,7 @@ func (x *EVEDevice) String() string {
 func (*EVEDevice) ProtoMessage() {}
 
 func (x *EVEDevice) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[2]
+	mi := &file_common_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -528,7 +590,7 @@ func (x *EVEDevice) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EVEDevice.ProtoReflect.Descriptor instead.
 func (*EVEDevice) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{2}
+	return file_common_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *EVEDevice) GetDeviceName() string {
@@ -592,7 +654,7 @@ type EVEDeviceStatus struct {
 
 func (x *EVEDeviceStatus) Reset() {
 	*x = EVEDeviceStatus{}
-	mi := &file_common_proto_msgTypes[3]
+	mi := &file_common_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -604,7 +666,7 @@ func (x *EVEDeviceStatus) String() string {
 func (*EVEDeviceStatus) ProtoMessage() {}
 
 func (x *EVEDeviceStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[3]
+	mi := &file_common_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -617,7 +679,7 @@ func (x *EVEDeviceStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EVEDeviceStatus.ProtoReflect.Descriptor instead.
 func (*EVEDeviceStatus) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{3}
+	return file_common_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *EVEDeviceStatus) GetSpec() *EVEDevice {
@@ -654,7 +716,7 @@ type EVEInterfaceStatus struct {
 
 func (x *EVEInterfaceStatus) Reset() {
 	*x = EVEInterfaceStatus{}
-	mi := &file_common_proto_msgTypes[4]
+	mi := &file_common_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -666,7 +728,7 @@ func (x *EVEInterfaceStatus) String() string {
 func (*EVEInterfaceStatus) ProtoMessage() {}
 
 func (x *EVEInterfaceStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[4]
+	mi := &file_common_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -679,7 +741,7 @@ func (x *EVEInterfaceStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EVEInterfaceStatus.ProtoReflect.Descriptor instead.
 func (*EVEInterfaceStatus) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{4}
+	return file_common_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *EVEInterfaceStatus) GetLogicalLabel() string {
@@ -722,7 +784,7 @@ type EVEInterface struct {
 
 func (x *EVEInterface) Reset() {
 	*x = EVEInterface{}
-	mi := &file_common_proto_msgTypes[5]
+	mi := &file_common_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -734,7 +796,7 @@ func (x *EVEInterface) String() string {
 func (*EVEInterface) ProtoMessage() {}
 
 func (x *EVEInterface) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[5]
+	mi := &file_common_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -747,7 +809,7 @@ func (x *EVEInterface) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EVEInterface.ProtoReflect.Descriptor instead.
 func (*EVEInterface) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{5}
+	return file_common_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *EVEInterface) GetName() string {
@@ -781,7 +843,7 @@ type ConsoleOutputResponse struct {
 
 func (x *ConsoleOutputResponse) Reset() {
 	*x = ConsoleOutputResponse{}
-	mi := &file_common_proto_msgTypes[6]
+	mi := &file_common_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -793,7 +855,7 @@ func (x *ConsoleOutputResponse) String() string {
 func (*ConsoleOutputResponse) ProtoMessage() {}
 
 func (x *ConsoleOutputResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[6]
+	mi := &file_common_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -806,7 +868,7 @@ func (x *ConsoleOutputResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConsoleOutputResponse.ProtoReflect.Descriptor instead.
 func (*ConsoleOutputResponse) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{6}
+	return file_common_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ConsoleOutputResponse) GetConsoleOutput() string {
@@ -830,7 +892,7 @@ type ConsoleProperties struct {
 
 func (x *ConsoleProperties) Reset() {
 	*x = ConsoleProperties{}
-	mi := &file_common_proto_msgTypes[7]
+	mi := &file_common_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -842,7 +904,7 @@ func (x *ConsoleProperties) String() string {
 func (*ConsoleProperties) ProtoMessage() {}
 
 func (x *ConsoleProperties) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[7]
+	mi := &file_common_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -855,7 +917,7 @@ func (x *ConsoleProperties) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConsoleProperties.ProtoReflect.Descriptor instead.
 func (*ConsoleProperties) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{7}
+	return file_common_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ConsoleProperties) GetEchoed() bool {
@@ -886,7 +948,7 @@ type IPRoute struct {
 
 func (x *IPRoute) Reset() {
 	*x = IPRoute{}
-	mi := &file_common_proto_msgTypes[8]
+	mi := &file_common_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -898,7 +960,7 @@ func (x *IPRoute) String() string {
 func (*IPRoute) ProtoMessage() {}
 
 func (x *IPRoute) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[8]
+	mi := &file_common_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -911,7 +973,7 @@ func (x *IPRoute) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IPRoute.ProtoReflect.Descriptor instead.
 func (*IPRoute) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{8}
+	return file_common_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *IPRoute) GetDstNetwork() string {
@@ -939,7 +1001,10 @@ const file_common_proto_rawDesc = "" +
 	"\n" +
 	"hypervisor\x18\x03 \x01(\x0e2\".org.lfedge.evetest.HypervisorTypeR\n" +
 	"hypervisor\x120\n" +
-	"\x04arch\x18\x04 \x01(\x0e2\x1c.org.lfedge.evetest.ArchTypeR\x04arch\"\xb5\x01\n" +
+	"\x04arch\x18\x04 \x01(\x0e2\x1c.org.lfedge.evetest.ArchTypeR\x04arch\"@\n" +
+	"\fLiveImageRef\x12\x16\n" +
+	"\x06sha256\x18\x01 \x01(\tR\x06sha256\x12\x18\n" +
+	"\aversion\x18\x02 \x01(\tR\aversion\"\xb5\x01\n" +
 	"\n" +
 	"LogMessage\x12\x18\n" +
 	"\amessage\x18\x01 \x01(\tR\amessage\x12;\n" +
@@ -996,14 +1061,15 @@ const file_common_proto_rawDesc = "" +
 	"\x06HV_KVM\x10\x01\x12\n" +
 	"\n" +
 	"\x06HV_XEN\x10\x02\x12\x0f\n" +
-	"\vHV_KUBEVIRT\x10\x03*\x94\x01\n" +
+	"\vHV_KUBEVIRT\x10\x03*\xb5\x01\n" +
 	"\n" +
 	"Capability\x12\x1a\n" +
 	"\x16CAPABILITY_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17CAPABILITY_FORWARD_LACP\x10\x01\x12\x1c\n" +
 	"\x18CAPABILITY_FORWARD_EAPOL\x10\x02\x12\x1b\n" +
 	"\x17CAPABILITY_FORWARD_LLDP\x10\x03\x12\x12\n" +
-	"\x0eCAPABILITY_TPM\x10\x04*g\n" +
+	"\x0eCAPABILITY_TPM\x10\x04\x12\x1f\n" +
+	"\x1bCAPABILITY_LOCAL_LIVE_IMAGE\x10\x05*g\n" +
 	"\vLogSeverity\x12\x0f\n" +
 	"\vLOG_UNKNOWN\x10\x00\x12\r\n" +
 	"\tLOG_DEBUG\x10\x01\x12\f\n" +
@@ -1038,7 +1104,7 @@ func file_common_proto_rawDescGZIP() []byte {
 }
 
 var file_common_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
-var file_common_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_common_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_common_proto_goTypes = []any{
 	(ArchType)(0),                 // 0: org.lfedge.evetest.ArchType
 	(HypervisorType)(0),           // 1: org.lfedge.evetest.HypervisorType
@@ -1046,26 +1112,27 @@ var file_common_proto_goTypes = []any{
 	(LogSeverity)(0),              // 3: org.lfedge.evetest.LogSeverity
 	(EVEDeviceState)(0),           // 4: org.lfedge.evetest.EVEDeviceState
 	(*ImageRef)(nil),              // 5: org.lfedge.evetest.ImageRef
-	(*LogMessage)(nil),            // 6: org.lfedge.evetest.LogMessage
-	(*EVEDevice)(nil),             // 7: org.lfedge.evetest.EVEDevice
-	(*EVEDeviceStatus)(nil),       // 8: org.lfedge.evetest.EVEDeviceStatus
-	(*EVEInterfaceStatus)(nil),    // 9: org.lfedge.evetest.EVEInterfaceStatus
-	(*EVEInterface)(nil),          // 10: org.lfedge.evetest.EVEInterface
-	(*ConsoleOutputResponse)(nil), // 11: org.lfedge.evetest.ConsoleOutputResponse
-	(*ConsoleProperties)(nil),     // 12: org.lfedge.evetest.ConsoleProperties
-	(*IPRoute)(nil),               // 13: org.lfedge.evetest.IPRoute
-	(*timestamppb.Timestamp)(nil), // 14: google.protobuf.Timestamp
+	(*LiveImageRef)(nil),          // 6: org.lfedge.evetest.LiveImageRef
+	(*LogMessage)(nil),            // 7: org.lfedge.evetest.LogMessage
+	(*EVEDevice)(nil),             // 8: org.lfedge.evetest.EVEDevice
+	(*EVEDeviceStatus)(nil),       // 9: org.lfedge.evetest.EVEDeviceStatus
+	(*EVEInterfaceStatus)(nil),    // 10: org.lfedge.evetest.EVEInterfaceStatus
+	(*EVEInterface)(nil),          // 11: org.lfedge.evetest.EVEInterface
+	(*ConsoleOutputResponse)(nil), // 12: org.lfedge.evetest.ConsoleOutputResponse
+	(*ConsoleProperties)(nil),     // 13: org.lfedge.evetest.ConsoleProperties
+	(*IPRoute)(nil),               // 14: org.lfedge.evetest.IPRoute
+	(*timestamppb.Timestamp)(nil), // 15: google.protobuf.Timestamp
 }
 var file_common_proto_depIdxs = []int32{
 	1,  // 0: org.lfedge.evetest.ImageRef.hypervisor:type_name -> org.lfedge.evetest.HypervisorType
 	0,  // 1: org.lfedge.evetest.ImageRef.arch:type_name -> org.lfedge.evetest.ArchType
 	3,  // 2: org.lfedge.evetest.LogMessage.severity:type_name -> org.lfedge.evetest.LogSeverity
-	14, // 3: org.lfedge.evetest.LogMessage.timestamp:type_name -> google.protobuf.Timestamp
-	10, // 4: org.lfedge.evetest.EVEDevice.interfaces:type_name -> org.lfedge.evetest.EVEInterface
+	15, // 3: org.lfedge.evetest.LogMessage.timestamp:type_name -> google.protobuf.Timestamp
+	11, // 4: org.lfedge.evetest.EVEDevice.interfaces:type_name -> org.lfedge.evetest.EVEInterface
 	5,  // 5: org.lfedge.evetest.EVEDevice.image:type_name -> org.lfedge.evetest.ImageRef
-	7,  // 6: org.lfedge.evetest.EVEDeviceStatus.spec:type_name -> org.lfedge.evetest.EVEDevice
+	8,  // 6: org.lfedge.evetest.EVEDeviceStatus.spec:type_name -> org.lfedge.evetest.EVEDevice
 	4,  // 7: org.lfedge.evetest.EVEDeviceStatus.state:type_name -> org.lfedge.evetest.EVEDeviceState
-	9,  // 8: org.lfedge.evetest.EVEDeviceStatus.interfaces:type_name -> org.lfedge.evetest.EVEInterfaceStatus
+	10, // 8: org.lfedge.evetest.EVEDeviceStatus.interfaces:type_name -> org.lfedge.evetest.EVEInterfaceStatus
 	9,  // [9:9] is the sub-list for method output_type
 	9,  // [9:9] is the sub-list for method input_type
 	9,  // [9:9] is the sub-list for extension type_name
@@ -1084,7 +1151,7 @@ func file_common_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_common_proto_rawDesc), len(file_common_proto_rawDesc)),
 			NumEnums:      5,
-			NumMessages:   9,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

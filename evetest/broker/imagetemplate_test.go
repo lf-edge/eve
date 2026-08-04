@@ -7,12 +7,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -45,7 +47,7 @@ func TestComputeTemplateKeyIsStable(t *testing.T) {
 // this asserts nobody adds one -- comparing two equal structs could not detect
 // that, since a new field would be zero in both.
 func TestTemplateKeyParamsFields(t *testing.T) {
-	want := []string{"DockerImageID", "DiskBytes", "Installer", "Arch"}
+	want := []string{"DockerImageID", "LiveImageSHA256", "DiskBytes", "Installer", "Arch"}
 	typ := reflect.TypeOf(templateKeyParams{})
 	var got []string
 	for i := 0; i < typ.NumField(); i++ {
@@ -57,6 +59,27 @@ func TestTemplateKeyParamsFields(t *testing.T) {
 			"into the CONFIG partition of the working copy instead. If this is a "+
 			"genuinely image-wide input, add it here and bump templateFormatVersion.",
 			got, want)
+	}
+}
+
+// TestLiveTemplateKeyParamsIgnoresDiskSize pins the live path's sizing model:
+// disk size is applied per device by resizing the overlay, so two devices
+// asking for different sizes must resolve to the SAME template.
+//
+// Note this tests the params helper, not computeTemplateKey -- the hash does
+// include DiskBytes, and it is the live path's job never to set it.
+func TestLiveTemplateKeyParamsIgnoresDiskSize(t *testing.T) {
+	small := liveTemplateKeyParams("abc", api.ArchType_ARCH_AMD64, 8<<30)
+	large := liveTemplateKeyParams("abc", api.ArchType_ARCH_AMD64, 64<<30)
+	if small.DiskBytes != 0 {
+		t.Errorf("DiskBytes = %d, want 0: the live path sizes per device", small.DiskBytes)
+	}
+	if computeTemplateKey(small) != computeTemplateKey(large) {
+		t.Error("two disk sizes produced two templates; they must share one")
+	}
+	other := liveTemplateKeyParams("def", api.ArchType_ARCH_AMD64, 8<<30)
+	if computeTemplateKey(small) == computeTemplateKey(other) {
+		t.Error("different live image hashes produced the same key")
 	}
 }
 
@@ -86,16 +109,17 @@ func TestComputeTemplateKeyVaries(t *testing.T) {
 func TestTemplateMetaRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	want := templateMeta{
-		FormatVersion: templateFormatVersion,
-		Key:           "abc123",
-		DockerImageID: "sha256:aaaa",
-		DiskBytes:     30 << 30,
-		Installer:     false,
-		Arch:          api.ArchType_ARCH_AMD64.String(),
-		ConfigOffset:  6291456,
-		ConfigLength:  5 << 20,
-		BuiltAt:       time.Now().UTC().Truncate(time.Second),
-		LastUsed:      time.Now().UTC().Truncate(time.Second),
+		FormatVersion:    templateFormatVersion,
+		Key:              "abc123",
+		DockerImageID:    "sha256:aaaa",
+		DiskBytes:        30 << 30,
+		Installer:        false,
+		Arch:             api.ArchType_ARCH_AMD64.String(),
+		ConfigOffset:     6291456,
+		ConfigLength:     5 << 20,
+		DiskVirtualBytes: 30 << 30,
+		BuiltAt:          time.Now().UTC().Truncate(time.Second),
+		LastUsed:         time.Now().UTC().Truncate(time.Second),
 	}
 	if err := want.save(dir); err != nil {
 		t.Fatalf("save: %v", err)
@@ -152,6 +176,26 @@ func TestLoadTemplateMetaMissingFile(t *testing.T) {
 		t.Error("os.IsNotExist unexpectedly matched the wrapped error; if this " +
 			"starts passing, the %w wrap was removed and the doc comment on " +
 			"loadTemplateMeta needs updating")
+	}
+}
+
+// TestLoadTemplateMetaRejectsMissingDiskVirtualBytes covers a template written
+// before the field existed: it must be a clean miss and get rebuilt, rather
+// than loading with a zero baseline that silently defeats resizeOverlay's
+// shrink check.
+func TestLoadTemplateMetaRejectsMissingDiskVirtualBytes(t *testing.T) {
+	dir := t.TempDir()
+	m := templateMeta{
+		FormatVersion: templateFormatVersion,
+		Key:           "k",
+		ConfigOffset:  6291456,
+		ConfigLength:  5 << 20,
+	}
+	if err := m.save(dir); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if _, err := loadTemplateMeta(dir); err == nil {
+		t.Fatal("expected an error for a meta with no recorded disk virtual size")
 	}
 }
 
@@ -677,6 +721,56 @@ func TestEvictRefusesReferencedTemplate(t *testing.T) {
 	}
 }
 
+// TestEvictAddRefRace stresses the interleaving between evict's
+// check-and-delete and a concurrent addRef: before refsMutex serialized them,
+// evict could observe an empty refs dir, a concurrent addRef could then land
+// its marker, and evict would still proceed to RemoveAll -- deleting a
+// template the device had just taken a reference on. This is a stress loop,
+// not a forced interleaving (the window is only a few instructions wide), so
+// passing does not prove the race is impossible, only that it did not fire in
+// these iterations; run with -race and a high -count for confidence.
+func TestEvictAddRefRace(t *testing.T) {
+	c := newTestCache(t)
+	log := logrus.NewEntry(logrus.New())
+	log.Logger.SetOutput(io.Discard)
+
+	const iterations = 200
+	for i := 0; i < iterations; i++ {
+		var calls int32
+		params := baseKeyParams()
+		params.DockerImageID = fmt.Sprintf("sha256:race-%d", i)
+		ref, err := c.ensureTemplate(context.Background(), log, params, stubBuilder(&calls, 0))
+		if err != nil {
+			t.Fatalf("iteration %d: ensureTemplate: %v", i, err)
+		}
+
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		var addErr error
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			<-start
+			addErr = c.addRef(ref.Key, "eve-race-node")
+		}()
+		go func() {
+			defer wg.Done()
+			<-start
+			if err := c.evict(ref.Key); err != nil {
+				t.Errorf("iteration %d: evict: %v", i, err)
+			}
+		}()
+		close(start)
+		wg.Wait()
+
+		if addErr == nil {
+			if _, err := os.Stat(ref.Dir); err != nil {
+				t.Fatalf("iteration %d: addRef returned nil but the template dir is gone: %v", i, err)
+			}
+		}
+	}
+}
+
 // TestRefNameRejectsPathTraversal covers a client-supplied device name that
 // tries to escape the refs directory: both addRef and removeRef must reject
 // it outright rather than joining it into a path.
@@ -709,5 +803,28 @@ func TestRefNameRejectsPathTraversal(t *testing.T) {
 	}
 	if len(entries) != 0 {
 		t.Errorf("refs dir has %d unexpected entries: %v", len(entries), entries)
+	}
+}
+
+// TestValidLiveImageSHA256RejectsBadInput covers the client-supplied sha256
+// that liveUploadPath joins straight into a path: a path-traversal payload, an
+// empty string, an uppercase digest (hex.EncodeToString never produces one, so
+// this rejects a hand-crafted request) and one hex character short of 64 must
+// all be rejected before they reach filepath.Join.
+func TestValidLiveImageSHA256RejectsBadInput(t *testing.T) {
+	valid64 := strings.Repeat("a", 64)
+	bad := []string{
+		"../../escape",
+		"",
+		strings.ToUpper(valid64),
+		valid64[:63],
+	}
+	for _, sha := range bad {
+		if err := validLiveImageSHA256(sha); err == nil {
+			t.Errorf("validLiveImageSHA256(%q) should have been rejected", sha)
+		}
+	}
+	if err := validLiveImageSHA256(valid64); err != nil {
+		t.Errorf("validLiveImageSHA256(%q) rejected a valid digest: %v", valid64, err)
 	}
 }

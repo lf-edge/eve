@@ -166,3 +166,24 @@ func TestInjectConfigPartitionRejectsWhitespacePath(t *testing.T) {
 		t.Errorf("error should name the whitespace problem, got: %v", err)
 	}
 }
+
+func TestResizeOverlayRejectsShrink(t *testing.T) {
+	err := resizeOverlay(context.Background(), "/nonexistent.qcow2", 1<<30, 4<<30)
+	if err == nil {
+		t.Fatal("expected an error when the requested size is smaller than the image")
+	}
+	if !strings.Contains(err.Error(), "smaller") {
+		t.Errorf("error should explain the shrink, got: %v", err)
+	}
+}
+
+// TestResizeOverlayNoopWhenEqual covers the common case: no qemu-img call at
+// all, so a nonexistent path is fine.
+func TestResizeOverlayNoopWhenEqual(t *testing.T) {
+	if err := resizeOverlay(context.Background(), "/nonexistent.qcow2", 4<<30, 4<<30); err != nil {
+		t.Fatalf("equal sizes should be a no-op, got: %v", err)
+	}
+	if err := resizeOverlay(context.Background(), "/nonexistent.qcow2", 0, 4<<30); err != nil {
+		t.Fatalf("zero request should be a no-op, got: %v", err)
+	}
+}
