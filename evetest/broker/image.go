@@ -122,6 +122,10 @@ type buildEVEImageParams struct {
 	// softSerial is the device's soft serial number. Always non-empty; see
 	// resolveSoftSerial.
 	softSerial string
+	// extraDiskBytes are sizes (in bytes) of additional blank disks to create
+	// and append to the result, beyond the main boot/target disk -- e.g. for
+	// tests that exercise EVE-level disk layout/RAID configuration.
+	extraDiskBytes []uint64
 }
 
 // buildEVEImageResult holds the outputs of either device-image producer
@@ -134,9 +138,10 @@ type buildEVEImageResult struct {
 	// RAW from the legacy buildEVEImage path, QCOW2 from the template-backed
 	// makeDeviceImage path, where it must be QCOW2 to be a template overlay.
 	installerImage *provider.DiskImage
-	// disks is the list of persistent disk images for the device. Currently always
-	// a single disk (live QCOW2 for live builds, blank target QCOW2 for installer
-	// builds), but structured as a slice to accommodate multiple disks in the future.
+	// disks is the list of persistent disk images for the device: the main
+	// boot/target disk (live QCOW2 for live builds, blank target QCOW2 for
+	// installer builds) followed by any extra blank disks requested via
+	// extraDiskBytes.
 	disks []provider.DiskImage
 	// firmwareDir is the path to the directory containing the extracted UEFI firmware
 	// (OVMF_CODE.fd, OVMF_VARS.fd).
@@ -251,34 +256,40 @@ func buildEVEImage(ctx context.Context, log *logrus.Entry,
 		result.disks = []provider.DiskImage{
 			{Format: provider.DiskImageFormatQcow2, Path: builtImagePath},
 		}
-		return result, nil
+	} else {
+		// For installer mode, create a blank target disk that EVE will be
+		// installed onto. The installer image is prepended to disks for the
+		// first boot only.
+		if params.diskSize == 0 {
+			err = fmt.Errorf("diskSize must be non-zero for installer builds")
+			return result, err
+		}
+		targetDiskPath := filepath.Join(params.imageDirPath, "installed.qcow2")
+		targetDisk, err2 := createBlankDisk(
+			ctx, log, targetDiskPath, provider.DiskImageFormatQcow2, params.diskSize)
+		if err2 != nil {
+			err = fmt.Errorf("failed to create installer target disk: %w", err2)
+			return result, err
+		}
+		log.Infof("Created blank target disk for EVE installation: %s", targetDiskPath)
+
+		installerImage := provider.DiskImage{
+			Format: provider.DiskImageFormatRaw, Path: builtImagePath}
+		result.installerImage = &installerImage
+		result.disks = []provider.DiskImage{targetDisk}
 	}
 
-	// For installer mode, create a blank target disk that EVE will be installed onto.
-	// The installer image is prepended to disks for the first boot only.
-	if params.diskSize == 0 {
-		err = fmt.Errorf("diskSize must be non-zero for installer builds")
+	// Append any extra (non-boot) blank disks requested, e.g. for tests that
+	// exercise EVE-level disk layout/RAID configuration. These live in
+	// result.disks, not result.installerImage, so they persist across the
+	// installer's post-install disk reconfiguration (see
+	// ReconfigureDeviceDisks in broker.go).
+	extraDisks, err := createBlankDisks(ctx, log, params.imageDirPath, params.extraDiskBytes)
+	if err != nil {
+		err = fmt.Errorf("failed to create extra disks: %w", err)
 		return result, err
 	}
-	targetDiskPath := filepath.Join(params.imageDirPath, "installed.qcow2")
-	diskSizeMiB := params.diskSize >> 20
-	log.Infof("Creating blank target disk for EVE installation: %s (%d MiB)",
-		targetDiskPath, diskSizeMiB)
-	out, err2 := exec.CommandContext(ctx, "qemu-img", "create", "-f", "qcow2",
-		targetDiskPath, fmt.Sprintf("%dM", diskSizeMiB)).CombinedOutput()
-	if err2 != nil {
-		err = fmt.Errorf("failed to create installer target disk %q: %v: %s",
-			targetDiskPath, err2, out)
-		return result, err
-	}
-	log.Infof("Created blank target disk for EVE installation: %s", targetDiskPath)
-
-	installerImage := provider.DiskImage{
-		Format: provider.DiskImageFormatRaw, Path: builtImagePath}
-	result.installerImage = &installerImage
-	result.disks = []provider.DiskImage{
-		{Format: provider.DiskImageFormatQcow2, Path: targetDiskPath},
-	}
+	result.disks = append(result.disks, extraDisks...)
 	return result, nil
 }
 
@@ -673,6 +684,10 @@ type makeDeviceImageParams struct {
 	// this broker can read directly; the template is installed from those and
 	// liveTarPath is never touched.
 	liveSource *api.LocalLiveImageSource
+	// extraDiskBytes are sizes (in bytes) of additional blank disks to create
+	// and append to the result, beyond the main boot/target disk -- e.g. for
+	// tests that exercise EVE-level disk layout/RAID configuration.
+	extraDiskBytes []uint64
 }
 
 // makeDeviceImage derives a device's disk image from a cached template: it
@@ -805,27 +820,85 @@ func makeDeviceImage(ctx context.Context, log *logrus.Entry, cache *templateCach
 		result.disks = []provider.DiskImage{
 			{Format: provider.DiskImageFormatQcow2, Path: diskPath},
 		}
-		return result, tmpl.Key, nil
+	} else {
+		if params.diskSize == 0 {
+			err = fmt.Errorf("diskSize must be non-zero for installer builds")
+			return result, "", err
+		}
+		targetDiskPath := filepath.Join(params.imageDirPath, "installed.qcow2")
+		targetDisk, err2 := createBlankDisk(
+			ctx, log, targetDiskPath, provider.DiskImageFormatQcow2, params.diskSize)
+		if err2 != nil {
+			err = fmt.Errorf("failed to create installer target disk: %w", err2)
+			return result, "", err
+		}
+		installerImage := provider.DiskImage{
+			Format: provider.DiskImageFormatQcow2, Path: diskPath}
+		result.installerImage = &installerImage
+		result.disks = []provider.DiskImage{targetDisk}
 	}
 
-	if params.diskSize == 0 {
-		err = fmt.Errorf("diskSize must be non-zero for installer builds")
+	// Append any extra (non-boot) blank disks requested, e.g. for tests that
+	// exercise EVE-level disk layout/RAID configuration. These live in
+	// result.disks, not result.installerImage, so they persist across the
+	// installer's post-install disk reconfiguration (see
+	// ReconfigureDeviceDisks in broker.go).
+	extraDisks, err := createBlankDisks(ctx, log, params.imageDirPath, params.extraDiskBytes)
+	if err != nil {
+		err = fmt.Errorf("failed to create extra disks: %w", err)
 		return result, "", err
 	}
-	targetDiskPath := filepath.Join(params.imageDirPath, "installed.qcow2")
-	diskSizeMiB := params.diskSize >> 20
-	out, cmdErr := exec.CommandContext(ctx, "qemu-img", "create", "-f", "qcow2",
-		targetDiskPath, fmt.Sprintf("%dM", diskSizeMiB)).CombinedOutput()
-	if cmdErr != nil {
-		err = fmt.Errorf("failed to create installer target disk %q: %v: %s",
-			targetDiskPath, cmdErr, out)
-		return result, "", err
-	}
-	installerImage := provider.DiskImage{
-		Format: provider.DiskImageFormatQcow2, Path: diskPath}
-	result.installerImage = &installerImage
-	result.disks = []provider.DiskImage{
-		{Format: provider.DiskImageFormatQcow2, Path: targetDiskPath},
-	}
+	result.disks = append(result.disks, extraDisks...)
 	return result, tmpl.Key, nil
+}
+
+// diskImageFormatName returns the "-f" format name qemu-img expects for the
+// given DiskImageFormat.
+func diskImageFormatName(format provider.DiskImageFormat) string {
+	if format == provider.DiskImageFormatQcow2 {
+		return "qcow2"
+	}
+	return "raw"
+}
+
+// createBlankDisk creates a single blank disk image file of the given format
+// and size at diskPath, returning it as a DiskImage.
+func createBlankDisk(ctx context.Context, log *logrus.Entry, diskPath string,
+	format provider.DiskImageFormat, sizeBytes uint64) (provider.DiskImage, error) {
+	sizeMiB := sizeBytes >> 20
+	log.Infof("Creating blank disk %q (%d MiB, format %s)",
+		diskPath, sizeMiB, diskImageFormatName(format))
+	out, err := exec.CommandContext(ctx, "qemu-img", "create", "-f",
+		diskImageFormatName(format), diskPath, fmt.Sprintf("%dM", sizeMiB)).CombinedOutput()
+	if err != nil {
+		return provider.DiskImage{}, fmt.Errorf(
+			"failed to create blank disk %q: %w: %s", diskPath, err, out)
+	}
+	return provider.DiskImage{Format: format, Path: diskPath}, nil
+}
+
+// createBlankDisks creates one blank raw disk image file per entry in
+// sizesBytes, under imageDirPath, and returns them as DiskImage entries in
+// the same order. Used to provision extra (non-boot) disks for a device,
+// e.g. for tests that exercise EVE-level disk layout/RAID configuration.
+func createBlankDisks(ctx context.Context, log *logrus.Entry,
+	imageDirPath string, sizesBytes []uint64) ([]provider.DiskImage, error) {
+	if len(sizesBytes) == 0 {
+		return nil, nil
+	}
+	if err := os.MkdirAll(imageDirPath, 0o755); err != nil {
+		return nil, fmt.Errorf(
+			"failed to create image directory %q: %w", imageDirPath, err)
+	}
+	disks := make([]provider.DiskImage, 0, len(sizesBytes))
+	for i, sizeBytes := range sizesBytes {
+		diskPath := filepath.Join(imageDirPath, fmt.Sprintf("extra-disk-%d.img", i))
+		disk, err := createBlankDisk(
+			ctx, log, diskPath, provider.DiskImageFormatRaw, sizeBytes)
+		if err != nil {
+			return nil, err
+		}
+		disks = append(disks, disk)
+	}
+	return disks, nil
 }

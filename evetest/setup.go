@@ -325,6 +325,7 @@ func (th *TestHarness) prepareImageForEVEDevice(dev *deviceState) {
 		LiveImageSource: dev.liveImageSource,
 		MakeInstaller:   dev.requirement.DeviceReusePolicy == CreateFromScratchWithInstaller,
 		DiskBytes:       uint64(diskSizeInMiB) << 20,
+		ExtraDiskBytes:  dev.requirement.ExtraDisks,
 		Config: &api.EveConfig{
 			ServerName:        fmt.Sprintf("%s:%d", GetControllerHostname(), GetControllerPort()),
 			SoftSerial:        dev.requirement.WithSoftSerial,

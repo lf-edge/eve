@@ -7,9 +7,11 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"fmt"
 	"io"
+	"math/big"
 	"net"
 	"net/http"
 	"os"
@@ -157,6 +159,12 @@ const (
 	controllerIntfName = "controller"
 	imgServerIntfName  = "img-server"
 	imgServerPort      = 80
+	// imgServerSFTPPort is the default SFTP port (22), matching the port
+	// SFTPStorage assumes when ServerPort is left unset.
+	imgServerSFTPPort = 22
+	// imgServerHTTPSPort is the default HTTPS port (443), matching the port
+	// HTTPStorage assumes when UseHTTPS is set and ServerPort is left unset.
+	imgServerHTTPSPort = 443
 
 	sdnTunName = "sdn-tun"
 	sdnTunMTU  = 1500
@@ -246,6 +254,15 @@ type TestHarness struct {
 	// Image server (HTTP file server serving EVE and app images).
 	imgServerListener net.Listener
 	imgServerDir      string // temp dir under $HOME/.evetest; removed in Close()
+
+	// SFTP listener serving the same imgServerDir as an alternate download
+	// transport (see DsType_DsSFTP / SFTPStorage).
+	sftpServerListener net.Listener
+
+	// HTTPS listener serving the same imgServerDir as the plain HTTP image
+	// server, over TLS with a certificate signed by the harness's own CA
+	// (see DsType_DsHttps / HTTPStorage.UseHTTPS, GetCACertPEM).
+	imgServerTLSListener net.Listener
 
 	// SDN
 	sdnConn   *grpc.ClientConn
@@ -574,17 +591,58 @@ func Init(t *testing.T) *T {
 	if err != nil {
 		th.t.Fatalf("failed to create image server interface: %v", err)
 	}
+	imgServerMux := http.NewServeMux()
+	imgServerMux.Handle("/", http.FileServer(http.Dir(th.imgServerDir)))
+
 	imgListenAddr := net.JoinHostPort(imgServerIPv4.String(), strconv.Itoa(imgServerPort))
 	th.imgServerListener, err = net.Listen("tcp", imgListenAddr)
 	if err != nil {
 		th.t.Fatalf("failed to listen on image server address %s: %v", imgListenAddr, err)
 	}
 	go func() {
-		mux := http.NewServeMux()
-		mux.Handle("/", http.FileServer(http.Dir(th.imgServerDir)))
-		_ = http.Serve(th.imgServerListener, mux)
+		_ = http.Serve(th.imgServerListener, imgServerMux)
 	}()
 	th.log.Infof("Image server listening on http://%s/ (serving %s)", imgListenAddr, th.imgServerDir)
+
+	// Start an HTTPS listener on the same interface and directory, using a
+	// certificate signed by the harness's own CA (see GetCACertPEM) -- an
+	// alternate download transport for tests that exercise DsType_DsHttps
+	// (see HTTPStorage.UseHTTPS).
+	imgServerCert, imgServerKey, err := utils.GenServerCertElliptic(
+		th.caCert, th.caKey, big.NewInt(3), []net.IP{imgServerIPv4}, nil,
+		"evetest image server")
+	if err != nil {
+		th.t.Fatalf("failed to generate image server TLS certificate: %v", err)
+	}
+	imgServerTLSConfig := &tls.Config{
+		Certificates: []tls.Certificate{{
+			Certificate: [][]byte{imgServerCert.Raw},
+			PrivateKey:  imgServerKey,
+		}},
+	}
+	imgServerHTTPSAddr := net.JoinHostPort(
+		imgServerIPv4.String(), strconv.Itoa(imgServerHTTPSPort))
+	th.imgServerTLSListener, err = tls.Listen("tcp", imgServerHTTPSAddr, imgServerTLSConfig)
+	if err != nil {
+		th.t.Fatalf("failed to listen on image server HTTPS address %s: %v",
+			imgServerHTTPSAddr, err)
+	}
+	go func() {
+		_ = http.Serve(th.imgServerTLSListener, imgServerMux)
+	}()
+	th.log.Infof("Image server listening on https://%s/ (serving %s)",
+		imgServerHTTPSAddr, th.imgServerDir)
+
+	// Start an SFTP server on the same image-server interface, serving the
+	// same directory, as an alternate download transport for tests that
+	// exercise DsType_DsSFTP (see SFTPStorage).
+	sftpListenAddr := net.JoinHostPort(imgServerIPv4.String(), strconv.Itoa(imgServerSFTPPort))
+	th.sftpServerListener, err = net.Listen("tcp", sftpListenAddr)
+	if err != nil {
+		th.t.Fatalf("failed to listen on SFTP server address %s: %v", sftpListenAddr, err)
+	}
+	go th.runSFTPServer(th.sftpServerListener, th.imgServerDir)
+	th.log.Infof("SFTP server listening on sftp://%s/ (serving %s)", sftpListenAddr, th.imgServerDir)
 
 	// Create broker client.
 	brokerAddr := viper.GetString(constants.BrokerAddressEnv)
@@ -747,10 +805,22 @@ func Close() error {
 		th.log.Infof("Closed broker connection")
 	}
 
-	// Stop the image server and remove its cache directory.
+	// Stop the SFTP server.
+	if th.sftpServerListener != nil {
+		if err := th.sftpServerListener.Close(); err != nil {
+			th.log.Warnf("Failed to close SFTP server listener: %v", err)
+		}
+	}
+
+	// Stop the image server (HTTP and HTTPS) and remove its cache directory.
 	if th.imgServerListener != nil {
 		if err := th.imgServerListener.Close(); err != nil {
 			th.log.Warnf("Failed to close image server listener: %v", err)
+		}
+	}
+	if th.imgServerTLSListener != nil {
+		if err := th.imgServerTLSListener.Close(); err != nil {
+			th.log.Warnf("Failed to close image server HTTPS listener: %v", err)
 		}
 	}
 	if th.imgServerDir != "" {
@@ -1157,6 +1227,28 @@ func GetImageServerIPv4() net.IP {
 // GetImageServerPort returns the port of the HTTP image server.
 func GetImageServerPort() uint16 {
 	return imgServerPort
+}
+
+// GetImageServerSFTPPort returns the port of the SFTP server that serves the
+// same directory as the HTTP image server (see DefaultSFTPUsername/Password).
+func GetImageServerSFTPPort() uint16 {
+	return imgServerSFTPPort
+}
+
+// GetImageServerHTTPSPort returns the port of the HTTPS listener that serves
+// the same directory as the HTTP image server (see GetCACertPEM for the CA
+// certificate trusting it).
+func GetImageServerHTTPSPort() uint16 {
+	return imgServerHTTPSPort
+}
+
+// GetCACertPEM returns the PEM encoding of the harness's own CA certificate
+// -- the one that signed the image server's HTTPS certificate (see
+// GetImageServerHTTPSPort). Pass it via HTTPStorage.HTTPSTrustedCACertsPEM
+// to trust downloads from the built-in image server over HTTPS.
+func GetCACertPEM() []byte {
+	th := getTestHarness()
+	return utils.CertToPEM(th.caCert)
 }
 
 // GetSrcIPv4ForInternetAccess returns the first non-link-local IPv4 address

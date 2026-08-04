@@ -1,77 +1,62 @@
 // Copyright (c) 2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package networking_test
-
-import "testing"
-
-// Datastore tests verify that EVE can pull application images from the various
-// datastore backends supported by the EVE API (HTTP, HTTPS, AWS S3, SFTP, Azure
-// Blob, container registries). They focus on the network/datastore plumbing
-// (correct datastore URL construction, authentication, certificate handling,
-// download progress reporting, error propagation), not on the application
-// runtime — once the image is downloaded and verified, the test can stop.
+// Datastore tests verify that EVE can pull volume content from the various
+// datastore backends supported by the EVE API (HTTP, HTTPS, AWS S3, SFTP,
+// Azure Blob, container registries). They focus on the network/datastore
+// plumbing (correct datastore URL construction, authentication, certificate
+// handling, download progress reporting, error propagation) -- not on any
+// application runtime.
+//
+// No application is needed. volumemgr fully creates a volume -- including
+// the ContentTree download, verification, and (for archive formats) format
+// conversion. So these tests are simpler than they might first appear: declare
+// a standalone volume via EdgeDeviceConfig.AddVolume with the datastore under
+// test as its Image, and watch it reach ZSwState_CREATED_VOLUME (or ZSwState_ERROR
+// for negative variants) via device.WatchVolumeInfo. No NI, no app, no
+// WaitUntilAppIsRunning.
 //
 // Reusable scenario shape
 // -----------------------
 //
 // All these tests follow the same structure:
 //
-//  1. Setup a single-port mgmt device (netmodels.SingleEthWithDHCP). Internet
-//     connectivity is required only for tests that talk to a real cloud
-//     datastore (AWS/Azure); HTTP/HTTPS/SFTP can be fully self-contained inside
-//     SDN.
-//  2. Build a device config with:
-//     - one DHCP network on eth0 (mgmt+app),
-//     - a Local NI for the test application,
-//     - one application referencing a small image stored in the datastore
-//     under test.
-//  3. Drive the test by `device.WatchContentTreeInfo(ctUUID)` and
-//     `device.WatchVolumeInfo(volUUID)`:
-//     - Assert that the content tree progresses through DOWNLOAD_STARTED ->
-//     DOWNLOADED -> VERIFIED -> LOADED, with download progress strictly
-//     monotonic (this also catches stalled downloads from a misbehaving
-//     datastore endpoint).
-//     - Assert that the resulting volume reaches CREATED_VOLUME.
-//     - Assert that the application reaches RUNNING (use WaitUntilAppIsRunning
-//     — it already handles download stalls and excludes download time from
-//     the timeout budget; see edgedevice.go).
-//  4. As a sanity check on networking, run a short script inside the app
-//     (RunShellScriptInsideApp) printing hostname/IP, but the primary
-//     assertions are about download/verification, not application semantics.
-//  5. Negative-path variants where appropriate (see per-test sections):
-//     - wrong SHA256 -> content tree should reach ERROR with descriptive
-//     err description.
-//     - bad credentials -> ditto.
-//     - server cert not trusted (HTTPS) -> ditto.
-//
-// Why we still want a deployed app rather than just a content tree + datastore:
-// downloading and verifying alone is implemented in volumemgr/downloader, but
-// EVE only triggers the download when there is a concrete consumer. The
-// simplest way to guarantee that is to declare an application that volume-refs
-// the content tree. The app does not need to do anything useful — a tiny
-// container image is sufficient. Once support for "datastore + content-tree
-// without app" is confirmed possible (volumemgr will pre-download referenced
-// content trees), these tests can be simplified to skip the app deployment.
+//  1. Setup a single-port mgmt device (netmodels.SingleEthWithDHCP). Add
+//     RequireInternetConnectivity{} only for tests that talk to a real
+//     external datastore (AWS/Azure/container registry); HTTP/HTTPS/SFTP
+//     against evetest's own built-in image server (see "Test images" below)
+//     need no Internet access at all.
+//  2. Build a device config with just the one DHCP network on eth0
+//     (mgmt+app) -- no NI, no application.
+//  3. devConfig.AddVolume(displayName, image, sizeBytes) with image set to
+//     the datastore under test (HTTPStorage/SFTPStorage/DockerContainer/
+//     AwsS3Bucket/AzureBlob -- see devconfig.go's ApplicationImageStorage
+//     implementations). Watch it via device.WatchVolumeInfo(volUUID):
+//     - Happy path: assert State reaches ZSwState_CREATED_VOLUME.
+//     ZInfoVolume.ProgressPercentage can be asserted strictly monotonic
+//     along the way if the test wants to catch a stalled download.
+//     - Negative-path variants (wrong checksum, bad credentials, server
+//     returns an error, untrusted cert, ...): assert State reaches
+//     ZSwState_ERROR (or stays non-CREATED_VOLUME while VolumeErr becomes
+//     non-empty) with a VolumeErr description matching what's expected
+//     (matchers.SatisfyPredicate against info.GetVolumeErr().GetDescription()).
+//  4. Cleanup: devConfig.DeleteVolume(volUUID); no application, no NI, to
+//     tear down.
 //
 // Test images
 // -----------
 //
-//   - For HTTP/HTTPS/SFTP: prefer pushing/serving a tiny, fixed Linux image (a
-//     few-MB Alpine qcow2 or a hand-crafted busybox container tarball) from
-//     within the SDN environment. This keeps the tests hermetic and fast.
-//     This requires extending the SDN/HTTPServer endpoint to serve binary
-//     content (currently it only serves the small "Paths" map) and adding a
-//     simple SFTPServer endpoint type to evetest's grpcapi/sdn.proto. Both
-//     enhancements are scoped to evetest and do NOT touch EVE itself.
-//     Until that exists, point HTTP-only tests at a public, very small,
-//     versioned image and accept the external dependency.
-//     -> suggestion: download Tiny core linux (https://gns3.com/tiny-core-linux)
-//     from inside the test. If it fails, mark the test as skipped.
-//     Note that both HTTPS and SFTP tests also download this image -- perhaps
-//     store/reuse it from a fixed /tmp location.
-//     Then upload to SDN and have it served hy HTTP server inside the SDN.
-//     (this requires enhancements inside SDN to support uploading and serving binary data)
+//   - For HTTP/HTTPS/SFTP: evetest already runs its own HTTP, HTTPS, and SFTP
+//     servers on the same interface and directory (see GetImageServerIPv4/
+//     GetImageServerPort/GetImageServerHTTPSPort/GetImageServerSFTPPort/
+//     DefaultSFTPUsername/DefaultSFTPPassword/GetCACertPEM in harness.go/
+//     sftpserver.go). Use CreateRandomImageFile (a file of random bytes plus
+//     its SHA256, for exercising checksum verification), AddImageServerFile
+//     (writes arbitrary bytes), or CreateBlankImageFile (a real
+//     qcow2/qcow/vmdk/vhdx/raw disk image via qemu-img, for testing
+//     format-conversion) to serve content, and HTTPStorage/SFTPStorage
+//     pointing at it. This keeps HTTP/HTTPS/SFTP tests fully self-contained
+//     and needs no external network access and no SDN changes.
 //
 //   - For AWS S3 / Azure Blob: parameterize via EVETEST_AWS_* / EVETEST_AZURE_*
 //     environment variables (test parameters). Skip the test if the parameters
@@ -79,51 +64,280 @@ import "testing"
 //
 //   - For container registries: use a small public image. lfedge/evetest-*
 //     test images are already used elsewhere; reuse the smallest one.
+
+package networking_test
+
+import (
+	"fmt"
+	"strings"
+	"testing"
+	"time"
+
+	// revive:disable:dot-imports
+	. "github.com/onsi/gomega"
+
+	eveconfig "github.com/lf-edge/eve-api/go/config"
+	"github.com/lf-edge/eve-api/go/evecommon"
+	eveinfo "github.com/lf-edge/eve-api/go/info"
+	"github.com/lf-edge/eve/evetest"
+	"github.com/lf-edge/eve/evetest/matchers"
+	"github.com/lf-edge/eve/evetest/netmodels"
+)
+
+// TestHTTPDatastore verifies that EVE can download and verify a standalone
+// volume's content over plain HTTP, using evetest's own built-in HTTP image
+// server -- no external network access, no SDN changes.
 //
-// TestHTTPDatastore validates that EVE can download a content tree served over
-// plain HTTP.
+// As with TestSFTPDatastore, the content is a few MiB of random (non-blank)
+// bytes rather than a blank disk image (see CreateRandomImageFile), so that
+// ImageSHA256 verification is meaningful (a blank file's checksum can't
+// distinguish "downloaded correctly" from "downloaded as all
+// zeros/corrupted-but-still-blank").
 //
-// Recommended approach: extend SDN to host a binary file via an HTTPServer
-// endpoint (or add a new SDN HTTPFileServer endpoint type), then point the
-// device config at "http://http-server.test/<image>" with the matching
-// SHA256. With the SDN-internal server the test is fully self-contained.
+// Phases
+// ------
+//  1. Set up a device with a single DHCP mgmt port. No application or
+//     network instance is needed -- volumemgr creates standalone
+//     (app-unreferenced) volumes on its own.
+//  2. Generate a random-content file (CreateRandomImageFile). Declare a
+//     standalone volume (AddVolume) downloading it over HTTP (HTTPStorage,
+//     ImageSHA256 set to the file's checksum).
+//  3. Wait for the volume to reach ZSwState_CREATED_VOLUME -- since
+//     ImageSHA256 was set, this only happens if EVE's downloader verified
+//     the content against it, i.e. proves the download was not corrupted.
+//  4. Delete the volume and wait for it to be reported as ZSwState_INVALID
+//     (fully removed).
+//  5. Negative-path variants, each via expectDownloadError:
+//     - Wrong ImageSHA256: VolumeErr contains "computed" and "configured"
+//     (pillar's verifier reports the mismatching hashes in that form).
+//     - Wrong ImageRelativePath (a file that was never written): the
+//     built-in HTTP server returns 404, and VolumeErr contains
+//     "bad response code" and "404" (the HTTP status is propagated
+//     verbatim by the downloader).
 //
-// Variants worth exercising:
-//   - Happy path: known SHA256, known size -> RUNNING.
-//   - SHA256 mismatch: content tree reaches ERROR; the error description must
-//     mention checksum/verification failure (the exact wording can be
-//     captured in a regexp matcher).
-//   - Server returns 404: content tree ERROR; description should reference
-//     the HTTP status.
-//   - Slow server: configure SDN port TrafficControl with rate_limit (a few
-//     hundred KB/s) and confirm WaitUntilAppIsRunning's "download stall"
-//     watchdog still considers progress valid (this exercises the
-//     downloadStalledTimeout path).
+// Test params
+// -----------
+//   - HYPERVISOR (defaults to KVM).
 func TestHTTPDatastore(test *testing.T) {
-	test.Skip("not yet implemented")
+	evetestT := evetest.Init(test)
+	t := NewGomegaWithT(evetestT)
+	defer evetest.Close()
+
+	evetest.DefineTestParameters(
+		evetest.HypervisorParameter(),
+	)
+	hypervisor := evetest.GetHypervisorParameterValue()
+
+	devName := "edge-dev"
+	evetest.Setup(
+		evetest.RequireEdgeDevice{
+			Name:              devName,
+			WithHypervisor:    hypervisor,
+			DeviceReusePolicy: evetest.ResetDeviceConfig,
+		},
+		evetest.RequireNetworkModel{
+			NetworkModel: netmodels.SingleEthWithDHCP,
+		},
+	)
+	device := evetest.GetEdgeDevice(devName)
+	evetest.Checkpoint("setup-done")
+
+	devConfig := evetest.NewEdgeDeviceConfig(devName)
+	dhcpNet := devConfig.AddNetwork(evetest.DHCPNetworkConfig{
+		NetworkType: evecommon.NetworkType_V4Only,
+	})
+	devConfig.AddNetworkAdapter(evetest.NetworkAdapterConfig{
+		LogicalLabel:  "ethernet0",
+		PhysicalLabel: "eth0",
+		InterfaceName: "eth0",
+		NetworkUUID:   dhcpNet,
+		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+	})
+	device.ApplyConfig(devConfig, true, true)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
+	evetest.Checkpoint("mgmt-network-ready")
+	log := evetest.Logger()
+
+	const contentSize = 4 * evetest.MiB
+	imgFile, sha256Hex := evetest.CreateRandomImageFile(
+		"http-datastore-test.bin", contentSize)
+
+	volUUID := devConfig.AddVolume("http-datastore-test", evetest.HTTPStorage{
+		ImageFormat:       eveconfig.Format_RAW,
+		ImageRelativePath: imgFile,
+		ImageSHA256:       sha256Hex,
+		ServerAddress:     evetest.GetImageServerIPv4().String(),
+		ServerPort:        evetest.GetImageServerPort(),
+	}, contentSize)
+
+	volUpdates, stopVolWatch := device.WatchVolumeInfo(volUUID)
+	defer stopVolWatch()
+	device.ApplyConfig(devConfig, false, false)
+	evetest.Checkpoint("http-volume-config-applied")
+
+	timeout := 10 * time.Minute
+	t.Eventually(volUpdates, timeout).Should(Receive(matchers.SatisfyPredicate(
+		"volume is delivered over HTTP and passes SHA256 verification",
+		func(info *eveinfo.ZInfoVolume) bool {
+			return info.State == eveinfo.ZSwState_CREATED_VOLUME
+		}).StopIf(volumeHasError)))
+	evetest.Checkpoint("http-volume-delivered")
+
+	// Delete the volume and verify it is fully removed.
+	devConfig.DeleteVolume(volUUID)
+	device.ApplyConfig(devConfig, false, false)
+	t.Eventually(volUpdates, 5*time.Minute).Should(Receive(matchers.SatisfyPredicate(
+		"volume is gone",
+		func(info *eveinfo.ZInfoVolume) bool {
+			return info.State == eveinfo.ZSwState_INVALID
+		})))
+
+	// Variant: wrong ImageSHA256 must be detected, not silently accepted.
+	log.Infof("Verifying a SHA256 mismatch is detected")
+	expectDownloadError(t, device, devConfig,
+		"http-datastore-bad-sha256", evetest.HTTPStorage{
+			ImageFormat:       eveconfig.Format_RAW,
+			ImageRelativePath: imgFile,
+			ImageSHA256:       strings.Repeat("0", 64), // deliberately wrong
+			ServerAddress:     evetest.GetImageServerIPv4().String(),
+			ServerPort:        evetest.GetImageServerPort(),
+		}, contentSize, "computed", "configured")
+
+	// Variant: a path that was never written must be reported as missing.
+	log.Infof("Verifying a nonexistent remote path is reported as missing")
+	expectDownloadError(t, device, devConfig,
+		"http-datastore-bad-path", evetest.HTTPStorage{
+			ImageFormat:       eveconfig.Format_RAW,
+			ImageRelativePath: "does-not-exist.bin",
+			ImageSHA256:       sha256Hex,
+			ServerAddress:     evetest.GetImageServerIPv4().String(),
+			ServerPort:        evetest.GetImageServerPort(),
+		}, contentSize, "bad response code", "404")
 }
 
-// TestHTTPSDatastore is identical to TestHTTPDatastore except the image is
-// served over HTTPS, and the test exercises the certificate trust plumbing.
+// TestHTTPSDatastore verifies that EVE can download and verify a standalone
+// volume's content over HTTPS, exercising the certificate-trust plumbing.
+// evetest runs a built-in HTTPS listener alongside its plain HTTP image
+// server (same interface and directory), serving a certificate signed by
+// the harness's own CA (see GetCACertPEM, GetImageServerHTTPSPort) -- no
+// external network access, no SDN changes.
 //
-// Recommended approach: have SDN host the file behind an HTTPS endpoint with
-// a self-signed certificate. The test passes the CA in PEM form to EVE via
-// HTTPStorage.HTTPSTrustedCACertsPEM, and verifies a successful download.
-// The HTTPServer endpoint type in SDN already supports HTTPS-style serving.
+// Phases
+// ------
+//  1. Set up a device with a single DHCP mgmt port. No application or
+//     network instance is needed -- volumemgr creates standalone
+//     (app-unreferenced) volumes on its own.
+//  2. Generate a random-content file (CreateRandomImageFile). Declare a
+//     standalone volume (AddVolume) downloading it over HTTPS (HTTPStorage
+//     with UseHTTPS: true and HTTPSTrustedCACertsPEM set to the harness's
+//     own CA certificate, ImageSHA256 set to the file's checksum).
+//  3. Wait for the volume to reach ZSwState_CREATED_VOLUME -- proves both
+//     that the TLS certificate was trusted and that the download was not
+//     corrupted.
+//  4. Delete the volume and wait for it to be reported as ZSwState_INVALID
+//     (fully removed).
+//  5. Negative-path variant, via expectDownloadError: omitting
+//     HTTPSTrustedCACertsPEM leaves EVE unable to validate the image
+//     server's certificate; VolumeErr contains "certificate signed by
+//     unknown authority" (Go's standard x509 verification error,
+//     propagated verbatim).
 //
-// Suggestion: download Tiny core linux (https://gns3.com/tiny-core-linux)
-// from inside the test. If it fails, mark the test as skipped.
-// Note that both HTTP and SFTP tests also download this image -- perhaps
-// store/reuse it from a fixed /tmp location.
-// Then upload to SDN and have it served hy HTTPS server inside the SDN.
-// (this requires enhancements inside SDN to support uploading and serving binary data)
-//
-// Variants:
-//   - Happy path with the test-provided CA in HTTPSTrustedCACertsPEM.
-//   - CA missing / wrong: download must ERROR with an x509-related message.
-//   - Server cert expired: ERROR with the expected description.
+// Test params
+// -----------
+//   - HYPERVISOR (defaults to KVM).
 func TestHTTPSDatastore(test *testing.T) {
-	test.Skip("not yet implemented")
+	evetestT := evetest.Init(test)
+	t := NewGomegaWithT(evetestT)
+	defer evetest.Close()
+
+	evetest.DefineTestParameters(
+		evetest.HypervisorParameter(),
+	)
+	hypervisor := evetest.GetHypervisorParameterValue()
+
+	devName := "edge-dev"
+	evetest.Setup(
+		evetest.RequireEdgeDevice{
+			Name:              devName,
+			WithHypervisor:    hypervisor,
+			DeviceReusePolicy: evetest.ResetDeviceConfig,
+		},
+		evetest.RequireNetworkModel{
+			NetworkModel: netmodels.SingleEthWithDHCP,
+		},
+	)
+	device := evetest.GetEdgeDevice(devName)
+	evetest.Checkpoint("setup-done")
+
+	devConfig := evetest.NewEdgeDeviceConfig(devName)
+	dhcpNet := devConfig.AddNetwork(evetest.DHCPNetworkConfig{
+		NetworkType: evecommon.NetworkType_V4Only,
+	})
+	devConfig.AddNetworkAdapter(evetest.NetworkAdapterConfig{
+		LogicalLabel:  "ethernet0",
+		PhysicalLabel: "eth0",
+		InterfaceName: "eth0",
+		NetworkUUID:   dhcpNet,
+		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+	})
+	device.ApplyConfig(devConfig, true, true)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
+	evetest.Checkpoint("mgmt-network-ready")
+	log := evetest.Logger()
+
+	const contentSize = 4 * evetest.MiB
+	imgFile, sha256Hex := evetest.CreateRandomImageFile(
+		"https-datastore-test.bin", contentSize)
+	caCertPEM := string(evetest.GetCACertPEM())
+
+	volUUID := devConfig.AddVolume("https-datastore-test", evetest.HTTPStorage{
+		ImageFormat:            eveconfig.Format_RAW,
+		ImageRelativePath:      imgFile,
+		ImageSHA256:            sha256Hex,
+		ServerAddress:          evetest.GetImageServerIPv4().String(),
+		ServerPort:             evetest.GetImageServerHTTPSPort(),
+		UseHTTPS:               true,
+		HTTPSTrustedCACertsPEM: []string{caCertPEM},
+	}, contentSize)
+
+	volUpdates, stopVolWatch := device.WatchVolumeInfo(volUUID)
+	defer stopVolWatch()
+	device.ApplyConfig(devConfig, false, false)
+	evetest.Checkpoint("https-volume-config-applied")
+
+	timeout := 10 * time.Minute
+	t.Eventually(volUpdates, timeout).Should(Receive(matchers.SatisfyPredicate(
+		"volume is delivered over HTTPS and passes SHA256 verification",
+		func(info *eveinfo.ZInfoVolume) bool {
+			return info.State == eveinfo.ZSwState_CREATED_VOLUME
+		}).StopIf(volumeHasError)))
+	evetest.Checkpoint("https-volume-delivered")
+
+	// Delete the volume and verify it is fully removed.
+	devConfig.DeleteVolume(volUUID)
+	device.ApplyConfig(devConfig, false, false)
+	t.Eventually(volUpdates, 5*time.Minute).Should(Receive(matchers.SatisfyPredicate(
+		"volume is gone",
+		func(info *eveinfo.ZInfoVolume) bool {
+			return info.State == eveinfo.ZSwState_INVALID
+		})))
+
+	// Variant: without the trusted CA, the certificate must be rejected.
+	log.Infof("Verifying an untrusted server certificate is rejected")
+	expectDownloadError(t, device, devConfig,
+		"https-datastore-untrusted", evetest.HTTPStorage{
+			ImageFormat:       eveconfig.Format_RAW,
+			ImageRelativePath: imgFile,
+			ImageSHA256:       sha256Hex,
+			ServerAddress:     evetest.GetImageServerIPv4().String(),
+			ServerPort:        evetest.GetImageServerHTTPSPort(),
+			UseHTTPS:          true,
+			// HTTPSTrustedCACertsPEM intentionally omitted.
+		}, contentSize, "certificate signed by unknown authority")
 }
 
 // TestAWSDatastore validates EVE's S3 datastore code path. Because EVE talks
@@ -142,37 +356,174 @@ func TestHTTPSDatastore(test *testing.T) {
 // "set EVETEST_AWS_* to enable" message.
 //
 // Variants:
-//   - Happy path with valid credentials -> RUNNING.
-//   - Wrong secret access key -> ERROR; description should mention auth/403.
-//   - Wrong key (object missing) -> ERROR; description should mention 404 /
-//     NoSuchKey.
+//   - Happy path with valid credentials -> ZSwState_CREATED_VOLUME.
+//   - Wrong secret access key -> ZSwState_ERROR; VolumeErr should mention
+//     auth/403.
+//   - Wrong key (object missing) -> ZSwState_ERROR; VolumeErr should mention
+//     404 / NoSuchKey.
 //
 // Network model: SingleEthWithDHCP + RequireInternetConnectivity{}.
 func TestAWSDatastore(test *testing.T) {
 	test.Skip("not yet implemented")
 }
 
-// TestSFTPDatastore validates the SFTP datastore code path.
+// TestSFTPDatastore validates the SFTP datastore code path: EVE can download
+// and verify a standalone volume's content over SFTP, using evetest's own
+// built-in SFTP server (no external network access).
 //
-// Recommended approach: add an SFTPServer endpoint to SDN
-// (evetest/grpcapi/proto/sdn.proto) hosting a small image with username /
-// password authentication. This keeps the test hermetic. Until that exists,
-// gate the test on EVETEST_SFTP_* parameters analogous to the AWS test.
+// The content is a few MiB of random (non-blank) bytes rather than a blank
+// disk image: this makes ImageSHA256 verification meaningful (a blank file's
+// checksum can't distinguish "downloaded correctly" from "downloaded as all
+// zeros/corrupted-but-still-blank"), giving direct evidence that the
+// downloaded content matches byte-for-byte, not just that some volume was
+// created.
 //
-//	-> suggestion: download Tiny core linux (https://gns3.com/tiny-core-linux)
-//	from inside the test. If it fails, mark the test as skipped.
-//	Note that both HTTP and HTTPS tests also download this image -- perhaps
-//	store/reuse it from a fixed /tmp location.
-//	Then upload to SDN and have it served hy SFTP server inside the SDN.
-//	(this requires enhancements inside SDN to support uploading and serving binary data
-//	 and the support for SFTP itself)
+// Phases
+// ------
+//  1. Set up a device with a single DHCP mgmt port. No application or
+//     network instance is needed -- volumemgr creates standalone
+//     (app-unreferenced) volumes on its own.
+//  2. Generate a random-content file (CreateRandomImageFile). Declare a
+//     standalone volume (AddVolume) downloading it over SFTP (SFTPStorage,
+//     evetest.DefaultSFTPUsername/Password, ImageSHA256 set to the file's
+//     checksum).
+//  3. Wait for the volume to reach ZSwState_CREATED_VOLUME -- since
+//     ImageSHA256 was set, this only happens if EVE's downloader verified
+//     the content against it, i.e. proves the download was not corrupted.
+//  4. Delete the volume and wait for it to be reported as ZSwState_INVALID
+//     (fully removed).
+//  5. Negative-path variants, each via expectDownloadError (create a
+//     standalone volume expected to fail, wait for a VolumeErr description
+//     containing specific substrings, then delete it and wait for it to be
+//     gone):
+//     - Wrong ImageSHA256: VolumeErr contains "computed" and "configured"
+//     (pillar's verifier reports the mismatching hashes in that form).
+//     - Wrong Username/Password: VolumeErr contains
+//     "ssh: unable to authenticate" (the SSH handshake failure is
+//     propagated verbatim).
+//     - Wrong ImageRelativePath (a file that was never written): VolumeErr
+//     contains "file does not exist" (pkg/sftp's Open error for the
+//     server's SSH_FX_NO_SUCH_FILE response, propagated verbatim).
 //
-// Variants:
-//   - Happy path -> RUNNING.
-//   - Wrong password -> ERROR with auth-failure description.
-//   - Wrong path -> ERROR with file-not-found description.
+// Test params
+// -----------
+//   - HYPERVISOR (defaults to KVM).
 func TestSFTPDatastore(test *testing.T) {
-	test.Skip("not yet implemented")
+	evetestT := evetest.Init(test)
+	t := NewGomegaWithT(evetestT)
+	defer evetest.Close()
+
+	evetest.DefineTestParameters(
+		evetest.HypervisorParameter(),
+	)
+	hypervisor := evetest.GetHypervisorParameterValue()
+
+	devName := "edge-dev"
+	evetest.Setup(
+		evetest.RequireEdgeDevice{
+			Name:              devName,
+			WithHypervisor:    hypervisor,
+			DeviceReusePolicy: evetest.ResetDeviceConfig,
+		},
+		evetest.RequireNetworkModel{
+			NetworkModel: netmodels.SingleEthWithDHCP,
+		},
+	)
+	device := evetest.GetEdgeDevice(devName)
+	evetest.Checkpoint("setup-done")
+
+	devConfig := evetest.NewEdgeDeviceConfig(devName)
+	dhcpNet := devConfig.AddNetwork(evetest.DHCPNetworkConfig{
+		NetworkType: evecommon.NetworkType_V4Only,
+	})
+	devConfig.AddNetworkAdapter(evetest.NetworkAdapterConfig{
+		LogicalLabel:  "ethernet0",
+		PhysicalLabel: "eth0",
+		InterfaceName: "eth0",
+		NetworkUUID:   dhcpNet,
+		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+	})
+	device.ApplyConfig(devConfig, true, true)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
+	evetest.Checkpoint("mgmt-network-ready")
+	log := evetest.Logger()
+
+	const contentSize = 4 * evetest.MiB
+	imgFile, sha256Hex := evetest.CreateRandomImageFile(
+		"sftp-datastore-test.bin", contentSize)
+
+	volUUID := devConfig.AddVolume("sftp-datastore-test", evetest.SFTPStorage{
+		ImageFormat:       eveconfig.Format_RAW,
+		ImageRelativePath: imgFile,
+		ImageSHA256:       sha256Hex,
+		ServerAddress:     evetest.GetImageServerIPv4().String(),
+		ServerPort:        evetest.GetImageServerSFTPPort(),
+		Username:          evetest.DefaultSFTPUsername,
+		Password:          evetest.DefaultSFTPPassword,
+	}, contentSize)
+
+	volUpdates, stopVolWatch := device.WatchVolumeInfo(volUUID)
+	defer stopVolWatch()
+	device.ApplyConfig(devConfig, false, false)
+	evetest.Checkpoint("sftp-volume-config-applied")
+
+	timeout := 10 * time.Minute
+	t.Eventually(volUpdates, timeout).Should(Receive(matchers.SatisfyPredicate(
+		"volume is delivered over SFTP and passes SHA256 verification",
+		func(info *eveinfo.ZInfoVolume) bool {
+			return info.State == eveinfo.ZSwState_CREATED_VOLUME
+		}).StopIf(volumeHasError)))
+	evetest.Checkpoint("sftp-volume-delivered")
+
+	// Delete the volume and verify it is fully removed.
+	devConfig.DeleteVolume(volUUID)
+	device.ApplyConfig(devConfig, false, false)
+	t.Eventually(volUpdates, 5*time.Minute).Should(Receive(matchers.SatisfyPredicate(
+		"volume is gone",
+		func(info *eveinfo.ZInfoVolume) bool {
+			return info.State == eveinfo.ZSwState_INVALID
+		})))
+
+	// Variant: wrong ImageSHA256 must be detected, not silently accepted.
+	log.Infof("Verifying a SHA256 mismatch is detected")
+	expectDownloadError(t, device, devConfig,
+		"sftp-datastore-bad-sha256", evetest.SFTPStorage{
+			ImageFormat:       eveconfig.Format_RAW,
+			ImageRelativePath: imgFile,
+			ImageSHA256:       strings.Repeat("0", 64), // deliberately wrong
+			ServerAddress:     evetest.GetImageServerIPv4().String(),
+			ServerPort:        evetest.GetImageServerSFTPPort(),
+			Username:          evetest.DefaultSFTPUsername,
+			Password:          evetest.DefaultSFTPPassword,
+		}, contentSize, "computed", "configured")
+
+	// Variant: wrong credentials must be rejected.
+	log.Infof("Verifying a wrong SFTP password is rejected")
+	expectDownloadError(t, device, devConfig,
+		"sftp-datastore-bad-password", evetest.SFTPStorage{
+			ImageFormat:       eveconfig.Format_RAW,
+			ImageRelativePath: imgFile,
+			ImageSHA256:       sha256Hex,
+			ServerAddress:     evetest.GetImageServerIPv4().String(),
+			ServerPort:        evetest.GetImageServerSFTPPort(),
+			Username:          evetest.DefaultSFTPUsername,
+			Password:          "wrong-password",
+		}, contentSize, "ssh: unable to authenticate")
+
+	// Variant: a path that was never written must be reported as missing.
+	log.Infof("Verifying a nonexistent remote path is reported as missing")
+	expectDownloadError(t, device, devConfig,
+		"sftp-datastore-bad-path", evetest.SFTPStorage{
+			ImageFormat:       eveconfig.Format_RAW,
+			ImageRelativePath: "does-not-exist.bin",
+			ImageSHA256:       sha256Hex,
+			ServerAddress:     evetest.GetImageServerIPv4().String(),
+			ServerPort:        evetest.GetImageServerSFTPPort(),
+			Username:          evetest.DefaultSFTPUsername,
+			Password:          evetest.DefaultSFTPPassword,
+		}, contentSize, "file does not exist")
 }
 
 // TestAzureDatastore validates Azure Blob storage as a datastore. Like AWS, it
@@ -186,34 +537,164 @@ func TestSFTPDatastore(test *testing.T) {
 //
 // Variants:
 //   - Happy path.
-//   - Wrong account key -> ERROR.
-//   - Missing blob -> ERROR.
+//   - Wrong account key -> ZSwState_ERROR.
+//   - Missing blob -> ZSwState_ERROR.
 //
 // Network model: SingleEthWithDHCP + RequireInternetConnectivity{}.
 func TestAzureDatastore(test *testing.T) {
 	test.Skip("not yet implemented")
 }
 
-// TestContainerRegistry validates that EVE can pull a container image from a
-// public registry (Docker Hub by default).
+// TestContainerRegistry verifies that EVE can pull a standalone volume's
+// content from a public container registry (Docker Hub).
 //
-// Recommended image: a small, fixed-tag image already used by other evetest
-// tests, e.g. lfedge/evetest-ubuntu-ctr:1.0 or an even smaller test
-// image (busybox). Keep the tag pinned to avoid reproducibility regressions
-// when the registry mutates :latest.
+// Unlike the HTTP/HTTPS/SFTP datastore tests, there is no ImageSHA256 check
+// here: container images are content-addressed and verified against their
+// own manifest/layer digests as part of the pull itself, so a corrupted
+// download is already caught by that mechanism, independent of anything
+// this test configures.
 //
-// Variants:
-//   - Happy path: deploy a tiny container app, confirm content-tree reaches
-//     LOADED and app reaches RUNNING. Verify that the configured registry
-//     mirror (EVETEST_REGISTRY_MIRROR_DOCKER) is honored — when the mirror is
-//     set, the actual upstream Docker Hub should not be contacted (see the
-//     mirror plumbing in devconfig.go DockerContainer.toProto).
-//   - Wrong tag -> content tree ERROR.
-//   - Wrong (or missing) credentials when pulling a private image: the test
-//     can be parameterized with EVETEST_DOCKER_PRIVATE_* to additionally
-//     cover this.
+// Phases
+// ------
+//  1. Set up a device with a single DHCP mgmt port and Internet
+//     connectivity. No application or network instance is needed --
+//     volumemgr creates standalone (app-unreferenced) volumes on its own.
+//  2. Declare a standalone volume (AddVolume) sourced from
+//     docker://lfedge/evetest-ubuntu-ctr:1.0 -- a small, fixed-tag image
+//     already used by other evetest tests (the pinned tag avoids
+//     reproducibility regressions from a mutating :latest).
+//  3. Wait for the volume to reach ZSwState_CREATED_VOLUME.
+//  4. Delete the volume and wait for it to be reported as ZSwState_INVALID
+//     (fully removed).
+//  5. Negative-path variant, via expectDownloadError: a nonexistent tag is
+//     rejected; VolumeErr contains "MANIFEST_UNKNOWN" (Docker Hub's
+//     registry API error code for a missing manifest/reference,
+//     propagated verbatim).
 //
-// Network model: SingleEthWithDHCP + RequireInternetConnectivity{}.
+// Test params
+// -----------
+//   - HYPERVISOR (defaults to KVM).
 func TestContainerRegistry(test *testing.T) {
-	test.Skip("not yet implemented")
+	evetestT := evetest.Init(test)
+	t := NewGomegaWithT(evetestT)
+	defer evetest.Close()
+
+	evetest.DefineTestParameters(
+		evetest.HypervisorParameter(),
+	)
+	hypervisor := evetest.GetHypervisorParameterValue()
+
+	devName := "edge-dev"
+	evetest.Setup(
+		evetest.RequireEdgeDevice{
+			Name:              devName,
+			WithHypervisor:    hypervisor,
+			DeviceReusePolicy: evetest.ResetDeviceConfig,
+		},
+		evetest.RequireNetworkModel{
+			NetworkModel: netmodels.SingleEthWithDHCP,
+		},
+		evetest.RequireInternetConnectivity{},
+	)
+	device := evetest.GetEdgeDevice(devName)
+	evetest.Checkpoint("setup-done")
+
+	devConfig := evetest.NewEdgeDeviceConfig(devName)
+	dhcpNet := devConfig.AddNetwork(evetest.DHCPNetworkConfig{
+		NetworkType: evecommon.NetworkType_V4Only,
+	})
+	devConfig.AddNetworkAdapter(evetest.NetworkAdapterConfig{
+		LogicalLabel:  "ethernet0",
+		PhysicalLabel: "eth0",
+		InterfaceName: "eth0",
+		NetworkUUID:   dhcpNet,
+		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+	})
+	device.ApplyConfig(devConfig, true, true)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
+	evetest.Checkpoint("mgmt-network-ready")
+	log := evetest.Logger()
+
+	volUUID := devConfig.AddVolume("container-registry-test", evetest.DockerContainer{
+		ImageName: "lfedge/evetest-ubuntu-ctr",
+		Tag:       "1.0",
+	}, 0)
+
+	volUpdates, stopVolWatch := device.WatchVolumeInfo(volUUID)
+	defer stopVolWatch()
+	device.ApplyConfig(devConfig, false, false)
+	evetest.Checkpoint("registry-volume-config-applied")
+
+	timeout := 10 * time.Minute
+	t.Eventually(volUpdates, timeout).Should(Receive(matchers.SatisfyPredicate(
+		"volume is delivered from the container registry",
+		func(info *eveinfo.ZInfoVolume) bool {
+			return info.State == eveinfo.ZSwState_CREATED_VOLUME
+		}).StopIf(volumeHasError)))
+	evetest.Checkpoint("registry-volume-delivered")
+
+	// Delete the volume and verify it is fully removed.
+	devConfig.DeleteVolume(volUUID)
+	device.ApplyConfig(devConfig, false, false)
+	t.Eventually(volUpdates, 5*time.Minute).Should(Receive(matchers.SatisfyPredicate(
+		"volume is gone",
+		func(info *eveinfo.ZInfoVolume) bool {
+			return info.State == eveinfo.ZSwState_INVALID
+		})))
+
+	// Variant: a nonexistent tag must be rejected.
+	log.Infof("Verifying a nonexistent image tag is reported as missing")
+	expectDownloadError(t, device, devConfig,
+		"container-registry-bad-tag", evetest.DockerContainer{
+			ImageName: "lfedge/evetest-ubuntu-ctr",
+			Tag:       "nonexistent-tag-does-not-exist",
+		}, 0, "MANIFEST_UNKNOWN")
+}
+
+// expectDownloadError declares a standalone volume expected to fail to
+// download, waits for its VolumeErr description to contain every one of
+// wantErrSubstrings, then deletes it and waits for it to be gone.
+func expectDownloadError(t *WithT, device *evetest.EdgeDevice,
+	devConfig *evetest.EdgeDeviceConfig, displayName string,
+	image evetest.ApplicationImageStorage, sizeBytes uint64,
+	wantErrSubstrings ...string) {
+	volUUID := devConfig.AddVolume(displayName, image, sizeBytes)
+	updates, stop := device.WatchVolumeInfo(volUUID)
+	defer stop()
+	device.ApplyConfig(devConfig, false, false)
+
+	timeout := 5 * time.Minute
+	t.Eventually(updates, timeout).Should(Receive(matchers.SatisfyPredicate(
+		fmt.Sprintf("volume %s reports the expected error", displayName),
+		func(info *eveinfo.ZInfoVolume) bool {
+			desc := info.GetVolumeErr().GetDescription()
+			if desc == "" {
+				return false
+			}
+			for _, want := range wantErrSubstrings {
+				if !strings.Contains(desc, want) {
+					return false
+				}
+			}
+			return true
+		})))
+
+	devConfig.DeleteVolume(volUUID)
+	device.ApplyConfig(devConfig, false, false)
+	t.Eventually(updates, 5*time.Minute).Should(Receive(matchers.SatisfyPredicate(
+		fmt.Sprintf("volume %s is gone", displayName),
+		func(info *eveinfo.ZInfoVolume) bool {
+			return info.State == eveinfo.ZSwState_INVALID
+		})))
+}
+
+// volumeHasError reports whether info carries a VolumeErr, for use as a
+// StopIf fast-fail condition on Eventually assertions waiting on volume state.
+func volumeHasError(info *eveinfo.ZInfoVolume) (string, bool) {
+	if desc := info.GetVolumeErr().GetDescription(); desc != "" {
+		return "Volume reports an error: " + desc, true
+	}
+	return "", false
 }
