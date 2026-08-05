@@ -8,10 +8,10 @@ ARG BUILD_PKGS_BASE="git gcc linux-headers libc-dev make linux-pam-dev m4 findut
                      libintl libuuid libtirpc libblkid libcrypto3 zlib tar"
 
 # we use the same image in several places
-ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:39f46094f640424c345164420ed789afd8a4088b
+ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:e9cb3b035e264f89523f8eca848e8baa68a1fbfd
 
-FROM lfedge/eve-uefi:6069cc26683f718f35056dd70a6efdbb707d44d9 AS uefi-build
-FROM lfedge/eve-dom0-ztools:491245f56d5b990d43b442c434bb81a304bac94b AS zfs
+FROM lfedge/eve-uefi:148d7e85c4f8bd60ac3782fa880c9ccfca338548 AS uefi-build
+FROM lfedge/eve-dom0-ztools:75aae2406ba3d625adaca60e189d4ed2a55bc14f AS zfs
 RUN mkdir /out
 # copy zfs-related files from dom0-ztools using prepared list of files
 RUN while read -r x; do \
@@ -135,8 +135,8 @@ RUN --mount=type=cache,target=/root/.cache/go-build if [ "${TEST_TOOLS}" = "y" ]
     GOBIN=/final/opt/ GOFLAGS="" go install gotest.tools/gotestsum@v1.7.0; \
 fi
 
-FROM lfedge/eve-fscrypt:bd2e94b6e629cb198826affea5b60361f18e8560 AS fscrypt
-FROM lfedge/eve-gpt-tools:fadccccc8ca8a5c02129427572ab645aa9b1f121 AS gpttools
+FROM lfedge/eve-fscrypt:4aacd4a2cd739e2f0ae1c348622f02535066fb2c AS fscrypt
+FROM lfedge/eve-gpt-tools:2b3ff18181564881223216ddf2d52b2203ddfa42 AS gpttools
 
 # dhcpcd: Alpine 3.21+ ships a sufficiently up-to-date version (10.x with required IPv6 fixes).
 # No --platform means Docker BuildKit uses the target platform, giving us the correct binary arch.
@@ -211,12 +211,13 @@ COPY --from=fscrypt /lib/apk/db/installed /tmp/apk-fscrypt.installed
 COPY --from=gpttools /lib/apk/db/installed /tmp/apk-gpttools.installed
 COPY --from=uefi-build /lib/apk/db/installed /tmp/apk-uefi.installed
 COPY --from=dhcpcd-bin /out/lib/apk/db/installed /tmp/apk-dhcpcd.installed
-RUN cat /tmp/apk-collector.installed \
+RUN merge-sbom-db.sh -o /out/lib/apk/db/installed \
+        /tmp/apk-collector.installed \
         /tmp/apk-zfs.installed \
         /tmp/apk-fscrypt.installed \
         /tmp/apk-gpttools.installed \
         /tmp/apk-uefi.installed \
-        /tmp/apk-dhcpcd.installed > /out/lib/apk/db/installed && \
+        /tmp/apk-dhcpcd.installed && \
     rm -f /tmp/apk-*.installed
 
 FROM scratch
