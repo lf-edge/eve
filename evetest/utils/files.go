@@ -74,6 +74,23 @@ func CopyFile(src string, dst string) (err error) {
 	return
 }
 
+// CreateSparseFile creates (or truncates) the file at path and gives it the
+// requested apparent size without writing any data, so the file reads back as
+// all zeros while occupying (almost) no space on disk.
+func CreateSparseFile(path string, size int64) (err error) {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		cerr := f.Close()
+		if err == nil {
+			err = cerr
+		}
+	}()
+	return f.Truncate(size)
+}
+
 // FileHashAndSize computes the SHA-256 hex digest and byte size of the file at path.
 func FileHashAndSize(path string) (sha256hex string, size int64, err error) {
 	f, err := os.Open(path)

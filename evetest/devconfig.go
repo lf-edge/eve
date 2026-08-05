@@ -6,6 +6,7 @@ package evetest
 import (
 	"fmt"
 	"net"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -34,6 +35,10 @@ const (
 	// TiB is the number of bytes in a tebibyte.
 	TiB
 )
+
+// defaultRawDiskImageSize is the size of a LocalRawDiskImage which does not
+// specify one.
+const defaultRawDiskImageSize = 64 * MiB
 
 // NilUUID is special form of UUID that is specified to have all
 // 128 bits set to zero.
@@ -1315,6 +1320,57 @@ func (storage HTTPStorage) toProto(th *TestHarness, log *logrus.Entry, devName s
 		dsConfig.DType = eveconfig.DsType_DsHttp
 	}
 	return contentTree, dsConfig
+}
+
+// LocalRawDiskImage is an application image consisting of a zero-filled raw
+// disk generated on the spot and served to the device by evetest's built-in
+// HTTP image server (the same server used to deliver a rootfs for an EVE
+// upgrade). It deploys as a VM application rather than a container, and needs
+// neither a container registry nor Internet access.
+//
+// The disk carries no operating system, so the guest stops at the firmware boot
+// prompt. EVE reports the app as RUNNING once the domain is up, which is what
+// tests of the volume and app-instance lifecycle need. Tests that require a
+// booting guest should reference a real image (e.g. via HTTPStorage).
+type LocalRawDiskImage struct {
+	// SizeBytes is the size of the generated raw disk.
+	// Defaults to defaultRawDiskImageSize when zero.
+	SizeBytes uint64
+}
+
+// toProto generates the raw disk image, publishes it on the image server and
+// converts the reference into EVE protobuf ContentTree + DatastoreConfig.
+func (image LocalRawDiskImage) toProto(th *TestHarness, log *logrus.Entry,
+	devName string, contentTreeUUID, datastoreUUID uuid.UUID,
+	appName string) (*eveconfig.ContentTree, *eveconfig.DatastoreConfig) {
+	size := image.SizeBytes
+	if size == 0 {
+		size = defaultRawDiskImageSize
+	}
+	// The content tree UUID in the filename keeps images of separate apps
+	// apart, while making a re-download of the same volume (e.g. after a purge)
+	// resolve to the same file.
+	filename := fmt.Sprintf("app-disk-%s.raw", contentTreeUUID)
+	filePath := filepath.Join(th.imgServerDir, filename)
+	if err := utils.CreateSparseFile(filePath, int64(size)); err != nil {
+		th.t.Fatalf("Failed to generate raw disk image for application %q: %v",
+			appName, err)
+	}
+	sha256hex, fileSize, err := utils.FileHashAndSize(filePath)
+	if err != nil {
+		th.t.Fatalf("Failed to hash raw disk image for application %q: %v",
+			appName, err)
+	}
+	log.Infof("Generated %d bytes of raw disk image %s for application %q",
+		fileSize, filename, appName)
+	return HTTPStorage{
+		ImageFormat:       eveconfig.Format_RAW,
+		ImageSHA256:       sha256hex,
+		MaxDownloadBytes:  uint64(fileSize),
+		ImageRelativePath: filename,
+		ServerAddress:     GetImageServerIPv4().String(),
+		ServerPort:        GetImageServerPort(),
+	}.toProto(th, log, devName, contentTreeUUID, datastoreUUID, appName)
 }
 
 // SFTPStorage defines the location and access parameters for an application
