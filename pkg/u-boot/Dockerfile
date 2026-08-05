@@ -96,7 +96,7 @@ RUN make -j "$(getconf _NPROCESSORS_ONLN)"
 RUN cp /u-boot/u-boot.bin /boot
 
 # Register u-boot in the APK DB, mandatory for it to be included in the SBOM.
-RUN register-sbom-pkg.sh -n u-boot -v "${VERSION}" -l GPL-2.0-only -u https://www.denx.de/wiki/U-Boot
+RUN register-sbom-pkg.sh -n u-boot -v "${UBOOT_VERSION}" -l GPL-2.0-only -u https://www.denx.de/wiki/U-Boot
 
 # Register raspberrypi-firmware in the APK DB, mandatory for it to be included in the SBOM.
 RUN if [ "$(uname -m)" = aarch64 ]; then \
