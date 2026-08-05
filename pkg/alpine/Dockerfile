@@ -50,7 +50,7 @@ ARG GO_VERSION=1.25.12
 COPY --from=cache-build /etc/apk/repositories* /etc/apk/
 COPY --from=cache-build /etc/apk/keys /etc/apk/keys/
 COPY --from=cache-build /mirror /mirror/
-COPY eve-alpine-deploy.sh go-compile.sh register-sbom-pkg.sh /bin/
+COPY eve-alpine-deploy.sh go-compile.sh register-sbom-pkg.sh merge-sbom-db.sh /bin/
 
 RUN apk update && apk upgrade -a
 
