@@ -1,0 +1,33 @@
+# Copyright (c) 2026, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+name: Semgrep
+
+on:  # yamllint disable-line rule:truthy
+  pull_request:
+    branches:
+      - "master"
+      - "[0-9]+.[0-9]+"
+      - "[0-9]+.[0-9]+-stable"
+      - "feature/*"
+
+permissions:
+  contents: read
+
+jobs:
+  semgrep:
+    name: Semgrep static analysis
+    runs-on: ubuntu-latest
+    steps:
+      # Full history: the baseline scan below needs the PR's base commit.
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Baseline against the PR's base so only findings this PR introduces fail.
+      - name: Scan for newly introduced findings
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: make semgrep SEMGREP_BASELINE="$BASE_SHA"
