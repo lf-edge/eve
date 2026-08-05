@@ -13,7 +13,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const storageWarning = "WARNING: cluster storage did not become ready at startup"
+const storageWarning = "WARNING: cluster storage not ready"
 
 // printSummary renders one diag summary for the given volumemgr status and
 // returns what landed in the state file. Leaving gotDNS, gotBC and gotDPCList
@@ -71,8 +71,7 @@ func TestDiagQuietWhenStorageIsReady(t *testing.T) {
 	}
 }
 
-// volumemgr publishes nothing while its startup waits are still running, and an
-// absent status must not be reported as a storage failure.
+// An absent status must not be reported as a storage failure.
 func TestDiagQuietBeforeVolumeMgrPublishes(t *testing.T) {
 	out := printSummary(t, types.VolumeMgrStatus{})
 	if strings.Contains(out, storageWarning) {

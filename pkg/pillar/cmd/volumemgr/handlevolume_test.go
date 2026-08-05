@@ -21,7 +21,7 @@ func TestIsErrorSourceOnPubSub(t *testing.T) {
 	status.SetErrorWithSource(errStr, types.ContentTreeStatus{}, time.Now())
 	log.Functionf("set error %s", status.Error)
 	ctx := initStatusCtx(t)
-	publishVolumeStatus(&ctx, status)
+	publishVolumeStatus(ctx, status)
 	status = ctx.LookupVolumeStatus(status.Key())
 	assert.True(t, status.HasError())
 	assert.True(t, status.IsErrorSource(types.ContentTreeStatus{}),
@@ -36,8 +36,8 @@ func TestIsErrorSourceOnPubSub(t *testing.T) {
 	assert.Equal(t, "", status.Error)
 }
 
-func initStatusCtx(t *testing.T) volumemgrContext {
-	ctx := volumemgrContext{}
+func initStatusCtx(t *testing.T) *volumemgrContext {
+	ctx := &volumemgrContext{}
 	logger := logrus.StandardLogger()
 	log = base.NewSourceLogObject(logger, "test", 1234)
 	ps := pubsub.New(&pubsub.EmptyDriver{}, logger, log)
