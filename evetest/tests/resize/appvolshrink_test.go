@@ -88,7 +88,31 @@ const (
 //     early when the volume fills and reports the committed high-water mark, which
 //     the verify is then held to.
 //   - VOLVERIFY_IMAGE: Docker repo of the volverify testapp.
+//
+// The device is provisioned from the LIVE image; see
+// TestAppVolumeShrinkCorruptionFromInstaller for the installer-written variant.
 func TestAppVolumeShrinkCorruption(test *testing.T) {
+	runAppVolumeShrinkCorruption(test, evetest.CreateFromScratchWithLiveImage)
+}
+
+// TestAppVolumeShrinkCorruptionFromInstaller takes the same corruption
+// measurement against a boot disk the EVE installer laid out, instead of a
+// pre-built live image written to the disk whole. An installer-written ESP carries
+// a zero-length boot/.boot_repository, which the offline grow's FAT32 copy can only
+// read with diskfs/go-diskfs#419 ("invalid start cluster: 0" without it); a
+// live-image ESP has no such file, so only this variant covers that path.
+//
+// Same parameters as TestAppVolumeShrinkCorruption. Expect a longer setup: the
+// installer VM boots and writes the disk before the test's own device is up.
+func TestAppVolumeShrinkCorruptionFromInstaller(test *testing.T) {
+	runAppVolumeShrinkCorruption(test, evetest.CreateFromScratchWithInstaller)
+}
+
+// runAppVolumeShrinkCorruption is the body shared by both variants.
+// provisionPolicy selects how the device's boot disk comes into existence;
+// everything after Setup is identical.
+func runAppVolumeShrinkCorruption(test *testing.T,
+	provisionPolicy evetest.ExistingEdgeDeviceReusePolicy) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
 	defer evetest.Close()
@@ -251,17 +275,14 @@ func TestAppVolumeShrinkCorruption(test *testing.T) {
 	const devName = "edge-dev"
 	evetest.Setup(
 		evetest.RequireEdgeDevice{
-			Name:             devName,
-			WithEVEVersion:   initialVersion,
-			WithHypervisor:   initialHypervisor,
-			WithTPM:          withTPM,
-			MinDiskSizeInMiB: diskSizeMiB,
-			MinRAMInMiB:      effectiveRAMMiB,
-			MinCPUs:          effectiveCPUs,
-			// Provision from the LIVE image, not the installer: the installer ESP
-			// carries a 0-byte boot/.boot_repository that the offline grow's FAT32
-			// copy rejects with "invalid start cluster: 0" (diskfs/go-diskfs#417).
-			DeviceReusePolicy: evetest.CreateFromScratchWithLiveImage,
+			Name:              devName,
+			WithEVEVersion:    initialVersion,
+			WithHypervisor:    initialHypervisor,
+			WithTPM:           withTPM,
+			MinDiskSizeInMiB:  diskSizeMiB,
+			MinRAMInMiB:       effectiveRAMMiB,
+			MinCPUs:           effectiveCPUs,
+			DeviceReusePolicy: provisionPolicy,
 		},
 		evetest.RequireNetworkModel{NetworkModel: netmodels.SingleEthWithDHCP},
 	)

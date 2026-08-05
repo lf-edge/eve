@@ -66,7 +66,8 @@ const (
 
 // TestKvmToKResize drives 16.6.0-kvm (small) → current EVE-kvm (same geometry,
 // lands the conversion code) → current EVE-k (cross-flavor ⇒ offline shrink+grow),
-// keeping a container app across the conversion.
+// keeping a container app across the conversion. The device is provisioned from
+// the LIVE image, the way eden brings one up.
 //
 // Parameters:
 //   - INITIAL_EVE_VERSION (required, e.g. "16.6.0") / INITIAL_HYPERVISOR (kvm) —
@@ -77,6 +78,28 @@ const (
 //   - DISK_SIZE_MB — keep the boot disk full (no free tail) so the conversion
 //     SHRINKS P3 rather than growing into free space (asserted: decision==shrink).
 func TestKvmToKResize(test *testing.T) {
+	runKvmToKResize(test, evetest.CreateFromScratchWithLiveImage)
+}
+
+// TestKvmToKResizeFromInstaller runs the same conversion against a boot disk the
+// EVE installer laid out, instead of a pre-built live image written to the disk
+// whole. That distinction is what the variant is for: an installer-written ESP
+// carries a zero-length boot/.boot_repository, and the offline grow relocates the
+// ESP by copying its FAT32 contents, which go-diskfs can only read with
+// diskfs/go-diskfs#419 ("invalid start cluster: 0" without it). A live-image ESP
+// has no such file, so only this variant covers that path. Run it against an EVE
+// image built with the fix.
+//
+// Same parameters as TestKvmToKResize. Expect a longer setup: the installer VM
+// boots and writes the disk before the test's own device is up.
+func TestKvmToKResizeFromInstaller(test *testing.T) {
+	runKvmToKResize(test, evetest.CreateFromScratchWithInstaller)
+}
+
+// runKvmToKResize is the body shared by both variants. provisionPolicy selects
+// how the device's boot disk comes into existence; everything after Setup is
+// identical, since the conversion sequence does not depend on it.
+func runKvmToKResize(test *testing.T, provisionPolicy evetest.ExistingEdgeDeviceReusePolicy) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
 	defer evetest.Close()
@@ -177,18 +200,14 @@ func TestKvmToKResize(test *testing.T) {
 	const devName = "edge-dev"
 	evetest.Setup(
 		evetest.RequireEdgeDevice{
-			Name:             devName,
-			WithEVEVersion:   initialVersion,
-			WithHypervisor:   initialHypervisor,
-			WithTPM:          withTPM,
-			MinDiskSizeInMiB: diskSizeMiB,
-			MinRAMInMiB:      effectiveRAMMiB,
-			MinCPUs:          effectiveCPUs,
-			// Provision from the LIVE image (as eden does), not the installer. The
-			// installer ESP carries a 0-byte marker (boot/.boot_repository) that the
-			// offline grow's FAT32 copy (go-diskfs) rejects with "invalid start
-			// cluster: 0"; the live ESP has no such file. See the go-diskfs issue.
-			DeviceReusePolicy: evetest.CreateFromScratchWithLiveImage,
+			Name:              devName,
+			WithEVEVersion:    initialVersion,
+			WithHypervisor:    initialHypervisor,
+			WithTPM:           withTPM,
+			MinDiskSizeInMiB:  diskSizeMiB,
+			MinRAMInMiB:       effectiveRAMMiB,
+			MinCPUs:           effectiveCPUs,
+			DeviceReusePolicy: provisionPolicy,
 		},
 		evetest.RequireNetworkModel{NetworkModel: netmodels.SingleEthWithDHCP},
 	)
