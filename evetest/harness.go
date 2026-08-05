@@ -592,6 +592,12 @@ func Init(t *testing.T) *T {
 		th.t.Fatalf("failed to create image server interface: %v", err)
 	}
 	imgServerMux := http.NewServeMux()
+	// Registered before the file-serving "/" handler: EVE and app images
+	// never happen to be named "v2", so the two handlers never collide, and
+	// this lets EVE (or evetest itself) pull/push OCI content without it
+	// having to already exist in a real, reachable registry (see
+	// PushDockerImageToLocalRegistry).
+	imgServerMux.Handle("/v2/", newLocalRegistryHandler())
 	imgServerMux.Handle("/", http.FileServer(http.Dir(th.imgServerDir)))
 
 	imgListenAddr := net.JoinHostPort(imgServerIPv4.String(), strconv.Itoa(imgServerPort))
@@ -632,6 +638,7 @@ func Init(t *testing.T) *T {
 	}()
 	th.log.Infof("Image server listening on https://%s/ (serving %s)",
 		imgServerHTTPSAddr, th.imgServerDir)
+	th.log.Infof("OCI registry listening on https://%s/v2/", imgServerHTTPSAddr)
 
 	// Start an SFTP server on the same image-server interface, serving the
 	// same directory, as an alternate download transport for tests that

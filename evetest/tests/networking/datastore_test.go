@@ -23,9 +23,9 @@
 //
 //  1. Setup a single-port mgmt device (netmodels.SingleEthWithDHCP). Add
 //     RequireInternetConnectivity{} only for tests that talk to a real
-//     external datastore (AWS/Azure/container registry); HTTP/HTTPS/SFTP
-//     against evetest's own built-in image server (see "Test images" below)
-//     need no Internet access at all.
+//     external datastore (AWS/Azure); HTTP/HTTPS/SFTP/container-registry
+//     against evetest's own built-in servers (see "Test images" below) need
+//     no Internet access at all.
 //  2. Build a device config with just the one DHCP network on eth0
 //     (mgmt+app) -- no NI, no application.
 //  3. devConfig.AddVolume(displayName, image, sizeBytes) with image set to
@@ -62,8 +62,12 @@
 //     environment variables (test parameters). Skip the test if the parameters
 //     are not set, rather than failing -- these tests should be opt-in.
 //
-//   - For container registries: use a small public image. lfedge/evetest-*
-//     test images are already used elsewhere; reuse the smallest one.
+//   - For container registries: evetest runs its own embedded OCI registry
+//     alongside the HTTP/HTTPS/SFTP servers (same interface, see
+//     PushDockerImageToLocalRegistry in localregistry.go). A small, fixed-tag
+//     image already used elsewhere (lfedge/evetest-ubuntu-ctr:1.0) is pulled
+//     into the local Docker daemon if not already present, then republished
+//     there -- so the test needs no real, externally reachable registry.
 
 package networking_test
 
@@ -546,7 +550,15 @@ func TestAzureDatastore(test *testing.T) {
 }
 
 // TestContainerRegistry verifies that EVE can pull a standalone volume's
-// content from a public container registry (Docker Hub).
+// content from an OCI container registry.
+//
+// The registry is evetest's own, not a real external one: evetest pulls
+// lfedge/evetest-ubuntu-ctr:1.0 into the local Docker daemon if not already
+// present there (from a previous pull or build), then republishes it via
+// PushDockerImageToLocalRegistry, and EVE pulls it back from evetest over
+// that. This is what a "docker://" pull actually exercises end to end
+// (image resolution, auth, layer/manifest download, verification) without
+// depending on a real, externally reachable registry or Internet access.
 //
 // Unlike the HTTP/HTTPS/SFTP datastore tests, there is no ImageSHA256 check
 // here: container images are content-addressed and verified against their
@@ -556,19 +568,20 @@ func TestAzureDatastore(test *testing.T) {
 //
 // Phases
 // ------
-//  1. Set up a device with a single DHCP mgmt port and Internet
-//     connectivity. No application or network instance is needed --
-//     volumemgr creates standalone (app-unreferenced) volumes on its own.
-//  2. Declare a standalone volume (AddVolume) sourced from
-//     docker://lfedge/evetest-ubuntu-ctr:1.0 -- a small, fixed-tag image
-//     already used by other evetest tests (the pinned tag avoids
-//     reproducibility regressions from a mutating :latest).
+//  1. Set up a device with a single DHCP mgmt port. No application or
+//     network instance is needed -- volumemgr creates standalone
+//     (app-unreferenced) volumes on its own.
+//  2. Push lfedge/evetest-ubuntu-ctr:1.0 to evetest's local OCI registry
+//     (PushDockerImageToLocalRegistry) -- a small, fixed-tag image already
+//     used by other evetest tests (the pinned tag avoids reproducibility
+//     regressions from a mutating :latest). Declare a standalone volume
+//     (AddVolume) sourced from the returned DockerContainer.
 //  3. Wait for the volume to reach ZSwState_CREATED_VOLUME.
 //  4. Delete the volume and wait for it to be reported as ZSwState_INVALID
 //     (fully removed).
 //  5. Negative-path variant, via expectDownloadError: a nonexistent tag is
-//     rejected; VolumeErr contains "MANIFEST_UNKNOWN" (Docker Hub's
-//     registry API error code for a missing manifest/reference,
+//     rejected; VolumeErr contains "MANIFEST_UNKNOWN" (the OCI distribution
+//     spec's registry API error code for a missing manifest/reference,
 //     propagated verbatim).
 //
 // Test params
@@ -594,7 +607,6 @@ func TestContainerRegistry(test *testing.T) {
 		evetest.RequireNetworkModel{
 			NetworkModel: netmodels.SingleEthWithDHCP,
 		},
-		evetest.RequireInternetConnectivity{},
 	)
 	device := evetest.GetEdgeDevice(devName)
 	evetest.Checkpoint("setup-done")
@@ -617,10 +629,12 @@ func TestContainerRegistry(test *testing.T) {
 	evetest.Checkpoint("mgmt-network-ready")
 	log := evetest.Logger()
 
-	volUUID := devConfig.AddVolume("container-registry-test", evetest.DockerContainer{
-		ImageName: "lfedge/evetest-ubuntu-ctr",
-		Tag:       "1.0",
-	}, 0)
+	registryImage, err := evetest.PushDockerImageToLocalRegistry(
+		"lfedge/evetest-ubuntu-ctr:1.0")
+	if err != nil {
+		test.Fatalf("Failed to publish test image to evetest's local OCI registry: %v", err)
+	}
+	volUUID := devConfig.AddVolume("container-registry-test", registryImage, 0)
 
 	volUpdates, stopVolWatch := device.WatchVolumeInfo(volUUID)
 	defer stopVolWatch()
@@ -644,13 +658,14 @@ func TestContainerRegistry(test *testing.T) {
 			return info.State == eveinfo.ZSwState_INVALID
 		})))
 
-	// Variant: a nonexistent tag must be rejected.
+	// Variant: a nonexistent tag must be rejected. Reuses registryImage's
+	// Domain/TrustedCACertsPEM (the repo itself exists there) with a tag that
+	// was never pushed.
 	log.Infof("Verifying a nonexistent image tag is reported as missing")
+	badTagImage := registryImage
+	badTagImage.Tag = "nonexistent-tag-does-not-exist"
 	expectDownloadError(t, device, devConfig,
-		"container-registry-bad-tag", evetest.DockerContainer{
-			ImageName: "lfedge/evetest-ubuntu-ctr",
-			Tag:       "nonexistent-tag-does-not-exist",
-		}, 0, "MANIFEST_UNKNOWN")
+		"container-registry-bad-tag", badTagImage, 0, "MANIFEST_UNKNOWN")
 }
 
 // expectDownloadError declares a standalone volume expected to fail to

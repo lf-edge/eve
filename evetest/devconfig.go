@@ -1096,6 +1096,15 @@ type DockerContainer struct {
 	// Username and password are not configurable here.
 	// Instead, evetest pulls credentials from the docker client running on the host
 	// (docker socket will be mounted to evetest container).
+
+	// TrustedCACertsPEM lists CA certificates EVE should trust when connecting
+	// to Domain over HTTPS, in addition to its normal trust store -- e.g. the
+	// harness's own CA (GetCACertPEM) when Domain points at evetest's embedded
+	// OCI registry (see PushDockerImageToLocalRegistry), or an enterprise
+	// registry's own internal CA. Mirrors HTTPStorage.HTTPSTrustedCACertsPEM;
+	// leave unset for a registry already trusted via the normal chain (e.g.
+	// Docker Hub).
+	TrustedCACertsPEM []string
 }
 
 func (container DockerContainer) toProto(th *TestHarness, log *logrus.Entry,
@@ -1137,6 +1146,9 @@ func (container DockerContainer) toProto(th *TestHarness, log *logrus.Entry,
 		dsConfig.Fqdn = "docker://index.docker.io"
 	} else {
 		dsConfig.Fqdn = fmt.Sprintf("docker://%s", domain)
+	}
+	for _, cert := range container.TrustedCACertsPEM {
+		dsConfig.DsCertPEM = append(dsConfig.DsCertPEM, []byte(cert))
 	}
 	username, password, err := utils.GetDockerAuthPlain(log, dsConfig.Fqdn)
 	if err != nil {
