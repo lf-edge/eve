@@ -770,6 +770,28 @@ func (d *EdgeDevice) waitForRevert(targetShortVersion string) {
 	}
 }
 
+// ExpectReboots declares that the device will reboot count times on its
+// own, as a required consequence of a configuration change rather than at
+// the test's request.
+//
+// Close audits observed reboots against expected ones, so a reboot EVE
+// performs by design is reported as a failure unless it is declared. The
+// reboot-driven flows the framework itself drives (RequestReboot,
+// SoftReboot, HardReboot, UpgradeEVE) declare their own; this is for
+// flows where the trigger is a config change and the reboot is EVE's
+// chosen means of carrying it out — converting a cluster member back to
+// a single node, for instance, which reboots to restore the pre-cluster
+// /var/lib before k3s starts.
+//
+// Declare it before applying the config that causes it: the audit only
+// compares totals, but a declaration that races the observation reads as
+// an accident in the log.
+func (d *EdgeDevice) ExpectReboots(count int) {
+	for i := 0; i < count; i++ {
+		d.th.incExpectedRebootCount(d.devName)
+	}
+}
+
 // RequestReboot requests a device reboot via configuration and optionally
 // waits until the reboot completes.
 func (d *EdgeDevice) RequestReboot(waitUntilRebooted bool) {
