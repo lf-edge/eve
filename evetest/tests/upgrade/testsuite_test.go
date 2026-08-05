@@ -28,6 +28,17 @@ func TestUpgradeSuite(test *testing.T) {
 		// EVE-K (k3s/kubevirt-based EVE) is officially supported starting from 17.0.0.
 		initialEVEVersionForKubevirt = "17.0.0-lts"
 
+		// The OCI-datastore variant points EVE at evetest's own embedded OCI
+		// registry (see PushDockerImageToLocalRegistry), which is fronted by
+		// the harness's self-signed CA. Resolving an OCI tag against a
+		// custom-CA registry only started honoring the datastore's trusted
+		// certificates in pillar commit 90fb8664 ("downloader: ds custom
+		// certs when resolving OCI"); before that, tag resolution opened the
+		// registry without them and failed TLS verification even though the
+		// certs were (and still are) applied correctly for the subsequent
+		// download. That fix is included in 17.0.0-lts (but not in 16.0.0-lts).
+		initialEVEVersionForOCIDatastore = "17.0.0-lts"
+
 		// Enough for the pre-10GB partition layout, but not enough for EVE 17.0.0+,
 		// which is why *WithSmallDisk variants expect revert.
 		smallDiskSizeMiB = uint32(20480) // 20 GiB
@@ -57,7 +68,7 @@ func TestUpgradeSuite(test *testing.T) {
 					Name: "TestEVEUpgradeKVMtoKVMWithOCIDatastore",
 					Parameters: []evetest.TestParameterValue{
 						// Initial
-						{Key: initialEVEVersionParamKey, Value: initialEVEVersionForKVM},
+						{Key: initialEVEVersionParamKey, Value: initialEVEVersionForOCIDatastore},
 						{Key: initialHypervisorParamKey, Value: evetest.HypervisorKVM},
 						// Target
 						{Key: evetest.HypervisorParameterKey, Value: evetest.HypervisorKVM},

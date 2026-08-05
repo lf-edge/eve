@@ -21,6 +21,7 @@ import (
 	eveinfo "github.com/lf-edge/eve-api/go/info"
 	evelogs "github.com/lf-edge/eve-api/go/logs"
 	evemetrics "github.com/lf-edge/eve-api/go/metrics"
+	"github.com/lf-edge/eve/evetest/constants"
 	api "github.com/lf-edge/eve/evetest/grpcapi/go"
 	"github.com/lf-edge/eve/evetest/logger"
 	"github.com/lf-edge/eve/evetest/utils"
@@ -440,6 +441,19 @@ func (d *EdgeDevice) UpgradeEVE(targetEVEVersion string, targetEVEHypervisor Hyp
 	currentImageRef := devState.imageRef
 	d.th.devicesM.Unlock()
 
+	// BaseOSDatastoreOCI has EVE pull a container image, while the live image transport
+	// delivers a local disk image instead of a container.
+	// This combination does not make sense.
+	if datastoreType == BaseOSDatastoreOCI && LocalLiveImageRequested() {
+		d.th.t.Fatalf(
+			"UpgradeEVE: BaseOSDatastoreOCI requires EVE to pull a container image, but "+
+				"%s%s selects a local EVE live (disk) image instead of a container image -- "+
+				"unset %s%s to upgrade via OCI, or use BaseOSDatastoreHTTP to upgrade with "+
+				"the live image",
+			constants.EnvPrefix, constants.EVELiveImageEnv,
+			constants.EnvPrefix, constants.EVELiveImageEnv)
+	}
+
 	// The live transport delivers an upgrade as the raw rootfs the local build
 	// already contains, rather than pulling a container image to extract the same
 	// file from. Which build that is comes from the version axis exactly as it
@@ -489,21 +503,15 @@ func (d *EdgeDevice) UpgradeEVE(targetEVEVersion string, targetEVEHypervisor Hyp
 	d.th.log.Debugf("Target EVE short version is %q", shortVersion)
 
 	if datastoreType == BaseOSDatastoreOCI {
-		// Let EVE pull the rootfs directly from the same OCI registry the
-		// target image was tagged in -- no local extraction or HTTP hosting
-		// needed. imageName is "<repo>:<tag>" (see utils.EVEDockerImageName).
-		idx := strings.LastIndex(imageName, ":")
-		if idx < 0 {
-			d.th.t.Fatalf("UpgradeEVE: could not split image reference %q into repo:tag",
-				imageName)
+		// Publish imageName to evetest's own embedded OCI registry.
+		dockerContainer, err := PushDockerImageToLocalRegistry(imageName)
+		if err != nil {
+			d.th.t.Fatalf("UpgradeEVE: %v", err)
 		}
-		repo, tag := imageName[:idx], imageName[idx+1:]
-		d.th.log.Infof("Configuring EVE to pull rootfs %s directly (OCI datastore)", imageName)
+		d.th.log.Infof(
+			"Configuring EVE to pull rootfs %s from evetest's local OCI registry", imageName)
 		config := d.GetConfig()
-		config.SetBaseOS(DockerContainer{
-			ImageName: repo,
-			Tag:       tag,
-		}, shortVersion)
+		config.SetBaseOS(dockerContainer, shortVersion)
 		d.applyUpgradeConfig(config, shortVersion, waitUntilUpgraded, expectRevert)
 		return
 	}
