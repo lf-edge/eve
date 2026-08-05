@@ -583,6 +583,27 @@ check-pubsub-persistence:
 	@echo "Checking pubsub publications and subscriptions for persistence mismatches"
 	cd pkg/pillar && go run ./tools/pubsubcheck ../../pkg
 
+# Semgrep catches patterns the Go toolchain accepts but that do not mean what
+# they read as, e.g. a file mode written as a decimal literal (tests/semgrep-rules).
+# Only ERROR rules gate: the WARNING rules are deliberately broad heuristics with
+# known false positives, so they are reported by semgrep-all but never fail.
+# SEMGREP_BASELINE=<commit> reports only findings introduced since that commit,
+# which is how CI gates new code without first cleaning up existing findings.
+SEMGREP_IMAGE ?= semgrep/semgrep:1.171.0
+SEMGREP_BASELINE ?=
+SEMGREP_RUN = docker run --rm -v $(CURDIR):/src:ro -w /src $(SEMGREP_IMAGE) semgrep --metrics=off
+
+.PHONY: semgrep semgrep-all
+semgrep:
+	@echo Running semgrep
+	$(SEMGREP_RUN) --error --severity=ERROR \
+		$(if $(SEMGREP_BASELINE),--baseline-commit=$(SEMGREP_BASELINE)) \
+		--config tests/semgrep-rules/ --exclude=vendor .
+
+semgrep-all:
+	@echo Running semgrep, including the WARNING heuristics
+	$(SEMGREP_RUN) --config tests/semgrep-rules/ --exclude=vendor .
+
 yetus:
 	@echo Running yetus
 	mkdir -p yetus-output
@@ -1416,6 +1437,11 @@ help:
 	@echo "                                    Y, the output will be echoed to the console"
 	@echo "   check-docker-hashes-consistency  check for Dockerfile image inconsistencies"
 	@echo "   check-pubsub-persistence  check pubsub publications/subscriptions for persistence mismatches"
+	@echo "   semgrep                          run the blocking (ERROR) semgrep rules over the tree;"
+	@echo "                                    set SEMGREP_BASELINE=<commit> to report only findings"
+	@echo "                                    introduced since that commit"
+	@echo "   semgrep-all                      run every semgrep rule, including the WARNING"
+	@echo "                                    heuristics, which have known false positives"
 	@echo "   kernel-tag                       show current KERNEL_TAG"
 	@echo
 	@echo "Eden testing targets:"

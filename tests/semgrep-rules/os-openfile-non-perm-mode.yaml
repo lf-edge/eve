@@ -4,7 +4,8 @@
 ---
 rules:
   - id: os-openfile-non-perm-mode
-    message: "os.OpenFile called with os.O_CREATE but invalid permission mode ($MODE). Use an octal permission like 0o644 or 0644."
+    message: "os.OpenFile called with os.O_CREATE but $MODE is not a permission
+      mode. Use an octal permission like 0o644 or 0644."
     severity: ERROR
     languages:
       - go
@@ -16,7 +17,20 @@ rules:
           metavariable: $FLAGS
           patterns:
             - pattern-regex: '.*O_CREATE.*'
+      # Report only the two ways the mode is provably wrong. Everything else --
+      # variables, os.FileMode() conversions, composite expressions -- can be a
+      # legitimate mode and is left to review.
       - metavariable-pattern:
           metavariable: $MODE
           patterns:
-            - pattern-not-regex: '^0[oO]?[0-7]{3,4}$'
+            - pattern-either:
+                # A decimal literal is not the permission bits it reads as:
+                # 644 is 0o1204, whose permission bits are 0o204 (-w----r--).
+                # A decimal wrapped in a FileMode conversion is caught by
+                # non-octal-file-mode.yaml, which matches the conversion itself.
+                - pattern-regex: '^[1-9][0-9]*$'
+                # File type/attribute bits are not permission bits. ModePerm is
+                # the exception: it is exactly 0o777.
+                - patterns:
+                    - pattern-regex: '^os\.Mode[A-Za-z]+$'
+                    - pattern-not-regex: '^os\.ModePerm$'

@@ -1,0 +1,31 @@
+# Copyright (c) 2026 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+---
+rules:
+  - id: non-octal-file-mode
+    message: "File mode ($MODE) is a decimal literal, so it is not the permission
+      bits it looks like (e.g. 755 is 0o1363, i.e. -wxrw--wx). Use an octal
+      literal such as 0o755 or 0755."
+    severity: ERROR
+    languages:
+      - go
+    options:
+      constant_propagation: true
+    patterns:
+      # os.OpenFile is covered by os-openfile-non-perm-mode.yaml instead, which
+      # additionally checks that O_CREATE makes the mode argument meaningful.
+      - pattern-either:
+          - pattern: os.Mkdir($PATH, $MODE)
+          - pattern: os.MkdirAll($PATH, $MODE)
+          - pattern: os.WriteFile($PATH, $DATA, $MODE)
+          - pattern: os.Chmod($PATH, $MODE)
+          - pattern: $FILE.Chmod($MODE)
+          - pattern: os.FileMode($MODE)
+          - pattern: fs.FileMode($MODE)
+      # Only decimal literals are reported. Octal literals start with a
+      # leading zero, and named constants
+      - metavariable-pattern:
+          metavariable: $MODE
+          patterns:
+            - pattern-regex: '^[1-9][0-9]*$'
