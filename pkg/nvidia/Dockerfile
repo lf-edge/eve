@@ -82,9 +82,6 @@ FROM ${TARGETARCH}-${PLATFORM} AS build
 
 RUN echo "${EVE_PLATFORM}" > /eve-platform
 
-# CDI Files
-COPY cdi/${NVIDIA_VER} /cdi
-
 # Extract tarball (when needed)
 WORKDIR /
 RUN test -f /nvidia_linux.tbz2 && tar -xjf /nvidia_linux.tbz2 || true
@@ -131,6 +128,9 @@ RUN case "${NVIDIA_VER}" in \
     esac && \
     register-sbom-pkg.sh -n nvidia-container-toolkit -v "${NVIDIA_CONTAINER_TOOLKIT_REV}" -l Apache-2.0 -u https://github.com/NVIDIA/nvidia-container-toolkit -o /sbom-out && \
     register-sbom-pkg.sh -n libc-bin -v 2.31-0ubuntu9 -l LGPL-2.1-or-later -u http://ports.ubuntu.com/ubuntu-ports/pool/main/g/glibc -o /sbom-out
+
+# CDI Files
+COPY cdi/${NVIDIA_VER} /cdi
 
 # Copy udev rules
 COPY udev/${NVIDIA_VER}/rules.d/* /rules.d/
