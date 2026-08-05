@@ -3,7 +3,7 @@
 # Copyright (c) 2023-2025 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-alpine:39f46094f640424c345164420ed789afd8a4088b AS build
+FROM lfedge/eve-alpine:e9cb3b035e264f89523f8eca848e8baa68a1fbfd AS build
 ENV BUILD_PKGS meson ninja git libc-dev glib-dev make gcc udev dbus-dev libgudev-dev
 ENV PKGS alpine-baselayout dbus glib kmod kmod-dev libgudev
 RUN eve-alpine-deploy.sh
