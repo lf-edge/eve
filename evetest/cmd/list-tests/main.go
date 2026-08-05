@@ -72,6 +72,7 @@ type pkgContext struct {
 	constStrings map[string]string // const name → String() return value (for variant display)
 	allConsts    map[string]string // all simple const name → literal value (for variant display)
 	varParams    map[string]paramInfo
+	funcDecls    map[string]*ast.FuncDecl // package-local func name → declaration
 }
 
 func main() {
@@ -244,6 +245,17 @@ func buildPkgContext(files []*ast.File) pkgContext {
 		constStrings: map[string]string{},
 		allConsts:    map[string]string{},
 		varParams:    map[string]paramInfo{},
+		funcDecls:    map[string]*ast.FuncDecl{},
+	}
+
+	for _, f := range files {
+		for _, decl := range f.Decls {
+			fd, ok := decl.(*ast.FuncDecl)
+			if !ok || fd.Name == nil || fd.Recv != nil {
+				continue
+			}
+			ctx.funcDecls[fd.Name.Name] = fd
+		}
 	}
 
 	// Pass 1: collect const values (package-level and function-local).
@@ -428,26 +440,44 @@ func returnsParamDef(fd *ast.FuncDecl) bool {
 }
 
 // extractParams finds the evetest.DefineTestParameters call in fd and returns
-// the resolved parameter definitions.
+// the resolved parameter definitions. Calls to package-local functions are
+// followed, so that a test which delegates its body to a shared helper — the
+// shape two tests take when they differ only in a setup argument — still reports
+// the parameters that helper defines.
 func extractParams(
 	fd *ast.FuncDecl, ctx pkgContext, paramFuncs map[string]paramInfo) []paramInfo {
+	return extractParamsFrom(fd, ctx, paramFuncs, map[string]bool{})
+}
+
+// extractParamsFrom is extractParams over one function body; visited records the
+// functions already descended into so that recursion terminates.
+func extractParamsFrom(fd *ast.FuncDecl, ctx pkgContext,
+	paramFuncs map[string]paramInfo, visited map[string]bool) []paramInfo {
+	if fd.Body == nil || fd.Name == nil || visited[fd.Name.Name] {
+		return nil
+	}
+	visited[fd.Name.Name] = true
 	var params []paramInfo
 	ast.Inspect(fd.Body, func(n ast.Node) bool {
 		call, ok := n.(*ast.CallExpr)
 		if !ok {
 			return true
 		}
-		sel, ok := call.Fun.(*ast.SelectorExpr)
-		if !ok {
-			return true
-		}
-		pkg, ok := sel.X.(*ast.Ident)
-		if !ok || pkg.Name != "evetest" || sel.Sel.Name != "DefineTestParameters" {
-			return true
-		}
-		for _, arg := range call.Args {
-			if pi, ok := resolveParamArg(arg, ctx, paramFuncs); ok {
-				params = append(params, pi)
+		switch fun := call.Fun.(type) {
+		case *ast.SelectorExpr:
+			pkg, ok := fun.X.(*ast.Ident)
+			if !ok || pkg.Name != "evetest" || fun.Sel.Name != "DefineTestParameters" {
+				return true
+			}
+			for _, arg := range call.Args {
+				if pi, ok := resolveParamArg(arg, ctx, paramFuncs); ok {
+					params = append(params, pi)
+				}
+			}
+		case *ast.Ident:
+			if callee, ok := ctx.funcDecls[fun.Name]; ok {
+				params = append(params,
+					extractParamsFrom(callee, ctx, paramFuncs, visited)...)
 			}
 		}
 		return true
