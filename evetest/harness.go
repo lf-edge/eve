@@ -153,6 +153,16 @@ const (
 	// Timeout for an EVE device to complete an OS upgrade (download, install, reboot,
 	// complete the testing period, and mark the new partition as active).
 	eveUpgradeTimeout = 20 * time.Minute
+
+	// staleImageCacheRetention is how long an img-cache-* directory is kept
+	// before being swept as stale (see removeStaleImageCacheDirs). Each
+	// harness process gets its own such directory, created in Init and
+	// removed in Close; a container killed before Close runs (SIGKILL,
+	// `docker stop` without a graceful shutdown) skips that cleanup and
+	// leaks it otherwise. A generous margin over any realistic single test
+	// or suite run, so it never races a run still legitimately in progress
+	// under a different img-cache dir.
+	staleImageCacheRetention = 3 * 24 * time.Hour
 )
 
 const (
@@ -405,6 +415,37 @@ func getTestHarness() *TestHarness {
 	return _globalTH
 }
 
+// removeStaleImageCacheDirs removes img-cache-* directories under
+// imgCacheParent whose mtime is older than staleImageCacheRetention -- ones a
+// prior harness process left behind by being killed before its own Close()
+// could remove its img-cache dir. A directory's mtime advances every time a
+// file is added inside it (i.e. every download served during that run), so an
+// abandoned one simply stops advancing at whenever that run ended.
+// Best-effort: failures only leave a stale directory for the next attempt.
+func removeStaleImageCacheDirs(log *logrus.Logger, imgCacheParent string) {
+	entries, err := os.ReadDir(imgCacheParent)
+	if err != nil {
+		return
+	}
+	cutoff := time.Now().Add(-staleImageCacheRetention)
+	for _, e := range entries {
+		if !e.IsDir() || !strings.HasPrefix(e.Name(), "img-cache-") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil || info.ModTime().After(cutoff) {
+			continue
+		}
+		path := filepath.Join(imgCacheParent, e.Name())
+		if err := os.RemoveAll(path); err != nil {
+			log.Warnf("Failed to remove stale image cache dir %q: %v", path, err)
+			continue
+		}
+		log.Infof("Removed stale image cache dir %q (older than %s)",
+			path, staleImageCacheRetention)
+	}
+}
+
 // Init initializes the test harness and must be called exactly once per test.
 // When used inside a test suite, Init may be called multiple times, once per
 // test case, but only a single harness instance will be created.
@@ -577,6 +618,7 @@ func Init(t *testing.T) *T {
 	// host), which is bind-mounted at the same path inside the container so that
 	// Docker bind-mounts issued via RunDockerCommand resolve correctly on the host.
 	imgCacheParent := viper.GetString(constants.HomeDirEnv)
+	removeStaleImageCacheDirs(th.log, imgCacheParent)
 	if err = os.MkdirAll(imgCacheParent, 0755); err != nil {
 		th.t.Fatalf("failed to create image cache parent dir: %v", err)
 	}
