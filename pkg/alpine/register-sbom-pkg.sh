@@ -23,6 +23,11 @@
 #
 # The entry is appended to <outdir>/lib/apk/db/installed.
 #
+# apk purges these records on its next transaction (they are not reachable from
+# /etc/apk/world). Harmless: no caller runs apk after registering. Do NOT add the
+# name to /etc/apk/world to keep them - apk would then replace the source-built
+# package with an upstream one of the same name.
+#
 set -e
 
 usage() {
@@ -53,10 +58,6 @@ APK_DB="${OUTDIR}/lib/apk/db/installed"
 mkdir -p "$(dirname "$APK_DB")"
 [ -e "$APK_DB" ] || touch "$APK_DB"
 
-# FIX-ME : disabled for now: writing to /lib/apk/db/installed causes "apk add" to segfault
-# will revert back once the fix has landed in upstream
-exit 0
-
 # Init-only mode: if no package fields were supplied, we just ensured the
 # file exists and we're done.
 if [ -z "$PKG_NAME" ] && [ -z "$PKG_VERSION" ] && [ -z "$PKG_LICENSE" ] && [ -z "$PKG_URL" ]; then
@@ -72,8 +73,42 @@ fi
 PKG_DESC="${PKG_DESC:-${PKG_NAME} (built from source)}"
 PKG_ARCH="$(apk --print-arch)"
 
-printf 'P:%s\nV:%s\nL:%s\nA:%s\nT:%s\nU:%s\n\n' \
-    "$PKG_NAME" "$PKG_VERSION" "$PKG_LICENSE" "$PKG_ARCH" "$PKG_DESC" "$PKG_URL" \
+# C: is mandatory: apk keys package identity on it, and APK_BLOB_CSUM takes the
+# checksum type as the blob length, so a C:-less record hashes to a zero-length
+# key. Two of them then collide and apk frees a still-referenced package
+# (SIGSEGV); a single one makes apk commit a DB truncated at that record. No .apk
+# file exists to hash, so derive a stable synthetic SHA-1 from name and version.
+PKG_CSUM="Q1$(printf '%s' "${PKG_NAME}-${PKG_VERSION}" | sha1sum | cut -d' ' -f1 | xxd -r -p | base64)"
+
+# A base64'd SHA-1 is always 28 chars; a short one would void the whole record.
+[ ${#PKG_CSUM} -eq 30 ] || { echo "ERROR: could not compute checksum for $PKG_NAME (got '$PKG_CSUM')" >&2; exit 1; }
+
+# Re-registering the same package is a no-op; two records must never share a C:.
+if grep -Fqx "C:${PKG_CSUM}" "$APK_DB"; then
+    echo "Skipping $PKG_NAME-$PKG_VERSION: already registered in $APK_DB"
+    exit 0
+fi
+
+# Name taken by a different record, normally an apk-installed package. apk keeps
+# one record per name, so the existing entry wins either way. Source-built names
+# are not expected to collide with Alpine ones; report it rather than silently
+# dropping the source-built attribution.
+if grep -Fqx "P:${PKG_NAME}" "$APK_DB"; then
+    echo "WARNING: $APK_DB already has a package named $PKG_NAME;" >&2
+    echo "         not registering source-built $PKG_NAME-$PKG_VERSION, so the SBOM" >&2
+    echo "         will report the existing entry instead." >&2
+    exit 0
+fi
+
+# Without the blank separator apk folds these fields into the preceding package.
+if [ -s "$APK_DB" ] && [ -n "$(tail -c 2 "$APK_DB")" ]; then
+    printf '\n' >> "$APK_DB"
+fi
+
+# Field order matches what apk writes back, so the record round-trips unchanged.
+# I:0 marks it virtual, keeping apk from resolving it against a repository.
+printf 'C:%s\nP:%s\nV:%s\nA:%s\nS:0\nI:0\nT:%s\nU:%s\nL:%s\n\n' \
+    "$PKG_CSUM" "$PKG_NAME" "$PKG_VERSION" "$PKG_ARCH" "$PKG_DESC" "$PKG_URL" "$PKG_LICENSE" \
     >> "$APK_DB"
 
 echo "Registered $PKG_NAME-$PKG_VERSION in $APK_DB"
