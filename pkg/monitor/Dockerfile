@@ -53,7 +53,7 @@ RUN cp "/app/target/$CARGO_BUILD_TARGET/release/monitor" /app/target/
 RUN awk -F'"' '/^version = / {print $2; exit}' Cargo.toml > /app/monitor-version.txt
 
 
-FROM lfedge/eve-alpine:b79fd3384162534a9bdb99506adb2f19f60f26db AS runtime
+FROM lfedge/eve-alpine:d075dd224fa7a7540817d224cc28d3cd998ad04c AS runtime
 ENV PKGS="kbd pciutils usbutils"
 RUN eve-alpine-deploy.sh
 
