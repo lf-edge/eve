@@ -8,8 +8,8 @@
 # has a fast path for stack unwinding. This also happens
 # to be a perfect place to put any other kind of debug info
 # into the package: see abuild/etc/abuild.conf.
-FROM lfedge/eve-recovertpm:f11d5b6fef33294e15f9a6880918c2b2c4651f01 AS recovertpm
-FROM lfedge/eve-bpftrace:38670afa8b94c3cd3b2995920003867119a0260e AS bpftrace
+FROM lfedge/eve-recovertpm:99974c80e11cae9ec27231b153e5e7bc164467d5 AS recovertpm
+FROM lfedge/eve-bpftrace:d411336b71859e7f6a21eb2c84c32c5d921e1394 AS bpftrace
 FROM lfedge/eve-alpine:d075dd224fa7a7540817d224cc28d3cd998ad04c AS build
 ENV BUILD_PKGS="abuild curl tar make linux-headers patch g++ git gcc gpg gettext gettext-static ncurses-dev jq autoconf openssl-dev zlib-dev zlib-static gpg-agent"
 # Feel free to add additional packages here, but be aware that
@@ -83,6 +83,15 @@ RUN sed -i -e 's#AllowTcpForwarding.*$#AllowTcpForwarding yes#' ./etc/ssh/sshd_c
 RUN mkdir /bpftrace
 COPY --from=bpftrace / /bpftrace
 RUN mkdir -p /bpftrace/bpftrace-aotrt
+
+# Fold bpftrace's package list into the SBOM DB. This has to be a deduplicating
+# merge rather than a concatenation: both DBs are built on an Alpine rootfs and
+# so share its base packages, and duplicate records make apk segfault the next
+# time it runs (collect-info.sh and qemu-affinities.sh both call "apk add").
+# Merging here rather than in the final stage keeps it in the one stage that has
+# the helper -- the scratch stage only has what /out provides.
+RUN merge-sbom-db.sh -o /out/lib/apk/db/installed \
+        /out/lib/apk/db/installed /bpftrace/bpftrace-aotrt/installed
 
 # add recover-tpm to debug container
 WORKDIR /

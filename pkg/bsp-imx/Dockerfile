@@ -7,7 +7,7 @@ ARG BUILD_PKGS_BASE="bash binutils-dev build-base bc bison flex openssl-dev util
 ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:d075dd224fa7a7540817d224cc28d3cd998ad04c
 
 # OPTEE-OS images
-FROM lfedge/eve-optee-os:a6b8e28f95a5cc6f277fe468a895304321a3aac6 AS optee-os
+FROM lfedge/eve-optee-os:70a19334969c2d1eb8748a31203e63d54b2d3530 AS optee-os
 
 # hadolint ignore=DL3006
 FROM ${EVE_ALPINE_IMAGE} AS build-native
