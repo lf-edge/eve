@@ -14,6 +14,7 @@ RUN ln -s /usr/lib/cmake/clang17 /usr/lib/cmake/clang
 WORKDIR /usr/src
 # bcc compilation process needs .git directory
 ADD --keep-git-dir=true https://github.com/iovisor/bcc.git#v0.27.0 /usr/src/bcc
+RUN register-sbom-pkg.sh -n bcc -v 0.27.0 -l Apache-2.0 -u https://github.com/iovisor/bcc
 RUN mkdir /usr/src/bcc/build
 WORKDIR /usr/src/bcc/build
 RUN perl -pni.bak -e 's/CMAKE_CXX_STANDARD 14/CMAKE_CXX_STANDARD 17/g' ../CMakeLists.txt
@@ -23,11 +24,9 @@ RUN cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_CXX_COMPILER=clang++-17 -DCMA
 RUN make -j "$(getconf _NPROCESSORS_ONLN)"
 RUN make install
 
-# Register bcc in the APK DB, mandatory for it to be included in the SBOM.
-RUN register-sbom-pkg.sh -n bcc -v 0.27.0 -l Apache-2.0 -u https://github.com/iovisor/bcc.git
-
 RUN mkdir -p /usr/src
 ADD https://github.com/bpftrace/bpftrace.git#v0.20.3 /usr/src/bpftrace
+RUN register-sbom-pkg.sh -n bpftrace -v 0.20.3 -l Apache-2.0 -u https://github.com/bpftrace/bpftrace
 COPY patches /usr/src/bpftrace/patches
 WORKDIR /usr/src/bpftrace
 RUN for i in patches/*.patch; do git apply "$i"; done
@@ -36,9 +35,6 @@ WORKDIR /usr/src/bpftrace/build
 RUN cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_CXX_COMPILER=clang++-17 -DCMAKE_C_COMPILER=clang-17 ..
 RUN make -j "$(getconf _NPROCESSORS_ONLN)"
 RUN make install
-
-# Register bpftrace in the APK DB, mandatory for it to be included in the SBOM.
-RUN register-sbom-pkg.sh -n bpftrace -v 0.20.3 -l Apache-2.0 -u https://github.com/bpftrace/bpftrace.git
 
 # portability analyser is disabled, therefore skip those tests
 # skip file exist test - probably broken because of container
@@ -72,6 +68,7 @@ COPY --from=build /usr/lib/liblzma.so.5 /bpftrace-aotrt//usr/lib/liblzma.so.5
 COPY --from=build /usr/lib/libfts.so.0 /bpftrace-aotrt//usr/lib/libfts.so.0
 COPY --from=build /usr/lib/libzstd.so.1 /bpftrace-aotrt//usr/lib/libzstd.so.1
 COPY --from=build /usr/lib/libbz2.so.1 /bpftrace-aotrt//usr/lib/libbz2.so.1
+COPY --from=build /out/lib/apk/db/installed /bpftrace-aotrt/
 
 FROM bin AS bin-amd64
 FROM bin AS bin-arm64
