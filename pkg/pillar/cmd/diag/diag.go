@@ -915,11 +915,11 @@ func printOutput(ctx *diagContext, caller string) {
 		}
 	}
 
-	// volumemgr decides once, at startup, whether cluster storage became
-	// usable; a node where it never did cannot create any application volume.
-	// An empty Name means volumemgr has not published a status yet.
+	// A node whose cluster storage is not usable cannot create any application
+	// volume; the condition says whether volumemgr is still waiting for it or
+	// gave up. An empty Name means volumemgr has not published a status yet.
 	if ctx.volumeMgrStatus.Name != "" && !ctx.volumeMgrStatus.Initialized {
-		ctx.ph.Print("WARNING: cluster storage did not become ready at startup: %s\n",
+		ctx.ph.Print("WARNING: cluster storage not ready: %s\n",
 			ctx.volumeMgrStatus.UnmetCondition)
 	}
 

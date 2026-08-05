@@ -245,9 +245,9 @@ func TestDiagOutput(test *testing.T) {
 	t.Expect(summary).ToNot(ContainSubstring(
 		"ERROR: No management ports passed test"))
 
-	// volumemgr publishes its status only once its startup waits are over,
-	// hence the poll rather than a single read. Its pubsub state lives in the
-	// pillar container, not in the namespace an SSH session lands in.
+	// volumemgr publishes its status once it is past its early startup, hence
+	// the poll rather than a single read. Its pubsub state lives in the pillar
+	// container, not in the namespace an SSH session lands in.
 	var volumeMgrStatus pillartypes.VolumeMgrStatus
 	t.Eventually(func(t Gomega) {
 		output, _, err := device.RunShellScript(
@@ -259,6 +259,5 @@ func TestDiagOutput(test *testing.T) {
 
 	t.Expect(volumeMgrStatus.Initialized).To(BeTrue(),
 		"storage is usable from the start on a node without cluster storage")
-	t.Expect(summary).ToNot(ContainSubstring(
-		"cluster storage did not become ready at startup"))
+	t.Expect(summary).ToNot(ContainSubstring("cluster storage not ready"))
 }
