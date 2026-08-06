@@ -55,7 +55,7 @@ jobs:
             --patch-dir=/workspace/out \
             --build-tool=nobuild \
             --continuous-improvement=true \
-            --buf-basedir=/workspace/src/evetest \
+            --buf-basedir=/workspace/src/evetest/grpcapi/proto \
             --user-plugins=/workspace/src/.yetus/plugins.d \
             --plugins='all,-asflicense,-author,-findbugs,-gitlab,-jira,-shelldocs' \
             --revive-config=.revive.toml \
