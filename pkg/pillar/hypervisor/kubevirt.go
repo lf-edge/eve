@@ -1411,7 +1411,7 @@ func StopReplicaVMI(kubeconfig *rest.Config, repVmiName string) error {
 		logrus.Infof("Stop VMI Replicaset, Domain already deleted: %v", repVmiName)
 		return nil
 	}
-	logrus.Errorf("Stop VMI Replicaset error %v\n", err)
+	logrus.Errorf("Stop VMI Replicaset %s error %v", repVmiName, err)
 	return err
 }
 
