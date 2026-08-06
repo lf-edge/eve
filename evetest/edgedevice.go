@@ -1830,13 +1830,13 @@ func (d *EdgeDevice) FileExists(fileName string) bool {
 }
 
 // ReadFile reads the contents of a file from the device.
-func (d *EdgeDevice) ReadFile(fileName string) []byte {
+func (d *EdgeDevice) ReadFile(fileName string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(d.th.ctx, fileTransferTimeout)
 	defer cancel()
 
 	tmpFile, err := os.CreateTemp("", "eve-file-*")
 	if err != nil {
-		d.th.t.Fatalf("ReadFile: failed to create temp file: %v", err)
+		return nil, fmt.Errorf("ReadFile: failed to create temp file: %w", err)
 	}
 	tmpPath := tmpFile.Name()
 	tmpFile.Close()
@@ -1844,15 +1844,15 @@ func (d *EdgeDevice) ReadFile(fileName string) []byte {
 
 	err = d.th.scpFromEVE(ctx, d.devName, fileName, tmpPath, false)
 	if err != nil {
-		d.th.t.Fatalf("ReadFile: failed to copy %q from device %q: %v",
+		return nil, fmt.Errorf("ReadFile: failed to copy %q from device %q: %w",
 			fileName, d.devName, err)
 	}
 
 	data, err := os.ReadFile(tmpPath)
 	if err != nil {
-		d.th.t.Fatalf("ReadFile: failed to read temp file: %v", err)
+		return nil, fmt.Errorf("ReadFile: failed to read temp file: %w", err)
 	}
-	return data
+	return data, nil
 }
 
 // WriteFile writes content to a file on the device.
@@ -2782,12 +2782,11 @@ func (d *EdgeDevice) WatchClusterMetrics() (
 //   - key: identifies the specific message within the topic to fetch
 //   - output: pointer to a value of type T to unmarshal the message into
 //
-// Returns false if the topic or message does not exist yet (e.g. before the
-// agent has first published it) -- callers that need to wait for it should
-// poll on the returned bool instead of treating absence as an error. Calls
-// t.Fatalf on any other read or unmarshal failure.
+// Returns an error if the message does not exist yet (e.g. before the agent has
+// first published it), cannot be read, or does not unmarshal into T. Callers
+// waiting for a message to appear should poll until the error clears.
 func ReadPublication[T any](d *EdgeDevice, fromAgent string, persistent bool,
-	key string, output *T) bool {
+	key string, output *T) error {
 	fullName := fmt.Sprintf("%T", *new(T))
 	typeName := fullName[strings.LastIndex(fullName, ".")+1:]
 	var path string
@@ -2796,15 +2795,15 @@ func ReadPublication[T any](d *EdgeDevice, fromAgent string, persistent bool,
 	} else {
 		path = fmt.Sprintf("/run/%s/%s/%s.json", fromAgent, typeName, key)
 	}
-	if !d.FileExists(path) {
-		return false
+	data, err := d.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("ReadPublication: %w", err)
 	}
-	data := d.ReadFile(path)
 	if err := json.Unmarshal(data, output); err != nil {
-		d.th.t.Fatalf("ReadPublication: failed to unmarshal %q from device %q: %v",
+		return fmt.Errorf("ReadPublication: failed to unmarshal %q from device %q: %w",
 			path, d.devName, err)
 	}
-	return true
+	return nil
 }
 
 // ReadAllPublications retrieves all messages from a pub-sub topic published by
@@ -2816,7 +2815,8 @@ func ReadPublication[T any](d *EdgeDevice, fromAgent string, persistent bool,
 //
 // Returns a slice of values of type T representing all messages from the topic,
 // or an error if reading or unmarshaling fails.
-func ReadAllPublications[T any](d *EdgeDevice, fromAgent string, persistent bool) []T {
+func ReadAllPublications[T any](d *EdgeDevice, fromAgent string,
+	persistent bool) ([]T, error) {
 	fullName := fmt.Sprintf("%T", *new(T))
 	typeName := fullName[strings.LastIndex(fullName, ".")+1:]
 	var dir string
@@ -2830,20 +2830,24 @@ func ReadAllPublications[T any](d *EdgeDevice, fromAgent string, persistent bool
 		"find "+shellEscape(dir)+" -maxdepth 1 -name '*.json' -type f 2>/dev/null || true",
 		quickSSHCommandTimeout, 0)
 	if err != nil {
-		d.th.t.Fatalf("ReadAllPublications: failed to list %q on device %q: %v",
+		return nil, fmt.Errorf("ReadAllPublications: failed to list %q on device %q: %w",
 			dir, d.devName, err)
 	}
 	var results []T
 	for _, file := range strings.Fields(stdout) {
-		data := d.ReadFile(file)
+		data, err := d.ReadFile(file)
+		if err != nil {
+			return nil, fmt.Errorf("ReadAllPublications: %w", err)
+		}
 		var item T
 		if err := json.Unmarshal(data, &item); err != nil {
-			d.th.t.Fatalf("ReadAllPublications: failed to unmarshal %q from device %q: %v",
+			return nil, fmt.Errorf(
+				"ReadAllPublications: failed to unmarshal %q from device %q: %w",
 				file, d.devName, err)
 		}
 		results = append(results, item)
 	}
-	return results
+	return results, nil
 }
 
 // getDevUUID returns the device UUID, calling t.Fatalf if not found/onboarded.

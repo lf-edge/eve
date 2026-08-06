@@ -319,8 +319,9 @@ func TestDNSFunctionality(test *testing.T) {
 	// ------------------------------------------------------------------
 	log.Infof("Phase 2: verifying /etc/resolv.conf and mgmt dnsmasq config...")
 
-	resolvConf := string(device.ReadFile("/etc/resolv.conf"))
-	t.Expect(resolvConf).To(ContainSubstring("nameserver 127.0.0.1"))
+	resolvConf, err := device.ReadFile("/etc/resolv.conf")
+	t.Expect(err).NotTo(HaveOccurred())
+	t.Expect(string(resolvConf)).To(ContainSubstring("nameserver 127.0.0.1"))
 
 	// The main config file contains static options only; upstream server
 	// entries live in the separate servers file re-read on SIGHUP.
@@ -328,13 +329,16 @@ func TestDNSFunctionality(test *testing.T) {
 		configFilePath  = "/run/nim/dnsmasq.mgmt.conf"
 		serversFilePath = "/run/nim/dnsmasq.mgmt.servers"
 	)
-	dnsmasqConf := string(device.ReadFile(configFilePath))
-	t.Expect(dnsmasqConf).To(ContainSubstring("servers-file=" + serversFilePath))
+	dnsmasqConf, err := device.ReadFile(configFilePath)
+	t.Expect(err).NotTo(HaveOccurred())
+	t.Expect(string(dnsmasqConf)).To(ContainSubstring("servers-file=" + serversFilePath))
 
 	// The servers file may still be updating after Phase 1 — wait for it
 	// to contain all expected servers in cost-ascending order.
 	t.Eventually(func(g Gomega) {
-		dnsmasqServers := string(device.ReadFile(serversFilePath))
+		serversFile, err := device.ReadFile(serversFilePath)
+		g.Expect(err).NotTo(HaveOccurred())
+		dnsmasqServers := string(serversFile)
 		// All expected upstream servers must be present.
 		g.Expect(dnsmasqServers).To(ContainSubstring(badDNS3IP),
 			"eth3 (cost=0) server must appear in mgmt dnsmasq servers file")

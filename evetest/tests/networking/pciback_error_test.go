@@ -74,7 +74,8 @@ func portPciLong(t *WithT, device *evetest.EdgeDevice, phylabel string) string {
 	var pci string
 	t.Eventually(func() string {
 		var aa pillartypes.AssignableAdapters
-		if !evetest.ReadPublication(device, "domainmgr", false, "global", &aa) {
+		if err := evetest.ReadPublication(
+			device, "domainmgr", false, "global", &aa); err != nil {
 			return ""
 		}
 		for _, b := range aa.IoBundleList {

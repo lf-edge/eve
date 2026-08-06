@@ -302,10 +302,10 @@ stdout, stderr, err := device.RunShellScript("uptime", timeout, stdoutWatchdogTi
 
 // Read EVE's internal published state (pubsub)
 var dpcl pillartypes.DevicePortConfigList
-evetest.ReadPublication(device, "nim", true, "global", &dpcl)
+err := evetest.ReadPublication(device, "nim", true, "global", &dpcl)
 
 // Read all publications of a type
-items := evetest.ReadAllPublications[pillartypes.AppInstanceStatus](
+items, err := evetest.ReadAllPublications[pillartypes.AppInstanceStatus](
     device, "zedmanager", false)
 
 // Get the latest device info/metrics (or nil if not yet received)
