@@ -2834,7 +2834,12 @@ func ReadAllPublications[T any](d *EdgeDevice, fromAgent string,
 			dir, d.devName, err)
 	}
 	var results []T
-	for _, file := range strings.Fields(stdout) {
+	// Pubsub keys become file names and may contain spaces.
+	for _, file := range strings.Split(stdout, "\n") {
+		file = strings.TrimRight(file, "\r")
+		if file == "" {
+			continue
+		}
 		data, err := d.ReadFile(file)
 		if err != nil {
 			return nil, fmt.Errorf("ReadAllPublications: %w", err)
