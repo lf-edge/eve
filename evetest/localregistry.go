@@ -18,6 +18,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	"github.com/moby/moby/client"
+	"github.com/sirupsen/logrus"
 
 	"github.com/lf-edge/eve/evetest/utils"
 )
@@ -54,7 +55,7 @@ func localRegistryPushDomain() string {
 // produces (what tarball.ImageFromPath expects), and returns its path. The
 // caller must remove it.
 func saveDockerImageToTempFile(
-	ctx context.Context, imageName string) (path string, err error) {
+	ctx context.Context, log *logrus.Entry, imageName string) (path string, err error) {
 	dockerClient, err := client.New(client.FromEnv)
 	if err != nil {
 		return "", fmt.Errorf("failed to create docker client: %w", err)
@@ -63,16 +64,26 @@ func saveDockerImageToTempFile(
 	if err != nil {
 		return "", fmt.Errorf("failed to save docker image %q: %w", imageName, err)
 	}
-	defer reader.Close()
+	defer func() {
+		if err := reader.Close(); err != nil {
+			log.Warnf("failed to close docker image save reader: %v", err)
+		}
+	}()
 
 	f, err := os.CreateTemp("", "evetest-local-registry-*.tar")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp file: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			log.Warnf("failed to close temp file %q: %v", f.Name(), err)
+		}
+	}()
 	defer func() {
 		if err != nil {
-			os.Remove(f.Name())
+			if rmErr := os.Remove(f.Name()); rmErr != nil {
+				log.Warnf("failed to remove temp file %q: %v", f.Name(), rmErr)
+			}
 		}
 	}()
 
@@ -109,12 +120,16 @@ func PushDockerImageToLocalRegistry(imageName string) (DockerContainer, error) {
 			"failed to obtain docker image %q: %w", imageName, err)
 	}
 
-	tarPath, err := saveDockerImageToTempFile(th.ctx, imageName)
+	tarPath, err := saveDockerImageToTempFile(th.ctx, log, imageName)
 	if err != nil {
 		return DockerContainer{}, fmt.Errorf(
 			"failed to export docker image %q: %w", imageName, err)
 	}
-	defer os.Remove(tarPath)
+	defer func() {
+		if err := os.Remove(tarPath); err != nil {
+			log.Warnf("failed to remove temp file %q: %v", tarPath, err)
+		}
+	}()
 
 	img, err := tarball.ImageFromPath(tarPath, nil)
 	if err != nil {

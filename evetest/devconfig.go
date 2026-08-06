@@ -2364,10 +2364,12 @@ func (dc *EdgeDeviceConfig) buildMountRefs(
 				"Application %q mount references non-existent volume %q "+
 					"(create it first with AddVolume/AddBlankVolume)",
 				appDisplayName, volUUIDStr)
+			continue
 		}
 		if seen[volUUIDStr] {
 			dc.th.t.Fatalf("Application %q mounts volume %q more than once",
 				appDisplayName, volUUIDStr)
+			continue
 		}
 		seen[volUUIDStr] = true
 		volume.Readonly = mount.ReadOnly

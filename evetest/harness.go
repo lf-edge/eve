@@ -763,7 +763,7 @@ func Init(t *testing.T) *T {
 // gRPC server, disconnects from the broker (triggering cleanup of all
 // associated EVE and SDN devices), removes any SDN tunnel interfaces created
 // by the test, and stops the Adam controller.
-func Close() error {
+func Close() {
 	panicErr := recover()
 	th := getTestHarness()
 
@@ -818,7 +818,7 @@ func Close() error {
 		// When running as part of a test suite, resource teardown is deferred.
 		// Shared resources (e.g., VMs) may be reused by subsequent test cases
 		// within the same suite and must not be destroyed here.
-		return nil
+		return
 	}
 
 	// Unsubscribe device state watchers.
@@ -898,7 +898,6 @@ func Close() error {
 	if panicErr != nil {
 		panic(panicErr)
 	}
-	return nil
 }
 
 // Logger returns the logrus logger associated with the current test harness.
