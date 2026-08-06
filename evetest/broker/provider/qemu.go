@@ -1489,6 +1489,15 @@ func (dev *qemuDevice) buildArgs() []string {
 	args := []string{
 		"-enable-kvm",
 		"-machine", "q35",
+		// Let the chipset watchdog actually reset the guest. q35 brings the ICH9
+		// LPC bridge and with it the iTCO watchdog EVE drives through
+		// /dev/watchdog, but the bridge only latches a status bit on timeout
+		// unless noreboot is cleared. Without these two a guest silently survives
+		// a watchdog it should have died on, which hides watchdog regressions and
+		// quietly disarms any test that injects one. eden configures its QEMU the
+		// same way.
+		"-global", "ICH9-LPC.noreboot=false",
+		"-watchdog-action", "reset",
 		"-cpu", "host",
 		"-smp", fmt.Sprintf("%d", dev.spec.CPUs),
 		"-m", fmt.Sprintf("%d", dev.spec.MemoryBytes>>20),
