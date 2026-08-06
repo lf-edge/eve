@@ -2984,8 +2984,12 @@ func createCloudInitISO(ctx *domainContext,
 		metafile.WriteString(fmt.Sprintf("instance-id: %s/%s\n",
 			config.UUIDandVersion.UUID.String(),
 			getCloudInitVersion(config)))
-		metafile.WriteString(fmt.Sprintf("local-hostname: %s\n",
-			config.UUIDandVersion.UUID.String()))
+		// Provide local-hostname only in case there isn't any hostname
+		// declared in the cloud config
+		if !cloudconfig.DeclaresHostname(ciStr) {
+			metafile.WriteString(fmt.Sprintf("local-hostname: %s\n",
+				config.UUIDandVersion.UUID.String()))
+		}
 		metafile.Close()
 
 		// Handle normal user-data
