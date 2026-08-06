@@ -69,8 +69,8 @@ func TestVaultZvolTrimReclaimsBlocks(test *testing.T) {
 	// Wait for vaultmgr to report the default vault ConversionComplete.
 	t.Eventually(func() bool {
 		var status pillartypes.VaultStatus
-		if !evetest.ReadPublication(device, "vaultmgr", false,
-			pillartypes.DefaultVaultName, &status) {
+		if err := evetest.ReadPublication(device, "vaultmgr", false,
+			pillartypes.DefaultVaultName, &status); err != nil {
 			return false // status not published yet
 		}
 		return status.ConversionComplete

@@ -155,9 +155,11 @@ func TestZVolProvisionedSizeReported(test *testing.T) {
 	// volumemgr pubsub object: AppDiskMetric.ProvisionedBytes is the value the
 	// fix populates. The zvol device path embeds the volume UUID, so match on
 	// it. Poll because volumemgr recomputes disk metrics on its own interval.
-	t.Eventually(func() uint64 {
-		for _, m := range evetest.ReadAllPublications[pillartypes.AppDiskMetric](
-			device, "volumemgr", false) {
+	t.Eventually(func(g Gomega) uint64 {
+		diskMetrics, err := evetest.ReadAllPublications[pillartypes.AppDiskMetric](
+			device, "volumemgr", false)
+		g.Expect(err).NotTo(HaveOccurred())
+		for _, m := range diskMetrics {
 			if strings.Contains(m.DiskPath, volUUID.String()) {
 				return m.ProvisionedBytes
 			}
