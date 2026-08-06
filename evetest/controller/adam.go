@@ -819,7 +819,11 @@ func (ac *AdamClient) SubscribeToDeviceRequests(
 			}
 
 			func() {
-				defer current.Body.Close()
+				defer func() {
+					if err := current.Body.Close(); err != nil {
+						ac.log.Warnf("failed to close response body: %v", err)
+					}
+				}()
 				dec := json.NewDecoder(current.Body)
 				for {
 					var event ReqEvent
@@ -928,7 +932,11 @@ func (ac *AdamClient) SubscribeToDeviceLogs(
 			}
 
 			func() {
-				defer current.Body.Close()
+				defer func() {
+					if err := current.Body.Close(); err != nil {
+						ac.log.Warnf("failed to close response body: %v", err)
+					}
+				}()
 				dec := json.NewDecoder(current.Body)
 				for {
 					var raw json.RawMessage
@@ -1239,7 +1247,11 @@ func (ac *AdamClient) SubscribeToAppLogs(
 			}
 
 			func() {
-				defer current.Body.Close()
+				defer func() {
+					if err := current.Body.Close(); err != nil {
+						ac.log.Warnf("failed to close response body: %v", err)
+					}
+				}()
 				dec := json.NewDecoder(current.Body)
 				for {
 					var raw json.RawMessage
@@ -1447,7 +1459,11 @@ func (ac *AdamClient) SubscribeToDeviceInfoMsgs(devUUID uuid.UUID,
 			}
 
 			func() {
-				defer current.Body.Close()
+				defer func() {
+					if err := current.Body.Close(); err != nil {
+						ac.log.Warnf("failed to close response body: %v", err)
+					}
+				}()
 				dec := json.NewDecoder(current.Body)
 				for {
 					var raw json.RawMessage
@@ -1642,7 +1658,11 @@ func (ac *AdamClient) SubscribeToDeviceMetrics(devUUID uuid.UUID,
 			}
 
 			func() {
-				defer current.Body.Close()
+				defer func() {
+					if err := current.Body.Close(); err != nil {
+						ac.log.Warnf("failed to close response body: %v", err)
+					}
+				}()
 				dec := json.NewDecoder(current.Body)
 				for {
 					var raw json.RawMessage
@@ -1700,7 +1720,11 @@ func (ac *AdamClient) findDeviceUUID(ctx context.Context, httpClient *http.Clien
 	if err != nil {
 		return uuid.Nil, false, fmt.Errorf("GET %s failed: %w", url, err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			ac.log.Warnf("failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return uuid.Nil, false, fmt.Errorf(
