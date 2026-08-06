@@ -33,6 +33,14 @@ type WritableFile struct {
 	Owner       string `yaml:"owner"`
 }
 
+// hostnameConfig holds only the cloud-config keys through which the user
+// takes charge of the guest hostname.
+type hostnameConfig struct {
+	Hostname         string `yaml:"hostname"`
+	FQDN             string `yaml:"fqdn"`
+	PreserveHostname bool   `yaml:"preserve_hostname"` //nolint:tagliatelle // cloud-init standard uses snake_case
+}
+
 var validate = validator.New()
 
 // MaxDecompressedContentSize is the maximum size of a file that can be written to disk after decompression.
@@ -128,6 +136,21 @@ func WriteFile(log *base.LogObject, file WritableFile, rootPath string) error {
 	}
 
 	return nil
+}
+
+// DeclaresHostname reports whether the given user-data is a cloud-config in
+// which the user has taken charge of the guest hostname, via any of the
+// `hostname`, `fqdn` or `preserve_hostname` directives.
+func DeclaresHostname(ci string) bool {
+	if !IsCloudConfig(ci) {
+		return false
+	}
+	var hc hostnameConfig
+	if err := yaml.Unmarshal([]byte(ci), &hc); err != nil {
+		// Not parseable as cloud-config; no hostname directive to honour.
+		return false
+	}
+	return hc.Hostname != "" || hc.FQDN != "" || hc.PreserveHostname
 }
 
 func decodeGzipContent(content string) ([]byte, error) {
