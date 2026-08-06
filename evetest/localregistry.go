@@ -7,11 +7,11 @@ import (
 	"context"
 	"fmt"
 	"io"
+	stdlog "log"
 	"net"
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/registry"
@@ -24,14 +24,26 @@ import (
 )
 
 // newLocalRegistryHandler returns an http.Handler implementing the Docker
-// Registry HTTP API v2 (in-memory blob/manifest store), mounted at "/v2/" on
-// the harness's image-server listeners alongside the plain file server. It
-// lets EVE pull a container image (an upgrade rootfs, or an application
-// content tree) directly from evetest, without that image ever having been
-// published to a real, reachable registry -- see
-// PushDockerImageToLocalRegistry.
-func newLocalRegistryHandler() http.Handler {
-	return registry.New()
+// Registry HTTP API v2, mounted at "/v2/" on the harness's image-server
+// listeners alongside the plain file server. It lets EVE pull a container
+// image (an upgrade rootfs, or an application content tree) directly from
+// evetest, without that image ever having been published to a real,
+// reachable registry -- see PushDockerImageToLocalRegistry.
+//
+// Blobs are stored under dir (th.imgServerDir) rather than kept in memory --
+// TestUpgradeSuite runs every variant under a single Init, so an in-memory
+// registry would keep every pushed image (an EVE rootfs is hundreds of MB)
+// resident for the whole suite. Manifest/blob request logging is routed
+// through harnessLog (at debug level, since it logs every single request)
+// instead of registry.New's default of printing to stderr, outside logrus
+// and outside the artifact dir.
+func newLocalRegistryHandler(dir string, harnessLog *logrus.Logger) http.Handler {
+	registryLogger := stdlog.New(
+		harnessLog.WriterLevel(logrus.DebugLevel), "OCI Registry: ", 0)
+	return registry.New(
+		registry.WithBlobHandler(registry.NewDiskBlobHandler(dir)),
+		registry.Logger(registryLogger),
+	)
 }
 
 // localRegistryPullDomain is the registry host:port EVE is pointed at: the
@@ -110,11 +122,17 @@ func PushDockerImageToLocalRegistry(imageName string) (DockerContainer, error) {
 	th := getTestHarness()
 	log := th.log.WithField("component", "local-registry")
 
-	repo, tag, ok := strings.Cut(imageName, ":")
-	if !ok || repo == "" || tag == "" {
+	// Parsed with name.NewTag rather than a naive split on ":", so a
+	// registry host carrying its own port (e.g.
+	// "harbor.example.com:5000/lfedge/eve:1.2.3-kvm-amd64") still yields
+	// the correct repository ("lfedge/eve") and tag.
+	srcTag, err := name.NewTag(imageName)
+	if err != nil {
 		return DockerContainer{}, fmt.Errorf(
-			"invalid docker image reference %q: expected \"<repo>:<tag>\"", imageName)
+			"invalid docker image reference %q: expected \"<repo>:<tag>\": %w", imageName, err)
 	}
+	repo := srcTag.Context().RepositoryStr()
+	tag := srcTag.TagStr()
 	if err := utils.PullDockerImage(th.ctx, log, imageName); err != nil {
 		return DockerContainer{}, fmt.Errorf(
 			"failed to obtain docker image %q: %w", imageName, err)
