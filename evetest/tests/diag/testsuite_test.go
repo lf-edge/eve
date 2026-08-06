@@ -25,7 +25,7 @@ import (
 //     storage state against volumemgr's own publication.
 func TestDiagSuite(test *testing.T) {
 	evetest.Init(test)
-	defer func() { _ = evetest.Close() }()
+	defer evetest.Close()
 
 	evetest.DefineTestParameters(
 		evetest.HypervisorParameter(),
