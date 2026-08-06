@@ -8,7 +8,7 @@ personality_globals() {
   BUILDTOOL=nobuild
 
   # configure buf
-  BUF_BASEDIR=evetest
+  BUF_BASEDIR=evetest/grpcapi/proto
 
   # we want this on so master does not break
   CONTINUOUS_IMPROVEMENT=true
