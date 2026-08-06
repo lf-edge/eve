@@ -222,7 +222,15 @@ func (th *TestHarness) scpFromEVE(ctx context.Context,
 		localPath,
 	)
 	cmd := exec.CommandContext(ctx, "scp", scpArgs...)
-	return cmd.Run()
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		if msg := strings.TrimSpace(stderr.String()); msg != "" {
+			return fmt.Errorf("%w: %s", err, msg)
+		}
+		return err
+	}
+	return nil
 }
 
 // scpToEVE copies a file (or, when recursive is true, a directory) from a
@@ -245,7 +253,15 @@ func (th *TestHarness) scpToEVE(ctx context.Context,
 		"root@"+eveIP+":"+shellEscape(remotePath),
 	)
 	cmd := exec.CommandContext(ctx, "scp", scpArgs...)
-	return cmd.Run()
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		if msg := strings.TrimSpace(stderr.String()); msg != "" {
+			return fmt.Errorf("%w: %s", err, msg)
+		}
+		return err
+	}
+	return nil
 }
 
 // getReachableEVEAddr finds a reachable IP for the given device at the specified
