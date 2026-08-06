@@ -62,14 +62,22 @@ func (th *TestHarness) runSFTPServer(listener net.Listener, rootDir string) {
 // every session channel the client opens.
 func (th *TestHarness) handleSFTPConn(
 	netConn net.Conn, config *ssh.ServerConfig, rootDir string) {
-	defer netConn.Close()
+	defer func() {
+		if err := netConn.Close(); err != nil {
+			th.log.Warnf("SFTP server: failed to close connection: %v", err)
+		}
+	}()
 
 	sshConn, chans, reqs, err := ssh.NewServerConn(netConn, config)
 	if err != nil {
 		th.log.Debugf("SFTP server: SSH handshake failed: %v", err)
 		return
 	}
-	defer sshConn.Close()
+	defer func() {
+		if err := sshConn.Close(); err != nil {
+			th.log.Warnf("SFTP server: failed to close SSH connection: %v", err)
+		}
+	}()
 	go ssh.DiscardRequests(reqs)
 
 	for newChannel := range chans {
@@ -92,7 +100,11 @@ func (th *TestHarness) handleSFTPConn(
 			}
 		}()
 		go func() {
-			defer channel.Close()
+			defer func() {
+				if err := channel.Close(); err != nil {
+					th.log.Warnf("SFTP server: failed to close channel: %v", err)
+				}
+			}()
 			server, err := sftp.NewServer(channel,
 				sftp.ReadOnly(),
 				sftp.WithServerWorkingDirectory(rootDir))
@@ -100,7 +112,11 @@ func (th *TestHarness) handleSFTPConn(
 				th.log.Warnf("SFTP server: failed to create session: %v", err)
 				return
 			}
-			defer server.Close()
+			defer func() {
+				if err := server.Close(); err != nil {
+					th.log.Warnf("SFTP server: failed to close session: %v", err)
+				}
+			}()
 			if err := server.Serve(); err != nil && err != io.EOF {
 				th.log.Debugf("SFTP server: session ended: %v", err)
 			}
