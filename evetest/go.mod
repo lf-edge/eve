@@ -8,14 +8,14 @@ require (
 	github.com/amitbet/vncproxy v0.0.0-20200118084310-ea8f9b510913
 	github.com/containerd/errdefs v1.0.0
 	github.com/distribution/reference v0.6.0
-	github.com/docker/cli v29.2.0+incompatible
-	github.com/google/go-containerregistry v0.14.0
+	github.com/docker/cli v29.6.2+incompatible
+	github.com/google/go-containerregistry v0.21.9
 	github.com/google/uuid v1.6.0
 	github.com/lf-edge/eve-api/go v0.0.0-20260622100545-186e61c68f39
 	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260421125048-8d3825045e4e
 	github.com/luthermonson/go-proxmox v0.8.0
 	github.com/moby/moby/api v1.55.0
-	github.com/moby/moby/client v0.5.0
+	github.com/moby/moby/client v0.5.1
 	github.com/onsi/gomega v1.39.1
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/pkg/sftp v1.13.9
@@ -39,11 +39,9 @@ require (
 	github.com/buger/goterm v1.0.4 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
-	github.com/containerd/stargz-snapshotter/estargz v0.14.3 // indirect
 	github.com/diskfs/go-diskfs v1.9.3 // indirect
 	github.com/djherbis/times v1.6.0 // indirect
-	github.com/docker/distribution v2.8.3+incompatible // indirect
-	github.com/docker/docker-credential-helpers v0.8.2 // indirect
+	github.com/docker/docker-credential-helpers v0.9.3 // indirect
 	github.com/docker/go-connections v0.7.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/eriknordmark/ipinfo v0.0.0-20230728132417-2d8f4da903d7 // indirect
@@ -63,12 +61,11 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jinzhu/copier v0.4.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/klauspost/compress v1.18.5 // indirect
+	github.com/klauspost/compress v1.19.1 // indirect
 	github.com/kr/fs v0.1.0 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
 	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d // indirect
 	github.com/magefile/mage v1.14.0 // indirect
-	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
@@ -80,7 +77,6 @@ require (
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
-	github.com/vbatts/tar-split v0.11.2 // indirect
 	github.com/vishvananda/netns v0.0.5 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
@@ -90,7 +86,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.43.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/net v0.55.0 // indirect
-	golang.org/x/sync v0.20.0 // indirect
+	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
