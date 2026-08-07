@@ -109,7 +109,7 @@ func gcObjects(ctx *volumemgrContext, dirName string) {
 		}
 		locations = append(locations, filepath.Join(dirName, location.Name()))
 	}
-	gcVolumes(ctx, locations)
+	gcVolumes(ctx, locations, getVolumeStatusByLocation)
 	log.Tracef("gcObjects(%s) Done", dirName)
 }
 
@@ -122,30 +122,72 @@ func gcDatasets(ctx *volumemgrContext, dataset string) {
 			dataset, err)
 		return
 	}
-	gcVolumes(ctx, locations)
+	gcVolumes(ctx, locations, getVolumeStatusByLocation)
 	log.Tracef("gcDatasets(%s) Done", dataset)
 }
 
-func gcVolumes(ctx *volumemgrContext, locations []string) {
-	for _, location := range locations {
-		tempVolumeStatus, err := getVolumeStatusByLocation(location)
+// getPVCList is kubeapi.GetPVCList behind a package-level var, so a test can
+// supply a fixed PVC list without a real Kubernetes API server. See
+// hypervisor/kubevirt.go's newKubevirtClient for the same pattern.
+var getPVCList = kubeapi.GetPVCList
+
+// gcPVCs is gcObjects' counterpart for PVC-backed volumes: it garbage
+// collects any PVC with no currently-published VolumeStatus. The hypervisor's
+// own purge sweep (kubevirt.go's sweepStaleGenerations) deletes a stale
+// generation's VMIRS and pod but not its PVC; this periodic pass is what
+// reclaims it instead. Call only when base.IsHVTypeKube().
+func gcPVCs(ctx *volumemgrContext) {
+	log.Tracef("gcPVCs")
+	names, err := getPVCList(log)
+	if err != nil {
+		log.Errorf("gcPVCs: GetPVCList failed: %v", err)
+		return
+	}
+	gcVolumes(ctx, names, getVolumeStatusByPVC)
+	log.Tracef("gcPVCs Done")
+}
+
+// resolveVolumeStatus turns one GC candidate - a file/dataset path or a PVC
+// name - into the VolumeStatus it would have if it were still in use.
+type resolveVolumeStatus func(candidate string) (*types.VolumeStatus, error)
+
+// volumesToReap resolves each candidate and returns those with no
+// currently-published VolumeStatus - the ones gcVolumes will destroy.
+//
+// Split out from gcVolumes so this decision is testable on its own. For
+// PVC-backed volumes, destroying is a real Kubernetes API call; this
+// function makes none.
+func volumesToReap(ctx *volumemgrContext, candidates []string,
+	resolve resolveVolumeStatus) []*types.VolumeStatus {
+	var reap []*types.VolumeStatus
+	for _, candidate := range candidates {
+		vs, err := resolve(candidate)
 		if err != nil {
-			log.Errorf("gcVolumes: getVolumeStatusByLocation '%s' failed: %v",
-				location, err)
+			log.Errorf("volumesToReap: resolve %q failed: %v", candidate, err)
 			continue
 		}
-		// Do not GC a replicated volume.
-		if tempVolumeStatus != nil && tempVolumeStatus.IsReplicated {
+		// Do not GC a replicated volume: it may be tracked here only because
+		// this node is a failover candidate, not because it is unused.
+		if vs != nil && vs.IsReplicated {
 			continue
 		}
-		vs := ctx.LookupVolumeStatus(tempVolumeStatus.Key())
-		if vs == nil {
-			log.Functionf("gcVolumes: Found unused volume %s. Deleting it.",
-				location)
-			if _, err := volumehandlers.GetVolumeHandler(log, ctx, tempVolumeStatus).DestroyVolume(); err != nil {
-				log.Errorf("gcVolumes: destroyVolume '%s' failed: %v",
-					location, err)
-			}
+		if ctx.LookupVolumeStatus(vs.Key()) == nil {
+			reap = append(reap, vs)
+		}
+	}
+	return reap
+}
+
+// gcVolumes destroys every candidate volumesToReap finds unused. candidates
+// may be filesystem paths, ZFS dataset names, or PVC names; resolve is what
+// tells them apart.
+func gcVolumes(ctx *volumemgrContext, candidates []string, resolve resolveVolumeStatus) {
+	for _, vs := range volumesToReap(ctx, candidates, resolve) {
+		log.Functionf("gcVolumes: Found unused volume %s. Deleting it.",
+			vs.FileLocation)
+		if _, err := volumehandlers.GetVolumeHandler(log, ctx, vs).DestroyVolume(); err != nil {
+			log.Errorf("gcVolumes: destroyVolume '%s' failed: %v",
+				vs.FileLocation, err)
 		}
 	}
 }

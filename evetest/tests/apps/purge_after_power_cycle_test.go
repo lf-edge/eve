@@ -248,13 +248,13 @@ func TestVMAppPurgeAfterPowerCycle(test *testing.T) {
 	// The old generation's storage is reclaimed on its own schedule, minutes
 	// after the purge itself completes - see assertOldVolumeReclaimed.
 	//
-	// assertNoOrphanedPVCs is disabled on Kubevirt for now: sweepStaleGenerations
-	// deletes the old VMIRS and its pod but not its PVC, so the old generation's
-	// disk stays behind. That is a pillar fix, not a test bug - re-enable this
-	// once sweepStaleGenerations deletes the PVC too.
+	// On Kubevirt, sweepStaleGenerations (hypervisor/kubevirt.go) deletes the
+	// old VMIRS and its pod but not its PVC. volumemgr's own periodic GC
+	// (gcPVCs) reclaims that PVC instead, on the vdiskGCTime/10 ticker - up to
+	// a few minutes, comfortably inside storageReclaimTimeout.
 	t.Eventually(func(g Gomega) {
 		if hypervisor == evetest.HypervisorKubevirt {
-			// assertNoOrphanedPVCs(g, device)
+			assertNoOrphanedPVCs(g, device)
 		} else {
 			assertOldVolumeReclaimed(g, device, baselineVolPath)
 		}
