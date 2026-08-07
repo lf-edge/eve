@@ -244,3 +244,66 @@ func TestK3sArchSuffixOnlyAcceptsKnownArches(t *testing.T) {
 }
 
 func contains(s, sub string) bool { return strings.Contains(s, sub) }
+
+// TestK3sStatusParked pins the condition that decides whether a
+// converged pass retroactively finishes an update the k3s step left
+// open. Both halves of the condition are load-bearing: a status on a
+// different component, or on k3s at any stage other than completed,
+// belongs to a pass still in flight and must not be advanced.
+func TestK3sStatusParked(t *testing.T) {
+	cases := []struct {
+		name string
+		seed *types.KubeClusterUpdateStatus // nil = no delivery yet
+		want bool
+	}{
+		{
+			name: "no delivery -> not parked",
+			seed: nil,
+			want: false,
+		},
+		{
+			name: "k3s completed -> parked",
+			seed: &types.KubeClusterUpdateStatus{
+				Component: types.CompK3s,
+				Status:    types.CompStatusCompleted,
+			},
+			want: true,
+		},
+		{
+			name: "k3s still in progress -> not parked",
+			seed: &types.KubeClusterUpdateStatus{
+				Component: types.CompK3s,
+				Status:    types.CompStatusInProgress,
+			},
+			want: false,
+		},
+		{
+			name: "k3s failed -> not parked",
+			seed: &types.KubeClusterUpdateStatus{
+				Component: types.CompK3s,
+				Status:    types.CompStatusFailed,
+			},
+			want: false,
+		},
+		{
+			name: "a different component completed -> not parked",
+			seed: &types.KubeClusterUpdateStatus{
+				Component: types.CompLonghorn,
+				Status:    types.CompStatusCompleted,
+			},
+			want: false,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			kcus.ResetForTest()
+			t.Cleanup(kcus.ResetForTest)
+			if c.seed != nil {
+				kcus.SetForTest(*c.seed)
+			}
+			if got := k3sStatusParked(); got != c.want {
+				t.Errorf("got %v, want %v", got, c.want)
+			}
+		})
+	}
+}

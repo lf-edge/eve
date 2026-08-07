@@ -82,6 +82,18 @@ func updateFailed() bool {
 		status.DestinationKubeUpdateVersion == uint32(KubeVersion)
 }
 
+// k3sStatusParked reports whether the cached status sits on a
+// completed k3s step, which is where a k3s update leaves it across
+// the reboot that follows. No cached status means nothing to advance.
+func k3sStatusParked() bool {
+	status, ok := kcus.Get()
+	if !ok {
+		return false
+	}
+	return status.Component == types.CompK3s &&
+		status.Status == types.CompStatusCompleted
+}
+
 // appliedVersionGEQ reports whether the persisted applied version
 // is >= target. The applied marker is the textual decimal written
 // by VersionSet, so this is a parsed-int compare. An unparsable
