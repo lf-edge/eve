@@ -14,13 +14,14 @@ import (
 	"strings"
 
 	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/versions"
 )
 
 // K3sVersion pins the k3s release this build expects. On a mismatch
 // EnsureInstalled tears down the install marker and re-runs the
 // self-extract flow, so a controller-driven k3s upgrade triggers
 // the install path automatically on the next boot.
-const K3sVersion = "v1.34.2+k3s1"
+const K3sVersion = versions.K3s
 
 // Subpaths and binary names produced by `k3s check-config`'s
 // self-extraction.
