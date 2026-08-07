@@ -30,6 +30,7 @@ import (
 
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kubectlx"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/versions"
 )
 
 const (
@@ -74,47 +75,46 @@ func (u UpstreamImage) FullRef() string {
 // not fatal.
 var UpstreamImages = []UpstreamImage{
 	// k3s-stack controllers.
-	{Tarball: "/images/system-upgrade-controller.tar", Name: "docker.io/rancher/system-upgrade-controller", Tag: "v0.19.2"},
-	{Tarball: "/images/descheduler.tar", Name: "registry.k8s.io/descheduler/descheduler", Tag: "v0.29.0"},
+	{Tarball: "/images/system-upgrade-controller.tar", Name: "docker.io/rancher/system-upgrade-controller", Tag: versions.SystemUpgradeController},
+	{Tarball: "/images/descheduler.tar", Name: "registry.k8s.io/descheduler/descheduler", Tag: versions.Descheduler},
 
 	// CNI multiplexer.
-	{Tarball: "/images/multus-cni.tar", Name: "ghcr.io/k8snetworkplumbingwg/multus-cni", Tag: "v3.9.3"},
+	{Tarball: "/images/multus-cni.tar", Name: "ghcr.io/k8snetworkplumbingwg/multus-cni", Tag: versions.Multus},
 
 	// alpine — SUC Plan's upgrade-container image. Tiny (~8 MB);
 	// the local copy saves a pull round-trip per upgrade Plan.
-	{Tarball: "/images/alpine.tar", Name: "docker.io/library/alpine", Tag: "3.21"},
+	{Tarball: "/images/alpine.tar", Name: "docker.io/library/alpine", Tag: versions.Alpine},
 
-	// KubeVirt v1.7.3 (5 images — operator + the 4 pods it spawns).
-	{Tarball: "/images/virt-operator.tar", Name: "quay.io/kubevirt/virt-operator", Tag: "v1.7.3"},
-	{Tarball: "/images/virt-api.tar", Name: "quay.io/kubevirt/virt-api", Tag: "v1.7.3"},
-	{Tarball: "/images/virt-controller.tar", Name: "quay.io/kubevirt/virt-controller", Tag: "v1.7.3"},
-	{Tarball: "/images/virt-handler.tar", Name: "quay.io/kubevirt/virt-handler", Tag: "v1.7.3"},
-	{Tarball: "/images/virt-launcher.tar", Name: "quay.io/kubevirt/virt-launcher", Tag: "v1.7.3"},
+	// KubeVirt (5 images — operator + the 4 pods it spawns).
+	{Tarball: "/images/virt-operator.tar", Name: "quay.io/kubevirt/virt-operator", Tag: versions.KubeVirt},
+	{Tarball: "/images/virt-api.tar", Name: "quay.io/kubevirt/virt-api", Tag: versions.KubeVirt},
+	{Tarball: "/images/virt-controller.tar", Name: "quay.io/kubevirt/virt-controller", Tag: versions.KubeVirt},
+	{Tarball: "/images/virt-handler.tar", Name: "quay.io/kubevirt/virt-handler", Tag: versions.KubeVirt},
+	{Tarball: "/images/virt-launcher.tar", Name: "quay.io/kubevirt/virt-launcher", Tag: versions.KubeVirt},
 
-	// CDI v1.57.1 (7 images — operator + the 6 pods it spawns).
-	{Tarball: "/images/cdi-operator.tar", Name: "quay.io/kubevirt/cdi-operator", Tag: "v1.57.1"},
-	{Tarball: "/images/cdi-apiserver.tar", Name: "quay.io/kubevirt/cdi-apiserver", Tag: "v1.57.1"},
-	{Tarball: "/images/cdi-controller.tar", Name: "quay.io/kubevirt/cdi-controller", Tag: "v1.57.1"},
-	{Tarball: "/images/cdi-importer.tar", Name: "quay.io/kubevirt/cdi-importer", Tag: "v1.57.1"},
-	{Tarball: "/images/cdi-cloner.tar", Name: "quay.io/kubevirt/cdi-cloner", Tag: "v1.57.1"},
-	{Tarball: "/images/cdi-uploadproxy.tar", Name: "quay.io/kubevirt/cdi-uploadproxy", Tag: "v1.57.1"},
-	{Tarball: "/images/cdi-uploadserver.tar", Name: "quay.io/kubevirt/cdi-uploadserver", Tag: "v1.57.1"},
+	// CDI (7 images — operator + the 6 pods it spawns).
+	{Tarball: "/images/cdi-operator.tar", Name: "quay.io/kubevirt/cdi-operator", Tag: versions.CDI},
+	{Tarball: "/images/cdi-apiserver.tar", Name: "quay.io/kubevirt/cdi-apiserver", Tag: versions.CDI},
+	{Tarball: "/images/cdi-controller.tar", Name: "quay.io/kubevirt/cdi-controller", Tag: versions.CDI},
+	{Tarball: "/images/cdi-importer.tar", Name: "quay.io/kubevirt/cdi-importer", Tag: versions.CDI},
+	{Tarball: "/images/cdi-cloner.tar", Name: "quay.io/kubevirt/cdi-cloner", Tag: versions.CDI},
+	{Tarball: "/images/cdi-uploadproxy.tar", Name: "quay.io/kubevirt/cdi-uploadproxy", Tag: versions.CDI},
+	{Tarball: "/images/cdi-uploadserver.tar", Name: "quay.io/kubevirt/cdi-uploadserver", Tag: versions.CDI},
 
-	// Longhorn v1.9.1 + CSI sidecars (13 images; CSI sidecars follow
-	// their own release cadence, hence different tags).
-	{Tarball: "/images/longhorn-manager.tar", Name: "docker.io/longhornio/longhorn-manager", Tag: "v1.9.1"},
-	{Tarball: "/images/longhorn-engine.tar", Name: "docker.io/longhornio/longhorn-engine", Tag: "v1.9.1"},
-	{Tarball: "/images/longhorn-instance-manager.tar", Name: "docker.io/longhornio/longhorn-instance-manager", Tag: "v1.9.1"},
-	{Tarball: "/images/longhorn-share-manager.tar", Name: "docker.io/longhornio/longhorn-share-manager", Tag: "v1.9.1"},
-	{Tarball: "/images/longhorn-ui.tar", Name: "docker.io/longhornio/longhorn-ui", Tag: "v1.9.1"},
-	{Tarball: "/images/backing-image-manager.tar", Name: "docker.io/longhornio/backing-image-manager", Tag: "v1.9.1"},
-	{Tarball: "/images/support-bundle-kit.tar", Name: "docker.io/longhornio/support-bundle-kit", Tag: "v0.0.61"},
-	{Tarball: "/images/csi-attacher.tar", Name: "docker.io/longhornio/csi-attacher", Tag: "v4.9.0-20250709"},
-	{Tarball: "/images/csi-provisioner.tar", Name: "docker.io/longhornio/csi-provisioner", Tag: "v5.3.0-20250709"},
-	{Tarball: "/images/csi-node-driver-registrar.tar", Name: "docker.io/longhornio/csi-node-driver-registrar", Tag: "v2.14.0-20250709"},
-	{Tarball: "/images/csi-resizer.tar", Name: "docker.io/longhornio/csi-resizer", Tag: "v1.14.0-20250709"},
-	{Tarball: "/images/csi-snapshotter.tar", Name: "docker.io/longhornio/csi-snapshotter", Tag: "v8.3.0-20250709"},
-	{Tarball: "/images/livenessprobe.tar", Name: "docker.io/longhornio/livenessprobe", Tag: "v2.16.0-20250709"},
+	// Longhorn + CSI sidecars (13 images).
+	{Tarball: "/images/longhorn-manager.tar", Name: "docker.io/longhornio/longhorn-manager", Tag: versions.Longhorn},
+	{Tarball: "/images/longhorn-engine.tar", Name: "docker.io/longhornio/longhorn-engine", Tag: versions.Longhorn},
+	{Tarball: "/images/longhorn-instance-manager.tar", Name: "docker.io/longhornio/longhorn-instance-manager", Tag: versions.Longhorn},
+	{Tarball: "/images/longhorn-share-manager.tar", Name: "docker.io/longhornio/longhorn-share-manager", Tag: versions.Longhorn},
+	{Tarball: "/images/longhorn-ui.tar", Name: "docker.io/longhornio/longhorn-ui", Tag: versions.Longhorn},
+	{Tarball: "/images/backing-image-manager.tar", Name: "docker.io/longhornio/backing-image-manager", Tag: versions.Longhorn},
+	{Tarball: "/images/support-bundle-kit.tar", Name: "docker.io/longhornio/support-bundle-kit", Tag: versions.SupportBundleKit},
+	{Tarball: "/images/csi-attacher.tar", Name: "docker.io/longhornio/csi-attacher", Tag: versions.CSIAttacher},
+	{Tarball: "/images/csi-provisioner.tar", Name: "docker.io/longhornio/csi-provisioner", Tag: versions.CSIProvisioner},
+	{Tarball: "/images/csi-node-driver-registrar.tar", Name: "docker.io/longhornio/csi-node-driver-registrar", Tag: versions.CSINodeDriverRegistrar},
+	{Tarball: "/images/csi-resizer.tar", Name: "docker.io/longhornio/csi-resizer", Tag: versions.CSIResizer},
+	{Tarball: "/images/csi-snapshotter.tar", Name: "docker.io/longhornio/csi-snapshotter", Tag: versions.CSISnapshotter},
+	{Tarball: "/images/livenessprobe.tar", Name: "docker.io/longhornio/livenessprobe", Tag: versions.CSILivenessProbe},
 }
 
 // ImportAll orchestrates the per-boot image import phase: the EVE
