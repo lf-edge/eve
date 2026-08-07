@@ -56,41 +56,44 @@ func TestPodListToSchedulingState(t *testing.T) {
 	}
 
 	tests := []struct {
-		name        string
-		pods        []corev1.Pod
-		wantOnMe    bool
-		wantAnyNode bool
-		wantErr     bool
+		name                string
+		pods                []corev1.Pod
+		wantOnMe            bool
+		wantScheduledOnNone bool
+		wantErr             bool
 	}{
 		{
-			name:        "Pending phase with NodeName set (Init:0/1) on this node",
-			pods:        []corev1.Pod{mkPod(node, corev1.PodPending)},
-			wantOnMe:    true,
-			wantAnyNode: true,
+			name:     "Pending phase with NodeName set (Init:0/1) on this node",
+			pods:     []corev1.Pod{mkPod(node, corev1.PodPending)},
+			wantOnMe: true,
+			// Bound to a node (this one), so nothing about "scheduled on none" applies.
+			wantScheduledOnNone: false,
 		},
 		{
-			name:        "Pending phase with NodeName set (Init:0/1) on another node",
-			pods:        []corev1.Pod{mkPod("other-node", corev1.PodPending)},
-			wantOnMe:    false,
-			wantAnyNode: true,
+			name:     "Pending phase with NodeName set (Init:0/1) on another node",
+			pods:     []corev1.Pod{mkPod("other-node", corev1.PodPending)},
+			wantOnMe: false,
+			// Bound to a node, just not this one - neither onMe nor scheduledOnNone.
+			wantScheduledOnNone: false,
 		},
 		{
-			name:        "Running pod on this node",
-			pods:        []corev1.Pod{mkPod(node, corev1.PodRunning)},
-			wantOnMe:    true,
-			wantAnyNode: true,
+			name:                "Running pod on this node",
+			pods:                []corev1.Pod{mkPod(node, corev1.PodRunning)},
+			wantOnMe:            true,
+			wantScheduledOnNone: false,
 		},
 		{
-			name:        "Running pod on another node",
-			pods:        []corev1.Pod{mkPod("other-node", corev1.PodRunning)},
-			wantOnMe:    false,
-			wantAnyNode: true,
+			name:                "Running pod on another node",
+			pods:                []corev1.Pod{mkPod("other-node", corev1.PodRunning)},
+			wantOnMe:            false,
+			wantScheduledOnNone: false,
 		},
 		{
-			name:        "Pending pod with NodeName empty (not yet scheduled)",
-			pods:        []corev1.Pod{mkPod("", corev1.PodPending)},
-			wantOnMe:    false,
-			wantAnyNode: true,
+			name:     "Pending pod with NodeName empty (not yet scheduled)",
+			pods:     []corev1.Pod{mkPod("", corev1.PodPending)},
+			wantOnMe: false,
+			// Not bound to any node at all.
+			wantScheduledOnNone: true,
 		},
 		{
 			name:    "No pods",
@@ -110,14 +113,14 @@ func TestPodListToSchedulingState(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			onMe, anyNode, err := podListToSchedulingState(tc.pods, node)
+			onMe, scheduledOnNone, err := podListToSchedulingState(tc.pods, node)
 			if tc.wantErr {
 				assert.Error(t, err)
 				return
 			}
 			assert.NoError(t, err)
 			assert.Equal(t, tc.wantOnMe, onMe)
-			assert.Equal(t, tc.wantAnyNode, anyNode)
+			assert.Equal(t, tc.wantScheduledOnNone, scheduledOnNone)
 		})
 	}
 }

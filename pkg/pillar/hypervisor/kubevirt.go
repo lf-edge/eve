@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"math/rand"
 	"net"
 	"net/http"
 	"os"
@@ -59,6 +58,30 @@ const (
 	unknownToHaltMinutes   = 30 // If VMI is unknown for 30 minutes, return halt state
 )
 
+// newKubevirtClient and newK8sClient wrap the kubevirt/k8s client
+// constructors as package-level vars so unit tests can swap in a fake
+// client. kubecli's documented mock hook only covers
+// GetKubevirtClientFromClientConfig, while this file calls
+// GetKubevirtClientFromRESTConfig directly; wrapping it here is what makes
+// it swappable at all. Tests that reassign these must not run with
+// t.Parallel.
+// newK8sClient is declared against the kubernetes.Interface, not
+// kubernetes.NewForConfig's own concrete *kubernetes.Clientset return type,
+// specifically so tests can substitute k8s.io/client-go/kubernetes/fake's
+// Clientset (which implements the interface but is not that concrete type).
+var (
+	newKubevirtClient = kubecli.GetKubevirtClientFromRESTConfig
+	newK8sClient      = func(c *rest.Config) (kubernetes.Interface, error) {
+		return kubernetes.NewForConfig(c)
+	}
+	// getKubeConfig wraps kubeapi.GetKubeConfig, which a couple of call
+	// sites (getVMIStatus, GetDomsCPUMem) read directly instead of going
+	// through ctx.kubeConfig/getConfig. Wrapping it here for the same
+	// swap-in-tests reason as the two vars above - without it, those call
+	// sites always try to read the real kubeconfig file from disk.
+	getKubeConfig = kubeapi.GetKubeConfig
+)
+
 // MetaDataType is a type for different Domain types
 // We only support ReplicaSet for VMI and Pod for now.
 type MetaDataType int
@@ -75,7 +98,7 @@ const (
 type vmiMetaData struct {
 	repPod              *appsv1.ReplicaSet                   // Handle to the replicaSetof pod
 	repVMI              *v1.VirtualMachineInstanceReplicaSet // Handle to the replicaSet of VMI
-	domainID            int                                  // DomainID understood by domainmgr in EVE
+	domainID            int                                  // Cached types.DomainStatus.DomainId - see workloadID and its doc comment
 	mtype               MetaDataType                         // switch on is ReplicaSet, Pod or is VMI
 	name                string                               // Display-Name(all lower case) + first 5 bytes of domainName
 	cputotal            uint64                               // total CPU in NS so far
@@ -140,6 +163,7 @@ var stateMap = map[string]types.SwState{
 	"suspended":  types.PAUSED,
 	"Pending":    types.PENDING,
 	"Scheduling": types.SCHEDULING,
+	"Scheduled":  types.SCHEDULING,
 	"Failed":     types.FAILED,
 	"Halting":    types.HALTING,
 	"Succeeded":  types.SCHEDULING,
@@ -259,8 +283,38 @@ func (ctx kubevirtContext) Name() string {
 	return KubevirtHypervisorName
 }
 
+// kubevirtTask wraps kubevirtContext with the DomainStatus that produced
+// it, so that a Task's identity can be derived from the status instead of
+// depending only on the domainName string a caller happens to pass to each
+// method. Embedding kubevirtContext means every types.Task method not
+// overridden here is served, unchanged, by the existing domainName-keyed
+// implementation.
+type kubevirtTask struct {
+	kubevirtContext
+	status *types.DomainStatus
+}
+
 func (ctx kubevirtContext) Task(status *types.DomainStatus) types.Task {
-	return ctx
+	return kubevirtTask{ctx, status}
+}
+
+// kubeName derives the Kubernetes object name for t.status's app and purge
+// generation. Setup/Start populate vmiList using this exact derivation (see
+// CreateReplicaVMIConfig/CreateReplicaPodConfig), so it always names the
+// same object a freshly-run Setup/Start would.
+func (t kubevirtTask) kubeName() string {
+	return base.GetAppKubeNameWithPurge(t.status.DisplayName,
+		t.status.UUIDandVersion.UUID, t.status.PurgeCounter)
+}
+
+// metaType mirrors the NOHYPER check in Setup: a NOHYPER app runs as a
+// plain container ReplicaSet (IsMetaReplicaPod); anything else runs as a
+// VMI ReplicaSet (IsMetaReplicaVMI).
+func (t kubevirtTask) metaType() MetaDataType {
+	if t.status.VirtualizationMode == types.NOHYPER {
+		return IsMetaReplicaPod
+	}
+	return IsMetaReplicaVMI
 }
 
 // uuidPrefixOfDomainName returns the "uuid." prefix from a domainName of the
@@ -356,7 +410,7 @@ func (ctx kubevirtContext) CreateReplicaVMIConfig(domainName string, config type
 		return err
 	}
 
-	kvClient, err := kubecli.GetKubevirtClientFromRESTConfig(ctx.kubeConfig)
+	kvClient, err := newKubevirtClient(ctx.kubeConfig)
 	if err != nil {
 		logrus.Errorf("couldn't get the kubernetes client API config: %v", err)
 		return err
@@ -739,10 +793,14 @@ func (ctx kubevirtContext) CreateReplicaVMIConfig(domainName string, config type
 		}
 	}
 	meta := vmiMetaData{
-		repVMI:      replicaSet,
-		name:        kubeName,
-		mtype:       IsMetaReplicaVMI,
-		domainID:    int(rand.Uint32()),
+		repVMI: replicaSet,
+		name:   kubeName,
+		mtype:  IsMetaReplicaVMI,
+		// The VMIRS doesn't exist yet (Create runs before Start creates it),
+		// so there is no UID to hash; workloadID falls back to kubeName. A
+		// real, stable id is captured from Start's own Create response and
+		// re-derived on every subsequent Info call.
+		domainID:    workloadID("", kubeName),
 		memOverhead: uint64(overhead),
 		sriovVFs:    sriovVFs,
 	}
@@ -754,6 +812,182 @@ func (ctx kubevirtContext) CreateReplicaVMIConfig(domainName string, config type
 	// write to config file
 	file.WriteString(repvmiStr)
 
+	return nil
+}
+
+// sweepConfirmRetries/sweepConfirmInterval bound how long
+// sweepStaleGenerations will wait for a deleted stale generation to
+// actually disappear (object and pods) before giving up. This reuses
+// Start's own pre-existing 5x10s retry budget (see the Create retry loop
+// below) rather than inventing a new one: an unreachable API must not
+// block activation indefinitely.
+//
+// sweepConfirmInterval is a var, not a const, solely so unit tests can
+// shrink it and exercise the timeout path without a real 50-second wait.
+const sweepConfirmRetries = 5
+
+var sweepConfirmInterval = 10 * time.Second
+
+// appUUIDFromDomainName extracts the app UUID from a domainName of the
+// form "uuid.version.appnum".
+func appUUIDFromDomainName(domainName string) (uuid.UUID, error) {
+	prefix := uuidPrefixOfDomainName(domainName)
+	return uuid.FromString(strings.TrimSuffix(prefix, "."))
+}
+
+// confirmVMIRSGone waits for a deleted VMIRS - and its virt-launcher pod -
+// to actually disappear from the cluster. Deleting the VMIRS returns
+// quickly, but Kubernetes' garbage collection of the owned VMI and pod is
+// asynchronous and can take tens of seconds; since generations share veth
+// names and the RWO disk, proceeding to create the next generation as soon
+// as the VMIRS object itself is gone races the old pod's own network
+// teardown - the exact "interface name already exists" sandbox failure
+// this is guarding against.
+func confirmVMIRSGone(kubeconfig *rest.Config, name, domainNameLabel string) error {
+	virtClient, err := newKubevirtClient(kubeconfig)
+	if err != nil {
+		return err
+	}
+	podclientset, err := newK8sClient(kubeconfig)
+	if err != nil {
+		return err
+	}
+
+	for retry := 0; ; retry++ {
+		_, getErr := virtClient.ReplicaSet(kubeapi.EVEKubeNameSpace).
+			Get(context.Background(), name, metav1.GetOptions{})
+		objGone := errors.IsNotFound(getErr)
+		if getErr != nil && !objGone {
+			return fmt.Errorf("confirmVMIRSGone(%s): %w", name, getErr)
+		}
+
+		podsGone := true
+		if domainNameLabel != "" {
+			pods, listErr := podclientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).
+				List(context.Background(), metav1.ListOptions{
+					LabelSelector: "kubevirt.io=virt-launcher," + eveLabelKey + "=" + domainNameLabel,
+				})
+			if listErr != nil {
+				return fmt.Errorf("confirmVMIRSGone(%s): %w", name, listErr)
+			}
+			podsGone = len(pods.Items) == 0
+		}
+
+		if objGone && podsGone {
+			logrus.Infof("confirmVMIRSGone(%s): confirmed gone", name)
+			return nil
+		}
+		if retry >= sweepConfirmRetries-1 {
+			return fmt.Errorf("timed out waiting for stale VMIRS %s to be gone "+
+				"(object gone:%t pods gone:%t)", name, objGone, podsGone)
+		}
+		logrus.Infof("confirmVMIRSGone(%s): not yet gone (object gone:%t pods gone:%t), retrying in %v",
+			name, objGone, podsGone, sweepConfirmInterval)
+		time.Sleep(sweepConfirmInterval)
+	}
+}
+
+// confirmPodReplicaSetGone is confirmVMIRSGone's analogue for a NOHYPER
+// app's plain container ReplicaSet. Its pods are labeled "app=<name>"
+// (CreateReplicaPodConfig), which already is generation-specific, so no
+// separate domainName label is needed to scope the pod check.
+func confirmPodReplicaSetGone(kubeconfig *rest.Config, name string) error {
+	clientset, err := newK8sClient(kubeconfig)
+	if err != nil {
+		return err
+	}
+
+	for retry := 0; ; retry++ {
+		_, getErr := clientset.AppsV1().ReplicaSets(kubeapi.EVEKubeNameSpace).
+			Get(context.Background(), name, metav1.GetOptions{})
+		objGone := errors.IsNotFound(getErr)
+		if getErr != nil && !objGone {
+			return fmt.Errorf("confirmPodReplicaSetGone(%s): %w", name, getErr)
+		}
+
+		pods, listErr := clientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).
+			List(context.Background(), metav1.ListOptions{
+				LabelSelector: fmt.Sprintf("app=%s", name),
+			})
+		if listErr != nil {
+			return fmt.Errorf("confirmPodReplicaSetGone(%s): %w", name, listErr)
+		}
+		podsGone := len(pods.Items) == 0
+
+		if objGone && podsGone {
+			logrus.Infof("confirmPodReplicaSetGone(%s): confirmed gone", name)
+			return nil
+		}
+		if retry >= sweepConfirmRetries-1 {
+			return fmt.Errorf("timed out waiting for stale ReplicaSet %s to be gone "+
+				"(object gone:%t pods gone:%t)", name, objGone, podsGone)
+		}
+		logrus.Infof("confirmPodReplicaSetGone(%s): not yet gone (object gone:%t pods gone:%t), retrying in %v",
+			name, objGone, podsGone, sweepConfirmInterval)
+		time.Sleep(sweepConfirmInterval)
+	}
+}
+
+// sweepStaleGenerations deletes every VMIRS/ReplicaSet belonging to this
+// app whose purge counter is strictly less than desiredCounter, and
+// confirms each one is actually gone - object and pods - before returning.
+// It runs unconditionally on every Start, because a reboot mid-purge means
+// no purge is ever *detected* on the boot path that recreates the domain
+// (zedmanager sees only /run, which the reboot emptied); only an
+// unconditional sweep catches that case. A confirm-absence failure here
+// fails Start outright - the caller must never proceed to create the new
+// generation while an old one may still exist.
+func (ctx kubevirtContext) sweepStaleGenerations(
+	appUUID uuid.UUID, desiredName string, desiredCounter uint32, mtype MetaDataType) error {
+	kubeconfig := ctx.kubeConfig
+
+	if mtype == IsMetaReplicaPod {
+		clientset, err := newK8sClient(kubeconfig)
+		if err != nil {
+			return err
+		}
+		list, err := clientset.AppsV1().ReplicaSets(kubeapi.EVEKubeNameSpace).
+			List(context.Background(), metav1.ListOptions{})
+		if err != nil {
+			return err
+		}
+		for _, name := range stalePodReplicaSetNames(list.Items, appUUID, desiredName, desiredCounter) {
+			logrus.Infof("sweepStaleGenerations: tearing down stale ReplicaSet %s before creating %s",
+				name, desiredName)
+			if err := StopReplicaPodContainer(kubeconfig, name); err != nil {
+				return fmt.Errorf("sweepStaleGenerations: failed to delete %s: %w", name, err)
+			}
+			if err := confirmPodReplicaSetGone(kubeconfig, name); err != nil {
+				return fmt.Errorf("sweepStaleGenerations: %w", err)
+			}
+		}
+		return nil
+	}
+
+	virtClient, err := newKubevirtClient(kubeconfig)
+	if err != nil {
+		return err
+	}
+	list, err := virtClient.ReplicaSet(kubeapi.EVEKubeNameSpace).List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	domainNameByName := make(map[string]string, len(list.Items))
+	for _, vmirs := range list.Items {
+		if vmirs.Spec.Selector != nil {
+			domainNameByName[vmirs.GetName()] = vmirs.Spec.Selector.MatchLabels[eveLabelKey]
+		}
+	}
+	for _, name := range staleVMIRSNames(list.Items, appUUID, desiredName, desiredCounter) {
+		logrus.Infof("sweepStaleGenerations: tearing down stale VMIRS %s before creating %s",
+			name, desiredName)
+		if err := StopReplicaVMI(kubeconfig, name); err != nil {
+			return fmt.Errorf("sweepStaleGenerations: failed to delete %s: %w", name, err)
+		}
+		if err := confirmVMIRSGone(kubeconfig, name, domainNameByName[name]); err != nil {
+			return fmt.Errorf("sweepStaleGenerations: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -777,6 +1011,18 @@ func (ctx kubevirtContext) Start(domainName string) error {
 	}
 	logrus.Infof("Starting Kubevirt domain %s, devicename nodename %d nodeName:%s vmis:%v", domainName, len(ctx.nodeNameMap), nodeName, vmis)
 
+	appUUID, err := appUUIDFromDomainName(domainName)
+	if err != nil {
+		return logError("Start domain %s: could not parse app UUID: %v", domainName, err)
+	}
+	desiredCounter, ok := trailingCounter(vmis.name)
+	if !ok {
+		return logError("Start domain %s: could not parse purge counter from %s", domainName, vmis.name)
+	}
+	if err := ctx.sweepStaleGenerations(appUUID, vmis.name, desiredCounter, vmis.mtype); err != nil {
+		return logError("Start domain %s: stale-generation sweep failed: %v", domainName, err)
+	}
+
 	// Start the Pod ReplicaSet
 	if vmis.mtype == IsMetaReplicaPod {
 		err := StartReplicaPodContiner(ctx, vmis)
@@ -787,7 +1033,7 @@ func (ctx kubevirtContext) Start(domainName string) error {
 
 	// Start the VMI ReplicaSet
 	repvmi := vmis.repVMI
-	virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(kubeconfig)
+	virtClient, err := newKubevirtClient(kubeconfig)
 	if err != nil {
 		logrus.Errorf("couldn't get the kubernetes client API config: %v", err)
 		return err
@@ -795,8 +1041,9 @@ func (ctx kubevirtContext) Start(domainName string) error {
 
 	// Create the VMI ReplicaSet, retrying on transient kube API server errors.
 	const maxRetries = 5
+	var created *v1.VirtualMachineInstanceReplicaSet
 	for retries := maxRetries; ; retries-- {
-		_, err = virtClient.ReplicaSet(kubeapi.EVEKubeNameSpace).Create(context.Background(), repvmi, metav1.CreateOptions{})
+		created, err = virtClient.ReplicaSet(kubeapi.EVEKubeNameSpace).Create(context.Background(), repvmi, metav1.CreateOptions{})
 		if err == nil {
 			break
 		}
@@ -804,6 +1051,10 @@ func (ctx kubevirtContext) Start(domainName string) error {
 			// VMI could have been already started, for example failover from
 			// other node. An interrupted DetachUtilVmirsReplicaReset can leave
 			// the existing object scaled to 0 replicas; ensure it is not.
+			//
+			// The response on this branch carries no object, so the placeholder
+			// id from Setup stands until the next Info call re-derives it from a
+			// fresh Get.
 			logrus.Warnf("VMI replicaset %v already exists", repvmi)
 			if ensureErr := ensureVmirsReplicas(virtClient, vmis.name); ensureErr != nil {
 				return logError("Start domain %s: failed to ensure vmirs %s replicas: %v", domainName, vmis.name, ensureErr)
@@ -817,15 +1068,34 @@ func (ctx kubevirtContext) Start(domainName string) error {
 		logrus.Errorf("Start VMI replicaset failed, retrying (%d left): %v", retries-1, err)
 		time.Sleep(10 * time.Second)
 	}
+	if created != nil {
+		newID := workloadID(string(created.UID), vmis.name)
+		if newID != vmis.domainID {
+			logrus.Infof("Start(%s): domainID changed from %d to %d", domainName, vmis.domainID, newID)
+			vmis.domainID = newID
+		}
+	}
 	logrus.Infof("Started Kubevirt domain replicaset %s, VMI replicaset %s", domainName, vmis.name)
 
 	// Start() returns as soon as VMIRS is created; cluster drives VMI scheduling.
 	return nil
 }
 
-// Create is no-op for kubevirt, just return the domainID we already have.
+// Create is a no-op for kubevirt: it just returns an id for the domain that
+// Setup already built (and Start is about to create the VMIRS/pod for).
+//
+// This runs before the object exists in the cluster - Start creates it
+// afterwards - so if vmiList already has an entry (the normal case; Setup
+// just populated it) its cached id is returned unchanged. If not, config
+// carries everything needed to derive the exact same kubeName-based
+// fallback id Setup would have used, so this never has to dereference a
+// missing map entry.
 func (ctx kubevirtContext) Create(domainName string, cfgFilename string, config *types.DomainConfig) (int, error) {
-	return ctx.vmiList[domainName].domainID, nil
+	if vmis, ok := ctx.vmiList[domainName]; ok {
+		return vmis.domainID, nil
+	}
+	kubeName := base.GetAppKubeNameWithPurge(config.DisplayName, config.UUIDandVersion.UUID, config.PurgeCounter)
+	return workloadID("", kubeName), nil
 }
 
 // podListToSchedulingState derives the node-placement decision from a
@@ -833,13 +1103,24 @@ func (ctx kubevirtContext) Create(domainName string, cfgFilename string, config 
 // signal for node assignment; Status.Phase is deliberately not used because a
 // pod in Init:0/1 carries Phase="Pending" even after it has been bound to a
 // node by the scheduler.
-func podListToSchedulingState(pods []k8sv1.Pod, nodeName string) (onMe bool, anyNode bool, err error) {
+//
+// scheduledOnNone means "no non-terminating replica is bound to any node" -
+// i.e. the first non-terminating pod's own Spec.NodeName is empty. This is
+// the same definition the VMI-list path (replicaVmiScheduledOnMe) uses for
+// its own scheduledOnNone; a bound-but-elsewhere pod (Spec.NodeName set to
+// something other than nodeName) is neither onMe nor scheduledOnNone.
+func podListToSchedulingState(pods []k8sv1.Pod, nodeName string) (onMe bool, scheduledOnNone bool, err error) {
 	for _, p := range pods {
 		if p.ObjectMeta.DeletionTimestamp != nil {
 			continue
 		}
-		return p.Spec.NodeName == nodeName, true, nil
+		onMe = p.Spec.NodeName == nodeName
+		scheduledOnNone = p.Spec.NodeName == ""
+		logrus.Infof("podListToSchedulingState: pod %s Spec.NodeName:%q onMe:%t scheduledOnNone:%t",
+			p.ObjectMeta.Name, p.Spec.NodeName, onMe, scheduledOnNone)
+		return onMe, scheduledOnNone, nil
 	}
+	logrus.Infof("podListToSchedulingState: no non-terminating pod among %d", len(pods))
 	return false, false, fmt.Errorf("unhandled scheduling state")
 }
 
@@ -850,7 +1131,7 @@ func (ctx kubevirtContext) replicaVmiScheduledOnMe(vmirsName string) (scheduledO
 		return false, false, err
 	}
 
-	virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(ctx.kubeConfig)
+	virtClient, err := newKubevirtClient(ctx.kubeConfig)
 	if err != nil {
 		logrus.Errorf("couldn't get the kubernetes client API config: %v", err)
 		return false, false, err
@@ -893,16 +1174,23 @@ func (ctx kubevirtContext) vmiScheduledOnMeFromVmirs(virtClient kubecli.Kubevirt
 			}
 			if vmi.Status.NodeName == "" {
 				// Not scheduled yet, move on
+				logrus.Infof("vmiScheduledOnMeFromVmirs(%s): vmi %s not yet scheduled anywhere",
+					vmirs.Name, vmi.ObjectMeta.Name)
 				continue
 			}
-			return (vmi.Status.NodeName == nodeName), false, nil
+			onMe := vmi.Status.NodeName == nodeName
+			logrus.Infof("vmiScheduledOnMeFromVmirs(%s): vmi %s scheduled on %q onMe:%t",
+				vmirs.Name, vmi.ObjectMeta.Name, vmi.Status.NodeName, onMe)
+			return onMe, false, nil
 		}
 		// Intentional fallback to looking at a virt-launcher pod
 		// One or both VMI objects may be either terminating or not scheduled to any node.
+		logrus.Infof("vmiScheduledOnMeFromVmirs(%s): no attributable vmi among %d, "+
+			"falling back to pod list", vmirs.Name, len(vmis.Items))
 	}
 
 	// No VMI, look for a Virt-launcher pod instead, it will start earlier
-	podclientset, err := kubernetes.NewForConfig(ctx.kubeConfig)
+	podclientset, err := newK8sClient(ctx.kubeConfig)
 	if err != nil {
 		return false, false, fmt.Errorf("no kube config")
 	}
@@ -910,6 +1198,7 @@ func (ctx kubevirtContext) vmiScheduledOnMeFromVmirs(virtClient kubecli.Kubevirt
 		LabelSelector: "kubevirt.io=virt-launcher," + appDomainNameSelector,
 	})
 	if len(vlPods.Items) == 0 {
+		logrus.Infof("vmiScheduledOnMeFromVmirs(%s): no virt-launcher pod found", vmirs.Name)
 		return false, false, nil
 	}
 	return podListToSchedulingState(vlPods.Items, nodeName)
@@ -927,7 +1216,7 @@ func (ctx kubevirtContext) replicaPodScheduledOnMe(rsName string) (onMe bool, sc
 		return false, false, fmt.Errorf("Failed to get nodeName")
 	}
 
-	podclientset, err := kubernetes.NewForConfig(ctx.kubeConfig)
+	podclientset, err := newK8sClient(ctx.kubeConfig)
 	if err != nil {
 		return false, false, fmt.Errorf("no kube config")
 	}
@@ -1102,7 +1391,7 @@ func (ctx kubevirtContext) Delete(domainName string) (result error) {
 
 // StopReplicaVMI stops the VMI ReplicaSet
 func StopReplicaVMI(kubeconfig *rest.Config, repVmiName string) error {
-	virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(kubeconfig)
+	virtClient, err := newKubevirtClient(kubeconfig)
 	if err != nil {
 		logrus.Errorf("couldn't get the kubernetes client API config: %v", err)
 		return err
@@ -1206,29 +1495,83 @@ func ensureVmirsReplicas(virtClient kubecli.KubevirtClient, vmiRsName string) er
 		ensureVmirsReplicaRetries, vmiRsName)
 }
 
-func (ctx kubevirtContext) Info(domainName string) (int, types.SwState, error) {
+// replicaSetUID confirms existence of the app's VMIRS (or, for a NOHYPER
+// app, its plain ReplicaSet) directly via Get, rather than inferring
+// existence from replica placement, and returns its metadata.uid.
+//
+// err is the raw API error. Callers must check errors.IsNotFound(err) to
+// distinguish "confirmed absent" from "could not confirm" (e.g. the API is
+// unreachable) - only the former may ever produce the zero id.
+func (t kubevirtTask) replicaSetUID(kubeName string) (uid string, err error) {
+	if err := getConfig(&t.kubevirtContext); err != nil {
+		return "", err
+	}
+	if t.metaType() == IsMetaReplicaPod {
+		clientset, err := newK8sClient(t.kubeConfig)
+		if err != nil {
+			return "", err
+		}
+		rs, err := clientset.AppsV1().ReplicaSets(kubeapi.EVEKubeNameSpace).
+			Get(context.Background(), kubeName, metav1.GetOptions{})
+		if err != nil {
+			return "", err
+		}
+		return string(rs.UID), nil
+	}
+	virtClient, err := newKubevirtClient(t.kubeConfig)
+	if err != nil {
+		return "", err
+	}
+	vmirs, err := virtClient.ReplicaSet(kubeapi.EVEKubeNameSpace).
+		Get(context.Background(), kubeName, metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+	return string(vmirs.UID), nil
+}
 
+// Info's contract: DomainId is zero if and only if the VMIRS (or plain
+// ReplicaSet, for a NOHYPER app) is confirmed absent (Get -> NotFound).
+// Every other outcome - found, found-but-unattributed, found-with-an-
+// unmapped-phase, or the existence check itself failing - returns a
+// non-zero id, because a zero id is what tells domainmgr's doInactivate/
+// doCleanup that a teardown already happened.
+func (t kubevirtTask) Info(domainName string) (int, types.SwState, error) {
 	logrus.Debugf("Info called for Domain: %s", domainName)
-	nodeName, ok := ctx.nodeNameMap["nodename"]
+	nodeName, ok := t.nodeNameMap["nodename"]
 	if !ok {
 		return 0, types.BROKEN, logError("Failed to get nodeName")
 	}
 
-	var res string
-	var err error
-	err = getConfig(&ctx)
+	kubeName := t.kubeName()
+
+	uid, err := t.replicaSetUID(kubeName)
 	if err != nil {
-		return 0, types.BROKEN, err
-	}
-	vmis, ok := ctx.vmiList[domainName]
-	if !ok {
-		if stale, oldKey := ctx.lookupVMIByUUIDPrefix(domainName); stale != nil {
-			logrus.Warnf("Info: domainName %s not in vmiList; using stale entry under %s",
-				domainName, oldKey)
-			vmis = stale
-		} else {
-			return 0, types.HALTED, logError("info domain %s failed to get vmlist", domainName)
+		if errors.IsNotFound(err) {
+			logrus.Infof("Info(%s): %s confirmed absent", domainName, kubeName)
+			return 0, types.HALTED, nil
 		}
+		// Existence could not be confirmed one way or the other (API
+		// unreachable, or some other error): never produce the "confirmed
+		// absent" token while the answer is unknown, so keep whatever id
+		// the caller already had.
+		logrus.Infof("Info(%s): existence check for %s failed: %v", domainName, kubeName, err)
+		return t.status.DomainId, types.UNKNOWN, err
+	}
+	id := workloadID(uid, kubeName)
+
+	// Note: unlike Stop/Delete/Cleanup, a miss here does not fall back to
+	// lookupVMIByUUIDPrefix's stale entry. That fallback's cached name can
+	// belong to an older generation than the kubeName whose existence was
+	// just confirmed above, which would make the phase-reading calls below
+	// silently query the wrong object. Since existence no longer depends on
+	// vmiList at all, a miss here can safely just hold (SCHEDULING) rather
+	// than risk that mismatch.
+	vmis, ok := t.vmiList[domainName]
+	if !ok {
+		logrus.Infof("Info(%s): %s exists but there is no local vmiList entry for it",
+			domainName, kubeName)
+		return id, types.SCHEDULING, nil
 	}
 
 	// Check for a stranded VMIRS before the scheduledOnMe/!onMe short-circuit
@@ -1236,69 +1579,110 @@ func (ctx kubevirtContext) Info(domainName string) (int, types.SwState, error) {
 	// onMe would be false and this domain would otherwise be reported as
 	// UNKNOWN forever instead of recovering. The VMIRS fetched here is reused
 	// for the scheduling check below instead of fetching it a second time.
+	//
+	// Note the object queried is kubeName, derived from DomainStatus, not
+	// vmis.name from the cache: vmiList can still name an older generation
+	// after a purge, and checking that one's replica count would report on the
+	// wrong object.
 	var vmirs *v1.VirtualMachineInstanceReplicaSet
 	var virtClient kubecli.KubevirtClient
 	if vmis.mtype == IsMetaReplicaVMI {
 		var verr error
-		virtClient, verr = kubecli.GetKubevirtClientFromRESTConfig(ctx.kubeConfig)
+		virtClient, verr = newKubevirtClient(t.kubeConfig)
 		if verr != nil {
 			return 0, types.BROKEN, logError("couldn't get the kubernetes client API config: %v", verr)
 		}
 		var rerr error
-		vmirs, rerr = getVmirs(virtClient, vmis.name)
+		vmirs, rerr = getVmirs(virtClient, kubeName)
 		if rerr != nil {
 			if isK3sUnreachable(rerr) {
-				return 0, types.UNKNOWN, nil
+				// Unknown, not absent: hold the caller's id rather than
+				// emitting the "confirmed gone" token.
+				return t.status.DomainId, types.UNKNOWN, nil
 			}
 			// Non-unreachable Get failure: fall through to scheduledOnMe's own
 			// independent fetch attempt below, same as before this reuse was
 			// added -- vmirs stays nil so the generic dispatch runs.
 			vmirs = nil
 		} else if vmirsStranded(vmirsDesiredReplicas(vmirs)) {
-			return 0, types.HALTED, logError("domain %s vmirs %s scaled to 0 replicas", domainName, vmis.name)
+			// The object exists, so the id stays non-zero (zero means
+			// confirmed absent, see types.DomainStatus.DomainId); HALTED is
+			// what tells domainmgr the workload is down and to recreate it,
+			// which Start's ensureVmirsReplicas then repairs.
+			return id, types.HALTED, logError("domain %s vmirs %s scaled to 0 replicas",
+				domainName, kubeName)
 		}
 	}
 
-	var onMe bool
+	var onMe, scheduledOnNone bool
 	if vmirs != nil {
-		onMe, _, err = ctx.vmiScheduledOnMeFromVmirs(virtClient, vmirs)
+		onMe, scheduledOnNone, err = t.vmiScheduledOnMeFromVmirs(virtClient, vmirs)
 	} else {
-		onMe, _, err = ctx.scheduledOnMe(vmis.mtype, vmis.name)
+		onMe, scheduledOnNone, err = t.scheduledOnMe(vmis.mtype, kubeName)
 	}
 	if err != nil {
 		if isK3sUnreachable(err) {
-			return 0, types.UNKNOWN, nil
+			logrus.Infof("Info(%s): k3s unreachable while determining scheduled node: %v",
+				domainName, err)
+			return t.status.DomainId, types.UNKNOWN, err
 		}
-		return 0, types.BROKEN, logError("Failed to determine scheduled node: %s", err)
+		logrus.Infof("Info(%s): failed to determine scheduled node for %s: %v",
+			domainName, kubeName, err)
+		return id, types.SCHEDULING, err
 	}
 	if !onMe {
-		return 0, types.UNKNOWN, nil
+		if scheduledOnNone {
+			// Exists, but no non-terminating replica is bound to any node
+			// yet (mid-restart, mid-failover) - this is the case that used
+			// to fall through to a false zero via !onMe.
+			logrus.Infof("Info(%s): %s exists but is not yet scheduled anywhere", domainName, kubeName)
+			return id, types.SCHEDULING, nil
+		}
+		// Bound to a different node: healthy elsewhere, just not here.
+		// Returning SCHEDULING here would send verifyStatus into its
+		// rescheduling arm and make an app that is healthy on another node
+		// report BOOTING forever, so this stays UNKNOWN - only the id
+		// changes from 0 to a real, non-zero value.
+		logrus.Infof("Info(%s): %s scheduled on a different node", domainName, kubeName)
+		return id, types.UNKNOWN, nil
 	}
 
+	var res string
 	if vmis.mtype == IsMetaReplicaPod {
-		res, err = InfoReplicaSetContainer(ctx, vmis)
+		res, err = InfoReplicaSetContainer(t.kubevirtContext, vmis)
 	} else {
 		res, err = getVMIStatus(vmis, nodeName)
 	}
 	if err != nil {
 		if isK3sUnreachable(err) {
-			return 0, types.UNKNOWN, nil
+			logrus.Infof("Info(%s): k3s unreachable while getting status: %v", domainName, err)
+			return t.status.DomainId, types.UNKNOWN, err
 		}
-		return 0, types.BROKEN, logError("domain %s failed to get info: %v", domainName, err)
+		logrus.Infof("Info(%s): failed to get status for %s: %v", domainName, kubeName, err)
+		return id, types.SCHEDULING, err
 	}
 
-	if effectiveDomainState, matched := stateMap[res]; !matched {
-		// Received undefined state in our map, return UNKNOWN instead
-		retStatus, err := checkAndReturnStatus(vmis, true)
+	effectiveDomainState, matched := stateMap[res]
+	if !matched {
+		// Received an undefined phase string. Object presence is already
+		// confirmed, so the default is SCHEDULING (held), not the old
+		// HALTING-by-default (which zeroed DomainId via domainmgr's own
+		// HALTED/HALTING branch and skipped a teardown that had not
+		// actually happened). checkAndReturnStatus's own 30+ minute
+		// escalation to "Halting" for a workload stuck unmapped that long
+		// is unrelated to this and is preserved unchanged.
+		retStatus, statusErr := checkAndReturnStatus(vmis, true)
 		logrus.Infof("domain %s reported to be in unexpected state %s", domainName, res)
-		effectiveDomainState = types.HALTING
-		if retStatus == "Unknown" {
-			effectiveDomainState = types.UNKNOWN
+		effectiveDomainState = types.SCHEDULING
+		if retStatus != "Unknown" {
+			effectiveDomainState = types.HALTING
 		}
-		return vmis.domainID, effectiveDomainState, err
-	} else {
-		return vmis.domainID, effectiveDomainState, err
+		logrus.Infof("Info(%s): unmapped state %q -> %s, id:%d", domainName, res,
+			effectiveDomainState.String(), id)
+		return id, effectiveDomainState, statusErr
 	}
+	logrus.Infof("Info(%s): state %q -> %s, id:%d", domainName, res, effectiveDomainState.String(), id)
+	return id, effectiveDomainState, nil
 }
 
 func (ctx kubevirtContext) Cleanup(domainName string) error {
@@ -1358,12 +1742,12 @@ func convertToKubernetesFormat(b int) string {
 func getVMIStatus(vmis *vmiMetaData, nodeName string) (string, error) {
 
 	repVmiName := vmis.name
-	kubeconfig, err := kubeapi.GetKubeConfig()
+	kubeconfig, err := getKubeConfig()
 	if err != nil {
 		return "", logError("couldn't get the Kube Config: %v", err)
 	}
 
-	virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(kubeconfig)
+	virtClient, err := newKubevirtClient(kubeconfig)
 
 	if err != nil {
 		return "", logError("couldn't get the Kube client Config: %v", err)
@@ -1388,12 +1772,21 @@ func getVMIStatus(vmis *vmiMetaData, nodeName string) (string, error) {
 		return retStatus, err2
 	}
 
-	// Use the first VMI in the list
+	// Use the first non-terminating VMI in the list. Skipping terminating
+	// copies matters when a replica is being replaced on the same node: the
+	// old (terminating) and new VMI briefly coexist with the same
+	// GenerateName and NodeName, and picking whichever the API happened to
+	// list first - rather than the live one - is what made a confirm-absence
+	// wait latch onto the object that was already on its way out instead of
+	// the one it actually needed to watch.
 	var nonLocalStatus string
 	var targetVMI *v1.VirtualMachineInstance
 	for _, vmi := range vmiList.Items {
 		logrus.Debugf("getVMIStatus: repVmi:%s nodeName:%s vmiList vmi.ObjectMeta.Name:%s vmi.Status.NodeName:%s vmi.ObjectMeta.DeletionTimestamp:%v vmi.Status.Phase:%s",
 			repVmiName, nodeName, vmi.ObjectMeta.Name, vmi.Status.NodeName, vmi.ObjectMeta.DeletionTimestamp, vmi.Status.Phase)
+		if vmi.ObjectMeta.DeletionTimestamp != nil {
+			continue
+		}
 		if vmi.Status.NodeName == nodeName {
 			if vmi.GenerateName == repVmiName {
 				targetVMI = &vmi
@@ -1761,6 +2154,12 @@ func (ctx kubevirtContext) CreateReplicaPodConfig(domainName string, config type
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      kubeName,
 			Namespace: kubeapi.EVEKubeNameSpace,
+			// Mirrors the VMIRS path's own top-level label (CreateReplicaVMIConfig):
+			// lets a stale-generation sweep find every ReplicaSet belonging to this
+			// app, across purge generations, by UUID prefix alone.
+			Labels: map[string]string{
+				eveLabelKey: domainName,
+			},
 		},
 		Spec: appsv1.ReplicaSetSpec{
 			Replicas: repNum,
@@ -1858,10 +2257,11 @@ func (ctx kubevirtContext) CreateReplicaPodConfig(domainName string, config type
 		}
 	}
 	meta := vmiMetaData{
-		repPod:      replicaSet,
-		mtype:       IsMetaReplicaPod,
-		name:        kubeName,
-		domainID:    int(rand.Uint32()),
+		repPod: replicaSet,
+		mtype:  IsMetaReplicaPod,
+		name:   kubeName,
+		// See the identical comment in CreateReplicaVMIConfig.
+		domainID:    workloadID("", kubeName),
 		memOverhead: uint64(overhead),
 	}
 	ctx.evictStaleVMIByUUIDPrefix(domainName)
@@ -1939,7 +2339,7 @@ func StartReplicaPodContiner(ctx kubevirtContext, vmis *vmiMetaData) error {
 	if err != nil {
 		return err
 	}
-	clientset, err := kubernetes.NewForConfig(ctx.kubeConfig)
+	clientset, err := newK8sClient(ctx.kubeConfig)
 	if err != nil {
 		logrus.Errorf("StartReplicaPodContiner: can't get clientset %v", err)
 		return err
@@ -1951,8 +2351,16 @@ func StartReplicaPodContiner(ctx kubevirtContext, vmis *vmiMetaData) error {
 		if !errors.IsAlreadyExists(err) {
 			logrus.Errorf("StartReplicaPodContiner: replicaset create failed: %v", err)
 			return err
-		} else {
-			opStr = "already exists"
+		}
+		// The response on this branch carries no object, so the placeholder id
+		// from Setup stands until the next Info call re-derives it from a fresh Get.
+		opStr = "already exists"
+	} else if result != nil {
+		newID := workloadID(string(result.UID), vmis.name)
+		if newID != vmis.domainID {
+			logrus.Infof("StartReplicaPodContiner(%s): domainID changed from %d to %d",
+				rep.ObjectMeta.Name, vmis.domainID, newID)
+			vmis.domainID = newID
 		}
 	}
 
@@ -2004,7 +2412,7 @@ func InfoReplicaSetContainer(ctx kubevirtContext, vmis *vmiMetaData) (string, er
 	if err != nil {
 		return "", err
 	}
-	podclientset, err := kubernetes.NewForConfig(ctx.kubeConfig)
+	podclientset, err := newK8sClient(ctx.kubeConfig)
 	if err != nil {
 		return "", logError("InfoReplicaSetContainer: couldn't get the pod Config: %v", err)
 	}
@@ -2056,7 +2464,7 @@ func checkReplicaPodMetrics(ctx kubevirtContext, res map[string]types.DomainMetr
 		return
 	}
 	kubeconfig := ctx.kubeConfig
-	podclientset, err := kubernetes.NewForConfig(kubeconfig)
+	podclientset, err := newK8sClient(kubeconfig)
 	if err != nil {
 		logrus.Errorf("checkReplicaPodMetrics: can not get pod client %v", err)
 		return
@@ -2174,7 +2582,7 @@ func getPodMetrics(clientset *metricsv.Clientset, pod k8sv1.Pod, vmis *vmiMetaDa
 // StopReplicaPodContainer stops the ReplicaSet pod
 func StopReplicaPodContainer(kubeconfig *rest.Config, repName string) error {
 
-	clientset, err := kubernetes.NewForConfig(kubeconfig)
+	clientset, err := newK8sClient(kubeconfig)
 	if err != nil {
 		logrus.Errorf("StopReplicaPodContainer: can't get clientset %v", err)
 		return err
@@ -2206,7 +2614,7 @@ func InfoPodContainer(ctx kubevirtContext, podName string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	podclientset, err := kubernetes.NewForConfig(ctx.kubeConfig)
+	podclientset, err := newK8sClient(ctx.kubeConfig)
 	if err != nil {
 		return "", logError("InfoPodContainer: couldn't get the pod Config: %v", err)
 	}
@@ -2259,7 +2667,7 @@ func calculateMemoryUsagePercent(usedMemory, allocatedMemory int64) float64 {
 
 func getConfig(ctx *kubevirtContext) error {
 	if ctx.kubeConfig == nil {
-		kubeconfig, err := kubeapi.GetKubeConfig()
+		kubeconfig, err := getKubeConfig()
 		if err != nil {
 			logrus.Error("getConfig: can not get kubeconfig")
 			return err
