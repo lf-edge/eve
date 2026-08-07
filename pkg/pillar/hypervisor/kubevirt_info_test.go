@@ -13,8 +13,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/rest"
+	v1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
 )
 
@@ -92,6 +94,49 @@ func TestInfoContract(t *testing.T) {
 		assert.Equal(t, lastKnownID, id, "must preserve the caller's last known id, not fabricate a new one")
 		assert.NotZero(t, id)
 	})
+}
+
+// TestInfoVmirsDeletedMidCall covers a VMIRS that is present for Info's
+// existence check and deleted before the Get that follows it. Absence
+// observed at the second Get must produce the same answer as absence
+// observed at the first - HALTED, zero id, no error - rather than the
+// SCHEDULING-with-an-error that a NotFound would otherwise fall through to.
+// That error matters beyond the state it carries: waitForDomainGone treats
+// any error from Info as "the domain is gone" and stops waiting.
+func TestInfoVmirsDeletedMidCall(t *testing.T) {
+	const lastKnownID = 918273645
+	task, status := newInfoTestTask(t, lastKnownID)
+	status.DomainName = "11111111-1111-1111-1111-111111111111.1.1"
+	task.vmiList = map[string]*vmiMetaData{
+		status.DomainName: {mtype: IsMetaReplicaVMI, name: task.kubeName()},
+	}
+
+	ctrl := gomock.NewController(t)
+	mockClient := kubecli.NewMockKubevirtClient(ctrl)
+	mockRS := kubecli.NewMockReplicaSetInterface(ctrl)
+	mockClient.EXPECT().ReplicaSet(gomock.Any()).Return(mockRS).AnyTimes()
+
+	notFound := apierrors.NewNotFound(
+		schema.GroupResource{Group: "kubevirt.io", Resource: "virtualmachineinstancereplicasets"},
+		task.kubeName())
+	gomock.InOrder(
+		// The existence check finds it...
+		mockRS.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(
+			&v1.VirtualMachineInstanceReplicaSet{
+				ObjectMeta: metav1.ObjectMeta{Name: task.kubeName(), UID: "some-uid"},
+			}, nil),
+		// ...and it is gone from here on. Left unbounded rather than pinned
+		// to a single call so this asserts the answer Info returns, not how
+		// many times it asks.
+		mockRS.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil, notFound).AnyTimes(),
+	)
+	swapKubevirtClient(t, mockClient)
+
+	id, state, err := task.Info(status.DomainName)
+	assert.NoError(t, err, "a confirmed-absent domain is not an error")
+	assert.Equal(t, types.HALTED, state)
+	assert.Zero(t, id)
 }
 
 // TestInfoUnreachableKeepsLastID is a focused restatement of the second
