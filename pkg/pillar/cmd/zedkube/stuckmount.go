@@ -8,6 +8,8 @@ package zedkube
 import (
 	"context"
 	"fmt"
+	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -43,6 +45,10 @@ const (
 	stuckMountRecoveryMarker = "MOUNT-WEDGE-RECOVERY"
 	// procRootDir is where the host PID namespace's process list is mounted.
 	procRootDir = "/proc"
+	// k3sSupervisorTimeout bounds both the connect and the reply on the
+	// supervisor socket. A restart request is answered as soon as it is accepted,
+	// not once k3s is back, so this only has to cover the handshake.
+	k3sSupervisorTimeout = 10 * time.Second
 )
 
 var (
@@ -57,6 +63,10 @@ var (
 	// kube container. Nothing in this tree reads it — here the kube-init daemon
 	// supervises k3s — so it matters only where the SIGTERM path below is live.
 	stuckMountK3sStartFlag = "/run/kube/k3s-start"
+	// k3sSupervisorSocket is the kube-init daemon's control socket, which accepts
+	// a "restart" verb. Present only on images where that daemon replaced
+	// cluster-init.sh; its absence is what selects the SIGTERM path below.
+	k3sSupervisorSocket = "/run/k3s-supervisor.sock"
 	// The cluster and host lookups the wedge signature and the recovery action
 	// depend on, indirected so tests can drive both without a live cluster and
 	// without signaling a real k3s. Overridden only in tests.
@@ -209,13 +219,12 @@ func podHasInitContainerError(p corev1.Pod) bool {
 }
 
 // recoverKubeletMountWedge is the recovery action for the mount wedge. The only
-// known remedy is a fresh kubelet, which we get by terminating k3s and letting
-// cluster-init.sh's supervisor relaunch it. Because pillar runs in the host PID
-// namespace and shares the /run bind with the kube container, zedkube can both
-// reset the supervisor's restart backoff (touch K3S_MANUAL_START_FLAG) and send
-// SIGTERM to the k3s server process directly. Every attempt logs a distinctive
-// marker so a restart is easy to spot in the device logs. While stuckMountDryRun
-// is true it takes NO action and only logs.
+// known remedy is a fresh kubelet, which means restarting k3s. Every attempt logs
+// a distinctive marker so a restart is easy to spot in the device logs. While
+// stuckMountDryRun is true it takes NO action and only logs.
+//
+// Which restart mechanism is available depends on what supervises k3s on this
+// image, so it is chosen at run time by restartK3s.
 func (z *zedkube) recoverKubeletMountWedge(wedged []string) {
 	detail := strings.Join(wedged, "; ")
 	if stuckMountDryRun {
@@ -227,8 +236,74 @@ func (z *zedkube) recoverKubeletMountWedge(wedged []string) {
 	log.Warnf("%s: restarting kubelet/k3s to clear the volume-mount wedge (attempt %d/%d): %s",
 		stuckMountRecoveryMarker, z.stuckMountRecoverCount, stuckMountMaxRecover, detail)
 
-	// Reset the supervisor's exponential restart backoff so k3s is relaunched
-	// promptly rather than after a multi-minute wait.
+	how, err := restartK3s()
+	if err != nil {
+		log.Errorf("%s: attempt %d/%d FAILED to restart k3s via %s: %v; wedge: %s",
+			stuckMountRecoveryMarker, z.stuckMountRecoverCount, stuckMountMaxRecover,
+			how, err, detail)
+		return
+	}
+	log.Warnf("%s: requested a k3s restart via %s; attempt %d/%d, wedge: %s",
+		stuckMountRecoveryMarker, how, z.stuckMountRecoverCount, stuckMountMaxRecover, detail)
+}
+
+// restartK3s asks whatever supervises k3s on this image to restart it, and
+// returns which mechanism it used.
+//
+// The kube-init daemon accepts a "restart" on its control socket and runs its own
+// pre-restart hooks, so it is preferred whenever that socket is present. Images
+// built from the stable branches, where the cluster-init.sh shell supervisor runs
+// k3s, have no socket; there the only lever is to terminate the process and let
+// that supervisor relaunch it. Detecting per attempt rather than once at start-up
+// keeps a single pillar binary correct on both, including across an upgrade that
+// swaps the supervisor underneath it.
+func restartK3s() (string, error) {
+	if _, err := os.Stat(k3sSupervisorSocket); err == nil {
+		return "supervisor socket", restartK3sViaSupervisor(k3sSupervisorSocket)
+	}
+	return "SIGTERM", restartK3sViaSignal()
+}
+
+// restartK3sViaSupervisor speaks kube-init's control-socket protocol: write the
+// verb, then read the reply until EOF. The daemon answers a single line, and
+// prefixes it with ERR when the request failed.
+func restartK3sViaSupervisor(socketPath string) error {
+	conn, err := net.DialTimeout("unix", socketPath, k3sSupervisorTimeout)
+	if err != nil {
+		return fmt.Errorf("dial %s: %w", socketPath, err)
+	}
+	defer conn.Close()
+	if err := conn.SetDeadline(time.Now().Add(k3sSupervisorTimeout)); err != nil {
+		return fmt.Errorf("set deadline on %s: %w", socketPath, err)
+	}
+	if _, err := fmt.Fprintln(conn, "restart"); err != nil {
+		return fmt.Errorf("write %s: %w", socketPath, err)
+	}
+	reply, err := io.ReadAll(conn)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", socketPath, err)
+	}
+	last := ""
+	for _, line := range strings.Split(strings.TrimRight(string(reply), "\n"), "\n") {
+		if line != "" {
+			last = line
+		}
+	}
+	if last == "" {
+		return fmt.Errorf("no reply from %s", socketPath)
+	}
+	if strings.HasPrefix(last, "ERR") {
+		return fmt.Errorf("supervisor refused: %s", last)
+	}
+	log.Noticef("%s: supervisor replied %q", stuckMountRecoveryMarker, last)
+	return nil
+}
+
+// restartK3sViaSignal is the cluster-init.sh path: reset the supervisor's
+// exponential restart backoff so k3s comes back promptly rather than after a
+// multi-minute wait, then SIGTERM it. pillar runs in the host PID namespace and
+// shares the /run bind with the kube container, so it can do both.
+func restartK3sViaSignal() error {
 	if err := os.MkdirAll(filepath.Dir(stuckMountK3sStartFlag), 0755); err != nil {
 		log.Errorf("%s: cannot create %s dir: %v", stuckMountRecoveryMarker, stuckMountK3sStartFlag, err)
 	} else if f, err := os.Create(stuckMountK3sStartFlag); err != nil {
@@ -239,17 +314,14 @@ func (z *zedkube) recoverKubeletMountWedge(wedged []string) {
 
 	pids, err := signalK3s()
 	if err != nil {
-		log.Errorf("%s: attempt %d/%d FAILED to enumerate k3s: %v; wedge: %s",
-			stuckMountRecoveryMarker, z.stuckMountRecoverCount, stuckMountMaxRecover, err, detail)
-		return
+		return fmt.Errorf("enumerate k3s: %w", err)
 	}
 	if len(pids) == 0 {
-		log.Errorf("%s: attempt %d/%d found no 'k3s server' process to signal; wedge: %s",
-			stuckMountRecoveryMarker, z.stuckMountRecoverCount, stuckMountMaxRecover, detail)
-		return
+		return fmt.Errorf("no 'k3s server' process to signal")
 	}
-	log.Warnf("%s: sent SIGTERM to k3s server pid(s) %v; cluster-init.sh will relaunch. attempt %d/%d, wedge: %s",
-		stuckMountRecoveryMarker, pids, z.stuckMountRecoverCount, stuckMountMaxRecover, detail)
+	log.Noticef("%s: sent SIGTERM to k3s server pid(s) %v; the supervisor relaunches it",
+		stuckMountRecoveryMarker, pids)
+	return nil
 }
 
 // signalK3sServer sends SIGTERM to every running "k3s server" process and
