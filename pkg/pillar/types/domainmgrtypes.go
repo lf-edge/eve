@@ -394,6 +394,19 @@ type DomainStatus struct {
 	PendingModify  bool
 	PendingDelete  bool
 	DomainName     string // Name of Xen domain
+	// DomainId identifies the running domain, with hypervisor-specific meaning:
+	// for xen/kvm it is the underlying qemu process's pid; for kubevirt (HV=k)
+	// it is a value derived from the app's current VMIRS/ReplicaSet identity
+	// (see hypervisor/kubevirt.go's workloadID), since there is no pid.
+	//
+	// The one invariant every hypervisor backend must uphold, and every
+	// consumer relies on: DomainId is zero if and only if the domain is
+	// confirmed not present (no process for xen/kvm; VMIRS/ReplicaSet
+	// confirmed absent for kubevirt). It must never be zero merely because
+	// the answer is unknown or unattributable - doInactivate's teardown
+	// gates and doCleanup's success test both key on zero meaning "already
+	// gone", so a zero returned for any other reason skips a teardown that
+	// never happened and reports it as done.
 	DomainId       int
 	BootTime       time.Time
 	DiskStatusList []DiskStatus
