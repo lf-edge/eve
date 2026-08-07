@@ -62,6 +62,7 @@ func CheckClusterComponents(ctx context.Context) error {
 	if appliedVersionGEQ(appliedVersion, KubeVersion) {
 		log.Printf("update: cluster components at applied=%s, target=%d — no update",
 			appliedVersion, KubeVersion)
+		releaseK3sUpdateStatus()
 		return nil
 	}
 
@@ -90,6 +91,25 @@ func CheckClusterComponents(ctx context.Context) error {
 	}
 	log.Printf("update: all components at version %s", kubeVersionStr)
 	return nil
+}
+
+// releaseK3sUpdateStatus advances a KubeClusterUpdateStatus still
+// parked on the k3s step to completion.
+//
+// zedagent keeps the device in BaseOsUpdating for as long as that
+// status names an unfinished component. A k3s update publishes
+// "k3s completed" and then reboots; on the way back up the component
+// pass has nothing left to do and publishes nothing, so without this
+// the device reports BaseOsUpdating forever. Reaching this point means
+// the components are converged, so the last step is retroactively
+// finished.
+func releaseK3sUpdateStatus() {
+	if !k3sStatusParked() {
+		return
+	}
+	log.Printf("update: status parked at k3s completed — advancing to %s completed",
+		CompLonghorn)
+	PublishUpdateStatus(CompLonghorn, StatusCompleted, "")
 }
 
 func upgradeComponent(ctx context.Context, comp string) error {
