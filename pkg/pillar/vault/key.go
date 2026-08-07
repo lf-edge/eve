@@ -64,7 +64,7 @@ func deriveVaultKey(log *base.LogObject, cloudKeyOnlyMode, useSealedKey, tpmKeyO
 // returns function to unstage the key
 func stageKey(log *base.LogObject, cloudKeyOnlyMode, useSealedKey, tpmKeyOnlyMode bool, keyDirName string, keyFileName string) (func(), error) {
 	// Create a tmpfs file to pass the secret to fscrypt
-	if err := os.MkdirAll(keyDirName, 755); err != nil {
+	if err := os.MkdirAll(keyDirName, 0700); err != nil {
 		return nil, fmt.Errorf("error creating keyDir %s %v", keyDirName, err)
 	}
 
