@@ -17,21 +17,18 @@ import (
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kubeclient"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kubectlx"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/versions"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 )
 
-// Uninstall constants. Versions are mirrored from install constants
-// in components.go so a bump in one place flows to the other (a
-// genuine version skew would surface as a 404 from these URLs).
 const (
-	longhornUninstallVersion  = "v1.9.1"
 	longhornUninstallSettings = "/etc/longhorn_uninstall_settings.yaml"
 	longhornUninstallJobURL   = "https://raw.githubusercontent.com/longhorn/longhorn/" +
-		longhornUninstallVersion + "/uninstall/uninstall.yaml"
+		versions.Longhorn + "/uninstall/uninstall.yaml"
 	longhornDeployURL = "https://raw.githubusercontent.com/longhorn/longhorn/" +
-		longhornUninstallVersion + "/deploy/longhorn.yaml"
+		versions.Longhorn + "/deploy/longhorn.yaml"
 
 	longhornUninstallMaxPolls     = 1000
 	longhornUninstallPollInterval = 5 * time.Second
