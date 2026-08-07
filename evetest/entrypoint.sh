@@ -39,6 +39,20 @@ EOF
 
 chmod +x /usr/local/bin/adam-cli
 
+# Fallback when EVETEST_COLOR_OUTPUT was not passed in (the Makefile sets it
+# based on whether the host stdout is a terminal): colorize framework log
+# output only when stdout is attached to a terminal, i.e. when 'docker run'
+# was invoked manually with a pseudo-TTY. This keeps piped or redirected
+# output free of ANSI escape codes.
+if [ -z "$EVETEST_COLOR_OUTPUT" ]; then
+    if [ -t 1 ]; then
+        EVETEST_COLOR_OUTPUT=true
+    else
+        EVETEST_COLOR_OUTPUT=false
+    fi
+fi
+export EVETEST_COLOR_OUTPUT
+
 # Run go test in background
 GO_TEST_FLAGS="-v"
 GO_TEST_OUTPUT_FILE="${EVETEST_ARTIFACT_DIR}/gotest.txt"

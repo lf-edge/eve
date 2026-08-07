@@ -1047,6 +1047,10 @@ func (config ApplicationInstanceConfig) toProto(th *TestHarness, devName string,
 					Id: aclID,
 				})
 			}
+			interfaceOrder := uint32(i)
+			if adapter.InterfaceOrder != nil {
+				interfaceOrder = *adapter.InterfaceOrder
+			}
 			appInstConfig.Interfaces = append(appInstConfig.Interfaces,
 				&eveconfig.NetworkAdapter{
 					Name:           adapter.LogicalLabel,
@@ -1055,7 +1059,7 @@ func (config ApplicationInstanceConfig) toProto(th *TestHarness, devName string,
 					MacAddress:     adapter.MAC.String(),
 					Acls:           acls,
 					AccessVlanId:   uint32(adapter.AccessVLAN),
-					InterfaceOrder: uint32(i),
+					InterfaceOrder: interfaceOrder,
 				})
 		}
 	}
@@ -1397,6 +1401,7 @@ type VirtualNetworkAdapter struct {
 	AccessVLAN          uint16
 	PortFwdRules        []PortFwdRule
 	ACLAllowRules       []ACLAllowRule
+	InterfaceOrder      *uint32
 }
 
 func (VirtualNetworkAdapter) isAppNetworkAdapter() {}
@@ -2396,19 +2401,21 @@ func (dc *EdgeDeviceConfig) UpdateApplication(
 			if !proto.Equal(app.Fixedresources, newProtoConfig.Fixedresources) {
 				dc.th.t.Fatalf("It is not allowed to change application Fixedresources")
 			}
+			var needRestart bool
 			var needPurge bool
 			equalAdapter := func(a1, a2 *eveconfig.Adapter) bool {
 				return proto.Equal(a1, a2)
 			}
 			if !generics.EqualSetsFn(app.Adapters, newProtoConfig.Adapters, equalAdapter) {
-				needPurge = true
+				needRestart = true
 			}
 			equalNetAdapter := func(a1, a2 *eveconfig.NetworkAdapter) bool {
 				return proto.Equal(a1, a2)
 			}
 			if !generics.EqualSetsFn(app.Interfaces, newProtoConfig.Interfaces, equalNetAdapter) {
-				needPurge = true
+				needRestart = true
 			}
+			//
 			// The root ref (VolumeRefList[0]) is always left untouched;
 			// buildMountRefs only ever references existing volumes, it does
 			// not create or remove any. Any change to the mount refs
@@ -2425,6 +2432,12 @@ func (dc *EdgeDeviceConfig) UpdateApplication(
 					app.Purge = &eveconfig.InstanceOpsCmd{Counter: 0}
 				}
 				app.Purge.Counter++
+			}
+			if needRestart {
+				if app.Restart == nil {
+					app.Restart = &eveconfig.InstanceOpsCmd{Counter: 0}
+				}
+				app.Restart.Counter++
 			}
 			dc.Apps[i].Activate = newProtoConfig.Activate
 			dc.Apps[i].ProfileList = newProtoConfig.ProfileList
