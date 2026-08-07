@@ -27,7 +27,7 @@ RUN git config --global user.name 'Project EVE' && \
     done
 
 # Build tee-supplicant
-RUN cmake -DCMAKE_INSTALL_PREFIX=/out/usr && \
+RUN cmake -DCMAKE_INSTALL_PREFIX=/build/usr && \
       make -j "$(getconf _NPROCESSORS_ONLN)" && \
       make install
 
@@ -41,7 +41,9 @@ FROM scratch AS output-arm64
 ENTRYPOINT []
 CMD []
 ADD rootfs/ /
-COPY --from=build-arm64 /out /
+COPY --from=build-arm64 /build/usr/etc/* /etc/
+COPY --from=build-arm64 /build/usr/lib/* /usr/lib/
+COPY --from=build-arm64 /build/usr/sbin/* /usr/sbin/
 
 ARG TARGETARCH
 FROM output-${TARGETARCH}
