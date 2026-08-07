@@ -53,6 +53,11 @@ func GetEdgeDevice(devName string) *EdgeDevice {
 	return &EdgeDevice{th: th, devName: devName}
 }
 
+// Name returns the device name.
+func (d *EdgeDevice) Name() string {
+	return d.devName
+}
+
 // GetAllEdgeDevices returns handles for all EdgeDevices currently known to the
 // test th.
 func GetAllEdgeDevices() (devices []*EdgeDevice) {
