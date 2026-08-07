@@ -467,6 +467,20 @@ func Init(t *testing.T) *T {
 		if th.test.initialized {
 			th.t.Fatalf("Multiple Init calls detected")
 		}
+
+		// EVETEST_RESTART_ONLY_FAILED: when running as part of a test suite
+		// (never for a standalone test, since that never reaches this branch),
+		// skip this subtest if it already passed in a previous run of the same
+		// suite. There is no public API to make a test PASS without actually
+		// returning from it, so the subtest is reported as SKIP rather than PASS;
+		// that does not count as a failure for RunTestSuite's own bookkeeping either.
+		if th.suite != nil {
+			if passedAt, ok := th.previouslyPassedAt(th.suite.name, th.test.name); ok {
+				t.Skipf(restartOnlyFailedSkipMsgTmpl,
+					th.suite.name+"/"+th.test.name, passedAt)
+			}
+		}
+
 		th.test.artifactDir = filepath.Join(th.artifactDir, th.test.name)
 		if err := os.MkdirAll(th.test.artifactDir, 0o755); err != nil {
 			th.t.Fatalf("failed to create directory for test artifacts: %v", err)

@@ -67,6 +67,23 @@ const (
 	// This is read by the evetest container.
 	PauseOnFailureEnv = "PAUSE_ON_FAILURE"
 
+	// RestartOnlyFailedEnv, when set to true, makes a rerun of a test suite skip
+	// every subtest that already passed in a previous run of the same suite,
+	// only actually executing the ones that previously failed (or never ran).
+	// A skipped subtest is reported as SKIPPED (not run and not a failure).
+	// Only meaningful together with EVETEST_COLLECT_ARTIFACTS (the previous
+	// run's gotest.txt is what gets inspected) and has no effect when running
+	// a single test outside of a suite.
+	// This is read by the evetest container.
+	RestartOnlyFailedEnv = "RESTART_ONLY_FAILED"
+
+	// PreviousArtifactEnv names the artifact directory (its base name, e.g.
+	// "TestFooSuite-2026-08-07_08-16-29") of the previous run to consult when
+	// EVETEST_RESTART_ONLY_FAILED is enabled. If unset, the last run recorded
+	// in <artifacts-root>/.last-artifact-dir is used instead.
+	// This is read by the evetest container.
+	PreviousArtifactEnv = "PREVIOUS_ARTIFACT"
+
 	// EVEVersionEnv specifies the version of EVE to test. This is the *which
 	// build* setting, independent of how its bits are delivered (see
 	// EVELiveImageEnv).
@@ -396,6 +413,8 @@ func InitViperConfig() {
 	viper.SetDefault(PauseOnCheckpointEnv, "")
 	viper.SetDefault(PauseOnFailureEnv, false)
 	viper.SetDefault(CollectCoverageEnv, false)
+	viper.SetDefault(RestartOnlyFailedEnv, false)
+	viper.SetDefault(PreviousArtifactEnv, "")
 
 	// EVE image config
 	viper.SetDefault(EVEVersionEnv, "") // Empty = derive from repo
