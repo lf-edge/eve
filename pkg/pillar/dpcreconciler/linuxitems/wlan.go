@@ -118,7 +118,7 @@ func (c *WlanConfigurator) NeedsRecreate(oldItem, newItem depgraph.Item) (recrea
 
 func (c *WlanConfigurator) installWifiConfig(config []WifiConfig) error {
 	if _, err := os.Stat(devicenetwork.RunWlanDir); os.IsNotExist(err) {
-		err = os.Mkdir(devicenetwork.RunWlanDir, 600)
+		err = os.Mkdir(devicenetwork.RunWlanDir, 0700)
 		if err != nil {
 			err = fmt.Errorf("failed to create directory %s: %v",
 				devicenetwork.RunWlanDir, err)
