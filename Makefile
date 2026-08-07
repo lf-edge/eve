@@ -382,7 +382,7 @@ endif
 
 # For all possible env variable that later can be handle by a Dockerfile as a build-arg-file of
 # a given package, we create a target of the form lk-extra-opt/<pkg-name>/<env-var-name>
-LK_POSSIBLE_PKG_PLUS_BUILD_ARGS := pillar/IMM_PROFILING pillar/ARTIFICIAL_LEAK pillar/COVER
+LK_POSSIBLE_PKG_PLUS_BUILD_ARGS := pillar/IMM_PROFILING pillar/ARTIFICIAL_LEAK pillar/COVER pillar/FAULT_INJECTION
 LK_POSSIBLE_BUILD_ARG_TARGETS := $(addprefix lk-extra-opt/,$(LK_POSSIBLE_PKG_PLUS_BUILD_ARGS))
 
 .PHONY: lk-extra-opt/%
@@ -391,6 +391,13 @@ LK_POSSIBLE_BUILD_ARG_TARGETS := $(addprefix lk-extra-opt/,$(LK_POSSIBLE_PKG_PLU
 # It creates a file lk-build-arg-<env-var-name> in the package directory, so that it
 # 1) Can be picked up by the linuxkit build command as a --build-arg-file <file>
 # 2) Affects the package git hash, so the hash is unique for a given set of build args
+#
+# The variable is tested for being NON-EMPTY, not for the value y, so any value at
+# all turns the argument on: FAULT_INJECTION=n on the command line writes
+# FAULT_INJECTION=y into the build-arg file exactly as FAULT_INJECTION=y would.
+# Callers must therefore leave such a variable unset to disable it, and never pass
+# =n. The generated file is also untracked, so its presence dirties the tree and
+# adds -dirty to the package tag.
 lk-extra-opt/%: FORCE
 	$(eval LK_EXTRA_PKG_NAME := $(word 1,$(subst /, ,$*)))
 	$(eval LK_EXTRA_BUILD_ARG := $(word 2,$(subst /, ,$*)))
