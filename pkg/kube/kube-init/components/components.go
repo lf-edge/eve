@@ -31,6 +31,7 @@ import (
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kubectlx"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/prereqs"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/versions"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 	corev1 "k8s.io/api/core/v1"
@@ -58,7 +59,7 @@ const (
 	debugRoleBinding  = "/etc/debuguser-role-binding.yaml"
 	kubevirtOperator  = "/etc/kubevirt-operator.yaml"
 	kubevirtFeatures  = "/etc/kubevirt-features.yaml"
-	longhornCfg       = "/etc/lh-cfg-v1.9.1.yaml"
+	longhornCfg       = "/etc/lh-cfg-" + versions.Longhorn + ".yaml"
 	deschedulerRBAC   = "/etc/descheduler_rbac.yaml"
 	deschedulerPolicy = "/etc/descheduler-policy-configmap.yaml"
 
@@ -74,8 +75,9 @@ const (
 	caCertPath = "/var/lib/rancher/k3s/server/tls/client-ca.crt"
 	caKeyPath  = "/var/lib/rancher/k3s/server/tls/client-ca.key"
 
-	kubevirtCRURL = "https://github.com/kubevirt/kubevirt/releases/download/v1.7.3/kubevirt-cr.yaml"
-	cdiVersion    = "v1.57.1"
+	kubevirtCRURL = "https://github.com/kubevirt/kubevirt/releases/download/" +
+		versions.KubeVirt + "/kubevirt-cr.yaml"
+	cdiVersion = versions.CDI
 
 	// longhornWaitTimeout is a NO-PROGRESS window, not a wall clock:
 	// the component sets Progress, so the budget restarts whenever
