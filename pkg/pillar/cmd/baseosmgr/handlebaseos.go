@@ -320,32 +320,11 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 
 	log.Functionf("doBaseOsActivate: %s activating", uuidStr)
 
-	// Before writing to partition lets make sure we have enough space on the partition
-	// 1. Get the size of the image using contenttree status
-	// 2. Get the size of the partition using zboot
-	// 3. If partition size is < image size, error out
-
-	cts := lookupContentTreeStatus(ctx, status.ContentTreeUUID)
-
-	if cts == nil {
-		errString := fmt.Sprintf("doBaseOsActivate: ContentTreeStatus not found for %s", status.ContentTreeUUID)
-		log.Error(errString)
-		status.SetErrorNow(errString)
-		changed = true
-		return changed
-	}
-
-	if cts.State == types.LOADED {
-		partSize := zboot.GetPartitionSizeInBytes(status.PartitionLabel)
-		imageSize := cts.MaxDownloadSize
-		if partSize < imageSize {
-			errString := fmt.Sprintf("doBaseOsActivate: Image size %v bytes greater than partition size %v bytes", imageSize, partSize)
-			log.Error(errString)
-			status.SetErrorNow(errString)
-			changed = true
-			return changed
-		}
-	}
+	// The partition-fit guard is enforced in zboot.WriteToPartition against the
+	// actual rootfs (disk-root) written to the partition. The whole content-tree
+	// download size is not a valid proxy here: an image may carry additional
+	// disks beyond the rootfs (e.g. the split-rootfs Extension) that are not
+	// written to this partition.
 
 	// install the image at proper partition; dd etc
 	changed, proceed, err = installDownloadedObjects(ctx, uuidStr, status.PartitionLabel,
