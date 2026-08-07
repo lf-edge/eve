@@ -464,6 +464,38 @@ Run a suite like any other test:
 make evetest NAME=TestBootstrapSuite
 ```
 
+### Rerunning Only Failed Subtests
+
+`EVETEST_RESTART_ONLY_FAILED=true` reruns a suite while skipping every subtest that
+already passed in a previous run, reporting it as SKIPPED instead of re-executing it
+(a skip does not count as a failure). This is useful both locally, to quickly tell
+whether a failure is deterministic or a fluke without waiting on the whole suite
+again, and in CI, to quickly confirm whether a failure in an open PR is real by
+rerunning just the failed subtests.
+
+The feature requires `EVETEST_COLLECT_ARTIFACTS` -- it works by reading `gotest.txt`
+(or `gotest.json`, if the previous run used `EVETEST_OUTPUT_FORMAT=json`) from a
+previous run's artifact directory. By default it consults the most recent run, as
+recorded in `.last-artifact-dir` under the artifacts directory; set
+`EVETEST_PREVIOUS_ARTIFACT` to name a specific one instead (its base directory name,
+e.g. `TestBootstrapSuite-2026-08-07_08-16-29`). The previous run must be of the same
+suite; otherwise `EVETEST_RESTART_ONLY_FAILED` has no effect. It never applies to a
+standalone test run outside of a suite. A previous run made with
+`EVETEST_OUTPUT_FORMAT=quiet` cannot be used, since that mode records no per-test
+results at all.
+
+```bash
+EVETEST_COLLECT_ARTIFACTS=/tmp/evetest-artifacts \
+    make evetest NAME=TestBootstrapSuite
+# ... some subtest fails ...
+
+EVETEST_COLLECT_ARTIFACTS=/tmp/evetest-artifacts \
+EVETEST_RESTART_ONLY_FAILED=true \
+    make evetest NAME=TestBootstrapSuite
+# Subtests that passed last time are reported as SKIPPED right away; only the
+# previously-failed (or previously-unreached) subtests actually run.
+```
+
 ## Running Tests
 
 ### Basic Usage
@@ -834,6 +866,8 @@ non-default behavior.
 | `EVETEST_PAUSE_ON_FAILURE` | Pause when a test fails | `false` |
 | `EVETEST_PAUSE_ON_CHECKPOINT` | Pause at the named checkpoint | -- |
 | `EVETEST_SUITE_MAX_FAILURES` | Max failures before aborting suite (`-1` = unlimited) | `1` |
+| `EVETEST_RESTART_ONLY_FAILED` | Skip suite subtests that already passed in a previous run (requires `EVETEST_COLLECT_ARTIFACTS`); see [Rerunning Only Failed Subtests](#rerunning-only-failed-subtests) | `false` |
+| `EVETEST_PREVIOUS_ARTIFACT` | Artifact directory name of the previous run to compare against, used by `EVETEST_RESTART_ONLY_FAILED` | last run in `.last-artifact-dir` |
 
 ### Deployment Variables
 

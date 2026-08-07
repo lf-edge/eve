@@ -11,8 +11,6 @@ fi
 TIMESTAMP="$(date '+%Y-%m-%d_%H-%M-%S')"
 export EVETEST_ARTIFACT_DIR="/artifacts/${EVETEST_NAME}-${TIMESTAMP}"
 mkdir -p "$EVETEST_ARTIFACT_DIR"
-# Write the artifact dir path so CI can locate it after the container exits.
-echo "$EVETEST_ARTIFACT_DIR" > /artifacts/.last-artifact-dir
 
 BROKER_PID=""
 if [ -z "$EVETEST_BROKER_ADDRESS" ]; then
@@ -81,12 +79,21 @@ cleanup() {
 
     # Wait for go test to exit
     [ -n "$GO_TEST_PID" ] && wait_with_timeout "go-test" "$GO_TEST_PID" 15
+    record_last_artifact_dir
     set_artifact_ownership
 
     # Wait for broker to exit
     [ -n "$BROKER_PID" ] && wait_with_timeout "broker" "$BROKER_PID" 15
     echo "Cleanup completed"
     exit 0
+}
+
+# Record this run's artifact dir as "last" only once it has actually
+# produced a gotest.txt/gotest.json for EVETEST_RESTART_ONLY_FAILED to
+# consult -- writing it upfront (before go test even starts) would make a
+# run see itself as its own "previous" run while still in progress.
+record_last_artifact_dir() {
+    echo "$EVETEST_ARTIFACT_DIR" > /artifacts/.last-artifact-dir
 }
 
 # Make sure the artifacts are readable for the user.
@@ -132,6 +139,7 @@ trap cleanup TERM INT QUIT
 # Wait for go test to finish
 wait "$GO_TEST_PID"
 GO_TEST_RC=$?
+record_last_artifact_dir
 set_artifact_ownership
 
 # Even if go test finishes naturally, still make sure that broker stopped (if it was started).
