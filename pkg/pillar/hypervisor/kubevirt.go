@@ -1644,6 +1644,15 @@ func (t kubevirtTask) Info(domainName string) (int, types.SwState, error) {
 		var rerr error
 		vmirs, rerr = getVmirs(virtClient, kubeName)
 		if rerr != nil {
+			if errors.IsNotFound(rerr) {
+				// Present at the existence check above and gone by this Get,
+				// so this is the same confirmed-absent answer arriving one
+				// call later. Returning here also skips the fall-through's
+				// own Get, which can only reach the same conclusion.
+				logrus.Infof("Info(%s): %s confirmed absent after the existence check",
+					domainName, kubeName)
+				return 0, types.HALTED, nil
+			}
 			if isK3sUnreachable(rerr) {
 				// Unknown, not absent: hold the caller's id rather than
 				// emitting the "confirmed gone" token.
@@ -1670,6 +1679,14 @@ func (t kubevirtTask) Info(domainName string) (int, types.SwState, error) {
 		onMe, scheduledOnNone, err = t.scheduledOnMe(vmis.mtype, kubeName)
 	}
 	if err != nil {
+		if errors.IsNotFound(err) {
+			// Backstop for the lookups that do their own Get: the NOHYPER
+			// dispatch and the fall-through above. Absence is absence
+			// wherever it is observed.
+			logrus.Infof("Info(%s): %s confirmed absent during the scheduling lookup",
+				domainName, kubeName)
+			return 0, types.HALTED, nil
+		}
 		if isK3sUnreachable(err) {
 			logrus.Infof("Info(%s): k3s unreachable while determining scheduled node: %v",
 				domainName, err)
