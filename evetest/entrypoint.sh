@@ -11,8 +11,6 @@ fi
 TIMESTAMP="$(date '+%Y-%m-%d_%H-%M-%S')"
 export EVETEST_ARTIFACT_DIR="/artifacts/${EVETEST_NAME}-${TIMESTAMP}"
 mkdir -p "$EVETEST_ARTIFACT_DIR"
-# Write the artifact dir path so CI can locate it after the container exits.
-echo "$EVETEST_ARTIFACT_DIR" > /artifacts/.last-artifact-dir
 
 BROKER_PID=""
 if [ -z "$EVETEST_BROKER_ADDRESS" ]; then
