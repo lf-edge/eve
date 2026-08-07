@@ -101,7 +101,7 @@ func (h *Ext4Handler) SetupDefaultVault() error {
 		if os.IsNotExist(err) {
 			// No TPM or TPM lacks required features
 			// Vault is just a plain folder in those cases
-			return os.MkdirAll(defaultVault, 755)
+			return os.MkdirAll(defaultVault, 0755)
 		}
 		if err == nil && h.isFscryptEnabled(defaultVault) {
 			// old versions of EVE created vault on TPM platforms
@@ -352,7 +352,7 @@ func (h *Ext4Handler) setupVault(vaultPath string, deprecated bool) error {
 	}
 	if err != nil && !deprecated {
 		// Create vault dir
-		if err := os.MkdirAll(vaultPath, 755); err != nil {
+		if err := os.MkdirAll(vaultPath, 0755); err != nil {
 			return err
 		}
 	}
