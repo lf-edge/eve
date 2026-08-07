@@ -84,12 +84,12 @@ var UpstreamImages = []UpstreamImage{
 	// the local copy saves a pull round-trip per upgrade Plan.
 	{Tarball: "/images/alpine.tar", Name: "docker.io/library/alpine", Tag: "3.21"},
 
-	// KubeVirt v1.6.0 (5 images — operator + the 4 pods it spawns).
-	{Tarball: "/images/virt-operator.tar", Name: "quay.io/kubevirt/virt-operator", Tag: "v1.6.0"},
-	{Tarball: "/images/virt-api.tar", Name: "quay.io/kubevirt/virt-api", Tag: "v1.6.0"},
-	{Tarball: "/images/virt-controller.tar", Name: "quay.io/kubevirt/virt-controller", Tag: "v1.6.0"},
-	{Tarball: "/images/virt-handler.tar", Name: "quay.io/kubevirt/virt-handler", Tag: "v1.6.0"},
-	{Tarball: "/images/virt-launcher.tar", Name: "quay.io/kubevirt/virt-launcher", Tag: "v1.6.0"},
+	// KubeVirt v1.7.3 (5 images — operator + the 4 pods it spawns).
+	{Tarball: "/images/virt-operator.tar", Name: "quay.io/kubevirt/virt-operator", Tag: "v1.7.3"},
+	{Tarball: "/images/virt-api.tar", Name: "quay.io/kubevirt/virt-api", Tag: "v1.7.3"},
+	{Tarball: "/images/virt-controller.tar", Name: "quay.io/kubevirt/virt-controller", Tag: "v1.7.3"},
+	{Tarball: "/images/virt-handler.tar", Name: "quay.io/kubevirt/virt-handler", Tag: "v1.7.3"},
+	{Tarball: "/images/virt-launcher.tar", Name: "quay.io/kubevirt/virt-launcher", Tag: "v1.7.3"},
 
 	// CDI v1.57.1 (7 images — operator + the 6 pods it spawns).
 	{Tarball: "/images/cdi-operator.tar", Name: "quay.io/kubevirt/cdi-operator", Tag: "v1.57.1"},
