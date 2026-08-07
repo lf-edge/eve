@@ -21,6 +21,9 @@
 //	                        PVC, file under /persist - and the storage invariants
 //	<topic>_assertions_test.go
 //	                        assertions meaningless outside that topic
+//	longhorn_provisioner_workaround_test.go
+//	                        REMOVE ME once resolved - works around a Longhorn
+//	                        CSI-provisioner bug unrelated to this suite
 //
 // Where does a new helper go?
 //
