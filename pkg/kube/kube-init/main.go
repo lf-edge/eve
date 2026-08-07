@@ -542,17 +542,6 @@ func main() {
 	log.Printf("starting kube-init daemon (pid=%d, arch=%s)",
 		os.Getpid(), runtime.GOARCH)
 
-	// Migrate the legacy K3sBase conversion-complete flag from
-	// /var/lib/base-k3s-mode to /var/lib/native-kubernetes-mode.
-	// Devices that completed the conversion under an older EVE
-	// image carry the legacy name; without this rename the new
-	// code would treat an already-converted device as un-converted
-	// (re-enabling KubeVirt install). Must run before any consumer
-	// of state.NativeKubernetesMode reads the marker.
-	if err := state.MigrateLegacyBaseK3sMode(); err != nil {
-		log.Fatalf("migrate legacy base-k3s-mode marker: %v", err)
-	}
-
 	// Construct the pubsub manager. kube-init uses this to
 	// subscribe to EdgeNodeClusterStatus / KubeConfig /
 	// KubeClusterUpdateStatus / EdgeNodeInfo /
@@ -1541,6 +1530,15 @@ func (d *daemon) workInit(workCtx context.Context) error {
 	deviceName, uuid, eveRelease, err := prereqs.RunAll(workCtx)
 	if err != nil {
 		return err
+	}
+
+	// Devices that completed the K3sBase conversion under an older EVE
+	// image carry the marker under its legacy name; without the rename
+	// an already-converted device reads as un-converted and KubeVirt
+	// gets reinstalled. RunAll is what mounts /var/lib, so this cannot
+	// move any earlier — and must stay ahead of the read below.
+	if err := state.MigrateLegacyBaseK3sMode(); err != nil {
+		return fmt.Errorf("migrate legacy base-k3s-mode marker: %w", err)
 	}
 
 	res := initResult{
