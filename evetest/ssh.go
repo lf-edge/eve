@@ -210,15 +210,14 @@ func (th *TestHarness) scpFromEVE(ctx context.Context,
 	if recursive {
 		scpArgs = append(scpArgs, "-r")
 	}
-	// The path after the colon is interpreted by a remote shell, so it needs
-	// its own shell quoting independent of how this argv element is split
-	// locally (scp itself is invoked directly via exec, with no local shell
-	// involved) -- otherwise a remote path containing spaces (e.g. a pubsub
-	// key like "Application Data Store") gets split into multiple arguments
-	// remotely.
+	// Pass the remote path verbatim: scp speaks SFTP (the OpenSSH 9.x default,
+	// and no -O here selects the legacy protocol), so no remote shell splits
+	// it and quoting it would make the quotes part of the file name. Spaces
+	// are safe because this is a single argv element -- exec runs scp
+	// directly, with no local shell.
 	scpArgs = append(scpArgs,
 		"-i", "/root/.ssh/eve_rsa",
-		"root@"+eveIP+":"+shellEscape(remotePath),
+		"root@"+eveIP+":"+remotePath,
 		localPath,
 	)
 	cmd := exec.CommandContext(ctx, "scp", scpArgs...)
@@ -250,7 +249,7 @@ func (th *TestHarness) scpToEVE(ctx context.Context,
 	scpArgs = append(scpArgs,
 		"-i", "/root/.ssh/eve_rsa",
 		localPath,
-		"root@"+eveIP+":"+shellEscape(remotePath),
+		"root@"+eveIP+":"+remotePath,
 	)
 	cmd := exec.CommandContext(ctx, "scp", scpArgs...)
 	var stderr bytes.Buffer
