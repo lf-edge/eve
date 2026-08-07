@@ -41,6 +41,15 @@ const (
 	casClientType = "containerd"
 
 	blankVolumeFormat = zconfig.Format_RAW // format of blank volume TODO: make configurable
+
+	// clusterStorageWait bounds the second EVE-k startup wait, the one that
+	// blocks until Longhorn and CDI can serve a volume. It is separate from the
+	// readiness budget kubeapi applies ahead of it: by the time this wait starts
+	// the node and Longhorn are already up, so what remains is mostly CDI
+	// becoming available, and its images have been the slow half on a contended
+	// link. 20 minutes was too tight for that on the topologies where the
+	// Longhorn pull alone ran past it.
+	clusterStorageWait = 30 * time.Minute
 )
 
 var (
@@ -380,7 +389,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		// deliberately coexist so we can observe how often the gate/retry fires
 		// after this wait has passed. Once we decide whether the retry earns its
 		// keep, drop one of the two so a volume is gated in a single place.
-		storageDeadline := time.NewTimer(20 * time.Minute)
+		storageDeadline := time.NewTimer(clusterStorageWait)
 		storageReady := false
 	storageWait:
 		for {
