@@ -531,6 +531,7 @@ test: $(LINUXKIT) pkg/pillar | $(DIST)
 	make -C pkg/vtpm test
 	go test -C pkg/newlog/cmd/ -v -race
 	go test -C pkg/edgeview/src/ -v -race
+	go test -C pkg/kube/kube-init/ -v -race ./...
 	$(QUIET): $@: Succeeded
 
 test-profiling:
