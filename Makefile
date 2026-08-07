@@ -546,6 +546,7 @@ test: $(LINUXKIT) pkg/pillar | $(DIST)
 	make -C pkg/vtpm test
 	go test -C pkg/newlog/cmd/ -v -race
 	go test -C pkg/edgeview/src/ -v -race
+	go test -C pkg/kube/kube-init/ -v -race ./...
 	$(QUIET): $@: Succeeded
 
 # The bpftrace-compiler tests boot QEMU for both amd64 and arm64, so they need
