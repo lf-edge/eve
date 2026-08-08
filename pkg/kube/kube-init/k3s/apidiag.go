@@ -86,11 +86,11 @@ func caFingerprint(kc *kubeclient.Client) string {
 	short := fmt.Sprintf("%x", sum[:6])
 	block, _ := pem.Decode(pemBytes)
 	if block == nil {
-		return short + " (unparseable PEM)"
+		return short + " (unparsable PEM)"
 	}
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
-		return short + " (unparseable cert)"
+		return short + " (unparsable cert)"
 	}
 	return fmt.Sprintf("%s issuer=%q notAfter=%s",
 		short, cert.Subject.CommonName, cert.NotAfter.Format("2006-01-02"))
