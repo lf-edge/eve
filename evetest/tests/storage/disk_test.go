@@ -162,7 +162,7 @@ func TestExtraDiskAttach(test *testing.T) {
 	// Step 2: create a standalone blank volume and mount it with an empty
 	// MountDir -- attached as a raw (unmounted) disk.
 	const extraDiskSize = 16 * evetest.MiB
-	extraDiskVolUUID := devConfig.AddBlankVolume("disk-app-extra-disk", extraDiskSize)
+	extraDiskVolUUID := devConfig.AddBlankVolume("disk-app-extra-disk", extraDiskSize, true)
 	appConfig.Mounts = []evetest.MountConfig{
 		{VolumeUUID: extraDiskVolUUID, MountDir: ""},
 	}

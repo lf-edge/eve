@@ -2519,11 +2519,14 @@ func (dc *EdgeDeviceConfig) deleteVolumeAndDeps(volUUID string) bool {
 // AppDiskMetric.ProvisionedBytes, which zedagent surfaces to the controller as
 // ZMetricVolume.TotalBytes and VolumeResources.MaxSizeBytes.
 //
-// The volume is created in clear text so that it does not depend on the vault
-// being unlocked, keeping the volume-creation path independent of vault
-// readiness.
+// clearText selects whether the volume is created outside the vault. A
+// clear-text volume can be created while the vault is still locked, which
+// isolates a test from vault readiness; an encrypted one exercises the
+// vault-dependent path instead. Tests that are not about encryption should
+// say which they mean rather than relying on a default, since the choice
+// changes what the volume creation actually exercises.
 func (dc *EdgeDeviceConfig) AddBlankVolume(
-	displayName string, sizeBytes uint64) uuid.UUID {
+	displayName string, sizeBytes uint64, clearText bool) uuid.UUID {
 	volumeUUID := dc.th.newUUID("blank volume")
 	dc.Volumes = append(dc.Volumes, &eveconfig.Volume{
 		Uuid: volumeUUID.String(),
@@ -2532,7 +2535,7 @@ func (dc *EdgeDeviceConfig) AddBlankVolume(
 		},
 		Maxsizebytes: int64(sizeBytes),
 		DisplayName:  displayName,
-		ClearText:    true,
+		ClearText:    clearText,
 	})
 	return volumeUUID
 }
