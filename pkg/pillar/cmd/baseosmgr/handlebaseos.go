@@ -214,20 +214,24 @@ func doBaseOsStatusUpdate(ctx *baseOsMgrContext, uuidStr string,
 
 	// Check to avoid upgrading from not-EVE-k (e.g., kvm) to EVE-k
 	// and vice versa since that can result in odd failures due to
-	// different /persist layout etc.
+	// different /persist layout etc. The block only applies when the
+	// device has volume instances — without them there is no
+	// /persist/vault/volumes/ state to disturb.
 	// TBD Remove this if EVE-k in the future can have kvm personality.
+	hasVolumes := len(ctx.subVolumeConfig.GetAll()) > 0 ||
+		len(ctx.subVolumeStatus.GetAll()) > 0
 	isCurrentKube := base.IsHVTypeKube()
 	isUpdateKube, err := base.IsVersionHVTypeKube(config.BaseOsVersion)
 	if err != nil {
 		log.Warnf("doBaseOsStatusUpdate(%s): %s",
 			config.BaseOsVersion, err)
-	} else if isCurrentKube != isUpdateKube {
+	} else if isCurrentKube != isUpdateKube && hasVolumes {
 		var errString string
 		if isUpdateKube {
-			errString = fmt.Sprintf("Upgrade to EVE-k (%s) from non EVE-k (%s) is not supported",
+			errString = fmt.Sprintf("Upgrade to EVE-k (%s) from non EVE-k (%s) is not supported while volumes exist",
 				config.BaseOsVersion, shortVerCurPart)
 		} else {
-			errString = fmt.Sprintf("Upgrade to non EVE-k (%s) from  EVE-k (%s) is not supported",
+			errString = fmt.Sprintf("Upgrade to non EVE-k (%s) from EVE-k (%s) is not supported while volumes exist",
 				config.BaseOsVersion, shortVerCurPart)
 		}
 		log.Error(errString)
