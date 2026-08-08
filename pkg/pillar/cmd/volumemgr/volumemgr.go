@@ -83,6 +83,8 @@ type volumemgrContext struct {
 
 	worker worker.Worker // For background work
 
+	signalledRestartedStatus bool
+
 	verifierRestarted    bool // Wait for verifier to restart
 	contentTreeRestarted bool // Wait to receive all contentTree after restart
 	usingConfig          bool // From zedagent

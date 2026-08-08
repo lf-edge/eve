@@ -66,6 +66,15 @@ zfs_adjust_features() {
 PERSISTDIR=/persist
 CONFIGDIR=/config
 CONFIGDIR_PERSIST=/tmp/config_ro
+
+# log writes a timestamped line to both stdout (-> memlogd) and the serial
+# console (-> eden's default-eve.log). An onboot container's stdout alone does
+# NOT reach the serial console, so bare echo from here is invisible there; the
+# storage-resizer invocations in storage-resize.sh additionally redirect their
+# own stdout/stderr to /dev/console (matching pkg/installer's ">/dev/console 2>&1"
+# idiom) so the resizer's output is visible too. tee errors are ignored in case
+# /dev/console is absent.
+log() { echo "$(date -Ins -u) $*" | tee /dev/console 2>/dev/null; return 0; }
 SMART_DETAILS_FILE=$PERSISTDIR/SMART_details.json
 SMART_DETAILS_PREVIOUS_FILE=$PERSISTDIR/SMART_details_previous.json
 IS_IN_KDUMP_KERNEL=$(! test -f /proc/vmcore; echo $?)
@@ -148,6 +157,12 @@ is_first_boot_virt_eve() {
     return 1
 }
 
+# --- boot-disk repartition (storage-resize.sh) -------------------------------
+# The repartition helpers live in a sibling file to keep this script manageable.
+# They use CONFIGDIR, PERSISTDIR and log() defined above, so source after them.
+# shellcheck source=pkg/storage-init/storage-resize.sh
+. "$(dirname "$0")/storage-resize.sh"
+
 if is_first_boot_virt_eve; then
    DEV=$(echo /sys/block/*/"${IMGA#/dev/}")
    DEV="/dev/$(echo "$DEV" | cut -f4 -d/)"
@@ -210,6 +225,10 @@ if is_first_boot_virt_eve; then
       dd if=/dev/zero of="$P3" bs=512 seek=$(( $(blockdev --getsz "$P3") - 10240 )) count=10240 2>/dev/null
    fi
 fi
+
+# If baseosmgr requested a repartition, do the offline shrink+grow now while
+# /persist is still unmounted, before the P3 fsck/mount.
+maybe_offline_disk_resize
 
 # We support P3 partition either formatted as ext3/4 or as part of ZFS pool
 # Priorities are: ext3, ext4, zfs
@@ -291,6 +310,10 @@ else
         echo "$(date -Ins -u) No separate $PERSISTDIR partition"
     fi
 fi
+
+# /persist is now mounted (if present): restore any files the resize shrink
+# may have lost and clean up the backup/flag on the CONFIG partition.
+maybe_restore_after_persist
 
 zfs_set_arc_limits
 
