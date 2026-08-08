@@ -316,11 +316,7 @@ func labelNodeUUID(ctx context.Context, cs kubernetes.Interface, nodeName, uuid 
 	return nil
 }
 
-// waitSystemPodsReady blocks until every pod in kube-system reports
-// Ready or has finished (Completed/Succeeded). Progress is logged
-// every time the ready/total count changes, including the list of
-// pods we are still waiting on.
-// OnProgress, when set, is called whenever WaitReady observes forward
+// OnProgress is called, when set, whenever WaitReady observes forward
 // movement — currently a change in the ready/total system-pod counts.
 // Wired by main.go to the join watchdog so a node that is converging
 // slowly but genuinely is not mistaken for a wedged one. A package var
@@ -333,6 +329,10 @@ func noteProgress(stage string) {
 	}
 }
 
+// waitSystemPodsReady blocks until every pod in kube-system reports
+// Ready or has finished (Completed/Succeeded). Progress is logged
+// every time the ready/total count changes, including the list of
+// pods we are still waiting on.
 func waitSystemPodsReady(
 	ctx context.Context, kc *kubeclient.Client, cs kubernetes.Interface,
 	nodeName string,

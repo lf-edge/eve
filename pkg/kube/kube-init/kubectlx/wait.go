@@ -34,7 +34,7 @@ import (
 // the boot.
 const defaultWaitTimeout = 5 * time.Minute
 
-// WaitFromContext, passed as a Wait* helper's timeout, means the helper
+// WaitFromContext is passed as a Wait* helper's timeout to mean the helper
 // imposes no deadline of its own and the caller's ctx governs. Needed
 // because a zero timeout already means "apply the default", so there
 // was no way to express "the caller is managing the deadline" — which a
