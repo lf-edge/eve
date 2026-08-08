@@ -1,0 +1,12 @@
+# Copyright (c) 2026 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+version: "2"
+
+linters:
+  default: all
+  disable:
+    # See golangci/golangci-lint#419 — trips on //go:embed patterns in
+    # vendored dependencies (protobuf editiondefaults) even when the
+    # target file is present.
+    - typecheck

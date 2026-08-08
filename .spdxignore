@@ -7,6 +7,7 @@ pkg/installer/vendor/
 pkg/kube/descheduler-job.yaml
 pkg/kube/descheduler_rbac.yaml
 pkg/kube/eve-bridge/vendor/
+pkg/kube/kube-init/vendor/
 pkg/kube/lh-cfg-v1.6.2.yaml
 pkg/kube/nvidia-container-runtime/nvidia-device-plugin-18.0.yml
 pkg/kube/sriov/sriov-device-plugin.yaml
