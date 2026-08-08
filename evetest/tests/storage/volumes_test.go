@@ -218,7 +218,7 @@ func TestVolumes(test *testing.T) {
 	halfTotalBytes := halfTotalMiB * mib
 	blankVol1Bytes := blankVol1SizeMiB * mib
 
-	blankVol1UUID := devConfig.AddBlankVolume("blank-vol-1", blankVol1Bytes)
+	blankVol1UUID := devConfig.AddBlankVolume("blank-vol-1", blankVol1Bytes, true)
 	blankVol1Updates, stopBlankVol1Watch := device.WatchVolumeInfo(blankVol1UUID)
 	device.ApplyConfig(devConfig, false, false)
 	evetest.Checkpoint("blank-vol-1-config-applied")
@@ -232,7 +232,7 @@ func TestVolumes(test *testing.T) {
 	evetest.Checkpoint("blank-vol-1-created")
 
 	// blank-vol-2 is expected to fail: not enough free space remains.
-	blankVol2UUID := devConfig.AddBlankVolume("blank-vol-2", halfTotalBytes)
+	blankVol2UUID := devConfig.AddBlankVolume("blank-vol-2", halfTotalBytes, true)
 	blankVol2Updates, stopBlankVol2Watch := device.WatchVolumeInfo(blankVol2UUID)
 	device.ApplyConfig(devConfig, false, false)
 	evetest.Checkpoint("blank-vol-2-config-applied")
