@@ -28,6 +28,7 @@ import (
 	"github.com/lf-edge/eve/pkg/kube/kube-init/components"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/encconfig"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/encstatus"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/images"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/k3s"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kubeclient"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kubectlx"
@@ -801,8 +802,8 @@ func (m *Monitor) reimportImages(ctx context.Context) {
 		return
 	}
 	m.importImageIfNeeded(ctx,
-		"/images/external-boot-image.tar",
-		"docker.io/lfedge/eve-external-boot-image",
+		images.ExternalBootImageTar,
+		images.ExternalBootImageName,
 		m.eveRelease,
 	)
 }
