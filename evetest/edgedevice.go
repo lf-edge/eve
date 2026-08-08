@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -48,6 +49,11 @@ func GetEdgeDevice(devName string) *EdgeDevice {
 		th.t.Fatalf("Unknown device %q", devName)
 	}
 	return &EdgeDevice{th: th, devName: devName}
+}
+
+// Name returns the device name.
+func (d *EdgeDevice) Name() string {
+	return d.devName
 }
 
 // GetAllEdgeDevices returns handles for all EdgeDevices currently known to the
@@ -1851,6 +1857,53 @@ func (d *EdgeDevice) FileExists(fileName string) bool {
 	return strings.Contains(stdout, "EXISTS")
 }
 
+// PathExists checks whether a path exists on the device, whatever kind of node
+// it is - a directory, a symlink or a device node, not just a regular file.
+//
+// Two differences from FileExists, which is otherwise equivalent: this accepts
+// any node type, and it reports a failure of the check itself as an error
+// instead of failing the test. That makes it usable from inside Eventually,
+// where a device may be rebooting or still converging and the caller wants to
+// retry rather than fail.
+func (d *EdgeDevice) PathExists(target string) (bool, error) {
+	// "; true" forces the overall exit status to 0 regardless of whether
+	// the path exists, so a missing path (test -e exits nonzero) can't be
+	// conflated with a genuine SSH/transport failure -- only the "EXISTS"
+	// marker in stdout answers the actual question.
+	stdout, _, err := d.RunShellScript(
+		"test -e "+shellEscape(target)+" && echo EXISTS; true",
+		quickSSHCommandTimeout, 0)
+	if err != nil {
+		return false, fmt.Errorf("PathExists: SSH command failed: %w", err)
+	}
+	return strings.Contains(stdout, "EXISTS"), nil
+}
+
+// ListDirEntries returns the sorted names of the entries in a directory on the
+// device.
+//
+// A directory that does not exist yields an empty list and no error: EVE
+// creates many of its directories lazily, when a particular hypervisor,
+// storage backend or agent first needs one, so "not there yet" is a normal
+// observation rather than a failure. An error means the listing itself could
+// not be run.
+func (d *EdgeDevice) ListDirEntries(dir string) ([]string, error) {
+	stdout, _, err := d.RunShellScript(
+		"ls -1 "+shellEscape(dir)+" 2>/dev/null || true",
+		quickSSHCommandTimeout, 0)
+	if err != nil {
+		return nil, fmt.Errorf("ListDirEntries: SSH command failed: %w", err)
+	}
+	var names []string
+	for _, line := range strings.Split(strings.TrimSpace(stdout), "\n") {
+		if name := strings.TrimSpace(line); name != "" {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
 // ReadFile reads the contents of a file from the device.
 func (d *EdgeDevice) ReadFile(fileName string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(d.th.ctx, fileTransferTimeout)
@@ -1908,6 +1961,16 @@ func (d *EdgeDevice) DeleteFile(fileName string) {
 		"rm -f "+shellEscape(fileName), quickSSHCommandTimeout, 0)
 	if err != nil {
 		d.th.t.Fatalf("DeleteFile: SSH command failed: %v", err)
+	}
+}
+
+// SyncDisks flushes the device's filesystem caches. Call this before PowerOff:
+// test devices mount /persist without dirsync (Setup adds set_no_dirsync), so a
+// hard power-off can otherwise leave an app's image layers as zero-length files.
+func (d *EdgeDevice) SyncDisks() {
+	_, _, err := d.RunShellScript("sync", syncDisksTimeout, 0)
+	if err != nil {
+		d.th.t.Fatalf("SyncDisks: SSH command failed: %v", err)
 	}
 }
 
