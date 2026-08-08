@@ -100,8 +100,8 @@ func publishVolumeMgrStatus(ctx *volumemgrContext) {
 // volumeMgrStatus describes volumemgr itself: whether storage is usable, the
 // gate still outstanding when it is not, and the space left for volumes after
 // everything reserved for EVE has been subtracted.
-func (ctxPtr *volumemgrContext) volumeMgrStatus(remaining uint64) types.VolumeMgrStatus {
-	ready, unmet := ctxPtr.storageReadiness()
+func (ctx *volumemgrContext) volumeMgrStatus(remaining uint64) types.VolumeMgrStatus {
+	ready, unmet := ctx.storageReadiness()
 	return types.VolumeMgrStatus{
 		Name:           agentName,
 		Initialized:    ready,
@@ -112,22 +112,22 @@ func (ctxPtr *volumemgrContext) volumeMgrStatus(remaining uint64) types.VolumeMg
 
 // setStorageReadiness records the storage verdict and wakes the status task so
 // the change is reported without waiting for the next tick.
-func (ctxPtr *volumemgrContext) setStorageReadiness(ready bool, unmet string) {
-	ctxPtr.storageMu.Lock()
-	ctxPtr.storageReady = ready
-	ctxPtr.storageUnmet = unmet
-	ctxPtr.storageMu.Unlock()
+func (ctx *volumemgrContext) setStorageReadiness(ready bool, unmet string) {
+	ctx.storageMu.Lock()
+	ctx.storageReady = ready
+	ctx.storageUnmet = unmet
+	ctx.storageMu.Unlock()
 
 	select {
-	case ctxPtr.statusTrigger <- struct{}{}:
+	case ctx.statusTrigger <- struct{}{}:
 	default:
 	}
 }
 
 // storageReadiness returns whether storage is usable and, when it is not, the
 // outstanding gate.
-func (ctxPtr *volumemgrContext) storageReadiness() (bool, string) {
-	ctxPtr.storageMu.Lock()
-	defer ctxPtr.storageMu.Unlock()
-	return ctxPtr.storageReady, ctxPtr.storageUnmet
+func (ctx *volumemgrContext) storageReadiness() (bool, string) {
+	ctx.storageMu.Lock()
+	defer ctx.storageMu.Unlock()
+	return ctx.storageReady, ctx.storageUnmet
 }
