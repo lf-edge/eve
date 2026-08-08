@@ -110,7 +110,7 @@ func TestZVolProvisionedSizeReported(test *testing.T) {
 		NetworkUUID:   dhcpNet,
 		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
 	})
-	volUUID := devConfig.AddBlankVolume("zvol-provisioned-test", blankVolumeSize)
+	volUUID := devConfig.AddBlankVolume("zvol-provisioned-test", blankVolumeSize, true)
 
 	volInfoUpdates, stopVolInfoWatch := device.WatchVolumeInfo(volUUID)
 	defer stopVolInfoWatch()
