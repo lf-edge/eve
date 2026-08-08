@@ -112,7 +112,51 @@ This collection is specific for the kubernetes status and stats. Although EVE ha
 
 ### Handle Domain Apps Status in domainmgr
 
-When the application is launched and managed in KubeVirt mode, the Kubernetes cluster is provisioned for this application, being a VMI (Virtual Machine Instance) replicaSet object or a Pod replicaSet object. It uses a declarative approach to manage the desired state of the applications. The configurations are saved in the Kubernetes database for the Kubernetes controller to use to ensure the objects eventually achieve the correct state if possible. Any particular VMI/Pod state of a domain may not be in working condition at the time when EVE domainmgr checks. In the domainmgr code running in KubeVirt mode, if it can not contact the Kubernetes API server to query about the application, or if the application itself has not be started yet in the cluster, the kubervirt.go will return the 'Unknown' status back. It will keep a 'Unknown' status starting timestamp per application. If the 'Unknown' status lasts longer then 5 minutes, the status functions in kubevirt.go will return 'Halting' status back to domainmgr. The timestamp will be cleared once it can get the application status from the kubernetes.
+When the application is launched and managed in KubeVirt mode, the Kubernetes cluster is provisioned for this application, being a VMI (Virtual Machine Instance) replicaSet object or a Pod replicaSet object. It uses a declarative approach to manage the desired state of the applications. The configurations are saved in the Kubernetes database for the Kubernetes controller to use to ensure the objects eventually achieve the correct state if possible. Any particular VMI/Pod state of a domain may not be in working condition at the time when EVE domainmgr checks.
+
+`hypervisor/kubevirt.go`'s `Info` reports back to domainmgr on every poll. It is the only place that decides `DomainId` and `SwState` for a kube app, and every downstream consumer - `doInactivate`'s teardown gates, `doCleanup`'s success test, `verifyStatus` - trusts what it returns without re-deriving anything itself. The contract:
+
+> **`DomainId` is zero if and only if the VMIRS (or, for a NOHYPER app, its plain container ReplicaSet) is confirmed absent.** It is never zero merely because the answer is unknown or unattributable.
+
+`Info` confirms existence directly with a `Get` on the object by name, rather than inferring it from where a replica happens to be running:
+
+| Situation | `DomainId` | `SwState` |
+| --- | --- | --- |
+| object found, a replica is running on this node | derived from the object's UID | `RUNNING` (or whatever its mapped phase is) |
+| object found, no replica attributable to any node yet (mid-restart, mid-failover) | derived from the object's UID | `SCHEDULING` |
+| object found, replica reports an unmapped phase | derived from the object's UID | `SCHEDULING` (escalates to `HALTING` only after 30+ minutes stuck unmapped) |
+| object found, running on a *different* node | derived from the object's UID | `UNKNOWN` (deliberately not `SCHEDULING` - see below) |
+| **object confirmed absent (`Get` -> `NotFound`)** | **`0`** | `HALTED` |
+| existence could not be confirmed (API unreachable, or any other error) | the caller's last-known `DomainId`, unchanged | `UNKNOWN` |
+
+The "running on a different node" row is deliberately not `SCHEDULING`: that would send domainmgr's rescheduling logic into a path that expects a boot in progress, and an app that is healthy on another node would report `BOOTING` forever. The id changing from 0 to a real, derived value is the fix that row needs; the `SwState` itself is left as `UNKNOWN`, matching what a generic id-only change already does downstream.
+
+The derived, non-zero id (`workloadID` in `hypervisor/kubevirt.go`) is an FNV-1a hash of the object's `metadata.uid`, falling back to hashing its Kubernetes name before the object exists (there is no UID to read yet between `Create` and `Start`). It plays the same role kvm/xen give a qemu pid - a `DomainId` change signals a new generation - but it is never used as a cross-app key, so a hash collision between two different apps' ids is harmless.
+
+### Naming, purge generations, and why they collide
+
+Every kube app object - the VMIRS (or plain ReplicaSet, for a NOHYPER app), and its virt-launcher/app pods - is named `<display-name>-<uuid5>-<purge-counter>` (`base.GetAppKubeNameWithPurge`), where `<uuid5>` is the first 5 characters of the app's UUID and `<purge-counter>` is the sum of the controller's purge and local-purge counters. The counter is embedded in the name specifically so that a purge's old and new generations never collide on the object name in the Kubernetes API - without it, a new VMIRS could not be created while the old one, even if already deleted, was still terminating.
+
+The object *name* is therefore unique per generation, but almost everything a generation configures is derived deterministically from the app's config and is **not** generation-scoped: MAC addresses, the RWO disk backing the VM, and pod interface (veth) names are all the same across every generation of the same app. Two generations that are ever briefly both alive - even just the old one's pod still tearing down while the new one's pod comes up - collide on all of these, which is what produces failures like `cannot set "eve-bridge" interface name to "podif2": interface name already exists`. This is why a purge must never let two generations exist at once, and why confirming a deleted generation is *actually* gone (not just its own object, but its pods) has to happen before the next generation is created, not just before the next generation is deleted.
+
+### The stale-generation sweep
+
+`Setup`/`Start` run an unconditional sweep before creating each app's object:
+
+1. List every VMIRS (or plain ReplicaSet) in the cluster and filter to this app's, by the `App-Domain-Name` label prefix (`<uuid>.`) on the VMIRS's `Spec.Selector.MatchLabels` (a plain ReplicaSet carries the same label directly on `ObjectMeta.Labels`, since its own selector has nothing UUID-scoped to filter on).
+2. Select every generation whose trailing purge-counter suffix is strictly less than the one about to be created. Name inequality, not label or version comparison, is what matters here: a non-purge config edit bumps the config version embedded in the label without renaming the object, so a version-only rule would misclassify the current generation as stale.
+3. Delete each stale generation, then confirm it is actually gone - the object *and* any of its pods - before moving on. Deleting the object returns quickly, but Kubernetes' garbage collection of the pod it owns is asynchronous and can take tens of seconds; proceeding to create the next generation as soon as the object itself is gone is exactly the race described above.
+4. Only once every stale generation is confirmed gone does `Start` create the new one. If confirming absence times out, `Start` fails outright rather than risk creating a second generation alongside one that might still exist.
+
+Running this sweep unconditionally, on every `Start`, matters specifically for a reboot mid-purge: `/run` is tmpfs, so a reboot drops domainmgr's own state, and zedmanager's purge bookkeeping lives in `/persist` and is keyed by a counter, not by "does an old generation still exist" - a purge that was in progress across a reboot is not always re-detected as a purge on the next boot. The sweep doesn't depend on detecting a purge at all: it just enumerates what actually exists in the cluster and reconciles against the counter it is about to create, every time.
+
+The sweep does not touch the stale generation's PVC. It reconciles VMIRS/ReplicaSet objects and their pods only, so a disk left behind by a stale generation is not reclaimed by this mechanism at all; that gap is still open.
+
+### Why the sweep alone does not guarantee a stuck purge recovers
+
+The sweep only runs when `Start` is actually called for the app - it is not a periodic or independently-triggered check. If zedmanager itself never gets far enough to ask domainmgr to bring the app back up, `Start` is never invoked and the sweep never gets a chance to run, no matter how correct it is on its own terms.
+
+This is not hypothetical: a purge issued while the device is off can leave zedmanager (`cmd/zedmanager/updatestatus.go`) waiting indefinitely on a `VolumeRefStatus` deletion from volumemgr that confirms a stale volume reference is gone, before it will move on to requesting the new generation's volume. If volumemgr's own state for that reference was also wiped by the same reboot, and it never gets asked about that reference again this boot, no such deletion will ever arrive - zedmanager stays parked in its purge-download phase forever, and `domainmgr`'s `Start` for the new generation is never called. `doInstall` now checks whether volumemgr has any live status for the stale reference at all before deciding to wait on it, and drops it immediately if not, so this no longer depends on an event that might never come. The two fixes are complementary: this one gets zedmanager to actually call `Start` again after a stalled removal; the sweep is what makes that `Start` safe once it happens.
 
 ## External Boot Image Migration
 
