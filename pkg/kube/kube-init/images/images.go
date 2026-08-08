@@ -37,7 +37,7 @@ const (
 	// ExternalBootImageTar is the on-disk path of the EVE-authored
 	// external-boot-image tarball. KubeVirt's virt-handler downloads
 	// the kernel/initrd from this image to boot guest VMs.
-	ExternalBootImageTar = "/images/external-boot-image.tar"
+	ExternalBootImageTar = "/etc/external-boot-image.tar"
 
 	// ExternalBootImageName is the fully-qualified image name
 	// kubelet pod specs reference (re-tagged to the running EVE
