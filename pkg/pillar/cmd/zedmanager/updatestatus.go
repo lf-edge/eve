@@ -417,11 +417,23 @@ func doInstall(ctx *zedmanagerContext,
 			MaybeRemoveVolumeRefConfig(ctx, config.UUIDandVersion.UUID,
 				vrs.VolumeID, vrs.GenerationCounter, vrs.LocalGenerationCounter)
 			if !vrs.PendingAdd {
-				vrs.PendingAdd = true
-				// Keep in VolumeRefStatus until we get an update
-				// from volumemgr
-				newVrs = append(newVrs, *vrs)
-				removed = true
+				if lookupVolumeRefStatus(ctx, vrs.Key()) == nil {
+					// volumemgr has no live VolumeRefStatus for this key
+					// at all, so there is nothing to wait for: either it
+					// was already deleted, or (e.g. after a reboot wiped
+					// ephemeral state) it was never republished this
+					// boot to begin with, in which case no delete event
+					// will ever arrive. Drop it now instead of parking
+					// on PendingAdd forever.
+					log.Functionf("No volumemgr VolumeRefStatus for %s; dropping immediately",
+						vrs.Key())
+				} else {
+					vrs.PendingAdd = true
+					// Keep in VolumeRefStatus until we get an update
+					// from volumemgr
+					newVrs = append(newVrs, *vrs)
+					removed = true
+				}
 			}
 		}
 		log.Functionf("purge inactive (%s) volumeRefStatus from %d to %d",
