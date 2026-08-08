@@ -47,7 +47,7 @@ const (
 )
 
 // multiNodeWatchCacheSrc is where the container image lands the
-// YAML the Dockerfile COPYs from pkg/kube/cfg-manifests/. Kept
+// YAML the Dockerfile copies from pkg/kube/cfg-manifests/. Kept
 // package-local since only provisionMultiNodeWatchCache reads it.
 const multiNodeWatchCacheSrc = "/etc/kube/" + MultiNodeWatchCache
 
