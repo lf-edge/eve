@@ -239,7 +239,7 @@ func runKvmToKResize(test *testing.T, provisionPolicy evetest.ExistingEdgeDevice
 
 	// Step 2: kvm→kvm hop — lands the conversion code, geometry unchanged.
 	log.Infof("kvm→kvm hop: upgrading to the conversion-capable build %s (kvm)", convVersion)
-	device.UpgradeEVE(convVersion, evetest.HypervisorKVM, true, false)
+	device.UpgradeEVE(convVersion, evetest.HypervisorKVM, evetest.BaseOSDatastoreHTTP, true, false)
 	log.Infof("post-kvm-hop: geometry must still be SMALL")
 	assertSmallGeometry(t, device)
 	log.Infof("post-kvm-hop: storage-resizer check must decide 'shrink'")
@@ -263,6 +263,9 @@ func runKvmToKResize(test *testing.T, provisionPolicy evetest.ExistingEdgeDevice
 		DisplayName: "switch-ni",
 		Port:        "eth0",
 	})
+	// Encrypted, not clear text: this test drives a conversion across a vault
+	// transition, so the data volume must exercise the vault-dependent path.
+	dataVolUUID := devConfig.AddBlankVolume("kvmtok-data0", dataVolBytes, false)
 	appUUID := devConfig.AddApplication(evetest.ApplicationInstanceConfig{
 		DisplayName:        "resize-test-app",
 		Activate:           true,
@@ -282,8 +285,8 @@ func runKvmToKResize(test *testing.T, provisionPolicy evetest.ExistingEdgeDevice
 				},
 			},
 		},
-		DataVolumes: []evetest.DataVolumeConfig{
-			{SizeBytes: dataVolBytes, MountDir: dataMountDir},
+		Mounts: []evetest.MountConfig{
+			{VolumeUUID: dataVolUUID, MountDir: dataMountDir},
 		},
 	})
 	device.ApplyConfig(devConfig, false, false)
@@ -312,7 +315,7 @@ func runKvmToKResize(test *testing.T, provisionPolicy evetest.ExistingEdgeDevice
 			dumpConversionFailure(device)
 		}
 	}()
-	device.UpgradeEVE(convVersion, targetHypervisor, true, false)
+	device.UpgradeEVE(convVersion, targetHypervisor, evetest.BaseOSDatastoreHTTP, true, false)
 	conversionOK = true
 	// The offline shrink+grow reboots once more than UpgradeEVE accounts for (its
 	// intermediate initrd-resize boot is invisible to the controller, but the
@@ -374,6 +377,14 @@ func runKvmToKResize(test *testing.T, provisionPolicy evetest.ExistingEdgeDevice
 	log.Infof("(f) post-conversion: the app data-volume marker must survive on EVE-k")
 	assertVolumeMarker(t, device, appUUID, appAuth, volMarker)
 	evetest.Checkpoint("post-conversion-app-ready")
+
+	// The data volume is independent of the app and outlives it, so the app
+	// must go first (DeleteVolume refuses while a VolumeRef still points at
+	// it). Tests cloned from this one inherit the full lifecycle.
+	devConfig.DeleteApplication(appUUID)
+	device.ApplyConfig(devConfig, false, false)
+	devConfig.DeleteVolume(dataVolUUID)
+	device.ApplyConfig(devConfig, false, false)
 }
 
 // ---- helpers (mirror the eden escript's assert/wait scripts) ----

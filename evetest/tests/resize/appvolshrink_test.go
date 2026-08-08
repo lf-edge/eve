@@ -324,7 +324,7 @@ func runAppVolumeShrinkCorruption(test *testing.T,
 	evetest.Checkpoint("baseline-small")
 
 	log.Infof("kvm→kvm hop: upgrading to the conversion-capable build %s (kvm)", convVersion)
-	device.UpgradeEVE(convVersion, evetest.HypervisorKVM, true, false)
+	device.UpgradeEVE(convVersion, evetest.HypervisorKVM, evetest.BaseOSDatastoreHTTP, true, false)
 	assertSmallGeometry(t, device)
 	assertCheckDecision(t, device, "shrink")
 	evetest.Checkpoint("kvm-hop-done")
@@ -350,6 +350,9 @@ func runAppVolumeShrinkCorruption(test *testing.T,
 		DisplayName: "switch-ni",
 		Port:        "eth0",
 	})
+	// Encrypted, not clear text: this test drives a conversion across a vault
+	// transition, so the data volume must exercise the vault-dependent path.
+	dataVolUUID := devConfig.AddBlankVolume("appvolshrink-data0", dataVolBytes, false)
 	appUUID := devConfig.AddApplication(evetest.ApplicationInstanceConfig{
 		DisplayName:        "volverify-app",
 		Activate:           true,
@@ -369,8 +372,8 @@ func runAppVolumeShrinkCorruption(test *testing.T,
 				},
 			},
 		},
-		DataVolumes: []evetest.DataVolumeConfig{
-			{SizeBytes: dataVolBytes, MountDir: dataMountDir},
+		Mounts: []evetest.MountConfig{
+			{VolumeUUID: dataVolUUID, MountDir: dataMountDir},
 		},
 	})
 	device.ApplyConfig(devConfig, false, false)
@@ -423,7 +426,7 @@ func runAppVolumeShrinkCorruption(test *testing.T,
 	// what matters is whether the app and its volume come back. Waiting for it
 	// only delays — and can fail — a conversion that is doing fine. The commit is
 	// observed at the end instead, where it costs nothing.
-	device.UpgradeEVE(convVersion, targetHypervisor, false, false)
+	device.UpgradeEVE(convVersion, targetHypervisor, evetest.BaseOSDatastoreHTTP, false, false)
 	waitDeviceOnTarget(t, device, targetHypervisor, 45*time.Minute)
 	conversionOK = true
 	device.ExpectAdditionalReboots(1)
@@ -543,6 +546,14 @@ func runAppVolumeShrinkCorruption(test *testing.T,
 	// "inprogress" here means the trial period had not finished, and one that
 	// reverted would explain an otherwise puzzling later failure.
 	logPartitionState(device)
+
+	// The data volume is independent of the app and outlives it, so the app
+	// must go first (DeleteVolume refuses while a VolumeRef still points at
+	// it). Tests cloned from this one inherit the full lifecycle.
+	devConfig.DeleteApplication(appUUID)
+	device.ApplyConfig(devConfig, false, false)
+	devConfig.DeleteVolume(dataVolUUID)
+	device.ApplyConfig(devConfig, false, false)
 }
 
 // devsideVerifyScript checks the carried-over volume on the device itself.
