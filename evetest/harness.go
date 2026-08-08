@@ -137,6 +137,12 @@ const (
 	// to finish quickly.
 	quickSSHCommandTimeout = 5 * time.Second
 
+	// Timeout for flushing the device's filesystem caches
+	// (see EdgeDevice.SyncDisks). Far more generous than a quick SSH command:
+	// a sync issued right after an app's image layers were unpacked has tens
+	// of megabytes of dirty pages to write back.
+	syncDisksTimeout = time.Minute
+
 	// Timeout for file transfers from the EVE device initiated by tests
 	// (see EdgeDevice.ReadFile).
 	// These transfers are expected to involve reasonably sized files, not

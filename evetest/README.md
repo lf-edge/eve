@@ -300,6 +300,19 @@ device := evetest.GetEdgeDevice("dev1")
 // Run commands via SSH
 stdout, stderr, err := device.RunShellScript("uptime", timeout, stdoutWatchdogTimeout)
 
+// Inspect the device filesystem (prefer these over ad-hoc shell scripts)
+data, err := device.ReadFile("/persist/status/nodeagent/global.json")
+// FileExists covers regular files and fails the test if the check cannot run;
+// PathExists accepts any node type and returns the error instead, so it can be
+// retried inside Eventually while the device is still converging.
+hasReason := device.FileExists("/persist/reboot-reason")
+hasVolumeDir, err := device.PathExists("/persist/vault/volumes")
+// Sorted entries; a directory EVE has not created yet yields an empty list.
+names, err := device.ListDirEntries("/run/hypervisor/kvm")
+device.WriteFile("/persist/marker", []byte("x"))
+device.DeleteFile("/persist/marker")
+device.SyncDisks() // flush filesystem caches, e.g. before PowerOff
+
 // Read EVE's internal published state (pubsub)
 var dpcl pillartypes.DevicePortConfigList
 err := evetest.ReadPublication(device, "nim", true, "global", &dpcl)
@@ -399,7 +412,18 @@ Use the CLI to inspect state, then run `evetest continue` to resume.
 - **Reuse existing package-level helpers** before writing new ones. Each test package
   has shared helpers for common patterns — for example the networking package has
   `getDevicePort`, `getCurrentDPC`, `appHasError`, `niHasError`. Check the other
-  `_test.go` files in the package before duplicating logic.
+  `_test.go` files in the package before duplicating logic. A helper that says
+  nothing about the subject under test — reading a file, listing a directory,
+  checking a path, flushing caches — belongs on `EdgeDevice` in
+  `evetest/edgedevice.go` instead, where every package can reuse it.
+
+- **Keep helpers out of the test files.** Small packages put all shared helpers in
+  `helpers_test.go`. When a package accumulates more than that file can carry,
+  split it into files whose names end in `_helpers_test.go`, so that a file named
+  for a test contains only that test. Name each helper file for the state it
+  observes — not for the test that first needed it — and record the layout in the
+  package comment in that package's `testsuite_test.go`; see `tests/apps/` for a
+  worked example. Check that comment before adding a helper.
 
 - **Do not mutate shared global state.** If a test needs to modify a package-level
   variable (e.g. a network model defined in `evetest/netmodels/`), operate on a deep
