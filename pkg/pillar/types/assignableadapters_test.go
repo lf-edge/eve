@@ -584,9 +584,15 @@ func TestSetSourceErrors(t *testing.T) {
 
 func alternativeCheckBadUSBBundlesImpl(bundles []IoBundle) {
 	for i := range bundles {
+		if bundles[i].UsbAddr == "" && bundles[i].UsbProduct == "" {
+			continue
+		}
 		for j := range bundles {
 			errStr := ""
 			if i == j {
+				continue
+			}
+			if bundles[j].UsbAddr == "" && bundles[j].UsbProduct == "" {
 				continue
 			}
 
@@ -928,6 +934,32 @@ func TestCheckBadUSBBundles(t *testing.T) {
 				},
 				{
 					bundle: IoBundle{Phylabel: "11", UsbAddr: "", UsbProduct: ""},
+				},
+			},
+		},
+		{
+			// Receptacles of one USB controller, which a model may list
+			// individually and put in a single assignment group. They share a
+			// PCI address but identify no USB device, so they do not collide.
+			bundleWithError: []bundleWithError{
+				{bundle: IoBundle{Phylabel: "USB0", Type: IoUSB, PciLong: "0000:00:15.0", AssignmentGroup: "USB-A"}},
+				{bundle: IoBundle{Phylabel: "USB1", Type: IoUSB, PciLong: "0000:00:15.0", AssignmentGroup: "USB-A"}},
+				{bundle: IoBundle{Phylabel: "USB2", Type: IoUSB, PciLong: "0000:00:15.0", AssignmentGroup: "USB-A"}},
+				{bundle: IoBundle{Phylabel: "USB3", Type: IoUSB, PciLong: "0000:00:15.0", AssignmentGroup: "USB-A"}},
+				{bundle: IoBundle{Phylabel: "USB4", Type: IoUSB, PciLong: "0000:00:15.0", AssignmentGroup: "USB-A"}},
+				{bundle: IoBundle{Phylabel: "USB5", Type: IoUSB, PciLong: "0000:00:15.0", AssignmentGroup: "USB-A"}},
+			},
+		},
+		{
+			// Grouping does not exempt bundles that do name the same USB device.
+			bundleWithError: []bundleWithError{
+				{
+					bundle:        IoBundle{Phylabel: "12", UsbAddr: "1:2", PciLong: "0000:00:15.0", AssignmentGroup: "USB-A"},
+					expectedError: "ioBundle collision: 12 (usbaddr 1:2, pcilong 0000:00:15.0, assigngrp USB-A); 13 (usbaddr 1:2, pcilong 0000:00:15.0, assigngrp USB-A)",
+				},
+				{
+					bundle:        IoBundle{Phylabel: "13", UsbAddr: "1:2", PciLong: "0000:00:15.0", AssignmentGroup: "USB-A"},
+					expectedError: "ioBundle collision: 12 (usbaddr 1:2, pcilong 0000:00:15.0, assigngrp USB-A); 13 (usbaddr 1:2, pcilong 0000:00:15.0, assigngrp USB-A)",
 				},
 			},
 		},
