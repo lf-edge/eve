@@ -658,6 +658,24 @@ func TestSetSourceErrors(t *testing.T) {
 	assert.False(t, e.TimeOfError.IsZero(), "still has the other source's error")
 }
 
+func TestHardErrorString(t *testing.T) {
+	t.Parallel()
+
+	var e IOBundleError
+	assert.Equal(t, "", e.HardErrorString(), "no entries")
+
+	e.SetSourceErrors(ErrIoBundleRename{}, true, false, []string{"renamed"})
+	assert.False(t, e.Empty(), "the warning is recorded")
+	assert.Equal(t, "", e.HardErrorString(), "a warning is not a hard error")
+
+	e.SetSourceErrors(ErrIoBundleMissingDevice{}, false, false, []string{"missing"})
+	assert.Equal(t, "missing", e.HardErrorString(), "only the hard error is returned")
+
+	e.SetSourceErrors(ErrIoBundleMissingDevice{}, false, false, nil)
+	assert.Equal(t, "", e.HardErrorString(), "hard error cleared, warning remains")
+	assert.False(t, e.Empty())
+}
+
 func alternativeCheckBadUSBBundlesImpl(bundles []IoBundle) {
 	for i := range bundles {
 		if bundles[i].UsbAddr == "" && bundles[i].UsbProduct == "" {

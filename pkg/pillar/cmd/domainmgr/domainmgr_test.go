@@ -20,8 +20,10 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/cloudconfig"
+	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
@@ -700,4 +702,111 @@ func TestMistypedNetworkPortKeptInHost(t *testing.T) {
 			t.Fatalf("warning should identify the PCI address %s, got %q", pciLong, b.Error.String())
 		}
 	}
+}
+
+// TestReserveAdaptersWarningVsError checks that an advisory warning on an I/O
+// bundle leaves the adapter assignable, while a hard error refuses it and is
+// the only text reported back.
+func TestReserveAdaptersWarningVsError(t *testing.T) {
+	const hardErr = "device is missing"
+	const warnStr = "renamed to match the model"
+
+	newCtx := func(t *testing.T, aa *types.AssignableAdapters) *domainContext {
+		t.Helper()
+		ps := pubsub.New(pubsub.NewMemoryDriver(), logger, log)
+		pubAA, err := ps.NewPublication(pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.AssignableAdapters{},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		pubCap, err := ps.NewPublication(pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.Capabilities{},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := pubCap.Publish("global", types.Capabilities{IOVirtualization: true}); err != nil {
+			t.Fatal(err)
+		}
+		return &domainContext{
+			assignableAdapters:    aa,
+			pubAssignableAdapters: pubAA,
+			pubCapabilities:       pubCap,
+		}
+	}
+
+	newBundle := func() types.IoBundle {
+		return types.IoBundle{
+			Phylabel:        "eth1",
+			Logicallabel:    "eth1",
+			Type:            types.IoNetEth,
+			AssignmentGroup: "eth1",
+			PciLong:         "0000:06:00.0",
+		}
+	}
+
+	appUUID, err := uuid.FromString("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := types.DomainConfig{
+		UUIDandVersion: types.UUIDandVersion{UUID: appUUID},
+		IoAdapterList:  []types.IoAdapter{{Type: types.IoNetEth, Name: "eth1"}},
+	}
+
+	t.Run("warning only", func(t *testing.T) {
+		ib := newBundle()
+		ib.Error.SetSourceErrors(types.ErrIoBundleRename{}, true, false, []string{warnStr})
+		aa := &types.AssignableAdapters{IoBundleList: []types.IoBundle{ib}}
+		ctx := newCtx(t, aa)
+
+		if d := reserveAdapters(ctx, config); d != nil {
+			t.Fatalf("adapter carrying only a warning must stay assignable, refused with %q", d.Error)
+		}
+		if aa.IoBundleList[0].UsedByUUID != appUUID {
+			t.Fatalf("adapter should be reserved for %s, got %s",
+				appUUID, aa.IoBundleList[0].UsedByUUID)
+		}
+	})
+
+	t.Run("hard error", func(t *testing.T) {
+		ib := newBundle()
+		ib.Error.SetSourceErrors(types.ErrIoBundleMissingDevice{}, false, false, []string{hardErr})
+		aa := &types.AssignableAdapters{IoBundleList: []types.IoBundle{ib}}
+		ctx := newCtx(t, aa)
+
+		d := reserveAdapters(ctx, config)
+		if d == nil {
+			t.Fatal("adapter carrying a hard error must be refused")
+		}
+		if !strings.Contains(d.Error, hardErr) {
+			t.Fatalf("refusal should quote %q, got %q", hardErr, d.Error)
+		}
+		if aa.IoBundleList[0].UsedByUUID != nilUUID {
+			t.Fatalf("refused adapter must not be reserved, got %s",
+				aa.IoBundleList[0].UsedByUUID)
+		}
+	})
+
+	t.Run("warning and hard error", func(t *testing.T) {
+		ib := newBundle()
+		ib.Error.SetSourceErrors(types.ErrIoBundleRename{}, true, false, []string{warnStr})
+		ib.Error.SetSourceErrors(types.ErrIoBundleMissingDevice{}, false, false, []string{hardErr})
+		aa := &types.AssignableAdapters{IoBundleList: []types.IoBundle{ib}}
+		ctx := newCtx(t, aa)
+
+		d := reserveAdapters(ctx, config)
+		if d == nil {
+			t.Fatal("adapter carrying a hard error must be refused")
+		}
+		if !strings.Contains(d.Error, hardErr) {
+			t.Fatalf("refusal should quote %q, got %q", hardErr, d.Error)
+		}
+		if strings.Contains(d.Error, warnStr) {
+			t.Fatalf("refusal should not quote the advisory warning, got %q", d.Error)
+		}
+	})
 }
