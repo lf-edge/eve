@@ -913,12 +913,18 @@ func newIoBundleCollisionErr() ErrIOBundleCollision {
 	}
 }
 
-// CheckBadUSBBundles sets and clears ib.Error/ErrorTime if bundle collides in regards of USB
+// CheckBadUSBBundles sets and clears ib.Error/ErrorTime when several bundles
+// describe the same USB device, i.e. share a USB address and/or USB product
+// (plus PCI address and assignment group). Only bundles identifying a USB
+// device take part: a model may legitimately list several receptacles of one
+// USB controller as separate bundles of a single assignment group, which share
+// a PCI address without describing the same device. Bundles sharing a PCI
+// address across assignment groups are CheckBadAssignmentGroups' concern.
 func (aa *AssignableAdapters) CheckBadUSBBundles() {
 	usbProductsAddressMap := make(map[[4]string][]*IoBundle)
 	for i := range aa.IoBundleList {
 		ioBundle := &aa.IoBundleList[i]
-		if ioBundle.UsbAddr == "" && ioBundle.UsbProduct == "" && ioBundle.PciLong == "" {
+		if ioBundle.UsbAddr == "" && ioBundle.UsbProduct == "" {
 			continue
 		}
 
