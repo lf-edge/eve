@@ -65,10 +65,11 @@ func main() {
 		if err != nil {
 			fatal(err)
 		}
-		if err := w.Run(); err != nil {
+		committed, err := w.Run()
+		if err != nil {
 			fatal(err)
 		}
-		fmt.Println("write: complete")
+		fmt.Printf("write: complete committed=%d\n", committed)
 	case "verify":
 		rep, err := verify.Verify(*dir, cfg)
 		if err != nil {

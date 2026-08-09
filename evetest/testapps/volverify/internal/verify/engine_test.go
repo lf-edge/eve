@@ -28,7 +28,7 @@ func writeVolume(t *testing.T, cfg Config) (string, *model) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := w.Run(); err != nil {
+	if _, err := w.Run(); err != nil {
 		t.Fatal(err)
 	}
 	return dir, committedModel(dir, cfg)
@@ -170,7 +170,7 @@ func TestCrashResumeIdempotent(t *testing.T) {
 	// Running the writer again must resume from the commit and leave the volume
 	// clean (idempotent re-application of already-committed ops).
 	w, _ := NewWriter(dir, cfg)
-	if err := w.Run(); err != nil {
+	if _, err := w.Run(); err != nil {
 		t.Fatal(err)
 	}
 	rep, _ := Verify(dir, cfg)

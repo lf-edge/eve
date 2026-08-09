@@ -4,10 +4,12 @@
 package verify
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"syscall"
 )
 
 // Writer applies the deterministic op stream to a volume, fsyncing and advancing
@@ -26,9 +28,13 @@ func NewWriter(volDir string, cfg Config) (*Writer, error) {
 	return &Writer{volDir: volDir, cfg: cfg}, nil
 }
 
-// Run applies ops until Config.Ops, resuming after a crash from the committed
-// index. It is safe to call repeatedly across reboots on the same volume.
-func (w *Writer) Run() error {
+// Run applies ops until Config.Ops (or until the volume fills), resuming after a
+// crash from the committed index. It is safe to call repeatedly across reboots on
+// the same volume. It returns the final committed op index — the high-water mark
+// the verifier should expect (equal to Ops-1 on full completion, or lower when the
+// volume filled first). Filling the volume is the expected end state for the
+// corruption soak, so ENOSPC is a clean stop, not an error.
+func (w *Writer) Run() (int64, error) {
 	gen := newGenerator(w.cfg)
 	m := newModel(w.cfg)
 
@@ -39,6 +45,7 @@ func (w *Writer) Run() error {
 		m.apply(gen.next(m, n))
 	}
 	gen64 := nextGeneration(w.volDir)
+	lastCommitted := committed
 
 	touchedFiles := make(map[string]bool)
 	touchedDirs := make(map[string]bool)
@@ -58,6 +65,7 @@ func (w *Writer) Run() error {
 			return err
 		}
 		gen64++
+		lastCommitted = int64(index)
 		touchedFiles = make(map[string]bool)
 		touchedDirs = make(map[string]bool)
 		return nil
@@ -67,19 +75,35 @@ func (w *Writer) Run() error {
 	for n := start; n < w.cfg.Ops; n++ {
 		o := gen.next(m, n)
 		if err := w.applyOp(o, touchedFiles, touchedDirs); err != nil {
-			return fmt.Errorf("op %d (%v): %w", n, o.typ, err)
+			if errors.Is(err, syscall.ENOSPC) {
+				// Volume full: stop cleanly at the last fully-written op. Drop the
+				// partial file (it is an uncommitted op the verifier ignores) and
+				// commit everything through n-1, then report that index.
+				if o.typ == opCreate {
+					_ = os.Remove(filepath.Join(w.volDir, filePathFor(w.cfg, o.fileID)))
+				}
+				if n > start {
+					if err := commit(n - 1); err != nil {
+						return lastCommitted, err
+					}
+				}
+				return lastCommitted, nil
+			}
+			return lastCommitted, fmt.Errorf("op %d (%v): %w", n, o.typ, err)
 		}
 		m.apply(o)
 		if (n+1)%w.cfg.CommitEvery == 0 {
 			if err := commit(n); err != nil {
-				return err
+				return lastCommitted, err
 			}
 		}
 	}
 	if w.cfg.Ops > start {
-		return commit(w.cfg.Ops - 1)
+		if err := commit(w.cfg.Ops - 1); err != nil {
+			return lastCommitted, err
+		}
 	}
-	return nil
+	return lastCommitted, nil
 }
 
 // applyOp performs one op against the volume and records what it touched so the
