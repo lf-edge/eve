@@ -168,6 +168,22 @@ func (iobe *IOBundleError) IsOnlyWarnings() bool {
 	return true
 }
 
+// HardErrorString returns the combined text of the entries that are not
+// advisory warnings, and "" when the bundle carries only warnings or nothing.
+// Callers deciding whether an adapter is usable must key on this rather than on
+// Empty(): a warning records a model inconsistency EVE worked around and
+// carried on from, so it must not by itself make the adapter unusable.
+func (iobe *IOBundleError) HardErrorString() string {
+	errorStrings := make([]string, 0, len(iobe.Errors))
+	for _, err := range iobe.Errors {
+		if err.Warning {
+			continue
+		}
+		errorStrings = append(errorStrings, err.Error())
+	}
+	return strings.Join(errorStrings, "; ")
+}
+
 // Empty returns true if no error has been added
 func (iobe *IOBundleError) Empty() bool {
 	if iobe.Errors == nil || len(iobe.Errors) == 0 {
