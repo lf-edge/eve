@@ -17,6 +17,8 @@ import (
 //   - TestVCom -- vcomlink (TPM-over-vsock) request/response from inside a VM app.
 //   - TestControllerSigningCertChange -- rotation of the controller certificate
 //     signing API responses; device must recover config processing on its own.
+//   - TestControllerEncryptCertChange -- rotation of the controller ECDH
+//     certificate; object-encrypted configuration must be migrated and survive.
 func TestSecuritySuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
@@ -34,6 +36,9 @@ func TestSecuritySuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestControllerSigningCertChange,
+		},
+		evetest.TestCase{
+			Test: TestControllerEncryptCertChange,
 		},
 	)
 }
