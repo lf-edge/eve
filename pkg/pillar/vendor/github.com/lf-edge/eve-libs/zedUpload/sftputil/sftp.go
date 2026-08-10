@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -46,14 +47,31 @@ func getSftpClient(host, user, pass string) (*sftp.Client, error) {
 		Timeout:         time.Duration(10) * time.Second,
 	}
 
+	// host may be a bare "host:port" (the original contract, still used by
+	// older EVE versions and potentially callers outside EVE) or a scheme-qualified
+	// URL such as "sftp://host:port", which newer EVE versions now require
+	// (since https://github.com/lf-edge/eve/pull/5588).
+	// url.Parse "succeeds" on a bare host:port too, but only as an opaque URI
+	// (an empty Host, with the part before the port's colon landing in Scheme/Opaque
+	// instead), so u.Host is what actually distinguishes the two: non-empty only for a
+	// real scheme-qualified authority-form URL.
+	dialAddr := host
+	if u, err := url.Parse(host); err == nil && u.Host != "" {
+		dialAddr = u.Host
+	}
+
 	// We break this up into a DNS lookup and a Dial only to be able to detect
-	// the errors better
-	args := strings.Split(host, ":")
-	if _, err := net.LookupHost(args[0]); err != nil {
+	// the errors better. net.SplitHostPort (rather than a naive split on ":")
+	// also correctly handles a bracketed IPv6 literal.
+	hostname, _, err := net.SplitHostPort(dialAddr)
+	if err != nil {
+		hostname = dialAddr
+	}
+	if _, err := net.LookupHost(hostname); err != nil {
 		log.Printf("LookupHost error: %s", err)
 		return nil, err
 	}
-	client, err := ssh.Dial("tcp", host, clientConfig)
+	client, err := ssh.Dial("tcp", dialAddr, clientConfig)
 	if err != nil {
 		return nil, err
 	}
