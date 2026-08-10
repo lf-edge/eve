@@ -25,6 +25,7 @@ import (
 	uuid "github.com/satori/go.uuid"
 	"github.com/spf13/viper"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/proto"
 )
 
 type infoMsgGrpcIterator[T any] struct {
@@ -230,7 +231,10 @@ func (th *TestHarness) GetEVEConfig(
 	if th.devices[devName].config == nil {
 		return nil, fmt.Errorf("no config submitted for device %s", devName)
 	}
-	config := th.devices[devName].config.EdgeDevConfig
+	// Cloned, not aliased: gRPC marshals the response only after this handler has
+	// released devicesM, so returning the live message would race with any writer
+	// that mutates the harness-held config in place.
+	config := proto.CloneOf(th.devices[devName].config.EdgeDevConfig)
 	return &api.EVEConfigResponse{Config: config}, nil
 }
 

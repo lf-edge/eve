@@ -1073,6 +1073,11 @@ func (config ApplicationInstanceConfig) toProto(th *TestHarness, devName string,
 				th.t.Fatalf("Failed to encrypt user data for application %v: %v",
 					config.DisplayName, err)
 			}
+			// Deliberately leaves UserData unset. domainmgr's getCloudInitUserData
+			// silently falls back to the plaintext field when the decrypt fails,
+			// booting the application with cleartext and reporting no error at all
+			// - so setting both would make every encrypted-user-data assertion
+			// unable to fail.
 			appInstConfig.CipherData = cipherData
 		} else {
 			// This is initial device configuration.
@@ -1933,6 +1938,10 @@ func (dc *EdgeDeviceConfig) setDefaultConfigProperties() {
 		{Key: string(pillartypes.LocationCloudInterval), Value: "300"},
 		{Key: string(pillartypes.AllowLogFastupload), Value: "true"},
 		{Key: string(pillartypes.DownloadRetryTime), Value: "60"},
+
+		// timer.cert.interval is deliberately left at its 24h default: lowering it
+		// would make EVE refetch /certs on a timer, which is exactly the fallback
+		// the certificate rotation tests must not be able to rely on.
 
 		// Reduce the post-upgrade testing period so upgrades complete faster in tests.
 		{Key: string(pillartypes.MintimeUpdateSuccess), Value: "60"},

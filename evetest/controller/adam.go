@@ -79,11 +79,19 @@ type AdamClient struct {
 	listenIPs  []net.IP
 	listenPort uint16
 
-	// certificates and their corresponding private keys
-	caCert      *x509.Certificate
-	caKey       *rsa.PrivateKey
-	tlsCert     *x509.Certificate
-	tlsKey      *ecdsa.PrivateKey
+	// Certificates and their corresponding private keys that are never rotated:
+	// the CA is set at construction, the TLS pair once in generateCerts.
+	caCert  *x509.Certificate
+	caKey   *rsa.PrivateKey
+	tlsCert *x509.Certificate
+	tlsKey  *ecdsa.PrivateKey
+
+	// certsM guards the fields below: the signing and ECDH keypairs are
+	// rotatable at runtime (see RotateSigningKeyPair, RotateECDHKeyPair) while
+	// tests and per-device setup goroutines read them concurrently.
+	certsM      sync.RWMutex
+	certDir     string // directory holding the certificate files Adam reads
+	certSerial  int64  // serial number for the next generated certificate
 	signingCert *x509.Certificate
 	signingKey  *ecdsa.PrivateKey
 	ecdhCert    *x509.Certificate
@@ -364,16 +372,124 @@ func (ac *AdamClient) openStream(ctx context.Context, url string) (*http.Respons
 	return resp, nil
 }
 
+// KeyPair is a controller certificate together with its private key.
+type KeyPair struct {
+	Cert *x509.Certificate
+	Key  *ecdsa.PrivateKey
+}
+
 // GetSigningCertAndKey returns certificate+key used by the controller to sign payload
 // send to a device wrapped inside AuthContainer.
 func (ac *AdamClient) GetSigningCertAndKey() (*x509.Certificate, *ecdsa.PrivateKey) {
+	ac.certsM.RLock()
+	defer ac.certsM.RUnlock()
 	return ac.signingCert, ac.signingKey
 }
 
 // GetECDHCertAndKey returns certificate+key used by the controller for object-level
 // encryption (e.g., for WiFi password).
 func (ac *AdamClient) GetECDHCertAndKey() (*x509.Certificate, *ecdsa.PrivateKey) {
+	ac.certsM.RLock()
+	defer ac.certsM.RUnlock()
 	return ac.ecdhCert, ac.ecdhKey
+}
+
+// RotateSigningKeyPair generates a fresh keypair for the controller signing
+// certificate, installs it into Adam's certificate directory and makes it the
+// pair returned by GetSigningCertAndKey. It returns the new pair and the pair it
+// replaced.
+//
+// Adam must not be restarted for this to take effect -- it re-reads signing.pem
+// and signing-key.pem from disk on every API request. A restart would in fact
+// undo the rotation, because Start unconditionally regenerates all keypairs.
+func (ac *AdamClient) RotateSigningKeyPair() (newPair, oldPair KeyPair, err error) {
+	ac.certsM.Lock()
+	defer ac.certsM.Unlock()
+
+	oldPair = KeyPair{Cert: ac.signingCert, Key: ac.signingKey}
+	newPair, err = ac.rotateKeyPair("signing", "signing.pem", "signing-key.pem")
+	if err != nil {
+		return KeyPair{}, oldPair, err
+	}
+	ac.signingCert, ac.signingKey = newPair.Cert, newPair.Key
+	return newPair, oldPair, nil
+}
+
+// RotateECDHKeyPair generates a fresh keypair for the controller ECDH
+// (object-level encryption) certificate, installs it into Adam's certificate
+// directory and makes it the pair returned by GetECDHCertAndKey. It returns the
+// new pair and the pair it replaced; the old private key is needed to decrypt
+// cipher blocks that are being migrated onto the new certificate.
+//
+// As with RotateSigningKeyPair, Adam picks the change up without a restart.
+func (ac *AdamClient) RotateECDHKeyPair() (newPair, oldPair KeyPair, err error) {
+	ac.certsM.Lock()
+	defer ac.certsM.Unlock()
+
+	oldPair = KeyPair{Cert: ac.ecdhCert, Key: ac.ecdhKey}
+	newPair, err = ac.rotateKeyPair("ECDH", "ecdh.pem", "ecdh-key.pem")
+	if err != nil {
+		return KeyPair{}, oldPair, err
+	}
+	ac.ecdhCert, ac.ecdhKey = newPair.Cert, newPair.Key
+	return newPair, oldPair, nil
+}
+
+// rotateKeyPair generates an ECDSA keypair signed by the harness CA and installs
+// it into Adam's certificate directory under the given file names. The file names
+// are evetest's own, not Adam's defaults (which are encrypt.pem/encrypt-key.pem
+// for the ECDH pair); Start passes them explicitly via --encrypt-cert et al.
+//
+// The two files cannot be replaced as one, so a failure after the first write
+// would leave Adam holding a mismatched pair, answering 500 to every request
+// needing a signed response. That would break not only the test that asked for
+// the rotation but every later test sharing the harness, so the previous
+// contents are restored before the error is returned.
+//
+// The caller must hold certsM for writing.
+func (ac *AdamClient) rotateKeyPair(
+	desc, certFilename, keyFilename string) (KeyPair, error) {
+	if ac.certDir == "" {
+		return KeyPair{}, errors.New(
+			"the Adam certificate directory is not known yet")
+	}
+	certPath := filepath.Join(ac.certDir, certFilename)
+	keyPath := filepath.Join(ac.certDir, keyFilename)
+	prevCert, prevCertErr := os.ReadFile(certPath)
+	prevKey, prevKeyErr := os.ReadFile(keyPath)
+	restorePrevious := func() {
+		if prevCertErr != nil || prevKeyErr != nil {
+			ac.log.Errorf("Cannot restore the previous Adam %s pair, it was not "+
+				"readable (cert: %v, key: %v)", desc, prevCertErr, prevKeyErr)
+			return
+		}
+		if err := utils.WriteFileAtomic(keyPath, prevKey, 0o600); err != nil {
+			ac.log.Errorf("Failed to restore the previous Adam %s key: %v", desc, err)
+			return
+		}
+		if err := utils.WriteFileAtomic(certPath, prevCert, 0o644); err != nil {
+			ac.log.Errorf("Failed to restore the previous Adam %s certificate: %v",
+				desc, err)
+			return
+		}
+		ac.log.Warnf("Restored the previous Adam %s certificate and key", desc)
+	}
+
+	serial := big.NewInt(ac.certSerial)
+	ac.certSerial++
+	cert, key, err := utils.GenServerCertElliptic(ac.caCert, ac.caKey, serial,
+		ac.listenIPs, []string{ac.hostname}, ac.hostname)
+	if err != nil {
+		return KeyPair{}, fmt.Errorf(
+			"failed to generate Adam %s certificate: %w", desc, err)
+	}
+	if err := utils.OutputCertAndKeyAtomic(cert, key, certPath, keyPath); err != nil {
+		restorePrevious()
+		return KeyPair{}, fmt.Errorf(
+			"failed to install Adam %s certificate: %w", desc, err)
+	}
+	ac.log.Infof("Installed a new Adam %s certificate (serial %s)", desc, serial)
+	return KeyPair{Cert: cert, Key: key}, nil
 }
 
 // RegisterDevice directly registers a device certificate with Adam,
@@ -2073,12 +2189,24 @@ func (ac *AdamClient) findDeviceByOnboard(ctx context.Context, httpClient *http.
 }
 
 // Generate server, signing and encryption certificates for Adam.
+// The directory is remembered on the client so that the signing and ECDH
+// keypairs can later be rotated in place (see RotateSigningKeyPair).
 func (ac *AdamClient) generateCerts() (certDir string, err error) {
+	ac.certsM.Lock()
+	defer ac.certsM.Unlock()
+
 	certDir = filepath.Join(ac.runDir, "adam-certs")
 	if err := os.MkdirAll(certDir, 0o755); err != nil {
 		err = fmt.Errorf("failed to create Adam cert directory: %w", err)
 		return certDir, err
 	}
+	ac.certDir = certDir
+	// Start past the serials hardcoded below. Uniqueness within the CA is not
+	// achieved and not needed: the harness issues 2 for every device onboarding
+	// certificate and 3 for the image server from the same CA, and nothing
+	// consumes (issuer, serial) -- Adam identifies certificates by PEM hash.
+	// The counter exists only so that a rotation is visible in logs.
+	ac.certSerial = 4
 
 	ac.log.Debug("Generating Adam TLS certificate")
 	ac.tlsCert, ac.tlsKey, err = utils.GenServerCertElliptic(

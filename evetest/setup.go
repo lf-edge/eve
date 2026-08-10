@@ -1504,8 +1504,9 @@ func (th *TestHarness) forceDeviceReonboarding(dev deviceState) error {
 // only the network settings. All application-level state (apps, network instances,
 // datastores, content info, volumes, patch envelopes, profile settings, and config items)
 // is cleared so the next test starts from a clean application baseline without disrupting
-// the device's network connectivity. The new config is versioned, applied via the
-// controller, and saved in the harness's in-memory device record.
+// the device's network connectivity. Everything encrypted is cleared as well, so that no
+// test can inherit a cipher block from its predecessor. The new config is versioned,
+// applied via the controller, and saved in the harness's in-memory device record.
 func (th *TestHarness) resetDeviceConfig(dev deviceState) error {
 	th.devicesM.Lock()
 	if dev.config == nil {
@@ -1526,6 +1527,19 @@ func (th *TestHarness) resetDeviceConfig(dev deviceState) error {
 	newConfig.LocalProfileServer = ""
 	newConfig.GlobalProfile = ""
 	newConfig.ProfileServerToken = ""
+
+	// Cipher blocks also hide in retained objects (wireless credentials, the SCEP
+	// challenge password, the cluster join token), and one encrypted against a
+	// certificate the next device does not hold is undetectable until it fails to
+	// decrypt. Dropping the cipher contexts along with them is safe: no block
+	// survives the reset, and ApplyConfig republishes the context list from the
+	// harness-held config, so encryptCipherData re-adds a context on demand.
+	// This also makes the direct ApplyDeviceConfig push below (which bypasses
+	// ApplyConfig's checkCipherBlocksUseCurrentECDHCert guard) trivially valid.
+	if err := clearCipherBlocks(newConfig.EdgeDevConfig); err != nil {
+		return err
+	}
+	newConfig.CipherContexts = nil
 
 	// Set config ID.
 	configVer := th.nextConfigVersion(newConfig)

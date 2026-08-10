@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -24,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	evecerts "github.com/lf-edge/eve-api/go/certs"
 	eveinfo "github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/evetest/constants"
 	"github.com/lf-edge/eve/evetest/controller"
@@ -96,6 +98,17 @@ const (
 
 	// Timeout for a device to fetch the latest configuration from Adam.
 	deviceApplyConfigTimeout = 2 * time.Minute
+
+	// Timeout for a device to pick up a rotated controller certificate: notice
+	// the changed controllercert_confighash in a config response, refetch /certs
+	// and republish ControllerCert. Generous because a single failed fetch is
+	// never re-triggered by config and recovery then falls to zedagent's
+	// post-failure retry, which waits shortTime=120s.
+	deviceCertRefetchTimeout = 5 * time.Minute
+
+	// Polling interval while waiting for a controller certificate to appear on
+	// a device.
+	deviceCertPollInterval = 5 * time.Second
 
 	// Timeout for a device to be removed from the Adam controller.
 	deviceRemoveTimeout = 20 * time.Second
@@ -1269,13 +1282,202 @@ func UpdateNetworkModel(netModel *api.NetworkModel) {
 	th.log.Info("Successfully applied the new network model")
 }
 
-// ChangeSigningCert replaces the controller signing certificate
-// with the provided one.
-func ChangeSigningCert(newSignCertPEM string) error {
+// RotateControllerSigningCert rotates the certificate and private key with which
+// the controller signs the AuthContainer that wraps every API response.
+//
+// Nothing has to be re-encrypted and no configuration has to be pushed: evetest
+// always derives cipher contexts from the controller's ECDH certificate, never
+// from the signing certificate (see encryptCipherData), so object-level
+// encryption is untouched. Use RotateControllerEncryptCert for that.
+//
+// Unlike RotateControllerEncryptCert this does not wait for the device to pick
+// the new certificate up; the caller decides what to wait for.
+//
+// Adam is deliberately not restarted: it re-reads the signing certificate and key
+// from disk on every request, whereas a restart would regenerate all keypairs and
+// undo the rotation.
+func RotateControllerSigningCert() {
 	th := getTestHarness()
-	// TODO
-	th.t.Fatalf("ChangeSigningCert is not implemented")
-	return nil
+	newPair, oldPair, err := th.adamClient.RotateSigningKeyPair()
+	if err != nil {
+		th.t.Fatalf("Failed to rotate the controller signing certificate: %v", err)
+	}
+	th.log.Infof("Rotated the controller signing certificate (serial %s -> %s)",
+		oldPair.Cert.SerialNumber, newPair.Cert.SerialNumber)
+}
+
+// RotateControllerEncryptCert rotates the controller's ECDH certificate and
+// private key -- the material every evetest cipher context is derived from --
+// and migrates the deployed configuration onto it: for every onboarded device it
+// registers a cipher context derived from the new certificate, re-encrypts every
+// cipher block from the retired context to the new one, and re-applies the
+// configuration.
+//
+// Pass the EdgeDeviceConfig builders the test still holds, and pass the ones it
+// has been applying: configurations are pushed as they are, and EVE config is
+// declarative, so a builder that is a subset of what the device has deployed
+// silently un-deploys the difference. A builder left out keeps blocks encrypted
+// against the retired certificate; a device with no builder given has its
+// harness-held configuration migrated instead, and only if it holds cipher blocks.
+//
+// Ordering is load-bearing: install the certificates, wait for the device to
+// publish the new one, only then push. Reversed, the device parses a cipher
+// context for a certificate it does not have yet and takes a failed decrypt plus
+// domainmgr's 30s retry. The wait is on EVE's ControllerCert publication because
+// the /certs refetch is only triggered asynchronously, by
+// controllercert_confighash (Adam >= 0.0.81), and a fetch that fails is not
+// re-triggered. The push is required even though nothing else changed: zedagent
+// skips re-parsing cipher contexts while the hash over the set is unchanged.
+//
+// Not safe to call while devices are still being set up: it mutates the
+// harness-held configuration, which ApplyConfig also reads outside devicesM.
+func RotateControllerEncryptCert(deviceConfigs ...*EdgeDeviceConfig) {
+	th := getTestHarness()
+
+	configByDevice := make(map[string]*EdgeDeviceConfig, len(deviceConfigs))
+	for _, config := range deviceConfigs {
+		if config == nil {
+			continue
+		}
+		configByDevice[config.GetDeviceName()] = config
+	}
+	th.devicesM.Lock()
+	for devName := range configByDevice {
+		if _, found := th.devices[devName]; !found {
+			th.devicesM.Unlock()
+			th.t.Fatalf("RotateControllerEncryptCert was given a configuration "+
+				"for unknown device %q", devName)
+		}
+	}
+	th.devicesM.Unlock()
+
+	// Snapshot the devices to migrate; crypto and HTTP below must not run with
+	// devicesM held. A device the caller did not pass a builder for is only
+	// migrated if its harness-held config actually contains cipher blocks:
+	// otherwise it would get a cipher context it has no use for, and the resulting
+	// config push would flip zedagent's cipher-context-set hash and force a
+	// pointless re-parse of its app, network and datastore config. Devices whose
+	// builder was passed explicitly are always processed, so a caller can force a
+	// push. Sorted by name to keep the order of pushes deterministic.
+	type rotationTarget struct {
+		devName     string
+		devECDHCert *x509.Certificate
+		config      *EdgeDeviceConfig
+	}
+	var targets []rotationTarget
+	var onboarded []string
+	th.devicesM.Lock()
+	for devName, devState := range th.devices {
+		if devState.ID == NilUUID {
+			continue
+		}
+		onboarded = append(onboarded, devName)
+		if devState.ecdhCert == nil {
+			continue
+		}
+		config, explicit := configByDevice[devName]
+		if !explicit {
+			config = devState.config
+			if config == nil || !hasCipherBlocks(config.EdgeDevConfig) {
+				continue
+			}
+		}
+		targets = append(targets, rotationTarget{
+			devName:     devName,
+			devECDHCert: devState.ecdhCert,
+			config:      config,
+		})
+	}
+	th.devicesM.Unlock()
+	sort.Slice(targets, func(i, j int) bool {
+		return targets[i].devName < targets[j].devName
+	})
+	sort.Strings(onboarded)
+
+	newPair, oldPair, err := th.adamClient.RotateECDHKeyPair()
+	if err != nil {
+		th.t.Fatalf("Failed to rotate the controller ECDH certificate: %v", err)
+	}
+	th.log.Infof("Rotated the controller ECDH certificate (serial %s -> %s)",
+		oldPair.Cert.SerialNumber, newPair.Cert.SerialNumber)
+
+	// Every onboarded device is waited for, not just the ones being migrated: a
+	// device skipped for having nothing encrypted still holds only the retired
+	// certificate when this returns, so a later ApplyConfig that does introduce a
+	// cipher block would reference a certificate the device does not have yet.
+	for _, devName := range onboarded {
+		GetEdgeDevice(devName).WaitUntilHasControllerCert(
+			evecerts.ZCertType_CERT_TYPE_CONTROLLER_ECDH_EXCHANGE,
+			utils.CertToPEM(newPair.Cert), deviceCertRefetchTimeout)
+	}
+
+	for _, target := range targets {
+		oldCryptoCfg, err := utils.NewCryptoConfig(
+			target.devECDHCert, oldPair.Cert, oldPair.Key)
+		if err != nil {
+			th.t.Fatalf("Failed to create crypto config for the retired "+
+				"controller ECDH certificate (device %q): %v", target.devName, err)
+		}
+		newCryptoCfg, err := utils.NewCryptoConfig(
+			target.devECDHCert, newPair.Cert, newPair.Key)
+		if err != nil {
+			th.t.Fatalf("Failed to create crypto config for the new "+
+				"controller ECDH certificate (device %q): %v", target.devName, err)
+		}
+		cipherCtx, err := utils.CreateCipherCtx(newCryptoCfg)
+		if err != nil {
+			th.t.Fatalf("Failed to create cipher context for device %q: %v",
+				target.devName, err)
+		}
+		cipherCtx, err = th.addCipherCtxToDevice(target.devName, cipherCtx)
+		if err != nil {
+			th.t.Fatalf("Failed to add cipher context to device %q: %v",
+				target.devName, err)
+		}
+
+		// Under devicesM: on the implicit path target.config *is* the harness-held
+		// config, which readers holding the lock (GetEVEConfig, getConfig) must not
+		// observe half-migrated. Only the re-encryption is covered -- it is
+		// CPU-only, whereas the push below does I/O and waits on the device.
+		th.devicesM.Lock()
+		err = reEncryptCipherBlocks(
+			target.config.EdgeDevConfig, oldCryptoCfg, newCryptoCfg, cipherCtx)
+		th.devicesM.Unlock()
+		if err != nil {
+			th.t.Fatalf("Failed to re-encrypt configuration of device %q: %v",
+				target.devName, err)
+		}
+		GetEdgeDevice(target.devName).ApplyConfig(target.config, true, true)
+		th.log.Infof("Device %q configuration migrated to the new controller "+
+			"ECDH certificate", target.devName)
+	}
+}
+
+// GetControllerSigningCertPEM returns the PEM encoding of the certificate the
+// controller currently uses to sign API responses (see
+// RotateControllerSigningCert). The device receives the same certificate via
+// /certs as CERT_TYPE_CONTROLLER_SIGNING.
+func GetControllerSigningCertPEM() []byte {
+	th := getTestHarness()
+	cert, _ := th.adamClient.GetSigningCertAndKey()
+	if cert == nil {
+		th.t.Fatalf("The controller signing certificate is not available yet; " +
+			"the controller has not been started")
+	}
+	return utils.CertToPEM(cert)
+}
+
+// GetControllerEncryptCertPEM returns the PEM encoding of the controller's
+// current ECDH certificate (see RotateControllerEncryptCert). The device receives
+// the same certificate via /certs as CERT_TYPE_CONTROLLER_ECDH_EXCHANGE.
+func GetControllerEncryptCertPEM() []byte {
+	th := getTestHarness()
+	cert, _ := th.adamClient.GetECDHCertAndKey()
+	if cert == nil {
+		th.t.Fatalf("The controller ECDH certificate is not available yet; " +
+			"the controller has not been started")
+	}
+	return utils.CertToPEM(cert)
 }
 
 // GetControllerHostname returns the controller hostname (stored inside /config/server)
