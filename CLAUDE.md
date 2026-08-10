@@ -80,6 +80,10 @@ make check-docker-hashes-consistency # Check if packages are pointing to the lat
 
 `mini-yetus` accepts `MYETUS_SBRANCH`, `MYETUS_DBRANCH`, `MYETUS_VERBOSE=Y`. CI workflows live under `.github/workflows/` — `pr-gate.yml`, `go-tests.yml`, `yetus.yml`, `codeql.yml`, `build.yml`. The shellcheck config (`shellcheckrc`) disables SC3043.
 
+**Do not run `mini-yetus` from a `git worktree` — it will destroy your branch.** `tools/mini-yetus.sh` copies the top-level dotfiles into a scratch directory and then runs `git init && git add . && git commit` there. In a worktree `.git` is a *file* holding a `gitdir:` pointer rather than a directory, so it gets copied along with the other dotfiles; `git init` then finds an existing repository through that pointer and the commit lands on your real checked-out branch, recording the sparse scratch copy as a deletion of nearly every file in the repo. In a normal clone `.git` is a directory, is not copied, and the scratch repo is created as intended.
+
+The same redirection also sends the script's `git config user.name`/`user.email` calls to the real repository, so it leaves `Your Name <you@example.com>` in `.git/config`, which silently overrides your global identity and unsigns every later commit. To recover: `git reset --hard` back to the last good commit from `git reflog` — the bogus commit (`Changes in the PR`) sits on top of your work rather than replacing it — then `git config --unset user.name && git config --unset user.email`, and check `git log` for commits that picked up the wrong `Signed-off-by`. Run `mini-yetus` from a normal clone instead.
+
 ## Debugging on a live device
 
 - `eve version`, `zboot curpart` — running version and active IMGA/IMGB partition.
@@ -179,7 +183,7 @@ From `CONTRIBUTING.md` / `.github/pull_request_template.md`:
 - When fixing a batch of independent findings (e.g. from an audit), make one commit per logical fix rather than one big commit.
 - When generating code, avoid excessive comments inside function bodies. In-function comments should be as summarized as possible — comment only non-obvious constraints or tricky logic, never narrate what each line does.
 - Backport PRs follow a specific title format `[<stable-branch>] Original title`, with a body line `Backport of #<original-PR-number>` and `git cherry-pick -x` to preserve the source SHA.
-- `mini-yetus` is the cheap pre-push check; full `make yetus` mirrors CI but is slow.
+- `mini-yetus` is the cheap pre-push check; full `make yetus` mirrors CI but is slow. Neither may be run from a `git worktree` (see "Linting / CI parity").
 - Any changes on vendor files should always be committed on a dedicated commit. For eve-api, eve-libs, edge-containers and pillar there are specific make targets to automate bumping versions:
 
 ```sh
