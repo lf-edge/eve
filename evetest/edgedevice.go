@@ -6,6 +6,7 @@ package evetest
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -17,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	evecerts "github.com/lf-edge/eve-api/go/certs"
 	eveconfig "github.com/lf-edge/eve-api/go/config"
 	eveflowlog "github.com/lf-edge/eve-api/go/flowlog"
 	eveinfo "github.com/lf-edge/eve-api/go/info"
@@ -26,6 +28,7 @@ import (
 	api "github.com/lf-edge/eve/evetest/grpcapi/go"
 	"github.com/lf-edge/eve/evetest/logger"
 	"github.com/lf-edge/eve/evetest/utils"
+	pillartypes "github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	uuid "github.com/satori/go.uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -229,9 +232,23 @@ func (d *EdgeDevice) ApplyConfig(config *EdgeDeviceConfig, waitUntilFetched bool
 		newConfig.Reboot = &eveconfig.DeviceOpsCmd{Counter: 0, DesiredState: false}
 	}
 
-	// Preserve cipher contexts.
+	// Preserve cipher contexts. The list is taken from the harness-held config
+	// and not from the caller's, which makes the harness-held config the single
+	// owner of the cipher-context list: addCipherCtxToDevice appends there and
+	// every ApplyConfig republishes whatever it finds. Anything that changes the
+	// cipher contexts (e.g. RotateControllerEncryptCert) must therefore mutate
+	// the harness-held config, not just the config it is about to apply.
 	if prevConfig != nil {
 		newConfig.CipherContexts = prevConfig.GetCipherContexts()
+	}
+
+	// Never push a cipher block encrypted against a retired controller
+	// certificate; see checkCipherBlocksUseCurrentECDHCert for why that failure
+	// would otherwise stay invisible until a reboot.
+	if err := d.th.checkCipherBlocksUseCurrentECDHCert(
+		newConfig.EdgeDevConfig, newConfig.GetCipherContexts()); err != nil {
+		d.th.t.Fatalf("Refusing to apply configuration (version %s) for device %q: %v",
+			configVer, d.devName, err)
 	}
 
 	ctx, cancel := context.WithTimeout(d.th.ctx, adamApplyConfigTimeout)
@@ -2938,6 +2955,70 @@ func ReadAllPublications[T any](d *EdgeDevice, fromAgent string,
 		results = append(results, item)
 	}
 	return results, nil
+}
+
+// WaitUntilHasControllerCert blocks until the device publishes the given
+// controller certificate of the given type.
+//
+// The device side is the only place this can be observed: /certs is an
+// unauthenticated pull carrying no device UUID, so the controller does not even
+// record the request, and the device never acknowledges which certificates it
+// accepted. The ControllerCert publication is ephemeral (/run), which makes the
+// observation inherently fresh across a reboot.
+//
+// Certificates are matched on the PEM rather than on the hash, because the hash
+// is truncated on its way to the device (Adam serves only the first 16 bytes,
+// flagged SHA256_16BYTES) and comparing lengths that differ by truncation is easy
+// to get wrong. The PEM is compared trimmed, matching Adam's own normalization.
+// The type is part of the match because a certificate is only ever meaningful for
+// the role it was served under.
+func (d *EdgeDevice) WaitUntilHasControllerCert(
+	certType evecerts.ZCertType, certPEM []byte, timeout time.Duration) {
+
+	expectedPEM := strings.TrimSpace(string(certPEM))
+	d.th.log.Infof("Waiting for device %q to publish a controller certificate "+
+		"of type %v...", d.devName, certType)
+
+	deadline := time.Now().Add(timeout)
+	for {
+		certs, readErr := ReadAllPublications[pillartypes.ControllerCert](
+			d, "zedagent", false)
+		if readErr != nil {
+			// Warn, not Debug: a read path broken for an unrelated reason would
+			// otherwise burn the whole timeout without a trace.
+			d.th.log.Warnf("Reading ControllerCert from device %q failed: %v",
+				d.devName, readErr)
+		}
+		var published []string
+		for _, ctrlCert := range certs {
+			if ctrlCert.Type == certType &&
+				strings.TrimSpace(string(ctrlCert.Cert)) == expectedPEM {
+				d.th.log.Infof("Device %q published the expected controller "+
+					"certificate of type %v", d.devName, certType)
+				return
+			}
+			published = append(published, fmt.Sprintf("type=%v hash=%s",
+				ctrlCert.Type, hex.EncodeToString(ctrlCert.CertHash)))
+		}
+		if time.Now().After(deadline) {
+			// Naming the path matters: the topic only became ephemeral in EVE
+			// 16.9.3, so on an older build the certificates are published under
+			// /persist/status and an empty list here does not mean the device
+			// holds none.
+			d.th.t.Fatalf("Device %q did not publish the expected controller "+
+				"certificate of type %v within %v; certificates found under "+
+				"/run/zedagent/ControllerCert (EVE >= 16.9.3): [%s]; "+
+				"last read error: %v",
+				d.devName, certType, timeout, strings.Join(published, ", "), readErr)
+		}
+		select {
+		case <-time.After(deviceCertPollInterval):
+		case <-d.th.ctx.Done():
+			d.th.t.Fatalf("Interrupted while waiting for device %q to publish "+
+				"the expected controller certificate of type %v",
+				d.devName, certType)
+		}
+	}
 }
 
 // getDevUUID returns the device UUID, calling t.Fatalf if not found/onboarded.
