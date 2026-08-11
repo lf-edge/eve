@@ -1,2 +1,3 @@
 .services += [{"name": "kube","image": "KUBE_TAG", "cgroupsPath": "/eve/services/kube", "oomScoreAdj": -999}] |
+.services += [{"name": "witness", "image": "WITNESS_TAG", "cgroupsPath": "/eve/services/witness", "oomScoreAdj": -999}] |
 (.init[] | select(. == "FW_TAG")) |= "FW_K_TAG"
