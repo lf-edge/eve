@@ -90,6 +90,14 @@ type zedrouter struct {
 	gcInitialized       bool
 	initReconcileDone   bool
 
+	// Resolved Linux interface name of the cluster port, as published by
+	// zedkube in EdgeNodeClusterStatus.ClusterInterface. Empty when the
+	// device is not part of an edge-node cluster. Used to make sure the
+	// cluster port is always bridged by NIM (see niBridgeIsCreatedByNIM)
+	// and cannot be claimed by a multi-port Switch NI (see updateNIPorts).
+	clusterIfName            string
+	subEdgeNodeClusterStatus pubsub.Subscription
+
 	// Replaceable components
 	// (different implementations for different network stacks)
 	niStateCollector nistate.Collector
@@ -344,6 +352,7 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 
 	// Activate all subscriptions.
 	inactiveSubs := []pubsub.Subscription{
+		z.subEdgeNodeClusterStatus,
 		z.subDeviceNetworkStatus,
 		z.subWwanMetrics,
 		z.subNetworkInstanceConfig,
@@ -364,6 +373,9 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 
 		case change := <-z.subGlobalConfig.MsgChan():
 			z.subGlobalConfig.ProcessChange(change)
+
+		case change := <-z.subEdgeNodeClusterStatus.MsgChan():
+			z.subEdgeNodeClusterStatus.ProcessChange(change)
 
 		case change := <-z.subAppNetworkConfig.MsgChan():
 			// If we have NetworkInstanceConfig process it first
@@ -634,6 +646,22 @@ func (z *zedrouter) initSubscriptions() (err error) {
 		CreateHandler: z.handleGlobalConfigCreate,
 		ModifyHandler: z.handleGlobalConfigModify,
 		DeleteHandler: z.handleGlobalConfigDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		return err
+	}
+
+	z.subEdgeNodeClusterStatus, err = z.pubSub.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedkube",
+		MyAgentName:   agentName,
+		TopicImpl:     types.EdgeNodeClusterStatus{},
+		Persistent:    false,
+		Activate:      false,
+		CreateHandler: z.handleEdgeNodeClusterStatusCreate,
+		ModifyHandler: z.handleEdgeNodeClusterStatusModify,
+		DeleteHandler: z.handleEdgeNodeClusterStatusDelete,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
 	})
