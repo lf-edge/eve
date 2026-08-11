@@ -3805,7 +3805,10 @@ func parseEdgeNodeClusterConfig(getconfigCtx *getconfigContext,
 
 		ClusterType:                  types.ClusterType(zcfgCluster.ClusterType),
 		EnableNativeK8SOrchestration: zcfgCluster.GetEnableNativeK8SOrchestration(),
+		QuorumRecoveryGeneration:     zcfgCluster.GetQuorumRecoveryGeneration(),
 	}
+
+	parseClusterWitness(zcfgCluster, ipNet, &enClusterConfig)
 
 	enClusterConfig.CipherToken, err = parseCipherBlock(getconfigCtx,
 		enClusterConfig.Key(), zcfgCluster.GetEncryptedClusterToken())
@@ -3879,6 +3882,47 @@ func parseEdgeNodeClusterConfig(getconfigCtx *getconfigContext,
 	}
 	getconfigCtx.wasInValidCluster = true
 	ctx.pubEdgeNodeClusterConfig.Publish("global", enClusterConfig)
+}
+
+// parseClusterWitness fills in the witness fields of enClusterConfig from the
+// controller config, validating the witness IP against the cluster subnet.
+//
+// A rejected witness must never invalidate the surrounding cluster config.
+// publishEmptyENCC would zero the ClusterID, which makes encconfig.Present()
+// false in kube-init; its cluster-config monitor reads that as the controller
+// withdrawing cluster membership and converts the node back to single-node,
+// rebooting and restoring the pre-cluster /var/lib on every node that got the
+// config. A typo in one IP field must not cost a healthy cluster. So drop only
+// the witness and record why, for zedkube to report to the controller.
+func parseClusterWitness(zcfgCluster *zconfig.EdgeNodeCluster, clusterIPNet *net.IPNet,
+	enClusterConfig *types.EdgeNodeClusterConfig) {
+
+	witness := zcfgCluster.GetWitness()
+	if witness == nil || witness.GetWitnessIp() == "" {
+		// No witness configured; not an error.
+		return
+	}
+	witnessIP := net.ParseIP(witness.GetWitnessIp())
+	switch {
+	case witnessIP == nil:
+		enClusterConfig.WitnessConfigError = fmt.Sprintf(
+			"failed to parse witness IP %q", witness.GetWitnessIp())
+	case !clusterIPNet.Contains(witnessIP):
+		// The witness reaches the other etcd members over the cluster
+		// interface's L2 segment, so an address outside that subnet is
+		// unreachable no matter what else is configured.
+		// clusterIPNet carries the node's host address; show the network form.
+		subnet := &net.IPNet{
+			IP:   clusterIPNet.IP.Mask(clusterIPNet.Mask),
+			Mask: clusterIPNet.Mask,
+		}
+		enClusterConfig.WitnessConfigError = fmt.Sprintf(
+			"witness IP %s is outside cluster subnet %s", witnessIP, subnet)
+	default:
+		enClusterConfig.WitnessIP = witnessIP
+		return
+	}
+	log.Errorf("parseClusterWitness: %s", enClusterConfig.WitnessConfigError)
 }
 
 // cancelClusterDeparture undoes an armed departure suppression when the cluster
