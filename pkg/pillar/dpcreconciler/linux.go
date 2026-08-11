@@ -77,12 +77,12 @@ import (
 // |  |  +----------------------------------------+   |                               |  |  |
 // |  |  |               Adapters                 |   | +-------+  +--------+         |  |  |
 // |  |  |                                        |   | |IPRule |  | IPRule | ...     |  |  |
-// |  |  | +---------+      +---------+           |   | +-------+  +--------+         |  |  |
-// |  |  | | Adapter |      | Adapter | ...       |   +-------------------------------+  |  |
-// |  |  | +---------+      +---------+           |                                      |  |
-// |  |  | +------------+   +------------+        |   +-------------------------------+  |  |
-// |  |  | | DhcpClient |   | DhcpClient | ...    |   |            Routes             |  |  |
-// |  |  | +------------+   +------------+        |   |                               |  |  |
+// |  |  | +---------+       +-----------------+  |   | +-------+  +--------+         |  |  |
+// |  |  | | Adapter | ...   |      veth       |  |   +-------------------------------+  |  |
+// |  |  | +---------+       | (eve-k witness) |  |                                      |  |
+// |  |  | +------------+    +-----------------+  |   +-------------------------------+  |  |
+// |  |  | | DhcpClient | ...                     |   |            Routes             |  |  |
+// |  |  | +------------+                         |   |                               |  |  |
 // |  |  | +------------------------------------+ |   | +-------+  +-------+          |  |  |
 // |  |  | |            AdapterAddrs            | |   | | Route |  | Route | ...      |  |  |
 // |  |  | |                                    | |   | +-------+  +-------+          |  |  |
@@ -164,6 +164,22 @@ var (
 	_, kubePodCIDR, _ = net.ParseCIDR("10.42.0.0/16")
 	// CIDR used for IP allocation for K3s services.
 	_, kubeSvcCIDR, _ = net.ParseCIDR("10.43.0.0/16")
+)
+
+const (
+	// witnessContainerName is the linuxkit service name of pkg/witness
+	// (see images/modifiers/hv/k.yq), used to discover its containerd
+	// task PID for the veth interconnect below (see linuxitems.Veth).
+	witnessContainerName = "witness"
+	// witnessVethName is the logical name of the veth pair interconnecting
+	// pkg/witness's own netns with the cluster interface bridge.
+	witnessVethName = "witness-veth"
+	// witnessHostVethIfName is the host-side (bridge port) end of the pair.
+	witnessHostVethIfName = "wit-host"
+	// witnessContainerVethIfName is the pkg/witness-side end of the pair.
+	// The witness waits for this interface to carry WitnessIP before it
+	// starts etcd, so the name is part of the contract with pkg/witness.
+	witnessContainerVethIfName = "wit-eth0"
 )
 
 // LinuxDpcReconciler is a DPC-reconciler for Linux network stack,
@@ -732,9 +748,12 @@ func (r *LinuxDpcReconciler) flowlogStateChanged(flowlogEnabled bool) bool {
 func (r *LinuxDpcReconciler) clusterStatusChanged(
 	newStatus types.EdgeNodeClusterStatus) bool {
 	// DPCReconciler cares only about the networking-related fields of the ClusterStatus.
+	// WitnessIP and BootstrapNode decide where the witness veth and its ACLs live.
 	return r.lastArgs.ClusterStatus.ClusterInterface != newStatus.ClusterInterface ||
 		!netutils.EqualIPNets(r.lastArgs.ClusterStatus.ClusterIPPrefix,
-			newStatus.ClusterIPPrefix)
+			newStatus.ClusterIPPrefix) ||
+		!r.lastArgs.ClusterStatus.WitnessIP.Equal(newStatus.WitnessIP) ||
+		r.lastArgs.ClusterStatus.BootstrapNode != newStatus.BootstrapNode
 }
 
 func (r *LinuxDpcReconciler) enrolledCertsChanged(
@@ -1325,12 +1344,10 @@ func (r *LinuxDpcReconciler) getIntendedAdapters(dpc types.DevicePortConfig,
 			port.IfName == "" || port.InvalidConfig {
 			continue
 		}
+		isClusterPort := r.HVTypeKube && port.IfName == clusterStatus.ClusterInterface
 		var staticIPs []*net.IPNet
-		if r.HVTypeKube {
-			if port.IfName == clusterStatus.ClusterInterface &&
-				clusterStatus.ClusterIPPrefix != nil {
-				staticIPs = append(staticIPs, clusterStatus.ClusterIPPrefix)
-			}
+		if isClusterPort && clusterStatus.ClusterIPPrefix != nil {
+			staticIPs = append(staticIPs, clusterStatus.ClusterIPPrefix)
 		}
 		if port.Dhcp == types.DhcpTypeClient && port.AddrSubnet != "" {
 			// If a static IP is configured, include it in addition to the DHCP-assigned
@@ -1348,8 +1365,35 @@ func (r *LinuxDpcReconciler) getIntendedAdapters(dpc types.DevicePortConfig,
 			DhcpType:         port.Dhcp,
 			MTU:              r.intfMTU[port.Logicallabel],
 			StaticIPs:        staticIPs,
+			IsClusterPort:    isClusterPort,
 		}
 		intendedAdapters.PutItem(adapter, nil)
+		// Interconnect the witness container's own (containerd-provided)
+		// netns with the cluster interface bridge. The witness always
+		// co-locates with whichever device currently owns JoinServerIP
+		// (BootstrapNode) - see EdgeNodeClusterWitness's doc comment.
+		if isClusterPort && clusterStatus.BootstrapNode &&
+			clusterStatus.WitnessIP != nil &&
+			clusterStatus.ClusterIPPrefix != nil {
+			witnessIPNet := &net.IPNet{
+				IP:   clusterStatus.WitnessIP,
+				Mask: clusterStatus.ClusterIPPrefix.Mask,
+			}
+			intendedAdapters.PutItem(linux.Veth{
+				VethName: witnessVethName,
+				Peer1: linux.VethPeer{
+					IfName:        witnessHostVethIfName,
+					AdapterIfName: port.IfName,
+					MTU:           adapter.MTU,
+				},
+				Peer2: linux.VethPeer{
+					IfName:        witnessContainerVethIfName,
+					ContainerName: witnessContainerName,
+					IPAddresses:   []*net.IPNet{witnessIPNet},
+					MTU:           adapter.MTU,
+				},
+			}, nil)
+		}
 		if port.Dhcp != types.DhcpTypeNone && port.Dhcp != types.DhcpTypeNOOP &&
 			port.WirelessCfg.WType != types.WirelessTypeCellular {
 			intendedAdapters.PutItem(generic.Dhcpcd{
@@ -1911,9 +1955,11 @@ func (r *LinuxDpcReconciler) getIntendedACLs(dpc types.DevicePortConfig,
 		}
 	}
 
-	r.getIntendedFilterRules(gcp, dpc, clusterStatus, kubeUserServices, intendedIPv4ACLs, intendedIPv6ACLs)
+	r.getIntendedFilterRules(
+		gcp, dpc, clusterStatus, kubeUserServices, intendedIPv4ACLs, intendedIPv6ACLs)
 	if withFlowlog || r.HVTypeKube {
-		r.getIntendedMarkingRules(dpc, intendedIPv4ACLs, intendedIPv6ACLs, kubeUserServices)
+		r.getIntendedMarkingRules(
+			dpc, clusterStatus, intendedIPv4ACLs, intendedIPv6ACLs, kubeUserServices)
 	}
 	return intendedACLs
 }
@@ -2167,6 +2213,37 @@ func (r *LinuxDpcReconciler) getIntendedFilterRules(gcp types.ConfigItemValueMap
 			inputV4Rules = append(inputV4Rules, vxlanRule, etcdRule,
 				k3sMetricsRule, k3sAPIServerRule, clusterStatusRule)
 		}
+
+		// Witness (3rd etcd vote, see pkg/witness) traffic. Scoped
+		// explicitly to WitnessIP (unlike etcdRule above, which is
+		// unscoped by source/dest) so it's self-documenting and
+		// present regardless of BootstrapNode - every cluster node,
+		// not just the one hosting the witness's veth, may see witness
+		// traffic land on its own cluster-IP stack.
+		if clusterStatus.WitnessIP != nil {
+			witnessIP := clusterStatus.WitnessIP.String()
+			witnessEtcdInRule := iptables.Rule{
+				RuleLabel: "Allow witness etcd traffic (to)",
+				MatchOpts: []string{"-p", "tcp", "-i", clusterPort.IfName,
+					"-d", witnessIP, "--dport", "2379:2380"},
+				Target: "ACCEPT",
+				Description: "Allow etcd traffic destined to the witness to enter " +
+					"the device via cluster interface",
+			}
+			witnessEtcdOutRule := iptables.Rule{
+				RuleLabel: "Allow witness etcd traffic (from)",
+				MatchOpts: []string{"-p", "tcp", "-i", clusterPort.IfName,
+					"-s", witnessIP, "--dport", "2379:2380"},
+				Target: "ACCEPT",
+				Description: "Allow etcd traffic originating from the witness to enter " +
+					"the device via cluster interface",
+			}
+			if clusterStatus.WitnessIP.To4() == nil {
+				inputV6Rules = append(inputV6Rules, witnessEtcdInRule, witnessEtcdOutRule)
+			} else {
+				inputV4Rules = append(inputV4Rules, witnessEtcdInRule, witnessEtcdOutRule)
+			}
+		}
 	}
 
 	// When the kubernetes has Authorized Cluster Endpoint (ACE) enabled, accept the api-server port 6443
@@ -2301,6 +2378,51 @@ func (r *LinuxDpcReconciler) getIntendedFilterRules(gcp types.ConfigItemValueMap
 	traverseL3FwdChainV6 := traverseL3FwdChain
 	traverseL3FwdChainV6.ForIPv6 = true
 	intendedIPv6ACLs.PutItem(traverseL3FwdChainV6, nil)
+
+	// Allow witness (see pkg/witness) etcd traffic to be bridge-forwarded
+	// between the witness's veth port and the cluster interface's other
+	// bridge ports (e.g. the physical uplink to a peer node), before it
+	// would otherwise hit DENY-L3-FORWARD.
+	//
+	// Matched via physdev, not plain -i/-o: for traffic genuinely bridged
+	// between two ports of the same bridge master, br_netfilter reports
+	// the bridge master itself (the cluster NIC) as both the in- and
+	// out-interface to iptables, never the port. A plain -i/-o match on
+	// the veth's own name never matches that traffic, which falls through
+	// to DENY-L3-FORWARD's own -i/-o match on the bridge master and gets
+	// dropped there instead.
+	//
+	// Limited to the etcd ports, in either direction (multiport --ports
+	// matches source and destination), like the INPUT rules: anything else
+	// listening in the witness netns stays unreachable from the segment.
+	if clusterStatus.WitnessIP != nil {
+		witnessIP := clusterStatus.WitnessIP.String()
+		allowWitnessFwdRule := iptables.Rule{
+			RuleLabel: "Allow forwarding traffic from witness",
+			Table:     "filter",
+			ChainName: "FORWARD" + iptables.DeviceChainSuffix,
+			MatchOpts: []string{"-p", "tcp", "-m", "physdev", "--physdev-in", witnessHostVethIfName,
+				"-s", witnessIP, "-m", "multiport", "--ports", "2379,2380"},
+			Target:        "ACCEPT",
+			AppliedBefore: []string{traverseL3FwdChain.RuleLabel},
+			Description:   "Allow witness-sourced traffic to be forwarded across the cluster bridge",
+		}
+		allowWitnessFwdRuleDst := allowWitnessFwdRule
+		allowWitnessFwdRuleDst.RuleLabel = "Allow forwarding traffic to witness"
+		allowWitnessFwdRuleDst.MatchOpts = []string{"-p", "tcp", "-m", "physdev", "--physdev-out", witnessHostVethIfName,
+			"-d", witnessIP, "-m", "multiport", "--ports", "2379,2380"}
+		allowWitnessFwdRuleDst.Description = "Allow traffic destined to the witness to be forwarded across the cluster bridge"
+		if clusterStatus.WitnessIP.To4() == nil {
+			allowWitnessFwdRule.ForIPv6 = true
+			allowWitnessFwdRuleDst.ForIPv6 = true
+			intendedIPv6ACLs.PutItem(allowWitnessFwdRule, nil)
+			intendedIPv6ACLs.PutItem(allowWitnessFwdRuleDst, nil)
+		} else {
+			intendedIPv4ACLs.PutItem(allowWitnessFwdRule, nil)
+			intendedIPv4ACLs.PutItem(allowWitnessFwdRuleDst, nil)
+		}
+	}
+
 	for _, port := range dpc.Ports {
 		if port.IfName == "" || !port.IsL3Port || port.InvalidConfig {
 			continue
@@ -2336,6 +2458,7 @@ func (r *LinuxDpcReconciler) getIntendedFilterRules(gcp types.ConfigItemValueMap
 
 // Marking rules are only used if at least one Network instance has flow logging enabled.
 func (r *LinuxDpcReconciler) getIntendedMarkingRules(dpc types.DevicePortConfig,
+	clusterStatus types.EdgeNodeClusterStatus,
 	intendedIPv4ACLs, intendedIPv6ACLs dg.Graph, kubeUserServices types.KubeUserServices) {
 	// Mark ingress control-flow traffic.
 	// For connections originating from outside we use App ID = 0.
@@ -2391,7 +2514,7 @@ func (r *LinuxDpcReconciler) getIntendedMarkingRules(dpc types.DevicePortConfig,
 	}
 
 	if r.HVTypeKube {
-		protoMarkV4Rules = append(protoMarkV4Rules, defaultKubernetesIptablesRules()...)
+		protoMarkV4Rules = append(protoMarkV4Rules, defaultKubernetesIptablesRules(clusterStatus)...)
 		// Add Marking rules for Kubernetes user services.
 		// The reason kubernetes service ports need to add to marking rules and not adding
 		// to the Input rules in getIntendedFilterRules() is that the Kubernetes kube-proxy
@@ -2568,7 +2691,7 @@ func controlProtoMark(protoName string) string {
 	return strconv.FormatUint(uint64(mark), 10)
 }
 
-func defaultKubernetesIptablesRules() []iptables.Rule {
+func defaultKubernetesIptablesRules(clusterStatus types.EdgeNodeClusterStatus) []iptables.Rule {
 	// Allow all traffic from Kubernetes pods to Kubernetes services.
 	// Note that traffic originating from another node is already D-NATed
 	// and will get marked with the kube_pod mark.
@@ -2667,7 +2790,25 @@ func defaultKubernetesIptablesRules() []iptables.Rule {
 		Description: "Mark EdgeNode Cluster bootstrap status traffic",
 	}
 
-	return []iptables.Rule{
+	// Witness (see pkg/witness) etcd traffic already matches markEtcd
+	// above (unscoped by source/dest), but gets its own mark too for
+	// observability - distinguishes witness's contribution to etcd
+	// traffic from the regular cluster members' in flow/metrics tooling.
+	var witnessMarkRule *iptables.Rule
+	if clusterStatus.WitnessIP != nil {
+		const ruleLabel = "Witness mark"
+		witnessIP := clusterStatus.WitnessIP.String()
+		markEtcd.AppliedBefore = append(markEtcd.AppliedBefore, ruleLabel)
+		witnessMarkRule = &iptables.Rule{
+			RuleLabel:   ruleLabel,
+			MatchOpts:   []string{"-p", "tcp", "-s", witnessIP, "--dport", "2379:2380"},
+			Target:      "CONNMARK",
+			TargetOpts:  []string{"--set-mark", controlProtoMark("in_witness")},
+			Description: "Mark etcd traffic originating from the witness",
+		}
+	}
+
+	rules := []iptables.Rule{
 		markKubeDNS,
 		markKubeSvc,
 		markKubePod,
@@ -2681,6 +2822,10 @@ func defaultKubernetesIptablesRules() []iptables.Rule {
 		markNFS,
 		markClusterStatus,
 	}
+	if witnessMarkRule != nil {
+		rules = append(rules, *witnessMarkRule)
+	}
+	return rules
 }
 
 // AddKubeServiceRules creates iptables rules for Kubernetes services and ingresses

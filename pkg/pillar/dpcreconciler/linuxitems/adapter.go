@@ -40,6 +40,13 @@ type Adapter struct {
 	MTU uint16
 	// StaticIPs : IP addresses assigned to the adapter statically.
 	StaticIPs []*net.IPNet
+	// IsClusterPort is true if this adapter is the interface designated
+	// (via EdgeNodeCluster.cluster_interface, mirrored into
+	// EdgeNodeClusterStatus.ClusterInterface) as the EVE-k cluster
+	// interface. A cluster port must always be bridged by NIM: the
+	// witness (see pkg/witness) needs a real Linux bridge on this
+	// interface to attach its own veth port to.
+	IsClusterPort bool
 }
 
 // Name uses the interface name to identify the adapter.
@@ -65,6 +72,7 @@ func (a Adapter) Equal(other depgraph.Item) bool {
 		a.UsedAsVlanParent == a2.UsedAsVlanParent &&
 		a.DhcpType == a2.DhcpType &&
 		a.MTU == a2.MTU &&
+		a.IsClusterPort == a2.IsClusterPort &&
 		generics.EqualSetsFn(a.StaticIPs, a2.StaticIPs, netutils.EqualIPNets)
 }
 
@@ -262,14 +270,21 @@ func (c *AdapterConfigurator) Create(ctx context.Context, item depgraph.Item) er
 // Bridge is NOT created by NIM if:
 //   - the adapter is wireless: it is not valid to put wireless adapter under a bridge,
 //   - or if the adapter is configured with DHCP passthrough AND has no VLAN sub-interfaces
-//     attached: in that case, NIM does not have to apply IP config, create sub-interfaces
-//     or test connectivity, and it can leave it up to zedrouter to bridge the port with
-//     applications (and possibly also with other ports) if requested by the user
+//     attached AND is not the cluster port: in that case, NIM does not have to apply IP
+//     config, create sub-interfaces or test connectivity, and it can leave it up to
+//     zedrouter to bridge the port with applications (and possibly also with other ports)
+//     if requested by the user
+//
+// The cluster port is always bridged by NIM regardless of its DHCP config, since the
+// EVE-k witness (see pkg/witness) needs a real Linux bridge on the cluster interface to
+// attach its own veth port to, independently of whether any network instance ever
+// requests bridging for it.
 func (c *AdapterConfigurator) isAdapterBridgedByNIM(adapter Adapter) bool {
 	return adapter.WirelessType == types.WirelessTypeNone &&
 		(adapter.DhcpType == types.DhcpTypeClient ||
 			adapter.DhcpType == types.DhcpTypeStatic ||
-			adapter.UsedAsVlanParent)
+			adapter.UsedAsVlanParent ||
+			adapter.IsClusterPort)
 }
 
 func (c *AdapterConfigurator) setAdapterMTU(adapter Adapter, link netlink.Link) error {

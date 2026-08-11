@@ -1607,3 +1607,36 @@ func TestSingleEthInterfaceWithIPv6(test *testing.T) {
 	t.Expect(itemCountWithType(generic.AdapterAddrsTypename)).To(Equal(0))
 	t.Expect(itemCountWithType(generic.DhcpcdTypename)).To(Equal(0))
 }
+
+// TestWitnessForwardRulesAreEtcdOnly verifies that the rules letting the
+// witness's traffic cross the cluster bridge match only the etcd ports,
+// like the INPUT rules do, and not everything the witness netns serves.
+func TestWitnessForwardRulesAreEtcdOnly(t *testing.T) {
+	g := initTest(t)
+
+	clusterStatus := types.EdgeNodeClusterStatus{
+		WitnessIP: net.ParseIP("10.244.244.5"),
+	}
+	gcp := types.DefaultConfigItemValueMap()
+	intendedIPv4ACLs := dg.New(dg.InitArgs{Name: "IPv4ACLs"})
+	intendedIPv6ACLs := dg.New(dg.InitArgs{Name: "IPv6ACLs"})
+	dpcReconciler.GetIntendedFilterRules(*gcp, types.DevicePortConfig{}, clusterStatus,
+		types.KubeUserServices{}, intendedIPv4ACLs, intendedIPv6ACLs)
+
+	found := 0
+	iter := intendedIPv4ACLs.Items(true)
+	for iter.Next() {
+		item, _ := iter.Item()
+		rule, ok := item.(iptables.Rule)
+		if !ok || !strings.Contains(rule.RuleLabel, "forwarding traffic") ||
+			!strings.Contains(rule.RuleLabel, "witness") {
+			continue
+		}
+		found++
+		opts := strings.Join(rule.MatchOpts, " ")
+		g.Expect(opts).To(ContainSubstring("-p tcp"), rule.RuleLabel)
+		g.Expect(opts).To(ContainSubstring("-m multiport --ports 2379,2380"), rule.RuleLabel)
+		g.Expect(opts).To(ContainSubstring("-m physdev"), rule.RuleLabel)
+	}
+	g.Expect(found).To(Equal(2), "expected one forward rule per direction")
+}
