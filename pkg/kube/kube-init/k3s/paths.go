@@ -3,6 +3,8 @@
 
 package k3s
 
+import "github.com/lf-edge/eve/pkg/kube/kube-init/role"
+
 // On-disk paths owned by this package. Declared as `var` rather than
 // `const` so unit tests can redirect them onto temp dirs via
 // t.Cleanup. Production callers MUST treat these as constants.
@@ -46,11 +48,15 @@ var cniIPAMStateDir = "/var/lib/cni/networks/cbr0"
 // installLogPath is where `k3s check-config` stdout/stderr is
 // appended on every install/re-install. /persist so the log survives
 // reboots.
-var installLogPath = "/persist/kubelog/k3s-install.log"
+var installLogPath = role.Pick(
+	"/persist/kubelog/k3s-install.log",
+	"/persist/kubelog/witness-install.log")
 
 // supervisorLogFile is where the Supervisor appends k3s server
 // stdout/stderr.
-var supervisorLogFile = "/persist/kubelog/k3s.log"
+var supervisorLogFile = role.Pick(
+	"/persist/kubelog/k3s.log",
+	"/persist/kubelog/witness.log")
 
 // supervisorHooksDir holds executable pre-restart hooks the
 // Supervisor runs when invoked by the FSM (not on crash recovery).
@@ -58,7 +64,7 @@ var supervisorHooksDir = "/etc/k3s-supervisor/hooks.d"
 
 // supervisorPidFile is where the Supervisor records the current
 // k3s process PID for external readers.
-var supervisorPidFile = "/run/k3s.pid"
+var supervisorPidFile = role.Pick("/run/k3s.pid", "/run/witness/k3s.pid")
 
 // procRoot is /proc, parameterised so tests can route the descendant
 // and port-binding scans onto a fixture tree.

@@ -10,12 +10,14 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/lf-edge/eve/pkg/kube/kube-init/role"
 )
 
 // WaitItemDir holds the operator breakpoint files. On /persist so a
 // breakpoint can be staged and then survive the reboot that reaches
 // the point of interest.
-var WaitItemDir = "/persist/k3s"
+var WaitItemDir = role.Pick("/persist/k3s", "/persist/witness")
 
 // waitItemPollInterval is how often a held breakpoint re-checks. Long
 // on purpose: a held daemon logs one line a minute, which reads as a

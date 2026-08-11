@@ -55,7 +55,7 @@ var (
 func Register(m *pubsubclient.Manager) error {
 	_, err := m.Register(SubscriptionLabel, pubsub.SubscriptionOptions{
 		AgentName:     publisherAgentName,
-		MyAgentName:   pubsubclient.AgentName,
+		MyAgentName:   pubsubclient.AgentName(),
 		TopicImpl:     types.EdgeNodeClusterStatus{},
 		Persistent:    false,
 		CreateHandler: handleCreate,
