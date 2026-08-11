@@ -5,6 +5,8 @@ package prereqs
 
 import (
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -117,6 +119,49 @@ func TestUUIDRegexp(t *testing.T) {
 			t.Errorf("uuidRegexp accepted invalid value %q", in)
 		}
 	}
+}
+
+// TestWitnessZvolReserved pins the three-way answer that decides the
+// witness's backing store. A missing device node cannot distinguish
+// "never reserved" from "not appeared yet", so the marker decides, and
+// an unreadable marker must refuse rather than guess: starting the
+// witness on the wrong store discards its etcd identity.
+func TestWitnessZvolReserved(t *testing.T) {
+	dir := t.TempDir()
+	orig := witnessZvolMarker
+	t.Cleanup(func() { witnessZvolMarker = orig })
+
+	t.Run("absent marker means vault-backed", func(t *testing.T) {
+		witnessZvolMarker = filepath.Join(dir, "absent")
+		got, err := witnessZvolReserved()
+		if err != nil || got {
+			t.Errorf("got (%v, %v), want (false, nil)", got, err)
+		}
+	})
+
+	t.Run("present marker means zvol", func(t *testing.T) {
+		marker := filepath.Join(dir, "reserved")
+		if err := os.WriteFile(marker, nil, 0644); err != nil {
+			t.Fatalf("write marker: %v", err)
+		}
+		witnessZvolMarker = marker
+		got, err := witnessZvolReserved()
+		if err != nil || !got {
+			t.Errorf("got (%v, %v), want (true, nil)", got, err)
+		}
+	})
+
+	t.Run("unreadable marker is an error", func(t *testing.T) {
+		notADir := filepath.Join(dir, "file")
+		if err := os.WriteFile(notADir, nil, 0644); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		witnessZvolMarker = filepath.Join(notADir, "marker")
+		got, err := witnessZvolReserved()
+		if err == nil {
+			t.Errorf("got (%v, nil), want an error", got)
+		}
+	})
 }
 
 func TestAddrsContain(t *testing.T) {

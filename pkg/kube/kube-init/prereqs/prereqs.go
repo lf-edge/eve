@@ -31,6 +31,7 @@ import (
 	"github.com/lf-edge/eve/pkg/kube/kube-init/mgmtproxy"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/role"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 // Filesystem paths. Most are prereqs-internal; the ones used by
@@ -56,6 +57,8 @@ const (
 	initialK3sVersion    = KubeLogDir + "/initial_k3s_version"
 	kubeRootExt4         = "/persist/vault/kube"
 	kubeRootZFS          = "/dev/zvol/persist/etcd-storage"
+	witnessRootVault     = "/persist/vault/witness"
+	witnessRootZvol      = "/dev/zvol/persist/witness-storage"
 	kubeRootMountpoint   = "/var/lib"
 	persistTypeFile      = "/run/eve.persist_type"
 	eveReleasePath       = "/run/eve-release"
@@ -79,10 +82,15 @@ var (
 	defaultPollInterval = 5 * time.Second
 	filePollInterval    = 1 * time.Second
 	containerdTimeout   = 30 * time.Second
-	procNetRoute        = "/proc/net/route"
-	procMounts          = "/proc/mounts"
-	procRoot            = "/proc"
-	hostnameBin         = "/bin/hostname"
+	// zvolWait bounds the wait for a zvol's device node to appear.
+	zvolWait = 10 * time.Minute
+	// witnessZvolMarker is pillar's record that the install reserved a
+	// witness zvol. A var so tests can redirect it.
+	witnessZvolMarker = types.WitnessZvolMarker
+	procNetRoute      = "/proc/net/route"
+	procMounts        = "/proc/mounts"
+	procRoot          = "/proc"
+	hostnameBin       = "/bin/hostname"
 )
 
 // kernelModules lists modules to modprobe at startup. Individual
@@ -597,10 +605,24 @@ func WaitLonghornDiskPath(ctx context.Context) error {
 // MountKubeRoot binds or mounts the persistent storage at
 // kubeRootMountpoint based on /run/eve.persist_type. No-op when
 // already mounted (idempotent).
+//
+// The witness gets its own storage, never the kube zvol: mounting that
+// would put both k3s instances' etcd on one filesystem, overwriting
+// each other's server/db. It prefers a dedicated witness zvol, which
+// only exists when the device was installed with the corresponding
+// install option, and otherwise binds a vault directory.
+//
+// The fallback is the upgrade path, not a stopgap. These zvols are
+// thick-provisioned and the vault zvol claims the whole remaining pool,
+// so a device already in the field has no free space to carve a witness
+// zvol out of and will always land here.
 func MountKubeRoot() error {
 	if isMounted(kubeRootMountpoint) {
 		log.Printf("%s already mounted, skipping", kubeRootMountpoint)
 		return nil
+	}
+	if role.IsWitness() {
+		return mountWitnessRoot()
 	}
 	data, err := os.ReadFile(persistTypeFile)
 	if err != nil {
@@ -610,35 +632,88 @@ func MountKubeRoot() error {
 
 	switch persistType {
 	case "zfs":
-		log.Printf("using ZFS persistent storage; waiting for %s zvol", kubeRootZFS)
-		// 10-minute ceiling for the zvol to appear; the FSM upstream
-		// has no other watchdog over this step.
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-		defer cancel()
-		if err := waitForBlockDevice(ctx, kubeRootZFS, filePollInterval); err != nil {
-			return fmt.Errorf("wait for zvol %s: %w", kubeRootZFS, err)
-		}
-		if err := syscall.Mount(kubeRootZFS, kubeRootMountpoint, "ext4", 0, ""); err != nil {
-			return fmt.Errorf("mount %s to %s: %w",
-				kubeRootZFS, kubeRootMountpoint, err)
-		}
-		log.Printf("mounted %s to %s", kubeRootZFS, kubeRootMountpoint)
+		log.Printf("using ZFS persistent storage")
+		return mountZvolRoot(kubeRootZFS)
 
 	case "ext4":
 		log.Printf("using ext4 persistent storage")
-		if err := mkdirAll(kubeRootExt4, 0755); err != nil {
-			return err
-		}
-		if err := syscall.Mount(kubeRootExt4, kubeRootMountpoint, "",
-			syscall.MS_BIND, ""); err != nil {
-			return fmt.Errorf("bind mount %s to %s: %w",
-				kubeRootExt4, kubeRootMountpoint, err)
-		}
-		log.Printf("bind-mounted %s to %s", kubeRootExt4, kubeRootMountpoint)
+		return bindVaultRoot(kubeRootExt4)
 
 	default:
 		return fmt.Errorf("unsupported persist type: %q", persistType)
 	}
+}
+
+// mountWitnessRoot mounts the witness's persistent storage: the
+// dedicated zvol when the install reserved one, otherwise a bind of its
+// vault directory.
+//
+// The marker, not the device node, decides which. A missing device node
+// is ambiguous on its own: it means either that no zvol was ever
+// reserved, or that its node has not appeared yet, and those need
+// opposite responses. Guessing wrong in the second case would silently
+// start the witness on empty vault-backed storage while its etcd state
+// sits on the zvol, so it would rejoin as a fresh member.
+//
+// For the same reason a reserved-but-absent zvol is fatal rather than a
+// fallback. A witness that does not start costs one vote; a witness that
+// starts on the wrong storage discards its etcd identity.
+func mountWitnessRoot() error {
+	useZvol, err := witnessZvolReserved()
+	if err != nil {
+		return err
+	}
+	if !useZvol {
+		log.Printf("no witness zvol reserved, using %s", witnessRootVault)
+		return bindVaultRoot(witnessRootVault)
+	}
+
+	log.Printf("witness zvol reserved")
+	return mountZvolRoot(witnessRootZvol)
+}
+
+// mountZvolRoot waits for a zvol's device node to appear, then mounts it
+// on kubeRootMountpoint. The wait is bounded because the FSM upstream
+// has no other watchdog over this step.
+func mountZvolRoot(dev string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), zvolWait)
+	defer cancel()
+	if err := waitForBlockDevice(ctx, dev, filePollInterval); err != nil {
+		return fmt.Errorf("wait for zvol %s: %w", dev, err)
+	}
+	if err := syscall.Mount(dev, kubeRootMountpoint, "ext4", 0, ""); err != nil {
+		return fmt.Errorf("mount %s to %s: %w", dev, kubeRootMountpoint, err)
+	}
+	log.Printf("mounted %s to %s", dev, kubeRootMountpoint)
+	return nil
+}
+
+// witnessZvolReserved reports whether the install reserved a witness
+// zvol. An unreadable marker is an error rather than a false: the two
+// answers pick different backing stores, so guessing is worse than
+// refusing.
+func witnessZvolReserved() (bool, error) {
+	if _, err := os.Stat(witnessZvolMarker); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		return false, fmt.Errorf("stat %s: %w", witnessZvolMarker, err)
+	}
+	return true, nil
+}
+
+// bindVaultRoot bind-mounts a vault directory onto kubeRootMountpoint,
+// creating it first if needed.
+func bindVaultRoot(src string) error {
+	if err := mkdirAll(src, 0755); err != nil {
+		return err
+	}
+	if err := syscall.Mount(src, kubeRootMountpoint, "",
+		syscall.MS_BIND, ""); err != nil {
+		return fmt.Errorf("bind mount %s to %s: %w",
+			src, kubeRootMountpoint, err)
+	}
+	log.Printf("bind-mounted %s to %s", src, kubeRootMountpoint)
 	return nil
 }
 

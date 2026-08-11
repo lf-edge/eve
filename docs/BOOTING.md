@@ -206,6 +206,10 @@ Wherever one of these names appears, `dom0` means the EVE host, not a virtual ma
     12. `eve_install_skip_zfs_checks` - install zfs by skipping minimum requirement checks.
     13. `eve_install_zfs_with_raid_level` - Sets raid level for zfs storage. Valid values are none,raid1,raid5,raid6. Default value is none. This option also applied for the first boot of a live image to prepare zfs persist pool instead of ext4.
     14. `eve_install_k3s_etcd_sizeGB` - Size in GB of the etcd-storage zvol.  Defaults to 10GB.
+    15. `eve_install_k3s_witness` - Reserve a witness-storage zvol for the 2-node-HA witness, sized from `eve_install_k3s_etcd_sizeGB`.
+        Only meaningful on ZFS. Must be given at install time: the vault zvol claims the whole remaining pool, so there is no free
+        space to reserve one later. Devices installed without it fall back to a directory inside the vault, which works but gives the
+        witness no capacity reservation of its own.
 3. General kernel parameters may be adjusted with `set_global dom0_extra_args "$dom0_extra_args OPTION1=VAL1 OPTION2 "`.
    They will be added to kernel cmdline.
 
