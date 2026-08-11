@@ -1,0 +1,41 @@
+#
+# Copyright (c) 2026 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
+# pkg/witness runs the etcd-only member that gives a two-node HA cluster
+# its third quorum vote. Same binary as pkg/kube, which reads its role
+# from /etc/kube-init-role in this image.
+#
+# A container of its own, not a second process in pkg/kube, so that a
+# routine kube restart on the seed costs one vote rather than two: the
+# node's own etcd and the witness would otherwise go down together,
+# which is quorum lost.
+org: lfedge
+image: eve-witness
+config:
+  binds:
+    # /hostfs to reach pillar's vaultmgr, which the witness waits on
+    # before mounting its own storage; /persist for that storage and for
+    # the k3s binary pkg/kube publishes; /run for pubsub and the fence.
+    # No /etc/resolv.conf: NIM points it at 127.0.0.1, where nothing
+    # listens in our own netns. The witness resolves no names anyway,
+    # the seed and etcd peers being IP literals.
+    - /lib/modules:/lib/modules
+    - /dev:/dev
+    - /run:/run
+    - /:/hostfs
+    - /persist:/persist:rshared,rbind
+    - /sys/fs/cgroup:/sys/fs/cgroup
+  capabilities:
+    - all
+  # Its own network namespace, which NIM plugs into the cluster bridge
+  # with a veth carrying the witness address. Without it the witness's
+  # etcd would collide with the node's on the same ports.
+  net: new
+  # No pid: host, unlike pkg/kube. Nothing here needs to see the node's
+  # processes, and the node's orphan sweep tells the two k3s apart by
+  # namespace.
+  rootfsPropagation: shared
+  devices:
+    - path: all
+      type: a
