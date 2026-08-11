@@ -1608,9 +1608,8 @@ func TestSingleEthInterfaceWithIPv6(test *testing.T) {
 	t.Expect(itemCountWithType(generic.DhcpcdTypename)).To(Equal(0))
 }
 
-// TestWitnessForwardRulesAreEtcdOnly verifies that the rules letting the
-// witness's traffic cross the cluster bridge match only the etcd ports,
-// like the INPUT rules do, and not everything the witness netns serves.
+// TestWitnessForwardRulesAreEtcdOnly verifies that the witness FORWARD
+// rules match only the etcd ports.
 func TestWitnessForwardRulesAreEtcdOnly(t *testing.T) {
 	g := initTest(t)
 

@@ -4,6 +4,7 @@
 package prereqs
 
 import (
+	"net"
 	"strings"
 	"testing"
 )
@@ -115,5 +116,41 @@ func TestUUIDRegexp(t *testing.T) {
 		if uuidRegexp.MatchString(in) {
 			t.Errorf("uuidRegexp accepted invalid value %q", in)
 		}
+	}
+}
+
+func TestAddrsContain(t *testing.T) {
+	cidr := func(s string) net.Addr {
+		ip, n, err := net.ParseCIDR(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return &net.IPNet{IP: ip, Mask: n.Mask}
+	}
+	// What the witness netns actually holds once NIM has plugged the
+	// veth: loopback, the cluster address, and a link-local v6.
+	addrs := []net.Addr{
+		cidr("127.0.0.1/8"),
+		cidr("10.244.244.5/24"),
+		cidr("fe80::4c0a:b7ff:fe38:d1c3/64"),
+	}
+	cases := []struct {
+		name  string
+		addrs []net.Addr
+		ip    string
+		want  bool
+	}{
+		{"witness address held", addrs, "10.244.244.5", true},
+		{"the seed's address is not ours", addrs, "10.244.244.2", false},
+		{"loopback only, no veth yet", addrs[:1], "10.244.244.5", false},
+		{"empty netns", nil, "10.244.244.5", false},
+		{"unparsable ip", addrs, "", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := addrsContain(c.addrs, c.ip); got != c.want {
+				t.Errorf("addrsContain(_, %q) = %v, want %v", c.ip, got, c.want)
+			}
+		})
 	}
 }

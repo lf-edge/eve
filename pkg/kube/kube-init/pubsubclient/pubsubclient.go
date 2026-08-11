@@ -29,16 +29,18 @@ import (
 	"reflect"
 	"sync"
 
+	"github.com/lf-edge/eve/pkg/kube/kube-init/role"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub/socketdriver"
 	"github.com/sirupsen/logrus"
 )
 
-// AgentName is the identity kube-init uses on pubsub. Other agents
+// AgentName is the identity this process uses on pubsub. Other agents
 // see it as the MyAgentName of subscriptions and the AgentName of
-// any publications kube-init eventually adds (none yet).
-const AgentName = "kube-init"
+// publications. It is role-dependent: the witness runs the same binary
+// in a second container sharing /run, so the two must not collide.
+func AgentName() string { return role.AgentName() }
 
 // Manager owns the pubsub.PubSub handle and the set of
 // subscriptions kube-init has registered. Construct once at
@@ -61,7 +63,7 @@ func New(rootLogger *logrus.Logger) (*Manager, error) {
 	if rootLogger == nil {
 		return nil, errors.New("pubsubclient.New: nil logger")
 	}
-	log := base.NewSourceLogObject(rootLogger, AgentName, 0)
+	log := base.NewSourceLogObject(rootLogger, AgentName(), 0)
 	ps := pubsub.New(
 		&socketdriver.SocketDriver{Logger: rootLogger, Log: log},
 		rootLogger, log)
