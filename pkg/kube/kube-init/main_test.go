@@ -6,12 +6,20 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net"
 	"strings"
 	"testing"
 	"time"
 
+	uuid "github.com/satori/go.uuid"
+
 	"github.com/lf-edge/eve/pkg/kube/kube-init/deploy"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/encstatus"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/monitor"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/role"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/witness"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 // newTestDaemon constructs a daemon whose enterStateFn is a no-op
@@ -43,6 +51,7 @@ func TestTransitionTable(t *testing.T) {
 		initReason restartReason
 		event      Event
 		wantState  State
+		asWitness  bool
 		checkFn    func(*testing.T, *daemon)
 	}{
 		// === INIT ===
@@ -636,6 +645,114 @@ func TestTransitionTable(t *testing.T) {
 				}
 			},
 		},
+		// === witness role ===
+		// The witness's reduced state set, asserted as transitions
+		// rather than as a list: it never enters STARTING_CTRD (no user
+		// containerd without a kubelet), IMPORTING (no images),
+		// WAIT_K3S_READY (no apiserver of its own) or DEPLOYING/SNAPSHOT
+		// (no components).
+		{
+			name:      "witness Installing/InstallDone->Configuring",
+			initState: StateInstalling,
+			event:     Event{Type: EvInstallDone},
+			asWitness: true,
+			wantState: StateConfiguring,
+		},
+		{
+			// Still via WAIT_K3S_READY: k3s staying up does not mean
+			// the witness joined, and a failed join leaves it running.
+			name:      "witness StartingK3s/K3sStarted->WaitK3sReady",
+			initState: StateStartingK3s,
+			initPhase: PhaseSteady,
+			event:     Event{Type: EvK3sStarted},
+			asWitness: true,
+			wantState: StateWaitK3sReady,
+		},
+		{
+			name:      "witness WaitK3sReady/K3sReady->Running",
+			initState: StateWaitK3sReady,
+			initPhase: PhaseSteady,
+			event:     Event{Type: EvK3sReady},
+			asWitness: true,
+			wantState: StateRunning,
+		},
+		{
+			// A witness stuck joining a seed that has moved never
+			// reaches RUNNING, so the restart must not be queued.
+			name:      "witness WaitK3sReady/ConfigChange->StoppingK3s",
+			initState: StateWaitK3sReady,
+			initPhase: PhaseSteady,
+			event:     Event{Type: EvConfigChange},
+			asWitness: true,
+			wantState: StateStoppingK3s,
+			checkFn: func(t *testing.T, d *daemon) {
+				if d.pendingRestart != nil {
+					t.Error("restart must not be queued")
+				}
+				if d.restartReason != restartConfigChange {
+					t.Errorf("restartReason = %v, want restartConfigChange",
+						d.restartReason)
+				}
+			},
+		},
+		{
+			name:      "witness Configuring/NotWanted->WitnessIdle",
+			initState: StateConfiguring,
+			event: Event{
+				Type: EvError,
+				Err:  fmt.Errorf("configure: %w", witness.ErrNotWanted),
+			},
+			asWitness: true,
+			wantState: StateWitnessIdle,
+			checkFn: func(t *testing.T, d *daemon) {
+				if d.lastError != nil {
+					t.Errorf("not-wanted is not an error, got lastError = %v",
+						d.lastError)
+				}
+			},
+		},
+		{
+			name:      "witness WitnessIdle/ConfigChange->Configuring",
+			initState: StateWitnessIdle,
+			event:     Event{Type: EvConfigChange},
+			asWitness: true,
+			wantState: StateConfiguring,
+		},
+		{
+			// A real error still retries in place rather than parking.
+			name:      "witness Configuring/Error retries",
+			initState: StateConfiguring,
+			event:     Event{Type: EvError, Err: errors.New("boom")},
+			asWitness: true,
+			wantState: StateConfiguring,
+		},
+		{
+			name:      "witness RunningHooks/HooksDone->Configuring",
+			initState: StateRunningHooks,
+			event:     Event{Type: EvHooksDone},
+			asWitness: true,
+			wantState: StateConfiguring,
+		},
+		{
+			name:       "kube RunningHooks/HooksDone->StartingK3s",
+			initState:  StateRunningHooks,
+			initReason: restartConfigChange,
+			event:      Event{Type: EvHooksDone},
+			wantState:  StateStartingK3s,
+		},
+		{
+			name:      "kube Installing/InstallDone->StartingCtrd",
+			initState: StateInstalling,
+			event:     Event{Type: EvInstallDone},
+			wantState: StateStartingCtrd,
+		},
+		{
+			name:      "kube StartingK3s/K3sStarted->Importing",
+			initState: StateStartingK3s,
+			initPhase: PhaseSteady,
+			event:     Event{Type: EvK3sStarted},
+			wantState: StateImporting,
+		},
 		{
 			name:      "ClusterTransition/SingleToCluster queued (do not interrupt)",
 			initState: StateClusterTransition,
@@ -652,6 +769,9 @@ func TestTransitionTable(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.asWitness {
+				defer role.Override(role.Witness)()
+			}
 			d := newTestDaemon()
 			d.state = tt.initState
 			d.phase = tt.initPhase
@@ -678,7 +798,7 @@ func TestGlobalSIGTERM(t *testing.T) {
 		StateInit, StateInstalling, StateStartingCtrd, StateConfiguring,
 		StateStartingK3s, StateImporting, StateWaitK3sReady, StateDeploying,
 		StateSnapshot, StateRunning, StateBackoff, StateStoppingK3s,
-		StateRunningHooks, StateClusterTransition,
+		StateRunningHooks, StateClusterTransition, StateWitnessIdle,
 	}
 	ctx := context.Background()
 	for _, s := range allStates {
@@ -700,7 +820,7 @@ func TestGlobalSocketStop(t *testing.T) {
 		StateInit, StateInstalling, StateStartingCtrd, StateConfiguring,
 		StateStartingK3s, StateImporting, StateWaitK3sReady, StateDeploying,
 		StateSnapshot, StateRunning, StateBackoff, StateStoppingK3s,
-		StateRunningHooks, StateClusterTransition,
+		StateRunningHooks, StateClusterTransition, StateWitnessIdle,
 	}
 	ctx := context.Background()
 	for _, s := range allStates {
@@ -1255,5 +1375,86 @@ func TestJoinStageResetsWhenATransitionCompletes(t *testing.T) {
 	if d.joinStageReached != joinStageRank(StateWaitK3sReady) {
 		t.Errorf("joinStageReached = %d, want %d", d.joinStageReached,
 			joinStageRank(StateWaitK3sReady))
+	}
+}
+
+// TestGraphReplyByRole covers the one k3s-sctl answer that could
+// mislead: the deploy graph is built without reference to the role and
+// its signal bus is only ever published to by DeployAll, so a witness
+// answering normally would report pkg/kube's components as WAITING
+// forever.
+func TestGraphReplyByRole(t *testing.T) {
+	t.Run("the witness refuses", func(t *testing.T) {
+		defer role.Override(role.Witness)()
+		got := (&daemon{}).graphReply()
+		if !strings.HasPrefix(got, "ERR:") {
+			t.Errorf("graphReply() = %q, want an ERR reply", got)
+		}
+		if strings.Contains(got, "longhorn") {
+			t.Errorf("graphReply() leaked the kube graph: %q", got)
+		}
+	})
+
+	t.Run("the kube role still gets its graph", func(t *testing.T) {
+		defer role.Override(role.Kube)()
+		got := (&daemon{signals: deploy.NewBus()}).graphReply()
+		if strings.HasPrefix(got, "ERR:") {
+			t.Fatalf("graphReply() = %q, want a graph", got)
+		}
+		if !strings.Contains(got, "longhorn") {
+			t.Errorf("graphReply() = %q, want the deploy graph", got)
+		}
+	})
+}
+
+// TestWitnessInputsOf pins which status changes may restart the witness.
+func TestWitnessInputsOf(t *testing.T) {
+	base := types.EdgeNodeClusterStatus{
+		ClusterID:                types.UUIDandVersion{UUID: uuid.Must(uuid.NewV4())},
+		WitnessIP:                net.ParseIP("10.244.244.5"),
+		JoinServerIP:             net.ParseIP("10.244.244.2"),
+		EncryptedClusterToken:    "token",
+		QuorumRecoveryGeneration: 1,
+		BootstrapNode:            true,
+		ClusterIPIsReady:         true,
+	}
+	mod := func(f func(*types.EdgeNodeClusterStatus)) types.EdgeNodeClusterStatus {
+		st := base
+		f(&st)
+		return st
+	}
+	tests := []struct {
+		name    string
+		st      types.EdgeNodeClusterStatus
+		present bool
+		same    bool
+	}{
+		{"port flap", mod(func(s *types.EdgeNodeClusterStatus) { s.ClusterIPIsReady = false }), true, true},
+		{"cluster interface", mod(func(s *types.EdgeNodeClusterStatus) { s.ClusterInterface = "eth1" }), true, true},
+		{"witness IP moved", mod(func(s *types.EdgeNodeClusterStatus) { s.WitnessIP = net.ParseIP("10.244.244.6") }), true, false},
+		{"seed moved", mod(func(s *types.EdgeNodeClusterStatus) { s.BootstrapNode = false }), true, false},
+		{"join server moved", mod(func(s *types.EdgeNodeClusterStatus) { s.JoinServerIP = net.ParseIP("10.244.244.3") }), true, false},
+		{"token rotated", mod(func(s *types.EdgeNodeClusterStatus) { s.EncryptedClusterToken = "t2" }), true, false},
+		{"quorum recovery", mod(func(s *types.EdgeNodeClusterStatus) { s.QuorumRecoveryGeneration = 2 }), true, false},
+		{"status deleted", types.EdgeNodeClusterStatus{}, false, false},
+	}
+	want := witnessInputsOf(base, true)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := witnessInputsOf(tc.st, tc.present) == want; got != tc.same {
+				t.Fatalf("inputs equal = %v, want %v", got, tc.same)
+			}
+		})
+	}
+}
+
+// TestWorkConfigureWitnessNoClusterStatus pins that a device in no cluster
+// is a witness that is not wanted, rather than a failure CONFIGURING would
+// retry every few seconds for as long as the device stays out of a cluster.
+func TestWorkConfigureWitnessNoClusterStatus(t *testing.T) {
+	encstatus.ResetForTest()
+	err := newTestDaemon().workConfigureWitness(context.Background())
+	if !errors.Is(err, witness.ErrNotWanted) {
+		t.Fatalf("workConfigureWitness() = %v, want %v", err, witness.ErrNotWanted)
 	}
 }

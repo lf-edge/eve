@@ -509,7 +509,7 @@ func applyUserOverride() bool {
 // then prunes excess raft logs.
 func RotateLogs() {
 	for _, name := range []string{
-		"k3s.log",
+		k3sLogFile,
 		"multus.log",
 		"eve-bridge.log",
 		"containerd-user.log",
@@ -557,7 +557,7 @@ func rotateLogFile(name string) {
 		}
 	}
 
-	if name == "k3s.log" {
+	if name == k3sLogFile {
 		sendSIGHUPToK3s()
 	}
 	if err := os.Truncate(path, 0); err != nil {

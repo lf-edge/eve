@@ -44,6 +44,7 @@ import (
 	"syscall"
 	"time"
 
+	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
 	"gopkg.in/natefinch/lumberjack.v2"
@@ -64,8 +65,12 @@ import (
 	"github.com/lf-edge/eve/pkg/kube/kube-init/monitor"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/prereqs"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/pubsubclient"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/role"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/update"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/witness"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/witnessstatus"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 // ===========================================================================
@@ -230,6 +235,7 @@ const (
 	StateRunningHooks                   // pre-restart hooks
 	StateClusterTransition              // single↔HA runner
 	StateShuttingDown                   // clean daemon exit
+	StateWitnessIdle                    // witness configured off, nothing running
 )
 
 // String renders State for logging. Switch-based for the same
@@ -267,6 +273,8 @@ func (s State) String() string {
 		return "CLUSTER_TRANSITION"
 	case StateShuttingDown:
 		return "SHUTTING_DOWN"
+	case StateWitnessIdle:
+		return "WITNESS_IDLE"
 	}
 	return fmt.Sprintf("UNKNOWN(%d)", s)
 }
@@ -392,9 +400,13 @@ const (
 
 	kubeconfigTimeout = 30 * time.Minute
 	readinessTimeout  = 30 * time.Minute
-
-	socketPath = "/run/k3s-supervisor.sock"
 )
+
+// socketPath is the control socket k3s-sctl dials. Role-dependent: both
+// containers share /run, and whichever process bound last would
+// otherwise answer for both.
+var socketPath = role.Pick(
+	"/run/k3s-supervisor.sock", "/run/witness-supervisor.sock")
 
 // ===========================================================================
 // daemon
@@ -415,6 +427,10 @@ type daemon struct {
 	// startAsync happens-after the write, so handleInit sees the
 	// published struct after EvPrereqsDone arrives.
 	initRes *initResult
+
+	// witnessIP is the address this witness serves etcd on, remembered
+	// from the last CONFIGURING so status reports can echo it.
+	witnessIP string
 
 	// FSM state.
 	state          State
@@ -441,6 +457,15 @@ type daemon struct {
 	// timestamps.
 	bootAt         time.Time
 	stateEnteredAt time.Time
+
+	// lastRetryLogged is the last retry reason printed, so a gate that
+	// holds for minutes logs once rather than on every retry.
+	lastRetryLogged string
+
+	// witnessPruneAsked records that this witness has already asked the
+	// node to clear stale members for the cold join in progress, so the
+	// request is raised once rather than on every CONFIGURING retry.
+	witnessPruneAsked bool
 
 	// cpuLoan is the widened cpuset held for the duration of a first
 	// boot, given back on reaching RUNNING.
@@ -532,17 +557,19 @@ func main() {
 		log.Printf("kube-init: mkdir /persist/kubelog: %v", err)
 	}
 	lj := &lumberjack.Logger{
-		Filename:   "/persist/kubelog/k3s-install.log",
+		Filename: role.Pick(
+			"/persist/kubelog/k3s-install.log",
+			"/persist/kubelog/witness-install.log"),
 		MaxSize:    5, // MB
 		MaxBackups: 3,
 		LocalTime:  true,
 		Compress:   false,
 	}
 	log.SetOutput(io.MultiWriter(os.Stderr, lj))
-	log.SetPrefix("kube-init: ")
+	log.SetPrefix(role.AgentName() + ": ")
 	log.SetFlags(log.Ldate | log.Ltime)
-	log.Printf("starting kube-init daemon (pid=%d, arch=%s)",
-		os.Getpid(), runtime.GOARCH)
+	log.Printf("starting %s daemon (pid=%d, arch=%s)",
+		role.AgentName(), os.Getpid(), runtime.GOARCH)
 
 	// Construct the pubsub manager. kube-init uses this to
 	// subscribe to EdgeNodeClusterStatus / KubeConfig /
@@ -561,7 +588,15 @@ func main() {
 	if err != nil {
 		log.Fatalf("pubsub init: %v", err)
 	}
-	log.Printf("pubsub manager constructed (agent=%s)", pubsubclient.AgentName)
+	log.Printf("pubsub manager constructed (agent=%s)", pubsubclient.AgentName())
+
+	if role.IsWitness() {
+		// Only the witness's own process can report its membership:
+		// it has no Node object to annotate and no kube API to reach.
+		if err := witnessstatus.RegisterPublisher(psMgr); err != nil {
+			log.Fatalf("witness status publisher: %v", err)
+		}
+	}
 
 	// Register all topic subscribers before psMgr.Run starts —
 	// the Manager activates registered subscriptions at Run time
@@ -573,8 +608,10 @@ func main() {
 	if err := kubeconfig.Register(psMgr); err != nil {
 		log.Fatalf("register KubeConfig subscription: %v", err)
 	}
-	if err := kcus.Register(psMgr); err != nil {
-		log.Fatalf("register KubeClusterUpdateStatus subscription: %v", err)
+	if !role.IsWitness() {
+		if err := kcus.Register(psMgr); err != nil {
+			log.Fatalf("register KubeClusterUpdateStatus subscription: %v", err)
+		}
 	}
 	if err := encconfig.Register(psMgr); err != nil {
 		log.Fatalf("register EdgeNodeClusterConfig subscription: %v", err)
@@ -643,7 +680,9 @@ func main() {
 		// deploy: k3s unpack (INSTALLING) and the tarball imports
 		// (IMPORTING) are decompression-heavy and run before DEPLOYING.
 		// Restored on reaching RUNNING.
-		d.cpuLoan = prereqs.WidenEVECPUs()
+		if !role.IsWitness() {
+			d.cpuLoan = prereqs.WidenEVECPUs()
+		}
 	}
 	// Phase is recomputed inside the INIT goroutine after
 	// RunAll, where we also handle the convert-to-single-node
@@ -662,25 +701,40 @@ func (d *daemon) run(ctx context.Context) {
 	go d.signalForwarder(ctx)
 	go d.listenSocket(ctx)
 
-	// A join left in flight by the previous boot has to be picked back
-	// up here: if it stays stuck the FSM never reaches RUNNING, so the
-	// monitor that would otherwise drive it never starts. No-op unless
-	// the marker is on disk.
-	monitor.StartJoinWatchdog(ctx)
+	// Cluster membership is the kube role's business. The witness joins
+	// the cluster's etcd, not the cluster itself: it has no Kubernetes
+	// Node object, never transitions between single and cluster mode,
+	// and must never run the cluster-mode runner, which converts a node
+	// by restoring /var/lib and rebooting.
+	if !role.IsWitness() {
+		// A join left in flight by the previous boot has to be picked
+		// back up here: if it stays stuck the FSM never reaches
+		// RUNNING, so the monitor that would otherwise drive it never
+		// starts. No-op unless the marker is on disk.
+		monitor.StartJoinWatchdog(ctx)
 
-	// Let the readiness wait feed the join watchdog. Waiting for
-	// kube-system pods after a join regularly outlasts the stall
-	// limit, and every change in the ready count is proof the node is
-	// converging rather than wedged.
-	k3s.OnProgress = monitor.NoteJoinProgress
+		// Let the readiness wait feed the join watchdog. Waiting for
+		// kube-system pods after a join regularly outlasts the stall
+		// limit, and every change in the ready count is proof the node
+		// is converging rather than wedged.
+		k3s.OnProgress = monitor.NoteJoinProgress
 
-	// Cluster-config edges are watched for the daemon's whole life, not
-	// just in RUNNING — a node that is not Ready still has to obey a
-	// controller that adds or withdraws its cluster config. The bridge
-	// that turns those signals into FSM events therefore has to be
-	// equally long-lived.
-	go d.bridgeMonitorRestarts(ctx)
-	monitor.StartClusterConfigMonitor(ctx, d.monRestartCh)
+		// Cluster-config edges are watched for the daemon's whole life,
+		// not just in RUNNING — a node that is not Ready still has to
+		// obey a controller that adds or withdraws its cluster config.
+		// The bridge that turns those signals into FSM events therefore
+		// has to be equally long-lived.
+		go d.bridgeMonitorRestarts(ctx)
+		monitor.StartClusterConfigMonitor(ctx, d.monRestartCh)
+	} else {
+		// The witness has its own, much smaller watch: whether it
+		// should run at all, and which seed to join, both come from
+		// EdgeNodeClusterStatus. Daemon-lifetime like the kube one,
+		// because the witness spends most of its life parked in
+		// WITNESS_IDLE, where it would otherwise never learn that it
+		// has become the seed.
+		go d.watchWitnessConfig(ctx)
+	}
 
 	d.transition(ctx, StateInit, "startup")
 
@@ -787,6 +841,8 @@ func (d *daemon) handleEvent(ctx context.Context, ev Event) {
 		d.handleRunningHooks(ctx, ev)
 	case StateClusterTransition:
 		d.handleClusterTransition(ctx, ev)
+	case StateWitnessIdle:
+		d.handleWitnessIdle(ctx, ev)
 	case StateShuttingDown:
 		// absorb everything
 	}
@@ -823,6 +879,12 @@ func (d *daemon) handleInit(ctx context.Context, ev Event) {
 func (d *daemon) handleInstalling(ctx context.Context, ev Event) {
 	switch ev.Type {
 	case EvInstallDone:
+		if role.IsWitness() {
+			// No user containerd: with --disable-agent there is no
+			// kubelet, so nothing ever dials a CRI socket.
+			d.transition(ctx, StateConfiguring, "install-done")
+			return
+		}
 		d.transition(ctx, StateStartingCtrd, "install-done")
 	case EvError:
 		d.lastError = ev.Err
@@ -848,12 +910,22 @@ func (d *daemon) handleStartingCtrd(ctx context.Context, ev Event) {
 
 func (d *daemon) handleConfiguring(ctx context.Context, ev Event) {
 	switch ev.Type {
+	case EvError:
+		// Not an error: no witness is wanted here. Every device that
+		// is not the seed sits in this state, as does every device in
+		// a cluster with no witness configured.
+		if errors.Is(ev.Err, witness.ErrNotWanted) {
+			d.lastError = nil
+			d.transition(ctx, StateWitnessIdle, "witness-not-wanted")
+			return
+		}
+		d.lastError = ev.Err
+		d.logRetryOnce("CONFIGURING", ev.Err)
+		d.retryCurrentState(ctx)
+
 	case EvConfigureDone:
 		d.transition(ctx, StateStartingK3s, "configure-done")
-	case EvError:
-		d.lastError = ev.Err
-		log.Printf("CONFIGURING error: %v — retrying in %v", ev.Err, errorRetryDelay)
-		d.retryCurrentState(ctx)
+
 	case EvSocketRestart, EvSIGHUP:
 		d.queueRestart(restartForEvent(ev.Type))
 	}
@@ -864,6 +936,15 @@ func (d *daemon) handleStartingK3s(ctx context.Context, ev Event) {
 	case EvK3sStarted:
 		d.k3sStartedAt = time.Now()
 		d.lastError = nil
+		if role.IsWitness() {
+			// Skips IMPORTING (no images) and DEPLOYING/SNAPSHOT (no
+			// components), but still goes via WAIT_K3S_READY: a
+			// witness whose k3s is up but has not joined contributes
+			// no vote, and k3s stays running when a join fails.
+			witnessstatus.SetState(types.WitnessEtcdStateJoining, d.witnessIP)
+			d.transition(ctx, StateWaitK3sReady, "k3s-started")
+			return
+		}
 		// Every phase reaches RUNNING via WaitK3sReady (never
 		// directly) because EvK3sStarted only proves the
 		// kubeconfig file appeared — k3s writes it before the
@@ -939,12 +1020,19 @@ func (d *daemon) handleWaitK3sReady(ctx context.Context, ev Event) {
 	case EvK3sReady:
 		// Bootstrap the k8s client-go bundle on both branches so
 		// steady-state monitor goroutines (which skip DEPLOYING)
-		// still have kubeclient.Default() available.
-		if err := d.initKubeclient(); err != nil {
-			d.lastError = err
-			log.Printf("WAIT_K3S_READY: kubeclient init failed: %v", err)
-			d.retryCurrentState(ctx)
-			return
+		// still have kubeclient.Default() available. Not for the
+		// witness: it is built from the kubeconfig the witness has no
+		// apiserver to write, and nothing in that role speaks to a
+		// kube API.
+		if !role.IsWitness() {
+			if err := d.initKubeclient(); err != nil {
+				d.lastError = err
+				log.Printf("WAIT_K3S_READY: kubeclient init failed: %v", err)
+				d.retryCurrentState(ctx)
+				return
+			}
+		} else {
+			witnessstatus.SetState(types.WitnessEtcdStateJoined, d.witnessIP)
 		}
 		switch d.phase {
 		case PhaseFirstBoot:
@@ -961,11 +1049,24 @@ func (d *daemon) handleWaitK3sReady(ctx context.Context, ev Event) {
 
 	case EvError:
 		d.lastError = ev.Err
+		if role.IsWitness() {
+			witnessstatus.SetError(ev.Err, d.witnessIP)
+		}
 		log.Printf("WAIT_K3S_READY error: %v — retrying in %v", ev.Err, errorRetryDelay)
 		d.retryCurrentState(ctx)
 
 	case EvSocketRestart, EvSIGHUP, EvConfigChange, EvClusterRecycle,
 		EvSingleToCluster:
+		if role.IsWitness() {
+			// Queued, this would wait for RUNNING, which a witness whose
+			// seed has moved never reaches: the join keeps timing out
+			// against the old seed. Re-run CONFIGURING now so it follows
+			// the new seed, or parks if it is no longer wanted.
+			d.restartReason = restartForEvent(ev.Type)
+			d.backoff = minBackoff
+			d.transition(ctx, StateStoppingK3s, "witness-restart-while-joining")
+			return
+		}
 		d.queueRestart(restartForEvent(ev.Type))
 	}
 }
@@ -1314,7 +1415,14 @@ func (d *daemon) handleRunningHooks(ctx context.Context, ev Event) {
 	case EvHooksDone:
 		d.hookResults = ev.HookResults
 		reason := d.restartReason
-		if reason == restartFullRecycle {
+		if role.IsWitness() {
+			// Always re-render: the witness's join parameters follow
+			// the seed, so a restart triggered by a config change must
+			// not reuse the drop-ins written for the previous one.
+			// Rendering is a few file writes.
+			d.phase = PhaseSteady
+			d.transition(ctx, StateConfiguring, "hooks-done")
+		} else if reason == restartFullRecycle {
 			d.phase = PhaseRecycle
 			d.transition(ctx, StateConfiguring, "hooks-done/recycle")
 		} else {
@@ -1367,6 +1475,7 @@ func (d *daemon) handleRunningHooks(ctx context.Context, ev Event) {
 // resources, logs the transition, and invokes enterStateFn.
 func (d *daemon) transition(ctx context.Context, newState State, reason string) {
 	oldState := d.state
+	d.lastRetryLogged = ""
 
 	if d.cancelWork != nil {
 		d.cancelWork()
@@ -1497,6 +1606,9 @@ func (d *daemon) enterState(ctx context.Context) {
 
 	case StateWaitK3sReady:
 		d.startAsync(ctx, func(workCtx context.Context) error {
+			if role.IsWitness() {
+				return witness.WaitJoined(workCtx, readinessTimeout)
+			}
 			return k3s.WaitReady(workCtx, readinessTimeout)
 		}, EvK3sReady)
 
@@ -1523,6 +1635,9 @@ func (d *daemon) enterState(ctx context.Context) {
 
 	case StateShuttingDown:
 		d.doShutdown()
+
+	case StateWitnessIdle:
+		d.enterWitnessIdle(ctx)
 	}
 }
 
@@ -1531,6 +1646,16 @@ func (d *daemon) enterState(ctx context.Context) {
 // in d.initRes for handleInit to publish into the daemon struct
 // after EvPrereqsDone arrives.
 func (d *daemon) workInit(workCtx context.Context) error {
+	if role.IsWitness() {
+		if err := prereqs.RunWitness(workCtx); err != nil {
+			return err
+		}
+		// PhaseSteady: the witness has nothing to deploy or snapshot,
+		// so no phase ever routes it differently.
+		d.initRes = &initResult{phase: PhaseSteady}
+		return nil
+	}
+
 	deviceName, uuid, eveRelease, err := prereqs.RunAll(workCtx)
 	if err != nil {
 		return err
@@ -1628,6 +1753,16 @@ func (d *daemon) workInit(workCtx context.Context) error {
 // network outage cannot trap a fresh device in INSTALLING forever.
 func (d *daemon) workInstall(workCtx context.Context) error {
 	state.WaitForItem(workCtx, "k3s-install")
+	if role.IsWitness() {
+		// The witness reuses the binary the kube container downloaded
+		// rather than fetching its own: it has no route off the cluster
+		// network, and a second copy of k3s in its image would be paid
+		// for in the rootfs of every eve-k device.
+		if err := k3s.WaitSharedBinary(workCtx); err != nil {
+			return err
+		}
+		return k3s.EnsureInstalled(workCtx)
+	}
 	updated, err := update.CheckNodeComponents(workCtx, d.supervisor)
 	if err != nil {
 		log.Printf("WARNING: k3s version check failed: %v (continuing with whatever is on disk)",
@@ -1635,14 +1770,149 @@ func (d *daemon) workInstall(workCtx context.Context) error {
 	} else if updated {
 		log.Printf("k3s downloaded/updated — proceeding with install")
 	}
-	return k3s.EnsureInstalled(workCtx)
+	if err := k3s.EnsureInstalled(workCtx); err != nil {
+		return err
+	}
+	// Hand the binary to the witness container. Non-fatal: the kube
+	// role does not need it, and a device with no witness never reads
+	// what this publishes.
+	if err := k3s.PublishSharedBinary(); err != nil {
+		log.Printf("WARNING: publish k3s for the witness: %v", err)
+	}
+	return nil
 }
 
 // workConfigure renders k3s drop-ins and pre-stages CNI plugins.
 // A CNI staging failure is logged but does not block the FSM —
 // the kubelet itself will retry the symlink lookups on every pod
 // admission.
+// enterWitnessIdle parks the witness with nothing running. Reached when
+// the controller wants no witness here, which is the steady state on
+// every device that is not the seed. k3s is stopped rather than left
+// running: an idle witness that kept its etcd would still hold a vote
+// in a cluster that no longer expects one.
+// watchWitnessConfig turns EdgeNodeClusterStatus changes into
+// EvConfigChange, but only those the witness acts on: a restart costs the
+// cluster its third vote, so unrelated updates (port flaps, LB changes)
+// must not trigger one.
+func (d *daemon) watchWitnessConfig(ctx context.Context) {
+	ch, cancel := encstatus.Subscribe()
+	defer cancel()
+	last := witnessInputsOf(encstatus.Get())
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ch:
+			cur := witnessInputsOf(encstatus.Get())
+			if cur == last {
+				continue
+			}
+			last = cur
+			select {
+			case d.eventCh <- Event{Type: EvConfigChange}:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}
+}
+
+// witnessInputs is the part of EdgeNodeClusterStatus the witness reads.
+type witnessInputs struct {
+	present      bool
+	witnessIP    string
+	joinServerIP string
+	token        string
+	clusterID    uuid.UUID
+	recoveryGen  uint32
+	bootstrap    bool
+}
+
+func witnessInputsOf(st types.EdgeNodeClusterStatus, present bool) witnessInputs {
+	if !present {
+		return witnessInputs{}
+	}
+	return witnessInputs{
+		present:      true,
+		witnessIP:    st.WitnessIP.String(),
+		joinServerIP: st.JoinServerIP.String(),
+		token:        st.EncryptedClusterToken,
+		clusterID:    st.ClusterID.UUID,
+		recoveryGen:  st.QuorumRecoveryGeneration,
+		bootstrap:    st.BootstrapNode,
+	}
+}
+
+func (d *daemon) enterWitnessIdle(ctx context.Context) {
+	if d.supervisor != nil && d.supervisor.IsRunning() {
+		// Belt and braces. Every ordinary route here stops k3s first, in
+		// STOPPING_K3S, and leaves from there while the local etcd still
+		// answers; by this point IsRunning is false. Kept for any future
+		// route that parks the witness with k3s still up, where leaving
+		// after the stop would be too late.
+		witness.Leave(ctx)
+		log.Printf("WITNESS_IDLE — stopping k3s")
+		if err := d.supervisor.Stop(); err != nil {
+			log.Printf("WARNING: stop k3s for idle: %v", err)
+		}
+	}
+	d.cancelExitWatcher()
+	witnessstatus.SetState(types.WitnessEtcdStateIdle, "")
+	log.Printf("WITNESS_IDLE — no witness wanted on this device")
+}
+
+// handleWitnessIdle waits for the controller to change its mind. The
+// cluster-status watcher is what wakes it.
+func (d *daemon) handleWitnessIdle(ctx context.Context, ev Event) {
+	switch ev.Type {
+	case EvConfigChange, EvSocketRestart, EvSIGHUP:
+		d.transition(ctx, StateConfiguring, "witness-config-change")
+	}
+}
+
+// witnessPrunePass asks the kube role on this device to clear stale
+// witness members before a cold join, and reports whether that has
+// happened yet.
+//
+// The removing has to be done by the node, not by the witness: a witness
+// with a wiped data directory holds no client certificates and has no
+// local etcd to ask, so it cannot reach a membership it is not yet in.
+// A predecessor that was powered off before it could leave, or whose
+// leave could not reach a quorum, is still registered under the witness
+// peer URL — and that address follows the seed rather than the device,
+// so this join would collide with it.
+//
+// Only on a cold join, and only once per join: a warm restart is already
+// in the membership and would prune itself.
+func (d *daemon) witnessPrunePass() error {
+	if !witness.ColdJoin() {
+		d.witnessPruneAsked = false
+		return nil
+	}
+	if !d.witnessPruneAsked {
+		if err := witness.RequestPrune(d.witnessIP); err != nil {
+			return err
+		}
+		d.witnessPruneAsked = true
+		return witness.ErrPrunePending
+	}
+	if pending, _ := witness.PruneRequested(); pending {
+		return witness.ErrPrunePending
+	}
+	d.witnessPruneAsked = false
+	return nil
+}
+
+// errNodeNotClustered reports that the colocated kube role has not yet
+// become a cluster member. Transient rather than terminal like
+// witness.ErrNotWanted: CONFIGURING retries.
+var errNodeNotClustered = errors.New("node is not a cluster member yet")
+
 func (d *daemon) workConfigure(workCtx context.Context) error {
+	if role.IsWitness() {
+		return d.workConfigureWitness(workCtx)
+	}
 	if err := k3s.Configure(workCtx); err != nil {
 		return err
 	}
@@ -1650,6 +1920,50 @@ func (d *daemon) workConfigure(workCtx context.Context) error {
 		log.Printf("WARNING: CNI plugin copy: %v", err)
 	}
 	return nil
+}
+
+func (d *daemon) workConfigureWitness(workCtx context.Context) error {
+	// The witness renders its own drop-ins and needs no CNI
+	// plugins: with no kubelet there is nothing to call them.
+	cs, err := k3s.GetClusterStatus()
+	if errors.Is(err, k3s.ErrClusterStatusUnavailable) {
+		// No status means the device is in no cluster, so no witness is
+		// wanted. The status arriving wakes it (see watchWitnessConfig).
+		return witness.ErrNotWanted
+	}
+	if err != nil {
+		return err
+	}
+	if !witness.Wanted(cs) {
+		return witness.ErrNotWanted
+	}
+	// The node this witness sits on has to be a cluster member first.
+	// EdgeNodeClusterStatus names the witness as soon as the
+	// controller does, but until the kube role has run the
+	// single-to-cluster transition the token it rotates to is not yet
+	// the one the witness was given, and k3s answers a join with
+	// "not authorized" and exits. Retrying CONFIGURING costs seconds;
+	// letting k3s fail costs the supervisor's backoff, which reaches
+	// five minutes.
+	if m := kubeinitstatus.Get().Membership; m != MembershipMember {
+		return fmt.Errorf("%w: node membership is %q",
+			errNodeNotClustered, m)
+	}
+	d.witnessIP = cs.WitnessIP
+	// NIM plugs the veth on the same status this just read, so the
+	// address can trail us by a reconciliation.
+	if err := prereqs.WaitAddress(workCtx, cs.WitnessIP); err != nil {
+		return err
+	}
+	// Wipe state belonging to a cluster this witness is no longer
+	// part of before k3s can try to start against it.
+	if err := witness.SyncMembership(cs); err != nil {
+		return err
+	}
+	if err := d.witnessPrunePass(); err != nil {
+		return err
+	}
+	return witness.Configure(cs)
 }
 
 // initKubeclient constructs the process-wide *kubeclient.Client on
@@ -1807,6 +2121,12 @@ func (d *daemon) enterStartingK3s(ctx context.Context) {
 	go d.watchK3sExit(exitCtx)
 
 	d.startAsync(ctx, func(workCtx context.Context) error {
+		if role.IsWitness() {
+			// No kubeconfig to wait for: it points at a local
+			// apiserver, which the witness disables. The real gate
+			// is the etcd join, checked in WAIT_K3S_READY.
+			return nil
+		}
 		tCtx, tCancel := context.WithTimeout(workCtx, kubeconfigTimeout)
 		defer tCancel()
 		return k3s.WaitKubeconfig(tCtx)
@@ -1822,6 +2142,24 @@ func (d *daemon) enterRunning(ctx context.Context) {
 	}
 	log.Printf("RUNNING — k3s pid=%d, phase=%s, restarts=%d",
 		pid, d.phase, d.restartCount)
+
+	// Ensure the exit watcher is active. Kept ahead of the witness
+	// branch below: a crashing k3s has to reach BACKOFF in both roles.
+	if d.cancelExit == nil && d.supervisor != nil && d.supervisor.IsRunning() {
+		exitCtx, exitCancel := context.WithCancel(ctx)
+		d.cancelExit = exitCancel
+		go d.watchK3sExit(exitCtx)
+	}
+
+	if role.IsWitness() {
+		// Nothing below applies to the witness: it borrows no CPUs,
+		// registers nothing, has no node password (no kubelet), runs no
+		// DHCP daemon and has no kube API for the monitor to poll. Its
+		// steady-state health is etcd membership, reported separately.
+		d.runningCtx, d.cancelRunning = context.WithCancel(ctx)
+		d.processPendingRestart()
+		return
+	}
 
 	// Deploy is over; hand the borrowed CPUs back so steady state runs
 	// inside the limits the device was configured with.
@@ -1855,13 +2193,6 @@ func (d *daemon) enterRunning(ctx context.Context) {
 		log.Printf("warning: eager DHCP daemon start: %v", err)
 	}
 
-	// Ensure the exit watcher is active.
-	if d.cancelExit == nil && d.supervisor != nil && d.supervisor.IsRunning() {
-		exitCtx, exitCancel := context.WithCancel(ctx)
-		d.cancelExit = exitCancel
-		go d.watchK3sExit(exitCtx)
-	}
-
 	d.runningCtx, d.cancelRunning = context.WithCancel(ctx)
 
 	d.mon = monitor.New(d.deviceName, d.uuid, d.eveRelease, d.installKubevirt)
@@ -1886,12 +2217,42 @@ func (d *daemon) enterBackoff() {
 }
 
 func (d *daemon) enterStoppingK3s(ctx context.Context) {
-	d.startAsync(ctx, func(_ context.Context) error {
+	d.startAsync(ctx, func(workCtx context.Context) error {
+		if role.IsWitness() {
+			d.witnessLeaveIfUnwanted(workCtx)
+		}
 		if d.supervisor != nil {
 			return d.supervisor.Stop()
 		}
 		return nil
 	}, EvStopDone)
+}
+
+// witnessLeaveIfUnwanted removes this witness from the etcd membership
+// when the config that triggered the stop no longer wants a witness here,
+// which is what a seed moving to the other node looks like from in here.
+//
+// This is the last moment at which it can leave: Leave talks to the local
+// etcd, which dies with k3s, and every route from RUNNING to WITNESS_IDLE
+// goes through here first. Left behind, the member keeps the witness peer
+// URL registered, and since the address follows the seed rather than the
+// device, the witness starting on the new seed claims the same address and
+// its join collides with this corpse.
+func (d *daemon) witnessLeaveIfUnwanted(ctx context.Context) {
+	if d.supervisor == nil || !d.supervisor.IsRunning() {
+		return
+	}
+	cs, err := k3s.GetClusterStatus()
+	if err != nil {
+		log.Printf("WARNING: witness: cluster status before stop: %v", err)
+		return
+	}
+	if witness.Wanted(cs) {
+		return
+	}
+	log.Printf("witness: no longer wanted here — leaving the etcd membership " +
+		"while the local etcd still answers")
+	witness.Leave(ctx)
 }
 
 // ===========================================================================
@@ -2061,21 +2422,46 @@ func (d *daemon) handleSocketConn(conn net.Conn) {
 		_, _ = conn.Write([]byte("OK: stopping\n"))
 
 	case "graph":
-		// The graph shape is static, but each signal edge is annotated
-		// with whether its condition currently holds, so a reader can
-		// tell a component that has not run yet from one that is blocked
-		// and on what. Multi-line response terminated by conn close
-		// (deferred above).
-		edges, err := components.GraphEdges(d.installKubevirt, d.installCDI)
-		if err != nil {
-			_, _ = fmt.Fprintf(conn, "ERR: graph: %v\n", err)
-			return
-		}
-		_, _ = conn.Write([]byte(graphReport(edges, d.signals)))
+		// Multi-line response terminated by conn close (deferred above).
+		_, _ = conn.Write([]byte(d.graphReply()))
 
 	default:
 		_, _ = fmt.Fprintf(conn, "ERR: unknown command: %s\n", cmd)
 	}
+}
+
+// graphReply answers `k3s-sctl graph`.
+//
+// The graph shape is static, but each signal edge is annotated with
+// whether its condition currently holds, so a reader can tell a
+// component that has not run yet from one that is blocked and on what.
+//
+// Refused for the witness rather than answered emptily. The graph is
+// built without reference to the role, and the signal bus exists in
+// both but is only ever published to by DeployAll, so a witness would
+// print pkg/kube's components with every condition WAITING: not
+// distinguishable from a node wedged before deploying anything, when in
+// fact it deploys nothing.
+func (d *daemon) graphReply() string {
+	if role.IsWitness() {
+		return "ERR: no deploy graph in the witness role: it installs no components\n"
+	}
+	edges, err := components.GraphEdges(d.installKubevirt, d.installCDI)
+	if err != nil {
+		return fmt.Sprintf("ERR: graph: %v\n", err)
+	}
+	return graphReport(edges, d.signals)
+}
+
+// logRetryOnce prints a retry reason only when it changes. The witness
+// gates spend minutes returning the same one while they wait.
+func (d *daemon) logRetryOnce(state string, err error) {
+	msg := err.Error()
+	if msg == d.lastRetryLogged {
+		return
+	}
+	d.lastRetryLogged = msg
+	log.Printf("%s error: %v — retrying in %v", state, err, errorRetryDelay)
 }
 
 func (d *daemon) statusString() string {
@@ -2536,6 +2922,18 @@ func (d *daemon) runHealthWorker(ctx context.Context, mon *monitor.Monitor, sup 
 
 		if err := components.LonghornPostInstallConfig(); err != nil {
 			log.Printf("WARNING: longhorn post-install config: %v", err)
+		}
+
+		// A witness on this device is about to cold-join and cannot clear
+		// stale members itself. Serviced from here because this tick only
+		// runs while the node's own k3s is up, which is exactly when its
+		// etcd can answer.
+		if requested, addr := witness.PruneRequested(); requested {
+			log.Printf("witness prune requested for %s", strings.TrimSpace(addr))
+			witness.PruneMembers(ctx)
+			if err := witness.ClearPruneRequest(); err != nil {
+				log.Printf("WARNING: clear witness prune request: %v", err)
+			}
 		}
 
 		if err := update.CheckClusterComponents(ctx); err != nil {

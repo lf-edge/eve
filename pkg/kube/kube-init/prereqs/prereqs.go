@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -28,6 +29,7 @@ import (
 	"github.com/lf-edge/eve/pkg/kube/kube-init/k3s"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kubectlx"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/mgmtproxy"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/role"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
 )
 
@@ -173,6 +175,39 @@ func RunAll(ctx context.Context) (deviceName, uuid, eveRelease string, err error
 	log.Printf("all prerequisites satisfied: device=%s uuid=%s release=%s",
 		deviceName, uuid, eveRelease)
 	return deviceName, uuid, eveRelease, nil
+}
+
+// RunWitness satisfies the prerequisites the witness needs, which are a
+// small subset of RunAll's. The witness runs no kubelet, no CNI, no
+// containerd and no Longhorn, so the kernel modules, cgroup setup,
+// shared-mount propagation, iSCSI daemon, Longhorn disk path and
+// cpu-manager state that RunAll arranges have nothing to act on. It
+// also needs no device identity: its k3s node name is fixed, and
+// blocking on EdgeNodeInfo would only delay the etcd vote.
+//
+// What is left is what the witness genuinely depends on: somewhere to
+// log, and its own /var/lib, which requires the vault to be unsealed
+// first.
+//
+// Nothing here waits on the network. The witness has no default route
+// to wait for, NIM giving its veth an address on the cluster subnet and
+// no route beyond the one the prefix implies, because the only thing it
+// talks to is the seed and the seed is on-link. More to the point, a
+// device that hosts no witness never gets a veth at all, and blocking
+// here would stop it ever reaching WITNESS_IDLE to say so. The address
+// is waited for once the witness knows it is wanted, in WaitAddress.
+func RunWitness(ctx context.Context) error {
+	if err := SetupLogging(); err != nil {
+		return fmt.Errorf("SetupLogging: %w", err)
+	}
+	if err := WaitVault(ctx); err != nil {
+		return fmt.Errorf("WaitVault: %w", err)
+	}
+	if err := MountKubeRoot(); err != nil {
+		return fmt.Errorf("MountKubeRoot: %w", err)
+	}
+	log.Printf("witness prerequisites satisfied")
+	return nil
 }
 
 // ---------------------------------------------------------------------------
@@ -418,6 +453,69 @@ func WaitNetwork(ctx context.Context) error {
 			log.Printf("still waiting for default route...")
 		}
 	}
+}
+
+// addrWait bounds the wait for NIM to plug the witness veth and address
+// it. The two are driven by the same EdgeNodeClusterStatus this daemon
+// just read, so they race by a reconciliation at most; expiry retries
+// CONFIGURING rather than failing anything.
+var addrWait = 2 * time.Minute
+
+// WaitAddress waits until ip is assigned to an interface in this network
+// namespace, which for the witness is how it learns NIM has plugged its
+// veth. Waiting here rather than starting k3s blind turns a missing veth
+// into one clear message instead of an etcd crash loop against an
+// address the machine does not hold.
+func WaitAddress(ctx context.Context, ip string) error {
+	ctx, cancel := context.WithTimeout(ctx, addrWait)
+	defer cancel()
+	ticker := time.NewTicker(filePollInterval)
+	defer ticker.Stop()
+	// Announce a wait only once it is one: CONFIGURING retries this
+	// every few seconds and the address is usually already there.
+	announced := false
+	for {
+		if held, err := holdsAddress(ip); err != nil {
+			return err
+		} else if held {
+			if announced {
+				log.Printf("%s is up", ip)
+			}
+			return nil
+		}
+		if !announced {
+			log.Printf("waiting for %s to appear in this netns", ip)
+			announced = true
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("waiting for %s: %w", ip, ctx.Err())
+		case <-ticker.C:
+		}
+	}
+}
+
+func holdsAddress(ip string) (bool, error) {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return false, fmt.Errorf("list interface addresses: %w", err)
+	}
+	return addrsContain(addrs, ip), nil
+}
+
+// addrsContain is the pure half of holdsAddress.
+func addrsContain(addrs []net.Addr, ip string) bool {
+	want := net.ParseIP(ip)
+	if want == nil {
+		return false
+	}
+	for _, a := range addrs {
+		ipNet, ok := a.(*net.IPNet)
+		if ok && ipNet.IP.Equal(want) {
+			return true
+		}
+	}
+	return false
 }
 
 // CheckNetwork is a best-effort external connectivity probe. Failure
@@ -766,8 +864,8 @@ func CleanCPUManagerState() error {
 
 // SetupLogging creates the kube log directory, symlinks /var/log
 // at it (so any logger that defaults to /var/log lands on persist),
-// pre-creates the k3s config drop-in directory, and records the
-// initial k3s version once.
+// pre-creates the k3s config drop-in directory, and for the kube role
+// records the initial k3s version once.
 func SetupLogging() error {
 	if err := mkdirAll(KubeLogDir, 0755); err != nil {
 		return err
@@ -785,7 +883,7 @@ func SetupLogging() error {
 	if err := mkdirAll(k3s.K3sConfigDir, 0755); err != nil {
 		return err
 	}
-	if _, err := os.Stat(initialK3sVersion); os.IsNotExist(err) {
+	if _, err := os.Stat(initialK3sVersion); os.IsNotExist(err) && !role.IsWitness() {
 		if version, verr := runCmdOutput("k3s", "--version"); verr != nil {
 			log.Printf("warning: could not determine k3s version: %v", verr)
 		} else if err := os.WriteFile(initialK3sVersion,

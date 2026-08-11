@@ -23,9 +23,18 @@ import (
 	"net"
 	"os"
 	"strings"
+
+	"github.com/lf-edge/eve/pkg/kube/kube-init/role"
 )
 
-const defaultSocket = "/run/k3s-supervisor.sock"
+// defaultSocket follows the role of the container k3s-sctl runs in, read
+// from the role file the witness image carries, so
+// `eve exec witness k3s-sctl status` reaches the witness rather than the
+// node's own daemon. Both sockets are visible from either container,
+// since /run is shared, so getting this wrong would answer for the wrong
+// daemon rather than fail. K3S_SUPERVISOR_SOCKET still overrides it.
+var defaultSocket = role.Pick(
+	"/run/k3s-supervisor.sock", "/run/witness-supervisor.sock")
 
 func main() {
 	if len(os.Args) < 2 {

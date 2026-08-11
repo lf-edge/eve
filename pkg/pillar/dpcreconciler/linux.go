@@ -748,7 +748,7 @@ func (r *LinuxDpcReconciler) flowlogStateChanged(flowlogEnabled bool) bool {
 func (r *LinuxDpcReconciler) clusterStatusChanged(
 	newStatus types.EdgeNodeClusterStatus) bool {
 	// DPCReconciler cares only about the networking-related fields of the ClusterStatus.
-	// WitnessIP and BootstrapNode decide where the witness veth and its ACLs live.
+	// WitnessIP and BootstrapNode decide the witness veth and its ACLs.
 	return r.lastArgs.ClusterStatus.ClusterInterface != newStatus.ClusterInterface ||
 		!netutils.EqualIPNets(r.lastArgs.ClusterStatus.ClusterIPPrefix,
 			newStatus.ClusterIPPrefix) ||
@@ -2392,9 +2392,7 @@ func (r *LinuxDpcReconciler) getIntendedFilterRules(gcp types.ConfigItemValueMap
 	// to DENY-L3-FORWARD's own -i/-o match on the bridge master and gets
 	// dropped there instead.
 	//
-	// Limited to the etcd ports, in either direction (multiport --ports
-	// matches source and destination), like the INPUT rules: anything else
-	// listening in the witness netns stays unreachable from the segment.
+	// Limited to the etcd ports (both directions), like the INPUT rules.
 	if clusterStatus.WitnessIP != nil {
 		witnessIP := clusterStatus.WitnessIP.String()
 		allowWitnessFwdRule := iptables.Rule{
