@@ -110,6 +110,44 @@ type EdgeNodeClusterConfig struct {
 	// (and thereby k3s embedded etcd members) for masters the controller has
 	// removed via a "replace node" operation. Workers are not included.
 	MasterNodeIDs []uuid.UUID
+
+	// WitnessIP - virtual IP that the witness (a lightweight etcd-only 3rd
+	// voting member for a 2-physical-node cluster) binds its etcd to on
+	// ClusterInterface. Nil means no witness runs. Sourced from
+	// EdgeNodeCluster.witness.witness_ip. The witness always co-locates with
+	// whichever node currently owns JoinServerIP, so there is no separate
+	// placement field.
+	WitnessIP net.IP
+
+	// WitnessConfigError describes why a witness configured by the controller
+	// was rejected, leaving WitnessIP nil. Empty when the witness config is
+	// valid or absent. Carried here so zedkube can report it to the controller
+	// without zedagent having to invalidate the whole cluster config over it.
+	WitnessConfigError string
+
+	// QuorumRecoveryGeneration - controller-declared quorum-loss recovery
+	// trigger. Incrementing it tells the node named by JoinServerIP to
+	// promote itself to sole bootstrap via a forced etcd quorum reset.
+	// That node tracks the last generation it converged to and does
+	// nothing while this value is unchanged. Initial cluster formation is
+	// generation 0.
+	//
+	// A rejected increase (see QuorumRecoveryError) leaves this at the
+	// last accepted value rather than the controller's new one.
+	QuorumRecoveryGeneration uint32
+
+	// QuorumRecoveryError describes why an increase to
+	// QuorumRecoveryGeneration was rejected, leaving it unchanged. Empty
+	// when the value was accepted or never changed. A rejected increase
+	// is one that does not name a survivor: an increase that leaves this
+	// device's own bootstrap status unchanged either forces a healthy
+	// seed into an unrequested destructive reset, or asks a peer that
+	// isn't being promoted to do something this design has no action
+	// for, either way stranding whichever device actually needed to
+	// rejoin. Carried here so zedkube can report it to the controller
+	// without zedagent having to invalidate the whole cluster config
+	// over it.
+	QuorumRecoveryError string
 }
 
 // AppKubeStatus represents this node's last view of an app's lifecycle in the
@@ -256,7 +294,121 @@ type EdgeNodeClusterStatus struct {
 	// only report here since they do not control kube-vip deployment.
 	LBConfigError ErrorDescription
 
+	// WitnessIP mirrors EdgeNodeClusterConfig.WitnessIP. Consumed by NIM, which
+	// bridges the cluster port and plugs a veth carrying this address into the
+	// witness container's network namespace, and by the witness itself.
+	WitnessIP net.IP
+
+	// WitnessConfigError mirrors EdgeNodeClusterConfig.WitnessConfigError so a
+	// witness the controller configured but the device rejected is visible
+	// remotely rather than only in the device log.
+	WitnessConfigError ErrorDescription
+
+	// QuorumRecoveryGeneration mirrors
+	// EdgeNodeClusterConfig.QuorumRecoveryGeneration.
+	QuorumRecoveryGeneration uint32
+
+	// QuorumRecoveryError mirrors EdgeNodeClusterConfig.QuorumRecoveryError
+	// so a rejected generation increase is visible remotely rather than
+	// only in the device log.
+	QuorumRecoveryError ErrorDescription
+
 	Error ErrorDescription
+}
+
+// Node annotations through which kube-init reports state that only the
+// node itself knows, for the elected cluster-info reporter to read back
+// and forward to the controller. The same route node-uuid already
+// takes: a node has no other way to tell the reporter something the
+// kube API does not already hold.
+//
+// Unprefixed, matching the keys EVE already sets on its nodes
+// (node-uuid, tie-breaker-node). Keys carrying another project's state,
+// such as Longhorn's, keep that project's prefix.
+const (
+	// NodeRecoveryAnnotation carries a KubeQuorumRecoveryStatus as JSON.
+	NodeRecoveryAnnotation = "quorum-recovery"
+	// NodeWitnessAnnotation carries a WitnessStatus as JSON, stamped
+	// only by the device hosting the witness.
+	NodeWitnessAnnotation = "witness-status"
+)
+
+// KubeQuorumRecoveryStatus is a device's progress against
+// EdgeNodeCluster.quorum_recovery_generation. Reported by the device
+// promoted to sole bootstrap via a forced etcd quorum reset; every other
+// current/former member converges to nothing, since its cluster config
+// is withdrawn outright instead.
+type KubeQuorumRecoveryStatus struct {
+	// AppliedGeneration is the last generation this device fully
+	// converged to.
+	AppliedGeneration uint32
+	// Converging is true while it is still working towards a newer one.
+	Converging bool
+	// Error is set when the most recent attempt failed;
+	// AppliedGeneration stays at the last one that succeeded.
+	Error ErrorDescription
+	// LastTransitionAt is when the state above last changed.
+	LastTransitionAt time.Time
+}
+
+// WitnessEtcdState is the witness's view of its own etcd membership.
+type WitnessEtcdState uint8
+
+const (
+	// WitnessEtcdStateUnspecified - never reported.
+	WitnessEtcdStateUnspecified WitnessEtcdState = iota
+	// WitnessEtcdStateIdle - running no etcd at all: no witness is
+	// configured for this cluster, or the witness has not yet started
+	// joining.
+	WitnessEtcdStateIdle
+	// WitnessEtcdStateJoining - k3s is up but this member is not yet a
+	// started, voting member. Includes the learner phase, during which
+	// etcd replicates to it but it casts no vote.
+	WitnessEtcdStateJoining
+	// WitnessEtcdStateJoined - an active voter; the healthy steady state.
+	WitnessEtcdStateJoined
+	// WitnessEtcdStateError - the witness failed to reach or hold
+	// membership.
+	WitnessEtcdStateError
+)
+
+// String returns a human-readable name for the WitnessEtcdState.
+func (s WitnessEtcdState) String() string {
+	switch s {
+	case WitnessEtcdStateIdle:
+		return "Idle"
+	case WitnessEtcdStateJoining:
+		return "Joining"
+	case WitnessEtcdStateJoined:
+		return "Joined"
+	case WitnessEtcdStateError:
+		return "Error"
+	default:
+		return "Unspecified"
+	}
+}
+
+// WitnessStatus - status of the 2-node-HA witness, published by the
+// kube-init daemon running in the witness container and consumed by
+// zedkube on the same device, which forwards it to the controller.
+//
+// Published only by the device hosting the witness. Every other device
+// has no witness container contributing to this topic.
+type WitnessStatus struct {
+	// WitnessIP is the address this witness binds its etcd to, echoing
+	// the controller's configuration.
+	WitnessIP string
+	// State is the witness's own view of its etcd membership.
+	State WitnessEtcdState
+	// Error describes why the witness is not where it should be, e.g. a
+	// wrong token, an unreachable seed or a stale cluster ID - detail
+	// WitnessEtcdStateError alone does not carry.
+	Error ErrorDescription
+}
+
+// Key - returns the key for the WitnessStatus publication.
+func (status WitnessStatus) Key() string {
+	return "global"
 }
 
 // KubeLeaderElectInfo - Information about the leader elections this node runs.

@@ -2824,6 +2824,138 @@ func TestParseEdgeNodeClusterLB(t *testing.T) {
 	}
 }
 
+// TestParseEdgeNodeClusterWitness covers witness parsing, and in particular
+// that a witness the device rejects never takes the surrounding cluster config
+// down with it. Publishing an empty EdgeNodeClusterConfig zeroes the ClusterID,
+// which kube-init's cluster-config monitor reads as the controller withdrawing
+// cluster membership: it converts the node to single-node, reboots and restores
+// the pre-cluster /var/lib. A malformed witness IP must cost the witness only.
+func TestParseEdgeNodeClusterWitness(t *testing.T) {
+	g := NewGomegaWithT(t)
+	getconfigCtx, allPubs := newFuzzGetConfigCtx(t)
+
+	const clusterID = "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+
+	cases := []struct {
+		name          string
+		hasWitness    bool
+		witnessIP     string
+		wantWitnessIP string
+		wantErr       bool
+	}{
+		{name: "no witness section"},
+		{name: "empty witness IP", hasWitness: true},
+		{name: "valid witness IP", hasWitness: true, witnessIP: "10.0.0.5",
+			wantWitnessIP: "10.0.0.5"},
+		{name: "malformed witness IP", hasWitness: true, witnessIP: "10.0.0.999",
+			wantErr: true},
+		{name: "witness IP outside cluster subnet", hasWitness: true,
+			witnessIP: "192.168.7.5", wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resetFuzzState(getconfigCtx, allPubs)
+			cluster := &zconfig.EdgeNodeCluster{
+				ClusterId:                clusterID,
+				ClusterIpPrefix:          "10.0.0.1/24",
+				JoinServerIp:             "10.0.0.1",
+				QuorumRecoveryGeneration: 3,
+			}
+			if tc.hasWitness {
+				cluster.Witness = &zconfig.EdgeNodeClusterWitness{
+					WitnessIp: tc.witnessIP,
+				}
+			}
+			parseEdgeNodeClusterConfig(getconfigCtx,
+				&zconfig.EdgeDevConfig{Cluster: cluster})
+
+			item, err := getconfigCtx.zedagentCtx.pubEdgeNodeClusterConfig.Get("global")
+			g.Expect(err).ToNot(HaveOccurred())
+			cfg := item.(types.EdgeNodeClusterConfig)
+
+			// The cluster itself stays valid in every case, including the
+			// rejected ones. This is the load-bearing assertion.
+			g.Expect(cfg.Valid).To(BeTrue())
+			g.Expect(cfg.ClusterID.UUID.String()).To(Equal(clusterID))
+			g.Expect(cfg.QuorumRecoveryGeneration).To(Equal(uint32(3)))
+
+			if tc.wantWitnessIP == "" {
+				g.Expect(cfg.WitnessIP).To(BeNil())
+			} else {
+				g.Expect(cfg.WitnessIP.String()).To(Equal(tc.wantWitnessIP))
+			}
+			if tc.wantErr {
+				g.Expect(cfg.WitnessConfigError).ToNot(BeEmpty())
+			} else {
+				g.Expect(cfg.WitnessConfigError).To(BeEmpty())
+			}
+		})
+	}
+}
+
+// TestValidateQuorumRecoveryGeneration covers rejecting a generation
+// increase that does not actually name a survivor. Forcing an unnamed
+// seed through a destructive reset is one failure mode; the other is a
+// peer told nothing at all while the actual survivor resets around it,
+// stranding it with no rejoin action to bring it back.
+func TestValidateQuorumRecoveryGeneration(t *testing.T) {
+	g := NewGomegaWithT(t)
+	getconfigCtx, allPubs := newFuzzGetConfigCtx(t)
+
+	const clusterID = "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+
+	// This device's own ClusterIpPrefix is always 10.0.0.1; joinServerIP
+	// decides whether it is the seed at each step.
+	cluster := func(joinServerIP string, generation uint32) *zconfig.EdgeNodeCluster {
+		return &zconfig.EdgeNodeCluster{
+			ClusterId:                clusterID,
+			ClusterIpPrefix:          "10.0.0.1/24",
+			JoinServerIp:             joinServerIP,
+			QuorumRecoveryGeneration: generation,
+		}
+	}
+
+	cases := []struct {
+		name             string
+		beforeJoinServer string
+		afterJoinServer  string
+		wantErr          bool
+	}{
+		{name: "promoted: role flips member to seed, accepted",
+			beforeJoinServer: "10.0.0.9", afterJoinServer: "10.0.0.1"},
+		{name: "withdrawn: role flips seed to member, accepted",
+			beforeJoinServer: "10.0.0.1", afterJoinServer: "10.0.0.9"},
+		{name: "bug: still seed both times, rejected",
+			beforeJoinServer: "10.0.0.1", afterJoinServer: "10.0.0.1", wantErr: true},
+		{name: "bug: still member both times, rejected",
+			beforeJoinServer: "10.0.0.9", afterJoinServer: "10.0.0.9", wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resetFuzzState(getconfigCtx, allPubs)
+
+			parseEdgeNodeClusterConfig(getconfigCtx,
+				&zconfig.EdgeDevConfig{Cluster: cluster(tc.beforeJoinServer, 0)})
+			parseEdgeNodeClusterConfig(getconfigCtx,
+				&zconfig.EdgeDevConfig{Cluster: cluster(tc.afterJoinServer, 1)})
+
+			item, err := getconfigCtx.zedagentCtx.pubEdgeNodeClusterConfig.Get("global")
+			g.Expect(err).ToNot(HaveOccurred())
+			cfg := item.(types.EdgeNodeClusterConfig)
+			g.Expect(cfg.Valid).To(BeTrue())
+
+			if tc.wantErr {
+				g.Expect(cfg.QuorumRecoveryGeneration).To(Equal(uint32(0)),
+					"a rejected increase must freeze the generation at the last accepted value")
+				g.Expect(cfg.QuorumRecoveryError).ToNot(BeEmpty())
+			} else {
+				g.Expect(cfg.QuorumRecoveryGeneration).To(Equal(uint32(1)))
+				g.Expect(cfg.QuorumRecoveryError).To(BeEmpty())
+			}
+		})
+	}
+}
+
 // marshalJSONIgnoreOmitEmpty marshals an EdgeDevConfig to JSON like encoding/json would, except
 // that it ignores the ",omitempty" option on the (top-level) struct fields, so
 // zero-valued fields are emitted instead of dropped. This produces a "fat" JSON

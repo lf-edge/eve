@@ -143,6 +143,21 @@ func (z *zedkube) publishKubeConfigStatus() {
 		IsWorkerNode:     z.clusterConfig.IsWorkerNode,
 		JoinServerIP:     z.clusterConfig.JoinServerIP,
 		BootstrapNode:    z.clusterConfig.BootstrapNode,
+
+		WitnessIP:                z.clusterConfig.WitnessIP,
+		QuorumRecoveryGeneration: z.clusterConfig.QuorumRecoveryGeneration,
+	}
+
+	if z.clusterConfig.WitnessConfigError != "" {
+		status.WitnessConfigError.SetErrorDescription(types.ErrorDescription{
+			Error: z.clusterConfig.WitnessConfigError,
+		})
+	}
+
+	if z.clusterConfig.QuorumRecoveryError != "" {
+		status.QuorumRecoveryError.SetErrorDescription(types.ErrorDescription{
+			Error: z.clusterConfig.QuorumRecoveryError,
+		})
 	}
 
 	if z.clusterConfig.CipherToken.IsCipher {
