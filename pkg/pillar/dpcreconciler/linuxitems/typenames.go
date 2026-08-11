@@ -10,4 +10,6 @@ const (
 	IPv6RuleTypename = "IPv6Rule"
 	// RFKillTypename : type for Linux rfkill.
 	RFKillTypename = "rfkill"
+	// VethTypename : typename for a virtual Ethernet device pair.
+	VethTypename = "Veth"
 )
