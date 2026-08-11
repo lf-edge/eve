@@ -18,10 +18,13 @@ import (
 
 	"github.com/lf-edge/eve/pkg/kube/kube-init/k3s"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/prereqs"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/role"
 )
 
+// k3sLogFile is the supervisor log, which differs per role.
+var k3sLogFile = role.Pick("k3s.log", "witness.log")
+
 const (
-	k3sLogFile       = "k3s.log"
 	maxCrashLogFiles = 10
 	// maxRaftLogFiles caps how many of k3s' own rotated raft log
 	// files (k3s-YYYY-MM-DDTHH-MM-SS.mmm.log.gz) we retain.
@@ -179,9 +182,16 @@ func streamLinesFrom(r io.Reader, w io.Writer, startLine int) error {
 	return scanner.Err()
 }
 
+// raftLogPrefix matches only this role's k3s archives, so the witness
+// does not prune the node's and the node does not prune the witness's.
+func raftLogPrefix() string {
+	return role.Pick("k3s-", "witness-")
+}
+
 // CleanExcessiveK3sLogs prunes k3s' own rotated raft log files
-// (k3s-YYYY-MM-DDTHH-MM-SS.mmm.log.gz) to maxRaftLogFiles. k3s
-// itself doesn't cap these and they otherwise grow without bound.
+// (k3s-YYYY-MM-DDTHH-MM-SS.mmm.log.gz, witness-... for the witness) to
+// maxRaftLogFiles. k3s itself doesn't cap these and they otherwise grow
+// without bound.
 func CleanExcessiveK3sLogs() {
 	entries, err := os.ReadDir(prereqs.KubeLogDir)
 	if err != nil {
@@ -194,9 +204,9 @@ func CleanExcessiveK3sLogs() {
 		}
 		name := e.Name()
 		// k3s-YYYY-MM-DDTHH-MM-SS.mmm.log.gz
-		if strings.HasPrefix(name, "k3s-") &&
+		if strings.HasPrefix(name, raftLogPrefix()) &&
 			strings.HasSuffix(name, ".log.gz") &&
-			name != "k3s.log.gz" {
+			name != k3sLogFile+".gz" {
 			raftLogs = append(raftLogs, name)
 		}
 	}
