@@ -2824,6 +2824,81 @@ func TestParseEdgeNodeClusterLB(t *testing.T) {
 	}
 }
 
+// TestParseEdgeNodeClusterWitness covers witness parsing, and in particular
+// that a witness the device rejects never takes the surrounding cluster config
+// down with it. Publishing an empty EdgeNodeClusterConfig zeroes the ClusterID,
+// which kube-init's cluster-config monitor reads as the controller withdrawing
+// cluster membership: it converts the node to single-node, reboots and restores
+// the pre-cluster /var/lib. A malformed witness IP must cost the witness only.
+func TestParseEdgeNodeClusterWitness(t *testing.T) {
+	g := NewGomegaWithT(t)
+	getconfigCtx, allPubs := newFuzzGetConfigCtx(t)
+
+	const clusterID = "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+
+	cases := []struct {
+		name          string
+		hasWitness    bool
+		witnessIP     string
+		wantWitnessIP string
+		wantErr       bool
+		// wantErrContains is checked only when wantErr is set.
+		wantErrContains string
+	}{
+		{name: "no witness section"},
+		{name: "empty witness IP", hasWitness: true},
+		{name: "valid witness IP", hasWitness: true, witnessIP: "10.0.0.5",
+			wantWitnessIP: "10.0.0.5"},
+		{name: "malformed witness IP", hasWitness: true, witnessIP: "10.0.0.999",
+			wantErr: true},
+		{name: "witness IP outside cluster subnet", hasWitness: true,
+			witnessIP: "192.168.7.5", wantErr: true,
+			wantErrContains: "outside cluster subnet 10.0.0.0/24"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resetFuzzState(getconfigCtx, allPubs)
+			cluster := &zconfig.EdgeNodeCluster{
+				ClusterId:                clusterID,
+				ClusterIpPrefix:          "10.0.0.1/24",
+				JoinServerIp:             "10.0.0.1",
+				QuorumRecoveryGeneration: 3,
+			}
+			if tc.hasWitness {
+				cluster.Witness = &zconfig.EdgeNodeClusterWitness{
+					WitnessIp: tc.witnessIP,
+				}
+			}
+			parseEdgeNodeClusterConfig(getconfigCtx,
+				&zconfig.EdgeDevConfig{Cluster: cluster})
+
+			item, err := getconfigCtx.zedagentCtx.pubEdgeNodeClusterConfig.Get("global")
+			g.Expect(err).ToNot(HaveOccurred())
+			cfg := item.(types.EdgeNodeClusterConfig)
+
+			// The cluster itself stays valid in every case, including the
+			// rejected ones. This is the load-bearing assertion.
+			g.Expect(cfg.Valid).To(BeTrue())
+			g.Expect(cfg.ClusterID.UUID.String()).To(Equal(clusterID))
+			g.Expect(cfg.QuorumRecoveryGeneration).To(Equal(uint32(3)))
+
+			if tc.wantWitnessIP == "" {
+				g.Expect(cfg.WitnessIP).To(BeNil())
+			} else {
+				g.Expect(cfg.WitnessIP.String()).To(Equal(tc.wantWitnessIP))
+			}
+			if tc.wantErr {
+				g.Expect(cfg.WitnessConfigError).ToNot(BeEmpty())
+				if tc.wantErrContains != "" {
+					g.Expect(cfg.WitnessConfigError).To(ContainSubstring(tc.wantErrContains))
+				}
+			} else {
+				g.Expect(cfg.WitnessConfigError).To(BeEmpty())
+			}
+		})
+	}
+}
+
 // marshalJSONIgnoreOmitEmpty marshals an EdgeDevConfig to JSON like encoding/json would, except
 // that it ignores the ",omitempty" option on the (top-level) struct fields, so
 // zero-valued fields are emitted instead of dropped. This produces a "fat" JSON
