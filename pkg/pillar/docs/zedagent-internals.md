@@ -176,6 +176,10 @@ When `maintenanceMode` is set:
   maintenance mode remotely.
 - New application deployments and base OS updates are deferred until maintenance mode
   is cleared.
+- Leaving maintenance mode discards the remembered config hash, so the following fetch
+  re-reads the configuration in full and applies what was deferred. The local reasons
+  are cleared by `nodeagent` rather than by a configuration change, so nothing else
+  would re-drive it.
 
 ## Eden Test Coverage Map
 

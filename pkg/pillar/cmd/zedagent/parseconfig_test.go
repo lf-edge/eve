@@ -2729,6 +2729,45 @@ func TestParseConfigHarness(t *testing.T) {
 	}
 }
 
+// TestForgetConfigHashOnLeavingMaintenanceMode checks that only the leaving edge
+// discards the config hash. The other three transitions must keep it, so that an
+// unchanged configuration is still answered with "not modified".
+func TestForgetConfigHashOnLeavingMaintenanceMode(t *testing.T) {
+	getconfigCtx, _ := newFuzzGetConfigCtx(t)
+
+	tests := []struct {
+		name       string
+		before     bool
+		now        bool
+		wantForget bool
+	}{
+		{name: "entering", before: false, now: true, wantForget: false},
+		{name: "still-in", before: true, now: true, wantForget: false},
+		{name: "leaving", before: true, now: false, wantForget: true},
+		{name: "still-out", before: false, now: false, wantForget: false},
+	}
+
+	const hash = "6ba7b8109dad11d180b400c04fd430c8"
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewGomegaWithT(t)
+			prevConfigHash = hash
+			prevMaintenanceMode = tt.before
+			getconfigCtx.zedagentCtx.maintenanceMode = tt.now
+
+			forgetConfigHashOnLeavingMaintenanceMode(getconfigCtx)
+
+			if tt.wantForget {
+				g.Expect(prevConfigHash).To(BeEmpty())
+			} else {
+				g.Expect(prevConfigHash).To(Equal(hash))
+			}
+			// Otherwise the leaving edge would fire on every fetch.
+			g.Expect(prevMaintenanceMode).To(Equal(tt.now))
+		})
+	}
+}
+
 // TestParseEdgeNodeClusterLB verifies that the LoadBalancerService is parsed
 // into EdgeNodeClusterConfig.LBInterfaces exactly when native k8s orchestration
 // is enabled: always for K3S_BASE, and for REPLICATED_STORAGE only when the
