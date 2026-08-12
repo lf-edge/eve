@@ -15,7 +15,6 @@ import (
 	eveinfo "github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/evetest"
 	"github.com/lf-edge/eve/evetest/matchers"
-	"github.com/lf-edge/eve/evetest/netmodels"
 )
 
 // TestDeviceInfo verifies the ZInfoDevice message EVE publishes to the
@@ -74,11 +73,12 @@ import (
 // -----------
 //   - TPM. Drives both whether the device VM gets an emulated TPM and the
 //     expected HSMStatus.
+//   - HYPERVISOR. Not asserted on; declared so that every test in the suite
+//     states the same device requirements and the framework can reuse one VM.
 //
 // Suite placement
 // ---------------
-//   - TestTelemetrySuite. No application is deployed, so the hypervisor is
-//     hardcoded to KVM like the other non-app suites.
+//   - TestTelemetrySuite.
 func TestDeviceInfo(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
@@ -86,27 +86,20 @@ func TestDeviceInfo(test *testing.T) {
 
 	// Define configurable parameters available for the test.
 	evetest.DefineTestParameters(
+		evetest.HypervisorParameter(),
 		evetest.TPMParameter(),
 	)
 
 	// Get parameter values set for this test execution.
+	hypervisor := evetest.GetHypervisorParameterValue()
 	useTPM := evetest.GetTPMParameterValue()
 
-	// Set up the test harness and specify the test prerequisites.
+	// Set up the test harness and specify the test prerequisites. MinCPUs is
+	// deliberately not requested: 4 is already the framework's default, and
+	// stating it here would make this test's device requirements differ from
+	// its siblings', costing a device recreation.
 	const minCPUs = 4
-	evetest.Setup(
-		evetest.RequireEdgeDevice{
-			Name:              devName,
-			MinCPUs:           minCPUs,
-			WithHypervisor:    evetest.HypervisorKVM,
-			WithTPM:           useTPM,
-			DeviceReusePolicy: evetest.ResetDeviceConfig,
-		},
-		evetest.RequireNetworkModel{
-			NetworkModel: netmodels.SingleEthWithDHCP,
-		},
-	)
-	device := evetest.GetEdgeDevice(devName)
+	device := setupTelemetryTestDevice(hypervisor, useTPM)
 	evetest.Checkpoint("setup-done")
 
 	// Build and apply the device configuration.
@@ -115,6 +108,9 @@ func TestDeviceInfo(test *testing.T) {
 	defer stopDevWatch()
 	device.ApplyConfig(devConfig, true, true)
 	evetest.Checkpoint("config-applied")
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(clusterNodeReadyTimeout)
+	}
 
 	// Phase 2: EVE reports the network configuration it applied.
 	timeout := 5 * time.Minute
