@@ -40,7 +40,7 @@ func (handler *volumeHandlerContainer) GetVolumeDetails() (uint64, uint64, strin
 		// we did not create snapshot yet
 		handler.log.Warnf("GetVolumeSize: Failed get snapshot usage: %s for %s. Error %s",
 			snapshotID, handler.status.FileLocation, err)
-		size, err = diskmetrics.SizeFromDir(handler.log, handler.status.FileLocation)
+		size, err = diskmetrics.SizeFromDir(handler.log, handler.status.FileLocation, nil)
 	}
 	return size, size, "CONTAINER", false, err
 }
