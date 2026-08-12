@@ -177,12 +177,11 @@ func FindLargestDisk(log *base.LogObject) string {
 	return maxdisk
 }
 
-// DirUsage calculates usage of directory
-// it checks if provided directory is zfs mountpoint and take usage from zfs in that case
+// DirUsage calculates usage of directory.
+// When dir holds a whole filesystem, usage comes from that filesystem - one
+// dataset query for ZFS, one statfs otherwise - rather than from walking the
+// tree. Anything else is walked with SizeFromDir.
 func DirUsage(log *base.LogObject, dir string) (uint64, error) {
-	if persist.ReadPersistType() != types.PersistZFS || !strings.HasPrefix(dir, types.PersistDir) {
-		return SizeFromDir(log, dir)
-	}
 	mi, err := mount.Lookup(dir)
 	if err != nil {
 		// Lookup do not return error in case of dir is not mountpoint
@@ -190,15 +189,33 @@ func DirUsage(log *base.LogObject, dir string) (uint64, error) {
 		log.Errorf("dirUsage: Lookup returns error (%s), fallback to SizeFromDir", err)
 		return SizeFromDir(log, dir)
 	}
-	// if it is zfs mountpoint and we mount exactly the directory of interest (not parent folder)
-	if mi.FSType == types.PersistZFS.String() && mi.Mountpoint == dir {
-		usageStat, err := zfs.GetDatasetUsageStat(strings.TrimPrefix(dir, "/"))
-		if err != nil {
-			return 0, err
+	if isWholeFilesystem(mi, dir) {
+		// The dataset name is derived from the path, which only holds inside
+		// the persist pool.
+		if mi.FSType == types.PersistZFS.String() &&
+			strings.HasPrefix(dir, types.PersistDir) {
+			usageStat, err := zfs.GetDatasetUsageStat(strings.TrimPrefix(dir, "/"))
+			if err != nil {
+				return 0, err
+			}
+			return usageStat.Used, nil
 		}
-		return usageStat.Used, nil
+		usage, err := disk.Usage(dir)
+		if err == nil {
+			return usage.Used, nil
+		}
+		log.Errorf("dirUsage: disk.Usage(%s) returns error (%s), fallback to SizeFromDir",
+			dir, err)
 	}
 	return SizeFromDir(log, dir)
+}
+
+// isWholeFilesystem reports whether mi describes a filesystem mounted in its
+// entirety at dir, so that filesystem-wide usage accounts for exactly the tree
+// under dir. A Root other than "/" is a bind mount of a subtree, whose backing
+// filesystem also holds data outside dir.
+func isWholeFilesystem(mi mount.Info, dir string) bool {
+	return mi.Mountpoint == dir && mi.Root == "/"
 }
 
 // Dom0DiskReservedSize returns reserved space for EVE-OS
