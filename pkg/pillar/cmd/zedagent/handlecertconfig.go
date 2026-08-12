@@ -603,13 +603,13 @@ func sendAttestReqProtobuf(
 	// We queue the message and then get the highest priority message to send.
 	// If there are no failures and defers we'll send this message,
 	// but if there is a queue we'll retry sending the highest priority message.
-	// Since attest messages can fail if there is a certificate mismatch
-	// we set IgnoreErr to allow other messages to be sent as well.
+	// An attest message that fails, e.g. on a certificate mismatch, is not worth
+	// keeping queued: the sentHandler callback re-triggers the request instead.
 	ctx.deferredEventQueue.SetDeferred(deferKey, buf, attestURL,
 		attestReq.ReqType, controllerconn.DeferredItemOpts{
-			BailOnHTTPErr:  false,
-			WithNetTracing: false,
-			IgnoreErr:      true,
+			BailOnHTTPErr:    false,
+			WithNetTracing:   false,
+			DiscardOnFailure: true,
 		})
 }
 

@@ -7,6 +7,8 @@ package controllerconn
 
 import (
 	"bytes"
+	"context"
+	"net/http"
 	"sync"
 	"time"
 
@@ -23,19 +25,36 @@ import (
 // In order to send created deferred item immediately:
 //     queue.SetDeferred(key, buf, url, ...)
 //
-// If item was created with the `ignoreErr` flag set,
-// then item will be removed from the queue regardless
-// the actual send result.
-//
-// If `ignoreErr` is not set and an error occurs during
-// the send, then queue processing is interrupted. The
-// queue process will be repeated by the timer, see the
-// `startTimer()` routine. `KickTimerNow` can be called
-// in order to restart queue processing immediately.
-//
 // The deferred item can be removed from the queue if
 // the send failed:
 //     queue.RemoveDeferred(key)
+//
+// An item stays in the queue until the controller accepts it. There are only
+// two cases where a message is given up on and lost:
+//
+//   - The item was created with the `DiscardOnFailure` flag, meaning the payload
+//     will be superseded by the next periodic publication of the same key.
+//   - The controller responded with a status code which tells that it will
+//     reject the very same payload again (see retriableHTTPStatus).
+//
+// Anything else is retried indefinitely, because for most of what travels this
+// queue nothing else re-asserts the state later, so discarding a message would
+// leave the controller's view of an object wrong until that object changes
+// again. An item being retried is held back by a growing delay and moved behind
+// its peers, so it costs one request per retry interval and blocks nothing.
+//
+// Retrying forever must not be silent, so two conditions are logged as
+// warnings: a backlog of more than queueBacklogWarn undelivered messages, and
+// an individual payload refused warnAfterAttempts times. Re-publishing the same
+// key with unchanged content keeps the retry state of the queued message, so
+// that neither the delay nor the count is reset by an object being reported
+// again without having changed.
+//
+// A send failure with no response from the controller at all interrupts the
+// queue processing, because the remaining items would fail the same way. The
+// queue processing will be repeated by the timer, see the `startTimer()`
+// routine. `KickTimerNow` can be called in order to restart queue processing
+// immediately.
 
 type deferredItem struct {
 	itemType interface{}
@@ -43,22 +62,29 @@ type deferredItem struct {
 	buf      *bytes.Buffer
 	url      string
 	opts     DeferredItemOpts
+	// Number of times the controller refused the payload currently in buf.
+	attempts int
+	// The earliest time of the next send attempt. Zero means "no delay".
+	retryAt time.Time
 }
 
 // DeferredItemOpts defines configurable options for processing a deferred item.
 // These options control request behavior such as error handling, network tracing,
 // logging, and retry policy across network interfaces.
 type DeferredItemOpts struct {
-	// Return 4xx and 5xx without trying other interfaces
+	// BailOnHTTPErr has the same meaning as RequestOptions.BailOnHTTPErr: stop
+	// trying the remaining ports once the controller has answered with a 4xx or
+	// 5xx status. It does not influence whether the item is retried later - that
+	// is decided by the status code alone (see retriableHTTPStatus).
 	BailOnHTTPErr bool
 	// WithNetTracing enables network tracing for post-mortem troubleshooting purposes.
 	WithNetTracing bool
-	// IgnoreErr, when set to true, allows the deferred queue to continue processing
-	// subsequent items even if sending this item fails (e.g., due to network errors
-	// or non-2xx HTTP responses). If false, a send failure will pause the queue
-	// processing until retried later. All results, including failures, are still
-	// reported to the sentHandler callback.
-	IgnoreErr bool
+	// DiscardOnFailure, when set to true, discards the item if the send fails instead of
+	// keeping it queued for another attempt. Use it for payloads which the next
+	// periodic publication of the same key supersedes, so that nothing is gained
+	// from retrying this one. All results, including failures, are reported to the
+	// sentHandler callback.
+	DiscardOnFailure bool
 	// SuppressLogs lowers the log severity to Trace for all Send-related methods,
 	// suppressing higher-severity log output.
 	SuppressLogs bool
@@ -78,6 +104,23 @@ const shortTime1 = time.Minute * 1
 const shortTime2 = time.Minute * 15
 const noise = shortTime1
 
+// Per-item exponential backoff applied after the controller has refused an item
+// with a status code which may not repeat. The queue is kicked on every
+// SetDeferred, so without a per-item delay a refused item would be re-attempted
+// on every unrelated event.
+const minRetryDelay = time.Minute
+const maxRetryDelay = time.Minute * 15
+
+// Number of undelivered messages left in the queue at which the backlog is
+// called out. Reaching it means reports for a large number of objects are
+// waiting, which the controller has no other way of noticing.
+const queueBacklogWarn = 50
+
+// Number of refusals of the same payload after which the message is called out,
+// and again on every further multiple. With the delay above this is a matter of
+// hours, well past any transient trouble at the controller.
+const warnAfterAttempts = 20
+
 // DeferredQueue is used so defer send requests and execute them later
 // in the background.
 type DeferredQueue struct {
@@ -87,8 +130,16 @@ type DeferredQueue struct {
 	Ticker                 flextimer.FlexTickerHandle
 	priorityCheckFunctions []TypePriorityCheckFunction
 	sentHandler            SentHandlerFunction
-	ctrlClient             *Client
+	ctrlClient             deferredSender
 	iteration              int
+}
+
+// deferredSender is the part of Client which the queue uses to deliver an item.
+// Having it as an interface keeps the queue policy exercisable without a network.
+type deferredSender interface {
+	SendOnAllIntf(ctx context.Context, url string, b *bytes.Buffer,
+		opts RequestOptions) (SendRetval, error)
+	GetContextForAllIntfFunctions() (context.Context, context.CancelFunc)
 }
 
 // TypePriorityCheckFunction returns true in case of find type with high priority
@@ -191,7 +242,180 @@ func (q *DeferredQueue) mergeQueuesNoLock(notSentReqs []*deferredItem) {
 	q.deferredItems = append(notSentReqs, q.deferredItems...)
 }
 
-// handleDeferred try to send all deferred items
+// retriableHTTPStatus tells whether re-sending the very same payload later has
+// any chance of being accepted by a controller which responded with the given
+// status code.
+//
+// Server errors, rate limiting and timeouts are temporary by nature. So is a
+// refusal to authenticate or authorize the device: EVE responds to those by
+// renewing what the controller rejected - a 403 restarts attestation, a
+// certificate problem triggers a fetch of new controller certs - after which
+// the same payload is expected to be accepted.
+//
+// The rest of the 4xx range means the controller objects to the request itself
+// and will object to the identical bytes again. 404 in particular is the case
+// this distinction was originally introduced for: the controller no longer
+// knows about an object the device is still reporting.
+func retriableHTTPStatus(statusCode int) bool {
+	switch statusCode {
+	case http.StatusUnauthorized, http.StatusForbidden,
+		http.StatusProxyAuthRequired, http.StatusRequestTimeout,
+		http.StatusTooManyRequests:
+		return true
+	}
+	return statusCode >= 500 && statusCode < 600
+}
+
+// retryDelay returns for how long to hold off the next attempt of an item which
+// the controller has refused, doubling with every attempt made so far.
+func retryDelay(attempts int) time.Duration {
+	delay := minRetryDelay
+	for i := 1; i < attempts && delay < maxRetryDelay; i++ {
+		delay *= 2
+	}
+	if delay > maxRetryDelay {
+		delay = maxRetryDelay
+	}
+	return delay
+}
+
+// allSuppressLogs tells whether every one of the items asked for send problems
+// to be kept out of the log.
+func allSuppressLogs(items []*deferredItem) bool {
+	for _, item := range items {
+		if !item.opts.SuppressLogs {
+			return false
+		}
+	}
+	return true
+}
+
+// sameContent tells whether two queued payloads carry identical bytes.
+func sameContent(a, b *bytes.Buffer) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return bytes.Equal(a.Bytes(), b.Bytes())
+}
+
+// itemDisposition says what should happen to a deferred item after an attempt
+// to send it.
+type itemDisposition int
+
+const (
+	// itemDone - the item leaves the queue, either because the controller
+	// accepted it or because it is not worth offering again.
+	itemDone itemDisposition = iota
+	// itemRetry - the item stays in the queue for a later attempt.
+	itemRetry
+	// itemStopPass - the controller could not be reached at all; the item stays
+	// in the queue and the rest of this pass is abandoned.
+	itemStopPass
+)
+
+// reportSendResult passes the outcome of a send attempt to the sentHandler
+// callback. A failure is always reported with a non-zero status, since
+// SenderStatusNone means success to the callback.
+func (q *DeferredQueue) reportSendResult(item *deferredItem, rv SendRetval,
+	failed bool) {
+	if q.sentHandler == nil {
+		return
+	}
+	if failed && rv.Status == types.SenderStatusNone {
+		rv.Status = types.SenderStatusFailed
+	}
+	q.sentHandler(item.itemType, item.buf, rv.Status, rv.TracedReqs)
+}
+
+// sendItem makes a single attempt to send a deferred item and returns what
+// should happen to the item afterwards.
+func (q *DeferredQueue) sendItem(ctx context.Context,
+	item *deferredItem) itemDisposition {
+
+	rv, err := q.ctrlClient.SendOnAllIntf(ctx, item.url, item.buf,
+		RequestOptions{
+			SuppressLogs:     item.opts.SuppressLogs,
+			WithNetTracing:   item.opts.WithNetTracing,
+			NetTraceFolder:   types.NetTraceFolder,
+			BailOnHTTPErr:    item.opts.BailOnHTTPErr,
+			Iteration:        q.iteration,
+			AllowLoopbackDNS: item.opts.AllowLoopbackDNS,
+		})
+
+	//try with another interface next time
+	q.iteration++
+
+	// An airgapped device is not expected to reach the controller at all, so it
+	// asks for the noise to be kept out of the log.
+	errorLog := q.log.Errorf
+	warnLog := q.log.Warnf
+	noticeLog := q.log.Noticef
+	if item.opts.SuppressLogs {
+		errorLog = q.log.Tracef
+		warnLog = q.log.Tracef
+		noticeLog = q.log.Tracef
+	}
+
+	status := rv.LastHTTPStatusCode
+	// A status code means that the controller was reached and answered, so the
+	// failure belongs to this item alone and the rest of the queue is still
+	// worth a try.
+	refused := status >= 400 && status < 600
+
+	switch {
+	case refused:
+		// Logged below, once the disposition of the item is known.
+	case err != nil:
+		q.log.Functionf("handleDeferred: for %s status %d failed %s",
+			item.key, rv.Status, err)
+	case rv.Status != types.SenderStatusNone:
+		q.log.Functionf("handleDeferred: for %s received unexpected status %d",
+			item.key, rv.Status)
+	default:
+		q.reportSendResult(item, rv, false)
+		return itemDone
+	}
+
+	q.reportSendResult(item, rv, true)
+	switch {
+	case !refused:
+		if item.opts.DiscardOnFailure {
+			return itemDone
+		}
+		return itemStopPass
+
+	case item.opts.DiscardOnFailure:
+		q.log.Functionf("handleDeferred: for %s dropping superseded message, "+
+			"controller responded %d %s", item.key, status,
+			http.StatusText(status))
+		return itemDone
+
+	case !retriableHTTPStatus(status):
+		// Nothing else re-asserts most of what travels this queue, so record
+		// the loss at a severity that reaches the controller and the operator.
+		errorLog("handleDeferred: for %s dropping message, controller "+
+			"responded %d %s", item.key, status, http.StatusText(status))
+		return itemDone
+
+	default:
+		item.attempts++
+		item.retryAt = time.Now().Add(retryDelay(item.attempts))
+		// A message refused this many times is no longer a passing hiccup, and
+		// since it is never given up on, saying so is the only way anyone finds
+		// out that this state is not reaching the controller.
+		logRetry := noticeLog
+		if item.attempts%warnAfterAttempts == 0 {
+			logRetry = warnLog
+		}
+		logRetry("handleDeferred: for %s controller responded %d %s, "+
+			"attempt %d, retrying in %v", item.key, status,
+			http.StatusText(status), item.attempts,
+			retryDelay(item.attempts))
+		return itemRetry
+	}
+}
+
+// handleDeferred try to send all deferred items which are due
 func (q *DeferredQueue) handleDeferred() bool {
 	q.deferredItemsLock.Lock()
 	reqs := q.deferredItems
@@ -205,7 +429,6 @@ func (q *DeferredQueue) handleDeferred() bool {
 	q.log.Functionf("handleDeferred items %d", len(reqs))
 
 	exit := false
-	sent := 0
 	ctx, cancel := q.ctrlClient.GetContextForAllIntfFunctions()
 	defer cancel()
 	for _, f := range q.priorityCheckFunctions {
@@ -218,78 +441,61 @@ func (q *DeferredQueue) handleDeferred() bool {
 			if item.buf == nil {
 				continue
 			}
-			q.log.Functionf("handleDeferred: Trying to send for %s", key)
 			if item.buf.Len() == 0 {
 				q.log.Functionf("handleDeferred: Zero length deferred item for %s",
 					key)
 				continue
 			}
-
-			//SenderStatusNone indicates no problems
-			rv, err := q.ctrlClient.SendOnAllIntf(ctx, item.url, item.buf,
-				RequestOptions{
-					SuppressLogs:     item.opts.SuppressLogs,
-					WithNetTracing:   item.opts.WithNetTracing,
-					NetTraceFolder:   types.NetTraceFolder,
-					BailOnHTTPErr:    item.opts.BailOnHTTPErr,
-					Iteration:        q.iteration,
-					AllowLoopbackDNS: item.opts.AllowLoopbackDNS,
-				})
-			// We check StatusCode before err since we do not want
-			// to exit the loop just because some message is rejected
-			// by the controller.
-			if item.opts.BailOnHTTPErr && rv.HTTPResp != nil &&
-				rv.HTTPResp.StatusCode >= 400 && rv.HTTPResp.StatusCode < 600 {
-				q.log.Functionf("handleDeferred: for %s ignore code %d",
-					key, rv.HTTPResp.StatusCode)
-			} else if err != nil {
-				q.log.Functionf("handleDeferred: for %s status %d failed %s",
-					key, rv.Status, err)
-				exit = !item.opts.IgnoreErr
-				// Make sure we pass a non-zero result to the sentHandler.
-				if rv.Status == types.SenderStatusNone {
-					rv.Status = types.SenderStatusFailed
-				}
-			} else if rv.Status != types.SenderStatusNone {
-				q.log.Functionf("handleDeferred: for %s received unexpected status %d",
-					key, rv.Status)
-				exit = !item.opts.IgnoreErr
+			if time.Now().Before(item.retryAt) {
+				q.log.Functionf("handleDeferred: for %s next attempt in %v",
+					key, time.Until(item.retryAt).Round(time.Second))
+				continue
 			}
-			if q.sentHandler != nil {
-				q.sentHandler(item.itemType, item.buf, rv.Status, rv.TracedReqs)
+			q.log.Functionf("handleDeferred: Trying to send for %s", key)
+
+			switch q.sendItem(ctx, item) {
+			case itemDone:
+				item.buf = nil
+			case itemRetry:
+			case itemStopPass:
+				exit = true
 			}
-
-			//try with another interface next time
-			q.iteration++
-
 			if exit {
 				break
 			}
-			item.buf = nil
-			sent++
 		}
 		if exit {
 			break
 		}
 	}
 
-	var notSentReqs []*deferredItem
-	if sent == 0 {
-		// Take the whole queue
-		notSentReqs = reqs
-	} else {
-		// Keep not sent requests
-		for _, el := range reqs {
-			if el.buf != nil {
-				notSentReqs = append(notSentReqs, el)
-			}
+	// Keep the not sent requests, with the ones waiting out a backoff at the
+	// tail, so that an item the controller keeps refusing cannot hold up the
+	// items behind it.
+	var notSentReqs, backoffReqs []*deferredItem
+	now := time.Now()
+	for _, el := range reqs {
+		switch {
+		case el.buf == nil:
+			// Sent or given up on.
+		case el.retryAt.After(now):
+			backoffReqs = append(backoffReqs, el)
+		default:
+			notSentReqs = append(notSentReqs, el)
 		}
 	}
+	notSentReqs = append(notSentReqs, backoffReqs...)
 
 	if len(notSentReqs) > 0 {
-		// Log the content of the rest in the queue
-		q.log.Functionf("handleDeferred() the rest to be sent: %d",
-			len(notSentReqs))
+		// Log the content of the rest in the queue. A backlog this long means
+		// the reports for many objects are undelivered, which is worth saying
+		// out loud once per pass - unless every one of them asked for quiet,
+		// as an airgapped device does.
+		logRest := q.log.Functionf
+		if len(notSentReqs) > queueBacklogWarn && !allSuppressLogs(notSentReqs) {
+			logRest = q.log.Warnf
+		}
+		logRest("handleDeferred() the rest to be sent: %d", len(notSentReqs))
 		if q.sentHandler != nil {
 			for _, item := range notSentReqs {
 				q.sentHandler(item.itemType, item.buf, types.SenderStatusDebug, nil)
@@ -313,9 +519,8 @@ func (q *DeferredQueue) handleDeferred() bool {
 // starts the timer. Key is used for identifying the channel. Please
 // note that for deviceUUID key is used for attestUrl, which is not the
 // same for other Urls, where in other case, the key is very specific
-// for the object. If @opts.IgnoreErr is true the queue processing is not
-// stopped on any error and will continue, although all errors will be
-// passed to @sentHandler callback (see the CreateDeferredCtx()).
+// for the object. Replacing an item also resets the retry state, since
+// the controller has not seen the new payload yet.
 func (q *DeferredQueue) SetDeferred(
 	key string, buf *bytes.Buffer, url string, itemType interface{},
 	opts DeferredItemOpts) {
@@ -348,6 +553,14 @@ func (q *DeferredQueue) SetDeferred(
 		}
 	}
 	if found {
+		// Re-publishing the very same bytes is the same message, so it inherits
+		// the retry state: an object whose reported state has not actually
+		// changed must not restart the backoff on every publication, nor hide
+		// how long the message has been undeliverable.
+		if sameContent(q.deferredItems[ind].buf, buf) {
+			item.attempts = q.deferredItems[ind].attempts
+			item.retryAt = q.deferredItems[ind].retryAt
+		}
 		q.log.Tracef("Replacing key %s", key)
 		q.deferredItems[ind] = &item
 	} else {
