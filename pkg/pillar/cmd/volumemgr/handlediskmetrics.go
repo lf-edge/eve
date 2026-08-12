@@ -153,6 +153,10 @@ func createOrUpdateDiskMetrics(ctx *volumemgrContext, wdName string) {
 	var diskMetricList []*types.DiskMetric
 	startPubTime := time.Now()
 
+	// Measuring a single directory can take longer than the watchdog tolerates,
+	// so the walks report progress as they go rather than only between paths.
+	wdTick := func() { ctx.ps.StillRunning(wdName, warningTime, errorTime) }
+
 	disks := diskmetrics.FindDisksPartitions(log)
 	for _, d := range disks {
 		ctx.ps.StillRunning(wdName, warningTime, errorTime)
@@ -226,7 +230,7 @@ func createOrUpdateDiskMetrics(ctx *volumemgrContext, wdName string) {
 
 	for _, path := range types.ReportDirPaths {
 		ctx.ps.StillRunning(wdName, warningTime, errorTime)
-		usage, err := diskmetrics.DirUsage(log, path)
+		usage, err := diskmetrics.DirUsage(log, path, wdTick)
 		log.Tracef("createOrUpdateDiskMetrics: ReportDirPath %s usage %d err %v", path, usage, err)
 		if err != nil {
 			// Do not report
@@ -249,7 +253,7 @@ func createOrUpdateDiskMetrics(ctx *volumemgrContext, wdName string) {
 
 	for _, path := range types.AppPersistPaths {
 		ctx.ps.StillRunning(wdName, warningTime, errorTime)
-		usage, err := diskmetrics.DirUsage(log, path)
+		usage, err := diskmetrics.DirUsage(log, path, wdTick)
 		log.Tracef("createOrUpdateDiskMetrics: AppPersistPath %s usage %d err %v", path, usage, err)
 		if err != nil {
 			// Do not report
@@ -274,7 +278,7 @@ func createOrUpdateDiskMetrics(ctx *volumemgrContext, wdName string) {
 	excludeDirs = append(excludeDirs, types.ReportDirPaths...)
 	excludeDirs = append(excludeDirs, types.AppPersistPaths...)
 	list, err := diskmetrics.FindLargeFiles(types.PersistDir, 1024*1024,
-		excludeDirs)
+		excludeDirs, wdTick)
 	if err != nil {
 		log.Errorf("FindLargeFiles Failed: %s", err)
 	} else {
