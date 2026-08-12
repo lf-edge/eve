@@ -4,13 +4,81 @@
 package diskmetrics
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/containerd/containerd/mount"
+	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/sirupsen/logrus"
 )
+
+func TestWalkHeartbeat(t *testing.T) {
+	beats := 0
+	hb := newWalkHeartbeat(func() { beats++ })
+
+	hb.beat()
+	hb.beat()
+	if beats != 1 {
+		t.Fatalf("beats = %d, want 1: beat() within walkTickInterval must be dropped", beats)
+	}
+
+	hb.next = time.Now().Add(-time.Second)
+	hb.beat()
+	if beats != 2 {
+		t.Fatalf("beats = %d, want 2: beat() after walkTickInterval must report", beats)
+	}
+
+	// A walk with no callback carries a nil heartbeat.
+	newWalkHeartbeat(nil).beat()
+}
+
+func TestSizeFromDirReportsProgress(t *testing.T) {
+	log := base.NewSourceLogObject(logrus.StandardLogger(), t.Name(), 0) //nolint:staticcheck
+	tmpdir := t.TempDir()
+
+	const (
+		dirs          = 3
+		filesPerDir   = 25
+		bytesPerFile  = 100
+		expectedTotal = dirs * filesPerDir * bytesPerFile
+	)
+	for d := 0; d < dirs; d++ {
+		subdir := fmt.Sprintf("%s/sub%d", tmpdir, d)
+		if err := os.Mkdir(subdir, 0755); err != nil {
+			t.Fatalf("os.Mkdir failed: %v", err)
+		}
+		for f := 0; f < filesPerDir; f++ {
+			name := fmt.Sprintf("%s/file%d", subdir, f)
+			if err := os.WriteFile(name, make([]byte, bytesPerFile), 0644); err != nil {
+				t.Fatalf("os.WriteFile failed: %v", err)
+			}
+		}
+	}
+
+	beats := 0
+	size, err := SizeFromDir(log, tmpdir, func() { beats++ })
+	if err != nil {
+		t.Fatalf("SizeFromDir failed: %v", err)
+	}
+	if size != expectedTotal {
+		t.Fatalf("SizeFromDir = %d, want %d", size, expectedTotal)
+	}
+	if beats == 0 {
+		t.Fatalf("SizeFromDir never reported progress")
+	}
+
+	size, err = SizeFromDir(log, tmpdir, nil)
+	if err != nil {
+		t.Fatalf("SizeFromDir with no callback failed: %v", err)
+	}
+	if size != expectedTotal {
+		t.Fatalf("SizeFromDir with no callback = %d, want %d", size, expectedTotal)
+	}
+}
 
 func TestIsWholeFilesystem(t *testing.T) {
 	tests := []struct {
