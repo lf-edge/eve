@@ -8,7 +8,58 @@ import (
 	"os"
 	"reflect"
 	"testing"
+
+	"github.com/containerd/containerd/mount"
 )
+
+func TestIsWholeFilesystem(t *testing.T) {
+	tests := []struct {
+		name string
+		dir  string
+		mi   mount.Info
+		want bool
+	}{
+		{
+			name: "ext4 filesystem mounted at dir",
+			dir:  "/persist/vault",
+			mi:   mount.Info{Mountpoint: "/persist/vault", Root: "/", FSType: "ext4"},
+			want: true,
+		},
+		{
+			name: "zfs dataset mounted at dir",
+			dir:  "/persist/reserved",
+			mi:   mount.Info{Mountpoint: "/persist/reserved", Root: "/", FSType: "zfs"},
+			want: true,
+		},
+		{
+			name: "dir is a plain subdirectory of a mountpoint",
+			dir:  "/persist/vault/volumes",
+			mi:   mount.Info{Mountpoint: "/persist", Root: "/", FSType: "zfs"},
+			want: false,
+		},
+		{
+			name: "bind mount of a subtree",
+			dir:  "/persist/kubelog",
+			mi:   mount.Info{Mountpoint: "/persist/kubelog", Root: "/log", FSType: "ext4"},
+			want: false,
+		},
+		{
+			name: "mountpoint is a prefix of dir",
+			dir:  "/persist/vault2",
+			mi:   mount.Info{Mountpoint: "/persist/vault", Root: "/", FSType: "ext4"},
+			want: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isWholeFilesystem(tc.mi, tc.dir); got != tc.want {
+				t.Fatalf("isWholeFilesystem(%+v, %s) = %v, want %v",
+					tc.mi, tc.dir, got, tc.want)
+			}
+		})
+	}
+}
 
 func TestStatAllocatedBytes(t *testing.T) {
 	// Generate a tmpfile path
