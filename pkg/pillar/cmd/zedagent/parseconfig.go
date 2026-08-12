@@ -3262,6 +3262,11 @@ func mergeMaintenanceMode(ctx *zedagentContext, caller string) {
 		log.Noticef("%s changed maintenanceMode to %t, with reason as %s, considering {%v, %v, %v}",
 			caller, ctx.maintenanceMode, ctx.maintModeReasons.String(), ctx.gcpMaintenanceMode,
 			ctx.apiMaintenanceMode, ctx.localMaintenanceMode)
+		if !ctx.maintenanceMode && ctx.getconfigCtx.configTickerHandle != nil {
+			// Fetch at once rather than waiting out timer.config.interval, which can
+			// be as high as a day. Only a hint; the fetch discards the hash itself.
+			triggerGetConfig(ctx.getconfigCtx.configTickerHandle)
+		}
 	}
 	publishZedAgentStatus(ctx.getconfigCtx)
 }
