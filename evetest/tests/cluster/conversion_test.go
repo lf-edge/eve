@@ -73,7 +73,7 @@ func soleNodeReady(info *eveinfo.ZInfoKubeCluster, devName string) bool {
 // --------------------
 //   - Three RequireEdgeDevice entries from clusterDeviceRequirements,
 //     identical to TestThreeNodesCluster (Kubevirt, fresh image, 4 vCPUs,
-//     vcpu-cap grub options, filesystem per FILESYSTEM).
+//     filesystem per FILESYSTEM).
 //   - A REPLICATED_STORAGE ClusterConfig over all three nodes, node 1 the
 //     bootstrap node, then the conversion is driven by clearing the
 //     Cluster field of one device's config.

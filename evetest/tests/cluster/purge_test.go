@@ -84,8 +84,7 @@ func clusterHasVMIWithPrefix(info *eveinfo.ZInfoKubeCluster, prefix string) bool
 // Device configuration
 // --------------------
 //   - clusterDeviceRequirements (cluster_test.go): WithHypervisor=Kubevirt,
-//     DeviceReusePolicy=CreateFromScratchWithLiveImage, ext4, plus grub options
-//     that cap dom0/eve/ctrd vcpus so cluster formation is fast. That policy
+//     DeviceReusePolicy=CreateFromScratchWithLiveImage, ext4. That policy
 //     re-creates the VM even when a matching one exists, so this test always
 //     forms its own cluster; only the harness (Adam, SDN, broker) is shared with
 //     the other subtests. Running it standalone therefore costs no more than
