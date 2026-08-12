@@ -2875,6 +2875,7 @@ func parseConfigItems(ctx *getconfigContext, config *zconfig.EdgeDevConfig,
 // mergeMaintenanceMode handles the configItem override (unless NONE)
 // and the API setting
 func mergeMaintenanceMode(ctx *zedagentContext) {
+	oldMaintenanceMode := ctx.maintenanceMode
 	switch ctx.gcpMaintenanceMode {
 	case types.TS_ENABLED:
 		// Overrides everything, and sets maintenance mode
@@ -2898,6 +2899,12 @@ func mergeMaintenanceMode(ctx *zedagentContext) {
 	log.Noticef("Changed maintenanceMode to %t, with reason as %s, considering {%v, %v, %v}",
 		ctx.maintenanceMode, ctx.maintModeReason.String(), ctx.gcpMaintenanceMode,
 		ctx.apiMaintenanceMode, ctx.localMaintenanceMode)
+	if ctx.maintenanceMode != oldMaintenanceMode && !ctx.maintenanceMode &&
+		ctx.getconfigCtx.configTickerHandle != nil {
+		// Fetch at once rather than waiting out timer.config.interval, which can
+		// be as high as a day. Only a hint; the fetch discards the hash itself.
+		triggerGetConfig(ctx.getconfigCtx.configTickerHandle)
+	}
 }
 
 func checkAndPublishAppInstanceConfig(getconfigCtx *getconfigContext,
