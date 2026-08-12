@@ -236,7 +236,7 @@ connectivity gaps. `zedagent` maintains three deferred queues:
 | Queue | Policy | Used for |
 |---|---|---|
 | `deferredEventQueue` | Reliable – retried on connectivity restore; has a priority function and a sent-callback. | Info messages, attestation escrow, EdgeNodeCerts – messages that must eventually reach the controller. |
-| `deferredPeriodicQueue` | Best-effort – dropped on failure without retry; no callback. | Metrics, hardware health, NTP sources – periodic data where a missed report is acceptable. |
+| `deferredPeriodicQueue` | Best-effort – dropped on failure without retry; no callback. | Location info, the one report published on a recurring timer where a missed one is acceptable. Metrics and hardware health do not go through a queue at all; NTP sources deliberately use the event queue so that every update is delivered. |
 | `deferredLOCPeriodicQueue` | Best-effort (same as above) | Periodic publishes to LOC. |
 
 When connectivity is restored (detected via `DeviceNetworkStatus`), the main event
