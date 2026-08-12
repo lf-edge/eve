@@ -40,8 +40,7 @@ import (
 // Device configuration
 // --------------------
 //   - clusterDeviceRequirements (cluster_test.go): WithHypervisor=Kubevirt,
-//     DeviceReusePolicy=CreateFromScratchWithLiveImage, ext4, plus grub
-//     options that cap dom0/eve/ctrd vcpus so cluster formation is fast.
+//     DeviceReusePolicy=CreateFromScratchWithLiveImage, ext4.
 //   - SystemAdapter on eth0 (DHCP, mgmt+app, NetworkType=V4Only).
 //   - timer.boot.retry (DomainBootRetryTime) lowered to its 10s floor
 //     (GlobalConfigMinimums), so domainmgr's boot-retry loop -- which

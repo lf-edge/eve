@@ -33,13 +33,10 @@ func clusterDeviceRequirements(
 		// single->multi-node etcd transition, whereas ext4 stays healthy. Kept
 		// configurable because a lot of EVE-k behaves differently per filesystem.
 		WithFilesystem: filesystem,
-		WithGrubOptions: []string{
-			// Application performance is not a primary concern; instead, we focus
-			// on minimizing device onboarding time and accelerating cluster formation.
-			"set_global hv_dom0_cpu_settings \"dom0_max_vcpus=4\"",
-			"set_global hv_eve_cpu_settings \"eve_max_vcpus=3\"",
-			"set_global hv_ctrd_cpu_settings \"ctrd_max_vcpus=3\"",
-		},
+		// No grub CPU options: kube-init widens the EVE cpuset for the duration
+		// of the deploy and restores it on RUNNING (prereqs.WidenEVECPUs), so
+		// cluster formation no longer depends on the test raising eve_max_vcpus
+		// itself.
 	}
 }
 
@@ -58,8 +55,7 @@ func clusterDeviceRequirements(
 //   - clusterDeviceRequirements (top of this file): WithHypervisor=Kubevirt,
 //     DeviceReusePolicy=CreateFromScratchWithLiveImage (we want to test
 //     fresh cluster formation), default ext4 (changeable via the FILESYSTEM
-//     parameter), plus grub options that cap dom0/eve/ctrd vcpus so
-//     cluster formation is fast.
+//     parameter).
 //   - SystemAdapter on eth0 (DHCP, mgmt+app, NetworkType=V4Only).
 //   - One Local NI "local-ni" (10.11.12.0/24, EnableFlowlog=true) and one
 //     container app with default-allow + port-fwd 2222->22.
@@ -243,8 +239,7 @@ func TestSingleNodeCluster(test *testing.T) {
 // --------------------
 //   - Three RequireEdgeDevice entries built via clusterDeviceRequirements
 //     (same params as TestSingleNodeCluster: Kubevirt, fresh image,
-//     ext4 by default / configurable via FILESYSTEM, 8 GB RAM, 4 vCPUs,
-//     vcpu-cap grub options).
+//     ext4 by default / configurable via FILESYSTEM, 8 GB RAM, 4 vCPUs).
 //   - ClusterConfig (evetest.NewEdgeClusterConfig) with three
 //     ClusterNode entries: each device gets a distinct ClusterIP from
 //     10.244.244.0/24 (.2, .3, .4) on ClusterInterface="ethernet1".
