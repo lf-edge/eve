@@ -1015,12 +1015,28 @@ func needRequestLocConfig(getconfigCtx *getconfigContext,
 		getconfigCtx.locConfig.LocURL != ""
 }
 
+// forgetConfigHashOnLeavingMaintenanceMode discards the remembered config hash once
+// the device has left maintenance mode, so the next request fetches the configuration
+// in full. parseConfig applied nothing while maintenance mode was set, yet the hash was
+// already recorded and the controller answers "not modified" while it matches; the local
+// reasons are lifted by nodeagent rather than by a configuration change, so nothing else
+// re-drives the dropped configuration.
+func forgetConfigHashOnLeavingMaintenanceMode(getconfigCtx *getconfigContext) {
+	maintenanceMode := getconfigCtx.zedagentCtx.maintenanceMode
+	if prevMaintenanceMode && !maintenanceMode {
+		log.Notice("Left maintenance mode; re-reading the configuration")
+		prevConfigHash = ""
+	}
+	prevMaintenanceMode = maintenanceMode
+}
+
 func getLatestConfig(getconfigCtx *getconfigContext, iteration int,
 	withNetTracing bool) (configProcessingRetval, []netdump.TracedNetRequest) {
 
 	if ctrlClient == nil {
 		log.Fatal("nil ctrlClient in getLatestConfig")
 	}
+	forgetConfigHashOnLeavingMaintenanceMode(getconfigCtx)
 	url := controllerconn.URLPathString(serverNameAndPort,
 		devUUID, "config")
 
@@ -1120,6 +1136,12 @@ func readSavedProtoMessageConfig(ctrlClient *controllerconn.Client, URL string,
 
 // The most recent config hash we received. Starts empty
 var prevConfigHash string
+
+// Value of zedagentContext.maintenanceMode as last seen by the config goroutine, which
+// is the only one to touch this and prevConfigHash, so neither needs a lock. Other
+// goroutines change maintenanceMode itself, hence sampling it here rather than acting
+// where it is set.
+var prevMaintenanceMode bool
 
 func generateConfigRequest(getconfigCtx *getconfigContext, isCompoundConfig bool) (
 	[]byte, error) {
