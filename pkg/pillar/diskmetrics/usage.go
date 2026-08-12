@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/containerd/containerd/mount"
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -40,10 +41,50 @@ func StatAllocatedBytes(path string) (uint64, error) {
 	return uint64(stat.Blocks * C.DEV_BSIZE), nil
 }
 
+// walkTickInterval bounds how often a walk reports progress. Reporting per
+// directory entry would cost more than the walk itself, while the watchdog
+// tolerates minutes of silence, so seconds of granularity are ample.
+const walkTickInterval = 5 * time.Second
+
+// walkHeartbeat rate-limits the progress callback threaded through a directory
+// walk. A nil *walkHeartbeat is usable and reports nothing.
+type walkHeartbeat struct {
+	tick func()
+	next time.Time
+}
+
+func newWalkHeartbeat(tick func()) *walkHeartbeat {
+	if tick == nil {
+		return nil
+	}
+	return &walkHeartbeat{tick: tick}
+}
+
+func (h *walkHeartbeat) beat() {
+	if h == nil {
+		return
+	}
+	now := time.Now()
+	if now.Before(h.next) {
+		return
+	}
+	h.next = now.Add(walkTickInterval)
+	h.tick()
+}
+
 // SizeFromDir performs a du -s equivalent operation.
 // Didn't use os.ReadDir and filepath.Walk because they sort (quick_sort) all files per directory
 // which is an unnecessary costly operation.
-func SizeFromDir(log *base.LogObject, dirname string) (uint64, error) {
+// tick, when not nil, is called as the walk advances, at most once every
+// walkTickInterval; a caller whose goroutine is watched by the watchdog uses it
+// to report liveness while measuring a tree that takes minutes. It fires only
+// after a directory read returns, so a walk stuck in the kernel stays silent and
+// the watchdog still catches it.
+func SizeFromDir(log *base.LogObject, dirname string, tick func()) (uint64, error) {
+	return sizeFromDir(log, dirname, newWalkHeartbeat(tick))
+}
+
+func sizeFromDir(log *base.LogObject, dirname string, hb *walkHeartbeat) (uint64, error) {
 	var totalUsed uint64
 	fileInfo, err := os.Stat(dirname)
 	if err != nil {
@@ -71,11 +112,12 @@ func SizeFromDir(log *base.LogObject, dirname string) (uint64, error) {
 		if err != nil {
 			return totalUsed, err
 		}
+		hb.beat()
 		for _, location := range locations {
 			filename := dirname + "/" + location.Name()
 			log.Tracef("Looking in %s\n", filename)
 			if location.IsDir() {
-				size, _ := SizeFromDir(log, filename)
+				size, _ := sizeFromDir(log, filename, hb)
 				log.Tracef("Dir %s size %d\n", filename, size)
 				totalUsed += size
 			} else {
@@ -223,14 +265,14 @@ func FindLargestDisk(log *base.LogObject) string {
 // DirUsage calculates usage of directory.
 // When dir holds a whole filesystem, usage comes from that filesystem - one
 // dataset query for ZFS, one statfs otherwise - rather than from walking the
-// tree. Anything else is walked with SizeFromDir.
-func DirUsage(log *base.LogObject, dir string) (uint64, error) {
+// tree. Anything else is walked with SizeFromDir, which is what tick is for.
+func DirUsage(log *base.LogObject, dir string, tick func()) (uint64, error) {
 	mi, err := mount.Lookup(dir)
 	if err != nil {
 		// Lookup do not return error in case of dir is not mountpoint
 		// it returns the longest found parent mountpoint for provided dir
 		log.Errorf("dirUsage: Lookup returns error (%s), fallback to SizeFromDir", err)
-		return SizeFromDir(log, dir)
+		return SizeFromDir(log, dir, tick)
 	}
 	if isWholeFilesystem(mi, dir) {
 		// The dataset name is derived from the path, which only holds inside
@@ -250,7 +292,7 @@ func DirUsage(log *base.LogObject, dir string) (uint64, error) {
 		log.Errorf("dirUsage: disk.Usage(%s) returns error (%s), fallback to SizeFromDir",
 			dir, err)
 	}
-	return SizeFromDir(log, dir)
+	return SizeFromDir(log, dir, tick)
 }
 
 // isWholeFilesystem reports whether mi describes a filesystem mounted in its
@@ -334,14 +376,18 @@ type PathAndSize struct {
 }
 
 // FindLargeFiles walks a directory and reports all files larger than minSize
-// unless they are in an excluded (sub)directory
-func FindLargeFiles(root string, minSize int64, excludePaths []string) ([]PathAndSize, error) {
+// unless they are in an excluded (sub)directory.
+// tick has the same meaning as in SizeFromDir.
+func FindLargeFiles(root string, minSize int64, excludePaths []string,
+	tick func()) ([]PathAndSize, error) {
 	var list []PathAndSize
+	hb := newWalkHeartbeat(tick)
 	walkErr := filepath.WalkDir(filepath.Clean(root), func(path string, di fs.DirEntry, err error) error {
 		// if there is any problem with path we stop
 		if err != nil {
 			return err
 		}
+		hb.beat()
 
 		// Part of excludePath?
 		for _, ex := range excludePaths {
