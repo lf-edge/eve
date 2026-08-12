@@ -4468,7 +4468,11 @@ index 10773fc34..5e3704831 100644
        if (comma)
  	{
  	  protnamelen = comma - name;
-@@ -1313,8 +1324,13 @@ grub_net_open_real (const char *name)
+@@ -1310,11 +1321,17 @@ grub_net_open_real (const char *name)
+ 	    if (!ret)
+ 	      return NULL;
+ 	    ret->protocol = proto;
++	    ret->port = port;
  	    ret->server = grub_strdup (server);
  	    if (!ret->server)
  	      {
