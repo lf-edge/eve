@@ -82,7 +82,7 @@ func TestDeferredQueue(test *testing.T) {
 		controllerconn.DeferredItemOpts{
 			BailOnHTTPErr:    false,
 			WithNetTracing:   false,
-			IgnoreErr:        false,
+			DiscardOnFailure: false,
 			SuppressLogs:     false,
 			AllowLoopbackDNS: true,
 		})
@@ -152,7 +152,7 @@ func TestDeferredQueue_NoUsablePorts(test *testing.T) {
 			BailOnHTTPErr:  false,
 			WithNetTracing: false,
 			// We will ignore errors (but we will check the sendOp.result value below)
-			IgnoreErr:        true,
+			DiscardOnFailure: true,
 			SuppressLogs:     false,
 			AllowLoopbackDNS: true,
 		})
