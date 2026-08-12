@@ -242,6 +242,18 @@ connectivity gaps. `zedagent` maintains three deferred queues:
 When connectivity is restored (detected via `DeviceNetworkStatus`), the main event
 loop kicks `deferredEventQueue` to flush any pending reliable messages.
 
+"Reliable" is bounded by what the controller answers. A message on the event
+queue survives connectivity loss and controller-side failures (5xx, 429), being
+re-offered with a per-item backoff, but it is given up on when the controller
+rejects the request itself (e.g. 400 or 404 for an object it no longer knows
+about) — retrying identical bytes it has already refused would be a hot loop.
+Such a drop is logged at error severity, because for the info types that reach
+this queue nothing re-asserts the state later: they are published on change
+only, so a lost message leaves the controller's view stale until the object
+changes again. A message the controller keeps failing to accept is moved behind
+its peers rather than retried first, so one object cannot hold up the reports
+for all the others.
+
 ## Source File Map
 
 | File | Responsibility |
