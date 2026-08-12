@@ -301,8 +301,13 @@ const (
 // destination. Once deferred item has been added the queue is kicked
 // to start processing requests immediately from a separate task.
 //
-// @forcePeriodic forces all deferred requests to be added
-// to the deferred queue and errors will be ignored.
+// @bailOnHTTPErr stops the send from trying the remaining ports once the
+// controller has answered with a 4xx or 5xx status; it does not affect whether
+// a refused message is retried later.
+//
+// @forcePeriodic puts the request on the best-effort periodic queue, where a
+// message is discarded rather than retried if the send fails, on the grounds
+// that the next period supersedes it.
 func queueInfoToDest(ctx *zedagentContext, dest destinationBitset,
 	key string, buf *bytes.Buffer, bailOnHTTPErr,
 	withNetTracing, forcePeriodic bool, itemType interface{}) {
@@ -318,18 +323,19 @@ func queueInfoToDest(ctx *zedagentContext, dest destinationBitset,
 	if dest&ControllerDest != 0 {
 		url := controllerconn.URLPathString(serverNameAndPort, ctrlClient.UsingV2API(),
 			devUUID, "info")
-		// Ignore all errors in case of periodic
-		ignoreErr := forcePeriodic
+		// A periodic message is superseded by the next period, so nothing is
+		// gained from retrying this one.
+		discardOnFailure := forcePeriodic
 		deferredQueue := ctx.deferredEventQueue
 		if forcePeriodic {
 			deferredQueue = ctx.deferredPeriodicQueue
 		}
 		deferredQueue.SetDeferred(key, buf, url, itemType,
 			controllerconn.DeferredItemOpts{
-				BailOnHTTPErr:  bailOnHTTPErr,
-				WithNetTracing: withNetTracing,
-				IgnoreErr:      ignoreErr,
-				SuppressLogs:   ctx.airgapMode,
+				BailOnHTTPErr:    bailOnHTTPErr,
+				WithNetTracing:   withNetTracing,
+				DiscardOnFailure: discardOnFailure,
+				SuppressLogs:     ctx.airgapMode,
 			})
 	}
 	if dest&LOCDest != 0 && locURL != "" {
@@ -340,7 +346,7 @@ func queueInfoToDest(ctx *zedagentContext, dest destinationBitset,
 				BailOnHTTPErr:  bailOnHTTPErr,
 				WithNetTracing: withNetTracing,
 				// Ignore errors for all the LOC info messages
-				IgnoreErr: true,
+				DiscardOnFailure: true,
 			})
 	}
 }
@@ -2899,9 +2905,9 @@ func getDeferredSentHandlerFunction(ctx *zedagentContext) controllerconn.SentHan
 				}
 				if !ctx.publishedEdgeNodeCerts {
 					// Attestation request does not clog the send queue (issued
-					// with the `ignoreErr` set to true), but once fails has to
-					// be repeated in reasonable time to avoid tight fail-repeat
-					// loop.
+					// with the `DiscardOnFailure` set to true), but once fails
+					// has to be repeated in reasonable time to avoid tight
+					// fail-repeat loop.
 					triggerEdgeNodeCertDelayedEvent(ctx, 10*time.Second)
 				}
 			}
