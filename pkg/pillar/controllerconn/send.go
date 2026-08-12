@@ -404,6 +404,14 @@ func (c *Client) SendOnAllIntf(ctx context.Context, url string, b *bytes.Buffer,
 		}
 		combinedRV.HTTPResp = rv.HTTPResp
 		combinedRV.RespContents = rv.RespContents
+		// The request was delivered by this port, so report its status rather
+		// than one collected from a port which failed to deliver it. A non-2xx
+		// can reach this point through Accept4xxErrors, and there the status
+		// derived from the response above is the answer the caller wants.
+		if rv.HTTPResp != nil && rv.HTTPResp.StatusCode >= 200 &&
+			rv.HTTPResp.StatusCode < 300 {
+			combinedRV.Status = rv.Status
+		}
 		return combinedRV, nil
 	}
 	errStr := fmt.Sprintf("All attempts to connect to %s failed: %s",
@@ -887,6 +895,9 @@ func (c *Client) SendOnIntf(ctx context.Context, destURL string, intf string,
 			c.log.Tracef("SendOnIntf to %s, response %s\n", reqURL, resp.Status)
 			rv.HTTPResp = resp
 			rv.RespContents = contents
+			// This source address delivered the request, so do not report
+			// a problem hit with one of the addresses tried before it.
+			rv.Status = types.SenderStatusNone
 			return rv, nil
 		default:
 			// Get caller to schedule a retry based on StatusCode
