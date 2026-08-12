@@ -21,8 +21,38 @@ const (
 	ansi = "(?:\u001B|\\\\u001[bB])\\[[0-9;]*[A-Za-z]|(?:\u001B|\\\\u001[bB])[\\(\\)\\[\\]#;?]*[A-Za-z0-9]|(?:\u009B|\\\\u009[bB])[0-9;]*[A-Za-z]"
 )
 
+const (
+	// panicQuietPeriod is how long the capture waits for more traceback lines
+	// before writing the panic files.
+	panicQuietPeriod = 2 * time.Second
+)
+
 var (
 	memlogdSocket = "/run/memlogdq.sock"
+
+	// Budget for one capture, kept in variables so tests can shrink it. zedbox
+	// dumps every goroutine as one memlogd record per line, which runs to
+	// thousands of records and hundreds of KiB, and the frames that explain a
+	// crash are rarely the first ones.
+	maxPanicRecords = 20000
+	maxPanicBufSize = 2 << 20
+
+	// Prefixes of the first stderr line of a fatal pillar failure. Signal
+	// banners appear both bare ("SIGABRT: abort") and inside a Go panic
+	// message ("[signal SIGSEGV: segmentation violation ...").
+	panicStartMarkers = []string{
+		"panic:",
+		"fatal error:",
+		"ASSERT at ",
+		"[signal SIG",
+		"SIGABRT:",
+		"SIGSEGV:",
+		"SIGBUS:",
+		"SIGFPE:",
+		"SIGILL:",
+		"SIGTRAP:",
+		"signal arrived during cgo execution",
+	}
 )
 
 // getMemlogMsg - goroutine to get messages from memlogd queue
@@ -77,7 +107,7 @@ func processMemlogStream(conn net.Conn, logChan chan inputEntry, panicFileChan c
 		}
 
 		// if we are in watchdog going down. fsync often
-		checkWatchdogRestart(&entry, &panicStackCount, string(bytes), panicFileChan)
+		checkWatchdogRestart(&entry, &panicStackCount, panicFileChan)
 
 		logChan <- entry
 	}
@@ -261,7 +291,7 @@ func cleanForLogParsing(str string) string {
 }
 
 // flush more often when we are going down by reading from watchdog log message itself
-func checkWatchdogRestart(entry *inputEntry, panicStackCount *int, origMsg string, panicFileChan chan []byte) {
+func checkWatchdogRestart(entry *inputEntry, panicStackCount *int, panicFileChan chan []byte) {
 	// source can be watchdog or watchdog.err
 	if strings.HasPrefix(entry.source, "watchdog") {
 		if strings.Contains(entry.content, "Retry timed-out at") {
@@ -275,31 +305,60 @@ func checkWatchdogRestart(entry *inputEntry, panicStackCount *int, origMsg strin
 	}
 
 	// the panic generated message can have the source either as 'pillar' or 'pillar.out'
-	// this origMsg is the raw message, the ";" is the deliminator between source and content.
-	if strings.Contains(entry.source, "pillar") && strings.Contains(origMsg, ";panic:") &&
-		!strings.Contains(entry.content, "rebootReason") {
-		*panicStackCount = 1
-		panicBuf = append(panicBuf, []byte(origMsg)...)
-		// in case there is only few log messages after this, kick off a timer to write the panic files
-		panicWriteTimer = time.NewTimer(2 * time.Second)
-	} else if *panicStackCount > 0 {
-		var done bool
-		if strings.Contains(entry.source, "pillar") {
-			panicBuf = append(panicBuf, []byte(origMsg)...)
-		} else {
-			// conclude the capture when log source is not 'pillar'
-			done = true
+	if !strings.Contains(entry.source, "pillar") {
+		return
+	}
+
+	panicBufLock.Lock()
+	defer panicBufLock.Unlock()
+
+	if *panicStackCount == 0 {
+		if !isPanicStart(entry.content) ||
+			strings.Contains(entry.content, "rebootReason") {
+			return
 		}
+		*panicStackCount = 1
+		appendPanicLine(entry.content)
+		panicWriteTimer.Reset(panicQuietPeriod)
+		return
+	}
 
-		*panicStackCount++
+	*panicStackCount++
+	appendPanicLine(entry.content)
 
-		if *panicStackCount > 15 || done {
-			panicWriteTimer.Stop()
-			*panicStackCount = 0
-			panicFileChan <- panicBuf
-			panicBuf = nil
+	// A traceback arrives as a burst of one record per line and other services
+	// keep logging in between, so the capture ends on a quiet period rather
+	// than on the first record from another source. The budget only bounds how
+	// much of a dying process's stack is kept.
+	if *panicStackCount >= maxPanicRecords || len(panicBuf) >= maxPanicBufSize {
+		panicWriteTimer.Stop()
+		*panicStackCount = 0
+		panicFileChan <- panicBuf
+		panicBuf = nil
+		return
+	}
+	panicWriteTimer.Reset(panicQuietPeriod)
+}
+
+// appendPanicLine adds one traceback line to panicBuf. Caller must hold
+// panicBufLock.
+func appendPanicLine(content string) {
+	panicBuf = append(panicBuf, content...)
+	panicBuf = append(panicBuf, '\n')
+}
+
+// isPanicStart reports whether a pillar stderr line begins a fatal failure.
+// Go panics and runtime throws print "panic:"/"fatal error:", while a C
+// assertion or fatal signal raised under cgo runs no Go panic machinery at all
+// and prints only the assert text followed by a signal banner.
+func isPanicStart(content string) bool {
+	content = strings.TrimLeft(content, " \t")
+	for _, marker := range panicStartMarkers {
+		if strings.HasPrefix(content, marker) {
+			return true
 		}
 	}
+	return false
 }
 
 // MemlogLogEntry is copied from memlogd; maybe it should provide a parser
