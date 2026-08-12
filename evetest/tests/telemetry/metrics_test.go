@@ -15,7 +15,6 @@ import (
 	evemetrics "github.com/lf-edge/eve-api/go/metrics"
 	"github.com/lf-edge/eve/evetest"
 	"github.com/lf-edge/eve/evetest/matchers"
-	"github.com/lf-edge/eve/evetest/netmodels"
 )
 
 // TestDeviceMetrics verifies the DeviceMetric message EVE publishes to the
@@ -65,14 +64,13 @@ import (
 //
 // Test params
 // -----------
-//   - TPM. Declared only so that every test in the suite states the same
-//     device requirements and the framework can reuse one VM; nothing here
-//     depends on the TPM.
+//   - HYPERVISOR, TPM. Neither is asserted on here; both are declared so that
+//     every test in the suite states the same device requirements and the
+//     framework can reuse one VM.
 //
 // Suite placement
 // ---------------
-//   - TestTelemetrySuite. No application is deployed, so the hypervisor is
-//     hardcoded to KVM like the other non-app suites.
+//   - TestTelemetrySuite.
 func TestDeviceMetrics(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
@@ -80,25 +78,16 @@ func TestDeviceMetrics(test *testing.T) {
 
 	// Define configurable parameters available for the test.
 	evetest.DefineTestParameters(
+		evetest.HypervisorParameter(),
 		evetest.TPMParameter(),
 	)
 
 	// Get parameter values set for this test execution.
+	hypervisor := evetest.GetHypervisorParameterValue()
 	useTPM := evetest.GetTPMParameterValue()
 
 	// Set up the test harness and specify the test prerequisites.
-	evetest.Setup(
-		evetest.RequireEdgeDevice{
-			Name:              devName,
-			WithHypervisor:    evetest.HypervisorKVM,
-			WithTPM:           useTPM,
-			DeviceReusePolicy: evetest.ResetDeviceConfig,
-		},
-		evetest.RequireNetworkModel{
-			NetworkModel: netmodels.SingleEthWithDHCP,
-		},
-	)
-	device := evetest.GetEdgeDevice(devName)
+	device := setupTelemetryTestDevice(hypervisor, useTPM)
 	evetest.Checkpoint("setup-done")
 
 	// Build and apply the device configuration.
@@ -107,6 +96,9 @@ func TestDeviceMetrics(test *testing.T) {
 	defer stopMetricWatch()
 	device.ApplyConfig(devConfig, true, true)
 	evetest.Checkpoint("config-applied")
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(clusterNodeReadyTimeout)
+	}
 
 	// Phase 2: per-port network counters are reported and moving.
 	timeout := 5 * time.Minute
