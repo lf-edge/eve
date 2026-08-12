@@ -60,6 +60,9 @@ var (
 	syncToFileCnt int    // every 'N' log event count flush to log file
 	persistMbytes uint64 // '/persist' disk space total in Mbytes
 	panicBuf      []byte // buffer to save panic crash stack
+	// panicBuf is appended by the memlogd reader goroutine and drained by the
+	// main loop when panicWriteTimer fires.
+	panicBufLock sync.Mutex
 
 	enableFastUpload bool // enable fast upload to controller similar to previous log operation
 
@@ -355,10 +358,12 @@ func main() {
 			subNestedAppDomainStatus.ProcessChange(change)
 
 		case <-panicWriteTimer.C:
+			panicBufLock.Lock()
 			if len(panicBuf) > 0 {
 				savePanicFiles(panicBuf)
 				panicBuf = nil
 			}
+			panicBufLock.Unlock()
 
 		case <-schedResetTimer.C:
 			syncToFileCnt = defaultSyncCount
