@@ -69,6 +69,10 @@ const (
 	streamValue  = "true"
 )
 
+// Port offset applied to Adam itself when a fault injecting proxy takes over
+// the device-facing port.
+const adamFaultProxyPortOffset = 1000
+
 // AdamClient manages the lifecycle of an Adam controller instance.
 // It is responsible for generating TLS assets, starting the Adam process,
 // monitoring it for unexpected exits, and shutting it down cleanly.
@@ -78,6 +82,12 @@ type AdamClient struct {
 	hostname   string
 	listenIPs  []net.IP
 	listenPort uint16
+	// adamPort is the port Adam itself listens on, and the one the harness uses
+	// to reach it. It differs from listenPort only with fault injection enabled,
+	// where the fault proxy takes over the device-facing listenPort.
+	adamPort   uint16
+	withFaults bool
+	faultProxy *FaultProxy
 
 	// Certificates and their corresponding private keys that are never rotated:
 	// the CA is set at construction, the TLS pair once in generateCerts.
@@ -203,12 +213,30 @@ func NewAdamClient(log *logrus.Entry,
 		hostname:       hostname,
 		listenIPs:      listenIPs,
 		listenPort:     listenPort,
+		adamPort:       listenPort,
 		caCert:         caCert,
 		caKey:          caKey,
 		statusCh:       statusCh,
 		knownDevices:   make(map[uuid.UUID]struct{}),
 		onboardSerials: make(map[string]map[string]struct{}),
 	}
+}
+
+// EnableFaultInjection moves Adam itself to an internal port and puts a fault
+// injecting proxy in front of it on the port the devices connect to, so that a
+// test can make the controller fail in a chosen way (see FaultProxy). The
+// harness keeps talking to Adam directly on the internal port, so reading what
+// the controller knows is never affected by an injected fault.
+// Must be called before Start.
+func (ac *AdamClient) EnableFaultInjection() {
+	ac.withFaults = true
+	ac.adamPort = ac.listenPort + adamFaultProxyPortOffset
+}
+
+// FaultProxy returns the fault injecting proxy, or nil if fault injection was
+// not enabled before Start.
+func (ac *AdamClient) FaultProxy() *FaultProxy {
+	return ac.faultProxy
 }
 
 // Start generates TLS certificates and launches the Adam controller.
@@ -240,7 +268,7 @@ func (ac *AdamClient) Start() error {
 	var args []string
 	args = append(args,
 		"server",
-		"--port", strconv.Itoa(int(ac.listenPort)))
+		"--port", strconv.Itoa(int(ac.adamPort)))
 	for _, listenIP := range ac.listenIPs {
 		args = append(args,
 			"--ip", listenIP.String())
@@ -276,7 +304,7 @@ func (ac *AdamClient) Start() error {
 	ac.adamCmd = cmd
 	ac.adamPid = cmd.Process.Pid
 	ac.log.Infof("Adam process started and listening on IPs:%v, port:%d",
-		ac.listenIPs, ac.listenPort)
+		ac.listenIPs, ac.adamPort)
 	ac.publish(AdamStateRunning, nil)
 
 	// Signal when qemu process exits.
@@ -294,6 +322,23 @@ func (ac *AdamClient) Start() error {
 			ac.publish(AdamStateStopped, nil)
 		}
 	}()
+
+	if ac.withFaults {
+		caPool := x509.NewCertPool()
+		caPool.AddCert(ac.caCert)
+		ac.faultProxy = NewFaultProxy(
+			ac.log.WithField("component", "fault-proxy"),
+			ac.listenIPs, ac.listenPort,
+			filepath.Join(certDir, "tls.pem"),
+			filepath.Join(certDir, "tls-key.pem"),
+			net.JoinHostPort(ac.listenIPs[0].String(),
+				strconv.Itoa(int(ac.adamPort))),
+			ac.hostname, caPool)
+		if err := ac.faultProxy.Start(); err != nil {
+			ac.publish(AdamStateCrashed, err)
+			return err
+		}
+	}
 	return nil
 }
 
@@ -305,6 +350,10 @@ func (ac *AdamClient) Stop() error {
 
 	ac.publish(AdamStateStopping, nil)
 	ac.log.Info("Stopping Adam")
+
+	if ac.faultProxy != nil {
+		ac.faultProxy.Stop()
+	}
 
 	if err := ac.adamCmd.Process.Signal(syscall.SIGTERM); err != nil {
 		err = fmt.Errorf("failed to send SIGTERM to Adam: %v", err)
@@ -336,7 +385,7 @@ func (ac *AdamClient) httpClient() *http.Client {
 
 func (ac *AdamClient) adminURL(pathSuffix string) string {
 	return fmt.Sprintf("https://%s:%d/admin/%s",
-		ac.listenIPs[0].String(), ac.listenPort, pathSuffix)
+		ac.listenIPs[0].String(), ac.adamPort, pathSuffix)
 }
 
 func (ac *AdamClient) checkAdamRunning() error {
