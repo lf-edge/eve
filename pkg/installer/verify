@@ -4,12 +4,52 @@
 [ -n "$DEBUG" ] && set -x
 
 
+disks=$(lsblk -anlb -o "TYPE,NAME,SIZE" | grep "^disk" | awk '$3 { print $2;}' | grep -v "^ram.*")
+
 #extract basic info
-/usr/bin/hw-probe -all --show --verbose --check-extended --save "$REPORT" > "$REPORT/summary.log"
+mkdir "$REPORT/hardware-inventory/"
+hwinfo --short > "$REPORT/hardware-inventory/hwinfo.log" 2>&1
+lspci -nnvk > "$REPORT/hardware-inventory/lspci.log" 2>&1
+lsusb -v > "$REPORT/hardware-inventory/lsusb.log" 2>&1
+lsblk -O > "$REPORT/hardware-inventory/lsblk.log" 2>&1
+dmesg > "$REPORT/hardware-inventory/dmesg.log" 2>&1
+cp /proc/cpuinfo /proc/meminfo "$REPORT/hardware-inventory/"
+for i in $disks; do
+   smartctl -x "/dev/$i" > "$REPORT/hardware-inventory/smartctl-$i.log" 2>&1
+done
+
+# A PCI device with no driver bound is the most common reason a hardware model
+# does not work, so it is summarized here rather than left to be found in lspci.log.
+{
+   echo "Hardware summary"
+   echo "================"
+   echo
+   echo "System:  $(dmidecode -s system-manufacturer) $(dmidecode -s system-product-name)"
+   echo "Serial:  $(dmidecode -s system-serial-number)"
+   echo "Arch:    $(uname -m)"
+   echo "Kernel:  $(uname -r)"
+   echo "CPU:     $(awk -F': ' '/^model name/ { print $2; exit }' /proc/cpuinfo) ($(nproc) cores)"
+   echo "Memory:  $(awk '/^MemTotal:/ { printf "%d MiB", $2/1024 }' /proc/meminfo)"
+   echo
+   echo "Disks"
+   echo "-----"
+   for i in $disks; do
+      lsblk -dno "NAME,SIZE,MODEL" "/dev/$i"
+   done
+   echo
+   echo "PCI devices with no driver"
+   echo "--------------------------"
+   lspci -nnk | awk '/^[0-9a-f]{2}:/ { if (dev != "" && !drv) print dev; dev=$0; drv=0 }
+                     /Kernel driver in use/ { drv=1 }
+                     END { if (dev != "" && !drv) print dev }'
+   echo
+   echo "Verification results"
+   echo "--------------------"
+} > "$REPORT/summary.log"
 
 #storage device benchmarking
 mkdir "$REPORT/storage-performance/"
-for i in $(lsblk -anlb -o "TYPE,NAME,SIZE" | grep "^disk" | awk '$3 { print $2;}' | grep -v "^ram.*"); do
+for i in $disks; do
    echo  "Verifying disk /dev/$i"
    #if dd if="/dev/$i" of=/dev/null bs=512 count=34 >/dev/null 2>&1; then
    # echo "Read from device $i succeeded" >> "$REPORT/storage-check.log"
@@ -63,7 +103,7 @@ done
 # If they are needed, add qemu to the Dockerfile, as well as downloading the .img, but think long
 # and hard if the size is needed. Look for alternatives. You can find the actual script code for the test from older commits.
 
-tpm2_pcrread >> "$REPORT/summary.log"
+tpm2_pcrread > "$REPORT/hardware-inventory/tpm-pcrs.log" 2>&1
 
 cp "/root/etc/eve-release" "$REPORT"
 
