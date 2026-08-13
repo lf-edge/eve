@@ -11,7 +11,7 @@ require (
 	github.com/docker/cli v29.6.2+incompatible
 	github.com/google/go-containerregistry v0.21.9
 	github.com/google/uuid v1.6.0
-	github.com/lf-edge/eve-api/go v0.0.0-20260622100545-186e61c68f39
+	github.com/lf-edge/eve-api/go v0.0.0-20260812180240-99d02ddcfcb0
 	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260421125048-8d3825045e4e
 	github.com/luthermonson/go-proxmox v0.8.0
 	github.com/moby/moby/api v1.55.0
