@@ -610,28 +610,86 @@ func sendSIGHUPToK3s() {
 // Kubeconfig sync
 // ---------------------------------------------------------------------------
 
+// lastKubeclientSrc is the content of state.K3sKubeconfig that the
+// current kubeclient.Default() was built from, and kubeclientCancel
+// stops that client's informer goroutines. Both are nil until
+// rebuildKubeclientIfChanged first runs.
+var (
+	kubeclientMu      sync.Mutex
+	lastKubeclientSrc []byte
+	kubeclientCancel  context.CancelFunc
+)
+
 // SyncKubeconfig mirrors state.K3sKubeconfig into k3s.KubeconfigCopy
-// when the source has changed. Other components (registration,
-// debug-user) consume the copy from /run instead of reaching into
-// /etc/rancher.
-func SyncKubeconfig() {
+// when the source has changed, and rebuilds kubeclient.Default() when
+// its content no longer matches what the running client was built
+// from. Other components (registration, debug-user) consume the /run
+// copy instead of reaching into /etc/rancher; kube-init's own
+// subsystems consume kubeclient.Default() directly.
+//
+// A node joining a multi-node cluster can have its local k3s server
+// regenerate its TLS material after initKubeclient already cached a
+// client-go client against the old material. Left unhandled, every
+// subsequent API call from kubeclient.Default() fails permanently
+// with "certificate signed by unknown authority" -- which blocks node-
+// label initialization and, transitively, the tie-breaker phase, since
+// nothing else ever rebuilds that client.
+func SyncKubeconfig(ctx context.Context) {
 	srcData, err := os.ReadFile(state.K3sKubeconfig)
 	if err != nil {
 		return
 	}
-	if dstData, _ := os.ReadFile(k3s.KubeconfigCopy); string(dstData) == string(srcData) {
+
+	if dstData, _ := os.ReadFile(k3s.KubeconfigCopy); string(dstData) != string(srcData) {
+		if err := os.MkdirAll(filepath.Dir(k3s.KubeconfigCopy), 0755); err != nil {
+			log.Printf("warning: mkdir for kubeconfig sync: %v", err)
+		} else if err := os.WriteFile(k3s.KubeconfigCopy, srcData, 0600); err != nil {
+			log.Printf("warning: kubeconfig sync failed: %v", err)
+		} else {
+			log.Printf("synced kubeconfig %s → %s",
+				state.K3sKubeconfig, k3s.KubeconfigCopy)
+		}
+	}
+
+	rebuildKubeclientIfChanged(ctx, srcData)
+}
+
+// rebuildKubeclientIfChanged replaces kubeclient.Default() with a
+// client built from srcData when srcData differs from the content the
+// running default client was built from. Tracked separately from the
+// /run mirror above: a transient parse failure here must be retried on
+// the next tick regardless of whether the mirror write already
+// succeeded with that same content.
+func rebuildKubeclientIfChanged(ctx context.Context, srcData []byte) {
+	kubeclientMu.Lock()
+	unchanged := lastKubeclientSrc != nil && string(lastKubeclientSrc) == string(srcData)
+	kubeclientMu.Unlock()
+	if unchanged {
 		return
 	}
-	if err := os.MkdirAll(filepath.Dir(k3s.KubeconfigCopy), 0755); err != nil {
-		log.Printf("warning: mkdir for kubeconfig sync: %v", err)
+
+	kc, err := kubeclient.New(state.K3sKubeconfig)
+	if err != nil {
+		log.Printf("warning: rebuild kubeclient after kubeconfig change: %v", err)
 		return
 	}
-	if err := os.WriteFile(k3s.KubeconfigCopy, srcData, 0600); err != nil {
-		log.Printf("warning: kubeconfig sync failed: %v", err)
-		return
+	kcCtx, cancel := context.WithCancel(ctx)
+	kc.Start(kcCtx.Done())
+	kubeclient.SetDefault(kc)
+	log.Printf("kubeclient: rebuilt from %s after kubeconfig change", state.K3sKubeconfig)
+
+	kubeclientMu.Lock()
+	lastKubeclientSrc = srcData
+	prevCancel := kubeclientCancel
+	kubeclientCancel = cancel
+	kubeclientMu.Unlock()
+	if prevCancel != nil {
+		// Stop the informer goroutines of the client this one replaces.
+		// The very first rebuild has no predecessor to stop here, since
+		// initKubeclient's own client is tracked only by
+		// kubeclient.Default(), not by this cancel chain.
+		prevCancel()
 	}
-	log.Printf("synced kubeconfig %s → %s",
-		state.K3sKubeconfig, k3s.KubeconfigCopy)
 }
 
 // ---------------------------------------------------------------------------
@@ -702,7 +760,7 @@ func (m *Monitor) kubeconfigSyncLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			SyncKubeconfig()
+			SyncKubeconfig(ctx)
 		}
 	}
 }
