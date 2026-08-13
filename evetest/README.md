@@ -399,7 +399,11 @@ Use the CLI to inspect state, then run `evetest continue` to resume.
 - **Reuse existing package-level helpers** before writing new ones. Each test package
   has shared helpers for common patterns — for example the networking package has
   `getDevicePort`, `getCurrentDPC`, `appHasError`, `niHasError`. Check the other
-  `_test.go` files in the package before duplicating logic.
+  `_test.go` files in the package before duplicating logic. When a package
+  accumulates enough shared helpers to need files of their own, name each file for
+  the state it observes — not for the test that first needed it — and record the
+  layout in the package comment in that package's `testsuite_test.go`; see
+  `tests/apps/` for a worked example. Check that comment before adding a helper.
 
 - **Do not mutate shared global state.** If a test needs to modify a package-level
   variable (e.g. a network model defined in `evetest/netmodels/`), operate on a deep
