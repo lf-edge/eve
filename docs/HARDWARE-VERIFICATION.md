@@ -1,104 +1,144 @@
-# Verifying EVE on edge nodes
+# Verifying EVE-OS on edge nodes
 
-EVE verification aims to test whether a new hardware model can
-operate correctly with EVE-OS. Therefore, we use verification once for
-each hardware and EVE-OS version. It is the normal version of EVE-OS
-installer that installs EVE-OS on the underlying edge node and verifies its
-compatibility. It checks if the necessary drivers are present, tests static
-and dynamic networking configurations, tests the available storage devices, and
-tests if EVE-OS can spawn a guest successfully. Verification is currently
-supported on x86 edge nodes.
+Verification checks whether a new hardware model can operate correctly with
+EVE-OS, and is normally run once per hardware model and EVE-OS version.
 
-## Running the verification image from boot media
+It is a stage of the EVE-OS installer that runs after EVE-OS has been written to
+the target disk: it records a hardware inventory, checks which drivers claimed
+which devices, tests dynamic (DHCP) and static network configuration on every
+Ethernet port, measures the read performance of every disk with
+[fio](https://github.com/axboe/fio), and — when the node has a TPM — runs a set
+of TPM checks.
 
-To produce the verification.raw image, we can execute the command
-```docker run --rm lfedge/eve:<tag> installer_raw > installer.raw```.
+## Running verification
 
-In cases such as using HPE iLO or Dell DRAC, your BIOS cannot boot
-from a disk-based image, so we need an ISO image. The only difference is in
-step #1 that then becomes
-```docker run --rm lfedge/eve:<tag> installer_iso > verification.iso```.
-For example:
+Produce an installer image and boot the node from it, as described in
+[deployment](DEPLOYMENT.md); the checks then run on their own at the end of the
+installation:
 
 ```console
-docker run --rm lfedge/eve:latest installer_raw > installer.raw
-docker run --rm lfedge/eve:10.4.0-kvm installer_raw > installer.raw
-docker run --rm lfedge/eve:10.4.0-kvm installer_iso > installer.iso
+docker run --rm lfedge/eve:<tag> installer_raw > installer.raw
 ```
 
-## Running the verification via iPXE
-
-[iPXE](https://en.wikipedia.org/wiki/IPXE) is a modern Preboot eXecution
-Environment and a boot loader that allows operating system images to be
-downloaded right at the moment of booting (checkout [deployment](DEPLOYMENT.md)).
-To get the necessary images required by iPXE, we can execute the command
-```docker run --rm lfedge/eve:<tag> installer_net | tar xf -```.
-Apart from the image, iPXE expects a configuration file at certain URLs
-to proceed with the boot process. Here is an example of an iPXE
-configuration file used to run an EVE-OS verification image locally in a
-hardware lab. Note the changes made to both ```url``` and ```eve_args```
-variables.
+`<tag>` is a published EVE-OS version such as `17.0.0-lts`. The version marked
+as the latest release on GitHub, which skips pre-releases, is reported by
 
 ```console
-#!ipxe
-# set url https://github.com/lf-edge/eve/releases/download/snapshot/amd64.
-set url https://10.0.0.2/eve/releases/download/snapshot/amd64.
-set console console=ttyS0 console=ttyS1 console=ttyS2 console=ttyAMA0 console=ttyAMA1 console=tty0
-set eve_args eve_soft_serial=${mac:hexhyp} eve_install_server=zedcontrol.hummingbird.zededa.net eve_reboot_after_install getty
-set installer_args root=/initrd.image find_boot=netboot overlaytmpfs fastboot
-
-# a few vendor tweaks (mostly an example, although they DO work on Equinix Metal servers)
-iseq ${smbios/manufacturer} Huawei && set console console=ttyAMA0,115200n8 ||
-iseq ${smbios/manufacturer} Huawei && set platform_tweaks pcie_aspm=off pci=pcie_bus_perf ||
-iseq ${smbios/manufacturer} Supermicro && set console console=ttyS1,115200n8 ||
-iseq ${smbios/manufacturer} QEMU && set console console=hvc0 console=ttyS0 ||
-
-iseq ${buildarch} x86_64 && chain ${url}EFI/BOOT/BOOTX64.EFI
-iseq ${buildarch} aarch64 && chain ${url}EFI/BOOT/BOOTAA64.EFI
-iseq ${buildarch} riscv64 && chain ${url}EFI/BOOT/BOOTRISCV64.EFI
-
-boot
+gh api repos/lf-edge/eve/releases/latest --jq .tag_name
 ```
 
-The above is the actual [`ipxe.cfg`](../pkg/eve/installer/ipxe.efi.cfg) distributed with EVE releases.
+Some BIOSes cannot boot from a disk-based image at all — remote consoles such as
+HPE iLO and Dell DRAC typically expose virtual media as an optical drive — and
+those need an ISO instead, which is also what iPXE serves when a node is
+netbooted:
 
-## Building installer from source
+```console
+docker run --rm lfedge/eve:<tag> installer_iso > installer.iso
+```
 
-Simply build the EVE-OS installer image, see [deployment](DEPLOYMENT.md).
+The checks are the same either way, but only the raw installer can save their
+results; from an ISO they have to be read off the installed node, as described
+below. Prefer the raw installer wherever a node can boot from a USB stick or an
+SD card.
 
-## Logs of the verification process
+To skip the checks, select `disable post-install verification` in the installer's
+GRUB menu, which adds `eve_disable_verify` to the kernel command line.
 
-The verification stage of the installation uses multiple utilities to gather the logs during the
-verification process. Among them, we find: cpuinfo, meminfo, dmesg, smartctl,
-lsblk, lspci, lsusb, scsi, the hardware model as described in
-[HARDWARE-MODEL](./HARDWARE-MODEL.md), etc. Additionally, it stores the results
-of testing a static and a dynamic (i.e., using DHCP) network configuration and
-the read performance of the available storage devices using
-[fio](https://github.com/axboe/fio).
+Only the virtualization-capability check is limited to x86; the rest runs on
+every architecture the installer supports.
 
-## Getting the results of the verification process
+## Where the results are stored
 
-The verification stage prints the results of tests on the screen and stores
-them when possible (e.g., when we are using a USB or a raw file) in the
-**inventory partition** of the boot media. We can extract the logs of the
-verification process results by running the command
-```tools/extract-verification-info.sh <USB_device_name|verification_img>```
-on the `verification.raw` image file or on the USB stick. To achieve that, we must
-mount the USB stick or copy the image file to our PC and execute the script. The
-script copies, among other things, the logs of the tests, details about the
-hardware, etc. A file named ```summary.log``` contains a summary of the
-verification process results to help the user quickly understand potential
-problems.
+The results are always printed on the console as the installer runs. Whether
+they are also saved depends on the boot media:
 
-## Publishing the results of the verification processes
+* `installer_raw`, written to a USB stick or an SD card or kept as a raw image
+  file, carries a writable 40 MiB vfat **inventory partition** — partition 5,
+  labeled `INVENTORY`. The report is stored there in a directory named after the
+  node's soft serial number, so one stick accumulates one directory per node it
+  has installed. Use the extraction script below to read it.
 
-Apart from extracting the logs of the verification process, we can upload
-the results of verification in a dedicated web application.
-For this, we need to plug the USB stick or copy the file containing the verification
-on our PC and execute the script `tools/publish-verification-info.sh`.
-Assuming the web application is running on `www.example.com:8999`, we can publish
-the results by running the script as follows:
-```./publish-verification-info.sh /dev/disk4 https://www.example.com:8999```
-or ```./publish-verification-info.sh verification.raw https://www.example.com:8999```.
-That way, we can access the logs of different verification processes in a centralized
-and user-friendly manner.
+* `installer_iso` and `installer_net` have no inventory partition, because the
+  ISO is a read-only squashfs image. The report is instead written to
+  `/persist/installer` on the node that was just installed, and has to be
+  retrieved from the node itself.
+
+## What is collected
+
+| File | Contents |
+|---|---|
+| `summary.log` | Hardware summary and the pass/fail lines of the tests, see below |
+| `hardware-inventory/` | `hwinfo`, `lspci`, `lsusb`, `lsblk`, `dmesg`, `smartctl` per disk, `cpuinfo`, `meminfo` and the TPM PCR values |
+| `hardwaremodel.txt` | `dmidecode` output |
+| `controller-model*.json` | The hardware model to hand to the controller, as described in [HARDWARE-MODEL](./HARDWARE-MODEL.md) |
+| `networking-checks/dhcp-<nic>.log`, `networking-checks/static-<nic>.log` | Connectivity test result per port and per addressing mode |
+| `storage-performance/<disk>.log` | `fio` random-read benchmark per disk |
+| `iommu_groups.out` | IOMMU groups, which determine what can be assigned to a guest |
+| `watchdogs.log` | Available hardware watchdogs |
+| `vmcap.log` | Virtualization capabilities of the CPU (x86 only) |
+| `tpmchecks.log` | TPM test results, only when a TPM is present |
+| `clock` | `hwclock` and `date` output, to spot an RTC that is not in UTC |
+| `eve-release` | The EVE-OS version that ran the verification |
+| `installer.log` | The full installer log |
+| `device.cert.pem` | The device certificate, when one was created |
+
+## The summary
+
+`summary.log` is the one file to read first when deciding whether a hardware
+model is usable. It opens with an identification and inventory block, calls out
+every PCI device that no driver claimed — the most common reason a hardware
+model does not work — and ends with the results of the individual tests: one
+line per port for DHCP and for static addressing, and a marker if the TPM checks
+failed. The detailed logs behind it are in `hardware-inventory/`.
+
+```console
+Hardware summary
+================
+
+System:  QEMU Standard PC (Q35 + ICH9, 2009)
+Serial:  EVE-VERIFY-DEMO-001
+Arch:    x86_64
+Kernel:  6.12.96-linuxkit-core-bfc617435842
+CPU:     13th Gen Intel(R) Core(TM) i5-1340P (4 cores)
+Memory:  3771 MiB
+
+Disks
+-----
+sda   32G QEMU HARDDISK
+sdb    8G QEMU HARDDISK
+
+PCI devices with no driver
+--------------------------
+00:00.0 Host bridge [0600]: Intel Corporation 82G33/G31/P35/P31 Express DRAM Controller [8086:29c0]
+00:01.0 VGA compatible controller [0300]: Device [1234:1111] (rev 02)
+
+Verification results
+--------------------
+eth0 with dhcp is working properly
+eth0 with static configuration is working properly
+```
+
+A node that passes reports nothing further; a failure adds a line naming what
+failed. The example above is from a QEMU guest, so the two devices with no
+driver are emulated chipset functions that need none — on real hardware this is
+the list to check against what the node is expected to provide.
+
+## Extracting the results from the installer media
+
+Plug the USB stick into your PC, or keep the raw image file, and run
+
+```console
+sudo ./tools/extract-verification-info.sh <USB_device_name|installer_img>
+```
+
+for example:
+
+```console
+sudo ./tools/extract-verification-info.sh /dev/disk4
+sudo ./tools/extract-verification-info.sh installer.raw
+```
+
+The script mounts the inventory partition, copies every per-node directory it
+finds into the current working directory, and prints `summary.log`. It needs
+root because it mounts a partition. When given an image file rather than a block
+device, the file name has to end in `.raw`.
