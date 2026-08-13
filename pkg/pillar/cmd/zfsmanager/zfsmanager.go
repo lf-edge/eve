@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -56,7 +55,6 @@ type zfsContext struct {
 	subVolumeStatus        pubsub.Subscription
 	disksProcessingTrigger chan interface{}
 	zVolDeviceEvents       *base.LockedStringMap // stores device->zVolDeviceEvent mapping to check and publish
-	zfsIterLock            sync.Mutex
 	globalConfig           *types.ConfigItemValueMap
 	GCInitialized          bool
 }
