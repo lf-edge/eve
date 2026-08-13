@@ -278,6 +278,6 @@ You need to consult EVE-OS's Makefile for the right invocation of these tools.
 
 EVE-OS is known to run on Google's GCP as a Virtual Machine. You need to consult EVE-OS's Makefile for the right invocation of these tools.
 
-## Deploying verification image of EVE-OS
+## Verifying a hardware model
 
-Similar to the deployments methods of EVE-OS, we can deploy the verification image of EVE-OS as described in [HARDWARE-VERIFICATION](./HARDWARE-VERIFICATION.md).
+Every installation ends with a verification stage that records a hardware inventory and tests networking and storage. See [HARDWARE-VERIFICATION](./HARDWARE-VERIFICATION.md) for what it collects and how to retrieve the results.

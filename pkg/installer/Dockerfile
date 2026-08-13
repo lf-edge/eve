@@ -89,7 +89,7 @@ COPY --from=rust /usr/local/my-installer/sbom.spdx.json /out/sbin/sbom.spdx.json
 FROM scratch
 COPY --from=build /out/ /
 COPY --from=debug /usr/bin/spec.sh /
-COPY install parse-installer-conf.sh verify verifytpm.sh /
+COPY install parse-installer-conf.sh verify /
 ENV RUST_BACKTRACE full
 
 WORKDIR /
