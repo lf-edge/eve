@@ -381,6 +381,7 @@ func runAppVolumeShrinkCorruption(test *testing.T,
 	appAuth := evetest.UsernamePasswordAuth{Username: appSSHUser, Password: appSSHPassword}
 	assertAppSSH(t, device, appUUID, appAuth)
 	captureAppNet(device, "pre-conversion EVE-kvm (SSH OK)")
+	captureLostFound(device, "pre-conversion")
 
 	// Fill the volume on EVE-kvm, where the runx shim has formatted and mounted it
 	// at MountDir. The writer stops at Ops or when the volume fills, whichever comes
@@ -431,6 +432,7 @@ func runAppVolumeShrinkCorruption(test *testing.T,
 	conversionOK = true
 	device.ExpectAdditionalReboots(1)
 	captureResizeEvidence(device)
+	captureLostFound(device, "post-conversion")
 	evetest.Checkpoint("conversion-complete")
 
 	assertGrownShrink(t, device)
@@ -1354,6 +1356,39 @@ func captureResizeEvidence(device *evetest.EdgeDevice) {
 		out, errOut, err := device.RunShellScript(p.script, 60*time.Second, 0)
 		log.Errorf("[resize:%s]\n%s%s(err=%v)", p.what, strings.TrimSpace(out), errOut, err)
 	}
+}
+
+const lostFoundScript = `set -u
+# du before ls: on a repair that reconnected a large subtree the listing is long, and
+# the total is the number worth having even if the listing is truncated.
+echo "--- total"
+du -sh /persist/lost+found 2>/dev/null || echo NONE
+echo "--- per-entry (largest first)"
+du -sh /persist/lost+found/* 2>/dev/null | sort -rh | head -20 || true
+# -i because the console names what e2fsck reconnected only by inode number, and
+# nothing on the device resolves those afterwards.
+echo "--- ls -li"
+ls -li /persist/lost+found 2>/dev/null | head -40 || true
+`
+
+// captureLostFound records what an e2fsck repair moved into /persist/lost+found —
+// inode numbers, sizes, modes and the space held.
+//
+// Each interrupted shrink reboots the device and storage-init fscks /persist again, so
+// a structural repair there is a candidate cause of damage to the volume under test.
+// The serial console reports such a repair only as inode numbers, and by the time the
+// console is read the device is gone, so this is the one reading that ties those
+// numbers to a size and a mode. Nothing reclaims the space either, which is why the
+// total is worth a line of its own. Taken before and after the conversion so residue
+// can be attributed to it. Best-effort; never fails the test.
+func captureLostFound(device *evetest.EdgeDevice, when string) {
+	log := evetest.Logger()
+	out, err := runOnEVEScript(device, lostFoundScript, 90*time.Second)
+	if err != nil {
+		log.Infof("[lost+found:%s] capture failed: %v\n%s", when, err, strings.TrimSpace(out))
+		return
+	}
+	log.Infof("[lost+found:%s]\n%s", when, strings.TrimSpace(out))
 }
 
 // captureVolManifest reports whether the post-resize volume-manifest check ran and
