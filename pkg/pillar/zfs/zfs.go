@@ -1049,7 +1049,7 @@ func GetVDevAuxMsgStr(state types.VDevAux) string {
 
 // GetAllZFSVolumeInfo returns an ImgInfo for each ZFS dataset
 func GetAllZFSVolumeInfo() ([]types.ImgInfo, error) {
-	list, err := libzfs.DatasetOpenAll()
+	list, err := DatasetOpenAll()
 	if err != nil {
 		return nil, err
 	}
