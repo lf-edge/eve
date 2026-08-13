@@ -189,9 +189,11 @@ func addNetwork(i int, devConfig *evetest.EdgeDeviceConfig, dhcpNet uuid.UUID) e
 // SSH port forwarding, allow-all ACLs).
 //
 // Phases:
-//  1. Deploy the app with one NIC; wait until its IP address is reported in
-//     both the app info and the NI status, verify it is reachable over SSH
-//     and write a file to the app disk (purge canary).
+//  1. Deploy the app with one NIC; check that the device advertises the API
+//     capability for changing app network interfaces without a purge, wait
+//     until the app's IP address is reported in both the app info and the NI
+//     status, verify it is reachable over SSH and write a file to the app
+//     disk (purge canary).
 //  2. Add a second Local NI with a second app NIC (the restart counter is
 //     bumped by UpdateApplication); the guest must see both NICs, both NICs
 //     must be reported with an IP address and the canary must survive.
@@ -228,6 +230,8 @@ func TestNICCountChange(test *testing.T) {
 
 	tc.deployAppWithOneNIC()
 	evetest.Checkpoint("ni-with-app-created")
+	tc.verifyReportedAPICapability()
+	evetest.Checkpoint("api capability reported")
 	tc.recordBaseline()
 
 	tc.addSecondNIC()
@@ -276,6 +280,8 @@ type nicCountChangeTest struct {
 	stopAppWatch func()
 	niUpdates    <-chan *eveinfo.ZInfoNetworkInstance
 	stopNIWatch  func()
+	devUpdates   <-chan *eveinfo.ZInfoDevice
+	stopDevWatch func()
 }
 
 // newNICCountChangeTest builds the base device configuration (network and
@@ -375,9 +381,28 @@ func (tc *nicCountChangeTest) deployAppWithOneNIC() {
 
 	tc.niUpdates, tc.stopNIWatch = tc.device.WatchNetworkInstanceInfo(tc.ni1UUID)
 	tc.appUpdates, tc.stopAppWatch = tc.device.WatchAppInfo(tc.appUUID)
+	tc.devUpdates, tc.stopDevWatch = tc.device.WatchDeviceInfo()
 	tc.device.ApplyConfig(tc.devConfig, true, true)
 
 	tc.device.WaitUntilAppIsRunning(tc.appUUID, tc.timeout)
+}
+
+// verifyReportedAPICapability (phase 1) checks that the device tells the
+// controller it is able to change an application's network interfaces without
+// a purge -- the capability that makes the rest of this scenario something a
+// controller may ask for in the first place.
+func (tc *nicCountChangeTest) verifyReportedAPICapability() {
+	defer tc.stopDevWatch()
+	const minCapability = eveinfo.APICapability_API_CAPABILITY_APP_INSTANCE_NET_INTERFACE_CHANGE
+
+	if tc.device.GetDeviceInfo().GetApiCapability() >= minCapability {
+		return
+	}
+	tc.t.Eventually(tc.devUpdates, tc.timeout).Should(Receive(matchers.SatisfyPredicate(
+		fmt.Sprintf("Device reports API capability %s or higher", minCapability),
+		func(info *eveinfo.ZInfoDevice) bool {
+			return info.GetApiCapability() >= minCapability
+		})))
 }
 
 // recordBaseline (phase 1) waits until the app's IP address is reported in
