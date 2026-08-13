@@ -293,8 +293,11 @@ func createOrUpdateDiskMetrics(ctx *volumemgrContext, wdName string) {
 		}
 	}
 
-	// If we have ZFS dataset, report their info from the ZFS perspective
+	// If we have ZFS dataset, report their info from the ZFS perspective.
+	// The enumeration waits for any other agent already inside libzfs, so
+	// report liveness before entering it rather than only after publishing.
 	if handler := volumehandlers.GetZFSVolumeHandler(log, ctx); handler != nil {
+		ctx.ps.StillRunning(wdName, warningTime, errorTime)
 		items, err := handler.GetAllDataSets()
 		if err != nil {
 			log.Error(err)
