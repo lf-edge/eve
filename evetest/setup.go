@@ -1046,6 +1046,19 @@ func (th *TestHarness) isDeviceOnboarded(devName string) bool {
 	return found && devState.ID != uuid.Nil
 }
 
+// deviceUUID returns the UUID assigned to the device during onboarding.
+// The second return value is false if the device is unknown or is not
+// onboarded yet, in which case it has no UUID to report.
+func (th *TestHarness) deviceUUID(devName string) (uuid.UUID, bool) {
+	th.devicesM.Lock()
+	defer th.devicesM.Unlock()
+	devState, found := th.devices[devName]
+	if !found || devState.ID == uuid.Nil {
+		return uuid.Nil, false
+	}
+	return devState.ID, true
+}
+
 // Wait for the device to publish its ECDH certificate to the controller.
 func (th *TestHarness) waitForDeviceECDHCert(
 	devName string, devUUID uuid.UUID) (*x509.Certificate, error) {

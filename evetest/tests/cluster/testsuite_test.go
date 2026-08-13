@@ -18,11 +18,10 @@ import (
 // purge runs before the fault-injecting VMIRS test, so a failure in the
 // ordinary app lifecycle is not masked by chaos.
 //
-// TestClusterToSingleConversion runs last and shares the three-device,
-// SeparateClusterPort requirements of TestThreeNodesCluster so the VMs
-// are reused. It is ordered after it deliberately: it converts a node
-// out of the cluster, which is a destructive change to the topology the
-// preceding test relies on.
+// Every cluster subtest re-creates its devices, because
+// clusterDeviceRequirements sets CreateFromScratchWithLiveImage, which
+// maybeReuseDevices always rejects. No subtest inherits cluster state from
+// the one before it.
 //
 // Test parameters
 // ---------------
@@ -49,6 +48,9 @@ func TestNodeClusterSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestThreeNodesCluster,
+		},
+		evetest.TestCase{
+			Test: TestTieBreakerCluster,
 		},
 		evetest.TestCase{
 			Test: TestClusterToSingleConversion,
