@@ -89,6 +89,9 @@ COPY --from=rust /usr/local/my-installer/sbom.spdx.json /out/sbin/sbom.spdx.json
 FROM scratch
 COPY --from=build /out/ /
 COPY --from=debug /usr/bin/spec.sh /
+# verifytpm.sh drives every one of its checks through this binary, at the path
+# it has on a running node.
+COPY --from=debug /usr/bin/recovertpm /opt/debug/usr/bin/recovertpm
 COPY install parse-installer-conf.sh verify verifytpm.sh /
 ENV RUST_BACKTRACE full
 
