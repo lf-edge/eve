@@ -6,7 +6,6 @@ package zfsmanager
 import (
 	"time"
 
-	libzfs "github.com/andrewd-zededa/go-libzfs"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 	"github.com/lf-edge/eve/pkg/pillar/zfs"
@@ -33,9 +32,7 @@ func storageMetricsPublisher(ctxPtr *zfsContext) {
 
 func collectAndPublishStorageMetrics(ctxPtr *zfsContext) {
 	log.Functionf("collectAndPublishStorageMetrics start")
-	ctxPtr.zfsIterLock.Lock()
-	defer ctxPtr.zfsIterLock.Unlock()
-	zpoolList, err := libzfs.PoolOpenAll()
+	zpoolList, err := zfs.PoolOpenAll()
 	if err != nil {
 		log.Errorf("get zpool list for collect metrics failed %v", err)
 	} else {
