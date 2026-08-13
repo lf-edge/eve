@@ -3,9 +3,9 @@
 img=$1
 
 if [ "$img" == "" ] || [ "$EUID" -ne 0 ]; then
-  echo "Usage sudo ./extract-verification-info.sh <USB_device_name|verification_img>"
+  echo "Usage sudo ./extract-verification-info.sh <USB_device_name|installer_img>"
   echo "E.g., sudo ./extract-verification-info.sh /dev/disk4"
-  echo "Or, sudo ./extract-verification-info.sh dist/amd64/current/verification.raw"
+  echo "Or, sudo ./extract-verification-info.sh dist/amd64/current/installer.raw"
   exit
 fi
 
