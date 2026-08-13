@@ -61,13 +61,20 @@ for i in $disks; do
 done
 
 #networking benchmarking
-dhcpcd
 nics=$(ifconfig -a | grep eth | awk '{print $1}')
 mkdir "$REPORT/networking-checks/"
 
+# dhcpcd reports "no interfaces have a carrier" and gives up if the links are
+# still down, and the check below needs an address rather than a request in
+# flight, so bring every port up first and then wait for a lease.
 for nic in $nics
 do
    ifconfig "$nic" up
+done
+dhcpcd --waitip=4 -t 30
+
+for nic in $nics
+do
    #check dhcp
    if curl "www.google.com" > /dev/null 2>&1; then
       echo "Network connectivity successful" > "$REPORT/networking-checks/dhcp-$nic.log";
