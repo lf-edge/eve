@@ -830,6 +830,21 @@ func (d *EdgeDevice) RequestReboot(waitUntilRebooted bool) {
 	})
 }
 
+// PrepareShutdown signals a graceful shutdown via EdgeDevConfig.Shutdown:
+// pillar deactivates every app instance on the device in response. Unlike
+// Reboot/PowerOff, this has no power effect of its own -- the device stays
+// up, which is why callers pair it with a separate power-off step.
+func (d *EdgeDevice) PrepareShutdown() {
+	config := d.getConfig(true)
+	shutdown := config.GetShutdown()
+	if shutdown == nil {
+		config.Shutdown = &eveconfig.DeviceOpsCmd{Counter: 1, DesiredState: true}
+	} else {
+		config.Shutdown = &eveconfig.DeviceOpsCmd{Counter: shutdown.GetCounter() + 1, DesiredState: true}
+	}
+	d.ApplyConfig(config, false, false)
+}
+
 // SoftReboot reboots the device from the console/SSH.
 func (d *EdgeDevice) SoftReboot(waitUntilRebooted bool) {
 	d.th.incExpectedRebootCount(d.devName)

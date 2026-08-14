@@ -4,16 +4,24 @@
 package evetest
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	eveconfig "github.com/lf-edge/eve-api/go/config"
 )
+
+// fetchImageTimeout bounds downloading one image in FetchAndServeImageFile.
+// Generous: some pinned cloud images run into the hundreds of megabytes.
+const fetchImageTimeout = 5 * time.Minute
 
 // CreateBlankImageFile creates an empty disk image of the given format and
 // size, served by evetest's built-in image server (both over HTTP and
@@ -76,6 +84,39 @@ func AddImageServerFile(name string, content []byte) string {
 		th.t.Fatalf("failed to write image server file %s: %v", name, err)
 	}
 	return name
+}
+
+// FetchAndServeImageFile downloads url over the evetest container's own
+// network and re-serves it from evetest's built-in image server, so a
+// device with no outbound Internet reachability can still download it as a
+// normal HTTP datastore -- just a local one instead of the remote url.
+// Returns name, for use as HTTPStorage.ImageRelativePath.
+func FetchAndServeImageFile(url, name, sha256Hex string) string {
+	th := getTestHarness()
+	ctx, cancel := context.WithTimeout(th.ctx, fetchImageTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		th.t.Fatalf("FetchAndServeImageFile: build request for %s: %v", url, err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		th.t.Fatalf("FetchAndServeImageFile: GET %s: %v", url, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		th.t.Fatalf("FetchAndServeImageFile: GET %s: unexpected status %s", url, resp.Status)
+	}
+	content, err := io.ReadAll(resp.Body)
+	if err != nil {
+		th.t.Fatalf("FetchAndServeImageFile: read body from %s: %v", url, err)
+	}
+	sum := sha256.Sum256(content)
+	if got := hex.EncodeToString(sum[:]); got != sha256Hex {
+		th.t.Fatalf("FetchAndServeImageFile: %s: SHA256 mismatch: got %s, want %s",
+			url, got, sha256Hex)
+	}
+	return AddImageServerFile(name, content)
 }
 
 // qemuImgFormat maps an eveconfig.Format to the "-f" format name accepted by
