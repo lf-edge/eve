@@ -42,6 +42,19 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 	}
 
 	if status.State < types.VERIFIED {
+		// EVE-k: before doing anything that costs a download, ask whether the
+		// artifact this content tree exists to produce is already present.
+		// If every volume this node owns that references this tree already has
+		// a complete, replicated PVC, the source image has no remaining
+		// consumer on this node -- accept the tree instead of fetching it.
+		// See contentTreeSatisfiedByPVCs for the (deliberately narrow)
+		// conditions, and revokeContentTreeAcceptance for how this is undone
+		// if a volume later turns out to need real content.
+		if contentTreeSatisfiedByPVCs(ctx, status) {
+			acceptContentTreeFromPVCs(ctx, status)
+			return true, true
+		}
+
 		if !status.AllDatastoresResolved {
 			log.Functionf("contentTreeStatus(%s) does not have a datastore type yet, deferring", status.ContentID)
 			return false, false
@@ -607,6 +620,50 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 		}
 	case zconfig.VolumeContentOriginType_VCOT_DOWNLOAD:
 		ctStatus := ctx.LookupContentTreeStatus(status.ContentID.String())
+
+		// EVE-k/Longhorn cluster-failover fast path: a volume whose
+		// ContentTree is missing, stuck (e.g. re-designated to a node
+		// that lost its local download, or fighting a slow/unreachable
+		// datastore), or accepted-without-download may already have a Bound,
+		// fully-populated Longhorn PVC for this exact generation, replicated
+		// cluster-wide. Don't make the app wait on re-establishing that
+		// source image in that case -- see tryAdoptExistingClusterPVC for the
+		// full rationale and the safety argument (generation matching,
+		// upload-complete check).
+		if !verifyOnly && status.State < types.CREATING_VOLUME &&
+			contentTreeNotLocallyUsable(ctStatus) {
+			switch tryAdoptExistingClusterPVC(ctx, status) {
+			case kubeapi.PVCStateReady:
+				if !clusterStorageReady(ctx) {
+					log.Noticef("doUpdateVol(%s): deferring adopted-volume create until cluster storage (longhorn/CDI) ready",
+						status.Key())
+					return changed, false
+				}
+				status.State = types.CREATING_VOLUME
+				changed = true
+				log.Noticef("doUpdateVol(%s): adopting existing cluster PVC, bypassing ContentTree wait", status.Key())
+				// Asynch preparation; ensure we have requested it
+				AddWorkPrepare(ctx, status)
+				return changed, false
+			case kubeapi.PVCStateAbsent:
+				if ctStatus != nil && ctStatus.State == types.REMOTELOADED {
+					// The tree was accepted on the strength of other
+					// volumes' PVCs, but Kubernetes confirms this volume's
+					// own PVC does not exist (e.g. a purge moved it to a
+					// new generation). Put the tree back on the download
+					// path so this volume can actually be built.
+					//
+					// PVCStateUnknown/PVCStateNotReady must never reach
+					// this branch: neither is evidence the PVC is gone,
+					// only that this check did not confirm it either way,
+					// and revoking on that would re-trigger the very
+					// download this fast path exists to avoid.
+					revokeContentTreeAcceptance(ctx, ctStatus)
+					return changed, false
+				}
+			}
+		}
+
 		if ctStatus == nil {
 			// Content tree not yet available
 			log.Errorf("doUpdateVol(%s) name %s: waiting for content tree status %v",
@@ -617,6 +674,21 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 			log.Functionf("doUpdate: Clearing volume error %s", status.Error)
 			status.ClearErrorWithSource()
 			changed = true
+		}
+		if ctStatus.State == types.REMOTELOADED {
+			// The content tree was accepted from existing cluster PVCs, so
+			// there is no local content to build from -- and none is needed:
+			// a volume that genuinely required content has already revoked the
+			// acceptance above, and one that did not has already been sent
+			// down the adoption path. Report the volume as LOADED (rather than
+			// copying REMOTELOADED down into it) so a VerifyOnly volume, and
+			// the app waiting on it, can proceed. Progress/size are not copied
+			// because an accepted tree downloaded nothing.
+			if status.State != types.LOADED && status.State < types.CREATING_VOLUME {
+				status.State = types.LOADED
+				changed = true
+			}
+			return changed, false
 		}
 		if status.Progress != ctStatus.Progress ||
 			status.TotalSize != ctStatus.TotalSize ||
