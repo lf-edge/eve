@@ -74,6 +74,20 @@ jobs:
           name: 'yetus-scan'
           path: ${{ github.workspace }}/out
 
+      - name: Publish Yetus vote table in the job summary
+        if: ${{ always() }}
+        run: |
+          console=${{ github.workspace }}/out/console.txt
+          if [ ! -s "${console}" ]; then
+            echo "No Yetus report to publish."
+            exit 0
+          fi
+          {
+            echo '```'
+            cat "${console}"
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
+
       - name: Annotate errors from Yetus
         if: ${{ always() }}
         run: |
