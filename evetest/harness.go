@@ -194,6 +194,10 @@ const (
 	// imgServerHTTPSPort is the default HTTPS port (443), matching the port
 	// HTTPStorage assumes when UseHTTPS is set and ServerPort is left unset.
 	imgServerHTTPSPort = 443
+	// imgServerTFTPPort is the standard TFTP port (69). Unlike the other
+	// image server ports, this one is not just a convention: TFTP clients
+	// (PXE ROMs, iPXE) always use port 69, it is not configurable via DHCP.
+	imgServerTFTPPort = 69
 
 	sdnTunName = "sdn-tun"
 	sdnTunMTU  = 1500
@@ -269,6 +273,12 @@ type TestHarness struct {
 	caCert *x509.Certificate
 	caKey  *rsa.PrivateKey
 
+	// Onboarding certificate shared by every CreateFromScratchWithNetworkBoot
+	// device in the current Setup() call (see prepareEVEDeviceForOnboarding).
+	// Reset at the start of each non-reused Setup() call.
+	netbootOnboardCert *x509.Certificate
+	netbootOnboardKey  *ecdsa.PrivateKey
+
 	// Broker
 	brokerInContainer    bool
 	brokerConn           *grpc.ClientConn
@@ -293,6 +303,10 @@ type TestHarness struct {
 	// server, over TLS with a certificate signed by the harness's own CA
 	// (see DsType_DsHttps / HTTPStorage.UseHTTPS, GetCACertPEM).
 	imgServerTLSListener net.Listener
+
+	// TFTP listener serving the same imgServerDir, for devices network-booting
+	// via iPXE/PXE (see DHCP.netboot_server_ip).
+	tftpServerConn net.PacketConn
 
 	// SDN
 	sdnConn   *grpc.ClientConn
@@ -738,6 +752,26 @@ func Init(t *testing.T) *T {
 	go th.runSFTPServer(th.sftpServerListener, th.imgServerDir)
 	th.log.Infof("SFTP server listening on sftp://%s/ (serving %s)", sftpListenAddr, th.imgServerDir)
 
+	// Start a TFTP server on the same image-server interface, serving the
+	// same directory, for devices network-booting via iPXE/PXE (see
+	// DHCP.netboot_server_ip). TFTP always uses port 69 -- unlike the
+	// other image-server ports, this is not a convention devices could be
+	// told to use otherwise, real PXE ROMs/iPXE hardcode it.
+	tftpListenAddr := net.JoinHostPort(imgServerIPv4.String(), strconv.Itoa(imgServerTFTPPort))
+	tftpUDPAddr, err := net.ResolveUDPAddr("udp", tftpListenAddr)
+	if err != nil {
+		th.t.Fatalf("failed to resolve TFTP server address %s: %v", tftpListenAddr, err)
+	}
+	th.tftpServerConn, err = net.ListenUDP("udp", tftpUDPAddr)
+	if err != nil {
+		th.t.Fatalf("failed to listen on TFTP server address %s: %v", tftpListenAddr, err)
+	}
+	tftpServer := th.newImgServerTFTPServer()
+	go func() {
+		_ = tftpServer.Serve(th.tftpServerConn)
+	}()
+	th.log.Infof("TFTP server listening on udp://%s/ (serving %s)", tftpListenAddr, th.imgServerDir)
+
 	// Create broker client.
 	brokerAddr := viper.GetString(constants.BrokerAddressEnv)
 	if brokerAddr == "" {
@@ -903,6 +937,13 @@ func Close() {
 	if th.sftpServerListener != nil {
 		if err := th.sftpServerListener.Close(); err != nil {
 			th.log.Warnf("Failed to close SFTP server listener: %v", err)
+		}
+	}
+
+	// Stop the TFTP server.
+	if th.tftpServerConn != nil {
+		if err := th.tftpServerConn.Close(); err != nil {
+			th.log.Warnf("Failed to close TFTP server connection: %v", err)
 		}
 	}
 
@@ -1098,12 +1139,27 @@ func Setup(requirements ...Requirement) {
 	}
 
 	// Setup EVE devices.
+	th.netbootOnboardCert = nil
+	th.netbootOnboardKey = nil
+	var netbootRefDev *deviceState
 	devices := make(map[string]*deviceState)
 	for devName, devReq := range edgeDevReqs {
 		devState := &deviceState{name: devName, requirement: devReq}
 		devices[devName] = devState
 		th.prepareEVEDeviceForOnboarding(devState)
 		th.prepareImageForEVEDevice(devState)
+		if devReq.DeviceReusePolicy == CreateFromScratchWithNetworkBoot {
+			// All netboot devices share one artifact bundle (see
+			// buildNetbootArtifacts' doc comment), so it only needs to be
+			// built once, for a representative device; every other netboot
+			// device must request the same EVE image/config.
+			if netbootRefDev == nil {
+				netbootRefDev = devState
+				th.buildNetbootArtifacts(devState)
+			} else {
+				th.verifyNetbootDeviceMatches(netbootRefDev, devState)
+			}
+		}
 	}
 	sdnUplinkIPs := th.setupEVEDevices(devices, netModel)
 	th.devicesM.Lock()

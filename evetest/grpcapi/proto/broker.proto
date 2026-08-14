@@ -157,6 +157,16 @@ message BuildImageRequest {
   // virtio-blk disk, in the given order, e.g. for device-side disk
   // layout/RAID testing (see EdgeDevConfig.disks).
   repeated uint64 extra_disk_bytes = 9;
+  // When set, the broker attaches no EVE image content to the main boot disk
+  // (disk_bytes) at all -- it is left blank, for a device that is expected
+  // to install EVE onto it by booting over the network (see
+  // DHCP.netboot_server_ip in sdn.proto) rather than from a locally attached
+  // installer/live image. `image` is still used -- to extract the UEFI
+  // firmware the device boots with -- but `live_image` and
+  // `live_image_source` are ignored: the local live-image transport
+  // delivers a pre-built bootable disk, the opposite of what this device
+  // needs.
+  bool network_boot = 10;
 }
 
 // LocalLiveImageSource points at the files behind a LiveImageRef on the

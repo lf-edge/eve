@@ -2249,12 +2249,16 @@ type DHCP struct {
 	// An alternative (and the only available for IPv6) approach is to use DNS
 	// (with a DNSServer endpoint).
 	Wpad string `protobuf:"bytes,9,opt,name=wpad,proto3" json:"wpad,omitempty"`
-	// Logical label of a NetbootServer endpoint which the client should use
-	// to boot EVE OS from. The IP address or FQDN and the provisioning file (iPXE script)
-	// location will be announced to the client using DHCP options 66 and 67 (59 in DHCPv6).
-	// Evetest-SDN will announce either IP address or FQDN depending on whether any of the assigned
-	// private DNS servers is able to resolve the NetbootServer domain name.
-	NetbootServer string `protobuf:"bytes,10,opt,name=netboot_server,json=netbootServer,proto3" json:"netboot_server,omitempty"`
+	// IP address of an external netboot (TFTP+HTTP) server which the client
+	// should use to boot EVE OS from -- typically evetest's own HTTP/TFTP image
+	// server, external to Evetest-SDN itself (it lives inside the evetest
+	// container, not inside the SDN VM). Must be a literal IP address: dnsmasq
+	// has no way to resolve an FQDN itself before putting an address into the
+	// DHCP response, so an FQDN is not supported here. Announced to the client
+	// using DHCP option 66 (59 in DHCPv6). The boot filenames are fixed,
+	// well-known constants (evetest always stages them at the netboot server's
+	// root).
+	NetbootServerIp string `protobuf:"bytes,10,opt,name=netboot_server_ip,json=netbootServerIp,proto3" json:"netboot_server_ip,omitempty"`
 	// DHCP lease duration in seconds. Zero means the DHCP server default (1 hour).
 	// The minimum effective value is 120 s (dnsmasq enforces a 2-minute floor).
 	// Set to a small value (e.g. 120) in tests that switch the SDN model mid-test
@@ -2368,9 +2372,9 @@ func (x *DHCP) GetWpad() string {
 	return ""
 }
 
-func (x *DHCP) GetNetbootServer() string {
+func (x *DHCP) GetNetbootServerIp() string {
 	if x != nil {
-		return x.NetbootServer
+		return x.NetbootServerIp
 	}
 	return ""
 }
@@ -2660,9 +2664,6 @@ type Endpoints struct {
 	// Transparent proxies intercept and proxy both HTTP and HTTPS traffic without
 	// requiring explicit client configuration.
 	TransparentProxies []*TransparentProxy `protobuf:"bytes,5,rep,name=transparent_proxies,json=transparentProxies,proto3" json:"transparent_proxies,omitempty"`
-	// HTTP/TFTP servers providing artifacts needed to boot EVE OS
-	// over a network (using netboot/PXE + iPXE).
-	NetbootServers []*NetbootServer `protobuf:"bytes,6,rep,name=netboot_servers,json=netbootServers,proto3" json:"netboot_servers,omitempty"`
 	// List of Simple Certificate Enrollment Protocol (SCEP) servers.
 	ScepServers   []*SCEPServer `protobuf:"bytes,7,rep,name=scep_servers,json=scepServers,proto3" json:"scep_servers,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -2730,13 +2731,6 @@ func (x *Endpoints) GetExplicitProxies() []*ExplicitProxy {
 func (x *Endpoints) GetTransparentProxies() []*TransparentProxy {
 	if x != nil {
 		return x.TransparentProxies
-	}
-	return nil
-}
-
-func (x *Endpoints) GetNetbootServers() []*NetbootServer {
-	if x != nil {
-		return x.NetbootServers
 	}
 	return nil
 }
@@ -3829,173 +3823,6 @@ func (x *TransparentProxy) GetProxy() *Proxy {
 	return nil
 }
 
-// NetbootServer provides HTTP and TFTP server endpoints, serving all artifacts
-// needed to boot EVE OS over a network (using iPXE, potentially also supporting
-// older PXE-only clients).
-//
-// Use in combination with DHCP (see DHCP.netboot_server).
-//
-// Note: In most cases, the TFTP server will serve an iPXE (UEFI) bootloader,
-// which once booted, will download and boot EVE artifacts over the HTTP endpoint.
-// This setup works with only minimal configuration magic in the DHCP server,
-// known as chainloading [1].
-//
-// If a client only understands PXE, DHCP will initially point it to the TFTP
-// endpoint. After booting iPXE, the client will be redirected via DHCP
-// to an iPXE script hosted on the HTTP endpoint.
-//
-// Example config for dnsmasq:
-//
-//	# Boot for iPXE. The idea is to send two different
-//	# filenames, the first loads iPXE, and the second tells iPXE what to load.
-//	# The dhcp-match sets the ipxe tag for requests from iPXE.
-//	#dhcp-boot=undionly.kpxe
-//	#dhcp-match=set:ipxe,175 # iPXE sends a 175 option.
-//	#dhcp-boot=tag:ipxe,http://boot.ipxe.org/demo/boot.php
-//
-// [1] https://ipxe.org/howto/chainloading
-type NetbootServer struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Endpoint configuration.
-	Endpoint *Endpoint `protobuf:"bytes,1,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
-	// Boot artifacts served by the TFTP server.
-	// If not specified, Evetest will automatically put iPXE bootloader
-	// as the entrypoint.
-	TftpArtifacts []*NetbootArtifact `protobuf:"bytes,2,rep,name=tftp_artifacts,json=tftpArtifacts,proto3" json:"tftp_artifacts,omitempty"`
-	// Boot artifacts served by the HTTP server.
-	// If not specified, Evetest will automatically put iPXE artifacts
-	// needed to boot EVE OS (as links to evetest HTTP datastore where these artifacts
-	// are uploaded).
-	HttpArtifacts []*NetbootArtifact `protobuf:"bytes,3,rep,name=http_artifacts,json=httpArtifacts,proto3" json:"http_artifacts,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *NetbootServer) Reset() {
-	*x = NetbootServer{}
-	mi := &file_sdn_proto_msgTypes[46]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *NetbootServer) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*NetbootServer) ProtoMessage() {}
-
-func (x *NetbootServer) ProtoReflect() protoreflect.Message {
-	mi := &file_sdn_proto_msgTypes[46]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use NetbootServer.ProtoReflect.Descriptor instead.
-func (*NetbootServer) Descriptor() ([]byte, []int) {
-	return file_sdn_proto_rawDescGZIP(), []int{46}
-}
-
-func (x *NetbootServer) GetEndpoint() *Endpoint {
-	if x != nil {
-		return x.Endpoint
-	}
-	return nil
-}
-
-func (x *NetbootServer) GetTftpArtifacts() []*NetbootArtifact {
-	if x != nil {
-		return x.TftpArtifacts
-	}
-	return nil
-}
-
-func (x *NetbootServer) GetHttpArtifacts() []*NetbootArtifact {
-	if x != nil {
-		return x.HttpArtifacts
-	}
-	return nil
-}
-
-// NetbootArtifact - one of the artifacts used to boot EVE OS over a network.
-type NetbootArtifact struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Name of the file.
-	// It will be served by the associated NetbootServer at the endpoint:
-	// (http|tftp)://<netboot-server-fqdn>/<filename>
-	Filename string `protobuf:"bytes,1,opt,name=filename,proto3" json:"filename,omitempty"`
-	// HTTP URL from where the artifact will be downloaded
-	// by the netboot server. It can for example point to the evetest HTTP datastore.
-	// Note that Netboot server will forward the artifact content, not redirect
-	// to this URL.
-	DownloadFromUrl string `protobuf:"bytes,2,opt,name=download_from_url,json=downloadFromUrl,proto3" json:"download_from_url,omitempty"`
-	// Is this the entrypoint for netboot (i.e. the artifact to boot from)?
-	// In case of iPXE, this would be enabled for the initial iPXE script.
-	// Exactly one NetbootArtifact should be marked as entrypoint inside
-	// both lists NetbootServer.tftp_artifacts and NetbootServer.http_artifacts.
-	// If enabled, this file is then announced to netboot clients using DHCP
-	// option 67 (59 in DHCPv6).
-	Entrypoint    bool `protobuf:"varint,3,opt,name=entrypoint,proto3" json:"entrypoint,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *NetbootArtifact) Reset() {
-	*x = NetbootArtifact{}
-	mi := &file_sdn_proto_msgTypes[47]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *NetbootArtifact) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*NetbootArtifact) ProtoMessage() {}
-
-func (x *NetbootArtifact) ProtoReflect() protoreflect.Message {
-	mi := &file_sdn_proto_msgTypes[47]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use NetbootArtifact.ProtoReflect.Descriptor instead.
-func (*NetbootArtifact) Descriptor() ([]byte, []int) {
-	return file_sdn_proto_rawDescGZIP(), []int{47}
-}
-
-func (x *NetbootArtifact) GetFilename() string {
-	if x != nil {
-		return x.Filename
-	}
-	return ""
-}
-
-func (x *NetbootArtifact) GetDownloadFromUrl() string {
-	if x != nil {
-		return x.DownloadFromUrl
-	}
-	return ""
-}
-
-func (x *NetbootArtifact) GetEntrypoint() bool {
-	if x != nil {
-		return x.Entrypoint
-	}
-	return false
-}
-
 // Simple Certificate Enrollment Protocol (SCEP) server.
 type SCEPServer struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -4018,7 +3845,7 @@ type SCEPServer struct {
 
 func (x *SCEPServer) Reset() {
 	*x = SCEPServer{}
-	mi := &file_sdn_proto_msgTypes[48]
+	mi := &file_sdn_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4030,7 +3857,7 @@ func (x *SCEPServer) String() string {
 func (*SCEPServer) ProtoMessage() {}
 
 func (x *SCEPServer) ProtoReflect() protoreflect.Message {
-	mi := &file_sdn_proto_msgTypes[48]
+	mi := &file_sdn_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4043,7 +3870,7 @@ func (x *SCEPServer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SCEPServer.ProtoReflect.Descriptor instead.
 func (*SCEPServer) Descriptor() ([]byte, []int) {
-	return file_sdn_proto_rawDescGZIP(), []int{48}
+	return file_sdn_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *SCEPServer) GetEndpoint() *Endpoint {
@@ -4104,7 +3931,7 @@ type Firewall struct {
 
 func (x *Firewall) Reset() {
 	*x = Firewall{}
-	mi := &file_sdn_proto_msgTypes[49]
+	mi := &file_sdn_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4116,7 +3943,7 @@ func (x *Firewall) String() string {
 func (*Firewall) ProtoMessage() {}
 
 func (x *Firewall) ProtoReflect() protoreflect.Message {
-	mi := &file_sdn_proto_msgTypes[49]
+	mi := &file_sdn_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4129,7 +3956,7 @@ func (x *Firewall) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Firewall.ProtoReflect.Descriptor instead.
 func (*Firewall) Descriptor() ([]byte, []int) {
-	return file_sdn_proto_rawDescGZIP(), []int{49}
+	return file_sdn_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *Firewall) GetRules() []*FwRule {
@@ -4162,7 +3989,7 @@ type FwRule struct {
 
 func (x *FwRule) Reset() {
 	*x = FwRule{}
-	mi := &file_sdn_proto_msgTypes[50]
+	mi := &file_sdn_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4174,7 +4001,7 @@ func (x *FwRule) String() string {
 func (*FwRule) ProtoMessage() {}
 
 func (x *FwRule) ProtoReflect() protoreflect.Message {
-	mi := &file_sdn_proto_msgTypes[50]
+	mi := &file_sdn_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4187,7 +4014,7 @@ func (x *FwRule) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FwRule.ProtoReflect.Descriptor instead.
 func (*FwRule) Descriptor() ([]byte, []int) {
-	return file_sdn_proto_rawDescGZIP(), []int{50}
+	return file_sdn_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *FwRule) GetSrcSubnet() string {
@@ -4238,7 +4065,7 @@ type ControllerConfig struct {
 
 func (x *ControllerConfig) Reset() {
 	*x = ControllerConfig{}
-	mi := &file_sdn_proto_msgTypes[51]
+	mi := &file_sdn_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4250,7 +4077,7 @@ func (x *ControllerConfig) String() string {
 func (*ControllerConfig) ProtoMessage() {}
 
 func (x *ControllerConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_sdn_proto_msgTypes[51]
+	mi := &file_sdn_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4263,7 +4090,7 @@ func (x *ControllerConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ControllerConfig.ProtoReflect.Descriptor instead.
 func (*ControllerConfig) Descriptor() ([]byte, []int) {
-	return file_sdn_proto_rawDescGZIP(), []int{51}
+	return file_sdn_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *ControllerConfig) GetControllerIps() []string {
@@ -4403,7 +4230,7 @@ const file_sdn_proto_rawDesc = "" +
 	"\x0fNetworkIPConfig\x12\x16\n" +
 	"\x06subnet\x18\x01 \x01(\tR\x06subnet\x12\x13\n" +
 	"\x05gw_ip\x18\x02 \x01(\tR\x04gwIp\x12,\n" +
-	"\x04dhcp\x18\x03 \x01(\v2\x18.org.lfedge.evetest.DHCPR\x04dhcp\"\xe1\x03\n" +
+	"\x04dhcp\x18\x03 \x01(\v2\x18.org.lfedge.evetest.DHCPR\x04dhcp\"\xe6\x03\n" +
 	"\x04DHCP\x12\x16\n" +
 	"\x06enable\x18\x01 \x01(\bR\x06enable\x126\n" +
 	"\bip_range\x18\x02 \x01(\v2\x1b.org.lfedge.evetest.IPRangeR\aipRange\x12B\n" +
@@ -4416,9 +4243,9 @@ const file_sdn_proto_rawDesc = "" +
 	"public_ntp\x18\a \x01(\tH\x00R\tpublicNtp\x12!\n" +
 	"\vprivate_ntp\x18\b \x01(\tH\x00R\n" +
 	"privateNtp\x12\x12\n" +
-	"\x04wpad\x18\t \x01(\tR\x04wpad\x12%\n" +
-	"\x0enetboot_server\x18\n" +
-	" \x01(\tR\rnetbootServer\x12,\n" +
+	"\x04wpad\x18\t \x01(\tR\x04wpad\x12*\n" +
+	"\x11netboot_server_ip\x18\n" +
+	" \x01(\tR\x0fnetbootServerIp\x12,\n" +
 	"\x12lease_time_seconds\x18\v \x01(\rR\x10leaseTimeSecondsB\f\n" +
 	"\n" +
 	"ntp_source\"7\n" +
@@ -4437,7 +4264,7 @@ const file_sdn_proto_rawDesc = "" +
 	"\x14outside_reachability\x18\x01 \x01(\bR\x13outsideReachability\x12/\n" +
 	"\x13reachable_endpoints\x18\x02 \x03(\tR\x12reachableEndpoints\x12-\n" +
 	"\x12reachable_networks\x18\x03 \x03(\tR\x11reachableNetworks\x12I\n" +
-	"\x12routes_towards_eve\x18\x04 \x03(\v2\x1b.org.lfedge.evetest.IPRouteR\x10routesTowardsEve\"\x82\x04\n" +
+	"\x12routes_towards_eve\x18\x04 \x03(\v2\x1b.org.lfedge.evetest.IPRouteR\x10routesTowardsEve\"\xb6\x03\n" +
 	"\tEndpoints\x12>\n" +
 	"\vdns_servers\x18\x01 \x03(\v2\x1d.org.lfedge.evetest.DNSServerR\n" +
 	"dnsServers\x12>\n" +
@@ -4445,8 +4272,7 @@ const file_sdn_proto_rawDesc = "" +
 	"ntpServers\x12A\n" +
 	"\fhttp_servers\x18\x03 \x03(\v2\x1e.org.lfedge.evetest.HTTPServerR\vhttpServers\x12L\n" +
 	"\x10explicit_proxies\x18\x04 \x03(\v2!.org.lfedge.evetest.ExplicitProxyR\x0fexplicitProxies\x12U\n" +
-	"\x13transparent_proxies\x18\x05 \x03(\v2$.org.lfedge.evetest.TransparentProxyR\x12transparentProxies\x12J\n" +
-	"\x0fnetboot_servers\x18\x06 \x03(\v2!.org.lfedge.evetest.NetbootServerR\x0enetbootServers\x12A\n" +
+	"\x13transparent_proxies\x18\x05 \x03(\v2$.org.lfedge.evetest.TransparentProxyR\x12transparentProxies\x12A\n" +
 	"\fscep_servers\x18\a \x03(\v2\x1e.org.lfedge.evetest.SCEPServerR\vscepServers\"\x9c\x02\n" +
 	"\bEndpoint\x12#\n" +
 	"\rlogical_label\x18\x01 \x01(\tR\flogicalLabel\x12\x12\n" +
@@ -4524,17 +4350,7 @@ const file_sdn_proto_rawDesc = "" +
 	"\flisten_proto\x18\x02 \x01(\x0e2$.org.lfedge.evetest.ProxyListenProtoR\vlistenProto\"}\n" +
 	"\x10TransparentProxy\x128\n" +
 	"\bendpoint\x18\x01 \x01(\v2\x1c.org.lfedge.evetest.EndpointR\bendpoint\x12/\n" +
-	"\x05proxy\x18\x02 \x01(\v2\x19.org.lfedge.evetest.ProxyR\x05proxy\"\xe1\x01\n" +
-	"\rNetbootServer\x128\n" +
-	"\bendpoint\x18\x01 \x01(\v2\x1c.org.lfedge.evetest.EndpointR\bendpoint\x12J\n" +
-	"\x0etftp_artifacts\x18\x02 \x03(\v2#.org.lfedge.evetest.NetbootArtifactR\rtftpArtifacts\x12J\n" +
-	"\x0ehttp_artifacts\x18\x03 \x03(\v2#.org.lfedge.evetest.NetbootArtifactR\rhttpArtifacts\"y\n" +
-	"\x0fNetbootArtifact\x12\x1a\n" +
-	"\bfilename\x18\x01 \x01(\tR\bfilename\x12*\n" +
-	"\x11download_from_url\x18\x02 \x01(\tR\x0fdownloadFromUrl\x12\x1e\n" +
-	"\n" +
-	"entrypoint\x18\x03 \x01(\bR\n" +
-	"entrypoint\"\xc7\x01\n" +
+	"\x05proxy\x18\x02 \x01(\v2\x19.org.lfedge.evetest.ProxyR\x05proxy\"\xc7\x01\n" +
 	"\n" +
 	"SCEPServer\x128\n" +
 	"\bendpoint\x18\x01 \x01(\v2\x1c.org.lfedge.evetest.EndpointR\bendpoint\x12\x12\n" +
@@ -4620,7 +4436,7 @@ func file_sdn_proto_rawDescGZIP() []byte {
 }
 
 var file_sdn_proto_enumTypes = make([]protoimpl.EnumInfo, 8)
-var file_sdn_proto_msgTypes = make([]protoimpl.MessageInfo, 53)
+var file_sdn_proto_msgTypes = make([]protoimpl.MessageInfo, 51)
 var file_sdn_proto_goTypes = []any{
 	(BondMode)(0),                      // 0: org.lfedge.evetest.BondMode
 	(LacpRate)(0),                      // 1: org.lfedge.evetest.LacpRate
@@ -4676,21 +4492,19 @@ var file_sdn_proto_goTypes = []any{
 	(*UserCredentials)(nil),            // 51: org.lfedge.evetest.UserCredentials
 	(*ProxyPort)(nil),                  // 52: org.lfedge.evetest.ProxyPort
 	(*TransparentProxy)(nil),           // 53: org.lfedge.evetest.TransparentProxy
-	(*NetbootServer)(nil),              // 54: org.lfedge.evetest.NetbootServer
-	(*NetbootArtifact)(nil),            // 55: org.lfedge.evetest.NetbootArtifact
-	(*SCEPServer)(nil),                 // 56: org.lfedge.evetest.SCEPServer
-	(*Firewall)(nil),                   // 57: org.lfedge.evetest.Firewall
-	(*FwRule)(nil),                     // 58: org.lfedge.evetest.FwRule
-	(*ControllerConfig)(nil),           // 59: org.lfedge.evetest.ControllerConfig
-	nil,                                // 60: org.lfedge.evetest.HTTPServer.PathsEntry
-	(*IPRoute)(nil),                    // 61: org.lfedge.evetest.IPRoute
-	(*LogMessage)(nil),                 // 62: org.lfedge.evetest.LogMessage
+	(*SCEPServer)(nil),                 // 54: org.lfedge.evetest.SCEPServer
+	(*Firewall)(nil),                   // 55: org.lfedge.evetest.Firewall
+	(*FwRule)(nil),                     // 56: org.lfedge.evetest.FwRule
+	(*ControllerConfig)(nil),           // 57: org.lfedge.evetest.ControllerConfig
+	nil,                                // 58: org.lfedge.evetest.HTTPServer.PathsEntry
+	(*IPRoute)(nil),                    // 59: org.lfedge.evetest.IPRoute
+	(*LogMessage)(nil),                 // 60: org.lfedge.evetest.LogMessage
 }
 var file_sdn_proto_depIdxs = []int32{
 	11, // 0: org.lfedge.evetest.SDNStatusResponse.config_errors:type_name -> org.lfedge.evetest.SDNConfigError
 	22, // 1: org.lfedge.evetest.SDNGetNetworkModelResponse.network_model:type_name -> org.lfedge.evetest.NetworkModel
 	22, // 2: org.lfedge.evetest.SDNSetNetworkModelRequest.network_model:type_name -> org.lfedge.evetest.NetworkModel
-	61, // 3: org.lfedge.evetest.SDNTunnel.routes:type_name -> org.lfedge.evetest.IPRoute
+	59, // 3: org.lfedge.evetest.SDNTunnel.routes:type_name -> org.lfedge.evetest.IPRoute
 	18, // 4: org.lfedge.evetest.ConnectTunnelToSDNRequest.connect:type_name -> org.lfedge.evetest.SDNTunnel
 	21, // 5: org.lfedge.evetest.ConnectTunnelToSDNResponse.connect_reply:type_name -> org.lfedge.evetest.SDNTunnelProperties
 	23, // 6: org.lfedge.evetest.NetworkModel.ports:type_name -> org.lfedge.evetest.Port
@@ -4698,8 +4512,8 @@ var file_sdn_proto_depIdxs = []int32{
 	28, // 8: org.lfedge.evetest.NetworkModel.bridges:type_name -> org.lfedge.evetest.Bridge
 	31, // 9: org.lfedge.evetest.NetworkModel.networks:type_name -> org.lfedge.evetest.Network
 	38, // 10: org.lfedge.evetest.NetworkModel.endpoints:type_name -> org.lfedge.evetest.Endpoints
-	57, // 11: org.lfedge.evetest.NetworkModel.firewall:type_name -> org.lfedge.evetest.Firewall
-	59, // 12: org.lfedge.evetest.NetworkModel.controller_config:type_name -> org.lfedge.evetest.ControllerConfig
+	55, // 11: org.lfedge.evetest.NetworkModel.firewall:type_name -> org.lfedge.evetest.Firewall
+	57, // 12: org.lfedge.evetest.NetworkModel.controller_config:type_name -> org.lfedge.evetest.ControllerConfig
 	24, // 13: org.lfedge.evetest.Port.traffic_control:type_name -> org.lfedge.evetest.TrafficControl
 	0,  // 14: org.lfedge.evetest.Bond.mode:type_name -> org.lfedge.evetest.BondMode
 	1,  // 15: org.lfedge.evetest.Bond.lacp_rate:type_name -> org.lfedge.evetest.LacpRate
@@ -4715,63 +4529,59 @@ var file_sdn_proto_depIdxs = []int32{
 	34, // 25: org.lfedge.evetest.DHCP.ip_range:type_name -> org.lfedge.evetest.IPRange
 	35, // 26: org.lfedge.evetest.DHCP.static_entries:type_name -> org.lfedge.evetest.MACToIP
 	36, // 27: org.lfedge.evetest.DHCP.dns:type_name -> org.lfedge.evetest.DNSClientConfig
-	61, // 28: org.lfedge.evetest.Router.routes_towards_eve:type_name -> org.lfedge.evetest.IPRoute
+	59, // 28: org.lfedge.evetest.Router.routes_towards_eve:type_name -> org.lfedge.evetest.IPRoute
 	42, // 29: org.lfedge.evetest.Endpoints.dns_servers:type_name -> org.lfedge.evetest.DNSServer
 	47, // 30: org.lfedge.evetest.Endpoints.ntp_servers:type_name -> org.lfedge.evetest.NTPServer
 	45, // 31: org.lfedge.evetest.Endpoints.http_servers:type_name -> org.lfedge.evetest.HTTPServer
 	48, // 32: org.lfedge.evetest.Endpoints.explicit_proxies:type_name -> org.lfedge.evetest.ExplicitProxy
 	53, // 33: org.lfedge.evetest.Endpoints.transparent_proxies:type_name -> org.lfedge.evetest.TransparentProxy
-	54, // 34: org.lfedge.evetest.Endpoints.netboot_servers:type_name -> org.lfedge.evetest.NetbootServer
-	56, // 35: org.lfedge.evetest.Endpoints.scep_servers:type_name -> org.lfedge.evetest.SCEPServer
-	40, // 36: org.lfedge.evetest.Endpoint.ipv4:type_name -> org.lfedge.evetest.EndpointIPConfig
-	40, // 37: org.lfedge.evetest.Endpoint.ipv6:type_name -> org.lfedge.evetest.EndpointIPConfig
-	41, // 38: org.lfedge.evetest.Endpoint.direct_l2_connect:type_name -> org.lfedge.evetest.DirectL2EpConnect
-	39, // 39: org.lfedge.evetest.DNSServer.endpoint:type_name -> org.lfedge.evetest.Endpoint
-	43, // 40: org.lfedge.evetest.DNSServer.static_entries:type_name -> org.lfedge.evetest.DNSEntry
-	44, // 41: org.lfedge.evetest.DNSEntry.endpoint_ip_ref:type_name -> org.lfedge.evetest.EndpointIPRef
-	3,  // 42: org.lfedge.evetest.EndpointIPRef.ip_version:type_name -> org.lfedge.evetest.IPVersion
-	39, // 43: org.lfedge.evetest.HTTPServer.endpoint:type_name -> org.lfedge.evetest.Endpoint
-	36, // 44: org.lfedge.evetest.HTTPServer.dns_client_config:type_name -> org.lfedge.evetest.DNSClientConfig
-	60, // 45: org.lfedge.evetest.HTTPServer.paths:type_name -> org.lfedge.evetest.HTTPServer.PathsEntry
-	39, // 46: org.lfedge.evetest.NTPServer.endpoint:type_name -> org.lfedge.evetest.Endpoint
-	39, // 47: org.lfedge.evetest.ExplicitProxy.endpoint:type_name -> org.lfedge.evetest.Endpoint
-	49, // 48: org.lfedge.evetest.ExplicitProxy.proxy:type_name -> org.lfedge.evetest.Proxy
-	52, // 49: org.lfedge.evetest.ExplicitProxy.http_proxy:type_name -> org.lfedge.evetest.ProxyPort
-	52, // 50: org.lfedge.evetest.ExplicitProxy.https_proxy:type_name -> org.lfedge.evetest.ProxyPort
-	51, // 51: org.lfedge.evetest.ExplicitProxy.users:type_name -> org.lfedge.evetest.UserCredentials
-	36, // 52: org.lfedge.evetest.Proxy.dns_client_config:type_name -> org.lfedge.evetest.DNSClientConfig
-	50, // 53: org.lfedge.evetest.Proxy.proxy_rules:type_name -> org.lfedge.evetest.ProxyRule
-	4,  // 54: org.lfedge.evetest.ProxyRule.action:type_name -> org.lfedge.evetest.ProxyAction
-	5,  // 55: org.lfedge.evetest.ProxyPort.listen_proto:type_name -> org.lfedge.evetest.ProxyListenProto
-	39, // 56: org.lfedge.evetest.TransparentProxy.endpoint:type_name -> org.lfedge.evetest.Endpoint
-	49, // 57: org.lfedge.evetest.TransparentProxy.proxy:type_name -> org.lfedge.evetest.Proxy
-	39, // 58: org.lfedge.evetest.NetbootServer.endpoint:type_name -> org.lfedge.evetest.Endpoint
-	55, // 59: org.lfedge.evetest.NetbootServer.tftp_artifacts:type_name -> org.lfedge.evetest.NetbootArtifact
-	55, // 60: org.lfedge.evetest.NetbootServer.http_artifacts:type_name -> org.lfedge.evetest.NetbootArtifact
-	39, // 61: org.lfedge.evetest.SCEPServer.endpoint:type_name -> org.lfedge.evetest.Endpoint
-	58, // 62: org.lfedge.evetest.Firewall.rules:type_name -> org.lfedge.evetest.FwRule
-	6,  // 63: org.lfedge.evetest.FwRule.protocol:type_name -> org.lfedge.evetest.FwProto
-	7,  // 64: org.lfedge.evetest.FwRule.action:type_name -> org.lfedge.evetest.FwAction
-	46, // 65: org.lfedge.evetest.HTTPServer.PathsEntry.value:type_name -> org.lfedge.evetest.HTTPContent
-	9,  // 66: org.lfedge.evetest.SDN.GetStatus:input_type -> org.lfedge.evetest.SDNRequest
-	9,  // 67: org.lfedge.evetest.SDN.GetNetworkModel:input_type -> org.lfedge.evetest.SDNRequest
-	13, // 68: org.lfedge.evetest.SDN.SetNetworkModel:input_type -> org.lfedge.evetest.SDNSetNetworkModelRequest
-	9,  // 69: org.lfedge.evetest.SDN.GetConfigGraph:input_type -> org.lfedge.evetest.SDNRequest
-	9,  // 70: org.lfedge.evetest.SDN.StreamLogs:input_type -> org.lfedge.evetest.SDNRequest
-	16, // 71: org.lfedge.evetest.SDN.CheckConnectivity:input_type -> org.lfedge.evetest.SDNConnectivityRequest
-	19, // 72: org.lfedge.evetest.SDN.ConnectTunnel:input_type -> org.lfedge.evetest.ConnectTunnelToSDNRequest
-	10, // 73: org.lfedge.evetest.SDN.GetStatus:output_type -> org.lfedge.evetest.SDNStatusResponse
-	12, // 74: org.lfedge.evetest.SDN.GetNetworkModel:output_type -> org.lfedge.evetest.SDNGetNetworkModelResponse
-	14, // 75: org.lfedge.evetest.SDN.SetNetworkModel:output_type -> org.lfedge.evetest.SDNSetNetworkModelResponse
-	15, // 76: org.lfedge.evetest.SDN.GetConfigGraph:output_type -> org.lfedge.evetest.SDNConfigGraphResponse
-	62, // 77: org.lfedge.evetest.SDN.StreamLogs:output_type -> org.lfedge.evetest.LogMessage
-	17, // 78: org.lfedge.evetest.SDN.CheckConnectivity:output_type -> org.lfedge.evetest.SDNConnectivityResponse
-	20, // 79: org.lfedge.evetest.SDN.ConnectTunnel:output_type -> org.lfedge.evetest.ConnectTunnelToSDNResponse
-	73, // [73:80] is the sub-list for method output_type
-	66, // [66:73] is the sub-list for method input_type
-	66, // [66:66] is the sub-list for extension type_name
-	66, // [66:66] is the sub-list for extension extendee
-	0,  // [0:66] is the sub-list for field type_name
+	54, // 34: org.lfedge.evetest.Endpoints.scep_servers:type_name -> org.lfedge.evetest.SCEPServer
+	40, // 35: org.lfedge.evetest.Endpoint.ipv4:type_name -> org.lfedge.evetest.EndpointIPConfig
+	40, // 36: org.lfedge.evetest.Endpoint.ipv6:type_name -> org.lfedge.evetest.EndpointIPConfig
+	41, // 37: org.lfedge.evetest.Endpoint.direct_l2_connect:type_name -> org.lfedge.evetest.DirectL2EpConnect
+	39, // 38: org.lfedge.evetest.DNSServer.endpoint:type_name -> org.lfedge.evetest.Endpoint
+	43, // 39: org.lfedge.evetest.DNSServer.static_entries:type_name -> org.lfedge.evetest.DNSEntry
+	44, // 40: org.lfedge.evetest.DNSEntry.endpoint_ip_ref:type_name -> org.lfedge.evetest.EndpointIPRef
+	3,  // 41: org.lfedge.evetest.EndpointIPRef.ip_version:type_name -> org.lfedge.evetest.IPVersion
+	39, // 42: org.lfedge.evetest.HTTPServer.endpoint:type_name -> org.lfedge.evetest.Endpoint
+	36, // 43: org.lfedge.evetest.HTTPServer.dns_client_config:type_name -> org.lfedge.evetest.DNSClientConfig
+	58, // 44: org.lfedge.evetest.HTTPServer.paths:type_name -> org.lfedge.evetest.HTTPServer.PathsEntry
+	39, // 45: org.lfedge.evetest.NTPServer.endpoint:type_name -> org.lfedge.evetest.Endpoint
+	39, // 46: org.lfedge.evetest.ExplicitProxy.endpoint:type_name -> org.lfedge.evetest.Endpoint
+	49, // 47: org.lfedge.evetest.ExplicitProxy.proxy:type_name -> org.lfedge.evetest.Proxy
+	52, // 48: org.lfedge.evetest.ExplicitProxy.http_proxy:type_name -> org.lfedge.evetest.ProxyPort
+	52, // 49: org.lfedge.evetest.ExplicitProxy.https_proxy:type_name -> org.lfedge.evetest.ProxyPort
+	51, // 50: org.lfedge.evetest.ExplicitProxy.users:type_name -> org.lfedge.evetest.UserCredentials
+	36, // 51: org.lfedge.evetest.Proxy.dns_client_config:type_name -> org.lfedge.evetest.DNSClientConfig
+	50, // 52: org.lfedge.evetest.Proxy.proxy_rules:type_name -> org.lfedge.evetest.ProxyRule
+	4,  // 53: org.lfedge.evetest.ProxyRule.action:type_name -> org.lfedge.evetest.ProxyAction
+	5,  // 54: org.lfedge.evetest.ProxyPort.listen_proto:type_name -> org.lfedge.evetest.ProxyListenProto
+	39, // 55: org.lfedge.evetest.TransparentProxy.endpoint:type_name -> org.lfedge.evetest.Endpoint
+	49, // 56: org.lfedge.evetest.TransparentProxy.proxy:type_name -> org.lfedge.evetest.Proxy
+	39, // 57: org.lfedge.evetest.SCEPServer.endpoint:type_name -> org.lfedge.evetest.Endpoint
+	56, // 58: org.lfedge.evetest.Firewall.rules:type_name -> org.lfedge.evetest.FwRule
+	6,  // 59: org.lfedge.evetest.FwRule.protocol:type_name -> org.lfedge.evetest.FwProto
+	7,  // 60: org.lfedge.evetest.FwRule.action:type_name -> org.lfedge.evetest.FwAction
+	46, // 61: org.lfedge.evetest.HTTPServer.PathsEntry.value:type_name -> org.lfedge.evetest.HTTPContent
+	9,  // 62: org.lfedge.evetest.SDN.GetStatus:input_type -> org.lfedge.evetest.SDNRequest
+	9,  // 63: org.lfedge.evetest.SDN.GetNetworkModel:input_type -> org.lfedge.evetest.SDNRequest
+	13, // 64: org.lfedge.evetest.SDN.SetNetworkModel:input_type -> org.lfedge.evetest.SDNSetNetworkModelRequest
+	9,  // 65: org.lfedge.evetest.SDN.GetConfigGraph:input_type -> org.lfedge.evetest.SDNRequest
+	9,  // 66: org.lfedge.evetest.SDN.StreamLogs:input_type -> org.lfedge.evetest.SDNRequest
+	16, // 67: org.lfedge.evetest.SDN.CheckConnectivity:input_type -> org.lfedge.evetest.SDNConnectivityRequest
+	19, // 68: org.lfedge.evetest.SDN.ConnectTunnel:input_type -> org.lfedge.evetest.ConnectTunnelToSDNRequest
+	10, // 69: org.lfedge.evetest.SDN.GetStatus:output_type -> org.lfedge.evetest.SDNStatusResponse
+	12, // 70: org.lfedge.evetest.SDN.GetNetworkModel:output_type -> org.lfedge.evetest.SDNGetNetworkModelResponse
+	14, // 71: org.lfedge.evetest.SDN.SetNetworkModel:output_type -> org.lfedge.evetest.SDNSetNetworkModelResponse
+	15, // 72: org.lfedge.evetest.SDN.GetConfigGraph:output_type -> org.lfedge.evetest.SDNConfigGraphResponse
+	60, // 73: org.lfedge.evetest.SDN.StreamLogs:output_type -> org.lfedge.evetest.LogMessage
+	17, // 74: org.lfedge.evetest.SDN.CheckConnectivity:output_type -> org.lfedge.evetest.SDNConnectivityResponse
+	20, // 75: org.lfedge.evetest.SDN.ConnectTunnel:output_type -> org.lfedge.evetest.ConnectTunnelToSDNResponse
+	69, // [69:76] is the sub-list for method output_type
+	62, // [62:69] is the sub-list for method input_type
+	62, // [62:62] is the sub-list for extension type_name
+	62, // [62:62] is the sub-list for extension extendee
+	0,  // [0:62] is the sub-list for field type_name
 }
 
 func init() { file_sdn_proto_init() }
@@ -4804,7 +4614,7 @@ func file_sdn_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sdn_proto_rawDesc), len(file_sdn_proto_rawDesc)),
 			NumEnums:      8,
-			NumMessages:   53,
+			NumMessages:   51,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

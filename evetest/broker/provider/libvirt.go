@@ -123,7 +123,7 @@ func (p *LibvirtProvider) GetSupportedDeviceArchs() ([]api.ArchType, error) {
 
 // Capabilities returns the full capability set: the libvirt provider runs on the
 // local host and applies the host-level tweaks required to forward link-local
-// L2 protocols, and supports emulated TPM.
+// L2 protocols, and supports emulated TPM. It also supports network boot.
 func (p *LibvirtProvider) Capabilities() []api.Capability {
 	return fullCapabilitySet()
 }
@@ -274,15 +274,23 @@ func (p *LibvirtProvider) SetupDevice(
 	memKiB := uint(spec.MemoryBytes >> 10)
 
 	// Build the Domain.OS with optional loader/nvram if UEFI dir was provided.
+	bootDevices := []libvirtxml.DomainBootDevice{{Dev: "hd"}}
+	if spec.NetworkBootFallback {
+		// Standard BIOS/UEFI boot-order fallthrough: firmware tries "hd" first,
+		// falling through to "network" only while the target disk has nothing
+		// bootable. Once a network installer has written EVE onto it, "hd"
+		// succeeds outright and network is never attempted again -- this same
+		// static setting is correct for the device's entire lifetime, no
+		// reconfiguration needed after installation.
+		bootDevices = append(bootDevices, libvirtxml.DomainBootDevice{Dev: "network"})
+	}
 	domainOS := &libvirtxml.DomainOS{
 		Type: &libvirtxml.DomainOSType{
 			Arch:    detectLibvirtArch(),
 			Machine: "q35",
 			Type:    "hvm",
 		},
-		BootDevices: []libvirtxml.DomainBootDevice{
-			{Dev: "hd"},
-		},
+		BootDevices: bootDevices,
 	}
 
 	// Unlike QEMU run directly (where ACPI is enabled by default), libvirt

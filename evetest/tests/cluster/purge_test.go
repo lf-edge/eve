@@ -144,7 +144,7 @@ func TestAppInstancePurge(test *testing.T) {
 
 	// Set up the test harness and specify the test prerequisites.
 	devName := "edge-dev"
-	requiredDevice := clusterDeviceRequirements(devName, withTPM, evetest.FilesystemEXT4)
+	requiredDevice := clusterDeviceRequirements(devName, withTPM, evetest.FilesystemEXT4, false)
 	requiredNetModel := evetest.RequireNetworkModel{
 		NetworkModel: netmodels.SingleEthWithDHCP,
 	}

@@ -123,7 +123,7 @@ func TestClusterToSingleConversion(test *testing.T) {
 	var devName [3]string
 	for i := 0; i < 3; i++ {
 		devName[i] = fmt.Sprintf("edge-dev%d", i+1)
-		requiredDevices[i] = clusterDeviceRequirements(devName[i], withTPM, filesystem)
+		requiredDevices[i] = clusterDeviceRequirements(devName[i], withTPM, filesystem, false)
 	}
 	requirements := append([]evetest.Requirement{},
 		requiredDevices[:]...)

@@ -455,12 +455,16 @@ message DHCP {
   // (with a DNSServer endpoint).
   string wpad = 9;
 
-  // Logical label of a NetbootServer endpoint which the client should use
-  // to boot EVE OS from. The IP address or FQDN and the provisioning file (iPXE script)
-  // location will be announced to the client using DHCP options 66 and 67 (59 in DHCPv6).
-  // Evetest-SDN will announce either IP address or FQDN depending on whether any of the assigned
-  // private DNS servers is able to resolve the NetbootServer domain name.
-  string netboot_server = 10;
+  // IP address of an external netboot (TFTP+HTTP) server which the client
+  // should use to boot EVE OS from -- typically evetest's own HTTP/TFTP image
+  // server, external to Evetest-SDN itself (it lives inside the evetest
+  // container, not inside the SDN VM). Must be a literal IP address: dnsmasq
+  // has no way to resolve an FQDN itself before putting an address into the
+  // DHCP response, so an FQDN is not supported here. Announced to the client
+  // using DHCP option 66 (59 in DHCPv6). The boot filenames are fixed,
+  // well-known constants (evetest always stages them at the netboot server's
+  // root).
+  string netboot_server_ip = 10;
 
   // DHCP lease duration in seconds. Zero means the DHCP server default (1 hour).
   // The minimum effective value is 120 s (dnsmasq enforces a 2-minute floor).
@@ -534,10 +538,6 @@ message Endpoints {
   // Transparent proxies intercept and proxy both HTTP and HTTPS traffic without
   // requiring explicit client configuration.
   repeated TransparentProxy transparent_proxies = 5;
-
-  // HTTP/TFTP servers providing artifacts needed to boot EVE OS
-  // over a network (using netboot/PXE + iPXE).
-  repeated NetbootServer netboot_servers = 6;
 
   // List of Simple Certificate Enrollment Protocol (SCEP) servers.
   repeated SCEPServer scep_servers = 7;
@@ -793,69 +793,6 @@ message TransparentProxy {
 
   // Proxy configuration (common to transparent and explicit proxies).
   Proxy proxy = 2;
-}
-
-// NetbootServer provides HTTP and TFTP server endpoints, serving all artifacts
-// needed to boot EVE OS over a network (using iPXE, potentially also supporting
-// older PXE-only clients).
-//
-// Use in combination with DHCP (see DHCP.netboot_server).
-//
-// Note: In most cases, the TFTP server will serve an iPXE (UEFI) bootloader,
-// which once booted, will download and boot EVE artifacts over the HTTP endpoint.
-// This setup works with only minimal configuration magic in the DHCP server,
-// known as chainloading [1].
-//
-// If a client only understands PXE, DHCP will initially point it to the TFTP
-// endpoint. After booting iPXE, the client will be redirected via DHCP
-// to an iPXE script hosted on the HTTP endpoint.
-//
-// Example config for dnsmasq:
-//
-//   # Boot for iPXE. The idea is to send two different
-//   # filenames, the first loads iPXE, and the second tells iPXE what to load.
-//   # The dhcp-match sets the ipxe tag for requests from iPXE.
-//   #dhcp-boot=undionly.kpxe
-//   #dhcp-match=set:ipxe,175 # iPXE sends a 175 option.
-//   #dhcp-boot=tag:ipxe,http://boot.ipxe.org/demo/boot.php
-//
-// [1] https://ipxe.org/howto/chainloading
-message NetbootServer {
-  // Endpoint configuration.
-  Endpoint endpoint = 1;
-
-  // Boot artifacts served by the TFTP server.
-  // If not specified, Evetest will automatically put iPXE bootloader
-  // as the entrypoint.
-  repeated NetbootArtifact tftp_artifacts = 2;
-
-  // Boot artifacts served by the HTTP server.
-  // If not specified, Evetest will automatically put iPXE artifacts
-  // needed to boot EVE OS (as links to evetest HTTP datastore where these artifacts
-  // are uploaded).
-  repeated NetbootArtifact http_artifacts = 3;
-}
-
-// NetbootArtifact - one of the artifacts used to boot EVE OS over a network.
-message NetbootArtifact {
-  // Name of the file.
-  // It will be served by the associated NetbootServer at the endpoint:
-  // (http|tftp)://<netboot-server-fqdn>/<filename>
-  string filename = 1;
-
-  // HTTP URL from where the artifact will be downloaded
-  // by the netboot server. It can for example point to the evetest HTTP datastore.
-  // Note that Netboot server will forward the artifact content, not redirect
-  // to this URL.
-  string download_from_url = 2;
-
-  // Is this the entrypoint for netboot (i.e. the artifact to boot from)?
-  // In case of iPXE, this would be enabled for the initial iPXE script.
-  // Exactly one NetbootArtifact should be marked as entrypoint inside
-  // both lists NetbootServer.tftp_artifacts and NetbootServer.http_artifacts.
-  // If enabled, this file is then announced to netboot clients using DHCP
-  // option 67 (59 in DHCPv6).
-  bool entrypoint = 3;
 }
 
 // Simple Certificate Enrollment Protocol (SCEP) server.

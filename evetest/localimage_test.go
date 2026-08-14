@@ -225,35 +225,41 @@ func TestUseLocalLiveImage(t *testing.T) {
 	img := &localLiveImage{DiskPath: "/dist/amd64/current/live.qcow2"}
 
 	cases := []struct {
-		name               string
-		requirementVersion string
-		img                *localLiveImage
-		want               bool
+		name string
+		req  RequireEdgeDevice
+		img  *localLiveImage
+		want bool
 	}{
 		{
-			name:               "explicit version never uses the live image",
-			requirementVersion: "16.0.0-lts",
-			img:                img,
-			want:               false,
+			name: "explicit version never uses the live image",
+			req:  RequireEdgeDevice{WithEVEVersion: "16.0.0-lts"},
+			img:  img,
+			want: false,
 		},
 		{
-			name:               "no explicit version uses the configured live image",
-			requirementVersion: "",
-			img:                img,
-			want:               true,
+			name: "no explicit version uses the configured live image",
+			req:  RequireEdgeDevice{},
+			img:  img,
+			want: true,
 		},
 		{
-			name:               "no image configured, nothing to use regardless of version",
-			requirementVersion: "",
-			img:                nil,
-			want:               false,
+			name: "no image configured, nothing to use regardless of version",
+			req:  RequireEdgeDevice{},
+			img:  nil,
+			want: false,
+		},
+		{
+			name: "network-boot device never uses the live image, even with no explicit version",
+			req:  RequireEdgeDevice{DeviceReusePolicy: CreateFromScratchWithNetworkBoot},
+			img:  img,
+			want: false,
 		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := useLocalLiveImage(c.requirementVersion, c.img); got != c.want {
-				t.Errorf("useLocalLiveImage(%q, %v) = %v, want %v",
-					c.requirementVersion, c.img != nil, got, c.want)
+			if got := useLocalLiveImage(c.req, c.img); got != c.want {
+				t.Errorf("useLocalLiveImage(%+v, %v) = %v, want %v",
+					c.req, c.img != nil, got, c.want)
 			}
 		})
 	}

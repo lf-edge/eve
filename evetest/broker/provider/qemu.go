@@ -60,13 +60,12 @@ type qemuDevice struct {
 	name string
 	spec DeviceSpec
 
-	args      []string
-	cmd       *exec.Cmd
-	pid       int
-	exitCh    chan struct{}
-	exitAcked bool
-	taps      []qemuTap
-	status    DeviceStatus
+	args   []string
+	cmd    *exec.Cmd
+	pid    int
+	exitCh chan struct{}
+	taps   []qemuTap
+	status DeviceStatus
 
 	artifactDir string
 	tmpDir      string
@@ -336,7 +335,7 @@ func (p *QemuProvider) GetSupportedDeviceArchs() ([]api.ArchType, error) {
 
 // Capabilities returns the full capability set: the qemu provider runs on the
 // local host and applies the host-level tweaks required to forward link-local
-// L2 protocols, and supports emulated TPM.
+// L2 protocols, and supports emulated TPM. It also supports network boot.
 func (p *QemuProvider) Capabilities() []api.Capability {
 	return fullCapabilitySet()
 }
@@ -567,9 +566,12 @@ func (p *QemuProvider) PowerOnDevice(ctx context.Context, name string) error {
 	// Signal when qemu process exits.
 	exitCh := make(chan struct{})
 	dev.exitCh = exitCh
-	dev.exitAcked = false
 
-	// Goroutine that waits for the QEMU process to exit.
+	// Goroutine that waits for the QEMU process to exit. This is the sole
+	// place that clears dev.cmd/pid and reports DeviceStatusStopped/Crashed:
+	// cmd.Wait() only returns once the process has truly terminated, so
+	// callers waiting on that status (e.g. to power the device back on) are
+	// guaranteed the old process has released its sockets/disk file/taps.
 	go func() {
 		err := cmd.Wait()
 		_ = stdoutFile.Close()
@@ -578,22 +580,16 @@ func (p *QemuProvider) PowerOnDevice(ctx context.Context, name string) error {
 
 		p.mutex.Lock()
 		defer p.mutex.Unlock()
-		if !dev.exitAcked {
-			dev.cmd = nil
-			dev.pid = 0
-			if err == nil {
-				log.Infof("Device %q exited normally, updating status to STOPPED",
-					dev.name)
-				p.updateDeviceStatus(dev, DeviceStatusStopped)
-			} else {
-				log.Warnf("Device %q exited with error: %v, updating status to CRASHED",
-					dev.name, err)
-				p.updateDeviceStatus(dev, DeviceStatusCrashed)
-			}
-			dev.exitAcked = true
-		} else {
-			log.Debugf("Device %q exit already acknowledged, skipping status update",
+		dev.cmd = nil
+		dev.pid = 0
+		if err == nil {
+			log.Infof("Device %q exited normally, updating status to STOPPED",
 				dev.name)
+			p.updateDeviceStatus(dev, DeviceStatusStopped)
+		} else {
+			log.Warnf("Device %q exited with error: %v, updating status to CRASHED",
+				dev.name, err)
+			p.updateDeviceStatus(dev, DeviceStatusCrashed)
 		}
 		if dev.spec.WithTPM {
 			if err := stopSWTPM(dev.tpm.pid); err != nil {
@@ -678,16 +674,17 @@ func (p *QemuProvider) PowerOnDevice(ctx context.Context, name string) error {
 
 				switch event.name {
 				case "STOP", "SHUTDOWN", "POWERDOWN":
+					// Deliberately not updating dev.cmd/pid/status here: this
+					// event only means the guest asked to power off, not that
+					// the qemu process has actually exited yet (it still has
+					// to flush disk writes and tear down before doing so).
+					// The cmd.Wait() goroutine above is the only place that
+					// knows the process is truly gone, and is what reports
+					// DeviceStatusStopped -- reporting it early here raced a
+					// caller's next PowerOnDevice against the still-exiting
+					// old process for its QMP/console sockets and disk file.
 					log.Infof("QMP event %q received for device %q, "+
-						"updating status to STOPPED", event.name, dev.name)
-					p.mutex.Lock()
-					if !dev.exitAcked {
-						dev.cmd = nil
-						dev.pid = 0
-						p.updateDeviceStatus(dev, DeviceStatusStopped)
-						dev.exitAcked = true
-					}
-					p.mutex.Unlock()
+						"guest is shutting down", event.name, dev.name)
 
 				case "SUSPEND":
 					log.Infof("QMP event %q received for device %q, "+
@@ -1499,6 +1496,18 @@ func (dev *qemuDevice) buildArgs() []string {
 		args = append(args,
 			"-smbios", fmt.Sprintf("type=1,serial=%s", dev.spec.SerialNumber),
 		)
+	}
+
+	if dev.spec.NetworkBootFallback {
+		// Try the disk first, falling through to the network (PXE/iPXE) only
+		// when it has nothing bootable -- the standard BIOS/UEFI boot-order
+		// fallthrough semantics, not a QEMU-specific "one-shot" flag. While the
+		// target disk is blank, "c" (hd) fails and firmware falls through to
+		// "n" (network); once the network installer has written EVE onto it,
+		// "c" succeeds outright and network is never attempted again. This
+		// needs no reconfiguration step after installation, and the same
+		// static setting is correct for the device's entire lifetime.
+		args = append(args, "-boot", "order=cn")
 	}
 
 	if dev.spec.WithTPM {

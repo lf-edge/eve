@@ -654,11 +654,12 @@ func (ac *AdamClient) OnboardDevice(ctx context.Context,
 				ac.knownDevices[devUUID] = struct{}{}
 				ac.mutex.Unlock()
 				ac.log.Infof(
-					"Device UUID %q (onboard cert CN=%q) onboarded into Adam controller",
-					devUUID, cn)
+					"Device UUID %q (onboard cert CN=%q, serial=%q) onboarded into Adam controller",
+					devUUID, cn, devSerial)
 				return devUUID, nil
 			}
-			ac.log.Infof("Waiting for device (onboard cert CN=%q) to onboard...", cn)
+			ac.log.Infof("Waiting for device (onboard cert CN=%q, serial=%q) to onboard...",
+				cn, devSerial)
 		case <-ac.exitCh:
 			if err := ac.checkAdamRunning(); err != nil {
 				return uuid.Nil, err

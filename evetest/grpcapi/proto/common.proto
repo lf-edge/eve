@@ -48,6 +48,14 @@ enum Capability {
   // provider that attaches the qcow2 directly, so it tracks the provider's disk
   // image strategy.
   CAPABILITY_LOCAL_LIVE_IMAGE = 5;
+  // Booting a device with a blank target disk over the network (PXE/iPXE),
+  // falling back to the disk once it has something bootable. Requires a
+  // provider that can configure a disk-first, network-fallback boot order
+  // for the device. No reconfiguration is needed after installation: the
+  // same setting is correct for the device's entire lifetime, since
+  // firmware only falls through to network when the disk has nothing
+  // bootable.
+  CAPABILITY_NETBOOT = 6;
 }
 
 // Reference to a specific EVE image used for provisioning or testing.

@@ -154,6 +154,14 @@ const (
 	// provider that attaches the qcow2 directly, so it tracks the provider's disk
 	// image strategy.
 	Capability_CAPABILITY_LOCAL_LIVE_IMAGE Capability = 5
+	// Booting a device with a blank target disk over the network (PXE/iPXE),
+	// falling back to the disk once it has something bootable. Requires a
+	// provider that can configure a disk-first, network-fallback boot order
+	// for the device. No reconfiguration is needed after installation: the
+	// same setting is correct for the device's entire lifetime, since
+	// firmware only falls through to network when the disk has nothing
+	// bootable.
+	Capability_CAPABILITY_NETBOOT Capability = 6
 )
 
 // Enum value maps for Capability.
@@ -165,6 +173,7 @@ var (
 		3: "CAPABILITY_FORWARD_LLDP",
 		4: "CAPABILITY_TPM",
 		5: "CAPABILITY_LOCAL_LIVE_IMAGE",
+		6: "CAPABILITY_NETBOOT",
 	}
 	Capability_value = map[string]int32{
 		"CAPABILITY_UNSPECIFIED":      0,
@@ -173,6 +182,7 @@ var (
 		"CAPABILITY_FORWARD_LLDP":     3,
 		"CAPABILITY_TPM":              4,
 		"CAPABILITY_LOCAL_LIVE_IMAGE": 5,
+		"CAPABILITY_NETBOOT":          6,
 	}
 )
 
@@ -1061,7 +1071,7 @@ const file_common_proto_rawDesc = "" +
 	"\x06HV_KVM\x10\x01\x12\n" +
 	"\n" +
 	"\x06HV_XEN\x10\x02\x12\x0f\n" +
-	"\vHV_KUBEVIRT\x10\x03*\xb5\x01\n" +
+	"\vHV_KUBEVIRT\x10\x03*\xcd\x01\n" +
 	"\n" +
 	"Capability\x12\x1a\n" +
 	"\x16CAPABILITY_UNSPECIFIED\x10\x00\x12\x1b\n" +
@@ -1069,7 +1079,8 @@ const file_common_proto_rawDesc = "" +
 	"\x18CAPABILITY_FORWARD_EAPOL\x10\x02\x12\x1b\n" +
 	"\x17CAPABILITY_FORWARD_LLDP\x10\x03\x12\x12\n" +
 	"\x0eCAPABILITY_TPM\x10\x04\x12\x1f\n" +
-	"\x1bCAPABILITY_LOCAL_LIVE_IMAGE\x10\x05*g\n" +
+	"\x1bCAPABILITY_LOCAL_LIVE_IMAGE\x10\x05\x12\x16\n" +
+	"\x12CAPABILITY_NETBOOT\x10\x06*g\n" +
 	"\vLogSeverity\x12\x0f\n" +
 	"\vLOG_UNKNOWN\x10\x00\x12\r\n" +
 	"\tLOG_DEBUG\x10\x01\x12\f\n" +

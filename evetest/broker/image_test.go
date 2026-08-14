@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lf-edge/eve/evetest/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -73,7 +74,7 @@ func TestMcopyArgs(t *testing.T) {
 
 func TestMakeEVEConfigDirWritesSoftSerial(t *testing.T) {
 	parent := t.TempDir()
-	dir, err := makeEVEConfigDir(parent, nil, nil, "serial-1234")
+	dir, err := utils.MakeEVEConfigDir(parent, nil, nil, "serial-1234")
 	if err != nil {
 		t.Fatalf("makeEVEConfigDir: %v", err)
 	}
@@ -120,7 +121,7 @@ func TestMakeEVEConfigDirNilConfigStillWritesProxyCerts(t *testing.T) {
 	if block == nil {
 		t.Fatal("failed to decode the generated test CA PEM")
 	}
-	dir, err := makeEVEConfigDir(t.TempDir(), nil, []*pem.Block{block}, "serial-1")
+	dir, err := utils.MakeEVEConfigDir(t.TempDir(), nil, []*pem.Block{block}, "serial-1")
 	if err != nil {
 		t.Fatalf("makeEVEConfigDir: %v", err)
 	}

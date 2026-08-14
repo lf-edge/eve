@@ -71,7 +71,7 @@ func (a *agent) parseNetModel(netModel *api.NetworkModel) (parsedModel parsedNet
 	eps := netModel.GetEndpoints()
 	items := a.slicesToLabeledItems(netModel.GetPorts(), netModel.GetBonds(),
 		netModel.GetBridges(), netModel.GetNetworks(), eps.GetDnsServers(),
-		eps.GetNtpServers(), eps.GetNetbootServers(), eps.GetHttpServers(),
+		eps.GetNtpServers(), eps.GetHttpServers(),
 		eps.GetExplicitProxies(), eps.GetTransparentProxies(), eps.GetScepServers())
 	parsedModel.items, err = a.parseLabeledItems(items)
 	if err != nil {
@@ -386,12 +386,26 @@ func (a *agent) validateNetworkIPConfig(netLabel string, netIPConf *api.NetworkI
 			"network %s configured with WPAD URL (%s) which is not supported for IPv6",
 			netLabel, dhcp.GetWpad())
 	}
+	netbootServerIP := dhcp.GetNetbootServerIp()
+	if netbootServerIP != "" {
+		ip := net.ParseIP(netbootServerIP)
+		if ip == nil {
+			return fmt.Errorf("network %s has invalid netboot server IP (%s)",
+				netLabel, netbootServerIP)
+		}
+		if shouldBeIPv4 && ip.To4() == nil {
+			return fmt.Errorf("expected IPv4 netboot server address for network %s, got: %v",
+				netLabel, ip)
+		}
+		if shouldBeIPv6 && ip.To4() != nil {
+			return fmt.Errorf("expected IPv6 netboot server address for network %s, got: %v",
+				netLabel, ip)
+		}
+	}
 	return nil
 }
 
 func (a *agent) validateEndpoints(netModel *parsedNetModel) (err error) {
-	//nolint:godox
-	// TODO: NetbootArtifacts
 	for _, dnsSrv := range netModel.GetEndpoints().GetDnsServers() {
 		if err = a.validateEndpoint(dnsSrv.GetEndpoint()); err != nil {
 			return
@@ -517,11 +531,6 @@ func (a *agent) validateEndpoints(netModel *parsedNetModel) (err error) {
 		} else if httpSrv.GetHttpsPort() != 0 {
 			err = fmt.Errorf("HTTPS server %s without certificate",
 				httpSrv.GetEndpoint().GetLogicalLabel())
-			return
-		}
-	}
-	for _, netbootSrv := range netModel.GetEndpoints().GetNetbootServers() {
-		if err = a.validateEndpoint(netbootSrv.GetEndpoint()); err != nil {
 			return
 		}
 	}
