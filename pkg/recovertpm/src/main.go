@@ -23,7 +23,7 @@ import (
 
 	"github.com/google/go-tpm/legacy/tpm2"
 	"github.com/google/go-tpm/tpmutil"
-	"github.com/lf-edge/eve/api/go/attest"
+	"github.com/lf-edge/eve-api/go/attest"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/schollz/progressbar/v3"
 	"google.golang.org/protobuf/proto"
