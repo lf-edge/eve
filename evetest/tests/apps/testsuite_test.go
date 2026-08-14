@@ -25,6 +25,10 @@
 //	<topic>_helpers_test.go      what one topic's tests build before they run,
 //	                             plus the assertions meaningless outside it;
 //	                             purge_helpers_test.go is the worked example
+//	longhorn_provisioner_workaround_test.go
+//	                             REMOVE ME once resolved - works around a
+//	                             Longhorn CSI-provisioner bug unrelated to
+//	                             anything this suite tests
 //
 // Reading a file, listing a directory, testing for a path and flushing caches
 // are NOT here: they are EdgeDevice methods in the framework
