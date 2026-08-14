@@ -43,6 +43,21 @@ func clusterDeviceRequirements(
 	}
 }
 
+// clusterDeviceRequirementsForVMApp is clusterDeviceRequirements without the
+// vCPU caps above. Those caps constrain the eve/pillar and k3s-control-plane
+// cgroups (not Kubernetes pods, which kubelet places under the unconstrained
+// kubepods cgroup), so a real CDI disk import -- whose RolloutDiskToPVC calls
+// repeatedly hit that same constrained control plane while it is also doing
+// first-time Longhorn/CDI bring-up -- can starve and fail retries that never
+// hit a resource ceiling on a single, uncapped device. tests/apps/vnc_test.go
+// uploads this same image successfully with no such caps.
+func clusterDeviceRequirementsForVMApp(
+	devName string, withTPM bool, filesystem evetest.Filesystem) evetest.RequireEdgeDevice {
+	req := clusterDeviceRequirements(devName, withTPM, filesystem)
+	req.WithGrubOptions = nil
+	return req
+}
+
 // TestSingleNodeCluster verifies that an EVE-K device boots, forms a
 // healthy single-node K3s cluster, accepts an application deployment, and
 // that the deployed container is reachable both from outside (via port
