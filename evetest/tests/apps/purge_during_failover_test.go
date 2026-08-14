@@ -185,7 +185,12 @@ func TestVMAppPurgeDuringFailover(test *testing.T) {
 	log.Infof("Submitted config with application UUID=%v, DNID node=%q", appUUID, devName[0])
 	evetest.Checkpoint("app-config-is-submitted")
 
-	cluster.WaitUntilAppIsRunning(appUUID, appReadyTimeout)
+	// Any cluster member can reach kubectl; devName[0] is as good as any for
+	// the mitigation's own queries while the wait below is blocked.
+	kubeDev := evetest.GetEdgeDevice(devName[0])
+	waitForAppRunningMitigatingPVCStall(kubeDev, func() {
+		cluster.WaitUntilAppIsRunning(appUUID, appReadyTimeout)
+	})
 	evetest.Checkpoint("app-is-deployed")
 
 	initialHost := cluster.FindDeviceHostingApp(appUUID, time.Minute)
