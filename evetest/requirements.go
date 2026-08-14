@@ -158,6 +158,12 @@ const (
 	// CreateFromScratchWithLiveImage : re-create VM even if already exists using
 	// EVE live image.
 	CreateFromScratchWithLiveImage
+	// CreateFromScratchWithNetworkBoot : re-create VM even if already exists,
+	// with no boot disk image attached (only a blank target disk sized
+	// MinDiskSizeInMiB). The device is expected to boot over the network
+	// (see the network model's DHCP.netboot_server_ip), install EVE onto
+	// the blank disk, and reboot into it.
+	CreateFromScratchWithNetworkBoot
 )
 
 // USBDevice identifies a USB device by vendor and product ID.

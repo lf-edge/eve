@@ -49,7 +49,6 @@ RUN mkdir -p $GOBIN && \
     go build -o $GOBIN/sdnagent   ./cmd/sdnagent && \
     go build -o $GOBIN/httpsrv    ./cmd/httpsrv && \
     go build -o $GOBIN/goproxy    ./cmd/goproxy && \
-    go build -o $GOBIN/netbootsrv ./cmd/netbootsrv && \
     go build -o $GOBIN/conntrack  ./cmd/conntrack
 
 ARG SCEP_SERVER_VERSION=2.3.0

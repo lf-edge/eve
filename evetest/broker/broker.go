@@ -89,9 +89,11 @@ type session struct {
 	clientID string
 	// mutex protects sdnDevice and eveDevices below, and serializes this
 	// session's own device operations (BuildImage, SetupDevices,
-	// TeardownDevices, power controls, console/tunnel device lookups). It
-	// never blocks a different session. See the lock ordering invariant on
-	// broker.mutex.
+	// TeardownDevices, console/tunnel device lookups). It never blocks a
+	// different session. See the lock ordering invariant on broker.mutex.
+	// PowerOnDevice is the one exception: it only holds this mutex for its
+	// own map lookup/field updates, not across a device's potentially
+	// long-running network-boot wait (see PowerOnDevice's doc comment).
 	mutex      sync.Mutex
 	sdnDevice  *device
 	eveDevices map[string]*device // key: deviceName
@@ -135,6 +137,13 @@ type device struct {
 	// device's disk, if any. Empty for legacy-build devices and for the SDN
 	// device. Teardown releases the template reference recorded under this key.
 	templateKey string
+
+	// netbootInstalled is set once a NetworkBootFallback device's first
+	// PowerOnDevice call has waited out its network-boot install (see
+	// PowerOnDevice). It guards that wait against running again on a later
+	// PowerOnDevice call (e.g. a reboot test power-cycling the now-installed
+	// device), when the VM boots straight into the installed EVE instead.
+	netbootInstalled bool
 }
 
 // brokerCapabilities composes the full capability set advertised to clients:
@@ -636,7 +645,14 @@ func (b *broker) BuildImage(
 
 	var eveImage buildEVEImageResult
 	var templateKey string
-	if b.provider.DiskImageStrategy() == provider.DiskImageLegacyBuild {
+	if req.NetworkBoot {
+		eveImage, err = buildNetworkBootImage(ctx, log, buildNetworkBootImageParams{
+			imageDirPath:    imageDirPath,
+			dockerImageName: dockerImageName,
+			diskSize:        req.DiskBytes,
+			extraDiskBytes:  req.ExtraDiskBytes,
+		})
+	} else if b.provider.DiskImageStrategy() == provider.DiskImageLegacyBuild {
 		eveImage, err = buildEVEImage(ctx, log, buildEVEImageParams{
 			imageDirPath:    imageDirPath,
 			dockerImageName: dockerImageName,
@@ -696,6 +712,7 @@ func (b *broker) BuildImage(
 			Disks:               firstBootDisks,
 			UEFIFirmwareDirPath: eveImage.firmwareDir,
 			Arch:                imageArch,
+			NetworkBootFallback: req.NetworkBoot,
 
 			// These fields are set by SetupDevices.
 			CPUs:              0,
@@ -1319,24 +1336,8 @@ func (b *broker) runDeviceInstaller(ctx context.Context, log *logrus.Entry,
 	}
 	log.Infof("EVE installer running for device %q, waiting for completion...",
 		dev.deviceName)
-
-	installCtx, cancel := context.WithTimeout(ctx, constants.EVEInstallationTimeout)
-	defer cancel()
-	statusCh := b.provider.WatchDeviceStatus(installCtx, dev.providerDevName)
-	installed := false
-	for status := range statusCh {
-		if status == provider.DeviceStatusStopped {
-			installed = true
-			break
-		}
-	}
-	if !installed {
-		if err2 := b.provider.TeardownDevice(ctx, dev.providerDevName); err2 != nil {
-			log.Warnf("Failed to teardown device %q after installation timeout: %v",
-				dev.deviceName, err2)
-		}
-		return fmt.Errorf("EVE installation timed out or failed for device %q",
-			dev.deviceName)
+	if err := b.waitForDeviceStop(ctx, log, dev, constants.EVEInstallationTimeout); err != nil {
+		return err
 	}
 	log.Infof("EVE installation completed for device %q", dev.deviceName)
 
@@ -1357,6 +1358,31 @@ func (b *broker) runDeviceInstaller(ctx context.Context, log *logrus.Entry,
 	log.Infof("EVE device %q provisioned after installation using %s",
 		dev.deviceName, b.providerName)
 	return nil
+}
+
+// waitForDeviceStop blocks until dev's VM reports DeviceStatusStopped or
+// timeout elapses. The EVE installer -- disk- or network-booted, both set
+// eve_reboot_after_install in their kernel args -- halts the VM once it has
+// finished writing EVE onto the target disk, which is what this observes.
+// On timeout (or the status channel closing without ever reporting Stopped),
+// it tears the device down so the caller doesn't leak provider resources,
+// and returns an error.
+func (b *broker) waitForDeviceStop(ctx context.Context, log *logrus.Entry,
+	dev *device, timeout time.Duration) error {
+	installCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	statusCh := b.provider.WatchDeviceStatus(installCtx, dev.providerDevName)
+	for status := range statusCh {
+		if status == provider.DeviceStatusStopped {
+			return nil
+		}
+	}
+	if err := b.provider.TeardownDevice(ctx, dev.providerDevName); err != nil {
+		log.Warnf("Failed to teardown device %q after installation timeout: %v",
+			dev.deviceName, err)
+	}
+	return fmt.Errorf("EVE installation timed out or failed for device %q",
+		dev.deviceName)
 }
 
 // generateSDNUplinkMAC generates a unique MAC address for an SDN uplink port.
@@ -1482,7 +1508,20 @@ func (b *broker) teardownDevices(ctx context.Context, clientSession *session) {
 	clientSession.sdnDevice = nil
 }
 
-// PowerOnDevice powers on a specific EVE device.
+// PowerOnDevice powers on a specific EVE device. For a device's first
+// power-on under NetworkBootFallback (see provider.DeviceSpec), this also runs
+// and waits out the whole network-boot install before returning -- see
+// waitForDeviceStop -- since network booting can only begin once the device
+// is powered on with the SDN network already configured, unlike an installer
+// image (which runs during SetupDevices instead, before the caller's own
+// separate PowerOnDevice call boots the freshly-installed device for real).
+//
+// The network-boot wait can take many minutes, so it deliberately runs
+// without holding clientSession.mutex: that mutex is meant to serialize
+// access to the session's own maps, not to block every other device's power
+// control for as long as one device is network-installing -- multiple
+// NetworkBootFallback devices in the same test (e.g. a netbooted cluster) need
+// to install in parallel.
 func (b *broker) PowerOnDevice(
 	ctx context.Context, req *api.DeviceControlRequest) (*api.DeviceControlResponse, error) {
 	b.mutex.Lock()
@@ -1493,18 +1532,21 @@ func (b *broker) PowerOnDevice(
 		b.globalLog.Error(err)
 		return nil, err
 	}
+
 	clientSession.mutex.Lock()
-	defer clientSession.mutex.Unlock()
-
 	log := clientSession.log
-	ctx = logger.WithLogger(ctx, log)
-
 	eveDevice, exists := clientSession.eveDevices[req.DeviceName]
+	var netbootInstalled bool
+	if exists {
+		netbootInstalled = eveDevice.netbootInstalled
+	}
+	clientSession.mutex.Unlock()
 	if !exists {
 		err := eveDevNotFoundErr(req.DeviceName)
 		log.Error(err)
 		return nil, err
 	}
+	ctx = logger.WithLogger(ctx, log)
 
 	err := b.provider.PowerOnDevice(ctx, eveDevice.providerDevName)
 	if err != nil {
@@ -1512,6 +1554,26 @@ func (b *broker) PowerOnDevice(
 			eveDevice.deviceName, err)
 		log.Error(err)
 		return nil, err
+	}
+
+	if eveDevice.NetworkBootFallback && !netbootInstalled {
+		log.Infof("EVE network-boot installer running for device %q, "+
+			"waiting for completion...", eveDevice.deviceName)
+		timeout := constants.NetbootDownloadTimeout + constants.EVEInstallationTimeout
+		if err := b.waitForDeviceStop(ctx, log, eveDevice, timeout); err != nil {
+			return nil, err
+		}
+		log.Infof("EVE network-boot installation completed for device %q, "+
+			"booting installed image", eveDevice.deviceName)
+		if err := b.provider.PowerOnDevice(ctx, eveDevice.providerDevName); err != nil {
+			err = fmt.Errorf("failed to power on device %q after network-boot install: %w",
+				eveDevice.deviceName, err)
+			log.Error(err)
+			return nil, err
+		}
+		clientSession.mutex.Lock()
+		eveDevice.netbootInstalled = true
+		clientSession.mutex.Unlock()
 	}
 
 	log.Infof("Successfully powered ON EVE device %q", eveDevice.deviceName)

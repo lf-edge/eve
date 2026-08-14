@@ -182,7 +182,9 @@ Both can be set simultaneously for dual-stack networks.
 Each IP config block includes the subnet, gateway IP, and an optional **DHCP** block
 covering: IP range, static MAC-to-IP assignments, domain name, DNS server references
 (private SDN endpoints or public IPs), NTP server (private or public), a WPAD/PAC file
-URL, a netboot server reference, and a flag to suppress the default route advertisement.
+URL, the IP address/FQDN of an external netboot server for iPXE/PXE network
+booting (see `DHCP.netboot_server_ip`), and a flag to suppress the default
+route advertisement.
 For IPv6, omitting all options except DNS keeps SLAAC as the sole address-assignment
 method; any additional option enables DHCPv6.
 
@@ -228,11 +230,6 @@ Available endpoint types:
   Simple Certificate Enrollment Protocol. Used together with PNAC bridges for
   certificate-based 802.1X device onboarding. Configurable CA certificate and optional
   challenge password.
-
-- **Netboot server** -- HTTP + TFTP server providing all artifacts needed to boot EVE OS
-  over a network (iPXE chainloading). When TFTP and HTTP artifact lists are left empty,
-  evetest automatically provides the iPXE bootloader (TFTP) and the EVE OS boot
-  artifacts (HTTP). Referenced from `DHCP.netboot_server`.
 
 ### Firewall
 

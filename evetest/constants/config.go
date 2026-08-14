@@ -339,7 +339,7 @@ const (
 	DefaultAdamVersion = "0.0.81"
 
 	// DefaultSDNVersion specifies the SDN version to use by default.
-	DefaultSDNVersion = "1.1"
+	DefaultSDNVersion = "1.2"
 
 	// DefaultSDNUplinkIPv4Subnet species the IPv4 subnet used for SDN uplink
 	// interfaces by default.

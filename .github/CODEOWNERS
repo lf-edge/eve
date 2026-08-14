@@ -4,6 +4,7 @@
 
 *                             @eriknordmark
 /build-tools/                 @eriknordmark
+/evetest/                     @milan-zededa
 /pkg/alpine/                  @christoph-zededa
 /pkg/apparmor/                @shjala
 /pkg/bsp-imx/                 @rene

@@ -14,18 +14,35 @@ import (
 	eveconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve/evetest"
+	api "github.com/lf-edge/eve/evetest/grpcapi/go"
 	"github.com/lf-edge/eve/evetest/netmodels"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"google.golang.org/protobuf/proto"
 )
 
-func clusterDeviceRequirements(
-	devName string, withTPM bool, filesystem evetest.Filesystem) evetest.RequireEdgeDevice {
+const netbootParamKey = "NETBOOT"
+
+var netbootParam = evetest.TestParameterDefinition{
+	Key:          netbootParamKey,
+	DefaultValue: false,
+	Description: evetest.TestParameterDescription{
+		Summary: "Install EVE over the network via iPXE instead of using a local live image",
+		Default: "false",
+	},
+}
+
+func clusterDeviceRequirements(devName string, withTPM bool,
+	filesystem evetest.Filesystem, netboot bool) evetest.RequireEdgeDevice {
+	reusePolicy := evetest.CreateFromScratchWithLiveImage
+	if netboot {
+		reusePolicy = evetest.CreateFromScratchWithNetworkBoot
+	}
 	return evetest.RequireEdgeDevice{
 		Name:           devName,
 		WithTPM:        withTPM,
 		WithHypervisor: evetest.HypervisorKubevirt,
 		// We want to test cluster creation.
-		DeviceReusePolicy: evetest.CreateFromScratchWithLiveImage,
+		DeviceReusePolicy: reusePolicy,
 		// Filesystem is configurable via the FILESYSTEM parameter and defaults
 		// to ext4. EVE-k formation is fsync-heavy (k3s/etcd WAL, Longhorn/CDI/
 		// KubeVirt image extraction); ZFS's synchronous ZIL commit adds enough
@@ -107,7 +124,7 @@ func TestSingleNodeCluster(test *testing.T) {
 
 	// Set up the test harness and specify the test prerequisites.
 	devName := "edge-dev"
-	requiredDevice := clusterDeviceRequirements(devName, withTPM, filesystem)
+	requiredDevice := clusterDeviceRequirements(devName, withTPM, filesystem, false)
 	requiredNetModel := evetest.RequireNetworkModel{
 		NetworkModel: netmodels.SingleEthWithDHCP,
 	}
@@ -255,6 +272,9 @@ func TestSingleNodeCluster(test *testing.T) {
 // ---------------
 //   - TPM via evetest.TPMParameter().
 //   - FILESYSTEM (ext4|zfs, defaults to ext4) via evetest.FilesystemParameter().
+//   - NETBOOT (bool, defaults to false): when true, all three devices install
+//     EVE over the network via iPXE; requires CAPABILITY_NETBOOT and is skipped
+//     on providers that lack it.
 //
 // Phases
 // ------
@@ -287,26 +307,42 @@ func TestThreeNodesCluster(test *testing.T) {
 	evetest.DefineTestParameters(
 		evetest.TPMParameter(),
 		evetest.FilesystemParameter(),
+		netbootParam,
 	)
 
 	// Get parameter values set for this test execution.
 	withTPM := evetest.GetTPMParameterValue()
 	filesystem := evetest.GetFilesystemParameterValue()
+	netboot := evetest.GetTestParameter[bool](netbootParamKey)
 
 	// Set up the test harness and specify the test prerequisites.
 	var requiredDevices [3]evetest.Requirement
 	var devName [3]string
 	for i := 0; i < 3; i++ {
 		devName[i] = fmt.Sprintf("edge-dev%d", i+1)
-		requiredDevices[i] = clusterDeviceRequirements(devName[i], withTPM, filesystem)
+		requiredDevices[i] = clusterDeviceRequirements(devName[i], withTPM, filesystem, netboot)
 	}
 
+	clusterNetModel := proto.Clone(netmodels.SeparateClusterPort).(*api.NetworkModel)
+	if netboot {
+		// Point the network's DHCP at evetest's own image server (see
+		// TestHarness.buildNetbootArtifacts).
+		clusterNetModel.Networks[0].Ipv4.Dhcp.NetbootServerIp =
+			evetest.GetImageServerIPv4().String()
+	}
 	requiredNetModel := evetest.RequireNetworkModel{
-		NetworkModel: netmodels.SeparateClusterPort,
+		NetworkModel: clusterNetModel,
 	}
 	var requirements []evetest.Requirement
 	requirements = append(requirements, requiredDevices[:]...)
 	requirements = append(requirements, requiredNetModel)
+	if netboot {
+		// Skip on any provider that cannot configure a disk-first, network-fallback
+		// boot order for the device (see CAPABILITY_NETBOOT's doc comment).
+		requirements = append(requirements, evetest.RequireCapabilities{
+			Capabilities: []api.Capability{api.Capability_CAPABILITY_NETBOOT},
+		})
+	}
 	evetest.Setup(requirements...)
 	evetest.Checkpoint("setup-done")
 

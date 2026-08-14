@@ -19,6 +19,7 @@ require (
 	github.com/moby/moby/client v0.5.1
 	github.com/onsi/gomega v1.39.1
 	github.com/opencontainers/image-spec v1.1.1
+	github.com/pin/tftp/v3 v3.2.0
 	github.com/pkg/sftp v1.13.9
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
 	github.com/sirupsen/logrus v1.9.4

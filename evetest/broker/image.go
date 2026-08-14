@@ -185,7 +185,7 @@ func buildEVEImage(ctx context.Context, log *logrus.Entry,
 	// runs inside a container, the path also exists on the host (it's bind-
 	// mounted at the same path) and can be passed to docker-out-of-docker.
 	var configDir string
-	configDir, err = makeEVEConfigDir(
+	configDir, err = utils.MakeEVEConfigDir(
 		params.imageDirPath, params.config, params.proxyCACerts, params.softSerial)
 	if err != nil {
 		err = fmt.Errorf("failed to prepare EVE config dir: %w", err)
@@ -293,160 +293,84 @@ func buildEVEImage(ctx context.Context, log *logrus.Entry,
 	return result, nil
 }
 
-// makeEVEConfigDir creates a temporary directory containing EVE configuration
-// files derived from the provided EveConfig. Each non-empty field is written
-// into a specific file under the directory structure expected by EVE.
-//
-// The directory is created under parentDir so that, when the broker runs
-// inside a container, the path also exists on the host and can be bind-mounted
-// into a docker-out-of-docker container.
-//
-// Certificates are validated before writing. Proxy CA certificates passed in
-// proxyCACerts are appended to v2tlsbaseroot-certificates.pem.
-//
-// softSerial is passed separately rather than read from config because it is
-// never empty: see resolveSoftSerial.
-func makeEVEConfigDir(parentDir string, config *api.EveConfig,
-	proxyCACerts []*pem.Block, softSerial string) (dirPath string, err error) {
+// buildNetworkBootImageParams carries the parameters for buildNetworkBootImage.
+type buildNetworkBootImageParams struct {
+	// imageDirPath is the path to the output directory.
+	imageDirPath string
+	// dockerImageName is the name of the EVE Docker image to extract UEFI
+	// firmware from.
+	dockerImageName string
+	// diskSize is the size (in bytes) of the blank target disk that the
+	// network installer will write EVE onto.
+	diskSize uint64
+	// extraDiskBytes are sizes (in bytes) of additional blank disks to create
+	// and append to the result, beyond the main target disk.
+	extraDiskBytes []uint64
+}
 
-	if config == nil && len(proxyCACerts) == 0 && softSerial == "" {
-		return "", nil
-	}
+// buildNetworkBootImage prepares a device meant to install EVE over the
+// network (see DHCP.netboot_server_ip in sdn.proto) instead of from a locally
+// attached installer/live image: it extracts UEFI firmware (needed to run the
+// virtio-net-pci PXE/iPXE option ROM) and creates a single blank target disk,
+// with no installer or live image content attached at all -- the network
+// install is expected to supply that content instead.
+//
+// Unlike buildEVEImage/makeDeviceImage, this never runs the EVE docker
+// container to produce disk content, so it injects no config.img here --
+// the blank target disk it creates stays blank until the network installer
+// writes to it. The device's actual config.img (onboarding certificate,
+// bootstrap config, grub options) is injected separately, into the
+// installer_net bundle it boots and installs from: see
+// TestHarness.buildNetbootArtifacts in evetest core, which mounts the same
+// per-device config dir at "/in" that this package's buildEVEImage/
+// makeDeviceImage use for disk-based devices.
+func buildNetworkBootImage(ctx context.Context, log *logrus.Entry,
+	params buildNetworkBootImageParams) (result buildEVEImageResult, err error) {
 
-	dirPath, err = os.MkdirTemp(parentDir, "eve-config-*")
-	if err != nil {
-		return "", fmt.Errorf("failed to create temporary config directory: %w", err)
+	if err = os.MkdirAll(params.imageDirPath, 0o755); err != nil {
+		err = fmt.Errorf("failed to create EVE image directory %q: %w",
+			params.imageDirPath, err)
+		return result, err
 	}
-	// Ensure cleanup on error
 	defer func() {
 		if err != nil {
-			os.RemoveAll(dirPath)
+			if removeErr := os.RemoveAll(params.imageDirPath); removeErr != nil {
+				log.Warnf("Failed to remove EVE image directory %q : %v",
+					params.imageDirPath, removeErr)
+			}
 		}
 	}()
 
-	// Helper to write a file only if data is non-empty
-	writeFile := func(relPath string, data []byte) error {
-		if len(data) == 0 {
-			return nil
-		}
-		fullPath := filepath.Join(dirPath, relPath)
-		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
-			return fmt.Errorf("failed to create directory for %q: %w", fullPath, err)
-		}
-		if err := os.WriteFile(fullPath, data, 0o600); err != nil {
-			return fmt.Errorf("failed to write file %q: %w", fullPath, err)
-		}
-		return nil
-	}
-
-	err = writeFile("soft_serial", []byte(softSerial))
+	result.firmwareDir = filepath.Join(params.imageDirPath, "firmware")
+	err = utils.ExtractFromDockerImage(ctx, log,
+		params.dockerImageName, params.imageDirPath, "/bits/firmware")
 	if err != nil {
-		return "", err
+		err = fmt.Errorf("failed to extract UEFI firmware from EVE image %s: %w",
+			params.dockerImageName, err)
+		return result, err
 	}
-	err = writeFile("server", []byte(config.GetServerName()))
+
+	if params.diskSize == 0 {
+		err = fmt.Errorf("diskSize must be non-zero for network-boot devices")
+		return result, err
+	}
+	targetDiskPath := filepath.Join(params.imageDirPath, "installed.qcow2")
+	targetDisk, err := createBlankDisk(
+		ctx, log, targetDiskPath, provider.DiskImageFormatQcow2, params.diskSize)
 	if err != nil {
-		return "", err
+		err = fmt.Errorf("failed to create network-boot target disk: %w", err)
+		return result, err
 	}
+	log.Infof("Created blank target disk for network-boot EVE installation: %s", targetDiskPath)
+	result.disks = []provider.DiskImage{targetDisk}
 
-	if len(config.GetOnboardCertPem()) > 0 {
-		_, err = utils.ValidatePEMCerts([]byte(config.GetOnboardCertPem()), true)
-		if err != nil {
-			return "", fmt.Errorf("onboard certificate invalid: %w", err)
-		}
-		err = writeFile("onboard.cert.pem", []byte(config.GetOnboardCertPem()))
-		if err != nil {
-			return "", err
-		}
-	}
-	if len(config.GetOnboardKeyPem()) > 0 {
-		err = utils.ValidatePEMPrivateKeyECDSA([]byte(config.GetOnboardKeyPem()))
-		if err != nil {
-			return "", fmt.Errorf("onboard key invalid: %w", err)
-		}
-		err = writeFile("onboard.key.pem", []byte(config.GetOnboardKeyPem()))
-		if err != nil {
-			return "", err
-		}
-	}
-
-	if len(config.GetRootCertPem()) > 0 {
-		_, err = utils.ValidatePEMCerts([]byte(config.GetRootCertPem()), true)
-		if err != nil {
-			return "", fmt.Errorf("root certificate invalid: %w", err)
-		}
-		err = writeFile("root-certificate.pem", []byte(config.GetRootCertPem()))
-		if err != nil {
-			return "", err
-		}
-	}
-
-	// Handle V2 TLS certs and append proxy CA certs
-	var certDataBuilder strings.Builder
-	writeV2TLS := false
-
-	// Validate and append V2TlsCertsPem
-	for _, pemStr := range config.GetV2TlsCertsPem() {
-		_, err = utils.ValidatePEMCerts([]byte(pemStr), true)
-		if err != nil {
-			return "", fmt.Errorf("v2 TLS certificate invalid: %w", err)
-		}
-		certDataBuilder.WriteString(pemStr)
-		if !strings.HasSuffix(pemStr, "\n") {
-			certDataBuilder.WriteString("\n")
-		}
-		writeV2TLS = true
-	}
-
-	// Append validated proxy CA certificates
-	for _, block := range proxyCACerts {
-		writeV2TLS = true
-		certPEM := pem.EncodeToMemory(block)
-		certDataBuilder.Write(certPEM)
-		if len(certPEM) > 0 && certPEM[len(certPEM)-1] != '\n' {
-			certDataBuilder.WriteString("\n")
-		}
-	}
-
-	if writeV2TLS {
-		certData := []byte(certDataBuilder.String())
-		err = writeFile("v2tlsbaseroot-certificates.pem", certData)
-		if err != nil {
-			return "", err
-		}
-	}
-
-	if len(config.GetSshKeys()) > 0 {
-		keysData := strings.Join(config.GetSshKeys(), "\n")
-		err = writeFile("authorized_keys", []byte(keysData))
-		if err != nil {
-			return "", err
-		}
-	}
-
-	if len(config.GetGrubOptions()) > 0 {
-		grubConfig := strings.Join(config.GetGrubOptions(), "\n")
-		err = writeFile("grub.cfg", []byte(grubConfig))
-		if err != nil {
-			return "", err
-		}
-	}
-
-	err = writeFile("GlobalConfig/global.json", []byte(config.GetGlobalJson()))
+	extraDisks, err := createBlankDisks(ctx, log, params.imageDirPath, params.extraDiskBytes)
 	if err != nil {
-		return "", err
+		err = fmt.Errorf("failed to create extra disks: %w", err)
+		return result, err
 	}
-	err = writeFile("DevicePortConfig/override.json", []byte(config.GetOverrideJson()))
-	if err != nil {
-		return "", err
-	}
-	if len(config.GetBootstrapConfigPb()) > 0 {
-		err = writeFile("bootstrap-config.pb", config.GetBootstrapConfigPb())
-		if err != nil {
-			return "", err
-		}
-	}
-
-	return dirPath, nil
+	result.disks = append(result.disks, extraDisks...)
+	return result, nil
 }
 
 // resolveSoftSerial returns the soft serial number to write into a device's
@@ -782,7 +706,7 @@ func makeDeviceImage(ctx context.Context, log *logrus.Entry, cache *templateCach
 	}
 
 	var configDir string
-	configDir, err = makeEVEConfigDir(
+	configDir, err = utils.MakeEVEConfigDir(
 		params.imageDirPath, params.config, params.proxyCACerts, params.softSerial)
 	if err != nil {
 		err = fmt.Errorf("failed to prepare EVE config dir: %w", err)

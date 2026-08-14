@@ -19,6 +19,13 @@ const (
 	// Used by both the broker (to bound the installer wait) and the harness (to extend
 	// the SetupDevices RPC deadline when installation is requested).
 	EVEInstallationTimeout = 10 * time.Minute
+	// NetbootDownloadTimeout is the maximum time allowed for a device to boot
+	// over the network (DHCP/TFTP/HTTP) and reach the point of starting the EVE
+	// installer -- i.e. iPXE bootloader plus installer.iso transfer, not the
+	// installer's own run time (see EVEInstallationTimeout, added on top of this
+	// for the full budget). Network transfer is slower and less predictable
+	// than reading from a locally attached disk image.
+	NetbootDownloadTimeout = 10 * time.Minute
 )
 
 const (

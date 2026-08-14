@@ -220,9 +220,14 @@ func hvMakeFlavor(h Hypervisor) string {
 // EVE version requirement (RequireEdgeDevice.WithEVEVersion) must take the
 // container path instead, since that is the only path that can produce an
 // arbitrary requested version; the local live image always carries whatever
-// version happens to be built.
-func useLocalLiveImage(requirementVersion string, img *localLiveImage) bool {
-	return img != nil && requirementVersion == ""
+// version happens to be built. A network-boot device
+// (CreateFromScratchWithNetworkBoot) must also take the container path: the
+// live image is a pre-built bootable disk, the opposite of what a
+// network-boot device needs -- it has to pull (and buildNetworkBootImage has
+// to extract firmware from) the actual target docker image instead.
+func useLocalLiveImage(req RequireEdgeDevice, img *localLiveImage) bool {
+	return img != nil && req.WithEVEVersion == "" &&
+		req.DeviceReusePolicy != CreateFromScratchWithNetworkBoot
 }
 
 // LocalLiveImageRequested reports whether the operator selected the live

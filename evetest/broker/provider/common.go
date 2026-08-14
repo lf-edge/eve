@@ -48,6 +48,7 @@ func fullCapabilitySet() []api.Capability {
 		api.Capability_CAPABILITY_FORWARD_EAPOL,
 		api.Capability_CAPABILITY_FORWARD_LLDP,
 		api.Capability_CAPABILITY_TPM,
+		api.Capability_CAPABILITY_NETBOOT,
 	}
 }
 

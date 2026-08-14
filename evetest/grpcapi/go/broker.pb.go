@@ -570,8 +570,18 @@ type BuildImageRequest struct {
 	// virtio-blk disk, in the given order, e.g. for device-side disk
 	// layout/RAID testing (see EdgeDevConfig.disks).
 	ExtraDiskBytes []uint64 `protobuf:"varint,9,rep,packed,name=extra_disk_bytes,json=extraDiskBytes,proto3" json:"extra_disk_bytes,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// When set, the broker attaches no EVE image content to the main boot disk
+	// (disk_bytes) at all -- it is left blank, for a device that is expected
+	// to install EVE onto it by booting over the network (see
+	// DHCP.netboot_server_ip in sdn.proto) rather than from a locally attached
+	// installer/live image. `image` is still used -- to extract the UEFI
+	// firmware the device boots with -- but `live_image` and
+	// `live_image_source` are ignored: the local live-image transport
+	// delivers a pre-built bootable disk, the opposite of what this device
+	// needs.
+	NetworkBoot   bool `protobuf:"varint,10,opt,name=network_boot,json=networkBoot,proto3" json:"network_boot,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *BuildImageRequest) Reset() {
@@ -665,6 +675,13 @@ func (x *BuildImageRequest) GetExtraDiskBytes() []uint64 {
 		return x.ExtraDiskBytes
 	}
 	return nil
+}
+
+func (x *BuildImageRequest) GetNetworkBoot() bool {
+	if x != nil {
+		return x.NetworkBoot
+	}
+	return false
 }
 
 // LocalLiveImageSource points at the files behind a LiveImageRef on the
@@ -1660,7 +1677,7 @@ const file_broker_proto_rawDesc = "" +
 	"globalJson\x12#\n" +
 	"\roverride_json\x18\n" +
 	" \x01(\tR\foverrideJson\x12.\n" +
-	"\x13bootstrap_config_pb\x18\v \x01(\fR\x11bootstrapConfigPb\"\xc3\x03\n" +
+	"\x13bootstrap_config_pb\x18\v \x01(\fR\x11bootstrapConfigPb\"\xe6\x03\n" +
 	"\x11BuildImageRequest\x12\x1b\n" +
 	"\tclient_id\x18\x01 \x01(\tR\bclientId\x12\x1f\n" +
 	"\vdevice_name\x18\x02 \x01(\tR\n" +
@@ -1673,7 +1690,9 @@ const file_broker_proto_rawDesc = "" +
 	"\n" +
 	"live_image\x18\a \x01(\v2 .org.lfedge.evetest.LiveImageRefR\tliveImage\x12T\n" +
 	"\x11live_image_source\x18\b \x01(\v2(.org.lfedge.evetest.LocalLiveImageSourceR\x0fliveImageSource\x12(\n" +
-	"\x10extra_disk_bytes\x18\t \x03(\x04R\x0eextraDiskBytes\"\x9d\x01\n" +
+	"\x10extra_disk_bytes\x18\t \x03(\x04R\x0eextraDiskBytes\x12!\n" +
+	"\fnetwork_boot\x18\n" +
+	" \x01(\bR\vnetworkBoot\"\x9d\x01\n" +
 	"\x14LocalLiveImageSource\x12\x1b\n" +
 	"\tdisk_path\x18\x01 \x01(\tR\bdiskPath\x12\x1d\n" +
 	"\n" +

@@ -31,6 +31,11 @@ const (
 	dnsmasqRunDir       = "/run/dnsmasq"
 
 	dhcpSrvNamePrefix = "dhcpsrv-"
+
+	// netbootIpxeFile is the fixed, well-known filename evetest always
+	// stages ipxe.efi under, at the image server's root (see evetest's
+	// buildNetbootArtifacts) -- announced via DHCP option 67.
+	netbootIpxeFile = "ipxe.efi"
 )
 
 // DhcpServer : DHCP/DHCPv6 server.
@@ -91,18 +96,14 @@ type DhcpServer struct {
 	IPv4LeaseTime time.Duration
 	// IPv6LeaseTime : DHCPv6 lease duration advertised to clients. Zero uses the default (1 hour).
 	IPv6LeaseTime time.Duration
-
-	//nolint:godox
-	// TODO: Netboot
-	//  Example dnsmasq.conf for Netboot:
-	//    # use custom tftp-server instead machine running dnsmasq
-	//    dhcp-boot=pxelinux,server.name,192.168.1.100
-	//    # Boot for iPXE. The idea is to send two different
-	//    # filenames, the first loads iPXE, and the second tells iPXE what to
-	//    # load. The dhcp-match sets the ipxe tag for requests from iPXE.
-	//    dhcp-boot=undionly.kpxe
-	//    dhcp-match=set:ipxe,175 # iPXE sends a 175 option.
-	//    dhcp-boot=tag:ipxe,http://boot.ipxe.org/demo/boot.php
+	// NetbootServerIP : IP address of a netboot (TFTP+HTTP) server, external
+	// to Evetest-SDN, to announce to clients via DHCP option 66
+	// (next-server), enabling iPXE network booting. Only a literal IP address
+	// is supported: dnsmasq has no way to resolve an FQDN itself before
+	// putting an address into the DHCP response. Leave nil to disable
+	// netboot options. See netbootIpxeFile below for the (fixed, well-known)
+	// boot filename announced alongside it.
+	NetbootServerIP net.IP
 }
 
 // IPRange : a range of IP addresses.
@@ -156,7 +157,8 @@ func (s DhcpServer) Equal(other depgraph.Item) bool {
 		generics.EqualSetsFn(s.DNSServers, s2.DNSServers, netutils.EqualIPs) &&
 		s.IPv4NTPServer == s2.IPv4NTPServer &&
 		s.IPv6NTPServer == s2.IPv6NTPServer &&
-		s.WPAD == s2.WPAD
+		s.WPAD == s2.WPAD &&
+		s.NetbootServerIP.Equal(s2.NetbootServerIP)
 }
 
 // External returns false.
@@ -294,6 +296,25 @@ func (c *DhcpServerConfigurator) createDnsmasqConfFile(server DhcpServer) error 
 		if server.WPAD != "" {
 			// DHCP option 252: WPAD.
 			if err := writeLine("dhcp-option=252,%s\n", server.WPAD); err != nil {
+				return err
+			}
+		}
+		if server.NetbootServerIP != nil {
+			// DHCP options 66 (next-server) and 67 (boot filename): point
+			// clients at evetest's own netboot (TFTP+HTTP) image server,
+			// external to Evetest-SDN, using the fixed, well-known
+			// netbootIpxeFile evetest always stages at the image server's
+			// root (see buildNetbootArtifacts). Every request gets the same
+			// answer, including ipxe.efi's own re-DHCP once it boots
+			// (identifying itself via DHCP option 77 user-class "iPXE"):
+			// EVE's ipxe.efi is built with an embedded script
+			// (pkg/ipxe/embedded.cfg) that re-derives "${filename}.cfg"
+			// itself and chains to that -- so handing it netbootIpxeFile
+			// again (rather than the .cfg script directly) is required,
+			// not an oversight; giving it the .cfg name here would make the
+			// embedded script append ".cfg" a second time.
+			if err := writeLine("dhcp-boot=%s,,%s\n",
+				netbootIpxeFile, server.NetbootServerIP.String()); err != nil {
 				return err
 			}
 		}

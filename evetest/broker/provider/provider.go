@@ -185,6 +185,17 @@ type DeviceSpec struct {
 
 	// NetworkInterfaces defines the network configuration for the device.
 	NetworkInterfaces []NetworkInterfaceSpec
+
+	// NetworkBootFallback requests a disk-first, network-fallback (PXE/iPXE)
+	// boot order: firmware tries the attached disk first, falling through to
+	// the network only while that disk has nothing bootable. This same
+	// static order is correct for the device's entire lifetime -- once a
+	// network installer has written EVE onto the disk, it boots straight
+	// from disk and the network is never attempted again, with no
+	// reconfiguration needed. Used for devices provisioned with a blank
+	// target disk and no installer/live image content attached (see
+	// BuildImageRequest.network_boot).
+	NetworkBootFallback bool
 }
 
 // NetworkInterfaceSpec defines a single network interface for a device.

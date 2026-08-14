@@ -127,7 +127,7 @@ func (a *agent) updateIntendedState() {
 	}
 
 	//nolint:godox
-	// TODO: ntp servers, netboot servers
+	// TODO: ntp servers
 }
 
 func (a *agent) getIntendedPhysIfs() dg.Graph {
@@ -597,6 +597,9 @@ func (a *agent) getIntendedNetwork(network *api.Network) dg.Graph {
 			WPAD:           dhcpv4.GetWpad(),
 			IPv4LeaseTime:  ipv4LeaseTime,
 			IPv6LeaseTime:  ipv6LeaseTime,
+			// Already validated to parse as an IP address, if non-empty
+			// (see validateNetworks in parse.go).
+			NetbootServerIP: net.ParseIP(dhcpv4.GetNetbootServerIp()),
 		}, nil)
 	}
 
@@ -1584,8 +1587,6 @@ func (a *agent) labeledItemToEndpoint(item *labeledItem) *api.Endpoint {
 		return item.LabeledItem.(*api.ExplicitProxy).Endpoint
 	case (&api.TransparentProxy{}).ItemCategory():
 		return item.LabeledItem.(*api.TransparentProxy).Endpoint
-	case (&api.NetbootServer{}).ItemCategory():
-		return item.LabeledItem.(*api.NetbootServer).Endpoint
 	case (&api.SCEPServer{}).ItemCategory():
 		return item.LabeledItem.(*api.SCEPServer).Endpoint
 	default:

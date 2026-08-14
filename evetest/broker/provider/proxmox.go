@@ -83,6 +83,13 @@ type proxmoxDevice struct {
 	ifaces []proxmoxIface
 	status DeviceStatus
 
+	// netbootMTUCapped: NICs still carry the netboot MTU cap (see buildVMOptions).
+	netbootMTUCapped bool
+	// netbootCompleted: the device's one network boot has already happened.
+	// PowerOnDevice lifts the cap once it sees both set, i.e. from the second
+	// call onward. Both stay false for a device that was never NetworkBootFallback.
+	netbootCompleted bool
+
 	// firmwareVolIDs holds the import-storage volume IDs of the uploaded custom
 	// OVMF CODE/VARS files (empty unless custom UEFI firmware is used). Unlike
 	// disk import sources, these are read live by QEMU for the VM's lifetime and
@@ -297,6 +304,7 @@ func nodeArchs(ctx context.Context, client *proxmox.Client,
 // same as qemu/libvirt. The host hookscript (proxmoxHookscriptVolID, a deployment
 // prerequisite installed by the Proxmox broker installer) applies the link-local
 // L2 forwarding tweaks on the xconnect bridges, and TPM is supported via tpmstate0.
+// It also supports network boot.
 func (p *ProxmoxProvider) Capabilities() []api.Capability {
 	return fullCapabilitySet()
 }
@@ -343,11 +351,12 @@ func (p *ProxmoxProvider) SetupDevice(
 	}
 
 	dev := &proxmoxDevice{
-		name:       name,
-		spec:       spec,
-		vmID:       vmID,
-		consoleLog: consoleLog,
-		consoleMux: newConsoleMux(),
+		name:             name,
+		spec:             spec,
+		vmID:             vmID,
+		consoleLog:       consoleLog,
+		consoleMux:       newConsoleMux(),
+		netbootMTUCapped: spec.NetworkBootFallback,
 	}
 
 	// Clean up anything already uploaded/created if the function returns before
@@ -487,8 +496,13 @@ func (p *ProxmoxProvider) TeardownDevice(ctx context.Context, name string) error
 	return nil
 }
 
-// PowerOnDevice starts a previously created VM.
+// PowerOnDevice starts a previously created VM. For a NetworkBootFallback
+// device, the first call boots it for its network install with the NICs'
+// MTU still capped (see buildVMOptions); every call after that lifts the cap
+// first, since by then the device already did its one network boot and only
+// ever boots from disk from here on (see netbootMTUCapped/netbootCompleted).
 func (p *ProxmoxProvider) PowerOnDevice(ctx context.Context, name string) error {
+	log := logger.FromContext(ctx)
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
@@ -496,6 +510,29 @@ func (p *ProxmoxProvider) PowerOnDevice(ctx context.Context, name string) error 
 	if err != nil {
 		return err
 	}
+	if dev.netbootMTUCapped && dev.netbootCompleted {
+		var options []proxmox.VirtualMachineOption
+		for _, iface := range dev.ifaces {
+			options = append(options, proxmox.VirtualMachineOption{
+				Name: iface.model,
+				Value: fmt.Sprintf("virtio=%s,bridge=%s",
+					strings.ToUpper(iface.mac.String()), iface.vnet),
+			})
+		}
+		cfgTask, err := vm.Config(ctx, options...)
+		if err != nil {
+			return fmt.Errorf("failed to clear netboot MTU cap for device %q: %w",
+				name, err)
+		}
+		if err := waitTask(ctx, cfgTask); err != nil {
+			return fmt.Errorf(
+				"failed waiting for netboot MTU cap removal on device %q: %w",
+				name, err)
+		}
+		dev.netbootMTUCapped = false
+		log.Infof("Cleared netboot MTU cap for device %q", name)
+	}
+
 	task, err := vm.Start(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to start VM %d for device %q: %w", dev.vmID, name, err)
@@ -503,6 +540,7 @@ func (p *ProxmoxProvider) PowerOnDevice(ctx context.Context, name string) error 
 	if err := waitTask(ctx, task); err != nil {
 		return fmt.Errorf("failed waiting for VM %d start: %w", dev.vmID, err)
 	}
+	dev.netbootCompleted = true
 	p.updateDeviceStatus(dev, DeviceStatusRunning)
 	// The VM may have powered itself off from inside the guest (e.g. the EVE
 	// installer, after writing the target disk) without going through
@@ -984,8 +1022,19 @@ func (p *ProxmoxProvider) buildVMOptions(dev *proxmoxDevice, diskRefs []string,
 	// Disks, imported from the images uploaded to the import storage.
 	options = append(options, diskOptions(p.conf.Storage, diskRefs)...)
 	if len(diskRefs) > 0 {
+		bootOrder := "virtio0"
+		if spec.NetworkBootFallback {
+			// Standard BIOS/UEFI boot-order fallthrough: firmware tries
+			// virtio0 first, falling through to net0 (PXE/iPXE) only while
+			// the target disk has nothing bootable. Once a network installer
+			// has written EVE onto it, virtio0 succeeds outright and network
+			// is never attempted again -- this same static setting is correct
+			// for the device's entire lifetime, no reconfiguration needed
+			// after installation (net0 is dev.ifaces[0]'s model; see below).
+			bootOrder += ";net0"
+		}
 		options = append(options, proxmox.VirtualMachineOption{
-			Name: "boot", Value: "order=virtio0",
+			Name: "boot", Value: "order=" + bootOrder,
 		})
 	}
 
@@ -995,11 +1044,25 @@ func (p *ProxmoxProvider) buildVMOptions(dev *proxmoxDevice, diskRefs []string,
 	// configure on that NIC -- so the evetest SDN zone's VNet bridges are
 	// created with a high MTU (see deploy/proxmox/installer.sh.tmpl) rather
 	// than needing a per-interface override here.
+	//
+	// NetworkBootFallback is the exception, for its first (network) boot only:
+	// iPXE sizes its TFTP block requests off the NIC's advertised MTU, and
+	// the zone's high ceiling makes it negotiate blocks far bigger than the
+	// real end-to-end path (the SDN's uplink and the gRPC tunnel to evetest
+	// are both fixed at 1500) can carry, which silently black-holes the
+	// transfer. Pin the MTU down to 1500 for that first boot; PowerOnDevice
+	// then lifts it again (see netbootMTUCapped/netbootCompleted) before the
+	// device boots into the installed EVE for real, so jumbo-frame testing
+	// remains possible afterward.
 	for _, iface := range dev.ifaces {
+		value := fmt.Sprintf("virtio=%s,bridge=%s",
+			strings.ToUpper(iface.mac.String()), iface.vnet)
+		if spec.NetworkBootFallback {
+			value += ",mtu=1500"
+		}
 		options = append(options, proxmox.VirtualMachineOption{
-			Name: iface.model,
-			Value: fmt.Sprintf("virtio=%s,bridge=%s",
-				strings.ToUpper(iface.mac.String()), iface.vnet),
+			Name:  iface.model,
+			Value: value,
 		})
 	}
 
