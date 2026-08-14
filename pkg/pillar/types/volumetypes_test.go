@@ -36,6 +36,39 @@ func TestVolumeStatusGetPVCNameNoHash(t *testing.T) {
 	assert.NotContains(t, name, "#")
 }
 
+// TestVolumeConfigGetPVCNameMatchesStatus pins the invariant the EVE-k PVC
+// adoption path rests on: the name derived from a VolumeConfig must be the same
+// name derived from the corresponding VolumeStatus. Adoption looks a PVC up by
+// this name and treats a hit as proof that the PVC belongs to this volume at
+// this exact generation, so the two derivations drifting apart would let one
+// side look up a PVC the other never wrote.
+func TestVolumeConfigGetPVCNameMatchesStatus(t *testing.T) {
+	id := uuid.Must(uuid.NewV4())
+	for _, gen := range []struct{ generation, local int64 }{
+		{0, 0},
+		{2, 1},
+		{5, 0},
+		{0, 7},
+	} {
+		config := VolumeConfig{
+			VolumeID:               id,
+			GenerationCounter:      gen.generation,
+			LocalGenerationCounter: gen.local,
+		}
+		status := VolumeStatus{
+			VolumeID:               id,
+			GenerationCounter:      gen.generation,
+			LocalGenerationCounter: gen.local,
+		}
+		assert.Equal(t, status.GetPVCName(), config.GetPVCName(),
+			"generation=%d local=%d", gen.generation, gen.local)
+		// The generation must be part of the name, so a different generation
+		// can never resolve to the same PVC.
+		assert.Equal(t, fmt.Sprintf("%s-pvc-%d", id.String(), gen.generation+gen.local),
+			config.GetPVCName())
+	}
+}
+
 // VolumesSnapshotAction.String
 
 func TestVolumesSnapshotActionString(t *testing.T) {
