@@ -88,13 +88,17 @@ import (
 //   - TestVMAppPurgeAfterPowerCycle -- a purge issued while the device is
 //     powered off, which is where a reboot lands in the middle of the purge
 //     deterministically rather than by chance. Meaningful on every hypervisor.
+//   - TestVMAppPurgeDuringFailover -- a purge issued while the app's
+//     designated node is powered off and the workload has failed over to
+//     another node. Needs a three-node cluster; Kubevirt only.
 //
-// The two purge tests come last because they are the expensive ones: they
+// The three purge tests come last because they are the expensive ones: they
 // assert on which generation of a workload exists, so each needs a device
 // created from scratch (purgeDeviceRequirements) rather than the warm device
-// the earlier subtests reuse.
+// the earlier subtests reuse. The failover test is last of the three, being
+// the only one that needs three of them.
 //
-// Neither declares hypervisor variants. The whole suite is run once per
+// None declares hypervisor variants. The whole suite is run once per
 // hypervisor (EVETEST_HYPERVISOR=kvm|kubevirt), so a variant here would run
 // the same combination a second time; a test that cannot say anything on the
 // hypervisor it was given skips instead.
@@ -130,6 +134,9 @@ func TestAppsSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestVMAppPurgeAfterPowerCycle,
+		},
+		evetest.TestCase{
+			Test: TestVMAppPurgeDuringFailover,
 		},
 	)
 }
