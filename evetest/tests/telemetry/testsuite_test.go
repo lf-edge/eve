@@ -20,19 +20,20 @@ import (
 // setupTelemetryTestDevice, which states the device requirements in one place.
 // That is what lets the framework reuse a single VM across the suite: it
 // compares the requirements field by field, so any divergence silently costs a
-// full device recreation. Only TestDeviceInfo asserts on the TPM (via
-// HSMStatus); for the others both parameters merely select the device flavor.
-// None of the subtests deploys an application, but the hypervisor is a parameter
-// regardless, so that the suite can be run against eve-k - where the log
-// pipeline and the reporting paths are worth covering even though nothing here
-// is hypervisor-specific. It has so far only been run under KVM.
+// full device recreation. TestDeviceInfo and TestHardwareInventory assert on the
+// TPM (via HSMStatus and Inventory.Tpm.Present); for the others both parameters
+// merely select the device flavor. None of the subtests deploys an application,
+// but the hypervisor is a parameter regardless, so that the suite can be run
+// against eve-k - where the log pipeline and the reporting paths are worth
+// covering even though nothing here is hypervisor-specific. It has so far only
+// been run under KVM.
 //
 // The subtests are grouped by subject - what EVE reports, then how the log
-// pipeline is configured - and TestRemoteLogLevelNone goes last because it is
-// the only one that reboots, which the others would otherwise pay for. Nothing
-// beyond that is load-bearing: the framework resets the device configuration
-// between subtests, and each subtest establishes the state it needs before it
-// asserts anything, so the order can be changed freely.
+// pipeline is configured - and the two that reboot the device go last so that
+// the others do not pay for a reboot. Nothing beyond that is load-bearing: the
+// framework resets the device configuration between subtests, and each subtest
+// establishes the state it needs before it asserts anything, so the order can be
+// changed freely.
 //
 // Subtests
 // --------
@@ -52,6 +53,8 @@ import (
 //     rejected by pillar and never reaches Vector.
 //   - TestRemoteLogLevelNone -- remote log levels set to "none" stop log upload
 //     without stopping the device or its local log collection.
+//   - TestHardwareInventory -- ZInfoHardware describes the device EVE runs on
+//     and stays identical across a reboot.
 func TestTelemetrySuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
@@ -86,6 +89,9 @@ func TestTelemetrySuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestRemoteLogLevelNone,
+		},
+		evetest.TestCase{
+			Test: TestHardwareInventory,
 		},
 	)
 }
