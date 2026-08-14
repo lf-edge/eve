@@ -41,6 +41,15 @@ func (config VolumeConfig) Key() string {
 		config.GenerationCounter+config.LocalGenerationCounter)
 }
 
+// GetPVCName : returns the kubernetes(longhorn) PVC name for this volume.
+// Must produce the same name as VolumeStatus.GetPVCName() for the same volume
+// and generation; callers rely on the generation being embedded in the name so
+// that a lookup by name can only ever match this exact generation.
+func (config VolumeConfig) GetPVCName() string {
+	return fmt.Sprintf("%s-pvc-%d", config.VolumeID.String(),
+		config.GenerationCounter+config.LocalGenerationCounter)
+}
+
 // LogCreate :
 func (config VolumeConfig) LogCreate(logBase *base.LogObject) {
 	logObject := base.NewLogObject(logBase, base.VolumeConfigLogType, config.DisplayName,
