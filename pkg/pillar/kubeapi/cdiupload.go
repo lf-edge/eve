@@ -12,6 +12,7 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -93,4 +94,67 @@ func IsPVCUploadComplete(pvcName string, log *base.LogObject) (bool, error) {
 		return false, fmt.Errorf("failed to get PVC %s: %v", pvcName, err)
 	}
 	return cdiUploadIsComplete(log, pvc), nil
+}
+
+// PVCAdoptionState is the outcome of checking whether an existing PVC can be
+// adopted in place of downloading/creating a volume's content from scratch.
+// Callers must not treat every non-ready state alike: only PVCStateAbsent is
+// evidence that no PVC will ever answer this check, and it is the only
+// verdict safe to act on as if the volume needs a real download.
+type PVCAdoptionState int
+
+const (
+	// PVCStateUnknown means the check did not complete: the API server was
+	// unreachable, or some other transient error occurred. This is not
+	// evidence the PVC is gone -- callers should keep waiting and probe
+	// again later.
+	PVCStateUnknown PVCAdoptionState = iota
+	// PVCStateReady means the PVC exists, is Bound, and its CDI image
+	// upload has completed. Safe to adopt.
+	PVCStateReady
+	// PVCStateNotReady means the PVC exists but is not yet Bound, or its
+	// upload has not finished. Keep waiting; this is still in progress,
+	// not gone.
+	PVCStateNotReady
+	// PVCStateAbsent means Kubernetes confirmed no PVC by this name
+	// exists (a real NotFound, not a transient error). This is the only
+	// state that means the volume actually needs a download.
+	PVCStateAbsent
+)
+
+// ProbePVCAdoption reports the current adoption state of a PVC with this
+// exact name -- i.e. whether it is safe to adopt in place of waiting on (or
+// re-driving) a source ContentTree download. See PVCAdoptionState for what
+// each outcome means and how callers should react to it.
+//
+// This is the cluster-failover fast path: VolumeStatus.GetPVCName() embeds the
+// volume's generation counter in the PVC name itself, so a match here can only
+// be the PVC for this exact generation -- a stale or newer generation simply
+// will not be found under this name, and this function does not need (and does
+// not do) any separate generation comparison.
+func ProbePVCAdoption(pvcName string, log *base.LogObject) PVCAdoptionState {
+	clientset, err := GetClientSet()
+	if err != nil {
+		log.Functionf("ProbePVCAdoption: get clientset: %v", err)
+		return PVCStateUnknown
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	defer cancel()
+	pvc, err := clientset.CoreV1().PersistentVolumeClaims(EVEKubeNameSpace).
+		Get(ctx, pvcName, metav1.GetOptions{})
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return PVCStateAbsent
+		}
+		log.Functionf("ProbePVCAdoption: get PVC %s: %v", pvcName, err)
+		return PVCStateUnknown
+	}
+	if pvc.Status.Phase != corev1.ClaimBound {
+		log.Functionf("ProbePVCAdoption: pvc %s phase is %s, not Bound", pvcName, pvc.Status.Phase)
+		return PVCStateNotReady
+	}
+	if cdiUploadIsComplete(log, pvc) {
+		return PVCStateReady
+	}
+	return PVCStateNotReady
 }
