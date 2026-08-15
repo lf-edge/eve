@@ -513,7 +513,10 @@ func capturePersist(device *evetest.EdgeDevice, label string) {
 		{"df persist+submounts", `eve exec pillar sh -c 'df -B1 | awk "NR==1 || /persist/"' 2>/dev/null || echo none`},
 		{"lsblk sizes+mounts", `eve exec pillar lsblk -b -o NAME,PARTLABEL,SIZE,FSTYPE,MOUNTPOINT 2>/dev/null || echo none`},
 		{"du -d1 /persist", `eve exec pillar sh -c 'du -x -B1 -d1 /persist 2>/dev/null | sort -rn' || echo none`},
-		{"longhorn node disk accounting", `eve exec kube kubectl -n longhorn-system get nodes.longhorn.io -o yaml 2>/dev/null | grep -aE "name:|path:|storageMaximum|storageAvailable|storageScheduled|storageReserved|allowScheduling|diskUUID|type:|reason:|message:" || echo none`},
+		// status: is load-bearing, not noise: the disk-level Schedulable condition is
+		// what gates cluster storage, and `longhorn node -o wide` below reports the
+		// NODE column, which stays True while a disk is unschedulable.
+		{"longhorn node disk accounting", `eve exec kube kubectl -n longhorn-system get nodes.longhorn.io -o yaml 2>/dev/null | grep -aE "name:|path:|storageMaximum|storageAvailable|storageScheduled|storageReserved|allowScheduling|diskUUID|type:|status:|reason:|message:" || echo none`},
 		{"longhorn node -o wide", `eve exec kube kubectl -n longhorn-system get nodes.longhorn.io -o wide 2>/dev/null || echo none`},
 		{"longhorn storage settings", `eve exec kube kubectl -n longhorn-system get settings.longhorn.io -o custom-columns=NAME:.metadata.name,VALUE:.value 2>/dev/null | grep -aiE "NAME|reserved|over-provisioning|minimal-available|soft-anti-affinity" || echo none`},
 		{"eve-kube-app pvc (requested sizes)", `eve exec kube kubectl -n eve-kube-app get pvc 2>/dev/null || echo none`},
@@ -543,7 +546,11 @@ func capturePersist(device *evetest.EdgeDevice, label string) {
 func startPersistSampler(device *evetest.EdgeDevice, interval time.Duration) (stop func()) {
 	done := make(chan struct{})
 	go func() {
-		for n := 0; n < 13; n++ {
+		// Bounded only so a wedged run does not sample forever. The cluster-storage
+		// wait alone is an hour, and at 13 samples the series stopped ~10 minutes in,
+		// leaving the last ~50 minutes of every "storage never became ready" failure
+		// unobserved — exactly the window that explains it.
+		for n := 0; n < 90; n++ {
 			capturePersist(device, fmt.Sprintf("post-conversion startup sample #%d", n))
 			select {
 			case <-done:
