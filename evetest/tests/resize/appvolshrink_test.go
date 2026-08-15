@@ -57,7 +57,10 @@ const (
 	// (~8 GiB measured), while still leaving enough high-residing data that the
 	// shrink runs long enough for the watchdog to interrupt it.
 	defaultFillPeakPct = 90
-	defaultFillKeepGiB = 15
+	// Filler left after the trim. Small on purpose: the data volume alone keeps the
+	// shrink slow enough to cut (measured: 5 cuts an iteration with the filler fully
+	// removed), while every GiB kept here is a GiB EVE-k does not have for Longhorn.
+	defaultFillKeepGiB = 2
 
 	// stageCDataVolMiB is the data-volume size this test defaults to. The app
 	// redeploy on EVE-k wedges in a Longhorn CSI CreateVolume race above ~256 MiB
@@ -158,8 +161,8 @@ func runAppVolumeShrinkCorruption(test *testing.T,
 			Key:          fillKeepGiBParamKey,
 			DefaultValue: uint32(defaultFillKeepGiB),
 			Description: evetest.TestParameterDescription{
-				Summary: "Trim /persist back to this many GiB after the volume is written (must leave room for EVE-k)",
-				Default: "15",
+				Summary: "Leave this many GiB of filler after the volume is written; the rest is deleted so EVE-k has room. Measures the filler alone, not total /persist usage",
+				Default: "2",
 			},
 		},
 		evetest.TestParameterDefinition{
@@ -257,9 +260,8 @@ func runAppVolumeShrinkCorruption(test *testing.T,
 	volverifyImage := evetest.GetTestParameter[string](volverifyImageParamKey)
 	fillPeakPct := evetest.GetTestParameter[uint32](fillPeakPctParamKey)
 	fillKeepGiB := evetest.GetTestParameter[uint32](fillKeepGiBParamKey)
-	if fillPeakPct > 0 {
-		t.Expect(fillKeepGiB).To(BeNumerically(">", 0), "FILL_KEEP_GIB must be set when filling")
-	}
+	// 0 is meaningful now that the budget counts only the filler: it means delete all
+	// of it once the volume is placed, which is the most headroom EVE-k can get.
 
 	// Cap a single file at a sixteenth of the volume. volverify's default large-file
 	// bound is 256 MiB, which on a volume this size would let one op consume the
@@ -394,7 +396,7 @@ func runAppVolumeShrinkCorruption(test *testing.T,
 	// shrink fit at all, and it leaves the relocation work — including the volume —
 	// concentrated above the boundary.
 	if fillPeakPct > 0 {
-		log.Infof("trimming /persist back to %d GiB (lowest blocks first)", fillKeepGiB)
+		log.Infof("trimming the filler back to %d GiB (lowest blocks first)", fillKeepGiB)
 		trimPersistToGiB(t, device, int(fillKeepGiB))
 		log.Infof("asserting the data volume actually lies above the shrink boundary")
 		assertVolumeAboveShrinkBoundary(t, device)
@@ -1052,13 +1054,20 @@ echo "FILLED files=$n $(df -h /persist | tail -1)"`
 	evetest.Logger().Infof("filled /persist to ~%d%%: %s", pct, strings.TrimSpace(out))
 }
 
-// trimPersistToGiB deletes the LOWEST-numbered fill files until /persist usage is
-// down to keepGiB, which leaves the survivors — and the data volume created at peak
-// — concentrated in the high blocks above the future shrink boundary.
+// trimPersistToGiB deletes the LOWEST-numbered fill files until the FILLER is down
+// to keepGiB, which leaves the survivors — and the data volume created at peak —
+// concentrated in the high blocks above the future shrink boundary.
 //
 // Trimming is what makes the shrink possible at all: the resizer refuses when the
 // filesystem cannot fit in the target size, and EVE-k needs room afterwards for
 // its own images. Deleting from the bottom is what keeps the relocation work high.
+//
+// keepGiB measures the filler directory alone, deliberately: a budget on total
+// /persist usage also counts the data volume, so a large volume consumes it and the
+// trim stops early. At 8 GiB the old total-usage form left 6.75 GiB of filler, EVE-k
+// then booted onto a ~40%-full /persist, and Longhorn refused to place replicas
+// below its 25%-of-total floor — a harness artifact that read as a product failure
+// in 3 of 12 iterations and vanished once the filler was actually removed.
 func trimPersistToGiB(t Gomega, device *evetest.EdgeDevice, keepGiB int) {
 	const script = `set -u
 KEEP_KB=$(( $1 * 1024 * 1024 ))
@@ -1068,15 +1077,15 @@ DIR=/persist/log/stressfill
 # silent version of this produced three clean-looking rows that had measured nothing.
 [ -d "$DIR" ] || { echo "TRIM-FAILED no-fill-dir"; exit 1; }
 for f in $(ls -1 "$DIR" 2>/dev/null | sort); do
-  [ "$(df -k /persist | tail -1 | awk '{print $3}')" -le "$KEEP_KB" ] && break
+  [ "$(du -sk "$DIR" | awk '{print $1}')" -le "$KEEP_KB" ] && break
   rm -f "$DIR/$f"
 done
 sync
-echo "TRIMMED remaining=$(ls -1 "$DIR" 2>/dev/null | wc -l) $(df -h /persist | tail -1)"`
+echo "TRIMMED remaining=$(ls -1 "$DIR" 2>/dev/null | wc -l) fillerKB=$(du -sk "$DIR" | awk '{print $1}') $(df -h /persist | tail -1)"`
 	out, err := runOnEVEScript(device, script, 10*time.Minute, fmt.Sprintf("%d", keepGiB))
 	t.Expect(err).NotTo(HaveOccurred(), "trimming /persist failed:\n%s", out)
 	t.Expect(out).To(ContainSubstring("TRIMMED"), "trim did not report completion:\n%s", out)
-	evetest.Logger().Infof("trimmed /persist to ~%d GiB: %s", keepGiB, strings.TrimSpace(out))
+	evetest.Logger().Infof("trimmed the filler to ~%d GiB: %s", keepGiB, strings.TrimSpace(out))
 }
 
 // assertVolumeAboveShrinkBoundary fails the run unless the app's data volume has
