@@ -1,0 +1,72 @@
+# Copyright (c) 2026, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+name: BPFTrace Tests
+on:  # yamllint disable-line rule:truthy
+  push:
+    branches:
+      - "master"
+      - "[0-9]+.[0-9]+"
+      - "[0-9]+.[0-9]+-stable"
+      - "feature/*"
+    paths:
+      - 'pkg/bpftrace/**'
+      - 'eve-tools/bpftrace-compiler/**'
+      - 'kernel-commits.mk'
+      - '.github/workflows/bpftrace-tests.yml'
+  pull_request:
+    branches:
+      - "master"
+      - "[0-9]+.[0-9]+"
+      - "[0-9]+.[0-9]+-stable"
+      - "feature/*"
+    paths:
+      - 'pkg/bpftrace/**'
+      - 'eve-tools/bpftrace-compiler/**'
+      - 'kernel-commits.mk'
+      - '.github/workflows/bpftrace-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The build and some tests clone from github.com (linuxkit, swtpm, ...).
+  # GitHub throttles anonymous fetches per source IP, which makes those clones
+  # fail in bursts on the shared self-hosted runners, so authenticate every
+  # github.com clone this job makes.
+  GITHUB_TOKEN: ${{ github.token }}
+  GIT_ASKPASS: ${{ github.workspace }}/tools/github-askpass.sh
+
+jobs:
+  test-bpftrace:
+    runs-on: zededa-ubuntu-2204
+    timeout-minutes: 180
+    steps:
+      - name: Clear repository
+        run: |
+          sudo rm -fr "$GITHUB_WORKSPACE" && mkdir "$GITHUB_WORKSPACE"
+          rm -fr ~/.linuxkit
+          docker system prune --all --force --volumes
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Login to Docker Hub
+        if: ${{ github.event.repository.full_name == 'lf-edge/eve' }}
+        run: | # Runners must provide default credentials
+          docker login
+      - name: Test
+        run: |
+          make test-bpftrace
+      - name: Clean
+        if: ${{ always() }}
+        run: |
+          make clean || :
+          docker system prune -f -a || :
+          rm -rf ~/.linuxkit || :
