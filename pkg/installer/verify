@@ -22,6 +22,17 @@ done
 
 #networking benchmarking
 dhclient
+
+# dhclient installs the resolver configuration by renaming a temporary file over
+# /etc/resolv.conf, which cannot work because that path is bind-mounted into the
+# installer. The file it prepared is left behind, so put its contents in place;
+# without this every connectivity check below fails on name resolution alone.
+for resolv in /etc/resolv.conf.dhclient-new.*; do
+   [ -f "$resolv" ] || continue
+   cat "$resolv" > /etc/resolv.conf
+   rm -f "$resolv"
+done
+
 nics=$(ifconfig -a | grep eth | awk '{print $1}')
 mkdir "$REPORT/networking-checks/"
 
