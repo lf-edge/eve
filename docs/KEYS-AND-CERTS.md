@@ -16,7 +16,7 @@ If EVE is running on hardware with a trusted platform module (TPM), then these k
 | Device cert  | Secure identity of the device | ECC (P-256) | /config/device.cert.pem | [Identity of EVE](SECURITY-ARCHITECTURE.md#identity-of-eves-instance) |
 | ECDH key | For API object encryption | ECC (P-256) | TPM or /persist/certs/ecdh.key.pem | [Config object encryption](OBJECT-LEVEL-ENCRYPTION.md) |
 | ECDH cert | For API object encryption | ECC (P-256) | /persist/certs/ecdh.cert.pem | [Config object encryption](OBJECT-LEVEL-ENCRYPTION.md) |
-| Attestation key | Sign the attestation | ECC (P-256) | TPM or /persist/certs/attest.cert.pem | [Measured Boot and Remote Attestation](https://wiki.lfedge.org/display/EVE/Measured+Boot+and+Remote+Attestation) |
+| Attestation key | Sign the attestation | ECC (P-256) | TPM or /persist/certs/attest.key.pem | [Measured Boot and Remote Attestation](https://wiki.lfedge.org/display/EVE/Measured+Boot+and+Remote+Attestation) |
 | Attestation cert | Sign the attestation | ECC (P-256) | /persist/certs/attest.cert.pem | [Measured Boot and Remote Attestation](https://wiki.lfedge.org/display/EVE/Measured+Boot+and+Remote+Attestation) |
 | Onboarding key | Used initially for onboarding | ECC (P-256) | /config/onboard.key.pem | [Registration](REGISTRATION.md) |
 | Onboarding cert | Used initially for onboarding | ECC (P-256) | /config/onboard.cert.pem |  [Registration](REGISTRATION.md) |
