@@ -463,10 +463,23 @@ test: $(LINUXKIT) pkg/pillar test-images-patches | $(DIST)
 	make -C pkg/pillar test
 	cp pkg/pillar/results.json $(DIST)/
 	cp pkg/pillar/results.xml $(DIST)/
-	make -C eve-tools/bpftrace-compiler test
 	make -C pkg/dnsmasq test
 	make -C pkg/debug test
 	make -C pkg/vtpm test
+	$(QUIET): $@: Succeeded
+
+# The bpftrace-compiler tests boot QEMU for both amd64 and arm64, so they need
+# the eve-bpftrace package for each. A linuxkit cache entry holding a single
+# architecture shadows the registry's multi-arch manifest for every FROM naming
+# that tag, so --pull is needed to keep the entry complete. Everything reachable
+# from `test` above stays on the host architecture for the same reason.
+test-bpftrace:
+	$(MAKE) LINUXKIT_OPTS="$(strip $(LINUXKIT_OPTS) --pull)" pkg/bpftrace
+	$(MAKE) LINUXKIT_OPTS="$(strip $(LINUXKIT_OPTS) --pull)" ZARCH=arm64 pkg/bpftrace
+	make -C eve-tools/bpftrace-compiler test
+	$(QUIET): $@: Succeeded
+
+test-all: test test-bpftrace
 	$(QUIET): $@: Succeeded
 
 test-profiling:
@@ -1137,7 +1150,7 @@ docker-image-clean:
 	docker rmi -f $(shell ./tools/oldimages.sh)
 
 .PRECIOUS: rootfs-% $(ROOTFS)-%.img $(ROOTFS_COMPLETE)
-.PHONY: all clean test run pkgs help build-tools live rootfs config installer live current FORCE $(DIST) HOSTARCH image-set cache-export
+.PHONY: all clean test test-bpftrace test-all run pkgs help build-tools live rootfs config installer live current FORCE $(DIST) HOSTARCH image-set cache-export
 FORCE:
 
 help:
@@ -1156,6 +1169,8 @@ help:
 	@echo "Commonly used maintenance and development targets:"
 	@echo "   build-vm                         prepare a build VM for EVE in qcow2 format"
 	@echo "   test                             run EVE tests"
+	@echo "   test-bpftrace                    run the QEMU-based bpftrace-compiler tests (slow, ~1h)"
+	@echo "   test-all                         run both of the above"
 	@echo "   test-profiling                   run pillar tests with memory profiler"
 	@echo "   clean                            clean build artifacts in a current directory (doesn't clean Docker)"
 	@echo "   release                          prepare branch for a release (VERSION=x.y.z required)"
