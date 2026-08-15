@@ -1220,7 +1220,14 @@ func waitAppRunningWithPVCRecovery(t Gomega, device *evetest.EdgeDevice,
 	log := evetest.Logger()
 	for round := 1; round <= pvcRecoveryRounds; round++ {
 		if waitAppRunningQuietly(device, appUUID, pvcRecoveryWait) {
+			log.Infof("app RUNNING; CDI size verdict: %q", cdiImportSizeVerdict(device))
 			return
+		}
+		// An import CDI has rejected on size cannot be recovered by re-driving the
+		// PVCs, so stop rather than spend the remaining rounds re-confirming it.
+		if verdict := cdiImportSizeVerdict(device); verdict != "" {
+			t.Expect(false).To(BeTrue(),
+				"CDI refuses the import and retrying cannot change it: %s", verdict)
 		}
 		log.Errorf("app not RUNNING after %s (round %d/%d) — trying the PVC-wedge recovery",
 			pvcRecoveryWait, round, pvcRecoveryRounds)
@@ -1229,7 +1236,34 @@ func waitAppRunningWithPVCRecovery(t Gomega, device *evetest.EdgeDevice,
 		}
 	}
 	t.Expect(appIsRunning(device, appUUID)).To(BeTrue(),
-		"app never reached RUNNING after %d PVC-wedge recovery attempts", pvcRecoveryRounds)
+		"app never reached RUNNING after %d PVC-wedge recovery attempts (CDI size verdict: %q)",
+		pvcRecoveryRounds, cdiImportSizeVerdict(device))
+}
+
+// cdiImportSizeVerdict returns CDI's own size comparison for the app's import, or
+// "" when it has not made one.
+//
+// CDI refuses an import whose virtual image size exceeds the capacity of the PVC it
+// was handed, and then retries on a ~70-90s loop indefinitely, so the app never
+// reaches RUNNING. Deleting PVCs cannot help — the sizes are the same on the next
+// attempt — which is why this is worth reading rather than waiting out.
+//
+// Called on the success path too, deliberately. The failing runs compare
+// 8592031744 against 8589938688, but the SAME triple is present in runs that pass,
+// so sampling only failures cannot distinguish the two outcomes and leaves the
+// intermittency unexplained.
+func cdiImportSizeVerdict(device *evetest.EdgeDevice) string {
+	const script = `set -u
+POD=$(eve exec kube kubectl -n eve-kube-app get pod -o name 2>/dev/null | grep cdi-upload | head -1)
+[ -z "$POD" ] && exit 0
+eve exec kube kubectl -n eve-kube-app logs "$POD" --tail=400 2>/dev/null |
+  grep -aoE "Virtual image size [0-9]+ is larger than the reported available storage [0-9]+" |
+  tail -1`
+	out, err := runOnEVEScript(device, script, 2*time.Minute)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
 }
 
 // appIsRunning reports the app's current state without asserting.
