@@ -1253,10 +1253,11 @@ func waitAppRunningWithPVCRecovery(t Gomega, device *evetest.EdgeDevice,
 // so sampling only failures cannot distinguish the two outcomes and leaves the
 // intermittency unexplained.
 func cdiImportSizeVerdict(device *evetest.EdgeDevice) string {
+	// Select by label in one pipeline, as the capture probe does. Resolving the pod
+	// name first and feeding it to a second `eve exec` returns nothing: the inner
+	// command substitution does not survive the nesting.
 	const script = `set -u
-POD=$(eve exec kube kubectl -n eve-kube-app get pod -o name 2>/dev/null | grep cdi-upload | head -1)
-[ -z "$POD" ] && exit 0
-eve exec kube kubectl -n eve-kube-app logs "$POD" --tail=400 2>/dev/null |
+eve exec kube kubectl -n eve-kube-app logs -l cdi.kubevirt.io=cdi-upload-server --tail=400 2>/dev/null |
   grep -aoE "Virtual image size [0-9]+ is larger than the reported available storage [0-9]+" |
   tail -1`
 	out, err := runOnEVEScript(device, script, 2*time.Minute)
