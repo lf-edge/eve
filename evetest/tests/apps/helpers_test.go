@@ -67,6 +67,15 @@ func addLocalNI(devConfig *evetest.EdgeDeviceConfig) uuid.UUID {
 // port forwarded from the edge node, and an allow-all ACL (needed among other
 // things to reach the metadata server).
 func singleVIFWithSSH(niUUID uuid.UUID) []evetest.AppNetworkAdapter {
+	return singleVIFWithSSHOnPort(niUUID, appSSHFwdPort)
+}
+
+// singleVIFWithSSHOnPort is singleVIFWithSSH with the forwarded port spelled
+// out. The forwarded port belongs to the edge node, not to the app, so a test
+// deploying several reachable apps at once must give each one its own -- two
+// apps forwarding the same port cannot both be reached.
+func singleVIFWithSSHOnPort(niUUID uuid.UUID,
+	edgeNodePort uint16) []evetest.AppNetworkAdapter {
 	return []evetest.AppNetworkAdapter{
 		evetest.VirtualNetworkAdapter{
 			LogicalLabel:        "vif0",
@@ -74,7 +83,7 @@ func singleVIFWithSSH(niUUID uuid.UUID) []evetest.AppNetworkAdapter {
 			PortFwdRules: []evetest.PortFwdRule{
 				{
 					Protocol:     evetest.NetworkProtocolTCP,
-					EdgeNodePort: appSSHFwdPort,
+					EdgeNodePort: edgeNodePort,
 					AppPort:      22,
 				},
 			},
