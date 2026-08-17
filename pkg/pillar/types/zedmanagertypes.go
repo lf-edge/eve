@@ -350,6 +350,13 @@ type AppInstanceStatus struct {
 	NoUploadStatsToController bool
 	// Am I Cluster Designated Node Id for this app
 	IsDesignatedNodeID bool
+	// PlacementQuality mirrors DomainStatus.PlacementQuality: how good the CPU
+	// placement the workload actually got is. It is advisory status, not an
+	// error -- a workload reported as needing a repack is running normally --
+	// so it is kept out of ErrorAndTimeWithSource, where it would make every
+	// HasError() caller treat a sub-optimally placed app as a failed one.
+	// zedagent turns it into a WARNING-severity advisory on the app's info.
+	PlacementQuality CPUPlacementQuality
 }
 
 // AppCount is uint8 and it should be sufficient for the number of apps we can support
