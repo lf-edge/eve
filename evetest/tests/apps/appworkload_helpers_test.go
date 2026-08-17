@@ -67,9 +67,10 @@ const (
 )
 
 // kubeItemList is the minimal shape needed from any `kubectl get <resource>
-// -o json`: a name per item, the item's own labels, and the selector labels.
-// A VMIRS is attributed by its selector, which is the only place EVE puts the
-// App-Domain-Name label. A PVC has neither field.
+// -o json`: a name per item, the item's own labels, the selector labels, and
+// its status phase. A VMIRS is attributed by its selector, which is the only
+// place EVE puts the App-Domain-Name label; a PVC has neither label field but
+// does have Status.Phase.
 type kubeItemList struct {
 	Items []struct {
 		Metadata struct {
@@ -81,6 +82,9 @@ type kubeItemList struct {
 				MatchLabels map[string]string `json:"matchLabels"`
 			} `json:"selector"`
 		} `json:"spec"`
+		Status struct {
+			Phase string `json:"phase"`
+		} `json:"status"`
 	} `json:"items"`
 }
 
@@ -119,6 +123,49 @@ func kubectlListItems(
 		return list, false
 	}
 	return list, true
+}
+
+// kubeEventList is the minimal shape needed from `kubectl get events -o json`:
+// the reason, the human-readable message, and the name of the object the
+// event is about.
+type kubeEventList struct {
+	Items []struct {
+		Reason         string `json:"reason"`
+		Message        string `json:"message"`
+		InvolvedObject struct {
+			Name string `json:"name"`
+		} `json:"involvedObject"`
+	} `json:"items"`
+}
+
+// kubectlEvents lists every event in the EVE app namespace. found is false on
+// the same conditions as kubectlListItems.
+func kubectlEvents(dev *evetest.EdgeDevice) (list kubeEventList, found bool) {
+	stdout, stderr, err := dev.RunShellScript(
+		"eve exec kube kubectl -n "+eveKubeAppNamespace+" get events -o json",
+		sshCmdTimeout, 0)
+	if err != nil {
+		evetest.Logger().Warnf(
+			"kubectlEvents: kubectl get events failed: %v (stderr: %s)", err, stderr)
+		return list, false
+	}
+	if err := json.Unmarshal([]byte(stdout), &list); err != nil {
+		evetest.Logger().Warnf(
+			"kubectlEvents: failed to parse kubectl events output: %v", err)
+		return list, false
+	}
+	return list, true
+}
+
+// restartCSIProvisioner deletes Longhorn's csi-provisioner pod(s), forcing a
+// fresh leader election and cache. See the REMOVE ME note atop
+// longhorn_provisioner_workaround_test.go for why this exists.
+func restartCSIProvisioner(dev *evetest.EdgeDevice) {
+	if _, stderr, err := dev.RunShellScript(
+		"eve exec kube kubectl -n longhorn-system delete pod -l app=csi-provisioner",
+		sshCmdTimeout, 0); err != nil {
+		evetest.Logger().Warnf("restartCSIProvisioner: delete failed: %v (stderr: %s)", err, stderr)
+	}
 }
 
 // listAppVMIRS returns the names of every VMIRS (any generation) that belongs to
