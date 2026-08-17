@@ -22,6 +22,35 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// Granularity Longhorn rounds a claim up to: longhorn-manager util.SizeAlignment,
+// duplicated rather than imported because that package costs 42 dependencies.
+const longhornVolumeBlockSize = 2 * 1024 * 1024
+
+// Smallest PVC size Longhorn supports.
+const pvcMinSize = 10 * 1024 * 1024
+
+// pvcRequestSize returns the size to ask for in a PVC claim: at least
+// pvcMinSize, rounded up to the granularity Longhorn provisions at. Longhorn
+// rounds a claim up to longhornVolumeBlockSize while CDI validates an upload
+// against the size the claim asked for, so a request that is not already such a
+// multiple produces a volume bigger than the claim and CDI refuses the import.
+// The result is never smaller than size, so the image always fits; a size within
+// one block of overflowing uint64 is returned unrounded rather than wrapping.
+func pvcRequestSize(size uint64) uint64 {
+	if size < pvcMinSize {
+		size = pvcMinSize
+	}
+	rem := size % longhornVolumeBlockSize
+	if rem == 0 {
+		return size
+	}
+	pad := longhornVolumeBlockSize - rem
+	if size > math.MaxUint64-pad {
+		return size
+	}
+	return size + pad
+}
+
 // CreatePVC : creates a Persistent volume of given name and size.
 func CreatePVC(pvcName string, size uint64, log *base.LogObject, storageClass string) error {
 	// Get the Kubernetes clientset
@@ -32,10 +61,8 @@ func CreatePVC(pvcName string, size uint64, log *base.LogObject, storageClass st
 		return err
 	}
 
-	// PVC minimum supported size is 10MB
-	if size < 10*1024*1024 {
-		size = 10 * 1024 * 1024
-	}
+	size = pvcRequestSize(size)
+
 	// Define the Longhorn PVC object
 	pvc := NewPVCDefinition(pvcName, fmt.Sprint(size), nil, nil, storageClass)
 
