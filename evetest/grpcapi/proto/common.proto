@@ -93,6 +93,13 @@ message EVEDevice {
   string serial_number = 5;
   repeated EVEInterface interfaces = 6;
   ImageRef image = 7;
+  // How many SMT threads each physical core of the device exposes.
+  // Zero or one means no SMT: the device sees `cpus` single-thread cores,
+  // which is the default. Two makes the device see cpus/2 physical cores
+  // with two hardware threads each, which is what a test exercising
+  // SMT-aware CPU placement needs -- without it the guest has no sibling
+  // thread to place a second vCPU on.
+  uint32 threads_per_core = 8;
 }
 
 // Represents the current lifecycle state of an EVE device.
