@@ -1220,9 +1220,11 @@ func waitAppRunningWithPVCRecovery(t Gomega, device *evetest.EdgeDevice,
 	log := evetest.Logger()
 	for round := 1; round <= pvcRecoveryRounds; round++ {
 		if waitAppRunningQuietly(device, appUUID, pvcRecoveryWait) {
+			recordVolumeSizing(device, "app-running")
 			log.Infof("app RUNNING; CDI size verdict: %q", cdiImportSizeVerdict(device))
 			return
 		}
+		recordVolumeSizing(device, fmt.Sprintf("app-not-running-round-%d", round))
 		// An import CDI has rejected on size cannot be recovered by re-driving the
 		// PVCs, so stop rather than spend the remaining rounds re-confirming it.
 		if verdict := cdiImportSizeVerdict(device); verdict != "" {
@@ -1268,6 +1270,42 @@ func cdiImportSizeVerdict(device *evetest.EdgeDevice) string {
 		return ""
 	}
 	return strings.TrimSpace(out)
+}
+
+// recordVolumeSizing logs the numbers that decide whether CDI will accept the
+// import, on every run rather than only on failures.
+//
+// A verdict alone cannot explain an outcome here. CDI removes the upload pod once
+// an import succeeds, so reading its log after the app is RUNNING returns nothing
+// whether or not a size comparison ever happened, and a run that passes looks
+// identical to one whose log query simply arrived too late. The sizes do explain
+// it: Longhorn rounds a claim up to a 2 MiB multiple, so a PVC whose requested and
+// provisioned sizes differ is one CDI will reject, and one where they agree is one
+// it will accept. Recording both, next to the virtual and allocated size of the
+// file the request was derived from, says which case a run was and why.
+func recordVolumeSizing(device *evetest.EdgeDevice, label string) {
+	log := evetest.Logger()
+
+	pvc := `eve exec kube kubectl -n eve-kube-app get pvc ` +
+		`-o custom-columns=NAME:.metadata.name,REQUESTED:.spec.resources.requests.storage,` +
+		`PROVISIONED:.status.capacity.storage --no-headers 2>/dev/null || echo none`
+	out, errOut, err := device.RunShellScript(pvc, 90*time.Second, 0)
+	log.Infof("[sizing:%s] pvc requested vs provisioned:\n%s%s(err=%v)",
+		label, strings.TrimSpace(out), errOut, err)
+
+	// Virtual size is the volume's size; the allocated figure is what the file
+	// occupies on /persist, which is what can push a request off a 2 MiB boundary.
+	const files = `set -u
+for f in /persist/vault/volumes-kvm/*.raw /persist/vault/volumes/*.raw; do
+  [ -f "$f" ] || continue
+  echo "$f virtual=$(stat -c %s "$f") allocated=$(( $(stat -c %b "$f") * 512 ))"
+done`
+	fout, ferr := runOnEVEScript(device, files, 2*time.Minute)
+	if ferr != nil {
+		log.Infof("[sizing:%s] volume files unavailable: %v", label, ferr)
+		return
+	}
+	log.Infof("[sizing:%s] volume files:\n%s", label, strings.TrimSpace(fout))
 }
 
 // appIsRunning reports the app's current state without asserting.
