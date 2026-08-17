@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync/atomic"
@@ -216,7 +217,17 @@ func combineBiosFields(biosVendor, biosVersion, biosReleaseDate string) string {
 	return biosStr
 }
 
-// encodeVersions fetches EVE, UEFI versions
+// getEveOriginVersion returns the basename of the origin file matching pattern,
+// e.g. "origin.2024-01-15.13.4.0", or an empty string if there is no such file.
+func getEveOriginVersion(pattern string) string {
+	matches, _ := filepath.Glob(pattern)
+	if len(matches) == 0 {
+		return ""
+	}
+	return filepath.Base(matches[0])
+}
+
+// encodeVersions fetches EVE, EVE origin and UEFI versions
 func encodeVersions(quoteMsg *attest.ZAttestQuote) error {
 	quoteMsg.Versions = make([]*attest.AttestVersionInfo, 0)
 	eveVersion := new(attest.AttestVersionInfo)
@@ -227,6 +238,15 @@ func encodeVersions(quoteMsg *attest.ZAttestQuote) error {
 	}
 	eveVersion.Version = strings.TrimSpace(string(eveRelease))
 	quoteMsg.Versions = append(quoteMsg.Versions, eveVersion)
+
+	if originStr := getEveOriginVersion(types.EveOriginVersionPattern); originStr != "" {
+		originVersion := new(attest.AttestVersionInfo)
+		originVersion.VersionType = attest.AttestVersionType_ATTEST_VERSION_TYPE_EVE_ORIGIN
+		originVersion.Version = originStr
+		quoteMsg.Versions = append(quoteMsg.Versions, originVersion)
+	} else {
+		log.Warnf("No origin version file matching %s", types.EveOriginVersionPattern)
+	}
 
 	//GetDeviceBios returns empty values on ARM64, check for them
 	bVendor, bVersion, bReleaseDate := hardware.GetDeviceBios(log)
@@ -239,7 +259,6 @@ func encodeVersions(quoteMsg *attest.ZAttestQuote) error {
 		uefiVersion.VersionType = attest.AttestVersionType_ATTEST_VERSION_TYPE_FIRMWARE
 		uefiVersion.Version = biosStr
 		quoteMsg.Versions = append(quoteMsg.Versions, uefiVersion)
-		log.Functionf("quoteMsg.Versions %s %s", eveVersion.Version, uefiVersion.Version)
 	}
 	return nil
 }
