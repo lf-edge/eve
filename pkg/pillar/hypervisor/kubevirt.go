@@ -252,7 +252,12 @@ func (ctx kubevirtContext) GetCapabilities() (*types.Capabilities, error) {
 		HWAssistedVirtualization: true,
 		IOVirtualization:         vtd,
 		CPUPinning:               true,
-		UseVHost:                 false, // kubevirt does not support vhost yet
+		// KubeVirt's dedicatedCpuPlacement confines the VMI to exclusive CPUs,
+		// but EVE cannot name which host CPU each vCPU lands on nor emit a
+		// guest SMT topology through it, so whole-core placement cannot be
+		// applied here and must be refused rather than reported as done.
+		CPUTopologyPinning: false,
+		UseVHost:           false, // kubevirt does not support vhost yet
 	}
 	return ctx.capabilities, nil
 }
