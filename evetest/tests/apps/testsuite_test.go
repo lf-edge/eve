@@ -95,6 +95,10 @@ import (
 //     unused is consumed by it, not spare: no other workload gets it in its
 //     cpuset, the node does not advertise it as free, and nothing is ever
 //     observed running on it.
+//   - TestCPUPlacementNeedsRepack -- on a node fragmented by thread-granular
+//     workloads (free threads, no free whole core) a whole-core app is refused
+//     with cpu.placement.needs_repack rather than insufficient, and a repack
+//     really does let it run.
 //   - TestVMAppPurgeReplacesVMIRS -- a plain purge of a healthy app leaves
 //     exactly one VMIRS, named for the new generation. Kubevirt only; skips
 //     on any other hypervisor.
@@ -157,6 +161,11 @@ func TestAppsSuite(test *testing.T) {
 		// Same device again.
 		evetest.TestCase{
 			Test: TestCPUPlacementParkedSiblings,
+		},
+		// Also the 8-CPU, 2-threads-per-core device: it needs SMT siblings to
+		// fragment the node in the first place.
+		evetest.TestCase{
+			Test: TestCPUPlacementNeedsRepack,
 		},
 		evetest.TestCase{
 			Test: TestVMAppPurgeReplacesVMIRS,
