@@ -291,8 +291,13 @@ type VmConfig struct {
 	VncDisplay         uint32
 	VncPasswd          string
 	CPUsPinned         bool
-	VMMMaxMem          int // in kbytes
-	EnableVncShimVM    bool
+	// CPUPlacement is the controller's CPU placement intent (see
+	// cpuplacement.go). zedagent always sets it: a controller that sends only
+	// the legacy pin_cpu has it resolved there (ResolveLegacy), and CPUsPinned
+	// is derived from it (HasOwnCPUs).
+	CPUPlacement    CPUPlacementPolicy
+	VMMMaxMem       int // in kbytes
+	EnableVncShimVM bool
 	// Enables enforcement of user-defined ordering for network interfaces.
 	EnforceNetworkInterfaceOrder bool
 	// EnableOemWinLicenseKey indicates the app should receive the embedded Windows license key (if available)
@@ -307,6 +312,17 @@ type VmConfig struct {
 	// The setting is passed to OVMF via fw_cfg "opt/eve.bootorder".
 	BootOrder zcommon.BootOrder
 }
+
+// CPUTopology is the guest-visible CPU topology emitted to QEMU -smp.
+type CPUTopology struct {
+	Sockets int
+	Cores   int
+	Threads int
+}
+
+// IsSet reports whether a non-legacy (computed) topology is present.
+// Zero value means "fall back to the legacy flat VCpus topology".
+func (t CPUTopology) IsSet() bool { return t.Sockets > 0 && t.Cores > 0 && t.Threads > 0 }
 
 // VmMode is the type for the virtualization mode
 type VmMode uint8
@@ -467,6 +483,40 @@ type DomainStatus struct {
 	HoldUntil time.Time
 	// GdbSocket is the gdbstub UNIX socket exposed for a held domain, if any.
 	GdbSocket string
+
+	// VMTopology is the guest CPU topology to expose via QEMU -smp.
+	// Zero value (see CPUTopology.IsSet) means legacy flat VCpus topology.
+	VMTopology CPUTopology
+	// OrderedCPUs maps guest vCPU index -> host logical CPU for strict 1:1
+	// pinning. It is set for every workload with CPUs of its own, whole-core
+	// or thread-granular; empty means it has none.
+	OrderedCPUs []uint32
+	// ParkedCPUs are the other threads of the cores a one-thread-per-core
+	// workload runs on. The workload holds them so that nothing shares its
+	// cores, and they stay idle: they are in neither its cpuset (VmConfig.CPUs)
+	// nor the affinity of any of its threads.
+	ParkedCPUs []uint32
+	// EmulatorCPUs is the housekeeping CPU set that QEMU emulator/IO threads
+	// are pinned to. Populated only for a topology-pinned VM that asked for
+	// io_placement=housekeeping, and only when a CPU free of every pinned
+	// workload was available; empty means the emulator threads stay on the VM's
+	// own dedicated cores.
+	EmulatorCPUs []uint32
+	// CPUPlacementStatus is domainmgr's verdict on the workload's CPU request:
+	// placed, placed worse than planned (CPUPlacementStatusRepackAdvised), or
+	// the reason it was refused, whose text is the status's error. Waiting is
+	// CPUWait, and being in another workload's way is RepackFor.
+	CPUPlacementStatus CPUPlacementStatus
+	// RepackFor names the workloads this one has to make room for. It is set on
+	// a running workload whose own placement may well be optimal, but which
+	// holds CPUs the placement plan gives to a workload that needs a repack, so
+	// it has to be restarted together with that workload for the repack to
+	// succeed. That is a property of the plan, not of this workload's
+	// placement, which is why it is kept apart from CPUPlacementStatus: B is not
+	// placed badly, it is in A's way. Empty when no repack involves it.
+	RepackFor []string
+	// CPUWait is set while the workload waits for its planned CPUs.
+	CPUWait CPUWait
 }
 
 func (status DomainStatus) Key() string {
@@ -729,7 +779,14 @@ type Capabilities struct {
 	HWAssistedVirtualization bool // VMX/SVM for amd64 or Arm virtualization extensions for arm64
 	IOVirtualization         bool // I/O Virtualization support
 	CPUPinning               bool // CPU Pinning support
-	UseVHost                 bool // vHost support
+	// CPUTopologyPinning is whether the hypervisor can bind each guest vCPU to
+	// one named host CPU and expose the resulting SMT topology to the guest.
+	// Strictly stronger than CPUPinning, which only confines a domain to a
+	// cpuset: whole-physical-core placement is meaningless without it, since
+	// the guest neither learns which of its vCPUs are SMT siblings nor stays
+	// on the cores it was placed on.
+	CPUTopologyPinning bool
+	UseVHost           bool // vHost support
 }
 
 // WatchdogParam is used in some proc functions that have a timeout,
