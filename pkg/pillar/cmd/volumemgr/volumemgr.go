@@ -872,6 +872,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			// re-driven by the event-driven callers, so skip the periodic pass.
 			if ctx.hvTypeKube {
 				reevaluatePendingVolumes(&ctx)
+				// Re-drive content trees whose accept-from-PVCs check
+				// (contentTreeSatisfiedByPVCs) deferred after spending its
+				// per-call live-probe budget; nothing else re-evaluates a
+				// content tree sitting idle on that check.
+				reevaluatePendingContentTrees(&ctx)
 			}
 			ps.CheckMaxTimeTopic(agentName, "gc", start,
 				warningTime, errorTime)

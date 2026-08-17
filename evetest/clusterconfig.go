@@ -20,11 +20,21 @@ import (
 // physical port used for intra-cluster communication on this node.
 // Exactly one node should have BootstrapNode set to true — its ClusterIP
 // is used as the join server IP for all nodes.
+// At most one node may have TieBreaker set to true.
 type ClusterNode struct {
 	DevName          string
 	ClusterIP        *net.IPNet
 	ClusterInterface string
 	BootstrapNode    bool
+
+	// TieBreaker marks this node as the cluster tie-breaker: the third
+	// node of an HA cluster, which exists only to give etcd a quorum
+	// vote. EVE keeps it cordoned, runs no workloads on it and places no
+	// Longhorn replicas there, which also lowers the replica count of
+	// the storage class used for new volumes.
+	//
+	// Leave it false on every node to configure no tie-breaker at all.
+	TieBreaker bool
 }
 
 // EdgeClusterConfig manages device configurations for a cluster of edge nodes.
@@ -52,9 +62,11 @@ func NewEdgeClusterConfig(
 		th.t.Fatalf("Edge Cluster requires at least one node")
 	}
 
-	// Find the bootstrap node to derive the join server IP.
-	var joinServerIP string
+	// Find the bootstrap node to derive the join server IP, and the
+	// tie-breaker node (if any) to derive its UUID below.
+	var joinServerIP, tieBreakerDevName string
 	bootstrapCount := 0
+	tieBreakerCount := 0
 	for _, node := range nodes {
 		if node.BootstrapNode {
 			bootstrapCount++
@@ -62,10 +74,18 @@ func NewEdgeClusterConfig(
 				joinServerIP = node.ClusterIP.IP.String()
 			}
 		}
+		if node.TieBreaker {
+			tieBreakerCount++
+			tieBreakerDevName = node.DevName
+		}
 	}
 	if bootstrapCount != 1 {
 		th.t.Fatalf("Edge Cluster requires exactly one node marked "+
 			"as BootstrapNode (found %d)", bootstrapCount)
+	}
+	if tieBreakerCount > 1 {
+		th.t.Fatalf("Edge Cluster allows at most one node marked "+
+			"as TieBreaker (found %d)", tieBreakerCount)
 	}
 
 	cc := &EdgeClusterConfig{
@@ -87,6 +107,20 @@ func NewEdgeClusterConfig(
 		th.t.Fatalf("Failed to generate cluster token: %v", err)
 	}
 	cc.Token = base64.StdEncoding.EncodeToString(tokenBytes)
+
+	// Resolve the tie-breaker device name to the UUID that EVE knows it
+	// by. Every node is told which node is the tie-breaker, because each
+	// one compares the configured UUID against its own to decide whether
+	// it must apply the tie-breaker role to itself.
+	var tieBreakerNodeID string
+	if tieBreakerDevName != "" {
+		var onboarded bool
+		tieBreakerNodeID, onboarded = th.deviceUUID(tieBreakerDevName)
+		if !onboarded {
+			th.t.Fatalf("Device %q must be onboarded to be the cluster "+
+				"tie-breaker (cannot resolve UUID)", tieBreakerDevName)
+		}
+	}
 
 	// Apply cluster config to each device with its own ClusterIP
 	// and individually encrypted token.
@@ -112,6 +146,7 @@ func NewEdgeClusterConfig(
 			ClusterType:           clusterType,
 			JoinServerIp:          joinServerIP,
 			EncryptedClusterToken: cipherData,
+			TieBreakerNodeId:      tieBreakerNodeID,
 		}
 		if node.ClusterIP != nil {
 			dc.Cluster.ClusterIpPrefix = node.ClusterIP.String()
