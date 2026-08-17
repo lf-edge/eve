@@ -1160,6 +1160,89 @@ func encodeProxyStatus(proxyConfig *types.ProxyConfig) *info.ProxyStatus {
 	return status
 }
 
+// cpuPlacementStatus is where the workload stands with its CPU request, as the
+// controller acts on it (ZInfoApp.cpu_placement_status): domainmgr's verdict,
+// unless the workload waits for its planned CPUs, or holds CPUs the plan gives
+// to another workload, which makes it part of that repack though its own
+// placement is fine.
+func cpuPlacementStatus(aiStatus *types.AppInstanceStatus) types.CPUPlacementStatus {
+	switch {
+	case aiStatus.CPUWait.ForHolders():
+		return types.CPUPlacementStatusWaiting
+	case aiStatus.CPUPlacementStatus == types.CPUPlacementStatusPlaced && len(aiStatus.RepackFor) > 0:
+		return types.CPUPlacementStatusRepackAdvised
+	}
+	return aiStatus.CPUPlacementStatus
+}
+
+// cpuPlacementOnTheWire is how ZInfoApp carries each status: where the workload
+// stands (cpu_placement_status) and, for a refusal, why (cpu_placement_error).
+// A status not listed is UNSPECIFIED.
+var cpuPlacementOnTheWire = map[types.CPUPlacementStatus]struct {
+	status info.CPUPlacementStatus
+	err    info.CPUPlacementError
+}{
+	types.CPUPlacementStatusPlaced:               {status: info.CPUPlacementStatus_CPU_PLACEMENT_STATUS_PLACED},
+	types.CPUPlacementStatusWaiting:              {status: info.CPUPlacementStatus_CPU_PLACEMENT_STATUS_WAITING},
+	types.CPUPlacementStatusRepackAdvised:        {status: info.CPUPlacementStatus_CPU_PLACEMENT_STATUS_REPACK_ADVISED},
+	types.CPUPlacementStatusNeedsRepack:          {info.CPUPlacementStatus_CPU_PLACEMENT_STATUS_FAILED, info.CPUPlacementError_CPU_PLACEMENT_ERROR_NEEDS_REPACK},
+	types.CPUPlacementStatusInsufficient:         {info.CPUPlacementStatus_CPU_PLACEMENT_STATUS_FAILED, info.CPUPlacementError_CPU_PLACEMENT_ERROR_INSUFFICIENT},
+	types.CPUPlacementStatusPolicyInvalid:        {info.CPUPlacementStatus_CPU_PLACEMENT_STATUS_FAILED, info.CPUPlacementError_CPU_PLACEMENT_ERROR_POLICY_INVALID},
+	types.CPUPlacementStatusOddVCPU:              {info.CPUPlacementStatus_CPU_PLACEMENT_STATUS_FAILED, info.CPUPlacementError_CPU_PLACEMENT_ERROR_ODD_VCPU},
+	types.CPUPlacementStatusTopologyUnsupported:  {info.CPUPlacementStatus_CPU_PLACEMENT_STATUS_FAILED, info.CPUPlacementError_CPU_PLACEMENT_ERROR_TOPOLOGY_UNSUPPORTED},
+	types.CPUPlacementStatusIsolationUnavailable: {info.CPUPlacementStatus_CPU_PLACEMENT_STATUS_FAILED, info.CPUPlacementError_CPU_PLACEMENT_ERROR_ISOLATION_UNAVAILABLE},
+}
+
+// cpuPlacementAdvisory is the WARNING on the app's info that describes a
+// workload waiting for its planned CPUs, or running as part of a repack; nil
+// for any other status (a refusal's text is the app's error).
+//
+// The app is left in whatever state it is really in -- normally RUNNING --
+// because nothing is broken: the workload has exactly the CPUs it asked for,
+// just not in the arrangement that restarting its neighbours would achieve.
+// Whether that restart is worth its disruption is the controller's call.
+// Deliberately not routed through AppInstanceStatus's error fields: HasError()
+// is severity-blind and several call sites treat any error as a failure.
+func cpuPlacementAdvisory(aiStatus *types.AppInstanceStatus) *info.ErrorInfo {
+	description := types.ErrorDescription{
+		ErrorSeverity: types.ErrorSeverityWarning,
+		// The boot the placement was decided at, so the advisory does not
+		// appear to change on every info message.
+		ErrorTime: aiStatus.BootTime,
+	}
+	switch cpuPlacementStatus(aiStatus) {
+	case types.CPUPlacementStatusWaiting:
+		description.Error = fmt.Sprintf("%s is waiting for %s to release the CPUs "+
+			"planned for it", aiStatus.DisplayName, strings.Join(aiStatus.CPUWait.Holders, ", "))
+		description.ErrorTime = aiStatus.CPUWait.Since
+		description.ErrorRetryCondition = "It starts as soon as they release the " +
+			"CPUs: when they stop, or when they are restarted together with it for " +
+			"a repack. Stopping it ends the wait"
+	case types.CPUPlacementStatusRepackAdvised:
+		if aiStatus.CPUPlacementStatus == types.CPUPlacementStatusRepackAdvised {
+			description.Error = fmt.Sprintf("%s is running, but on a CPU placement "+
+				"worse than the device could achieve by moving the workloads around it",
+				aiStatus.DisplayName)
+			description.ErrorRetryCondition = "Cleared once the workload is placed " +
+				"optimally, which needs the pinned workloads restarted together"
+			break
+		}
+		description.Error = fmt.Sprintf("%s is placed well, but holds CPUs the "+
+			"placement plan gives to %s; it has to be restarted together with them "+
+			"for them to be placed", aiStatus.DisplayName,
+			strings.Join(aiStatus.RepackFor, ", "))
+		description.ErrorRetryCondition = "Cleared once the pinned workloads have " +
+			"been restarted together (a repack), or when the workloads it makes " +
+			"room for no longer need it"
+	default:
+		return nil
+	}
+	if description.ErrorTime.IsZero() {
+		description.ErrorTime = time.Now()
+	}
+	return description.ToProto()
+}
+
 // This function is called per change, hence needs to try over all management ports
 // When aiStatus is nil it means a delete and we send a message
 // containing only the UUID to inform zedcloud about the delete.
@@ -1197,6 +1280,9 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 			errInfo := aiStatus.ErrorAndTimeWithSource.ErrorDescription.ToProto()
 			ReportAppInfo.AppErr = append(ReportAppInfo.AppErr, errInfo)
 		}
+		if errInfo := cpuPlacementAdvisory(aiStatus); errInfo != nil {
+			ReportAppInfo.AppErr = append(ReportAppInfo.AppErr, errInfo)
+		}
 
 		if aiStatus.BootTime.IsZero() {
 			// If never booted
@@ -1231,6 +1317,16 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 			ReportAppInfo.AssignedAdapters = append(ReportAppInfo.AssignedAdapters,
 				reportAA)
 		}
+		if cpus := aiStatus.AssignedCPUs; len(cpus.CPUs) > 0 {
+			ReportAppInfo.AssignedCpus = &info.AppCPUAssignment{
+				CpuIds:       cpus.CPUs,
+				ParkedCpuIds: cpus.ParkedCPUs,
+				IoCpuIds:     cpus.IOCPUs,
+			}
+		}
+		placement := cpuPlacementOnTheWire[cpuPlacementStatus(aiStatus)]
+		ReportAppInfo.CpuPlacementStatus = placement.status
+		ReportAppInfo.CpuPlacementError = placement.err
 		// Report the app's network adapters in their interface order --
 		// virtual ones (with the addresses extracted from the dnsmasq
 		// assignment) and directly assigned network adapters (identity
