@@ -173,6 +173,13 @@ type DeviceSpec struct {
 	// CPUs is the number of CPU cores to allocate.
 	CPUs uint
 
+	// ThreadsPerCore is how many SMT hardware threads each physical core
+	// exposes to the guest. Zero or one -- the default -- gives every CPU its
+	// own single-thread core. Higher values arrange the same number of CPUs as
+	// CPUs/ThreadsPerCore cores with sibling threads, which a guest needs
+	// before it can make SMT-aware placement decisions.
+	ThreadsPerCore uint
+
 	// MemoryBytes is the amount of RAM in bytes.
 	MemoryBytes uint64
 
