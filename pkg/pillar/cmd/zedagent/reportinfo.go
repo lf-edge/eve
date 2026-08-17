@@ -646,6 +646,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 
 	ReportDeviceInfo.Capabilities = getCapabilities(ctx)
 	ReportDeviceInfo.OptionalCapabilities = getOptionalCapabilities(ctx)
+	ReportDeviceInfo.CpuPools = getCPUPools(ctx)
 
 	devState := getDeviceState(ctx)
 	if ctx.devState != devState {
@@ -665,7 +666,9 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 	// device returns a runtime error. Similarly, we only support enforced application network
 	// interface order for the KVM hypervisor. If enabled for application deployed under Xen
 	// or Kubevirt hypervisor, EVE returns error and the application will not be started.
-	ReportDeviceInfo.ApiCapability = info.APICapability_API_CAPABILITY_DEFERRED_QUEUE_METRICS
+	// CPU placement likewise: every build knows the fields, and
+	// OptionalCapabilities.cpu_placement says whether this node places CPUs.
+	ReportDeviceInfo.ApiCapability = info.APICapability_API_CAPABILITY_CPU_PLACEMENT_POLICY
 
 	// Report if there is a local override of profile
 	if ctx.getconfigCtx.localCmdAgent.GetCurrentProfile() !=
@@ -1264,11 +1267,86 @@ func getCapabilities(ctx *zedagentContext) *info.Capabilities {
 	}
 }
 
+// cpuPoolKindToProto maps the device's pool vocabulary onto the wire enum.
+//
+// A kind with no mapping is reported as "unspecified", which is an unlabelled
+// pool holding real CPUs -- the controller cannot tell what those CPUs are for.
+// That can only happen if a pool kind was added without extending this mapping,
+// so it is logged as an error rather than passed on quietly.
+func cpuPoolKindToProto(kind types.CPUPoolKind) info.CPUPoolKind {
+	switch kind {
+	case types.CPUPoolKindHousekeeping:
+		return info.CPUPoolKind_CPU_POOL_KIND_HOUSEKEEPING
+	case types.CPUPoolKindDedicated:
+		return info.CPUPoolKind_CPU_POOL_KIND_DEDICATED
+	case types.CPUPoolKindIsolated:
+		return info.CPUPoolKind_CPU_POOL_KIND_ISOLATED
+	}
+	log.Errorf("cpuPoolKindToProto: no wire enum for CPU pool kind %s (%d); "+
+		"reporting it as unspecified", kind, kind)
+	return info.CPUPoolKind_CPU_POOL_KIND_UNSPECIFIED
+}
+
+// getCPUPools reports how the node's logical CPUs are partitioned and how much
+// of each partition is still available, so a controller can answer "will this
+// workload fit?" before a deploy and explain a placement failure after one.
+//
+// Both the CPU sets and the whole-core counts are carried, because a free thread
+// on a partially-taken core cannot satisfy a request for whole physical cores:
+// a single "free" number would answer one of the two request shapes wrongly.
+func getCPUPools(ctx *zedagentContext) []*info.CPUPoolUtilization {
+	item, err := ctx.subCPUPoolStatus.Get("global")
+	if err != nil {
+		// domainmgr publishes this once it has discovered the CPU topology; before
+		// that there is nothing to report, which is not an error.
+		log.Functionf("ctx.subCPUPoolStatus.Get failed: %s", err)
+		return nil
+	}
+	poolStatus, ok := item.(types.CPUPoolStatus)
+	if !ok {
+		log.Errorf("Unexpected type for CPUPoolStatus: %T", item)
+		return nil
+	}
+	pools := make([]*info.CPUPoolUtilization, 0, len(poolStatus.Pools))
+	for _, pool := range poolStatus.Pools {
+		var warnings []*info.CPUPoolWarning
+		for _, w := range pool.Warnings {
+			// ToProto has nothing for an error without a time, and a nil entry
+			// cannot be marshalled.
+			if e := w.ToProto(); e != nil {
+				warnings = append(warnings, &info.CPUPoolWarning{
+					Issue: info.CPUPoolIssue(w.Issue),
+					Error: e,
+				})
+			}
+		}
+		pools = append(pools, &info.CPUPoolUtilization{
+			Kind:             cpuPoolKindToProto(pool.Kind),
+			CpuIds:           pool.CPUs,
+			FreeCpuIds:       pool.FreeCPUs,
+			TotalThreads:     pool.TotalThreads,
+			AllocatedThreads: pool.AllocatedThreads,
+			FreeThreads:      pool.FreeThreads,
+			TotalCores:       pool.TotalCores,
+			FreeWholeCores:   pool.FreeWholeCores,
+			Warnings:         warnings,
+		})
+	}
+	return pools
+}
+
 func getOptionalCapabilities(ctx *zedagentContext) *info.OptionalCapabilities {
+	// CPU placement needs a hypervisor that pins each vCPU to a host CPU and a
+	// CPU topology EVE could read, which domainmgr reports as
+	// CPUTopologyPinning; under EVE-k KubeVirt chooses the CPUs. A node whose
+	// capabilities are not known yet does not claim it.
+	caps, _ := ctx.subCapabilities.Get("global")
+	capabilities, _ := caps.(types.Capabilities)
 	return &info.OptionalCapabilities{
 		HvTypeKubevirt:     ctx.hvTypeKube,
 		HwInventorySupport: true,
 		EtcdSnapshot:       ctx.hvTypeKube,
+		CpuPlacement:       capabilities.CPUTopologyPinning,
 	}
 }
 
