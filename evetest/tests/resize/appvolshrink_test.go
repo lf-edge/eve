@@ -493,7 +493,9 @@ func runAppVolumeShrinkCorruption(test *testing.T,
 		captureAppNetFailure(device, appUUID)
 	}()
 	log.Infof("(d) waiting for the app to reach RUNNING on the target")
+	stopCDISampler := startCDISampler(device, 30*time.Second)
 	waitAppRunningWithPVCRecovery(t, device, appUUID, dataVolMiB)
+	stopCDISampler()
 	appRunning = true
 	log.Infof("(e0) post-conversion: waiting up to 10m for the app to report a routable IPv4")
 	waitAppHasRoutableIPv4(t, device, appUUID, 10*time.Minute)
@@ -1270,6 +1272,45 @@ func cdiImportSizeVerdict(device *evetest.EdgeDevice) string {
 		return ""
 	}
 	return strings.TrimSpace(out)
+}
+
+// startCDISampler records the upload server's own view of the import while it is in
+// flight, alongside the claim's requested and provisioned sizes read at the same
+// moment. Returns a stop func (call once).
+//
+// Sampling has to happen during the wait rather than after it. CDI removes the
+// upload pod as soon as an import completes, so a run that succeeds leaves nothing
+// to read afterwards, and reading later cannot distinguish "no size comparison was
+// made" from "the pod is already gone" — which is why runs that succeeded have
+// never been explained.
+//
+// The pairing is the point: CDI rejects an import when the volume it is given is
+// larger than the size it was told to expect, and a claim's provisioned size is
+// only observable after Longhorn has settled it. Sampling both together shows what
+// CDI saw at the moment it decided, rather than what the claim looked like minutes
+// later.
+func startCDISampler(device *evetest.EdgeDevice, interval time.Duration) (stop func()) {
+	const probe = `eve exec kube kubectl -n eve-kube-app logs ` +
+		`-l cdi.kubevirt.io=cdi-upload-server --tail=25 2>/dev/null | ` +
+		`grep -aE "Target size|irtual image size|block volume size|New phase|Saving stream failed" ; ` +
+		`eve exec kube kubectl -n eve-kube-app get pvc ` +
+		`-o custom-columns=NAME:.metadata.name,REQ:.spec.resources.requests.storage,` +
+		`PROV:.status.capacity.storage --no-headers 2>/dev/null`
+
+	done := make(chan struct{})
+	go func() {
+		log := evetest.Logger()
+		for n := 0; ; n++ {
+			out, errOut, err := device.RunShellScript(probe, 90*time.Second, 0)
+			log.Infof("[cdi:sample #%d]\n%s%s(err=%v)", n, strings.TrimSpace(out), errOut, err)
+			select {
+			case <-done:
+				return
+			case <-time.After(interval):
+			}
+		}
+	}()
+	return func() { close(done) }
 }
 
 // recordVolumeSizing logs the numbers that decide whether CDI will accept the
