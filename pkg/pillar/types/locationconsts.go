@@ -84,6 +84,9 @@ const (
 	ITokenFile = "/run/eve.integrity_token"
 	//EveVersionFile contains the running version of EVE
 	EveVersionFile = "/run/eve-release"
+	//EveOriginVersionPattern matches the origin.<date>.<version> file created in
+	//the config partition at install time.
+	EveOriginVersionPattern = IdentityDirname + "/origin.*"
 	//DefaultVaultName is the name of the default vault
 	DefaultVaultName = "Application Data Store"
 
