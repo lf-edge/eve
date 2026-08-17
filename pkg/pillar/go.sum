@@ -497,8 +497,6 @@ github.com/leodido/go-urn v1.2.4 h1:XlAE/cm/ms7TE/VMVoduSpNBoyc2dOxHs5MZSwAN63Q=
 github.com/leodido/go-urn v1.2.4/go.mod h1:7ZrI8mTSeBSHl/UaRyKQW1qZeMgak41ANeCNaVckg+4=
 github.com/lf-edge/edge-containers v0.0.0-20260502192833-bdbe764faf59 h1:fuyDqWUHuck0owe+PxJ4ey4jtOEpN0xZ0Y4k8qxx8AY=
 github.com/lf-edge/edge-containers v0.0.0-20260502192833-bdbe764faf59/go.mod h1:DoK51ifLgVh2GQ+IXTvmkhTuf8THijPCwYlNAbs2Nz0=
-github.com/lf-edge/eve-api/go v0.0.0-20260812180240-99d02ddcfcb0 h1:vFrZPWDaFupy4K1fYIRDJOnW8aaGNMZ1/1DkNRXrZe0=
-github.com/lf-edge/eve-api/go v0.0.0-20260812180240-99d02ddcfcb0/go.mod h1:6HxNA/qKJVEqwpuOFkcQ0h3QyotvAs/cjHLC961FPOY=
 github.com/lf-edge/eve-libs v0.0.0-20260807152845-882c84170868 h1:hGgskJxVKjCaiPv9zHVjOAe8ye+6HqGzdNUGEWy3n4c=
 github.com/lf-edge/eve-libs v0.0.0-20260807152845-882c84170868/go.mod h1:ZwkS/Xlx3klDLUobHesq3dAjiRfUlz0Pk6LxiRnhOck=
 github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d h1:tUBb9M6u42LXwHAYHyh22wJeUUQlTpDkXwRXalpRqbo=
@@ -725,6 +723,8 @@ github.com/rogpeppe/go-internal v1.9.0/go.mod h1:WtVeX8xhTBvf0smdhujwtBcq4Qrzq/f
 github.com/rogpeppe/go-internal v1.13.1/go.mod h1:uMEvuHeurkdAXX61udpOXGD/AzZDWNMNyH2VO9fmH0o=
 github.com/rogpeppe/go-internal v1.14.1 h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0tI/otEQ=
 github.com/rogpeppe/go-internal v1.14.1/go.mod h1:MaRKkUm5W0goXpeCfT7UZI6fk/L7L7so1lCWt35ZSgc=
+github.com/rucoder/eve-api/go v0.0.0-20260817131207-e83592bee6cc h1:8NwHnhH0EmLCnnicKa00cHP0maYbryuy4Up11il0I9A=
+github.com/rucoder/eve-api/go v0.0.0-20260817131207-e83592bee6cc/go.mod h1:6HxNA/qKJVEqwpuOFkcQ0h3QyotvAs/cjHLC961FPOY=
 github.com/russross/blackfriday/v2 v2.0.1/go.mod h1:+Rmxgy9KzJVeS9/2gXHxylqXiyQDYRxCVz55jmeOWTM=
 github.com/russross/blackfriday/v2 v2.1.0 h1:JIOH55/0cWyOuilr9/qlrm0BSXldqnqwMsf35Ld67mk=
 github.com/russross/blackfriday/v2 v2.1.0/go.mod h1:+Rmxgy9KzJVeS9/2gXHxylqXiyQDYRxCVz55jmeOWTM=
