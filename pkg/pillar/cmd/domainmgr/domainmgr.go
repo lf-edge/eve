@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/containerd/cgroups"
@@ -38,6 +39,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/cpuallocator"
+	"github.com/lf-edge/eve/pkg/pillar/cputopology"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
@@ -151,8 +153,30 @@ type domainContext struct {
 	// cli options
 	hypervisorPtr *string
 	// CPUs management
-	cpuAllocator        *cpuallocator.CPUAllocator
+	placer              *cpuallocator.Placer
 	cpuPinningSupported bool
+	// subCPUDemandSet is zedmanager's set of apps intended to run, with their
+	// CPU intent. Placement is planned over it rather than over the
+	// DomainConfigs received so far, which cover only the apps whose volumes
+	// already resolved.
+	subCPUDemandSet pubsub.Subscription
+	// pubCPUPoolStatus carries the node CPU pool report to zedagent, which
+	// projects it onto ZInfoDevice.cpu_pools. domainmgr owns the allocator, so
+	// it is the only agent that can compute it.
+	pubCPUPoolStatus pubsub.Publication
+	// isolatedCPUs is what the running kernel isolates (isolcpus), read once at
+	// startup: it can only change across a reboot.
+	isolatedCPUs []cputopology.LCPU
+	// cpuTopologyDegraded is set when the CPU topology could not be read from
+	// sysfs and had to be synthesized. Whole-core placement is refused while it
+	// is set, since the model cannot tell SMT siblings apart.
+	cpuTopologyDegraded bool
+	// cpusReserved is how many low-numbered logical CPUs are withheld from
+	// workloads for EVE's own services.
+	cpusReserved uint32
+	// cpuTopologyPinningSupported is whether the hypervisor can actually apply
+	// a whole-core placement (per-vCPU pinning + guest SMT topology).
+	cpuTopologyPinningSupported bool
 	// Is it EVE 'k'
 	hvTypeKube bool
 	nodeName   string
@@ -341,6 +365,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	domainCtx.pubCapabilities = capabilitiesInfoPub
 
+	cpuPoolStatusPub, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.CPUPoolStatus{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	domainCtx.pubCPUPoolStatus = cpuPoolStatusPub
+
 	// Look for nodeagent status
 	subNodeAgentStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "nodeagent",
@@ -470,6 +503,24 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	domainCtx.subZFSPoolStatus = subZFSPoolStatus
 
+	// Subscribed and activated well before DomainConfig, so the demand set is
+	// already in hand when the first workload asks to be placed. A DomainConfig
+	// that overtakes it only costs an order-dependent layout, not a failure to
+	// start, but there is no reason to invite it.
+	subCPUDemandSet, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zedmanager",
+		MyAgentName: agentName,
+		TopicImpl:   types.CPUDemandSet{},
+		Activate:    true,
+		Ctx:         &domainCtx,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	domainCtx.subCPUDemandSet = subCPUDemandSet
+
 	// Wait for ConfigItemValueMap
 	for !domainCtx.GCComplete {
 		log.Noticef("waiting for GCComplete")
@@ -580,6 +631,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		case change := <-subZFSPoolStatus.MsgChan():
 			subZFSPoolStatus.ProcessChange(change)
 
+		case change := <-subCPUDemandSet.MsgChan():
+			subCPUDemandSet.ProcessChange(change)
+
 		case <-domainCtx.publishTicker.C:
 			publishProcessesHandler(&domainCtx)
 
@@ -605,12 +659,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatal(err)
 	}
 	domainCtx.cpuPinningSupported = caps.CPUPinning
+	domainCtx.cpuTopologyPinningSupported = caps.CPUTopologyPinning
 
 	// Need to wait for things to get started
-	var resources types.HostMemory
 	for i := 0; true; i++ {
 		delay := 10
-		resources, err = hyper.GetHostCPUMem()
+		_, err = hyper.GetHostCPUMem()
 		if err == nil {
 			break
 		}
@@ -627,9 +681,35 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Warnf("Failed to get reserved CPU number, use 1 by default: %s", err)
 	}
 
-	if domainCtx.cpuAllocator, err = cpuallocator.Init(resources.Ncpus, uint32(cpusReserved)); err != nil {
-		log.Fatal(err)
+	topo, terr := cputopology.DiscoverTopology()
+	if terr != nil {
+		// The fallback model claims every logical CPU is a single-thread core,
+		// so it cannot say which CPUs are SMT siblings. Placement is refused on
+		// it rather than performed against a fabricated topology: a one-per-core
+		// workload would park nothing and get siblings of cores another workload
+		// is using, while being reported as optimally placed.
+		log.Errorf("CPU topology discovery failed (%v); the topology model is "+
+			"synthetic, so whole-core CPU placement is refused on this node", terr)
 	}
+	domainCtx.cpuTopologyDegraded = topo.Degraded
+	domainCtx.placer, err = cpuallocator.NewPlacer(topo, uint32(cpusReserved))
+	if err != nil {
+		log.Fatalf("Cannot allocate CPUs (check the eve_max_vcpus kernel argument): %s", err)
+	}
+	domainCtx.cpusReserved = uint32(cpusReserved)
+	log.Noticef("CPU topology: %d physical cores", len(topo.Cores))
+	domainCtx.isolatedCPUs = readIsolatedCPUs()
+	if len(domainCtx.isolatedCPUs) > 0 {
+		log.Noticef("Kernel isolates CPUs %v", domainCtx.isolatedCPUs)
+	}
+	// Reseed the allocator with cores already held by running VMs. DomainStatus
+	// is ephemeral (/run), so this only matters across a domainmgr process
+	// restart (not a device reboot); it prevents handing a running VM's
+	// dedicated cores to another VM before the existing status is reconciled.
+	seedPlacerFromStatus(&domainCtx)
+	// Report the pools right away: on a node with no pinned workload at all this
+	// is the only publication, and the controller still needs the node CPU map.
+	publishCPUPoolStatus(&domainCtx)
 
 	// Wait until we have been onboarded aka know our own UUID however we do not use the UUID
 	if _, err := wait.WaitForOnboarded(ps, log, agentName, warningTime, errorTime); err != nil {
@@ -797,6 +877,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		case change := <-subDomainConfig.MsgChan():
 			subDomainConfig.ProcessChange(change)
 
+		case change := <-subCPUDemandSet.MsgChan():
+			subCPUDemandSet.ProcessChange(change)
+
 		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
 
@@ -933,16 +1016,43 @@ type handlers map[string]channels
 
 var handlerMap handlers
 
+// handlerMapLock guards handlerMap. The map is created and torn down from the
+// pubsub goroutine (handleDomainCreate/Delete) but read from every per-domain
+// goroutine, because triggerCPUNotification fans out from whichever domain just
+// took or gave back CPUs. Without the lock that is both a map race and a send
+// on a channel handleDomainDelete may have just closed.
+var handlerMapLock sync.Mutex
+
+// cpuAllocationGen counts changes to the set of CPUs dedicated to pinned
+// workloads. Every non-pinned workload's cpuset is derived from that set, so
+// each handler remembers the generation it last applied and recomputes whenever
+// the counter has moved on.
+//
+// The wakeup channel is only a hint that it is worth looking; this counter is
+// what makes the signal lossless. A wakeup dropped because one was already
+// queued, or consumed at a moment the workload could not be updated (no status
+// yet, crash-frozen, cgroup write failed), leaves the generation mismatched, so
+// the work is still pending and gets done at the next wakeup or timer tick
+// instead of being silently swallowed.
+var cpuAllocationGen atomic.Uint64
+
 func handlersInit() {
 	handlerMap = make(handlers)
 }
 
+// triggerCPUNotification records that the dedicated CPU set changed and nudges
+// every domain handler to reconsider its cpuset. Call it after the change is
+// visible in the placer, never before.
 func triggerCPUNotification() {
+	cpuAllocationGen.Add(1)
+	handlerMapLock.Lock()
+	defer handlerMapLock.Unlock()
 	for _, handler := range handlerMap {
 		select {
 		case handler.cpuChannel <- Notify{}:
 		default:
-			log.Warnf("Already sent a CPU Notify...")
+			// A wakeup is already queued and the receiver re-reads the
+			// generation when it gets to it, so this one is redundant.
 		}
 	}
 }
@@ -955,7 +1065,9 @@ func handleDomainModify(ctxArg interface{}, key string, configArg interface{},
 
 	log.Functionf("handleDomainModify(%s)", key)
 	config := configArg.(types.DomainConfig)
+	handlerMapLock.Lock()
 	h, ok := handlerMap[config.Key()]
+	handlerMapLock.Unlock()
 	if !ok {
 		log.Fatalf("handleDomainModify called on config that does not exist")
 	}
@@ -973,14 +1085,17 @@ func handleDomainCreate(ctxArg interface{}, key string, configArg interface{}) {
 	log.Functionf("handleDomainCreate(%s)", key)
 	ctx := ctxArg.(*domainContext)
 	config := configArg.(types.DomainConfig)
+	handlerMapLock.Lock()
 	h, ok := handlerMap[config.Key()]
 	if ok {
+		handlerMapLock.Unlock()
 		log.Fatalf("handleDomainCreate called on config that already exists")
 	}
 	hConfig := make(chan Notify, 1)
 	hCPU := make(chan Notify, 1)
 	h1 := channels{configChannel: hConfig, cpuChannel: hCPU}
 	handlerMap[config.Key()] = h1
+	handlerMapLock.Unlock()
 	log.Functionf("Creating %s at %s", "runHandler", agentlog.GetMyStack())
 	go runHandler(ctx, key, hConfig, hCPU)
 	h = h1
@@ -1005,13 +1120,16 @@ func handleDomainDelete(ctxArg interface{}, key string,
 		unpublishCipherBlockStatus(ctx, config.Key())
 	}
 	// Do we have a channel/goroutine?
+	handlerMapLock.Lock()
 	h, ok := handlerMap[key]
 	if ok {
 		log.Functionf("Closing channels")
 		close(h.cpuChannel)
 		close(h.configChannel)
 		delete(handlerMap, key)
-	} else {
+	}
+	handlerMapLock.Unlock()
+	if !ok {
 		log.Tracef("handleDomainDelete: unknown %s", key)
 		return
 	}
@@ -1034,6 +1152,11 @@ func runHandler(ctx *domainContext, key string, configChannel <-chan Notify, cpu
 	// back into this goroutine so crash policy is always applied here, never in
 	// the capture goroutine. Buffered so that goroutine never blocks.
 	captureDone := make(chan captureResult, 1)
+
+	// The CPU allocation generation this domain's cpuset was last derived from.
+	// Starting from the current value means a handler does not redistribute for
+	// changes that predate the domain, whose placement already accounted for them.
+	appliedCPUGen := cpuAllocationGen.Load()
 
 	closed := false
 	for !closed {
@@ -1077,29 +1200,7 @@ func runHandler(ctx *domainContext, key string, configChannel <-chan Notify, cpu
 			}
 		case _, ok := <-cpuChannel:
 			if ok {
-				if !ctx.cpuPinningSupported {
-					continue
-				}
-				sub := ctx.subDomainConfig
-				c, err := sub.Get(key)
-				if err != nil {
-					log.Errorf("runHandler no config for %s", key)
-					continue
-				}
-				config := c.(types.DomainConfig)
-				status := lookupDomainStatus(ctx, key)
-				if status == nil {
-					log.Errorf("No Status for %s", config.DisplayName)
-					continue
-				}
-				if crashFrozen(status) {
-					continue
-				}
-				if !config.VmConfig.CPUsPinned {
-					if err = updateNonPinnedCPUs(ctx, &config, status); err != nil {
-						log.Warnf("failed to redistribute CPUs in %s", config.DisplayName)
-					}
-				}
+				appliedCPUGen = redistributeNonPinnedCPUs(ctx, key, appliedCPUGen)
 			}
 		case ev := <-crashCh:
 			// Mode-A crash (guest internal-error): capture the guest core
@@ -1126,9 +1227,58 @@ func runHandler(ctx *domainContext, key string, configChannel <-chan Notify, cpu
 					// goroutine will drive finishCrashCapture; do not reconcile.
 				}
 			}
+			// Catch up on any CPU redistribution that could not be done when it
+			// was signalled -- the domain had no status yet, was crash-frozen,
+			// or the cgroup write failed.
+			appliedCPUGen = redistributeNonPinnedCPUs(ctx, key, appliedCPUGen)
 		}
 	}
 	log.Functionf("runHandler(%s) DONE", key)
+}
+
+// redistributeNonPinnedCPUs widens or narrows a non-pinned domain's cpuset to
+// the CPUs no pinned workload holds, when the dedicated set has changed since
+// this domain's cpuset was last derived from it.
+//
+// It returns the generation now applied. On any path that did not apply the
+// current one it returns the caller's unchanged value, leaving the change
+// pending so the next wakeup or timer tick retries it.
+func redistributeNonPinnedCPUs(ctx *domainContext, key string, applied uint64) uint64 {
+	if !ctx.cpuPinningSupported {
+		return applied
+	}
+	// Read the generation before doing the work, so a change landing while this
+	// runs is not mistaken for one already applied.
+	current := cpuAllocationGen.Load()
+	if current == applied {
+		return applied
+	}
+	c, err := ctx.subDomainConfig.Get(key)
+	if err != nil {
+		log.Errorf("runHandler no config for %s", key)
+		return applied
+	}
+	config := c.(types.DomainConfig)
+	status := lookupDomainStatus(ctx, key)
+	if status == nil {
+		log.Errorf("No Status for %s", config.DisplayName)
+		return applied
+	}
+	if crashFrozen(status) {
+		return applied
+	}
+	// A pinned workload keeps its own CPUs. Handing it the shared set here would
+	// also fill status.VmConfig.CPUs, which assignCPUs reads as "already
+	// allocated" and would leave the workload permanently unpinned. Nothing is
+	// pending for it, so the generation counts as applied.
+	if effectiveCPUsPinned(&config) {
+		return current
+	}
+	if err := updateNonPinnedCPUs(ctx, &config, status); err != nil {
+		log.Warnf("failed to redistribute CPUs in %s: %v", config.DisplayName, err)
+		return applied
+	}
+	return current
 }
 
 // Check if it is still running
@@ -1526,11 +1676,18 @@ func setCgroupCpuset(config *types.DomainConfig, status *types.DomainStatus) err
 }
 
 func updateNonPinnedCPUs(ctx *domainContext, config *types.DomainConfig, status *types.DomainStatus) error {
-	status.VmConfig.CPUs = ctx.cpuAllocator.GetAllFree()
-	err := setCgroupCpuset(config, status)
-	if err != nil {
+	previous := status.VmConfig.CPUs
+	status.VmConfig.CPUs = housekeepingCPUs(ctx)
+	if err := setCgroupCpuset(config, status); err != nil {
+		// The cpuset was not changed, so the record of it must not change either.
+		status.VmConfig.CPUs = previous
 		return errors.New("failed to redistribute CPUs between VMs, can affect the inter-VM isolation")
 	}
+	// DomainStatus is where everything else -- and, via zedagent, the controller
+	// -- reads which CPUs this workload runs on. Without publishing here it goes
+	// on describing the set from activation time while the cgroup enforces a
+	// narrower one.
+	publishDomainStatus(ctx, status)
 	return nil
 }
 
@@ -1538,38 +1695,300 @@ func updateNonPinnedCPUs(ctx *domainContext, config *types.DomainConfig, status 
 // By the assignment, we mean that the CPUs are assigned in the CPUAllocator context to the given VM
 // and the cpumask is updated in the *status*
 func assignCPUs(ctx *domainContext, config *types.DomainConfig, status *types.DomainStatus) error {
-	if config.VmConfig.CPUsPinned { // Pin the CPU
-		// CPUs may already be allocated for this UUID from a prior
-		// doActivate that returned early (e.g. kubevirt cluster-trust path
-		// after a version bump). The cpuAllocator records one allocation
-		// per UUID and would error with "multiple allocations for UUID"
-		// on a second Allocate call, leaving the app permanently broken.
-		// Reuse the existing allocation when present.
-		if len(status.VmConfig.CPUs) > 0 {
-			return nil
+	err := allocateCPUs(ctx, config, status)
+	// The node CPU pool report is derived from the allocator, so refresh it
+	// whenever the allocator may have been touched -- including on the error
+	// paths, which can return after a reservation was already taken.
+	publishCPUPoolStatus(ctx)
+	return err
+}
+
+// allocateCPUs is assignCPUs without the pool-report refresh, so every return
+// path below can just return.
+func allocateCPUs(ctx *domainContext, config *types.DomainConfig, status *types.DomainStatus) error {
+	if !effectiveCPUsPinned(config) {
+		// No pinning: the workload shares whatever no pinned workload holds.
+		status.VmConfig.CPUs = housekeepingCPUs(ctx)
+		return nil
+	}
+	// Record the effective decision: a /persist override can turn pinning on for
+	// a config the controller did not pin, and the release path, the post-restart
+	// reseed and the cpuset redistribution all read this flag from the status
+	// rather than re-deriving it.
+	status.VmConfig.CPUsPinned = true
+	// CPUs may already be allocated for this UUID from a prior doActivate that
+	// returned early. Reuse the existing allocation.
+	if len(status.VmConfig.CPUs) > 0 {
+		return nil
+	}
+	// Topology-aware placement, driven by the controller's policy when it sent
+	// one and by the /persist override otherwise.
+	placement, err := placementFor(config)
+	if err != nil {
+		return err
+	}
+	if err := validateVCPUCount(placement, config.VCpus); err != nil {
+		return err
+	}
+	if ctx.placer == nil {
+		return placementErrorf(types.ErrorCodeCPUTopologyUnsupported,
+			"CPU pinning for %s: no CPU allocator on this node", config.DisplayName)
+	}
+	// Refuse whole-core placement the hypervisor cannot carry out. Reserving the
+	// cores and filling in OrderedCPUs/VMTopology succeeds everywhere, but only
+	// kvm turns them into per-vCPU pinning and a guest SMT topology; anywhere
+	// else the workload would be reported as optimally placed while nothing was
+	// pinned at all.
+	if placement.TopologyAware && ctx.cpuTopologyDegraded {
+		return placementErrorf(types.ErrorCodeCPUTopologyUnsupported,
+			"whole-core CPU placement for %s: this node's CPU topology could not "+
+				"be read, so SMT siblings cannot be identified", config.DisplayName)
+	}
+	if placement.TopologyAware && !ctx.cpuTopologyPinningSupported {
+		return placementErrorf(types.ErrorCodeCPUTopologyUnsupported,
+			"whole-core CPU placement for %s: the %s hypervisor cannot pin "+
+				"individual vCPUs or expose a guest SMT topology",
+			config.DisplayName, hyper.Name())
+	}
+	// Both paths place from the same plan, so a workload gets the same CPUs
+	// regardless of the order workloads start in.
+	plan := planPinnedPlacement(ctx)
+	publishCPUPlan(ctx, plan)
+	if placement.TopologyAware {
+		return allocateTopologyCPUs(ctx, config, status, placement, plan)
+	}
+	return allocateLegacyCPUs(ctx, config, status, plan)
+}
+
+// allocateTopologyCPUs gives a workload whole physical cores, with the guest
+// topology and per-vCPU order the hypervisor needs to pin them 1:1.
+//
+// It takes the CPUs the plan set aside for this workload whenever they are still
+// free: the plan covers every configured pinned workload, not just the ones
+// running, so a workload that starts late still finds its CPUs waiting rather
+// than losing them to whoever started first.
+func allocateTopologyCPUs(ctx *domainContext, config *types.DomainConfig,
+	status *types.DomainStatus, placement resolvedPlacement,
+	plan map[uuid.UUID]cpuallocator.Result) error {
+	log.Noticef("CPU pinning: %s requesting %d vCPUs, mode=%s numa=%s",
+		config.DisplayName, config.VCpus, placement.Mode, placement.NUMA)
+
+	id := config.UUIDandVersion.UUID
+	a := claimPlannedPlacement(ctx, id, config.VCpus, plan)
+	if a != nil {
+		if err := ctx.placer.Reserve(id, assignmentCPUs(a)); err != nil {
+			return placementErrorf(types.ErrorCodeCPUPolicyInvalid,
+				"topology pinning for %s: reserving the planned CPUs failed: %v",
+				config.DisplayName, err)
 		}
-		cpusToAssign, err := ctx.cpuAllocator.Allocate(config.UUIDandVersion.UUID, config.VCpus)
-		if err != nil {
-			return err
+		status.PlacementQuality = types.CPUPlacementQualityOptimal
+	} else {
+		// The plan cannot be applied as-is, because something already running
+		// holds a CPU it wanted. Place this workload among whatever is free
+		// instead of moving a running one, which cannot be done safely.
+		res := ctx.placer.Allocate(cpuallocator.Request{
+			UUID:     id,
+			NumVCPUs: config.VCpus,
+			Mode:     placement.Mode,
+			NUMA:     placement.NUMA,
+		})
+		if res.Status != cpuallocator.Success {
+			// The workload never starts, so it has no placement to rate. A
+			// quality here would have zedagent publish the "running, but could
+			// be packed better" advisory next to the fatal error, telling the
+			// controller the workload is up when it is not; the error code alone
+			// carries the repack verdict.
+			status.PlacementQuality = types.CPUPlacementQualityUnspecified
+			var blockers []string
+			if planned, ok := plan[id]; ok {
+				blockers = plannedSlotBlockers(ctx, planned.Assignment)
+			}
+			return liveAllocationError(config.DisplayName, id, res, plan, blockers)
 		}
-		for _, cpu := range cpusToAssign {
-			status.VmConfig.CPUs = append(status.VmConfig.CPUs, cpu)
+		a = res.Assignment
+		// Only a placement that is genuinely worse than the planned one warrants
+		// a repack. Landing on different CPUs of equal quality is not a problem,
+		// and reporting it as one would demand pointless restarts every time a
+		// workload's first-choice CPUs happened to be taken.
+		status.PlacementQuality = types.CPUPlacementQualityOptimal
+		if planned, ok := plan[id]; ok && planned.Status == cpuallocator.Success {
+			actual := ctx.placer.Score(a)
+			ideal := ctx.placer.Score(planned.Assignment)
+			if actual.WorseThan(ideal) {
+				status.PlacementQuality = types.CPUPlacementQualityNeedsRepack
+				log.Warnf("CPU pinning: %s placed on %v (spanning %d NUMA "+
+					"node(s), %d L3 domain(s)) but the planned layout %v "+
+					"would span %d/%d; a repack of the running workloads "+
+					"would be needed to reach it", config.DisplayName,
+					a.OrderedHostCPUs, actual.NUMANodes, actual.L3Domains,
+					planned.Assignment.OrderedHostCPUs, ideal.NUMANodes,
+					ideal.L3Domains)
+			}
 		}
-	} else { // VM has no pinned CPUs, assign all the CPUs from the shared set
-		status.VmConfig.CPUs = ctx.cpuAllocator.GetAllFree()
+		if status.PlacementQuality == types.CPUPlacementQualityOptimal {
+			log.Noticef("CPU pinning: %s placed among free CPUs rather than "+
+				"its planned slot, at equal quality", config.DisplayName)
+		}
+	}
+	log.Noticef("CPU pinning: %s allocated host CPUs %v (parked %v), guest topology sockets=%d cores=%d threads=%d",
+		config.DisplayName, a.OrderedHostCPUs, a.ParkedCPUs, a.Guest.Sockets, a.Guest.Cores, a.Guest.Threads)
+	for _, c := range a.OrderedHostCPUs {
+		status.VmConfig.CPUs = append(status.VmConfig.CPUs, uint32(c))
+	}
+	for _, c := range a.ParkedCPUs {
+		status.VmConfig.CPUs = append(status.VmConfig.CPUs, uint32(c))
+	}
+	for _, c := range a.OrderedHostCPUs {
+		status.OrderedCPUs = append(status.OrderedCPUs, uint32(c))
+	}
+	status.VMTopology = types.CPUTopology{
+		Sockets: a.Guest.Sockets,
+		Cores:   a.Guest.Cores,
+		Threads: a.Guest.Threads,
+	}
+	if placement.IOHousekeeping {
+		applyIOHousekeeping(ctx, config, status, plan)
 	}
 	return nil
 }
 
-// releaseCPUs releases the CPUs that were previously assigned to the VM.
-// The cpumask in the *status* is updated accordingly, and the CPUs are released in the CPUAllocator context.
-func releaseCPUs(ctx *domainContext, config *types.DomainConfig, status *types.DomainStatus) {
-	if ctx.cpuPinningSupported && config.VmConfig.CPUsPinned && status.VmConfig.CPUs != nil {
-		if err := ctx.cpuAllocator.Free(config.UUIDandVersion.UUID); err != nil {
-			log.Errorf("Failed to free CPUs for %s: %s", config.DisplayName, err)
+// applyIOHousekeeping pins the QEMU main loop and iothread off the workload's
+// hot vCPU cores, onto CPUs no pinned workload holds, and widens the cgroup
+// cpuset so that pool is reachable. Under the default "dedicated" placement they
+// stay on the workload's own cores and EmulatorCPUs is left nil, which is what
+// tells pinDomainThreads to leave them alone.
+func applyIOHousekeeping(ctx *domainContext, config *types.DomainConfig,
+	status *types.DomainStatus, plan map[uuid.UUID]cpuallocator.Result) {
+	hk := emulatorHousekeepingCPUs(ctx, plan)
+	if len(hk) == 0 {
+		// Nothing is safe from every configured pinned workload. Falling back to
+		// "dedicated" costs this workload some vCPU/IO separation; picking a CPU
+		// anyway would cost another workload the exclusive cores it was
+		// promised. The workload still runs, so this is reported as a placement
+		// that a repack could improve rather than as a failure -- otherwise the
+		// only trace of an unapplied request would be this log line.
+		log.Warnf("CPU pinning: %s asked for housekeeping IO placement but no "+
+			"CPU is free of every pinned workload; leaving its emulator/IO "+
+			"threads on its own cores", config.DisplayName)
+		status.PlacementQuality = types.CPUPlacementQualityNeedsRepack
+		return
+	}
+	status.EmulatorCPUs = hk
+	status.VmConfig.CPUs = append(status.VmConfig.CPUs, hk...)
+}
+
+// allocateLegacyCPUs gives a workload exclusive CPUs at SMT-thread granularity,
+// which is what a pin without a whole-core policy asks for.
+//
+// It claims the planned assignment for the same reason the topology path does.
+// The plan ranks these workloads last but does account for them, and taking the
+// lowest-numbered free CPUs instead -- which is what the allocator does when
+// asked to place one in isolation -- takes threads off the very cores the plan
+// set aside whole for someone else. Which of the two workloads then failed to
+// start depended on which activated first.
+func allocateLegacyCPUs(ctx *domainContext, config *types.DomainConfig,
+	status *types.DomainStatus, plan map[uuid.UUID]cpuallocator.Result) error {
+	id := config.UUIDandVersion.UUID
+	if a := claimPlannedPlacement(ctx, id, config.VCpus, plan); a != nil {
+		cpus := assignmentCPUs(a)
+		if err := ctx.placer.Reserve(id, cpus); err != nil {
+			return placementErrorf(types.ErrorCodeCPUPolicyInvalid,
+				"CPU pinning for %s: reserving the planned CPUs failed: %v",
+				config.DisplayName, err)
 		}
+		log.Noticef("CPU pinning: %s allocated its planned host CPUs %v (legacy, no policy)",
+			config.DisplayName, cpus)
+		status.VmConfig.CPUs = append(status.VmConfig.CPUs, cpus...)
+		return nil
+	}
+	cpusToAssign, err := ctx.placer.AllocateShared(id, config.VCpus)
+	if err != nil {
+		return err
+	}
+	log.Noticef("CPU pinning: %s allocated shared host CPUs %v (legacy, no policy)",
+		config.DisplayName, cpusToAssign)
+	for _, cpu := range cpusToAssign {
+		status.VmConfig.CPUs = append(status.VmConfig.CPUs, uint32(cpu))
+	}
+	return nil
+}
+
+// housekeepingCPUs returns all logical CPUs not dedicated to any VM
+// (topology or shared), used for non-pinned VM cpusets and emulator pinning.
+func housekeepingCPUs(ctx *domainContext) []uint32 {
+	var out []uint32
+	for _, c := range ctx.placer.FreeCPUs() {
+		out = append(out, uint32(c))
+	}
+	return out
+}
+
+// releaseCPUs releases the CPUs that were previously assigned to the VM.
+// The cpumask in the *status* is updated accordingly, and the CPUs are released in the Placer.
+func releaseCPUs(ctx *domainContext, status *types.DomainStatus) {
+	if ctx.placer != nil {
+		ctx.placer.Free(status.UUIDandVersion.UUID)
 	}
 	status.VmConfig.CPUs = nil
+	status.OrderedCPUs = nil
+	status.EmulatorCPUs = nil
+	status.VMTopology = types.CPUTopology{}
+	// CPUsPinned is part of the pin state, so it is cleared here too. It is set
+	// from the effective decision at allocation time, and a workload that is no
+	// longer pinned (the controller changed the policy, or the operator removed
+	// the override) would otherwise keep a stale true while VmConfig.CPUs holds
+	// the whole housekeeping set -- which the post-restart reseed reads as
+	// "these CPUs are exclusively mine" and reserves almost the entire node.
+	status.VmConfig.CPUsPinned = false
+	// A workload that holds no CPUs has no placement to judge. Leaving the old
+	// verdict behind would have it reported as "needs repack" long after the
+	// placement it described was given up.
+	status.PlacementQuality = types.CPUPlacementQualityUnspecified
+	publishCPUPoolStatus(ctx)
+}
+
+// seedPlacerFromStatus reseeds the allocator with cores already held by running,
+// pinned VMs, taken from the DomainStatus objects that survived in /run. A
+// Placer created
+// fresh on a domainmgr restart otherwise knows nothing of running VMs (the
+// re-activate path reuses their existing status without re-running placement),
+// and could hand their dedicated cores to another VM. Only the exclusive set is
+// reserved: assigned CPUs minus the shared housekeeping/emulator pool.
+func seedPlacerFromStatus(ctx *domainContext) {
+	if ctx.placer == nil {
+		return
+	}
+	for _, st := range ctx.pubDomainStatus.GetAll() {
+		status := st.(types.DomainStatus)
+		if !status.VmConfig.CPUsPinned || len(status.VmConfig.CPUs) == 0 {
+			continue
+		}
+		emu := make(map[uint32]bool, len(status.EmulatorCPUs))
+		for _, c := range status.EmulatorCPUs {
+			emu[c] = true
+		}
+		var owned []uint32
+		for _, c := range status.VmConfig.CPUs {
+			if !emu[c] {
+				owned = append(owned, c)
+			}
+		}
+		if len(owned) == 0 {
+			continue
+		}
+		// A rejection here means two statuses claim the same CPU, which no
+		// correct sequence of allocations can produce. Skipping the second
+		// claimant keeps the first workload's cores exclusive; double-booking
+		// them would leave both believing they own the core, and make the
+		// reported holder arbitrary.
+		if err := ctx.placer.Reserve(status.UUIDandVersion.UUID, owned); err != nil {
+			log.Errorf("CPU pinning: cannot reseed %s with dedicated CPUs %v: %v",
+				status.DisplayName, owned, err)
+			continue
+		}
+		log.Noticef("CPU pinning: reseeded %s with dedicated CPUs %v after domainmgr restart",
+			status.DisplayName, owned)
+	}
 }
 
 func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
@@ -1842,10 +2261,32 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		config.UUIDandVersion, config.DisplayName)
 
 	if ctx.cpuPinningSupported {
+		ensureDomainInPinningConfig(config)
 		if err := assignCPUs(ctx, &config, status); err != nil {
 			log.Warnf("failed to assign CPUs for %s err %v", config.DisplayName, err)
-			errDescription := types.ErrorDescription{Error: err.Error()}
-			status.SetErrorDescription(errDescription)
+			// Deliberately neither BootFailed nor ConfigFailed: a workload
+			// refused for want of CPUs stays down until an explicit action
+			// (deactivate, which clears this error, then activate). That is how
+			// EVE already treats a workload whose assigned resource is not
+			// available -- an app that cannot get its PCI device is not brought
+			// up later just because the device reappeared -- and CPUs are an
+			// assigned resource like any other, so they behave the same way.
+			//
+			// This is a decision, not an oversight: do not wire this into
+			// maybeRetryBoot/maybeRetryConfig or into the CPU-change wakeup.
+			// Silently starting a workload minutes later, on CPUs the operator
+			// never saw it take, is the surprise this avoids. What the report
+			// owes instead is a retry_condition saying what to do, which is why
+			// placementErrorDescription always fills one in.
+			//
+			// AdaptersFailed is cleared for the same reason. It is the one
+			// failure flag whose retry path re-enters doActivate without
+			// clearing it first, so an adapter failure followed by a placement
+			// failure would have the timer re-attempt placement every tick --
+			// and start the workload whenever some unrelated workload happened
+			// to release cores.
+			status.AdaptersFailed = false
+			status.SetErrorDescription(placementErrorDescription(err))
 			publishDomainStatus(ctx, status)
 			return
 		}
@@ -1858,7 +2299,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		status.PendingAdd = false
 		status.SetErrorDescription(*errDescription)
 		status.AdaptersFailed = true
-		releaseCPUs(ctx, &config, status)
+		releaseCPUs(ctx, status)
 		publishDomainStatus(ctx, status)
 		releaseAdapters(ctx, config.IoAdapterList, config.UUIDandVersion.UUID,
 			nil)
@@ -1882,7 +2323,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		status.PendingAdd = false
 		status.SetErrorNow(err.Error())
 		status.AdaptersFailed = true
-		releaseCPUs(ctx, &config, status)
+		releaseCPUs(ctx, status)
 		publishDomainStatus(ctx, status)
 		releaseAdapters(ctx, config.IoAdapterList, config.UUIDandVersion.UUID,
 			nil)
@@ -1906,7 +2347,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 					snapshotID, config.UUIDandVersion.UUID, err)
 				log.Error(err.Error())
 				status.SetErrorNow(err.Error())
-				releaseCPUs(ctx, &config, status)
+				releaseCPUs(ctx, status)
 				return
 			}
 
@@ -1935,7 +2376,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 					err := fmt.Errorf("doActivate: Failed to write cloud-init metadata file. Error %s", err)
 					log.Error(err.Error())
 					status.SetErrorNow(err.Error())
-					releaseCPUs(ctx, &config, status)
+					releaseCPUs(ctx, status)
 					return
 				}
 
@@ -1946,7 +2387,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 						err := fmt.Errorf("doActivate: Failed to apply cloud-init config. Error %s", err)
 						log.Error(err.Error())
 						status.SetErrorNow(err.Error())
-						releaseCPUs(ctx, &config, status)
+						releaseCPUs(ctx, status)
 						return
 					}
 				}
@@ -1962,7 +2403,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 			if err != nil {
 				log.Errorf("Failed to check disk format: %v", err.Error())
 				status.SetErrorNow(err.Error())
-				releaseCPUs(ctx, &config, status)
+				releaseCPUs(ctx, status)
 				return
 			}
 		}
@@ -2017,7 +2458,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		log.Errorf("Failed to create DomainStatus from %+v: %s",
 			config, err)
 		status.SetErrorNow(err.Error())
-		releaseCPUs(ctx, &config, status)
+		releaseCPUs(ctx, status)
 		return
 	}
 
@@ -2037,7 +2478,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 			log.Errorf("DomainCreate for %s: %s", status.DomainName, err)
 			status.BootFailed = true
 			status.SetErrorNow(err.Error())
-			releaseCPUs(ctx, &config, status)
+			releaseCPUs(ctx, status)
 			publishDomainStatus(ctx, status)
 			return
 		}
@@ -2053,7 +2494,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 			status.SetErrorDescription(errDescription)
 			publishDomainStatus(ctx, status)
 		}
-		if config.CPUsPinned {
+		if status.VmConfig.CPUsPinned {
 			triggerCPUNotification()
 		}
 	}
@@ -2332,13 +2773,15 @@ func doCleanup(ctx *domainContext, status *types.DomainStatus) {
 	}
 
 	if ctx.cpuPinningSupported {
-		if status.VmConfig.CPUsPinned {
-			if err := ctx.cpuAllocator.Free(status.UUIDandVersion.UUID); err != nil {
-				log.Warnf("Failed to free for %s: %s", status.DisplayName, err)
-			}
+		wasPinned := status.VmConfig.CPUsPinned
+		// Release every CPU field (dedicated set, ordered vCPU map, emulator
+		// set, guest topology) through the single release path so a later
+		// re-activation starts from a clean slate and cannot accumulate stale
+		// pin state.
+		releaseCPUs(ctx, status)
+		if wasPinned {
 			triggerCPUNotification()
 		}
-		status.VmConfig.CPUs = nil
 	}
 	releaseAdapters(ctx, status.IoAdapterList, status.UUIDandVersion.UUID,
 		status)
