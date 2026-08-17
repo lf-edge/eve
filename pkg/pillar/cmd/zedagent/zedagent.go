@@ -139,6 +139,7 @@ type zedagentContext struct {
 	subDiskMetric             pubsub.Subscription
 	subAppDiskMetric          pubsub.Subscription
 	subCapabilities           pubsub.Subscription
+	subCPUPoolStatus          pubsub.Subscription
 	subAppInstMetaData        pubsub.Subscription
 	subWwanMetrics            pubsub.Subscription
 	subWwanStatus             pubsub.Subscription
@@ -1171,6 +1172,9 @@ func mainEventLoop(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 		case change := <-zedagentCtx.subCapabilities.MsgChan():
 			zedagentCtx.subCapabilities.ProcessChange(change)
 
+		case change := <-zedagentCtx.subCPUPoolStatus.MsgChan():
+			zedagentCtx.subCPUPoolStatus.ProcessChange(change)
+
 		case change := <-zedagentCtx.subBaseOsMgrStatus.MsgChan():
 			zedagentCtx.subBaseOsMgrStatus.ProcessChange(change)
 
@@ -1907,6 +1911,22 @@ func initPostOnboardSubs(zedagentCtx *zedagentContext) {
 		AgentName:   "domainmgr",
 		MyAgentName: agentName,
 		TopicImpl:   types.Capabilities{},
+		Activate:    true,
+		Ctx:         zedagentCtx,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// The node CPU pool report: how the logical CPUs are partitioned between
+	// housekeeping, dedicated and kernel-isolated, and how much of each is left.
+	// Only domainmgr can compute it, since it owns the CPU allocator.
+	zedagentCtx.subCPUPoolStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "domainmgr",
+		MyAgentName: agentName,
+		TopicImpl:   types.CPUPoolStatus{},
 		Activate:    true,
 		Ctx:         zedagentCtx,
 		WarningTime: warningTime,

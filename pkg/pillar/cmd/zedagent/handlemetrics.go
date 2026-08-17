@@ -1132,6 +1132,42 @@ func encodeProxyStatus(proxyConfig *types.ProxyConfig) *info.ProxyStatus {
 	return status
 }
 
+// cpuPlacementAdvisory reports a running workload whose CPU placement could be
+// improved, as a non-fatal advisory on the app's info message.
+//
+// It rides the app's error list because that is the only per-app channel the
+// API has for a typed, machine-parseable condition. It is emitted at WARNING
+// severity with the app left in whatever state it is really in -- normally
+// RUNNING -- because nothing is broken: the workload has exactly the CPUs it
+// asked for, just not in the arrangement that restarting its neighbours would
+// achieve. Whether that restart is worth its disruption is the controller's
+// call, and it can only make it if the device says so.
+//
+// Deliberately not routed through AppInstanceStatus's error fields: HasError()
+// is severity-blind and several call sites treat any error as a failure, which
+// would turn a merely sub-optimal placement into a refused workload.
+func cpuPlacementAdvisory(aiStatus *types.AppInstanceStatus) *info.ErrorInfo {
+	if aiStatus.PlacementQuality != types.CPUPlacementQualityNeedsRepack {
+		return nil
+	}
+	// Timestamp the advisory with the boot the placement was decided at, so it
+	// does not appear to change on every info message.
+	errorTime := aiStatus.BootTime
+	if errorTime.IsZero() {
+		errorTime = time.Now()
+	}
+	description := types.ErrorDescription{
+		Error: fmt.Sprintf("%s is running, but on a CPU placement worse than the "+
+			"device could achieve by moving the workloads around it",
+			aiStatus.DisplayName),
+		ErrorCode:           types.ErrorCodeCPUPlacementNeedsRepack,
+		ErrorSeverity:       types.ErrorSeverityWarning,
+		ErrorTime:           errorTime,
+		ErrorRetryCondition: "Cleared once the workload is placed optimally, which needs the pinned workloads restarted together",
+	}
+	return description.ToProto()
+}
+
 // This function is called per change, hence needs to try over all management ports
 // When aiStatus is nil it means a delete and we send a message
 // containing only the UUID to inform zedcloud about the delete.
@@ -1167,6 +1203,9 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 		ReportAppInfo.State = aiStatus.State.ZSwState()
 		if !aiStatus.ErrorTime.IsZero() {
 			errInfo := aiStatus.ErrorAndTimeWithSource.ErrorDescription.ToProto()
+			ReportAppInfo.AppErr = append(ReportAppInfo.AppErr, errInfo)
+		}
+		if errInfo := cpuPlacementAdvisory(aiStatus); errInfo != nil {
 			ReportAppInfo.AppErr = append(ReportAppInfo.AppErr, errInfo)
 		}
 
