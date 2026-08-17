@@ -171,6 +171,51 @@ func QmpExecDeviceAdd(socket, id string, busnum, devnum uint16) error {
 	return err
 }
 
+// QmpGetVcpuThreadIDs returns host thread IDs indexed by guest vCPU number
+// via QMP query-cpus-fast.
+func QmpGetVcpuThreadIDs(socket string) ([]int, error) {
+	raw, err := execRawCmd(socket, `{ "execute": "query-cpus-fast" }`, true)
+	if err != nil {
+		return nil, err
+	}
+	return parseVcpuThreadIDs(raw)
+}
+
+func parseVcpuThreadIDs(raw []byte) ([]int, error) {
+	var resp struct {
+		Return []struct {
+			CPUIndex int `json:"cpu-index"`
+			ThreadID int `json:"thread-id"`
+		} `json:"return"`
+	}
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return nil, fmt.Errorf("query-cpus-fast decode: %w", err)
+	}
+	n := len(resp.Return)
+	if n == 0 {
+		// Only ever called for a domain that has vCPUs to pin, so an empty reply
+		// is a broken monitor, not a valid answer. Say so here rather than let
+		// it resurface as a vCPU count mismatch in the caller.
+		return nil, fmt.Errorf("query-cpus-fast: no vCPUs reported")
+	}
+	out := make([]int, n)
+	seen := make([]bool, n)
+	for _, c := range resp.Return {
+		if c.CPUIndex < 0 || c.CPUIndex >= n {
+			return nil, fmt.Errorf("query-cpus-fast: cpu-index %d out of range [0,%d)", c.CPUIndex, n)
+		}
+		if seen[c.CPUIndex] {
+			return nil, fmt.Errorf("query-cpus-fast: duplicate cpu-index %d", c.CPUIndex)
+		}
+		if c.ThreadID <= 0 {
+			return nil, fmt.Errorf("query-cpus-fast: invalid thread-id %d for cpu-index %d", c.ThreadID, c.CPUIndex)
+		}
+		seen[c.CPUIndex] = true
+		out[c.CPUIndex] = c.ThreadID
+	}
+	return out, nil
+}
+
 // There is errors.Join(), but stupid Yetus has old golang
 // and complains with "Join not declared by package errors".
 // Use our own.
