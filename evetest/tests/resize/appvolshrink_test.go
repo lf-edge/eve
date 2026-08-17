@@ -493,7 +493,11 @@ func runAppVolumeShrinkCorruption(test *testing.T,
 		captureAppNetFailure(device, appUUID)
 	}()
 	log.Infof("(d) waiting for the app to reach RUNNING on the target")
-	stopCDISampler := startCDISampler(device, 30*time.Second)
+	// Five seconds, not thirty: a failing import keeps its upload pod for the whole
+	// recovery budget, but a successful one finishes inside a minute and CDI deletes
+	// the pod immediately, so a coarse interval catches the failures and misses
+	// exactly the successes this exists to explain.
+	stopCDISampler := startCDISampler(device, 5*time.Second)
 	waitAppRunningWithPVCRecovery(t, device, appUUID, dataVolMiB)
 	stopCDISampler()
 	appRunning = true
@@ -1290,9 +1294,15 @@ func cdiImportSizeVerdict(device *evetest.EdgeDevice) string {
 // CDI saw at the moment it decided, rather than what the claim looked like minutes
 // later.
 func startCDISampler(device *evetest.EdgeDevice, interval time.Duration) (stop func()) {
+	// UPLOAD_IMAGE_SIZE is what CDI was told to expect. The upload pod carries it,
+	// the scratch claim is provisioned at exactly that figure while the Longhorn
+	// destination is rounded past it, and the rejection quotes both numbers — so
+	// capture all three together rather than inferring which the check compares.
 	const probe = `eve exec kube kubectl -n eve-kube-app logs ` +
 		`-l cdi.kubevirt.io=cdi-upload-server --tail=25 2>/dev/null | ` +
 		`grep -aE "Target size|irtual image size|block volume size|New phase|Saving stream failed" ; ` +
+		`eve exec kube kubectl -n eve-kube-app get pod -l cdi.kubevirt.io=cdi-upload-server ` +
+		`-o yaml 2>/dev/null | grep -aA1 "name: UPLOAD_IMAGE_SIZE" | grep -a value ; ` +
 		`eve exec kube kubectl -n eve-kube-app get pvc ` +
 		`-o custom-columns=NAME:.metadata.name,REQ:.spec.resources.requests.storage,` +
 		`PROV:.status.capacity.storage --no-headers 2>/dev/null`
