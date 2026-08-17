@@ -89,6 +89,8 @@ import (
 //   - TestCPUPlacementMultiApp -- whole-core-SMT, one-per-core and best-effort
 //     apps deployed together: each placed as its policy asks, on disjoint CPUs
 //     and disjoint physical cores, with housekeeping left intact.
+//   - TestCPUPlacementStability -- the same set survives a reboot, a staggered
+//     (start-delayed) start and a reverse restart order on the same host CPUs.
 //   - TestVMAppPurgeReplacesVMIRS -- a plain purge of a healthy app leaves
 //     exactly one VMIRS, named for the new generation. Kubevirt only; skips
 //     on any other hypervisor.
@@ -142,6 +144,11 @@ func TestAppsSuite(test *testing.T) {
 		// (8 CPUs, 2 threads per core), so the framework can reuse the VM.
 		evetest.TestCase{
 			Test: TestCPUPlacementMultiApp,
+		},
+		// Also needs the 8-CPU, 2-threads-per-core device, so it follows the
+		// tests that already require one.
+		evetest.TestCase{
+			Test: TestCPUPlacementStability,
 		},
 		evetest.TestCase{
 			Test: TestVMAppPurgeReplacesVMIRS,
