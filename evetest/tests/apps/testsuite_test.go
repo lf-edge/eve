@@ -91,6 +91,10 @@ import (
 //     and disjoint physical cores, with housekeeping left intact.
 //   - TestCPUPlacementStability -- the same set survives a reboot, a staggered
 //     (start-delayed) start and a reverse restart order on the same host CPUs.
+//   - TestCPUPlacementParkedSiblings -- the SMT sibling a one-per-core app leaves
+//     unused is consumed by it, not spare: no other workload gets it in its
+//     cpuset, the node does not advertise it as free, and nothing is ever
+//     observed running on it.
 //   - TestVMAppPurgeReplacesVMIRS -- a plain purge of a healthy app leaves
 //     exactly one VMIRS, named for the new generation. Kubevirt only; skips
 //     on any other hypervisor.
@@ -149,6 +153,10 @@ func TestAppsSuite(test *testing.T) {
 		// tests that already require one.
 		evetest.TestCase{
 			Test: TestCPUPlacementStability,
+		},
+		// Same device again.
+		evetest.TestCase{
+			Test: TestCPUPlacementParkedSiblings,
 		},
 		evetest.TestCase{
 			Test: TestVMAppPurgeReplacesVMIRS,
