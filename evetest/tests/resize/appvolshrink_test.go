@@ -1253,15 +1253,18 @@ func waitAppRunningWithPVCRecovery(t Gomega, device *evetest.EdgeDevice,
 // so sampling only failures cannot distinguish the two outcomes and leaves the
 // intermittency unexplained.
 func cdiImportSizeVerdict(device *evetest.EdgeDevice) string {
-	// Select by label in one pipeline, as the capture probe does. Resolving the pod
-	// name first and feeding it to a second `eve exec` returns nothing: the inner
-	// command substitution does not survive the nesting.
-	const script = `set -u
-eve exec kube kubectl -n eve-kube-app logs -l cdi.kubevirt.io=cdi-upload-server --tail=400 2>/dev/null |
-  grep -aoE "Virtual image size [0-9]+ is larger than the reported available storage [0-9]+" |
-  tail -1`
-	out, err := runOnEVEScript(device, script, 2*time.Minute)
+	// Run at dom0 level, as the capture probes do, NOT through runOnEVEScript:
+	// that wraps its script in `eve exec pillar sh -c`, and the pillar container has
+	// no `eve` binary, so a nested `eve exec kube` dies with "eve: not found" and the
+	// verdict comes back empty — indistinguishable from CDI having made no
+	// comparison, which is the very thing this is here to tell apart.
+	const script = `eve exec kube kubectl -n eve-kube-app logs ` +
+		`-l cdi.kubevirt.io=cdi-upload-server --tail=400 2>/dev/null | ` +
+		`grep -aoE "Virtual image size [0-9]+ is larger than the reported available storage [0-9]+" | ` +
+		`tail -1`
+	out, errOut, err := device.RunShellScript(script, 2*time.Minute, 0)
 	if err != nil {
+		evetest.Logger().Warnf("CDI size verdict unavailable: %v%s", err, errOut)
 		return ""
 	}
 	return strings.TrimSpace(out)
