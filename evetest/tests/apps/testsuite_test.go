@@ -99,6 +99,10 @@ import (
 //     workloads (free threads, no free whole core) a whole-core app is refused
 //     with cpu.placement.needs_repack rather than insufficient, and a repack
 //     really does let it run.
+//   - TestCPUPlacementFailsClosed -- every class of unsatisfiable placement
+//     request (odd vCPUs with whole-core SMT, hard isolation tier, invalid
+//     policy) is refused with its own error_code at ERROR severity, never boots,
+//     and leaves the node's dedicated CPU pool unchanged.
 //   - TestVMAppPurgeReplacesVMIRS -- a plain purge of a healthy app leaves
 //     exactly one VMIRS, named for the new generation. Kubevirt only; skips
 //     on any other hypervisor.
@@ -166,6 +170,11 @@ func TestAppsSuite(test *testing.T) {
 		// fragment the node in the first place.
 		evetest.TestCase{
 			Test: TestCPUPlacementNeedsRepack,
+		},
+		// Same 8-CPU, 2-threads-per-core device: the whole-core-SMT holder
+		// application it keeps running throughout needs real SMT siblings.
+		evetest.TestCase{
+			Test: TestCPUPlacementFailsClosed,
 		},
 		evetest.TestCase{
 			Test: TestVMAppPurgeReplacesVMIRS,
