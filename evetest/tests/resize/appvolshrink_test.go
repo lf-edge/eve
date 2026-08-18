@@ -45,9 +45,11 @@ const (
 	// the conversion, when the volume is no longer mounted at its MountDir.
 	volverifyCommitDir = ".vv-commit"
 
-	fillPeakPctParamKey = "FILL_PEAK_PCT"
-	fillKeepGiBParamKey = "FILL_KEEP_GIB"
-	devsideOnlyParamKey = "DEVSIDE_ONLY"
+	fillPeakPctParamKey   = "FILL_PEAK_PCT"
+	fillKeepGiBParamKey   = "FILL_KEEP_GIB"
+	cdiSampleSecsParamKey = "CDI_SAMPLE_SECS"
+	defaultCDISampleSecs  = 5
+	devsideOnlyParamKey   = "DEVSIDE_ONLY"
 
 	// Fill /persist to this percentage before the app is deployed, then trim back
 	// to this many GiB once its volume is written. The peak has to sit well above
@@ -163,6 +165,14 @@ func runAppVolumeShrinkCorruption(test *testing.T,
 			Description: evetest.TestParameterDescription{
 				Summary: "Leave this many GiB of filler after the volume is written; the rest is deleted so EVE-k has room. Measures the filler alone, not total /persist usage",
 				Default: "2",
+			},
+		},
+		evetest.TestParameterDefinition{
+			Key:          cdiSampleSecsParamKey,
+			DefaultValue: uint32(defaultCDISampleSecs),
+			Description: evetest.TestParameterDescription{
+				Summary: "Seconds between samples of the CDI import while it runs; 0 disables sampling, which is the only way to measure the untouched pass rate",
+				Default: "5",
 			},
 		},
 		evetest.TestParameterDefinition{
@@ -493,11 +503,16 @@ func runAppVolumeShrinkCorruption(test *testing.T,
 		captureAppNetFailure(device, appUUID)
 	}()
 	log.Infof("(d) waiting for the app to reach RUNNING on the target")
-	// Five seconds, not thirty: a failing import keeps its upload pod for the whole
-	// recovery budget, but a successful one finishes inside a minute and CDI deletes
-	// the pod immediately, so a coarse interval catches the failures and misses
-	// exactly the successes this exists to explain.
-	stopCDISampler := startCDISampler(device, 5*time.Second)
+	// A failing import keeps its upload pod for the whole recovery budget, but one
+	// that succeeds finishes inside a minute, so only a few seconds of interval
+	// catches a success at all. That cadence also perturbs what it measures: at five
+	// seconds no run has passed in seventeen, against roughly one in five without
+	// it. Sampling stays on by default because the diagnosis is worth more than the
+	// rare pass; set the interval to 0 to measure the untouched rate.
+	stopCDISampler := func() {}
+	if secs := evetest.GetTestParameter[uint32](cdiSampleSecsParamKey); secs > 0 {
+		stopCDISampler = startCDISampler(device, time.Duration(secs)*time.Second)
+	}
 	waitAppRunningWithPVCRecovery(t, device, appUUID, dataVolMiB)
 	stopCDISampler()
 	appRunning = true
