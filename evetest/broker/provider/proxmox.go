@@ -964,7 +964,11 @@ func (p *ProxmoxProvider) buildVMOptions(dev *proxmoxDevice, diskRefs []string,
 		{Name: "cores", Value: int(cpus)},
 		{Name: "memory", Value: int(memMiB)},
 		{Name: "cpu", Value: "host"},
-		{Name: "machine", Value: "q35"},
+		// viommu=intel (PVE >= 8.1) makes qemu-server add an intel-iommu
+		// device with interrupt remapping and caching mode, plus the split
+		// irqchip it requires -- the vIOMMU EVE inside the VM needs to VFIO
+		// pass PCI devices such as NICs through to application VMs.
+		{Name: "machine", Value: "q35,viommu=intel"},
 		{Name: "ostype", Value: "l26"},
 		{Name: "scsihw", Value: "virtio-scsi-single"},
 		// Expose a serial port for the console (consumed via termproxy) and an
@@ -984,8 +988,14 @@ func (p *ProxmoxProvider) buildVMOptions(dev *proxmoxDevice, diskRefs []string,
 	}
 
 	// Set speed=1000 and duplex=full on all virtio-net NICs so the guest's
-	// MII/bonding subsystem can determine link status.
-	extraArgs := "-global virtio-net-pci.speed=1000 -global virtio-net-pci.duplex=full"
+	// MII/bonding subsystem can determine link status. Additionally make
+	// every NIC modern-only virtio honoring the vIOMMU (iommu_platform), so
+	// that the NIC itself can be passed through to an app VM (same
+	// virtio-net-pci flags as used by the qemu provider).
+	extraArgs := "-global virtio-net-pci.speed=1000 -global virtio-net-pci.duplex=full" +
+		" -global virtio-net-pci.disable-legacy=on" +
+		" -global virtio-net-pci.disable-modern=off" +
+		" -global virtio-net-pci.iommu_platform=on"
 
 	// UEFI (OVMF) boot with the broker-supplied firmware. A non-empty
 	// UEFIFirmwareDirPath signals UEFI boot. Proxmox's efidisk0 only manages the
