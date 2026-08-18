@@ -176,7 +176,6 @@ func TestVCom(test *testing.T) {
 	evetest.DefineTestParameters(evetest.HypervisorParameter())
 	hypervisor := evetest.GetHypervisorParameterValue()
 
-	devName := "edge-dev"
 	evetest.Setup(
 		evetest.RequireEdgeDevice{
 			Name:              devName,
@@ -231,7 +230,7 @@ func TestVCom(test *testing.T) {
 	})
 
 	image := alpineCloudImages[device.GetArch()]
-	appAuth := evetest.UsernamePasswordAuth{
+	vmAuth := evetest.UsernamePasswordAuth{
 		Username: "root",
 		Password: "testpassword",
 	}
@@ -247,7 +246,7 @@ write_files:
       PermitRootLogin yes
 runcmd:
   - rc-service sshd restart
-`, appAuth.Password)
+`, vmAuth.Password)
 	appUUID := devConfig.AddApplication(evetest.ApplicationInstanceConfig{
 		DisplayName: "vcom-test-vm",
 		Activate:    true,
@@ -291,7 +290,7 @@ runcmd:
 	polling := 5 * time.Second
 	log.Infof("Waiting for VM SSH to become reachable...")
 	t.Eventually(func(gt Gomega) {
-		_, _, err := device.RunShellScriptInsideApp(appUUID, appAuth,
+		_, _, err := device.RunShellScriptInsideApp(appUUID, vmAuth,
 			"echo ok", sshTimeout, 0)
 		gt.Expect(err).ToNot(HaveOccurred())
 	}, 5*time.Minute, polling).Should(Succeed())
@@ -301,7 +300,7 @@ runcmd:
 	encoded := base64.StdEncoding.EncodeToString([]byte(vcomCheckScript))
 	script := "echo " + encoded + " | base64 -d > vcomcheck.py && python3 vcomcheck.py"
 	checkOut, checkErr, err := device.RunShellScriptInsideApp(
-		appUUID, appAuth, script, 60*time.Second, 0)
+		appUUID, vmAuth, script, 60*time.Second, 0)
 	t.Expect(err).ToNot(HaveOccurred(), "vComLink check script failed: %s", checkErr)
 	t.Expect(checkOut).To(
 		ContainSubstring("STATUS=200"), "unexpected vComLink response: %s", checkOut)
