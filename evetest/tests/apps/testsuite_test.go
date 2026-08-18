@@ -37,6 +37,10 @@ import (
 //   - TestAppRestart -- controller-requested restarts (restart counter
 //     bumps, no purge) bring the app back to RUNNING; regression test for
 //     a stale QMP handler quitting the re-created domain.
+//   - TestDeviceShutdownAndRecovery -- controller-requested shutdown of all
+//     app instances brings the app to HALTED and the device through
+//     PREPARING_POWEROFF/PREPARED_POWEROFF; a subsequent reboot recovers
+//     both the app and its network instance even across a network outage.
 func TestAppsSuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
@@ -63,6 +67,9 @@ func TestAppsSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestAppRestart,
+		},
+		evetest.TestCase{
+			Test: TestDeviceShutdownAndRecovery,
 		},
 	)
 }
