@@ -294,6 +294,8 @@ func (tc *stagedNICChangeTest) recordBaseline() {
 		t.Expect(vifCount).To(Equal(1))
 		t.Expect(tc.baselineVifName).ToNot(BeEmpty())
 	}, tc.timeout, tc.polling).Should(Succeed())
+
+	ensureNetworkOrder(tc.t, tc.device, tc.app1UUID, []string{"vif0", "vif1"})
 }
 
 // app1VifsOnNI2 returns the name of app1's VIF with the vif1 MAC address as
@@ -395,6 +397,10 @@ func (tc *stagedNICChangeTest) assertNothingAppliedEarly(phase string) {
 			"the staged NIC's port-forwarding ACL must not be programmed "+
 				"while the change is staged")
 	}, tc.soak, tc.soakPolling).Should(Succeed())
+
+	// The reported app info and a metrics message published after the soak
+	// must also still list only the two original NICs, in order.
+	ensureNetworkOrder(tc.t, tc.device, tc.app1UUID, []string{"vif0", "vif1"})
 }
 
 // devicePortReachable reports whether a TCP connection can be established
@@ -497,6 +503,8 @@ func (tc *stagedNICChangeTest) verifyStagedNICApplied() {
 		t.Expect(tc.devicePortReachable("2228")).To(BeTrue(),
 			"the restart must apply the staged NIC's port-forwarding ACL")
 	}, tc.timeout, tc.polling).Should(Succeed())
+
+	ensureNetworkOrder(tc.t, tc.device, tc.app1UUID, []string{"vif0", "vif1", "vif2"})
 }
 
 // cleanup (phase 6) removes both applications.
