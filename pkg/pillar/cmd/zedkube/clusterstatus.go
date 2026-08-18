@@ -106,6 +106,7 @@ func (z *zedkube) applyClusterConfig(config, oldconfig *types.EdgeNodeClusterCon
 		drainAndDeleteNode(z)
 		z.stopClusterStatusServer()
 		z.clusterConfig = types.EdgeNodeClusterConfig{}
+		z.refreshAppStartEligibility()
 		return
 	} else {
 		clusterIPChanged := !netutils.EqualIPNets(z.clusterConfig.ClusterIPPrefix,
@@ -119,6 +120,7 @@ func (z *zedkube) applyClusterConfig(config, oldconfig *types.EdgeNodeClusterCon
 			}
 		}
 	}
+	z.refreshAppStartEligibility()
 	z.publishKubeConfigStatus()
 	z.pruneStaleMasterNodes(config)
 }

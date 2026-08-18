@@ -8,6 +8,7 @@ package zedkube
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
@@ -19,17 +20,65 @@ import (
 
 const retryDelay = 5 * time.Minute
 
-// notifyElection wakes up handleLeaderElection to act on the latest
-// value of electionShouldRun. Non-blocking: if a notification is
-// already pending, the handler will see the latest value anyway.
-func (z *zedkube) notifyElection() {
+const (
+	// statsLeaseName picks the node that reports cluster stats, prunes stale
+	// nodes, and nudges a stuck failover. Any node can do that work.
+	statsLeaseName = "eve-kube-stats-leader"
+	// appStartLeaseName picks the node that submits an app start when the
+	// app's own designated node cannot. The tie-breaker node must never hold
+	// this lease: it gets no AppInstanceConfig, so it cannot start any app,
+	// and while it held the lease no node that can start apps would.
+	appStartLeaseName = "eve-app-start-leader"
+)
+
+// leaderElection holds the state of one leader election. Zedkube runs two,
+// on two separate Lease objects, because the two roles need different nodes.
+type leaderElection struct {
+	// leaseName is the Kubernetes Lease object to contend for.
+	leaseName string
+	// notifyCh wakes the handler to act on the latest shouldRun and eligible.
+	notifyCh chan struct{}
+	// shouldRun is the desired state, from the controller connection state.
+	shouldRun atomic.Bool
+	// eligible reports whether this node may hold this lease at all.
+	eligible atomic.Bool
+	// The fields below belong to the handler and its election goroutine.
+	inElection  atomic.Bool
+	funcRunning atomic.Bool
+	isLeader    atomic.Bool
+	identity    string
+}
+
+func newLeaderElection(leaseName string, eligible bool) *leaderElection {
+	e := &leaderElection{
+		leaseName: leaseName,
+		notifyCh:  make(chan struct{}, 1),
+	}
+	// The app-start lease starts ineligible, until the cluster config and
+	// this node's own UUID are both known. A node that cannot decide must
+	// not hold that lease: the tie-breaker cannot start an app, and while
+	// it holds the lease no node that can start apps will. Nothing is lost
+	// by waiting, because the app's designated node has its own path.
+	e.eligible.Store(eligible)
+	return e
+}
+
+// notify wakes up handleLeaderElection to act on the latest value of
+// shouldRun and eligible. Non-blocking: if a notification is already
+// pending, the handler will see the latest values anyway.
+func (e *leaderElection) notify() {
 	select {
-	case z.electionNotifyCh <- struct{}{}:
+	case e.notifyCh <- struct{}{}:
 	default:
 	}
 }
 
-func (z *zedkube) handleLeaderElection() {
+// wanted reports whether this node should hold this lease right now.
+func (e *leaderElection) wanted() bool {
+	return e.shouldRun.Load() && e.eligible.Load()
+}
+
+func (z *zedkube) handleLeaderElection(e *leaderElection) {
 	var (
 		cancelFunc context.CancelFunc
 		wg         sync.WaitGroup
@@ -37,10 +86,13 @@ func (z *zedkube) handleLeaderElection() {
 
 	// stopElection cancels the running election goroutine and blocks until
 	// it fully exits. After this call, all goroutine-owned state
-	// (isKubeStatsLeader, leaderIdentity, electionFuncRunning) is cleaned up.
+	// (isLeader, identity, funcRunning) is cleaned up. The election sets
+	// ReleaseOnCancel, so a cancel also releases the lease and another node
+	// can take it without waiting for the lease to expire.
 	stopElection := func() {
 		if cancelFunc != nil {
-			log.Noticef("handleLeaderElection: cancelling leader election")
+			log.Noticef("handleLeaderElection(%s): cancelling leader election",
+				e.leaseName)
 			cancelFunc()
 			cancelFunc = nil
 			wg.Wait()
@@ -48,25 +100,26 @@ func (z *zedkube) handleLeaderElection() {
 	}
 
 	for {
-		log.Noticef("handleLeaderElection: Waiting for signal")
-		<-z.electionNotifyCh
+		log.Noticef("handleLeaderElection(%s): Waiting for signal", e.leaseName)
+		<-e.notifyCh
 
-		if !z.electionShouldRun.Load() {
+		if !e.wanted() {
 			// Stop requested — cancel, wait for goroutine to finish,
 			// then update state and publish once with final values.
 			stopElection()
-			z.inKubeLeaderElection.Store(false)
+			e.inElection.Store(false)
 			z.publishLeaderElectionChange()
-			log.Noticef("handleLeaderElection: Stopped")
+			log.Noticef("handleLeaderElection(%s): Stopped", e.leaseName)
 			continue
 		}
 
 		// Start requested
-		z.inKubeLeaderElection.Store(true)
+		e.inElection.Store(true)
 
 		// If the election goroutine is still running, nothing to do
-		if z.electionFuncRunning.Load() {
-			log.Noticef("handleLeaderElection: Election goroutine still running, skip")
+		if e.funcRunning.Load() {
+			log.Noticef("handleLeaderElection(%s): Election goroutine still running, skip",
+				e.leaseName)
 			continue
 		}
 
@@ -77,8 +130,8 @@ func (z *zedkube) handleLeaderElection() {
 		baseCtx, cancel := context.WithCancel(context.Background())
 		cancelFunc = cancel
 		acquireTimeout := time.AfterFunc(retryDelay, func() {
-			log.Noticef("handleLeaderElection: failed to acquire or observe lease " +
-				"within 5 min, cancelling")
+			log.Noticef("handleLeaderElection(%s): failed to acquire or observe "+
+				"lease within 5 min, cancelling", e.leaseName)
 			// No need to worry about a race between cancel() here and cancelFunc()
 			// potentially being triggered concurrently by stopElection.
 			// In Go, calling a context’s cancel function multiple times is safe
@@ -93,16 +146,17 @@ func (z *zedkube) handleLeaderElection() {
 			acquireTimeout.Stop()
 			cancel()
 			cancelFunc = nil
-			log.Errorf("handleLeaderElection: can’t get clientset %v, retry in 5 min", err)
+			log.Errorf("handleLeaderElection(%s): can’t get clientset %v, retry in 5 min",
+				e.leaseName, err)
 			z.publishLeaderElectionChange()
-			time.AfterFunc(retryDelay, z.notifyElection)
+			time.AfterFunc(retryDelay, e.notify)
 			continue
 		}
 
 		// Create a new lease lock
 		lock := &resourcelock.LeaseLock{
 			LeaseMeta: metav1.ObjectMeta{
-				Name:      "eve-kube-stats-leader",
+				Name:      e.leaseName,
 				Namespace: kubeapi.EVEKubeNameSpace,
 			},
 			Client: clientset.CoordinationV1(),
@@ -121,20 +175,23 @@ func (z *zedkube) handleLeaderElection() {
 			Callbacks: leaderelection.LeaderCallbacks{
 				OnStartedLeading: func(baseCtx context.Context) {
 					acquireTimeout.Stop()
-					z.isKubeStatsLeader.Store(true)
+					e.isLeader.Store(true)
 					z.publishLeaderElectionChange()
-					log.Noticef("handleLeaderElection: Callback Started leading")
+					log.Noticef("handleLeaderElection(%s): Callback Started leading",
+						e.leaseName)
 				},
 				OnStoppedLeading: func() {
-					z.isKubeStatsLeader.Store(false)
+					e.isLeader.Store(false)
 					z.publishLeaderElectionChange()
-					log.Noticef("handleLeaderElection: Callback Stopped leading")
+					log.Noticef("handleLeaderElection(%s): Callback Stopped leading",
+						e.leaseName)
 				},
 				OnNewLeader: func(identity string) {
 					acquireTimeout.Stop()
-					z.leaderIdentity = identity
+					e.identity = identity
 					z.publishLeaderElectionChange()
-					log.Noticef("handleLeaderElection: Callback New leader elected: %s", identity)
+					log.Noticef("handleLeaderElection(%s): Callback New leader elected: %s",
+						e.leaseName, identity)
 				},
 			},
 		}
@@ -145,45 +202,74 @@ func (z *zedkube) handleLeaderElection() {
 			defer wg.Done()
 			leaderelection.RunOrDie(baseCtx, lec)
 			acquireTimeout.Stop()
-			z.electionFuncRunning.Store(false)
-			z.isKubeStatsLeader.Store(false)
-			z.leaderIdentity = ""
-			log.Noticef("handleLeaderElection: Leader election routine exited")
+			e.funcRunning.Store(false)
+			e.isLeader.Store(false)
+			e.identity = ""
+			log.Noticef("handleLeaderElection(%s): Leader election routine exited",
+				e.leaseName)
 			z.publishLeaderElectionChange()
 			// Schedule a retry with delay to pick up fresh kubeconfig/certs.
 			// If election was stopped in the meantime, the handler will see
-			// electionShouldRun=false and skip.
+			// that it is no longer wanted and skip.
 			time.AfterFunc(retryDelay, func() {
-				log.Noticef("handleLeaderElection: retry timer fired")
-				z.notifyElection()
+				log.Noticef("handleLeaderElection(%s): retry timer fired", e.leaseName)
+				e.notify()
 			})
 		}()
-		z.electionFuncRunning.Store(true)
+		e.funcRunning.Store(true)
 		z.publishLeaderElectionChange()
-		log.Noticef("handleLeaderElection: Started leader election routine for %s", z.nodeName)
+		log.Noticef("handleLeaderElection(%s): Started leader election routine for %s",
+			e.leaseName, z.nodeName)
 	}
 }
 
 func (z *zedkube) handleControllerStatusChange(status *types.ZedAgentStatus) {
 	configStatus := status.ConfigGetStatus
 	log.Noticef("handleControllerStatusChange: status %v", configStatus)
+	var shouldRun bool
 	switch configStatus {
 	case types.ConfigGetSuccess, types.ConfigGetReadSaved:
-		z.electionShouldRun.Store(true)
+		shouldRun = true
 	default:
-		z.electionShouldRun.Store(false)
+		shouldRun = false
 	}
-	z.notifyElection()
+	for _, e := range []*leaderElection{z.statsElection, z.appStartElection} {
+		e.shouldRun.Store(shouldRun)
+		e.notify()
+	}
+}
+
+// refreshAppStartEligibility re-reads the tie-breaker from the cluster config
+// and wakes the app-start election if this node's eligibility changed. The
+// tie-breaker can be set after this node already holds the lease, and the
+// election renews on its own until cancelled, so a node that becomes the
+// tie-breaker has to give the lease up here.
+// It needs z.nodeuuid, so every caller must run after that is resolved. An
+// empty or unparsable node UUID reads as "not the tie-breaker", which would
+// wrongly make a tie-breaker eligible.
+func (z *zedkube) refreshAppStartEligibility() {
+	eligible := !z.clusterConfig.IsTieBreakerNode(z.nodeuuid)
+	changed := z.appStartElection.eligible.Swap(eligible) != eligible
+	// Log every call, not only a change. The first call decides whether this
+	// node ever contends, and a silent no-change made a live failure on a
+	// tie-breaker node hard to read.
+	log.Noticef("refreshAppStartEligibility: node %s app-start eligible %t, changed %t",
+		z.nodeuuid, eligible, changed)
+	if changed {
+		z.appStartElection.notify()
+	}
 }
 
 func (z *zedkube) publishLeaderElectionChange() {
 	// Publish the change in leader
 	leaderElectinfo := types.KubeLeaderElectInfo{
-		InLeaderElection: z.inKubeLeaderElection.Load(),
-		IsStatsLeader:    z.isKubeStatsLeader.Load(),
-		ElectionRunning:  z.electionFuncRunning.Load(),
-		LeaderIdentity:   z.leaderIdentity,
-		LatestChange:     time.Now(),
+		InLeaderElection:       z.statsElection.inElection.Load(),
+		IsStatsLeader:          z.statsElection.isLeader.Load(),
+		ElectionRunning:        z.statsElection.funcRunning.Load(),
+		LeaderIdentity:         z.statsElection.identity,
+		IsAppStartLeader:       z.appStartElection.isLeader.Load(),
+		AppStartLeaderIdentity: z.appStartElection.identity,
+		LatestChange:           time.Now(),
 	}
 	z.pubLeaderElectInfo.Publish("global", leaderElectinfo)
 }

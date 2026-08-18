@@ -853,6 +853,10 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 		}
 
 		controllerDNID := cfgApp.GetDesignatedNodeId()
+		// Keep the raw value too. Any node in the cluster can apply this
+		// config, and the app placement has to name the designated node,
+		// not the node that happens to apply the config.
+		appInstance.DesignatedNodeID = controllerDNID
 		// If this node is designated node id set IsDesignatedNodeID to true else false.
 		// On single node EVE (either kvm or k), this node will always be designated node.
 		if controllerDNID != "" && controllerDNID != devUUIDStr {

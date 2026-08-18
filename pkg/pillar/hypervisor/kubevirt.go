@@ -686,8 +686,26 @@ func (ctx kubevirtContext) CreateReplicaVMIConfig(domainName string, config type
 		sriovVFs = refs
 	}
 
-	// Set the affinity to this node the VMI is preferred to run on
-	affinity := SetKubeAffinity(nodeName, config.AffinityType)
+	// Node affinity must name the app's designated node, not the node that
+	// creates this object. Any node that holds the app-start lease can be
+	// the creator, and it can create this object before the designated node
+	// does. A wrong name here pins the app to the creator:
+	// PreferredDuringSchedulingIgnoredDuringExecution is read once, when the
+	// pod is scheduled, so a later correction cannot move a running pod.
+	affinityNodeName := nodeName
+	if !config.IsDNidNode && config.DesignatedNodeID != "" {
+		dnidNodeName, err := kubeapi.GetNodeNameFromUUID(config.DesignatedNodeID)
+		if err != nil {
+			// Fall back to this node. The app still starts, and the
+			// designated node corrects the affinity later.
+			logrus.Warnf("CreateReplicaVMIConfig: no node name for designated "+
+				"node %s, using %s for affinity: %v",
+				config.DesignatedNodeID, nodeName, err)
+		} else {
+			affinityNodeName = dnidNodeName
+		}
+	}
+	affinity := SetKubeAffinity(affinityNodeName, config.AffinityType)
 
 	// Set tolerations to handle node conditions
 	tolerations := setKubeToleration(int64(tolerateSec))

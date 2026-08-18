@@ -265,7 +265,14 @@ type KubeLeaderElectInfo struct {
 	IsStatsLeader    bool
 	ElectionRunning  bool
 	LeaderIdentity   string
-	LatestChange     time.Time
+	// IsAppStartLeader is set on the one node that may submit an app start
+	// for an app whose designated node cannot. The tie-breaker node never
+	// holds this role: it gets no AppInstanceConfig, so it cannot start an
+	// app. This is a separate Lease from the stats one above.
+	IsAppStartLeader bool
+	// AppStartLeaderIdentity names the node that holds the app-start lease.
+	AppStartLeaderIdentity string
+	LatestChange           time.Time
 }
 
 // VmiVNCConfig is the JSON structure for vmiVNC.run file.

@@ -49,6 +49,10 @@ const (
 	// KubevirtVMINameLbl is a label applied to a virt-launcher pod which contains the associated vmi object name
 	KubevirtVMINameLbl = "vm.kubevirt.io/name"
 
+	// NodeUUIDLbl pairs a kubernetes Node to an EVE device UUID. Zedkube sets
+	// it on every node, so it is the way to map one identity to the other.
+	NodeUUIDLbl = "node-uuid"
+
 	// TieBreakerNodeLbl is the label key applied to a kubernetes node
 	TieBreakerNodeLbl = "tie-breaker-node"
 	// TieBreakerNodeSet is the label value expected with the label TieBreakerNodeLbl
@@ -96,6 +100,32 @@ func GetKubeConfig() (*rest.Config, error) {
 }
 
 // GetClientSet : Get handle to kubernetes clientset
+// GetNodeNameFromUUID returns the kubernetes node name of the EVE device with
+// this UUID, read from the NodeUUIDLbl label. Callers that only hold a device
+// UUID need this to name a node in a kubernetes object.
+func GetNodeNameFromUUID(deviceUUID string) (string, error) {
+	if deviceUUID == "" {
+		return "", fmt.Errorf("GetNodeNameFromUUID: empty device UUID")
+	}
+	clientset, err := GetClientSet()
+	if err != nil {
+		return "", err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	defer cancel()
+	nodes, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{
+		LabelSelector: NodeUUIDLbl + "=" + deviceUUID,
+	})
+	if err != nil {
+		return "", err
+	}
+	if len(nodes.Items) != 1 {
+		return "", fmt.Errorf("GetNodeNameFromUUID: %d nodes carry %s=%s, want 1",
+			len(nodes.Items), NodeUUIDLbl, deviceUUID)
+	}
+	return nodes.Items[0].ObjectMeta.Name, nil
+}
+
 func GetClientSet() (*kubernetes.Clientset, error) {
 
 	// Build the configuration from the provided kubeconfig file

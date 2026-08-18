@@ -168,6 +168,12 @@ type AppInstanceConfig struct {
 	// Am I Cluster Designated Node Id for this app
 	IsDesignatedNodeID bool
 
+	// DesignatedNodeID is the device UUID of the app's designated node, as
+	// the controller set it, and empty on a single node device. Placement of
+	// the app must follow that node whichever node applies the config, so
+	// the value has to travel further than the boolean above.
+	DesignatedNodeID string
+
 	// Node Affinity for cluster IsDesignatedNodeID
 	AffinityType Affinity
 

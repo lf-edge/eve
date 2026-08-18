@@ -22,7 +22,7 @@ import (
 func (z *zedkube) collectKubeStats() {
 	// we are the elected leader, start collecting kube stats
 	// regardless if we are in cluster or single node mode
-	if z.isKubeStatsLeader.Load() {
+	if z.statsElection.isLeader.Load() {
 		log.Functionf("collectKubeStats: Started collecting kube stats")
 
 		// Bound all k8s API calls so that a degraded API server cannot block the
@@ -107,7 +107,7 @@ func (z *zedkube) collectKubeStats() {
 		}
 		z.pubKubeClusterInfo.Publish("global", clusterInfo)
 	}
-	if !z.isKubeStatsLeader.Load() {
+	if !z.statsElection.isLeader.Load() {
 		// Unpublish so that there isn't anything to send to the controller
 		items := z.pubKubeClusterInfo.GetAll()
 		if _, ok := items["global"].(types.KubeClusterInfo); ok {

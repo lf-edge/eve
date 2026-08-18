@@ -60,12 +60,17 @@ const (
 //     the whole model, undoing whichever change came first).
 //  6. Bring the 3 nodes up -- Node1 and the tie-breaker rejoin; Node2
 //     keeps mgmt/app connectivity but never rejoins the cluster.
-//  7. Activate the 2 VMs -- VM1 (Node1) is waited on, since it's this
-//     test's subject; VM2 (the isolated Node2) is fire-and-forget.
-//  8. Verify VM1 comes online on Node1.
+//  7. Activate the 2 VMs -- the activate flag goes to every node. The
+//     node that submits the start is the kube-stats lease holder, not
+//     each app's own designated node.
+//  8. Verify VM1 comes online, then settles on Node1.
 //  9. Verify it still attempts to download its content tree despite being
 //     online -- asserted as the fixed behavior (REMOTELOADED), not the
 //     reported bug, so this passes on the fix and fails on master.
+//
+// The test ends with a check that both VMs run. VM2's own node stays
+// isolated for the whole test, so VM2 runs only if a different node
+// submitted its start.
 //
 // Network model
 // -------------
@@ -228,24 +233,30 @@ func TestClusterPVCRedownload(test *testing.T) {
 		}
 	}
 	// Precondition the bug depends on: both PVCs Bound and CDI-complete.
+	// Wait through the cluster, not through one device. Kubernetes picks
+	// the node, and a device-scoped wait reads only that device's own
+	// AppInstanceStatus, which stays short of RUNNING when the app runs
+	// on a peer.
 	// Deployed one at a time, not in one ApplyConfig, so a failure here
 	// names exactly which app failed rather than leaving two concurrent
 	// CDI imports to disentangle.
 	vm1UUID := clusterConfig.AddApplication(newVMApp("vm1", devName[0]))
 	cluster.ApplyConfig(clusterConfig, true, true)
 	log.Infof("Waiting for vm1 to reach RUNNING for the first time")
-	dev1.WaitUntilAppIsRunning(vm1UUID, pvcRedownloadRebootTimeout)
+	cluster.WaitUntilAppIsRunning(vm1UUID, pvcRedownloadRebootTimeout)
 	evetest.Checkpoint("vm1-initially-running")
 
 	vm2UUID := clusterConfig.AddApplication(newVMApp("vm2", devName[1]))
 	cluster.ApplyConfig(clusterConfig, true, true)
 	log.Infof("Waiting for vm2 to reach RUNNING for the first time")
-	dev2.WaitUntilAppIsRunning(vm2UUID, pvcRedownloadRebootTimeout)
+	cluster.WaitUntilAppIsRunning(vm2UUID, pvcRedownloadRebootTimeout)
 	evetest.Checkpoint("vms-initially-running")
 
-	// Step 1: shut down both apps from the controller.
-	dev1.DeactivateApplication(vm1UUID, true, pvcRedownloadRebootTimeout)
-	dev2.DeactivateApplication(vm2UUID, true, pvcRedownloadRebootTimeout)
+	// Step 1: shut down both apps from the controller. Clear the activate
+	// flag on every node, not on one device. Any node can hold the app
+	// start, so a flag left set on a peer would keep the app up.
+	cluster.DeactivateApplication(vm1UUID, true, pvcRedownloadRebootTimeout)
+	cluster.DeactivateApplication(vm2UUID, true, pvcRedownloadRebootTimeout)
 	evetest.Checkpoint("apps-deactivated")
 
 	// Step 2: prepare Node A and the tie-breaker (Node C) for power off.
@@ -328,17 +339,33 @@ func TestClusterPVCRedownload(test *testing.T) {
 			"Node2's cluster interconnect is down and it cannot rejoin")
 	evetest.Checkpoint("cluster-reformed")
 
-	// Steps 7+8. VM2's outcome on the departed Node2 is a different
-	// question than the one this test asks, hence fire-and-forget.
-	dev2.ActivateApplication(vm2UUID, false, 0)
-	log.Infof("Waiting for vm1 to come back online on %s", devName[0])
-	dev1.ActivateApplication(vm1UUID, true, pvcRedownloadRebootTimeout)
-	evetest.Checkpoint("vm1-reactivated")
+	// Steps 7+8. The activate flag must reach every node, not only each
+	// app's own designated node. The node that submits the start is the
+	// kube-stats lease holder, and that can be any node.
+	// cluster.ActivateApplication is not usable here, because it first
+	// looks for the node that already hosts the app, and neither app runs
+	// at this point.
+	evetest.RunParallel(len(clusterDevices), func(i int) {
+		clusterDevices[i].ActivateApplication(vm1UUID, false, 0)
+	})
+	evetest.RunParallel(len(clusterDevices), func(i int) {
+		clusterDevices[i].ActivateApplication(vm2UUID, false, 0)
+	})
+	evetest.Checkpoint("vms-reactivated")
 
-	hostDevice := cluster.FindDeviceHostingApp(vm1UUID, 2*time.Minute)
-	t.Expect(hostDevice).NotTo(BeNil(), "no cluster device reports hosting vm1")
-	t.Expect(hostDevice.GetConfig().GetDeviceName()).To(Equal(devName[0]),
-		"vm1 landed on a node other than its DesignatedNodeName")
+	log.Infof("Waiting for vm1 to come back online")
+	cluster.WaitUntilAppIsRunning(vm1UUID, pvcRedownloadRebootTimeout)
+	evetest.Checkpoint("vm1-running")
+
+	// vm1 settles on its designated node. It does not always start there.
+	// The lease holder submits the start and writes its own node into the
+	// VMIRS affinity. Only the designated node corrects that affinity, and
+	// the descheduler then moves vm1 home.
+	log.Infof("Waiting for vm1 to settle on %s", devName[0])
+	t.Eventually(func() (string, error) {
+		return vmiNodeName(dev1, "vm1")
+	}, pvcRedownloadRebootTimeout, pvcRedownloadPollInterval).Should(Equal(devName[0]),
+		"vm1 did not settle on its DesignatedNodeName")
 	evetest.Checkpoint("vm1-online")
 
 	// Step 9. The datastore has been unreachable since step 4, so vm1
@@ -378,4 +405,31 @@ func TestClusterPVCRedownload(test *testing.T) {
 			"volumemgr published a DownloaderConfig for vm1's image despite its PVC being complete")
 	}
 	evetest.Checkpoint("no-redownload-verified")
+
+	// Both VMs must run. vm1 runs on its own designated node. vm2's
+	// designated node stays isolated for the whole test, so vm2 can only
+	// run if a different node submitted its start. This check is last, so
+	// a vm2 failure does not hide the content-tree result above.
+	log.Infof("Waiting for vm1 and vm2 to both report running")
+	cluster.WaitUntilAppIsRunning(vm1UUID, pvcRedownloadRebootTimeout)
+	cluster.WaitUntilAppIsRunning(vm2UUID, pvcRedownloadRebootTimeout)
+	evetest.Checkpoint("both-vms-running")
+}
+
+// vmiNodeName returns the node that runs the VMI of the named app, or an
+// empty string if no VMI of that app reports a node yet. Kubernetes adds a
+// suffix to the app name, so the lookup is by name prefix.
+func vmiNodeName(device *evetest.EdgeDevice, appName string) (string, error) {
+	out, err := runKubectl(device, "-n eve-kube-app get vmi -o "+
+		`jsonpath="{range .items[*]}{.metadata.name}{' '}{.status.nodeName}{'\n'}{end}"`)
+	if err != nil {
+		return "", err
+	}
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 2 && strings.HasPrefix(fields[0], appName+"-") {
+			return fields[1], nil
+		}
+	}
+	return "", nil
 }

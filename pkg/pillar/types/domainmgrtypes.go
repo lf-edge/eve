@@ -62,6 +62,12 @@ type DomainConfig struct {
 	// if this node is the DNiD of the App
 	IsDNidNode bool
 
+	// DesignatedNodeID is the device UUID of the app's designated node, and
+	// empty on a single node device. The hypervisor writes node affinity
+	// from this, so the affinity names the designated node even when a
+	// different node creates the object.
+	DesignatedNodeID string
+
 	// Node Affinity for cluster IsDesignatedNodeID
 	AffinityType Affinity
 

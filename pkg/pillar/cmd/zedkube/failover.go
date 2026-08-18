@@ -23,7 +23,7 @@ func (z *zedkube) shouldDetachApp(oldStatus *types.ENClusterAppStatus, newStatus
 
 // Interface to determining a node allowed to make cluster-wide operations
 func (z *zedkube) isDecisionNode() (isNode bool) {
-	if z.isKubeStatsLeader.Load() {
+	if z.statsElection.isLeader.Load() {
 		isNode = true
 	}
 	return isNode

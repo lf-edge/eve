@@ -8,6 +8,7 @@ package zedkube
 import (
 	"context"
 
+	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -20,7 +21,7 @@ const controlPlaneRoleLabel = "node-role.kubernetes.io/control-plane"
 // nodeUUIDLabel pairs a k8s Node to an EVE device UUID. Set by zedkube on
 // every node and used elsewhere (e.g. getLocalNode in drain.go) to map between
 // the two identities.
-const nodeUUIDLabel = "node-uuid"
+const nodeUUIDLabel = kubeapi.NodeUUIDLbl
 
 // pruneStaleMasterNodes is invoked from applyClusterConfig on every ENCC
 // create/modify with a valid config. The elected stats-leader deletes any k8s
@@ -47,7 +48,7 @@ func (z *zedkube) pruneStaleMasterNodes(config *types.EdgeNodeClusterConfig) {
 	if config == nil || len(config.MasterNodeIDs) == 0 {
 		return
 	}
-	if !z.isKubeStatsLeader.Load() {
+	if !z.statsElection.isLeader.Load() {
 		return
 	}
 

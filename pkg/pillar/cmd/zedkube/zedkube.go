@@ -15,7 +15,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
@@ -111,14 +110,12 @@ type zedkube struct {
 	lastPublishedClusterIfName string
 	nodeuuid                   string
 	nodeName                   string
-	isKubeStatsLeader          atomic.Bool
-	inKubeLeaderElection       atomic.Bool
-	electionFuncRunning        atomic.Bool
-	leaderIdentity             string
-	// electionShouldRun holds the desired state: true=start, false=stop.
-	// electionNotifyCh wakes up handleLeaderElection to act on the latest value.
-	electionShouldRun  atomic.Bool
-	electionNotifyCh   chan struct{}
+	// statsElection picks the node that does cluster-wide stats work.
+	// appStartElection picks the node that submits an app start when the
+	// app's designated node cannot. They are separate leases because the
+	// tie-breaker node may win the first but must never win the second.
+	statsElection      *leaderElection
+	appStartElection   *leaderElection
 	statusServer       *http.Server
 	statusServerWG     sync.WaitGroup
 	getKubePodsError   GetKubePodsError
@@ -481,8 +478,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	zedkubeCtx.pubCipherMetrics = pubCipherMetrics
 
 	// start the leader election
-	zedkubeCtx.electionNotifyCh = make(chan struct{}, 1)
-	go zedkubeCtx.handleLeaderElection()
+	zedkubeCtx.statsElection = newLeaderElection(statsLeaseName, true)
+	zedkubeCtx.appStartElection = newLeaderElection(appStartLeaseName, false)
+	go zedkubeCtx.handleLeaderElection(zedkubeCtx.statsElection)
+	go zedkubeCtx.handleLeaderElection(zedkubeCtx.appStartElection)
 
 	//
 	// NodeDrainRequest subscriber and NodeDrainStatus publisher
@@ -584,6 +583,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	zedkubeCtx.nodeuuid = enInfo.DeviceID.String()
 	log.Noticef("zedkube run: got nodeName %s nodeuuid %s",
 		zedkubeCtx.nodeName, zedkubeCtx.nodeuuid)
+	// The EdgeNodeClusterConfig handler already ran, in the wait loop above,
+	// while nodeuuid was still empty. So decide app-start eligibility here,
+	// now that this node knows which node it is.
+	zedkubeCtx.refreshAppStartEligibility()
 	// Re-enable the local node and apply the longhorn disk reservation now that
 	// our identity is known.
 	if !zedkubeCtx.onBootUncordonCheckComplete {

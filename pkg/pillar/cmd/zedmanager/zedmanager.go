@@ -56,6 +56,7 @@ type zedmanagerContext struct {
 	pubDomainConfig           pubsub.Publication
 	subDomainStatus           pubsub.Subscription
 	subENClusterAppStatus     pubsub.Subscription
+	subKubeLeaderElectInfo    pubsub.Subscription
 	subGlobalConfig           pubsub.Subscription
 	subHostMemory             pubsub.Subscription
 	subZedAgentStatus         pubsub.Subscription
@@ -82,6 +83,11 @@ type zedmanagerContext struct {
 	// EVE 'k' mode
 	hvTypeKube bool
 	nodeUUID   uuid.UUID
+	// isAppStartLeader is set while this node holds the app-start lease.
+	// The holder submits the app start for a cluster app whose designated
+	// node cannot, so an unreachable designated node does not block an
+	// activate request. The tie-breaker node never holds this lease.
+	isAppStartLeader bool
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -404,6 +410,24 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	ctx.subENClusterAppStatus = subENClusterAppStatus
 	_ = subENClusterAppStatus.Activate()
 
+	subKubeLeaderElectInfo, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedkube",
+		MyAgentName:   agentName,
+		TopicImpl:     types.KubeLeaderElectInfo{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleKubeLeaderElectInfoCreate,
+		ModifyHandler: handleKubeLeaderElectInfoModify,
+		DeleteHandler: handleKubeLeaderElectInfoDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subKubeLeaderElectInfo = subKubeLeaderElectInfo
+	_ = subKubeLeaderElectInfo.Activate()
+
 	ctx.subAssignableAdapters, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "domainmgr",
 		MyAgentName:   agentName,
@@ -505,6 +529,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-subENClusterAppStatus.MsgChan():
 			subENClusterAppStatus.ProcessChange(change)
+
+		case change := <-subKubeLeaderElectInfo.MsgChan():
+			subKubeLeaderElectInfo.ProcessChange(change)
 
 		case change := <-ctx.subAssignableAdapters.MsgChan():
 			ctx.subAssignableAdapters.ProcessChange(change)
@@ -1922,44 +1949,66 @@ func getKubeAppActivateStatus(ctx *zedmanagerContext, aiConfig types.AppInstance
 	sub := ctx.subENClusterAppStatus
 	items := sub.GetAll()
 
-	// 1) if the dnid is on this node
-	//    a) if the pod is not on this node, and the pod is running, return false
-	//    b) otherwise, return true
-	// 2) if the dnid is not on this node
-	//    a) if the pod is on this node, and status is running, return true
-	//    b) otherwise, return false
+	// Three cases let this node submit the start:
+	//
+	// 1) the pod already runs on this node, so this node runs the domain
+	// 2) this node is the designated node. This is the path that existed
+	//    before the lease became a second path. It stays, so a node with
+	//    an absent or stuck lease never blocks its own apps.
+	// 3) this node holds the kube-stats lease, and the app may run away
+	//    from its designated node. This is the new path. It covers a
+	//    designated node that is down, which otherwise blocks the app on
+	//    every node.
+	//
+	// Case 3 excludes an app with Required affinity. The submitter writes
+	// its own node into the VMIRS affinity, and for Required that pins the
+	// app to a node the controller did not choose. checkAppsFailover
+	// excludes those apps for the same reason.
 	var onTheDevice bool
 	var statusRunning bool
 	for _, item := range items {
 		status := item.(types.ENClusterAppStatus)
 		if status.AppUUID == aiConfig.UUIDandVersion.UUID {
 			statusRunning = status.AppKubeStatus == types.AppKubeStatusRunningState
-			if status.IsDNidNode {
-				onTheDevice = true
-				break
-			} else if status.ScheduledOnThisNode {
+			if status.ScheduledOnThisNode {
 				onTheDevice = true
 				break
 			}
 		}
 	}
 
-	log.Functionf("getKubeAppActivateStatus: is designated node %v, node %s, onTheDevice %v, statusRunning %v",
-		aiConfig.IsDesignatedNodeID, ctx.nodeUUID, onTheDevice, statusRunning)
-	if aiConfig.IsDesignatedNodeID {
-		if statusRunning && !onTheDevice {
-			return false
-		}
+	log.Functionf("getKubeAppActivateStatus: is designated node %v, node %s, onTheDevice %v, statusRunning %v, statsLeader %v",
+		aiConfig.IsDesignatedNodeID, ctx.nodeUUID, onTheDevice, statusRunning, ctx.isAppStartLeader)
+
+	// Keep the domain where the pod already is. This case does not start a
+	// halted app: it has no pod, so onTheDevice is false on every node, and
+	// the two cases below decide the start. This case keeps a running app
+	// activated on the node that runs it, even when that node is neither
+	// the designated node nor the lease holder, which happens when the
+	// lease moves or when Kubernetes picks a third node.
+	//
+	// The pod does not have to be in running state here. It reaches that
+	// state only after zedmanager activates the app and zedrouter CNI has
+	// the network status for it.
+	if onTheDevice {
 		return effectiveActivate
-	} else {
-		// the pod is on this node, but it will not be in running state, unless
-		// zedmanager make this app activate and zedrouter CNI has the network status
-		// for this App. So, not in running state is ok.
-		if onTheDevice {
-			return effectiveActivate
-		}
-		return false
 	}
+	if aiConfig.IsDesignatedNodeID {
+		return effectiveActivate
+	}
+	if ctx.isAppStartLeader &&
+		aiConfig.AffinityType != types.RequiredDuringScheduling {
+		return effectiveActivate
+	}
+	if effectiveActivate {
+		// The controller asked for this app, and this node will not start
+		// it. Report it: the app stays down until some other node does.
+		log.Noticef("getKubeAppActivateStatus: %s not activated here, "+
+			"designated node %v, statsLeader %v, affinity %v",
+			aiConfig.Key(), aiConfig.IsDesignatedNodeID,
+			ctx.isAppStartLeader, aiConfig.AffinityType)
+	}
+	return false
 }
 
 // checkAndSaveEdgeNodeInfo checks if the device name is set in the EdgeNodeInfo
