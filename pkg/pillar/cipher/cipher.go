@@ -39,8 +39,8 @@ func GetCipherCredentials(ctx *DecryptCipherContext,
 	var decBlock types.EncryptionBlock
 	cipherBlock, clearBytes, err := GetCipherMarshalledData(ctx, status)
 	if err != nil {
-		return handleCipherBlockCredError(ctx, &cipherBlock,
-			decBlock, err, types.DecryptFailed)
+		// Already counted and marked in-error by GetCipherMarshalledData.
+		return cipherBlock, decBlock, err
 	}
 
 	var zconfigDecBlock zcommon.EncryptionBlock
@@ -89,7 +89,7 @@ func GetCipherMarshalledData(ctx *DecryptCipherContext,
 		ctx.Log.Errorf("%s, cipherblock decryption failed, %v\n",
 			cipherBlock.Key(), err)
 		cblock, _, err := handleCipherBlockCredError(ctx, cipherBlock,
-			decBlock, nil, types.Invalid)
+			decBlock, err, types.DecryptFailed)
 		return cblock, nil, err
 	}
 
