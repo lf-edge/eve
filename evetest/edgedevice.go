@@ -1270,23 +1270,24 @@ func (d *EdgeDevice) WaitUntilAppIsRunning(
 			}
 			prev, hadPrev := volumes[vinfo.GetUuid()]
 			volumes[vinfo.GetUuid()] = vinfo
-			// A volume moving to another state is progress even when the
-			// percentage does not move: EVE reports 0/0 bytes for
-			// container-registry downloads (downloader's resp.Progress()),
-			// so the percentage is not a liveness signal for those at all.
-			stateChanged := !hadPrev || prev.GetState() != vinfo.GetState()
+			// A volume of THIS app moving to another state is progress even
+			// when the percentage does not move: EVE reports 0/0 bytes for
+			// container-registry downloads (downloader's resp.Progress()), so
+			// the percentage is not a liveness signal for those at all. The
+			// membership check matters: `volumes` accumulates every volume on
+			// the device, and an unrelated one flapping states would otherwise
+			// keep this app's stall timer alive forever.
+			stateChanged := isAppVolume(vinfo.GetUuid(), volumeRefs) &&
+				(!hadPrev || prev.GetState() != vinfo.GetState())
 			// If the app is in DOWNLOAD_STARTED state, a volume update may
 			// change the reported progress -- check and log.
 			if inDownload {
 				pct := appDownloadProgress(volumeRefs, volumes)
-				if stateChanged && timer != nil {
+				if timer != nil && (stateChanged || pct != lastDownloadPct) {
 					timer.Reset(downloadStalledTimeout)
 				}
 				if pct != lastDownloadPct {
 					lastDownloadPct = pct
-					if timer != nil {
-						timer.Reset(downloadStalledTimeout)
-					}
 					if live {
 						d.th.log.Infof("App %q (%s) on device %q state changed to %s (%d%%)",
 							appUUID, appName, d.devName, lastState, pct)
@@ -3015,11 +3016,25 @@ func (f flowMsgIterFn) Iterate(msg *eveflowlog.FlowMessage) (bool, error) { retu
 // appDownloadProgress returns the average download progress (0–100) across
 // the app's volumes. For each volume UUID listed in volumeRefs the progress
 // is taken from the latest ZInfoVolume in volumes:
-//   - INVALID or INITIAL state → 0%
-//   - DOWNLOADED or above      → 100%
-//   - any other state          → ProgressPercentage as reported
+//   - not started yet (INVALID, INITIAL, RESOLVING_TAG, RESOLVED_TAG) → 0%
+//   - failed (ERROR)                                                  → 0%
+//   - DOWNLOAD_STARTED → ProgressPercentage as reported by the device
+//   - anything past the download (DOWNLOADED, DELIVERED, INSTALLED,
+//     CREATING_VOLUME, VERIFYING, LOADING, LOADED, BOOTING, RUNNING, …) → 100%
+//
+// The classification is explicit because ZSwState is not ordered by progress.
 //
 // Returns 0 if volumeRefs is empty or no volume info has been received yet.
+// isAppVolume reports whether uuid is one of the app's own volumes.
+func isAppVolume(uuid string, volumeRefs []string) bool {
+	for _, ref := range volumeRefs {
+		if ref == uuid {
+			return true
+		}
+	}
+	return false
+}
+
 func appDownloadProgress(
 	volumeRefs []string, volumes map[string]*eveinfo.ZInfoVolume) uint32 {
 	if len(volumeRefs) == 0 {
@@ -3042,6 +3057,10 @@ func appDownloadProgress(
 		case eveinfo.ZSwState_INVALID, eveinfo.ZSwState_INITIAL,
 			eveinfo.ZSwState_RESOLVING_TAG, eveinfo.ZSwState_RESOLVED_TAG:
 			// Nothing downloaded yet.
+		case eveinfo.ZSwState_ERROR:
+			// A failed volume is not a downloaded one. Reporting 100% here
+			// would retire the stall timer and leave the app to fail against
+			// the (much longer) non-download budget instead.
 		case eveinfo.ZSwState_DOWNLOAD_STARTED:
 			total += vol.GetProgressPercentage()
 		default:

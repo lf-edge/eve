@@ -40,6 +40,9 @@ func TestAppDownloadProgress(t *testing.T) {
 		{"downloading, partway", vol(eveinfo.ZSwState_DOWNLOAD_STARTED, 42), 42},
 		// After the download.
 		{"downloaded", vol(eveinfo.ZSwState_DOWNLOADED, 0), 100},
+		// A failed volume must not read as complete, or the stall timer is
+		// retired and the app fails against the wrong (much longer) budget.
+		{"error", vol(eveinfo.ZSwState_ERROR, 0), 0},
 		{"delivered", vol(eveinfo.ZSwState_DELIVERED, 0), 100},
 		{"installed", vol(eveinfo.ZSwState_INSTALLED, 0), 100},
 		{"creating volume", vol(eveinfo.ZSwState_CREATING_VOLUME, 0), 100},
@@ -75,5 +78,19 @@ func TestAppDownloadProgressAveraging(t *testing.T) {
 	}
 	if got := appDownloadProgress(nil, volumes); got != 0 {
 		t.Errorf("no volume refs = %d%%, want 0%%", got)
+	}
+}
+
+// TestIsAppVolume covers the membership check that keeps an unrelated
+// volume's state changes from resetting this app's stall timer.
+func TestIsAppVolume(t *testing.T) {
+	refs := []string{"a", "b"}
+	for uuid, want := range map[string]bool{"a": true, "b": true, "c": false, "": false} {
+		if got := isAppVolume(uuid, refs); got != want {
+			t.Errorf("isAppVolume(%q, %v) = %v, want %v", uuid, refs, got, want)
+		}
+	}
+	if isAppVolume("a", nil) {
+		t.Error("isAppVolume with no refs must be false")
 	}
 }
