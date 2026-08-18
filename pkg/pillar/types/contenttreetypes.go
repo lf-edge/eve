@@ -159,6 +159,20 @@ func (status ContentTreeStatus) IsContainer() bool {
 	return status.Format == zconfig.Format_CONTAINER
 }
 
+// AllDatastoresAreOCIRegistry returns true if every datastore backing this
+// content tree is an OCI registry. Mixing an OCI registry with non-OCI
+// (fallback) datastores is not supported, so this is used to reject such
+// combinations. Note that this relies on DatastoreTypesList being fully
+// populated, i.e. AllDatastoresResolved is true.
+func (status ContentTreeStatus) AllDatastoresAreOCIRegistry() bool {
+	for _, dsType := range status.DatastoreTypesList {
+		if dsType != zconfig.DsType_DsContainerRegistry.String() {
+			return false
+		}
+	}
+	return true
+}
+
 // ReferenceID get the image reference ID
 func (status ContentTreeStatus) ReferenceID() string {
 
