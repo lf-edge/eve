@@ -39,7 +39,6 @@ func TestAppArmorEnabled(test *testing.T) {
 	)
 	hypervisor := evetest.GetHypervisorParameterValue()
 
-	devName := "edge-dev"
 	evetest.Setup(
 		evetest.RequireEdgeDevice{
 			Name:              devName,

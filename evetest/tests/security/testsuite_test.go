@@ -15,6 +15,8 @@ import (
 // --------
 //   - TestAppArmorEnabled -- kernel AppArmor status flag.
 //   - TestVCom -- vcomlink (TPM-over-vsock) request/response from inside a VM app.
+//   - TestControllerSigningCertChange -- rotation of the controller certificate
+//     signing API responses; device must recover config processing on its own.
 func TestSecuritySuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
@@ -29,6 +31,9 @@ func TestSecuritySuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestVCom,
+		},
+		evetest.TestCase{
+			Test: TestControllerSigningCertChange,
 		},
 	)
 }
