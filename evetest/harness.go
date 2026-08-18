@@ -151,7 +151,14 @@ const (
 	fileTransferTimeout = time.Minute
 
 	// If download progress does not advance for this long, WaitUntilAppIsRunning fails.
-	downloadStalledTimeout = time.Minute
+	// downloadStalledTimeout bounds how long an app may sit in
+	// DOWNLOAD_STARTED without any observable progress. Generous on purpose:
+	// for a container-registry pull EVE reports 0/0 bytes throughout (the
+	// downloader's resp.Progress() carries no size for OCI blobs), so the only
+	// liveness signals the controller ever sees are volume state changes and
+	// the occasional per-blob update. A minute here failed healthy pulls of
+	// images that were still downloading minutes later.
+	downloadStalledTimeout = 5 * time.Minute
 
 	// Timeout for pulling an EVE docker image and extracting its rootfs.
 	eveImagePullTimeout = 15 * time.Minute

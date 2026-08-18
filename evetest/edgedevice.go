@@ -1268,11 +1268,20 @@ func (d *EdgeDevice) WaitUntilAppIsRunning(
 			if vinfo == nil {
 				return false, nil
 			}
+			prev, hadPrev := volumes[vinfo.GetUuid()]
 			volumes[vinfo.GetUuid()] = vinfo
+			// A volume moving to another state is progress even when the
+			// percentage does not move: EVE reports 0/0 bytes for
+			// container-registry downloads (downloader's resp.Progress()),
+			// so the percentage is not a liveness signal for those at all.
+			stateChanged := !hadPrev || prev.GetState() != vinfo.GetState()
 			// If the app is in DOWNLOAD_STARTED state, a volume update may
 			// change the reported progress -- check and log.
 			if inDownload {
 				pct := appDownloadProgress(volumeRefs, volumes)
+				if stateChanged && timer != nil {
+					timer.Reset(downloadStalledTimeout)
+				}
 				if pct != lastDownloadPct {
 					lastDownloadPct = pct
 					if timer != nil {
@@ -3023,14 +3032,22 @@ func appDownloadProgress(
 			// No info received yet for this volume; treat as 0%.
 			continue
 		}
-		state := vol.GetState()
-		switch {
-		case state == eveinfo.ZSwState_INVALID || state == eveinfo.ZSwState_INITIAL:
-			// 0 -- nothing added
-		case state >= eveinfo.ZSwState_DOWNLOADED:
-			total += 100
-		default:
+		// ZSwState is NOT ordered by progress. The states appended after the
+		// original sequence carry higher numbers than DOWNLOADED (3) while
+		// happening earlier: RESOLVING_TAG is 12, RESOLVED_TAG 13. Comparing
+		// with >= therefore reported an image as 100% downloaded while its tag
+		// was still being resolved, and the figure then "fell" to 0% once the
+		// download genuinely started. Classify explicitly instead.
+		switch vol.GetState() {
+		case eveinfo.ZSwState_INVALID, eveinfo.ZSwState_INITIAL,
+			eveinfo.ZSwState_RESOLVING_TAG, eveinfo.ZSwState_RESOLVED_TAG:
+			// Nothing downloaded yet.
+		case eveinfo.ZSwState_DOWNLOAD_STARTED:
 			total += vol.GetProgressPercentage()
+		default:
+			// DOWNLOADED and every state past it (DELIVERED, INSTALLED,
+			// CREATING_VOLUME, VERIFYING, LOADING, LOADED, BOOTING, RUNNING...).
+			total += 100
 		}
 	}
 	return total / uint32(len(volumeRefs))
