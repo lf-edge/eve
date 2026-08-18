@@ -134,12 +134,25 @@ else
 fi
 cp -Rf .yetus "$SRC_DIR/"
 
-cd "$SRC_DIR" && \
-    git init >/dev/null 2>&1 && \
-    git add . >/dev/null 2>&1 && \
-    git config user.email "you@example.com" >/dev/null 2>&1 && \
-    git config user.name "Your Name" >/dev/null 2>&1 && \
-    git commit -m "Changes in the PR" >/dev/null 2>&1
+# In a git worktree .git is a *file* holding a gitdir: pointer, so the dot file
+# copy above drags it along. Left in place, it makes the git commands below
+# operate on the real repository instead of the scratch one.
+rm -rf "$SRC_DIR/.git"
+
+cd "$SRC_DIR" || { echo "[!] Error: Could not enter $SRC_DIR."; exit 1; }
+git init >/dev/null 2>&1 || { echo "[!] Error: Could not initialize the scratch repository."; exit 1; }
+# a leftover .git pointer keeps the toplevel here but sends every ref update to
+# the pointed-at repository, so the git directory is what has to be checked
+if [ "$(git rev-parse --absolute-git-dir 2>/dev/null)" != "$(pwd -P)/.git" ]; then
+    echo "[!] Error: The scratch repository resolves outside $SRC_DIR, refusing to commit."
+    exit 1
+fi
+# Failing here would leave an empty scratch repository, and yetus reports a clean
+# run on an empty diff, so a silent failure looks like a pass.
+git add . >/dev/null 2>&1 || { echo "[!] Error: Could not stage the changes."; exit 1; }
+git -c user.email="you@example.com" -c user.name="Your Name" \
+    commit -m "Changes in the PR" >/dev/null 2>&1 ||
+    { echo "[!] Error: Could not commit the changes."; exit 1; }
 
 echo "[+] Running yetus on the changes..."
 docker run --rm -v "$SRC_DIR":/src:delegated,z docker.io/lfedge/eve-yetus:0.15.1-eve-2 \
