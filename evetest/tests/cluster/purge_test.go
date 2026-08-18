@@ -24,10 +24,18 @@ import (
 )
 
 // purgeMarkerPath is written into the app's root filesystem before the purge.
-// A purge keeps the app's existing volumes (zedmanager's doUpdate: "Keep the
-// old volumes in place"), so the marker is expected to SURVIVE. Only a
-// purge&update, where the controller sends volume refs with new generation
-// counters, causes volumemgr to build fresh volumes.
+// A purge recreates the boot disk, so the marker is expected to be GONE
+// afterwards: "The EVE behavior for a purge command is to restart the
+// application instance with the first drive/volumeRef recreated from its
+// origin" (eve-api, AppInstanceOpsCmd), and pkg/pillar/docs/zedmanager.md:
+// "The purge means replacing the first volume (the boot disk) with a copy
+// recreated from the immutable content". zedmanager's "Keep the old volumes in
+// place" refers to holding them while the old domain is brought down, which is
+// how purge minimizes downtime -- the app is then recreated on the new volume.
+//
+// Losing the marker is therefore what distinguishes a purge from a restart,
+// which reuses the volume untouched. Volumes other than the boot disk do
+// survive a purge, but this app has none.
 const purgeMarkerPath = "/root/purge-marker"
 
 // appPurgeMarkerState reports "PRESENT" or "ABSENT" for purgeMarkerPath inside
@@ -124,8 +132,9 @@ func clusterHasVMIWithPrefix(info *eveinfo.ZInfoKubeCluster, prefix string) bool
 //     VMIRS and none belonging to the purge-counter-0 one. This is what separates
 //     a purge from a plain restart -- a restart reuses the VMIRS name -- and it is
 //     the assertion that would catch the old VMIRS being left behind.
-//  9. volumes-preserved: purgeMarkerPath still reads PRESENT (see "Purge vs.
-//     purge&update" above).
+//  9. boot-disk-recreated: purgeMarkerPath reads ABSENT, proving the boot disk
+//     was replaced from its origin rather than the workload merely restarted
+//     (see purgeMarkerPath above).
 //
 // Suite placement
 // ---------------
@@ -295,12 +304,14 @@ func TestAppInstancePurge(test *testing.T) {
 		})))
 	evetest.Checkpoint("vmirs-renamed")
 
-	// A purge keeps the app's volumes, so the marker must still be there.
-	log.Infof("Checking that purge marker %s survived the purge", purgeMarkerPath)
+	// A purge recreates the boot disk from its origin, so the marker written
+	// into it before the purge must be gone. Checked last: it needs the app's
+	// SSH daemon, which comes up some time after the app reports RUNNING.
+	log.Infof("Checking that purge marker %s is gone after the purge", purgeMarkerPath)
 	t.Eventually(func(t Gomega) {
 		stdout, stderr, err := appPurgeMarkerState(device, appUUID, appAuth, sshTimeout)
 		t.Expect(err).ToNot(HaveOccurred(), stderr)
-		t.Expect(stdout).To(ContainSubstring("PRESENT"))
+		t.Expect(stdout).To(ContainSubstring("ABSENT"))
 	}, sshReadyTimeout, polling).Should(Succeed())
-	evetest.Checkpoint("volumes-preserved")
+	evetest.Checkpoint("boot-disk-recreated")
 }
