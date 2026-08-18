@@ -1485,11 +1485,15 @@ func qemuArch() string {
 func (dev *qemuDevice) buildArgs() []string {
 	args := []string{
 		"-enable-kvm",
-		"-machine", "q35",
+		"-machine", "q35,kernel-irqchip=split",
 		"-cpu", "host",
 		"-smp", fmt.Sprintf("%d", dev.spec.CPUs),
 		"-m", fmt.Sprintf("%d", dev.spec.MemoryBytes>>20),
 		"-nographic",
+		// vIOMMU (with the split irqchip its interrupt remapping requires),
+		// so that EVE inside the VM can use VFIO to pass PCI devices such
+		// as NICs through to application VMs.
+		"-device", "intel-iommu,intremap=on,caching-mode=on,aw-bits=48",
 	}
 
 	if dev.spec.SerialNumber != "" {
@@ -1544,8 +1548,11 @@ func (dev *qemuDevice) buildArgs() []string {
 		args = append(args,
 			"-netdev", fmt.Sprintf(
 				"tap,id=net%d,ifname=%s,script=no,downscript=no", i, tap.name),
+			// Modern-only virtio honoring the vIOMMU (iommu_platform), so
+			// that the NIC itself can be passed through to an app VM.
 			"-device", fmt.Sprintf(
-				"virtio-net-pci,netdev=net%d,mac=%s,speed=1000,duplex=full",
+				"virtio-net-pci,netdev=net%d,mac=%s,speed=1000,duplex=full,"+
+					"disable-legacy=on,disable-modern=off,iommu_platform=on",
 				i, tap.guestMAC.String()),
 		)
 	}

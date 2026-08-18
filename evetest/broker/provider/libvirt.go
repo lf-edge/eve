@@ -301,6 +301,9 @@ func (p *LibvirtProvider) SetupDevice(
 	features := &libvirtxml.DomainFeatureList{
 		ACPI: &libvirtxml.DomainFeature{},
 		APIC: &libvirtxml.DomainFeatureAPIC{},
+		// Split irqchip (I/O APIC emulated in QEMU), required by the
+		// interrupt remapping of the vIOMMU defined below.
+		IOAPIC: &libvirtxml.DomainFeatureIOAPIC{Driver: "qemu"},
 	}
 
 	// If UEFI firmware was configured, attach loader + nvram.
@@ -362,6 +365,16 @@ func (p *LibvirtProvider) SetupDevice(
 		Disks:      disks,
 		Interfaces: interfaces,
 		Consoles:   []libvirtxml.DomainConsole{console},
+		// vIOMMU, so that EVE inside the VM can use VFIO to pass PCI
+		// devices such as NICs through to application VMs.
+		IOMMU: &libvirtxml.DomainIOMMU{
+			Model: "intel",
+			Driver: &libvirtxml.DomainIOMMUDriver{
+				IntRemap:    "on",
+				CachingMode: "on",
+				AWBits:      48,
+			},
+		},
 	}
 
 	if spec.WithTPM {
@@ -394,12 +407,21 @@ func (p *LibvirtProvider) SetupDevice(
 	// expose these properties natively for virtio-net; qemu:override would work
 	// but requires libvirt >= 8.6. Using -global covers all virtio-net-pci
 	// instances regardless of libvirt version.
+	// Additionally make every NIC modern-only virtio honoring the vIOMMU
+	// (iommu_platform), so that the NIC itself can be passed through to an
+	// app VM.
 	qemuCmdline := &libvirtxml.DomainQEMUCommandline{
 		Args: []libvirtxml.DomainQEMUCommandlineArg{
 			{Value: "-global"},
 			{Value: "virtio-net-pci.speed=1000"},
 			{Value: "-global"},
 			{Value: "virtio-net-pci.duplex=full"},
+			{Value: "-global"},
+			{Value: "virtio-net-pci.disable-legacy=on"},
+			{Value: "-global"},
+			{Value: "virtio-net-pci.disable-modern=off"},
+			{Value: "-global"},
+			{Value: "virtio-net-pci.iommu_platform=on"},
 		},
 	}
 
