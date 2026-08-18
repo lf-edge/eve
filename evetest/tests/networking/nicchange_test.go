@@ -12,6 +12,7 @@ import (
 	eveconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve-api/go/evecommon"
 	eveinfo "github.com/lf-edge/eve-api/go/info"
+	evemetrics "github.com/lf-edge/eve-api/go/metrics"
 	"github.com/lf-edge/eve/evetest"
 	"github.com/lf-edge/eve/evetest/matchers"
 	"github.com/lf-edge/eve/evetest/netmodels"
@@ -94,6 +95,8 @@ func TestNICCountChangeOrderedInterface(test *testing.T) {
 		log.Printf("stderr: \n%s\n", stderr)
 	}, 10*time.Minute, 20*time.Second).Should(Succeed())
 
+	ensureNetworkMetricOrder(t, device, appUUID, []string{"vif0", "vif1", "vif2", "vif3", "vif4"})
+
 	netAdapter := addNetwork(8, devConfig, dhcpNet)
 	ifaceOrder := uint32(25)
 	netAdapter.InterfaceOrder = &ifaceOrder
@@ -120,6 +123,68 @@ func TestNICCountChangeOrderedInterface(test *testing.T) {
 		// fourth interface.
 		t.Expect(stdout).To(MatchRegexp(`eth3:.*` + netAdapter.MAC.String()))
 	}, 10*time.Minute, 20*time.Second).Should(Succeed())
+
+	ensureNetworkMetricOrder(t, device, appUUID, []string{"vif0", "vif1", "vif2", "vif8", "vif3", "vif4"})
+
+}
+
+// ensureNetworkMetricOrder waits until the app metrics report exactly one
+// networkMetric entry per NIC, listed in the given order of adapter logical
+// labels (iName). Every arriving entry is logged to make mismatches easy to
+// diagnose.
+func ensureNetworkMetricOrder(t *WithT, device *evetest.EdgeDevice, appUUID uuid.UUID, netIFs []string) {
+	log := evetest.Logger()
+
+	appMetrics, stopAppMetricsWatch := device.WatchAppMetrics(appUUID)
+	defer stopAppMetricsWatch()
+	t.Eventually(appMetrics, 3*time.Minute).Should(Receive(matchers.SatisfyPredicate(
+		"App metrics contain a networkMetric entry for every NIC",
+		func(am *evemetrics.AppMetric) bool {
+			log.Infof("app metrics report %d networkMetric entries:",
+				len(am.GetNetwork()))
+			for i, nm := range am.GetNetwork() {
+				log.Infof("  networkMetric[%d]: %s", i, nm)
+			}
+			t.Expect(am.GetNetwork()).To(HaveLen(len(netIFs)))
+
+			for i, nm := range am.GetNetwork() {
+				t.Expect(nm.GetIName()).To(Equal(netIFs[i]), "network entry %d", i)
+			}
+
+			return true
+		})))
+
+}
+
+// ensureNetworkInfoOrder waits until the app info reports exactly one
+// network entry per NIC, listed in the given order of adapter logical
+// labels (devName). Unlike metrics, app info is only published on state
+// changes, so the latest recorded message is polled instead of watching
+// for a new one. The inspected entries are logged to make mismatches easy
+// to diagnose.
+func ensureNetworkInfoOrder(t *WithT, device *evetest.EdgeDevice, appUUID uuid.UUID, netIFs []string) {
+	log := evetest.Logger()
+
+	t.Eventually(func(t Gomega) {
+		info := device.GetAppInfo(appUUID)
+		t.Expect(info).ToNot(BeNil())
+		log.Infof("app info reports %d network entries:", len(info.GetNetwork()))
+		for i, nw := range info.GetNetwork() {
+			log.Infof("  network[%d]: %s", i, nw)
+		}
+		t.Expect(info.GetNetwork()).To(HaveLen(len(netIFs)))
+		for i, nw := range info.GetNetwork() {
+			t.Expect(nw.GetDevName()).To(Equal(netIFs[i]), "network entry %d", i)
+		}
+	}, 3*time.Minute, 3*time.Second).Should(Succeed())
+}
+
+// ensureNetworkOrder waits until both the app info and the app metrics
+// report exactly one network entry per NIC, listed in the given order of
+// adapter logical labels.
+func ensureNetworkOrder(t *WithT, device *evetest.EdgeDevice, appUUID uuid.UUID, netIFs []string) {
+	ensureNetworkInfoOrder(t, device, appUUID, netIFs)
+	ensureNetworkMetricOrder(t, device, appUUID, netIFs)
 }
 
 func addNetwork(i int, devConfig *evetest.EdgeDeviceConfig, dhcpNet uuid.UUID) evetest.VirtualNetworkAdapter {
@@ -454,6 +519,8 @@ func (tc *nicCountChangeTest) recordBaseline() {
 		t.Expect(err).ToNot(HaveOccurred())
 		t.Expect(stderrOutput).To(BeEmpty())
 	}, tc.timeout, tc.polling).Should(Succeed())
+
+	ensureNetworkOrder(tc.t, tc.device, tc.appUUID, []string{"vif0"})
 }
 
 // addSecondNIC (phase 2) adds a second Local NI with a second app NIC.
@@ -516,6 +583,8 @@ func (tc *nicCountChangeTest) verifyBothNICsReportedWithIP() {
 			return reportedIPsForMACs(info, tc.appMACs)
 		}).StopIf(appHasError)))
 	tc.stopAppWatch()
+
+	ensureNetworkOrder(tc.t, tc.device, tc.appUUID, []string{"vif0", "vif1"})
 }
 
 // verifyCanary (phases 2 and 5) verifies the file written in phase 1 is
@@ -557,6 +626,11 @@ func (tc *nicCountChangeTest) swapNICs() {
 		t.Expect(output).To(ContainSubstring("eth0"))
 		t.Expect(output).To(ContainSubstring(tc.appMACs[1]))
 	}, tc.timeout, tc.polling).Should(Succeed())
+
+	// Both adapters share the same IntfOrder (derived from their first ACL
+	// ID), so the reported order follows the configured adapter order, which
+	// now starts with vif1.
+	ensureNetworkOrder(tc.t, tc.device, tc.appUUID, []string{"vif1", "vif0"})
 }
 
 // rebootDeviceAndVerify (phase 4) reboots the device and verifies the app
@@ -573,6 +647,8 @@ func (tc *nicCountChangeTest) rebootDeviceAndVerify() {
 		t.Expect(output).To(ContainSubstring(tc.appMACs[0]))
 		t.Expect(output).To(ContainSubstring(tc.appMACs[1]))
 	}, tc.timeout, tc.polling).Should(Succeed())
+
+	ensureNetworkOrder(tc.t, tc.device, tc.appUUID, []string{"vif1", "vif0"})
 }
 
 // removeSecondNIC (phase 5) removes one adapter from the configuration
@@ -599,6 +675,9 @@ func (tc *nicCountChangeTest) waitAppBackWithOneNIC() {
 		}).StopIf(appHasError)))
 	tc.appIP = evetest.IPAddress(appInfo.Network[0].IPAddrs[0])
 	tc.stopAppWatch()
+
+	// After the swap, the removal keeps the adapter with the second MAC.
+	ensureNetworkOrder(tc.t, tc.device, tc.appUUID, []string{"vif1"})
 }
 
 // verifyGuestSeesOneNIC (phase 5) verifies the guest is left with only the
