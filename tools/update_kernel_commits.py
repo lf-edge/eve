@@ -797,7 +797,7 @@ def find_updated_branches(old_commits, new_commits, token=None, verbose=False):
 
 
 def get_kernel_tags_from_dockerhub(
-    username, repository, search_pattern: str = "", verbose=False
+    username, repository, search_pattern: str = "", name_filter: str = "", verbose=False
 ):
     """
     Retrieves Docker tags from Docker Hub for a given repository.
@@ -807,6 +807,9 @@ def get_kernel_tags_from_dockerhub(
         repository (str): The name of the Docker repository.
         search_pattern (str, optional): A regular expression pattern to filter Docker tags.
         Defaults to None.
+        name_filter (str, optional): Substring passed to the Docker Hub API to filter tags
+        server-side. Anonymous requests are rejected with 403 once the pagination offset
+        exceeds ~1000 tags, so keep the result set small instead of listing every tag.
         verbose (bool, optional): Increase output verbosity if True. Defaults to False.
 
     Returns:
@@ -815,46 +818,33 @@ def get_kernel_tags_from_dockerhub(
     tags = []
     tags_url = (
         f"https://hub.docker.com/v2/repositories/{username}/{repository}/"
-        f"tags/?page_size=1000"
+        f"tags/?page_size=100&ordering=last_updated"
     )
-
-    total_tags_fetched = 0
-    regex_pattern = None
+    if name_filter:
+        tags_url += f"&name={name_filter}"
 
     # convert search patterns to gerexp
-    if search_pattern != "":
-        regex_pattern = pattern_to_regex(search_pattern)
+    regex_pattern = pattern_to_regex(search_pattern) if search_pattern else None
 
     while True:
         response = requests.get(tags_url, timeout=30)
 
         if response.status_code == 200:
             tags_json = response.json()
-            count = tags_json["count"]
             # pretty print tags_json
             if verbose:
                 print(json.dumps(tags_json, indent=4, sort_keys=True))
 
-            raw_results = tags_json["results"]
-            total_tags_fetched += len(raw_results)
-
-            for tag in raw_results:
-                if regex_pattern:
-                    if re.match(regex_pattern, tag["name"]):
-                        tags.append((tag["name"], tag["tag_last_pushed"]))
-                else:
-                    tags.append((tag["name"], tag["tag_last_pushed"]))
-
-            # print progress overwrite the same line
-            print(f"Fetching docker tags: {total_tags_fetched} / {count}", end="\r")
+            for tag in tags_json["results"]:
+                if regex_pattern and not re.match(regex_pattern, tag["name"]):
+                    continue
+                tags.append((tag["name"], tag["tag_last_pushed"]))
 
             if tags_json["next"]:
                 tags_url = tags_json["next"]
                 if verbose:
                     print(tags_url)
             else:
-                # to keep progress on the screen
-                print(f"Fetching docker tags: {total_tags_fetched} / {count}")
                 break
         else:
             print(
@@ -864,24 +854,47 @@ def get_kernel_tags_from_dockerhub(
     return tags
 
 
-def fetch_docker_tags(verbose=False):
+def _fetch_tags_per_branch(branches, verbose=False):
+    """
+    Fetches docker tags for each branch separately.
+
+    Args:
+        branches (iterable): Branch names to look up tags for.
+        verbose (bool, optional): Increase output verbosity if True. Defaults to False.
+
+    Returns:
+        list: A list of tuples containing Docker tags and their last push dates.
+    """
+    docker_username = "lfedge"
+    repository = "eve-kernel"
+    branch_search_pattern = "eve-kernel-*"
+    branches = list(branches)
+    tags = []
+    for num, branch in enumerate(branches, start=1):
+        print(f"Fetching docker tags: {num} / {len(branches)} branches", end="\r")
+        tags += get_kernel_tags_from_dockerhub(
+            docker_username, repository, branch_search_pattern, branch, verbose
+        )
+    # to keep progress on the screen
+    print(f"Fetching docker tags: {len(branches)} / {len(branches)} branches")
+    return tags
+
+
+def fetch_docker_tags(branches, verbose=False):
     """
     Fetches kernel commits from docker hub and returns them as a dictionary of
     (branch, commit) pairs.
 
     Args:
+        branches (iterable): Branch names to look up tags for. Each one is queried
+        separately so no single listing runs past the anonymous pagination limit.
         verbose (bool): If True, prints all tags with decoded dates and all kernel commits
         from docker hub.
 
     Returns:
         dict: A dictionary of (branch, commit) pairs.
     """
-    docker_username = "lfedge"
-    repository = "eve-kernel"
-    branch_search_pattern = "eve-kernel-*"
-    docker_tag_list = get_kernel_tags_from_dockerhub(
-        docker_username, repository, branch_search_pattern
-    )
+    docker_tag_list = _fetch_tags_per_branch(branches, verbose)
 
     # group tags by common capture group e.g. amd64-v6.1.38-generic
     tag_groups = {}
@@ -1123,7 +1136,8 @@ def adjust_branches_by_docker_tags(new_commits, updated_branches, docker_tags):
                     f"{branch} will not be updated."
                 )
                 del updated_branches[branch]
-                del new_commits[branch]
+                # a branch removed from github is not in new_commits at all
+                new_commits.pop(branch, None)
 
         return is_error
 
@@ -1221,9 +1235,15 @@ def main():
 
     print_updated_branches(updated_branches)
 
+    # branches gone from github are still in kernel-commits.mk and their docker tags
+    # linger, so query them too to have them reported as removed rather than untagged
+    queried_branches = list(new_commits) + [
+        branch for branch in updated_branches if branch not in new_commits
+    ]
+
     # fetch tags from docker hub and convert them to branch names
     if adjust_branches_by_docker_tags(
-        new_commits, updated_branches, fetch_docker_tags(args.verbose)
+        new_commits, updated_branches, fetch_docker_tags(queried_branches, args.verbose)
     ):
         print(
             Fore.RED
