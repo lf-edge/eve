@@ -57,38 +57,7 @@ RUN go build -o /out/vmcap ./vmcap
 
 WORKDIR /out
 
-ADD https://www.ddcutil.com/tarballs/ddcutil-1.2.2.tar.gz /out/ddcutil-1.2.2.tar.gz
-ADD http://sources.buildroot.net/edid-decode/edid-decode-188950472c19492547e298b27f9da0d72cf826df.tar.gz /out/edid-decode-188950472c19492547e298b27f9da0d72cf826df.tar.gz
-ADD https://github.com/linuxhw/build-stuff/releases/download/1.6/hw-probe-1.6-AI.tar.gz /out/hw-probe-1.6-AI.tar.gz
-# Temporarily removed ubuntu VM image to make the verification image smaller.
-#ADD https://cloud-images.ubuntu.com/minimal/releases/jammy/release/ubuntu-22.04-minimal-cloudimg-amd64.img /out/ubuntu-22.04-minimal-cloudimg-amd64.img
 ADD --keep-git-dir=true https://github.com/tpm2-software/tpm2-tools.git#5.5 /out/tpm2-tools-5.5
-
-RUN tar -xf hw-probe-1.6-AI.tar.gz \
-    && tar -xf ddcutil-1.2.2.tar.gz \
-    && tar -xf edid-decode-188950472c19492547e298b27f9da0d72cf826df.tar.gz \
-    && rm -rf hw-probe-1.6-AI.tar.gz ddcutil-1.2.2.tar.gz \
-    edid-decode-188950472c19492547e298b27f9da0d72cf826df.tar.gz
-WORKDIR /out/edid-decode-188950472c19492547e298b27f9da0d72cf826df
-RUN make \
-    && find . -type f | perl -lne "print if -B and -x" | xargs strip \
-    && install -m 0755 edid-decode /out/usr/bin
-
-# Register edid-decode in the APK DB, mandatory for it to be included in the SBOM.
-RUN register-sbom-pkg.sh -n edid-decode -v 18895047 -l MIT -u https://git.linuxtv.org/edid-decode.git
-
-WORKDIR /out/ddcutil-1.2.2
-RUN ./configure --prefix=/out/usr \
-    && make \
-    && find . -type f | perl -lne "print if -B and -x" | xargs strip \
-    && make install
-
-# Register ddcutil in the APK DB, mandatory for it to be included in the SBOM.
-RUN register-sbom-pkg.sh -n ddcutil -v 1.2.2 -l GPL-2.0-only -u https://www.ddcutil.com
-
-WORKDIR /out/hw-probe-1.6-AI
-RUN install -m 755 hw-probe.pl /out/usr/bin/hw-probe  \
-    && sed -i "s/root\/HW_PROBE/tmp\/HW_PROBE/" /out/usr/bin/hw-probe
 
 # build tpm2-tss, it is needed by tpm2-tools
 WORKDIR /tpm2-tss
@@ -112,8 +81,7 @@ RUN make install
 # Register tpm2-tools in the APK DB, mandatory for it to be included in the SBOM.
 RUN register-sbom-pkg.sh -n tpm2-tools -v 5.5 -l BSD-3-Clause -u https://github.com/tpm2-software/tpm2-tools
 
-RUN rm -rf /out/edid-decode-188950472c19492547e298b27f9da0d72cf826df \
-    /out/ddcutil-1.2.2 /out/hw-probe-1.6-AI /out/tpm2-tools-5.5
+RUN rm -rf /out/tpm2-tools-5.5
 
 COPY --from=rust /usr/local/my-installer/target/installer /out/sbin/installer
 COPY --from=rust /usr/local/my-installer/sbom.spdx.json /out/sbin/sbom.spdx.json
@@ -121,6 +89,9 @@ COPY --from=rust /usr/local/my-installer/sbom.spdx.json /out/sbin/sbom.spdx.json
 FROM scratch
 COPY --from=build /out/ /
 COPY --from=debug /usr/bin/spec.sh /
+# verifytpm.sh drives every one of its checks through this binary, at the path
+# it has on a running node.
+COPY --from=debug /usr/bin/recovertpm /opt/debug/usr/bin/recovertpm
 COPY install parse-installer-conf.sh verify verifytpm.sh /
 ENV RUST_BACKTRACE full
 
