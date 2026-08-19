@@ -3,117 +3,312 @@
 
 package networking_test
 
-import "testing"
+import (
+	"fmt"
+	"strings"
+	"testing"
+	"time"
+
+	eveconfig "github.com/lf-edge/eve-api/go/config"
+	"github.com/lf-edge/eve-api/go/evecommon"
+	eveinfo "github.com/lf-edge/eve-api/go/info"
+	"github.com/lf-edge/eve/evetest"
+	"github.com/lf-edge/eve/evetest/matchers"
+	"github.com/lf-edge/eve/evetest/netmodels"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+
+	// revive:disable:dot-imports
+	. "github.com/onsi/gomega"
+)
 
 // TestNetworkAdapterPassthrough verifies that a physical network adapter
 // directly assigned to an application (PCI passthrough) is removed from
-// EVE's host networking and exposed to the guest VM. Replicates the eden test:
-//
-//	github.com/lf-edge/eden/tests/hardware_reboot/testdata/hardware_eth_reboot.txt
-//
-// (eden passes a virtio NIC through to the guest VM and the guest sees a
-// new ethX interface; the same trick works here once the evetest broker
-// is updated -- see the prerequisite below.)
-//
-// SKIPPED for now -- requires a small evetest broker change. The eden
-// QEMU launcher (pkg/eden/qemu.go) adds the flags
-//
-//	disable-legacy=on,disable-modern=off,iommu_platform=on
-//
-// to every virtio-net-pci device. With those flags + KVM acceleration +
-// IOMMU enabled on the machine type, EVE running inside the outer VM can
-// use VFIO to pass the virtio NIC through to its own guest application
-// VM. evetest's broker (evetest/broker/provider/qemu.go around the
-// "-> networking (virtio-net-pci)" loop, and the analogous spot in
-// libvirt.go that sets -global virtio-net-pci.* properties) currently
-// builds the device with just `mac=...,speed=1000,duplex=full` -- no
-// iommu_platform. Adding the same three flags there (and ensuring the
-// EVE machine type has IOMMU enabled, q35 + intel-iommu=on if not
-// already) is the only framework prerequisite.
+// EVE's host networking and handed over to the guest, which must fully own
+// the NIC: see it under the adapter's MAC address and obtain an address
+// from the SDN-side DHCP server through it. Replicates the eden test
+// tests/hardware_reboot/testdata/hardware_eth_reboot.txt.
 //
 // Network model
 // -------------
-//   - Two physical ports defined in the netmodel (one for mgmt, one to be
-//     passed through). Mgmt port (eth0) attaches to a normal SDN bridge
-//     with DHCP and controller reachability.
-//   - The passthrough port (eth1) is attached to its own SDN bridge with
-//     a DHCP server so the guest can DHCP an IP once it sees the NIC, and
-//     reach an SDN HTTP server. The SDN side still drives traffic for the
-//     adapter -- only EVE's host networking is bypassed.
+// TwoMgmtPorts: eth0 is used for management (DHCP, controller
+// reachability); eth1, the passthrough port, sits on its own SDN bridge
+// with a DHCP server (172.20.21.0/24). The SDN side still drives traffic
+// for the adapter -- only EVE's host networking is bypassed.
 //
 // Device configuration
 // --------------------
-//   - PhysicalIO entry for eth0 with Usage=PhyIoUsageMgmtAndApps and a
-//     SystemAdapter on it (DHCP). Used to onboard and reach the controller.
-//   - PhysicalIO entry for eth1 with Usage=PhyIoUsageDedicated and NO
-//     SystemAdapter. This marks the port for passthrough; EVE must not
-//     attach the host network stack to it. (The eden test does the same
-//     via a custom devmodel.json that flips eth1 to PhyIoUsageNone.)
-//   - One application with a DirectlyAssignedNetworkAdapter referencing
-//     eth1 by logical label. The application can be either a true VM (the
-//     eden test uses an Ubuntu focal cloud image) OR a container -- EVE
-//     wraps containers in a shim VM for isolation (see APP-CONNECTIVITY.md
-//     "Virtual network interfaces" and "Container App VIF MTU"), so the
-//     shim VM is the passthrough target and the container inside it sees
-//     the NIC directly. The existing lfedge/evetest-ubuntu-ctr
-//     image used by TestLocalNI / TestSwitchNI is therefore suitable
-//     here too; using it avoids pulling a separate cloud image.
-//   - Optionally a Local NI on eth0 and a virtual VIF for the app, so the
-//     test framework can SSH into the app via a port-forwarding ACL. The
-//     eden test follows the same pattern (port 2223 -> 22) to drive the
-//     in-VM checks.
+//   - eth0: PhyIoUsageMgmtAndApps with a SystemAdapter (DHCP).
+//   - eth1: PhyIoUsageDedicated without a SystemAdapter -- marked for
+//     passthrough.
+//   - One container app (EVE wraps it in a shim VM, which is the actual
+//     passthrough target) with a virtual NIC on a Local NI for SSH access
+//     (port forwarding) and eth1 directly assigned.
 //
-// Assertions
-// ----------
-//   - Before app deploys: WatchDeviceInfo confirms eth1 is listed under
-//     assignableAdapters (ZInfoDevice.assignableAdapters) with state
-//     "available", and there is no SystemAdapter for eth1 in
-//     SystemAdapterInfo.
-//   - After WaitUntilAppIsRunning:
-//   - The assignableAdapters entry for eth1 transitions to "assigned to
-//     app <uuid>".
-//   - WatchAppInfo: the app reports one VIF (the mgmt-NI one) and one
-//     directly-assigned adapter for eth1.
-//   - From inside the guest VM (RunShellScriptInsideApp via the SSH
-//     port-fwd):
-//     a) `ip link` lists a fresh ethX interface for the passed-through
-//     NIC (the eden test parameterizes this as `enp4s0`; here we
-//     accept any name and instead match by MAC or by the order in
-//     which it appears after the mgmt interface).
-//     b) Acquire an IP from the SDN-side DHCP server for the eth1
-//     network. With the lfedge/evetest-ubuntu-ctr image the
-//     shim VM's init script runs DHCP on every recognized interface
-//     by default, so the address should be present as soon as the
-//     link appears; in a VM cloud image variant, run `dhclient
-//     <iface>` (or systemd-networkd) explicitly.
-//     c) `curl http://http-server.test/helloworld` from inside the
-//     guest, sourced via the passed-through interface, succeeds.
-//     This confirms the guest fully owns the NIC and that EVE is not
-//     in the data path.
-//   - After app deletion: WatchDeviceInfo eventually reports
-//     assignableAdapters[eth1] back to "available".
+// Phases
+// ------
+//  1. Apply the port configuration; eth1 must be reported among
+//     assignableAdapters as unused and with a MAC address.
+//  2. Deploy the app; eth1's bundle must be reported as used by the app.
+//  3. From inside the guest: an interface with eth1's MAC address must be
+//     present and hold a DHCP address from eth1's SDN network, proving the
+//     passthrough datapath works end-to-end.
+//  4. "Reboot Test" subtest: reboot the guest from inside, prove a reboot
+//     actually happened via a changed kernel boot ID, and re-run the check
+//     of phase 3 -- the adapter must be re-attached cleanly.
 //
-// Reboot variant
-// --------------
-// The eden test specifically exercises a guest reboot to catch
-// regressions where the passthrough adapter is not re-attached cleanly
-// on resume. Add a second phase:
-//   - From inside the VM, `reboot`. Wait until the VM is back (SSH
-//     succeeds again).
-//   - Re-run the passthrough interface checks (steps a-c above).
+// Parameters: HYPERVISOR (kubevirt is skipped -- reserved for cluster
+// tests).
 //
-// Test params
-// -----------
-//   - HYPERVISOR. The test must call evetest.SkipIfHypervisorKubevirt()
-//     after reading the parameter -- Kubevirt is reserved for cluster tests.
-//
-// Future extensions
-// -----------------
-//   - SR-IOV VF passthrough (different code path from full-NIC passthrough;
-//     see APP-CONNECTIVITY.md "SR-IOV VFs"). Requires either real hardware
-//     or QEMU's emulated SR-IOV (e.g. igb), which the broker currently
-//     does not expose.
-//   - USB passthrough of a network adapter
+// Note: nested VFIO passthrough requires the EVE VM itself to run with a
+// vIOMMU and with iommu_platform=on set on its virtio NICs. All evetest
+// broker providers (qemu, libvirt, proxmox) set these up, mirroring eden's
+// QEMU options. The test still probes the device for an IOMMU and skips
+// itself when there is none (e.g. a broker predating this support). It
+// also skips when EVE reports that the two NICs share a PCI controller
+// (both in one IOMMU group), which makes passing through only one of them
+// impossible -- the case on Proxmox, whose fixed q35 layout places all
+// NICs behind a single conventional PCI bridge.
 func TestNetworkAdapterPassthrough(test *testing.T) {
-	test.Skip("not yet implemented")
+	evetestT := evetest.Init(test)
+	log := evetest.Logger()
+	t := NewGomegaWithT(evetestT)
+	defer evetest.Close()
+
+	evetest.DefineTestParameters(evetest.HypervisorParameter())
+	hypervisor := evetest.GetHypervisorParameterValue()
+
+	devName := "edge-dev"
+	evetest.Setup(
+		evetest.RequireEdgeDevice{
+			Name:              devName,
+			WithHypervisor:    hypervisor,
+			DeviceReusePolicy: evetest.ResetDeviceConfig,
+		},
+		evetest.RequireNetworkModel{
+			NetworkModel: netmodels.TwoMgmtPorts,
+		})
+	device := evetest.GetEdgeDevice(devName)
+	evetest.Checkpoint("setup-done")
+
+	// Nested VFIO passthrough only works when the broker exposes a vIOMMU
+	// to the EVE VM (see the note above); skip when it does not.
+	iommus, err := device.ListDirEntries("/sys/class/iommu")
+	if err != nil {
+		evetestT.Fatalf("Failed to check the device for a vIOMMU: %v", err)
+	}
+	if len(iommus) == 0 {
+		test.Fatal("the broker provider does not expose a vIOMMU to the EVE VM, " +
+			"which nested VFIO NIC passthrough requires")
+	}
+
+	const (
+		timeout    = 5 * time.Minute
+		sshTimeout = 20 * time.Second
+		polling    = 3 * time.Second
+	)
+
+	// eth0 is the management port; eth1 is reserved for passthrough
+	// (dedicated usage, hence no network and no SystemAdapter).
+	devConfig := evetest.NewEdgeDeviceConfig(devName)
+	dhcpNet := devConfig.AddNetwork(evetest.DHCPNetworkConfig{
+		NetworkType: evecommon.NetworkType_V4Only,
+	})
+	devConfig.AddNetworkAdapter(evetest.NetworkAdapterConfig{
+		LogicalLabel:  "ethernet0",
+		PhysicalLabel: "eth0",
+		InterfaceName: "eth0",
+		NetworkUUID:   dhcpNet,
+		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+	})
+	devConfig.AddNetworkAdapter(evetest.NetworkAdapterConfig{
+		LogicalLabel:  "ethernet1",
+		PhysicalLabel: "eth1",
+		InterfaceName: "eth1",
+		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageDedicated,
+	})
+
+	devUpdates, stopDevWatch := device.WatchDeviceInfo()
+	defer stopDevWatch()
+	device.ApplyConfig(devConfig, true, true)
+
+	// Remember the adapter's MAC address to later find the NIC inside the
+	// guest.
+	var eth1MAC string
+	var sharedControllerErr string
+	t.Eventually(devUpdates, timeout).Should(Receive(matchers.SatisfyPredicate(
+		"eth1 is reported as an unused assignable adapter with a MAC address",
+		func(dinfo *eveinfo.ZInfoDevice) bool {
+			bundle := lookupAssignableAdapter(dinfo, "ethernet1")
+			if bundle == nil || len(bundle.GetIoAddressList()) == 0 {
+				return false
+			}
+			// When the NICs share a PCI controller (e.g. placed behind one
+			// conventional PCI bridge, as in Proxmox's default q35 layout),
+			// EVE merges them into a single assignment group and reports an
+			// error on the bundle: passing through eth1 alone is impossible
+			// in such a topology, so the test skips itself below.
+			if err := bundle.GetErr(); err != nil {
+				if strings.Contains(err.GetDescription(), "same PCI controller") {
+					sharedControllerErr = err.GetDescription()
+					return true
+				}
+				return false
+			}
+			if bundle.GetUsedByAppUUID() != "" {
+				return false
+			}
+			eth1MAC = bundle.GetIoAddressList()[0].GetMacAddress()
+			return eth1MAC != ""
+		})))
+	if sharedControllerErr != "" {
+		test.Skipf("NIC passthrough is not possible on this host, the NICs "+
+			"share a PCI controller: %s", sharedControllerErr)
+	}
+	evetest.Checkpoint("adapter-available")
+
+	niUUID := devConfig.AddNetworkInstance(evetest.LocalNetworkInstanceConfig{
+		DisplayName: "local-ni",
+		Port:        "ethernet0",
+		Subnet:      evetest.IPSubnet("10.11.12.0/24"),
+		DHCPRange: types.IPRange{
+			Start: evetest.IPAddress("10.11.12.2"),
+			End:   evetest.IPAddress("10.11.12.254"),
+		},
+		Gateway: evetest.IPAddress("10.11.12.1"),
+	})
+	appConfig := evetest.ApplicationInstanceConfig{
+		DisplayName: "passthrough-app",
+		Activate:    true,
+		Image: evetest.DockerContainer{
+			ImageName: "lfedge/evetest-ubuntu-ctr",
+			Tag:       "1.0",
+		},
+		VirtualizationMode: eveconfig.VmMode_HVM,
+		CPUs:               1,
+		MemoryBytes:        500 * evetest.MiB,
+		NetworkAdapters: []evetest.AppNetworkAdapter{
+			evetest.VirtualNetworkAdapter{
+				LogicalLabel:        "vif0",
+				NetworkInstanceUUID: niUUID,
+				MAC:                 evetest.MACAddress("02:16:3e:00:00:01"),
+				PortFwdRules: []evetest.PortFwdRule{
+					{
+						Protocol:     evetest.NetworkProtocolTCP,
+						EdgeNodePort: 2222,
+						AppPort:      22,
+					},
+				},
+				ACLAllowRules: []evetest.ACLAllowRule{
+					{
+						Protocol:     evetest.NetworkProtocolAny,
+						RemoteSubnet: evetest.IPSubnet("0.0.0.0/0"),
+					},
+				},
+			},
+			evetest.DirectlyAssignedNetworkAdapter{
+				LogicalLabel: "ethernet1",
+			},
+		},
+	}
+	appUUID := devConfig.AddApplication(appConfig)
+	device.ApplyConfig(devConfig, true, true)
+	device.WaitUntilAppIsRunning(appUUID, timeout)
+
+	t.Eventually(devUpdates, timeout).Should(Receive(matchers.SatisfyPredicate(
+		"eth1 is reported as assigned to the application",
+		func(dinfo *eveinfo.ZInfoDevice) bool {
+			bundle := lookupAssignableAdapter(dinfo, "ethernet1")
+			return bundle != nil && bundle.GetUsedByAppUUID() == appUUID.String()
+		})))
+	evetest.Checkpoint("adapter-assigned")
+
+	appAuth := evetest.UsernamePasswordAuth{
+		Username: "root",
+		Password: "testpassword",
+	}
+
+	t.Eventually(func(t Gomega) {
+		stdout, _, err := device.RunShellScript(`lspci -k -d 1af4:*`, time.Minute, 0)
+		t.Expect(err).ToNot(HaveOccurred())
+		t.Expect(stdout).To(ContainSubstring("vfio-pci"))
+	}, timeout, polling).Should(Succeed())
+
+	t.Eventually(func(t Gomega) {
+		log.Infof("Waiting for the passed-through NIC to appear in the guest " +
+			"with a DHCP address...")
+		script := fmt.Sprintf("ip a | grep -i -A 3 '%s'", eth1MAC)
+		stdout, _, err := device.RunShellScriptInsideApp(appUUID, appAuth,
+			script, sshTimeout, 0)
+		t.Expect(err).ToNot(HaveOccurred())
+		t.Expect(stdout).To(ContainSubstring("inet 172.20.21."))
+	}, timeout, polling).Should(Succeed())
+	evetest.Checkpoint("guest-owns-nic")
+
+	test.Run("Reboot Test", func(t *testing.T) {
+		g := NewGomegaWithT(t)
+
+		// The passed-through NIC must be re-initialized and functional
+		// again after the guest reboots (mirrors the eden
+		// hardware_eth_reboot scenario). The kernel boot ID proves that a
+		// reboot actually took place -- the re-check cannot pass against
+		// the pre-reboot boot. eden uses a marker file in /tmp for this,
+		// but the container rootfs lives on the app volume and survives
+		// reboots, while the boot ID works in both guest types.
+		const bootIDCmd = "cat /proc/sys/kernel/random/boot_id"
+		var bootID string
+		g.Eventually(func(t Gomega) {
+			stdout, _, err := device.RunShellScriptInsideApp(appUUID, appAuth,
+				bootIDCmd, sshTimeout, 0)
+			t.Expect(err).ToNot(HaveOccurred())
+			bootID = strings.TrimSpace(stdout)
+			t.Expect(bootID).ToNot(BeEmpty())
+		}, timeout, polling).Should(Succeed())
+
+		// Trigger the reboot from inside the guest, detached and delayed
+		// so the SSH session closes cleanly first (like eden's
+		// "shutdown -r +1 &"), with a sysrq fallback in case the image
+		// has no working reboot binary.
+		log.Infof("Rebooting the guest from inside...")
+		rebootCmd := "nohup sh -c 'sleep 2; reboot -f || " +
+			"{ echo 1 > /proc/sys/kernel/sysrq; echo b > /proc/sysrq-trigger; }' " +
+			">/dev/null 2>&1 &"
+		_, _, err := device.RunShellScriptInsideApp(appUUID, appAuth, rebootCmd,
+			sshTimeout, 0)
+		g.Expect(err).ToNot(HaveOccurred())
+
+		g.Eventually(func(t Gomega) {
+			log.Infof("Waiting for the guest to come back with a new boot ID...")
+			stdout, _, err := device.RunShellScriptInsideApp(appUUID, appAuth,
+				bootIDCmd, sshTimeout, 0)
+			t.Expect(err).ToNot(HaveOccurred())
+			newBootID := strings.TrimSpace(stdout)
+			t.Expect(newBootID).ToNot(BeEmpty())
+			t.Expect(newBootID).ToNot(Equal(bootID))
+		}, timeout, polling).Should(Succeed())
+
+		// Re-check: the passed-through NIC is present again and has
+		// re-acquired a DHCP address from eth1's SDN network.
+		g.Eventually(func(t Gomega) {
+			log.Infof("Waiting for the passed-through NIC to be back in the " +
+				"guest with a DHCP address after reboot...")
+			script := fmt.Sprintf("ip a | grep -i -A 3 '%s'", eth1MAC)
+			stdout, _, err := device.RunShellScriptInsideApp(appUUID, appAuth,
+				script, sshTimeout, 0)
+			t.Expect(err).ToNot(HaveOccurred())
+			t.Expect(stdout).To(ContainSubstring("inet 172.20.21."))
+		}, timeout, polling).Should(Succeed())
+		evetest.Checkpoint("guest-owns-nic-after-reboot")
+	})
+
+}
+
+// lookupAssignableAdapter returns the ZioBundle with the given name from the
+// device info, or nil if not (yet) reported.
+func lookupAssignableAdapter(dinfo *eveinfo.ZInfoDevice, name string) *eveinfo.ZioBundle {
+	for _, bundle := range dinfo.GetAssignableAdapters() {
+		if bundle.GetName() == name {
+			return bundle
+		}
+	}
+	return nil
 }

@@ -313,8 +313,9 @@ func TestDeviceConnectivitySuite(test *testing.T) {
 //   - TestSwitchNIWithMultiplePorts -- STP / BPDU-guard on a Switch NI
 //     with redundant L2 links (stub scenario).
 //   - TestAccessVLANs -- VLAN-aware Switch NI (stub scenario).
-//   - TestNetworkAdapterPassthrough -- direct adapter assignment to an
-//     app (stub scenario; needs broker QEMU flag tweak).
+//   - TestNetworkAdapterPassthrough -- direct assignment (PCI passthrough)
+//     of a physical NIC to an app; the guest must fully own the adapter
+//     (see it under its MAC, DHCP through it over the SDN network).
 //   - TestStagedNICChange -- a NIC added to a running app without a
 //     restart command stays staged (no effect on device or guest) until
 //     the app is restarted.
