@@ -609,7 +609,7 @@ if [ -n "$REPORT" ]; then
 fi
 
 ## if verification is enabled, run verifier script
-cmdline eve_disable_verify || DEBUG="$DEBUG" REPORT="$REPORT" /verify
+cmdline eve_disable_verify || DEBUG="$DEBUG" REPORT="$REPORT" TPM_DEVICE_PATH="$TPM_DEVICE_PATH" /verify
 
 # we also maybe asked to pause after
 cmdline eve_pause_after_install && pause "shutting the node down"

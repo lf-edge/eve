@@ -28,7 +28,7 @@ RUN cargo sbom > sbom.spdx.json
 
 RUN cp "/usr/local/my-installer/target/$CARGO_BUILD_TARGET/release/installer" /usr/local/my-installer/target/installer
 
-FROM lfedge/eve-debug:1d88d292ce45c7b16945ffb238392b228ec76520 AS debug
+FROM lfedge/eve-debug:d6821ae9159e507ea21078418a065f0c4bcb1f46 AS debug
 
 # Dockerfile to build installer img initrd
 FROM lfedge/eve-alpine:308b37b2049096bc2385c28c1cbeef436985cc87 AS build
@@ -57,38 +57,16 @@ RUN go build -o /out/vmcap ./vmcap
 
 WORKDIR /out
 
-ADD https://www.ddcutil.com/tarballs/ddcutil-1.2.2.tar.gz /out/ddcutil-1.2.2.tar.gz
-ADD http://sources.buildroot.net/edid-decode/edid-decode-188950472c19492547e298b27f9da0d72cf826df.tar.gz /out/edid-decode-188950472c19492547e298b27f9da0d72cf826df.tar.gz
-ADD https://github.com/linuxhw/build-stuff/releases/download/1.6/hw-probe-1.6-AI.tar.gz /out/hw-probe-1.6-AI.tar.gz
-# Temporarily removed ubuntu VM image to make the verification image smaller.
-#ADD https://cloud-images.ubuntu.com/minimal/releases/jammy/release/ubuntu-22.04-minimal-cloudimg-amd64.img /out/ubuntu-22.04-minimal-cloudimg-amd64.img
 ADD https://github.com/tpm2-software/tpm2-tools/archive/5.2.tar.gz /out/5.2.tar.gz
 
-RUN tar -xf hw-probe-1.6-AI.tar.gz \
-    && tar -xf ddcutil-1.2.2.tar.gz \
-    && tar -xf edid-decode-188950472c19492547e298b27f9da0d72cf826df.tar.gz \
-    && tar -xf 5.2.tar.gz \
-    && rm -rf hw-probe-1.6-AI.tar.gz ddcutil-1.2.2.tar.gz 5.2.tar.gz \
-    edid-decode-188950472c19492547e298b27f9da0d72cf826df.tar.gz
-WORKDIR /out/edid-decode-188950472c19492547e298b27f9da0d72cf826df
-RUN make \
-    && find . -type f | perl -lne "print if -B and -x" | xargs strip \
-    && install -m 0755 edid-decode /out/usr/bin
-WORKDIR /out/ddcutil-1.2.2
-RUN ./configure --prefix=/out/usr \
-    && make \
-    && find . -type f | perl -lne "print if -B and -x" | xargs strip \
-    && make install
-WORKDIR /out/hw-probe-1.6-AI
-RUN install -m 755 hw-probe.pl /out/usr/bin/hw-probe  \
-    && sed -i "s/root\/HW_PROBE/tmp\/HW_PROBE/" /out/usr/bin/hw-probe
+RUN tar -xf 5.2.tar.gz \
+    && rm -rf 5.2.tar.gz
 WORKDIR /out/tpm2-tools-5.2
 RUN ./bootstrap \
     && ./configure --prefix=/out/usr \
     && make -j"$(nproc)" \
     && make install \
-    && rm -rf /out/edid-decode-188950472c19492547e298b27f9da0d72cf826df \
-    /out/ddcutil-1.2.2 /out/hw-probe-1.6-AI /out/tpm2-tools-5.2
+    && rm -rf /out/tpm2-tools-5.2
 
 COPY --from=rust /usr/local/my-installer/target/installer /out/sbin/installer
 COPY --from=rust /usr/local/my-installer/sbom.spdx.json /out/sbin/sbom.spdx.json
@@ -96,6 +74,9 @@ COPY --from=rust /usr/local/my-installer/sbom.spdx.json /out/sbin/sbom.spdx.json
 FROM scratch
 COPY --from=build /out/ /
 COPY --from=debug /usr/bin/spec.sh /
+# verifytpm.sh drives every one of its checks through this binary, at the path
+# it has on a running node.
+COPY --from=debug /usr/bin/recovertpm /opt/debug/usr/bin/recovertpm
 COPY install parse-installer-conf.sh verify verifytpm.sh /
 ENV RUST_BACKTRACE full
 
