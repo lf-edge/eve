@@ -119,6 +119,9 @@ func TestNetworkAdapterPassthrough(test *testing.T) {
 		InterfaceName: "eth0",
 		NetworkUUID:   dhcpNet,
 		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+		// Shared label referenced by the "newni" NI of the Dynamic
+		// Adapters subtest to select this adapter as its uplink port.
+		SharedLabels: []string{"newni0"},
 	})
 	devConfig.AddNetworkAdapter(evetest.NetworkAdapterConfig{
 		LogicalLabel:  "ethernet1",
@@ -209,6 +212,7 @@ func TestNetworkAdapterPassthrough(test *testing.T) {
 				LogicalLabel: "ethernet1",
 			},
 		},
+		EnforceNetIntfOrder: true,
 	}
 	appUUID := devConfig.AddApplication(appConfig)
 	device.ApplyConfig(devConfig, true, true)
@@ -244,62 +248,146 @@ func TestNetworkAdapterPassthrough(test *testing.T) {
 	}, timeout, polling).Should(Succeed())
 	evetest.Checkpoint("guest-owns-nic")
 
-	test.Run("Reboot Test", func(t *testing.T) {
-		g := NewGomegaWithT(t)
+	// The passed-through NIC must be re-initialized and functional
+	// again after the guest reboots. The kernel boot ID proves that a
+	// reboot actually took place -- the re-check cannot pass against
+	// the pre-reboot boot.
+	const bootIDCmd = "cat /proc/sys/kernel/random/boot_id"
+	var bootID string
+	t.Eventually(func(t Gomega) {
+		stdout, _, err := device.RunShellScriptInsideApp(appUUID, appAuth,
+			bootIDCmd, sshTimeout, 0)
+		t.Expect(err).ToNot(HaveOccurred())
+		bootID = strings.TrimSpace(stdout)
+		t.Expect(bootID).ToNot(BeEmpty())
+	}, timeout, polling).Should(Succeed())
 
-		// The passed-through NIC must be re-initialized and functional
-		// again after the guest reboots (mirrors the eden
-		// hardware_eth_reboot scenario). The kernel boot ID proves that a
-		// reboot actually took place -- the re-check cannot pass against
-		// the pre-reboot boot. eden uses a marker file in /tmp for this,
-		// but the container rootfs lives on the app volume and survives
-		// reboots, while the boot ID works in both guest types.
-		const bootIDCmd = "cat /proc/sys/kernel/random/boot_id"
-		var bootID string
-		g.Eventually(func(t Gomega) {
-			stdout, _, err := device.RunShellScriptInsideApp(appUUID, appAuth,
-				bootIDCmd, sshTimeout, 0)
-			t.Expect(err).ToNot(HaveOccurred())
-			bootID = strings.TrimSpace(stdout)
-			t.Expect(bootID).ToNot(BeEmpty())
-		}, timeout, polling).Should(Succeed())
+	// Trigger the reboot from inside the guest, detached and delayed
+	// so the SSH session closes cleanly first, with a sysrq fallback
+	// in case the image has no working reboot binary.
+	log.Infof("Rebooting the guest from inside...")
+	rebootCmd := "nohup sh -c 'sleep 2; reboot -f || " +
+		"{ echo 1 > /proc/sys/kernel/sysrq; echo b > /proc/sysrq-trigger; }' " +
+		">/dev/null 2>&1 &"
+	_, _, err = device.RunShellScriptInsideApp(appUUID, appAuth, rebootCmd,
+		sshTimeout, 0)
+	t.Expect(err).ToNot(HaveOccurred())
 
-		// Trigger the reboot from inside the guest, detached and delayed
-		// so the SSH session closes cleanly first (like eden's
-		// "shutdown -r +1 &"), with a sysrq fallback in case the image
-		// has no working reboot binary.
-		log.Infof("Rebooting the guest from inside...")
-		rebootCmd := "nohup sh -c 'sleep 2; reboot -f || " +
-			"{ echo 1 > /proc/sys/kernel/sysrq; echo b > /proc/sysrq-trigger; }' " +
-			">/dev/null 2>&1 &"
-		_, _, err := device.RunShellScriptInsideApp(appUUID, appAuth, rebootCmd,
-			sshTimeout, 0)
-		g.Expect(err).ToNot(HaveOccurred())
+	t.Eventually(func(t Gomega) {
+		log.Infof("Waiting for the guest to come back with a new boot ID...")
+		stdout, _, err := device.RunShellScriptInsideApp(appUUID, appAuth,
+			bootIDCmd, sshTimeout, 0)
+		t.Expect(err).ToNot(HaveOccurred())
+		newBootID := strings.TrimSpace(stdout)
+		t.Expect(newBootID).ToNot(BeEmpty())
+		t.Expect(newBootID).ToNot(Equal(bootID))
+	}, timeout, polling).Should(Succeed())
 
-		g.Eventually(func(t Gomega) {
-			log.Infof("Waiting for the guest to come back with a new boot ID...")
-			stdout, _, err := device.RunShellScriptInsideApp(appUUID, appAuth,
-				bootIDCmd, sshTimeout, 0)
-			t.Expect(err).ToNot(HaveOccurred())
-			newBootID := strings.TrimSpace(stdout)
-			t.Expect(newBootID).ToNot(BeEmpty())
-			t.Expect(newBootID).ToNot(Equal(bootID))
-		}, timeout, polling).Should(Succeed())
+	// Re-check: the passed-through NIC is present again and has
+	// re-acquired a DHCP address from eth1's SDN network.
+	t.Eventually(func(t Gomega) {
+		log.Infof("Waiting for the passed-through NIC to be back in the " +
+			"guest with a DHCP address after reboot...")
+		script := fmt.Sprintf("ip a | grep -i -A 3 '%s'", eth1MAC)
+		stdout, _, err := device.RunShellScriptInsideApp(appUUID, appAuth,
+			script, sshTimeout, 0)
+		t.Expect(err).ToNot(HaveOccurred())
+		t.Expect(stdout).To(ContainSubstring("inet 172.20.21."))
+	}, timeout, polling).Should(Succeed())
+	evetest.Checkpoint("guest-owns-nic-after-reboot")
 
-		// Re-check: the passed-through NIC is present again and has
-		// re-acquired a DHCP address from eth1's SDN network.
-		g.Eventually(func(t Gomega) {
-			log.Infof("Waiting for the passed-through NIC to be back in the " +
-				"guest with a DHCP address after reboot...")
-			script := fmt.Sprintf("ip a | grep -i -A 3 '%s'", eth1MAC)
-			stdout, _, err := device.RunShellScriptInsideApp(appUUID, appAuth,
-				script, sshTimeout, 0)
-			t.Expect(err).ToNot(HaveOccurred())
-			t.Expect(stdout).To(ContainSubstring("inet 172.20.21."))
-		}, timeout, polling).Should(Succeed())
-		evetest.Checkpoint("guest-owns-nic-after-reboot")
+	// The NI's Port must resolve to an existing device adapter (by
+	// logical or shared label): "newni0" is a shared label carried by
+	// ethernet0, so this NI shares the mgmt port as its uplink --
+	// ethernet1 is dedicated to the app and cannot back an NI.
+	nuuid := devConfig.AddNetworkInstance(evetest.LocalNetworkInstanceConfig{
+		DisplayName: "newni",
+		Port:        "newni0",
+		Subnet:      evetest.IPSubnet("10.11.13.0/24"),
+		DHCPRange: types.IPRange{
+			Start: evetest.IPAddress("10.11.13.2"),
+			End:   evetest.IPAddress("10.11.13.254"),
+		},
 	})
 
+	t.Eventually(func(t Gomega) {
+		stdout, _, err := device.RunShellScriptInsideApp(appUUID, appAuth,
+			"ip a", sshTimeout, 0)
+		t.Expect(err).ToNot(HaveOccurred())
+		t.Expect(stdout).ToNot(ContainSubstring("00:09:5b:45:af:d1"))
+		t.Expect(stdout).ToNot(ContainSubstring("00:09:5b:45:af:d2"))
+		t.Expect(stdout).ToNot(ContainSubstring("00:09:5b:45:af:d3"))
+	}, timeout, polling).Should(Succeed())
+
+	// No port forwarding on newvif1 -- SSH keeps going through vif0.
+	orderNewVif1 := uint32(1)
+	appConfig.NetworkAdapters = append(appConfig.NetworkAdapters, evetest.VirtualNetworkAdapter{
+		LogicalLabel:        "newvif1",
+		NetworkInstanceUUID: nuuid,
+		MAC:                 evetest.MACAddress("00:09:5b:45:af:d1"),
+		ACLAllowRules: []evetest.ACLAllowRule{
+			{
+				Protocol:     evetest.NetworkProtocolAny,
+				RemoteSubnet: evetest.IPSubnet("0.0.0.0/0"),
+			},
+		},
+		InterfaceOrder: &orderNewVif1,
+	})
+
+	orderNewVif3 := uint32(3)
+	appConfig.NetworkAdapters = append(appConfig.NetworkAdapters, evetest.VirtualNetworkAdapter{
+		LogicalLabel:        "newvif3",
+		NetworkInstanceUUID: nuuid,
+		MAC:                 evetest.MACAddress("00:09:5b:45:af:d3"),
+		ACLAllowRules: []evetest.ACLAllowRule{
+			{
+				Protocol:     evetest.NetworkProtocolAny,
+				RemoteSubnet: evetest.IPSubnet("0.0.0.0/0"),
+			},
+		},
+		InterfaceOrder: &orderNewVif3,
+	})
+
+	devConfig.UpdateApplication(appUUID, appConfig)
+	device.ApplyConfig(devConfig, true, true)
+	device.WaitUntilAppIsRunning(appUUID, timeout)
+
+	t.Eventually(func(t Gomega) {
+		stdout, _, err := device.RunShellScriptInsideApp(appUUID, appAuth,
+			"ip a", sshTimeout, 0)
+		t.Expect(err).ToNot(HaveOccurred())
+		t.Expect(stdout).To(ContainSubstring("00:09:5b:45:af:d1"))
+		t.Expect(stdout).To(ContainSubstring("00:09:5b:45:af:d3"))
+	}, timeout, polling).Should(Succeed())
+
+	orderNewVif2 := uint32(2) // add this device into the middle
+	appConfig.NetworkAdapters = append(appConfig.NetworkAdapters, evetest.VirtualNetworkAdapter{
+		LogicalLabel:        "newvif2",
+		NetworkInstanceUUID: nuuid,
+		MAC:                 evetest.MACAddress("00:09:5b:45:af:d2"),
+		ACLAllowRules: []evetest.ACLAllowRule{
+			{
+				Protocol:     evetest.NetworkProtocolAny,
+				RemoteSubnet: evetest.IPSubnet("0.0.0.0/0"),
+			},
+		},
+		InterfaceOrder: &orderNewVif2,
+	})
+
+	devConfig.UpdateApplication(appUUID, appConfig)
+	device.ApplyConfig(devConfig, true, true)
+	device.WaitUntilAppIsRunning(appUUID, timeout)
+
+	t.Eventually(func(t Gomega) {
+		stdout, _, err := device.RunShellScriptInsideApp(appUUID, appAuth,
+			"ip a", sshTimeout, 0)
+		t.Expect(err).ToNot(HaveOccurred())
+		t.Expect(stdout).To(ContainSubstring("00:09:5b:45:af:d1"))
+		t.Expect(stdout).To(ContainSubstring("00:09:5b:45:af:d2"))
+		t.Expect(stdout).To(ContainSubstring("00:09:5b:45:af:d3"))
+	}, timeout, polling).Should(Succeed())
+
+	ensureNetworkOrder(t, device, appUUID, []string{"vif0", "newvif1", "newvif2", "newvif3"})
 }
 
 // lookupAssignableAdapter returns the ZioBundle with the given name from the
