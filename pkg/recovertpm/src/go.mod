@@ -6,7 +6,6 @@ toolchain go1.24.6
 
 require (
 	github.com/google/go-tpm v0.9.1
-	github.com/lf-edge/eve/api/go v0.0.0-20230726103732-fec97665f8c9
 	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260325052340-21987cccd573
 	github.com/schollz/progressbar/v3 v3.14.2
 	google.golang.org/protobuf v1.36.10
@@ -28,7 +27,7 @@ require (
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
-	github.com/lf-edge/eve-api/go v0.0.0-20260116205402-bac92fb1f235 // indirect
+	github.com/lf-edge/eve-api/go v0.0.0-20260116205402-bac92fb1f235
 	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d // indirect
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect

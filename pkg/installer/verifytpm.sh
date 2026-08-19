@@ -22,12 +22,93 @@ TEST_COUNT=100
 PCR_HASH="sha256"
 PCR_INDEX="0, 1, 2, 3, 4, 6, 7, 8, 9, 13, 14"
 TPM_RECOV="/opt/debug/usr/bin/recovertpm"
-VTPM_PATH="/opt/vtpm/"
-TPM_TOOL="$VTPM_PATH""usr/bin/tpm2"
-TPM_TOOL_LIB="$VTPM_PATH""usr/lib/"
+TPM_TOOL="/usr/bin/tpm2"
+TPM_TOOL_LIB="/usr/lib/"
+# Must match recovertpm's own default for -tpm-cred.
+TPM_CRED="/config/tpm_credential"
+# The installer treats the presence of this file as "the device certificate is not
+# TPM-backed", so its absence is what makes the device key ours to restore.
+SOFT_DEV_KEY="/config/device.key.pem"
 
 # we don't install tpm2-abrmd, so tell tpm-tools to use tpmrm0.
 export TPM2TOOLS_TCTI="device:/dev/tpmrm0"
+
+# $1 is the getcap listing to search (persistent or nv-index), $2 the handle.
+# shellcheck disable=SC2317,SC2329  # false positives: only reached from the trap handler
+tpm_has_handle() {
+    LD_LIBRARY_PATH="$TPM_TOOL_LIB" "$TPM_TOOL" getcap "handles-$1" 2>/dev/null |
+        grep -q "$2"
+}
+
+# Everything the checks do is destructive, and what they leave behind is not
+# usable by the installed system: the device key ends up owned by the test
+# credential rather than the one in /config, and the vault's NV pair holds the
+# test payload. Nothing repairs that later -- pillar re-creates missing keys on
+# every boot but never touches the device key handle -- so a node installed with
+# a TPM present cannot sign the controller handshake and never onboards. Restore
+# runs from an EXIT trap so that a check failing partway cannot skip it.
+# shellcheck disable=SC2317,SC2329  # false positives: function is called via trap
+restore_tpm_state() {
+    checks_status=$?
+    restore_failed=""
+
+    echo "======= Restoring TPM state ======="
+
+    echo "1) Removing the test seal..."
+    for index in "$VAULT_PRIV_INDEX" "$VAULT_PUB_INDEX"; do
+        tpm_has_handle nv-index "$index" || continue
+        if LD_LIBRARY_PATH="$TPM_TOOL_LIB" "$TPM_TOOL" nvundefine "$index" -C o; then
+            echo "[OK] $index removed"
+        else
+            echo "[ERROR] Failed to undefine $index"
+            restore_failed=1
+        fi
+    done
+
+    # recovertpm defaults -tpm-cred to /config/tpm_credential, so the device key
+    # has to be generated without the flag the tests pass. Absent that credential
+    # the installer did not provision a TPM-backed device certificate and EVE
+    # creates the key on first boot, so leave the handle empty rather than
+    # claiming it with a password nothing else knows.
+    echo "2) Restoring the device key..."
+    if [ -f "$TPM_CRED" ] && [ ! -f "$SOFT_DEV_KEY" ]; then
+        if "$TPM_RECOV" -gen-key "$DEV_KEY" -key-index "$DEVKEY_INDEX" &&
+                "$TPM_RECOV" -check-dev-cert; then
+            echo "[OK] Device Key restored"
+        else
+            echo "[ERROR] Failed to restore the device key"
+            restore_failed=1
+        fi
+    elif ! tpm_has_handle persistent "$DEVKEY_INDEX"; then
+        echo "[OK] Device Key left for first boot"
+    elif "$TPM_RECOV" -remove-key -key-index "$DEVKEY_INDEX"; then
+        echo "[OK] Device Key left for first boot"
+    else
+        echo "[ERROR] Failed to remove the device key"
+        restore_failed=1
+    fi
+
+    # EK, AK and quote are removed by the checks and never re-created. Pillar
+    # brings back whatever is missing on every boot, so this only closes the
+    # window between install and first boot.
+    echo "3) Restoring the remaining keys..."
+    for key in "$EK_KEY:$EK_INDEX" "$AK_KEY:$AK_INDEX" "$QT_KEY:$QT_INDEX"; do
+        if "$TPM_RECOV" -gen-key "${key%:*}" -key-index "${key#*:}"; then
+            echo "[OK] ${key#*:} restored"
+        else
+            echo "[ERROR] Key generation failed for ${key#*:}"
+            restore_failed=1
+        fi
+    done
+
+    rm -f tpmcred secret secret.exp*
+
+    if [ -n "$restore_failed" ]; then
+        echo "[ERROR] TPM state could not be restored"
+    elif [ "$checks_status" -eq 0 ]; then
+        echo "[OK] All TPM checks PASSED"
+    fi
+}
 
 # create required file
 echo "123456" > tpmcred
@@ -39,6 +120,9 @@ if ! "$TPM_RECOV" -info; then
     echo "[ERROR] TPM info failed"
     exit 1
 fi
+
+# Armed only once the TPM is known to answer, and before anything is changed.
+trap 'restore_tpm_state' EXIT
 
 echo "======= Testing key generation ======="
 echo "1) Generating EK..."
@@ -269,5 +353,4 @@ if ! "$TPM_RECOV" -test 3 -tpm-cred tpmcred -ecdh-index "$ECDH_INDEX" -devkey-in
     exit 1
 fi
 
-echo "[OK] All TPM checks PASSED"
-rm -f tpmcred secret secret.exp*
+exit 0
