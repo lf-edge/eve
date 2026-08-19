@@ -119,6 +119,9 @@ func TestNetworkAdapterPassthrough(test *testing.T) {
 		InterfaceName: "eth0",
 		NetworkUUID:   dhcpNet,
 		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+		// Shared label referenced by the "newni" NI of the Dynamic
+		// Adapters subtest to select this adapter as its uplink port.
+		SharedLabels: []string{"newni0"},
 	})
 	devConfig.AddNetworkAdapter(evetest.NetworkAdapterConfig{
 		LogicalLabel:  "ethernet1",
@@ -209,6 +212,7 @@ func TestNetworkAdapterPassthrough(test *testing.T) {
 				LogicalLabel: "ethernet1",
 			},
 		},
+		EnforceNetIntfOrder: true,
 	}
 	appUUID := devConfig.AddApplication(appConfig)
 	device.ApplyConfig(devConfig, true, true)
@@ -300,6 +304,102 @@ func TestNetworkAdapterPassthrough(test *testing.T) {
 		evetest.Checkpoint("guest-owns-nic-after-reboot")
 	})
 
+	test.Run("Dynamic Adapters", func(t *testing.T) {
+		g := NewGomegaWithT(t)
+
+		// The NI's Port must resolve to an existing device adapter (by
+		// logical or shared label): "newni0" is a shared label carried by
+		// ethernet0, so this NI shares the mgmt port as its uplink --
+		// ethernet1 is dedicated to the app and cannot back an NI.
+		nuuid := devConfig.AddNetworkInstance(evetest.LocalNetworkInstanceConfig{
+			DisplayName: "newni",
+			Port:        "newni0",
+			Subnet:      evetest.IPSubnet("10.11.13.0/24"),
+			DHCPRange: types.IPRange{
+				Start: evetest.IPAddress("10.11.13.2"),
+				End:   evetest.IPAddress("10.11.13.254"),
+			},
+		})
+
+		g.Eventually(func(t Gomega) {
+			stdout, _, err := device.RunShellScriptInsideApp(appUUID, appAuth,
+				"ip a", sshTimeout, 0)
+			t.Expect(err).ToNot(HaveOccurred())
+			t.Expect(stdout).ToNot(ContainSubstring("00:09:5b:45:af:d1"))
+			t.Expect(stdout).ToNot(ContainSubstring("00:09:5b:45:af:d2"))
+			t.Expect(stdout).ToNot(ContainSubstring("00:09:5b:45:af:d3"))
+		}, timeout, polling).Should(Succeed())
+
+		// No port forwarding on newvif1 -- SSH keeps going through vif0.
+		orderNewVif1 := uint32(1)
+		appConfig.NetworkAdapters = append(appConfig.NetworkAdapters, evetest.VirtualNetworkAdapter{
+			LogicalLabel:        "newvif1",
+			NetworkInstanceUUID: nuuid,
+			MAC:                 evetest.MACAddress("00:09:5b:45:af:d1"),
+			ACLAllowRules: []evetest.ACLAllowRule{
+				{
+					Protocol:     evetest.NetworkProtocolAny,
+					RemoteSubnet: evetest.IPSubnet("0.0.0.0/0"),
+				},
+			},
+			InterfaceOrder: &orderNewVif1,
+		})
+
+		orderNewVif3 := uint32(3)
+		appConfig.NetworkAdapters = append(appConfig.NetworkAdapters, evetest.VirtualNetworkAdapter{
+			LogicalLabel:        "newvif3",
+			NetworkInstanceUUID: nuuid,
+			MAC:                 evetest.MACAddress("00:09:5b:45:af:d3"),
+			ACLAllowRules: []evetest.ACLAllowRule{
+				{
+					Protocol:     evetest.NetworkProtocolAny,
+					RemoteSubnet: evetest.IPSubnet("0.0.0.0/0"),
+				},
+			},
+			InterfaceOrder: &orderNewVif3,
+		})
+
+		devConfig.UpdateApplication(appUUID, appConfig)
+		device.ApplyConfig(devConfig, true, true)
+		device.WaitUntilAppIsRunning(appUUID, timeout)
+
+		g.Eventually(func(t Gomega) {
+			stdout, _, err := device.RunShellScriptInsideApp(appUUID, appAuth,
+				"ip a", sshTimeout, 0)
+			t.Expect(err).ToNot(HaveOccurred())
+			t.Expect(stdout).To(ContainSubstring("00:09:5b:45:af:d1"))
+			t.Expect(stdout).To(ContainSubstring("00:09:5b:45:af:d3"))
+		}, timeout, polling).Should(Succeed())
+
+		orderNewVif2 := uint32(2) // add this device into the middle
+		appConfig.NetworkAdapters = append(appConfig.NetworkAdapters, evetest.VirtualNetworkAdapter{
+			LogicalLabel:        "newvif2",
+			NetworkInstanceUUID: nuuid,
+			MAC:                 evetest.MACAddress("00:09:5b:45:af:d2"),
+			ACLAllowRules: []evetest.ACLAllowRule{
+				{
+					Protocol:     evetest.NetworkProtocolAny,
+					RemoteSubnet: evetest.IPSubnet("0.0.0.0/0"),
+				},
+			},
+			InterfaceOrder: &orderNewVif2,
+		})
+
+		devConfig.UpdateApplication(appUUID, appConfig)
+		device.ApplyConfig(devConfig, true, true)
+		device.WaitUntilAppIsRunning(appUUID, timeout)
+
+		g.Eventually(func(t Gomega) {
+			stdout, _, err := device.RunShellScriptInsideApp(appUUID, appAuth,
+				"ip a", sshTimeout, 0)
+			t.Expect(err).ToNot(HaveOccurred())
+			t.Expect(stdout).To(ContainSubstring("00:09:5b:45:af:d1"))
+			t.Expect(stdout).To(ContainSubstring("00:09:5b:45:af:d2"))
+			t.Expect(stdout).To(ContainSubstring("00:09:5b:45:af:d3"))
+		}, timeout, polling).Should(Succeed())
+
+		ensureNetworkOrder(g, device, appUUID, []string{"vif0", "newvif1", "newvif2", "newvif3"})
+	})
 }
 
 // lookupAssignableAdapter returns the ZioBundle with the given name from the
