@@ -1961,6 +1961,14 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 			}
 			if err != nil {
 				log.Errorf("Failed to check disk format: %v", err.Error())
+				// The disk format can still be settling. DiskConfig carries
+				// the format that volumemgr had recorded when zedmanager
+				// published this config, and a cluster volume reads as its
+				// content format until the PVC exists. So this is not final:
+				// mark it, and maybeRetryConfig reads the disks again and
+				// retries. Without this the app stays down for good, even
+				// after the format is right.
+				status.ConfigFailed = true
 				status.SetErrorNow(err.Error())
 				releaseCPUs(ctx, &config, status)
 				return
