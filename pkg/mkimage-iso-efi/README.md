@@ -117,3 +117,12 @@ It accepts the following `isoroot=` flags:
 * `UUID=` - filesystem UUID
 * `PARTUUID=` - GPT partition UUID
 * `*` - anything else is a device path, or even a file path, e.g. `/dev/sr0` or `/installer.iso`
+
+## Additional root flags
+
+* `rootimg=` - a filesystem image *inside* `root=`, which is mounted and switched into instead of `root=`
+  itself. Use it when `root=` is a carrier, e.g. an ISO holding the real rootfs image.
+* `rootaddmount=<source>:<target>` - bind-mount `<source>` at `<target>` inside the filesystem being
+  switched into, before switching. May be repeated. `<target>` must already exist in that filesystem.
+  `<source>` is resolved relative to `root=` when `rootimg=` is set, and relative to the initramfs
+  otherwise - so an image placed in the initramfs by the bootloader can be used as a source.
