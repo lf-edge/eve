@@ -869,15 +869,17 @@ func (d *daemon) handleStartingK3s(ctx context.Context, ev Event) {
 		// returns nearly instantly, so the extra state is cheap.
 		//
 		// Every phase also goes via StateImporting, PhaseSteady
-		// included. ImportAll is per-EVE-release work: it re-tags the
-		// external-boot-image to the running release, which pillar
-		// references as :latest with imagePullPolicy Never. The
+		// included. ImportAll is per-EVE-release work: it assembles the
+		// external-boot-image from the running rootfs and tags it with
+		// that release, which pillar references as :latest with
+		// imagePullPolicy Never. The
 		// initialization markers are restored from /persist and so
 		// survive an EVE upgrade, making PhaseSteady the phase on the
 		// first boot of a *new* release — a steady boot that skips the
 		// import leaves :latest on the prior release's image, and no
-		// container app can start. ImportAll pre-checks each image and
-		// is a few containerd lookups when they are already present.
+		// container app can start. Cheap on a repeat: WriteBlob
+		// short-circuits on digests already recorded, snapshot placement
+		// is skipped by a Stat, and the boot image is a sub-second mkfs.
 		switch d.phase {
 		case PhaseFirstBoot:
 			d.transition(ctx, StateImporting, "k3s-started/first-boot")
