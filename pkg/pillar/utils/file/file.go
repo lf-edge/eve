@@ -223,8 +223,17 @@ func ReadWithMaxSize(log *base.LogObject, filename string, maxReadSize int) ([]b
 		return nil, err
 	}
 	defer f.Close()
+	// Size the buffer to the file (capped at maxReadSize+1) instead of always
+	// allocating maxReadSize+1. pubsub-large stores each field of a large object
+	// as its own small file yet reads them with a 1 MiB maxReadSize, so a fixed
+	// max-sized buffer amplified every tiny-field read by orders of magnitude and,
+	// under DeviceNetworkStatus republish churn, drove the pillar cgroup to OOM.
+	bufSize := maxReadSize + 1
+	if fi, statErr := f.Stat(); statErr == nil && fi.Size() < int64(maxReadSize) {
+		bufSize = int(fi.Size()) + 1
+	}
 	r := bufio.NewReader(f)
-	content := make([]byte, maxReadSize+1)
+	content := make([]byte, bufSize)
 	n, err := r.Read(content)
 	if err != nil {
 		err = fmt.Errorf("ReadWithMaxSize %s failed: %v", filename, err)
