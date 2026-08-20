@@ -84,10 +84,11 @@ func (z *zedrouter) handleRPC(rpc *rpcRequest) {
 		l2Only := cnirpc.PodIPAMConfig{}
 		retval := request.retval
 		retval.AppUUID, retval.UseDHCP, retval.Interfaces, err =
-			z.handleConnectPodRequest(request.args.Pod, request.args.PodInterface, l2Only)
+			z.handleConnectPodRequest(request.args.Pod, request.args.PodInterface,
+				request.args.NetworkInstance, l2Only)
 	case connectPodAtL3Request:
 		request.retval.AppUUID, _, _, err = z.handleConnectPodRequest(request.args.Pod,
-			request.args.PodInterface, request.args.PodIPAMConfig)
+			request.args.PodInterface, request.args.NetworkInstance, request.args.PodIPAMConfig)
 	case disconnectPodRequest:
 		err = z.handleDisconnectPodRequest(request.args, request.retval)
 	case checkPodConnectionRequest:
@@ -104,26 +105,25 @@ func (z *zedrouter) handleRPC(rpc *rpcRequest) {
 // Used for both connectPodAtL2Request and connectPodAtL3Request.
 // Will setup L3 connectivity if ipamConfig is defined, L2-only otherwise.
 func (z *zedrouter) handleConnectPodRequest(pod cnirpc.AppPod,
-	podInterface cnirpc.NetInterfaceWithNs, ipamConfig cnirpc.PodIPAMConfig) (
+	podInterface cnirpc.NetInterfaceWithNs, networkInstance string,
+	ipamConfig cnirpc.PodIPAMConfig) (
 	appUUID uuid.UUID, niWithDHCP bool, interfaces []cnirpc.NetInterfaceWithNs, err error) {
-	appConfig, appStatus, err := z.getAppByPodName(pod.Name)
+	appConfig, appStatus, err := z.resolveApp(pod, networkInstance)
 	if err != nil {
 		z.log.Error(err)
 		return uuid.UUID{}, false, nil, err
 	}
 	appUUID = appStatus.UUIDandVersion.UUID
 	appStatus.AppPod = pod
-	var adapterStatus *types.AppNetAdapterStatus
-	for i := range appStatus.AppNetAdapterList {
-		adapterStatus = &appStatus.AppNetAdapterList[i]
-		if bytes.Equal(podInterface.MAC, adapterStatus.Mac) {
-			break
-		}
-		adapterStatus = nil
-	}
+	adapterStatus := z.selectAdapter(appStatus, &podInterface, networkInstance)
 	if adapterStatus == nil {
-		err = fmt.Errorf("failed to find adapter with MAC %s for app %v",
-			podInterface.MAC, appStatus.UUIDandVersion.UUID)
+		if networkInstance != "" {
+			err = fmt.Errorf("failed to find adapter on network instance %s for app %v",
+				networkInstance, appStatus.UUIDandVersion.UUID)
+		} else {
+			err = fmt.Errorf("failed to find adapter with MAC %s for app %v",
+				podInterface.MAC, appStatus.UUIDandVersion.UUID)
+		}
 		z.log.Error(err)
 		return appUUID, false, nil, err
 	}
@@ -195,7 +195,7 @@ func (z *zedrouter) handleConnectPodRequest(pod cnirpc.AppPod,
 
 func (z *zedrouter) handleDisconnectPodRequest(
 	args cnirpc.DisconnectPodArgs, retval *cnirpc.DisconnectPodRetval) error {
-	appConfig, appStatus, err := z.getAppByPodName(args.Pod.Name)
+	appConfig, appStatus, err := z.resolveApp(args.Pod, args.NetworkInstance)
 	if err != nil {
 		// App is already removed.
 		// Most likely we got a duplicate CNI DEL call, which is allowed by the CNI spec.
@@ -262,7 +262,7 @@ func (z *zedrouter) handleDisconnectPodRequest(
 
 func (z *zedrouter) handleCheckPodConnectionRequest(
 	args cnirpc.CheckPodConnectionArgs, retval *cnirpc.CheckPodConnectionRetval) error {
-	_, appStatus, err := z.getAppByPodName(args.Pod.Name)
+	_, appStatus, err := z.resolveApp(args.Pod, args.NetworkInstance)
 	if err != nil {
 		z.log.Error(err)
 		return err
@@ -358,6 +358,66 @@ func (z *zedrouter) getAppByPodName(
 		}
 	}
 	return nil, nil, fmt.Errorf("failed to find app network status for pod %s", podName)
+}
+
+// resolveApp finds the AppNetworkConfig/Status for an inbound CNI request. A non-empty
+// networkInstance means the request came from a directly-deployed Kubernetes workload (the
+// per-NI NAD carried it), resolved by Kubernetes identity; otherwise it is a controller-managed
+// app, resolved by the UUID prefix embedded in the pod name.
+func (z *zedrouter) resolveApp(pod cnirpc.AppPod, networkInstance string) (
+	*types.AppNetworkConfig, *types.AppNetworkStatus, error) {
+	if networkInstance != "" {
+		return z.getAppByKubeWorkload(pod.Namespace, pod.Name)
+	}
+	return z.getAppByPodName(pod.Name)
+}
+
+// getAppByKubeWorkload resolves a directly-deployed Kubernetes workload pod to the
+// AppNetworkConfig synthesized for it by zedkube. The pod carries no controller-assigned UUID
+// prefix, so it is matched by Kubernetes identity: namespace plus the bare Pod name or the bare
+// ReplicaSet (owner) name embedded in the synthesized config's KubeApp field.
+func (z *zedrouter) getAppByKubeWorkload(namespace, podName string) (
+	*types.AppNetworkConfig, *types.AppNetworkStatus, error) {
+	for _, item := range z.subKubeAppNetworkConfig.GetAll() {
+		config := item.(types.AppNetworkConfig)
+		if config.KubeApp == nil || config.KubeApp.Namespace != namespace {
+			continue
+		}
+		if !base.KubePodMatchesOwner(podName, config.KubeApp.OwnerName) {
+			continue
+		}
+		appStatus := z.lookupAppNetworkStatus(config.Key())
+		if appStatus == nil {
+			return nil, nil, fmt.Errorf(
+				"no app network status yet for kube workload %s/%s", namespace, podName)
+		}
+		return &config, appStatus, nil
+	}
+	return nil, nil, fmt.Errorf(
+		"failed to find app network config for kube workload %s/%s", namespace, podName)
+}
+
+// selectAdapter picks the AppNetAdapterStatus that an inbound CNI interface refers to.
+// Controller-managed apps match by the MAC EVE pre-assigned and baked into the pod spec.
+// Directly-deployed Kubernetes workloads supply no MAC, so they match by the Network Instance
+// their NAD attached to; the EVE-computed MAC is then made authoritative by copying it into
+// podInterface so eve-bridge surfaces it in the CNI result.
+func (z *zedrouter) selectAdapter(appStatus *types.AppNetworkStatus,
+	podInterface *cnirpc.NetInterfaceWithNs, networkInstance string) *types.AppNetAdapterStatus {
+	for i := range appStatus.AppNetAdapterList {
+		adapterStatus := &appStatus.AppNetAdapterList[i]
+		if networkInstance != "" {
+			if adapterStatus.Network.String() == networkInstance {
+				podInterface.MAC = adapterStatus.Mac
+				return adapterStatus
+			}
+			continue
+		}
+		if bytes.Equal(podInterface.MAC, adapterStatus.Mac) {
+			return adapterStatus
+		}
+	}
+	return nil
 }
 
 func (z *zedrouter) runRPCServer() error {

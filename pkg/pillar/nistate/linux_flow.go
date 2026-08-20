@@ -647,8 +647,7 @@ func (lc *LinuxCollector) processDHCPPacket(
 		if vif == nil {
 			return nil, true
 		}
-		update := vif.addIP(dhcpv4.YourClientIP, types.AddressSourceExternalDHCP,
-			validUntil)
+		update := vif.setExternalDHCPv4(dhcpv4.YourClientIP, validUntil)
 		if update != nil {
 			addrUpdates = append(addrUpdates, *update)
 		}

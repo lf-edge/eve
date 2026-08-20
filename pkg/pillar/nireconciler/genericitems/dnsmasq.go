@@ -137,12 +137,18 @@ type DNSServer struct {
 type UpstreamDNSServer struct {
 	// IP address of the upstream DNS server.
 	IPAddress net.IP
+	// Domains optionally limits this upstream to the listed DNS suffixes.
+	// An empty list makes this a default upstream server.
+	Domains []string
 	// Port to use to contact the upstream DNS server.
+	// Optional for upstreams reachable through host networking, such as the
+	// Kubernetes CoreDNS ClusterIP.
 	Port NetworkIf
 }
 
 func equalUpstreamDNSServer(a, b UpstreamDNSServer) bool {
 	return netutils.EqualIPs(a.IPAddress, b.IPAddress) &&
+		generics.EqualSets(a.Domains, b.Domains) &&
 		a.Port == b.Port
 }
 
@@ -302,7 +308,9 @@ func (d Dnsmasq) Dependencies() (deps []dg.Dependency) {
 	})
 	var ports []NetworkIf
 	for _, upstreamSrv := range d.DNSServer.UpstreamServers {
-		ports = append(ports, upstreamSrv.Port)
+		if upstreamSrv.Port.IfName != "" {
+			ports = append(ports, upstreamSrv.Port)
+		}
 	}
 	ports = generics.FilterDuplicates(ports)
 	for _, port := range ports {
@@ -629,8 +637,17 @@ func (c *DnsmasqConfigurator) CreateDnsmasqConfig(buffer io.Writer, dnsmasq Dnsm
 	// If we have no port associated with the network instance (air-gapped),
 	// then this is nowhere.
 	for _, srv := range dnsmasq.DNSServer.UpstreamServers {
-		_, err := io.WriteString(buffer,
-			fmt.Sprintf("server=%s@%s\n", srv.IPAddress, srv.Port.IfName))
+		var server strings.Builder
+		server.WriteString("server=")
+		if len(srv.Domains) > 0 {
+			fmt.Fprintf(&server, "/%s/", strings.Join(srv.Domains, "/"))
+		}
+		server.WriteString(srv.IPAddress.String())
+		if srv.Port.IfName != "" {
+			fmt.Fprintf(&server, "@%s", srv.Port.IfName)
+		}
+		server.WriteByte('\n')
+		_, err := io.WriteString(buffer, server.String())
 		if err != nil {
 			return writeErr(err)
 		}

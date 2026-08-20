@@ -4,6 +4,7 @@
 package nireconciler_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log"
@@ -2946,6 +2947,28 @@ func TestCNI(test *testing.T) {
 	var recUpdate nirec.ReconcilerUpdate
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+
+	// Local NIs running under EVE-K forward Kubernetes DNS names to CoreDNS,
+	// without forcing the query through the NI's external port.
+	dnsmasqRef := dg.Reference(genericitems.Dnsmasq{
+		ListenIf: genericitems.NetworkIf{IfName: "bn1"},
+	})
+	dnsmasqItem, _, _, found := niReconciler.GetCurrentState().Item(dnsmasqRef)
+	t.Expect(found).To(BeTrue())
+	dnsmasq := dnsmasqItem.(genericitems.Dnsmasq)
+	var dnsmasqConfig bytes.Buffer
+	dnsmasqLogger := logrus.StandardLogger()
+	dnsmasqLog := base.NewSourceLogObject(dnsmasqLogger, "test", 1234)
+	dnsmasqConfigurator := genericitems.DnsmasqConfigurator{
+		Log: dnsmasqLog, Logger: dnsmasqLogger,
+	}
+	t.Expect(dnsmasqConfigurator.CreateDnsmasqConfig(&dnsmasqConfig, dnsmasq)).To(Succeed())
+	t.Expect(dnsmasqConfig.String()).To(ContainSubstring(
+		"server=/cluster.local/10.43.0.10\n"))
+	t.Expect(dnsmasqConfig.String()).To(ContainSubstring(
+		"server=/internal/10.43.0.10\n"))
+	t.Expect(dnsmasqConfig.String()).To(ContainSubstring(
+		"server=8.8.8.8@eth0\n"))
 
 	// Connect K3s Pod into the network instance.
 	// L2-only connection for now.

@@ -209,6 +209,13 @@ func (z *zedrouter) updateNIStatusAfterAppNetworkInactivate(
 func (z *zedrouter) doCopyAppNetworkConfigToStatus(
 	config types.AppNetworkConfig,
 	status *types.AppNetworkStatus) {
+	status.DisplayName = config.DisplayName
+	if config.KubeApp == nil {
+		status.KubeApp = nil
+	} else {
+		kubeApp := *config.KubeApp
+		status.KubeApp = &kubeApp
+	}
 
 	ulcount := len(config.AppNetAdapterList)
 	prevNetStatus := status.AppNetAdapterList
