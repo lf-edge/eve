@@ -669,7 +669,7 @@ func Init(t *testing.T) *T {
 	th.adamClient = controller.NewAdamClient(
 		adamLog, th.artifactDir, GetControllerHostname(),
 		adamIPs, GetControllerPort(), th.caCert, th.caKey, th.adamStatusCh)
-	if controllerFaultsEnabled {
+	if ControllerFaultsEnabled() {
 		th.adamClient.EnableFaultInjection()
 	}
 	err = th.adamClient.Start()
