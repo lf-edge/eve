@@ -22,10 +22,7 @@ conf/grub.cfg
 conf/device.cert.pem
 conf/device.key.pem
 conf/soft_serial
-pkg/kube/external-boot-image.tar
 pkg/eve/Dockerfile
-pkg/external-boot-image/Dockerfile
-pkg/external-boot-image/*.tar
 tools/compare-sbom-sources/vendor
 tools/get-deps/get-deps
 tools/get-deps/vendor
@@ -35,3 +32,5 @@ pkg/installer/vendor/winapi-*/lib
 pkg/installer/vendor/windows-sys*/src/Windows/
 pkg/monitor/eve-monitor-rs
 pkg/pillar/lk-build-arg-COVER
+
+__pycache__/
