@@ -4,6 +4,7 @@
 package nireconciler_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log"
@@ -2947,6 +2948,28 @@ func TestCNI(test *testing.T) {
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
 
+	// Local NIs running under EVE-K forward Kubernetes DNS names to CoreDNS,
+	// without forcing the query through the NI's external port.
+	dnsmasqRef := dg.Reference(genericitems.Dnsmasq{
+		ListenIf: genericitems.NetworkIf{IfName: "bn1"},
+	})
+	dnsmasqItem, _, _, found := niReconciler.GetCurrentState().Item(dnsmasqRef)
+	t.Expect(found).To(BeTrue())
+	dnsmasq := dnsmasqItem.(genericitems.Dnsmasq)
+	var dnsmasqConfig bytes.Buffer
+	dnsmasqLogger := logrus.StandardLogger()
+	dnsmasqLog := base.NewSourceLogObject(dnsmasqLogger, "test", 1234)
+	dnsmasqConfigurator := genericitems.DnsmasqConfigurator{
+		Log: dnsmasqLog, Logger: dnsmasqLogger,
+	}
+	t.Expect(dnsmasqConfigurator.CreateDnsmasqServersFile(&dnsmasqConfig, dnsmasq)).To(Succeed())
+	t.Expect(dnsmasqConfig.String()).To(ContainSubstring(
+		"server=/cluster.local/10.43.0.10\n"))
+	t.Expect(dnsmasqConfig.String()).To(ContainSubstring(
+		"server=/internal/10.43.0.10\n"))
+	t.Expect(dnsmasqConfig.String()).To(ContainSubstring(
+		"server=8.8.8.8@eth0\n"))
+
 	// Connect K3s Pod into the network instance.
 	// L2-only connection for now.
 	pod := cnirpc.AppPod{
@@ -3010,6 +3033,111 @@ func TestCNI(test *testing.T) {
 	t.Expect(itemIsCreated(routeRef)).To(BeFalse())
 
 	// Delete network instance
+	_, err = niReconciler.DelNI(ctx, ni1UUID.UUID)
+	t.Expect(err).ToNot(HaveOccurred())
+}
+
+// TestCNIDefaultRouteVia verifies that AppNetAdapterConfig.DefaultRouteVia overrides the
+// default-route gateway for a Kubernetes pod's NI attachment, instead of the gateway the
+// Network Instance (ni1, whose "ethernet0" port is a management port) would otherwise hand
+// out via DHCP.
+func TestCNIDefaultRouteVia(test *testing.T) {
+	t := initTest(test, true)
+	networkMonitor.AddOrUpdateInterface(eth0)
+	networkMonitor.AddOrUpdateInterface(eth1)
+	var routes []netmonitor.Route
+	routes = append(routes, eth0Routes...)
+	routes = append(routes, eth1Routes...)
+	networkMonitor.UpdateRoutes(routes)
+	ctx := reconciler.MockRun(context.Background())
+	updatesCh := niReconciler.WatchReconcilerUpdates()
+	niReconciler.RunInitialReconcile(ctx)
+
+	// Create local network instance (ni1's gateway is 10.10.10.1).
+	networkMonitor.AddOrUpdateInterface(ni1BridgeIf)
+	_, err := niReconciler.AddNI(ctx, ni1Config, ni1Bridge)
+	t.Expect(err).ToNot(HaveOccurred())
+	var recUpdate nirec.ReconcilerUpdate
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+
+	// Directly-deployed Kubernetes workload requesting 10.10.10.50 (a peer
+	// application on the same NI) as its default-route gateway, instead of
+	// ni1's own gateway 10.10.10.1.
+	appUUID := makeUUID("8f0a6e1e-6e53-4e9c-9f0f-2e6a8f2b6a11")
+	peerGateway := ipAddress("10.10.10.50")
+	appNetConfig := types.AppNetworkConfig{
+		UUIDandVersion: appUUID,
+		DisplayName:    "native-app",
+		Activate:       true,
+		AppNetAdapterList: []types.AppNetAdapterConfig{
+			{
+				Name:            "net0",
+				IntfOrder:       0,
+				Network:         ni1UUID.UUID,
+				DefaultRouteVia: peerGateway,
+			},
+		},
+	}
+	pod := cnirpc.AppPod{
+		Name:      "native-pod",
+		NetNsPath: "/var/run/netns/native-pod-netns",
+	}
+	vif := nirec.AppVIF{
+		App:            appUUID.UUID,
+		NI:             ni1UUID.UUID,
+		NetAdapterName: "net0",
+		VIFNum:         1,
+		GuestIfMAC:     macAddress("02:00:00:00:04:02"),
+		GuestIP:        ipAddress("10.10.10.3"),
+		PodVIF: types.PodVIF{
+			GuestIfName: "net0",
+			IPAM: cnirpc.PodIPAMConfig{
+				IPs: []cnirpc.PodIPAddress{
+					{
+						Address: ipAddressWithPrefix("10.10.10.3/32"),
+						Gateway: ipAddress("10.10.10.1"),
+					},
+				},
+				Routes: []cnirpc.PodRoute{
+					{Dst: ipSubnet("10.10.10.0/24")},
+					{Dst: ipSubnet("0.0.0.0/0"), GW: ipAddress("10.10.10.1")},
+				},
+			},
+		},
+	}
+	_, err = niReconciler.AddAppConn(ctx, appNetConfig, 2, pod, []nirec.AppVIF{vif})
+	t.Expect(err).ToNot(HaveOccurred())
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+
+	appRef := linuxitems.ContainerApp{ID: appUUID.UUID}
+	netIf := genericitems.NetworkIf{IfName: "net0"}
+
+	// The peer gateway is outside the pod's own /32 address, so it needs an
+	// explicit connected (link-scope) route to be reachable at all.
+	peerRouteRef := dg.Reference(linuxitems.Route{
+		Route:    netlink.Route{Dst: ipSubnet("10.10.10.50/32"), Family: netlink.FAMILY_V4},
+		OutputIf: netIf,
+		ForApp:   appRef,
+	})
+	t.Expect(itemIsCreated(peerRouteRef)).To(BeTrue())
+
+	// The default route must go via the requested peer, not ni1's own gateway.
+	defRouteRef := dg.Reference(linuxitems.Route{
+		Route:    netlink.Route{Dst: ipSubnet("0.0.0.0/0"), Family: netlink.FAMILY_V4},
+		OutputIf: netIf,
+		ForApp:   appRef,
+	})
+	defRouteItem, _, _, found := niReconciler.GetCurrentState().Item(defRouteRef)
+	t.Expect(found).To(BeTrue())
+	defRoute := defRouteItem.(linuxitems.Route)
+	t.Expect(defRoute.Gw.Equal(peerGateway)).To(BeTrue())
+	t.Expect(defRoute.GwViaLinkRoute).To(BeTrue())
+
+	// Disconnect the pod and delete the network instance.
+	_, err = niReconciler.DelAppConn(ctx, appUUID.UUID)
+	t.Expect(err).ToNot(HaveOccurred())
 	_, err = niReconciler.DelNI(ctx, ni1UUID.UUID)
 	t.Expect(err).ToNot(HaveOccurred())
 }
