@@ -67,6 +67,22 @@ const (
 	// the device, and nothing is expected to change for minutes.
 	storageReclaimPollInterval = 15 * time.Second
 
+	// deviceRebootTimeout bounds the wait for evidence that a reboot the
+	// controller asked for has actually happened. It only has to cover the
+	// shutdown plus the first post-boot info message, not the app coming back.
+	deviceRebootTimeout = 5 * time.Minute
+
+	// postRebootEndStateTimeout bounds the same end-state assertions as
+	// purgeEndStateTimeout when they are re-run after a reboot, where the app
+	// has to be brought up again rather than merely still be running. It must
+	// clear pillar's boot-retry interval (timer.boot.retry, default ten
+	// minutes): a reboot can land domainmgr's workload create before kubevirt's
+	// virt-api is serving, and the validating webhook then refuses the
+	// connection. That marks the domain BootFailed, and maybeRetryBoot leaves it
+	// that way until the interval elapses - so a budget shorter than the
+	// interval reports a transient race as a purge that did not hold.
+	postRebootEndStateTimeout = 15 * time.Minute
+
 	// clusterReadyTimeout bounds a single eve-k node becoming Ready. k3s and
 	// Longhorn take minutes to come up, and an app deployed before that sits in
 	// INITIAL - burning the app-ready budget on something that is not the app.
