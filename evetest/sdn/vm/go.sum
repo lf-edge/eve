@@ -51,10 +51,10 @@ github.com/lf-edge/eve-api/go v0.0.0-20260812180240-99d02ddcfcb0 h1:vFrZPWDaFupy
 github.com/lf-edge/eve-api/go v0.0.0-20260812180240-99d02ddcfcb0/go.mod h1:6HxNA/qKJVEqwpuOFkcQ0h3QyotvAs/cjHLC961FPOY=
 github.com/lf-edge/eve-libs v0.0.0-20260304091825-96eaa95b9f8b h1:9aYAlHrCPf/w7SmODoT94o9PezYDl8pMFXJ6cX2VnLY=
 github.com/lf-edge/eve-libs v0.0.0-20260304091825-96eaa95b9f8b/go.mod h1:ltvACFoIkGSeuuK+4Gl5+or3dbIxG2np6K0PQYkk6hU=
+github.com/lf-edge/eve/evetest v0.0.0-20260820145609-63ab025d6185 h1:agtPP9iMc5xt+dOiQuCLILIs0MfzNiVfWB1H63xOudg=
+github.com/lf-edge/eve/evetest v0.0.0-20260820145609-63ab025d6185/go.mod h1:0rjyNSuw/de5os1UZon3oguCZbVmi0m1s1KxQWS678M=
 github.com/lf-edge/eve/pkg/pillar v0.0.0-20260421125048-8d3825045e4e h1:MGhvM4TrXHYyssTTcEkpc79zatoZ1oJRrrbjTU++ps0=
 github.com/lf-edge/eve/pkg/pillar v0.0.0-20260421125048-8d3825045e4e/go.mod h1:Zx1ZEowId6xn7o9qGVNymtxc87muRObab6SofXZCXUk=
-github.com/milan-zededa/eve/evetest v0.0.0-20260818092050-7a691e7025fe h1:ZsOTnhqHvRPYWVNHRU2mLW4fxaNXYk+05BRLkxQgfLw=
-github.com/milan-zededa/eve/evetest v0.0.0-20260818092050-7a691e7025fe/go.mod h1:K4ro/psfGrvx7bqQ+keW6TLemVu3lLkFTkl5WIvN7BI=
 github.com/moby/docker-image-spec v1.3.1 h1:jMKff3w6PgbfSa69GfNg+zN/XLhfXJGnEx3Nl2EsFP0=
 github.com/moby/docker-image-spec v1.3.1/go.mod h1:eKmb5VW8vQEh/BAr2yvVNvuiJuY6UIocYsFu/DxxRpo=
 github.com/moby/moby/api v1.55.0 h1:2/sexvQyqIWS8pRSCFddBfpW2qE7vR7FCL+vN8pxwMc=
