@@ -327,22 +327,81 @@ libvirt-setup-broker-user:
 	else \
 		echo "eve-broker user already exists"; \
 	fi
+	@# useradd -m honors login.defs HOME_MODE, which is 0700 on e.g.
+	@# Fedora; libvirt's QEMU user must be able to traverse into the
+	@# default image directory below this home to open the VM disks.
+	@# g+x matters even with o+x set: the QEMU user is made a member of
+	@# the eve-broker group (above), so the -- otherwise empty -- group
+	@# class governs its access and the others bits do not apply to it.
+	chmod g+x,o+x /home/eve-broker
 	@echo "Adding eve-broker to docker and libvirt groups (for socket access)..."
 	usermod -aG docker eve-broker || true
 	usermod -aG libvirt eve-broker || true
-	@echo "Allowing libvirt-qemu to access eve-broker-owned images..."
-	usermod -aG eve-broker libvirt-qemu || true
+	@# The user libvirt runs QEMU as is distro-specific: "libvirt-qemu" on
+	@# Debian/Ubuntu, "qemu" on Fedora/RHEL/SUSE. QEMU needs membership in
+	@# the eve-broker group to open eve-broker-owned files: VM disks under
+	@# the image directory and the console logs pre-created (mode 0660) by
+	@# the broker. Without it, powering on a VM fails with EACCES.
+	@QEMU_USER=""; \
+	for u in libvirt-qemu qemu; do \
+		if id -u $$u >/dev/null 2>&1; then QEMU_USER=$$u; break; fi; \
+	done; \
+	if [ -z "$$QEMU_USER" ]; then \
+		echo "Error: found neither 'libvirt-qemu' nor 'qemu' user;"; \
+		echo "       is the libvirt QEMU driver installed?"; \
+		exit 1; \
+	fi; \
+	echo "Allowing $$QEMU_USER (libvirt's QEMU user) to access eve-broker-owned files..."; \
+	usermod -aG eve-broker $$QEMU_USER
 	$(eval IMAGE_DIR := $(or $(EVETEST_BROKER_IMAGE_DIR),/home/eve-broker/images))
 	@echo "Configuring image directory $(IMAGE_DIR) ownership and permissions..."
 	mkdir -p $(IMAGE_DIR)
+	@# Recursive, to also heal files left behind by a broker that (due to
+	@# an earlier USER_OPT bug in libvirt-run-broker-container) ran as root.
+	chown -R eve-broker:eve-broker $(IMAGE_DIR)
 	chgrp libvirt $(IMAGE_DIR)
 	chmod 771 $(IMAGE_DIR)
 	@echo "Image directory $(IMAGE_DIR) is now writable by libvirt group (eve-broker is a member)."
-	@# Verify libvirt-qemu can actually reach the image directory.
-	@if id -u libvirt-qemu >/dev/null 2>&1; then \
-		if ! sudo -u libvirt-qemu test -x $(IMAGE_DIR); then \
-			echo "Warning: libvirt-qemu cannot traverse $(IMAGE_DIR)."; \
-			echo "         Check parent directory permissions or pick a different EVETEST_BROKER_IMAGE_DIR."; \
+	@# Verify libvirt's QEMU user can actually reach the image directory.
+	@for u in libvirt-qemu qemu; do \
+		if id -u $$u >/dev/null 2>&1; then \
+			if ! sudo -u $$u test -x $(IMAGE_DIR); then \
+				echo "Warning: $$u cannot traverse $(IMAGE_DIR)."; \
+				echo "         Check parent directory permissions or pick a different EVETEST_BROKER_IMAGE_DIR."; \
+			fi; \
+			break; \
+		fi; \
+	done
+	@# On SELinux-enforcing hosts (e.g. Fedora), virtlogd is denied access
+	@# to the broker's console logs under /tmp (labeled tmp_t). Pre-create
+	@# the directory (path matches getDeviceConsoleLogFile in
+	@# broker/provider/libvirt.go) labeled virt_log_t -- files created
+	@# inside inherit the directory's type -- and register an fcontext rule
+	@# so relabels do not undo it.
+	@if command -v selinuxenabled >/dev/null 2>&1 && selinuxenabled; then \
+		mkdir -p /tmp/evetest-libvirt-consoles; \
+		chown eve-broker:eve-broker /tmp/evetest-libvirt-consoles; \
+		if command -v semanage >/dev/null 2>&1; then \
+			semanage fcontext -a -t virt_log_t '/tmp/evetest-libvirt-consoles(/.*)?' 2>/dev/null || \
+				semanage fcontext -m -t virt_log_t '/tmp/evetest-libvirt-consoles(/.*)?'; \
+			restorecon -R /tmp/evetest-libvirt-consoles; \
+		else \
+			echo "Warning: semanage not found; applying non-persistent label with chcon."; \
+			chcon -R -t virt_log_t /tmp/evetest-libvirt-consoles; \
+		fi; \
+	fi
+	@# Similarly, QEMU (svirt_t, enforcing) must be able to read the UEFI
+	@# firmware copies under the image directory. libvirt dynamically
+	@# relabels disks and nvram, but not the pflash CODE loader, so the
+	@# tree needs the standard label for VM image directories.
+	@if command -v selinuxenabled >/dev/null 2>&1 && selinuxenabled; then \
+		if command -v semanage >/dev/null 2>&1; then \
+			semanage fcontext -a -t virt_image_t '$(IMAGE_DIR)(/.*)?' 2>/dev/null || \
+				semanage fcontext -m -t virt_image_t '$(IMAGE_DIR)(/.*)?'; \
+			restorecon -R $(IMAGE_DIR); \
+		else \
+			echo "Warning: semanage not found; applying non-persistent label with chcon."; \
+			chcon -R -t virt_image_t $(IMAGE_DIR); \
 		fi; \
 	fi
 	@echo "libvirt-setup-broker-user complete. You can now run the container safely as eve-broker."
@@ -368,18 +427,20 @@ endif
 	# Determine user for container (if eve-broker exists)
 	$(eval EVE_BROKER_UID := $(shell getent passwd eve-broker | cut -d: -f3))
 	$(eval EVE_BROKER_GID := $(shell getent passwd eve-broker | cut -d: -f4))
+	@# USER_OPT is computed at make level: a shell variable would not
+	@# survive into the docker-run recipe line, which runs in its own shell.
+	$(eval USER_OPT := $(if $(EVE_BROKER_UID),-u $(EVE_BROKER_UID):$(EVE_BROKER_GID)))
 	@if [ -n "$(EVE_BROKER_UID)" ]; then \
 		echo "Running container as eve-broker user ($(EVE_BROKER_UID):$(EVE_BROKER_GID))..."; \
-		USER_OPT="-u $(EVE_BROKER_UID):$(EVE_BROKER_GID)"; \
 	else \
 		echo "Warning: eve-broker user not found. Running as root."; \
 		echo "         To improve security, run: sudo make libvirt-setup-broker-user"; \
-		USER_OPT=""; \
-	fi; \
+	fi
 	# Run the broker container in privileged mode to allow enabling
 	# forwarding of link-local protocols (EAPOL, LLDP) on the xconnect bridges.
 	docker run --rm -it \
-		$$USER_OPT \
+		$(USER_OPT) \
+		--entrypoint /usr/local/bin/evetest-broker-capped \
 		--group-add $(LIBVIRT_GID) \
 		--group-add $(DOCKER_GID) \
 		$(EV_VARS) \

@@ -29,6 +29,13 @@ var (
 )
 
 func main() {
+	// The broker may run as a non-root user (libvirt provider), while the
+	// artifacts it creates (VM disks, config images, console logs) must be
+	// readable and writable by libvirt's qemu user, which is made a member
+	// of the broker's primary group by `make libvirt-setup-broker-user`.
+	// Keep the group permission bits on everything the broker creates.
+	syscall.Umask(0o002)
+
 	constants.InitViperConfig()
 
 	// Setup logging
