@@ -5,14 +5,31 @@ package apps_test
 
 import (
 	"testing"
+	"time"
 
 	// revive:disable:dot-imports
 	. "github.com/onsi/gomega"
 
 	"github.com/lf-edge/eve-api/go/evecommon"
+	eveinfo "github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/evetest"
+	"github.com/lf-edge/eve/evetest/matchers"
 	"github.com/lf-edge/eve/evetest/netmodels"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+)
+
+const (
+	powerCutMethodParamKey = "POWER_CUT_METHOD"
+
+	// powerCutPowerCycle takes the node down by pulling its (virtual) power, so
+	// EVE gets no chance to act on anything still in flight.
+	powerCutPowerCycle = "power-cycle"
+	// powerCutControllerReboot takes the node down with a reboot command from
+	// the controller. zedagent stops parsing a configuration as soon as it sees
+	// a new reboot counter, so a purge submitted after that command is not
+	// looked at until the device comes back - the same deferral a power cut
+	// produces, reached without cutting power.
+	powerCutControllerReboot = "controller-reboot"
 )
 
 // TestVMAppPurgeAfterPowerCycle exercises a purge issued while the device is
@@ -85,6 +102,12 @@ import (
 //     above for what each one can and cannot show.
 //   - TPM via evetest.TPMParameter().
 //   - FILESYSTEM (ext4|zfs, defaults to ext4) via evetest.FilesystemParameter().
+//   - POWER_CUT_METHOD (power-cycle|controller-reboot, defaults to
+//     power-cycle): how the node is taken down while the purge is submitted.
+//     Both leave the purge to be discovered on the next boot; the
+//     controller-reboot form reaches that window through zedagent's config
+//     parsing rather than by pulling the power, so it also covers a purge
+//     deferred by an orderly reboot.
 //
 // Phases
 // ------
@@ -92,9 +115,10 @@ import (
 //     for RUNNING.
 //  2. baseline-recorded: capture the volume's generation key and on-disk path,
 //     and read the persisted purge counter.
-//  3. device-powered-off: EdgeDevice.SyncDisks(), then EdgeDevice.PowerOff()
-//     (hard power-off through the broker, no reboot to bring it back on its
-//     own). The sync matters - see EdgeDevice.SyncDisks.
+//  3. device-powered-off: EdgeDevice.SyncDisks(), then the node goes down by
+//     the selected POWER_CUT_METHOD - PowerOff() (hard power-off through the
+//     broker, no reboot to bring it back on its own) or RequestReboot(false).
+//     The sync matters - see EdgeDevice.SyncDisks.
 //  4. purge-issued-while-down: PurgeApplication(waitUntilPurged=false) -
 //     bumps the purge counter and pushes config to the controller; this must
 //     succeed even though the device cannot fetch it yet (see
@@ -111,6 +135,14 @@ import (
 //     asked. On Kubevirt the decisive one is "exactly one VMIRS, named for the
 //     NEW generation": nothing else notices an old generation that stays in
 //     the cluster, since both would survive indefinitely, each reporting ready.
+//  7. purge-survived-reboot: reboot the node once more, after the purge has
+//     already settled, and re-run the phase-6 assertions unchanged. The field
+//     report this test comes from had a further reboot adding another copy of
+//     the volume without removing the first, so reaching the right end state
+//     once is not the same as holding it across a boot. Reusing the phase-6
+//     assertions is deliberate: the decisive kube check ("exactly one VMIRS,
+//     named for the NEW generation") is exactly what a resurrected generation
+//     would break.
 //
 // Suite placement
 // ---------------
@@ -125,10 +157,26 @@ func TestVMAppPurgeAfterPowerCycle(test *testing.T) {
 		evetest.HypervisorParameter(),
 		evetest.TPMParameter(),
 		evetest.FilesystemParameter(),
+		evetest.TestParameterDefinition{
+			Key:          powerCutMethodParamKey,
+			DefaultValue: powerCutPowerCycle,
+			Description: evetest.TestParameterDescription{
+				Summary:       "How to take the node down while the purge is submitted",
+				Default:       powerCutPowerCycle,
+				AllowedValues: powerCutPowerCycle + "|" + powerCutControllerReboot,
+			},
+		},
 	)
 	hypervisor := evetest.GetHypervisorParameterValue()
 	withTPM := evetest.GetTPMParameterValue()
 	filesystem := evetest.GetFilesystemParameterValue()
+	powerCutMethod := evetest.GetTestParameter[string](powerCutMethodParamKey)
+	if powerCutMethod != powerCutPowerCycle &&
+		powerCutMethod != powerCutControllerReboot {
+		evetestT.Fatalf("Unsupported %s value %q (expected %s or %s)",
+			powerCutMethodParamKey, powerCutMethod,
+			powerCutPowerCycle, powerCutControllerReboot)
+	}
 
 	requiredDevice := purgeDeviceRequirements(devName, withTPM, filesystem, hypervisor)
 	requiredNetModel := evetest.RequireNetworkModel{
@@ -202,17 +250,45 @@ func TestVMAppPurgeAfterPowerCycle(test *testing.T) {
 	// the purge, not about what a power cut does to them - see SyncDisks.
 	device.SyncDisks()
 
-	log.Infof("Powering off device %q", devName)
-	device.PowerOff()
-	evetest.Checkpoint("device-powered-off")
+	// Subscribe before the node goes down, so the first post-boot info message
+	// cannot be missed while the controller-reboot variant waits for it.
+	devUpdates, stopDevWatch := device.WatchDeviceInfo()
+	defer stopDevWatch()
 
-	device.PurgeApplication(appUUID, false, 0)
-	evetest.Checkpoint("purge-issued-while-down")
+	switch powerCutMethod {
+	case powerCutPowerCycle:
+		log.Infof("Powering off device %q", devName)
+		device.PowerOff()
+		evetest.Checkpoint("device-powered-off")
 
-	log.Infof("Powering device %q back on", devName)
-	device.PowerOn(true)
+		device.PurgeApplication(appUUID, false, 0)
+		evetest.Checkpoint("purge-issued-while-down")
+
+		log.Infof("Powering device %q back on", devName)
+		device.PowerOn(true)
+
+	case powerCutControllerReboot:
+		rebootRequestedAt := time.Now()
+		log.Infof("Rebooting device %q from the controller", devName)
+		device.RequestReboot(false)
+		evetest.Checkpoint("device-rebooting")
+
+		device.PurgeApplication(appUUID, false, 0)
+		evetest.Checkpoint("purge-issued-while-down")
+
+		// The device brings itself back, so the only thing left to wait for is
+		// evidence that the reboot happened at all. Without it the assertions
+		// below could run against the pre-reboot state and pass while the purge
+		// has not been looked at yet.
+		t.Eventually(devUpdates, deviceRebootTimeout).Should(Receive(
+			matchers.SatisfyPredicate("device has rebooted",
+				func(dinfo *eveinfo.ZInfoDevice) bool {
+					ts := dinfo.GetLastRebootTime()
+					return ts != nil && ts.AsTime().After(rebootRequestedAt)
+				})))
+	}
 	if hypervisor == evetest.HypervisorKubevirt {
-		// The reboot took k3s down with it, so the node has to become Ready
+		// The node went down and took k3s with it, so it has to become Ready
 		// again before the purged app can be scheduled.
 		device.WaitForClusterNodeIsReady(clusterReadyTimeout)
 	}
@@ -248,4 +324,28 @@ func TestVMAppPurgeAfterPowerCycle(test *testing.T) {
 		}
 	}, storageReclaimTimeout, storageReclaimPollInterval).Should(Succeed())
 	evetest.Checkpoint("old-storage-reclaimed")
+
+	// The end state has to survive a boot, not merely be reached once: the
+	// field report had a further reboot adding another copy of the volume
+	// without removing the first.
+	log.Infof("Rebooting device %q now that the purge has settled", devName)
+	device.SoftReboot(true)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(clusterReadyTimeout)
+	}
+	device.WaitUntilAppIsRunning(appUUID, appReadyTimeout)
+
+	// Deliberately the phase-6 assertions verbatim: a generation resurrected by
+	// the reboot is exactly what "exactly one VMIRS, named for the NEW
+	// generation" rules out, and the counter must not have moved either.
+	t.Eventually(func(g Gomega) {
+		assertPurgeCompleted(g, device, appUUID, wantCounter, baselineVolGen)
+		if hypervisor == evetest.HypervisorKubevirt {
+			assertKubePurgeEndState(g, device, appUUID, appDisplayName, wantCounter)
+		} else {
+			assertLocalDomainPurgeEndState(g, device, appUUID, baselineVolGen,
+				hypervisor)
+		}
+	}, purgeEndStateTimeout, assertPollInterval).Should(Succeed())
+	evetest.Checkpoint("purge-survived-reboot")
 }
