@@ -72,8 +72,10 @@ open(my $fh, '<', $conf) or do {
     exit 0;
 };
 my $configured = 0;
+my $args_line = '';
 while (my $line = <$fh>) {
     last if $line =~ /^\[/;               # stop at snapshot/pending sections
+    $args_line = $1 if $line =~ /^args:\s*(.*)$/;
     next unless $line =~ /^net(\d+):\s*(.*)$/;
     my ($idx, $spec) = ($1, $2);
     my ($bridge) = $spec =~ /bridge=([^,\s]+)/;
@@ -85,17 +87,35 @@ while (my $line = <$fh>) {
 
     my $tap = "tap${vmid}i${idx}";
     log_info($vmid, "configuring xconnect bridge $bridge (tap $tap, net$idx)");
-
-    # Bridge-level forwarding of EAPOL + LLDP.
-    write_sysfs($vmid, "/sys/class/net/$bridge/bridge/group_fwd_mask", $BRIDGE_FWD_MASK);
-    # Do not answer ARP for the host's IPs on this bridge (xconnect VNets carry
-    # no host IP; set defensively to match the libvirt/qemu providers).
-    write_sysfs($vmid, "/proc/sys/net/ipv4/conf/$bridge/arp_ignore", '1');
-    # Per-port LACPDU forwarding on the VM's tap port.
-    write_sysfs($vmid, "/sys/class/net/$tap/brport/group_fwd_mask", $LACP_PORT_MASK);
+    configure_xconnect($vmid, $bridge, $tap);
     $configured++;
 }
 close($fh);
+
+# XConnect NICs defined through QEMU args rather than netX (see
+# buildVMOptions in broker/provider/proxmox.go): the broker places each of
+# them behind its own pcie-root-port so that it lands in its own IOMMU
+# group inside the guest, which is what makes passing an individual NIC
+# through from EVE to an application possible. PVE knows nothing about
+# these taps, so enslave them to their VNet bridges here (the netdev id
+# encodes the bridge: id=evn_<bridge>_<index>, with the ifname adjacent),
+# then apply the same L2 tweaks as for netX-based xconnects.
+while ($args_line =~ /id=evn_(evx[0-9a-f]{5})_\d+,ifname=([^,\s]+)/g) {
+    my ($bridge, $tap) = ($1, $2);
+    log_info($vmid, "enslaving args-defined tap $tap to xconnect bridge $bridge");
+    # Raise the tap MTU to the bridge's before enslaving (as PVE's own
+    # bridge script does), or the bridge MTU would drop to the tap's 1500.
+    if (open(my $mfh, '<', "/sys/class/net/$bridge/mtu")) {
+        my $mtu = <$mfh>;
+        close($mfh);
+        chomp $mtu if defined $mtu;
+        run_cmd($vmid, "ip link set dev $tap mtu $mtu") if $mtu;
+    }
+    run_cmd($vmid, "ip link set dev $tap master $bridge");
+    run_cmd($vmid, "ip link set dev $tap up");
+    configure_xconnect($vmid, $bridge, $tap);
+    $configured++;
+}
 if ($configured) {
     log_info($vmid, "configured $configured xconnect bridge(s)");
 } else {
@@ -183,6 +203,31 @@ sub cleanup_stale_leases {
         }
     } else {
         log_error($vmid, "failed to write $LEASES_FILE: $!");
+    }
+}
+
+# configure_xconnect applies the link-local L2 forwarding tweaks to one
+# xconnect bridge and the VM's tap port on it.
+sub configure_xconnect {
+    my ($vmid, $bridge, $tap) = @_;
+    # Bridge-level forwarding of EAPOL + LLDP.
+    write_sysfs($vmid, "/sys/class/net/$bridge/bridge/group_fwd_mask", $BRIDGE_FWD_MASK);
+    # Do not answer ARP for the host's IPs on this bridge (xconnect VNets carry
+    # no host IP; set defensively to match the libvirt/qemu providers).
+    write_sysfs($vmid, "/proc/sys/net/ipv4/conf/$bridge/arp_ignore", '1');
+    # Per-port LACPDU forwarding on the VM's tap port.
+    write_sysfs($vmid, "/sys/class/net/$tap/brport/group_fwd_mask", $LACP_PORT_MASK);
+}
+
+# run_cmd runs a shell command, logging it and its outcome; best-effort like
+# everything else in this script.
+sub run_cmd {
+    my ($vmid, $cmd) = @_;
+    my $rc = system($cmd);
+    if ($rc == 0) {
+        log_info($vmid, "ran: $cmd");
+    } else {
+        log_error($vmid, "command failed (rc=$rc): $cmd");
     }
 }
 
