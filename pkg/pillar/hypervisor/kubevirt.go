@@ -1309,14 +1309,12 @@ func (ctx kubevirtContext) Stop(domainName string, force bool) error {
 	}
 	kubeconfig := ctx.kubeConfig
 
-	keyToDelete := domainName
 	vmis, ok := ctx.vmiList[domainName]
 	if !ok {
 		if stale, oldKey := ctx.lookupVMIByUUIDPrefix(domainName); stale != nil {
 			logrus.Warnf("Stop: domainName %s not in vmiList; using stale entry under %s",
 				domainName, oldKey)
 			vmis = stale
-			keyToDelete = oldKey
 		} else {
 			return logError("domain %s failed to get vmlist", domainName)
 		}
@@ -1344,10 +1342,9 @@ func (ctx kubevirtContext) Stop(domainName string, force bool) error {
 
 	ctx.clearSRIOVAdminMACs(vmis)
 
-	delete(ctx.vmiList, keyToDelete)
-
-	delete(ctx.prevDomainMetric, keyToDelete)
-
+	// The vmiList entry must outlive Stop: Info() needs it to read the guest's
+	// phase, and without it can only report SCHEDULING while domainmgr polls
+	// for the domain to stop. Delete() and Cleanup() own the removal.
 	return nil
 }
 
@@ -1373,6 +1370,11 @@ func (ctx kubevirtContext) Delete(domainName string) (result error) {
 	}
 
 	onMe, scheduledOnNone, err := ctx.scheduledOnMe(vmis.mtype, vmis.name)
+	if err != nil {
+		// A failed lookup reports onMe=false, which is indistinguishable
+		// from the "scheduled elsewhere" case below.
+		return err
+	}
 	if !onMe && !scheduledOnNone {
 		// Not scheduled on me, but is scheduled elsewhere.
 		return nil
@@ -1428,7 +1430,7 @@ func StopReplicaVMI(kubeconfig *rest.Config, repVmiName string) error {
 		logrus.Infof("Stop VMI Replicaset, Domain already deleted: %v", repVmiName)
 		return nil
 	}
-	logrus.Errorf("Stop VMI Replicaset error %v\n", err)
+	logrus.Errorf("Stop VMI Replicaset %s error %v", repVmiName, err)
 	return err
 }
 
@@ -1642,6 +1644,15 @@ func (t kubevirtTask) Info(domainName string) (int, types.SwState, error) {
 		var rerr error
 		vmirs, rerr = getVmirs(virtClient, kubeName)
 		if rerr != nil {
+			if errors.IsNotFound(rerr) {
+				// Present at the existence check above and gone by this Get,
+				// so this is the same confirmed-absent answer arriving one
+				// call later. Returning here also skips the fall-through's
+				// own Get, which can only reach the same conclusion.
+				logrus.Infof("Info(%s): %s confirmed absent after the existence check",
+					domainName, kubeName)
+				return 0, types.HALTED, nil
+			}
 			if isK3sUnreachable(rerr) {
 				// Unknown, not absent: hold the caller's id rather than
 				// emitting the "confirmed gone" token.
@@ -1668,6 +1679,14 @@ func (t kubevirtTask) Info(domainName string) (int, types.SwState, error) {
 		onMe, scheduledOnNone, err = t.scheduledOnMe(vmis.mtype, kubeName)
 	}
 	if err != nil {
+		if errors.IsNotFound(err) {
+			// Backstop for the lookups that do their own Get: the NOHYPER
+			// dispatch and the fall-through above. Absence is absence
+			// wherever it is observed.
+			logrus.Infof("Info(%s): %s confirmed absent during the scheduling lookup",
+				domainName, kubeName)
+			return 0, types.HALTED, nil
+		}
 		if isK3sUnreachable(err) {
 			logrus.Infof("Info(%s): k3s unreachable while determining scheduled node: %v",
 				domainName, err)
@@ -1743,16 +1762,28 @@ func (ctx kubevirtContext) Cleanup(domainName string) error {
 	}
 
 	var err error
+	key := domainName
 	vmis, ok := ctx.vmiList[domainName]
 	if !ok {
 		if stale, oldKey := ctx.lookupVMIByUUIDPrefix(domainName); stale != nil {
 			logrus.Warnf("Cleanup: domainName %s not in vmiList; using stale entry under %s",
 				domainName, oldKey)
 			vmis = stale
+			key = oldKey
 		} else {
 			return logError("cleanup domain %s failed to get vmlist", domainName)
 		}
 	}
+
+	// Cleanup is the unconditional tail of doInactivate, whereas Delete only
+	// runs while DomainId is still set, so the bookkeeping is released here.
+	// Deferred so a Cleanup that fails partway still releases it rather than
+	// leaking the entry for the lifetime of the agent.
+	defer func() {
+		delete(ctx.vmiList, key)
+		delete(ctx.prevDomainMetric, key)
+	}()
+
 	if vmis.mtype == IsMetaReplicaPod {
 		_, err = InfoReplicaSetContainer(ctx, vmis)
 		if err == nil {
