@@ -533,6 +533,7 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 				PortsWithBpduGuard: apiConfigEntry.GetStp().GetPortsWithBpduGuard(),
 			},
 			ForwardLLDP: apiConfigEntry.ForwardLldp,
+			ClusterWide: apiConfigEntry.ClusterWide,
 		}
 		uuidStr := networkInstanceConfig.UUID.String()
 		log.Functionf("publishNetworkInstanceConfig: processing %s %s type %d activate %v",

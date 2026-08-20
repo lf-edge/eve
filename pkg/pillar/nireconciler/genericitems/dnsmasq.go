@@ -142,12 +142,18 @@ type DNSServer struct {
 type UpstreamDNSServer struct {
 	// IP address of the upstream DNS server.
 	IPAddress net.IP
+	// Domains optionally limits this upstream to the listed DNS suffixes.
+	// An empty list makes this a default upstream server.
+	Domains []string
 	// Port to use to contact the upstream DNS server.
+	// Optional for upstreams reachable through host networking, such as the
+	// Kubernetes CoreDNS ClusterIP.
 	Port NetworkIf
 }
 
 func equalUpstreamDNSServer(a, b UpstreamDNSServer) bool {
 	return netutils.EqualIPs(a.IPAddress, b.IPAddress) &&
+		generics.EqualSets(a.Domains, b.Domains) &&
 		a.Port == b.Port
 }
 
@@ -308,7 +314,9 @@ func (d Dnsmasq) Dependencies() (deps []dg.Dependency) {
 	})
 	var ports []NetworkIf
 	for _, upstreamSrv := range d.DNSServer.UpstreamServers {
-		ports = append(ports, upstreamSrv.Port)
+		if upstreamSrv.Port.IfName != "" {
+			ports = append(ports, upstreamSrv.Port)
+		}
 	}
 	ports = generics.FilterDuplicates(ports)
 	for _, port := range ports {
@@ -947,17 +955,41 @@ func (c *DnsmasqConfigurator) CreateDHCPv4RangeConfig(start, end net.IP) (string
 	return dhcpRange, nil
 }
 
+// CreateDnsmasqServersFile renders the upstream DNS servers (server=
+// entries) read from --servers-file. dnsmasq re-reads the file on SIGHUP.
+// The method is exported just to be exercised by unit tests.
+func (c *DnsmasqConfigurator) CreateDnsmasqServersFile(buffer io.Writer, dnsmasq Dnsmasq) error {
+	var b strings.Builder
+	for _, srv := range dnsmasq.DNSServer.UpstreamServers {
+		b.WriteString("server=")
+		if len(srv.Domains) > 0 {
+			fmt.Fprintf(&b, "/%s/", strings.Join(srv.Domains, "/"))
+		}
+		b.WriteString(srv.IPAddress.String())
+		if srv.Port.IfName != "" {
+			fmt.Fprintf(&b, "@%s", srv.Port.IfName)
+		}
+		b.WriteByte('\n')
+	}
+	if _, err := io.WriteString(buffer, b.String()); err != nil {
+		err = fmt.Errorf("failed to write dnsmasq servers file: %w", err)
+		c.Log.Error(err)
+		return err
+	}
+	return nil
+}
+
 // writeDnsmasqServersFile writes all server= entries listing the upstream
 // DNS servers. dnsmasq re-reads this file on SIGHUP, so a change to the
 // upstream server list (e.g. a port's DNS servers changing after a DHCP
 // renewal) does not require restarting dnsmasq; see NeedsRecreate.
 func (c *DnsmasqConfigurator) writeDnsmasqServersFile(dnsmasq Dnsmasq) error {
-	var b strings.Builder
-	for _, srv := range dnsmasq.DNSServer.UpstreamServers {
-		fmt.Fprintf(&b, "server=%s@%s\n", srv.IPAddress, srv.Port.IfName)
+	var b bytes.Buffer
+	if err := c.CreateDnsmasqServersFile(&b, dnsmasq); err != nil {
+		return err
 	}
 	serversPath := c.dnsmasqServersFile(dnsmasq.Name())
-	if err := fileutils.WriteRename(serversPath, []byte(b.String())); err != nil {
+	if err := fileutils.WriteRename(serversPath, b.Bytes()); err != nil {
 		err = fmt.Errorf("failed to write dnsmasq servers file %s: %w", serversPath, err)
 		c.Log.Error(err)
 		return err
