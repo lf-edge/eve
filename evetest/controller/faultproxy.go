@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -132,7 +133,9 @@ func (p *FaultProxy) Start() error {
 	}
 	// Answers are relayed as they arrive; some of the controller API streams.
 	proxy.FlushInterval = -1
-	proxy.ErrorLog = nil
+	// Left unset, the reverse proxy reports its errors through the global
+	// standard logger, which does not reach the harness log.
+	proxy.ErrorLog = log.New(logrusWriter{p.log}, "", 0)
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if rule := p.takeRule(req); rule != nil {
@@ -246,4 +249,15 @@ func (p *FaultProxy) applyRule(rule *FaultRule, w http.ResponseWriter,
 		}
 		proxy.ServeHTTP(w, req)
 	}
+}
+
+// logrusWriter adapts a logrus entry to io.Writer, for packages which report
+// errors through a *log.Logger.
+type logrusWriter struct {
+	entry *logrus.Entry
+}
+
+func (w logrusWriter) Write(msg []byte) (int, error) {
+	w.entry.Warn(strings.TrimRight(string(msg), "\n"))
+	return len(msg), nil
 }

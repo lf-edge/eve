@@ -14,6 +14,9 @@ import (
 // behind a proxy which the subtests tell to answer, reject or drop selected
 // device requests; every subtest arms its own faults and clears them again.
 //
+// Requires EVETEST_CONTROLLER_FAULTS=true. Without it the devices reach the
+// controller directly and these tests skip.
+//
 // The subtests share one device and one network model so that the framework
 // reuses a single VM across the suite, and all of them hardcode the hypervisor
 // parameter's default, as the other non-application suites do.
@@ -28,12 +31,12 @@ import (
 //     controller rejects outright is given up on, and later changes are still
 //     reported.
 func TestControllerFaultsSuite(test *testing.T) {
-	// The controller is started while the harness comes up, so it has to be
-	// told to run behind the fault injecting proxy before Init.
-	evetest.EnableControllerFaults()
-
 	evetest.Init(test)
 	defer evetest.Close()
+	if !evetest.ControllerFaultsEnabled() {
+		test.Skip("controller fault injection is off; " +
+			"set EVETEST_CONTROLLER_FAULTS=true to run this test")
+	}
 
 	evetest.DefineTestParameters(
 		evetest.HypervisorParameter(),

@@ -69,11 +69,12 @@ const convergeTimeout = 8 * time.Minute
 // -----------
 //   - HYPERVISOR (defaults to KVM).
 func TestInfoRetriedAfterServerError(test *testing.T) {
-	// Also needed when this test runs on its own rather than through the suite;
-	// it has no effect once the controller is already up.
-	evetest.EnableControllerFaults()
 	evetestT := evetest.Init(test)
 	defer evetest.Close()
+	if !evetest.ControllerFaultsEnabled() {
+		test.Skip("controller fault injection is off; " +
+			"set EVETEST_CONTROLLER_FAULTS=true to run this test")
+	}
 	t := NewGomegaWithT(evetestT)
 
 	// Define configurable parameters available for the test.
@@ -172,11 +173,12 @@ func TestInfoRetriedAfterServerError(test *testing.T) {
 // -----------
 //   - HYPERVISOR (defaults to KVM).
 func TestInfoRetriedAfterLostController(test *testing.T) {
-	// Also needed when this test runs on its own rather than through the suite;
-	// it has no effect once the controller is already up.
-	evetest.EnableControllerFaults()
 	evetestT := evetest.Init(test)
 	defer evetest.Close()
+	if !evetest.ControllerFaultsEnabled() {
+		test.Skip("controller fault injection is off; " +
+			"set EVETEST_CONTROLLER_FAULTS=true to run this test")
+	}
 	t := NewGomegaWithT(evetestT)
 
 	// Define configurable parameters available for the test.
@@ -283,11 +285,12 @@ func TestInfoRetriedAfterLostController(test *testing.T) {
 // -----------
 //   - HYPERVISOR (defaults to KVM).
 func TestInfoDroppedOnRejectionKeepsDeviceReporting(test *testing.T) {
-	// Also needed when this test runs on its own rather than through the suite;
-	// it has no effect once the controller is already up.
-	evetest.EnableControllerFaults()
 	evetestT := evetest.Init(test)
 	defer evetest.Close()
+	if !evetest.ControllerFaultsEnabled() {
+		test.Skip("controller fault injection is off; " +
+			"set EVETEST_CONTROLLER_FAULTS=true to run this test")
+	}
 	t := NewGomegaWithT(evetestT)
 
 	// Define configurable parameters available for the test.
