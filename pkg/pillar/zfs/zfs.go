@@ -238,6 +238,30 @@ func DestroyDataset(datasetName string) error {
 	return err
 }
 
+// IsDatasetMounted returns true if the dataset is currently mounted.
+func IsDatasetMounted(datasetName string) (bool, error) {
+	dataset, err := libzfs.DatasetOpen(datasetName)
+	if err != nil {
+		return false, err
+	}
+	defer dataset.Close()
+	mounted, _ := dataset.IsMounted()
+	return mounted, nil
+}
+
+// RenameDataset renames a dataset from oldName to newName. The dataset
+// must not be mounted (mountpoints follow the dataset name).
+func RenameDataset(oldName, newName string) error {
+	dataset, err := libzfs.DatasetOpen(oldName)
+	if err != nil {
+		return err
+	}
+	defer dataset.Close()
+
+	// recur=false (single dataset), forceUnmount=false (caller unmounts first)
+	return dataset.Rename(newName, false, false)
+}
+
 // DatasetExist return true if dataset exists or false when it does not exist
 func DatasetExist(log *base.LogObject, datasetPath string) bool {
 	dataset, err := libzfs.DatasetOpen(datasetPath)
