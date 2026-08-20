@@ -524,7 +524,6 @@ $(CURRENT_DIR): $(BUILD_DIR)
 # if we ran a new build.
 .PHONY: currentversion
 currentversion:
-	#echo $(shell readlink $(CURRENT) | sed -E 's/rootfs-(.*)\.[^.]*$/\1/')
 	@cat $(CURRENT_DIR)/installer/eve_version
 
 test: $(LINUXKIT) pkg/pillar | $(DIST)
