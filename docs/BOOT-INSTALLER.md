@@ -119,5 +119,38 @@ The boot process then is:
 1. `grub.cfg` hands control to `(loop)/EFI/BOOT/grub.cfg` from the loop mounted ISO **V**
 1. `grub.cfg` recognizes that it is a network boot, sets:
    * `kernel /boot/kernel`
-   * `initrd /boot/initrd.img newc:/installer.iso:($install_part)/installer.iso` - this loads the `installer.iso` in the initramfs as a file
-1. `initrd.img` mounts the `/installer.iso` and calls `switch_root`.
+   * `initrd /boot/initrd.img newc:/rootfs_installer.img:($root)/rootfs_installer.img` - this loads the installer rootfs
+     in the initramfs as a file, read out of the loop mounted ISO. If the ISO carries a top-level `config.img`
+     override, it is loaded the same way and passed as `rootaddmount=/config.img:/config.img`
+1. `initrd.img` mounts `/rootfs_installer.img` and calls `switch_root`.
+
+Note that the payload is read from the ISO that grub already has open as `loop`, rather than by naming
+`($install_part)/installer.iso` as the initrd source. The latter is a second URL, so it makes the whole ISO
+cross the network twice - once for grub to read the kernel and initrd out of, and once as the initramfs payload.
+
+For the same reason, prefer serving the netboot directory over HTTP rather than TFTP. Grub's HTTP transport
+implements `seek` with a `Range` request, so grub only transfers the ISO extents it actually reads; its TFTP
+transport has no `seek`, so every backward seek restarts the transfer from byte 0 and discards forward, which
+for a ~500MB ISO means several full transfers before the kernel even starts.
+
+#### Fetching the ISO over HTTP
+
+Grub inherits its device from whatever chainloaded it, so when iPXE loads `BOOT*.EFI` over TFTP,
+`$cmddevice` is `tftp,<server>` and the ISO is read over TFTP as well. To read it over HTTP instead,
+override `$cmddevice` in the `EFI/BOOT/grub.cfg` of the served directory, before the `loopback` line:
+
+```grub
+set cmddevice=http,192.168.1.1
+loopback loop0 ($cmddevice)/installer.iso
+set root=loop0
+set isnetboot=true
+export isnetboot
+configfile ($root)/EFI/BOOT/grub.cfg
+```
+
+A non-default port is given as `http,192.168.1.1:8080`.
+
+Note that `($cmddevice)/installer.iso` resolves from the root of that device, i.e.
+`http://192.168.1.1/installer.iso`, and *not* relative to the directory grub itself was loaded from.
+If the netboot tarball is served from a subdirectory, spell the path out instead, e.g.
+`loopback loop0 (http,192.168.1.1)/eve/installer.iso`.
