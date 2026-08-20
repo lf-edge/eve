@@ -31,7 +31,53 @@ root_img=${rootimg_param#rootimg=}
 # Search for the rootaddmount= cmdline property
 # shellcheck disable=SC2002
 rootaddmount_param=$(cat /proc/cmdline | tr ' ' '\n' | grep '^rootaddmount=')
-# remove the leading "rootaddmount="  to get the actual value
+
+# staging area for bind mount sources that live in the initramfs, see add_mounts
+stagedir=/addmounts
+
+# add_mounts <source prefix> <target root>
+# bind-mounts every rootaddmount=<source>:<target> pair, resolving the source
+# under the given prefix (empty for the initramfs itself) and the target inside
+# the filesystem we are about to switch into
+add_mounts() {
+    src_prefix="$1"
+    target_root="$2"
+    for mountpair in $rootaddmount_param; do
+        # remove the leading "rootaddmount=" to get the actual value
+        mount=${mountpair#rootaddmount=}
+        if [ -z "$mount" ]; then
+            continue
+        fi
+        mount_source=$(echo "$mount" | cut -d':' -f1)
+        mount_target=$(echo "$mount" | cut -d':' -f2)
+        # make sure the mount target exists, after stripping leading slashes
+        mount_target="${mount_target#/}"
+        targetpath="$target_root/$mount_target"
+        mount_source="${mount_source#/}"
+        sourcepath="$src_prefix/$mount_source"
+        if [ ! -e "$sourcepath" ]; then
+            echo "Source path $mount_source does not exist, skipping mount"
+            continue
+        fi
+        if [ -z "$src_prefix" ]; then
+            # switch_root unlinks the whole initramfs. The bind mount itself
+            # survives that, but its source dentry is then deleted, and the
+            # kernel refuses a deleted dentry as the source of a further bind
+            # mount - which is exactly what the onboot containers do with these
+            # files. Move the source onto a tmpfs, which switch_root skips, so
+            # that it stays linked.
+            if [ ! -d "$stagedir" ]; then
+                mkdir -p "$stagedir"
+                mount -t tmpfs tmpfs "$stagedir"
+            fi
+            staged="$stagedir/$mount_source"
+            mkdir -p "$(dirname "$staged")"
+            mv "$sourcepath" "$staged"
+            sourcepath="$staged"
+        fi
+        mount --bind "${sourcepath}" "${targetpath}"
+    done
+}
 
 # Check if root_value is set
 if [ -z "$root_value" ]; then
@@ -43,9 +89,16 @@ echo "searching for root filesystem with value: $root_value"
 
 rootdev=""
 
-# Some emulated CD/DVD-ROM devices might take some time to appear in the
-# system, set a maximum number of retries (one per second) until give up
-cnt=10
+# a root= naming a file needs no device lookup at all: netboot hands us the
+# root image inside the initramfs
+if [ -f "$root_value" ]; then
+    rootdev="$root_value"
+    cnt=0
+else
+    # Some emulated CD/DVD-ROM devices might take some time to appear in the
+    # system, set a maximum number of retries (one per second) until give up
+    cnt=10
+fi
 while [ "$cnt" -gt 0 ]; do
     # Determine if the root_value is a LABEL, UUID, or direct device path
     while read -r line; do
@@ -99,35 +152,16 @@ if [ -n "$rootdev" ]; then
             # Mount the image and call switch_root
             mkdir -p /installer_root
             mount "$rootfsimg" /installer_root
-            # check if the rootaddmount parameter is set and add those mounts
-            if [ -n "$rootaddmount_param" ]; then
-                # remove the leading "rootaddmount=" to get the actual value
-                for mountpair in $rootaddmount_param; do
-                    mount=${mountpair#rootaddmount=}
-                    if [ -z "$mount" ]; then
-                        continue
-                    fi
-                    mount_source=$(echo "$mount" | cut -d':' -f1)
-                    mount_target=$(echo "$mount" | cut -d':' -f2)
-                    # make sure the mount target exists, after stripping leading slashes
-                    mount_target="${mount_target#/}"
-                    targetpath="/installer_root/$mount_target"
-                    mount_source="${mount_source#/}"
-                    sourcepath="/newroot/$mount_source"
-                    if [ ! -e "$sourcepath" ]; then
-                        echo "Source path $mount_source does not exist, skipping mount"
-                        continue
-                    fi
-                    mount --bind "${sourcepath}" "${targetpath}"
-                done
-            fi
+            add_mounts /newroot /installer_root
             exec switch_root /installer_root /sbin/init
         else
             echo "$root_img image not found!"
             exec sh
         fi
     else
-        # No image provided, let's just switch root
+        # No image provided, the root filesystem is what we switch into, so any
+        # additional mounts have to come from the initramfs
+        add_mounts "" /newroot
         exec switch_root /newroot /sbin/init
     fi
 else
