@@ -52,10 +52,12 @@ When running `make run-live` QEMU defaults to 8GB RAM and forwards ssh on port 2
 
 ## Tests
 
-`make test` is the umbrella target — it runs pillar tests *in Docker* plus several smaller test suites. The most useful per-component invocations:
+`make test` runs pillar tests *in Docker* plus several smaller test suites, all for the host architecture. `make test-all` is the umbrella target: it adds `test-bpftrace`, which boots QEMU for amd64 and arm64 and is slow enough that CI runs it in its own path-filtered workflow. The most useful per-component invocations:
 
 ```sh
-make test                                    # full suite (pillar + bpftrace-compiler + dnsmasq + debug + vtpm + newlog + edgeview)
+make test                                    # host-arch suite (pillar + dnstest + debug + vtpm + newlog + edgeview)
+make test-bpftrace                           # QEMU-based bpftrace-compiler tests for amd64 and arm64 (~1h)
+make test-all                                # both of the above
 make -C pkg/pillar test                      # pillar unit tests in docker (produces results.json/xml, coverage.txt)
 make -C pkg/pillar fuzz-test                 # fuzz tests
 make -C pkg/pillar fmt                       # gofmt -w -s
@@ -78,7 +80,7 @@ make mini-yetus                     # Yetus only on files changed vs. master (mu
 make check-docker-hashes-consistency # Check if packages are pointing to the latest version of dependency packages inside their Dockerfile. All packages should point to the same hashes of a common dependency (with a few exceptions)
 ```
 
-`mini-yetus` accepts `MYETUS_SBRANCH`, `MYETUS_DBRANCH`, `MYETUS_VERBOSE=Y`. CI workflows live under `.github/workflows/` — `pr-gate.yml`, `go-tests.yml`, `yetus.yml`, `codeql.yml`, `build.yml`. The shellcheck config (`shellcheckrc`) disables SC3043.
+`mini-yetus` accepts `MYETUS_SBRANCH`, `MYETUS_DBRANCH`, `MYETUS_VERBOSE=Y`. CI workflows live under `.github/workflows/` — `pr-gate.yml`, `go-tests.yml`, `bpftrace-tests.yml`, `yetus.yml`, `codeql.yml`, `build.yml`. The shellcheck config (`shellcheckrc`) disables SC3043.
 
 ## Pillar architecture (the part you'll touch most)
 

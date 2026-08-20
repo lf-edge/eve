@@ -1,7 +1,7 @@
-# Copyright (c) 2025, Zededa, Inc.
+# Copyright (c) 2026, Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 ---
-name: Go Tests
+name: BPFTrace Tests
 on:  # yamllint disable-line rule:truthy
   push:
     branches:
@@ -9,38 +9,35 @@ on:  # yamllint disable-line rule:truthy
       - "[0-9]+.[0-9]+"
       - "[0-9]+.[0-9]+-stable"
       - "feature/*"
-    paths-ignore:
-      - '**/*.md'
-      - '.github/**'
+    paths:
+      - 'pkg/bpftrace/**'
+      - 'eve-tools/bpftrace-compiler/**'
+      - 'kernel-commits.mk'
+      - '.github/workflows/bpftrace-tests.yml'
   pull_request:
     branches:
       - "master"
       - "[0-9]+.[0-9]+"
       - "[0-9]+.[0-9]+-stable"
       - "feature/*"
-    paths-ignore:
-      - '**/*.md'
-      - '.github/**'
+    paths:
+      - 'pkg/bpftrace/**'
+      - 'eve-tools/bpftrace-compiler/**'
+      - 'kernel-commits.mk'
+      - '.github/workflows/bpftrace-tests.yml'
+
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  test:
+  test-bpftrace:
     runs-on: zededa-ubuntu-2204
-    env:
-      REPO_NAME: ${{ github.event.repository.full_name }}
-      GH_REF: ${{ github.ref }}
+    timeout-minutes: 180
     steps:
-      - name: Starting Report
-        run: |
-          echo Git Ref: ${GH_REF}
-          echo GitHub Event: ${{ github.event_name }}
-          echo Disk usage
-          df -h
-          echo Memory
-          free -m
       - name: Clear repository
         run: |
           sudo rm -fr "$GITHUB_WORKSPACE" && mkdir "$GITHUB_WORKSPACE"
@@ -51,33 +48,17 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
+          persist-credentials: false
       - name: Login to Docker Hub
         if: ${{ github.event.repository.full_name == 'lf-edge/eve' }}
         run: | # Runners must provide default credentials
           docker login
-      - name: Test (TPM Required)
-        run: |
-          bash tests/tpm/prep-and-test.sh
       - name: Test
         run: |
-          make test
-      - name: Report test results as Annotations
-        if: ${{ always() }}
-        uses: guyarb/golang-test-annoations@96fc379b171c49932041d6c789e73331a7bdeec1  # v0.9.0
-        with:
-          test-results: dist/amd64/results.json
-      - name: Store raw test results
-        if: ${{ always() }}
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
-        with:
-          name: 'test-report'
-          path: ${{ github.workspace }}/dist
-      - name: Get code coverage
-        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2  # v6.0.0
+          make test-bpftrace
       - name: Clean
         if: ${{ always() }}
         run: |
           make clean || :
           docker system prune -f -a || :
-          docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q) || :
           rm -rf ~/.linuxkit || :
