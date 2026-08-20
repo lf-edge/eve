@@ -273,35 +273,85 @@ func isDMIPlaceholder(s string) bool {
 	return isRepeatedRune(s)
 }
 
-// GetProductSerial returns the device's hardware serial number, preferring the
-// SMBIOS system serial number and falling back to the CPU or SoC serial on
-// platforms with no usable SMBIOS. Placeholder values from either source are
-// discarded, so the result is "" whenever neither source carries a
-// device-specific value; a caller must treat "" as "unknown" and never as an
-// identifier.
-func GetProductSerial(log *base.LogObject) string {
-	var serial string
-	out, err := base.Exec(log, "dmidecode", "-s", "system-serial-number").Output()
+// serialSource names one origin of a device serial number and reads it.
+type serialSource struct {
+	name string
+	read func(*base.LogObject) string
+}
+
+// dmidecodeString returns the value dmidecode reports for keyword, or "" when
+// dmidecode fails or the platform has no SMBIOS.
+func dmidecodeString(log *base.LogObject, keyword string) string {
+	out, err := base.Exec(log, "dmidecode", "-s", keyword).Output()
 	if err != nil {
-		log.Errorf("GetProductSerial system-serial-number failed %s\n",
-			err)
-	} else {
-		serial = strings.TrimSpace(string(out))
+		log.Errorf("GetProductSerial %s failed %s\n", keyword, err)
+		return ""
 	}
-	if isDMIPlaceholder(serial) {
-		if serial != "" {
-			log.Warnf("GetProductSerial: ignoring placeholder system-serial-number %q\n",
-				serial)
-		}
-		serial = strings.TrimSpace(getCPUSerial(log))
-		if isDMIPlaceholder(serial) {
-			if serial != "" {
-				log.Warnf("GetProductSerial: ignoring placeholder CPU serial %q\n",
-					serial)
+	return string(out)
+}
+
+// productSerialSources are consulted in order. The SMBIOS system serial comes
+// first because it is the value a vendor prints on the chassis label and quotes
+// on an invoice, so it is the one an operator can pre-register. The baseboard
+// serial follows: a board sold to an integrator often carries the only
+// programmed serial on the unit, and some vendors write the label value there
+// rather than into the system field. The CPU or SoC serial is last, being the
+// only source on ARM platforms and normally absent on x86.
+var productSerialSources = []serialSource{
+	{
+		name: "system-serial-number",
+		read: func(log *base.LogObject) string {
+			return dmidecodeString(log, "system-serial-number")
+		},
+	},
+	{
+		name: "baseboard-serial-number",
+		read: func(log *base.LogObject) string {
+			return dmidecodeString(log, "baseboard-serial-number")
+		},
+	},
+	{
+		name: "cpu-serial",
+		read: getCPUSerial,
+	},
+}
+
+// firstUsableSerial returns the first source value that is not a placeholder,
+// together with the name of the source it came from, and logs which source was
+// used so an operator can tell where a reported serial originated. Both results
+// are "" when no source carries a device-specific value.
+func firstUsableSerial(log *base.LogObject, sources []serialSource) (serial, source string) {
+	for i, src := range sources {
+		value := strings.TrimSpace(src.read(log))
+		if isDMIPlaceholder(value) {
+			if value != "" {
+				log.Warnf("GetProductSerial: ignoring placeholder %s %q\n",
+					src.name, value)
 			}
-			return ""
+			continue
 		}
+		if i == 0 {
+			log.Functionf("GetProductSerial: using %s\n", src.name)
+		} else {
+			log.Noticef("GetProductSerial: falling back to %s\n", src.name)
+		}
+		return value, src.name
 	}
+	log.Warnf("GetProductSerial: no source carries a device-specific serial\n")
+	return "", ""
+}
+
+// GetProductSerial returns the device's hardware serial number, taking the
+// first of the SMBIOS system serial, the SMBIOS baseboard serial and the
+// CPU/SoC serial that is not a firmware placeholder. The result is "" when none
+// of them carries a device-specific value; a caller must treat "" as "unknown"
+// and never as an identifier.
+//
+// Because the baseboard serial is not disclosed to a purchaser by any vendor,
+// a value sourced from it can identify a device to a controller but cannot be
+// pre-registered from the paperwork. The source is logged for that reason.
+func GetProductSerial(log *base.LogObject) string {
+	serial, _ := firstUsableSerial(log, productSerialSources)
 	return serial
 }
 
