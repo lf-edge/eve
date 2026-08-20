@@ -9,7 +9,7 @@ require (
 	github.com/elazarl/goproxy/ext v0.0.0-20250305112401-088f758167d2
 	github.com/inconshreveable/go-vhost v1.0.0
 	github.com/lf-edge/eve-libs v0.0.0-20260304091825-96eaa95b9f8b
-	github.com/lf-edge/eve/evetest v0.0.0-20260818004636-30cbb56ac6b9
+	github.com/lf-edge/eve/evetest v0.0.0-20260820145609-63ab025d6185
 	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260421125048-8d3825045e4e
 	github.com/sirupsen/logrus v1.9.4
 	github.com/vishvananda/netlink v1.3.1
@@ -59,7 +59,3 @@ require (
 	golang.org/x/text v0.37.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478 // indirect
 )
-
-// TODO: temporary replace that will be removed once the netboot-related evetest changes are merged
-// to upstream.
-replace github.com/lf-edge/eve/evetest => github.com/milan-zededa/eve/evetest v0.0.0-20260818092050-7a691e7025fe
