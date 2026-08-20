@@ -124,8 +124,9 @@ type zedrouter struct {
 	pubNetworkInstanceMetrics pubsub.Publication
 
 	// Configuration for application interfaces
-	subAppNetworkConfig   pubsub.Subscription
-	subAppNetworkConfigAg pubsub.Subscription // From zedagent
+	subAppNetworkConfig     pubsub.Subscription
+	subAppNetworkConfigAg   pubsub.Subscription // From zedagent
+	subKubeAppNetworkConfig pubsub.Subscription // From zedkube (directly-deployed Kubernetes workloads)
 
 	// Status of application interfaces
 	pubAppNetworkStatus pubsub.Publication
@@ -347,6 +348,7 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 		z.subNetworkInstanceConfig,
 		z.subAppNetworkConfig,
 		z.subAppNetworkConfigAg,
+		z.subKubeAppNetworkConfig,
 	}
 	for _, sub := range inactiveSubs {
 		if err = sub.Activate(); err != nil {
@@ -369,6 +371,11 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 
 		case change := <-z.subAppNetworkConfigAg.MsgChan():
 			z.subAppNetworkConfigAg.ProcessChange(change)
+
+		case change := <-z.subKubeAppNetworkConfig.MsgChan():
+			// If we have NetworkInstanceConfig process it first
+			z.checkAndProcessNetworkInstanceConfig()
+			z.subKubeAppNetworkConfig.ProcessChange(change)
 
 		case change := <-z.subDeviceNetworkStatus.MsgChan():
 			z.subDeviceNetworkStatus.ProcessChange(change)
@@ -701,6 +708,25 @@ func (z *zedrouter) initSubscriptions() (err error) {
 		return err
 	}
 
+	// Subscribe to AppNetworkConfig synthesized by zedkube for directly-deployed
+	// Kubernetes workloads (no controller-provided AppInstanceConfig). These flow through
+	// the same handlers/pipeline as controller-managed apps; the synthesized config carries
+	// a non-nil KubeApp so the CNI handler can resolve inbound pods by Kubernetes identity.
+	z.subKubeAppNetworkConfig, err = z.pubSub.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedkube",
+		MyAgentName:   agentName,
+		TopicImpl:     types.AppNetworkConfig{},
+		Activate:      false,
+		CreateHandler: z.handleAppNetworkCreate,
+		ModifyHandler: z.handleAppNetworkModify,
+		DeleteHandler: z.handleAppNetworkDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -882,18 +908,16 @@ func (z *zedrouter) lookupNetworkInstanceMetrics(key string) *types.NetworkInsta
 }
 
 func (z *zedrouter) lookupAppNetworkConfig(key string) *types.AppNetworkConfig {
-	sub := z.subAppNetworkConfig
-	c, _ := sub.Get(key)
-	if c == nil {
-		sub = z.subAppNetworkConfigAg
-		c, _ = sub.Get(key)
-		if c == nil {
-			z.log.Tracef("lookupAppNetworkConfig(%s) not found", key)
-			return nil
+	for _, sub := range []pubsub.Subscription{
+		z.subAppNetworkConfig, z.subAppNetworkConfigAg, z.subKubeAppNetworkConfig,
+	} {
+		if c, _ := sub.Get(key); c != nil {
+			config := c.(types.AppNetworkConfig)
+			return &config
 		}
 	}
-	config := c.(types.AppNetworkConfig)
-	return &config
+	z.log.Tracef("lookupAppNetworkConfig(%s) not found", key)
+	return nil
 }
 
 func (z *zedrouter) lookupAppNetworkStatus(key string) *types.AppNetworkStatus {

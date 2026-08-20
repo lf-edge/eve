@@ -27,11 +27,37 @@ import (
 )
 
 const (
-	eveKubeNamespace       = "eve-kube-app"
 	zedrouterRPCSocketPath = "/run/zedrouter/rpc.sock"
 	primaryIfName          = "eth0"
 	clusterSvcIPRange      = "10.43.0.0/16"
 	vmiPodNamePrefix       = "virt-launcher-"
+)
+
+// kubeAppMarkerDir is written by zedkube: one marker file "<namespace>_<podname>" per pod
+// scheduled on this node -- every pod, not just native ones -- whose content
+// classifies how to route that pod's primary eth0 interface (see kubeAppNetKind). It is
+// a variable so tests can use a temporary directory without requiring root access to
+// /run. THIS PATH, AND THE kubeAppNetKind VALUES BELOW, ARE A CONTRACT shared with
+// pkg/pillar/cmd/zedkube (kubeappnetwork.go).
+var kubeAppMarkerDir = "/run/zedkube/kubeapp-net"
+
+// kubeAppNetKind mirrors zedkube's kubeAppNetKind marker content. zedkube is the sole
+// classifier for every pod on the node: it already knows the pod's namespace, owner and
+// networks-annotation requests, none of which eve-bridge can see for itself (it gets only
+// a bare pod name/namespace from CNI env args, by design has no Kubernetes API client of
+// its own). A missing marker therefore means "not yet classified", not "ordinary pod" --
+// see readKubeAppNetKind.
+type kubeAppNetKind string
+
+const (
+	// kubeAppNetKindController: a controller-managed (ENC) app.
+	kubeAppNetKindController kubeAppNetKind = "controller"
+	// kubeAppNetKindNative: an ordinary Kubernetes pod, or a native workload that did
+	// not request a different default route.
+	kubeAppNetKindNative kubeAppNetKind = "native"
+	// kubeAppNetKindNativeNIDefault: a native workload that requested default-route on
+	// one of its Network Instance attachments.
+	kubeAppNetKindNativeNIDefault kubeAppNetKind = "native-ni-default"
 )
 
 const (
@@ -59,7 +85,8 @@ type EnvArgs struct {
 type rawJSONStruct = map[string]interface{}
 
 func parseArgs(args *skel.CmdArgs) (stdinArgs rawJSONStruct, cniVersion,
-	podName string, mac net.HardwareAddr, isVMI, isEveApp bool, err error) {
+	podName, namespace, networkInstance string, mac net.HardwareAddr,
+	isVMI bool, kind kubeAppNetKind, kindKnown bool, err error) {
 	// Parse arguments received via stdin.
 	versionDecoder := &version.ConfigDecoder{}
 	cniVersion, err = versionDecoder.Decode(args.StdinData)
@@ -74,6 +101,11 @@ func parseArgs(args *skel.CmdArgs) (stdinArgs rawJSONStruct, cniVersion,
 		log.Print(err)
 		return
 	}
+	// "networkInstance" is present only on the per-NI NADs created for directly-deployed
+	// Kubernetes workloads (e.g. {"type":"eve-bridge","networkInstance":"<ni-uuid>"}). Its
+	// presence tells zedrouter to use the Kubernetes-identity resolution path instead of the
+	// controller-managed MAC-match path.
+	networkInstance, _ = stdinArgs["networkInstance"].(string)
 	// Parse arguments received via environment variables.
 	envArgs := EnvArgs{}
 	err = types.LoadArgs(args.Args, &envArgs)
@@ -83,12 +115,9 @@ func parseArgs(args *skel.CmdArgs) (stdinArgs rawJSONStruct, cniVersion,
 		return
 	}
 	podName = string(envArgs.K8S_POD_NAME)
+	namespace = string(envArgs.K8S_POD_NAMESPACE)
 	isVMI = strings.HasPrefix(podName, vmiPodNamePrefix)
-
-	isEveApp = string(envArgs.K8S_POD_NAMESPACE) == eveKubeNamespace
-	if !isVMI && strings.Contains(podName, "-pvc-") && strings.HasPrefix(podName, "cdi-upload-") {
-		isEveApp = false
-	}
+	kind, kindKnown = readKubeAppNetKind(namespace, podName)
 	if envArgs.MAC != "" {
 		mac, err = net.ParseMAC(string(envArgs.MAC))
 		if err != nil {
@@ -100,16 +129,33 @@ func parseArgs(args *skel.CmdArgs) (stdinArgs rawJSONStruct, cniVersion,
 	return
 }
 
+// readKubeAppNetKind reads zedkube's per-pod routing marker (see kubeAppMarkerDir).
+// kindKnown is false if the marker does not exist yet or cannot be read: the caller
+// decides whether that is fatal (see cmdAdd) or should fall back to kubeAppNetKindNative
+// (cmdDel, cmdCheck, where CNI must stay tolerant of already-cleaned-up state).
+func readKubeAppNetKind(namespace, podName string) (kind kubeAppNetKind, kindKnown bool) {
+	if namespace == "" || podName == "" {
+		return "", false
+	}
+	path := kubeAppMarkerDir + "/" + namespace + "_" + podName
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", false
+	}
+	return kubeAppNetKind(strings.TrimSpace(string(data))), true
+}
+
 // Prepare stdin args for a delegate call to the original bridge plugin.
 func prepareStdinForBridgeDelegate(
-	stdinArgs rawJSONStruct, isEveApp bool) ([]byte, error) {
-	stdinArgs["isDefaultGateway"] = !isEveApp
+	stdinArgs rawJSONStruct, kind kubeAppNetKind) ([]byte, error) {
+	suppressDefault := kind != kubeAppNetKindNative
+	stdinArgs["isDefaultGateway"] = !suppressDefault
 	stdinArgs["forceAddress"] = true
 	stdinArgs["hairpinMode"] = true
-	if isEveApp {
-		// Even though traffic is not routed via eth0 by default in EVE apps,
-		// we should still send packets destined to Kubernetes service IPs through
-		// this primary interface.
+	if suppressDefault {
+		// Even though traffic is not routed via eth0 by default for these pods, we
+		// should still send packets destined to Kubernetes service IPs through this
+		// primary interface.
 		ipamArgs, ok := stdinArgs["ipam"].(rawJSONStruct)
 		if !ok {
 			err := fmt.Errorf("failed to cast IPAM input args (actual type: %T)",
@@ -146,8 +192,23 @@ func prepareStdinForBridgeDelegate(
 }
 
 // Prepare stdin args for a delegate call to the dhcp IPAM plugin.
-func prepareStdinForDhcpDelegate(stdinArgs rawJSONStruct) ([]byte, error) {
-	stdinArgs["ipam"] = rawJSONStruct{"type": "dhcp"}
+func prepareStdinForDhcpDelegate(
+	stdinArgs rawJSONStruct, mac net.HardwareAddr) ([]byte, error) {
+	ipamArgs := rawJSONStruct{"type": "dhcp"}
+	if len(mac) != 0 {
+		// The stock DHCP plugin derives its default DHCP client identifier (option 61)
+		// from CNI_CONTAINERID/name/interface. CNI_CONTAINERID changes whenever a pod
+		// is recreated, causing an external DHCP server to allocate a new address even
+		// though zedrouter assigned the same MAC. Override only the on-wire option with
+		// a stable, type-0 (non-hardware) identifier. The DHCP daemon continues to use
+		// the real CNI container ID internally for ADD/CHECK/DEL lifecycle tracking.
+		clientID := "\x00eve-mac-" + strings.ReplaceAll(mac.String(), ":", "")
+		ipamArgs["provide"] = []rawJSONStruct{{
+			"option": "dhcp-client-identifier",
+			"value":  clientID,
+		}}
+	}
+	stdinArgs["ipam"] = ipamArgs
 	dhcpArgs, err := json.Marshal(stdinArgs)
 	if err != nil {
 		err = fmt.Errorf("failed to marshal input args for the dhcp plugin: %v", err)
@@ -160,15 +221,26 @@ func prepareStdinForDhcpDelegate(stdinArgs rawJSONStruct) ([]byte, error) {
 func cmdAdd(args *skel.CmdArgs) error {
 	log.Printf("cmdAdd: stdinData: %s, env: %v",
 		string(args.StdinData), os.Environ())
-	stdinArgs, cniVersion, podName, mac, isVMI, isEveApp, err := parseArgs(args)
+	stdinArgs, cniVersion, podName, namespace, networkInstance, mac, isVMI, kind, kindKnown,
+		err := parseArgs(args)
 	if err != nil {
 		// Error is already logged.
 		return err
 	}
 
 	if args.IfName == primaryIfName {
+		if !kindKnown {
+			// zedkube has not classified this pod yet (it has not yet listed it, or
+			// is itself still starting up). Fail so the kubelet retries the sandbox
+			// creation with its own backoff, rather than guess at a default route
+			// policy that may misclassify a controller-managed app as ordinary.
+			err := fmt.Errorf(
+				"no routing classification marker yet for pod %s/%s", namespace, podName)
+			log.Print(err)
+			return err
+		}
 		// Delegate creation of the eth0 interface to the original bridge plugin.
-		bridgeArgs, err := prepareStdinForBridgeDelegate(stdinArgs, isEveApp)
+		bridgeArgs, err := prepareStdinForBridgeDelegate(stdinArgs, kind)
 		if err != nil {
 			// Error is already logged.
 			return err
@@ -200,6 +272,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 	commonRPCArgs := cnirpc.CommonCNIRPCArgs{
 		Pod: cnirpc.AppPod{
 			Name:      podName,
+			Namespace: namespace,
 			NetNsPath: args.Netns,
 		},
 		PodInterface: cnirpc.NetInterfaceWithNs{
@@ -207,6 +280,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 			MAC:       mac,
 			NetNsPath: args.Netns,
 		},
+		NetworkInstance: networkInstance,
 	}
 	connectPodAtL2Args := cnirpc.ConnectPodAtL2Args{CommonCNIRPCArgs: commonRPCArgs}
 	connectPodAtL2Retval := &cnirpc.ConnectPodAtL2Retval{}
@@ -247,7 +321,8 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 
 	// run the IPAM plugin and get back the IP config to apply.
-	dhcpArgs, err := prepareStdinForDhcpDelegate(stdinArgs)
+	dhcpArgs, err := prepareStdinForDhcpDelegate(
+		stdinArgs, connectPodAtL2Retval.Interfaces[podIntfIndex].MAC)
 	if err != nil {
 		// Error is already logged.
 		return err
@@ -320,15 +395,25 @@ func cmdAdd(args *skel.CmdArgs) error {
 func cmdDel(args *skel.CmdArgs) error {
 	log.Printf("cmdDel: stdinData: %s, env: %v",
 		string(args.StdinData), os.Environ())
-	stdinArgs, _, podName, _, isVMI, isEveApp, err := parseArgs(args)
+	stdinArgs, _, podName, namespace, networkInstance, _, isVMI, kind, kindKnown,
+		err := parseArgs(args)
 	if err != nil {
 		// Error is already logged.
 		return err
 	}
 
 	if args.IfName == primaryIfName {
+		if !kindKnown {
+			// CNI DEL must stay tolerant of already-cleaned-up state (the CNI spec
+			// allows duplicate/late DEL calls): zedkube may have already dropped
+			// this pod's marker by the time teardown runs. Fall back rather than
+			// fail, unlike cmdAdd.
+			log.Printf("cmdDel: no routing classification marker for pod %s/%s, "+
+				"defaulting to %s", namespace, podName, kubeAppNetKindNative)
+			kind = kubeAppNetKindNative
+		}
 		// Delegate deletion of the eth0 interface to the original bridge plugin.
-		bridgeArgs, err := prepareStdinForBridgeDelegate(stdinArgs, isEveApp)
+		bridgeArgs, err := prepareStdinForBridgeDelegate(stdinArgs, kind)
 		if err != nil {
 			// Error is already logged.
 			return err
@@ -358,6 +443,7 @@ func cmdDel(args *skel.CmdArgs) error {
 	commonRPCArgs := cnirpc.CommonCNIRPCArgs{
 		Pod: cnirpc.AppPod{
 			Name:      podName,
+			Namespace: namespace,
 			NetNsPath: args.Netns,
 		},
 		PodInterface: cnirpc.NetInterfaceWithNs{
@@ -365,6 +451,7 @@ func cmdDel(args *skel.CmdArgs) error {
 			NetNsPath: args.Netns,
 			// MAC is not passed to cmdDel
 		},
+		NetworkInstance: networkInstance,
 	}
 	disconnectPodArgs := cnirpc.DisconnectPodArgs{CommonCNIRPCArgs: commonRPCArgs}
 	disconnectPodRetval := &cnirpc.DisconnectPodRetval{}
@@ -384,7 +471,7 @@ func cmdDel(args *skel.CmdArgs) error {
 	}
 
 	// Tell DHCP server to release the allocated IP address.
-	dhcpArgs, err := prepareStdinForDhcpDelegate(stdinArgs)
+	dhcpArgs, err := prepareStdinForDhcpDelegate(stdinArgs, nil)
 	if err != nil {
 		// Error is already logged.
 		return err
@@ -402,15 +489,23 @@ func cmdDel(args *skel.CmdArgs) error {
 func cmdCheck(args *skel.CmdArgs) error {
 	log.Printf("cmdCheck: stdinData: %s, env: %v",
 		string(args.StdinData), os.Environ())
-	stdinArgs, _, podName, _, isVMI, isEveApp, err := parseArgs(args)
+	stdinArgs, _, podName, namespace, networkInstance, _, isVMI, kind, kindKnown,
+		err := parseArgs(args)
 	if err != nil {
 		// Error is already logged.
 		return err
 	}
 
 	if args.IfName == primaryIfName {
+		if !kindKnown {
+			// Same tolerance as cmdDel: CHECK must not fail just because the marker
+			// is momentarily gone.
+			log.Printf("cmdCheck: no routing classification marker for pod %s/%s, "+
+				"defaulting to %s", namespace, podName, kubeAppNetKindNative)
+			kind = kubeAppNetKindNative
+		}
 		// Delegate check of the eth0 interface to the original bridge plugin.
-		bridgeArgs, err := prepareStdinForBridgeDelegate(stdinArgs, isEveApp)
+		bridgeArgs, err := prepareStdinForBridgeDelegate(stdinArgs, kind)
 		if err != nil {
 			// Error is already logged.
 			return err
@@ -440,6 +535,7 @@ func cmdCheck(args *skel.CmdArgs) error {
 	commonRPCArgs := cnirpc.CommonCNIRPCArgs{
 		Pod: cnirpc.AppPod{
 			Name:      podName,
+			Namespace: namespace,
 			NetNsPath: args.Netns,
 		},
 		PodInterface: cnirpc.NetInterfaceWithNs{
@@ -447,6 +543,7 @@ func cmdCheck(args *skel.CmdArgs) error {
 			NetNsPath: args.Netns,
 			// MAC is not passed to cmdDel
 		},
+		NetworkInstance: networkInstance,
 	}
 	checkPodConnectionArgs := cnirpc.CheckPodConnectionArgs{CommonCNIRPCArgs: commonRPCArgs}
 	checkPodConnectionRetval := &cnirpc.CheckPodConnectionRetval{}
@@ -468,7 +565,7 @@ func cmdCheck(args *skel.CmdArgs) error {
 	}
 
 	// Ask dhcp plugin to check pod interface from its point of view.
-	dhcpArgs, err := prepareStdinForDhcpDelegate(stdinArgs)
+	dhcpArgs, err := prepareStdinForDhcpDelegate(stdinArgs, nil)
 	if err != nil {
 		// Error is already logged.
 		return err
