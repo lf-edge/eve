@@ -35,6 +35,10 @@ const (
 	TiB
 )
 
+// defaultRawDiskImageSize is the size of a LocalRawDiskImage which does not
+// specify one.
+const defaultRawDiskImageSize = 64 * MiB
+
 // NilUUID is special form of UUID that is specified to have all
 // 128 bits set to zero.
 var NilUUID = uuid.UUID{}
@@ -1328,6 +1332,54 @@ func (storage HTTPStorage) toProto(th *TestHarness, log *logrus.Entry, devName s
 		dsConfig.DType = eveconfig.DsType_DsHttp
 	}
 	return contentTree, dsConfig
+}
+
+// LocalRawDiskImage is an application image consisting of a blank raw disk
+// generated on the spot and served to the device by evetest's built-in image
+// server. It deploys as a VM application rather than a container, and needs
+// neither a container registry nor Internet access, so nothing is still being
+// fetched while a test does something disruptive to the device.
+//
+// This is a convenience wrapper over CreateBlankImageFile + HTTPStorage: the
+// point of the type is that it satisfies the application-image interface, so it
+// can be handed straight to ApplicationInstanceConfig.Image. Use
+// CreateBlankImageFile directly for a standalone volume, or for any format other
+// than raw.
+//
+// The disk carries no operating system, so the guest stops at the firmware boot
+// prompt. EVE reports the app as RUNNING once the domain is up, which is what
+// tests of the volume and app-instance lifecycle need. Tests that require a
+// booting guest must reference a real image.
+type LocalRawDiskImage struct {
+	// SizeBytes is the size of the generated raw disk.
+	// Defaults to defaultRawDiskImageSize when zero.
+	SizeBytes uint64
+}
+
+// toProto generates the raw disk image, publishes it on the image server and
+// converts the reference into EVE protobuf ContentTree + DatastoreConfig.
+func (image LocalRawDiskImage) toProto(th *TestHarness, log *logrus.Entry,
+	devName string, contentTreeUUID, datastoreUUID uuid.UUID,
+	appName string) (*eveconfig.ContentTree, *eveconfig.DatastoreConfig) {
+	size := image.SizeBytes
+	if size == 0 {
+		size = defaultRawDiskImageSize
+	}
+	// The content tree UUID in the filename keeps images of separate apps
+	// apart, while making a re-download of the same volume (e.g. after a purge)
+	// resolve to the same file.
+	filename := fmt.Sprintf("app-disk-%s.raw", contentTreeUUID)
+	relPath, sha256hex := CreateBlankImageFile(filename, eveconfig.Format_RAW, size)
+	log.Infof("Generated %d bytes of raw disk image %s for application %q",
+		size, relPath, appName)
+	return HTTPStorage{
+		ImageFormat:       eveconfig.Format_RAW,
+		ImageSHA256:       sha256hex,
+		MaxDownloadBytes:  size,
+		ImageRelativePath: relPath,
+		ServerAddress:     GetImageServerIPv4().String(),
+		ServerPort:        GetImageServerPort(),
+	}.toProto(th, log, devName, contentTreeUUID, datastoreUUID, appName)
 }
 
 // SFTPStorage defines the location and access parameters for an application
