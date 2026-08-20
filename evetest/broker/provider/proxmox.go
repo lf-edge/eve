@@ -81,7 +81,12 @@ type proxmoxDevice struct {
 	vmID int
 
 	ifaces []proxmoxIface
-	status DeviceStatus
+	// baseArgs holds the non-NIC part of the QEMU "args" option (firmware
+	// pflash, -global tweaks), so that PowerOnDevice can rebuild the full
+	// args value when lifting the netboot MTU cap from the args-defined
+	// NICs (see nicOptions).
+	baseArgs string
+	status   DeviceStatus
 
 	// netbootMTUCapped: NICs still carry the netboot MTU cap (see buildVMOptions).
 	netbootMTUCapped bool
@@ -511,14 +516,12 @@ func (p *ProxmoxProvider) PowerOnDevice(ctx context.Context, name string) error 
 		return err
 	}
 	if dev.netbootMTUCapped && dev.netbootCompleted {
-		var options []proxmox.VirtualMachineOption
-		for _, iface := range dev.ifaces {
-			options = append(options, proxmox.VirtualMachineOption{
-				Name: iface.model,
-				Value: fmt.Sprintf("virtio=%s,bridge=%s",
-					strings.ToUpper(iface.mac.String()), iface.vnet),
-			})
-		}
+		// Lift the MTU cap but keep the netboot bootindex: the disk boots
+		// first from here on, so the PXE fallback entry stays inert.
+		options, nicArgs := p.nicOptions(dev, false, true)
+		options = append(options, proxmox.VirtualMachineOption{
+			Name: "args", Value: dev.baseArgs + nicArgs,
+		})
 		cfgTask, err := vm.Config(ctx, options...)
 		if err != nil {
 			return fmt.Errorf("failed to clear netboot MTU cap for device %q: %w",
@@ -948,6 +951,86 @@ func (p *ProxmoxProvider) destroyDevice(
 	return nil
 }
 
+// nicOptions builds the per-interface VM options and the QEMU args fragment
+// for the device's NICs.
+//
+// Uplink interfaces become regular PVE netX devices: PVE registers their MAC
+// in the SDN zone's IPAM and serves them a DHCP reservation, which
+// GetDeviceUplinkIPs relies on. XConnect interfaces are built through QEMU
+// args instead, each behind its own dedicated pcie-root-port: PVE's fixed
+// q35 layout would place them all behind one conventional PCI bridge,
+// merging them into a single IOMMU group and making passthrough of an
+// individual NIC from EVE to an application impossible (EVE refuses with
+// CheckBadAssignmentGroup). PVE knows nothing about these taps, so the host
+// hookscript enslaves them to their VNet bridges at post-start (see
+// evetest-hook.pl); it discovers the tap-to-bridge mapping from the netdev
+// ids in the args line of the VM config (id=evn_<bridge>_<index>, with the
+// ifname adjacent).
+//
+// PVE advertises a netX bridge's own MTU to the guest via VIRTIO_NET_F_MTU,
+// which hard-caps any MTU the guest configures; the evetest VNet bridges
+// are created with a high MTU by the installer, and the args-built NICs set
+// host_mtu to the same value explicitly. mtuCapped pins all MTUs to 1500
+// instead, for a NetworkBootFallback device's first (network) boot: iPXE
+// sizes its TFTP block requests off the NIC's advertised MTU, and the high
+// ceiling makes it negotiate blocks far bigger than the real end-to-end
+// path (the SDN's uplink and the gRPC tunnel to evetest are both fixed at
+// 1500) can carry, which silently black-holes the transfer. PowerOnDevice
+// lifts the cap again after the one network boot (see
+// netbootMTUCapped/netbootCompleted), so jumbo-frame testing remains
+// possible afterward.
+//
+// netboot puts the first xconnect NIC into the guest's firmware boot order
+// via a qemu-native bootindex (the args equivalent of listing net0 in the
+// PVE "boot: order=" option, which can only name netX devices). PVE starts
+// qemu with -boot strict=on, so the firmware attempts ONLY devices present
+// in the fw_cfg boot order -- without a bootindex the NIC would never be
+// tried and a NetworkBootFallback device would just loop on its blank disk.
+// 300 is safely above the values PVE assigns to the "boot: order=" entries,
+// preserving the disk-first fallthrough: PXE runs only while the target
+// disk has nothing bootable, so the setting stays correct for the device's
+// entire lifetime and survives the MTU-cap lift unchanged.
+func (p *ProxmoxProvider) nicOptions(dev *proxmoxDevice, mtuCapped, netboot bool) (
+	options []proxmox.VirtualMachineOption, nicArgs string) {
+	netIdx := 0
+	bootNICAssigned := false
+	for i, iface := range dev.ifaces {
+		if iface.isUplink {
+			value := fmt.Sprintf("virtio=%s,bridge=%s",
+				strings.ToUpper(iface.mac.String()), iface.vnet)
+			if mtuCapped {
+				value += ",mtu=1500"
+			}
+			options = append(options, proxmox.VirtualMachineOption{
+				Name:  fmt.Sprintf("net%d", netIdx),
+				Value: value,
+			})
+			netIdx++
+			continue
+		}
+		hostMTU := 65520
+		if mtuCapped {
+			hostMTU = 1500
+		}
+		bootIndex := ""
+		if netboot && !bootNICAssigned {
+			bootIndex = ",bootindex=300"
+			bootNICAssigned = true
+		}
+		tap := fmt.Sprintf("evt%de%d", dev.vmID, i)
+		nicArgs += fmt.Sprintf(
+			" -device pcie-root-port,id=evrp%d,bus=pcie.0,addr=0x%x,chassis=%d"+
+				" -netdev type=tap,id=evn_%s_%d,ifname=%s,script=no,downscript=no,vhost=on"+
+				" -device virtio-net-pci,netdev=evn_%s_%d,bus=evrp%d,addr=0x0,mac=%s,"+
+				"host_mtu=%d,rx_queue_size=1024,tx_queue_size=256%s",
+			i, 0x10+i, 200+i,
+			iface.vnet, i, tap,
+			iface.vnet, i, i,
+			strings.ToUpper(iface.mac.String()), hostMTU, bootIndex)
+	}
+	return options, nicArgs
+}
+
 // buildVMOptions builds the full set of VirtualMachineOption used to create the
 // VM in a powered-off state.
 func (p *ProxmoxProvider) buildVMOptions(dev *proxmoxDevice, diskRefs []string,
@@ -1010,7 +1093,8 @@ func (p *ProxmoxProvider) buildVMOptions(dev *proxmoxDevice, diskRefs []string,
 		)
 	}
 
-	options = append(options, proxmox.VirtualMachineOption{Name: "args", Value: extraArgs})
+	// The "args" option is appended further below, after the network
+	// interfaces have contributed their QEMU arguments.
 
 	// TPM.
 	if spec.WithTPM {
@@ -1032,49 +1116,27 @@ func (p *ProxmoxProvider) buildVMOptions(dev *proxmoxDevice, diskRefs []string,
 	// Disks, imported from the images uploaded to the import storage.
 	options = append(options, diskOptions(p.conf.Storage, diskRefs)...)
 	if len(diskRefs) > 0 {
-		bootOrder := "virtio0"
-		if spec.NetworkBootFallback {
-			// Standard BIOS/UEFI boot-order fallthrough: firmware tries
-			// virtio0 first, falling through to net0 (PXE/iPXE) only while
-			// the target disk has nothing bootable. Once a network installer
-			// has written EVE onto it, virtio0 succeeds outright and network
-			// is never attempted again -- this same static setting is correct
-			// for the device's entire lifetime, no reconfiguration needed
-			// after installation (net0 is dev.ifaces[0]'s model; see below).
-			bootOrder += ";net0"
-		}
 		options = append(options, proxmox.VirtualMachineOption{
-			Name: "boot", Value: "order=" + bootOrder,
+			Name: "boot", Value: "order=virtio0",
 		})
 	}
 
-	// Network interfaces, attached to their SDN VNets (bridges). PVE advertises
-	// the attached bridge's own MTU to the guest's virtio-net driver via
-	// VIRTIO_NET_F_MTU, which then hard-caps any MTU the guest tries to
-	// configure on that NIC -- so the evetest SDN zone's VNet bridges are
-	// created with a high MTU (see deploy/proxmox/installer.sh.tmpl) rather
-	// than needing a per-interface override here.
-	//
-	// NetworkBootFallback is the exception, for its first (network) boot only:
-	// iPXE sizes its TFTP block requests off the NIC's advertised MTU, and
-	// the zone's high ceiling makes it negotiate blocks far bigger than the
-	// real end-to-end path (the SDN's uplink and the gRPC tunnel to evetest
-	// are both fixed at 1500) can carry, which silently black-holes the
-	// transfer. Pin the MTU down to 1500 for that first boot; PowerOnDevice
-	// then lifts it again (see netbootMTUCapped/netbootCompleted) before the
-	// device boots into the installed EVE for real, so jumbo-frame testing
-	// remains possible afterward.
-	for _, iface := range dev.ifaces {
-		value := fmt.Sprintf("virtio=%s,bridge=%s",
-			strings.ToUpper(iface.mac.String()), iface.vnet)
-		if spec.NetworkBootFallback {
-			value += ",mtu=1500"
-		}
-		options = append(options, proxmox.VirtualMachineOption{
-			Name:  iface.model,
-			Value: value,
-		})
-	}
+	// Network interfaces, attached to their SDN VNets (bridges); see
+	// nicOptions for the uplink-vs-xconnect split, the MTU handling
+	// (including the NetworkBootFallback cap that PowerOnDevice lifts
+	// again after the one network boot), and the standard disk-first
+	// boot-order fallthrough to PXE (bootindex on the first xconnect NIC):
+	// the firmware falls through to the network only while the target disk
+	// has nothing bootable, and once a network installer has written EVE
+	// onto it, virtio0 succeeds outright and network is never attempted
+	// again.
+	dev.baseArgs = extraArgs
+	nicOpts, nicArgs := p.nicOptions(dev,
+		spec.NetworkBootFallback, spec.NetworkBootFallback)
+	options = append(options, nicOpts...)
+	extraArgs += nicArgs
+
+	options = append(options, proxmox.VirtualMachineOption{Name: "args", Value: extraArgs})
 
 	return options, nil
 }
