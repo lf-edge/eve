@@ -147,6 +147,13 @@ const (
 	// completion. Requires EVE to be built with COVER=y.
 	CollectCoverageEnv = "COLLECT_COVERAGE"
 
+	// ControllerFaultsEnv runs the controller behind a proxy which a test can tell
+	// to answer, delay or drop selected device requests (see ArmControllerFault).
+	// Off by default: the proxy forwards everything unchanged, but it terminates
+	// TLS and re-originates the request, so keeping it out of the path unless a
+	// test needs it leaves an unrelated failure one suspect fewer.
+	ControllerFaultsEnv = "CONTROLLER_FAULTS"
+
 	// InternalArtifactDirEnv specifies a container-internal directory path where all
 	// test artifacts are written.
 	// This variable is always set by the container entrypoint and must not be set
@@ -271,6 +278,7 @@ func InitViperConfig() {
 	viper.SetDefault(PauseOnCheckpointEnv, "")
 	viper.SetDefault(PauseOnFailureEnv, false)
 	viper.SetDefault(CollectCoverageEnv, false)
+	viper.SetDefault(ControllerFaultsEnv, false)
 
 	// EVE image config
 	viper.SetDefault(EVEVersionEnv, "") // Empty = derive from repo

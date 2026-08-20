@@ -6,7 +6,9 @@ package evetest
 import (
 	"time"
 
+	"github.com/lf-edge/eve/evetest/constants"
 	"github.com/lf-edge/eve/evetest/controller"
+	"github.com/spf13/viper"
 )
 
 // ControllerFault describes which of the requests a device sends to the
@@ -26,29 +28,11 @@ const (
 	FaultDelay = controller.FaultActionDelay
 )
 
-// controllerFaultsEnabled records the request to run the controller behind a
-// fault injecting proxy. It is read while the harness starts the controller,
-// hence it has to be set before the first Init call.
-var controllerFaultsEnabled bool
-
-// EnableControllerFaults puts the controller behind a proxy which can be told to
-// fail selected device requests, and must be called before Init - the controller
-// is started while the harness comes up.
-//
-// Only the requests devices make are affected. The harness keeps reading what
-// the controller knows over a separate connection, so watching info or metrics
-// is never disturbed by an injected fault.
-//
-// A test suite enables it once and then arms individual faults where needed:
-//
-//	func TestSomeSuite(test *testing.T) {
-//		evetest.EnableControllerFaults()
-//		evetest.Init(test)
-//		defer evetest.Close()
-//		...
-//	}
-func EnableControllerFaults() {
-	controllerFaultsEnabled = true
+// ControllerFaultsEnabled reports whether the controller runs behind the fault
+// injecting proxy, which EVETEST_CONTROLLER_FAULTS asks for. It is off by
+// default, so a test which arms faults has to skip when it returns false.
+func ControllerFaultsEnabled() bool {
+	return viper.GetBool(constants.ControllerFaultsEnv)
 }
 
 // ArmControllerFault makes the controller fail the device requests matching the
@@ -56,7 +40,9 @@ func EnableControllerFaults() {
 // cleared with ClearControllerFaults. Several faults can be armed at once; the
 // first one matching a request applies.
 //
-// Requires EnableControllerFaults to have been called before Init.
+// Requires EVETEST_CONTROLLER_FAULTS - see ControllerFaultsEnabled. Only the
+// requests devices make can be failed: the harness reaches the controller
+// directly, so watching info or metrics is never disturbed by an injected fault.
 //
 // For example, to make every info message fail with 503 while leaving the
 // device config alone:
@@ -71,8 +57,8 @@ func ArmControllerFault(fault ControllerFault) {
 	th := getTestHarness()
 	proxy := th.adamClient.FaultProxy()
 	if proxy == nil {
-		th.t.Fatalf("ArmControllerFault requires EnableControllerFaults " +
-			"to be called before Init")
+		th.t.Fatalf("ArmControllerFault requires %s%s=true",
+			constants.EnvPrefix, constants.ControllerFaultsEnv)
 	}
 	proxy.ArmFault(fault)
 }
@@ -83,8 +69,8 @@ func ClearControllerFaults() {
 	th := getTestHarness()
 	proxy := th.adamClient.FaultProxy()
 	if proxy == nil {
-		th.t.Fatalf("ClearControllerFaults requires EnableControllerFaults " +
-			"to be called before Init")
+		th.t.Fatalf("ClearControllerFaults requires %s%s=true",
+			constants.EnvPrefix, constants.ControllerFaultsEnv)
 	}
 	proxy.ClearFaults()
 }
