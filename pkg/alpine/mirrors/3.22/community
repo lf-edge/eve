@@ -47,6 +47,7 @@ py3-tomli
 qemu
 qemu-img
 qemu-system-x86_64
+skopeo
 sudo
 sysstat
 tini
