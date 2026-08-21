@@ -83,6 +83,29 @@ RUN apk add --no-cache libvirt iptables ip6tables qemu-img mtools bash
 # Copy the built broker binary from builder
 COPY --from=builder /go/bin/evetest-broker /usr/local/bin/evetest-broker
 
+# When run as a non-root user (see the Makefile target
+# libvirt-run-broker-container), the broker needs a few privileged network
+# operations: bridge group_fwd_mask and per-interface sysctl writes on
+# root-owned sysfs/procfs nodes, per-port RTM_SETLINK, chown of VM disks to
+# the qemu user, and (via the exec'ed iptables, which does not inherit the
+# broker's file caps) NAT rule management in the host network namespace.
+# These are granted as file capabilities -- but only on a COPY of the
+# binary: capabilities marked effective make execve fail with EPERM in any
+# container whose bounding set lacks them (e.g. the proxmox broker VM's
+# plain "docker run"), so the default entrypoint must stay uncapped to keep
+# the image drop-in compatible with existing launchers. The non-root
+# launcher selects the capped copy via --entrypoint. The xtables lock file
+# is pre-created since a non-root iptables cannot create it under /run.
+# hadolint ignore=DL3018
+RUN apk add --no-cache --virtual .setcap libcap \
+    && cp /usr/local/bin/evetest-broker /usr/local/bin/evetest-broker-capped \
+    && setcap 'cap_net_admin,cap_dac_override,cap_chown+ep' /usr/local/bin/evetest-broker-capped \
+    && setcap 'cap_net_admin,cap_net_raw+ep' "$(readlink -f "$(command -v iptables)")" \
+    && setcap 'cap_net_admin,cap_net_raw+ep' "$(readlink -f "$(command -v ip6tables)")" \
+    && apk del .setcap \
+    && touch /run/xtables.lock \
+    && chmod 0666 /run/xtables.lock
+
 # Expose the broker gRPC port
 EXPOSE 50221
 

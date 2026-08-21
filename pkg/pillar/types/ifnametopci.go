@@ -126,10 +126,14 @@ func IfNameToPciAndUsbAddr(log *base.LogObject, ifName string) (string, string, 
 	}
 	link = path.Clean(link)
 	components := strings.Split(link, "/")
-	for _, c := range components {
-		if re.MatchString(c) {
-			log.Noticef("Fallback found %s", c)
-			return c, usbAddr, nil
+	// The path may contain several PCI addresses when the NIC sits behind
+	// PCI(e) bridges (e.g. behind a pcie-root-port in a VM): take the last
+	// match, which is the device itself -- the earlier matches are its
+	// upstream bridges, and assigning a bridge to vfio-pci fails (-EINVAL).
+	for i := len(components) - 1; i >= 0; i-- {
+		if re.MatchString(components[i]) {
+			log.Noticef("Fallback found %s", components[i])
+			return components[i], usbAddr, nil
 		}
 	}
 	return target, usbAddr, fmt.Errorf("Not PCI %s", target)

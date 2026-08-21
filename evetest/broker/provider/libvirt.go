@@ -39,6 +39,12 @@ type LibvirtProvider struct {
 	conn  *libvirt.Connect
 	mutex sync.Mutex
 
+	// qemuUID and qemuGID hold the uid:gid libvirt runs QEMU processes as,
+	// parsed from the DAC security model of the host capabilities (-1 when
+	// unknown). See grantQemuDiskAccess.
+	qemuUID int
+	qemuGID int
+
 	// watchers holds all registered watchers for domain lifecycle events.
 	// The key is domain name (without prefix), and the value is a slice
 	// of channels that receive DeviceStatus updates.
@@ -70,6 +76,13 @@ func NewLibvirtProvider(conf LibvirtProviderConf) (*LibvirtProvider, error) {
 		conf:     conf,
 		conn:     conn,
 		watchers: make(map[string][]chan DeviceStatus),
+		qemuUID:  -1,
+		qemuGID:  -1,
+	}
+	if uid, gid, err := qemuDACLabel(conn); err != nil {
+		logrus.Warnf("Failed to determine the uid:gid libvirt runs QEMU as: %v", err)
+	} else {
+		p.qemuUID, p.qemuGID = uid, gid
 	}
 
 	// Register lifecycle events for all domains
@@ -79,6 +92,67 @@ func NewLibvirtProvider(conf LibvirtProviderConf) (*LibvirtProvider, error) {
 	}
 
 	return p, nil
+}
+
+func uintPtr(v uint) *uint {
+	return &v
+}
+
+// qemuDACLabel returns the uid and gid that libvirt runs QEMU processes as,
+// parsed from the DAC security model base label (e.g. "+107:+107") of the
+// host capabilities.
+func qemuDACLabel(conn *libvirt.Connect) (uid, gid int, err error) {
+	capsXML, err := conn.GetCapabilities()
+	if err != nil {
+		return -1, -1, err
+	}
+	var caps libvirtxml.Caps
+	if err := caps.Unmarshal(capsXML); err != nil {
+		return -1, -1, err
+	}
+	for _, sm := range caps.Host.SecModel {
+		if sm.Name != "dac" {
+			continue
+		}
+		for _, label := range sm.Labels {
+			if label.Type != "qemu" && label.Type != "kvm" {
+				continue
+			}
+			parts := strings.Split(strings.ReplaceAll(label.Value, "+", ""), ":")
+			if len(parts) != 2 {
+				continue
+			}
+			parsedUID, err1 := strconv.Atoi(parts[0])
+			parsedGID, err2 := strconv.Atoi(parts[1])
+			if err1 == nil && err2 == nil {
+				return parsedUID, parsedGID, nil
+			}
+		}
+	}
+	return -1, -1, fmt.Errorf("no DAC base label found in libvirt capabilities")
+}
+
+// grantQemuDiskAccess hands the file's group over to libvirt's QEMU user and
+// adds group rw. Necessary when the broker runs as a non-root user: libvirt's
+// pre-start access check evaluates the file against QEMU's plain uid:gid --
+// without supplementary groups -- so the qemu user's membership in the
+// broker's group does not satisfy it for writable disks. Requires CAP_CHOWN,
+// granted to the broker binary in Dockerfile.broker.
+func (p *LibvirtProvider) grantQemuDiskAccess(log *logrus.Entry, path string) {
+	if p.qemuGID < 0 {
+		return
+	}
+	// Also take ownership: files built via Docker are root-owned, and the
+	// chmod below requires the broker to own the file (CAP_FOWNER is not
+	// granted, CAP_CHOWN is).
+	if err := os.Chown(path, os.Getuid(), p.qemuGID); err != nil {
+		log.Warnf("Failed to change ownership of %q to %d:%d (QEMU gid): %v",
+			path, os.Getuid(), p.qemuGID, err)
+		return
+	}
+	if err := os.Chmod(path, 0o664); err != nil {
+		log.Warnf("Failed to add group write permission to %q: %v", path, err)
+	}
 }
 
 // -------- DeviceProvider implementation --------
@@ -142,7 +216,7 @@ func (p *LibvirtProvider) SetupDevice(
 
 	// Network definition
 	var interfaces []libvirtxml.DomainInterface
-	for _, iface := range spec.NetworkInterfaces {
+	for i, iface := range spec.NetworkInterfaces {
 		var netName string
 		switch {
 		case iface.Connection.Uplink != nil:
@@ -181,6 +255,19 @@ func (p *LibvirtProvider) SetupDevice(
 			Model: &libvirtxml.DomainInterfaceModel{
 				Type: "virtio",
 			},
+			// Pin every NIC to its own single-function slot on the root
+			// bus (mirroring the qemu provider). Left to itself, libvirt
+			// packs the NICs as functions of one multifunction slot, and
+			// vfio-pci refuses to bind such a function (probe error -22),
+			// breaking NIC passthrough from EVE to its applications.
+			Address: &libvirtxml.DomainAddress{
+				PCI: &libvirtxml.DomainAddressPCI{
+					Domain:   uintPtr(0),
+					Bus:      uintPtr(0),
+					Slot:     uintPtr(uint(0x10 + i)),
+					Function: uintPtr(0),
+				},
+			},
 		}
 		interfaces = append(interfaces, ifaceXML)
 	}
@@ -205,6 +292,7 @@ func (p *LibvirtProvider) SetupDevice(
 			log.Error(err)
 			return err
 		}
+		p.grantQemuDiskAccess(log, absPath)
 		disks = append(disks, libvirtxml.DomainDisk{
 			Device: "disk",
 			Driver: &libvirtxml.DomainDiskDriver{
@@ -235,6 +323,13 @@ func (p *LibvirtProvider) SetupDevice(
 		if err != nil {
 			return fmt.Errorf("failed to pre-create console log file %q: %w",
 				consoleLogFile, err)
+		}
+		// The OpenFile permissions are clipped by the umask (typically to
+		// 0640), but QEMU runs as the distro's qemu user and relies on
+		// group (eve-broker) write access to append to the log.
+		if err := file.Chmod(0o660); err != nil {
+			return errors.Join(file.Close(), fmt.Errorf("failed to set permissions of console log file %q: %w",
+				consoleLogFile, err))
 		}
 		file.Close()
 	}
@@ -301,6 +396,9 @@ func (p *LibvirtProvider) SetupDevice(
 	features := &libvirtxml.DomainFeatureList{
 		ACPI: &libvirtxml.DomainFeature{},
 		APIC: &libvirtxml.DomainFeatureAPIC{},
+		// Split irqchip (I/O APIC emulated in QEMU), required by the
+		// interrupt remapping of the vIOMMU defined below.
+		IOAPIC: &libvirtxml.DomainFeatureIOAPIC{Driver: "qemu"},
 	}
 
 	// If UEFI firmware was configured, attach loader + nvram.
@@ -320,6 +418,8 @@ func (p *LibvirtProvider) SetupDevice(
 			log.Error(err)
 			return err
 		}
+		// The VARS file is opened read-write by QEMU.
+		p.grantQemuDiskAccess(log, varsPath)
 
 		domainOS.Loader = &libvirtxml.DomainLoader{
 			Path:     codePath,
@@ -362,6 +462,17 @@ func (p *LibvirtProvider) SetupDevice(
 		Disks:      disks,
 		Interfaces: interfaces,
 		Consoles:   []libvirtxml.DomainConsole{console},
+		// vIOMMU, so that EVE inside the VM can use VFIO to pass PCI
+		// devices such as NICs through to application VMs. Same settings
+		// as eden's "-device intel-iommu,..." QEMU option.
+		IOMMU: &libvirtxml.DomainIOMMU{
+			Model: "intel",
+			Driver: &libvirtxml.DomainIOMMUDriver{
+				IntRemap:    "on",
+				CachingMode: "on",
+				AWBits:      48,
+			},
+		},
 	}
 
 	if spec.WithTPM {
@@ -394,12 +505,22 @@ func (p *LibvirtProvider) SetupDevice(
 	// expose these properties natively for virtio-net; qemu:override would work
 	// but requires libvirt >= 8.6. Using -global covers all virtio-net-pci
 	// instances regardless of libvirt version.
+	// Additionally make every NIC modern-only virtio honoring the vIOMMU
+	// (iommu_platform), so that the NIC itself can be passed through to an
+	// app VM (same virtio-net-pci flags as used by eden and by the qemu
+	// provider).
 	qemuCmdline := &libvirtxml.DomainQEMUCommandline{
 		Args: []libvirtxml.DomainQEMUCommandlineArg{
 			{Value: "-global"},
 			{Value: "virtio-net-pci.speed=1000"},
 			{Value: "-global"},
 			{Value: "virtio-net-pci.duplex=full"},
+			{Value: "-global"},
+			{Value: "virtio-net-pci.disable-legacy=on"},
+			{Value: "-global"},
+			{Value: "virtio-net-pci.disable-modern=off"},
+			{Value: "-global"},
+			{Value: "virtio-net-pci.iommu_platform=on"},
 		},
 	}
 

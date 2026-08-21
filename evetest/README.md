@@ -1017,16 +1017,51 @@ test's perspective, this is transparent -- the same test code works in both mode
 ![Distributed evetest setup](pics/evetest-distributed.png)
 
 With the **libvirt** provider, the broker runs as a container on the hypervisor host
-itself:
+itself. The host needs libvirt with both the QEMU and the network driver running --
+with modular libvirt daemons, `virtqemud` alone is not enough, the network daemon
+must be enabled too, or VM setup fails with "Failed to connect socket to
+'/var/run/libvirt/virtnetworkd-sock'":
 
 ```bash
-# One-time setup on the hypervisor server:
+sudo systemctl enable --now virtqemud.socket virtnetworkd.socket
+```
+
+Then:
+
+```bash
+# One-time setup on the hypervisor server (idempotent -- rerun it after
+# updating evetest, it may have gained steps):
 sudo make libvirt-setup-broker-user
 make libvirt-run-broker-container
 
 # On the runner/laptop (192.168.1.100 is example of the server IP address):
 EVETEST_BROKER_ADDRESS=192.168.1.100 make evetest NAME=TestDHCPIPv4Only
 ```
+
+`libvirt-setup-broker-user` prepares everything the broker and libvirt's QEMU need
+to cooperate:
+
+- creates the `eve-broker` user and adds it to the `docker` and `libvirt` groups
+  (socket access);
+- adds the distro's libvirt QEMU user (`qemu` on Fedora/RHEL/SUSE, `libvirt-qemu`
+  on Debian/Ubuntu) to the `eve-broker` group and makes the eve-broker home
+  directory traversable, so QEMU can reach and open the VM disks below it;
+- takes ownership of the image directory, also healing files left behind by older
+  broker versions that ran as root;
+- on SELinux-enforcing hosts, labels the console-log directory (`virt_log_t`) and
+  the image directory (`virt_image_t`), so that `virtlogd` and QEMU (`svirt_t`)
+  may access the broker-created files there.
+
+The broker container itself runs as the unprivileged `eve-broker` user. The few
+root-only network operations it performs (bridge forwarding masks, per-interface
+sysctls, NAT rules for the uplink) are covered by file capabilities granted to a
+dedicated copy of the broker binary (`evetest-broker-capped`, selected by
+`libvirt-run-broker-container` via `--entrypoint`) and to the iptables binaries
+inside the container image, so no part of the broker needs to run as root. The
+image's default entrypoint stays uncapped: capabilities marked effective make a
+binary unexecutable in containers whose bounding set lacks them, and other
+deployments (e.g. the proxmox broker VM) launch the image without extra
+capabilities and do not need any.
 
 With the **proxmox** provider, the broker instead runs inside a VM on the Proxmox
 host, talking to the Proxmox API to create/manage EVE and SDN VMs -- see
@@ -1188,7 +1223,7 @@ and the framework subscribes to Adam's data streams to keep device state up to d
 | `make build-test-apps` | Build all test apps under `testapps/` by invoking each app's `build` target; supports the same `DOCKER_PLATFORM`, `DOCKER_TARGET`, and `EVETEST_ORG` variables |
 | `make install-cli` | Install the `evetest` CLI binary |
 | `make proto` | Regenerate protobuf Go code from `.proto` files (Docker-based) |
-| `make libvirt-setup-broker-user` | One-time setup for the libvirt broker (requires sudo) |
+| `make libvirt-setup-broker-user` | Prepare the libvirt broker host: user, groups, permissions, SELinux labels (requires sudo; idempotent, rerun after updating evetest) |
 | `make libvirt-run-broker-container` | Start the broker container for the libvirt provider (distributed mode) |
 | `make proxmox-broker-installer` | Assemble the self-contained Proxmox broker installer script (see [deploy/proxmox/README.md](deploy/proxmox/README.md)) |
 
