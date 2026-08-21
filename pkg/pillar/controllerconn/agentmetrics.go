@@ -8,6 +8,7 @@
 package controllerconn
 
 import (
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +17,11 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
+
+// urlCountersWiggle is headroom above types.MaxURLCounters: once the total
+// reaches MaxURLCounters+urlCountersWiggle, that many oldest entries are
+// evicted at once, amortizing the eviction scan across several new URLs.
+const urlCountersWiggle = 15
 
 // AgentMetrics stores controller related metrics for one agent (microservice).
 // Able to properly handle concurrent access.
@@ -58,28 +64,31 @@ func (am *AgentMetrics) RecordFailure(log *base.LogObject, ifname, url string,
 	defer release()
 	log.Tracef("RecordFailure(%s, %s, %d, %d, %t)",
 		ifname, url, reqLen, respLen, authenFail)
-	m := am.getInterfaceMetrics(ifname)
 
 	// if we have authen verify failure, the network part is success
 	if authenFail {
+		m := am.getInterfaceMetrics(ifname)
 		m.AuthFailCount++
-	} else {
-		m.FailureCount++
-		m.LastFailure = time.Now()
-
-		var u types.URLMetrics
-		var ok bool
-		if u, ok = m.URLCounters[url]; !ok {
-			u = types.URLMetrics{}
-		}
-		u.TryMsgCount++
-		u.TryByteCount += reqLen
-		if respLen != 0 {
-			u.RecvMsgCount++
-			u.RecvByteCount += respLen
-		}
-		m.URLCounters[url] = u
+		am.metrics[ifname] = m
+		return
 	}
+
+	if _, ok := am.getInterfaceMetrics(ifname).URLCounters[url]; !ok {
+		// Re-fetch below: eviction may update this ifname's entry too.
+		am.makeRoomForNewURL(log)
+	}
+	m := am.getInterfaceMetrics(ifname)
+	m.FailureCount++
+	m.LastFailure = time.Now()
+	u := m.URLCounters[url]
+	u.TryMsgCount++
+	u.TryByteCount += reqLen
+	if respLen != 0 {
+		u.RecvMsgCount++
+		u.RecvByteCount += respLen
+	}
+	u.LastUpdated = time.Now()
+	m.URLCounters[url] = u
 	am.metrics[ifname] = m
 }
 
@@ -90,15 +99,15 @@ func (am *AgentMetrics) RecordSuccess(log *base.LogObject, ifname, url string,
 	defer release()
 	log.Tracef("RecordSuccess(%s, %s, %d, %d, %d, %t)",
 		ifname, url, reqLen, respLen, timeSpent, resume)
-	m := am.getInterfaceMetrics(ifname)
 
+	if _, ok := am.getInterfaceMetrics(ifname).URLCounters[url]; !ok {
+		// Re-fetch below: eviction may update this ifname's entry too.
+		am.makeRoomForNewURL(log)
+	}
+	m := am.getInterfaceMetrics(ifname)
 	m.SuccessCount++
 	m.LastSuccess = time.Now()
-	var u types.URLMetrics
-	var ok bool
-	if u, ok = m.URLCounters[url]; !ok {
-		u = types.URLMetrics{}
-	}
+	u := m.URLCounters[url]
 	u.SentMsgCount++
 	u.SentByteCount += reqLen
 	u.RecvMsgCount++
@@ -107,8 +116,46 @@ func (am *AgentMetrics) RecordSuccess(log *base.LogObject, ifname, url string,
 	if resume {
 		u.SessionResume++
 	}
+	u.LastUpdated = time.Now()
 	m.URLCounters[url] = u
 	am.metrics[ifname] = m
+}
+
+// makeRoomForNewURL evicts urlCountersWiggle least recently used
+// URLMetrics entries, combined across all interfaces, once the high
+// watermark is reached. Caller must hold the AgentMetrics lock.
+func (am *AgentMetrics) makeRoomForNewURL(log *base.LogObject) {
+	var total int
+	for _, m := range am.metrics {
+		total += len(m.URLCounters)
+	}
+	if total < types.MaxURLCounters+urlCountersWiggle {
+		return
+	}
+
+	type urlEntry struct {
+		ifname, url string
+		lastUpdated time.Time
+	}
+	entries := make([]urlEntry, 0, total)
+	for ifname, m := range am.metrics {
+		for url, u := range m.URLCounters {
+			entries = append(entries, urlEntry{ifname, url, u.LastUpdated})
+		}
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].lastUpdated.Before(entries[j].lastUpdated)
+	})
+
+	for _, e := range entries[:urlCountersWiggle] {
+		m := am.metrics[e.ifname]
+		delete(m.URLCounters, e.url)
+		m.URLCounterRedactedCount++
+		am.metrics[e.ifname] = m
+	}
+	log.Warnf("AgentMetrics: URLCounters limit of %d reached; "+
+		"evicted %d least recently used entries",
+		types.MaxURLCounters, urlCountersWiggle)
 }
 
 // Publish the recorded metrics through the given publisher.
