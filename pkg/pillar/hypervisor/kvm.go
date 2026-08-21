@@ -1729,6 +1729,13 @@ func (ctx KvmContext) CreateDomConfig(domainName string,
 	diskStatusList []types.DiskStatus, aa *types.AssignableAdapters,
 	globalConfig *types.ConfigItemValueMap, swtpmCtrlSock string, file *os.File) error {
 
+	// Reject controller-supplied strings that would let a newline break out of
+	// a config directive and inject extra QEMU sections (config template
+	// injection). This is the single choke point before any template runs.
+	if err := validateDomainConfig(domainName, config, diskStatusList, aa); err != nil {
+		return logError("refusing to build domain config for %s: %v", domainName, err)
+	}
+
 	virtualizationMode := ""
 	bootLoaderSettingsFile, err := getOVMFSettingsFilename(domainName)
 	if err != nil {

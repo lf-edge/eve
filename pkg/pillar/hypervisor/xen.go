@@ -153,6 +153,12 @@ func (ctx xenContext) CreateDomConfig(domainName string,
 	config types.DomainConfig, diskStatusList []types.DiskStatus,
 	aa *types.AssignableAdapters, globalConfig *types.ConfigItemValueMap,
 	file *os.File) error {
+	// Reject controller-supplied strings that would let a newline break out of
+	// a config directive and inject extra Xen xl config entries (config
+	// template injection). Shared choke point with the KVM backend.
+	if err := validateDomainConfig(domainName, config, diskStatusList, aa); err != nil {
+		return logError("refusing to build domain config for %s: %v", domainName, err)
+	}
 	xenType := "pvh"
 	rootDev := ""
 	extra := config.ExtraArgs
