@@ -13,6 +13,12 @@ import (
 // when logging
 type MetricsMap map[string]ControllerConnMetrics
 
+// MaxURLCounters limits URLMetrics entries per MetricsMap (combined across
+// interfaces): agents like downloader/mgmtproxy can otherwise grow
+// URLCounters without bound and exceed the pubsub message size limit.
+// The actual count may transiently exceed this; see AgentMetrics.
+const MaxURLCounters = 100
+
 // ControllerConnMetrics holds communication statistics with the controller
 // for a single interface.
 // It tracks successes, failures, authentication failures, and per-URL metrics.
@@ -23,6 +29,9 @@ type ControllerConnMetrics struct {
 	LastSuccess   time.Time
 	URLCounters   map[string]URLMetrics
 	AuthFailCount uint64
+	// URLCounterRedactedCount counts URLMetrics entries evicted to stay
+	// within MaxURLCounters.
+	URLCounterRedactedCount uint64
 }
 
 // URLMetrics are metrics for a particular URL
@@ -35,6 +44,9 @@ type URLMetrics struct {
 	RecvByteCount  int64 // Based on content-length which could be off
 	TotalTimeSpent int64
 	SessionResume  int64
+	// LastUpdated determines which entries to evict once MaxURLCounters
+	// is reached.
+	LastUpdated time.Time
 }
 
 // AddInto adds metrics from this instance of MetricsMap
@@ -66,6 +78,7 @@ func (m MetricsMap) AddInto(toMap MetricsMap) {
 		dst.FailureCount += src.FailureCount
 		dst.SuccessCount += src.SuccessCount
 		dst.AuthFailCount += src.AuthFailCount
+		dst.URLCounterRedactedCount += src.URLCounterRedactedCount
 		if dst.URLCounters == nil {
 			dst.URLCounters = make(map[string]URLMetrics)
 		}
@@ -85,6 +98,9 @@ func (m MetricsMap) AddInto(toMap MetricsMap) {
 			dstURL.RecvByteCount += srcURL.RecvByteCount
 			dstURL.TotalTimeSpent += srcURL.TotalTimeSpent
 			dstURL.SessionResume += srcURL.SessionResume
+			if srcURL.LastUpdated.After(dstURL.LastUpdated) {
+				dstURL.LastUpdated = srcURL.LastUpdated
+			}
 			dstURLs[url] = dstURL
 		}
 		toMap[ifname] = dst

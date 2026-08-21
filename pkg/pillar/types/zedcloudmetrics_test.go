@@ -118,3 +118,33 @@ func TestMetricsMapAddIntoURLMerge(t *testing.T) {
 	assert.Equal(t, int64(4), got.SentMsgCount)
 	assert.Equal(t, int64(1), got.SessionResume)
 }
+
+func TestMetricsMapAddIntoRedactedCountAndLastUpdated(t *testing.T) {
+	now := time.Now()
+	earlier := now.Add(-time.Minute)
+
+	src := MetricsMap{
+		"eth0": ControllerConnMetrics{
+			URLCounterRedactedCount: 3,
+			URLCounters: map[string]URLMetrics{
+				"/v1/config": {TryMsgCount: 1, LastUpdated: earlier},
+			},
+		},
+	}
+	dst := MetricsMap{
+		"eth0": ControllerConnMetrics{
+			URLCounterRedactedCount: 2,
+			URLCounters: map[string]URLMetrics{
+				"/v1/config": {TryMsgCount: 1, LastUpdated: now},
+			},
+		},
+	}
+
+	// URLCounterRedactedCount is summed and LastUpdated takes the more recent
+	// of the two entries being merged.
+	src.AddInto(dst)
+
+	got := dst["eth0"]
+	assert.Equal(t, uint64(5), got.URLCounterRedactedCount)
+	assert.Equal(t, now, got.URLCounters["/v1/config"].LastUpdated)
+}
