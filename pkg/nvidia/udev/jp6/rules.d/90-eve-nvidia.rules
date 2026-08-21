@@ -6,9 +6,9 @@ KERNEL=="fb", RUN+="/bin/mknod -m 660 /dev/fb0 c %M 0"
 # NVIDIA modules
 KERNEL=="nvidia", RUN+="/bin/mknod -m 660 /dev/nvidiactl c 195 255"
 KERNEL=="nvidia", RUN+="/bin/mknod -m 660 /dev/nvidia0 c 195 0"
-KERNEL=="nvidia_modeset", RUN+="/bin/mknod -m 660 /dev/nvidia-modeset c %M %m"
-KERNEL=="15480000.nvdec", ACTION=="bind", RUN+="/bin/mknod -m 666 /dev/v4l2-nvdec c %M %m"
-KERNEL=="154c0000.nvenc", ACTION=="bind", RUN+="/bin/mknod -m 666 /dev/v4l2-nvenc c %M %m"
+KERNEL=="nvidia_modeset", RUN+="/bin/mknod -m 660 /dev/nvidia-modeset c 195 254"
+ACTION="bind", KERNEL=="15480000.nvdec", DRIVER=="tegra-nvdec", RUN+="/bin/mknod -m 666 /dev/v4l2-nvdec c 1 3"
+ACTION="bind", KERNEL=="154c0000.nvenc", DRIVER=="tegra-nvenc", RUN+="/bin/mknod -m 666 /dev/v4l2-nvenc c 1 3"
 
 # RTC
 KERNEL=="rtc1", SUBSYSTEM=="rtc", SYMLINK="rtc", MODE="0666"

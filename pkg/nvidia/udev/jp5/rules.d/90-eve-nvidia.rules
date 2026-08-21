@@ -7,7 +7,7 @@ KERNEL=="fb", RUN+="/bin/mknod -m 660 /dev/fb1 c %M 1"
 # NVIDIA modules
 KERNEL=="nvidia", RUN+="/bin/mknod -m 660 /dev/nvidiactl c 195 255"
 KERNEL=="nvidia", RUN+="/bin/mknod -m 660 /dev/nvidia0 c 195 0"
-KERNEL=="nvidia_modeset", RUN+="/bin/mknod -m 660 /dev/nvidia-modeset c %M %m"
+KERNEL=="nvidia_modeset", RUN+="/bin/mknod -m 660 /dev/nvidia-modeset c 195 254"
 DRIVER=="host1x", RUN+="/bin/mknod -m 660 /dev/tegra_dc_1 c %M 1"
 
 # Set SD card read_ahead_kb to 2048 (taken from Jetpack)
