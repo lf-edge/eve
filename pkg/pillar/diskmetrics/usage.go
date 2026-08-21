@@ -313,7 +313,9 @@ func Dom0DiskReservedSize(log *base.LogObject, globalConfig *types.ConfigItemVal
 		(float64(dom0MinDiskUsagePercent) * 0.01))
 	staticMaxDom0DiskSize := uint64(globalConfig.GlobalValueInt(
 		types.Dom0DiskUsageMaxBytes))
-	newlogReserved := uint64(globalConfig.GlobalValueInt(types.LogRemainToSendMBytes))
+	// The config item is in MBytes.
+	newlogReserved := 1000000 * uint64(globalConfig.GlobalValueInt(
+		types.LogRemainToSendMBytes))
 	// Always leave space for /persist/newlogd
 	maxDom0DiskSize := newlogReserved
 	// Select the larger of the current overhead usage and the configured
