@@ -16,9 +16,9 @@ devices:
         - path: /dev/nvidiactl
         - path: /dev/nvmap
         - path: /dev/nvsciipc
+        - path: /dev/dri/card0
         - path: /dev/dri/card1
         - path: /dev/dri/card2
-        - path: /dev/dri/card3
         - path: /dev/dri/renderD128
         - path: /dev/dri/renderD129
         - path: /dev/dri/renderD130
@@ -1869,9 +1869,9 @@ devices:
         - path: /dev/nvidiactl
         - path: /dev/nvmap
         - path: /dev/nvsciipc
+        - path: /dev/dri/card0
         - path: /dev/dri/card1
         - path: /dev/dri/card2
-        - path: /dev/dri/card3
         - path: /dev/dri/renderD128
         - path: /dev/dri/renderD129
         - path: /dev/dri/renderD130
