@@ -270,7 +270,11 @@ func Dom0DiskReservedSize(log *base.LogObject, globalConfig *types.ConfigItemVal
 		(float64(dom0MinDiskUsagePercent) * 0.01))
 	staticMaxDom0DiskSize := uint64(globalConfig.GlobalValueInt(
 		types.Dom0DiskUsageMaxBytes))
-	newlogReserved := uint64(globalConfig.GlobalValueInt(types.LogRemainToSendMBytes))
+	// The config item is in MBytes. newlogd clamps its own quota to a tenth
+	// of /persist, so anything above that could never be used.
+	newlogReserved := min(
+		1000000*uint64(globalConfig.GlobalValueInt(types.LogRemainToSendMBytes)),
+		deviceDiskSize/10)
 	// Always leave space for /persist/newlogd
 	maxDom0DiskSize := newlogReserved
 	// Select the larger of the current overhead usage and the configured
