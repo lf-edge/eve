@@ -140,6 +140,7 @@ COPY --from=build /rootfs-dist/ /opt/vendor/nvidia/dist/
 COPY --from=build /ldconfig-bin/* /opt/vendor/nvidia/bin/
 COPY --from=build /nvfanctrl/dist/* /opt/vendor/nvidia/bin/
 COPY --from=build /nvct/dist/* /opt/vendor/nvidia/bin/
+COPY --from=build /nv-dev-nodes.sh /opt/vendor/nvidia/bin/
 COPY --from=build /nv-init.sh /opt/vendor/nvidia/init.d/
 COPY --from=build /eve-platform /opt/vendor/nvidia/
 COPY --from=build /sbom-out/lib/apk/db/installed /lib/apk/db/installed

@@ -4,14 +4,13 @@
 KERNEL=="fb", RUN+="/bin/mknod -m 660 /dev/fb0 c %M 0"
 
 # NVIDIA modules
-KERNEL=="nvidia", RUN+="/bin/mknod -m 660 /dev/nvidiactl c 195 255"
-KERNEL=="nvidia", RUN+="/bin/mknod -m 660 /dev/nvidia0 c 195 0"
-KERNEL=="nvidia", RUN+="/bin/mknod -m 660 /dev/nvidia1 c 195 1"
-KERNEL=="nvidia_modeset", RUN+="/bin/mknod -m 660 /dev/nvidia-modeset c %M %m"
-KERNEL=="nvidia_uvm", RUN+="/bin/mknod -m 660 /dev/nvidia-uvm c %M %m"
-KERNEL=="nvidia_uvm", RUN+="/bin/mknod -m 660 /dev/nvidia-uvm-tools c %M %m"
-DRIVERS=="tegra-nvdec", ACTION=="bind", RUN+="/bin/mknod -m 666 /dev/v4l2-nvdec c %M %m"
-DRIVERS=="tegra-nvenc", ACTION=="bind", RUN+="/bin/mknod -m 666 /dev/v4l2-nvenc c %M %m"
+ACTION=="add", SUBSYSTEM=="module", KERNEL=="nvidia", RUN+="/bin/mknod -m 660 /dev/nvidiactl c 195 255"
+ACTION=="add", SUBSYSTEM=="module", KERNEL=="nvidia", RUN+="/bin/mknod -m 660 /dev/nvidia0 c 195 0"
+ACTION=="add", SUBSYSTEM=="module", KERNEL=="nvidia", RUN+="/bin/mknod -m 660 /dev/nvidia1 c 195 1"
+ACTION=="add", SUBSYSTEM=="module", KERNEL=="nvidia_modeset", RUN+="/bin/mknod -m 660 /dev/nvidia-modeset c 195 254"
+ACTION=="add", SUBSYSTEM=="module", KERNEL=="nvidia_uvm", RUN+="/opt/vendor/nvidia/bin/nv-dev-nodes.sh nvidia_uvm"
+ACTION="bind", KERNEL=="15480000.nvdec", DRIVER=="tegra-nvdec", RUN+="/bin/mknod -m 666 /dev/v4l2-nvdec c 1 3"
+ACTION="bind", KERNEL=="154c0000.nvenc", DRIVER=="tegra-nvenc", RUN+="/bin/mknod -m 666 /dev/v4l2-nvenc c 1 3"
 
 # Set SD card read_ahead_kb to 2048 (taken from Jetpack)
 KERNEL=="mmcblk[0-9]", SUBSYSTEMS=="mmc", ACTION=="add|change", ATTR{bdi/read_ahead_kb}="2048"
