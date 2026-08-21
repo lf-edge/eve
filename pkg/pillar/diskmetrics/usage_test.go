@@ -13,6 +13,7 @@ import (
 
 	"github.com/containerd/containerd/mount"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/sirupsen/logrus"
 )
 
@@ -270,6 +271,59 @@ func TestParseLsblkPartitions(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Fatalf("parseLsblkPartitions mismatch\n got: %+v\nwant: %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestDom0DiskReservedSizeNewlogTerm(t *testing.T) {
+	log := base.NewSourceLogObject(logrus.StandardLogger(), t.Name(), 0) //nolint:staticcheck
+
+	// The newlog term is one of several summands, and which of the others
+	// applies depends on the disk size. Difference against a zero quota to
+	// isolate it.
+	newlogTerm := func(deviceDiskSize uint64, quotaMBytes uint32) uint64 {
+		reserved := func(quota uint32) uint64 {
+			gc := types.DefaultConfigItemValueMap()
+			gc.SetGlobalValueInt(types.LogRemainToSendMBytes, quota)
+			return Dom0DiskReservedSize(log, gc, deviceDiskSize, 0)
+		}
+		return reserved(quotaMBytes) - reserved(0)
+	}
+
+	tests := []struct {
+		name           string
+		deviceDiskSize uint64
+		quotaMBytes    uint32
+		want           uint64
+	}{
+		{
+			// newlogd clamps its own quota to a tenth of /persist, so the
+			// default 2048 MBytes is unreachable on a 4 GByte /persist.
+			name:           "quota above newlogd's tenth-of-persist clamp",
+			deviceDiskSize: 4037619712,
+			quotaMBytes:    2048,
+			want:           403761971,
+		},
+		{
+			name:           "quota below the clamp is converted from MBytes",
+			deviceDiskSize: 32000000000,
+			quotaMBytes:    2048,
+			want:           2048000000,
+		},
+		{
+			name:           "minimum quota",
+			deviceDiskSize: 32000000000,
+			quotaMBytes:    10,
+			want:           10000000,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := newlogTerm(tc.deviceDiskSize, tc.quotaMBytes)
+			if got != tc.want {
+				t.Errorf("newlog reserve on %d bytes of /persist with a %d MByte quota = %d, want %d",
+					tc.deviceDiskSize, tc.quotaMBytes, got, tc.want)
 			}
 		})
 	}
