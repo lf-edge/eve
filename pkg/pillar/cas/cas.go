@@ -22,6 +22,18 @@ type BlobInfo struct {
 	Labels map[string]string
 }
 
+// ImageLayer describes one layer of an image as recorded in its manifest.
+type ImageLayer struct {
+	// Digest of the layer blob, format <algo>:<hash>.
+	Digest string
+	// MediaType of the layer.
+	MediaType string
+	// Size of the layer blob in bytes.
+	Size int64
+	// Annotations on the layer descriptor in the manifest.
+	Annotations map[string]string
+}
+
 // CAS provides methods to interact with CAS clients
 // Context handling should be taken care by the underlying implementor.
 //
@@ -75,6 +87,11 @@ type CAS interface {
 	// GetImageHash: returns a blob hash of format <algo>:<hash> (currently supporting only sha256:<hash>) which the given 'reference' is pointing to.
 	// Returns error if the given 'reference' is not found.
 	GetImageHash(reference string) (string, error)
+	// GetImageLayers returns the layers of the manifest that 'reference' points
+	// to, in manifest order. If the reference points at a multi-manifest index,
+	// the platform-matching manifest is used (falling back to the first).
+	// Returns error if the reference is not found or its manifest cannot be read.
+	GetImageLayers(reference string) ([]ImageLayer, error)
 	// GetImageLabels  returns the labels set on the image.
 	// Returns error if the given reference is not found
 	GetImageLabels(reference string) (map[string]string, error)
