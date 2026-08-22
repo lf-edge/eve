@@ -1464,8 +1464,8 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 					status.DomainName)
 			}
 			// Also checked in reserveAdapters. Check here in case there was a late error.
-			if !ib.Error.Empty() {
-				return errors.New(ib.Error.String())
+			if errStr := ib.Error.HardErrorString(); errStr != "" {
+				return errors.New(errStr)
 			}
 			if ib.UsbAddr != "" {
 				log.Functionf("Assigning %s (%s) to %s",
@@ -2255,9 +2255,9 @@ func reserveAdapters(ctx *domainContext, config types.DomainConfig) *types.Error
 					adapter.Type, adapter.Name, ibp.Phylabel)
 				return &description
 			}
-			if !ibp.Error.Empty() {
+			if errStr := ibp.Error.HardErrorString(); errStr != "" {
 				description.Error = fmt.Sprintf("adapter %d %s phylabel %s has error: %s",
-					adapter.Type, adapter.Name, ibp.Phylabel, ibp.Error.String())
+					adapter.Type, adapter.Name, ibp.Phylabel, errStr)
 				return &description
 			}
 		}
@@ -3387,9 +3387,9 @@ func updatePortAndPciBackIoMember(ctx *domainContext, ib *types.IoBundle, isPort
 	}
 
 	if !ib.KeepInHost && !ib.IsPCIBack {
-		if !ib.Error.Empty() {
+		if errStr := ib.Error.HardErrorString(); errStr != "" {
 			log.Warningf("Not assigning %s (%s) to pciback due to error: %s at %s",
-				ib.Phylabel, ib.PciLong, ib.Error.String(), ib.Error.ErrorTime())
+				ib.Phylabel, ib.PciLong, errStr, ib.Error.ErrorTime())
 		} else if ctx.deviceNetworkStatus.Testing && ib.Type.IsNet() {
 			log.Noticef("Not assigning %s (%s) to pciback due to Testing",
 				ib.Phylabel, ib.PciLong)
