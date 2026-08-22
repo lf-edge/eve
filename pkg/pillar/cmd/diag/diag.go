@@ -68,6 +68,8 @@ type diagContext struct {
 	zedagentStatus          types.ZedAgentStatus
 	subVaultStatus          pubsub.Subscription
 	vaultStatus             types.VaultStatus
+	subVolumeMgrStatus      pubsub.Subscription
+	volumeMgrStatus         types.VolumeMgrStatus
 	subAppInstanceSummary   pubsub.Subscription
 	appInstanceSummary      types.AppInstanceSummary
 	subAppInstanceStatus    pubsub.Subscription
@@ -349,6 +351,25 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	ctx.subVaultStatus = subVaultStatus
 	subVaultStatus.Activate()
 
+	// Look for VolumeMgrStatus from volumemgr, to show whether cluster storage
+	// became usable on an EVE-k node.
+	subVolumeMgrStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "volumemgr",
+		MyAgentName:   agentName,
+		TopicImpl:     types.VolumeMgrStatus{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleVolumeMgrStatusCreate,
+		ModifyHandler: handleVolumeMgrStatusModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subVolumeMgrStatus = subVolumeMgrStatus
+	subVolumeMgrStatus.Activate()
+
 	// Look for AppInstanceSummary from zedmanager
 	subAppInstanceSummary, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedmanager",
@@ -448,6 +469,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-subVaultStatus.MsgChan():
 			subVaultStatus.ProcessChange(change)
+
+		case change := <-subVolumeMgrStatus.MsgChan():
+			subVolumeMgrStatus.ProcessChange(change)
 
 		case change := <-subAppInstanceSummary.MsgChan():
 			subAppInstanceSummary.ProcessChange(change)
@@ -569,6 +593,24 @@ func handleVaultStatusImpl(ctxArg interface{}, key string,
 	}
 	ctx.vaultStatus = status
 	triggerPrintOutput(ctx, "VaultStatus")
+}
+
+func handleVolumeMgrStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleVolumeMgrStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleVolumeMgrStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleVolumeMgrStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleVolumeMgrStatusImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*diagContext)
+	ctx.volumeMgrStatus = statusArg.(types.VolumeMgrStatus)
+	triggerPrintOutput(ctx, "VolumeMgrStatus")
 }
 
 func handleAppInstanceSummaryCreate(ctxArg interface{}, key string,
@@ -871,6 +913,14 @@ func printOutput(ctx *diagContext, caller string) {
 		} else {
 			ctx.ph.Print("WARNING: Air-gap mode enabled without LOC configuration\n")
 		}
+	}
+
+	// A node whose cluster storage is not usable cannot create any application
+	// volume; the condition says whether volumemgr is still waiting for it or
+	// gave up. An empty Name means volumemgr has not published a status yet.
+	if ctx.volumeMgrStatus.Name != "" && !ctx.volumeMgrStatus.Initialized {
+		ctx.ph.Print("WARNING: cluster storage not ready: %s\n",
+			ctx.volumeMgrStatus.UnmetCondition)
 	}
 
 	// Determine what we print for app summary

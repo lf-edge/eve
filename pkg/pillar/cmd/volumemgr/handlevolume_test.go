@@ -22,7 +22,7 @@ func TestIsErrorSourceOnPubSub(t *testing.T) {
 	status.SetErrorWithSource(errStr, types.ContentTreeStatus{}, time.Now())
 	log.Functionf("set error %s", status.Error)
 	ctx := initStatusCtx(t)
-	publishVolumeStatus(&ctx, status)
+	publishVolumeStatus(ctx, status)
 	status = ctx.LookupVolumeStatus(status.Key())
 	assert.True(t, status.HasError())
 	assert.True(t, status.IsErrorSource(types.ContentTreeStatus{}),
@@ -37,8 +37,8 @@ func TestIsErrorSourceOnPubSub(t *testing.T) {
 	assert.Equal(t, "", status.Error)
 }
 
-func initStatusCtx(t *testing.T) volumemgrContext {
-	ctx := volumemgrContext{}
+func initStatusCtx(t *testing.T) *volumemgrContext {
+	ctx := &volumemgrContext{}
 	logger := logrus.StandardLogger()
 	log = base.NewSourceLogObject(logger, "test", 1234)
 	ps := pubsub.New(&pubsub.EmptyDriver{}, logger, log)
@@ -56,7 +56,7 @@ func initStatusCtx(t *testing.T) volumemgrContext {
 // subscriptions/config handleVolumeModify's call chain (updateVolumeStatusRefCount,
 // doUpdateVol, updateVolumeRefStatus) touches, so handleVolumeModify can be
 // exercised directly instead of only its pubsub-facing helpers.
-func initVolumeModifyCtx(t *testing.T) volumemgrContext {
+func initVolumeModifyCtx(t *testing.T) *volumemgrContext {
 	ctx := initStatusCtx(t)
 	ctx.globalConfig = types.DefaultConfigItemValueMap()
 	ctx.volumeConfigCreateDeferredMap = make(map[string]*types.VolumeConfig)
@@ -67,7 +67,7 @@ func initVolumeModifyCtx(t *testing.T) volumemgrContext {
 		AgentName:   "zedagent",
 		MyAgentName: agentName,
 		TopicImpl:   types.VolumeConfig{},
-		Ctx:         &ctx,
+		Ctx:         ctx,
 	})
 	assert.Nil(t, err)
 	ctx.subVolumeConfig = subVolumeConfig
@@ -77,7 +77,7 @@ func initVolumeModifyCtx(t *testing.T) volumemgrContext {
 		AgentName:   "zedmanager",
 		MyAgentName: agentName,
 		TopicImpl:   types.VolumeRefConfig{},
-		Ctx:         &ctx,
+		Ctx:         ctx,
 	})
 	assert.Nil(t, err)
 	ctx.subVolumeRefConfig = subVolumeRefConfig
@@ -110,7 +110,7 @@ func TestHandleVolumeModifyResyncsIsReplicated(t *testing.T) {
 		SubState:     types.VolumeSubStateCreated,
 		IsReplicated: true,
 	}
-	publishVolumeStatus(&ctx, status)
+	publishVolumeStatus(ctx, status)
 
 	// Controller reassigns DNID to this node: same volume, same content,
 	// only IsReplicated flips to false.
@@ -121,7 +121,7 @@ func TestHandleVolumeModifyResyncsIsReplicated(t *testing.T) {
 		IsReplicated: false,
 	}
 
-	handleVolumeModify(&ctx, config.Key(), config, types.VolumeConfig{})
+	handleVolumeModify(ctx, config.Key(), config, types.VolumeConfig{})
 
 	got := ctx.LookupVolumeStatus(config.Key())
 	assert.NotNil(t, got)

@@ -94,9 +94,9 @@ func lookupAppDiskMetric(ctx *volumemgrContext, key string) *types.AppDiskMetric
 	return &status
 }
 
-// diskMetricsTimerTask calculates and publishes disk metrics periodically
-// Also publishes remaining space so nodeagent can decide if we should
-// go into MaintenanceMode.
+// diskMetricsTimerTask calculates and publishes disk metrics periodically.
+// The remaining space nodeagent uses to decide on MaintenanceMode is reported
+// by volumeMgrStatusTask, which reads the metrics published here.
 func diskMetricsTimerTask(ctx *volumemgrContext, handleChannel chan interface{}) {
 	log.Functionln("starting report diskMetricsTimerTask timer task")
 
@@ -105,7 +105,6 @@ func diskMetricsTimerTask(ctx *volumemgrContext, handleChannel chan interface{})
 	ctx.ps.RegisterFileWatchdog(wdName)
 
 	createOrUpdateDiskMetrics(ctx, wdName)
-	generateAndPublishVolumeMgrStatus(ctx)
 
 	diskMetricInterval := time.Duration(ctx.globalConfig.GlobalValueInt(types.DiskScanMetricInterval)) * time.Second
 	max := float64(diskMetricInterval)
@@ -124,7 +123,6 @@ func diskMetricsTimerTask(ctx *volumemgrContext, handleChannel chan interface{})
 			start := time.Now()
 			createOrUpdateDiskMetrics(ctx, wdName)
 			createOrUpdatePvcDiskMetrics(ctx)
-			generateAndPublishVolumeMgrStatus(ctx)
 			ctx.ps.CheckMaxTimeTopic(wdName, "createOrUpdateDiskMetrics", start,
 				warningTime, errorTime)
 
@@ -132,20 +130,6 @@ func diskMetricsTimerTask(ctx *volumemgrContext, handleChannel chan interface{})
 		}
 		ctx.ps.StillRunning(wdName, warningTime, errorTime)
 	}
-}
-
-func generateAndPublishVolumeMgrStatus(ctx *volumemgrContext) {
-	remaining, err := getRemainingDiskSpace(ctx)
-	if err != nil {
-		log.Error(err)
-		return
-	}
-	st := types.VolumeMgrStatus{
-		Name:           agentName,
-		Initialized:    true,
-		RemainingSpace: remaining,
-	}
-	ctx.pubVolumeMgrStatus.Publish(st.Key(), st)
 }
 
 // createOrUpdateDiskMetrics creates or updates metrics for all disks, mountpaths and volumeStatuses

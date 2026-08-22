@@ -9,6 +9,7 @@ package volumemgr
 import (
 	"flag"
 	"fmt"
+	"sync"
 	"time"
 
 	zconfig "github.com/lf-edge/eve-api/go/config"
@@ -40,6 +41,15 @@ const (
 	casClientType = "containerd"
 
 	blankVolumeFormat = zconfig.Format_RAW // format of blank volume TODO: make configurable
+
+	// clusterStorageWait bounds the second EVE-k startup wait, the one that
+	// blocks until Longhorn and CDI can serve a volume. It is separate from the
+	// readiness budget kubeapi applies ahead of it: by the time this wait starts
+	// the node and Longhorn are already up, so what remains is mostly CDI
+	// becoming available, and its images have been the slow half on a contended
+	// link. 20 minutes was too tight for that on the topologies where the
+	// Longhorn pull alone ran past it.
+	clusterStorageWait = 30 * time.Minute
 )
 
 var (
@@ -88,6 +98,16 @@ type volumemgrContext struct {
 	usingConfig          bool // From zedagent
 	gcRunning            bool
 	initGced             bool // Will be marked true after initObjects are garbage collected
+
+	// storageReady is false while an EVE-k node's cluster storage is not usable,
+	// whether the startup wait is still running or gave up; storageUnmet then
+	// carries the outstanding gate. Both are reported through VolumeMgrStatus.
+	// The startup path writes them while volumeMgrStatusTask reads them from
+	// another goroutine, so storageMu must be held for either.
+	storageMu     sync.Mutex
+	storageReady  bool
+	storageUnmet  string
+	statusTrigger chan struct{}
 
 	globalConfig       *types.ConfigItemValueMap
 	GCInitialized      bool
@@ -169,6 +189,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		globalConfig:       types.DefaultConfigItemValueMap(),
 		persistType:        persist.ReadPersistType(),
 		hvTypeKube:         base.IsHVTypeKube(),
+		// Only an EVE-k node has cluster storage to wait for; everywhere else
+		// storage is usable as soon as volumemgr is up.
+		storageReady:  !base.IsHVTypeKube(),
+		statusTrigger: make(chan struct{}, 1),
+	}
+	if ctx.hvTypeKube {
+		ctx.storageUnmet = storageWaitPending
 	}
 	agentbase.Init(&ctx, logger, log, agentName,
 		agentbase.WithPidFile(),
@@ -271,6 +298,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	log.Functionf("user containerd ready")
 
+	// Start reporting VolumeMgrStatus before the EVE-k readiness wait below, so
+	// a node stuck on that wait still says which gate is outstanding instead of
+	// staying silent for as long as the wait runs.
+	initStatusPublications(ps, &ctx)
+	go volumeMgrStatusTask(&ctx)
+
 	// wait for kubernetes up if in kube mode, if gets error, move on
 	if ctx.hvTypeKube {
 		log.Noticef("volumemgr run: wait for kubernetes")
@@ -341,6 +374,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			})
 		if err != nil {
 			log.Errorf("volumemgr run: wait for kubernetes error %v", err)
+			ctx.setStorageReadiness(false, err.Error())
 		} else {
 			log.Noticef("volumemgr run: kubernetes node ready, longhorn ready")
 		}
@@ -355,7 +389,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		// deliberately coexist so we can observe how often the gate/retry fires
 		// after this wait has passed. Once we decide whether the retry earns its
 		// keep, drop one of the two so a volume is gated in a single place.
-		storageDeadline := time.NewTimer(20 * time.Minute)
+		storageDeadline := time.NewTimer(clusterStorageWait)
 		storageReady := false
 	storageWait:
 		for {
@@ -372,8 +406,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		}
 		storageDeadline.Stop()
 		if storageReady {
+			ctx.setStorageReadiness(true, "")
 			log.Noticef("volumemgr run: cluster storage (longhorn+CDI) ready")
 		} else {
+			_, unmet := ctx.storageReadiness()
+			if unmet == "" || unmet == storageWaitPending {
+				unmet = "cluster storage (longhorn+CDI) not ready"
+			}
+			ctx.setStorageReadiness(false, unmet)
 			log.Warnf("volumemgr run: timeout waiting for cluster storage; " +
 				"volumes will defer and retry")
 		}
@@ -436,24 +476,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	ctx.pubResolveConfig = pubResolveConfig
 
-	pubContentTreeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName: agentName,
-		TopicType: types.ContentTreeStatus{},
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.pubContentTreeStatus = pubContentTreeStatus
-
-	pubVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName: agentName,
-		TopicType: types.VolumeStatus{},
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.pubVolumeStatus = pubVolumeStatus
-
 	pubVolumeRefStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
 		TopicType: types.VolumeRefStatus{},
@@ -499,17 +521,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatal(err)
 	}
 	ctx.pubBlobStatus = pubBlobStatus
-
-	pubDiskMetric, err := ps.NewPublication(
-		pubsub.PublicationOptions{
-			AgentName: agentName,
-			TopicType: types.DiskMetric{},
-		},
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.pubDiskMetric = pubDiskMetric
 
 	pubAppDiskMetric, err := ps.NewPublication(
 		pubsub.PublicationOptions{
@@ -708,17 +719,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatal(err)
 	}
 	ctx.pubVolumesSnapStatus = pubVolumesSnapshotStatus
-
-	pubVolumeMgrStatus, err := ps.NewPublication(
-		pubsub.PublicationOptions{
-			AgentName: agentName,
-			TopicType: types.VolumeMgrStatus{},
-		},
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.pubVolumeMgrStatus = pubVolumeMgrStatus
 
 	if ctx.casClient, err = cas.NewCAS(casClientType); err != nil {
 		err = fmt.Errorf("Run: exception while initializing CAS client: %s", err.Error())
