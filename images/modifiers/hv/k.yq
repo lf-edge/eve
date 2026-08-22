@@ -1,1 +1,1 @@
-.services += [{"name": "kube","image": "KUBE_TAG", "cgroupsPath": "/eve/services/kube", "oomScoreAdj": -999}]
+.services += [{"name": "kube","image": "KUBE_TAG", "cgroupsPath": "/eve/services/kube", "oomScoreAdj": -999, "binds.add": ["kube-images:/images:ro"]}] | .volumes += [{"name": "kube-images", "image": "KUBE_IMAGES_TAG", "readonly": true}]
