@@ -3422,3 +3422,155 @@ func TestDecideKvmState(t *testing.T) {
 		})
 	}
 }
+
+// renderDomConfig writes a domain config for the given config/status pair and
+// returns it, so a test can assert on one block instead of a whole golden file.
+func renderDomConfig(t *testing.T, ctx KvmContext, config types.DomainConfig,
+	status types.DomainStatus, disks []types.DiskStatus) string {
+	t.Helper()
+	conf, err := os.CreateTemp("/tmp", "config")
+	if err != nil {
+		t.Fatalf("can't create config file for a domain: %v", err)
+	}
+	defer os.Remove(conf.Name())
+	aa := types.AssignableAdapters{Initialized: true}
+	if err := ctx.CreateDomConfig(DefaultDomainName, config, status, disks,
+		&aa, nil, swtpmCtrlSock, conf); err != nil {
+		t.Fatalf("CreateDomConfig failed: %v", err)
+	}
+	out, err := os.ReadFile(conf.Name())
+	if err != nil {
+		t.Fatalf("reading conf file failed: %v", err)
+	}
+	return string(out)
+}
+
+func pinnedTopologyConfig() (types.DomainConfig, types.DomainStatus) {
+	config := types.DomainConfig{
+		UUIDandVersion: types.UUIDandVersion{
+			UUID: uuid.FromStringOrNil(DefaultUUID), Version: "1.0",
+		},
+		VmConfig: types.VmConfig{
+			Memory:     1024 * 1024,
+			VCpus:      4,
+			CPUsPinned: true,
+			CPUs:       []uint32{2, 3, 6, 7},
+		},
+	}
+	status := types.DomainStatus{
+		VMTopology:  types.CPUTopology{Sockets: 1, Cores: 2, Threads: 2},
+		OrderedCPUs: []uint32{2, 6, 3, 7},
+	}
+	return config, status
+}
+
+// Exposing the guest SMT topology is the point of whole-core pinning: a VM given
+// two physical cores must see 2 cores x 2 threads, otherwise the guest scheduler
+// treats siblings as independent cores and places two busy threads on one core.
+func TestCreateDomConfigGuestSMTTopology(t *testing.T) {
+	config, status := pinnedTopologyConfig()
+	topo := status.VMTopology
+	// QEMU rejects an -smp whose topology does not multiply out to the cpus
+	// count, so the two can never be chosen independently.
+	if got := topo.Sockets * topo.Cores * topo.Threads; got != config.VCpus {
+		t.Fatalf("sockets*cores*threads = %d, want cpus = %d", got, config.VCpus)
+	}
+	want := `[smp-opts]
+  cpus = "4"
+  sockets = "1"
+  cores = "2"
+  threads = "2"
+`
+	if got := renderDomConfig(t, kvmIntel, config, status, nil); !strings.Contains(got, want) {
+		t.Errorf("guest SMT topology missing from config:\nwant:\n%s\ngot:\n%s", want, got)
+	}
+}
+
+// A VM with no computed topology keeps the legacy flat one vCPU per core layout.
+func TestCreateDomConfigLegacySMTTopology(t *testing.T) {
+	config, _ := pinnedTopologyConfig()
+	want := `[smp-opts]
+  cpus = "4"
+  sockets = "1"
+  cores = "4"
+  threads = "1"
+`
+	got := renderDomConfig(t, kvmIntel, config, types.DomainStatus{}, nil)
+	if !strings.Contains(got, want) {
+		t.Errorf("legacy smp topology missing from config:\nwant:\n%s\ngot:\n%s", want, got)
+	}
+}
+
+// The virtio-blk iothread and the iothread0 object it references must appear
+// together, and only for a VM whose emulator threads are moved to a
+// housekeeping set. Every other VM keeps its block datapath on the main loop.
+func TestCreateDomConfigBlockIOThread(t *testing.T) {
+	disks := []types.DiskStatus{
+		{Format: zconfig.Format_QCOW2, FileLocation: "/foo/bar.qcow2", Devtype: "hdd"},
+	}
+	tests := []struct {
+		name         string
+		emulatorCPUs []uint32
+		want         bool
+	}{
+		{"io_placement housekeeping", []uint32{0, 1}, true},
+		{"io_placement dedicated", nil, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config, status := pinnedTopologyConfig()
+			status.EmulatorCPUs = tt.emulatorCPUs
+			got := renderDomConfig(t, kvmIntel, config, status, disks)
+			hasObject := strings.Contains(got, `[object "iothread0"]`)
+			hasDevice := strings.Contains(got, `  iothread = "iothread0"`)
+			if hasObject != tt.want || hasDevice != tt.want {
+				t.Errorf("iothread0 object=%v device=%v, want both %v:\n%s",
+					hasObject, hasDevice, tt.want, got)
+			}
+		})
+	}
+}
+
+// Legacy set-mask pinning and per-thread topology pinning are alternatives, so
+// the thread-context object must disappear as soon as the allocator has produced
+// an ordered CPU list.
+func TestLegacyThreadContextArgs(t *testing.T) {
+	pinned := types.DomainConfig{
+		VmConfig: types.VmConfig{CPUsPinned: true, CPUs: []uint32{2, 3, 6, 7}},
+	}
+	tests := []struct {
+		name   string
+		config types.DomainConfig
+		status types.DomainStatus
+		want   []string
+	}{
+		{
+			"legacy pinning emits the mask",
+			pinned,
+			types.DomainStatus{VmConfig: pinned.VmConfig},
+			[]string{"-object", "thread-context,id=tc1,cpu-affinity=2,cpu-affinity=3,cpu-affinity=6,cpu-affinity=7"},
+		},
+		{
+			"topology pinning takes over",
+			pinned,
+			types.DomainStatus{
+				VmConfig:    pinned.VmConfig,
+				OrderedCPUs: []uint32{2, 6, 3, 7},
+			},
+			nil,
+		},
+		{
+			"unpinned VM gets nothing",
+			types.DomainConfig{},
+			types.DomainStatus{},
+			nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if diff := cmp.Diff(tt.want, legacyThreadContextArgs(tt.config, tt.status)); diff != "" {
+				t.Errorf("legacyThreadContextArgs() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}

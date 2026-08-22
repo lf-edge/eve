@@ -82,6 +82,27 @@ import (
 //   - TestAppRestart -- controller-requested restarts (restart counter
 //     bumps, no purge) bring the app back to RUNNING; regression test for
 //     a stale QMP handler quitting the re-created domain.
+//   - TestCPUPlacementOnePerCore -- an app asking for dedicated whole
+//     physical cores gets one vCPU per distinct core, each pinned 1:1.
+//   - TestCPUPlacementWholeCoreSMT -- the same, but both SMT siblings of each
+//     core become vCPUs and the guest is told which vCPUs are siblings.
+//   - TestCPUPlacementMultiApp -- whole-core-SMT, one-per-core and best-effort
+//     apps deployed together: each placed as its policy asks, on disjoint CPUs
+//     and disjoint physical cores, with housekeeping left intact.
+//   - TestCPUPlacementStability -- the same set survives a reboot, a staggered
+//     (start-delayed) start and a reverse restart order on the same host CPUs.
+//   - TestCPUPlacementParkedSiblings -- the SMT sibling a one-per-core app leaves
+//     unused is consumed by it, not spare: no other workload gets it in its
+//     cpuset, the node does not advertise it as free, and nothing is ever
+//     observed running on it.
+//   - TestCPUPlacementNeedsRepack -- on a node fragmented by thread-granular
+//     workloads (free threads, no free whole core) a whole-core app is refused
+//     with cpu.placement.needs_repack rather than insufficient, and a repack
+//     really does let it run.
+//   - TestCPUPlacementFailsClosed -- every class of unsatisfiable placement
+//     request (odd vCPUs with whole-core SMT, hard isolation tier, invalid
+//     policy) is refused with its own error_code at ERROR severity, never boots,
+//     and leaves the node's dedicated CPU pool unchanged.
 //   - TestVMAppPurgeReplacesVMIRS -- a plain purge of a healthy app leaves
 //     exactly one VMIRS, named for the new generation. Kubevirt only; skips
 //     on any other hypervisor.
@@ -124,6 +145,36 @@ func TestAppsSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestAppRestart,
+		},
+		evetest.TestCase{
+			Test: TestCPUPlacementOnePerCore,
+		},
+		evetest.TestCase{
+			Test: TestCPUPlacementWholeCoreSMT,
+		},
+		// Right after TestCPUPlacementWholeCoreSMT: it needs the same device
+		// (8 CPUs, 2 threads per core), so the framework can reuse the VM.
+		evetest.TestCase{
+			Test: TestCPUPlacementMultiApp,
+		},
+		// Also needs the 8-CPU, 2-threads-per-core device, so it follows the
+		// tests that already require one.
+		evetest.TestCase{
+			Test: TestCPUPlacementStability,
+		},
+		// Same device again.
+		evetest.TestCase{
+			Test: TestCPUPlacementParkedSiblings,
+		},
+		// Also the 8-CPU, 2-threads-per-core device: it needs SMT siblings to
+		// fragment the node in the first place.
+		evetest.TestCase{
+			Test: TestCPUPlacementNeedsRepack,
+		},
+		// Same 8-CPU, 2-threads-per-core device: the whole-core-SMT holder
+		// application it keeps running throughout needs real SMT siblings.
+		evetest.TestCase{
+			Test: TestCPUPlacementFailsClosed,
 		},
 		evetest.TestCase{
 			Test: TestVMAppPurgeReplacesVMIRS,

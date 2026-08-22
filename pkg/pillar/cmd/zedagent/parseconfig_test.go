@@ -2851,3 +2851,87 @@ func marshalJSONIgnoreOmitEmpty(u *config.EdgeDevConfig) ([]byte, error) {
 	newType := reflect.StructOf(fields)
 	return json.Marshal(value.Convert(newType).Interface())
 }
+
+// TestParseAppInstanceConfig_StoresCPUPlacement proves the placement fields are
+// actually parsed and stored, not merely parseable: the mappers are unit-tested
+// on their own, but nothing else asserts that parseAppInstanceConfig calls them
+// and puts the result on the published AppInstanceConfig, which is the only way
+// the intent reaches zedmanager and domainmgr.
+func TestParseAppInstanceConfig_StoresCPUPlacement(t *testing.T) {
+	g := NewGomegaWithT(t)
+	getconfigCtx, _ := newFuzzGetConfigCtx(t)
+
+	const appUUID = "6ba7b810-9dad-11d1-80b4-00c04fd430a7"
+	edgeConfig := &zconfig.EdgeDevConfig{
+		Id: &zconfig.UUIDandVersion{
+			Uuid:    "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+			Version: "1",
+		},
+		Apps: []*zconfig.AppInstanceConfig{{
+			Uuidandversion: &zconfig.UUIDandVersion{Uuid: appUUID, Version: "1"},
+			Displayname:    "vpp",
+			Fixedresources: &zconfig.VmConfig{
+				Vcpus:            4,
+				Memory:           1024,
+				CpuPolicy:        zconfig.CpuPolicy_CPU_POLICY_DEDICATED,
+				FullPcpusOnly:    true,
+				ThreadsPerCore:   1,
+				NumaPolicy:       zconfig.NumaPolicy_NUMA_POLICY_SINGLE_NUMA_NODE,
+				IoPlacement:      zconfig.IoPlacement_IO_PLACEMENT_HOUSEKEEPING,
+				IsolationTier:    zconfig.IsolationTier_ISOLATION_TIER_SOFT,
+				DisruptionPolicy: zconfig.DisruptionPolicy_DISRUPTION_POLICY_PROTECT,
+				// Deliberately not set: a dedicated policy must pin on its own.
+				PinCpu: false,
+			},
+		}},
+	}
+
+	appinstancePrevConfigHash = nil
+	parseAppInstanceConfig(getconfigCtx, edgeConfig)
+
+	item, err := getconfigCtx.pubAppInstanceConfig.Get(appUUID)
+	g.Expect(err).To(BeNil())
+	appConfig, ok := item.(types.AppInstanceConfig)
+	g.Expect(ok).To(BeTrue())
+	g.Expect(appConfig.FixedResources.CPUPlacement).To(Equal(types.CPUPlacementPolicy{
+		Policy:           types.CPUPolicyDedicated,
+		FullPCPUsOnly:    true,
+		ThreadsPerCore:   1,
+		NUMAPolicy:       types.CPUNUMAPolicySingleNode,
+		IOPlacement:      types.CPUIOPlacementHousekeeping,
+		IsolationTier:    types.CPUIsolationTierSoft,
+		DisruptionPolicy: types.CPUDisruptionPolicyProtect,
+	}))
+	g.Expect(appConfig.FixedResources.CPUsPinned).To(BeTrue(),
+		"a dedicated policy must set the legacy pin flag, or nothing downstream pins")
+}
+
+// TestParseAppInstanceConfig_KeepsLegacyPinCpu is the other half: a controller
+// that sends no placement policy must keep behaving exactly as before, with
+// pin_cpu alone deciding.
+func TestParseAppInstanceConfig_KeepsLegacyPinCpu(t *testing.T) {
+	g := NewGomegaWithT(t)
+	getconfigCtx, _ := newFuzzGetConfigCtx(t)
+
+	const appUUID = "6ba7b810-9dad-11d1-80b4-00c04fd430a8"
+	edgeConfig := &zconfig.EdgeDevConfig{
+		Id: &zconfig.UUIDandVersion{
+			Uuid:    "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+			Version: "1",
+		},
+		Apps: []*zconfig.AppInstanceConfig{{
+			Uuidandversion: &zconfig.UUIDandVersion{Uuid: appUUID, Version: "1"},
+			Displayname:    "legacy",
+			Fixedresources: &zconfig.VmConfig{Vcpus: 2, Memory: 512, PinCpu: true},
+		}},
+	}
+
+	appinstancePrevConfigHash = nil
+	parseAppInstanceConfig(getconfigCtx, edgeConfig)
+
+	item, err := getconfigCtx.pubAppInstanceConfig.Get(appUUID)
+	g.Expect(err).To(BeNil())
+	appConfig := item.(types.AppInstanceConfig)
+	g.Expect(appConfig.FixedResources.CPUPlacement).To(Equal(types.CPUPlacementPolicy{}))
+	g.Expect(appConfig.FixedResources.CPUsPinned).To(BeTrue())
+}

@@ -722,7 +722,11 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 		appInstance.Delay = time.Duration(cfgApp.StartDelayInSeconds) * time.Second
 		appInstance.Service = cfgApp.Service
 		appInstance.CloudInitVersion = cfgApp.CloudInitVersion
-		appInstance.FixedResources.CPUsPinned = cfgApp.Fixedresources.PinCpu
+		appInstance.FixedResources.CPUPlacement =
+			parseCPUPlacementPolicy(cfgApp.Fixedresources)
+		appInstance.FixedResources.CPUsPinned =
+			cpusPinnedFromPolicy(appInstance.FixedResources.CPUPlacement,
+				cfgApp.Fixedresources.PinCpu)
 		appInstance.FixedResources.EnableOemWinLicenseKey = cfgApp.Fixedresources.EnableOemWinLicenseKey
 		appInstance.FixedResources.DisableVirtualTPM = cfgApp.Fixedresources.DisableVtpm
 

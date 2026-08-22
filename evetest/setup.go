@@ -737,14 +737,20 @@ func (th *TestHarness) setupEVEDevices(
 				})
 			}
 		}
+		threadsPerCore := dev.requirement.ThreadsPerCore
+		if threadsPerCore > 1 && cpus%threadsPerCore != 0 {
+			th.t.Fatalf("Device %q requests %d threads per core, which does not "+
+				"divide its %d CPUs", dev.requirement.Name, threadsPerCore, cpus)
+		}
 		dev.spec = &api.EVEDevice{
-			DeviceName:   dev.requirement.Name,
-			Cpus:         uint32(cpus),
-			MemoryBytes:  uint64(memSizeInMiB) << 20,
-			SerialNumber: dev.serial,
-			WithTpm:      dev.requirement.WithTPM,
-			Image:        dev.imageRef,
-			Interfaces:   interfaces,
+			DeviceName:     dev.requirement.Name,
+			Cpus:           uint32(cpus),
+			MemoryBytes:    uint64(memSizeInMiB) << 20,
+			SerialNumber:   dev.serial,
+			WithTpm:        dev.requirement.WithTPM,
+			Image:          dev.imageRef,
+			Interfaces:     interfaces,
+			ThreadsPerCore: uint32(threadsPerCore),
 		}
 		setupReq.Devices = append(setupReq.Devices, dev.spec)
 	}
@@ -1371,6 +1377,7 @@ func (th *TestHarness) maybeReuseDevices(
 		// Cannot reuse device if requirements changed.
 		prevReq := dev.requirement
 		equalReqs := newReq.MinCPUs == prevReq.MinCPUs &&
+			newReq.ThreadsPerCore == prevReq.ThreadsPerCore &&
 			newReq.MinRAMInMiB == prevReq.MinRAMInMiB &&
 			newReq.MinDiskSizeInMiB == prevReq.MinDiskSizeInMiB &&
 			newReq.WithEVEVersion == prevReq.WithEVEVersion &&

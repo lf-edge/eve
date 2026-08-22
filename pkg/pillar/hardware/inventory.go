@@ -17,7 +17,9 @@ import (
 	pcitypes "github.com/jaypipes/pcidb/types"
 	"github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/cputopology"
 	"github.com/lf-edge/eve/pkg/pillar/evetpm"
+	"github.com/sirupsen/logrus"
 	"github.com/zededa/ghw"
 	"github.com/zededa/ghw/pkg/can"
 	"github.com/zededa/ghw/pkg/option"
@@ -36,6 +38,7 @@ func GetInventoryInfo(log *base.LogObject) (*info.HardwareInventory, error) {
 	inventory.CanDevices, errs["CAN"] = getCANDevices()
 	inventory.Bios, errs["BIOS"] = getBIOSInfo()
 	inventory.CpuInfo, errs["CPU"] = getCPUInfo()
+	inventory.NodeCapabilities = getNodeCapabilities()
 	inventory.TotalMemoryBytes, errs["Memory"] = getMemoryBytes()
 	inventory.TotalStorageBytes, errs["Storage"] = getStorageBytes()
 	inventory.WatchdogPresent, errs["Watchdog"] = watchdogPresent()
@@ -425,18 +428,101 @@ func getCPUInfo() (*info.CPUInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	cpuInfoProto := &info.CPUInfo{}
-	for _, proc := range cpuInfo.Processors {
-		for _, core := range proc.Cores {
-			c := info.CPU{
-				Model:  proc.Model,
-				Vendor: proc.Vendor,
-				Id:     uint32(core.ID),
+	// Model and vendor are per-package; every logical CPU of a package reports
+	// its package's values.
+	model, vendor := "", ""
+	if len(cpuInfo.Processors) > 0 {
+		model = cpuInfo.Processors[0].Model
+		vendor = cpuInfo.Processors[0].Vendor
+	}
+
+	cpuInfoProto := &info.CPUInfo{
+		// Phase 1 reports no RDT support. The fields exist so a controller can
+		// gate on them once cache and memory-bandwidth allocation are
+		// implemented; claiming them now would be wrong.
+		Capabilities: &info.CPUCapabilities{},
+	}
+
+	// One entry per *logical* CPU, each carrying its position in the topology.
+	// Reporting one entry per physical core (as this did before) loses the
+	// SMT structure entirely, which is exactly what a consumer reasoning about
+	// CPU placement needs -- and it made the reported ids ambiguous, since a
+	// core id is not a schedulable CPU id.
+	topo, terr := cputopology.DiscoverTopology()
+	if terr != nil {
+		// Without topology we can still report the CPUs themselves. Degrading
+		// here keeps the rest of the inventory useful on a platform whose sysfs
+		// layout we cannot read.
+		logrus.Warnf("getCPUInfo: topology discovery failed: %v", terr)
+		for _, proc := range cpuInfo.Processors {
+			for _, core := range proc.Cores {
+				cpuInfoProto.Cpus = append(cpuInfoProto.Cpus, &info.CPU{
+					Model:  proc.Model,
+					Vendor: proc.Vendor,
+					Id:     uint32(core.ID),
+				})
 			}
-			cpuInfoProto.Cpus = append(cpuInfoProto.Cpus, &c)
+		}
+		return cpuInfoProto, nil
+	}
+
+	for _, core := range topo.Cores {
+		for _, lcpu := range core.Siblings {
+			baseKHz, maxKHz := cpuFrequencies(uint32(lcpu))
+			cpuInfoProto.Cpus = append(cpuInfoProto.Cpus, &info.CPU{
+				Model:       model,
+				Vendor:      vendor,
+				Id:          uint32(lcpu),
+				SocketId:    uint32(core.Socket),
+				CoreId:      uint32(core.CoreID),
+				NumaNode:    uint32(core.NUMA),
+				L3Id:        uint32(core.L3ID),
+				BaseFreqKhz: baseKHz,
+				MaxFreqKhz:  maxKHz,
+			})
 		}
 	}
+
+	for _, domain := range readCacheDomains() {
+		level := cacheLevelToProto(domain.Level)
+		if level == info.CacheLevel_CACHE_LEVEL_UNSPECIFIED {
+			continue
+		}
+		cpuInfoProto.Caches = append(cpuInfoProto.Caches, &info.CacheDomain{
+			Level:     level,
+			Id:        domain.ID,
+			SizeBytes: domain.SizeBytes,
+			CpuIds:    domain.CPUs,
+		})
+	}
 	return cpuInfoProto, nil
+}
+
+// cacheLevelToProto maps a sysfs cache level onto the reported enum. Level 1 is
+// split into instruction and data caches which sysfs distinguishes by type; the
+// inventory reports the levels that matter for contention between workloads and
+// leaves the rest unspecified.
+func cacheLevelToProto(level int) info.CacheLevel {
+	switch level {
+	case 2:
+		return info.CacheLevel_CACHE_LEVEL_L2
+	case 3:
+		return info.CacheLevel_CACHE_LEVEL_L3
+	default:
+		return info.CacheLevel_CACHE_LEVEL_UNSPECIFIED
+	}
+}
+
+// getNodeCapabilities reports the kernel-level CPU isolation actually in effect.
+// These are node facts, not CPU facts, and deliberately describe what the kernel
+// is doing rather than what its command line asked for.
+func getNodeCapabilities() *info.NodeCapabilities {
+	isolated, nohzFull, rcuNocbs := IsolatedCPUSets()
+	return &info.NodeCapabilities{
+		IsolatedCpuIds: isolated,
+		NohzFullCpuIds: nohzFull,
+		RcuNocbsCpuIds: rcuNocbs,
+	}
 }
 
 func getMemoryBytes() (uint64, error) {

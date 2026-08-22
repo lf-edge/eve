@@ -418,11 +418,14 @@ func (p *LibvirtProvider) SetupDevice(
 		},
 		CPU: &libvirtxml.DomainCPU{
 			Mode: "host-passthrough", // expose host CPU features
-			Topology: &libvirtxml.DomainCPUTopology{
-				Sockets: 1,
-				Cores:   int(spec.CPUs),
-				Threads: 1,
-			},
+			Topology: func() *libvirtxml.DomainCPUTopology {
+				sockets, cores, threads := CPUTopology(spec.CPUs, spec.ThreadsPerCore)
+				return &libvirtxml.DomainCPUTopology{
+					Sockets: int(sockets),
+					Cores:   int(cores),
+					Threads: int(threads),
+				}
+			}(),
 		},
 		Features:        features,
 		Devices:         devices,

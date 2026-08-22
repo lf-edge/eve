@@ -903,7 +903,44 @@ type ApplicationInstanceConfig struct {
 	// rewire) the app's VolumeRefList to point at it; they never create or
 	// remove the volume itself.
 	Mounts []MountConfig
+	// CPUPlacement is the application's CPU placement intent. Its zero value
+	// sends no policy at all, so an application that does not set it keeps
+	// today's best-effort placement.
+	CPUPlacement CPUPlacementConfig
+	// StartDelayInSeconds holds this application back for that long while the
+	// others start normally.
+	//
+	// The delay is counted from the moment EVE first obtains configuration
+	// after booting, not from when this field is set, so setting it on an
+	// already-running application changes nothing until the next boot. That is
+	// what makes it usable as a test instrument: it is the only way to give a
+	// device a deterministic, staggered application start order without
+	// changing which applications are configured.
+	StartDelayInSeconds uint32
 	// Many more parameters can be configured; they will be added later as needed.
+}
+
+// CPUPlacementConfig expresses what an application needs from CPU placement:
+// whether it gets host CPUs of its own, whether those must be whole physical
+// cores, how its vCPUs map onto SMT siblings, and where the hypervisor's
+// emulator/IO threads run.
+//
+// The device picks the concrete host CPUs -- the controller only states intent
+// -- so there is deliberately no way here to name specific CPU ids. Assertions
+// about which CPUs a workload actually got are made against what the device
+// reports back, or read off the device directly.
+type CPUPlacementConfig struct {
+	// Policy is the on-switch: CPU_POLICY_DEDICATED activates the rest.
+	Policy        eveconfig.CpuPolicy
+	FullPCPUsOnly bool
+	// ThreadsPerCore selects how many SMT siblings of each dedicated core
+	// become vCPUs: 2 (whole-core-SMT, the default when unset) or 1
+	// (one-per-core, sibling parked idle).
+	ThreadsPerCore   uint32
+	NUMAPolicy       eveconfig.NumaPolicy
+	IOPlacement      eveconfig.IoPlacement
+	IsolationTier    eveconfig.IsolationTier
+	DisruptionPolicy eveconfig.DisruptionPolicy
 }
 
 // MountConfig attaches an existing volume to an application, in addition to
@@ -942,6 +979,13 @@ func (config ApplicationInstanceConfig) toProto(th *TestHarness, devName string,
 		VncPasswd:                    config.VNCPassword,
 		DisableLogs:                  config.DisableLogs,
 		EnforceNetworkInterfaceOrder: config.EnforceNetIntfOrder,
+		CpuPolicy:                    config.CPUPlacement.Policy,
+		FullPcpusOnly:                config.CPUPlacement.FullPCPUsOnly,
+		ThreadsPerCore:               config.CPUPlacement.ThreadsPerCore,
+		NumaPolicy:                   config.CPUPlacement.NUMAPolicy,
+		IoPlacement:                  config.CPUPlacement.IOPlacement,
+		IsolationTier:                config.CPUPlacement.IsolationTier,
+		DisruptionPolicy:             config.CPUPlacement.DisruptionPolicy,
 	}
 	if config.MemoryBytes != 0 {
 		vmConfig.Memory = uint32(config.MemoryBytes / KiB)
@@ -951,11 +995,12 @@ func (config ApplicationInstanceConfig) toProto(th *TestHarness, devName string,
 			Uuid:    appUUID.String(),
 			Version: "1",
 		},
-		Displayname:    config.DisplayName,
-		Fixedresources: vmConfig,
-		Activate:       config.Activate,
-		ProfileList:    config.ProfileList,
-		RemoteConsole:  config.RemoteConsole,
+		Displayname:         config.DisplayName,
+		Fixedresources:      vmConfig,
+		Activate:            config.Activate,
+		ProfileList:         config.ProfileList,
+		RemoteConsole:       config.RemoteConsole,
+		StartDelayInSeconds: config.StartDelayInSeconds,
 	}
 	if volumeUUID != NilUUID {
 		appInstConfig.VolumeRefList = append(appInstConfig.VolumeRefList,
@@ -2400,7 +2445,7 @@ func (dc *EdgeDeviceConfig) buildMountRefs(
 func (dc *EdgeDeviceConfig) UpdateApplication(
 	appUUID uuid.UUID, newConfig ApplicationInstanceConfig) {
 	// For now, we will only allow to change Activation flag, profile list,
-	// adapters, and mounts.
+	// adapters, mounts, and the start delay.
 	for i, app := range dc.Apps {
 		if app.Uuidandversion.Uuid == appUUID.String() {
 			newProtoConfig := newConfig.toProto(dc.th, dc.DeviceName, appUUID, NilUUID)
@@ -2451,6 +2496,10 @@ func (dc *EdgeDeviceConfig) UpdateApplication(
 				app.Restart.Counter++
 			}
 			dc.Apps[i].Activate = newProtoConfig.Activate
+			// The start delay is not a fixed resource: it only decides when the
+			// application is released on the next boot, so it can be changed on
+			// a deployed application without a purge or a restart.
+			dc.Apps[i].StartDelayInSeconds = newProtoConfig.StartDelayInSeconds
 			dc.Apps[i].ProfileList = newProtoConfig.ProfileList
 			dc.Apps[i].Adapters = newProtoConfig.Adapters
 			dc.Apps[i].Interfaces = newProtoConfig.Interfaces

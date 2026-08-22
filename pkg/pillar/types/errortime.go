@@ -86,8 +86,13 @@ type ErrorEntity struct {
 
 // ErrorDescription contains error details
 type ErrorDescription struct {
-	Error               string
-	ErrorTime           time.Time
+	Error     string
+	ErrorTime time.Time
+	// ErrorCode is a machine-parseable, namespaced token identifying the
+	// condition (see errorcodes.go), reported alongside the free-text Error so
+	// a controller can react programmatically instead of matching prose.
+	// Empty when the producer has no specific code for the failure.
+	ErrorCode           string
 	ErrorSeverity       ErrorSeverity
 	ErrorRetryCondition string
 	ErrorEntities       []*ErrorEntity
@@ -117,6 +122,7 @@ func (ed *ErrorDescription) ToProto() *info.ErrorInfo {
 	}
 	errInfo := new(info.ErrorInfo)
 	errInfo.Description = ed.Error
+	errInfo.ErrorCode = ed.ErrorCode
 	errInfo.Timestamp = timestamppb.New(ed.ErrorTime)
 	errInfo.Severity = info.Severity(ed.ErrorSeverity)
 	errInfo.RetryCondition = ed.ErrorRetryCondition
@@ -154,6 +160,7 @@ func (etPtr *ErrorAndTime) SetError(errStr string, errorTime time.Time) {
 // ClearError removes it
 func (etPtr *ErrorAndTime) ClearError() {
 	etPtr.Error = ""
+	etPtr.ErrorCode = ""
 	etPtr.ErrorTime = time.Time{}
 	etPtr.ErrorRetryCondition = ""
 	etPtr.ErrorSeverity = ErrorSeverityUnspecified
@@ -237,6 +244,7 @@ func (etsPtr *ErrorAndTimeWithSource) IsErrorSource(source interface{}) bool {
 // ClearErrorWithSource - Clears error state
 func (etsPtr *ErrorAndTimeWithSource) ClearErrorWithSource() {
 	etsPtr.Error = ""
+	etsPtr.ErrorCode = ""
 	etsPtr.ErrorSourceType = ""
 	etsPtr.ErrorTime = time.Time{}
 	etsPtr.ErrorRetryCondition = ""
