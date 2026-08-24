@@ -2,8 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0
 ---
 name: Claude Code
+# Every PR to this repo comes from a fork, and a plain "pull_request" run on a
+# fork gets a read-only GITHUB_TOKEN with no secrets: the id-token: write below
+# is silently dropped and the action dies fetching its OIDC token. Reviewing a
+# PR therefore requires the privileged pull_request_target context.
 on:  # yamllint disable-line rule:truthy
-  pull_request:
+  pull_request_target:
     types: [opened, synchronize, ready_for_review, reopened]
   pull_request_review_comment:
     types: [created]
@@ -24,7 +28,7 @@ jobs:
       group: claude-${{ github.event.pull_request.number || github.event.issue.number }}
       cancel-in-progress: true
     if: |
-      (github.event_name == 'pull_request' && (
+      (github.event_name == 'pull_request_target' && (
         github.event.pull_request.author_association == 'MEMBER' ||
         github.event.pull_request.author_association == 'COLLABORATOR' ||
         github.event.pull_request.author_association == 'OWNER'
