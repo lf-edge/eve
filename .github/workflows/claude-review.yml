@@ -2,8 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0
 ---
 name: Claude Code
+# Every PR to this repo comes from a fork, and a plain "pull_request" run on a
+# fork gets a read-only GITHUB_TOKEN with no secrets: the id-token: write below
+# is silently dropped and the action dies fetching its OIDC token. Reviewing a
+# PR therefore requires the privileged pull_request_target context.
 on:  # yamllint disable-line rule:truthy
-  pull_request:
+  pull_request_target:
     types: [opened, synchronize, ready_for_review, reopened]
   pull_request_review_comment:
     types: [created]
@@ -24,7 +28,7 @@ jobs:
       group: claude-${{ github.event.pull_request.number || github.event.issue.number }}
       cancel-in-progress: true
     if: |
-      (github.event_name == 'pull_request' && (
+      (github.event_name == 'pull_request_target' && (
         github.event.pull_request.author_association == 'MEMBER' ||
         github.event.pull_request.author_association == 'COLLABORATOR' ||
         github.event.pull_request.author_association == 'OWNER'
@@ -42,6 +46,9 @@ jobs:
           github.event.comment.author_association == 'OWNER'
         ))
     steps:
+      # No "ref" on purpose: under pull_request_target this checks out the base
+      # ref. Never check out the PR head here, it would run untrusted code with
+      # a privileged token. The review reads the diff over the API instead.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           persist-credentials: false

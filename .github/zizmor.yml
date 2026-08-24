@@ -19,6 +19,12 @@ rules:
       # PR via the GitHub API. No checkout of the head ref; no shell
       # execution touches PR-controlled content.
       - close-master-pr.yml
+      # pull_request_target: checks out the base ref only and reads the PR
+      # diff over the API. Nothing PR-controlled reaches the shell, and the
+      # reviewer prompt is instructed to treat the diff as untrusted data.
+      # A plain pull_request run cannot work here: every PR is from a fork,
+      # so the token would be read-only and the secrets unavailable.
+      - claude-review.yml
       # pull_request_target: checks out the base ref, fetches the head
       # SHA, and only reads .github/CODEOWNERS (base-controlled). The
       # head ref is interpolated into shell; that template-injection
