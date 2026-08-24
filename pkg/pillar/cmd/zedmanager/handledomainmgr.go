@@ -6,6 +6,7 @@ package zedmanager
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
@@ -42,6 +43,27 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 	} else {
 		log.Functionf("Domain config add for %s", key)
 	}
+	// Stage direct-attach adapter changes while domainmgr holds adapters:
+	// keep publishing the held IoAdapterList and let the new one take effect
+	// when the domain is next created by domainmgr's doActivate, which
+	// re-runs adapter reservation and assignment.
+	// This matches the staging of virtual network adapters in
+	// MaybeAddAppNetworkConfig. Staging is keyed on domainmgr still holding
+	// adapters for this app (running, or boot-failed with the old adapters
+	// still reserved — maybeRetryBoot re-runs Setup without re-reserving, so
+	// it must keep seeing the reserved list). With no DomainStatus, or its
+	// IoAdapterList nil, nothing is held and the change applies immediately.
+	// domainmgr publishes the halt and the adapter release in one message,
+	// so the restart flush needs no RestartInprogress bookkeeping: the first
+	// status showing the domain down already carries a nil list.
+	ioAdapterList := aiConfig.IoAdapterList
+	ds := lookupDomainStatus(ctx, key)
+	if ds != nil && ds.IoAdapterList != nil &&
+		!reflect.DeepEqual(ds.IoAdapterList, aiConfig.IoAdapterList) {
+		log.Noticef("MaybeAddDomainConfig(%s): I/O adapter change staged; "+
+			"will be applied when the application is restarted", key)
+		ioAdapterList = ds.IoAdapterList
+	}
 	AppNum := 0
 	if ns != nil {
 		AppNum = ns.AppNum
@@ -61,7 +83,7 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		PurgeCounter:      aiConfig.PurgeCmd.Counter + aiConfig.LocalPurgeCmd.Counter,
 		RestartCounter:    aiConfig.RestartCmd.Counter + aiConfig.LocalRestartCmd.Counter,
 		VmConfig:          aiConfig.FixedResources,
-		IoAdapterList:     aiConfig.IoAdapterList,
+		IoAdapterList:     ioAdapterList,
 		CloudInitUserData: aiConfig.CloudInitUserData,
 		CipherBlockStatus: aiConfig.CipherBlockStatus,
 		GPUConfig:         "legacy",
