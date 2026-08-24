@@ -1671,9 +1671,7 @@ func quantifyChanges(config types.AppInstanceConfig, oldConfig types.AppInstance
 	if !cmp.Equal(config.IoAdapterList, oldConfig.IoAdapterList) {
 		str := fmt.Sprintf("IoAdapterList changed: %v",
 			cmp.Diff(oldConfig.IoAdapterList, config.IoAdapterList))
-		log.Function(str)
-		needPurge = true
-		purgeReason += str + "\n"
+		log.Functionf("%s - will be applied on next application restart", str)
 	}
 
 	// Check if FixedResources changed
