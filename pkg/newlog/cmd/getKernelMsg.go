@@ -23,7 +23,7 @@ func getKernelMsg(loggerChan chan inputEntry) {
 	for msg := range kmsg {
 		// Protect against bogus negative timestamps in kernel messages
 		ts := msg.Timestamp
-		if ts.Unix() < 0 {
+		if ts.Year() < 2000 {
 			ts = time.Now()
 		}
 		entry := inputEntry{
