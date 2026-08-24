@@ -418,6 +418,9 @@ func TestApplicationConnectivitySuite(test *testing.T) {
 			Test: TestNetworkAdapterPassthrough,
 		},
 		evetest.TestCase{
+			Test: TestNetworkAdapterPassthroughChange,
+		},
+		evetest.TestCase{
 			Test: TestStagedNICChange,
 		},
 		evetest.TestCase{
