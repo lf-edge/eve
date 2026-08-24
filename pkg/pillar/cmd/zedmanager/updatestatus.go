@@ -797,6 +797,16 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		status.ClearErrorWithSource()
 		changed = true
 	}
+	// A staged set of network adapters is handed to zedrouter only once the
+	// domain came down (see MaybeAddAppNetworkConfig). Wait for zedrouter to
+	// apply it before re-creating the domain, whose VIFs would otherwise be
+	// built from the adapters that are being replaced.
+	if status.RestartInprogress == types.BringUp &&
+		!appNetAdaptersApplied(config, *ns) {
+		log.Noticef("RestartInprogress(%s) waiting for zedrouter to apply "+
+			"the new network adapters", status.Key())
+		return changed
+	}
 	log.Tracef("Done with AppNetworkStatus for %s", uuidStr)
 
 	// Do we try to activate an application earlier than it's configured to start?
