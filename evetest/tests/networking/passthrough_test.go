@@ -179,6 +179,11 @@ func TestNetworkAdapterPassthrough(test *testing.T) {
 		},
 		Gateway: evetest.IPAddress("10.11.12.1"),
 	})
+	// Explicit interface order for the passthrough NIC: it must be unique
+	// among all network adapters of the app (EnforceNetIntfOrder), and the
+	// test later inserts virtual NICs with orders 1-3, so the passthrough
+	// NIC is placed at the end.
+	orderEthernet1 := uint32(4)
 	appConfig := evetest.ApplicationInstanceConfig{
 		DisplayName: "passthrough-app",
 		Activate:    true,
@@ -209,7 +214,8 @@ func TestNetworkAdapterPassthrough(test *testing.T) {
 				},
 			},
 			evetest.DirectlyAssignedNetworkAdapter{
-				LogicalLabel: "ethernet1",
+				LogicalLabel:   "ethernet1",
+				InterfaceOrder: &orderEthernet1,
 			},
 		},
 		EnforceNetIntfOrder: true,
@@ -387,7 +393,8 @@ func TestNetworkAdapterPassthrough(test *testing.T) {
 		t.Expect(stdout).To(ContainSubstring("00:09:5b:45:af:d3"))
 	}, timeout, polling).Should(Succeed())
 
-	ensureNetworkOrder(t, device, appUUID, []string{"vif0", "newvif1", "newvif2", "newvif3"})
+	ensureNetworkOrder(t, device, appUUID,
+		[]string{"vif0", "newvif1", "newvif2", "newvif3", "ethernet1"})
 }
 
 // lookupAssignableAdapter returns the ZioBundle with the given name from the
@@ -399,4 +406,183 @@ func lookupAssignableAdapter(dinfo *eveinfo.ZInfoDevice, name string) *eveinfo.Z
 		}
 	}
 	return nil
+}
+
+func TestNetworkAdapterPassthroughChange(test *testing.T) {
+	evetestT := evetest.Init(test)
+	log := evetest.Logger()
+	t := NewGomegaWithT(evetestT)
+	defer evetest.Close()
+
+	evetest.DefineTestParameters(evetest.HypervisorParameter())
+	hypervisor := evetest.GetHypervisorParameterValue()
+
+	devName := "edge-dev"
+	evetest.Setup(
+		evetest.RequireEdgeDevice{
+			Name:              devName,
+			WithHypervisor:    hypervisor,
+			DeviceReusePolicy: evetest.ResetDeviceConfig,
+		},
+		evetest.RequireNetworkModel{
+			NetworkModel: netmodels.TwoMgmtPorts,
+		})
+	device := evetest.GetEdgeDevice(devName)
+	evetest.Checkpoint("setup-done")
+
+	const (
+		timeout    = 5 * time.Minute
+		sshTimeout = 20 * time.Second
+		polling    = 3 * time.Second
+	)
+
+	// eth0 is the management port; eth1 is reserved for passthrough
+	// (dedicated usage, hence no network and no SystemAdapter).
+	devConfig := evetest.NewEdgeDeviceConfig(devName)
+	dhcpNet := devConfig.AddNetwork(evetest.DHCPNetworkConfig{
+		NetworkType: evecommon.NetworkType_V4Only,
+	})
+	devConfig.AddNetworkAdapter(evetest.NetworkAdapterConfig{
+		LogicalLabel:  "ethernet0",
+		PhysicalLabel: "eth0",
+		InterfaceName: "eth0",
+		NetworkUUID:   dhcpNet,
+		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+		SharedLabels:  []string{"newni0"},
+	})
+	devConfig.AddNetworkAdapter(evetest.NetworkAdapterConfig{
+		LogicalLabel:  "ethernet1",
+		PhysicalLabel: "eth1",
+		InterfaceName: "eth1",
+		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageDedicated,
+	})
+
+	device.ApplyConfig(devConfig, true, true)
+
+	niUUID := devConfig.AddNetworkInstance(evetest.LocalNetworkInstanceConfig{
+		DisplayName: "local-ni",
+		Port:        "ethernet0",
+		Subnet:      evetest.IPSubnet("10.11.12.0/24"),
+		DHCPRange: types.IPRange{
+			Start: evetest.IPAddress("10.11.12.2"),
+			End:   evetest.IPAddress("10.11.12.254"),
+		},
+		Gateway: evetest.IPAddress("10.11.12.1"),
+	})
+
+	one := uint32(1)
+	two := uint32(2)
+	virtualNetAdapter := evetest.VirtualNetworkAdapter{
+		LogicalLabel:        "vif0",
+		NetworkInstanceUUID: niUUID,
+		MAC:                 evetest.MACAddress("02:16:3e:00:00:01"),
+		PortFwdRules: []evetest.PortFwdRule{
+			{
+				Protocol:     evetest.NetworkProtocolTCP,
+				EdgeNodePort: 2222,
+				AppPort:      22,
+			},
+		},
+		ACLAllowRules: []evetest.ACLAllowRule{
+			{
+				Protocol:     evetest.NetworkProtocolAny,
+				RemoteSubnet: evetest.IPSubnet("0.0.0.0/0"),
+			},
+		},
+		InterfaceOrder: &one,
+	}
+	directNetAdapter := evetest.DirectlyAssignedNetworkAdapter{
+		LogicalLabel:   "ethernet1",
+		InterfaceOrder: &two,
+	}
+
+	appConfig := evetest.ApplicationInstanceConfig{
+		DisplayName: "passthrough-app",
+		Activate:    true,
+		Image: evetest.DockerContainer{
+			ImageName: "lfedge/evetest-ubuntu-ctr",
+			Tag:       "1.0",
+		},
+		VirtualizationMode: eveconfig.VmMode_HVM,
+		CPUs:               1,
+		MemoryBytes:        500 * evetest.MiB,
+		NetworkAdapters: []evetest.AppNetworkAdapter{
+			virtualNetAdapter,
+		},
+		EnforceNetIntfOrder: true,
+	}
+
+	appUUID := devConfig.AddApplication(appConfig)
+	device.ApplyConfig(devConfig, true, true)
+	device.WaitUntilAppIsRunning(appUUID, timeout)
+
+	appAuth := evetest.UsernamePasswordAuth{
+		Username: "root",
+		Password: "testpassword",
+	}
+
+	t.Eventually(func(t Gomega) {
+		log.Infof("Writing something to the disk to ensure it is not purged")
+		_, stderrOutput, err := device.RunShellScriptInsideApp(appUUID, appAuth,
+			"echo -n foo > ~/foo.txt", sshTimeout, 0)
+		t.Expect(err).ToNot(HaveOccurred())
+		t.Expect(stderrOutput).To(BeEmpty())
+	}, timeout, polling).Should(Succeed())
+
+	t.Eventually(func(t Gomega) {
+		stdout, _, err := device.RunShellScriptInsideApp(appUUID, appAuth,
+			"ip a", sshTimeout, 0)
+		t.Expect(err).ToNot(HaveOccurred())
+		log.Infof("before stdout: %s\n\n\n", stdout)
+	}, timeout, polling).Should(Succeed())
+
+	t.Eventually(func(t Gomega) {
+		stdout, _, err := device.RunShellScript(`lspci -k -d 1af4:*`, time.Minute, 0)
+		t.Expect(err).ToNot(HaveOccurred())
+		t.Expect(stdout).To(ContainSubstring("vfio-pci"))
+	}, timeout, polling).Should(Succeed())
+
+	ensureNetworkOrder(t, device, appUUID, []string{"vif0"})
+
+	appConfig.NetworkAdapters = append(appConfig.NetworkAdapters, directNetAdapter)
+
+	devConfig.UpdateApplication(appUUID, appConfig)
+	device.ApplyConfig(devConfig, true, true)
+	device.WaitUntilAppIsRunning(appUUID, timeout)
+
+	t.Eventually(func(t Gomega) {
+		stdout, _, err := device.RunShellScriptInsideApp(appUUID, appAuth,
+			"ip a", sshTimeout, 0)
+		t.Expect(err).ToNot(HaveOccurred())
+		log.Infof("after stdout: %s\n\n\n", stdout)
+	}, timeout, polling).Should(Succeed())
+
+	ensureNetworkOrder(t, device, appUUID, []string{"vif0", "ethernet1"})
+
+	// Reverse the order of the network adapters
+	directNetAdapter.InterfaceOrder = &one
+	virtualNetAdapter.InterfaceOrder = &two
+	appConfig.NetworkAdapters = []evetest.AppNetworkAdapter{
+		directNetAdapter, virtualNetAdapter,
+	}
+	devConfig.UpdateApplication(appUUID, appConfig)
+	device.ApplyConfig(devConfig, true, true)
+	device.WaitUntilAppIsRunning(appUUID, timeout)
+	t.Eventually(func(t Gomega) {
+		stdout, _, err := device.RunShellScriptInsideApp(appUUID, appAuth,
+			"ip a", sshTimeout, 0)
+		t.Expect(err).ToNot(HaveOccurred())
+		log.Infof("after reverse stdout: %s\n\n\n", stdout)
+	}, timeout, polling).Should(Succeed())
+	ensureNetworkOrder(t, device, appUUID, []string{"ethernet1", "vif0"})
+
+	t.Eventually(func(t Gomega) {
+		log.Infof("Reading from disk to check it has not been purged")
+		stdoutOutput, stderrOutput, err := device.RunShellScriptInsideApp(appUUID, appAuth,
+			"cat ~/foo.txt", sshTimeout, 0)
+		t.Expect(stderrOutput).To(BeEmpty())
+		t.Expect(stdoutOutput).To(BeEquivalentTo("foo"))
+		t.Expect(err).ToNot(HaveOccurred())
+	}, timeout, polling).Should(Succeed())
+
 }
