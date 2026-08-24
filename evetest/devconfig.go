@@ -967,10 +967,14 @@ func (config ApplicationInstanceConfig) toProto(th *TestHarness, devName string,
 	for i, netAdapter := range config.NetworkAdapters {
 		switch adapter := netAdapter.(type) {
 		case DirectlyAssignedNetworkAdapter:
+			interfaceOrder := uint32(i)
+			if adapter.InterfaceOrder != nil {
+				interfaceOrder = *adapter.InterfaceOrder
+			}
 			appInstConfig.Adapters = append(appInstConfig.Adapters, &eveconfig.Adapter{
 				Type:           evecommon.PhyIoType_PhyIoNetEth,
 				Name:           adapter.LogicalLabel,
-				InterfaceOrder: uint32(i),
+				InterfaceOrder: interfaceOrder,
 			})
 		case VirtualNetworkAdapter:
 			var ipAddr string
@@ -1391,7 +1395,8 @@ type AppNetworkAdapter interface {
 // DirectlyAssignedNetworkAdapter represents network adapter directly assigned
 // to an application (e.g. using PCI passthrough).
 type DirectlyAssignedNetworkAdapter struct {
-	LogicalLabel string
+	LogicalLabel   string
+	InterfaceOrder *uint32
 }
 
 func (DirectlyAssignedNetworkAdapter) isAppNetworkAdapter() {}
