@@ -18,9 +18,10 @@ import (
 // network stack (bridge, dnsmasq, VIFs). While the application is running such
 // a change is withheld from
 // zedrouter (stageNetwork below) so the network is not reconfigured underneath
-// the running guest; it is published instead on the next restart (or when the
-// app is being started), so zedrouter reconfigures the network as part of the
-// (re)start. ACL and other field changes are applied live.
+// the running guest; it is published once the domain of a restarting app came
+// down (or when the app is being started), so zedrouter reconfigures the
+// network as part of the (re)start. ACL and other field changes are applied
+// live.
 func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 	aiConfig types.AppInstanceConfig, aiStatus *types.AppInstanceStatus) {
 
@@ -77,12 +78,15 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 		log.Functionf("MaybeAddAppNetworkConfig done (no change) for %s", key)
 		return
 	}
-	// Stage network-reconfiguring changes while the guest is running; they are
-	// applied on the next restart (when RestartInprogress is set). If the app is
-	// not currently activated it is being started, so there is no running guest
-	// to protect and the change is applied immediately.
+	// Stage network-reconfiguring changes while the guest owns its VIFs; they
+	// are applied during a restart, but only once the domain came down
+	// (BringUp). Handing them over any earlier (BringDown) makes zedrouter move
+	// a VIF that domainmgr is concurrently tearing down, and the reconciler
+	// then fails with "link not found", which is reported as an app error.
+	// If the app is not currently activated it is being started, so there is no
+	// running guest to protect and the change is applied immediately.
 	if stageNetwork && aiStatus.Activated &&
-		aiStatus.RestartInprogress == types.NotInprogress {
+		aiStatus.RestartInprogress != types.BringUp {
 		log.Noticef("MaybeAddAppNetworkConfig(%s): network adapter change staged; "+
 			"will be applied when the application is restarted", key)
 		return
@@ -100,6 +104,20 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 	nc.AppNetAdapterList = slices.Clone(aiConfig.AppNetAdapterList)
 	publishAppNetworkConfig(ctx, &nc)
 	log.Functionf("MaybeAddAppNetworkConfig done for %s", key)
+}
+
+// appNetAdaptersApplied reports whether zedrouter has already taken over the
+// application's current set of network adapters. zedrouter copies the
+// AppNetAdapterConfig it was given into AppNetworkStatus, so a mismatch means
+// the staged adapters have not been applied yet and the VIFs described by the
+// status still belong to the previous adapter set.
+func appNetAdaptersApplied(aiConfig types.AppInstanceConfig,
+	ns types.AppNetworkStatus) bool {
+	return slices.EqualFunc(aiConfig.AppNetAdapterList, ns.AppNetAdapterList,
+		func(config types.AppNetAdapterConfig,
+			status types.AppNetAdapterStatus) bool {
+			return reflect.DeepEqual(config, status.AppNetAdapterConfig)
+		})
 }
 
 // adapterChangeNeedsRestart reports whether the difference between the old and
