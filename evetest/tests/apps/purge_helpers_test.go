@@ -56,16 +56,22 @@ const (
 	// workload. Observed to settle within about a minute of the app coming back.
 	purgeEndStateTimeout = 5 * time.Minute
 
-	// storageReclaimTimeout bounds removal of the OLD generation's disk, which
-	// is a separate concern on a separate clock: the purge is complete once the
-	// app runs on the new generation, and volumemgr reclaims the previous
-	// artifact afterwards - observed at roughly five minutes, far short of the
-	// one-hour VdiskGCTime but far longer than the purge itself.
+	// storageReclaimTimeout bounds removal of the OLD generation's disk on the
+	// default timer.gc.vdisk clock. TestVMAppPurgeReplacesVMIRS does not
+	// override that clock, so its GC pass ticks every six minutes and reclaim
+	// settles within about five. See fastStorageReclaimTimeout for a test that
+	// speeds the clock up itself.
 	storageReclaimTimeout = 15 * time.Minute
 
 	// storageReclaimPollInterval is deliberately coarse: each poll shells out to
-	// the device, and nothing is expected to change for minutes.
+	// the device.
 	storageReclaimPollInterval = 15 * time.Second
+
+	// fastStorageReclaimTimeout is storageReclaimTimeout's counterpart for
+	// TestVMAppPurgeAfterPowerCycle, which sets timer.gc.vdisk to its 60s
+	// floor. A GC pass then ticks every six seconds, so reclaim settles within
+	// a handful of ticks, not within five minutes.
+	fastStorageReclaimTimeout = 5 * time.Minute
 
 	// clusterReadyTimeout bounds a single eve-k node becoming Ready. k3s and
 	// Longhorn take minutes to come up, and an app deployed before that sits in
@@ -276,9 +282,8 @@ func assertLocalDomainPurgeEndState(g Gomega, dev *evetest.EdgeDevice,
 // assertOldVolumeReclaimed asserts the previous generation's disk is eventually
 // removed. Deliberately separate from the purge's end state: the purge is
 // complete once the app runs on the new generation, while reclaiming the old
-// artifact happens minutes later on volumemgr's own schedule (well before the
-// one-hour VdiskGCTime, but far outside the purge window). Give it its own,
-// longer Eventually.
+// artifact happens later, on volumemgr's own timer.gc.vdisk schedule. Give it
+// its own Eventually, sized to whatever clock the caller's test configured.
 func assertOldVolumeReclaimed(
 	g Gomega, dev *evetest.EdgeDevice, baselineVolPath string) {
 	assertVolumeArtifactGone(g, dev, baselineVolPath)

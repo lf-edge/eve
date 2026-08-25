@@ -18,6 +18,11 @@ import (
 // purge runs before the fault-injecting VMIRS test, so a failure in the
 // ordinary app lifecycle is not masked by chaos.
 //
+// TestClusterPVCGCPreservesLiveVolumes runs last: it lowers timer.gc.vdisk to
+// its floor to make volumemgr's PVC garbage collection run continuously, which
+// is not a configuration the other subtests should inherit if that ordering
+// ever changes.
+//
 // Every cluster subtest re-creates its devices, because
 // clusterDeviceRequirements sets CreateFromScratchWithLiveImage, which
 // maybeReuseDevices always rejects. No subtest inherits cluster state from
@@ -54,6 +59,9 @@ func TestNodeClusterSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestClusterToSingleConversion,
+		},
+		evetest.TestCase{
+			Test: TestClusterPVCGCPreservesLiveVolumes,
 		},
 	)
 }
