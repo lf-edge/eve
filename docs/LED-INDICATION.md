@@ -1,6 +1,6 @@
 # LED Indication
 
-As EVE-OS boots and progresses through various intermediate states, the LED (by default the disk LED) blinking
+As EVE-OS boots and progresses through various intermediate states, the LED blinking
 pattern changes to indicate state transitions.
 To indicate a given state, LED blinks one or more times quickly in a row, then pauses for 1200ms and repeats continuously.
 By counting the number of successive blinks one may determine the current state of the edge device.
