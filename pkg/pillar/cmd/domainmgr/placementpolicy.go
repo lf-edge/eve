@@ -405,7 +405,39 @@ func placementForIntent(intent cpuIntent) (resolvedPlacement, error) {
 	if controllerSentPolicy(intent.policy) {
 		return resolvePlacement(intent.policy)
 	}
-	return placementFromPersist(intent.id)
+	placement, err := placementFromPersist(intent.id)
+	if err != nil || placement.TopologyAware {
+		return placement, err
+	}
+	if intent.pinned {
+		return resolvePlacement(legacyPinDefaultPolicy)
+	}
+	return placement, nil
+}
+
+// legacyPinDefaultPolicy is what "CPU pinning enabled" means on a device whose
+// controller cannot yet express a placement policy: whole physical cores, with
+// both SMT siblings of each core used as vCPUs. N vCPUs therefore occupy N/2
+// whole cores and the guest is shown threads=2, which is the profile the target
+// workload wants (§10 of the design doc) and the one thing the legacy pin_cpu
+// flag alone cannot ask for.
+//
+// TEMPORARY: drop this, and the two hunks in placementForIntent above that use
+// it, once the controller sends cpu_policy / full_pcpus_only /
+// threads_per_core. It exists only so a pin_cpu-only controller can drive
+// whole-core placement, and it silently contradicts the API's documented
+// meaning of pin_cpu ("dedicated with default allocation", i.e. thread-granular)
+// for as long as it is in the tree.
+//
+// It deliberately does not fall back when the request cannot be honoured: an
+// odd vCPU count fails with cpu.policy.odd_vcpu, and a node without SMT with
+// cpu.topology.unsupported. Placing such a workload thread-granularly instead
+// would report it as pinned while giving it none of what pinning was turned on
+// for.
+var legacyPinDefaultPolicy = types.CPUPlacementPolicy{
+	Policy:         types.CPUPolicyDedicated,
+	FullPCPUsOnly:  true,
+	ThreadsPerCore: 2,
 }
 
 // controllerSentPolicy reports whether the controller expressed any CPU

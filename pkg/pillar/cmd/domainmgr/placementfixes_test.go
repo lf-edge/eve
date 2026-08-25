@@ -110,7 +110,12 @@ func TestAllocateCPUs_LegacyPinningTakesItsPlannedCPUs(t *testing.T) {
 	wholeCore := pinnedConfigForTest("wholecore", types.CPUPlacementPolicy{
 		Policy: types.CPUPolicyDedicated, FullPCPUsOnly: true,
 	})
-	legacy := pinnedConfigForTest("legacy", types.CPUPlacementPolicy{})
+	// Spelled out rather than left as the zero policy: while
+	// legacyPinDefaultPolicy is in the tree a pin_cpu-only workload is placed on
+	// whole cores, and this test is about the thread-granular path.
+	legacy := pinnedConfigForTest("legacy", types.CPUPlacementPolicy{
+		Policy: types.CPUPolicyDedicated,
+	})
 
 	ctx := &domainContext{
 		placer:                      testPlacer(t),
