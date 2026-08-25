@@ -1,0 +1,168 @@
+From 90fb2a1995181eab89dd155cdf7133fedae2e219 Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mike.malyshev@gmail.com>
+Date: Tue, 25 Aug 2026 16:16:09 +0000
+Subject: [PATCH] vfio/igd: emulate GSMBASE for gen12 iGPU passthrough
+
+The gen12 (Iris Xe) graphics driver locates its Graphics Stolen Memory
+(which holds the GGTT and graphics-stolen surfaces) via the MMIO-only
+GSMBASE register at BAR0 offset 0x108100.  Unlike DSMBASE/BDSM there is
+no PCI config-space counterpart, so the existing BDSM mirror cannot
+sanitize it and the guest reads the host physical base.  The driver then
+programs GTT entries pointing at host stolen memory, which is not in the
+guest's IOMMU domain, so the GPU's scanout DMA faults ("PTE Read access
+is not set") part-way through the frame and the lower portion of the
+display goes black.
+
+Emulate GSMBASE to point at guest RAM placed immediately above the guest
+DSM: enlarge the etc/igd-bdsm-size fw_cfg reservation by GGMS so the
+range [BDSM+GMS, BDSM+GMS+GGMS) is reserved guest RAM, and return
+BDSM+GMS from the 0x108100 MMIO register.  Both the DSM and GSM then live
+in mapped guest RAM and the GTT no longer references host physical
+addresses.
+
+Applies to gen12+ (offset and behaviour are gen12-specific).  GSM is
+placed above the DSM rather than below it (as on real hardware) so the
+guest BDSM written by firmware does not have to move; this keeps the fix
+entirely in QEMU with no OVMF change.
+
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
+---
+ hw/vfio/igd.c | 108 ++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 108 insertions(+)
+
+diff --git a/tools/qemu-xen/hw/vfio/igd.c b/tools/qemu-xen/hw/vfio/igd.c
+index 8997611920..0b492b857d 100644
+--- a/tools/qemu-xen/hw/vfio/igd.c
++++ b/tools/qemu-xen/hw/vfio/igd.c
+@@ -439,6 +439,64 @@ static const MemoryRegionOps igd_bdsm_mirror_ops = {
+ #define IGD_BDSM_GEN11 0xc0
+ #endif
+ 
++/*
++ * IGD GSMBASE (Graphics Stolen Memory base) emulation.
++ *
++ * On gen12 (GEN12_GSMBASE) the base of the Graphics Stolen Memory that holds
++ * the GGTT and graphics-stolen surfaces is exposed via MMIO at BAR0 0x108100
++ * (64-bit).  Unlike DSMBASE/BDSM there is no PCI config counterpart, so it
++ * cannot be redirected to emulated config space like the BDSM mirror above.
++ *
++ * The gen12 (Iris Xe) guest driver reads GSMBASE to locate graphics stolen
++ * memory and writes GTT entries accordingly.  Left un-emulated it returns the
++ * host physical address, so the GPU DMAs into host stolen memory that is not in
++ * the guest's IOMMU domain -> "PTE Read access is not set" DMAR faults and a
++ * black band across the lower part of the scanned-out frame.
++ *
++ * Emulate it to point at guest RAM placed immediately above the guest DSM.  The
++ * fw_cfg reservation (etc/igd-bdsm-size) is enlarged by GGMS so the range
++ * [BDSM+GMS, BDSM+GMS+GGMS) is reserved guest RAM; GSMBASE returns BDSM+GMS.
++ */
++#define IGD_GSMBASE_MMIO_OFFSET 0x108100
++
++typedef struct IGDGsmBaseQuirk {
++    VFIOPCIDevice *vdev;
++    uint32_t bdsm_config_offset; /* emulated guest BDSM lives here (0xC0) */
++    uint8_t  bdsm_size;          /* BDSM width in bytes (8 on gen11+) */
++    uint64_t gms_bytes;          /* DSM size; GSM sits just above the DSM */
++    MemoryRegion mem;
++} IGDGsmBaseQuirk;
++
++static uint64_t igd_gsmbase_read(void *opaque, hwaddr addr, unsigned size)
++{
++    IGDGsmBaseQuirk *gsm = opaque;
++    VFIOPCIDevice *vdev = gsm->vdev;
++    uint64_t bdsm = vfio_pci_read_config(&vdev->pdev, gsm->bdsm_config_offset,
++                                         gsm->bdsm_size);
++    /* Place GSM just above the guest DSM and set the low "lock/valid" bit. */
++    uint64_t gsmbase = ((bdsm & ~0xfffULL) + gsm->gms_bytes) | 0x1;
++    uint64_t val = gsmbase >> (addr * 8);
++
++    if (size < 8) {
++        val &= (1ULL << (size * 8)) - 1;
++    }
++    return val;
++}
++
++static void igd_gsmbase_write(void *opaque, hwaddr addr,
++                              uint64_t data, unsigned size)
++{
++    /* Read-only emulation: GSMBASE is derived from BDSM, ignore guest writes. */
++    error_report("IGD GSMBASE emul: ignoring write off=0x%" PRIx64
++                 " data=0x%" PRIx64, (uint64_t)addr, data);
++}
++
++static const MemoryRegionOps igd_gsmbase_ops = {
++    .read = igd_gsmbase_read,
++    .write = igd_gsmbase_write,
++    .endianness = DEVICE_LITTLE_ENDIAN,
++};
++
+ /*
+  * IGD BAR0 DBUF_CTL sanitize quirk.
+  *
+@@ -577,6 +635,43 @@ void vfio_probe_igd_bar0_quirk(VFIOPCIDevice *vdev, int nr)
+ 
+     QLIST_INSERT_HEAD(&vdev->bars[nr].quirks, quirk, next);
+ 
++    /*
++     * GSMBASE (Graphics Stolen Memory base) emulation (gen12+).  MMIO-only at
++     * 0x108100 (64-bit) with no config counterpart to mirror, so emulate it to
++     * point at guest RAM just above the DSM (see igd_gsmbase_read()).  This is
++     * the companion to the enlarged etc/igd-bdsm-size reservation in
++     * vfio_probe_igd_bar4_quirk() and prevents the guest driver from writing
++     * host-physical addresses into the GTT (IOMMU DMA-read faults).
++     */
++    if (gen >= 12) {
++        uint32_t gmch = vfio_pci_read_config(&vdev->pdev, IGD_GMCH, 4);
++        uint32_t gms = (gmch >> 8) & 0xff;
++        uint64_t gms_bytes = (gms < 0xf0) ? (uint64_t)gms * 32 * MiB
++                                          : (uint64_t)(gms - 0xf0 + 1) * 4 * MiB;
++
++        if (gms) {
++            VFIOQuirk *gsm_quirk = vfio_quirk_alloc(1);
++            IGDGsmBaseQuirk *gsm = g_malloc0(sizeof(*gsm));
++
++            gsm->vdev = vdev;
++            gsm->bdsm_config_offset = IGD_BDSM_GEN11;
++            gsm->bdsm_size = 8;
++            gsm->gms_bytes = gms_bytes;
++
++            memory_region_init_io(&gsm_quirk->mem[0], OBJECT(vdev),
++                                  &igd_gsmbase_ops, gsm,
++                                  "vfio-igd-gsmbase-quirk", 8);
++            memory_region_add_subregion_overlap(vdev->bars[nr].region.mem,
++                                                IGD_GSMBASE_MMIO_OFFSET,
++                                                &gsm_quirk->mem[0], 1);
++
++            QLIST_INSERT_HEAD(&vdev->bars[nr].quirks, gsm_quirk, next);
++
++            error_report("IGD GSMBASE emul: enabled, GSM at guest BDSM+0x%"
++                         PRIx64 " bytes (GMS)", gms_bytes);
++        }
++    }
++
+     /*
+      * DBUF_CTL sanitize quirk (gen9+): trap the DBUF_CTL slice registers so
+      * POWER_STATE is reported consistently with POWER_REQUEST (see
+@@ -665,6 +760,19 @@ void vfio_probe_igd_bar4_quirk(VFIOPCIDevice *vdev, int nr)
+         } else {
+             bdsm_bytes = (uint64_t)(gms - 0xf0 + 1) * 4 * MiB;
+         }
++        /*
++         * On gen12+ also reserve the Graphics Stolen Memory (GTT stolen, GGMS)
++         * so the emulated GSMBASE (BAR0 0x108100, see vfio_probe_igd_bar0_quirk)
++         * can point at guest RAM just above the DSM.  Without this the guest
++         * driver reads the host GSMBASE and programs GTT entries with host
++         * physical addresses, causing IOMMU DMA-read faults (black-band scanout
++         * corruption on Iris Xe).
++         */
++        if (gen >= 12) {
++            uint32_t ggms = (gmch >> 6) & 0x3;
++            ggms = 1 << ggms;
++            bdsm_bytes += (uint64_t)ggms * MiB;
++        }
+         error_report("IGD bdsm-size: device %04x gen=%d gmch=0x%08x "
+                      "gms=%u bdsm_bytes=%" PRIu64,
+                      vdev->device_id, gen, gmch, gms, bdsm_bytes);
+-- 
+2.43.0
+
