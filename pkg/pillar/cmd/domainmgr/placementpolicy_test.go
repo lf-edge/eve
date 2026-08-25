@@ -34,6 +34,21 @@ func testPlacer(t *testing.T) *cpuallocator.Placer {
 	return placer
 }
 
+// testPlacerNoSMT is the same four cores with SMT switched off in firmware:
+// every core presents a single thread, so no core can ever present threads=2.
+func testPlacerNoSMT(t *testing.T) *cpuallocator.Placer {
+	t.Helper()
+	var infos []cputopology.CoreInfo
+	for core := uint(0); core < 4; core++ {
+		infos = append(infos, cputopology.CoreInfo{LCore: core, CoreID: core})
+	}
+	placer, err := cpuallocator.NewPlacer(cputopology.BuildTopology(infos), 0)
+	if err != nil {
+		t.Fatalf("NewPlacer: %v", err)
+	}
+	return placer
+}
+
 // isolatePinningOverride points the operator-editable /persist override at an
 // empty temporary file, so a test neither reads the host's copy nor inherits
 // one another test left behind in these package-level paths.
@@ -306,6 +321,52 @@ func TestAssignCPUs_UnfittableRequestStaysInsufficient(t *testing.T) {
 	if status.PlacementQuality != types.CPUPlacementQualityUnspecified {
 		t.Errorf("a workload that never started has no placement quality, got %v",
 			status.PlacementQuality)
+	}
+}
+
+// SMT switched off in the platform firmware is the likeliest way a whole-core
+// request fails, and it is not a malformed policy: nothing about the workload's
+// config is wrong, and no amount of freeing CPUs helps. The allocator reports it
+// as an InvalidRequest, which maps to cpu.policy.invalid and sends the operator
+// auditing a config that is correct; the TopologyUnsupported flag is what says
+// the node, not the request, is the problem.
+func TestAssignCPUs_SMTDisabledReportsTopologyUnsupported(t *testing.T) {
+	isolatePinningOverride(t)
+	cpuPlanFile = filepath.Join(t.TempDir(), "cpuplan.json")
+
+	ps := testPubSub(t)
+	config := pinnedConfigForTest("wholecore", types.CPUPlacementPolicy{
+		Policy: types.CPUPolicyDedicated, FullPCPUsOnly: true,
+	})
+	ctx := &domainContext{
+		placer:                      testPlacerNoSMT(t),
+		subDomainConfig:             testDomainConfigSub(t, ps, config),
+		cpuTopologyPinningSupported: true,
+	}
+	var status types.DomainStatus
+	status.UUIDandVersion = config.UUIDandVersion
+
+	err := assignCPUs(ctx, &config, &status)
+	var perr *placementError
+	if !errors.As(err, &perr) ||
+		perr.Code != types.ErrorCodeCPUTopologyUnsupported {
+		t.Fatalf("an SMT-less node must report %q, got %v",
+			types.ErrorCodeCPUTopologyUnsupported, err)
+	}
+	if !strings.Contains(perr.Msg, "SMT is disabled") {
+		t.Errorf("the message must say why no core qualifies, got %q", perr.Msg)
+	}
+	// Neither of the generic remedies for this code applies here: the hypervisor
+	// can pin, and there is nothing to free. Only firmware or threads_per_core=1.
+	condition := placementErrorDescription(err).ErrorRetryCondition
+	for _, want := range []string{"SMT", "threads_per_core=1"} {
+		if !strings.Contains(condition, want) {
+			t.Errorf("the retry condition must name %q, got %q", want, condition)
+		}
+	}
+	if len(status.VmConfig.CPUs) != 0 || len(status.OrderedCPUs) != 0 {
+		t.Errorf("a failed placement must not reserve CPUs, got %v/%v",
+			status.VmConfig.CPUs, status.OrderedCPUs)
 	}
 }
 

@@ -224,8 +224,17 @@ func placementErrorDescription(err error) types.ErrorDescription {
 // placementErrorCode maps an allocator outcome onto the published error-code
 // registry. NeedsRebalance and Insufficient are deliberately distinct: the
 // first says a repack would fix this, the second that nothing would.
-func placementErrorCode(s cpuallocator.Status) string {
-	switch s {
+//
+// TopologyUnsupported outranks the status. The allocator reports it as an
+// InvalidRequest, but the request is well-formed -- it is the node that cannot
+// present the requested thread count, most often because SMT is switched off in
+// the platform firmware. Reporting that as cpu.policy.invalid sends the operator
+// hunting for a mistake in a config that has none.
+func placementErrorCode(res cpuallocator.Result) string {
+	if res.TopologyUnsupported {
+		return types.ErrorCodeCPUTopologyUnsupported
+	}
+	switch res.Status {
 	case cpuallocator.NeedsRebalance:
 		return types.ErrorCodeCPUPlacementNeedsRepack
 	case cpuallocator.Insufficient:
@@ -269,8 +278,15 @@ func liveAllocationError(displayName string, id uuid.UUID, live cpuallocator.Res
 					heldByClause(blockers), noAutoRetry)
 		}
 	}
-	err := placementErrorf(placementErrorCode(live.Status),
+	err := placementErrorf(placementErrorCode(live),
 		"topology pinning for %s: %s", displayName, live.Message)
+	if live.TopologyUnsupported {
+		// The generic condition for this code speaks about the hypervisor, which
+		// is the other way to reach it; here the node's cores are the problem.
+		return err.retryWhen("Enable SMT (hyper-threading) in the platform "+
+			"firmware and reboot the node, or set threads_per_core=1 for this "+
+			"workload and deploy it again. Freeing CPUs cannot help.%s", noAutoRetry)
+	}
 	if condition := shortageRetryCondition(live); condition != "" {
 		return err.retryWhen("%s", condition)
 	}
