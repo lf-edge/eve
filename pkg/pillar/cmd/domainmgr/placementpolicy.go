@@ -100,6 +100,10 @@ type resolvedPlacement struct {
 	// IOHousekeeping pins the emulator/IO threads onto the housekeeping set
 	// instead of leaving them on the workload's dedicated cores.
 	IOHousekeeping bool
+	// RequireIsolated restricts placement to cores the running kernel isolates,
+	// which is what the hard isolation tier asks for. It is the only way to be
+	// given one: those cores are withheld from every workload that did not ask.
+	RequireIsolated bool
 }
 
 // resolvePlacement translates a placement intent into allocator parameters. It
@@ -109,11 +113,18 @@ func resolvePlacement(p types.CPUPlacementPolicy) (resolvedPlacement, error) {
 	if err := rejectUnenforceableFields(p); err != nil {
 		return resolvedPlacement{}, err
 	}
-	if !p.IsolationTier.SupportedBySoftIsolation() {
+	// The hard tier is served by placing the workload on kernel-isolated cores,
+	// which only exists as a whole-core concept: a thread-granular workload shares
+	// its cores, so no isolation the kernel provides survives being handed half a
+	// core. Refusing is the honest answer -- serving it as soft isolation would
+	// tell the workload it is shielded from housekeeping it is still exposed to.
+	if p.IsolationTier.NeedsKernelIsolation() && !p.IsTopologyAware() {
 		return resolvedPlacement{}, placementErrorf(
 			types.ErrorCodeCPUIsolationTierUnavailable,
-			"isolation tier %q requires a kernel command-line change and is not supported on this node",
-			p.IsolationTier)
+			"isolation tier %q needs whole kernel-isolated cores, so it requires "+
+				"cpu_policy=dedicated with full_pcpus_only (cpu_policy=%s, "+
+				"full_pcpus_only=%t)",
+			p.IsolationTier, p.Policy, p.FullPCPUsOnly)
 	}
 
 	// Nothing on the device defers a node-level disruptive action yet, so
@@ -129,9 +140,10 @@ func resolvePlacement(p types.CPUPlacementPolicy) (resolvedPlacement, error) {
 	}
 
 	res := resolvedPlacement{
-		TopologyAware:  p.IsTopologyAware(),
-		NUMA:           numaPolicyFor(p.NUMAPolicy),
-		IOHousekeeping: p.IOPlacement == types.CPUIOPlacementHousekeeping,
+		TopologyAware:   p.IsTopologyAware(),
+		NUMA:            numaPolicyFor(p.NUMAPolicy),
+		IOHousekeeping:  p.IOPlacement == types.CPUIOPlacementHousekeeping,
+		RequireIsolated: p.IsolationTier.NeedsKernelIsolation(),
 	}
 	if !res.TopologyAware {
 		res.Mode = cpuallocator.ModeShared

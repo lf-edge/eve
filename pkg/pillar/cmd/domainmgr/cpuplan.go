@@ -127,10 +127,11 @@ func planPinnedPlacement(ctx *domainContext) map[uuid.UUID]cpuallocator.Result {
 		// arrival -- but they do take CPUs exclusively, so the housekeeping set
 		// derived from this plan has to account for them.
 		requests = append(requests, cpuallocator.Request{
-			UUID:     intent.id,
-			NumVCPUs: intent.vcpus,
-			Mode:     placement.Mode,
-			NUMA:     placement.NUMA,
+			UUID:            intent.id,
+			NumVCPUs:        intent.vcpus,
+			Mode:            placement.Mode,
+			NUMA:            placement.NUMA,
+			RequireIsolated: placement.RequireIsolated,
 		})
 	}
 	if len(requests) == 0 {

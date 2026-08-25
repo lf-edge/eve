@@ -66,11 +66,11 @@ func checkPool(t *testing.T, got, want PoolUtilization) {
 // free -- which is the entire reason the whole-core counts are reported
 // separately from the thread counts.
 func TestPoolUtilization_WorkedExample(t *testing.T) {
-	placer := newPlacer(smt2Topology(4), 1)
+	placer := newPlacer(smt2Topology(4), 1, lcpus(6, 7))
 	mustReserve(t, placer, uuid.NewV5(uuid.NamespaceOID, "A"), 2, 3)
 	mustReserve(t, placer, uuid.NewV5(uuid.NamespaceOID, "B"), 4)
 
-	pools := placer.PoolUtilization(lcpus(6, 7))
+	pools := placer.PoolUtilization()
 	if len(pools) != 3 {
 		t.Fatalf("want a report for every pool, got %d", len(pools))
 	}
@@ -78,13 +78,16 @@ func TestPoolUtilization_WorkedExample(t *testing.T) {
 	checkPool(t, poolByKind(t, pools, PoolHousekeeping), PoolUtilization{
 		Pool:     PoolHousekeeping,
 		CPUs:     lcpus(0, 1, 5, 6, 7),
-		FreeCPUs: lcpus(1, 5, 6, 7),
-		// cpu0 is reserved for EVE, so it counts as allocated.
-		TotalThreads: 5, AllocatedThreads: 1, FreeThreads: 4,
+		FreeCPUs: lcpus(1, 5),
+		// cpu0 is reserved for EVE; cpu6 and cpu7 are kernel-isolated, so they
+		// are on offer only to a workload that requests isolation and are not
+		// free for an ordinary one. All three count as allocated here.
+		TotalThreads: 5, AllocatedThreads: 3, FreeThreads: 2,
 		// core0 and core3 lie wholly in the pool; core1 and core2 straddle it.
 		TotalCores: 2,
-		// Only core3 is free whole: core0's sibling cpu0 belongs to EVE.
-		FreeWholeCores: 1,
+		// Neither is free whole: core0's sibling cpu0 belongs to EVE, and core3
+		// is the isolated one.
+		FreeWholeCores: 0,
 	})
 
 	checkPool(t, poolByKind(t, pools, PoolDedicated), PoolUtilization{
@@ -111,11 +114,11 @@ func TestPoolUtilization_WorkedExample(t *testing.T) {
 // all, so a consumer trusting the thread count would promise capacity that does
 // not exist.
 func TestPoolUtilization_FreeThreadsAreNotFreeCores(t *testing.T) {
-	placer := newPlacer(smt2Topology(4), 0)
+	placer := newPlacer(smt2Topology(4), 0, nil)
 	for i, cpu := range []uint32{0, 2, 4, 6} {
 		mustReserve(t, placer, uuid.NewV5(uuid.NamespaceOID, string(rune('a'+i))), cpu)
 	}
-	housekeeping := poolByKind(t, placer.PoolUtilization(nil), PoolHousekeeping)
+	housekeeping := poolByKind(t, placer.PoolUtilization(), PoolHousekeeping)
 	if housekeeping.FreeThreads != 4 {
 		t.Errorf("want 4 free threads, got %d", housekeeping.FreeThreads)
 	}
@@ -132,7 +135,7 @@ func TestPoolUtilization_FreeThreadsAreNotFreeCores(t *testing.T) {
 // An idle node reports its whole capacity as free, which is what a pre-flight
 // "will it fit?" reads.
 func TestPoolUtilization_IdleNode(t *testing.T) {
-	pools := newPlacer(smt2Topology(4), 2).PoolUtilization(nil)
+	pools := newPlacer(smt2Topology(4), 2, nil).PoolUtilization()
 
 	housekeeping := poolByKind(t, pools, PoolHousekeeping)
 	if housekeeping.TotalThreads != 8 || housekeeping.FreeThreads != 6 {
@@ -153,8 +156,8 @@ func TestPoolUtilization_IdleNode(t *testing.T) {
 // Only the reported free whole-core count, never the free thread count, should
 // agree with what the allocator will actually hand out.
 func TestPoolUtilization_MatchesWhatAllocateGrants(t *testing.T) {
-	placer := newPlacer(smt2Topology(4), 1)
-	free := poolByKind(t, placer.PoolUtilization(nil), PoolHousekeeping).FreeWholeCores
+	placer := newPlacer(smt2Topology(4), 1, nil)
+	free := poolByKind(t, placer.PoolUtilization(), PoolHousekeeping).FreeWholeCores
 
 	res := placer.Allocate(Request{
 		UUID:     uuid.NewV5(uuid.NamespaceOID, "greedy"),
@@ -166,7 +169,7 @@ func TestPoolUtilization_MatchesWhatAllocateGrants(t *testing.T) {
 		t.Fatalf("the report promised %d whole cores but Allocate said %v: %s",
 			free, res.Status, res.Message)
 	}
-	after := poolByKind(t, placer.PoolUtilization(nil), PoolHousekeeping)
+	after := poolByKind(t, placer.PoolUtilization(), PoolHousekeeping)
 	if after.FreeWholeCores != 0 {
 		t.Errorf("all promised cores were taken, want 0 left, got %d",
 			after.FreeWholeCores)
@@ -177,8 +180,8 @@ func TestPoolUtilization_MatchesWhatAllocateGrants(t *testing.T) {
 // isolcpus list naming a CPU this kernel does not expose would otherwise be
 // echoed back to the controller as capacity.
 func TestPoolUtilization_UnknownIsolatedCPUsIgnored(t *testing.T) {
-	placer := newPlacer(smt2Topology(2), 0)
-	isolated := poolByKind(t, placer.PoolUtilization(lcpus(3, 99, 3)), PoolIsolated)
+	placer := newPlacer(smt2Topology(2), 0, lcpus(3, 99, 3))
+	isolated := poolByKind(t, placer.PoolUtilization(), PoolIsolated)
 	if !reflect.DeepEqual(isolated.CPUs, lcpus(3)) {
 		t.Errorf("want only the known, de-duplicated CPU 3, got %v", isolated.CPUs)
 	}

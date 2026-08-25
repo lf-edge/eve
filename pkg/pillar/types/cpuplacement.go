@@ -152,11 +152,17 @@ func (t CPUIsolationTier) String() string {
 	return fmt.Sprintf("unknown(%d)", uint8(t))
 }
 
-// SupportedBySoftIsolation reports whether this tier can be satisfied without a
-// kernel command-line change. A request that cannot must fail closed rather
-// than be silently downgraded.
-func (t CPUIsolationTier) SupportedBySoftIsolation() bool {
-	return t != CPUIsolationTierHard
+// NeedsKernelIsolation reports whether this tier can only be satisfied on a node
+// whose kernel isolates CPUs (isolcpus). Keeping other workloads off a core is
+// something EVE can arrange at runtime; keeping the *kernel's* own scheduling
+// off it is not, so the hard tier is a property of how the node was booted.
+//
+// A request for it on a node without kernel isolation must fail closed rather
+// than be served as soft isolation: a workload told it is shielded from
+// housekeeping, and placed on a core the scheduler still uses, is worse off than
+// one that was refused, because nothing about it looks wrong.
+func (t CPUIsolationTier) NeedsKernelIsolation() bool {
+	return t == CPUIsolationTierHard
 }
 
 // CPUDisruptionPolicy guards a running workload against collateral node-level

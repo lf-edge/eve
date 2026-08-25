@@ -42,9 +42,9 @@ func cpuPoolKind(pool cpuallocator.CPUPool) types.CPUPoolKind {
 
 // cpuPoolStatus projects the allocator's view of the node's CPU pools onto the
 // published type.
-func cpuPoolStatus(placer *cpuallocator.Placer, isolated []cputopology.LCPU) types.CPUPoolStatus {
+func cpuPoolStatus(placer *cpuallocator.Placer) types.CPUPoolStatus {
 	var out types.CPUPoolStatus
-	for _, pool := range placer.PoolUtilization(isolated) {
+	for _, pool := range placer.PoolUtilization() {
 		out.Pools = append(out.Pools, types.CPUPoolUtilization{
 			Kind:             cpuPoolKind(pool.Pool),
 			CPUs:             lcpusToUint32(pool.CPUs),
@@ -80,7 +80,7 @@ func publishCPUPoolStatus(ctx *domainContext) {
 	if ctx.placer == nil || ctx.pubCPUPoolStatus == nil {
 		return
 	}
-	status := cpuPoolStatus(ctx.placer, ctx.isolatedCPUs)
+	status := cpuPoolStatus(ctx.placer)
 	if err := ctx.pubCPUPoolStatus.Publish(status.Key(), status); err != nil {
 		log.Errorf("publishCPUPoolStatus failed: %v", err)
 	}

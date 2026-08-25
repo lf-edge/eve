@@ -27,7 +27,28 @@ func testPlacer(t *testing.T) *cpuallocator.Placer {
 			infos = append(infos, cputopology.CoreInfo{LCore: thread*4 + core, CoreID: core})
 		}
 	}
-	placer, err := cpuallocator.NewPlacer(cputopology.BuildTopology(infos), 0)
+	placer, err := cpuallocator.NewPlacer(cputopology.BuildTopology(infos), 0, nil)
+	if err != nil {
+		t.Fatalf("NewPlacer: %v", err)
+	}
+	return placer
+}
+
+// testPlacerIsolating is the same four cores on a node booted with isolcpus
+// covering the given logical CPUs.
+func testPlacerIsolating(t *testing.T, isolated ...uint32) *cpuallocator.Placer {
+	t.Helper()
+	var infos []cputopology.CoreInfo
+	for thread := uint(0); thread < 2; thread++ {
+		for core := uint(0); core < 4; core++ {
+			infos = append(infos, cputopology.CoreInfo{LCore: thread*4 + core, CoreID: core})
+		}
+	}
+	set := make([]cputopology.LCPU, 0, len(isolated))
+	for _, c := range isolated {
+		set = append(set, cputopology.LCPU(c))
+	}
+	placer, err := cpuallocator.NewPlacer(cputopology.BuildTopology(infos), 0, set)
 	if err != nil {
 		t.Fatalf("NewPlacer: %v", err)
 	}
@@ -42,7 +63,7 @@ func testPlacerNoSMT(t *testing.T) *cpuallocator.Placer {
 	for core := uint(0); core < 4; core++ {
 		infos = append(infos, cputopology.CoreInfo{LCore: core, CoreID: core})
 	}
-	placer, err := cpuallocator.NewPlacer(cputopology.BuildTopology(infos), 0)
+	placer, err := cpuallocator.NewPlacer(cputopology.BuildTopology(infos), 0, nil)
 	if err != nil {
 		t.Fatalf("NewPlacer: %v", err)
 	}
@@ -742,24 +763,45 @@ func TestResolvePlacement_IOPlacement(t *testing.T) {
 	}
 }
 
-// The hard tier needs a kernel command-line change this device cannot make at
-// runtime. It must fail closed with a structured code rather than quietly
-// running with only soft isolation.
-func TestResolvePlacement_HardIsolationFailsClosed(t *testing.T) {
-	_, err := resolvePlacement(types.CPUPlacementPolicy{
+// The hard tier is served out of the kernel-isolated set, so resolving it is a
+// matter of turning it into that constraint. Whether the node has such cores is
+// a separate question, answered where the node is in scope -- see
+// TestAssignCPUs_HardIsolationRefusedWithoutIsolatedCPUs.
+func TestResolvePlacement_HardIsolationRequiresIsolatedCores(t *testing.T) {
+	placement, err := resolvePlacement(types.CPUPlacementPolicy{
 		Policy:        types.CPUPolicyDedicated,
 		FullPCPUsOnly: true,
 		IsolationTier: types.CPUIsolationTierHard,
 	})
-	if err == nil {
-		t.Fatal("hard isolation must be rejected")
+	if err != nil {
+		t.Fatalf("a whole-core hard-isolation request must resolve: %v", err)
 	}
-	var perr *placementError
-	if !errors.As(err, &perr) {
-		t.Fatalf("expected a placementError carrying an error code, got %T", err)
+	if !placement.RequireIsolated {
+		t.Error("the hard tier must constrain placement to kernel-isolated cores")
 	}
-	if perr.Code != types.ErrorCodeCPUIsolationTierUnavailable {
-		t.Errorf("code = %q, want %q", perr.Code, types.ErrorCodeCPUIsolationTierUnavailable)
+}
+
+// Kernel isolation only means anything for a workload that owns whole cores: on
+// a shared core the kernel still schedules the sibling. A hard-tier request that
+// is not whole-core therefore cannot be served, and must not be downgraded to
+// soft isolation without saying so.
+func TestResolvePlacement_HardIsolationNeedsWholeCores(t *testing.T) {
+	for _, name := range []string{"thread-granular", "shared"} {
+		policy := types.CPUPlacementPolicy{IsolationTier: types.CPUIsolationTierHard}
+		if name == "thread-granular" {
+			policy.Policy = types.CPUPolicyDedicated
+		} else {
+			policy.Policy = types.CPUPolicyShared
+		}
+		t.Run(name, func(t *testing.T) {
+			_, err := resolvePlacement(policy)
+			var perr *placementError
+			if !errors.As(err, &perr) ||
+				perr.Code != types.ErrorCodeCPUIsolationTierUnavailable {
+				t.Fatalf("want %q, got %v",
+					types.ErrorCodeCPUIsolationTierUnavailable, err)
+			}
+		})
 	}
 }
 

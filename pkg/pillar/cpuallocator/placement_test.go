@@ -15,9 +15,17 @@ func u(s string) uuid.UUID { return uuid.NewV5(uuid.NamespaceOID, s) }
 
 func mustPlacer(t *testing.T, topo *cputopology.Topology, reserved uint32) *Placer {
 	t.Helper()
-	p, err := NewPlacer(topo, reserved)
+	return mustPlacerIsolating(t, topo, reserved, nil)
+}
+
+// mustPlacerIsolating builds a placer over a node whose kernel isolates the
+// given logical CPUs.
+func mustPlacerIsolating(t *testing.T, topo *cputopology.Topology, reserved uint32,
+	isolated []cputopology.LCPU) *Placer {
+	t.Helper()
+	p, err := NewPlacer(topo, reserved, isolated)
 	if err != nil {
-		t.Fatalf("NewPlacer(reserved=%d): %v", reserved, err)
+		t.Fatalf("NewPlacer(reserved=%d, isolated=%v): %v", reserved, isolated, err)
 	}
 	return p
 }
@@ -266,14 +274,14 @@ func TestAllocate_ShortageNamesCoresWithWrongThreadCount(t *testing.T) {
 func TestNewPlacer_RejectsOverReservation(t *testing.T) {
 	topo := fourCoresSMT2Interleaved() // 8 logical CPUs
 	for _, reserved := range []uint32{8, 9, 100} {
-		if _, err := NewPlacer(topo, reserved); err == nil {
+		if _, err := NewPlacer(topo, reserved, nil); err == nil {
 			t.Errorf("reserving %d of 8 CPUs must be rejected", reserved)
 		}
 	}
-	if _, err := NewPlacer(topo, 7); err != nil {
+	if _, err := NewPlacer(topo, 7, nil); err != nil {
 		t.Errorf("reserving 7 of 8 CPUs still leaves one, must be accepted: %v", err)
 	}
-	if _, err := NewPlacer(nil, 0); err == nil {
+	if _, err := NewPlacer(nil, 0, nil); err == nil {
 		t.Error("a nil topology must be rejected")
 	}
 }
@@ -690,7 +698,7 @@ func TestAllocate_OnePerCore_ParkedSiblingIsWithheldEverywhere(t *testing.T) {
 			t.Errorf("shared allocation took the parked sibling %d: %v", parked, shared)
 		}
 	}
-	dedicated := poolByKind(t, p.PoolUtilization(nil), PoolDedicated)
+	dedicated := poolByKind(t, p.PoolUtilization(), PoolDedicated)
 	found := false
 	for _, c := range dedicated.CPUs {
 		if c == parked {

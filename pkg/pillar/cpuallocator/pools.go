@@ -74,18 +74,28 @@ type PoolUtilization struct {
 // PoolUtilization reports every CPU pool of the node and how much of each is
 // left, for the node-level "will it fit?" report.
 //
-// isolated is the set the running kernel isolates, which the allocator does not
-// discover for itself: it is a kernel fact read from sysfs by the caller. Ids
-// the topology does not know are ignored.
-func (p *Placer) PoolUtilization(isolated []cputopology.LCPU) []PoolUtilization {
+// The kernel-isolated set comes from the placer rather than from the caller: the
+// placer withholds those CPUs from ordinary placement, so a report built from a
+// second, independently supplied set could describe capacity as available that
+// placement would refuse -- and the report exists precisely to be trusted on
+// that question.
+func (p *Placer) PoolUtilization() []PoolUtilization {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	dedicated := p.dedicatedLookup()
 	// free means "could still be given to a workload asking for dedicated
-	// placement": the same two exclusions Allocate applies.
+	// placement": the same exclusions Allocate applies. Which those are depends on
+	// the pool, because a kernel-isolated CPU is available to a workload that
+	// requests isolation and to no one else -- so counting it as free in the
+	// housekeeping pool would promise capacity an ordinary workload cannot have,
+	// and excluding it from the isolated pool would report the isolation the
+	// operator configured as unusable.
 	isFree := func(c cputopology.LCPU) bool {
 		return !dedicated[c] && uint32(c) >= p.numReservedForEVE
+	}
+	isFreeUnisolated := func(c cputopology.LCPU) bool {
+		return isFree(c) && !p.isolated[c]
 	}
 
 	var housekeeping, dedicatedCPUs, isolatedCPUs []cputopology.LCPU
@@ -96,17 +106,13 @@ func (p *Placer) PoolUtilization(isolated []cputopology.LCPU) []PoolUtilization 
 			housekeeping = append(housekeeping, c)
 		}
 	}
-	known := map[cputopology.LCPU]bool{}
-	for _, c := range isolated {
-		if _, ok := p.topo.ByLCPU[c]; ok && !known[c] {
-			known[c] = true
-			isolatedCPUs = append(isolatedCPUs, c)
-		}
+	for c := range p.isolated {
+		isolatedCPUs = append(isolatedCPUs, c)
 	}
 	sort.Slice(isolatedCPUs, func(i, j int) bool { return isolatedCPUs[i] < isolatedCPUs[j] })
 
 	return []PoolUtilization{
-		p.poolUtilization(PoolHousekeeping, housekeeping, isFree),
+		p.poolUtilization(PoolHousekeeping, housekeeping, isFreeUnisolated),
 		p.poolUtilization(PoolDedicated, dedicatedCPUs, isFree),
 		p.poolUtilization(PoolIsolated, isolatedCPUs, isFree),
 	}

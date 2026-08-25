@@ -692,15 +692,21 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			"synthetic, so whole-core CPU placement is refused on this node", terr)
 	}
 	domainCtx.cpuTopologyDegraded = topo.Degraded
-	domainCtx.placer, err = cpuallocator.NewPlacer(topo, uint32(cpusReserved))
+	// The isolated set is read before the placer is built: the placer places
+	// dedicated workloads on isolated cores first, so it has to know from the
+	// outset rather than be told afterwards.
+	domainCtx.isolatedCPUs = readIsolatedCPUs()
+	domainCtx.placer, err = cpuallocator.NewPlacer(topo, uint32(cpusReserved),
+		domainCtx.isolatedCPUs)
 	if err != nil {
 		log.Fatalf("Cannot allocate CPUs (check the eve_max_vcpus kernel argument): %s", err)
 	}
 	domainCtx.cpusReserved = uint32(cpusReserved)
 	log.Noticef("CPU topology: %d physical cores", len(topo.Cores))
-	domainCtx.isolatedCPUs = readIsolatedCPUs()
 	if len(domainCtx.isolatedCPUs) > 0 {
-		log.Noticef("Kernel isolates CPUs %v", domainCtx.isolatedCPUs)
+		log.Noticef("Kernel isolates CPUs %v; dedicated workloads are placed "+
+			"there first and everything else is kept off them",
+			domainCtx.isolatedCPUs)
 	}
 	// Reseed the allocator with cores already held by running VMs. DomainStatus
 	// is ephemeral (/run), so this only matters across a domainmgr process
@@ -1750,6 +1756,14 @@ func allocateCPUs(ctx *domainContext, config *types.DomainConfig, status *types.
 				"individual vCPUs or expose a guest SMT topology",
 			config.DisplayName, hyper.Name())
 	}
+	// The hard isolation tier is served out of the kernel-isolated set, and this
+	// node has none. It cannot acquire one while running: isolcpus is a boot
+	// parameter.
+	if placement.RequireIsolated && len(ctx.isolatedCPUs) == 0 {
+		return placementErrorf(types.ErrorCodeCPUIsolationTierUnavailable,
+			"hard CPU isolation for %s: this node's kernel isolates no CPUs "+
+				"(no isolcpus on the kernel command line)", config.DisplayName)
+	}
 	// Both paths place from the same plan, so a workload gets the same CPUs
 	// regardless of the order workloads start in.
 	plan := planPinnedPlacement(ctx)
@@ -1787,10 +1801,11 @@ func allocateTopologyCPUs(ctx *domainContext, config *types.DomainConfig,
 		// holds a CPU it wanted. Place this workload among whatever is free
 		// instead of moving a running one, which cannot be done safely.
 		res := ctx.placer.Allocate(cpuallocator.Request{
-			UUID:     id,
-			NumVCPUs: config.VCpus,
-			Mode:     placement.Mode,
-			NUMA:     placement.NUMA,
+			UUID:            id,
+			NumVCPUs:        config.VCpus,
+			Mode:            placement.Mode,
+			NUMA:            placement.NUMA,
+			RequireIsolated: placement.RequireIsolated,
 		})
 		if res.Status != cpuallocator.Success {
 			// The workload never starts, so it has no placement to rate. A
@@ -1915,10 +1930,36 @@ func allocateLegacyCPUs(ctx *domainContext, config *types.DomainConfig,
 
 // housekeepingCPUs returns all logical CPUs not dedicated to any VM
 // (topology or shared), used for non-pinned VM cpusets and emulator pinning.
+//
+// Kernel-isolated CPUs are left out. Placement withholds them from every
+// workload that did not ask for isolation, and this set is the other half of
+// that: a cpuset spanning them would put the non-pinned workloads and the
+// emulator threads on exactly the CPUs the operator carved out, and the kernel
+// would honour it -- isolcpus keeps the load balancer away, it does not refuse
+// an explicit affinity.
+//
+// A node whose isolated set swallows every free CPU falls back to the unfiltered
+// set, loudly. That is a misconfigured isolcpus rather than a runtime state, and
+// an empty cpuset would take down every non-pinned workload on the node --
+// including, on a device managed through one, the path to fixing it.
 func housekeepingCPUs(ctx *domainContext) []uint32 {
-	var out []uint32
+	isolated := make(map[cputopology.LCPU]bool, len(ctx.isolatedCPUs))
+	for _, c := range ctx.isolatedCPUs {
+		isolated[c] = true
+	}
+	var out, dropped []uint32
 	for _, c := range ctx.placer.FreeCPUs() {
+		if isolated[c] {
+			dropped = append(dropped, uint32(c))
+			continue
+		}
 		out = append(out, uint32(c))
+	}
+	if len(out) == 0 && len(dropped) > 0 {
+		log.Errorf("CPU isolation: every free CPU (%v) is kernel-isolated, so the "+
+			"housekeeping set would be empty; using it anyway. Narrow isolcpus on "+
+			"the kernel command line.", dropped)
+		return dropped
 	}
 	return out
 }

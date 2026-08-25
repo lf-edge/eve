@@ -217,11 +217,11 @@ func TestParseCPUPlacementPolicy_CoversEveryIsolationTier(t *testing.T) {
 			t.Errorf("%s parsed as %v, want %v", name, got, expected)
 		}
 	}
-	// Hard isolation needs a kernel command-line change, so it has to arrive as
-	// itself: parsed as anything else the request is silently downgraded to soft
-	// isolation instead of refused.
-	if types.CPUIsolationTierHard.SupportedBySoftIsolation() {
-		t.Error("hard isolation must not be satisfiable by soft isolation")
+	// Hard isolation needs a node booted with kernel isolation, so it has to
+	// arrive as itself: parsed as anything else the request is silently
+	// downgraded to soft isolation instead of being placed on isolated cores.
+	if !types.CPUIsolationTierHard.NeedsKernelIsolation() {
+		t.Error("hard isolation must demand kernel isolation")
 	}
 }
 

@@ -66,6 +66,13 @@ type Request struct {
 	NumVCPUs int
 	Mode     PinMode
 	NUMA     NUMAPolicy
+	// RequireIsolated restricts placement to physical cores the running kernel
+	// isolates, and is the only way to be given one. It is a hard constraint,
+	// not a preference: a request that sets it and cannot be served from the
+	// isolated set fails rather than landing on an unshielded core, because a
+	// workload told it got kernel isolation and placed without it is worse off
+	// than one that was refused.
+	RequireIsolated bool
 }
 
 // GuestTopology is the guest-visible -smp topology to emit.
@@ -135,6 +142,18 @@ type Placer struct {
 	// that and would have to take the lock here *and* in those two.
 	topo              *cputopology.Topology
 	numReservedForEVE uint32
+	// isolated is the set the running kernel keeps off its scheduler domains
+	// (isolcpus), write-once like topo. It is a kernel fact the allocator cannot
+	// discover for itself, so it is supplied by the caller.
+	//
+	// These CPUs are reserved capacity, not preferred capacity: they are handed
+	// out only to a request that asks for kernel isolation, and withheld from
+	// every other workload. Handing them to whoever came first would consume the
+	// operator's isolation on a workload that never asked for it and leave the
+	// one that needs it unplaceable, which is the whole reason isolcpus was set.
+	// Keeping EVE and the non-pinned workloads off them is the caller's half of
+	// the bargain -- see the housekeeping set in domainmgr.
+	isolated map[cputopology.LCPU]bool
 	// dedicated maps UUID -> every LCPU it holds (vCPU cores + parked).
 	// Guarded by mu.
 	dedicated map[uuid.UUID][]cputopology.LCPU
@@ -143,11 +162,18 @@ type Placer struct {
 // NewPlacer creates a Placer over the given topology, reserving the lowest
 // numReservedForEVE logical CPUs for EVE housekeeping.
 //
+// isolated is what the running kernel isolates from its scheduler domains, read
+// from sysfs by the caller; nil on a node booted without isolcpus. CPUs it names
+// that the topology does not have are ignored rather than rejected: the kernel's
+// idea of the CPU set and the topology's can differ on a node with CPUs offline,
+// and a stray id is not a reason to refuse to place anything at all.
+//
 // Reserving as many CPUs as the host has (or more) leaves nothing to allocate,
 // which is a misconfiguration of the eve_max_vcpus kernel argument rather than
 // a runtime condition. It is rejected here so it surfaces once, at startup,
 // instead of turning every later placement into an unexplained failure.
-func NewPlacer(topo *cputopology.Topology, numReservedForEVE uint32) (*Placer, error) {
+func NewPlacer(topo *cputopology.Topology, numReservedForEVE uint32,
+	isolated []cputopology.LCPU) (*Placer, error) {
 	if topo == nil || topo.NumLCPUs == 0 {
 		return nil, fmt.Errorf("no CPU topology to place on")
 	}
@@ -155,17 +181,67 @@ func NewPlacer(topo *cputopology.Topology, numReservedForEVE uint32) (*Placer, e
 		return nil, fmt.Errorf("%d CPUs reserved for EVE but the host has only %d: "+
 			"no CPU would be left for workloads", numReservedForEVE, topo.NumLCPUs)
 	}
-	return newPlacer(topo, numReservedForEVE), nil
+	return newPlacer(topo, numReservedForEVE, isolated), nil
 }
 
 // newPlacer builds a Placer without validation, for callers that derive one
 // from an already-validated Placer.
-func newPlacer(topo *cputopology.Topology, numReservedForEVE uint32) *Placer {
+func newPlacer(topo *cputopology.Topology, numReservedForEVE uint32,
+	isolated []cputopology.LCPU) *Placer {
+	isolatedSet := make(map[cputopology.LCPU]bool, len(isolated))
+	for _, c := range isolated {
+		if _, ok := topo.ByLCPU[c]; ok {
+			isolatedSet[c] = true
+		}
+	}
 	return &Placer{
 		topo:              topo,
 		numReservedForEVE: numReservedForEVE,
+		isolated:          isolatedSet,
 		dedicated:         map[uuid.UUID][]cputopology.LCPU{},
 	}
+}
+
+// IsolatedCPUs returns the kernel-isolated CPUs the placer knows about, those
+// the topology actually has, ascending. It is the set every other component has
+// to agree on, so it is read from the placer rather than re-read from sysfs.
+func (p *Placer) IsolatedCPUs() []cputopology.LCPU {
+	out := make([]cputopology.LCPU, 0, len(p.isolated))
+	for c := range p.isolated {
+		out = append(out, c)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}
+
+// coreIsIsolated reports whether every SMT sibling of a core is kernel-isolated.
+// A core only half-isolated is no use to a workload that wants to be left alone:
+// the kernel still schedules freely on its other thread, which contends for the
+// same execution engine.
+func (p *Placer) coreIsIsolated(pc *cputopology.PhysicalCore) bool {
+	if len(p.isolated) == 0 {
+		return false
+	}
+	for _, s := range pc.Siblings {
+		if !p.isolated[s] {
+			return false
+		}
+	}
+	return true
+}
+
+// coreTouchesIsolated reports whether any SMT sibling of a core is
+// kernel-isolated. A core is withheld from an ordinary request on this weaker
+// test, not on coreIsIsolated: giving a workload a core with one isolated
+// sibling puts one of its threads on an isolated CPU, which is exactly the CPU
+// the operator carved out for something else.
+func (p *Placer) coreTouchesIsolated(pc *cputopology.PhysicalCore) bool {
+	for _, s := range pc.Siblings {
+		if p.isolated[s] {
+			return true
+		}
+	}
+	return false
 }
 
 // Free releases all cores dedicated to id. Safe to call for an unknown id.
@@ -338,9 +414,19 @@ func (p *Placer) AllocateShared(id uuid.UUID, n int) ([]cputopology.LCPU, error)
 		return nil, fmt.Errorf("AllocateShared: n must be > 0")
 	}
 	ded := p.dedicatedLookup()
-	var picked []cputopology.LCPU
+	available := func(c cputopology.LCPU) bool {
+		return uint32(c) >= p.numReservedForEVE && !ded[c]
+	}
+	// Kernel-isolated CPUs are withheld: there is no thread-granular way to ask
+	// for isolation, so a workload arriving here never asked, and taking one
+	// would spend the operator's isolation on a workload that does not want it.
+	var picked, skippedIsolated []cputopology.LCPU
 	for _, c := range p.allLCPUsSorted() {
-		if uint32(c) < p.numReservedForEVE || ded[c] {
+		if !available(c) {
+			continue
+		}
+		if p.isolated[c] {
+			skippedIsolated = append(skippedIsolated, c)
 			continue
 		}
 		picked = append(picked, c)
@@ -349,7 +435,9 @@ func (p *Placer) AllocateShared(id uuid.UUID, n int) ([]cputopology.LCPU, error)
 		}
 	}
 	if len(picked) < n {
-		return nil, fmt.Errorf("insufficient CPUs: need %d, have %d free", n, len(picked))
+		return nil, fmt.Errorf(
+			"insufficient CPUs: need %d, have %d free%s", n, len(picked),
+			isolatedShortageClause(skippedIsolated))
 	}
 	p.dedicated[id] = picked
 	return picked, nil
@@ -434,6 +522,10 @@ func (p *Placer) Allocate(r Request) Result {
 	freeByNUMA := map[uint][]*cputopology.PhysicalCore{}
 	numaOrder := []uint{}
 	totalFree, partlyReserved, notSMT := 0, 0, 0
+	// isolatedReserved and notIsolated are the two halves of the isolation
+	// bookkeeping: cores withheld from an ordinary request, and cores rejected
+	// for a request that demanded isolation. Only one can ever be non-zero.
+	isolatedReserved, notIsolated := 0, 0
 	for i := range p.topo.Cores {
 		pc := &p.topo.Cores[i]
 		if p.coreIsPartlyReserved(pc) {
@@ -451,6 +543,18 @@ func (p *Placer) Allocate(r Request) Result {
 			notSMT++
 			continue
 		}
+		if r.RequireIsolated {
+			// Only a wholly isolated core will do: a workload that asked for
+			// isolation and got a core whose sibling the kernel still schedules
+			// on has not been isolated from anything.
+			if !p.coreIsIsolated(pc) {
+				notIsolated++
+				continue
+			}
+		} else if p.coreTouchesIsolated(pc) {
+			isolatedReserved++
+			continue
+		}
 		if _, ok := freeByNUMA[pc.NUMA]; !ok {
 			numaOrder = append(numaOrder, pc.NUMA)
 		}
@@ -461,8 +565,9 @@ func (p *Placer) Allocate(r Request) Result {
 
 	if totalFree < coresNeeded {
 		return Result{
-			Status:      Insufficient,
-			Message:     shortageMessage(coresNeeded, totalFree, partlyReserved, notSMT, threads),
+			Status: Insufficient,
+			Message: shortageMessage(coresNeeded, totalFree, partlyReserved, notSMT,
+				threads, isolatedReserved, notIsolated),
 			CoresNeeded: coresNeeded,
 			CoresFree:   totalFree,
 		}
@@ -635,9 +740,23 @@ func threadCountPhrase(counts []int) string {
 // shortageMessage explains a core shortage, naming the structural reasons that
 // removed cores from the pool. Without them the operator sees idle CPUs in top
 // and an "insufficient" from EVE, and has no way to connect the two.
-func shortageMessage(needed, free, partlyReserved, notSMT, threads int) string {
+func shortageMessage(needed, free, partlyReserved, notSMT, threads,
+	isolatedReserved, notIsolated int) string {
 	msg := fmt.Sprintf("need %d free cores, have %d", needed, free)
 	var because []string
+	if isolatedReserved > 0 {
+		// Without this the operator sees idle CPUs and an "insufficient", and
+		// nothing connects the two: the cores are free, they are simply not on
+		// offer to a workload that did not ask for isolation.
+		because = append(because, fmt.Sprintf(
+			"%d cores are kernel-isolated (isolcpus) and are held for workloads "+
+				"that request isolation", isolatedReserved))
+	}
+	if notIsolated > 0 {
+		because = append(because, fmt.Sprintf(
+			"%d cores are not kernel-isolated and cannot serve a request for "+
+				"isolation", notIsolated))
+	}
 	if partlyReserved > 0 {
 		because = append(because, fmt.Sprintf(
 			"%d cores are partly reserved for EVE and cannot be handed out whole",
@@ -655,6 +774,17 @@ func shortageMessage(needed, free, partlyReserved, notSMT, threads int) string {
 		msg += " (" + strings.Join(because, "; ") + ")"
 	}
 	return msg
+}
+
+// isolatedShortageClause names the kernel-isolated CPUs a thread-granular
+// shortage passed over, so the operator is not left comparing an "insufficient"
+// against CPUs that look idle.
+func isolatedShortageClause(skipped []cputopology.LCPU) string {
+	if len(skipped) == 0 {
+		return ""
+	}
+	return fmt.Sprintf(" (CPUs %v are kernel-isolated and are held for workloads "+
+		"that request isolation)", skipped)
 }
 
 // pickCores returns the first n cores from an already-deterministic slice.

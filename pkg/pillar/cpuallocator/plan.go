@@ -45,7 +45,7 @@ func (p *Placer) Plan(requests []Request) map[uuid.UUID]Result {
 
 	// Plan from an empty slate so the result is a function of the request set
 	// alone, not of whatever is allocated at this moment.
-	scratch := newPlacer(p.topo, p.numReservedForEVE)
+	scratch := newPlacer(p.topo, p.numReservedForEVE, p.IsolatedCPUs())
 	plan := make(map[uuid.UUID]Result, len(ordered))
 	for _, request := range ordered {
 		// One unplaceable workload must not stop the rest from being placed.

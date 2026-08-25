@@ -75,18 +75,20 @@ func TestCPUPlacementEffectiveThreadsPerCore(t *testing.T) {
 // actually do; only "none" and "soft" are implementable without a kernel
 // command-line change.
 func TestCPUIsolationTierSupported(t *testing.T) {
-	supported := []CPUIsolationTier{
+	runtimeSatisfiable := []CPUIsolationTier{
 		CPUIsolationTierUnspecified,
 		CPUIsolationTierNone,
 		CPUIsolationTierSoft,
 	}
-	for _, tier := range supported {
-		if !tier.SupportedBySoftIsolation() {
-			t.Errorf("tier %v should be satisfiable by soft isolation", tier)
+	for _, tier := range runtimeSatisfiable {
+		if tier.NeedsKernelIsolation() {
+			t.Errorf("tier %v is satisfiable at runtime and must not demand "+
+				"kernel isolation", tier)
 		}
 	}
-	if CPUIsolationTierHard.SupportedBySoftIsolation() {
-		t.Error("hard isolation needs a kernel cmdline change and must not be claimed as satisfied")
+	if !CPUIsolationTierHard.NeedsKernelIsolation() {
+		t.Error("hard isolation cannot be arranged at runtime: it must demand a " +
+			"node booted with isolcpus")
 	}
 }
 

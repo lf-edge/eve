@@ -46,7 +46,7 @@ func TestPublishCPUPoolStatus(t *testing.T) {
 	ps := testPubSub(t)
 	pub := testPublication(t, ps, types.CPUPoolStatus{})
 	ctx := &domainContext{
-		placer:           testPlacer(t),
+		placer:           testPlacerIsolating(t, 2, 6),
 		pubCPUPoolStatus: pub,
 		isolatedCPUs:     []cputopology.LCPU{2, 6},
 	}
@@ -65,9 +65,12 @@ func TestPublishCPUPoolStatus(t *testing.T) {
 			dedicated.TotalCores, dedicated.FreeWholeCores)
 	}
 
+	// Six threads are unclaimed, but core 2 is kernel-isolated and is on offer
+	// only to a workload that asks for isolation, so it is not free capacity for
+	// an ordinary one -- which is the question this pool answers.
 	housekeeping := poolOfKind(t, status, types.CPUPoolKindHousekeeping)
-	if housekeeping.FreeThreads != 6 || housekeeping.FreeWholeCores != 3 {
-		t.Errorf("want 6 free threads on 3 free whole cores, got %d/%d",
+	if housekeeping.FreeThreads != 4 || housekeeping.FreeWholeCores != 2 {
+		t.Errorf("want 4 free threads on 2 free whole cores, got %d/%d",
 			housekeeping.FreeThreads, housekeeping.FreeWholeCores)
 	}
 
