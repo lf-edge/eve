@@ -100,9 +100,13 @@ import (
 //     with cpu.placement.needs_repack rather than insufficient, and a repack
 //     really does let it run.
 //   - TestCPUPlacementFailsClosed -- every class of unsatisfiable placement
-//     request (odd vCPUs with whole-core SMT, hard isolation tier, invalid
-//     policy) is refused with its own error_code at ERROR severity, never boots,
-//     and leaves the node's dedicated CPU pool unchanged.
+//     request (odd vCPUs with whole-core SMT, hard isolation tier on a node
+//     without kernel isolation, invalid policy) is refused with its own
+//     error_code at ERROR severity, never boots, and leaves the node's dedicated
+//     CPU pool unchanged.
+//   - TestCPUIsolatedPool -- on a node booted with isolcpus, the isolated cores
+//     go to the app that asks for hard isolation and to nothing else: the other
+//     workloads, and the node's free housekeeping capacity, stay off them.
 //   - TestVMAppPurgeReplacesVMIRS -- a plain purge of a healthy app leaves
 //     exactly one VMIRS, named for the new generation. Kubevirt only; skips
 //     on any other hypervisor.
@@ -175,6 +179,12 @@ func TestAppsSuite(test *testing.T) {
 		// application it keeps running throughout needs real SMT siblings.
 		evetest.TestCase{
 			Test: TestCPUPlacementFailsClosed,
+		},
+		// Last of the CPU placement tests: it is the only one needing a device
+		// booted with a different kernel command line (isolcpus), so it comes
+		// after everything that shares the warm 8-CPU device.
+		evetest.TestCase{
+			Test: TestCPUIsolatedPool,
 		},
 		evetest.TestCase{
 			Test: TestVMAppPurgeReplacesVMIRS,

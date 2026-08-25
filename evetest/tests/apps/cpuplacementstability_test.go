@@ -535,11 +535,14 @@ func verifyPlacement(t *GomegaWithT, device *evetest.EdgeDevice,
 // no longer holds, but that the node still advertises as taken, is a CPU nobody
 // can use.
 //
-// The isolated pool is deliberately ignored here: it is a kernel fact that cuts
-// across the other two rather than partitioning with them.
+// The isolated pool is carried alongside rather than as a third partition: it is
+// a kernel fact that cuts across the other two, so its CPUs also appear in one
+// of them. It is nil on a node booted without isolcpus, which is every device in
+// this package except the one TestCPUIsolatedPool asks for.
 type cpuPoolReport struct {
 	housekeeping *eveinfo.CPUPoolUtilization
 	dedicated    *eveinfo.CPUPoolUtilization
+	isolated     *eveinfo.CPUPoolUtilization
 }
 
 // readCPUPoolReport picks the housekeeping and dedicated pools out of the latest
@@ -557,6 +560,8 @@ func readCPUPoolReport(device *evetest.EdgeDevice) (cpuPoolReport, error) {
 			report.housekeeping = pool
 		case eveinfo.CPUPoolKind_CPU_POOL_KIND_DEDICATED:
 			report.dedicated = pool
+		case eveinfo.CPUPoolKind_CPU_POOL_KIND_ISOLATED:
+			report.isolated = pool
 		}
 	}
 	if report.housekeeping == nil || report.dedicated == nil {
