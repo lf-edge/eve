@@ -9,8 +9,10 @@ name: Claude Code
 on:  # yamllint disable-line rule:truthy
   pull_request_target:
     types: [opened, synchronize, ready_for_review, reopened]
-  pull_request_review_comment:
-    types: [created]
+  # Only issue_comment, not pull_request_review_comment: a review comment on a
+  # fork PR runs in the same restricted context as pull_request, and GitHub has
+  # no _target variant of it to escape to. Ask for a review with @claude from
+  # the Conversation tab.
   issue_comment:
     types: [created]
 
@@ -32,11 +34,6 @@ jobs:
         github.event.pull_request.author_association == 'MEMBER' ||
         github.event.pull_request.author_association == 'COLLABORATOR' ||
         github.event.pull_request.author_association == 'OWNER'
-      )) ||
-      (github.event_name == 'pull_request_review_comment' && (
-        github.event.comment.author_association == 'MEMBER' ||
-        github.event.comment.author_association == 'COLLABORATOR' ||
-        github.event.comment.author_association == 'OWNER'
       )) ||
       (github.event_name == 'issue_comment' &&
         github.event.issue.pull_request != null &&
