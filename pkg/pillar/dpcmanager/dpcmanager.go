@@ -116,7 +116,9 @@ type DpcManager struct {
 	enrolledCerts         []types.EnrolledCertificateStatus
 	dhcpReacquireCounters map[string]int                   // key: port logical label
 	dhcpReacquireState    map[string]*dhcpReacquireTracker // key: port logical label
-	dnsCacheClearCounter  int                              // incremented before each DPC verification pass
+	dnsCacheClearCounter  int                              // incremented on switching to test a different DPC
+	dnsCacheClearPending  bool                             // true between the bump and the confirmed cache clear
+	dnsCacheClearedAt     time.Time                        // when the cache clear was confirmed done
 	logDNSQueries         bool                             // true when NIM runs at debug/trace log level
 	// Boot-time configuration
 	dpclPresentAtBoot bool
