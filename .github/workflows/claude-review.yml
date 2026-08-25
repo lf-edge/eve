@@ -16,11 +16,14 @@ on:  # yamllint disable-line rule:truthy
   issue_comment:
     types: [created]
 
+# Keep this minimal: with allowed_non_write_users the reviewer can be invoked
+# by people without write access, so the token it holds is what limits the
+# damage a prompt injected through a diff could do. id-token is no longer
+# needed now that github_token replaces the OIDC app-token exchange.
 permissions:
   contents: read
   pull-requests: write
   issues: write
-  id-token: write
 
 jobs:
   review:
@@ -40,6 +43,7 @@ jobs:
         contains(github.event.comment.body, '@claude') && (
           github.event.comment.author_association == 'MEMBER' ||
           github.event.comment.author_association == 'COLLABORATOR' ||
+          github.event.comment.author_association == 'CONTRIBUTOR' ||
           github.event.comment.author_association == 'OWNER'
         ))
     steps:
@@ -51,6 +55,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # The Claude app refuses to mint a token for a user without write
+          # access, so the reviewer runs on the workflow token instead. The
+          # job's if: condition above is the real allowlist; "*" only tells
+          # the action to stop enforcing write access on top of it.
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          allowed_non_write_users: "*"
           show_full_output: false
           track_progress: true  # ✨ Enables tracking comments
           use_sticky_comment: false
