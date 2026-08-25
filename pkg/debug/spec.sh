@@ -27,6 +27,10 @@
 #
 # Note that handling of wlan and other network interfaces sitting on USB buses
 # does not set the correct assignment group.
+#
+# A serial port behind a USB-to-UART converter is reported as a COM port. Ports
+# of a cellular modem are left out, but only modems driven by one of the wwan
+# serial drivers below, or exposing a QMI/MBIM interface, are recognized as such.
 
 verbose=
 usb_devices=
@@ -437,11 +441,44 @@ __EOT__
     COMMA="},"
 done
 
+# Drivers that give a cellular modem away: the serial drivers its AT and data
+# ports come up under, and the net drivers of its control interface. A converter
+# whose driver is not listed is still reported, since missing a COM port is the
+# worse outcome for a hardware model.
+MODEM_DRIVERS='option|qcserial|sierra|usb_wwan|cdc_mbim|qmi_wwan'
+
+# usb_uart_device($TTY_SYSFS_DIR) prints the sysfs directory of the USB device
+# providing a tty, or nothing when the tty is not on the USB bus or belongs to a
+# cellular modem. Modem ports are enumerated as IO_TYPE_WWAN and EVE itself
+# talks to them.
+usb_uart_device() {
+    local dev
+    local parent
+    local subsystem
+    dev=$(realpath "$1/device" 2>/dev/null) || return 0
+    while true; do
+        subsystem=$(readlink -f "$dev/subsystem" 2>/dev/null)
+        # the USB device is the closest ancestor on the usb bus carrying
+        # idVendor; the interfaces below it are on that bus but have no idVendor
+        if [ "${subsystem##*/}" = usb ] && [ -f "$dev/idVendor" ]; then
+            break
+        fi
+        parent=$(dirname "$dev")
+        [ "$parent" = "$dev" ] && return 0
+        dev="$parent"
+    done
+    # the interface of the tty is one of these, so this catches both a modem
+    # serial port and a serial port next to a modem control interface
+    grep -qE "^DRIVER=(${MODEM_DRIVERS})$" "$dev"/*/uevent 2>/dev/null && return 0
+    echo "$dev"
+}
+
 #enumerate serial ports
 ID="1"
 for TTY in /sys/class/tty/*; do
    IO=""
    IRQ=""
+   USB_UART=""
    if [ -f "$TTY/irq" ]; then
       IRQ=$(cat "$TTY/irq")
       [ "${IRQ:-0}" -gt 0 ] || IRQ=""
@@ -458,8 +495,12 @@ for TTY in /sys/class/tty/*; do
          IRQ=""
       fi
    fi
+   # A UART behind a USB converter has no port or irq of its own
+   if [ -z "$IO" ] && [ -z "$IRQ" ]; then
+      USB_UART=$(usb_uart_device "$TTY")
+   fi
    TTY=$(echo "$TTY" | cut -f5 -d/)
-   if [ -n "$IO" ] || [ -n "$IRQ" ]; then
+   if [ -n "$IO" ] || [ -n "$IRQ" ] || [ -n "$USB_UART" ]; then
 cat <<__EOT__
     ${COMMA}
     {
