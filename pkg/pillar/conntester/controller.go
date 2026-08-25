@@ -54,7 +54,8 @@ type ControllerConnectivityTester struct {
 // tries to call the "ping" API of the controller.
 func (t *ControllerConnectivityTester) TestConnectivity(
 	dns types.DeviceNetworkStatus, airGapMode AirGapMode,
-	withNetTrace bool, netTraceFolder string) (types.IntfStatusMap, []netdump.TracedNetRequest, error) {
+	withNetTrace bool, netTraceFolder string,
+	dnsCacheClearGraceUntil time.Time) (types.IntfStatusMap, []netdump.TracedNetRequest, error) {
 
 	t.iteration++
 	intfStatusMap := *types.NewIntfStatusMap()
@@ -117,11 +118,12 @@ func (t *ControllerConnectivityTester) TestConnectivity(
 	}
 
 	connTest := connTestSetup{
-		ctrlClient:     ctrlClient,
-		dns:            dns,
-		withNetTrace:   withNetTrace,
-		airGapMode:     airGapMode,
-		netTraceFolder: netTraceFolder,
+		ctrlClient:              ctrlClient,
+		dns:                     dns,
+		withNetTrace:            withNetTrace,
+		airGapMode:              airGapMode,
+		netTraceFolder:          netTraceFolder,
+		dnsCacheClearGraceUntil: dnsCacheClearGraceUntil,
 	}
 	var tracedReqs []netdump.TracedNetRequest
 	if airGapMode.Enabled && airGapMode.LocURL != "" {
@@ -153,11 +155,12 @@ func (t *ControllerConnectivityTester) TestConnectivity(
 }
 
 type connTestSetup struct {
-	ctrlClient     *controllerconn.Client
-	dns            types.DeviceNetworkStatus
-	withNetTrace   bool
-	airGapMode     AirGapMode
-	netTraceFolder string
+	ctrlClient              *controllerconn.Client
+	dns                     types.DeviceNetworkStatus
+	withNetTrace            bool
+	airGapMode              AirGapMode
+	netTraceFolder          string
+	dnsCacheClearGraceUntil time.Time
 }
 
 type connectivityTestRV struct {
@@ -198,7 +201,8 @@ func (t *ControllerConnectivityTester) testControllerConnectivity(
 		rv.tracedReqs[i].RequestName = "ping-controller-" + reqName
 	}
 	rv.testErr = t.processReturnValue(
-		connTest.dns, t.controllerHostname, verifyRV, verifyErr, suppressLogs)
+		connTest.dns, t.controllerHostname, verifyRV, verifyErr, suppressLogs,
+		connTest.dnsCacheClearGraceUntil)
 	return rv
 }
 
@@ -226,20 +230,22 @@ func (t *ControllerConnectivityTester) testLOCConnectivity(
 		rv.tracedReqs[i].RequestName = "ping-loc-" + reqName
 	}
 	rv.testErr = t.processReturnValue(
-		connTest.dns, connTest.airGapMode.LocURL, verifyRV, verifyErr, false)
+		connTest.dns, connTest.airGapMode.LocURL, verifyRV, verifyErr, false,
+		connTest.dnsCacheClearGraceUntil)
 	return rv
 }
 
 func (t *ControllerConnectivityTester) processReturnValue(
 	dns types.DeviceNetworkStatus, endpoint string, rv controllerconn.VerifyRetval,
-	rvErr error, suppressLogs bool) (processedErr error) {
+	rvErr error, suppressLogs bool, dnsCacheClearGraceUntil time.Time) (processedErr error) {
 	if rvErr != nil {
 		if rv.RemoteTempFailure {
 			processedErr = &RemoteTemporaryFailure{
 				Endpoint:   endpoint,
 				WrappedErr: rvErr,
 			}
-		} else if portsNotReady := t.getPortsNotReady(rvErr, dns); len(portsNotReady) > 0 {
+		} else if portsNotReady := t.getPortsNotReady(
+			rvErr, dns, dnsCacheClearGraceUntil); len(portsNotReady) > 0 {
 			// At least one of the uplink ports is not ready in terms of L3 connectivity.
 			// Signal to the caller that it might make sense to wait and repeat test later.
 			processedErr = &PortsNotReady{
@@ -269,7 +275,8 @@ func (t *ControllerConnectivityTester) processReturnValue(
 }
 
 func (t *ControllerConnectivityTester) getPortsNotReady(
-	verifyErr error, dns types.DeviceNetworkStatus) (ports []string) {
+	verifyErr error, dns types.DeviceNetworkStatus,
+	dnsCacheClearGraceUntil time.Time) (ports []string) {
 	if sendErr, isSendErr := verifyErr.(*controllerconn.SendError); isSendErr {
 		portMap := make(map[string]struct{}) // Avoid duplicate entries.
 		for _, attempt := range sendErr.Attempts {
@@ -313,14 +320,21 @@ func (t *ControllerConnectivityTester) getPortsNotReady(
 					// hit while querying the DNS server, not just the narrow
 					// socket errno case this was originally meant for (e.g.
 					// EADDRNOTAVAIL).
-					// A genuine timeout (IsTimeout) must not be treated the
-					// same way: EVE queries a local "mgmt dnsmasq" forwarder
-					// on 127.0.0.1:53 (see dpcreconciler/genericitems/mgmtdnsmasq.go),
-					// which is always up, so a timeout talking to it means
-					// dnsmasq itself is still waiting on a genuinely
-					// unreachable upstream server, i.e. a real connectivity
-					// failure, not a transient "DNS not ready yet" condition
-					// worth retrying under DPCStateIPDNSWait.
+					portMap[portLabel] = struct{}{}
+				} else if dnsErr.IsTimeout && time.Now().Before(dnsCacheClearGraceUntil) {
+					// EVE queries a local "mgmt dnsmasq" forwarder on
+					// 127.0.0.1:53 (see dpcreconciler/genericitems/mgmtdnsmasq.go).
+					// Outside of dnsCacheClearGraceUntil it is always up, so a
+					// timeout talking to it then means dnsmasq itself is stuck
+					// waiting on a genuinely unreachable upstream server -- a
+					// real connectivity failure, not a transient "DNS not
+					// ready yet" condition. But DpcManager just forced a clean
+					// cache (dnsCacheClearedAt), which tears dnsmasq down and
+					// restarts it; within the grace period that follows, a
+					// timeout can just as well mean dnsmasq is still starting
+					// up or the freshly-reconciled network path (routes, ARP)
+					// hasn't converged yet, so give it another chance under
+					// DPCStateIPDNSWait instead of failing outright.
 					portMap[portLabel] = struct{}{}
 				}
 			}
