@@ -415,6 +415,35 @@ func placementForIntent(intent cpuIntent) (resolvedPlacement, error) {
 	return placement, nil
 }
 
+// applyIsolatedPoolFlip promotes a placement onto the kernel-isolated CPUs when
+// the operator has switched the node over with cpu.pinning.use.isolated.
+//
+// Only a whole-core workload is promoted: kernel isolation means nothing on a
+// core whose sibling the kernel still schedules freely, which is the same rule
+// the hard isolation tier is held to.
+//
+// A node with the switch on and no isolated CPUs is deliberately not an error.
+// Unlike an explicit per-workload isolation_tier=hard -- a guarantee the workload
+// must not run without -- this is an operator preference for the whole node, most
+// likely set before the reboot that puts isolcpus on the kernel command line.
+// Failing every pinned workload until that reboot happens would be a worse answer
+// than placing them normally and saying so loudly.
+func applyIsolatedPoolFlip(ctx *domainContext, placement resolvedPlacement,
+	displayName string) resolvedPlacement {
+	if !ctx.useIsolatedCPUs || placement.RequireIsolated || !placement.TopologyAware {
+		return placement
+	}
+	if len(ctx.isolatedCPUs) == 0 {
+		log.Warnf("CPU placement: %s is set but this node's kernel isolates no "+
+			"CPUs, so %s is placed normally. Add isolcpus to the kernel command "+
+			"line and reboot to make the switch mean something.",
+			types.CPUPinningUseIsolated, displayName)
+		return placement
+	}
+	placement.RequireIsolated = true
+	return placement
+}
+
 // legacyPinDefaultPolicy is what "CPU pinning enabled" means on a device whose
 // controller cannot yet express a placement policy: whole physical cores, with
 // both SMT siblings of each core used as vCPUs. N vCPUs therefore occupy N/2

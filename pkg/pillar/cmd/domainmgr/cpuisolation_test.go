@@ -214,3 +214,109 @@ func equalCPUSets(got []uint32, want []uint32) bool {
 	}
 	return true
 }
+
+// The operator flip: on a node booted with isolcpus, cpu.pinning.use.isolated
+// puts pinned workloads on the isolated cores without the controller having to
+// send isolation_tier -- which is the whole point, since a pin_cpu-only
+// controller cannot express it.
+func TestApplyIsolatedPoolFlip_PutsWholeCoreWorkloadsOnIsolatedCores(t *testing.T) {
+	isolatePinningOverride(t)
+	cpuPlanFile = filepath.Join(t.TempDir(), "cpuplan.json")
+
+	ps := testPubSub(t)
+	// pin_cpu only, no policy: the temporary default resolves it to whole-core.
+	config := pinnedConfigForTest("flipped", types.CPUPlacementPolicy{})
+	ctx := &domainContext{
+		placer:                      testPlacerIsolating(t, 3, 7),
+		isolatedCPUs:                isolatedCPUsForTest(3, 7),
+		useIsolatedCPUs:             true,
+		subDomainConfig:             testDomainConfigSub(t, ps, config),
+		cpuTopologyPinningSupported: true,
+	}
+	var status types.DomainStatus
+	status.UUIDandVersion = config.UUIDandVersion
+
+	if err := assignCPUs(ctx, &config, &status); err != nil {
+		t.Fatalf("the flip must place the workload on the isolated core: %v", err)
+	}
+	if !equalCPUSets(status.OrderedCPUs, []uint32{3, 7}) {
+		t.Errorf("want the isolated core [3 7], got %v", status.OrderedCPUs)
+	}
+}
+
+// With the flip off -- the default -- nothing changes: the isolated cores stay
+// reserved and the workload takes an ordinary one.
+func TestApplyIsolatedPoolFlip_OffLeavesIsolatedCoresAlone(t *testing.T) {
+	isolatePinningOverride(t)
+	cpuPlanFile = filepath.Join(t.TempDir(), "cpuplan.json")
+
+	ps := testPubSub(t)
+	config := pinnedConfigForTest("not-flipped", types.CPUPlacementPolicy{})
+	ctx := &domainContext{
+		placer:                      testPlacerIsolating(t, 3, 7),
+		isolatedCPUs:                isolatedCPUsForTest(3, 7),
+		subDomainConfig:             testDomainConfigSub(t, ps, config),
+		cpuTopologyPinningSupported: true,
+	}
+	var status types.DomainStatus
+	status.UUIDandVersion = config.UUIDandVersion
+
+	if err := assignCPUs(ctx, &config, &status); err != nil {
+		t.Fatalf("placement must still succeed: %v", err)
+	}
+	if len(intersectIsolated(status.OrderedCPUs, []uint32{3, 7})) != 0 {
+		t.Errorf("the flip is off, so %v must not include an isolated CPU",
+			status.OrderedCPUs)
+	}
+}
+
+// The flip set on a node whose kernel isolates nothing must not fail the
+// workload: it is an operator preference for the node, most likely set before
+// the reboot that adds isolcpus, not a per-workload guarantee.
+func TestApplyIsolatedPoolFlip_NoIsolatedCPUsIsNotFatal(t *testing.T) {
+	isolatePinningOverride(t)
+	cpuPlanFile = filepath.Join(t.TempDir(), "cpuplan.json")
+
+	ps := testPubSub(t)
+	config := pinnedConfigForTest("no-isolation", types.CPUPlacementPolicy{})
+	ctx := &domainContext{
+		placer:                      testPlacer(t),
+		useIsolatedCPUs:             true,
+		subDomainConfig:             testDomainConfigSub(t, ps, config),
+		cpuTopologyPinningSupported: true,
+	}
+	var status types.DomainStatus
+	status.UUIDandVersion = config.UUIDandVersion
+
+	if err := assignCPUs(ctx, &config, &status); err != nil {
+		t.Fatalf("the flip must not fail a workload on a node without isolcpus: %v",
+			err)
+	}
+	if len(status.OrderedCPUs) == 0 {
+		t.Error("the workload must still be placed")
+	}
+}
+
+// A thread-granular workload is never promoted: kernel isolation means nothing
+// on a core whose sibling the kernel still schedules.
+func TestApplyIsolatedPoolFlip_SkipsThreadGranular(t *testing.T) {
+	ctx := &domainContext{
+		placer:          testPlacerIsolating(t, 3, 7),
+		isolatedCPUs:    isolatedCPUsForTest(3, 7),
+		useIsolatedCPUs: true,
+	}
+	shared := resolvedPlacement{TopologyAware: false}
+	if got := applyIsolatedPoolFlip(ctx, shared, "thread-granular"); got.RequireIsolated {
+		t.Error("a thread-granular placement must not be promoted to isolated cores")
+	}
+}
+
+func intersectIsolated(got []uint32, isolated []uint32) []uint32 {
+	var out []uint32
+	for _, c := range got {
+		if containsUint32(isolated, c) {
+			out = append(out, c)
+		}
+	}
+	return out
+}

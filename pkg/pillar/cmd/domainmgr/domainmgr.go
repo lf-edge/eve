@@ -132,6 +132,11 @@ type domainContext struct {
 	createSema             *sema.Semaphore
 	GCComplete             bool
 
+	// useIsolatedCPUs puts pinned workloads on the kernel-isolated CPUs, which
+	// are otherwise held for workloads asking for the hard isolation tier. Set
+	// from the cpu.pinning.use.isolated config property, so an operator can flip
+	// it from the controller on a node booted with isolcpus.
+	useIsolatedCPUs         bool
 	usbAccess               bool
 	setInitialUsbAccess     bool
 	vgaAccess               bool
@@ -1733,6 +1738,7 @@ func allocateCPUs(ctx *domainContext, config *types.DomainConfig, status *types.
 	if err != nil {
 		return err
 	}
+	placement = applyIsolatedPoolFlip(ctx, placement, config.DisplayName)
 	if err := validateVCPUCount(placement, config.VCpus); err != nil {
 		return err
 	}
@@ -3624,6 +3630,17 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 	if gcp != nil {
 		if gcp.GlobalValueInt(types.DomainBootRetryTime) != 0 {
 			ctx.domainBootRetryTime = gcp.GlobalValueInt(types.DomainBootRetryTime)
+		}
+		if use := gcp.GlobalValueBool(types.CPUPinningUseIsolated); use != ctx.useIsolatedCPUs {
+			ctx.useIsolatedCPUs = use
+			// Nothing is re-placed here: a running workload's vCPUs are already
+			// pinned and its guest was told a fixed topology at launch, so the
+			// switch takes effect for workloads placed from now on. Restart them
+			// (or the node) to move what is already running.
+			log.Noticef("CPU placement: %s is now %t; workloads placed from now "+
+				"on %s the kernel-isolated CPUs",
+				types.CPUPinningUseIsolated, use,
+				map[bool]string{true: "may use", false: "are kept off"}[use])
 		}
 		// XXX remove the initialized case?
 		if gcp.GlobalValueBool(types.UsbAccess) != ctx.usbAccess ||

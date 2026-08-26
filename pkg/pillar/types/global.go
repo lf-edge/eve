@@ -260,6 +260,12 @@ const (
 	VgaAccess GlobalSettingKey = "debug.enable.vga"
 	// AllowAppVnc global setting key
 	AllowAppVnc GlobalSettingKey = "app.allow.vnc"
+	// CPUPinningUseIsolated places pinned workloads on the CPUs the kernel
+	// isolates (isolcpus), which are otherwise withheld for workloads that ask
+	// for the hard isolation tier. It exists for a node whose controller cannot
+	// yet express isolation_tier per workload: the isolated set is a node-level
+	// boot decision, so the switch that puts workloads on it is node-level too.
+	CPUPinningUseIsolated GlobalSettingKey = "cpu.pinning.use.isolated"
 	// EveMemoryLimitInMiB global setting key, memory limit for EVE in MiB
 	EveMemoryLimitInMiB GlobalSettingKey = "memory.eve.limit.MiB"
 	// EveMemoryLimitInBytes global setting key, memory limit for EVE in bytes
@@ -1243,6 +1249,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddBoolItem(UsbAccess, true) // Controller likely default to false
 	configItemSpecMap.AddBoolItem(VgaAccess, true) // Controller likely default to false
 	configItemSpecMap.AddBoolItem(AllowAppVnc, false)
+	configItemSpecMap.AddBoolItem(CPUPinningUseIsolated, false)
 	configItemSpecMap.AddBoolItem(IgnoreMemoryCheckForApps, false)
 	configItemSpecMap.AddBoolItem(IgnoreDiskCheckForApps, false)
 	configItemSpecMap.AddBoolItem(AllowLogFastupload, false)

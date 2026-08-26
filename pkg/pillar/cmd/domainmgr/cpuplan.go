@@ -110,6 +110,7 @@ func planPinnedPlacement(ctx *domainContext) map[uuid.UUID]cpuallocator.Result {
 		}
 		placement, err := placementForIntent(intent)
 		if err == nil {
+			placement = applyIsolatedPoolFlip(ctx, placement, intent.displayName)
 			err = validateVCPUCount(placement, intent.vcpus)
 		}
 		if err != nil {

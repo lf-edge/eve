@@ -319,6 +319,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		QemuTraceEvents,
 		QemuGdb,
 		QemuIgpuNoMmap,
+		CPUPinningUseIsolated,
 	}
 	if len(specMap.GlobalSettings) != len(gsKeys) {
 		t.Errorf("GlobalSettings has more (%d) than expected keys (%d)",
