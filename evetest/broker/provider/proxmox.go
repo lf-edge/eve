@@ -1017,7 +1017,15 @@ func (p *ProxmoxProvider) nicOptions(dev *proxmoxDevice, mtuCapped, netboot bool
 			bootIndex = ",bootindex=300"
 			bootNICAssigned = true
 		}
-		tap := fmt.Sprintf("evt%de%d", dev.vmID, i)
+		// "tap" prefix (not "evt") so these match ifupdown2's default
+		// bridge-ports-condone-regex ("^(tap|veth|fwpr)"): without it, any
+		// unrelated reloadnetworkall (e.g. from another VM's own SDN VNets
+		// being created/deleted) prunes these taps from their bridge, since
+		// ifupdown2 doesn't otherwise know about them (the VNets are
+		// declared "bridge_ports none"). The "x" separator (not PVE's own
+		// "i") keeps this from ever colliding with a real PVE-managed
+		// "tap<vmid>i<netindex>".
+		tap := fmt.Sprintf("tap%dx%d", dev.vmID, i)
 		nicArgs += fmt.Sprintf(
 			" -device pcie-root-port,id=evrp%d,bus=pcie.0,addr=0x%x,chassis=%d"+
 				" -netdev type=tap,id=evn_%s_%d,ifname=%s,script=no,downscript=no,vhost=on"+
