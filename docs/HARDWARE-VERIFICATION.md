@@ -6,9 +6,8 @@ EVE-OS, and is normally run once per hardware model and EVE-OS version.
 It is a stage of the EVE-OS installer that runs after EVE-OS has been written to
 the target disk: it records a hardware inventory, checks which drivers claimed
 which devices, tests dynamic (DHCP) and static network configuration on every
-Ethernet port, measures the read performance of every disk with
-[fio](https://github.com/axboe/fio), and — when the node has a TPM — runs a set
-of TPM checks.
+Ethernet port, and measures the read performance of every disk with
+[fio](https://github.com/axboe/fio).
 
 ## Running verification
 
@@ -17,8 +16,14 @@ Produce an installer image and boot the node from it, as described in
 installation:
 
 ```console
-docker run --rm lfedge/eve:latest installer_raw > installer.raw
 docker run --rm lfedge/eve:<tag> installer_raw > installer.raw
+```
+
+`<tag>` is a published EVE-OS version such as `17.0.0-lts`. The version marked
+as the latest release on GitHub, which skips pre-releases, is reported by
+
+```console
+gh api repos/lf-edge/eve/releases/latest --jq .tag_name
 ```
 
 Some BIOSes cannot boot from a disk-based image at all — remote consoles such as
@@ -62,7 +67,7 @@ they are also saved depends on the boot media:
 | File | Contents |
 |---|---|
 | `summary.log` | Hardware summary and the pass/fail lines of the tests, see below |
-| `hardware-inventory/` | `hwinfo`, `lspci`, `lsusb`, `lsblk`, `dmesg`, `smartctl` per disk, `cpuinfo`, `meminfo` and the TPM PCR values |
+| `hardware-inventory/` | `hwinfo`, `lspci`, `lsusb`, `lsblk`, `dmesg`, `smartctl` per disk, `cpuinfo`, `meminfo`, TPM PCR values and TPM hardware info |
 | `hardwaremodel.txt` | `dmidecode` output |
 | `controller-model*.json` | The hardware model to hand to the controller, as described in [HARDWARE-MODEL](./HARDWARE-MODEL.md) |
 | `networking-checks/dhcp-<nic>.log`, `networking-checks/static-<nic>.log` | Connectivity test result per port and per addressing mode |
@@ -70,7 +75,6 @@ they are also saved depends on the boot media:
 | `iommu_groups.out` | IOMMU groups, which determine what can be assigned to a guest |
 | `watchdogs.log` | Available hardware watchdogs |
 | `vmcap.log` | Virtualization capabilities of the CPU (x86 only) |
-| `tpmchecks.log` | TPM test results, only when a TPM is present |
 | `clock` | `hwclock` and `date` output, to spot an RTC that is not in UTC |
 | `eve-release` | The EVE-OS version that ran the verification |
 | `installer.log` | The full installer log |
@@ -82,8 +86,8 @@ they are also saved depends on the boot media:
 model is usable. It opens with an identification and inventory block, calls out
 every PCI device that no driver claimed — the most common reason a hardware
 model does not work — and ends with the results of the individual tests: one
-line per port for DHCP and for static addressing, and a marker if the TPM checks
-failed. The detailed logs behind it are in `hardware-inventory/`.
+line per port for DHCP and for static addressing. The detailed logs behind it
+are in `hardware-inventory/`.
 
 ```console
 Hardware summary
