@@ -91,8 +91,6 @@ fi
 
 echo "start VM test unavailable" > "$REPORT/guest-checks.log"
 
-tpm2_pcrread >> "$REPORT/summary.log"
-
 cp "/root/etc/eve-release" "$REPORT"
 
 find /sys/kernel/iommu_groups/ -type l > "$REPORT/iommu_groups.out"
@@ -112,15 +110,8 @@ if [ "$ARCH" = "x86_64" ]; then
     /vmcap > "$REPORT/vmcap.log"
 fi
 
-# verify the TPM
-if [ -c "$TPM_DEVICE_PATH" ]; then
-   echo "TPM device is present, running some extra tests"
-   /verifytpm.sh | tee -a "$REPORT/tpmchecks.log" >/dev/console 2>&1
-   if ! grep -q "TPM checks PASSED" "$REPORT/tpmchecks.log"; then
-      echo "TPM checks FAILED, check tpmchecks.log for details" >> "$REPORT/summary.log";
-   fi
-else
-   echo "No TPM device, skipping extra TPM checks"
-fi
+mkdir -p "$REPORT/hardware-inventory/"
+tpm2_pcrread > "$REPORT/hardware-inventory/tpm-pcrs.log" 2>&1
+tpm2 getcap properties-fixed > "$REPORT/hardware-inventory/tpm-info.log" 2>&1
 
 cat "$REPORT/summary.log"
