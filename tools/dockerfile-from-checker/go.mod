@@ -1,4 +1,4 @@
-module dockerfile-from-checker
+module github.com/lf-edge/eve/tools/dockerfile-from-checker
 
 go 1.25.5
 
@@ -6,7 +6,6 @@ toolchain go1.25.11
 
 require (
 	github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20250625185947-3f54a80824cc
-	github.com/moby/buildkit v0.28.1
 	github.com/spf13/cobra v1.10.2
 )
 
@@ -44,7 +43,9 @@ require (
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.3 // indirect
+	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
+	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/go-version v1.7.0 // indirect
 	github.com/in-toto/attestation v1.1.2 // indirect
 	github.com/in-toto/in-toto-golang v0.11.0 // indirect
@@ -52,6 +53,7 @@ require (
 	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/hashstructure/v2 v2.0.2 // indirect
+	github.com/moby/buildkit v0.23.1 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/locker v1.0.1 // indirect
 	github.com/moby/patternmatcher v0.6.1 // indirect

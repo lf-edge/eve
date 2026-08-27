@@ -1,7 +1,7 @@
 // Copyright (c) 2024 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// Package main is the only package of this tool
+// Package main runs the dockerfile-from-checker binary.
 package main
 
 import (
@@ -15,9 +15,9 @@ import (
 	"sync"
 
 	"github.com/linuxkit/linuxkit/src/cmd/linuxkit/pkglib"
-	"github.com/moby/buildkit/frontend/dockerfile/instructions"
-	"github.com/moby/buildkit/frontend/dockerfile/parser"
 	"github.com/spf13/cobra"
+
+	"github.com/lf-edge/eve/tools/dockerfile-from-checker/dockerfilefrom"
 )
 
 const (
@@ -267,51 +267,9 @@ func checkInconsistencies(froms2dockerfile map[string][]string, lktlinuxkitPkgs 
 }
 
 func parseDockerfile(f *os.File) []string {
-	var dockerfileFroms []string
-	result, err := parser.Parse(f)
+	res, err := dockerfilefrom.Scan(f)
 	if err != nil {
 		log.Fatalf("parsing %s failed: %+v", f.Name(), err)
 	}
-
-	vars := parseVars(result)
-	var next *parser.Node
-	for _, node := range result.AST.Children {
-		if node.Value == "FROM" {
-			next = node.Next
-			if next == nil {
-				break
-			}
-			from := expandVariables(next, vars)
-			dockerfileFroms = append(dockerfileFroms, from)
-		}
-	}
-
-	return dockerfileFroms
-}
-
-func expandVariables(next *parser.Node, vars map[string]string) string {
-	from := next.Value
-	for key, val := range vars {
-		from = strings.ReplaceAll(from, fmt.Sprintf("${%s}", key), val)
-	}
-	return from
-}
-
-func parseVars(result *parser.Result) map[string]string {
-	vars := make(map[string]string)
-	_, metaArgs, err := instructions.Parse(result.AST, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	for _, argCmd := range metaArgs {
-		if argCmd.Name() != "ARG" {
-			continue
-		}
-		for _, argCmdArg := range argCmd.Args {
-			vars[argCmdArg.Key] = argCmdArg.ValueString()
-		}
-	}
-
-	return vars
+	return res.FromSet
 }
