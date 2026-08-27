@@ -30,6 +30,12 @@ func TestStorageSuite(test *testing.T) {
 		evetest.TestCase{
 			Test: TestExtraDiskAttach,
 		},
+		// TestVolumeSizeAlignment cannot share the default-size device the other
+		// non-ZFS tests above reuse: it needs 16 GiB / 8 CPUs for the EVE-k
+		// k3s/KubeVirt/Longhorn/CDI cluster, so it gets its own larger device.
+		evetest.TestCase{
+			Test: TestVolumeSizeAlignment,
+		},
 		// ZFS tests next, grouped together for the same reason.
 		evetest.TestCase{
 			Test: TestZVolProvisionedSizeReported,
