@@ -27,6 +27,19 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 2
           persist-credentials: false
+      # The action runs the claude CLI with its working directory set to this
+      # checked-out PR tree, and the CLI executes hooks from a .claude
+      # settings file and command servers from .mcp.json found there. On a
+      # pull_request_target run those secrets are in scope, so strip both
+      # before the CLI ever sees the tree. The author allowlist above is the
+      # primary gate; this removes the code-execution path a trusted-but-
+      # compromised branch would otherwise have.
+      - name: Strip in-tree tool configs from the PR checkout
+        run: |
+          find . -depth -type d -name .claude -exec rm -rf {} +
+          find . -type l -name .claude -delete
+          find . -type f -name .mcp.json -delete
+          find . -type l -name .mcp.json -delete
       # fork of anthropics/claude-code-security-review: upstream refuses to
       # run on pull_request_target, which this repo needs for fork PRs
       - uses: shjala/claude-code-security-review@4d62096960937fdd393d3e4b15ac501ff1a77ede  # main
