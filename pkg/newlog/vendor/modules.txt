@@ -232,9 +232,9 @@ github.com/docker/go-metrics
 # github.com/eriknordmark/ipinfo v0.0.0-20230728132417-2d8f4da903d7
 ## explicit
 github.com/eriknordmark/ipinfo
-# github.com/euank/go-kmsg-parser v2.0.0+incompatible
-## explicit
-github.com/euank/go-kmsg-parser/kmsgparser
+# github.com/euank/go-kmsg-parser/v3 v3.0.1-0.20260828084355-cb9d397d28e3
+## explicit; go 1.25.0
+github.com/euank/go-kmsg-parser/v3/kmsgparser
 # github.com/felixge/httpsnoop v1.0.4
 ## explicit; go 1.13
 github.com/felixge/httpsnoop
@@ -553,7 +553,7 @@ golang.org/x/net/trace
 ## explicit; go 1.25.0
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
-# golang.org/x/sys v0.45.0
+# golang.org/x/sys v0.47.0
 ## explicit; go 1.25.0
 golang.org/x/sys/cpu
 golang.org/x/sys/unix
