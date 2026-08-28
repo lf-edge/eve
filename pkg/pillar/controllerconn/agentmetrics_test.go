@@ -5,6 +5,7 @@ package controllerconn_test
 
 import (
 	"fmt"
+	"net/http"
 	"testing"
 
 	// revive:disable:dot-imports
@@ -120,4 +121,34 @@ func TestAgentMetricsURLCountersLimitAcrossInterfaces(t *testing.T) {
 	g.Expect(toMap["eth0"].URLCounters).NotTo(HaveKey("/eth0/0"))
 	g.Expect(toMap["eth1"].URLCounters).To(HaveKey("/eth1/new"))
 	g.Expect(toMap["eth0"].URLCounterRedactedCount).To(Equal(uint64(urlCountersWiggle)))
+}
+
+// RecordAnswer splits answered requests into accepted, refused-for-now and
+// rejected, which is what tells an operator whether the controller is having
+// trouble or is turning the payload away.
+func TestAgentMetricsRecordAnswer(t *testing.T) {
+	g := NewGomegaWithT(t)
+	log := testLogObject()
+	am := controllerconn.NewAgentMetrics()
+
+	answers := []int{
+		http.StatusOK, http.StatusNoContent, // accepted
+		http.StatusServiceUnavailable, http.StatusTooManyRequests,
+		http.StatusForbidden,                       // worth offering again
+		http.StatusBadRequest, http.StatusNotFound, // rejected
+		http.StatusFound, // neither
+	}
+	for _, status := range answers {
+		am.RecordSuccess(log, "eth0", "/url/a", 10, 10, 1, false)
+		am.RecordAnswer(log, "eth0", "/url/a", status)
+	}
+
+	toMap := types.MetricsMap{}
+	am.AddInto(log, toMap)
+	um := toMap["eth0"].URLCounters["/url/a"]
+
+	g.Expect(um.SentMsgCount).To(Equal(int64(len(answers))))
+	g.Expect(um.DeliveredMsgCount).To(Equal(int64(2)))
+	g.Expect(um.RetriableErrCount).To(Equal(int64(3)))
+	g.Expect(um.RejectedErrCount).To(Equal(int64(2)))
 }
