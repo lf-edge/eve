@@ -1,0 +1,77 @@
+From effef88556ba528bc294dc8ab72f10dc60ad7511 Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mike.malyshev@gmail.com>
+Date: Fri, 28 Aug 2026 11:34:50 +0000
+Subject: [PATCH] vfio/igd: publish the host stolen base to firmware
+
+The iGPU keeps firmware-programmed pointers into stolen memory - the GuC
+WOPCM window and the RC6 context - that no BAR quirk can relocate, because
+the hardware anchors them to its own physical stolen base rather than to
+anything the guest driver programs. The driver writes only relative
+offsets and sizes, which the hardware then adds to that fixed base.
+
+The consequence is that guest stolen memory placed at an arbitrary address
+leaves those accesses pointing at host physical addresses which, in the
+guest's IOVA space, are ordinary guest RAM. The GPU then reads and writes
+whatever the guest happens to keep there.
+
+Publish the host stolen base as etc/igd-stolen-base so the firmware can
+reserve the guest stolen region at exactly that address. With guest and
+host stolen coincident, every value the hardware emits is already correct
+in the guest's IOVA space, nothing needs relocating, and the existing
+relocation quirks reduce to identity.
+
+Firmware is free to ignore this and allocate anywhere, which restores the
+previous behaviour.
+
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
+---
+ hw/vfio/igd.c | 33 +++++++++++++++++++++++++++++++++
+ 1 file changed, 33 insertions(+)
+
+diff --git a/tools/qemu-xen/hw/vfio/igd.c b/tools/qemu-xen/hw/vfio/igd.c
+index 8997611920..4e5b30ba4c 100644
+--- a/tools/qemu-xen/hw/vfio/igd.c
++++ b/tools/qemu-xen/hw/vfio/igd.c
+@@ -677,6 +677,39 @@ void vfio_probe_igd_bar4_quirk(VFIOPCIDevice *vdev, int nr)
+                                 bdsm_size, sizeof(*bdsm_size));
+                 error_report("IGD bdsm-size: wrote etc/igd-bdsm-size = %"
+                              PRIu64 " bytes to fw_cfg", bdsm_bytes);
++
++                /*
++                 * Publish the HOST stolen base so the firmware can reserve the
++                 * guest stolen region at the very same physical address.
++                 *
++                 * The iGPU keeps firmware-programmed pointers into stolen
++                 * memory (WOPCM, the RC6 context) that no BAR quirk can move:
++                 * the hardware anchors them to its own physical stolen base.
++                 * If guest stolen lands anywhere else, those accesses hit
++                 * whatever the guest happens to have at the host address.
++                 *
++                 * Reserving guest stolen at the host address makes the guest's
++                 * IOVA space agree with what the hardware emits, so no value
++                 * needs relocating at all and the relocation quirks collapse to
++                 * identity.  Firmware falls back to allocating anywhere if it
++                 * cannot honour the address.
++                 */
++                if (gen >= 11) {
++                    uint64_t hb = 0;
++
++                    if (pread(vdev->vbasedev.fd, &hb, 8,
++                              vdev->config_offset + IGD_BDSM_GEN11) == 8) {
++                        hb = le64_to_cpu(hb) & ~0xfffULL;
++                    }
++                    if (hb) {
++                        uint64_t *base = g_malloc(sizeof(*base));
++                        *base = cpu_to_le64(hb);
++                        fw_cfg_add_file(fw_cfg, "etc/igd-stolen-base",
++                                        base, sizeof(*base));
++                        error_report("IGD stolen-base: wrote "
++                                     "etc/igd-stolen-base = 0x%" PRIx64, hb);
++                    }
++                }
+             } else {
+                 error_report("IGD bdsm-size: fw_cfg not found, skipping");
+             }
+-- 
+2.43.0
+
