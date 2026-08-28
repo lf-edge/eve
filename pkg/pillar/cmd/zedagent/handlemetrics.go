@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -707,14 +708,21 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 			ReportAppMetric.Memory.AvailPercentage = availableMemoryPercent
 		}
 
-		appInterfaceList := aiStatus.GetAppInterfaceList()
-		log.Tracef("ReportMetrics: domainName %s ifs %v",
-			aiStatus.DomainName, appInterfaceList)
-		// Use the network metrics from zedrouter subscription
-		for _, ifName := range appInterfaceList {
+		// Use the network metrics from zedrouter subscription. Directly
+		// assigned network adapters are reported too, in their interface
+		// order position, but with zero counters -- the guest owns the NIC,
+		// so EVE cannot observe its traffic.
+		for _, entry := range orderedAppNetworkEntries(&aiStatus) {
+			networkDetails := new(metrics.NetworkMetric)
+			networkDetails.IName = entry.name
+			if entry.vifName == "" {
+				ReportAppMetric.Network = append(ReportAppMetric.Network,
+					networkDetails)
+				continue
+			}
 			var metric *types.NetworkMetric
 			for _, m := range networkMetrics.MetricList {
-				if ifName == m.IfName {
+				if entry.vifName == m.IfName {
 					metric = &m
 					break
 				}
@@ -722,17 +730,14 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 			if metric == nil {
 				continue
 			}
-			networkDetails := new(metrics.NetworkMetric)
-			name := appIfnameToName(&aiStatus, metric.IfName)
 			log.Tracef("app %s/%s localname %s name %s",
 				aiStatus.Key(), aiStatus.DisplayName,
-				metric.IfName, name)
-			networkDetails.IName = name
+				metric.IfName, entry.name)
 			networkDetails.LocalName = metric.IfName
 			// Counters not swapped on vif
-			if strings.HasPrefix(ifName, "nbn") ||
-				strings.HasPrefix(ifName, "nbu") ||
-				strings.HasPrefix(ifName, "nbo") {
+			if strings.HasPrefix(entry.vifName, "nbn") ||
+				strings.HasPrefix(entry.vifName, "nbu") ||
+				strings.HasPrefix(entry.vifName, "nbo") {
 				networkDetails.TxPkts = metric.TxPkts
 				networkDetails.RxPkts = metric.RxPkts
 				networkDetails.TxBytes = metric.TxBytes
@@ -1203,17 +1208,33 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 			ReportAppInfo.AssignedAdapters = append(ReportAppInfo.AssignedAdapters,
 				reportAA)
 		}
-		// Get vifs assigned to the application
-		// Mostly reporting the UP status
-		// We extract the appIP from the dnsmasq assignment
-		ifNames := (*aiStatus).GetAppInterfaceList()
-		log.Tracef("ReportAppInfo: domainName %s ifs %v",
-			aiStatus.DomainName, ifNames)
-		for _, ifname := range ifNames {
+		// Report the app's network adapters in their interface order --
+		// virtual ones (with the addresses extracted from the dnsmasq
+		// assignment) and directly assigned network adapters (identity
+		// only: the guest owns the NIC, so its addresses are not known
+		// here).
+		for _, entry := range orderedAppNetworkEntries(aiStatus) {
 			networkInfo := new(info.ZInfoNetwork)
-			networkInfo.LocalName = *proto.String(ifname)
+			networkInfo.DevName = *proto.String(entry.name)
+			if entry.vifName == "" {
+				for _, ib := range aa.LookupIoBundleAny(entry.name) {
+					if ib == nil {
+						continue
+					}
+					if networkInfo.LocalName == "" {
+						networkInfo.LocalName = *proto.String(ib.Ifname)
+					}
+					if networkInfo.MacAddr == "" {
+						networkInfo.MacAddr = *proto.String(ib.MacAddr)
+					}
+				}
+				ReportAppInfo.Network = append(ReportAppInfo.Network,
+					networkInfo)
+				continue
+			}
+			networkInfo.LocalName = *proto.String(entry.vifName)
 			addrs, hasIPv4Addr, macAddr, ipAddrMismatch :=
-				getAppIPs(ctx, aiStatus, ifname)
+				getAppIPs(ctx, aiStatus, entry.vifName)
 			for _, ipv4Addr := range addrs.IPv4Addrs {
 				networkInfo.IPAddrs = append(networkInfo.IPAddrs,
 					ipv4Addr.Address.String())
@@ -1225,12 +1246,10 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 			networkInfo.MacAddr = *proto.String(macAddr.String())
 			networkInfo.Ipv4Up = hasIPv4Addr
 			networkInfo.IpAddrMisMatch = ipAddrMismatch
-			name := appIfnameToName(aiStatus, ifname)
 			log.Tracef("app %s/%s localName %s devName %s",
 				aiStatus.Key(), aiStatus.DisplayName,
-				ifname, name)
-			networkInfo.DevName = *proto.String(name)
-			niStatus := appIfnameToNetworkInstance(ctx, aiStatus, ifname)
+				entry.vifName, entry.name)
+			niStatus := appIfnameToNetworkInstance(ctx, aiStatus, entry.vifName)
 			if niStatus != nil {
 				networkInfo.NtpServers = utils.ToStrings(niStatus.CombinedNTPServers)
 				networkInfo.DefaultRouters = []string{niStatus.Gateway.String()}
@@ -1542,13 +1561,49 @@ func appIfnameToNetworkInstance(ctx *zedagentContext,
 	return nil
 }
 
-func appIfnameToName(aiStatus *types.AppInstanceStatus, vifname string) string {
+// appNetworkEntry identifies one network adapter of an app instance to be
+// reported to the controller: either a virtual adapter (vifName is set) or a
+// directly assigned network adapter (vifName is empty).
+type appNetworkEntry struct {
+	name      string // adapter logical name, reported as devName/iName
+	vifName   string // host-side interface name; empty for directly assigned adapters
+	intfOrder uint32
+}
+
+// orderedAppNetworkEntries returns one entry per app network adapter --
+// virtual and directly assigned (passthrough) network adapters alike. With
+// EnforceNetworkInterfaceOrder the entries are sorted by the configured
+// interface order, mirroring the order of the NICs inside the guest;
+// otherwise the virtual adapters keep their existing order and the directly
+// assigned ones, whose order is undefined in that case, are appended at the
+// end.
+func orderedAppNetworkEntries(aiStatus *types.AppInstanceStatus) []appNetworkEntry {
+	var entries []appNetworkEntry
 	for _, adapterStatus := range aiStatus.AppNetAdapters {
-		if adapterStatus.VifUsed == vifname {
-			return adapterStatus.Name
+		if adapterStatus.VifUsed == "" {
+			continue
 		}
+		entries = append(entries, appNetworkEntry{
+			name:      adapterStatus.Name,
+			vifName:   adapterStatus.VifUsed,
+			intfOrder: adapterStatus.IntfOrder,
+		})
 	}
-	return ""
+	for _, ia := range aiStatus.IoAdapterList {
+		if !ia.Type.IsNet() {
+			continue
+		}
+		entries = append(entries, appNetworkEntry{
+			name:      ia.Name,
+			intfOrder: ia.IntfOrder,
+		})
+	}
+	if aiStatus.FixedResources.EnforceNetworkInterfaceOrder {
+		sort.SliceStable(entries, func(i, j int) bool {
+			return entries[i].intfOrder < entries[j].intfOrder
+		})
+	}
+	return entries
 }
 
 // This function is called per change, hence needs to try over all management ports
