@@ -594,8 +594,8 @@ func (c *Client) VerifyAllIntf(ctx context.Context,
 			}
 			continue
 		}
-		switch rv.HTTPResp.StatusCode {
-		case http.StatusOK, http.StatusCreated, http.StatusNotModified, http.StatusNoContent:
+		switch {
+		case deliveredHTTPStatus(rv.HTTPResp.StatusCode):
 			// Continue below the switch to record success.
 			break
 		default:
@@ -886,12 +886,13 @@ func (c *Client) SendOnIntf(ctx context.Context, destURL string, intf string,
 		if c.AgentMetrics != nil {
 			c.AgentMetrics.RecordSuccess(
 				c.log, intf, reqURL, reqlen, resplen, totalTimeMillis, sessionResume)
+			c.AgentMetrics.RecordAnswer(c.log, intf, reqURL, resp.StatusCode)
 		}
 
 		rv.LastHTTPStatusCode = resp.StatusCode
 
-		switch resp.StatusCode {
-		case http.StatusOK, http.StatusCreated, http.StatusNotModified, http.StatusNoContent:
+		switch {
+		case deliveredHTTPStatus(resp.StatusCode):
 			c.log.Tracef("SendOnIntf to %s, response %s\n", reqURL, resp.Status)
 			rv.HTTPResp = resp
 			rv.RespContents = contents
@@ -1373,18 +1374,19 @@ func (c *Client) SendLocal(destURL string, intf string, ipSrc net.IP,
 	resplen := int64(len(contents))
 	resp.Body = nil
 
-	switch resp.StatusCode {
-	case http.StatusOK, http.StatusCreated, http.StatusNotModified, http.StatusNoContent:
+	if deliveredHTTPStatus(resp.StatusCode) {
 		totalTimeMillis := int64(time.Since(callStartTime) / time.Millisecond)
 		if c.AgentMetrics != nil {
 			c.AgentMetrics.RecordSuccess(
 				c.log, intf, reqURL, reqlen, resplen, totalTimeMillis, false)
+			c.AgentMetrics.RecordAnswer(c.log, intf, reqURL, resp.StatusCode)
 		}
 		c.log.Tracef("SendLocal to %s, response %s", reqURL, resp.Status)
 		return resp, contents, nil
 	}
 	if c.AgentMetrics != nil {
 		c.AgentMetrics.RecordFailure(c.log, intf, reqURL, reqlen, resplen, false)
+		c.AgentMetrics.RecordAnswer(c.log, intf, reqURL, resp.StatusCode)
 	}
 	return resp, nil, fmt.Errorf("SendLocal to %s reqlen %d statuscode %d %s",
 		reqURL, reqlen, resp.StatusCode,

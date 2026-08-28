@@ -44,6 +44,15 @@ type URLMetrics struct {
 	RecvByteCount  int64 // Based on content-length which could be off
 	TotalTimeSpent int64
 	SessionResume  int64
+	// DeliveredMsgCount counts the answers which accepted the payload. It is
+	// narrower than SentMsgCount, which counts every answer received.
+	DeliveredMsgCount int64
+	// RetriableErrCount counts the answers which refused the payload with a
+	// status that may not repeat, so that offering it again is worthwhile.
+	RetriableErrCount int64
+	// RejectedErrCount counts the answers which refused the payload itself,
+	// so that offering it again would be answered the same way.
+	RejectedErrCount int64
 	// LastUpdated determines which entries to evict once MaxURLCounters
 	// is reached.
 	LastUpdated time.Time
@@ -98,6 +107,9 @@ func (m MetricsMap) AddInto(toMap MetricsMap) {
 			dstURL.RecvByteCount += srcURL.RecvByteCount
 			dstURL.TotalTimeSpent += srcURL.TotalTimeSpent
 			dstURL.SessionResume += srcURL.SessionResume
+			dstURL.DeliveredMsgCount += srcURL.DeliveredMsgCount
+			dstURL.RetriableErrCount += srcURL.RetriableErrCount
+			dstURL.RejectedErrCount += srcURL.RejectedErrCount
 			if srcURL.LastUpdated.After(dstURL.LastUpdated) {
 				dstURL.LastUpdated = srcURL.LastUpdated
 			}

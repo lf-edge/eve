@@ -37,6 +37,9 @@ import (
 //   - The controller responded with a status code which tells that it will
 //     reject the very same payload again (see retriableHTTPStatus).
 //
+// Both are counted, and the counts together with the current backlog are
+// reported to the controller as deviceMetric.deferred_queue.
+//
 // Anything else is retried indefinitely, because for most of what travels this
 // queue nothing else re-asserts the state later, so discarding a message would
 // leave the controller's view of an object wrong until that object changes
@@ -66,6 +69,8 @@ type deferredItem struct {
 	attempts int
 	// The earliest time of the next send attempt. Zero means "no delay".
 	retryAt time.Time
+	// When the payload currently in buf was produced.
+	createdAt time.Time
 }
 
 // DeferredItemOpts defines configurable options for processing a deferred item.
@@ -132,6 +137,85 @@ type DeferredQueue struct {
 	sentHandler            SentHandlerFunction
 	ctrlClient             deferredSender
 	iteration              int
+	// Messages given up on since boot, split by which of the two reasons
+	// applied, and when the most recent one was. Guarded by
+	// deferredItemsLock, which is what lets Stats() read them.
+	droppedRejected   uint64
+	droppedSuperseded uint64
+	lastDropped       time.Time
+}
+
+// DeferredQueueStats is a snapshot of what a queue is holding back and what it
+// has given up on since boot.
+type DeferredQueueStats struct {
+	// Undelivered counts the messages still waiting for the controller.
+	Undelivered uint32
+	// OldestUndelivered is when the oldest of those payloads was produced.
+	// Zero when there are none.
+	OldestUndelivered time.Time
+	// Rejected counts the messages given up on because the controller refused
+	// the payload with a status it would answer the same way again.
+	Rejected uint64
+	// Superseded counts the messages given up on because the next periodic
+	// publication of the same key replaces them.
+	Superseded uint64
+	// LastDropped is when the most recent message was given up on. Zero when
+	// none has been.
+	LastDropped time.Time
+}
+
+// Add sums another queue's snapshot into this one, so that several queues can
+// be reported together.
+func (s *DeferredQueueStats) Add(other DeferredQueueStats) {
+	s.Undelivered += other.Undelivered
+	s.Rejected += other.Rejected
+	s.Superseded += other.Superseded
+	if !other.OldestUndelivered.IsZero() &&
+		(s.OldestUndelivered.IsZero() ||
+			other.OldestUndelivered.Before(s.OldestUndelivered)) {
+		s.OldestUndelivered = other.OldestUndelivered
+	}
+	if other.LastDropped.After(s.LastDropped) {
+		s.LastDropped = other.LastDropped
+	}
+}
+
+// Stats returns a snapshot of the queue's backlog and of the messages it has
+// given up on.
+func (q *DeferredQueue) Stats() DeferredQueueStats {
+	q.deferredItemsLock.Lock()
+	defer q.deferredItemsLock.Unlock()
+
+	stats := DeferredQueueStats{
+		Rejected:    q.droppedRejected,
+		Superseded:  q.droppedSuperseded,
+		LastDropped: q.lastDropped,
+	}
+	for _, item := range q.deferredItems {
+		if item.buf == nil {
+			continue
+		}
+		stats.Undelivered++
+		if stats.OldestUndelivered.IsZero() ||
+			item.createdAt.Before(stats.OldestUndelivered) {
+			stats.OldestUndelivered = item.createdAt
+		}
+	}
+	return stats
+}
+
+// recordDrop counts a message the queue has given up on. Called from the queue
+// processing task, which does not hold deferredItemsLock while sending.
+func (q *DeferredQueue) recordDrop(superseded bool) {
+	q.deferredItemsLock.Lock()
+	defer q.deferredItemsLock.Unlock()
+
+	if superseded {
+		q.droppedSuperseded++
+	} else {
+		q.droppedRejected++
+	}
+	q.lastDropped = time.Now()
 }
 
 // deferredSender is the part of Client which the queue uses to deliver an item.
@@ -380,6 +464,7 @@ func (q *DeferredQueue) sendItem(ctx context.Context,
 	switch {
 	case !refused:
 		if item.opts.DiscardOnFailure {
+			q.recordDrop(true)
 			return itemDone
 		}
 		return itemStopPass
@@ -388,6 +473,7 @@ func (q *DeferredQueue) sendItem(ctx context.Context,
 		q.log.Functionf("handleDeferred: for %s dropping superseded message, "+
 			"controller responded %d %s", item.key, status,
 			http.StatusText(status))
+		q.recordDrop(true)
 		return itemDone
 
 	case !retriableHTTPStatus(status):
@@ -395,6 +481,7 @@ func (q *DeferredQueue) sendItem(ctx context.Context,
 		// the loss at a severity that reaches the controller and the operator.
 		errorLog("handleDeferred: for %s dropping message, controller "+
 			"responded %d %s", item.key, status, http.StatusText(status))
+		q.recordDrop(false)
 		return itemDone
 
 	default:
@@ -537,11 +624,12 @@ func (q *DeferredQueue) SetDeferred(
 		q.startTimer()
 	}
 	item := deferredItem{
-		key:      key,
-		itemType: itemType,
-		buf:      buf,
-		url:      url,
-		opts:     opts,
+		key:       key,
+		itemType:  itemType,
+		buf:       buf,
+		url:       url,
+		opts:      opts,
+		createdAt: time.Now(),
 	}
 	found := false
 	ind := 0
@@ -560,6 +648,7 @@ func (q *DeferredQueue) SetDeferred(
 		if sameContent(q.deferredItems[ind].buf, buf) {
 			item.attempts = q.deferredItems[ind].attempts
 			item.retryAt = q.deferredItems[ind].retryAt
+			item.createdAt = q.deferredItems[ind].createdAt
 		}
 		q.log.Tracef("Replacing key %s", key)
 		q.deferredItems[ind] = &item

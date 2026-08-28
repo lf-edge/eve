@@ -8,6 +8,7 @@
 package controllerconn
 
 import (
+	"net/http"
 	"sort"
 	"strings"
 	"sync"
@@ -115,6 +116,49 @@ func (am *AgentMetrics) RecordSuccess(log *base.LogObject, ifname, url string,
 	u.TotalTimeSpent += timeSpent
 	if resume {
 		u.SessionResume++
+	}
+	u.LastUpdated = time.Now()
+	m.URLCounters[url] = u
+	am.metrics[ifname] = m
+}
+
+// deliveredHTTPStatus tells whether an answer with this status code accepted
+// the payload. It is the set of status codes the send paths treat as success.
+func deliveredHTTPStatus(statusCode int) bool {
+	switch statusCode {
+	case http.StatusOK, http.StatusCreated, http.StatusNotModified,
+		http.StatusNoContent:
+		return true
+	}
+	return false
+}
+
+// RecordAnswer records what the controller's answer said about the payload:
+// accepted, refused with a status which may not repeat, or rejected outright.
+// The refusal classification is the one the deferred queue retries on, so the
+// counters explain what became of the message.
+//
+// This complements RecordSuccess and RecordFailure, which count whether the
+// controller was reached at all - an answered request is a success there even
+// when the answer is a 404. Call it for a url one of those was called for, so
+// that the entry is already accounted for against MaxURLCounters.
+func (am *AgentMetrics) RecordAnswer(log *base.LogObject, ifname, url string,
+	statusCode int) {
+	release := am.acquire(log)
+	defer release()
+
+	m := am.getInterfaceMetrics(ifname)
+	u := m.URLCounters[url]
+	switch {
+	case deliveredHTTPStatus(statusCode):
+		u.DeliveredMsgCount++
+	case statusCode < 400 || statusCode >= 600:
+		// Neither an acceptance nor a refusal of the payload.
+		return
+	case retriableHTTPStatus(statusCode):
+		u.RetriableErrCount++
+	default:
+		u.RejectedErrCount++
 	}
 	u.LastUpdated = time.Now()
 	m.URLCounters[url] = u
