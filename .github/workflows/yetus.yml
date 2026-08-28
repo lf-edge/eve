@@ -31,8 +31,12 @@ jobs:
           # Add upstream and fetch the base branch
           git remote add upstream ${{ github.server_url }}/${{ github.repository }}.git
           git fetch upstream ${{ github.base_ref }}
-          # Now diff against the correct base
-          git diff upstream/${{ github.base_ref }}...HEAD > ${{ github.workspace }}/pr.patch
+          # Now diff against the correct base. --binary is required for any
+          # patch that adds or changes a non-text file: Yetus picks its apply
+          # method by dry-run, and without the binary hunks `git apply --check`
+          # rejects the patch, so it falls back to `patch -p1 -E`, which creates
+          # such a file empty and then deletes it again.
+          git diff --binary upstream/${{ github.base_ref }}...HEAD > ${{ github.workspace }}/pr.patch
           # Get back to upstream master so patch can be applied
           git checkout upstream/${{ github.base_ref }} -b ${{ github.base_ref }}
           git submodule update --init --recursive
