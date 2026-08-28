@@ -16,10 +16,9 @@ import (
 
 	"github.com/containerd/platforms"
 	"github.com/linuxkit/linuxkit/src/cmd/linuxkit/moby"
-	"github.com/moby/buildkit/frontend/dockerfile/instructions"
-	"github.com/moby/buildkit/frontend/dockerfile/parser"
-	"github.com/moby/buildkit/frontend/dockerfile/shell"
 	ocispecs "github.com/opencontainers/image-spec/specs-go/v1"
+
+	"github.com/lf-edge/eve/tools/dockerfile-from-checker/dockerfilefrom"
 )
 
 // Target information
@@ -81,24 +80,6 @@ func parseYMLfile(fileName string) []string {
 	return deps
 }
 
-type argsEnvGetter struct {
-	args map[string]string
-}
-
-func (aeg *argsEnvGetter) Get(key string) (string, bool) {
-	val, found := aeg.args[key]
-	return val, found
-}
-
-func (aeg *argsEnvGetter) Keys() []string {
-	keys := make([]string, 0, len(aeg.args))
-	for key := range aeg.args {
-		keys = append(keys, key)
-	}
-
-	return keys
-}
-
 func parseDockerfile(pkgName string) []string {
 	dockerfilePath := filepath.Join(pkgName, "Dockerfile")
 	dt, err := os.ReadFile(dockerfilePath)
@@ -109,35 +90,29 @@ func parseDockerfile(pkgName string) []string {
 		panic(err)
 	}
 
-	dockerfile, err := parser.Parse(bytes.NewReader(dt))
+	res, err := dockerfilefrom.Scan(bytes.NewReader(dt))
 	if err != nil {
-		panic(err)
-	}
-	stages, metaArgs, err := instructions.Parse(dockerfile.AST, nil)
-	if err != nil {
-		log.Fatalf("parsing instructions of %s failed: %v", dockerfilePath, err)
+		log.Fatalf("parsing %s failed: %+v", dockerfilePath, err)
 	}
 
-	aeg := createDockerEnvGetter(filepath.Join(pkgName, "build.yml"), metaArgs)
-
-	shlex := shell.NewLex(dockerfile.EscapeToken)
+	args := createDockerEnvGetter(filepath.Join(pkgName, "build.yml"), res.Args)
 
 	targetsMap := make(map[string]struct{})
-	for _, st := range stages {
-		pResult, err := shlex.ProcessWordWithMatches(st.BaseName, &aeg)
-		if err != nil {
-			panic(err)
-		}
-		targetsMap[pResult.Result] = struct{}{}
+	for _, from := range res.FromSet {
+		target := dockerfilefrom.Expand(from, func(name string) (string, bool) {
+			val, ok := args[name]
+			return val, ok
+		})
+		targetsMap[target] = struct{}{}
 	}
-	targets := make([]string, 0)
+	targets := make([]string, 0, len(targetsMap))
 	for target := range targetsMap {
 		targets = append(targets, target)
 	}
 	return targets
 }
 
-func createDockerEnvGetter(buildYmlFile string, metaArgs []instructions.ArgCommand) argsEnvGetter {
+func createDockerEnvGetter(buildYmlFile string, metaArgs map[string]string) map[string]string {
 	buildPlatform := []ocispecs.Platform{platforms.DefaultSpec()}[0]
 	targetPlatform := ocispecs.Platform{
 		Architecture: TARGETARCH,
@@ -145,32 +120,26 @@ func createDockerEnvGetter(buildYmlFile string, metaArgs []instructions.ArgComma
 		Variant:      TARGETVARIANT,
 	}
 
-	aeg := argsEnvGetter{
+	args := map[string]string{
 		// from github.com/moby/buildkit/frontend/dockerfile/dockerfile2llb/platform.go:getPlatformArgs
-		args: map[string]string{
-			"BUILDPLATFORM":  platforms.Format(buildPlatform),
-			"BUILDOS":        buildPlatform.OS,
-			"BUILDARCH":      buildPlatform.Architecture,
-			"BUILDVARIANT":   buildPlatform.Variant,
-			"TARGETPLATFORM": platforms.Format(targetPlatform),
-			"TARGETOS":       targetPlatform.OS,
-			"TARGETARCH":     targetPlatform.Architecture,
-			"TARGETVARIANT":  targetPlatform.Variant,
-		},
+		"BUILDPLATFORM":  platforms.Format(buildPlatform),
+		"BUILDOS":        buildPlatform.OS,
+		"BUILDARCH":      buildPlatform.Architecture,
+		"BUILDVARIANT":   buildPlatform.Variant,
+		"TARGETPLATFORM": platforms.Format(targetPlatform),
+		"TARGETOS":       targetPlatform.OS,
+		"TARGETARCH":     targetPlatform.Architecture,
+		"TARGETVARIANT":  targetPlatform.Variant,
 	}
-	for _, ma := range metaArgs {
-		for _, arg := range ma.Args {
-			key := arg.Key
-			val := arg.ValueString()
-			aeg.args[key] = val
-		}
+	for key, val := range metaArgs {
+		args[key] = val
 	}
 
 	for k, v := range lktBuildArgs(buildYmlFile) {
-		aeg.args[k] = v
+		args[k] = v
 	}
 
-	return aeg
+	return args
 }
 
 // Print a single dependency package, only suitable for dot file
