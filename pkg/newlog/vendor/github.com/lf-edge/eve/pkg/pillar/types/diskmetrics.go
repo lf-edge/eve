@@ -70,6 +70,12 @@ type DiskMetric struct {
 	UsedBytes  uint64 // Value in Bytes. Total number of used Bytes by the disk.
 	FreeBytes  uint64 // Value in Bytes. Total number of free Bytes for the disk.
 	IsDir      bool   // Will be true if DiskPath is a mountPath, will false if it's a disk.
+
+	// GPT identity for block partitions. Empty when IsDir is true,
+	// for whole-disk entries, and for partitions on non-GPT disks.
+	PartitionLabel string // GPT PARTLABEL
+	PartitionType  string // GPT partition type GUID
+	PartitionUUID  string // GPT PARTUUID
 }
 
 // Key returns the pubsub Key.
@@ -92,6 +98,9 @@ func (status DiskMetric) LogCreate(logBase *base.LogObject) {
 		AddField("userbytes-int64", status.UsedBytes).
 		AddField("freebytes-int64", status.FreeBytes).
 		AddField("isdor", status.IsDir).
+		AddField("partition-label", status.PartitionLabel).
+		AddField("partition-type", status.PartitionType).
+		AddField("partition-uuid", status.PartitionUUID).
 		Metricf("DiskMetric status create")
 }
 
@@ -111,6 +120,9 @@ func (status DiskMetric) LogModify(logBase *base.LogObject, old interface{}) {
 		AddField("old-userbytes-int64", status.UsedBytes).
 		AddField("old-freebytes-int64", status.FreeBytes).
 		AddField("isdor", status.IsDir).
+		AddField("partition-label", status.PartitionLabel).
+		AddField("partition-type", status.PartitionType).
+		AddField("partition-uuid", status.PartitionUUID).
 		Metricf("DiskMetric status modify")
 }
 
