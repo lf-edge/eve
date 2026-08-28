@@ -7,19 +7,25 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/euank/go-kmsg-parser/kmsgparser"
+	"github.com/euank/go-kmsg-parser/v3/kmsgparser"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 // getKernelMsg - goroutine to get from /dev/kmsg
 func getKernelMsg(loggerChan chan inputEntry) {
-	parser, err := kmsgparser.NewParser()
+	parser, err := kmsgparser.NewParser(kmsgparser.WithLogger(logger))
 	if err != nil {
 		log.Fatalf("unable to create kmsg parser: %v", err)
 	}
 	defer parser.Close()
 
-	kmsg := parser.Parse()
+	kmsg := make(chan kmsgparser.Message, 1)
+	go func() {
+		if err := parser.Parse(kmsg); err != nil {
+			log.Errorf("kmsg parser stopped: %v", err)
+		}
+	}()
+
 	for msg := range kmsg {
 		entry := inputEntry{
 			source:    "kernel",
