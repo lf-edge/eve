@@ -32,6 +32,7 @@ This document mirrors the key names, types, defaults, and ranges defined there.
 | timer.port.georetry | integer in seconds | 600 (10 minutes) | 5 | 4294967295 (max uint32) | retry geolocation after failure |
 | timer.port.testduration | integer in seconds | 30 | 10 | 3600 (1 hour) | wait for DHCP to give address |
 | timer.port.testinterval | timer in seconds | 300 (5 minutes) | 60 (1 minute) | 3600 (1 hour) | retest the current port config |
+| timer.port.testfailinterval | timer in seconds | 300 (5 minutes) | 60 (1 minute) | 3600 (1 hour) | minimum time a port config must wait after a verification failure before it is eligible to be retested |
 | timer.port.timeout | timer in seconds | 15 | 0 | 3600 (1 hour) | time for each http/send |
 | timer.port.testbetterinterval | timer in seconds | 600 (10 minutes) | 0 | 4294967295 | retry the highest-priority port configuration when the current port configuration is a lower-priority fallback |
 | network.fallback.any.eth | "enabled" or "disabled" | disabled | - | - | if no connectivity try any Ethernet, WiFi, or LTE with DHCP client (enabled forcefully during onboarding if no network config) |
