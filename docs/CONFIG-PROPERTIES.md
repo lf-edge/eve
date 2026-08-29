@@ -26,6 +26,7 @@
 | timer.port.georetry | integer in seconds | 600 | retry geolocation after failure |
 | timer.port.testduration | integer in seconds | 30 | wait for DHCP to give address |
 | timer.port.testinterval | timer in seconds | 300 | retest the current port config |
+| timer.port.testfailinterval | timer in seconds | 300 | minimum time a port config must wait after a verification failure before it is eligible to be retested |
 | timer.port.timeout | timer in seconds | 15 | time for each http/send |
 | timer.port.testbetterinterval | timer in seconds | 600 | test a higher prio port config |
 | network.fallback.any.eth | "enabled" or "disabled" | disabled (enabled forcefully during onboarding if no network config) | if no connectivity try any Ethernet, WiFi, or LTE with DHCP client |
