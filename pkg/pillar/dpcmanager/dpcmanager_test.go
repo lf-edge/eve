@@ -431,6 +431,9 @@ func globalConfig() types.ConfigItemValueMap {
 	gcp.SetGlobalValueInt(types.NetworkTestInterval, 2)
 	gcp.SetGlobalValueInt(types.NetworkTestBetterInterval, 3)
 	gcp.SetGlobalValueInt(types.NetworkTestDuration, 1)
+	// Matches initTest's DpcMinTimeSinceFailure struct field preset (in
+	// effect only until the first UpdateGCP call, which this overrides).
+	gcp.SetGlobalValueInt(types.NetworkTestFailInterval, 3)
 	gcp.SetGlobalValueInt(types.NetworkGeoRetryTime, 1)
 	gcp.SetGlobalValueInt(types.NetworkGeoRedoTime, 3)
 	gcp.SetGlobalValueInt(types.LocationCloudInterval, 10)

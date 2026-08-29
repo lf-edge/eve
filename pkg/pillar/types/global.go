@@ -194,6 +194,10 @@ const (
 	NetworkTestDuration GlobalSettingKey = "timer.port.testduration"
 	// NetworkTestInterval global setting key
 	NetworkTestInterval GlobalSettingKey = "timer.port.testinterval"
+	// NetworkTestFailInterval global setting key: minimum time a DPC must
+	// wait after a verification failure before it is eligible to be
+	// retested again (DpcManager.DpcMinTimeSinceFailure).
+	NetworkTestFailInterval GlobalSettingKey = "timer.port.testfailinterval"
 	// NetworkTestBetterInterval global setting key
 	NetworkTestBetterInterval GlobalSettingKey = "timer.port.testbetterinterval"
 	// NetworkTestTimeout global setting key
@@ -1026,6 +1030,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(NetworkGeoRetryTime, 10*MinuteInSec, 5, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(NetworkTestDuration, 30, 10, HourInSec)
 	configItemSpecMap.AddIntItem(NetworkTestInterval, 5*MinuteInSec, MinuteInSec, HourInSec)
+	configItemSpecMap.AddIntItem(NetworkTestFailInterval, 5*MinuteInSec, MinuteInSec, HourInSec)
 	configItemSpecMap.AddIntItem(NetworkTestBetterInterval, 10*MinuteInSec, 0, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(NetworkTestTimeout, 15, 0, HourInSec)
 	configItemSpecMap.AddIntItem(NetworkSendTimeout, 2*MinuteInSec, 0, HourInSec)
