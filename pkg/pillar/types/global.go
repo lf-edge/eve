@@ -1176,7 +1176,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(NetworkGeoRedoTime, HourInSec, 60, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(NetworkGeoRetryTime, 10*MinuteInSec, 5, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(NetworkTestDuration, 30, 10, HourInSec)
-	configItemSpecMap.AddIntItem(NetworkTestInterval, 5*MinuteInSec, 5*MinuteInSec, HourInSec)
+	configItemSpecMap.AddIntItem(NetworkTestInterval, 5*MinuteInSec, MinuteInSec, HourInSec)
 	configItemSpecMap.AddIntItem(NetworkTestBetterInterval, 10*MinuteInSec, 0, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(NetworkTestTimeout, 15, 0, HourInSec)
 	configItemSpecMap.AddIntItem(NetworkSendTimeout, 2*MinuteInSec, 0, HourInSec)
