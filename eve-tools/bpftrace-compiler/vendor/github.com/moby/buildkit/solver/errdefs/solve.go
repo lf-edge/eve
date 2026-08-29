@@ -1,20 +1,19 @@
 package errdefs
 
 import (
-	"bytes"
 	"errors"
 
 	"github.com/containerd/typeurl/v2"
-	"github.com/golang/protobuf/jsonpb" //nolint:staticcheck
 	"github.com/moby/buildkit/solver/pb"
 	"github.com/moby/buildkit/util/grpcerrors"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 func init() {
 	typeurl.Register((*Solve)(nil), "github.com/moby/buildkit", "errdefs.Solve+json")
 }
 
-//nolint:revive,staticcheck
+//nolint:staticcheck
 type IsSolve_Subject isSolve_Subject
 
 // SolveError will be returned when an error is encountered during a solve that
@@ -66,12 +65,9 @@ func (v *Solve) WrapError(err error) error {
 }
 
 func (v *Solve) MarshalJSON() ([]byte, error) {
-	m := jsonpb.Marshaler{}
-	buf := new(bytes.Buffer)
-	err := m.Marshal(buf, v)
-	return buf.Bytes(), err
+	return protojson.Marshal(v)
 }
 
 func (v *Solve) UnmarshalJSON(b []byte) error {
-	return jsonpb.Unmarshal(bytes.NewReader(b), v)
+	return protojson.Unmarshal(b, v)
 }
