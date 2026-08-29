@@ -168,6 +168,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		NetworkGeoRetryTime,
 		NetworkTestDuration,
 		NetworkTestInterval,
+		NetworkTestFailInterval,
 		NetworkTestBetterInterval,
 		NetworkTestTimeout,
 		NetworkSendTimeout,
