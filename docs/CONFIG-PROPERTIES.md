@@ -28,7 +28,7 @@
 | timer.port.georedo | integer in seconds | 3600 (1 hour) | 60 (1 minute) | 4294967295 (max uint32) | redo IP geolocation |
 | timer.port.georetry | integer in seconds | 600 (10 minutes) | 5 | 4294967295 (max uint32) | retry geolocation after failure |
 | timer.port.testduration | integer in seconds | 30 | 10 | 3600 (1 hour) | wait for DHCP to give address |
-| timer.port.testinterval | timer in seconds | 300 (5 minutes) | 300 (5 minutes) | 3600 (1 hour) | retest the current port config |
+| timer.port.testinterval | timer in seconds | 300 (5 minutes) | 60 (1 minute) | 3600 (1 hour) | retest the current port config |
 | timer.port.timeout | timer in seconds | 15 | 0 | 3600 (1 hour) | time for each http/send |
 | timer.port.testbetterinterval | timer in seconds | 600 (10 minutes) | 0 | 4294967295 (max uint32) | test a higher prio port config |
 | network.fallback.any.eth | "enabled" or "disabled" | disabled (enabled forcefully during onboarding if no network config) | - | - | if no connectivity try any Ethernet, WiFi, or LTE with DHCP client |
