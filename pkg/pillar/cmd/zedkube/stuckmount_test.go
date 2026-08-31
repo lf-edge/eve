@@ -32,6 +32,9 @@ type stuckMountFakes struct {
 	presentPVs  map[string]bool
 	pvcErr      map[string]error
 	attachErr   map[string]error
+	// unwantedPVCs are the PVCs no AppInstanceConfig references; anything not
+	// listed is treated as wanted, so tests that predate the gate are unaffected.
+	unwantedPVCs map[string]bool
 
 	signalPids  []int
 	signalErr   error
@@ -49,11 +52,14 @@ func installStuckMountFakes(t *testing.T, f *stuckMountFakes) {
 	origPVCGet, origAttached := pvcGet, volumeAttachmentAttached
 	origDevice, origSignal := devicePresent, signalK3s
 	origFlag, origDryRun := stuckMountK3sStartFlag, stuckMountDryRun
+	origWanted := pvcWanted
 	t.Cleanup(func() {
 		pvcGet, volumeAttachmentAttached = origPVCGet, origAttached
 		devicePresent, signalK3s = origDevice, origSignal
 		stuckMountK3sStartFlag, stuckMountDryRun = origFlag, origDryRun
+		pvcWanted = origWanted
 	})
+	pvcWanted = func(_ *zedkube, pvcName string) bool { return !f.unwantedPVCs[pvcName] }
 
 	f.flagPath = filepath.Join(t.TempDir(), "kube", "k3s-start")
 	stuckMountK3sStartFlag = f.flagPath
@@ -372,6 +378,25 @@ func TestPodMountWedge(t *testing.T) {
 			wantPV:  "pv-a",
 			wantPod: "multivol",
 		},
+		{
+			// An orphaned CDI upload PVC looks identical from the outside, but a
+			// fresh kubelet cannot complete an upload no app is waiting for.
+			name:   "volume belongs to no app config",
+			pod:    func(*stuckMountFakes) corev1.Pod { return pendingPod("orphan", now, stale, "pvc-a") },
+			mutate: func(f *stuckMountFakes) { f.unwantedPVCs = map[string]bool{"pvc-a": true} },
+		},
+		{
+			// The gate must not hide a real wedge just because the pod also
+			// mounts something stale, e.g. an upload pod's scratch PVC.
+			name: "wanted volume still wedges alongside an unwanted one",
+			pod: func(*stuckMountFakes) corev1.Pod {
+				return pendingPod("mixed", now, stale, "pvc-stale", "pvc-a")
+			},
+			mutate:  func(f *stuckMountFakes) { f.unwantedPVCs = map[string]bool{"pvc-stale": true} },
+			want:    true,
+			wantPV:  "pv-a",
+			wantPod: "mixed",
+		},
 	}
 
 	for _, tc := range tests {
@@ -396,6 +421,32 @@ func TestPodMountWedge(t *testing.T) {
 
 // TestCheckStuckVolumeMountEpisode walks one wedge episode through the attempt
 // cap and the cooldown, then confirms a cleared wedge re-arms recovery.
+// TestCheckStuckVolumeMountOrphanNoRestart pins the whole point of the gate: an
+// orphaned upload PVC has the full wedge signature, so without the gate this tick
+// would restart k3s -- and go on doing it after every reboot, since the attempt
+// cap is in-memory. Nothing must be signaled, and no episode may be opened.
+func TestCheckStuckVolumeMountOrphanNoRestart(t *testing.T) {
+	f := wedgeFakes(t)
+	f.unwantedPVCs = map[string]bool{"pvc-a": true}
+	t0 := time.Now()
+	pod := pendingPod("cdi-upload-orphan", t0, 2*stuckMountThreshold, "pvc-a")
+	clientset := fake.NewSimpleClientset(&pod)
+	z := &zedkube{nodeName: testNodeName}
+
+	z.checkStuckVolumeMountWithClient(clientset, t0)
+	assert.Equal(t, 0, f.signalCalls, "k3s must not be restarted for a volume no app wants")
+	assert.Equal(t, 0, z.stuckMountRecoverCount, "no episode may be opened")
+	assert.True(t, z.stuckMountSuppressUntil.IsZero(), "no cooldown may be armed")
+	assert.Equal(t, 1, z.stuckMountUnwantedCount, "the skip must be counted for the operator hint")
+
+	// A reboot resets the in-memory counters; the gate must still hold, which is
+	// what stops the per-boot restart storm the field data showed.
+	z2 := &zedkube{nodeName: testNodeName}
+	z2.checkStuckVolumeMountWithClient(clientset, t0.Add(24*time.Hour))
+	assert.Equal(t, 0, f.signalCalls)
+	assert.Equal(t, 0, z2.stuckMountRecoverCount)
+}
+
 func TestCheckStuckVolumeMountEpisode(t *testing.T) {
 	f := wedgeFakes(t)
 	t0 := time.Now()
