@@ -167,6 +167,10 @@ type zedkube struct {
 	// after an attempt so the detector cannot thrash a kubelet restart.
 	stuckMountRecoverCount  int
 	stuckMountSuppressUntil time.Time
+	// stuckMountUnwantedCount is the last-logged number of attached-but-unmounted
+	// volumes no app config references, so that persistent condition is reported
+	// on change instead of on every tick.
+	stuckMountUnwantedCount int
 	// lbConfigError is set by resolveLBInterfaces when an LB CIDR from the
 	// controller overlaps with a management port IP. When set, the offending
 	// entry is omitted from EdgeNodeClusterStatus.LBInterfaces and the error
