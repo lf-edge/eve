@@ -87,6 +87,10 @@ const (
 	warningTime         = 40 * time.Second
 	casClientType       = "containerd"
 	unknownStateRetries = 10
+
+	// gracefulShutdownWait bounds how long a guest is given to act on the
+	// poweroff request before the stop is escalated to a forced one.
+	gracefulShutdownWait = 60 * time.Second
 )
 
 // Really a constant
@@ -2177,6 +2181,33 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 }
 
 // shutdown and wait for the domain to go away; if that fails destroy and wait
+// shutdownBudget decides how a domain in the given virtualization mode is asked
+// to stop: whether a poweroff request is sent at all, and how long that request
+// is given to take effect before the caller escalates to a forced stop. hvName
+// is the hypervisor backend in use, and maxDelay the budget for a mode that
+// warrants waiting the whole way.
+func shutdownBudget(mode types.VmMode, hvName string,
+	maxDelay time.Duration) (doShutdown bool, firstDelay time.Duration) {
+
+	switch mode {
+	case types.HVM, types.FML:
+		// Do a short shutdown wait, just in case there are
+		// PV tools in guest, then a shutdown -F
+		return true, gracefulShutdownWait
+	case types.PV:
+		// PV is the zero value of VmMode, so it is also what an application
+		// whose config leaves the mode unset lands on. Only xen acts on the
+		// mode; under any other hypervisor such a guest is no more likely to
+		// service the poweroff request than an HVM one, so it gets the same
+		// short wait rather than the whole budget.
+		if hvName == hypervisor.XenHypervisorName {
+			return true, maxDelay
+		}
+		return true, gracefulShutdownWait
+	}
+	return false, maxDelay
+}
+
 func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool) {
 
 	log.Functionf("doInactivate(%v) for %s domainId %d",
@@ -2218,19 +2249,8 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 		maxDelay /= 10
 	}
 
-	firstDelay := maxDelay
-	doShutdown := false // shutdown for particular VirtualizationModes
-
-	switch status.VirtualizationMode {
-	case types.HVM, types.FML:
-		doShutdown = true
-
-		// Do a short shutdown wait, just in case there are
-		// PV tools in guest, then a shutdown -F
-		firstDelay = time.Second * 60
-	case types.PV:
-		doShutdown = true
-	}
+	doShutdown, firstDelay := shutdownBudget(status.VirtualizationMode,
+		hyper.Name(), maxDelay)
 
 	if status.DomainId != 0 {
 		status.State = types.HALTING
