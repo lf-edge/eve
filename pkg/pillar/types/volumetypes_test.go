@@ -36,6 +36,33 @@ func TestVolumeStatusGetPVCNameNoHash(t *testing.T) {
 	assert.NotContains(t, name, "#")
 }
 
+// VolumeRefConfig.GetPVCName
+
+// The stuck-mount detector decides whether to restart k3s by matching a pod's
+// PVC name against the volumes apps reference, so the two spellings of the name
+// must not drift apart.
+func TestVolumeRefConfigGetPVCNameMatchesStatus(t *testing.T) {
+	id := uuid.Must(uuid.NewV4())
+	ref := VolumeRefConfig{
+		VolumeID:               id,
+		GenerationCounter:      2,
+		LocalGenerationCounter: 1,
+		AppUUID:                uuid.Must(uuid.NewV4()),
+	}
+	status := VolumeStatus{
+		VolumeID:               id,
+		GenerationCounter:      2,
+		LocalGenerationCounter: 1,
+	}
+	assert.Equal(t, fmt.Sprintf("%s-pvc-3", id.String()), ref.GetPVCName())
+	assert.Equal(t, status.GetPVCName(), ref.GetPVCName())
+	// AppUUID distinguishes refs to one volume from several apps; it must not
+	// reach the PVC name, or the same volume would resolve to different objects.
+	other := ref
+	other.AppUUID = uuid.Must(uuid.NewV4())
+	assert.Equal(t, ref.GetPVCName(), other.GetPVCName())
+}
+
 // VolumesSnapshotAction.String
 
 func TestVolumesSnapshotActionString(t *testing.T) {
