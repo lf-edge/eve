@@ -7,7 +7,7 @@ HASH := \#
 EVETEST_VERSION := $(shell grep -v '^$(HASH)' VERSION | head -n1)
 EVETEST_ORG ?= lfedge
 
-EVETEST_ADAM_VERSION ?= 0.0.81
+EVETEST_ADAM_VERSION ?= 0.0.82
 EVETEST_ADAM_REPO ?= lfedge/adam
 
 # Repository holding built EVE images (mirrors constants.DefaultEVERepo).

@@ -343,7 +343,7 @@ const (
 	DefaultSDNRepo = "lfedge/evetest-sdn"
 
 	// DefaultAdamVersion specifies the Adam version to use by default.
-	DefaultAdamVersion = "0.0.81"
+	DefaultAdamVersion = "0.0.82"
 
 	// DefaultSDNVersion specifies the SDN version to use by default.
 	DefaultSDNVersion = "1.2"
