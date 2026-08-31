@@ -158,7 +158,12 @@ func vfIfNameToPci(ifName string) (string, error) {
 
 // PCILongToShort returns the PCI ID without the domain id
 func PCILongToShort(long string) string {
-	return strings.SplitAfterN(long, ":", 2)[1]
+	parts := strings.SplitAfterN(long, ":", 2)
+	if len(parts) < 2 {
+		// No domain-id prefix to strip; return the input unchanged.
+		return long
+	}
+	return parts[1]
 }
 
 // PCISameController compares the PCI-ID without comparing the controller
