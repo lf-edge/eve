@@ -38,9 +38,13 @@ zedmanager can also handle two commands; a restart and a purge command.
 
 The restart means restarting/rebooting the application instance without any changes. This is fed down to domainmgr as a Activate=false followed by Activate=true sequence of operation.
 
-The purge means replacing the first volume (the "boot disk") with a copy recreated from the immutable content. As part of that it is also possible to add and drop virtual disks, network adapters, and/or I/O adapters.
+The purge means replacing the first volume (the "boot disk") with a copy recreated from the immutable content. As part of that it is also possible to add and drop virtual disks. Network adapters and I/O adapters can also be changed as part of a purge, but no longer require one (see below).
 
 The purge orchestration takes pains to minimize the downtime for the application by creating the new volume or volumes (which might involve downloading and verifying new versions or new content) while the application is running using the old volumes. After that the application instance is halted, and the I/O and network adapters are released. Then the instance is recreated and booted using the new volumes and I/O plus networking adapters.
+
+### Changing network and I/O adapters without a purge
+
+A change to the set of virtual network adapters or to the set of directly assigned (passthrough) I/O adapters of an application instance touches no volume, so it does not need a purge. zedmanager stages such a change instead: while the application instance is running it keeps publishing the old adapter set to zedrouter and domainmgr, and the new set takes effect on the next restart of the application instance, when domainmgr re-creates the domain and re-runs I/O adapter reservation and assignment.
 
 ## Communication
 
