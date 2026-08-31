@@ -59,6 +59,17 @@ func TestDiskStatusGetPVCNameFromVolumeKeyBadGeneration(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// Regression: a volume key with no '#' separator (bare UUID) must return an
+// error, not panic on indexing the missing generation field.
+func TestDiskStatusGetPVCNameFromVolumeKeyNoGeneration(t *testing.T) {
+	id := uuid.Must(uuid.NewV4())
+	status := DiskStatus{VolumeKey: id.String()}
+	assert.NotPanics(t, func() {
+		_, err := status.GetPVCNameFromVolumeKey()
+		assert.Error(t, err)
+	})
+}
+
 // DomainConfig.IsOCIContainer
 
 func TestDomainConfigIsOCIContainer(t *testing.T) {
