@@ -78,6 +78,18 @@ to application domains:
 * [Xen PCI Passthrough](https://wiki.xenproject.org/wiki/Xen_PCI_Passthrough) for Xen
 * [QEMU/VFIO Passthrough](https://wiki.archlinux.org/index.php/PCI_passthrough_via_OVMF) for KVM
 
+Directly assigned network adapters can be added to, removed from, and moved between applications
+without purging them: EVE stages such a configuration change and applies it on the application's
+next restart (see [zedmanager.md](../pkg/pillar/docs/zedmanager.md) for details; the same applies
+to directly assigned I/O adapters of any type).
+
+Note that whenever a directly assigned device changes hands between applications, no matter
+whether the reassignment happens with a purge or just a restart, the new application receives the
+device in whatever state the previous guest driver left it.
+If the previous VM did not bring the device into a good state when shutting down (e.g. it crashed
+or was forcibly stopped, incomplete driver), the receiving application may run into problems with
+the device, such as driver initialization failures or device malfunction.
+
 ### SR-IOV VFs
 
 SR-IOV NIC VFs (virtual functions) combine the resource-sharing advantages of virtual interfaces
