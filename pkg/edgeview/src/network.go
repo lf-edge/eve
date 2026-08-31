@@ -1481,6 +1481,17 @@ func runTCPDump(intfStat []intfIP, subStr string) {
 	}
 }
 
+// maskPSK fully redacts the value of a "psk=" line from wpa_supplicant.conf
+// before it is displayed. The operator only needs to see that a key is set, not
+// any of its bytes, so nothing of the key (not even its length) is revealed.
+func maskPSK(line string) string {
+	if !strings.Contains(line, "psk=") {
+		return line
+	}
+	pos := strings.SplitN(line, "psk=", 2)
+	return pos[0] + "psk=<redacted>"
+}
+
 func runWireless() {
 	err := addPackage("/usr/sbin/iwconfig", "wireless-tools")
 	if err != nil {
@@ -1518,14 +1529,7 @@ func runWireless() {
 			return
 		}
 		for _, l := range lines[:len(lines)-1] {
-			if strings.Contains(l, "psk=") {
-				pos := strings.Split(l, "psk=")
-				n := len(pos[1])
-				pos2 := pos[0] + "psk=" + pos[1][:3] + "..." + pos[1][n-3:]
-				fmt.Printf("%s\n", pos2)
-			} else {
-				fmt.Printf("%s\n", l)
-			}
+			fmt.Printf("%s\n", maskPSK(l))
 		}
 	}
 

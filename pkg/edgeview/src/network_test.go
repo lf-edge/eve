@@ -40,3 +40,20 @@ func TestValidateExecArg(t *testing.T) {
 		g.Expect(validateExecArg("arg", ok)).ToNot(HaveOccurred(), "input %q", ok)
 	}
 }
+
+// TestMaskPSK checks that a "psk=" value from wpa_supplicant.conf is fully
+// redacted before display: none of the key's bytes (or its length) are shown,
+// regardless of key length, and non-psk lines pass through unchanged.
+func TestMaskPSK(t *testing.T) {
+	g := NewWithT(t)
+
+	// A line with no psk is returned unchanged.
+	g.Expect(maskPSK("    ssid=\"home\"")).To(Equal("    ssid=\"home\""))
+
+	// The key is redacted whole, for any length, revealing nothing about it.
+	for _, s := range []string{"psk=", "psk=a", "psk=abcdef", "psk=0123456789abcdef"} {
+		in := s
+		g.Expect(func() { _ = maskPSK(in) }).ToNot(Panic(), "input %q", in)
+		g.Expect(maskPSK("    "+in)).To(Equal("    psk=<redacted>"), "input %q", in)
+	}
+}
