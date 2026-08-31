@@ -79,3 +79,13 @@ func TestIoBundleToPciRenamesShiftedIfname(t *testing.T) {
 	assert.Contains(t, ib.Error.String(), "renamed to match the model")
 	assert.Contains(t, ib.Error.String(), kernelName)
 }
+
+func TestPCILongToShort(t *testing.T) {
+	// Normal PCI address: strip the domain-id prefix.
+	assert.Equal(t, "03:00.0", PCILongToShort("0000:03:00.0"))
+	// Regression: a value with no ':' must not panic; return it unchanged.
+	assert.NotPanics(t, func() {
+		assert.Equal(t, "nocolon", PCILongToShort("nocolon"))
+		assert.Equal(t, "", PCILongToShort(""))
+	})
+}
