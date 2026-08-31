@@ -11,11 +11,39 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
+// kmsgRestartDelay is the backoff applied before restarting the kmsg parser,
+// so a persistently failing /dev/kmsg does not spin this goroutine.
+const kmsgRestartDelay = 10 * time.Second
+
 // getKernelMsg - goroutine to get from /dev/kmsg
 func getKernelMsg(loggerChan chan inputEntry) {
+	// The parser terminates on any read or parse error and closes its channel.
+	// Nothing else supervises this goroutine, so restart the parser instead of
+	// silently losing all kernel messages until the next reboot.
+	lastSeq := -1
+	for {
+		seq, err := collectKernelMsg(loggerChan, lastSeq)
+		switch {
+		case err != nil:
+			log.Errorf("kernel log collection failed: %v", err)
+		case seq == lastSeq:
+			// Nothing was delivered, so the parser choked on the record right
+			// after lastSeq. Skip it, or every restart hits the same record.
+			seq++
+		}
+		lastSeq = seq
+		log.Warnf("kmsg collection stopped, restarting in %v", kmsgRestartDelay)
+		time.Sleep(kmsgRestartDelay)
+	}
+}
+
+// collectKernelMsg reads /dev/kmsg into loggerChan until the parser stops, and
+// returns the sequence number of the last record it handed over. Reopening
+// /dev/kmsg replays the whole ring buffer, so records already seen are skipped.
+func collectKernelMsg(loggerChan chan inputEntry, lastSeq int) (int, error) {
 	parser, err := kmsgparser.NewParser(kmsgparser.WithLogger(logger))
 	if err != nil {
-		log.Fatalf("unable to create kmsg parser: %v", err)
+		return lastSeq, err
 	}
 	defer parser.Close()
 
@@ -27,6 +55,11 @@ func getKernelMsg(loggerChan chan inputEntry) {
 	}()
 
 	for msg := range kmsg {
+		if msg.SequenceNumber <= lastSeq {
+			continue
+		}
+		lastSeq = msg.SequenceNumber
+
 		entry := inputEntry{
 			source:    "kernel",
 			severity:  types.SyslogKernelDefaultLogLevel,
@@ -48,4 +81,6 @@ func getKernelMsg(loggerChan chan inputEntry) {
 
 		loggerChan <- entry
 	}
+
+	return lastSeq, nil
 }
