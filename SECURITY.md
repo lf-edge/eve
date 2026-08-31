@@ -7,6 +7,7 @@ The EVE project maintains security support for the following versions:
 | Version | Supported          |
 | ------- | ------------------ |
 | master  | ✅ |
+| 17.0.x | ✅ |
 | 16.0.x. | ✅ |
 | 14.5.x  | ✅ |
 | 13.4.x  | ✅ |
