@@ -423,6 +423,19 @@ func addPackage(pathName, pkgName string) error {
 	return nil
 }
 
+// validateExecArg guards an attacker-controlled operand before it is passed to
+// an external command via exec (no shell). If the token begins with '-' a
+// getopt-style option parser treats it as an option instead of an operand
+// (argument injection, CWE-88), e.g. a tcpdump filter of "-w<path>" becoming a
+// file-write option. Returns an error if unsafe. The caller must reject
+// the command on error rather than run it.
+func validateExecArg(name, val string) error {
+	if strings.HasPrefix(strings.TrimSpace(val), "-") {
+		return fmt.Errorf("%s %q must not start with '-'", name, val)
+	}
+	return nil
+}
+
 func runCmd(prog string, args []string, isPrint bool) (string, error) {
 	var retStr string
 	var retBytes []byte
