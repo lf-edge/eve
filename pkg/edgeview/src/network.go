@@ -1052,10 +1052,18 @@ func runTrace(substring, server string) {
 	prog := "traceroute"
 	var args []string
 	if substring != "" {
+		if err := validateExecArg("traceroute target", substring); err != nil {
+			fmt.Printf("%v\n", err)
+			return
+		}
 		// limit to 10 hops, 2 queries per hop, and wait 1 second
 		baseargs := []string{"-4", "-m", "10", "-q", "2", "-w", "1", substring}
 		args = baseargs
 		if cmdTimeout != "" {
+			if err := validateExecArg("timeout value", cmdTimeout); err != nil {
+				fmt.Printf("%v\n", err)
+				return
+			}
 			prog = "timeout"
 			args = []string{cmdTimeout, "traceroute"}
 			args = append(args, baseargs...)
@@ -1451,6 +1459,10 @@ func runTCPDump(intfStat []intfIP, subStr string) {
 			fmt.Printf("interface name %s, does not match any 'UP' interfaces on device: %v\n", intf, upintfs)
 			return
 		}
+	}
+	if err := validateExecArg("tcpdump filter", subs[1]); err != nil {
+		fmt.Printf("%v\n", err)
+		return
 	}
 	if !rePattern.MatchString(subs[1]) {
 		fmt.Printf("tcpdump command has invalid option\n")
