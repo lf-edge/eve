@@ -180,6 +180,9 @@ func (config DomainConfig) VirtualizationModeOrDefault() VmMode {
 func (status DiskStatus) GetPVCNameFromVolumeKey() (string, error) {
 	volumeIDAndGeneration := status.VolumeKey
 	generation := strings.Split(volumeIDAndGeneration, "#")
+	if len(generation) < 2 {
+		return "", fmt.Errorf("invalid volume key %q: missing generation", volumeIDAndGeneration)
+	}
 	volUUID, err := uuid.FromString(generation[0])
 	if err != nil {
 		return "", fmt.Errorf("failed to parse volUUID: %w", err)
