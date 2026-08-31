@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -74,6 +75,7 @@ var (
 	volumeAttachmentAttached = kubeapi.GetVolumeAttachmentAttached
 	devicePresent            = longhornDevicePresent
 	signalK3s                = signalK3sServer
+	pvcWanted                = (*zedkube).appWantsPVC
 )
 
 // checkStuckVolumeMount detects the kubelet volume-mount wedge: a pod scheduled
@@ -119,9 +121,22 @@ func (z *zedkube) checkStuckVolumeMountWithClient(clientset kubernetes.Interface
 	}
 
 	var wedged []string
+	unwanted := 0
 	for i := range pods.Items {
-		if desc, ok := z.podMountWedge(pods.Items[i], now); ok {
+		desc, ok, skipped := z.podMountWedgeCounting(pods.Items[i], now)
+		unwanted += skipped
+		if ok {
 			wedged = append(wedged, desc)
+		}
+	}
+	// Logged only on change, because the condition persists across every tick.
+	// It is the hint an operator needs: the wedge signature is present but no app
+	// wants the volume, so the fix is to reap the stale PVC, not to restart k3s.
+	if unwanted != z.stuckMountUnwantedCount {
+		z.stuckMountUnwantedCount = unwanted
+		if unwanted > 0 {
+			log.Noticef("checkStuckVolumeMount: %d attached-but-unmounted volume(s) belong to no app config; not restarting k3s for them (stale CDI upload PVCs?)",
+				unwanted)
 		}
 	}
 
@@ -153,24 +168,44 @@ func (z *zedkube) checkStuckVolumeMountWithClient(clientset kubernetes.Interface
 // failures) and at least one Longhorn PVC that is attached to this node yet
 // still unmounted.
 func (z *zedkube) podMountWedge(p corev1.Pod, now time.Time) (string, bool) {
+	desc, ok, _ := z.podMountWedgeCounting(p, now)
+	return desc, ok
+}
+
+// podMountWedgeCounting is podMountWedge plus the number of the pod's volumes
+// that were skipped because no app config references them, which the tick logs
+// as the operator-visible hint that stale CDI objects are present.
+func (z *zedkube) podMountWedgeCounting(p corev1.Pod, now time.Time) (string, bool, int) {
+	unwanted := 0
 	if p.Spec.NodeName != z.nodeName {
-		return "", false
+		return "", false, unwanted
 	}
 	if p.Status.Phase != corev1.PodPending || isPodTerminating(p) {
-		return "", false
+		return "", false, unwanted
 	}
 	if podHasContainerError(p) || podHasInitContainerError(p) {
-		return "", false
+		return "", false, unwanted
 	}
 	age := now.Sub(p.CreationTimestamp.Time)
 	if age < stuckMountThreshold {
-		return "", false
+		return "", false, unwanted
 	}
 	for _, vol := range p.Spec.Volumes {
 		if vol.PersistentVolumeClaim == nil {
 			continue
 		}
-		pvc, err := pvcGet(vol.PersistentVolumeClaim.ClaimName, log)
+		claim := vol.PersistentVolumeClaim.ClaimName
+		// A fresh kubelet can only help a volume some app is still waiting for.
+		// A CDI upload PVC left behind by a torn-down app keeps this exact
+		// signature indefinitely -- attached, device present, pod Pending -- yet
+		// nothing will ever complete its upload, so restarting k3s would cost a
+		// control-plane outage on every boot and change nothing. This is a local
+		// pubsub read, so it also keeps the apiserver calls below off that path.
+		if !pvcWanted(z, claim) {
+			unwanted++
+			continue
+		}
+		pvc, err := pvcGet(claim, log)
 		if err != nil || pvc.Spec.VolumeName == "" {
 			continue
 		}
@@ -186,9 +221,9 @@ func (z *zedkube) podMountWedge(p corev1.Pod, now time.Time) (string, bool) {
 			continue
 		}
 		return fmt.Sprintf("pod=%s pv=%s attached+device-present but unmounted, Pending %v",
-			p.Name, pvName, age.Round(time.Second)), true
+			p.Name, pvName, age.Round(time.Second)), true, unwanted
 	}
-	return "", false
+	return "", false, unwanted
 }
 
 // longhornDevicePresent reports whether the Longhorn block device for pvName
@@ -196,6 +231,33 @@ func (z *zedkube) podMountWedge(p corev1.Pod, now time.Time) (string, bool) {
 func longhornDevicePresent(pvName string) bool {
 	_, err := os.Stat(stuckMountDevPath + "/" + pvName)
 	return err == nil
+}
+
+// appWantsPVC reports whether any AppInstanceConfig currently references the
+// volume behind pvcName. zedkube already subscribes to AppInstanceConfig, so no
+// apiserver call is needed. VolumeRefConfig.GetPVCName agrees with
+// VolumeStatus.GetPVCName, so a PVC belonging to a live app always matches; one
+// left behind by a torn-down app matches nothing.
+//
+// An empty or not-yet-populated subscription makes every volume unwanted, which
+// suppresses recovery rather than triggering it — the safe direction, at the cost
+// of missing a genuine wedge in the first ticks after start-up.
+func (z *zedkube) appWantsPVC(pvcName string) bool {
+	if z.subAppInstanceConfig == nil {
+		return false
+	}
+	for _, c := range z.subAppInstanceConfig.GetAll() {
+		aiConfig, ok := c.(types.AppInstanceConfig)
+		if !ok {
+			continue
+		}
+		for _, volRef := range aiConfig.VolumeRefConfigList {
+			if volRef.GetPVCName() == pvcName {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // podHasInitContainerError mirrors podHasContainerError over init containers:
