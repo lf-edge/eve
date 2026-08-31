@@ -390,7 +390,17 @@ func LookupProxy(log *base.LogObject, status *types.DeviceNetworkStatus, ifname 
 			// XXX Take the first proxy for now. Failing over to the next
 			// proxy should be implemented
 			proxy0 := proxies[0]
-			proxy0 = strings.Split(proxy0, " ")[1]
+			// A PAC result entry is "<TYPE> <host:port>", e.g. "PROXY 1.2.3.4:8080".
+			// Guard against a malformed entry with no address so we don't panic on
+			// the missing field.
+			fields := strings.Fields(proxy0)
+			if len(fields) < 2 {
+				errStr := fmt.Sprintf("LookupProxy: malformed proxy entry %q in PAC result %q",
+					proxy0, proxyString)
+				log.Error(errStr)
+				return nil, errors.New(errStr)
+			}
+			proxy0 = fields[1]
 			// Proxy address returned by PAC does not have the URL scheme.
 			// We prepend the scheme (http/https) of the incoming raw URL.
 			proxy0 = "http://" + proxy0
