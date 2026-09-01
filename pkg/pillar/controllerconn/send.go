@@ -51,6 +51,9 @@ const MaxWaitForRequests = 4 * time.Minute
 // is not very often (e.g. once per day).
 const pcapDelay = 250 * time.Millisecond
 
+// maxLocalResponseSize bounds how much we read from a local endpoint response.
+const maxLocalResponseSize = 1 << 20 // 1 MiB
+
 // Client allows to establish connection to the controller/LOC/LPS
 // and perform some HTTP(S) request or just check if connectivity is working.
 // It takes care of proxy handling, TLS configuration, and network interface
@@ -1360,7 +1363,7 @@ func (c *Client) SendLocal(destURL string, intf string, ipSrc net.IP,
 		return nil, nil, errors.New(errStr)
 	}
 
-	contents, err := io.ReadAll(resp.Body)
+	contents, err := io.ReadAll(io.LimitReader(resp.Body, maxLocalResponseSize+1))
 	if err != nil {
 		resp.Body.Close()
 		resp.Body = nil
@@ -1370,8 +1373,15 @@ func (c *Client) SendLocal(destURL string, intf string, ipSrc net.IP,
 		return nil, nil, fmt.Errorf("ReadAll failed: %v", err)
 	}
 	resp.Body.Close()
-	resplen := int64(len(contents))
 	resp.Body = nil
+	if int64(len(contents)) > maxLocalResponseSize {
+		if c.AgentMetrics != nil {
+			c.AgentMetrics.RecordFailure(c.log, intf, reqURL, reqlen, 0, false)
+		}
+		return nil, nil, fmt.Errorf("SendLocal response from %s exceeds max size %d bytes",
+			reqURL, maxLocalResponseSize)
+	}
+	resplen := int64(len(contents))
 
 	switch resp.StatusCode {
 	case http.StatusOK, http.StatusCreated, http.StatusNotModified, http.StatusNoContent:
