@@ -13,7 +13,6 @@ import (
 
 	eveconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve-api/go/evecommon"
-	eveinfo "github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/evetest"
 	"github.com/lf-edge/eve/evetest/constants"
 	"github.com/lf-edge/eve/evetest/matchers"
@@ -162,29 +161,13 @@ func TestEVEUpgrade(test *testing.T) {
 		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
 	})
 
-	const nodeReadyCond = eveinfo.KubeNodeConditionType_KUBE_NODE_CONDITION_TYPE_READY
-	isK3sReady := func(info *eveinfo.ZInfoKubeCluster) bool {
-		if info == nil || len(info.Nodes) != 1 {
-			return false
-		}
-		if info.Storage.Health != eveinfo.ServiceStatus_SERVICE_STATUS_HEALTHY {
-			return false
-		}
-		for _, cond := range info.Nodes[0].GetConditions() {
-			if cond.GetType() == nodeReadyCond {
-				return cond.GetSet()
-			}
-		}
-		return false
-	}
-
 	if initialHypervisor == evetest.HypervisorKubevirt {
 		clusterUpdates, stopClusterWatch := device.WatchClusterInfo()
 		defer stopClusterWatch()
 		device.ApplyConfig(devConfig, true, true)
 
 		t.Eventually(clusterUpdates, 20*time.Minute).Should(Receive(
-			matchers.SatisfyPredicate("K3s node is ready", isK3sReady)))
+			matchers.SatisfyPredicate("K3s node is ready", k3sNodeIsReady)))
 		evetest.Checkpoint("k3s-ready")
 	}
 
@@ -262,11 +245,11 @@ func TestEVEUpgrade(test *testing.T) {
 		activeHypervisor = initialHypervisor
 	}
 	if activeHypervisor == evetest.HypervisorKubevirt {
-		if !isK3sReady(device.GetClusterInfo()) {
+		if !k3sNodeIsReady(device.GetClusterInfo()) {
 			clusterUpdates, stopClusterWatch := device.WatchClusterInfo()
 			defer stopClusterWatch()
 			t.Eventually(clusterUpdates, 20*time.Minute).Should(Receive(
-				matchers.SatisfyPredicate("K3s node is ready", isK3sReady)))
+				matchers.SatisfyPredicate("K3s node is ready", k3sNodeIsReady)))
 		}
 		evetest.Checkpoint("k3s-ready-post-upgrade")
 	}

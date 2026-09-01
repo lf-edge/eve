@@ -66,6 +66,7 @@ import (
 	"github.com/lf-edge/eve/pkg/kube/kube-init/pubsubclient"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/update"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/zbootstatus"
 )
 
 // ===========================================================================
@@ -499,6 +500,15 @@ type daemon struct {
 	// run loop is started in main.
 	psMgr *pubsubclient.Manager
 
+	// reclaimedStaleSnapshots latches once the stale-snapshot reclaim
+	// has completed with nothing left behind, so the health worker
+	// stops paying for a Walk it knows will find nothing. Deliberately
+	// per-boot rather than persisted: a Walk of an empty snapshotter is
+	// cheap, and re-running after a reboot is how a pass that was
+	// interrupted, or that skipped snapshots still held at the time,
+	// gets finished.
+	reclaimedStaleSnapshots bool
+
 	// kc is the process-wide k8s client-go bundle. Constructed
 	// lazily by initKubeclient once k3s reports Ready (the
 	// kubeconfig file exists and the API is reachable) and reused
@@ -579,6 +589,11 @@ func main() {
 	}
 	if err := encstatus.Register(psMgr); err != nil {
 		log.Fatalf("register EdgeNodeClusterStatus subscription: %v", err)
+	}
+	// Gates the stale-snapshot reclaim: nothing destructive may assume
+	// the running release is permanent until its partition is committed.
+	if err := zbootstatus.Register(psMgr); err != nil {
+		log.Fatalf("register ZbootStatus subscription: %v", err)
 	}
 	// kube-init publishes + subscribes to its own lifecycle topic
 	// so cluster-config (and future) loops can wake event-driven
@@ -869,15 +884,17 @@ func (d *daemon) handleStartingK3s(ctx context.Context, ev Event) {
 		// returns nearly instantly, so the extra state is cheap.
 		//
 		// Every phase also goes via StateImporting, PhaseSteady
-		// included. ImportAll is per-EVE-release work: it re-tags the
-		// external-boot-image to the running release, which pillar
-		// references as :latest with imagePullPolicy Never. The
+		// included. ImportAll is per-EVE-release work: it assembles the
+		// external-boot-image from the running rootfs and tags it with
+		// that release, which pillar references as :latest with
+		// imagePullPolicy Never. The
 		// initialization markers are restored from /persist and so
 		// survive an EVE upgrade, making PhaseSteady the phase on the
 		// first boot of a *new* release — a steady boot that skips the
 		// import leaves :latest on the prior release's image, and no
-		// container app can start. ImportAll pre-checks each image and
-		// is a few containerd lookups when they are already present.
+		// container app can start. Cheap on a repeat: WriteBlob
+		// short-circuits on digests already recorded, snapshot placement
+		// is skipped by a Stat, and the boot image is a sub-second mkfs.
 		switch d.phase {
 		case PhaseFirstBoot:
 			d.transition(ctx, StateImporting, "k3s-started/first-boot")
@@ -2390,6 +2407,42 @@ func (d *daemon) bridgeOneMonitorRestart(reason monitor.RestartReason) {
 // worker holds stable references — the run loop nils d.mon when
 // leaving RUNNING, and an unsynchronised read here would race or
 // nil-deref.
+// reclaimStaleSnapshotsOnce deletes the overlayfs snapshots a pre-erofs
+// release left behind, at most once per boot.
+//
+// Returns silently without doing anything until ZbootStatus says the
+// running partition is committed. That is not merely caution: while the
+// partition is still under test EVE can fall back to the other one, and
+// that older rootfs runs the overlayfs snapshotter and needs exactly
+// this state to start the apps. Reclaiming early would leave a revert
+// that boots into apps which cannot start -- a worse outcome than the
+// wasted space, and one the A/B scheme exists to prevent.
+func (d *daemon) reclaimStaleSnapshotsOnce(ctx context.Context) {
+	if d.reclaimedStaleSnapshots {
+		return
+	}
+	if !zbootstatus.CurrentPartitionCommitted() {
+		return
+	}
+	res, err := images.ReclaimStaleSnapshots(
+		ctx, state.ContainerdSocket, prereqs.ContainerdConfigPath)
+	if err != nil {
+		// Left unlatched on purpose: a guard that could not read the
+		// config, or a containerd that was not up yet, should be retried
+		// rather than treated as "done".
+		log.Printf("WARNING: reclaim stale snapshots: %v", err)
+		return
+	}
+	if res.Removed > 0 || res.Unlabelled > 0 {
+		log.Printf("reclaimed %d stale %s snapshots (%d bytes), "+
+			"unlabelled %d images, skipped %d",
+			res.Removed, "overlayfs", res.Bytes, res.Unlabelled, res.Skipped)
+	}
+	// Anything still held is retried after the next reboot; latching
+	// here only suppresses the repeat Walk within this boot.
+	d.reclaimedStaleSnapshots = true
+}
+
 func (d *daemon) runHealthWorker(ctx context.Context, mon *monitor.Monitor, sup *k3s.Supervisor) {
 	defer func() {
 		select {
@@ -2425,6 +2478,17 @@ func (d *daemon) runHealthWorker(ctx context.Context, mon *monitor.Monitor, sup 
 	if err := components.RegistrationApplyIfReady(ct == k3s.ClusterTypeBase); err != nil {
 		log.Printf("WARNING: registration apply if ready: %v", err)
 	}
+
+	// Reclaim the overlayfs snapshots a pre-erofs release left behind.
+	// Gated on the running partition being committed: until then EVE can
+	// still revert, and the old rootfs -- which still runs the overlayfs
+	// snapshotter -- needs this state to start the very same apps. Doing
+	// it early would let the revert succeed with apps that cannot start.
+	//
+	// Per-tick and idempotent like the rest of this worker: on every boot
+	// but the one after an upgrade it walks an empty snapshotter and
+	// returns zero.
+	d.reclaimStaleSnapshotsOnce(ctx)
 
 	// SR-IOV manifest staging is per-tick + idempotent: hardware
 	// detection via /sys/bus/pci, content-compare to avoid
