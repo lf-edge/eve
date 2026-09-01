@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -27,6 +28,54 @@ const dockerAPIPort int = 2375
 
 // dockerAPIVersion - docker API version used
 const dockerAPIVersion string = "1.40"
+
+const (
+	// maxDockerResponseSize bounds a single response body from the app Docker API.
+	maxDockerResponseSize = 10 << 20 // 10 MiB
+	// dockerAPITimeout bounds each Docker API call.
+	dockerAPITimeout = 30 * time.Second
+)
+
+// limitedResponseTransport caps the size of response bodies returned by the
+// app-provided Docker endpoint.
+type limitedResponseTransport struct {
+	base  http.RoundTripper
+	limit int64
+}
+
+// limitedReadCloser returns an error once more than the configured number of
+// bytes has been read.
+type limitedReadCloser struct {
+	inner     io.ReadCloser
+	remaining int64
+}
+
+func (t *limitedResponseTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := t.base.RoundTrip(req)
+	if err != nil {
+		return resp, err
+	}
+	// Bound the body the Docker client will read. remaining is limit+1 so a body
+	// of exactly limit bytes is still delivered in full, while a larger one trips
+	// the error in limitedReadCloser.Read instead of being silently truncated.
+	// The cutoff is approximate to within a byte, which is immaterial at this cap.
+	resp.Body = &limitedReadCloser{inner: resp.Body, remaining: t.limit + 1}
+	return resp, nil
+}
+
+func (l *limitedReadCloser) Read(p []byte) (int, error) {
+	if l.remaining <= 0 {
+		return 0, fmt.Errorf("response body exceeds maximum allowed size")
+	}
+	if int64(len(p)) > l.remaining {
+		p = p[:l.remaining]
+	}
+	n, err := l.inner.Read(p)
+	l.remaining -= int64(n)
+	return n, err
+}
+
+func (l *limitedReadCloser) Close() error { return l.inner.Close() }
 
 // check if we need to launch the goroutine to collect App container stats
 func (z *zedrouter) checkAppContainerStatsCollecting(config *types.AppNetworkConfig,
@@ -313,14 +362,21 @@ func (z *zedrouter) getAppContainers(status types.AppNetworkStatus) (
 	cli, err := client.NewClientWithOpts(
 		client.WithHost(containerEndpoint),
 		client.WithVersion(dockerAPIVersion),
-		client.WithHTTPClient(&http.Client{}))
+		client.WithHTTPClient(&http.Client{
+			Timeout: dockerAPITimeout,
+			Transport: &limitedResponseTransport{
+				base:  http.DefaultTransport,
+				limit: maxDockerResponseSize,
+			},
+		}))
 	if err != nil {
 		z.log.Errorf("getAppContainers: client create failed, error %v", err)
 		return nil, nil, err
 	}
 
-	containers, err := cli.ContainerList(
-		context.Background(), apitypes.ContainerListOptions{})
+	ctx, cancel := context.WithTimeout(context.Background(), dockerAPITimeout)
+	defer cancel()
+	containers, err := cli.ContainerList(ctx, apitypes.ContainerListOptions{})
 	if err != nil {
 		z.log.Errorf("getAppContainers: Container list error %v", err)
 		return nil, nil, err
