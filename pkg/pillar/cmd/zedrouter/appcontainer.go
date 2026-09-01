@@ -48,7 +48,56 @@ const (
 	nestedAppDomainAppMetricsURL = "/api/v1/metrics/nested-app-id/"
 	// nestedAppRuntimeDiskMetricURL - URL to get the runtime level storage metrics
 	nestedAppRuntimeDiskMetricURL = "/api/v1/storagemetrics/runtime"
+	// maxDockerResponseSize bounds a single response body from the app Docker API.
+	maxDockerResponseSize = 10 << 20 // 10 MiB
+	// dockerAPITimeout bounds each Docker API call.
+	dockerAPITimeout = 30 * time.Second
+	// maxNestedAppResponseSize bounds a nested-app runtime metrics HTTP response.
+	maxNestedAppResponseSize = 10 << 20 // 10 MiB
+	// nestedAppHTTPTimeout bounds each nested-app runtime metrics HTTP request.
+	nestedAppHTTPTimeout = 30 * time.Second
 )
+
+// limitedResponseTransport caps the size of response bodies returned by the
+// app-provided Docker endpoint.
+type limitedResponseTransport struct {
+	base  http.RoundTripper
+	limit int64
+}
+
+// limitedReadCloser returns an error once more than the configured number of
+// bytes has been read.
+type limitedReadCloser struct {
+	inner     io.ReadCloser
+	remaining int64
+}
+
+func (t *limitedResponseTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := t.base.RoundTrip(req)
+	if err != nil {
+		return resp, err
+	}
+	// Bound the body the Docker client will read. remaining is limit+1 so a body
+	// of exactly limit bytes is still delivered in full, while a larger one trips
+	// the error in limitedReadCloser.Read instead of being silently truncated.
+	// The cutoff is approximate to within a byte, which is immaterial at this cap.
+	resp.Body = &limitedReadCloser{inner: resp.Body, remaining: t.limit + 1}
+	return resp, nil
+}
+
+func (l *limitedReadCloser) Read(p []byte) (int, error) {
+	if l.remaining <= 0 {
+		return 0, fmt.Errorf("response body exceeds maximum allowed size")
+	}
+	if int64(len(p)) > l.remaining {
+		p = p[:l.remaining]
+	}
+	n, err := l.inner.Read(p)
+	l.remaining -= int64(n)
+	return n, err
+}
+
+func (l *limitedReadCloser) Close() error { return l.inner.Close() }
 
 // check if we need to launch the goroutine to collect App container stats
 func (z *zedrouter) checkAppContainerStatsCollecting(config *types.AppNetworkConfig,
@@ -330,14 +379,21 @@ func (z *zedrouter) getAppContainers(status types.AppNetworkStatus) (
 	cli, err := client.NewClientWithOpts(
 		client.WithHost(containerEndpoint),
 		client.WithVersion(dockerAPIVersion),
-		client.WithHTTPClient(&http.Client{}))
+		client.WithHTTPClient(&http.Client{
+			Timeout: dockerAPITimeout,
+			Transport: &limitedResponseTransport{
+				base:  http.DefaultTransport,
+				limit: maxDockerResponseSize,
+			},
+		}))
 	if err != nil {
 		z.log.Errorf("getAppContainers: client create failed, error %v", err)
 		return nil, nil, err
 	}
 
-	containers, err := cli.ContainerList(
-		context.Background(), containertypes.ListOptions{})
+	ctx, cancel := context.WithTimeout(context.Background(), dockerAPITimeout)
+	defer cancel()
+	containers, err := cli.ContainerList(ctx, containertypes.ListOptions{})
 	if err != nil {
 		z.log.Errorf("getAppContainers: Container list error %v", err)
 		return nil, nil, err
@@ -511,7 +567,8 @@ func (z *zedrouter) getNestedDomainAppList(status types.AppNetworkStatus) ([]typ
 
 // fetchHTTPData fetches data from the given URL
 func fetchHTTPData(url string) ([]byte, error) {
-	resp, err := http.Get(url)
+	httpClient := &http.Client{Timeout: nestedAppHTTPTimeout}
+	resp, err := httpClient.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch data from %s: %w", url, err)
 	}
@@ -521,9 +578,12 @@ func fetchHTTPData(url string) ([]byte, error) {
 		return nil, fmt.Errorf("unexpected status code %d from %s", resp.StatusCode, url)
 	}
 
-	data, err := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxNestedAppResponseSize+1))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body from %s: %w", url, err)
+	}
+	if int64(len(data)) > maxNestedAppResponseSize {
+		return nil, fmt.Errorf("response from %s exceeds max size %d bytes", url, maxNestedAppResponseSize)
 	}
 
 	return data, nil
