@@ -45,6 +45,10 @@ const (
 	eveLabelKey            = "App-Domain-Name"
 	waitForPodCheckCounter = 5  // Check 5 times
 	waitForPodCheckTime    = 15 // Check every 15 seconds, don't wait for too long to cause watchdog
+	// virtHandlerHTTPTimeout bounds the metrics request to the KubeVirt virt-handler.
+	virtHandlerHTTPTimeout = 30 * time.Second
+	// maxVirtHandlerMetricsSize bounds the virt-handler metrics.
+	maxVirtHandlerMetricsSize = 16 << 20 // 16 MiB
 )
 
 // VM instance meta data structure.
@@ -731,6 +735,7 @@ func (ctx kubevirtContext) GetDomsCPUMem() (map[string]types.DomainMetric, error
 
 	url := "https://" + virtIP + ":8443/metrics"
 	httpClient := &http.Client{
+		Timeout: virtHandlerHTTPTimeout,
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		},
@@ -752,11 +757,14 @@ func (ctx kubevirtContext) GetDomsCPUMem() (map[string]types.DomainMetric, error
 		return nil, err
 	}
 
-	// Read the response body
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxVirtHandlerMetricsSize+1))
 	if err != nil {
 		logrus.Infof("GetDomsCPUMem: Error reading response body %v", err)
 		return nil, err
+	}
+	if int64(len(body)) > maxVirtHandlerMetricsSize {
+		return nil, fmt.Errorf("GetDomsCPUMem: metrics response from %s exceeds max size %d bytes",
+			url, maxVirtHandlerMetricsSize)
 	}
 
 	scanner := bufio.NewScanner(strings.NewReader(string(body)))
