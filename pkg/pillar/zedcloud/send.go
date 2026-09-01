@@ -43,6 +43,9 @@ const ContentTypeProto = "application/x-proto-binary"
 // independent of how many management interfaces and source IP addresses we try
 const MaxWaitForRequests = 4 * time.Minute
 
+// maxLocalResponseSize bounds how much we read from a local endpoint response.
+const maxLocalResponseSize = 1 << 20 // 1 MiB
+
 // ZedCloudContext is set up by NewContext() below
 // revive:disable-next-line Needs to be fixed in other files as well, which then lets new yetus warnings arise
 type ZedCloudContext struct {
@@ -1254,7 +1257,7 @@ func SendLocal(ctx *ZedCloudContext, destURL string, intf string, ipSrc net.IP,
 		return nil, nil, errors.New(errStr)
 	}
 
-	contents, err := io.ReadAll(resp.Body)
+	contents, err := io.ReadAll(io.LimitReader(resp.Body, maxLocalResponseSize+1))
 	if err != nil {
 		resp.Body.Close()
 		resp.Body = nil
@@ -1264,8 +1267,15 @@ func SendLocal(ctx *ZedCloudContext, destURL string, intf string, ipSrc net.IP,
 		return nil, nil, fmt.Errorf("ReadAll failed: %v", err)
 	}
 	resp.Body.Close()
-	resplen := int64(len(contents))
 	resp.Body = nil
+	if int64(len(contents)) > maxLocalResponseSize {
+		if ctx.FailureFunc != nil {
+			ctx.FailureFunc(log, intf, reqURL, reqlen, 0, false)
+		}
+		return nil, nil, fmt.Errorf("SendLocal response from %s exceeds max size %d bytes",
+			reqURL, maxLocalResponseSize)
+	}
+	resplen := int64(len(contents))
 
 	switch resp.StatusCode {
 	case http.StatusOK, http.StatusCreated, http.StatusNotModified, http.StatusNoContent:
