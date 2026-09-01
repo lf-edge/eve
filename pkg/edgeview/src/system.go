@@ -39,6 +39,7 @@ const (
 	requestRemoveInfoGZFile = requestCollectInfoDir + "/edgeview-request-remove-tar-gz"
 	infoFilePatternPrefix   = "/persist/eve-info/eve-info-edgeview-"
 	infoFilePattern         = infoFilePatternPrefix + "v*.tar.gz"
+	hostFSPrefix            = "/hostfs"
 )
 
 var tarBlockDirs = []string{
@@ -271,6 +272,11 @@ func runDu(opt string) {
 
 	if !finfo.IsDir() {
 		fmt.Printf("%s is not a directory\n", opt)
+		return
+	}
+
+	if !checkBlockedDirs(dir) {
+		fmt.Printf("directory is blocked for disk usage: %s\n", dir)
 		return
 	}
 
@@ -913,6 +919,11 @@ func runLs(opt string) {
 		}
 	}
 
+	if !checkBlockedDirs(path) {
+		fmt.Printf("directory is blocked for listing: %s\n", path)
+		return
+	}
+
 	if fi.IsDir() {
 		files, err := os.ReadDir(path)
 		if err != nil {
@@ -1234,15 +1245,42 @@ func createArchive(source, archiveName string, timeRange *logSearchRange, dirSiz
 	return nil
 }
 
-// checkBlockedDirs - return false if the dirName is in blocked list
+// checkBlockedDirs - return false if dirName resolves into a blocked directory.
+// The lexically-cleaned absolute path is checked, and so is the symlink-resolved
+// real path when it exists, so neither ".." traversal, the /hostfs host-mirror
+// alias, nor a symlink pointing into a blocked directory can slip past.
 func checkBlockedDirs(dirName string) bool {
-	for _, d := range tarBlockDirs {
-		d1 := strings.TrimPrefix(d, "/") // handle without leading '/' in front
-		if strings.HasPrefix(dirName, d) || strings.HasPrefix(dirName, d1) {
+	abs, err := filepath.Abs(dirName)
+	if err != nil {
+		return false
+	}
+	if isBlockedPath(abs) {
+		return false
+	}
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil && resolved != abs {
+		if isBlockedPath(resolved) {
 			return false
 		}
 	}
 	return true
+}
+
+// isBlockedPath reports whether p, after stripping the /hostfs host-mirror alias,
+// lies inside one of tarBlockDirs.
+func isBlockedPath(p string) bool {
+	for p == hostFSPrefix || strings.HasPrefix(p, hostFSPrefix+"/") {
+		p = strings.TrimPrefix(p, hostFSPrefix)
+		if p == "" {
+			p = "/"
+			break
+		}
+	}
+	for _, d := range tarBlockDirs {
+		if p == d || strings.HasPrefix(p, d+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // checkBlockedFileSuffix - return false if the fileName suffix in blocked list
