@@ -9,7 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -27,6 +27,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
+
+// maxClusterAppInfoSize bounds the per-app info response read from another
+// cluster node.
+const maxClusterAppInfoSize = 10 << 20 // 10 MiB
 
 func handleDNSCreate(ctxArg interface{}, _ string, statusArg interface{}) {
 	z := ctxArg.(*zedkube)
@@ -594,10 +598,15 @@ func (z *zedkube) clusterAppIDHandler(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			remoteAppInfoJSON, err := ioutil.ReadAll(resp.Body)
+			remoteAppInfoJSON, err := io.ReadAll(io.LimitReader(resp.Body, maxClusterAppInfoSize+1))
 			resp.Body.Close()
 			if err != nil {
 				log.Errorf("clusterAppIDHandler: error reading response from %s: %v", host, err)
+				continue
+			}
+			if int64(len(remoteAppInfoJSON)) > maxClusterAppInfoSize {
+				log.Errorf("clusterAppIDHandler: response from %s exceeds max size %d bytes",
+					host, maxClusterAppInfoSize)
 				continue
 			}
 			combinedJSON = combinedJSON + "," + strings.TrimSuffix(string(remoteAppInfoJSON), "\n")
