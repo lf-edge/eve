@@ -22,9 +22,10 @@ type MockNetworkMonitor struct {
 	Log    *base.LogObject
 	MainRT int // inject syscall.RT_TABLE_MAIN for Linux network stack
 
-	eventSubs  []subscriber
-	interfaces map[int]MockInterface // key = ifIndex
-	routes     []Route
+	eventSubs        []subscriber
+	interfaces       map[int]MockInterface // key = ifIndex
+	routes           []Route
+	nextIfInstanceID uint64 // backs AssignNewInstanceID; 0 reserved for "undefined"
 }
 
 // MockInterface : a simulated network interface and its state.
@@ -296,6 +297,39 @@ func (m *MockNetworkMonitor) GetBondMetrics(ifIndex int) (types.BondMetrics, err
 		return types.BondMetrics{}, fmt.Errorf("interface %s is not a bond", mockIf.Attrs.IfName)
 	}
 	return types.BondMetrics{}, nil
+}
+
+// GetInterfaceByInstanceID finds the mock interface currently carrying the
+// given IfInstanceID, regardless of its current name.
+func (m *MockNetworkMonitor) GetInterfaceByInstanceID(id types.IfInstanceID) (
+	attrs IfAttrs, exists bool, err error) {
+	m.Lock()
+	defer m.Unlock()
+	if id == 0 {
+		return IfAttrs{}, false, nil
+	}
+	for _, mockIf := range m.interfaces {
+		if mockIf.Attrs.InstanceID == id {
+			return mockIf.Attrs, true, nil
+		}
+	}
+	return IfAttrs{}, false, nil
+}
+
+// AssignNewInstanceID allocates a fresh IfInstanceID and tags the mock
+// interface with it.
+func (m *MockNetworkMonitor) AssignNewInstanceID(ifIndex int) (types.IfInstanceID, error) {
+	m.Lock()
+	defer m.Unlock()
+	mockIf, exists := m.interfaces[ifIndex]
+	if !exists {
+		return 0, m.ifNotFoundErr(ifIndex)
+	}
+	m.nextIfInstanceID++
+	id := types.IfInstanceID(m.nextIfInstanceID)
+	mockIf.Attrs.InstanceID = id
+	m.interfaces[ifIndex] = mockIf
+	return id, nil
 }
 
 // ListRoutes lists all mock routes.

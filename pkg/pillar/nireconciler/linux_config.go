@@ -453,6 +453,7 @@ func (r *LinuxNIReconciler) getIntendedPorts() dg.Graph {
 				LogicalLabel: port.LogicalLabel,
 				MasterIfName: masterIfName,
 				AdminUp:      true,
+				InstanceID:   port.UnderlyingIfInstanceID,
 			}, nil)
 		}
 	}
@@ -630,13 +631,20 @@ func (r *LinuxNIReconciler) getIntendedNIL2Cfg(niID uuid.UUID) dg.Graph {
 	bridgeIPs, _, bridgeMAC, _, _ := r.getBridgeAddrs(niID)
 	withSTP := ni.config.Type == types.NetworkInstanceTypeSwitch &&
 		len(ni.bridge.Ports) > 1
+	createdByNIM := r.niBridgeIsCreatedByNIM(ni.config, ni.bridge)
+	var bridgeInstanceID types.IfInstanceID
+	if createdByNIM {
+		// createdByNIM implies len(ni.bridge.Ports) == 1.
+		bridgeInstanceID = ni.bridge.Ports[0].BridgeIfInstanceID
+	}
 	intendedL2Cfg.PutItem(linux.Bridge{
 		IfName:       ni.brIfName,
-		CreatedByNIM: r.niBridgeIsCreatedByNIM(ni.config, ni.bridge),
+		CreatedByNIM: createdByNIM,
 		MACAddress:   bridgeMAC,
 		IPAddresses:  bridgeIPs,
 		MTU:          ni.bridge.MTU,
 		WithSTP:      withSTP,
+		InstanceID:   bridgeInstanceID,
 	}, nil)
 	intendedL2Cfg.PutItem(linux.BridgeFwdMask{
 		BridgeIfName: ni.brIfName,
@@ -652,6 +660,7 @@ func (r *LinuxNIReconciler) getIntendedNIL2Cfg(niID uuid.UUID) dg.Graph {
 	intendedL2Cfg.PutItem(linux.VLANBridge{
 		BridgeIfName:        ni.brIfName,
 		EnableVLANFiltering: enableVLANFiltering,
+		ExpectedBridgeID:    bridgeInstanceID,
 	}, nil)
 	if len(ni.bridge.Ports) == 0 {
 		// Air-gapped, no port to configure as VLAN trunk or access.
@@ -663,17 +672,20 @@ func (r *LinuxNIReconciler) getIntendedNIL2Cfg(niID uuid.UUID) dg.Graph {
 			Variant: linux.BridgePortVariant{
 				PortIfName: portPhysIfName(port),
 			},
-			ExternallyBridged: r.niBridgeIsCreatedByNIM(ni.config, ni.bridge),
+			ExternallyBridged: createdByNIM,
 			MTU:               port.MTU,
+			ExpectedPortID:    port.UnderlyingIfInstanceID,
+			ExpectedBridgeID:  port.BridgeIfInstanceID,
 		}, nil)
 		portsWithBpduGuard := ni.config.STPConfig.PortsWithBpduGuard
 		if withSTP && portsWithBpduGuard != "" {
 			if portsWithBpduGuard == port.LogicalLabel ||
 				generics.ContainsItem(port.SharedLabels, portsWithBpduGuard) {
 				intendedL2Cfg.PutItem(linux.BPDUGuard{
-					BridgeIfName: ni.brIfName,
-					PortIfName:   portPhysIfName(port),
-					ForVIF:       false,
+					BridgeIfName:     ni.brIfName,
+					PortIfName:       portPhysIfName(port),
+					ForVIF:           false,
+					ExpectedBridgeID: bridgeInstanceID,
 				}, nil)
 			}
 		}
@@ -684,6 +696,7 @@ func (r *LinuxNIReconciler) getIntendedNIL2Cfg(niID uuid.UUID) dg.Graph {
 				ParentLL:     port.LogicalLabel,
 				ParentIfName: port.IfName,
 				ID:           vlanSubIf.VLAN,
+				InstanceID:   vlanSubIf.InstanceID,
 			}, nil)
 			intendedL2Cfg.PutItem(linux.BridgePort{
 				BridgeIfName: ni.brIfName,
@@ -695,6 +708,8 @@ func (r *LinuxNIReconciler) getIntendedNIL2Cfg(niID uuid.UUID) dg.Graph {
 				},
 				ExternallyBridged: true,
 				MTU:               vlanSubIf.MTU,
+				ExpectedBridgeID:  port.BridgeIfInstanceID,
+				ExpectedPortID:    vlanSubIf.InstanceID,
 			}, nil)
 		}
 		if !enableVLANFiltering {
@@ -714,6 +729,8 @@ func (r *LinuxNIReconciler) getIntendedNIL2Cfg(niID uuid.UUID) dg.Graph {
 							VID: vlanAccessPort.VlanID,
 						},
 					},
+					ExpectedBridgeID: bridgeInstanceID,
+					ExpectedPortID:   port.UnderlyingIfInstanceID,
 				}, nil)
 				break
 			}
@@ -726,6 +743,8 @@ func (r *LinuxNIReconciler) getIntendedNIL2Cfg(niID uuid.UUID) dg.Graph {
 				VLANConfig: linux.VLANConfig{
 					TrunkPort: &trunkPort,
 				},
+				ExpectedBridgeID: bridgeInstanceID,
+				ExpectedPortID:   port.UnderlyingIfInstanceID,
 			}, nil)
 		}
 		for _, vlanSubIf := range port.VLANSubinterfaces {
@@ -739,6 +758,8 @@ func (r *LinuxNIReconciler) getIntendedNIL2Cfg(niID uuid.UUID) dg.Graph {
 						IfName: vlanSubIf.IfName,
 					},
 				},
+				ExpectedBridgeID: bridgeInstanceID,
+				ExpectedPortID:   vlanSubIf.InstanceID,
 			}, nil)
 		}
 	}
@@ -1008,8 +1029,12 @@ func (r *LinuxNIReconciler) getIntendedNIMirroring(niID uuid.UUID) dg.Graph {
 			IfName:  ifName,
 			ItemRef: dg.Reference(generic.Port{IfName: ifName}),
 		}
-		intendedNIMirroring.PutItem(linux.TCIngress{NetIf: portIfRef}, nil)
-		for _, mirrorRule := range r.getIntendedNIMirrorRules(niID, portIfRef) {
+		intendedNIMirroring.PutItem(linux.TCIngress{
+			NetIf:          portIfRef,
+			ExpectedPortID: port.UnderlyingIfInstanceID,
+		}, nil)
+		for _, mirrorRule := range r.getIntendedNIMirrorRules(
+			niID, portIfRef, port.UnderlyingIfInstanceID) {
 			intendedNIMirroring.PutItem(mirrorRule, nil)
 		}
 	}
@@ -1017,7 +1042,7 @@ func (r *LinuxNIReconciler) getIntendedNIMirroring(niID uuid.UUID) dg.Graph {
 }
 
 func (r *LinuxNIReconciler) getIntendedNIMirrorRules(niID uuid.UUID,
-	fromNetIf generic.NetworkIf) []linux.TCMirror {
+	fromNetIf generic.NetworkIf, expectedPortID types.IfInstanceID) []linux.TCMirror {
 	var rules []linux.TCMirror
 	ni := r.nis[niID]
 	mirrorIfRef := generic.NetworkIf{
@@ -1099,6 +1124,9 @@ func (r *LinuxNIReconciler) getIntendedNIMirrorRules(niID uuid.UUID,
 		TransportProtocol: &icmpv6,
 		ICMPType:          &neighSolicitation,
 	})
+	for i := range rules {
+		rules[i].ExpectedPortID = expectedPortID
+	}
 	return rules
 }
 
@@ -1481,6 +1509,11 @@ func (r *LinuxNIReconciler) getIntendedAppConnCfg(niID uuid.UUID,
 	ni := r.nis[vif.NI]
 	enableVLANFiltering, _ := r.getVLANConfigForNI(ni)
 	app := r.apps[vif.App]
+	var bridgeInstanceID types.IfInstanceID
+	if r.niBridgeIsCreatedByNIM(ni.config, ni.bridge) {
+		// createdByNIM implies len(ni.bridge.Ports) == 1.
+		bridgeInstanceID = ni.bridge.Ports[0].BridgeIfInstanceID
+	}
 	graphArgs := dg.InitArgs{
 		Name:        AppConnSGName(vif.App, vif.NetAdapterName),
 		Description: "Connection between application and network instance",
@@ -1596,7 +1629,8 @@ func (r *LinuxNIReconciler) getIntendedAppConnCfg(niID uuid.UUID,
 		Variant: linux.BridgePortVariant{
 			VIFIfName: vif.hostIfName,
 		},
-		MTU: ni.bridge.MTU,
+		MTU:              ni.bridge.MTU,
+		ExpectedBridgeID: bridgeInstanceID,
 	}, nil)
 	if ni.config.Type == types.NetworkInstanceTypeSwitch {
 		if len(ni.bridge.Ports) > 1 {
@@ -1617,10 +1651,11 @@ func (r *LinuxNIReconciler) getIntendedAppConnCfg(niID uuid.UUID,
 				vlanConfig.AccessPort = &linux.AccessPort{VID: uint16(ul.AccessVlanID)}
 			}
 			intendedAppConnCfg.PutItem(linux.VLANPort{
-				BridgeIfName: ni.brIfName,
-				PortIfName:   vif.hostIfName,
-				ForVIF:       true,
-				VLANConfig:   vlanConfig,
+				BridgeIfName:     ni.brIfName,
+				PortIfName:       vif.hostIfName,
+				ForVIF:           true,
+				VLANConfig:       vlanConfig,
+				ExpectedBridgeID: bridgeInstanceID,
 			}, nil)
 		}
 		// Mirror small portion of the traffic for monitoring
@@ -1630,7 +1665,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnCfg(niID uuid.UUID,
 			ItemRef: dg.Reference(linux.VIF{HostIfName: vif.hostIfName}),
 		}
 		intendedAppConnCfg.PutItem(linux.TCIngress{NetIf: vifRef}, nil)
-		for _, mirrorRule := range r.getIntendedNIMirrorRules(niID, vifRef) {
+		for _, mirrorRule := range r.getIntendedNIMirrorRules(niID, vifRef, 0) {
 			intendedAppConnCfg.PutItem(mirrorRule, nil)
 		}
 	}

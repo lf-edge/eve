@@ -10,6 +10,7 @@ import (
 	dg "github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"github.com/vishvananda/netlink"
 )
@@ -30,6 +31,12 @@ type VLANPort struct {
 	ForVIF bool
 	// VLANConfig : VLAN configuration to apply on the bridged interface.
 	VLANConfig VLANConfig
+	// ExpectedBridgeID: IfInstanceID BridgeIfName is expected to carry. Zero
+	// if the bridge is not NIM-managed.
+	ExpectedBridgeID types.IfInstanceID
+	// ExpectedPortID: IfInstanceID PortIfName is expected to carry.
+	// Zero if the port is not NIM-managed (e.g. VIF).
+	ExpectedPortID types.IfInstanceID
 }
 
 // VLANConfig : VLAN configuration to apply either on a bridge port or as a VLAN sub-interface.
@@ -113,7 +120,9 @@ func (v VLANPort) Equal(other dg.Item) bool {
 	// Compare common fields
 	return v.BridgeIfName == v2.BridgeIfName &&
 		v.PortIfName == v2.PortIfName &&
-		v.ForVIF == v2.ForVIF
+		v.ForVIF == v2.ForVIF &&
+		v.ExpectedBridgeID == v2.ExpectedBridgeID &&
+		v.ExpectedPortID == v2.ExpectedPortID
 }
 
 // External returns false.
@@ -138,8 +147,10 @@ func (v VLANPort) String() string {
 		vlanConfig = "vlanConfig: none"
 	}
 	return fmt.Sprintf(
-		"VLANPort: {bridgeIfName: %s, portIfName: %s, forVIF: %t, %s}",
+		"VLANPort: {bridgeIfName: %s, portIfName: %s, forVIF: %t, %s, "+
+			"expectedBridgeID: %d, expectedPortID: %d}",
 		v.BridgeIfName, v.PortIfName, v.ForVIF, vlanConfig,
+		v.ExpectedBridgeID, v.ExpectedPortID,
 	)
 }
 
@@ -172,6 +183,18 @@ func (v VLANPort) Dependencies() (deps []dg.Dependency) {
 				if bpSubIf == nil || bpSubIf.VID != v.VLANConfig.VLANSubinterface.VID {
 					return false
 				}
+			}
+			// Reject a BridgePort built from a different (older or newer)
+			// snapshot of the underlying port/bridge instances -- applying
+			// our VLAN config against it could otherwise target a port or
+			// bridge that NIM has since renamed or recreated.
+			if v.ExpectedPortID != 0 &&
+				bridgePort.ExpectedPortID != v.ExpectedPortID {
+				return false
+			}
+			if v.ExpectedBridgeID != 0 &&
+				bridgePort.ExpectedBridgeID != v.ExpectedBridgeID {
+				return false
 			}
 			return true
 		},
@@ -211,22 +234,70 @@ func (c *VLANPortConfigurator) createOrDelete(item dg.Item, del bool) (err error
 		return fmt.Errorf("invalid item type %T, expected VLANPort", item)
 	}
 
-	link, err := netlink.LinkByName(vlanPort.PortIfName)
+	portIfName := vlanPort.PortIfName
+	bridgeIfName := vlanPort.BridgeIfName
+	if del {
+		// Resolve by IfInstanceID rather than by name when available: NIM
+		// may have since renamed these interfaces away, or even reused
+		// their old names for a bridge of its own -- operating on the
+		// names as recorded at Create time could silently hit (and
+		// modify) unrelated, NIM-owned interfaces.
+		if vlanPort.ExpectedPortID != 0 {
+			attrs, exists, err := c.NetworkMonitor.GetInterfaceByInstanceID(
+				vlanPort.ExpectedPortID)
+			if err != nil {
+				err = fmt.Errorf("failed to look up interface with IfInstanceID %d: %v",
+					vlanPort.ExpectedPortID, err)
+				c.Log.Error(err)
+				return err
+			}
+			if !exists {
+				// Genuinely gone; nothing left to clean up.
+				return nil
+			}
+			portIfName = attrs.IfName
+		}
+		if vlanPort.ExpectedBridgeID != 0 {
+			attrs, exists, err := c.NetworkMonitor.GetInterfaceByInstanceID(
+				vlanPort.ExpectedBridgeID)
+			if err != nil {
+				err = fmt.Errorf("failed to look up interface with IfInstanceID %d: %v",
+					vlanPort.ExpectedBridgeID, err)
+				c.Log.Error(err)
+				return err
+			}
+			if !exists {
+				return nil
+			}
+			bridgeIfName = attrs.IfName
+		}
+	}
+
+	link, err := netlink.LinkByName(portIfName)
 	if err != nil {
 		err = fmt.Errorf("failed to get link for bridge port %s: %w",
-			vlanPort.PortIfName, err)
+			portIfName, err)
 		c.Log.Error(err)
 		// Dependencies should prevent this.
 		return err
 	}
 
-	brLink, err := netlink.LinkByName(vlanPort.BridgeIfName)
+	brLink, err := netlink.LinkByName(bridgeIfName)
 	if err != nil {
 		err = fmt.Errorf("failed to get link for bridge %s: %w",
-			vlanPort.BridgeIfName, err)
+			bridgeIfName, err)
 		c.Log.Error(err)
 		// Dependencies should prevent this.
 		return err
+	}
+
+	if del && vlanPort.VLANConfig.VLANSubinterface == nil &&
+		!stillEnslavedIn(c.NetworkMonitor, link, bridgeIfName, vlanPort.ExpectedBridgeID) {
+		// The port has since been repurposed (e.g. re-enslaved by NIM into a
+		// bridge of its own): our own VLAN config for it under this bridge
+		// is already gone. Touching it now could instead disrupt whatever
+		// it is actually attached to.
+		return nil
 	}
 
 	switch {
