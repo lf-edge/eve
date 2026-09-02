@@ -7,7 +7,10 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
+
+	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
 )
 
 func TestIsRegularFile(t *testing.T) {
@@ -91,6 +94,18 @@ func TestVncConfigParsing(t *testing.T) {
 					cfg, c.wantVMI, c.wantPort, c.wantPID)
 			}
 		})
+	}
+}
+
+// TestVirtctlEnvIncludesKubeconfig guards against the regression
+// where virtctl was spawned with no KUBECONFIG in its environment,
+// causing client-go to fall back to the insecure [::1]:8080 default
+// API server address instead of reaching the real k3s server.
+func TestVirtctlEnvIncludesKubeconfig(t *testing.T) {
+	want := "KUBECONFIG=" + state.K3sKubeconfig
+	env := virtctlEnv()
+	if !slices.Contains(env, want) {
+		t.Errorf("virtctlEnv() = %v, want it to contain %q", env, want)
 	}
 }
 
