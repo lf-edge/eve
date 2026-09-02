@@ -8,6 +8,7 @@
 package controllerconn
 
 import (
+	"fmt"
 	"net/http"
 	"sort"
 	"strings"
@@ -165,6 +166,40 @@ func (am *AgentMetrics) RecordAnswer(log *base.LogObject, ifname, url string,
 	am.metrics[ifname] = m
 }
 
+// evictOldestURLs drops up to count least recently used URLMetrics entries,
+// combined across all interfaces, counting each one in URLCounterRedactedCount.
+// It returns how many it dropped, which is short of count once nothing is left
+// to drop. Caller must hold the AgentMetrics lock.
+func (am *AgentMetrics) evictOldestURLs(count int) int {
+	type urlEntry struct {
+		ifname, url string
+		lastUpdated time.Time
+	}
+	var entries []urlEntry
+	for ifname, m := range am.metrics {
+		for url, u := range m.URLCounters {
+			entries = append(entries, urlEntry{ifname, url, u.LastUpdated})
+		}
+	}
+	if count > len(entries) {
+		count = len(entries)
+	}
+	if count <= 0 {
+		return 0
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].lastUpdated.Before(entries[j].lastUpdated)
+	})
+
+	for _, e := range entries[:count] {
+		m := am.metrics[e.ifname]
+		delete(m.URLCounters, e.url)
+		m.URLCounterRedactedCount++
+		am.metrics[e.ifname] = m
+	}
+	return count
+}
+
 // makeRoomForNewURL evicts urlCountersWiggle least recently used
 // URLMetrics entries, combined across all interfaces, once the high
 // watermark is reached. Caller must hold the AgentMetrics lock.
@@ -176,37 +211,40 @@ func (am *AgentMetrics) makeRoomForNewURL(log *base.LogObject) {
 	if total < types.MaxURLCounters+urlCountersWiggle {
 		return
 	}
-
-	type urlEntry struct {
-		ifname, url string
-		lastUpdated time.Time
-	}
-	entries := make([]urlEntry, 0, total)
-	for ifname, m := range am.metrics {
-		for url, u := range m.URLCounters {
-			entries = append(entries, urlEntry{ifname, url, u.LastUpdated})
-		}
-	}
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].lastUpdated.Before(entries[j].lastUpdated)
-	})
-
-	for _, e := range entries[:urlCountersWiggle] {
-		m := am.metrics[e.ifname]
-		delete(m.URLCounters, e.url)
-		m.URLCounterRedactedCount++
-		am.metrics[e.ifname] = m
-	}
 	log.Warnf("AgentMetrics: URLCounters limit of %d reached; "+
 		"evicted %d least recently used entries",
-		types.MaxURLCounters, urlCountersWiggle)
+		types.MaxURLCounters, am.evictOldestURLs(urlCountersWiggle))
 }
 
 // Publish the recorded metrics through the given publisher.
+//
+// makeRoomForNewURL caps how many URLCounters entries are kept, but what pubsub
+// limits is the encoded size of the whole map, which the length of the URL keys
+// dominates. Ask whether the value fits before handing it over -- publishing an
+// oversized one is a fatal in this agent rather than an error -- and give up the
+// least recently used entries until what is left does fit.
 func (am *AgentMetrics) Publish(
 	log *base.LogObject, publication pubsub.Publication, key string) error {
 	release := am.acquire(log)
 	defer release()
+
+	var evicted int
+	for {
+		err := publication.CheckMaxSize(key, am.metrics)
+		if err == nil {
+			break
+		}
+		dropped := am.evictOldestURLs(urlCountersWiggle)
+		if dropped == 0 {
+			return fmt.Errorf("metrics do not fit in a pubsub message and no "+
+				"URLCounters entry is left to drop: %w", err)
+		}
+		evicted += dropped
+	}
+	if evicted > 0 {
+		log.Warnf("AgentMetrics: metrics did not fit in a pubsub message; "+
+			"dropped %d least recently used URLCounters entries", evicted)
+	}
 	return publication.Publish(key, am.metrics)
 }
 
