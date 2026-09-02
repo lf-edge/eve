@@ -12,12 +12,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"net"
 	"os"
 	"os/exec"
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 )
 
 // Paths and process knobs. Vars so tests can route them onto tmp
@@ -185,6 +187,7 @@ func (m *Manager) startVirtctl(cfg *vncConfig) error {
 		"--port", fmt.Sprintf("%d", cfg.VNCPort),
 		"--proxy-only",
 	)
+	cmd.Env = virtctlEnv()
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	if err := cmd.Start(); err != nil {
@@ -206,7 +209,11 @@ func (m *Manager) startVirtctl(cfg *vncConfig) error {
 			_ = logFile.Close()
 			return fmt.Errorf("virtctl exited before port was ready")
 		case <-tick.C:
-			if portListening(cfg.VNCPort) {
+			// Must not Dial: virtctl --proxy-only treats any TCP
+			// connection as the one VNC session and exits once it
+			// closes, so a connect-and-close readiness probe kills
+			// the proxy right after "confirming" it's up.
+			if netutils.IsLocalPortListening(uint32(cfg.VNCPort)) {
 				m.mu.Lock()
 				m.virtctlCmd = cmd
 				m.logFile = logFile
@@ -273,16 +280,12 @@ func (m *Manager) callerPIDWatchdog(ctx context.Context, pid int) {
 	}
 }
 
-// portListening dials 127.0.0.1:<port> with a 1-second budget and
-// returns true if anything answered.
-func portListening(port int) bool {
-	conn, err := net.DialTimeout("tcp",
-		fmt.Sprintf("127.0.0.1:%d", port), time.Second)
-	if err != nil {
-		return false
-	}
-	_ = conn.Close()
-	return true
+// virtctlEnv builds the environment for the virtctl subprocess.
+// virtctl needs KUBECONFIG to reach the k3s API server; without it,
+// client-go falls back to the legacy insecure default address
+// ([::1]:8080) and every call fails.
+func virtctlEnv() []string {
+	return append(os.Environ(), "KUBECONFIG="+state.K3sKubeconfig)
 }
 
 // processAlive reports whether the given PID exists. Signal 0 is a
