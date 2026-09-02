@@ -1322,6 +1322,8 @@ func getDataSecAtRestInfo(ctx *zedagentContext) *info.DataSecAtRest {
 		vaultInfo.Name = v.Name
 		vaultInfo.Status = v.Status
 		vaultInfo.PcrStatus = v.PCRStatus
+		vaultInfo.UnlockMethod = v.UnlockMethod.ToProto()
+		vaultInfo.KeyDerivation = v.KeyDerivation.ToProto()
 		if !v.ErrorTime.IsZero() {
 			vaultInfo.VaultErr = encodeErrorInfo(v.ErrorAndTime.ErrorDescription)
 		}
