@@ -66,6 +66,15 @@ type NetworkMonitor interface {
 	// Note: BondMetrics.LogicalLabel and BondMemberMetrics.LogicalLabel are
 	// returned unset (NetworkMonitor does not work with logical labels).
 	GetBondMetrics(ifIndex int) (types.BondMetrics, error)
+	// GetInterfaceByInstanceID : find the interface currently carrying the given
+	// IfInstanceID, regardless of its current name. exists=false, err=nil means
+	// the interface was genuinely removed, not just renamed.
+	GetInterfaceByInstanceID(id types.IfInstanceID) (attrs IfAttrs, exists bool, err error)
+	// AssignNewInstanceID allocates a fresh IfInstanceID (unique for the
+	// process lifetime; no persistence needed, since a restart implies a
+	// reboot) and writes it into the interface's kernel alias. NIM is the
+	// sole caller.
+	AssignNewInstanceID(ifIndex int) (types.IfInstanceID, error)
 	// ClearCache : clear cached mappings between interface names, interface indexes,
 	// attributes, assigned addresses, DNS info, DHCP info and default GWs.
 	// It is reasonable to do this once in a while because the monitor can miss some
@@ -184,6 +193,9 @@ type IfAttrs struct {
 	VlanParentIfIndex int
 	// VLAN ID assigned to this subinterface (only set for VLAN sub-interfaces).
 	VlanID uint16
+	// InstanceID is the types.IfInstanceID NIM assigned, read from the
+	// interface's kernel alias. Zero if not (yet) assigned.
+	InstanceID types.IfInstanceID
 }
 
 // Equal allows to compare two sets of interface attributes for equality.
@@ -199,7 +211,8 @@ func (a IfAttrs) Equal(a2 IfAttrs) bool {
 		a.MasterIfIndex == a2.MasterIfIndex &&
 		a.MTU == a2.MTU &&
 		a.VlanParentIfIndex == a2.VlanParentIfIndex &&
-		a.VlanID == a2.VlanID
+		a.VlanID == a2.VlanID &&
+		a.InstanceID == a2.InstanceID
 }
 
 // DNSInfo : DNS information associated with an interface.

@@ -26,6 +26,13 @@ type BridgePort struct {
 	ExternallyBridged bool
 	// MTU : Maximum transmission unit size.
 	MTU uint16
+	// ExpectedBridgeID: IfInstanceID BridgeIfName is expected to carry. Zero
+	// if the bridge is not NIM-managed.
+	ExpectedBridgeID types.IfInstanceID
+	// ExpectedPortID: IfInstanceID the bridged port is expected to carry --
+	// Variant.PortIfName or Variant.VLANSubinterface, whichever is set. Zero
+	// for the VIF variant (not NIM-managed).
+	ExpectedPortID types.IfInstanceID
 }
 
 // BridgePortVariant is like union, only one option should have non-zero value.
@@ -76,8 +83,9 @@ func (p BridgePort) External() bool {
 // String describes BridgePort.
 func (p BridgePort) String() string {
 	return fmt.Sprintf("BridgePort: {bridgeIfName: %s, portIfName: %s, "+
-		"externallyBridged: %t, MTU: %d}",
-		p.BridgeIfName, p.portIfName(), p.ExternallyBridged, p.MTU)
+		"externallyBridged: %t, MTU: %d, expectedBridgeID: %d, expectedPortID: %d}",
+		p.BridgeIfName, p.portIfName(), p.ExternallyBridged, p.MTU,
+		p.ExpectedBridgeID, p.ExpectedPortID)
 }
 
 // Dependencies returns the bridge and the port as the dependencies.
@@ -87,7 +95,19 @@ func (p BridgePort) Dependencies() (deps []dg.Dependency) {
 			ItemType: BridgeTypename,
 			ItemName: p.BridgeIfName,
 		},
-		Description: "Bridge must exist",
+		MustSatisfy: func(item dg.Item) bool {
+			if p.ExpectedBridgeID == 0 {
+				return true
+			}
+			bridge, isBridge := item.(Bridge)
+			if !isBridge {
+				// unreachable
+				return false
+			}
+			// Reject a same-named bridge NIM has since torn down and recreated.
+			return bridge.InstanceID == p.ExpectedBridgeID
+		},
+		Description: "Bridge must exist, with the expected IfInstanceID if NIM-managed",
 	})
 	switch {
 	case p.Variant.VIFIfName != "":
@@ -113,7 +133,25 @@ func (p BridgePort) Dependencies() (deps []dg.Dependency) {
 					// unreachable
 					return false
 				}
+				if p.ExpectedPortID != 0 &&
+					port.InstanceID != p.ExpectedPortID {
+					return false
+				}
 				return port.MasterIfName == p.BridgeIfName
+			}
+		} else {
+			// zedrouter enslaves the port into its own bridge below. NIM may
+			// still be in the process of un-bridging this same port (tearing
+			// down its own bridge over it); the kernel rejects enslaving a
+			// bridge master into another bridge (ELOOP), so wait for NIM to
+			// finish rather than attempt it.
+			mustSatisfy = func(item dg.Item) bool {
+				port, isPort := item.(generic.Port)
+				if !isPort {
+					// unreachable
+					return false
+				}
+				return !port.IsBridge
 			}
 		}
 		deps = append(deps, dg.Dependency{
@@ -123,7 +161,7 @@ func (p BridgePort) Dependencies() (deps []dg.Dependency) {
 			},
 			MustSatisfy: mustSatisfy,
 			Description: "Port must exist, and if it is managed by NIM, " +
-				"it must already be bridged",
+				"it must already be bridged, or otherwise not itself a bridge",
 			Attributes: dg.DependencyAttributes{
 				AutoDeletedByExternal: true,
 			},
@@ -138,6 +176,10 @@ func (p BridgePort) Dependencies() (deps []dg.Dependency) {
 			vlanSubIf, isVLANSubIf := item.(VLANSubIf)
 			if !isVLANSubIf {
 				// unreachable
+				return false
+			}
+			if p.ExpectedPortID != 0 &&
+				vlanSubIf.InstanceID != p.ExpectedPortID {
 				return false
 			}
 			return vlanSubIf.ParentIfName == p.BridgeIfName &&
@@ -286,17 +328,45 @@ func (c *BridgePortConfigurator) Delete(ctx context.Context, item dg.Item) (err 
 		// Port bridging is done outside zedrouter, NOOP here.
 		return nil
 	}
-	link, err := netlink.LinkByName(bridgePort.portIfName())
+	// Resolve by IfInstanceID rather than by name when available: NIM may have
+	// since renamed this interface away, or even reused its old name for a
+	// bridge of its own -- operating on the name as recorded at Create time
+	// could silently hit (and modify) an unrelated, NIM-owned interface.
+	ifName := bridgePort.portIfName()
+	if bridgePort.ExpectedPortID != 0 {
+		attrs, exists, err := c.NetworkMonitor.GetInterfaceByInstanceID(
+			bridgePort.ExpectedPortID)
+		if err != nil {
+			err = fmt.Errorf("failed to look up interface with IfInstanceID %d: %v",
+				bridgePort.ExpectedPortID, err)
+			c.Log.Error(err)
+			return err
+		}
+		if !exists {
+			// Genuinely gone; nothing left to detach.
+			return nil
+		}
+		ifName = attrs.IfName
+	}
+	link, err := netlink.LinkByName(ifName)
 	if err != nil {
 		err = fmt.Errorf("failed to get link for interface %s: %w",
-			bridgePort.portIfName(), err)
+			ifName, err)
 		c.Log.Error(err)
 		return err
+	}
+	if !stillEnslavedIn(
+		c.NetworkMonitor, link, bridgePort.BridgeIfName, bridgePort.ExpectedBridgeID) {
+		// The interface has since been repurposed (e.g. re-enslaved by NIM
+		// into a bridge of its own): our own enslavement into BridgeIfName is
+		// already gone, so there is nothing left for us to detach. Touching
+		// it now would rip it out of whatever it is actually attached to.
+		return nil
 	}
 	err = netlink.LinkSetNoMaster(link)
 	if err != nil {
 		err = fmt.Errorf("failed to detach interface %s from bridge %s: %w",
-			bridgePort.portIfName(), bridgePort.BridgeIfName, err)
+			ifName, bridgePort.BridgeIfName, err)
 		c.Log.Error(err)
 		return err
 	}
@@ -304,7 +374,7 @@ func (c *BridgePortConfigurator) Delete(ctx context.Context, item dg.Item) (err 
 		err = netlink.LinkSetMTU(link, types.DefaultMTU)
 		if err != nil {
 			err = fmt.Errorf("failed to set default MTU %d for interface %s: %w",
-				types.DefaultMTU, bridgePort.portIfName(), err)
+				types.DefaultMTU, ifName, err)
 			c.Log.Error(err)
 			return err
 		}
@@ -312,11 +382,32 @@ func (c *BridgePortConfigurator) Delete(ctx context.Context, item dg.Item) (err 
 	err = netlink.LinkSetDown(link)
 	if err != nil {
 		err = fmt.Errorf("failed to set interface %s DOWN: %w",
-			bridgePort.portIfName(), err)
+			ifName, err)
 		c.Log.Error(err)
 		return err
 	}
 	return nil
+}
+
+// stillEnslavedIn returns true if link is currently a slave of the bridge
+// identified by bridgeIfName/expectedBridgeID. Used before detaching or
+// otherwise mutating bridge-scoped state (e.g. per-port VLAN membership) of
+// an interface resolved by IfInstanceID, to avoid acting on a bridge it was
+// re-enslaved into (by NIM) after this item's own claim on it was
+// superseded.
+func stillEnslavedIn(netMonitor netmonitor.NetworkMonitor, link netlink.Link,
+	bridgeIfName string, expectedBridgeID types.IfInstanceID) bool {
+	if link.Attrs().MasterIndex == 0 {
+		return false
+	}
+	masterAttrs, err := netMonitor.GetInterfaceAttrs(link.Attrs().MasterIndex)
+	if err != nil {
+		return false
+	}
+	if expectedBridgeID != 0 {
+		return masterAttrs.InstanceID == expectedBridgeID
+	}
+	return masterAttrs.InstanceID == 0 && masterAttrs.IfName == bridgeIfName
 }
 
 // NeedsRecreate returns false if only MTU changed.

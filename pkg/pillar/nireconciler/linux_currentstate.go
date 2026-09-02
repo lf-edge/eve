@@ -97,6 +97,8 @@ func (r *LinuxNIReconciler) updateCurrentGlobalState(onlyPortsChanged bool) (cha
 				MasterIfName: masterIfName,
 				AdminUp:      ifAttrs.AdminUp,
 				IPAddresses:  ips,
+				InstanceID:   ifAttrs.InstanceID,
+				IsBridge:     ifAttrs.IfType == "bridge",
 			}, &reconciler.ItemStateData{
 				State:         reconciler.ItemStateCreated,
 				LastOperation: reconciler.OperationCreate,
@@ -196,6 +198,12 @@ func (r *LinuxNIReconciler) updateCurrentNIBridge(niID uuid.UUID) (changed bool)
 			LogAndErrPrefix, niID, err)
 		return r.updateSingleItem(prevExtBridge, nil, l2SG)
 	}
+	var instanceID types.IfInstanceID
+	if brIfIndex, brFound, err := r.netMonitor.GetInterfaceIndex(ni.brIfName); err == nil && brFound {
+		if brAttrs, err := r.netMonitor.GetInterfaceAttrs(brIfIndex); err == nil {
+			instanceID = brAttrs.InstanceID
+		}
+	}
 	bridge := linux.Bridge{
 		IfName:       ni.brIfName,
 		CreatedByNIM: true,
@@ -203,6 +211,7 @@ func (r *LinuxNIReconciler) updateCurrentNIBridge(niID uuid.UUID) (changed bool)
 		IPAddresses:  ips,
 		MTU:          mtu,
 		WithSTP:      false,
+		InstanceID:   instanceID,
 	}
 	return r.updateSingleItem(prevExtBridge, bridge, l2SG)
 }
@@ -303,6 +312,7 @@ func (r *LinuxNIReconciler) updateCurrentVLANSubIfs(niID uuid.UUID) (changed boo
 				ParentLL:     port.LogicalLabel,
 				ParentIfName: parentIfAttrs.IfName,
 				ID:           ifAttrs.VlanID,
+				InstanceID:   ifAttrs.InstanceID,
 			}
 			subIfRef := dg.Reference(subIf)
 			prevSubIf := prevSubIfs[subIfRef]

@@ -13,7 +13,9 @@ import (
 
 	dg "github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
 	"github.com/lf-edge/eve/pkg/pillar/nireconciler/genericitems"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 // TCMirror : tc-filter rule mirroring matching packets (using tc-u32) from ingress qdisc
@@ -47,6 +49,9 @@ type TCMirror struct {
 	// Use zero to disable matching by the transport protocol destination port.
 	// Only valid if Protocol is either IPv4 or IPv6.
 	TransportDstPort uint16
+	// ExpectedPortID: IfInstanceID FromNetIf is expected to carry, when it
+	// refers to a NIM-managed Port. Zero (unchecked) otherwise, e.g. for a VIF.
+	ExpectedPortID types.IfInstanceID
 }
 
 // TCMatchProtocol : protocol to match by TCMirror rule.
@@ -105,7 +110,8 @@ func (tc TCMirror) Equal(other dg.Item) bool {
 		equalUint8Ptr(tc.TransportProtocol, tc2.TransportProtocol) &&
 		equalUint8Ptr(tc.ICMPType, tc2.ICMPType) &&
 		tc.TransportSrcPort == tc2.TransportSrcPort &&
-		tc.TransportDstPort == tc2.TransportDstPort
+		tc.TransportDstPort == tc2.TransportDstPort &&
+		tc.ExpectedPortID == tc2.ExpectedPortID
 }
 
 // External returns false.
@@ -134,8 +140,8 @@ func (tc TCMirror) String() string {
 			fmt.Sprintf("transport-dst-port=%d", tc.TransportDstPort))
 	}
 	return fmt.Sprintf("TC-Mirror rule from interface %s to interface %s priority %d, "+
-		"matching: %v", tc.FromNetIf.IfName, tc.ToNetIf.IfName, tc.RulePriority,
-		strings.Join(matchRules, ", "))
+		"matching: %v, expectedPortID: %d", tc.FromNetIf.IfName, tc.ToNetIf.IfName,
+		tc.RulePriority, strings.Join(matchRules, ", "), tc.ExpectedPortID)
 }
 
 // Dependencies returns the source interface with ingress qdisc enabled and the destination
@@ -169,7 +175,8 @@ func equalUint8Ptr(value1, value2 *uint8) bool {
 // TCMirrorConfigurator implements Configurator interface (libs/reconciler)
 // for configuring tc-filter rules mirroring selected packets.
 type TCMirrorConfigurator struct {
-	Log *base.LogObject
+	Log            *base.LogObject
+	NetworkMonitor netmonitor.NetworkMonitor
 }
 
 // Create adds tc-filter rule mirroring selected packets.
@@ -252,24 +259,44 @@ func (c *TCMirrorConfigurator) Delete(ctx context.Context, item dg.Item) error {
 	if !isTCMirror {
 		return fmt.Errorf("invalid item type %T, expected TCMirror", item)
 	}
+	ifName := tcMirror.FromNetIf.IfName
+	if tcMirror.ExpectedPortID != 0 {
+		attrs, exists, err := c.NetworkMonitor.GetInterfaceByInstanceID(
+			tcMirror.ExpectedPortID)
+		if err != nil {
+			err = fmt.Errorf("failed to look up interface with IfInstanceID %d: %v",
+				tcMirror.ExpectedPortID, err)
+			c.Log.Error(err)
+			return err
+		}
+		if !exists {
+			// Genuinely gone (not just renamed); kernel already cleaned up.
+			return nil
+		}
+		// May have been renamed since this item was created, or the old name
+		// may have been reused for a different interface (e.g. NIM-created
+		// bridge takes over the adapter's logical name once it starts bridging).
+		ifName = attrs.IfName
+	}
 	var args []string
 	args = append(args, "filter", "delete")
-	args = append(args, "dev", tcMirror.FromNetIf.IfName)
+	args = append(args, "dev", ifName)
 	args = append(args, "parent", "ffff:") // ingress qdisc
 	args = append(args, "prio", strconv.Itoa(int(tcMirror.RulePriority)))
 	output, err := exec.Command("tc", args...).CombinedOutput()
 	if err != nil {
 		isDevNotFound := strings.Contains(string(output),
-			fmt.Sprintf("Cannot find device \"%s\"", tcMirror.FromNetIf.IfName))
-		if isDevNotFound {
-			// Ignore if interface was already deleted and therefore Linux has
-			// automatically removed the tc-filter rule.
+			fmt.Sprintf("Cannot find device \"%s\"", ifName))
+		isQdiscGone := strings.Contains(string(output), "Parent Qdisc doesn't exists")
+		if isDevNotFound || isQdiscGone {
+			// Ignore if the interface, or its ingress qdisc, was already removed
+			// (e.g. by TCIngress's own Delete) -- the filter is implicitly gone too.
 			c.Log.Warn(err)
 			err = nil
 		} else {
 			err = fmt.Errorf(
 				"failed to delete tc-rule mirroring traffic from %s to %s: %s (%w)",
-				tcMirror.FromNetIf.IfName, tcMirror.ToNetIf.IfName, output, err)
+				ifName, tcMirror.ToNetIf.IfName, output, err)
 			c.Log.Error(err)
 			return err
 		}

@@ -124,6 +124,14 @@ func (c *VlanConfigurator) Create(ctx context.Context, item depgraph.Item) error
 		c.Log.Error(err)
 		return err
 	}
+	// Tag with a fresh IfInstanceID so it survives a rename and isn't
+	// confused with a future sub-interface that reuses this name.
+	if _, err = c.NetworkMonitor.AssignNewInstanceID(vlan.Attrs().Index); err != nil {
+		err = fmt.Errorf("failed to assign IfInstanceID for VLAN sub-interface %s: %v",
+			vlanCfg.IfName, err)
+		c.Log.Error(err)
+		return err
+	}
 	// Ensure the parent interface is set to UP before bringing up the VLAN subinterface.
 	// Otherwise, netlink.LinkSetUp(vlan) will return a "network is down" error.
 	err = netlink.LinkSetUp(parentLink)

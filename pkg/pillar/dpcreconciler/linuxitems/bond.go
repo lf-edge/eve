@@ -182,6 +182,13 @@ func (c *BondConfigurator) Create(ctx context.Context, item depgraph.Item) error
 		c.Log.Error(err)
 		return err
 	}
+	// Tag with a fresh IfInstanceID so it survives a rename and isn't
+	// confused with a future bond that reuses this name.
+	if _, err = c.NetworkMonitor.AssignNewInstanceID(bond.Attrs().Index); err != nil {
+		err = fmt.Errorf("failed to assign IfInstanceID for bond %s: %v", bondCfg.IfName, err)
+		c.Log.Error(err)
+		return err
+	}
 	err = netlink.LinkSetUp(bond)
 	if err != nil {
 		err = fmt.Errorf("failed to set bond %s UP: %v", bondCfg.IfName, err)
