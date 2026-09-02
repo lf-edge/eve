@@ -375,6 +375,8 @@ func TestPortEqual(t *testing.T) {
 	p3DiffName := Port{IfName: "eth1", LogicalLabel: "uplink", AdminUp: true, IPAddresses: []*net.IPNet{ip1}}
 	p4DiffIPs := Port{IfName: "eth0", LogicalLabel: "uplink", AdminUp: true, IPAddresses: []*net.IPNet{ip2}}
 	p5WrongType := IPReserve{AddrWithMask: ip1}
+	p6DiffInstanceID := Port{IfName: "eth0", LogicalLabel: "uplink", AdminUp: true,
+		IPAddresses: []*net.IPNet{ip1}, InstanceID: 42}
 	tests := []struct {
 		name  string
 		other dg.Item
@@ -384,6 +386,7 @@ func TestPortEqual(t *testing.T) {
 		{"different IfName", p3DiffName, false},
 		{"different IPs", p4DiffIPs, false},
 		{"wrong type", p5WrongType, false},
+		{"different InstanceID", p6DiffInstanceID, false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

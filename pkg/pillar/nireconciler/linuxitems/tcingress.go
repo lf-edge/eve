@@ -12,7 +12,9 @@ import (
 
 	dg "github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
 	"github.com/lf-edge/eve/pkg/pillar/nireconciler/genericitems"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 // TCIngress : enable ingress traffic control (tc) qdisc for a network interface.
@@ -20,6 +22,9 @@ import (
 type TCIngress struct {
 	// NetIf : network interface which will have ingress qdisc enabled.
 	NetIf genericitems.NetworkIf
+	// ExpectedPortID: IfInstanceID NetIf is expected to carry, when it
+	// refers to a NIM-managed Port. Zero (unchecked) otherwise, e.g. for a VIF.
+	ExpectedPortID types.IfInstanceID
 }
 
 // Name returns the interface name on which tc-ingress qdisc is enabled.
@@ -55,17 +60,28 @@ func (tc TCIngress) External() bool {
 
 // String describes TCIngress.
 func (tc TCIngress) String() string {
-	return fmt.Sprintf("TC-Ingress qdisc for interface: %s", tc.NetIf.IfName)
+	return fmt.Sprintf("TC-Ingress qdisc for interface: %s, expectedPortID: %d",
+		tc.NetIf.IfName, tc.ExpectedPortID)
 }
 
 // Dependencies returns the interface on which the tc-ingress qdisc should be enabled.
 func (tc TCIngress) Dependencies() (deps []dg.Dependency) {
 	deps = append(deps, dg.Dependency{
 		RequiredItem: tc.NetIf.ItemRef,
-		Description:  "interface on which tc-ingress should be enabled must exist",
-		Attributes: dg.DependencyAttributes{
-			AutoDeletedByExternal: true,
+		MustSatisfy: func(item dg.Item) bool {
+			if tc.ExpectedPortID == 0 {
+				return true
+			}
+			port, isPort := item.(genericitems.Port)
+			if !isPort {
+				return true
+			}
+			// Reject a same-named Port that NIM has since torn down and
+			// recreated -- its old qdisc may still be attached.
+			return port.InstanceID == tc.ExpectedPortID
 		},
+		Description: "interface on which tc-ingress should be enabled must exist " +
+			"with the expected IfInstanceID",
 	})
 	return deps
 }
@@ -73,7 +89,8 @@ func (tc TCIngress) Dependencies() (deps []dg.Dependency) {
 // TCIngressConfigurator implements Configurator interface (libs/reconciler)
 // for enabling TC-Ingress qdisc.
 type TCIngressConfigurator struct {
-	Log *base.LogObject
+	Log            *base.LogObject
+	NetworkMonitor netmonitor.NetworkMonitor
 }
 
 // Create enables tc-ingress qdisc on an interface.
@@ -105,12 +122,28 @@ func (c *TCIngressConfigurator) Delete(ctx context.Context, item dg.Item) error 
 	if !isTCIngress {
 		return fmt.Errorf("invalid item type %T, expected TCIngress", item)
 	}
+	ifName := tcIngress.NetIf.IfName
+	if tcIngress.ExpectedPortID != 0 {
+		attrs, exists, err := c.NetworkMonitor.GetInterfaceByInstanceID(
+			tcIngress.ExpectedPortID)
+		if err != nil {
+			err = fmt.Errorf("failed to look up interface with IfInstanceID %d: %v",
+				tcIngress.ExpectedPortID, err)
+			c.Log.Error(err)
+			return err
+		}
+		if !exists {
+			// Genuinely gone (not just renamed); kernel already cleaned up.
+			return nil
+		}
+		ifName = attrs.IfName // may have been renamed since this item was created
+	}
 	var args []string
-	args = append(args, "qdisc", "delete", "dev", tcIngress.NetIf.IfName, "ingress")
+	args = append(args, "qdisc", "delete", "dev", ifName, "ingress")
 	output, err := exec.Command("tc", args...).CombinedOutput()
 	if err != nil {
 		isDevNotFound := strings.Contains(string(output),
-			fmt.Sprintf("Cannot find device \"%s\"", tcIngress.NetIf.IfName))
+			fmt.Sprintf("Cannot find device \"%s\"", ifName))
 		if isDevNotFound {
 			// Ignore if interface was already deleted and therefore Linux has
 			// automatically removed the tc-filter rule.
@@ -118,7 +151,7 @@ func (c *TCIngressConfigurator) Delete(ctx context.Context, item dg.Item) error 
 			err = nil
 		} else {
 			err = fmt.Errorf("failed to delete tc-ingress qdisc from interface %s: %s (%w)",
-				tcIngress.NetIf.IfName, output, err)
+				ifName, output, err)
 			c.Log.Error(err)
 			return err
 		}

@@ -39,6 +39,13 @@ type NetworkPortStatus struct {
 	// can differ from the model (e.g. ethN vs enpNsN) or change across driver
 	// re-binds. Empty for ports not backed by a PCI device (e.g. USB NICs).
 	PciLong string
+	// UnderlyingIfInstanceID identifies the interface NIM enslaves under a
+	// bridge when bridging this port (a physical NIC, VLAN sub-interface, or
+	// bond) -- always defined, whether or not the port is currently bridged.
+	UnderlyingIfInstanceID IfInstanceID
+	// BridgeIfInstanceID identifies the bridge NIM creates over
+	// UnderlyingIfInstanceID. Zero when this port isn't bridged by NIM.
+	BridgeIfInstanceID IfInstanceID
 	// Unlike the logicallabel, which is defined in the device model and unique
 	// for each port, these user-configurable "shared" labels are potentially
 	// assigned to multiple ports so that they can be used all together with
@@ -83,6 +90,13 @@ type NetworkPortStatus struct {
 	// Server (LPS). Reported only back to LPS and never sent to the controller.
 	LpsConfigError string
 }
+
+// IfInstanceID uniquely identifies one concrete network-interface object
+// (NIC, bridge, VLAN sub-interface, or bond) managed by NIM, system-wide.
+// Unlike ifindex (reused by the kernel) or ifname (renamed by NIM), it
+// changes only when NIM actually destroys and recreates the object. Zero
+// means undefined.
+type IfInstanceID uint64
 
 type AddrInfo struct {
 	Addr             net.IP
@@ -250,7 +264,9 @@ func (status DeviceNetworkStatus) MostlyEqual(status2 DeviceNetworkStatus) bool 
 			p1.InvalidConfig != p2.InvalidConfig ||
 			p1.Cost != p2.Cost ||
 			p1.MTU != p2.MTU ||
-			p1.ConfigSource.Origin != p2.ConfigSource.Origin {
+			p1.ConfigSource.Origin != p2.ConfigSource.Origin ||
+			p1.UnderlyingIfInstanceID != p2.UnderlyingIfInstanceID ||
+			p1.BridgeIfInstanceID != p2.BridgeIfInstanceID {
 			return false
 		}
 		if p1.Dhcp != p2.Dhcp ||

@@ -513,6 +513,24 @@ func TestDeviceNetworkStatusMostlyEqualPortContent(t *testing.T) {
 		},
 	}
 	assert.False(t, s1.MostlyEqual(s4))
+
+	// Different UnderlyingIfInstanceID: NIM re-created the underlying interface
+	// (e.g. after a rename cycle), zedrouter must not treat this as a no-op.
+	s5 := DeviceNetworkStatus{
+		Ports: []NetworkPortStatus{
+			{IfName: "eth0", IsMgmt: true, IPv4Subnet: subnet, UnderlyingIfInstanceID: 1},
+		},
+	}
+	assert.False(t, s1.MostlyEqual(s5))
+
+	// Different BridgeIfInstanceID: NIM stopped/started bridging the port,
+	// zedrouter must not treat this as a no-op.
+	s6 := DeviceNetworkStatus{
+		Ports: []NetworkPortStatus{
+			{IfName: "eth0", IsMgmt: true, IPv4Subnet: subnet, BridgeIfInstanceID: 1},
+		},
+	}
+	assert.False(t, s1.MostlyEqual(s6))
 }
 
 // DeviceNetworkStatus.MostlyEqual — remaining branches

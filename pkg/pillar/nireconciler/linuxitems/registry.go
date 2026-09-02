@@ -20,7 +20,7 @@ func RegisterItems(log *base.LogObject, registry *reconciler.DefaultRegistry,
 	configurators := []configurator{
 		{c: &BridgeConfigurator{Log: log}, t: BridgeTypename},
 		{c: &BridgeFwdMaskConfigurator{Log: log}, t: BridgeFwdMaskTypename},
-		{c: &BridgePortConfigurator{Log: log}, t: BridgePortTypename},
+		{c: &BridgePortConfigurator{Log: log, NetworkMonitor: monitor}, t: BridgePortTypename},
 		{c: &DummyIfConfigurator{Log: log}, t: DummyIfTypename},
 		{c: &IPRuleConfigurator{Log: log}, t: IPRuleTypename},
 		{c: &IPSetConfigurator{Log: log}, t: generic.IPSetTypename},
@@ -30,9 +30,9 @@ func RegisterItems(log *base.LogObject, registry *reconciler.DefaultRegistry,
 		{c: &VLANPortConfigurator{Log: log, NetworkMonitor: monitor}, t: VLANPortTypename},
 		{c: &SysctlConfigurator{Log: log}, t: SysctlTypename},
 		{c: &VIFConfigurator{Log: log}, t: VIFTypename},
-		{c: &BPDUGuardConfigurator{Log: log}, t: BPDUGuardTypename},
-		{c: &TCIngressConfigurator{Log: log}, t: TCIngressTypename},
-		{c: &TCMirrorConfigurator{Log: log}, t: TCMirrorTypename},
+		{c: &BPDUGuardConfigurator{Log: log, NetworkMonitor: monitor}, t: BPDUGuardTypename},
+		{c: &TCIngressConfigurator{Log: log, NetworkMonitor: monitor}, t: TCIngressTypename},
+		{c: &TCMirrorConfigurator{Log: log, NetworkMonitor: monitor}, t: TCMirrorTypename},
 	}
 	for _, configurator := range configurators {
 		err := registry.Register(configurator.c, configurator.t)

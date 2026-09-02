@@ -95,15 +95,28 @@ func TestBPDUGuardEqual(t *testing.T) {
 	if g1.Equal(DummyIf{}) {
 		t.Error("wrong type should be unequal")
 	}
+	g5DiffInstanceID := BPDUGuard{BridgeIfName: "br0", PortIfName: "eth0", ExpectedBridgeID: 42}
+	if g1.Equal(g5DiffInstanceID) {
+		t.Error("different ExpectedBridgeID should be unequal")
+	}
 }
 
 func TestBPDUGuardDependencies(t *testing.T) {
-	g := BPDUGuard{BridgeIfName: "br0", PortIfName: "eth0"}
+	g := BPDUGuard{BridgeIfName: "br0", PortIfName: "eth0", ExpectedBridgeID: 42}
 	deps := g.Dependencies()
 	if len(deps) != 2 {
 		t.Fatalf("expected 2 deps, got %d", len(deps))
 	}
-	depByType(t, deps, BridgeTypename)
+	bridgeDep := depByType(t, deps, BridgeTypename)
+	if bridgeDep.MustSatisfy == nil {
+		t.Fatal("Bridge dep should have MustSatisfy when ExpectedBridgeID is set")
+	}
+	if !bridgeDep.MustSatisfy(Bridge{IfName: "br0", InstanceID: 42}) {
+		t.Error("MustSatisfy should accept a Bridge with the expected InstanceID")
+	}
+	if bridgeDep.MustSatisfy(Bridge{IfName: "br0", InstanceID: 43}) {
+		t.Error("MustSatisfy should reject a Bridge with a different InstanceID")
+	}
 	bpDep := depByType(t, deps, BridgePortTypename)
 	wantBPName := BridgePortName("br0", "eth0")
 	if bpDep.RequiredItem.ItemName != wantBPName {
@@ -188,6 +201,11 @@ func TestBridgeEqual(t *testing.T) {
 	}
 	if b1.Equal(DummyIf{}) {
 		t.Error("wrong type should be unequal")
+	}
+	b5DiffInstanceID := Bridge{IfName: "br0", MACAddress: mac1, MTU: 1500, InstanceID: 7}
+	if b1.Equal(b5DiffInstanceID) {
+		t.Error("different InstanceID should be unequal -- this is what lets a " +
+			"NIM-recreated bridge (same name, same MAC) be detected as changed")
 	}
 }
 
@@ -302,20 +320,33 @@ func TestBridgePortDependenciesVIF(t *testing.T) {
 }
 
 func TestBridgePortDependenciesPort(t *testing.T) {
-	// ExternallyBridged=false: no MustSatisfy
+	// ExternallyBridged=false: MustSatisfy rejects a Port that is itself
+	// currently a bridge (NIM may still be un-bridging it; enslaving a
+	// bridge into another bridge is rejected by the kernel with ELOOP).
 	p := BridgePort{BridgeIfName: "br0", Variant: BridgePortVariant{PortIfName: "eth0"}}
 	deps := p.Dependencies()
 	if len(deps) != 2 {
 		t.Fatalf("expected 2 deps, got %d", len(deps))
 	}
 	portDep := depByType(t, deps, generic.PortTypename)
-	if portDep.MustSatisfy != nil {
-		t.Error("non-externally bridged port dep should not have MustSatisfy")
+	if portDep.MustSatisfy == nil {
+		t.Fatal("non-externally bridged port dep should have MustSatisfy")
+	}
+	if !portDep.MustSatisfy(generic.Port{IsBridge: false}) {
+		t.Error("MustSatisfy should be true for a Port that is not itself a bridge")
+	}
+	if portDep.MustSatisfy(generic.Port{IsBridge: true}) {
+		t.Error("MustSatisfy should be false for a Port that is itself a bridge")
 	}
 }
 
 func TestBridgePortDependenciesPortExternallyBridged(t *testing.T) {
-	p := BridgePort{BridgeIfName: "br0", Variant: BridgePortVariant{PortIfName: "eth0"}, ExternallyBridged: true}
+	p := BridgePort{
+		BridgeIfName:      "br0",
+		Variant:           BridgePortVariant{PortIfName: "eth0"},
+		ExternallyBridged: true,
+		ExpectedPortID:    42,
+	}
 	deps := p.Dependencies()
 	if len(deps) != 2 {
 		t.Fatalf("expected 2 deps, got %d", len(deps))
@@ -324,20 +355,56 @@ func TestBridgePortDependenciesPortExternallyBridged(t *testing.T) {
 	if portDep.MustSatisfy == nil {
 		t.Fatal("externally bridged port dep should have MustSatisfy")
 	}
-	// Port with matching MasterIfName → true
-	portMatch := generic.Port{MasterIfName: "br0"}
+	portMatch := generic.Port{MasterIfName: "br0", InstanceID: 42}
 	if !portDep.MustSatisfy(portMatch) {
-		t.Error("MustSatisfy should be true for matching MasterIfName")
+		t.Error("MustSatisfy should be true for matching MasterIfName and InstanceID")
 	}
-	portNoMatch := generic.Port{MasterIfName: "br1"}
+	portNoMatch := generic.Port{MasterIfName: "br1", InstanceID: 42}
 	if portDep.MustSatisfy(portNoMatch) {
 		t.Error("MustSatisfy should be false for non-matching MasterIfName")
+	}
+	portWrongID := generic.Port{MasterIfName: "br0", InstanceID: 43}
+	if portDep.MustSatisfy(portWrongID) {
+		t.Error("MustSatisfy should be false for a Port with a different InstanceID " +
+			"even if MasterIfName matches -- it may be a different incarnation " +
+			"of the port that NIM has since renamed or recreated")
+	}
+}
+
+func TestBridgePortDependenciesBridgeID(t *testing.T) {
+	p := BridgePort{
+		BridgeIfName:     "br0",
+		Variant:          BridgePortVariant{PortIfName: "eth0"},
+		ExpectedBridgeID: 42,
+	}
+	bridgeDep := depByType(t, p.Dependencies(), BridgeTypename)
+	if bridgeDep.MustSatisfy == nil {
+		t.Fatal("Bridge dep should have MustSatisfy when ExpectedBridgeID is set")
+	}
+	if !bridgeDep.MustSatisfy(Bridge{IfName: "br0", InstanceID: 42}) {
+		t.Error("MustSatisfy should accept a Bridge with the expected InstanceID")
+	}
+	if bridgeDep.MustSatisfy(Bridge{IfName: "br0", InstanceID: 43}) {
+		t.Error("MustSatisfy should reject a Bridge with a different InstanceID " +
+			"(a same-named bridge NIM has since torn down and recreated -- this " +
+			"is what makes a silently-recreated bridge visible again, so " +
+			"orphaned VIFs get re-enslaved instead of staying disconnected)")
+	}
+	pNotNIM := BridgePort{BridgeIfName: "br0", Variant: BridgePortVariant{PortIfName: "eth0"}}
+	noIDDep := depByType(t, pNotNIM.Dependencies(), BridgeTypename)
+	if !noIDDep.MustSatisfy(Bridge{IfName: "br0", InstanceID: 99}) {
+		t.Error("MustSatisfy should accept any InstanceID when ExpectedBridgeID is zero")
 	}
 }
 
 func TestBridgePortDependenciesVLANSubinterface(t *testing.T) {
 	subIf := &VLANSubinterface{IfName: "eth0.100", VID: 100}
-	p := BridgePort{BridgeIfName: "br0", Variant: BridgePortVariant{VLANSubinterface: subIf}, ExternallyBridged: true}
+	p := BridgePort{
+		BridgeIfName:      "br0",
+		Variant:           BridgePortVariant{VLANSubinterface: subIf},
+		ExternallyBridged: true,
+		ExpectedPortID:    42,
+	}
 	deps := p.Dependencies()
 	if len(deps) != 2 {
 		t.Fatalf("expected 2 deps, got %d", len(deps))
@@ -346,14 +413,19 @@ func TestBridgePortDependenciesVLANSubinterface(t *testing.T) {
 	if subIfDep.MustSatisfy == nil {
 		t.Fatal("VLANSubinterface dep should have MustSatisfy")
 	}
-	// VLANSubIf with matching ParentIfName and ID → true
-	match := VLANSubIf{ParentIfName: "br0", ID: 100}
+	// VLANSubIf with matching ParentIfName, ID and InstanceID → true
+	match := VLANSubIf{ParentIfName: "br0", ID: 100, InstanceID: 42}
 	if !subIfDep.MustSatisfy(match) {
 		t.Error("MustSatisfy should be true for matching VLANSubIf")
 	}
-	noMatch := VLANSubIf{ParentIfName: "br0", ID: 200}
+	noMatch := VLANSubIf{ParentIfName: "br0", ID: 200, InstanceID: 42}
 	if subIfDep.MustSatisfy(noMatch) {
 		t.Error("MustSatisfy should be false for wrong VID")
+	}
+	wrongID := VLANSubIf{ParentIfName: "br0", ID: 100, InstanceID: 43}
+	if subIfDep.MustSatisfy(wrongID) {
+		t.Error("MustSatisfy should be false for a VLANSubIf with a different InstanceID " +
+			"even if ParentIfName and VID match -- NIM may have torn it down and recreated it")
 	}
 }
 
@@ -496,7 +568,10 @@ func TestTCIngressEqual(t *testing.T) {
 
 func TestTCIngressDependencies(t *testing.T) {
 	ref := dg.ItemRef{ItemType: "Port", ItemName: "eth0"}
-	tc := TCIngress{NetIf: generic.NetworkIf{IfName: "eth0", ItemRef: ref}}
+	tc := TCIngress{
+		NetIf:          generic.NetworkIf{IfName: "eth0", ItemRef: ref},
+		ExpectedPortID: 42,
+	}
 	deps := tc.Dependencies()
 	if len(deps) != 1 {
 		t.Fatalf("expected 1 dep, got %d", len(deps))
@@ -504,8 +579,24 @@ func TestTCIngressDependencies(t *testing.T) {
 	if deps[0].RequiredItem != ref {
 		t.Errorf("dep should be NetIf")
 	}
-	if !deps[0].Attributes.AutoDeletedByExternal {
-		t.Error("dep should be AutoDeletedByExternal")
+	if deps[0].Attributes.AutoDeletedByExternal {
+		t.Error("dep should not be AutoDeletedByExternal -- an IfInstanceID " +
+			"mismatch is now a genuine Equal() diff on TCIngress itself, so a " +
+			"real Delete runs instead of silently skipping straight to Create")
+	}
+	if deps[0].MustSatisfy == nil {
+		t.Fatal("dep should have MustSatisfy to check the Port's IfInstanceID")
+	}
+	if !deps[0].MustSatisfy(generic.Port{IfName: "eth0", InstanceID: 42}) {
+		t.Error("MustSatisfy should accept a Port with the expected InstanceID")
+	}
+	if deps[0].MustSatisfy(generic.Port{IfName: "eth0", InstanceID: 43}) {
+		t.Error("MustSatisfy should reject a Port with a different InstanceID " +
+			"(a same-named Port that NIM has since torn down and recreated)")
+	}
+	tcNoID := TCIngress{NetIf: generic.NetworkIf{IfName: "eth0", ItemRef: ref}}
+	if !tcNoID.Dependencies()[0].MustSatisfy(generic.Port{IfName: "eth0", InstanceID: 99}) {
+		t.Error("MustSatisfy should accept any InstanceID when ExpectedPortID is zero")
 	}
 }
 
@@ -630,16 +721,29 @@ func TestVLANBridgeEqual(t *testing.T) {
 	if v1.Equal(DummyIf{}) {
 		t.Error("wrong type should be unequal")
 	}
+	v4DiffInstanceID := VLANBridge{BridgeIfName: "br0", EnableVLANFiltering: true, ExpectedBridgeID: 42}
+	if v1.Equal(v4DiffInstanceID) {
+		t.Error("different ExpectedBridgeID should be unequal")
+	}
 }
 
 func TestVLANBridgeDependencies(t *testing.T) {
-	v := VLANBridge{BridgeIfName: "br0"}
+	v := VLANBridge{BridgeIfName: "br0", ExpectedBridgeID: 42}
 	deps := v.Dependencies()
 	if len(deps) != 1 {
 		t.Fatalf("expected 1 dep, got %d", len(deps))
 	}
 	if deps[0].RequiredItem.ItemType != BridgeTypename || deps[0].RequiredItem.ItemName != "br0" {
 		t.Errorf("dep should be Bridge br0, got %+v", deps[0].RequiredItem)
+	}
+	if deps[0].MustSatisfy == nil {
+		t.Fatal("Bridge dep should have MustSatisfy when ExpectedBridgeID is set")
+	}
+	if !deps[0].MustSatisfy(Bridge{IfName: "br0", InstanceID: 42}) {
+		t.Error("MustSatisfy should accept a Bridge with the expected InstanceID")
+	}
+	if deps[0].MustSatisfy(Bridge{IfName: "br0", InstanceID: 43}) {
+		t.Error("MustSatisfy should reject a Bridge with a different InstanceID")
 	}
 }
 
@@ -722,6 +826,10 @@ func TestVLANSubIfEqual(t *testing.T) {
 	}
 	if v1.Equal(v4DiffParent) {
 		t.Error("different ParentIfName should be unequal")
+	}
+	v5DiffInstanceID := VLANSubIf{IfName: "eth0.100", ParentIfName: "eth0", ID: 100, InstanceID: 42}
+	if v1.Equal(v5DiffInstanceID) {
+		t.Error("different InstanceID should be unequal")
 	}
 }
 

@@ -141,20 +141,23 @@ func (z *zedrouter) getNIPortConfig(
 					IfName:       port2.IfName,
 					VLAN:         port2.VLAN.ID,
 					MTU:          port2.MTU,
+					InstanceID:   port2.UnderlyingIfInstanceID,
 				})
 			}
 		}
 		portConfigs = append(portConfigs, nireconciler.Port{
-			LogicalLabel:      port.Logicallabel,
-			SharedLabels:      port.SharedLabels,
-			IfName:            port.IfName,
-			IsMgmt:            port.IsMgmt,
-			MTU:               port.MTU,
-			DhcpType:          port.Dhcp,
-			DNSServers:        types.GetDNSServers(*z.deviceNetworkStatus, port.IfName),
-			StaticIP:          netutils.NewIPNet(port.ConfiguredIP, port.ConfiguredSubnet),
-			IgnoreDhcpIPs:     port.IgnoredDhcpIPs,
-			VLANSubinterfaces: vlanSubIfs,
+			LogicalLabel:           port.Logicallabel,
+			SharedLabels:           port.SharedLabels,
+			IfName:                 port.IfName,
+			IsMgmt:                 port.IsMgmt,
+			MTU:                    port.MTU,
+			DhcpType:               port.Dhcp,
+			DNSServers:             types.GetDNSServers(*z.deviceNetworkStatus, port.IfName),
+			StaticIP:               netutils.NewIPNet(port.ConfiguredIP, port.ConfiguredSubnet),
+			IgnoreDhcpIPs:          port.IgnoredDhcpIPs,
+			VLANSubinterfaces:      vlanSubIfs,
+			UnderlyingIfInstanceID: port.UnderlyingIfInstanceID,
+			BridgeIfInstanceID:     port.BridgeIfInstanceID,
 		})
 	}
 	return portConfigs

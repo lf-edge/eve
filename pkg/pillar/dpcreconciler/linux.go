@@ -800,7 +800,7 @@ func (r *LinuxDpcReconciler) updateCurrentNetworkIO(
 			// entries in AssignableAdapters should not be ignored.
 			continue
 		}
-		_, found, err := r.NetworkMonitor.GetInterfaceIndex(port.IfName)
+		ifIndex, found, err := r.NetworkMonitor.GetInterfaceIndex(port.IfName)
 		if err != nil {
 			r.Log.Errorf("updateCurrentNetworkIO: failed to get ifIndex for %s: %v",
 				port.IfName, err)
@@ -808,6 +808,19 @@ func (r *LinuxDpcReconciler) updateCurrentNetworkIO(
 		}
 		if !found {
 			continue
+		}
+		// Tag the NIC with a fresh IfInstanceID the first time it's seen here
+		// (not in PhysIf.Create: that doesn't run for every physical port,
+		// and NeedsRecreate can fire for reasons unrelated to the hardware
+		// actually changing). Guarded on InstanceID == 0 to never reassign.
+		if ifAttrs, err := r.NetworkMonitor.GetInterfaceAttrs(ifIndex); err != nil {
+			r.Log.Errorf("updateCurrentNetworkIO: failed to get attrs for %s: %v",
+				port.IfName, err)
+		} else if ifAttrs.InstanceID == 0 {
+			if _, err := r.NetworkMonitor.AssignNewInstanceID(ifIndex); err != nil {
+				r.Log.Errorf("updateCurrentNetworkIO: failed to assign IfInstanceID for %s: %v",
+					port.IfName, err)
+			}
 		}
 		currentIO.PutItem(generic.NetIO{
 			LogicalLabel: port.Logicallabel,
