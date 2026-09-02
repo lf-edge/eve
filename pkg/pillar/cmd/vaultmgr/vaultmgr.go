@@ -59,6 +59,9 @@ type vaultMgrContext struct {
 	vaultUCDone               bool
 	// How the default vault was unlocked this boot, surfaced on VaultStatus.
 	unlockMethod types.VaultUnlockMethod
+	// How the default vault's key is derived, surfaced on VaultStatus. Stays
+	// types.VaultKeyDerivationNone where no vault key is derived at all.
+	keyDerivation types.VaultKeyDerivation
 	// PCRs that did not match on a failed local unseal; retained so it is still
 	// reported after the controller-key recovery re-seals.
 	lastMismatchingPCRs []int
@@ -191,11 +194,16 @@ func initializeSelfPublishHandles(ps *pubsub.PubSub, ctx *vaultMgrContext) {
 // checkAndPublishVaultConfig: If vault config is not yet initialized
 // Checks if defaultVault/defaultSecretDataset exists and if not publishes the vault config TmpKeyOnly = true
 // If those directories exists, then publishes the vault config TmpKeyOnly = false
-// Function returns TmpKeyOnly value
-func checkAndPublishVaultConfig(ctx *vaultMgrContext) bool {
+// Function returns the TmpKeyOnly value, plus whether the persist filesystem is
+// one that sets up a vault at all. On any other filesystem no vault key is
+// derived, so the TmpKeyOnly value describes nothing.
+func checkAndPublishVaultConfig(ctx *vaultMgrContext) (bool, bool) {
+	persistFsType := persist.ReadPersistType()
+	vaultSupported := persistFsType == types.PersistExt4 ||
+		persistFsType == types.PersistZFS
+
 	// We do not have vault config, publish it
 	if vaultConfigInited == false {
-		persistFsType := persist.ReadPersistType()
 		tpmKeyOnly := false
 
 		switch persistFsType {
@@ -213,9 +221,9 @@ func checkAndPublishVaultConfig(ctx *vaultMgrContext) bool {
 				persistFsType)
 		}
 		publishVaultConfig(ctx, tpmKeyOnly)
-		return tpmKeyOnly
+		return tpmKeyOnly, vaultSupported
 	}
-	return vaultConfig.TpmKeyOnly
+	return vaultConfig.TpmKeyOnly, vaultSupported
 }
 
 // Run is the entrypoint for running vaultmgr as a standalone program
@@ -323,8 +331,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	tpmEnabled := etpm.IsTpmEnabled()
 	if tpmEnabled {
 		// TPM is enabled. Check if defaultVault directory exists, if not set vaultconfig
-		tpmKeyOnlyMode := checkAndPublishVaultConfig(&ctx)
+		tpmKeyOnlyMode, vaultSupported := checkAndPublishVaultConfig(&ctx)
 		handler.SetHandlerOptions(vault.HandlerOptions{TpmKeyOnlyMode: tpmKeyOnlyMode})
+		if vaultSupported {
+			if tpmKeyOnlyMode {
+				ctx.keyDerivation = types.VaultKeyDerivationTPMOnly
+			} else {
+				ctx.keyDerivation = types.VaultKeyDerivationTPMAndConstant
+			}
+		}
 	}
 
 	if tpmEnabled {
@@ -738,6 +753,7 @@ func getAndPublishAllVaultStatuses(ctx *vaultMgrContext) {
 		if status.Name == types.DefaultVaultName {
 			// surface how the vault was unlocked this boot
 			status.UnlockMethod = ctx.unlockMethod
+			status.KeyDerivation = ctx.keyDerivation
 			// If a local unseal failed, keep reporting the mismatching PCRs even
 			// after the controller-key recovery unlocked (and re-sealed) the vault,
 			// so the diagnostic is not lost the moment recovery succeeds.
