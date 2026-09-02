@@ -64,7 +64,7 @@ require (
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
-	github.com/lf-edge/edge-containers v0.0.0-20260502192833-bdbe764faf59 // indirect
+	github.com/lf-edge/edge-containers v0.0.0-20260902165213-6379c238086c // indirect
 	github.com/lf-edge/eve-api/go v0.0.0-20260812180240-99d02ddcfcb0 // indirect
 	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d // indirect
 	github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20240507172735-6d37353ca1ee // indirect

@@ -331,8 +331,8 @@ github.com/klauspost/compress/zstd/internal/xxhash
 # github.com/leodido/go-urn v1.2.4
 ## explicit; go 1.16
 github.com/leodido/go-urn
-# github.com/lf-edge/edge-containers v0.0.0-20260502192833-bdbe764faf59
-## explicit; go 1.24.0
+# github.com/lf-edge/edge-containers v0.0.0-20260902165213-6379c238086c
+## explicit; go 1.25.0
 github.com/lf-edge/edge-containers/pkg/resolver
 # github.com/lf-edge/eve-api/go v0.0.0-20260812180240-99d02ddcfcb0
 ## explicit; go 1.21.1
