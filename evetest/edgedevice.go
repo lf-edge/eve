@@ -197,13 +197,17 @@ func (d *EdgeDevice) ApplyConfig(config *EdgeDeviceConfig, waitUntilFetched bool
 	// Set default global configuration properties.
 	newConfig.setDefaultConfigProperties()
 
-	// Preserve device reboot counter and per-app restart/purge counters from
-	// the previous config when the new config does not set them explicitly.
-	// This prevents a subsequent RequestReboot or Reboot/PurgeApplication
-	// call from re-issuing a command the device has already processed.
+	// Preserve device reboot/shutdown counters and per-app restart/purge
+	// counters from the previous config when the new config does not set
+	// them explicitly. This prevents a subsequent RequestReboot,
+	// PrepareShutdown, or Reboot/PurgeApplication call from re-issuing a
+	// command the device has already processed.
 	if prevConfig != nil {
 		if newConfig.Reboot == nil {
 			newConfig.Reboot = prevConfig.GetReboot()
+		}
+		if newConfig.Shutdown == nil {
+			newConfig.Shutdown = prevConfig.GetShutdown()
 		}
 		prevApps := make(map[string]*eveconfig.AppInstanceConfig,
 			len(prevConfig.GetApps()))
@@ -224,12 +228,16 @@ func (d *EdgeDevice) ApplyConfig(config *EdgeDeviceConfig, waitUntilFetched bool
 		}
 	}
 
-	// Always keep a non-nil Reboot command in the config so EVE records a baseline
-	// counter on first boot. Without this, the first RequestReboot call lands when
-	// EVE has no saved counter (opCfg == nil) and EVE's "first boot" guard skips the
-	// reboot, saving the counter but never triggering the operation.
+	// Always keep non-nil Reboot/Shutdown commands in the config so EVE records a
+	// baseline counter on first boot. Without this, the first RequestReboot or
+	// PrepareShutdown call lands when EVE has no saved counter (opCfg == nil) and
+	// EVE's "first boot" guard skips the operation, saving the counter but never
+	// triggering it.
 	if newConfig.Reboot == nil {
 		newConfig.Reboot = &eveconfig.DeviceOpsCmd{Counter: 0, DesiredState: false}
+	}
+	if newConfig.Shutdown == nil {
+		newConfig.Shutdown = &eveconfig.DeviceOpsCmd{Counter: 0, DesiredState: false}
 	}
 
 	// Preserve cipher contexts. The list is taken from the harness-held config
