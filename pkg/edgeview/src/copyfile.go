@@ -4,11 +4,12 @@
 package main
 
 import (
+	"archive/tar"
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -444,6 +445,63 @@ func sendCopyDone(context string, err error) {
 	}
 }
 
+// extractTarContained extracts the tar archive at tarPath into destDir. Every
+// member path is validated to stay within destDir, and only regular files and
+// directories are extracted; symlinks, hardlinks and other special members are
+// skipped.
+func extractTarContained(tarPath, destDir string) error {
+	f, err := os.Open(tarPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	destDir = filepath.Clean(destDir)
+	tr := tar.NewReader(f)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+
+		// filepath.Join cleans the result, so a ".." or absolute member name
+		// cannot land outside destDir without tripping this boundary check.
+		target := filepath.Join(destDir, hdr.Name)
+		if target != destDir && !strings.HasPrefix(target, destDir+string(os.PathSeparator)) {
+			return fmt.Errorf("tar member %q escapes %s", hdr.Name, destDir)
+		}
+
+		switch hdr.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, 0755); err != nil {
+				return err
+			}
+		case tar.TypeReg:
+			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+				return err
+			}
+			out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+			if err != nil {
+				return err
+			}
+			if _, err := io.Copy(out, tr); err != nil {
+				out.Close()
+				return err
+			}
+			out.Close()
+		default:
+			// Skip symlinks/hardlinks/devices: a device-supplied archive must
+			// not create links that could redirect a later member's write.
+			fmt.Printf("untarLogfile: skipping unsupported tar member %q (type %d)\n",
+				hdr.Name, hdr.Typeflag)
+		}
+	}
+	return nil
+}
+
 // untarLogfile - unzip and make into a single .txt
 // with sequential log entries for dev and each of the apps
 // this is done only if the tar file size is not too large
@@ -466,10 +524,7 @@ func untarLogfile(downloadedFile string, filesize int64) {
 		fmt.Printf("untarLogfile: unexpected path %s\n", tarfile)
 		return
 	}
-	cmdArgs := []string{"xvf", tarfile, "-C", fileCopyDir}
-	untarCmd := exec.Command("tar", cmdArgs[:]...)
-
-	err := untarCmd.Run()
+	err := extractTarContained(tarfile, fileCopyDir)
 	if err != nil {
 		fmt.Printf("untar error: %v\n", err)
 	} else {
