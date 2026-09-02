@@ -3320,7 +3320,7 @@ func TestSwitchNIWithMultiplePorts(test *testing.T) {
 		linuxitems.BridgePort{BridgeIfName: "bn1", Variant: linuxitems.BridgePortVariant{PortIfName: "eth3"}}))).
 		To(BeTrue())
 	t.Expect(itemDescription(dg.Reference(linuxitems.VLANPort{BridgeIfName: "bn1", PortIfName: "eth1"}))).
-		To(ContainSubstring("trunkPort: {allVIDs: false, vids: [100 200]}}"))
+		To(ContainSubstring("trunkPort: {allVIDs: false, vids: [100 200]}"))
 	t.Expect(itemDescription(dg.Reference(linuxitems.VLANPort{BridgeIfName: "bn1", PortIfName: "eth2"}))).
 		To(ContainSubstring("accessPort: {vid: 100}"))
 	t.Expect(itemDescription(dg.Reference(linuxitems.VLANPort{BridgeIfName: "bn1", PortIfName: "eth3"}))).
@@ -4179,7 +4179,7 @@ func TestSwitchNICombinedWithVLANSubinterfaces(test *testing.T) {
 		linuxitems.BridgePort{BridgeIfName: "eth0", Variant: linuxitems.BridgePortVariant{VIFIfName: "nbu1x3"}}))).
 		To(BeTrue())
 	t.Expect(itemDescription(dg.Reference(linuxitems.VLANPort{BridgeIfName: "eth0", PortIfName: "nbu1x3"}))).
-		To(ContainSubstring("trunkPort: {allVIDs: true, vids: []}}"))
+		To(ContainSubstring("trunkPort: {allVIDs: true, vids: []}"))
 
 	// Connect "app4"
 	app4UUID := makeUUID("29c3bf99-665e-46dc-837c-30453c64ca2b")

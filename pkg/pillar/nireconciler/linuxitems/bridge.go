@@ -35,6 +35,10 @@ type Bridge struct {
 	MTU uint16
 	// WithSTP: enable to run the Spanning Tree Protocol (STP).
 	WithSTP bool
+	// InstanceID is meaningful only when CreatedByNIM is true; it changes
+	// whenever NIM destroys and recreates the bridge, even under the same
+	// name and MAC. See types.IfInstanceID.
+	InstanceID types.IfInstanceID
 }
 
 // Name returns the physical interface name.
@@ -62,7 +66,8 @@ func (b Bridge) Equal(other dg.Item) bool {
 		b.CreatedByNIM == b2.CreatedByNIM &&
 		bytes.Equal(b.MACAddress, b2.MACAddress) &&
 		generics.EqualSetsFn(b.IPAddresses, b2.IPAddresses, netutils.EqualIPNets) &&
-		b.MTU == b2.MTU && b.WithSTP == b2.WithSTP
+		b.MTU == b2.MTU && b.WithSTP == b2.WithSTP &&
+		b.InstanceID == b2.InstanceID
 }
 
 // External returns true if it was created by NIM and not be zedrouter.
@@ -73,8 +78,8 @@ func (b Bridge) External() bool {
 // String describes Bridge.
 func (b Bridge) String() string {
 	return fmt.Sprintf("Bridge: {ifName: %s, createdByNIM: %t, "+
-		"macAddress: %s, ipAddresses: %v, MTU: %d, withSTP: %t}", b.IfName,
-		b.CreatedByNIM, b.MACAddress, b.IPAddresses, b.MTU, b.WithSTP)
+		"macAddress: %s, ipAddresses: %v, MTU: %d, withSTP: %t, instanceID: %d}", b.IfName,
+		b.CreatedByNIM, b.MACAddress, b.IPAddresses, b.MTU, b.WithSTP, b.InstanceID)
 }
 
 // Dependencies returns reservations of IPs that bridge should have assigned.
