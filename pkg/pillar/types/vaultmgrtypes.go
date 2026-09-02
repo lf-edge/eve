@@ -62,6 +62,48 @@ func (m VaultUnlockMethod) String() string {
 	}
 }
 
+// ToProto returns the protobuf representation. The info.VaultUnlockMethod
+// values are numbered to match this type, so the conversion is a plain cast.
+func (m VaultUnlockMethod) ToProto() info.VaultUnlockMethod {
+	return info.VaultUnlockMethod(m)
+}
+
+// VaultKeyDerivation records how the vault key is derived: from the TPM key
+// alone, or from that key merged with the fixed constant kept for vaults
+// created before the TPM-only scheme, where half the key material is not
+// TPM-held.
+type VaultKeyDerivation uint8
+
+const (
+	// VaultKeyDerivationNone means no vault key is derived, either because the
+	// platform has no TPM or because the persist filesystem sets up no vault.
+	VaultKeyDerivationNone VaultKeyDerivation = iota
+	// VaultKeyDerivationTPMOnly means the key is the TPM key alone.
+	VaultKeyDerivationTPMOnly
+	// VaultKeyDerivationTPMAndConstant means the key is the TPM key merged with
+	// the fixed constant, the derivation used by vaults created before the
+	// TPM-only scheme.
+	VaultKeyDerivationTPMAndConstant
+)
+
+// String implements fmt.Stringer.
+func (d VaultKeyDerivation) String() string {
+	switch d {
+	case VaultKeyDerivationTPMOnly:
+		return "tpm-only"
+	case VaultKeyDerivationTPMAndConstant:
+		return "tpm-and-constant"
+	default:
+		return "none"
+	}
+}
+
+// ToProto returns the protobuf representation. The info.VaultKeyDerivation
+// values are numbered to match this type, so the conversion is a plain cast.
+func (d VaultKeyDerivation) ToProto() info.VaultKeyDerivation {
+	return info.VaultKeyDerivation(d)
+}
+
 // VaultStatus represents running status of a Vault
 type VaultStatus struct {
 	Name               string
@@ -81,6 +123,11 @@ type VaultStatus struct {
 	// VaultUnlockRecreated means the local unseal failed with no escrowed key, so
 	// the vault was wiped and recreated (prior contents lost).
 	UnlockMethod VaultUnlockMethod
+	// KeyDerivation records whether the vault key comes from the TPM alone or
+	// is still merged with the fixed constant kept for vaults created before
+	// the TPM-only scheme. VaultKeyDerivationNone where no vault key is
+	// derived at all: no TPM, or a persist filesystem that sets up no vault.
+	KeyDerivation VaultKeyDerivation
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
 }
