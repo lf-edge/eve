@@ -148,6 +148,23 @@ func (m *DpcManager) updateDNS() {
 		} else {
 			m.deviceNetStatus.Ports[ix].Up = ifAttrs.LowerUp
 			m.deviceNetStatus.Ports[ix].MTU = ifAttrs.MTU
+			// If NIM has bridged this port, port.IfName is the bridge and
+			// "k"+port.IfName is the underlying interface (see
+			// AdapterConfigurator in dpcreconciler/linuxitems/adapter.go).
+			m.deviceNetStatus.Ports[ix].UnderlyingIfInstanceID = ifAttrs.InstanceID
+			m.deviceNetStatus.Ports[ix].BridgeIfInstanceID = 0
+			kernIfName := "k" + port.IfName
+			if kernIfIndex, kernExists, kernErr :=
+				m.NetworkMonitor.GetInterfaceIndex(kernIfName); kernErr == nil && kernExists {
+				if kernAttrs, kernErr := m.NetworkMonitor.GetInterfaceAttrs(kernIfIndex); kernErr == nil {
+					m.deviceNetStatus.Ports[ix].BridgeIfInstanceID = ifAttrs.InstanceID
+					m.deviceNetStatus.Ports[ix].UnderlyingIfInstanceID = kernAttrs.InstanceID
+				} else {
+					m.Log.Warnf(
+						"updateDNS: failed to get attrs for interface %s: %v",
+						kernIfName, kernErr)
+				}
+			}
 		}
 		ipAddrs, macAddr, err := m.NetworkMonitor.GetInterfaceAddrs(ifindex)
 		if err != nil {

@@ -15,6 +15,7 @@ import (
 	"github.com/lf-edge/eve-libs/reconciler"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/vishvananda/netlink"
 )
 
@@ -25,6 +26,9 @@ type VLANBridge struct {
 	// EnableVLANFiltering : drop packet if it belongs to a VLAN which is not enabled
 	// on the input bridge port (using VLANPort config item).
 	EnableVLANFiltering bool
+	// ExpectedBridgeID: IfInstanceID BridgeIfName is expected to carry. Zero
+	// if the bridge is not NIM-managed.
+	ExpectedBridgeID types.IfInstanceID
 }
 
 // Name returns the interface name of the bridge.
@@ -58,8 +62,9 @@ func (v VLANBridge) External() bool {
 
 // String describes VLANBridge.
 func (v VLANBridge) String() string {
-	return fmt.Sprintf("VLANBridge: {bridgeIfName: %s, enableVlanFiltering: %t}",
-		v.BridgeIfName, v.EnableVLANFiltering)
+	return fmt.Sprintf("VLANBridge: {bridgeIfName: %s, enableVlanFiltering: %t, "+
+		"expectedBridgeID: %d}",
+		v.BridgeIfName, v.EnableVLANFiltering, v.ExpectedBridgeID)
 }
 
 // Dependencies returns the bridge as the only dependency.
@@ -68,6 +73,21 @@ func (v VLANBridge) Dependencies() (deps []dg.Dependency) {
 		RequiredItem: dg.ItemRef{
 			ItemType: BridgeTypename,
 			ItemName: v.BridgeIfName,
+		},
+		MustSatisfy: func(item dg.Item) bool {
+			if v.ExpectedBridgeID == 0 {
+				return true
+			}
+			bridge, isBridge := item.(Bridge)
+			if !isBridge {
+				// unreachable
+				return false
+			}
+			// Reject a same-named bridge NIM has since torn down and
+			// recreated -- VLAN filtering config lives on the bridge itself,
+			// so it is genuinely gone with it (hence AutoDeletedByExternal
+			// below), and must be reapplied to the new incarnation.
+			return bridge.InstanceID == v.ExpectedBridgeID
 		},
 		Attributes: dg.DependencyAttributes{
 			AutoDeletedByExternal: true,
@@ -183,6 +203,23 @@ func (c *VLANBridgeConfigurator) Delete(ctx context.Context, item dg.Item) error
 	}
 	const enableVlanFiltering = false // default value
 	brIfName := vlanBridge.BridgeIfName
+	if vlanBridge.ExpectedBridgeID != 0 {
+		// NIM may have since reused this name for a bridge of its own;
+		// resolve by IfInstanceID rather than risk touching that instead.
+		attrs, exists, err := c.NetworkMonitor.GetInterfaceByInstanceID(
+			vlanBridge.ExpectedBridgeID)
+		if err != nil {
+			err = fmt.Errorf("failed to look up interface with IfInstanceID %d: %v",
+				vlanBridge.ExpectedBridgeID, err)
+			c.Log.Error(err)
+			return err
+		}
+		if !exists {
+			// Genuinely gone; nothing left to clean up.
+			return nil
+		}
+		brIfName = attrs.IfName
+	}
 	brIsBusy, err := c.setVlanFiltering(brIfName, enableVlanFiltering)
 	if err != nil && !brIsBusy {
 		c.Log.Error(err)
