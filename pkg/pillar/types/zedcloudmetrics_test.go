@@ -4,6 +4,7 @@
 package types
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -147,4 +148,27 @@ func TestMetricsMapAddIntoRedactedCountAndLastUpdated(t *testing.T) {
 	got := dst["eth0"]
 	assert.Equal(t, uint64(5), got.URLCounterRedactedCount)
 	assert.Equal(t, now, got.URLCounters["/v1/config"].LastUpdated)
+}
+
+// TestURLMetricsAnswerCountersOmittedWhenZero guards the byte budget described
+// on MaxURLCounters. The answer counters are recorded only for controller and
+// local profile server traffic, so they stay zero for the agents which can fill
+// URLCounters to the cap, and must cost those agents nothing.
+func TestURLMetricsAnswerCountersOmittedWhenZero(t *testing.T) {
+	b, err := json.Marshal(URLMetrics{TryMsgCount: 1, LastUpdated: time.Now()})
+	assert.NoError(t, err)
+	assert.NotContains(t, string(b), "DeliveredMsgCount")
+	assert.NotContains(t, string(b), "RetriableErrCount")
+	assert.NotContains(t, string(b), "RejectedErrCount")
+
+	b, err = json.Marshal(URLMetrics{
+		DeliveredMsgCount: 1,
+		RetriableErrCount: 2,
+		RejectedErrCount:  3,
+		LastUpdated:       time.Now(),
+	})
+	assert.NoError(t, err)
+	assert.Contains(t, string(b), `"DeliveredMsgCount":1`)
+	assert.Contains(t, string(b), `"RetriableErrCount":2`)
+	assert.Contains(t, string(b), `"RejectedErrCount":3`)
 }
