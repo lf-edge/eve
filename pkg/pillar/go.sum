@@ -495,8 +495,8 @@ github.com/kylelemons/godebug v1.1.0/go.mod h1:9/0rRGxNHcop5bhtWyNeEfOS8JIWk580+
 github.com/ledongthuc/pdf v0.0.0-20220302134840-0c2507a12d80/go.mod h1:imJHygn/1yfhB7XSJJKlFZKl/J+dCPAknuiaGOshXAs=
 github.com/leodido/go-urn v1.2.4 h1:XlAE/cm/ms7TE/VMVoduSpNBoyc2dOxHs5MZSwAN63Q=
 github.com/leodido/go-urn v1.2.4/go.mod h1:7ZrI8mTSeBSHl/UaRyKQW1qZeMgak41ANeCNaVckg+4=
-github.com/lf-edge/edge-containers v0.0.0-20260502192833-bdbe764faf59 h1:fuyDqWUHuck0owe+PxJ4ey4jtOEpN0xZ0Y4k8qxx8AY=
-github.com/lf-edge/edge-containers v0.0.0-20260502192833-bdbe764faf59/go.mod h1:DoK51ifLgVh2GQ+IXTvmkhTuf8THijPCwYlNAbs2Nz0=
+github.com/lf-edge/edge-containers v0.0.0-20260902165213-6379c238086c h1:QheucVV8H7d1er1NJrtHrr4bvknd7u4Jh6XO5CilMt0=
+github.com/lf-edge/edge-containers v0.0.0-20260902165213-6379c238086c/go.mod h1:Dn7vu1TFxSeVS4sm/ESDFKkZz/j0W3sZTe7LSQvz1wo=
 github.com/lf-edge/eve-api/go v0.0.0-20260812180240-99d02ddcfcb0 h1:vFrZPWDaFupy4K1fYIRDJOnW8aaGNMZ1/1DkNRXrZe0=
 github.com/lf-edge/eve-api/go v0.0.0-20260812180240-99d02ddcfcb0/go.mod h1:6HxNA/qKJVEqwpuOFkcQ0h3QyotvAs/cjHLC961FPOY=
 github.com/lf-edge/eve-libs v0.0.0-20260902164950-5383e8ca21f9 h1:7Qi44EckcEtrugoTKIE65gWumaiPZNnpzlUpQw7lspQ=
