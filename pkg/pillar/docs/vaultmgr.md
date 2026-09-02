@@ -37,7 +37,10 @@ startup. Its main jobs are:
 * **report data-at-rest health** as `VaultStatus.Status` in the
   `info.DataSecAtRestStatus` enum (`DISABLED` / `ENABLED` / `ERROR`),
   attaching the list of mismatching PCRs when seal/unseal fails so the
-  controller can decide whether to re-issue the key.
+  controller can decide whether to re-issue the key. `UnlockMethod` and
+  `KeyDerivation` travel with it in `info.VaultInfo`, so an operator can
+  tell a clean unseal from a controller-key recovery, and spot vaults
+  still on the legacy key derivation, without logging into the device.
 
 A *vault* in EVE is a directory (or, on ZFS, a dataset) whose
 contents are stored encrypted at rest. Today there is exactly one
@@ -119,6 +122,12 @@ encryption.
     `none` until unlocked), letting an operator tell a clean local
     unseal apart from a controller-key recovery. Set only for the
     default vault,
+  * `KeyDerivation` — whether the key is the TPM key alone
+    (`tpm-only`) or is still merged with the fixed constant
+    (`tpm-and-constant`; see
+    [Appendix](#appendix-legacy-key-derivation-modes)). `none` where no
+    vault key is derived at all — no TPM, or a `/persist` filesystem
+    other than ext4 or ZFS. Set only for the default vault,
   * `TrimStatus` — outcome of the most recent vault `fstrim`
     (start/end time and error). Populated on EVE-k ZFS nodes only,
   * `ErrorAndTime` — error string when status is `ERROR`.
