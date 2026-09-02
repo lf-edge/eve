@@ -68,6 +68,12 @@ func (h *ZFSHandler) SetHandlerOptions(options HandlerOptions) {
 	h.options = options
 }
 
+// GetHandlerOptions returns handler options, with TpmKeyOnlyMode as unlocking
+// resolved it
+func (h *ZFSHandler) GetHandlerOptions() HandlerOptions {
+	return h.options
+}
+
 // GetVaultStatuses returns statuses of vault(s)
 func (h *ZFSHandler) GetVaultStatuses() []*types.VaultStatus {
 	return []*types.VaultStatus{h.getVaultStatus(types.DefaultVaultName, types.SealedDataset)}
@@ -131,31 +137,26 @@ func (h *ZFSHandler) SetupDefaultVault() error {
 	return nil
 }
 
+// unlockVault loads the vault key and mounts the vault. When the
+// key-derivation mode was only inferred, the mode this resolves to is stored
+// back into h.options so the caller can persist it and no later boot has to
+// infer it again. Only the key load is retried with the other derivation; a
+// mount failure is not a key problem.
 func (h *ZFSHandler) unlockVault(vaultPath string) error {
-	// prepare key in the staging file
-	// we never unlock a deprecated vault in ZFS (we never created those)
-	// cloudKeyOnlyMode=false, useSealedKey=true
-	unstage, err := stageKey(h.log, false, true, h.options.TpmKeyOnlyMode, zfsKeyDir, zfsKeyFile)
+	mode, err := resolveKeyMode(h.log, h.options.TpmKeyOnlyMode, h.options.TpmKeyOnlyModeInferred,
+		func(tpmKeyOnlyMode bool) error {
+			return h.loadDatasetKey(vaultPath, tpmKeyOnlyMode)
+		})
 	if err != nil {
 		return err
 	}
-	defer unstage()
-
-	// zfs load-key
-	args := []string{"load-key", vaultPath}
-	if stdOut, stdErr, err := execCmd(types.ZFSBinary, args...); err != nil {
-		h.log.Errorf("Error loading key for vault: %v, %s, %s",
-			err, stdOut, stdErr)
-		return err
-	}
+	h.options.TpmKeyOnlyMode = mode
+	h.options.TpmKeyOnlyModeInferred = false
 
 	// zfs mount
 	if base.IsHVTypeKube() {
 		// zfs load-key here separately for types.EtcdZvol because we don't mount it here, only in kube.
-		args := []string{"load-key", types.EtcdZvol}
-		if stdOut, stdErr, err := execCmd(types.ZFSBinary, args...); err != nil {
-			h.log.Errorf("Error loading key for etcd vol vault: %v, %s, %s",
-				err, stdOut, stdErr)
+		if err := h.loadDatasetKey(types.EtcdZvol, mode); err != nil {
 			return err
 		}
 		if err := MountVaultZvol(h.log, vaultPath); err != nil {
@@ -169,6 +170,27 @@ func (h *ZFSHandler) unlockVault(vaultPath string) error {
 		}
 	}
 
+	return nil
+}
+
+// loadDatasetKey stages the vault key derived with tpmKeyOnlyMode and hands it
+// to `zfs load-key` for dataset.
+func (h *ZFSHandler) loadDatasetKey(dataset string, tpmKeyOnlyMode bool) error {
+	// prepare key in the staging file
+	// we never unlock a deprecated vault in ZFS (we never created those)
+	// cloudKeyOnlyMode=false, useSealedKey=true
+	unstage, err := stageKey(h.log, false, true, tpmKeyOnlyMode, zfsKeyDir, zfsKeyFile)
+	if err != nil {
+		return err
+	}
+	defer unstage()
+
+	args := []string{"load-key", dataset}
+	if stdOut, stdErr, err := execCmd(types.ZFSBinary, args...); err != nil {
+		h.log.Errorf("Error loading key for %s: %v, %s, %s",
+			dataset, err, stdOut, stdErr)
+		return err
+	}
 	return nil
 }
 
