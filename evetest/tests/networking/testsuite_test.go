@@ -1,6 +1,11 @@
 // Copyright (c) 2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+// Package networking_test holds the EVE networking tests.
+//
+// helpers_test.go holds helpers shared across multiple tests in this
+// package. New shared helpers belong there too, not alongside the test
+// that first needed them.
 package networking_test
 
 import (
@@ -325,6 +330,10 @@ func TestDeviceConnectivitySuite(test *testing.T) {
 //   - TestNICCountChangeOrderedInterface -- the same no-purge NIC addition
 //     with explicitly pinned interface orders: the added adapter must be
 //     enumerated by the guest at the position its order dictates.
+//   - TestSwitchNIPortConfigRace -- regression test for NIM/zedrouter races
+//     around IfInstanceID: a multi-port Switch NI plus a single-port Switch NI
+//     on a VLAN sub-interface, with ports live-switched between DHCP/static/no-IP;
+//     app connectivity through both NIs must survive every change.
 func TestApplicationConnectivitySuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
@@ -428,6 +437,9 @@ func TestApplicationConnectivitySuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestNICCountChangeOrderedInterface,
+		},
+		evetest.TestCase{
+			Test: TestSwitchNIPortConfigRace,
 		},
 	)
 }

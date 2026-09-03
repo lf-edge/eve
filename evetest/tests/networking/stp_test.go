@@ -301,17 +301,6 @@ func TestSwitchNIWithMultiplePorts(test *testing.T) {
 	t.Expect(niInfo.Vifs[0].MacAddress).To(Equal(appMACAddr))
 	t.Expect(niInfo.Vifs[0].AppID).To(Equal(appUUID.String()))
 
-	// readBpduGuard reads the BPDU guard sysfs flag for a named bridge port.
-	// Returns "0", "1", or "" if the path cannot be read.
-	readBpduGuard := func(portName string) string {
-		path := "/sys/class/net/" + bridgeName + "/brif/" + portName + "/bpdu_guard"
-		output, _, err := device.RunShellScript("cat "+path, sshTimeout, 0)
-		if err != nil {
-			return ""
-		}
-		return strings.TrimSpace(output)
-	}
-
 	// -----------------------------------------------------------------------
 	// Phase 1: STP convergence
 	// -----------------------------------------------------------------------
@@ -339,13 +328,13 @@ func TestSwitchNIWithMultiplePorts(test *testing.T) {
 
 	// BPDU guard: app VIF and eth3 ("edge-port") have it on; eth1/eth2 are
 	// active STP participants and must have it off.
-	t.Expect(readBpduGuard(vifName)).To(Equal("1"),
+	t.Expect(readBpduGuard(device, bridgeName, vifName, sshTimeout)).To(Equal("1"),
 		"BPDU guard must be on for app VIF")
-	t.Expect(readBpduGuard("eth1")).To(Equal("0"),
+	t.Expect(readBpduGuard(device, bridgeName, "eth1", sshTimeout)).To(Equal("0"),
 		"BPDU guard must be off for eth1")
-	t.Expect(readBpduGuard("eth2")).To(Equal("0"),
+	t.Expect(readBpduGuard(device, bridgeName, "eth2", sshTimeout)).To(Equal("0"),
 		"BPDU guard must be off for eth2")
-	t.Expect(readBpduGuard("eth3")).To(Equal("1"),
+	t.Expect(readBpduGuard(device, bridgeName, "eth3", sshTimeout)).To(Equal("1"),
 		"BPDU guard must be on for eth3 (edge-port)")
 
 	// App connectivity: curl through whichever port STP chose as forwarding.

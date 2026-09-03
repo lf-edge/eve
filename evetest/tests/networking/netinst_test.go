@@ -2585,19 +2585,3 @@ func findDNSRequest(records []*eveflowlog.DnsRequest, hostname string) *eveflowl
 	}
 	return nil
 }
-
-func niHasError(info *eveinfo.ZInfoNetworkInstance) (string, bool) {
-	stop := info.State == eveinfo.ZNetworkInstanceState_ZNETINST_STATE_ERROR
-	if stop {
-		return "Network instance is in error state", true
-	}
-	return "", false
-}
-
-func appHasError(info *eveinfo.ZInfoApp) (string, bool) {
-	stop := info.State == eveinfo.ZSwState_ERROR
-	if stop {
-		return "Application instance is in error state", true
-	}
-	return "", false
-}
