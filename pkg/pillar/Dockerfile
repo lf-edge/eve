@@ -193,7 +193,6 @@ COPY --from=dhcpcd-bin /out/sbin/dhcpcd /out/sbin/dhcpcd
 
 COPY scripts/device-steps.sh \
     scripts/onboot.sh \
-    scripts/handlezedserverconfig.sh \
     scripts/veth.sh \
     scripts/dhcpcd.sh \
     scripts/direct-net.sh \
