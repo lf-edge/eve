@@ -7,6 +7,7 @@
 #
 # The following env variables change the behaviour of this script
 #     DEBUG - makes this script verbose
+#     SQUASHFS_BLOCK_SIZE - mksquashfs -b value; unset means the mksquashfs default
 
 set -e
 [ -n "$DEBUG" ] && set -x
@@ -35,7 +36,13 @@ IMGFILE=/rootfs.img
   ROOTFS_PART_SIZE_KB=$(( ( ($ROOTFS_PART_SIZE + 1024) / 1024 * 1024) / 1024 ))
   ROOTFS_PART_SECTORS=$(( $ROOTFS_PART_SIZE_KB * 2 ))
 
-  mksquashfs /tmp/rootfs/ $IMGFILE -noappend -comp xz -Xbcj x86,arm -no-recovery
+  BLOCKSIZE_ARG=""
+  if [ -n "${SQUASHFS_BLOCK_SIZE:-}" ]; then
+    BLOCKSIZE_ARG="-b $SQUASHFS_BLOCK_SIZE"
+  fi
+
+  # shellcheck disable=SC2086
+  mksquashfs /tmp/rootfs/ $IMGFILE -noappend -comp xz -Xbcj x86,arm $BLOCKSIZE_ARG -no-recovery
 )
 
 $EXPORT_CMD
