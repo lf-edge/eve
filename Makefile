@@ -480,6 +480,14 @@ else
         endif
 endif
 
+# squashfs block size for the rootfs image, in bytes. Empty means the mksquashfs
+# default of 128KB. Larger blocks shrink the image but read-amplify: faulting one
+# 4KB page reads and decompresses the whole block.
+ROOTFS_SQUASHFS_BLOCK_SIZE=
+ifeq ($(ZARCH)-$(HV),amd64-kvm)
+    ROOTFS_SQUASHFS_BLOCK_SIZE=1048576
+endif
+
 PKGS_riscv64=pkg/ipxe pkg/mkconf pkg/mkimage-iso-efi pkg/grub     \
              pkg/mkimage-raw-efi pkg/uefi pkg/u-boot pkg/cross-compilers \
 	     pkg/debug pkg/dom0-ztools pkg/gpt-tools pkg/storage-init pkg/mkrootfs-squash \
@@ -894,7 +902,7 @@ $(ROOTFS_IMG_BASE)-%.img: $(ROOTFS_TAR_BASE)-%.tar | $(INSTALLER)
 endif
 	$(QUIET): $@: Begin
 	echo "Building rootfs image $@ from $(ROOTFS_TAR_BASE)-$*.tar"
-	./tools/makerootfs.sh imagefromtar -t $(ROOTFS_TAR_BASE)-$*.tar -i $@ -f $(ROOTFS_FORMAT) -a $(ZARCH)
+	./tools/makerootfs.sh imagefromtar -t $(ROOTFS_TAR_BASE)-$*.tar -i $@ -f $(ROOTFS_FORMAT) -a $(ZARCH) $(if $(ROOTFS_SQUASHFS_BLOCK_SIZE),-b $(ROOTFS_SQUASHFS_BLOCK_SIZE))
 	@echo "size of $@ is $$(wc -c < "$@")B"
 ifeq ($(ROOTFS_FORMAT),squash)
 	@[ $$(wc -c < "$@") -gt $$(( $(ROOTFS_MAXSIZE_MB) * 1024 * 1024 )) ] && \
