@@ -125,20 +125,25 @@ func pausePetActive() bool {
 	return err == nil
 }
 
-// escalatedTimeout spreads the (no-pet) watchdog timeout LINEARLY across the
-// resize attempts, from ~5s up to ~300s in ~30s steps. A linear ramp (not
-// binary-exponential) keeps steps from jumping over the grow window. The iTCO is
-// two-stage, so the device actually RESETS at ~2x these values; the ~5s floor
-// stays above the driver's ~3s minimum (a smaller request is silently rejected
-// and the 30s default kept). The filled-/persist resize is ~shrink 130s + grow
-// 135s ~= 265s, so by RESET: <130s cuts the SHRINK, 130-265s cuts the GROW, and
-// >265s (set >= ~140) lets shrink+grow finish -- so fires land across BOTH steps
-// and later attempts converge. Top 300s (~5min) is the converge window.
-// Jittered so repeated stress runs vary which point of each step gets cut.
+// escalatedTimeout ramps the (no-pet) watchdog timeout across the resize attempts,
+// weighted so most fires land in the SHRINK. The iTCO is two-stage, so the device
+// actually RESETS at ~2x these values; the ~5s floor stays above the driver's ~3s
+// minimum (a smaller request is silently rejected and the 30s default kept). The
+// filled-/persist resize is ~shrink 130s + grow 135s ~= 265s, so by RESET: <130s
+// cuts the SHRINK, 130-265s cuts the GROW, and >265s lets shrink+grow finish.
+//
+// The shrink is weighted because it is the step that RELOCATES data, and so the
+// only one that can tear an app volume; a fire during the grow moves nothing. A
+// ladder spread evenly to 300s puts just two rungs under the shrink, which caps
+// shrink exposure at 2 per run no matter how long the soak runs -- the binding
+// limit on a corruption hunt's sensitivity. Packing the rungs below 65s gives 8.
+// The last two rungs stay long enough to clear shrink+grow, or the resize never
+// converges and the run aborts at RESIZE_MAX_REBOOTS (12).
+// Jittered so repeated stress runs vary which point of the step gets cut.
 func escalatedTimeout(attempt int) int {
-	// set: 5 35 65 95 125 | 155 185 215 245 300  (reset ~= 2x)
-	// step: SHRINK SHRINK GROW GROW GROW | converge...
-	sets := []int{5, 35, 65, 95, 125, 155, 185, 215, 245, 300}
+	// set: 5 13 21 29 37 45 53 61 | 155 300  (reset ~= 2x)
+	// step: SHRINK x8             | converge
+	sets := []int{5, 13, 21, 29, 37, 45, 53, 61, 155, 300}
 	if attempt < 0 {
 		attempt = 0
 	}
