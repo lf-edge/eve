@@ -26,7 +26,7 @@ func TestGetHypervisor(t *testing.T) {
 
 func TestGetAvailableHypervisors(t *testing.T) {
 	all, enabled := GetAvailableHypervisors()
-	expected := []string{"xen", "kvm", "k", "containerd", "null"}
+	expected := []string{"kvm", "k", "containerd", "null"}
 
 	if !reflect.DeepEqual(all, expected) {
 		t.Errorf("wrong list of available hypervisors: %+q vs. %+q", all, expected)
@@ -66,12 +66,11 @@ func TestBootTimeHypervisorWithHVFilePath(t *testing.T) {
 		t.Fatal("hypervisor should be kvm")
 	}
 
+	// The retired flavor must no longer resolve to any backend.
 	f.Seek(0, 0)
 	f.WriteString("xen")
 	hv = bootTimeHypervisorWithHVFilePath(f.Name())
-	_, ok = hv.(KvmContext)
-	if !ok {
-		t.Fatal("hypervisor should be xen")
+	if hv != nil {
+		t.Fatal("xen should no longer resolve to a hypervisor")
 	}
-
 }

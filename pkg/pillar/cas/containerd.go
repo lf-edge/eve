@@ -757,7 +757,7 @@ func (c *containerdCAS) prepareContainerRootDirForKubevirt(clientImageSpec *ocis
 	// time via the cloud-init NoCloud cdrom (see configToStatus in domainmgr) so
 	// that it reflects the user-attached disks' MountDir values in the same
 	// order as kubevirt will enumerate them as /dev/vd[b,c,...] inside the shim
-	// VMI — mirroring what containerd/oci.go:UpdateMounts does for HV=kvm/xen.
+	// VMI — mirroring what containerd/oci.go:UpdateMounts does for HV=kvm.
 	// The image-declared OCI VOLUMEs (clientImageSpec.Config.Volumes) are not
 	// used: an iteration over a map is unordered so the positional mapping
 	// mount_disk.sh relies on would be wrong, and they don't reflect what the
@@ -835,7 +835,7 @@ func (c *containerdCAS) prepareContainerRootDirForKubevirt(clientImageSpec *ocis
 // resolveUserGroup maps an OCI image Config.User string to numeric uid/gid.
 // User or group *names* are resolved against /etc/passwd and /etc/group in the
 // container's rootfs (rootfs must already be mounted). It accepts the same
-// forms as the OCI runtime and the HV=kvm/xen path (containerd's oci.WithUser):
+// forms as the OCI runtime and the HV=kvm path (containerd's oci.WithUser):
 // "", "uid", "user", "uid:gid", "user:group", "uid:group", "user:gid". An empty
 // user yields 0/0. When only a numeric uid is given, gid defaults to that user's
 // primary group from /etc/passwd, falling back to 0 if the rootfs has no
