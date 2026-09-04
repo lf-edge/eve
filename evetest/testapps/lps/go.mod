@@ -5,6 +5,6 @@ go 1.25.0
 toolchain go1.25.11
 
 require (
-	github.com/lf-edge/eve-api/go v0.0.0-20260812180240-99d02ddcfcb0
+	github.com/lf-edge/eve-api/go v0.0.0-20260828151117-a8d23291464a
 	google.golang.org/protobuf v1.36.11
 )

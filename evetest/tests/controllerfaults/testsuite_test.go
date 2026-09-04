@@ -27,9 +27,20 @@ import (
 //     controller answers 503 still reaches it afterwards.
 //   - TestInfoRetriedAfterLostController -- the same when the controller cannot
 //     be reached at all.
+//   - TestDeferredQueueBacklogReported -- the metrics say how much is held back
+//     and for how long while the controller refuses info messages.
+//   - TestDeferredQueueDropsReported -- the metrics count the messages given up
+//     on when the controller rejects them.
 //   - TestInfoDroppedOnRejectionKeepsDeviceReporting -- a message the
 //     controller rejects outright is given up on, and later changes are still
 //     reported.
+//
+// TestInfoDroppedOnRejectionKeepsDeviceReporting runs last, and has to: it is
+// the one subtest which finishes without waiting for the application state it
+// changed to reach the controller, so it hands the shared device on with an
+// application the controller still believes is running and may still be
+// shutting down. Resetting the device for a following subtest then waits for
+// that application to be reported gone, and runs out of its budget.
 func TestControllerFaultsSuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
@@ -48,6 +59,12 @@ func TestControllerFaultsSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestInfoRetriedAfterLostController,
+		},
+		evetest.TestCase{
+			Test: TestDeferredQueueBacklogReported,
+		},
+		evetest.TestCase{
+			Test: TestDeferredQueueDropsReported,
 		},
 		evetest.TestCase{
 			Test: TestInfoDroppedOnRejectionKeepsDeviceReporting,

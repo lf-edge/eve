@@ -660,7 +660,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 	// device returns a runtime error. Similarly, we only support enforced application network
 	// interface order for the KVM hypervisor. If enabled for application deployed under Xen
 	// or Kubevirt hypervisor, EVE returns error and the application will not be started.
-	ReportDeviceInfo.ApiCapability = info.APICapability_API_CAPABILITY_APP_INSTANCE_NET_INTERFACE_CHANGE
+	ReportDeviceInfo.ApiCapability = info.APICapability_API_CAPABILITY_DEFERRED_QUEUE_METRICS
 
 	// Report if there is a local override of profile
 	if ctx.getconfigCtx.localCmdAgent.GetCurrentProfile() !=

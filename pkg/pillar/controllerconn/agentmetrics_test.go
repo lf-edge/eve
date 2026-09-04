@@ -4,7 +4,10 @@
 package controllerconn_test
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"testing"
 
 	// revive:disable:dot-imports
@@ -120,4 +123,150 @@ func TestAgentMetricsURLCountersLimitAcrossInterfaces(t *testing.T) {
 	g.Expect(toMap["eth0"].URLCounters).NotTo(HaveKey("/eth0/0"))
 	g.Expect(toMap["eth1"].URLCounters).To(HaveKey("/eth1/new"))
 	g.Expect(toMap["eth0"].URLCounterRedactedCount).To(Equal(uint64(urlCountersWiggle)))
+}
+
+// RecordAnswer splits answered requests into accepted, refused-for-now and
+// rejected, which is what tells an operator whether the controller is having
+// trouble or is turning the payload away.
+func TestAgentMetricsRecordAnswer(t *testing.T) {
+	g := NewGomegaWithT(t)
+	log := testLogObject()
+	am := controllerconn.NewAgentMetrics()
+
+	answers := []int{
+		http.StatusOK, http.StatusNoContent, // accepted
+		http.StatusServiceUnavailable, http.StatusTooManyRequests,
+		http.StatusForbidden,                       // worth offering again
+		http.StatusBadRequest, http.StatusNotFound, // rejected
+		http.StatusFound, // neither
+	}
+	for _, status := range answers {
+		am.RecordSuccess(log, "eth0", "/url/a", 10, 10, 1, false)
+		am.RecordAnswer(log, "eth0", "/url/a", status)
+	}
+
+	toMap := types.MetricsMap{}
+	am.AddInto(log, toMap)
+	um := toMap["eth0"].URLCounters["/url/a"]
+
+	g.Expect(um.SentMsgCount).To(Equal(int64(len(answers))))
+	g.Expect(um.DeliveredMsgCount).To(Equal(int64(2)))
+	g.Expect(um.RetriableErrCount).To(Equal(int64(3)))
+	g.Expect(um.RejectedErrCount).To(Equal(int64(2)))
+}
+
+// pubsubMaxsize mirrors the maxsize constant of pubsub/socketdriver: the
+// largest socket message a publisher may write, measured after the value has
+// been base64-encoded.
+const pubsubMaxsize = 65535
+
+// fakePublication applies the size limit the way the socket driver does, so
+// that AgentMetrics.Publish is exercised against the real framing rather than
+// against the raw JSON length.
+type fakePublication struct {
+	maxsize      int
+	publishCount int
+	published    types.MetricsMap
+}
+
+func (p *fakePublication) encodedSize(key string, item interface{}) int {
+	b, err := json.Marshal(item)
+	if err != nil {
+		panic(err)
+	}
+	return len(fmt.Sprintf("update MetricsMap %s %s",
+		base64.StdEncoding.EncodeToString([]byte(key)),
+		base64.StdEncoding.EncodeToString(b)))
+}
+
+func (p *fakePublication) CheckMaxSize(key string, item interface{}) error {
+	if size := p.encodedSize(key, item); size >= p.maxsize {
+		return fmt.Errorf("key %s serialized to size %d exceeds max %d",
+			key, size, p.maxsize)
+	}
+	return nil
+}
+
+func (p *fakePublication) Publish(key string, item interface{}) error {
+	p.publishCount++
+	p.published = item.(types.MetricsMap)
+	return nil
+}
+
+func (p *fakePublication) Unpublish(string) error          { return nil }
+func (p *fakePublication) SignalRestarted() error          { return nil }
+func (p *fakePublication) ClearRestarted() error           { return nil }
+func (p *fakePublication) Get(string) (interface{}, error) { return nil, nil }
+func (p *fakePublication) GetAll() map[string]interface{}  { return nil }
+func (p *fakePublication) Iterate(base.StrMapFunc)         {}
+func (p *fakePublication) Close() error                    { return nil }
+
+// blobURL returns a URL of the given length shaped like the registry blob URLs
+// downloader records one of per image layer.
+func blobURL(i, length int) string {
+	u := fmt.Sprintf("https://registry.example.com/v2/org/repo/blobs/sha256:%064x", i)
+	for len(u) < length {
+		u += "x"
+	}
+	return u[:length-8] + fmt.Sprintf("%08d", i)
+}
+
+func TestAgentMetricsPublishThatFits(t *testing.T) {
+	g := NewGomegaWithT(t)
+	log := testLogObject()
+	am := controllerconn.NewAgentMetrics()
+
+	for i := 0; i < types.MaxURLCounters; i++ {
+		am.RecordSuccess(log, "eth0", blobURL(i, 64), 10, 10, 1, false)
+	}
+
+	pub := &fakePublication{maxsize: pubsubMaxsize}
+	g.Expect(am.Publish(log, pub, "global")).To(Succeed())
+	g.Expect(pub.publishCount).To(Equal(1))
+	g.Expect(len(pub.published["eth0"].URLCounters)).To(Equal(types.MaxURLCounters))
+	g.Expect(pub.published["eth0"].URLCounterRedactedCount).To(Equal(uint64(0)))
+}
+
+func TestAgentMetricsPublishEvictsUntilItFits(t *testing.T) {
+	g := NewGomegaWithT(t)
+	log := testLogObject()
+	am := controllerconn.NewAgentMetrics()
+
+	// Peak occupancy, with URLs long enough that the entry cap on its own
+	// leaves the map over the size limit.
+	highWatermark := types.MaxURLCounters + urlCountersWiggle
+	for i := 0; i < highWatermark; i++ {
+		am.RecordSuccess(log, "eth0", blobURL(i, 400), 10, 10, 1, false)
+	}
+	newest := blobURL(highWatermark-1, 400)
+
+	toMap := types.MetricsMap{}
+	am.AddInto(log, toMap)
+	pub := &fakePublication{maxsize: pubsubMaxsize}
+	g.Expect(pub.CheckMaxSize("global", toMap)).NotTo(Succeed())
+
+	g.Expect(am.Publish(log, pub, "global")).To(Succeed())
+	g.Expect(pub.publishCount).To(Equal(1))
+
+	cm := pub.published["eth0"]
+	g.Expect(len(cm.URLCounters)).To(BeNumerically("<", highWatermark))
+	g.Expect(cm.URLCounterRedactedCount).To(BeNumerically(">", 0))
+	// What is given up is the least recently used, so the newest survives.
+	g.Expect(cm.URLCounters).To(HaveKey(newest))
+	g.Expect(pub.encodedSize("global", pub.published)).
+		To(BeNumerically("<", pubsubMaxsize))
+}
+
+func TestAgentMetricsPublishGivesUpWhenNothingLeftToDrop(t *testing.T) {
+	g := NewGomegaWithT(t)
+	log := testLogObject()
+	am := controllerconn.NewAgentMetrics()
+
+	am.RecordSuccess(log, "eth0", blobURL(0, 64), 10, 10, 1, false)
+
+	// Small enough that not even an empty URLCounters fits: publishing anyway
+	// would be fatal, so Publish must report instead.
+	pub := &fakePublication{maxsize: 10}
+	g.Expect(am.Publish(log, pub, "global")).NotTo(Succeed())
+	g.Expect(pub.publishCount).To(Equal(0))
 }

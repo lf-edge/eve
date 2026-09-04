@@ -403,11 +403,34 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 			urlMet.RecvByteCount = um.RecvByteCount
 			urlMet.TotalTimeSpent = um.TotalTimeSpent
 			urlMet.SessResumeCount = um.SessionResume
+			urlMet.DeliveredMsgCount = um.DeliveredMsgCount
+			urlMet.RetriableErrCount = um.RetriableErrCount
+			urlMet.RejectedErrCount = um.RejectedErrCount
 			metric.UrlMetrics = append(metric.UrlMetrics, urlMet)
 		}
 		ReportDeviceMetric.Zedcloud = append(ReportDeviceMetric.Zedcloud,
 			&metric)
 	}
+
+	// What is still owed to the controller, and what was never told to it.
+	// The LOC queue is deliberately left out: it does not carry state the
+	// controller is waiting for.
+	deferredStats := ctx.deferredEventQueue.Stats()
+	deferredStats.Add(ctx.deferredPeriodicQueue.Stats())
+	deferredMetric := &metrics.DeferredQueueMetric{
+		UndeliveredMsgCount: deferredStats.Undelivered,
+		DroppedMsgCount:     deferredStats.Rejected + deferredStats.Superseded,
+		RejectedMsgCount:    deferredStats.Rejected,
+		SupersededMsgCount:  deferredStats.Superseded,
+	}
+	if !deferredStats.OldestUndelivered.IsZero() {
+		deferredMetric.OldestUndeliveredMsg =
+			timestamppb.New(deferredStats.OldestUndelivered)
+	}
+	if !deferredStats.LastDropped.IsZero() {
+		deferredMetric.LastDroppedMsg = timestamppb.New(deferredStats.LastDropped)
+	}
+	ReportDeviceMetric.DeferredQueue = deferredMetric
 
 	nlm := &zmet.NewlogMetric{
 		FailedToSend:        newlogMetrics.FailedToSend,
