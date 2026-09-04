@@ -11,6 +11,9 @@
 # Set LINUXKIT_GIT_URL="" to use the release binary (case 3).
 # LINUXKIT_VERSION must remain a published semver tag — it is used only for
 # the release-download URL in case 3.
+#
+# In case 2, GITHUB_TOKEN (or GH_TOKEN) in the environment authenticates the
+# clone through tools/github-askpass.sh; see that script for why.
 HOST_GOOS := $(shell uname -s | tr '[A-Z]' '[a-z]')
 
 # linuxkit version. This **must** be a published semver version so it can be
@@ -55,6 +58,9 @@ $(LINUXKIT): $(BUILDTOOLS_BIN)/linuxkit-$(_LK_VERSION) $(PARALLEL_BUILD_LOCK)
 $(BUILDTOOLS_BIN)/linuxkit-$(_LK_VERSION): $(CURDIR)/mk/linuxkit.mk | $(BUILDTOOLS_BIN)
 	@echo "Building linuxkit from $(LINUXKIT_GIT_URL) at $(LINUXKIT_GIT_REF)"
 	$(QUIET)tmp=$$(mktemp -d) && \
+	  if [ -n "$${GITHUB_TOKEN:-$$GH_TOKEN}" ]; then \
+	    export GIT_ASKPASS=$(CURDIR)/tools/github-askpass.sh GIT_TERMINAL_PROMPT=0; \
+	  fi && \
 	  git clone --filter=blob:none $(LINUXKIT_GIT_URL) $$tmp && \
 	  git -C $$tmp checkout $(LINUXKIT_GIT_REF) && \
 	  $(MAKE) -C $$tmp local-build LOCAL_TARGET=$(abspath $@) && \
