@@ -29,6 +29,11 @@ const (
 	// Time limits for event loop handlers
 	errorTime   = 3 * time.Minute
 	warningTime = 40 * time.Second
+	// volumePublishersRestartTimeout bounds the startup wait for the Volume
+	// publishers to signal restart. baseosmgr must not be gated forever on
+	// them (see Run): on timeout we proceed treating the volume state as
+	// unknown.
+	volumePublishersRestartTimeout = 2 * time.Minute
 )
 
 type baseOsMgrContext struct {
@@ -43,16 +48,24 @@ type baseOsMgrContext struct {
 	subBaseOsConfig      pubsub.Subscription
 	subZbootConfig       pubsub.Subscription
 	subContentTreeStatus pubsub.Subscription
-	subNodeAgentStatus   pubsub.Subscription
-	subZedAgentStatus    pubsub.Subscription
-	subNodeDrainStatus   pubsub.Subscription
-	pubNodeDrainRequest  pubsub.Publication
-	deferredBaseOsID     string
-	rebootReason         string    // From last reboot
-	rebootTime           time.Time // From last reboot
-	rebootImage          string    // Image from which the last reboot happened
-	currentUpdateRetry   uint32    // UpdateRetryCounter from last retry; it will be sent for info
-	configUpdateRetry    uint32    // UpdateRetryCounter from config; to avoid loop after reboot with failed testing
+	subVolumeConfig      pubsub.Subscription
+	subVolumeStatus      pubsub.Subscription
+	// volumeStateKnown is set once both the VolumeConfig and VolumeStatus
+	// publishers have signalled restart, i.e. the volume sets we read via
+	// GetAll() reflect the full post-startup state. Until then the volume
+	// state is treated as unknown (hence as if volumes may exist) so the
+	// cross-flavor upgrade block stays conservative.
+	volumeStateKnown    bool
+	subNodeAgentStatus  pubsub.Subscription
+	subZedAgentStatus   pubsub.Subscription
+	subNodeDrainStatus  pubsub.Subscription
+	pubNodeDrainRequest pubsub.Publication
+	deferredBaseOsID    string
+	rebootReason        string    // From last reboot
+	rebootTime          time.Time // From last reboot
+	rebootImage         string    // Image from which the last reboot happened
+	currentUpdateRetry  uint32    // UpdateRetryCounter from last retry; it will be sent for info
+	configUpdateRetry   uint32    // UpdateRetryCounter from config; to avoid loop after reboot with failed testing
 
 	worker worker.Worker // For background work
 
@@ -152,8 +165,51 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	log.Functionf("user containerd ready")
 
+	// Wait for the Volume publishers to signal restart, i.e. zedagent
+	// has parsed its first EdgeDevConfig and volumemgr has reflected
+	// that plus its on-disk recovery into VolumeStatus. Restarted()
+	// is the right primitive here: Synchronized() only confirms the
+	// socket handshake and can fire before zedagent's first parse.
+	//
+	// The wait is bounded: baseosmgr is on the A/B rollback path and must
+	// not be gated indefinitely (e.g. on a device stuck in maintenance mode
+	// or never onboarded, where neither publisher signals). On timeout we
+	// proceed with volumeStateKnown false, so the cross-flavor block in
+	// doBaseOsStatusUpdate treats the volume set as possibly non-empty and
+	// stays conservative.
+	volRestartDeadline := time.Now().Add(volumePublishersRestartTimeout)
+	for !ctx.subVolumeConfig.Restarted() || !ctx.subVolumeStatus.Restarted() {
+		if time.Now().After(volRestartDeadline) {
+			log.Warnf("volume publishers did not signal restart within %v; proceeding with unknown volume state",
+				volumePublishersRestartTimeout)
+			break
+		}
+		log.Functionf("waiting for Volume publishers to signal restart")
+		select {
+		case change := <-ctx.subGlobalConfig.MsgChan():
+			ctx.subGlobalConfig.ProcessChange(change)
+		case change := <-ctx.subVolumeConfig.MsgChan():
+			ctx.subVolumeConfig.ProcessChange(change)
+		case change := <-ctx.subVolumeStatus.MsgChan():
+			ctx.subVolumeStatus.ProcessChange(change)
+		case <-stillRunning.C:
+		}
+		ps.StillRunning(agentName, warningTime, errorTime)
+	}
+	if ctx.subVolumeConfig.Restarted() && ctx.subVolumeStatus.Restarted() {
+		ctx.volumeStateKnown = true
+	}
+	log.Functionf("volume state known: %t", ctx.volumeStateKnown)
+
 	// start the forever loop for event handling
 	for {
+		// Once both volume publishers have signalled restart the volume
+		// sets are complete; latch that so the cross-flavor gate stops
+		// treating the volume state as unknown.
+		if !ctx.volumeStateKnown &&
+			ctx.subVolumeConfig.Restarted() && ctx.subVolumeStatus.Restarted() {
+			ctx.volumeStateKnown = true
+		}
 		select {
 		case change := <-ctx.subGlobalConfig.MsgChan():
 			ctx.subGlobalConfig.ProcessChange(change)
@@ -166,6 +222,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-ctx.subContentTreeStatus.MsgChan():
 			ctx.subContentTreeStatus.ProcessChange(change)
+
+		case change := <-ctx.subVolumeConfig.MsgChan():
+			ctx.subVolumeConfig.ProcessChange(change)
+
+		case change := <-ctx.subVolumeStatus.MsgChan():
+			ctx.subVolumeStatus.ProcessChange(change)
 
 		case change := <-ctx.subNodeAgentStatus.MsgChan():
 			ctx.subNodeAgentStatus.ProcessChange(change)
@@ -454,6 +516,24 @@ func initializeZedagentHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 	}
 	ctx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
+
+	// VolumeConfig and VolumeStatus are read via GetAll() to gate the
+	// EVE-k vs non-EVE-k upgrade block; no per-event handlers needed.
+	subVolumeConfig, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:   "zedagent",
+			MyAgentName: agentName,
+			TopicImpl:   types.VolumeConfig{},
+			Activate:    false,
+			Ctx:         ctx,
+			WarningTime: warningTime,
+			ErrorTime:   errorTime,
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subVolumeConfig = subVolumeConfig
+	subVolumeConfig.Activate()
 }
 
 func initializeVolumemgrHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
@@ -476,6 +556,22 @@ func initializeVolumemgrHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 	}
 	ctx.subContentTreeStatus = subContentTreeStatus
 	subContentTreeStatus.Activate()
+
+	subVolumeStatus, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:   "volumemgr",
+			MyAgentName: agentName,
+			TopicImpl:   types.VolumeStatus{},
+			Activate:    false,
+			Ctx:         ctx,
+			WarningTime: warningTime,
+			ErrorTime:   errorTime,
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subVolumeStatus = subVolumeStatus
+	subVolumeStatus.Activate()
 }
 
 func handleNodeAgentStatusCreate(ctxArg interface{}, key string,
