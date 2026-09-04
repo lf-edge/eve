@@ -39,7 +39,7 @@ endif
 EVE_SNAPSHOT_VERSION=0.0.0
 # which language bindings to generate for EVE API
 PROTO_LANGS=go python
-# Use 'make HV=xen|kvm|k' to build Xen or KVM or k
+# Use 'make HV=kvm|k' to build KVM or k
 HV=$(HV_DEFAULT)
 # Enable development build (disabled by default)
 DEV=n
@@ -240,7 +240,7 @@ CLOUD_PROJECT=-project lf-edge-eve
 CLOUD_BUCKET=-bucket eve-live
 CLOUD_INSTANCE=-zone us-west1-a -machine n1-standard-1
 
-HV_SUPPORTED=kvm k mini xen
+HV_SUPPORTED=kvm k mini
 
 # Check if HV is supported
 ifeq (, $(filter $(HV), $(HV_SUPPORTED)))
@@ -826,7 +826,7 @@ $(DIST) $(BUILD_DIR) $(INSTALLER_FIRMWARE_DIR):
 $(INSTALLER):
 	@mkdir -p $@
 	@cp -r pkg/eve/installer/* $@
-# sample output 0.0.0-HEAD-a437e8e4-xen-amd64
+# sample output 0.0.0-HEAD-a437e8e4-kvm-amd64
 	@echo $(FULL_VERSION) > $(VERSION_FILE)
 # for IMX8 platforms reduce the platform name to imx8
 # the $(PLATFORM_FILE) is used onlt in eve container to determine the platform family
