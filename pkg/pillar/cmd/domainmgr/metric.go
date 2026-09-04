@@ -109,7 +109,7 @@ func getAndPublishMetrics(ctx *domainContext, hyper hypervisor.Hypervisor) {
 		dm.UUIDandVersion.UUID = uuid
 		dm.UUIDandVersion.Version = version
 		status := lookupDomainStatusByUUID(ctx, uuid)
-		if status == nil && dm.UUIDandVersion.UUID != nilUUID {
+		if status == nil {
 			log.Warnf("Unknown metrics domainname %s",
 				domainName)
 			continue
@@ -128,11 +128,6 @@ func getAndPublishMetrics(ctx *domainContext, hyper hypervisor.Hypervisor) {
 			}
 			// XXX remove - this does not include qemu overhead
 			// dm.AllocatedMB = uint32((status.Memory + 1023) / 1024)
-		} else if dm.UUIDandVersion.UUID == nilUUID && hm.Ncpus != 0 {
-			// Scale Xen Dom0 based CPUs seen by hypervisor
-			dm.CPUTotalNs /= uint64(hm.Ncpus)
-			dm.CPUScaled = hm.Ncpus
-			dm.Activated = true
 		}
 		if !dm.Activated {
 			// We clear the memory so it doesn't accidentally get
@@ -168,11 +163,9 @@ func getAndPublishMetrics(ctx *domainContext, hyper hypervisor.Hypervisor) {
 		dm.UsedMemoryPercent = 0
 		ctx.pubDomainMetric.Publish(dm.Key(), dm)
 	}
-	if hyper.Name() != "xen" {
-		// the the hypervisor other than Xen, we don't have the Dom0 stats in dmList. Get the host
-		// cpu and memory for the device here
-		formatAndPublishHostCPUMem(ctx, hm, now)
-	}
+	// dmList carries app domains only, so the device's own cpu and memory
+	// have to be gathered separately.
+	formatAndPublishHostCPUMem(ctx, hm, now)
 	ctx.pubHostMemory.Publish("global", hm)
 }
 

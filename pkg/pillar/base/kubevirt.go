@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	// EveVirtTypeFile contains the virtualization type, i.e., kvm, xen or k
+	// EveVirtTypeFile contains the virtualization type, i.e., kvm or k
 	EveVirtTypeFile = "/run/eve-hv-type"
 	// KubeAppNameMaxLen limits the length of the app name for Kubernetes.
 	// This also includes the appended UUID prefix.
