@@ -26,7 +26,7 @@ defaults, when possible.
 | --- | --- | --- | --- |
 | `ROOTFS_VERSION` | Version ID of the EVE image | calculated from the git commit | `snapshot`, `1.2.3-abcd567` |
 | `ZARCH` | Hardware architecture of the resulting image | your current platform | `amd64`, `arm64`, `riscv64` |
-| `HV` | Hypervisor flavor of the resulting image | `kvm` (amd64, arm64) or `mini` (riscv64) | `kvm`, `xen`, `mini`, `k` |
+| `HV` | Hypervisor flavor of the resulting image | `kvm` (amd64, arm64) or `mini` (riscv64) | `kvm`, `mini`, `k` |
 | `PLATFORM` | Specific platform for which to build | `generic` | `generic`, `rt`, `nvidia-jp6`, `imx8mp_pollux` |
 
 Finally, the target determines what type of image you are building, e.g.`live`, `installer`.
@@ -51,16 +51,16 @@ make ROOTFS_VERSION=snapshot ZARCH=amd64 HV=kvm live-gcp
 
 Same way, since HV applies at
 the rootfs level (rootfs binary is then fed wholesale into live and installer builds) you can build
-a `snapshot` rootfs with the hypervisor set to xen by doing either:
+a `snapshot` rootfs with the hypervisor set to k by doing either:
 
 ```shell
-make ROOTFS_VERSION=snapshot HV=xen rootfs
+make ROOTFS_VERSION=snapshot HV=k rootfs
 ```
 
 or
 
 ```shell
-make ROOTFS_VERSION=snapshot rootfs-xen
+make ROOTFS_VERSION=snapshot rootfs-k
 ```
 
 In this hierarchy, think of `ZARCH` and `ROOTFS_VERSION` as applicable to anything hence they don't get a -foo shortcut treatment.
@@ -330,7 +330,7 @@ Note that once you flash `installer.raw` on the installer media, such as USB dri
 
 The core `rootfs.tar` or `installer.tar` files are generated using `linuxkit build`, which is driven by a `yml` file.
 The `yml` file is in the `images/out` directory and is named `rootfs-$(HV)-$(PLATFORM).yml`, where `HV` is the hypervisor,
-e.g. `kvm`, `xen`, `mini`, `k`, and can be set in the environment variable `HV`, and `PLATFORM` is the platform, e.g. `generic`, `rt`, `nvidia-jp6`, `imx8mp_pollux`, etc. and can be set in the environment variable `PLATFORM`.
+e.g. `kvm`, `mini`, `k`, and can be set in the environment variable `HV`, and `PLATFORM` is the platform, e.g. `generic`, `rt`, `nvidia-jp6`, `imx8mp_pollux`, etc. and can be set in the environment variable `PLATFORM`.
 e.g. `make rootfs.tar HV=kvm PLATFORM=generic`.
 
 The actual `yml` file `images/out/rootfs-$(HV)-$(PLATFORM).yml` is not checked into version control, nor is any file
@@ -511,7 +511,6 @@ The following custom packages are used:
 * `init` packages:
   * `lfedge/eve-grub` - CoreOS inspired GRUB required to enable CoreOS-style dual partition upgrades. See [UPSTREAMING.md](./UPSTREAMING.md#grub) for a more detailed discussion of what is unique in this grub.
   * `lfedge/eve-fw` - various firmware required for device drivers.
-  * `lfedge/eve-xen` - a single Xen binary required to boot EVE.
   * `lfedge/eve-gpt-tools` - ChromiumOS inspired tools and sgdisk required to enable CoreOS-style dual partition upgrades. See [UPSTREAMING.md](./UPSTREAMING.md#grub) for a more detailed discussion of what is unique in these versions of the gpt tools.
   * `lfedge/eve-dom0-ztools` - catch-all containers for tools helpful in developing and debugging EVE.
 * `onboot` packages:
@@ -526,7 +525,6 @@ The following custom packages are used:
 * `init` packages:
   * `lfedge/eve-grub` - CoreOS inspired GRUB required to enable CoreOS-style dual partition upgrades.
   * `lfedge/eve-devices-trees` - device trees for all the ARM platforms that EVE supports.
-  * `lfedge/eve-xen` - a single Xen binary required to boot EVE.
   * `lfedge/eve-dom0-ztools` - catch-all containers for tools helpful in developing and debugging EVE.
 * `onboot` packages:
   * `lfedge/eve-rngd` - custom EVE rngd package, rather than the standard linuxkit one. This micro-fork accommodates the [following hack](https://github.com/lf-edge/eve/blob/master/pkg/rngd/cmd/rngd/rng_linux_arm64.go) which provides some semblance of seeding randomness on ARM. Without this HiKey board won't boot.
@@ -546,10 +544,9 @@ The package pillar is built using the Makefile command: `make pkg/pillar [VAR1=v
 
 Depending on the values of optional variables, the following pillar build variants are currently available:
 
-* `make pkg/pillar`: Production version of pillar for the KVM or Xen hypervisor. There is no difference
-  in the pillar build between KVM and Xen hypervisors, and the default `HV=kvm` can be used for both.
+* `make pkg/pillar`: Production version of pillar for the KVM hypervisor.
   The name of the built pillar container is `lfedge/eve-pillar:<tag>`.
-* `make pkg/pillar DEV=y`: Development version of pillar for the KVM or Xen hypervisor. Debug symbols
+* `make pkg/pillar DEV=y`: Development version of pillar for the KVM hypervisor. Debug symbols
   are preserved and seccomp is disabled in the pillar container.
   The name of the built pillar container is `lfedge/eve-pillar:<hash>-dev`.
 * `make pkg/pillar HV=k`: Production version of pillar for the k3s hypervisor (EVE using
@@ -823,7 +820,6 @@ init:
   - lfedge/eve-grub:97e7b1404e7c9d141eddb58294fcff019f61571b-amd64
   - lfedge/eve-device-trees:18377dd0bc3c33a1602e94a4c43aa0b3c51badb9-amd64
   - lfedge/eve-fw:1d8c22ae31c42d767ba648b186db4ea967a9c569-amd64
-  - lfedge/eve-xen:f51bf3d17fad15b71242befbddec96e177132a99-amd64
   - lfedge/eve-gpt-tools:fe878611e4e032ea10946cbc9a1c3d5b22349dc4-amd64
   - lfedge/eve-dom0-ztools:b53cd1b5785c128371a5997e3a6e16007718c12d-amd64
 ```
@@ -1066,8 +1062,7 @@ Use `LINUXKIT_PKG_ORG` to redirect package pushes to a local registry. For examp
         "lfedge/eve-u-boot",
         "lfedge/eve-udev",
         "lfedge/eve-uefi",
-        "lfedge/eve-watchdog",
-        "lfedge/eve-xen"
+        "lfedge/eve-watchdog"
       ]
     }
     ```

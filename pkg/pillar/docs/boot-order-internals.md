@@ -34,7 +34,7 @@ the VM firmware. The following diagram shows all components involved:
 │                              EVE                                        │
 │                                                                         │
 │  ┌──────────────┐    ┌──────────────┐    ┌────────────────────┐         │
-│  │  zedagent    │--->│  domainmgr   │--->│ KVM/Xen hypervisor │         │
+│  │  zedagent    │--->│  domainmgr   │--->│ KVM hypervisor     │         │
 │  │              │    │              │    │                    │         │
 │  │ Merges boot  │    │ Applies boot │    │ Passes boot order  │         │
 │  │ order from   │    │ order to VM  │    │ to QEMU via fw_cfg │         │

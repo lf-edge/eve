@@ -60,7 +60,7 @@ See [NVIDIA-NX.md](./NVIDIA-NX.md) for instructions on how to build and deploy E
 
 EVE supports Nvidia Jetpack 7.1 on the [Jetson Thor device](https://www.nvidia.com/en-us/autonomous-machines/embedded-systems/jetson-thor/). The installation process is pretty standard:
 
-1. Build an installation raw image `make ZARCH=arm64 HV=<kvm or k> PLATFORM=nvidia-jp7 installer-raw` (`xen` is not supported)
+1. Build an installation raw image `make ZARCH=arm64 HV=<kvm or k> PLATFORM=nvidia-jp7 installer-raw`
 1. Flash the `dist/arm64/current/installer.raw` install EVE image onto an USB Stick [following these instructions](../README.md#3-flash-the-image-to-the-device)
 1. Insert the USB Stick and power on the device
 
