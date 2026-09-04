@@ -67,6 +67,11 @@ const (
 	// the device, and nothing is expected to change for minutes.
 	storageReclaimPollInterval = 15 * time.Second
 
+	// deviceRebootTimeout bounds the wait for evidence that a reboot the
+	// controller asked for has actually happened. It only has to cover the
+	// shutdown plus the first post-boot info message, not the app coming back.
+	deviceRebootTimeout = 5 * time.Minute
+
 	// clusterReadyTimeout bounds a single eve-k node becoming Ready. k3s and
 	// Longhorn take minutes to come up, and an app deployed before that sits in
 	// INITIAL - burning the app-ready budget on something that is not the app.
