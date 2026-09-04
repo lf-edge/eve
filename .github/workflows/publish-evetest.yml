@@ -22,6 +22,14 @@ concurrency:
   group: ${{ github.workflow }}
   cancel-in-progress: true
 
+env:
+  # The build and some tests clone from github.com (linuxkit, swtpm, ...).
+  # GitHub throttles anonymous fetches per source IP, which makes those clones
+  # fail in bursts on the shared self-hosted runners, so authenticate every
+  # github.com clone this job makes.
+  GITHUB_TOKEN: ${{ github.token }}
+  GIT_ASKPASS: ${{ github.workspace }}/tools/github-askpass.sh
+
 jobs:
   # ════════════════════════════════════════════════════════════════════════
   # Build and push every evetest image (multi-arch: amd64 + arm64), one
