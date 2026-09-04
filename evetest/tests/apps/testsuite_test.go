@@ -82,6 +82,9 @@ import (
 //   - TestAppRestart -- controller-requested restarts (restart counter
 //     bumps, no purge) bring the app back to RUNNING; regression test for
 //     a stale QMP handler quitting the re-created domain.
+//   - TestHaltUnresponsiveGuest -- a guest which never services the ACPI
+//     poweroff request still halts promptly, because the stop escalates to
+//     terminating the domain. Pulls its image from dl-cdn.alpinelinux.org.
 //   - TestVMAppPurgeReplacesVMIRS -- a plain purge of a healthy app leaves
 //     exactly one VMIRS, named for the new generation. Kubevirt only; skips
 //     on any other hypervisor.
@@ -124,6 +127,9 @@ func TestAppsSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestAppRestart,
+		},
+		evetest.TestCase{
+			Test: TestHaltUnresponsiveGuest,
 		},
 		evetest.TestCase{
 			Test: TestVMAppPurgeReplacesVMIRS,
