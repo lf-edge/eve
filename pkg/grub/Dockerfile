@@ -29,8 +29,8 @@ search_disk_uuid search_part_uuid search_part_label search_label xzio xfs video 
 part_msdos cat echo test configfile loopback net tftp http true gcry_sha256"
 
 FROM grub-build-base AS grub-build-amd64
-ENV GRUB_MODULES="multiboot multiboot2 efi_uga efi_gop gpt measurefs efinet getenv"
-ENV GRUB_MODULES_i386_pc="multiboot multiboot2 biosdisk gpt"
+ENV GRUB_MODULES="efi_uga efi_gop gpt measurefs efinet getenv"
+ENV GRUB_MODULES_i386_pc="biosdisk gpt"
 ENV GRUB_COMMIT=grub-2.12
 ENV GRUB_PATCHES=patches-2.12
 # colon separates a platform from an additional option.
@@ -38,7 +38,7 @@ ENV GRUB_PATCHES=patches-2.12
 ENV GRUB_PLATFORM="efi pc:--disable-efiemu"
 
 FROM grub-build-base AS grub-build-arm64
-ENV GRUB_MODULES="xen_boot efi_gop gpt measurefs efinet getenv"
+ENV GRUB_MODULES="efi_gop gpt measurefs efinet getenv"
 ENV GRUB_COMMIT=grub-2.12
 ENV GRUB_PATCHES=patches-2.12
 ENV GRUB_PLATFORM=efi
