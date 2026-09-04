@@ -12,7 +12,7 @@ EVE aims to develop an open, agnostic and standardized architecture unifying the
 
 EVE supports both ARM and Intel architectures and requires hardware-assisted virtualization. While EVE can run on a board as small as a $20 Orange Pi, the sweet spot for its deployment are IoT Gateways and Industrial PCs.
 
-To get its job done, EVE leverages a lot of great open source projects: [Xen Project](https://xenproject.org/), [Linuxkit](https://github.com/linuxkit/linuxkit) and [Alpine Linux](https://alpinelinux.org/) just to name a few. All of that functionality is being orchestrated by the Go microservices available under [pkg/pillar](pkg/pillar). Why pillar? Well, because pillar is the kind of a monolith we need to break out into true, individual microservices under [pkg/](pkg/).
+To get its job done, EVE leverages a lot of great open source projects: [QEMU](https://www.qemu.org/), [Linuxkit](https://github.com/linuxkit/linuxkit) and [Alpine Linux](https://alpinelinux.org/) just to name a few. All of that functionality is being orchestrated by the Go microservices available under [pkg/pillar](pkg/pillar). Why pillar? Well, because pillar is the kind of a monolith we need to break out into true, individual microservices under [pkg/](pkg/).
 
 ## Download EVE
 
@@ -50,15 +50,13 @@ The versions in the tag of `lfedge/eve:<version>` contain information as to whic
 support. The options are:
 
 * architecture: `amd64`, `arm64`, `riscv64`
-* hypervisor: `kvm`, `xen`, `mini`
+* hypervisor: `kvm`, `mini`
 
 Note that not all hypervisors are supported on all architectures.
 
 For example:
 
 * `docker run lfedge/eve:8.11.0-kvm-arm64 <command>`: installer for 8.11.0 using kvm on arm64
-* `docker run lfedge/eve:8.11.0-xen-arm64 <command>`: installer for 8.11.0 using xen on arm64
-* `docker run lfedge/eve:8.11.0-xen-amd64 <command>`: installer for 8.11.0 using xen on amd64
 * `docker run lfedge/eve:8.11.0-mini-riscv64 <command>`: installer for 8.11.0 using mini on riscv64
 
 Note that `<command>` is the appropriate command to run; leave it blank to get the help message.
@@ -240,8 +238,8 @@ interesting is actually happening in the pillar container. Use
 `eve enter` command to enter it (or if you're comfortable with ctr CLI
 from containerd - use that instead).
 
-Once in a container you can run the usual xl commands to start VMs and
-interact with Xen.
+Once in a container you can run the usual qemu commands to start VMs and
+interact with KVM.
 
 #### Exiting
 
@@ -275,15 +273,15 @@ While running everything on your laptop with QEMU could be fun, nothing beats re
 
 ## How to use on Raspberry Pi 4 and 5 ARM boards
 
-Raspberry Pi is a tiny, but capable enough ARM board that allows EVE to run with either Xen or KVM hypervisors. While EVE would run in the lowest memory configuration (1GB) if you plan to use it for actual EVE development we strongly recommend buying a 4GB/8GB RAM option.
+Raspberry Pi is a tiny, but capable enough ARM board that allows EVE to run with the KVM hypervisor. While EVE would run in the lowest memory configuration (1GB) if you plan to use it for actual EVE development we strongly recommend buying a 4GB/8GB RAM option.
 
 EVE provides support for Raspberry Pi 4 Model B (including Compute Module variant) and Raspberry Pi 5 only in its kernel. Another peculiar aspect of this board is that it doesn't use a standard [bootloader (e.g. u-boot or UEFI)](https://www.raspberrypi.org/documentation/configuration/boot_folder.md) so we need to trick it into using our own u-boot as UEFI environment. Thankfully, our Makefile logic tries to automate as much of it as possible. Thus, putting it all together, here are the steps to run EVE on Raspberry Pi 4 and 5:
 
 1. Make sure you have a clean build directory (since this is a non-standard build) `rm -rf dist/arm64`
-2. Build a live image `make ZARCH=arm64 HV=kvm live-raw` (or `make ZARCH=arm64 HV=xen live-raw` if you want XEN by default)
+2. Build a live image `make ZARCH=arm64 HV=kvm live-raw`
 3. Flash the `dist/arm64/current/live.raw` live EVE image onto your SD card by [following these instructions](#how-to-write-the-eve-image-and-installer-onto-storage-media)
 
-Once your Raspberry Pi is happily running an EVE image you can start using EVE controller for further updates (so that you don't ever have to take an SD card out of your board). Build your rootfs by running `make ZARCH=arm64 HV=xen rootfs` (or `make ZARCH=arm64 HV=kvm rootfs` if you want KVM by default) and give resulting `dist/arm64/current/installer/rootfs.img` to the controller.
+Once your Raspberry Pi is happily running an EVE image you can start using EVE controller for further updates (so that you don't ever have to take an SD card out of your board). Build your rootfs by running `make ZARCH=arm64 HV=kvm rootfs` and give resulting `dist/arm64/current/installer/rootfs.img` to the controller.
 
 ### Raspberry Pi 5 U-boot support
 
@@ -630,10 +628,10 @@ take no responsibility for those tools. Evaluate and use them at your own risk.
 
 ## A quick note on linuxkit
 
-You may be wondering why do we have a container-based architecture for a Xen-centric environment. First of all, OCI containers are a key type of a workload for our platform. Which means having OCI environment to run them is a key requirement. We run them via:
+You may be wondering why do we have a container-based architecture for a hypervisor-centric environment. First of all, OCI containers are a key type of a workload for our platform. Which means having OCI environment to run them is a key requirement. We run them via:
 
 1. Set up the filesystem root using [containerd](https://containerd.io)
-1. Launch the domU using Xen via `xl`
+1. Launch the guest domain using QEMU/KVM
 
 In addition to that, while we plan to build a fully disaggregated system (with even device drivers running in their separate domains) right now we are just getting started and having containers as a first step towards full disaggregation seems like a very convenient stepping stone.
 

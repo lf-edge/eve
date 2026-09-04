@@ -9,7 +9,7 @@ such as traffic routing/forwarding, DHCP, DNS, NAT, ACL, flow monitoring, multi-
 routing with probing and automatic fail-over, etc.
 It works in conjunction with the NIM microservice to provide external connectivity
 for these network instances and applications that connect to them.
-If kvm or xen hypervisor is used, zedrouter cooperates with domainmgr to attach applications
+If the kvm hypervisor is used, zedrouter cooperates with domainmgr to attach applications
 to selected network instances using virtual interfaces, aka *VIFs*.
 When running the EVE-k build, application VIFs are created in cooperation between
 the zedrouter, [eve-bridge CNI plugin](../../kube/eve-bridge/README.md) and the Kubevirt.
@@ -50,7 +50,7 @@ instance on one side and to the application container or to a guest VM domain on
 
 How VIF is implemented depends on how the application is deployed (native container,
 or a container running inside an EVE-created Alpine VM, or a full-fledged VM)
-and on the hypervisor (kvm, xen, k, etc.).
+and on the hypervisor (kvm, k, etc.).
 
 For application running as a native container or as a K3s pod, zedrouter uses veth pair,
 with one end of the pair being placed inside the net namespace of the container/pod,
