@@ -854,6 +854,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 				gcDatasets(&ctx, types.VolumeEncryptedZFSDataset)
 				gcDatasets(&ctx, types.VolumeClearZFSDataset)
 			}
+			if base.IsHVTypeKube() {
+				gcPVCs(&ctx)
+			}
 			if !ctx.initGced {
 				gcUnusedInitObjects(&ctx)
 				ctx.initGced = true

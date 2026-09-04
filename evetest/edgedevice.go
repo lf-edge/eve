@@ -2001,6 +2001,66 @@ func (d *EdgeDevice) SyncDisks() {
 	}
 }
 
+// EVEKubeAppNamespace is the namespace EVE runs app workloads in. VMIRS
+// objects, their pods and their PVCs live there. It mirrors
+// pkg/pillar/kubeapi.EVEKubeNameSpace.
+const EVEKubeAppNamespace = "eve-kube-app"
+
+// KubeItemList is the part of `kubectl get <resource> -o json` that tests use:
+// the name, the labels, the selector labels and the status phase.
+//
+// Each resource fills in different fields. EVE puts the App-Domain-Name label
+// in a VMIRS selector only. A PVC has no labels or selector, but reports a
+// phase. A field the resource does not carry stays at its zero value.
+type KubeItemList struct {
+	Items []struct {
+		Metadata struct {
+			Name   string            `json:"name"`
+			Labels map[string]string `json:"labels"`
+		} `json:"metadata"`
+		Spec struct {
+			Selector struct {
+				MatchLabels map[string]string `json:"matchLabels"`
+			} `json:"selector"`
+		} `json:"spec"`
+		Status struct {
+			Phase string `json:"phase"`
+		} `json:"status"`
+	} `json:"items"`
+}
+
+// RunKubectl runs one kubectl command in EVE's kube container, against the app
+// namespace. Pass everything after "kubectl", such as `get pvc -o json`.
+//
+// This is an exception to the guideline "assert against the EVE API, not
+// internal state" (README, "Writing Tests -> Guidelines"). Some cluster facts
+// have no EVE API form, such as how many generations of a workload exist. Use
+// an EVE API assertion when one exists.
+//
+// The method returns the error and does not fail the test. A booting node
+// reports one until k3s is up, and a caller in Eventually must retry it.
+func (d *EdgeDevice) RunKubectl(args string) (stdout, stderr string, err error) {
+	return d.RunShellScript(
+		"eve exec kube kubectl -n "+EVEKubeAppNamespace+" "+args,
+		kubectlCommandTimeout, 0)
+}
+
+// KubectlListItems lists one resource type from the EVE app namespace. An
+// error means the device was unreachable, k3s was down, or the output did not
+// parse. A caller in Eventually must retry each of these.
+func (d *EdgeDevice) KubectlListItems(resource string) (KubeItemList, error) {
+	var list KubeItemList
+	stdout, stderr, err := d.RunKubectl("get " + resource + " -o json")
+	if err != nil {
+		return list, fmt.Errorf("KubectlListItems: get %s failed: %w (stderr: %s)",
+			resource, err, stderr)
+	}
+	if err := json.Unmarshal([]byte(stdout), &list); err != nil {
+		return list, fmt.Errorf("KubectlListItems: parsing %s output: %w", resource, err)
+	}
+	return list, nil
+}
+
 // GetDeviceInfo returns the last recorded device information,
 // or nil if no info message has been received yet.
 func (d *EdgeDevice) GetDeviceInfo() *eveinfo.ZInfoDevice {

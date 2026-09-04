@@ -150,6 +150,11 @@ const (
 	// to finish quickly.
 	quickSSHCommandTimeout = 5 * time.Second
 
+	// Timeout for one kubectl command on the device (see
+	// EdgeDevice.RunKubectl). Longer than a quick SSH command: `eve exec`
+	// enters the kube container first, and a settling node answers slowly.
+	kubectlCommandTimeout = 20 * time.Second
+
 	// Timeout for flushing the device's filesystem caches
 	// (see EdgeDevice.SyncDisks). Far more generous than a quick SSH command:
 	// a sync issued right after an app's image layers were unpacked has tens
