@@ -50,7 +50,6 @@ type hypervisorDesc struct {
 }
 
 var knownHypervisors = map[string]hypervisorDesc{
-	XenHypervisorName:        {constructor: newXen, enabled: func() bool { return fileutils.FileExists(nil, "/proc/xen") }, hvTypeFileContent: "xen"},
 	KVMHypervisorName:        {constructor: newKvm, enabled: func() bool { return fileutils.FileExists(nil, "/dev/kvm") && !base.IsHVTypeKube() }, hvTypeFileContent: "kvm"},
 	KubevirtHypervisorName:   {constructor: newKubevirt, enabled: func() bool { return fileutils.FileExists(nil, "/dev/kvm") && base.IsHVTypeKube() }, hvTypeFileContent: "k"},
 	ContainerdHypervisorName: {constructor: newContainerd, enabled: func() bool { return fileutils.FileExists(nil, "/run/containerd/containerd.sock") }},
@@ -59,7 +58,7 @@ var knownHypervisors = map[string]hypervisorDesc{
 
 // this is a priority order to pick a default hypervisor if multiple are available (more to less likely)
 var hypervisorPriority = []string{
-	XenHypervisorName, KVMHypervisorName, KubevirtHypervisorName, ContainerdHypervisorName, NullHypervisorName,
+	KVMHypervisorName, KubevirtHypervisorName, ContainerdHypervisorName, NullHypervisorName,
 }
 
 // GetHypervisor returns a particular hypervisor implementation
