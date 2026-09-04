@@ -185,7 +185,7 @@ RUN register-sbom-pkg.sh -n xen -v "${XEN_VERSION}" -l GPL-2.0-only -u https://x
 RUN register-sbom-pkg.sh -n seabios -v "${SEABIOS_UPSTREAM_REVISION}" -l LGPL-2.1-only -u https://www.seabios.org
 
 # Filter out a few things that we don't currently need
-RUN rm -rf /out/usr/share/qemu-xen/qemu/edk2-* /out/var/run /usr/include /usr/lib/*.a
+RUN rm -rf /out/usr/share/qemu-xen/qemu/edk2-* /out/var/run /out/usr/include
 # FIXME: this is a workaround for Xen on ARM still requiring qemu-system-i386
 #   https://wiki.xenproject.org/wiki/Xen_ARM_with_Virtualization_Extensions#Use_of_qemu-system-i386_on_ARM
 WORKDIR /out/usr/lib/xen/bin/
@@ -199,7 +199,9 @@ RUN mkdir -p /out/usr/lib/xen/boot && cp /uefi/OVMF.fd /out/usr/lib/xen/boot/ovm
     { [ -f /uefi/igd.rom ] && cp /uefi/igd.rom /out/usr/lib/xen/boot/igd.rom || :; }
 
 # We need to keep a slim profile, which means removing things we don't need
-RUN rm -rf /out/usr/lib/libxen*.a /out/usr/lib/libxl*.a /out/usr/lib/debug /out/usr/lib/python*
+RUN rm -rf /out/usr/lib/debug /out/usr/lib/python*
+# Static libraries are build-time only; some live in subdirectories (e.g. xen/lib/libfdt.a).
+RUN find /out -type f -name '*.a' -exec rm -f {} +
 RUN rm -rf /out/usr/share/man
 RUN rm -rf /out/usr/share/qemu-xen/qemu/openbios-*
 RUN rm -rf /out/usr/lib/xen/bin/qemu-storage-daemon
