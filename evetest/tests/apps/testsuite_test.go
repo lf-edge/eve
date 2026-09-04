@@ -82,6 +82,9 @@ import (
 //   - TestAppRestart -- controller-requested restarts (restart counter
 //     bumps, no purge) bring the app back to RUNNING; regression test for
 //     a stale QMP handler quitting the re-created domain.
+//   - TestHaltAfterImmediateDeactivate -- an app stopped in the same second
+//     it reports RUNNING still halts promptly; regression test for the
+//     graceful budget an unset virtualization mode used to be granted.
 //   - TestVMAppPurgeReplacesVMIRS -- a plain purge of a healthy app leaves
 //     exactly one VMIRS, named for the new generation. Kubevirt only; skips
 //     on any other hypervisor.
@@ -124,6 +127,9 @@ func TestAppsSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestAppRestart,
+		},
+		evetest.TestCase{
+			Test: TestHaltAfterImmediateDeactivate,
 		},
 		evetest.TestCase{
 			Test: TestVMAppPurgeReplacesVMIRS,
