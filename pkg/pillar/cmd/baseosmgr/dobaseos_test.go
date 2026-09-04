@@ -421,3 +421,44 @@ func TestBaseOsHandleStatusUpdateUUID_NoContentTreeStatusIsLoggedOnly(t *testing
 	// No ContentTreeStatus seeded → early return after error log.
 	baseOsHandleStatusUpdateUUID(tc.ctx, "uuid-x")
 }
+
+func TestDoBaseOsStatusUpdate_CrossFlavorNotActivatedSkipsConversion(t *testing.T) {
+	// A cross-flavor image that is only pre-staged (Activate not set) must not
+	// arm the boot-disk repartition: that reboots the device and, on the shrink
+	// path, shrinks /persist.
+	tc := newTestCtx(t)
+	tc.pubZbootStatus.items["IMGA"] = types.ZbootStatus{
+		PartitionLabel: "IMGA", PartitionState: "active", ShortVersion: "13-kvm",
+	}
+	// A different version in the other partition, so the "already in other
+	// partition" shortcut does not return before the install path.
+	tc.pubZbootStatus.items["IMGB"] = types.ZbootStatus{
+		PartitionLabel: "IMGB", PartitionState: "unused", ShortVersion: "12-kvm",
+	}
+	tc.subContentTreeStatus.items["uuid-x"] = types.ContentTreeStatus{
+		State: types.LOADED,
+	}
+	tc.currentIsKube = false
+	tc.versionIsKube = map[string]bool{"14-k": true}
+	// No volumes and the volume state is known, so the cross-flavor upgrade is
+	// permitted and the code reaches the conversion decision.
+	tc.ctx.subVolumeConfig = newMockPubSub()
+	tc.ctx.subVolumeStatus = newMockPubSub()
+	tc.ctx.volumeStateKnown = true
+
+	cfg := types.BaseOsConfig{
+		BaseOsVersion:   "14-k",
+		ContentTreeUUID: "uuid-x",
+		Activate:        false,
+	}
+	st := types.BaseOsStatus{BaseOsVersion: "14-k", ContentTreeUUID: "uuid-x"}
+	doBaseOsStatusUpdate(tc.ctx, "uuid-x", cfg, &st)
+	if st.HasError() {
+		t.Fatalf("unexpected error on a download-only cross-flavor config: %q",
+			st.Error)
+	}
+	if st.Converting || st.ConvertSubState != types.DEVICE_SUBSTATE_UNSPECIFIED {
+		t.Fatalf("conversion armed without Activate: converting=%v substate=%v",
+			st.Converting, st.ConvertSubState)
+	}
+}

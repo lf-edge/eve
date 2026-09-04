@@ -276,6 +276,21 @@ Uses native ZFS encryption. Key paths:
   `MS_DIRSYNC|MS_NOATIME` unless the kernel cmdline carries
   `eve_no_dirsync`, which is set when EVE itself runs as a VM (to
   avoid the I/O penalty of nested DIRSYNC).
+* **Carried-over kvm vault → EVE-k zvol**: a device converted in the
+  field from EVE-kvm to EVE-k arrives with `persist/vault` as a
+  filesystem dataset, which the EVE-k layout cannot use.
+  `migrateVaultFsToZvol` stages a second zvol, copies the vault
+  contents into its ext4, then renames the old dataset aside, renames
+  the staging zvol into place and only then destroys the old one; an
+  interruption mid-swap is picked up on the next boot by
+  `recoverInterruptedVaultMigration`. The staging zvol is sized to the
+  pool's free space and the migration declines up front if the vault
+  holds more than that. Sizing at migration time has a lasting
+  consequence: the migrated vault is smaller than the one a fresh
+  EVE-k install creates on a nearly empty pool — smaller by whatever
+  else `/persist` holds at conversion time — and the space the old
+  vault frees goes back to the pool rather than into the vault's
+  `volsize`, which is fixed when the zvol is created.
 * **No-TPM ZFS** is supported: a plain unencrypted dataset (or zvol
   on kube) is created instead — `Status` becomes
   `DATASEC_AT_REST_DISABLED`.

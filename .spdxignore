@@ -25,3 +25,4 @@ pkg/wwan/mmagent/vendor/
 tools/get-deps/vendor/
 pkg/alpine/dnstest/vendor/
 pkg/kube/stale-mount-cleanup/vendor/
+pkg/storage-resizer/vendor/
