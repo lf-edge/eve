@@ -243,8 +243,6 @@ nav:
       - sourcemap: 'pkg/pillar/vendor/gopkg.in/sourcemap.v1/README.md'
       - yaml V2: 'pkg/pillar/vendor/gopkg.in/yaml.v2/README.md'
       - yaml V3: 'pkg/pillar/vendor/gopkg.in/yaml.v3/README.md'
-  - Hypervisors:
-      - Xen: 'pkg/xen/README.md'
   - Miscellaneous:
       - RNGD: 'pkg/rngd/cmd/rngd/vendor/golang.org/x/sys/unix/README.md'
       - U-boot: 'pkg/u-boot/README.md'
