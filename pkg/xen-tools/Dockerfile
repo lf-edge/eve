@@ -105,7 +105,9 @@ RUN make -j "$(getconf _NPROCESSORS_ONLN)" && make dist
 RUN dist/install.sh /out
 
 # Filter out a few things that we don't currently need
-RUN rm -rf /out/usr/share/qemu-xen/qemu/edk2-* /out/var/run /usr/include /usr/lib/*.a
+RUN rm -rf /out/usr/share/qemu-xen/qemu/edk2-* /out/var/run /out/usr/include
+# Static libraries are build-time only; some live in subdirectories (e.g. xen/lib/libfdt.a).
+RUN find /out -type f -name '*.a' -exec rm -f {} +
 # FIXME: this is a workaround for Xen on ARM still requiring qemu-system-i386
 #   https://wiki.xenproject.org/wiki/Xen_ARM_with_Virtualization_Extensions#Use_of_qemu-system-i386_on_ARM
 WORKDIR /out/usr/lib/xen/bin/
@@ -124,7 +126,7 @@ COPY init.sh /
 COPY qemu-ifup xen-start /etc/xen/scripts/
 
 # We need to keep a slim profile, which means removing things we don't need
-RUN rm -rf /usr/lib/libxen*.a /usr/lib/libxl*.a /usr/lib/debug /usr/lib/python*
+RUN rm -rf /usr/lib/debug /usr/lib/python*
 
 RUN rm -rf /usr/share/man \
     /usr/share/qemu-xen/qemu/openbios-* \
