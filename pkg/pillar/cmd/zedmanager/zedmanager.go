@@ -54,6 +54,7 @@ type zedmanagerContext struct {
 	pubAppNetworkConfig       pubsub.Publication
 	subAppNetworkStatus       pubsub.Subscription
 	pubDomainConfig           pubsub.Publication
+	pubCPUDemandSet           pubsub.Publication
 	subDomainStatus           pubsub.Subscription
 	subENClusterAppStatus     pubsub.Subscription
 	subGlobalConfig           pubsub.Subscription
@@ -180,6 +181,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	ctx.pubDomainConfig = pubDomainConfig
 	pubDomainConfig.ClearRestarted()
+
+	pubCPUDemandSet, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.CPUDemandSet{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubCPUDemandSet = pubCPUDemandSet
 
 	// Persist purge counter for each application.
 	mapPublisher, err := objtonum.NewObjNumPublisher(
@@ -460,7 +470,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// Low-priority apps are released by an event: either a high-priority app
 	// reaching a running state (observed via subAppInstanceStatus below) or the
 	// priorityStartTimer expiring. Create it stopped; it is armed when
-	// delayBaseTime is first set in handleZedAgentStatusImpl.
+	// delayBaseTime is first set, see ensureDelayBaseTime.
 	ctx.priorityStartTimer = time.NewTimer(waitForAppsToStartTimeout)
 	if !ctx.priorityStartTimer.Stop() {
 		<-ctx.priorityStartTimer.C
@@ -740,6 +750,11 @@ func handleAADelete(ctxArg interface{}, key string, statusArg interface{}) {
 func handleConfigRestart(ctxArg interface{}, restartCounter int) {
 	ctx := ctxArg.(*zedmanagerContext)
 	log.Functionf("handleConfigRestart(%d)", restartCounter)
+	// The initial config has been delivered, so the demand set is now complete
+	// -- possibly empty. Publish it either way: domainmgr must be able to tell
+	// "no app asked for CPUs" from "zedmanager has not spoken yet", and only an
+	// explicit publication says the former.
+	publishCPUDemandSet(ctx)
 	if restartCounter != 0 {
 		ctx.pubAppNetworkConfig.SignalRestarted()
 	}
@@ -890,6 +905,11 @@ func handleAppInstanceConfigDelete(ctxArg interface{}, key string,
 
 	log.Functionf("handleAppInstanceConfigDelete(%s)", key)
 	ctx := ctxArg.(*zedmanagerContext)
+	// pubsub drops the key before calling us, so the set built here no longer
+	// holds the deleted app -- its CPUs are free for the plan again. Done even
+	// when there is no status, so a config that never reached a status does not
+	// leave a reservation behind.
+	publishCPUDemandSet(ctx)
 	status := lookupAppInstanceStatus(ctx, key)
 	if status == nil {
 		log.Functionf("handleAppInstanceConfigDelete: unknown %s", key)
@@ -1214,6 +1234,36 @@ func serializeAppInstanceConfigToSnapshot(config types.AppInstanceConfig, snapsh
 	return nil
 }
 
+// ensureDelayBaseTime establishes the moment from which the configured
+// application delays are counted, unless it is already known.
+func ensureDelayBaseTime(ctx *zedmanagerContext) {
+	if !ctx.delayBaseTime.IsZero() {
+		return
+	}
+	ctx.delayBaseTime = time.Now()
+	// Arm the fallback that releases low-priority apps once the startup
+	// window closes. The extra margin keeps the timer from firing a hair
+	// before highPriorityAppsPending sees the deadline as passed, which
+	// would leave apps held with no further wakeup. Guarded because
+	// subAppInstanceConfig is activated before the timer is created.
+	if ctx.priorityStartTimer != nil {
+		ctx.priorityStartTimer.Reset(waitForAppsToStartTimeout + time.Second)
+	}
+}
+
+// appStartTime returns the moment at which the application is allowed to start,
+// i.e. the base time plus the configured delay.
+//
+// The base time is established here as well as on ZedAgentStatus, because an
+// AppInstanceConfig can reach zedmanager first: the two travel over separate
+// pubsub channels and an app config arriving is by itself proof that the device
+// got its configuration. Otherwise the delay would be added to the zero time,
+// putting the start moment in year 1 and starting the app immediately.
+func appStartTime(ctx *zedmanagerContext, config types.AppInstanceConfig) time.Time {
+	ensureDelayBaseTime(ctx)
+	return ctx.delayBaseTime.Add(config.Delay)
+}
+
 func handleCreate(ctxArg interface{}, key string,
 	configArg interface{}) {
 	ctx := ctxArg.(*zedmanagerContext)
@@ -1222,6 +1272,9 @@ func handleCreate(ctxArg interface{}, key string,
 	log.Functionf("handleCreate(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
 
+	// Before doUpdate, so domainmgr knows this app is coming before it is ever
+	// asked to place another one.
+	publishCPUDemandSet(ctx)
 	handleCreateAppInstanceStatus(ctx, config)
 }
 
@@ -1237,8 +1290,7 @@ func handleCreateAppInstanceStatus(ctx *zedmanagerContext, config types.AppInsta
 		IsDesignatedNodeID: config.IsDesignatedNodeID,
 	}
 
-	// Calculate the moment when the application should start, taking into account the configured delay
-	status.StartTime = ctx.delayBaseTime.Add(config.Delay)
+	status.StartTime = appStartTime(ctx, config)
 
 	restoreAvailableSnapshots(&status)
 
@@ -1344,6 +1396,10 @@ func handleModify(ctxArg interface{}, key string,
 		config = *localConfig
 	}
 
+	// A modify can change vCPU count, the CPU policy, or whether the app is
+	// activated at all -- all of which move the demand set.
+	publishCPUDemandSet(ctx)
+
 	// Check if we need to roll back to a snapshot
 	if config.Snapshot.RollbackCmd.Counter > oldConfig.Snapshot.RollbackCmd.Counter {
 		log.Noticef("handleModify(%v) for %s: Snapshot to be rolled back: %v",
@@ -1368,7 +1424,7 @@ func handleModify(ctxArg interface{}, key string,
 		return
 	}
 
-	status.StartTime = ctx.delayBaseTime.Add(config.Delay)
+	status.StartTime = appStartTime(ctx, config)
 
 	updateSnapshotsInAIStatus(status, config)
 
@@ -1782,14 +1838,7 @@ func handleZedAgentStatusImpl(ctxArg interface{}, key string,
 	// When getting the config successfully for the first time (get from the controller or read from the file), consider
 	// the device as ready to start apps. Hence, count the app delay timeout from now.
 	if status.ConfigGetStatus == types.ConfigGetSuccess || status.ConfigGetStatus == types.ConfigGetReadSaved {
-		if ctxPtr.delayBaseTime.IsZero() {
-			ctxPtr.delayBaseTime = time.Now()
-			// Arm the fallback that releases low-priority apps once the
-			// startup window closes. The extra margin keeps the timer from
-			// firing a hair before highPriorityAppsPending sees the deadline
-			// as passed, which would leave apps held with no further wakeup.
-			ctxPtr.priorityStartTimer.Reset(waitForAppsToStartTimeout + time.Second)
-		}
+		ensureDelayBaseTime(ctxPtr)
 	}
 
 	if ctxPtr.currentProfile != status.CurrentProfile {
@@ -1831,6 +1880,10 @@ func handleHostMemoryImpl(ctxArg interface{}, key string,
 // updateBasedOnProfile check all app instances with ctx.currentProfile and oldProfile
 // update AppInstance if change in effective activate detected
 func updateBasedOnProfile(ctx *zedmanagerContext, oldProfile string) {
+	// A profile change activates and deactivates apps without any config
+	// change, so it moves the demand set. Republish before acting on it, so an
+	// app the new profile starts is in the set before its DomainConfig is.
+	publishCPUDemandSet(ctx)
 	pub := ctx.subAppInstanceConfig
 	items := pub.GetAll()
 	for _, c := range items {

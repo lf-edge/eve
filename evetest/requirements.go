@@ -189,6 +189,17 @@ type RequireEdgeDevice struct {
 	MinRAMInMiB      uint32 // Default will be 8 GiB (8192 MiB).
 	MinDiskSizeInMiB uint32 // Default will be 64 GiB (65536 MiB).
 
+	// ThreadsPerCore requests that the device's CPUs be presented as SMT
+	// hardware threads: the device gets MinCPUs logical CPUs arranged as
+	// MinCPUs/ThreadsPerCore physical cores with this many threads each.
+	//
+	// Zero (the default) presents every CPU as its own single-thread core,
+	// which is what every test that does not care about SMT gets. Set this to
+	// 2 only when the test needs sibling threads to exist -- for example to
+	// exercise CPU placement that allocates whole physical cores. MinCPUs must
+	// then be a multiple of it.
+	ThreadsPerCore uint8
+
 	WithEVEVersion string
 	WithHypervisor Hypervisor
 	WithTPM        bool

@@ -39,6 +39,23 @@ const (
 	netDumpInfoOKTopic = agentName + "-info-ok"
 	// Topic for zedagent netdumps of failed info msg publications.
 	netDumpInfoFailTopic = agentName + "-info-fail"
+
+	// deviceAPICapability is the EdgeDevConfig feature level this EVE build
+	// implements, reported as ZInfoDevice.api_capability.
+	//
+	// The enum is monotonic and version-like: "a larger number indicates all
+	// lower numbers are also supported" (eve-api info.proto), so a controller
+	// gates a feature on api_capability >= <value> and this single scalar
+	// stands in for every capability below it. Bump it -- to the immediate
+	// successor, never skipping a value -- only when the EdgeDevConfig feature
+	// that the new value names is actually parsed and honored by this build,
+	// because bumping it also claims everything underneath.
+	//
+	// CPU_PLACEMENT_POLICY: the VmConfig CPU placement fields are parsed
+	// (cmd/zedagent/parsecpuplacement.go) and honored (cmd/domainmgr). This
+	// also claims APP_INSTANCE_NET_INTERFACE_CHANGE, the value directly below
+	// it, which this build implements.
+	deviceAPICapability = info.APICapability_API_CAPABILITY_CPU_PLACEMENT_POLICY
 )
 
 var (
@@ -646,6 +663,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 
 	ReportDeviceInfo.Capabilities = getCapabilities(ctx)
 	ReportDeviceInfo.OptionalCapabilities = getOptionalCapabilities(ctx)
+	ReportDeviceInfo.CpuPools = getCPUPools(ctx)
 
 	devState := getDeviceState(ctx)
 	if ctx.devState != devState {
@@ -660,7 +678,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 	// device returns a runtime error. Similarly, we only support enforced application network
 	// interface order for the KVM hypervisor. If enabled for application deployed under Xen
 	// or Kubevirt hypervisor, EVE returns error and the application will not be started.
-	ReportDeviceInfo.ApiCapability = info.APICapability_API_CAPABILITY_APP_INSTANCE_NET_INTERFACE_CHANGE
+	ReportDeviceInfo.ApiCapability = deviceAPICapability
 
 	// Report if there is a local override of profile
 	if ctx.getconfigCtx.localCmdAgent.GetCurrentProfile() !=
@@ -1255,6 +1273,62 @@ func getCapabilities(ctx *zedagentContext) *info.Capabilities {
 		HWAssistedVirtualization: capabilities.HWAssistedVirtualization,
 		IOVirtualization:         capabilities.IOVirtualization,
 	}
+}
+
+// cpuPoolKindToProto maps the device's pool vocabulary onto the wire enum.
+//
+// A kind with no mapping is reported as "unspecified", which is an unlabelled
+// pool holding real CPUs -- the controller cannot tell what those CPUs are for.
+// That can only happen if a pool kind was added without extending this mapping,
+// so it is logged as an error rather than passed on quietly.
+func cpuPoolKindToProto(kind types.CPUPoolKind) info.CPUPoolKind {
+	switch kind {
+	case types.CPUPoolKindHousekeeping:
+		return info.CPUPoolKind_CPU_POOL_KIND_HOUSEKEEPING
+	case types.CPUPoolKindDedicated:
+		return info.CPUPoolKind_CPU_POOL_KIND_DEDICATED
+	case types.CPUPoolKindIsolated:
+		return info.CPUPoolKind_CPU_POOL_KIND_ISOLATED
+	}
+	log.Errorf("cpuPoolKindToProto: no wire enum for CPU pool kind %s (%d); "+
+		"reporting it as unspecified", kind, kind)
+	return info.CPUPoolKind_CPU_POOL_KIND_UNSPECIFIED
+}
+
+// getCPUPools reports how the node's logical CPUs are partitioned and how much
+// of each partition is still available, so a controller can answer "will this
+// workload fit?" before a deploy and explain a placement failure after one.
+//
+// Both the CPU sets and the whole-core counts are carried, because a free thread
+// on a partially-taken core cannot satisfy a request for whole physical cores:
+// a single "free" number would answer one of the two request shapes wrongly.
+func getCPUPools(ctx *zedagentContext) []*info.CPUPoolUtilization {
+	item, err := ctx.subCPUPoolStatus.Get("global")
+	if err != nil {
+		// domainmgr publishes this once it has discovered the CPU topology; before
+		// that there is nothing to report, which is not an error.
+		log.Functionf("ctx.subCPUPoolStatus.Get failed: %s", err)
+		return nil
+	}
+	poolStatus, ok := item.(types.CPUPoolStatus)
+	if !ok {
+		log.Errorf("Unexpected type for CPUPoolStatus: %T", item)
+		return nil
+	}
+	pools := make([]*info.CPUPoolUtilization, 0, len(poolStatus.Pools))
+	for _, pool := range poolStatus.Pools {
+		pools = append(pools, &info.CPUPoolUtilization{
+			Kind:             cpuPoolKindToProto(pool.Kind),
+			CpuIds:           pool.CPUs,
+			FreeCpuIds:       pool.FreeCPUs,
+			TotalThreads:     pool.TotalThreads,
+			AllocatedThreads: pool.AllocatedThreads,
+			FreeThreads:      pool.FreeThreads,
+			TotalCores:       pool.TotalCores,
+			FreeWholeCores:   pool.FreeWholeCores,
+		})
+	}
+	return pools
 }
 
 func getOptionalCapabilities(ctx *zedagentContext) *info.OptionalCapabilities {

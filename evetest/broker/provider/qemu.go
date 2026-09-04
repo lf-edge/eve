@@ -1487,7 +1487,7 @@ func (dev *qemuDevice) buildArgs() []string {
 		"-enable-kvm",
 		"-machine", "q35,kernel-irqchip=split",
 		"-cpu", "host",
-		"-smp", fmt.Sprintf("%d", dev.spec.CPUs),
+		"-smp", smpArg(dev.spec.CPUs, dev.spec.ThreadsPerCore),
 		"-m", fmt.Sprintf("%d", dev.spec.MemoryBytes>>20),
 		"-nographic",
 		// vIOMMU (with the split irqchip its interrupt remapping requires),
