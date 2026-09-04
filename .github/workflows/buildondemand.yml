@@ -95,7 +95,7 @@ jobs:
       fail-fast: false
       matrix:
         arch: [arm64, amd64]
-        hv: [xen, kvm]
+        hv: [kvm]
         platform: ["generic"]
         include:
           - arch: riscv64

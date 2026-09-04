@@ -153,20 +153,12 @@ jobs:
             platform: "generic"
             os: zededa-ubuntu-2204
           - arch: amd64
-            hv: xen
-            platform: "generic"
-            os: zededa-ubuntu-2204
-          - arch: amd64
             hv: k
             platform: "generic"
             os: zededa-ubuntu-2204
           # arm64 generic
           - arch: arm64
             hv: kvm
-            platform: "generic"
-            os: zededa-ubuntu-2204-arm64
-          - arch: arm64
-            hv: xen
             platform: "generic"
             os: zededa-ubuntu-2204-arm64
           - arch: arm64
