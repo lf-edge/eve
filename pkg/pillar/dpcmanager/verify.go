@@ -19,13 +19,17 @@ const (
 	waitForAsyncRetries = 2
 	waitForIPDNSRetries = 5
 	waitForWwanRetries  = 3
+
+	// dnsCacheClearGracePeriod bounds how long after a mgmt-dnsmasq cache
+	// clear (see setupVerify/dnsCacheClearedAt) a DNS query timeout is still
+	// treated as "not ready yet" rather than a genuine connectivity failure.
+	// It covers dnsmasq's own restart (mgmtDnsmasqStartTimeout) plus a margin
+	// for the freshly-reconciled network path (routes, ARP) to converge.
+	dnsCacheClearGracePeriod = 5 * time.Second
 )
 
 func (m *DpcManager) restartVerify(ctx context.Context, reason string) {
 	m.Log.Noticef("DPC verify: Restarting verification, reason: %s", reason)
-	// Increment to signal mgmt dnsmasq (via the dep-graph) to flush its DNS cache
-	// before the connectivity test, ensuring fresh resolution against the new DPC.
-	m.dnsCacheClearCounter++
 
 	if m.dpcVerify.inProgress {
 		m.Log.Noticef("DPC verify: DPC list verification in progress")
@@ -88,6 +92,19 @@ func (m *DpcManager) switchCurrentDPC(index int) {
 func (m *DpcManager) setupVerify(index int, reason string) {
 	m.Log.Noticef("DPC verify: Setting up verification for DPC at index %d, reason: %s",
 		index, reason)
+	if index != m.dpcList.CurrentIndex {
+		// Actually switching to test a different DPC than the one currently
+		// active (as opposed to e.g. testBetterTimer just re-confirming the
+		// same, already-current DPC still works): force a guaranteed-clean
+		// DNS cache in mgmt dnsmasq (see MgmtDnsmasq.CacheClearCounter) so
+		// stale answers cached while testing/using the previous DPC cannot
+		// leak into this one. dnsCacheClearedAt lets the connectivity test
+		// give the freshly-restarted resolver a short grace period (see
+		// dnsCacheClearGracePeriod) instead of failing outright on the
+		// first query that happens to race the restart.
+		m.dnsCacheClearCounter++
+		m.dnsCacheClearedAt = time.Now()
+	}
 	m.switchCurrentDPC(index)
 	m.dpcVerify.inProgress = true
 	m.dpcVerify.startedAt = time.Now()
@@ -257,8 +274,10 @@ func (m *DpcManager) verifyDPC(ctx context.Context) (status types.DPCState) {
 	// Check controller connectivity.
 	m.updateDNS()
 	withNetTrace := m.traceNextConnTest()
+	dnsCacheClearGraceUntil := m.dnsCacheClearedAt.Add(dnsCacheClearGracePeriod)
 	intfStatusMap, tracedProbes, err := m.ConnTester.TestConnectivity(
-		m.deviceNetStatus, m.getAirGapModeConf(), withNetTrace, types.NetTraceFolder)
+		m.deviceNetStatus, m.getAirGapModeConf(), withNetTrace, types.NetTraceFolder,
+		dnsCacheClearGraceUntil)
 	// Use TestResults to update the DevicePortConfigList and DeviceNetworkStatus
 	// Note that the TestResults will at least have an updated timestamp
 	// for one of the ports.
@@ -430,8 +449,10 @@ func (m *DpcManager) testConnectivityToController(ctx context.Context) error {
 	}
 
 	withNetTrace := m.traceNextConnTest()
+	dnsCacheClearGraceUntil := m.dnsCacheClearedAt.Add(dnsCacheClearGracePeriod)
 	intfStatusMap, tracedProbes, err := m.ConnTester.TestConnectivity(
-		m.deviceNetStatus, m.getAirGapModeConf(), withNetTrace, types.NetTraceFolder)
+		m.deviceNetStatus, m.getAirGapModeConf(), withNetTrace, types.NetTraceFolder,
+		dnsCacheClearGraceUntil)
 	m.updateDPCPortTestResults(intfStatusMap)
 	if err == nil {
 		m.recordDPCSuccess()

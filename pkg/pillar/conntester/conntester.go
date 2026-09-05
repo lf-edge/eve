@@ -5,6 +5,7 @@ package conntester
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/netdump"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -16,8 +17,16 @@ type ConnectivityTester interface {
 	// TestConnectivity returns nil error if connectivity test has passed.
 	// Additionally, it returns test result for each tested device network interface
 	// and network traces of executed probes if withNetTrace was enabled.
+	//
+	// dnsCacheClearGraceUntil is the deadline (possibly already in the past,
+	// or the zero time if no cache clear has happened yet) until which a DNS
+	// query timeout talking to the local mgmt-dnsmasq forwarder should be
+	// treated as "not ready yet" rather than a genuine connectivity failure,
+	// covering the window right after DpcManager forced a clean DNS cache
+	// (dnsmasq restart + freshly-reconciled network path still converging).
 	TestConnectivity(dns types.DeviceNetworkStatus, airGapMode AirGapMode,
-		withNetTrace bool, netTraceFolder string) (types.IntfStatusMap, []netdump.TracedNetRequest, error)
+		withNetTrace bool, netTraceFolder string,
+		dnsCacheClearGraceUntil time.Time) (types.IntfStatusMap, []netdump.TracedNetRequest, error)
 }
 
 // AirGapMode defines the configuration for operating the device in an air-gapped
