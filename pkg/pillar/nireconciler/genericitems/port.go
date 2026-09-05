@@ -8,6 +8,7 @@ import (
 	"net"
 
 	dg "github.com/lf-edge/eve-libs/depgraph"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 )
@@ -25,6 +26,14 @@ type Port struct {
 	AdminUp bool
 	// IPAddresses : IP addresses assigned to the port.
 	IPAddresses []*net.IPNet
+	// InstanceID distinguishes this concrete kernel object from any other
+	// interface that may come to carry the same IfName after a NIM rename
+	// or recreation. See types.IfInstanceID.
+	InstanceID types.IfInstanceID
+	// IsBridge is true if the interface is itself a Linux bridge master.
+	// NIM may still be tearing down its own bridge over this port; enslaving
+	// a bridge into another bridge is rejected by the kernel (ELOOP).
+	IsBridge bool
 }
 
 // Name returns the physical interface name.
@@ -52,6 +61,8 @@ func (p Port) Equal(other dg.Item) bool {
 		p.LogicalLabel == p2.LogicalLabel &&
 		p.MasterIfName == p2.MasterIfName &&
 		p.AdminUp == p2.AdminUp &&
+		p.InstanceID == p2.InstanceID &&
+		p.IsBridge == p2.IsBridge &&
 		generics.EqualSetsFn(p.IPAddresses, p2.IPAddresses, netutils.EqualIPNets)
 }
 
@@ -64,8 +75,8 @@ func (p Port) External() bool {
 // String describes Port.
 func (p Port) String() string {
 	return fmt.Sprintf("Port: {ifName: %s, logicalLabel: %s, "+
-		"masterIfName: %s, adminUP: %t, ipAddresses: %v}", p.IfName, p.LogicalLabel,
-		p.MasterIfName, p.AdminUp, p.IPAddresses)
+		"masterIfName: %s, adminUP: %t, ipAddresses: %v, instanceID: %d, isBridge: %t}",
+		p.IfName, p.LogicalLabel, p.MasterIfName, p.AdminUp, p.IPAddresses, p.InstanceID, p.IsBridge)
 }
 
 // Dependencies returns nothing (external item).

@@ -2163,3 +2163,111 @@ var SeparateClusterPort = &api.NetworkModel{
 		},
 	},
 }
+
+// MultiPortSwitchAndVLANTrunk is a network model with four ethernet ports combining a
+// multi-port L2 segment with a VLAN trunk:
+//   - eth0 -> bridge0 -> its own DHCP management network (10.53.10.0/24), with
+//     controller access.
+//   - eth1, eth2 -> bridge1 -> a single STP-enabled SDN bridge shared by both ports
+//     (WithStp=true, mirroring FourPortsWithSTPBridge's bridge1: EVE bridging these
+//     two ports together and this SDN bridge together form a loop that STP must
+//     resolve). An SDN router serves DHCP for an untagged application network
+//     (10.53.20.0/24).
+//   - eth3 -> bridge2 -> trunk port carrying VLAN-tagged traffic. An SDN router
+//     serves DHCP for a VLAN 100 application network (10.53.100.0/24).
+var MultiPortSwitchAndVLANTrunk = &api.NetworkModel{
+	Ports: []*api.Port{
+		{LogicalLabel: "eth0", AdminUp: true},
+		{LogicalLabel: "eth1", AdminUp: true},
+		{LogicalLabel: "eth2", AdminUp: true},
+		{LogicalLabel: "eth3", AdminUp: true},
+	},
+	Bridges: []*api.Bridge{
+		{LogicalLabel: "bridge0", Ports: []string{"eth0"}},
+		{LogicalLabel: "bridge1", Ports: []string{"eth1", "eth2"}, WithStp: true},
+		{LogicalLabel: "bridge2", Ports: []string{"eth3"}},
+	},
+	Networks: []*api.Network{
+		{
+			LogicalLabel: "mgmt-network",
+			Bridge:       "bridge0",
+			Ipv4: &api.NetworkIPConfig{
+				Subnet: "10.53.10.0/24",
+				GwIp:   "10.53.10.1",
+				Dhcp: &api.DHCP{
+					Enable:     true,
+					DomainName: "test",
+					Dns: &api.DNSClientConfig{
+						PrivateDns: []string{"dns-server"},
+					},
+				},
+			},
+		},
+		{
+			LogicalLabel: "multiport-network",
+			Bridge:       "bridge1",
+			Ipv4: &api.NetworkIPConfig{
+				Subnet: "10.53.20.0/24",
+				GwIp:   "10.53.20.1",
+				Dhcp: &api.DHCP{
+					Enable:     true,
+					DomainName: "test",
+					// Pool leaves .2-.9 free for statically-assigned addresses.
+					IpRange: &api.IPRange{
+						FromIp: "10.53.20.10",
+						ToIp:   "10.53.20.200",
+					},
+					Dns: &api.DNSClientConfig{
+						PrivateDns: []string{"dns-server"},
+					},
+				},
+			},
+		},
+		{
+			LogicalLabel: "vlan100-network",
+			Bridge:       "bridge2",
+			VlanId:       100,
+			Ipv4: &api.NetworkIPConfig{
+				Subnet: "10.53.100.0/24",
+				GwIp:   "10.53.100.1",
+				Dhcp: &api.DHCP{
+					Enable:     true,
+					DomainName: "test",
+					// Pool leaves .2-.9 free for statically-assigned addresses.
+					IpRange: &api.IPRange{
+						FromIp: "10.53.100.10",
+						ToIp:   "10.53.100.200",
+					},
+					Dns: &api.DNSClientConfig{
+						PrivateDns: []string{"dns-server"},
+					},
+				},
+			},
+		},
+	},
+	Endpoints: &api.Endpoints{
+		DnsServers: []*api.DNSServer{
+			{
+				Endpoint: &api.Endpoint{
+					LogicalLabel: "dns-server",
+					Fqdn:         "dns-server.test",
+					Ipv4: &api.EndpointIPConfig{
+						Subnet: "10.16.16.0/24",
+						Ip:     "10.16.16.25",
+					},
+				},
+				StaticEntries: []*api.DNSEntry{
+					{
+						FqdnSource: &api.DNSEntry_FqdnLiteral{
+							FqdnLiteral: evetest.GetControllerHostname(),
+						},
+						IpSource: &api.DNSEntry_IpLiteral{
+							IpLiteral: evetest.GetControllerIPv4().String(),
+						},
+					},
+				},
+				UpstreamServers: []string{"8.8.8.8", "1.1.1.1"},
+			},
+		},
+	},
+}

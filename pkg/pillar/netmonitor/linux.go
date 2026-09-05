@@ -5,6 +5,7 @@ package netmonitor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -62,6 +64,10 @@ type LinuxNetworkMonitor struct {
 	ifIndexToDNS   map[int][]DNSInfo
 	ifIndexToDHCP  map[int]DHCPInfo
 	ifIndexToGWs   map[int][]net.IP
+
+	// nextIfInstanceID backs AssignNewInstanceID. Zero is reserved for
+	// "undefined", so the first allocated ID is 1.
+	nextIfInstanceID atomic.Uint64
 }
 
 type ifAddrs struct {
@@ -167,12 +173,90 @@ func (m *LinuxNetworkMonitor) ifAttrsFromLink(link netlink.Link) IfAttrs {
 		Enslaved:      link.Attrs().MasterIndex != 0,
 		MasterIfIndex: link.Attrs().MasterIndex,
 		MTU:           uint16(link.Attrs().MTU),
+		InstanceID:    parseIfInstanceID(link.Attrs().Alias),
 	}
 	if vlan, ok := link.(*netlink.Vlan); ok {
 		attrs.VlanID = uint16(vlan.VlanId)
 		attrs.VlanParentIfIndex = vlan.ParentIndex
 	}
 	return attrs
+}
+
+// ifInstanceIDAliasPrefix distinguishes an IfInstanceID stored in a Linux
+// interface alias (IFLA_IFALIAS) from an alias set for any other purpose.
+const ifInstanceIDAliasPrefix = "eve-nim-id:"
+
+func formatIfInstanceID(id types.IfInstanceID) string {
+	return ifInstanceIDAliasPrefix + strconv.FormatUint(uint64(id), 10)
+}
+
+// parseIfInstanceID returns zero for an alias not set (by NIM) in this format.
+func parseIfInstanceID(alias string) types.IfInstanceID {
+	suffix, ok := strings.CutPrefix(alias, ifInstanceIDAliasPrefix)
+	if !ok {
+		return 0
+	}
+	id, err := strconv.ParseUint(suffix, 10, 64)
+	if err != nil {
+		return 0
+	}
+	return types.IfInstanceID(id)
+}
+
+// GetInterfaceByInstanceID always enumerates live kernel state rather than
+// the name/index cache, since the interface may have been renamed since it
+// was last cached by name.
+func (m *LinuxNetworkMonitor) GetInterfaceByInstanceID(
+	id types.IfInstanceID) (attrs IfAttrs, exists bool, err error) {
+	if id == 0 {
+		return IfAttrs{}, false, nil
+	}
+	// The kernel can interrupt a link dump if the link table changes while
+	// it is in progress (ErrDumpInterrupted) -- expected under exactly the
+	// kind of concurrent NIM/zedrouter interface churn this ID lookup is
+	// used to resolve. LinkList still returns whatever it received before
+	// being interrupted, so a match found in it is trusted regardless; only
+	// a "not found" against an interrupted (possibly incomplete) dump is
+	// ambiguous and worth a bounded retry, instead of risking a false
+	// negative that a caller might treat as "genuinely gone".
+	const maxAttempts = 3
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		links, listErr := netlink.LinkList()
+		if listErr != nil && !errors.Is(listErr, netlink.ErrDumpInterrupted) {
+			return IfAttrs{}, false, listErr
+		}
+		for _, link := range links {
+			if parseIfInstanceID(link.Attrs().Alias) == id {
+				return m.ifAttrsFromLink(link), true, nil
+			}
+		}
+		if listErr == nil {
+			return IfAttrs{}, false, nil
+		}
+		if attempt == maxAttempts {
+			return IfAttrs{}, false, fmt.Errorf(
+				"interface list repeatedly interrupted while looking up IfInstanceID %d: %w",
+				id, listErr)
+		}
+	}
+	return IfAttrs{}, false, nil
+}
+
+// AssignNewInstanceID allocates a fresh IfInstanceID and writes it into the
+// interface's kernel alias.
+func (m *LinuxNetworkMonitor) AssignNewInstanceID(ifIndex int) (types.IfInstanceID, error) {
+	link, err := netlink.LinkByIndex(ifIndex)
+	if err != nil {
+		return 0, err
+	}
+	id := types.IfInstanceID(m.nextIfInstanceID.Add(1))
+	if err := netlink.LinkSetAlias(link, formatIfInstanceID(id)); err != nil {
+		return 0, err
+	}
+	m.cacheLock.Lock()
+	defer m.cacheLock.Unlock()
+	delete(m.ifIndexToAttrs, ifIndex) // stale now, force a re-read
+	return id, nil
 }
 
 // GetInterfaceAddrs returns IP addresses and the HW address assigned

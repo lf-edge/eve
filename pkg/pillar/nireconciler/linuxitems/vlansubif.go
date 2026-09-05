@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	dg "github.com/lf-edge/eve-libs/depgraph"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 // VLANSubIf : VLAN sub-interface.
@@ -22,6 +23,8 @@ type VLANSubIf struct {
 	ParentIfName string
 	// VLAN ID.
 	ID uint16
+	// InstanceID: IfInstanceID NIM assigned. See types.IfInstanceID.
+	InstanceID types.IfInstanceID
 }
 
 // Name returns the physical name of the VLAN sub-interface.
@@ -43,7 +46,8 @@ func (v VLANSubIf) Type() string {
 func (v VLANSubIf) Equal(other dg.Item) bool {
 	v2 := other.(VLANSubIf)
 	return v.ParentIfName == v2.ParentIfName &&
-		v.ID == v2.ID
+		v.ID == v2.ID &&
+		v.InstanceID == v2.InstanceID
 }
 
 // External returns true -- VLAN sub-interfaces are created by NIM, not by zedrouter.

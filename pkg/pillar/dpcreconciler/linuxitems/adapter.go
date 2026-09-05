@@ -216,6 +216,14 @@ func (c *AdapterConfigurator) Create(ctx context.Context, item depgraph.Item) er
 		c.Log.Error(err)
 		return err
 	}
+	// Fresh IfInstanceID, distinct from any prior bridge under this name.
+	// kernIfname keeps its own ID -- it was only renamed, not destroyed.
+	if _, err := c.NetworkMonitor.AssignNewInstanceID(bridge.Attrs().Index); err != nil {
+		err = fmt.Errorf("failed to assign IfInstanceID for bridge %s: %v",
+			adapter.IfName, err)
+		c.Log.Error(err)
+		return err
+	}
 	// Look up again after rename
 	kernLink, err := netlink.LinkByName(kernIfname)
 	if err != nil {

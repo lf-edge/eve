@@ -12,6 +12,7 @@ import (
 	dg "github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 // BPDUGuard : item representing BPDU guard enabled on a Linux bridge port.
@@ -27,6 +28,9 @@ type BPDUGuard struct {
 	// ForVIF : true if this is BPDU guard applied to application VIF
 	// (and not to device network port).
 	ForVIF bool
+	// ExpectedBridgeID: IfInstanceID BridgeIfName is expected to carry. Zero
+	// if the bridge is not NIM-managed.
+	ExpectedBridgeID types.IfInstanceID
 }
 
 // Name returns the interface name of the bridged port
@@ -52,7 +56,8 @@ func (g BPDUGuard) Equal(other dg.Item) bool {
 	if !isBPDUGuard {
 		return false
 	}
-	return g.BridgeIfName == g2.BridgeIfName && g.ForVIF == g2.ForVIF
+	return g.BridgeIfName == g2.BridgeIfName && g.ForVIF == g2.ForVIF &&
+		g.ExpectedBridgeID == g2.ExpectedBridgeID
 }
 
 // External returns false.
@@ -62,8 +67,9 @@ func (g BPDUGuard) External() bool {
 
 // String describes BPDUGuard.
 func (g BPDUGuard) String() string {
-	return fmt.Sprintf("BPDUGuard: {bridgeIfName: %s, portIfName: %s, forVIF: %t}",
-		g.BridgeIfName, g.PortIfName, g.ForVIF)
+	return fmt.Sprintf("BPDUGuard: {bridgeIfName: %s, portIfName: %s, forVIF: %t, "+
+		"expectedBridgeID: %d}",
+		g.BridgeIfName, g.PortIfName, g.ForVIF, g.ExpectedBridgeID)
 }
 
 // Dependencies returns the bridge and the port as the dependencies.
@@ -72,6 +78,20 @@ func (g BPDUGuard) Dependencies() (deps []dg.Dependency) {
 		RequiredItem: dg.ItemRef{
 			ItemType: BridgeTypename,
 			ItemName: g.BridgeIfName,
+		},
+		MustSatisfy: func(item dg.Item) bool {
+			if g.ExpectedBridgeID == 0 {
+				return true
+			}
+			bridge, isBridge := item.(Bridge)
+			if !isBridge {
+				// unreachable
+				return false
+			}
+			// BPDU guard lives in the bridge's brif sysfs directory, so it is
+			// genuinely gone when the bridge is torn down (AutoDeletedByExternal
+			// below) -- reject a same-named bridge NIM has since recreated.
+			return bridge.InstanceID == g.ExpectedBridgeID
 		},
 		Description: "Bridge must exist",
 		Attributes: dg.DependencyAttributes{
@@ -107,12 +127,29 @@ func (c *BPDUGuardConfigurator) createOrDelete(item dg.Item, del bool) (err erro
 	}
 	sysOptVal := "1"
 	action := "enable"
+	bridgeIfName := bpduGuard.BridgeIfName
 	if del {
 		sysOptVal = "0"
 		action = "disable"
+		if bpduGuard.ExpectedBridgeID != 0 {
+			// NIM may have since reused this name for a bridge of its own;
+			// resolve by IfInstanceID rather than risk touching that instead.
+			attrs, exists, err := c.NetworkMonitor.GetInterfaceByInstanceID(
+				bpduGuard.ExpectedBridgeID)
+			if err != nil {
+				err = fmt.Errorf("failed to look up interface with IfInstanceID %d: %v",
+					bpduGuard.ExpectedBridgeID, err)
+				return err
+			}
+			if !exists {
+				// Genuinely gone; nothing left to clean up.
+				return nil
+			}
+			bridgeIfName = attrs.IfName
+		}
 	}
 	sysOptPath := fmt.Sprintf("/sys/class/net/%s/brif/%s/bpdu_guard",
-		bpduGuard.BridgeIfName, bpduGuard.PortIfName)
+		bridgeIfName, bpduGuard.PortIfName)
 	err = os.WriteFile(sysOptPath, []byte(sysOptVal), 0644)
 	if err != nil {
 		if del && errors.Is(err, os.ErrNotExist) {
@@ -122,7 +159,7 @@ func (c *BPDUGuardConfigurator) createOrDelete(item dg.Item, del bool) (err erro
 			return nil
 		}
 		err = fmt.Errorf("failed to %s BPDU guard for port %s on bridge %s: %w",
-			action, bpduGuard.PortIfName, bpduGuard.BridgeIfName, err)
+			action, bpduGuard.PortIfName, bridgeIfName, err)
 		return err
 	}
 	return nil

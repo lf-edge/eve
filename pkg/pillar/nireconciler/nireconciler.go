@@ -147,6 +147,10 @@ type Port struct {
 	StaticIP          *net.IPNet
 	IgnoreDhcpIPs     bool
 	VLANSubinterfaces []VLANSubinterface
+	// From types.NetworkPortStatus; BridgeIfInstanceID is zero unless NIM
+	// currently bridges this port.
+	UnderlyingIfInstanceID types.IfInstanceID
+	BridgeIfInstanceID     types.IfInstanceID
 }
 
 // Equal compares two ports for equality.
@@ -161,7 +165,9 @@ func (p Port) Equal(p2 Port) bool {
 		generics.EqualSetsFn(p.NTPServers, p2.NTPServers, netutils.EqualIPs) &&
 		netutils.EqualIPNets(p.StaticIP, p2.StaticIP) &&
 		p.IgnoreDhcpIPs == p2.IgnoreDhcpIPs &&
-		generics.EqualSets(p.VLANSubinterfaces, p2.VLANSubinterfaces)
+		generics.EqualSets(p.VLANSubinterfaces, p2.VLANSubinterfaces) &&
+		p.UnderlyingIfInstanceID == p2.UnderlyingIfInstanceID &&
+		p.BridgeIfInstanceID == p2.BridgeIfInstanceID
 }
 
 // UsedWithIP returns true if the port is (potentially) used with an IP address.
@@ -175,6 +181,9 @@ type VLANSubinterface struct {
 	IfName       string
 	VLAN         uint16
 	MTU          uint16
+	// InstanceID: IfInstanceID this sub-interface's own port row carries in
+	// DeviceNetworkStatus. See types.IfInstanceID.
+	InstanceID types.IfInstanceID
 }
 
 // IPRoute is a static IP route configured inside the NI routing table.
