@@ -455,6 +455,9 @@ func globalConfig() types.ConfigItemValueMap {
 	gcp.SetGlobalValueInt(types.NetworkTestInterval, 2)
 	gcp.SetGlobalValueInt(types.NetworkTestBetterInterval, 3)
 	gcp.SetGlobalValueInt(types.NetworkTestDuration, 1)
+	// Matches initTest's DpcMinTimeSinceFailure struct field preset (in
+	// effect only until the first UpdateGCP call, which this overrides).
+	gcp.SetGlobalValueInt(types.NetworkTestFailInterval, 3)
 	gcp.SetGlobalValueInt(types.NetworkGeoRetryTime, 1)
 	gcp.SetGlobalValueInt(types.NetworkGeoRedoTime, 3)
 	gcp.SetGlobalValueInt(types.LocationCloudInterval, 10)
@@ -1580,7 +1583,8 @@ func TestRestartVerifyParksWhenNothingCurrentlyTestable(test *testing.T) {
 	// could be masked by) the periodic dpcTestTimer/testConnectivityToController
 	// retry, which runs independently of this fix and would otherwise recover
 	// on its own within a couple of seconds either way.
-	dpcManager.DpcMinTimeSinceFailure = time.Minute
+	gcp := globalConfig()
+	gcp.SetGlobalValueInt(types.NetworkTestFailInterval, 60)
 
 	eth0 := mockEth0()
 	eth1 := mockEth1()
@@ -1588,7 +1592,7 @@ func TestRestartVerifyParksWhenNothingCurrentlyTestable(test *testing.T) {
 	networkMonitor.AddOrUpdateInterface(eth1)
 	aa := makeAA(selectedIntfs{eth0: true, eth1: true})
 	dpcManager.UpdateAA(aa)
-	dpcManager.UpdateGCP(globalConfig())
+	dpcManager.UpdateGCP(gcp)
 
 	// "override" DPC over eth0 fails; its own failure cooldown has NOT
 	// elapsed yet (and, per above, will not for the duration of this test).
@@ -1632,7 +1636,8 @@ func TestParksAtManualWhenEverythingFails(test *testing.T) {
 	t.Expect(dpcManager.GetDNS().DPCKey).To(BeEmpty())
 
 	// Avoid a previously-failed DPC becoming testable again mid-test.
-	dpcManager.DpcMinTimeSinceFailure = time.Minute
+	gcp := globalConfig()
+	gcp.SetGlobalValueInt(types.NetworkTestFailInterval, 60)
 
 	eth0 := mockEth0()
 	eth1 := mockEth1()
@@ -1640,7 +1645,7 @@ func TestParksAtManualWhenEverythingFails(test *testing.T) {
 	networkMonitor.AddOrUpdateInterface(eth1)
 	aa := makeAA(selectedIntfs{eth0: true, eth1: true})
 	dpcManager.UpdateAA(aa)
-	dpcManager.UpdateGCP(globalConfig())
+	dpcManager.UpdateGCP(gcp)
 
 	// Older "override" DPC over eth0 previously worked, then breaks.
 	overrideTimePrio := time.Now()

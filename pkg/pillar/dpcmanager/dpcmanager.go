@@ -73,9 +73,10 @@ type DpcManager struct {
 
 	// Minimum time that should pass after a DPC verification failure
 	// until the DPC is eligible for another round of verification.
-	// By default it is 5 minutes.
-	// It is useful to override for unit testing purposes.
-	// XXX Should we make this a global config parameter?
+	// Driven by the NetworkTestFailInterval global config item once GCP is
+	// available (see doUpdateGCP); defaults to 5 minutes beforehand.
+	// It is useful to preset for unit testing purposes, e.g. before the
+	// first UpdateGCP call, or in tests that never call it at all.
 	DpcMinTimeSinceFailure time.Duration
 
 	// Time limit for some DPC to become available.
@@ -817,6 +818,8 @@ func (m *DpcManager) doUpdateGCP(ctx context.Context, gcp types.ConfigItemValueM
 		time.Duration(m.globalCfg.GlobalValueInt(types.NetworkTestBetterInterval))
 	testDuration := time.Second *
 		time.Duration(m.globalCfg.GlobalValueInt(types.NetworkTestDuration))
+	testFailInterval := time.Second *
+		time.Duration(m.globalCfg.GlobalValueInt(types.NetworkTestFailInterval))
 	// We refresh the gelocation information when the underlay aka public
 	// IP address(es) change, plus periodically with this interval.
 	geoRedoInterval := time.Second *
@@ -860,6 +863,7 @@ func (m *DpcManager) doUpdateGCP(ctx context.Context, gcp types.ConfigItemValueM
 		}
 		m.dpcTestDuration = testDuration
 	}
+	m.DpcMinTimeSinceFailure = testFailInterval
 	if m.geoRetryInterval != geoRetryInterval {
 		if geoRetryInterval == 0 {
 			m.Log.Warn("NOT running GeoTimer")
