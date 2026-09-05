@@ -1,0 +1,120 @@
+From 952d695dc7ad8ca99b242a2f58e5c8f826926bd3 Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mike.malyshev@gmail.com>
+Date: Thu, 27 Aug 2026 16:01:40 +0000
+Subject: [PATCH 1/2] IgdAssignmentDxe: place GTT stolen memory below the DSM
+
+SetupStolenMemory() reserved only the Data Stolen Memory (DSM) and set
+BDSM to the base of that allocation, leaving the GTT Stolen Memory (GSM)
+to be emulated above the DSM. That puts the reserved stolen region (top
+of the DSM) in the middle of the total stolen region rather than at its
+top; the gen12 guest driver requires the reserved region to be at the
+top of stolen and disables the device (Code 43) otherwise.
+
+Reserve GSM + DSM and set BDSM = base + GSM size so the GSM sits below
+the DSM, matching real hardware (BDSM = GSMBASE + GSM size). The GSM size
+comes from GGMS (GGC bits [7:6]). Only done for the 64-bit BDSM (Gen11+)
+path; older generations are unchanged. qemu's GSMBASE emulation reports
+GSMBASE = BDSM - GSM size to match.
+
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
+---
+ IgdAssignmentDxe/IgdAssignment.c | 44 ++++++++++++++++++++++++++++----
+ 1 file changed, 39 insertions(+), 5 deletions(-)
+
+diff --git a/IgdAssignmentDxe/IgdAssignment.c b/IgdAssignmentDxe/IgdAssignment.c
+index da62cd0..e7c8be1 100644
+--- a/IgdAssignmentDxe/IgdAssignment.c
++++ b/IgdAssignmentDxe/IgdAssignment.c
+@@ -26,6 +26,13 @@
+ 
+ #include "IgdPrivate.h"
+ 
++//
++// Graphics Control Register (GGC / MGGC_0_2_0) in the IGD PCI config space.
++// GGMS (GTT Graphics Memory Size) is in bits [7:6]: 0=none, 1=2MB, 2=4MB, 3=8MB.
++//
++#define IGD_GGC_OFFSET       0x50
++#define IGD_GGC_GGMS(Ggc)    (((Ggc) >> 6) & 0x3)
++
+ //
+ // structure that collects information from PCI config space that is needed to
+ // evaluate whether IGD assignment applies to the device
+@@ -375,14 +382,34 @@ SetupStolenMemory (
+   )
+ {
+   UINTN                BdsmPages;
++  UINTN                GsmSize;
+   EFI_STATUS           Status;
+   EFI_PHYSICAL_ADDRESS Address;
++  EFI_PHYSICAL_ADDRESS BdsmAddress;
+ 
+   if (Size == 0) {
+     return EFI_INVALID_PARAMETER;
+   }
+ 
+-  BdsmPages = EFI_SIZE_TO_PAGES (Size);
++  //
++  // On Gen11+ place the GTT stolen memory (GSM) immediately BELOW the DSM,
++  // matching real hardware (BDSM = GSMBASE + GSM size).  Some guest drivers
++  // require the reserved stolen region (top of the DSM) to sit at the top of
++  // the whole stolen region; if the GSM is placed above the DSM instead, the
++  // reserved region ends up in the middle and the driver disables the device.
++  // Size the GSM from GGMS; qemu reports GSMBASE = BDSM - GSM size to match.
++  //
++  GsmSize = 0;
++  if (PciInfo->Private->Flags & IGD_FLAG_BDSM_64BIT) {
++    UINT16 Ggc;
++
++    PciIo->Pci.Read (PciIo, EfiPciIoWidthUint16, IGD_GGC_OFFSET, 1, &Ggc);
++    if (IGD_GGC_GGMS (Ggc) != 0) {
++      GsmSize = (UINTN)SIZE_1MB << IGD_GGC_GGMS (Ggc);
++    }
++  }
++
++  BdsmPages = EFI_SIZE_TO_PAGES (Size + GsmSize);
+ 
+   Status = Allocate32BitAlignedPagesWithType (
+              EfiReservedMemoryType,
+@@ -401,6 +428,11 @@ SetupStolenMemory (
+   //
+   ZeroMem ((VOID *)(UINTN)Address, EFI_PAGES_TO_SIZE (BdsmPages));
+ 
++  //
++  // BDSM points to the DSM, which sits ABOVE the GSM region.
++  //
++  BdsmAddress = Address + GsmSize;
++
+   //
+   // Write address of stolen memory to PCI config space.
+   //
+@@ -410,7 +442,7 @@ SetupStolenMemory (
+                           EfiPciIoWidthUint32,
+                           ASSIGNED_IGD_PCI_BDSM_OFFSET,
+                           1,                            // Count
+-                          &Address
++                          &BdsmAddress
+                           );
+   } else if (PciInfo->Private->Flags & IGD_FLAG_BDSM_64BIT) {
+     Status = PciIo->Pci.Write (
+@@ -418,7 +450,7 @@ SetupStolenMemory (
+                           EfiPciIoWidthUint64,
+                           ASSIGNED_IGD_PCI_BDSM64_OFFSET,
+                           1,                            // Count
+-                          &Address
++                          &BdsmAddress
+                           );
+   }
+   if (EFI_ERROR (Status)) {
+@@ -427,8 +459,10 @@ SetupStolenMemory (
+     goto FreeStolenMemory;
+   }
+ 
+-  DEBUG ((DEBUG_INFO, "%a: %a: stolen memory @ 0x%Lx, size %d MB\n",
+-    __FUNCTION__, GetPciName (PciInfo), Address, Size / SIZE_1MB));
++  DEBUG ((DEBUG_INFO,
++    "%a: %a: BDSM @ 0x%Lx, DSM %d MB, GSM 0x%Lx below\n",
++    __FUNCTION__, GetPciName (PciInfo), BdsmAddress, Size / SIZE_1MB,
++    (UINT64)GsmSize));
+   return EFI_SUCCESS;
+ 
+ FreeStolenMemory:

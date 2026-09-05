@@ -1,0 +1,139 @@
+From 170a6ca28ca4b83434cce7591686a1c46b5ba736 Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mike.malyshev@gmail.com>
+Date: Fri, 28 Aug 2026 11:36:03 +0000
+Subject: [PATCH 2/2] IgdAssignmentDxe: reserve stolen memory at the host
+ stolen base
+
+The iGPU keeps firmware-programmed pointers into stolen memory - the GuC
+WOPCM window and the RC6 context - that the guest driver never reprograms.
+It writes only relative offsets and sizes, which the hardware adds to its
+own physical stolen base. Those accesses therefore always target host
+physical addresses.
+
+When guest stolen memory is allocated at an arbitrary address, as it was
+before, those accesses land on unrelated guest RAM: the GPU reads and
+writes whatever the guest happens to keep there, and the guest driver's
+consistency checks disagree with the hardware.
+
+Reserve the stolen region at the host stolen base instead, so guest
+physical equals host physical for this range. Every address the hardware
+emits is then already correct in the guest's IOVA space and nothing has to
+be relocated.
+
+QEMU publishes the base as etc/igd-stolen-base. If it is absent, or the
+address cannot be reserved because something already occupies it, fall
+back to allocating anywhere and warn, which restores the previous
+behaviour.
+
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
+---
+ IgdAssignmentDxe/IgdAssignment.c       | 70 ++++++++++++++++++++++----
+ Include/IndustryStandard/AssignedIgd.h |  6 +++
+ 2 files changed, 67 insertions(+), 9 deletions(-)
+
+diff --git a/IgdAssignmentDxe/IgdAssignment.c b/IgdAssignmentDxe/IgdAssignment.c
+index e7c8be1..1acdb15 100644
+--- a/IgdAssignmentDxe/IgdAssignment.c
++++ b/IgdAssignmentDxe/IgdAssignment.c
+@@ -386,6 +386,9 @@ SetupStolenMemory (
+   EFI_STATUS           Status;
+   EFI_PHYSICAL_ADDRESS Address;
+   EFI_PHYSICAL_ADDRESS BdsmAddress;
++  FIRMWARE_CONFIG_ITEM FwCfgItem;
++  UINTN                FwCfgSize;
++  UINT64               HostBdsm;
+ 
+   if (Size == 0) {
+     return EFI_INVALID_PARAMETER;
+@@ -411,16 +414,65 @@ SetupStolenMemory (
+ 
+   BdsmPages = EFI_SIZE_TO_PAGES (Size + GsmSize);
+ 
+-  Status = Allocate32BitAlignedPagesWithType (
+-             EfiReservedMemoryType,
+-             BdsmPages,
+-             EFI_SIZE_TO_PAGES ((UINTN)ASSIGNED_IGD_BDSM_ALIGN),
+-             &Address
+-             );
++  //
++  // Prefer to reserve stolen memory at the HOST stolen base, so that guest
++  // physical equals host physical for this range.
++  //
++  // The iGPU keeps firmware-programmed pointers into stolen memory (the GuC
++  // WOPCM window, the RC6 context) that the guest driver never reprograms: it
++  // writes only relative offsets, which the hardware adds to its own physical
++  // stolen base.  Those accesses therefore always target host addresses.  If
++  // guest stolen sits elsewhere, they land on unrelated guest RAM, and the GPU
++  // reads and writes whatever the guest keeps there.
++  //
++  // Placing guest stolen at the host base makes the guest's IOVA space agree
++  // with the addresses the hardware emits, so nothing has to be relocated.
++  // QEMU publishes the base as etc/igd-stolen-base; if it is absent, or the
++  // address is already occupied, fall back to allocating anywhere.
++  //
++  Status = EFI_NOT_FOUND;
++  if (!EFI_ERROR (QemuFwCfgFindFile (
++                    ASSIGNED_IGD_FW_CFG_STOLEN_BASE, &FwCfgItem, &FwCfgSize
++                    )) &&
++      FwCfgSize == sizeof (HostBdsm)) {
++    QemuFwCfgSelectItem (FwCfgItem);
++    QemuFwCfgReadBytes (sizeof (HostBdsm), &HostBdsm);
++
++    //
++    // BDSM points at the DSM; the GSM sits immediately below it, so the whole
++    // reservation starts GsmSize below the host BDSM.
++    //
++    if (HostBdsm > GsmSize) {
++      Address = HostBdsm - GsmSize;
++      Status  = gBS->AllocatePages (
++                       AllocateAddress,
++                       EfiReservedMemoryType,
++                       BdsmPages,
++                       &Address
++                       );
++      DEBUG ((DEBUG_INFO,
++        "%a: %a: stolen memory at host base 0x%Lx (size 0x%Lx): %r\n",
++        __FUNCTION__, GetPciName (PciInfo), Address,
++        (UINT64)EFI_PAGES_TO_SIZE (BdsmPages), Status));
++    }
++  }
++
+   if (EFI_ERROR (Status)) {
+-    DEBUG ((DEBUG_ERROR, "%a: %a: failed to allocate stolen memory: %r\n",
+-      __FUNCTION__, GetPciName (PciInfo), Status));
+-    return Status;
++    Status = Allocate32BitAlignedPagesWithType (
++               EfiReservedMemoryType,
++               BdsmPages,
++               EFI_SIZE_TO_PAGES ((UINTN)ASSIGNED_IGD_BDSM_ALIGN),
++               &Address
++               );
++    if (EFI_ERROR (Status)) {
++      DEBUG ((DEBUG_ERROR, "%a: %a: failed to allocate stolen memory: %r\n",
++        __FUNCTION__, GetPciName (PciInfo), Status));
++      return Status;
++    }
++    DEBUG ((DEBUG_ERROR,
++      "%a: %a: stolen memory NOT at the host base; the GPU's firmware-owned "
++      "pointers will target unrelated guest RAM\n",
++      __FUNCTION__, GetPciName (PciInfo)));
+   }
+ 
+   //
+diff --git a/Include/IndustryStandard/AssignedIgd.h b/Include/IndustryStandard/AssignedIgd.h
+index cd83f94..5d0a45f 100644
+--- a/Include/IndustryStandard/AssignedIgd.h
++++ b/Include/IndustryStandard/AssignedIgd.h
+@@ -25,6 +25,12 @@
+ #define ASSIGNED_IGD_FW_CFG_OPREGION  "etc/igd-opregion"
+ #define ASSIGNED_IGD_FW_CFG_BDSM_SIZE "etc/igd-bdsm-size"
+ 
++//
++// Host physical base of stolen memory (BDSM), published by QEMU so the guest
++// stolen region can be reserved at the same address.  See SetupStolenMemory().
++//
++#define ASSIGNED_IGD_FW_CFG_STOLEN_BASE "etc/igd-stolen-base"
++
+ //
+ // Alignment constants. UEFI page allocation automatically satisfies the
+ // requirements for the OpRegion, thus we only need to define an alignment

@@ -3422,3 +3422,49 @@ func TestDecideKvmState(t *testing.T) {
 		})
 	}
 }
+
+// The virtual IOMMU is suppressed for a guest holding an assigned Intel iGPU,
+// because i915 does not DMA-map stolen memory and QEMU's virtual intel-iommu
+// cannot express the identity mapping real firmware provides via an RMRR.
+// Render the global config both ways and check the device appears only when
+// there is no iGPU, without disturbing the surrounding layout.
+func TestQemuGlobalConfIntelIGPUSuppressesVirtualIOMMU(t *testing.T) {
+	t.Parallel()
+
+	render := func(hasIGPU bool) string {
+		var buf bytes.Buffer
+		ctx := tQemuGlobalConfContext{
+			Machine:            "q35",
+			VirtualizationMode: "FML",
+			HasIntelIGPU:       hasIGPU,
+		}
+		if err := tQemuGlobalConf.Execute(&buf, ctx); err != nil {
+			t.Fatalf("rendering the global config failed: %v", err)
+		}
+		return buf.String()
+	}
+
+	withIGPU := render(true)
+	withoutIGPU := render(false)
+
+	if strings.Contains(withIGPU, `driver = "intel-iommu"`) {
+		t.Errorf("virtual IOMMU present for a guest with an assigned iGPU:\n%s", withIGPU)
+	}
+	if !strings.Contains(withoutIGPU, `driver = "intel-iommu"`) {
+		t.Errorf("virtual IOMMU missing for a guest without an iGPU:\n%s", withoutIGPU)
+	}
+	// Whichever way it goes, the conditional must leave the surrounding
+	// layout alone: exactly one blank line after the [rtc] section.
+	const anchor = `driftfix = "slew"`
+	for name, out := range map[string]string{"with iGPU": withIGPU, "without iGPU": withoutIGPU} {
+		i := strings.Index(out, anchor)
+		if i < 0 {
+			t.Fatalf("%s: anchor %q not found in rendered config", name, anchor)
+		}
+		rest := out[i+len(anchor):]
+		if !strings.HasPrefix(rest, "\n\n[") {
+			t.Errorf("%s: expected a single blank line after %q, got %q",
+				name, anchor, rest[:min(12, len(rest))])
+		}
+	}
+}
