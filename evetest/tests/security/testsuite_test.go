@@ -19,6 +19,9 @@ import (
 //     signing API responses; device must recover config processing on its own.
 //   - TestControllerEncryptCertChange -- rotation of the controller ECDH
 //     certificate; object-encrypted configuration must be migrated and survive.
+//   - TestVaultKeyModeRecovery -- the vault still opens after /persist loses the
+//     file recording which key derivation it was created with; run once per
+//     /persist filesystem, since ext4 and ZFS are separate vault handlers.
 func TestSecuritySuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
@@ -39,6 +42,32 @@ func TestSecuritySuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestControllerEncryptCertChange,
+		},
+		// Last: the filesystem is part of the device requirements, so neither
+		// variant can share the device the tests above reuse, and their
+		// placement relative to those does not affect that reuse.
+		evetest.TestCase{
+			Test: TestVaultKeyModeRecovery,
+			Variants: []evetest.TestVariant{
+				{
+					Name: "TestVaultKeyModeRecoveryOnExt4",
+					Parameters: []evetest.TestParameterValue{
+						{
+							Key:   evetest.FilesystemParameterKey,
+							Value: evetest.FilesystemEXT4,
+						},
+					},
+				},
+				{
+					Name: "TestVaultKeyModeRecoveryOnZFS",
+					Parameters: []evetest.TestParameterValue{
+						{
+							Key:   evetest.FilesystemParameterKey,
+							Value: evetest.FilesystemZFS,
+						},
+					},
+				},
+			},
 		},
 	)
 }

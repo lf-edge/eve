@@ -77,6 +77,12 @@ func (h *Ext4Handler) SetHandlerOptions(options HandlerOptions) {
 	h.options = options
 }
 
+// GetHandlerOptions returns handler options, with TpmKeyOnlyMode as unlocking
+// resolved it
+func (h *Ext4Handler) GetHandlerOptions() HandlerOptions {
+	return h.options
+}
+
 // GetVaultStatuses returns statuses of vault(s)
 func (h *Ext4Handler) GetVaultStatuses() []*types.VaultStatus {
 	var statuses []*types.VaultStatus
@@ -327,9 +333,26 @@ func (h *Ext4Handler) setupFscryptEnv() error {
 	return nil
 }
 
-// cloudKeyOnlyMode and useSealedKey are passed to stageKey
+// unlockVault opens vaultPath with the vault key. cloudKeyOnlyMode and
+// useSealedKey are passed to stageKey. When the key-derivation mode was only
+// inferred, the mode this resolves to is stored back into h.options so the
+// caller can persist it and no later boot has to infer it again.
 func (h *Ext4Handler) unlockVault(vaultPath string, cloudKeyOnlyMode, useSealedKey bool) error {
-	unstage, err := stageKey(h.log, cloudKeyOnlyMode, useSealedKey, h.options.TpmKeyOnlyMode, keyDir, keyFile)
+	mode, err := resolveKeyMode(h.log, h.options.TpmKeyOnlyMode, h.options.TpmKeyOnlyModeInferred,
+		func(tpmKeyOnlyMode bool) error {
+			return h.unlockVaultWithMode(vaultPath, cloudKeyOnlyMode, useSealedKey, tpmKeyOnlyMode)
+		})
+	if err != nil {
+		return err
+	}
+	h.options.TpmKeyOnlyMode = mode
+	h.options.TpmKeyOnlyModeInferred = false
+	return nil
+}
+
+// cloudKeyOnlyMode, useSealedKey and tpmKeyOnlyMode are passed to stageKey
+func (h *Ext4Handler) unlockVaultWithMode(vaultPath string, cloudKeyOnlyMode, useSealedKey, tpmKeyOnlyMode bool) error {
+	unstage, err := stageKey(h.log, cloudKeyOnlyMode, useSealedKey, tpmKeyOnlyMode, keyDir, keyFile)
 	if err != nil {
 		return err
 	}

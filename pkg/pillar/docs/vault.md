@@ -33,11 +33,13 @@ type Handler interface {
     SetupDefaultVault() error
     GetVaultStatuses() []*types.VaultStatus
     SetHandlerOptions(HandlerOptions)
+    GetHandlerOptions() HandlerOptions
     GetOperationalInfo() (info.DataSecAtRestStatus, string)
 }
 
 type HandlerOptions struct {
-    TpmKeyOnlyMode bool
+    TpmKeyOnlyMode         bool
+    TpmKeyOnlyModeInferred bool
 }
 
 func GetHandler(log *base.LogObject) Handler
@@ -51,9 +53,15 @@ func GetHandler(log *base.LogObject) Handler
 | `PersistZFS` | `ZFSHandler` | ZFS native dataset encryption (`aes-256-gcm`) | Requires a usable TPM for encryption; otherwise creates an unencrypted dataset. |
 | anything else | `UnsupportedHandler` | none | `GetOperationalInfo` always returns `DATASEC_AT_REST_DISABLED`. |
 
-`HandlerOptions{TpmKeyOnlyMode}` is set once at startup by `vaultmgr`
-based on the persistent `VaultConfig` it owns; the handler hands the
-flag down to `stageKey`.
+`HandlerOptions{TpmKeyOnlyMode}` is set at startup by `vaultmgr` based
+on the persistent `VaultConfig` it owns; the handler hands the flag
+down to `stageKey`. When that `VaultConfig` is missing `vaultmgr` has
+to guess the mode and says so with `TpmKeyOnlyModeInferred`; the
+handler then treats a failed unlock as a possible wrong guess and
+retries with the other derivation (`resolveKeyMode`, `keymode.go`),
+storing whichever one opened the vault back into its options.
+`vaultmgr` reads that through `GetHandlerOptions` and persists it, so
+the guess happens at most once per device.
 
 ### Ext4Handler (`handler_ext4.go`)
 
@@ -166,7 +174,7 @@ was set up against the older derivation:
 | Caller flags | Branch | Reachable when |
 |---|---|---|
 | `cloudKeyOnlyMode=true` | returns the hard-coded 32-byte `cloudKey` (`"foobarfoobarfoobarfoobarfoobarfo"` in `retrieveCloudKey`) | Only in `Ext4Handler.changeProtector`, while unstaging the pre-5.6.2 deprecated-vault protector before re-staging with a TPM-derived key. |
-| `tpmKeyOnlyMode=false` *and* `cloudKeyOnlyMode=false` | returns `mergeKeys(tpmKey, cloudKey)` = first 16 B of TPM key ‖ second 16 B of `cloudKey` | Only on devices first installed at 5.6.2 ≤ EVE < 7.10.0 that have since been upgraded. `TpmKeyOnly` is sticky in the persistent `VaultConfig` — once `false`, it stays `false`. |
+| `tpmKeyOnlyMode=false` *and* `cloudKeyOnlyMode=false` | returns `mergeKeys(tpmKey, cloudKey)` = first 16 B of TPM key ‖ second 16 B of `cloudKey` | Only on devices first installed at 5.6.2 ≤ EVE < 7.10.0 that have since been upgraded. `TpmKeyOnly` is sticky in the persistent `VaultConfig` — once `false`, it stays `false`. Losing that file does not silently move a device between the two branches: the mode is then inferred, an inference that does not unlock is retried against the other branch, and only the branch that worked is written back. |
 | `useSealedKey=false` | returns the non-sealed TPM key via `etpm.FetchVaultKey` | Only used during the deprecated-vault migration when the sealed path is not yet in place. |
 
 The controller side of the merge was never wired up, so the merged
