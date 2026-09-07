@@ -340,6 +340,9 @@ type TestHarness struct {
 	pausedAtCheckpoint string
 	pauseOnFailure     bool
 	pausedOnFailure    string
+	// hasPausedOnFailure: has the current test already paused once on
+	// failure (see T.fail)? Reset per test/subtest by Init.
+	hasPausedOnFailure bool
 	resume             chan struct{}
 	exitCh             chan struct{}
 	sigCh              chan os.Signal
@@ -541,6 +544,9 @@ func Init(t *testing.T) *T {
 			th.t.Fatalf("failed to create directory for test artifacts: %v", err)
 		}
 		th.test.failedCh = make(chan struct{})
+		th.checkpointM.Lock()
+		th.hasPausedOnFailure = false
+		th.checkpointM.Unlock()
 		th.test.initialized = true
 		th.t = &T{T: t, th: th}
 		return th.t
@@ -569,6 +575,7 @@ func Init(t *testing.T) *T {
 		th.t.Fatalf("failed to create directory for test artifacts: %v", err)
 	}
 	th.test.failedCh = make(chan struct{})
+	th.hasPausedOnFailure = false // th isn't shared with other goroutines yet
 	th.test.initialized = true
 
 	// Setup logging
@@ -1285,12 +1292,14 @@ func Checkpoint(name string) {
 	if shouldPause {
 		th.pausedAtCheckpoint = name
 	}
+	// Captured under lock: Continue swaps th.resume on release.
+	resumeCh := th.resume
 	th.checkpointM.Unlock()
 
 	if shouldPause {
 		th.log.Infof("Paused at checkpoint %q", name)
 		select {
-		case <-th.resume:
+		case <-resumeCh:
 			th.log.Infof("Resumed after checkpoint %q", name)
 		case sig := <-th.sigCh:
 			th.t.Fatalf("Received signal %v while paused at checkpoint %q", sig, name)

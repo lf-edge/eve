@@ -109,12 +109,16 @@ func (th *TestHarness) Continue(
 	ctx context.Context, req *api.ContinueRequest) (*api.ContinueResponse, error) {
 	th.checkpointM.Lock()
 	defer th.checkpointM.Unlock()
+	// Closing (not sending on) resume wakes every waiter at once, e.g.
+	// several RunParallel workers joined on the same pause (see T.fail).
 	switch {
 	case th.pausedAtCheckpoint != "":
-		th.resume <- struct{}{}
+		close(th.resume)
+		th.resume = make(chan struct{})
 		th.pausedAtCheckpoint = ""
 	case th.pausedOnFailure != "":
-		th.resume <- struct{}{}
+		close(th.resume)
+		th.resume = make(chan struct{})
 		th.pausedOnFailure = ""
 	}
 	th.pauseAtCheckpoint = req.GetUntilCheckpoint()

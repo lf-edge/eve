@@ -53,19 +53,26 @@ func (t *T) fail(msg string, now bool) {
 	// Log stacktrace at the point of failure for easier debugging.
 	t.Logf("STACKTRACE:\n%s", debug.Stack())
 
-	// Check whether pause-on-failure is enabled and record failure state.
+	// Every failure for this test joins the same pause (RunParallel can
+	// fail several workers at once), so none race ahead and conclude the
+	// test early. Once that pause resolves, later failures (e.g.
+	// RunParallel's own fail-fast) don't pause again.
 	t.th.checkpointM.Lock()
-	shouldPause := t.th.pauseOnFailure
-	if shouldPause {
+	joiningExisting := t.th.pausedOnFailure != ""
+	shouldPause := t.th.pauseOnFailure && (joiningExisting || !t.th.hasPausedOnFailure)
+	if shouldPause && !joiningExisting {
 		t.th.pausedOnFailure = msg
+		t.th.hasPausedOnFailure = true
 	}
+	resumeCh := t.th.resume
 	t.th.checkpointM.Unlock()
 
-	// If enabled, pause test execution until resumed by TestHarness.Continue
+	// If enabled, pause test execution until resumed by TestHarness.Continue,
+	// which releases every goroutine waiting here at once (see Continue).
 	if shouldPause {
 		t.th.log.Info("Paused on failure")
 		select {
-		case <-t.th.resume:
+		case <-resumeCh:
 			t.th.log.Info("Resumed after failure")
 		case sig := <-t.th.sigCh:
 			t.th.log.Infof("Received signal %v while paused on failure, terminating", sig)
