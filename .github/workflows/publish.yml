@@ -38,10 +38,11 @@ jobs:
           df -h
           echo Memory
           free -m
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      # The tag fetch below runs against github.com, so the GITHUB_TOKEN must
+      # stay in .git/config; anonymous git is subject to GitHub's rate limits.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2 # zizmor: ignore[artipacked]
         with:
           fetch-depth: 0
-          persist-credentials: false
       - name: Force fetch annotated tags (workaround)
         run: |
           git fetch --force --tags
@@ -91,10 +92,11 @@ jobs:
           df -h
           echo Memory
           free -m
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      # The tag fetch below runs against github.com, so the GITHUB_TOKEN must
+      # stay in .git/config; anonymous git is subject to GitHub's rate limits.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2 # zizmor: ignore[artipacked]
         with:
           fetch-depth: 0
-          persist-credentials: false
       - name: Force fetch annotated tags (workaround)
         run: |
           git fetch --force --tags
@@ -205,11 +207,12 @@ jobs:
             os: zededa-ubuntu-2204
 
     steps:
+      # run-make fetches tags from github.com, so the GITHUB_TOKEN must stay
+      # in .git/config; anonymous git is subject to GitHub's rate limits.
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2 # zizmor: ignore[artipacked]
         with:
           fetch-depth: 0
-          persist-credentials: false
       - name: Install qemu for cross-arch build
         if: matrix.arch == 'riscv64'
         run: |
@@ -254,10 +257,11 @@ jobs:
     needs: eve
     runs-on: zededa-ubuntu-2204
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      # run-make fetches tags from github.com, so the GITHUB_TOKEN must stay
+      # in .git/config; anonymous git is subject to GitHub's rate limits.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2 # zizmor: ignore[artipacked]
         with:
           fetch-depth: 0
-          persist-credentials: false
       - uses: ./.github/actions/run-make
         with:
           command: "V=1 LINUXKIT_PKG_TARGET=manifest pkgs"

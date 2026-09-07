@@ -85,12 +85,13 @@ jobs:
             platform: "nvidia-jp7"
             hv: "k"
     steps:
+      # The tag fetch below runs against github.com, so the GITHUB_TOKEN must
+      # stay in .git/config; anonymous git is subject to GitHub's rate limits.
       - name: checkout repo
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2 # zizmor: ignore[artipacked]
         with:
           ref: ${{ inputs.tag_ref }}
           fetch-depth: 0
-          persist-credentials: false
       - name: Force fetch annotated tags (workaround)
         # Workaround for https://github.com/actions/checkout/issues/290
         run: |
