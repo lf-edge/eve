@@ -108,11 +108,9 @@ func TestDomainConfigGetTaskNameRoundtrip(t *testing.T) {
 }
 
 func TestDomainnameToUUIDDomain0(t *testing.T) {
-	id, ver, num, err := DomainnameToUUID("Domain-0")
-	require.NoError(t, err)
-	assert.Equal(t, uuid.UUID{}, id)
-	assert.Equal(t, "", ver)
-	assert.Equal(t, 0, num)
+	// "Domain-0" was the Xen host domain and is no longer a valid domain name.
+	_, _, _, err := DomainnameToUUID("Domain-0")
+	assert.Error(t, err)
 }
 
 func TestDomainnameToUUIDErrors(t *testing.T) {
