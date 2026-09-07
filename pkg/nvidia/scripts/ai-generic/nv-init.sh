@@ -67,23 +67,32 @@ fi
 
 # CDI spec.
 #
-# Generated with explicit paths rather than by rewriting the YAML afterwards:
-#   --library-search-path   discovery finds the libraries where EVE actually keeps
-#                           them, so the spec needs no root transform at all
+# --driver-root is what makes the spec usable by an ordinary workload container.
+# EVE stages the driver userland under /opt/vendor/nvidia/dist rather than at /,
+# and nvidia-ctk derives each mount's containerPath by stripping the driver root
+# from its hostPath. Without it, containerPath == hostPath and everything lands
+# in the container at /opt/vendor/nvidia/... - libraries still resolve, because
+# the update-ldcache hook is pointed at that directory, but nvidia-smi is not on
+# PATH and nothing else finds the stack where it conventionally lives.
+#
+# --dev-root=/ because only the userland is relocated; the device nodes
+# nv-init.sh creates above live at the real /dev. It defaults to --driver-root.
+#
 #   --nvidia-cdi-hook-path  embeds the hook path containerd will invoke
 #   --ldconfig-path         embeds the glibc ldconfig the update-ldcache hook runs
 #                           against the container rootfs (Alpine's musl ldconfig
 #                           cannot write a glibc ld.so.cache)
 #
-# Deliberately NO "cdi transform root" pass. Beyond being unnecessary once the
-# search path is right, a --from /lib transform would rewrite the GSP firmware
-# path /lib/firmware/nvidia/<ver> into the vendor dir, where it does not exist -
-# the firmware ships in the kernel image, not here.
+# Both of those stay host paths under the driver-root rewrite, which is correct:
+# runc execs them on the host, not inside the container.
+#
+# Note --library-search-path is deliberately absent: it only applies to CSV
+# (Jetson) discovery mode, so in nvml mode it is silently ignored.
 #
 # /run is a tmpfs, so a spec written there does not survive a reboot. The
 # authoritative copy therefore lives under /persist and is restored into /run/cdi,
-# regenerating only when the driver version or the set of NVIDIA PCI devices
-# changes. That is the "generate once, persist, re-trigger on inventory change"
+# regenerating only when the fingerprint below changes. That is the
+# "generate once, persist, re-trigger on inventory change"
 # behaviour the design calls for; writing only to /run would silently regenerate
 # on every boot instead.
 CDI_RUN=/run/cdi/nvidia.yaml
@@ -91,10 +100,17 @@ CDI_STORE=/persist/nvidia/cdi
 CDI_CACHE="${CDI_STORE}/nvidia.yaml"
 CDI_FP="${CDI_STORE}/fingerprint"
 
-# Driver version plus every NVIDIA PCI device present. Changing either invalidates
-# the cached spec: a driver bump moves the library paths, and adding or removing a
-# GPU changes the device list the spec enumerates.
+# Bump whenever the nvidia-ctk invocation below changes in a way that alters the
+# generated spec. It is part of the fingerprint so an in-place EVE update
+# regenerates instead of restoring a spec built by the previous recipe - the
+# driver version and PCI inventory alone do not change across such an update.
+CDI_RECIPE=1
+
+# The recipe, the driver version, and every NVIDIA PCI device present. Changing
+# any of them invalidates the cached spec: a driver bump moves the library paths,
+# and adding or removing a GPU changes the device list the spec enumerates.
 cdi_fingerprint() {
+    echo "recipe ${CDI_RECIPE}"
     cat /sys/module/nvidia/version 2>/dev/null
     for d in /sys/bus/pci/devices/*; do
         [ "$(cat "$d/vendor" 2>/dev/null)" = "0x10de" ] || continue
@@ -112,7 +128,8 @@ else
     echo "nvidia-dgpu: generating CDI spec at ${CDI_RUN}"
     if "${VENDOR}/bin/nvidia-ctk" cdi generate \
         --mode=nvml \
-        --library-search-path="${VENDOR}/dist/usr/lib/x86_64-linux-gnu" \
+        --driver-root="${VENDOR}/dist" \
+        --dev-root=/ \
         --nvidia-cdi-hook-path="${VENDOR}/bin/nvidia-cdi-hook" \
         --ldconfig-path="${VENDOR}/bin/ldconfig-glibc" \
         --output="${CDI_RUN}"; then
