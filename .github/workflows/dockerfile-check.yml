@@ -1,0 +1,85 @@
+# Copyright (c) 2025, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+name: Dockerfile Syntax Check
+
+on:
+    pull_request:
+        paths:
+            - "**/Dockerfile"
+            - "**/Dockerfile.in"
+            - "tools/ci/dockerfile_linter/**"
+    push:
+        branches: [main, master]
+        paths:
+            - "**/Dockerfile"
+            - "**/Dockerfile.in"
+            - "tools/ci/dockerfile_linter/**"
+
+jobs:
+    dockerfile-syntax-check:
+        name: Check Dockerfile ENV/ARG Syntax
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            # Changed Dockerfiles
+            - name: Get changed Dockerfiles
+              id: changed-dockerfiles
+              uses: tj-actions/changed-files@v44
+              with:
+                  files: |
+                      **/Dockerfile
+                      **/Dockerfile.in
+
+            # Changed linter code (to decide whether to run tests)
+            - name: Get changed linter files
+              id: changed-linter
+              uses: tj-actions/changed-files@v44
+              with:
+                  files: |
+                      tools/ci/dockerfile_linter/**
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.12"
+
+            - name: Install dependencies
+              run: |
+                  pip install -U pip
+                  pip install -r tools/ci/dockerfile_linter/requirements.txt
+                  pip install pytest
+
+            - name: Lint changed Dockerfiles
+              if: steps.changed-dockerfiles.outputs.any_changed == 'true'
+              run: |
+                  echo "Changed files:"
+                  echo "${{ steps.changed-dockerfiles.outputs.all_changed_files }}"
+                  python -m tools.ci.dockerfile_linter --ci --files ${{ steps.changed-dockerfiles.outputs.all_changed_files }}
+
+            - name: Run linter tests (only if linter changed)
+              if: steps.changed-linter.outputs.any_changed == 'true'
+              env:
+                  PYTHONPATH: .
+              run: |
+                  pytest tools/ci/dockerfile_linter/tests -q
+
+            - name: Show help on failure
+              if: failure()
+              run: |
+                  echo
+                  echo "Dockerfile linter found issues or tests failed."
+                  echo "Run locally:"
+                  echo "  python -m tools.ci.dockerfile_linter --ci --files <files>"
+                  echo "  python -m tools.ci.dockerfile_linter .            # to fix in place"
+                  echo "Tests:"
+                  echo "  PYTHONPATH=. pytest tools/ci/dockerfile_linter/tests -q"
+
+            - name: Success notice
+              if: success()
+              run: echo "::notice title=Dockerfile Linter::Checks passed."
