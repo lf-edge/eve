@@ -10,6 +10,7 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
+	"golang.org/x/sys/unix"
 )
 
 var (
@@ -68,7 +69,8 @@ func stageKey(log *base.LogObject, cloudKeyOnlyMode, useSealedKey, tpmKeyOnlyMod
 		return nil, fmt.Errorf("error creating keyDir %s %v", keyDirName, err)
 	}
 
-	if _, _, err := execCmd("mount", "-t", "tmpfs", "tmpfs", keyDirName); err != nil {
+	// A tmpfs root defaults to 01777, which would mask the 0700 above
+	if err := unix.Mount("tmpfs", keyDirName, "tmpfs", 0, "mode=0700"); err != nil {
 		return nil, fmt.Errorf("error mounting tmpfs on keyDir %s: %v", keyDirName, err)
 	}
 
@@ -78,7 +80,7 @@ func stageKey(log *base.LogObject, cloudKeyOnlyMode, useSealedKey, tpmKeyOnlyMod
 		unstageKey(log, keyDirName, keyFileName)
 		return nil, err
 	}
-	if err := os.WriteFile(keyFileName, vaultKey, 0700); err != nil {
+	if err := os.WriteFile(keyFileName, vaultKey, 0600); err != nil {
 		unstageKey(log, keyDirName, keyFileName)
 		return nil, fmt.Errorf("error creating keyFile: %v", err)
 	}
