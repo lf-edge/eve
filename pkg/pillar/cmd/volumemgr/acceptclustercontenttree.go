@@ -86,22 +86,26 @@ func contentTreeSatisfiedByPVCs(ctx *volumemgrContext, status *types.ContentTree
 }
 
 // reevaluatePendingContentTrees re-drives every ContentTreeStatus still below
-// VERIFIED, so a check maxFreshPVCProbesPerCheck deferred gets finished on a
-// later pass -- the same role reevaluatePendingVolumes plays for volumes.
-// Called from the periodic gc handler.
+// LOADED -- the same role reevaluatePendingVolumes plays for volumes. Two
+// things need finishing on a later pass: a check maxFreshPVCProbesPerCheck
+// deferred (EVE-k only), and a CAS ingest the worker pool refused because it
+// was at maxWorkers, which can happen on any hypervisor.
+// Called from the periodic gc handler and from every worker result handler,
+// since a completed job is what frees the slot a refused ingest needs.
 func reevaluatePendingContentTrees(ctx *volumemgrContext) {
-	if !ctx.hvTypeKube {
-		// The accept-from-PVCs path this re-drives is EVE-k only.
-		return
-	}
 	for _, s := range ctx.pubContentTreeStatus.GetAll() {
 		status := s.(types.ContentTreeStatus)
-		if status.State >= types.VERIFIED {
+		if status.State >= types.LOADED {
+			continue
+		}
+		if lookupContentTreeConfig(ctx, status.Key()) == nil {
+			// Being torn down; leave it to the delete handler.
 			continue
 		}
 		changed, _ := doUpdateContentTree(ctx, &status)
 		if changed {
 			publishContentTreeStatus(ctx, &status)
+			updateVolumeStatusFromContentID(ctx, status.ContentID)
 		}
 	}
 }

@@ -4,6 +4,7 @@
 package baseosmgr
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -21,23 +22,37 @@ type installWorkDescription struct {
 	target string
 }
 
-// AddWorkInstall create a Work job to install the provided image to the target path
-func AddWorkInstall(ctx *baseOsMgrContext, key, ref, target string) {
+// AddWorkInstall create a Work job to install the provided image to the target path.
+// Returns an error if the job could not be handed to the worker pool, in
+// which case no worker owns the install and the caller must arrange for a
+// retry. A job already in progress for this key counts as success, so the
+// caller stays idempotent.
+func AddWorkInstall(ctx *baseOsMgrContext, key, ref, target string) error {
 	d := installWorkDescription{
 		key:    key,
 		ref:    ref,
 		target: target,
 	}
-	// Don't fail on errors to make idempotent (Submit returns an error if
-	// the work was already submitted)
 	done, err := ctx.worker.TrySubmit(worker.Work{Key: key, Kind: workInstall,
 		Description: d})
 	if err != nil {
-		log.Errorf("TrySubmit %s failed: %s", key, err)
-	} else if !done {
-		log.Fatalf("Failed to submit work due to queue length for %s", key)
+		var inProgress *worker.JobInProgressError
+		if errors.As(err, &inProgress) {
+			log.Functionf("AddWorkInstall(%s): job already in progress", key)
+			return nil
+		}
+		log.Errorf("AddWorkInstall(%s): TrySubmit failed: %s", key, err)
+		return err
+	}
+	if !done {
+		// A pool never returns (false, nil); only a bare worker with a full
+		// queue does, and baseosmgr uses a pool.
+		err := fmt.Errorf("worker did not accept install job %s", key)
+		log.Error(err)
+		return err
 	}
 	log.Functionf("AddWorkInstall(%s) done", key)
+	return nil
 }
 
 // installWorker implementation of work.WorkFunction that installs an image to a particular location
