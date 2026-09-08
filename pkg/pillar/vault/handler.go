@@ -18,7 +18,13 @@ type HandlerOptions struct {
 	TpmKeyOnlyMode bool
 }
 
-// Handler is an interface for handling vault operations
+// Handler is an interface for handling vault operations.
+//
+// The vault lifecycle operations (SetupDefaultVault, UnlockDefaultVault,
+// RemoveDefaultVault) may block for as long as the underlying storage takes:
+// on EVE-k a vault carried over from EVE-kvm is copied into a new zvol, so
+// the duration scales with the vault contents. Callers run them off the
+// agent's main goroutine.
 type Handler interface {
 	RemoveDefaultVault() error
 	UnlockDefaultVault() error
