@@ -726,8 +726,19 @@ func (d *EdgeDevice) waitForUpgrade(targetShortVersion string) {
 					continue
 				}
 				if sw.GetUserStatus() == eveinfo.BaseOsStatus_FAILED {
+					// SubStatusStr narrates progress through the normal
+					// download/verify/install sequence and is often empty
+					// for a failure outside that sequence -- SwErr is the
+					// dedicated error field pillar sets in that case.
+					reason := sw.GetSubStatusStr()
+					if reason == "" {
+						reason = sw.GetSwErr().GetDescription()
+					}
+					if reason == "" {
+						reason = "no failure reason reported by the device"
+					}
 					d.th.t.Fatalf("EVE upgrade to %s failed: %s",
-						targetShortVersion, sw.GetSubStatusStr())
+						targetShortVersion, reason)
 				}
 				if sw.GetPartitionState() == "active" {
 					d.th.log.Infof("Device %q successfully upgraded to %s",
