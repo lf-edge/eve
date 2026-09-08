@@ -56,6 +56,13 @@ the rootfs image into the partition device.
   * `ContentTreeStatus` from `volumemgr`
   * the download/load progress for the rootfs blob; baseosmgr will not
     even consider installing until `State == LOADED`.
+* volume sets (the cross-flavor gate)
+  * `VolumeConfig` from `zedagent` and `VolumeStatus` from `volumemgr`
+  * read only as set sizes, via `GetAll()`. A device with volumes in
+    either set cannot switch HV flavor, because the
+    `/persist/vault/volumes` layout differs between EVE-k and the other
+    flavors. Individual fields are never consumed and there are no
+    handlers.
 * zboot config (the test-complete signal)
   * `ZbootConfig` from `nodeagent`, one entry per partition (`IMGA`,
     `IMGB`); only `TestComplete` is meaningful. When it flips to `true`
@@ -105,7 +112,9 @@ the rootfs image into the partition device.
     the vault is open,
   * `containerd.WaitForUserContainerd` (user containerd ready) — needed
     because the rootfs image lands as an OCI ref and the install worker
-    has to be able to read blobs out of it.
+    has to be able to read blobs out of it,
+  * `VolumeConfig`/`VolumeStatus` `Restarted()` (bounded at 2 minutes) —
+    so the first `BaseOsConfig` after boot sees the real volume set.
 
 **baseosmgr publishes**:
 
@@ -158,8 +167,19 @@ retry counters, calls `updateAndPublishZbootStatusAll` to seed `ZbootStatus`
 from `zboot`, then activates all subscriptions. The 25-second `stillRunning`
 ticker is the only periodic work — the rest is pure event handling. The
 event loop blocks on `subGlobalConfig`, `subBaseOsConfig`, `subZbootConfig`,
-`subContentTreeStatus`, `subNodeAgentStatus`, `subZedAgentStatus`,
-`subNodeDrainStatus`, `worker.MsgChan()`, and the watchdog ticker.
+`subContentTreeStatus`, `subVolumeConfig`, `subVolumeStatus`,
+`subNodeAgentStatus`, `subZedAgentStatus`, `subNodeDrainStatus`,
+`worker.MsgChan()`, and the watchdog ticker.
+
+Between the user-containerd wait and the event loop, `Run()` also waits for
+`subVolumeConfig` and `subVolumeStatus` to signal restart, which is what makes
+their `GetAll()` sets trustworthy for the cross-flavor gate in step 4 below;
+`Synchronized()` would not, since it confirms only the socket handshake.
+The wait is bounded at `volumePublishersRestartTimeout` (2 minutes) because
+baseosmgr sits on the A/B rollback path and must not be gated indefinitely on a
+device that never onboards or is in maintenance mode. On timeout
+`volumeStateKnown` stays false and the gate treats the volume set as
+non-empty.
 
 The same file contains the pubsub dispatch wrappers
 (`handleBaseOsConfigCreate/Modify/Delete`, `handleZbootConfigCreate/Modify/Delete`,
@@ -176,7 +196,11 @@ agent. The decision tree, in order, is:
 3. version already in `other` partition (and `Activate=true`) → mark
    `DOWNLOADED`, fall through to overwrite anyway (ContentTree might
    have been re-downloaded),
-4. EVE-k vs non-EVE-k personality switch → reject with an error,
+4. EVE-k vs non-EVE-k personality switch → reject with an error, except
+   that a switch *to* EVE-k is allowed on a device holding no volumes
+   (`VolumeConfig` and `VolumeStatus` both empty, and both publishers
+   having signalled restart so the sets can be trusted); a switch *from*
+   EVE-k is rejected unconditionally,
 5. `doBaseOsInstall`: `validatePartition` (refuse if other = `inprogress`
    with same version — that's the "previous attempt failed" case), then
    `checkBaseOsVolumeStatus` (returns *not done* until ContentTree is
@@ -308,6 +332,7 @@ Run()
   └─ wait for GCInitialized
   └─ wait.WaitForVault()
   └─ containerd.WaitForUserContainerd()
+  └─ wait for VolumeConfig+VolumeStatus Restarted()   (bounded, 2 min)
   └─ event loop
 ```
 
@@ -332,6 +357,7 @@ zedagent → BaseOsConfig{ContentTreeUUID, BaseOsVersion, Activate=true}
         ├─ same version in current?            → INSTALLED/Activated, return
         ├─ same version in other?              → DOWNLOADED, fall through
         ├─ EVE-k personality mismatch?         → error, return
+        │    (to EVE-k with no volumes → allowed, fall through)
         ├─ doBaseOsInstall
         │    ├─ validatePartition              (other=inprogress same ver? → fail)
         │    └─ checkBaseOsVolumeStatus        (waits for ContentTreeStatus.LOADED)
