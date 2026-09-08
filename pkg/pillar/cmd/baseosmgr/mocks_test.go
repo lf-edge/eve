@@ -241,6 +241,8 @@ type testCtx struct {
 	pubNodeDrainRequest  *mockPubSub
 	subBaseOsConfig      *mockPubSub
 	subContentTreeStatus *mockPubSub
+	subVolumeConfig      *mockPubSub
+	subVolumeStatus      *mockPubSub
 	subZbootConfig       *mockPubSub
 	subNodeAgentStatus   *mockPubSub
 	subZedAgentStatus    *mockPubSub
@@ -269,7 +271,10 @@ type testCtx struct {
 // mock publications/subscriptions, default global config, paths
 // pointed at a per-test temporary directory so counter persistence
 // doesn't touch /persist/, and a mockZboot defaulting to IMGA=active /
-// IMGB=unused.
+// IMGB=unused. The volume subscriptions start empty and
+// volumeStateKnown false, i.e. on the conservative arm of the
+// cross-flavor gate; a test exercising the volume set must set
+// volumeStateKnown itself.
 func newTestCtx(t *testing.T) *testCtx {
 	t.Helper()
 	initTestLog()
@@ -281,6 +286,8 @@ func newTestCtx(t *testing.T) *testCtx {
 		pubNodeDrainRequest:  newMockPubSub(),
 		subBaseOsConfig:      newMockPubSub(),
 		subContentTreeStatus: newMockPubSub(),
+		subVolumeConfig:      newMockPubSub(),
+		subVolumeStatus:      newMockPubSub(),
 		subZbootConfig:       newMockPubSub(),
 		subNodeAgentStatus:   newMockPubSub(),
 		subZedAgentStatus:    newMockPubSub(),
@@ -304,6 +311,8 @@ func newTestCtx(t *testing.T) *testCtx {
 		pubNodeDrainRequest:  tc.pubNodeDrainRequest,
 		subBaseOsConfig:      tc.subBaseOsConfig,
 		subContentTreeStatus: tc.subContentTreeStatus,
+		subVolumeConfig:      tc.subVolumeConfig,
+		subVolumeStatus:      tc.subVolumeStatus,
 		subZbootConfig:       tc.subZbootConfig,
 		subNodeAgentStatus:   tc.subNodeAgentStatus,
 		subZedAgentStatus:    tc.subZedAgentStatus,
