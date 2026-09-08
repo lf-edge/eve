@@ -32,6 +32,7 @@
 | network.fallback.any.eth | "enabled" or "disabled" | disabled (enabled forcefully during onboarding if no network config) | if no connectivity try any Ethernet, WiFi, or LTE with DHCP client |
 | network.download.max.cost | 0-255 | 0 | [max port cost for download](DEVICE-CONNECTIVITY.md) to avoid e.g., LTE ports |
 | blob.download.max.retries | 1-10 | 5 | max download retries when image verification fails.|
+| volumemgr.worker.pool.size | 1-200 | 20 | max number of concurrent volumemgr background jobs (loading images into the CAS, preparing/creating/destroying volumes). Work exceeding the limit is deferred and retried, so this bounds throughput; raise it on nodes deploying many app instances at once (doesn't need a reboot to take effect) |
 | debug.enable.usb | boolean | false | allow USB e.g. keyboards on device |
 | debug.enable.vga | boolean | false | allow VGA console on device |
 | debug.enable.ssh | authorized ssh key | empty string(ssh disabled) | allow ssh to EVE |

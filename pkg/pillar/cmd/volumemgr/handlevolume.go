@@ -270,9 +270,10 @@ func maybeDeleteVolume(ctx *volumemgrContext, status *types.VolumeStatus) {
 			// destroy through this function.
 			status.SubState = types.VolumeSubStateCreated
 			status.SetErrorDescription(types.ErrorDescription{
-				Error:               fmt.Sprintf("volume destroy deferred: %v", err),
-				ErrorRetryCondition: "Will retry when a worker becomes available",
-				ErrorSeverity:       types.ErrorSeverityWarning,
+				Error: fmt.Sprintf("volume destroy deferred: %v", err),
+				ErrorRetryCondition: "Will retry when a worker becomes available; " +
+					"the volumemgr.worker.pool.size config item bounds the pool",
+				ErrorSeverity: types.ErrorSeverityWarning,
 			})
 			publishVolumeStatus(ctx, status)
 		}
