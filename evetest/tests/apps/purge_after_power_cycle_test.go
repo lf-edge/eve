@@ -138,6 +138,11 @@ func TestVMAppPurgeAfterPowerCycle(test *testing.T) {
 	evetest.Checkpoint("setup-done")
 
 	devConfig := evetest.NewEdgeDeviceConfig(devName)
+	// The GC ticker is timer.gc.vdisk/10, an hour by default. At the 60s floor
+	// a pass runs every six seconds, so the reclaim assertion does not wait.
+	cfgProps := types.NewConfigItemValueMap()
+	cfgProps.SetGlobalValueInt(types.VdiskGCTime, 60)
+	devConfig.SetConfigProperties(cfgProps)
 	dhcpNet := devConfig.AddNetwork(
 		evetest.DHCPNetworkConfig{
 			NetworkType: evecommon.NetworkType_V4Only,
@@ -233,19 +238,21 @@ func TestVMAppPurgeAfterPowerCycle(test *testing.T) {
 	}, purgeEndStateTimeout, assertPollInterval).Should(Succeed())
 	evetest.Checkpoint("purge-verified")
 
-	// The old generation's storage is reclaimed on its own schedule, minutes
-	// after the purge itself completes - see assertOldVolumeReclaimed.
+	// The old generation's storage is reclaimed on its own schedule, after the
+	// purge itself completes - see assertOldVolumeReclaimed. This test set
+	// timer.gc.vdisk to its 60s floor above, so fastStorageReclaimTimeout
+	// bounds the wait, not storageReclaimTimeout.
 	//
-	// assertNoOrphanedPVCs is disabled on Kubevirt for now: sweepStaleGenerations
-	// deletes the old VMIRS and its pod but not its PVC, so the old generation's
-	// disk stays behind. That is a pillar fix, not a test bug - re-enable this
-	// once sweepStaleGenerations deletes the PVC too.
+	// On Kubevirt, sweepStaleGenerations deletes the old VMIRS and its pod, but
+	// not its PVC. volumemgr's gcPVCs reclaims that PVC. assertNoOrphanedPVCs
+	// also checks that the live generation's PVC stays, so a GC that reaps too
+	// much fails here.
 	t.Eventually(func(g Gomega) {
 		if hypervisor == evetest.HypervisorKubevirt {
-			// assertNoOrphanedPVCs(g, device)
+			assertNoOrphanedPVCs(g, device)
 		} else {
 			assertOldVolumeReclaimed(g, device, baselineVolPath)
 		}
-	}, storageReclaimTimeout, storageReclaimPollInterval).Should(Succeed())
+	}, fastStorageReclaimTimeout, storageReclaimPollInterval).Should(Succeed())
 	evetest.Checkpoint("old-storage-reclaimed")
 }

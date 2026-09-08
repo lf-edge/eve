@@ -59,11 +59,13 @@ func soleVolumeStatus(g Gomega, dev *evetest.EdgeDevice) types.VolumeStatus {
 // listPVCNames returns the names of every PVC in the namespace EVE runs app
 // workloads in, regardless of which app or generation it belongs to - see
 // assertNoOrphanedPVCs, which is what attributes them.
-func listPVCNames(dev *evetest.EdgeDevice) []string {
-	list, ok := kubectlListItems(dev, "pvc")
-	if !ok {
-		return nil
-	}
+//
+// A kubectl failure fails the assertion. It does not return an empty list. An
+// empty list satisfies an absence check for the wrong reason, and a booting
+// node reports one until k3s is up - the window the caller polls through.
+func listPVCNames(g Gomega, dev *evetest.EdgeDevice) []string {
+	list, err := dev.KubectlListItems("pvc")
+	g.Expect(err).ToNot(HaveOccurred(), "listing PVCs")
 	var names []string
 	for _, item := range list.Items {
 		names = append(names, item.Metadata.Name)
@@ -71,24 +73,45 @@ func listPVCNames(dev *evetest.EdgeDevice) []string {
 	return names
 }
 
-// assertNoOrphanedPVCs cross-checks every PVC actually present in the cluster
-// against the PVC name volumemgr's own current VolumeStatus publications would
-// produce (VolumeStatus.GetPVCName): "<volume-id>-pvc-<generation>". A PVC that
-// exists in Kubernetes but that no published VolumeStatus would name is orphaned
-// - Kubernetes still has the disk, but EVE no longer references it.
+// assertNoOrphanedPVCs cross-checks the PVCs actually present in the cluster
+// against the PVC names volumemgr's own current VolumeStatus publications would
+// produce (VolumeStatus.GetPVCName): "<volume-id>-pvc-<generation>".
 //
-// This is strictly stronger than a volume count: the stale-generation sweep in
-// hypervisor/kubevirt.go reconciles the VMIRS/ReplicaSet and its pods only, not
-// PVCs, so a purge that otherwise completes cleanly can still leave a stale
-// generation's disk behind indefinitely and nothing else here would catch it.
+// Each direction catches an opposite failure:
+//
+//   - A PVC that no published VolumeStatus names is orphaned. Kubernetes keeps
+//     the disk, but EVE no longer refers to it. The sweep in
+//     hypervisor/kubevirt.go deletes a stale generation's VMIRS and pods, but
+//     not its PVC, so only this check finds that disk.
+//   - A created volume with no PVC is the reverse. volumemgr's own GC reclaimed
+//     a disk the node still refers to. Without this half, a cluster with no
+//     PVCs passes, which is what a GC that reaps too much produces.
+//
+// Only a volume in CREATED_VOLUME state must have a PVC. A volume still being
+// built has none yet, and a caller in Eventually converges through that state.
 func assertNoOrphanedPVCs(g Gomega, dev *evetest.EdgeDevice) {
 	vols, err := evetest.ReadAllPublications[types.VolumeStatus](dev, "volumemgr", false)
 	g.Expect(err).ToNot(HaveOccurred(), "reading volumemgr's VolumeStatus publications")
 	expected := make(map[string]bool, len(vols))
+	required := make(map[string]bool, len(vols))
 	for _, v := range vols {
 		expected[v.GetPVCName()] = true
+		if v.State == types.CREATED_VOLUME {
+			required[v.GetPVCName()] = true
+		}
 	}
-	for _, name := range listPVCNames(dev) {
+
+	present := make(map[string]bool)
+	for _, name := range listPVCNames(g, dev) {
+		present[name] = true
+	}
+
+	for name := range required {
+		g.Expect(present).To(HaveKey(name),
+			"volumemgr publishes a created VolumeStatus naming PVC %q, but no such "+
+				"PVC exists - the live generation's disk was reclaimed underneath it", name)
+	}
+	for name := range present {
 		g.Expect(expected).To(HaveKey(name),
 			"PVC %q exists in the cluster but no currently published VolumeStatus "+
 				"would produce it - orphaned disk left behind by a stale generation", name)
