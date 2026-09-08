@@ -48,9 +48,12 @@ import (
 //     "zedagent" (the key identifies the config source; "zedagent" means the
 //     controller's config won over bootstrap/last-resort), empty
 //     DPC.LastError, and a single port that has an IP address and no error
-//     recorded. These health conditions are part of the Eventually predicate
-//     rather than assertions after it, so a transient error early in the DPC
-//     verification does not flake the test.
+//     recorded -- and Storage is non-zero. These health conditions are part
+//     of the Eventually predicate rather than assertions after it, so a
+//     transient error early in the DPC verification does not flake the test;
+//     Storage is included for the same reason, since it is only filled in
+//     once volumemgr publishes its first periodic DiskMetric, which races
+//     independently of the port-status report.
 //     Then assert the port itself:
 //     - Ifname=eth0, Name=ethernet0 (the logical label round-trips),
 //     - IsMgmt=true, Up=true,
@@ -63,8 +66,8 @@ import (
 //     LastSucceeded timestamp, so "no error" means an empty Description.
 //
 //  3. Hardware inventory in the same message is plausible: MachineArch and
-//     CpuArch non-empty, Ncpu >= the requested minimum, Memory and Storage
-//     non-zero, HostName set, BootTime set and in the past.
+//     CpuArch non-empty, Ncpu >= the requested minimum, Memory non-zero,
+//     HostName set, BootTime set and in the past.
 //
 //  4. HSMStatus matches the TPM parameter: ENABLED when the device was
 //     created with an emulated TPM, and anything but ENABLED when it was not.
@@ -116,9 +119,17 @@ func TestDeviceInfo(test *testing.T) {
 	timeout := 5 * time.Minute
 	var devInfo *eveinfo.ZInfoDevice
 	t.Eventually(devUpdates, timeout).Should(Receive(matchers.SatisfyPredicate(
-		"Device reports the controller-pushed port configuration as current",
+		"Device reports the controller-pushed port configuration as current, "+
+			"with a populated storage size",
 		func(info *eveinfo.ZInfoDevice) bool {
 			devInfo = info
+			// Storage is filled in from volumemgr's periodic DiskMetric, which
+			// is published independently of (and can race) the port-status
+			// report below, so it is folded into this predicate rather than
+			// asserted on afterwards.
+			if info.GetStorage() == 0 {
+				return false
+			}
 			sa := info.GetSystemAdapter()
 			if sa == nil || sa.GetCurrentIndex() != 0 || len(sa.GetStatus()) != 1 {
 				return false
@@ -153,7 +164,6 @@ func TestDeviceInfo(test *testing.T) {
 	t.Expect(devInfo.GetCpuArch()).ToNot(BeEmpty())
 	t.Expect(devInfo.GetNcpu()).To(BeNumerically(">=", minCPUs))
 	t.Expect(devInfo.GetMemory()).To(BeNumerically(">", 0))
-	t.Expect(devInfo.GetStorage()).To(BeNumerically(">", 0))
 	t.Expect(devInfo.GetHostName()).ToNot(BeEmpty())
 	t.Expect(devInfo.GetBootTime().IsValid()).To(BeTrue())
 	t.Expect(devInfo.GetBootTime().AsTime()).To(BeTemporally("<", time.Now()))
