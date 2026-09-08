@@ -38,6 +38,7 @@ This document mirrors the key names, types, defaults, and ranges defined there.
 | network.fallback.any.eth | "enabled" or "disabled" | disabled | - | - | if no connectivity try any Ethernet, WiFi, or LTE with DHCP client (enabled forcefully during onboarding if no network config) |
 | network.download.max.cost | 0-255 | 0 | 0 | 255 | [max port cost for download](DEVICE-CONNECTIVITY.md) to avoid e.g., LTE ports |
 | blob.download.max.retries | 1-10 | 5 | 1 | 10 | max download retries when image verification fails. |
+| volumemgr.worker.pool.size | integer | 20 | 1 | 200 | max number of concurrent volumemgr background jobs (loading images into the CAS, preparing/creating/destroying volumes). Work exceeding the limit is deferred and retried, so this bounds throughput; raise it on nodes deploying many app instances at once (doesn't need a reboot to take effect) |
 | debug.disable.dhcp.all-ones.netmask | boolean | false | - | - | deprecated; retained only to avoid reporting errors for older deployments where this option is still configured |
 | debug.enable.usb | boolean | true | - | - | allow USB e.g. keyboards on device (controller by default overrides to false) |
 | debug.enable.vga | boolean | true | - | - | allow VGA console on device (controller by default overrides to false) |

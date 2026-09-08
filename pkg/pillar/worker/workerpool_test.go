@@ -623,3 +623,47 @@ func TestTrySubmitDistinguishesPoolFull(t *testing.T) {
 	assert.Equal(t, 0, wp.NumPending())
 	wp.Done()
 }
+
+// TestSetMaxWorkers verifies the ceiling can be adjusted on a live pool: at
+// the ceiling TrySubmit refuses (with the error contract pinned by
+// TestTrySubmitDistinguishesPoolFull), and raising the ceiling admits the
+// same job without recreating the pool. Lowering it never disturbs workers
+// that are already running.
+func TestSetMaxWorkers(t *testing.T) {
+	ctx, wp, _ := setupPool(1)
+	testname := "testsetmaxworkers"
+
+	// Fill the single slot with a job that is still running afterwards.
+	w1 := worker.Work{Kind: "test", Key: testname + "1", Description: sleep4}
+	done, err := wp.TrySubmit(w1)
+	assert.True(t, done)
+	assert.Nil(t, err)
+	assert.Equal(t, 1, wp.NumWorkers())
+
+	// At the ceiling the next job is refused.
+	w2 := worker.Work{Kind: "test", Key: testname + "2", Description: sleep1}
+	done, err = wp.TrySubmit(w2)
+	assert.False(t, done)
+	assert.NotNil(t, err)
+
+	// Raising the ceiling admits the very same job.
+	wp.SetMaxWorkers(2)
+	done, err = wp.TrySubmit(w2)
+	assert.True(t, done)
+	assert.Nil(t, err)
+	assert.Equal(t, 2, wp.NumWorkers())
+
+	// Setting the same value again is a no-op, and lowering the ceiling does
+	// not disturb workers that are already running.
+	wp.SetMaxWorkers(2)
+	wp.SetMaxWorkers(1)
+	assert.Equal(t, 2, wp.NumWorkers())
+
+	// Drain both results so the pool shuts down cleanly.
+	for i := 0; i < 2; i++ {
+		proc := <-wp.MsgChan()
+		proc.Process(ctx, true)
+	}
+	assert.Equal(t, 0, wp.NumPending())
+	wp.Done()
+}

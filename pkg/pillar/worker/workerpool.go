@@ -134,6 +134,22 @@ func (wp *Pool) NumWorkers() int {
 	return len(wp.workers)
 }
 
+// SetMaxWorkers adjusts the ceiling on concurrent workers. Zero means
+// unlimited. Existing workers are left alone: lowering the ceiling only
+// prevents new ones from being created, and purgeOld reaps the idle surplus.
+// The result channel keeps the capacity it was constructed with, so raising
+// the ceiling a long way makes mergeResult apply backpressure rather than
+// buffer without bound -- which is the behaviour we want.
+func (wp *Pool) SetMaxWorkers(maxWorkers int) {
+	wp.workersLock.Lock()
+	defer wp.workersLock.Unlock()
+	if maxWorkers == wp.maxWorkers {
+		return
+	}
+	wp.log.Tracef("SetMaxWorkers: %d -> %d", wp.maxWorkers, maxWorkers)
+	wp.maxWorkers = maxWorkers
+}
+
 // Submit submits jobs to the WorkerPool. If it cannot find a worker in the pool
 // that can service it - i.e. both the number of workers is at the maximum and the
 // queues of all workers are full - then it waits one second and tries all available
