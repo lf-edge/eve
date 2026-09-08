@@ -5,7 +5,9 @@ package evetest
 
 import (
 	"context"
+	"time"
 
+	"github.com/lf-edge/eve/evetest/constants"
 	api "github.com/lf-edge/eve/evetest/grpcapi/go"
 	uuid "github.com/satori/go.uuid"
 	"github.com/vishvananda/netlink"
@@ -76,8 +78,11 @@ func (th *TestHarness) teardownDevices() {
 		}
 	}
 
-	// Tear-down all deployed EVE devices and the SDN VM.
-	ctx, cancel := context.WithTimeout(context.Background(), brokerTeardownDevicesTimeout)
+	// Tear-down all deployed EVE devices and the SDN VM. Sized to let every
+	// device (+1 for the SDN device) fully use its own
+	// constants.BrokerTeardownDevicesTimeout slice.
+	ctx, cancel := context.WithTimeout(context.Background(),
+		time.Duration(len(th.devices)+1)*constants.BrokerTeardownDevicesTimeout)
 	_, err := th.brokerClient.TeardownDevices(ctx,
 		&api.TeardownDevicesRequest{ClientId: th.brokerClientID})
 	cancel()

@@ -88,15 +88,26 @@ GO_TEST_PID=$!
 # shellcheck disable=SC2317,SC2015  # false positives: function is called via trap
 cleanup() {
     echo "Received termination signal, forwarding to child processes..."
+    # Fix artifact ownership right away, before the graceful shutdown below:
+    # a caller that sent this signal because it is tearing the whole
+    # container down (e.g. a cancelled CI job) typically only grants a short
+    # grace period before escalating to SIGKILL, which the wait_with_timeout
+    # calls below can easily outlast (go test/broker teardown is not
+    # instant) -- so this may be the only chance this ever gets to run.
+    set_artifact_ownership
+
     [ -n "$GO_TEST_PID" ] && kill -TERM "$GO_TEST_PID" 2>/dev/null || true
     [ -n "$BROKER_PID" ] && kill -TERM "$BROKER_PID" 2>/dev/null || true
 
     # Wait for go test to exit
     [ -n "$GO_TEST_PID" ] && wait_with_timeout "go-test" "$GO_TEST_PID" 15
-    set_artifact_ownership
 
     # Wait for broker to exit
     [ -n "$BROKER_PID" ] && wait_with_timeout "broker" "$BROKER_PID" 15
+
+    # Fix ownership again for anything written during the graceful shutdown
+    # above (final test/broker output, etc.), in case this does run to completion.
+    set_artifact_ownership
     echo "Cleanup completed"
     exit 0
 }

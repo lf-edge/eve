@@ -4,7 +4,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -143,6 +142,6 @@ func main() {
 		log.Fatalf("Failed to serve: %v", err)
 	}
 	log.Infof("Broker gRPC server exited")
-	broker.CloseAll(context.Background())
+	broker.CloseAll()
 	log.Info("CloseAll done.")
 }

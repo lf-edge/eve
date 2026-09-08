@@ -801,10 +801,16 @@ func createBlankDisk(ctx context.Context, log *logrus.Entry, diskPath string,
 	return provider.DiskImage{Format: format, Path: diskPath}, nil
 }
 
-// createBlankDisks creates one blank raw disk image file per entry in
+// createBlankDisks creates one blank qcow2 disk image file per entry in
 // sizesBytes, under imageDirPath, and returns them as DiskImage entries in
 // the same order. Used to provision extra (non-boot) disks for a device,
 // e.g. for tests that exercise EVE-level disk layout/RAID configuration.
+//
+// qcow2, not raw: a freshly created blank disk allocates almost nothing on
+// disk, so uploading it (e.g. ProxmoxProvider.uploadDiskImages) transfers a
+// few KB instead of the disk's full size -- a raw image's sparse zero holes
+// get materialized into real zero bytes by a plain file read, turning a
+// handful of large extra disks into a slow, multi-GB upload per test run.
 func createBlankDisks(ctx context.Context, log *logrus.Entry,
 	imageDirPath string, sizesBytes []uint64) ([]provider.DiskImage, error) {
 	if len(sizesBytes) == 0 {
@@ -818,7 +824,7 @@ func createBlankDisks(ctx context.Context, log *logrus.Entry,
 	for i, sizeBytes := range sizesBytes {
 		diskPath := filepath.Join(imageDirPath, fmt.Sprintf("extra-disk-%d.img", i))
 		disk, err := createBlankDisk(
-			ctx, log, diskPath, provider.DiskImageFormatRaw, sizeBytes)
+			ctx, log, diskPath, provider.DiskImageFormatQcow2, sizeBytes)
 		if err != nil {
 			return nil, err
 		}

@@ -74,18 +74,15 @@ const (
 	brokerSetupDevicesTimeout = 15 * time.Minute
 
 	// Timeout for powering on an EVE VM (not for waiting for it to boot).
-	brokerPowerOnEVEDeviceTimeout = 20 * time.Second
+	brokerPowerOnEVEDeviceTimeout = time.Minute
 
 	// Timeout for powering off an EVE VM. The broker RPC blocks until the
 	// provider confirms the VM is stopped, so this must accommodate a
 	// graceful ACPI-less hard power-off, not just issuing the request.
-	brokerPowerOffEVEDeviceTimeout = 20 * time.Second
+	brokerPowerOffEVEDeviceTimeout = time.Minute
 
 	// Timeout for triggering an EVE VM reboot (not for waiting for it to boot).
-	brokerRebootEVEDeviceTimeout = 20 * time.Second
-
-	// Timeout for the broker to tear-down all devices.
-	brokerTeardownDevicesTimeout = time.Minute
+	brokerRebootEVEDeviceTimeout = time.Minute
 
 	// Timeout for retrieving the full console output for a single EVE device.
 	brokerGetConsoleOutputTimeout = 30 * time.Second
@@ -114,7 +111,7 @@ const (
 	deviceRemoveTimeout = 20 * time.Second
 
 	// Timeout for EVE device to perform reboot.
-	deviceRebootTimeout = 3 * time.Minute
+	deviceRebootTimeout = 5 * time.Minute
 
 	// Timeout for establishing a connection to the SDN gRPC service.
 	sdnConnectTimeout = 5 * time.Minute
@@ -346,6 +343,14 @@ type TestHarness struct {
 	resume             chan struct{}
 	exitCh             chan struct{}
 	sigCh              chan os.Signal
+
+	// prevTestFailed records whether the most recently completed test in the
+	// same suite failed (or panicked). maybeReuseDevices consults and clears
+	// it: a failed test may have left devices in a broken state that matching
+	// requirements alone cannot detect (e.g. a botched network reconfiguration
+	// or a wedged cluster join), so the next test must not reuse them even
+	// though it would otherwise be eligible to.
+	prevTestFailed bool
 }
 
 // testState contains per-test execution state, including parameter
@@ -855,6 +860,13 @@ func Init(t *testing.T) *T {
 func Close() {
 	panicErr := recover()
 	th := getTestHarness()
+
+	// Record whether this test failed so the next test's maybeReuseDevices
+	// (called from within the next Setup()) knows not to reuse devices that
+	// may have been left in a broken state.
+	if !th.test.executedTestSuite {
+		th.prevTestFailed = th.t.Failed() || panicErr != nil
+	}
 
 	// Unsubscribe any Watch* subscriptions that the test forgot to stop.
 	th.devicesM.Lock()

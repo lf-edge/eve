@@ -5,6 +5,7 @@ package constants
 
 import (
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -399,6 +400,13 @@ const (
 	// tens of GB.
 	DefaultBrokerTemplateDiskUsageThresholdPercent = 90
 )
+
+// BrokerTeardownDevicesTimeout bounds one device's own teardown, not the
+// whole TeardownDevices RPC: the client sizes the overall RPC deadline as
+// (deviceCount+1) * BrokerTeardownDevicesTimeout (TestHarness.teardownDevices),
+// and the broker gives each device that same budget individually
+// (broker.teardownDevices) -- so one stuck device can't starve the others.
+const BrokerTeardownDevicesTimeout = time.Minute
 
 // InitViperConfig initializes the Viper configuration with default values.
 func InitViperConfig() {

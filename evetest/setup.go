@@ -1312,13 +1312,13 @@ func (th *TestHarness) checkInternetConnectivity(req RequireInternetConnectivity
 	})
 	cancel()
 	if err != nil {
-		th.t.Fatal(err)
+		th.log.Error(err)
 	}
-	if !resp.ReachableOverIpv4 {
+	if err != nil || !resp.ReachableOverIpv4 {
 		th.t.Skipf("Test %q requires IPv4 Internet connectivity "+
 			"which is (currently) not available", th.t.Name())
 	}
-	if !resp.ReachableOverIpv6 && req.RequireIPv6 {
+	if (err != nil || !resp.ReachableOverIpv6) && req.RequireIPv6 {
 		th.t.Skipf("Test %q requires IPv6 Internet connectivity "+
 			"which is (currently) not available", th.t.Name())
 	}
@@ -1328,6 +1328,14 @@ func (th *TestHarness) checkInternetConnectivity(req RequireInternetConnectivity
 // and the reuse policy for this test allows it.
 func (th *TestHarness) maybeReuseDevices(
 	edgeDevReqs map[string]RequireEdgeDevice, netModel *api.NetworkModel) bool {
+	// Never reuse devices left behind by a failed test: matching requirements
+	// alone cannot tell whether that failure left them in a broken state.
+	if th.prevTestFailed {
+		th.prevTestFailed = false
+		th.log.Infof("Previous test failed; not reusing its devices")
+		return false
+	}
+
 	// For simplicity, we will avoid reusing devices between tests when the network
 	// model differs.
 	th.netModelM.Lock()

@@ -77,6 +77,17 @@ write_files:
 
       [Install]
       WantedBy=multi-user.target
+  - path: /etc/needrestart/conf.d/evetest-broker.conf
+    permissions: '0644'
+    content: |
+      # Do not auto-restart containerd or evetest-broker after a library
+      # upgrade (e.g. libc6, applied daily by unattended-upgrades):
+      # evetest-broker.service holds Requires=docker.service, and restarting
+      # containerd breaks its attached foreground docker run, tearing down
+      # every in-flight test session. docker* itself is already excluded by
+      # the stock needrestart.conf; containerd and evetest-broker are not.
+      $nrconf{override_rc}{qr(^containerd)} = 0;
+      $nrconf{override_rc}{qr(^evetest-broker)} = 0;
   - path: /etc/systemd/system/evetest-registry-mirrors.service
     permissions: '0644'
     content: |

@@ -374,7 +374,7 @@ func (b *broker) Close(
 		b.globalLog.Error(err)
 		return nil, err
 	}
-	b.closeSession(ctx, clientSession)
+	b.closeSession(clientSession)
 	return &api.CloseResponse{}, nil
 }
 
@@ -398,9 +398,9 @@ func (b *broker) removeSession(clientID string) *session {
 // b.sessions (via removeSession) and signals clientSession.closed. Since the
 // session was already removed, concurrent lookups for this client fail fast
 // instead of blocking on clientSession.mutex.
-func (b *broker) closeSession(ctx context.Context, clientSession *session) {
+func (b *broker) closeSession(clientSession *session) {
 	clientSession.mutex.Lock()
-	b.teardownDevices(ctx, clientSession)
+	b.teardownDevices(clientSession)
 	clientSession.mutex.Unlock()
 
 	// Signal any goroutines (e.g. KeepAlive timer) that the session is gone.
@@ -408,7 +408,7 @@ func (b *broker) closeSession(ctx context.Context, clientSession *session) {
 }
 
 // CloseAll closes all active sessions.
-func (b *broker) CloseAll(ctx context.Context) {
+func (b *broker) CloseAll() {
 	b.mutex.Lock()
 	sessions := make([]*session, 0, len(b.sessions))
 	for _, clientSession := range b.sessions {
@@ -418,7 +418,7 @@ func (b *broker) CloseAll(ctx context.Context) {
 	b.mutex.Unlock()
 
 	for _, clientSession := range sessions {
-		b.closeSession(ctx, clientSession)
+		b.closeSession(clientSession)
 	}
 }
 
@@ -457,7 +457,7 @@ func (b *broker) KeepAlive(
 		case <-timer.C:
 			if removedSession := b.removeSession(clientID); removedSession != nil {
 				log.Infof("KeepAlive timeout exceeded, closing client session %s", clientID)
-				b.closeSession(context.Background(), removedSession)
+				b.closeSession(removedSession)
 			}
 		case <-clientSession.closed:
 			timer.Stop()
@@ -793,20 +793,19 @@ func (b *broker) PushEVEContainerImage(
 		return err
 	}
 
-	// Check if image already exists or is being uploaded by another client.
-	// SendAndClose without draining is safe — the client handles the early
-	// close by breaking out of its send loop and calling CloseAndRecv.
-	b.mutex.Lock()
+	// Check if image already exists locally. This is a Docker-daemon query, so
+	// it must not run under b.mutex -- that's the broker-wide lock every RPC
+	// handler also takes just to look up a session, and a stalled daemon would
+	// otherwise block session lookups for every client on the broker, not just
+	// image pushes.
 	haveImage, err := utils.HaveDockerImage(ctx, log, dockerImageName)
 	if err != nil {
-		b.mutex.Unlock()
 		err = fmt.Errorf("failed to check for image %q presence: %w",
 			dockerImageName, err)
 		log.Error(err)
 		return err
 	}
 	if haveImage {
-		b.mutex.Unlock()
 		b.imageUsage.touch(dockerImageName)
 		log.Infof("Image %q already present in Docker image store",
 			dockerImageName)
@@ -815,6 +814,11 @@ func (b *broker) PushEVEContainerImage(
 		})
 	}
 
+	// Check if it's already being uploaded by another client, and reserve this
+	// upload otherwise. Only the map access needs b.mutex.
+	// SendAndClose without draining is safe — the client handles the early
+	// close by breaking out of its send loop and calling CloseAndRecv.
+	b.mutex.Lock()
 	if uploadDone, uploading := b.imageUploads[dockerImageName]; uploading {
 		b.mutex.Unlock()
 		log.Infof("Image %q is already being uploaded by another client, waiting...",
@@ -1131,7 +1135,7 @@ func (b *broker) SetupDevices(
 		if !exists || len(dev.DeviceSpec.Disks) == 0 {
 			err = fmt.Errorf("disk image for EVE device %q not found", deviceName)
 			log.Error(err)
-			b.teardownDevices(ctx, clientSession)
+			b.teardownDevices(clientSession)
 			return nil, err
 		}
 
@@ -1149,7 +1153,7 @@ func (b *broker) SetupDevices(
 					err = fmt.Errorf("invalid EVE interface MAC %q: %w",
 						macStr, err)
 					log.Error(err)
-					b.teardownDevices(ctx, clientSession)
+					b.teardownDevices(clientSession)
 					return nil, err
 				}
 				eveIntfMAC = mac
@@ -1160,7 +1164,7 @@ func (b *broker) SetupDevices(
 					err = fmt.Errorf("invalid SDN interface MAC %q: %w",
 						macStr, err)
 					log.Error(err)
-					b.teardownDevices(ctx, clientSession)
+					b.teardownDevices(clientSession)
 					return nil, err
 				}
 				sdnIntfMAC = mac
@@ -1193,7 +1197,8 @@ func (b *broker) SetupDevices(
 
 	// Provision all EVE devices in parallel (live or installer).
 	if err = b.provisionEVEDevices(ctx, log, clientSession); err != nil {
-		b.teardownDevices(ctx, clientSession)
+		log.Error(err)
+		b.teardownDevices(clientSession)
 		return nil, err
 	}
 
@@ -1202,7 +1207,7 @@ func (b *broker) SetupDevices(
 	if err != nil {
 		err = fmt.Errorf("failed to prepare SDN device spec: %w", err)
 		log.Error(err)
-		b.teardownDevices(ctx, clientSession)
+		b.teardownDevices(clientSession)
 		return nil, err
 	}
 	sdnDevice.NetworkInterfaces = append(sdnDevice.NetworkInterfaces,
@@ -1219,7 +1224,7 @@ func (b *broker) SetupDevices(
 	if err != nil {
 		err = fmt.Errorf("failed to setup SDN device: %w", err)
 		log.Error(err)
-		b.teardownDevices(ctx, clientSession)
+		b.teardownDevices(clientSession)
 		return nil, err
 	}
 	sdnDevice.created = true
@@ -1326,8 +1331,17 @@ func (b *broker) runDeviceInstaller(ctx context.Context, log *logrus.Entry,
 		return fmt.Errorf("failed to setup device %q for installation: %w",
 			dev.deviceName, err)
 	}
+	// Mark created as soon as the underlying VM exists, not only once the
+	// whole installer flow succeeds: if a later step fails (power-on,
+	// waiting for the installer to stop, disk reconfiguration), the
+	// caller's SetupDevices error path falls back to teardownDevices for
+	// the whole session, which only tears down devices with created=true.
+	// Setting it late left a real, already-created VM invisible to that
+	// fallback -- observed in practice as an orphaned VM after the
+	// installer wait below was cut short by the client disconnecting.
+	dev.created = true
 	if err := b.provider.PowerOnDevice(ctx, dev.providerDevName); err != nil {
-		if err2 := b.provider.TeardownDevice(ctx, dev.providerDevName); err2 != nil {
+		if err2 := teardownDeviceFresh(b.provider, log, dev.providerDevName); err2 != nil {
 			log.Warnf("Failed to teardown device %q after power-on failure: %v",
 				dev.deviceName, err2)
 		}
@@ -1346,7 +1360,7 @@ func (b *broker) runDeviceInstaller(ctx context.Context, log *logrus.Entry,
 	dev.installerImage = nil
 	err := b.provider.ReconfigureDeviceDisks(ctx, dev.providerDevName, dev.DeviceSpec.Disks)
 	if err != nil {
-		if err2 := b.provider.TeardownDevice(ctx, dev.providerDevName); err2 != nil {
+		if err2 := teardownDeviceFresh(b.provider, log, dev.providerDevName); err2 != nil {
 			log.Warnf("Failed to teardown device %q after disk reconfiguration failure: %v",
 				dev.deviceName, err2)
 		}
@@ -1354,7 +1368,6 @@ func (b *broker) runDeviceInstaller(ctx context.Context, log *logrus.Entry,
 			"after installation: %w", dev.deviceName, err)
 	}
 
-	dev.created = true
 	log.Infof("EVE device %q provisioned after installation using %s",
 		dev.deviceName, b.providerName)
 	return nil
@@ -1377,12 +1390,24 @@ func (b *broker) waitForDeviceStop(ctx context.Context, log *logrus.Entry,
 			return nil
 		}
 	}
-	if err := b.provider.TeardownDevice(ctx, dev.providerDevName); err != nil {
+	if err := teardownDeviceFresh(b.provider, log, dev.providerDevName); err != nil {
 		log.Warnf("Failed to teardown device %q after installation timeout: %v",
 			dev.deviceName, err)
 	}
 	return fmt.Errorf("EVE installation timed out or failed for device %q",
 		dev.deviceName)
+}
+
+// teardownDeviceFresh tears down a single device on a context detached from
+// any request context, carrying only log. This is often called precisely
+// because the caller's own ctx already failed or was canceled (e.g. the
+// client disconnected), and a context derived from an already-canceled one
+// can never succeed -- see the same reasoning on teardownDevices.
+func teardownDeviceFresh(p provider.DeviceProvider, log *logrus.Entry, providerDevName string) error {
+	ctx, cancel := context.WithTimeout(
+		logger.WithLogger(context.Background(), log), constants.BrokerTeardownDevicesTimeout)
+	defer cancel()
+	return p.TeardownDevice(ctx, providerDevName)
 }
 
 // generateSDNUplinkMAC generates a unique MAC address for an SDN uplink port.
@@ -1437,7 +1462,7 @@ func (b *broker) TeardownDevices(
 	}
 	clientSession.mutex.Lock()
 	defer clientSession.mutex.Unlock()
-	b.teardownDevices(ctx, clientSession)
+	b.teardownDevices(clientSession)
 	return &api.TeardownDevicesResponse{}, nil
 }
 
@@ -1445,16 +1470,24 @@ func (b *broker) TeardownDevices(
 // It attempts to teardown each device via the provider and deletes the corresponding
 // QCOW2/RAW image files from the filesystem. Any errors during teardown or file removal
 // are logged but do not prevent the function from continuing.
-func (b *broker) teardownDevices(ctx context.Context, clientSession *session) {
+func (b *broker) teardownDevices(clientSession *session) {
 	log := clientSession.log
-	ctx = logger.WithLogger(ctx, log)
 	log.Infof("Starting teardown of devices from the client session %q",
 		clientSession.clientID)
 
-	// Teardown all EVE devices
+	// Teardown must not depend on the caller's ctx staying alive: this is
+	// often called precisely because that ctx already failed or was
+	// canceled (e.g. the client disconnected mid-SetupDevices), and a
+	// context derived from an already-canceled one can never succeed.
+	// Use a fresh, independent context instead. Each device still gets its
+	// own constants.BrokerTeardownDevicesTimeout, so a device stuck/hanging
+	// during teardown cannot consume the time budget meant for the others.
+	ctx := logger.WithLogger(context.Background(), log)
 	for deviceName, dev := range clientSession.eveDevices {
 		if dev.created {
-			err := b.provider.TeardownDevice(ctx, dev.providerDevName)
+			devCtx, cancel := context.WithTimeout(ctx, constants.BrokerTeardownDevicesTimeout)
+			err := b.provider.TeardownDevice(devCtx, dev.providerDevName)
+			cancel()
 			if err != nil {
 				log.Warnf("Failed to teardown EVE device %q: %v", deviceName, err)
 			} else {
@@ -1485,7 +1518,9 @@ func (b *broker) teardownDevices(ctx context.Context, clientSession *session) {
 	if clientSession.sdnDevice != nil {
 		providerDevName := clientSession.sdnDevice.providerDevName
 		if clientSession.sdnDevice.created {
-			err := b.provider.TeardownDevice(ctx, providerDevName)
+			devCtx, cancel := context.WithTimeout(ctx, constants.BrokerTeardownDevicesTimeout)
+			err := b.provider.TeardownDevice(devCtx, providerDevName)
+			cancel()
 			if err != nil {
 				log.Warnf("Failed to teardown SDN device: %v", err)
 			} else {
@@ -1581,6 +1616,11 @@ func (b *broker) PowerOnDevice(
 }
 
 // PowerOffDevice powers off a specific EVE device.
+//
+// The provider call runs without holding clientSession.mutex: that mutex
+// serializes this session's own device operations, not every other device's
+// power control for as long as one provider call takes -- see PowerOnDevice's
+// doc comment.
 func (b *broker) PowerOffDevice(
 	ctx context.Context, req *api.DeviceControlRequest) (*api.DeviceControlResponse, error) {
 	b.mutex.Lock()
@@ -1591,18 +1631,17 @@ func (b *broker) PowerOffDevice(
 		b.globalLog.Error(err)
 		return nil, err
 	}
+
 	clientSession.mutex.Lock()
-	defer clientSession.mutex.Unlock()
-
 	log := clientSession.log
-	ctx = logger.WithLogger(ctx, log)
-
 	eveDevice, exists := clientSession.eveDevices[req.DeviceName]
+	clientSession.mutex.Unlock()
 	if !exists {
 		err := eveDevNotFoundErr(req.DeviceName)
 		log.Error(err)
 		return nil, err
 	}
+	ctx = logger.WithLogger(ctx, log)
 
 	err := b.provider.PowerOffDevice(ctx, eveDevice.providerDevName)
 	if err != nil {
@@ -1616,7 +1655,8 @@ func (b *broker) PowerOffDevice(
 	return &api.DeviceControlResponse{}, nil
 }
 
-// RebootDevice reboots a specific EVE device.
+// RebootDevice reboots a specific EVE device. The provider call runs without
+// holding clientSession.mutex; see PowerOffDevice's doc comment.
 func (b *broker) RebootDevice(
 	ctx context.Context, req *api.DeviceControlRequest) (*api.DeviceControlResponse, error) {
 	b.mutex.Lock()
@@ -1627,18 +1667,17 @@ func (b *broker) RebootDevice(
 		b.globalLog.Error(err)
 		return nil, err
 	}
+
 	clientSession.mutex.Lock()
-	defer clientSession.mutex.Unlock()
-
 	log := clientSession.log
-	ctx = logger.WithLogger(ctx, log)
-
 	eveDevice, exists := clientSession.eveDevices[req.DeviceName]
+	clientSession.mutex.Unlock()
 	if !exists {
 		err := eveDevNotFoundErr(req.DeviceName)
 		log.Error(err)
 		return nil, err
 	}
+	ctx = logger.WithLogger(ctx, log)
 
 	err := b.provider.RebootDevice(ctx, eveDevice.providerDevName)
 	if err != nil {
@@ -1652,7 +1691,9 @@ func (b *broker) RebootDevice(
 	return &api.DeviceControlResponse{}, nil
 }
 
-// GetDeviceConsoleOutput returns the console output from the device.
+// GetDeviceConsoleOutput returns the console output from the device. The
+// provider call runs without holding clientSession.mutex; see
+// PowerOffDevice's doc comment.
 func (b *broker) GetDeviceConsoleOutput(
 	ctx context.Context, req *api.DeviceControlRequest) (*api.ConsoleOutputResponse, error) {
 	b.mutex.Lock()
@@ -1663,18 +1704,17 @@ func (b *broker) GetDeviceConsoleOutput(
 		b.globalLog.Error(err)
 		return nil, err
 	}
+
 	clientSession.mutex.Lock()
-	defer clientSession.mutex.Unlock()
-
 	log := clientSession.log
-	ctx = logger.WithLogger(ctx, log)
-
 	eveDevice, exists := clientSession.eveDevices[req.DeviceName]
+	clientSession.mutex.Unlock()
 	if !exists {
 		err := eveDevNotFoundErr(req.DeviceName)
 		log.Error(err)
 		return nil, err
 	}
+	ctx = logger.WithLogger(ctx, log)
 
 	output, err := b.provider.GetDeviceConsoleOutput(ctx, eveDevice.providerDevName)
 	if err != nil {
