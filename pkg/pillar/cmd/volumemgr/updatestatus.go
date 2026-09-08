@@ -481,16 +481,22 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 			// whose ingest failed keeps its error and is not re-driven here;
 			// retrying that is the controller's call, as before.
 			for _, blob := range lookupBlobStatuses(ctx, status.Blobs...) {
-				if blob.State != types.LOADED {
-					log.Noticef("doUpdateContentTree(%s): in LOADING with no ingest "+
-						"in flight; resetting to VERIFIED to retry", status.Key())
-					status.State = types.VERIFIED
-					publishContentTreeStatus(ctx, status)
-					// Rerun so the VERIFIED branch resubmits the load right
-					// away rather than on some later event.
-					_, done := doUpdateContentTree(ctx, status)
-					return true, done
+				if blob.State == types.LOADED || ingestInFlightFor(ctx, blob.Sha256) {
+					// Loaded, or a concurrent job's claim covers it: that
+					// job's result re-drives this tree, so there is nothing
+					// to resubmit. Resetting anyway would loop: the fresh
+					// job could claim nothing, complete as a no-op, and its
+					// result would land us right back here.
+					continue
 				}
+				log.Noticef("doUpdateContentTree(%s): in LOADING with no ingest "+
+					"in flight; resetting to VERIFIED to retry", status.Key())
+				status.State = types.VERIFIED
+				publishContentTreeStatus(ctx, status)
+				// Rerun so the VERIFIED branch resubmits the load right
+				// away rather than on some later event.
+				_, done := doUpdateContentTree(ctx, status)
+				return true, done
 			}
 		}
 		if wres != nil {
