@@ -895,7 +895,7 @@ func storeIntegrityToken(token []byte) {
 	if len(token) == 0 {
 		log.Warnf("[ATTEST] Received empty integrity token")
 	}
-	err := os.WriteFile(types.ITokenFile, token, 0644)
+	err := os.WriteFile(types.ITokenFile, token, 0600)
 	if err != nil {
 		log.Fatalf("Failed to store integrity token, err: %v", err)
 	}
