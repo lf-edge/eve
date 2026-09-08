@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// EVE-kvm <-> EVE-k boot-disk conversion driven from baseosmgr.
+// EVE-kvm -> EVE-k boot-disk conversion driven from baseosmgr.
 //
 // A cross-flavor base-OS update is allowed (only when the device has no
 // volumes; see the IsHVTypeKube/IsVersionHVTypeKube seam in handlebaseos.go)

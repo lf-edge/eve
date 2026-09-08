@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// Package diskconvert is the baseosmgr-side orchestration for the EVE-kvm <->
+// Package diskconvert is the baseosmgr-side orchestration for the EVE-kvm ->
 // EVE-k boot-disk repartition (design-doc Item 3). It runs the standalone
 // storage-resizer binary's pre-flight `check`, maps the result to an action,
 // and drives that action — without importing go-diskfs/partitionresizer into

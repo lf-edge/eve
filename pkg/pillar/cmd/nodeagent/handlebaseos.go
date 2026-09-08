@@ -40,7 +40,7 @@ func doZbootBaseOsInstallationComplete(ctxPtr *nodeagentContext,
 	}
 }
 
-// handleBaseOsStatus* watch baseosmgr's BaseOsStatus for an EVE-kvm <-> EVE-k
+// handleBaseOsStatus* watch baseosmgr's BaseOsStatus for an EVE-kvm -> EVE-k
 // boot-disk conversion that needs a reboot into the offline shrink. baseosmgr
 // advances the sub-state to CONVERT_REBOOTING_TO_RESIZE once the /config shrink
 // flag is written; nodeagent then performs a graceful reboot.
