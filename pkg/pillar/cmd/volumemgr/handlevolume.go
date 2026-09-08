@@ -284,7 +284,19 @@ func maybeDeleteVolume(ctx *volumemgrContext, status *types.VolumeStatus) {
 		status.SubState = types.VolumeSubStateDeleting
 		publishVolumeStatus(ctx, status)
 		// Asynch destruction; make sure we have a request for the work
-		AddWorkDestroy(ctx, status)
+		if err := AddWorkDestroy(ctx, status); err != nil {
+			// This branch has no delete-retry machinery, and a volume parked
+			// in Deleting is never re-driven. Go back to Created with a
+			// visible warning, so the next volume event re-attempts the
+			// destroy through this function.
+			status.SubState = types.VolumeSubStateCreated
+			status.SetErrorDescription(types.ErrorDescription{
+				Error:               fmt.Sprintf("volume destroy deferred: %v", err),
+				ErrorRetryCondition: "Will retry when a worker becomes available",
+				ErrorSeverity:       types.ErrorSeverityWarning,
+			})
+			publishVolumeStatus(ctx, status)
+		}
 	} else if status.SubState == types.VolumeSubStateDeleting {
 		vr := popVolumeWorkResult(ctx, status.Key())
 		if vr != nil {
@@ -321,11 +333,22 @@ func maybeDeleteVolume(ctx *volumemgrContext, status *types.VolumeStatus) {
 	log.Functionf("maybeDeleteVolume for %v Done", status.Key())
 }
 
-// maybeSpaceAvailable iterates over VolumeStatus and call doUpdateVol if state is less than CREATING_VOLUME
+// maybeSpaceAvailable re-drives every VolumeStatus still below
+// CREATING_VOLUME (or parked in CREATING_VOLUME's Preparing sub-state)
+// through doUpdateVol. It is called whenever something may have unblocked a
+// deferred volume -- disk space freeing up, or a worker-pool slot freeing up
+// after a refused submission.
 func maybeSpaceAvailable(ctx *volumemgrContext) {
 	for _, s := range ctx.pubVolumeStatus.GetAll() {
 		status := s.(types.VolumeStatus)
-		if status.State >= types.CREATING_VOLUME {
+		// A volume in CREATING_VOLUME still in the Preparing sub-state may be
+		// waiting for a refused create submission to be retried; the Preparing
+		// branch of doUpdateVol is the only place that re-submits it.
+		// Everything else at CREATING_VOLUME or beyond is driven by its work
+		// result, so leave it alone.
+		if status.State > types.CREATING_VOLUME ||
+			(status.State == types.CREATING_VOLUME &&
+				status.SubState != types.VolumeSubStatePreparing) {
 			continue
 		}
 		if vc := ctx.LookupVolumeConfig(status.Key()); vc == nil {
