@@ -220,7 +220,13 @@ EOF
 }
 
 do_sbom() {
-  cat /bits/*.spdx.json >&3
+  # Consumers parse this as a single SPDX document, so more than one file in
+  # /bits cannot be concatenated into valid output.
+  set -- /bits/*.spdx.json
+  if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
+    bail "expected exactly one SBoM in /bits, found: $*"
+  fi
+  cat "$1" >&3
 }
 
 get_image_platform() {
