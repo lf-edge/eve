@@ -356,8 +356,12 @@ func (th *TestHarness) prepareImageForEVEDevice(dev *deviceState) {
 		th.t.Fatalf("EVE version is not defined")
 	}
 
+	repo := dev.requirement.WithEVERepo
+	if repo == "" {
+		repo = viper.GetString(constants.EVERepoEnv)
+	}
 	dev.imageRef = &api.ImageRef{
-		Repo:       viper.GetString(constants.EVERepoEnv),
+		Repo:       repo,
 		Version:    eveVersion,
 		Hypervisor: hypervisor,
 		Arch:       arch,

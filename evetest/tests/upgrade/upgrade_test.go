@@ -23,6 +23,7 @@ import (
 
 const (
 	initialEVEVersionParamKey = "INITIAL_EVE_VERSION"
+	initialEVERepoParamKey    = "INITIAL_EVE_REPO"
 	initialHypervisorParamKey = "INITIAL_HYPERVISOR"
 	expectRevertParamKey      = "EXPECT_REVERT"
 	datastoreTypeParamKey     = "DATASTORE_TYPE"
@@ -37,10 +38,11 @@ const (
 // the upgrade (which causes one reboot), and then verifies that the application
 // is still healthy under the new EVE version.
 //
-// The device boots on the initial version (EVETEST_INITIAL_EVE_VERSION +
-// EVETEST_INITIAL_HYPERVISOR) and is upgraded to the target version
-// (EVETEST_EVE_VERSION + EVETEST_HYPERVISOR). This way the standard EVETEST_EVE_VERSION
-// variable always refers to the version being tested, which is the upgrade target.
+// The device boots on the initial version (EVETEST_INITIAL_EVE_REPO/
+// EVETEST_INITIAL_EVE_VERSION/EVETEST_INITIAL_HYPERVISOR) and is upgraded to the
+// target version (EVETEST_EVE_REPO/EVETEST_EVE_VERSION/EVETEST_HYPERVISOR).
+// Kept separate so CI can point EVETEST_EVE_REPO at a repo holding only the
+// PR's own build while EVETEST_INITIAL_EVE_REPO still resolves released versions.
 //
 // Parameters:
 //   - EVE_VERSION: target EVE version to upgrade to (default is the current HEAD
@@ -48,6 +50,8 @@ const (
 //   - HYPERVISOR: target hypervisor for the upgraded EVE (default: kvm)
 //   - INITIAL_EVE_VERSION: initial EVE version the device starts on (required,
 //     e.g. "16.0.0-lts")
+//   - INITIAL_EVE_REPO: container image repository the initial EVE version is
+//     pulled from (default: EVETEST_EVE_REPO's own default)
 //   - INITIAL_HYPERVISOR: initial hypervisor for the starting device (default: kvm)
 //   - DISK_SIZE_MB: device disk size in MiB (0 = framework default 65536 MiB)
 //   - EXPECT_REVERT: if true, the upgrade is expected to fail and EVE to revert
@@ -76,6 +80,16 @@ func TestEVEUpgrade(test *testing.T) {
 			Description: evetest.TestParameterDescription{
 				Summary: "EVE version to upgrade from (the pre-upgrade initial version)",
 				Default: "16.0.0-lts",
+			},
+		},
+		evetest.TestParameterDefinition{
+			// Hardcoded, not constants.DefaultEVERepo: list-tests can't
+			// resolve cross-package constants and would show "" instead.
+			Key:          initialEVERepoParamKey,
+			DefaultValue: "lfedge/eve",
+			Description: evetest.TestParameterDescription{
+				Summary: "Container image repository for the pre-upgrade initial EVE version",
+				Default: "lfedge/eve",
 			},
 		},
 		evetest.TestParameterDefinition{
@@ -115,6 +129,7 @@ func TestEVEUpgrade(test *testing.T) {
 		evetestT.Fatalf("%s%s is required for TestEVEUpgrade",
 			constants.EnvPrefix, initialEVEVersionParamKey)
 	}
+	initialRepo := evetest.GetTestParameter[string](initialEVERepoParamKey)
 	initialHypervisor := evetest.GetTestParameter[evetest.Hypervisor](initialHypervisorParamKey)
 	targetVersion := evetest.GetEVEVersionParameterValue()
 	targetHypervisor := evetest.GetHypervisorParameterValue()
@@ -139,6 +154,7 @@ func TestEVEUpgrade(test *testing.T) {
 		evetest.RequireEdgeDevice{
 			Name:              devName,
 			WithEVEVersion:    initialVersion,
+			WithEVERepo:       initialRepo,
 			WithHypervisor:    initialHypervisor,
 			WithTPM:           withTPM,
 			MinDiskSizeInMiB:  diskSizeMiB,

@@ -31,6 +31,7 @@ import (
 	pillartypes "github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	uuid "github.com/satori/go.uuid"
+	"github.com/spf13/viper"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -496,8 +497,11 @@ func (d *EdgeDevice) UpgradeEVE(targetEVEVersion string, targetEVEHypervisor Hyp
 		return
 	}
 
+	// Deliberately EVETEST_EVE_REPO, not currentImageRef.Repo: the initial
+	// device may pull from a different repo (RequireEdgeDevice.WithEVERepo),
+	// but the upgrade target is the version under test.
 	targetImageRef := &api.ImageRef{
-		Repo:       currentImageRef.Repo,
+		Repo:       viper.GetString(constants.EVERepoEnv),
 		Version:    targetEVEVersion,
 		Hypervisor: targetEVEHypervisor.toAPIType(),
 		Arch:       currentImageRef.Arch,

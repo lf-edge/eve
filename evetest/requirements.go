@@ -190,6 +190,10 @@ type RequireEdgeDevice struct {
 	MinDiskSizeInMiB uint32 // Default will be 64 GiB (65536 MiB).
 
 	WithEVEVersion string
+	// WithEVERepo overrides the repo WithEVEVersion is pulled from; empty
+	// means EVETEST_EVE_REPO. For a device that must use a different repo
+	// than the one under test (e.g. TestEVEUpgrade's pre-upgrade device).
+	WithEVERepo    string
 	WithHypervisor Hypervisor
 	WithTPM        bool
 
