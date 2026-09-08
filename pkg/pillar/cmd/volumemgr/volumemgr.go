@@ -88,6 +88,13 @@ type volumemgrContext struct {
 	// must be re-driven; see doUpdateContentTree. Only touched from the main
 	// event loop goroutine.
 	pendingIngest map[string]bool
+	// inflightBlobIngests maps a blob sha256 to the ContentTreeStatus key of
+	// the accepted-but-not-completed ingest job that will load it into the
+	// CAS. Claims are made in AddWorkLoad and released when the job's result
+	// is consumed; casIngestWorker loads exactly the blobs its job claimed,
+	// so a blob shared by many content trees is ingested once instead of once
+	// per tree. Only touched from the main event loop goroutine.
+	inflightBlobIngests map[string]string
 
 	verifierRestarted    bool // Wait for verifier to restart
 	contentTreeRestarted bool // Wait to receive all contentTree after restart
@@ -145,13 +152,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	// These settings can be overridden by GlobalConfig
 	ctx := volumemgrContext{
-		ps:                 ps,
-		vdiskGCTime:        3600,
-		deferContentDelete: 0,
-		globalConfig:       types.DefaultConfigItemValueMap(),
-		persistType:        persist.ReadPersistType(),
-		hvTypeKube:         base.IsHVTypeKube(),
-		pendingIngest:      make(map[string]bool),
+		ps:                  ps,
+		vdiskGCTime:         3600,
+		deferContentDelete:  0,
+		globalConfig:        types.DefaultConfigItemValueMap(),
+		persistType:         persist.ReadPersistType(),
+		hvTypeKube:          base.IsHVTypeKube(),
+		pendingIngest:       make(map[string]bool),
+		inflightBlobIngests: make(map[string]string),
 	}
 	agentbase.Init(&ctx, logger, log, agentName,
 		agentbase.WithPidFile(),
