@@ -133,6 +133,7 @@ jobs:
           docker run "$EVE" installer_raw > assets/installer.raw
           docker run "$EVE" rootfs > assets/rootfs.img
           docker run "$EVE" live > assets/live.raw
+          docker run "$EVE" sbom > assets/rootfs.spdx.json
           if [ "${{ matrix.platform }}" == "generic" ]; then
              docker run "$EVE" installer_iso > assets/installer.iso
              docker run "$EVE" installer_net > assets/installer-net.tar
