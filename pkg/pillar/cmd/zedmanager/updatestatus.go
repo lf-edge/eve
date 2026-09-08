@@ -500,9 +500,21 @@ func doInstall(ctx *zedmanagerContext,
 			}
 		}
 	}
-	// Determine minimum state and errors across all of VolumeRefStatus
+	// Determine minimum state and errors across all of VolumeRefStatus.
+	// While purging, a VolumeRefStatus dropped from the current config is kept
+	// around above (not removed) as long as the running domain still uses it,
+	// solely so its release can be ordered after the domain is torn down. Such
+	// an entry must not otherwise count here: a stale volume's error (e.g. a
+	// pre-existing upload failure) would otherwise block doInstall from ever
+	// returning done, which blocks the domain teardown that is the only thing
+	// that lets this stale entry go away — deadlocking the purge on the exact
+	// state it needs to get past.
 	minState := types.MAXSTATE
 	for _, vrs := range status.VolumeRefStatusList {
+		if status.PurgeInprogress == types.DownloadAndVerify &&
+			getVolumeRefConfigFromAIConfig(&config, vrs) == nil {
+			continue
+		}
 		if vrs.State < minState {
 			minState = vrs.State
 		}
