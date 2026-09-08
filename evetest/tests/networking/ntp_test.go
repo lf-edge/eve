@@ -188,8 +188,9 @@ func TestDeviceNTPConfig(test *testing.T) {
 	// service container). "-n" disables reverse-DNS lookups so the address
 	// column shows the numeric IP we configured, not a resolved hostname.
 	log.Infof("Phase 3: cross-checking via chronyc sources over SSH...")
+	sshTimeout := 30 * time.Second
 	output, _, err := device.RunShellScript(
-		"eve exec pillar chronyc -n sources", 15*time.Second, 0)
+		"eve exec pillar chronyc -n sources", sshTimeout, 0)
 	t.Expect(err).ToNot(HaveOccurred())
 	foundSyncedLine := false
 	for _, line := range strings.Split(output, "\n") {

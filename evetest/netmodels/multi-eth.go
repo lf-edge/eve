@@ -684,6 +684,176 @@ var TwoMgmtPortsWithLACPBond = &api.NetworkModel{
 	},
 }
 
+// ThreeMgmtPortsWithLACPBond is a network model with three ethernet ports:
+// eth0 and eth1 aggregated by an SDN-side LACP (802.3ad) bond (same layout as
+// TwoMgmtPortsWithLACPBond), plus eth2 as a standalone third management port
+// on its own bridge and network, also with DHCP and controller access.
+//
+// eth2 exists so that EVE always has a second, independent, working path to
+// the controller regardless of how long LACP negotiation on the bond takes:
+// NIM's DPC connectivity test only requires ONE management port in the
+// current DPC to succeed (conntester.requiredSuccessCount = 1), so having
+// eth2 keeps the DPC as a whole "working" and lets EVE stay on it -- rather
+// than falling back to the lastresort DPC (which tears the bond down
+// entirely) while LACP is still converging.
+var ThreeMgmtPortsWithLACPBond = &api.NetworkModel{
+	Ports: []*api.Port{
+		{
+			LogicalLabel: "eth0",
+			AdminUp:      true,
+		},
+		{
+			LogicalLabel: "eth1",
+			AdminUp:      true,
+		},
+		{
+			LogicalLabel: "eth2",
+			AdminUp:      true,
+		},
+	},
+	Bonds: []*api.Bond{
+		{
+			LogicalLabel: "sdn-bond0",
+			Ports:        []string{"eth0", "eth1"},
+			Mode:         api.BondMode_BOND_MODE_802_3AD,
+			LacpRate:     api.LacpRate_LACP_RATE_FAST,
+			MiiMonitor: &api.BondMIIMonitor{
+				Enabled:  true,
+				Interval: 100,
+			},
+		},
+	},
+	Bridges: []*api.Bridge{
+		{
+			LogicalLabel: "bridge0",
+			Bonds:        []string{"sdn-bond0"},
+		},
+		{
+			LogicalLabel: "bridge1",
+			Ports:        []string{"eth2"},
+		},
+	},
+	Networks: []*api.Network{
+		{
+			LogicalLabel: "network0",
+			Bridge:       "bridge0",
+			Ipv4: &api.NetworkIPConfig{
+				Subnet: "172.20.20.0/24",
+				GwIp:   "172.20.20.1",
+				Dhcp: &api.DHCP{
+					Enable:     true,
+					DomainName: "test",
+					Dns: &api.DNSClientConfig{
+						PrivateDns: []string{"dns-server0"},
+					},
+				},
+			},
+		},
+		{
+			LogicalLabel: "network1",
+			Bridge:       "bridge1",
+			Ipv4: &api.NetworkIPConfig{
+				Subnet: "172.20.21.0/24",
+				GwIp:   "172.20.21.1",
+				Dhcp: &api.DHCP{
+					Enable:     true,
+					DomainName: "test",
+					Dns: &api.DNSClientConfig{
+						PrivateDns: []string{"dns-server1"},
+					},
+				},
+			},
+		},
+	},
+	Endpoints: &api.Endpoints{
+		DnsServers: []*api.DNSServer{
+			{
+				Endpoint: &api.Endpoint{
+					LogicalLabel: "dns-server0",
+					Fqdn:         "dns-server0.test",
+					Ipv4: &api.EndpointIPConfig{
+						Subnet: "10.16.16.0/24",
+						Ip:     "10.16.16.25",
+					},
+				},
+				StaticEntries: []*api.DNSEntry{
+					{
+						FqdnSource: &api.DNSEntry_FqdnLiteral{
+							FqdnLiteral: evetest.GetControllerHostname(),
+						},
+						IpSource: &api.DNSEntry_IpLiteral{
+							IpLiteral: evetest.GetControllerIPv4().String(),
+						},
+					},
+					{
+						FqdnSource: &api.DNSEntry_EndpointFqdnRef{
+							EndpointFqdnRef: "http-server",
+						},
+						IpSource: &api.DNSEntry_EndpointIpRef{
+							EndpointIpRef: &api.EndpointIPRef{
+								LogicalLabel: "http-server",
+								IpVersion:    api.IPVersion_IPV4,
+							},
+						},
+					},
+				},
+				UpstreamServers: []string{"8.8.8.8", "1.1.1.1"},
+			},
+			{
+				Endpoint: &api.Endpoint{
+					LogicalLabel: "dns-server1",
+					Fqdn:         "dns-server1.test",
+					Ipv4: &api.EndpointIPConfig{
+						Subnet: "10.16.17.0/24",
+						Ip:     "10.16.17.25",
+					},
+				},
+				StaticEntries: []*api.DNSEntry{
+					{
+						FqdnSource: &api.DNSEntry_FqdnLiteral{
+							FqdnLiteral: evetest.GetControllerHostname(),
+						},
+						IpSource: &api.DNSEntry_IpLiteral{
+							IpLiteral: evetest.GetControllerIPv4().String(),
+						},
+					},
+					{
+						FqdnSource: &api.DNSEntry_EndpointFqdnRef{
+							EndpointFqdnRef: "http-server",
+						},
+						IpSource: &api.DNSEntry_EndpointIpRef{
+							EndpointIpRef: &api.EndpointIPRef{
+								LogicalLabel: "http-server",
+								IpVersion:    api.IPVersion_IPV4,
+							},
+						},
+					},
+				},
+				UpstreamServers: []string{"8.8.8.8", "1.1.1.1"},
+			},
+		},
+		HttpServers: []*api.HTTPServer{
+			{
+				Endpoint: &api.Endpoint{
+					LogicalLabel: "http-server",
+					Fqdn:         "http-server.test",
+					Ipv4: &api.EndpointIPConfig{
+						Subnet: "10.17.17.0/24",
+						Ip:     "10.17.17.25",
+					},
+				},
+				HttpPort: 80,
+				Paths: map[string]*api.HTTPContent{
+					"/helloworld": {
+						ContentType: "text/plain",
+						Content:     "Hello world!",
+					},
+				},
+			},
+		},
+	},
+}
+
 // ManyDNSServers is a network model with four ethernet ports, each on its own
 // bridge and network with DHCP and access to the controller. All four are
 // intended to be used as management ports on the EVE side.

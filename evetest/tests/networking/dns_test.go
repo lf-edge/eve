@@ -162,6 +162,10 @@ func TestDNSFunctionality(test *testing.T) {
 	// Set NetworkTestDuration to its minimum allowed value so the broken-DNS DPC
 	// in Phase 3 fails as quickly as possible.
 	cfgProps.SetGlobalValueInt(pillartypes.NetworkTestDuration, 10)
+	// Lower the DPC connectivity retest interval to its allowed minimum, so
+	// Phase 1's per-port state (see the comment at phase1Timeout below)
+	// settles quickly instead of on the default 5-minute cadence.
+	cfgProps.SetGlobalValueInt(pillartypes.NetworkTestInterval, pillartypes.MinuteInSec)
 	devConfig.SetConfigProperties(cfgProps)
 
 	// eth0: DHCP, append static-dns0 (IgnoreDNSFromDHCP=false).
@@ -252,7 +256,19 @@ func TestDNSFunctionality(test *testing.T) {
 	devUpdates, stopDevWatch := device.WatchDeviceInfo()
 	defer stopDevWatch()
 
-	phase1Timeout := 3 * time.Minute
+	// NetworkTestInterval (timer.port.testinterval) has a hardcoded 5-minute
+	// floor (types.GlobalConfigMinimums.NetworkTestInterval in
+	// pkg/pillar/types/globalconfigold.go) that this test does not override
+	// (unlike NetworkTestDuration above). Once any single port reaches the
+	// required connectivity success count, DpcManager's fast per-DPC verify
+	// loop exits and further rechecks only happen on this periodic interval
+	// -- so a port that is briefly slow to settle (e.g. still acquiring its
+	// DHCP lease when a cheaper port already succeeds) can stay in its
+	// stale, not-yet-cleared state for up to a full interval. Budget for one
+	// such interval, plus a safety margin for the initial settle time before
+	// the first port succeeds and arms this timer.
+	const networkTestInterval = 5 * time.Minute
+	phase1Timeout := networkTestInterval + 2*time.Minute
 	t.Eventually(devUpdates, phase1Timeout).Should(Receive(matchers.SatisfyPredicate(
 		"All four ports have expected DNS servers; all ports error-free; DPC is healthy",
 		func(dinfo *eveinfo.ZInfoDevice) bool {
@@ -303,7 +319,6 @@ func TestDNSFunctionality(test *testing.T) {
 			return dpc.GetLastError() == ""
 		})))
 
-	dpcAppliedAt := time.Now()
 	evetest.Checkpoint("phase1-complete")
 
 	// ------------------------------------------------------------------
@@ -372,39 +387,52 @@ func TestDNSFunctionality(test *testing.T) {
 			"staticDNS2IP (cost=1) must appear before dhcpDNS0IP (cost=2) in default section")
 	}, 2*time.Minute, 5*time.Second).Should(Succeed())
 
-	// Verify the forwarding order in device logs. Phase 1 DPC verification
-	// triggered controller resolution; with log-queries enabled and strict-order,
-	// dnsmasq must try eth3's server (cost=0, badDNS3IP) before eth2's server
-	// (cost=1, staticDNS2IP). Logs may arrive with delay.
-	controllerHost := evetest.GetControllerHostname()
-	var eth2Idx, eth3Idx int
+	// Verify the forwarding order via a single, fresh nslookup for a name
+	// EVE itself never queries. The controller hostname doesn't work for
+	// this: pillar's own background connectivity checks re-resolve it every
+	// few seconds, and dnsmasq's query deduplication (lookup_frec() in
+	// dnsmasq's forward.c) folds a new query for the same name+type into
+	// any still-outstanding forward record instead of starting over at the
+	// top of the server list -- so a later query can inherit an earlier
+	// one's already-advanced-past-eth3 position, making the observed order
+	// unreliable. http-server1.test sidesteps this: nothing else resolves
+	// it, so this one nslookup is guaranteed to start a fresh lookup.
+	// bad-dns3 (eth3, cost=0) has no static entries and cannot resolve it;
+	// static-dns0/dhcp-dns0 (eth0, cost=2) can -- so with strict-order the
+	// expected sequence is eth3 (fails) then eth0's static server.
+	nslookupAt := time.Now()
+	_, stderr, err := device.RunShellScript(
+		"nslookup "+httpServer1FQDN+" 127.0.0.1", 0, 5*time.Second)
+	t.Expect(err).NotTo(HaveOccurred(), "nslookup %s failed: %s", httpServer1FQDN, stderr)
+
+	var eth0Idx, eth3Idx int
 	t.Eventually(func(g Gomega) {
 		forwardLogs := device.GetLogs(evetest.LogMsgMatch{
-			MsgHasSubstring: "forwarded " + controllerHost,
-			NotBefore:       dpcAppliedAt,
+			MsgHasSubstring: "forwarded " + httpServer1FQDN,
+			NotBefore:       nslookupAt,
 		})
 		g.Expect(forwardLogs).NotTo(BeEmpty(),
-			"dnsmasq must have logged forwarding attempts for "+controllerHost)
-		eth2Idx = -1
+			"dnsmasq must have logged forwarding attempts for "+httpServer1FQDN)
+		eth0Idx = -1
 		eth3Idx = -1
 		for i, msg := range forwardLogs {
 			if eth3Idx == -1 && strings.Contains(msg.Message, badDNS3IP) {
 				eth3Idx = i
 			}
-			if eth2Idx == -1 && strings.Contains(msg.Message, staticDNS2IP) {
-				eth2Idx = i
+			if eth0Idx == -1 && strings.Contains(msg.Message, staticDNS0IP) {
+				eth0Idx = i
 			}
 		}
-		// bad-dns3 (eth3) returns SERVFAIL, so dnsmasq always retries with
-		// eth2. Both entries must appear; if eth2 hasn't arrived yet the
+		// bad-dns3 (eth3) returns REFUSED, so dnsmasq retries with eth0.
+		// Both entries must appear; if eth0 hasn't arrived yet the
 		// Eventually will retry until the full pair is seen.
 		g.Expect(eth3Idx).To(BeNumerically(">=", 0),
 			"dnsmasq must have forwarded to badDNS3IP (eth3, cost=0)")
-		g.Expect(eth2Idx).To(BeNumerically(">=", 0),
-			"dnsmasq must have forwarded to staticDNS2IP (eth2, cost=1)")
+		g.Expect(eth0Idx).To(BeNumerically(">=", 0),
+			"dnsmasq must have forwarded to staticDNS0IP (eth0, cost=2)")
 	}, 2*time.Minute, 5*time.Second).Should(Succeed())
-	t.Expect(eth2Idx).To(BeNumerically(">", eth3Idx),
-		"eth3 (cost=0) must be forwarded to before eth2 (cost=1)")
+	t.Expect(eth0Idx).To(BeNumerically(">", eth3Idx),
+		"eth3 (cost=0) must be forwarded to before eth0 (cost=2)")
 
 	evetest.Checkpoint("phase2-complete")
 

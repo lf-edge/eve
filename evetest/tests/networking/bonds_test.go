@@ -146,9 +146,6 @@ func TestActiveBackupBond(test *testing.T) {
 	devMetrics, stopDevMetricsWatch := device.WatchDeviceMetrics()
 	defer stopDevMetricsWatch()
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 	evetest.Checkpoint("config-applied")
 
 	// Wait for device info to report the bond interface with an IP address,
@@ -308,28 +305,29 @@ func TestActiveBackupBond(test *testing.T) {
 //
 // Network model
 // -------------
-//   - Starts with netmodels.TwoMgmtPortsOneBridge so EVE can onboard via
-//     individual ports without needing an LACP-aware peer at boot. After
-//     EVE applies the device config (with the bond), the test switches the
-//     SDN side to netmodels.TwoMgmtPortsWithLACPBond, where eth0/eth1 are
-//     aggregated by an SDN-side LACP bond and LACP negotiation can complete.
-//     The "switch to LACP after config" trick avoids the bootstrap
-//     chicken-and-egg problem (covered separately by
-//     TestBootstrapWithLACPBond).
+//   - netmodels.ThreeMgmtPortsWithLACPBond: eth0+eth1 are aggregated by an
+//     SDN-side LACP bond from the start (no mid-test model switch, so no
+//     bootstrap chicken-and-egg problem -- that scenario is covered
+//     separately by TestBootstrapWithLACPBond), plus eth2 as a third,
+//     independent management port on its own bridge/network. eth2 exists so
+//     NIM always has a second, already-working path to the controller while
+//     the bond's own LACP negotiation is still converging: NIM's DPC
+//     connectivity test only requires one management port to succeed, so
+//     the DPC as a whole stays "good" and EVE never falls back to the
+//     lastresort DPC (which would tear the bond down) just because LACP
+//     hasn't finished yet.
 //
 // Device configuration
 // --------------------
 //   - PhysicalIO eth0 + eth1 (no SystemAdapter on either; both become bond
-//     members).
-//   - One DHCP NetworkConfig.
+//     members) + eth2 (its own mgmt SystemAdapter, on its own DHCP network).
+//   - Two DHCP NetworkConfigs: one for the bond, one for eth2.
 //   - BondConfig "lacp-bond" (interface "bond1") aggregating eth0+eth1 in
 //     BOND_MODE_802_3AD with LacpRate=FAST and MIIMonitor (interval 100 ms).
 //
 // Phases
 // ------
-//   - Apply the device config (bond + members + DHCP NI), then update the
-//     network model to TwoMgmtPortsWithLACPBond so the SDN side starts
-//     speaking LACP.
+//   - Apply the device config (bond + members + eth2 + both DHCP NIs).
 //   - Wait for DevicePortStatus to report the bond port with:
 //   - an IPv4 address from the SDN subnet,
 //   - no error,
@@ -339,8 +337,12 @@ func TestActiveBackupBond(test *testing.T) {
 //     succeeded) and LacpRate=FAST,
 //   - All members report MiiUp=true and belong to the same active
 //     aggregator (no split aggregation).
-//   - SSH-side smoke test: `echo lacp-ssh-ok` over SSH proves data-plane
-//     reachability via the LACP bond.
+//   - With the bond confirmed healthy, eth2 (the third mgmt port) is taken
+//     AdminUp=false at the SDN side (cloning the network model, as in
+//     TestPortFailover). This proves the bond alone -- not eth2 -- sustains
+//     connectivity: the controller-pushed DPC stays error-free, and
+//     `echo lacp-ssh-ok` over SSH keeps working, necessarily routed through
+//     the bond since eth2 is no longer usable. eth2 is then restored.
 //   - DeviceMetric.BondMetrics has an entry for "lacp-bond" with both
 //     ethernet0 and ethernet1 in its Members list, and every member has
 //     LACP sub-metrics populated.
@@ -364,13 +366,11 @@ func TestLACPBond(test *testing.T) {
 		WithHypervisor:    hypervisor,
 		DeviceReusePolicy: evetest.ResetDeviceConfig,
 	}
-	// Start with individual ports on a bridge so that EVE can onboard
-	// using standalone interfaces. The SDN-side LACP bond will be
-	// configured after EVE applies the bond config.
-	// Note that we do this to avoid the bootstrapping challenge,
-	// which is for LACP bonds already covered by TestBootstrapWithLACPBond.
+	// The SDN-side LACP bond is present from the start (no mid-test model
+	// switch), so there is no bootstrapping challenge here -- that scenario
+	// is covered separately by TestBootstrapWithLACPBond.
 	requiredNetModel := evetest.RequireNetworkModel{
-		NetworkModel: netmodels.TwoMgmtPortsOneBridge,
+		NetworkModel: netmodels.ThreeMgmtPortsWithLACPBond,
 	}
 	// LACP requires the provider to forward LACPDUs across the simulated
 	// links between EVE and the SDN; skip on providers that cannot.
@@ -415,28 +415,34 @@ func TestLACPBond(test *testing.T) {
 			Usage:       evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
 		})
 
+	// eth2: independent third management port, not part of the bond. This
+	// keeps the DPC's overall connectivity test passing (NIM only requires
+	// one working mgmt port) while the bond's own LACP negotiation converges
+	// in the background, so EVE never falls back to the lastresort DPC and
+	// bond1 is never torn down.
+	eth2Net := devConfig.AddNetwork(
+		evetest.DHCPNetworkConfig{
+			NetworkType: evecommon.NetworkType_V4,
+		})
+	devConfig.AddNetworkAdapter(
+		evetest.NetworkAdapterConfig{
+			LogicalLabel:  "ethernet2",
+			PhysicalLabel: "eth2",
+			InterfaceName: "eth2",
+			NetworkUUID:   eth2Net,
+			Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+		})
+
 	devUpdates, stopDevWatch := device.WatchDeviceInfo()
 	defer stopDevWatch()
 	devMetrics, stopDevMetricsWatch := device.WatchDeviceMetrics()
 	defer stopDevMetricsWatch()
-	// waitUntilConfirmed=false: after the model switch below, EVE may temporarily
-	// lose controller connectivity while the LACP bond negotiates.
-	device.ApplyConfig(devConfig, true, false)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
-	// Give EVE a moment to process the bond config before switching the SDN side.
-	time.Sleep(10 * time.Second)
+	device.ApplyConfig(devConfig, true, true)
 	evetest.Checkpoint("config-applied")
-
-	// Now switch the SDN side to LACP so both ends can negotiate.
-	// EVE has already created its LACP bond from the applied config;
-	// the SDN side needs a matching LACP bond for negotiation to succeed.
-	evetest.UpdateNetworkModel(netmodels.TwoMgmtPortsWithLACPBond)
-	evetest.Checkpoint("sdn-lacp-enabled")
 
 	// Wait for device info to report the LACP bond interface with an IP address,
 	// no errors, and LACP status.
+	log := evetest.Logger()
 	timeout := 5 * time.Minute
 	var bondIP net.IP
 	var bondStatus *eveinfo.BondStatus
@@ -496,19 +502,47 @@ func TestLACPBond(test *testing.T) {
 		t.Expect(member.GetLacp().GetAggregatorId()).To(Equal(activeAggID))
 	}
 
-	// Verify we can SSH into EVE through the LACP bond.
+	// With the bond confirmed healthy, take eth2 down at the SDN side to
+	// prove the bond alone -- not eth2 -- sustains connectivity.
+	log.Infof("Taking eth2 AdminUp=false to verify the bond alone sustains connectivity...")
+	updatedModel := proto.Clone(netmodels.ThreeMgmtPortsWithLACPBond).(*api.NetworkModel)
+	for _, p := range updatedModel.Ports {
+		if p.LogicalLabel == "eth2" {
+			p.AdminUp = false
+		}
+	}
+	evetest.UpdateNetworkModel(updatedModel)
+	// Always restore eth2 on exit so a mid-test failure does not leave the
+	// SDN in an altered state for subsequent suite tests.
+	defer evetest.UpdateNetworkModel(netmodels.ThreeMgmtPortsWithLACPBond)
+	evetest.Checkpoint("eth2-link-down")
+
+	t.Eventually(devUpdates, timeout).Should(Receive(matchers.SatisfyPredicate(
+		"controller remains reachable via the bond alone",
+		func(info *eveinfo.ZInfoDevice) bool {
+			sa := info.GetSystemAdapter()
+			return matchSystemAdapterInfo(sa, 0, []string{"zedagent"}) &&
+				sa.GetStatus()[0].GetLastError() == ""
+		})))
+	evetest.Checkpoint("controller-reachable-via-bond")
+
+	// SSH is now necessarily routed through the bond, since eth2 is down.
 	var stdout string
 	t.Eventually(func() error {
 		var stderr string
 		var err error
 		stdout, stderr, err = device.RunShellScript("echo lacp-ssh-ok", 0, 5*time.Second)
 		if err != nil {
-			return fmt.Errorf("SSH over LACP bond failed: %s", stderr)
+			return fmt.Errorf("SSH via the bond failed: %s", stderr)
 		}
 		return nil
 	}, time.Minute, 5*time.Second).Should(Succeed())
 	t.Expect(stdout).To(ContainSubstring("lacp-ssh-ok"))
 	evetest.Checkpoint("ssh-over-lacp-bond-works")
+
+	// Restore eth2 for the remainder of the suite.
+	evetest.UpdateNetworkModel(netmodels.ThreeMgmtPortsWithLACPBond)
+	evetest.Checkpoint("eth2-link-restored")
 
 	// Verify that bond metrics are reported with both members and LACP sub-metrics.
 	t.Eventually(devMetrics, timeout).Should(Receive(matchers.SatisfyPredicate(

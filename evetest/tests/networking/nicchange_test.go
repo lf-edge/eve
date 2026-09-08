@@ -145,12 +145,14 @@ func ensureNetworkMetricOrder(t *WithT, device *evetest.EdgeDevice, appUUID uuid
 			for i, nm := range am.GetNetwork() {
 				log.Infof("  networkMetric[%d]: %s", i, nm)
 			}
-			t.Expect(am.GetNetwork()).To(HaveLen(len(netIFs)))
-
-			for i, nm := range am.GetNetwork() {
-				t.Expect(nm.GetIName()).To(Equal(netIFs[i]), "network entry %d", i)
+			if len(am.GetNetwork()) != len(netIFs) {
+				return false
 			}
-
+			for i, nm := range am.GetNetwork() {
+				if nm.GetIName() != netIFs[i] {
+					return false
+				}
+			}
 			return true
 		})))
 

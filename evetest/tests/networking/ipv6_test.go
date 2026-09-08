@@ -47,8 +47,8 @@ import (
 // Phases
 // ------
 //  1. Apply DHCPNetworkConfig{V6Only} on ethernet0 (mgmt+app).
-//  2. Wait until ethernet0 reports a global-unicast IPv6 address and no IPv4
-//     address in DevicePortStatus.
+//  2. Wait until ethernet0 reports a global-unicast IPv6 address, no IPv4
+//     address, and a default router in DevicePortStatus.
 //  3. Assert DPC health: SystemAdapterInfo.CurrentIndex==0 and
 //     DevicePortStatus.LastError is empty.
 //  4. Assert the default router for ethernet0 is a link-local IPv6 address.
@@ -119,16 +119,25 @@ func TestDeviceIPv6Connectivity(test *testing.T) {
 	log := evetest.Logger()
 	timeout := 5 * time.Minute
 
-	// Wait for ethernet0 to acquire a global-unicast IPv6 and no IPv4.
+	// Wait for ethernet0 to acquire a global-unicast IPv6, no IPv4, and a
+	// default router. NIM may publish the SLAAC address slightly before it
+	// records the RA-derived default route, so a snapshot can briefly show
+	// the address with no default router yet; wait for both together to
+	// avoid racing that gap.
 	var dinfo *eveinfo.ZInfoDevice
 	var eth0IPv6 net.IP
-	log.Infof("Waiting for ethernet0 to acquire a global-unicast IPv6 (no IPv4)...")
+	log.Infof("Waiting for ethernet0 to acquire a global-unicast IPv6 (no IPv4) " +
+		"and a default router...")
 	t.Eventually(devUpdates, timeout).Should(Receive(matchers.SatisfyPredicate(
-		"ethernet0 has global-unicast IPv6 and no IPv4",
+		"ethernet0 has global-unicast IPv6, no IPv4, and a default router",
 		func(info *eveinfo.ZInfoDevice) bool {
 			dinfo = info
 			eth0IPv6 = getPortIPv6GlobalAddr("ethernet0", info)
-			return eth0IPv6 != nil && getPortIPv4Addr("ethernet0", info) == nil
+			if eth0IPv6 == nil || getPortIPv4Addr("ethernet0", info) != nil {
+				return false
+			}
+			port := getDevicePort("ethernet0", info)
+			return port != nil && len(port.GetDefaultRouters()) > 0
 		})))
 
 	evetest.Checkpoint("ipv6-addr-acquired")

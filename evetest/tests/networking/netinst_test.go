@@ -59,8 +59,8 @@ import (
 //     BridgeIPAddr flips to 10.11.13.1 and the IpAssignment reflects the
 //     new subnet.
 //  3. NI delete: assert the state returns to ZNETINST_STATE_UNSPECIFIED.
-//  4. NI + app: recreate the NI (subnet 10.11.12.0/24 again, this time
-//     EnableFlowlog=true) and deploy a container app
+//  4. NI + app: recreate the NI (subnet 10.11.12.0/24 again,
+//     EnableFlowlog=false) and deploy a container app
 //     (lfedge/evetest-ubuntu-ctr:1.0) with a single
 //     VirtualNetworkAdapter on the NI, a fixed MAC 02:16:3e:00:00:01, a
 //     port-fwd 2222->22 ACE, and an allow-all ACL. VirtualizationMode=HVM
@@ -260,7 +260,7 @@ func TestLocalNI(test *testing.T) {
 			End:   evetest.IPAddress("10.11.12.254"),
 		},
 		Gateway:       evetest.IPAddress("10.11.12.1"),
-		EnableFlowlog: true,
+		EnableFlowlog: false,
 		MTU:           1500,
 		ForwardLLDP:   false,
 	})

@@ -38,6 +38,7 @@ import (
 //   - TestBootstrapWithLACPBond (variants: bootstrap / override.json) --
 //     SDN-side LACP peer requires the bond to be configured before EVE
 //     ever transmits, hence bootstrap-only path.
+//   - TestBootstrapWithNetworkBoot: install EVE over the network via iPXE.
 //
 // All bootstrap tests share the HYPERVISOR parameter (defaults to KVM).
 func TestBootstrapSuite(test *testing.T) {
@@ -174,6 +175,9 @@ func TestBootstrapSuite(test *testing.T) {
 					},
 				},
 			},
+		},
+		evetest.TestCase{
+			Test: TestBootstrapWithNetworkBoot,
 		},
 	)
 }
