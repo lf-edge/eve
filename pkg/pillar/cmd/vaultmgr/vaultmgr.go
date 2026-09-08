@@ -226,6 +226,28 @@ func checkAndPublishVaultConfig(ctx *vaultMgrContext) (bool, bool) {
 	return vaultConfig.TpmKeyOnly, vaultSupported
 }
 
+// runVaultOp runs a vault setup, unlock or removal on a separate goroutine and
+// waits for it, refreshing the watchdog touch file while it runs. On EVE-k a
+// vault carried over from EVE-kvm is copied into a new zvol, so these
+// operations block for a time that scales with the vault contents, and the
+// libzfs and mount calls they make can neither be interrupted nor report
+// progress.
+func runVaultOp(ps *pubsub.PubSub, op func() error) error {
+	done := make(chan error, 1)
+	go func() { done <- op() }()
+
+	stillRunning := time.NewTicker(25 * time.Second)
+	defer stillRunning.Stop()
+	for {
+		select {
+		case err := <-done:
+			return err
+		case <-stillRunning.C:
+			ps.StillRunning(agentName, warningTime, errorTime)
+		}
+	}
+}
+
 // Run is the entrypoint for running vaultmgr as a standalone program
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int {
 	logger = loggerArg
@@ -348,7 +370,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Noticef("about to setup the vault without TPM")
 	}
 	// if TPM available, this sets up the fscrypt and eventually calls FetchSealedVaultKey
-	if err := handler.SetupDefaultVault(); err != nil {
+	if err := runVaultOp(ps, handler.SetupDefaultVault); err != nil {
 		log.Errorf("SetupDefaultVault failed, err: %v", err)
 		// Local unseal failed. On a TPM device this is usually a PCR policy
 		// mismatch; record which PCRs differ so it is visible on VaultStatus and
@@ -556,7 +578,7 @@ func handleVaultKeyFromControllerImpl(ctxArg interface{}, key string,
 		}
 
 		log.Noticef("Sealed key in TPM, unlocking %s", types.DefaultVaultName)
-		err = handler.UnlockDefaultVault()
+		err = runVaultOp(ctx.ps, handler.UnlockDefaultVault)
 		if err != nil {
 			log.Errorf("Failed to unlock vault after receiving Controller key, %v",
 				err)
@@ -588,12 +610,12 @@ func handleVaultKeyFromControllerImpl(ctxArg interface{}, key string,
 		// which indicates that we receive no keys from the controller,
 		// than we cannot unlock the vault.
 		// Try to remove and re-create default vault now
-		if err := handler.RemoveDefaultVault(); err != nil {
+		if err := runVaultOp(ctx.ps, handler.RemoveDefaultVault); err != nil {
 			log.Errorf("Failed to remove vault after receiving dummy Controller key: %v", err)
 			return
 		}
 		log.Warnln("default vault removed")
-		if err := handler.SetupDefaultVault(); err != nil {
+		if err := runVaultOp(ctx.ps, handler.SetupDefaultVault); err != nil {
 			log.Errorf("SetupDefaultVault failed, err: %v", err)
 			getAndPublishAllVaultStatuses(ctx)
 			return
