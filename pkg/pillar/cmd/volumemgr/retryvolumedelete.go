@@ -94,7 +94,12 @@ func retryFailedVolumeDelete(ctx *volumemgrContext) {
 				"(attempt %d/%d): %s",
 				key, status.DisplayName, ctx.volumeDeleteRetryCount[key],
 				maxVolumeDeleteRetries, status.Error)
-			AddWorkDestroy(ctx, &status)
+			if err := AddWorkDestroy(ctx, &status); err != nil {
+				// Pool full; the volume keeps its error, so the next gc tick
+				// re-drives it (spending one more unit of the retry budget).
+				log.Warnf("retryFailedVolumeDelete: destroy of %s not scheduled: %v",
+					key, err)
+			}
 		}
 	}
 }

@@ -6,6 +6,8 @@ package volumemgr
 // Interface to worker to run the create and destroy in separate goroutines
 
 import (
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -59,57 +61,104 @@ type casIngestWorkResult struct {
 	loaded            []string
 }
 
-// AddWorkCreate adds a Work job to create a volume
-func AddWorkCreate(ctx *volumemgrContext, status *types.VolumeStatus) {
+// trySubmitWork hands one work item to the worker pool, distinguishing the
+// benign idempotent case (a job with this key is already in progress) from a
+// real refusal. Returns nil if the job is running or was accepted, and an
+// error (a worker.PoolFullError when the pool is at maxWorkers) if nothing
+// owns the work: the caller must then either retry later or not commit any
+// state that assumes the job will run.
+func trySubmitWork(ctx *volumemgrContext, w worker.Work) error {
+	done, err := ctx.worker.TrySubmit(w)
+	if err != nil {
+		var inProgress *worker.JobInProgressError
+		if errors.As(err, &inProgress) {
+			log.Functionf("trySubmitWork(%s): job already in progress", w.Key)
+			return nil
+		}
+		return err
+	}
+	if !done {
+		// A pool never returns (false, nil); only a bare worker with a full
+		// queue does, and volumemgr uses a pool.
+		return fmt.Errorf("worker did not accept job %s", w.Key)
+	}
+	return nil
+}
+
+// AddWorkCreate adds a Work job to create a volume.
+// Returns an error if the job could not be handed to the worker pool, in
+// which case no worker owns it and the caller must arrange for a retry. A job
+// already in progress for this key counts as success, so callers stay
+// idempotent.
+func AddWorkCreate(ctx *volumemgrContext, status *types.VolumeStatus) error {
 	d := volumeWorkDescription{
 		create: true,
 		status: *status,
 	}
 	w := worker.Work{Kind: workCreate, Key: status.Key(), Description: d}
-	// Don't fail on errors to make idempotent (Submit returns an error if
-	// the work was already submitted)
-	done, err := ctx.worker.TrySubmit(w)
-	if err != nil {
-		log.Errorf("TrySubmit %s failed: %s", status.Key(), err)
-	} else if !done {
-		log.Fatalf("Failed to submit work due to queue length for %s",
-			status.Key())
+	if err := trySubmitWork(ctx, w); err != nil {
+		log.Warnf("AddWorkCreate(%s): %v", status.Key(), err)
+		return err
 	}
+	return nil
 }
 
-// AddWorkLoad adds a Work job to load an image and blobs into CAS
-func AddWorkLoad(ctx *volumemgrContext, status *types.ContentTreeStatus) {
+// AddWorkLoad adds a Work job to load an image and blobs into CAS.
+// Returns an error if the job could not be handed to the worker pool, in
+// which case no worker owns the content tree and the caller must undo
+// whatever state it committed in anticipation of the load. A job that is
+// already in progress for this key counts as success, so callers stay
+// idempotent.
+func AddWorkLoad(ctx *volumemgrContext, status *types.ContentTreeStatus) error {
 	d := casIngestWorkDescription{
 		status: *status,
 	}
 	w := worker.Work{Kind: workIngest, Key: status.Key(), Description: d}
-	// Don't fail on errors to make idempotent (Submit returns an error if
-	// the work was already submitted)
-	done, err := ctx.worker.TrySubmit(w)
-	if err != nil {
-		log.Errorf("TrySubmit %s failed: %s", status.Key(), err)
-	} else if !done {
-		log.Fatalf("Failed to submit work due to queue length for %s",
-			status.Key())
+	if err := trySubmitWork(ctx, w); err != nil {
+		log.Warnf("AddWorkLoad(%s): %v", status.Key(), err)
+		return err
 	}
+	if ctx.pendingIngest == nil {
+		ctx.pendingIngest = make(map[string]bool)
+	}
+	ctx.pendingIngest[status.Key()] = true
+	return nil
 }
 
-// AddWorkPrepare adds a Work job to create a volume
-func AddWorkPrepare(ctx *volumemgrContext, status *types.VolumeStatus) {
+// ingestInFlightFor reports whether some content tree with an accepted, not
+// yet completed CAS ingest job carries this blob. A blob sitting in LOADING
+// that no in-flight job covers has lost its worker; treating such a blob as
+// busy is what turns a refused submit into a permanent stall for every other
+// content tree sharing it.
+func ingestInFlightFor(ctx *volumemgrContext, sha string) bool {
+	for key := range ctx.pendingIngest {
+		ctStatus := ctx.LookupContentTreeStatus(key)
+		if ctStatus == nil {
+			continue
+		}
+		for _, blobSha := range ctStatus.Blobs {
+			if blobSha == sha {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// AddWorkPrepare adds a Work job to prepare creation of a volume.
+// Returns an error if the job could not be handed to the worker pool (see
+// AddWorkCreate); a job already in progress for this key counts as success.
+func AddWorkPrepare(ctx *volumemgrContext, status *types.VolumeStatus) error {
 	d := volumeWorkDescription{
 		prepare: true,
 		status:  *status,
 	}
 	w := worker.Work{Kind: workPrepare, Key: status.Key(), Description: d}
-	// Don't fail on errors to make idempotent (Submit returns an error if
-	// the work was already submitted)
-	done, err := ctx.worker.TrySubmit(w)
-	if err != nil {
-		log.Errorf("TrySubmit %s failed: %s", status.Key(), err)
-	} else if !done {
-		log.Fatalf("Failed to submit work due to queue length for %s",
-			status.Key())
+	if err := trySubmitWork(ctx, w); err != nil {
+		log.Warnf("AddWorkPrepare(%s): %v", status.Key(), err)
+		return err
 	}
+	return nil
 }
 
 // DeleteWorkCreate is called by user when work is done
@@ -127,22 +176,20 @@ func DeleteWorkLoad(ctx *volumemgrContext, key string) {
 	ctx.worker.Cancel(key)
 }
 
-// AddWorkDestroy adds a Work job to destroy a volume
-func AddWorkDestroy(ctx *volumemgrContext, status *types.VolumeStatus) {
+// AddWorkDestroy adds a Work job to destroy a volume.
+// Returns an error if the job could not be handed to the worker pool (see
+// AddWorkCreate); a job already in progress for this key counts as success.
+func AddWorkDestroy(ctx *volumemgrContext, status *types.VolumeStatus) error {
 	d := volumeWorkDescription{
 		destroy: true,
 		status:  *status,
 	}
 	w := worker.Work{Kind: workCreate, Key: status.Key(), Description: d}
-	// Don't fail on errors to make idempotent (Submit returns an error if
-	// the work was already submitted)
-	done, err := ctx.worker.TrySubmit(w)
-	if err != nil {
-		log.Errorf("TrySubmit %s failed: %s", status.Key(), err)
-	} else if !done {
-		log.Fatalf("Failed to submit work due to queue length for %s",
-			status.Key())
+	if err := trySubmitWork(ctx, w); err != nil {
+		log.Warnf("AddWorkDestroy(%s): %v", status.Key(), err)
+		return err
 	}
+	return nil
 }
 
 // DeleteWorkDestroy cancels a job to destroy a volume
@@ -281,19 +328,28 @@ func processVolumeWorkResult(ctxPtr interface{}, res worker.WorkResult) error {
 			DeleteWorkCreate(ctx, &d.status)
 			d.status.FileLocation = d.FileLocation
 			d.status.SubState = types.VolumeSubStateDeleting
-			AddWorkDestroy(ctx, &d.status)
+			if err := AddWorkDestroy(ctx, &d.status); err != nil {
+				// There is no VolumeStatus left to retry from; the created
+				// file stays behind until the init-time GC. Losing this
+				// cleanup must not lose the result processing.
+				log.Errorf("processVolumeWorkResult: destroy of orphaned %s not scheduled: %v",
+					d.status.Key(), err)
+			}
 		}
 	} else {
 		status := ctx.LookupVolumeStatus(d.status.Key())
 		if status == nil {
 			log.Functionf("processVolumeWorkResult for %v, VolumeStatus not found", d.status.Key())
-			return nil
+		} else {
+			log.Functionf("processVolumeWorkResult for %v, VolumeStatus found", d.status.Key())
+			updateVolumeStatusRefCount(ctx, status)
+			maybeDeleteVolume(ctx, status)
 		}
-		log.Functionf("processVolumeWorkResult for %v, VolumeStatus found", d.status.Key())
-		updateVolumeStatusRefCount(ctx, status)
-		maybeDeleteVolume(ctx, status)
-		reevaluatePendingVolumes(ctx)
 	}
+	// This job's completion freed a slot in the shared worker pool: give any
+	// volume or content tree whose submission was refused another chance.
+	reevaluatePendingVolumes(ctx)
+	reevaluatePendingContentTrees(ctx)
 	return nil
 }
 
@@ -302,6 +358,9 @@ func processVolumePrepareResult(ctxPtr interface{}, res worker.WorkResult) error
 	ctx := ctxPtr.(*volumemgrContext)
 	d := res.Description.(volumeWorkDescription)
 	updateVolumeStatus(ctx, d.status.VolumeID)
+	// See processVolumeWorkResult: this frees a slot in the shared pool.
+	reevaluatePendingVolumes(ctx)
+	reevaluatePendingContentTrees(ctx)
 	return nil
 }
 
@@ -309,6 +368,7 @@ func processVolumePrepareResult(ctxPtr interface{}, res worker.WorkResult) error
 func processCasIngestWorkResult(ctxPtr interface{}, res worker.WorkResult) error {
 	ctx := ctxPtr.(*volumemgrContext)
 	d := res.Description.(casIngestWorkDescription)
+	delete(ctx.pendingIngest, d.status.Key())
 	// loaded has the hashes of the blobs we loaded; publicise their new states.
 	blobs := lookupBlobStatuses(ctx, d.loaded...)
 	for _, blob := range blobs {
@@ -316,16 +376,32 @@ func processCasIngestWorkResult(ctxPtr interface{}, res worker.WorkResult) error
 		publishBlobStatus(ctx, blob)
 	}
 	updateStatusByBlob(ctx, d.status.Blobs...)
+	// See processVolumeWorkResult: this frees a slot in the shared pool.
+	reevaluatePendingVolumes(ctx)
+	reevaluatePendingContentTrees(ctx)
 	return nil
 }
 
-// popasIngestWorkResult get the result exactly once
-func popCasIngestWorkResult(ctx *volumemgrContext, key string) *casIngestWorkResult {
-	res := ctx.worker.Pop(key)
+// popCasIngestWorkResult gets the result exactly once. A result whose job was
+// submitted for different content than the tree now under this key is
+// discarded: a content change makes handleContentTreeModify delete and
+// recreate the tree, but Key() is the bare ContentID, so the recreated tree
+// would otherwise consume the replaced tree's outcome -- typically a failed
+// ingest of content that no longer exists, parking the new tree with a stale
+// error. With the result discarded, the LOADING self-heal resubmits a fresh
+// load once no job is in flight.
+func popCasIngestWorkResult(ctx *volumemgrContext, status *types.ContentTreeStatus) *casIngestWorkResult {
+	res := ctx.worker.Pop(status.Key())
 	if res == nil {
 		return nil
 	}
 	d := res.Description.(casIngestWorkDescription)
+	if d.status.ContentSha256 != status.ContentSha256 ||
+		d.status.RelativeURL != status.RelativeURL {
+		log.Noticef("popCasIngestWorkResult(%s): discarding result of replaced content (sha %s url %s)",
+			status.Key(), d.status.ContentSha256, d.status.RelativeURL)
+		return nil
+	}
 	return &casIngestWorkResult{
 		WorkResult: *res,
 		loaded:     d.loaded,

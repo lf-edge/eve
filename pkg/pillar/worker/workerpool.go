@@ -7,7 +7,6 @@
 package worker
 
 import (
-	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -197,7 +196,7 @@ func (wp *Pool) TrySubmit(work Work) (bool, error) {
 		return true, nil
 	}
 	wp.log.Tracef("Would exceed maxWorkers of %d", wp.maxWorkers)
-	return false, fmt.Errorf("Would exceed maxWorkers of %d", wp.maxWorkers)
+	return false, &PoolFullError{maxWorkers: wp.maxWorkers}
 }
 
 // MsgChan returns a channel to be used in a select loop.

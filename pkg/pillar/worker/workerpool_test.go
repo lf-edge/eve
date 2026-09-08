@@ -586,3 +586,40 @@ func getStacks(all bool) string {
 	buf = buf[:stackSize]
 	return string(buf)
 }
+
+// TestTrySubmitDistinguishesPoolFull pins the error contract callers rely on
+// when they defer and retry a refused job: a pool at maxWorkers refuses with a
+// PoolFullError, which is distinguishable from the benign JobInProgressError.
+// A caller that cannot tell the two apart either drops refused work on the
+// floor (the field failure that left app instances stuck in LOADING forever)
+// or double-submits running work.
+func TestTrySubmitDistinguishesPoolFull(t *testing.T) {
+	ctx, wp, _ := setupPool(1)
+	testname := "testpoolfull"
+
+	// Fill the single slot with a job that is still running afterwards.
+	w1 := worker.Work{Kind: "test", Key: testname + "1", Description: sleep4}
+	done, err := wp.TrySubmit(w1)
+	assert.True(t, done)
+	assert.Nil(t, err)
+
+	// The same key again while it runs: the benign idempotent case.
+	done, err = wp.TrySubmit(w1)
+	assert.False(t, done)
+	var inProgress *worker.JobInProgressError
+	assert.True(t, errors.As(err, &inProgress))
+
+	// A different job at the ceiling: a real refusal the caller must handle.
+	w2 := worker.Work{Kind: "test", Key: testname + "2", Description: sleep1}
+	done, err = wp.TrySubmit(w2)
+	assert.False(t, done)
+	var full *worker.PoolFullError
+	assert.True(t, errors.As(err, &full))
+	assert.Contains(t, err.Error(), "maxWorkers")
+
+	// Drain the one result so the pool shuts down cleanly.
+	proc := <-wp.MsgChan()
+	proc.Process(ctx, true)
+	assert.Equal(t, 0, wp.NumPending())
+	wp.Done()
+}

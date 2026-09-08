@@ -94,6 +94,12 @@ type volumemgrContext struct {
 	worker worker.Worker // For background work
 
 	signalledRestartedStatus bool
+	// pendingIngest tracks ContentTreeStatus keys for which a CAS ingest job
+	// has been accepted by the worker pool but has not yet returned a result.
+	// A content tree in LOADING without an entry here has lost its worker and
+	// must be re-driven; see doUpdateContentTree. Only touched from the main
+	// event loop goroutine.
+	pendingIngest map[string]bool
 
 	verifierRestarted    bool // Wait for verifier to restart
 	contentTreeRestarted bool // Wait to receive all contentTree after restart
@@ -195,6 +201,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		// storage is usable as soon as volumemgr is up.
 		storageReady:  !base.IsHVTypeKube(),
 		statusTrigger: make(chan struct{}, 1),
+		pendingIngest: make(map[string]bool),
 	}
 	if ctx.hvTypeKube {
 		ctx.storageUnmet = storageWaitPending
