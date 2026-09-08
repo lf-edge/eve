@@ -323,9 +323,10 @@ func maybeDeleteVolume(ctx *volumemgrContext, status *types.VolumeStatus) {
 			// destroy that ran and failed: retryFailedVolumeDelete re-drives
 			// it off the gc tick.
 			status.SetErrorDescription(types.ErrorDescription{
-				Error:               fmt.Sprintf("volume destroy deferred: %v", err),
-				ErrorRetryCondition: "Will retry when a worker becomes available",
-				ErrorSeverity:       types.ErrorSeverityWarning,
+				Error: fmt.Sprintf("volume destroy deferred: %v", err),
+				ErrorRetryCondition: "Will retry when a worker becomes available; " +
+					"the volumemgr.worker.pool.size config item bounds the pool",
+				ErrorSeverity: types.ErrorSeverityWarning,
 			})
 			publishVolumeStatus(ctx, status)
 		}
