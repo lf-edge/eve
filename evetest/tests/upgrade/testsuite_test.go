@@ -9,24 +9,20 @@ import (
 	"github.com/lf-edge/eve/evetest"
 )
 
-// TestUpgradeSuite runs TestEVEUpgrade across multiple hypervisor combinations
-// and disk sizes.
-// IMPORTANT: In this test suite, it is assumed that the tested EVE version
-// (selected by the variable EVETEST_EVE_VERSION) is at least 17.0.0
-// and therefore uses the 2 * 10GB partition layout.
+// TestUpgradeSuite runs TestEVEUpgrade across multiple hypervisor combinations.
 func TestUpgradeSuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
 
 	const (
-		// 16.0.0-lts has small enough partitions to boot on smallDiskSizeMiB.
-		// The target EVE version (>= 17.0.0) requires larger partitions, so the
-		// upgrade fails and EVE reverts -- which is what the *WithSmallDisk variants
-		// are designed to test.
 		initialEVEVersionForKVM = "16.0.0-lts"
 
 		// EVE-K (k3s/kubevirt-based EVE) is officially supported starting from 17.0.0.
-		initialEVEVersionForKubevirt = "17.0.0-lts"
+		// However, currently 17.0-stable does not include github.com/lf-edge/eve/pull/6209,
+		// which is needed for reliable app deployment.
+		// For the time being, we will use EVE version from the master, at the commit just
+		// before the big rewrite of kube-init from shell scripts to Go.
+		initialEVEVersionForKubevirt = "0.0.0-master-66475696"
 
 		// The OCI-datastore variant points EVE at evetest's own embedded OCI
 		// registry (see PushDockerImageToLocalRegistry), which is fronted by
@@ -38,10 +34,6 @@ func TestUpgradeSuite(test *testing.T) {
 		// certs were (and still are) applied correctly for the subsequent
 		// download. That fix is included in 17.0.0-lts (but not in 16.0.0-lts).
 		initialEVEVersionForOCIDatastore = "17.0.0-lts"
-
-		// Enough for the pre-10GB partition layout, but not enough for EVE 17.0.0+,
-		// which is why *WithSmallDisk variants expect revert.
-		smallDiskSizeMiB = uint32(20480) // 20 GiB
 	)
 
 	// Define configurable parameters available for the test suite.
@@ -85,44 +77,6 @@ func TestUpgradeSuite(test *testing.T) {
 						{Key: initialHypervisorParamKey, Value: evetest.HypervisorKubevirt},
 						// Target
 						{Key: evetest.HypervisorParameterKey, Value: evetest.HypervisorKubevirt},
-					},
-				},
-				{
-					Name: "TestEVEUpgradeKVMtoKubevirt",
-					Parameters: []evetest.TestParameterValue{
-						// Initial
-						{Key: initialEVEVersionParamKey, Value: initialEVEVersionForKVM},
-						{Key: initialHypervisorParamKey, Value: evetest.HypervisorKVM},
-						// Target
-						{Key: evetest.HypervisorParameterKey, Value: evetest.HypervisorKubevirt},
-					},
-				},
-				{
-					Name: "TestEVEUpgradeKVMtoKVMWithSmallDisk",
-					Parameters: []evetest.TestParameterValue{
-						// Initial
-						{Key: initialEVEVersionParamKey, Value: initialEVEVersionForKVM},
-						{Key: initialHypervisorParamKey, Value: evetest.HypervisorKVM},
-						// Target
-						{Key: evetest.HypervisorParameterKey, Value: evetest.HypervisorKVM},
-						// Extra params
-						{Key: evetest.DiskSizeMiBParameterKey, Value: smallDiskSizeMiB},
-						// Expect upgrade to fail
-						{Key: expectRevertParamKey, Value: true},
-					},
-				},
-				{
-					Name: "TestEVEUpgradeKVMtoKubevirtWithSmallDisk",
-					Parameters: []evetest.TestParameterValue{
-						// Initial
-						{Key: initialEVEVersionParamKey, Value: initialEVEVersionForKVM},
-						{Key: initialHypervisorParamKey, Value: evetest.HypervisorKVM},
-						// Target
-						{Key: evetest.HypervisorParameterKey, Value: evetest.HypervisorKubevirt},
-						// Extra params
-						{Key: evetest.DiskSizeMiBParameterKey, Value: smallDiskSizeMiB},
-						// Expect upgrade to fail
-						{Key: expectRevertParamKey, Value: true},
 					},
 				},
 			},

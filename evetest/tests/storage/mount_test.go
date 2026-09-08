@@ -39,7 +39,7 @@ import (
 // Phases
 // ------
 //  1. Create two standalone volumes (AddVolume): tstVol from
-//     docker://hello-world:linux, dirVol from docker://busybox:latest. Deploy
+//     docker://library/hello-world:linux, dirVol from docker://library/busybox:latest. Deploy
 //     "mount-app" (lfedge/evetest-ubuntu-ctr:1.0, HVM) with an SSH
 //     port-forward (2222->22) and Mounts referencing both volumes: tstVol at
 //     /tst, dirVol at /dir. Wait for RUNNING and for the app's SSH daemon to
@@ -125,9 +125,9 @@ func TestMountedVolumes(test *testing.T) {
 	// leaving every other field (Image, CPUs, adapters, ...) exactly as
 	// originally deployed.
 	tstVolUUID := devConfig.AddVolume("mount-app-tst",
-		evetest.DockerContainer{ImageName: "hello-world", Tag: "linux"}, 0)
+		evetest.DockerContainer{ImageName: "library/hello-world", Tag: "linux"}, 0)
 	dirVolUUID := devConfig.AddVolume("mount-app-dir",
-		evetest.DockerContainer{ImageName: "busybox", Tag: "latest"}, 0)
+		evetest.DockerContainer{ImageName: "library/busybox", Tag: "latest"}, 0)
 
 	appConfig := evetest.ApplicationInstanceConfig{
 		DisplayName: "mount-app",

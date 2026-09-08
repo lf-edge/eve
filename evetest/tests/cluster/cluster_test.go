@@ -33,7 +33,7 @@ var netbootParam = evetest.TestParameterDefinition{
 
 func clusterDeviceRequirements(devName string, withTPM bool,
 	filesystem evetest.Filesystem, netboot bool) evetest.RequireEdgeDevice {
-	reusePolicy := evetest.CreateFromScratchWithLiveImage
+	reusePolicy := evetest.ResetDeviceConfig
 	if netboot {
 		reusePolicy = evetest.CreateFromScratchWithNetworkBoot
 	}

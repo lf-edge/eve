@@ -242,8 +242,13 @@ func TestHardwareInventory(test *testing.T) {
 	//     EINVAL while the carrier is down; constant on virtio, not on real NICs.
 	//   - TotalStorageBytes: sums every /sys/block entry unfiltered, so loop*,
 	//     dm-* and zram* count too.
+	//   - UsbDevices[].BusPort.Bus: the kernel-assigned USB bus number, not a
+	//     hardware property - see usbLess.
 	diff := cmp.Diff(inventory, rebootedHwInfo.GetInventory(),
-		protocmp.Transform(), protocmp.SortRepeated(cpuLess))
+		protocmp.Transform(),
+		protocmp.SortRepeated(cpuLess),
+		protocmp.SortRepeated(usbLess),
+		protocmp.IgnoreFields(&eveinfo.USBAddress{}, "bus"))
 	t.Expect(diff).To(BeEmpty(),
 		"hardware inventory changed across a reboot (-before +after)")
 	evetest.Checkpoint("inventory-stable-after-reboot")
@@ -262,5 +267,25 @@ func cpuLess(a, b *eveinfo.CPU) bool {
 		return a.GetModel() < b.GetModel()
 	default:
 		return a.GetFreq() < b.GetFreq()
+	}
+}
+
+// usbLess orders USB devices by the PCI function they hang off, not by USB bus
+// number: this VM's two USB host-controller instances (PCI devices 26 and 29,
+// each exposing several UHCI/EHCI root hubs as distinct functions) are
+// hardware-symmetric, and the kernel assigns bus numbers to their root hubs in
+// probe order, which is not guaranteed stable between a cold boot and a warm
+// reboot. The PCI function a given root hub is wired to, by contrast, is fixed.
+func usbLess(a, b *eveinfo.USBDevice) bool {
+	pa, pb := a.GetParent().GetPciParent(), b.GetParent().GetPciParent()
+	switch {
+	case pa.GetDevice() != pb.GetDevice():
+		return pa.GetDevice() < pb.GetDevice()
+	case pa.GetFunction() != pb.GetFunction():
+		return pa.GetFunction() < pb.GetFunction()
+	case a.GetVendorId() != b.GetVendorId():
+		return a.GetVendorId() < b.GetVendorId()
+	default:
+		return a.GetProductId() < b.GetProductId()
 	}
 }

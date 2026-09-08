@@ -38,7 +38,7 @@ import (
 // Phases
 // ------
 //  1. Deploy "bad-image-app" referencing a nonexistent image tag
-//     (docker://nginx:purge-test-nonexistent-99999). Tag resolution fails,
+//     (docker://library/nginx:purge-test-nonexistent-99999). Tag resolution fails,
 //     so the app never activates (no domain is ever created). Wait for the
 //     app to report a non-empty AppErr while not RUNNING -- this confirms
 //     the broken precondition without assuming any particular stuck
@@ -48,7 +48,7 @@ import (
 //  2. fixImageAndPurge applies, in a single EdgeDevConfig mutation /
 //     ApplyConfig call:
 //     a. a fresh ContentTree (new UUID, same datastore, URL fixed to the
-//     working tag docker://nginx:stable, Sha256 cleared),
+//     working tag docker://library/nginx:stable, Sha256 cleared),
 //     b. a fresh Volume (new UUID) whose origin points at that fresh
 //     ContentTree,
 //     c. the app's VolumeRefList rewired to the fresh Volume,
@@ -114,7 +114,7 @@ func TestPurgeNeverActivatedApp(test *testing.T) {
 		DisplayName: "bad-image-app",
 		Activate:    true,
 		Image: evetest.DockerContainer{
-			ImageName: "nginx",
+			ImageName: "library/nginx",
 			Tag:       "purge-test-nonexistent-99999",
 		},
 		VirtualizationMode: eveconfig.VmMode_HVM,
@@ -136,7 +136,7 @@ func TestPurgeNeverActivatedApp(test *testing.T) {
 
 	// Step 2: fix the image and purge, atomically.
 	log.Infof("Fixing the image and purging the app in a single config apply")
-	fixImageAndPurge(t, devConfig, appUUID, "nginx:stable")
+	fixImageAndPurge(t, devConfig, appUUID, "library/nginx:stable")
 	device.ApplyConfig(devConfig, false, false)
 	evetest.Checkpoint("app-fixed-and-purged")
 

@@ -223,6 +223,10 @@ func TestAppInstancePurge(test *testing.T) {
 	log.Infof("Submitted config with app UUID=%v", appUUID)
 	evetest.Checkpoint("initial-config-applied")
 
+	timeout := 20 * time.Minute
+	device.WaitForClusterNodeIsReady(timeout)
+	evetest.Checkpoint("k3s-is-ready")
+
 	timeoutExcludingDownload := 10 * time.Minute
 	device.WaitUntilAppIsRunning(appUUID, timeoutExcludingDownload)
 	evetest.Checkpoint("app-is-deployed")

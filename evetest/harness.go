@@ -1126,6 +1126,13 @@ func Setup(requirements ...Requirement) {
 					port.EveDeviceName = name
 				}
 			}
+			if _, requested := edgeDevReqs[port.GetEveDeviceName()]; !requested {
+				th.t.Fatalf(
+					"Network model port %q references device %q, which was not "+
+						"requested for this test; the network model must match "+
+						"the requested devices exactly",
+					port.LogicalLabel, port.GetEveDeviceName())
+			}
 			if port.GetSdnMacAddress() == "" {
 				mac := utils.GenerateMAC(constants.SDNDeviceName, port.LogicalLabel)
 				port.SdnMacAddress = mac.String()
@@ -1287,6 +1294,8 @@ func Checkpoint(name string) {
 	if name == "" {
 		th.t.Fatalf("missing checkpoint name")
 	}
+	// Log the reached checkpoint on behalf of the test using the test logger.
+	Logger().Infof("Reached checkpoint %q", name)
 	th.checkpointM.Lock()
 	shouldPause := th.pauseAtCheckpoint == name
 	if shouldPause {

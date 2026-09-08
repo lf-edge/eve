@@ -5,6 +5,7 @@ package lps_test
 
 import (
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -107,16 +108,21 @@ func waitLPSAppReady(
 		t.Expect(output).To(ContainSubstring("hello"))
 	}, timeout, polling).Should(Succeed())
 
+	log.Infof("Waiting for LPS app IP...")
+	var ip string
+	t.Eventually(func(t Gomega) {
+		output, _, err := device.RunShellScriptInsideApp(appUUID, lpsAppAuth,
+			"hostname -I | awk '{print $1}'", sshTimeout, 0)
+		t.Expect(err).ToNot(HaveOccurred())
+		ip = strings.TrimSpace(output)
+		t.Expect(net.ParseIP(ip)).ToNot(BeNil())
+	}, timeout, polling).Should(Succeed())
+	log.Infof("LPS app IP: %s", ip)
+
 	_, _, err := device.RunShellScriptInsideApp(appUUID, lpsAppAuth,
 		fmt.Sprintf(`curl -sS -X PUT -d '{"token":"%s"}' `+lpsManageTokenURL, token),
 		sshTimeout, 0)
 	t.Expect(err).ToNot(HaveOccurred())
-
-	output, _, err := device.RunShellScriptInsideApp(appUUID, lpsAppAuth,
-		"hostname -I | awk '{print $1}'", sshTimeout, 0)
-	t.Expect(err).ToNot(HaveOccurred())
-	ip := strings.TrimSpace(output)
-	log.Infof("LPS app IP: %s", ip)
 	return ip
 }
 

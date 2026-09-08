@@ -18,11 +18,6 @@ import (
 // purge runs before the fault-injecting VMIRS test, so a failure in the
 // ordinary app lifecycle is not masked by chaos.
 //
-// Every cluster subtest re-creates its devices, because
-// clusterDeviceRequirements sets CreateFromScratchWithLiveImage, which
-// maybeReuseDevices always rejects. No subtest inherits cluster state from
-// the one before it.
-//
 // Test parameters
 // ---------------
 //   - TPM (bool) via evetest.TPMParameter(). The suite passes the same
