@@ -270,7 +270,7 @@ func doBaseOsStatusUpdate(ctx *baseOsMgrContext, uuidStr string,
 		return changed
 	}
 
-	// A cross-flavor (EVE-kvm <-> EVE-k) update is allowed above only when the
+	// A cross-flavor (EVE-kvm -> EVE-k) update is allowed above only when the
 	// device has no volumes. The image is downloaded and verified by now (the
 	// doBaseOsInstall step waited for ContentTreeStatus); before writing it to
 	// the A/B partition, repartition the boot disk to the EVE-k geometry. The

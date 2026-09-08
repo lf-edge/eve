@@ -405,7 +405,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	subZedAgentStatus.Activate()
 
 	// subscribe to baseos status events, to react to a boot-disk conversion
-	// (EVE-kvm <-> EVE-k) that needs a reboot into the offline shrink.
+	// (EVE-kvm -> EVE-k) that needs a reboot into the offline shrink.
 	subBaseOsStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "baseosmgr",
 		MyAgentName:   agentName,

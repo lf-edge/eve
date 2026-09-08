@@ -89,7 +89,7 @@ type BaseOsStatus struct {
 	// Error* set implies error.
 	State SwState
 	// Converting is set while the boot disk is being repartitioned for an
-	// EVE-kvm <-> EVE-k flavor change (before the A/B install). zedagent maps it
+	// EVE-kvm -> EVE-k flavor change (before the A/B install). zedagent maps it
 	// to DEVICE_STATE_CONVERTING; ConvertSubState carries the progress phase.
 	Converting      bool
 	ConvertSubState DeviceSubState
@@ -610,7 +610,7 @@ const (
 //revive:enable:var-naming
 
 // DeviceSubState mirrors ZDeviceSubState in lf-edge/eve-api: the sub-state
-// reported alongside DEVICE_STATE_CONVERTING for the EVE-kvm <-> EVE-k
+// reported alongside DEVICE_STATE_CONVERTING for the EVE-kvm -> EVE-k
 // boot-disk conversion.
 type DeviceSubState uint8
 
