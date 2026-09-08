@@ -74,12 +74,29 @@ func newIngestTestCtx(t *testing.T) (*volumemgrContext, *fakeWorker) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	pubVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.VolumeStatus{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	subContentTreeConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName: "zedagent",
+		TopicImpl: types.ContentTreeConfig{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	wk := newFakeWorker()
 	ctx := &volumemgrContext{
 		pubContentTreeStatus: pubContentTreeStatus,
 		pubBlobStatus:        pubBlobStatus,
+		pubVolumeStatus:      pubVolumeStatus,
+		subContentTreeConfig: subContentTreeConfig,
 		worker:               wk,
 		pendingIngest:        make(map[string]bool),
+		inflightBlobIngests:  make(map[string]string),
 	}
 	return ctx, wk
 }
@@ -216,5 +233,129 @@ func TestOrphanedRootBlobTakeover(t *testing.T) {
 	}
 	if len(wk.submitted) != 1 {
 		t.Errorf("expected no new submission while deferring, got %d", len(wk.submitted))
+	}
+}
+
+// TestSharedBlobIngestedOnce pins the claim protocol that stops concurrent
+// workers from ingesting the same blob: the job submitted for a content tree
+// claims the LOADING blobs no other in-flight job owns, a second tree sharing
+// the blob defers instead of submitting a duplicate load, and when the owning
+// job ends without loading the blob (here: it failed), the release of its
+// claims lets the waiting tree take the load over. Before this, every tree
+// sharing a layer re-ingested it, and the loser of that race could find the
+// verified file already deleted by the winner's completion.
+func TestSharedBlobIngestedOnce(t *testing.T) {
+	ctx, wk := newIngestTestCtx(t)
+	first := verifiedTree(ctx, "first", "sha-once", types.VERIFIED)
+
+	doUpdateContentTree(ctx, first)
+	if owner := ctx.inflightBlobIngests["sha-once"]; owner != first.Key() {
+		t.Fatalf("blob owner = %q, want %q", owner, first.Key())
+	}
+	d := wk.submitted[0].Description.(casIngestWorkDescription)
+	if len(d.claimedBlobs) != 1 || d.claimedBlobs[0] != "sha-once" {
+		t.Fatalf("claimedBlobs = %v, want [sha-once]", d.claimedBlobs)
+	}
+
+	// A second tree sharing the blob defers on the claimed root instead of
+	// submitting a duplicate ingest of the same content.
+	second := verifiedTree(ctx, "second", "sha-once", types.LOADING)
+	doUpdateContentTree(ctx, second)
+	if second.State != types.VERIFIED || len(wk.submitted) != 1 {
+		t.Fatalf("state = %s, submissions = %d; want deferred with no duplicate job",
+			second.State, len(wk.submitted))
+	}
+
+	// The owning job fails without having loaded the blob. Its result must
+	// release the claim, and the waiting tree must take the load over with a
+	// job of its own, rather than deferring forever to a load nobody owns.
+	res := worker.WorkResult{
+		Key:         first.Key(),
+		Error:       &worker.PoolFullError{}, // any error will do
+		Description: d,
+	}
+	wk.results[first.Key()] = &res
+	if err := processCasIngestWorkResult(ctx, res); err != nil {
+		t.Fatal(err)
+	}
+	// The released claim is not observable as an empty map out here: releasing
+	// it inside the handler is exactly what lets the re-drive in the same call
+	// hand the blob to the waiting tree, which claims it again. What must hold
+	// is that the failed job no longer owns it.
+	if owner := ctx.inflightBlobIngests["sha-once"]; owner == first.Key() {
+		t.Errorf("failed job still owns the blob claim")
+	}
+	failed := ctx.LookupContentTreeStatus(first.Key())
+	if !failed.HasError() || failed.State != types.LOADING {
+		t.Errorf("failed tree: state=%s error=%q; want parked in LOADING with the error",
+			failed.State, failed.Error)
+	}
+	if len(wk.submitted) != 2 {
+		t.Fatalf("submissions = %d; want the waiting tree to take the load over",
+			len(wk.submitted))
+	}
+	takeover := wk.submitted[1].Description.(casIngestWorkDescription)
+	if len(takeover.claimedBlobs) != 1 || takeover.claimedBlobs[0] != "sha-once" {
+		t.Errorf("takeover claims = %v, want [sha-once]", takeover.claimedBlobs)
+	}
+	if owner := ctx.inflightBlobIngests["sha-once"]; owner != second.Key() {
+		t.Errorf("blob owner after takeover = %q, want %q", owner, second.Key())
+	}
+}
+
+// TestSelectClaimedBlobs pins what the ingest worker will load: fresh copies
+// of exactly the claimed blobs, skipping one that disappeared (its tree was
+// deleted while the job waited) or that is already loaded.
+func TestSelectClaimedBlobs(t *testing.T) {
+	ctx, _ := newIngestTestCtx(t)
+	publishBlobStatus(ctx,
+		&types.BlobStatus{Sha256: "sha-load", State: types.LOADING, Path: "/fresh/path"},
+		&types.BlobStatus{Sha256: "sha-done", State: types.LOADED})
+
+	got := selectClaimedBlobs(ctx, "key", []string{"sha-load", "sha-done", "sha-gone"})
+	if len(got) != 1 || got[0].Sha256 != "sha-load" || got[0].Path != "/fresh/path" {
+		t.Errorf("selectClaimedBlobs = %+v, want just sha-load with its current path", got)
+	}
+}
+
+// TestLoadingWaitsOnForeignClaim pins the guard on the LOADING self-heal: a
+// content tree with no job of its own must NOT reset and resubmit while a
+// concurrent job's claim covers its missing blob -- that job's result is what
+// re-drives this tree. Without the guard the reset loops: the fresh job can
+// claim nothing (the blob is owned), completes as a no-op that still updates
+// the image reference in containerd, and its result handler re-drives the
+// tree straight back into the reset, for as long as the owning job keeps
+// loading the shared layer.
+func TestLoadingWaitsOnForeignClaim(t *testing.T) {
+	ctx, wk := newIngestTestCtx(t)
+	publishBlobStatus(ctx,
+		&types.BlobStatus{Sha256: "sha-root-l", State: types.LOADED},
+		&types.BlobStatus{Sha256: "sha-layer", State: types.LOADING, Path: "/some/path"})
+	contentID, _ := uuid.NewV4()
+	status := &types.ContentTreeStatus{
+		ContentID:   contentID,
+		DisplayName: "waiter",
+		State:       types.LOADING,
+		Blobs:       []string{"sha-root-l", "sha-layer"},
+	}
+	publishContentTreeStatus(ctx, status)
+	ctx.inflightBlobIngests["sha-layer"] = "other-tree-key"
+
+	changed, _ := doUpdateContentTree(ctx, status)
+	if changed || status.State != types.LOADING || len(wk.submitted) != 0 {
+		t.Errorf("got (changed=%v,state=%s,submissions=%d); want to keep waiting in LOADING",
+			changed, status.State, len(wk.submitted))
+	}
+
+	// Once the claim is released (the owning job finished without loading the
+	// blob), the reset fires and the resubmitted job claims the blob itself.
+	delete(ctx.inflightBlobIngests, "sha-layer")
+	doUpdateContentTree(ctx, status)
+	if status.State != types.LOADING || len(wk.submitted) != 1 {
+		t.Errorf("state=%s submissions=%d; want reset and one resubmitted job",
+			status.State, len(wk.submitted))
+	}
+	if owner := ctx.inflightBlobIngests["sha-layer"]; owner != status.Key() {
+		t.Errorf("blob owner = %q, want %q", owner, status.Key())
 	}
 }
