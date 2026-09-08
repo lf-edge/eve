@@ -1339,7 +1339,7 @@ func getBaseosUpdateCounter(ctx *zedagentContext) uint32 {
 	return status.CurrentRetryUpdateCounter
 }
 
-// isConverting reports whether a boot-disk flavor conversion (EVE-kvm <-> EVE-k)
+// isConverting reports whether a boot-disk flavor conversion (EVE-kvm -> EVE-k)
 // is in progress, and the furthest-reached sub-state, as signalled by baseosmgr
 // on BaseOsStatus.
 func isConverting(ctx *zedagentContext) (bool, types.DeviceSubState) {
