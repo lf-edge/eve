@@ -37,6 +37,10 @@ type volumeWorkDescription struct {
 // casIngestWorkDescription cas ingest work we feed into the worker go routine
 type casIngestWorkDescription struct {
 	status types.ContentTreeStatus
+	// claimedBlobs are the blob sha256s this job -- and no concurrent job --
+	// will load into the CAS, decided in the main event loop at submit time
+	// (see AddWorkLoad).
+	claimedBlobs []string
 	// used for results
 	loaded []string
 }
@@ -63,26 +67,27 @@ type casIngestWorkResult struct {
 
 // trySubmitWork hands one work item to the worker pool, distinguishing the
 // benign idempotent case (a job with this key is already in progress) from a
-// real refusal. Returns nil if the job is running or was accepted, and an
-// error (a worker.PoolFullError when the pool is at maxWorkers) if nothing
-// owns the work: the caller must then either retry later or not commit any
-// state that assumes the job will run.
-func trySubmitWork(ctx *volumemgrContext, w worker.Work) error {
+// real refusal. Returns (true, nil) if this submission was accepted,
+// (false, nil) if a job with this key is already running, and an error (a
+// worker.PoolFullError when the pool is at maxWorkers) if nothing owns the
+// work: the caller must then either retry later or not commit any state that
+// assumes the job will run.
+func trySubmitWork(ctx *volumemgrContext, w worker.Work) (bool, error) {
 	done, err := ctx.worker.TrySubmit(w)
 	if err != nil {
 		var inProgress *worker.JobInProgressError
 		if errors.As(err, &inProgress) {
 			log.Functionf("trySubmitWork(%s): job already in progress", w.Key)
-			return nil
+			return false, nil
 		}
-		return err
+		return false, err
 	}
 	if !done {
 		// A pool never returns (false, nil); only a bare worker with a full
 		// queue does, and volumemgr uses a pool.
-		return fmt.Errorf("worker did not accept job %s", w.Key)
+		return false, fmt.Errorf("worker did not accept job %s", w.Key)
 	}
-	return nil
+	return true, nil
 }
 
 // AddWorkCreate adds a Work job to create a volume.
@@ -96,7 +101,7 @@ func AddWorkCreate(ctx *volumemgrContext, status *types.VolumeStatus) error {
 		status: *status,
 	}
 	w := worker.Work{Kind: workCreate, Key: status.Key(), Description: d}
-	if err := trySubmitWork(ctx, w); err != nil {
+	if _, err := trySubmitWork(ctx, w); err != nil {
 		log.Warnf("AddWorkCreate(%s): %v", status.Key(), err)
 		return err
 	}
@@ -110,39 +115,66 @@ func AddWorkCreate(ctx *volumemgrContext, status *types.VolumeStatus) error {
 // already in progress for this key counts as success, so callers stay
 // idempotent.
 func AddWorkLoad(ctx *volumemgrContext, status *types.ContentTreeStatus) error {
-	d := casIngestWorkDescription{
-		status: *status,
-	}
-	w := worker.Work{Kind: workIngest, Key: status.Key(), Description: d}
-	if err := trySubmitWork(ctx, w); err != nil {
-		log.Warnf("AddWorkLoad(%s): %v", status.Key(), err)
-		return err
-	}
 	if ctx.pendingIngest == nil {
 		ctx.pendingIngest = make(map[string]bool)
 	}
+	if ctx.inflightBlobIngests == nil {
+		ctx.inflightBlobIngests = make(map[string]string)
+	}
+	// Decide here, where BlobStatus is authoritative, exactly which blobs
+	// this job will load: those in LOADING that no other in-flight job has
+	// claimed. The worker must not select blobs itself from the stale copy it
+	// is handed: two workers that each saw a shared blob in LOADING would
+	// both ingest it, and the one finishing last can find the verified file
+	// already deleted by the completion of the first (with the redundant
+	// multi-hundred-MB writes as a bonus).
+	var claimed []string
+	seen := map[string]bool{}
+	for _, blobSha := range status.Blobs {
+		if seen[blobSha] {
+			continue
+		}
+		seen[blobSha] = true
+		blob := ctx.LookupBlobStatus(blobSha)
+		if blob == nil || blob.State != types.LOADING {
+			continue
+		}
+		if owner, ok := ctx.inflightBlobIngests[blobSha]; ok && owner != status.Key() {
+			// Another job loads it; this tree waits on that job's result.
+			continue
+		}
+		claimed = append(claimed, blobSha)
+	}
+	d := casIngestWorkDescription{
+		status:       *status,
+		claimedBlobs: claimed,
+	}
+	w := worker.Work{Kind: workIngest, Key: status.Key(), Description: d}
+	accepted, err := trySubmitWork(ctx, w)
+	if err != nil {
+		log.Warnf("AddWorkLoad(%s): %v", status.Key(), err)
+		return err
+	}
 	ctx.pendingIngest[status.Key()] = true
+	if accepted {
+		// Only a submission that was actually handed to a worker owns its
+		// claims; when the key was already in progress, the running job keeps
+		// loading whatever it claimed at its own submit time.
+		for _, blobSha := range claimed {
+			ctx.inflightBlobIngests[blobSha] = status.Key()
+		}
+	}
 	return nil
 }
 
-// ingestInFlightFor reports whether some content tree with an accepted, not
-// yet completed CAS ingest job carries this blob. A blob sitting in LOADING
-// that no in-flight job covers has lost its worker; treating such a blob as
-// busy is what turns a refused submit into a permanent stall for every other
-// content tree sharing it.
+// ingestInFlightFor reports whether some accepted, not yet completed CAS
+// ingest job claimed this blob. A blob sitting in LOADING that no in-flight
+// job covers has lost its worker; treating such a blob as busy is what turns
+// a refused submit into a permanent stall for every other content tree
+// sharing it.
 func ingestInFlightFor(ctx *volumemgrContext, sha string) bool {
-	for key := range ctx.pendingIngest {
-		ctStatus := ctx.LookupContentTreeStatus(key)
-		if ctStatus == nil {
-			continue
-		}
-		for _, blobSha := range ctStatus.Blobs {
-			if blobSha == sha {
-				return true
-			}
-		}
-	}
-	return false
+	_, ok := ctx.inflightBlobIngests[sha]
+	return ok
 }
 
 // AddWorkPrepare adds a Work job to prepare creation of a volume.
@@ -154,7 +186,7 @@ func AddWorkPrepare(ctx *volumemgrContext, status *types.VolumeStatus) error {
 		status:  *status,
 	}
 	w := worker.Work{Kind: workPrepare, Key: status.Key(), Description: d}
-	if err := trySubmitWork(ctx, w); err != nil {
+	if _, err := trySubmitWork(ctx, w); err != nil {
 		log.Warnf("AddWorkPrepare(%s): %v", status.Key(), err)
 		return err
 	}
@@ -185,7 +217,7 @@ func AddWorkDestroy(ctx *volumemgrContext, status *types.VolumeStatus) error {
 		status:  *status,
 	}
 	w := worker.Work{Kind: workCreate, Key: status.Key(), Description: d}
-	if err := trySubmitWork(ctx, w); err != nil {
+	if _, err := trySubmitWork(ctx, w); err != nil {
 		log.Warnf("AddWorkDestroy(%s): %v", status.Key(), err)
 		return err
 	}
@@ -248,38 +280,57 @@ func volumeWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 	return result
 }
 
+// selectClaimedBlobs returns fresh copies of the blobs an ingest job claimed
+// at submit time and still has to load. Re-reading BlobStatus here (rather
+// than trusting the copy taken at submit time) keeps Path current; a claimed
+// blob that meanwhile disappeared (its content tree was deleted) or was
+// already loaded is skipped.
+func selectClaimedBlobs(ctx *volumemgrContext, key string, claimedBlobs []string) []types.BlobStatus {
+	loadBlobs := []types.BlobStatus{}
+	for _, blobSha := range claimedBlobs {
+		blob := ctx.LookupBlobStatus(blobSha)
+		if blob == nil {
+			log.Warnf("selectClaimedBlobs(%s): claimed blob %s disappeared, skipping",
+				key, blobSha)
+			continue
+		}
+		if blob.State == types.LOADED {
+			continue
+		}
+		loadBlobs = append(loadBlobs, *blob)
+	}
+	return loadBlobs
+}
+
 // casIngestWorker implementation of work.WorkFunction that loads blobs and an image into the CAS store
 func casIngestWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 	ctx := ctxPtr.(*volumemgrContext)
 	d := w.Description.(casIngestWorkDescription)
 	status := d.status
 
-	log.Functionf("casIngestWorker has blobs: %v", status.Blobs)
-	blobStatuses := lookupBlobStatuses(ctx, status.Blobs...)
+	log.Functionf("casIngestWorker has blobs: %v, claimed: %v",
+		status.Blobs, d.claimedBlobs)
+	result := worker.WorkResult{
+		Key:         w.Key,
+		Description: d,
+	}
 
-	// find the blobs we need to load and indicate that they are being loaded
-	// The order here is important. As a safety check, IngestBlobsAndCreateImage
-	// will not load any blobs that are of state LOADED or LOADING. If we set it to LOADING,
-	// we will prevent it from being loaded. But we need to indicate to the rest of the world
-	// that this blob is being loaded. So we do the following:
-	//
-	// 1. duplicate the BlobStatus to pass to IngestBlobsAndCreateImage
-	// 2. update the original BlobStatus state and publish
-	// 3. When we get the response, update the originals and publish
+	// Load exactly the blobs this job claimed at submit time (see
+	// AddWorkLoad). Blobs of this tree claimed by a concurrent job are left
+	// to that job; the tree waits for them through the per-blob states.
+	loadBlobs := selectClaimedBlobs(ctx, status.Key(), d.claimedBlobs)
 
-	// also keep track so we do not try to load duplicates
-	found := map[string]bool{}
-	loadBlobs := []types.BlobStatus{}
-	root := blobStatuses[0]
-	for _, blob := range blobStatuses {
-		// be careful not to load the same Sha256 twice
-		if _, ok := found[blob.Sha256]; ok {
-			continue
-		}
-		found[blob.Sha256] = true
-		if blob.State == types.LOADING {
-			loadBlobs = append(loadBlobs, *blob)
-		}
+	// The first blob is always the root; the image reference is created from
+	// its descriptor even when nothing is left to ingest.
+	var root *types.BlobStatus
+	if len(status.Blobs) > 0 {
+		root = ctx.LookupBlobStatus(status.Blobs[0])
+	}
+	if root == nil {
+		result.Error = fmt.Errorf("casIngestWorker(%s): root blob not found",
+			status.Key())
+		result.ErrorTime = time.Now()
+		return result
 	}
 
 	appImgName := status.ReferenceID()
@@ -290,10 +341,7 @@ func casIngestWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 	for _, blob := range loadedBlobs {
 		d.loaded = append(d.loaded, blob.Sha256)
 	}
-	result := worker.WorkResult{
-		Key:         w.Key,
-		Description: d,
-	}
+	result.Description = d
 	if err != nil {
 		result.Error = err
 		result.ErrorTime = time.Now()
@@ -368,7 +416,16 @@ func processVolumePrepareResult(ctxPtr interface{}, res worker.WorkResult) error
 func processCasIngestWorkResult(ctxPtr interface{}, res worker.WorkResult) error {
 	ctx := ctxPtr.(*volumemgrContext)
 	d := res.Description.(casIngestWorkDescription)
-	delete(ctx.pendingIngest, d.status.Key())
+	key := d.status.Key()
+	delete(ctx.pendingIngest, key)
+	// Release this job's blob claims, whether it succeeded or not: a blob it
+	// claimed but failed to load stays in LOADING with no owner, and the next
+	// content tree to look at it takes the load over instead of waiting.
+	for sha, owner := range ctx.inflightBlobIngests {
+		if owner == key {
+			delete(ctx.inflightBlobIngests, sha)
+		}
+	}
 	// loaded has the hashes of the blobs we loaded; publicise their new states.
 	blobs := lookupBlobStatuses(ctx, d.loaded...)
 	for _, blob := range blobs {
