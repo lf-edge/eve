@@ -434,9 +434,10 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 			}
 			status.State = types.VERIFIED
 			description := types.ErrorDescription{
-				Error:               fmt.Sprintf("CAS ingest deferred: %v", err),
-				ErrorRetryCondition: "Will retry when a worker becomes available",
-				ErrorSeverity:       types.ErrorSeverityWarning,
+				Error: fmt.Sprintf("CAS ingest deferred: %v", err),
+				ErrorRetryCondition: "Will retry when a worker becomes available; " +
+					"the volumemgr.worker.pool.size config item bounds the pool",
+				ErrorSeverity: types.ErrorSeverityWarning,
 			}
 			// do not touch time of the error with the same content
 			if status.Error != description.Error {
@@ -555,9 +556,10 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 // handlers retries the submission once a pool slot frees up.
 func deferVolumeWork(status *types.VolumeStatus, what string, err error) {
 	description := types.ErrorDescription{
-		Error:               fmt.Sprintf("volume %s deferred: %v", what, err),
-		ErrorRetryCondition: "Will retry when a worker becomes available",
-		ErrorSeverity:       types.ErrorSeverityWarning,
+		Error: fmt.Sprintf("volume %s deferred: %v", what, err),
+		ErrorRetryCondition: "Will retry when a worker becomes available; " +
+			"the volumemgr.worker.pool.size config item bounds the pool",
+		ErrorSeverity: types.ErrorSeverityWarning,
 	}
 	// do not touch time of the error with the same content
 	if status.Error != description.Error {
