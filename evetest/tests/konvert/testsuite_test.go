@@ -170,5 +170,6 @@ func TestKonvertSuite(test *testing.T) {
 				},
 			},
 		},
+		evetest.TestCase{Test: TestKvmToKVolumeMigration},
 	)
 }
