@@ -61,11 +61,18 @@ DOCKER_PLATFORM ?= $(shell uname -s | tr '[A-Z]' '[a-z]')/$(subst aarch64,arm64,
 # Allocate a pseudo-TTY only when stdout is a terminal (i.e. interactive use).
 DOCKER_IT := $(shell [ -t 1 ] && echo '-it' || echo '-i')
 
-.PHONY: evetest list-tests _run_protoc proto clone-eve-api _install-broker proxmox-broker-installer
+.PHONY: evetest list-tests list-test-suites _run_protoc proto clone-eve-api _install-broker proxmox-broker-installer
 
 list-tests: ensure-evetest-image
 	@docker run --rm $(DOCKER_IT) \
 		-v $(REPO_ROOT)/evetest/tests:/evetest/tests \
+		$(EVETEST_IMAGE)
+
+# Plain list of test suite names, one per line -- e.g. for a CI job matrix.
+list-test-suites: ensure-evetest-image
+	@docker run --rm $(DOCKER_IT) \
+		-v $(REPO_ROOT)/evetest/tests:/evetest/tests \
+		-e EVETEST_LIST_SUITES_ONLY=true \
 		$(EVETEST_IMAGE)
 
 evetest: ensure-evetest-image
