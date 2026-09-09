@@ -4,6 +4,7 @@
 package update
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -305,5 +306,41 @@ func TestK3sStatusParked(t *testing.T) {
 				t.Errorf("got %v, want %v", got, c.want)
 			}
 		})
+	}
+}
+
+// TestCurlDownloadUsesMgmtProxy pins the regression this fixes: curlDownload
+// must route through pillar's cost-aware mgmtproxy (HTTPS_PROXY/NO_PROXY on
+// the child's env) exactly like the other one-shot download subprocesses in
+// kube-init (e.g. StartContainerd). Without this, the k3s binary download
+// goes out via table main directly, which breaks exactly when mgmtproxy
+// exists to route around a bad table-main default route.
+func TestCurlDownloadUsesMgmtProxy(t *testing.T) {
+	dir := t.TempDir()
+	envOut := filepath.Join(dir, "env.out")
+	fakeCurl := filepath.Join(dir, "curl")
+	script := "#!/bin/sh\n" +
+		"echo \"HTTPS_PROXY=$HTTPS_PROXY\" > " + envOut + "\n" +
+		"echo \"NO_PROXY=$NO_PROXY\" >> " + envOut + "\n"
+	if err := os.WriteFile(fakeCurl, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake curl: %v", err)
+	}
+
+	oldPath := os.Getenv("PATH")
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+oldPath)
+
+	if err := curlDownload(context.Background(), "https://example.com/x", filepath.Join(dir, "out")); err != nil {
+		t.Fatalf("curlDownload: %v", err)
+	}
+
+	got, err := os.ReadFile(envOut)
+	if err != nil {
+		t.Fatalf("read %s: %v", envOut, err)
+	}
+	if !strings.Contains(string(got), "HTTPS_PROXY=http://127.0.0.1:5443") {
+		t.Errorf("fake curl's env = %q, want HTTPS_PROXY=http://127.0.0.1:5443", got)
+	}
+	if strings.Contains(string(got), "HTTPS_PROXY=\n") {
+		t.Errorf("HTTPS_PROXY was empty: %q", got)
 	}
 }
