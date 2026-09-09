@@ -69,6 +69,10 @@ const (
 	gptSectorSize = 512
 )
 
+// persistFillDir is where the pre-conversion fill is written, so the fill and
+// the cleanup that frees it cannot drift apart.
+const persistFillDir = "/persist/konvert-fill"
+
 // fillPersistTimeout bounds the pre-conversion fill. It is generous because the
 // work is proportional to the fill size and runs against a virtual disk.
 const fillPersistTimeout = 40 * time.Minute
@@ -324,33 +328,64 @@ func assertCheckDecision(t Gomega, device *evetest.EdgeDevice, want string) {
 	}, 3*time.Minute, 10*time.Second).Should(Succeed())
 }
 
-// fillPersist writes gib GiB into /persist so that the offline shrink has real
-// blocks to relocate rather than free space to discard.
+// Shaping constants for the pre-conversion fill. peakFillPercent is how full
+// /persist is driven before trimming, and fillChunkMiB the size of each numbered
+// file -- large enough that the loop is not dominated by process startup, small
+// enough that the trim can approach the target closely.
+const (
+	peakFillPercent = 90
+	fillChunkMiB    = 1024
+)
+
+// fillPersist leaves /persist holding data ABOVE where the shrink boundary will
+// fall, so the offline resize2fs has to relocate it.
 //
-// Without it the shrink is a much weaker test: resize2fs has nothing to move,
-// so the relocation path -- the part that can lose data if it is interrupted --
-// is never exercised.
+// Filling straight to the target size does not work, and that is why this is
+// more than a single dd: a freshly formatted ext4 allocates sequentially created
+// files from low blocks upward, so data written directly to the target sits
+// below the boundary and the shrink moves nothing. Writing zeros compounds it,
+// since they cost almost nothing to store on a sparse image.
+//
+// So: fill to peakFillPercent of the filesystem with equal-size numbered files of
+// incompressible bytes, pushing allocation into the high block groups, then
+// delete the earliest -- lowest-block -- files until usage falls back to the
+// target. What survives is concentrated above the boundary, which is exactly
+// what resize2fs then has to move down.
 func fillPersist(t Gomega, device *evetest.EdgeDevice, gib int) {
 	if gib <= 0 {
 		return
 	}
 	log := evetest.Logger()
-	log.Infof("pre-filling /persist with %d GiB so the shrink has blocks to relocate", gib)
-	script := fmt.Sprintf(`set -e
-mkdir -p /persist/konvert-fill
+	log.Infof("filling /persist to %d%% then trimming to %d GiB, so the shrink has high blocks to relocate",
+		peakFillPercent, gib)
+	script := fmt.Sprintf(`set -u
+DIR=%[2]s
+rm -rf "$DIR"; mkdir -p "$DIR"
+used_kb() { df -k /persist | awk 'NR==2{print $3}'; }
+size_kb=$(df -k /persist | awk 'NR==2{print $2}')
+peak_kb=$(( size_kb * %[4]d / 100 ))
+target_kb=$(( %[1]d * 1024 * 1024 ))
+n=0
+while [ "$(used_kb)" -lt "$peak_kb" ]; do
+  dd if=/dev/urandom of="$DIR/$(printf %%06d $n)" bs=1M count=%[3]d 2>/dev/null || break
+  n=$((n + 1))
+done
+sync
+echo "PEAK files=$n used=$(df -k /persist | awk 'NR==2{print $5}')"
 i=0
-while [ "$i" -lt %d ]; do
-  dd if=/dev/zero of=/persist/konvert-fill/blk.$i bs=1M count=1024 2>/dev/null || break
+while [ "$i" -lt "$n" ] && [ "$(used_kb)" -gt "$target_kb" ]; do
+  rm -f "$DIR/$(printf %%06d $i)"
   i=$((i + 1))
 done
 sync
-echo "FILLED=$i"
-df -k /persist | awk 'NR==2{print "PERSIST used="$5}'`, gib)
+echo "FILLED trimmed=$i kept=$(( n - i ))"
+df -k /persist | awk 'NR==2{print "PERSIST used="$5}'`, gib, persistFillDir, fillChunkMiB, peakFillPercent)
+
 	// One attempt, not a retry: this writes tens of gigabytes, and a second
 	// pass would start over rather than continue.
 	out, err := runEVEWithTimeout(device, script, fillPersistTimeout)
 	t.Expect(err).NotTo(HaveOccurred(), "could not fill /persist:\n%s", out)
-	t.Expect(out).To(ContainSubstring("FILLED="), "could not fill /persist:\n%s", out)
+	t.Expect(out).To(ContainSubstring("FILLED"), "could not fill /persist:\n%s", out)
 	log.Infof("pre-fill result: %s", strings.TrimSpace(out))
 }
 
@@ -401,22 +436,39 @@ func fillPersistToPercent(t Gomega, device *evetest.EdgeDevice, pct int) {
 	log := evetest.Logger()
 	log.Infof("filling /persist to %d%% so no shrink can free enough", pct)
 	script := fmt.Sprintf(`set -e
-target=%d
+target=%[1]d
 size=$(df -k /persist | awk 'NR==2{print $2}')
 used=$(df -k /persist | awk 'NR==2{print $3}')
 avail=$(df -k /persist | awk 'NR==2{print $4}')
 need=$(( size * target / 100 - used ))
 if [ "$need" -le 0 ]; then echo "ALREADY-FULL"; else
   [ "$need" -lt "$avail" ] || need=$(( avail - 1048576 ))
-  mkdir -p /persist/konvert-fill
-  dd if=/dev/zero of=/persist/konvert-fill/fill bs=1M count=$(( need / 1024 )) 2>/dev/null
+  mkdir -p %[2]s
+  dd if=/dev/zero of=%[2]s/fill bs=1M count=$(( need / 1024 )) 2>/dev/null
   sync
 fi
-df -k /persist | awk 'NR==2{print "PERSIST used="$5}'`, pct)
+df -k /persist | awk 'NR==2{print "PERSIST used="$5}'`, pct, persistFillDir)
 	out, err := runEVEWithTimeout(device, script, fillPersistTimeout)
 	t.Expect(err).NotTo(HaveOccurred(), "could not fill /persist:\n%s", out)
 	t.Expect(out).To(ContainSubstring("PERSIST used="), "could not fill /persist:\n%s", out)
 	log.Infof("fill result: %s", strings.TrimSpace(out))
+}
+
+// freePersistFill removes the pre-conversion filler.
+//
+// It exists only to give the offline shrink real blocks to relocate, and once
+// the resize is done it is actively harmful: the shrink leaves /persist smaller
+// than it found it, so the same filler now occupies most of what remains, and
+// EVE-K's storage never reports healthy because Longhorn has nowhere to place a
+// replica. Freed here rather than left for teardown, because the cluster comes
+// up in between.
+func freePersistFill(t Gomega, device *evetest.EdgeDevice) {
+	log := evetest.Logger()
+	out, err := runEVEWithTimeout(device,
+		"eve exec pillar sh -c 'rm -rf "+persistFillDir+"; sync; df -h /persist | tail -1'",
+		5*time.Minute)
+	t.Expect(err).NotTo(HaveOccurred(), "could not free the fill:\n%s", out)
+	log.Infof("freed the pre-conversion fill; /persist is now: %s", strings.TrimSpace(out))
 }
 
 // resizerCheck is what storage-resizer's pre-flight check reports, limited to
