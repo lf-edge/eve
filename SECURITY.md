@@ -25,6 +25,27 @@ You may also report a vulnerability to a national CSIRT or to ENISA independentl
 policy. Doing so does not replace reporting it here, and the EVE security team would rather
 hear about an issue twice than not at all.
 
+## CRA Stewardship
+
+This project is supported under the Linux Foundation CRA stewardship framework. Our project
+CRA steward is **TBD(TSC)**, the Linux Foundation legal entity that hosts LF Edge; it is
+recorded as the "Legal Parent" in LFX PCC under Operations, Project Definition, Legal
+Details, and `support@linuxfoundation.org` can confirm it. The steward's policy is published
+at <https://www.linuxfoundation.org/security>. Report vulnerabilities through the channels
+above, and the security team coordinates the report with the steward.
+
+If you believe a vulnerability is being **actively exploited**, say so explicitly and put it
+in the subject line. Active exploitation starts a 24-hour regulatory clock for the steward,
+so the security team escalates such a report immediately instead of waiting for triage to
+finish.
+
+EVE is published for use in commercial products, which is what brings it within the steward
+obligations in Regulation (EU) 2024/2847 Art 24.
+
+<!-- TBD(TSC): the Linux Foundation template offers a separate emergency reporting mechanism
+     for CRA escalation. EVE has no channel distinct from the two above. Decide whether to
+     add one, or keep the single intake and rely on the subject-line convention. -->
+
 ## Safe Harbor
 
 The EVE project will not initiate or support legal action against anyone who discovers or
