@@ -83,3 +83,20 @@ func assertBlobsReused(t Gomega, device *evetest.EdgeDevice, before int64) {
 		"the deployment downloaded %d bytes, so it did not reuse the blobs the "+
 			"conversion carried over", delta)
 }
+
+// assertNothingDownloadedThisBoot asserts the downloader has pulled essentially
+// nothing since the device booted.
+//
+// For a check spanning the conversion there is no before/after pair to take:
+// the counter lives in /run and the conversion reboots, so the reading from
+// before it no longer exists to compare against. The absolute reading answers
+// the same question more directly, and more strictly -- the app came back
+// during this boot, so anything refetched to bring it back is counted here.
+func assertNothingDownloadedThisBoot(t Gomega, device *evetest.EdgeDevice) {
+	total, err := downloaderRecvBytes(device)
+	t.Expect(err).NotTo(HaveOccurred())
+	evetest.Logger().Infof("downloader received %d bytes since the device booted", total)
+	t.Expect(total).To(BeNumerically("<", blobReuseAllowanceBytes),
+		"the downloader pulled %d bytes since boot, so the app did not come back "+
+			"from the content store the conversion carried over", total)
+}
