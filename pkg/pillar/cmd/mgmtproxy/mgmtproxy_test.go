@@ -238,7 +238,7 @@ func TestProxyHandlerRejectsPlainGET(t *testing.T) {
 	ctx := newTestContext(mkDNS(), 0)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "http://registry/v2/", nil)
-	newProxyHandler(ctx).ServeHTTP(rec, req)
+	newProxyHandler(ctx, false).ServeHTTP(rec, req)
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("GET / status = %d, want 405", rec.Code)
 	}
@@ -251,7 +251,7 @@ func TestProxyHandlerBadConnectTarget(t *testing.T) {
 	req := httptest.NewRequest(http.MethodConnect, "//registry-no-port", nil)
 	req.URL.Host = "registry-no-port"
 	req.Host = "registry-no-port"
-	newProxyHandler(ctx).ServeHTTP(rec, req)
+	newProxyHandler(ctx, false).ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("bad CONNECT target status = %d, want 400", rec.Code)
 	}
@@ -268,7 +268,7 @@ func TestProxyHandlerConnectNotReady(t *testing.T) {
 	req := httptest.NewRequest(http.MethodConnect, "//registry.example:443", nil)
 	req.URL.Host = "registry.example:443"
 	req.Host = "registry.example:443"
-	newProxyHandler(ctx).ServeHTTP(rec, req)
+	newProxyHandler(ctx, false).ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadGateway {
 		t.Errorf("not-ready CONNECT status = %d, want 502", rec.Code)
 	}
@@ -282,7 +282,7 @@ func TestProxyHandlerHealthz(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:5443/healthz", nil)
-	newProxyHandler(ctx).ServeHTTP(rec, req)
+	newProxyHandler(ctx, false).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("/healthz status = %d, want 200", rec.Code)
