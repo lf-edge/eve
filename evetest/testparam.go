@@ -325,3 +325,47 @@ func TPMParameter() TestParameterDefinition {
 func GetTPMParameterValue() (useTPM bool) {
 	return GetTestParameter[bool](TPMParameterKey)
 }
+
+// RAMSizeMiBParameterKey is the key used for the RAMSizeMiB parameter.
+const RAMSizeMiBParameterKey = "RAM_SIZE_MB"
+
+// RAMSizeMiBParameter is a predefined TestParameterDefinition for the device RAM size.
+// A value of 0 means the framework default (8192 MiB) is used, unless the test
+// raises it to a floor of its own.
+func RAMSizeMiBParameter() TestParameterDefinition {
+	return TestParameterDefinition{
+		Key:          RAMSizeMiBParameterKey,
+		DefaultValue: uint32(0),
+		Description: TestParameterDescription{
+			Summary: "Device RAM size in MiB",
+			Default: "0 (use framework default 8192 MiB)",
+		},
+	}
+}
+
+// GetRAMSizeMiBParameterValue returns the value set for the RAMSizeMiB parameter.
+func GetRAMSizeMiBParameterValue() uint32 {
+	return GetTestParameter[uint32](RAMSizeMiBParameterKey)
+}
+
+// CPUsParameterKey is the key used for the CPUs parameter.
+const CPUsParameterKey = "CPUS"
+
+// CPUsParameter is a predefined TestParameterDefinition for the device vCPU count.
+// A value of 0 means the framework default (4 vCPUs) is used, unless the test
+// raises it to a floor of its own.
+func CPUsParameter() TestParameterDefinition {
+	return TestParameterDefinition{
+		Key:          CPUsParameterKey,
+		DefaultValue: uint8(0),
+		Description: TestParameterDescription{
+			Summary: "Number of virtual CPUs for the EVE device",
+			Default: "0 (use framework default 4 vCPUs)",
+		},
+	}
+}
+
+// GetCPUsParameterValue returns the value set for the CPUs parameter.
+func GetCPUsParameterValue() uint8 {
+	return GetTestParameter[uint8](CPUsParameterKey)
+}
