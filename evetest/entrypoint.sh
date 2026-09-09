@@ -4,6 +4,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
 if [ -z "$EVETEST_NAME" ]; then
+    if [ "$EVETEST_LIST_SUITES_ONLY" = "true" ]; then
+        exec /usr/local/bin/list-tests -suites-only
+    fi
     exec /usr/local/bin/list-tests
 fi
 
