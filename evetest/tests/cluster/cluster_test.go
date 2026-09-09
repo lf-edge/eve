@@ -338,7 +338,7 @@ func TestThreeNodesCluster(test *testing.T) {
 		requiredDevices[i] = clusterDeviceRequirements(devName[i], withTPM, filesystem, netboot)
 	}
 
-	clusterNetModel := proto.Clone(netmodels.SeparateClusterPort).(*api.NetworkModel)
+	clusterNetModel := proto.Clone(netmodels.SeparateClusterPort(devName[:]...)).(*api.NetworkModel)
 	if netboot {
 		// Point the network's DHCP at evetest's own image server (see
 		// TestHarness.buildNetbootArtifacts).
