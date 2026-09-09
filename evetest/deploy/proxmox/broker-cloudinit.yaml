@@ -16,6 +16,7 @@
 #                            discovers the broker VM's IPv6 uplink address
 #                            (unknown at install time) -- see
 #                            evetest-broker.service below.
+#   __BROKER_VM_USERNAME__ - the broker VM's only Linux user (--broker-vm-username)
 #   __SSH_AUTHORIZED_KEYS__ - YAML flow sequence, e.g. ["ssh-ed25519 AAAA... me@host"]
 #                             or [] if --broker-vm-ssh-pubkey was not passed
 #   __DOCKER_CONFIG_JSON_B64__ - base64 of /root/.docker/config.json; holds the
@@ -32,7 +33,13 @@
 # inside the broker's own container namespace.
 
 ---
-ssh_authorized_keys: __SSH_AUTHORIZED_KEYS__
+users:
+  - name: __BROKER_VM_USERNAME__
+    groups: [sudo]
+    shell: /bin/bash
+    lock_passwd: true
+    sudo: 'ALL=(ALL) NOPASSWD:ALL'
+    ssh_authorized_keys: __SSH_AUTHORIZED_KEYS__
 
 write_files:
   - path: /etc/evetest/broker.env
@@ -113,7 +120,7 @@ packages:
 runcmd:
   - [systemctl, enable, --now, qemu-guest-agent.service]
   - [sh, -c, "curl -fsSL https://get.docker.com | sh"]
-  - [usermod, -aG, docker, ubuntu]
+  - [usermod, -aG, docker, __BROKER_VM_USERNAME__]
   - [systemctl, daemon-reload]
   - [systemctl, enable, --now, evetest-registry-mirrors.service]
   - [systemctl, enable, --now, evetest-broker.service]
