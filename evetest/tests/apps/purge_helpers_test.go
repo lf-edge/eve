@@ -73,6 +73,14 @@ const (
 	// Measured at about six minutes on a 4-vCPU node; every other test in this
 	// package allows twenty.
 	clusterReadyTimeout = 20 * time.Minute
+
+	// clusterFormationTimeout bounds a multi-node cluster forming, which is
+	// slower than one node joining itself.
+	clusterFormationTimeout = 30 * time.Minute
+
+	// failoverTimeout bounds KubeVirt rescheduling a replica after its node is
+	// powered off. Dominated by the node-not-ready detection, not by the pod.
+	failoverTimeout = 10 * time.Minute
 )
 
 // purgeDeviceRequirements returns the RequireEdgeDevice used by every test in
