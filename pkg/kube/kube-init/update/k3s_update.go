@@ -19,6 +19,7 @@ import (
 
 	"github.com/lf-edge/eve/pkg/kube/kube-init/k3s"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kubeconfig"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/mgmtproxy"
 )
 
 // k3sGitHubReleasesURL is the base URL for k3s binary releases.
@@ -225,14 +226,19 @@ func updateK3s(ctx context.Context, dstVersion string) error {
 	return nil
 }
 
-// curlDownload fetches url into dst via curl. We shell out rather
-// than use net/http so the system trust store, proxy settings, and
-// retry behaviour follow the rest of the EVE base OS, which is
-// curl-based throughout. The partial download (if any) is cleaned
-// up here rather than in the caller — curl -sfL does not unlink on
-// failure, so we can't rely on the success path's defer.
+// curlDownload fetches url into dst via curl, with HTTPS_PROXY/NO_PROXY set
+// so it routes through pillar's cost-aware mgmtproxy. Safe here even though
+// the k3s server must never see HTTPS_PROXY: this is a one-shot subprocess
+// that runs before the server exists, not an inherited process-wide env.
+//
+// We shell out rather than use net/http so the system trust store, proxy
+// settings, and retry behaviour follow the rest of the EVE base OS, which
+// is curl-based throughout. The partial download (if any) is cleaned up
+// here rather than in the caller — curl -sfL does not unlink on failure,
+// so we can't rely on the success path's defer.
 func curlDownload(ctx context.Context, url, dst string) error {
 	cmd := exec.CommandContext(ctx, "curl", "-sfL", "-o", dst, url)
+	cmd.Env = append(os.Environ(), mgmtproxy.Env("", 0)...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		_ = os.Remove(dst)
