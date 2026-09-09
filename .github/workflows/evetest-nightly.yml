@@ -1,0 +1,296 @@
+# Copyright (c) 2026, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+name: evetest-nightly
+on:  # yamllint disable-line rule:truthy
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  discover-suites:
+    runs-on: ubuntu-latest
+    outputs:
+      suites: ${{ steps.list.outputs.suites }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: false
+      - id: list
+        name: List evetest test suites
+        run: |
+          SUITES_JSON=$(make -C evetest list-test-suites \
+              | grep -E '^Test[A-Za-z0-9_]+$' \
+              | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          if [ "$SUITES_JSON" = "[]" ]; then
+            echo "::error::no test suites discovered; check the raw 'make -C evetest list-test-suites' output above"
+            exit 1
+          fi
+          echo "Discovered suites: $SUITES_JSON"
+          echo "suites=$SUITES_JSON" >> "$GITHUB_OUTPUT"
+
+      # For a snapshot (untagged) branch, don't just trust that HEAD's own
+      # image is already on Docker Hub -- publish.yml can still be mid-build
+      # if something merged to this branch shortly before this workflow
+      # ran. Walk back from the tip until we find a commit whose lfedge/eve
+      # image (both hypervisors, amd64) actually exists, and use that.
+      - id: version
+        name: Compute the EVE version to test
+        run: |
+          REPO_BRANCH=$(git rev-parse --abbrev-ref HEAD | tr / _)
+          REPO_TAG=$(git describe --always --tags | grep -E '^[0-9]+\.[0-9]+\.[0-9]+(-lts|-rc[0-9]+)?$' || echo snapshot)
+
+          if [ "$REPO_TAG" != "snapshot" ]; then
+            # A release tag's build is a one-shot, already fully published
+            # by the time the tag exists -- no need to search.
+            VERSION="$REPO_TAG"
+            echo "Computed EVE version: $VERSION"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          image_published() {
+            curl -fs -o /dev/null \
+              "https://hub.docker.com/v2/repositories/lfedge/eve/tags/${1}/"
+          }
+
+          MAX_COMMITS_BACK=100
+          VERSION=""
+          BEHIND=0
+          for SHA in $(git log --format=%H -n "$MAX_COMMITS_BACK" HEAD); do
+            SHA8=$(git rev-parse --short=8 "$SHA")
+            CANDIDATE="0.0.0-${REPO_BRANCH}-${SHA8}"
+            if image_published "${CANDIDATE}-kvm-amd64" && image_published "${CANDIDATE}-k-amd64"; then
+              VERSION="$CANDIDATE"
+              break
+            fi
+            BEHIND=$((BEHIND + 1))
+          done
+
+          if [ -z "$VERSION" ]; then
+            echo "::error::no lfedge/eve image (kvm+k, amd64) published for any of the last $MAX_COMMITS_BACK commits on $REPO_BRANCH"
+            exit 1
+          fi
+
+          if [ "$BEHIND" -gt 0 ]; then
+            echo "::warning::using lfedge/eve image for commit $SHA8, $BEHIND commit(s) behind the tip of $REPO_BRANCH -- publish.yml may not have finished building the tip's image yet"
+          fi
+
+          echo "Computed EVE version: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+  evetest:
+    name: Run suite ${{ matrix.test-suite }}
+    needs: discover-suites
+    runs-on: [self-hosted, evetest-runner]
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        test-suite: ${{ fromJson(needs.discover-suites.outputs.suites) }}
+    steps:
+      - name: Clean stale state from previous runs
+        run: |
+          sudo rm -fr "$GITHUB_WORKSPACE" && mkdir "$GITHUB_WORKSPACE"
+          rm -fr ~/.linuxkit
+          docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q) || :
+          docker system prune --all --force --volumes
+          mkdir -p "$EVETEST_COLLECT_ARTIFACTS"
+          # May be root-owned if a previous run was killed mid-way.
+          sudo rm -fr "${EVETEST_COLLECT_ARTIFACTS:?}"/*
+          # Self-hosted runner: /tmp isn't wiped between jobs.
+          rm -rf /tmp/eve-image /tmp/prev-attempt /tmp/upload /tmp/merged-coverage /tmp/coverage.txt
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set the EVE version to test
+        run: echo "EVETEST_EVE_VERSION=${{ needs.discover-suites.outputs.version }}" >> "$GITHUB_ENV"
+
+      - uses: ./.github/actions/evetest-run-suite
+        with:
+          test-suite: ${{ matrix.test-suite }}
+          download-image-artifacts: 'false'
+          post-status: 'false'
+          upload-junit-results: 'true'
+          analyze-failures: 'true'
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          ledger-branch: ${{ github.ref_name }}
+
+  # Combines every suite's JUnit results into one Allure report, appends a
+  # ledger entry summarizing any failures, and publishes both to GitHub
+  # Pages (gh-pages branch, under test/<branch>/) in one commit. Carries
+  # forward the previous report's history/ folder so Allure can render
+  # pass/fail trend and flakiness across nightly runs.
+  publish-report:
+    needs: [discover-suites, evetest]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out evetest-run-suite's shared scripts
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          sparse-checkout: .github/actions/evetest-run-suite
+          persist-credentials: false
+
+      - name: Compute the test-report subdirectory for this branch
+        run: echo "TEST_DIR=test/${{ github.ref_name }}" >> "$GITHUB_ENV"
+
+      - name: Download every suite's JUnit results
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          pattern: junit-*
+          path: allure-results
+          merge-multiple: true
+
+      - name: Check out gh-pages
+        id: checkout_gh_pages
+        continue-on-error: true
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          ref: gh-pages
+          path: gh-pages
+
+      - name: Initialize an empty gh-pages branch (first run only)
+        if: steps.checkout_gh_pages.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # actions/checkout above already created gh-pages/.git with an
+          # "origin" remote before its fetch of the (nonexistent) gh-pages
+          # ref failed, so `remote add` alone would collide with that.
+          mkdir -p gh-pages
+          git -C gh-pages init -b gh-pages
+          # `-b gh-pages` above is ignored when checkout already left a repo
+          # behind (its "re-init" warning) -- force HEAD to gh-pages
+          # regardless, since the later `git push origin gh-pages` needs a
+          # local branch of that exact name to push.
+          git -C gh-pages symbolic-ref HEAD refs/heads/gh-pages
+          URL="https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+          git -C gh-pages remote add origin "$URL" 2>/dev/null \
+            || git -C gh-pages remote set-url origin "$URL"
+
+      - name: Carry forward Allure history
+        run: cp -r "gh-pages/$TEST_DIR/history" allure-results/history 2>/dev/null || true
+
+      - name: Create executor.json
+        run: |
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          cat <<EOF > allure-results/executor.json
+          {
+            "name": "GitHub Actions",
+            "type": "github",
+            "buildName": "${{ needs.discover-suites.outputs.version }}",
+            "buildUrl": "${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}",
+            "buildOrder": ${{ github.run_number }},
+            "reportUrl": "https://${{ github.repository_owner }}.github.io/${REPO_NAME}/${TEST_DIR}/runs/${{ github.run_number }}"
+          }
+          EOF
+
+      - name: Install Allure CLI
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c  # v6.0.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Generate Allure report
+        run: |
+          curl -fsSL -o allure.tgz \
+            https://github.com/allure-framework/allure2/releases/download/2.46.0/allure-2.46.0.tgz
+          tar xzf allure.tgz
+          ./allure-2.46.0/bin/allure generate --clean -o allure-report allure-results
+
+      # assets/ (the bundled Allure frontend JS/CSS, ~2MB) is identical
+      # across every run of the same Allure CLI version -- GitHub Pages
+      # doesn't support symlinks, so instead each snapshot's index.html is
+      # rewritten to reference the one shared assets/ copy already sitting
+      # at this branch's test/<branch>/ root.
+      # Revisit this rewrite if a future Allure release changes how it
+      # emits these references.
+      - name: Archive this run's report snapshot
+        run: |
+          DEST="gh-pages/$TEST_DIR/runs/${{ github.run_number }}"
+          mkdir -p "$DEST"
+          cp -r allure-report/. "$DEST/"
+          rm -rf "$DEST/assets"
+          sed -i -E 's#"assets/#"../../assets/#g' "$DEST/index.html"
+
+      - name: Download every suite's Claude failure analysis
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          pattern: claude-analysis-*
+        continue-on-error: true
+
+      - name: Append this run's failures to the nightly ledger
+        run: |
+          HEADER=$'# Evetest Nightly Ledger\n\nOne section per nightly run with at least one failing suite.'
+          LEDGER_PATH="gh-pages/$TEST_DIR/NIGHTLY-LEDGER.md"
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+
+          # download-artifact only nests each match under a
+          # claude-analysis-<suite>/ subdirectory when the "claude-analysis-*"
+          # pattern matches 2+ artifacts; with exactly one failing suite this
+          # run, it extracts that one claude-analysis.md flat instead.
+          SECTION=""
+          for path in claude-analysis.md claude-analysis-*/claude-analysis.md; do
+            [ -f "$path" ] || continue
+            # Cost/duration is useful in the step summary/PR comment, not
+            # as permanent ledger noise.
+            SHIFTED=$(.github/actions/evetest-run-suite/shift-headings.sh 3 < "$path" \
+              | { grep -vE '^_Cost: \$[0-9.]+ \| Duration: [0-9.]+s_$' || true; })
+            SECTION="${SECTION}${SHIFTED}"$'\n\n'
+          done
+
+          if [ -z "$SECTION" ]; then
+            echo "No failing suites with a Claude analysis; nothing to append."
+            exit 0
+          fi
+
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          REPORT_URL="https://${{ github.repository_owner }}.github.io/${REPO_NAME}/$TEST_DIR/runs/${{ github.run_number }}/"
+          DATE=$(date -u +%Y-%m-%d)
+
+          # Newest run first: insert right after the header, ahead of every
+          # previously recorded run.
+          if [ -f "$LEDGER_PATH" ] && [ "$(head -n 3 "$LEDGER_PATH")" = "$HEADER" ]; then
+            BODY=$(tail -n +5 "$LEDGER_PATH")
+          elif [ -f "$LEDGER_PATH" ]; then
+            BODY=$(cat "$LEDGER_PATH")
+          else
+            BODY=""
+          fi
+
+          mkdir -p "$(dirname "$LEDGER_PATH")"
+          {
+            printf '%s\n\n' "$HEADER"
+            printf '## [%s -- %s (run #%s)](%s)\n\n' "$DATE" "${{ needs.discover-suites.outputs.version }}" "${{ github.run_number }}" "$RUN_URL"
+            printf '[Full report](%s)\n\n' "$REPORT_URL"
+            printf '%s' "$SECTION"
+            printf '%s\n' "$BODY"
+          } > "$LEDGER_PATH"
+          echo "Inserted a ledger entry."
+
+      - name: Publish to GitHub Pages
+        run: |
+          mkdir -p "gh-pages/$TEST_DIR"
+          rsync -a --delete --exclude=runs --exclude=NIGHTLY-LEDGER.md allure-report/ "gh-pages/$TEST_DIR/"
+          cd gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to publish."
+            exit 0
+          fi
+          git commit -m "Update test report for ${{ github.ref_name }} @ ${{ github.sha }}"
+          git push origin gh-pages

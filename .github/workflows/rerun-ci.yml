@@ -12,7 +12,10 @@ permissions: {}
 jobs:
   rerun-workflows:
     if: |
-      github.event.issue.pull_request && startsWith(github.event.comment.body, '/rerun')
+      github.event.issue.pull_request && (
+        startsWith(github.event.comment.body, '/rerun') ||
+        startsWith(github.event.comment.body, '/evetest')
+      )
     runs-on: ubuntu-latest
 
     permissions:
@@ -30,18 +33,19 @@ jobs:
       - name: Parse CODEOWNERS to get allowed users
         run: |
           CODEOWNERS=".github/CODEOWNERS"
-          awk '{for(i=1;i<=NF;i++) if($i ~ /^@/) print substr($i,2)}' "$CODEOWNERS" | sort -u > allowed_users.txt
+          awk '{for(i=1;i<=NF;i++) if($i ~ /^@/) print tolower(substr($i,2))}' "$CODEOWNERS" | sort -u > allowed_users.txt
 
       - name: Check if comment author is allowed
         run: |
           COMMENT_USER="${{ github.event.comment.user.login }}"
+          COMMENT_USER="${COMMENT_USER,,}"
           echo "User: $COMMENT_USER"
           if ! grep -Fxq "$COMMENT_USER" allowed_users.txt; then
             echo "User $COMMENT_USER is not allowed to rerun CI." >&2
             exit 1
           fi
 
-      - name: Set run mode (red or yellow)
+      - name: Set run mode (red, yellow or evetest)
         id: mode
         env:
           BODY: ${{ github.event.comment.body }}
@@ -50,6 +54,8 @@ jobs:
             echo "mode=yellow" >> $GITHUB_OUTPUT
           elif [[ "$BODY" =~ ^/rerun[[:space:]]+red ]]; then
             echo "mode=red" >> $GITHUB_OUTPUT
+          elif [[ "$BODY" =~ ^/evetest([[:space:]]|$) ]]; then
+            echo "mode=evetest" >> $GITHUB_OUTPUT
           else
             echo "Unknown rerun mode" >&2
             exit 1
@@ -69,6 +75,7 @@ jobs:
           echo "sha=$SHA" >> $GITHUB_OUTPUT
 
       - name: Find and act on workflow runs for this PR's latest commit
+        if: steps.mode.outputs.mode == 'red' || steps.mode.outputs.mode == 'yellow'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRANCH: ${{ steps.prinfo.outputs.branch }}
@@ -150,3 +157,25 @@ jobs:
           else
             echo "No Eden Runner run found for commit $SHA"
           fi
+
+      # "/evetest [all | <name> ...]": re-run the PR Gate, which finds the
+      # comment, decides whether evetest may start (build done, and approved
+      # or requested by a CODEOWNER) and triggers evetest-pr.yml. The gate run
+      # is found through the "Ready for evetest" commit status, whose target
+      # is always the gate run (see pr-gate.yml and evetest-pr.yml).
+      - name: Rerun the PR Gate for this PR's latest commit (evetest)
+        if: steps.mode.outputs.mode == 'evetest'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ steps.prinfo.outputs.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          STATUS_URL=$(gh api "repos/$REPO/commits/$SHA/statuses" \
+              --jq '[.[] | select(.context == "Ready for evetest") | select(.target_url | test("/actions/runs/"))][0].target_url // ""')
+          GATE_RUN="${STATUS_URL##*/}"
+          if [ -z "$GATE_RUN" ]; then
+            echo "::error::No PR Gate run found for commit $SHA (has the PR build run yet?)"
+            exit 1
+          fi
+          echo "Re-running PR Gate run $GATE_RUN"
+          gh run rerun "$GATE_RUN" --repo "$REPO"

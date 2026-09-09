@@ -14,6 +14,7 @@ on:  # yamllint disable-line rule:truthy
 env:
   BUILD_WF_NAME: PR build
   RUN_CONTEXT_FILE: run-context.json
+  EVETEST_CONTEXT_FILE: evetest-run-context.json
   # Must match EDEN_IN_PR_STATUS_TITLE_PREFIX in eden-trusted.yml: a declined
   # gate publishes the status that a satisfied gate would later have Eden own.
   EDEN_IN_PR_STATUS_TITLE_PREFIX: Eden Runner
@@ -38,6 +39,7 @@ jobs:
     name: Ready for Eden
     permissions:
       actions: read
+      contents: read
       pull-requests: read
       statuses: write
     strategy:
@@ -61,6 +63,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           RUN_ID: ${{ github.event.workflow_run.id }}
+          HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
         run: |
           echo "pr_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
           echo "original_run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
@@ -95,6 +98,7 @@ jobs:
               echo "resolve_fatal=true" >> "$GITHUB_OUTPUT"
               ;;
           esac
+          echo "head_repo=$HEAD_REPO" >> "$GITHUB_OUTPUT"
 
       - name: Gather Context (pull_request_review)
         id: from_review
@@ -105,6 +109,7 @@ jobs:
           PR_ID: ${{ github.event.pull_request.number }}
           PR_SHA: ${{ github.event.pull_request.head.sha }}
           PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
         run: |
           original_run_id=$(gh run --repo "$GH_REPO" list -c "$PR_SHA" --json name,databaseId --limit 100 \
             | jq -r --arg wf "$BUILD_WF_NAME" '.[] | select(.name == $wf) | .databaseId' | head -n1)
@@ -113,6 +118,7 @@ jobs:
             echo "pr_sha=$PR_SHA"
             echo "original_run_id=$original_run_id"
             echo "pr_base_ref=$PR_BASE_REF"
+            echo "head_repo=$PR_HEAD_REPO"
           } >> "$GITHUB_OUTPUT"
           if [[ -z "$original_run_id" ]]; then
             echo "resolve_error=No '$BUILD_WF_NAME' run found for $PR_SHA" >> "$GITHUB_OUTPUT"
@@ -128,6 +134,7 @@ jobs:
             echo "pr_sha=${{ steps.from_run.outputs.pr_sha  || steps.from_review.outputs.pr_sha }}"
             echo "original_run_id=${{ steps.from_run.outputs.original_run_id || steps.from_review.outputs.original_run_id }}"
             echo "pr_base_ref=${{ steps.from_run.outputs.pr_base_ref || steps.from_review.outputs.pr_base_ref }}"
+            echo "head_repo=${{ steps.from_run.outputs.head_repo || steps.from_review.outputs.head_repo }}"
             echo "resolve_fatal=${{ steps.from_run.outputs.resolve_fatal || 'false' }}"
             echo "resolve_error=$RESOLVE_ERROR"
           } >> "$GITHUB_OUTPUT"
@@ -145,6 +152,56 @@ jobs:
             exit 0
           fi
           echo "approved=$([[ $decision == 'APPROVED' ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Look for a CODEOWNER's /evetest Comment
+        id: evetest_comment
+        if: ${{ steps.meta.outputs.pr_id != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ steps.meta.outputs.pr_id }}
+          BASE_REF: ${{ steps.meta.outputs.pr_base_ref }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          # CODEOWNERS is read from the PR's base branch, never from the PR's
+          # own (possibly fork-controlled) tree.
+          requested=false
+          args=""
+          if raw=$(gh api "repos/$GH_REPO/contents/.github/CODEOWNERS?ref=$BASE_REF" \
+                  -H "Accept: application/vnd.github.raw") \
+              && comments=$(gh pr view "$PR" --json comments); then
+            owners=$(printf '%s\n' "$raw" \
+                | awk '{for(i=1;i<=NF;i++) if($i ~ /^@/) print tolower(substr($i,2))}' \
+                | sort -u | jq -R -s -c 'split("\n") | map(select(length > 0))')
+            body=$(jq -r --argjson owners "$owners" \
+                '[.comments[]
+                  | select(.author.login | ascii_downcase | IN($owners[]))
+                  | select(.body | test("^/evetest([ \\t\\r\\n]|$)"))][-1].body // ""' <<<"$comments")
+            if [[ -n "$body" ]]; then
+              line=$(printf '%s\n' "$body" | head -n1 | tr -d '\r')
+              args=$(sed -E 's|^/evetest[[:space:]]*||; s/[[:space:]]+$//' <<<"$line")
+              if [[ "$args" =~ ^[A-Za-z0-9_.\ -]*$ ]]; then
+                requested=true
+              else
+                echo "::warning::Ignoring /evetest comment with invalid characters: $args"
+                args=""
+              fi
+            fi
+          else
+            echo "::warning::Could not look for an /evetest comment on PR #$PR"
+          fi
+          if [[ -z "$args" ]]; then
+            mode=claude
+          elif [[ "$args" == "all" ]]; then
+            mode=all
+          else
+            mode=select
+          fi
+          echo "CODEOWNER /evetest comment: requested=$requested mode=$mode args='$args'"
+          {
+            echo "requested=$requested"
+            echo "mode=$mode"
+            echo "args=$args"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Check Build Result
         id: build
@@ -247,6 +304,7 @@ jobs:
                   "original_run_id": "${{ steps.meta.outputs.original_run_id }}",
                   "pr_sha": "${{ steps.meta.outputs.pr_sha }}",
                   "pr_base_ref": "${{ steps.meta.outputs.pr_base_ref }}",
+                  "head_repo": "${{ steps.meta.outputs.head_repo }}",
                   "hv": "${{ matrix.hv }}",
                   "arch": "${{ matrix.arch }}",
                   "platform": "${{ matrix.platform }}",
@@ -261,6 +319,100 @@ jobs:
         run: |
           echo "Gate not satisfied, creating failure context"
           echo "exit" > "${{ env.RUN_CONTEXT_FILE }}"
+
+      # evetest has a looser gate than Eden: a green build plus either an
+      # approval or a CODEOWNER's /evetest comment. Eden keeps using
+      # run-context.json above.
+      - name: Gather Context for the evetest Workflow
+        id: evetest_gate
+        env:
+          PR_ID: ${{ steps.meta.outputs.pr_id }}
+          RESOLVE_ERROR: ${{ steps.meta.outputs.resolve_error }}
+          REVIEW_ERROR: ${{ steps.reviews.outputs.review_error }}
+          APPROVED: ${{ steps.reviews.outputs.approved }}
+          EVETEST_REQUESTED: ${{ steps.evetest_comment.outputs.requested }}
+          EVETEST_RUN_MODE: ${{ steps.evetest_comment.outputs.mode }}
+          EVETEST_RUN_ARGS: ${{ steps.evetest_comment.outputs.args }}
+          BUILD_OK: ${{ steps.build.outputs.build_ok }}
+          ORIGINAL_RUN_ID: ${{ steps.meta.outputs.original_run_id }}
+          PR_SHA: ${{ steps.meta.outputs.pr_sha }}
+          PR_BASE_REF: ${{ steps.meta.outputs.pr_base_ref }}
+          HEAD_REPO: ${{ steps.meta.outputs.head_repo }}
+        run: |
+          echo "PR: ${PR_ID:-<unresolved>}"
+          echo "Approved: $APPROVED"
+          echo "CODEOWNER /evetest comment: ${EVETEST_REQUESTED:-false}"
+          echo "Build OK: $BUILD_OK"
+
+          reason=""
+          state=error
+          how=""
+          if [[ -n "$RESOLVE_ERROR" ]]; then
+            reason="$RESOLVE_ERROR"
+          elif [[ -n "$REVIEW_ERROR" ]]; then
+            reason="$REVIEW_ERROR"
+          elif [[ "$BUILD_OK" != "true" ]]; then
+            reason="PR build did not succeed"
+          elif [[ "$EVETEST_REQUESTED" == "true" ]]; then
+            how="Requested by a CODEOWNER (/evetest${EVETEST_RUN_ARGS:+ $EVETEST_RUN_ARGS}), mode: $EVETEST_RUN_MODE"
+          elif [[ "$APPROVED" == "true" ]]; then
+            how="PR approved, mode: ${EVETEST_RUN_MODE:-claude}"
+          else
+            reason="Waiting for the PR to be approved or a CODEOWNER /evetest comment"
+            state=pending
+          fi
+
+          if [[ -n "$reason" ]]; then
+            echo "::warning::evetest not started: $reason"
+            echo "exit" > "$EVETEST_CONTEXT_FILE"
+            {
+              echo "passed=false"
+              echo "reason=$reason"
+              echo "state=$state"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "evetest may start: $how"
+            jq -n --arg pr_id "$PR_ID" --arg original_run_id "$ORIGINAL_RUN_ID" \
+                --arg pr_sha "$PR_SHA" --arg pr_base_ref "$PR_BASE_REF" \
+                --arg head_repo "$HEAD_REPO" --arg mode "${EVETEST_RUN_MODE:-claude}" \
+                --arg args "$EVETEST_RUN_ARGS" --arg how "$how" \
+                '{pr_id: $pr_id, original_run_id: $original_run_id, pr_sha: $pr_sha,
+                  pr_base_ref: $pr_base_ref, head_repo: $head_repo,
+                  evetest_run_mode: $mode, evetest_run_args: $args,
+                  evetest_gate_reason: $how}' > "$EVETEST_CONTEXT_FILE"
+            echo "passed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Report Declined evetest Gate on the Commit
+        # Same constraints as the Eden status above: only the workflow_run leg
+        # can write it, and a PR that skips the build has nothing to test.
+        # evetest-pr.yml reports the satisfied case on the same context.
+        if: >-
+          ${{ github.event_name == 'workflow_run'
+          && steps.evetest_gate.outputs.passed != 'true'
+          && steps.build.outputs.build_skipped != 'true'
+          && steps.meta.outputs.pr_sha != '' }}
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8.0.0
+        env:
+          SHA: ${{ steps.meta.outputs.pr_sha }}
+          STATE: ${{ steps.evetest_gate.outputs.state }}
+          REASON: ${{ steps.evetest_gate.outputs.reason }}
+        with:
+          script: |
+            await github.rest.repos.createCommitStatus({
+              ...context.repo,
+              sha:         process.env.SHA,
+              state:       process.env.STATE,
+              context:     'Ready for evetest',
+              description: process.env.REASON.slice(0, 140),
+              target_url:  `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
+            });
+
+      - name: Upload Context for the evetest Workflow
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+        with:
+          name: evetest-run-context
+          path: ${{ env.EVETEST_CONTEXT_FILE }}
 
       - name: Upload Context for Trusted Workflow
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
