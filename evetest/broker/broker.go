@@ -147,17 +147,22 @@ type device struct {
 }
 
 // brokerCapabilities composes the full capability set advertised to clients:
-// the provider's own capabilities plus CAPABILITY_LOCAL_LIVE_IMAGE whenever
-// diskStrategy is not DiskImageLegacyBuild. A provider never builds or
-// receives an EVE image, so whether an uploaded live image can be consumed is
-// the broker's determination; it depends on the provider only through its
-// disk image strategy, which is why that decision lives here rather than in
-// provider.Capabilities().
+// the provider's own capabilities plus the two the broker decides itself.
+// A provider never builds, receives or edits an EVE image, so both depend on
+// the provider only through its disk image strategy, which is why they live
+// here rather than in provider.Capabilities().
 func brokerCapabilities(
 	providerCaps []api.Capability, diskStrategy provider.DiskImageStrategy) []api.Capability {
 	caps := append([]api.Capability{}, providerCaps...)
 	if diskStrategy != provider.DiskImageLegacyBuild {
 		caps = append(caps, api.Capability_CAPABILITY_LOCAL_LIVE_IMAGE)
+	}
+	// Editing a device's disk means reading and writing the very file that
+	// device boots from, which the broker can only do while the file stays
+	// where it put it. The overlay strategy is exactly that case; a standalone
+	// disk may since have been handed to a node the broker cannot reach.
+	if diskStrategy == provider.DiskImageOverlay {
+		caps = append(caps, api.Capability_CAPABILITY_EDIT_DEVICE_DISK)
 	}
 	return caps
 }
@@ -1653,6 +1658,79 @@ func (b *broker) PowerOffDevice(
 
 	log.Infof("Successfully powered OFF EVE device %q", eveDevice.deviceName)
 	return &api.DeviceControlResponse{}, nil
+}
+
+// EditDeviceDisk edits a powered-off device's boot disk in place: it grows the
+// disk, or destroys the filesystem on one of its partitions.
+//
+// Both edits rewrite the file the device boots from, so a running device would
+// see its disk change underneath it and, for the grow, qemu-img would be
+// writing an image QEMU still has mapped. The device is therefore required to
+// be powered off, and that is checked rather than left to the tools to notice.
+func (b *broker) EditDeviceDisk(
+	ctx context.Context, req *api.EditDeviceDiskRequest) (*api.EditDeviceDiskResponse, error) {
+	b.mutex.Lock()
+	clientSession, exists := b.sessions[req.ClientId]
+	b.mutex.Unlock()
+	if !exists {
+		err := clientNotFoundErr(req.ClientId)
+		b.globalLog.Error(err)
+		return nil, err
+	}
+
+	clientSession.mutex.Lock()
+	log := clientSession.log
+	eveDevice, exists := clientSession.eveDevices[req.DeviceName]
+	clientSession.mutex.Unlock()
+	if !exists {
+		err := eveDevNotFoundErr(req.DeviceName)
+		log.Error(err)
+		return nil, err
+	}
+	ctx = logger.WithLogger(ctx, log)
+
+	if len(eveDevice.disks) == 0 {
+		err := fmt.Errorf("EVE device %q has no disk to edit", eveDevice.deviceName)
+		log.Error(err)
+		return nil, err
+	}
+	bootDisk := eveDevice.disks[0]
+	if bootDisk.Format != provider.DiskImageFormatQcow2 {
+		err := fmt.Errorf("boot disk of EVE device %q is not QCOW2; cannot edit it",
+			eveDevice.deviceName)
+		log.Error(err)
+		return nil, err
+	}
+
+	status, err := b.provider.GetDeviceStatus(ctx, eveDevice.providerDevName)
+	if err != nil {
+		err = fmt.Errorf("failed to read status of EVE device %q: %w",
+			eveDevice.deviceName, err)
+		log.Error(err)
+		return nil, err
+	}
+	if status != provider.DeviceStatusStopped {
+		err = fmt.Errorf(
+			"EVE device %q is %s; power it off before editing its disk",
+			eveDevice.deviceName, status)
+		log.Error(err)
+		return nil, err
+	}
+
+	switch edit := req.GetEdit().(type) {
+	case *api.EditDeviceDiskRequest_Grow:
+		err = growDisk(ctx, log, bootDisk.Path, edit.Grow.GetNewSizeBytes())
+	case *api.EditDeviceDiskRequest_DestroyPartitionFs:
+		err = destroyPartitionFilesystem(ctx, log, bootDisk.Path,
+			edit.DestroyPartitionFs.GetPartitionLabel())
+	default:
+		err = fmt.Errorf("no edit requested for EVE device %q", eveDevice.deviceName)
+	}
+	if err != nil {
+		log.Error(err)
+		return nil, err
+	}
+	return &api.EditDeviceDiskResponse{}, nil
 }
 
 // RebootDevice reboots a specific EVE device. The provider call runs without

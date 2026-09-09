@@ -80,6 +80,9 @@ const (
 	// provider confirms the VM is stopped, so this must accommodate a
 	// graceful ACPI-less hard power-off, not just issuing the request.
 	brokerPowerOffEVEDeviceTimeout = time.Minute
+	// Editing a disk rewrites megabytes through qemu-img/qemu-io on a
+	// possibly busy host, so it gets more room than a power operation.
+	brokerEditDeviceDiskTimeout = 5 * time.Minute
 
 	// Timeout for triggering an EVE VM reboot (not for waiting for it to boot).
 	brokerRebootEVEDeviceTimeout = time.Minute

@@ -46,6 +46,10 @@ service Broker {
   // Reboot a specific EVE device.
   rpc RebootDevice(DeviceControlRequest) returns (DeviceControlResponse);
 
+  // Edit a powered-off device's boot disk in place. Requires
+  // CAPABILITY_EDIT_DEVICE_DISK.
+  rpc EditDeviceDisk(EditDeviceDiskRequest) returns (EditDeviceDiskResponse);
+
   // Get the console output from the device.
   rpc GetDeviceConsoleOutput(DeviceControlRequest) returns (ConsoleOutputResponse);
   // ConnectConsoleToDevice establishes a bidirectional gRPC tunnel between
@@ -267,6 +271,39 @@ message DeviceControlRequest {
 
 // Generic response to a device control operation.
 message DeviceControlResponse {}
+
+// Request to edit a powered-off device's boot disk in place.
+message EditDeviceDiskRequest {
+  string client_id = 1;
+  string device_name = 2;
+  oneof edit {
+    GrowDisk grow = 3;
+    DestroyPartitionFilesystem destroy_partition_fs = 4;
+  }
+}
+
+// GrowDisk enlarges the device's boot disk without touching its partition
+// table, so the added space is left unallocated past the last partition. That
+// free tail is what a test needs to make EVE's in-field repartition grow into
+// slack rather than shrink an existing partition to make room.
+message GrowDisk {
+  // Total size the disk should have afterwards. Must be larger than its
+  // current size; shrinking a disk is not supported.
+  uint64 new_size_bytes = 1;
+}
+
+// DestroyPartitionFilesystem makes the filesystem on one partition
+// unrecoverable, so that EVE reformats it on the next boot. It is the
+// fault-injection half of a data-loss test, and deliberately not a "delete the
+// partition" operation: the partition table is left intact, which is the state
+// a real filesystem loss leaves behind.
+message DestroyPartitionFilesystem {
+  // GPT partition name, e.g. "P3" for EVE's /persist partition.
+  string partition_label = 1;
+}
+
+// Generic response to a disk edit.
+message EditDeviceDiskResponse {}
 
 // ConnectConsoleRequest carries data sent from the client to the broker
 // during a console session.
