@@ -134,5 +134,6 @@ func TestKonvertSuite(test *testing.T) {
 		// first, then the ones that need a different disk or filesystem.
 		evetest.TestCase{Test: TestKvmToKUpgrade},
 		evetest.TestCase{Test: TestKvmToKContentTree},
+		evetest.TestCase{Test: TestKvmToKAppRecreate},
 	)
 }
