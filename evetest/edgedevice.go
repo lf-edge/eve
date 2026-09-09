@@ -44,6 +44,9 @@ type EdgeDevice struct {
 	// Set of app UUIDs (strings) for which WaitUntilAppIsRunning is active.
 	// Used by WatchAppInfo to suppress duplicate state logging.
 	appsBeingWaited sync.Map
+	// How long the UpgradeEVE call in progress waits for the device to come
+	// back running the target version. Zero means the package default.
+	upgradeTimeout time.Duration
 }
 
 // GetEdgeDevice returns a handle to an onboarded EdgeDevice identified by devName.
@@ -460,8 +463,27 @@ func (t *BaseOSDatastoreType) FromString(s string) error {
 // show a FAILED status instead of waiting for it to become active.
 // A reverted upgrade causes two reboots (one to try the new version, one to
 // revert), so the expected reboot count is incremented accordingly.
+//
+// An optional timeout bounds the wait instead of the default, which is sized
+// for an ordinary base-OS upgrade: download, one reboot, done. A cross-flavor
+// boot-disk conversion is a different animal -- it also runs an offline
+// shrink+grow across several reboots and then brings up a whole
+// container-cluster stack -- and it lands close enough to the default that a
+// healthy conversion and an expired budget are separated by a couple of minutes
+// of host load. A test driving one should pass a longer timeout, otherwise it
+// reports a conversion that was still progressing as a failure.
 func (d *EdgeDevice) UpgradeEVE(targetEVEVersion string, targetEVEHypervisor Hypervisor,
-	datastoreType BaseOSDatastoreType, waitUntilUpgraded bool, expectRevert bool) {
+	datastoreType BaseOSDatastoreType, waitUntilUpgraded bool, expectRevert bool,
+	timeout ...time.Duration) {
+
+	if len(timeout) > 1 {
+		d.th.t.Fatalf("UpgradeEVE: at most one timeout may be given, got %d", len(timeout))
+	}
+	if len(timeout) == 1 {
+		previous := d.upgradeTimeout
+		d.upgradeTimeout = timeout[0]
+		defer func() { d.upgradeTimeout = previous }()
+	}
 
 	// Read current device arch (set during Setup).
 	d.th.devicesM.Lock()
@@ -711,7 +733,7 @@ func (d *EdgeDevice) waitForUpgrade(targetShortVersion string) {
 	}
 	defer unsub()
 
-	ctx, cancel := context.WithTimeout(d.th.ctx, eveUpgradeTimeout)
+	ctx, cancel := context.WithTimeout(d.th.ctx, d.upgradeWaitTimeout())
 	defer cancel()
 
 	var lastLoggedState, lastLoggedStatus string
@@ -945,6 +967,26 @@ func (d *EdgeDevice) PowerOn(waitUntilOnline bool) {
 				d.devName, err)
 		}
 	})
+}
+
+// ExpectAdditionalReboots tells the harness to expect n more device-initiated
+// reboots beyond those it already accounts for (UpgradeEVE counts one reboot per
+// upgrade). A cross-flavor boot-disk conversion that runs an offline shrink/grow
+// reboots additional times; the number is known only to the test driving it (a
+// plain kvm<->k conversion with no resize reboots differently than a shrink+grow),
+// so the test declares it here to keep the teardown reboot-count check accurate.
+func (d *EdgeDevice) ExpectAdditionalReboots(n int) {
+	for i := 0; i < n; i++ {
+		d.th.incExpectedRebootCount(d.devName)
+	}
+}
+
+// upgradeWaitTimeout is the effective upgrade wait for the call in progress.
+func (d *EdgeDevice) upgradeWaitTimeout() time.Duration {
+	if d.upgradeTimeout > 0 {
+		return d.upgradeTimeout
+	}
+	return eveUpgradeTimeout
 }
 
 // rebootAndWait executes triggerFn to initiate a device reboot and, if
