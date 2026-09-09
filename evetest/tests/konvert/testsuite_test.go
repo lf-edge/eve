@@ -128,6 +128,7 @@ func TestKonvertSuite(test *testing.T) {
 		evetest.TestCase{Test: TestKvmToKUpgrade},
 		evetest.TestCase{Test: TestKvmToKContentTree},
 		evetest.TestCase{Test: TestKvmToKAppRecreate},
+		evetest.TestCase{Test: TestKvmToKRepartitionGeometry},
 		evetest.TestCase{
 			Test: TestKvmToKRepartition,
 			Variants: []evetest.TestVariant{
