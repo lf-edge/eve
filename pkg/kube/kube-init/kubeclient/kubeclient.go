@@ -179,6 +179,14 @@ func Default() *Client {
 	return defaultClient
 }
 
+// HasDefault reports whether SetDefault has run. For steady-state
+// callers that would rather skip their API work than panic in Default:
+// the daemon can reach RUNNING with no client at all on the test-only
+// path where no kubeconfig ever appears.
+func HasDefault() bool {
+	return defaultClient != nil
+}
+
 // WaitForKubeconfig polls for the kubeconfig file at kubeconfigPath
 // until it becomes readable or ctx is cancelled. Returns immediately
 // if the file already exists.
