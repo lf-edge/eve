@@ -10,7 +10,10 @@ on:  # yamllint disable-line rule:truthy
 jobs:
   rerun-workflows:
     if: |
-      github.event.issue.pull_request && startsWith(github.event.comment.body, '/rerun')
+      github.event.issue.pull_request && (
+        startsWith(github.event.comment.body, '/rerun') ||
+        startsWith(github.event.comment.body, '/evetest')
+      )
     runs-on: ubuntu-latest
 
     permissions:
@@ -39,7 +42,7 @@ jobs:
             exit 1
           fi
 
-      - name: Set run mode (red or yellow)
+      - name: Set run mode (red, yellow or evetest-run-all)
         id: mode
         env:
           BODY: ${{ github.event.comment.body }}
@@ -48,6 +51,8 @@ jobs:
             echo "mode=yellow" >> $GITHUB_OUTPUT
           elif [[ "$BODY" =~ ^/rerun[[:space:]]+red ]]; then
             echo "mode=red" >> $GITHUB_OUTPUT
+          elif [[ "$BODY" =~ ^/evetest[[:space:]]+run-all ]]; then
+            echo "mode=evetest-run-all" >> $GITHUB_OUTPUT
           else
             echo "Unknown rerun mode" >&2
             exit 1
@@ -67,6 +72,7 @@ jobs:
           echo "sha=$SHA" >> $GITHUB_OUTPUT
 
       - name: Find and act on workflow runs for this PR's latest commit
+        if: steps.mode.outputs.mode == 'red' || steps.mode.outputs.mode == 'yellow'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRANCH: ${{ steps.prinfo.outputs.branch }}
@@ -147,4 +153,24 @@ jobs:
             gh run rerun "$EDEN_RUNNER_RUN" --repo "$REPO"
           else
             echo "No Eden Runner run found for commit $SHA"
+          fi
+
+      # "/evetest run-all": force evetest-pr.yml's PR-time Claude-skip step
+      # to bypass itself and run every suite.
+      - name: Rerun evetest for this PR's latest commit (run-all)
+        if: steps.mode.outputs.mode == 'evetest-run-all'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ steps.prinfo.outputs.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          STATUS_URL=$(gh api "repos/$REPO/commits/$SHA/statuses" \
+              --jq '[.[] | select(.context | startswith("Evetest / ")) | select(.target_url | test("/actions/runs/"))][0].target_url // ""')
+          EVETEST_RUN="${STATUS_URL##*/}"
+          if [ -n "$EVETEST_RUN" ]; then
+            echo "Re-running evetest workflow run $EVETEST_RUN"
+            gh run rerun "$EVETEST_RUN" --repo "$REPO"
+          else
+            echo "::error::No evetest workflow run found for commit $SHA"
+            exit 1
           fi

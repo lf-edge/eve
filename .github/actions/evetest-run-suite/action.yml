@@ -1,0 +1,435 @@
+# Copyright (c) 2026, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+name: Run evetest suite
+description: >-
+  Runs one evetest suite on the self-hosted runner fleet. Shared by
+  evetest-pr.yml (per-PR run, against a freshly built-but-unpublished PR
+  image, with per-suite PR commit statuses) and evetest-nightly.yml (full run
+  against a branch's tip, against the image publish.yml already published
+  for that commit, no PR statuses to report). The calling job must already have
+  checked out the right ref before this runs (a local action like this one
+  can only be resolved once its own file is present in the workspace, so
+  checkout can't happen inside it) and supplies runs-on, timeout-minutes and
+  (for the PR flow) permissions.
+
+inputs:
+  test-suite:
+    description: Name of the evetest suite (or standalone test) to run.
+    required: true
+  head-sha:
+    description: SHA to report PR commit statuses against. Required when post-status is 'true'.
+    required: false
+    default: ''
+  post-status:
+    description: "'true' to report this suite's progress/result as a PR commit status. Requires head-sha."
+    required: false
+    default: 'false'
+  download-image-artifacts:
+    description: >-
+      'true' to download and load a freshly built EVE image from another
+      workflow run's artifacts, instead of letting evetest pull whatever is
+      already published for the checked-out commit.
+    required: false
+    default: 'false'
+  source-run-id:
+    description: Workflow run ID to download EVE image artifacts from. Required when download-image-artifacts is 'true'.
+    required: false
+    default: ''
+  skip:
+    description: Value for EVETEST_SKIP.
+    required: false
+    default: ''
+  upload-junit-results:
+    description: >-
+      'true' to convert this run's results to JUnit XML and upload them as a
+      "junit-<test-suite>" artifact, for evetest-nightly.yml's Allure report
+      job to pick up. Intended for the nightly, full-suite run only.
+    required: false
+    default: 'false'
+  analyze-failures:
+    description: >-
+      'true' to run this suite with EVETEST_PAUSE_ON_FAILURE and have Claude
+      investigate each distinct failing test live (via evetest status/eve
+      ssh/eve logs/eve collect-info/sdn ssh against the still-running
+      device), writing its findings to the job's step summary. Requires
+      anthropic-api-key and the `claude` CLI installed on the runner
+      (evetest/deploy/proxmox/gh-runner-installer.sh).
+    required: false
+    default: 'false'
+  anthropic-api-key:
+    description: Anthropic API key. Required when analyze-failures is 'true'.
+    required: false
+    default: ''
+  pr-number:
+    description: >-
+      PR number this suite ran against, if any. When set (and
+      analyze-failures is 'true'), live-investigation-watcher.sh also
+      fetches this PR's diff and gives it to Claude to judge whether the
+      failure is plausibly related to it. Used by evetest-pr.yml only; left
+      empty for the nightly, full-suite run.
+    required: false
+    default: ''
+  ledger-branch:
+    description: >-
+      Branch whose gh-pages NIGHTLY-LEDGER.md live-investigation-watcher.sh
+      should fetch, so Claude can check whether this failure is already a
+      known/recurring one. Nightly: the branch itself. PR: the PR's base
+      branch, since that's whose nightly history is relevant. Left empty to
+      skip the ledger lookup entirely.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    # arch/platform are fixed for evetest right now; hv varies per suite
+    - name: Set EVE_ARCH/EVE_PLATFORM
+      shell: bash
+      run: |
+        echo "EVE_ARCH=amd64" >> "$GITHUB_ENV"
+        echo "EVE_PLATFORM=generic" >> "$GITHUB_ENV"
+
+    # EVETEST_BROKER_ADDRESS, EVETEST_COLLECT_ARTIFACTS,
+    # EVETEST_SUITE_MAX_FAILURES and EVETEST_LOG_LEVEL (see
+    # gh-runner-installer.sh) are already part of every step's process
+    # environment.
+    - name: Propagate runner EVETEST_* env vars to the job context
+      shell: bash
+      run: env | grep '^EVETEST_' >> "$GITHUB_ENV" || true
+
+    # workflow_run-triggered workflows don't automatically show up as a
+    # status check on the PR the way pull_request-triggered ones do, so
+    # discover-suites already posted one pending status per suite; update
+    # this specific one now that a runner actually picked it up.
+    - name: Report pending status to the PR
+      if: inputs.post-status == 'true'
+      uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8.0.0
+      with:
+        script: |
+          await github.rest.repos.createCommitStatus({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            sha: '${{ inputs.head-sha }}',
+            state: 'pending',
+            context: 'Evetest / ${{ inputs.test-suite }}',
+            description: 'Running...',
+            target_url: '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}',
+          });
+
+    - name: Starting report
+      shell: bash
+      run: |
+        echo "Test suite: ${{ inputs.test-suite }}"
+        echo "GitHub event: ${{ github.event_name }}"
+        echo "Run attempt: ${{ github.run_attempt }}"
+        echo Disk usage
+        df -h
+        echo Memory
+        free -m
+
+    - name: Docker login
+      shell: bash
+      run: |
+        if jq -e '.auths | length > 0' "$HOME/.docker/config.json" >/dev/null 2>&1; then
+          echo "Docker registry credentials already configured on this runner."
+        else
+          echo "No Docker registry credentials configured on this runner; skipping login (pulls will be unauthenticated)."
+        fi
+
+    - name: Download EVE image artifacts
+      if: inputs.download-image-artifacts == 'true'
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+      with:
+        pattern: eve-*-${{ env.EVE_ARCH }}-${{ env.EVE_PLATFORM }}
+        run-id: ${{ inputs.source-run-id }}
+        github-token: ${{ github.token }}
+        path: /tmp/eve-image
+        merge-multiple: true
+
+    - name: Load EVE images into docker
+      if: inputs.download-image-artifacts == 'true'
+      shell: bash
+      run: |
+        for TARFILE in /tmp/eve-image/*.tar; do
+          LOADED=$(docker load -i "$TARFILE" | sed -n 's/^Loaded image: //p')
+          [ -n "$LOADED" ] || { echo "::error::'docker load' did not report a loaded image for $TARFILE"; exit 1; }
+          echo "Loaded EVE image: $LOADED"
+          REPO="${LOADED%%:*}"
+          TAG="${LOADED#*:}"
+          VERSION="${TAG%-*-${EVE_ARCH}}"
+          echo "EVETEST_EVE_REPO=$REPO" >> "$GITHUB_ENV"
+          echo "EVETEST_EVE_VERSION=$VERSION" >> "$GITHUB_ENV"
+        done
+
+    - name: Set up Go
+      uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417  # v6.3.0
+      with:
+        go-version-file: evetest/go.mod
+        cache: false
+
+    - name: Add GOPATH/bin to PATH
+      shell: bash
+      run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+    - name: Install gotestfmt
+      shell: bash
+      run: go install github.com/gotesttools/gotestfmt/v2/cmd/gotestfmt@latest
+
+    - name: Install evetest CLI
+      shell: bash
+      run: make -C evetest install-cli
+
+    # On a workflow re-run, restore the previous attempt's artifacts (if
+    # any were uploaded -- see "Upload artifacts" below) under their
+    # original name so EVETEST_RESTART_ONLY_FAILED can find them, and skip
+    # subtests that already passed there.
+    - name: Download previous attempt's artifacts
+      if: ${{ github.run_attempt > 1 }}
+      continue-on-error: true
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+      with:
+        name: evetest-artifacts-${{ inputs.test-suite }}
+        path: /tmp/prev-attempt
+
+    - name: Restore previous attempt's artifacts
+      if: ${{ github.run_attempt > 1 }}
+      shell: bash
+      run: |
+        echo "EVETEST_RESTART_ONLY_FAILED=true" >> "$GITHUB_ENV"
+        TARBALL="/tmp/prev-attempt/${{ inputs.test-suite }}.tar.gz"
+        if [ -f "$TARBALL" ]; then
+          tar xzf "$TARBALL" -C "$EVETEST_COLLECT_ARTIFACTS"
+          echo "Restored previous attempt's artifacts from $TARBALL"
+        else
+          echo "No previous attempt artifact found at $TARBALL; running the full suite."
+        fi
+
+    - name: Enable controller fault injection for TestControllerFaultsSuite
+      if: inputs.test-suite == 'TestControllerFaultsSuite'
+      shell: bash
+      run: echo "EVETEST_CONTROLLER_FAULTS=true" >> "$GITHUB_ENV"
+
+    - name: Run evetest
+      id: run_evetest
+      continue-on-error: true
+      shell: bash
+      env:
+        EVETEST_SKIP: ${{ inputs.skip }}
+        EVETEST_PAUSE_ON_FAILURE: ${{ inputs.analyze-failures == 'true' && 'true' || '' }}
+        LEDGER_BRANCH: ${{ inputs.ledger-branch }}
+        PR_NUMBER: ${{ inputs.pr-number }}
+        ANTHROPIC_API_KEY: ${{ inputs.analyze-failures == 'true' && inputs.anthropic-api-key || '' }}
+        GH_TOKEN: ${{ inputs.analyze-failures == 'true' && github.token || '' }}
+      run: |
+        set -o pipefail
+
+        WATCHER_PID=""
+        if [ "${{ inputs.analyze-failures }}" = "true" ]; then
+          "${GITHUB_ACTION_PATH}/live-investigation-watcher.sh" "${{ inputs.test-suite }}" &
+          WATCHER_PID=$!
+        fi
+
+        EVETEST_OUTPUT_FORMAT=json make -C evetest evetest NAME=${{ inputs.test-suite }} \
+          | jq -Rrj --unbuffered '
+              if startswith("{") then
+                try (fromjson | .Output // empty) catch (. + "\n")
+              else
+                . + "\n"
+              end
+            '
+        EVETEST_EXIT=$?
+
+        if [ -n "$WATCHER_PID" ]; then
+          kill "$WATCHER_PID" 2>/dev/null || true
+          wait "$WATCHER_PID" 2>/dev/null || true
+        fi
+
+        exit "$EVETEST_EXIT"
+
+    - name: Force-stop the evetest container
+      if: always()
+      shell: bash
+      run: docker rm -f "evetest-${EVETEST_API_PORT:-50021}" 2>/dev/null || true
+
+    - name: Locate artifact directory
+      if: always()
+      shell: bash
+      run: |
+        SUITE="${{ inputs.test-suite }}"
+        DIR=$(ls -1d "${EVETEST_COLLECT_ARTIFACTS}/${SUITE}-"*/ 2>/dev/null | sort | tail -1)
+        DIR="${DIR%/}"
+        if [ -n "$DIR" ]; then
+          echo "ARTIFACT_DIR=$DIR" >> "$GITHUB_ENV"
+          echo "Located artifact dir: $DIR"
+        else
+          echo "No artifact directory found for suite $SUITE under $EVETEST_COLLECT_ARTIFACTS"
+        fi
+
+    # Format the saved JSON with gotestfmt for a human-readable summary.
+    # This step's own conclusion is deliberately made to mirror the
+    # suite's real outcome (see the final line) rather than being masked
+    # with continue-on-error like "Run evetest" above -- so that on a
+    # failed job, GitHub's auto-expanded step is this readable summary,
+    # not that step's raw JSON-lines output.
+    - name: Format test results
+      if: always()
+      shell: bash
+      run: |
+        JSON="${ARTIFACT_DIR}/gotest.json"
+        if [[ -n "$ARTIFACT_DIR" && -f "$JSON" ]]; then
+          cat "$JSON" | gotestfmt || true
+          echo "### Test Results" >> $GITHUB_STEP_SUMMARY
+          jq -r 'select((.Action == "pass" or .Action == "fail" or .Action == "skip") and .Test != null)
+                 | (if .Action == "pass" then "✅" elif .Action == "skip" then "⏭️ " else "❌" end) + " " + .Test
+                   + if .Elapsed then " (" + (.Elapsed | tostring) + "s)" else "" end' \
+            "$JSON" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "No gotest.json found (test may have failed to start)." | tee -a $GITHUB_STEP_SUMMARY
+        fi
+        [ "${{ steps.run_evetest.outcome }}" = "success" ]
+
+    # Allure ingests JUnit XML, not go test's own JSON.
+    - name: Convert results to JUnit XML
+      if: ${{ !cancelled() && env.ARTIFACT_DIR != '' && inputs.upload-junit-results == 'true' }}
+      shell: bash
+      run: |
+        JSON="${ARTIFACT_DIR}/gotest.json"
+        if [[ -z "$ARTIFACT_DIR" || ! -f "$JSON" ]]; then
+          echo "No gotest.json found, skipping JUnit conversion."
+          exit 0
+        fi
+        go install gotest.tools/gotestsum@latest
+        "$(go env GOPATH)/bin/gotestsum" --raw-command \
+          --junitfile "${ARTIFACT_DIR}/${{ inputs.test-suite }}.xml" \
+          -- cat "$JSON"
+
+    - name: Upload JUnit results artifact
+      if: ${{ !cancelled() && inputs.upload-junit-results == 'true' }}
+      continue-on-error: true
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+      with:
+        name: junit-${{ inputs.test-suite }}
+        path: ${{ env.ARTIFACT_DIR }}/${{ inputs.test-suite }}.xml
+        if-no-files-found: ignore
+
+    - name: Coverage summary
+      if: always()
+      shell: bash
+      run: |
+        if [[ -z "$ARTIFACT_DIR" ]]; then
+          echo "No artifact directory located, skipping coverage."
+          exit 0
+        fi
+        # Build a comma-separated list of directories containing covcounters
+        # files anywhere under the artifact tree, for covdata merge -i.
+        COVER_DIRS=$(find "${ARTIFACT_DIR}" -type f -name "covcounters.*" \
+          -exec dirname {} \; | sort -u | paste -sd,)
+        if [[ -z "$COVER_DIRS" ]]; then
+          echo "No coverage data found."
+          exit 0
+        fi
+        mkdir -p /tmp/merged-coverage
+        go tool covdata merge -i "$COVER_DIRS" -o /tmp/merged-coverage
+        echo "### Coverage" >> $GITHUB_STEP_SUMMARY
+        go tool covdata percent -i /tmp/merged-coverage | tee -a $GITHUB_STEP_SUMMARY
+        go tool covdata textfmt -i /tmp/merged-coverage -o /tmp/coverage.txt
+        TOTAL=$(cd pkg/pillar && go tool cover -func=/tmp/coverage.txt | tail -1)
+        echo "$TOTAL"
+        echo "**$TOTAL**" >> $GITHUB_STEP_SUMMARY
+
+    - name: Upload coverage data
+      if: always()
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+      with:
+        name: coverage-${{ inputs.test-suite }}
+        path: /tmp/merged-coverage/
+        if-no-files-found: ignore
+
+    - name: Build claude-analysis.md
+      if: ${{ failure() && inputs.analyze-failures == 'true' && env.ARTIFACT_DIR != '' }}
+      continue-on-error: true
+      shell: bash
+      run: |
+        OUT="${ARTIFACT_DIR}/claude-analysis.md"
+        {
+          echo "# ${{ inputs.test-suite }}: failure analysis"
+          echo
+          LIVE_FILE="${ARTIFACT_DIR}/live-investigation.md"
+          if [[ -s "$LIVE_FILE" ]]; then
+            # Each of the watcher's own blocks starts at "#"; nest them
+            # under this section's title above by demoting to "##".
+            "${GITHUB_ACTION_PATH}/shift-headings.sh" 2 < "$LIVE_FILE"
+          else
+            echo "_Paused for live investigation but nothing was recorded (see the job log)._"
+          fi
+        } > "$OUT"
+
+        # A copy nested one level under this same job's existing "###
+        # Test Results"/"### Coverage" sections, instead of the file's own
+        # "#" title outranking them.
+        "${GITHUB_ACTION_PATH}/shift-headings.sh" 3 < "$OUT" >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Post Claude's analysis as a PR comment
+      if: >-
+        ${{ failure() && inputs.analyze-failures == 'true' &&
+        env.ARTIFACT_DIR != '' && inputs.pr-number != '' }}
+      continue-on-error: true
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        "${GITHUB_ACTION_PATH}/shift-headings.sh" 3 < "${ARTIFACT_DIR}/claude-analysis.md" \
+          | gh pr comment "${{ inputs.pr-number }}" --body-file -
+
+    - name: Upload Claude's failure analysis
+      if: ${{ failure() && inputs.analyze-failures == 'true' && env.ARTIFACT_DIR != '' }}
+      continue-on-error: true
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+      with:
+        name: claude-analysis-${{ inputs.test-suite }}
+        path: ${{ env.ARTIFACT_DIR }}/claude-analysis.md
+        if-no-files-found: ignore
+
+    - name: Remove intermediate files before packaging artifacts
+      if: ${{ failure() && inputs.analyze-failures == 'true' && env.ARTIFACT_DIR != '' }}
+      continue-on-error: true
+      shell: bash
+      run: rm -f "${ARTIFACT_DIR}/live-ledger.md" "${ARTIFACT_DIR}/live-investigation.md" "${ARTIFACT_DIR}/live-investigation.log"
+
+    - name: Package artifacts
+      if: failure()
+      shell: bash
+      run: |
+        mkdir -p /tmp/upload
+        tar czf "/tmp/upload/${{ inputs.test-suite }}.tar.gz" -C "$EVETEST_COLLECT_ARTIFACTS" .
+
+    - name: Upload artifacts
+      if: failure()
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+      with:
+        name: evetest-artifacts-${{ inputs.test-suite }}
+        path: /tmp/upload/${{ inputs.test-suite }}.tar.gz
+        if-no-files-found: ignore
+
+    - name: Clean up artifact directory
+      if: always()
+      shell: bash
+      run: sudo rm -fr "${EVETEST_COLLECT_ARTIFACTS:?}"/*
+
+    - name: Report final status to the PR
+      if: always() && inputs.post-status == 'true'
+      uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8.0.0
+      with:
+        script: |
+          const outcome = '${{ steps.run_evetest.outcome }}';
+          const state = outcome === 'success' ? 'success' : 'failure';
+          await github.rest.repos.createCommitStatus({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            sha: '${{ inputs.head-sha }}',
+            state,
+            context: 'Evetest / ${{ inputs.test-suite }}',
+            description: state === 'success' ? 'Passed' : 'Failed',
+            target_url: '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}',
+          });

@@ -61,6 +61,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           RUN_ID: ${{ github.event.workflow_run.id }}
+          HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
         run: |
           echo "pr_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
           echo "original_run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
@@ -95,6 +96,7 @@ jobs:
               echo "resolve_fatal=true" >> "$GITHUB_OUTPUT"
               ;;
           esac
+          echo "head_repo=$HEAD_REPO" >> "$GITHUB_OUTPUT"
 
       - name: Gather Context (pull_request_review)
         id: from_review
@@ -105,6 +107,7 @@ jobs:
           PR_ID: ${{ github.event.pull_request.number }}
           PR_SHA: ${{ github.event.pull_request.head.sha }}
           PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
         run: |
           original_run_id=$(gh run --repo "$GH_REPO" list -c "$PR_SHA" --json name,databaseId --limit 100 \
             | jq -r --arg wf "$BUILD_WF_NAME" '.[] | select(.name == $wf) | .databaseId' | head -n1)
@@ -112,6 +115,7 @@ jobs:
           echo "pr_sha=$PR_SHA" >> "$GITHUB_OUTPUT"
           echo "original_run_id=$original_run_id" >> "$GITHUB_OUTPUT"
           echo "pr_base_ref=$PR_BASE_REF" >> "$GITHUB_OUTPUT"
+          echo "head_repo=$PR_HEAD_REPO" >> "$GITHUB_OUTPUT"
           if [[ -z "$original_run_id" ]]; then
             echo "resolve_error=No '$BUILD_WF_NAME' run found for $PR_SHA" >> "$GITHUB_OUTPUT"
           fi
@@ -125,6 +129,7 @@ jobs:
           echo "pr_sha=${{ steps.from_run.outputs.pr_sha  || steps.from_review.outputs.pr_sha }}" >> "$GITHUB_OUTPUT"
           echo "original_run_id=${{ steps.from_run.outputs.original_run_id || steps.from_review.outputs.original_run_id }}" >> "$GITHUB_OUTPUT"
           echo "pr_base_ref=${{ steps.from_run.outputs.pr_base_ref || steps.from_review.outputs.pr_base_ref }}" >> "$GITHUB_OUTPUT"
+          echo "head_repo=${{ steps.from_run.outputs.head_repo || steps.from_review.outputs.head_repo }}" >> "$GITHUB_OUTPUT"
           echo "resolve_fatal=${{ steps.from_run.outputs.resolve_fatal || 'false' }}" >> "$GITHUB_OUTPUT"
           echo "resolve_error=$RESOLVE_ERROR" >> "$GITHUB_OUTPUT"
 
@@ -237,6 +242,7 @@ jobs:
                   "original_run_id": "${{ steps.meta.outputs.original_run_id }}",
                   "pr_sha": "${{ steps.meta.outputs.pr_sha }}",
                   "pr_base_ref": "${{ steps.meta.outputs.pr_base_ref }}",
+                  "head_repo": "${{ steps.meta.outputs.head_repo }}",
                   "hv": "${{ matrix.hv }}",
                   "arch": "${{ matrix.arch }}",
                   "platform": "${{ matrix.platform }}",
