@@ -900,7 +900,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			// (contentTreeSatisfiedByPVCs) deferred after spending its
 			// per-call live-probe budget; nothing else re-evaluates a
 			// content tree sitting idle on that check.
-			reevaluatePendingContentTrees(&ctx)
+			reevaluatePendingContentTrees(&ctx, types.INITIAL)
 			ps.CheckMaxTimeTopic(agentName, "gc", start,
 				warningTime, errorTime)
 
