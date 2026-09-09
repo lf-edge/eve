@@ -421,3 +421,52 @@ func TestWaitNodeReadyKeepsPollingWhenKubeconfigIsStable(t *testing.T) {
 		t.Errorf("expected the wait to run to its deadline, got %v", err)
 	}
 }
+
+// TestPodStallTrackerResetsOnChange pins the tracker's core rule: a
+// changing not-ready set is forward movement and must restart the
+// clock, so only a genuinely static set is ever written off.
+func TestPodStallTrackerResetsOnChange(t *testing.T) {
+	// grace 0 makes "unchanged since the previous observation" trip
+	// immediately, so the test needs no sleeping.
+	tr := podStallTracker{grace: 0}
+
+	if tr.observe([]string{"sriov-dp(Running)"}) {
+		t.Error("first observation should never report a stall")
+	}
+	if tr.observe([]string{"sriov-dp(Running)", "coredns(Pending)"}) {
+		t.Error("a changed not-ready set must reset the clock")
+	}
+	if !tr.observe([]string{"sriov-dp(Running)", "coredns(Pending)"}) {
+		t.Error("an unchanged set past the grace should report a stall")
+	}
+	// A pod becoming ready shrinks the set: movement again.
+	if tr.observe([]string{"sriov-dp(Running)"}) {
+		t.Error("a shrinking not-ready set must reset the clock")
+	}
+}
+
+// TestPodStallTrackerHoldsWithinGrace confirms the tracker waits out
+// its grace rather than giving up on the first repeat observation.
+func TestPodStallTrackerHoldsWithinGrace(t *testing.T) {
+	tr := podStallTracker{grace: time.Hour}
+
+	for i := 0; i < 3; i++ {
+		if tr.observe([]string{"sriov-dp(Running)"}) {
+			t.Fatalf("observation %d reported a stall inside the grace period", i)
+		}
+	}
+}
+
+// TestPodStallTrackerEmptySetIsNeverStalled keeps the zero value safe:
+// an empty not-ready set has the same signature as a fresh tracker, and
+// must not read as "unchanged since the zero time".
+func TestPodStallTrackerEmptySetIsNeverStalled(t *testing.T) {
+	tr := podStallTracker{grace: 0}
+
+	if tr.observe(nil) {
+		t.Error("an empty not-ready set must never report a stall")
+	}
+	if tr.observe([]string{}) {
+		t.Error("an empty not-ready set must never report a stall")
+	}
+}
