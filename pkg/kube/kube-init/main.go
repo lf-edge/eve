@@ -2430,9 +2430,11 @@ func (d *daemon) runHealthWorker(ctx context.Context, mon *monitor.Monitor, sup 
 	// detection via /sys/bus/pci, content-compare to avoid
 	// rewriting the in-use sriov-cni binary, and the k3s auto-
 	// deploy dir picks up the DaemonSet on next k3s reconcile.
-	// No-op on non-SR-IOV hardware.
-	if err := components.InstallSRIOVManifests(); err != nil {
-		log.Printf("WARNING: install SR-IOV manifests: %v", err)
+	// Reconciles both ways, so a node an older EVE wrongly staged
+	// the plugin to gets it retracted here. No-op on non-SR-IOV
+	// hardware once the first tick has confirmed it.
+	if err := components.ReconcileSRIOVManifests(ctx); err != nil {
+		log.Printf("WARNING: reconcile SR-IOV manifests: %v", err)
 	}
 
 	// Keep the stale-mount-cleanup daemon alive. It shares the
