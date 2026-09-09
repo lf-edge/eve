@@ -94,6 +94,7 @@ import (
 //   - TestVMAppPurgeAfterPowerCycle -- a purge issued while the device is
 //     powered off, which is where a reboot lands in the middle of the purge
 //     deterministically rather than by chance. Meaningful on every hypervisor.
+//   - TestLotsOfApps -- starts lots of apps and checks for success
 //
 // The two purge tests come last because they are the expensive ones: they
 // assert on which generation of a workload exists, so each needs a device
@@ -142,6 +143,9 @@ func TestAppsSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestVMAppPurgeAfterPowerCycle,
+		},
+		evetest.TestCase{
+			Test: TestLotsOfApps,
 		},
 	)
 }
