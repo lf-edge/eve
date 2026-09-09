@@ -152,5 +152,22 @@ func TestKonvertSuite(test *testing.T) {
 				},
 			},
 		},
+		evetest.TestCase{
+			Test: TestKvmToKRepartitionRefused,
+			Variants: []evetest.TestVariant{
+				{
+					Name: "PersistTooFull",
+					Parameters: []evetest.TestParameterValue{
+						{Key: refuseReasonParamKey, Value: refuseTooFull},
+					},
+				},
+				{
+					Name: "ZFSPersist",
+					Parameters: []evetest.TestParameterValue{
+						{Key: refuseReasonParamKey, Value: refuseZFS},
+					},
+				},
+			},
+		},
 	)
 }
