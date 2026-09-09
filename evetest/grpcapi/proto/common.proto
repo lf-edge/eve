@@ -56,6 +56,11 @@ enum Capability {
   // firmware only falls through to network when the disk has nothing
   // bootable.
   CAPABILITY_NETBOOT = 6;
+  // Editing a powered-off device's boot disk in place: growing it, or
+  // destroying the filesystem on one of its partitions. Requires a provider
+  // that keeps the disk as a file it can still reach after setup, so a
+  // provider that hands the image to a remote node does not have it.
+  CAPABILITY_EDIT_DEVICE_DISK = 7;
 }
 
 // Reference to a specific EVE image used for provisioning or testing.

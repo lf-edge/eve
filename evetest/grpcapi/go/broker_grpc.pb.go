@@ -34,6 +34,7 @@ const (
 	Broker_PowerOnDevice_FullMethodName          = "/org.lfedge.evetest.Broker/PowerOnDevice"
 	Broker_PowerOffDevice_FullMethodName         = "/org.lfedge.evetest.Broker/PowerOffDevice"
 	Broker_RebootDevice_FullMethodName           = "/org.lfedge.evetest.Broker/RebootDevice"
+	Broker_EditDeviceDisk_FullMethodName         = "/org.lfedge.evetest.Broker/EditDeviceDisk"
 	Broker_GetDeviceConsoleOutput_FullMethodName = "/org.lfedge.evetest.Broker/GetDeviceConsoleOutput"
 	Broker_ConnectConsoleToDevice_FullMethodName = "/org.lfedge.evetest.Broker/ConnectConsoleToDevice"
 	Broker_ConnectTunnelToSDN_FullMethodName     = "/org.lfedge.evetest.Broker/ConnectTunnelToSDN"
@@ -75,6 +76,9 @@ type BrokerClient interface {
 	PowerOffDevice(ctx context.Context, in *DeviceControlRequest, opts ...grpc.CallOption) (*DeviceControlResponse, error)
 	// Reboot a specific EVE device.
 	RebootDevice(ctx context.Context, in *DeviceControlRequest, opts ...grpc.CallOption) (*DeviceControlResponse, error)
+	// Edit a powered-off device's boot disk in place. Requires
+	// CAPABILITY_EDIT_DEVICE_DISK.
+	EditDeviceDisk(ctx context.Context, in *EditDeviceDiskRequest, opts ...grpc.CallOption) (*EditDeviceDiskResponse, error)
 	// Get the console output from the device.
 	GetDeviceConsoleOutput(ctx context.Context, in *DeviceControlRequest, opts ...grpc.CallOption) (*ConsoleOutputResponse, error)
 	// ConnectConsoleToDevice establishes a bidirectional gRPC tunnel between
@@ -240,6 +244,16 @@ func (c *brokerClient) RebootDevice(ctx context.Context, in *DeviceControlReques
 	return out, nil
 }
 
+func (c *brokerClient) EditDeviceDisk(ctx context.Context, in *EditDeviceDiskRequest, opts ...grpc.CallOption) (*EditDeviceDiskResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EditDeviceDiskResponse)
+	err := c.cc.Invoke(ctx, Broker_EditDeviceDisk_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *brokerClient) GetDeviceConsoleOutput(ctx context.Context, in *DeviceControlRequest, opts ...grpc.CallOption) (*ConsoleOutputResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ConsoleOutputResponse)
@@ -312,6 +326,9 @@ type BrokerServer interface {
 	PowerOffDevice(context.Context, *DeviceControlRequest) (*DeviceControlResponse, error)
 	// Reboot a specific EVE device.
 	RebootDevice(context.Context, *DeviceControlRequest) (*DeviceControlResponse, error)
+	// Edit a powered-off device's boot disk in place. Requires
+	// CAPABILITY_EDIT_DEVICE_DISK.
+	EditDeviceDisk(context.Context, *EditDeviceDiskRequest) (*EditDeviceDiskResponse, error)
 	// Get the console output from the device.
 	GetDeviceConsoleOutput(context.Context, *DeviceControlRequest) (*ConsoleOutputResponse, error)
 	// ConnectConsoleToDevice establishes a bidirectional gRPC tunnel between
@@ -374,6 +391,9 @@ func (UnimplementedBrokerServer) PowerOffDevice(context.Context, *DeviceControlR
 }
 func (UnimplementedBrokerServer) RebootDevice(context.Context, *DeviceControlRequest) (*DeviceControlResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RebootDevice not implemented")
+}
+func (UnimplementedBrokerServer) EditDeviceDisk(context.Context, *EditDeviceDiskRequest) (*EditDeviceDiskResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EditDeviceDisk not implemented")
 }
 func (UnimplementedBrokerServer) GetDeviceConsoleOutput(context.Context, *DeviceControlRequest) (*ConsoleOutputResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetDeviceConsoleOutput not implemented")
@@ -581,6 +601,24 @@ func _Broker_RebootDevice_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Broker_EditDeviceDisk_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EditDeviceDiskRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BrokerServer).EditDeviceDisk(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Broker_EditDeviceDisk_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BrokerServer).EditDeviceDisk(ctx, req.(*EditDeviceDiskRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Broker_GetDeviceConsoleOutput_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(DeviceControlRequest)
 	if err := dec(in); err != nil {
@@ -651,6 +689,10 @@ var Broker_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RebootDevice",
 			Handler:    _Broker_RebootDevice_Handler,
+		},
+		{
+			MethodName: "EditDeviceDisk",
+			Handler:    _Broker_EditDeviceDisk_Handler,
 		},
 		{
 			MethodName: "GetDeviceConsoleOutput",
