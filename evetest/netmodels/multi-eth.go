@@ -4,6 +4,8 @@
 package netmodels
 
 import (
+	"fmt"
+
 	"github.com/lf-edge/eve/evetest"
 	api "github.com/lf-edge/eve/evetest/grpcapi/go"
 )
@@ -2204,134 +2206,120 @@ var MgmtViaAppTopology = &api.NetworkModel{
 	},
 }
 
-// SeparateClusterPort is a multi-Ethernet network model with a dedicated cluster port per device.
-var SeparateClusterPort = &api.NetworkModel{
-	Ports: []*api.Port{
-		{
-			LogicalLabel:  "dev1-eth0",
-			AdminUp:       true,
-			EveDeviceName: "edge-dev1",
-		},
-		{
-			LogicalLabel:  "dev1-eth1",
-			AdminUp:       true,
-			EveDeviceName: "edge-dev1",
-		},
-		{
-			LogicalLabel:  "dev2-eth0",
-			AdminUp:       true,
-			EveDeviceName: "edge-dev2",
-		},
-		{
-			LogicalLabel:  "dev2-eth1",
-			AdminUp:       true,
-			EveDeviceName: "edge-dev2",
-		},
-		{
-			LogicalLabel:  "dev3-eth0",
-			AdminUp:       true,
-			EveDeviceName: "edge-dev3",
-		},
-		{
-			LogicalLabel:  "dev3-eth1",
-			AdminUp:       true,
-			EveDeviceName: "edge-dev3",
-		},
-	},
-	Bridges: []*api.Bridge{
-		{
-			LogicalLabel: "bridge0",
-			Ports:        []string{"dev1-eth0", "dev2-eth0", "dev3-eth0"},
-		},
-		{
-			LogicalLabel: "bridge1",
-			Ports:        []string{"dev1-eth1", "dev2-eth1", "dev3-eth1"},
-		},
-	},
-	Networks: []*api.Network{
-		{
-			LogicalLabel: "mgmt-and-app-network",
-			Bridge:       "bridge0",
-			Ipv4: &api.NetworkIPConfig{
-				Subnet: "172.20.20.0/24",
-				GwIp:   "172.20.20.1",
-				Dhcp: &api.DHCP{
-					Enable:     true,
-					DomainName: "test",
-					Dns: &api.DNSClientConfig{
-						PrivateDns: []string{"dns-server"},
-					},
-				},
-			},
-		},
-		{
-			LogicalLabel: "cluster-network",
-			Bridge:       "bridge1",
-			Ipv4: &api.NetworkIPConfig{
-				Subnet: "10.244.244.0/24",
-				GwIp:   "10.244.244.1",
-			},
-			Router: &api.Router{
-				OutsideReachability: false,
-			},
-		},
-	},
-	Endpoints: &api.Endpoints{
-		DnsServers: []*api.DNSServer{
+// SeparateClusterPort returns a multi-Ethernet network model with a
+// dedicated cluster port per device, for the given device names. Each device
+// gets two ports: "<name>-eth0" (bridged into the shared mgmt+app network)
+// and "<name>-eth1" (bridged into the shared cluster-only network).
+func SeparateClusterPort(deviceNames ...string) *api.NetworkModel {
+	var ports []*api.Port
+	var bridge0Ports, bridge1Ports []string
+	for _, name := range deviceNames {
+		eth0 := fmt.Sprintf("%s-eth0", name)
+		eth1 := fmt.Sprintf("%s-eth1", name)
+		ports = append(ports,
+			&api.Port{LogicalLabel: eth0, AdminUp: true, EveDeviceName: name},
+			&api.Port{LogicalLabel: eth1, AdminUp: true, EveDeviceName: name},
+		)
+		bridge0Ports = append(bridge0Ports, eth0)
+		bridge1Ports = append(bridge1Ports, eth1)
+	}
+	return &api.NetworkModel{
+		Ports: ports,
+		Bridges: []*api.Bridge{
 			{
-				Endpoint: &api.Endpoint{
-					LogicalLabel: "dns-server",
-					Fqdn:         "dns-server.test",
-					Ipv4: &api.EndpointIPConfig{
-						Subnet: "10.16.16.0/24",
-						Ip:     "10.16.16.25",
+				LogicalLabel: "bridge0",
+				Ports:        bridge0Ports,
+			},
+			{
+				LogicalLabel: "bridge1",
+				Ports:        bridge1Ports,
+			},
+		},
+		Networks: []*api.Network{
+			{
+				LogicalLabel: "mgmt-and-app-network",
+				Bridge:       "bridge0",
+				Ipv4: &api.NetworkIPConfig{
+					Subnet: "172.20.20.0/24",
+					GwIp:   "172.20.20.1",
+					Dhcp: &api.DHCP{
+						Enable:     true,
+						DomainName: "test",
+						Dns: &api.DNSClientConfig{
+							PrivateDns: []string{"dns-server"},
+						},
 					},
 				},
-				StaticEntries: []*api.DNSEntry{
-					{
-						FqdnSource: &api.DNSEntry_FqdnLiteral{
-							FqdnLiteral: evetest.GetControllerHostname(),
-						},
-						IpSource: &api.DNSEntry_IpLiteral{
-							IpLiteral: evetest.GetControllerIPv4().String(),
+			},
+			{
+				LogicalLabel: "cluster-network",
+				Bridge:       "bridge1",
+				Ipv4: &api.NetworkIPConfig{
+					Subnet: "10.244.244.0/24",
+					GwIp:   "10.244.244.1",
+				},
+				Router: &api.Router{
+					OutsideReachability: false,
+				},
+			},
+		},
+		Endpoints: &api.Endpoints{
+			DnsServers: []*api.DNSServer{
+				{
+					Endpoint: &api.Endpoint{
+						LogicalLabel: "dns-server",
+						Fqdn:         "dns-server.test",
+						Ipv4: &api.EndpointIPConfig{
+							Subnet: "10.16.16.0/24",
+							Ip:     "10.16.16.25",
 						},
 					},
-					{
-						FqdnSource: &api.DNSEntry_EndpointFqdnRef{
-							EndpointFqdnRef: "http-server",
+					StaticEntries: []*api.DNSEntry{
+						{
+							FqdnSource: &api.DNSEntry_FqdnLiteral{
+								FqdnLiteral: evetest.GetControllerHostname(),
+							},
+							IpSource: &api.DNSEntry_IpLiteral{
+								IpLiteral: evetest.GetControllerIPv4().String(),
+							},
 						},
-						IpSource: &api.DNSEntry_EndpointIpRef{
-							EndpointIpRef: &api.EndpointIPRef{
-								LogicalLabel: "http-server",
-								IpVersion:    api.IPVersion_IPV4,
+						{
+							FqdnSource: &api.DNSEntry_EndpointFqdnRef{
+								EndpointFqdnRef: "http-server",
+							},
+							IpSource: &api.DNSEntry_EndpointIpRef{
+								EndpointIpRef: &api.EndpointIPRef{
+									LogicalLabel: "http-server",
+									IpVersion:    api.IPVersion_IPV4,
+								},
 							},
 						},
 					},
-				},
-				UpstreamServers: []string{"8.8.8.8", "1.1.1.1"},
-			},
-		},
-		// This HTTP server can be used as a target for application connectivity testing.
-		HttpServers: []*api.HTTPServer{
-			{
-				Endpoint: &api.Endpoint{
-					LogicalLabel: "http-server",
-					Fqdn:         "http-server.test",
-					Ipv4: &api.EndpointIPConfig{
-						Subnet: "10.17.17.0/24",
-						Ip:     "10.17.17.25",
-					},
-				},
-				HttpPort: 80,
-				Paths: map[string]*api.HTTPContent{
-					"/helloworld": {
-						ContentType: "text/plain",
-						Content:     "Hello world!",
-					},
+					UpstreamServers: []string{"8.8.8.8", "1.1.1.1"},
 				},
 			},
+			// This HTTP server can be used as a target for application connectivity testing.
+			HttpServers: []*api.HTTPServer{
+				{
+					Endpoint: &api.Endpoint{
+						LogicalLabel: "http-server",
+						Fqdn:         "http-server.test",
+						Ipv4: &api.EndpointIPConfig{
+							Subnet: "10.17.17.0/24",
+							Ip:     "10.17.17.25",
+						},
+					},
+					HttpPort: 80,
+					Paths: map[string]*api.HTTPContent{
+						"/helloworld": {
+							ContentType: "text/plain",
+							Content:     "Hello world!",
+						},
+					},
+				},
+			},
 		},
-	},
+	}
 }
 
 // MultiPortSwitchAndVLANTrunk is a network model with four ethernet ports combining a
