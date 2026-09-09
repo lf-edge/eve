@@ -210,6 +210,38 @@ This stops and destroys the broker VM, deletes the `evetest` SDN zone and its VN
 same address from being reassigned on the next install), and removes the installed
 snippets. It is best-effort. The downloaded Ubuntu cloud image is left in place.
 
+## GitHub Actions self-hosted runners
+
+`gh-runner-installer.sh` creates (or destroys) a GitHub Actions self-hosted runner VM
+on the same Proxmox host, for use with evetest in distributed mode against the broker
+above. Unlike the broker VM it is single-homed (LAN bridge only) and does not touch
+the `evetest` SDN zone.
+
+```sh
+./gh-runner-installer.sh \
+  --name ci1 --gh-username <github-user> --gh-pat <pat> \
+  --ssh-pubkey /root/.ssh/id_rsa.pub
+```
+
+It fetches a runner registration token from the GitHub API and registers the VM
+against `<gh-username>/eve`, installs Docker/git/make, and creates a Linux user named
+after `--gh-username` (key-only SSH via `--ssh-pubkey`, passwordless sudo). The
+runner's GitHub label defaults to its VM name (unique per runner) but can be set with
+`--gh-label` -- pass the same label to multiple runners so a workflow's `runs-on` can
+pick any free one of them. The runner process picks up `EVETEST_BROKER_ADDRESS`
+(defaulting to the LAN IP of the `evetest-broker` VM installed above, if one is found
+running on this host), `EVETEST_COLLECT_ARTIFACTS=/home/<gh-username>/artifacts`,
+`EVETEST_SUITE_MAX_FAILURES=-1` and `EVETEST_LOG_LEVEL=debug`. Run with `--help` to
+see all flags, including VM shape (`--vm-memory`, `--vm-disk`, `--vm-cores`,
+`--storage`, `--import-storage`, `--lan-bridge`, `--lan-mac`) and registry credentials
+for its own docker pulls (`--docker-username`/`--docker-password`).
+
+Tear it down (unregisters the runner from GitHub, then destroys the VM):
+
+```sh
+./gh-runner-installer.sh --destroy --name ci1 --gh-username <github-user> --gh-pat <pat>
+```
+
 ## Architecture
 
 Background on how the pieces fit together -- useful for troubleshooting or modifying
@@ -241,6 +273,8 @@ reusing the same address doesn't collide with an old, not-yet-expired lease.
 - `installer.sh.tmpl` — installer template. `make proxmox-broker-installer` assembles it
   with the two files above into the self-contained
   `evetest-broker-proxmox-installer.sh`.
+- `gh-runner-installer.sh` — self-contained installer (no assembly step) for a GitHub
+  Actions self-hosted runner VM; see "GitHub Actions self-hosted runners" above.
 
 ### Networking details
 
