@@ -50,5 +50,8 @@ func TestNodeClusterSuite(test *testing.T) {
 		evetest.TestCase{
 			Test: TestClusterToSingleConversion,
 		},
+		evetest.TestCase{
+			Test: TestDNIDandBackupDNID,
+		},
 	)
 }
