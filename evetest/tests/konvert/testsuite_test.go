@@ -129,6 +129,10 @@ func TestKonvertSuite(test *testing.T) {
 	)
 
 	evetest.RunTestSuite(
+		// Grouped by what each test needs of its device, so the framework can
+		// reuse one where the requirements match: the flavor-switch ext4 tests
+		// first, then the ones that need a different disk or filesystem.
 		evetest.TestCase{Test: TestKvmToKUpgrade},
+		evetest.TestCase{Test: TestKvmToKContentTree},
 	)
 }
