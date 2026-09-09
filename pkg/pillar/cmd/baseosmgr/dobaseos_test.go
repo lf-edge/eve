@@ -107,6 +107,10 @@ func TestDoBaseOsStatusUpdate_AlreadyInOtherPartition_DeactivatedPath(t *testing
 	}
 }
 
+// TestDoBaseOsStatusUpdate_RejectsKubeMixSwitch covers the conservative
+// arm: volumeStateKnown is false, so the volume set is treated as
+// possibly non-empty and kvm -> EVE-k is refused whatever the
+// subscriptions hold.
 func TestDoBaseOsStatusUpdate_RejectsKubeMixSwitch(t *testing.T) {
 	tc := newTestCtx(t)
 	tc.pubZbootStatus.items["IMGA"] = types.ZbootStatus{
@@ -133,6 +137,104 @@ func TestDoBaseOsStatusUpdate_RejectsKubeMixSwitch(t *testing.T) {
 	}
 	if !strings.Contains(st.Error, "EVE-k") {
 		t.Fatalf("error text doesn't mention EVE-k: %q", st.Error)
+	}
+}
+
+// seedKubeMixSwitch prepares a kvm -> EVE-k cross-flavor update: IMGA
+// active on a kvm version, IMGB unused, and a config naming an EVE-k
+// version. No ContentTreeStatus is seeded, so a config that clears the
+// cross-flavor gate stops in checkBaseOsVolumeStatus without an error
+// and the assertions isolate the gate.
+func (tc *testCtx) seedKubeMixSwitch() (types.BaseOsConfig, types.BaseOsStatus) {
+	tc.pubZbootStatus.items["IMGA"] = types.ZbootStatus{
+		PartitionLabel: "IMGA", PartitionState: "active", ShortVersion: "13-kvm",
+	}
+	tc.pubZbootStatus.items["IMGB"] = types.ZbootStatus{
+		PartitionLabel: "IMGB", PartitionState: "unused",
+	}
+	tc.currentIsKube = false
+	tc.versionIsKube = map[string]bool{"14-k": true}
+	cfg := types.BaseOsConfig{
+		BaseOsVersion:   "14-k",
+		ContentTreeUUID: "uuid-x",
+		Activate:        true,
+	}
+	return cfg, types.BaseOsStatus{ContentTreeUUID: "uuid-x"}
+}
+
+func TestDoBaseOsStatusUpdate_AllowsKubeSwitchWithoutVolumes(t *testing.T) {
+	tc := newTestCtx(t)
+	cfg, st := tc.seedKubeMixSwitch()
+	tc.ctx.volumeStateKnown = true
+
+	doBaseOsStatusUpdate(tc.ctx, "uuid-x", cfg, &st)
+	if st.HasError() {
+		t.Fatalf("kvm -> EVE-k with no volumes must not be refused: %q", st.Error)
+	}
+}
+
+func TestDoBaseOsStatusUpdate_RejectsKubeSwitchWithVolumes(t *testing.T) {
+	tests := []struct {
+		name  string
+		place func(tc *testCtx)
+	}{
+		{
+			name: "VolumeConfig",
+			place: func(tc *testCtx) {
+				tc.subVolumeConfig.items["vol-1"] = types.VolumeConfig{}
+			},
+		},
+		{
+			name: "VolumeStatus",
+			place: func(tc *testCtx) {
+				tc.subVolumeStatus.items["vol-1"] = types.VolumeStatus{}
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tc := newTestCtx(t)
+			cfg, st := tc.seedKubeMixSwitch()
+			tc.ctx.volumeStateKnown = true
+			tt.place(tc)
+
+			changed := doBaseOsStatusUpdate(tc.ctx, "uuid-x", cfg, &st)
+			if !changed || !st.HasError() {
+				t.Fatalf("expected reject: changed=%v err=%q", changed, st.Error)
+			}
+			if !strings.Contains(st.Error, "while volumes exist") {
+				t.Fatalf("error text doesn't name the volume gate: %q", st.Error)
+			}
+		})
+	}
+}
+
+// The EVE-k -> kvm direction is refused whether or not volumes exist:
+// a vault migrated to the EVE-k zvol layout has no path back.
+func TestDoBaseOsStatusUpdate_RejectsKubeToKvmWithoutVolumes(t *testing.T) {
+	tc := newTestCtx(t)
+	tc.pubZbootStatus.items["IMGA"] = types.ZbootStatus{
+		PartitionLabel: "IMGA", PartitionState: "active", ShortVersion: "13-k",
+	}
+	tc.pubZbootStatus.items["IMGB"] = types.ZbootStatus{
+		PartitionLabel: "IMGB", PartitionState: "unused",
+	}
+	tc.currentIsKube = true
+	tc.versionIsKube = map[string]bool{"14-kvm": false}
+	tc.ctx.volumeStateKnown = true
+
+	cfg := types.BaseOsConfig{
+		BaseOsVersion:   "14-kvm",
+		ContentTreeUUID: "uuid-x",
+		Activate:        true,
+	}
+	st := types.BaseOsStatus{ContentTreeUUID: "uuid-x"}
+	changed := doBaseOsStatusUpdate(tc.ctx, "uuid-x", cfg, &st)
+	if !changed || !st.HasError() {
+		t.Fatalf("expected reject: changed=%v err=%q", changed, st.Error)
+	}
+	if !strings.Contains(st.Error, "from EVE-k") {
+		t.Fatalf("error text doesn't name the direction: %q", st.Error)
 	}
 }
 
@@ -420,4 +522,45 @@ func TestBaseOsHandleStatusUpdateUUID_NoContentTreeStatusIsLoggedOnly(t *testing
 	}
 	// No ContentTreeStatus seeded → early return after error log.
 	baseOsHandleStatusUpdateUUID(tc.ctx, "uuid-x")
+}
+
+func TestDoBaseOsStatusUpdate_CrossFlavorNotActivatedSkipsConversion(t *testing.T) {
+	// A cross-flavor image that is only pre-staged (Activate not set) must not
+	// arm the boot-disk repartition: that reboots the device and, on the shrink
+	// path, shrinks /persist.
+	tc := newTestCtx(t)
+	tc.pubZbootStatus.items["IMGA"] = types.ZbootStatus{
+		PartitionLabel: "IMGA", PartitionState: "active", ShortVersion: "13-kvm",
+	}
+	// A different version in the other partition, so the "already in other
+	// partition" shortcut does not return before the install path.
+	tc.pubZbootStatus.items["IMGB"] = types.ZbootStatus{
+		PartitionLabel: "IMGB", PartitionState: "unused", ShortVersion: "12-kvm",
+	}
+	tc.subContentTreeStatus.items["uuid-x"] = types.ContentTreeStatus{
+		State: types.LOADED,
+	}
+	tc.currentIsKube = false
+	tc.versionIsKube = map[string]bool{"14-k": true}
+	// No volumes and the volume state is known, so the cross-flavor upgrade is
+	// permitted and the code reaches the conversion decision.
+	tc.ctx.subVolumeConfig = newMockPubSub()
+	tc.ctx.subVolumeStatus = newMockPubSub()
+	tc.ctx.volumeStateKnown = true
+
+	cfg := types.BaseOsConfig{
+		BaseOsVersion:   "14-k",
+		ContentTreeUUID: "uuid-x",
+		Activate:        false,
+	}
+	st := types.BaseOsStatus{BaseOsVersion: "14-k", ContentTreeUUID: "uuid-x"}
+	doBaseOsStatusUpdate(tc.ctx, "uuid-x", cfg, &st)
+	if st.HasError() {
+		t.Fatalf("unexpected error on a download-only cross-flavor config: %q",
+			st.Error)
+	}
+	if st.Converting || st.ConvertSubState != types.DEVICE_SUBSTATE_UNSPECIFIED {
+		t.Fatalf("conversion armed without Activate: converting=%v substate=%v",
+			st.Converting, st.ConvertSubState)
+	}
 }

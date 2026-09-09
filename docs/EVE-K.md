@@ -71,8 +71,34 @@ To override previously set config it is required to follow the k3s config merge 
 ## Upgrades
 
 Upgrades of `HV=k` EVE-OS are supported through the existing interfaces.
-Upgrade from other `HV=` types is not supported and upgrade from `HV=k` to
-other `HV=` types is not supported.
+
+Upgrading a device from another `HV=` type to `HV=k` is supported only while
+the device holds no volumes: the `/persist/vault/volumes` layout differs
+between the flavors, so baseosmgr refuses the update while the controller has
+any volume configured for the device or volumemgr still reports one — an app
+deleted shortly beforehand keeps the update refused until its volume has
+finished being purged. Content trees and blobs already on `/persist` do not
+refuse the update; they are carried across the flavor change and reused rather
+than re-downloaded. A device that is not receiving configuration cannot
+establish its volume set, and is refused for that reason.
+
+The new rootfs must also fit the device's existing IMGA/IMGB partition, which
+an installation predating EVE 17.0.0 is unlikely to satisfy. Converting such a
+device additionally needs the boot-disk repartition.
+
+On a device whose `/persist` is ZFS, the vault carried over from the old flavor
+is a filesystem dataset, which `HV=k` cannot use; the first `HV=k` boot
+migrates it to the zvol layout, and declines when the pool has too little free
+space to stage the copy. See [vaultmgr.md](../pkg/pillar/docs/vaultmgr.md).
+
+Upgrading from `HV=k` to another `HV=` type is not supported in any case: a
+vault migrated to the `HV=k` zvol layout has no path back to a filesystem
+dataset the other flavors can read.
+
+Converting an in-field device to `HV=k` requires the larger EVE-k boot-disk
+geometry, which older (small-partition) devices do not have. The boot-disk
+repartition that enables such a conversion — and how it stays robust across
+power outages — is described in [STORAGE-RESIZING.md](./STORAGE-RESIZING.md).
 
 ## Tie Breaker Node
 
