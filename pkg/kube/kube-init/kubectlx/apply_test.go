@@ -6,8 +6,11 @@ package kubectlx
 import (
 	"errors"
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/lf-edge/eve/pkg/kube/kube-init/mgmtproxy"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -177,5 +180,45 @@ func TestCRDName(t *testing.T) {
 				t.Errorf("crdName = %q, want %q", gotName, c.wantName)
 			}
 		})
+	}
+}
+
+// TestFetchClientRoutesThroughMgmtproxy pins the regression this fixes:
+// fetchURL (used for the KubeVirt CR, CDI operator, and CDI CR manifest
+// fetches) must route through pillar's cost-aware mgmtproxy. This checks
+// fetchClient's Proxy func directly rather than http.DefaultClient +
+// HTTPS_PROXY, since the latter's env-var lookup is cached process-wide on
+// first use and would not reliably reflect a per-test env change.
+func TestFetchClientRoutesThroughMgmtproxy(t *testing.T) {
+	oldFlag := mgmtproxy.DisableFlag
+	mgmtproxy.DisableFlag = filepath.Join(t.TempDir(), "disable")
+	t.Cleanup(func() { mgmtproxy.DisableFlag = oldFlag })
+
+	transport, ok := fetchClient.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("fetchClient.Transport = %T, want *http.Transport", fetchClient.Transport)
+	}
+	req, err := http.NewRequest(http.MethodGet, "https://example.com", nil)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+
+	got, err := transport.Proxy(req)
+	if err != nil {
+		t.Fatalf("Proxy: %v", err)
+	}
+	if got == nil || got.String() != mgmtproxy.URL {
+		t.Errorf("Proxy() = %v, want %s", got, mgmtproxy.URL)
+	}
+
+	if err := os.WriteFile(mgmtproxy.DisableFlag, nil, 0o644); err != nil {
+		t.Fatalf("write disable flag: %v", err)
+	}
+	got, err = transport.Proxy(req)
+	if err != nil {
+		t.Fatalf("Proxy (off-switch set): %v", err)
+	}
+	if got != nil {
+		t.Errorf("Proxy() with off-switch set = %v, want nil", got)
 	}
 }
