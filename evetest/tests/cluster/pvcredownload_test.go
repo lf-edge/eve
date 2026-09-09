@@ -110,7 +110,7 @@ func TestClusterPVCRedownload(test *testing.T) {
 		requiredDevices[i] = clusterDeviceRequirementsForVMApp(devName[i], withTPM, filesystem)
 	}
 	requiredNetModel := evetest.RequireNetworkModel{
-		NetworkModel: netmodels.SeparateClusterPort,
+		NetworkModel: netmodels.SeparateClusterPort(devName[:]...),
 	}
 	var requirements []evetest.Requirement
 	requirements = append(requirements, requiredDevices[:]...)
@@ -288,7 +288,7 @@ func TestClusterPVCRedownload(test *testing.T) {
 	// (dev2-eth1). Node A and Node C keep their own cluster ports up and
 	// reform the cluster between themselves; Node B's isolation is what
 	// keeps it out.
-	restrictedModel := proto.Clone(netmodels.SeparateClusterPort).(*api.NetworkModel)
+	restrictedModel := proto.Clone(netmodels.SeparateClusterPort(devName[:]...)).(*api.NetworkModel)
 	restrictedModel.Firewall = &api.Firewall{
 		Rules: []*api.FwRule{
 			{

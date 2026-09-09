@@ -128,7 +128,7 @@ func TestClusterToSingleConversion(test *testing.T) {
 	requirements := append([]evetest.Requirement{},
 		requiredDevices[:]...)
 	requirements = append(requirements, evetest.RequireNetworkModel{
-		NetworkModel: netmodels.SeparateClusterPort,
+		NetworkModel: netmodels.SeparateClusterPort(devName[:]...),
 	})
 	evetest.Setup(requirements...)
 	evetest.Checkpoint("setup-done")
