@@ -20,6 +20,7 @@ package mgmtproxy
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -43,13 +44,70 @@ import (
 //     last start — containerd itself unsets HTTPS_PROXY after
 //     reading it for the CRI image-pull client, so /proc/<pid>/environ
 //     becomes unreliable.
+//   - TokenFile is where pillar's mgmtproxy persists the shared secret
+//     gating the cni0 listener. /persist is bind-mounted identically
+//     into the pillar and kube containers, so this path is directly
+//     readable here; this package only ever reads it (see
+//     withProxyToken, PatchCDIProxyConfig). Must match pillar's
+//     TokenFile.
+//   - TLSCertFile is where pillar's mgmtproxy persists the cni0
+//     listener's self-signed cert (also its own trust root). Read
+//     here to publish as CDI's TrustedCAProxy ConfigMap, so importer
+//     pods verify they're talking to mgmtproxy and not a spoofed
+//     answerer on the shared cni0 bridge. Must match pillar's
+//     TLSCertFile. CNI0URL's scheme is https accordingly.
 var (
 	URL          = "http://127.0.0.1:5443"
 	DisableFlag  = "/run/kube/mgmtproxy-disable"
 	CNI0IP       = "169.254.100.1"
-	CNI0URL      = "http://169.254.100.1:5443"
+	CNI0URL      = "https://169.254.100.1:5443"
 	SentinelFile = "/run/mgmtproxy-containerd-env"
+	TokenFile    = "/persist/vault/mgmtproxy/token"
+	TLSCertFile  = "/persist/vault/mgmtproxy/cert.pem"
 )
+
+// readProxyToken returns the persisted cni0 proxy-auth token. An error here
+// (typically: the file doesn't exist yet, right after boot) is expected;
+// callers on the steady-state tick just retry next tick.
+func readProxyToken() (string, error) {
+	data, err := os.ReadFile(TokenFile)
+	if err != nil {
+		return "", fmt.Errorf("read %s: %w", TokenFile, err)
+	}
+	tok := strings.TrimSpace(string(data))
+	if tok == "" {
+		return "", fmt.Errorf("%s is empty", TokenFile)
+	}
+	return tok, nil
+}
+
+// readProxyCACert returns the PEM-encoded cni0 TLS certificate mgmtproxy
+// persists at TLSCertFile, for publishing as CDI's TrustedCAProxy bundle.
+// Same missing-file-right-after-boot semantics as readProxyToken.
+func readProxyCACert() ([]byte, error) {
+	data, err := os.ReadFile(TLSCertFile)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", TLSCertFile, err)
+	}
+	if len(data) == 0 {
+		return nil, fmt.Errorf("%s is empty", TLSCertFile)
+	}
+	return data, nil
+}
+
+// withProxyToken embeds token as the password half of rawURL's userinfo, so
+// a client dialing this proxy URL sends it back as a Proxy-Authorization:
+// Basic header automatically — no CDI-side change needed. The username is
+// fixed and meaningless; only the password is checked. Falls back to rawURL
+// unchanged if it doesn't parse.
+func withProxyToken(rawURL, token string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	u.User = url.UserPassword("cdi", token)
+	return u.String()
+}
 
 // Fixed NO_PROXY entries that apply on every node: loopback, k3s
 // service + pod CIDRs (defaults — see pkg/kube/config.yaml does not
