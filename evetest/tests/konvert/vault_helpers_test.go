@@ -106,26 +106,27 @@ type vaultUnlock struct {
 }
 
 // assertSealSurvivedRepartition asserts the boot-disk repartition did not break
-// the TPM seal, judged after the fact from the device's own logs.
+// the TPM seal.
 //
-// It has to be judged this way. The live window in which the post-conversion
-// unlock is readable is a minute or two, and racing it makes the test flaky;
-// /persist survives the repartition, so the record of every boot is still there
-// afterwards. Two independent gates:
+// The question is whether the repartition invalidated the seal, and PCR5 is what
+// answers it: the repartition moves that measurement, and the seal deliberately
+// excludes it. So a controller-key fallback or a failed unseal naming PCR5 means
+// the repartition cost the seal, while one naming only 8, 9 and 13 is the
+// ordinary consequence of booting a new rootfs and is expected here.
 //
-//  1. The last boot on the conversion-capable kvm image must have unsealed
-//     locally. That is the boot after the repartition and before EVE-K, on which
-//     only PCR5 changed -- and PCR5 is excluded from the seal precisely so that
-//     a repartition does not invalidate it. Keyed on that exact version rather
-//     than "any kvm boot", so a future baseline that also unlocks locally cannot
-//     satisfy it by accident.
-//  2. No controller-key or failed unseal anywhere lists PCR5 among its
-//     mismatches. A PCR5-driven re-seal means the repartition did break the
-//     seal, whatever gate 1 saw.
+// Judged after the fact from the device's own logs, because the live window in
+// which a post-conversion unlock is readable is a minute or two and racing it
+// makes the test flaky.
 //
-// The EVE-K boot unlocking from the controller key is expected and not a
-// failure: a new rootfs moves PCRs 8, 9 and 13.
-func assertSealSurvivedRepartition(t Gomega, device *evetest.EdgeDevice, kvmVersion string) {
+// What is deliberately NOT asserted from these logs is that the pre-conversion
+// boot unsealed locally. On the shrink path the offline resize can lose
+// /persist content -- storage-resize.sh restores what it lost from the CONFIG
+// backup, and that backup carries identity and connectivity files, not the log
+// archive. So the pre-conversion records may simply not be there afterwards.
+// That claim is established live instead, before the conversion, by
+// settleVaultLocal reading VaultStatus directly, which is stronger evidence
+// than parsing a log for it would be.
+func assertSealSurvivedRepartition(t Gomega, device *evetest.EdgeDevice) {
 	log := evetest.Logger()
 	var raw string
 	t.Eventually(func(g Gomega) {
@@ -143,7 +144,6 @@ func assertSealSurvivedRepartition(t Gomega, device *evetest.EdgeDevice, kvmVers
 		"no vault unlock was recorded in /persist/newlog, so the seal cannot be judged")
 
 	var pcr5Reseals []vaultUnlock
-	var onKVM []vaultUnlock
 	for _, u := range unlocks {
 		for _, p := range u.pcrs {
 			if p == "5" {
@@ -151,20 +151,10 @@ func assertSealSurvivedRepartition(t Gomega, device *evetest.EdgeDevice, kvmVers
 				break
 			}
 		}
-		if u.version == kvmVersion {
-			onKVM = append(onKVM, u)
-		}
 	}
-
 	t.Expect(pcr5Reseals).To(BeEmpty(),
 		"PCR5 appears in a re-seal or failed unseal, so the repartition broke the TPM seal: %v",
 		pcr5Reseals)
-	t.Expect(onKVM).NotTo(BeEmpty(),
-		"no vault unlock was recorded on %s, so the post-repartition boot cannot be judged",
-		kvmVersion)
-	t.Expect(onKVM[len(onKVM)-1].method).To(Equal(unlockLocal),
-		"the last boot on %s did not unseal locally, so the repartition cost the seal: %v",
-		kvmVersion, onKVM[len(onKVM)-1])
 }
 
 var (
