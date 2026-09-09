@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -43,9 +44,19 @@ var (
 	podReadyPollInterval   = 10 * time.Second
 )
 
+// systemPodsStallGrace bounds how long waitSystemPodsReady holds for an
+// unchanging set of not-ready pods. Without it a pod that can never be
+// Ready livelocks the FSM: readinessTimeout expires, StateWaitK3sReady
+// retries, the same pod blocks it again, and the node never reaches
+// StateRunning. Must stay below readinessTimeout so the grace fires
+// first.
+var systemPodsStallGrace = 5 * time.Minute
+
 // WaitReady blocks until k3s is fully operational: kubeconfig
 // appeared + copied, the local node reports Ready, the node-uuid
-// label is applied, and every pod in kube-system is Ready.
+// label is applied, and every pod in kube-system is Ready (or a
+// stubborn minority of them has been written off — see
+// systemPodsStallGrace).
 //
 // The supplied timeout bounds the whole sequence (a fresh
 // context.WithTimeout is derived from ctx and consumed inside).
@@ -333,6 +344,10 @@ func noteProgress(stage string) {
 // Ready or has finished (Completed/Succeeded). Progress is logged
 // every time the ready/total count changes, including the list of
 // pods we are still waiting on.
+//
+// Returns nil early if the not-ready set stops changing for
+// systemPodsStallGrace while at least one pod is Ready, so one wedged
+// add-on cannot hold the node out of StateRunning indefinitely.
 func waitSystemPodsReady(
 	ctx context.Context, kc *kubeclient.Client, cs kubernetes.Interface,
 	nodeName string,
@@ -342,6 +357,7 @@ func waitSystemPodsReady(
 	defer ticker.Stop()
 
 	var lastReady, lastTotal int
+	stall := podStallTracker{grace: systemPodsStallGrace}
 	for {
 		select {
 		case <-ctx.Done():
@@ -352,6 +368,7 @@ func waitSystemPodsReady(
 		if total == 0 {
 			continue
 		}
+		sort.Strings(notReady)
 		if ready != lastReady || total != lastTotal {
 			if len(notReady) > 0 {
 				log.Printf("system pods: [%d/%d] ready, waiting on: %s",
@@ -368,7 +385,47 @@ func waitSystemPodsReady(
 			log.Printf("all system pods are Ready [%d/%d]", ready, total)
 			return nil
 		}
+		// Give up on a not-ready set that has not budged for the
+		// grace period, but only once something is Ready: a node
+		// where nothing at all came up is broken rather than merely
+		// missing an add-on, and is better left to the retry.
+		if stall.observe(notReady) && ready > 0 {
+			log.Printf("WARNING: system pods [%d/%d] ready and unchanged for %v; "+
+				"proceeding without: %s", ready, total, systemPodsStallGrace,
+				strings.Join(notReady, ", "))
+			return nil
+		}
 	}
+}
+
+// podStallTracker decides when a set of not-ready pods has stayed the
+// same for long enough to stop waiting on it. Any change to the set is
+// forward movement and restarts the clock, so a node that is genuinely
+// converging never trips it.
+type podStallTracker struct {
+	grace time.Duration
+	sig   string
+	since time.Time
+}
+
+// observe records the current not-ready set (expected sorted, so the
+// signature does not churn on list order) and reports whether it has
+// been unchanged for at least grace.
+func (t *podStallTracker) observe(notReady []string) bool {
+	now := time.Now()
+	if len(notReady) == 0 {
+		// Nothing outstanding is never a stall. Guarding here keeps
+		// the zero value safe rather than relying on the caller
+		// having already returned on ready == total.
+		t.sig, t.since = "", now
+		return false
+	}
+	sig := strings.Join(notReady, ",")
+	if sig != t.sig {
+		t.sig, t.since = sig, now
+		return false
+	}
+	return now.Sub(t.since) >= t.grace
 }
 
 // countSystemPods counts the kube-system pods scheduled to nodeName and
