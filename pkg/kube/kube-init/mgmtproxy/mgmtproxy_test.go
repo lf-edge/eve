@@ -127,6 +127,114 @@ func TestWriteContainerdSentinel_Enabled(t *testing.T) {
 	}
 }
 
+// redirectTokenFile points TokenFile at t.TempDir() so tests never touch a
+// real /persist/vault path.
+func redirectTokenFile(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "token")
+	old := TokenFile
+	TokenFile = path
+	t.Cleanup(func() { TokenFile = old })
+	return path
+}
+
+func TestReadProxyTokenMissingFile(t *testing.T) {
+	redirectTokenFile(t)
+	if _, err := readProxyToken(); err == nil {
+		t.Error("readProxyToken() with no file present should error, got nil")
+	}
+}
+
+func TestReadProxyTokenEmptyFile(t *testing.T) {
+	path := redirectTokenFile(t)
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatalf("seed empty token file: %v", err)
+	}
+	if _, err := readProxyToken(); err == nil {
+		t.Error("readProxyToken() with an empty file should error, got nil")
+	}
+}
+
+// TestReadProxyTokenMatchesPillarWriter simulates the real cross-process
+// setup: pillar's mgmtproxy writes the token file (trailing newline and all,
+// matching os.WriteFile of a plain string), kube-init only reads it.
+func TestReadProxyTokenMatchesPillarWriter(t *testing.T) {
+	path := redirectTokenFile(t)
+	if err := os.WriteFile(path, []byte("deadbeef1234\n"), 0o600); err != nil {
+		t.Fatalf("seed token file: %v", err)
+	}
+	got, err := readProxyToken()
+	if err != nil {
+		t.Fatalf("readProxyToken: %v", err)
+	}
+	if got != "deadbeef1234" {
+		t.Errorf("got %q, want trimmed %q", got, "deadbeef1234")
+	}
+}
+
+// redirectTLSCertFile points TLSCertFile at t.TempDir() so tests never touch
+// a real /persist/vault path.
+func redirectTLSCertFile(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "cert.pem")
+	old := TLSCertFile
+	TLSCertFile = path
+	t.Cleanup(func() { TLSCertFile = old })
+	return path
+}
+
+func TestReadProxyCACertMissingFile(t *testing.T) {
+	redirectTLSCertFile(t)
+	if _, err := readProxyCACert(); err == nil {
+		t.Error("readProxyCACert() with no file present should error, got nil")
+	}
+}
+
+func TestReadProxyCACertEmptyFile(t *testing.T) {
+	path := redirectTLSCertFile(t)
+	if err := os.WriteFile(path, nil, 0o644); err != nil {
+		t.Fatalf("seed empty cert file: %v", err)
+	}
+	if _, err := readProxyCACert(); err == nil {
+		t.Error("readProxyCACert() with an empty file should error, got nil")
+	}
+}
+
+// TestReadProxyCACertMatchesPillarWriter simulates the real cross-process
+// setup: pillar's mgmtproxy writes the PEM cert file, kube-init only reads
+// it verbatim (no trimming — it's embedded as-is in a ConfigMap).
+func TestReadProxyCACertMatchesPillarWriter(t *testing.T) {
+	path := redirectTLSCertFile(t)
+	const pem = "-----BEGIN CERTIFICATE-----\nZmFrZQ==\n-----END CERTIFICATE-----\n"
+	if err := os.WriteFile(path, []byte(pem), 0o644); err != nil {
+		t.Fatalf("seed cert file: %v", err)
+	}
+	got, err := readProxyCACert()
+	if err != nil {
+		t.Fatalf("readProxyCACert: %v", err)
+	}
+	if string(got) != pem {
+		t.Errorf("got %q, want %q", got, pem)
+	}
+}
+
+func TestWithProxyToken(t *testing.T) {
+	got := withProxyToken("http://169.254.100.1:5443", "deadbeef1234")
+	want := "http://cdi:deadbeef1234@169.254.100.1:5443"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestWithProxyTokenInvalidURLFallsBack(t *testing.T) {
+	// A control character makes url.Parse fail; withProxyToken must return
+	// the input unchanged rather than panic or silently drop the token.
+	bad := "http://\x7f"
+	if got := withProxyToken(bad, "deadbeef"); got != bad {
+		t.Errorf("got %q, want unchanged %q", got, bad)
+	}
+}
+
 func TestWriteContainerdSentinel_Disabled(t *testing.T) {
 	disable, sentinel := redirectPaths(t)
 	if err := os.WriteFile(disable, nil, 0o644); err != nil {
