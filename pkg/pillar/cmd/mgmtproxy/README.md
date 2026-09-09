@@ -114,19 +114,22 @@ the first port whose dial succeeds.
   `DataVolumeTemplate` that uses `source.http.url` or `source.registry.url`,
   CDI creates an importer pod that fetches the VM disk image from the external
   URL. These pods run in the k3s pod network (10.42.x.x) and cannot reach
-  `127.0.0.1:5443`. To cover them, `cluster-init.sh:setup_cni0_proxy_ip()`
+  `127.0.0.1:5443`. To cover them, kube-init's `mgmtproxy.SetupCNI0ProxyIP`
   assigns a well-known link-local IP (`169.254.100.1/32`) to `cni0` on every
-  kubevirt-enabled node (only when `install_kubevirt=1`). mgmtproxy gains a
-  second listener on `169.254.100.1:5443`. After CDI installs,
-  `cluster-init.sh:patch_cdi_proxy_config()` patches the CDI CR
-  (`spec.config.importProxy.HTTPSProxy`) to inject
-  `HTTPS_PROXY=http://169.254.100.1:5443` into every importer pod CDI creates.
-  Link-local addresses are not routed by flannel across nodes, so each importer
-  pod always reaches its own node's mgmtproxy — the right uplinks are used even
-  in multi-node clusters. EVE-managed VM volumes (controller-deployed apps)
-  are unaffected: they use `virtctl image-upload` → CDI upload-proxy service
-  (10.43.x.x, already in NO_PROXY), which is a `source.upload` DataVolume —
-  not an importer pod, no external fetch.
+  kubevirt-enabled node. mgmtproxy gains a second listener on
+  `169.254.100.1:5443`. After CDI installs, kube-init's
+  `mgmtproxy.PatchCDIProxyConfig` patches the CDI CR
+  (`spec.config.importProxy`) to inject
+  `HTTPS_PROXY=https://cdi:<token>@169.254.100.1:5443` and `trustedCAProxy`
+  into every importer pod CDI creates. Link-local addresses are not routed by
+  flannel across nodes, so each importer pod always reaches its own node's
+  mgmtproxy — the right uplinks are used even in multi-node clusters.
+  EVE-managed VM volumes (controller-deployed apps) are unaffected: they use
+  `virtctl image-upload` → CDI upload-proxy service (10.43.x.x, already in
+  NO_PROXY), which is a `source.upload` DataVolume — not an importer pod, no
+  external fetch. The cni0 listener requires the Proxy-Authorization token
+  and TLS described below — see "Pod-facing (cni0) authentication and
+  destination policy".
 
 What it does **not** cover (by design): VM disk images already flow through
 pillar's cost-aware downloader and are mounted as PVCs, so they need nothing
@@ -191,6 +194,145 @@ metadata server at `169.254.169.254`, which DNATs to the NI bridge IP and adds a
 that is never bridged to a physical uplink, so there is no external L2 leak path
 to block.
 
+## Pod-facing (cni0) authentication and destination policy
+
+Unlike the loopback listener, `169.254.100.1:5443` sits on the cni0 bridge —
+reachable by **every pod on the node**, not just CDI importer pods, since a
+pod only needs `ip route add 169.254.100.1/32 dev eth0` (no special
+capability beyond what a privileged pod already has) to reach it. Without
+further checks this turns mgmtproxy into an open egress proxy for any
+workload: laundering arbitrary outbound traffic through the node's
+management source IP, bypassing network-instance ACLs and Kubernetes
+NetworkPolicy entirely. This was reported and confirmed live (an evetest pod
+with no default route at all completed a full TLS fetch of an external host
+purely by adding that one route and CONNECTing through the cni0 listener).
+Three independent checks close this, all enforced only on the cni0
+listener — the loopback listener is unaffected, since host processes are
+already trusted:
+
+**1. Proxy-Authorization token.** mgmtproxy persists a secret at `TokenFile`
+(`/persist/vault/mgmtproxy/token` — under vault so it survives reboots;
+`/persist` is bind-mounted identically into the pillar and kube containers,
+so both sides read/write the same file). It's generated once, on first boot
+after `/persist/vault` is unsealed — `startProxySecretsReconciler` waits for that in
+the background, since mgmtproxy itself starts well before kube-init's
+vault-unseal gate opens, then keeps running for the process lifetime (see
+"Clustered nodes" below for why). On a clustered node it's derived rather
+than random. kube-init's
+`PatchCDIProxyConfig` (`pkg/kube/kube-init/mgmtproxy/cni0.go`) reads the same
+file and embeds the token as the password half of the CDI CR's
+`importProxy.HTTPSProxy` userinfo (`https://cdi:<token>@169.254.100.1:5443`),
+which every standard HTTP client (Go's `net/http`, curl, ...) automatically
+turns into a `Proxy-Authorization: Basic ...` header on CONNECT — no CDI-side
+code change needed. `handleConnect` on the cni0 listener requires and
+constant-time-compares this header before doing anything else
+(`podpolicy.go:checkProxyAuth`); a pod with no route into `/persist/vault` has no
+way to obtain the token. Missing/wrong credentials get `407`; a request that
+arrives before the token has loaded (e.g. very early boot) gets `503`, so
+operators can tell "not ready yet" apart from "wrong credentials".
+
+**2. TLS on the cni0 listener, verified via CDI's `TrustedCAProxy`.** The
+token alone doesn't survive an on-path attacker: cni0 is a plain shared L2
+bridge, and CONNECT's auth header is sent *before* any TLS exists on that
+connection (TLS only starts once the tunnel is established, between the
+importer and the real destination — mgmtproxy never terminates it). A pod
+with `CAP_NET_RAW` (part of the *default* container capability set, no
+special privilege needed) could ARP-spoof the `169.254.100.1` anchor and
+read the token straight out of a legitimate importer's CONNECT request.
+mgmtproxy closes this by generating a self-signed certificate (its own
+trust root, `TLSCertFile`/`TLSKeyFile` under `/persist/vault/mgmtproxy`,
+same persistence convention as the token) and serving the cni0 listener
+over TLS with it (`tls.Config.GetCertificate` in `mgmtproxy.go`, loaded
+lazily so the listener doesn't have to wait for it — a handshake attempted
+before it's ready just fails). kube-init's `PatchCDIProxyConfig` reads the
+same cert, publishes it via `ensureProxyCAConfigMap` as a ConfigMap in the
+`cdi` namespace, and points the CDI CR's `importProxy.trustedCAProxy` at it
+— CDI's own importer validates the proxy's certificate against that CA
+before ever sending the CONNECT request, so an ARP-spoofing attacker
+without the private key gets a failed handshake instead of the token.
+
+**Clustered nodes.** `PatchCDIProxyConfig` patches a single, cluster-wide
+`cdi` CR, but `169.254.100.1:5443` is link-local, so each importer pod
+reaches only its own node's mgmtproxy. A random per-node token/cert (the
+standalone behavior) would mean only whichever node's kube-init last won
+the CR write actually works — every other node's importers fail
+permanently, and their kube-init instances endlessly re-patch the CR trying
+to fix it. The secrets have to be identical everywhere; coordinating who
+writes the CR doesn't help.
+
+So on a clustered node, `deriveProxyToken`/`deriveProxyTLSCert`
+(`podpolicy.go`) derive the token and an Ed25519 TLS keypair/certificate via
+HKDF-SHA256 from the cluster's shared k3s join token (already available
+in-process as `types.EdgeNodeClusterStatus.EncryptedClusterToken` —
+confusingly named, but plaintext by the time zedkube publishes it). Every
+node computes the same output independently: no coordination, no leader
+election, no write to race on. `proxyIdentity` (`mgmtproxy.go`) gates this
+on `EdgeNodeClusterConfig.Initialized`/`Valid` so mgmtproxy knows "confirmed
+standalone" (random token, as before) from "confirmed clustered but the
+token hasn't arrived yet" (fail closed) rather than guessing. A cluster-token
+rotation (`k3s token rotate`) is picked up automatically on
+`startProxySecretsReconciler`'s next tick. An unchanged tick still checks
+`TokenFile`/`TLSCertFile`/`TLSKeyFile` weren't externally wiped, but only via
+`secretsFilesExist`'s cheap `os.Stat` calls, not by re-reading and comparing
+their content. If something *is* missing, the tick just falls through to the
+normal derive-or-generate path — on a clustered node this reproduces the
+identical value (deterministic, so no harm); on a standalone node it
+generates a fresh random token/cert rather than restoring the exact one that
+was wiped, trading a little churn on an already-abnormal event for simpler
+code.
+
+A node leaving a cluster needs the opposite care: it must stop using a
+secret derived from a cluster token it no longer knows, and it can't just
+reuse whatever is on disk the way the standalone path normally does — that
+file currently holds the derived value, not a genuine per-node secret. A
+marker file (`clusterWideSecretsMarker`,
+`/persist/vault/mgmtproxy/cluster-wide-secrets`) tracks this. Every tick,
+before doing anything else, `startProxySecretsReconciler` marks the current
+scope — `markClusterWide` if clustered, `markSingleNode` if not — regardless
+of whether the cached token/cert are still fresh, precisely so a marker
+wiped independently of the secret files (`secretsFilesExist` only checks
+those, not the marker) gets noticed and re-created within a tick rather than
+staying missing indefinitely. Only once that succeeds does the tick go on to
+derive/persist the secrets themselves (`ensureProxyToken`/
+`ensureProxyTLSCert`, via `applyProxySecrets`). This order — mark first,
+persist second — matters for what a crash between the two steps leaves
+behind: marker-then-secrets means a crash leaves, at worst, a marker with no
+(or stale) matching secrets yet — harmless, since the next tick just
+re-derives and overwrites them, or `markSingleNode` wipes the lot if the
+node has left the cluster by then. The reverse order is unsafe:
+secrets-then-marker means a crash after the secrets are written but before
+the marker is would leave a cluster-wide secret on disk with nothing
+recording that fact — and if the node then leaves the cluster while down,
+`markSingleNode` sees no marker, no-ops, and the standalone path happily
+reuses that secret forever, exactly the shared-secret exposure this marker
+exists to prevent. On the reverse, clustered → standalone transition,
+`markSingleNode` sees the marker and deletes
+`TokenFile`/`TLSCertFile`/`TLSKeyFile`, so the standalone path regenerates
+fresh random ones, the same as on first boot. Both take no arguments — the
+caller in `startProxySecretsReconciler` decides which one
+applies from `clusterToken`, rather than each function checking a bool and
+no-opping for the wrong direction.
+
+**3. Server-side destination policy.** `handleConnect` also rejects, before
+any dial, CONNECT targets a legitimate CDI importer pod has no reason to
+reach: loopback, link-local (including the cloud metadata address
+`169.254.169.254`), unspecified, multicast, and the cluster pod/service
+CIDRs (`podpolicy.go:destinationAllowed`). This mirrors — server-side — the
+exclusions the CDI importer's own `noProxy` list only declares client-side
+(a cooperating client honors `noProxy`; a malicious pod ignores it and
+CONNECTs directly). Hostnames are resolved *before* the check
+(`resolvePinnedTarget`), every resolved address is checked (not just the one
+that would be dialed), and the dial is pinned to the exact address that
+passed — closing the "CONNECT to a hostname that resolves into a denied
+range" bypass that an IP-literal-only check would miss (e.g.
+`metadata.google.internal` → `169.254.169.254`). Denied destinations get
+`403`.
+
+`/healthz` is also restricted to the loopback listener only — it's an
+operator-debug endpoint (management interface names/costs, the node's
+usable management source IP, last egress target) with no legitimate pod use
+case; the cni0 listener returns `404` for it regardless of credentials.
+
 ## Build tag
 
 This agent only ships in EVE-K (`//go:build k`). On KVM/Xen builds the package
@@ -211,6 +353,9 @@ concerns. Following EVE's "one agent per concern" pattern.
 - `ConfigItemValueMap` from `zedagent` — reads `network.download.max.cost` (max
   port cost to use) and `timer.dial.timeout` (per-attempt upstream dial
   timeout).
+- `EdgeNodeClusterConfig` from `zedagent` and `EdgeNodeClusterStatus` from
+  `zedkube` — used only to derive the cni0 proxy-auth token/TLS keypair
+  correctly on clustered nodes; see "Clustered nodes" above.
 
 ## Observability
 
