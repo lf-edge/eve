@@ -462,6 +462,58 @@ func (t *BaseOSDatastoreType) FromString(s string) error {
 // revert), so the expected reboot count is incremented accordingly.
 func (d *EdgeDevice) UpgradeEVE(targetEVEVersion string, targetEVEHypervisor Hypervisor,
 	datastoreType BaseOSDatastoreType, waitUntilUpgraded bool, expectRevert bool) {
+	outcome := upgradeSucceeds
+	if expectRevert {
+		outcome = upgradeReverts
+	}
+	d.upgradeEVE(targetEVEVersion, targetEVEHypervisor, datastoreType,
+		waitUntilUpgraded, outcome)
+}
+
+// RequestRefusedEVEUpgrade applies a base-OS update that EVE is expected to
+// reject outright, and returns as soon as the configuration is applied.
+//
+// A rejection is not a failed upgrade. EVE refuses in place -- before it writes
+// a partition and before it reboots -- so there is nothing to wait for and no
+// reboot to account for, which is what separates this from UpgradeEVE's
+// expectRevert: that one waits out two reboots for an image that was installed
+// and then rolled back. What the rejection looks like is the caller's to assert:
+// the reported error, and that the device is still running what it was.
+func (d *EdgeDevice) RequestRefusedEVEUpgrade(targetEVEVersion string,
+	targetEVEHypervisor Hypervisor, datastoreType BaseOSDatastoreType) {
+	d.upgradeEVE(targetEVEVersion, targetEVEHypervisor, datastoreType,
+		false, upgradeRefused)
+}
+
+// upgradeOutcome is what the test expects EVE to do with a base-OS update. It
+// decides how many reboots the harness books and what, if anything, it waits
+// for.
+type upgradeOutcome int
+
+const (
+	// upgradeSucceeds: EVE installs the image and boots it. One reboot.
+	upgradeSucceeds upgradeOutcome = iota
+	// upgradeReverts: EVE installs the image, fails to confirm it, and rolls
+	// back. Two reboots -- one into the new image, one back.
+	upgradeReverts
+	// upgradeRefused: EVE rejects the update without installing it. No reboot.
+	upgradeRefused
+)
+
+// expectedReboots is how many reboots an outcome causes.
+func (o upgradeOutcome) expectedReboots() int {
+	switch o {
+	case upgradeReverts:
+		return 2
+	case upgradeRefused:
+		return 0
+	default:
+		return 1
+	}
+}
+
+func (d *EdgeDevice) upgradeEVE(targetEVEVersion string, targetEVEHypervisor Hypervisor,
+	datastoreType BaseOSDatastoreType, waitUntilUpgraded bool, outcome upgradeOutcome) {
 
 	// Read current device arch (set during Setup).
 	d.th.devicesM.Lock()
@@ -493,7 +545,7 @@ func (d *EdgeDevice) UpgradeEVE(targetEVEVersion string, targetEVEHypervisor Hyp
 	// honoured (and must be built locally) while an unset one means the newest.
 	if datastoreType == BaseOSDatastoreHTTP && LocalLiveImageRequested() {
 		d.upgradeEVEFromLocalBuild(targetEVEVersion, currentImageRef.Arch,
-			currentImageRef.Hypervisor, waitUntilUpgraded, expectRevert)
+			currentImageRef.Hypervisor, waitUntilUpgraded, outcome)
 		return
 	}
 
@@ -547,7 +599,7 @@ func (d *EdgeDevice) UpgradeEVE(targetEVEVersion string, targetEVEHypervisor Hyp
 			"Configuring EVE to pull rootfs %s from evetest's local OCI registry", imageName)
 		config := d.GetConfig()
 		config.SetBaseOS(dockerContainer, shortVersion)
-		d.applyUpgradeConfig(config, shortVersion, waitUntilUpgraded, expectRevert)
+		d.applyUpgradeConfig(config, shortVersion, waitUntilUpgraded, outcome)
 		return
 	}
 
@@ -573,7 +625,7 @@ func (d *EdgeDevice) UpgradeEVE(targetEVEVersion string, targetEVEHypervisor Hyp
 	}
 
 	d.applyUpgradeOverHTTP(rootfsPath, rootfsFilename, shortVersion,
-		waitUntilUpgraded, expectRevert)
+		waitUntilUpgraded, outcome)
 }
 
 // upgradeEVEFromLocalBuild delivers an upgrade from a local build's own
@@ -583,7 +635,7 @@ func (d *EdgeDevice) UpgradeEVE(targetEVEVersion string, targetEVEHypervisor Hyp
 // as it was built.
 func (d *EdgeDevice) upgradeEVEFromLocalBuild(targetEVEVersion string,
 	arch api.ArchType, runningHypervisor api.HypervisorType,
-	waitUntilUpgraded, expectRevert bool) {
+	waitUntilUpgraded bool, outcome upgradeOutcome) {
 
 	zarch, err := zarchDirName(arch)
 	if err != nil {
@@ -637,7 +689,7 @@ func (d *EdgeDevice) upgradeEVEFromLocalBuild(targetEVEVersion string,
 	}
 
 	d.applyUpgradeOverHTTP(rootfsPath, rootfsFilename, img.ShortVersion,
-		waitUntilUpgraded, expectRevert)
+		waitUntilUpgraded, outcome)
 }
 
 // applyUpgradeOverHTTP points the device's BaseOS config at a rootfs image
@@ -645,7 +697,7 @@ func (d *EdgeDevice) upgradeEVEFromLocalBuild(targetEVEVersion string,
 // for the outcome. Shared by the two HTTP-serving transports (registry-pulled
 // and local-build): they differ only in how rootfsPath got there.
 func (d *EdgeDevice) applyUpgradeOverHTTP(rootfsPath, rootfsFilename, shortVersion string,
-	waitUntilUpgraded, expectRevert bool) {
+	waitUntilUpgraded bool, outcome upgradeOutcome) {
 
 	sha256hex, fileSize, err := utils.FileHashAndSize(rootfsPath)
 	if err != nil {
@@ -663,20 +715,17 @@ func (d *EdgeDevice) applyUpgradeOverHTTP(rootfsPath, rootfsFilename, shortVersi
 		ServerPort:        GetImageServerPort(),
 	}, shortVersion)
 
-	d.applyUpgradeConfig(config, shortVersion, waitUntilUpgraded, expectRevert)
+	d.applyUpgradeConfig(config, shortVersion, waitUntilUpgraded, outcome)
 }
 
 // applyUpgradeConfig applies an already-built upgrade device config and,
 // optionally, waits for the outcome. Shared by all datastore transports:
 // they differ only in how the BaseOS config gets built.
 func (d *EdgeDevice) applyUpgradeConfig(config *EdgeDeviceConfig, shortVersion string,
-	waitUntilUpgraded, expectRevert bool) {
+	waitUntilUpgraded bool, outcome upgradeOutcome) {
 
 	d.th.log.Infof("Applying EVE upgrade config (target=%s)", shortVersion)
-	// A successful upgrade reboots once; a reverted upgrade reboots twice
-	// (once to try the new version, once to revert to the previous one).
-	d.th.incExpectedRebootCount(d.devName)
-	if expectRevert {
+	for i := 0; i < outcome.expectedReboots(); i++ {
 		d.th.incExpectedRebootCount(d.devName)
 	}
 	d.th.devicesM.Lock()
@@ -684,12 +733,16 @@ func (d *EdgeDevice) applyUpgradeConfig(config *EdgeDeviceConfig, shortVersion s
 	d.th.devicesM.Unlock()
 	d.ApplyConfig(config, false, false)
 
-	if waitUntilUpgraded {
-		if expectRevert {
-			d.waitForRevert(shortVersion)
-		} else {
-			d.waitForUpgrade(shortVersion)
-		}
+	if !waitUntilUpgraded {
+		return
+	}
+	switch outcome {
+	case upgradeReverts:
+		d.waitForRevert(shortVersion)
+	case upgradeRefused:
+		// Nothing to wait for: the caller asserts what the rejection looks like.
+	default:
+		d.waitForUpgrade(shortVersion)
 	}
 }
 
@@ -945,6 +998,62 @@ func (d *EdgeDevice) PowerOn(waitUntilOnline bool) {
 				d.devName, err)
 		}
 	})
+}
+
+// GrowDisk enlarges the device's boot disk to newSizeBytes, leaving the added
+// space unallocated past the last partition rather than extending any
+// partition into it.
+//
+// That free tail is the precondition for EVE's in-field repartition to grow
+// into slack instead of shrinking /persist to make room, and it cannot be
+// arranged at device creation: EVE's own image generator sizes the partitions
+// to fill whatever disk it is given.
+//
+// The device must be powered off (PowerOff), and the test must have declared
+// RequireCapabilities{CAPABILITY_EDIT_DEVICE_DISK}.
+func (d *EdgeDevice) GrowDisk(newSizeBytes uint64) {
+	req := d.editDiskRequest()
+	req.Edit = &api.EditDeviceDiskRequest_Grow{
+		Grow: &api.GrowDisk{NewSizeBytes: newSizeBytes},
+	}
+	d.editDisk("GrowDisk", req)
+}
+
+// DestroyPartitionFilesystem makes the filesystem on the named GPT partition
+// (e.g. "P3", EVE's /persist) unrecoverable, so that EVE reformats it on the
+// next boot. The partition table is left intact, which is the state a real
+// filesystem loss leaves behind.
+//
+// The device must be powered off (PowerOff), and the test must have declared
+// RequireCapabilities{CAPABILITY_EDIT_DEVICE_DISK}.
+func (d *EdgeDevice) DestroyPartitionFilesystem(partitionLabel string) {
+	req := d.editDiskRequest()
+	req.Edit = &api.EditDeviceDiskRequest_DestroyPartitionFs{
+		DestroyPartitionFs: &api.DestroyPartitionFilesystem{
+			PartitionLabel: partitionLabel,
+		},
+	}
+	d.editDisk("DestroyPartitionFilesystem", req)
+}
+
+// editDiskRequest builds the addressing half of a disk-edit request; the
+// caller fills in which edit it wants.
+func (d *EdgeDevice) editDiskRequest() *api.EditDeviceDiskRequest {
+	return &api.EditDeviceDiskRequest{
+		ClientId:   d.th.brokerClientID,
+		DeviceName: d.devName,
+	}
+}
+
+// editDisk sends one disk edit to the broker, failing the test if it is
+// refused. caller names the exported method for the failure message.
+func (d *EdgeDevice) editDisk(caller string, req *api.EditDeviceDiskRequest) {
+	ctx, cancel := context.WithTimeout(d.th.ctx, brokerEditDeviceDiskTimeout)
+	defer cancel()
+	if _, err := d.th.brokerClient.EditDeviceDisk(ctx, req); err != nil {
+		d.th.t.Fatalf("%s: broker failed to edit the disk of device %q: %v",
+			caller, d.devName, err)
+	}
 }
 
 // rebootAndWait executes triggerFn to initiate a device reboot and, if
