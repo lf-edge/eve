@@ -14,9 +14,10 @@ import (
 // silently fail to set the proxy on importer pods and only show up
 // when a DataVolume import surprisingly hits cellular bandwidth.
 func TestBuildCDIProxyPatch(t *testing.T) {
-	got := buildCDIProxyPatch("http://169.254.100.1:5443",
-		"10.42.0.0/16,localhost")
-	want := `{"spec":{"config":{"importProxy":{"HTTPSProxy":"http://169.254.100.1:5443","noProxy":"10.42.0.0/16,localhost"}}}}`
+	got := buildCDIProxyPatch("https://169.254.100.1:5443",
+		"10.42.0.0/16,localhost", "mgmtproxy-cni0-ca")
+	want := `{"spec":{"config":{"importProxy":{"HTTPSProxy":"https://169.254.100.1:5443",` +
+		`"noProxy":"10.42.0.0/16,localhost","trustedCAProxy":"mgmtproxy-cni0-ca"}}}}`
 	if got != want {
 		t.Errorf("got %s\nwant %s", got, want)
 	}
@@ -27,9 +28,9 @@ func TestBuildCDIProxyPatch(t *testing.T) {
 // properly escaped, so a maliciously-set CNI0URL can't corrupt the
 // patch. %q with a string is the standard Go escape.
 func TestBuildCDIProxyPatch_EscapesValues(t *testing.T) {
-	got := buildCDIProxyPatch(`http://"evil"`, `a"b`)
+	got := buildCDIProxyPatch(`http://"evil"`, `a"b`, `c"d`)
 	// Each `"` must appear escaped as `\"` exactly twice per arg.
-	for _, want := range []string{`\"evil\"`, `a\"b`} {
+	for _, want := range []string{`\"evil\"`, `a\"b`, `c\"d`} {
 		if !strings.Contains(got, want) {
 			t.Errorf("patch missing escaped form %q\n%s", want, got)
 		}
