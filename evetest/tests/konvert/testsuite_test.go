@@ -135,5 +135,22 @@ func TestKonvertSuite(test *testing.T) {
 		evetest.TestCase{Test: TestKvmToKUpgrade},
 		evetest.TestCase{Test: TestKvmToKContentTree},
 		evetest.TestCase{Test: TestKvmToKAppRecreate},
+		evetest.TestCase{
+			Test: TestKvmToKRepartition,
+			Variants: []evetest.TestVariant{
+				{
+					Name: "Shrink",
+					Parameters: []evetest.TestParameterValue{
+						{Key: expectDecisionParamKey, Value: decisionShrink},
+					},
+				},
+				{
+					Name: "Grow",
+					Parameters: []evetest.TestParameterValue{
+						{Key: expectDecisionParamKey, Value: decisionGrow},
+					},
+				},
+			},
+		},
 	)
 }
