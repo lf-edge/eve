@@ -311,6 +311,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		IGPUGOPFile,
 		EnableEFIDebug,
 		KubernetesVmiDescheduleEvents,
+		DnidOutageThresholdForUsage,
 		LonghornSnapshotCron,
 		DataStoreAllowInsecureAuth,
 		LonghornNodeDrainPolicy,
