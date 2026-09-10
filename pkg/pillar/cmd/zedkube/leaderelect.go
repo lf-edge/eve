@@ -25,6 +25,10 @@ const retryDelay = 5 * time.Minute
 // copy elsewhere would drift from it silently.
 const statsLeaseName = "eve-kube-stats-leader"
 
+// appOpLeaseName is the lease that decides the one node allowed to act on an
+// app whose designated node is down. Pinned for the same reason.
+const appOpLeaseName = "eve-app-op"
+
 // leaderElection is one Kubernetes leader election: its lease, the two flags
 // that gate contending for it, and the state its callbacks write. Every field
 // that another election would need its own copy of lives here rather than on
@@ -126,6 +130,28 @@ func (z *zedkube) scheduleReEntry(e *leaderElection) time.Duration {
 // kubestatscollect, prunenodes and isDecisionNode.
 func (z *zedkube) isStatsLeader() bool {
 	return z.statsElection.isLeader.Load()
+}
+
+// updateAppOpEligibility re-decides whether this node may contend for the
+// eve-app-op lease. The tie-breaker is excluded: it exists for quorum and
+// does not run app workloads.
+//
+// Both inputs can arrive late, in either order. IsTieBreakerNode reports
+// false for an empty UUID, so an unknown node UUID must read as ineligible
+// -- not eligible -- or a tie-breaker could contend before its UUID is
+// known. A node that cannot decide must not contend, since every app can
+// still start through its own designated node with nobody holding the lease.
+func (z *zedkube) updateAppOpEligibility() {
+	eligible := false
+	if z.nodeuuid != "" {
+		eligible = !z.clusterConfig.IsTieBreakerNode(z.nodeuuid)
+	}
+	// Log every decision, not just a change: a wrong first decision that is
+	// never revisited is invisible otherwise.
+	log.Noticef("updateAppOpEligibility: nodeuuid %q tiebreaker %v -> eligible %v",
+		z.nodeuuid, z.clusterConfig.TieBreakerNodeID, eligible)
+	z.appOpElection.eligible.Store(eligible)
+	z.appOpElection.notify()
 }
 
 func (z *zedkube) handleLeaderElection(e *leaderElection) {
@@ -331,11 +357,14 @@ func (z *zedkube) handleControllerStatusChange(status *types.ZedAgentStatus) {
 
 func (z *zedkube) publishLeaderElectionChange() {
 	stats := z.statsElection
+	appOp := z.appOpElection
 	info := types.KubeLeaderElectInfo{
-		InLeaderElection: stats.inElection.Load(),
-		IsStatsLeader:    stats.isLeader.Load(),
-		ElectionRunning:  stats.running.Load(),
-		LeaderIdentity:   stats.identityString(),
+		InLeaderElection:    stats.inElection.Load(),
+		IsStatsLeader:       stats.isLeader.Load(),
+		ElectionRunning:     stats.running.Load(),
+		LeaderIdentity:      stats.identityString(),
+		IsAppOpLeader:       appOp.isLeader.Load(),
+		AppOpLeaderIdentity: appOp.identityString(),
 	}
 	// pubsub already drops an unchanged item, so LatestChange must not be
 	// stamped unless something else moved -- stamping it on every call is
