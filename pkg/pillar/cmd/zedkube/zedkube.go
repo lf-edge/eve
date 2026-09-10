@@ -111,9 +111,11 @@ type zedkube struct {
 	nodeuuid                   string
 	nodeName                   string
 	// statsElection arbitrates the stats collector, the node-prune sweep and
-	// isDecisionNode. elections is every election this agent runs, so that
-	// controller reachability drives all of them alike.
+	// isDecisionNode. appOpElection decides the one node allowed to act on
+	// an app whose designated node is down. elections is every election this
+	// agent runs, so that controller reachability drives all of them alike.
 	statsElection *leaderElection
+	appOpElection *leaderElection
 	elections     []*leaderElection
 	// lastConfigGetStatus is the ConfigGetStatus this agent last acted on,
 	// and electionStopTimer debounces a fall to a failure value. Both are
@@ -508,7 +510,29 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	// The stats election has no eligibility condition beyond wanting to run.
 	zedkubeCtx.statsElection.eligible.Store(true)
-	zedkubeCtx.elections = []*leaderElection{zedkubeCtx.statsElection}
+
+	// eve-app-op needs a handover fast enough that the outage threshold, not
+	// the lease, decides when a backup may act: at the stats election's 300s
+	// a peer could not acquire for five minutes after the holder died, which
+	// would dominate any threshold worth configuring. Re-entry backs off
+	// from one retry period rather than sitting out a flat five minutes,
+	// because when the designated node is down the only eligible survivor
+	// staying out of the election is a feature outage.
+	zedkubeCtx.appOpElection = &leaderElection{
+		name:           appOpLeaseName,
+		leaseDuration:  60 * time.Second,
+		renewDeadline:  45 * time.Second,
+		retryPeriod:    10 * time.Second,
+		acquireTimeout: 90 * time.Second,
+		reEntryBase:    10 * time.Second,
+		reEntryMax:     60 * time.Second,
+		notifyCh:       make(chan struct{}, 1),
+	}
+	// Eligibility starts false and is decided once this node's UUID and the
+	// cluster config are both known; see updateAppOpEligibility.
+	zedkubeCtx.elections = []*leaderElection{
+		zedkubeCtx.statsElection, zedkubeCtx.appOpElection,
+	}
 	for _, election := range zedkubeCtx.elections {
 		go zedkubeCtx.handleLeaderElection(election)
 	}
@@ -613,6 +637,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	zedkubeCtx.nodeuuid = enInfo.DeviceID.String()
 	log.Noticef("zedkube run: got nodeName %s nodeuuid %s",
 		zedkubeCtx.nodeName, zedkubeCtx.nodeuuid)
+	// The first EdgeNodeClusterConfig was processed above, before this UUID
+	// was known, so eve-app-op eligibility could not be decided then.
+	zedkubeCtx.updateAppOpEligibility()
 	// Re-enable the local node and apply the longhorn disk reservation now that
 	// our identity is known.
 	if !zedkubeCtx.onBootUncordonCheckComplete {

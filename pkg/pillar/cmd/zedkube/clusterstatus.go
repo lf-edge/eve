@@ -125,6 +125,11 @@ func (z *zedkube) applyClusterConfig(config, oldconfig *types.EdgeNodeClusterCon
 	}
 	z.publishKubeConfigStatus()
 	z.pruneStaleMasterNodes(config)
+	// The tie-breaker may have moved, so eve-app-op eligibility is decided
+	// again on every cluster config change. Not reached when config is nil:
+	// a node being removed from the cluster keeps whatever it had, and its
+	// election stops for other reasons.
+	z.updateAppOpEligibility()
 }
 
 // publishKubeConfigStatus publishes the cluster config status
