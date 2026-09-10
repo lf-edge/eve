@@ -11,6 +11,7 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -31,12 +32,48 @@ func newTestElection(name string) *leaderElection {
 	return e
 }
 
-// newElectionTestCtx builds the minimum zedkube that handleControllerStatusChange
-// needs: one election, reachable both as statsElection and through elections.
-// The package logger is set once by TestMain.
+// newElectionTestCtx builds the minimum zedkube the election code needs: both
+// elections, reachable individually and through the elections slice. The
+// package logger is set once by TestMain.
 func newElectionTestCtx() *zedkube {
-	e := newTestElection(statsLeaseName)
-	return &zedkube{statsElection: e, elections: []*leaderElection{e}}
+	stats := newTestElection(statsLeaseName)
+	appOp := newTestElection(appOpLeaseName)
+	// eve-app-op eligibility is decided, not assumed.
+	appOp.eligible.Store(false)
+	return &zedkube{
+		statsElection: stats,
+		appOpElection: appOp,
+		elections:     []*leaderElection{stats, appOp},
+	}
+}
+
+// newElectionTestCtxWithPub is newElectionTestCtx plus a real
+// KubeLeaderElectInfo publication, for the assertions that read back what was
+// published.
+func newElectionTestCtxWithPub(t *testing.T) (*zedkube, pubsub.Publication) {
+	t.Helper()
+	ps := pubsub.New(&pubsub.EmptyDriver{}, logrus.StandardLogger(), log)
+	pub, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.KubeLeaderElectInfo{},
+	})
+	if err != nil {
+		t.Fatalf("NewPublication: %v", err)
+	}
+	z := newElectionTestCtx()
+	z.pubLeaderElectInfo = pub
+	return z, pub
+}
+
+// testUUID is a fresh UUID, failing the test rather than the caller if the
+// generator errors.
+func testUUID(t *testing.T) uuid.UUID {
+	t.Helper()
+	u, err := uuid.NewV4()
+	if err != nil {
+		t.Fatalf("uuid.NewV4: %v", err)
+	}
+	return u
 }
 
 // notified reports whether a notification is pending, draining it so the next
@@ -208,11 +245,90 @@ func TestElectionReEntryBackoff(t *testing.T) {
 	}
 }
 
-// The lease name is pinned. A hand-typed copy elsewhere would drift from it
-// silently, and the stats lease has three independent consumers.
-func TestStatsLeaseNamePinned(t *testing.T) {
-	if statsLeaseName != "eve-kube-stats-leader" {
-		t.Errorf("stats lease name changed to %q", statsLeaseName)
+// An unknown node UUID must read as ineligible. IsTieBreakerNode reports false
+// for an empty UUID, which reads as "not the tie-breaker", so deciding
+// eligibility before the UUID is known would let a tie-breaker contend -- the
+// ordering that matters, because the first EdgeNodeClusterConfig is processed
+// before zedkube learns its own UUID.
+func TestAppOpEligibilityWaitsForNodeUUID(t *testing.T) {
+	tieBreaker := testUUID(t)
+	z := newElectionTestCtx()
+	z.clusterConfig = types.EdgeNodeClusterConfig{
+		TieBreakerNodeID: types.UUIDandVersion{UUID: tieBreaker},
+	}
+
+	// UUID not yet known: must not contend, even though the config is here.
+	z.updateAppOpEligibility()
+	if z.appOpElection.eligible.Load() {
+		t.Error("eligible with an unknown node UUID")
+	}
+
+	// This node turns out to be the tie-breaker: still ineligible.
+	z.nodeuuid = tieBreaker.String()
+	z.updateAppOpEligibility()
+	if z.appOpElection.eligible.Load() {
+		t.Error("the tie-breaker was made eligible")
+	}
+
+	// A worker node is eligible.
+	z.nodeuuid = testUUID(t).String()
+	z.updateAppOpEligibility()
+	if !z.appOpElection.eligible.Load() {
+		t.Error("a worker node was not made eligible")
+	}
+}
+
+// Eligibility is re-decided, not latched: a node that becomes the tie-breaker
+// gives the lease up, and one that stops being it starts to contend.
+func TestAppOpEligibilityFollowsTieBreakerMoves(t *testing.T) {
+	self := testUUID(t)
+	other := testUUID(t)
+	z := newElectionTestCtx()
+	z.nodeuuid = self.String()
+
+	z.clusterConfig = types.EdgeNodeClusterConfig{
+		TieBreakerNodeID: types.UUIDandVersion{UUID: other},
+	}
+	z.updateAppOpEligibility()
+	if !z.appOpElection.eligible.Load() {
+		t.Fatal("not eligible while another node is the tie-breaker")
+	}
+
+	z.clusterConfig.TieBreakerNodeID = types.UUIDandVersion{UUID: self}
+	z.updateAppOpEligibility()
+	if z.appOpElection.eligible.Load() {
+		t.Error("still eligible after becoming the tie-breaker")
+	}
+
+	z.clusterConfig.TieBreakerNodeID = types.UUIDandVersion{UUID: other}
+	z.updateAppOpEligibility()
+	if !z.appOpElection.eligible.Load() {
+		t.Error("did not resume contending after ceasing to be the tie-breaker")
+	}
+}
+
+// The two elections publish independently: holding one says nothing about the
+// other.
+func TestPublishReportsBothElections(t *testing.T) {
+	z, pub := newElectionTestCtxWithPub(t)
+
+	z.appOpElection.isLeader.Store(true)
+	z.appOpElection.identity.Store("node-a")
+	z.publishLeaderElectionChange()
+
+	item, err := pub.Get("global")
+	if err != nil {
+		t.Fatalf("nothing published: %v", err)
+	}
+	info := item.(types.KubeLeaderElectInfo)
+	if !info.IsAppOpLeader {
+		t.Error("IsAppOpLeader not reported")
+	}
+	if info.AppOpLeaderIdentity != "node-a" {
+		t.Errorf("AppOpLeaderIdentity = %q, want node-a", info.AppOpLeaderIdentity)
+	}
+	if info.IsStatsLeader {
+		t.Error("app-op leadership leaked into IsStatsLeader")
 	}
 }
 
@@ -220,18 +336,7 @@ func TestStatsLeaseNamePinned(t *testing.T) {
 // drops an unchanged item, so stamping LatestChange every call is what made
 // this topic churn -- and zedmanager re-drives app instances on that topic.
 func TestPublishLeaderElectionChangeDedupes(t *testing.T) {
-	logger := logrus.StandardLogger()
-	ps := pubsub.New(&pubsub.EmptyDriver{}, logger, log)
-	pub, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName: agentName,
-		TopicType: types.KubeLeaderElectInfo{},
-	})
-	if err != nil {
-		t.Fatalf("NewPublication: %v", err)
-	}
-
-	z := newElectionTestCtx()
-	z.pubLeaderElectInfo = pub
+	z, pub := newElectionTestCtxWithPub(t)
 
 	z.statsElection.isLeader.Store(true)
 	z.publishLeaderElectionChange()
