@@ -83,10 +83,26 @@ func isCurrentlyBackupDNIDForApp(ctx *zedmanagerContext,
 		ctx.isAppOpLeader, aiConfig.AffinityType, dnidOutageThreshold(ctx))
 }
 
-// backupCandidates are the cluster apps whose desired state a backup decision
-// could still change: this node is not their designated node, they can fail
-// over at all, and they are not already running here. Pure state, no API
-// calls, so asking is cheap enough to do on every pass.
+// isBackupCandidate reports whether a backup-DNID decision could still change
+// this app's desired state. Deliberately pure state and no API calls: it runs
+// for every app on every tick, and is what keeps an idle tick free.
+func isBackupCandidate(config types.AppInstanceConfig,
+	placement *types.ENClusterAppStatus) bool {
+	if config.IsDesignatedNodeID || config.DesignatedNodeUUID == "" {
+		// This node owns the app, or nothing owns it. Either way no peer
+		// stands in.
+		return false
+	}
+	if config.AffinityType == types.RequiredDuringScheduling {
+		// Kubernetes would refuse to place it here regardless.
+		return false
+	}
+	// Already here: the ordinary path is driving it, not a backup decision.
+	return !placedHere(placement)
+}
+
+// backupCandidates are the apps isBackupCandidate admits, with the config a
+// snapshot rollback may have replaced.
 func backupCandidates(ctx *zedmanagerContext) []types.AppInstanceConfig {
 	var candidates []types.AppInstanceConfig
 	for _, c := range ctx.subAppInstanceConfig.GetAll() {
@@ -96,14 +112,7 @@ func backupCandidates(ctx *zedmanagerContext) []types.AppInstanceConfig {
 		if localConfig := lookupLocalAppInstanceConfig(ctx, config.Key()); localConfig != nil {
 			config = *localConfig
 		}
-		if config.IsDesignatedNodeID || config.DesignatedNodeUUID == "" {
-			continue
-		}
-		if config.AffinityType == types.RequiredDuringScheduling {
-			// Kubernetes would refuse to place it here regardless.
-			continue
-		}
-		if placedHere(lookupENClusterAppStatus(ctx, config.Key())) {
+		if !isBackupCandidate(config, lookupENClusterAppStatus(ctx, config.Key())) {
 			continue
 		}
 		candidates = append(candidates, config)
