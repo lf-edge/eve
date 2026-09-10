@@ -151,19 +151,24 @@ do_build_config() {
 
 do_live() {
   PART_SPEC="efi efi_b conf imga"
-  # each live image is expected to have a soft serial number that
-  # typically gets provisioned by an installer -- since we're
-  # shortcutting the installer step here we need to generate it
-  # if it is missing in CONFIG partition
-  if mcopy -o -i /bits/config.img ::/soft_serial /tmp; then
-     IMAGE_UUID=$(cat /tmp/soft_serial)
-  else
-     IMAGE_UUID=$(uuidgen | tee /tmp/soft_serial)
+  # A live image may be written to any number of devices, so it must not carry a
+  # soft serial number that the build invents: every device would report the same
+  # one. The file is left empty for the benefit of anything downstream that
+  # expects it to exist, and each device fills it in on its first boot. A serial
+  # deliberately placed in the CONFIG partition, for a single-use image, is
+  # passed through and reported.
+  if ! mcopy -o -i /bits/config.img ::/soft_serial /tmp; then
+     : > /tmp/soft_serial
      mcopy -o -i /bits/config.img /tmp/soft_serial ::/soft_serial
   fi
+  IMAGE_UUID=$(cat /tmp/soft_serial)
   create_efi_raw "${1:-${DEFAULT_LIVE_IMG_SIZE}}" "$PART_SPEC"
   dump "$OUTPUT_IMG" live.raw
-  echo "$IMAGE_UUID" >&2
+  if [ -n "$IMAGE_UUID" ]; then
+     echo "$IMAGE_UUID" >&2
+  else
+     echo "no soft serial in CONFIG partition; each device generates its own on first boot" >&2
+  fi
 }
 
 do_installer_raw() {

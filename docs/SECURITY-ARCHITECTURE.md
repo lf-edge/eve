@@ -107,7 +107,7 @@ openssl x509 -in conf/onboard.cert.pem -text | grep CN
 
 The [generate-onboard.sh](../pkg/pillar/scripts/generate-onboard.sh) script can be used to generate such onboarding certificates.
 
-A variant of that approach is to use a random soft serial number. When EVE is installed it generates a /config/soft_serial which is a random 128-bit UUID. If installed from a USB stick this serial number (together with the less random hardware serial number) are written to a directory on the USB installer stick.
+A variant of that approach is to use a random soft serial number. When EVE is installed it generates a /config/soft_serial which is a random 128-bit UUID. If installed from a USB stick this serial number (together with the less random hardware serial number) are written to a directory on the USB installer stick. A device that boots a live image directly, without ever running the installer, generates the same random 128-bit UUID on its first boot instead, before it creates its device certificate, and reports it on the console. An image written to more than one device leaves /config/soft_serial empty for that reason, since a value carried in the image would make every device written from it present the same one.
 
 When EVE is calling the register API it will present both the hardware serial and soft serial, hence if the controller has been told of the random soft serial for the device we avoid depending on guessable hardware serial numbers.
 

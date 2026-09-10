@@ -78,6 +78,16 @@ the number in the INVENTORY partition as a newly created folder, where the folde
 that soft serial number. Simply plug the USB stick back into a computer to view the contents
 of the INVENTORY partition to read the number.
 
+When a live image is written directly to a device the installer never runs, so EVE-OS
+provisions the soft serial number itself the first time it boots, before it creates its
+device certificate and contacts the controller. It uses the ```eve_soft_serial``` kernel
+argument if one is present and generates a unique one otherwise, and reports the value on
+the console and in the log. A live image therefore leaves its soft serial number empty —
+one image written to many devices would give all of them the same soft serial — unless you
+deliberately build a single-use image for one device by placing the number in the CONFIG
+partition (```conf/soft_serial``` in this repository), in which case that value is used
+as it is for the installer.
+
 ## Deploying EVE-OS in physical environments (aka onto bare metal)
 
 Deploying EVE-OS in a physical environment assumes it will be installed to run directly on an actual,
