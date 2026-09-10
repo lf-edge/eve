@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -130,6 +131,16 @@ func FetchAndServeImageFile(url, name, sha256Hex string) string {
 }
 
 // fetchImage performs one GET attempt for FetchAndServeImageFile.
+//
+// The dial's local address is pinned to GetSrcIPv4ForInternetAccess():
+// the container's default route goes via evetest's own SDN tunnel (see
+// setupSDNTunnelRoutes in setup.go), which exists to carry EVE/App/SDN
+// traffic, not arbitrary outbound connections from the harness process
+// itself -- a plain http.DefaultClient GET over that path can complete the
+// TCP handshake but then hang indefinitely on the TLS handshake. Binding
+// the source address instead engages the policy route setupSDNTunnelRoutes
+// already installs for exactly this ("Test <-> Internet"), which goes out
+// via the container's real docker-network path.
 func fetchImage(th *TestHarness, url string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(th.ctx, fetchImageTimeout)
 	defer cancel()
@@ -137,7 +148,9 @@ func fetchImage(th *TestHarness, url string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
-	resp, err := http.DefaultClient.Do(req)
+	dialer := net.Dialer{LocalAddr: &net.TCPAddr{IP: GetSrcIPv4ForInternetAccess()}}
+	client := http.Client{Transport: &http.Transport{DialContext: dialer.DialContext}}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
