@@ -853,6 +853,10 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 		}
 
 		controllerDNID := cfgApp.GetDesignatedNodeId()
+		// Keep the designated node's own UUID, not just whether it is us:
+		// deciding whether a peer may stand in for that node needs to ask
+		// about that node's health, which needs its identity.
+		appInstance.DesignatedNodeUUID = controllerDNID
 		// If this node is designated node id set IsDesignatedNodeID to true else false.
 		// On single node EVE (either kvm or k), this node will always be designated node.
 		if controllerDNID != "" && controllerDNID != devUUIDStr {
