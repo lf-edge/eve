@@ -12,6 +12,7 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 // WaitForKubernetesOptions is the options type for WaitForKubernetes.
@@ -109,4 +110,11 @@ func WaitForLonghornReady(ctx context.Context, log *base.LogObject, nodeName str
 // since Longhorn does not co-locate files in non-k configurations.
 func VolumeDirInternalEntriesMap() map[string]struct{} {
 	return map[string]struct{}{}
+}
+
+// IsCurrentlyBackupDNID is a stub for non EVE-k builds. Backup DNID is a
+// cluster concept, so outside EVE-k no node ever stands in for another.
+func IsCurrentlyBackupDNID(*base.LogObject, string, bool, types.Affinity,
+	time.Duration) bool {
+	return false
 }

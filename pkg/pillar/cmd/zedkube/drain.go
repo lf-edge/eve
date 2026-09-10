@@ -28,29 +28,17 @@ const (
 	drainCompletionLogKey = "kubevirt_node_drain_completion_time_seconds"
 )
 
+// getLocalNode returns the Kubernetes Node carrying the given device UUID.
+// The lookup itself lives in kubeapi, which needs the same UUID-to-node
+// mapping for its node-health read, so there is one copy of it rather than two.
 func getLocalNode(nodeuuid string) (*v1.Node, error) {
-	config, err := kubeapi.GetKubeConfig()
+	node, err := kubeapi.GetNodeByUUID(nodeuuid)
 	if err != nil {
-		return nil, fmt.Errorf("getLocalNode: can't get kubeconfig %v", err)
+		return nil, fmt.Errorf("getLocalNode: %w", err)
 	}
-
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		return nil, fmt.Errorf("getLocalNode: can't get clientset %v", err)
-	}
-
-	log.Functionf("getLocalNode with nodeuuid:%s", nodeuuid)
-	labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{"node-uuid": nodeuuid}}
-	options := metav1.ListOptions{LabelSelector: metav1.FormatLabelSelector(&labelSelector)}
-	nodes, err := clientset.CoreV1().Nodes().List(context.Background(), options)
-	if err != nil {
-		return nil, fmt.Errorf("getLocalNode: can't get nodes %v, on uuid %s", err, nodeuuid)
-	}
-	if len(nodes.Items) == 0 {
-		return nil, fmt.Errorf("getLocalNode: can't find node with node-uuid:%s", nodeuuid)
-	}
-	log.Noticef("getLocalNode with nodeuuid:%s found node:%s unschedulable:%v", nodeuuid, nodes.Items[0].ObjectMeta.Name, nodes.Items[0].Spec.Unschedulable)
-	return &nodes.Items[0], nil
+	log.Noticef("getLocalNode with nodeuuid:%s found node:%s unschedulable:%v",
+		nodeuuid, node.ObjectMeta.Name, node.Spec.Unschedulable)
+	return node, nil
 }
 
 func isNodeCordoned(nodeuuid string) (bool, error) {
