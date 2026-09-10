@@ -47,7 +47,7 @@ func (z *zedkube) pruneStaleMasterNodes(config *types.EdgeNodeClusterConfig) {
 	if config == nil || len(config.MasterNodeIDs) == 0 {
 		return
 	}
-	if !z.isKubeStatsLeader.Load() {
+	if !z.isStatsLeader() {
 		return
 	}
 
