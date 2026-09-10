@@ -166,6 +166,62 @@ func TestBackupDNIDForAppEarlyOuts(t *testing.T) {
 	}
 }
 
+// The periodic scan has to be free when nothing is waiting on a backup
+// decision, because it runs for every app on every tick. Only the last case
+// here is a candidate; everything else must be rejected on pure state.
+func TestIsBackupCandidate(t *testing.T) {
+	elsewhere := &types.ENClusterAppStatus{}
+
+	for _, tc := range []struct {
+		name      string
+		config    types.AppInstanceConfig
+		placement *types.ENClusterAppStatus
+		want      bool
+	}{{
+		name:      "this node is the designated node",
+		config:    clusterAppConfig(true, types.PreferredDuringScheduling),
+		placement: elsewhere,
+		want:      false,
+	}, {
+		name: "no designated node at all",
+		config: func() types.AppInstanceConfig {
+			c := clusterAppConfig(false, types.PreferredDuringScheduling)
+			c.DesignatedNodeUUID = ""
+			return c
+		}(),
+		placement: elsewhere,
+		want:      false,
+	}, {
+		name:      "required affinity cannot move",
+		config:    clusterAppConfig(false, types.RequiredDuringScheduling),
+		placement: elsewhere,
+		want:      false,
+	}, {
+		name:      "already running here",
+		config:    clusterAppConfig(false, types.PreferredDuringScheduling),
+		placement: &types.ENClusterAppStatus{ScheduledOnThisNode: true},
+		want:      false,
+	}, {
+		name:      "owned elsewhere and not placed here",
+		config:    clusterAppConfig(false, types.PreferredDuringScheduling),
+		placement: elsewhere,
+		want:      true,
+	}, {
+		// Never placed anywhere: still a candidate, since a downed owner
+		// is exactly why no placement exists.
+		name:      "never placed",
+		config:    clusterAppConfig(false, types.PreferredDuringScheduling),
+		placement: nil,
+		want:      true,
+	}} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isBackupCandidate(tc.config, tc.placement); got != tc.want {
+				t.Errorf("got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 // The threshold comes from config, in seconds.
 func TestDnidOutageThreshold(t *testing.T) {
 	ctx := &zedmanagerContext{globalConfig: types.DefaultConfigItemValueMap()}
