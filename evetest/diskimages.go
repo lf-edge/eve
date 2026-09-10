@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -22,6 +23,15 @@ import (
 // fetchImageTimeout bounds downloading one image in FetchAndServeImageFile.
 // Generous: some pinned cloud images run into the hundreds of megabytes.
 const fetchImageTimeout = 5 * time.Minute
+
+// fetchImageMaxAttempts and fetchImageRetryBackoff bound retries in
+// FetchAndServeImageFile against transient failures (TLS handshake
+// timeouts, connection resets, ...) reaching a public CDN from wherever
+// the evetest harness process itself runs.
+const (
+	fetchImageMaxAttempts  = 3
+	fetchImageRetryBackoff = 10 * time.Second
+)
 
 // CreateBlankImageFile creates an empty disk image of the given format and
 // size, served by evetest's built-in image server (both over HTTP and
@@ -90,26 +100,26 @@ func AddImageServerFile(name string, content []byte) string {
 // network and re-serves it from evetest's built-in image server, so a
 // device with no outbound Internet reachability can still download it as a
 // normal HTTP datastore -- just a local one instead of the remote url.
-// Returns name, for use as HTTPStorage.ImageRelativePath.
+// Retries a few times on transient network failures (observed in practice:
+// TLS handshake timeouts reaching a public CDN), since this whole path is
+// otherwise fully deterministic. Returns name, for use as
+// HTTPStorage.ImageRelativePath.
 func FetchAndServeImageFile(url, name, sha256Hex string) string {
 	th := getTestHarness()
-	ctx, cancel := context.WithTimeout(th.ctx, fetchImageTimeout)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		th.t.Fatalf("FetchAndServeImageFile: build request for %s: %v", url, err)
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		th.t.Fatalf("FetchAndServeImageFile: GET %s: %v", url, err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		th.t.Fatalf("FetchAndServeImageFile: GET %s: unexpected status %s", url, resp.Status)
-	}
-	content, err := io.ReadAll(resp.Body)
-	if err != nil {
-		th.t.Fatalf("FetchAndServeImageFile: read body from %s: %v", url, err)
+	var content []byte
+	var err error
+	for attempt := 1; attempt <= fetchImageMaxAttempts; attempt++ {
+		content, err = fetchImage(th, url)
+		if err == nil {
+			break
+		}
+		if attempt == fetchImageMaxAttempts {
+			th.t.Fatalf("FetchAndServeImageFile: GET %s: %v (after %d attempts)",
+				url, err, attempt)
+		}
+		th.log.Warnf("FetchAndServeImageFile: GET %s: attempt %d/%d failed: %v, retrying in %s",
+			url, attempt, fetchImageMaxAttempts, err, fetchImageRetryBackoff)
+		time.Sleep(fetchImageRetryBackoff)
 	}
 	sum := sha256.Sum256(content)
 	if got := hex.EncodeToString(sum[:]); got != sha256Hex {
@@ -117,6 +127,29 @@ func FetchAndServeImageFile(url, name, sha256Hex string) string {
 			url, got, sha256Hex)
 	}
 	return AddImageServerFile(name, content)
+}
+
+// fetchImage performs one GET attempt for FetchAndServeImageFile.
+func fetchImage(th *TestHarness, url string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(th.ctx, fetchImageTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status %s", resp.Status)
+	}
+	content, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read body: %w", err)
+	}
+	return content, nil
 }
 
 // qemuImgFormat maps an eveconfig.Format to the "-f" format name accepted by
