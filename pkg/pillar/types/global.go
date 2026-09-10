@@ -309,6 +309,13 @@ const (
 	// descheduling. Currently only "boot" is supported. When empty (default), no
 	// event-driven descheduling is performed.
 	KubernetesVmiDescheduleEvents GlobalSettingKey = "kubernetes.vmi.deschedule.events"
+	// DnidOutageThresholdForUsage : how long an app's designated node has to
+	// have been unhealthy (seconds) before another cluster node may act on
+	// that app in its place. The effective delay is this plus the Kubernetes
+	// node-monitor grace period, and is floored at the eve-app-op lease
+	// duration: a threshold below the lease is bounded by how long the lease
+	// takes to change hands, not by this value.
+	DnidOutageThresholdForUsage GlobalSettingKey = "cluster.dnid.backupnode.threshold"
 
 	// GoroutineLeakDetectionThreshold amount of goroutines, reaching which will trigger leak detection
 	// regardless of growth rate.
@@ -1329,6 +1336,13 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddStringItem(K3sConfigOverride, "", base64Validator)
 	configItemSpecMap.AddStringItem(K3sVersionOverride, "", k3sVersionValidator)
 	configItemSpecMap.AddStringItem(KubernetesVmiDescheduleEvents, "", blankValidator)
+	// DnidOutageThresholdForUsage - ten minutes by default. The minimum is a
+	// minute rather than zero: at zero a backup would take over as soon as
+	// the node-monitor grace period elapsed, which defeats the point of
+	// requiring a sustained outage, and anything under the eve-app-op lease
+	// duration is floored by lease handover anyway.
+	configItemSpecMap.AddIntItem(DnidOutageThresholdForUsage, 10*MinuteInSec,
+		MinuteInSec, 24*HourInSec)
 	// LonghornSnapshotCron - Default daily at midnight. Empty string = disable recurring snapshots.
 	configItemSpecMap.AddStringItem(LonghornSnapshotCron, "0 0 * * *", cronValidator)
 	configItemSpecMap.AddStringItem(LonghornNodeDrainPolicy,
