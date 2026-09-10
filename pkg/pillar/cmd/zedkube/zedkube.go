@@ -15,7 +15,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
@@ -111,14 +110,11 @@ type zedkube struct {
 	lastPublishedClusterIfName string
 	nodeuuid                   string
 	nodeName                   string
-	isKubeStatsLeader          atomic.Bool
-	inKubeLeaderElection       atomic.Bool
-	electionFuncRunning        atomic.Bool
-	leaderIdentity             string
-	// electionShouldRun holds the desired state: true=start, false=stop.
-	// electionNotifyCh wakes up handleLeaderElection to act on the latest value.
-	electionShouldRun atomic.Bool
-	electionNotifyCh  chan struct{}
+	// statsElection arbitrates the stats collector, the node-prune sweep and
+	// isDecisionNode. elections is every election this agent runs, so that
+	// controller reachability drives all of them alike.
+	statsElection *leaderElection
+	elections     []*leaderElection
 	// lastConfigGetStatus is the ConfigGetStatus this agent last acted on,
 	// and electionStopTimer debounces a fall to a failure value. Both are
 	// touched only from handleControllerStatusChange, on the main loop.
@@ -497,9 +493,25 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	zedkubeCtx.pubCipherMetrics = pubCipherMetrics
 
-	// start the leader election
-	zedkubeCtx.electionNotifyCh = make(chan struct{}, 1)
-	go zedkubeCtx.handleLeaderElection()
+	// start the leader elections. The stats election keeps the timings it
+	// has always had: nothing waits on its handover, and a shorter lease
+	// would only trade flap-resistance for latency it does not need.
+	zedkubeCtx.statsElection = &leaderElection{
+		name:           statsLeaseName,
+		leaseDuration:  300 * time.Second,
+		renewDeadline:  180 * time.Second,
+		retryPeriod:    15 * time.Second,
+		acquireTimeout: retryDelay,
+		reEntryBase:    retryDelay,
+		reEntryMax:     retryDelay,
+		notifyCh:       make(chan struct{}, 1),
+	}
+	// The stats election has no eligibility condition beyond wanting to run.
+	zedkubeCtx.statsElection.eligible.Store(true)
+	zedkubeCtx.elections = []*leaderElection{zedkubeCtx.statsElection}
+	for _, election := range zedkubeCtx.elections {
+		go zedkubeCtx.handleLeaderElection(election)
+	}
 
 	//
 	// NodeDrainRequest subscriber and NodeDrainStatus publisher
