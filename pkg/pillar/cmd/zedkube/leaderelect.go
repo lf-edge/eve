@@ -164,16 +164,69 @@ func (z *zedkube) handleLeaderElection() {
 	}
 }
 
+// controllerStatusDebounce is how long ConfigGetStatus has to stay at a
+// failure value before the election stops. It exceeds ConfigInterval's 60s
+// maximum, so no single failed poll can stop the election, and losing the
+// controller does not call for a sub-minute reaction.
+const controllerStatusDebounce = 90 * time.Second
+
+// cancelElectionStop drops a pending debounced stop. Main loop only.
+func (z *zedkube) cancelElectionStop() {
+	if z.electionStopTimer != nil {
+		z.electionStopTimer.Stop()
+		z.electionStopTimer = nil
+	}
+}
+
+// scheduleElectionStop stops the election once the controller has stayed
+// unreachable for controllerStatusDebounce.
+func (z *zedkube) scheduleElectionStop() {
+	z.scheduleElectionStopAfter(controllerStatusDebounce)
+}
+
+// scheduleElectionStopAfter is scheduleElectionStop with the delay supplied,
+// so a test can drive the timer without waiting out the real debounce. Main
+// loop only; the timer's own callback touches nothing but an atomic and a
+// non-blocking channel.
+func (z *zedkube) scheduleElectionStopAfter(delay time.Duration) {
+	if z.electionStopTimer != nil {
+		return // already counting down
+	}
+	z.electionStopTimer = time.AfterFunc(delay, func() {
+		log.Noticef("handleControllerStatusChange: controller unreachable "+
+			"for %v, stopping election", delay)
+		z.electionShouldRun.Store(false)
+		z.notifyElection()
+	})
+}
+
 func (z *zedkube) handleControllerStatusChange(status *types.ZedAgentStatus) {
 	configStatus := status.ConfigGetStatus
-	log.Noticef("handleControllerStatusChange: status %v", configStatus)
+	// Act on a real transition only. ZedAgentStatus is published for many
+	// reasons, and zedagent arms ConfigGetFail before every request, so a
+	// publish driven by an unrelated field can carry a transient failure.
+	// nodeagent guards the same field the same way.
+	if z.lastConfigGetStatus == configStatus {
+		return
+	}
+	log.Noticef("handleControllerStatusChange: status %v -> %v",
+		z.lastConfigGetStatus, configStatus)
+	z.lastConfigGetStatus = configStatus
+
 	switch configStatus {
 	case types.ConfigGetSuccess, types.ConfigGetReadSaved:
+		z.cancelElectionStop()
 		z.electionShouldRun.Store(true)
+		z.notifyElection()
+	case types.ConfigGetTemporaryFail:
+		// Set only while an image update is in progress. Keep contending:
+		// giving up the lease during a baseos update is not what a
+		// temporary failure asks for.
+		log.Noticef("handleControllerStatusChange: temporary failure, " +
+			"election left running")
 	default:
-		z.electionShouldRun.Store(false)
+		z.scheduleElectionStop()
 	}
-	z.notifyElection()
 }
 
 func (z *zedkube) publishLeaderElectionChange() {
