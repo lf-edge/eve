@@ -117,12 +117,19 @@ type zedkube struct {
 	leaderIdentity             string
 	// electionShouldRun holds the desired state: true=start, false=stop.
 	// electionNotifyCh wakes up handleLeaderElection to act on the latest value.
-	electionShouldRun  atomic.Bool
-	electionNotifyCh   chan struct{}
-	statusServer       *http.Server
-	statusServerWG     sync.WaitGroup
-	getKubePodsError   GetKubePodsError
-	drainOverrideTimer *time.Timer
+	electionShouldRun atomic.Bool
+	electionNotifyCh  chan struct{}
+	// lastConfigGetStatus is the ConfigGetStatus this agent last acted on,
+	// and electionStopTimer debounces a fall to a failure value. Both are
+	// touched only from handleControllerStatusChange, on the main loop.
+	// The zero ConfigGetStatus is not a valid value, so the first status
+	// always reads as a transition.
+	lastConfigGetStatus types.ConfigGetStatus
+	electionStopTimer   *time.Timer
+	statusServer        *http.Server
+	statusServerWG      sync.WaitGroup
+	getKubePodsError    GetKubePodsError
+	drainOverrideTimer  *time.Timer
 
 	// Config Properties for Drain
 	drainTimeout                       time.Duration
