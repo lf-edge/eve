@@ -484,6 +484,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	//use timer for free resource checker to run it after stabilising of other changes
 	freeResourceChecker := flextimer.NewRangeTicker(5*time.Second, 10*time.Second)
 
+	// backupRedriveTicker re-drives cluster apps a backup-DNID decision
+	// could still change. A threshold crossing is a wall-clock event with no
+	// pubsub carrier: with an app halted and its designated node off,
+	// ENClusterAppStatus recomputes identically and publishes on diff only,
+	// so nothing would re-run the activation gate when the threshold
+	// finally passes. Jittered so cluster nodes do not scan in lockstep,
+	// and well under the threshold's own one-minute minimum.
+	backupRedriveTicker := flextimer.NewRangeTicker(15*time.Second, 25*time.Second)
+
 	// The ticker that triggers a check for the applications in the START_DELAYED state
 	delayedStartTicker := time.NewTicker(1 * time.Second)
 
@@ -541,6 +550,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-ctx.subAssignableAdapters.MsgChan():
 			ctx.subAssignableAdapters.ProcessChange(change)
+
+		case <-backupRedriveTicker.C:
+			// The scan itself is pure state; only a candidate costs a
+			// live health read, so an idle tick is free.
+			if ctx.hvTypeKube {
+				reevaluateAppInstances(&ctx)
+			}
 
 		case <-freeResourceChecker.C:
 			// Did any update above make more resources available for
