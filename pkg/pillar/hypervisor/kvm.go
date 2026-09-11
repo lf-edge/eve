@@ -88,6 +88,16 @@ type vtpmRequestResult struct {
 	Error error
 }
 
+func addNoDuplicate(list []string, add string) []string {
+
+	for _, s := range list {
+		if s == add {
+			return list
+		}
+	}
+	return append(list, add)
+}
+
 // bootOrderToFwCfgString converts a BootOrder enum to the string value
 // expected by OVMF's fw_cfg mechanism.
 func bootOrderToFwCfgString(bo zcommon.BootOrder) string {

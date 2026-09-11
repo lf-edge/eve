@@ -131,7 +131,7 @@ When the application is launched and managed in KubeVirt mode, the Kubernetes cl
 
 The "running on a different node" row is deliberately not `SCHEDULING`: that would send domainmgr's rescheduling logic into a path that expects a boot in progress, and an app that is healthy on another node would report `BOOTING` forever. The id changing from 0 to a real, derived value is the fix that row needs; the `SwState` itself is left as `UNKNOWN`, matching what a generic id-only change already does downstream.
 
-The derived, non-zero id (`workloadID` in `hypervisor/kubevirt.go`) is an FNV-1a hash of the object's `metadata.uid`, falling back to hashing its Kubernetes name before the object exists (there is no UID to read yet between `Create` and `Start`). It plays the same role kvm/xen give a qemu pid - a `DomainId` change signals a new generation - but it is never used as a cross-app key, so a hash collision between two different apps' ids is harmless.
+The derived, non-zero id (`workloadID` in `hypervisor/kubevirt.go`) is an FNV-1a hash of the object's `metadata.uid`, falling back to hashing its Kubernetes name before the object exists (there is no UID to read yet between `Create` and `Start`). It plays the same role kvm gives a qemu pid - a `DomainId` change signals a new generation - but it is never used as a cross-app key, so a hash collision between two different apps' ids is harmless.
 
 ### Naming, purge generations, and why they collide
 

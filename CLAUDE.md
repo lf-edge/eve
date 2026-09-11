@@ -4,12 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-EVE (Edge Virtualization Engine) is an open, agnostic OS for edge devices, supporting ARM64, AMD64 and riscv64 (experimental) architectures and requiring hardware-assisted virtualization. It runs OCI containers and VMs on the edge through a hypervisor KVM (default and most supported) and Xen. A KVM based hypervisor variant called eve-k is used for kubernetes support. Almost everything ships as linuxkit packages composed into a bootable rootfs; the actual edge-device control plane is the Go monolith under `pkg/pillar`. EVE is normally driven by an external remote controller (e.g. Adam, run via [Eden](https://github.com/lf-edge/eden) test framework). The most notable commercial controller is provided by Zededa Inc.
+EVE (Edge Virtualization Engine) is an open, agnostic OS for edge devices, supporting ARM64, AMD64 and riscv64 (experimental) architectures and requiring hardware-assisted virtualization. It runs OCI containers and VMs on the edge through the KVM hypervisor. A KVM based hypervisor variant called eve-k is used for kubernetes support. Almost everything ships as linuxkit packages composed into a bootable rootfs; the actual edge-device control plane is the Go monolith under `pkg/pillar`. EVE is normally driven by an external remote controller (e.g. Adam, run via [Eden](https://github.com/lf-edge/eden) test framework). The most notable commercial controller is provided by Zededa Inc.
 
 The top-level `Makefile` is the entry point for almost everything. It composes Docker/linuxkit-based builds — you rarely build anything natively on the host. Three knobs drive nearly every target:
 
 - `ZARCH` — target arch: `amd64` (default = host), `arm64`, `riscv64`
-- `HV` — hypervisor flavor: `kvm` (default), `xen`, `mini` (used only for riscv64), `k` (kubevirt - the kubernetes variant)
+- `HV` — hypervisor flavor: `kvm` (default), `mini` (used only for riscv64), `k` (kubevirt - the kubernetes variant)
 - `PLATFORM` — `generic` (default), `nvidia-jp6`, `imx8mp_pollux`, `imx8mp_epc_r3720`, `imx8mq_evk`, `rt`, etc.
 
 Build artifacts land under `dist/$(ZARCH)/$(ROOTFS_VERSION)/` with a `dist/$(ZARCH)/current` symlink to the latest. `make clean` wipes `dist/` and `images/out/`.
@@ -137,7 +137,7 @@ Every agent embeds `agentbase` (`agentbase/agent.go`): `agentbase.Init(...)` wir
 - `pubsub/` — the IPC bus (`socketdriver`, `memdriver`).
 - `worker/` — async job dispatch for slow work; keeps handlers watchdog-safe.
 - `agentbase/`, `agentlog/`, `base/` — agent bootstrap, structured logging, `LogObject`.
-- `hypervisor/` — KVM/Xen/kubevirt/`null` backends behind one interface (used by `domainmgr`).
+- `hypervisor/` — KVM/kubevirt/`null` backends behind one interface (used by `domainmgr`).
 - `containerd/`, `cas/` — container runtime + content-addressable store (image handling).
 - `vault/`, `evetpm/`, `cipher/`, `attest/` — disk encryption, TPM, secret unwrapping, remote attestation.
 - `controllerconn/` — HTTP(S) transport to the controller (used by `zedagent`/`client`/`nim`).
@@ -153,7 +153,7 @@ Refactored agents must stay buildable as a standalone CLI (`go -C ./cmd/<agent> 
 
 ### Build tags / flavors in pillar
 
-`pkg/pillar/Makefile` adds Go build tags based on env vars: `HV` (`kvm`/`xen`/`mini`/`k`), `RSTATS=y`, `IMM_PROFILING=y`, `ARTIFICIAL_LEAK=y`, `COVER=y`. `DEV=y` keeps debug symbols, disables `-s -w`, and adds `-gcflags="-N -l"` so `delve` works (see `docs/DEBUGGING.md` for the delve workflow over `ssh -L 2348:localhost:2345`).
+`pkg/pillar/Makefile` adds Go build tags based on env vars: `HV` (`kvm`/`mini`/`k`), `RSTATS=y`, `IMM_PROFILING=y`, `ARTIFICIAL_LEAK=y`, `COVER=y`. `DEV=y` keeps debug symbols, disables `-s -w`, and adds `-gcflags="-N -l"` so `delve` works (see `docs/DEBUGGING.md` for the delve workflow over `ssh -L 2348:localhost:2345`).
 
 ### Pillar dependency hygiene
 

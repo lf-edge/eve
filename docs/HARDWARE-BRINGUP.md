@@ -8,7 +8,7 @@ EVE-OS currently supports x86 and ARM Edge Nodes. It works best when minimum [ha
 3. Figuring out your firmware/bootloader situation
 4. Bringing up basic Linux kernel
 5. Enabling at least one kind of persistent storage medium
-6. Enabling KVM and Xen hypervisors
+6. Enabling the KVM hypervisor
 7. Enabling the rest of the hardware
 
 ## 1. Figuring out device trees for ARM
@@ -30,23 +30,6 @@ Having a reliable console as early in the edge node boot process as possible is 
 
 Two options, [earlycon=](https://github.com/torvalds/linux/blob/master/Documentation/admin-guide/kernel-parameters.txt#L1006) and [console=](https://github.com/torvalds/linux/blob/master/Documentation/admin-guide/kernel-parameters.txt#L627), are used to control console output. They both come with a variety of options and often you simply need to cycle through them to pick one that works for you. For example, the following would work to give you an early console on Raspberry Pi 4 `console=uart8250,mmio32,0xfe215040 earlycon=uart8250,mmio32,0xfe215040`.
 
-### Early console for Xen hypervisor
-
-Note, that the Linux kernel actually has 3 levels of different console output: a very early one (that needs to be statically configured in the kernel build), an `earlycon=`, and a regular `console=` console. Xen, on the other hand, only has the equivalent of the first and third one.
-
-The first kind of early console in Xen can be enabled during build as part of the DEBUG options. You can enable DEBUG either via Xen's build config UI (similar to Linux's `make menuconfig`) or through directly adding something like the following to your .config:
-
-```console
-CONFIG_DEBUG=y
-CONFIG_EARLY_PRINTK=8250,0xfe215040,2
-```
-
-Here we're telling Xen to use 8250 UART with exactly the same address we gave to the Linux kernel. Xen, however, also requires the 3rd argument (2) which sets the offset for the UART I/O.
-
-This early printk method works pretty well, but with one problem: information about the console is statically built into your Xen image (which means you'd need separate Xen images for different boards just to accommodate console output). A more flexible solution is to build a generic Xen image and tell it to use device trees to find out how to operate a console. Xen provides an option called `dtuart` and you can find more documentation on how to use it [here](https://wiki.xenproject.org/wiki/Xen_ARM_with_Virtualization_Extensions#Getting_Xen_output). In general `dtuart=<node in a device tree>` is what you would specify.
-
-One word of caution: a lot of ARM boards (like the ever popular Raspberry Pi) actually have multiple UARTs in them. A lot of times they can be switched back-and-forth using gpio pin muxing so you would use the same group of pins for different consoles. This means it is a bit of a trial and error to find the right setting in your device tree. In that sense, a statically configured earlyprintk may actually be an easier option to get going with a new board.
-
 ### Console in QEMU/ARM64
 
 There are two subtle points when it comes to getting a reliable console with QEMU/ARM64 emulation. First of all, QEMU only emulates pl011 UART (which means that things like earlyprintk on UART8250 as was described above won't work). Second point is that it is rather [futile](https://unix.stackexchange.com/questions/479085/can-qemu-m-virt-on-arm-aarch64-have-multiple-serial-ttys-like-such-as-pl011-t) to look for more than one pl011 UART with QEMU.
@@ -64,7 +47,7 @@ Please refer to the [BIOS/Firmware management doc](BIOS-FIRMWARE.md) if you are 
 It is recommended to focus on bringing up the basic Linux kernel first before you can proceed with the rest of hardware enablement. Doing so will allow you to use it as a tool to inspect your hardware further, which is especially useful in situations where you don't have working drivers for storage yet (see the section above on using initrd). The usual sequence is:
 
 * Enabling at least one kind of persistent storage medium
-* Enabling KVM and Xen hypervisors
+* Enabling the KVM hypervisor
 * Enabling the rest of the hardware
 
 If the last point sounds a lot like [draw the rest of the owl](https://knowyourmeme.com/memes/how-to-draw-an-owl) that's because it largely is. The good news is that unlike most traditional Linux distributions, EVE offloads a lot of the hardware management to user VMs running on top of it. All that EVE needs to do is make sure it can virtualize the buses that hardware is connected to AND enable a few critical hardware pieces for its own use:

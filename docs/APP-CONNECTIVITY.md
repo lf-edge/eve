@@ -61,7 +61,7 @@ However, some limitations persist:
   of a multifunction device (with `EnforceNetworkInterfaceOrder` enabled), EVE will return an error,
   and the application will not be deployed.
 
-For Xen and KubeVirt hypervisors, application interface order is undefined, and
+For the KubeVirt hypervisor, application interface order is undefined, and
 `EnforceNetworkInterfaceOrder` is not yet supported.
 
 ### Physical network ports
@@ -75,7 +75,6 @@ can have the driver installed and use the NIC directly.
 The following hypervisor capabilities are used to manage IOMMU-based device assignments
 to application domains:
 
-* [Xen PCI Passthrough](https://wiki.xenproject.org/wiki/Xen_PCI_Passthrough) for Xen
 * [QEMU/VFIO Passthrough](https://wiki.archlinux.org/index.php/PCI_passthrough_via_OVMF) for KVM
 
 Directly assigned network adapters can be added to, removed from, and moved between applications
@@ -109,9 +108,8 @@ to work with EVE.
 ### Virtual network interfaces
 
 Virtual network interface (abbreviated to VIF) is a pair of network devices. The first of these
-(the frontend by the [xen terminology](https://wiki.xenproject.org/wiki/Xen_Networking))
-will reside in the guest (application) domain while the second (the backend in Xen, TAP with
-kvm/qemu) will reside in the host (Dom0 for xen).
+will reside in the guest (application) domain while the second (a TAP device created by
+kvm/qemu) will reside in the host.
 This virtual link is created in a cooperation between EVE and the hypervisor to connect
 application with a [network instance](#network-instances).
 
@@ -138,7 +136,7 @@ to instruct the app OS to perform DHCP on selected network interfaces.
 
 Data-plane of VIFs spans across both guest and host network stacks. Packet sent from an application
 is routed by the guest OS (Alpine Linux for container apps) and transmitted across a VIF
-into the host network stack. It arrives via TAP/xen-backend and gets forwarded to the NI bridge.
+into the host network stack. It arrives via the TAP device and gets forwarded to the NI bridge.
 Next, ACLs implemented using iptables are applied and the packet is either allowed to continue
 or gets dropped. If [flow logging](#flow-logging) is enabled, this is done by marking the packet with
 "allow" or "drop" mark. Based on the mark and the src/dst addresses, IP rules either send the packet
@@ -594,9 +592,6 @@ Check the feature flag with (replace `enp1s0` with your interface name):
 cat /sys/class/net/enp1s0/device/features | cut -c 4
 1 # if not supported, prints 0 instead
 ```
-
-Please note that with the Xen hypervisor, the Xen's VIF driver does not support MTU
-propagation from host to guest.
 
 To support MTU change in run-time for interfaces connected to local network instances,
 VM app can run a DHCP client and receive the latest MTU via DHCP option 26.

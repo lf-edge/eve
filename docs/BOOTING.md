@@ -35,13 +35,12 @@ Before we proceed describing each type of boot flow in details, let us first est
 
 1. rootfs image (either a [squashfs](https://www.kernel.org/doc/html/latest/filesystems/squashfs.html) or [ext4](https://www.kernel.org/doc/html/latest/filesystems/ext4/index.html))
 2. 2nd stage GRUB (in UEFI format)
-3. type-1 hypervisor ([Xen](https://xenproject.org/))
-4. Dom0 linux kernel (this doubles as type-2 hypervisor for KVM)
-5. Optional Alpine-derived initramfs [init entrypoint](https://gitlab.alpinelinux.org/alpine/mkinitfs) as a compressed cpio
-6. Optional container that performs [EVE installation](../pkg/mkimage-raw-efi/install) as a compressed cpio
-7. Optional extra files (e.g. content of config partition) as a compressed cpio
+3. Dom0 linux kernel (this doubles as type-2 hypervisor for KVM)
+4. Optional Alpine-derived initramfs [init entrypoint](https://gitlab.alpinelinux.org/alpine/mkinitfs) as a compressed cpio
+5. Optional container that performs [EVE installation](../pkg/mkimage-raw-efi/install) as a compressed cpio
+6. Optional extra files (e.g. content of config partition) as a compressed cpio
 
-While EVE bootable images come in at least two different flavors [installer](https://github.com/lf-edge/eve/blob/master/docs/BUILD.md#using-an-installer-image) and [live](https://github.com/lf-edge/eve/blob/master/docs/BUILD.md#installing-a-live-image) the boot flow and boot artifacts are all the same. Therefore, the only difference between an installer and a live image are all the optional boot artifacts #5-#7. In fact, the distinction is so blurry that an installer image that booted on the box and put all the required bits on disk can continue running effectively becoming a live image without the need for a reboot.
+While EVE bootable images come in at least two different flavors [installer](https://github.com/lf-edge/eve/blob/master/docs/BUILD.md#using-an-installer-image) and [live](https://github.com/lf-edge/eve/blob/master/docs/BUILD.md#installing-a-live-image) the boot flow and boot artifacts are all the same. Therefore, the only difference between an installer and a live image are all the optional boot artifacts #4-#6. In fact, the distinction is so blurry that an installer image that booted on the box and put all the required bits on disk can continue running effectively becoming a live image without the need for a reboot.
 
 Since artifacts #2-#5 are physically embedded inside of the rootfs image (artifact #1) a capable firmware (such as latest versions of u-boot) should be able to boot EVE with only having access to that single binary. However, since we have to deal with less capable firmware implementations (such as UEFI and legacy BIOS - see below) we have to leverage 1st stage GRUB or iPXE to parse rootfs image it in order to get access to artifacts #2-#5. This parsing can happen either via reading required portions of rootfs image from disk on demand (via GRUB's [loopback booting](https://www.gnu.org/software/grub/manual/grub/html_node/Loopback-booting.html)) or by first loading rootfs image to memory (via iPXE extensions). The fact that the size of rootfs image is deliberately kept very small, makes both of these methods roughly similar when it comes to performance and overhead. Still, it is an overhead and whenever possible EVE tries to rely on rootfs image sitting on a local disk so that it doesn't have to waste precious memory for hosting it. This, of course, creates a bit of a complication where one following the bootflow has to constantly be aware whether rootfs is on disk or in memory.
 

@@ -67,7 +67,6 @@
 /pkg/vtpm/                    @shjala
 /pkg/wwan/                    @milan-zededa
 /pkg/xen-tools/               @OhmSpectator @rucoder @rene @shjala
-/pkg/xen/                     @OhmSpectator @rucoder @rene @shjala
 /tests/eden/                  @milan-zededa
 /tools/                       @jsfakian
 .github/workflows/            @eriknordmark @yash-zededa
