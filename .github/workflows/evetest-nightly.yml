@@ -3,7 +3,12 @@
 ---
 name: evetest-nightly
 on:  # yamllint disable-line rule:truthy
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      collect-coverage:
+        description: "Build a COVER=y EVE image and collect Go coverage across every suite. Slower."
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -54,6 +59,15 @@ jobs:
             exit 0
           fi
 
+          if [ "${{ inputs.collect-coverage }}" = "true" ]; then
+            # Building our own COVER=y image from HEAD below instead of
+            # pulling publish.yml's -- nothing to search Docker Hub for.
+            VERSION="0.0.0-${REPO_BRANCH}-$(git rev-parse --short=8 HEAD)"
+            echo "Computed EVE version: $VERSION"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           image_published() {
             curl -fs -o /dev/null \
               "https://hub.docker.com/v2/repositories/lfedge/eve/tags/${1}/"
@@ -84,9 +98,77 @@ jobs:
           echo "Computed EVE version: $VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+  # Builds a COVER=y EVE image on the builder fleet, for the evetest job
+  # below to use instead of publish.yml's regular one.
+  build-cover-pkgs:
+    if: ${{ inputs.collect-coverage }}
+    runs-on: zededa-ubuntu-2204
+    steps:
+      - name: Clean stale state from previous runs
+        run: |
+          sudo rm -fr "$GITHUB_WORKSPACE" && mkdir "$GITHUB_WORKSPACE"
+          rm -fr ~/.linuxkit
+          docker system prune --all --force --volumes
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Build packages (COVER=y)
+        run: make V=1 PRUNE=1 PLATFORM=generic ZARCH=amd64 HV=kvm COVER=y pkgs
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+        with:
+          name: linuxkit-cache-cover-amd64-generic
+          path: ~/.linuxkit/cache
+          retention-days: 1
+
+  build-cover-eve-kvm:
+    name: Build COVER=y EVE (kvm)
+    if: ${{ inputs.collect-coverage }}
+    needs: build-cover-pkgs
+    runs-on: zededa-ubuntu-2204
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/build-eve
+        with:
+          arch: amd64
+          platform: generic
+          hv: kvm
+          cover: 'y'
+          image-repo: evebuild/nightly
+          cache-artifact: linuxkit-cache-cover-amd64-generic
+
+  build-cover-eve-k:
+    name: Build COVER=y EVE (kubevirt)
+    if: ${{ inputs.collect-coverage }}
+    needs: build-cover-pkgs
+    runs-on: zededa-ubuntu-2204
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/build-eve
+        with:
+          arch: amd64
+          platform: generic
+          hv: k
+          cover: 'y'
+          image-repo: evebuild/nightly
+          cache-artifact: linuxkit-cache-cover-amd64-generic
+
   evetest:
     name: Run suite ${{ matrix.test-suite }}
-    needs: discover-suites
+    needs: [discover-suites, build-cover-eve-kvm, build-cover-eve-k]
+    if: >-
+      always() && needs.discover-suites.result == 'success' &&
+      (needs.build-cover-eve-kvm.result == 'success' || needs.build-cover-eve-kvm.result == 'skipped') &&
+      (needs.build-cover-eve-k.result == 'success' || needs.build-cover-eve-k.result == 'skipped')
     runs-on: [self-hosted, evetest-runner]
     timeout-minutes: 360
     strategy:
@@ -112,13 +194,18 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # Skipped when collecting coverage: evetest-run-suite loads the
+      # COVER=y image built above instead (download-image-artifacts).
       - name: Set the EVE version to test
+        if: ${{ !inputs.collect-coverage }}
         run: echo "EVETEST_EVE_VERSION=${{ needs.discover-suites.outputs.version }}" >> "$GITHUB_ENV"
 
       - uses: ./.github/actions/evetest-run-suite
         with:
           test-suite: ${{ matrix.test-suite }}
-          download-image-artifacts: 'false'
+          download-image-artifacts: ${{ inputs.collect-coverage && 'true' || 'false' }}
+          source-run-id: ${{ github.run_id }}
+          collect-coverage: ${{ inputs.collect-coverage && 'true' || 'false' }}
           post-status: 'false'
           upload-junit-results: 'true'
           analyze-failures: 'true'
@@ -137,10 +224,13 @@ jobs:
     permissions:
       contents: write
     steps:
+      # pkg/pillar is only for the coverage summary below.
       - name: Check out evetest-run-suite's shared scripts
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
-          sparse-checkout: .github/actions/evetest-run-suite
+          sparse-checkout: |
+            .github/actions/evetest-run-suite
+            pkg/pillar
           persist-credentials: false
 
       - name: Compute the test-report subdirectory for this branch
@@ -280,10 +370,63 @@ jobs:
           } > "$LEDGER_PATH"
           echo "Inserted a ledger entry."
 
+      - name: Download every suite's coverage data
+        if: ${{ inputs.collect-coverage }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          pattern: coverage-*
+        continue-on-error: true
+
+      - name: Set up Go
+        if: ${{ inputs.collect-coverage }}
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417  # v6.3.0
+        with:
+          go-version-file: pkg/pillar/go.mod
+          cache: false
+
+      # Also renders a self-contained HTML report into gh-pages, published
+      # by "Publish to GitHub Pages" below.
+      - name: Merge and report overall coverage across every suite
+        if: ${{ inputs.collect-coverage }}
+        run: |
+          COVER_DIRS=$(find . -maxdepth 1 -type d -name "coverage-*" | paste -sd,)
+          if [ -z "$COVER_DIRS" ]; then
+            echo "No coverage data found across any suite." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          .github/actions/evetest-run-suite/merge-and-report-coverage.sh \
+            /tmp/overall-coverage "### Overall Coverage (all suites)" "$COVER_DIRS"
+
+          mkdir -p "gh-pages/$TEST_DIR/coverage"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          # margin-top clears the report's own #topbar, a position:fixed bar
+          # (42px tall) that would otherwise render on top of this banner,
+          # since it's the very first thing in <body>.
+          BANNER="<div style='margin-top:42px;padding:8px 16px;background:#eef;border-bottom:1px solid #ccc;font-family:sans-serif'>"
+          BANNER+="EVE commit ${{ github.sha }} (${{ github.ref_name }}) -- "
+          BANNER+="<a href='$RUN_URL'>nightly run ${{ github.run_number }}</a> -- $(date -u +%Y-%m-%d)</div>"
+          (cd pkg/pillar && go tool cover -html=/tmp/overall-coverage.txt -o /tmp/overall-coverage.html)
+          sed "s|<body>|<body>$BANNER|" /tmp/overall-coverage.html \
+            > "gh-pages/$TEST_DIR/coverage/index.html"
+
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          COVERAGE_URL="https://${{ github.repository_owner }}.github.io/${REPO_NAME}/$TEST_DIR/coverage/"
+          echo "[Line-by-line coverage]($COVERAGE_URL)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the merged overall coverage data
+        if: ${{ inputs.collect-coverage }}
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+        with:
+          name: overall-coverage
+          path: /tmp/overall-coverage/
+          if-no-files-found: ignore
+
       - name: Publish to GitHub Pages
         run: |
           mkdir -p "gh-pages/$TEST_DIR"
-          rsync -a --delete --exclude=runs --exclude=NIGHTLY-LEDGER.md allure-report/ "gh-pages/$TEST_DIR/"
+          rsync -a --delete --exclude=runs --exclude=NIGHTLY-LEDGER.md --exclude=coverage \
+            allure-report/ "gh-pages/$TEST_DIR/"
           cd gh-pages
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

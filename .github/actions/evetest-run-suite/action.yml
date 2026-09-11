@@ -79,6 +79,10 @@ inputs:
       skip the ledger lookup entirely.
     required: false
     default: ''
+  collect-coverage:
+    description: "'true' to set EVETEST_COLLECT_COVERAGE and report/upload this suite's Go coverage. Requires a COVER=y EVE image."
+    required: false
+    default: 'false'
 
 runs:
   using: composite
@@ -216,6 +220,7 @@ runs:
       shell: bash
       env:
         EVETEST_SKIP: ${{ inputs.skip }}
+        EVETEST_COLLECT_COVERAGE: ${{ inputs.collect-coverage == 'true' && 'true' || '' }}
         EVETEST_PAUSE_ON_FAILURE: ${{ inputs.analyze-failures == 'true' && 'true' || '' }}
         LEDGER_BRANCH: ${{ inputs.ledger-branch }}
         PR_NUMBER: ${{ inputs.pr-number }}
@@ -314,7 +319,7 @@ runs:
         if-no-files-found: ignore
 
     - name: Coverage summary
-      if: always()
+      if: ${{ always() && inputs.collect-coverage == 'true' }}
       shell: bash
       run: |
         if [[ -z "$ARTIFACT_DIR" ]]; then
@@ -329,17 +334,12 @@ runs:
           echo "No coverage data found."
           exit 0
         fi
-        mkdir -p /tmp/merged-coverage
-        go tool covdata merge -i "$COVER_DIRS" -o /tmp/merged-coverage
-        echo "### Coverage" >> $GITHUB_STEP_SUMMARY
-        go tool covdata percent -i /tmp/merged-coverage | tee -a $GITHUB_STEP_SUMMARY
-        go tool covdata textfmt -i /tmp/merged-coverage -o /tmp/coverage.txt
-        TOTAL=$(cd pkg/pillar && go tool cover -func=/tmp/coverage.txt | tail -1)
-        echo "$TOTAL"
-        echo "**$TOTAL**" >> $GITHUB_STEP_SUMMARY
+
+        "${GITHUB_ACTION_PATH}/merge-and-report-coverage.sh" \
+          /tmp/merged-coverage "### Coverage" "$COVER_DIRS"
 
     - name: Upload coverage data
-      if: always()
+      if: ${{ always() && inputs.collect-coverage == 'true' }}
       uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
       with:
         name: coverage-${{ inputs.test-suite }}
