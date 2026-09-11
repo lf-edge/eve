@@ -129,6 +129,24 @@ func TestInstallDownloadedObject_FirstCallSubmitsWork(t *testing.T) {
 	}
 }
 
+func TestInstallDownloadedObject_RefusedSubmitReturnsError(t *testing.T) {
+	tc := newTestCtx(t)
+	tc.wk.submitErr = errBoom
+	cid, _ := uuid.NewV4()
+	cts := &types.ContentTreeStatus{
+		State:       types.LOADED,
+		ContentID:   cid,
+		RelativeURL: "ref-x",
+	}
+	_, _, err := installDownloadedObject(tc.ctx, cid, "IMGB", cts)
+	if err == nil {
+		t.Fatal("expected the refused install submission to surface as an error")
+	}
+	if !strings.Contains(err.Error(), "will retry") {
+		t.Fatalf("got %q", err.Error())
+	}
+}
+
 func TestInstallDownloadedObject_ResultPresentIndicatesProceed(t *testing.T) {
 	tc := newTestCtx(t)
 	cid, _ := uuid.NewV4()
@@ -218,12 +236,24 @@ func TestAddWorkInstall_SubmitsThroughWorker(t *testing.T) {
 	}
 }
 
-func TestAddWorkInstall_TrySubmitErrorIsLoggedNotPanicking(t *testing.T) {
+func TestAddWorkInstall_TrySubmitErrorIsReturned(t *testing.T) {
 	tc := newTestCtx(t)
 	tc.wk.submitErr = errBoom
-	AddWorkInstall(tc.ctx, "k1", "ref-x", "IMGB")
+	err := AddWorkInstall(tc.ctx, "k1", "ref-x", "IMGB")
+	if err == nil {
+		t.Fatalf("expected the refused submission to be reported")
+	}
 	// No panic; submission still recorded so we can check we tried.
 	if got := len(tc.wk.submitted); got != 1 {
 		t.Fatalf("expected one attempt, got %d", got)
+	}
+}
+
+func TestAddWorkInstall_JobInProgressCountsAsSuccess(t *testing.T) {
+	tc := newTestCtx(t)
+	tc.wk.submittedDone = false
+	tc.wk.submitErr = &worker.JobInProgressError{}
+	if err := AddWorkInstall(tc.ctx, "k1", "ref-x", "IMGB"); err != nil {
+		t.Fatalf("job already in progress must count as success, got %v", err)
 	}
 }

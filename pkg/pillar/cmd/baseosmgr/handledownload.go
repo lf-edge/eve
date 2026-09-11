@@ -138,7 +138,14 @@ func installDownloadedObject(ctx *baseOsMgrContext, contentID uuid.UUID, finalOb
 	// Move to final installation point
 	// do this as a background task
 	// XXX called twice!
-	AddWorkInstall(ctx, contentID.String(), refID, finalObjDir)
+	if err := AddWorkInstall(ctx, contentID.String(), refID, finalObjDir); err != nil {
+		// The error lands on the BaseOsStatus (visible to the controller) and
+		// this function is re-run on the next content tree or config event,
+		// which retries the submission.
+		return changed, proceed, fmt.Errorf(
+			"installDownloadedObject(%s): install not scheduled, will retry: %w",
+			contentID, err)
+	}
 	log.Functionf("installDownloadedObject(%s) worker started", contentID)
 	return changed, proceed, nil
 }

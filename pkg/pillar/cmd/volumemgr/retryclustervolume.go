@@ -116,7 +116,13 @@ func retryFailedClusterVolumeCreate(ctx *volumemgrContext) {
 				maxClusterVolumeRetries, status.Error)
 			status.ClearErrorWithSource()
 			publishVolumeStatus(ctx, &status)
-			AddWorkCreate(ctx, &status)
+			if err := AddWorkCreate(ctx, &status); err != nil {
+				// Pool full; put the error back so the volume stays a retry
+				// candidate for the next gc tick.
+				status.SetErrorWithSource(err.Error(), types.VolumeStatus{},
+					time.Now())
+				publishVolumeStatus(ctx, &status)
+			}
 		}
 	}
 }

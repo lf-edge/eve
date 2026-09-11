@@ -401,13 +401,28 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 		blobStatuses := lookupBlobStatuses(ctx, status.Blobs...)
 		root := blobStatuses[0]
 		if root.State == types.LOADING {
-			log.Functionf("Found root blob %s in LOADING; defer", root.Key())
-			return changed, false
+			// Only defer if that load is really running. An orphaned LOADING
+			// flag -- left behind by a refused submit or a volumemgr restart
+			// -- would otherwise park us here forever.
+			if ingestInFlightFor(ctx, root.Sha256) {
+				log.Functionf("Found root blob %s in LOADING; defer", root.Key())
+				return changed, false
+			}
+			log.Noticef("doUpdateContentTree(%s): root blob %s in LOADING with no "+
+				"ingest in flight; taking it over", status.Key(), root.Sha256)
 		}
+		// casIngestWorker picks the blobs to ingest by filtering on
+		// State == LOADING, so the transition has to happen before the work
+		// is submitted. Remember exactly which blobs we moved, so that a
+		// refused submit can put them back: a blob that was already LOADING
+		// belongs to another content tree's live worker and must not be
+		// touched.
+		claimed := []*types.BlobStatus{}
 		for _, b := range blobStatuses {
 			if b.State == types.VERIFIED {
 				b.State = types.LOADING
 				publishBlobStatus(ctx, b)
+				claimed = append(claimed, b)
 			}
 		}
 
@@ -417,9 +432,39 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 		// it is a bit silly to publish twice, but it is important that we keep the audit
 		// trail that the image was verified, and now is loading
 		status.State = types.LOADING
-		publishContentTreeStatus(ctx, status)
 
-		AddWorkLoad(ctx, status)
+		if err := AddWorkLoad(ctx, status); err != nil {
+			// Nothing owns these blobs and no work result will ever arrive.
+			// Leaving them in LOADING would also park every other content
+			// tree sharing them on the root-blob check above, so release the
+			// claim and drop back to VERIFIED; the reevaluates run by the
+			// work result handlers retry once a pool slot frees up. Surface
+			// the deferral so the controller sees why the tree does not
+			// progress if the pool stays saturated for long.
+			for _, b := range claimed {
+				b.State = types.VERIFIED
+				publishBlobStatus(ctx, b)
+			}
+			status.State = types.VERIFIED
+			description := types.ErrorDescription{
+				Error: fmt.Sprintf("CAS ingest deferred: %v", err),
+				ErrorRetryCondition: "Will retry when a worker becomes available; " +
+					"the volumemgr.worker.pool.size config item bounds the pool",
+				ErrorSeverity: types.ErrorSeverityWarning,
+			}
+			// do not touch time of the error with the same content
+			if status.Error != description.Error {
+				status.SetErrorWithSourceAndDescription(description,
+					types.ContentTreeStatus{})
+			}
+			changed = true
+		} else if status.IsErrorSource(types.ContentTreeStatus{}) {
+			// A fresh ingest is owned by a worker now; drop a stale deferral
+			// warning (or a previous attempt's error) while it runs.
+			status.ClearErrorWithSource()
+			changed = true
+		}
+		publishContentTreeStatus(ctx, status)
 
 		return changed, false
 	}
@@ -428,7 +473,33 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 	if status.State == types.LOADING {
 		log.Functionf("doUpdateContentTree(%s): ContentTree status is LOADING", status.Key())
 		// get the work result - see if it succeeded
-		wres := popCasIngestWorkResult(ctx, status.Key())
+		wres := popCasIngestWorkResult(ctx, status)
+		if wres == nil && !ctx.pendingIngest[status.Key()] && !status.HasError() {
+			// No result and no job: the ingest was never queued, or volumemgr
+			// restarted while it was running. Unless the blobs happen to have
+			// been loaded by someone else, nothing will ever advance this, so
+			// go back to VERIFIED and let the branch above resubmit. A tree
+			// whose ingest failed keeps its error and is not re-driven here;
+			// retrying that is the controller's call, as before.
+			for _, blob := range lookupBlobStatuses(ctx, status.Blobs...) {
+				if blob.State == types.LOADED || ingestInFlightFor(ctx, blob.Sha256) {
+					// Loaded, or a concurrent job's claim covers it: that
+					// job's result re-drives this tree, so there is nothing
+					// to resubmit. Resetting anyway would loop: the fresh
+					// job could claim nothing, complete as a no-op, and its
+					// result would land us right back here.
+					continue
+				}
+				log.Noticef("doUpdateContentTree(%s): in LOADING with no ingest "+
+					"in flight; resetting to VERIFIED to retry", status.Key())
+				status.State = types.VERIFIED
+				publishContentTreeStatus(ctx, status)
+				// Rerun so the VERIFIED branch resubmits the load right
+				// away rather than on some later event.
+				_, done := doUpdateContentTree(ctx, status)
+				return true, done
+			}
+		}
 		if wres != nil {
 			log.Functionf("doUpdateContentTree(%s): IngestWorkResult found", status.Key())
 			if wres.Error != nil {
@@ -489,6 +560,24 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 	}
 
 	return changed, status.State == types.LOADED
+}
+
+// deferVolumeWork records on the VolumeStatus that a worker-pool submission
+// was refused, as a warning with a retry condition so the controller sees why
+// the volume does not progress while the pool stays saturated. The callers
+// put the state machine back so the re-evaluation run by the work result
+// handlers retries the submission once a pool slot frees up.
+func deferVolumeWork(status *types.VolumeStatus, what string, err error) {
+	description := types.ErrorDescription{
+		Error: fmt.Sprintf("volume %s deferred: %v", what, err),
+		ErrorRetryCondition: "Will retry when a worker becomes available; " +
+			"the volumemgr.worker.pool.size config item bounds the pool",
+		ErrorSeverity: types.ErrorSeverityWarning,
+	}
+	// do not touch time of the error with the same content
+	if status.Error != description.Error {
+		status.SetErrorWithSourceAndDescription(description, types.VolumeStatus{})
+	}
 }
 
 // Returns changed
@@ -607,6 +696,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 				log.Noticef("doUpdateVol(%s): deferring blank volume create until cluster storage (longhorn/CDI) ready", status.Key())
 				return changed, false
 			}
+			prevState := status.State
 			status.State = types.CREATING_VOLUME
 			status.ReferenceName = "" //set empty for blank volume
 			status.ContentFormat = blankVolumeFormat
@@ -615,7 +705,12 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 			changed = true
 			log.Noticef("doUpdateVol(%s): creating blank volume with format %s", status.Key(), status.ContentFormat)
 			// Asynch preparation; ensure we have requested it
-			AddWorkPrepare(ctx, status)
+			if err := AddWorkPrepare(ctx, status); err != nil {
+				// Nothing owns the prepare; stay below CREATING_VOLUME so
+				// reevaluatePendingVolumes re-drives this branch.
+				status.State = prevState
+				deferVolumeWork(status, "prepare", err)
+			}
 			return changed, false
 		}
 	case zconfig.VolumeContentOriginType_VCOT_DOWNLOAD:
@@ -639,11 +734,17 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 						status.Key())
 					return changed, false
 				}
+				prevState := status.State
 				status.State = types.CREATING_VOLUME
 				changed = true
 				log.Noticef("doUpdateVol(%s): adopting existing cluster PVC, bypassing ContentTree wait", status.Key())
 				// Asynch preparation; ensure we have requested it
-				AddWorkPrepare(ctx, status)
+				if err := AddWorkPrepare(ctx, status); err != nil {
+					// Nothing owns the prepare; stay below CREATING_VOLUME so
+					// reevaluatePendingVolumes re-drives this branch.
+					status.State = prevState
+					deferVolumeWork(status, "prepare", err)
+				}
 				return changed, false
 			case kubeapi.PVCStateAbsent:
 				if ctStatus != nil && ctStatus.State == types.REMOTELOADED {
@@ -744,6 +845,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 				log.Noticef("doUpdateVol(%s): deferring volume create until cluster storage (longhorn/CDI) ready", status.Key())
 				return changed, false
 			}
+			prevState := status.State
 			status.State = types.CREATING_VOLUME
 			// first blob is always the root
 			if len(ctStatus.Blobs) < 1 {
@@ -756,7 +858,12 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 			log.Noticef("doUpdateVol(%s): setting VolumeStatus.ContentFormat by ContentTree to %s", status.Key(), status.ContentFormat)
 			changed = true
 			// Asynch preparation; ensure we have requested it
-			AddWorkPrepare(ctx, status)
+			if err := AddWorkPrepare(ctx, status); err != nil {
+				// Nothing owns the prepare; stay below CREATING_VOLUME so
+				// reevaluatePendingVolumes re-drives this branch.
+				status.State = prevState
+				deferVolumeWork(status, "prepare", err)
+			}
 			return changed, false
 		}
 		if status.IsErrorSource(types.ContentTreeStatus{}) {
@@ -807,12 +914,19 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 		if !prepared {
 			return changed, false
 		}
-		status.SubState = types.VolumeSubStatePrepareDone
-		changed = true
 		//prepare work done
 		DeleteWorkPrepare(ctx, status)
-		// Asynch creation; ensure we have requested it
-		AddWorkCreate(ctx, status)
+		// Asynch creation; ensure we have requested it. Only advance out of
+		// Preparing once a worker owns the create: nothing consuming a work
+		// result re-submits from PrepareDone, so a refused submit leaves the
+		// sub-state as is and reevaluatePendingVolumes re-drives this branch.
+		if err := AddWorkCreate(ctx, status); err != nil {
+			deferVolumeWork(status, "create", err)
+			changed = true
+			return changed, false
+		}
+		status.SubState = types.VolumeSubStatePrepareDone
+		changed = true
 		return changed, false
 	}
 	if status.State == types.CREATING_VOLUME && status.SubState == types.VolumeSubStatePrepareDone {

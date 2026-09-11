@@ -85,23 +85,34 @@ func contentTreeSatisfiedByPVCs(ctx *volumemgrContext, status *types.ContentTree
 	return true
 }
 
-// reevaluatePendingContentTrees re-drives every ContentTreeStatus still below
-// VERIFIED, so a check maxFreshPVCProbesPerCheck deferred gets finished on a
-// later pass -- the same role reevaluatePendingVolumes plays for volumes.
-// Called from the periodic gc handler.
-func reevaluatePendingContentTrees(ctx *volumemgrContext) {
-	if !ctx.hvTypeKube {
-		// The accept-from-PVCs path this re-drives is EVE-k only.
-		return
-	}
+// reevaluatePendingContentTrees re-drives every ContentTreeStatus with
+// minState <= State < LOADED -- the same role reevaluatePendingVolumes plays
+// for volumes.
+//
+// The periodic gc handler passes INITIAL, covering also the trees below
+// VERIFIED whose accept-from-PVCs check (EVE-k) deferred after spending its
+// live-probe budget: those probes are blocking Kubernetes calls sized for the
+// gc cadence (see maxFreshPVCProbesPerCheck). The worker result handlers pass
+// VERIFIED: a completed job is what frees the slot a refused submission
+// needs, and everything the pool can park -- an ingest deferred back to
+// VERIFIED, a LOADING tree that lost its job -- sits at VERIFIED or above.
+// Sweeping the download states from the hot result path too would spend the
+// probe budget far more often than it was sized for; those states are driven
+// by downloader/verifier/resolver events, which do not involve the pool.
+func reevaluatePendingContentTrees(ctx *volumemgrContext, minState types.SwState) {
 	for _, s := range ctx.pubContentTreeStatus.GetAll() {
 		status := s.(types.ContentTreeStatus)
-		if status.State >= types.VERIFIED {
+		if status.State < minState || status.State >= types.LOADED {
+			continue
+		}
+		if lookupContentTreeConfig(ctx, status.Key()) == nil {
+			// Being torn down; leave it to the delete handler.
 			continue
 		}
 		changed, _ := doUpdateContentTree(ctx, &status)
 		if changed {
 			publishContentTreeStatus(ctx, &status)
+			updateVolumeStatusFromContentID(ctx, status.ContentID)
 		}
 	}
 }
