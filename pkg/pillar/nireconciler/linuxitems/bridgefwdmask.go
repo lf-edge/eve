@@ -11,6 +11,7 @@ import (
 
 	dg "github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 const (
@@ -43,6 +44,9 @@ type BridgeFwdMask struct {
 	// frames (destination MAC 01-80-C2-00-00-0D).
 	// Note: currently not configurable via EVE API (i.e. always disabled).
 	ForwardMVRP bool
+	// ExpectedBridgeID: IfInstanceID BridgeIfName is expected to carry. Zero
+	// if the bridge is not NIM-managed.
+	ExpectedBridgeID types.IfInstanceID
 }
 
 // Name returns the interface name of the bridge
@@ -78,8 +82,8 @@ func (m BridgeFwdMask) External() bool {
 // String describes BridgeFwdMask.
 func (m BridgeFwdMask) String() string {
 	return fmt.Sprintf("BridgeFwdMask: {bridgeIfName: %s, forwardLLDP: %t, "+
-		"forwardEAPOL: %t, forwardMVRP: %t}",
-		m.BridgeIfName, m.ForwardLLDP, m.ForwardEAPOL, m.ForwardMVRP)
+		"forwardEAPOL: %t, forwardMVRP: %t, expectedBridgeID: %d}",
+		m.BridgeIfName, m.ForwardLLDP, m.ForwardEAPOL, m.ForwardMVRP, m.ExpectedBridgeID)
 }
 
 // Dependencies returns the bridge as the only dependency.
@@ -89,6 +93,21 @@ func (m BridgeFwdMask) Dependencies() (deps []dg.Dependency) {
 			RequiredItem: dg.ItemRef{
 				ItemType: BridgeTypename,
 				ItemName: m.BridgeIfName,
+			},
+			MustSatisfy: func(item dg.Item) bool {
+				if m.ExpectedBridgeID == 0 {
+					return true
+				}
+				bridge, isBridge := item.(Bridge)
+				if !isBridge {
+					// unreachable
+					return false
+				}
+				// Reject a same-named bridge NIM has since torn down and
+				// recreated -- the forwarding mask lives on the bridge itself,
+				// so it is genuinely gone with it (hence AutoDeletedByExternal
+				// below), and must be reapplied to the new incarnation.
+				return bridge.InstanceID == m.ExpectedBridgeID
 			},
 			Description: "Bridge must exist",
 			Attributes: dg.DependencyAttributes{
@@ -148,6 +167,14 @@ func (c *BridgeFwdMaskConfigurator) Delete(ctx context.Context, item dg.Item) er
 	fwdMaskVal := "0x0"
 	fwdMaskPath := fmt.Sprintf(groupFwdMaskPathTemplate, fwdMask.BridgeIfName)
 	if err := os.WriteFile(fwdMaskPath, []byte(fwdMaskVal), 0644); err != nil {
+		if os.IsNotExist(err) {
+			// Ignore if the bridge was already removed (e.g. NIM tore it down
+			// and is recreating it under the same name) -- the forwarding
+			// mask is implicitly gone too.
+			c.Log.Warnf("Bridge %s is already gone, nothing to zero-out: %v",
+				fwdMask.BridgeIfName, err)
+			return nil
+		}
 		return fmt.Errorf("failed to zero-out forwarding mask for bridge %s: %w",
 			fwdMask.BridgeIfName, err)
 	}
