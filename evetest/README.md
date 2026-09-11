@@ -655,7 +655,9 @@ Go coverage.  Setting `EVETEST_COLLECT_COVERAGE=true` (together with
 `EVETEST_COLLECT_ARTIFACTS`) tells the framework to collect coverage data:
 
 - **Before every device reboot** (`HardReboot`, `SoftReboot`, `RequestReboot`,
-  and the CLI `evetest eve hard-reboot` / `evetest eve soft-reboot`).
+  `UpgradeEVE`, `ExpectReboots`, and the CLI `evetest eve hard-reboot` /
+  `evetest eve soft-reboot`). A reverted upgrade's second reboot has no such
+  hook, since EVE (not evetest) decides when to revert.
 - **At test completion** (inside `Close()`).
 
 For each collection the framework:
