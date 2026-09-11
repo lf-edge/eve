@@ -7,12 +7,24 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	utils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/pillar/zfs"
 	"golang.org/x/sys/unix"
 )
+
+// vaultSwapMarkerFile records that a vault migration holds a complete staging
+// copy awaiting the rename swap. It lives on /persist rather than inside the
+// vault so that it is readable with the vault datasets unmounted and their
+// keys unloaded, and it names the staging dataset so that a leftover from an
+// unrelated attempt is not mistaken for a copy ready to promote.
+// A variable so that tests can point it at a scratch directory.
+var vaultSwapMarkerFile = types.PersistStatusDir + "/vault-migration-swap"
 
 // zfsVaultOps are the storage operations the ZFS vault handler performs while
 // migrating a carried-over EVE-kvm filesystem vault to the EVE-k zvol layout
@@ -36,6 +48,12 @@ type zfsVaultOps interface {
 	UnmountStaging(mountpoint string) error
 	CopyTree(srcDir, dstDir string) error
 	MountVaultZvol(name string) error
+	// MarkSwapReady records that the named staging dataset holds a complete
+	// copy of the vault and may be promoted; SwapMarkedDataset returns that
+	// name, or an empty string when no swap is recorded.
+	MarkSwapReady(stagingDataset string) error
+	SwapMarkedDataset() (string, error)
+	ClearSwapMarker() error
 }
 
 // realZFSVaultOps implements zfsVaultOps against the pool.
@@ -118,4 +136,32 @@ func (o realZFSVaultOps) CopyTree(srcDir, dstDir string) error {
 
 func (o realZFSVaultOps) MountVaultZvol(name string) error {
 	return MountVaultZvol(o.log, name)
+}
+
+func (o realZFSVaultOps) MarkSwapReady(stagingDataset string) error {
+	if err := os.MkdirAll(filepath.Dir(vaultSwapMarkerFile), 0755); err != nil {
+		return err
+	}
+	return utils.WriteRename(vaultSwapMarkerFile, []byte(stagingDataset+"\n"))
+}
+
+func (o realZFSVaultOps) SwapMarkedDataset() (string, error) {
+	contents, err := os.ReadFile(vaultSwapMarkerFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	return strings.TrimSpace(string(contents)), nil
+}
+
+func (o realZFSVaultOps) ClearSwapMarker() error {
+	if err := os.Remove(vaultSwapMarkerFile); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	return utils.DirSync(filepath.Dir(vaultSwapMarkerFile))
 }
