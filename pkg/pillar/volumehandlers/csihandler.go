@@ -40,7 +40,7 @@ func NewCSIHandler(common commonVolumeHandler, useVHost bool) VolumeHandler {
 
 func (handler *volumeHandlerCSI) GetVolumeDetails() (uint64, uint64, string, bool, error) {
 	pvcName := handler.status.GetPVCName()
-	handler.log.Noticef("GetVolumeDetails called for PVC %s", pvcName)
+	handler.log.Tracef("GetVolumeDetails called for PVC %s", pvcName)
 	imgInfo, err := kubeapi.GetPVCInfo(pvcName, handler.log)
 	if err != nil {
 		return 0, 0, "", false, fmt.Errorf("GetPVCInfo failed for %s: %v", pvcName, err)
@@ -52,11 +52,11 @@ func (handler *volumeHandlerCSI) GetVolumeDetails() (uint64, uint64, string, boo
 func (handler *volumeHandlerCSI) UsageFromStatus() uint64 {
 	cfg := handler.volumeManager.LookupVolumeConfig(handler.status.Key())
 	if handler.status.ReadOnly || cfg == nil || cfg.HasNoAppReferences {
-		handler.log.Noticef("UsageFromStatus: Volume %s use CurrentSize (ReadOnly=%v cfg==nil:%v)",
+		handler.log.Tracef("UsageFromStatus: Volume %s use CurrentSize (ReadOnly=%v cfg==nil:%v)",
 			handler.status.GetPVCName(), handler.status.ReadOnly, cfg == nil)
 		return uint64(handler.status.CurrentSize)
 	}
-	handler.log.Noticef("UsageFromStatus: Use MaxVolSize for PVC %s",
+	handler.log.Tracef("UsageFromStatus: Use MaxVolSize for PVC %s",
 		handler.status.GetPVCName())
 	return handler.status.MaxVolSize
 }
