@@ -23,6 +23,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
+	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/objtonum"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -82,6 +83,14 @@ type zedmanagerContext struct {
 	// EVE 'k' mode
 	hvTypeKube bool
 	nodeUUID   uuid.UUID
+	// subKubeLeaderElectInfo carries which node holds the eve-app-op lease;
+	// isAppOpLeader is this node's own answer, cached from it.
+	subKubeLeaderElectInfo pubsub.Subscription
+	isAppOpLeader          bool
+	// isCurrentlyBackupDNIDFunc decides whether this node may act for an
+	// app's downed designated node. A field so the decision can be stubbed
+	// in a test; production wires kubeapi.IsCurrentlyBackupDNID.
+	isCurrentlyBackupDNIDFunc backupDNIDFunc
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -102,6 +111,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	ctx := zedmanagerContext{
 		globalConfig: types.DefaultConfigItemValueMap(),
 		hvTypeKube:   base.IsHVTypeKube(),
+		// Outside EVE-k this resolves to kubeapi's stub, which always
+		// answers false: no node ever stands in for another.
+		isCurrentlyBackupDNIDFunc: kubeapi.IsCurrentlyBackupDNID,
 	}
 	agentbase.Init(&ctx, logger, log, agentName,
 		agentbase.WithPidFile(),
@@ -404,6 +416,24 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	ctx.subENClusterAppStatus = subENClusterAppStatus
 	_ = subENClusterAppStatus.Activate()
 
+	subKubeLeaderElectInfo, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedkube",
+		MyAgentName:   agentName,
+		TopicImpl:     types.KubeLeaderElectInfo{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleKubeLeaderElectInfoCreate,
+		ModifyHandler: handleKubeLeaderElectInfoModify,
+		DeleteHandler: handleKubeLeaderElectInfoDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subKubeLeaderElectInfo = subKubeLeaderElectInfo
+	_ = subKubeLeaderElectInfo.Activate()
+
 	ctx.subAssignableAdapters, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "domainmgr",
 		MyAgentName:   agentName,
@@ -453,6 +483,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	//use timer for free resource checker to run it after stabilising of other changes
 	freeResourceChecker := flextimer.NewRangeTicker(5*time.Second, 10*time.Second)
+
+	// backupRedriveTicker re-drives cluster apps a backup-DNID decision
+	// could still change. A threshold crossing is a wall-clock event with no
+	// pubsub carrier: with an app halted and its designated node off,
+	// ENClusterAppStatus recomputes identically and publishes on diff only,
+	// so nothing would re-run the activation gate when the threshold
+	// finally passes. Jittered so cluster nodes do not scan in lockstep,
+	// and well under the threshold's own one-minute minimum.
+	backupRedriveTicker := flextimer.NewRangeTicker(15*time.Second, 25*time.Second)
 
 	// The ticker that triggers a check for the applications in the START_DELAYED state
 	delayedStartTicker := time.NewTicker(1 * time.Second)
@@ -506,8 +545,18 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		case change := <-subENClusterAppStatus.MsgChan():
 			subENClusterAppStatus.ProcessChange(change)
 
+		case change := <-subKubeLeaderElectInfo.MsgChan():
+			subKubeLeaderElectInfo.ProcessChange(change)
+
 		case change := <-ctx.subAssignableAdapters.MsgChan():
 			ctx.subAssignableAdapters.ProcessChange(change)
+
+		case <-backupRedriveTicker.C:
+			// The scan itself is pure state; only a candidate costs a
+			// live health read, so an idle tick is free.
+			if ctx.hvTypeKube {
+				reevaluateAppInstances(&ctx)
+			}
 
 		case <-freeResourceChecker.C:
 			// Did any update above make more resources available for
@@ -1917,47 +1966,36 @@ func getKubeAppActivateStatus(ctx *zedmanagerContext, aiConfig types.AppInstance
 		return effectiveActivate
 	}
 
-	sub := ctx.subENClusterAppStatus
-	items := sub.GetAll()
+	// Keyed, not scanned: zedkube publishes this topic under the app UUID,
+	// which is what Key() returns, so there is nothing to search for.
+	placement := lookupENClusterAppStatus(ctx, aiConfig.Key())
+	statusRunning := placement != nil &&
+		placement.AppKubeStatus == types.AppKubeStatusRunningState
 
-	// 1) if the dnid is on this node
-	//    a) if the pod is not on this node, and the pod is running, return false
-	//    b) otherwise, return true
-	// 2) if the dnid is not on this node
-	//    a) if the pod is on this node, and status is running, return true
-	//    b) otherwise, return false
-	var onTheDevice bool
-	var statusRunning bool
-	for _, item := range items {
-		status := item.(types.ENClusterAppStatus)
-		if status.AppUUID == aiConfig.UUIDandVersion.UUID {
-			statusRunning = status.AppKubeStatus == types.AppKubeStatusRunningState
-			if status.IsDNidNode {
-				onTheDevice = true
-				break
-			} else if status.ScheduledOnThisNode {
-				onTheDevice = true
-				break
-			}
-		}
-	}
-
-	log.Functionf("getKubeAppActivateStatus: is designated node %v, node %s, onTheDevice %v, statusRunning %v",
-		aiConfig.IsDesignatedNodeID, ctx.nodeUUID, onTheDevice, statusRunning)
 	if aiConfig.IsDesignatedNodeID {
-		if statusRunning && !onTheDevice {
+		// This node owns the app. Stand down only if the pod is running
+		// somewhere else. Backup DNID does not enter into it: the owner
+		// never stands in for itself.
+		if statusRunning && !placedHere(placement) {
 			return false
 		}
+		log.Functionf("getKubeAppActivateStatus(%s): designated node %s, "+
+			"statusRunning %v", aiConfig.Key(), ctx.nodeUUID, statusRunning)
 		return effectiveActivate
-	} else {
-		// the pod is on this node, but it will not be in running state, unless
-		// zedmanager make this app activate and zedrouter CNI has the network status
-		// for this App. So, not in running state is ok.
-		if onTheDevice {
-			return effectiveActivate
-		}
-		return false
 	}
+
+	// Not the designated node. Act if Kubernetes already placed the app
+	// here, or if this node is standing in for a designated node that has
+	// been down past the configured threshold. The pod need not be running
+	// yet: it cannot reach Running until zedmanager activates the app and
+	// zedrouter has its network status.
+	onTheDevice := onTheDeviceForApp(placement, func() bool {
+		return isCurrentlyBackupDNIDForApp(ctx, aiConfig)
+	})
+	log.Functionf("getKubeAppActivateStatus(%s): not designated, node %s, "+
+		"onTheDevice %v, statusRunning %v", aiConfig.Key(), ctx.nodeUUID,
+		onTheDevice, statusRunning)
+	return onTheDevice && effectiveActivate
 }
 
 // checkAndSaveEdgeNodeInfo checks if the device name is set in the EdgeNodeInfo

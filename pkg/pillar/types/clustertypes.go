@@ -259,13 +259,21 @@ type EdgeNodeClusterStatus struct {
 	Error ErrorDescription
 }
 
-// KubeLeaderElectInfo - Information about the status reporter leader election
+// KubeLeaderElectInfo - Information about the leader elections this node runs.
+// InLeaderElection, IsStatsLeader, ElectionRunning, and LeaderIdentity
+// describe the status-reporter election only.
 type KubeLeaderElectInfo struct {
 	InLeaderElection bool
 	IsStatsLeader    bool
 	ElectionRunning  bool
 	LeaderIdentity   string
-	LatestChange     time.Time
+	// IsAppOpLeader reports whether this node holds the eve-app-op lease,
+	// which is what decides the one node allowed to act on an app whose
+	// designated node is down. AppOpLeaderIdentity is the holder this node
+	// last observed, whether or not that is this node.
+	IsAppOpLeader       bool
+	AppOpLeaderIdentity string
+	LatestChange        time.Time
 }
 
 // VmiVNCConfig is the JSON structure for vmiVNC.run file.

@@ -986,6 +986,12 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 	cfgRetval := configOK
 	if !changed {
 		log.Tracef("Configuration from zedcloud is unchanged")
+		// A matching hash is a successful poll, not a failed one. This
+		// function sets ConfigGetFail pessimistically before the request,
+		// so every success path has to clear it; skipping that here left
+		// a healthy device reporting ConfigGetFail to every
+		// ZedAgentStatus subscriber for as long as its config held still.
+		getconfigCtx.configGetStatus = types.ConfigGetSuccess
 		goto cfgReceived
 	}
 
