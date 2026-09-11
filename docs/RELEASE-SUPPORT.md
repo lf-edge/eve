@@ -99,13 +99,13 @@ as if it were their support commitment:
 
 ### Pre-notification list
 
-The project maintains a list for vendors who ship EVE commercially, carrying embargoed
-advisory information ahead of public publication so a vendor can prepare its own advisory and
-update. Membership requires a named security contact who agrees to hold embargoed information
-until the disclosure date.
+The project maintains `eve-distributors-announce@lists.lfedge.org` for vendors who ship EVE
+commercially, carrying embargoed advisory information ahead of public publication so a vendor
+can prepare its own advisory and update. Membership requires a named security contact who
+agrees to hold embargoed information until the disclosure date.
 
-<!-- TBD(TSC): the list does not exist yet. Decide the intake address, the membership
-     criteria and approver, the embargo agreement text, and what a member receives and when.
-     See docs/VULNERABILITY-HANDLING.md, "Vendor pre-notification". -->
+<!-- TBD(TSC): the list does not exist yet and has to be requested from LF Edge. Decide the
+     membership criteria and approver, the embargo agreement text, and what a member
+     receives and when. See docs/VULNERABILITY-HANDLING.md, "Vendor pre-notification". -->
 
 To request membership, contact [eve-security@lists.lfedge.org](mailto:eve-security@lists.lfedge.org).

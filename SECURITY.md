@@ -92,9 +92,13 @@ the fix. The upstream project owns the fix itself.
 ## Published Advisories
 
 Advisories are published on the [EVE security advisories](https://github.com/lf-edge/eve/security/advisories)
-page and announced on the [EVE mailing list](https://lists.lfedge.org/g/eve). Each advisory
-identifies the affected versions, the fixed versions, the impact, and the mitigation
-available to operators who cannot upgrade immediately.
+page and announced on `eve-security-announce@lists.lfedge.org`. Each advisory identifies the
+affected versions, the fixed versions, the impact, and the mitigation available to operators
+who cannot upgrade immediately.
+
+<!-- TBD(TSC): eve-security-announce@lists.lfedge.org does not exist yet and has to be
+     requested from LF Edge. Until it does, advisories are announced on the general EVE
+     mailing list at https://lists.lfedge.org/g/eve. -->
 
 ## For Downstream Vendors
 
