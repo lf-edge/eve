@@ -14,6 +14,14 @@ inputs:
   cache-artifact:
     required: true
     description: "Name of the linuxkit cache artifact to download"
+  cover:
+    description: "'y' to build pillar/EVE with Go coverage instrumentation (COVER=y)"
+    required: false
+    default: ''
+  image-repo:
+    description: "Repository the exported image is tagged under (see 'Set environment' below)."
+    required: false
+    default: 'evebuild/pr'
 
 runs:
   using: composite
@@ -31,7 +39,8 @@ runs:
     - name: Build packages for ${{ inputs.platform }}
       shell: bash
       run: |
-        make V=1 PRUNE=1 PLATFORM=${{ inputs.platform }} ZARCH=${{ inputs.arch }} HV=${{ inputs.hv }} pkgs
+        make V=1 PRUNE=1 PLATFORM=${{ inputs.platform }} ZARCH=${{ inputs.arch }} HV=${{ inputs.hv }} \
+          COVER=${{ inputs.cover }} pkgs
     - name: Load tool images into docker
       shell: bash
       run: |
@@ -39,16 +48,16 @@ runs:
     - name: Set environment
       shell: bash
       env:
-        PR_ID: ${{ github.event.pull_request.number }}
+        PR_ID: ${{ github.event.pull_request.number || github.run_id }}
       run: |
         COMMIT_ID=$(git describe --abbrev=8 --always)
         echo "VERSION=0.0.0-pr$PR_ID-$COMMIT_ID" >> $GITHUB_ENV
-        echo "TAG=evebuild/pr:$PR_ID" >> $GITHUB_ENV
+        echo "TAG=${{ inputs.image-repo }}:$PR_ID" >> $GITHUB_ENV
     - name: Build EVE ${{ inputs.hv }}-${{ inputs.arch }}-${{ inputs.platform }}
       shell: bash
       run: |
         make V=1 ROOTFS_VERSION="$VERSION" PLATFORM=${{ inputs.platform }} \
-          HV=${{ inputs.hv }} ZARCH=${{ inputs.arch }} eve
+          HV=${{ inputs.hv }} ZARCH=${{ inputs.arch }} COVER=${{ inputs.cover }} eve
     - name: Post build report
       shell: bash
       run: |
