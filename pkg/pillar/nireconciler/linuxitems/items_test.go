@@ -139,16 +139,32 @@ func TestBridgeFwdMaskEqual(t *testing.T) {
 	if m1.Equal(DummyIf{}) {
 		t.Error("wrong type should be unequal")
 	}
+	m4DiffInstanceID := BridgeFwdMask{BridgeIfName: "br0", ForwardLLDP: true, ExpectedBridgeID: 42}
+	if m1.Equal(m4DiffInstanceID) {
+		t.Error("different ExpectedBridgeID should be unequal")
+	}
 }
 
 func TestBridgeFwdMaskDependencies(t *testing.T) {
-	m := BridgeFwdMask{BridgeIfName: "br0"}
+	m := BridgeFwdMask{BridgeIfName: "br0", ExpectedBridgeID: 42}
 	deps := m.Dependencies()
 	if len(deps) != 1 {
 		t.Fatalf("expected 1 dep, got %d", len(deps))
 	}
 	if deps[0].RequiredItem.ItemType != BridgeTypename || deps[0].RequiredItem.ItemName != "br0" {
 		t.Errorf("dep should be Bridge br0, got %+v", deps[0].RequiredItem)
+	}
+	if deps[0].MustSatisfy == nil {
+		t.Fatal("Bridge dep should have MustSatisfy when ExpectedBridgeID is set")
+	}
+	if !deps[0].MustSatisfy(Bridge{IfName: "br0", InstanceID: 42}) {
+		t.Error("MustSatisfy should accept a Bridge with the expected InstanceID")
+	}
+	if deps[0].MustSatisfy(Bridge{IfName: "br0", InstanceID: 43}) {
+		t.Error("MustSatisfy should reject a Bridge with a different InstanceID -- this is " +
+			"what lets a NIM-recreated bridge (same name) be detected as changed, so a stale " +
+			"BridgeFwdMask is auto-deleted instead of Delete() being called against the " +
+			"already-gone old bridge")
 	}
 }
 
