@@ -100,4 +100,11 @@ commercially, carrying embargoed advisory information ahead of public publicatio
 can prepare its own advisory and update. Membership requires a named security contact who
 agrees to hold embargoed information until the disclosure date.
 
+For an actively exploited vulnerability the list is notified on the clock Regulation (EU)
+2024/2847 Art 14 sets — an early warning inside 24 hours, a fuller notification inside 72 —
+in step with the CRA steward rather than on the lead time a planned disclosure gets. This is
+the part of membership that matters most to a vendor with its own Art 14 deadlines: those run
+from the vendor's own awareness, and being on the list is what makes the project's awareness
+and the vendor's arrive close together.
+
 To request membership, contact [eve-security@lists.lfedge.org](mailto:eve-security@lists.lfedge.org).
