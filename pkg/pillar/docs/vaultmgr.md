@@ -299,7 +299,23 @@ Uses native ZFS encryption. Key paths:
   EVE-k install creates on a nearly empty pool — smaller by whatever
   else `/persist` holds at conversion time — and the space the old
   vault frees goes back to the pool rather than into the vault's
-  `volsize`, which is fixed when the zvol is created.
+  `volsize`, which is fixed when the zvol is created. The zvol occupies
+  only the space actually written to it: pillar creates it through
+  libzfs, which — unlike `zfs create` without `-s` — adds no
+  `refreservation`.
+* **Migration leftovers**: the staging zvol and the parked
+  pre-migration vault are dropped on any failure before the swap, and a
+  failure of the swap's second rename puts the pre-migration vault back
+  rather than leave `persist/vault` absent, which EVE-kvm would see as
+  a missing vault and replace with an empty one on a fallback boot.
+  Because a leftover staging zvol can hold a partial copy,
+  `recoverInterruptedVaultMigration` promotes one only when
+  `/persist/status/vault-migration-swap` names it — written once the
+  copy is complete and removed once the swap is done. Without that
+  record the leftover is discarded, and the pre-migration vault
+  restored if it is still parked. `RemoveDefaultVault` drops the
+  migration datasets along with the vault, so the vault set up next
+  cannot adopt one.
 * **No-TPM ZFS** is supported: a plain unencrypted dataset (or zvol
   on kube) is created instead — `Status` becomes
   `DATASEC_AT_REST_DISABLED`.
