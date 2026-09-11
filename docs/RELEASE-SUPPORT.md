@@ -55,9 +55,10 @@ surprising.
 | 11.0.x | `11.0.2-lts`, 2023-12-15 | 2023-11-30 | Backports only | 2025-11-30 | 2026-11-30 |
 | 10.4.x | `10.4.5-lts`, 2023-10-27 | 2023-09-30 | Backports only | 2025-09-30 | 2026-09-30 |
 
-<!-- These dates match the EVE-OS LTS supportability matrix ZEDEDA publishes to its
-     customers, deliberately, so that the project's table and the one vendors already read
-     cannot drift apart. Anything that changes a date here has to change there too. -->
+<!-- TBD(TSC): the support-start dates for 11.0.x and 10.4.x precede the first `-lts` tag
+     on those lines and are not derivable from the releases page, so record where they come
+     from or replace them with a date that is. Every other line's date is the publication
+     date of its first `-lts` release. -->
 
 <!-- TBD(TSC): 13.4.x is Active under this policy until 2026-12-28, and the Active phase
      promises new LTS point releases, but none has been cut since 13.4.3-lts on
