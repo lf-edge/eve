@@ -153,6 +153,7 @@ func getValue(fromValue reflect.Value, targetType reflect.Type) (reflect.Value, 
 			}
 		}
 	default:
+		// TODO determine if there are other conversions
 		toValue = fromValue
 	}
 
@@ -181,12 +182,10 @@ func convertValueTypes(value reflect.Value, targetType reflect.Type) (reflect.Va
 	typ := value.Type()
 	switch {
 	// if the Types are the same, just return the value
-	case typ == targetType:
+	case typ.Kind() == targetType.Kind():
 		return value, nil
-	case typ.Kind() == targetType.Kind() && typ.ConvertibleTo(targetType):
-		return value.Convert(targetType), nil
 	case value.IsZero() && isPrimitive(targetType):
-		// do nothing, will return nilValue
+
 	case isPrimitive(typ) && isPrimitive(targetType):
 		// get a string representation of the value
 		str := fmt.Sprintf("%v", value.Interface()) // TODO is there a better way to get a string representation?
