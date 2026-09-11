@@ -55,22 +55,6 @@ surprising.
 | 11.0.x | `11.0.2-lts`, 2023-12-15 | 2023-11-30 | Backports only | 2025-11-30 | 2026-11-30 |
 | 10.4.x | `10.4.5-lts`, 2023-10-27 | 2023-09-30 | Backports only | 2025-09-30 | 2026-09-30 |
 
-<!-- TBD(TSC): the support-start dates for 11.0.x and 10.4.x precede the first `-lts` tag
-     on those lines and are not derivable from the releases page, so record where they come
-     from or replace them with a date that is. Every other line's date is the publication
-     date of its first `-lts` release. -->
-
-<!-- TBD(TSC): 13.4.x is Active under this policy until 2026-12-28, and the Active phase
-     promises new LTS point releases, but none has been cut since 13.4.3-lts on
-     2025-07-11. Either cut them, or move the line to Backports only ahead of the date and
-     record that here. -->
-
-<!-- TBD(TSC): 12.0.x, 11.0.x and 10.4.x are in their backport phase under this policy, but
-     the branches are not receiving backports: last commit on `12.0-stable` June 2025, on
-     `11.0-stable` January 2026, on `10.4-stable` July 2024. Either resume backporting to
-     them for the remainder of the window, or shorten the window and say so. 10.4.x runs out
-     on 2026-09-30 either way, so that one decides itself shortly. -->
-
 A line absent from this table is end of life.
 
 Fixes reach a stable branch through the backport process in
@@ -113,9 +97,5 @@ The project maintains `eve-distributors-announce@lists.lfedge.org` for vendors w
 commercially, carrying embargoed advisory information ahead of public publication so a vendor
 can prepare its own advisory and update. Membership requires a named security contact who
 agrees to hold embargoed information until the disclosure date.
-
-<!-- TBD(TSC): the list does not exist yet and has to be requested from LF Edge. Decide the
-     membership criteria and approver, the embargo agreement text, and what a member
-     receives and when. See docs/VULNERABILITY-HANDLING.md, "Vendor pre-notification". -->
 
 To request membership, contact [eve-security@lists.lfedge.org](mailto:eve-security@lists.lfedge.org).
