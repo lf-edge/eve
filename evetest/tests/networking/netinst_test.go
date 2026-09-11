@@ -2417,11 +2417,19 @@ func TestFlowLog(test *testing.T) {
 	t.Expect(appInfo.GetNetwork()[0].GetIPAddrs()).ToNot(BeEmpty())
 	appIP := appInfo.GetNetwork()[0].GetIPAddrs()[0]
 
-	// pkg/pillar/nistate/linux.go's flowCollectInterval (~108-120s, randomized,
-	// hardcoded -- no controller-config override) governs how often the
-	// conntrack table is swept and a connection's flow record published, so
-	// give it comfortable room for at least one full cycle plus margin.
-	flowLogTimeout := 3 * time.Minute
+	// A closed TCP connection's flow record isn't reported as soon as it
+	// closes: pkg/pillar/nistate/linux_flow.go's conntrackFlowExtraTimeout
+	// (150s) only makes a conntrack entry eligible for collection once its
+	// remaining protocol timeout (e.g. nf_conntrack_tcp_timeout_time_wait /
+	// _syn_sent = 270s, see pkg/dom0-ztools/rootfs/etc/sysctl.d/02-eve.conf)
+	// drops below that threshold -- a ~120s floor after the connection
+	// closes. On top of that, pkg/pillar/nistate/linux.go's
+	// flowCollectInterval (108-120s, randomized, hardcoded -- no
+	// controller-config override) governs how often the conntrack table is
+	// actually swept, adding up to another full cycle. Worst case is
+	// therefore ~240s after the connection closes, so give it comfortable
+	// room beyond that.
+	flowLogTimeout := 5 * time.Minute
 	t.Eventually(func(g Gomega) {
 		outbound := device.GetAppFlowLogs(appUUID, evetest.FlowLogMatch{
 			VirtualNetAdapter: "vif0",
