@@ -241,7 +241,7 @@ func WaitForKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.T
 	var lastUnmet error
 	doneCh := make(chan struct{}, 1)
 	go func() {
-		nodeReadyErr = wait.PollImmediate(time.Second, time.Minute*20, func() (bool, error) {
+		nodeReadyErr = wait.PollImmediate(time.Second, componentsReadyTimeout(opts), func() (bool, error) {
 			if err := nodeReadyByName(client, nodeName); err != nil {
 				lastUnmet = fmt.Errorf("node not ready: %w", err)
 				return false, nil
@@ -295,13 +295,21 @@ func checkLonghornReady(client kubernetes.Interface, nodeName string) error {
 		"longhorn-csi-plugin": false,
 		"engine-image":        false,
 	}
-	// Check if each daemonset is running and ready on this node
+	// Check if each daemonset is running and ready on this node. Only the
+	// expected daemonsets above gate readiness: anything else sharing the
+	// namespace is not ours to judge, and a permanently unready stray would
+	// otherwise block every volume on this node for as long as it exists.
 	for _, lhDaemonset := range lhDaemonsets.Items {
 		lhDsName := lhDaemonset.GetName()
+		expected := false
 		for dsPrefix := range lhExpectedDaemonsets {
 			if strings.HasPrefix(lhDsName, dsPrefix) {
 				lhExpectedDaemonsets[dsPrefix] = true
+				expected = true
 			}
+		}
+		if !expected {
+			continue
 		}
 
 		var labelSelectors []string
@@ -336,7 +344,7 @@ func checkLonghornReady(client kubernetes.Interface, nodeName string) error {
 		}
 	}
 
-	return nil
+	return instanceManagerReady(ctx, nodeName)
 }
 
 // nodeReadyByName confirms this device's Kubernetes node object exists. nodeName is the
