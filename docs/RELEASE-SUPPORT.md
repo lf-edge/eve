@@ -23,28 +23,43 @@ the LTS is behind.
 The consequence for security support is that the releases page cannot answer "is this line
 still supported". It records what was published, not what is maintained. Use the table below.
 
+## How long a line is supported
+
+An LTS line receives security fixes for **36 months** from the date its first
+`<major>.<minor>.0-lts` release was published, in two phases:
+
+- **Active**, for the first 24 months — security fixes and new LTS point releases.
+- **Backports only**, for the following 12 months — security fixes land on the stable
+  branch, but no further release is cut; consumers build from the branch or move to an
+  active line.
+
+After that the line is **end of life** and receives no fixes. Existing artifacts remain
+downloadable.
+
+The clock starts at the first `.0-lts` release rather than at the branch cut or the first
+release candidate, so every date below is derived from a published release a downstream
+vendor can check.
+
 ## Support status by line
 
-Status values:
+| Line | First `.0-lts` | Status | Active until | Backports until |
+| --- | --- | --- | --- | --- |
+| `master` | n/a | Development. Not for production, no security support. | n/a | n/a |
+| 17.0.x | 2026-07-27 | Active | 2028-07-27 | 2029-07-27 |
+| 16.0.x | 2026-01-07 | Active | 2028-01-07 | 2029-01-07 |
+| 14.5.x | 2025-06-18 | Active | 2027-06-18 | 2028-06-18 |
+| 13.4.x | 2024-12-28 | Active | 2026-12-28 | 2027-12-28 |
 
-- **Active** — receives security fixes and new LTS point releases.
-- **Backports only** — receives security fixes on the stable branch, but no new release is
-  being cut; consumers build from the branch or move to an active line.
-- **End of life** — receives no fixes. Existing artifacts remain downloadable.
+<!-- TBD(TSC): 13.4.x is Active under this policy until 2026-12-28, and the Active phase
+     promises new LTS point releases, but none has been cut since 13.4.3-lts on
+     2025-07-11. Either cut them, or move the line to Backports only ahead of the date and
+     record that here. -->
 
-<!-- TBD(TSC): the end dates below are unset. Each needs a decision before this document
-     is accurate. A line marked Active with no end date states an open-ended commitment. -->
-
-| Line | Status | Security fixes until |
-| --- | --- | --- |
-| `master` | Development. Not for production, no security support. | n/a |
-| 17.0.x | Active | TBD(TSC) |
-| 16.0.x | Active | TBD(TSC) |
-| 14.5.x | Active | TBD(TSC) |
-| 13.4.x | Backports only | TBD(TSC) |
-| 12.0.x | TBD(TSC) — no commit on `12.0-stable` since June 2025 | TBD(TSC) |
-| 11.0.x | TBD(TSC) | TBD(TSC) |
-| 10.4.x | TBD(TSC) — no commit on `10.4-stable` since July 2024 | TBD(TSC) |
+<!-- TBD(TSC): confirm that 12.0.x, 11.0.x, 10.4.x and everything older are end of life.
+     The 8.12, 9.4, 10.4, 11.0 and 12.0 lines were promoted to LTS partway through the
+     line and have no `.0-lts` release at all, so this policy sets no start date for them.
+     Their stable branches are dormant: last commit on `12.0-stable` June 2025, on
+     `10.4-stable` July 2024. -->
 
 A line absent from this table is end of life.
 
