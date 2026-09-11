@@ -110,6 +110,19 @@ func (h *ZFSHandler) RemoveDefaultVault() error {
 		return err
 	}
 
+	// The migration datasets belong to the vault that was just destroyed, so
+	// they go with it; leaving them would hand the fresh vault the caller
+	// creates next a staging zvol holding an unrelated, possibly partial copy.
+	// Non-fatal: nothing promotes a staging zvol without the swap marker, and
+	// failing here would leave the device with no vault at all.
+	if err := h.dropMigrationLeftovers(types.SealedDataset+vaultStagingSuffix,
+		types.SealedDataset+vaultBackupSuffix); err != nil {
+		h.log.Warnf("RemoveDefaultVault: %v", err)
+	}
+	if err := ops.ClearSwapMarker(); err != nil {
+		h.log.Warnf("RemoveDefaultVault: cannot clear migration swap state: %v", err)
+	}
+
 	return nil
 }
 
@@ -291,9 +304,9 @@ const vaultMigrateMountpoint = "/run/vaultmgr/vault-migrate"
 // unencrypted (the no-TPM path via SetupDefaultVault).
 //
 // The sequence stages a new zvol "<vaultPath>2", copies the vault contents into
-// it, then swaps it into place: the old filesystem vault is renamed to
-// "<vaultPath>.old", the staging zvol is renamed to "<vaultPath>", and only
-// then is the old vault destroyed. Until the swap
+// it, records that the copy is complete, then swaps it into place: the old
+// filesystem vault is renamed to "<vaultPath>.old", the staging zvol is renamed
+// to "<vaultPath>", and only then is the old vault destroyed. Until the swap
 // the staging zvol holds a partial copy and is dropped on any failure, so a
 // fallback boot to EVE-kvm does not inherit a zvol holding up to the pool's
 // free space. The caller reaches this only when a filesystem vault is present
@@ -308,6 +321,9 @@ func (h *ZFSHandler) migrateVaultFsToZvol(vaultPath, keyFile string, encrypt boo
 
 	if err := h.dropMigrationLeftovers(stagingDataset, backupDataset); err != nil {
 		return err
+	}
+	if err := ops.ClearSwapMarker(); err != nil {
+		return fmt.Errorf("cannot clear migration swap state: %v", err)
 	}
 
 	// Size the staging zvol to the currently-free pool space (the source vault
@@ -359,6 +375,9 @@ func (h *ZFSHandler) migrateVaultFsToZvol(vaultPath, keyFile string, encrypt boo
 		if cerr := h.dropMigrationLeftovers(stagingDataset, ""); cerr != nil {
 			h.log.Errorf("migrateVaultFsToZvol: %v", cerr)
 		}
+		if cerr := ops.ClearSwapMarker(); cerr != nil {
+			h.log.Errorf("migrateVaultFsToZvol: cannot clear migration swap state: %v", cerr)
+		}
 	}()
 
 	if err := ops.FormatStagingZvol(stagingDataset); err != nil {
@@ -376,6 +395,12 @@ func (h *ZFSHandler) migrateVaultFsToZvol(vaultPath, keyFile string, encrypt boo
 		return fmt.Errorf("unmount migration zvol at %s: %v", mountpoint, err)
 	}
 
+	// Record the completed copy before the swap: this is what tells the next
+	// boot that the staging zvol may be promoted rather than dropped, should
+	// power be lost between the two renames below.
+	if err := ops.MarkSwapReady(stagingDataset); err != nil {
+		return fmt.Errorf("cannot record migration swap state: %v", err)
+	}
 	if err := ops.UnmountDataset(vaultPath); err != nil {
 		return fmt.Errorf("unmount old fs vault %s: %v", vaultPath, err)
 	}
@@ -392,6 +417,9 @@ func (h *ZFSHandler) migrateVaultFsToZvol(vaultPath, keyFile string, encrypt boo
 		return fmt.Errorf("rename %s -> %s: %v", stagingDataset, vaultPath, err)
 	}
 	swapped = true
+	if err := ops.ClearSwapMarker(); err != nil {
+		h.log.Warnf("migrateVaultFsToZvol: cannot clear migration swap state: %v", err)
+	}
 
 	// Best effort: the migrated zvol is now at vaultPath, so the old vault may
 	// be torn down. On failure it is left for the next boot's recovery.
@@ -429,6 +457,66 @@ func (h *ZFSHandler) dropMigrationLeftovers(staging, backup string) error {
 	return nil
 }
 
+// vaultMigrationRecovery is what to do with the datasets a vault migration
+// left behind.
+type vaultMigrationRecovery int
+
+const (
+	// vaultMigrationNoop - nothing to act on.
+	vaultMigrationNoop vaultMigrationRecovery = iota
+	// vaultMigrationFinishSwap - promote the staging zvol to be the vault.
+	vaultMigrationFinishSwap
+	// vaultMigrationRestoreBackup - put the pre-migration vault back so that
+	// the migration can be retried.
+	vaultMigrationRestoreBackup
+	// vaultMigrationDropLeftovers - the vault itself is in place; discard what
+	// is left over.
+	vaultMigrationDropLeftovers
+)
+
+func (a vaultMigrationRecovery) String() string {
+	switch a {
+	case vaultMigrationFinishSwap:
+		return "finish-swap"
+	case vaultMigrationRestoreBackup:
+		return "restore-backup"
+	case vaultMigrationDropLeftovers:
+		return "drop-leftovers"
+	default:
+		return "noop"
+	}
+}
+
+// planVaultMigrationRecovery decides what to do with the staging and backup
+// datasets of an interrupted or failed vault migration.
+//
+// swapStaged reports whether the staging dataset was recorded as holding a
+// complete copy of the vault, which migrateVaultFsToZvol writes just before
+// the rename swap. Without that record the staging dataset may hold a
+// partially copied vault and must never be promoted: a failed migration
+// reports the vault as unusable, which leads vaultmgr to destroy the vault and
+// set up a fresh one, and that arrives here with the vault absent and a
+// staging dataset in place.
+func planVaultMigrationRecovery(vaultExists, stagingExists, backupExists,
+	swapStaged bool) vaultMigrationRecovery {
+	if vaultExists {
+		if stagingExists || backupExists {
+			return vaultMigrationDropLeftovers
+		}
+		return vaultMigrationNoop
+	}
+	if stagingExists && swapStaged {
+		return vaultMigrationFinishSwap
+	}
+	if backupExists {
+		return vaultMigrationRestoreBackup
+	}
+	if stagingExists {
+		return vaultMigrationDropLeftovers
+	}
+	return vaultMigrationNoop
+}
+
 // recoverInterruptedVaultMigration reconstructs a ZFS vault migration that was
 // interrupted by power loss mid-swap, so that the EVE-k callers do not mistake
 // it for a fresh install and create an empty vault (losing all blobs) or fail
@@ -445,32 +533,43 @@ func (h *ZFSHandler) recoverInterruptedVaultMigration(vaultPath string) error {
 	backup := vaultPath + vaultBackupSuffix
 	stagingExists := ops.DatasetExist(staging)
 	backupExists := ops.DatasetExist(backup)
+	marked, err := ops.SwapMarkedDataset()
+	if err != nil {
+		return fmt.Errorf("cannot read migration swap state: %v", err)
+	}
 	if !stagingExists && !backupExists {
-		return nil
+		if marked == "" {
+			return nil
+		}
+		return ops.ClearSwapMarker()
 	}
 
 	vaultExists := ops.DatasetExist(vaultPath)
-	h.log.Noticef("recoverInterruptedVaultMigration(%s): leftover migration state (staging=%v backup=%v vault=%v)",
-		vaultPath, stagingExists, backupExists, vaultExists)
+	swapStaged := marked == staging
+	action := planVaultMigrationRecovery(vaultExists, stagingExists, backupExists, swapStaged)
+	h.log.Noticef("recoverInterruptedVaultMigration(%s): leftover migration state (staging=%v backup=%v vault=%v swapStaged=%v): %s",
+		vaultPath, stagingExists, backupExists, vaultExists, swapStaged, action)
 
-	if !vaultExists {
-		if stagingExists {
-			if err := ops.RenameDataset(staging, vaultPath); err != nil {
-				return fmt.Errorf("finish interrupted migration rename %s -> %s: %v",
-					staging, vaultPath, err)
-			}
-		} else if backupExists {
-			if err := ops.RenameDataset(backup, vaultPath); err != nil {
-				return fmt.Errorf("restore interrupted migration rename %s -> %s: %v",
-					backup, vaultPath, err)
-			}
+	switch action {
+	case vaultMigrationFinishSwap:
+		if err := ops.RenameDataset(staging, vaultPath); err != nil {
+			return fmt.Errorf("finish interrupted migration rename %s -> %s: %v",
+				staging, vaultPath, err)
+		}
+	case vaultMigrationRestoreBackup:
+		if err := ops.RenameDataset(backup, vaultPath); err != nil {
+			return fmt.Errorf("restore interrupted migration rename %s -> %s: %v",
+				backup, vaultPath, err)
 		}
 	}
 
 	// Best effort: a failure to discard a leftover just leaves it for the next
-	// boot.
+	// boot, and nothing promotes a staging zvol without the swap marker.
 	if err := h.dropMigrationLeftovers(staging, backup); err != nil {
 		h.log.Warnf("recoverInterruptedVaultMigration: %v", err)
+	}
+	if err := ops.ClearSwapMarker(); err != nil {
+		h.log.Warnf("recoverInterruptedVaultMigration: cannot clear migration swap state: %v", err)
 	}
 	return nil
 }
