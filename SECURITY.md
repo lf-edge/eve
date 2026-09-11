@@ -11,12 +11,17 @@ Please include a description of the issue, the steps to reproduce it, the EVE ve
 believe are affected, your assessment of the impact, and a patch or proof of concept if you
 have one. Report in English.
 
-The security team acknowledges a report within **24 hours**. This is an acknowledgment of
-receipt, not a commitment to a fix; remediation time depends on severity. EVE follows a
-**90-day** coordinated disclosure timeline: if no fix has shipped 90 days after the report is
-acknowledged, the reporter is free to disclose publicly, and the security team will publish
-what it knows rather than let the issue go unrecorded. An earlier or later date can be agreed
-with the reporter where a fix is imminent or a coordinated multi-vendor release requires it.
+The security team acknowledges and analyzes a report within **3 business days** — you get
+confirmation that a human has it, and an initial assessment of what it affects and how
+severe it looks. That is not a commitment to a fix; remediation time depends on severity. A
+report you flag as actively exploited is taken up when it arrives rather than waiting out
+that window.
+
+EVE follows a **90-day** coordinated disclosure timeline: if no fix has shipped 90 days after
+the report arrives, the reporter is free to disclose publicly, and the security team will
+publish what it knows rather than let the issue go unrecorded. An earlier or later date can
+be agreed with the reporter where a fix is imminent or a coordinated multi-vendor release
+requires it.
 
 How reports are triaged, patched, embargoed, and published is described in
 [docs/VULNERABILITY-HANDLING.md](docs/VULNERABILITY-HANDLING.md).

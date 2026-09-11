@@ -88,8 +88,10 @@ as if it were their support commitment:
   update was issued, whether or not the corresponding EVE line is still maintained.
 - **Reporting deadlines run from the vendor's own awareness.** An actively exploited
   vulnerability obliges the vendor to notify its national CSIRT and ENISA on a short clock.
-  The project's acknowledgment SLA in [SECURITY.md](../SECURITY.md) is a different and
-  unrelated commitment, and meeting it does not discharge the vendor's deadline.
+  The project's triage window in [SECURITY.md](../SECURITY.md) is a separate commitment and
+  meeting it does not discharge the vendor's deadline. Note that the window is longer than
+  the clock: a vendor that waits for the project to confirm a report before filing its own
+  early warning will miss the deadline.
 
 ### Pre-notification list
 
