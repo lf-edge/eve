@@ -276,9 +276,14 @@ message DeviceControlResponse {}
 message EditDeviceDiskRequest {
   string client_id = 1;
   string device_name = 2;
+  // Which of the device's disks to edit: 0 is the boot disk, 1 the first
+  // extra disk requested via RequireEdgeDevice.ExtraDisks, and so on.
+  uint32 disk_index = 5;
   oneof edit {
     GrowDisk grow = 3;
     DestroyPartitionFilesystem destroy_partition_fs = 4;
+    CreatePersistPartition create_persist_partition = 6;
+    DeletePartition delete_partition = 7;
   }
 }
 
@@ -298,6 +303,28 @@ message GrowDisk {
 // partition" operation: the partition table is left intact, which is the state
 // a real filesystem loss leaves behind.
 message DestroyPartitionFilesystem {
+  // GPT partition name, e.g. "P3" for EVE's /persist partition.
+  string partition_label = 1;
+}
+
+// CreatePersistPartition writes a fresh GPT on a blank disk, with a single
+// partition spanning it, named and typed as EVE's /persist partition. It is
+// how a test puts /persist on a disk of its own rather than on the boot disk.
+//
+// The partition is left unformatted on purpose. storage-init finds it by
+// partition label wherever it lives, sees no filesystem, and formats it itself
+// on the next boot -- so the test exercises EVE's own formatting, encryption
+// feature and all, rather than a lookalike built here that could differ in
+// ways the test was not written to notice.
+message CreatePersistPartition {}
+
+// DeletePartition removes a partition from the GPT, leaving the space it
+// occupied unallocated.
+//
+// Deleting /persist from the boot disk is the other half of moving /persist to
+// its own disk, and leaves behind exactly the free tail an in-field repartition
+// grows into.
+message DeletePartition {
   // GPT partition name, e.g. "P3" for EVE's /persist partition.
   string partition_label = 1;
 }

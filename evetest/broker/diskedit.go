@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 )
@@ -69,31 +71,143 @@ func growDisk(ctx context.Context, log *logrus.Entry,
 // its own watchdog rather than failing outright, which is a slow way to find
 // out.
 //
-// sgdisk cannot operate on a QCOW2, so the image is round-tripped through a raw
-// copy, as eden does for the same job. That flattens a backing-file overlay
-// into a standalone image, which costs space but nothing else: the device boots
-// from this path either way.
+// See editGPT for why this goes through a raw copy.
 func relocateBackupGPT(ctx context.Context, log *logrus.Entry, diskPath string) error {
-	raw := diskPath + ".gptfix.raw"
-	defer func() { _ = os.Remove(raw) }()
-
-	steps := []struct {
-		what string
-		args []string
-	}{
-		{"export to raw", []string{"qemu-img", "convert", "-f", "qcow2", "-O", "raw", diskPath, raw}},
-		{"relocate the backup GPT", []string{"sgdisk", "-e", raw}},
-		{"verify the partition table", []string{"sgdisk", "-v", raw}},
-		{"import from raw", []string{"qemu-img", "convert", "-f", "raw", "-O", "qcow2", raw, diskPath}},
-	}
-	for _, step := range steps {
-		out, err := exec.CommandContext(ctx, step.args[0], step.args[1:]...).CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("could not %s for %q: %v: %s", step.what, diskPath, err, out)
+	err := editGPT(ctx, diskPath, func(raw string) error {
+		if err := runSgdisk(ctx, "relocate the backup GPT", "-e", raw); err != nil {
+			return err
 		}
+		return runSgdisk(ctx, "verify the partition table", "-v", raw)
+	})
+	if err != nil {
+		return fmt.Errorf("could not relocate the backup GPT of %q: %w", diskPath, err)
 	}
 	log.Infof("Relocated the backup GPT of %q to the new end of the disk", diskPath)
 	return nil
+}
+
+// editGPT runs edit against a raw copy of a QCOW2 disk, and writes the result
+// back.
+//
+// sgdisk cannot operate on a QCOW2, so the image is round-tripped through a raw
+// copy, as eden does for the same job. That flattens a backing-file overlay
+// into a standalone image, which costs space but nothing else: the device boots
+// from this path either way. The disk is written back only if edit succeeded,
+// so a failed edit leaves the original alone rather than half-rewritten.
+func editGPT(ctx context.Context, diskPath string, edit func(raw string) error) error {
+	raw := diskPath + ".gptedit.raw"
+	defer func() { _ = os.Remove(raw) }()
+
+	out, err := exec.CommandContext(ctx, "qemu-img", "convert",
+		"-f", "qcow2", "-O", "raw", diskPath, raw).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("export to raw failed: %v: %s", err, out)
+	}
+	if err := edit(raw); err != nil {
+		return err
+	}
+	out, err = exec.CommandContext(ctx, "qemu-img", "convert",
+		"-f", "raw", "-O", "qcow2", raw, diskPath).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("import from raw failed: %v: %s", err, out)
+	}
+	return nil
+}
+
+// runSgdisk runs one sgdisk command, naming what it was for if it fails.
+func runSgdisk(ctx context.Context, what string, args ...string) error {
+	out, err := exec.CommandContext(ctx, "sgdisk", args...).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("could not %s: %v: %s", what, err, out)
+	}
+	return nil
+}
+
+// persistPartitionTypeGUID is the GPT type EVE gives its /persist partition,
+// and persistPartitionLabel the name it looks it up by. Both have to match what
+// EVE writes, or storage-init will not take the partition for its own
+// (pkg/storage-init/storage-init.sh, pkg/installer/install).
+const (
+	persistPartitionTypeGUID = "5f24425a-2dfa-11e8-a270-7b663faccc2c"
+	persistPartitionLabel    = "P3"
+)
+
+// createPersistPartition writes a fresh GPT on a blank disk with a single
+// partition spanning it, typed and named as EVE's /persist partition.
+//
+// The partition is deliberately left unformatted. storage-init looks P3 up by
+// partition label across every block device, finds no filesystem on it, and
+// formats it itself on the next boot -- with the encryption feature EVE's vault
+// needs. Formatting it here would mean reproducing that by hand, and risking a
+// filesystem that differs from EVE's in ways the test never thinks to check.
+//
+// The device must be powered off.
+func createPersistPartition(ctx context.Context, log *logrus.Entry, diskPath string) error {
+	err := editGPT(ctx, diskPath, func(raw string) error {
+		return runSgdisk(ctx, "create the persist partition",
+			"--largest-new=1",
+			"--typecode=1:"+persistPartitionTypeGUID,
+			"--change-name=1:"+persistPartitionLabel,
+			raw)
+	})
+	if err != nil {
+		return fmt.Errorf("could not create a persist partition on %q: %w", diskPath, err)
+	}
+	log.Infof("Created an empty %s partition spanning %q, for EVE to format",
+		persistPartitionLabel, diskPath)
+	return nil
+}
+
+// deletePartition removes the named partition from a disk's GPT, leaving the
+// space it occupied unallocated.
+//
+// The device must be powered off.
+func deletePartition(ctx context.Context, log *logrus.Entry,
+	diskPath, partitionLabel string) error {
+	err := editGPT(ctx, diskPath, func(raw string) error {
+		number, err := gptPartitionNumber(ctx, raw, partitionLabel)
+		if err != nil {
+			return err
+		}
+		if err := runSgdisk(ctx, "delete partition "+partitionLabel,
+			"-d", strconv.Itoa(number), raw); err != nil {
+			return err
+		}
+		// Asked of the table again rather than inferred from sgdisk's exit
+		// status: the whole point of the operation is that it is gone.
+		if _, err := gptPartitionNumber(ctx, raw, partitionLabel); err == nil {
+			return fmt.Errorf("partition %q is still present after deleting it",
+				partitionLabel)
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("could not delete partition %q from %q: %w",
+			partitionLabel, diskPath, err)
+	}
+	log.Infof("Deleted partition %q from %q", partitionLabel, diskPath)
+	return nil
+}
+
+// gptPartitionNumber returns the number of the partition with the given name,
+// and an error if the disk has none.
+func gptPartitionNumber(ctx context.Context, diskPath, partitionLabel string) (int, error) {
+	out, err := exec.CommandContext(ctx, "sgdisk", "-p", diskPath).CombinedOutput()
+	if err != nil {
+		return 0, fmt.Errorf("could not read the partition table: %v: %s", err, out)
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 || fields[len(fields)-1] != partitionLabel {
+			continue
+		}
+		number, convErr := strconv.Atoi(fields[0])
+		if convErr != nil {
+			continue
+		}
+		return number, nil
+	}
+	return 0, fmt.Errorf("no GPT partition named %q", partitionLabel)
 }
 
 // destroyPartitionFilesystem makes the filesystem on the named GPT partition
