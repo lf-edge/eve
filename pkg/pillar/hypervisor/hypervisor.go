@@ -159,6 +159,132 @@ func logError(format string, a ...interface{}) error {
 	return fmt.Errorf(format, a...)
 }
 
+// iommuGroupContext holds sysfs paths for IOMMU group operations.
+// Production code uses defaultIOMMUGroupCtx; tests create custom instances
+// with temporary directories.
+type iommuGroupContext struct {
+	pciDevicesDir  string
+	iommuGroupsDir string
+	vfioDriverDir  string
+	driversProbe   string
+}
+
+var defaultIOMMUGroupCtx = iommuGroupContext{
+	pciDevicesDir:  sysfsPciDevices,
+	iommuGroupsDir: "/sys/kernel/iommu_groups",
+	vfioDriverDir:  vfioDriverPath,
+	driversProbe:   sysfsPciDriversProbe,
+}
+
+// getIOMMUGroup returns the IOMMU group number for a PCI device by reading
+// the iommu_group symlink in sysfs.
+func (ctx *iommuGroupContext) getIOMMUGroup(long string) (string, error) {
+	iommuGroupLink := filepath.Join(ctx.pciDevicesDir, long, "iommu_group")
+	iommuPath, err := os.Readlink(iommuGroupLink)
+	if err != nil {
+		return "", fmt.Errorf("can't determine iommu group for %s (%v)", long, err)
+	}
+	return filepath.Base(iommuPath), nil
+}
+
+// getMembers returns all PCI device addresses in the same IOMMU group
+// by reading /sys/kernel/iommu_groups/<group>/devices/
+func (ctx *iommuGroupContext) getMembers(long string) ([]string, error) {
+	group, err := ctx.getIOMMUGroup(long)
+	if err != nil {
+		return nil, err
+	}
+	devicesPath := filepath.Join(ctx.iommuGroupsDir, group, "devices")
+	entries, err := os.ReadDir(devicesPath)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read IOMMU group %s devices: %v", group, err)
+	}
+	var members []string
+	for _, entry := range entries {
+		members = append(members, entry.Name())
+	}
+	return members, nil
+}
+
+// isBoundToVfioPci returns true if the device is currently bound to the vfio-pci driver.
+func (ctx *iommuGroupContext) isBoundToVfioPci(long string) bool {
+	driverPath := filepath.Join(ctx.pciDevicesDir, long, "driver")
+	driverPathInfo, driverPathErr := os.Stat(driverPath)
+	vfioDriverPathInfo, vfioDriverPathErr := os.Stat(ctx.vfioDriverDir)
+	return driverPathErr == nil && vfioDriverPathErr == nil &&
+		os.SameFile(driverPathInfo, vfioDriverPathInfo)
+}
+
+// unbindSiblings unbinds kernel drivers from all devices in the same
+// IOMMU group as the given device. This is necessary because VFIO requires
+// exclusive DMA ownership of the entire IOMMU group — if any sibling device
+// has a kernel driver bound, it claims DMA ownership via
+// iommu_device_use_default_domain() and the group becomes non-viable.
+// Sibling devices are only unbound (not bound to vfio-pci) since they are
+// not the passthrough target.
+func (ctx *iommuGroupContext) unbindSiblings(long string) {
+	members, err := ctx.getMembers(long)
+	if err != nil {
+		logrus.Warnf("unbindIOMMUGroupSiblings: cannot get IOMMU group members for %s: %v", long, err)
+		return
+	}
+	for _, member := range members {
+		if member == long {
+			continue
+		}
+		if ctx.isBoundToVfioPci(member) {
+			continue
+		}
+		unbindFile := filepath.Join(ctx.pciDevicesDir, member, "driver/unbind")
+		if _, err := os.Stat(unbindFile); err != nil {
+			// No driver bound, nothing to do
+			continue
+		}
+		logrus.Infof("unbindIOMMUGroupSiblings: unbinding driver from IOMMU group sibling %s (sibling of %s)", member, long)
+		if err := os.WriteFile(unbindFile, []byte(member), 0644); err != nil {
+			logrus.Warnf("unbindIOMMUGroupSiblings: failed to unbind driver from %s: %v", member, err)
+		}
+	}
+}
+
+// reprobeSiblings re-probes sibling devices in the IOMMU group
+// so their original kernel drivers can rebind after VFIO release.
+func (ctx *iommuGroupContext) reprobeSiblings(long string) {
+	members, err := ctx.getMembers(long)
+	if err != nil {
+		logrus.Warnf("reprobeIOMMUGroupSiblings: cannot get IOMMU group members for %s: %v", long, err)
+		return
+	}
+	for _, member := range members {
+		if member == long {
+			continue
+		}
+		driverPath := filepath.Join(ctx.pciDevicesDir, member, "driver")
+		if _, err := os.Stat(driverPath); err == nil {
+			// Already has a driver bound, skip
+			continue
+		}
+		logrus.Infof("reprobeIOMMUGroupSiblings: re-probing IOMMU group sibling %s (sibling of %s)", member, long)
+		if err := os.WriteFile(ctx.driversProbe, []byte(member), 0644); err != nil {
+			logrus.Warnf("reprobeIOMMUGroupSiblings: failed to re-probe %s: %v", member, err)
+		}
+	}
+}
+
+// Public wrapper functions using default sysfs paths.
+
+func isBoundToVfioPci(long string) bool {
+	return defaultIOMMUGroupCtx.isBoundToVfioPci(long)
+}
+
+func unbindIOMMUGroupSiblings(long string) {
+	defaultIOMMUGroupCtx.unbindSiblings(long)
+}
+
+func reprobeIOMMUGroupSiblings(long string) {
+	defaultIOMMUGroupCtx.reprobeSiblings(long)
+}
+
 // PCIReserveGeneric : Common Reserve function used by both EVE kvm and 'k'
 func PCIReserveGeneric(long string) error {
 	logrus.Infof("PCIReserve long addr is %s", long)
@@ -168,13 +294,15 @@ func PCIReserveGeneric(long string) error {
 	unbindFile := filepath.Join(driverPath, "unbind")
 
 	//Check if already bound to vfio-pci
-	driverPathInfo, driverPathErr := os.Stat(driverPath)
-	vfioDriverPathInfo, vfioDriverPathErr := os.Stat(vfioDriverPath)
-	if driverPathErr == nil && vfioDriverPathErr == nil &&
-		os.SameFile(driverPathInfo, vfioDriverPathInfo) {
+	if isBoundToVfioPci(long) {
 		logrus.Infof("Driver for %s is already bound to vfio-pci, skipping unbind", long)
 		return nil
 	}
+
+	// Unbind kernel drivers from all sibling devices in the IOMMU group.
+	// VFIO requires exclusive DMA ownership of the entire group; any sibling
+	// with a kernel driver makes the group non-viable for passthrough.
+	unbindIOMMUGroupSiblings(long)
 
 	//map vfio-pci as the driver_override for the device
 	if err := os.WriteFile(overrideFile, []byte("vfio-pci"), 0644); err != nil {
@@ -225,6 +353,10 @@ func PCIReleaseGeneric(long string) error {
 		logrus.Fatalf("drivers_probe failure for PCI device %s: %v",
 			long, err)
 	}
+
+	// Re-probe IOMMU group siblings so their original drivers can rebind.
+	// These were unbound during PCIReserveGeneric to make the group viable.
+	reprobeIOMMUGroupSiblings(long)
 
 	return nil
 }
