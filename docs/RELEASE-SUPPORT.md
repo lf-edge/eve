@@ -96,9 +96,10 @@ as if it were their support commitment:
 ### Pre-notification list
 
 The project maintains `eve-distributors-announce@lists.lfedge.org` for vendors who ship EVE
-commercially, carrying embargoed advisory information ahead of public publication so a vendor
-can prepare its own advisory and update. Membership requires a named security contact who
-agrees to hold embargoed information until the disclosure date.
+commercially. Members receive the advisory and the patch **two weeks** before publication, so
+they can have their own advisory and update ready on the day. Membership requires a named
+security contact who agrees to hold embargoed information — including the patch and anything
+built from it — until the disclosure date.
 
 For an actively exploited vulnerability the list is notified on the clock Regulation (EU)
 2024/2847 Art 14 sets — an early warning inside 24 hours, a fuller notification inside 72 —
