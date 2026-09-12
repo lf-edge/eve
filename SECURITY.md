@@ -1,65 +1,120 @@
 # Security Policy
 
-## Supported Versions
-
-The EVE project maintains security support for the following versions:
-
-| Version | Supported          |
-| ------- | ------------------ |
-| master  | ✅ |
-| 17.0.x | ✅ |
-| 16.0.x. | ✅ |
-| 14.5.x  | ✅ |
-| 13.4.x  | ✅ |
-| 12.0.x  | ✅ |
-| 11.0.x  | ✅ |
-| 10.4.x  | ✅ |
-
 ## Reporting a Vulnerability
 
-### For Security Vulnerabilities
+If you discover a security issue in EVE, report it privately. **Do not open a public GitHub issue.**
 
-If you discover a security vulnerability in EVE, please report it privately to maintain the security of all users. **Do not create a public GitHub issue.**
+- Email [eve-security@lists.lfedge.org](mailto:eve-security@lists.lfedge.org), or
+- use GitHub [private vulnerability reporting](https://github.com/lf-edge/eve/security/advisories/new).
 
-#### Preferred Reporting Methods
+Please include a description of the issue, the steps to reproduce it, the EVE versions you
+believe are affected, your assessment of the impact, and a patch or proof of concept if you
+have one. Report in English.
 
-1. **Email**: Send details to [eve-security@lists.lfedge.org](mailto:eve-security@lists.lfedge.org).
-2. **GitHub Security Advisory**: Use the [private vulnerability reporting](https://github.com/lf-edge/eve/security/advisories/new) feature.
+The security team acknowledges and analyzes a report within **3 business days** — you get
+confirmation that a human has it, and an initial assessment of what it affects and how
+severe it looks. That is not a commitment to a fix; remediation time depends on severity. A
+report you flag as actively exploited is taken up when it arrives rather than waiting out
+that window.
 
-#### What to Include
+EVE follows a **90-day** coordinated disclosure timeline: if no fix has shipped 90 days after
+the report arrives, the reporter is free to disclose publicly, and the security team will
+publish what it knows rather than let the issue go unrecorded. An earlier or later date can
+be agreed with the reporter where a fix is imminent or a coordinated multi-vendor release
+requires it.
 
-Please include the following information in your report:
+How reports are triaged, patched, embargoed, and published is described in
+[docs/VULNERABILITY-HANDLING.md](docs/VULNERABILITY-HANDLING.md).
 
-- **Description**: Clear description of the vulnerability
-- **Steps to Reproduce**: Detailed steps to reproduce the issue
-- **Impact Assessment**: Your assessment of the potential impact
-- **Affected Versions**: Which versions of EVE are affected
-- **Proof of Concept**: If available, a proof-of-concept or exploit code
-- **Suggested Fix**: A patch to fix the vulnerability
+You may also report a vulnerability to a national CSIRT or to ENISA independently of this
+policy. Doing so does not replace reporting it here, and the EVE security team would rather
+hear about an issue twice than not at all.
 
-### Response Timeline
+## CRA Stewardship
 
-We are committed to responding to security vulnerability reports within 24 hours of receipt. The time required to develop a fix may vary depending on the severity. Any public disclosure will be coordinated with the reporter.
+This project is supported under the Linux Foundation CRA stewardship framework, as described
+at <https://www.linuxfoundation.org/security>. Security vulnerabilities should be reported
+through the mechanisms described below, which we will coordinate with our CRA steward. For
+actively exploited vulnerabilities and severe incidents that may require CRA escalation,
+please use the project’s emergency security reporting mechanisms as appropriate.
 
-### Security Advisory Publication
+EVE's emergency reporting mechanism is the intake above, escalated on the strength of what
+you tell us: if you believe a vulnerability is being **actively exploited**, or that the
+project's own release or build infrastructure has been compromised, say so explicitly and put
+it in the subject line. Active exploitation obliges the steward to file an early warning
+within 24 hours and a formal notification within 72 hours, so the security team escalates
+such a report to the steward immediately instead of waiting for triage to finish. There is no
+separate address to remember under time pressure.
 
-Security advisories will be published:
+EVE is published for use in commercial products, which is what brings it within the steward
+obligations in Regulation (EU) 2024/2847 Art 24.
 
-- On the [EVE Security Advisories](https://github.com/lf-edge/eve/security/advisories) page.
-- Through the [LF Edge EVE mailing lists](https://lists.lfedge.org/g/eve).
+## Safe Harbor
 
-### Acknowledgments
+The EVE project will not initiate or support legal action against anyone who discovers or
+reports a vulnerability in good faith under this policy, and will treat such research as
+authorized conduct. Good faith means: you report promptly, you give the project a reasonable
+opportunity to fix the issue before disclosing it, and you do not exploit the issue beyond
+what is needed to demonstrate it.
 
-We recognize and appreciate the efforts of the security research community in helping make EVE more secure. Security researchers who responsibly disclose vulnerabilities will be acknowledged.
+Testing must stay within your own systems. Do not test against deployments, devices, or
+controllers you do not own or have written permission to test, do not run denial-of-service
+or resource-exhaustion tests against shared infrastructure, do not access or exfiltrate
+another party's data, and do not use social engineering against project members or users.
 
-### Scope
+The project does not operate a paid bounty program.
 
-This security policy applies to:
+## Supported Versions
 
-- The main EVE repository (lf-edge/eve)
-- Official EVE container images
-- Official EVE releases and distributions
+Which release lines receive security fixes, and until when, is maintained in
+[docs/RELEASE-SUPPORT.md](docs/RELEASE-SUPPORT.md). That document is the authoritative
+statement of security support; the GitHub releases page records what was published but
+carries no support status.
 
-### Security Resources
+## Scope
 
-Additional information about our security model can be found in the [EVE Security Architecture](docs/SECURITY-ARCHITECTURE.md) document.
+This policy covers the EVE edge operating system as published by the project: the
+`lf-edge/eve` repository, the official EVE releases and installer images, the official
+`lfedge/eve*` container images, and the repositories that build or ship code into a released
+EVE image, currently `eve-api`, `eve-libs`, `eve-kernel`, `eve-monitor-rs`, `eve-rust`,
+`eve-tpmea`, `edge-containers` and `runx`.
+
+The build and test repositories `eden`, `adam`, `eve-build-tools`, `eve-tools` and `rol` are
+in scope for reports, but a finding there normally affects developer and CI systems rather
+than a deployed edge device. Say so in the report if you believe otherwise.
+
+**Out of scope:** EVE is controller-agnostic. A vulnerability in a particular controller, or
+in a controller's API surface as that controller implements it, belongs to that controller's
+vendor, not to this project. Report it to them. Where a controller vulnerability is only
+exploitable because of how EVE behaves, report it here as well.
+
+Vulnerabilities in third-party components that EVE packages are in scope for triage: the
+security team will assess the impact on EVE, coordinate with the upstream project, and ship
+the fix. The upstream project owns the fix itself.
+
+## Published Advisories
+
+Advisories are published on the [EVE security advisories](https://github.com/lf-edge/eve/security/advisories)
+page and announced on `eve-security-announce@lists.lfedge.org`. Each advisory identifies the
+affected versions, the fixed versions, the impact, and the mitigation available to operators
+who cannot upgrade immediately.
+
+<!-- TBD(TSC): eve-security-announce@lists.lfedge.org does not exist yet and has to be
+     requested from LF Edge. Until it does, advisories are announced on the general EVE
+     mailing list at https://lists.lfedge.org/g/eve. -->
+
+## For Downstream Vendors
+
+A vendor shipping an EVE-based product is a manufacturer under Regulation (EU) 2024/2847 and
+carries reporting and disclosure obligations that this project cannot discharge on the
+vendor's behalf. [docs/RELEASE-SUPPORT.md](docs/RELEASE-SUPPORT.md) describes the support
+information a vendor needs from the project, and how to join the pre-notification list that
+carries embargoed advisories ahead of publication.
+
+## Further Reading
+
+- [docs/VULNERABILITY-HANDLING.md](docs/VULNERABILITY-HANDLING.md) — how the security team handles a report.
+- [docs/SECURITY-ARCHITECTURE.md](docs/SECURITY-ARCHITECTURE.md) — EVE's security model and threat model.
+- [docs/SECURITY-HARDWARE.md](docs/SECURITY-HARDWARE.md) — hardware security recommendations.
+- [docs/SBOM-AND-SOURCES.md](docs/SBOM-AND-SOURCES.md) — where to find the SBoM and corresponding sources for a release.
+- [CONTRIBUTING.md](CONTRIBUTING.md) — contribution guidelines, including the stable-branch backport process.
