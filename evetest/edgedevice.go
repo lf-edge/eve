@@ -1036,8 +1036,51 @@ func (d *EdgeDevice) DestroyPartitionFilesystem(partitionLabel string) {
 	d.editDisk("DestroyPartitionFilesystem", req)
 }
 
-// editDiskRequest builds the addressing half of a disk-edit request; the
-// caller fills in which edit it wants.
+// CreatePersistPartition writes a fresh GPT on the extraDiskIdx-th extra disk
+// (see RequireEdgeDevice.ExtraDisks), with a single partition spanning it,
+// typed and named as EVE's /persist.
+//
+// This is how a test gives a device a /persist on a disk of its own. Pair it
+// with DeletePartition("P3") on the boot disk: EVE locates /persist by
+// partition label across every disk, so with the boot disk's copy gone it
+// adopts this one, and the space freed on the boot disk becomes a tail an
+// in-field repartition can grow into.
+//
+// The partition is left unformatted, and EVE formats it on the next boot just
+// as it would a factory-fresh disk -- so the filesystem under test is EVE's
+// own, not a lookalike built by the harness.
+//
+// The device must be powered off (PowerOff), and the test must have declared
+// RequireCapabilities{CAPABILITY_EDIT_DEVICE_DISK}.
+func (d *EdgeDevice) CreatePersistPartition(extraDiskIdx uint) {
+	req := d.editDiskRequest()
+	req.DiskIndex = uint32(extraDiskIdx) + 1
+	req.Edit = &api.EditDeviceDiskRequest_CreatePersistPartition{
+		CreatePersistPartition: &api.CreatePersistPartition{},
+	}
+	d.editDisk("CreatePersistPartition", req)
+}
+
+// DeletePartition removes the named GPT partition (e.g. "P3", EVE's /persist)
+// from the device's boot disk, leaving the space it occupied unallocated.
+//
+// Distinct from DestroyPartitionFilesystem, which keeps the partition and only
+// ruins its contents: this removes the partition itself, so EVE does not find
+// one at all and looks elsewhere.
+//
+// The device must be powered off (PowerOff), and the test must have declared
+// RequireCapabilities{CAPABILITY_EDIT_DEVICE_DISK}.
+func (d *EdgeDevice) DeletePartition(partitionLabel string) {
+	req := d.editDiskRequest()
+	req.Edit = &api.EditDeviceDiskRequest_DeletePartition{
+		DeletePartition: &api.DeletePartition{PartitionLabel: partitionLabel},
+	}
+	d.editDisk("DeletePartition", req)
+}
+
+// editDiskRequest builds the addressing half of a disk-edit request, addressing
+// the boot disk; the caller fills in which edit it wants, and overrides
+// DiskIndex to reach an extra disk.
 func (d *EdgeDevice) editDiskRequest() *api.EditDeviceDiskRequest {
 	return &api.EditDeviceDiskRequest{
 		ClientId:   d.th.brokerClientID,

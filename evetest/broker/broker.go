@@ -1689,15 +1689,19 @@ func (b *broker) EditDeviceDisk(
 	}
 	ctx = logger.WithLogger(ctx, log)
 
-	if len(eveDevice.disks) == 0 {
-		err := fmt.Errorf("EVE device %q has no disk to edit", eveDevice.deviceName)
+	// Disk 0 is the boot disk; the extra disks follow in the order they were
+	// requested.
+	diskIndex := int(req.GetDiskIndex())
+	if diskIndex >= len(eveDevice.disks) {
+		err := fmt.Errorf("EVE device %q has no disk at index %d (it has %d)",
+			eveDevice.deviceName, diskIndex, len(eveDevice.disks))
 		log.Error(err)
 		return nil, err
 	}
-	bootDisk := eveDevice.disks[0]
-	if bootDisk.Format != provider.DiskImageFormatQcow2 {
-		err := fmt.Errorf("boot disk of EVE device %q is not QCOW2; cannot edit it",
-			eveDevice.deviceName)
+	disk := eveDevice.disks[diskIndex]
+	if disk.Format != provider.DiskImageFormatQcow2 {
+		err := fmt.Errorf("disk %d of EVE device %q is not QCOW2; cannot edit it",
+			diskIndex, eveDevice.deviceName)
 		log.Error(err)
 		return nil, err
 	}
@@ -1719,10 +1723,15 @@ func (b *broker) EditDeviceDisk(
 
 	switch edit := req.GetEdit().(type) {
 	case *api.EditDeviceDiskRequest_Grow:
-		err = growDisk(ctx, log, bootDisk.Path, edit.Grow.GetNewSizeBytes())
+		err = growDisk(ctx, log, disk.Path, edit.Grow.GetNewSizeBytes())
 	case *api.EditDeviceDiskRequest_DestroyPartitionFs:
-		err = destroyPartitionFilesystem(ctx, log, bootDisk.Path,
+		err = destroyPartitionFilesystem(ctx, log, disk.Path,
 			edit.DestroyPartitionFs.GetPartitionLabel())
+	case *api.EditDeviceDiskRequest_CreatePersistPartition:
+		err = createPersistPartition(ctx, log, disk.Path)
+	case *api.EditDeviceDiskRequest_DeletePartition:
+		err = deletePartition(ctx, log, disk.Path,
+			edit.DeletePartition.GetPartitionLabel())
 	default:
 		err = fmt.Errorf("no edit requested for EVE device %q", eveDevice.deviceName)
 	}
