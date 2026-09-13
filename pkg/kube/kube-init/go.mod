@@ -3,7 +3,7 @@ module github.com/lf-edge/eve/pkg/kube/kube-init
 go 1.25.12
 
 require (
-	github.com/containerd/containerd/v2 v2.2.5
+	github.com/containerd/containerd/v2 v2.2.8
 	github.com/containerd/errdefs v1.0.0
 	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260723060853-d8f4dcef88b3
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
@@ -11,9 +11,9 @@ require (
 	github.com/vishvananda/netlink v1.3.1
 	golang.org/x/sys v0.47.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
-	k8s.io/api v0.34.1
+	k8s.io/api v0.34.10
 	k8s.io/apiextensions-apiserver v0.34.1
-	k8s.io/apimachinery v0.34.1
+	k8s.io/apimachinery v0.34.10
 	k8s.io/client-go v12.0.0+incompatible
 )
 
@@ -120,7 +120,7 @@ require (
 	golang.org/x/time v0.14.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	google.golang.org/grpc v1.83.2 // indirect
-	google.golang.org/protobuf v1.36.11 // indirect
+	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
