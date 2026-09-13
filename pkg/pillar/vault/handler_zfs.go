@@ -52,7 +52,7 @@ type ZFSHandler struct {
 // to the ones that drive the pool.
 func (h *ZFSHandler) zfsOps() zfsVaultOps {
 	if h.ops == nil {
-		h.ops = realZFSVaultOps{log: h.log}
+		h.ops = wrapVaultOps(realZFSVaultOps{log: h.log}, h.log)
 	}
 	return h.ops
 }
