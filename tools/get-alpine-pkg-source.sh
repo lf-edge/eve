@@ -17,6 +17,8 @@
 # With -u <urlfile> it dumps the source URL + licenses into the file
 # With -s <srcdir> it dumps all the source in that directory
 # With -g <gitdir> use the directory as a pre-cloned repo for git.alpinelinux.org instead of cloning it
+# With -m <mirrorfile> use an alternate mirror configuration file; defaults to
+# .mirrors.yaml next to this script. See that file for the format.
 
 set -e
 
@@ -28,7 +30,8 @@ gitdir=
 outdir=/tmp/$$
 quiet=
 prefix=
-while getopts e:vt:u:s:g:qp: o
+mirrorfile=$(cd "$(dirname "$0")" && pwd)/.mirrors.yaml
+while getopts e:vt:u:s:g:qp:m: o
 do      case "$o" in
         v)      verbose=1;;
         q)      quiet=1;;
@@ -38,7 +41,8 @@ do      case "$o" in
         u)      urlfile=$OPTARG;;
         g)      gitdir=$OPTARG;;
         p)      prefix=$OPTARG;;
-        [?])    >&2 echo "Usage: $0 [-v] [-s <outdir>] [-u <urlfile>] [-t <tag>]+ [-e <evedir>] [-g <gitdir>] [-p <prefix>] [<version>]"
+        m)      mirrorfile=$OPTARG;;
+        [?])    >&2 echo "Usage: $0 [-v] [-s <outdir>] [-u <urlfile>] [-t <tag>]+ [-e <evedir>] [-g <gitdir>] [-p <prefix>] [-m <mirrorfile>] [<version>]"
                 exit 1;;
         esac
 done
@@ -46,11 +50,11 @@ shift $((OPTIND-1))
 
 
 if [ $# == 0 ] && [ -z "$tags" ] && [ -z "$evedir" ]; then
-    >&2 echo "Usage: $0 [-v] [-s <outdir>] [-u <urlfile>] [-t <tag>]+ [-e <evedir>] [-p <prefix>] [<version>]"
+    >&2 echo "Usage: $0 [-v] [-s <outdir>] [-u <urlfile>] [-t <tag>]+ [-e <evedir>] [-p <prefix>] [-m <mirrorfile>] [<version>]"
     exit 1
 fi
 if [ $# -gt 1 ]; then
-    >&2 echo "Usage: $0 [-v] [-s <outdir>] [-u <urlfile>] [-t <tag>]+ [-e <evedir>] [-p <prefix>] [<version>]"
+    >&2 echo "Usage: $0 [-v] [-s <outdir>] [-u <urlfile>] [-t <tag>]+ [-e <evedir>] [-p <prefix>] [-m <mirrorfile>] [<version>]"
     exit 1
 fi
 
@@ -101,6 +105,171 @@ get_ocpairs() {
         }' | sort -u
 }
 
+# Mirrors. Several upstream servers referenced by the APKBUILD files drop or
+# throttle requests coming from CI runners, so a source carrying a checksum is
+# first looked up in the mirror table and only then fetched from its original
+# location. Sources without a checksum are never taken from a mirror.
+# Parallel indexed arrays are used instead of an associative array to keep
+# working with the bash 3.x shipped by macOS.
+MIRROR_PREFIXES=()
+MIRROR_TARGETS=()
+
+# yaml_scalar <value>: drop a trailing comment, trailing blanks and the
+# surrounding quotes of a scalar.
+yaml_scalar() {
+    local v="$1"
+    v="${v%%' #'*}"
+    v="${v%"${v##*[![:space:]]}"}"
+    case "$v" in
+        \"*\")  v="${v#\"}"; v="${v%\"}";;
+        \'*\')  v="${v#\'}"; v="${v%\'}";;
+    esac
+    printf '%s' "$v"
+}
+
+# load_mirrors <file>: read the mirror table. Only the restricted YAML subset
+# documented in .mirrors.yaml is understood: a "mirrors:" mapping whose keys
+# are URL prefixes and whose values are sequences of replacement prefixes.
+load_mirrors() {
+    local file="$1"
+    local line trimmed idx=-1
+
+    if [ ! -f "$file" ]; then
+        [ -n "$verbose" ] && echo "no mirror configuration at $file" >&2
+        return 0
+    fi
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%$'\r'}"
+        trimmed="${line#"${line%%[![:space:]]*}"}"
+        case "$trimmed" in
+            ''|'#'*|'---'|'mirrors:') continue;;
+        esac
+        if [ "${trimmed#- }" != "$trimmed" ]; then
+            if [ "$idx" -lt 0 ]; then
+                >&2 echo "$file: mirror outside of any server entry: $line"
+                continue
+            fi
+            MIRROR_TARGETS[idx]="${MIRROR_TARGETS[idx]}$(yaml_scalar "${trimmed#- }")"$'\n'
+        elif [ "${trimmed%:}" != "$trimmed" ]; then
+            idx=$((idx + 1))
+            MIRROR_PREFIXES[idx]=$(yaml_scalar "${trimmed%:}")
+            MIRROR_TARGETS[idx]=""
+        else
+            >&2 echo "$file: ignoring unsupported line: $line"
+        fi
+    done < "$file"
+    [ -n "$verbose" ] && echo "loaded mirrors for ${#MIRROR_PREFIXES[@]} servers from $file" >&2
+    return 0
+}
+
+# mirror_candidates <url>: print the locations to try for a URL, one per line,
+# mirrors of the first matching prefix first and the original URL last.
+mirror_candidates() {
+    local url="$1"
+    local i=0 prefix rest m
+
+    while [ "$i" -lt "${#MIRROR_PREFIXES[@]}" ]; do
+        prefix="${MIRROR_PREFIXES[$i]}"
+        case "$url" in
+            "$prefix"*)
+                rest="${url#"$prefix"}"
+                while IFS= read -r m; do
+                    [ -n "$m" ] && printf '%s\n' "${m%/}/${rest#/}"
+                done <<< "${MIRROR_TARGETS[$i]}"
+                break
+                ;;
+        esac
+        i=$((i + 1))
+    done
+    printf '%s\n' "$url"
+}
+
+# An HTTP error carrying a body ("404 Not Found", "Too many requests", ...) is
+# what bad_content_tag() classifies, and --fail throws that body away. Keep it
+# with --fail-with-body where curl is recent enough (>= 7.76), and settle for
+# the coarser "missing" tag on older ones.
+CURL_FAILOPT=--fail
+if curl --help all 2>/dev/null | grep -q -- '--fail-with-body'; then
+    CURL_FAILOPT=--fail-with-body
+fi
+
+# bad_content_tag <file>: classify a file we did not want: an error page served
+# with a 200, the body of an HTTP error, or a tarball failing its checksum. The
+# named pages are looked for before the generic markup check, being HTML too.
+bad_content_tag() {
+    local f="$1"
+    if grep -qsi 'Too many requests' "$f"; then
+        echo "too-many-requests"
+    elif grep -qsi '404 Not Found' "$f"; then
+        echo "404-not-found"
+    elif grep -qsi '^<!DOCTYPE html' "$f"; then
+        echo "bad-content"
+    else
+        echo "mismatched-sh512"
+    fi
+}
+
+# download_source <url> <destination> <verify 0|1> <expected sha512>
+# Walk the mirrors of the URL until one hands out a file matching the checksum
+# from the APKBUILD, and keep nothing that did not match. The sha512 of the
+# file actually received is printed on success; on failure a tag describing the
+# error is printed instead, content errors taking precedence over plain
+# unreachability.
+download_source() {
+    local url="$1" dst="$2" verify="$3" expected="$4"
+    local candidates candidate sum newtag tag=
+    local -a curlopts
+
+    if [ "$verify" = 1 ]; then
+        candidates=$(mirror_candidates "$url")
+    else
+        # Without a checksum in the APKBUILD nothing tells the real file apart
+        # from an error page served with a 200, so a source that cannot be
+        # verified is only ever fetched from the server Alpine points at.
+        candidates="$url"
+    fi
+    if [ "$candidates" = "$url" ]; then
+        # single chance, be patient
+        curlopts=(--connect-timeout 30 --retry 3 --retry-delay 5 --max-time 1800)
+    else
+        # the mirror list is the fallback, so give up on each candidate quickly
+        # instead of waiting on a server that is dropping our requests
+        curlopts=(--connect-timeout 10 --retry 1 --retry-delay 3
+                  --speed-limit 1024 --speed-time 30 --max-time 600)
+    fi
+    while IFS= read -r candidate; do
+        [ -z "$candidate" ] && continue
+        [ "$candidate" != "$url" ] && echo "Trying mirror $candidate for $url" >&2
+        if ! curl -sSL "$CURL_FAILOPT" "${curlopts[@]}" -o "$dst" "$candidate"; then
+            >&2 echo "Failed to download $candidate"
+            newtag=missing
+            if [ -s "$dst" ]; then
+                # the error page says more than the transfer having failed,
+                # unless it matches nothing we know how to name
+                newtag=$(bad_content_tag "$dst")
+                [ "$newtag" = "mismatched-sh512" ] && newtag=missing
+            fi
+            # a content error already seen outranks plain unreachability
+            { [ -z "$tag" ] || [ "$tag" = missing ]; } && tag="$newtag"
+            rm -f "$dst"
+            continue
+        fi
+        [ "$verify" != 1 ] && return 0
+        sum=$(openssl sha512 "$dst" | awk '{print $2}')
+        if [ "$sum" = "$expected" ]; then
+            printf '%s' "$sum"
+            return 0
+        fi
+        tag=$(bad_content_tag "$dst")
+        >&2 echo "Mismatched sh512 ($tag) for $candidate into $dst"
+        rm -f "$dst"
+    done <<< "$candidates"
+    echo "${tag:-missing}"
+    return 1
+}
+
+load_mirrors "$mirrorfile"
+
 if [ $# == 1 ]; then
     VERSION=$1
     tags="lfedge/eve:${VERSION}"
@@ -137,7 +306,21 @@ if [ -n "$gitdir" ]; then
     cp -r "$gitdir/." "${TMP_DIR}"
 else
     pkgurl="https://git.alpinelinux.org/aports.git"
-    git clone "${pkgurl}" "${TMP_DIR}" >/dev/null
+    cloned=
+    while IFS= read -r candidate; do
+        [ -z "$candidate" ] && continue
+        [ "$candidate" != "$pkgurl" ] && echo "Trying mirror ${candidate} for ${pkgurl}" >&2
+        rm -rf "${TMP_DIR}"
+        if git clone "${candidate}" "${TMP_DIR}" >/dev/null; then
+            cloned=1
+            break
+        fi
+        >&2 echo "Failed to clone ${candidate}"
+    done <<< "$(mirror_candidates "${pkgurl}")"
+    if [ -z "$cloned" ]; then
+        >&2 echo "Failed to clone ${pkgurl}"
+        exit 2
+    fi
 fi
 
 # shellcheck disable=SC2002
@@ -223,16 +406,32 @@ while read -r line ; do
                 # shellcheck disable=SC2001
                 url="$(echo "$s" | sed 's/^\(.*\)::\(.*$\)/\2/')"
             fi
+            verify=0
+            rsum=
+            recvsum=
+            if [ -n "${sha512sums}" ]; then
+                rsum=$(grep ' '"$filename"\$ "${dstdir}/sha512sums.APKBUILD" | awk '{print $1}')
+                if [ -n "${rsum}" ]; then
+                    verify=1
+                else
+                    # nothing to verify against, so no mirror and no rejecting
+                    # a file the origin server may well have served correctly
+                    >&2 echo "No sha512sum for ${filename} in ${pkgpath}"
+                fi
+            fi
             case $url in
                 https://*|http://*|ftp://*)
                     [ -n "$verbose" ] && echo "found $s basename ${filename}" >&2
-                    if ! curl -sSLo "${dstdir}/${filename}" "${url}"; then
-                        >&2 echo "Failed to download $url"
-                        rm -f "${dstdir}/${filename}"
-                        badfileslist="${badfileslist} missing:${pkgpath}:${filename}"
+                    # mirrors and checksum verification are handled together so
+                    # that a mirror serving bad content falls through to the next
+                    if ! outmsg=$(download_source "${url}" "${dstdir}/${filename}" "${verify}" "${rsum}"); then
+                        >&2 echo "Failed to retrieve $url"
+                        # "Bad content" and "Too many requests" isn't really missing ...
+                        badfileslist="${badfileslist} ${outmsg}:${pkgpath}:${filename}"
                         badfilescount=$((badfilescount + 1))
                         continue
                     fi
+                    recvsum="${outmsg}"
                     ;;
                 *)
                     [ -n "$verbose" ] && echo "not http*: $s" >&2
@@ -242,35 +441,21 @@ while read -r line ; do
                         badfilescount=$((badfilescount + 1))
                         continue
                     fi
+                    if [ "${verify}" = 1 ]; then
+                        sum=$(openssl sha512 "${dstdir}/${filename}" | awk '{print $2}')
+                        recvsum="${sum}"
+                        if [ "${sum}" != "${rsum}" ]; then
+                            errmsg=$(bad_content_tag "${dstdir}/${filename}")
+                            echo "Mismatched sh512 for $url into ${dstdir}/${filename}" >&2
+                            badfileslist="${badfileslist} ${errmsg}:${pkgpath}:${filename}"
+                            badfilescount=$((badfilescount + 1))
+                            continue
+                        fi
+                    fi
                     ;;
             esac
-            if [ -n "${sha512sums}" ]; then
-                sum=$(openssl sha512 "${dstdir}/${filename}" | awk '{print $2}')
-                rsum=$(grep ' '"$filename"\$ "${dstdir}/sha512sums.APKBUILD" | awk '{print $1}')
-                if [ "${sum}" != "${rsum}" ]; then
-                    errmsg="mismatched-sh512"
-                    echo "Mismatched sh512 for $url into ${dstdir}/${filename}" >&2
-                    if grep -qsi '404 Not Found' "${dstdir}/${filename}"; then
-                        errmsg="404-not-found"
-                        >&2 echo "404 Not Found for ${url}"
-                        rm -f "${dstdir}/${filename}"
-                    elif grep -qsi '^<!DOCTYPE html' "${dstdir}/${filename}"; then
-                        >&2 echo "Bad DOCTYPE for $url into ${dstdir}/${filename}"
-                        errmsg="bad-content"
-                        rm -f "${dstdir}/${filename}"
-                    elif grep -qsi 'Too many requests' "${dstdir}/${filename}"; then
-                        errmsg="too-many-requests"
-                        >&2 echo "Too many requests for ${url}"
-                        rm -f "${dstdir}/${filename}"
-                    else
-                        [ -n "$verbose" ] && echo "Bad content: $(cat "${dstdir}/${filename}")" >&2
-                    fi
-                    # "Bad content" and "Too many requests" isn't really missing ...
-                    badfileslist="${badfileslist} ${errmsg}:${pkgpath}:${filename}"
-                    badfilescount=$((badfilescount + 1))
-                else
-                    echo "$sum $filename" >> "${dstdir}/sha512sums.received"
-                fi
+            if [ "${verify}" = 1 ]; then
+                echo "$recvsum $filename" >> "${dstdir}/sha512sums.received"
             fi
         done
         if [ "$badfilescount" != 0 ]; then
