@@ -1,0 +1,54 @@
+---
+# Copyright (c) 2026, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Mirror configuration for tools/get-alpine-pkg-source.sh.
+#
+# Some upstream servers (ftp.gnu.org in particular) rate-limit or outright
+# drop requests coming from CI runners, which breaks source collection in
+# the publish workflow. The source URLs themselves come from the Alpine
+# APKBUILD files and cannot be changed, so they are rewritten at runtime
+# using the table below.
+#
+# Format: every key is a URL prefix as it appears in the APKBUILD "source="
+# line; the list under it holds the prefixes replacing it, in order of
+# preference. The first key matching a URL wins, its mirrors are tried in
+# the listed order, and the original URL is always tried last. Keys are
+# prefixes rather than plain host names because mirrors rarely reproduce
+# the directory layout of the server they mirror.
+#
+# Only the sources for which the APKBUILD carries a sha512sum are fetched
+# from a mirror: without a checksum there is no way to tell the real file
+# apart from an error page, so those keep coming from the original server.
+# The same holds for a file that has no entry of its own in sha512sums.
+
+mirrors:
+  # The aports checkout goes through the same table. Uncomment to clone the
+  # GitHub mirror first; it carries the same commits as the canonical repo.
+  # "https://git.alpinelinux.org/aports.git":
+  #   - "https://github.com/alpinelinux/aports.git"
+
+  # GNU: https://www.gnu.org/prep/ftp.html
+  # ftpmirror.gnu.org redirects to a nearby mirror and serves the content of
+  # ftp.gnu.org/gnu/ from its root, hence the different prefix.
+  "https://ftp.gnu.org/gnu/":
+    - "https://ftpmirror.gnu.org/"
+    - "https://mirrors.kernel.org/gnu/"
+    - "https://mirror.csclub.uwaterloo.ca/gnu/"
+    - "https://mirrors.ocf.berkeley.edu/gnu/"
+  "https://ftp.gnu.org/pub/gnu/":
+    - "https://ftpmirror.gnu.org/"
+    - "https://mirrors.kernel.org/gnu/"
+    - "https://mirror.csclub.uwaterloo.ca/gnu/"
+    - "https://mirrors.ocf.berkeley.edu/gnu/"
+  "ftp://ftp.gnu.org/gnu/":
+    - "https://ftpmirror.gnu.org/"
+    - "https://mirrors.kernel.org/gnu/"
+    - "https://mirror.csclub.uwaterloo.ca/gnu/"
+    - "https://mirrors.ocf.berkeley.edu/gnu/"
+
+  # Savannah, which hosts a fair number of GNU and non-GNU tarballs.
+  "https://download.savannah.gnu.org/releases/":
+    - "https://download-mirror.savannah.gnu.org/releases/"
+  "https://download.savannah.nongnu.org/releases/":
+    - "https://download-mirror.savannah.nongnu.org/releases/"
