@@ -885,7 +885,8 @@ func publishAppInstanceStatus(ctx *zedmanagerContext,
 			// Report from this node only if:
 			//   1) the pod is scheduled on this node (running or pending here), OR
 			//   2) we are the DNID and the cluster authoritatively shows no pod
-			//      exists for this app anywhere - so no peer will report it.
+			//      exists for this app anywhere - so no peer will report it, OR
+			//   3) we are currently standing in as backup DNID for this app.
 			// All other cases suppress: a peer owns it (running there, or merely
 			// scheduled there with a Pending pod), or we cannot see the cluster
 			// (APIUnreachable / Unknown) and must not assume the app is silent
@@ -893,6 +894,16 @@ func publishAppInstanceStatus(ctx *zedmanagerContext,
 			canReport := clusterStatus.ScheduledOnThisNode ||
 				(clusterStatus.IsDNidNode &&
 					clusterStatusAllowsDNIDUpload(clusterStatus))
+			if !canReport {
+				// Neither placement nor DNID ownership qualifies -- but a backup-DNID
+				// node keeps reporting authority for as long as it stands in for a
+				// downed designated node, so tearing the workload down on this node
+				// does not silently drop the app's last state (e.g. HALTED) on the
+				// floor once Kubernetes clears ScheduledOnThisNode.
+				if config := lookupAppInstanceConfig(ctx, key, true); config != nil {
+					canReport = isCurrentlyBackupDNIDForApp(ctx, *config)
+				}
+			}
 			status.NoUploadStatsToController = !canReport
 			if !canReport {
 				log.Functionf("publishAppInstanceStatus(%s) suppressed: IsDNidNode=%v ScheduledOnThisNode=%v AppKubeStatus=%v",
