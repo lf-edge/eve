@@ -24,32 +24,30 @@ import (
 )
 
 type buildOpts struct {
-	skipBuild         bool
-	force             bool
-	pull              bool
-	ignoreCache       bool
-	push              bool
-	dryRun            bool
-	preCacheImages    bool
-	release           string
-	manifest          bool
-	targetDocker      bool
-	cacheDir          string
-	cacheProvider     spec.CacheProvider
-	platforms         []imagespec.Platform
-	builders          map[string]string
-	runner            dockerRunner
-	writer            io.Writer
-	builderImage      string
-	builderConfigPath string
-	builderRestart    bool
-	sbomScan          bool
-	sbomScannerImage  string
-	dockerfile        string
-	buildArgs         []string
-	progress          string
-	ssh               []string
-	registryAuth      map[string]spec.RegistryAuth
+	skipBuild        bool
+	force            bool
+	pull             bool
+	ignoreCache      bool
+	push             bool
+	dryRun           bool
+	preCacheImages   bool
+	release          string
+	manifest         bool
+	targetDocker     bool
+	cacheDir         string
+	cacheProvider    spec.CacheProvider
+	platforms        []imagespec.Platform
+	builders         map[string]string
+	runner           DockerRunner
+	writer           io.Writer
+	builderConfig    BuilderConfig
+	sbomScan         bool
+	sbomScannerImage string
+	dockerfile       string
+	buildArgs        []string
+	progress         string
+	ssh              []string
+	registryAuth     map[string]spec.RegistryAuth
 }
 
 // BuildOpt allows callers to specify options to Build
@@ -137,7 +135,7 @@ func WithBuildBuilders(builders map[string]string) BuildOpt {
 }
 
 // WithBuildDocker provides a docker runner to use. If nil, defaults to the current platform
-func WithBuildDocker(runner dockerRunner) BuildOpt {
+func WithBuildDocker(runner DockerRunner) BuildOpt {
 	return func(bo *buildOpts) error {
 		bo.runner = runner
 		return nil
@@ -160,26 +158,10 @@ func WithBuildOutputWriter(w io.Writer) BuildOpt {
 	}
 }
 
-// WithBuildBuilderImage set the builder container image to use.
-func WithBuildBuilderImage(image string) BuildOpt {
+// WithBuildBuilderConfig set the builder configuration to use.
+func WithBuildBuilderConfig(bc BuilderConfig) BuildOpt {
 	return func(bo *buildOpts) error {
-		bo.builderImage = image
-		return nil
-	}
-}
-
-// WithBuildBuilderConfig set the contents of the
-func WithBuildBuilderConfig(builderConfigPath string) BuildOpt {
-	return func(bo *buildOpts) error {
-		bo.builderConfigPath = builderConfigPath
-		return nil
-	}
-}
-
-// WithBuildBuilderRestart restart the builder container even if it already is running with the correct image version
-func WithBuildBuilderRestart(restart bool) BuildOpt {
-	return func(bo *buildOpts) error {
-		bo.builderRestart = restart
+		bo.builderConfig = bc
 		return nil
 	}
 }
@@ -319,10 +301,10 @@ func (p Pkg) Build(bos ...BuildOpt) error {
 
 	d := bo.runner
 	switch {
-	case bo.dryRun:
-		d = newDockerDryRunner()
+	case d == nil && bo.dryRun:
+		d = NewDockerDryRunner()
 	case d == nil:
-		d = newDockerRunner(p.cache)
+		d = NewDockerRunner(p.cache, bo.builderConfig)
 	}
 
 	c := bo.cacheProvider
@@ -333,7 +315,7 @@ func (p Pkg) Build(bos ...BuildOpt) error {
 		}
 	}
 
-	if err := d.contextSupportCheck(); err != nil {
+	if err := d.ContextSupportCheck(); err != nil {
 		return fmt.Errorf("contexts not supported, check docker version: %v", err)
 	}
 
@@ -492,7 +474,7 @@ func (p Pkg) Build(bos ...BuildOpt) error {
 
 		// build for each arch and save in the linuxkit cache
 		for _, platform := range platformsToBuild {
-			builtDescs, err := p.buildArch(ctx, d, c, bo.builderImage, bo.builderConfigPath, platform.Architecture, bo.builderRestart, writer, bo, imageBuildOpts)
+			builtDescs, err := p.buildArch(ctx, d, c, platform.Architecture, writer, bo, imageBuildOpts)
 			if err != nil {
 				return fmt.Errorf("error building for arch %s: %v", platform.Architecture, err)
 			}
@@ -527,7 +509,7 @@ func (p Pkg) Build(bos ...BuildOpt) error {
 	// if requested docker, load the image up
 	// we will store images with arch suffix, i.e. -amd64
 	// if one of the arch equals with system, we will add tag without suffix
-	if bo.targetDocker {
+	if bo.targetDocker && desc != nil {
 		for _, platform := range bo.platforms {
 			ref, err := reference.Parse(p.FullTag())
 			if err != nil {
@@ -538,11 +520,11 @@ func (p Pkg) Build(bos ...BuildOpt) error {
 			if err != nil {
 				return fmt.Errorf("unable to get reader from cache: %v", err)
 			}
-			if err := d.load(reader); err != nil {
+			if err := d.Load(reader); err != nil {
 				return err
 			}
 			if platform.Architecture == arch {
-				err = d.tag(fmt.Sprintf("%s-%s", p.FullTag(), platform.Architecture), p.FullTag())
+				err = d.Tag(fmt.Sprintf("%s-%s", p.FullTag(), platform.Architecture), p.FullTag())
 				if err != nil {
 					return err
 				}
@@ -555,18 +537,11 @@ func (p Pkg) Build(bos ...BuildOpt) error {
 		return nil
 	}
 
-	// we only will push if one of these is true:
-	// - we had at least one platform to build
-	// - we found an image in local cache
-	// if neither is true, there is nothing to push
-
+	// determine if we should skip pushing the default tag (no build and no local cache)
+	skipDefaultPush := false
 	if len(platformsToBuild) == 0 {
-		// if we did not yet find the image in local cache,
-		// check, in case we have it and would need to push.
-		// If we did not build it because we were not requested to do so,
-		// then we might not know we have it in local cache.
+		// if we did not yet find the image in local cache, recheck
 		if !imageInLocalCache {
-			// we need this to know whether or not we might push
 			for _, platform := range bo.platforms {
 				exists, err := c.ImageInCache(&ref, "", platform.Architecture)
 				if err == nil && exists {
@@ -577,22 +552,42 @@ func (p Pkg) Build(bos ...BuildOpt) error {
 		}
 		if !imageInLocalCache {
 			_, _ = fmt.Fprintf(writer, "No new platforms to push, skipping.\n")
-			return nil
+			if bo.release == "" {
+				return nil
+			}
+			skipDefaultPush = true
 		}
 	}
-
 	if p.dirty {
 		return fmt.Errorf("build complete, refusing to push dirty package")
 	}
-
-	// push the manifest
-	if err := c.Push(p.FullTag(), "", bo.manifest, true); err != nil {
-		return err
+	// push the manifest for the default tag if needed
+	if !skipDefaultPush {
+		if err := c.Push(p.FullTag(), "", bo.manifest, true); err != nil {
+			return err
+		}
+	} else {
+		_, _ = fmt.Fprintf(writer, "Skipping push of default tag %q\n", p.FullTag())
 	}
 
 	if bo.release == "" {
 		_, _ = fmt.Fprintf(writer, "Build and push complete, not releasing, all done.\n")
 		return nil
+	}
+
+	if desc == nil {
+		// Image exists in registry but not in local cache. Pull it so we can create the release tag.
+		_, _ = fmt.Fprintf(writer, "Pulling %s into local cache for release...\n", p.FullTag())
+		if err := c.ImagePull(&ref, bo.platforms, false); err != nil {
+			return fmt.Errorf("unable to pull image for release: %v", err)
+		}
+		desc, err = c.FindDescriptor(&ref)
+		if err != nil {
+			return err
+		}
+		if desc == nil {
+			return fmt.Errorf("unable to find image descriptor in local cache for %s after pull, cannot release", p.FullTag())
+		}
 	}
 
 	relTag, err := p.ReleaseTag(bo.release)
@@ -608,7 +603,8 @@ func (p Pkg) Build(bos ...BuildOpt) error {
 	if err := c.DescriptorWrite(fullRelTag, *desc); err != nil {
 		return err
 	}
-	if err := c.Push(fullRelTag, "", bo.manifest, true); err != nil {
+	// push the release tag without overriding existing (skip if already present)
+	if err := c.Push(fullRelTag, "", bo.manifest, false); err != nil {
 		return err
 	}
 
@@ -617,11 +613,11 @@ func (p Pkg) Build(bos ...BuildOpt) error {
 	// if one of the arch equals with system will add tag without suffix
 	if bo.targetDocker {
 		for _, platform := range bo.platforms {
-			if err := d.tag(fmt.Sprintf("%s-%s", p.FullTag(), platform.Architecture), fmt.Sprintf("%s-%s", fullRelTag, platform.Architecture)); err != nil {
+			if err := d.Tag(fmt.Sprintf("%s-%s", p.FullTag(), platform.Architecture), fmt.Sprintf("%s-%s", fullRelTag, platform.Architecture)); err != nil {
 				return err
 			}
 			if platform.Architecture == arch {
-				if err := d.tag(fmt.Sprintf("%s-%s", p.FullTag(), platform.Architecture), fullRelTag); err != nil {
+				if err := d.Tag(fmt.Sprintf("%s-%s", p.FullTag(), platform.Architecture), fullRelTag); err != nil {
 					return err
 				}
 			}
@@ -646,7 +642,7 @@ func (p Pkg) Build(bos ...BuildOpt) error {
 // C - manifest, saved in cache as is, referenced by the index (E), and returned as a descriptor
 // D - attestations (if any), saved in cache as is, referenced by the index (E), and returned as a descriptor
 // E - index, saved in cache as is, stored in cache as tag "image:tag-arch", *not* returned as a descriptor
-func (p Pkg) buildArch(ctx context.Context, d dockerRunner, c spec.CacheProvider, builderImage, builderConfigPath, arch string, restart bool, writer io.Writer, bo buildOpts, imageBuildOpts spec.ImageBuildOptions) ([]registry.Descriptor, error) {
+func (p Pkg) buildArch(ctx context.Context, d DockerRunner, c spec.CacheProvider, arch string, writer io.Writer, bo buildOpts, imageBuildOpts spec.ImageBuildOptions) ([]registry.Descriptor, error) {
 	var (
 		tagArch   string
 		tag       = p.FullTag()
@@ -675,8 +671,8 @@ func (p Pkg) buildArch(ctx context.Context, d dockerRunner, c spec.CacheProvider
 		return nil, err
 	}
 
-	// find the desired builder
-	builderName := getBuilderForPlatform(arch, bo.builders)
+	// find the desired docker context for the builder
+	dockerContext := getBuilderForPlatform(arch, bo.builders)
 
 	// set the target
 	var (
@@ -715,7 +711,7 @@ func (p Pkg) buildArch(ctx context.Context, d dockerRunner, c spec.CacheProvider
 
 	imageBuildOpts.Dockerfile = bo.dockerfile
 
-	if err := d.build(ctx, tagArch, p.path, builderName, builderImage, builderConfigPath, platform, restart, bo.preCacheImages, passCache, buildCtx.Reader(), stdout, bo.sbomScan, bo.sbomScannerImage, bo.progress, imageBuildOpts); err != nil {
+	if err := d.Build(ctx, tagArch, p.path, dockerContext, platform, bo.preCacheImages, passCache, buildCtx.Reader(), stdout, bo.sbomScan, bo.sbomScannerImage, bo.progress, imageBuildOpts); err != nil {
 		stdoutCloser()
 		if strings.Contains(err.Error(), "executor failed running [/dev/.buildkit_qemu_emulator") {
 			return nil, fmt.Errorf("buildkit was unable to emulate %s. check binfmt has been set up and works for this platform: %v", platform, err)
@@ -730,7 +726,7 @@ func (p Pkg) buildArch(ctx context.Context, d dockerRunner, c spec.CacheProvider
 	}
 
 	if bo.dryRun {
-		return []registry.Descriptor{registry.Descriptor{}}, nil
+		return []registry.Descriptor{{}}, nil
 	}
 
 	// find the child manifests
