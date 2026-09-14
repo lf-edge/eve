@@ -15,8 +15,8 @@ import (
 )
 
 const (
-	// LegacyBIOS Legacy BIOS binary firmware
-	LegacyBIOS = "/usr/lib/xen/boot/seabios.bin"
+	// LegacyBIOS Legacy BIOS binary firmware, as shipped by qemu itself
+	LegacyBIOS = "/usr/share/qemu-xen/qemu/bios-256k.bin"
 	// OVMFBIOSCombined UEFI OVMF BIOS firmware (code + variables)
 	OVMFBIOSCombined = "/usr/lib/xen/boot/ovmf.bin"
 	// OVMFBIOSCode UEFI OVMF BIOS firmware (only code)
