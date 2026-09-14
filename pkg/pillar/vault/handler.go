@@ -14,7 +14,10 @@ import (
 
 // HandlerOptions defines options for handler
 type HandlerOptions struct {
-	// TpmKeyOnlyMode will use only TPM key to generate vault key
+	// TpmKeyOnlyMode will use only TPM key to generate vault key. It names the
+	// derivation to try first rather than a fact: handlers probe the other
+	// derivation before giving up and leave this at whichever one opened the
+	// vault, for the caller to persist (see GetHandlerOptions).
 	TpmKeyOnlyMode bool
 }
 
@@ -32,6 +35,10 @@ type Handler interface {
 	SetupDefaultVault() error
 	GetVaultStatuses() []*types.VaultStatus
 	SetHandlerOptions(HandlerOptions)
+	// GetHandlerOptions returns the options in effect, which for
+	// TpmKeyOnlyMode is what unlocking resolved it to rather than what was
+	// set.
+	GetHandlerOptions() HandlerOptions
 	GetOperationalInfo() (info.DataSecAtRestStatus, string)
 	// TrimVault reclaims blocks freed in the vault filesystem that were not
 	// returned to the underlying storage (e.g. a ZFS zvol mounted without
