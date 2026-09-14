@@ -7,12 +7,12 @@
 # /mnt and must be skipped here, otherwise it would be treated as the first
 # extra volume: that either remounts the rootfs on top of itself, or (worse)
 # consumes mountPoints line 1 and shifts every subsequent device-to-path
-# mapping down by one. On HV=kvm/xen root=9p, /proc/mounts has no block device
+# mapping down by one. On HV=kvm root=9p, /proc/mounts has no block device
 # at /mnt so boot_dev stays empty and the guard is a no-op.
 boot_dev=$(awk '$2 == "/mnt" {print $1; exit}' /proc/mounts | sed 's|^/dev/||')
 
 # /mnt/mountPoints is written by:
-#   - HV=kvm/xen: pkg/pillar/containerd/oci.go:AddLoader at domain-create time
+#   - HV=kvm: pkg/pillar/containerd/oci.go:AddLoader at domain-create time
 #     from disk.MountDir entries in the OCI spec.
 #   - HV=k:      init-initrd rewrites it from #EVE_VOLMOUNT cidata markers
 #                emitted by domainmgr's mountDirsToUserData, also at domain-

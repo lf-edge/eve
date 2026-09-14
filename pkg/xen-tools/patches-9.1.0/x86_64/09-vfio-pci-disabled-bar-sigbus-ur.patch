@@ -38,10 +38,10 @@ Signed-off-by: Mikhail Malyshev <mikem@zededa.com>
  system/memory.c       | 125 +++++++++++++++++++++++++++++++++++++++++-
  4 files changed, 147 insertions(+), 1 deletion(-)
 
-diff --git a/tools/qemu-xen/hw/vfio/helpers.c b/tools/qemu-xen/hw/vfio/helpers.c
+diff --git a/hw/vfio/helpers.c b/hw/vfio/helpers.c
 index ea15c79db0a..b0cc13ab89a 100644
---- a/tools/qemu-xen/hw/vfio/helpers.c
-+++ b/tools/qemu-xen/hw/vfio/helpers.c
+--- a/hw/vfio/helpers.c
++++ b/hw/vfio/helpers.c
 @@ -388,6 +388,7 @@ static void vfio_subregion_unmap(VFIORegion *region, int index)
                              region->mmaps[index].offset +
                              region->mmaps[index].size - 1);
@@ -68,10 +68,10 @@ index ea15c79db0a..b0cc13ab89a 100644
              munmap(region->mmaps[i].mmap, region->mmaps[i].size);
              object_unparent(OBJECT(&region->mmaps[i].mem));
          }
-diff --git a/tools/qemu-xen/include/exec/memory.h b/tools/qemu-xen/include/exec/memory.h
+diff --git a/include/exec/memory.h b/include/exec/memory.h
 index 296fd068c0b..9a27fc7f786 100644
---- a/tools/qemu-xen/include/exec/memory.h
-+++ b/tools/qemu-xen/include/exec/memory.h
+--- a/include/exec/memory.h
++++ b/include/exec/memory.h
 @@ -1461,6 +1461,16 @@ void memory_region_init_ram_device_ptr(MemoryRegion *mr,
                                         uint64_t size,
                                         void *ptr);
@@ -89,10 +89,10 @@ index 296fd068c0b..9a27fc7f786 100644
  /**
   * memory_region_init_alias: Initialize a memory region that aliases all or a
   *                           part of another memory region.
-diff --git a/tools/qemu-xen/system/cpus.c b/tools/qemu-xen/system/cpus.c
+diff --git a/system/cpus.c b/system/cpus.c
 index 1c818ff6828..1b4a66a3c4c 100644
---- a/tools/qemu-xen/system/cpus.c
-+++ b/tools/qemu-xen/system/cpus.c
+--- a/system/cpus.c
++++ b/system/cpus.c
 @@ -371,6 +371,14 @@ static void sigbus_reraise(void)
  static void sigbus_handler(int n, siginfo_t *siginfo, void *ctx)
  {
@@ -108,10 +108,10 @@ index 1c818ff6828..1b4a66a3c4c 100644
          sigbus_reraise();
      }
  
-diff --git a/tools/qemu-xen/system/memory.c b/tools/qemu-xen/system/memory.c
+diff --git a/system/memory.c b/system/memory.c
 index 5e6eb459d5d..48d1bbca4f9 100644
---- a/tools/qemu-xen/system/memory.c
-+++ b/tools/qemu-xen/system/memory.c
+--- a/system/memory.c
++++ b/system/memory.c
 @@ -1335,11 +1335,125 @@ const MemoryRegionOps unassigned_mem_ops = {
      .endianness = DEVICE_NATIVE_ENDIAN,
  };
