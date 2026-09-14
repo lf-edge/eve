@@ -82,6 +82,20 @@ type volumemgrContext struct {
 
 	worker worker.Worker // For background work
 
+	// pendingIngest tracks ContentTreeStatus keys for which a CAS ingest job
+	// has been accepted by the worker pool but has not yet returned a result.
+	// A content tree in LOADING without an entry here has lost its worker and
+	// must be re-driven; see doUpdateContentTree. Only touched from the main
+	// event loop goroutine.
+	pendingIngest map[string]bool
+	// inflightBlobIngests maps a blob sha256 to the ContentTreeStatus key of
+	// the accepted-but-not-completed ingest job that will load it into the
+	// CAS. Claims are made in AddWorkLoad and released when the job's result
+	// is consumed; casIngestWorker loads exactly the blobs its job claimed,
+	// so a blob shared by many content trees is ingested once instead of once
+	// per tree. Only touched from the main event loop goroutine.
+	inflightBlobIngests map[string]string
+
 	verifierRestarted    bool // Wait for verifier to restart
 	contentTreeRestarted bool // Wait to receive all contentTree after restart
 	usingConfig          bool // From zedagent
@@ -138,12 +152,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	// These settings can be overridden by GlobalConfig
 	ctx := volumemgrContext{
-		ps:                 ps,
-		vdiskGCTime:        3600,
-		deferContentDelete: 0,
-		globalConfig:       types.DefaultConfigItemValueMap(),
-		persistType:        persist.ReadPersistType(),
-		hvTypeKube:         base.IsHVTypeKube(),
+		ps:                  ps,
+		vdiskGCTime:         3600,
+		deferContentDelete:  0,
+		globalConfig:        types.DefaultConfigItemValueMap(),
+		persistType:         persist.ReadPersistType(),
+		hvTypeKube:          base.IsHVTypeKube(),
+		pendingIngest:       make(map[string]bool),
+		inflightBlobIngests: make(map[string]string),
 	}
 	agentbase.Init(&ctx, logger, log, agentName,
 		agentbase.WithPidFile(),
@@ -269,8 +285,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	populateExistingVolumesFormatObjects(&ctx, volumeEncryptedDirName)
 	populateExistingVolumesFormatObjects(&ctx, volumeClearDirName)
 
-	// Create the background worker
-	ctx.worker = worker.NewPool(log, &ctx, 20, map[string]worker.Handler{
+	// Create the background worker. Global config has already been received
+	// at this point, so size the pool from it; later changes to the setting
+	// are applied by handleGlobalConfigImpl without recreating the pool.
+	poolSize := int(ctx.globalConfig.GlobalValueInt(types.VolumemgrWorkerPoolSize))
+	if poolSize <= 0 {
+		poolSize = types.DefaultVolumemgrWorkerPoolSize
+	}
+	ctx.worker = worker.NewPool(log, &ctx, poolSize, map[string]worker.Handler{
 		workCreate:  {Request: volumeWorker, Response: processVolumeWorkResult},
 		workIngest:  {Request: casIngestWorker, Response: processCasIngestWorkResult},
 		workPrepare: {Request: volumePrepareWorker, Response: processVolumePrepareResult},
@@ -752,6 +774,15 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		// Set max retries for blob download from global config
 		if gcp.GlobalValueInt(types.BlobDownloadMaxRetries) != 0 {
 			blobDownloadMaxRetries = gcp.GlobalValueInt(types.BlobDownloadMaxRetries)
+		}
+		// Resize the background worker pool. The pool does not exist yet when
+		// the first global config arrives (it is created right after the
+		// GCInitialized wait, sized from the config), and SetMaxWorkers is
+		// pool-only, so a plain worker would be left alone.
+		if n := gcp.GlobalValueInt(types.VolumemgrWorkerPoolSize); n != 0 {
+			if pool, ok := ctx.worker.(*worker.Pool); ok {
+				pool.SetMaxWorkers(int(n))
+			}
 		}
 		maybeUpdateConfigItems(ctx, gcp)
 		ctx.globalConfig = gcp
