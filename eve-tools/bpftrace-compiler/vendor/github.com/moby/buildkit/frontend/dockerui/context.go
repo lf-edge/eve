@@ -6,12 +6,13 @@ import (
 	"context"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 
 	"github.com/moby/buildkit/client/llb"
+	"github.com/moby/buildkit/frontend/dockerfile/dfgitutil"
 	"github.com/moby/buildkit/frontend/gateway/client"
 	gwpb "github.com/moby/buildkit/frontend/gateway/pb"
-	"github.com/moby/buildkit/util/gitutil"
 	"github.com/pkg/errors"
 )
 
@@ -69,11 +70,18 @@ func (bc *Client) initContext(ctx context.Context) (*buildContext, error) {
 		bctx.dockerfileLocalName = v
 	}
 
-	keepGit := false
+	var keepGit *bool
 	if v, err := strconv.ParseBool(opts[keyContextKeepGitDirArg]); err == nil {
-		keepGit = v
+		keepGit = &v
 	}
-	if st, ok := DetectGitContext(opts[localNameContext], keepGit); ok {
+	var extraGitOpts []llb.GitOption
+	if opts[keySourceDateEpoch] != "" {
+		extraGitOpts = append(extraGitOpts, llb.GitMTimeCommit())
+	}
+	if st, ok, err := DetectGitContext(opts[localNameContext], keepGit, extraGitOpts...); ok {
+		if err != nil {
+			return nil, err
+		}
 		bctx.context = st
 		bctx.dockerfile = st
 	} else if st, filename, ok := DetectHTTPContext(opts[localNameContext]); ok {
@@ -140,22 +148,36 @@ func (bc *Client) initContext(ctx context.Context) (*buildContext, error) {
 	return bctx, nil
 }
 
-func DetectGitContext(ref string, keepGit bool) (*llb.State, bool) {
-	g, err := gitutil.ParseGitRef(ref)
+func DetectGitContext(ref string, keepGit *bool, opts ...llb.GitOption) (*llb.State, bool, error) {
+	g, isGit, err := dfgitutil.ParseGitRef(ref)
 	if err != nil {
-		return nil, false
+		return nil, isGit, err
 	}
-	commit := g.Commit
-	if g.SubDir != "" {
-		commit += ":" + g.SubDir
-	}
-	gitOpts := []llb.GitOption{WithInternalName("load git source " + ref)}
-	if keepGit {
+	gitOpts := slices.Concat(opts, []llb.GitOption{
+		llb.GitRef(g.Ref),
+		WithInternalName("load git source " + ref),
+	})
+	if g.KeepGitDir != nil && *g.KeepGitDir {
 		gitOpts = append(gitOpts, llb.KeepGitDir())
 	}
+	if keepGit != nil && *keepGit {
+		gitOpts = append(gitOpts, llb.KeepGitDir())
+	}
+	if g.SubDir != "" {
+		gitOpts = append(gitOpts, llb.GitSubDir(g.SubDir))
+	}
+	if g.Checksum != "" {
+		gitOpts = append(gitOpts, llb.GitChecksum(g.Checksum))
+	}
+	if g.Submodules != nil && !*g.Submodules {
+		gitOpts = append(gitOpts, llb.GitSkipSubmodules())
+	}
+	if g.MTime != "" {
+		gitOpts = append(gitOpts, llb.GitMTime(g.MTime))
+	}
 
-	st := llb.Git(g.Remote, commit, gitOpts...)
-	return &st, true
+	st := llb.Git(g.Remote, "", gitOpts...)
+	return &st, true, nil
 }
 
 func DetectHTTPContext(ref string) (*llb.State, string, bool) {

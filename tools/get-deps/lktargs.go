@@ -30,8 +30,7 @@ type buildArgsDockerRunner struct {
 
 func (dr *buildArgsDockerRunner) Builder(
 	ctx context.Context,
-	dockerContext, builderImage, builderConfigPath, platform string,
-	restart bool,
+	dockerContext, platform string,
 ) (*buildkitClient.Client, error) {
 	return nil, nil
 }
@@ -46,8 +45,8 @@ func (dr *buildArgsDockerRunner) Tag(ref, tag string) error {
 
 func (dr *buildArgsDockerRunner) Build(
 	ctx context.Context,
-	tag, pkg, dockerContext, builderImage, builderConfigPath, platform string,
-	restart, preCacheImages bool,
+	tag, pkg, dockerContext, platform string,
+	preCacheImages bool,
 	c spec.CacheProvider,
 	r io.Reader,
 	stdout io.Writer,
@@ -105,8 +104,9 @@ func lktBuildArgs(ymlPath string) map[string]string {
 	defer os.RemoveAll(tmpDir)
 	opts = append(opts, pkglib.WithBuildCacheDir(tmpDir))
 	opts = append(opts, pkglib.WithBuildSbomScanner("")) // but why?
-	opts = append(opts, pkglib.WithBuildBuilderImage(defaultBuilderImage))
-	opts = append(opts, pkglib.WithBuildBuilderRestart(false))
+	opts = append(opts, pkglib.WithBuildBuilderConfig(pkglib.BuilderConfig{
+		Image: defaultBuilderImage,
+	}))
 	opts = append(opts, pkglib.WithProgress("auto"))
 	opts = append(opts, pkglib.WithBuildForce())
 

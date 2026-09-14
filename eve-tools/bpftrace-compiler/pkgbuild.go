@@ -123,8 +123,9 @@ func (ib *imageBuilder) buildPkgs(args []string) error {
 		imagespec.Platform{OS: "linux", Architecture: ib.arch},
 	}
 
-	opts = append(opts, pkglib.WithBuildBuilderImage(defaultBuilderImage))
-	opts = append(opts, pkglib.WithBuildBuilderRestart(false))
+	opts = append(opts, pkglib.WithBuildBuilderConfig(pkglib.BuilderConfig{
+		Image: defaultBuilderImage,
+	}))
 	opts = append(opts, pkglib.WithProgress("auto"))
 	opts = append(opts, pkglib.WithBuildSbomScanner("")) // but why?
 
