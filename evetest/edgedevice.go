@@ -1587,9 +1587,29 @@ func (d *EdgeDevice) RebootApplication(appUUID uuid.UUID, waitUntilRebooted bool
 	}
 }
 
+// VolumeGenerationPolicy controls how PurgeApplication treats the
+// GenerationCount on the app's referenced volumes, modeling the two shapes
+// a real controller's purge can take depending on the volume being purged.
+type VolumeGenerationPolicy int
+
+const (
+	// BumpVolumeGeneration increments GenerationCount on every volume the
+	// app references: a purge that rebuilds the app's storage from scratch
+	// alongside its domain. Per eve-api's storage.proto, "generationCount
+	// indicates the mutated volume needs to be purged and built from
+	// scratch."
+	BumpVolumeGeneration VolumeGenerationPolicy = iota
+	// ReplaceVolumeConfig gives every volume the app references a fresh
+	// UUID (GenerationCount reset to 0) rather than bumping the counter on
+	// the one EVE already has, cycling the domain the same as
+	// BumpVolumeGeneration.
+	ReplaceVolumeConfig
+)
+
 // PurgeApplication purges the specified application instance and its state.
-func (d *EdgeDevice) PurgeApplication(appUUID uuid.UUID, waitUntilPurged bool,
-	timeout time.Duration) {
+// See VolumeGenerationPolicy for volumeGen.
+func (d *EdgeDevice) PurgeApplication(appUUID uuid.UUID, volumeGen VolumeGenerationPolicy,
+	waitUntilPurged bool, timeout time.Duration) {
 	config := d.getConfig(true)
 	appUUIDStr := appUUID.String()
 
@@ -1603,11 +1623,27 @@ func (d *EdgeDevice) PurgeApplication(appUUID uuid.UUID, waitUntilPurged bool,
 			} else {
 				app.Purge = &eveconfig.InstanceOpsCmd{Counter: purge.GetCounter() + 1}
 			}
-			for _, volRef := range app.GetVolumeRefList() {
-				volRef.GenerationCount++
-				for _, vol := range config.GetVolumes() {
-					if vol.GetUuid() == volRef.GetUuid() {
-						vol.GenerationCount++
+			if volumeGen == BumpVolumeGeneration {
+				for _, volRef := range app.GetVolumeRefList() {
+					volRef.GenerationCount++
+					for _, vol := range config.GetVolumes() {
+						if vol.GetUuid() == volRef.GetUuid() {
+							vol.GenerationCount++
+							break
+						}
+					}
+				}
+			} else if volumeGen == ReplaceVolumeConfig {
+				for _, volRef := range app.GetVolumeRefList() {
+					for _, vol := range config.GetVolumes() {
+						if vol.GetUuid() != volRef.GetUuid() {
+							continue
+						}
+						newVolUUID := d.th.newUUID("volume")
+						vol.Uuid = newVolUUID.String()
+						vol.GenerationCount = 0
+						volRef.Uuid = newVolUUID.String()
+						volRef.GenerationCount = 0
 						break
 					}
 				}

@@ -393,15 +393,16 @@ func (ec *EdgeCluster) RebootApplication(appUUID uuid.UUID, waitUntilRebooted bo
 
 // PurgeApplication purges the specified application across the cluster.
 // The purge counter is incremented on all devices, but the wait (if requested)
-// is performed only on the device hosting the application.
-func (ec *EdgeCluster) PurgeApplication(appUUID uuid.UUID, waitUntilPurged bool,
-	timeout time.Duration) {
+// is performed only on the device hosting the application. See
+// EdgeDevice.PurgeApplication for volumeGen.
+func (ec *EdgeCluster) PurgeApplication(appUUID uuid.UUID, volumeGen VolumeGenerationPolicy,
+	waitUntilPurged bool, timeout time.Duration) {
 	ec.checkDevices("PurgeApplication")
 	hostDev := ec.FindDeviceHostingApp(appUUID, timeout)
 	ec.forEachDeviceExcept(hostDev, func(dev *EdgeDevice) {
-		dev.PurgeApplication(appUUID, false, 0)
+		dev.PurgeApplication(appUUID, volumeGen, false, 0)
 	})
-	hostDev.PurgeApplication(appUUID, waitUntilPurged, timeout)
+	hostDev.PurgeApplication(appUUID, volumeGen, waitUntilPurged, timeout)
 }
 
 // ActivateApplication activates the specified application across the cluster.
