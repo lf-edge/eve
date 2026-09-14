@@ -32,6 +32,8 @@ var vaultSwapMarkerFile = types.PersistStatusDir + "/vault-migration-swap"
 // to exercise the failure paths, which otherwise need a real pool.
 type zfsVaultOps interface {
 	DatasetExist(name string) bool
+	// IsZvol reports whether the dataset is a zvol rather than a filesystem.
+	IsZvol(name string) (bool, error)
 	CreateVaultZvol(name, keyFile string, encrypt bool, sizeBytes uint64) error
 	CreateEtcdZvol(name, keyFile string, encrypt bool) error
 	RenameDataset(oldName, newName string) error
@@ -63,6 +65,10 @@ type realZFSVaultOps struct {
 
 func (o realZFSVaultOps) DatasetExist(name string) bool {
 	return zfs.DatasetExist(o.log, name)
+}
+
+func (o realZFSVaultOps) IsZvol(name string) (bool, error) {
+	return zfs.IsDatasetTypeZvol(name)
 }
 
 func (o realZFSVaultOps) CreateVaultZvol(name, keyFile string, encrypt bool, sizeBytes uint64) error {
