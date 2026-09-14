@@ -77,6 +77,12 @@ func (h *Ext4Handler) SetHandlerOptions(options HandlerOptions) {
 	h.options = options
 }
 
+// GetHandlerOptions returns handler options, with TpmKeyOnlyMode as unlocking
+// resolved it
+func (h *Ext4Handler) GetHandlerOptions() HandlerOptions {
+	return h.options
+}
+
 // GetVaultStatuses returns statuses of vault(s)
 func (h *Ext4Handler) GetVaultStatuses() []*types.VaultStatus {
 	var statuses []*types.VaultStatus
@@ -327,9 +333,26 @@ func (h *Ext4Handler) setupFscryptEnv() error {
 	return nil
 }
 
-// cloudKeyOnlyMode and useSealedKey are passed to stageKey
+// unlockVault opens vaultPath with the vault key. cloudKeyOnlyMode and
+// useSealedKey are passed to stageKey. The derivation that opened the vault is
+// stored back into h.options so the caller can persist it. Only the fscrypt
+// unlock is retried with the other derivation; linking the keyrings afterwards
+// is not a key problem.
 func (h *Ext4Handler) unlockVault(vaultPath string, cloudKeyOnlyMode, useSealedKey bool) error {
-	unstage, err := stageKey(h.log, cloudKeyOnlyMode, useSealedKey, h.options.TpmKeyOnlyMode, keyDir, keyFile)
+	if err := h.options.resolveUnlock(h.log, func(tpmKeyOnlyMode bool) error {
+		return h.unlockVaultWithMode(vaultPath, cloudKeyOnlyMode, useSealedKey, tpmKeyOnlyMode)
+	}); err != nil {
+		return err
+	}
+	return h.linkKeyrings()
+}
+
+// unlockVaultWithMode stages the key derived with tpmKeyOnlyMode and hands it
+// to fscrypt, which is the step that tells a matching derivation from a wrong
+// one. cloudKeyOnlyMode, useSealedKey and tpmKeyOnlyMode are passed to
+// stageKey. Linking the keyrings is left to the caller.
+func (h *Ext4Handler) unlockVaultWithMode(vaultPath string, cloudKeyOnlyMode, useSealedKey, tpmKeyOnlyMode bool) error {
+	unstage, err := stageKey(h.log, cloudKeyOnlyMode, useSealedKey, tpmKeyOnlyMode, keyDir, keyFile)
 	if err != nil {
 		return err
 	}
@@ -340,7 +363,7 @@ func (h *Ext4Handler) unlockVault(vaultPath string, cloudKeyOnlyMode, useSealedK
 		h.log.Errorf("Error unlocking vault: %v", err)
 		return err
 	}
-	return h.linkKeyrings()
+	return nil
 }
 
 // if deprecated is set, only unlock will be attempted, and creation of the vault will be skipped

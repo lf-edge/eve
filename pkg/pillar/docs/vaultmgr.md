@@ -100,8 +100,10 @@ encryption.
     state. The on-TPM data layout is canonically described in
     [evetpm.md → On-TPM Data Layout](../evetpm/evetpm.md#on-tpm-data-layout).
 * self
-  * `VaultConfig` (persistent self-publication) — only consulted on
-    first vault setup (see `checkAndPublishVaultConfig`); see
+  * `VaultConfig` (persistent self-publication) — the key-derivation
+    mode. Read at startup (`vaultKeyMode`) and, when absent, written
+    only after an unlock or create has confirmed a mode
+    (`recordVaultKeyMode`); see
     [Appendix](#appendix-legacy-key-derivation-modes) for the legacy
     `TpmKeyOnly=false` carry-over.
 
@@ -159,18 +161,19 @@ a key-derivation helper under `pkg/pillar/vault/`, and TPM glue under
 `EncryptedVaultKeyFromController`, blocks on `GCInitialized`, and
 *then* picks the filesystem handler with `vault.GetHandler(log)`.
 
-`checkAndPublishVaultConfig()` runs next, recording the
-key-derivation mode for this vault into the persistent `VaultConfig`
-self-publication; see
-[Appendix](#appendix-legacy-key-derivation-modes) for the legacy
-branch.
+`vaultKeyMode()` runs next, reporting the key-derivation mode to try
+first: the one in the persistent `VaultConfig` self-publication, or
+TPM-key-only when that publication is absent. See
+[Appendix](#appendix-legacy-key-derivation-modes) for the legacy branch
+and for why the mode is a starting point rather than a fact.
 
 Then `handler.SetupDefaultVault()` is called. If it returns an error,
 `vaultmgr` publishes the failing `VaultStatus` and waits for the
-controller to push back a key. If it succeeds, `defaultVaultUnlocked`
-is set and `uc.RunPostVaultHandlers` is fired off in a goroutine; the
-event loop publishes a final `VaultStatus` with `ConversionComplete`
-when that goroutine signals `ucChan`.
+controller to push back a key. If it succeeds, `recordVaultKeyMode()`
+persists the mode that opened the vault, `defaultVaultUnlocked` is set,
+and `uc.RunPostVaultHandlers` is fired off in a goroutine; the event
+loop publishes a final `VaultStatus` with `ConversionComplete` when
+that goroutine signals `ucChan`.
 
 ### Single-shot CLI (`runCommand`)
 
@@ -239,7 +242,9 @@ type Handler interface {
 `PersistExt4 → Ext4Handler`, `PersistZFS → ZFSHandler`, anything else
 → `UnsupportedHandler` (always returns `DATASEC_AT_REST_DISABLED`).
 `HandlerOptions{TpmKeyOnlyMode}` is set on the handler from
-`vaultmgr.Run()` after the persistent `VaultConfig` decision.
+`vaultmgr.Run()` after the persistent `VaultConfig` decision. It names
+the derivation to try first; `GetHandlerOptions` reports back whichever
+one unlocking actually used, and that is what gets persisted.
 
 ### Ext4 handler (`pkg/pillar/vault/handler_ext4.go`)
 
@@ -373,10 +378,13 @@ Run()
   └─ initializeSelfPublishHandles()                  (reads VaultConfig)
   └─ tpmEnabled = etpm.IsTpmEnabled()
   └─ if tpmEnabled:
-       └─ checkAndPublishVaultConfig()               (sets TpmKeyOnly)
-       └─ handler.SetHandlerOptions({TpmKeyOnlyMode})
+       └─ vaultKeyMode()                             (TpmKeyOnly to try first)
+  └─ handler.SetHandlerOptions(options)              TpmKeyOnlyMode only with a TPM;
+                                                     CurrentPartitionCommitted always
   └─ handler.SetupDefaultVault()                     ext4: fscrypt setup+encrypt
                                                      zfs:  zfs create -o encryption=…
+  └─ recordVaultKeyMode()                            persist the mode that worked,
+                                                     if it differs from the record
   └─ defaultVaultUnlocked = true
   └─ go uc.RunPostVaultHandlers(...)                 post-vault upgradeconverter
   └─ publishVaultKey(DefaultVaultName)               EncryptedVaultKeyFromDevice
@@ -568,6 +576,18 @@ release and have since been upgraded:
   TPM key. `TpmKeyOnly` is sticky in `VaultConfig` — once
   `false`, it stays `false`, because the on-disk fscrypt protector
   cannot be re-derived from a different key.
+
+  Losing `VaultConfig` does not move a device between the two modes.
+  `vaultKeyMode` then names TPM-key-only, which is wrong for a vault
+  created before 7.10.0, and a mode read back from `VaultConfig` can be
+  wrong too — an EVE that wrote its guess out before trying it leaves
+  one behind, and a vault recreate keys the replacement TPM-key-only
+  whatever the old vault used. None of these is distinguishable at the
+  point of failure from a bad seal, since the TPM unseal succeeds and
+  only fscrypt or `zfs load-key` refuses. So any mode that does not
+  unlock is retried against the other one (`resolveKeyMode`), and the
+  mode that opened the vault is persisted whenever it disagrees with
+  the record.
 * **`cloudKeyOnlyMode=true`** — only reached from
   `Ext4Handler.changeProtector` while migrating the pre-5.6.2
   deprecated vaults (`/persist/img`, `/persist/config`) to a TPM-derived
