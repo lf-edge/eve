@@ -55,11 +55,11 @@ Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>  [rebased to qemu-xen-
  6 files changed, 399 insertions(+), 3 deletions(-)
  create mode 100644 chardev/char-hub.c
 
-diff --git a/tools/qemu-xen/chardev/char-hub.c b/tools/qemu-xen/chardev/char-hub.c
+diff --git a/chardev/char-hub.c b/chardev/char-hub.c
 new file mode 100644
 index 0000000000..3a4aae3289
 --- /dev/null
-+++ b/tools/qemu-xen/chardev/char-hub.c
++++ b/chardev/char-hub.c
 @@ -0,0 +1,301 @@
 +/*
 + * QEMU Character Hub Device
@@ -362,10 +362,10 @@ index 0000000000..3a4aae3289
 +}
 +
 +type_init(register_types);
-diff --git a/tools/qemu-xen/chardev/char.c b/tools/qemu-xen/chardev/char.c
+diff --git a/chardev/char.c b/chardev/char.c
 index ba847b6e9e..b9f79f8717 100644
---- a/tools/qemu-xen/chardev/char.c
-+++ b/tools/qemu-xen/chardev/char.c
+--- a/chardev/char.c
++++ b/chardev/char.c
 @@ -933,7 +933,26 @@ QemuOptsList qemu_chardev_opts = {
          },{
              .name = "chardev",
@@ -404,10 +404,10 @@ index ba847b6e9e..b9f79f8717 100644
          return NULL;
      }
  
-diff --git a/tools/qemu-xen/chardev/chardev-internal.h b/tools/qemu-xen/chardev/chardev-internal.h
+diff --git a/chardev/chardev-internal.h b/chardev/chardev-internal.h
 index 4e03af3147..520c5c91d8 100644
---- a/tools/qemu-xen/chardev/chardev-internal.h
-+++ b/tools/qemu-xen/chardev/chardev-internal.h
+--- a/chardev/chardev-internal.h
++++ b/chardev/chardev-internal.h
 @@ -29,13 +29,16 @@
  #include "chardev/char-fe.h"
  #include "qom/object.h"
@@ -484,10 +484,10 @@ index 4e03af3147..520c5c91d8 100644
  
  void mux_set_focus(Chardev *chr, int focus);
  void mux_chr_send_all_event(Chardev *chr, QEMUChrEvent event);
-diff --git a/tools/qemu-xen/chardev/meson.build b/tools/qemu-xen/chardev/meson.build
+diff --git a/chardev/meson.build b/chardev/meson.build
 index 70070a8279..56ee39ac0b 100644
---- a/tools/qemu-xen/chardev/meson.build
-+++ b/tools/qemu-xen/chardev/meson.build
+--- a/chardev/meson.build
++++ b/chardev/meson.build
 @@ -3,6 +3,7 @@ chardev_ss.add(files(
    'char-file.c',
    'char-io.c',
@@ -496,10 +496,10 @@ index 70070a8279..56ee39ac0b 100644
    'char-null.c',
    'char-pipe.c',
    'char-ringbuf.c',
-diff --git a/tools/qemu-xen/include/chardev/char.h b/tools/qemu-xen/include/chardev/char.h
+diff --git a/include/chardev/char.h b/include/chardev/char.h
 index 01df55f9e8..429852f8d9 100644
---- a/tools/qemu-xen/include/chardev/char.h
-+++ b/tools/qemu-xen/include/chardev/char.h
+--- a/include/chardev/char.h
++++ b/include/chardev/char.h
 @@ -232,6 +232,7 @@ OBJECT_DECLARE_TYPE(Chardev, ChardevClass, CHARDEV)
  
  #define TYPE_CHARDEV_NULL "chardev-null"
@@ -508,10 +508,10 @@ index 01df55f9e8..429852f8d9 100644
  #define TYPE_CHARDEV_RINGBUF "chardev-ringbuf"
  #define TYPE_CHARDEV_PTY "chardev-pty"
  #define TYPE_CHARDEV_CONSOLE "chardev-console"
-diff --git a/tools/qemu-xen/qapi/char.json b/tools/qemu-xen/qapi/char.json
+diff --git a/qapi/char.json b/qapi/char.json
 index ef58445cee..e8521f7fd8 100644
---- a/tools/qemu-xen/qapi/char.json
-+++ b/tools/qemu-xen/qapi/char.json
+--- a/qapi/char.json
++++ b/qapi/char.json
 @@ -319,6 +319,19 @@
    'data': { 'chardev': 'str' },
    'base': 'ChardevCommon' }

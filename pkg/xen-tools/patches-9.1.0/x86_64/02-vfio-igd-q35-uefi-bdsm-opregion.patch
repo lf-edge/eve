@@ -40,10 +40,10 @@ Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
  hw/vfio/igd.c | 189 ++++++++++++++++++++++++++++++++++++++------------
  1 file changed, 143 insertions(+), 46 deletions(-)
 
-diff --git a/tools/qemu-xen/hw/vfio/igd.c b/tools/qemu-xen/hw/vfio/igd.c
+diff --git a/hw/vfio/igd.c b/hw/vfio/igd.c
 index c105c9993f..3b52c471fc 100644
---- a/tools/qemu-xen/hw/vfio/igd.c
-+++ b/tools/qemu-xen/hw/vfio/igd.c
+--- a/hw/vfio/igd.c
++++ b/hw/vfio/igd.c
 @@ -112,7 +112,8 @@ typedef struct VFIOIGDQuirk {
  } VFIOIGDQuirk;
  

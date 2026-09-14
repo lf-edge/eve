@@ -61,44 +61,24 @@ RUN strip /out/usr/lib/* || :
 # Register liburing in the APK DB, mandatory for it to be included in the SBOM.
 RUN register-sbom-pkg.sh -n liburing -v "${LIBURING_VERSION}" -l LGPL-2.1-only -u https://github.com/axboe/liburing
 
-# When changing this version, also update SEABIOS_UPSTREAM_REVISION to whatever is in `Config.mk` in the xen source
-ENV XEN_VERSION=4.21.1
-ENV XEN_SOURCE=https://downloads.xenproject.org/release/xen/${XEN_VERSION}/xen-${XEN_VERSION}.tar.gz
-ENV EXTRA_QEMUU_CONFIGURE_ARGS="--enable-libusb --enable-linux-aio \
+ENV EXTRA_QEMU_CONFIGURE_ARGS="--enable-libusb --enable-linux-aio \
     --enable-vhost-net --enable-vhost-kernel \
     --enable-vhost-user --enable-linux-io-uring --enable-zstd"
 
 WORKDIR /
 
-# Download and verify xen
-#TODO: verify Xen
-# hadolint ignore=DL3020
-ADD ${XEN_SOURCE} /xen.tar.gz
-RUN [ -f "$(basename ${XEN_SOURCE})" ] || tar --absolute-names -xz < /xen.tar.gz && mv "/xen-${XEN_VERSION}" /xen
-
-# Starting with xen 4.21, the release tarball no longer bundles tools/qemu-xen/
-# in-tree (4.19 did).  Fetch the qemu source separately so our local patches in
-# patches-${XEN_VERSION} that touch tools/qemu-xen/ have something to apply
-# against, and so the xen build uses our patched tree instead of cloning a
-# fresh one.
-#
-# We pull the official upstream qemu release tarball rather than cloning
-# xenbits.xen.org/qemu-xen.git so that every source line in the resulting
-# image can be attributed to a discrete URL + sha256 by the buildkit SBOM
-# scanner.  A `RUN git clone` would be opaque to that tooling.
-#
-# qemu-xen-4.21.0 ≡ upstream qemu v9.1.0 plus two small Xen-bus patches
-# (xs_node_read helper, %ms scanf fix); we carry those as 02-/03- patches in
-# patches-${XEN_VERSION}/ so the resulting tree is functionally identical to
-# qemu-xen-4.21.0.
+# We pull the official upstream qemu release tarball rather than cloning, so
+# that every source line in the resulting image can be attributed to a discrete
+# URL + sha256 by the buildkit SBOM scanner. A `RUN git clone` would be opaque
+# to that tooling.
 ENV QEMU_VERSION=9.1.0
 ENV QEMU_SOURCE=https://download.qemu.org/qemu-${QEMU_VERSION}.tar.xz
 # hadolint ignore=DL3020
 ADD ${QEMU_SOURCE} /qemu.tar.xz
-RUN mkdir -p /xen/tools/qemu-xen && \
-    tar --absolute-names -xJf /qemu.tar.xz --strip-components=1 -C /xen/tools/qemu-xen && \
+RUN mkdir -p /qemu && \
+    tar --absolute-names -xJf /qemu.tar.xz --strip-components=1 -C /qemu && \
     rm -f /qemu.tar.xz && \
-    rm -rf /xen/tools/qemu-xen/roms
+    rm -rf /qemu/roms
 
 # Meson subprojects.  qemu's release tarball ships .wrap files (not the
 # subproject source itself); without these, the meson build step in the
@@ -124,8 +104,8 @@ ADD https://gitlab.com/libblkio/libblkio/-/archive/f84cc963a444e4cb34813b2dcfc5b
 ADD https://gitlab.com/qemu-project/libvfio-user/-/archive/0b28d205572c80b568a1003db2c8f37ca333e4d7/libvfio-user-0b28d205572c80b568a1003db2c8f37ca333e4d7.tar.gz /subprojects/libvfio-user.tar.gz
 # hadolint ignore=DL3020
 ADD https://gitlab.freedesktop.org/slirp/libslirp/-/archive/26be815b86e8d49add8c9a8b320239b9594ff03d/libslirp-26be815b86e8d49add8c9a8b320239b9594ff03d.tar.gz /subprojects/slirp.tar.gz
-RUN cd /xen/tools/qemu-xen/subprojects && \
-    for name in berkeley-softfloat-3 berkeley-testfloat-3 dtc keycodemapdb libblkio libvfio-user slirp; do \
+WORKDIR /qemu/subprojects
+RUN for name in berkeley-softfloat-3 berkeley-testfloat-3 dtc keycodemapdb libblkio libvfio-user slirp; do \
         rm -rf "$name" && mkdir "$name" && \
         tar --absolute-names -xzf "/subprojects/$name.tar.gz" -C "$name" --strip-components=1; \
     done && \
@@ -141,62 +121,76 @@ RUN cd /xen/tools/qemu-xen/subprojects && \
     rm -rf /subprojects
 
 # Apply local patches
-COPY patches-${XEN_VERSION} /patches
-WORKDIR /xen
-RUN cat /patches/*.patch /patches/"$(uname -m)"/*.patch | patch -p1
-
-# we will need this to build xen; without it, it will try and download directly
-# Note that Xen's `configure` command uses this env variable SEABIOS_UPSTREAM_URL to find the seabios source.
-ENV SEABIOS_UPSTREAM_URL /seabios.git
-# this revision should be kept in sync with the XEN_VERSION by reading `Config.mk` in the xen source
-ENV SEABIOS_UPSTREAM_REVISION rel-1.16.3
-ADD --keep-git-dir git://xenbits.xen.org/seabios.git#${SEABIOS_UPSTREAM_REVISION} ${SEABIOS_UPSTREAM_URL}
-# we need this because it will complain about ambiguous refs
-RUN git config --global core.warnambiguousrefs false
+COPY patches-${QEMU_VERSION} /patches
+WORKDIR /qemu
+RUN for p in /patches/*.patch /patches/"$(uname -m)"/*.patch; do \
+        # only x86_64 carries arch patches, so the glob may not expand
+        [ -e "$p" ] || continue; \
+        patch -p1 < "$p" || exit 1; \
+    done
 
 RUN mkdir -p /out
 
-# FEATURES="--enable-stubdom --enable-vtpm-stubdom --enable-vtpmmgr-stubdom"
-COPY gmp.patch /xen/stubdom
-
-WORKDIR /xen
-
 # DEBUG-ONLY: to build the qemu fault injector (x-inject-internal-error QMP
-# command, patch x86_64/14-*) into qemu-xen, uncomment the ENV line below to
-# define CONFIG_EVE_CRASH_INJECTOR. linuxkit `pkg build` cannot pass a
-# --build-arg, so this manual edit is the toggle. Left OFF for production
-# builds — the injector code stays inert (guarded) and out of the QMP schema.
-# ENV EXTRA_QEMUU_CONFIGURE_ARGS="${EXTRA_QEMUU_CONFIGURE_ARGS} --extra-cflags=-DCONFIG_EVE_CRASH_INJECTOR"
+# command, patch x86_64/07-*), uncomment the ENV line below to define
+# CONFIG_EVE_CRASH_INJECTOR. linuxkit `pkg build` cannot pass a --build-arg, so
+# this manual edit is the toggle. Left OFF for production builds — the injector
+# code stays inert (guarded) and out of the QMP schema.
+# ENV EXTRA_QEMU_CONFIGURE_ARGS="${EXTRA_QEMU_CONFIGURE_ARGS} --extra-cflags=-DCONFIG_EVE_CRASH_INJECTOR"
 
-# disable golang as it does not play well together with musl (stderr is defined as FILE* const and fails to compile)
-RUN ./configure --prefix=/usr --disable-xen --disable-golang --disable-qemu-traditional --disable-docs --enable-9pfs \
-    --with-system-ovmf=/usr/lib/xen/boot/ovmf.bin --disable-stubdom --disable-openbios \
-    --enable-vhost-vsock --enable-vhost-scsi \
-    --disable-microblaze --disable-mips --disable-ppc \
-    --disable-sparc --disable-tricore --disable-alpha --disable-hppa \
-    --disable-storage-daemon
-RUN make -j "$(getconf _NPROCESSORS_ONLN)" && make dist
-RUN dist/install.sh /out
+# The install paths below are the ones Xen's tools/Makefile used to pass, kept
+# verbatim so pillar's hardcoded /usr/lib/xen/... device-model and firmware
+# paths keep resolving. The XC_WANT_COMPAT_* defines and the rpath likewise
+# came from there. Renaming the prefix is deliberately a separate change.
+WORKDIR /qemu-build
+RUN /qemu/configure \
+    --disable-xen \
+    --target-list="$(uname -m)-softmmu" \
+    --enable-trace-backends=log,simple \
+    --prefix=/usr \
+    --bindir=/usr/lib/xen/bin \
+    --libdir=/usr/lib/xen/lib \
+    --includedir=/usr/lib/xen/include \
+    --libexecdir=/usr/lib/xen/libexec \
+    --datadir=/usr/share/qemu-xen \
+    --firmwarepath=/usr/lib/xen/share/qemu-firmware \
+    --docdir=/usr/lib/xen/share/doc \
+    --mandir=/usr/lib/xen/share/man \
+    --localstatedir=/var \
+    --extra-cflags="-DXATTR_SIZE_MAX=65536 \
+        -DXC_WANT_COMPAT_EVTCHN_API=1 \
+        -DXC_WANT_COMPAT_GNTTAB_API=1 \
+        -DXC_WANT_COMPAT_MAP_FOREIGN_API=1 \
+        -DXC_WANT_COMPAT_DEVICEMODEL_API=1" \
+    --extra-ldflags="-Wl,-rpath,/usr/lib/xen/lib" \
+    --enable-virtfs \
+    --disable-docs \
+    --disable-werror \
+    --disable-guest-agent \
+    --python=python3 \
+    --cpu="$(uname -m)" \
+    ${EXTRA_QEMU_CONFIGURE_ARGS}
+RUN make -j "$(getconf _NPROCESSORS_ONLN)"
+RUN make install DESTDIR=/out
 
-# Register xen in the APK DB, mandatory for it to be included in the SBOM.
-RUN register-sbom-pkg.sh -n xen -v "${XEN_VERSION}" -l GPL-2.0-only -u https://xenproject.org
-
-# Register seabios in the APK DB, mandatory for it to be included in the SBOM.
-RUN register-sbom-pkg.sh -n seabios -v "${SEABIOS_UPSTREAM_REVISION}" -l LGPL-2.1-only -u https://www.seabios.org
+# Register qemu in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n qemu -v "${QEMU_VERSION}" -l GPL-2.0-only -u https://www.qemu.org
 
 # Filter out a few things that we don't currently need
 RUN rm -rf /out/usr/share/qemu-xen/qemu/edk2-* /out/var/run /out/usr/include
-# FIXME: this is a workaround for Xen on ARM still requiring qemu-system-i386
-#   https://wiki.xenproject.org/wiki/Xen_ARM_with_Virtualization_Extensions#Use_of_qemu-system-i386_on_ARM
 WORKDIR /out/usr/lib/xen/bin/
-RUN strip * || :
-RUN if [ "$(uname -m)" = "x86_64" ]; then rm -f qemu-system-i386 && ln -s "qemu-system-$(uname -m)" qemu-system-i386 ;fi
+RUN strip ./* || :
 
 COPY --from=uefi-build / /uefi/
-RUN mkdir -p /out/usr/lib/xen/boot && cp /uefi/OVMF.fd /out/usr/lib/xen/boot/ovmf.bin && \
+RUN mkdir -p /out/usr/lib/xen/boot && \
+    cp /uefi/OVMF.fd /out/usr/lib/xen/boot/ovmf.bin && \
     cp /uefi/OVMF_PVH.fd /out/usr/lib/xen/boot/ovmf-pvh.bin && \
-    { [ -f /uefi/OVMF_CODE.fd ] && cp /uefi/OVMF_CODE.fd /out/usr/lib/xen/boot/OVMF_CODE.fd || :; } && \
-    { [ -f /uefi/igd.rom ] && cp /uefi/igd.rom /out/usr/lib/xen/boot/igd.rom || :; }
+    if [ -f /uefi/OVMF_CODE.fd ]; then \
+        cp /uefi/OVMF_CODE.fd /out/usr/lib/xen/boot/OVMF_CODE.fd; \
+    fi && \
+    if [ -f /uefi/igd.rom ]; then \
+        cp /uefi/igd.rom /out/usr/lib/xen/boot/igd.rom; \
+    fi
 
 # We need to keep a slim profile, which means removing things we don't need
 RUN rm -rf /out/usr/lib/debug /out/usr/lib/python*
@@ -216,7 +210,7 @@ FROM scratch
 COPY --from=build /out/ /
 COPY --from=runx-build /runx-initrd /usr/lib/xen/boot/runx-initrd
 COPY init.sh /
-COPY qemu-ifup xen-start /etc/xen/scripts/
+COPY qemu-ifup /etc/xen/scripts/
 
 # Adjust /var/run, /var/lib and /var/lock to be shared
 RUN mv /var /var.template && ln -s /run /var && ln -s /run /var.template/run

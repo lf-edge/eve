@@ -40,10 +40,10 @@ Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>  [rebased to qemu-xen-
  ui/console-vc.c | 88 +++++++++++++++++++++++++++++++++++++++++++++++++
  1 file changed, 88 insertions(+)
 
-diff --git a/tools/qemu-xen/ui/console-vc.c b/tools/qemu-xen/ui/console-vc.c
+diff --git a/ui/console-vc.c b/ui/console-vc.c
 index 4ff541dd40..642ad3306c 100644
---- a/tools/qemu-xen/ui/console-vc.c
-+++ b/tools/qemu-xen/ui/console-vc.c
+--- a/ui/console-vc.c
++++ b/ui/console-vc.c
 @@ -644,6 +644,88 @@ static void vc_set_cursor(VCChardev *vc, int x, int y)
      s->y = y;
  }

@@ -33,10 +33,10 @@ Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
  hw/vfio/igd.c | 57 +++++++++++++++++++++++++++++++++++++++++++++++++++
  1 file changed, 57 insertions(+)
 
-diff --git a/tools/qemu-xen/hw/vfio/igd.c b/tools/qemu-xen/hw/vfio/igd.c
+diff --git a/hw/vfio/igd.c b/hw/vfio/igd.c
 index 9ad1ad0717..fae1606e1d 100644
---- a/tools/qemu-xen/hw/vfio/igd.c
-+++ b/tools/qemu-xen/hw/vfio/igd.c
+--- a/hw/vfio/igd.c
++++ b/hw/vfio/igd.c
 @@ -16,6 +16,7 @@
  #include "qapi/error.h"
  #include "hw/hw.h"
