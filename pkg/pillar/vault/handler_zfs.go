@@ -472,6 +472,10 @@ const (
 	// vaultMigrationDropLeftovers - the vault itself is in place; discard what
 	// is left over.
 	vaultMigrationDropLeftovers
+	// vaultMigrationKeepLeftovers - a vault is in place but it is not the one
+	// the interrupted swap was producing, so what is left over is the only copy
+	// of the contents and must be kept.
+	vaultMigrationKeepLeftovers
 )
 
 func (a vaultMigrationRecovery) String() string {
@@ -482,6 +486,8 @@ func (a vaultMigrationRecovery) String() string {
 		return "restore-backup"
 	case vaultMigrationDropLeftovers:
 		return "drop-leftovers"
+	case vaultMigrationKeepLeftovers:
+		return "keep-leftovers"
 	default:
 		return "noop"
 	}
@@ -497,9 +503,19 @@ func (a vaultMigrationRecovery) String() string {
 // reports the vault as unusable, which leads vaultmgr to destroy the vault and
 // set up a fresh one, and that arrives here with the vault absent and a
 // staging dataset in place.
-func planVaultMigrationRecovery(vaultExists, stagingExists, backupExists,
+func planVaultMigrationRecovery(vaultExists, vaultIsZvol, stagingExists, backupExists,
 	swapStaged bool) vaultMigrationRecovery {
 	if vaultExists {
+		// Only a migrated vault makes what is left over genuinely leftover. A
+		// filesystem vault alongside migration datasets means the vault in place
+		// is not the one the swap was producing: EVE-kvm creates a fresh one when
+		// it finds none, which is what a fallback boot inside the swap window
+		// leaves behind, and destroying the datasets then discards both the
+		// pre-migration vault and the completed copy — the only two places the
+		// contents still exist.
+		if !vaultIsZvol && (stagingExists || backupExists) {
+			return vaultMigrationKeepLeftovers
+		}
 		if stagingExists || backupExists {
 			return vaultMigrationDropLeftovers
 		}
@@ -545,10 +561,31 @@ func (h *ZFSHandler) recoverInterruptedVaultMigration(vaultPath string) error {
 	}
 
 	vaultExists := ops.DatasetExist(vaultPath)
+	vaultIsZvol := false
+	if vaultExists {
+		isZvol, zerr := ops.IsZvol(vaultPath)
+		if zerr != nil {
+			// Treat an unreadable type as "not the migrated vault": that is the
+			// side that keeps the leftovers rather than destroying them.
+			h.log.Errorf("recoverInterruptedVaultMigration: cannot read the type of %s: %v; assuming filesystem",
+				vaultPath, zerr)
+		}
+		vaultIsZvol = isZvol
+	}
 	swapStaged := marked == staging
-	action := planVaultMigrationRecovery(vaultExists, stagingExists, backupExists, swapStaged)
-	h.log.Noticef("recoverInterruptedVaultMigration(%s): leftover migration state (staging=%v backup=%v vault=%v swapStaged=%v): %s",
-		vaultPath, stagingExists, backupExists, vaultExists, swapStaged, action)
+	action := planVaultMigrationRecovery(vaultExists, vaultIsZvol, stagingExists, backupExists, swapStaged)
+	h.log.Noticef("recoverInterruptedVaultMigration(%s): leftover migration state (staging=%v backup=%v vault=%v vaultIsZvol=%v swapStaged=%v): %s",
+		vaultPath, stagingExists, backupExists, vaultExists, vaultIsZvol, swapStaged, action)
+
+	if action == vaultMigrationKeepLeftovers {
+		// Nothing is destroyed and the swap record is left in place: it names the
+		// dataset holding the completed copy, and it is the only thing that says
+		// this vault is not the one the migration was producing.
+		h.log.Errorf("recoverInterruptedVaultMigration(%s): the vault in place is not the migrated zvol while %s/%s are present; "+
+			"keeping them, the vault contents are in those datasets and not in %s",
+			vaultPath, staging, backup, vaultPath)
+		return nil
+	}
 
 	switch action {
 	case vaultMigrationFinishSwap:

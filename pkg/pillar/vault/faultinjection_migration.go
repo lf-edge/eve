@@ -113,6 +113,8 @@ func (f faultVaultOps) park(oldName, newName string) {
 
 func (f faultVaultOps) DatasetExist(name string) bool { return f.inner.DatasetExist(name) }
 
+func (f faultVaultOps) IsZvol(name string) (bool, error) { return f.inner.IsZvol(name) }
+
 func (f faultVaultOps) CreateVaultZvol(name, keyFile string, encrypt bool, sizeBytes uint64) error {
 	return f.inner.CreateVaultZvol(name, keyFile, encrypt, sizeBytes)
 }

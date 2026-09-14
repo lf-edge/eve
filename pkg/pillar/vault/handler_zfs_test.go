@@ -53,7 +53,9 @@ func TestVaultNeedsZvolMigration(t *testing.T) {
 // which swap marker is recorded, and can fail any single operation, so the
 // migration and recovery paths can be exercised without a pool.
 type fakeZFSOps struct {
-	datasets  map[string]bool
+	datasets map[string]bool
+	// zvols marks which of datasets are zvols rather than filesystems.
+	zvols     map[string]bool
 	marker    string
 	availFree uint64
 	vaultUsed uint64
@@ -68,6 +70,7 @@ type fakeZFSOps struct {
 func newFakeZFSOps(datasets ...string) *fakeZFSOps {
 	f := &fakeZFSOps{
 		datasets:  make(map[string]bool),
+		zvols:     make(map[string]bool),
 		availFree: 100 << 30,
 		vaultUsed: 1 << 30,
 		fail:      make(map[string]error),
@@ -104,11 +107,19 @@ func (f *fakeZFSOps) DatasetExist(name string) bool {
 	return f.datasets[name]
 }
 
+func (f *fakeZFSOps) IsZvol(name string) (bool, error) {
+	if err := f.call("IsZvol", name); err != nil {
+		return false, err
+	}
+	return f.zvols[name], nil
+}
+
 func (f *fakeZFSOps) CreateVaultZvol(name, _ string, _ bool, _ uint64) error {
 	if err := f.call("CreateVaultZvol", name); err != nil {
 		return err
 	}
 	f.datasets[name] = true
+	f.zvols[name] = true
 	return nil
 }
 
@@ -117,6 +128,7 @@ func (f *fakeZFSOps) CreateEtcdZvol(name, _ string, _ bool) error {
 		return err
 	}
 	f.datasets[name] = true
+	f.zvols[name] = true
 	return nil
 }
 
@@ -126,6 +138,10 @@ func (f *fakeZFSOps) RenameDataset(oldName, newName string) error {
 	}
 	delete(f.datasets, oldName)
 	f.datasets[newName] = true
+	if f.zvols[oldName] {
+		delete(f.zvols, oldName)
+		f.zvols[newName] = true
+	}
 	return nil
 }
 
@@ -134,6 +150,7 @@ func (f *fakeZFSOps) DestroyDataset(name string) error {
 		return err
 	}
 	delete(f.datasets, name)
+	delete(f.zvols, name)
 	return nil
 }
 
@@ -222,18 +239,27 @@ func TestPlanVaultMigrationRecovery(t *testing.T) {
 	tests := []struct {
 		name          string
 		vaultExists   bool
+		vaultIsZvol   bool
 		stagingExists bool
 		backupExists  bool
 		swapStaged    bool
 		want          vaultMigrationRecovery
 	}{
-		{name: "nothing left over", vaultExists: true,
+		{name: "nothing left over", vaultExists: true, vaultIsZvol: true,
 			want: vaultMigrationNoop},
-		{name: "vault in place, swap cleanup interrupted", vaultExists: true,
-			stagingExists: true, backupExists: true, swapStaged: true,
+		{name: "migrated vault in place, swap cleanup interrupted", vaultExists: true,
+			vaultIsZvol: true, stagingExists: true, backupExists: true, swapStaged: true,
 			want: vaultMigrationDropLeftovers},
-		{name: "vault in place, backup left over", vaultExists: true,
-			backupExists: true, want: vaultMigrationDropLeftovers},
+		{name: "migrated vault in place, backup left over", vaultExists: true,
+			vaultIsZvol: true, backupExists: true, want: vaultMigrationDropLeftovers},
+		// The state a device is left in when it falls back to EVE-kvm inside the
+		// swap window: kvm finds no vault, creates a fresh filesystem one, and the
+		// only copies of the contents are the datasets the migration left.
+		{name: "fresh kvm vault beside an interrupted swap", vaultExists: true,
+			stagingExists: true, backupExists: true, swapStaged: true,
+			want: vaultMigrationKeepLeftovers},
+		{name: "fresh kvm vault beside a backup alone", vaultExists: true,
+			backupExists: true, want: vaultMigrationKeepLeftovers},
 		{name: "swap interrupted between the renames", stagingExists: true,
 			backupExists: true, swapStaged: true, want: vaultMigrationFinishSwap},
 		{name: "swap interrupted, backup already destroyed", stagingExists: true,
@@ -249,8 +275,8 @@ func TestPlanVaultMigrationRecovery(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := planVaultMigrationRecovery(tc.vaultExists, tc.stagingExists,
-				tc.backupExists, tc.swapStaged)
+			got := planVaultMigrationRecovery(tc.vaultExists, tc.vaultIsZvol,
+				tc.stagingExists, tc.backupExists, tc.swapStaged)
 			assert.Equal(t, tc.want, got)
 		})
 	}
@@ -274,10 +300,11 @@ func TestRecoverInterruptedVaultMigrationDropsPartialCopy(t *testing.T) {
 // TestRecoverInterruptedVaultMigration covers the remaining leftover states.
 func TestRecoverInterruptedVaultMigration(t *testing.T) {
 	tests := []struct {
-		name      string
-		datasets  []string
-		marker    string
-		wantVault bool
+		name        string
+		datasets    []string
+		vaultIsZvol bool
+		marker      string
+		wantVault   bool
 	}{
 		{
 			name:      "swap interrupted between the renames",
@@ -297,10 +324,11 @@ func TestRecoverInterruptedVaultMigration(t *testing.T) {
 			wantVault: true,
 		},
 		{
-			name:      "vault in place, swap cleanup interrupted",
-			datasets:  []string{testVault, testBackup},
-			marker:    testStaging,
-			wantVault: true,
+			name:        "migrated vault in place, swap cleanup interrupted",
+			datasets:    []string{testVault, testBackup},
+			vaultIsZvol: true,
+			marker:      testStaging,
+			wantVault:   true,
 		},
 		{
 			name:      "no leftovers",
@@ -311,6 +339,7 @@ func TestRecoverInterruptedVaultMigration(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			ops := newFakeZFSOps(tc.datasets...)
+			ops.zvols[testVault] = tc.vaultIsZvol
 			ops.marker = tc.marker
 			h := testZFSHandler(ops)
 
@@ -322,6 +351,24 @@ func TestRecoverInterruptedVaultMigration(t *testing.T) {
 			assert.Empty(t, ops.marker)
 		})
 	}
+}
+
+// TestRecoverKeepsLeftoversBesideAFreshVault covers the state a device is left
+// in when it falls back to EVE-kvm inside the swap window: kvm has no recovery
+// code, finds no vault and creates a fresh filesystem one, so the migration
+// datasets hold the only copies of the contents. Recovery must not destroy them.
+func TestRecoverKeepsLeftoversBesideAFreshVault(t *testing.T) {
+	ops := newFakeZFSOps(testVault, testStaging, testBackup)
+	ops.zvols[testStaging] = true // the completed copy
+	ops.marker = testStaging      // the swap was pending when power went
+	h := testZFSHandler(ops)
+
+	require.NoError(t, h.recoverInterruptedVaultMigration(testVault))
+
+	assert.True(t, ops.datasets[testStaging], "the completed copy was destroyed")
+	assert.True(t, ops.datasets[testBackup], "the pre-migration vault was destroyed")
+	assert.Equal(t, testStaging, ops.marker, "the swap record was cleared, losing the only record of the pending swap")
+	assert.Equal(t, 0, ops.calls["DestroyDataset"], "recovery destroyed a dataset")
 }
 
 // TestMigrateVaultFsToZvolDropsStagingOnError covers the cleanup of the
