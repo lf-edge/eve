@@ -69,15 +69,17 @@ import (
 //     powered-off node 1 - EdgeDevice.ApplyConfig's push does not require
 //     device reachability) but waits only on the node actually hosting the
 //     app; there is no exclusive gate on the delete itself.
-//  6. End-state assertion: exactly one VMIRS, named for the NEW generation,
-//     observed from the node that now hosts the app. Unlike the other two
-//     purge tests, this one makes no volume or guest-level assertion
+//  6. purge-end-state-asserted: exactly one VMIRS, named for the NEW
+//     generation, observed from the node that now hosts the app. Unlike the
+//     other two purge tests, this one makes no volume or guest-level assertion
 //     (VolumeStatus is a per-node ephemeral publication and its
 //     clustered/replicated-storage semantics across a node failover have
 //     not been established for this suite; the app's forwarded SSH port on
 //     the new host has not been either).
-//  7. dnid-node-powered-on: power node 1 back on so cluster teardown does
-//     not have to reason about an already-off device.
+//
+// Node 1 is powered back on from a defer armed at step 3, so cluster teardown
+// never has to reason about an already-off device -- including when an
+// assertion above aborts the test body.
 //
 // Suite placement
 // ---------------
@@ -198,10 +200,20 @@ func TestVMAppPurgeDuringFailover(test *testing.T) {
 		"app should have been scheduled onto its preferred (DNID) node while it is healthy")
 
 	dnidDevice := evetest.GetEdgeDevice(devName[0])
-	baselineCounter, _ := purgeCounter(dnidDevice, appUUID)
+	baselineCounter, found := purgeCounter(dnidDevice, appUUID)
+	t.Expect(found).To(BeFalse(),
+		"the app has not been purged yet, so no purge counter should exist; "+
+			"a counter here means the baseline is not the one the assertions assume")
 
 	log.Infof("Powering off DNID node %q to force a failover", devName[0])
 	dnidDevice.PowerOff()
+	// Deferred rather than done at the end of the test: an assertion failure
+	// below aborts the test body, and cluster teardown then has to reason about
+	// a member that is still powered off.
+	defer func() {
+		log.Infof("Powering DNID node %q back on", devName[0])
+		dnidDevice.PowerOn(true)
+	}()
 	evetest.Checkpoint("dnid-node-powered-off")
 
 	failoverHost := cluster.FindDeviceHostingApp(appUUID, failoverTimeout, devName[0])
@@ -215,8 +227,5 @@ func TestVMAppPurgeDuringFailover(test *testing.T) {
 	t.Eventually(func(g Gomega) {
 		assertExactlyOneVMIRSAtGeneration(g, failoverHost, appUUID, appDisplayName, wantCounter)
 	}, purgeEndStateTimeout, assertPollInterval).Should(Succeed())
-
-	log.Infof("Powering DNID node %q back on", devName[0])
-	dnidDevice.PowerOn(true)
-	evetest.Checkpoint("dnid-node-powered-on")
+	evetest.Checkpoint("purge-end-state-asserted")
 }
