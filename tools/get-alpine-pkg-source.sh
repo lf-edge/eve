@@ -19,8 +19,14 @@
 # With -g <gitdir> use the directory as a pre-cloned repo for git.alpinelinux.org instead of cloning it
 # With -m <mirrorfile> use an alternate mirror configuration file; defaults to
 # .mirrors.yaml next to this script. See that file for the format.
+#
+# PARALLEL_JOBS in the environment caps how many sources are fetched at the
+# same time (default 8).
 
 set -e
+
+# Number of sources fetched at the same time in the download phase.
+PARALLEL_JOBS=${PARALLEL_JOBS:-8}
 
 verbose=
 tags=
@@ -268,6 +274,27 @@ download_source() {
     return 1
 }
 
+# run_download_job <index> <dstdir> <filename> <url> <pkgpath> <verify> <sum>
+# One entry of the download queue. Runs in a background subshell, so it must
+# report through its own files rather than through shell variables.
+run_download_job() {
+    local idx="$1" dstdir="$2" filename="$3" url="$4" pkgpath="$5" verify="$6" rsum="$7"
+    local out
+
+    # mirrors and checksum verification are handled together so that a mirror
+    # serving bad content falls through to the next
+    if ! out=$(download_source "${url}" "${dstdir}/${filename}" "${verify}" "${rsum}"); then
+        >&2 echo "Failed to retrieve $url"
+        # "Bad content" and "Too many requests" isn't really missing ...
+        echo "${out}:${pkgpath}:${filename}" > "${JOBS_DIR}/${idx}.err"
+        return 0
+    fi
+    if [ "${verify}" = 1 ]; then
+        printf '%s\t%s\t%s\n' "${dstdir}" "${filename}" "${out}" > "${JOBS_DIR}/${idx}.ok"
+    fi
+    return 0
+}
+
 load_mirrors "$mirrorfile"
 
 if [ $# == 1 ]; then
@@ -300,6 +327,15 @@ awk '{print $1, $2, $3, $4}' ${OCPAIRS}.with_licenses | sort -u >${OCPAIRS}
 
 badfilescount=0
 badfileslist=""
+
+# Downloads are deferred into a queue and carried out in parallel once the
+# whole aports tree has been walked; see the download phase below. Each queued
+# source keeps an index so that its outcome can be folded back in the order the
+# APKBUILD listed it.
+JOBS_DIR=$(mktemp -d)
+JOB_QUEUE="${JOBS_DIR}/queue"
+: > "${JOB_QUEUE}"
+jobidx=0
 
 TMP_DIR=$(mktemp -d)
 if [ -n "$gitdir" ]; then
@@ -408,7 +444,6 @@ while read -r line ; do
             fi
             verify=0
             rsum=
-            recvsum=
             if [ -n "${sha512sums}" ]; then
                 rsum=$(grep ' '"$filename"\$ "${dstdir}/sha512sums.APKBUILD" | awk '{print $1}')
                 if [ -n "${rsum}" ]; then
@@ -419,52 +454,82 @@ while read -r line ; do
                     >&2 echo "No sha512sum for ${filename} in ${pkgpath}"
                 fi
             fi
+            jobidx=$((jobidx + 1))
             case $url in
                 https://*|http://*|ftp://*)
                     [ -n "$verbose" ] && echo "found $s basename ${filename}" >&2
-                    # mirrors and checksum verification are handled together so
-                    # that a mirror serving bad content falls through to the next
-                    if ! outmsg=$(download_source "${url}" "${dstdir}/${filename}" "${verify}" "${rsum}"); then
-                        >&2 echo "Failed to retrieve $url"
-                        # "Bad content" and "Too many requests" isn't really missing ...
-                        badfileslist="${badfileslist} ${outmsg}:${pkgpath}:${filename}"
-                        badfilescount=$((badfilescount + 1))
-                        continue
-                    fi
-                    recvsum="${outmsg}"
+                    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "${jobidx}" \
+                        "${dstdir}" "${filename}" "${url}" "${pkgpath}" \
+                        "${verify}" "${rsum}" >> "${JOB_QUEUE}"
                     ;;
                 *)
                     [ -n "$verbose" ] && echo "not http*: $s" >&2
                     if [ ! -f "${dstdir}/${filename}" ]; then
                         >&2 echo "Missing file ${filename} $url"
-                        badfileslist="${badfileslist} missing:${pkgpath}:${filename}"
-                        badfilescount=$((badfilescount + 1))
+                        echo "missing:${pkgpath}:${filename}" > "${JOBS_DIR}/${jobidx}.err"
                         continue
                     fi
                     if [ "${verify}" = 1 ]; then
                         sum=$(openssl sha512 "${dstdir}/${filename}" | awk '{print $2}')
-                        recvsum="${sum}"
                         if [ "${sum}" != "${rsum}" ]; then
                             errmsg=$(bad_content_tag "${dstdir}/${filename}")
                             echo "Mismatched sh512 for $url into ${dstdir}/${filename}" >&2
-                            badfileslist="${badfileslist} ${errmsg}:${pkgpath}:${filename}"
-                            badfilescount=$((badfilescount + 1))
+                            echo "${errmsg}:${pkgpath}:${filename}" > "${JOBS_DIR}/${jobidx}.err"
                             continue
                         fi
+                        printf '%s\t%s\t%s\n' "${dstdir}" "${filename}" "${sum}" \
+                            > "${JOBS_DIR}/${jobidx}.ok"
                     fi
                     ;;
             esac
-            if [ "${verify}" = 1 ]; then
-                echo "$recvsum $filename" >> "${dstdir}/sha512sums.received"
-            fi
         done
-        if [ "$badfilescount" != 0 ]; then
-            echo "Missing/bad $badfilescount files" >&2
-        fi
     fi
 
     echo "alpine,$name_version,$commit,$pkgpath"
 done < "${OCPAIRS}"
+
+# Fetch everything that was queued. The walk above has to be sequential
+# because it moves a single aports checkout from commit to commit, but the
+# downloads are independent of each other and are what the runtime is spent on.
+if [ -s "${JOB_QUEUE}" ]; then
+    njobs=$(wc -l < "${JOB_QUEUE}")
+    [ -z "$quiet" ] && echo "Fetching ${njobs} sources, ${PARALLEL_JOBS} at a time" >&2
+    # Counting semaphore over a FIFO: a token is taken before a job starts and
+    # put back when it ends. "wait -n" would be shorter but needs bash 4.3,
+    # and this script still runs on the bash 3.x shipped by macOS.
+    mkfifo "${JOBS_DIR}/semaphore"
+    exec 9<>"${JOBS_DIR}/semaphore"
+    slot=0
+    while [ "${slot}" -lt "${PARALLEL_JOBS}" ]; do
+        printf '\n' >&9
+        slot=$((slot + 1))
+    done
+    while IFS=$'\t' read -r j_idx j_dstdir j_filename j_url j_pkgpath j_verify j_rsum; do
+        read -r -u 9
+        {
+            run_download_job "${j_idx}" "${j_dstdir}" "${j_filename}" "${j_url}" \
+                "${j_pkgpath}" "${j_verify}" "${j_rsum}"
+            printf '\n' >&9
+        } &
+    done < "${JOB_QUEUE}"
+    wait
+    exec 9>&-
+fi
+
+# Fold the outcomes back in queue order, so that sha512sums.received still
+# lists the sources in the order the APKBUILD gave them.
+idx=1
+while [ "${idx}" -le "${jobidx}" ]; do
+    if [ -f "${JOBS_DIR}/${idx}.ok" ]; then
+        IFS=$'\t' read -r r_dstdir r_filename r_sum < "${JOBS_DIR}/${idx}.ok"
+        echo "${r_sum} ${r_filename}" >> "${r_dstdir}/sha512sums.received"
+    elif [ -f "${JOBS_DIR}/${idx}.err" ]; then
+        badfileslist="${badfileslist} $(cat "${JOBS_DIR}/${idx}.err")"
+        badfilescount=$((badfilescount + 1))
+    fi
+    idx=$((idx + 1))
+done
+rm -rf "${JOBS_DIR}"
 
 # clean up our temporary cloned directory
 rm -rf "$TMP_DIR"
