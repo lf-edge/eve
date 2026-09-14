@@ -2515,14 +2515,25 @@ func (dc *EdgeDeviceConfig) deleteVolumeAndDeps(volUUID string) bool {
 	if !found || contentTreeID == "" {
 		return found
 	}
+	dc.deleteContentTreeAndDeps(contentTreeID)
+	return true
+}
 
+// deleteContentTreeAndDeps removes the ContentTree with the given UUID and the
+// Datastores it referenced. Reports whether the ContentTree was found.
+func (dc *EdgeDeviceConfig) deleteContentTreeAndDeps(contentTreeID string) bool {
 	var datastoreIDs []string
+	var found bool
 	for i, contentTree := range dc.ContentInfo {
 		if contentTree.Uuid == contentTreeID {
 			datastoreIDs = append(datastoreIDs, contentTree.DsIdsList...)
 			dc.ContentInfo = append(dc.ContentInfo[:i], dc.ContentInfo[i+1:]...)
+			found = true
 			break
 		}
+	}
+	if !found {
+		return false
 	}
 	for _, datastoreID := range datastoreIDs {
 		for i, datastore := range dc.Datastores {
@@ -2596,6 +2607,42 @@ func (dc *EdgeDeviceConfig) AddVolume(
 	dc.ContentInfo = append(dc.ContentInfo, contentTree)
 	dc.Datastores = append(dc.Datastores, dsConfig)
 	return volumeUUID
+}
+
+// AddContentTree adds a ContentTree that no Volume and no application refers to,
+// and returns its UUID.
+//
+// volumemgr downloads a ContentTree eagerly, so the image blobs land in the
+// content-addressable store without a Volume, a PVC or a CDI import ever being
+// created. A test whose subject is the blobs themselves -- that they survive an
+// event, or that a later deployment reuses them instead of downloading again --
+// wants exactly that, since going through AddVolume would drag the storage
+// pipeline into the result.
+func (dc *EdgeDeviceConfig) AddContentTree(
+	displayName string, image ApplicationImageStorage) uuid.UUID {
+	contentTreeUUID := dc.th.newUUID("content tree")
+	datastoreUUID := dc.th.newUUID("content tree datastore")
+	contentTree, dsConfig := image.toProto(dc.th, dc.log, dc.DeviceName,
+		contentTreeUUID, datastoreUUID, displayName)
+	dc.ContentInfo = append(dc.ContentInfo, contentTree)
+	dc.Datastores = append(dc.Datastores, dsConfig)
+	return contentTreeUUID
+}
+
+// DeleteContentTree removes a ContentTree added by AddContentTree, and the
+// Datastore it referenced, from the device configuration.
+func (dc *EdgeDeviceConfig) DeleteContentTree(contentTreeUUID uuid.UUID) {
+	uuidStr := contentTreeUUID.String()
+	for _, volume := range dc.Volumes {
+		if volume.GetOrigin().GetDownloadContentTreeID() == uuidStr {
+			dc.th.t.Fatalf(
+				"Cannot delete content tree %q: still referenced by volume %q",
+				uuidStr, volume.GetDisplayName())
+		}
+	}
+	if !dc.deleteContentTreeAndDeps(uuidStr) {
+		dc.th.t.Fatalf("Content tree with UUID %q was not found", uuidStr)
+	}
 }
 
 // DeleteVolume removes a standalone volume (created via AddVolume or
