@@ -679,6 +679,10 @@ func (d *EdgeDevice) applyUpgradeConfig(config *EdgeDeviceConfig, shortVersion s
 	if expectRevert {
 		d.th.incExpectedRebootCount(d.devName)
 	}
+	// Only captures coverage up to this point, before the config is applied
+	// below -- a reverted upgrade's second reboot has no such hook, since
+	// EVE (not evetest) decides when to revert.
+	d.th.collectCoverageFromDevice(d.th.ctx, d.devName)
 	d.th.devicesM.Lock()
 	d.th.devices[d.devName].wasUpgraded = true
 	d.th.devicesM.Unlock()
@@ -830,6 +834,7 @@ func (d *EdgeDevice) waitForRevert(targetShortVersion string) {
 // compares totals, but a declaration that races the observation reads as
 // an accident in the log.
 func (d *EdgeDevice) ExpectReboots(count int) {
+	d.th.collectCoverageFromDevice(d.th.ctx, d.devName)
 	for i := 0; i < count; i++ {
 		d.th.incExpectedRebootCount(d.devName)
 	}
@@ -839,6 +844,7 @@ func (d *EdgeDevice) ExpectReboots(count int) {
 // waits until the reboot completes.
 func (d *EdgeDevice) RequestReboot(waitUntilRebooted bool) {
 	d.th.incExpectedRebootCount(d.devName)
+	d.th.collectCoverageFromDevice(d.th.ctx, d.devName)
 	config := d.getConfig(true)
 	reboot := config.GetReboot()
 	if reboot == nil {

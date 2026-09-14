@@ -291,8 +291,15 @@ func (th *TestHarness) collectCoverageFromAllDevices() {
 // collectCoverageTimeout so the caller does not need to manage the deadline.
 //
 // Detection works by counting .covcounters files before sending SIGUSR2 and
-// polling until the count increases. If the before-count snapshot fails, a
-// 3-second fallback sleep is used instead.
+// polling until the count increases (a fixed 3-second sleep instead, if the
+// before-count snapshot fails), then polling until no process on the device
+// holds any file under the coverage directory open, since a file's existence
+// alone doesn't mean its writer is done. This must check every process, not
+// just zedbox: device-steps.sh runs several other coverage-instrumented
+// commands (hardwaremodel, tpmmgr, waitforaddr, client, diag) as separate
+// short-lived processes that flush their own coverage into the same
+// directory on exit, independent of our SIGUSR2 signal -- most likely near
+// boot, but not exclusively.
 func (th *TestHarness) collectCoverageFromDevice(ctx context.Context, devName string) {
 	if !viper.GetBool(constants.CollectCoverageEnv) ||
 		viper.GetString(constants.ExternalArtifactDirEnv) == "" {
@@ -353,6 +360,32 @@ func (th *TestHarness) collectCoverageFromDevice(ctx context.Context, devName st
 				return
 			case <-time.After(pollInterval):
 			}
+		}
+	}
+
+	// A file existing only means its writer has created it, not finished
+	// writing it -- covdata merge fails with EOF on a file SCP'd mid-write.
+	// FlushCoverage (pkg/pillar/agentlog/coverage.go) rewrites covmeta on
+	// every flush too, not just covcounters, so check the whole directory
+	// for ANY process (not just zedbox -- see the doc comment above) still
+	// holding a file open under it before copying anything.
+	const openCheckPollInterval = 1 * time.Second
+	const openCheckTimeout = 30 * time.Second
+	openCheckCmd := fmt.Sprintf(
+		`if fuser %s/* >/dev/null 2>&1; then exit 1; else exit 0; fi`,
+		eveCoverageDir)
+	openCheckDeadline := time.Now().Add(openCheckTimeout)
+	for th.runScriptOnEVEOverSSH(ctx, devName, openCheckCmd, nil, nil, 0) != nil {
+		if time.Now().After(openCheckDeadline) {
+			th.log.Warnf("Coverage directory on device %q still has an open "+
+				"file after %v; proceeding with whatever was written",
+				devName, openCheckTimeout)
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(openCheckPollInterval):
 		}
 	}
 
