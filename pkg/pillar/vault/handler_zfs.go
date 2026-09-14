@@ -97,6 +97,12 @@ func (h *ZFSHandler) SetHandlerOptions(options HandlerOptions) {
 	h.options = options
 }
 
+// GetHandlerOptions returns handler options, with TpmKeyOnlyMode as unlocking
+// resolved it
+func (h *ZFSHandler) GetHandlerOptions() HandlerOptions {
+	return h.options
+}
+
 // GetVaultStatuses returns statuses of vault(s)
 func (h *ZFSHandler) GetVaultStatuses() []*types.VaultStatus {
 	return []*types.VaultStatus{h.getVaultStatus(types.DefaultVaultName, types.SealedDataset)}
@@ -204,21 +210,16 @@ func (h *ZFSHandler) SetupDefaultVault() error {
 	return nil
 }
 
+// unlockVault loads the vault key and mounts the vault. The derivation that
+// opened the vault is stored back into h.options so the caller can persist it.
+// Only the key load is retried with the other derivation; a mount failure is
+// not a key problem.
 func (h *ZFSHandler) unlockVault(vaultPath string) error {
-	// prepare key in the staging file
-	// we never unlock a deprecated vault in ZFS (we never created those)
-	// cloudKeyOnlyMode=false, useSealedKey=true
-	unstage, err := stageKey(h.log, false, true, h.options.TpmKeyOnlyMode, zfsKeyDir, zfsKeyFile)
-	if err != nil {
-		return err
-	}
-	defer unstage()
-
-	// zfs load-key
-	args := []string{"load-key", vaultPath}
-	if stdOut, stdErr, err := execCmd(types.ZFSBinary, args...); err != nil {
-		h.log.Errorf("Error loading key for vault: %v, %s, %s",
-			err, stdOut, stdErr)
+	if err := h.options.resolveUnlock(h.log, func(tpmKeyOnlyMode bool) error {
+		return h.withStagedKey(tpmKeyOnlyMode, func() error {
+			return h.loadDatasetKey(vaultPath)
+		})
+	}); err != nil {
 		return err
 	}
 
@@ -240,7 +241,7 @@ func (h *ZFSHandler) unlockVault(vaultPath string) error {
 			// Carried-over kvm filesystem vault on an EVE-k device (the device
 			// was converted from EVE-kvm). Mount it as a filesystem so the
 			// device boots, then migrate it in place to the zvol layout EVE-k
-			// expects. The unlock key is still staged for the encrypted creates.
+			// expects.
 			h.log.Noticef("Detected carried-over kvm filesystem vault %s on EVE-k; migrating to zvol layout",
 				vaultPath)
 			if mounted, merr := zfs.IsDatasetMounted(vaultPath); merr != nil {
@@ -252,14 +253,15 @@ func (h *ZFSHandler) unlockVault(vaultPath string) error {
 					return err
 				}
 			}
-			return h.migrateVaultFsToZvol(vaultPath, zfsKeyFile, true)
+			return h.withStagedKey(h.options.TpmKeyOnlyMode, func() error {
+				return h.migrateVaultFsToZvol(vaultPath, zfsKeyFile, true)
+			})
 		}
 		// Native EVE-k zvol vault.
 		// zfs load-key here separately for types.EtcdZvol because we don't mount it here, only in kube.
-		args := []string{"load-key", types.EtcdZvol}
-		if stdOut, stdErr, err := execCmd(types.ZFSBinary, args...); err != nil {
-			h.log.Errorf("Error loading key for etcd vol vault: %v, %s, %s",
-				err, stdOut, stdErr)
+		if err := h.withStagedKey(h.options.TpmKeyOnlyMode, func() error {
+			return h.loadDatasetKey(types.EtcdZvol)
+		}); err != nil {
 			return err
 		}
 		if err := MountVaultZvol(h.log, vaultPath); err != nil {
@@ -704,30 +706,53 @@ func (h *ZFSHandler) recoverInterruptedVaultMigration(vaultPath string) error {
 	return nil
 }
 
-// e.g. zfs create -o encryption=aes-256-gcm -o keylocation=file://tmp/raw.key -o keyformat=raw persist/vault
-func (h *ZFSHandler) createVault(vaultPath string) error {
-	// prepare key in the staging file
-	// we never create deprecated vault on ZFS
+// withStagedKey stages the vault key derived with tpmKeyOnlyMode, runs fn with
+// the key file in place, and shreds it once fn returns. Everything that reads
+// the key from zfsKeyFile -- `zfs load-key` and the encrypted zvol creates --
+// must run inside fn.
+func (h *ZFSHandler) withStagedKey(tpmKeyOnlyMode bool, fn func() error) error {
+	// we never unlock or create a deprecated vault in ZFS (we never created those)
 	// cloudKeyOnlyMode=false, useSealedKey=true
-	unstage, err := stageKey(h.log, false, true, h.options.TpmKeyOnlyMode, zfsKeyDir, zfsKeyFile)
+	unstage, err := stageKey(h.log, false, true, tpmKeyOnlyMode, zfsKeyDir, zfsKeyFile)
 	if err != nil {
 		return err
 	}
 	defer unstage()
+	return fn()
+}
 
-	if base.IsHVTypeKube() {
-		if err := CreateZvolEtcd(h.log, types.EtcdZvol, zfsKeyFile, true); err != nil {
-			return fmt.Errorf("error creating zfs etcd zvol %s, error=%v", types.EtcdZvol, err)
+// loadDatasetKey hands the staged vault key to `zfs load-key` for dataset. The
+// caller must run it inside a withStagedKey scope.
+func (h *ZFSHandler) loadDatasetKey(dataset string) error {
+	args := []string{"load-key", dataset}
+	if stdOut, stdErr, err := execCmd(types.ZFSBinary, args...); err != nil {
+		h.log.Errorf("Error loading key for %s: %v, %s, %s",
+			dataset, err, stdOut, stdErr)
+		return err
+	}
+	return nil
+}
+
+// e.g. zfs create -o encryption=aes-256-gcm -o keylocation=file://tmp/raw.key -o keyformat=raw persist/vault
+func (h *ZFSHandler) createVault(vaultPath string) error {
+	if err := h.withStagedKey(h.options.TpmKeyOnlyMode, func() error {
+		if base.IsHVTypeKube() {
+			if err := CreateZvolEtcd(h.log, types.EtcdZvol, zfsKeyFile, true); err != nil {
+				return fmt.Errorf("error creating zfs etcd zvol %s, error=%v", types.EtcdZvol, err)
+			}
+			if err := CreateZvolVault(h.log, vaultPath, zfsKeyFile, true); err != nil {
+				h.log.Errorf("Error creating zfs vault %s, error=%v", vaultPath, err)
+				return err
+			}
+			return nil
 		}
-		if err := CreateZvolVault(h.log, vaultPath, zfsKeyFile, true); err != nil {
-			h.log.Errorf("Error creating zfs vault %s, error=%v", vaultPath, err)
-			return err
-		}
-	} else {
 		if err := zfs.CreateVaultDataset(vaultPath, zfsKeyFile); err != nil {
 			h.log.Errorf("Error creating zfs vault %s, error=%v", vaultPath, err)
 			return err
 		}
+		return nil
+	}); err != nil {
+		return err
 	}
 
 	h.log.Functionf("Created new vault %s", vaultPath)
