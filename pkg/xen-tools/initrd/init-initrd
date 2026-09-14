@@ -13,15 +13,9 @@ then
     exit 1
 fi
 
-if [ -e /dev/xen ]; then
-   HYPER_BUS=xen
-else
-   HYPER_BUS=virtio
-fi
-
 mkdir /mnt >/dev/null 2>&1
 if [ "$root" = "9p" ]; then
-    mount -t 9p -o msize=131072,trans="$HYPER_BUS",version=9p2000.L,cache=mmap share_dir /mnt
+    mount -t 9p -o msize=131072,trans=virtio,version=9p2000.L,cache=mmap share_dir /mnt
 else
     mount "$root" /mnt
 fi
@@ -137,7 +131,7 @@ mkdir -p /mnt/rootfs/tmp/modules.upper
 mkdir -p /mnt/rootfs/tmp/modules.work
 mount -t overlay -o rw,relatime,lowerdir=/mnt/modules,upperdir=/mnt/rootfs/tmp/modules.upper,workdir=/mnt/rootfs/tmp/modules.work overlay /mnt/rootfs/lib/modules
 
-# HV=k shim-VMI path only: root=9p signals HV=kvm/xen where domainmgr already
+# HV=k shim-VMI path only: root=9p signals HV=kvm where domainmgr already
 # projects env vars into /environment and writes /mountPoints on the rootfs
 # disk via the OCI spec, so we skip the cidata probe to avoid accidentally
 # picking up a user volume that happens to share the "cidata" label. On
@@ -157,7 +151,7 @@ mount -t overlay -o rw,relatime,lowerdir=/mnt/modules,upperdir=/mnt/rootfs/tmp/m
 #   KEY="value"            — env vars, sourced as `export KEY=value` into
 #                            /mnt/environment.
 # We process volume markers BEFORE running mount_disk.sh; env vars are merged
-# AFTER, matching the existing /environment-after-mount ordering for HV=kvm/xen.
+# AFTER, matching the existing /environment-after-mount ordering for HV=kvm.
 ci_mounted=
 if [ "$root" != "9p" ]; then
     # Busybox `blkid -L cidata` returns empty in some builds even when the

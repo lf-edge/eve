@@ -1,7 +1,7 @@
-diff --git a/tools/qemu-xen/net/tap.c b/tools/qemu-xen/net/tap.c
+diff --git a/net/tap.c b/net/tap.c
 index 3f90022c0b..3defed22a7 100644
---- a/tools/qemu-xen/net/tap.c
-+++ b/tools/qemu-xen/net/tap.c
+--- a/net/tap.c
++++ b/net/tap.c
 @@ -64,7 +64,7 @@ typedef struct TAPState {
      Notifier exit;
  } TAPState;

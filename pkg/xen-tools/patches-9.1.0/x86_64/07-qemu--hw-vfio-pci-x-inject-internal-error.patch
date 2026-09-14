@@ -8,10 +8,10 @@ without reproducing the hardware race.
 Compiled in ONLY when CONFIG_EVE_CRASH_INJECTOR is defined; the qapi command
 carries the same 'if' condition. Never present in a production qemu.
 
-diff --git a/tools/qemu-xen/hw/vfio/pci.c b/tools/qemu-xen/hw/vfio/pci.c
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
 index 2407720c35..9069c674a2 100644
---- a/tools/qemu-xen/hw/vfio/pci.c
-+++ b/tools/qemu-xen/hw/vfio/pci.c
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
 @@ -3473,6 +3473,22 @@ static const TypeInfo vfio_pci_nohotplug_dev_info = {
      .class_init = vfio_pci_nohotplug_dev_class_init,
  };
@@ -35,10 +35,10 @@ index 2407720c35..9069c674a2 100644
  static void register_vfio_pci_dev_type(void)
  {
      type_register_static(&vfio_pci_dev_info);
-diff --git a/tools/qemu-xen/qapi/vfio.json b/tools/qemu-xen/qapi/vfio.json
+diff --git a/qapi/vfio.json b/qapi/vfio.json
 index eccca82068..fbeb2ae217 100644
---- a/tools/qemu-xen/qapi/vfio.json
-+++ b/tools/qemu-xen/qapi/vfio.json
+--- a/qapi/vfio.json
++++ b/qapi/vfio.json
 @@ -65,3 +65,18 @@
        'qom-path': 'str',
        'device-state': 'VfioMigrationState'

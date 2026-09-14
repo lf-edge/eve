@@ -22,10 +22,10 @@ Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
  hw/vfio/pci.h        |  1 +
  3 files changed, 83 insertions(+)
 
-diff --git a/tools/qemu-xen/hw/vfio/igd.c b/tools/qemu-xen/hw/vfio/igd.c
+diff --git a/hw/vfio/igd.c b/hw/vfio/igd.c
 index 3b52c471fc..5a1b1471de 100644
---- a/tools/qemu-xen/hw/vfio/igd.c
-+++ b/tools/qemu-xen/hw/vfio/igd.c
+--- a/hw/vfio/igd.c
++++ b/hw/vfio/igd.c
 @@ -378,6 +378,92 @@ static const MemoryRegionOps vfio_igd_index_quirk = {
      .endianness = DEVICE_LITTLE_ENDIAN,
  };
@@ -119,10 +119,10 @@ index 3b52c471fc..5a1b1471de 100644
  void vfio_probe_igd_bar4_quirk(VFIOPCIDevice *vdev, int nr)
  {
      g_autofree struct vfio_region_info *rom = NULL;
-diff --git a/tools/qemu-xen/hw/vfio/pci-quirks.c b/tools/qemu-xen/hw/vfio/pci-quirks.c
+diff --git a/hw/vfio/pci-quirks.c b/hw/vfio/pci-quirks.c
 index 39dae72497..d37f722cce 100644
---- a/tools/qemu-xen/hw/vfio/pci-quirks.c
-+++ b/tools/qemu-xen/hw/vfio/pci-quirks.c
+--- a/hw/vfio/pci-quirks.c
++++ b/hw/vfio/pci-quirks.c
 @@ -1259,6 +1259,7 @@ void vfio_bar_quirk_setup(VFIOPCIDevice *vdev, int nr)
      vfio_probe_nvidia_bar0_quirk(vdev, nr);
      vfio_probe_rtl8168_bar2_quirk(vdev, nr);
@@ -131,10 +131,10 @@ index 39dae72497..d37f722cce 100644
      vfio_probe_igd_bar4_quirk(vdev, nr);
  #endif
  }
-diff --git a/tools/qemu-xen/hw/vfio/pci.h b/tools/qemu-xen/hw/vfio/pci.h
+diff --git a/hw/vfio/pci.h b/hw/vfio/pci.h
 index bf67df2fbc..5ad090a229 100644
---- a/tools/qemu-xen/hw/vfio/pci.h
-+++ b/tools/qemu-xen/hw/vfio/pci.h
+--- a/hw/vfio/pci.h
++++ b/hw/vfio/pci.h
 @@ -215,6 +215,7 @@ void vfio_setup_resetfn_quirk(VFIOPCIDevice *vdev);
  bool vfio_add_virt_caps(VFIOPCIDevice *vdev, Error **errp);
  void vfio_quirk_reset(VFIOPCIDevice *vdev);

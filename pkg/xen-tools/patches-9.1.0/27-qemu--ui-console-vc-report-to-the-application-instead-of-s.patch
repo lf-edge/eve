@@ -39,10 +39,10 @@ Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>  [rebased to qemu-xen-
  ui/console-vc.c | 7 +++----
  1 file changed, 3 insertions(+), 4 deletions(-)
 
-diff --git a/tools/qemu-xen/ui/console-vc.c b/tools/qemu-xen/ui/console-vc.c
+diff --git a/ui/console-vc.c b/ui/console-vc.c
 index 6790575988..e998259417 100644
---- a/tools/qemu-xen/ui/console-vc.c
-+++ b/tools/qemu-xen/ui/console-vc.c
+--- a/ui/console-vc.c
++++ b/ui/console-vc.c
 @@ -617,10 +617,9 @@ static void vc_put_one(VCChardev *vc, int ch)
  
  static void vc_respond_str(VCChardev *vc, const char *buf)
