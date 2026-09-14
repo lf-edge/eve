@@ -37,11 +37,19 @@ func NewEdgeCluster(clusterName string) *EdgeCluster {
 // ApplyConfig applies the configuration from the given EdgeClusterConfig
 // to all cluster devices in parallel. The waitUntilFetched and
 // waitUntilConfirmed arguments are forwarded to each device's ApplyConfig;
-// see EdgeDevice.ApplyConfig for their semantics.
+// see EdgeDevice.ApplyConfig for their semantics. excludeFromWait names
+// devices the config is still pushed to, but without waiting on either flag
+// -- e.g. a device deliberately powered off for the test, which would
+// otherwise block waitUntilFetched/waitUntilConfirmed forever.
 // The set of cluster devices is collected from the EdgeClusterConfig nodes
 // and stored for use by subsequent methods.
-func (ec *EdgeCluster) ApplyConfig(
-	clusterConfig *EdgeClusterConfig, waitUntilFetched bool, waitUntilConfirmed bool) {
+func (ec *EdgeCluster) ApplyConfig(clusterConfig *EdgeClusterConfig,
+	waitUntilFetched, waitUntilConfirmed bool, excludeFromWait ...string) {
+	excluded := make(map[string]bool, len(excludeFromWait))
+	for _, name := range excludeFromWait {
+		excluded[name] = true
+	}
+
 	// Set the cluster name on each device's config and collect devices.
 	nodes := clusterConfig.nodes
 	ec.devices = make([]*EdgeDevice, len(nodes))
@@ -54,8 +62,12 @@ func (ec *EdgeCluster) ApplyConfig(
 	}
 	RunParallel(len(nodes), func(i int) {
 		node := nodes[i]
+		fetched, confirmed := waitUntilFetched, waitUntilConfirmed
+		if excluded[node.DevName] {
+			fetched, confirmed = false, false
+		}
 		ec.devices[i].ApplyConfig(
-			clusterConfig.GetDeviceConfig(node.DevName), waitUntilFetched, waitUntilConfirmed)
+			clusterConfig.GetDeviceConfig(node.DevName), fetched, confirmed)
 	})
 }
 
