@@ -50,10 +50,10 @@ Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
  include/hw/southbridge/ich9.h |  9 +++++++++
  2 files changed, 28 insertions(+)
 
-diff --git a/tools/qemu-xen/hw/isa/lpc_ich9.c b/tools/qemu-xen/hw/isa/lpc_ich9.c
+diff --git a/hw/isa/lpc_ich9.c b/hw/isa/lpc_ich9.c
 index bd727b2320..00b7942cc3 100644
---- a/tools/qemu-xen/hw/isa/lpc_ich9.c
-+++ b/tools/qemu-xen/hw/isa/lpc_ich9.c
+--- a/hw/isa/lpc_ich9.c
++++ b/hw/isa/lpc_ich9.c
 @@ -697,6 +697,16 @@ static void ich9_lpc_realize(PCIDevice *d, Error **errp)
      ISABus *isa_bus;
      uint32_t irq;
@@ -87,10 +87,10 @@ index bd727b2320..00b7942cc3 100644
      DEFINE_PROP_END_OF_LIST(),
  };
  
-diff --git a/tools/qemu-xen/include/hw/southbridge/ich9.h b/tools/qemu-xen/include/hw/southbridge/ich9.h
+diff --git a/include/hw/southbridge/ich9.h b/include/hw/southbridge/ich9.h
 index fd01649d04..0347a4e6fe 100644
---- a/tools/qemu-xen/include/hw/southbridge/ich9.h
-+++ b/tools/qemu-xen/include/hw/southbridge/ich9.h
+--- a/include/hw/southbridge/ich9.h
++++ b/include/hw/southbridge/ich9.h
 @@ -54,6 +54,15 @@ struct ICH9LPCState {
      uint8_t rst_cnt;
      MemoryRegion rst_cnt_mem;

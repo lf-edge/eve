@@ -34,10 +34,10 @@ Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>  [rebased to qemu-xen-
  ui/console-vc.c | 3 +--
  1 file changed, 1 insertion(+), 2 deletions(-)
 
-diff --git a/tools/qemu-xen/ui/console-vc.c b/tools/qemu-xen/ui/console-vc.c
+diff --git a/ui/console-vc.c b/ui/console-vc.c
 index e998259417..4ff541dd40 100644
---- a/tools/qemu-xen/ui/console-vc.c
-+++ b/tools/qemu-xen/ui/console-vc.c
+--- a/ui/console-vc.c
++++ b/ui/console-vc.c
 @@ -827,8 +827,7 @@ static void vc_putchar(VCChardev *vc, int ch)
                  case 6:
                      /* report cursor position */

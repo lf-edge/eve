@@ -28,10 +28,10 @@ Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
  hw/vfio/igd.c | 33 +++++++++++++++++++++++++++++++++
  1 file changed, 33 insertions(+)
 
-diff --git a/tools/qemu-xen/hw/vfio/igd.c b/tools/qemu-xen/hw/vfio/igd.c
+diff --git a/hw/vfio/igd.c b/hw/vfio/igd.c
 index 8997611920..4e5b30ba4c 100644
---- a/tools/qemu-xen/hw/vfio/igd.c
-+++ b/tools/qemu-xen/hw/vfio/igd.c
+--- a/hw/vfio/igd.c
++++ b/hw/vfio/igd.c
 @@ -677,6 +677,39 @@ void vfio_probe_igd_bar4_quirk(VFIOPCIDevice *vdev, int nr)
                                  bdsm_size, sizeof(*bdsm_size));
                  error_report("IGD bdsm-size: wrote etc/igd-bdsm-size = %"

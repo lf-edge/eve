@@ -25,10 +25,10 @@ Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
  hw/vfio/igd.c | 114 ++++++++++++++++++++++++++++++++++++++++++++++++++
  1 file changed, 114 insertions(+)
 
-diff --git a/tools/qemu-xen/hw/vfio/igd.c b/tools/qemu-xen/hw/vfio/igd.c
+diff --git a/hw/vfio/igd.c b/hw/vfio/igd.c
 index fae1606e1d..8997611920 100644
---- a/tools/qemu-xen/hw/vfio/igd.c
-+++ b/tools/qemu-xen/hw/vfio/igd.c
+--- a/hw/vfio/igd.c
++++ b/hw/vfio/igd.c
 @@ -439,6 +439,94 @@ static const MemoryRegionOps igd_bdsm_mirror_ops = {
  #define IGD_BDSM_GEN11 0xc0
  #endif
