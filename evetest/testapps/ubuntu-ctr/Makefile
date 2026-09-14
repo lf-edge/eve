@@ -5,7 +5,7 @@
 EVETEST_ORG ?= milan4zededa
 IMAGE = $(EVETEST_ORG)/evetest-ubuntu-ctr
 # Update VERSION whenever there is a change made to this app.
-VERSION ?= 1.0
+VERSION ?= 1.1
 
 DOCKER_TARGET ?= load
 DOCKER_PLATFORM ?= $(shell uname -s | tr '[A-Z]' '[a-z]')/$(subst aarch64,arm64,$(subst x86_64,amd64,$(shell uname -m)))
