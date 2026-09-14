@@ -26,6 +26,11 @@ func (h *UnsupportedHandler) GetOperationalInfo() (info.DataSecAtRestStatus, str
 // SetHandlerOptions is dummy for UnsupportedHandler
 func (h *UnsupportedHandler) SetHandlerOptions(_ HandlerOptions) {}
 
+// GetHandlerOptions is dummy for UnsupportedHandler
+func (h *UnsupportedHandler) GetHandlerOptions() HandlerOptions {
+	return HandlerOptions{}
+}
+
 // GetVaultStatuses returns statuses of vault(s)
 func (h *UnsupportedHandler) GetVaultStatuses() []*types.VaultStatus {
 	status := types.VaultStatus{}
