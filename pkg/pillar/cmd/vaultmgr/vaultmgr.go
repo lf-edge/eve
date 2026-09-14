@@ -27,7 +27,6 @@ import (
 	"crypto/sha256"
 	"flag"
 	"fmt"
-	"os"
 	"sync"
 	"time"
 
@@ -42,7 +41,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 	"github.com/lf-edge/eve/pkg/pillar/utils/wait"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
-	"github.com/lf-edge/eve/pkg/pillar/zfs"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
 )
@@ -55,8 +53,11 @@ type vaultMgrContext struct {
 	subGlobalConfig           pubsub.Subscription
 	subVaultKeyFromController pubsub.Subscription
 	GCInitialized             bool // GlobalConfig initialized
-	defaultVaultUnlocked      bool
-	vaultUCDone               bool
+	// Whether this device derives the vault key from a TPM at all; there is no
+	// key mode to record or report without one.
+	tpmEnabled           bool
+	defaultVaultUnlocked bool
+	vaultUCDone          bool
 	// How the default vault was unlocked this boot, surfaced on VaultStatus.
 	unlockMethod types.VaultUnlockMethod
 	// How the default vault's key is derived, surfaced on VaultStatus. Stays
@@ -191,39 +192,62 @@ func initializeSelfPublishHandles(ps *pubsub.PubSub, ctx *vaultMgrContext) {
 	ctx.pubVaultConfig = pubVaultConfig
 }
 
-// checkAndPublishVaultConfig: If vault config is not yet initialized
-// Checks if defaultVault/defaultSecretDataset exists and if not publishes the vault config TmpKeyOnly = true
-// If those directories exists, then publishes the vault config TmpKeyOnly = false
-// Function returns the TmpKeyOnly value, plus whether the persist filesystem is
-// one that sets up a vault at all. On any other filesystem no vault key is
-// derived, so the TmpKeyOnly value describes nothing.
-func checkAndPublishVaultConfig(ctx *vaultMgrContext) (bool, bool) {
-	persistFsType := persist.ReadPersistType()
-	vaultSupported := persistFsType == types.PersistExt4 ||
-		persistFsType == types.PersistZFS
-
-	// We do not have vault config, publish it
-	if vaultConfigInited == false {
-		tpmKeyOnly := false
-
-		switch persistFsType {
-		case types.PersistExt4:
-			_, err := os.Stat(types.SealedDirName)
-			if os.IsNotExist(err) {
-				tpmKeyOnly = true
-			}
-		case types.PersistZFS:
-			if _, err := zfs.GetDatasetKeyStatus(types.SealedDataset); err != nil {
-				tpmKeyOnly = true
-			}
-		default:
-			log.Noticef("unsupported %s filesystem, ignoring vault config setup",
-				persistFsType)
-		}
-		publishVaultConfig(ctx, tpmKeyOnly)
-		return tpmKeyOnly, vaultSupported
+// vaultKeyMode reports the TpmKeyOnly value to try deriving the vault key
+// with: the recorded mode when there is one, otherwise TPM-key-only, which is
+// how a vault created today is keyed.
+//
+// Neither answer is treated as a fact. A merged-key vault whose recorded mode
+// is gone gets the wrong value here, and so does one whose mode was recorded
+// by a boot that guessed. Unlocking falls back to the other derivation either
+// way, and the caller persists whichever opened the vault.
+func vaultKeyMode() bool {
+	if vaultConfigInited {
+		return vaultConfig.TpmKeyOnly
 	}
-	return vaultConfig.TpmKeyOnly, vaultSupported
+	log.Notice("No persisted vault config; trying tpmKeyOnly first")
+	return true
+}
+
+// vaultSupported reports whether the persist filesystem is one that sets up a
+// vault at all. On any other filesystem no vault key is derived, so a key
+// derivation reported for it would describe nothing.
+func vaultSupported() bool {
+	persistFsType := persist.ReadPersistType()
+	switch persistFsType {
+	case types.PersistExt4, types.PersistZFS:
+		return true
+	}
+	log.Noticef("unsupported %s filesystem, ignoring vault config setup",
+		persistFsType)
+	return false
+}
+
+// keyDerivationOf names a TpmKeyOnly value for VaultStatus.
+func keyDerivationOf(tpmKeyOnly bool) types.VaultKeyDerivation {
+	if tpmKeyOnly {
+		return types.VaultKeyDerivationTPMOnly
+	}
+	return types.VaultKeyDerivationTPMAndConstant
+}
+
+// recordVaultKeyMode persists the key-derivation mode the vault is actually
+// keyed with, so the next boot starts from it, and reports it on VaultStatus.
+// Called after an unlock or a create has succeeded. Persisting is skipped
+// while what is recorded already agrees -- what is left covers both a mode no
+// boot has recorded yet and one a recreate has since invalidated.
+func recordVaultKeyMode(ctx *vaultMgrContext) {
+	if !ctx.tpmEnabled {
+		return
+	}
+	tpmKeyOnly := handler.GetHandlerOptions().TpmKeyOnlyMode
+	if vaultSupported() {
+		ctx.keyDerivation = keyDerivationOf(tpmKeyOnly)
+	}
+	if vaultConfigInited && vaultConfig.TpmKeyOnly == tpmKeyOnly {
+		return
+	}
+	publishVaultConfig(ctx, tpmKeyOnly)
+	vaultConfigInited = true
 }
 
 // runVaultOp runs a vault setup, unlock or removal on a separate goroutine and
@@ -351,16 +375,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// initialize publishing handles
 	initializeSelfPublishHandles(ps, &ctx)
 	tpmEnabled := etpm.IsTpmEnabled()
+	ctx.tpmEnabled = tpmEnabled
 	if tpmEnabled {
-		// TPM is enabled. Check if defaultVault directory exists, if not set vaultconfig
-		tpmKeyOnlyMode, vaultSupported := checkAndPublishVaultConfig(&ctx)
+		tpmKeyOnlyMode := vaultKeyMode()
 		handler.SetHandlerOptions(vault.HandlerOptions{TpmKeyOnlyMode: tpmKeyOnlyMode})
-		if vaultSupported {
-			if tpmKeyOnlyMode {
-				ctx.keyDerivation = types.VaultKeyDerivationTPMOnly
-			} else {
-				ctx.keyDerivation = types.VaultKeyDerivationTPMAndConstant
-			}
+		// The derivation reported until an unlock resolves it. A vault that
+		// never opens keeps this value, which names what was tried.
+		if vaultSupported() {
+			ctx.keyDerivation = keyDerivationOf(tpmKeyOnlyMode)
 		}
 	}
 
@@ -389,6 +411,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		getAndPublishAllVaultStatuses(&ctx)
 	} else {
 		log.Noticef("vault is setup and unlocked successfully")
+		recordVaultKeyMode(&ctx)
 		ctx.defaultVaultUnlocked = true
 		if tpmEnabled {
 			ctx.unlockMethod = types.VaultUnlockTPMLocalSealed
@@ -585,6 +608,8 @@ func handleVaultKeyFromControllerImpl(ctxArg interface{}, key string,
 			return
 		}
 
+		recordVaultKeyMode(ctx)
+
 		// The local unseal had failed (that is why we are here); record that the
 		// unlock came from the controller key, so the distinction is visible on
 		// VaultStatus rather than only inferable from the log sequence.
@@ -615,11 +640,17 @@ func handleVaultKeyFromControllerImpl(ctxArg interface{}, key string,
 			return
 		}
 		log.Warnln("default vault removed")
+		// The replacement vault is brand new, so it is never one of the
+		// pre-7.10.0 merged-key vaults. Create it TPM-key-only rather than
+		// with the mode carried over from the vault just removed, which may
+		// itself have been wrong -- that is why this path was reached.
+		handler.SetHandlerOptions(vault.HandlerOptions{TpmKeyOnlyMode: true})
 		if err := runVaultOp(ctx.ps, handler.SetupDefaultVault); err != nil {
 			log.Errorf("SetupDefaultVault failed, err: %v", err)
 			getAndPublishAllVaultStatuses(ctx)
 			return
 		}
+		recordVaultKeyMode(ctx)
 		ctx.defaultVaultUnlocked = true
 		ctx.unlockMethod = types.VaultUnlockRecreated
 		log.Noticef("%s re-created", types.DefaultVaultName)
