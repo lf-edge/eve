@@ -9,6 +9,9 @@ CONFIGDIR=/config
 PERSISTDIR=/persist
 PERSIST_CERTS="$PERSISTDIR/certs"
 DEVICE_KEY_NAME="$CONFIGDIR/device.key.pem"
+DEVICE_CERT_NAME="$CONFIGDIR/device.cert.pem"
+SOFT_SERIAL_NAME="$CONFIGDIR/soft_serial"
+CONFIGDIR_TMPMOUNT=/tmp/config_tmpmount
 PERSIST_AGENT_DEBUG=$PERSISTDIR/agentdebug
 BINDIR=/opt/zededa/bin
 TMPDIR="${PERSISTDIR}/tmp"
@@ -94,6 +97,49 @@ if [ -d /persist/status ]; then
     echo "$(date -Ins -u) Saving copy of /persist/status in /persist/agentdebug"
     cp -rp /persist/status $PERSIST_AGENT_DEBUG/
 fi
+
+# Give the device a soft serial number if it does not have one, from an
+# eve_soft_serial= kernel argument if present and a random UUID otherwise,
+# updating both the CONFIG partition and its copy in RAM. Never fails; leaves
+# the device without a soft serial if the partition cannot be written.
+#
+# Only on a first boot with no device certificate: measure-config extends PCR 14
+# with whether /config/soft_serial exists and PCR 14 seals the vault, so a
+# device that may already have a sealed vault must not gain the file.
+create_soft_serial() {
+    if [ -z "$FIRSTBOOT" ] || [ -s "$SOFT_SERIAL_NAME" ] || [ -f "$DEVICE_CERT_NAME" ]; then
+        return
+    fi
+    configdev=$(zboot partdev CONFIG)
+    if [ -z "$configdev" ]; then
+        echo "$(date -Ins -u) No CONFIG partition; not creating a soft serial number"
+        return
+    fi
+    soft_serial=$(tr ' ' '\012' < /proc/cmdline | sed -n '/^eve_soft_serial=/s#eve_soft_serial=##p')
+    [ -n "$soft_serial" ] || soft_serial=$(uuidgen)
+    if [ -z "$soft_serial" ]; then
+        echo "$(date -Ins -u) Failed to generate a soft serial number"
+        return
+    fi
+
+    mkdir -p $CONFIGDIR_TMPMOUNT
+    if ! mount -t vfat -o flush,dirsync,noatime,rw "$configdev" $CONFIGDIR_TMPMOUNT; then
+        echo "$(date -Ins -u) Failed to mount $configdev; not creating a soft serial number"
+        return
+    fi
+    echo "$soft_serial" > "$CONFIGDIR_TMPMOUNT/soft_serial"
+    sync
+    blockdev --flushbufs "$configdev"
+    umount $CONFIGDIR_TMPMOUNT
+
+    mount -o remount,rw $CONFIGDIR
+    echo "$soft_serial" > "$SOFT_SERIAL_NAME"
+    mount -o remount,ro $CONFIGDIR
+
+    echo "$(date -Ins -u) Soft serial number is $soft_serial" | tee /dev/console
+}
+
+create_soft_serial
 
 echo "$(date -Ins -u) Configuration from factory/install:"
 (cd $CONFIGDIR || return; ls -l)
