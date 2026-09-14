@@ -1587,9 +1587,25 @@ func (d *EdgeDevice) RebootApplication(appUUID uuid.UUID, waitUntilRebooted bool
 	}
 }
 
+// VolumeGenerationPolicy controls whether PurgeApplication also bumps the
+// GenerationCount on the app's referenced volumes.
+type VolumeGenerationPolicy int
+
+const (
+	// BumpVolumeGeneration increments GenerationCount on every volume the
+	// app references, matching the controller contract for a purge
+	// (eve-api's storage.proto: "generationCount indicates the mutated
+	// volume needs to be purged and built from scratch").
+	BumpVolumeGeneration VolumeGenerationPolicy = iota
+	// KeepVolumeGeneration leaves volumes untouched, cycling only the
+	// domain -- e.g. if a real controller's purge action does not bump it.
+	KeepVolumeGeneration
+)
+
 // PurgeApplication purges the specified application instance and its state.
-func (d *EdgeDevice) PurgeApplication(appUUID uuid.UUID, waitUntilPurged bool,
-	timeout time.Duration) {
+// See VolumeGenerationPolicy for volumeGen.
+func (d *EdgeDevice) PurgeApplication(appUUID uuid.UUID, volumeGen VolumeGenerationPolicy,
+	waitUntilPurged bool, timeout time.Duration) {
 	config := d.getConfig(true)
 	appUUIDStr := appUUID.String()
 
@@ -1603,12 +1619,14 @@ func (d *EdgeDevice) PurgeApplication(appUUID uuid.UUID, waitUntilPurged bool,
 			} else {
 				app.Purge = &eveconfig.InstanceOpsCmd{Counter: purge.GetCounter() + 1}
 			}
-			for _, volRef := range app.GetVolumeRefList() {
-				volRef.GenerationCount++
-				for _, vol := range config.GetVolumes() {
-					if vol.GetUuid() == volRef.GetUuid() {
-						vol.GenerationCount++
-						break
+			if volumeGen == BumpVolumeGeneration {
+				for _, volRef := range app.GetVolumeRefList() {
+					volRef.GenerationCount++
+					for _, vol := range config.GetVolumes() {
+						if vol.GetUuid() == volRef.GetUuid() {
+							vol.GenerationCount++
+							break
+						}
 					}
 				}
 			}
