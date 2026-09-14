@@ -113,7 +113,7 @@ func TestPodListToSchedulingState(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			onMe, scheduledOnNone, err := podListToSchedulingState(tc.pods, node)
+			onMe, scheduledOnNone, _, err := podListToSchedulingState(tc.pods, node)
 			if tc.wantErr {
 				assert.Error(t, err)
 				return

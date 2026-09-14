@@ -222,3 +222,21 @@ func nodeReadyCondition(node *corev1.Node) (ready bool, since time.Time, found b
 	}
 	return false, time.Time{}, false
 }
+
+// IsNodeReady reports whether the named Kubernetes node's Ready condition is
+// currently true. Any lookup failure (API unreachable, node not found) is
+// treated as "cannot confirm" -- false, the safe direction for a caller
+// deciding whether a resource still assigned to that node is actually owned
+// by a live node or just hasn't been reaped yet.
+func IsNodeReady(nodeName string) bool {
+	client, err := GetClientSet()
+	if err != nil {
+		return false
+	}
+	node, err := getNodeWithClient(client, nodeName)
+	if err != nil {
+		return false
+	}
+	ready, _, found := nodeReadyCondition(node)
+	return found && ready
+}
