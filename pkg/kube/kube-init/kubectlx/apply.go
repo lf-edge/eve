@@ -11,11 +11,13 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kubeclient"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/mgmtproxy"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -469,6 +471,23 @@ func parseManifest(data []byte) ([]*unstructured.Unstructured, error) {
 	return out, nil
 }
 
+// fetchClient routes manifest fetches through pillar's cost-aware
+// mgmtproxy. A dedicated client with an explicit Proxy func is used
+// instead of http.DefaultClient + HTTPS_PROXY: net/http caches the
+// env-var proxy decision process-wide behind a sync.Once on first use,
+// so setting the env var per-call would silently do nothing once any
+// earlier request in this long-running process had already resolved it.
+var fetchClient = &http.Client{
+	Transport: &http.Transport{
+		Proxy: func(*http.Request) (*url.URL, error) {
+			if !mgmtproxy.Enabled() {
+				return nil, nil
+			}
+			return url.Parse(mgmtproxy.URL)
+		},
+	},
+}
+
 // fetchURL is a thin http.Get with a deadline. Any non-2xx status is a
 // fatal error (returned as-is) so the retry classifier doesn't loop on
 // a 404 forever.
@@ -479,7 +498,7 @@ func fetchURL(ctx context.Context, url string, timeout time.Duration) ([]byte, e
 	if err != nil {
 		return nil, err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := fetchClient.Do(req)
 	if err != nil {
 		return nil, err
 	}

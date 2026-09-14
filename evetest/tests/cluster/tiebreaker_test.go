@@ -199,7 +199,7 @@ func TestTieBreakerCluster(test *testing.T) {
 	}
 
 	requiredNetModel := evetest.RequireNetworkModel{
-		NetworkModel: netmodels.SeparateClusterPort,
+		NetworkModel: netmodels.SeparateClusterPort(devName[:]...),
 	}
 	var requirements []evetest.Requirement
 	requirements = append(requirements, requiredDevices[:]...)

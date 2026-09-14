@@ -11,6 +11,8 @@ import (
 
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kubeclient"
 	"github.com/vishvananda/netlink"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -23,6 +25,15 @@ const cni0LinkName = "cni0"
 var cdiGVR = schema.GroupVersionResource{
 	Group: "cdi.kubevirt.io", Version: "v1beta1", Resource: "cdis",
 }
+
+// proxyCAConfigMap* name the ConfigMap referenced by the CDI CR's
+// trustedCAProxy, holding mgmtproxy's cni0 TLS certificate. Namespace and
+// key follow CDI's own documented convention for ImportProxy.TrustedCAProxy.
+const (
+	proxyCAConfigMapNamespace = "cdi"
+	proxyCAConfigMapName      = "mgmtproxy-cni0-ca"
+	proxyCAConfigMapKey       = "ca.pem"
+)
 
 // CNI0Result reports the outcome of SetupCNI0ProxyIP without
 // requiring callers to parse error strings. The three "non-error"
@@ -111,10 +122,14 @@ const cdiImportProxyNoProxy = "10.42.0.0/16,10.43.0.0/16,127.0.0.0/8," +
 	"localhost,.svc,.cluster.local,169.254.0.0/16"
 
 // PatchCDIProxyConfig patches the CDI CR so importer pods receive
-// HTTPSProxy=CNI0URL. Importer pods are the ones created when a
-// Rancher/Helm DataVolumeTemplate uses source.http.url or
-// source.registry.url; uploader pods (used by virtctl image-upload
-// or the EVE-managed source.upload path) are not affected.
+// HTTPSProxy=CNI0URL carrying the cni0 proxy-auth token in its userinfo
+// (see withProxyToken), plus trustedCAProxy pointing at a ConfigMap holding
+// mgmtproxy's cni0 TLS cert (ensureProxyCAConfigMap) — so importers verify
+// they're talking to mgmtproxy, not a spoofed answerer on the shared cni0
+// bridge. Importer pods are the ones created when a Rancher/Helm
+// DataVolumeTemplate uses source.http.url or source.registry.url; uploader
+// pods (used by virtctl image-upload or the EVE-managed source.upload path)
+// are not affected.
 //
 // Idempotent: kubectl patch with the same payload is a no-op
 // (merge type, server-side check). Safe to call on every
@@ -124,17 +139,33 @@ const cdiImportProxyNoProxy = "10.42.0.0/16,10.43.0.0/16,127.0.0.0/8," +
 // Mirrors patch_cdi_proxy_config() from upstream commits 7ec6f2a64
 // and c3225bd45 (the "skip when config already matches" guard).
 func PatchCDIProxyConfig(ctx context.Context) error {
+	// May not exist yet right after boot (pillar's mgmtproxy hasn't
+	// finished its own first vault-unseal retry); skip this tick, retry
+	// next tick.
+	token, err := readProxyToken()
+	if err != nil {
+		return fmt.Errorf("read mgmtproxy proxy-auth token: %w", err)
+	}
+	caPEM, err := readProxyCACert()
+	if err != nil {
+		return fmt.Errorf("read mgmtproxy cni0 TLS cert: %w", err)
+	}
+	if err := ensureProxyCAConfigMap(ctx, caPEM); err != nil {
+		return fmt.Errorf("ensure cni0 CA configmap: %w", err)
+	}
+	httpsProxy := withProxyToken(CNI0URL, token)
+
 	// Skip (and stay silent) when the CDI CR already carries the
 	// desired importProxy config. This runs every steady-state tick
 	// for upgrade/reset recovery; patching unconditionally would
 	// spam k3s-install.log and issue a pointless kubectl patch each
 	// iteration. Fall through on any query error — the patch is
 	// itself idempotent, so worst case we do one unneeded write.
-	if cdiProxyConfigMatches(ctx, CNI0URL, cdiImportProxyNoProxy) {
+	if cdiProxyConfigMatches(ctx, httpsProxy, cdiImportProxyNoProxy, proxyCAConfigMapName) {
 		return nil
 	}
-	patch := buildCDIProxyPatch(CNI0URL, cdiImportProxyNoProxy)
-	_, err := kubeclient.Default().Dynamic.Resource(cdiGVR).
+	patch := buildCDIProxyPatch(httpsProxy, cdiImportProxyNoProxy, proxyCAConfigMapName)
+	_, err = kubeclient.Default().Dynamic.Resource(cdiGVR).
 		Patch(ctx, "cdi", types.MergePatchType, []byte(patch), metav1.PatchOptions{})
 	if err != nil {
 		return fmt.Errorf("patch cdi: %w", err)
@@ -142,17 +173,50 @@ func PatchCDIProxyConfig(ctx context.Context) error {
 	return nil
 }
 
+// ensureProxyCAConfigMap creates or updates the ConfigMap CDI's
+// trustedCAProxy references, so importer pods can validate mgmtproxy's cni0
+// TLS certificate. Idempotent, same "only write if it actually changed"
+// discipline as the CDI CR patch itself.
+func ensureProxyCAConfigMap(ctx context.Context, caPEM []byte) error {
+	cms := kubeclient.Default().Clientset.CoreV1().ConfigMaps(proxyCAConfigMapNamespace)
+	existing, err := cms.Get(ctx, proxyCAConfigMapName, metav1.GetOptions{})
+	if err == nil {
+		if existing.Data[proxyCAConfigMapKey] == string(caPEM) {
+			return nil
+		}
+		existing.Data = map[string]string{proxyCAConfigMapKey: string(caPEM)}
+		_, err = cms.Update(ctx, existing, metav1.UpdateOptions{})
+		return err
+	}
+	if !apierrors.IsNotFound(err) {
+		return fmt.Errorf("get configmap %s/%s: %w",
+			proxyCAConfigMapNamespace, proxyCAConfigMapName, err)
+	}
+	_, err = cms.Create(ctx, &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      proxyCAConfigMapName,
+			Namespace: proxyCAConfigMapNamespace,
+		},
+		Data: map[string]string{proxyCAConfigMapKey: string(caPEM)},
+	}, metav1.CreateOptions{})
+	return err
+}
+
 // cdiProxyConfigMatches reports whether the CDI CR's importProxy
-// spec already equals the desired (httpsProxy, noProxy) pair. Any
-// kubectl error is treated as "not matching" so the caller falls
-// through to the (idempotent) patch attempt.
-func cdiProxyConfigMatches(ctx context.Context, httpsProxy, noProxy string) bool {
+// spec already equals the desired (httpsProxy, noProxy, trustedCAProxy)
+// triple. Any kubectl error is treated as "not matching" so the caller
+// falls through to the (idempotent) patch attempt.
+func cdiProxyConfigMatches(ctx context.Context, httpsProxy, noProxy, trustedCAProxy string) bool {
 	cur, err := cdiProxyGet(ctx, "HTTPSProxy")
 	if err != nil || cur != httpsProxy {
 		return false
 	}
 	cur, err = cdiProxyGet(ctx, "noProxy")
 	if err != nil || cur != noProxy {
+		return false
+	}
+	cur, err = cdiProxyGet(ctx, "trustedCAProxy")
+	if err != nil || cur != trustedCAProxy {
 		return false
 	}
 	return true
@@ -179,8 +243,8 @@ func cdiProxyGet(ctx context.Context, key string) (string, error) {
 // buildCDIProxyPatch returns the merge-patch JSON for the CDI CR's
 // importProxy spec. Extracted as a pure function so we can pin the
 // JSON layout in a unit test without exercising kubectl.
-func buildCDIProxyPatch(httpsProxy, noProxy string) string {
+func buildCDIProxyPatch(httpsProxy, noProxy, trustedCAProxy string) string {
 	return fmt.Sprintf(
-		`{"spec":{"config":{"importProxy":{"HTTPSProxy":%q,"noProxy":%q}}}}`,
-		httpsProxy, noProxy)
+		`{"spec":{"config":{"importProxy":{"HTTPSProxy":%q,"noProxy":%q,"trustedCAProxy":%q}}}}`,
+		httpsProxy, noProxy, trustedCAProxy)
 }
