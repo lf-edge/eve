@@ -59,6 +59,9 @@ BROKER_VM_CORES="4"
 BROKER_VM_MEMORY="8192"
 BROKER_VM_DISK="64"          # GiB; hosts all the pulled/cached Docker images
 BROKER_VM_SSH_PUBKEY=""
+# The broker VM's only Linux user (sudo, NOPASSWD). Matches gh-runner-installer.sh's
+# --gh-username-derived user, so both can be set to the same name if desired.
+BROKER_VM_USERNAME="ubuntu"
 BROKER_VM_IMAGE_URL="https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img"
 # Empty means the broker uses its own default (INFO); e.g. "debug" for verbose logs.
 BROKER_LOG_LEVEL=""
@@ -127,8 +130,12 @@ Broker VM shape:
   --broker-vm-cores N           Default: 4
   --broker-vm-memory MiB        Default: 8192
   --broker-vm-disk GiB          Default: 64 (hosts all the pulled/cached Docker images)
-  --broker-vm-ssh-pubkey FILE   Public key injected into the broker VM's default
-                                "ubuntu" user (optional; root SSH login is disabled).
+  --broker-vm-username USER     The broker VM's only Linux user (sudo, NOPASSWD).
+                                Default: ubuntu. Set to the same name as
+                                gh-runner-installer.sh's --gh-username to use one
+                                username across both VM types.
+  --broker-vm-ssh-pubkey FILE   Public key injected into the broker VM's user
+                                (optional; root SSH login is disabled).
   --broker-vm-image-url URL     Ubuntu cloud image. Default: Ubuntu 24.04 amd64.
   --broker-log-level LEVEL      Broker's own log verbosity (e.g. debug, info, warn,
                                 error). Default: the broker's own default (info).
@@ -190,6 +197,7 @@ while [ $# -gt 0 ]; do
         --broker-vm-cores)             BROKER_VM_CORES="$2"; shift 2 ;;
         --broker-vm-memory)            BROKER_VM_MEMORY="$2"; shift 2 ;;
         --broker-vm-disk)              BROKER_VM_DISK="$2"; shift 2 ;;
+        --broker-vm-username)          BROKER_VM_USERNAME="$2"; shift 2 ;;
         --broker-vm-ssh-pubkey)        BROKER_VM_SSH_PUBKEY="$2"; shift 2 ;;
         --broker-vm-image-url)         BROKER_VM_IMAGE_URL="$2"; shift 2 ;;
         --broker-log-level)            BROKER_LOG_LEVEL="$2"; shift 2 ;;
@@ -414,6 +422,7 @@ EVETEST_CLOUDINIT_EOF
 sed -e "s|__BROKER_ENV_B64__|${BROKER_ENV_B64}|g" \
     -e "s|__BROKER_IMAGE__|${BROKER_IMAGE}|g" \
     -e "s|__MIRRORS_SCRIPT_B64__|${MIRRORS_SCRIPT_B64}|g" \
+    -e "s|__BROKER_VM_USERNAME__|${BROKER_VM_USERNAME}|g" \
     -e "s|__SSH_AUTHORIZED_KEYS__|${SSH_AUTHORIZED_KEYS_YAML}|g" \
     -e "s|__DOCKER_CONFIG_JSON_B64__|${DOCKER_CONFIG_JSON_B64}|g" \
     /tmp/evetest-broker-cloudinit.tmpl > "${SNIPPETS_DIR}/evetest-broker-cloudinit.yaml"

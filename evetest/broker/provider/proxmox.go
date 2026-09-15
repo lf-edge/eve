@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1091,6 +1092,14 @@ func (p *ProxmoxProvider) destroyDevice(
 	}
 	vm, err := node.VirtualMachine(ctx, dev.vmID)
 	if err != nil {
+		// go-proxmox wraps a transport-level failure (EOF, timeout, ...) as
+		// *url.Error, which doesn't mean the VM is gone -- only a genuine API
+		// error means that. Otherwise this leaks the VM on a transient error.
+		var urlErr *url.Error
+		if errors.As(err, &urlErr) {
+			return fmt.Errorf("failed to look up VM %d for device %q during teardown: %w",
+				dev.vmID, dev.name, err)
+		}
 		// VM already gone; still remove any uploaded firmware volumes.
 		log.Warnf("VM %d for device %q not found during teardown: %v",
 			dev.vmID, dev.name, err)
