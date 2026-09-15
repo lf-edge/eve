@@ -74,6 +74,27 @@ func ClusterStorageReadyForVolumes(*base.LogObject, string) bool {
 	return true
 }
 
+// PVCAdoptionState mirrors the k-build type, with the same four values in
+// the same order, so callers can reference it without a build tag. See the
+// k-build definition for what each value means. Only PVCStateUnknown is ever
+// returned on this build: there is no PVC/Longhorn concept to adopt from on
+// classic hypervisors, so there is never anything to adopt and callers fall
+// through to the normal ContentTree-gated path.
+type PVCAdoptionState int
+
+// These states mirror the k-build's meanings; see cdiupload.go there.
+const (
+	PVCStateUnknown PVCAdoptionState = iota
+	PVCStateReady
+	PVCStateNotReady
+	PVCStateAbsent
+)
+
+// ProbePVCAdoption is a stub for non EVE-k builds.
+func ProbePVCAdoption(string, *base.LogObject) PVCAdoptionState {
+	return PVCStateUnknown
+}
+
 // EnsureVMsDeschedulerAnnotated is a stub for non EVE-k builds.
 func EnsureVMsDeschedulerAnnotated(*base.LogObject) error {
 	return nil
