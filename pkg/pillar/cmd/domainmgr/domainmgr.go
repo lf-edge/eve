@@ -1135,6 +1135,29 @@ func runHandler(ctx *domainContext, key string, configChannel <-chan Notify, cpu
 	log.Functionf("runHandler(%s) DONE", key)
 }
 
+// kubevirtStillReaping reports whether Info's HALTING means the VMIRS is
+// gone but Kubernetes is still reaping its VMI and pod -- not a teardown
+// yet, unlike HALTING's qemu -no-shutdown meaning on other hypervisors.
+func kubevirtStillReaping(ctx *domainContext, domainStatus types.SwState, err error) bool {
+	return ctx.hvTypeKube && err == nil && domainStatus == types.HALTING
+}
+
+// kubevirtDeactivateComplete reports whether an async kubevirt deactivate
+// (asyncKubevirtDeactivate) has finished: the workload is absent, this is
+// not a delete, and the app has not been re-activated since.
+func kubevirtDeactivateComplete(ctx *domainContext, status *types.DomainStatus,
+	configActivate bool, domainStatus types.SwState) bool {
+	return ctx.hvTypeKube && status.Activated && !configActivate &&
+		!status.PendingDelete && domainStatus == types.HALTED
+}
+
+// asyncKubevirtDeactivate reports whether doInactivate should hand this
+// teardown to Kubernetes and return rather than block: a live kubevirt
+// deactivate, not a delete -- handleDelete always passes impatient=true.
+func asyncKubevirtDeactivate(ctx *domainContext, status *types.DomainStatus, impatient bool) bool {
+	return ctx.hvTypeKube && !impatient && status.DomainId != 0
+}
+
 // Check if it is still running
 func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 	// Never reconcile a domain whose crash is being handled: a dump may be in
@@ -1155,8 +1178,11 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 	// process is still paused holding resources (qemu -no-shutdown); treat it
 	// like HALTED so we tear it down and free the resources rather than leaving
 	// it parked. (Info only reports HALTING once the guest has actually powered
-	// off, so an in-progress shutdown is not cut short.)
-	if err != nil || domainStatus == types.HALTED || domainStatus == types.HALTING {
+	// off, so an in-progress shutdown is not cut short.) Under kubevirt this
+	// same state means the opposite thing, so kubevirtStillReaping is checked
+	// first and holds instead.
+	if !kubevirtStillReaping(ctx, domainStatus, err) &&
+		(err != nil || domainStatus == types.HALTED || domainStatus == types.HALTING) {
 		if status.Activated && configActivate {
 			if err == nil {
 				err = fmt.Errorf("unexpected state %s", domainStatus.String())
@@ -1211,6 +1237,15 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 					log.Errorf("failed to cleanup domain: %s (%v)", status.DomainName, err)
 				}
 			}
+		} else if kubevirtDeactivateComplete(ctx, status, configActivate, domainStatus) {
+			// doInactivate handed this teardown to Kubernetes and returned.
+			// The workload is absent now, so release the resources and
+			// settle the state here. DomainId has to be cleared first, or
+			// doCleanup reads a live domain and records a failure instead.
+			log.Noticef("verifyStatus(%s): deactivate complete, workload absent",
+				status.Key())
+			status.DomainId = 0
+			doCleanup(ctx, status)
 		}
 		status.DomainId = 0
 		publishDomainStatus(ctx, status)
@@ -2260,6 +2295,21 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 	doShutdown, firstDelay := shutdownBudget(status.VirtualizationMode,
 		hyper.Name(), maxDelay)
 
+	// A kubevirt deactivate hands the teardown to Kubernetes and returns:
+	// deleting the VMIRS is the whole of EVE's part, and reaping the VMI and
+	// its pod can outlast any budget worth blocking a config apply for.
+	// verifyStatus settles the state once Info reports all three absent.
+	// handleDelete (impatient) stays synchronous, because it unpublishes
+	// DomainStatus as soon as this returns.
+	if asyncKubevirtDeactivate(ctx, status, impatient) {
+		status.State = types.HALTING
+		publishDomainStatus(ctx, status)
+		if err := DomainShutdown(ctx, *status, false); err != nil {
+			log.Errorf("doInactivate(%s) Shutdown failed: %s", status.Key(), err)
+		}
+		return
+	}
+
 	if status.DomainId != 0 {
 		status.State = types.HALTING
 		publishDomainStatus(ctx, status)
@@ -2961,7 +3011,11 @@ func waitForDomainGone(status types.DomainStatus, maxDelay time.Duration) bool {
 				state.String())
 			return true
 		}
-		if state == types.HALTING {
+		// Under kubevirt HALTING means the reverse of the case below: the
+		// VMIRS is gone and Kubernetes is still reaping the VMI and its
+		// pod. Nothing is parked for the caller to reap, so keep polling
+		// until the workload is really absent.
+		if state == types.HALTING && !base.IsHVTypeKube() {
 			// The guest has powered off but the hypervisor process is still
 			// paused holding its resources (e.g. qemu -no-shutdown). Stop
 			// waiting and let the caller reap it (Delete) now rather than

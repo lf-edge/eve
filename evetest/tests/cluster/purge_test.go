@@ -272,7 +272,7 @@ func TestAppInstancePurge(test *testing.T) {
 	// Request the purge.
 	log.Infof("Purging app %v (VMIRS %s -> %s)", appUUID,
 		vmirsBeforePurge, vmirsAfterPurge)
-	device.PurgeApplication(appUUID, false, 0)
+	device.PurgeApplication(appUUID, evetest.BumpVolumeGeneration, false, 0)
 	evetest.Checkpoint("purge-requested")
 
 	// The app must actually leave RUNNING, otherwise a purge dropped on the floor

@@ -206,7 +206,7 @@ func TestVMAppPurgeAfterPowerCycle(test *testing.T) {
 	device.PowerOff()
 	evetest.Checkpoint("device-powered-off")
 
-	device.PurgeApplication(appUUID, false, 0)
+	device.PurgeApplication(appUUID, evetest.BumpVolumeGeneration, false, 0)
 	evetest.Checkpoint("purge-issued-while-down")
 
 	log.Infof("Powering device %q back on", devName)

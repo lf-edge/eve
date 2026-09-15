@@ -297,7 +297,7 @@ func TestVolumes(test *testing.T) {
 
 	// Purge the app and verify it comes back up.
 	log.Infof("Purging vol-space-app")
-	device.PurgeApplication(appUUID, false, 0)
+	device.PurgeApplication(appUUID, evetest.BumpVolumeGeneration, false, 0)
 	t.Eventually(appUpdates, 2*time.Minute).Should(Receive(matchers.SatisfyPredicate(
 		"vol-space-app enters a transient purge state",
 		func(info *eveinfo.ZInfoApp) bool {

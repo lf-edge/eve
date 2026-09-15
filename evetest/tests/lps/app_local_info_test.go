@@ -255,7 +255,7 @@ func TestAppLocalInfo(test *testing.T) {
 	// counters, but the LPS-visible LastCmdTimestamp must not change.
 	log.Infof("Testing controller-driven purge")
 	touchApp1("/root/purge_test")
-	device.PurgeApplication(app1UUID, true, timeout)
+	device.PurgeApplication(app1UUID, evetest.BumpVolumeGeneration, true, timeout)
 	waitApp1SSHReachable()
 	waitLastCmdTimestamp(123, "controller-driven purge must not change the LPS timestamp")
 	t.Expect(app1FileExists("/root/purge_test")).To(BeFalse(),
