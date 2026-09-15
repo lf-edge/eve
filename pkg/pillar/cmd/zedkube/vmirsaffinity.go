@@ -7,7 +7,6 @@ package zedkube
 
 import (
 	"context"
-	"reflect"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
@@ -15,6 +14,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 	"kubevirt.io/client-go/kubecli"
 )
 
@@ -34,9 +34,15 @@ import (
 // must NOT rewrite the affinity to the failover node, since the descheduler
 // (EnsureVMsDeschedulerAnnotated / RemovePodsViolatingNodeAffinity) relies on
 // the affinity still pointing at the true home node to move the app back
-// once it recovers. Only the actual DNID node ever corrects the affinity, and
-// it does so unconditionally on its own periodic check, independent of
-// whether it happens to be running the app right now.
+// once it recovers.
+//
+// But IsDesignatedNodeID alone can't tell a genuine permanent reassignment
+// apart from that same DNID node simply reconnecting after such a temporary
+// failover -- both look identical from here. So patching also requires
+// nodeExists to confirm the node currently named in the affinity is gone
+// from the cluster altogether, not merely unreachable or NotReady: a node
+// that's only temporarily down keeps its Node object, so this can't misfire
+// the instant it reconnects, only once it's actually been replaced.
 //
 // Patching only spec.template.spec.affinity does not disturb a VMI already
 // running: a ReplicaSet controller consults the template only when creating
@@ -69,8 +75,13 @@ func (z *zedkube) reconcileVMIRSAffinity(wdFunc func()) {
 		log.Errorf("reconcileVMIRSAffinity: kubevirt client: %v", err)
 		return
 	}
+	nodeClient, err := getKubeClientSet()
+	if err != nil {
+		log.Errorf("reconcileVMIRSAffinity: clientset: %v", err)
+		return
+	}
 
-	reconcileVMIRSAffinityWithClient(z.nodeName, virtClient, items, wdFunc)
+	reconcileVMIRSAffinityWithClient(z.nodeName, virtClient, nodeClient, items, wdFunc)
 }
 
 // anyDesignatedVMI reports whether any item is a VMI-backed app for which
@@ -87,7 +98,7 @@ func anyDesignatedVMI(items map[string]interface{}) bool {
 }
 
 func reconcileVMIRSAffinityWithClient(nodeName string, virtClient kubecli.KubevirtClient,
-	items map[string]interface{}, wdFunc func()) {
+	nodeClient kubernetes.Interface, items map[string]interface{}, wdFunc func()) {
 	for _, item := range items {
 		wdFunc()
 
@@ -116,12 +127,18 @@ func reconcileVMIRSAffinityWithClient(nodeName string, virtClient kubecli.Kubevi
 			continue
 		}
 
-		desired := hypervisor.SetKubeAffinity(nodeName, aiconfig.AffinityType)
-		if reflect.DeepEqual(existing.Spec.Template.Spec.Affinity, desired) {
+		// Gate 1: the recorded affinity actually disagrees with the DNID.
+		staleNode := vmirsAffinityNode(existing)
+		if staleNode == "" || staleNode == nodeName {
+			continue
+		}
+		// Gate 2: that disagreement is permanent, not a live node merely
+		// being unreachable right now.
+		if nodeExists(nodeClient, staleNode) {
 			continue
 		}
 
-		existing.Spec.Template.Spec.Affinity = desired
+		existing.Spec.Template.Spec.Affinity = hypervisor.SetKubeAffinity(nodeName, aiconfig.AffinityType)
 		updateCtx, updateCancel := context.WithTimeout(context.Background(), kubeAPITimeout)
 		_, err = virtClient.ReplicaSet(kubeapi.EVEKubeNameSpace).Update(updateCtx, existing, metav1.UpdateOptions{})
 		updateCancel()
@@ -129,7 +146,22 @@ func reconcileVMIRSAffinityWithClient(nodeName string, virtClient kubecli.Kubevi
 			log.Errorf("reconcileVMIRSAffinity: update vmirs %s affinity: %v", vmiRsName, err)
 			continue
 		}
-		log.Noticef("reconcileVMIRSAffinity: updated vmirs %s affinity to node %s (DNID reassignment)",
-			vmiRsName, nodeName)
+		log.Noticef("reconcileVMIRSAffinity: updated vmirs %s affinity to node %s (node %s no longer in cluster)",
+			vmiRsName, nodeName, staleNode)
 	}
+}
+
+// nodeExists reports whether a Node object named nodeName is currently
+// registered with the cluster. Any error other than a clean "not found" is
+// treated as still existing (fail safe): the caller only acts on affinity
+// staleness once it can positively confirm the referenced node is gone for
+// good, never on an ambiguous API error.
+func nodeExists(clientset kubernetes.Interface, nodeName string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	defer cancel()
+	_, err := clientset.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+	if err == nil {
+		return true
+	}
+	return !errors.IsNotFound(err)
 }
