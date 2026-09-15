@@ -62,6 +62,14 @@ type DomainConfig struct {
 	// if this node is the DNiD of the App
 	IsDNidNode bool
 
+	// DesignatedNodeUUID is the device UUID of the app's actual designated
+	// node, whichever node that is -- copied from AppInstanceConfig's field
+	// of the same name. IsDNidNode above only answers whether *this* node
+	// is it; this is what lets the node creating the domain (e.g. a backup
+	// node standing in during a DNID outage) resolve and encode the true
+	// home's node affinity instead of always encoding its own.
+	DesignatedNodeUUID string
+
 	// Node Affinity for cluster IsDesignatedNodeID
 	AffinityType Affinity
 

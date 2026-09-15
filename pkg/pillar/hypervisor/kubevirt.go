@@ -745,8 +745,9 @@ func (ctx kubevirtContext) CreateReplicaVMIConfig(domainName string, config type
 		sriovVFs = refs
 	}
 
-	// Set the affinity to this node the VMI is preferred to run on
-	affinity := SetKubeAffinity(nodeName, config.AffinityType)
+	// Set the affinity to the app's designated node (falling back to this
+	// node if it can't be resolved -- see affinityTargetNodeName)
+	affinity := SetKubeAffinity(affinityTargetNodeName(config, nodeName), config.AffinityType)
 
 	// Set tolerations to handle node conditions
 	tolerations := setKubeToleration(int64(tolerateSec))
@@ -2342,7 +2343,7 @@ func (ctx kubevirtContext) CreateReplicaPodConfig(domainName string, config type
 				},
 				Spec: k8sv1.PodSpec{
 					Tolerations: setKubeToleration(int64(tolerateSec)),
-					Affinity:    SetKubeAffinity(nodeName, config.AffinityType),
+					Affinity:    SetKubeAffinity(affinityTargetNodeName(config, nodeName), config.AffinityType),
 					Containers: []k8sv1.Container{
 						{
 							Name:            kubeName,
@@ -2438,6 +2439,29 @@ func (ctx kubevirtContext) CreateReplicaPodConfig(domainName string, config type
 	file.WriteString(repStr)
 
 	return nil
+}
+
+// affinityTargetNodeName resolves which node's hostname to encode in a
+// newly-created domain's affinity. Whichever node runs this create -- which,
+// during a DNID outage, can be a backup node standing in for the real one --
+// must still write the app's actual designated node's name, not its own,
+// or the affinity permanently forgets where the app belongs until zedkube's
+// reconciler corrects it out-of-band (cmd/zedkube/vmirsaffinity.go).
+//
+// config.DesignatedNodeUUID is empty for a non-cluster app, and resolution
+// can fail transiently (API hiccup, node not yet joined); either falls back
+// to localNodeName rather than blocking creation on this lookup.
+func affinityTargetNodeName(config types.DomainConfig, localNodeName string) string {
+	if config.DesignatedNodeUUID == "" {
+		return localNodeName
+	}
+	name, err := kubeapi.GetNodeNameFromUUID(config.DesignatedNodeUUID)
+	if err != nil || name == "" {
+		logrus.Warnf("affinityTargetNodeName: resolve designated node %s: %v; using local node %s",
+			config.DesignatedNodeUUID, err, localNodeName)
+		return localNodeName
+	}
+	return name
 }
 
 // SetKubeAffinity builds the node affinity for a VMI/pod template that
