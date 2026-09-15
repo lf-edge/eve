@@ -1,7 +1,7 @@
 // Copyright (c) 2017-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// Manage Xen guest domains based on the subscribed collection of DomainConfig
+// Manage guest domains based on the subscribed collection of DomainConfig
 // and publish the result in a collection of DomainStatus structs.
 // We run a separate go routine for each domU to be able to boot and halt
 // them concurrently and also pick up their state periodically.
@@ -2191,26 +2191,18 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 // shutdown and wait for the domain to go away; if that fails destroy and wait
 // shutdownBudget decides how a domain in the given virtualization mode is asked
 // to stop: whether a poweroff request is sent at all, and how long that request
-// is given to take effect before the caller escalates to a forced stop. hvName
-// is the hypervisor backend in use, and maxDelay the budget for a mode that
-// warrants waiting the whole way.
-func shutdownBudget(mode types.VmMode, hvName string,
+// is given to take effect before the caller escalates to a forced stop.
+// maxDelay is the budget for a mode that warrants waiting the whole way.
+func shutdownBudget(mode types.VmMode,
 	maxDelay time.Duration) (doShutdown bool, firstDelay time.Duration) {
 
 	switch mode {
-	case types.HVM, types.FML:
+	case types.HVM, types.FML, types.PV:
 		// Do a short shutdown wait, just in case there are
-		// PV tools in guest, then a shutdown -F
-		return true, gracefulShutdownWait
-	case types.PV:
-		// PV is the zero value of VmMode, so it is also what an application
-		// whose config leaves the mode unset lands on. Only xen acts on the
-		// mode; under any other hypervisor such a guest is no more likely to
-		// service the poweroff request than an HVM one, so it gets the same
-		// short wait rather than the whole budget.
-		if hvName == hypervisor.XenHypervisorName {
-			return true, maxDelay
-		}
+		// PV tools in guest, then a shutdown -F. PV is the zero value of
+		// VmMode and so also covers a config that leaves the mode unset; no
+		// remaining hypervisor acts on the mode, so it gets the same short
+		// wait rather than the whole budget.
 		return true, gracefulShutdownWait
 	}
 	return false, maxDelay
@@ -2257,8 +2249,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 		maxDelay /= 10
 	}
 
-	doShutdown, firstDelay := shutdownBudget(status.VirtualizationMode,
-		hyper.Name(), maxDelay)
+	doShutdown, firstDelay := shutdownBudget(status.VirtualizationMode, maxDelay)
 
 	if status.DomainId != 0 {
 		status.State = types.HALTING
@@ -3369,7 +3360,7 @@ func getCloudInitVersion(config types.DomainConfig) string {
 // more short-lived than other volumes/virtual disks.
 // appendCloudInitDisk builds a cloud-init ISO from userData and appends it to
 // status.DiskStatusList as a cdrom-type disk. The hypervisor backends pick it
-// up the same way: kvm/xen emits it as an attached cdrom drive; kubevirt mounts
+// up the same way: kvm emits it as an attached cdrom drive; kubevirt mounts
 // it as a HostDisk-backed cdrom (the virt-launcher reads it from the host's
 // /run via the privileged virt-handler bind-mount, same path the existing
 // user-supplied cdrom HostDisk branch in kubevirt.go relies on).

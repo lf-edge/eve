@@ -9,7 +9,7 @@ Options:
   -t <EVE image tag>
      Production EVE images built by lf-edge use tags with the format:
        <major>.<minor>.<bugfix>-<hypervisor>-<architecture>
-     Where <hypervisor> is one of: kvm | xen
+     Where <hypervisor> is one of: kvm | k
      And <architecture> is one of: amd64 | arm64 | riscv64
      Mandatory argument.
   -s <soft serial string>

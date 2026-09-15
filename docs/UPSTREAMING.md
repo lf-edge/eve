@@ -181,17 +181,6 @@ Includes the raw EFI status code in the GRUB error message when a TPM operation 
 
 This is unlikely to be replaced anywhere. The closest option is linuxkit, which has no custom firmware solutions at this time. Since it is modular via OCI images, the likely solution is to use a firmware-specific OCI image in the `init` section, which is precisely what we are doing.
 
-### xen
-
-[xen](../pkg/xen/) builds and adds the xen kernel. It downloads the official Xen source, configures and builds it, and extracts the bootable kernel. This, in turn, is used in grub to boot into `dom0`, which then boots into the dom0 kernel, as defined in the linuxkit config `kernel` section.
-
-We do a custom build of the xen kernel for two reasons:
-
-1. Some customization is done for the final `arm64` build. This may be unnecessary, or may be upstream-able to xen.
-2. We have not yet validated that all of our required functionality is in the available xen packages. This should be checked.
-
-Further, the boot process is a bit "backwards", at least for the live `rootfs.img`. The actual booted kernel (xen) is installed in `init` while the kernel that xen boots into in `dom0` is in `kernel`, with the customization made available via `grub.cfg`. Ideally, linuxkit would support xen booting directly in the `kernel` section.
-
 ### gpt-tools
 
 [gpt-tools](../pkg/gpt-tools) loads a series of gpt partition utilities/tools onto the base filesystem. It adds the following tools:

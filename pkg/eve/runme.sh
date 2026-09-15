@@ -258,7 +258,7 @@ prepare_for_platform() {
 prepare_for_hv() {
     hv="$1"
     case "$hv" in
-    kvm|xen)
+    kvm)
         ;;
     k)
         # Override image sizes for eve-k
