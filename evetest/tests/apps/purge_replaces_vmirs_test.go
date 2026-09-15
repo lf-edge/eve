@@ -157,7 +157,7 @@ func TestVMAppPurgeReplacesVMIRS(test *testing.T) {
 	baselineCounter, _ := purgeCounter(device, appUUID)
 	evetest.Checkpoint("baseline-recorded")
 
-	device.PurgeApplication(appUUID, true, purgeCompleteTimeout)
+	device.PurgeApplication(appUUID, evetest.BumpVolumeGeneration, true, purgeCompleteTimeout)
 	evetest.Checkpoint("purge-complete")
 
 	wantCounter := baselineCounter + 1
