@@ -88,6 +88,11 @@ import (
 //   - TestHaltUnresponsiveGuest -- a guest which never services the ACPI
 //     poweroff request still halts promptly, because the stop escalates to
 //     terminating the domain. Pulls its image from dl-cdn.alpinelinux.org.
+//   - TestWorkerPoolSaturation -- with volumemgr's worker pool shrunk to a
+//     single worker, refused submissions must be reported as deferral
+//     warnings and retried, not lost: all apps reach RUNNING and the
+//     warnings clear; regression test for apps wedged in LOADING with no
+//     error when the pool saturated.
 //   - TestVMAppPurgeReplacesVMIRS -- a plain purge of a healthy app leaves
 //     exactly one VMIRS, named for the new generation. Kubevirt only; skips
 //     on any other hypervisor.
@@ -137,6 +142,9 @@ func TestAppsSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestHaltUnresponsiveGuest,
+		},
+		evetest.TestCase{
+			Test: TestWorkerPoolSaturation,
 		},
 		evetest.TestCase{
 			Test: TestVMAppPurgeReplacesVMIRS,
