@@ -162,6 +162,11 @@ const (
 	// firmware only falls through to network when the disk has nothing
 	// bootable.
 	Capability_CAPABILITY_NETBOOT Capability = 6
+	// Editing a powered-off device's boot disk in place: growing it, or
+	// destroying the filesystem on one of its partitions. Requires a provider
+	// that keeps the disk as a file it can still reach after setup, so a
+	// provider that hands the image to a remote node does not have it.
+	Capability_CAPABILITY_EDIT_DEVICE_DISK Capability = 7
 )
 
 // Enum value maps for Capability.
@@ -174,6 +179,7 @@ var (
 		4: "CAPABILITY_TPM",
 		5: "CAPABILITY_LOCAL_LIVE_IMAGE",
 		6: "CAPABILITY_NETBOOT",
+		7: "CAPABILITY_EDIT_DEVICE_DISK",
 	}
 	Capability_value = map[string]int32{
 		"CAPABILITY_UNSPECIFIED":      0,
@@ -183,6 +189,7 @@ var (
 		"CAPABILITY_TPM":              4,
 		"CAPABILITY_LOCAL_LIVE_IMAGE": 5,
 		"CAPABILITY_NETBOOT":          6,
+		"CAPABILITY_EDIT_DEVICE_DISK": 7,
 	}
 )
 
@@ -1071,7 +1078,7 @@ const file_common_proto_rawDesc = "" +
 	"\x06HV_KVM\x10\x01\x12\n" +
 	"\n" +
 	"\x06HV_XEN\x10\x02\x12\x0f\n" +
-	"\vHV_KUBEVIRT\x10\x03*\xcd\x01\n" +
+	"\vHV_KUBEVIRT\x10\x03*\xee\x01\n" +
 	"\n" +
 	"Capability\x12\x1a\n" +
 	"\x16CAPABILITY_UNSPECIFIED\x10\x00\x12\x1b\n" +
@@ -1080,7 +1087,8 @@ const file_common_proto_rawDesc = "" +
 	"\x17CAPABILITY_FORWARD_LLDP\x10\x03\x12\x12\n" +
 	"\x0eCAPABILITY_TPM\x10\x04\x12\x1f\n" +
 	"\x1bCAPABILITY_LOCAL_LIVE_IMAGE\x10\x05\x12\x16\n" +
-	"\x12CAPABILITY_NETBOOT\x10\x06*g\n" +
+	"\x12CAPABILITY_NETBOOT\x10\x06\x12\x1f\n" +
+	"\x1bCAPABILITY_EDIT_DEVICE_DISK\x10\a*g\n" +
 	"\vLogSeverity\x12\x0f\n" +
 	"\vLOG_UNKNOWN\x10\x00\x12\r\n" +
 	"\tLOG_DEBUG\x10\x01\x12\f\n" +

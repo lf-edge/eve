@@ -43,10 +43,13 @@ func TestStorageSuite(test *testing.T) {
 		evetest.TestCase{
 			Test: TestVaultZvolTrimReclaimsBlocks,
 		},
-		// Last: needs its own freshly created device with extra disks, so
+		// Last: these need their own freshly created device with extra disks, so
 		// placement relative to the other tests does not matter for reuse.
 		evetest.TestCase{
 			Test: TestZFSDiskLayout,
+		},
+		evetest.TestCase{
+			Test: TestPersistOnSeparateDisk,
 		},
 	)
 }
