@@ -8,7 +8,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # hadolint ignore=DL3008
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        curl dnsutils iptables iproute2 iputils-ping net-tools openssh-server tcpdump && \
+        curl dnsutils iptables iproute2 iputils-ping net-tools openssh-server tcpdump tpm2-tools && \
     rm -rf /var/lib/apt/lists/* && \
     mkdir /run/sshd
 
