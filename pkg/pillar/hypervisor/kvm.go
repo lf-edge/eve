@@ -1439,19 +1439,21 @@ func (ctx KvmContext) Stop(domainName string, _ bool) error {
 // Delete deletes a domain
 func (ctx KvmContext) Delete(domainName string) (result error) {
 	//Sending a stop signal to then domain before quitting. This is done to freeze the domain before quitting it.
-	_, err := os.Stat(GetQmpExecutorSocket(domainName))
-	if err == nil {
+	// A qemu that died on its own leaves the socket file behind, so a failed
+	// quit does not mean the domain is still there; remove the state dir
+	// regardless and let the caller decide what to do with the quit error.
+	if _, err := os.Stat(GetQmpExecutorSocket(domainName)); err == nil {
 		execStop(GetQmpExecutorSocket(domainName))
 		if err = execQuit(GetQmpExecutorSocket(domainName)); err != nil {
-			return logError("failed to execute quit command %v", err)
+			result = logError("failed to execute quit command %v", err)
 		}
 	}
 	// we may want to wait a little bit here and actually kill qemu process if it gets wedged
 	if err := os.RemoveAll(kvmStateDir + domainName); err != nil {
-		return logError("failed to clean up domain state directory %s (%v)", domainName, err)
+		result = joinErrors(result, logError("failed to clean up domain state directory %s (%v)", domainName, err))
 	}
 
-	return nil
+	return result
 }
 
 // Info returns information of a domain
