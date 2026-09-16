@@ -17,14 +17,6 @@ import (
 	"github.com/lf-edge/eve/evetest/netmodels"
 )
 
-// vtpmAppImageTag is the evetest-ubuntu-ctr version that carries tpm2-tools
-// (added to that image in its :1.1). The shared security-package image tag
-// stays at the version the other tests use; only this test needs the TPM
-// userspace. The image is delivered through evetest's own OCI registry (see
-// where the app is deployed below), so a locally built tag works before it
-// is published to Docker Hub.
-const vtpmAppImageTag = "1.1"
-
 // tpmGetRandomScript consumes the application's TPM with tpm2-tools: it asks
 // the TPM for 8 random bytes and prints them as "RAND=<hex>", which the test
 // parses. The device check up front tells a missing vTPM (domainmgr booted
@@ -146,20 +138,15 @@ func TestAppVTPM(test *testing.T) {
 		NetworkUUID:   eth0Net,
 		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
 	})
-	// The app image carries tpm2-tools (evetest-ubuntu-ctr:1.1); deliver it
-	// through evetest's own OCI registry so a locally built image works
-	// before it is published to Docker Hub (see PushDockerImageToLocalRegistry).
-	appImage, err := evetest.PushDockerImageToLocalRegistry(
-		ubuntuCtrImage + ":" + vtpmAppImageTag)
-	t.Expect(err).ToNot(HaveOccurred(),
-		"failed to publish %s:%s to evetest's local OCI registry",
-		ubuntuCtrImage, vtpmAppImageTag)
 
 	niUUID := addLocalNI(devConfig)
 	appUUID := devConfig.AddApplication(evetest.ApplicationInstanceConfig{
-		DisplayName:        "vtpm-test-app",
-		Activate:           true,
-		Image:              appImage,
+		DisplayName: "vtpm-test-app",
+		Activate:    true,
+		Image: evetest.DockerContainer{
+			ImageName: ubuntuCtrImage,
+			Tag:       ubuntuCtrTag,
+		},
 		VirtualizationMode: eveconfig.VmMode_HVM,
 		CPUs:               1,
 		MemoryBytes:        512 * evetest.MiB,
