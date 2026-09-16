@@ -319,6 +319,21 @@ func (h *ZFSHandler) migrateVaultFsToZvol(vaultPath, keyFile string, encrypt boo
 	stagingDataset := vaultPath + vaultStagingSuffix
 	backupDataset := vaultPath + vaultBackupSuffix
 
+	// The same question recovery asks: is the vault about to be migrated the one
+	// the parked backup was taken from, or a foreign vault created over it? The
+	// entry cleanup below drops the migration datasets, which is only safe for
+	// debris -- migrating a foreign vault would copy it over the contents held in
+	// those datasets and destroy them on the way.
+	foreign, err := h.foreignVaultInPlace(vaultPath)
+	if err != nil {
+		return err
+	}
+
+	if foreign {
+		return fmt.Errorf("refusing to migrate %s: %s holds the pre-migration vault and %s is not the vault it was taken from; "+
+			"the contents are in %s and %s", vaultPath, backupDataset, vaultPath, backupDataset, stagingDataset)
+	}
+
 	if err := h.dropMigrationLeftovers(stagingDataset, backupDataset); err != nil {
 		return err
 	}
@@ -457,6 +472,22 @@ func (h *ZFSHandler) dropMigrationLeftovers(staging, backup string) error {
 	return nil
 }
 
+// foreignVaultInPlace reports whether the vault at vaultPath is one the
+// migration did not produce, sitting beside the pre-migration vault the swap
+// parked. Both recovery and the migration consult it, because both would
+// otherwise destroy the datasets that hold the only copies of the contents.
+func (h *ZFSHandler) foreignVaultInPlace(vaultPath string) (bool, error) {
+	ops := h.zfsOps()
+	if !ops.DatasetExist(vaultPath) || !ops.DatasetExist(vaultPath+vaultBackupSuffix) {
+		return false, nil
+	}
+	isZvol, err := ops.IsZvol(vaultPath)
+	if err != nil {
+		return false, fmt.Errorf("cannot read the type of %s: %v", vaultPath, err)
+	}
+	return !isZvol, nil
+}
+
 // vaultMigrationRecovery is what to do with the datasets a vault migration
 // left behind.
 type vaultMigrationRecovery int
@@ -506,14 +537,15 @@ func (a vaultMigrationRecovery) String() string {
 func planVaultMigrationRecovery(vaultExists, vaultIsZvol, stagingExists, backupExists,
 	swapStaged bool) vaultMigrationRecovery {
 	if vaultExists {
-		// Only a migrated vault makes what is left over genuinely leftover. A
-		// filesystem vault alongside migration datasets means the vault in place
-		// is not the one the swap was producing: EVE-kvm creates a fresh one when
-		// it finds none, which is what a fallback boot inside the swap window
-		// leaves behind, and destroying the datasets then discards both the
-		// pre-migration vault and the completed copy — the only two places the
-		// contents still exist.
-		if !vaultIsZvol && (stagingExists || backupExists) {
+		// A parked pre-migration vault beside a vault that is not the migrated
+		// zvol means the one in place cannot be the one that was parked: the swap
+		// renamed the original aside, and EVE-kvm -- which has no migration code
+		// -- then found no vault and created a fresh one. Destroying the datasets
+		// there discards both the parked original and the completed copy, the
+		// only two places the contents still exist. A staging zvol with no parked
+		// backup is ordinary debris from an attempt that never reached the swap,
+		// and stays droppable.
+		if !vaultIsZvol && backupExists {
 			return vaultMigrationKeepLeftovers
 		}
 		if stagingExists || backupExists {

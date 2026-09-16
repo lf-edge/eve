@@ -260,6 +260,11 @@ func TestPlanVaultMigrationRecovery(t *testing.T) {
 			want: vaultMigrationKeepLeftovers},
 		{name: "fresh kvm vault beside a backup alone", vaultExists: true,
 			backupExists: true, want: vaultMigrationKeepLeftovers},
+		// No parked backup: nothing was renamed aside, so the vault in place is
+		// the source and the staging zvol is debris from an attempt that never
+		// reached the swap.
+		{name: "fs vault beside stale staging debris", vaultExists: true,
+			stagingExists: true, want: vaultMigrationDropLeftovers},
 		{name: "swap interrupted between the renames", stagingExists: true,
 			backupExists: true, swapStaged: true, want: vaultMigrationFinishSwap},
 		{name: "swap interrupted, backup already destroyed", stagingExists: true,
@@ -406,6 +411,26 @@ func TestMigrateVaultFsToZvolDropsStagingOnError(t *testing.T) {
 			assert.True(t, ops.datasets[testVault], "source vault lost")
 		})
 	}
+}
+
+// TestMigrateRefusesOverAForeignVault covers the migration's own entry cleanup,
+// which drops the migration datasets before copying. On a device that fell back
+// to EVE-kvm inside the swap window the vault in place is the fresh one kvm
+// made, so dropping them would destroy the contents and then migrate an empty
+// vault over the top. The migration has to decline instead.
+func TestMigrateRefusesOverAForeignVault(t *testing.T) {
+	ops := newFakeZFSOps(testVault, testStaging, testBackup)
+	ops.zvols[testStaging] = true
+	ops.marker = testStaging
+	h := testZFSHandler(ops)
+
+	err := h.migrateVaultFsToZvol(testVault, "/run/key", true)
+
+	assert.ErrorContains(t, err, "refusing to migrate")
+	assert.True(t, ops.datasets[testStaging], "the completed copy was destroyed")
+	assert.True(t, ops.datasets[testBackup], "the pre-migration vault was destroyed")
+	assert.Equal(t, 0, ops.calls["DestroyDataset"])
+	assert.Equal(t, 0, ops.calls["CopyTree"], "the migration copied over a foreign vault")
 }
 
 // TestMigrateVaultFsToZvolRestoresVaultOnFailedSwap covers a failure of the
