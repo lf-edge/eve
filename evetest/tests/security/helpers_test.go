@@ -30,7 +30,7 @@ const (
 
 	// General-purpose test container image (ships sshd).
 	ubuntuCtrImage = "lfedge/evetest-ubuntu-ctr"
-	ubuntuCtrTag   = "1.0"
+	ubuntuCtrTag   = "1.1"
 
 	niDisplayName = "local-ni"
 	niSubnet      = "10.11.12.0/24"
