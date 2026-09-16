@@ -206,6 +206,22 @@ func getQemuStatus(socket string) (types.SwState, error) {
 	return state, errs
 }
 
+// qmpEventLogLevel picks the level for QMP events the handler takes no action
+// on. A running guest emits the debug-level ones continuously (RTC_CHANGE can
+// fire several times a second), the info-level ones mark guest lifecycle
+// transitions, and anything else is unexpected.
+func qmpEventLogLevel(event string) logrus.Level {
+	switch event {
+	case "RTC_CHANGE", "NIC_RX_FILTER_CHANGED", "RESUME", "BALLOON_CHANGE",
+		"VNC_CONNECTED", "VNC_INITIALIZED", "VNC_DISCONNECTED":
+		return logrus.DebugLevel
+	case "POWERDOWN", "RESET", "SUSPEND", "WAKEUP", "DEVICE_DELETED":
+		return logrus.InfoLevel
+	default:
+		return logrus.WarnLevel
+	}
+}
+
 func qmpEventHandler(listenerSocket, executorSocket, domainName string) {
 	monitor, err := qmp.NewSocketMonitor("unix", listenerSocket, sockTimeout)
 	if err != nil {
@@ -256,8 +272,8 @@ func qmpEventHandler(listenerSocket, executorSocket, domainName string) {
 				crashRegistry.emit(domainName, runState)
 			}
 		default:
-			//Not handling the following events: RESUME, NIC_RX_FILTER_CHANGED, RTC_CHANGE, POWERDOWN
-			logrus.Warnf("qmpEventHandler: Unhandled event: %s from QMP socket: %s", event.Event, listenerSocket)
+			logrus.StandardLogger().Logf(qmpEventLogLevel(event.Event),
+				"qmpEventHandler: Unhandled event: %s from QMP socket: %s", event.Event, listenerSocket)
 		}
 	}
 	logrus.Infof("qmpEventHandler: Event channel closed for socket: %s (QMP connection lost)", listenerSocket)
