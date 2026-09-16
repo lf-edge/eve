@@ -329,6 +329,13 @@ func (h *ZFSHandler) migrateVaultFsToZvol(vaultPath, keyFile string, encrypt boo
 		return err
 	}
 
+	if foreign && h.options.CurrentPartitionCommitted {
+		// Committed: the vault in place is the one the device is keeping, so the
+		// datasets are debris and the entry cleanup below is free to drop them.
+		h.log.Noticef("migrateVaultFsToZvol: %s is not the vault %s was taken from, but the partition is committed; dropping both",
+			vaultPath, backupDataset)
+		foreign = false
+	}
 	if foreign {
 		return fmt.Errorf("refusing to migrate %s: %s holds the pre-migration vault and %s is not the vault it was taken from; "+
 			"the contents are in %s and %s", vaultPath, backupDataset, vaultPath, backupDataset, stagingDataset)
@@ -535,8 +542,15 @@ func (a vaultMigrationRecovery) String() string {
 // set up a fresh one, and that arrives here with the vault absent and a
 // staging dataset in place.
 func planVaultMigrationRecovery(vaultExists, vaultIsZvol, stagingExists, backupExists,
-	swapStaged bool) vaultMigrationRecovery {
+	swapStaged, partitionCommitted bool) vaultMigrationRecovery {
 	if vaultExists {
+		// Once the running partition is committed the device is not reverting to
+		// the other flavor, so the pre-migration vault has nothing left to be a
+		// fallback for and neither dataset is worth the pool space. Keeping them
+		// is only right while a revert is still possible.
+		if partitionCommitted && (stagingExists || backupExists) {
+			return vaultMigrationDropLeftovers
+		}
 		// A parked pre-migration vault beside a vault that is not the migrated
 		// zvol means the one in place cannot be the one that was parked: the swap
 		// renamed the original aside, and EVE-kvm -- which has no migration code
@@ -605,9 +619,11 @@ func (h *ZFSHandler) recoverInterruptedVaultMigration(vaultPath string) error {
 		vaultIsZvol = isZvol
 	}
 	swapStaged := marked == staging
-	action := planVaultMigrationRecovery(vaultExists, vaultIsZvol, stagingExists, backupExists, swapStaged)
-	h.log.Noticef("recoverInterruptedVaultMigration(%s): leftover migration state (staging=%v backup=%v vault=%v vaultIsZvol=%v swapStaged=%v): %s",
-		vaultPath, stagingExists, backupExists, vaultExists, vaultIsZvol, swapStaged, action)
+	action := planVaultMigrationRecovery(vaultExists, vaultIsZvol, stagingExists, backupExists,
+		swapStaged, h.options.CurrentPartitionCommitted)
+	h.log.Noticef("recoverInterruptedVaultMigration(%s): leftover migration state (staging=%v backup=%v vault=%v vaultIsZvol=%v swapStaged=%v committed=%v): %s",
+		vaultPath, stagingExists, backupExists, vaultExists, vaultIsZvol, swapStaged,
+		h.options.CurrentPartitionCommitted, action)
 
 	if action == vaultMigrationKeepLeftovers {
 		// Nothing is destroyed and the swap record is left in place: it names the

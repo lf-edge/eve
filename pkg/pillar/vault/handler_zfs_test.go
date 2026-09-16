@@ -243,6 +243,7 @@ func TestPlanVaultMigrationRecovery(t *testing.T) {
 		stagingExists bool
 		backupExists  bool
 		swapStaged    bool
+		committed     bool
 		want          vaultMigrationRecovery
 	}{
 		{name: "nothing left over", vaultExists: true, vaultIsZvol: true,
@@ -265,6 +266,14 @@ func TestPlanVaultMigrationRecovery(t *testing.T) {
 		// reached the swap.
 		{name: "fs vault beside stale staging debris", vaultExists: true,
 			stagingExists: true, want: vaultMigrationDropLeftovers},
+		// A committed partition ends the fallback: the device is not going back to
+		// the other flavor, so both datasets are only holding pool space. This is
+		// what gives the kept state an exit instead of leaving it forever.
+		{name: "committed partition drops a kept fallback", vaultExists: true,
+			stagingExists: true, backupExists: true, swapStaged: true, committed: true,
+			want: vaultMigrationDropLeftovers},
+		{name: "committed partition drops a lone backup", vaultExists: true,
+			backupExists: true, committed: true, want: vaultMigrationDropLeftovers},
 		{name: "swap interrupted between the renames", stagingExists: true,
 			backupExists: true, swapStaged: true, want: vaultMigrationFinishSwap},
 		{name: "swap interrupted, backup already destroyed", stagingExists: true,
@@ -281,7 +290,7 @@ func TestPlanVaultMigrationRecovery(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			got := planVaultMigrationRecovery(tc.vaultExists, tc.vaultIsZvol,
-				tc.stagingExists, tc.backupExists, tc.swapStaged)
+				tc.stagingExists, tc.backupExists, tc.swapStaged, tc.committed)
 			assert.Equal(t, tc.want, got)
 		})
 	}
@@ -411,6 +420,23 @@ func TestMigrateVaultFsToZvolDropsStagingOnError(t *testing.T) {
 			assert.True(t, ops.datasets[testVault], "source vault lost")
 		})
 	}
+}
+
+// TestRecoverDropsLeftoversOnceCommitted covers the exit from the kept state:
+// with the running partition committed the device cannot revert, so the
+// pre-migration vault has nothing to fall back to and both datasets go.
+func TestRecoverDropsLeftoversOnceCommitted(t *testing.T) {
+	ops := newFakeZFSOps(testVault, testStaging, testBackup)
+	ops.zvols[testStaging] = true
+	ops.marker = testStaging
+	h := testZFSHandler(ops)
+	h.options.CurrentPartitionCommitted = true
+
+	require.NoError(t, h.recoverInterruptedVaultMigration(testVault))
+
+	assert.False(t, ops.datasets[testStaging], "the staging zvol was kept after the partition was committed")
+	assert.False(t, ops.datasets[testBackup], "the pre-migration vault was kept after the partition was committed")
+	assert.Empty(t, ops.marker, "the swap record outlived the datasets it names")
 }
 
 // TestMigrateRefusesOverAForeignVault covers the migration's own entry cleanup,
