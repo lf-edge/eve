@@ -33,6 +33,19 @@ type VolumeConfig struct {
 	// This volume is container image for native container.
 	// We will find out from NOHYPER flag in appinstanceconfig
 	IsNativeContainer bool
+	// DesignatedNodeUUID is the device UUID of the owning app's actual
+	// designated node, cross-referenced from AppInstanceConfig via the
+	// owning app's VolumeRefList -- IsReplicated only says "not me", not
+	// who. Needed to ask whether a peer may act as backup DNID for this
+	// volume while that node is down.
+	DesignatedNodeUUID string
+	// AffinityType mirrors AppInstanceConfig.AffinityType for the same
+	// reason IsCurrentlyBackupDNID excludes Required-affinity apps from
+	// activation: a Required-affinity app can never run anywhere but its
+	// designated node, so backup-DNID eligibility must exclude it here
+	// too. If more than one app references this volume with different
+	// affinity, treat it as Required if any of them are.
+	AffinityType Affinity
 }
 
 // Key is volume UUID which will be unique
