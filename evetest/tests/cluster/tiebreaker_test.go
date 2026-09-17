@@ -55,16 +55,10 @@ const (
 	tieBreakerReplicas = "2"
 )
 
-// runKubectl goes through "eve exec kube" because kubectl exists only in the
-// kube container, not in the host shell.
+// runKubectl pins every query below to the tie-breaker phase's own kubectl
+// budget, so the call sites do not each have to repeat it.
 func runKubectl(device *evetest.EdgeDevice, args string) (string, error) {
-	stdout, stderr, err := device.RunShellScript(
-		"eve exec kube kubectl "+args, tieBreakerKubectlTimeout, 0)
-	if err != nil {
-		return "", fmt.Errorf("kubectl %s: %w (stderr: %s)",
-			args, err, strings.TrimSpace(stderr))
-	}
-	return strings.TrimSpace(stdout), nil
+	return device.RunKubectl(args, tieBreakerKubectlTimeout)
 }
 
 func expectKubectl(t *WithT, device *evetest.EdgeDevice,

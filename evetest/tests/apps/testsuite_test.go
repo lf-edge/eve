@@ -17,8 +17,9 @@
 //	appstate_helpers_test.go     pillar's own view of the app - pubsub and
 //	                             persisted state keyed by app UUID
 //	appworkload_helpers_test.go  where the app is running as the hypervisor sees
-//	                             it - VMIRS objects (and the kubectl plumbing for
-//	                             them), qemu domain state directories
+//	                             it - VMIRS objects, qemu domain state
+//	                             directories, and the kubectl reads the volume
+//	                             helpers share
 //	appvolumes_helpers_test.go   the app's disk in all three forms -
 //	                             VolumeStatus, PVC, file under /persist - and the
 //	                             storage invariants
