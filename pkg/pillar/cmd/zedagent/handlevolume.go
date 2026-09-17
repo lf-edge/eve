@@ -127,12 +127,26 @@ func parseVolumeConfig(ctx *getconfigContext,
 		}
 
 		// Iterate through appconfig and check if this volume belongs to a native container deployment.
-		// Looks for NOHYPER type in VirtualizationMode.
+		// Looks for NOHYPER type in VirtualizationMode. Also cross-reference the app(s) that
+		// reference this volume for DesignatedNodeUUID/AffinityType -- neither exists on the
+		// volume's own wire config, only on the owning app's. Unlike the NOHYPER check below,
+		// this does not depend on Fixedresources being set.
 		appInstanceList := config.GetApps()
 		for _, ai := range appInstanceList {
 			if ai == nil {
 				log.Notice("ignoring empty app instance in config")
 				continue
+			}
+			for _, vr := range ai.VolumeRefList {
+				if vr == nil || vr.Uuid != volumeConfig.VolumeID.String() {
+					continue
+				}
+				if volumeConfig.DesignatedNodeUUID == "" {
+					volumeConfig.DesignatedNodeUUID = ai.GetDesignatedNodeId()
+				}
+				if ai.GetAffinity() == zconfig.AffinityType_AFFINITY_TYPE_REQUIRED {
+					volumeConfig.AffinityType = types.RequiredDuringScheduling
+				}
 			}
 			if ai.Fixedresources == nil {
 				log.Noticef("ignoring app (%s / %+v) without Fixedresources set", ai.Displayname, ai.Uuidandversion)

@@ -590,8 +590,10 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 
 	// Anything to do?
 	// If volume is a replicated volume, we expect it to be created on owner node, so set the status
-	// as such and publish
-	if status.IsReplicated {
+	// as such and publish -- unless this node is standing in for that (down) owner as backup DNID,
+	// in which case fall through and let real creation proceed the same as a non-replicated volume.
+	if status.IsReplicated &&
+		!isCurrentlyBackupDNIDForVolume(ctx, ctx.LookupVolumeConfig(status.Key())) {
 		status.State = types.CREATED_VOLUME
 		status.SubState = types.VolumeSubStateCreated
 		return true, true
