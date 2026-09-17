@@ -31,6 +31,12 @@ type ContentTreeConfig struct {
 	CustomMeta        string
 	// Do we download on this node ?
 	IsLocal bool
+	// DesignatedNodeUUID is the device UUID of this content tree's actual
+	// designated node, straight off the wire (unlike VolumeConfig, a
+	// content tree carries this directly, not via an owning app). Needed
+	// to ask whether a peer may act as backup DNID for it while that node
+	// is down; IsLocal only ever encoded "not me", never "who".
+	DesignatedNodeUUID string
 }
 
 // Key is content info UUID which will be unique
