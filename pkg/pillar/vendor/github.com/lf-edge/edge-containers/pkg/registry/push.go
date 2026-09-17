@@ -6,12 +6,13 @@ import (
 	"io"
 	"os"
 	"runtime"
+	"strings"
+	"sync"
 	"time"
 
 	ecresolver "github.com/lf-edge/edge-containers/pkg/resolver"
 
-	"oras.land/oras-go/pkg/oras"
-	"oras.land/oras-go/pkg/target"
+	oras "oras.land/oras-go/v2"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
@@ -22,6 +23,9 @@ const (
 	DefaultArch   = runtime.GOARCH
 )
 
+// CopyFunc copies an artifact between two oras targets. It matches oras.Copy.
+type CopyFunc func(ctx context.Context, src oras.ReadOnlyTarget, srcRef string, dst oras.Target, dstRef string, opts oras.CopyOptions) (ocispec.Descriptor, error)
+
 type Pusher struct {
 	// Artifact artifact to push
 	Artifact *Artifact
@@ -29,22 +33,19 @@ type Pusher struct {
 	Image string
 	// Timestamp set any files to have this timestamp, instead of the default of the file time
 	Timestamp *time.Time
-	// Impl the OCI artifacts pusher. Normally should be left blank, will be filled in to use oras. Override only for special cases like testing.
-	Impl func(ctx context.Context, from target.Target, fromRef string, to target.Target, toRef string, opts ...oras.CopyOpt) (ocispec.Descriptor, error)
+	// Impl the copy implementation. Normally should be left blank, will be filled in to use oras. Override only for special cases like testing.
+	Impl CopyFunc
 }
 
 // Push push the artifact to the appropriate registry. Arguments are the format to write,
 // an io.Writer for sending debug output, ConfigOpts to configure how the image should be configured,
 // and a target.
 //
-// The target determines the target type. target.Registry just uses the default registry,
-// while target.Directory uses a local directory.
+// The target determines where the artifact is written: resolver.Registry for a
+// registry, resolver.Directory for a local image layout, resolver.Containerd for
+// a containerd content store.
 func (p Pusher) Push(format Format, verbose bool, statusWriter io.Writer, configOpts ConfigOpts, to ecresolver.ResolverCloser) (string, error) {
-	var (
-		desc     ocispec.Descriptor
-		err      error
-		copyOpts []oras.CopyOpt
-	)
+	var err error
 
 	// ensure the artifact and name are provided
 	if p.Artifact == nil {
@@ -85,12 +86,17 @@ func (p Pusher) Push(format Format, verbose bool, statusWriter io.Writer, config
 		return "", fmt.Errorf("could not build manifest: %v", err)
 	}
 
-	if verbose {
-		copyOpts = append(copyOpts, oras.WithPullStatusTrack(statusWriter))
+	dst, err := to.Target(ctx, p.Image)
+	if err != nil {
+		return "", fmt.Errorf("could not get target for %s: %v", p.Image, err)
 	}
 
-	// push the data
-	desc, err = p.Impl(ctx, from, p.Image, to, "", copyOpts...)
+	copyOpts := oras.CopyOptions{}
+	if verbose {
+		copyOpts.PostCopy = progressReporter(statusWriter, "Pushed")
+	}
+
+	desc, err := p.Impl(ctx, from, p.Image, dst, p.Image, copyOpts)
 	if err != nil {
 		return "", err
 	}
@@ -98,4 +104,38 @@ func (p Pusher) Push(format Format, verbose bool, statusWriter io.Writer, config
 		return desc.Digest.String(), fmt.Errorf("failed to finalize: %v", err)
 	}
 	return desc.Digest.String(), nil
+}
+
+// progressReporter reports each part of the artifact as it goes by, naming it by
+// the title the artifact gave it where there is one. oras calls this from as many
+// goroutines as its copy concurrency allows, so the writes are serialized.
+func progressReporter(w io.Writer, verb string) func(context.Context, ocispec.Descriptor) error {
+	var mu sync.Mutex
+	return func(_ context.Context, desc ocispec.Descriptor) error {
+		if w == nil {
+			return nil
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		name := desc.Annotations[ocispec.AnnotationTitle]
+		if name == "" {
+			name = desc.MediaType
+		}
+		_, err := fmt.Fprintf(w, "%s %s %s\n", verb, shortDigest(desc.Digest.String()), name)
+		return err
+	}
+}
+
+// shortDigest the conventional abbreviation of a digest: the first 12 characters
+// of the encoded part, matching what docker, oras and registries print.
+func shortDigest(dgst string) string {
+	const shortLen = 12
+	encoded := dgst
+	if i := strings.Index(encoded, ":"); i >= 0 {
+		encoded = encoded[i+1:]
+	}
+	if len(encoded) > shortLen {
+		return encoded[:shortLen]
+	}
+	return encoded
 }
