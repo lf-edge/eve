@@ -102,6 +102,7 @@ func parseContentInfoConfig(ctx *getconfigContext,
 		contentConfig.CustomMeta = cfgContentTree.GetCustomMetaData()
 		contentConfig.IsLocal = true
 		controllerDNID := cfgContentTree.GetDesignatedNodeId()
+		contentConfig.DesignatedNodeUUID = controllerDNID
 		// If this node is not designated node id set IsLocal to false.
 		// Content will be downloaded to only to the designated node id of that content tree.
 		// So on other nodes in the cluster mark the content tree as non-local.
