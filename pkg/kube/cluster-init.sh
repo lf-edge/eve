@@ -1413,13 +1413,64 @@ setup_cni0_proxy_ip() {
         logmsg "setup_cni0_proxy_ip: assigned ${anchor} to cni0"
 }
 
+# ensure_proxy_ca_configmap: create/update the ConfigMap CDI's
+# trustedCAProxy references, so importer pods can validate mgmtproxy's cni0
+# TLS certificate before ever sending it a CONNECT request (and the
+# Proxy-Authorization token it carries). Idempotent: only writes when the
+# ConfigMap doesn't already hold ca_pem.
+ensure_proxy_ca_configmap() {
+        local ca_pem="$1"
+        local cur_ca
+        cur_ca=$(kubectl get configmap "${MGMTPROXY_CNI0_CA_CONFIGMAP_NAME}" \
+                -n "${MGMTPROXY_CNI0_CA_CONFIGMAP_NAMESPACE}" \
+                -o jsonpath="{.data['${MGMTPROXY_CNI0_CA_CONFIGMAP_KEY}']}" 2>/dev/null)
+        if [ "${cur_ca}" = "${ca_pem}" ]; then
+                return 0
+        fi
+        kubectl create configmap "${MGMTPROXY_CNI0_CA_CONFIGMAP_NAME}" \
+                -n "${MGMTPROXY_CNI0_CA_CONFIGMAP_NAMESPACE}" \
+                "--from-file=${MGMTPROXY_CNI0_CA_CONFIGMAP_KEY}=${MGMTPROXY_TLS_CERT_FILE}" \
+                --dry-run=client -o yaml | kubectl apply -f -
+}
+
 # patch_cdi_proxy_config: patch the CDI CR so importer pods (created when a
 # Rancher/Helm chart DataVolumeTemplate uses source.http.url or
-# source.registry.url) receive HTTPS_PROXY=MGMTPROXY_CNI0_URL. Only importer
-# pods are affected; uploader pods (used by virtctl image-upload / source.upload
-# in the EVE-managed app path) do not receive this env. Idempotent.
+# source.registry.url) receive HTTPS_PROXY=MGMTPROXY_CNI0_URL carrying the
+# cni0 proxy-auth token in its userinfo, plus trustedCAProxy pointing at a
+# ConfigMap holding mgmtproxy's cni0 TLS cert (ensure_proxy_ca_configmap) --
+# so importers verify they're talking to mgmtproxy, not a spoofed answerer
+# on the shared cni0 bridge. See pkg/pillar/cmd/mgmtproxy/README.md,
+# "Pod-facing (cni0) authentication and destination policy". Only importer
+# pods are affected; uploader pods (used by virtctl image-upload /
+# source.upload in the EVE-managed app path) do not receive this env.
+# Idempotent.
+#
+# The token/cert files may not exist yet right after boot (pillar's
+# mgmtproxy hasn't finished its own first vault-unseal retry); this function
+# silently skips the tick and is retried by the caller (the main loop calls
+# it on every iteration once kubevirt_initialized is set).
 patch_cdi_proxy_config() {
-        local proxy_url="${MGMTPROXY_CNI0_URL}"
+        local token ca_pem
+        if [ ! -s "${MGMTPROXY_TOKEN_FILE}" ]; then
+                return 0
+        fi
+        token=$(cat "${MGMTPROXY_TOKEN_FILE}")
+        if [ -z "${token}" ]; then
+                return 0
+        fi
+        if [ ! -s "${MGMTPROXY_TLS_CERT_FILE}" ]; then
+                return 0
+        fi
+        ca_pem=$(cat "${MGMTPROXY_TLS_CERT_FILE}")
+        ensure_proxy_ca_configmap "${ca_pem}"
+
+        # Userinfo embeds the token as the password half; every standard HTTP
+        # client (containerd, curl, CDI's importer) turns this into a
+        # Proxy-Authorization: Basic ... header automatically -- no CDI-side
+        # code change needed. Username is fixed and meaningless; only the
+        # password is checked (pillar's podpolicy.go:checkProxyAuth).
+        local proxy_url="https://cdi:${token}@${MGMTPROXY_CNI0_URL#https://}"
+        local trusted_ca="${MGMTPROXY_CNI0_CA_CONFIGMAP_NAME}"
         # noProxy is a comma-separated string per the CDI ImportProxy API
         local no_proxy="10.42.0.0/16,10.43.0.0/16,127.0.0.0/8,localhost,.svc,.cluster.local,169.254.0.0/16"
         # Skip (and stay silent) when the CDI CR already carries the desired
@@ -1427,15 +1478,18 @@ patch_cdi_proxy_config() {
         # iteration (~16s) for upgrade/reset recovery, so logging or patching
         # unconditionally would spam k3s-install.log and issue a pointless
         # kubectl patch each time. Only act when something actually differs.
-        local cur_proxy cur_no_proxy
+        local cur_proxy cur_no_proxy cur_ca
         cur_proxy=$(kubectl get cdi cdi -o jsonpath='{.spec.config.importProxy.HTTPSProxy}' 2>/dev/null)
         cur_no_proxy=$(kubectl get cdi cdi -o jsonpath='{.spec.config.importProxy.noProxy}' 2>/dev/null)
-        if [ "${cur_proxy}" = "${proxy_url}" ] && [ "${cur_no_proxy}" = "${no_proxy}" ]; then
+        cur_ca=$(kubectl get cdi cdi -o jsonpath='{.spec.config.importProxy.trustedCAProxy}' 2>/dev/null)
+        if [ "${cur_proxy}" = "${proxy_url}" ] && [ "${cur_no_proxy}" = "${no_proxy}" ] \
+                && [ "${cur_ca}" = "${trusted_ca}" ]; then
                 return 0
         fi
-        logmsg "patch_cdi_proxy_config: HTTPSProxy=${proxy_url}"
+        # The token is never logged: HTTPSProxy carries it in the URL userinfo.
+        logmsg "patch_cdi_proxy_config: HTTPSProxy=https://cdi:<redacted>@${MGMTPROXY_CNI0_IP}:5443 trustedCAProxy=${trusted_ca}"
         kubectl patch cdi cdi --type merge -p \
-                "{\"spec\":{\"config\":{\"importProxy\":{\"HTTPSProxy\":\"${proxy_url}\",\"noProxy\":\"${no_proxy}\"}}}}"
+                "{\"spec\":{\"config\":{\"importProxy\":{\"HTTPSProxy\":\"${proxy_url}\",\"noProxy\":\"${no_proxy}\",\"trustedCAProxy\":\"${trusted_ca}\"}}}}"
 }
 
 # Stagger cluster node starts to avoid etcd quorum races on simultaneous reboot
