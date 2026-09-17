@@ -124,8 +124,9 @@ func TestVolumeDnidOutageThreshold(t *testing.T) {
 func TestHandleKubeLeaderElectInfo(t *testing.T) {
 	log = base.NewSourceLogObject(logrus.StandardLogger(), "test-volumemgr", 0)
 
-	// Gaining the lease re-drives reevaluateBackupDNIDVolumes at once, which
-	// needs a real (if empty) pubVolumeStatus to range over.
+	// Gaining the lease re-drives reevaluateBackupDNIDVolumes/Content at
+	// once, which need a real (if empty) pubVolumeStatus/pubContentTreeStatus
+	// to range over.
 	logger := logrus.StandardLogger()
 	ps := pubsub.New(&pubsub.EmptyDriver{}, logger, log)
 	pubVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
@@ -135,7 +136,17 @@ func TestHandleKubeLeaderElectInfo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewPublication(VolumeStatus): %v", err)
 	}
-	ctx := &volumemgrContext{pubVolumeStatus: pubVolumeStatus}
+	pubContentTreeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.ContentTreeStatus{},
+	})
+	if err != nil {
+		t.Fatalf("NewPublication(ContentTreeStatus): %v", err)
+	}
+	ctx := &volumemgrContext{
+		pubVolumeStatus:      pubVolumeStatus,
+		pubContentTreeStatus: pubContentTreeStatus,
+	}
 	handleKubeLeaderElectInfoCreate(ctx, "eve-app-op",
 		types.KubeLeaderElectInfo{IsAppOpLeader: false})
 	if ctx.isAppOpLeader {
@@ -269,4 +280,115 @@ func publishTestVolumeConfig(t *testing.T, ctx *volumemgrContext,
 	// MsgChan()/ProcessChange() in the main select loop.
 	change := <-ctx.subVolumeConfig.MsgChan()
 	ctx.subVolumeConfig.ProcessChange(change)
+}
+
+// isCurrentlyBackupDNIDForContentTree must refuse before spending an API
+// call on the cases that cannot possibly qualify -- same shape as
+// TestBackupDNIDForVolumeEarlyOuts, for the content-tree counterpart.
+func TestBackupDNIDForContentTreeEarlyOuts(t *testing.T) {
+	contentTreeConfig := func(designatedNodeUUID string) types.ContentTreeConfig {
+		return types.ContentTreeConfig{
+			ContentID:          mustNewUUID(t),
+			DesignatedNodeUUID: designatedNodeUUID,
+		}
+	}
+
+	for _, tc := range []struct {
+		name     string
+		mutate   func(*volumemgrContext, *types.ContentTreeConfig)
+		wantCall bool
+	}{{
+		name: "not the lease holder",
+		mutate: func(ctx *volumemgrContext, _ *types.ContentTreeConfig) {
+			ctx.isAppOpLeader = false
+		},
+		wantCall: false,
+	}, {
+		name: "not a cluster build",
+		mutate: func(ctx *volumemgrContext, _ *types.ContentTreeConfig) {
+			ctx.isAppOpLeader = true
+			ctx.hvTypeKube = false
+		},
+		wantCall: false,
+	}, {
+		name: "content tree has no designated node",
+		mutate: func(ctx *volumemgrContext, cfg *types.ContentTreeConfig) {
+			ctx.isAppOpLeader = true
+			cfg.DesignatedNodeUUID = ""
+		},
+		wantCall: false,
+	}, {
+		name: "eligible to ask",
+		mutate: func(ctx *volumemgrContext, _ *types.ContentTreeConfig) {
+			ctx.isAppOpLeader = true
+		},
+		wantCall: true,
+	}} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, calls := newVolumeGateCtx(true)
+			// contentTreeAffinity's own scan needs a real, if empty,
+			// subscription -- no volume references this tree in these cases.
+			ps := pubsub.New(&pubsub.EmptyDriver{}, logrus.StandardLogger(), log)
+			subVolumeConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+				AgentName:   "zedagent",
+				MyAgentName: agentName,
+				TopicImpl:   types.VolumeConfig{},
+				Ctx:         ctx,
+			})
+			if err != nil {
+				t.Fatalf("NewSubscription(VolumeConfig): %v", err)
+			}
+			ctx.subVolumeConfig = subVolumeConfig
+			if err := subVolumeConfig.Activate(); err != nil {
+				t.Fatalf("Activate(VolumeConfig): %v", err)
+			}
+
+			config := contentTreeConfig("designated-node-uuid")
+			tc.mutate(ctx, &config)
+
+			isCurrentlyBackupDNIDForContentTree(ctx, &config)
+			if got := *calls > 0; got != tc.wantCall {
+				t.Errorf("health check consulted = %v, want %v", got, tc.wantCall)
+			}
+		})
+	}
+
+	t.Run("nil config", func(t *testing.T) {
+		ctx, calls := newVolumeGateCtx(true)
+		ctx.isAppOpLeader = true
+		isCurrentlyBackupDNIDForContentTree(ctx, nil)
+		if *calls != 0 {
+			t.Errorf("health check consulted for a nil config, want not consulted")
+		}
+	})
+}
+
+// contentTreeAffinity must merge to Required if any referencing volume is,
+// and default to Preferred when nothing references the content tree yet.
+func TestContentTreeAffinity(t *testing.T) {
+	contentID := mustNewUUID(t)
+
+	t.Run("no referencing volume: Preferred", func(t *testing.T) {
+		ctx, pubVolumeConfig := initVolumeModifyCtxForTest(t)
+		other := types.VolumeConfig{VolumeID: mustNewUUID(t), ContentID: mustNewUUID(t)}
+		publishTestVolumeConfig(t, ctx, pubVolumeConfig, other)
+
+		if got := contentTreeAffinity(ctx, contentID); got != types.PreferredDuringScheduling {
+			t.Errorf("affinity = %v, want PreferredDuringScheduling", got)
+		}
+	})
+
+	t.Run("referencing volume is Required: Required", func(t *testing.T) {
+		ctx, pubVolumeConfig := initVolumeModifyCtxForTest(t)
+		referencing := types.VolumeConfig{
+			VolumeID:     mustNewUUID(t),
+			ContentID:    contentID,
+			AffinityType: types.RequiredDuringScheduling,
+		}
+		publishTestVolumeConfig(t, ctx, pubVolumeConfig, referencing)
+
+		if got := contentTreeAffinity(ctx, contentID); got != types.RequiredDuringScheduling {
+			t.Errorf("affinity = %v, want RequiredDuringScheduling", got)
+		}
+	})
 }

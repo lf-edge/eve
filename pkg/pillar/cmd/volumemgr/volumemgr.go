@@ -935,6 +935,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			if ctx.hvTypeKube {
 				reevaluateBackupDNIDVolumes(&ctx)
 			}
+			// Re-drive a content tree parked at LOADED with no local content
+			// once its designated node has newly become eligible for
+			// backup-DNID takeover, for the same reason as the volume case
+			// above.
+			if ctx.hvTypeKube {
+				reevaluateBackupDNIDContent(&ctx)
+			}
 			// Re-drive content trees whose accept-from-PVCs check
 			// (contentTreeSatisfiedByPVCs) deferred after spending its
 			// per-call live-probe budget; nothing else re-evaluates a
