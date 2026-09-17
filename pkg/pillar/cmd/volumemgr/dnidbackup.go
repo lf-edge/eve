@@ -8,6 +8,7 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	uuid "github.com/satori/go.uuid"
 )
 
 // backupDNIDFunc matches kubeapi.IsCurrentlyBackupDNID. Held on the context,
@@ -77,6 +78,70 @@ func reevaluateBackupDNIDVolumes(ctx *volumemgrContext) {
 	}
 }
 
+// contentTreeAffinity reports the strictest AffinityType among the volumes
+// that currently reference this content tree -- Required if any of them are,
+// the same merge rule VolumeConfig's own cross-reference from apps uses.
+// ContentTreeConfig carries no affinity of its own to read directly. A
+// content tree with no referencing volume yet has nothing to judge by, so it
+// is treated as Preferred, matching AppInstanceConfig's own zero-value
+// default.
+func contentTreeAffinity(ctx *volumemgrContext, contentID uuid.UUID) types.Affinity {
+	for _, v := range ctx.subVolumeConfig.GetAll() {
+		vc := v.(types.VolumeConfig)
+		if vc.ContentID == contentID && vc.AffinityType == types.RequiredDuringScheduling {
+			return types.RequiredDuringScheduling
+		}
+	}
+	return types.PreferredDuringScheduling
+}
+
+// isCurrentlyBackupDNIDForContentTree is isCurrentlyBackupDNIDForVolume's
+// counterpart for content trees.
+func isCurrentlyBackupDNIDForContentTree(ctx *volumemgrContext, config *types.ContentTreeConfig) bool {
+	if config == nil || !ctx.hvTypeKube || !ctx.isAppOpLeader {
+		return false
+	}
+	if config.DesignatedNodeUUID == "" {
+		return false
+	}
+	affinity := contentTreeAffinity(ctx, config.ContentID)
+	return ctx.isCurrentlyBackupDNIDFunc(log, config.DesignatedNodeUUID,
+		ctx.isAppOpLeader, affinity, dnidOutageThreshold(ctx))
+}
+
+// reevaluateBackupDNIDContent re-drives a content tree parked at LOADED with
+// IsLocal false once its designated node has newly become eligible for
+// backup-DNID takeover. Unlike doUpdateVol's replicated-volume check,
+// doUpdateContentTree has no branch that ever revisits an already-LOADED
+// status, so this goes through the same delete-and-recreate path
+// handleContentTreeModify's becomingLocal branch already uses for a real DNID
+// reassignment.
+//
+// The recreate is given a locally-overridden copy with IsLocal forced true:
+// the pushed config itself never changes (the controller has no idea a peer
+// is standing in), so passing it through unmodified would just have
+// createContentTreeStatus re-park the recreated status right back at LOADED,
+// doing nothing.
+func reevaluateBackupDNIDContent(ctx *volumemgrContext) {
+	for _, s := range ctx.pubContentTreeStatus.GetAll() {
+		status := s.(types.ContentTreeStatus)
+		if status.IsLocal || status.State != types.LOADED {
+			continue
+		}
+		config := lookupContentTreeConfig(ctx, status.Key())
+		if config == nil || !isCurrentlyBackupDNIDForContentTree(ctx, config) {
+			continue
+		}
+		log.Noticef("reevaluateBackupDNIDContent(%s): designated node %s now eligible for backup takeover, re-driving",
+			status.Key(), config.DesignatedNodeUUID)
+		deleteContentTree(ctx, &status, 0)
+		override := *config
+		override.IsLocal = true
+		newStatus := createContentTreeStatus(ctx, override)
+		updateContentTree(ctx, newStatus)
+	}
+}
+
 func handleKubeLeaderElectInfoCreate(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	handleKubeLeaderElectInfoImpl(ctxArg, key, statusArg)
@@ -101,6 +166,7 @@ func handleKubeLeaderElectInfoImpl(ctxArg interface{}, key string,
 	// wait for the next gc tick to notice.
 	if ctx.isAppOpLeader {
 		reevaluateBackupDNIDVolumes(ctx)
+		reevaluateBackupDNIDContent(ctx)
 	}
 }
 
