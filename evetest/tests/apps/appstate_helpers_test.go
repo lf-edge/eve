@@ -63,8 +63,8 @@ func appPurgePhase(dev *evetest.EdgeDevice, appUUID uuid.UUID) (
 
 // appDomainStatus returns domainmgr's published DomainStatus for the app. There
 // is at most one, because DomainStatus is keyed by app UUID - which is exactly
-// why it cannot be used to count workload generations (see listAppVMIRS and
-// listKVMDomainDirs in appworkload_helpers_test.go). It is authoritative for the
+// why it cannot be used to count workload generations (see
+// EdgeDevice.ListAppVMIRS and listKVMDomainDirs in appworkload_helpers_test.go). It is authoritative for the
 // domain's id, name and attached disks.
 func appDomainStatus(
 	dev *evetest.EdgeDevice, appUUID uuid.UUID) (types.DomainStatus, bool) {
@@ -77,8 +77,9 @@ func appDomainStatus(
 // before the old generation is actually gone - and it is not republished
 // anywhere in the EVE API, so it is read from the persisted pubsub state.
 //
-// found is false while the file does not exist, which is the expected state
-// before an app's first purge.
+// found is false only if the record could not be read: zedmanager allocates it
+// when it first handles the app's config, so it exists from well before the
+// app's first purge, holding 0.
 func purgeCounter(
 	dev *evetest.EdgeDevice, appUUID uuid.UUID) (counter uint32, found bool) {
 	var rec types.UuidToNum
