@@ -14,9 +14,12 @@ import (
 // the subtests for efficiency. All subtests pin the device to the Kubevirt
 // hypervisor (aka eve-k).
 //
-// The single-node subtests run before the three-node one, and the happy-path
+// The single-node subtests run before the three-node ones, and the happy-path
 // purge runs before the fault-injecting VMIRS test, so a failure in the
-// ordinary app lifecycle is not masked by chaos.
+// ordinary app lifecycle is not masked by chaos. TestVMAppPurgeDuringFailover
+// is placed after the other three-node subtests because it is the one that
+// builds its cluster from scratch rather than resetting the device config,
+// which makes it the most expensive to set up.
 //
 // Test parameters
 // ---------------
@@ -49,6 +52,9 @@ func TestNodeClusterSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestClusterToSingleConversion,
+		},
+		evetest.TestCase{
+			Test: TestVMAppPurgeDuringFailover,
 		},
 	)
 }
