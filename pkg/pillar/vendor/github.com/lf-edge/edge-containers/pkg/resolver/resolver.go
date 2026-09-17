@@ -1,28 +1,32 @@
 package resolver
 
 /*
- Provides a github.com/containerd/containerd/remotes#Resolver that resolves
- to an existing resolver
+ Provides a ResolverCloser that wraps an oras target the caller already has.
 
 */
 
 import (
 	"context"
 
-	"github.com/containerd/containerd/remotes"
+	oras "oras.land/oras-go/v2"
 )
 
-// Resolver resolver to push to/pull using passed resolver
+// Resolver serves a target the caller already holds.
 type Resolver struct {
-	remotes.Resolver
-	ctx context.Context
+	target oras.Target
+	ctx    context.Context
 }
 
-func NewResolver(ctx context.Context, resolver remotes.Resolver) (context.Context, *Resolver, error) {
-	return ctx, &Resolver{Resolver: resolver, ctx: ctx}, nil
+// NewResolver create a Resolver that hands out the given target for every reference.
+func NewResolver(ctx context.Context, target oras.Target) (context.Context, *Resolver, error) {
+	return ctx, &Resolver{target: target, ctx: ctx}, nil
 }
 
-func (r *Resolver) Finalize(ctx context.Context) error {
+func (r *Resolver) Target(_ context.Context, _ string) (oras.Target, error) {
+	return r.target, nil
+}
+
+func (r *Resolver) Finalize(_ context.Context) error {
 	return nil
 }
 

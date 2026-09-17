@@ -1,6 +1,8 @@
 package registry
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -8,27 +10,13 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
+	"sync"
 
-	ctrcontent "github.com/containerd/containerd/content"
-	"github.com/containerd/containerd/remotes"
-	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"oras.land/oras-go/pkg/content"
 )
 
-// IngesterCloser an ingester that also has a Close(). May return nil
-type IngesterCloser interface {
-	ctrcontent.Ingester
-	io.Closer
-}
-
-// Target a target where to send the contents of the artifact. May also
-// handle processing config.
-type Target interface {
-	Ingester() IngesterCloser
-	MultiWriter() bool
-}
+// DefaultBlockSize size of each slice of bytes read in each write through in gunzip and untar.
+const DefaultBlockSize = 32768
 
 // FilesTarget provides targets for each file type. If a type is nil,
 // its content is ignored
@@ -45,243 +33,196 @@ type FilesTarget struct {
 	Disks []io.Writer
 	// Other writer where to write the other elements
 	Other []io.Writer
-	// BlockSize how big a blocksize to use when reading/writing. Defaults to whatever io.Copy uses
+	// BlockSize how big a blocksize to use when reading/writing. Defaults to DefaultBlockSize
 	BlockSize int
 	// AcceptHash if set to true, accept the hash in the descriptor as is, i.e. do not recalculate it
 	AcceptHash bool
+	// mu guards the fields below, which one part of the artifact fills in and the
+	// rest read. A copy is pushed concurrently with the layers it describes.
+	mu sync.Mutex
+	// configLoaded whether the config has already been read
+	configLoaded bool
 	// config stores the config annotations, if they exist
 	config map[string]string
 	// pathWriters store the reverse, from a path to the target writer, used for quick lookups
 	pathWriters map[string]io.Writer
 }
 
-// Resolver get a resolver for content
-func (f *FilesTarget) Resolver() remotes.Resolver {
-	return f
+// Exists always reports false, so that every part of the artifact is offered to Push.
+func (f *FilesTarget) Exists(_ context.Context, _ ocispec.Descriptor) (bool, error) {
+	return false, nil
 }
 
-// Resolve resolve a specific reference, currently unsupported
-func (f *FilesTarget) Resolve(ctx context.Context, ref string) (name string, desc ocispec.Descriptor, err error) {
-	return "", ocispec.Descriptor{}, fmt.Errorf("unsupported")
-}
-
-// Fetcher fetch the content for a specific ref
-func (f *FilesTarget) Fetcher(ctx context.Context, ref string) (remotes.Fetcher, error) {
+// Fetch is unsupported: a FilesTarget is written to, never read from.
+func (f *FilesTarget) Fetch(_ context.Context, _ ocispec.Descriptor) (io.ReadCloser, error) {
 	return nil, fmt.Errorf("unsupported")
 }
 
-// Fetch get an io.ReadCloser for the specific content
-func (f *FilesTarget) Fetch(ctx context.Context, desc ocispec.Descriptor) (io.ReadCloser, error) {
-	return nil, fmt.Errorf("unsupported")
+// Resolve is unsupported: a FilesTarget holds no references.
+func (f *FilesTarget) Resolve(_ context.Context, _ string) (ocispec.Descriptor, error) {
+	return ocispec.Descriptor{}, fmt.Errorf("unsupported")
 }
 
-// Ingester get the IngesterCloser
-func (f *FilesTarget) Ingester() IngesterCloser {
-	return f
-}
-
-// Close close anything that might be open
-func (f *FilesTarget) Close() error {
+// Tag discards the reference, as the files written carry no name of their own.
+func (f *FilesTarget) Tag(_ context.Context, _ ocispec.Descriptor, _ string) error {
 	return nil
 }
 
-// Pusher get a pusher to push content
-func (f *FilesTarget) Pusher(ctx context.Context, ref string) (remotes.Pusher, error) {
-	var tag, hash string
-	parts := strings.SplitN(ref, "@", 2)
-	if len(parts) > 0 {
-		tag = parts[0]
-	}
-	if len(parts) > 1 {
-		hash = parts[1]
-	}
-	pusher := &filesPusher{
-		target: f,
-		ref:    tag,
-		hash:   hash,
-	}
-	return content.NewDecompress(pusher, content.WithMultiWriterIngester()), nil
-}
-
-func (f *FilesTarget) Writer(ctx context.Context, opts ...ctrcontent.WriterOpt) (ctrcontent.Writer, error) {
-	// we have to reprocess the opts to find the desc
-	var wOpts ctrcontent.WriterOpts
-	for _, opt := range opts {
-		if err := opt(&wOpts); err != nil {
-			return nil, err
-		}
-	}
-	desc := wOpts.Desc
-
-	p := &filesPusher{
-		target: f,
-	}
-	return p.Push(ctx, desc)
-}
-
-// Writers get writers by filename
-func (f *FilesTarget) Writers(ctx context.Context, opts ...ctrcontent.WriterOpt) (func(name string) (ctrcontent.Writer, error), error) {
-	// we have to reprocess the opts to find the desc
-	var wOpts ctrcontent.WriterOpts
-	for _, opt := range opts {
-		if err := opt(&wOpts); err != nil {
-			return nil, err
-		}
-	}
-	desc := wOpts.Desc
-
-	writerOpts := []content.WriterOpt{}
-	if f.BlockSize > 0 {
-		writerOpts = append(writerOpts, content.WithBlocksize(f.BlockSize))
-	}
-	if f.AcceptHash {
-		writerOpts = append(writerOpts, content.WithInputHash(desc.Digest))
-		writerOpts = append(writerOpts, content.WithOutputHash(desc.Digest))
-	}
-	return func(name string) (ctrcontent.Writer, error) {
-		if f.pathWriters == nil {
-			return nil, nil
-		}
-		if w, ok := f.pathWriters[name]; ok {
-			return content.NewIoContentWriter(w, writerOpts...), nil
-		}
-
-		return nil, nil
-	}, nil
-}
-
-type filesPusher struct {
-	target *FilesTarget
-	ref    string
-	hash   string
-}
-
-func (f *filesPusher) Push(ctx context.Context, desc ocispec.Descriptor) (ctrcontent.Writer, error) {
-	writerOpts := []content.WriterOpt{}
-	if f.target.BlockSize > 0 {
-		writerOpts = append(writerOpts, content.WithBlocksize(f.target.BlockSize))
-	}
-	if f.target.AcceptHash {
-		writerOpts = append(writerOpts, content.WithInputHash(desc.Digest))
-		writerOpts = append(writerOpts, content.WithOutputHash(desc.Digest))
-	}
-
-	// save any config
-	// because the config always is pulled first, this should work. But it depends on this remaining the same:
-	// https://github.com/containerd/containerd/blob/178e9a10121b344aece9fe918f6fc4dc4dbde9a3/images/image.go#L346-L347
+// Push route one part of the artifact to the writer that wants it. The config is
+// consumed here rather than written out: its labels name the file paths inside
+// legacy layers, which is what lets those layers be split across writers.
+func (f *FilesTarget) Push(_ context.Context, desc ocispec.Descriptor, r io.Reader) error {
 	if IsConfigType(desc.MediaType) {
-		// process the config, looking for annotations
-		return f.configIngestor(), nil
+		return f.ingestConfig(desc, r)
 	}
+	gzipped, tarred := layerEncoding(desc.MediaType)
+	switch {
+	case tarred:
+		return f.untar(desc, gzipped, r)
+	case gzipped:
+		return f.gunzipTo(f.writerForRole(desc.Annotations[AnnotationRole]), desc, r)
+	default:
+		return f.copyTo(f.writerForRole(desc.Annotations[AnnotationRole]), desc, r)
+	}
+}
 
-	// check if it meets the requirements
-	switch desc.Annotations[AnnotationRole] {
+// writerForRole the writer that takes a whole layer of the given role. An
+// additional disk has no writer here; in the legacy format it is reached by path
+// through pathWriters instead.
+func (f *FilesTarget) writerForRole(role string) io.Writer {
+	switch role {
 	case RoleKernel:
-		if f.target.Kernel != nil {
-			return content.NewIoContentWriter(f.target.Kernel, writerOpts...), nil
-		}
+		return f.Kernel
 	case RoleInitrd:
-		if f.target.Initrd != nil {
-			return content.NewIoContentWriter(f.target.Initrd, writerOpts...), nil
-		}
+		return f.Initrd
 	case RoleRootDisk:
-		if f.target.Root != nil {
-			return content.NewIoContentWriter(f.target.Root, writerOpts...), nil
-		}
-	case RoleAdditionalDisk:
-	}
-
-	//return content.NewIoContentWriter(nil, writerOpts...), nil
-	return content.NewIoContentWriter(nil, writerOpts...), nil
-}
-
-func (f *filesPusher) Pushers(ctx context.Context, desc ocispec.Descriptor) (func(name string) (ctrcontent.Writer, error), error) {
-	writerOpts := []content.WriterOpt{}
-	if f.target.BlockSize > 0 {
-		writerOpts = append(writerOpts, content.WithBlocksize(f.target.BlockSize))
-	}
-	if f.target.AcceptHash {
-		writerOpts = append(writerOpts, content.WithInputHash(desc.Digest))
-		writerOpts = append(writerOpts, content.WithOutputHash(desc.Digest))
-	}
-	return func(name string) (ctrcontent.Writer, error) {
-		if f.target.pathWriters == nil {
-			return nil, nil
-		}
-		if w, ok := f.target.pathWriters[name]; ok {
-			return content.NewIoContentWriter(w, writerOpts...), nil
-		}
-
-		return nil, nil
-	}, nil
-}
-
-func (f *filesPusher) configIngestor() ctrcontent.Writer {
-	return &configIngestor{target: f.target}
-}
-
-type configIngestor struct {
-	target    *FilesTarget
-	ref       string
-	content   []byte
-	start     time.Time
-	updated   time.Time
-	committed bool
-}
-
-func (c *configIngestor) Digest() digest.Digest {
-	return digest.FromBytes(c.content)
-}
-func (c *configIngestor) Status() (ctrcontent.Status, error) {
-	return ctrcontent.Status{
-		Ref:       c.ref,
-		Offset:    0,
-		Total:     int64(len(c.content)),
-		Expected:  c.Digest(),
-		StartedAt: c.start,
-		UpdatedAt: c.updated,
-	}, nil
-}
-func (c *configIngestor) Truncate(size int64) error {
-	if len(c.content) > int(size) {
-		c.content = c.content[:size]
+		return f.Root
 	}
 	return nil
 }
-func (c *configIngestor) Commit(ctx context.Context, size int64, expected digest.Digest, opts ...ctrcontent.Opt) error {
-	if c.committed {
-		return nil
+
+// copyTo stream the content to w, discarding it if there is no writer for it.
+func (f *FilesTarget) copyTo(w io.Writer, desc ocispec.Descriptor, r io.Reader) error {
+	if w == nil {
+		w = io.Discard
 	}
-	if err := c.Close(); err != nil {
+	verified, verify := f.verifier(desc, r)
+	if _, err := io.CopyBuffer(w, verified, f.buffer()); err != nil {
+		return err
+	}
+	return verify()
+}
+
+// gunzipTo stream the decompressed content to w, discarding it if there is no
+// writer for it.
+func (f *FilesTarget) gunzipTo(w io.Writer, desc ocispec.Descriptor, r io.Reader) error {
+	if w == nil {
+		w = io.Discard
+	}
+	verified, verify := f.verifier(desc, r)
+	gz, err := gzip.NewReader(verified)
+	if err != nil {
+		return fmt.Errorf("could not read layer %s as gzip: %v", desc.Digest, err)
+	}
+	defer func() { _ = gz.Close() }()
+	buf := f.buffer()
+	if _, err := io.CopyBuffer(w, gz, buf); err != nil {
+		return err
+	}
+	// the descriptor covers the compressed blob, so the gzip trailer has to be
+	// read before the digest can be checked
+	if _, err := io.CopyBuffer(io.Discard, verified, buf); err != nil {
+		return err
+	}
+	return verify()
+}
+
+// untar unpack a tar layer, handing each file inside to the writer registered
+// for its path by the config. gzipped says the tar is wrapped in gzip.
+func (f *FilesTarget) untar(desc ocispec.Descriptor, gzipped bool, r io.Reader) error {
+	verified, verify := f.verifier(desc, r)
+	src := verified
+	if gzipped {
+		gz, err := gzip.NewReader(verified)
+		if err != nil {
+			return fmt.Errorf("could not read layer %s as gzip: %v", desc.Digest, err)
+		}
+		defer func() { _ = gz.Close() }()
+		src = gz
+	}
+
+	buf := f.buffer()
+	tr := tar.NewReader(src)
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("could not read layer %s as tar: %v", desc.Digest, err)
+		}
+		w := f.writerForPath(header.Name)
+		if w == nil {
+			w = io.Discard
+		}
+		if _, err := io.CopyBuffer(w, tr, buf); err != nil {
+			return err
+		}
+	}
+	// the descriptor covers the compressed blob, so the tail past the tar has to
+	// be read before the digest can be checked
+	if _, err := io.CopyBuffer(io.Discard, verified, buf); err != nil {
+		return err
+	}
+	return verify()
+}
+
+// ingestConfig read the image config and map each path it names to the writer
+// that should receive that file.
+func (f *FilesTarget) ingestConfig(desc ocispec.Descriptor, r io.Reader) error {
+	verified, verify := f.verifier(desc, r)
+	b, err := io.ReadAll(verified)
+	if err != nil {
+		return err
+	}
+	if err := verify(); err != nil {
 		return err
 	}
 	image := ocispec.Image{}
-	if err := json.Unmarshal(c.content, &image); err != nil {
+	if err := json.Unmarshal(b, &image); err != nil {
 		return fmt.Errorf("could not convert image config from json: %v", err)
 	}
-	c.target.config = image.Config.Labels
-	c.target.pathWriters = map[string]io.Writer{}
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	// A pull hands the config over before the copy starts, and the copy then offers
+	// it again. Reading it once keeps the second copy from emptying the map while
+	// the layers it describes are being written.
+	if f.configLoaded {
+		return nil
+	}
+	f.config = image.Config.Labels
+	f.pathWriters = map[string]io.Writer{}
+	f.configLoaded = true
 
 	// pattern to use to check for other disks
 	disksPattern := strings.ReplaceAll(AnnotationDiskIndexPathPattern, "%d", `([\d]+)`)
 	// we are ignoring errors for now, as that should never happen
 	re, _ := regexp.Compile(disksPattern)
 
-	for annotation, value := range c.target.config {
-		// ignore absolute oaths, because tar does
+	for annotation, value := range f.config {
+		// ignore absolute paths, because tar does
 		if value == "" {
 			continue
 		}
-		if value[0] == '/' {
-			value = value[1:]
-		}
+		value = strings.TrimPrefix(value, "/")
 		switch {
-		case annotation == AnnotationKernelPath && c.target.Kernel != nil:
-			c.target.pathWriters[value] = c.target.Kernel
-		case annotation == AnnotationInitrdPath && c.target.Initrd != nil:
-			c.target.pathWriters[value] = c.target.Initrd
-		case annotation == AnnotationRootPath && c.target.Root != nil:
-			c.target.pathWriters[value] = c.target.Root
+		case annotation == AnnotationKernelPath && f.Kernel != nil:
+			f.pathWriters[value] = f.Kernel
+		case annotation == AnnotationInitrdPath && f.Initrd != nil:
+			f.pathWriters[value] = f.Initrd
+		case annotation == AnnotationRootPath && f.Root != nil:
+			f.pathWriters[value] = f.Root
 		default:
 			// didn't find it yet
 			matches := re.FindStringSubmatch(annotation)
@@ -292,20 +233,72 @@ func (c *configIngestor) Commit(ctx context.Context, size int64, expected digest
 			if err != nil {
 				continue
 			}
-			if len(c.target.Disks) > index && c.target.Disks[index] != nil {
-				c.target.pathWriters[value] = c.target.Disks[index]
+			if len(f.Disks) > index && f.Disks[index] != nil {
+				f.pathWriters[value] = f.Disks[index]
 			}
 		}
 	}
-
 	return nil
 }
 
-func (c *configIngestor) Close() error {
-	return nil
+// writerForPath the writer registered for a file inside a legacy layer.
+func (f *FilesTarget) writerForPath(name string) io.Writer {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.pathWriters[strings.TrimPrefix(name, "/")]
 }
 
-func (c *configIngestor) Write(p []byte) (n int, err error) {
-	c.content = append(c.content, p...)
-	return len(p), nil
+// verifier wraps r so the content can be checked against the digest the descriptor
+// claims, and returns the check to run once the reader is drained. AcceptHash
+// takes the descriptor's word for it and skips the work.
+func (f *FilesTarget) verifier(desc ocispec.Descriptor, r io.Reader) (io.Reader, func() error) {
+	if f.AcceptHash {
+		return r, func() error { return nil }
+	}
+	// Algorithm() panics on a digest with no ":" separator, so an empty digest has
+	// to be screened out before it is asked anything. Unverifiable content is
+	// refused rather than passed through.
+	if desc.Digest == "" {
+		return r, func() error {
+			return fmt.Errorf("descriptor for %s carries no digest to verify against", desc.MediaType)
+		}
+	}
+	if !desc.Digest.Algorithm().Available() {
+		return r, func() error { return nil }
+	}
+	digester := desc.Digest.Algorithm().Digester()
+	return io.TeeReader(r, digester.Hash()), func() error {
+		if got := digester.Digest(); got != desc.Digest {
+			return fmt.Errorf("content digest %s does not match descriptor digest %s", got, desc.Digest)
+		}
+		return nil
+	}
+}
+
+func (f *FilesTarget) buffer() []byte {
+	size := f.BlockSize
+	if size <= 0 {
+		size = DefaultBlockSize
+	}
+	return make([]byte, size)
+}
+
+// layerEncoding whether a layer's media type says its bytes are gzipped and/or
+// wrapped in a tar. The suffixes are what carry this, not the type as a whole:
+// a registry may hand back an uncompressed tar layer, and every combination has
+// to be unwrapped or the caller receives the container instead of the content.
+func layerEncoding(mediaType string) (gzipped, tarred bool) {
+	mt := mediaType
+	switch {
+	case strings.HasSuffix(mt, "+gzip"):
+		mt = strings.TrimSuffix(mt, "+gzip")
+		gzipped = true
+	case strings.HasSuffix(mt, ".gzip"):
+		mt = strings.TrimSuffix(mt, ".gzip")
+		gzipped = true
+	}
+	if strings.HasSuffix(mt, ".tar") {
+		tarred = true
+	}
+	return gzipped, tarred
 }
