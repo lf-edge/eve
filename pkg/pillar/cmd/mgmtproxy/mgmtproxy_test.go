@@ -238,7 +238,7 @@ func TestProxyHandlerRejectsPlainGET(t *testing.T) {
 	ctx := newTestContext(mkDNS(), 0)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "http://registry/v2/", nil)
-	newProxyHandler(ctx).ServeHTTP(rec, req)
+	newProxyHandler(ctx, false).ServeHTTP(rec, req)
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("GET / status = %d, want 405", rec.Code)
 	}
@@ -251,7 +251,7 @@ func TestProxyHandlerBadConnectTarget(t *testing.T) {
 	req := httptest.NewRequest(http.MethodConnect, "//registry-no-port", nil)
 	req.URL.Host = "registry-no-port"
 	req.Host = "registry-no-port"
-	newProxyHandler(ctx).ServeHTTP(rec, req)
+	newProxyHandler(ctx, false).ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("bad CONNECT target status = %d, want 400", rec.Code)
 	}
@@ -268,7 +268,7 @@ func TestProxyHandlerConnectNotReady(t *testing.T) {
 	req := httptest.NewRequest(http.MethodConnect, "//registry.example:443", nil)
 	req.URL.Host = "registry.example:443"
 	req.Host = "registry.example:443"
-	newProxyHandler(ctx).ServeHTTP(rec, req)
+	newProxyHandler(ctx, false).ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadGateway {
 		t.Errorf("not-ready CONNECT status = %d, want 502", rec.Code)
 	}
@@ -282,7 +282,7 @@ func TestProxyHandlerHealthz(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:5443/healthz", nil)
-	newProxyHandler(ctx).ServeHTTP(rec, req)
+	newProxyHandler(ctx, false).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("/healthz status = %d, want 200", rec.Code)
@@ -572,5 +572,85 @@ func TestTunnelCopiesBothDirections(t *testing.T) {
 	}
 	if ctx.stats.tunnelIdleClosed.Load() != 0 {
 		t.Errorf("tunnelIdleClosed = %d, want 0", ctx.stats.tunnelIdleClosed.Load())
+	}
+}
+
+// --- cluster identity (proxyIdentity) ---------------------------------------
+
+func TestProxyIdentityUnknownBeforeAnyMessage(t *testing.T) {
+	ctx := newTestContext(mkDNS(), 0)
+	if _, ready := ctx.proxyIdentity(); ready {
+		t.Error("ready = true before EdgeNodeClusterConfig arrived, want false")
+	}
+}
+
+// standaloneCfg and clusteredCfg are the two "confirmed" EdgeNodeClusterConfig
+// states; statusWithToken is the EdgeNodeClusterStatus once zedkube has
+// decrypted the cluster's join token.
+var (
+	standaloneCfg   = types.EdgeNodeClusterConfig{Initialized: true, Valid: false}
+	clusteredCfg    = types.EdgeNodeClusterConfig{Initialized: true, Valid: true}
+	statusWithToken = types.EdgeNodeClusterStatus{
+		EncryptedClusterToken: "shared-cluster-token",
+	}
+)
+
+func TestProxyIdentityStandaloneReadyImmediately(t *testing.T) {
+	ctx := newTestContext(mkDNS(), 0)
+	handleEdgeNodeClusterConfigImpl(ctx, "global", standaloneCfg)
+	tok, ready := ctx.proxyIdentity()
+	if !ready {
+		t.Error("ready = false for a confirmed-standalone node, want true")
+	}
+	if tok != "" {
+		t.Errorf("clusterToken = %q for a standalone node, want empty", tok)
+	}
+}
+
+func TestProxyIdentityClusteredNotReadyWithoutToken(t *testing.T) {
+	ctx := newTestContext(mkDNS(), 0)
+	handleEdgeNodeClusterConfigImpl(ctx, "global", clusteredCfg)
+	if _, ready := ctx.proxyIdentity(); ready {
+		t.Error("ready = true before zedkube published the token, want false")
+	}
+}
+
+func TestProxyIdentityClusteredReadyOnceTokenArrives(t *testing.T) {
+	ctx := newTestContext(mkDNS(), 0)
+	handleEdgeNodeClusterConfigImpl(ctx, "global", clusteredCfg)
+	handleEdgeNodeClusterStatusImpl(ctx, "global", statusWithToken)
+	tok, ready := ctx.proxyIdentity()
+	if !ready {
+		t.Error("ready = false once the clustered token arrived, want true")
+	}
+	if tok != "shared-cluster-token" {
+		t.Errorf("clusterToken = %q, want %q", tok, "shared-cluster-token")
+	}
+}
+
+func TestProxyIdentityIgnoresNonGlobalKey(t *testing.T) {
+	ctx := newTestContext(mkDNS(), 0)
+	handleEdgeNodeClusterConfigImpl(ctx, "not-global", standaloneCfg)
+	if _, ready := ctx.proxyIdentity(); ready {
+		t.Error("a non-\"global\" key must not affect proxyIdentity")
+	}
+}
+
+func TestProxyIdentityConfigDeleteRevertsToUnknown(t *testing.T) {
+	ctx := newTestContext(mkDNS(), 0)
+	handleEdgeNodeClusterConfigImpl(ctx, "global", standaloneCfg)
+	handleEdgeNodeClusterConfigDelete(ctx, "global", nil)
+	if _, ready := ctx.proxyIdentity(); ready {
+		t.Error("ready = true after config delete, want unknown (fail closed)")
+	}
+}
+
+func TestProxyIdentityStatusDeleteClearsToken(t *testing.T) {
+	ctx := newTestContext(mkDNS(), 0)
+	handleEdgeNodeClusterConfigImpl(ctx, "global", clusteredCfg)
+	handleEdgeNodeClusterStatusImpl(ctx, "global", statusWithToken)
+	handleEdgeNodeClusterStatusDelete(ctx, "global", nil)
+	if _, ready := ctx.proxyIdentity(); ready {
+		t.Error("ready = true after the token was deleted, want false again")
 	}
 }
