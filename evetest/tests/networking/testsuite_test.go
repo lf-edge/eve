@@ -6,6 +6,12 @@
 // helpers_test.go holds helpers shared across multiple tests in this
 // package. New shared helpers belong there too, not alongside the test
 // that first needed them.
+//
+// pciaccess_helpers_test.go observes the PCI devices of the EVE host: which
+// host process opens which device attribute or console attach point, or
+// resets, reconfigures or maps a device (pciAccessTracer, running the
+// bpftrace script in testdata/), the PCI devices a host or guest has, the
+// driver a device is bound to, and pillar's I/O bundle for a physical label.
 package networking_test
 
 import (
@@ -325,6 +331,13 @@ func TestDeviceConnectivitySuite(test *testing.T) {
 //   - TestNetworkAdapterPassthrough -- direct assignment (PCI passthrough)
 //     of a physical NIC to an app; the guest must fully own the adapter
 //     (see it under its MAC, DHCP through it over the SDN network).
+//   - TestVGAPassthroughNoHostAccess -- while the device's VGA controller is
+//     passed through to an app, no host process may open PCI device
+//     attributes for writing or reset, reconfigure or map a PCI device;
+//     observed with a bpftrace tracer the test compiles for the device's
+//     kernel with eve-tools/bpftrace-compiler, across a quiet window, a
+//     management-port DNS change, debug.enable.usb and debug.enable.vga
+//     toggles and an app restart.
 //   - TestStagedNICChange -- a NIC added to a running app without a
 //     restart command stays staged (no effect on device or guest) until
 //     the app is restarted.
@@ -432,6 +445,9 @@ func TestApplicationConnectivitySuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestNetworkAdapterPassthroughChange,
+		},
+		evetest.TestCase{
+			Test: TestVGAPassthroughNoHostAccess,
 		},
 		evetest.TestCase{
 			Test: TestStagedNICChange,
