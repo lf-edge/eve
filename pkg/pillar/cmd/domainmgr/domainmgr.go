@@ -1820,6 +1820,17 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 		publishAssignableAdapters = publishAssignableAdapters || len(assignmentsUsb) > 0 || len(assignmentsPci) > 0
 	}
 
+	// The host framebuffer drivers keep the boot framebuffer - which for an
+	// iGPU lives in its stolen memory - mapped and in use. Detach the console
+	// from the display before the adapter is bound to vfio-pci, no matter what
+	// debug.enable.vga says; updateVgaAccess brings it back once the app
+	// releases the adapter.
+	if bootVgaAssignedToApp(ctx) {
+		log.Noticef("doAssignIoAdaptersToDomain: boot VGA assigned to %s, "+
+			"detaching the host console framebuffer", status.DomainName)
+		vgaConsoleOff()
+	}
+
 	for i, long := range assignmentsPci {
 		err := hyper.PCIReserve(long)
 		if err != nil {
@@ -2414,6 +2425,13 @@ func doCleanup(ctx *domainContext, status *types.DomainStatus) {
 		status)
 	status.IoAdapterList = nil
 	publishDomainStatus(ctx, status)
+
+	// An app holding the boot VGA display forces the host console framebuffer
+	// off (see updateVgaAccess). Now that the adapter is released, bring the
+	// console back instead of waiting for the app config to be deleted.
+	if vgaSwitch && ctx.vgaAccess {
+		updateVgaAccess(ctx)
+	}
 
 	// Remove the boot file for the app instance unless the device is currently rebooting/shutting down.
 	items := ctx.subNodeAgentStatus.GetAll()
@@ -4007,7 +4025,7 @@ func updatePortAndPciBackIoBundle(ctx *domainContext, ib *types.IoBundle) (chang
 			// only return VGA devices that were marked as boot devices.
 			// console output won't be visible on others anyway
 			// it allows us to debug issues with GPUs assigned to applications
-			if keep, err := types.PCIIsBootVga(log, ib.PciLong); err == nil {
+			if keep, err := isBootVga(ib.PciLong); err == nil {
 				keepInHost = keep
 			} else {
 				log.Errorf("Couldn't get boot_vga statues for VGA device %s", ib.PciLong)
@@ -4322,85 +4340,140 @@ func updateUsbAccess(ctx *domainContext) {
 	checkIoBundleAll(ctx)
 }
 
-func updateVgaAccess(ctx *domainContext) {
+// isBootVga reports whether the PCI device carries the host console
+// framebuffer. Indirection so that tests can fake sysfs.
+var isBootVga = func(long string) (bool, error) {
+	return types.PCIIsBootVga(log, long)
+}
 
-	log.Functionf("updateVgaAccess(%t)", ctx.vgaAccess)
-
-	if ctx.vgaAccess {
-		// If VGA is disabled, we need to first bring any VGA PCIe adapter back
-		updatePortAndPciBackIoBundleAll(ctx)
-		checkIoBundleAll(ctx)
-
-		// Nothing to do if VGA is already enabled
-		if vgaSwitch {
-			// VGA access was set to true and it was disabled before, so we
-			// need to perform the "switch VGA back" operations:
-			//
-			// 1. Re-bind framebuffer drivers
-			// 2. Restore activated VTs
-			// 3. Switch back to the last active TTY
-			if err := fbBindAll(); err != nil {
-				log.Errorf("Cannot bind framebuffer drivers: %v", err)
-			}
-			if err := vtBindAll(); err != nil {
-				log.Errorf("Cannot bind Virtual Terminals: %v", err)
-			}
-			if err := chvt(currentTTY); err != nil {
-				log.Errorf("Cannot switch to VT: %v", err)
-			}
-			vgaSwitch = false
+// bootVgaAssignedToApp reports whether the boot VGA display - the device the
+// host console framebuffer lives on, typically the Intel iGPU - is assigned to
+// an application.
+func bootVgaAssignedToApp(ctx *domainContext) bool {
+	if ctx.assignableAdapters == nil {
+		return false
+	}
+	for i := range ctx.assignableAdapters.IoBundleList {
+		ib := &ctx.assignableAdapters.IoBundleList[i]
+		if ib.Type != types.IoHDMI || ib.UsedByUUID == nilUUID ||
+			ib.PciLong == "" {
+			continue
 		}
+		bootVga, err := isBootVga(ib.PciLong)
+		if err != nil {
+			log.Errorf("Couldn't get boot_vga status for VGA device %s: %v",
+				ib.PciLong, err)
+			continue
+		}
+		if bootVga {
+			return true
+		}
+	}
+	return false
+}
 
+// vgaConsoleOff detaches the host console from the VGA display:
+//
+//  1. Switch to the next free Virtual Terminal (VT), so screen goes black
+//  2. Detach all active VTs
+//  3. Unbind all framebuffer drivers
+//
+// No-op if the console has already been detached.
+func vgaConsoleOff() {
+	if vgaSwitch {
 		return
 	}
 
-	if !vgaSwitch {
-		// Get active TTY, in case of error just consider tty2 which is
-		// the one used by TUI Monitor
-		ttyDev, err := getActiveTTY()
-		if err != nil {
-			log.Errorf("Fail to get active TTY: %v", err)
+	// Get active TTY, in case of error just consider tty2 which is
+	// the one used by TUI Monitor
+	ttyDev, err := getActiveTTY()
+	if err != nil {
+		log.Errorf("Fail to get active TTY: %v", err)
+		currentTTY = 2
+	} else {
+		re := regexp.MustCompile("tty([0-9]+)")
+		match := re.FindStringSubmatch(ttyDev)
+		if len(match) != 2 {
+			log.Errorf("Fail to get active TTY index")
 			currentTTY = 2
 		} else {
-			re := regexp.MustCompile("tty([0-9]+)")
-			match := re.FindStringSubmatch(ttyDev)
-			if len(match) != 2 {
-				log.Errorf("Fail to get active TTY index")
+			index, err := strconv.Atoi(match[1])
+			if err != nil {
+				log.Errorf("Fail to get active TTY index: %v", err)
 				currentTTY = 2
 			} else {
-				index, err := strconv.Atoi(match[1])
-				if err != nil {
-					log.Errorf("Fail to get active TTY index: %v", err)
-					currentTTY = 2
-				} else {
-					currentTTY = index
-				}
+				currentTTY = index
 			}
 		}
-
-		// Perform the following operations to "disable" VGA:
-		// 1. Switch to the next free Virtual Terminal (VT), so screen
-		// goes black
-		// 2. Detach all active VTs
-		// 3. Unbind all framebuffer drivers
-		freeVT, err := findFreeVT()
-		if err != nil {
-			// In case of error, just use a higher VT
-			log.Errorf("Cannot find a free VT: %v", err)
-			freeVT = 9
-		}
-		if err := chvt(freeVT); err != nil {
-			log.Errorf("Cannot switch to VT: %v", err)
-		}
-		if err := vtUnbindAll(); err != nil {
-			log.Errorf("Cannot unbind Virtual Terminals: %v", err)
-		}
-		if err := fbUnbindAll(); err != nil {
-			log.Errorf("Cannot unbind framebuffer drivers: %v", err)
-		}
-
-		vgaSwitch = true
 	}
+
+	freeVT, err := findFreeVT()
+	if err != nil {
+		// In case of error, just use a higher VT
+		log.Errorf("Cannot find a free VT: %v", err)
+		freeVT = 9
+	}
+	if err := chvt(freeVT); err != nil {
+		log.Errorf("Cannot switch to VT: %v", err)
+	}
+	if err := vtUnbindAll(); err != nil {
+		log.Errorf("Cannot unbind Virtual Terminals: %v", err)
+	}
+	if err := fbUnbindAll(); err != nil {
+		log.Errorf("Cannot unbind framebuffer drivers: %v", err)
+	}
+
+	vgaSwitch = true
+}
+
+// vgaConsoleOn undoes vgaConsoleOff:
+//
+//  1. Re-bind framebuffer drivers
+//  2. Restore activated VTs
+//  3. Switch back to the last active TTY
+//
+// No-op if the console was never detached.
+func vgaConsoleOn() {
+	if !vgaSwitch {
+		return
+	}
+
+	if err := fbBindAll(); err != nil {
+		log.Errorf("Cannot bind framebuffer drivers: %v", err)
+	}
+	if err := vtBindAll(); err != nil {
+		log.Errorf("Cannot bind Virtual Terminals: %v", err)
+	}
+	if err := chvt(currentTTY); err != nil {
+		log.Errorf("Cannot switch to VT: %v", err)
+	}
+
+	vgaSwitch = false
+}
+
+// vgaConsoleWanted reports whether the host console should be attached to the
+// VGA display. Besides debug.enable.vga, an assigned boot VGA display keeps the
+// console off: the framebuffer drivers keep the boot framebuffer - which for an
+// iGPU lives in its stolen memory - mapped and in use, which corrupts the
+// display once the guest drives the same hardware.
+func vgaConsoleWanted(ctx *domainContext) bool {
+	return ctx.vgaAccess && !bootVgaAssignedToApp(ctx)
+}
+
+// updateVgaAccess aligns the host VGA console with the debug.enable.vga setting
+// and with the current adapter assignments.
+func updateVgaAccess(ctx *domainContext) {
+	log.Functionf("updateVgaAccess(%t)", ctx.vgaAccess)
+
+	if vgaConsoleWanted(ctx) {
+		// If VGA is disabled, we need to first bring any VGA PCIe adapter back
+		updatePortAndPciBackIoBundleAll(ctx)
+		checkIoBundleAll(ctx)
+		vgaConsoleOn()
+		return
+	}
+
+	vgaConsoleOff()
 
 	updatePortAndPciBackIoBundleAll(ctx)
 	checkIoBundleAll(ctx)

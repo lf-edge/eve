@@ -810,3 +810,74 @@ func TestReserveAdaptersWarningVsError(t *testing.T) {
 		}
 	})
 }
+
+// TestVgaConsoleWanted covers the host console framebuffer decision: it must be
+// detached whenever the boot VGA display (e.g. an Intel iGPU) is assigned to an
+// application, even though debug.enable.vga keeps VGA access enabled.
+func TestVgaConsoleWanted(t *testing.T) {
+	const bootVgaPci = "0000:00:02.0"
+	const otherGpuPci = "0000:01:00.0"
+
+	savedIsBootVga := isBootVga
+	isBootVga = func(long string) (bool, error) {
+		return long == bootVgaPci, nil
+	}
+	defer func() { isBootVga = savedIsBootVga }()
+
+	appUUID, err := uuid.FromString("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	newCtx := func(vgaAccess bool, usedBy uuid.UUID, pciLong string) *domainContext {
+		return &domainContext{
+			vgaAccess: vgaAccess,
+			assignableAdapters: &types.AssignableAdapters{
+				IoBundleList: []types.IoBundle{
+					{
+						Phylabel:        "gpu",
+						Type:            types.IoHDMI,
+						AssignmentGroup: "1",
+						PciLong:         pciLong,
+						UsedByUUID:      usedBy,
+					},
+				},
+			},
+		}
+	}
+
+	testCases := []struct {
+		name   string
+		ctx    *domainContext
+		wantOn bool
+	}{
+		{
+			name:   "unassigned boot VGA, VGA access enabled",
+			ctx:    newCtx(true, nilUUID, bootVgaPci),
+			wantOn: true,
+		},
+		{
+			name:   "boot VGA assigned to an app",
+			ctx:    newCtx(true, appUUID, bootVgaPci),
+			wantOn: false,
+		},
+		{
+			name:   "non-boot GPU assigned to an app",
+			ctx:    newCtx(true, appUUID, otherGpuPci),
+			wantOn: true,
+		},
+		{
+			name:   "VGA access disabled",
+			ctx:    newCtx(false, nilUUID, bootVgaPci),
+			wantOn: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := vgaConsoleWanted(tc.ctx); got != tc.wantOn {
+				t.Fatalf("vgaConsoleWanted() = %t, want %t", got, tc.wantOn)
+			}
+		})
+	}
+}
