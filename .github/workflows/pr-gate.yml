@@ -20,10 +20,17 @@ env:
 
 permissions: {}
 
-# one gate run per PR; new workflow_run cancels the older run, reviews do not
+# One gate run per source branch; a newer build's gate cancels the older run,
+# reviews neither cancel nor are cancelled. Keyed on the branch rather than the
+# PR number because workflow_run.pull_requests is empty for a PR from a fork.
+# Group names share one namespace across the repository, hence the workflow
+# prefix.
 concurrency:
-  group: |
-    ${{ github.event.workflow_run.pull_requests[0].number || format('review-{0}-{1}', github.event.pull_request.number, github.run_id) }}
+  group: >-
+    ${{ github.workflow }}-${{ github.event_name == 'workflow_run'
+    && format('{0}:{1}', github.event.workflow_run.head_repository.full_name,
+    github.event.workflow_run.head_branch)
+    || format('review-{0}-{1}', github.event.pull_request.head.sha, github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'workflow_run' }}
 
 jobs:
