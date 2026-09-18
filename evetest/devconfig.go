@@ -896,6 +896,11 @@ type ApplicationInstanceConfig struct {
 	UserData            string
 	NetworkAdapters     []AppNetworkAdapter
 	EnforceNetIntfOrder bool
+	// IOAdapters are I/O devices other than network adapters (a GPU, a USB
+	// controller, a serial port, ...) directly assigned to the application,
+	// each referencing a PhysicalIO entry added with
+	// EdgeDeviceConfig.AddPhysicalIO.
+	IOAdapters []IOAdapterConfig
 	// Mounts are additional volumes attached to the application alongside its
 	// root disk (built from Image/DiskBytes). Each entry references an
 	// existing, independently created volume (see EdgeDeviceConfig.AddVolume
@@ -1066,6 +1071,12 @@ func (config ApplicationInstanceConfig) toProto(th *TestHarness, devName string,
 					InterfaceOrder: interfaceOrder,
 				})
 		}
+	}
+	for _, ioAdapter := range config.IOAdapters {
+		appInstConfig.Adapters = append(appInstConfig.Adapters, &eveconfig.Adapter{
+			Type: ioAdapter.Type,
+			Name: ioAdapter.LogicalLabel,
+		})
 	}
 	if config.UserData != "" {
 		if th.isDeviceOnboarded(devName) {
@@ -1400,6 +1411,15 @@ type DirectlyAssignedNetworkAdapter struct {
 }
 
 func (DirectlyAssignedNetworkAdapter) isAppNetworkAdapter() {}
+
+// IOAdapterConfig represents an I/O device other than a network adapter
+// directly assigned to an application, e.g. a GPU (PhyIoHDMI) or a USB
+// controller (PhyIoUSBController). LogicalLabel names the PhysicalIO entry
+// (see EdgeDeviceConfig.AddPhysicalIO) and Type must match its type.
+type IOAdapterConfig struct {
+	LogicalLabel string
+	Type         evecommon.PhyIoType
+}
 
 // VirtualNetworkAdapter represents application virtual network adapters
 // (e.g., virtio, e1000).
