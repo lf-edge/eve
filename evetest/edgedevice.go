@@ -460,14 +460,32 @@ func (t *BaseOSDatastoreType) FromString(s string) error {
 // show a FAILED status instead of waiting for it to become active.
 // A reverted upgrade causes two reboots (one to try the new version, one to
 // revert), so the expected reboot count is incremented accordingly.
+//
+// An optional timeout bounds the wait instead of the default, which is sized
+// for an ordinary base-OS upgrade: download, one reboot, done. A cross-flavor
+// boot-disk conversion is a different animal -- it also runs an offline
+// shrink+grow across several reboots and then brings up a whole
+// container-cluster stack -- and it lands close enough to the default that a
+// healthy conversion and an expired budget are separated by a couple of minutes
+// of host load. A test driving one should pass a longer timeout, otherwise it
+// reports a conversion that was still progressing as a failure.
 func (d *EdgeDevice) UpgradeEVE(targetEVEVersion string, targetEVEHypervisor Hypervisor,
-	datastoreType BaseOSDatastoreType, waitUntilUpgraded bool, expectRevert bool) {
+	datastoreType BaseOSDatastoreType, waitUntilUpgraded bool, expectRevert bool,
+	timeout ...time.Duration) {
+
+	if len(timeout) > 1 {
+		d.th.t.Fatalf("UpgradeEVE: at most one timeout may be given, got %d", len(timeout))
+	}
+	upgradeWait := eveUpgradeTimeout
+	if len(timeout) == 1 {
+		upgradeWait = timeout[0]
+	}
 	outcome := upgradeSucceeds
 	if expectRevert {
 		outcome = upgradeReverts
 	}
 	d.upgradeEVE(targetEVEVersion, targetEVEHypervisor, datastoreType,
-		waitUntilUpgraded, outcome)
+		waitUntilUpgraded, outcome, upgradeWait)
 }
 
 // RequestRefusedEVEUpgrade applies a base-OS update that EVE is expected to
@@ -482,7 +500,7 @@ func (d *EdgeDevice) UpgradeEVE(targetEVEVersion string, targetEVEHypervisor Hyp
 func (d *EdgeDevice) RequestRefusedEVEUpgrade(targetEVEVersion string,
 	targetEVEHypervisor Hypervisor, datastoreType BaseOSDatastoreType) {
 	d.upgradeEVE(targetEVEVersion, targetEVEHypervisor, datastoreType,
-		false, upgradeRefused)
+		false, upgradeRefused, eveUpgradeTimeout)
 }
 
 // upgradeOutcome is what the test expects EVE to do with a base-OS update. It
@@ -513,7 +531,8 @@ func (o upgradeOutcome) expectedReboots() int {
 }
 
 func (d *EdgeDevice) upgradeEVE(targetEVEVersion string, targetEVEHypervisor Hypervisor,
-	datastoreType BaseOSDatastoreType, waitUntilUpgraded bool, outcome upgradeOutcome) {
+	datastoreType BaseOSDatastoreType, waitUntilUpgraded bool, outcome upgradeOutcome,
+	upgradeWait time.Duration) {
 
 	// Read current device arch (set during Setup).
 	d.th.devicesM.Lock()
@@ -545,7 +564,7 @@ func (d *EdgeDevice) upgradeEVE(targetEVEVersion string, targetEVEHypervisor Hyp
 	// honoured (and must be built locally) while an unset one means the newest.
 	if datastoreType == BaseOSDatastoreHTTP && LocalLiveImageRequested() {
 		d.upgradeEVEFromLocalBuild(targetEVEVersion, currentImageRef.Arch,
-			currentImageRef.Hypervisor, waitUntilUpgraded, outcome)
+			currentImageRef.Hypervisor, waitUntilUpgraded, outcome, upgradeWait)
 		return
 	}
 
@@ -599,7 +618,7 @@ func (d *EdgeDevice) upgradeEVE(targetEVEVersion string, targetEVEHypervisor Hyp
 			"Configuring EVE to pull rootfs %s from evetest's local OCI registry", imageName)
 		config := d.GetConfig()
 		config.SetBaseOS(dockerContainer, shortVersion)
-		d.applyUpgradeConfig(config, shortVersion, waitUntilUpgraded, outcome)
+		d.applyUpgradeConfig(config, shortVersion, waitUntilUpgraded, outcome, upgradeWait)
 		return
 	}
 
@@ -625,7 +644,7 @@ func (d *EdgeDevice) upgradeEVE(targetEVEVersion string, targetEVEHypervisor Hyp
 	}
 
 	d.applyUpgradeOverHTTP(rootfsPath, rootfsFilename, shortVersion,
-		waitUntilUpgraded, outcome)
+		waitUntilUpgraded, outcome, upgradeWait)
 }
 
 // upgradeEVEFromLocalBuild delivers an upgrade from a local build's own
@@ -635,7 +654,7 @@ func (d *EdgeDevice) upgradeEVE(targetEVEVersion string, targetEVEHypervisor Hyp
 // as it was built.
 func (d *EdgeDevice) upgradeEVEFromLocalBuild(targetEVEVersion string,
 	arch api.ArchType, runningHypervisor api.HypervisorType,
-	waitUntilUpgraded bool, outcome upgradeOutcome) {
+	waitUntilUpgraded bool, outcome upgradeOutcome, upgradeWait time.Duration) {
 
 	zarch, err := zarchDirName(arch)
 	if err != nil {
@@ -689,7 +708,7 @@ func (d *EdgeDevice) upgradeEVEFromLocalBuild(targetEVEVersion string,
 	}
 
 	d.applyUpgradeOverHTTP(rootfsPath, rootfsFilename, img.ShortVersion,
-		waitUntilUpgraded, outcome)
+		waitUntilUpgraded, outcome, upgradeWait)
 }
 
 // applyUpgradeOverHTTP points the device's BaseOS config at a rootfs image
@@ -697,7 +716,7 @@ func (d *EdgeDevice) upgradeEVEFromLocalBuild(targetEVEVersion string,
 // for the outcome. Shared by the two HTTP-serving transports (registry-pulled
 // and local-build): they differ only in how rootfsPath got there.
 func (d *EdgeDevice) applyUpgradeOverHTTP(rootfsPath, rootfsFilename, shortVersion string,
-	waitUntilUpgraded bool, outcome upgradeOutcome) {
+	waitUntilUpgraded bool, outcome upgradeOutcome, upgradeWait time.Duration) {
 
 	sha256hex, fileSize, err := utils.FileHashAndSize(rootfsPath)
 	if err != nil {
@@ -715,14 +734,14 @@ func (d *EdgeDevice) applyUpgradeOverHTTP(rootfsPath, rootfsFilename, shortVersi
 		ServerPort:        GetImageServerPort(),
 	}, shortVersion)
 
-	d.applyUpgradeConfig(config, shortVersion, waitUntilUpgraded, outcome)
+	d.applyUpgradeConfig(config, shortVersion, waitUntilUpgraded, outcome, upgradeWait)
 }
 
 // applyUpgradeConfig applies an already-built upgrade device config and,
 // optionally, waits for the outcome. Shared by all datastore transports:
 // they differ only in how the BaseOS config gets built.
 func (d *EdgeDevice) applyUpgradeConfig(config *EdgeDeviceConfig, shortVersion string,
-	waitUntilUpgraded bool, outcome upgradeOutcome) {
+	waitUntilUpgraded bool, outcome upgradeOutcome, upgradeWait time.Duration) {
 
 	d.th.log.Infof("Applying EVE upgrade config (target=%s)", shortVersion)
 	for i := 0; i < outcome.expectedReboots(); i++ {
@@ -746,13 +765,13 @@ func (d *EdgeDevice) applyUpgradeConfig(config *EdgeDeviceConfig, shortVersion s
 	case upgradeRefused:
 		// Nothing to wait for: the caller asserts what the rejection looks like.
 	default:
-		d.waitForUpgrade(shortVersion)
+		d.waitForUpgrade(shortVersion, upgradeWait)
 	}
 }
 
 // waitForUpgrade blocks until the device's SwList contains an entry for
 // targetShortVersion with PartitionState=="active", or fatals on failure/timeout.
-func (d *EdgeDevice) waitForUpgrade(targetShortVersion string) {
+func (d *EdgeDevice) waitForUpgrade(targetShortVersion string, upgradeWait time.Duration) {
 	d.th.log.Infof("Waiting for device %q to upgrade to %s",
 		d.devName, targetShortVersion)
 	devUUID := d.getDevUUID()
@@ -768,7 +787,7 @@ func (d *EdgeDevice) waitForUpgrade(targetShortVersion string) {
 	}
 	defer unsub()
 
-	ctx, cancel := context.WithTimeout(d.th.ctx, eveUpgradeTimeout)
+	ctx, cancel := context.WithTimeout(d.th.ctx, upgradeWait)
 	defer cancel()
 
 	var lastLoggedState, lastLoggedStatus string
@@ -886,6 +905,11 @@ func (d *EdgeDevice) waitForRevert(targetShortVersion string) {
 // Declare it before applying the config that causes it: the audit only
 // compares totals, but a declaration that races the observation reads as
 // an accident in the log.
+//
+// A cross-flavor boot-disk conversion is the other case: it runs an offline
+// shrink/grow across more reboots than UpgradeEVE accounts for, and how many is
+// known only to the test driving it, since a plain kvm<->k conversion with no
+// resize reboots differently than a shrink+grow.
 func (d *EdgeDevice) ExpectReboots(count int) {
 	d.th.collectCoverageFromDevice(d.th.ctx, d.devName)
 	for i := 0; i < count; i++ {
