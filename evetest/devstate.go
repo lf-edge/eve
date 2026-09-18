@@ -281,6 +281,17 @@ func (th *TestHarness) incExpectedRebootCount(devName string) {
 	}
 }
 
+// disableRebootAccounting turns off the teardown reboot-count check for the
+// named device, recording why it cannot be counted.
+func (th *TestHarness) disableRebootAccounting(devName, reason string) {
+	th.devicesM.Lock()
+	defer th.devicesM.Unlock()
+	if dev, ok := th.devices[devName]; ok {
+		dev.rebootAccountingOff = true
+		dev.rebootAccountingOffReason = reason
+	}
+}
+
 // checkRebootCounts compares the observed reboot count against the expected
 // reboot count for every onboarded device. A mismatch indicates either an
 // unexpected reboot (device crashed) or a requested reboot that never occurred.
@@ -289,6 +300,11 @@ func (th *TestHarness) checkRebootCounts() {
 	defer th.devicesM.Unlock()
 	for devName, dev := range th.devices {
 		if dev.ID == uuid.Nil {
+			continue
+		}
+		if dev.rebootAccountingOff {
+			th.log.Infof("Device %q: reboot accounting disabled (%s); observed %d, expected %d",
+				devName, dev.rebootAccountingOffReason, dev.rebootCount, dev.expectedRebootCount)
 			continue
 		}
 		if dev.rebootCount != dev.expectedRebootCount {

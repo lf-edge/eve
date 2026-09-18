@@ -1442,6 +1442,8 @@ func (th *TestHarness) reuseDevice(dev deviceState, newReq RequireEdgeDevice) er
 		th.devicesM.Lock()
 		th.devices[dev.name].rebootCount = 0
 		th.devices[dev.name].expectedRebootCount = 0
+		th.devices[dev.name].rebootAccountingOff = false
+		th.devices[dev.name].rebootAccountingOffReason = ""
 		th.devicesM.Unlock()
 		return nil
 	}
@@ -1532,6 +1534,8 @@ func (th *TestHarness) reuseDevice(dev deviceState, newReq RequireEdgeDevice) er
 	th.devicesM.Lock()
 	currentDev := th.devices[dev.name]
 	currentDev.rebootCount = 0
+	currentDev.rebootAccountingOff = false
+	currentDev.rebootAccountingOffReason = ""
 	if rebooted && currentDev.lastBootTime.Equal(preReuseBootTime) {
 		currentDev.expectedRebootCount = 1
 	} else {
