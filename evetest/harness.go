@@ -267,6 +267,11 @@ type TestHarness struct {
 	// reset on every Setup() call so it never leaks into the next test).
 	ipv6OnlyRegistryMirrors bool
 
+	// skipRegistryMirrors is set for the currently running test from its
+	// RequireDirectRegistryPulls requirement (or false if not declared;
+	// reset on every Setup() call so it never leaks into the next test).
+	skipRegistryMirrors bool
+
 	// Go routines management
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -1068,6 +1073,7 @@ func Setup(requirements ...Requirement) {
 	var internetReq *RequireInternetConnectivity
 	var requiredCaps []api.Capability
 	th.ipv6OnlyRegistryMirrors = false
+	th.skipRegistryMirrors = false
 
 	for _, requirement := range requirements {
 		switch req := requirement.(type) {
@@ -1086,6 +1092,8 @@ func Setup(requirements ...Requirement) {
 			internetReq = &req
 		case RequireCapabilities:
 			requiredCaps = append(requiredCaps, req.Capabilities...)
+		case RequireDirectRegistryPulls:
+			th.skipRegistryMirrors = true
 		case RequireIPv6OnlyRegistryMirrors:
 			th.ipv6OnlyRegistryMirrors = true
 		default:

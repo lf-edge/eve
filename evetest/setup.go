@@ -1665,6 +1665,9 @@ func (th *TestHarness) resetDeviceConfig(dev deviceState) error {
 // allow configuring a registry mirror for K3s (containerd) through device config,
 // so that evetest does not need to directly manipulate files on the EVE device.
 func (th *TestHarness) applyK3sRegistryMirrorIfConfigured() {
+	if th.skipRegistryMirrors {
+		return
+	}
 	mirrors := constants.LoadRegistryMirrors()
 	if len(mirrors) == 0 {
 		return

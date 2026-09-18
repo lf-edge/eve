@@ -267,3 +267,11 @@ func (r RequireCapabilities) isRequirement() {}
 type RequireIPv6OnlyRegistryMirrors struct{}
 
 func (r RequireIPv6OnlyRegistryMirrors) isRequirement() {}
+
+// RequireDirectRegistryPulls : requirement to skip applying configured
+// REGISTRY_MIRROR_* mirrors, everywhere evetest would otherwise use them
+// (K3s/containerd config on kubevirt devices, app datastore FQDNs), so every
+// image pull goes to the real registry instead of a mirror's own address.
+type RequireDirectRegistryPulls struct{}
+
+func (r RequireDirectRegistryPulls) isRequirement() {}

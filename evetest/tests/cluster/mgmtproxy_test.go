@@ -203,7 +203,7 @@ func TestMgmtProxy(test *testing.T) {
 	t.Expect(numNodes).To(BeNumerically(">=", 1), "NUM_NODES must be at least 1")
 
 	devNames := make([]string, numNodes)
-	requirements := make([]evetest.Requirement, 0, numNodes+1)
+	requirements := make([]evetest.Requirement, 0, numNodes+2)
 	for i := 0; i < numNodes; i++ {
 		devNames[i] = fmt.Sprintf("edge-dev%d", i+1)
 		requirements = append(requirements,
@@ -213,6 +213,14 @@ func TestMgmtProxy(test *testing.T) {
 		NetworkModel: netmodels.SeparateClusterPort(devNames...),
 	}
 	requirements = append(requirements, requiredNetModel)
+	// This test deliberately makes table-main's default route unusable (see
+	// the config comment below) to verify mgmtproxy routes HTTPS pulls
+	// around it. A configured registry mirror is plain HTTP, so it's never
+	// proxied through mgmtproxy and always goes out over table-main -- with
+	// one configured, basic system pod images (coredns, multus, ...) would
+	// get stuck retrying against an unreachable mirror address forever, a
+	// failure unrelated to what this test actually verifies.
+	requirements = append(requirements, evetest.RequireDirectRegistryPulls{})
 	evetest.Setup(requirements...)
 	evetest.Checkpoint("setup-done")
 
