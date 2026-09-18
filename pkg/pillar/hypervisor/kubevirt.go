@@ -386,10 +386,13 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 				logrus.Infof("Skip PCI device %s which does not match adapter %s\n", ib.Ifname, adapter.Name)
 				continue
 			}
+			// domainmgr's adapter bookkeeping can disagree with the domain
+			// being started; warn rather than take the node down over it.
 			if ib.UsedByUUID != config.UUIDandVersion.UUID {
-				logrus.Fatalf("IoBundle not ours %s: %d %s for %s\n",
+				logrus.Warnf("IoBundle not ours %s: %d %s for %s\n",
 					ib.UsedByUUID, adapter.Type, adapter.Name,
 					domainName)
+				continue
 			}
 			if ib.PciLong != "" {
 				logrus.Infof("Adding PCI device <%v>\n", ib.PciLong)
