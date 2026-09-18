@@ -454,6 +454,10 @@ type deviceState struct {
 	lastBootTime        time.Time
 	rebootCount         int
 	expectedRebootCount int
+	// rebootAccountingOff suppresses the teardown reboot-count check for a
+	// device whose reboots cannot be counted reliably, with the reason.
+	rebootAccountingOff       bool
+	rebootAccountingOffReason string
 
 	// wasUpgraded is set to true once UpgradeEVE has applied an upgrade config.
 	// Upgraded devices must not be reused across tests.
