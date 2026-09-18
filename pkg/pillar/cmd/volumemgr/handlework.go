@@ -397,7 +397,7 @@ func processVolumeWorkResult(ctxPtr interface{}, res worker.WorkResult) error {
 	// This job's completion freed a slot in the shared worker pool: give any
 	// volume or content tree whose submission was refused another chance.
 	reevaluatePendingVolumes(ctx)
-	reevaluatePendingContentTrees(ctx)
+	reevaluatePendingContentTrees(ctx, types.VERIFIED)
 	return nil
 }
 
@@ -408,7 +408,7 @@ func processVolumePrepareResult(ctxPtr interface{}, res worker.WorkResult) error
 	updateVolumeStatus(ctx, d.status.VolumeID)
 	// See processVolumeWorkResult: this frees a slot in the shared pool.
 	reevaluatePendingVolumes(ctx)
-	reevaluatePendingContentTrees(ctx)
+	reevaluatePendingContentTrees(ctx, types.VERIFIED)
 	return nil
 }
 
@@ -435,36 +435,8 @@ func processCasIngestWorkResult(ctxPtr interface{}, res worker.WorkResult) error
 	updateStatusByBlob(ctx, d.status.Blobs...)
 	// See processVolumeWorkResult: this frees a slot in the shared pool.
 	reevaluatePendingVolumes(ctx)
-	reevaluatePendingContentTrees(ctx)
+	reevaluatePendingContentTrees(ctx, types.VERIFIED)
 	return nil
-}
-
-// reevaluatePendingContentTrees re-drives every ContentTreeStatus with
-// VERIFIED <= State < LOADED -- the same role reevaluatePendingVolumes plays
-// for volumes. Called from every worker result handler, since a completed job
-// is what frees the slot a refused submission needs; everything the pool can
-// park -- an ingest deferred back to VERIFIED, a LOADING tree that lost its
-// job -- sits at VERIFIED or above.
-// (On master this lives in acceptclustercontenttree.go, where the periodic gc
-// handler also drives the EVE-k accept-from-PVCs deferrals below VERIFIED;
-// that feature does not exist on this branch, so the sweep starts at
-// VERIFIED and only the result handlers call it.)
-func reevaluatePendingContentTrees(ctx *volumemgrContext) {
-	for _, s := range ctx.pubContentTreeStatus.GetAll() {
-		status := s.(types.ContentTreeStatus)
-		if status.State < types.VERIFIED || status.State >= types.LOADED {
-			continue
-		}
-		if lookupContentTreeConfig(ctx, status.Key()) == nil {
-			// Being torn down; leave it to the delete handler.
-			continue
-		}
-		changed, _ := doUpdateContentTree(ctx, &status)
-		if changed {
-			publishContentTreeStatus(ctx, &status)
-			updateVolumeStatusFromContentID(ctx, status.ContentID)
-		}
-	}
 }
 
 // popCasIngestWorkResult gets the result exactly once. A result whose job was
