@@ -2397,6 +2397,7 @@ func doCleanup(ctx *domainContext, status *types.DomainStatus) {
 	releaseAdapters(ctx, status.IoAdapterList, status.UUIDandVersion.UUID,
 		status)
 	status.IoAdapterList = nil
+	status.BootFailed = false
 	publishDomainStatus(ctx, status)
 
 	// An app holding the boot VGA display forces the host console framebuffer
