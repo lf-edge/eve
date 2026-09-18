@@ -90,8 +90,14 @@ type zedkube struct {
 	pubEdgeNodeClusterStatus pubsub.Publication
 	pubENClusterAppStatus    pubsub.Publication
 	pubKubeClusterInfo       pubsub.Publication
-	pubLeaderElectInfo       pubsub.Publication
-	pubKubeUserServices      pubsub.Publication
+	// pubKubeNodeInfo is a per-node-keyed republish of node health, kept
+	// current by every node regardless of the stats lease -- unlike
+	// pubKubeClusterInfo, which only the stats leader maintains. Other
+	// agents subscribe to this to look up a peer's health without their
+	// own live API call.
+	pubKubeNodeInfo     pubsub.Publication
+	pubLeaderElectInfo  pubsub.Publication
+	pubKubeUserServices pubsub.Publication
 
 	subNodeDrainRequestZA  pubsub.Subscription
 	subNodeDrainRequestBoM pubsub.Subscription
@@ -415,6 +421,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatal(err)
 	}
 	zedkubeCtx.pubKubeClusterInfo = pubKubeClusterInfo
+
+	pubKubeNodeInfo, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.KubeNodeInfo{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedkubeCtx.pubKubeNodeInfo = pubKubeNodeInfo
 
 	pubKubeUserServices, err := ps.NewPublication(
 		pubsub.PublicationOptions{
@@ -812,6 +828,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			zedkubeWdUpdate()
 			zedkubeCtx.checkAppsStatus()
 			zedkubeCtx.reconcileVMIRSAffinity(zedkubeWdUpdate)
+			zedkubeWdUpdate()
+			zedkubeCtx.publishNodeHealth()
 			appStatusTimer = time.NewTimer(logcollectInterval * time.Second)
 
 		// Timer 3: cluster-wide stats and service health (leader-only, less frequent).

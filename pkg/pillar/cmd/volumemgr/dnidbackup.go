@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
 )
@@ -14,8 +15,27 @@ import (
 // backupDNIDFunc matches kubeapi.IsCurrentlyBackupDNID. Held on the context,
 // mirroring zedmanager's own backupDNIDFunc (cmd/zedmanager/dnidbackup.go),
 // so the gate can be decided in a test without a cluster.
-type backupDNIDFunc func(log *base.LogObject, designatedNodeID string,
-	isAppOpLeader bool, affinity types.Affinity, threshold time.Duration) bool
+type backupDNIDFunc func(log *base.LogObject, lookup kubeapi.NodeHealthLookup,
+	designatedNodeID string, isAppOpLeader bool, affinity types.Affinity,
+	threshold time.Duration) bool
+
+// nodeHealth implements kubeapi.NodeHealthLookup against this node's local
+// cache of node health, published by its own zedkube. Mirrors zedmanager's
+// own nodeHealth (cmd/zedmanager/dnidbackup.go).
+func (ctx *volumemgrContext) nodeHealth(nodeUUID string) (ready bool, since time.Time, found bool) {
+	item, err := ctx.subKubeNodeInfo.Get(nodeUUID)
+	if err != nil {
+		return false, time.Time{}, false
+	}
+	info, ok := item.(types.KubeNodeInfo)
+	if !ok || info.Status == types.KubeNodeStatusUnknown {
+		// Unknown means no Ready condition has ever been reported for this
+		// node -- the same "never confirmed" case as it not being in the
+		// cache at all.
+		return false, time.Time{}, false
+	}
+	return info.Status == types.KubeNodeStatusReady, info.LastTransitionTime, true
+}
 
 // dnidOutageThreshold is how long a volume's designated node must have been
 // unhealthy before a peer may act on it. Mirrors zedmanager's own function of
@@ -40,7 +60,7 @@ func isCurrentlyBackupDNIDForVolume(ctx *volumemgrContext, config *types.VolumeC
 	if config.DesignatedNodeUUID == "" {
 		return false
 	}
-	return ctx.isCurrentlyBackupDNIDFunc(log, config.DesignatedNodeUUID,
+	return ctx.isCurrentlyBackupDNIDFunc(log, ctx.nodeHealth, config.DesignatedNodeUUID,
 		ctx.isAppOpLeader, config.AffinityType, dnidOutageThreshold(ctx))
 }
 
@@ -105,7 +125,7 @@ func isCurrentlyBackupDNIDForContentTree(ctx *volumemgrContext, config *types.Co
 		return false
 	}
 	affinity := contentTreeAffinity(ctx, config.ContentID)
-	return ctx.isCurrentlyBackupDNIDFunc(log, config.DesignatedNodeUUID,
+	return ctx.isCurrentlyBackupDNIDFunc(log, ctx.nodeHealth, config.DesignatedNodeUUID,
 		ctx.isAppOpLeader, affinity, dnidOutageThreshold(ctx))
 }
 
