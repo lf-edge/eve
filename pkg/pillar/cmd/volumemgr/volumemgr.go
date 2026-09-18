@@ -63,6 +63,10 @@ type volumemgrContext struct {
 	subGlobalConfig        pubsub.Subscription
 	subZedAgentStatus      pubsub.Subscription
 	subKubeLeaderElectInfo pubsub.Subscription
+	// subKubeNodeInfo is this node's local cache of every node's health,
+	// published by its own zedkube. Backing nodeHealth, it is what lets
+	// isCurrentlyBackupDNIDFunc decide without a live API call.
+	subKubeNodeInfo pubsub.Subscription
 
 	pubDownloaderConfig  pubsub.Publication
 	subDownloaderStatus  pubsub.Subscription
@@ -678,6 +682,21 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	ctx.subKubeLeaderElectInfo = subKubeLeaderElectInfo
 	_ = subKubeLeaderElectInfo.Activate()
 
+	subKubeNodeInfo, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zedkube",
+		MyAgentName: agentName,
+		TopicImpl:   types.KubeNodeInfo{},
+		Activate:    false,
+		Ctx:         &ctx,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subKubeNodeInfo = subKubeNodeInfo
+	_ = subKubeNodeInfo.Activate()
+
 	ctx.volumeConfigCreateDeferredMap = make(map[string]*types.VolumeConfig)
 	ctx.volumeDeleteRetryCount = make(map[string]int)
 
@@ -885,6 +904,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-ctx.subKubeLeaderElectInfo.MsgChan():
 			ctx.subKubeLeaderElectInfo.ProcessChange(change)
+
+		case change := <-ctx.subKubeNodeInfo.MsgChan():
+			ctx.subKubeNodeInfo.ProcessChange(change)
 
 		case change := <-ctx.subVolumeConfig.MsgChan():
 			ctx.subVolumeConfig.ProcessChange(change)

@@ -87,6 +87,10 @@ type zedmanagerContext struct {
 	// isAppOpLeader is this node's own answer, cached from it.
 	subKubeLeaderElectInfo pubsub.Subscription
 	isAppOpLeader          bool
+	// subKubeNodeInfo is this node's local cache of every node's health,
+	// published by its own zedkube. Backing nodeHealth, it is what lets
+	// isCurrentlyBackupDNIDFunc decide without a live API call.
+	subKubeNodeInfo pubsub.Subscription
 	// isCurrentlyBackupDNIDFunc decides whether this node may act for an
 	// app's downed designated node. A field so the decision can be stubbed
 	// in a test; production wires kubeapi.IsCurrentlyBackupDNID.
@@ -434,6 +438,21 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	ctx.subKubeLeaderElectInfo = subKubeLeaderElectInfo
 	_ = subKubeLeaderElectInfo.Activate()
 
+	subKubeNodeInfo, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zedkube",
+		MyAgentName: agentName,
+		TopicImpl:   types.KubeNodeInfo{},
+		Activate:    false,
+		Ctx:         &ctx,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subKubeNodeInfo = subKubeNodeInfo
+	_ = subKubeNodeInfo.Activate()
+
 	ctx.subAssignableAdapters, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "domainmgr",
 		MyAgentName:   agentName,
@@ -547,6 +566,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-subKubeLeaderElectInfo.MsgChan():
 			subKubeLeaderElectInfo.ProcessChange(change)
+
+		case change := <-subKubeNodeInfo.MsgChan():
+			subKubeNodeInfo.ProcessChange(change)
 
 		case change := <-ctx.subAssignableAdapters.MsgChan():
 			ctx.subAssignableAdapters.ProcessChange(change)

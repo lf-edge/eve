@@ -8,13 +8,11 @@ package kubeapi
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -32,12 +30,6 @@ const nodeUUIDLabel = "node-uuid"
 // "not currently backup".
 const backupDNIDAPITimeout = 3 * time.Second
 
-// nodeNameByUUID caches the device-UUID to node-name mapping. The mapping is
-// stable for the life of a node and re-stamped by kube-init's monitor, so the
-// label-selector List stays off the hot path; only the health read is live.
-// A name that stops resolving is dropped and looked up again.
-var nodeNameByUUID sync.Map
-
 // GetNodeByUUID returns the Kubernetes Node carrying the given EVE device UUID.
 func GetNodeByUUID(nodeUUID string) (*corev1.Node, error) {
 	client, err := getNodeClient()
@@ -50,8 +42,7 @@ func GetNodeByUUID(nodeUUID string) (*corev1.Node, error) {
 // GetNodeNameFromUUID resolves an EVE device UUID to its current Kubernetes
 // node name, via the same node-uuid label match GetNodeByUUID uses. Not
 // cached: a caller doing repeated lookups should add its own caching layer
-// suited to its own staleness tolerance (see nodeNameForHealth below for
-// that pattern).
+// suited to its own staleness tolerance.
 func GetNodeNameFromUUID(nodeUUID string) (string, error) {
 	node, err := GetNodeByUUID(nodeUUID)
 	if err != nil {
@@ -90,6 +81,20 @@ func getNodeClient() (kubernetes.Interface, error) {
 	return GetClientSet()
 }
 
+// NodeHealthLookup answers whether the node carrying the given EVE device
+// UUID is currently known to be Ready, and since when that status has held.
+// found is false when the node is not yet known to the cache behind the
+// lookup at all.
+//
+// This is deliberately a plain cache read, never a live API call: it is
+// called from an agent's main loop (once per app, or once per volume or
+// content tree), where a per-call Nodes().Get() would multiply into one
+// live round trip per relevant object per pass. The lookup's implementation
+// -- typically a small wrapper around a pubsub subscription of
+// types.KubeNodeInfo -- is the caller's to keep current; kubeapi has no
+// main loop of its own to do that with.
+type NodeHealthLookup func(nodeUUID string) (ready bool, since time.Time, found bool)
+
 // IsCurrentlyBackupDNID reports whether this node may act on an app in
 // place of its designated node: this node holds the eve-app-op lease, and
 // the designated node has been unhealthy for longer than threshold.
@@ -98,29 +103,25 @@ func getNodeClient() (kubernetes.Interface, error) {
 // one anywhere but its designated node, so acting on it here would create
 // real resources on a node that can never run it -- a hazard that does not
 // apply to a caller that places nothing, such as deleting a volume.
-func IsCurrentlyBackupDNID(log *base.LogObject, designatedNodeID string,
-	isAppOpLeader bool, affinity types.Affinity, threshold time.Duration) bool {
+func IsCurrentlyBackupDNID(log *base.LogObject, lookup NodeHealthLookup,
+	designatedNodeID string, isAppOpLeader bool, affinity types.Affinity,
+	threshold time.Duration) bool {
 	if affinity == types.RequiredDuringScheduling {
 		return false
 	}
-	return backupDNIDEligible(log, designatedNodeID, isAppOpLeader, threshold)
+	return backupDNIDEligible(log, lookup, designatedNodeID, isAppOpLeader, threshold)
 }
 
 // backupDNIDEligible answers the lease-and-health question, without the
 // Required-affinity exclusion IsCurrentlyBackupDNID applies on top. Every
-// cheap check runs before the API is touched, so a non-leader and an app with
-// no designated node cost nothing.
-func backupDNIDEligible(log *base.LogObject, designatedNodeID string,
-	isAppOpLeader bool, threshold time.Duration) bool {
+// cheap check runs before the lookup, so a non-leader and an app with no
+// designated node cost nothing.
+func backupDNIDEligible(log *base.LogObject, lookup NodeHealthLookup,
+	designatedNodeID string, isAppOpLeader bool, threshold time.Duration) bool {
 	if !isAppOpLeader || designatedNodeID == "" {
 		return false
 	}
-	client, err := getNodeClient()
-	if err != nil {
-		log.Warnf("backupDNID: no client, cannot confirm: %v", err)
-		return false
-	}
-	eligible, err := isCurrentlyBackupDNIDWithClient(log, client, designatedNodeID,
+	eligible, err := isCurrentlyBackupDNIDFromHealth(log, lookup, designatedNodeID,
 		threshold)
 	if err != nil {
 		log.Warnf("backupDNID: cannot confirm node %s health: %v",
@@ -130,36 +131,16 @@ func backupDNIDEligible(log *base.LogObject, designatedNodeID string,
 	return eligible
 }
 
-// isCurrentlyBackupDNIDWithClient decides against a supplied client, so the
-// decision can be tested without a cluster.
-func isCurrentlyBackupDNIDWithClient(log *base.LogObject, client kubernetes.Interface,
+// isCurrentlyBackupDNIDFromHealth decides against a supplied lookup, so the
+// decision can be tested without a cluster or a cache of its own.
+func isCurrentlyBackupDNIDFromHealth(log *base.LogObject, lookup NodeHealthLookup,
 	designatedNodeID string, threshold time.Duration) (bool, error) {
-	name, err := nodeNameForHealth(log, client, designatedNodeID)
-	if err != nil {
-		return false, err
-	}
-
-	node, err := getNodeWithClient(client, name)
-	if apierrors.IsNotFound(err) {
-		// A cached name that no longer resolves: drop it and try once more,
-		// in case the node re-registered under a different name.
-		nodeNameByUUID.Delete(designatedNodeID)
-		name, err = nodeNameForHealth(log, client, designatedNodeID)
-		if err != nil {
-			return false, err
-		}
-		node, err = getNodeWithClient(client, name)
-	}
-	if err != nil {
-		return false, err
-	}
-
-	ready, since, found := nodeReadyCondition(node)
+	ready, since, found := lookup(designatedNodeID)
 	if !found {
-		// No Ready condition at all: the node has never reported. Treat it
-		// as unconfirmed rather than unhealthy -- see the zero-time note
-		// below, which is the same hazard.
-		return false, fmt.Errorf("node %s has no Ready condition", name)
+		// Never reported into the cache. Treat it as unconfirmed rather
+		// than unhealthy -- see the zero-time note below, which is the
+		// same hazard.
+		return false, fmt.Errorf("node %s health not yet known", designatedNodeID)
 	}
 	if ready {
 		return false, nil
@@ -169,34 +150,18 @@ func isCurrentlyBackupDNIDWithClient(log *base.LogObject, client kubernetes.Inte
 		// threshold instantly and hand a peer an app whose owner's health
 		// was never established.
 		return false, fmt.Errorf("node %s has an unusable Ready timestamp %v",
-			name, since)
+			designatedNodeID, since)
 	}
 
 	outage := time.Since(since)
 	if outage < threshold {
 		log.Functionf("backupDNID: node %s unhealthy for %v, under threshold %v",
-			name, outage, threshold)
+			designatedNodeID, outage, threshold)
 		return false, nil
 	}
 	log.Noticef("backupDNID: node %s unhealthy for %v, past threshold %v",
-		name, outage, threshold)
+		designatedNodeID, outage, threshold)
 	return true, nil
-}
-
-// nodeNameForHealth resolves the UUID to a node name, using the cache and the
-// supplied client.
-func nodeNameForHealth(log *base.LogObject, client kubernetes.Interface,
-	nodeUUID string) (string, error) {
-	if name, ok := nodeNameByUUID.Load(nodeUUID); ok {
-		return name.(string), nil
-	}
-	node, err := getNodeByUUIDWithClient(client, nodeUUID)
-	if err != nil {
-		return "", err
-	}
-	nodeNameByUUID.Store(nodeUUID, node.Name)
-	log.Functionf("backupDNID: %s is node %s", nodeUUID, node.Name)
-	return node.Name, nil
 }
 
 func getNodeWithClient(client kubernetes.Interface,
