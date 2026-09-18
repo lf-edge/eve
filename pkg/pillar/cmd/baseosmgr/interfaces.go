@@ -51,7 +51,6 @@ type Zboot interface {
 	// Per-partition state read
 	GetPartitionState(string) string
 	GetPartitionDevname(string) string
-	GetPartitionSizeInBytes(string) uint64
 	GetShortVersion(string) (string, error)
 	GetLongVersion(string) string
 
@@ -76,9 +75,6 @@ func (r *realZboot) IsCurrentPartition(s string) bool    { return zboot.IsCurren
 func (r *realZboot) IsOtherPartition(s string) bool      { return zboot.IsOtherPartition(s) }
 func (r *realZboot) GetPartitionState(s string) string   { return zboot.GetPartitionState(s) }
 func (r *realZboot) GetPartitionDevname(s string) string { return zboot.GetPartitionDevname(s) }
-func (r *realZboot) GetPartitionSizeInBytes(s string) uint64 {
-	return zboot.GetPartitionSizeInBytes(s)
-}
 func (r *realZboot) GetShortVersion(s string) (string, error) {
 	return zboot.GetShortVersion(r.log, s)
 }
