@@ -552,14 +552,20 @@ func (z *zedrouter) handleAppNetworkModify(ctxArg interface{}, key string,
 	oldConfig := oldConfigArg.(types.AppNetworkConfig)
 
 	// re-activate network instances of edge apps in order to resolve NTP servers again
-	for _, appNetConfig := range newConfig.AppNetAdapterList {
-		appNetStatus := z.lookupNetworkInstanceStatus(appNetConfig.Network.String())
-		if appNetStatus == nil {
-			continue
-		}
-		if appNetStatus.Activated {
-			appNetConfig := z.lookupNetworkInstanceConfig(appNetStatus.Key())
-			z.doUpdateActivatedNetworkInstance(*appNetConfig, appNetStatus)
+	if !oldConfig.Activate && newConfig.Activate {
+		for _, appNetAdapter := range newConfig.AppNetAdapterList {
+			niStatus := z.lookupNetworkInstanceStatus(appNetAdapter.Network.String())
+			if niStatus == nil || !niStatus.Activated {
+				continue
+			}
+			niConfig := z.lookupNetworkInstanceConfig(niStatus.Key())
+			if niConfig == nil {
+				// NI is being deleted.
+				z.log.Noticef("handleAppNetworkModify(%s): skipping update of network "+
+					"instance %s whose config is already removed", key, niStatus.Key())
+				continue
+			}
+			z.doUpdateActivatedNetworkInstance(*niConfig, niStatus)
 		}
 	}
 
