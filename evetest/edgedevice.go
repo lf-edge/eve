@@ -1129,6 +1129,19 @@ func (d *EdgeDevice) editDisk(caller string, req *api.EditDeviceDiskRequest) {
 	}
 }
 
+// DisableRebootAccounting stops the teardown check that a device's observed
+// reboot count matches the expected one, recording why.
+//
+// A hard power-cycle is what this exists for. Following one the device sometimes
+// republishes the reboot time the harness counts from and sometimes does not
+// (see PowerOn), so the same test lands on different counts from run to run and
+// no fixed declaration can be right. Use it only where the count is genuinely
+// unknowable; a test whose reboots are merely more numerous than the harness
+// assumes should declare them with ExpectReboots instead.
+func (d *EdgeDevice) DisableRebootAccounting(reason string) {
+	d.th.disableRebootAccounting(d.devName, reason)
+}
+
 // rebootAndWait executes triggerFn to initiate a device reboot and, if
 // wait is true, blocks until the device confirms the reboot by reporting
 // a ZInfoDevice.lastRebootTime strictly after the moment triggerFn was called.
