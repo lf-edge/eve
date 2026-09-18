@@ -80,3 +80,31 @@ func runEVEScript(device *evetest.EdgeDevice, script string,
 	}
 	return out, nil
 }
+
+// writeMarkerFile puts a known string in a file on EVE and reads it back, so a
+// later test of whether it is still there is a statement about the file rather
+// than about whether the write landed.
+func writeMarkerFile(t Gomega, device *evetest.EdgeDevice, path, text string) {
+	out, err := runEVE(device,
+		`eve exec pillar sh -c 'printf %s `+text+` > `+path+`; sync'`)
+	t.Expect(err).NotTo(HaveOccurred(), "writing %s failed:\n%s", path, out)
+	assertMarkerFile(t, device, path, text)
+}
+
+// assertMarkerFile asserts the marker file still holds what was written to it.
+func assertMarkerFile(t Gomega, device *evetest.EdgeDevice, path, text string) {
+	out, err := runEVE(device, "eve exec pillar cat "+path)
+	t.Expect(err).NotTo(HaveOccurred(), "reading %s failed", path)
+	t.Expect(strings.TrimSpace(out)).To(Equal(text),
+		"%s does not hold what was written to it", path)
+}
+
+// readOptionalFile returns the contents of a file on EVE, or "NONE" when there
+// is no such file -- so a caller can assert on its absence as a value rather
+// than on an error it would have to classify.
+func readOptionalFile(t Gomega, device *evetest.EdgeDevice, path string) string {
+	out, err := runEVE(device,
+		`eve exec pillar sh -c 'cat `+path+` 2>/dev/null || echo NONE'`)
+	t.Expect(err).NotTo(HaveOccurred(), "reading %s failed", path)
+	return strings.TrimSpace(out)
+}

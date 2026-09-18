@@ -25,6 +25,7 @@
 //   - appvolume_test.go   -- what an interrupted shrink does to the data in a
 //     volume it has to relocate
 //   - volmig_test.go      -- an app volume carried across the conversion
+//   - zfsvault_test.go    -- the ZFS vault migration declining for space
 //   - firstboot_test.go   -- a volume asked for before EVE-K storage exists
 //   - restore_test.go     -- /persist lost or corrupted, recovered offline
 //
@@ -36,6 +37,7 @@
 //   - stressfill_helpers_test.go -- where in /persist a volume is allocated,
 //     whether the shrink has to relocate it, and whether it can be interrupted
 //   - vault_helpers_test.go   -- vault unlock method and the TPM seal
+//   - zfsvault_helpers_test.go -- ZFS vault datasets, the migration's swap record
 //   - restore_helpers_test.go -- identity backup, controller isolation
 //   - cluster_helpers_test.go -- EVE-K bring-up: k3s, volumemgr, Longhorn
 //   - app_helpers_test.go     -- app deployment, SSH, volume markers, blob reuse
@@ -204,5 +206,8 @@ func TestKonvertSuite(test *testing.T) {
 		evetest.TestCase{Test: TestFirstBootEVEKAppVolume},
 		evetest.TestCase{Test: TestKvmToKRepartitionVolmig},
 		evetest.TestCase{Test: TestKvmToKRepartitionAppVolume},
+		// Last: this one needs a ZFS device, so no earlier test can be given
+		// the device it leaves behind.
+		evetest.TestCase{Test: TestKvmToKZFSVaultMigration},
 	)
 }
