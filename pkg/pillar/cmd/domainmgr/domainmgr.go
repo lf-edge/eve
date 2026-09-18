@@ -2001,6 +2001,7 @@ func doCleanup(ctx *domainContext, status *types.DomainStatus) {
 	releaseAdapters(ctx, status.IoAdapterList, status.UUIDandVersion.UUID,
 		status)
 	status.IoAdapterList = nil
+	status.BootFailed = false
 	publishDomainStatus(ctx, status)
 
 	log.Functionf("doCleanup(%v) done for %s",
