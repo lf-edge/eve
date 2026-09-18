@@ -365,6 +365,10 @@ device.UpgradeEVE(version, evetest.HypervisorKubevirt, evetest.BaseOSDatastoreHT
 // Everything the device has written to its serial console so far, including
 // what ran before pillar started, such as storage-init
 console, err := device.ConsoleOutput()
+
+// Skip the end-of-test check that the device rebooted as often as expected,
+// for a test whose reboot count is unknowable, such as one that cuts power
+device.DisableRebootAccounting("power cut mid-swap")
 ```
 
 ### Checkpoints
