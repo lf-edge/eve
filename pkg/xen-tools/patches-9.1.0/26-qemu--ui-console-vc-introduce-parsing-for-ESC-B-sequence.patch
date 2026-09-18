@@ -34,10 +34,10 @@ Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>  [rebased to qemu-xen-
  ui/console-vc.c | 16 ++++++++++++++++
  1 file changed, 16 insertions(+)
 
-diff --git a/tools/qemu-xen/ui/console-vc.c b/tools/qemu-xen/ui/console-vc.c
+diff --git a/ui/console-vc.c b/ui/console-vc.c
 index 8393d532e7..6790575988 100644
---- a/tools/qemu-xen/ui/console-vc.c
-+++ b/tools/qemu-xen/ui/console-vc.c
+--- a/ui/console-vc.c
++++ b/ui/console-vc.c
 @@ -42,6 +42,8 @@ enum TTYState {
      TTY_STATE_NORM,
      TTY_STATE_ESC,

@@ -12,7 +12,6 @@ init:
   - DOM0ZTOOLS_TAG
   - GRUB_TAG
   - FW_TAG
-  - XEN_TAG
   - GPTTOOLS_TAG
   - KEXEC_TAG
   - UDEV_TAG

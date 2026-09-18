@@ -19,10 +19,10 @@ Message-ID: <20250123085327.965501-5-r.peniaev@gmail.com>
  qemu-options.hx | 49 +++++++++++++++++++++++++++++++++++++++++++++----
  1 file changed, 45 insertions(+), 4 deletions(-)
 
-diff --git a/tools/qemu-xen/qemu-options.hx b/tools/qemu-xen/qemu-options.hx
+diff --git a/qemu-options.hx b/qemu-options.hx
 index d94e2cbbae..3b8be4b15a 100644
---- a/tools/qemu-xen/qemu-options.hx
-+++ b/tools/qemu-xen/qemu-options.hx
+--- a/qemu-options.hx
++++ b/qemu-options.hx
 @@ -3782,7 +3782,7 @@ SRST
  The general form of a character device option is:
  

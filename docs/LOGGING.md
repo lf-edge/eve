@@ -20,15 +20,12 @@ The imemlogd plugin looks for json messages in the log and then skips the preced
 
 Logs coming from pillar container that cannot be json parsed or truncated will have their source field set to pillar.out/pillar.err in EVE log API. It is at times useful to look for pillar.out/pillar.err as source match criteria in EVE log API. The same applies to other containers like wwan, xen-tools etc. Newlogd sorts out the application log messages and finds assigned application UUID and appName when writing into log files for applications.
 
-Logs coming from xen-tools container are of three kinds:
+Logs coming from the xen-tools container are of two kinds:
 
 * container itself logs under the name of ```xen-tools```
-* xen hypervisor logs under the name ```hypervisor```
-* each domain launched by xen-tools container also logs under the following names
+* each running domain also logs under the following names
   * ```guest_vm-[VM_NAME]``` logs the console output for VM_NAME domain
   * ```guest_vm_err-[VM_NAME]``` logs the console error output for VM_NAME domain
-  * ```qemu-dm-[VM_NAME]``` logs the qemu device model output
-  * ```qdisk-[VM ID]``` logs the qdisk output
 
 All logs from memlogd and from /dev/kmsg read by newlogd will be written to disk log file and then to be compressed into gzip log files. If the device crashes before 'newlogd' starts, the initial log messages is lost; When there is heavy disk usage or CPU load and newlogd does not get sufficient time to write incoming logs to disk, it can result in log loss from memlogd. Further investigation is needed to see if there is a way to inject a sequence number into the each log message inside the memlogd, such a sequence numbers would help detecting lost log messages.
 

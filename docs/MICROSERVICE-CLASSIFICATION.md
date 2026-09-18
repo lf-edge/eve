@@ -75,7 +75,7 @@ to remain remotely manageable.
 | `zedmanager` | Orchestrates app instance lifecycle state machines |
 | `diag` | Diagnostics: tests controller reachability and reports device health to console; observability only, not in the controller communication path |
 
-The hypervisor layer (KVM, Xen), the container runtime (containerd for user
+The hypervisor layer (KVM), the container runtime (containerd for user
 applications), and optional runtimes such as the Kubernetes distribution used by
 EVE-K are also part of workload management. The EVE-K design takes this further by
 placing the Kubernetes runtime and its associated storage provider (Longhorn) in
