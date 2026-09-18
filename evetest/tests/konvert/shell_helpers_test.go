@@ -4,6 +4,8 @@
 package konvert_test
 
 import (
+	"encoding/base64"
+	"fmt"
 	"strings"
 	"time"
 
@@ -55,4 +57,26 @@ func readRunningVersion(t Gomega, device *evetest.EdgeDevice) string {
 		g.Expect(version).NotTo(BeEmpty(), "the device did not report a version")
 	}, 3*time.Minute, 10*time.Second).Should(Succeed())
 	return version
+}
+
+// runEVEScript runs a multi-line shell script inside EVE's pillar container,
+// passing it through base64 so nothing in it has to survive the ssh and
+// `eve exec pillar sh -c` quoting layers -- the same trick the eden scripts use.
+// args are appended, so the script reads them as $1, $2, ...
+//
+// Output is returned even on failure, for the same reason runEVE does it: a
+// script that explains why it is giving up before exiting non-zero has said
+// everything in that output.
+func runEVEScript(device *evetest.EdgeDevice, script string,
+	timeout time.Duration, args ...string) (string, error) {
+	b64 := base64.StdEncoding.EncodeToString([]byte(script))
+	cmd := fmt.Sprintf(
+		`eve exec pillar sh -c 'echo %s | base64 -d > /tmp/evetest-frag.sh; `+
+			`sh /tmp/evetest-frag.sh %s; rm -f /tmp/evetest-frag.sh'`,
+		b64, strings.Join(args, " "))
+	out, errOut, err := device.RunShellScript(cmd, timeout, 0)
+	if err != nil {
+		return out + errOut, err
+	}
+	return out, nil
 }

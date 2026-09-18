@@ -22,6 +22,8 @@
 //     carried across it
 //   - repartition_refused_test.go  -- the repartition declined, both reasons
 //   - repartition_geometry_test.go -- the resulting partition layout, on its own
+//   - appvolume_test.go   -- what an interrupted shrink does to the data in a
+//     volume it has to relocate
 //   - volmig_test.go      -- an app volume carried across the conversion
 //   - firstboot_test.go   -- a volume asked for before EVE-K storage exists
 //   - restore_test.go     -- /persist lost or corrupted, recovered offline
@@ -31,10 +33,15 @@
 //   - device_helpers_test.go  -- shared parameters, device setup, disk sizing
 //   - shell_helpers_test.go   -- running a command on EVE
 //   - geometry_helpers_test.go -- partition table, storage-resizer decisions
+//   - stressfill_helpers_test.go -- where in /persist a volume is allocated,
+//     whether the shrink has to relocate it, and whether it can be interrupted
 //   - vault_helpers_test.go   -- vault unlock method and the TPM seal
 //   - restore_helpers_test.go -- identity backup, controller isolation
 //   - cluster_helpers_test.go -- EVE-K bring-up: k3s, volumemgr, Longhorn
 //   - app_helpers_test.go     -- app deployment, SSH, volume markers, blob reuse
+//   - clusterwedge_helpers_test.go -- an app whose volume never arrives on EVE-K
+//   - volverify_helpers_test.go -- the volverify pattern: writing it, and the
+//     verdict on what came back
 //   - download_helpers_test.go -- what the downloader pulled, for blob reuse
 //   - diag_helpers_test.go    -- best-effort captures taken when an assertion
 //     is about to fail
@@ -196,5 +203,6 @@ func TestKonvertSuite(test *testing.T) {
 		evetest.TestCase{Test: TestKvmToKVolumeMigration},
 		evetest.TestCase{Test: TestFirstBootEVEKAppVolume},
 		evetest.TestCase{Test: TestKvmToKRepartitionVolmig},
+		evetest.TestCase{Test: TestKvmToKRepartitionAppVolume},
 	)
 }
