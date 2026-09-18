@@ -59,7 +59,3 @@ updates:
     directory: "/pkg/wwan"
     schedule:
       interval: "monthly"
-  - package-ecosystem: "docker"
-    directory: "/pkg/xen"
-    schedule:
-      interval: "monthly"

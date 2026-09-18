@@ -92,7 +92,6 @@ init:
   - lfedge/eve-dom0-ztools:417d4ff6a57d2317c9e65166274b0ea6f6da16e2-amd64
   - lfedge/eve-grub:080a301fbd8f1f1ef99013f81cc3c5aa2effface-amd64
   - lfedge/eve-fw:972657ee489ceb3efe7db7eb5907f9d3aeeaa1fd-amd64
-  - lfedge/eve-xen:9bf0be924fc91c74b993d7cf3ed5f4523fb09cee-amd64
   - lfedge/eve-gpt-tools:ab2e9f924e22709b4e08ebedd6d3c6a2882d071e-amd64
 onboot:
    - name: rngd

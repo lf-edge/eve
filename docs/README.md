@@ -272,7 +272,7 @@ how this process works read [baseimage update](BASEIMAGE-UPDATE.md) documentatio
 Both IMGA and IMGB host a filesystem containing the following software components
 
 * Second stage [GRUB bootloader](../pkg/grub) and [its configuration](../pkg/grub/rootfs.cfg) in `/EFI` folder
-* [Hypervisor](../pkg/xen) and Linux Kernel in `/boot` folder (kernel is now built from [lf-edge/eve-kernel](https://github.com/lf-edge/eve-kernel), see [KERNEL.md](KERNEL.md))
+* Linux Kernel in `/boot` folder (kernel is now built from [lf-edge/eve-kernel](https://github.com/lf-edge/eve-kernel), see [KERNEL.md](KERNEL.md))
 * [EVE microservices](../pkg/pillar) in `/containers` folder
 * Minimalistic [Alpine Linux](https://alpinelinux.org)-derived UNIX environment
 
@@ -296,7 +296,6 @@ in greater details in the [booting EVE](BOOTING.md) section of our docs.
 Regardless of the initial boot environment, though, after GRUB is done
 loading ether:
 
-* type-1 hypervisor (Xen) plus Control Domain kernel
 * Linux kernel (with type-2 KVM hypervisor support enabled)
 
 the rest of the runtime sequence relies solely on what happens with EVE
