@@ -72,6 +72,7 @@ type pkgContext struct {
 	constStrings map[string]string // const name → String() return value (for variant display)
 	allConsts    map[string]string // all simple const name → literal value (for variant display)
 	varParams    map[string]paramInfo
+	funcDecls    map[string]*ast.FuncDecl // package-local function name → declaration
 }
 
 func main() {
@@ -238,12 +239,15 @@ func formatKVParams(params []kvParam) string {
 //  2. Parse String() method bodies to map const names to their string
 //     representations (used to display variant parameter values).
 //  3. Resolve TestParameterDefinition variables.
+//  4. Index package-local functions (used to follow a call to a helper that
+//     declares or returns parameter definitions).
 func buildPkgContext(files []*ast.File) pkgContext {
 	ctx := pkgContext{
 		constValues:  map[string]string{},
 		constStrings: map[string]string{},
 		allConsts:    map[string]string{},
 		varParams:    map[string]paramInfo{},
+		funcDecls:    map[string]*ast.FuncDecl{},
 	}
 
 	// Pass 1: collect const values (package-level and function-local).
@@ -337,6 +341,17 @@ func buildPkgContext(files []*ast.File) pkgContext {
 		}
 	}
 
+	// Pass 4: index package-local functions.
+	for _, f := range files {
+		for _, decl := range f.Decls {
+			fd, ok := decl.(*ast.FuncDecl)
+			if !ok || fd.Name == nil || fd.Recv != nil {
+				continue
+			}
+			ctx.funcDecls[fd.Name.Name] = fd
+		}
+	}
+
 	return ctx
 }
 
@@ -427,37 +442,122 @@ func returnsParamDef(fd *ast.FuncDecl) bool {
 	return ok && id.Name == "TestParameterDefinition"
 }
 
-// extractParams finds the evetest.DefineTestParameters call in fd and returns
-// the resolved parameter definitions.
+// extractParams returns the parameter definitions declared for fd, following
+// calls to package-local helpers that declare them on fd's behalf.
 func extractParams(
 	fd *ast.FuncDecl, ctx pkgContext, paramFuncs map[string]paramInfo) []paramInfo {
+	sc := &paramScope{ctx: ctx, paramFuncs: paramFuncs, expanding: map[string]bool{}}
+	return sc.declaredBy(fd, nil)
+}
+
+// paramScope resolves parameter definitions across the call graph of one
+// package. expanding holds the functions currently being expanded, so a cycle
+// in that graph terminates.
+type paramScope struct {
+	ctx        pkgContext
+	paramFuncs map[string]paramInfo
+	expanding  map[string]bool
+}
+
+// paramFrame is one function's view of the names a definition can hide behind:
+// what the call site bound to its formal parameters, and the local variables
+// it assigns.
+type paramFrame struct {
+	binds  map[string][]paramInfo
+	locals map[string]ast.Expr
+}
+
+// declaredBy returns the definitions the body of fn declares, whether directly
+// through evetest.DefineTestParameters or through a package-local helper it
+// calls. binds carries what the call site passed for fn's formal parameters.
+func (sc *paramScope) declaredBy(
+	fn *ast.FuncDecl, binds map[string][]paramInfo) []paramInfo {
+	if fn.Body == nil || sc.expanding[fn.Name.Name] {
+		return nil
+	}
+	sc.expanding[fn.Name.Name] = true
+	defer delete(sc.expanding, fn.Name.Name)
+
+	frame := &paramFrame{binds: binds, locals: localAssignments(fn.Body)}
 	var params []paramInfo
-	ast.Inspect(fd.Body, func(n ast.Node) bool {
+	ast.Inspect(fn.Body, func(n ast.Node) bool {
 		call, ok := n.(*ast.CallExpr)
 		if !ok {
 			return true
 		}
-		sel, ok := call.Fun.(*ast.SelectorExpr)
-		if !ok {
-			return true
-		}
-		pkg, ok := sel.X.(*ast.Ident)
-		if !ok || pkg.Name != "evetest" || sel.Sel.Name != "DefineTestParameters" {
-			return true
-		}
-		for _, arg := range call.Args {
-			if pi, ok := resolveParamArg(arg, ctx, paramFuncs); ok {
-				params = append(params, pi)
+		switch fun := call.Fun.(type) {
+		case *ast.SelectorExpr:
+			pkg, ok := fun.X.(*ast.Ident)
+			if !ok || pkg.Name != "evetest" || fun.Sel.Name != "DefineTestParameters" {
+				return true
 			}
+			params = append(params, sc.resolveArgs(call, 0, frame)...)
+		case *ast.Ident:
+			helper, ok := sc.ctx.funcDecls[fun.Name]
+			if !ok {
+				return true
+			}
+			params = append(params,
+				sc.declaredBy(helper, sc.bindArgs(helper, call, frame))...)
+		default:
+			return true
 		}
-		return true
+		return false
 	})
 	return params
 }
 
-// resolveParamArg resolves one argument of DefineTestParameters into a paramInfo.
-func resolveParamArg(
-	arg ast.Expr, ctx pkgContext, paramFuncs map[string]paramInfo) (paramInfo, bool) {
+// bindArgs maps those formal parameters of fn that carry parameter definitions
+// to the definitions call passes for them.
+func (sc *paramScope) bindArgs(
+	fn *ast.FuncDecl, call *ast.CallExpr, frame *paramFrame) map[string][]paramInfo {
+	binds := map[string][]paramInfo{}
+	if fn.Type.Params == nil {
+		return binds
+	}
+	argIdx := 0
+	for _, field := range fn.Type.Params.List {
+		if len(field.Names) == 0 {
+			argIdx++
+			continue
+		}
+		if ellipsis, variadic := field.Type.(*ast.Ellipsis); variadic {
+			if isParamDefType(ellipsis.Elt) {
+				binds[field.Names[0].Name] = sc.resolveArgs(call, argIdx, frame)
+			}
+			break
+		}
+		for _, name := range field.Names {
+			if argIdx < len(call.Args) && isParamDefType(field.Type) {
+				if pi, ok := sc.resolveArg(call.Args[argIdx], frame); ok {
+					binds[name.Name] = []paramInfo{pi}
+				}
+			}
+			argIdx++
+		}
+	}
+	return binds
+}
+
+// resolveArgs resolves the arguments of call from index first onwards,
+// expanding a trailing slice spread (f(defs...)) into its elements.
+func (sc *paramScope) resolveArgs(
+	call *ast.CallExpr, first int, frame *paramFrame) []paramInfo {
+	var params []paramInfo
+	for i := first; i < len(call.Args); i++ {
+		if call.Ellipsis != token.NoPos && i == len(call.Args)-1 {
+			params = append(params, sc.resolveArgList(call.Args[i], frame)...)
+			continue
+		}
+		if pi, ok := sc.resolveArg(call.Args[i], frame); ok {
+			params = append(params, pi)
+		}
+	}
+	return params
+}
+
+// resolveArg resolves one expression denoting a single parameter definition.
+func (sc *paramScope) resolveArg(arg ast.Expr, frame *paramFrame) (paramInfo, bool) {
 	switch a := arg.(type) {
 	case *ast.CallExpr:
 		// evetest.XxxParameter() constructor call.
@@ -469,19 +569,128 @@ func resolveParamArg(
 		if !ok || pkg.Name != "evetest" {
 			break
 		}
-		if pi, ok := paramFuncs[sel.Sel.Name]; ok {
+		if pi, ok := sc.paramFuncs[sel.Sel.Name]; ok {
 			return pi, true
 		}
 	case *ast.CompositeLit:
 		// Inline evetest.TestParameterDefinition{...} literal.
-		return extractParamDefLit(a, ctx)
+		return extractParamDefLit(a, sc.ctx)
 	case *ast.Ident:
-		// Variable reference (e.g. lastResortParam).
-		if pi, ok := ctx.varParams[a.Name]; ok {
+		// A formal parameter of the enclosing helper, or a package-level
+		// variable holding a definition (e.g. lastResortParam).
+		if frame != nil {
+			if bound, ok := frame.binds[a.Name]; ok && len(bound) == 1 {
+				return bound[0], true
+			}
+		}
+		if pi, ok := sc.ctx.varParams[a.Name]; ok {
 			return pi, true
 		}
 	}
 	return paramInfo{}, false
+}
+
+// resolveArgList resolves an expression denoting a slice of parameter
+// definitions: a formal parameter, a local variable, a slice literal, an
+// append of those, or a call to a package-local function returning one.
+func (sc *paramScope) resolveArgList(expr ast.Expr, frame *paramFrame) []paramInfo {
+	switch e := expr.(type) {
+	case *ast.Ident:
+		if frame == nil {
+			return nil
+		}
+		if bound, ok := frame.binds[e.Name]; ok {
+			return bound
+		}
+		if init, ok := frame.locals[e.Name]; ok {
+			return sc.resolveArgList(init, frame)
+		}
+	case *ast.CompositeLit:
+		var params []paramInfo
+		for _, elt := range e.Elts {
+			// Elements of a []evetest.TestParameterDefinition literal usually
+			// elide the type, which extractParamDefLit keys on.
+			if comp, ok := elt.(*ast.CompositeLit); ok && comp.Type == nil {
+				if pi, ok := extractParamDefFields(comp, sc.ctx); ok {
+					params = append(params, pi)
+				}
+				continue
+			}
+			if pi, ok := sc.resolveArg(elt, frame); ok {
+				params = append(params, pi)
+			}
+		}
+		return params
+	case *ast.CallExpr:
+		return sc.resolveListCall(e, frame)
+	}
+	return nil
+}
+
+// resolveListCall resolves a call yielding a slice of parameter definitions:
+// the builtin append, or a package-local function returning such a slice.
+func (sc *paramScope) resolveListCall(
+	call *ast.CallExpr, frame *paramFrame) []paramInfo {
+	fun, ok := call.Fun.(*ast.Ident)
+	if !ok {
+		return nil
+	}
+	if fun.Name == "append" {
+		var params []paramInfo
+		for i, arg := range call.Args {
+			// The slice appended to, and a spread final argument, each
+			// contribute a list; anything else contributes one definition.
+			isList := i == 0 ||
+				(call.Ellipsis != token.NoPos && i == len(call.Args)-1)
+			if isList {
+				params = append(params, sc.resolveArgList(arg, frame)...)
+				continue
+			}
+			if pi, ok := sc.resolveArg(arg, frame); ok {
+				params = append(params, pi)
+			}
+		}
+		return params
+	}
+	fn, ok := sc.ctx.funcDecls[fun.Name]
+	if !ok || fn.Body == nil || sc.expanding[fn.Name.Name] {
+		return nil
+	}
+	sc.expanding[fn.Name.Name] = true
+	defer delete(sc.expanding, fn.Name.Name)
+
+	inner := &paramFrame{
+		binds:  sc.bindArgs(fn, call, frame),
+		locals: localAssignments(fn.Body),
+	}
+	var params []paramInfo
+	ast.Inspect(fn.Body, func(n ast.Node) bool {
+		ret, ok := n.(*ast.ReturnStmt)
+		if !ok || len(ret.Results) != 1 {
+			return true
+		}
+		params = append(params, sc.resolveArgList(ret.Results[0], inner)...)
+		return false
+	})
+	return params
+}
+
+// localAssignments maps the names a function body assigns to the expressions
+// assigned to them, so a definition list built up in a local variable can be
+// resolved where it is used.
+func localAssignments(body *ast.BlockStmt) map[string]ast.Expr {
+	locals := map[string]ast.Expr{}
+	ast.Inspect(body, func(n ast.Node) bool {
+		assign, ok := n.(*ast.AssignStmt)
+		if !ok || len(assign.Lhs) != 1 || len(assign.Rhs) != 1 {
+			return true
+		}
+		if name, ok := assign.Lhs[0].(*ast.Ident); ok {
+			locals[name.Name] = assign.Rhs[0]
+		}
+		return true
+	})
+	return locals
 }
 
 // extractParamDefLit extracts a paramInfo from an evetest.TestParameterDefinition
@@ -492,6 +701,13 @@ func extractParamDefLit(expr ast.Expr, ctx pkgContext) (paramInfo, bool) {
 	if !ok || !isParamDefType(comp.Type) {
 		return paramInfo{}, false
 	}
+	return extractParamDefFields(comp, ctx)
+}
+
+// extractParamDefFields reads the fields of a TestParameterDefinition
+// composite literal whose type has already been established -- including the
+// elided-type form an element of a []TestParameterDefinition literal takes.
+func extractParamDefFields(comp *ast.CompositeLit, ctx pkgContext) (paramInfo, bool) {
 	var key, defValue, allowedValues, typeHint string
 	var hasDefault bool
 	for _, elt := range comp.Elts {
