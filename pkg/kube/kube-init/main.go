@@ -389,8 +389,8 @@ const (
 	healthCheckInterval = 15 * time.Second
 	errorRetryDelay     = 5 * time.Second
 
-	kubeconfigTimeout = 10 * time.Minute
-	readinessTimeout  = 10 * time.Minute
+	kubeconfigTimeout = 30 * time.Minute
+	readinessTimeout  = 30 * time.Minute
 
 	socketPath = "/run/k3s-supervisor.sock"
 )
