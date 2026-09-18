@@ -14,6 +14,9 @@ on:  # yamllint disable-line rule:truthy
 env:
   BUILD_WF_NAME: PR build
   RUN_CONTEXT_FILE: run-context.json
+  # Must match EDEN_IN_PR_STATUS_TITLE_PREFIX in eden-trusted.yml: a declined
+  # gate publishes the status that a satisfied gate would later have Eden own.
+  EDEN_IN_PR_STATUS_TITLE_PREFIX: Eden Runner
 
 permissions: {}
 
@@ -29,6 +32,7 @@ jobs:
     permissions:
       actions: read
       pull-requests: read
+      statuses: write
     strategy:
       fail-fast: false
       matrix:
@@ -48,44 +52,88 @@ jobs:
         env:
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
         run: |
-          pr_id=$(gh api /search/issues -X GET -f q="type:pr is:open repo:${GH_REPO} sha:${{ github.event.workflow_run.head_sha }}" -q '.items[0].number')
-          pr_base_ref=$(gh pr view "$pr_id" --json baseRefName -q '.baseRefName')
-          echo "pr_id=$pr_id" >> "$GITHUB_OUTPUT"
-          echo "pr_sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
-          echo "original_run_id=${{ github.event.workflow_run.id }}" >> "$GITHUB_OUTPUT"
-          echo "pr_base_ref=$pr_base_ref" >> "$GITHUB_OUTPUT"
+          echo "pr_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "original_run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+
+          # Identify the PR by head-commit identity, and take the base branch
+          # from the same answer. Two lookups that look like they would do are
+          # both wrong here: an issue search for `sha:` matches every PR whose
+          # commit list *contains* the commit, so a stacked PR also matches its
+          # parent's head, and repos/*/commits/*/pulls reports nothing at all
+          # for an open PR raised from a fork.
+          matches="$RUNNER_TEMP/head-prs.txt"
+          if ! gh api "repos/${GH_REPO}/pulls" -X GET -f state=open -f per_page=100 --paginate \
+                --jq '.[] | select(.head.sha == $ENV.HEAD_SHA) | "\(.number) \(.base.ref)"' >"$matches"; then
+            echo "resolve_error=Could not list the open PRs of ${GH_REPO}" >> "$GITHUB_OUTPUT"
+            echo "resolve_fatal=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          mapfile -t prs <"$matches"
+          case "${#prs[@]}" in
+            1)
+              read -r pr_id pr_base_ref <<<"${prs[0]}"
+              echo "pr_id=$pr_id" >> "$GITHUB_OUTPUT"
+              echo "pr_base_ref=$pr_base_ref" >> "$GITHUB_OUTPUT"
+              ;;
+            0)
+              echo "resolve_error=No open PR has $HEAD_SHA as its head commit" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              numbers=$(cut -d' ' -f1 <"$matches" | paste -sd, -)
+              echo "resolve_error=$HEAD_SHA is the head commit of several open PRs: $numbers" >> "$GITHUB_OUTPUT"
+              echo "resolve_fatal=true" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
 
       - name: Gather Context (pull_request_review)
         id: from_review
         if: github.event_name == 'pull_request_review'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR_ID: ${{ github.event.pull_request.number }}
+          PR_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
-          pr_sha="${{ github.event.pull_request.head.sha }}"
-          original_run_id=$(gh run --repo ${{ github.repository }} list -c "$pr_sha" --json name,databaseId --limit 100 | jq ".[] | select(.name == \"${{ env.BUILD_WF_NAME }}\") | .databaseId " | head -n1)
-          echo "pr_id=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
-          echo "pr_sha=$pr_sha" >> "$GITHUB_OUTPUT"
+          original_run_id=$(gh run --repo "$GH_REPO" list -c "$PR_SHA" --json name,databaseId --limit 100 \
+            | jq -r --arg wf "$BUILD_WF_NAME" '.[] | select(.name == $wf) | .databaseId' | head -n1)
+          echo "pr_id=$PR_ID" >> "$GITHUB_OUTPUT"
+          echo "pr_sha=$PR_SHA" >> "$GITHUB_OUTPUT"
           echo "original_run_id=$original_run_id" >> "$GITHUB_OUTPUT"
-          echo "pr_base_ref=${{ github.event.pull_request.base.ref }}" >> "$GITHUB_OUTPUT"
+          echo "pr_base_ref=$PR_BASE_REF" >> "$GITHUB_OUTPUT"
+          if [[ -z "$original_run_id" ]]; then
+            echo "resolve_error=No '$BUILD_WF_NAME' run found for $PR_SHA" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Promote Context for Local Use
         id: meta
+        env:
+          RESOLVE_ERROR: ${{ steps.from_run.outputs.resolve_error || steps.from_review.outputs.resolve_error }}
         run: |
           echo "pr_id=${{ steps.from_run.outputs.pr_id   || steps.from_review.outputs.pr_id }}" >> "$GITHUB_OUTPUT"
           echo "pr_sha=${{ steps.from_run.outputs.pr_sha  || steps.from_review.outputs.pr_sha }}" >> "$GITHUB_OUTPUT"
           echo "original_run_id=${{ steps.from_run.outputs.original_run_id || steps.from_review.outputs.original_run_id }}" >> "$GITHUB_OUTPUT"
           echo "pr_base_ref=${{ steps.from_run.outputs.pr_base_ref || steps.from_review.outputs.pr_base_ref }}" >> "$GITHUB_OUTPUT"
+          echo "resolve_fatal=${{ steps.from_run.outputs.resolve_fatal || 'false' }}" >> "$GITHUB_OUTPUT"
+          echo "resolve_error=$RESOLVE_ERROR" >> "$GITHUB_OUTPUT"
 
       - name: Check Review Decision
         id: reviews
+        if: ${{ steps.meta.outputs.pr_id != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ steps.meta.outputs.pr_id }}
           GH_REPO: ${{ github.repository }}
         run: |
-          decision=$(gh pr view "$PR" --json reviewDecision -q .reviewDecision)
-          echo "approved=$([[ $decision == 'APPROVED' ]] && echo true || echo false)" >> $GITHUB_OUTPUT
+          if ! decision=$(gh pr view "$PR" --json reviewDecision -q .reviewDecision); then
+            echo "review_error=Could not read the review state of PR #$PR" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "approved=$([[ $decision == 'APPROVED' ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
       - name: Check Build Result
         id: build
@@ -109,17 +157,59 @@ jobs:
 
       - name: Check Gate Condition
         id: check
+        env:
+          PR_ID: ${{ steps.meta.outputs.pr_id }}
+          RESOLVE_ERROR: ${{ steps.meta.outputs.resolve_error }}
+          REVIEW_ERROR: ${{ steps.reviews.outputs.review_error }}
+          APPROVED: ${{ steps.reviews.outputs.approved }}
+          BUILD_OK: ${{ steps.build.outputs.build_ok }}
         run: |
-          echo "Approved: ${{ steps.reviews.outputs.approved }}"
-          echo "Build OK: ${{ steps.build.outputs.build_ok }}"
-          if [[ "${{ steps.reviews.outputs.approved }}" != "true" ||
-                "${{ steps.build.outputs.build_ok }}" != "true" ]]; then
+          echo "PR: ${PR_ID:-<unresolved>}"
+          echo "Approved: $APPROVED"
+          echo "Build OK: $BUILD_OK"
+
+          reason=""
+          state=error
+          if [[ -n "$RESOLVE_ERROR" ]]; then
+            reason="$RESOLVE_ERROR"
+          elif [[ -n "$REVIEW_ERROR" ]]; then
+            reason="$REVIEW_ERROR"
+          elif [[ "$BUILD_OK" != "true" ]]; then
+            reason="PR build did not succeed"
+          elif [[ "$APPROVED" != "true" ]]; then
+            # The expected steady state of an unreviewed PR, not a malfunction.
+            reason="Waiting for the PR to be approved"
+            state=pending
+          fi
+
+          if [[ -n "$reason" ]]; then
             echo "gate_passed=false" >> "$GITHUB_OUTPUT"
-            echo "::error::Gate not satisfied: PR build: ${{ steps.build.outputs.build_ok }}, PR approved: ${{ steps.reviews.outputs.approved }}"
+            echo "gate_reason=$reason" >> "$GITHUB_OUTPUT"
+            echo "gate_state=$state" >> "$GITHUB_OUTPUT"
+            echo "::error::Gate not satisfied: $reason"
           else
             echo "gate_passed=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Report Declined Gate on the Commit
+        if: ${{ steps.check.outputs.gate_passed != 'true' && steps.meta.outputs.pr_sha != '' }}
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8.0.0
+        env:
+          SHA: ${{ steps.meta.outputs.pr_sha }}
+          STATE: ${{ steps.check.outputs.gate_state }}
+          REASON: ${{ steps.check.outputs.gate_reason }}
+          STATUS_CONTEXT: ${{ env.EDEN_IN_PR_STATUS_TITLE_PREFIX }} (${{ matrix.hv }}, ${{ matrix.arch }}, ${{ matrix.platform }})
+        with:
+          script: |
+            await github.rest.repos.createCommitStatus({
+              ...context.repo,
+              sha:         process.env.SHA,
+              state:       process.env.STATE,
+              context:     process.env.STATUS_CONTEXT,
+              // The API rejects a description longer than 140 characters.
+              description: process.env.REASON.slice(0, 140),
+              target_url:  `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
+            });
 
       - name: Gather Context for Trusted Workflow
         if: ${{ steps.check.outputs.gate_passed == 'true' }}
@@ -153,3 +243,11 @@ jobs:
         with:
           name: run-context
           path: ${{ env.RUN_CONTEXT_FILE }}
+
+      - name: Fail on an Unusable PR Lookup
+        if: ${{ steps.meta.outputs.resolve_fatal == 'true' }}
+        env:
+          RESOLVE_ERROR: ${{ steps.meta.outputs.resolve_error }}
+        run: |
+          echo "::error::$RESOLVE_ERROR"
+          exit 1
