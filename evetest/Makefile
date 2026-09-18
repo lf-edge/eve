@@ -131,6 +131,18 @@ endif
 	$(eval EVETEST_HOME_DIR := $(HOME)/.evetest)
 	$(eval EVETEST_HOME_MOUNT := -v $(EVETEST_HOME_DIR):$(EVETEST_HOME_DIR))
 	@mkdir -p $(EVETEST_HOME_DIR)
+	@# Tests that compile a bpftrace script for the device's kernel (see
+	@# tests/networking/pciaccess_helpers_test.go) run eve-tools/bpftrace-compiler
+	@# from the checkout, mounted at the same position relative to /evetest/tests
+	@# as in the repository. The compiler keeps the pulled kernel images in the
+	@# linuxkit cache and the compiled scripts in its own cache, which it uses
+	@# only when the directory exists; mounting both from the evetest home makes
+	@# them survive runs.
+	$(eval BPFTRACE_COMPILER_MOUNTS := \
+		-v $(REPO_ROOT)/eve-tools/bpftrace-compiler:/eve-tools/bpftrace-compiler:ro \
+		-v $(EVETEST_HOME_DIR)/linuxkit-cache:/root/.linuxkit/cache \
+		-v $(EVETEST_HOME_DIR)/bpftrace-compiler-cache:/root/.bpftrace-compiler/cache)
+	@mkdir -p $(EVETEST_HOME_DIR)/linuxkit-cache $(EVETEST_HOME_DIR)/bpftrace-compiler-cache
 ifndef EVETEST_BROKER_ADDRESS
 	@# Broker runs inside the container; it stores per-VM disk images on the
 	@# host. Default to <home-dir>/.evetest because /tmp is usually on the small
@@ -218,6 +230,7 @@ endif
 		$(KVM_DEVICE) \
 		$(ARTIFACTS_MOUNT) \
 		$(EVETEST_HOME_MOUNT) \
+		$(BPFTRACE_COMPILER_MOUNTS) \
 		$(BROKER_IMAGE_MOUNT) \
 		$(BROKER_PROXY_CA_MOUNT) \
 		$(DIST_DIR_MOUNT) \
