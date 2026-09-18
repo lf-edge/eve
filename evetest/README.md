@@ -356,6 +356,11 @@ device.ApplyConfig(newConfig, true, true)
 // Reboot (pass true to wait until the device comes back up)
 device.SoftReboot(true)
 device.HardReboot(true)
+
+// Upgrade to another EVE version and hypervisor. The optional last argument
+// replaces the default wait, which is sized for an ordinary base-OS upgrade.
+device.UpgradeEVE(version, evetest.HypervisorKubevirt, evetest.BaseOSDatastoreHTTP,
+    true, false, 45*time.Minute)
 ```
 
 ### Checkpoints
