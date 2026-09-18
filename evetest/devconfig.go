@@ -1139,13 +1139,15 @@ func (container DockerContainer) toProto(th *TestHarness, log *logrus.Entry,
 	if domain == "" || domain == "index.docker.io" {
 		domain = "docker.io"
 	}
-	mirrors := constants.LoadRegistryMirrors()
 	var mirrorURL string
-	if addrs, ok := mirrors[domain]; ok {
-		// If th.ipv6OnlyRegistryMirrors is set but this registry has no IPv6
-		// mirror address, mirrorURL stays empty and we fall through below —
-		// the app is simply pulled from the real, un-mirrored registry.
-		mirrorURL, _ = constants.SelectRegistryMirror(addrs, th.ipv6OnlyRegistryMirrors)
+	if !th.skipRegistryMirrors {
+		mirrors := constants.LoadRegistryMirrors()
+		if addrs, ok := mirrors[domain]; ok {
+			// If th.ipv6OnlyRegistryMirrors is set but this registry has no IPv6
+			// mirror address, mirrorURL stays empty and we fall through below —
+			// the app is simply pulled from the real, un-mirrored registry.
+			mirrorURL, _ = constants.SelectRegistryMirror(addrs, th.ipv6OnlyRegistryMirrors)
+		}
 	}
 	if mirrorURL != "" {
 		// Strip transport scheme — EVE's datastore FQDN uses docker:// as a
