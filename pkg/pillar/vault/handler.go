@@ -16,6 +16,11 @@ import (
 type HandlerOptions struct {
 	// TpmKeyOnlyMode will use only TPM key to generate vault key
 	TpmKeyOnlyMode bool
+	// CurrentPartitionCommitted reports that the A/B partition the device is
+	// running has been marked active, i.e. the update that installed it is
+	// committed and the device is not going to revert to the other one. A
+	// pre-migration vault kept as a fallback is only worth keeping until then.
+	CurrentPartitionCommitted bool
 }
 
 // Handler is an interface for handling vault operations.
