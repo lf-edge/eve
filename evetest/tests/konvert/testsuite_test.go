@@ -16,7 +16,10 @@
 // Test files are named for the stage of the conversion they cover:
 //
 //   - upgrade_test.go     -- the flavor switch itself
-//   - repartition_test.go -- the boot-disk conversion, both routes to the space
+//   - repartition_novolmig_test.go -- the boot-disk conversion with no volume on
+//     the device, both routes to the space
+//   - repartition_volmig_test.go   -- the same conversion with an app volume
+//     carried across it
 //   - repartition_refused_test.go  -- the repartition declined, both reasons
 //   - repartition_geometry_test.go -- the resulting partition layout, on its own
 //   - volmig_test.go      -- an app volume carried across the conversion
@@ -46,10 +49,13 @@
 // those escripts never override. Raising it makes EVE-K and Longhorn converge
 // more easily and stops the tests covering the envelope the escripts cover, so
 // the floors stay where eden put them and move only through RAM_SIZE_MB / CPUS.
+// The exception is a conversion that carries an application volume across it,
+// which does not converge at those figures -- see raiseFloorsForCarriedVolume.
 package konvert_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/lf-edge/eve/evetest"
 )
@@ -79,6 +85,14 @@ const (
 	fillPersistGiBParamKey = "FILL_PERSIST_GIB"
 	// refuseReasonParamKey selects why the conversion must be refused.
 	refuseReasonParamKey = "REFUSE_REASON"
+	// useInstallerParamKey selects how the boot disk is laid out before the
+	// device first boots it -- see provisionPolicy.
+	useInstallerParamKey = "USE_INSTALLER"
+	// dataVolMiBParamKey sizes the app data volume a test carries across the
+	// conversion. Its default is per test, since what the size decides differs:
+	// how much the shrink has to relocate, or whether EVE-K's CSI path can
+	// provision it at all.
+	dataVolMiBParamKey = "DATAVOL_MB"
 )
 
 // Defaults shared across the package, reproducing the eden escripts' own, so
@@ -108,6 +122,13 @@ const (
 	// below the post-shrink size of /persist, or the shrink cannot fit what the
 	// fill put there.
 	defaultFillPersistGiB = 33
+	// conversionUpgradeTimeout is what UpgradeEVE gets for a hop of a
+	// conversion that repartitions. The framework default is sized for an
+	// ordinary base-OS upgrade -- download, one reboot, done -- and a
+	// conversion adds an offline shrink and grow across several reboots and
+	// then a container-cluster bring-up, which lands close enough to that
+	// default for host load to decide the verdict.
+	conversionUpgradeTimeout = 45 * time.Minute
 	// deviceRAMMiB and deviceCPUs are eden's defaults
 	// (pkg/defaults/defaults.go DefaultMemory / DefaultCpus), which the
 	// escripts do not override.
@@ -139,7 +160,7 @@ func TestKonvertSuite(test *testing.T) {
 		evetest.TestCase{Test: TestPersistWipeRestore},
 		evetest.TestCase{Test: TestBackupCorruptRestore},
 		evetest.TestCase{
-			Test: TestKvmToKRepartition,
+			Test: TestKvmToKRepartitionNoVolmig,
 			Variants: []evetest.TestVariant{
 				{
 					Name: "Shrink",
@@ -174,5 +195,6 @@ func TestKonvertSuite(test *testing.T) {
 		},
 		evetest.TestCase{Test: TestKvmToKVolumeMigration},
 		evetest.TestCase{Test: TestFirstBootEVEKAppVolume},
+		evetest.TestCase{Test: TestKvmToKRepartitionVolmig},
 	)
 }

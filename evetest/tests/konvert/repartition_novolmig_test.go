@@ -23,10 +23,16 @@ import (
 // the reuse the test is about.
 const deferContentDeleteSeconds = 24 * 60 * 60
 
-// TestKvmToKRepartition drives the in-field boot-disk conversion end to end:
+// TestKvmToKRepartitionNoVolmig drives the in-field boot-disk conversion end to end:
 // a released small-geometry EVE-kvm image, a kvm→kvm hop that lands the
 // conversion code without moving the geometry, and then the kvm→k hop whose
 // cross-flavor seam arms the offline repartition.
+//
+// NoVolmig is the half of the conversion that needs no volume migration: the app
+// is deleted before the flavor change, so the repartition runs with no volume on
+// the device and the run says nothing about what becomes of one.
+// TestKvmToKRepartitionVolmig is the same conversion with an app volume carried
+// across it, which takes the volume-migration work an EVE build may not have.
 //
 // Three hops rather than one because that is the shape of the real thing. A
 // device in the field is on an old release that has no conversion code, so the
@@ -66,7 +72,7 @@ const deferContentDeleteSeconds = 24 * 60 * 60
 //
 // Needs an EVE build carrying the conversion (lf-edge/eve#6036, #6063); on a
 // stock build the kvm→k hop is refused outright.
-func TestKvmToKRepartition(test *testing.T) {
+func TestKvmToKRepartitionNoVolmig(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
 	defer evetest.Close()
