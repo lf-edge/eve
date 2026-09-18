@@ -22,7 +22,7 @@ import (
 func (z *zedkube) collectKubeStats() {
 	// we are the elected leader, start collecting kube stats
 	// regardless if we are in cluster or single node mode
-	if z.isKubeStatsLeader.Load() {
+	if z.isStatsLeader() {
 		log.Functionf("collectKubeStats: Started collecting kube stats")
 
 		// Bound all k8s API calls so that a degraded API server cannot block the
@@ -107,11 +107,51 @@ func (z *zedkube) collectKubeStats() {
 		}
 		z.pubKubeClusterInfo.Publish("global", clusterInfo)
 	}
-	if !z.isKubeStatsLeader.Load() {
+	if !z.isStatsLeader() {
 		// Unpublish so that there isn't anything to send to the controller
 		items := z.pubKubeClusterInfo.GetAll()
 		if _, ok := items["global"].(types.KubeClusterInfo); ok {
 			z.pubKubeClusterInfo.Unpublish("global")
+		}
+	}
+}
+
+// publishNodeHealth republishes every node's Ready status, keyed by device
+// UUID, so a caller elsewhere in this device can look up a peer's health
+// from a local cache instead of making its own live API call. Unlike
+// collectKubeStats, this is not gated on the stats lease: every node already
+// has read access to every Node object, and a decision like backup-DNID
+// needs to work on nodes that never hold that lease.
+func (z *zedkube) publishNodeHealth() {
+	ctx, cancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	defer cancel()
+
+	clientset, err := getKubeClientSet()
+	if err != nil {
+		log.Errorf("publishNodeHealth: can't get clientset %v", err)
+		return
+	}
+	nodes, err := getKubeNodes(ctx, clientset)
+	if err != nil {
+		log.Errorf("publishNodeHealth: can't get nodes %v", err)
+		return
+	}
+
+	seen := make(map[string]bool, len(nodes))
+	for _, node := range nodes {
+		nodeInfo := getKubeNodeInfo(node, z)
+		if nodeInfo.NodeID == "" {
+			// Not yet labeled with its device UUID: nothing a lookup by
+			// UUID could ever match, so publishing it would just leak a
+			// key no one can look up.
+			continue
+		}
+		seen[nodeInfo.NodeID] = true
+		z.pubKubeNodeInfo.Publish(nodeInfo.NodeID, *nodeInfo)
+	}
+	for key := range z.pubKubeNodeInfo.GetAll() {
+		if !seen[key] {
+			z.pubKubeNodeInfo.Unpublish(key)
 		}
 	}
 }

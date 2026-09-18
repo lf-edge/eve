@@ -745,8 +745,9 @@ func (ctx kubevirtContext) CreateReplicaVMIConfig(domainName string, config type
 		sriovVFs = refs
 	}
 
-	// Set the affinity to this node the VMI is preferred to run on
-	affinity := SetKubeAffinity(nodeName, config.AffinityType)
+	// Set the affinity to the app's designated node (falling back to this
+	// node if it can't be resolved -- see affinityTargetNodeName)
+	affinity := SetKubeAffinity(affinityTargetNodeName(config, nodeName), config.AffinityType)
 
 	// Set tolerations to handle node conditions
 	tolerations := setKubeToleration(int64(tolerateSec))
@@ -941,6 +942,53 @@ func confirmPodReplicaSetGone(kubeconfig *rest.Config, name string) error {
 	}
 }
 
+// anyPodMatches reports whether any pod in EVEKubeNameSpace matches selector.
+func anyPodMatches(kubeConfig *rest.Config, selector string) (bool, error) {
+	clientset, err := newK8sClient(kubeConfig)
+	if err != nil {
+		return false, err
+	}
+	ctx, cancel := apiCtx()
+	defer cancel()
+	pods, err := clientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).
+		List(ctx, metav1.ListOptions{LabelSelector: selector})
+	if err != nil {
+		return false, err
+	}
+	return len(pods.Items) > 0, nil
+}
+
+// dependentsPresent reports whether this domain's VMI or virt-launcher pod
+// still exists after its VMIRS is gone. A pod holds the RWO disk until it
+// is deleted, so an absent VMIRS alone does not mean the domain is down.
+//
+// Single pass, not a retry loop: the caller polls again.
+func (t kubevirtTask) dependentsPresent(domainName string) (bool, error) {
+	if t.metaType() == IsMetaReplicaPod {
+		// A NOHYPER app has no VMI; its pods carry "app=<kubeName>",
+		// which is already generation-specific.
+		return anyPodMatches(t.kubeConfig, fmt.Sprintf("app=%s", t.kubeName()))
+	}
+
+	virtClient, err := newKubevirtClient(t.kubeConfig)
+	if err != nil {
+		return false, err
+	}
+	vmiCtx, vmiCancel := apiCtx()
+	defer vmiCancel()
+	vmis, err := virtClient.VirtualMachineInstance(kubeapi.EVEKubeNameSpace).
+		List(vmiCtx, metav1.ListOptions{
+			LabelSelector: eveLabelKey + "=" + domainName,
+		})
+	if err != nil {
+		return false, err
+	}
+	if len(vmis.Items) > 0 {
+		return true, nil
+	}
+	return anyPodMatches(t.kubeConfig, "kubevirt.io=virt-launcher,"+eveLabelKey+"="+domainName)
+}
+
 // sweepStaleGenerations deletes every VMIRS/ReplicaSet belonging to this
 // app whose purge counter is strictly less than desiredCounter, and
 // confirms each one is actually gone - object and pods - before returning.
@@ -1133,37 +1181,43 @@ func (ctx kubevirtContext) Create(domainName string, cfgFilename string, config 
 // the same definition the VMI-list path (replicaVmiScheduledOnMe) uses for
 // its own scheduledOnNone; a bound-but-elsewhere pod (Spec.NodeName set to
 // something other than nodeName) is neither onMe nor scheduledOnNone.
-func podListToSchedulingState(pods []k8sv1.Pod, nodeName string) (onMe bool, scheduledOnNone bool, err error) {
+// elsewhereReady is only meaningful when onMe and scheduledOnNone are both
+// false, i.e. the object is bound to some other node: it reports whether
+// that node's own Ready condition is true. A caller deciding whether to
+// defer to that node (rather than act itself) should not do so when this is
+// false -- see Delete's use of it.
+func podListToSchedulingState(pods []k8sv1.Pod, nodeName string) (onMe bool, scheduledOnNone bool, elsewhereReady bool, err error) {
 	for _, p := range pods {
 		if p.ObjectMeta.DeletionTimestamp != nil {
 			continue
 		}
 		onMe = p.Spec.NodeName == nodeName
 		scheduledOnNone = p.Spec.NodeName == ""
-		logrus.Infof("podListToSchedulingState: pod %s Spec.NodeName:%q onMe:%t scheduledOnNone:%t",
-			p.ObjectMeta.Name, p.Spec.NodeName, onMe, scheduledOnNone)
-		return onMe, scheduledOnNone, nil
+		elsewhereReady = onMe || scheduledOnNone || kubeapi.IsNodeReady(p.Spec.NodeName)
+		logrus.Infof("podListToSchedulingState: pod %s Spec.NodeName:%q onMe:%t scheduledOnNone:%t elsewhereReady:%t",
+			p.ObjectMeta.Name, p.Spec.NodeName, onMe, scheduledOnNone, elsewhereReady)
+		return onMe, scheduledOnNone, elsewhereReady, nil
 	}
 	logrus.Infof("podListToSchedulingState: no non-terminating pod among %d", len(pods))
-	return false, false, fmt.Errorf("unhandled scheduling state")
+	return false, false, true, fmt.Errorf("unhandled scheduling state")
 }
 
 // replicaVmiScheduledOnMe is the VMI replicaset implementation of scheduledOnMe()
-func (ctx kubevirtContext) replicaVmiScheduledOnMe(vmirsName string) (scheduledOnMe bool, scheduledOnNone bool, err error) {
+func (ctx kubevirtContext) replicaVmiScheduledOnMe(vmirsName string) (scheduledOnMe bool, scheduledOnNone bool, elsewhereReady bool, err error) {
 	err = getConfig(&ctx)
 	if err != nil {
-		return false, false, err
+		return false, false, true, err
 	}
 
 	virtClient, err := newKubevirtClient(ctx.kubeConfig)
 	if err != nil {
 		logrus.Errorf("couldn't get the kubernetes client API config: %v", err)
-		return false, false, err
+		return false, false, true, err
 	}
 
 	vmirs, err := getVmirs(virtClient, vmirsName)
 	if err != nil {
-		return false, false, err
+		return false, false, true, err
 	}
 	return ctx.vmiScheduledOnMeFromVmirs(virtClient, vmirs)
 }
@@ -1171,12 +1225,13 @@ func (ctx kubevirtContext) replicaVmiScheduledOnMe(vmirsName string) (scheduledO
 // vmiScheduledOnMeFromVmirs is the tail of replicaVmiScheduledOnMe, taking an
 // already-fetched VMIRS instead of fetching its own copy. Shared with Info(),
 // which already fetched the VMIRS for the stranded-replica check and would
-// otherwise Get the same object a second time in the same call.
+// otherwise Get the same object a second time in the same call. See
+// podListToSchedulingState's doc comment for elsewhereReady.
 func (ctx kubevirtContext) vmiScheduledOnMeFromVmirs(virtClient kubecli.KubevirtClient,
-	vmirs *v1.VirtualMachineInstanceReplicaSet) (scheduledOnMe bool, scheduledOnNone bool, err error) {
+	vmirs *v1.VirtualMachineInstanceReplicaSet) (scheduledOnMe bool, scheduledOnNone bool, elsewhereReady bool, err error) {
 	nodeName, ok := ctx.nodeNameMap["nodename"]
 	if !ok {
-		return false, false, fmt.Errorf("Failed to get nodeName")
+		return false, false, true, fmt.Errorf("Failed to get nodeName")
 	}
 	appDomainNameSelector := vmirs.Status.LabelSelector
 
@@ -1184,7 +1239,7 @@ func (ctx kubevirtContext) vmiScheduledOnMeFromVmirs(virtClient kubecli.Kubevirt
 		LabelSelector: appDomainNameSelector,
 	})
 	if err != nil {
-		return false, false, err
+		return false, false, true, err
 	}
 	if len(vmis.Items) > 0 {
 		// Have a vmi, use it for status
@@ -1203,9 +1258,10 @@ func (ctx kubevirtContext) vmiScheduledOnMeFromVmirs(virtClient kubecli.Kubevirt
 				continue
 			}
 			onMe := vmi.Status.NodeName == nodeName
-			logrus.Infof("vmiScheduledOnMeFromVmirs(%s): vmi %s scheduled on %q onMe:%t",
-				vmirs.Name, vmi.ObjectMeta.Name, vmi.Status.NodeName, onMe)
-			return onMe, false, nil
+			ready := onMe || kubeapi.IsNodeReady(vmi.Status.NodeName)
+			logrus.Infof("vmiScheduledOnMeFromVmirs(%s): vmi %s scheduled on %q onMe:%t elsewhereReady:%t",
+				vmirs.Name, vmi.ObjectMeta.Name, vmi.Status.NodeName, onMe, ready)
+			return onMe, false, ready, nil
 		}
 		// Intentional fallback to looking at a virt-launcher pod
 		// One or both VMI objects may be either terminating or not scheduled to any node.
@@ -1216,43 +1272,43 @@ func (ctx kubevirtContext) vmiScheduledOnMeFromVmirs(virtClient kubecli.Kubevirt
 	// No VMI, look for a Virt-launcher pod instead, it will start earlier
 	podclientset, err := newK8sClient(ctx.kubeConfig)
 	if err != nil {
-		return false, false, fmt.Errorf("no kube config")
+		return false, false, true, fmt.Errorf("no kube config")
 	}
 	vlPods, err := podclientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).List(context.Background(), metav1.ListOptions{
 		LabelSelector: "kubevirt.io=virt-launcher," + appDomainNameSelector,
 	})
 	if len(vlPods.Items) == 0 {
 		logrus.Infof("vmiScheduledOnMeFromVmirs(%s): no virt-launcher pod found", vmirs.Name)
-		return false, false, nil
+		return false, false, true, nil
 	}
 	return podListToSchedulingState(vlPods.Items, nodeName)
 }
 
 // replicaPodScheduledOnMe is the ReplicaSet Pod implementation of scheduledOnMe()
-func (ctx kubevirtContext) replicaPodScheduledOnMe(rsName string) (onMe bool, scheduledOnNone bool, err error) {
+func (ctx kubevirtContext) replicaPodScheduledOnMe(rsName string) (onMe bool, scheduledOnNone bool, elsewhereReady bool, err error) {
 	err = getConfig(&ctx)
 	if err != nil {
-		return false, false, err
+		return false, false, true, err
 	}
 
 	nodeName, ok := ctx.nodeNameMap["nodename"]
 	if !ok {
-		return false, false, fmt.Errorf("Failed to get nodeName")
+		return false, false, true, fmt.Errorf("Failed to get nodeName")
 	}
 
 	podclientset, err := newK8sClient(ctx.kubeConfig)
 	if err != nil {
-		return false, false, fmt.Errorf("no kube config")
+		return false, false, true, fmt.Errorf("no kube config")
 	}
 
 	pods, err := podclientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).List(context.TODO(), metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("app=%s", rsName),
 	})
 	if err != nil {
-		return false, false, err
+		return false, false, true, err
 	}
 	if len(pods.Items) < 1 {
-		return false, false, nil
+		return false, false, true, nil
 	}
 
 	for _, pod := range pods.Items {
@@ -1261,27 +1317,29 @@ func (ctx kubevirtContext) replicaPodScheduledOnMe(rsName string) (onMe bool, sc
 			continue
 		}
 		if pod.Status.Phase == "Pending" {
-			return false, true, nil
+			return false, true, true, nil
 		}
 		if pod.Spec.NodeName == "" {
 			continue
 		}
-		return (pod.Spec.NodeName == nodeName), false, nil
+		onMe := pod.Spec.NodeName == nodeName
+		return onMe, false, onMe || kubeapi.IsNodeReady(pod.Spec.NodeName), nil
 	}
-	return false, true, fmt.Errorf("Unhandled scheduling state")
+	return false, true, true, fmt.Errorf("Unhandled scheduling state")
 }
 
 // scheduledOnMe compares local node name to the node name kubernetes reports running/scheduling on
 // this is used in cluster environments to determine if action should be taken on an app only if the app
 // is running on the local node. The functions/actions should call this to check it the app has
-// recently failed over to another node, if so then take no action (defer to the new node's pillar).
-func (ctx kubevirtContext) scheduledOnMe(mtype MetaDataType, objectName string) (onMe bool, scheduledOnNone bool, err error) {
+// recently failed over to another node, if so then take no action (defer to the new node's pillar)
+// -- unless elsewhereReady is false, meaning that other node cannot act either.
+func (ctx kubevirtContext) scheduledOnMe(mtype MetaDataType, objectName string) (onMe bool, scheduledOnNone bool, elsewhereReady bool, err error) {
 	if mtype == IsMetaReplicaPod {
 		return ctx.replicaPodScheduledOnMe(objectName)
 	} else if mtype == IsMetaReplicaVMI {
 		return ctx.replicaVmiScheduledOnMe(objectName)
 	} else {
-		return false, false, logError("domain %s wrong type %d", objectName, mtype)
+		return false, false, true, logError("domain %s wrong type %d", objectName, mtype)
 	}
 }
 
@@ -1325,7 +1383,7 @@ func (ctx kubevirtContext) Stop(domainName string, force bool) error {
 		}
 	}
 
-	onMe, _, err := ctx.scheduledOnMe(vmis.mtype, vmis.name)
+	onMe, _, _, err := ctx.scheduledOnMe(vmis.mtype, vmis.name)
 	if err != nil {
 		return err
 	}
@@ -1374,14 +1432,20 @@ func (ctx kubevirtContext) Delete(domainName string) (result error) {
 		}
 	}
 
-	onMe, scheduledOnNone, err := ctx.scheduledOnMe(vmis.mtype, vmis.name)
+	onMe, scheduledOnNone, elsewhereReady, err := ctx.scheduledOnMe(vmis.mtype, vmis.name)
 	if err != nil {
 		// A failed lookup reports onMe=false, which is indistinguishable
 		// from the "scheduled elsewhere" case below.
 		return err
 	}
-	if !onMe && !scheduledOnNone {
-		// Not scheduled on me, but is scheduled elsewhere.
+	if !onMe && !scheduledOnNone && elsewhereReady {
+		// Not scheduled on me, but is scheduled elsewhere, and that node is
+		// up to deal with it itself. Deleting an app whose designated node
+		// is down (backup DNID) reaches this exact branch once the object
+		// is bound to that node's own copy -- elsewhereReady is what tells
+		// the two cases apart: skip only when there is a live node actually
+		// able to do this delete; otherwise fall through and do it here,
+		// or this VMIRS/ReplicaSet is never cleaned up.
 		return nil
 	}
 
@@ -1576,12 +1640,32 @@ func (t kubevirtTask) replicaSetUID(kubeName string) (uid string, err error) {
 	return string(vmirs.UID), nil
 }
 
-// Info's contract: DomainId is zero if and only if the VMIRS (or plain
-// ReplicaSet, for a NOHYPER app) is confirmed absent (Get -> NotFound).
-// Every other outcome - found, found-but-unattributed, found-with-an-
-// unmapped-phase, or the existence check itself failing - returns a
-// non-zero id, because a zero id is what tells domainmgr's doInactivate/
-// doCleanup that a teardown already happened.
+// confirmedAbsent is the only place Info may report a workload as gone: it
+// checks dependentsPresent before returning HALTED, so a caller never sees
+// the domain reported down while its VMI or pod is still up. where names
+// the call site, for the log line only.
+func (t kubevirtTask) confirmedAbsent(domainName, kubeName, where string) (int, types.SwState, error) {
+	present, err := t.dependentsPresent(domainName)
+	if err != nil {
+		// Absence not established: hold the caller's id rather than
+		// emitting the confirmed-absent token.
+		logrus.Infof("Info(%s): %s absent (%s) but the dependent check failed: %v",
+			domainName, kubeName, where, err)
+		return t.status.DomainId, types.UNKNOWN, err
+	}
+	if present {
+		logrus.Infof("Info(%s): %s absent (%s), a VMI or pod is still present",
+			domainName, kubeName, where)
+		return t.status.DomainId, types.HALTING, nil
+	}
+	logrus.Infof("Info(%s): %s confirmed absent (%s)", domainName, kubeName, where)
+	return 0, types.HALTED, nil
+}
+
+// Info's contract: DomainId is zero only when the VMIRS (or ReplicaSet, for
+// NOHYPER), its VMI, and its pod are all confirmed absent. Every other
+// outcome keeps a non-zero id, since zero tells domainmgr's
+// doInactivate/doCleanup that a teardown already happened.
 func (t kubevirtTask) Info(domainName string) (int, types.SwState, error) {
 	logrus.Debugf("Info called for Domain: %s", domainName)
 	nodeName, ok := t.nodeNameMap["nodename"]
@@ -1602,8 +1686,7 @@ func (t kubevirtTask) Info(domainName string) (int, types.SwState, error) {
 	uid, err := t.replicaSetUID(kubeName)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			logrus.Infof("Info(%s): %s confirmed absent", domainName, kubeName)
-			return 0, types.HALTED, nil
+			return t.confirmedAbsent(domainName, kubeName, "existence check")
 		}
 		// Existence could not be confirmed one way or the other (API
 		// unreachable, or some other error): never produce the "confirmed
@@ -1654,9 +1737,7 @@ func (t kubevirtTask) Info(domainName string) (int, types.SwState, error) {
 				// so this is the same confirmed-absent answer arriving one
 				// call later. Returning here also skips the fall-through's
 				// own Get, which can only reach the same conclusion.
-				logrus.Infof("Info(%s): %s confirmed absent after the existence check",
-					domainName, kubeName)
-				return 0, types.HALTED, nil
+				return t.confirmedAbsent(domainName, kubeName, "existence check race")
 			}
 			if isK3sUnreachable(rerr) {
 				// Unknown, not absent: hold the caller's id rather than
@@ -1679,18 +1760,16 @@ func (t kubevirtTask) Info(domainName string) (int, types.SwState, error) {
 
 	var onMe, scheduledOnNone bool
 	if vmirs != nil {
-		onMe, scheduledOnNone, err = t.vmiScheduledOnMeFromVmirs(virtClient, vmirs)
+		onMe, scheduledOnNone, _, err = t.vmiScheduledOnMeFromVmirs(virtClient, vmirs)
 	} else {
-		onMe, scheduledOnNone, err = t.scheduledOnMe(vmis.mtype, kubeName)
+		onMe, scheduledOnNone, _, err = t.scheduledOnMe(vmis.mtype, kubeName)
 	}
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Backstop for the lookups that do their own Get: the NOHYPER
 			// dispatch and the fall-through above. Absence is absence
 			// wherever it is observed.
-			logrus.Infof("Info(%s): %s confirmed absent during the scheduling lookup",
-				domainName, kubeName)
-			return 0, types.HALTED, nil
+			return t.confirmedAbsent(domainName, kubeName, "scheduling lookup")
 		}
 		if isK3sUnreachable(err) {
 			logrus.Infof("Info(%s): k3s unreachable while determining scheduled node: %v",
@@ -2264,7 +2343,7 @@ func (ctx kubevirtContext) CreateReplicaPodConfig(domainName string, config type
 				},
 				Spec: k8sv1.PodSpec{
 					Tolerations: setKubeToleration(int64(tolerateSec)),
-					Affinity:    SetKubeAffinity(nodeName, config.AffinityType),
+					Affinity:    SetKubeAffinity(affinityTargetNodeName(config, nodeName), config.AffinityType),
 					Containers: []k8sv1.Container{
 						{
 							Name:            kubeName,
@@ -2360,6 +2439,29 @@ func (ctx kubevirtContext) CreateReplicaPodConfig(domainName string, config type
 	file.WriteString(repStr)
 
 	return nil
+}
+
+// affinityTargetNodeName resolves which node's hostname to encode in a
+// newly-created domain's affinity. Whichever node runs this create -- which,
+// during a DNID outage, can be a backup node standing in for the real one --
+// must still write the app's actual designated node's name, not its own,
+// or the affinity permanently forgets where the app belongs until zedkube's
+// reconciler corrects it out-of-band (cmd/zedkube/vmirsaffinity.go).
+//
+// config.DesignatedNodeUUID is empty for a non-cluster app, and resolution
+// can fail transiently (API hiccup, node not yet joined); either falls back
+// to localNodeName rather than blocking creation on this lookup.
+func affinityTargetNodeName(config types.DomainConfig, localNodeName string) string {
+	if config.DesignatedNodeUUID == "" {
+		return localNodeName
+	}
+	name, err := kubeapi.GetNodeNameFromUUID(config.DesignatedNodeUUID)
+	if err != nil || name == "" {
+		logrus.Warnf("affinityTargetNodeName: resolve designated node %s: %v; using local node %s",
+			config.DesignatedNodeUUID, err, localNodeName)
+		return localNodeName
+	}
+	return name
 }
 
 // SetKubeAffinity builds the node affinity for a VMI/pod template that

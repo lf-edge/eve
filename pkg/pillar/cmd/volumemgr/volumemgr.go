@@ -59,9 +59,14 @@ var (
 
 type volumemgrContext struct {
 	agentbase.AgentBase
-	ps                *pubsub.PubSub
-	subGlobalConfig   pubsub.Subscription
-	subZedAgentStatus pubsub.Subscription
+	ps                     *pubsub.PubSub
+	subGlobalConfig        pubsub.Subscription
+	subZedAgentStatus      pubsub.Subscription
+	subKubeLeaderElectInfo pubsub.Subscription
+	// subKubeNodeInfo is this node's local cache of every node's health,
+	// published by its own zedkube. Backing nodeHealth, it is what lets
+	// isCurrentlyBackupDNIDFunc decide without a live API call.
+	subKubeNodeInfo pubsub.Subscription
 
 	pubDownloaderConfig  pubsub.Publication
 	subDownloaderStatus  pubsub.Subscription
@@ -161,6 +166,15 @@ type volumemgrContext struct {
 	// EdgeNodeInfo.DeviceName; passed to the kubeapi readiness helpers instead of
 	// relying on os.Hostname().
 	nodeName string
+
+	// isAppOpLeader mirrors zedmanager's own field of the same name
+	// (cmd/zedmanager/dnidbackup.go): this node's cached answer to whether
+	// it holds the eve-app-op lease, updated from subKubeLeaderElectInfo.
+	isAppOpLeader bool
+	// isCurrentlyBackupDNIDFunc matches kubeapi.IsCurrentlyBackupDNID.
+	// Held on the context, mirroring zedmanager's backupDNIDFunc, so the
+	// gate can be decided in a test without a cluster.
+	isCurrentlyBackupDNIDFunc backupDNIDFunc
 }
 
 func (ctxPtr *volumemgrContext) lookupVolumeStatusByUUID(id string) *types.VolumeStatus {
@@ -206,10 +220,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		hvTypeKube:         base.IsHVTypeKube(),
 		// Only an EVE-k node has cluster storage to wait for; everywhere else
 		// storage is usable as soon as volumemgr is up.
-		storageReady:        !base.IsHVTypeKube(),
-		statusTrigger:       make(chan struct{}, 1),
-		pendingIngest:       make(map[string]bool),
-		inflightBlobIngests: make(map[string]string),
+		storageReady:              !base.IsHVTypeKube(),
+		statusTrigger:             make(chan struct{}, 1),
+		pendingIngest:             make(map[string]bool),
+		inflightBlobIngests:       make(map[string]string),
+		isCurrentlyBackupDNIDFunc: kubeapi.IsCurrentlyBackupDNID,
 	}
 	if ctx.hvTypeKube {
 		ctx.storageUnmet = storageWaitPending
@@ -649,6 +664,39 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	ctx.subContentTreeConfig = subContentTreeConfig
 	subContentTreeConfig.Activate()
 
+	subKubeLeaderElectInfo, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedkube",
+		MyAgentName:   agentName,
+		TopicImpl:     types.KubeLeaderElectInfo{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleKubeLeaderElectInfoCreate,
+		ModifyHandler: handleKubeLeaderElectInfoModify,
+		DeleteHandler: handleKubeLeaderElectInfoDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subKubeLeaderElectInfo = subKubeLeaderElectInfo
+	_ = subKubeLeaderElectInfo.Activate()
+
+	subKubeNodeInfo, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zedkube",
+		MyAgentName: agentName,
+		TopicImpl:   types.KubeNodeInfo{},
+		Activate:    false,
+		Ctx:         &ctx,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subKubeNodeInfo = subKubeNodeInfo
+	_ = subKubeNodeInfo.Activate()
+
 	ctx.volumeConfigCreateDeferredMap = make(map[string]*types.VolumeConfig)
 	ctx.volumeDeleteRetryCount = make(map[string]int)
 
@@ -854,6 +902,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		case change := <-ctx.subContentTreeConfig.MsgChan():
 			ctx.subContentTreeConfig.ProcessChange(change)
 
+		case change := <-ctx.subKubeLeaderElectInfo.MsgChan():
+			ctx.subKubeLeaderElectInfo.ProcessChange(change)
+
+		case change := <-ctx.subKubeNodeInfo.MsgChan():
+			ctx.subKubeNodeInfo.ProcessChange(change)
+
 		case change := <-ctx.subVolumeConfig.MsgChan():
 			ctx.subVolumeConfig.ProcessChange(change)
 
@@ -895,6 +949,20 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			// re-driven by the event-driven callers, so skip the periodic pass.
 			if ctx.hvTypeKube {
 				reevaluatePendingVolumes(&ctx)
+			}
+			// Re-drive a replicated volume once its designated node has
+			// newly become eligible for backup-DNID takeover. Backup DNID
+			// changes nothing in the volume's own config, so no Modify
+			// event ever arrives to re-drive doUpdateVol for it.
+			if ctx.hvTypeKube {
+				reevaluateBackupDNIDVolumes(&ctx)
+			}
+			// Re-drive a content tree parked at LOADED with no local content
+			// once its designated node has newly become eligible for
+			// backup-DNID takeover, for the same reason as the volume case
+			// above.
+			if ctx.hvTypeKube {
+				reevaluateBackupDNIDContent(&ctx)
 			}
 			// Re-drive content trees whose accept-from-PVCs check
 			// (contentTreeSatisfiedByPVCs) deferred after spending its
