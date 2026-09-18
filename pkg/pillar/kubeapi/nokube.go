@@ -112,9 +112,14 @@ func VolumeDirInternalEntriesMap() map[string]struct{} {
 	return map[string]struct{}{}
 }
 
+// NodeHealthLookup is the options type for IsCurrentlyBackupDNID. Defined
+// here so callers can reference it without a build tag; the k-tagged
+// implementation in backupdnid.go declares its own matching copy.
+type NodeHealthLookup func(nodeUUID string) (ready bool, since time.Time, found bool)
+
 // IsCurrentlyBackupDNID is a stub for non EVE-k builds. Backup DNID is a
 // cluster concept, so outside EVE-k no node ever stands in for another.
-func IsCurrentlyBackupDNID(*base.LogObject, string, bool, types.Affinity,
-	time.Duration) bool {
+func IsCurrentlyBackupDNID(*base.LogObject, NodeHealthLookup, string, bool,
+	types.Affinity, time.Duration) bool {
 	return false
 }

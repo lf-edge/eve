@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
@@ -23,8 +24,8 @@ func newVolumeGateCtx(backup bool) (*volumemgrContext, *int) {
 	ctx := &volumemgrContext{
 		hvTypeKube:   true,
 		globalConfig: types.DefaultConfigItemValueMap(),
-		isCurrentlyBackupDNIDFunc: func(*base.LogObject, string, bool,
-			types.Affinity, time.Duration) bool {
+		isCurrentlyBackupDNIDFunc: func(*base.LogObject, kubeapi.NodeHealthLookup,
+			string, bool, types.Affinity, time.Duration) bool {
 			calls++
 			return backup
 		},
@@ -194,8 +195,8 @@ func TestDoUpdateVolReplicatedGate(t *testing.T) {
 		ctx, pubVolumeConfig := initVolumeModifyCtxForTest(t)
 		ctx.hvTypeKube = true
 		ctx.isAppOpLeader = true
-		ctx.isCurrentlyBackupDNIDFunc = func(*base.LogObject, string, bool,
-			types.Affinity, time.Duration) bool {
+		ctx.isCurrentlyBackupDNIDFunc = func(*base.LogObject, kubeapi.NodeHealthLookup,
+			string, bool, types.Affinity, time.Duration) bool {
 			return true
 		}
 

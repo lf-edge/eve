@@ -7,13 +7,33 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 // backupDNIDFunc matches kubeapi.IsCurrentlyBackupDNID. Held on the context so
 // the gate can be decided in a test without a cluster.
-type backupDNIDFunc func(log *base.LogObject, designatedNodeID string,
-	isAppOpLeader bool, affinity types.Affinity, threshold time.Duration) bool
+type backupDNIDFunc func(log *base.LogObject, lookup kubeapi.NodeHealthLookup,
+	designatedNodeID string, isAppOpLeader bool, affinity types.Affinity,
+	threshold time.Duration) bool
+
+// nodeHealth implements kubeapi.NodeHealthLookup against this node's local
+// cache of node health, published by its own zedkube (see
+// kubeapi.NodeHealthLookup for why this is a cache read and not a live call).
+func (ctx *zedmanagerContext) nodeHealth(nodeUUID string) (ready bool, since time.Time, found bool) {
+	item, err := ctx.subKubeNodeInfo.Get(nodeUUID)
+	if err != nil {
+		return false, time.Time{}, false
+	}
+	info, ok := item.(types.KubeNodeInfo)
+	if !ok || info.Status == types.KubeNodeStatusUnknown {
+		// Unknown means no Ready condition has ever been reported for this
+		// node -- the same "never confirmed" case as it not being in the
+		// cache at all.
+		return false, time.Time{}, false
+	}
+	return info.Status == types.KubeNodeStatusReady, info.LastTransitionTime, true
+}
 
 // lookupENClusterAppStatus returns this node's cluster view of one app, or nil
 // if zedkube has published none yet. Keyed rather than scanned: zedkube
@@ -79,7 +99,7 @@ func isCurrentlyBackupDNIDForApp(ctx *zedmanagerContext,
 	if aiConfig.DesignatedNodeUUID == "" || aiConfig.IsDesignatedNodeID {
 		return false
 	}
-	return ctx.isCurrentlyBackupDNIDFunc(log, aiConfig.DesignatedNodeUUID,
+	return ctx.isCurrentlyBackupDNIDFunc(log, ctx.nodeHealth, aiConfig.DesignatedNodeUUID,
 		ctx.isAppOpLeader, aiConfig.AffinityType, dnidOutageThreshold(ctx))
 }
 

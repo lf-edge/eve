@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
@@ -92,8 +93,8 @@ func newGateCtx(backup bool) (*zedmanagerContext, *int) {
 	ctx := &zedmanagerContext{
 		hvTypeKube:   true,
 		globalConfig: types.DefaultConfigItemValueMap(),
-		isCurrentlyBackupDNIDFunc: func(*base.LogObject, string, bool,
-			types.Affinity, time.Duration) bool {
+		isCurrentlyBackupDNIDFunc: func(*base.LogObject, kubeapi.NodeHealthLookup,
+			string, bool, types.Affinity, time.Duration) bool {
 			calls++
 			return backup
 		},
