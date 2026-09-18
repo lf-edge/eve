@@ -1789,6 +1789,17 @@ func (d *EdgeDevice) DialViaSSH(network, address string) (net.Conn, error) {
 	return d.th.dialViaSSH(d.th.ctx, d.devName, network, address)
 }
 
+// ReachableAddress returns the host:port through which the given TCP port of
+// the device can be reached from the test process, for handing an endpoint of
+// the device, such as its SSH port, to a tool the test runs.
+func (d *EdgeDevice) ReachableAddress(port uint16) (string, error) {
+	host, err := d.th.getReachableEVEAddr(d.th.ctx, d.devName, uint32(port), "")
+	if err != nil {
+		return "", err
+	}
+	return net.JoinHostPort(host, fmt.Sprintf("%d", port)), nil
+}
+
 // ActivateApplication activates the specified application instance.
 func (d *EdgeDevice) ActivateApplication(appUUID uuid.UUID, waitUntilActivated bool,
 	timeout time.Duration) {
