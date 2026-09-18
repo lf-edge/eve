@@ -17,7 +17,7 @@ import (
 // 10 GiB each -- whatever layout the device started on.
 //
 // It deliberately does nothing else. No app, no data volume, no vault settle,
-// no blob-reuse check: those all belong to TestKvmToKRepartition, and mixing
+// no blob-reuse check: those all belong to TestKvmToKRepartitionNoVolmig, and mixing
 // them in here would mean a geometry regression could be masked by, or mistaken
 // for, an app or storage failure. What is left is one claim, stated absolutely
 // rather than relative to the starting sizes, because a conversion that grew
