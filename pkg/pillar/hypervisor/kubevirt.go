@@ -941,6 +941,64 @@ func confirmPodReplicaSetGone(kubeconfig *rest.Config, name string) error {
 	}
 }
 
+// dependentsPresent reports whether this domain's VMI or virt-launcher pod
+// still exists after its VMIRS is gone. A pod holds the RWO disk until it
+// is deleted, so an absent VMIRS alone does not mean the domain is down.
+//
+// Single pass, not a retry loop: the caller polls again.
+func (t kubevirtTask) dependentsPresent(domainName string) (bool, error) {
+	if t.metaType() == IsMetaReplicaPod {
+		// A NOHYPER app has no VMI; its pods carry "app=<kubeName>",
+		// which is already generation-specific.
+		clientset, err := newK8sClient(t.kubeConfig)
+		if err != nil {
+			return false, err
+		}
+		listCtx, listCancel := apiCtx()
+		defer listCancel()
+		pods, err := clientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).
+			List(listCtx, metav1.ListOptions{
+				LabelSelector: fmt.Sprintf("app=%s", t.kubeName()),
+			})
+		if err != nil {
+			return false, err
+		}
+		return len(pods.Items) > 0, nil
+	}
+
+	virtClient, err := newKubevirtClient(t.kubeConfig)
+	if err != nil {
+		return false, err
+	}
+	vmiCtx, vmiCancel := apiCtx()
+	defer vmiCancel()
+	vmis, err := virtClient.VirtualMachineInstance(kubeapi.EVEKubeNameSpace).
+		List(vmiCtx, metav1.ListOptions{
+			LabelSelector: eveLabelKey + "=" + domainName,
+		})
+	if err != nil {
+		return false, err
+	}
+	if len(vmis.Items) > 0 {
+		return true, nil
+	}
+
+	clientset, err := newK8sClient(t.kubeConfig)
+	if err != nil {
+		return false, err
+	}
+	podCtx, podCancel := apiCtx()
+	defer podCancel()
+	pods, err := clientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).
+		List(podCtx, metav1.ListOptions{
+			LabelSelector: "kubevirt.io=virt-launcher," + eveLabelKey + "=" + domainName,
+		})
+	if err != nil {
+		return false, err
+	}
+	return len(pods.Items) > 0, nil
+}
+
 // sweepStaleGenerations deletes every VMIRS/ReplicaSet belonging to this
 // app whose purge counter is strictly less than desiredCounter, and
 // confirms each one is actually gone - object and pods - before returning.
@@ -1576,12 +1634,32 @@ func (t kubevirtTask) replicaSetUID(kubeName string) (uid string, err error) {
 	return string(vmirs.UID), nil
 }
 
-// Info's contract: DomainId is zero if and only if the VMIRS (or plain
-// ReplicaSet, for a NOHYPER app) is confirmed absent (Get -> NotFound).
-// Every other outcome - found, found-but-unattributed, found-with-an-
-// unmapped-phase, or the existence check itself failing - returns a
-// non-zero id, because a zero id is what tells domainmgr's doInactivate/
-// doCleanup that a teardown already happened.
+// confirmedAbsent is the only place Info may report a workload as gone: it
+// checks dependentsPresent before returning HALTED, so a caller never sees
+// the domain reported down while its VMI or pod is still up. where names
+// the call site, for the log line only.
+func (t kubevirtTask) confirmedAbsent(domainName, kubeName, where string) (int, types.SwState, error) {
+	present, err := t.dependentsPresent(domainName)
+	if err != nil {
+		// Absence not established: hold the caller's id rather than
+		// emitting the confirmed-absent token.
+		logrus.Infof("Info(%s): %s absent (%s) but the dependent check failed: %v",
+			domainName, kubeName, where, err)
+		return t.status.DomainId, types.UNKNOWN, err
+	}
+	if present {
+		logrus.Infof("Info(%s): %s absent (%s), a VMI or pod is still present",
+			domainName, kubeName, where)
+		return t.status.DomainId, types.HALTING, nil
+	}
+	logrus.Infof("Info(%s): %s confirmed absent (%s)", domainName, kubeName, where)
+	return 0, types.HALTED, nil
+}
+
+// Info's contract: DomainId is zero only when the VMIRS (or ReplicaSet, for
+// NOHYPER), its VMI, and its pod are all confirmed absent. Every other
+// outcome keeps a non-zero id, since zero tells domainmgr's
+// doInactivate/doCleanup that a teardown already happened.
 func (t kubevirtTask) Info(domainName string) (int, types.SwState, error) {
 	logrus.Debugf("Info called for Domain: %s", domainName)
 	nodeName, ok := t.nodeNameMap["nodename"]
@@ -1602,8 +1680,7 @@ func (t kubevirtTask) Info(domainName string) (int, types.SwState, error) {
 	uid, err := t.replicaSetUID(kubeName)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			logrus.Infof("Info(%s): %s confirmed absent", domainName, kubeName)
-			return 0, types.HALTED, nil
+			return t.confirmedAbsent(domainName, kubeName, "existence check")
 		}
 		// Existence could not be confirmed one way or the other (API
 		// unreachable, or some other error): never produce the "confirmed
@@ -1654,9 +1731,7 @@ func (t kubevirtTask) Info(domainName string) (int, types.SwState, error) {
 				// so this is the same confirmed-absent answer arriving one
 				// call later. Returning here also skips the fall-through's
 				// own Get, which can only reach the same conclusion.
-				logrus.Infof("Info(%s): %s confirmed absent after the existence check",
-					domainName, kubeName)
-				return 0, types.HALTED, nil
+				return t.confirmedAbsent(domainName, kubeName, "existence check race")
 			}
 			if isK3sUnreachable(rerr) {
 				// Unknown, not absent: hold the caller's id rather than
@@ -1688,9 +1763,7 @@ func (t kubevirtTask) Info(domainName string) (int, types.SwState, error) {
 			// Backstop for the lookups that do their own Get: the NOHYPER
 			// dispatch and the fall-through above. Absence is absence
 			// wherever it is observed.
-			logrus.Infof("Info(%s): %s confirmed absent during the scheduling lookup",
-				domainName, kubeName)
-			return 0, types.HALTED, nil
+			return t.confirmedAbsent(domainName, kubeName, "scheduling lookup")
 		}
 		if isK3sUnreachable(err) {
 			logrus.Infof("Info(%s): k3s unreachable while determining scheduled node: %v",
