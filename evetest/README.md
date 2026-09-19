@@ -21,6 +21,24 @@ make evetest NAME=<test-name>
   published `lfedge/eve` image matching the version you want to test
 - **Go 1.25+** (only needed if installing the evetest CLI locally)
 - **Nested virtualization** support in your CPU/hypervisor (for all-in-one mode)
+- **QEMU 11.1.0+** (or 11.0.4+ from the 11.0 stable series) wherever the VM actually
+  runs -- see the QEMU version note below
+
+**QEMU version note:** older QEMU builds hit
+[issue #2777](https://gitlab.com/qemu-project/qemu/-/issues/2777): on a q35 machine with
+an AHCI disk, a guest that submits an NCQ command with a zero-length PRDT trips an
+assertion in `ide_dma_cb` and the emulator aborts, taking the VM down mid-test. Commit
+`443e024106` replaces that assertion with proper error handling; it first shipped in
+v11.1.0 and was backported to v11.0.4, and no 10.2.x release carries it.
+
+Which QEMU that means depends on the provider. `libvirt` and `proxmox` run the VM on the
+hypervisor host, so that host must meet the floor. All-in-one mode (the `qemu` provider)
+runs QEMU inside the evetest container instead, and `Dockerfile.evetest` pins
+`ALPINE_VERSION=3.21`, whose `qemu` package is 9.1.2 -- so that path is currently exposed
+and cannot be fixed by raising the pin: Alpine's community repository has no stable
+release at or above the floor (3.22 ships 10.0.0, 3.23 ships 10.1.5; only edge, at
+11.1.1, clears it, as of September 2026). Closing the gap means moving the base image
+once a stable Alpine ships qemu 11.1.0 or later; re-check the index at that point.
 
 **macOS note:** the test container is a Linux container and runs normally under Docker
 Desktop. However, Docker Desktop's Linux VM does not support nested virtualization, so
