@@ -395,10 +395,14 @@ func (ec *EdgeCluster) RebootApplication(appUUID uuid.UUID, waitUntilRebooted bo
 // The purge counter is incremented on all devices, but the wait (if requested)
 // is performed only on the device hosting the application. See
 // EdgeDevice.PurgeApplication for volumeGen.
+//
+// Name in excludeDevNames any node that must not be taken for the host, such as
+// one the caller has powered off: the cluster info it published before going
+// down still names it as the host, and waiting there never completes.
 func (ec *EdgeCluster) PurgeApplication(appUUID uuid.UUID, volumeGen VolumeGenerationPolicy,
-	waitUntilPurged bool, timeout time.Duration) {
+	waitUntilPurged bool, timeout time.Duration, excludeDevNames ...string) {
 	ec.checkDevices("PurgeApplication")
-	hostDev := ec.FindDeviceHostingApp(appUUID, timeout)
+	hostDev := ec.FindDeviceHostingApp(appUUID, timeout, excludeDevNames...)
 	ec.forEachDeviceExcept(hostDev, func(dev *EdgeDevice) {
 		dev.PurgeApplication(appUUID, volumeGen, false, 0)
 	})
