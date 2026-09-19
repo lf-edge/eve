@@ -2769,6 +2769,85 @@ func (d *EdgeDevice) WatchNTPSources() (
 	return ch, d.trackWatcherUnsub(unsub)
 }
 
+// EVEKubeAppNamespace is the Kubernetes namespace EVE runs app workloads in;
+// both VMIRS objects and their PVCs live there. See
+// pkg/pillar/kubeapi.EVEKubeNameSpace.
+const EVEKubeAppNamespace = "eve-kube-app"
+
+// appDomainNameLabel holds the owning app's DomainName,
+// "<uuid>.<version>.<appnum>" (the eveLabelKey constant in
+// hypervisor/kubevirt.go). EVE puts this label in the VMIRS
+// spec.selector.matchLabels and in the VMI template, but not in the VMIRS
+// metadata.labels, so attribution reads the selector - the same way pillar
+// attributes a VMIRS in sweepStaleGenerations.
+const appDomainNameLabel = "App-Domain-Name"
+
+// RunKubectl runs kubectl on the device with the given arguments and returns
+// its trimmed standard output. The call goes through "eve exec kube" because
+// kubectl exists only in the kube container, so the device has to be an EVE-K
+// node.
+//
+// The returned error carries kubectl's own standard error, which says why the
+// command was refused. A caller polling a cluster that is still coming up
+// should treat any error as a retryable "not yet": kubectl fails this way
+// while k3s is starting, and that is indistinguishable here from a real
+// refusal.
+func (d *EdgeDevice) RunKubectl(args string, timeout time.Duration) (string, error) {
+	stdout, stderr, err := d.RunShellScript(
+		"eve exec kube kubectl "+args, timeout, 0)
+	if err != nil {
+		return "", fmt.Errorf("kubectl %s: %w (stderr: %s)",
+			args, err, strings.TrimSpace(stderr))
+	}
+	return strings.TrimSpace(stdout), nil
+}
+
+// ListAppVMIRS returns the sorted names of every VMIRS belonging to appUUID,
+// whichever purge generation each one is. A VMIRS name embeds the app's purge
+// counter (base.GetAppKubeNameWithPurge), which makes this the one vantage
+// point from which a stale generation surviving a purge is observable at all:
+// pillar's own DomainStatus is keyed by app UUID and so can only ever describe
+// one of them.
+//
+// Attribution is by the appDomainNameLabel selector rather than the name,
+// since the label value also carries a version and an appnum that do not
+// matter here. An empty list with a nil error means the app has no VMIRS; an
+// error means the list could not be read, which a caller inside an Eventually
+// should retry rather than fail on.
+func (d *EdgeDevice) ListAppVMIRS(
+	appUUID uuid.UUID, timeout time.Duration) ([]string, error) {
+	stdout, err := d.RunKubectl(
+		"-n "+EVEKubeAppNamespace+" get vmirs -o json", timeout)
+	if err != nil {
+		return nil, err
+	}
+	var list struct {
+		Items []struct {
+			Metadata struct {
+				Name string `json:"name"`
+			} `json:"metadata"`
+			Spec struct {
+				Selector struct {
+					MatchLabels map[string]string `json:"matchLabels"`
+				} `json:"selector"`
+			} `json:"spec"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &list); err != nil {
+		return nil, fmt.Errorf("parsing kubectl vmirs output: %w", err)
+	}
+	prefix := appUUID.String() + "."
+	var names []string
+	for _, item := range list.Items {
+		if strings.HasPrefix(
+			item.Spec.Selector.MatchLabels[appDomainNameLabel], prefix) {
+			names = append(names, item.Metadata.Name)
+		}
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
 // GetClusterInfo returns the last recorded information about the Kubernetes
 // cluster, or nil if no such info message has been received yet.
 func (d *EdgeDevice) GetClusterInfo() *eveinfo.ZInfoKubeCluster {
