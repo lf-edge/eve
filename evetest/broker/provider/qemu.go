@@ -1683,7 +1683,29 @@ func getDnsmasqLeases(log *logrus.Entry, leaseFilePath string,
 	return ips, nil
 }
 
-// startSWTPM starts a swtpm process in the given stateDir and socket path.
+// swtpmSocketTimeout bounds the wait for swtpm to bind its control socket.
+const swtpmSocketTimeout = 30 * time.Second
+
+// waitForUnixSocket returns once a connection to path succeeds, or the last
+// dial error once timeout has elapsed. Dialling and closing does not disturb
+// swtpm's control channel: it keeps listening and serves the next client.
+func waitForUnixSocket(path string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		conn, err := net.DialTimeout("unix", path, time.Second)
+		if err == nil {
+			_ = conn.Close()
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return err
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// startSWTPM starts a swtpm process in the given stateDir and socket path and
+// waits until its control socket accepts connections.
 // Returns the PID of the swtpm process, so it can be stopped later.
 func startSWTPM(stateDir, sockPath, logFile string) (pid int, err error) {
 	args := []string{
@@ -1714,6 +1736,17 @@ func startSWTPM(stateDir, sockPath, logFile string) (pid int, err error) {
 		_ = cmd.Wait()
 		_ = logF.Close()
 	}()
+
+	// QEMU dials this socket while parsing -chardev, well before it reaches
+	// QMP, and a failed dial is fatal: it exits with "Failed to connect to
+	// ...: No such file or directory" and the device presents as having
+	// crashed during boot. swtpm binds the socket a few milliseconds after
+	// exec, so hold the caller here until it is connectable.
+	if err := waitForUnixSocket(sockPath, swtpmSocketTimeout); err != nil {
+		_ = cmd.Process.Kill()
+		return 0, fmt.Errorf("swtpm did not open its control socket %q: %w",
+			sockPath, err)
+	}
 	return cmd.Process.Pid, nil
 }
 
