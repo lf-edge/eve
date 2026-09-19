@@ -21,17 +21,26 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// newProxyHandler returns the http.Handler installed on the loopback listener.
-// CONNECT requests are tunneled cost-aware. GET /healthz returns a JSON
-// snapshot of proxy state for live debugging. Anything else is rejected.
+// newProxyHandler returns the http.Handler installed on one of mgmtproxy's
+// listeners. CONNECT requests are tunneled cost-aware. GET /healthz returns a
+// JSON snapshot of proxy state for live debugging. Anything else is rejected.
 //
-// Plain-HTTP forwarding is intentionally not implemented: the relevant egress
-// paths (containerd image pulls, `curl https://get.k3s.io`) all use HTTPS, and
-// CONNECT-only keeps the implementation small and side-effect-free (no header
-// rewriting, no auth header handling, no risk of leaking credentials in logs).
-func newProxyHandler(ctx *mgmtProxyContext) http.Handler {
+// podFacing is true only for the cni0 listener, reachable by every pod on the
+// node (not just CDI importer pods): it hides /healthz, requires the
+// Proxy-Authorization token (checkProxyAuth) and applies the destination
+// policy (resolvePinnedTarget), all in podpolicy.go. The loopback listener
+// needs none of that — host processes are already trusted.
+//
+// Plain-HTTP forwarding is intentionally not implemented: all relevant egress
+// (image pulls, `curl https://get.k3s.io`) is HTTPS, and CONNECT-only keeps
+// this small and side-effect-free.
+func newProxyHandler(ctx *mgmtProxyContext, podFacing bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.Method == http.MethodGet && req.URL.Path == "/healthz" {
+			if podFacing {
+				http.NotFound(w, req)
+				return
+			}
 			handleHealthz(ctx, w)
 			return
 		}
@@ -39,7 +48,19 @@ func newProxyHandler(ctx *mgmtProxyContext) http.Handler {
 			http.Error(w, "mgmtproxy: only CONNECT and GET /healthz are supported", http.StatusMethodNotAllowed)
 			return
 		}
-		handleConnect(ctx, w, req)
+		if podFacing {
+			ready, ok := ctx.checkProxyAuth(req)
+			if !ready {
+				http.Error(w, "mgmtproxy: proxy not ready", http.StatusServiceUnavailable)
+				return
+			}
+			if !ok {
+				w.Header().Set("Proxy-Authenticate", `Basic realm="mgmtproxy"`)
+				http.Error(w, "mgmtproxy: proxy authentication required", http.StatusProxyAuthRequired)
+				return
+			}
+		}
+		handleConnect(ctx, w, req, podFacing)
 	})
 }
 
@@ -92,15 +113,27 @@ func handleHealthz(ctx *mgmtProxyContext, w http.ResponseWriter) {
 	_ = json.NewEncoder(w).Encode(&r)
 }
 
-func handleConnect(ctx *mgmtProxyContext, w http.ResponseWriter, req *http.Request) {
+func handleConnect(ctx *mgmtProxyContext, w http.ResponseWriter, req *http.Request, podFacing bool) {
 	ctx.stats.requests.Add(1)
 	target := req.URL.Host
 	if target == "" {
 		target = req.Host
 	}
-	if _, _, err := net.SplitHostPort(target); err != nil {
+	host, port, err := net.SplitHostPort(target)
+	if err != nil {
 		http.Error(w, "mgmtproxy: bad CONNECT target", http.StatusBadRequest)
 		return
+	}
+
+	if podFacing {
+		pinned, err := resolvePinnedTarget(req.Context(), host, port)
+		if err != nil {
+			log.Warnf("mgmtproxy: CONNECT %s from %s DENIED: %v",
+				target, req.RemoteAddr, err)
+			http.Error(w, "mgmtproxy: destination not allowed", http.StatusForbidden)
+			return
+		}
+		target = pinned
 	}
 
 	// clientAddr is the source of the incoming CONNECT connection.

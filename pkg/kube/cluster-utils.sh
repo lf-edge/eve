@@ -78,9 +78,36 @@ MGMTPROXY_DISABLE_FLAG="/run/kube/mgmtproxy-disable"
 # mgmtproxy. Link-local addresses are not routed by flannel across nodes, so
 # each pod always hits its own node's cni0 and its own node's mgmtproxy.
 # Only used when install_kubevirt=1. Must match mgmtproxy.go:CNI0ListenAddr.
+#
+# Unlike MGMTPROXY_URL above, this listener is reachable by every pod on the
+# node, not just CDI importer pods, so mgmtproxy requires a Proxy-Authorization
+# token and serves it over TLS (see MGMTPROXY_TOKEN_FILE/MGMTPROXY_TLS_CERT_FILE
+# below and patch_cdi_proxy_config()). The scheme is https accordingly.
 MGMTPROXY_CNI0_IP="169.254.100.1"
 # shellcheck disable=SC2034  # used in sourced cluster-init.sh
-MGMTPROXY_CNI0_URL="http://${MGMTPROXY_CNI0_IP}:5443"
+MGMTPROXY_CNI0_URL="https://${MGMTPROXY_CNI0_IP}:5443"
+
+# MGMTPROXY_TOKEN_FILE and MGMTPROXY_TLS_CERT_FILE are where pillar's
+# mgmtproxy persists the cni0 listener's Proxy-Authorization token and its
+# self-signed TLS certificate (mgmtproxy is the sole writer). /persist is
+# bind-mounted identically into the pillar and kube containers, so these
+# paths are directly readable here. Must match pillar's
+# cmd/mgmtproxy/podpolicy.go:TokenFile/TLSCertFile.
+# shellcheck disable=SC2034  # used in sourced cluster-init.sh
+MGMTPROXY_TOKEN_FILE="/persist/vault/mgmtproxy/token"
+# shellcheck disable=SC2034  # used in sourced cluster-init.sh
+MGMTPROXY_TLS_CERT_FILE="/persist/vault/mgmtproxy/cert.pem"
+
+# Namespace/name/key of the ConfigMap patch_cdi_proxy_config() publishes
+# MGMTPROXY_TLS_CERT_FILE's content to, so importer pods can validate
+# mgmtproxy's cni0 TLS certificate via CDI's trustedCAProxy. Must match the
+# convention CDI's ImportProxy.TrustedCAProxy documents.
+# shellcheck disable=SC2034  # used in sourced cluster-init.sh
+MGMTPROXY_CNI0_CA_CONFIGMAP_NAMESPACE="cdi"
+# shellcheck disable=SC2034  # used in sourced cluster-init.sh
+MGMTPROXY_CNI0_CA_CONFIGMAP_NAME="mgmtproxy-cni0-ca"
+# shellcheck disable=SC2034  # used in sourced cluster-init.sh
+MGMTPROXY_CNI0_CA_CONFIGMAP_KEY="ca.pem"
 
 # mgmtproxy_enabled: returns 0 if the proxy env should be injected, 1 if not.
 mgmtproxy_enabled() {
