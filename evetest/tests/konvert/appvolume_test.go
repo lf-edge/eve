@@ -117,6 +117,12 @@ func TestKvmToKRepartitionAppVolume(test *testing.T) {
 	evetest.Checkpoint("baseline-small")
 
 	// Phase 2.
+	conversionOK := false
+	defer func() {
+		if !conversionOK {
+			dumpConversionFailure(device)
+		}
+	}()
 	log.Infof("kvm→kvm hop: landing the conversion code at %s", p.targetVersion)
 	device.UpgradeEVE(p.targetVersion, evetest.HypervisorKVM,
 		evetest.BaseOSDatastoreHTTP, true, false, conversionUpgradeTimeout)
@@ -188,12 +194,6 @@ func TestKvmToKRepartitionAppVolume(test *testing.T) {
 	log.Infof("armed %s so a torn volume is kept, not deleted", appVolumeKeepCorruptMarker)
 
 	// Phase 5.
-	conversionOK := false
-	defer func() {
-		if !conversionOK {
-			dumpConversionFailure(device)
-		}
-	}()
 	log.Infof("kvm→k hop: arming the offline shrink with the volume in it")
 	// Not waiting for EVE to commit the new partition. Committing is a trial
 	// period that runs long after the device is already up on the target, and
