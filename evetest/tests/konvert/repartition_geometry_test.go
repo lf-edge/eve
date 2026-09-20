@@ -56,6 +56,12 @@ func TestKvmToKRepartitionGeometry(test *testing.T) {
 		p.initialVersion, startGeometry)
 	evetest.Checkpoint("baseline-captured")
 
+	conversionOK := false
+	defer func() {
+		if !conversionOK {
+			dumpConversionFailure(device)
+		}
+	}()
 	log.Infof("kvm→kvm hop: landing the conversion code at %s", p.targetVersion)
 	device.UpgradeEVE(p.targetVersion, evetest.HypervisorKVM,
 		evetest.BaseOSDatastoreHTTP, true, false, conversionUpgradeTimeout)
@@ -63,12 +69,6 @@ func TestKvmToKRepartitionGeometry(test *testing.T) {
 	assertGeometryUnchanged(t, device, startGeometry)
 	evetest.Checkpoint("conversion-code-landed")
 
-	conversionOK := false
-	defer func() {
-		if !conversionOK {
-			dumpConversionFailure(device)
-		}
-	}()
 	// The offline repartition boots once more than an upgrade does; declared
 	// before the update that causes it.
 	device.ExpectReboots(1)

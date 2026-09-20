@@ -69,6 +69,12 @@ func dumpConversionFailure(device *evetest.EdgeDevice) {
 			"echo resize-reboots=$(cat /config/resize-reboots 2>/dev/null)"},
 		{"zboot status", "zboot status 2>&1 || true"},
 		{"BaseOsStatus", "eve exec pillar sh -c 'cat /run/baseosmgr/BaseOsStatus/*.json 2>/dev/null' || echo NONE"},
+		// The broker's log stream can stop minutes before the failure, and the
+		// collect-info tarball is a separate transfer that can fail on its own,
+		// so newlog is the only carrier of the device's own account that is
+		// still readable here.
+		{"baseos errors (newlog)", newlogProbe(
+			`grep -aiE "baseosmgr|downloader|verifier" | grep -aiE "error|fail|refus" | tail -60`)},
 		{"partitions", partsLsblk},
 	})
 }

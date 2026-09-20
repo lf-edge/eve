@@ -122,6 +122,12 @@ func TestKvmToKRepartitionNoVolmig(test *testing.T) {
 	evetest.Checkpoint("baseline-small")
 
 	// Phase 2.
+	conversionOK := false
+	defer func() {
+		if !conversionOK {
+			dumpConversionFailure(device)
+		}
+	}()
 	log.Infof("kvm→kvm hop: landing the conversion code at %s", p.targetVersion)
 	device.UpgradeEVE(p.targetVersion, evetest.HypervisorKVM,
 		evetest.BaseOSDatastoreHTTP, true, false, conversionUpgradeTimeout)
@@ -171,12 +177,6 @@ func TestKvmToKRepartitionNoVolmig(test *testing.T) {
 	evetest.Checkpoint("app-deleted")
 
 	// Phase 6.
-	conversionOK := false
-	defer func() {
-		if !conversionOK {
-			dumpConversionFailure(device)
-		}
-	}()
 	// The offline repartition boots once more than an upgrade does: its
 	// intermediate resize boot is invisible to the controller, so the audit at
 	// teardown would see one reboot the upgrade did not account for. Declared
