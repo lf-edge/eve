@@ -139,6 +139,12 @@ func TestKvmToKZFSVaultMigration(test *testing.T) {
 
 	// Phase 3. The flavor change triggers the migration, which declines; EVE
 	// marks the EVE-K baseos FAILED and the device returns on the kvm partition.
+	declineOK := false
+	defer func() {
+		if !declineOK {
+			dumpVaultState(device)
+		}
+	}()
 	log.Infof("kvm→k update: the vault migration must decline and the update revert")
 	device.UpgradeEVE(p.targetVersion, evetest.HypervisorKubevirt,
 		evetest.BaseOSDatastoreHTTP, true, true, conversionUpgradeTimeout)
@@ -167,6 +173,7 @@ func TestKvmToKZFSVaultMigration(test *testing.T) {
 	assertMarkerFile(t, device, zfsVaultMarkerPath, zfsVaultMarkerText)
 	t.Expect(readSwapMarker(t, device)).To(Equal("NONE"),
 		"a swap record survived an abandoned migration")
+	declineOK = true
 	evetest.Checkpoint("no-leftovers-after-decline")
 
 	// Phase 6. This is the operator-visible form of the same property: a leaked

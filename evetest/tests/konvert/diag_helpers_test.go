@@ -79,6 +79,23 @@ func dumpConversionFailure(device *evetest.EdgeDevice) {
 	})
 }
 
+// dumpVaultState captures whether the vault dataset is merely unmounted or has
+// actually lost its content. A missing marker file cannot tell those apart, and
+// they mean very different things: the first is a boot that did not unlock, the
+// second is data loss.
+func dumpVaultState(device *evetest.EdgeDevice) {
+	runProbes(device, "vault state", []probe{
+		{"vault dataset", "eve exec pillar zfs get -Hp -o property,value " +
+			"type,mounted,canmount,mountpoint,used " + vaultDataset + " 2>&1 || echo none"},
+		{"vault directory", "eve exec pillar ls -la /persist/vault 2>&1 || echo none"},
+		{"persist datasets", "eve exec pillar zfs list -H -t all " +
+			"-o name,type,mounted,used,available -r persist 2>&1 || echo none"},
+		{"VaultStatus", `eve exec pillar sh -c "cat /run/vaultmgr/VaultStatus/*.json 2>/dev/null" || echo NONE`},
+		{"vaultmgr errors (newlog)", newlogProbe(
+			`grep -aiE "vaultmgr|zfs" | grep -aiE "error|fail|unlock|mount" | tail -60`)},
+	})
+}
+
 // dumpAppNetwork snapshots what stands between the controller and the app: the
 // port-forward rules, the app's own network status, and the node's addresses.
 // Taken on both flavors so a working baseline can be diffed against a failure.
