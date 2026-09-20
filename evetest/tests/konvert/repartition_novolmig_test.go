@@ -124,7 +124,7 @@ func TestKvmToKRepartitionNoVolmig(test *testing.T) {
 	// Phase 2.
 	log.Infof("kvm→kvm hop: landing the conversion code at %s", p.targetVersion)
 	device.UpgradeEVE(p.targetVersion, evetest.HypervisorKVM,
-		evetest.BaseOSDatastoreHTTP, true, false)
+		evetest.BaseOSDatastoreHTTP, true, false, conversionUpgradeTimeout)
 	log.Infof("the hop must not have moved the geometry")
 	assertSmallGeometry(t, device)
 	log.Infof("the pre-flight check must decide %q", decision)
@@ -184,7 +184,7 @@ func TestKvmToKRepartitionNoVolmig(test *testing.T) {
 	device.ExpectReboots(1)
 	log.Infof("kvm→k hop: arming the offline %s", decision)
 	device.UpgradeEVE(p.targetVersion, evetest.HypervisorKubevirt,
-		evetest.BaseOSDatastoreHTTP, true, false)
+		evetest.BaseOSDatastoreHTTP, true, false, conversionUpgradeTimeout)
 	conversionOK = true
 	evetest.Checkpoint("conversion-complete")
 

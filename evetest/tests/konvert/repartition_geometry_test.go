@@ -58,7 +58,7 @@ func TestKvmToKRepartitionGeometry(test *testing.T) {
 
 	log.Infof("kvm→kvm hop: landing the conversion code at %s", p.targetVersion)
 	device.UpgradeEVE(p.targetVersion, evetest.HypervisorKVM,
-		evetest.BaseOSDatastoreHTTP, true, false)
+		evetest.BaseOSDatastoreHTTP, true, false, conversionUpgradeTimeout)
 	log.Infof("the hop must not have moved the geometry")
 	assertGeometryUnchanged(t, device, startGeometry)
 	evetest.Checkpoint("conversion-code-landed")
@@ -74,7 +74,7 @@ func TestKvmToKRepartitionGeometry(test *testing.T) {
 	device.ExpectReboots(1)
 	log.Infof("kvm→k hop: running the repartition")
 	device.UpgradeEVE(p.targetVersion, evetest.HypervisorKubevirt,
-		evetest.BaseOSDatastoreHTTP, true, false)
+		evetest.BaseOSDatastoreHTTP, true, false, conversionUpgradeTimeout)
 	conversionOK = true
 	evetest.Checkpoint("conversion-complete")
 
