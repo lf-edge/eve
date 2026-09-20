@@ -68,13 +68,42 @@ considers present is never re-pulled, and this fallback is the only path.
 The failure mode is **not** a disk-full error during conversion — kubelet's
 eviction manager fires first, at a hard floor of **5% of `/persist`**. A
 conversion must fit *above* that floor, not merely fit on the disk. Below it,
-pods are evicted with an explicit ephemeral-storage reason; recovery is
-automatic once space is returned, but lags by kubelet's eviction-pressure
-transition period (5 minutes by default).
+pods are evicted with an explicit ephemeral-storage reason, and the node stays
+tainted for kubelet's eviction-pressure transition period (5 minutes by
+default) after the condition clears. Whether the app then comes back depends on
+whether its image survived — see below.
 
 For an upgrade to convert without tripping this, `/persist` needs free space
 exceeding 5% of the partition plus ~0.55x the existing overlayfs population. The
 5% term usually dominates.
+
+### Disk pressure destroys app images permanently
+
+Eviction is not the worst of it. Before evicting, kubelet garbage-collects
+container images it considers unused, to free the space itself. On an ordinary
+Kubernetes node that is harmless — the image is pulled again next time.
+
+On EVE it is not. Pillar imports app images straight into containerd and sets
+`imagePullPolicy: Never`, because there is no registry for the node to pull
+from: the image arrived through the EVE datastore. Once kubelet deletes it, the
+app cannot start again and nothing on the device can recover it. The pod sits in
+`ErrImageNeverPull` indefinitely, and returning the disk space does not help.
+
+Observed on a device driven below the threshold: kubelet logged
+`"Removing image to free bytes"` for several images, after which *both* deployed
+apps — including one that had been running happily — were stuck in
+`ErrImageNeverPull` and stayed there.
+
+This is a pre-existing EVE exposure rather than something the EROFS work
+introduces, but the conversion makes it more reachable: converting transiently
+needs ~1.55x the space of what it is converting, which is precisely the
+condition that provokes kubelet's image GC. Sizing a device so that the
+conversion never approaches the threshold is therefore not merely about
+avoiding a slow boot.
+
+Mitigating it properly means keeping EVE's app images out of kubelet's reach —
+containerd supports pinning images against GC, and CRI exposes a pinned-image
+concept for exactly this case — rather than relying on headroom.
 
 ## Reclaiming the superseded snapshots
 
@@ -144,6 +173,8 @@ belong to the shipped payload; regular files are images converted on the device.
 - **A conversion performed by CRI is invisible.** It happens inside container
   creation, so a slow first pod start after an upgrade cannot be distinguished
   from a hang.
+- **EVE app images are not pinned against kubelet's image GC**, so disk pressure
+  can delete them irrecoverably (see above). Unfixed.
 
 ## See also
 

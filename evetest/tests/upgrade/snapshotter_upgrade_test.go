@@ -244,21 +244,21 @@ func TestSnapshotterUpgrade(test *testing.T) {
 	appUUID := devConfig.AddApplication(
 		snapshotterTestApp("snapshotter-app", niUUID, virtMode))
 
-	// Under CONSTRAIN_PERSIST a second app is deployed but left deactivated,
-	// so that the test controls the moment its first container is created --
-	// and can therefore squeeze the disk exactly then. Squeezing before the
-	// upgrade instead would starve the rootfs download and fail the upgrade
-	// for an unrelated reason.
+	// Under CONSTRAIN_PERSIST a second app is added, so the test controls the
+	// moment a container is created and can squeeze the disk exactly then.
+	// Squeezing before the upgrade instead would starve the rootfs download
+	// and fail the upgrade for an unrelated reason.
 	//
-	// Whether this ends up exercising a *conversion* (image already unpacked
-	// for overlayfs by the initial release) or a first unpack depends on
-	// whether EVE materialises volumes for an inactive app; the assertions
-	// below hold either way, since both need room on /persist.
+	// It is deployed *activated* and only deactivated once it has run. EVE
+	// does not materialise an image for an app that has never been activated
+	// -- deploying it inactive leaves containerd with no record of the image
+	// at all, so reactivating it later fails with ErrImageNeverPull (pillar
+	// sets imagePullPolicy: Never) whatever the disk looks like, and the test
+	// would report a space failure that was nothing of the kind.
 	var secondAppUUID uuid.UUID
 	if constrainPersist {
-		secondApp := snapshotterTestApp("snapshotter-app-2", niUUID, virtMode)
-		secondApp.Activate = false
-		secondAppUUID = devConfig.AddApplication(secondApp)
+		secondAppUUID = devConfig.AddApplication(
+			snapshotterTestApp("snapshotter-app-2", niUUID, virtMode))
 	}
 	device.ApplyConfig(devConfig, false, false)
 
@@ -282,6 +282,13 @@ func TestSnapshotterUpgrade(test *testing.T) {
 			"app %s must still be emitting heartbeats (%s)", uuidToCheck, what)
 	}
 	expectAppAlive("before upgrade", appUUID)
+
+	// Let the second app run once so its image is imported, then park it.
+	// Its container is recreated later, under disk pressure.
+	if constrainPersist {
+		device.WaitUntilAppIsRunning(secondAppUUID, appStartBudget)
+		device.DeactivateApplication(secondAppUUID, true, appStartBudget)
+	}
 	evetest.Checkpoint("app-running-pre-upgrade")
 
 	// The whole test rests on the initial release having populated the
