@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
 ARG PLATFORM=generic
 
-FROM lfedge/eve-alpine:d075dd224fa7a7540817d224cc28d3cd998ad04c AS build-base
+FROM lfedge/eve-alpine:ef20bcb617db5545765f4d7486621cf606e5595e AS build-base
 
 ARG TARGETARCH
 
@@ -122,7 +122,7 @@ RUN if [ "${TARGETARCH}" = "arm64" ]; then \
 
 # generate initrd for Intel's and AMD's microcode
 # it makes sense only for x86_64 platform
-FROM --platform=${TARGETPLATFORM} lfedge/eve-alpine:d075dd224fa7a7540817d224cc28d3cd998ad04c AS ucode-build-common
+FROM --platform=${TARGETPLATFORM} lfedge/eve-alpine:ef20bcb617db5545765f4d7486621cf606e5595e AS ucode-build-common
 RUN mkdir -p /boot /tmp/ucode/intel /tmp/ucode/amd /usr/share/licenses/ucode
 # Ensure /sbom-out/lib/apk/db/installed exists for all archs so the COPY in
 # compactor-common works even when no ucode registrations run (arm64/riscv64).
@@ -170,7 +170,7 @@ FROM ucode-build-common AS ucode-build-arm64
 FROM ucode-build-common AS ucode-build-riscv64
 FROM ucode-build-${TARGETARCH} AS ucode-build
 
-FROM lfedge/eve-alpine:d075dd224fa7a7540817d224cc28d3cd998ad04c AS compactor-common
+FROM lfedge/eve-alpine:ef20bcb617db5545765f4d7486621cf606e5595e AS compactor-common
 ENTRYPOINT []
 WORKDIR /
 # Reset the APK DB so the final image only reports source-built/firmware packages
@@ -254,7 +254,7 @@ RUN if [ "$TARGETARCH" = "arm64" ]; then \
     fi
 
 
-FROM lfedge/eve-alpine:d075dd224fa7a7540817d224cc28d3cd998ad04c AS compactor-full
+FROM lfedge/eve-alpine:ef20bcb617db5545765f4d7486621cf606e5595e AS compactor-full
 # Reset the APK DB so the final image only reports source-built/firmware packages
 RUN rm -f /lib/apk/db/installed && register-sbom-pkg.sh -o /
 COPY --from=build /sbom-out/lib/apk/db/installed /tmp/sbom-fw
