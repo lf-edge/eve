@@ -790,7 +790,7 @@ func (d *EdgeDevice) waitForUpgrade(targetShortVersion string, upgradeWait time.
 	ctx, cancel := context.WithTimeout(d.th.ctx, upgradeWait)
 	defer cancel()
 
-	var lastLoggedState, lastLoggedStatus string
+	var lastLoggedState, lastLoggedStatus, lastLoggedRetry string
 	for {
 		select {
 		case msg, ok := <-infoCh:
@@ -802,6 +802,21 @@ func (d *EdgeDevice) waitForUpgrade(targetShortVersion string, upgradeWait time.
 					continue
 				}
 				if sw.GetUserStatus() == eveinfo.BaseOsStatus_FAILED {
+					// Pillar reports FAILED for any non-empty error description,
+					// including a transient it has already scheduled a retry for --
+					// a datastore config that has not yet reached the downloader,
+					// say. Those clear themselves, so a failure is terminal only
+					// when no retry is pending.
+					if swErr := sw.GetSwErr(); swErr.GetRetryCondition() != "" &&
+						swErr.GetSeverity() < eveinfo.Severity_SEVERITY_ERROR {
+						if swErr.GetDescription() != lastLoggedRetry {
+							d.th.log.Infof("Device %q reported a retrying upgrade "+
+								"error, waiting (%s): %s", d.devName,
+								swErr.GetRetryCondition(), swErr.GetDescription())
+							lastLoggedRetry = swErr.GetDescription()
+						}
+						continue
+					}
 					// FAILED is reached by an override that keys off SwErr and
 					// leaves SubStatusStr alone, so the progress string still
 					// narrates the step the device was on -- "Download 0% done"
