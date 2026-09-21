@@ -29,6 +29,16 @@ import (
 
 const AWSS3IDENTIFIER = "amazonaws"
 
+const (
+	// A submission refused by the zedUpload transport because its request
+	// queue is full is retried with this backoff (see postWithRetry).
+	postRetryMinDelay = 100 * time.Millisecond
+	postRetryMaxDelay = 5 * time.Second
+	// stallCheckInterval is how often a download waiting on the transport is
+	// checked for having received no message at all (see awaitResponse).
+	stallCheckInterval = 10 * time.Second
+)
+
 // on-disk format with self-check
 type progressFile struct {
 	Version int                   `json:"version"`
@@ -273,8 +283,12 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		return "", cancel, tracedReq, errors.New("NewRequest failed")
 	}
 	req = req.WithDoneParts(downloadedParts)
-	req = req.WithCancel(context.Background())
-	defer req.Cancel()
+	// Cancelling reqCtx cancels the request (WithCancel derives its context
+	// from reqCtx) and also wakes up a submission still waiting for room in
+	// the transport's request queue.
+	reqCtx, cancelReq := context.WithCancel(context.Background())
+	defer cancelReq()
+	req = req.WithCancel(reqCtx)
 	req = req.WithLogger(logger)
 
 	// Tell caller where we can be cancelled
@@ -295,7 +309,7 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 				errStr := fmt.Sprintf("cancelled by user: <%s>, <%s>, <%s>",
 					dpath, region, filename)
 				log.Error(errStr)
-				_ = req.Cancel()
+				cancelReq()
 			} else {
 				log.Warnf("cancelChan closed")
 				return
@@ -303,10 +317,20 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		}
 	}()
 
-	req.Post()
+	if err := postWithRetry(reqCtx, req.Post, maxStalledTime, filename); err != nil {
+		log.Error(err)
+		return "", cancel, tracedReq, err
+	}
 
+	stallCheck := time.NewTicker(stallCheckInterval)
+	defer stallCheck.Stop()
 	lastProgress := time.Now()
-	for resp := range respChan {
+	for {
+		resp, waitErr := awaitResponse(respChan, stallCheck.C, lastProgress, filename)
+		if waitErr != nil {
+			log.Error(waitErr)
+			return "", cancel, tracedReq, waitErr
+		}
 		newDownloadedParts := resp.GetDoneParts()
 		newDownloadedPartsHash := newDownloadedParts.Hash()
 		if downloadedPartsHash != newDownloadedPartsHash {
@@ -359,12 +383,6 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 			resp.GetLocalName(), resp.GetAsize())
 		return req.GetContentType(), cancel, tracedReq, nil
 	}
-	// if we got here, channel was closed
-	// range ends on a closed channel, which is the equivalent of "!ok"
-	errStr := fmt.Sprintf("respChan EOF for <%s>, <%s>, <%s>",
-		dpath, region, filename)
-	log.Errorln(errStr)
-	return "", cancel, tracedReq, errors.New(errStr)
 }
 
 // objectMetaData resolves a tag to a sha and returns the sha
@@ -422,8 +440,9 @@ func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		return sha256, cancel, errors.New("NewRequest failed")
 	}
 
-	req = req.WithCancel(context.Background())
-	defer req.Cancel()
+	reqCtx, cancelReq := context.WithCancel(context.Background())
+	defer cancelReq()
+	req = req.WithCancel(reqCtx)
 
 	// Tell caller where we can be cancelled
 	cancelChan := make(chan Notify, 1)
@@ -443,7 +462,7 @@ func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 				errStr := fmt.Sprintf("cancelled by user: <%s>, <%s>, <%s>",
 					dpath, region, filename)
 				log.Error(errStr)
-				_ = req.Cancel()
+				cancelReq()
 			} else {
 				log.Warnf("cancelChan closed")
 				return
@@ -451,10 +470,20 @@ func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		}
 	}()
 
-	req.Post()
+	if err := postWithRetry(reqCtx, req.Post, maxStalledTime, filename); err != nil {
+		log.Error(err)
+		return sha256, cancel, err
+	}
 
+	stallCheck := time.NewTicker(stallCheckInterval)
+	defer stallCheck.Stop()
 	lastProgress := time.Now()
-	for resp := range respChan {
+	for {
+		resp, waitErr := awaitResponse(respChan, stallCheck.C, lastProgress, filename)
+		if waitErr != nil {
+			log.Error(waitErr)
+			return sha256, cancel, waitErr
+		}
 		if resp.IsDnUpdate() {
 			if time.Since(lastProgress) > maxStalledTime {
 				err := fmt.Errorf("Cancelling due to no progress for %s in %v",
@@ -478,10 +507,64 @@ func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 			filename, resp.GetSha256())
 		return sha256, cancel, nil
 	}
-	// if we got here, channel was closed
-	// range ends on a closed channel, which is the equivalent of "!ok"
-	errStr := fmt.Sprintf("respChan EOF for <%s>, <%s>, <%s>",
-		dpath, region, filename)
-	log.Errorln(errStr)
-	return sha256, cancel, errors.New(errStr)
+}
+
+// postWithRetry submits a request to the zedUpload transport by calling post
+// until the request is accepted. The transport does not block when its request
+// queue (eleven entries by default) is full; it refuses the request with
+// SyncerRetry instead, which is what happens when many downloads start at
+// once. A refused request used to be forgotten, and its caller then waited
+// forever for a response that no worker would ever produce. Retries back off
+// from postRetryMinDelay to postRetryMaxDelay and stop when ctx is cancelled or
+// once the queue has stayed full for maxWait, so that the attempt fails like
+// any other download error instead of hanging.
+func postWithRetry(ctx context.Context, post func() error, maxWait time.Duration,
+	name string) error {
+	deadline := time.Now().Add(maxWait)
+	delay := postRetryMinDelay
+	for attempt := 1; ; attempt++ {
+		err := post()
+		if !errors.Is(err, zedUpload.SyncerRetry) {
+			return err
+		}
+		if attempt == 1 {
+			log.Warnf("Transport request queue is full, retrying submission of %s", name)
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("transport request queue full for %v, giving up on %s: %w",
+				maxWait, name, err)
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("submission of %s cancelled: %w", name, ctx.Err())
+		case <-time.After(delay):
+		}
+		delay *= 2
+		if delay > postRetryMaxDelay {
+			delay = postRetryMaxDelay
+		}
+	}
+}
+
+// awaitResponse returns the next message the transport sends on respChan. It
+// fails when respChan is closed without a final response, and when no message
+// at all has arrived within maxStalledTime of lastProgress: a request nobody
+// is working on stays silent forever, so a stall check that only runs on
+// incoming messages would never notice it. stallCheck paces those checks.
+func awaitResponse(respChan <-chan *zedUpload.DronaRequest, stallCheck <-chan time.Time,
+	lastProgress time.Time, name string) (*zedUpload.DronaRequest, error) {
+	for {
+		select {
+		case resp, ok := <-respChan:
+			if !ok {
+				return nil, fmt.Errorf("respChan EOF for <%s>", name)
+			}
+			return resp, nil
+		case <-stallCheck:
+			if stalled := time.Since(lastProgress); stalled > maxStalledTime {
+				return nil, fmt.Errorf("no response from the transport for %s in %v, cancelling",
+					name, stalled)
+			}
+		}
+	}
 }
