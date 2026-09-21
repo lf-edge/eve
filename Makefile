@@ -524,7 +524,11 @@ $(DOCKERFILE_FROM_CHECKER): $(DOCKERFILE_FROM_CHECKER_DIR)/*.go $(DOCKERFILE_FRO
 # pkg/installer is deliberately not ignored: it copies binaries out of
 # pkg/debug (recovertpm among them), so a stale FROM hash silently ships an
 # installer whose TPM verification runs an outdated recovertpm.
-IGNORE_DOCKERFILE_HASHES_PKGS=alpine
+# acrn, acrn-kernel and kvm-tools were removed from master before the
+# alpine 3.22 bump and stay pinned to the last published alpine 3.16
+# based eve-alpine on this branch: their upstream sources (ACRN 2.x,
+# qemu 5.2) do not build with the alpine 3.22 toolchain.
+IGNORE_DOCKERFILE_HASHES_PKGS=alpine acrn acrn-kernel kvm-tools
 IGNORE_DOCKERFILE_HASHES_EVE_TOOLS=bpftrace-compiler
 
 IGNORE_DOCKERFILE_DOT_GO_DIR=$(shell find .go/ -name Dockerfile -exec echo "-i {}" \;)
