@@ -20,7 +20,7 @@
 | timer.gc.vdisk | integer in seconds | 1 hour | garbage collect unused instance virtual disk |
 | timer.defer.content.delete | integer in seconds | zero | if set, keep content trees around for reuse after they have been deleted |
 | timer.download.retry | integer in seconds | 600 | retry a failed download |
-| timer.download.stalled | integer in seconds | 600 | cancel a stalled download |
+| timer.download.stalled | integer in seconds | 600 | cancel a download that has made no progress, or has not been picked up by the transport, for this long |
 | timer.boot.retry | integer in seconds | 600 | retry a failed domain boot |
 | timer.port.georedo | integer in seconds | 1 hour | redo IP geolocation |
 | timer.port.georetry | integer in seconds | 600 | retry geolocation after failure |
