@@ -802,13 +802,14 @@ func (d *EdgeDevice) waitForUpgrade(targetShortVersion string, upgradeWait time.
 					continue
 				}
 				if sw.GetUserStatus() == eveinfo.BaseOsStatus_FAILED {
-					// SubStatusStr narrates progress through the normal
-					// download/verify/install sequence and is often empty
-					// for a failure outside that sequence -- SwErr is the
-					// dedicated error field pillar sets in that case.
-					reason := sw.GetSubStatusStr()
+					// FAILED is reached by an override that keys off SwErr and
+					// leaves SubStatusStr alone, so the progress string still
+					// narrates the step the device was on -- "Download 0% done"
+					// for a download that failed outright. SwErr carries the
+					// error itself and is what the status was derived from.
+					reason := sw.GetSwErr().GetDescription()
 					if reason == "" {
-						reason = sw.GetSwErr().GetDescription()
+						reason = sw.GetSubStatusStr()
 					}
 					if reason == "" {
 						reason = "no failure reason reported by the device"
