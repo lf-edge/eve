@@ -158,6 +158,7 @@ func TestKvmToKZFSVaultPowerCutMidSwap(test *testing.T) {
 	// does not hold the contents. EVE-kvm carries no migration code, so nothing
 	// on that boot can put them back.
 	vaultType := zfsProperty(t, device, "type", vaultDataset)
+	waitVaultUnlocked(t, device)
 	marker, markerErr := runEVE(device, "eve exec pillar cat "+powerCutMarkerPath)
 	if vaultType != "volume" || markerErr != nil ||
 		strings.TrimSpace(marker) != powerCutMarkerText {

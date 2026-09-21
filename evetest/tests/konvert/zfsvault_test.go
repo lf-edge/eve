@@ -170,6 +170,7 @@ func TestKvmToKZFSVaultMigration(test *testing.T) {
 	log.Infof("the vault must still be an unmigrated filesystem dataset, with its content")
 	t.Expect(zfsProperty(t, device, "type", vaultDataset)).To(Equal("filesystem"),
 		"the vault is no longer a filesystem dataset after a declined migration")
+	waitVaultUnlocked(t, device)
 	assertMarkerFile(t, device, zfsVaultMarkerPath, zfsVaultMarkerText)
 	t.Expect(readSwapMarker(t, device)).To(Equal("NONE"),
 		"a swap record survived an abandoned migration")
