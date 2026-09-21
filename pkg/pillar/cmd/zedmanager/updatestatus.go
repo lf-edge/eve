@@ -256,6 +256,18 @@ func doUpdate(ctx *zedmanagerContext,
 		changed = true
 	}
 
+	// BringDown is the purge still tearing the old domain down, and
+	// doInstall deliberately skips its "volumes are CREATED_VOLUME" gate in
+	// that phase. Activating here would bring the app up on volumes that are
+	// being recreated -- a PVC exists and attaches from the moment it is
+	// bound, so the domain can boot on one with no content in it yet.
+	// updateAIStatusUUID already routes BringDown to removeAIStatus; every
+	// other caller of doUpdate needs the same answer.
+	if status.PurgeInprogress == types.BringDown {
+		log.Functionf("doUpdate(%s): purge bringing down, not activating", uuidStr)
+		return changed
+	}
+
 	c, done := doPrepare(ctx, config, status)
 	changed = changed || c
 	if !done {
