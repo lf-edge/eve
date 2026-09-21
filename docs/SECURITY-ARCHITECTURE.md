@@ -67,7 +67,7 @@ Given the complexity of designing such a protocol for EVE (especially solving th
 
 If there's an attempted modification of either controller's address (stored in /config/server) and controller's Root CA (/config/root-certificate.pem) Edge Node should get disconnected from the controller and should be forced to do a hardware-assisted clear operation and start all over again.
 
-In the current implementation of EVE, if TPM is available, controller's address and controller's Root CA are measured into TPM as part of vault key access control policy meaning any changes in those data will prevent the system to get access to the vault key at the next boot up.
+In the current implementation of EVE, if TPM is available, controller's address and controller's Root CA are measured into TPM as part of vault key access control policy meaning any changes in those data will prevent the system to get access to the vault key at the next boot up. Both files live in the CONFIG partition, which is measured into PCR 14 file by file; [MEASURED-CONFIG](MEASURED-CONFIG.md) describes which files are covered and how the resulting event log is used to identify what changed.
 
 ### EVE trusting side-channel configuration
 
@@ -165,7 +165,7 @@ The controller can instruct EVE to adopt a specific set of PCRs for sealing oper
 
 ## Disabling Remote Access
 
-EVE provides a mechanism to build an image with remote access disabled (edge-view and ssh), this can be done by configuring EVE when building an installer. Enabling remote access back requires access to the cloud controller to enable console keyboard access on the edge node, plus physical access to the edge node to issue `eve remote-access` command on the edge node. In addition changing remote access status from its initial value to anything else will result in change of PCR-14 value and subsequent failure in unsealing the vault key that needs to be handled using the cloud controller. Check [config document](CONFIG.md#eve-configuration) for more information.
+EVE provides a mechanism to build an image with remote access disabled (edge-view and ssh), this can be done by configuring EVE when building an installer. Enabling remote access back requires access to the cloud controller to enable console keyboard access on the edge node, plus physical access to the edge node to issue `eve remote-access` command on the edge node. In addition changing remote access status from its initial value to anything else will result in change of PCR-14 value and subsequent failure in unsealing the vault key that needs to be handled using the cloud controller (see [MEASURED-CONFIG](MEASURED-CONFIG.md)). Check [config document](CONFIG.md#eve-configuration) for more information.
 
 ## Details on keys and certificates
 
