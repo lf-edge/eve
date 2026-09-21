@@ -779,7 +779,7 @@ enrollment but also across EVE-OS updates. An update changes the measured-boot
 PCR values, so the device's TPM can no longer locally unseal the vault key: the
 device must reach the controller to complete remote attestation and receive the
 encrypted backup key before it can unlock the vault (see
-[Encrypted Data Store](SECURITY-ARCHITECTURE.md#encrypted-data-store)). Because
+[Encrypted Application and User Storage](SECURITY-ARCHITECTURE.md#encrypted-application-and-user-storage)). Because
 the 802.1X client certificate's private key is itself kept in the vault, the
 port cannot be authenticated until *after* the vault is unlocked — so this
 controller round-trip depends entirely on the bootstrap VLAN, exactly as during
