@@ -465,6 +465,12 @@ func TestApplicationConnectivitySuite(test *testing.T) {
 //     (real cloud datastores).
 //   - TestContainerRegistry -- pulls from Docker Hub (or the configured
 //     pull-through mirror).
+//   - TestDownloadBurstWithDeadMgmtPorts -- a burst of concurrent downloads
+//     on a device whose management ports mostly cannot reach the datastore
+//     must all complete although the downloader's transport, configured with
+//     a single worker, refuses requests; regression test for downloads
+//     hanging forever at 0% after the downloader dropped such a request.
+//     Needs its own five-port network model and a reboot, hence placed last.
 func TestDatastoreSuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
@@ -491,6 +497,9 @@ func TestDatastoreSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestContainerRegistry,
+		},
+		evetest.TestCase{
+			Test: TestDownloadBurstWithDeadMgmtPorts,
 		},
 	)
 }
