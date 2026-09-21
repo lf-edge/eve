@@ -12,6 +12,29 @@ The client communicates with the server over UNIX socket
 
 The UI is rendered on a local TTY (/dev/tty2) only i.e. on a physical monitor attached to the system. Neither Serial Console nor SSH connection has access to TUI. It is done to ensure the physical presence of the operator.
 
+## Security properties
+
+The server accepts three requests over the UNIX socket, and together they bound everything a local operator can change:
+
+| Request | Effect |
+| --- | --- |
+| `SetInterfaceConfig` | Publishes a manual device port configuration, produced by patching the device's current one |
+| `SetServer` | Rewrites `/config/server`, the controller address. Offered only before the device is onboarded |
+| `RevertManualConfig` | Withdraws the manual port configuration, so EVE falls back to the next-highest-priority one |
+
+There is no authentication on the socket. Physical presence is what stands in for it: the TUI renders only on `/dev/tty2`, as described above, so there is no network path to these operations.
+
+Changing the controller address is restricted further, but by the client rather than by the server. Once onboarding status is `Onboarded` the client answers the request with `The node is onboarded and the server URL cannot be changed.`; before that it opens the dialog prefilled with the current value, so an address that is already set can be changed and not only an empty one filled in. The server side writes whatever `SetServer` carries, so the restriction bounds the supported path rather than forming an enforcement boundary — the boundary is that `/run/monitor.sock` is reachable only from the device itself.
+
+The two kinds of change differ in whether they are also detected afterwards, and the difference is worth knowing before relying on either:
+
+* `SetServer` writes through to the CONFIG partition — it mounts the partition read-write, writes the new value, then updates the `/config` tmpfs shadow copy and remounts it read-only. `/config/server` is covered by the PCR 14 measurement described in [MEASURED-CONFIG](MEASURED-CONFIG.md), so the change leaves the vault key unsealable until the controller accepts the new measurements. It cannot be made quietly.
+* The manual device port configuration is a persistent pubsub publication under `/persist/status`, not a file in `/config`, so no measurement covers it. Network settings changed at the TUI do not show up in attestation.
+
+What the TUI cannot change matters as much as what it can: it does not touch the pinned controller root certificates, so redirecting a device to a different controller address does not make it trust configuration served from there. Configuration still has to carry a signature chaining to the roots in the CONFIG partition. Nor does the new controller gain the device's vault, since it holds no copy of the escrowed key — see the [encrypted data store](SECURITY-ARCHITECTURE.md#encrypted-data-store).
+
+The interface exists to let an on-site technician recover a device that cannot reach its controller — precisely the situation in which no remote authority is available to authorize the change.
+
 ## /dev/ttyX vs /dev/console vs /dev/tty0
 
 There are three distinguishable console devices in Linux `/dev/console`, `/dev/tty0` and `/dev/ttyX` where X > 0. The latter points to a particular virtual terminal device i.e. a dedicated framebuffer for VGA console.  `/dev/tty0` points to *currently active* TTY device. This can be proven by reading `/sys/devices/virtual/tty/tty0/active` file. This file exists only for `/dev/tty0`. On the other hand `/dev/console` may point to several devices at a time. These are devices user specifies in `console=` kernel command line parameters. The list can be obtained by reading `/sys/devices/virtual/tty/console/active` file.
