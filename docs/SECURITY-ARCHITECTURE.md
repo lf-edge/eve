@@ -54,7 +54,7 @@ The EVE contributors and community need to prioritize which security risks to fo
 
 Recall that EVE's deployment model presupposes a controller that can exercise arbitrary control over Edge Nodes. EVE provides the following capabilities that can protect against an adversary trying to take control over an Edge Node by pretending to be a controller:
 
-* The controller's network address (hostname and port) cannot be changed by the controller itself, by an application, or over any network path. The one interface that can change it is the [local TUI](LOCAL-TUI.md), which renders only on a physically attached monitor and offers the operation only before the device is onboarded, and any such change is measured into the TPM (see below). The consequence is not only that the change is detected at the next boot: the measurement is part of the vault key access control policy, so the key no longer unseals and `/persist/vault` stays unavailable until the controller accepts the new measurements and releases the [encrypted backup key](#encrypted-data-store)
+* The controller's network address (hostname and port) cannot be changed by the controller itself, by an application, or over any network path. The one interface that can change it is the [local TUI](LOCAL-TUI.md), which renders only on a physically attached monitor and offers the operation only before the device is onboarded, and any such change is measured into the TPM (see below). The consequence is not only that the change is detected at the next boot: the measurement is part of the vault key access control policy, so the key no longer unseals and `/persist/vault` stays unavailable until the controller accepts the new measurements and releases the [encrypted backup key](#encrypted-application-and-user-storage)
 * The controller's identity is verified by a Root CA which is also considered immutable and sealed in TPM where possible. This is used in the TLS verification for API V1 and in the object signature verification in API V2
 * The TLS identity of the controller is verified by a Root CA. This is a single Root CA in API V1 and a larger set of root CAs plus the ability to express trust in proxy certificates in API V2.
 
@@ -113,7 +113,7 @@ When EVE is calling the register API it will present both the hardware serial an
 
 In both cases of calling the register API the factory can choose the granularity of the onboarding token. A single onboarding token can be used for a large production run of devices, or for fewer devices, or even be generated for each individual device. The choice depends on the capabilities of the factory installation site and the logistics of conveying the information (device certificate, onboarding tokens and/or serial numbers) from the factory to the end user.
 
-## Encrypted Data Store
+## Encrypted Application and User Storage
 
 EVE provides a security capability to enable storing sensitive information on the built-in storage of the Edge Node where EVE is running, while providing reasonable protections from this information leaking outside of the running EVE instance. Note that this is not an end-to-end encryption solution, but rather a capability that mitigates some of the attack vectors based on physical possession of the Edge Node. The data itself, while protected in-flight by the transport level security mechanism such as TLS, is expected to be un-encrypted before it lands on the Edge Node.
 

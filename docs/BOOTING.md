@@ -345,7 +345,7 @@ should be available via HTTP/HTTPs and you need to modify `ipxe.efi.cfg` with lo
 
 During the boot process, as stated by the TCG specification, BIOS/UEFI should measure the enumerated boot options into the TPM.
 UEFI measures the list of boot options and their configuration data in PCR-1. EVE is using PCR-1 as one of the sealing
-PCRs to protect the vault key from unauthorized access (check [Encrypted Data Store](./SECURITY-ARCHITECTURE.md#encrypted-data-store) for more details),
+PCRs to protect the vault key from unauthorized access (check [Encrypted Application and User Storage](./SECURITY-ARCHITECTURE.md#encrypted-application-and-user-storage) for more details),
 so it is important for the edge node to have a fixed and consistent list of boot options after onboarding. Attaching any
 bootable device, most notably USB devices, will result in a different set of boot options and subsequently change of
 the PCR-1 value. If a USB disk is used as an extra storage, **it is important to make sure the attached USB device has no bootable partition present**.

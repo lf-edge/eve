@@ -6,7 +6,7 @@ The recommendations below are not a wish list: each one underwrites a specific g
 
 | Platform property | What EVE loses without it |
 | --- | --- |
-| TPM 2.0 with SHA-256 banks | Everything the encrypted data store rests on. EVE performs no encryption at rest at all on a device without a working TPM — it reports data-at-rest as disabled — and the device private key is then a file in the CONFIG partition rather than TPM-resident, so device identity is only as strong as the physical protection of the disk |
+| TPM 2.0 with SHA-256 banks | Everything the encrypted application and user storage rests on. EVE performs no encryption at rest at all on a device without a working TPM — it reports data-at-rest as disabled — and the device private key is then a file in the CONFIG partition rather than TPM-resident, so device identity is only as strong as the physical protection of the disk |
 | TPM firmware that handles S3 correctly (see CVE-2018-6622 below) | The meaning of remote attestation. PCRs that can be reset and re-extended let a compromised system present a state it never booted |
 | Initial boot block measured before it executes | Any basis for trusting the firmware measurements. EVE's chain of trust starts partway up the boot sequence and cannot tell whether what came before reported itself honestly |
 | Protected SPI flash and chassis intrusion detection | Detection of physical attack. Reflashing or ROM swapping breaks the measurement chain rather than showing up in it, and without intrusion detection opening the device leaves nothing behind |
