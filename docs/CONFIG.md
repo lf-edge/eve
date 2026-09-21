@@ -11,7 +11,7 @@ In general, EVE is trying to make sure that its controller always has the last w
 * `v2tlsbaseroot-certificates.pem` - contains the x509 root certificate to trust for the TLS to the controller when using the V2 API
 * `onboard.cert.pem` - onboarding certificate for the [initial registration](REGISTRATION.md) with the controller
 * `wpa_supplicant.conf` - a legacy way of configuring EVE's WiFi
-* `authorized_keys` - initial authorized SSH keys for accessing EVE's debug console; DO NOT use options, we only accept 'keytype, base64-encoded key, comment' format
+* `authorized_keys` - initial authorized SSH keys for accessing EVE's debug console; DO NOT use options, we only accept 'keytype, base64-encoded key, comment' format. This file is a bootstrap source only: it is read at boot when `GlobalConfig/global.json` is absent, and ignored once the controller's global configuration is in effect. From then on the `debug.enable.ssh` property - empty by default, which both installs no keys and rejects port 22 - decides whether SSH is reachable and with which keys. The file is not removed at onboarding, so it stays on the CONFIG partition and stays measured into PCR 14
 * `bootstrap-config.pb`- initial device configuration used only until device is onboarded (see below for details)
 * `remote_access_disabled`- a file indicating remote access status, if it exist remote access (edge-view and ssh) is disabled. Please check [config document](SECURITY-ARCHITECTURE.md#disabling-remote-access) for more information.
 
