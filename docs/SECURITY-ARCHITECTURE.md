@@ -123,6 +123,12 @@ See [Encrypting Sensitive Information at Rest at the Edge](https://wiki.lfedge.o
 
 The storage encryption _location_ is in `/persist/vault/`, and encompasses application content and volumes.
 
+Only that subtree is encrypted, and the boundary is worth spelling out because it decides what physical possession of the disk yields. Device and application logs are collected under `/persist/newlog`, which is outside the vault: chunks already uploaded to the controller are retained there in a circular queue rather than deleted, so a running device holds a substantial window of log history readable from the raw disk. Device state published between EVE's own microservices lands in `/persist/status`, also outside. So does the CONFIG partition, whose contents are protected by measurement rather than encryption.
+
+An attacker in possession of the drive therefore recovers no application data or volumes, and recovers the device's log history and its configuration state only as far as that state is in the clear. The secrets the controller sends under [object level encryption](OBJECT-LEVEL-ENCRYPTION.md) — datastore credentials, WiFi credentials, cloud-init user data — are not: they sit in the checkpointed configuration in encrypted form and are decrypted in memory by the microservice that needs them, so reading them off the drive also requires the device's ECDH private key, which is held in the TPM where there is one. That carve-out is as wide as the controller's use of the mechanism and no wider, since it is per field: [wireless credentials](WIRELESS.md), for one, can be sent either encrypted or in cleartext.
+
+Keeping the logs outside the vault is also what makes them readable on a device whose vault will not unseal — the state in which they are most wanted.
+
 The storage encryption _mechanism_ uses standard filesystem encryption, fscrypt for the ext4 file system and native ZFS encryption for the ZFS file system.
 
 This storage encryption _key_ is symmetric and generated solely on the edge device using a TPM, and then sealed into TPM using PCR values. This means that
