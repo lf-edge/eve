@@ -54,7 +54,7 @@ The EVE contributors and community need to prioritize which security risks to fo
 
 Recall that EVE's deployment model presupposes a controller that can exercise arbitrary control over Edge Nodes. EVE provides the following capabilities that can protect against an adversary trying to take control over an Edge Node by pretending to be a controller:
 
-* The controller's network address (hostname and port) is considered immutable and can only be changed by a total reinstall of EVE
+* The controller's network address (hostname and port) cannot be changed by the controller itself, by an application, or over any network path. The one interface that can change it is the [local TUI](LOCAL-TUI.md), which renders only on a physically attached monitor and offers the operation only before the device is onboarded, and any such change is measured into the TPM (see below). The consequence is not only that the change is detected at the next boot: the measurement is part of the vault key access control policy, so the key no longer unseals and `/persist/vault` stays unavailable until the controller accepts the new measurements and releases the [encrypted backup key](#encrypted-data-store)
 * The controller's identity is verified by a Root CA which is also considered immutable and sealed in TPM where possible. This is used in the TLS verification for API V1 and in the object signature verification in API V2
 * The TLS identity of the controller is verified by a Root CA. This is a single Root CA in API V1 and a larger set of root CAs plus the ability to express trust in proxy certificates in API V2.
 
@@ -140,6 +140,10 @@ requires participation of both parties, controller and device, to use the backup
 
 To decrypt the key, one has to be on the same device with access to the same TPM, and the firmware+software on that device has to pass the
 [remote attestation](https://wiki.lfedge.org/display/EVE/Measured+Boot+and+Remote+Attestation) check in the controller.
+
+Note what this means for a device pointed at a different controller, which an on-site operator can do from the [local TUI](LOCAL-TUI.md) before the device is onboarded. Accepting the attestation quote is not the step that unlocks the vault; returning the encrypted backup key is. That key was escrowed with the controller the device was talking to when the key was created, and no other controller has a copy, so a controller that a device has been redirected to cannot unlock the existing vault however readily it accepts the new PCR values.
+
+The one thing such a controller can cause is destruction rather than disclosure: if it returns an empty key, EVE removes and recreates the vault empty and reports the unlock method as recreated. That path is gated on the presence of `/persist/status/allow-vault-clean`, which is created when `/persist` is first initialized and removed as soon as the device has something to lose — the first volume or content it stores, or the first successful escrow of a key. A device in service therefore yields neither its data nor a wipe; a freshly installed one comes up with an empty vault.
 
 ### TPM Bus Protection via Parameter Encryption
 
