@@ -50,7 +50,9 @@ RUN tar xvzf vboot_reference-${VBOOT_COMMIT}.tar.gz
 
 WORKDIR /vboot_reference
 RUN [ -d host/arch/riscv64 ] || cp -r host/arch/arm host/arch/riscv64
-RUN make cgpt -j "$(getconf _NPROCESSORS_ONLN)" LDFLAGS=-static CFLAGS=-Wno-error=address-of-packed-member
+# -include assert.h: firmware/stub/tpm_lite_stub.c uses assert() without
+# including assert.h, which gcc 14 rejects as an implicit function declaration
+RUN make cgpt -j "$(getconf _NPROCESSORS_ONLN)" LDFLAGS=-static CFLAGS="-Wno-error=address-of-packed-member -include assert.h"
 RUN cp build/cgpt/cgpt /out/cgpt
 
 FROM scratch
