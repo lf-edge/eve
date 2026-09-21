@@ -251,16 +251,22 @@ const appHTTPReadyTimeout = 8 * time.Minute
 // else that happens to answer on the forwarded port.
 const appReadyBody = "eve-app-ready"
 
-// appReadyCloudInit starts a BusyBox HTTP server in the guest serving
-// appReadyBody. Alpine's BusyBox always carries the httpd applet, so this
-// asks nothing of the pinned cloud image that it does not already have.
+// appReadyCloudInit starts an HTTP server in the guest serving appReadyBody.
+//
+// Python, not BusyBox httpd: Alpine keeps the httpd applet in busybox-extras
+// rather than core BusyBox, so `busybox httpd` is not there to run. cloud-init
+// is itself written in Python, so an image that honors this user data at all
+// necessarily carries a python3 to serve with, and nothing has to be
+// installed. A server that fails to come up says so on the console, which EVE
+// captures, rather than only showing up as a readiness timeout.
 var appReadyCloudInit = base64.StdEncoding.EncodeToString([]byte(`#cloud-config
 write_files:
   - path: /var/www/index.html
     content: |
       ` + appReadyBody + `
 runcmd:
-  - busybox httpd -p 80 -h /var/www
+  - [ sh, -c, "cd /var/www && setsid python3 -m http.server 80 >/var/log/readiness.log 2>&1 &" ]
+  - [ sh, -c, "sleep 2; pgrep -f http.server >/dev/null || echo 'EVETEST: readiness server failed to start' >/dev/console" ]
 `))
 
 // waitForAppHTTPReady polls the app's own readiness server, through the port
