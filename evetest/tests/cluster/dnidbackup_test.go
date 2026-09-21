@@ -561,6 +561,14 @@ func TestDNIDandBackupDNID(test *testing.T) {
 	cluster.PurgeApplication(vm2UUID, evetest.ReplaceVolumeConfig, true, clusterTimeout)
 	evetest.Checkpoint("vm2-purged-on-backup")
 
+	// The purge builds the volume again from scratch, on a backup node,
+	// with the designated node down -- the narrowest path there is for an
+	// app to come up on a disk whose content never landed. Reaching RUNNING
+	// says the domain started; only the guest answering says it booted off
+	// the copy the purge just made.
+	waitForAppHTTPReady(t, cluster, vm2UUID, vm2HTTPPort, appHTTPReadyTimeout)
+	evetest.Checkpoint("vm2-purged-http-ready")
+
 	// Step 8. edge-dev3 is still down. Watch from dev1, not dev3 (it's
 	// off): every cluster node's own ZInfoApp/ZInfoVolume reports reflect
 	// the cluster-wide state, not just what runs locally -- the same
