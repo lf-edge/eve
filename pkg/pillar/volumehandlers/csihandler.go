@@ -24,6 +24,11 @@ import (
 
 const imageToQcowScript = "/opt/zededa/bin/copy-image-to-qcow.sh"
 
+// pvcUploadComplete reports whether CDI finished writing an image into the
+// named PVC. A variable so the content check in HandleCreated can be decided
+// in a test without a cluster.
+var pvcUploadComplete = kubeapi.IsPVCUploadComplete
+
 type volumeHandlerCSI struct {
 	commonVolumeHandler
 	useVHost bool
@@ -99,7 +104,27 @@ func (handler *volumeHandlerCSI) HandlePrepared() (bool, error) {
 }
 
 func (handler *volumeHandlerCSI) HandleCreated() (bool, error) {
-	handler.log.Noticef("HandleCreated called for PVC %s", handler.status.GetPVCName())
+	pvcName := handler.status.GetPVCName()
+	handler.log.Noticef("HandleCreated called for PVC %s", pvcName)
+
+	// A PVC binds and attaches from the moment it exists, whether or not CDI
+	// ever wrote the image into it. Reporting the volume created is what lets
+	// it reach CREATED_VOLUME, which is the state zedmanager gates app
+	// activation on -- so confirm the content actually landed rather than
+	// trusting that the upload worker returned. A volume with no
+	// ReferenceName was never given content to upload (the CreatePVC path),
+	// so there is nothing to confirm for it.
+	if handler.status.ReferenceName != "" {
+		uploaded, err := pvcUploadComplete(pvcName, handler.log)
+		if err != nil {
+			return false, fmt.Errorf("cannot confirm upload into PVC %s: %w",
+				pvcName, err)
+		}
+		if !uploaded {
+			return false, fmt.Errorf("upload into PVC %s did not complete", pvcName)
+		}
+	}
+
 	// Though we convert container image to PVC, we need to keep the image format to tell domainmgr
 	// that we are launching a container as VM.
 	if !handler.status.IsContainer() {
