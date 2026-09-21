@@ -4,8 +4,12 @@
 package cluster_test
 
 import (
+	"encoding/base64"
 	"fmt"
+	"io"
+	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -225,6 +229,78 @@ func configItemAccepted(dev *evetest.EdgeDevice, key types.GlobalSettingKey,
 // Test params
 // -----------
 //   - TPM (bool), FILESYSTEM.
+//
+// clusterNIPort is the device port the local network instance runs over, and
+// so the port whose address carries this test's forwarded app ports.
+const clusterNIPort = "ethernet0"
+
+// Forwarded ports for each app's readiness server, one per app because the
+// apps can share a node and the forward lands on that node's own port.
+const (
+	vm1HTTPPort = 8081
+	vm2HTTPPort = 8082
+	vm3HTTPPort = 8083
+)
+
+// appHTTPReadyTimeout bounds a guest boot plus cloud-init running. Generous:
+// a miss here should mean the guest never came up, not that it was slow.
+const appHTTPReadyTimeout = 8 * time.Minute
+
+// appReadyBody is what the guest's readiness server serves. Matching on it
+// rather than on a bare 200 keeps the check from passing against something
+// else that happens to answer on the forwarded port.
+const appReadyBody = "eve-app-ready"
+
+// appReadyCloudInit starts a BusyBox HTTP server in the guest serving
+// appReadyBody. Alpine's BusyBox always carries the httpd applet, so this
+// asks nothing of the pinned cloud image that it does not already have.
+var appReadyCloudInit = base64.StdEncoding.EncodeToString([]byte(`#cloud-config
+write_files:
+  - path: /var/www/index.html
+    content: |
+      ` + appReadyBody + `
+runcmd:
+  - busybox httpd -p 80 -h /var/www
+`))
+
+// waitForAppHTTPReady polls the app's own readiness server, through the port
+// forward on whichever cluster node currently hosts the app.
+//
+// Deliberately a separate gate from WaitUntilAppIsRunning. A domain reports
+// RUNNING once its process starts, which says nothing about whether the guest
+// found anything to boot: a PVC attaches whether or not an image was ever
+// written into it, so an app can sit in RUNNING with an empty disk under it.
+// Only an answer from inside the guest settles that.
+func waitForAppHTTPReady(t *GomegaWithT, cluster *evetest.EdgeCluster,
+	appUUID uuid.UUID, edgePort uint16, timeout time.Duration) {
+	host := cluster.FindDeviceHostingApp(appUUID, 2*time.Minute)
+	t.Expect(host).NotTo(BeNil(), "no cluster device reports hosting app %s", appUUID)
+
+	ips := host.GetDeviceIPAddress(clusterNIPort)
+	t.Expect(ips).NotTo(BeEmpty(), "device %s has no address on %s",
+		host.GetConfig().GetDeviceName(), clusterNIPort)
+	url := fmt.Sprintf("http://%s:%d/", ips[0], edgePort)
+
+	evetest.Logger().Infof("Waiting for app %s to answer HTTP at %s", appUUID, url)
+	client := &http.Client{Timeout: 10 * time.Second}
+	t.Eventually(func() (string, error) {
+		resp, err := client.Get(url)
+		if err != nil {
+			return "", err
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode != http.StatusOK {
+			return "", fmt.Errorf("status %s", resp.Status)
+		}
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		if err != nil {
+			return "", err
+		}
+		return strings.TrimSpace(string(body)), nil
+	}, timeout, 5*time.Second).Should(Equal(appReadyBody),
+		"app %s never served its readiness marker at %s", appUUID, url)
+}
+
 func TestDNIDandBackupDNID(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
@@ -340,11 +416,16 @@ func TestDNIDandBackupDNID(test *testing.T) {
 	})
 
 	newClusterVMApp := func(displayName, designatedNode string,
-		affinity eveconfig.AffinityType) evetest.ClusterApplicationInstanceConfig {
+		affinity eveconfig.AffinityType,
+		httpPort uint16) evetest.ClusterApplicationInstanceConfig {
 		return evetest.ClusterApplicationInstanceConfig{
 			ApplicationInstanceConfig: evetest.ApplicationInstanceConfig{
 				DisplayName: displayName,
 				Activate:    true,
+				// Starts the readiness server waitForAppHTTPReady polls,
+				// so this test can tell a guest that actually booted from
+				// a domain that merely started.
+				UserData: appReadyCloudInit,
 				Image: evetest.HTTPStorage{
 					ImageFormat:       eveconfig.Format_QCOW2,
 					ImageSHA256:       vmImage.sha256,
@@ -364,6 +445,19 @@ func TestDNIDandBackupDNID(test *testing.T) {
 					evetest.VirtualNetworkAdapter{
 						LogicalLabel:        displayName + "-vif0",
 						NetworkInstanceUUID: niUUID,
+						// The local NI is NAT'd, so the guest's own
+						// 10.11.12.x address is not reachable from here;
+						// the readiness server is polled through this
+						// forward on the hosting node's own address.
+						PortFwdRules: []evetest.PortFwdRule{{
+							Protocol:     evetest.NetworkProtocolTCP,
+							EdgeNodePort: httpPort,
+							AppPort:      80,
+						}},
+						ACLAllowRules: []evetest.ACLAllowRule{{
+							Protocol:     evetest.NetworkProtocolAny,
+							RemoteSubnet: evetest.IPSubnet("0.0.0.0/0"),
+						}},
 					},
 				},
 			},
@@ -375,24 +469,27 @@ func TestDNIDandBackupDNID(test *testing.T) {
 	// Step 1. Deployed one at a time, not in one ApplyConfig, so a
 	// failure names exactly which app failed.
 	vm1UUID := clusterConfig.AddApplication(newClusterVMApp("vm1", devName[0],
-		eveconfig.AffinityType_AFFINITY_TYPE_PREFERRED))
+		eveconfig.AffinityType_AFFINITY_TYPE_PREFERRED, vm1HTTPPort))
 	cluster.ApplyConfig(clusterConfig, true, true)
 	log.Infof("Waiting for vm1 to reach RUNNING for the first time")
 	dev1.WaitUntilAppIsRunning(vm1UUID, clusterTimeout)
+	waitForAppHTTPReady(t, cluster, vm1UUID, vm1HTTPPort, appHTTPReadyTimeout)
 	evetest.Checkpoint("vm1-initially-running")
 
 	vm2UUID := clusterConfig.AddApplication(newClusterVMApp("vm2", devName[2],
-		eveconfig.AffinityType_AFFINITY_TYPE_PREFERRED))
+		eveconfig.AffinityType_AFFINITY_TYPE_PREFERRED, vm2HTTPPort))
 	cluster.ApplyConfig(clusterConfig, true, true)
 	log.Infof("Waiting for vm2 to reach RUNNING for the first time")
 	dev3.WaitUntilAppIsRunning(vm2UUID, clusterTimeout)
+	waitForAppHTTPReady(t, cluster, vm2UUID, vm2HTTPPort, appHTTPReadyTimeout)
 	evetest.Checkpoint("vm2-initially-running")
 
 	vm3UUID := clusterConfig.AddApplication(newClusterVMApp("vm3", devName[2],
-		eveconfig.AffinityType_AFFINITY_TYPE_PREFERRED))
+		eveconfig.AffinityType_AFFINITY_TYPE_PREFERRED, vm3HTTPPort))
 	cluster.ApplyConfig(clusterConfig, true, true)
 	log.Infof("Waiting for vm3 to reach RUNNING for the first time")
 	dev3.WaitUntilAppIsRunning(vm3UUID, clusterTimeout)
+	waitForAppHTTPReady(t, cluster, vm3UUID, vm3HTTPPort, appHTTPReadyTimeout)
 	evetest.Checkpoint("vms-initially-running")
 
 	// Step 2. deactivate app
@@ -429,6 +526,12 @@ func TestDNIDandBackupDNID(test *testing.T) {
 		t.Expect(backupHost.GetConfig().GetDeviceName()).NotTo(Equal(devName[2]),
 			"vm2 is supposed to be down on its own designated node %s, not running there", devName[2])
 		evetest.Checkpoint("vm2-backup-placement-verified" + checkpointSuffix)
+
+		// The backup node reporting RUNNING is not enough: this is exactly
+		// where a domain can come up on a volume whose content never
+		// landed. Make the guest prove it booted.
+		waitForAppHTTPReady(t, cluster, vm2UUID, vm2HTTPPort, appHTTPReadyTimeout)
+		evetest.Checkpoint("vm2-backup-http-ready" + checkpointSuffix)
 	}
 
 	// Step 4.
@@ -503,6 +606,9 @@ func TestDNIDandBackupDNID(test *testing.T) {
 	t.Expect(failbackHost.GetConfig().GetDeviceName()).To(Equal(devName[2]),
 		"vm2 did not fail back to its own designated node %s", devName[2])
 	evetest.Checkpoint("vm2-failback-placement-verified")
+
+	waitForAppHTTPReady(t, cluster, vm2UUID, vm2HTTPPort, appHTTPReadyTimeout)
+	evetest.Checkpoint("vm2-failback-http-ready")
 }
 
 // appHasError reports whether info is in the ERROR state, for use as a
