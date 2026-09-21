@@ -133,7 +133,7 @@ ENV BUILD_PKGS=iucode-tool
 RUN eve-alpine-deploy.sh
 
 # build intel microcode
-ENV INTEL_UCODE_VERSION=20240813
+ENV INTEL_UCODE_VERSION=20260812
 ADD "https://github.com/intel/Intel-Linux-Processor-Microcode-Data-Files/archive/microcode-$INTEL_UCODE_VERSION.tar.gz" /tmp/ucode/intel
 WORKDIR /tmp/ucode/intel
 RUN tar -xf "microcode-$INTEL_UCODE_VERSION.tar.gz" --strip=1
@@ -144,7 +144,7 @@ RUN find ./intel-ucode/ -maxdepth 1 -type f -print0 \
 RUN cp license /usr/share/licenses/ucode/intel-license.txt
 
 #build AMD microcode. We use a separate Linux firmware image for that
-ENV AMD_UCODE_VERSION=20240811
+ENV AMD_UCODE_VERSION=20260916
 ENV LINUX_FIRMWARE_URL=https://cdn.kernel.org/pub/linux/kernel/firmware/linux-firmware
 ADD ${LINUX_FIRMWARE_URL}-${AMD_UCODE_VERSION}.tar.gz /linux-firmware-ucode.tar.gz
 RUN mkdir /tmp/ucode/amd/linux-firmware \
@@ -157,7 +157,7 @@ RUN echo kernel/x86/microcode/AuthenticAMD.bin \
     | cpio -o -H newc -R 0:0 >./amd-ucode.img
 
 # copy license files to /usr/share/licenses
-RUN cp /tmp/ucode/amd/linux-firmware/LICENSE.amd-ucode /usr/share/licenses/ucode/amd-license.txt
+RUN cp /tmp/ucode/amd/linux-firmware/LICENSES/LICENSE.amd-ucode /usr/share/licenses/ucode/amd-license.txt
 
 # merge intel and amd microcode
 RUN cat /tmp/ucode/intel/intel-ucode.img /tmp/ucode/amd/amd-ucode.img >/boot/ucode.img
