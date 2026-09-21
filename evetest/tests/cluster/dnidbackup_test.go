@@ -253,19 +253,23 @@ const appReadyBody = "eve-app-ready"
 
 // appReadyCloudInit starts an HTTP server in the guest serving appReadyBody.
 //
-// Python, not BusyBox httpd: Alpine keeps the httpd applet in busybox-extras
-// rather than core BusyBox, so `busybox httpd` is not there to run. cloud-init
-// is itself written in Python, so an image that honors this user data at all
-// necessarily carries a python3 to serve with, and nothing has to be
-// installed. A server that fails to come up says so on the console, which EVE
-// captures, rather than only showing up as a readiness timeout.
+// bootcmd, not runcmd: runcmd is per-instance, so it runs on an app's first
+// boot and never again, while the readiness gate has to answer on every boot
+// the test drives -- a deactivate/activate pair and a failback both restart
+// the same instance off the same disk, where cloud-init finds its own state
+// and skips runcmd. bootcmd runs on every boot. It runs before networking, but
+// the server binds 0.0.0.0 and simply accepts once an address arrives.
+//
+// Python, not BusyBox httpd: Alpine keeps the httpd applet in a separate
+// busybox-extras binary rather than core BusyBox, so `busybox httpd` has
+// nothing to run. cloud-init is itself written in Python, so an image that
+// honors this user data at all necessarily carries a python3 to serve with,
+// and nothing has to be installed. A server that fails to come up says so on
+// the console, which EVE captures, rather than surfacing only as a timeout.
 var appReadyCloudInit = base64.StdEncoding.EncodeToString([]byte(`#cloud-config
-write_files:
-  - path: /var/www/index.html
-    content: |
-      ` + appReadyBody + `
-runcmd:
-  - [ sh, -c, "cd /var/www && setsid python3 -m http.server 80 >/var/log/readiness.log 2>&1 &" ]
+bootcmd:
+  - [ sh, -c, "mkdir -p /var/www && echo ` + appReadyBody + ` > /var/www/index.html" ]
+  - [ sh, -c, "setsid python3 -m http.server 80 --directory /var/www >/var/log/readiness.log 2>&1 &" ]
   - [ sh, -c, "sleep 2; pgrep -f http.server >/dev/null || echo 'EVETEST: readiness server failed to start' >/dev/console" ]
 `))
 
