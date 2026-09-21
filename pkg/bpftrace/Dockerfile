@@ -44,7 +44,6 @@ COPY --from=build /usr/lib/libbpf.so.1.5.1 /bpftrace-aotrt/usr/lib/libbpf.so.1.5
 COPY --from=build /usr/lib/libbpf.so.1 /bpftrace-aotrt/usr/lib/libbpf.so.1
 COPY --from=build /usr/lib/libbpf.so /bpftrace-aotrt/usr/lib/libbpf.so
 COPY --from=build /usr/lib/libelf.so.1 /bpftrace-aotrt/usr/lib/libelf.so.1
-COPY --from=build /usr/lib/libz.so.1.3.1 /bpftrace-aotrt/usr/lib/libz.so.1.3.1
 COPY --from=build /usr/lib/libz.so.1 /bpftrace-aotrt/usr/lib/libz.so.1
 COPY --from=build /usr/lib/libbcc_bpf.so.0 /bpftrace-aotrt/usr/lib/libbcc_bpf.so.0
 COPY --from=build /usr/lib/libstdc++.so.6 /bpftrace-aotrt/usr/lib/libstdc++.so.6
