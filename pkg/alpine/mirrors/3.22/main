@@ -466,6 +466,7 @@ libxxhash
 linux-headers
 linux-pam
 linux-pam-dev
+lsblk
 lua5.3
 lua5.3-lzlib
 llvm18-libs
