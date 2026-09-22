@@ -376,3 +376,65 @@ func FuzzRuleEngine(f *testing.F) {
 
 	})
 }
+
+// ruleFromUsbAddr builds the passthrough rule of a plain usbaddr IoBundle and binds it to vm
+func ruleFromUsbAddr(t *testing.T, usbAddr string, vm *virtualmachine) passthroughRule {
+	t.Helper()
+	pr := newIOBundleTree().ioBundle2passthroughRule(types.IoBundle{UsbAddr: usbAddr})
+	if pr == nil {
+		t.Fatalf("no rule for usbaddr %s", usbAddr)
+	}
+	pr.setVirtualMachine(vm)
+	return pr
+}
+
+func TestExactPortOverWildcardPrecedence(t *testing.T) {
+	vmWildcard := &virtualmachine{qmpSocketPath: "/wildcard.socket"}
+	vmExact := &virtualmachine{qmpSocketPath: "/exact.socket"}
+
+	re := newRuleEngine()
+	re.addRule(ruleFromUsbAddr(t, "1:2.*", vmWildcard))
+	re.addRule(ruleFromUsbAddr(t, "1:2.3", vmExact))
+	if len(re.rules) != 2 {
+		t.Fatalf("expected 2 distinct rules, got %d: %s", len(re.rules), re.String())
+	}
+
+	if vm := re.apply(usbdevice{busnum: 1, portnum: "2.3"}); vm != vmExact {
+		t.Fatalf("device in port 2.3 should go to the exact rule's vm, got %v", vm)
+	}
+	if vm := re.apply(usbdevice{busnum: 1, portnum: "2.4"}); vm != vmWildcard {
+		t.Fatalf("device in port 2.4 should go to the wildcard rule's vm, got %v", vm)
+	}
+}
+
+func TestDeeperWildcardPrecedence(t *testing.T) {
+	vmShallow := &virtualmachine{qmpSocketPath: "/shallow.socket"}
+	vmDeep := &virtualmachine{qmpSocketPath: "/deep.socket"}
+
+	re := newRuleEngine()
+	re.addRule(ruleFromUsbAddr(t, "1:2.*", vmShallow))
+	re.addRule(ruleFromUsbAddr(t, "1:2.3.*", vmDeep))
+
+	if vm := re.apply(usbdevice{busnum: 1, portnum: "2.3.4"}); vm != vmDeep {
+		t.Fatalf("device below port 2.3 should go to the deeper wildcard's vm, got %v", vm)
+	}
+	if vm := re.apply(usbdevice{busnum: 1, portnum: "2.1"}); vm != vmShallow {
+		t.Fatalf("device in port 2.1 should go to the shallow wildcard's vm, got %v", vm)
+	}
+}
+
+func TestWildcardOverDevPrecedence(t *testing.T) {
+	vmWildcard := &virtualmachine{qmpSocketPath: "/wildcard.socket"}
+	vmProduct := &virtualmachine{qmpSocketPath: "/product.socket"}
+
+	re := newRuleEngine()
+	re.addRule(ruleFromUsbAddr(t, "1:*", vmWildcard))
+	productRule := newUSBDevicePassthroughRule(5, 6, "")
+	productRule.vm = vmProduct
+	re.addRule(&productRule)
+
+	ud := usbdevice{busnum: 1, portnum: "4", vendorID: 5, productID: 6}
+	if vm := re.apply(ud); vm != vmWildcard {
+		t.Fatalf("location should beat product, got %v", vm)
+	}
+}

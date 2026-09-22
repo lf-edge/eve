@@ -76,6 +76,18 @@ and product id.
 Combined passthrough rules ([see](#list-of-passthrough-rules)) get their priorities added. If several
 passthrough rules within a combined passthrough rule match, the highest priority is returned.
 
+The priorities are chosen so that the more specific claim wins:
+
+| Rule | Priority |
+|------|----------|
+| usbPortPassthroughRule with an exact port (`1:2.3`) | 20 |
+| usbPortPassthroughRule with a wildcard (`1:*`, `1:2.*`, `1:2.3.*`, ...) | 11 + number of fixed port components (11 to 16) |
+| usbDevicePassthroughRule | 10 |
+| pciPassthroughRule | 0 |
+
+Therefore an exact port claim beats a wildcard covering that port, a longer wildcard beats a shorter one
+and any location claim beats a vendor/product claim.
+
 ### List of Passthrough Rules
 
 - pciPassthroughForbidRule - this rule returns passthroughForbid if the PCI address matches; it is used
@@ -84,8 +96,12 @@ passthrough rules within a combined passthrough rule match, the highest priority
     ioBundles
 - pciPassthroughRule - this rule is used to match PCI addresses; it is used so far only in composition rules
 - usbDevicePassthroughRule - this rule matches USB devices via product and vendor id
-- usbPortPassthroughRule - this rule matches by USB bus number and port number
-- usbHubForbidPassthroughRule - this rule prevents passing through of USB hubs as it is not supported
+- usbPortPassthroughRule - this rule matches by USB bus number and port number; a trailing wildcard
+    (`1:2.*`) matches every device below that port, e.g. all devices behind a hub plugged into the port,
+    and `1:*` matches every device on the bus; the device in the port itself does not match a wildcard;
+    a wildcard accepts at most five fixed components as USB port paths have at most six
+- usbHubForbidPassthroughRule - this rule prevents passing through of USB hubs as it is not supported;
+    the devices behind a hub can still be passed through individually, e.g. via a wildcard port rule
 - usbNetworkAdapterForbidPassthroughRule - forbids passing through of network adapters as this could
     take away the only working network adapter from EVE
 
