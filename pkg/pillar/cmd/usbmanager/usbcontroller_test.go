@@ -821,3 +821,74 @@ func createTestVM(vmName string, ioBundlesArray []*types.IoBundle, vmAdapter1 ui
 
 	return vm
 }
+
+func expectConnectedPorts(t *testing.T, connected map[string]struct{}, ports ...string) {
+	t.Helper()
+	if len(connected) != len(ports) {
+		t.Fatalf("expected connected ports %v, got %v", ports, connected)
+	}
+	for _, port := range ports {
+		if _, ok := connected[port]; !ok {
+			t.Fatalf("expected connected ports %v, got %v", ports, connected)
+		}
+	}
+}
+
+func TestWildcardPassesThroughHubChildrenOnly(t *testing.T) {
+	ioBundle := types.IoBundle{Phylabel: "hubport", AssignmentGroup: "hubgrp", UsbAddr: "1:2.*"}
+	vm := virtualmachine{qmpSocketPath: "/hub.socket", adapters: []string{"hubport"}}
+
+	connected := map[string]struct{}{}
+	uc := newTestUsbmanagerController()
+	uc.connectUSBDeviceToQemu = func(up usbpassthrough) {
+		connected[up.usbdevice.portnum] = struct{}{}
+	}
+	uc.disconnectUSBDeviceFromQemu = func(up usbpassthrough) {
+		delete(connected, up.usbdevice.portnum)
+	}
+
+	uc.addIOBundle(ioBundle)
+	uc.addVirtualmachine(vm)
+
+	hub := usbdevice{busnum: 1, portnum: "2", devnum: 2, devicetype: "9/0/1"}
+	child1 := usbdevice{busnum: 1, portnum: "2.1", devnum: 3, devicetype: "0/0/0"}
+	child2 := usbdevice{busnum: 1, portnum: "2.2", devnum: 4, devicetype: "0/0/0"}
+	otherPort := usbdevice{busnum: 1, portnum: "3", devnum: 5, devicetype: "0/0/0"}
+	for _, ud := range []usbdevice{hub, child1, child2, otherPort} {
+		uc.addUSBDevice(ud)
+	}
+	expectConnectedPorts(t, connected, "2.1", "2.2")
+
+	uc.removeUSBDevice(child1)
+	expectConnectedPorts(t, connected, "2.2")
+}
+
+func TestExactPortStealsFromWildcard(t *testing.T) {
+	wildcardBundle := types.IoBundle{Phylabel: "hubport", AssignmentGroup: "hubgrp", UsbAddr: "1:2.*"}
+	exactBundle := types.IoBundle{Phylabel: "exactport", AssignmentGroup: "exactgrp", UsbAddr: "1:2.2"}
+	vmWildcard := virtualmachine{qmpSocketPath: "/wildcard.socket", adapters: []string{"hubport"}}
+	vmExact := virtualmachine{qmpSocketPath: "/exact.socket", adapters: []string{"exactport"}}
+
+	connectedTo := map[string]string{} // port -> qmp socket of the vm
+	uc := newTestUsbmanagerController()
+	uc.connectUSBDeviceToQemu = func(up usbpassthrough) {
+		connectedTo[up.usbdevice.portnum] = up.vm.qmpSocketPath
+	}
+	uc.disconnectUSBDeviceFromQemu = func(up usbpassthrough) {
+		delete(connectedTo, up.usbdevice.portnum)
+	}
+
+	uc.addIOBundle(wildcardBundle)
+	uc.addVirtualmachine(vmWildcard)
+	uc.addUSBDevice(usbdevice{busnum: 1, portnum: "2.1", devnum: 3})
+	uc.addUSBDevice(usbdevice{busnum: 1, portnum: "2.2", devnum: 4})
+	if connectedTo["2.1"] != vmWildcard.qmpSocketPath || connectedTo["2.2"] != vmWildcard.qmpSocketPath {
+		t.Fatalf("both hub children should be connected to the wildcard vm, got %v", connectedTo)
+	}
+
+	uc.addIOBundle(exactBundle)
+	uc.addVirtualmachine(vmExact)
+	if connectedTo["2.1"] != vmWildcard.qmpSocketPath || connectedTo["2.2"] != vmExact.qmpSocketPath {
+		t.Fatalf("port 2.2 should move to the exact vm and 2.1 stay, got %v", connectedTo)
+	}
+}
