@@ -94,7 +94,9 @@ via **HTTP GET**.
 - **From edge-node → LPS:** list of running app instances with:
   - UUID, version, display name
   - Current state
-  - Errors (if any)
+  - Error (if any): `Err` holds a single error, so the lifecycle error is
+    reported when there is one, and otherwise the error reported by the app's
+    runtime (for example, a failure applying cloud-init config)
   - Last executed app command timestamp
 - **From LPS → edge-node (response):** optional **app command**, e.g.:
   - Restart
