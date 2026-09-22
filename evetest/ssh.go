@@ -154,11 +154,21 @@ func (th *TestHarness) scpFromEVE(ctx context.Context,
 	}
 	scpArgs = append(scpArgs,
 		"-i", "/root/.ssh/eve_rsa",
-		"root@"+eveIP+":"+remotePath,
+		"root@"+scpHost(eveIP)+":"+remotePath,
 		localPath,
 	)
 	cmd := exec.CommandContext(ctx, "scp", scpArgs...)
 	return cmd.Run()
+}
+
+// scpHost formats a device address for use in an scp target: an IPv6 address
+// must be bracketed, or scp takes everything after its first colon as the
+// path.
+func scpHost(eveIP string) string {
+	if strings.Contains(eveIP, ":") {
+		return "[" + eveIP + "]"
+	}
+	return eveIP
 }
 
 // scpToEVE copies a file (or, when recursive is true, a directory) from a
@@ -178,7 +188,7 @@ func (th *TestHarness) scpToEVE(ctx context.Context,
 	scpArgs = append(scpArgs,
 		"-i", "/root/.ssh/eve_rsa",
 		localPath,
-		"root@"+eveIP+":"+remotePath,
+		"root@"+scpHost(eveIP)+":"+remotePath,
 	)
 	cmd := exec.CommandContext(ctx, "scp", scpArgs...)
 	return cmd.Run()
