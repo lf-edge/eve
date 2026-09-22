@@ -33,6 +33,16 @@ var clusterWaitFile = "/run/kube/cluster-change-wait-ongoing"
 // rootfs that gets symlinked into the k3s data directory.
 var multusLinkSource = "/var/lib/cni/bin/multus"
 
+// flannelSubnetEnv is where flannel publishes the pod subnet assigned to
+// this node. The flannel CNI plugin reads it on every ADD to build the
+// host-local delegate's range, so its contents decide which addresses pods
+// on this node are given.
+var flannelSubnetEnv = "/run/flannel/subnet.env"
+
+// cniIPAMStateDir is host-local's reservation directory for the k3s "cbr0"
+// network: one file per address in use, plus last_reserved_ip.
+var cniIPAMStateDir = "/var/lib/cni/networks/cbr0"
+
 // installLogPath is where `k3s check-config` stdout/stderr is
 // appended on every install/re-install. /persist so the log survives
 // reboots.
