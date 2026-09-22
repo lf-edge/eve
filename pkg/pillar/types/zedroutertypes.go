@@ -1583,3 +1583,15 @@ type NestedAppRuntimeDiskMetric struct {
 func (metric NestedAppRuntimeDiskMetric) Key() string {
 	return metric.UUID
 }
+
+// AppRuntimeStatus carries errors reported by an app's runtime (e.g. cloud-init
+// failures). Published by zedrouter, keyed by the app instance UUID.
+type AppRuntimeStatus struct {
+	UUID string
+	ErrorAndTime
+}
+
+// Key - returns the app instance UUID
+func (status AppRuntimeStatus) Key() string {
+	return status.UUID
+}

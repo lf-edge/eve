@@ -1167,6 +1167,17 @@ func printOutput(ctx *diagContext, caller string) {
 			ctx.ph.Print("INFO: App %s uuid %s state %s\n",
 				ais.DisplayName, ais.UUIDandVersion.UUID, ais.State.String())
 		}
+		if ais.RuntimeErr.Error != "" {
+			label := "WARNING"
+			switch ais.RuntimeErr.ErrorSeverity {
+			case types.ErrorSeverityError:
+				label = "ERROR"
+			case types.ErrorSeverityNotice:
+				label = "INFO"
+			}
+			ctx.ph.Print("%s: App %s uuid %s runtime error: %s\n", label,
+				ais.DisplayName, ais.UUIDandVersion.UUID, ais.RuntimeErr.Error)
+		}
 	}
 
 	// Print info about downloads
