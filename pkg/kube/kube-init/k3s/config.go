@@ -803,6 +803,44 @@ func RemoveServerTLSDir() error {
 		KubeconfigCopy)
 }
 
+// RemoveStaleCNIState drops the pod-subnet state this node built up while it
+// ran its own single-node cluster, so that nothing can hand out an address
+// from the retired subnet once the node has joined.
+//
+// A node running standalone owns 10.42.0.0/24; joining assigns it a different
+// podCIDR, and flannel rewrites subnet.env to match. Between the join and that
+// rewrite the flannel CNI plugin still reads the old subnet, so a pod networked
+// in that window is given an address the cluster routes to a different node.
+// It never recovers: the address is fixed for the pod's lifetime, and a
+// daemonset pod that crash-loops on it restarts in place and keeps it.
+//
+// Removing subnet.env makes that window fail closed instead. A CNI ADD with no
+// subnet to read fails, kubelet retries, and the pod is networked correctly
+// once flannel has published the new subnet — where an ADD that "succeeds"
+// against the stale subnet is permanent.
+//
+// The host-local reservations go too. They are keyed by network name rather
+// than by subnet, so the retired subnet's entries would otherwise sit in the
+// directory indefinitely; flannel and host-local rebuild both paths on the
+// next start.
+func RemoveStaleCNIState() error {
+	return removeStaleCNIState(flannelSubnetEnv, cniIPAMStateDir)
+}
+
+// removeStaleCNIState is RemoveStaleCNIState with injectable paths.
+func removeStaleCNIState(subnetEnv, ipamDir string) error {
+	var joined error
+	if err := removeIfExists(subnetEnv); err != nil {
+		log.Printf("warning: remove %s: %v", subnetEnv, err)
+		joined = errors.Join(joined, fmt.Errorf("remove %s: %w", subnetEnv, err))
+	}
+	if err := os.RemoveAll(ipamDir); err != nil {
+		log.Printf("warning: remove %s: %v", ipamDir, err)
+		joined = errors.Join(joined, fmt.Errorf("remove %s: %w", ipamDir, err))
+	}
+	return joined
+}
+
 // removeServerTLSDir is RemoveServerTLSDir with injectable paths.
 // derivedKubeconfigs are removed after the TLS material they describe.
 func removeServerTLSDir(tlsRoot, ipsecPSK string, derivedKubeconfigs ...string) error {
