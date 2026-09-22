@@ -726,3 +726,53 @@ func TestRemoveServerTLSDirMissingKubeconfigs(t *testing.T) {
 		t.Errorf("absent kubeconfigs must be a no-op, got %v", err)
 	}
 }
+
+// TestRemoveStaleCNIStateClearsSubnetAndReservations pins the property the
+// join path depends on: nothing may survive that could hand a pod an address
+// from the subnet this node owned while it ran standalone.
+func TestRemoveStaleCNIStateClearsSubnetAndReservations(t *testing.T) {
+	root := t.TempDir()
+	subnetEnv := filepath.Join(root, "run", "flannel", "subnet.env")
+	ipamDir := filepath.Join(root, "var", "lib", "cni", "networks", "cbr0")
+
+	if err := os.MkdirAll(filepath.Dir(subnetEnv), 0755); err != nil {
+		t.Fatalf("mkdir flannel: %v", err)
+	}
+	if err := os.WriteFile(subnetEnv,
+		[]byte("FLANNEL_NETWORK=10.42.0.0/16\nFLANNEL_SUBNET=10.42.0.1/24\n"),
+		0644); err != nil {
+		t.Fatalf("write subnet.env: %v", err)
+	}
+	if err := os.MkdirAll(ipamDir, 0755); err != nil {
+		t.Fatalf("mkdir ipam: %v", err)
+	}
+	for _, name := range []string{"10.42.0.2", "10.42.0.3", "last_reserved_ip.0"} {
+		if err := os.WriteFile(filepath.Join(ipamDir, name), []byte("x"), 0600); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	if err := removeStaleCNIState(subnetEnv, ipamDir); err != nil {
+		t.Fatalf("removeStaleCNIState: %v", err)
+	}
+
+	if _, err := os.Stat(subnetEnv); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("subnet.env survived (stat err = %v); a CNI ADD could still "+
+			"read the retired subnet", err)
+	}
+	if _, err := os.Stat(ipamDir); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("IPAM reservations survived (stat err = %v)", err)
+	}
+}
+
+// TestRemoveStaleCNIStateMissingPaths covers a node whose CNI never ran:
+// absent paths are not an error.
+func TestRemoveStaleCNIStateMissingPaths(t *testing.T) {
+	root := t.TempDir()
+	err := removeStaleCNIState(
+		filepath.Join(root, "run", "flannel", "subnet.env"),
+		filepath.Join(root, "var", "lib", "cni", "networks", "cbr0"))
+	if err != nil {
+		t.Errorf("missing paths must be a no-op, got %v", err)
+	}
+}
