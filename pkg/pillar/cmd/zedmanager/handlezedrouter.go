@@ -187,6 +187,53 @@ func unpublishAppNetworkConfig(ctx *zedmanagerContext, uuidStr string) {
 	pub.Unpublish(key)
 }
 
+func handleAppRuntimeStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleAppRuntimeStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleAppRuntimeStatusImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	ctx := ctxArg.(*zedmanagerContext)
+	status := lookupAppInstanceStatus(ctx, key)
+	if status == nil {
+		return
+	}
+	if syncRuntimeErr(ctx, status) {
+		publishAppInstanceStatus(ctx, status)
+	}
+}
+
+// syncRuntimeErr copies the published AppRuntimeStatus, if any, into
+// status.RuntimeErr.
+func syncRuntimeErr(ctx *zedmanagerContext, status *types.AppInstanceStatus) bool {
+	var rs *types.AppRuntimeStatus
+	if item, _ := ctx.subAppRuntimeStatus.Get(status.Key()); item != nil {
+		r := item.(types.AppRuntimeStatus)
+		rs = &r
+	}
+	return applyRuntimeErr(status, rs)
+}
+
+// applyRuntimeErr sets status.RuntimeErr from rs, or clears it when rs is nil.
+// It returns true if RuntimeErr changed.
+func applyRuntimeErr(status *types.AppInstanceStatus, rs *types.AppRuntimeStatus) bool {
+	var want types.ErrorDescription
+	if rs != nil {
+		want = rs.ErrorDescription
+	}
+	if status.RuntimeErr.Error == want.Error &&
+		status.RuntimeErr.ErrorSeverity == want.ErrorSeverity &&
+		status.RuntimeErr.ErrorTime.Equal(want.ErrorTime) {
+		return false
+	}
+	if want.Error != "" {
+		log.Noticef("Runtime status error for %s: %s", status.Key(), want.Error)
+	}
+	status.RuntimeErr = want
+	return true
+}
+
 func handleAppNetworkStatusCreate(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	handleAppNetworkStatusImpl(ctxArg, key, statusArg)
