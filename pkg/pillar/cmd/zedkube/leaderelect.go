@@ -345,9 +345,13 @@ func (z *zedkube) handleControllerStatusChange(status *types.ZedAgentStatus) {
 		z.cancelElectionStop()
 		z.setElectionsShouldRun(true)
 	case types.ConfigGetTemporaryFail:
-		// Set only while an image update is in progress. Keep contending:
-		// giving up a lease during a baseos update is not what a temporary
-		// failure asks for.
+		// Set only while the new image is on trial, after the reboot into
+		// it. Keep contending: giving up a lease during a baseos update is
+		// not what a temporary failure asks for. Cancel rather than merely
+		// skip scheduling -- zedagent arms ConfigGetFail before every
+		// request, so Fail -> TemporaryFail is the ordinary sequence here,
+		// and a stop armed by that Fail would otherwise fire mid-validation.
+		z.cancelElectionStop()
 		log.Noticef("handleControllerStatusChange: temporary failure, " +
 			"elections left running")
 	default:

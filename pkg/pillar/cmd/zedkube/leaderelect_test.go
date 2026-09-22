@@ -189,6 +189,29 @@ func TestControllerStatusTemporaryFailKeepsElection(t *testing.T) {
 	}
 }
 
+// A temporary failure must also drop a stop armed by an earlier failure.
+// zedagent arms ConfigGetFail before every request, so Fail -> TemporaryFail
+// is the ordinary sequence once the new image is on trial, and a stop left
+// armed there fires mid-validation and drops the lease -- the outcome the
+// branch above exists to prevent. The test above only covers
+// Success -> TemporaryFail, where nothing was armed to begin with.
+func TestControllerStatusTemporaryFailCancelsPendingStop(t *testing.T) {
+	z := newElectionTestCtx()
+	z.feedStatus(types.ConfigGetSuccess)
+	z.feedStatus(types.ConfigGetFail)
+	if z.electionStopTimer == nil {
+		t.Fatal("no debounced stop was scheduled")
+	}
+
+	z.feedStatus(types.ConfigGetTemporaryFail)
+	if z.electionStopTimer != nil {
+		t.Error("pending stop survived a temporary failure")
+	}
+	if !z.statsElection.shouldRun.Load() {
+		t.Error("election stopped on a temporary failure")
+	}
+}
+
 // Contending needs both flags. Neither alone is enough, which is what keeps a
 // node that has not decided its eligibility out of the election.
 func TestElectionContendGate(t *testing.T) {
