@@ -25,6 +25,8 @@ This means receiving configuration from the controller via zedagent, and reporti
 
 Throughout this processes there are state updates and progress indication, including transient and permanent errors, flowing in the reverse direction from the various above Status publications, which zedmanager collects and feeds back to zedagent using the AppInstanceStatus publication.
 
+Errors reported by the app's own runtime (for example, a failure applying cloud-init config) arrive separately, in the AppRuntimeStatus publication from zedrouter. zedmanager copies them into AppInstanceStatus.RuntimeErr, which is kept apart from the lifecycle error so that neither replaces the other, and clears RuntimeErr when zedrouter unpublishes the AppRuntimeStatus. zedagent reports both errors to the controller as separate AppErr entries.
+
 ## Overall flow for deletion
 
 In general this flows in the reverse direction of the create, in that the runtime needs to be halted before the I/O adapters, network bridges, and volumes can be released.
