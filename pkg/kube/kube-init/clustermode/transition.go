@@ -30,10 +30,12 @@
 //  6. stop-k3s
 //  7. run-hooks
 //  8. clear-tls-if-join            non-bootstrap: drop server PKI + unmark debug user
-//  9. provision-config             write cluster-mode drop-in
+//  9. clear-cni-if-join            non-bootstrap: drop the retired subnet's CNI state
 //
-// 10. write-join-marker            non-bootstrap: stuck-join watchdog
-// 11. apply-registration           stage controller-supplied AddOn manifest
+// 10. provision-config             write cluster-mode drop-in
+//
+// 11. write-join-marker            non-bootstrap: stuck-join watchdog
+// 12. apply-registration           stage controller-supplied AddOn manifest
 //
 // Cluster→single is a one-shot cleanup that ends in
 // RebootWithReason and under normal circumstances does not return.
@@ -108,6 +110,7 @@ func (r *Runner) Run(ctx context.Context) error {
 		{"stop-k3s", r.StepStopK3s},
 		{"run-hooks", r.StepRunHooks},
 		{"clear-tls-if-join", r.StepClearTLSIfNonBootstrap},
+		{"clear-cni-if-join", r.StepClearCNIStateIfNonBootstrap},
 		{"provision-config", r.StepProvisionConfig},
 		{"write-join-marker", r.StepWriteJoinMarkerIfNonBootstrap},
 		{"apply-registration", r.StepApplyRegistration},
@@ -339,6 +342,27 @@ func (r *Runner) StepClearTLSIfNonBootstrap(_ context.Context) error {
 	}
 	if err := state.Unmark(state.DebugUserInitialized); err != nil {
 		log.Printf("warning: unmark debug-user: %v", err)
+	}
+	return nil
+}
+
+// StepClearCNIStateIfNonBootstrap drops the pod-subnet state left from this
+// node's standalone cluster, so no pod can be networked against the retired
+// subnet after the join. See k3s.RemoveStaleCNIState for why that matters.
+//
+// Bootstrap nodes are skipped: they keep 10.42.0.0/24 across the transition,
+// so their subnet.env is still correct and clearing it would only cost a
+// needless round of failed ADDs.
+//
+// Runs after stop-k3s so flannel is not live to rewrite what we remove.
+// Failure is non-fatal: the join still works, it just leaves the window open.
+func (r *Runner) StepClearCNIStateIfNonBootstrap(_ context.Context) error {
+	if r.cs.IsBootstrapNode {
+		log.Printf("bootstrap node — keeping CNI state")
+		return nil
+	}
+	if err := k3s.RemoveStaleCNIState(); err != nil {
+		log.Printf("warning: clear stale CNI state: %v", err)
 	}
 	return nil
 }
