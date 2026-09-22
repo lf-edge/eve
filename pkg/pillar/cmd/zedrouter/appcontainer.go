@@ -7,9 +7,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -48,6 +50,9 @@ const (
 	nestedAppDomainAppMetricsURL = "/api/v1/metrics/nested-app-id/"
 	// nestedAppRuntimeDiskMetricURL - URL to get the runtime level storage metrics
 	nestedAppRuntimeDiskMetricURL = "/api/v1/storagemetrics/runtime"
+	// nestedAppRuntimeStatusURL - URL to get the runtime's status, e.g. errors
+	// applying cloud-init config
+	nestedAppRuntimeStatusURL = "/api/v1/runtime/status"
 	// maxDockerResponseSize bounds a single response body from the app Docker API.
 	maxDockerResponseSize = 10 << 20 // 10 MiB
 	// dockerAPITimeout bounds each Docker API call.
@@ -120,9 +125,20 @@ func (z *zedrouter) checkAppContainerStatsCollecting(config *types.AppNetworkCon
 	if !changed {
 		return
 	}
+	// The last status of a stopped or re-addressed runtime is stale.
+	z.unpublishAppRuntimeStatus(status.Key())
 	z.publishAppNetworkStatus(status)
 	if status.GetStatsIPAddr != nil {
 		z.ensureAppContainerStatsAreCollected()
+	}
+}
+
+func (z *zedrouter) unpublishAppRuntimeStatus(key string) {
+	if _, err := z.pubAppRuntimeStatus.Get(key); err != nil {
+		return
+	}
+	if err := z.pubAppRuntimeStatus.Unpublish(key); err != nil {
+		z.log.Errorf("unpublishAppRuntimeStatus(%s) failed: %v", key, err)
 	}
 }
 
@@ -153,6 +169,7 @@ func (z *zedrouter) collectAppContainerStats() {
 					case types.AppRuntimeTypeDocker:
 						z.getNestedDomainAppMetrics(status, &acNum)
 						z.getNestedAppRuntimeDiskMetric(status)
+						z.getNestedAppRuntimeStatus(status)
 					default:
 						z.getIotEdgeMetricsAndLogs(status, collectTime, lastLogTime, &acNum, &numlogs)
 					}
@@ -565,6 +582,16 @@ func (z *zedrouter) getNestedDomainAppList(status types.AppNetworkStatus) ([]typ
 	return nestedapps, nil
 }
 
+// httpStatusError reports a non-200 response from a nested-app runtime endpoint.
+type httpStatusError struct {
+	url        string
+	statusCode int
+}
+
+func (e *httpStatusError) Error() string {
+	return fmt.Sprintf("unexpected status code %d from %s", e.statusCode, e.url)
+}
+
 // fetchHTTPData fetches data from the given URL
 func fetchHTTPData(url string) ([]byte, error) {
 	httpClient := &http.Client{Timeout: nestedAppHTTPTimeout}
@@ -575,7 +602,7 @@ func fetchHTTPData(url string) ([]byte, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code %d from %s", resp.StatusCode, url)
+		return nil, &httpStatusError{url: url, statusCode: resp.StatusCode}
 	}
 
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxNestedAppResponseSize+1))
@@ -617,4 +644,114 @@ func (z *zedrouter) getNestedAppRuntimeDiskMetric(status types.AppNetworkStatus)
 		}
 	}
 	z.pubNestedAppRuntimeStorageMetric.Publish(psMetric.Key(), psMetric)
+}
+
+// getNestedAppRuntimeStatus fetches the runtime's RuntimeStatus (e.g. errors applying
+// cloud-init config) and publishes it as AppRuntimeStatus for zedmanager.
+func (z *zedrouter) getNestedAppRuntimeStatus(status types.AppNetworkStatus) {
+	url := buildNestedAppURL(status, nestedAppRuntimeStatusURL, "")
+	data, err := fetchHTTPData(url)
+	if err != nil {
+		// A runtime predating this endpoint has no route for it and answers 404;
+		// that is expected, so do not log it on every collection cycle.
+		var statusErr *httpStatusError
+		if errors.As(err, &statusErr) && statusErr.statusCode == http.StatusNotFound {
+			z.log.Tracef("getNestedAppRuntimeStatus: %v", err)
+			return
+		}
+		z.log.Errorf("getNestedAppRuntimeStatus: %v", err)
+		return
+	}
+
+	var runtimeStatus nestedapp.RuntimeStatus
+	if err := proto.Unmarshal(data, &runtimeStatus); err != nil {
+		z.log.Errorf("getNestedAppRuntimeStatus: failed to decode proto data, error: %v", err)
+		return
+	}
+
+	key := status.Key()
+	if id := runtimeStatus.GetId(); id != "" && !strings.EqualFold(id, key) {
+		z.log.Warnf("getNestedAppRuntimeStatus: ignoring status for id %.64q, expected %s",
+			id, key)
+		return
+	}
+	desc := runtimeStatusToErrorDescription(&runtimeStatus)
+	item, _ := z.pubAppRuntimeStatus.Get(key)
+	old, exists := item.(types.AppRuntimeStatus)
+	if desc.Error == "" {
+		z.unpublishAppRuntimeStatus(key)
+		return
+	}
+	// Without a runtime timestamp, keep the earlier time for an unchanged error
+	// so that each poll does not republish it.
+	if desc.ErrorTime.IsZero() && exists &&
+		old.Error == desc.Error && old.ErrorSeverity == desc.ErrorSeverity {
+		desc.ErrorTime = old.ErrorTime
+	}
+	// This poll's snapshot can predate a halt or re-address of the app, after
+	// which the main loop has already unpublished its runtime status.
+	if cur, _ := z.pubAppNetworkStatus.Get(key); cur == nil ||
+		!cur.(types.AppNetworkStatus).GetStatsIPAddr.Equal(status.GetStatsIPAddr) {
+		return
+	}
+	rtStatus := types.AppRuntimeStatus{UUID: key}
+	rtStatus.SetErrorDescription(desc)
+	if err := z.pubAppRuntimeStatus.Publish(key, rtStatus); err != nil {
+		z.log.Errorf("getNestedAppRuntimeStatus: publish failed: %v", err)
+	}
+}
+
+const (
+	// Bound what a runtime's RuntimeStatus adds to a pubsub message, since
+	// publishing an oversized message is fatal.
+	maxRuntimeStatusEntries  = 4
+	maxRuntimeStatusEntryLen = 160
+)
+
+// runtimeStatusToErrorDescription converts a runtime-reported RuntimeStatus into a
+// size-bounded ErrorDescription that keeps the most severe entries. ErrorTime is
+// the latest reported timestamp, or zero if none was reported.
+func runtimeStatusToErrorDescription(rs *nestedapp.RuntimeStatus) types.ErrorDescription {
+	type entry struct {
+		desc string
+		sev  types.ErrorSeverity
+	}
+	var entries []entry
+	var ed types.ErrorDescription
+	for _, e := range rs.GetErr() {
+		if e.GetDescription() == "" {
+			continue
+		}
+		// Unspecified and unknown values are reported as errors, matching
+		// SetErrorDescription's handling of an unspecified severity.
+		sev := types.ErrorSeverity(e.GetSeverity())
+		if sev != types.ErrorSeverityNotice && sev != types.ErrorSeverityWarning {
+			sev = types.ErrorSeverityError
+		}
+		entries = append(entries, entry{desc: e.GetDescription(), sev: sev})
+		if t := e.GetTimestamp().AsTime(); t.Unix() > 0 && t.After(ed.ErrorTime) {
+			ed.ErrorTime = t
+		}
+	}
+	if len(entries) == 0 {
+		return ed
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].sev != entries[j].sev {
+			return entries[i].sev > entries[j].sev
+		}
+		return entries[i].desc < entries[j].desc
+	})
+	shown := min(len(entries), maxRuntimeStatusEntries)
+	parts := make([]string, 0, shown+1)
+	for _, e := range entries[:shown] {
+		parts = append(parts, types.TruncateError(e.desc, maxRuntimeStatusEntryLen))
+	}
+	if dropped := len(entries) - shown; dropped > 0 {
+		parts = append(parts, fmt.Sprintf(
+			"[%d additional runtime messages omitted due to size limits]", dropped))
+	}
+	ed.Error = strings.Join(parts, "; ")
+	ed.ErrorSeverity = entries[0].sev
+	return ed
 }

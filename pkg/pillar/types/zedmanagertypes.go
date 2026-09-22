@@ -345,6 +345,9 @@ type AppInstanceStatus struct {
 	// All error strings across all steps and all StorageStatus
 	// ErrorAndTimeWithSource provides SetError, SetErrrorWithSource, etc
 	ErrorAndTimeWithSource
+	// RuntimeErr is the error reported by the app's runtime (see AppRuntimeStatus),
+	// kept apart from the lifecycle error above.
+	RuntimeErr ErrorDescription
 	// Effective time, when the application should start
 	StartTime time.Time
 	// Snapshot related information
@@ -359,11 +362,12 @@ type AppInstanceStatus struct {
 	IsDesignatedNodeID bool
 }
 
-// TruncateErrors cuts the status's own error and the error of every volume
-// reference down to maxLen bytes each, for a status that would otherwise not
-// fit a pubsub message.
+// TruncateErrors cuts the status's own error, its runtime error and the error
+// of every volume reference down to maxLen bytes each, for a status that would
+// otherwise not fit a pubsub message.
 func (status *AppInstanceStatus) TruncateErrors(maxLen int) {
 	status.Error = TruncateError(status.Error, maxLen)
+	status.RuntimeErr.Error = TruncateError(status.RuntimeErr.Error, maxLen)
 	for i := range status.VolumeRefStatusList {
 		status.VolumeRefStatusList[i].Error =
 			TruncateError(status.VolumeRefStatusList[i].Error, maxLen)

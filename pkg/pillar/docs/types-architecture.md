@@ -165,6 +165,12 @@ additionally check the serialized size with `CheckMaxSize` and cut the errors
 down to `OversizedStatusErrorLen` rather than publish a status that cannot be
 sent.
 
+`AppInstanceStatus.RuntimeErr` holds errors reported by the app's runtime, which
+the guest controls, so it is bounded at the source: zedrouter keeps at most 4
+entries of 160 bytes each, highest severity first, and notes how many it
+omitted (see `AppRuntimeStatus`). `AppInstanceStatus.TruncateErrors` cuts
+`RuntimeErr` along with the other errors.
+
 ### `ErrorAndTime`
 
 Embeds `ErrorDescription`. Used by types that track a single error source.
@@ -542,6 +548,7 @@ type AppInstanceStatus struct {
     MissingMemory      bool
     NoBootPriority     bool
     ErrorAndTimeWithSource
+    RuntimeErr         ErrorDescription  // from AppRuntimeStatus, kept apart from the lifecycle error
     StartTime          time.Time
     SnapStatus         SnapshottingStatus
     MemOverhead        uint64
@@ -730,6 +737,21 @@ type AppContainerStats struct {
     ReadBytes      uint64  // MBytes (disk)
     WriteBytes     uint64  // MBytes (disk)
 }
+```
+
+### `AppRuntimeStatus` (`zedroutertypes.go`)
+
+Published by `zedrouter`, consumed by `zedmanager`. Carries the errors an app's
+runtime reports from `GET /api/v1/runtime/status` (for example, a failure
+applying cloud-init config), size-bounded by zedrouter. zedmanager copies the
+error into `AppInstanceStatus.RuntimeErr`.
+
+```go
+type AppRuntimeStatus struct {
+    UUID string  // app instance UUID
+    ErrorAndTime
+}
+func (status AppRuntimeStatus) Key() string  // UUID
 ```
 
 ### `AppBootConfig` / `AppBootInfo` / `AppAndImageToHash`

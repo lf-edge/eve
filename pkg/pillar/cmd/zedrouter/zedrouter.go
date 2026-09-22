@@ -162,6 +162,7 @@ type zedrouter struct {
 	// publist nested App Status
 	pubNestedAppDomainStatus         pubsub.Publication
 	pubNestedAppRuntimeStorageMetric pubsub.Publication
+	pubAppRuntimeStatus              pubsub.Publication
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -607,6 +608,15 @@ func (z *zedrouter) initPublications() (err error) {
 		pubsub.PublicationOptions{
 			AgentName: agentName,
 			TopicType: types.NestedAppRuntimeDiskMetric{},
+		})
+	if err != nil {
+		return err
+	}
+
+	z.pubAppRuntimeStatus, err = z.pubSub.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.AppRuntimeStatus{},
 		})
 	if err != nil {
 		return err
