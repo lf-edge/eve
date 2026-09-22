@@ -199,7 +199,14 @@ jobs:
           fi
 
       - name: Report Declined Gate on the Commit
-        if: ${{ steps.check.outputs.gate_passed != 'true' && steps.meta.outputs.pr_sha != '' }}
+        # Only the workflow_run leg can publish. A pull_request_review run takes
+        # its workflow file from the pull request's head, so GitHub caps its
+        # GITHUB_TOKEN at read-only whenever that head lives in a fork, and the
+        # status write comes back 403 however the job declares its permissions.
+        if: >-
+          ${{ github.event_name == 'workflow_run'
+          && steps.check.outputs.gate_passed != 'true'
+          && steps.meta.outputs.pr_sha != '' }}
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8.0.0
         env:
           SHA: ${{ steps.meta.outputs.pr_sha }}
