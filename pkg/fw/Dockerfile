@@ -151,7 +151,7 @@ RUN mkdir /tmp/ucode/amd/linux-firmware \
     && tar -xz --strip-components=1 -C /tmp/ucode/amd/linux-firmware -f /linux-firmware-ucode.tar.gz
 
 RUN mkdir -p /tmp/ucode/amd/kernel/x86/microcode
-RUN cat /tmp/ucode/amd/linux-firmware/amd-ucode/* >/tmp/ucode/amd/kernel/x86/microcode/AuthenticAMD.bin
+RUN cat /tmp/ucode/amd/linux-firmware/amd-ucode/*.bin >/tmp/ucode/amd/kernel/x86/microcode/AuthenticAMD.bin
 WORKDIR /tmp/ucode/amd
 RUN echo kernel/x86/microcode/AuthenticAMD.bin \
     | cpio -o -H newc -R 0:0 >./amd-ucode.img
