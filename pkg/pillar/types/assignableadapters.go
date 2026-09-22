@@ -346,7 +346,7 @@ type IoBundle struct {
 	Irq        string `json:",omitempty"` // E.g., "5"
 	Ioports    string `json:",omitempty"` // E.g., "2f8-2ff"
 	Serial     string `json:",omitempty"` // E.g., "/dev/ttyS1"
-	UsbAddr    string `json:",omitempty"` // E.g., "1:2.3"
+	UsbAddr    string `json:",omitempty"` // E.g., "1:2.3"; "1:2.*" for everything below port 2, "1:*" for the whole bus
 	UsbProduct string `json:",omitempty"` // E.g., "0951:1666"
 
 	// Attributes Derived and assigned locally ( not from controller)

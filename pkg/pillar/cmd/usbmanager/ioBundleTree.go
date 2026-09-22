@@ -313,24 +313,14 @@ func (iobt *ioBundleTree) singleIOBundle2PassthroughRule(ioBundle types.IoBundle
 		prs = append(prs, &pci)
 	}
 	if ioBundle.UsbAddr != "" {
-		usbParts := strings.SplitN(ioBundle.UsbAddr, ":", 2)
-		if len(usbParts) != 2 {
-			log.Warnf("usbaddr %s not parseable", ioBundle.UsbAddr)
-			return nil
-		}
-		busnum, err := strconv.ParseUint(usbParts[0], 10, 16)
+		usb, err := usbAddr2passthroughRule(ioBundle.UsbAddr)
 		if err != nil {
-			log.Warnf("usbaddr busnum (%s) not parseable", usbParts[0])
+			log.Warnf("usbaddr %s (phylabel: %s) not parseable: %v",
+				ioBundle.UsbAddr, ioBundle.Phylabel, err)
 			return nil
 		}
-		portnum := usbParts[1]
 
-		usb := usbPortPassthroughRule{
-			busnum:  uint16(busnum),
-			portnum: portnum,
-		}
-
-		prs = append(prs, &usb)
+		prs = append(prs, usb)
 	}
 	if ioBundle.UsbProduct != "" {
 		usbParts := strings.SplitN(ioBundle.UsbProduct, ":", 2)
