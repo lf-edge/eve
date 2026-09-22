@@ -193,6 +193,12 @@ func TestKvmToKRepartitionAppVolume(test *testing.T) {
 		"could not arm the corrupt-volume quarantine marker:\n%s", out)
 	log.Infof("armed %s so a torn volume is kept, not deleted", appVolumeKeepCorruptMarker)
 
+	// Whether any identity- or vault-critical file lies in the range the shrink
+	// has to evacuate is what decides how much the post-conversion digest check
+	// is worth. Read here, compared after.
+	criticalsBefore := recordCriticalBlocks(device, "pre-conversion",
+		shrinkBoundaryBlocks(device))
+
 	// Phase 5.
 	log.Infof("kvm→k hop: arming the offline shrink with the volume in it")
 	// Not waiting for EVE to commit the new partition. Committing is a trial
@@ -217,6 +223,9 @@ func TestKvmToKRepartitionAppVolume(test *testing.T) {
 	assertLargeGeometry(t, device, smallGeometry, p3MustShrink)
 	evetest.Checkpoint("geometry-converted")
 	assertResizeFaultAccounted(t, device)
+
+	logCriticalRelocation(criticalsBefore,
+		captureCriticalBlocks(device, "post-conversion", criticalsBefore.boundary4k))
 
 	stopPersistSampler := startPersistSampler(device, 45*time.Second)
 	defer stopPersistSampler()

@@ -126,6 +126,9 @@ func TestKvmToKRepartitionVolmig(test *testing.T) {
 	dumpAppNetwork(device, "before the conversion (working)")
 	evetest.Checkpoint("marker-written")
 
+	criticalsBefore := recordCriticalBlocks(device, "pre-conversion",
+		shrinkBoundaryBlocks(device))
+
 	// Phase 5.
 	// The offline repartition boots once more than an upgrade does: its
 	// intermediate resize boot is invisible to the controller, so the audit at
@@ -142,6 +145,10 @@ func TestKvmToKRepartitionVolmig(test *testing.T) {
 	log.Infof("asserting the boot disk reached the EVE-K layout via the shrink")
 	assertLargeGeometry(t, device, smallGeometry, p3MustShrink)
 	assertResizeFaultAccounted(t, device)
+
+	logCriticalRelocation(criticalsBefore,
+		captureCriticalBlocks(device, "post-conversion", criticalsBefore.boundary4k))
+
 	log.Infof("asserting the repartition preserved the TPM seal")
 	assertSealSurvivedRepartition(t, device)
 	evetest.Checkpoint("geometry-converted")

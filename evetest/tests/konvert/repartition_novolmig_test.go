@@ -176,6 +176,15 @@ func TestKvmToKRepartitionNoVolmig(test *testing.T) {
 	assertNoLiveVolumes(t, device)
 	evetest.Checkpoint("app-deleted")
 
+	// Only the shrink route has a boundary to be above; on the grow route the
+	// placement is recorded against none, which reads as SKIP rather than as a
+	// run that failed to stage anything.
+	var criticalBoundary int64
+	if decision == decisionShrink {
+		criticalBoundary = shrinkBoundaryBlocks(device)
+	}
+	criticalsBefore := recordCriticalBlocks(device, "pre-conversion", criticalBoundary)
+
 	// Phase 6.
 	// The offline repartition boots once more than an upgrade does: its
 	// intermediate resize boot is invisible to the controller, so the audit at
@@ -197,6 +206,9 @@ func TestKvmToKRepartitionNoVolmig(test *testing.T) {
 	assertLargeGeometry(t, device, smallGeometry, wantP3)
 	evetest.Checkpoint("geometry-converted")
 	recordResizeFault(device)
+
+	logCriticalRelocation(criticalsBefore,
+		captureCriticalBlocks(device, "post-conversion", criticalsBefore.boundary4k))
 
 	log.Infof("asserting the repartition preserved the TPM seal")
 	assertSealSurvivedRepartition(t, device)

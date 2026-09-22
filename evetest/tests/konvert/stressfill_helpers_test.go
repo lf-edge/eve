@@ -139,18 +139,10 @@ echo "TRIMMED remaining=$(ls -1 "$DIR" 2>/dev/null | wc -l) fillerKB=$(du -sk "$
 // placement from filefrag, which reports physical extents relative to the
 // filesystem the file lives on.
 func assertVolumeAboveShrinkBoundary(t Gomega, device *evetest.EdgeDevice) {
-	disk, err := bootDiskPath(device)
-	t.Expect(err).NotTo(HaveOccurred())
-	out, err := runEVE(device,
-		"eve exec pillar /usr/bin/storage-resizer check --disk "+disk+" --json")
-	t.Expect(err).NotTo(HaveOccurred())
 	// targetBytes is the post-shrink filesystem size.
-	var target int64
-	if i := strings.Index(out, `"targetBytes"`); i >= 0 {
-		_, _ = fmt.Sscanf(out[i:], `"targetBytes": %d`, &target)
-	}
-	t.Expect(target).To(BeNumerically(">", 0),
-		"could not read targetBytes from the resizer check:\n%s", out)
+	target, err := shrinkTargetBytes(device)
+	t.Expect(err).NotTo(HaveOccurred())
+	t.Expect(target).To(BeNumerically(">", 0))
 
 	// The physical range is the third column once any space inside "start.. end"
 	// is closed up, which keeps the parse independent of filefrag's alignment;
