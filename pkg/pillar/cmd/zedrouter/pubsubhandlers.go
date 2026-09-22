@@ -655,6 +655,7 @@ func (z *zedrouter) cleanupDeploymentNestedArtifacts(runtimeKey string) {
 		z.log.Functionf("unpublishing NestedAppRuntimeDiskMetric id:%s", runtimeKey)
 		z.pubNestedAppRuntimeStorageMetric.Unpublish(runtimeKey)
 	}
+	z.unpublishAppRuntimeStatus(runtimeKey)
 }
 
 func (z *zedrouter) handleAppNetworkDelete(ctxArg interface{}, key string,
