@@ -484,8 +484,10 @@ endif
 # default of 128KB. Larger blocks shrink the image but read-amplify: faulting one
 # 4KB page reads and decompresses the whole block.
 ROOTFS_SQUASHFS_BLOCK_SIZE=
-ifeq ($(ZARCH)-$(HV),amd64-kvm)
-    ROOTFS_SQUASHFS_BLOCK_SIZE=1048576
+ifeq ($(ZARCH),amd64)
+    ifneq (,$(filter $(HV),kvm xen))
+        ROOTFS_SQUASHFS_BLOCK_SIZE=1048576
+    endif
 endif
 
 PKGS_riscv64=pkg/ipxe pkg/mkconf pkg/mkimage-iso-efi pkg/grub     \
