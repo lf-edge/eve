@@ -2,7 +2,7 @@
 
 ## Introduction
 
-What makes EVE a secure-by-design system is that it has been developed from the ground up with security in mind. EVE doesn't rely on 3rd party or add-on components to provide trust in the system, but rather offers a set of well-defined principles on which a trust model can be built. You will notice that EVE doesn't call itself a trusted system -- but rather a trustworthy one. The distinction is subtle, but very important and was first articulated by [Joanna Rutkowska](https://www.darkreading.com/vulnerabilities---threats/rutkowska-trust-makes-us-vulnerable/d/d-id/1330587). Joanna, of course, is the architect of [Qubes OS](https://www.qubes-os.org) with which EVE shares a good deal of core security principles like [security by compartmentalization](https://www.qubes-os.org/doc/glossary/#qubes-os) and focusing on representing all user applications as VM-based abstractions. In EVE, the same VM-based approach to defining applications is built around [Edge Containers specification](ECOS.md).
+What makes EVE a secure-by-design system is that it has been developed from the ground up with security in mind. EVE doesn't rely on 3rd party or add-on components to provide trust in the system, but rather offers a set of well-defined principles on which a trust model can be built. You will notice that EVE doesn't call itself a trusted system -- but rather a trustworthy one. The distinction is subtle, but very important and was first articulated by [Joanna Rutkowska](https://www.darkreading.com/vulnerabilities---threats/rutkowska-trust-makes-us-vulnerable/d/d-id/1330587). Joanna, of course, is the architect of [Qubes OS](https://www.qubes-os.org) with which EVE shares a good deal of core security principles like [security by compartmentalization](https://www.qubes-os.org/doc/glossary/#qubes-os) and focusing on representing all user applications as VM-based abstractions. In EVE, the same VM-based approach to defining applications is built around [Edge Containers specification](ECOS.md). That VM-based default has one deliberate exception, described in [Isolation between applications and EVE](#isolation-between-applications-and-eve).
 
 We have made an effort to provide users of EVE with a system that is both practically secure and can be deployed in a zero-touch fashion. In order to achieve our goals we put forward a few guiding principles (some of them borrowed from Chromium's approach to securing mobile devices):
 
@@ -47,6 +47,49 @@ The opportunistic adversary is just trying to compromise an individual Edge Node
 The dedicated adversary may target a user or an enterprise specifically for attack.  They are willing to steal Edge Nodes to recover data or account credentials (not just to re-sell the device to make money). They are also willing and capable of modifying an Edge Node with extra hardware and software components. They may also do anything that the opportunistic adversary can do.
 
 The EVE contributors and community need to prioritize which security risks to focus on and in which order. For now, we are focusing mainly on risks posed by opportunistic adversaries. As the project matures and the community grows, we will increase our scope to include dedicated adversaries and other security considerations.
+
+## Isolation between applications and EVE
+
+The boundary between an edge application and EVE depends on the virtualization mode
+requested for that application in its configuration -- the `VmMode` field of the EVE API
+(see [vm.proto](https://github.com/lf-edge/eve-api/blob/main/proto/config/vm.proto)).
+
+By default that boundary is a virtual machine, and this holds for edge applications
+delivered as OCI containers just as much as for those delivered as VM images. For a
+container, containerd prepares the container filesystem as a snapshot and the
+hypervisor-specific loader boots a VM from it, as described in
+[CONTAINERS.md](CONTAINERS.md) and [TASKS.md](TASKS.md). On a node running the
+Kubernetes-based configuration ([EVE-K.md](EVE-K.md)) the same container is launched as
+a shim VMI.
+
+There is one deliberate exception. An application configured with `VmMode = NOHYPER` --
+"Do not use a hypervisor" -- runs as a native container on the host, with no VM around
+it:
+
+* On the Xen and KVM configurations, such a task is handed to containerd rather than to
+  the hypervisor, and runs as a container in the host (dom0).
+* On the Kubernetes-based configuration, it is created as a plain Kubernetes ReplicaSet
+  rather than a KubeVirt `VirtualMachineInstanceReplicaSet`, so there is no launcher VM.
+
+For these applications the isolation from EVE and from other applications is provided by
+the Linux kernel -- namespaces, cgroups and the container's capability set -- and not by
+the hypervisor. The guiding principle of defense in depth based on hypervisor boundary
+guarantees, stated above, does not apply to them, and the trusted computing base they can
+reach is considerably larger. A kernel vulnerability reachable from inside such a
+container is a path to the host.
+
+Two further properties follow from the absence of a VM:
+
+* A `NOHYPER` application cannot be assigned a PCI device by passthrough, since there is
+  no shim VM to assign it to. When a physical network adapter is direct-attached to such
+  an application, EVE moves the interface into the container's network namespace and adds
+  `CAP_NET_ADMIN` and `CAP_NET_RAW` to its capability set.
+* The AppArmor profiles shipped with EVE confine EVE's own components, such as `swtpm`,
+  `vtpm` and `vector`. They are not applied to edge applications.
+
+Deploying an application in `NOHYPER` mode is therefore a decision to trade isolation for
+direct access to the host's kernel and devices, and a controller's security policy should
+treat it as such.
 
 ## Establishing trust between EVE and EVE's controller
 
