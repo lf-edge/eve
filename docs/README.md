@@ -121,6 +121,11 @@ are  always initiated by EVE, never by the Controller):
 A good way to think about this is that Controller is to EVE what Kubernetes is
 to Docker Engine.
 
+An Edge Node does not depend on a reachable controller to keep doing its job:
+[Operating Without the Controller](DISCONNECTED-OPERATION.md) describes what
+continues to run while the controller is unreachable, what an operator can
+still change locally, and what bounds a prolonged outage.
+
 An API between EVE and its Controller is considered a [public API of Project EVE](https://github.com/lf-edge/eve-api/).
 Refer to [API documentation](https://github.com/lf-edge/eve-api/tree/main/APIv2.md) for detailed information on API
 end points and message format.
