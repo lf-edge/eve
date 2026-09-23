@@ -303,10 +303,10 @@ Uses native ZFS encryption. Key paths:
   only the space actually written to it: pillar creates it through
   libzfs, which — unlike `zfs create` without `-s` — adds no
   `refreservation`.
-* **Migration leftovers**: the staging zvol and the parked
-  pre-migration vault are dropped on any failure before the swap, and a
-  failure of the swap's second rename puts the pre-migration vault back
-  rather than leave `persist/vault` absent.
+* **Migration leftovers**: the staging zvol, an etcd zvol this attempt
+  created, and the parked pre-migration vault are dropped on any failure
+  before the swap, and a failure of the swap's second rename puts the
+  pre-migration vault back rather than leave `persist/vault` absent.
   Because a leftover staging zvol can hold a partial copy,
   `recoverInterruptedVaultMigration` promotes one only when
   `/persist/status/vault-migration-swap` names it — written once the

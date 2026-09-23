@@ -393,15 +393,14 @@ func (h *ZFSHandler) migrateVaultFsToZvol(vaultPath, keyFile string, encrypt boo
 	// Empty etcd zvol: etcd/k3s start fresh on EVE-k, there is nothing to carry
 	// over. Created after the space checks so that a declined migration leaves
 	// nothing behind, and skipped if a prior attempt already created it.
+	etcdCreatedHere := false
 	if !ops.DatasetExist(types.EtcdZvol) {
 		if err := ops.CreateEtcdZvol(types.EtcdZvol, keyFile, encrypt); err != nil {
 			return fmt.Errorf("error creating etcd zvol %s: %v", types.EtcdZvol, err)
 		}
+		etcdCreatedHere = true
 	}
 
-	if err := ops.CreateVaultZvol(stagingDataset, keyFile, encrypt, sizeBytes); err != nil {
-		return fmt.Errorf("error creating migration zvol %s: %v", stagingDataset, err)
-	}
 	swapped := false
 	defer func() {
 		if err == nil || swapped {
@@ -410,10 +409,25 @@ func (h *ZFSHandler) migrateVaultFsToZvol(vaultPath, keyFile string, encrypt boo
 		if cerr := h.dropMigrationLeftovers(stagingDataset, ""); cerr != nil {
 			h.log.Errorf("migrateVaultFsToZvol: %v", cerr)
 		}
+		// Only the one this attempt created: an etcd zvol that was already
+		// there belongs to the device, not to the migration. A device that
+		// falls back to EVE-kvm runs no migration code, so nothing else would
+		// reclaim it.
+		if etcdCreatedHere {
+			h.log.Warnf("Removing vault migration etcd zvol %s", types.EtcdZvol)
+			if cerr := ops.DestroyDataset(types.EtcdZvol); cerr != nil {
+				h.log.Errorf("migrateVaultFsToZvol: cannot remove etcd zvol %s: %v",
+					types.EtcdZvol, cerr)
+			}
+		}
 		if cerr := ops.ClearSwapMarker(); cerr != nil {
 			h.log.Errorf("migrateVaultFsToZvol: cannot clear migration swap state: %v", cerr)
 		}
 	}()
+
+	if err := ops.CreateVaultZvol(stagingDataset, keyFile, encrypt, sizeBytes); err != nil {
+		return fmt.Errorf("error creating migration zvol %s: %v", stagingDataset, err)
+	}
 
 	if err := ops.FormatStagingZvol(stagingDataset); err != nil {
 		return fmt.Errorf("migration zvol format error: %v", err)
