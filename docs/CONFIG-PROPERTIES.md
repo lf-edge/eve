@@ -33,6 +33,7 @@
 | network.download.max.cost | 0-255 | 0 | [max port cost for download](DEVICE-CONNECTIVITY.md) to avoid e.g., LTE ports |
 | blob.download.max.retries | 1-10 | 5 | max download retries when image verification fails.|
 | volumemgr.worker.pool.size | 1-200 | 20 | max number of concurrent volumemgr background jobs (loading images into the CAS, preparing/creating/destroying volumes). Work exceeding the limit is deferred and retried, so this bounds throughput; raise it on nodes deploying many app instances at once (doesn't need a reboot to take effect) |
+| downloader.transport.handlers | 1-1024 | 11 | number of workers of the downloader's zedUpload transport, which is also the depth of the request queue in front of them; a download whose request finds the queue full retries the submission for up to timer.download.stalled. The transport is sized once, when the downloader starts, so a change takes effect at the next reboot |
 | debug.enable.usb | boolean | false | allow USB e.g. keyboards on device |
 | debug.enable.vga | boolean | false | allow VGA console on device |
 | debug.enable.ssh | authorized ssh key | empty string(ssh disabled) | allow ssh to EVE |

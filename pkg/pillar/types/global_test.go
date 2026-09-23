@@ -180,6 +180,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		DownloadMaxPortCost,
 		BlobDownloadMaxRetries,
 		VolumemgrWorkerPoolSize,
+		DownloaderTransportHandlers,
 		// Bool Items
 		UsbAccess,
 		VgaAccess,
