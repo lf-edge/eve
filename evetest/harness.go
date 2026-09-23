@@ -448,9 +448,13 @@ type deviceState struct {
 	configAppliedCond *sync.Cond
 
 	// Reboot detection.
+	// lastRestartCounter is the most recently observed ZInfoDevice.RestartCounter,
+	// and haveRestartCounter whether any observation has arrived yet.
 	// lastBootTime is the most recently observed BootTime from ZInfoDevice messages.
 	// rebootCount is incremented by processDeviceStateEvents on each observed reboot.
 	// expectedRebootCount is incremented by RequestReboot, SoftReboot, HardReboot, etc.
+	lastRestartCounter  uint32
+	haveRestartCounter  bool
 	lastBootTime        time.Time
 	rebootCount         int
 	expectedRebootCount int
