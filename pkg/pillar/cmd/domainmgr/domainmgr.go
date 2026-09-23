@@ -87,10 +87,6 @@ const (
 	warningTime         = 40 * time.Second
 	casClientType       = "containerd"
 	unknownStateRetries = 10
-
-	// gracefulShutdownWait bounds how long a guest is given to act on the
-	// poweroff request before the stop is escalated to a forced one.
-	gracefulShutdownWait = 60 * time.Second
 )
 
 // Really a constant
@@ -2250,7 +2246,7 @@ func shutdownBudget(mode types.VmMode,
 		// remaining hypervisor treats it as a paravirtualised guest, so it is
 		// no more likely to service the poweroff request than an HVM one and
 		// gets the same short wait rather than the whole budget.
-		return true, gracefulShutdownWait
+		return true, hypervisor.GracefulShutdownWait
 	}
 	return false, maxDelay
 }

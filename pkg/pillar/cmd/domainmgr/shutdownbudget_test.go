@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
@@ -30,21 +31,21 @@ func TestShutdownBudget(t *testing.T) {
 			mode:           types.PV,
 			maxDelay:       maxDelay,
 			wantShutdown:   true,
-			wantFirstDelay: gracefulShutdownWait,
+			wantFirstDelay: hypervisor.GracefulShutdownWait,
 		},
 		{
 			name:           "HVM waits briefly",
 			mode:           types.HVM,
 			maxDelay:       maxDelay,
 			wantShutdown:   true,
-			wantFirstDelay: gracefulShutdownWait,
+			wantFirstDelay: hypervisor.GracefulShutdownWait,
 		},
 		{
 			name:           "FML waits briefly",
 			mode:           types.FML,
 			maxDelay:       maxDelay,
 			wantShutdown:   true,
-			wantFirstDelay: gracefulShutdownWait,
+			wantFirstDelay: hypervisor.GracefulShutdownWait,
 		},
 		{
 			name:         "NOHYPER is never asked to power off",
