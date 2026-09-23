@@ -754,6 +754,7 @@ func (ctx kubevirtContext) CreateReplicaVMIConfig(domainName string, config type
 
 	vmi.Spec.Affinity = affinity
 	vmi.Spec.Tolerations = tolerations
+	setTerminationGracePeriod(&vmi.Spec)
 
 	// Create a VirtualMachineInstanceReplicaSet
 	replicaSet := &v1.VirtualMachineInstanceReplicaSet{
@@ -2986,6 +2987,15 @@ func addKernelBootContainer(spec *v1.VirtualMachineInstanceSpec, image, kernelAr
 	}
 
 	return spec
+}
+
+// setTerminationGracePeriod gives the guest the same time to act on a poweroff
+// request that domainmgr allows a guest under any other hypervisor. KubeVirt
+// would otherwise apply its own DefaultGracePeriodSeconds of 30, after which it
+// destroys the domain with the request still outstanding.
+func setTerminationGracePeriod(spec *v1.VirtualMachineInstanceSpec) {
+	spec.TerminationGracePeriodSeconds =
+		pointer.Int64Ptr(int64(GracefulShutdownWait / time.Second))
 }
 
 func addEFIBootLoader(spec *v1.VirtualMachineInstanceSpec) {
