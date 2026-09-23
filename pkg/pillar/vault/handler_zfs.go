@@ -46,6 +46,18 @@ type ZFSHandler struct {
 	log     *base.LogObject
 	options HandlerOptions
 	ops     zfsVaultOps
+	// zvolVault overrides the flavor zvolVaultSupported reports; nil reads the
+	// running one.
+	zvolVault *bool
+}
+
+// zvolVaultSupported reports whether this hypervisor flavor keeps the vault in
+// a zvol rather than a filesystem dataset. Only EVE-k does.
+func (h *ZFSHandler) zvolVaultSupported() bool {
+	if h.zvolVault != nil {
+		return *h.zvolVault
+	}
+	return base.IsHVTypeKube()
 }
 
 // zfsOps returns the storage operations the handler acts through, defaulting
@@ -129,13 +141,13 @@ func (h *ZFSHandler) RemoveDefaultVault() error {
 // SetupDefaultVault setups vaults on zfs, using zfs native encryption support
 func (h *ZFSHandler) SetupDefaultVault() error {
 	if !etpm.IsTpmEnabled() {
+		// A migration interrupted by power loss can leave the vault path
+		// absent with the data under a staging/backup dataset; recover
+		// before the dataset-exists check below would create an empty vault.
+		if err := h.recoverInterruptedVaultMigration(types.SealedDataset); err != nil {
+			return err
+		}
 		if base.IsHVTypeKube() {
-			// A migration interrupted by power loss can leave the vault path
-			// absent with the data under a staging/backup dataset; recover
-			// before the dataset-exists check below would create an empty vault.
-			if err := h.recoverInterruptedVaultMigration(types.SealedDataset); err != nil {
-				return err
-			}
 			if zfs.DatasetExist(h.log, types.SealedDataset) {
 				// A device converted from EVE-kvm carries a filesystem-dataset
 				// vault here, not the native EVE-k zvol+etcd layout. Migrate it
@@ -210,14 +222,15 @@ func (h *ZFSHandler) unlockVault(vaultPath string) error {
 		return err
 	}
 
+	// A migration whose swap completed but whose cleanup was interrupted
+	// can leave vaultPath as the migrated zvol with a leftover .old backup.
+	// Recover before deciding the native vs migration path.
+	if err := h.recoverInterruptedVaultMigration(vaultPath); err != nil {
+		return err
+	}
+
 	// zfs mount
 	if base.IsHVTypeKube() {
-		// A migration whose swap completed but whose cleanup was interrupted
-		// can leave vaultPath as the migrated zvol with a leftover .old backup.
-		// Recover before deciding the native vs migration path.
-		if err := h.recoverInterruptedVaultMigration(vaultPath); err != nil {
-			return err
-		}
 		isZvol, err := zfs.IsDatasetTypeZvol(vaultPath)
 		if err != nil {
 			h.log.Errorf("Error checking vault dataset type for %s: %v", vaultPath, err)
@@ -430,8 +443,9 @@ func (h *ZFSHandler) migrateVaultFsToZvol(vaultPath, keyFile string, encrypt boo
 		return fmt.Errorf("rename %s -> %s: %v", vaultPath, backupDataset, err)
 	}
 	if err := ops.RenameDataset(stagingDataset, vaultPath); err != nil {
-		// Put the source back rather than leave vaultPath absent: EVE-kvm has
-		// no recovery path and would create an empty vault over it.
+		// Put the source back rather than lean on the next boot's recovery to
+		// do it: the swap record is still in place, and a device whose EVE
+		// version predates that recovery would create an empty vault over it.
 		if rerr := ops.RenameDataset(backupDataset, vaultPath); rerr != nil {
 			h.log.Errorf("migrateVaultFsToZvol: cannot restore %s from %s: %v",
 				vaultPath, backupDataset, rerr)
@@ -534,6 +548,10 @@ func (a vaultMigrationRecovery) String() string {
 // planVaultMigrationRecovery decides what to do with the staging and backup
 // datasets of an interrupted or failed vault migration.
 //
+// zvolVaultSupported reports whether this hypervisor flavor can use a zvol as
+// the vault. EVE-kvm cannot, so the completed copy on the staging zvol is of no
+// use to it and the pre-migration filesystem vault is what has to come back.
+//
 // swapStaged reports whether the staging dataset was recorded as holding a
 // complete copy of the vault, which migrateVaultFsToZvol writes just before
 // the rename swap. Without that record the staging dataset may hold a
@@ -542,8 +560,15 @@ func (a vaultMigrationRecovery) String() string {
 // set up a fresh one, and that arrives here with the vault absent and a
 // staging dataset in place.
 func planVaultMigrationRecovery(vaultExists, vaultIsZvol, stagingExists, backupExists,
-	swapStaged, partitionCommitted bool) vaultMigrationRecovery {
+	swapStaged, partitionCommitted, zvolVaultSupported bool) vaultMigrationRecovery {
 	if vaultExists {
+		// EVE-kvm never migrates, so a vault in place beside a parked
+		// pre-migration vault is one EVE-kvm created after the swap renamed the
+		// original aside -- whatever the partition state says. The parked dataset
+		// holds the contents and outranks reclaiming the pool space.
+		if !zvolVaultSupported && backupExists {
+			return vaultMigrationKeepLeftovers
+		}
 		// Once the running partition is committed the device is not reverting to
 		// the other flavor, so the pre-migration vault has nothing left to be a
 		// fallback for and neither dataset is worth the pool space. Keeping them
@@ -553,12 +578,11 @@ func planVaultMigrationRecovery(vaultExists, vaultIsZvol, stagingExists, backupE
 		}
 		// A parked pre-migration vault beside a vault that is not the migrated
 		// zvol means the one in place cannot be the one that was parked: the swap
-		// renamed the original aside, and EVE-kvm -- which has no migration code
-		// -- then found no vault and created a fresh one. Destroying the datasets
-		// there discards both the parked original and the completed copy, the
-		// only two places the contents still exist. A staging zvol with no parked
-		// backup is ordinary debris from an attempt that never reached the swap,
-		// and stays droppable.
+		// renamed the original aside and something else created a vault over the
+		// gap. Destroying the datasets there discards both the parked original
+		// and the completed copy, the only two places the contents still exist.
+		// A staging zvol with no parked backup is ordinary debris from an attempt
+		// that never reached the swap, and stays droppable.
 		if !vaultIsZvol && backupExists {
 			return vaultMigrationKeepLeftovers
 		}
@@ -566,6 +590,12 @@ func planVaultMigrationRecovery(vaultExists, vaultIsZvol, stagingExists, backupE
 			return vaultMigrationDropLeftovers
 		}
 		return vaultMigrationNoop
+	}
+	// Promoting the staging zvol would leave EVE-kvm with a vault it cannot
+	// mount; putting the filesystem vault back lets it boot and leaves the next
+	// EVE-k attempt to redo the copy.
+	if backupExists && !zvolVaultSupported {
+		return vaultMigrationRestoreBackup
 	}
 	if stagingExists && swapStaged {
 		return vaultMigrationFinishSwap
@@ -580,9 +610,9 @@ func planVaultMigrationRecovery(vaultExists, vaultIsZvol, stagingExists, backupE
 }
 
 // recoverInterruptedVaultMigration reconstructs a ZFS vault migration that was
-// interrupted by power loss mid-swap, so that the EVE-k callers do not mistake
-// it for a fresh install and create an empty vault (losing all blobs) or fail
-// to unlock. It is a no-op when no migration datasets are present.
+// interrupted by power loss mid-swap, so that neither hypervisor flavor
+// mistakes it for a fresh install and creates an empty vault (losing all blobs)
+// or fails to unlock. It is a no-op when no migration datasets are present.
 //
 // The swap renames the old fs vault to <vaultPath>.old and then renames the
 // staging zvol to <vaultPath>. If power is lost between those two renames,
@@ -619,11 +649,12 @@ func (h *ZFSHandler) recoverInterruptedVaultMigration(vaultPath string) error {
 		vaultIsZvol = isZvol
 	}
 	swapStaged := marked == staging
+	zvolVaultSupported := h.zvolVaultSupported()
 	action := planVaultMigrationRecovery(vaultExists, vaultIsZvol, stagingExists, backupExists,
-		swapStaged, h.options.CurrentPartitionCommitted)
-	h.log.Noticef("recoverInterruptedVaultMigration(%s): leftover migration state (staging=%v backup=%v vault=%v vaultIsZvol=%v swapStaged=%v committed=%v): %s",
+		swapStaged, h.options.CurrentPartitionCommitted, zvolVaultSupported)
+	h.log.Noticef("recoverInterruptedVaultMigration(%s): leftover migration state (staging=%v backup=%v vault=%v vaultIsZvol=%v swapStaged=%v committed=%v zvolVault=%v): %s",
 		vaultPath, stagingExists, backupExists, vaultExists, vaultIsZvol, swapStaged,
-		h.options.CurrentPartitionCommitted, action)
+		h.options.CurrentPartitionCommitted, zvolVaultSupported, action)
 
 	if action == vaultMigrationKeepLeftovers {
 		// Nothing is destroyed and the swap record is left in place: it names the
@@ -704,10 +735,10 @@ func (h *ZFSHandler) setupVault(vaultPath string) error {
 	// A migration interrupted by power loss can leave vaultPath absent with
 	// the data under a staging/backup dataset; recover before deciding this is
 	// a fresh install, which would create an empty vault and lose the blobs.
-	if base.IsHVTypeKube() {
-		if err := h.recoverInterruptedVaultMigration(vaultPath); err != nil {
-			return err
-		}
+	// EVE-kvm reaches this too: the swap runs while upgrading to EVE-k, so a
+	// fallback to EVE-kvm is what boots into the window the swap left open.
+	if err := h.recoverInterruptedVaultMigration(vaultPath); err != nil {
+		return err
 	}
 	// zfs get keystatus returns success as long as vaultPath is a dataset,
 	// (even if not mounted yet), so use it to check dataset presence

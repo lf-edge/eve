@@ -218,10 +218,22 @@ func (f *fakeZFSOps) ClearSwapMarker() error {
 	return nil
 }
 
+// testZFSHandler builds a handler on the EVE-k flavor, the one that runs the
+// migration. testZFSHandlerKvm builds the EVE-kvm side, which only ever
+// recovers from a migration another flavor started.
 func testZFSHandler(ops zfsVaultOps) *ZFSHandler {
+	return newTestZFSHandler(ops, true)
+}
+
+func testZFSHandlerKvm(ops zfsVaultOps) *ZFSHandler {
+	return newTestZFSHandler(ops, false)
+}
+
+func newTestZFSHandler(ops zfsVaultOps, zvolVault bool) *ZFSHandler {
 	return &ZFSHandler{
-		log: base.NewSourceLogObject(logrus.StandardLogger(), "test", 1234),
-		ops: ops,
+		log:       base.NewSourceLogObject(logrus.StandardLogger(), "test", 1234),
+		ops:       ops,
+		zvolVault: &zvolVault,
 	}
 }
 
@@ -244,6 +256,7 @@ func TestPlanVaultMigrationRecovery(t *testing.T) {
 		backupExists  bool
 		swapStaged    bool
 		committed     bool
+		kvm           bool
 		want          vaultMigrationRecovery
 	}{
 		{name: "nothing left over", vaultExists: true, vaultIsZvol: true,
@@ -253,9 +266,9 @@ func TestPlanVaultMigrationRecovery(t *testing.T) {
 			want: vaultMigrationDropLeftovers},
 		{name: "migrated vault in place, backup left over", vaultExists: true,
 			vaultIsZvol: true, backupExists: true, want: vaultMigrationDropLeftovers},
-		// The state a device is left in when it falls back to EVE-kvm inside the
-		// swap window: kvm finds no vault, creates a fresh filesystem one, and the
-		// only copies of the contents are the datasets the migration left.
+		// A fresh filesystem vault sitting over the swap window, as an EVE
+		// version without this recovery leaves behind: the only copies of the
+		// contents are the datasets the migration left.
 		{name: "fresh kvm vault beside an interrupted swap", vaultExists: true,
 			stagingExists: true, backupExists: true, swapStaged: true,
 			want: vaultMigrationKeepLeftovers},
@@ -286,11 +299,28 @@ func TestPlanVaultMigrationRecovery(t *testing.T) {
 		{name: "only the pre-migration vault survives", backupExists: true,
 			want: vaultMigrationRestoreBackup},
 		{name: "no datasets at all", want: vaultMigrationNoop},
+		// EVE-kvm boots into the swap window whenever the upgrade to EVE-k
+		// fails, and it can neither mount nor promote the staging zvol.
+		{name: "kvm falls back inside the swap window", stagingExists: true,
+			backupExists: true, swapStaged: true, kvm: true,
+			want: vaultMigrationRestoreBackup},
+		{name: "kvm with only the pre-migration vault", backupExists: true,
+			kvm: true, want: vaultMigrationRestoreBackup},
+		{name: "kvm with a partial copy and no backup", stagingExists: true,
+			kvm: true, want: vaultMigrationDropLeftovers},
+		// A committed kvm partition must not reclaim the parked vault: the
+		// fresh vault EVE-kvm made is empty and the contents are in the backup.
+		{name: "committed kvm keeps the parked vault", vaultExists: true,
+			stagingExists: true, backupExists: true, swapStaged: true,
+			committed: true, kvm: true, want: vaultMigrationKeepLeftovers},
+		{name: "kvm drops staging debris beside its vault", vaultExists: true,
+			stagingExists: true, committed: true, kvm: true,
+			want: vaultMigrationDropLeftovers},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			got := planVaultMigrationRecovery(tc.vaultExists, tc.vaultIsZvol,
-				tc.stagingExists, tc.backupExists, tc.swapStaged, tc.committed)
+				tc.stagingExists, tc.backupExists, tc.swapStaged, tc.committed, !tc.kvm)
 			assert.Equal(t, tc.want, got)
 		})
 	}
@@ -367,10 +397,49 @@ func TestRecoverInterruptedVaultMigration(t *testing.T) {
 	}
 }
 
-// TestRecoverKeepsLeftoversBesideAFreshVault covers the state a device is left
-// in when it falls back to EVE-kvm inside the swap window: kvm has no recovery
-// code, finds no vault and creates a fresh filesystem one, so the migration
-// datasets hold the only copies of the contents. Recovery must not destroy them.
+// TestRecoverRestoresTheVaultOnKvm covers the boot that follows an upgrade to
+// EVE-k whose vault swap was cut by power loss: the fallback runs EVE-kvm,
+// which finds no vault. The completed copy is a zvol it cannot mount, so the
+// pre-migration filesystem vault is what has to come back -- and it has to come
+// back before anything mistakes the absent vault for a fresh install.
+func TestRecoverRestoresTheVaultOnKvm(t *testing.T) {
+	ops := newFakeZFSOps(testStaging, testBackup)
+	ops.zvols[testStaging] = true // the completed copy
+	ops.marker = testStaging      // the swap was pending when power went
+	h := testZFSHandlerKvm(ops)
+
+	require.NoError(t, h.recoverInterruptedVaultMigration(testVault))
+
+	assert.True(t, ops.datasets[testVault], "the vault was not restored")
+	assert.False(t, ops.zvols[testVault], "EVE-kvm was left a zvol vault")
+	assert.False(t, ops.datasets[testStaging], "staging dataset left behind")
+	assert.False(t, ops.datasets[testBackup], "backup dataset left behind")
+	assert.Empty(t, ops.marker)
+}
+
+// TestRecoverKeepsTheParkedVaultOnCommittedKvm covers an EVE-kvm device that
+// arrives with a fresh vault over the swap window, as an EVE version without
+// this recovery leaves behind. EVE-kvm never migrates, so the vault in place
+// cannot be the migrated one however settled the partition is, and the parked
+// dataset holds the only copy of the contents.
+func TestRecoverKeepsTheParkedVaultOnCommittedKvm(t *testing.T) {
+	ops := newFakeZFSOps(testVault, testStaging, testBackup)
+	ops.zvols[testStaging] = true
+	ops.marker = testStaging
+	h := testZFSHandlerKvm(ops)
+	h.options.CurrentPartitionCommitted = true
+
+	require.NoError(t, h.recoverInterruptedVaultMigration(testVault))
+
+	assert.True(t, ops.datasets[testBackup], "the parked vault was destroyed")
+	assert.True(t, ops.datasets[testStaging], "the completed copy was destroyed")
+	assert.Equal(t, testStaging, ops.marker, "the swap record was cleared")
+}
+
+// TestRecoverKeepsLeftoversBesideAFreshVault covers an EVE-k boot that finds a
+// fresh filesystem vault over the swap window, as an EVE version without this
+// recovery leaves behind: the migration datasets hold the only copies of the
+// contents, and recovery must not destroy them.
 func TestRecoverKeepsLeftoversBesideAFreshVault(t *testing.T) {
 	ops := newFakeZFSOps(testVault, testStaging, testBackup)
 	ops.zvols[testStaging] = true // the completed copy
