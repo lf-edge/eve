@@ -454,11 +454,12 @@ func TestRecoverKeepsLeftoversBesideAFreshVault(t *testing.T) {
 	assert.Equal(t, 0, ops.calls["DestroyDataset"], "recovery destroyed a dataset")
 }
 
-// TestMigrateVaultFsToZvolDropsStagingOnError covers the cleanup of the
-// staging zvol when the migration fails after creating it. Left behind, it
-// holds up to the pool's free space, and a fallback boot to EVE-kvm has no
-// migration code to reclaim it.
-func TestMigrateVaultFsToZvolDropsStagingOnError(t *testing.T) {
+// TestMigrateVaultFsToZvolDropsCreatedZvolsOnError covers the cleanup of the
+// zvols the migration creates when it fails after creating them. Left behind,
+// the staging zvol holds up to the pool's free space and the etcd zvol its
+// configured size, and a fallback boot to EVE-kvm has no migration code to
+// reclaim either.
+func TestMigrateVaultFsToZvolDropsCreatedZvolsOnError(t *testing.T) {
 	// Each entry fails one operation of the migration, in the order the
 	// migration performs them. nth selects which call of that operation fails,
 	// since the swap calls some of them more than once.
@@ -467,6 +468,7 @@ func TestMigrateVaultFsToZvolDropsStagingOnError(t *testing.T) {
 		op   string
 		nth  int
 	}{
+		{name: "create staging zvol", op: "CreateVaultZvol"},
 		{name: "format", op: "FormatStagingZvol"},
 		{name: "mount staging", op: "MountStaging"},
 		{name: "copy", op: "CopyTree"},
@@ -485,10 +487,29 @@ func TestMigrateVaultFsToZvolDropsStagingOnError(t *testing.T) {
 
 			assert.Error(t, err)
 			assert.False(t, ops.datasets[testStaging], "staging zvol left behind")
+			assert.False(t, ops.datasets[types.EtcdZvol], "etcd zvol left behind")
 			assert.Empty(t, ops.marker, "swap marker left behind")
 			assert.True(t, ops.datasets[testVault], "source vault lost")
 		})
 	}
+}
+
+// TestMigrateVaultFsToZvolKeepsPreexistingEtcdZvol covers the other side of
+// that cleanup: it takes only the etcd zvol this attempt created. One already
+// on the pool is the device's etcd storage, and a failed migration is no
+// reason to destroy it.
+func TestMigrateVaultFsToZvolKeepsPreexistingEtcdZvol(t *testing.T) {
+	ops := newFakeZFSOps(testVault, types.EtcdZvol)
+	ops.zvols[types.EtcdZvol] = true
+	ops.failOn("CopyTree", 0)
+	h := testZFSHandler(ops)
+
+	err := h.migrateVaultFsToZvol(testVault, "/run/key", true)
+
+	assert.Error(t, err)
+	assert.True(t, ops.datasets[types.EtcdZvol], "an etcd zvol the migration did not create was destroyed")
+	assert.Equal(t, 0, ops.calls["CreateEtcdZvol"])
+	assert.False(t, ops.datasets[testStaging], "staging zvol left behind")
 }
 
 // TestRecoverDropsLeftoversOnceCommitted covers the exit from the kept state:
