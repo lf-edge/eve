@@ -568,13 +568,15 @@ func handleDelete(ctx *downloaderContext, key string,
 
 func downloaderInit(ctx *downloaderContext) *zedUpload.DronaCtx {
 
-	// create drona interface
-	dCtx, err := zedUpload.NewDronaCtx("zdownloader", 0)
-
+	// The transport is sized once, here; the knob takes effect at a reboot.
+	handlers := int(ctx.globalConfig.GlobalValueInt(types.DownloaderTransportHandlers))
+	dCtx, err := zedUpload.NewDronaCtx("zdownloader", handlers)
 	if dCtx == nil {
 		log.Errorf("context create fail %s", err)
 		log.Fatal(err)
 	}
+	log.Noticef("zedUpload transport handlers: %d (also the depth of its request queue)",
+		handlers)
 	// Remove any files which didn't complete before the device reboot
 	clearInProgressDownloadDirs(nil)
 	createDownloadDirs()
