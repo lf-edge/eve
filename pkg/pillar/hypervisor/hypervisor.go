@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -22,6 +23,12 @@ import (
 
 const (
 	xenToolsPath = "/containers/services/xen-tools"
+
+	// GracefulShutdownWait bounds how long a guest is given to act on the
+	// poweroff request before the stop is escalated to a forced one. It applies
+	// under every hypervisor: domainmgr waits it out before forcing a stop, and
+	// the KubeVirt VMI spec carries it as the termination grace period.
+	GracefulShutdownWait = 60 * time.Second
 )
 
 // Hypervisor provides methods for manipulating domains on the host

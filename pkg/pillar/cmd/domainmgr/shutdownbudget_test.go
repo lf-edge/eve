@@ -32,7 +32,7 @@ func TestShutdownBudget(t *testing.T) {
 			hvName:         hypervisor.KVMHypervisorName,
 			maxDelay:       maxDelay,
 			wantShutdown:   true,
-			wantFirstDelay: gracefulShutdownWait,
+			wantFirstDelay: hypervisor.GracefulShutdownWait,
 		},
 		{
 			name:           "PV under kubevirt waits briefly too",
@@ -40,7 +40,7 @@ func TestShutdownBudget(t *testing.T) {
 			hvName:         hypervisor.KubevirtHypervisorName,
 			maxDelay:       maxDelay,
 			wantShutdown:   true,
-			wantFirstDelay: gracefulShutdownWait,
+			wantFirstDelay: hypervisor.GracefulShutdownWait,
 		},
 		{
 			name:           "PV under xen is a real PV guest and keeps the budget",
@@ -64,7 +64,7 @@ func TestShutdownBudget(t *testing.T) {
 			hvName:         hypervisor.KVMHypervisorName,
 			maxDelay:       maxDelay,
 			wantShutdown:   true,
-			wantFirstDelay: gracefulShutdownWait,
+			wantFirstDelay: hypervisor.GracefulShutdownWait,
 		},
 		{
 			name:           "FML waits briefly",
@@ -72,7 +72,7 @@ func TestShutdownBudget(t *testing.T) {
 			hvName:         hypervisor.KVMHypervisorName,
 			maxDelay:       maxDelay,
 			wantShutdown:   true,
-			wantFirstDelay: gracefulShutdownWait,
+			wantFirstDelay: hypervisor.GracefulShutdownWait,
 		},
 		{
 			name:         "NOHYPER is never asked to power off",
