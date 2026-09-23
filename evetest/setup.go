@@ -1455,9 +1455,11 @@ func (th *TestHarness) reuseDevice(dev deviceState, newReq RequireEdgeDevice) er
 		}
 	}
 
-	// Snapshot the boot time before any reboot so we can later determine
+	// Snapshot the reboot indicators before any reboot so we can later determine
 	// whether the post-reboot info message has already been processed.
 	th.devicesM.Lock()
+	preReuseCounter := th.devices[dev.name].lastRestartCounter
+	preReuseHaveCounter := th.devices[dev.name].haveRestartCounter
 	preReuseBootTime := th.devices[dev.name].lastBootTime
 	th.devicesM.Unlock()
 	rebooted := false
@@ -1525,18 +1527,20 @@ func (th *TestHarness) reuseDevice(dev deviceState, newReq RequireEdgeDevice) er
 	}
 
 	// Reset reboot counters so the test body starts from a clean baseline.
-	// When the reuse policy triggered a reboot, we must account for whether
-	// the post-reboot info message (carrying the new BootTime) has already
-	// been processed asynchronously:
-	//   - If not yet processed (lastBootTime unchanged): set expectedRebootCount=1
-	//     so the pending increment of rebootCount will match it.
-	//   - If already processed (lastBootTime changed): both counters reset to 0.
+	// A reuse reboot is observed asynchronously, so it may or may not have been
+	// counted by the time we get here. It is still pending when neither the
+	// restart counter nor the boot time has moved yet; expectedRebootCount=1
+	// then matches the increment still to come. Without a pre-reboot counter the
+	// first observation only establishes the baseline and counts nothing.
 	th.devicesM.Lock()
 	currentDev := th.devices[dev.name]
+	observedReboot := currentDev.lastRestartCounter != preReuseCounter ||
+		currentDev.lastBootTime.Sub(preReuseBootTime).Abs() >= bootTimeJitter
+	pendingReboot := rebooted && preReuseHaveCounter && !observedReboot
 	currentDev.rebootCount = 0
 	currentDev.rebootAccountingOff = false
 	currentDev.rebootAccountingOffReason = ""
-	if rebooted && currentDev.lastBootTime.Equal(preReuseBootTime) {
+	if pendingReboot {
 		currentDev.expectedRebootCount = 1
 	} else {
 		currentDev.expectedRebootCount = 0

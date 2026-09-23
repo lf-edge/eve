@@ -173,25 +173,11 @@ func (th *TestHarness) handleDeviceInfoEvent(devName string, msg *eveinfo.ZInfoM
 			dev.state = newState
 		}
 		dev.interfaces = extractInterfacesFromSystemAdapter(dinfo.GetSystemAdapter())
+		var bootTime time.Time
 		if ts := dinfo.GetBootTime(); ts != nil {
-			bootTime := ts.AsTime()
-			if !dev.lastBootTime.IsZero() && !bootTime.Equal(dev.lastBootTime) {
-				diff := bootTime.Sub(dev.lastBootTime)
-				// bootTime can jitter by ±1s between successive messages during
-				// the same boot (gopsutil reads btime differently on each call).
-				// Only count a genuine reboot when the change is at least 5 seconds.
-				if diff >= 5*time.Second {
-					dev.rebootCount++
-					th.log.Infof("Device %s rebooted "+
-						"(boot time: %s, previous boot time: %s), "+
-						"total observed reboots this test: %d",
-						devName, bootTime.Format(time.RFC3339),
-						dev.lastBootTime.Format(time.RFC3339),
-						dev.rebootCount)
-				}
-			}
-			dev.lastBootTime = bootTime
+			bootTime = ts.AsTime()
 		}
+		th.countReboots(devName, dev, dinfo.GetRestartCounter(), bootTime)
 
 	case eveinfo.ZInfoTypes_ZiApp:
 		ainfo := msg.GetAinfo()
@@ -231,6 +217,68 @@ func (th *TestHarness) handleDeviceInfoEvent(devName string, msg *eveinfo.ZInfoM
 			dev.deployCond.Broadcast()
 		}
 	}
+}
+
+// bootTimeJitter is the smallest BootTime change taken for a real reboot:
+// gopsutil reads btime slightly differently on each call, so two messages from
+// the same boot can disagree by about a second.
+const bootTimeJitter = 5 * time.Second
+
+// countReboots folds one ZInfoDevice observation into the device's observed
+// reboot count, given that message's RestartCounter and BootTime. A zero
+// bootTime means the message carried none.
+//
+// RestartCounter is the primary signal. nodeagent keeps it in
+// /persist/status/restartcounter and increments it once per boot, so every
+// message carries an absolute count and a dropped or coalesced message costs
+// nothing. BootTime only detects change, and is kept for the boot the counter
+// cannot describe: the counter's file lives on /persist, so a test that
+// replaces the pool sees it restart from zero.
+func (th *TestHarness) countReboots(devName string, dev *deviceState,
+	restartCounter uint32, bootTime time.Time) {
+
+	newBoot := !bootTime.IsZero() && !dev.lastBootTime.IsZero() &&
+		bootTime.Sub(dev.lastBootTime).Abs() >= bootTimeJitter
+
+	switch {
+	case !dev.haveRestartCounter:
+		th.log.Infof("Device %s reboot baseline: restart counter %d, boot time %s",
+			devName, restartCounter, bootTimeString(bootTime))
+
+	case restartCounter > dev.lastRestartCounter:
+		n := int(restartCounter - dev.lastRestartCounter)
+		dev.rebootCount += n
+		th.log.Infof("Device %s rebooted %d time(s) (restart counter %d -> %d, "+
+			"boot time %s), total observed reboots this test: %d",
+			devName, n, dev.lastRestartCounter, restartCounter,
+			bootTimeString(bootTime), dev.rebootCount)
+		if !newBoot {
+			th.log.Warnf("Device %s: restart counter advanced by %d without a "+
+				"matching boot time change", devName, n)
+		}
+
+	case newBoot:
+		dev.rebootCount++
+		th.log.Warnf("Device %s rebooted without advancing its restart counter "+
+			"(counter %d, boot time %s, previous %s), total observed reboots "+
+			"this test: %d", devName, restartCounter, bootTimeString(bootTime),
+			dev.lastBootTime.Format(time.RFC3339), dev.rebootCount)
+	}
+
+	dev.lastRestartCounter = restartCounter
+	dev.haveRestartCounter = true
+	if !bootTime.IsZero() {
+		dev.lastBootTime = bootTime
+	}
+}
+
+// bootTimeString renders a BootTime for a log line, naming the absent case
+// rather than printing the zero time.
+func bootTimeString(t time.Time) string {
+	if t.IsZero() {
+		return "none"
+	}
+	return t.Format(time.RFC3339)
 }
 
 func (th *TestHarness) handleDeviceRequestEvent(devName string, ev *controller.ReqEvent) {
