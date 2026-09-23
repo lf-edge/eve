@@ -27,6 +27,12 @@ const (
 	// stallCheckInterval is how often a download waiting on the transport is
 	// checked for having received no message at all (see awaitResponse).
 	stallCheckInterval = 10 * time.Second
+	// respChanCapacity is the room a request's response channel leaves the
+	// transport once the final response has been taken: its progress reporter
+	// may still post a tick that raced the response and then its own final
+	// update, and blocks until both are taken (see drainResponses). Two would
+	// do; the rest is margin.
+	respChanCapacity = 4
 )
 
 func loadDownloadedParts(locFilename string) types.DownloadedParts {
@@ -190,7 +196,7 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		}
 	}
 
-	var respChan = make(chan *zedUpload.DronaRequest)
+	respChan := make(chan *zedUpload.DronaRequest, respChanCapacity)
 
 	log.Functionf("%s syncOp for dpath:<%s>, region: <%s>, filename: <%s>, "+
 		"downloadURL: <%s>, maxsize: %d, ifname: %s, ipSrc: %+v, locFilename: %s",
@@ -242,6 +248,14 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		log.Error(err)
 		return "", cancel, tracedReq, err
 	}
+	// The transport posts on respChan until its final response; should this
+	// function give up on the request first, someone must keep reading.
+	finalSeen := false
+	defer func() {
+		if !finalSeen {
+			drainResponses(respChan, filename)
+		}
+	}()
 
 	stallCheck := time.NewTicker(stallCheckInterval)
 	defer stallCheck.Stop()
@@ -292,6 +306,7 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 			}
 			continue
 		}
+		finalSeen = true
 		if syncOp == zedUpload.SyncOpDownload {
 			err = resp.GetDnStatus()
 		} else {
@@ -348,7 +363,7 @@ func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		dEndPoint.WithProxy(proxyURL)
 	}
 
-	var respChan = make(chan *zedUpload.DronaRequest)
+	respChan := make(chan *zedUpload.DronaRequest, respChanCapacity)
 
 	log.Functionf("%s syncOp for dpath:<%s>, region: <%s>, filename: <%s>, "+
 		"downloadURL: <%s>, ifname: %s, ipSrc: %+v",
@@ -395,6 +410,12 @@ func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		log.Error(err)
 		return sha256, cancel, err
 	}
+	finalSeen := false
+	defer func() {
+		if !finalSeen {
+			drainResponses(respChan, filename)
+		}
+	}()
 
 	stallCheck := time.NewTicker(stallCheckInterval)
 	defer stallCheck.Stop()
@@ -415,6 +436,7 @@ func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 			}
 			continue
 		}
+		finalSeen = true
 		if syncOp == zedUpload.SyncOpGetObjectMetaData {
 			sha256 = resp.GetSha256()
 			err = resp.GetDnStatus()
@@ -488,4 +510,28 @@ func awaitResponse(respChan <-chan *zedUpload.DronaRequest, stallCheck <-chan ti
 			}
 		}
 	}
+}
+
+// drainResponses keeps reading respChan on behalf of a request whose requester
+// has given up on it, until the transport posts the final response, and returns
+// a channel that is closed at that point. The transport posts every progress
+// update and the final response with a plain send on respChan, from goroutines
+// that live only for the request, and it does not learn that the requester is
+// gone: without a reader those goroutines would block forever, one or two per
+// abandoned request, and pillar's memory would grow with every failed attempt.
+// Cancelling the request makes the transport finish soon, so the drainer is
+// short-lived as well. Whatever the transport posts after the final response
+// fits into respChan's buffer (see respChanCapacity).
+func drainResponses(respChan <-chan *zedUpload.DronaRequest, name string) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for resp := range respChan {
+			if !resp.IsDnUpdate() {
+				log.Functionf("Drained the final response of the abandoned request for %s", name)
+				return
+			}
+		}
+	}()
+	return done
 }
