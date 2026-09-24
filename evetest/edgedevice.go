@@ -1051,6 +1051,7 @@ func (d *EdgeDevice) PowerOff() {
 // on the relevant apps).
 func (d *EdgeDevice) PowerOn(waitUntilOnline bool) {
 	d.th.incExpectedRebootCount(d.devName)
+	d.th.countPowerCycleReboot(d.devName)
 	d.rebootAndWait(waitUntilOnline, func() {
 		devCtrlReq := &api.DeviceControlRequest{
 			ClientId:   d.th.brokerClientID,
