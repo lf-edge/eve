@@ -197,42 +197,40 @@ func waitForVaultRecovered(t Gomega, device *evetest.EdgeDevice, timeout time.Du
 	}, timeout, 20*time.Second).Should(Succeed())
 }
 
-// waitForEVEKPassOverLeftovers waits until an EVE-K boot has looked at the
-// migration datasets and decided to keep them, which is what the recovery logs.
-//
-// The recovery decision is the signal to key on rather than the migration
-// declining, because the two sit on opposite sides of the vault unlock: recovery
-// runs before it and is reached on every EVE-K boot, while the migration runs
-// after and is reached only if the vault unlocked. On a boot into a new rootfs it
-// often does not -- PCRs 8, 9 and 13 move, the local unseal fails, and the vault
-// waits on a key from the controller -- so a wait on the migration's refusal
-// times out on a device that did run the code. Measured on a paused run:
-// VaultStatus reported UnlockMethod 0 with MismatchingPCRs [8 9 13] while the
-// recovery had already logged its decision.
-func waitForEVEKPassOverLeftovers(t Gomega, device *evetest.EdgeDevice, timeout time.Duration) {
-	const kept = "keeping them, the vault contents"
-	var matched string
-	t.Eventually(func(g Gomega) {
-		out, err := runEVE(device, newlogProbe(`grep -a "`+kept+`" | tail -3`))
-		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(out).To(ContainSubstring(kept),
-			"no EVE-K boot has decided to keep the migration datasets yet")
-		matched = strings.TrimSpace(out)
-	}, timeout, 30*time.Second).Should(Succeed())
-	evetest.Logger().Infof("EVE-K recovery kept the leftovers: %s", matched)
+// disarmVaultMigrationFault removes the fault point, so that a later EVE-K boot
+// runs the migration through instead of parking in the same window. The marker
+// lives on /persist and outlives every boot until it is taken away.
+func disarmVaultMigrationFault(t Gomega, device *evetest.EdgeDevice) {
+	out, err := runEVE(device,
+		`eve exec pillar sh -c 'rm -f `+vaultFaultFile+` `+vaultFaultReachedFile+`; sync'`)
+	t.Expect(err).NotTo(HaveOccurred(), "disarming the migration fault failed:\n%s", out)
+	t.Expect(readOptionalFile(t, device, vaultFaultFile)).To(Equal("NONE"),
+		"the migration fault is still armed")
 }
 
-// waitForLeftoversDropped waits for the migration datasets to disappear, which
-// is what recovery does on the first boot after the partition is committed.
-func waitForLeftoversDropped(t Gomega, device *evetest.EdgeDevice, timeout time.Duration) {
+// waitForVaultMigrated waits for the vault to be the EVE-K zvol with markerText
+// readable out of it, which together are what a completed migration produces.
+//
+// Both halves are needed: the dataset becomes a zvol at the swap's second
+// rename, a moment before the migration mounts it, so a type check alone can
+// return while the contents are still unreachable. The wait spans a whole boot,
+// because the flavor change moves the measurements the seal is bound to -- the
+// local unseal fails, the vault opens on a key from the controller, and only
+// then does the migration run. Every read is allowed to fail: ssh comes and goes
+// across the boot, and the vault path is absent between the two renames.
+func waitForVaultMigrated(t Gomega, device *evetest.EdgeDevice,
+	markerPath, markerText string, timeout time.Duration) {
 	t.Eventually(func(g Gomega) {
-		out, err := runEVE(device, "eve exec pillar zfs list -H -o name -r persist")
+		datasetType, err := runEVE(device,
+			"eve exec pillar zfs get -Hp -o value type "+vaultDataset)
 		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(out).NotTo(ContainSubstring(vaultBackupDataset),
-			"the pre-migration vault is still present")
-		g.Expect(out).NotTo(ContainSubstring(vaultStagingDataset),
-			"the migration copy is still present")
-	}, timeout, 20*time.Second).Should(Succeed())
+		g.Expect(strings.TrimSpace(datasetType)).To(Equal("volume"),
+			"the vault is not the migrated zvol")
+		marker, err := runEVE(device, "eve exec pillar cat "+markerPath)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(strings.TrimSpace(marker)).To(Equal(markerText),
+			"the migrated vault is not mounted with its contents")
+	}, timeout, 30*time.Second).Should(Succeed())
 }
 
 // describeVaultState collects everything needed to tell the outcomes of an
