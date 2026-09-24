@@ -8,7 +8,7 @@ require (
 	github.com/elazarl/goproxy v1.7.2
 	github.com/elazarl/goproxy/ext v0.0.0-20250305112401-088f758167d2
 	github.com/inconshreveable/go-vhost v1.0.0
-	github.com/lf-edge/eve-libs v0.0.0-20260922194816-38a4a917e040
+	github.com/lf-edge/eve-libs v0.0.0-20260924144409-0653202ad7ee
 	github.com/lf-edge/eve/evetest v0.0.0-20260820145609-63ab025d6185
 	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260421125048-8d3825045e4e
 	github.com/sirupsen/logrus v1.9.4
