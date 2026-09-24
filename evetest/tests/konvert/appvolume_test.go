@@ -216,6 +216,7 @@ func TestKvmToKRepartitionAppVolume(test *testing.T) {
 	log.Infof("asserting the boot disk reached the EVE-K layout via the shrink")
 	assertLargeGeometry(t, device, smallGeometry, p3MustShrink)
 	evetest.Checkpoint("geometry-converted")
+	assertResizeFaultAccounted(t, device)
 
 	stopPersistSampler := startPersistSampler(device, 45*time.Second)
 	defer stopPersistSampler()

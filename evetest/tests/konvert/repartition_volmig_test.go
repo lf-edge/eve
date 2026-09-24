@@ -141,6 +141,7 @@ func TestKvmToKRepartitionVolmig(test *testing.T) {
 	// Phase 6.
 	log.Infof("asserting the boot disk reached the EVE-K layout via the shrink")
 	assertLargeGeometry(t, device, smallGeometry, p3MustShrink)
+	assertResizeFaultAccounted(t, device)
 	log.Infof("asserting the repartition preserved the TPM seal")
 	assertSealSurvivedRepartition(t, device)
 	evetest.Checkpoint("geometry-converted")

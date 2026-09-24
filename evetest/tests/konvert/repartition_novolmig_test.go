@@ -196,6 +196,7 @@ func TestKvmToKRepartitionNoVolmig(test *testing.T) {
 	log.Infof("asserting the boot disk reached the EVE-K layout via the %s route", decision)
 	assertLargeGeometry(t, device, smallGeometry, wantP3)
 	evetest.Checkpoint("geometry-converted")
+	recordResizeFault(device)
 
 	log.Infof("asserting the repartition preserved the TPM seal")
 	assertSealSurvivedRepartition(t, device)

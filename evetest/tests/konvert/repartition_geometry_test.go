@@ -80,5 +80,6 @@ func TestKvmToKRepartitionGeometry(test *testing.T) {
 
 	log.Infof("the boot disk must be at the full EVE-K layout")
 	assertFinalEVEKLayout(t, device)
+	recordResizeFault(device)
 	evetest.Checkpoint("layout-final")
 }
