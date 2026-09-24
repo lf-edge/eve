@@ -17,4 +17,7 @@ type networkTracer interface {
 	getRelTimestamp() Timestamp
 	// Publish newly recorded networkTrace into the queue for processing.
 	publishTrace(networkTrace)
+	// Get a channel that is closed once the tracer stops tracing. Goroutines
+	// waiting on the tracer's behalf must not outlive it.
+	tracingDone() <-chan struct{}
 }
