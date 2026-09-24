@@ -437,7 +437,7 @@ def resolve_dependencies(pkgname, index, provides, resolved, missing, presence,
         3. If not found, check virtual provides mapping
         4. Handle special metapackage dependencies (o: prefix)
         5. Recursively resolve all dependencies of found package
-        6. Handle virtual provides (so:, cmd:, pc: prefixes)
+        6. Handle virtual provides via the 'p:' (provides) index
         7. Record unresolvable dependencies as missing
 
     Special Dependency Types:
@@ -445,6 +445,7 @@ def resolve_dependencies(pkgname, index, provides, resolved, missing, presence,
         - cmd:command: Command/binary dependencies
         - pc:pkgconfig: pkg-config dependencies
         - o:metaname: Metapackage dependencies
+        - bare virtuals: names with no package of their own (e.g. 'pkgconfig')
         - !package: Conflict dependencies (ignored)
 
     Examples:
@@ -503,20 +504,19 @@ def resolve_dependencies(pkgname, index, provides, resolved, missing, presence,
 
         dep_name = strip_version(dep)
 
-        # Handle virtual provides: so:, cmd:, pc: prefixes
-        if dep_name.startswith(("so:", "cmd:", "pc:")):
-            if dep_name in provides:
-                real_pkg = provides[dep_name][0]
-                annotated = f"{real_pkg}[{dep_name}]"
-                resolve_dependencies(real_pkg, index, provides, resolved, missing,
-                                   presence, branch, arch, chain + [annotated], chains)
-            else:
-                missing.add(dep_name)
-
         # Handle direct package dependencies
-        elif dep_name in index:
+        if dep_name in index:
             resolve_dependencies(dep_name, index, provides, resolved, missing,
                                presence, branch, arch, chain + [dep_name], chains)
+
+        # Anything not a real package name is a virtual: so:, cmd:, pc:, py3:,
+        # or a bare virtual such as 'pkgconfig'. Resolve it to its provider
+        # rather than assuming the prefix set is closed.
+        elif dep_name in provides:
+            real_pkg = provides[dep_name][0]
+            annotated = f"{real_pkg}[{dep_name}]"
+            resolve_dependencies(real_pkg, index, provides, resolved, missing,
+                               presence, branch, arch, chain + [annotated], chains)
         else:
             missing.add(dep_name)
 
@@ -741,58 +741,56 @@ def resolve_and_classify_packages(packages_to_add, apk_indexes, provides_indexes
 
     # Process each architecture separately to handle arch-specific availability
     for arch in available_archs:
+        # Dependencies routinely cross branches (a community package pulling in
+        # a main library), so resolve into one flat per-arch set and bucket by
+        # the branch 'presence' recorded for each package. Bucketing by the
+        # requested package's branch instead would drop every cross-branch
+        # dependency, because classify_packages() intersects the two.
+        arch_resolved = set()
+        arch_missing = set()
+        arch_chains = {}
+
         for pkgname in packages_to_add:
-            found = False
-
-            # Try to find package directly in package index
-            if pkgname in apk_indexes[arch]:
-                pkg = apk_indexes[arch][pkgname]
-                resolve_dependencies(
-                    pkgname,
-                    apk_indexes[arch],
-                    provides_indexes[arch],
-                    resolved_by_branch_arch[pkg.branch][arch],
-                    missing_by_branch_arch[pkg.branch][arch],
-                    presence,
-                    pkg.branch,
-                    arch,
-                    chain=[pkgname],
-                    # pylint: disable=unsubscriptable-object
-                    chains=(chains_by_branch_arch[pkg.branch][arch]
-                           if (collect_chains and chains_by_branch_arch)
-                           else {})
-                )
-                found = True
-
-            # If not found directly, check if it's provided by another package
-            elif pkgname in provides_indexes[arch]:
+            root = pkgname
+            if root not in apk_indexes[arch]:
                 # Take the first package that provides this virtual package
-                real_pkg = provides_indexes[arch][pkgname][0]
-                if real_pkg in apk_indexes[arch]:
-                    pkg = apk_indexes[arch][real_pkg]
-                    resolve_dependencies(
-                        real_pkg,
-                        apk_indexes[arch],
-                        provides_indexes[arch],
-                        resolved_by_branch_arch[pkg.branch][arch],
-                        missing_by_branch_arch[pkg.branch][arch],
-                        presence,
-                        pkg.branch,
-                        arch,
-                        chain=[real_pkg],
-                        # pylint: disable=unsubscriptable-object
-                        chains=(chains_by_branch_arch[pkg.branch][arch]
-                               if (collect_chains and chains_by_branch_arch)
-                               else {})
-                    )
-                    found = True
+                providers = provides_indexes[arch].get(root)
+                root = providers[0] if providers else None
 
             # Package not available for this architecture
-            if not found:
+            if root is None or root not in apk_indexes[arch]:
                 print(f"⚠️  Package '{pkgname}' not found in any branch for architecture '{arch}'")
                 # Mark as missing in all branches for this architecture
                 for branch in BRANCHES:
                     missing_by_branch_arch[branch][arch].add(pkgname)
+                continue
+
+            resolve_dependencies(
+                root,
+                apk_indexes[arch],
+                provides_indexes[arch],
+                arch_resolved,
+                arch_missing,
+                presence,
+                apk_indexes[arch][root].branch,
+                arch,
+                chain=[root],
+                chains=arch_chains
+            )
+
+        for pkgname in arch_resolved:
+            for pkg_branch in {b for (b, a) in presence[pkgname] if a == arch}:
+                # 'testing' has no output file, so it is not carried further
+                if pkg_branch not in resolved_by_branch_arch:
+                    continue
+                resolved_by_branch_arch[pkg_branch][arch].add(pkgname)
+                if collect_chains and chains_by_branch_arch and pkgname in arch_chains:
+                    # pylint: disable=unsubscriptable-object
+                    chains_by_branch_arch[pkg_branch][arch][pkgname] = arch_chains[pkgname]
+
+        # An unresolvable name has no branch by definition; report it under main
+        for pkgname in arch_missing:
+            missing_by_branch_arch["main"][arch].add(pkgname)
 
     print("📊 Classifying packages by architecture and branch...")
     classified = classify_packages(resolved_by_branch_arch, presence, available_archs)
