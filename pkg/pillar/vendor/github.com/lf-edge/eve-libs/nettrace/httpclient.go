@@ -406,6 +406,10 @@ func (c *HTTPClient) publishTrace(t networkTrace) {
 	c.pendingTraces.Enqueue(t)
 }
 
+func (c *HTTPClient) tracingDone() <-chan struct{} {
+	return c.tracingCtx.Done()
+}
+
 // resetTraces : recreates all maps holding recorded network traces and pcaps.
 func (c *HTTPClient) resetTraces(delOpenConns bool) error {
 	c.Lock()
