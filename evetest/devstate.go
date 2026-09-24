@@ -329,6 +329,30 @@ func (th *TestHarness) incExpectedRebootCount(devName string) {
 	}
 }
 
+// countPowerCycleReboot records a reboot that the harness performed itself by
+// power-cycling the device, and drops the reboot-detection state so the next
+// ZInfoDevice observation re-establishes a baseline instead of counting the
+// same boot a second time.
+//
+// A power cycle is the one reboot the device cannot describe afterwards. The
+// restart counter lives in /persist/status, so a test that replaces /persist
+// while the device is off brings it back counting from zero, and the boot-time
+// change that would otherwise stand in for it is only seen if an info message
+// happens to carry it before the next reboot.
+func (th *TestHarness) countPowerCycleReboot(devName string) {
+	th.devicesM.Lock()
+	defer th.devicesM.Unlock()
+	dev, ok := th.devices[devName]
+	if !ok {
+		return
+	}
+	dev.rebootCount++
+	dev.haveRestartCounter = false
+	dev.lastBootTime = time.Time{}
+	th.log.Infof("Device %s power-cycled by the test, "+
+		"total observed reboots this test: %d", devName, dev.rebootCount)
+}
+
 // checkRebootCounts compares the observed reboot count against the expected
 // reboot count for every onboarded device. A mismatch indicates either an
 // unexpected reboot (device crashed) or a requested reboot that never occurred.
