@@ -1719,6 +1719,23 @@ func (d *EdgeDevice) RunShellScript(script string, timeout time.Duration,
 	return stdoutBuf.String(), stderrBuf.String(), err
 }
 
+// RunKubectl runs kubectl on the device and returns its trimmed stdout.
+// kubectl only exists inside EVE's "kube" container, so the call goes through
+// "eve exec kube"; only an EVE-k (kubevirt) device has that container.
+//
+// The error covers both a transport failure and a non-zero kubectl exit, and
+// carries stderr. Telling them apart is not worth it: on a converging node
+// both mean "not ready yet", which a caller inside Eventually retries on.
+//
+// timeout bounds the invocation; zero means no deadline.
+func (d *EdgeDevice) RunKubectl(args string, timeout time.Duration) (stdout string, err error) {
+	out, _, err := d.RunShellScript("eve exec kube kubectl "+args, timeout, 0)
+	if err != nil {
+		return "", fmt.Errorf("kubectl %s failed on device %q: %w", args, d.devName, err)
+	}
+	return strings.TrimSpace(out), nil
+}
+
 // RunShellScriptInsideApp executes a shell script inside an application
 // instance over SSH and returns its standard output and standard error.
 //
