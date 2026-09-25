@@ -7,7 +7,7 @@ https://...` fetches component manifests. This document describes how EVE makes
 those downloads honor the `network.download.max.cost` configuration through the
 `mgmtproxy` pillar agent.
 
-The `mgmtproxy` agent only exists in `HV=k` builds; on KVM/Xen builds it is a
+The `mgmtproxy` agent only exists in `HV=k` builds; on KVM builds it is a
 no-op stub. Everything described here applies to Kubernetes-driven downloads
 only.
 

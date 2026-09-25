@@ -54,7 +54,6 @@ func newContainerd() Hypervisor {
 }
 
 // CountMemOverhead - returns the memory overhead for a domain.
-// This implementation is used for Xen as well
 func (ctx ctrdContext) CountMemOverhead(domainName string, domainUUID uuid.UUID, domainRAMMemory int64, vmmMaxMem int64,
 	domainMaxCpus int64, domainVCpus int64, domainIoAdapterList []types.IoAdapter, aa *types.AssignableAdapters,
 	globalConfig *types.ConfigItemValueMap) (uint64, error) {
@@ -63,7 +62,7 @@ func (ctx ctrdContext) CountMemOverhead(domainName string, domainUUID uuid.UUID,
 }
 
 func (ctx ctrdContext) GetCapabilities() (*types.Capabilities, error) {
-	//we are here because of no /dev/xen or /dev/kvm exists
+	//we are here because no /dev/kvm exists
 	return &types.Capabilities{
 		HWAssistedVirtualization: false,
 		IOVirtualization:         false,
@@ -229,7 +228,7 @@ func (ctx ctrdContext) Annotations(domainName string) (map[string]string, error)
 
 // WatchCrash: containers have no VM-crash (mode A) concept; the default is no
 // crash channel. KvmContext overrides this. Also the embedded default for the
-// kubevirt and xen contexts.
+// kubevirt context.
 func (ctx ctrdContext) WatchCrash(_ string) <-chan types.DomainCrashEvent {
 	return nil
 }

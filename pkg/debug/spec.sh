@@ -5,10 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # This script creates an initial hardware model file.
-# It should be run on KVM and without having already made some adapters be
-# app direct
-# The KVM requirement is due to looking at iommu_group and that might be
-# bogus under Xen
+# It should be run without having already made some adapters be app direct
 # Note that the generated USB configuration does not include each USB port
 # aka receptacle, since that is not known to software; only the controllers
 # can be seen. Those can be manually added after determining which USB controller
@@ -56,14 +53,9 @@ fi
 
 # pci_iommu_group returns the iommu_group, or empty string if there is none
 # $1 is the PciLong value
-# If running on Xen we can't tell the safe groups
 pci_iommu_group() {
     local pcilong="$1"
-    if [ -e /dev/xen ]; then
-        echo "warning:no_group_determined_using_xen" > /dev/stderr
-    else
-        readlink "/sys/bus/pci/devices/$pcilong/iommu_group" 2>/dev/null | sed 's,.*kernel/iommu_groups/,,'
-    fi
+    readlink "/sys/bus/pci/devices/$pcilong/iommu_group" 2>/dev/null | sed 's,.*kernel/iommu_groups/,,'
 }
 
 # get_assignmentgroup returns a guess at the assignment group
@@ -177,13 +169,8 @@ __EOT__
     fi
 }
 
-if [ -e /dev/xen ]; then
-   CPUS=$(eve exec xen-tools xl info | grep nr_cpus | cut -f2 -d:)
-   MEM=$(( $(eve exec xen-tools xl info | grep total_memory | cut -f2 -d:) ))
-else
-   CPUS=$(grep -c '^processor.*' < /proc/cpuinfo)
-   MEM=$(awk '/MemTotal:/ { print int($2 / 1024); }' < /proc/meminfo)
-fi
+CPUS=$(grep -c '^processor.*' < /proc/cpuinfo)
+MEM=$(awk '/MemTotal:/ { print int($2 / 1024); }' < /proc/meminfo)
 
 DISK=$(lsblk -b -o NAME,TYPE,TRAN,SIZE | grep disk | grep -v usb | awk '{ total += $NF; } END { print int(total/(1024*1024*1024)); }')
 WDT=$([ -e /dev/watchdog ] && echo true || echo false)
