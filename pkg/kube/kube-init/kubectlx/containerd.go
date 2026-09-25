@@ -6,7 +6,6 @@ package kubectlx
 import (
 	"context"
 	"fmt"
-	"os"
 
 	containerd "github.com/containerd/containerd/v2/client"
 	ctrdimages "github.com/containerd/containerd/v2/core/images"
@@ -72,25 +71,6 @@ func (cc *ContainerdClient) Close() error {
 // remember the namespace convention.
 func (cc *ContainerdClient) nsCtx(ctx context.Context) context.Context {
 	return namespaces.WithNamespace(ctx, K8sContainerdNamespace)
-}
-
-// ImportImage imports every image in the tarball at tarballPath into
-// the k8s.io namespace and returns the imported references.
-func (cc *ContainerdClient) ImportImage(ctx context.Context, tarballPath string) ([]string, error) {
-	f, err := os.Open(tarballPath)
-	if err != nil {
-		return nil, fmt.Errorf("kubectlx containerd: open %s: %w", tarballPath, err)
-	}
-	defer f.Close()
-	imgs, err := cc.client.Import(cc.nsCtx(ctx), f)
-	if err != nil {
-		return nil, fmt.Errorf("kubectlx containerd: import %s: %w", tarballPath, err)
-	}
-	refs := make([]string, 0, len(imgs))
-	for _, img := range imgs {
-		refs = append(refs, img.Name)
-	}
-	return refs, nil
 }
 
 // ImageExists returns true if the given image reference is present in

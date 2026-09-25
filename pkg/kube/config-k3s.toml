@@ -18,8 +18,39 @@ root = "/persist/vault/containerd"
   cdi_spec_dirs = ["/etc/cdi", "/var/run/cdi"]
 
 [plugins."io.containerd.grpc.v1.cri".containerd]
-  snapshotter = "overlayfs"
+  snapshotter = "erofs"
   disable_snapshot_annotations = true
+
+# Layers are converted once to erofs (one sequential write) and mounted
+# instead of being untarred onto dirsync /persist. lz4hc applies to images
+# pulled on the device, which land on /persist where nothing else compresses
+# them; the pre-built payload ships uncompressed because the squashfs rootfs
+# compresses it. The differ needs mkfs.erofs in PATH (from pkg/kube) and
+# checks for it at plugin init (containerd v2.1).
+[plugins."io.containerd.differ.v1.erofs"]
+  mkfs_options = ["-zlz4hc"]
+
+# Prefer the erofs differ for ALL unpack paths (CRI CreateContainer and the
+# client Unpack kube-init uses), not just the transfer-service pull path. The
+# diff service default order is ["walking"], which untars each layer onto
+# dirsync /persist and then the erofs snapshotter re-converts the upperdir to
+# erofs — double work, ~10 min/image. With erofs first, layers apply via
+# mkfs.erofs --tar=f straight from the layer stream (no untar); it falls back
+# to walking (ErrNotImplemented) for anything erofs can't handle.
+[plugins."io.containerd.service.v1.diff-service"]
+  default = ["erofs", "walking"]
+
+# CRI pulls via the transfer service, which only unpacks images whose
+# snapshotter matches an unpack_config entry. The built-in default lists
+# overlayfs only, so with snapshotter=erofs images silently don't unpack
+# ("Unpack configuration not supported, skipping") and pods hang in
+# ContainerCreating. Declare erofs here. check_platform_supported defaults
+# to false, so the platform is treated as "all" — this one entry serves
+# every arch (the "linux/amd64" string is just a parseable placeholder).
+[[plugins."io.containerd.transfer.v1.local".unpack_config]]
+  platform = "linux/amd64"
+  snapshotter = "erofs"
+  differ = "erofs"
 
 [grpc]
   address = "/run/containerd-user/containerd.sock"

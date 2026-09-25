@@ -1,0 +1,10 @@
+#
+# Copyright (c) 2026 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+image: eve-kube-images
+org: lfedge
+# The Dockerfile pulls upstream container images via skopeo and
+# apk-installs the build tools (skopeo, erofs-utils, and the toolchain for
+# the erofs-utils source build). All need network in the
+# linuxkit-builder buildkit sandbox — off by default.
+network: true

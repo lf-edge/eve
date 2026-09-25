@@ -39,7 +39,7 @@ which wraps `k3s kubectl` / `k3s ctr` / `crictl`.
 | `clustermode` | Single↔HA transitions, startup-rank stagger, stale masterlease sweep. |
 | `monitor` | Steady-state watchers: cluster-config polling, user-overrides, log rotation, node-label drift. |
 | `update` | Cross-reboot upgrade flow for k3s + cluster components, KubeClusterUpdateStatus gating. |
-| `images` | Pre-packaged tarball import (external-boot-image, rt-operator, KubeVirt/CDI/Longhorn). |
+| `images` | Pre-packaged image registration from the payload volume (KubeVirt/CDI/Longhorn/Multus/kube-vip), plus assembling the external-boot-image from the running rootfs. |
 | `tiebreaker` | Three-node HA: label/cordon the tie-breaker, scale operator deployments, patch DaemonSets. |
 | `vnc` | VNC proxy for KubeVirt VMIs; consumes `/run/edgeview/VncParams/`. |
 | `mgmtproxy` | HTTPS_PROXY/NO_PROXY env injection for containerd; cni0 anchor IP; CDI proxy patch. |
