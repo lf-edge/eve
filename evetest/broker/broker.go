@@ -1810,7 +1810,12 @@ func (b *broker) GetDeviceConsoleOutput(
 		log.Error(err)
 		return nil, err
 	}
-	return &api.ConsoleOutputResponse{ConsoleOutput: output}, nil
+	// A serial console carries bytes that are not valid UTF-8 -- GRUB draws its
+	// menu in CP437 -- and a proto string field cannot hold them, so gRPC fails
+	// the whole response rather than the offending run of bytes.
+	return &api.ConsoleOutputResponse{
+		ConsoleOutput: strings.ToValidUTF8(output, ""),
+	}, nil
 }
 
 // ConnectConsoleToDevice establishes a bidirectional gRPC tunnel between

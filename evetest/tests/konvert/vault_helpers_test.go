@@ -61,6 +61,26 @@ func settleVaultLocal(t Gomega, device *evetest.EdgeDevice) {
 		"the vault did not settle on a local unlock within %d reboots", maxReboots)
 }
 
+// waitVaultUnlocked blocks until vaultmgr reports how it opened the vault.
+//
+// Until it does, the vault dataset is not mounted and /persist/vault is an
+// empty directory on the parent dataset, so anything read through the
+// mountpoint looks destroyed rather than not yet available. The boot after a
+// flavor change takes its time getting there: that change moves the
+// measurements the seal is bound to, so the local unseal fails first and the
+// controller key is what eventually opens it.
+func waitVaultUnlocked(t Gomega, device *evetest.EdgeDevice) {
+	log := evetest.Logger()
+	var method string
+	t.Eventually(func() string {
+		method = readVaultUnlockMethod(device)
+		return method
+	}, 12*time.Minute, 10*time.Second).ShouldNot(BeEmpty(),
+		"vaultmgr never reported an unlock method, so the vault stayed unmounted "+
+			"and its content cannot be read")
+	log.Infof("vault unlocked: method=%s", method)
+}
+
 // readVaultUnlockMethod returns how the vault was unlocked, or "" while
 // vaultmgr has not published yet.
 func readVaultUnlockMethod(device *evetest.EdgeDevice) string {

@@ -21,7 +21,7 @@ const tooFullPercent = 70
 // TestKvmToKRepartitionRefused asserts that a device which cannot be repartitioned declines
 // the conversion cleanly, rather than attempting it and stranding itself.
 //
-// This is the sibling of TestKvmToKRepartition, and the more important of the
+// This is the sibling of TestKvmToKRepartitionNoVolmig, and the more important of the
 // two to get right: a conversion that fails halfway leaves a device with a
 // half-written partition table and no way back. The contract is that EVE works
 // out beforehand that it cannot free the space, refuses, says why, and carries

@@ -448,12 +448,20 @@ type deviceState struct {
 	configAppliedCond *sync.Cond
 
 	// Reboot detection.
+	// lastRestartCounter is the most recently observed ZInfoDevice.RestartCounter,
+	// and haveRestartCounter whether any observation has arrived yet.
 	// lastBootTime is the most recently observed BootTime from ZInfoDevice messages.
 	// rebootCount is incremented by processDeviceStateEvents on each observed reboot.
 	// expectedRebootCount is incremented by RequestReboot, SoftReboot, HardReboot, etc.
+	lastRestartCounter  uint32
+	haveRestartCounter  bool
 	lastBootTime        time.Time
 	rebootCount         int
 	expectedRebootCount int
+	// rebootAccountingOff suppresses the teardown reboot-count check for a
+	// device whose reboots cannot be counted reliably, with the reason.
+	rebootAccountingOff       bool
+	rebootAccountingOffReason string
 
 	// wasUpgraded is set to true once UpgradeEVE has applied an upgrade config.
 	// Upgraded devices must not be reused across tests.

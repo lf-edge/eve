@@ -23,10 +23,16 @@ import (
 // the reuse the test is about.
 const deferContentDeleteSeconds = 24 * 60 * 60
 
-// TestKvmToKRepartition drives the in-field boot-disk conversion end to end:
+// TestKvmToKRepartitionNoVolmig drives the in-field boot-disk conversion end to end:
 // a released small-geometry EVE-kvm image, a kvm→kvm hop that lands the
 // conversion code without moving the geometry, and then the kvm→k hop whose
 // cross-flavor seam arms the offline repartition.
+//
+// NoVolmig is the half of the conversion that needs no volume migration: the app
+// is deleted before the flavor change, so the repartition runs with no volume on
+// the device and the run says nothing about what becomes of one.
+// TestKvmToKRepartitionVolmig is the same conversion with an app volume carried
+// across it, which takes the volume-migration work an EVE build may not have.
 //
 // Three hops rather than one because that is the shape of the real thing. A
 // device in the field is on an old release that has no conversion code, so the
@@ -66,7 +72,7 @@ const deferContentDeleteSeconds = 24 * 60 * 60
 //
 // Needs an EVE build carrying the conversion (lf-edge/eve#6036, #6063); on a
 // stock build the kvm→k hop is refused outright.
-func TestKvmToKRepartition(test *testing.T) {
+func TestKvmToKRepartitionNoVolmig(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
 	defer evetest.Close()
@@ -116,9 +122,15 @@ func TestKvmToKRepartition(test *testing.T) {
 	evetest.Checkpoint("baseline-small")
 
 	// Phase 2.
+	conversionOK := false
+	defer func() {
+		if !conversionOK {
+			dumpConversionFailure(device)
+		}
+	}()
 	log.Infof("kvm→kvm hop: landing the conversion code at %s", p.targetVersion)
 	device.UpgradeEVE(p.targetVersion, evetest.HypervisorKVM,
-		evetest.BaseOSDatastoreHTTP, true, false)
+		evetest.BaseOSDatastoreHTTP, true, false, conversionUpgradeTimeout)
 	log.Infof("the hop must not have moved the geometry")
 	assertSmallGeometry(t, device)
 	log.Infof("the pre-flight check must decide %q", decision)
@@ -164,13 +176,16 @@ func TestKvmToKRepartition(test *testing.T) {
 	assertNoLiveVolumes(t, device)
 	evetest.Checkpoint("app-deleted")
 
+	// Only the shrink route has a boundary to be above; on the grow route the
+	// placement is recorded against none, which reads as SKIP rather than as a
+	// run that failed to stage anything.
+	var criticalBoundary int64
+	if decision == decisionShrink {
+		criticalBoundary = shrinkBoundaryBlocks(device)
+	}
+	criticalsBefore := recordCriticalBlocks(device, "pre-conversion", criticalBoundary)
+
 	// Phase 6.
-	conversionOK := false
-	defer func() {
-		if !conversionOK {
-			dumpConversionFailure(device)
-		}
-	}()
 	// The offline repartition boots once more than an upgrade does: its
 	// intermediate resize boot is invisible to the controller, so the audit at
 	// teardown would see one reboot the upgrade did not account for. Declared
@@ -178,7 +193,7 @@ func TestKvmToKRepartition(test *testing.T) {
 	device.ExpectReboots(1)
 	log.Infof("kvm→k hop: arming the offline %s", decision)
 	device.UpgradeEVE(p.targetVersion, evetest.HypervisorKubevirt,
-		evetest.BaseOSDatastoreHTTP, true, false)
+		evetest.BaseOSDatastoreHTTP, true, false, conversionUpgradeTimeout)
 	conversionOK = true
 	evetest.Checkpoint("conversion-complete")
 
@@ -190,6 +205,10 @@ func TestKvmToKRepartition(test *testing.T) {
 	log.Infof("asserting the boot disk reached the EVE-K layout via the %s route", decision)
 	assertLargeGeometry(t, device, smallGeometry, wantP3)
 	evetest.Checkpoint("geometry-converted")
+	recordResizeFault(device)
+
+	logCriticalRelocation(criticalsBefore,
+		captureCriticalBlocks(device, "post-conversion", criticalsBefore.boundary4k))
 
 	log.Infof("asserting the repartition preserved the TPM seal")
 	assertSealSurvivedRepartition(t, device)

@@ -4,6 +4,8 @@
 package konvert_test
 
 import (
+	"encoding/base64"
+	"fmt"
 	"strings"
 	"time"
 
@@ -55,4 +57,54 @@ func readRunningVersion(t Gomega, device *evetest.EdgeDevice) string {
 		g.Expect(version).NotTo(BeEmpty(), "the device did not report a version")
 	}, 3*time.Minute, 10*time.Second).Should(Succeed())
 	return version
+}
+
+// runEVEScript runs a multi-line shell script inside EVE's pillar container,
+// passing it through base64 so nothing in it has to survive the ssh and
+// `eve exec pillar sh -c` quoting layers -- the same trick the eden scripts use.
+// args are appended, so the script reads them as $1, $2, ...
+//
+// Output is returned even on failure, for the same reason runEVE does it: a
+// script that explains why it is giving up before exiting non-zero has said
+// everything in that output.
+func runEVEScript(device *evetest.EdgeDevice, script string,
+	timeout time.Duration, args ...string) (string, error) {
+	b64 := base64.StdEncoding.EncodeToString([]byte(script))
+	cmd := fmt.Sprintf(
+		`eve exec pillar sh -c 'echo %s | base64 -d > /tmp/evetest-frag.sh; `+
+			`sh /tmp/evetest-frag.sh %s; rm -f /tmp/evetest-frag.sh'`,
+		b64, strings.Join(args, " "))
+	out, errOut, err := device.RunShellScript(cmd, timeout, 0)
+	if err != nil {
+		return out + errOut, err
+	}
+	return out, nil
+}
+
+// writeMarkerFile puts a known string in a file on EVE and reads it back, so a
+// later test of whether it is still there is a statement about the file rather
+// than about whether the write landed.
+func writeMarkerFile(t Gomega, device *evetest.EdgeDevice, path, text string) {
+	out, err := runEVE(device,
+		`eve exec pillar sh -c 'printf %s `+text+` > `+path+`; sync'`)
+	t.Expect(err).NotTo(HaveOccurred(), "writing %s failed:\n%s", path, out)
+	assertMarkerFile(t, device, path, text)
+}
+
+// assertMarkerFile asserts the marker file still holds what was written to it.
+func assertMarkerFile(t Gomega, device *evetest.EdgeDevice, path, text string) {
+	out, err := runEVE(device, "eve exec pillar cat "+path)
+	t.Expect(err).NotTo(HaveOccurred(), "reading %s failed", path)
+	t.Expect(strings.TrimSpace(out)).To(Equal(text),
+		"%s does not hold what was written to it", path)
+}
+
+// readOptionalFile returns the contents of a file on EVE, or "NONE" when there
+// is no such file -- so a caller can assert on its absence as a value rather
+// than on an error it would have to classify.
+func readOptionalFile(t Gomega, device *evetest.EdgeDevice, path string) string {
+	out, err := runEVE(device,
+		`eve exec pillar sh -c 'cat `+path+` 2>/dev/null || echo NONE'`)
+	t.Expect(err).NotTo(HaveOccurred(), "reading %s failed", path)
+	return strings.TrimSpace(out)
 }
