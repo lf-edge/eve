@@ -87,10 +87,6 @@ const (
 	warningTime         = 40 * time.Second
 	casClientType       = "containerd"
 	unknownStateRetries = 10
-
-	// gracefulShutdownWait bounds how long a guest is given to act on the
-	// poweroff request before the stop is escalated to a forced one.
-	gracefulShutdownWait = 60 * time.Second
 )
 
 // Really a constant
@@ -2236,7 +2232,7 @@ func shutdownBudget(mode types.VmMode, hvName string,
 	case types.HVM, types.FML:
 		// Do a short shutdown wait, just in case there are
 		// PV tools in guest, then a shutdown -F
-		return true, gracefulShutdownWait
+		return true, hypervisor.GracefulShutdownWait
 	case types.PV:
 		// PV is the zero value of VmMode, so it is also what an application
 		// whose config leaves the mode unset lands on. Only xen acts on the
@@ -2246,7 +2242,7 @@ func shutdownBudget(mode types.VmMode, hvName string,
 		if hvName == hypervisor.XenHypervisorName {
 			return true, maxDelay
 		}
-		return true, gracefulShutdownWait
+		return true, hypervisor.GracefulShutdownWait
 	}
 	return false, maxDelay
 }
