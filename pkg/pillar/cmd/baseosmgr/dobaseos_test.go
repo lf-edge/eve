@@ -325,13 +325,18 @@ func TestDoBaseOsActivate_ContentTreeMissingErrors(t *testing.T) {
 	}
 }
 
-func TestDoBaseOsActivate_ImageLargerThanPartition(t *testing.T) {
+// A download larger than the partition is not on its own a reason to refuse an
+// activation: only the rootfs lands in the partition, and an image may carry
+// further disks (a split-rootfs Extension, say) that do not. The fit is decided
+// against the rootfs in zboot.WriteToPartition instead -- see
+// zboot.TestDiskRootLayerSize -- so nothing here may reject on the download
+// size.
+func TestDoBaseOsActivate_WholeImageLargerThanPartitionProceeds(t *testing.T) {
 	tc := newTestCtx(t)
 	tc.pubZbootStatus.items["IMGB"] = types.ZbootStatus{
 		PartitionLabel: "IMGB",
 		PartitionState: "unused",
 	}
-	tc.zb.parts["IMGB"].sizeB = 100
 	tc.subContentTreeStatus.items["uuid-x"] = types.ContentTreeStatus{
 		State:           types.LOADED,
 		MaxDownloadSize: 1 << 30,
@@ -341,12 +346,9 @@ func TestDoBaseOsActivate_ImageLargerThanPartition(t *testing.T) {
 		ContentTreeUUID: "uuid-x",
 		PartitionLabel:  "IMGB",
 	}
-	changed := doBaseOsActivate(tc.ctx, "uuid-x", cfg, &st)
-	if !changed || !st.HasError() {
-		t.Fatalf("expected size error: %+v", st)
-	}
-	if !strings.Contains(st.Error, "greater than partition size") {
-		t.Fatalf("unexpected error text: %q", st.Error)
+	doBaseOsActivate(tc.ctx, "uuid-x", cfg, &st)
+	if st.HasError() && strings.Contains(st.Error, "greater than partition size") {
+		t.Fatalf("activation refused on the whole-image size: %q", st.Error)
 	}
 }
 

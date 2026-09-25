@@ -26,7 +26,6 @@ import (
 type mockPart struct {
 	state    string
 	devname  string
-	sizeB    uint64
 	short    string
 	shortErr error
 	long     string
@@ -52,8 +51,8 @@ func newMockZboot() *mockZboot {
 		cur:   "IMGA",
 		other: "IMGB",
 		parts: map[string]*mockPart{
-			"IMGA": {state: "active", devname: "/dev/dummy3", sizeB: 1 << 30},
-			"IMGB": {state: "unused", devname: "/dev/dummy4", sizeB: 1 << 30},
+			"IMGA": {state: "active", devname: "/dev/dummy3"},
+			"IMGB": {state: "unused", devname: "/dev/dummy4"},
 		},
 	}
 }
@@ -86,13 +85,6 @@ func (m *mockZboot) GetPartitionDevname(s string) string {
 		return p.devname
 	}
 	return ""
-}
-
-func (m *mockZboot) GetPartitionSizeInBytes(s string) uint64 {
-	if p, ok := m.parts[s]; ok {
-		return p.sizeB
-	}
-	return 0
 }
 
 func (m *mockZboot) GetShortVersion(s string) (string, error) {
