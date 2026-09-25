@@ -2421,6 +2421,7 @@ func doCleanup(ctx *domainContext, status *types.DomainStatus) {
 	releaseAdapters(ctx, status.IoAdapterList, status.UUIDandVersion.UUID,
 		status)
 	status.IoAdapterList = nil
+	status.BootFailed = false
 	publishDomainStatus(ctx, status)
 
 	// Remove the boot file for the app instance unless the device is currently rebooting/shutting down.

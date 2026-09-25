@@ -686,10 +686,13 @@ func (ctx kubevirtContext) CreateReplicaVMIConfig(domainName string, config type
 					ib.Ifname, adapter.Name, ib.Ifname)
 				continue
 			}
+			// domainmgr's adapter bookkeeping can disagree with the domain
+			// being started; warn rather than take the node down over it.
 			if ib.UsedByUUID != config.UUIDandVersion.UUID {
-				logrus.Fatalf("IoBundle not ours %s: %d %s for %s\n",
+				logrus.Warnf("IoBundle not ours %s: %d %s for %s\n",
 					ib.UsedByUUID, adapter.Type, adapter.Name,
 					domainName)
+				continue
 			}
 			if ib.PciLong != "" {
 				if ib.Type.IsNetEthVF() {
