@@ -42,6 +42,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 	"github.com/lf-edge/eve/pkg/pillar/utils/wait"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
+	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	"github.com/lf-edge/eve/pkg/pillar/zfs"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
@@ -351,10 +352,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// initialize publishing handles
 	initializeSelfPublishHandles(ps, &ctx)
 	tpmEnabled := etpm.IsTpmEnabled()
+	options := vault.HandlerOptions{
+		// Reading it once at startup is enough: a partition that is already
+		// committed cannot become uncommitted, and one committed later is
+		// picked up on the next boot, which is when leftovers matter again.
+		CurrentPartitionCommitted: zboot.IsCurrentPartitionStateActive(),
+	}
 	if tpmEnabled {
 		// TPM is enabled. Check if defaultVault directory exists, if not set vaultconfig
 		tpmKeyOnlyMode, vaultSupported := checkAndPublishVaultConfig(&ctx)
-		handler.SetHandlerOptions(vault.HandlerOptions{TpmKeyOnlyMode: tpmKeyOnlyMode})
+		options.TpmKeyOnlyMode = tpmKeyOnlyMode
 		if vaultSupported {
 			if tpmKeyOnlyMode {
 				ctx.keyDerivation = types.VaultKeyDerivationTPMOnly
@@ -363,6 +370,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			}
 		}
 	}
+	handler.SetHandlerOptions(options)
 
 	if tpmEnabled {
 		log.Noticef("about to setup the vault and fetch the disk key from TPM")

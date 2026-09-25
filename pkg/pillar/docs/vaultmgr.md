@@ -299,7 +299,32 @@ Uses native ZFS encryption. Key paths:
   EVE-k install creates on a nearly empty pool — smaller by whatever
   else `/persist` holds at conversion time — and the space the old
   vault frees goes back to the pool rather than into the vault's
-  `volsize`, which is fixed when the zvol is created.
+  `volsize`, which is fixed when the zvol is created. The zvol occupies
+  only the space actually written to it: pillar creates it through
+  libzfs, which — unlike `zfs create` without `-s` — adds no
+  `refreservation`.
+* **Migration leftovers**: the staging zvol, an etcd zvol this attempt
+  created, and the parked pre-migration vault are dropped on any failure
+  before the swap, and a failure of the swap's second rename puts the
+  pre-migration vault back rather than leave `persist/vault` absent.
+  Because a leftover staging zvol can hold a partial copy,
+  `recoverInterruptedVaultMigration` promotes one only when
+  `/persist/status/vault-migration-swap` names it — written once the
+  copy is complete and removed once the swap is done. Without that
+  record the leftover is discarded, and the pre-migration vault
+  restored if it is still parked. `RemoveDefaultVault` drops the
+  migration datasets along with the vault, so the vault set up next
+  cannot adopt one.
+* **Recovery on either flavor**: the swap runs while upgrading to
+  EVE-k, so the boot that lands inside its window is as likely to be an
+  EVE-kvm fallback as an EVE-k retry. Both run
+  `recoverInterruptedVaultMigration` before they may read an absent
+  `persist/vault` as a fresh install and create an empty one over the
+  parked contents. EVE-kvm cannot mount a zvol, so it restores the
+  parked filesystem vault and leaves the copy to the next EVE-k attempt
+  instead of promoting the staging zvol. A vault in place beside a
+  parked one is likewise never the migrated vault on EVE-kvm, so the
+  parked datasets are kept there whatever the partition state says.
 * **No-TPM ZFS** is supported: a plain unencrypted dataset (or zvol
   on kube) is created instead — `Status` becomes
   `DATASEC_AT_REST_DISABLED`.
