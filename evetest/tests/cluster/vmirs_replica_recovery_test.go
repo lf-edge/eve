@@ -61,10 +61,10 @@ import (
 //     start watching the app's ZInfoApp.
 //  2. app-is-deployed: WaitUntilAppIsRunning (10 min budget excluding
 //     download).
-//  3. vmirs-scaled-to-zero: over SSH, `eve exec kube kubectl patch vmirs
-//     --type=merge` (kubectl only exists inside the "kube" container) the
-//     app's VMIRS (name computed via base.GetAppKubeName, matching how
-//     pillar names it) to Spec.Replicas=0. This is the same
+//  3. vmirs-scaled-to-zero: `kubectl patch vmirs --type=merge` via
+//     EdgeDevice.RunKubectl sets the app's VMIRS (name computed via
+//     base.GetAppKubeName, matching how pillar names it) to
+//     Spec.Replicas=0. This is the same
 //     recipe used to reproduce the bug manually (see the design doc's
 //     on-device reproduction section); StopReplicaVMI deletes the VMIRS
 //     rather than scaling it, so zero replicas is never a state the
@@ -177,16 +177,12 @@ func TestVMIRSStrandedReplicasRecovery(test *testing.T) {
 	// pkg/pillar version currently pinned in evetest/go.mod.
 	vmirsName := fmt.Sprintf("%s-0", base.GetAppKubeName(appDisplayName, appUUID))
 	sshTimeout := 20 * time.Second
-	// kubectl only exists inside the "kube" container, not the host SSH
-	// shell, so run it via "eve exec kube" (see vaultLogicalUsed in
-	// tests/storage/vault_trim_test.go for the equivalent "eve exec pillar"
-	// pattern).
-	patchCmd := fmt.Sprintf(
-		`eve exec kube kubectl -n eve-kube-app patch vmirs %s --type=merge -p '{"spec":{"replicas":0}}'`,
+	patchArgs := fmt.Sprintf(
+		`-n eve-kube-app patch vmirs %s --type=merge -p '{"spec":{"replicas":0}}'`,
 		vmirsName)
-	log.Infof("Injecting fault: %s", patchCmd)
-	_, stderr, err := device.RunShellScript(patchCmd, sshTimeout, 0)
-	t.Expect(err).ToNot(HaveOccurred(), stderr)
+	log.Infof("Injecting fault: kubectl %s", patchArgs)
+	_, err := device.RunKubectl(patchArgs, sshTimeout)
+	t.Expect(err).ToNot(HaveOccurred())
 	evetest.Checkpoint("vmirs-scaled-to-zero")
 
 	// EVE should notice the stranded VMIRS and report a retryable warning,

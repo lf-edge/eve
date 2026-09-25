@@ -97,20 +97,15 @@ type kubeItemList struct {
 // gap is closed, this is the only vantage point from which a stale generation
 // surviving a purge is observable at all.
 //
-// Promotion trigger: when a second suite needs kubectl access, move this to an
-// EdgeDevice method in evetest/edgedevice.go. Do not copy it. It is kept local
-// for now because tests/cluster has no kubectl calls at all, so the shape is
-// unsettled after two consumers, and because the framework has no non-fatal
-// read family to fit it into yet.
+// The kubectl plumbing itself is EdgeDevice.RunKubectl; what stays here is the
+// non-fatal convention, which the framework has no read family for.
 func kubectlListItems(
 	dev *evetest.EdgeDevice, resource string) (list kubeItemList, found bool) {
-	stdout, stderr, err := dev.RunShellScript(
-		"eve exec kube kubectl -n "+eveKubeAppNamespace+" get "+resource+" -o json",
-		sshCmdTimeout, 0)
+	stdout, err := dev.RunKubectl(
+		"-n "+eveKubeAppNamespace+" get "+resource+" -o json", sshCmdTimeout)
 	if err != nil {
 		evetest.Logger().Warnf(
-			"kubectlListItems: kubectl get %s failed: %v (stderr: %s)",
-			resource, err, stderr)
+			"kubectlListItems: %v", err)
 		return list, false
 	}
 	if err := json.Unmarshal([]byte(stdout), &list); err != nil {
