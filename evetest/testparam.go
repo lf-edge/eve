@@ -338,7 +338,7 @@ func RAMSizeMiBParameter() TestParameterDefinition {
 		DefaultValue: uint32(0),
 		Description: TestParameterDescription{
 			Summary: "Device RAM size in MiB",
-			Default: "0 (use framework default 8192 MiB)",
+			Default: "0 (use framework default 8192 MiB, or the test's own floor)",
 		},
 	}
 }
@@ -360,7 +360,7 @@ func CPUsParameter() TestParameterDefinition {
 		DefaultValue: uint8(0),
 		Description: TestParameterDescription{
 			Summary: "Number of virtual CPUs for the EVE device",
-			Default: "0 (use framework default 4 vCPUs)",
+			Default: "0 (use framework default 4 vCPUs, or the test's own floor)",
 		},
 	}
 }
