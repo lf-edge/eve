@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package networking_test
+package apps_test
 
 import (
 	"bufio"
@@ -23,6 +23,7 @@ import (
 	"time"
 
 	eveconfig "github.com/lf-edge/eve-api/go/config"
+	eveinfo "github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/evetest"
 	pillartypes "github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/sirupsen/logrus"
@@ -207,6 +208,38 @@ func formatPCIDevices(devices []pciDeviceInfo) string {
 		lines = append(lines, "  "+d.String())
 	}
 	return strings.Join(lines, "\n")
+}
+
+// lookupAssignableAdapter returns the assignable adapter with the given name
+// from the device info, or nil if not (yet) reported.
+func lookupAssignableAdapter(dinfo *eveinfo.ZInfoDevice, name string) *eveinfo.ZioBundle {
+	for _, bundle := range dinfo.GetAssignableAdapters() {
+		if bundle.GetName() == name {
+			return bundle
+		}
+	}
+	return nil
+}
+
+// dnsServersOfPort returns the DNS servers the device info reports for the
+// named port of the current port configuration, nil when there is no such
+// port yet.
+func dnsServersOfPort(dinfo *eveinfo.ZInfoDevice, portName string) []string {
+	sysAdapter := dinfo.GetSystemAdapter()
+	if sysAdapter == nil {
+		return nil
+	}
+	statusList := sysAdapter.GetStatus()
+	current := int(sysAdapter.GetCurrentIndex())
+	if current >= len(statusList) {
+		return nil
+	}
+	for _, port := range statusList[current].GetPorts() {
+		if port.GetName() == portName {
+			return port.GetDns().GetDNSservers()
+		}
+	}
+	return nil
 }
 
 // readAssignableAdapter returns pillar's I/O bundle for the given physical
