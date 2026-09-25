@@ -233,7 +233,7 @@ func (cc *EdgeClusterConfig) SetRegistrationManifest(manifestYAML []byte) {
 	} else {
 		cc.gzipManifest = cc.gzipManifestYAML(manifestYAML)
 	}
-	// Re-encrypt the joint token+manifest block for every node.
+	// Re-encrypt the combined token+manifest block for every node.
 	for _, node := range cc.nodes {
 		cluster := cc.configs[node.DevName].Cluster
 		if cluster == nil {
