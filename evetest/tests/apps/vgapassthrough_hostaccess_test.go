@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package networking_test
+package apps_test
 
 import (
 	"fmt"
@@ -146,7 +146,8 @@ const vgaLabel = "vga0"
 // relative to this package).
 //
 // The test skips itself when the broker does not expose a vIOMMU to the EVE
-// VM (see the note on TestNetworkAdapterPassthrough), when the EVE VM has no
+// VM (see the note on TestNetworkAdapterPassthrough in tests/networking, which
+// passes a NIC through the same way), when the EVE VM has no
 // VGA controller, when the device is not amd64 (the script traces the amd64
 // syscalls), and when the test runner lacks the compiler sources or the tools
 // to run it: docker, qemu, Go, ssh-keyscan and the EVE SSH key.
@@ -160,7 +161,6 @@ func TestVGAPassthroughNoHostAccess(test *testing.T) {
 	hypervisor := evetest.GetHypervisorParameterValue()
 	compilerDir := evetest.GetTestParameter[string](bpftraceCompilerDirParamKey)
 
-	devName := "edge-dev"
 	evetest.Setup(
 		evetest.RequireEdgeDevice{
 			Name:              devName,
@@ -260,46 +260,18 @@ func TestVGAPassthroughNoHostAccess(test *testing.T) {
 
 	// Phase 2: deploy the app with the VGA controller directly assigned and
 	// a virtual NIC for SSH access.
-	niUUID := devConfig.AddNetworkInstance(evetest.LocalNetworkInstanceConfig{
-		DisplayName: "local-ni",
-		Port:        "ethernet0",
-		Subnet:      evetest.IPSubnet("10.11.12.0/24"),
-		DHCPRange: pillartypes.IPRange{
-			Start: evetest.IPAddress("10.11.12.2"),
-			End:   evetest.IPAddress("10.11.12.254"),
-		},
-		Gateway: evetest.IPAddress("10.11.12.1"),
-	})
+	niUUID := addLocalNI(devConfig)
 	appConfig := evetest.ApplicationInstanceConfig{
 		DisplayName: "vga-passthrough-app",
 		Activate:    true,
 		Image: evetest.DockerContainer{
-			ImageName: "lfedge/evetest-ubuntu-ctr",
-			Tag:       "1.0",
+			ImageName: ubuntuCtrImage,
+			Tag:       ubuntuCtrTag,
 		},
 		VirtualizationMode: eveconfig.VmMode_HVM,
 		CPUs:               1,
 		MemoryBytes:        500 * evetest.MiB,
-		NetworkAdapters: []evetest.AppNetworkAdapter{
-			evetest.VirtualNetworkAdapter{
-				LogicalLabel:        "vif0",
-				NetworkInstanceUUID: niUUID,
-				MAC:                 evetest.MACAddress("02:16:3e:00:00:01"),
-				PortFwdRules: []evetest.PortFwdRule{
-					{
-						Protocol:     evetest.NetworkProtocolTCP,
-						EdgeNodePort: 2222,
-						AppPort:      22,
-					},
-				},
-				ACLAllowRules: []evetest.ACLAllowRule{
-					{
-						Protocol:     evetest.NetworkProtocolAny,
-						RemoteSubnet: evetest.IPSubnet("0.0.0.0/0"),
-					},
-				},
-			},
-		},
+		NetworkAdapters:    singleVIFWithSSH(niUUID),
 		IOAdapters: []evetest.IOAdapterConfig{
 			{
 				LogicalLabel: vgaLabel,
@@ -338,10 +310,6 @@ func TestVGAPassthroughNoHostAccess(test *testing.T) {
 		expectVfioOwnsPCIDevice(g, device, vga.BDF)
 	}, timeout, polling).Should(Succeed())
 
-	appAuth := evetest.UsernamePasswordAuth{
-		Username: "root",
-		Password: "testpassword",
-	}
 	guestSeesVGA := func(g Gomega) {
 		stdout, _, err := device.RunShellScriptInsideApp(appUUID, appAuth,
 			listPCIDevicesScript, sshTimeout, 0)
@@ -381,9 +349,7 @@ func TestVGAPassthroughNoHostAccess(test *testing.T) {
 	t.Eventually(devUpdates, timeout).Should(Receive(matchers.SatisfyPredicate(
 		"management port eth0 reports the added DNS server",
 		func(dinfo *eveinfo.ZInfoDevice) bool {
-			port := getDevicePort("ethernet0", dinfo)
-			return port != nil &&
-				slices.Contains(port.GetDns().GetDNSservers(), altDNSServer)
+			return slices.Contains(dnsServersOfPort(dinfo, "ethernet0"), altDNSServer)
 		})))
 	devConfig.UpdateNetwork(dhcpNet, evetest.DHCPNetworkConfig{
 		NetworkType: evecommon.NetworkType_V4Only,
@@ -392,9 +358,8 @@ func TestVGAPassthroughNoHostAccess(test *testing.T) {
 	t.Eventually(devUpdates, timeout).Should(Receive(matchers.SatisfyPredicate(
 		"management port eth0 no longer reports the added DNS server",
 		func(dinfo *eveinfo.ZInfoDevice) bool {
-			port := getDevicePort("ethernet0", dinfo)
-			return port != nil && len(port.GetDns().GetDNSservers()) > 0 &&
-				!slices.Contains(port.GetDns().GetDNSservers(), altDNSServer)
+			servers := dnsServersOfPort(dinfo, "ethernet0")
+			return len(servers) > 0 && !slices.Contains(servers, altDNSServer)
 		})))
 
 	// Phase 6: each change of debug.enable.usb makes domainmgr revisit the

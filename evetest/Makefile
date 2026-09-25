@@ -132,7 +132,7 @@ endif
 	$(eval EVETEST_HOME_MOUNT := -v $(EVETEST_HOME_DIR):$(EVETEST_HOME_DIR))
 	@mkdir -p $(EVETEST_HOME_DIR)
 	@# Tests that compile a bpftrace script for the device's kernel (see
-	@# tests/networking/pciaccess_helpers_test.go) run eve-tools/bpftrace-compiler
+	@# tests/apps/pciaccess_helpers_test.go) run eve-tools/bpftrace-compiler
 	@# from the checkout, mounted at the same position relative to /evetest/tests
 	@# as in the repository. The compiler keeps the pulled kernel images in the
 	@# linuxkit cache and the compiled scripts in its own cache, which it uses

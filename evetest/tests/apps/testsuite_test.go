@@ -22,6 +22,11 @@
 //	appvolumes_helpers_test.go   the app's disk in all three forms -
 //	                             VolumeStatus, PVC, file under /persist - and the
 //	                             storage invariants
+//	pciaccess_helpers_test.go    the PCI devices of host and guest, the driver a
+//	                             device is bound to, and every access to a PCI
+//	                             device by host processes, observed with a
+//	                             bpftrace tracer (testdata/pciaccess.bt) run
+//	                             through eve-tools/bpftrace-compiler
 //	<topic>_helpers_test.go      what one topic's tests build before they run,
 //	                             plus the assertions meaningless outside it;
 //	                             purge_helpers_test.go is the worked example
@@ -100,11 +105,19 @@ import (
 //     powered off, which is where a reboot lands in the middle of the purge
 //     deterministically rather than by chance. Meaningful on every hypervisor.
 //   - TestLotsOfApps -- starts lots of apps and checks for success
+//   - TestVGAPassthroughNoHostAccess -- while the device's VGA controller is
+//     passed through to an app, no host process may open PCI device
+//     attributes for writing or reset, reconfigure or map a PCI device;
+//     observed with a bpftrace tracer run through eve-tools/bpftrace-compiler
+//     across a quiet window, a management-port DNS change, debug.enable.usb
+//     and debug.enable.vga toggles and an app restart.
 //
-// The two purge tests come last because they are the expensive ones: they
+// The two purge tests come late because they are the expensive ones: they
 // assert on which generation of a workload exists, so each needs a device
 // created from scratch (purgeDeviceRequirements) rather than the warm device
-// the earlier subtests reuse.
+// the earlier subtests reuse. The VGA passthrough test comes last for the
+// same kind of reason: it is the only one on the TwoMgmtPorts network model,
+// and a differing model makes the framework recreate the device.
 //
 // Neither declares hypervisor variants. The whole suite is run once per
 // hypervisor (EVETEST_HYPERVISOR=kvm|kubevirt), so a variant here would run
@@ -154,6 +167,9 @@ func TestAppsSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestLotsOfApps,
+		},
+		evetest.TestCase{
+			Test: TestVGAPassthroughNoHostAccess,
 		},
 	)
 }
