@@ -156,6 +156,11 @@ func (gs *GlobalStatus) UpdateItemValuesFromGlobalConfig(gc ConfigItemValueMap) 
 // behaviour-neutral until an operator raises it.
 const DefaultVolumemgrWorkerPoolSize = 20
 
+// DefaultDownloaderTransportHandlers is the default for
+// DownloaderTransportHandlers. It matches the default of the zedUpload
+// transport itself, so that the knob changes nothing until it is set.
+const DefaultDownloaderTransportHandlers = 11
+
 // GlobalSettingKey - Constants of all global setting keys
 type GlobalSettingKey string
 
@@ -271,6 +276,14 @@ const (
 	// layer through pillar, so the practical ceiling is pillar's memory
 	// cgroup and the disk.
 	VolumemgrWorkerPoolSize GlobalSettingKey = "volumemgr.worker.pool.size"
+
+	// DownloaderTransportHandlers global setting key
+	// number of workers of the downloader's zedUpload transport, which is
+	// also the depth of the request queue in front of them. A download whose
+	// request finds the queue full retries the submission with a backoff, for
+	// up to timer.download.stalled. The transport is sized once, when the
+	// downloader starts, so a change takes effect at the next reboot.
+	DownloaderTransportHandlers GlobalSettingKey = "downloader.transport.handlers"
 
 	// Bool Items
 	// UsbAccess global setting key
@@ -1251,6 +1264,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(DownloadMaxPortCost, 0, 0, 255)
 	configItemSpecMap.AddIntItem(BlobDownloadMaxRetries, 5, 1, 10)
 	configItemSpecMap.AddIntItem(VolumemgrWorkerPoolSize, DefaultVolumemgrWorkerPoolSize, 1, 200)
+	configItemSpecMap.AddIntItem(DownloaderTransportHandlers, DefaultDownloaderTransportHandlers, 1, 1024)
 
 	// Goroutine Leak Detection section
 	configItemSpecMap.AddIntItem(GoroutineLeakDetectionThreshold, 5000, 1, 0xFFFFFFFF)

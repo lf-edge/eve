@@ -26,7 +26,7 @@ This document mirrors the key names, types, defaults, and ranges defined there.
 | timer.gc.vdisk | integer in seconds | 3600 (1 hour) | 60 (1 minute) | 4294967295 (max uint32) | garbage collect unused instance virtual disk |
 | timer.defer.content.delete | integer in seconds | 0 | 0 | 86400 (1 day) | if set, keep content trees around for reuse after they have been deleted |
 | timer.download.retry | integer in seconds | 600 (10 minutes) | 60 (1 minute) | 4294967295 (max uint32) | retry a failed download |
-| timer.download.stalled | integer in seconds | 600 (10 minutes) | 20 | 4294967295 (max uint32) | cancel a stalled download |
+| timer.download.stalled | integer in seconds | 600 (10 minutes) | 20 | 4294967295 (max uint32) | cancel a download that has made no progress, or has not been picked up by the transport, for this long |
 | timer.boot.retry | integer in seconds | 600 (10 minutes) | 10 | 4294967295 (max uint32) | retry a failed domain boot |
 | timer.port.georedo | integer in seconds | 3600 (1 hour) | 60 (1 minute) | 4294967295 (max uint32) | redo IP geolocation |
 | timer.port.georetry | integer in seconds | 600 (10 minutes) | 5 | 4294967295 (max uint32) | retry geolocation after failure |
@@ -39,6 +39,7 @@ This document mirrors the key names, types, defaults, and ranges defined there.
 | network.download.max.cost | 0-255 | 0 | 0 | 255 | [max port cost for download](DEVICE-CONNECTIVITY.md) to avoid e.g., LTE ports |
 | blob.download.max.retries | 1-10 | 5 | 1 | 10 | max download retries when image verification fails. |
 | volumemgr.worker.pool.size | integer | 20 | 1 | 200 | max number of concurrent volumemgr background jobs (loading images into the CAS, preparing/creating/destroying volumes). Work exceeding the limit is deferred and retried, so this bounds throughput; raise it on nodes deploying many app instances at once (doesn't need a reboot to take effect) |
+| downloader.transport.handlers | integer | 11 | 1 | 1024 | number of workers of the downloader's zedUpload transport, which is also the depth of the request queue in front of them; a download whose request finds the queue full retries the submission for up to timer.download.stalled. The transport is sized once, when the downloader starts, so a change takes effect at the next reboot |
 | debug.disable.dhcp.all-ones.netmask | boolean | false | - | - | deprecated; retained only to avoid reporting errors for older deployments where this option is still configured |
 | debug.enable.usb | boolean | true | - | - | allow USB e.g. keyboards on device (controller by default overrides to false) |
 | debug.enable.vga | boolean | true | - | - | allow VGA console on device (controller by default overrides to false) |

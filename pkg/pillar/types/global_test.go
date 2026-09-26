@@ -227,6 +227,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		DownloadMaxPortCost,
 		BlobDownloadMaxRetries,
 		VolumemgrWorkerPoolSize,
+		DownloaderTransportHandlers,
 		KubernetesDrainTimeout,
 		DrainSkipK8sAPINotReachableTimeout,
 		KubernetesDrainAllNodesConfigMultiple,

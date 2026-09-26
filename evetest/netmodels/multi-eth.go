@@ -2429,3 +2429,121 @@ var MultiPortSwitchAndVLANTrunk = &api.NetworkModel{
 		},
 	},
 }
+
+// FiveMgmtPortsOneIPv4Uplink is a network model with five ethernet ports, each
+// on its own bridge and network, of which only the last one carries IPv4:
+//
+//   - eth0..eth3 -> bridge0..bridge3 -> fd26:d0d0:1::/64 .. fd26:d0d0:4::/64,
+//     IPv6-only (SLAAC), dns-server reachable, NO outside reachability. The
+//     ports come up with a global IPv6 address and a working DNS server, so
+//     EVE treats them as usable management ports, but they cannot carry
+//     traffic to any IPv4 destination and nothing beyond the SDN is routed
+//     for them.
+//   - eth4 -> bridge4 -> 172.26.4.0/24 (IPv4 DHCP, dns-server and the outside
+//     world reachable: controller, Internet, evetest's own image server).
+//
+// A shared dual-stack DNS server (10.16.16.25 / fd23:131b:6500::1) is
+// reachable from all five networks and resolves the controller hostname to
+// its IPv4 address.
+//
+// All five ports are intended to be used as management ports on the EVE side.
+// The model represents a device with a single working IPv4 uplink listed
+// last, behind several management ports that can never reach an IPv4
+// service: an attempt from one of those ports fails immediately and locally
+// ("no suitable address found"), without any packet leaving the device.
+var FiveMgmtPortsOneIPv4Uplink = &api.NetworkModel{
+	Ports: []*api.Port{
+		{LogicalLabel: "eth0", AdminUp: true},
+		{LogicalLabel: "eth1", AdminUp: true},
+		{LogicalLabel: "eth2", AdminUp: true},
+		{LogicalLabel: "eth3", AdminUp: true},
+		{LogicalLabel: "eth4", AdminUp: true},
+	},
+	Bridges: []*api.Bridge{
+		{LogicalLabel: "bridge0", Ports: []string{"eth0"}},
+		{LogicalLabel: "bridge1", Ports: []string{"eth1"}},
+		{LogicalLabel: "bridge2", Ports: []string{"eth2"}},
+		{LogicalLabel: "bridge3", Ports: []string{"eth3"}},
+		{LogicalLabel: "bridge4", Ports: []string{"eth4"}},
+	},
+	Networks: []*api.Network{
+		ipv6OnlyIslandNetwork("network0", "bridge0", "fd26:d0d0:1::"),
+		ipv6OnlyIslandNetwork("network1", "bridge1", "fd26:d0d0:2::"),
+		ipv6OnlyIslandNetwork("network2", "bridge2", "fd26:d0d0:3::"),
+		ipv6OnlyIslandNetwork("network3", "bridge3", "fd26:d0d0:4::"),
+		{
+			LogicalLabel: "network4",
+			Bridge:       "bridge4",
+			Ipv4: &api.NetworkIPConfig{
+				Subnet: "172.26.4.0/24",
+				GwIp:   "172.26.4.1",
+				Dhcp: &api.DHCP{
+					Enable:     true,
+					DomainName: "test",
+					Dns: &api.DNSClientConfig{
+						PrivateDns: []string{"dns-server"},
+					},
+				},
+			},
+			Router: &api.Router{
+				OutsideReachability: true,
+				ReachableEndpoints:  []string{"dns-server"},
+			},
+		},
+	},
+	Endpoints: &api.Endpoints{
+		DnsServers: []*api.DNSServer{
+			{
+				Endpoint: &api.Endpoint{
+					LogicalLabel: "dns-server",
+					Fqdn:         "dns-server.test",
+					Ipv4: &api.EndpointIPConfig{
+						Subnet: "10.16.16.0/24",
+						Ip:     "10.16.16.25",
+					},
+					Ipv6: &api.EndpointIPConfig{
+						Subnet: "fd23:131b:6500::/64",
+						Ip:     "fd23:131b:6500::1",
+					},
+				},
+				StaticEntries: []*api.DNSEntry{
+					{
+						FqdnSource: &api.DNSEntry_FqdnLiteral{
+							FqdnLiteral: evetest.GetControllerHostname(),
+						},
+						IpSource: &api.DNSEntry_IpLiteral{
+							IpLiteral: evetest.GetControllerIPv4().String(),
+						},
+					},
+				},
+				UpstreamServers: []string{"8.8.8.8", "1.1.1.1"},
+			},
+		},
+	},
+}
+
+// ipv6OnlyIslandNetwork returns an IPv6-only /64 network (prefix is its first
+// 64 bits, e.g. "fd26:d0d0:1::") whose addresses are assigned by SLAAC and
+// that can reach the shared "dns-server" endpoint and nothing else: no other
+// network, no controller, no Internet.
+func ipv6OnlyIslandNetwork(logicalLabel, bridge, prefix string) *api.Network {
+	return &api.Network{
+		LogicalLabel: logicalLabel,
+		Bridge:       bridge,
+		Ipv6: &api.NetworkIPConfig{
+			Subnet: prefix + "/64",
+			GwIp:   prefix + "1",
+			// Only DNS is set, so SLAAC handles address assignment.
+			Dhcp: &api.DHCP{
+				Enable: true,
+				Dns: &api.DNSClientConfig{
+					PrivateDns: []string{"dns-server"},
+				},
+			},
+		},
+		Router: &api.Router{
+			OutsideReachability: false,
+			ReachableEndpoints:  []string{"dns-server"},
+		},
+	}
+}
