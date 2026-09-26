@@ -1013,6 +1013,11 @@ The container is started with `NET_ADMIN` capability and access to the Docker so
 on macOS, where Docker Desktop's Linux VM does not support nested virtualization).
 Without KVM, QEMU falls back to TCG software emulation.
 The embedded broker uses QEMU directly to start and manage EVE and SDN VMs.
+The checkout's `eve-tools/bpftrace-compiler` is mounted read-only at
+`/eve-tools/bpftrace-compiler`, with its linuxkit cache and its cache of compiled
+scripts persisted under `~/.evetest/linuxkit-cache` and
+`~/.evetest/bpftrace-compiler-cache`, for tests that compile a bpftrace script
+for the device's kernel (see `TestVGAPassthroughNoHostAccess`).
 
 Best for:
 

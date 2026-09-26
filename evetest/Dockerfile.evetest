@@ -84,6 +84,13 @@ RUN apk add --no-cache \
 RUN apk add --no-cache bash inetutils-telnet tcpdump \
                        strace busybox-extras socat openssh-client
 
+# Install what eve-tools/bpftrace-compiler needs when a test compiles a
+# bpftrace script for the device's kernel (see
+# tests/apps/pciaccess_helpers_test.go): linuxkit drives docker (through
+# the mounted socket) and git to build the compile VM's image.
+# hadolint ignore=DL3018
+RUN apk add --no-cache docker-cli docker-cli-buildx git
+
 # Pull adam binary
 COPY --from=adam /bin/adam /usr/local/bin/adam
 
