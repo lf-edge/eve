@@ -361,6 +361,10 @@ device.HardReboot(true)
 // replaces the default wait, which is sized for an ordinary base-OS upgrade.
 device.UpgradeEVE(version, evetest.HypervisorKubevirt, evetest.BaseOSDatastoreHTTP,
     true, false, 45*time.Minute)
+
+// Everything the device has written to its serial console so far, including
+// what ran before pillar started, such as storage-init
+console, err := device.ConsoleOutput()
 ```
 
 ### Checkpoints

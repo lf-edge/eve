@@ -1001,6 +1001,26 @@ func (d *EdgeDevice) HardReboot(waitUntilRebooted bool) {
 	})
 }
 
+// ConsoleOutput returns everything the device has written to its serial console
+// so far in this test. The console log is opened in append mode, so output from
+// earlier boots is still present: this is the only way a test can see what ran
+// before pillar started, which is where storage-init and the offline resizer
+// live. Returns an error rather than failing the test, so a caller can treat
+// missing console output as inconclusive rather than fatal.
+func (d *EdgeDevice) ConsoleOutput() (string, error) {
+	ctx, cancel := context.WithTimeout(d.th.ctx, brokerGetConsoleOutputTimeout)
+	defer cancel()
+	resp, err := d.th.brokerClient.GetDeviceConsoleOutput(ctx,
+		&api.DeviceControlRequest{
+			ClientId:   d.th.brokerClientID,
+			DeviceName: d.devName,
+		})
+	if err != nil {
+		return "", err
+	}
+	return resp.GetConsoleOutput(), nil
+}
+
 // PowerOff hard-powers off the device through the broker (bypassing any
 // graceful ACPI shutdown). The broker RPC blocks until the provider confirms
 // the VM is stopped, so no separate wait parameter is needed.
