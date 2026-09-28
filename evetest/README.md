@@ -34,11 +34,13 @@ v11.1.0 and was backported to v11.0.4, and no 10.2.x release carries it.
 Which QEMU that means depends on the provider. `libvirt` and `proxmox` run the VM on the
 hypervisor host, so that host must meet the floor. All-in-one mode (the `qemu` provider)
 runs QEMU inside the evetest container instead, and `Dockerfile.evetest` pins
-`ALPINE_VERSION=3.21`, whose `qemu` package is 9.1.2 -- so that path is currently exposed
+`ALPINE_VERSION=3.24`, whose `qemu` package is 11.0.3 -- so that path is currently exposed
 and cannot be fixed by raising the pin: Alpine's community repository has no stable
-release at or above the floor (3.22 ships 10.0.0, 3.23 ships 10.1.5; only edge, at
-11.1.1, clears it, as of September 2026). Closing the gap means moving the base image
-once a stable Alpine ships qemu 11.1.0 or later; re-check the index at that point.
+release at or above the floor (3.22 ships 10.0.0, 3.23 ships 10.1.5 and 3.24 ships 11.0.3,
+one patch release short of the 11.0.4 backport; only edge, at 11.1.1, clears it, as of
+September 2026). Closing the gap means a 3.24 package update to qemu 11.0.4 or later, or
+moving the base image once a stable Alpine ships qemu 11.1.0 or later; re-check the index
+at that point.
 
 **macOS note:** the test container is a Linux container and runs normally under Docker
 Desktop. However, Docker Desktop's Linux VM does not support nested virtualization, so
