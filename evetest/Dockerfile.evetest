@@ -2,8 +2,16 @@
 
 # Input arguments
 ARG EVETEST_VERSION=dev
-ARG ALPINE_VERSION=3.21
-ARG GOLANG_VERSION=1.25
+# The Alpine release also selects the Go toolchain. Docker Hub builds each
+# golang:<go>-alpine<n> image only while Alpine n is among the two newest
+# releases; afterwards it stays at the last Go it got, and the golang images
+# set GOTOOLCHAIN=local, so go cannot fetch a newer toolchain on its own.
+# alpine3.21 froze at Go 1.25.5, below the 1.25.9 that the go.mod of
+# eve-tools/bpftrace-compiler has required since dded2ea8c1 (tests build
+# the compiler in this image, see tests/apps/pciaccess_helpers_test.go),
+# and alpine3.22 froze at 1.26.4. See README.md for the qemu side of the pin.
+ARG ALPINE_VERSION=3.24
+ARG GOLANG_VERSION=1.26
 ARG EVETEST_ADAM_REPO=lfedge/adam
 ARG EVETEST_ADAM_VERSION=0.0.82
 
