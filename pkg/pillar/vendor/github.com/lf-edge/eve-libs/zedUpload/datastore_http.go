@@ -145,7 +145,7 @@ func (ep *HttpTransportMethod) processHttpUpload(req *DronaRequest) (error, int)
 	}
 
 	doneParts := req.GetDoneParts()
-	stats, resp := zedHttp.ExecCmd(req.cancelContext, "post", postUrl, req.name,
+	stats, resp := zedHttp.ExecCmd(req.ctx, "post", postUrl, req.name,
 		req.objloc, req.sizelimit, prgChan, doneParts, hClient, ep.inactivityTimeout,
 		ep.buildAuthHeader())
 	return stats.Error, resp.BodyLength
@@ -168,7 +168,7 @@ func (ep *HttpTransportMethod) processHttpDownload(req *DronaRequest) (error, in
 	}
 
 	doneParts := req.GetDoneParts()
-	stats, resp := zedHttp.ExecCmd(req.cancelContext, "get", file, "",
+	stats, resp := zedHttp.ExecCmd(req.ctx, "get", file, "",
 		req.objloc, req.sizelimit, prgChan, doneParts, hClient, ep.inactivityTimeout,
 		ep.buildAuthHeader())
 	return stats.Error, resp.BodyLength
@@ -215,7 +215,7 @@ func (ep *HttpTransportMethod) processHttpList(req *DronaRequest) ([]string, err
 	}
 
 	doneParts := req.GetDoneParts()
-	stats, resp := zedHttp.ExecCmd(req.cancelContext, "ls", listUrl, "", "",
+	stats, resp := zedHttp.ExecCmd(req.ctx, "ls", listUrl, "", "",
 		req.sizelimit, prgChan, doneParts, hClient, ep.inactivityTimeout,
 		ep.buildAuthHeader())
 	return resp.List, stats.Error
@@ -239,7 +239,7 @@ func (ep *HttpTransportMethod) processHttpObjectMetaData(req *DronaRequest) (err
 	}
 
 	doneParts := req.GetDoneParts()
-	stats, resp := zedHttp.ExecCmd(req.cancelContext, "meta", file, "", req.objloc,
+	stats, resp := zedHttp.ExecCmd(req.ctx, "meta", file, "", req.objloc,
 		req.sizelimit, prgChan, doneParts, hClient, ep.inactivityTimeout,
 		ep.buildAuthHeader())
 	return stats.Error, resp.ContentLength
