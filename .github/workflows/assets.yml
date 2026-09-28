@@ -129,14 +129,25 @@ jobs:
           fi
           echo "EVE=$EVE" >> "$GITHUB_ENV"
       - name: Generate EVE binary assets
+        # The image streams each asset to stdout. Without --log-driver none the
+        # daemon also journals that stream, JSON-escaped, under
+        # /var/lib/docker/containers, which for the ~28 GiB live image can
+        # fill the runner's disk; --rm drops each container's scratch copy.
         run: |
-          docker run "$EVE" installer_raw > assets/installer.raw
-          docker run "$EVE" rootfs > assets/rootfs.img
-          docker run "$EVE" live > assets/live.raw
-          docker run "$EVE" sbom > assets/rootfs.spdx.json
+          gen() {
+            docker run --rm --log-driver none "$EVE" "$1" > "assets/$2"
+            if [ ! -s "assets/$2" ]; then
+              echo "::error::'$1' produced an empty assets/$2"
+              exit 1
+            fi
+          }
+          gen installer_raw installer.raw
+          gen rootfs rootfs.img
+          gen live live.raw
+          gen sbom rootfs.spdx.json
           if [ "${{ matrix.platform }}" == "generic" ]; then
-             docker run "$EVE" installer_iso > assets/installer.iso
-             docker run "$EVE" installer_net > assets/installer-net.tar
+             gen installer_iso installer.iso
+             gen installer_net installer-net.tar
           fi
       - name: Export eve-sources to assets/collected_sources.tar
         run: |
