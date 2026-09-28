@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
@@ -134,6 +135,12 @@ type zedkube struct {
 	statusServerWG      sync.WaitGroup
 	getKubePodsError    GetKubePodsError
 	drainOverrideTimer  *time.Timer
+
+	// statusServer serves /status and /app/ to peers on the cluster IP,
+	// over TLS and authenticated with clusterStatusCreds. localStatusServer
+	// serves the App-Tracker to local clients such as edgeview.
+	localStatusServer  *http.Server
+	clusterStatusCreds atomic.Pointer[clusterStatusCreds]
 
 	// Config Properties for Drain
 	drainTimeout                       time.Duration
