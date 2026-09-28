@@ -1248,12 +1248,15 @@ func (p *ProxmoxProvider) buildVMOptions(dev *proxmoxDevice, diskRefs []string,
 		// enabled guest-agent channel.
 		{Name: "serial0", Value: "socket"},
 		{Name: "agent", Value: "1"},
-		// Make the serial port the primary display, removing PVE's default VGA
-		// device entirely (closest equivalent to qemu/libvirt's -nographic).
-		// EVE/SDN images are LinuxKit-based with "console=ttyS0" only in their
-		// kernel cmdline; with a VGA device also present, they hang very early in
-		// boot (confirmed via QMP screendump: frozen at "Booting the kernel.",
-		// near-0% guest CPU usage) instead of ever reaching ttyS0 output.
+		// Make the serial port the primary display: PVE then starts QEMU with
+		// -nographic (the qemu provider's setup) and without what its default
+		// "vga: std" brings along -- a VNC display, a USB tablet and SMM left
+		// enabled -- under which EVE/SDN images (LinuxKit-based, "console=ttyS0"
+		// only in their kernel cmdline) hung very early in boot (confirmed via
+		// QMP screendump: frozen at "Booting the kernel.", near-0% guest CPU
+		// usage) instead of ever reaching ttyS0 output. The VGA controller
+		// itself is added through args below, as a bare PCI device with no
+		// display attached, the way the qemu provider has always had one.
 		{Name: "vga", Value: "serial0"},
 		// Host hookscript that enables link-local L2 forwarding on xconnect
 		// bridges at VM post-start (see proxmoxHookscriptVolID).
@@ -1269,6 +1272,21 @@ func (p *ProxmoxProvider) buildVMOptions(dev *proxmoxDevice, diskRefs []string,
 		" -global virtio-net-pci.disable-legacy=on" +
 		" -global virtio-net-pci.disable-modern=off" +
 		" -global virtio-net-pci.iommu_platform=on"
+
+	// A VGA controller and a USB 3.0 (xHCI) host controller, for tests that
+	// pass either through to an application (EVE treats both classes
+	// specially, see debug.enable.vga and debug.enable.usb). Through args
+	// because PVE's own options cannot produce them bare: "vga" also attaches
+	// a display (see above) and "usbN" adds a controller only along with a
+	// host device or SPICE redirection. Directly on the root bus, so each
+	// lands in an IOMMU group of its own (PVE's "bus 0" is a conventional PCI
+	// bridge, see nicOptions), at the same slots the qemu provider uses: 0x1
+	// is also where PVE itself places a q35 VGA, and PVE assigns nothing to
+	// 0x2 on pcie.0. The "ev" ids keep clear of PVE's own vga/xhci device ids.
+	// PVE's q35 layout (pve-q35-4.0.cfg) already gives the VM two ICH9 USB 2.0
+	// controller sets at 0x1a and 0x1d, which the qemu provider replicates.
+	extraArgs += " -device VGA,id=evvga,bus=pcie.0,addr=0x1" +
+		" -device qemu-xhci,id=evxhci,bus=pcie.0,addr=0x2"
 
 	// UEFI (OVMF) boot with the broker-supplied firmware. A non-empty
 	// UEFIFirmwareDirPath signals UEFI boot. Proxmox's efidisk0 only manages the

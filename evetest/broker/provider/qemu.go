@@ -1494,6 +1494,34 @@ func (dev *qemuDevice) buildArgs() []string {
 		// so that EVE inside the VM can use VFIO to pass PCI devices such
 		// as NICs through to application VMs.
 		"-device", "intel-iommu,intremap=on,caching-mode=on,aw-bits=48",
+		// A VGA controller and USB host controllers, for tests that pass
+		// either class of device through to an application (EVE treats both
+		// specially, see debug.enable.vga and debug.enable.usb). QEMU would
+		// add this same standard VGA by default even under -nographic; it is
+		// listed explicitly only to fix its slot and to give it an id for
+		// QMP. The USB 3.0 (xHCI) controller matches the one the proxmox
+		// provider adds; VGA and xHCI sit directly on the root bus at the
+		// same slots as there, each in an IOMMU group of its own.
+		"-device", "VGA,id=vga,bus=pcie.0,addr=0x1",
+		"-device", "qemu-xhci,id=xhci,bus=pcie.0,addr=0x2",
+		// The two ICH9 USB 2.0 controller sets, an EHCI with three UHCI
+		// companions per slot (one IOMMU group each), replicate what PVE's
+		// q35 layout (pve-q35-4.0.cfg) gives the proxmox provider's VM
+		// anyway, so both providers present the same USB controllers.
+		"-device", "ich9-usb-ehci1,id=ehci,multifunction=on,bus=pcie.0,addr=0x1d.0x7",
+		"-device", "ich9-usb-uhci1,id=uhci-1,multifunction=on,bus=pcie.0,addr=0x1d.0x0," +
+			"masterbus=ehci.0,firstport=0",
+		"-device", "ich9-usb-uhci2,id=uhci-2,multifunction=on,bus=pcie.0,addr=0x1d.0x1," +
+			"masterbus=ehci.0,firstport=2",
+		"-device", "ich9-usb-uhci3,id=uhci-3,multifunction=on,bus=pcie.0,addr=0x1d.0x2," +
+			"masterbus=ehci.0,firstport=4",
+		"-device", "ich9-usb-ehci2,id=ehci-2,multifunction=on,bus=pcie.0,addr=0x1a.0x7",
+		"-device", "ich9-usb-uhci4,id=uhci-4,multifunction=on,bus=pcie.0,addr=0x1a.0x0," +
+			"masterbus=ehci-2.0,firstport=0",
+		"-device", "ich9-usb-uhci5,id=uhci-5,multifunction=on,bus=pcie.0,addr=0x1a.0x1," +
+			"masterbus=ehci-2.0,firstport=2",
+		"-device", "ich9-usb-uhci6,id=uhci-6,multifunction=on,bus=pcie.0,addr=0x1a.0x2," +
+			"masterbus=ehci-2.0,firstport=4",
 	}
 
 	if dev.spec.SerialNumber != "" {
