@@ -491,13 +491,10 @@ func TestWaitForBootstrapServerHappyPath(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	t.Cleanup(api.Close)
-	status := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte("cluster:" + expectedUUID))
-	}))
-	t.Cleanup(status.Close)
+	status := newClusterStatusTestServer(t, testJoinToken, "cluster:"+expectedUUID)
 
 	if err := waitForBootstrapServer(context.Background(),
-		api.URL, status.URL, expectedUUID); err != nil {
+		api.URL, status.URL, expectedUUID, testJoinToken); err != nil {
 		t.Fatalf("waitForBootstrapServer: %v", err)
 	}
 }
@@ -516,10 +513,7 @@ func TestWaitForBootstrapServerUUIDMismatchRetries(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	t.Cleanup(api.Close)
-	status := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte("cluster:wrong-uuid"))
-	}))
-	t.Cleanup(status.Close)
+	status := newClusterStatusTestServer(t, testJoinToken, "cluster:wrong-uuid")
 
 	// joinPollInterval is a const (10s). Bound the test with a tight
 	// ctx deadline so the mismatch loop hits ctx.Done after the
@@ -527,7 +521,7 @@ func TestWaitForBootstrapServerUUIDMismatchRetries(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
-	err := waitForBootstrapServer(ctx, api.URL, status.URL, "expected-uuid")
+	err := waitForBootstrapServer(ctx, api.URL, status.URL, "expected-uuid", testJoinToken)
 	if err == nil {
 		t.Fatal("expected ctx deadline error, got nil")
 	}
@@ -547,13 +541,10 @@ func TestWaitForBootstrapServerWithdrawnConfig(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	t.Cleanup(api.Close)
-	status := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte("cluster:u"))
-	}))
-	t.Cleanup(status.Close)
+	status := newClusterStatusTestServer(t, testJoinToken, "cluster:u")
 
 	err := waitForBootstrapServer(context.Background(),
-		api.URL, status.URL, "u")
+		api.URL, status.URL, "u", testJoinToken)
 	if err == nil {
 		t.Fatal("expected withdrawn-config error, got nil")
 	}
