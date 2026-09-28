@@ -109,6 +109,7 @@ func (z *zedkube) applyClusterConfig(config, oldconfig *types.EdgeNodeClusterCon
 		// from the cluster.
 		drainAndDeleteNode(z)
 		z.stopClusterStatusServer()
+		z.setClusterJoinToken("")
 		z.clusterConfig = types.EdgeNodeClusterConfig{}
 		return
 	} else {
@@ -150,6 +151,7 @@ func (z *zedkube) publishKubeConfigStatus() {
 			}
 		} else {
 			status.EncryptedClusterToken = decToken
+			z.setClusterJoinToken(decToken)
 
 			// Don't store the decrypted manifest in EdgeNodeClusterStatus as its a pubsub published
 			// structure and could lead to some log.Fatal due to this buffer size.
@@ -405,47 +407,57 @@ func (z *zedkube) updateClusterIPReadiness() (changed bool) {
 	return false
 }
 
+// startClusterStatusServer starts two listeners on ClusterStatusPort. The one
+// on the cluster IP serves /status and /app/ to cluster-init.sh and zedkube on
+// other nodes, over TLS and only to clients presenting the bearer token
+// derived from the cluster join token; the firewall rule that admits it is
+// described in pkg/pillar/docs/zedkube.md, "Cluster Status Server". The one
+// on 127.0.0.1 serves the App-Tracker (/app/ and /cluster-app/) in plain
+// HTTP to local clients such as edgeview.
 func (z *zedkube) startClusterStatusServer() {
 	if z.statusServer != nil {
 		// Already running.
 		return
 	}
-	mux := http.NewServeMux()
-	mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
-		z.clusterStatusHTTPHandler(w, r)
-	})
-	mux.HandleFunc("/app", func(w http.ResponseWriter, r *http.Request) {
-		z.appIDHandler(w, r)
-	})
-	mux.HandleFunc("/app/", func(w http.ResponseWriter, r *http.Request) {
-		z.appIDHandler(w, r)
-	})
-
-	mux.HandleFunc("/cluster-app", func(w http.ResponseWriter, r *http.Request) {
-		z.clusterAppIDHandler(w, r)
-	})
-	mux.HandleFunc("/cluster-app/", func(w http.ResponseWriter, r *http.Request) {
-		z.clusterAppIDHandler(w, r)
-	})
-	serverAddr := net.JoinHostPort(
-		z.clusterConfig.ClusterIPPrefix.IP.String(), types.ClusterStatusPort)
+	clusterMux := http.NewServeMux()
+	clusterMux.HandleFunc("/status", z.clusterStatusHTTPHandler)
+	clusterMux.HandleFunc("/app", z.appIDHandler)
+	clusterMux.HandleFunc("/app/", z.appIDHandler)
 	z.statusServer = &http.Server{
-		// Listen on the ClusterIPPrefix IP and the ClusterStatusPort
-		// the firewall rule is explicitly added to allow traffic to this port in EVE 'k'
-		// this is documented in pkg/pillar/docs/zedkube.md section "Cluster Status Server"
-		Addr:    serverAddr,
-		Handler: mux,
+		Addr: net.JoinHostPort(
+			z.clusterConfig.ClusterIPPrefix.IP.String(), types.ClusterStatusPort),
+		Handler:           z.requireClusterStatusAuth(clusterMux),
+		TLSConfig:         z.clusterStatusServerTLSConfig(),
+		ReadHeaderTimeout: 10 * time.Second,
 	}
-	z.statusServerWG.Add(1)
 
-	// Start the server in a goroutine
-	go func() {
+	localMux := http.NewServeMux()
+	localMux.HandleFunc("/app", z.appIDHandler)
+	localMux.HandleFunc("/app/", z.appIDHandler)
+	localMux.HandleFunc("/cluster-app", z.clusterAppIDHandler)
+	localMux.HandleFunc("/cluster-app/", z.clusterAppIDHandler)
+	z.localStatusServer = &http.Server{
+		Addr:              net.JoinHostPort("127.0.0.1", types.ClusterStatusPort),
+		Handler:           localMux,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	z.statusServerWG.Add(2)
+	go func(srv *http.Server) {
 		defer z.statusServerWG.Done()
-		if err := z.statusServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Errorf("Cluster status server ListenAndServe failed: %v", err)
+		// The certificate comes from TLSConfig.GetCertificate.
+		if err := srv.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+			log.Errorf("Cluster status server ListenAndServeTLS failed: %v", err)
 		}
 		log.Noticef("Cluster status server stopped")
-	}()
+	}(z.statusServer)
+	go func(srv *http.Server) {
+		defer z.statusServerWG.Done()
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Errorf("Local App-Tracker server ListenAndServe failed: %v", err)
+		}
+		log.Noticef("Local App-Tracker server stopped")
+	}(z.localStatusServer)
 }
 
 func (z *zedkube) stopClusterStatusServer() {
@@ -456,16 +468,19 @@ func (z *zedkube) stopClusterStatusServer() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := z.statusServer.Shutdown(shutdownCtx); err != nil {
-		log.Errorf("Cluster status server shutdown failed: %v", err)
-	} else {
-		log.Noticef("Cluster status server shutdown completed")
+	for _, srv := range []*http.Server{z.statusServer, z.localStatusServer} {
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Errorf("Cluster status server %s shutdown failed: %v", srv.Addr, err)
+		} else {
+			log.Noticef("Cluster status server %s shutdown completed", srv.Addr)
+		}
 	}
 
-	// Wait for the server goroutine to finish
+	// Wait for the server goroutines to finish
 	z.statusServerWG.Wait()
 	z.statusServer = nil
-	log.Noticef("Cluster status server goroutine has stopped")
+	z.localStatusServer = nil
+	log.Noticef("Cluster status server goroutines have stopped")
 }
 
 // clusterStatusHTTPHandler handles HTTP requests for the cluster status
@@ -559,16 +574,23 @@ func (z *zedkube) clusterAppIDHandler(w http.ResponseWriter, r *http.Request) {
   "value": [` + strings.TrimSuffix(string(appInfoJSON), "\n")
 
 	hosts, notClusterMode, err := z.getClusterNodeIPs()
+	var client *http.Client
+	var authorization string
+	if err == nil && !notClusterMode {
+		client, authorization, err = z.clusterStatusClient(5 * time.Second)
+		if err != nil {
+			log.Errorf("clusterAppIDHandler: %v", err)
+		}
+	}
 	if err == nil && !notClusterMode {
 		for _, host := range hosts {
-			client := &http.Client{
-				Timeout: 5 * time.Second, // Set a timeout of 5 seconds (adjust as needed)
-			}
-			req, err := http.NewRequest("POST", "http://"+host+":"+types.ClusterStatusPort+"/app/"+uuidStr, nil)
+			req, err := http.NewRequest("POST", "https://"+
+				net.JoinHostPort(host, types.ClusterStatusPort)+"/app/"+uuidStr, nil)
 			if err != nil {
 				log.Errorf("clusterAppIDHandler: %v", err)
 				continue
 			}
+			req.Header.Set("Authorization", authorization)
 
 			resp, err := client.Do(req)
 			if err != nil {

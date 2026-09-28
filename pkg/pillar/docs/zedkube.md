@@ -98,7 +98,9 @@ In VMI case, there will always be a POD having the name with prefix 'virt-launch
 
 ### Cluster Status Server
 
-In the Kubernetes cluster mode with multiple HA servers, when it starts up, it needs to join the cluster by specifying the 'bootstrap' server IP address. Even if the IP address is there, sometimes the 'bootstrap' node is still in single-node mode or it has not been converted into the cluster server yet. This will create problem for the joining server, and will later have conflicts with the status and certificates or tokens. To handle this server joining, zedkube is responsible for reporting it's cluster status through HTTP service. Each of the cluster servers will have a HTTP service on the cluster interface with port number '12346' using URL /status. It will report status of 'cluster' if the node has the property of 'master' and 'etcd'. The new joining server node or agent node will not move forward for starting the kubernetes node unless the http query returns 'cluster' status over the cluster network. The 'ClusterStatus' port for the HTTP is explicitly allowed on EVE firewall.
+In the Kubernetes cluster mode with multiple HA servers, when it starts up, it needs to join the cluster by specifying the 'bootstrap' server IP address. Even if the IP address is there, sometimes the 'bootstrap' node is still in single-node mode or it has not been converted into the cluster server yet. This will create problem for the joining server, and will later have conflicts with the status and certificates or tokens. To handle this server joining, zedkube is responsible for reporting it's cluster status through HTTPS service. Each of the cluster servers will have a HTTPS service on the cluster interface with port number '12346' using URL /status. It will report status of 'cluster' if the node has the property of 'master' and 'etcd'. The new joining server node or agent node will not move forward for starting the kubernetes node unless the query returns 'cluster' status over the cluster network. The 'ClusterStatus' port is explicitly allowed on EVE firewall.
+
+The service accepts only TLS 1.3 and only requests carrying a bearer token. Every node derives the token, and the server's self-signed certificate, from the cluster join token with HKDF-SHA256, so peers authenticate each other without distributing keys: cluster-init.sh on a joining node (through `cluster-status-probe`) and zedkube on the other nodes pin the derived certificate (server name `cluster-status.zedkube.eve`) and send the token. The same listener serves `/app/` to other nodes for the App-Tracker below.
 
 ### App Ethernet Passthrough
 
@@ -479,9 +481,9 @@ The statefulset must be deleted.
 
 In the Edge-Node Clustering setup, there are multiple EVE nodes handling the applications in a distributed way to prepare and handle the kubernetes cluster Pods and VMIs. The deployed application is downloaded onto all the nodes in the cluster, same for the cluster Network Instance and Volume Instance. Each node handles a different way to the application depending on the node is the Designated Node for the App, or if the kubernetes scheduling has scheduled the application to another node, etc. It is not easy to debug the distributed system when there is an issue encountered.
 
-The service 'zedkube' offers an App-Tracker http service, by offering the URL on the cluster node prefix IP address with the port number 12346. This prefix IP and port is already being used across the network in cluster to query the node cluster status when the node is being converted from single node into the cluster mode. The App-Tracker is using the same endpoint with a different URL to display the page of application status in the node or in the entire cluster.
+The service 'zedkube' offers an App-Tracker http service on `127.0.0.1:12346`, reachable only from the node itself. It displays the application status in the node or in the entire cluster.
 
-With the URL `http://<cluster-intf-ip>:12346/app/<app name or uuid>`
+With the URL `http://127.0.0.1:12346/app/<app name or uuid>`
 it will return the Application state being published by each relevant microservices in pillar and the cluster status. Given the AppInstanceConfig data, we can gather the volume instances and network instances information, and further explore the volume and network related states. The Json file includes those items:
 
 - EdgeNode Info
@@ -503,12 +505,12 @@ it will return the Application state being published by each relevant microservi
 - App Domain Metrics by domainmgr
 - App Disk Metrics by volumemgr
 
-For entire cluster status of the App, with the URL `http://<cluster-intf-ip>:12346/cluster-app/<app name or uuid>`
-The first node specified by the 'cluster-intf-ip' will gather the above App status on the node, then it will query the cluster on all the cluster-intf-ip of the other nodes on the cluster. Then it sends out the http query to those endpoints with the 'app name or app uuid' in URL to goather the APP status on those nodes, and merge the json results for the query reply to the user.
+For entire cluster status of the App, with the URL `http://127.0.0.1:12346/cluster-app/<app name or uuid>`
+The node will gather the above App status on the node, then it will query the cluster on all the cluster-intf-ip of the other nodes on the cluster. Then it sends out the authenticated HTTPS query to the Cluster Status Server on those endpoints with the 'app name or app uuid' in URL to goather the APP status on those nodes, and merge the json results for the query reply to the user.
 
-To use this, one example can be to use Edgeview with TCP command for the first node. First find out the cluster-intf-ip of the node on the cluster, for instance it is '10.244.244.3', then do:
+To use this, one example can be to use Edgeview with TCP command on any node of the cluster:
 
-  edgeview.sh tcp/10.244.244.3:12346
+  edgeview.sh tcp/127.0.0.1:12346
 
 then go to a web browser (or use 'curl'), enter url: `http://localhost:9001/app/<app name or uuid>` for the particular node status of the App, or enter url: `http://localhost:9001/cluster-app/<app name or uuid>` for the cluster status of the App.
 
