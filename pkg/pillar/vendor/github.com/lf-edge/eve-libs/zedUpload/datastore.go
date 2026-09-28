@@ -133,13 +133,36 @@ func (ctx *DronaCtx) handleQuit() error {
 	return nil
 }
 
+// resultDeliveryTimeout bounds how long a transfer waits for its requester to
+// take a message from the request's result channel. The requester returns as
+// soon as it has consumed the final response, and earlier when it gives up on
+// the request, and never reads the channel again; an unconditional send would
+// then park the sending goroutine forever, one leak per completed or abandoned
+// transfer. A requester that is still interested reads within milliseconds.
+var resultDeliveryTimeout = time.Minute
+
+// deliver posts req on its result channel and reports whether the requester
+// took it. It gives up after resultDeliveryTimeout (see there).
+func (ctx *DronaCtx) deliver(req *DronaRequest, what string) bool {
+	timer := time.NewTimer(resultDeliveryTimeout)
+	defer timer.Stop()
+	select {
+	case req.result <- req:
+		return true
+	case <-timer.C:
+		logrus.Warnf("zedUpload: requester of %s no longer reads its result channel, dropping %s",
+			req.name, what)
+		return false
+	}
+}
+
 // postSize:
 //
 //	post the progress report we haven't completed the download/upload yet
 func (ctx *DronaCtx) postSize(req *DronaRequest, size, asize int64) {
 	req.updateOsize(size)
 	req.updateAsize(asize)
-	req.result <- req
+	ctx.deliver(req, "a progress update")
 }
 
 // postChunk:
@@ -156,7 +179,7 @@ func (ctx *DronaCtx) postChunk(req *DronaRequest, chunkDetail ChunkData) {
 func (ctx *DronaCtx) postResponse(req *DronaRequest, status error) {
 	// status is already set up by action, we just have to set processed flag
 	req.setProcessed()
-	req.result <- req
+	ctx.deliver(req, "the final response")
 }
 
 // IsToken checks whether the given string is a valid HTTP token
@@ -325,11 +348,19 @@ func NewDronaCtx(name string, noHandlers int) (*DronaCtx, error) {
 	return &dSync, nil
 }
 
-func reqPostSize(req *DronaRequest, dronaCtx *DronaCtx, stats types.UpdateStats) {
+// recordStats stores the latest transfer statistics on the request, where the
+// requester can read them from any message it receives for the request.
+func recordStats(req *DronaRequest, stats types.UpdateStats) {
 	req.Lock()
 	req.doneParts = stats.DoneParts
 	req.Unlock()
-	dronaCtx.postSize(req, stats.Size, stats.Asize)
+	req.updateOsize(stats.Size)
+	req.updateAsize(stats.Asize)
+}
+
+func reqPostSize(req *DronaRequest, dronaCtx *DronaCtx, stats types.UpdateStats) {
+	recordStats(req, stats)
+	dronaCtx.deliver(req, "a progress update")
 }
 
 func statsUpdater(req *DronaRequest, dronaCtx *DronaCtx, prgNotif types.StatsNotifChan) {
@@ -341,7 +372,11 @@ func statsUpdater(req *DronaRequest, dronaCtx *DronaCtx, prgNotif types.StatsNot
 		select {
 		case newStats, ok = <-prgNotif:
 			if !ok {
-				reqPostSize(req, dronaCtx, stats)
+				// The transfer is over and the transport is about to post
+				// the final response, which carries these numbers. Posting
+				// one more progress update here would race with that
+				// response for the requester's last read and lose.
+				recordStats(req, stats)
 				return
 			}
 			stats = newStats
