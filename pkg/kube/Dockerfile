@@ -54,6 +54,10 @@ COPY cert-gen /plugins/cert-gen
 WORKDIR /plugins/cert-gen
 RUN GO111MODULE=on CGO_ENABLED=0 go build -v -ldflags "-s -w" -o /out/usr/bin/cert-gen .
 
+COPY cluster-status-probe /plugins/cluster-status-probe
+WORKDIR /plugins/cluster-status-probe
+RUN GO111MODULE=on CGO_ENABLED=0 go build -v -ldflags "-s -w" -o /out/usr/bin/cluster-status-probe .
+
 COPY update-component /plugins/update-component
 WORKDIR /plugins/update-component
 RUN GO111MODULE=on go build -v -ldflags "-s -w" -mod=vendor -o /out/usr/bin/update-component .
