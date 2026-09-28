@@ -92,6 +92,10 @@ RUN apk add --no-cache \
 RUN apk add --no-cache bash inetutils-telnet tcpdump \
                        strace busybox-extras socat openssh-client
 
+# Install nmap for tests/portscan, which scans devices from the network side.
+# hadolint ignore=DL3018
+RUN apk add --no-cache nmap nmap-scripts
+
 # Install what eve-tools/bpftrace-compiler needs when a test compiles a
 # bpftrace script for the device's kernel (see
 # tests/apps/pciaccess_helpers_test.go): linuxkit drives docker (through

@@ -45,9 +45,13 @@ func TestNodeClusterSuite(test *testing.T) {
 			Test: TestThreeNodesCluster,
 		},
 		evetest.TestCase{
-			// Runs right after TestThreeNodesCluster so its default NUM_NODES=3
-			// device requirements and network model match exactly, letting
-			// evetest reuse the same already-provisioned devices.
+			// Runs right after TestThreeNodesCluster, whose devices it reuses.
+			Test: TestThreeNodesPortScan,
+		},
+		evetest.TestCase{
+			// Its default NUM_NODES=3 device requirements and network model
+			// match TestThreeNodesCluster's exactly, letting evetest reuse the
+			// same already-provisioned devices.
 			Test: TestMgmtProxy,
 		},
 		evetest.TestCase{

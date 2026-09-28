@@ -330,75 +330,10 @@ func TestThreeNodesCluster(test *testing.T) {
 	filesystem := evetest.GetFilesystemParameterValue()
 	netboot := evetest.GetTestParameter[bool](netbootParamKey)
 
-	// Set up the test harness and specify the test prerequisites.
-	var requiredDevices [3]evetest.Requirement
-	var devName [3]string
-	for i := 0; i < 3; i++ {
-		devName[i] = fmt.Sprintf("edge-dev%d", i+1)
-		requiredDevices[i] = clusterDeviceRequirements(devName[i], withTPM, filesystem, netboot)
-	}
-
-	clusterNetModel := proto.Clone(netmodels.SeparateClusterPort(devName[:]...)).(*api.NetworkModel)
-	if netboot {
-		// Point the network's DHCP at evetest's own image server (see
-		// TestHarness.buildNetbootArtifacts).
-		clusterNetModel.Networks[0].Ipv4.Dhcp.NetbootServerIp =
-			evetest.GetImageServerIPv4().String()
-	}
-	requiredNetModel := evetest.RequireNetworkModel{
-		NetworkModel: clusterNetModel,
-	}
-	var requirements []evetest.Requirement
-	requirements = append(requirements, requiredDevices[:]...)
-	requirements = append(requirements, requiredNetModel)
-	if netboot {
-		// Skip on any provider that cannot configure a disk-first, network-fallback
-		// boot order for the device (see CAPABILITY_NETBOOT's doc comment).
-		requirements = append(requirements, evetest.RequireCapabilities{
-			Capabilities: []api.Capability{api.Capability_CAPABILITY_NETBOOT},
-		})
-	}
-	evetest.Setup(requirements...)
+	devName := setupThreeNodes(withTPM, filesystem, netboot)
 	evetest.Checkpoint("setup-done")
 
-	// Build the cluster configuration.
-	var nodes [3]evetest.ClusterNode
-	for i := 0; i < 3; i++ {
-		clusterIP := evetest.IPAddressWithPrefix(fmt.Sprintf("10.244.244.%d/24", i+2))
-		nodes[i] = evetest.ClusterNode{
-			DevName:          devName[i],
-			ClusterIP:        clusterIP,
-			ClusterInterface: "ethernet1",
-			BootstrapNode:    i == 0,
-		}
-	}
-	clusterConfig := evetest.NewEdgeClusterConfig(
-		eveconfig.ClusterType_CLUSTER_TYPE_REPLICATED_STORAGE,
-		nodes[:]...,
-	)
-
-	// Configure network adapters and networks (applied to all devices).
-	dhcpNet := clusterConfig.AddNetwork(
-		evetest.DHCPNetworkConfig{
-			NetworkType: evecommon.NetworkType_V4Only,
-		})
-	noIPNet := clusterConfig.AddNetwork(evetest.NoIPNetworkConfig{})
-	clusterConfig.AddNetworkAdapter(
-		evetest.NetworkAdapterConfig{
-			LogicalLabel:  "ethernet0",
-			PhysicalLabel: "eth0",
-			InterfaceName: "eth0",
-			NetworkUUID:   dhcpNet,
-			Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
-		})
-	clusterConfig.AddNetworkAdapter(
-		evetest.NetworkAdapterConfig{
-			LogicalLabel:  "ethernet1",
-			PhysicalLabel: "eth1",
-			InterfaceName: "eth1",
-			NetworkUUID:   noIPNet,
-			Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageShared,
-		})
+	clusterConfig := newThreeNodeClusterConfig(devName)
 
 	// Apply the initial configuration to each device in parallel.
 	cluster := evetest.NewEdgeCluster("test-cluster")
@@ -488,4 +423,86 @@ func TestThreeNodesCluster(test *testing.T) {
 		"curl -sS http://http-server.test/helloworld", sshTimeout, 0)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Expect(output).To(ContainSubstring("Hello world!"))
+}
+
+// setupThreeNodes sets up the three EVE-k devices and the
+// netmodels.SeparateClusterPort network model that TestThreeNodesCluster
+// describes, and returns the device names. Tests calling it with the same
+// arguments reuse the same devices.
+func setupThreeNodes(withTPM bool, filesystem evetest.Filesystem,
+	netboot bool) [3]string {
+	var requiredDevices [3]evetest.Requirement
+	var devName [3]string
+	for i := 0; i < 3; i++ {
+		devName[i] = fmt.Sprintf("edge-dev%d", i+1)
+		requiredDevices[i] = clusterDeviceRequirements(devName[i], withTPM, filesystem, netboot)
+	}
+
+	clusterNetModel := proto.Clone(netmodels.SeparateClusterPort(devName[:]...)).(*api.NetworkModel)
+	if netboot {
+		// Point the network's DHCP at evetest's own image server (see
+		// TestHarness.buildNetbootArtifacts).
+		clusterNetModel.Networks[0].Ipv4.Dhcp.NetbootServerIp =
+			evetest.GetImageServerIPv4().String()
+	}
+	requiredNetModel := evetest.RequireNetworkModel{
+		NetworkModel: clusterNetModel,
+	}
+	var requirements []evetest.Requirement
+	requirements = append(requirements, requiredDevices[:]...)
+	requirements = append(requirements, requiredNetModel)
+	if netboot {
+		// Skip on any provider that cannot configure a disk-first, network-fallback
+		// boot order for the device (see CAPABILITY_NETBOOT's doc comment).
+		requirements = append(requirements, evetest.RequireCapabilities{
+			Capabilities: []api.Capability{api.Capability_CAPABILITY_NETBOOT},
+		})
+	}
+	evetest.Setup(requirements...)
+	return devName
+}
+
+// newThreeNodeClusterConfig returns the replicated-storage cluster config
+// that TestThreeNodesCluster describes: node i gets ClusterIP
+// 10.244.244.<i+2> on ethernet1, node 1 bootstraps the cluster, and every
+// node has a DHCP mgmt+app port on eth0 and a no-IP shared port on eth1.
+func newThreeNodeClusterConfig(devName [3]string) *evetest.EdgeClusterConfig {
+	var nodes [3]evetest.ClusterNode
+	for i := 0; i < 3; i++ {
+		clusterIP := evetest.IPAddressWithPrefix(fmt.Sprintf("10.244.244.%d/24", i+2))
+		nodes[i] = evetest.ClusterNode{
+			DevName:          devName[i],
+			ClusterIP:        clusterIP,
+			ClusterInterface: "ethernet1",
+			BootstrapNode:    i == 0,
+		}
+	}
+	clusterConfig := evetest.NewEdgeClusterConfig(
+		eveconfig.ClusterType_CLUSTER_TYPE_REPLICATED_STORAGE,
+		nodes[:]...,
+	)
+
+	// Configure network adapters and networks (applied to all devices).
+	dhcpNet := clusterConfig.AddNetwork(
+		evetest.DHCPNetworkConfig{
+			NetworkType: evecommon.NetworkType_V4Only,
+		})
+	noIPNet := clusterConfig.AddNetwork(evetest.NoIPNetworkConfig{})
+	clusterConfig.AddNetworkAdapter(
+		evetest.NetworkAdapterConfig{
+			LogicalLabel:  "ethernet0",
+			PhysicalLabel: "eth0",
+			InterfaceName: "eth0",
+			NetworkUUID:   dhcpNet,
+			Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+		})
+	clusterConfig.AddNetworkAdapter(
+		evetest.NetworkAdapterConfig{
+			LogicalLabel:  "ethernet1",
+			PhysicalLabel: "eth1",
+			InterfaceName: "eth1",
+			NetworkUUID:   noIPNet,
+			Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageShared,
+		})
+	return clusterConfig
 }
