@@ -3,3 +3,7 @@ AllowTcpForwarding yes
 GatewayPorts no
 X11Forwarding no
 Subsystem sftp /usr/lib/ssh/sftp-server
+# No account has a password, so key-only login changes nothing that is
+# allowed; it stops sshd from offering password methods to the network.
+PasswordAuthentication no
+KbdInteractiveAuthentication no
