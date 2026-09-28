@@ -57,9 +57,9 @@ const (
 	// restart on any byte change.
 	disableLocalPathContent = "# Use longhorn storage\ndisable: local-storage\n"
 
-	// clusterStatusPort is the HTTP port where a bootstrap node
+	// clusterStatusPort is the HTTPS port where a bootstrap node
 	// advertises its cluster UUID over the cluster interface during
-	// the join-wait handshake.
+	// the join-wait handshake (see statusauth.go).
 	clusterStatusPort = "12346"
 
 	// joinPollInterval is the cadence at which we re-probe the
@@ -448,9 +448,10 @@ func writeJoinConfig(ctx context.Context, path string, cs *ClusterStatus, isFirs
 	if isFirstBoot {
 		apiURL := fmt.Sprintf("https://%s:%s",
 			bracketIPv6(cs.JoinServerIP), joinAPIPort)
-		statusURL := fmt.Sprintf("http://%s:%s/status",
+		statusURL := fmt.Sprintf("https://%s:%s/status",
 			bracketIPv6(cs.JoinServerIP), clusterStatusPort)
-		if err := waitForBootstrapServer(ctx, apiURL, statusURL, cs.ClusterID); err != nil {
+		if err := waitForBootstrapServer(ctx, apiURL, statusURL, cs.ClusterID,
+			cs.EncryptedToken); err != nil {
 			return fmt.Errorf("wait for bootstrap server: %w", err)
 		}
 	} else {
@@ -469,8 +470,10 @@ const nonTransientThreshold = 6
 // waitForBootstrapServer polls the bootstrap node until both its k3s
 // API and its cluster-status endpoint are reachable AND the
 // cluster-status endpoint reports a UUID matching expectedClusterID.
-// The UUID check is the actual authentication boundary — it guards
-// against accidentally joining a re-IP'd different cluster.
+// The cluster-status endpoint is reached with credentials derived
+// from joinToken (statusauth.go), which authenticates the bootstrap
+// node; the UUID check guards against accidentally joining a re-IP'd
+// different cluster.
 //
 // The first probe runs immediately (do not wait one full poll
 // interval before checking — the bootstrap node may already be up).
@@ -480,8 +483,14 @@ const nonTransientThreshold = 6
 // TLS verification failure, HTTP 4xx/5xx). After
 // nonTransientThreshold consecutive non-transient failures it
 // returns ErrBootstrapUnreachable rather than spinning silently.
-func waitForBootstrapServer(ctx context.Context, apiURL, statusURL, expectedClusterID string) error {
+func waitForBootstrapServer(ctx context.Context, apiURL, statusURL, expectedClusterID,
+	joinToken string) error {
 	log.Printf("waiting for bootstrap server %s ...", apiURL)
+
+	statusAuth, err := deriveClusterStatusAuth(joinToken)
+	if err != nil {
+		return fmt.Errorf("derive cluster-status credentials: %w", err)
+	}
 
 	if err := os.MkdirAll(filepath.Dir(clusterWaitFile), 0755); err != nil {
 		log.Printf("warning: mkdir for %s: %v", clusterWaitFile, err)
@@ -505,14 +514,12 @@ func waitForBootstrapServer(ctx context.Context, apiURL, statusURL, expectedClus
 	// dial the bootstrap node before we can trust its certificate
 	// chain.
 	//
-	// The real authentication boundary is the cluster-UUID match
-	// against the response body of the cluster-status endpoint a
-	// few lines below: if the UUID does not equal expectedClusterID
-	// (sourced from pillar's EdgeNodeClusterStatus, delivered over
-	// a controller-authenticated channel), the probe rejects the
-	// response regardless of what the TLS layer would have
-	// decided. A man-in-the-middle that does not know
-	// expectedClusterID cannot fabricate a passing response.
+	// The real authentication boundary is the cluster-status
+	// endpoint a few lines below. It is reached over TLS pinned to a
+	// certificate derived from the cluster join token (delivered
+	// over a controller-authenticated channel), so only a node that
+	// knows the token can answer, and its answer must carry
+	// expectedClusterID.
 	//
 	// Once the join completes, k3s installs the real cluster CA
 	// under /var/lib/rancher/k3s/server/tls and every other client
@@ -530,7 +537,10 @@ func waitForBootstrapServer(ctx context.Context, apiURL, statusURL, expectedClus
 		},
 		Timeout: joinHTTPClientTimeout,
 	}
-	httpClient := &http.Client{Timeout: joinHTTPClientTimeout}
+	httpClient := &http.Client{
+		Transport: &http.Transport{TLSClientConfig: statusAuth.tlsConfig()},
+		Timeout:   joinHTTPClientTimeout,
+	}
 
 	consecutiveNonTransient := 0
 
@@ -561,7 +571,8 @@ func waitForBootstrapServer(ctx context.Context, apiURL, statusURL, expectedClus
 		_ = resp.Body.Close()
 
 		// 2. Status endpoint reachable + reporting cluster UUID?
-		statusBody, statusErr := fetchClusterStatus(httpClient, statusURL)
+		statusBody, statusErr := fetchClusterStatus(httpClient, statusURL,
+			statusAuth.authorization)
 		if statusErr != nil {
 			cls := classifyHTTPErr(statusErr)
 			if cls == probeNonTransient {
@@ -625,12 +636,17 @@ func waitForBootstrapServer(ctx context.Context, apiURL, statusURL, expectedClus
 	}
 }
 
-// fetchClusterStatus issues one GET against the status endpoint and
-// returns the trimmed body. Any read error is surfaced rather than
+// fetchClusterStatus issues one GET against the status endpoint,
+// presenting authorization, and returns the trimmed body. Any read error is surfaced rather than
 // silently producing an empty body (which would be indistinguishable
 // from a server that legitimately hasn't entered cluster mode yet).
-func fetchClusterStatus(c *http.Client, statusURL string) (string, error) {
-	resp, err := c.Get(statusURL)
+func fetchClusterStatus(c *http.Client, statusURL, authorization string) (string, error) {
+	req, err := http.NewRequest(http.MethodGet, statusURL, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", authorization)
+	resp, err := c.Do(req)
 	if err != nil {
 		return "", err
 	}
