@@ -136,16 +136,21 @@ func (td *tracedDialer) dial(ctx context.Context, network, address string) (net.
 		td.log.Errorf("nettrace dial: nil or non-cancelable context passed. Dumping the stack to trace the context\n%s",
 			debug.Stack())
 	} else {
-		// Monitor context for closure.
+		// Monitor context for closure. Some HTTP clients dial with a context
+		// they never cancel, so also stop once tracing itself has stopped;
+		// nothing can be published after that anyway.
 		go func(ctx context.Context) {
-			<-ctx.Done()
-			td.tracer.publishTrace(dialTrace{
-				DialTrace: DialTrace{
-					TraceID:    td.dialID,
-					CtxCloseAt: td.tracer.getRelTimestamp(),
-				},
-				ctxClosed: true,
-			})
+			select {
+			case <-ctx.Done():
+				td.tracer.publishTrace(dialTrace{
+					DialTrace: DialTrace{
+						TraceID:    td.dialID,
+						CtxCloseAt: td.tracer.getRelTimestamp(),
+					},
+					ctxClosed: true,
+				})
+			case <-td.tracer.tracingDone():
+			}
 		}(ctx)
 	}
 

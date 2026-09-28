@@ -230,7 +230,7 @@ func execCmdGet(ctx context.Context, objSize int64, localFile string, host strin
 		}
 		//check context error on every attempt
 		if ctx.Err() != nil {
-			appendToErrorList(ctx.Err().Error())
+			appendToErrorList("Context error: %s", ctx.Err().Error())
 			break
 		}
 		if attempt > 0 {
@@ -294,8 +294,7 @@ func execCmdGet(ctx context.Context, objSize int64, localFile string, host strin
 		//if we not receive StatusOK for request without Range header or StatusPartialContent for request with range
 		//it indicates that server misconfigured
 		if !withRange && resp.StatusCode != http.StatusOK || withRange && resp.StatusCode != http.StatusPartialContent {
-			respErr := fmt.Sprintf("bad response code: %d", resp.StatusCode)
-			appendToErrorList(respErr)
+			appendToErrorList("bad response code: %d", resp.StatusCode)
 			//we do not want to process server misconfiguration here
 			break
 		}
