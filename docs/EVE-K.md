@@ -68,6 +68,13 @@ changes, kube will terminate k3s processes and restart it to apply the config.
 To override previously set config it is required to follow the k3s config merge rules defined in
 [k3s-config-value-merging](https://docs.k3s.io/installation/configuration#value-merge-behavior).
 
+## Container image delivery
+
+The control-plane images ship inside the EVE image and are mounted as EROFS
+rather than unpacked, and an upgrade from a release that did neither has to
+convert what it finds. See
+[EVE-K Container Image Delivery and EROFS](EVE-K-IMAGE-DELIVERY.md).
+
 ## Upgrades
 
 Upgrades of `HV=k` EVE-OS are supported through the existing interfaces.

@@ -18,3 +18,10 @@ pkg/cross-compilers/Dockerfile
 # OP-TEE binary is consumed by pkg/bsp-imx which already registers it
 # under the imx-atf / firmware-imx / uboot-imx umbrella entries.
 pkg/optee-os/Dockerfile
+
+# kube-images: the erofs-utils built here is a build-time converter only --
+# it turns the payload's layers into EROFS filesystems on the build host and
+# is not copied into the resulting image, whose entire content is the OCI
+# layout. The mkfs.erofs that ships to devices is built and registered by
+# pkg/kube/Dockerfile, which covers the SBOM entry for the same source.
+pkg/kube-images/Dockerfile

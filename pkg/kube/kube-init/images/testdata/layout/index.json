@@ -1,0 +1,1 @@
+{"schemaVersion":2,"manifests":[{"mediaType":"application/vnd.oci.image.manifest.v1+json","digest":"sha256:3bf3e3e6c08c07e826914f33a9809d42fb2e65b8589c834ad5d5ae3e6fa640c1","size":894,"annotations":{"org.opencontainers.image.ref.name":"docker.io_library_alpine_3.21"}}]}

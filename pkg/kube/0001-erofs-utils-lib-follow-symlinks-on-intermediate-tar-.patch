@@ -1,0 +1,133 @@
+From af666eb8ee073ffbc774b0daf858a4e9f0c55a25 Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mikem@zededa.com>
+Date: Sat, 25 Jul 2026 15:01:47 +0000
+Subject: [PATCH] erofs-utils: lib: follow symlinks on intermediate tar path
+ components
+
+mkfs.erofs --tar fails to convert layers that store files underneath a
+symlinked directory, a very common "usr-merge" layout in RHEL/UBI/Fedora
+based OCI images.  For example a base layer contains
+
+    lib64 -> usr/lib64        (symlink)
+    usr/lib64/                (directory)
+    lib64/libc.so.6           (regular file, path goes THROUGH the symlink)
+
+erofs_rebuild_get_dentry() walks the path component by component and, when
+it hits the "lib64" component, finds an existing dentry that is a symlink
+rather than a directory.  Since there are still components left to resolve
+it bails out with -ENOTDIR.  In practice this surfaces as a bogus ~2 TiB
+image and "Could not format the device", making the whole layer
+unconvertible even though nothing is wrong with the tar.
+
+A real filesystem (and containerd's walking differ, which applies the same
+layers via fs.RootPath) resolves such a path by following the symlink to
+its target directory.  Do the same during tar rebuild: when an intermediate
+path component resolves to a symlink, follow it to the target directory
+(relative targets from the containing directory, absolute targets from the
+tree root), chasing chained symlinks up to a bounded depth to avoid loops.
+
+Signed-off-by: Mikhail Malyshev <mikem@zededa.com>
+---
+ lib/rebuild.c | 72 +++++++++++++++++++++++++++++++++++++++++++++++++--
+ 1 file changed, 70 insertions(+), 2 deletions(-)
+
+diff --git a/lib/rebuild.c b/lib/rebuild.c
+index 108a464..febc95c 100644
+--- a/lib/rebuild.c
++++ b/lib/rebuild.c
+@@ -82,8 +82,60 @@ struct erofs_dentry *erofs_d_lookup(struct erofs_inode *dir, const char *name)
+ 	return NULL;
+ }
+ 
+-struct erofs_dentry *erofs_rebuild_get_dentry(struct erofs_inode *pwd,
+-		char *path, bool aufs, bool *whout, bool *opq, bool to_head)
++/* Bound symlink chains during path resolution, like the kernel's MAXSYMLINKS. */
++#define EROFS_REBUILD_SYMLINK_DEPTH	40
++
++static struct erofs_dentry *__erofs_rebuild_get_dentry(struct erofs_inode *root,
++		struct erofs_inode *pwd, char *path, bool aufs,
++		bool *whout, bool *opq, bool to_head, unsigned int depth);
++
++/*
++ * Resolve the target of an intermediate symlink path component to its
++ * directory inode, following chained symlinks up to a bounded depth.  This
++ * lets tar layers that store files under a symlinked directory be converted
++ * the same way a real filesystem extracts them, e.g. usr-merge layouts where
++ * "/lib64 -> usr/lib64" coexists with entries such as "lib64/libc.so.6".
++ */
++static struct erofs_inode *erofs_rebuild_follow_link(struct erofs_inode *root,
++		struct erofs_inode *pwd, struct erofs_inode *link,
++		unsigned int depth)
++{
++	struct erofs_dentry *d;
++	struct erofs_inode *base;
++	bool dumb_wh, dumb_opq;
++	char *target;
++
++	if (depth >= EROFS_REBUILD_SYMLINK_DEPTH)
++		return ERR_PTR(-ELOOP);
++	if (!link->i_link)
++		return ERR_PTR(-ENOENT);
++
++	target = strdup(link->i_link);
++	if (!target)
++		return ERR_PTR(-ENOMEM);
++
++	/* absolute targets are resolved from the tree root */
++	base = target[0] == '/' ? root : pwd;
++	d = __erofs_rebuild_get_dentry(root, base, target, false,
++				       &dumb_wh, &dumb_opq, false, depth + 1);
++	free(target);
++	if (IS_ERR(d))
++		return ERR_CAST(d);
++	/* target referred to the root or the base directory itself ("/", ".") */
++	if (!d)
++		return base;
++	if (d->type == EROFS_FT_DIR)
++		return d->inode;
++	/* the target is itself a symlink: keep following the chain */
++	if (d->type == EROFS_FT_SYMLINK)
++		return erofs_rebuild_follow_link(root, d->inode->i_parent,
++						 d->inode, depth + 1);
++	return ERR_PTR(-ENOTDIR);
++}
++
++static struct erofs_dentry *__erofs_rebuild_get_dentry(struct erofs_inode *root,
++		struct erofs_inode *pwd, char *path, bool aufs,
++		bool *whout, bool *opq, bool to_head, unsigned int depth)
+ {
+ 	struct erofs_dentry *d = NULL;
+ 	char *s = path;
+@@ -121,6 +173,15 @@ struct erofs_dentry *erofs_rebuild_get_dentry(struct erofs_inode *pwd,
+ 			}
+ 
+ 			d = erofs_d_lookup(pwd, s);
++			if (d && slash && d->type == EROFS_FT_SYMLINK) {
++				pwd = erofs_rebuild_follow_link(root, pwd,
++							d->inode, depth);
++				if (IS_ERR(pwd))
++					return ERR_CAST(pwd);
++				*slash = '/';
++				s = slash + 1;
++				continue;
++			}
+ 			if (d) {
+ 				if (d->type != EROFS_FT_DIR) {
+ 					if (slash)
+@@ -152,6 +213,13 @@ struct erofs_dentry *erofs_rebuild_get_dentry(struct erofs_inode *pwd,
+ 	return d;
+ }
+ 
++struct erofs_dentry *erofs_rebuild_get_dentry(struct erofs_inode *pwd,
++		char *path, bool aufs, bool *whout, bool *opq, bool to_head)
++{
++	return __erofs_rebuild_get_dentry(pwd, pwd, path, aufs, whout, opq,
++					  to_head, 0);
++}
++
+ static int erofs_rebuild_write_blob_index(struct erofs_sb_info *dst_sb,
+ 					  struct erofs_inode *inode)
+ {
+-- 
+2.43.0
+

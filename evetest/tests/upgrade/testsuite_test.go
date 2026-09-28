@@ -9,7 +9,16 @@ import (
 	"github.com/lf-edge/eve/evetest"
 )
 
-// TestUpgradeSuite runs TestEVEUpgrade across multiple hypervisor combinations.
+// Package layout
+// --------------
+//   - upgrade_test.go / snapshotter_upgrade_test.go: one test each.
+//   - snapshotter_helpers_test.go: helpers observing the containerd
+//     snapshotter stores and the /persist free space they compete for, plus
+//     the shared k3sNodeIsReady predicate and the app/NI fixtures.
+//
+// TestUpgradeSuite runs TestEVEUpgrade across multiple hypervisor combinations,
+// then TestSnapshotterUpgrade across the two eve-k app modes, the
+// reclaim/rollback path and the out-of-space path.
 func TestUpgradeSuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
@@ -77,6 +86,64 @@ func TestUpgradeSuite(test *testing.T) {
 						{Key: initialHypervisorParamKey, Value: evetest.HypervisorKubevirt},
 						// Target
 						{Key: evetest.HypervisorParameterKey, Value: evetest.HypervisorKubevirt},
+					},
+				},
+			},
+		},
+		evetest.TestCase{
+			Test: TestSnapshotterUpgrade,
+			Variants: []evetest.TestVariant{
+				{
+					// The path the overlayfs->erofs switch actually changes:
+					// a plain k8s pod whose image CRI must re-unpack.
+					//
+					// TPM is off for every variant here: an eve-k device cannot
+					// sign the TLS handshake to the controller with the emulated
+					// TPM ("signing data using TPM failed: handle 1 ... not
+					// correct for the use"), so onboarding never completes.
+					// Revisit once that is fixed.
+					Name: "TestSnapshotterUpgradeNativeContainer",
+					Parameters: []evetest.TestParameterValue{
+						{Key: initialEVEVersionParamKey, Value: initialEVEVersionForKubevirt},
+						{Key: evetest.TPMParameterKey, Value: false},
+						{Key: evetest.HypervisorParameterKey, Value: evetest.HypervisorKubevirt},
+						{Key: appVirtModeParamKey, Value: appVirtModeNoHyper},
+					},
+				},
+				{
+					// Control: a VMIRS-backed app off a PVC, which never
+					// reaches the CRI snapshotter.
+					Name: "TestSnapshotterUpgradeVMBackedApp",
+					Parameters: []evetest.TestParameterValue{
+						{Key: initialEVEVersionParamKey, Value: initialEVEVersionForKubevirt},
+						{Key: evetest.TPMParameterKey, Value: false},
+						{Key: evetest.HypervisorParameterKey, Value: evetest.HypervisorKubevirt},
+						{Key: appVirtModeParamKey, Value: appVirtModeHVM},
+					},
+				},
+				{
+					// Once kube-init has reclaimed the superseded overlayfs
+					// snapshots, an operator-forced rollback must still land
+					// on a working app.
+					Name: "TestSnapshotterUpgradeForcedRollback",
+					Parameters: []evetest.TestParameterValue{
+						{Key: initialEVEVersionParamKey, Value: initialEVEVersionForKubevirt},
+						{Key: evetest.TPMParameterKey, Value: false},
+						{Key: evetest.HypervisorParameterKey, Value: evetest.HypervisorKubevirt},
+						{Key: appVirtModeParamKey, Value: appVirtModeNoHyper},
+						{Key: verifyRollbackParamKey, Value: true},
+					},
+				},
+				{
+					// The conversion is forced with /persist below kubelet's
+					// eviction floor, then the space is returned.
+					Name: "TestSnapshotterUpgradeOutOfSpace",
+					Parameters: []evetest.TestParameterValue{
+						{Key: initialEVEVersionParamKey, Value: initialEVEVersionForKubevirt},
+						{Key: evetest.TPMParameterKey, Value: false},
+						{Key: evetest.HypervisorParameterKey, Value: evetest.HypervisorKubevirt},
+						{Key: appVirtModeParamKey, Value: appVirtModeNoHyper},
+						{Key: constrainPersistParamKey, Value: true},
 					},
 				},
 			},

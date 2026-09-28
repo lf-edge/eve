@@ -50,16 +50,19 @@ const (
 )
 
 const (
-	containerdUserLog    = KubeLogDir + "/containerd-user.log"
-	initialK3sVersion    = KubeLogDir + "/initial_k3s_version"
-	kubeRootExt4         = "/persist/vault/kube"
-	kubeRootZFS          = "/dev/zvol/persist/etcd-storage"
-	kubeRootMountpoint   = "/var/lib"
-	persistTypeFile      = "/run/eve.persist_type"
-	eveReleasePath       = "/run/eve-release"
-	osReleasePath        = "/etc/os-release"
-	containerdBinDir     = "/var/lib/rancher/k3s/data/current/bin"
-	containerdConfigPath = "/etc/containerd/config-k3s.toml"
+	containerdUserLog  = KubeLogDir + "/containerd-user.log"
+	initialK3sVersion  = KubeLogDir + "/initial_k3s_version"
+	kubeRootExt4       = "/persist/vault/kube"
+	kubeRootZFS        = "/dev/zvol/persist/etcd-storage"
+	kubeRootMountpoint = "/var/lib"
+	persistTypeFile    = "/run/eve.persist_type"
+	eveReleasePath     = "/run/eve-release"
+	osReleasePath      = "/etc/os-release"
+	containerdBinDir   = "/var/lib/rancher/k3s/data/current/bin"
+	// ContainerdConfigPath is the config kube-init launches the user
+	// containerd with. Exported because the stale-snapshot reclaim reads
+	// the configured CRI snapshotter from it as a safety guard.
+	ContainerdConfigPath = "/etc/containerd/config-k3s.toml"
 	containerdSockDir    = "/run/containerd-user"
 	runcSymlink          = "/usr/bin/runc"
 	shimSymlink          = "/usr/bin/containerd-shim-runc-v2"
@@ -817,8 +820,8 @@ func StartContainerd(ctx context.Context) error {
 		shimSymlink); err != nil {
 		return err
 	}
-	if isProcessRunning("containerd -c "+containerdConfigPath) ||
-		isProcessRunning("containerd --config "+containerdConfigPath) {
+	if isProcessRunning("containerd -c "+ContainerdConfigPath) ||
+		isProcessRunning("containerd --config "+ContainerdConfigPath) {
 		log.Printf("user containerd already running")
 		return waitForContainerdSock(ctx)
 	}
@@ -831,7 +834,7 @@ func StartContainerd(ctx context.Context) error {
 		return fmt.Errorf("open containerd log %s: %w", containerdUserLog, err)
 	}
 	cmd := exec.Command(filepath.Join(containerdBinDir, "containerd"),
-		"-c", containerdConfigPath)
+		"-c", ContainerdConfigPath)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}

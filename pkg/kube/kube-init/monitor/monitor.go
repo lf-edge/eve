@@ -847,11 +847,15 @@ func (m *Monitor) reapplyNodeLabels(ctx context.Context) {
 	}
 }
 
-// reimportImages re-imports the EVE-authored external-boot-image
-// tarball on restart if it is somehow no longer present in
-// containerd. Most calls are a no-op (the crictl pre-check finds
-// the image already there); the import only fires when the image
-// has genuinely gone missing (e.g. after a containerd reset).
+// reimportImages re-registers the pre-packaged images when the
+// EVE-authored external-boot-image is somehow no longer present in
+// containerd. Most calls are a no-op (the existence check finds the
+// image already there); registration only fires when the image has
+// genuinely gone missing (e.g. after a containerd reset). Consulting
+// containerd directly makes this idempotent across restarts without a
+// persistent marker, and registration is metadata-only against the
+// mounted EROFS layout, so redoing the whole catalog copies no blobs
+// beyond the external-boot-image's own 17 MB, which is rebuilt.
 //
 // RT image re-imports are intentionally not handled in this
 // package; they belong with the RT-specific code path.
@@ -859,19 +863,7 @@ func (m *Monitor) reimportImages(ctx context.Context) {
 	if !m.installKubevirt {
 		return
 	}
-	m.importImageIfNeeded(ctx,
-		images.ExternalBootImageTar,
-		images.ExternalBootImageName,
-		m.eveRelease,
-	)
-}
-
-// importImageIfNeeded imports tarPath into the user-containerd
-// only when the expected image tag is not already present in the
-// kubelet-visible namespace. Consulting containerd directly makes
-// this idempotent across restarts without a persistent marker.
-func (m *Monitor) importImageIfNeeded(ctx context.Context, tarPath, imageName, tag string) {
-	fullRef := imageName + ":" + tag
+	fullRef := images.ExternalBootImageName + ":" + m.eveRelease
 	cc, err := m.getContainerd(ctx)
 	if err != nil {
 		log.Printf("warning: containerd client: %v", err)
@@ -884,14 +876,19 @@ func (m *Monitor) importImageIfNeeded(ctx context.Context, tarPath, imageName, t
 	if exists {
 		return
 	}
-	if _, err := os.Stat(tarPath); errors.Is(err, os.ErrNotExist) {
+	if err := images.ImportAll(ctx, m.eveRelease, m.installKubevirt); err != nil {
+		log.Printf("ERROR: re-register pre-packaged images: %v", err)
 		return
 	}
-	if _, err := cc.ImportImage(ctx, tarPath); err != nil {
-		log.Printf("warning: image import %s failed: %v", tarPath, err)
-		return
+	// Confirm rather than assume: this runs once per Monitor start, so a
+	// re-registration that quietly did nothing leaves container-as-VM app
+	// instances broken until kube-init restarts.
+	if exists, err := cc.ImageExists(ctx, fullRef); err != nil {
+		log.Printf("warning: image existence re-check %s failed: %v", fullRef, err)
+	} else if !exists {
+		log.Printf("ERROR: %s still absent after re-registering; container-as-VM "+
+			"app instances cannot start", fullRef)
 	}
-	log.Printf("imported image from %s", tarPath)
 }
 
 // getContainerd returns the Monitor's shared containerd client,
