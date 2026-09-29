@@ -1,7 +1,0 @@
-# Copyright (c) 2026 Zededa, Inc.
-# SPDX-License-Identifier: Apache-2.0
----
-# Use longhorn storage
-#
-# appends to the base config.yaml's "disable" list
-disable+: local-storage
