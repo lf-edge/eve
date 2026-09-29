@@ -90,7 +90,6 @@ COPY config.yaml /etc/rancher/k3s
 COPY debuguser-role-binding.yaml /etc/
 COPY k3s-pod-logs.sh /usr/bin/
 COPY all-kube-events.sh /usr/bin/
-COPY cfg-manifests/03-enc-disable-local-path.yaml /etc/kube/
 COPY cfg-manifests/04-multinode-watch-cache.yaml /etc/kube/
 
 # Manifests the daemon applies at first boot. Stays under /etc; the
