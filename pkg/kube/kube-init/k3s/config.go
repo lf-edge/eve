@@ -54,8 +54,10 @@ const multiNodeWatchCacheSrc = "/etc/kube/" + MultiNodeWatchCache
 const (
 	// disableLocalPathContent is the YAML body for the DisableLocalPath
 	// drop-in. Body kept byte-stable; k3s drop-in hashing triggers a
-	// restart on any byte change.
-	disableLocalPathContent = "# Use longhorn storage\ndisable: local-storage\n"
+	// restart on any byte change. "disable+" appends to the base
+	// config.yaml's list; a bare "disable" would replace it and re-enable
+	// servicelb and traefik (TestEffectiveDisableKeepsServicelbAndTraefik).
+	disableLocalPathContent = "# Use longhorn storage\ndisable+: local-storage\n"
 
 	// clusterStatusPort is the HTTPS port where a bootstrap node
 	// advertises its cluster UUID over the cluster interface during
