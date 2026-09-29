@@ -406,6 +406,11 @@ lk-extra-opt/%: FORCE
 RESCAN_DEPS=FORCE $(LK_POSSIBLE_BUILD_ARG_TARGETS)
 # set FORCE_BUILD to --force to enforce rebuild
 FORCE_BUILD=
+# Packages to always rebuild rather than pull/skip (applied by the eve-%
+# rule below). Keyed by name, not a target-specific FORCE_BUILD variable:
+# those propagate to the whole prerequisite subtree in GNU Make, which
+# force-rebuilt their dependencies too (e.g. pkg/uefi via pkg/xen-tools).
+FORCE_BUILD_PKGS=external-boot-image kube
 
 # ROOTFS_DEPS enforces the scan of all rootfs image dependencies
 ifdef ROOTFS_DEPS
@@ -978,9 +983,7 @@ pkg/kernel:
 # already in cache/registry" behavior serves a stale runx-initrd whenever
 # xen-tools changes (e.g. an init-initrd edit produces a new xen-tools tag but
 # the same external-boot-image tag, so the cached external-boot-image wins).
-# Force a rebuild via the target-specific FORCE_BUILD; Make propagates it to
-# the eve-external-boot-image prerequisite that actually runs `linuxkit pkg`.
-pkg/external-boot-image: FORCE_BUILD := --force
+# Forced via FORCE_BUILD_PKGS above, applied by the eve-% rule below.
 
 # Same trap as pkg/external-boot-image, one level up: pkg/kube bundles
 # pkg/kube/external-boot-image.tar (a generated artifact, gitignored — see
@@ -988,7 +991,7 @@ pkg/external-boot-image: FORCE_BUILD := --force
 # hash for pkg/kube. Without --force, `linuxkit pkg build pkg/kube` finds the
 # existing kube image in cache and skips — keeping the OLD external-boot-image.tar
 # baked in, which the rootfs then ships to the device as /etc/external-boot-image.tar.
-pkg/kube: FORCE_BUILD := --force
+# Forced via FORCE_BUILD_PKGS above, applied by the eve-% rule below.
 
 pkg/kube/external-boot-image.tar: pkg/external-boot-image
 	$(eval BOOT_IMAGE_TAG := $(shell $(LINUXKIT) pkg show-tag --canonical pkg/external-boot-image))
@@ -1268,7 +1271,8 @@ eve-%: pkg/%/Dockerfile $(LINUXKIT) $(RESCAN_DEPS)
 	$(eval LINUXKIT_DOCKER_LOAD := $(if $(filter $(PKGS_DOCKER_LOAD),$*),--docker,))
 	$(eval LINUXKIT_BUILD_PLATFORMS_LIST := $(call uniq,linux/$(ZARCH) $(if $(filter $(PKGS_HOSTARCH),$*),linux/$(HOSTARCH),)))
 	$(eval LINUXKIT_BUILD_PLATFORMS := --platforms $(subst $(space),$(comma),$(strip $(LINUXKIT_BUILD_PLATFORMS_LIST))))
-	$(eval LINUXKIT_FLAGS := $(if $(filter manifest,$(LINUXKIT_PKG_TARGET)),,$(FORCE_BUILD) $(LINUXKIT_DOCKER_LOAD) $(LINUXKIT_BUILD_PLATFORMS)))
+	$(eval PKG_FORCE_BUILD := $(if $(strip $(FORCE_BUILD)),$(FORCE_BUILD),$(if $(filter $*,$(FORCE_BUILD_PKGS)),--force,)))
+	$(eval LINUXKIT_FLAGS := $(if $(filter manifest,$(LINUXKIT_PKG_TARGET)),,$(PKG_FORCE_BUILD) $(LINUXKIT_DOCKER_LOAD) $(LINUXKIT_BUILD_PLATFORMS)))
 	$(QUIET)$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) $(LINUXKIT_EXTRA_BUILD_ARGS) $(LINUXKIT_FLAGS) --build-yml $(call get_pkg_build_yml,$*) pkg/$*
 	$(QUIET)if [ -n "$(PRUNE)" ]; then \
 		flock $(PARALLEL_BUILD_LOCK) docker image prune -f; \
