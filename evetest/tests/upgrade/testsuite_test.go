@@ -9,20 +9,21 @@ import (
 	"github.com/lf-edge/eve/evetest"
 )
 
-// TestUpgradeSuite runs TestEVEUpgrade across multiple hypervisor combinations.
+// EVE-K (k3s/kubevirt-based EVE) is officially supported starting from 17.0.0.
+// However, currently 17.0-stable does not include github.com/lf-edge/eve/pull/6209,
+// which is needed for reliable app deployment.
+// For the time being, we will use EVE version from the master, at the commit just
+// before the big rewrite of kube-init from shell scripts to Go.
+const initialEVEVersionForKubevirt = "0.0.0-master-66475696"
+
+// TestUpgradeSuite runs TestEVEUpgrade across multiple hypervisor combinations,
+// then TestThreeNodesUpgrade.
 func TestUpgradeSuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
 
 	const (
 		initialEVEVersionForKVM = "16.0.0-lts"
-
-		// EVE-K (k3s/kubevirt-based EVE) is officially supported starting from 17.0.0.
-		// However, currently 17.0-stable does not include github.com/lf-edge/eve/pull/6209,
-		// which is needed for reliable app deployment.
-		// For the time being, we will use EVE version from the master, at the commit just
-		// before the big rewrite of kube-init from shell scripts to Go.
-		initialEVEVersionForKubevirt = "0.0.0-master-66475696"
 
 		// The OCI-datastore variant points EVE at evetest's own embedded OCI
 		// registry (see PushDockerImageToLocalRegistry), which is fronted by
@@ -80,6 +81,9 @@ func TestUpgradeSuite(test *testing.T) {
 					},
 				},
 			},
+		},
+		evetest.TestCase{
+			Test: TestThreeNodesUpgrade,
 		},
 	)
 }
