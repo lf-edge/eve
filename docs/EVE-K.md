@@ -59,6 +59,32 @@ changes, kube will terminate k3s processes and restart it to apply the config.
 To override previously set config it is required to follow the k3s config merge rules defined in
 [k3s-config-value-merging](https://docs.k3s.io/installation/configuration#value-merge-behavior).
 
+The base config disables k3s's servicelb and Traefik, and the
+`03-enc-disable-local-path.yaml` drop-in that cluster-init.sh installs
+disables local-storage with `disable+:`. A
+drop-in that sets a bare `disable:` replaces the whole list and re-enables
+servicelb, which then exposes Traefik on ports 80 and 443 of every node address.
+
+## Network Exposure
+
+EVE's firewall drops unsolicited input on uplink ports. In a cluster it admits
+the following on the cluster interface, TCP only to the node's cluster IP:
+
+| Port | Service | Protection |
+| --- | --- | --- |
+| 6443/tcp | k3s API server | TLS; requests without credentials get 401 |
+| 10250/tcp | kubelet | TLS; requests without credentials get 401 |
+| 2379-2380/tcp | etcd client and peer | TLS with a required client certificate |
+| 12346/tcp | zedkube cluster-status server | TLS 1.3 and a bearer token, both derived from the cluster join token (see [zedkube.md](../pkg/pillar/docs/zedkube.md)) |
+| 8472/udp | flannel VXLAN | none; accepted on the cluster interface for any destination address |
+
+The VXLAN overlay carries pod-to-pod traffic
+unencrypted and unauthenticated, so the cluster network must be trusted. When
+the Authorized Cluster Endpoint is enabled, 6443 is also admitted on every
+interface. SSH (22/tcp) is open only when `debug.enable.ssh` is set, and then
+accepts public-key login only. The App-Tracker listens in plain HTTP on
+`127.0.0.1:12346`, reachable only from the node itself.
+
 ## Upgrades
 
 Upgrades of `HV=k` EVE-OS are supported through the existing interfaces.
