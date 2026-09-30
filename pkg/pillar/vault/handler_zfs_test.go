@@ -261,11 +261,24 @@ func TestPlanVaultMigrationRecovery(t *testing.T) {
 	}{
 		{name: "nothing left over", vaultExists: true, vaultIsZvol: true,
 			want: vaultMigrationNoop},
-		{name: "migrated vault in place, swap cleanup interrupted", vaultExists: true,
+		// The parked kvm vault holds the app-volume zvols EVE-k rolls into PVCs,
+		// so it outlives the commit; volumemgr drains it.
+		{name: "migrated vault in place, staging left over", vaultExists: true,
 			vaultIsZvol: true, stagingExists: true, backupExists: true, swapStaged: true,
-			want: vaultMigrationDropLeftovers},
-		{name: "migrated vault in place, backup left over", vaultExists: true,
-			vaultIsZvol: true, backupExists: true, want: vaultMigrationDropLeftovers},
+			want: vaultMigrationKeepParked},
+		{name: "migrated vault in place, kvm vault parked", vaultExists: true,
+			vaultIsZvol: true, backupExists: true, want: vaultMigrationKeepParked},
+		{name: "committed EVE-k keeps the parked kvm vault", vaultExists: true,
+			vaultIsZvol: true, backupExists: true, committed: true,
+			want: vaultMigrationKeepParked},
+		// A reboot before the EVE-k partition is committed boots EVE-kvm, which
+		// cannot mount the migrated zvol.
+		{name: "kvm falls back after a completed swap", vaultExists: true,
+			vaultIsZvol: true, backupExists: true, kvm: true,
+			want: vaultMigrationRevertSwap},
+		{name: "committed kvm reverts a completed swap", vaultExists: true,
+			vaultIsZvol: true, backupExists: true, committed: true, kvm: true,
+			want: vaultMigrationRevertSwap},
 		// A fresh filesystem vault sitting over the swap window, as an EVE
 		// version without this recovery leaves behind: the only copies of the
 		// contents are the datasets the migration left.
@@ -349,12 +362,14 @@ func TestRecoverInterruptedVaultMigration(t *testing.T) {
 		vaultIsZvol bool
 		marker      string
 		wantVault   bool
+		wantBackup  bool
 	}{
 		{
-			name:      "swap interrupted between the renames",
-			datasets:  []string{testStaging, testBackup},
-			marker:    testStaging,
-			wantVault: true,
+			name:       "swap interrupted between the renames",
+			datasets:   []string{testStaging, testBackup},
+			marker:     testStaging,
+			wantVault:  true,
+			wantBackup: true,
 		},
 		{
 			name:      "swap interrupted, backup already destroyed",
@@ -373,6 +388,7 @@ func TestRecoverInterruptedVaultMigration(t *testing.T) {
 			vaultIsZvol: true,
 			marker:      testStaging,
 			wantVault:   true,
+			wantBackup:  true,
 		},
 		{
 			name:      "no leftovers",
@@ -391,7 +407,7 @@ func TestRecoverInterruptedVaultMigration(t *testing.T) {
 
 			assert.Equal(t, tc.wantVault, ops.datasets[testVault])
 			assert.False(t, ops.datasets[testStaging], "staging dataset left behind")
-			assert.False(t, ops.datasets[testBackup], "backup dataset left behind")
+			assert.Equal(t, tc.wantBackup, ops.datasets[testBackup])
 			assert.Empty(t, ops.marker)
 		})
 	}
@@ -584,9 +600,9 @@ func TestMigrateVaultFsToZvolDeclinedLeavesNothing(t *testing.T) {
 }
 
 // TestMigrateVaultFsToZvolSwap covers the successful migration: the staging
-// zvol ends up as the vault, the pre-migration vault is gone, and the swap
-// marker is cleared so that a later leftover is not mistaken for a complete
-// copy.
+// zvol ends up as the vault, the pre-migration vault stays parked with the app
+// zvols EVE-k carries into PVCs, and the swap marker is cleared so that a
+// later leftover is not mistaken for a complete copy.
 func TestMigrateVaultFsToZvolSwap(t *testing.T) {
 	ops := newFakeZFSOps(testVault)
 	h := testZFSHandler(ops)
@@ -596,9 +612,69 @@ func TestMigrateVaultFsToZvolSwap(t *testing.T) {
 	assert.True(t, ops.datasets[testVault])
 	assert.True(t, ops.datasets[types.EtcdZvol])
 	assert.False(t, ops.datasets[testStaging])
-	assert.False(t, ops.datasets[testBackup])
+	assert.True(t, ops.datasets[testBackup], "the parked kvm vault was destroyed")
 	assert.Empty(t, ops.marker)
 	assert.Equal(t, 1, ops.calls["MountVaultZvol"])
+}
+
+// TestParkedVaultDatasetName covers that the dataset the migration parks is
+// the one csihandler and volumemgr look for the kvm app-volume zvols in.
+func TestParkedVaultDatasetName(t *testing.T) {
+	assert.Equal(t, types.SealedDataset+vaultBackupSuffix, types.KvmParkedSealedDataset)
+}
+
+// TestRecoverRevertsACompletedSwapOnKvm covers a fallback to EVE-kvm after the
+// swap completed: the migrated zvol vault is one EVE-kvm cannot mount, so the
+// parked filesystem vault goes back in place along with its app zvols, and the
+// etcd zvol created for EVE-k goes away.
+func TestRecoverRevertsACompletedSwapOnKvm(t *testing.T) {
+	ops := newFakeZFSOps(testVault, testBackup, types.EtcdZvol)
+	ops.zvols[testVault] = true
+	h := testZFSHandlerKvm(ops)
+
+	require.NoError(t, h.recoverInterruptedVaultMigration(testVault))
+
+	assert.True(t, ops.datasets[testVault], "the vault was not restored")
+	assert.False(t, ops.zvols[testVault], "EVE-kvm was left a zvol vault")
+	assert.False(t, ops.datasets[testBackup], "the parked vault was not moved back")
+	assert.False(t, ops.datasets[types.EtcdZvol], "the etcd zvol was left behind")
+	assert.Empty(t, ops.marker)
+}
+
+// TestRecoverRevertRetriesAfterAFailedRename covers a revert cut before its
+// rename: the next boot finds no vault beside the parked one and restores it.
+func TestRecoverRevertRetriesAfterAFailedRename(t *testing.T) {
+	ops := newFakeZFSOps(testVault, testBackup)
+	ops.zvols[testVault] = true
+	ops.failOn("RenameDataset", 1)
+	h := testZFSHandlerKvm(ops)
+
+	require.Error(t, h.recoverInterruptedVaultMigration(testVault))
+	assert.False(t, ops.datasets[testVault])
+	assert.True(t, ops.datasets[testBackup], "the parked vault was destroyed")
+
+	delete(ops.fail, "RenameDataset")
+	require.NoError(t, h.recoverInterruptedVaultMigration(testVault))
+	assert.True(t, ops.datasets[testVault], "the vault was not restored")
+	assert.False(t, ops.zvols[testVault])
+	assert.False(t, ops.datasets[testBackup])
+}
+
+// TestRecoverKeepsTheParkedVaultOnEveK covers an EVE-k boot after the swap:
+// staging leftovers go, the parked kvm vault stays for volumemgr to drain.
+func TestRecoverKeepsTheParkedVaultOnEveK(t *testing.T) {
+	ops := newFakeZFSOps(testVault, testStaging, testBackup)
+	ops.zvols[testVault] = true
+	ops.marker = testStaging
+	h := testZFSHandler(ops)
+	h.options.CurrentPartitionCommitted = true
+
+	require.NoError(t, h.recoverInterruptedVaultMigration(testVault))
+
+	assert.True(t, ops.zvols[testVault])
+	assert.False(t, ops.datasets[testStaging], "staging dataset left behind")
+	assert.True(t, ops.datasets[testBackup], "the parked kvm vault was destroyed")
+	assert.Empty(t, ops.marker)
 }
 
 // TestRemoveDefaultVaultDropsMigrationLeftovers covers that removing the vault
