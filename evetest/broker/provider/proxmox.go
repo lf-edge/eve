@@ -24,6 +24,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"github.com/luthermonson/go-proxmox"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/crypto/ssh"
 )
 
 // ProxmoxProvider manages the lifecycle of VMs on a Proxmox VE host purely
@@ -93,6 +94,13 @@ type ProxmoxProvider struct {
 	// device. The key is the unprefixed evetest network name. Guarded by
 	// sdnMutex, not devMutex.
 	networks map[string]*proxmoxNetwork
+
+	// sshClient is the SSH connection to the PVE host through which the
+	// devices' evetest QMP monitors are reached (see deviceQMP). Dialed on
+	// first use and dropped after a failure so the next use redials. Guarded
+	// by sshMutex.
+	sshMutex  sync.Mutex
+	sshClient *ssh.Client
 }
 
 // ProxmoxProviderConf : configuration for the Proxmox provider.
@@ -146,6 +154,16 @@ type proxmoxDevice struct {
 	// disk import sources, these are read live by QEMU for the VM's lifetime and
 	// are removed only on teardown.
 	firmwareVolIDs []string
+
+	// qmpClient is the connection to the VM's evetest QMP monitor (see
+	// deviceQMP): nil until ExecuteQMP first needs it, and again once the VM
+	// stopped or the connection failed. Guarded by devMutex.
+	qmpClient *qmpClient
+	// scratchVolIDs maps the names of the device's scratch images
+	// (CreateScratchImage) to their import-storage volume IDs; "" marks an
+	// upload in progress. Leftovers are removed with the device. Guarded by
+	// devMutex.
+	scratchVolIDs map[string]string
 
 	consoleLog    string
 	consoleCancel context.CancelFunc
@@ -358,7 +376,9 @@ func nodeArchs(ctx context.Context, client *proxmox.Client,
 // L2 forwarding tweaks on the xconnect bridges, and TPM is supported via tpmstate0.
 // It also supports network boot.
 func (p *ProxmoxProvider) Capabilities() []api.Capability {
-	return fullCapabilitySet()
+	// Plus QMP access: this provider has a QMP monitor of every device VM that
+	// the broker can reach (see ExecuteQMP).
+	return append(fullCapabilitySet(), api.Capability_CAPABILITY_QMP)
 }
 
 // DiskImageStrategy returns DiskImageStandalone: uploadDiskImages ships each
@@ -719,6 +739,7 @@ func (p *ProxmoxProvider) PowerOffDevice(ctx context.Context, name string) error
 	}
 	p.devMutex.Lock()
 	p.stopConsoleLogger(dev)
+	p.dropDeviceQMPLocked(dev)
 	p.updateDeviceStatus(dev, DeviceStatusStopped)
 	p.devMutex.Unlock()
 	return nil
@@ -742,6 +763,7 @@ func (p *ProxmoxProvider) ShutdownDevice(ctx context.Context, name string) error
 	}
 	p.devMutex.Lock()
 	p.stopConsoleLogger(dev)
+	p.dropDeviceQMPLocked(dev)
 	p.updateDeviceStatus(dev, DeviceStatusStopped)
 	p.devMutex.Unlock()
 	return nil
@@ -1040,6 +1062,13 @@ func (p *ProxmoxProvider) ReconfigureDeviceDisks(
 
 // Close releases resources associated with the provider.
 func (p *ProxmoxProvider) Close() error {
+	p.sshMutex.Lock()
+	defer p.sshMutex.Unlock()
+	if p.sshClient != nil {
+		err := p.sshClient.Close()
+		p.sshClient = nil
+		return err
+	}
 	return nil
 }
 
@@ -1084,6 +1113,7 @@ func (p *ProxmoxProvider) destroyDevice(
 	ctx context.Context, log *logrus.Entry, dev *proxmoxDevice) error {
 	p.devMutex.Lock()
 	p.stopConsoleLogger(dev)
+	p.dropDeviceQMPLocked(dev)
 	p.devMutex.Unlock()
 
 	node, err := p.client.Node(ctx, p.conf.Node)
@@ -1100,10 +1130,11 @@ func (p *ProxmoxProvider) destroyDevice(
 			return fmt.Errorf("failed to look up VM %d for device %q during teardown: %w",
 				dev.vmID, dev.name, err)
 		}
-		// VM already gone; still remove any uploaded firmware volumes.
+		// VM already gone; still remove any uploaded firmware and scratch
+		// image volumes.
 		log.Warnf("VM %d for device %q not found during teardown: %v",
 			dev.vmID, dev.name, err)
-		p.deleteImportVolumes(ctx, log, node, dev.firmwareVolIDs)
+		p.deleteImportVolumes(ctx, log, node, p.volumesToRemove(dev))
 		return nil
 	}
 	if mapProxmoxStatus(vm.Status, vm.QMPStatus, log) == DeviceStatusRunning {
@@ -1127,8 +1158,9 @@ func (p *ProxmoxProvider) destroyDevice(
 	if err := waitTask(ctx, task); err != nil {
 		return fmt.Errorf("failed waiting for VM %d deletion: %w", dev.vmID, err)
 	}
-	// Remove the uploaded custom-firmware volumes now that the VM is gone.
-	p.deleteImportVolumes(ctx, log, node, dev.firmwareVolIDs)
+	// Remove the uploaded custom-firmware and scratch image volumes now that
+	// the VM is gone.
+	p.deleteImportVolumes(ctx, log, node, p.volumesToRemove(dev))
 	log.Infof("Removed Proxmox VM %d for device %q", dev.vmID, dev.name)
 	return nil
 }
@@ -1287,6 +1319,15 @@ func (p *ProxmoxProvider) buildVMOptions(dev *proxmoxDevice, diskRefs []string,
 	// controller sets at 0x1a and 0x1d, which the qemu provider replicates.
 	extraArgs += " -device VGA,id=evvga,bus=pcie.0,addr=0x1" +
 		" -device qemu-xhci,id=evxhci,bus=pcie.0,addr=0x2"
+
+	// A second QMP monitor for evetest's own use (ExecuteQMP), next to the one
+	// PVE gives every VM at /var/run/qemu-server/<vmid>.qmp. PVE's monitor is
+	// single-client and used per command by pvestatd, qm and the API, so the
+	// broker must not share it. The socket sits in PVE's own runtime directory,
+	// which exists whenever PVE runs, so starting the VM depends on nothing
+	// else; the broker reaches it over SSH (see deviceQMP).
+	extraArgs += fmt.Sprintf(" -chardev socket,id=evqmp,path=%s,server=on,wait=off"+
+		" -mon chardev=evqmp,mode=control", proxmoxQMPSocketPath(dev.vmID))
 
 	// UEFI (OVMF) boot with the broker-supplied firmware. A non-empty
 	// UEFIFirmwareDirPath signals UEFI boot. Proxmox's efidisk0 only manages the
@@ -1529,7 +1570,8 @@ func (p *ProxmoxProvider) importStoragePath(ctx context.Context) (string, error)
 	if cs.Path == "" {
 		return "", fmt.Errorf(
 			"import storage %q has no filesystem path; a directory-backed storage "+
-				"is required for custom UEFI firmware", p.conf.ImportStorage)
+				"is required to reference uploaded files (custom UEFI firmware, "+
+				"scratch images) by path", p.conf.ImportStorage)
 	}
 	return cs.Path, nil
 }

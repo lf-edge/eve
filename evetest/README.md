@@ -333,6 +333,13 @@ device.WriteFile("/persist/marker", []byte("x"))
 device.DeleteFile("/persist/marker")
 device.SyncDisks() // flush filesystem caches, e.g. before PowerOff
 
+// Change the device's hardware at runtime through the hypervisor; the test must
+// declare RequireCapabilities{CAPABILITY_QMP} (qemu and proxmox providers).
+device.AttachUSBStorage("flash1", 16<<20) // hot-plug a blank USB flash drive, serial "flash1"
+usbDevices, err := device.ListUSBDevices() // what EVE's kernel enumerates under /sys/bus/usb
+device.DetachUSBStorage("flash1")
+ret := device.ExecuteQMP("query-status", nil) // any other QMP command; raw JSON "return"
+
 // Read EVE's internal published state (pubsub)
 var dpcl pillartypes.DevicePortConfigList
 err := evetest.ReadPublication(device, "nim", true, "global", &dpcl)
