@@ -536,9 +536,10 @@ func Init(t *testing.T) *T {
 		default:
 		}
 
+		// Every exit below unlocks testM first, because T.fail takes it too.
 		th.testM.Lock()
-		defer th.testM.Unlock()
 		if th.test.initialized {
+			th.testM.Unlock()
 			th.t.Fatalf("Multiple Init calls detected")
 		}
 
@@ -550,6 +551,7 @@ func Init(t *testing.T) *T {
 		// that does not count as a failure for RunTestSuite's own bookkeeping either.
 		if th.suite != nil {
 			if passedAt, ok := th.previouslyPassedAt(th.suite.name, th.test.name); ok {
+				th.testM.Unlock()
 				t.Skipf(restartOnlyFailedSkipMsgTmpl,
 					th.suite.name+"/"+th.test.name, passedAt)
 			}
@@ -557,6 +559,7 @@ func Init(t *testing.T) *T {
 
 		th.test.artifactDir = filepath.Join(th.artifactDir, th.test.name)
 		if err := os.MkdirAll(th.test.artifactDir, 0o755); err != nil {
+			th.testM.Unlock()
 			th.t.Fatalf("failed to create directory for test artifacts: %v", err)
 		}
 		th.test.failedCh = make(chan struct{})
@@ -565,6 +568,7 @@ func Init(t *testing.T) *T {
 		th.checkpointM.Unlock()
 		th.test.initialized = true
 		th.t = &T{T: t, th: th}
+		th.testM.Unlock()
 		return th.t
 	}
 

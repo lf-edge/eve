@@ -79,42 +79,22 @@ func DefineTestParameters(params ...TestParameterDefinition) {
 // the test will fail.
 func GetTestParameter[T any](key string) T {
 	th := getTestHarness()
-	th.testM.Lock()
-	defer th.testM.Unlock()
-
-	// Check that the given parameter is defined for the current test.
-	var definition TestParameterDefinition
-	for _, param := range th.test.paramDefs {
-		if param.Key == key {
-			definition = param
-			break
-		}
-	}
-	if th.suite != nil {
-		for _, param := range th.suite.paramDefs {
-			if param.Key == key {
-				definition = param
-				break
-			}
-		}
-	}
+	definition, suiteValue, suiteSet, testName := th.lookupTestParameter(key)
 	if definition.Key == "" {
 		th.t.Fatalf("Parameter %q is not defined for test %q",
-			key, th.test.name)
+			key, testName)
 	}
 
 	// Check if RunTestSuite has set some value for the parameter.
-	for _, param := range th.test.paramVals {
-		if param.Key == key {
-			val, ok := param.Value.(T)
-			if !ok {
-				th.t.Fatalf(
-					"parameter %q has type %T, expected %T",
-					key, param.Value, *new(T),
-				)
-			}
-			return val
+	if suiteSet {
+		val, ok := suiteValue.(T)
+		if !ok {
+			th.t.Fatalf(
+				"parameter %q has type %T, expected %T",
+				key, suiteValue, *new(T),
+			)
 		}
+		return val
 	}
 
 	// Check environment variables.
@@ -213,6 +193,37 @@ func GetTestParameter[T any](key string) T {
 		)
 	}
 	return defVal
+}
+
+// lookupTestParameter returns the definition of key for the current test, the
+// value RunTestSuite set for it if any, and the test's name. It holds testM only
+// for the lookup: T.fail takes testM too, so GetTestParameter must not fail
+// while holding it.
+func (th *TestHarness) lookupTestParameter(key string) (
+	definition TestParameterDefinition, value any, set bool, testName string) {
+	th.testM.Lock()
+	defer th.testM.Unlock()
+	for _, param := range th.test.paramDefs {
+		if param.Key == key {
+			definition = param
+			break
+		}
+	}
+	if th.suite != nil {
+		for _, param := range th.suite.paramDefs {
+			if param.Key == key {
+				definition = param
+				break
+			}
+		}
+	}
+	for _, param := range th.test.paramVals {
+		if param.Key == key {
+			value, set = param.Value, true
+			break
+		}
+	}
+	return definition, value, set, th.test.name
 }
 
 // HypervisorParameterKey is the key used for the Hypervisor parameter.
