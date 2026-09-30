@@ -8,6 +8,10 @@ disabled. Existing Secure Boot and module-signing settings are independent.
 Current state
 - AMD64 generic: local build patches core and HWE configurations.
 - AMD64 core: kernel/image builds and QEMU runtime measurements validated.
+- Early eve_code policy is locked against replacement and measures all-user
+  file-backed execution, mappings, and stored-file reads, including memfd.
+- Writable executable mappings and later executable transitions emit violation
+  events and remain allowed. No IMA file-signing keys are required.
 - AMD64 HWE: Kconfig validated; full build and runtime validation still needed.
 - Other targets: IMA defaults to disabled; explicit IMA=y is rejected.
 
@@ -38,6 +42,11 @@ Build integration
     kernel revision or configuration patch changes.
 
 Runtime validation for each supported target
+[x] AMD64 core: 384 execution/measurement cases across host, debug, and pillar
+    namespaces; root and UID 1000; disk, tmpfs, RAMFS, and overlay storage.
+    Includes native binaries, libraries, interpreted scripts, memfd, descriptor
+    rewrites/truncation, writable aliases, and executable mapping transitions.
+[x] AMD64 core: reject root attempts to replace the early measurement policy.
 [ ] Boot on representative hardware, or QEMU where the platform is supported.
 [ ] Confirm the active policy contains measurement rules and no appraisal rules.
 [ ] Execute an unsigned program and a modified version; verify both SHA-256
@@ -46,6 +55,12 @@ Runtime validation for each supported target
 [ ] Without a TPM, verify boot and the in-memory measurement log still work.
 [ ] Validate kexec measurement-list preservation where the kernel supports it.
 [ ] Check boot time, CPU use, and measurement-log memory growth under workloads.
+    Include large mutable data and guest-disk I/O: broad read coverage measures
+    host data too, and repeated writes/reads can cause repeated hashing.
+[ ] Refine production measurement policy and mutable-file expectations:
+    QEMU validation found rewritten watchdog/DNS configuration and IMA
+    violations on writable data. Do not blanket-allow unknown hashes or
+    treat legitimate writable data as immutable release content.
 
 eve-api transport
 [ ] Extend proto/attest/attest.proto with a separate, versioned IMA log payload;
@@ -65,11 +80,22 @@ EVE sender
     handle reboot/cursor resets, size limits, and interrupted uploads.
 
 CI reference measurements
-[ ] Generate a versioned SHA-256 file manifest from the final composed rootfs,
+[x] Generate a versioned SHA-256 file manifest from the final composed rootfs,
     including kernel modules, init files, and unpacked service/onboot container
     contents. Associate hashes with file/image identity, not just a basename.
 [ ] Generate the manifest after all rootfs modifications. Define handling for
     symlinks, hard links, filesystem metadata, and files generated at boot.
+    Final-image generation and regular-file/hardlink/symlink handling are
+    implemented; metadata attestation and boot-generated baselines remain.
+[x] Validate AMD64 core manifest against the running final filesystem:
+    8,749 regular files and 7,700 symlinks, complete inventory and content
+    match, and full-log PCR 10 replay matches SHA-1 and SHA-256 TPM banks.
+    One watchdog seed inode group has the correct hash recorded only with a
+    basename; full source identity cannot be verified from that record.
+    Changed-file, corrupted/reordered/truncated-log, and extraction-failure
+    tests pass. ASCII namespace ambiguity remains; this is local validation,
+    not full production attestation. The full log retains unknown runtime/test
+    data, seven mutable-configuration mismatches, and 208 violation records.
 [ ] Record the exact EVE build ID, kernel/configuration, container image digests,
     manifest format, and applicable IMA policy. Publish the manifest as a CI
     artifact associated with the corresponding released image.
@@ -91,11 +117,16 @@ Adam consumer and verification
     account for container path collisions, mutable files, and boot_aggregate.
 [ ] Report unknown, changed, missing, truncated, and unverifiable measurements
     separately. Absence from the log does not prove a file was checked or absent.
+[ ] Define treatment of executable-transition/writable-mapping violations and
+    distinguish expected writable data from unverifiable executed code.
+    ima-ng does not carry the hook, namespace, or code-versus-data provenance.
 [ ] Add an end-to-end CI-manifest -> EVE-log/quote -> Adam-verification scenario,
     including modified files, forged/truncated logs, stale quotes, and reboots.
 
 Upstream transition
 [ ] Enable the same settings in all relevant lf-edge/eve-kernel configurations.
+[ ] Upstream or maintain the early policy, coverage hooks, and policy lock
+    across supported kernel versions; configuration alone is insufficient.
 [ ] Build and publish kernel images for all supported targets and flavors.
 [ ] Update EVE's pinned kernel commits/tags to those published images.
 [ ] Remove the temporary local patch/build path after all published kernels
