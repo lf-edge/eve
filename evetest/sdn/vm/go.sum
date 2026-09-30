@@ -96,6 +96,8 @@ github.com/lf-edge/eve-api/go v0.0.0-20260420100351-253db6a73b76 h1:VD3iREtFSb5N
 github.com/lf-edge/eve-api/go v0.0.0-20260420100351-253db6a73b76/go.mod h1:6HxNA/qKJVEqwpuOFkcQ0h3QyotvAs/cjHLC961FPOY=
 github.com/lf-edge/eve-libs v0.0.0-20260925075652-24f79b12a2bd h1:wsjxiU05Dr4WMesrX6YD7BMaj6OaT0tj/9FHXE/L99g=
 github.com/lf-edge/eve-libs v0.0.0-20260925075652-24f79b12a2bd/go.mod h1:AfK4OlUgnJymZnPEuqzm7sJoCCtRgFhKtRU1kib+VBY=
+github.com/lf-edge/eve-libs v0.0.0-20260929105339-779d3f2350aa h1:2zjxMwhCKphV63rRvomzmy0qK1/IXyJdF3AR9sFO8bc=
+github.com/lf-edge/eve-libs v0.0.0-20260929105339-779d3f2350aa/go.mod h1:AfK4OlUgnJymZnPEuqzm7sJoCCtRgFhKtRU1kib+VBY=
 github.com/lf-edge/eve/pkg/pillar v0.0.0-20260421125048-8d3825045e4e h1:MGhvM4TrXHYyssTTcEkpc79zatoZ1oJRrrbjTU++ps0=
 github.com/lf-edge/eve/pkg/pillar v0.0.0-20260421125048-8d3825045e4e/go.mod h1:Zx1ZEowId6xn7o9qGVNymtxc87muRObab6SofXZCXUk=
 github.com/matttproud/golang_protobuf_extensions v1.0.1/go.mod h1:D8He9yQNgCq6Z5Ld7szi9bcBfOoFv/3dc6xSMkL2PC0=
