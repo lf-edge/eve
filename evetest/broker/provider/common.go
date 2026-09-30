@@ -38,11 +38,10 @@ var networkPrefix = strings.TrimSuffix(namePrefix, "-")
 // the internal bookkeeping key and the actual bridge/VNet resource name.
 var uplinkNetwork = networkPrefix + "u"
 
-// fullCapabilitySet returns all provider capabilities. It is advertised by the
-// libvirt and qemu providers, which run on the local host and can apply the
-// host-level network tweaks needed to forward link-local L2 protocols, and which
-// support emulated TPM.
-func fullCapabilitySet() []api.Capability {
+// commonCapabilities returns the capabilities every provider advertises:
+// forwarding of link-local L2 protocols, emulated TPM and network boot. The
+// qemu and proxmox providers add CAPABILITY_QMP to it.
+func commonCapabilities() []api.Capability {
 	return []api.Capability{
 		api.Capability_CAPABILITY_FORWARD_LACP,
 		api.Capability_CAPABILITY_FORWARD_EAPOL,

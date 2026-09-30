@@ -50,6 +50,15 @@ service Broker {
   // CAPABILITY_EDIT_DEVICE_DISK.
   rpc EditDeviceDisk(EditDeviceDiskRequest) returns (EditDeviceDiskResponse);
 
+  // Run one QMP command on the hypervisor running the device.
+  // Requires CAPABILITY_QMP.
+  rpc ExecuteQMP(ExecuteQMPRequest) returns (ExecuteQMPResponse);
+  // Create a blank scratch disk image for the device on the hypervisor host,
+  // e.g. to back a hot-plugged drive. Requires CAPABILITY_QMP.
+  rpc CreateScratchImage(CreateScratchImageRequest) returns (CreateScratchImageResponse);
+  // Delete a scratch disk image created by CreateScratchImage.
+  rpc DeleteScratchImage(DeleteScratchImageRequest) returns (DeleteScratchImageResponse);
+
   // Get the console output from the device.
   rpc GetDeviceConsoleOutput(DeviceControlRequest) returns (ConsoleOutputResponse);
   // ConnectConsoleToDevice establishes a bidirectional gRPC tunnel between
@@ -331,6 +340,51 @@ message DeletePartition {
 
 // Generic response to a disk edit.
 message EditDeviceDiskResponse {}
+
+// Request to run one QMP command on the hypervisor running the device.
+message ExecuteQMPRequest {
+  string client_id = 1;
+  string device_name = 2;
+  // QMP command name, e.g. "device_add".
+  string execute = 3;
+  // JSON object with the command's arguments; empty for a command without
+  // arguments.
+  string arguments_json = 4;
+}
+
+message ExecuteQMPResponse {
+  // The command's "return" member as JSON; "{}" for a command that returns
+  // nothing.
+  string return_json = 1;
+}
+
+// Request to create a blank, sparse raw disk image in the device's scratch
+// area on the hypervisor host. Scratch images live until DeleteScratchImage or
+// the device's teardown.
+message CreateScratchImageRequest {
+  string client_id = 1;
+  string device_name = 2;
+  // Name of the image, unique within the device: a letter followed by up to 30
+  // letters, digits, '-' or '_'.
+  string name = 3;
+  // Size of the image; at most 1 GiB.
+  uint64 size_bytes = 4;
+}
+
+message CreateScratchImageResponse {
+  // Path of the image on the hypervisor host, for use in QMP commands such as
+  // blockdev-add.
+  string host_path = 1;
+}
+
+// Request to delete a scratch disk image created by CreateScratchImage.
+message DeleteScratchImageRequest {
+  string client_id = 1;
+  string device_name = 2;
+  string name = 3;
+}
+
+message DeleteScratchImageResponse {}
 
 // ConnectConsoleRequest carries data sent from the client to the broker
 // during a console session.

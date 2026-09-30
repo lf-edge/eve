@@ -61,6 +61,11 @@ enum Capability {
   // that keeps the disk as a file it can still reach after setup, so a
   // provider that hands the image to a remote node does not have it.
   CAPABILITY_EDIT_DEVICE_DISK = 7;
+  // QMP access to the hypervisor running the device (ExecuteQMP) and blank
+  // scratch disk images on the hypervisor host (CreateScratchImage), which
+  // together let a test hot-plug devices such as a USB flash drive. Requires a
+  // provider with a QMP monitor the broker can reach.
+  CAPABILITY_QMP = 8;
 }
 
 // Reference to a specific EVE image used for provisioning or testing.
