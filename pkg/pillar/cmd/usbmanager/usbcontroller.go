@@ -359,6 +359,26 @@ func (uc *usbmanagerController) addIOBundle(ioBundle types.IoBundle) {
 	uc.updateAllUSBDevicePassthroughs()
 }
 
+// applyIOBundleChanges applies the adapter changes of one AssignableAdapters
+// publication: the old versions go before the new ones, because the rule
+// engine keys rules by address and a removal after an addition with the
+// same address would delete the rule just added; the devices are then
+// evaluated once, so a change that keeps an adapter's winning VM does not
+// unplug and re-plug the device in the guest.
+func (uc *usbmanagerController) applyIOBundleChanges(removed, added []types.IoBundle) {
+	uc.Lock()
+	defer uc.Unlock()
+
+	for _, ioBundle := range removed {
+		uc.removeIOBundleRule(&ioBundle)
+	}
+	for _, ioBundle := range added {
+		uc.addIOBundleRule(&ioBundle)
+	}
+
+	uc.updateAllUSBDevicePassthroughs()
+}
+
 func (uc *usbmanagerController) updateAllUSBDevicePassthroughs() {
 	usbpassthroughsAndUsbdevices := uc.usbpassthroughs.usbpassthroughsAndUsbdevices()
 	uc.updateUSBDevicePassthroughs(usbpassthroughsAndUsbdevices)
