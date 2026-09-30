@@ -425,6 +425,9 @@ type deviceState struct {
 	serial          string
 	config          *EdgeDeviceConfig
 	consoleInUse    bool
+	// usbPorts assigns the xHCI ports of the drives AttachUSBStorage plugs
+	// into the device; guarded by TestHarness.devicesM.
+	usbPorts usbPortAllocator
 
 	unsubscribeInfo    func()
 	unsubscribeReq     func()
