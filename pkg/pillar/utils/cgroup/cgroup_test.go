@@ -89,6 +89,32 @@ func TestWriteCPUs(t *testing.T) {
 	}
 }
 
+func TestProcessesAndAddProcess(t *testing.T) {
+	root := cgrouptest.FakeTree(t, map[string]string{
+		"cgroup.procs":              "1\n552\n",
+		"housekeeping/cgroup.procs": "",
+	})
+	pids, err := cgroup.Processes("")
+	if err != nil || len(pids) != 2 || pids[0] != 1 || pids[1] != 552 {
+		t.Fatalf("Processes = %v, %v; want [1 552]", pids, err)
+	}
+	if err := cgroup.AddProcess("housekeeping", 552); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(root, "housekeeping/cgroup.procs"))
+	if string(b) != "552" {
+		t.Errorf("cgroup.procs = %q, want \"552\"", b)
+	}
+}
+
+func TestSubtreeControl(t *testing.T) {
+	cgrouptest.FakeTree(t, map[string]string{"cgroup.subtree_control": "cpuset cpu io memory pids\n"})
+	ctrls, err := cgroup.SubtreeControl("")
+	if err != nil || len(ctrls) != 5 || ctrls[0] != "cpuset" {
+		t.Errorf("SubtreeControl = %v, %v; want [cpuset cpu io memory pids]", ctrls, err)
+	}
+}
+
 // On cgroup v2 an empty cpuset.cpus means "inherit the parent's", i.e. every
 // CPU, so an empty list must not reach the kernel.
 func TestWriteCPUsRefusesEmpty(t *testing.T) {

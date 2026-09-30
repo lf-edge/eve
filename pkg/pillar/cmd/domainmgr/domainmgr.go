@@ -166,6 +166,9 @@ type domainContext struct {
 	// projects it onto ZInfoDevice.cpu_pools. domainmgr owns the allocator, so
 	// it is the only agent that can compute it.
 	pubCPUPoolStatus pubsub.Publication
+	// hostCpuset keeps the host processes on the housekeeping CPUs; nil where
+	// EVE does not pin workloads (see hostcpuset.go).
+	hostCpuset *hostCpuset
 	// cpuTopologyPinningSupported is Capabilities.CPUTopologyPinning: whether
 	// this node can apply a whole-core placement (per-vCPU pinning and a guest
 	// SMT topology).
@@ -694,6 +697,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 
+	// Keep the host processes off the CPUs workloads hold, where EVE pins
+	// workloads; under EVE-k the kubelet owns the cgroups.
+	if domainCtx.cpuTopologyPinningSupported {
+		if h, err := newHostCpuset("/proc"); err == nil {
+			domainCtx.hostCpuset = h
+		} else {
+			log.Warnf("host cpuset: %v; host processes may run on dedicated CPUs", err)
+		}
+	}
 	// DomainStatus is in /run, so this matters only across a domainmgr restart:
 	// the running workloads keep their CPUs.
 	domainCtx.cpuPlacement.reseed(&domainCtx)
