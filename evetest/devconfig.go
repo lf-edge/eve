@@ -2118,6 +2118,26 @@ func (dc *EdgeDeviceConfig) DeleteNetworkInstance(niUUID uuid.UUID) {
 	dc.th.t.Fatalf("Network instance with UUID %q was not found", uuidStr)
 }
 
+// AddContentTree adds a ContentTree that no Volume and no application refers to,
+// and returns its UUID.
+//
+// volumemgr downloads a ContentTree eagerly, so the image blobs land in the
+// content-addressable store without a Volume, a PVC or a CDI import ever being
+// created. A test whose subject is the blobs themselves -- that they survive an
+// event, or that a later deployment reuses them instead of downloading again --
+// wants exactly that, since going through AddVolume would drag the storage
+// pipeline into the result.
+func (dc *EdgeDeviceConfig) AddContentTree(
+	displayName string, image ApplicationImageStorage) uuid.UUID {
+	contentTreeUUID := dc.th.newUUID("content tree")
+	datastoreUUID := dc.th.newUUID("content tree datastore")
+	contentTree, dsConfig := image.toProto(dc.th, dc.log, dc.DeviceName,
+		contentTreeUUID, datastoreUUID, displayName)
+	dc.ContentInfo = append(dc.ContentInfo, contentTree)
+	dc.Datastores = append(dc.Datastores, dsConfig)
+	return contentTreeUUID
+}
+
 // AddApplication adds a new application instance to the device configuration
 // and returns its generated UUID.
 func (dc *EdgeDeviceConfig) AddApplication(config ApplicationInstanceConfig) uuid.UUID {
