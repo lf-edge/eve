@@ -1529,6 +1529,8 @@ github.com/lf-edge/eve-api/go v0.0.0-20260907084402-08ba01c79328 h1:YcNJqvAYlbzD
 github.com/lf-edge/eve-api/go v0.0.0-20260907084402-08ba01c79328/go.mod h1:6HxNA/qKJVEqwpuOFkcQ0h3QyotvAs/cjHLC961FPOY=
 github.com/lf-edge/eve-libs v0.0.0-20260924135725-82b21ffd5536 h1:ebyMebpDnyDosoqsu7hS+h/a67b1ISXBznvkLqghk+k=
 github.com/lf-edge/eve-libs v0.0.0-20260924135725-82b21ffd5536/go.mod h1:ufjb7/KrUA5Znb8w7BF7ZjM1YKz8IvvAq6kzrtozYBs=
+github.com/lf-edge/eve-libs v0.0.0-20260929105319-fcbfcaa19ec7 h1:YiOEdaI513m3rdCcJj630anbp3tzgGg8ppmJ77QiLnU=
+github.com/lf-edge/eve-libs v0.0.0-20260929105319-fcbfcaa19ec7/go.mod h1:ufjb7/KrUA5Znb8w7BF7ZjM1YKz8IvvAq6kzrtozYBs=
 github.com/lf-edge/eve-tools/runtimemetrics/go v0.0.0-20250625152713-6890d8e138ae h1:XogrfsHt9Z6UZqMnBNso4ltNj/Ph5ACEwUhdoE0jxXc=
 github.com/lf-edge/eve-tools/runtimemetrics/go v0.0.0-20250625152713-6890d8e138ae/go.mod h1:l5jh2deQzJnZ7gW4F7dvzJcLRlkYBgFjcHs+eBnBUxo=
 github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d h1:tUBb9M6u42LXwHAYHyh22wJeUUQlTpDkXwRXalpRqbo=

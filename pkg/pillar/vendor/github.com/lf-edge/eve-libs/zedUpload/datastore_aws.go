@@ -132,8 +132,8 @@ func (ep *AwsTransportMethod) processS3Upload(req *DronaRequest) (error, int) {
 	if err != nil {
 		return fmt.Errorf("unable to create S3 context: %v", err), 0
 	}
-	if req.cancelContext != nil {
-		sc = sc.WithContext(req.cancelContext)
+	if req.ctx != nil {
+		sc = sc.WithContext(req.ctx)
 	}
 	if req.logger != nil {
 		sc = sc.WithLogger(req.logger)
@@ -163,8 +163,8 @@ func (ep *AwsTransportMethod) processS3Download(req *DronaRequest) (error, int) 
 		if err != nil {
 			return fmt.Errorf("unable to create S3 context: %v", err), 0
 		}
-		if req.cancelContext != nil {
-			s = s.WithContext(req.cancelContext)
+		if req.ctx != nil {
+			s = s.WithContext(req.ctx)
 		}
 		if req.logger != nil {
 			s = s.WithLogger(req.logger)
@@ -182,8 +182,8 @@ func (ep *AwsTransportMethod) processS3Download(req *DronaRequest) (error, int) 
 	if err != nil {
 		return fmt.Errorf("unable to create S3 context: %v", err), 0
 	}
-	if req.cancelContext != nil {
-		sc = sc.WithContext(req.cancelContext)
+	if req.ctx != nil {
+		sc = sc.WithContext(req.ctx)
 	}
 	if req.logger != nil {
 		sc = sc.WithLogger(req.logger)
@@ -213,8 +213,8 @@ func (ep *AwsTransportMethod) processS3DownloadByChunks(req *DronaRequest) error
 	if err != nil {
 		return fmt.Errorf("unable to create S3 context: %v", err)
 	}
-	if req.cancelContext != nil {
-		sc = sc.WithContext(req.cancelContext)
+	if req.ctx != nil {
+		sc = sc.WithContext(req.ctx)
 	}
 	if req.logger != nil {
 		sc = sc.WithLogger(req.logger)
@@ -241,8 +241,8 @@ func (ep *AwsTransportMethod) processS3Delete(req *DronaRequest) error {
 	}
 	s3ctx, err := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, ep.useIPv6, hClient)
 	if s3ctx != nil {
-		if req.cancelContext != nil {
-			s3ctx = s3ctx.WithContext(req.cancelContext)
+		if req.ctx != nil {
+			s3ctx = s3ctx.WithContext(req.ctx)
 		}
 		if req.logger != nil {
 			s3ctx = s3ctx.WithLogger(req.logger)
@@ -279,8 +279,8 @@ func (ep *AwsTransportMethod) processS3List(req *DronaRequest) ([]string, error,
 	if err != nil {
 		return s, fmt.Errorf("unable to create S3 context: %v", err), 0
 	}
-	if req.cancelContext != nil {
-		sc = sc.WithContext(req.cancelContext)
+	if req.ctx != nil {
+		sc = sc.WithContext(req.ctx)
 	}
 	if req.logger != nil {
 		sc = sc.WithLogger(req.logger)
@@ -307,8 +307,8 @@ func (ep *AwsTransportMethod) processS3ObjectMetaData(req *DronaRequest) (int64,
 	if err != nil {
 		return 0, "", fmt.Errorf("unable to create S3 context: %v", err)
 	}
-	if req.cancelContext != nil {
-		sc = sc.WithContext(req.cancelContext)
+	if req.ctx != nil {
+		sc = sc.WithContext(req.ctx)
 	}
 	if req.logger != nil {
 		sc = sc.WithLogger(req.logger)
@@ -355,8 +355,8 @@ func (ep *AwsTransportMethod) processMultipartUpload(req *DronaRequest) (string,
 	if err != nil {
 		return "", "", err
 	}
-	if req.cancelContext != nil {
-		s3ctx = s3ctx.WithContext(req.cancelContext)
+	if req.ctx != nil {
+		s3ctx = s3ctx.WithContext(req.ctx)
 	}
 	if req.logger != nil {
 		s3ctx = s3ctx.WithLogger(req.logger)
@@ -374,8 +374,8 @@ func (ep *AwsTransportMethod) completeMultipartUpload(req *DronaRequest) error {
 	if err != nil {
 		return err
 	}
-	if req.cancelContext != nil {
-		s3ctx = s3ctx.WithContext(req.cancelContext)
+	if req.ctx != nil {
+		s3ctx = s3ctx.WithContext(req.ctx)
 	}
 	if req.logger != nil {
 		s3ctx = s3ctx.WithLogger(req.logger)
@@ -392,8 +392,8 @@ func (ep *AwsTransportMethod) generateSignedURL(req *DronaRequest) (string, erro
 	if err != nil {
 		return "", err
 	}
-	if req.cancelContext != nil {
-		s3ctx = s3ctx.WithContext(req.cancelContext)
+	if req.ctx != nil {
+		s3ctx = s3ctx.WithContext(req.ctx)
 	}
 	if req.logger != nil {
 		s3ctx = s3ctx.WithLogger(req.logger)
