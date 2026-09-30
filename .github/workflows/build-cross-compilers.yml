@@ -39,6 +39,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     env:
       IMG_NAME: "lfedge/eve-cross-compilers"
+      # authenticates the Dockerfile's github.com git source (see --secret)
+      GITHUB_TOKEN: ${{ github.token }}
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
@@ -61,6 +63,7 @@ jobs:
       - name: Build and push (${{ matrix.arch }})
         run: |
           docker buildx build \
+            --secret id=GIT_AUTH_TOKEN.github.com,env=GITHUB_TOKEN \
             --platform linux/${{ matrix.arch }} \
             --build-arg GCC_VER=${{ inputs.gcc_ver }} \
             --build-arg ALPINE_VERSION=${{ inputs.alpine_ver }} \
