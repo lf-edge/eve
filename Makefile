@@ -146,6 +146,31 @@ FULL_VERSION:=$(ROOTFS_VERSION)-$(HV)-$(ZARCH)
 # must be included after ZARCH is set
 include $(CURDIR)/kernel-version.mk
 
+# Build a measurement-only kernel locally until the upstream kernel enables IMA.
+IMA ?= $(if $(filter amd64-generic,$(ZARCH)-$(PLATFORM)),y,n)
+ifneq ($(IMA),y)
+    ifneq ($(IMA),n)
+        $(error IMA must be y or n)
+    endif
+endif
+IMA_CMDLINE=
+ifeq ($(IMA),y)
+    ifneq ($(ZARCH)-$(PLATFORM),amd64-generic)
+        $(error IMA currently supports only ZARCH=amd64 PLATFORM=generic)
+    endif
+    IMA_CMDLINE=ima_policy=tcb ima_hash=sha256 ima_template=ima-ng ima_appraise=off
+    IMA_KERNEL_PATCH=$(CURDIR)/tools/ima-measurement-only-kernel.patch
+    IMA_CONFIG_HASH=$(shell git hash-object $(IMA_KERNEL_PATCH) | cut -c1-12)
+    IMA_KERNEL_SOURCE ?= $(CURDIR)/dist/kernel-ima/$(KERNEL_BRANCH)-$(KERNEL_COMMIT)
+    IMA_KERNEL_REPOSITORY ?= https://github.com/lf-edge/eve-kernel.git
+    IMA_KERNEL_CONFIG_FLAVOR=$(patsubst %-,%,$(KERNEL_CONFIG_FLAVOR))
+    # An explicit KERNEL_TAG supplies an already built IMA-capable kernel.
+    ifeq ($(origin KERNEL_TAG),file)
+        KERNEL_TAG=docker.io/lfedge/eve-kernel:$(KERNEL_BRANCH)-$(IMA_KERNEL_CONFIG_FLAVOR)-$(KERNEL_COMMIT)-ima-$(IMA_CONFIG_HASH)-$(KERNEL_COMPILER)
+        BUILD_IMA_KERNEL=y
+    endif
+endif
+
 # where we store outputs
 DIST=$(CURDIR)/dist/$(ZARCH)
 DOCKER_DIST=/eve/dist/$(ZARCH)
@@ -362,7 +387,7 @@ DOCKER_GO = _() { $(SET_X); mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ; mkdir -p $
     $$docker_go_line "$$1" ; } ; _
 
 PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) KERNEL_TAG=$(KERNEL_TAG) \
-    PLATFORM=$(PLATFORM) ./tools/parse-pkgs.sh
+    PLATFORM=$(PLATFORM) IMA_CMDLINE="$(IMA_CMDLINE)" ./tools/parse-pkgs.sh
 
 LINUXKIT_PKG_TARGET=build
 
@@ -1407,6 +1432,19 @@ docker-image-clean:
 kernel-tag:
 	@echo $(KERNEL_TAG)
 
+.PHONY: ima-kernel
+ifeq ($(BUILD_IMA_KERNEL),y)
+# Order the custom kernel before its consumers, including KubeVirt's boot image.
+images/out/rootfs-$(HV)-$(PLATFORM).yml images/out/installer-$(HV)-$(PLATFORM).yml pkg/external-boot-image/Dockerfile: ima-kernel
+ima-kernel: $(LINUXKIT) $(IMA_KERNEL_PATCH) tools/build-ima-kernel.sh
+	./tools/build-ima-kernel.sh "$(IMA_KERNEL_SOURCE)" "$(IMA_KERNEL_REPOSITORY)" \
+	  "$(KERNEL_BRANCH)" "$(KERNEL_COMMIT)" "$(IMA_KERNEL_CONFIG_FLAVOR)" \
+	  "$(IMA_CONFIG_HASH)" "$(KERNEL_COMPILER)" "$(KERNEL_TAG)" "$(LINUXKIT)"
+else
+ima-kernel:
+	@echo "Local IMA kernel build disabled (IMA=$(IMA), KERNEL_TAG=$(KERNEL_TAG))"
+endif
+
 .PRECIOUS: rootfs-% $(ROOTFS)-%.img $(ROOTFS_COMPLETE)
 .PHONY: all clean test test-bpftrace test-all run pkgs help live rootfs config installer live current FORCE $(DIST) HOSTARCH image-set cache-export eden eden-cover coverage-merge
 FORCE:
@@ -1465,6 +1503,7 @@ help:
 	@echo "   semgrep-all                      run every semgrep rule, including the WARNING"
 	@echo "                                    heuristics, which have known false positives"
 	@echo "   kernel-tag                       show current KERNEL_TAG"
+	@echo "   ima-kernel                       build the measurement-only kernel (AMD64 generic)"
 	@echo
 	@echo "Eden testing targets:"
 	@echo "   eden                             run Eden tests (clone, build, configure, start, onboard, test)"

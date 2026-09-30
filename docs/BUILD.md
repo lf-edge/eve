@@ -1081,3 +1081,53 @@ make LINUXKIT_MIRROR="http://localhost:5001" pkgs eve
 ```
 
 This tells linuxkit to pull base images through the mirror instead of hitting Docker Hub directly, which is useful in CI environments or when working with rate-limited registries.
+
+
+## IMA measurement-only kernel
+
+AMD64 generic builds enable IMA measurements by default. Run the usual image
+build command, for example `make live` or `make installer`. Before composing the
+image, Make checks out the kernel revision pinned in `kernel-commits.mk` under
+`dist/kernel-ima/`, applies
+[the IMA configuration patch](../tools/ima-measurement-only-kernel.patch), and
+builds the kernel with the existing kernel repository's `Makefile.eve`. This is
+a temporary build path until IMA is enabled in the upstream kernel configuration.
+
+The local kernel image tag includes the pinned commit, configuration flavor,
+compiler, and patch hash. Subsequent builds reuse the image from the LinuxKit
+cache. No kernel image is published. `make ima-kernel` builds just the kernel;
+`make kernel-tag` prints the image tag selected for the build.
+
+The kernel configuration enables SHA-256, PCR 10, the `ima-ng` template, policy
+readback, and measurement-list preservation across supported kexec boots.
+IMA appraisal, EVM, and integrity signature verification are disabled. Existing
+Secure Boot and module-signing settings remain independent of IMA.
+
+The image command line selects `ima_policy=tcb`, `ima_hash=sha256`,
+`ima_template=ima-ng`, and `ima_appraise=off`. The TCB policy measures executable
+files, executable mappings, root reads, modules, and firmware, excluding pseudo
+filesystems such as procfs, sysfs, and tmpfs. Files need no IMA signatures or
+`security.ima` extended attributes. Measurement adds hashing work and uses memory
+for the runtime log.
+
+Use `make IMA=n live` to build with the stock prebuilt kernel and omit the IMA
+boot parameters. Other architectures and platforms default to `IMA=n`; explicitly
+requesting IMA on those targets fails with an unsupported-target message. An
+explicit `KERNEL_TAG` skips the local kernel build; when IMA is enabled, that image
+must already contain measurement-only IMA support. `IMA_KERNEL_SOURCE` and
+`IMA_KERNEL_REPOSITORY` can override the generated source directory and clone URL.
+An existing source directory must be at the pinned commit and accept the patch.
+
+After boot, verify from the EVE host namespace:
+
+```sh
+cat /proc/cmdline
+cat /sys/kernel/security/ima/policy
+head /sys/kernel/security/ima/ascii_runtime_measurements
+cat /sys/kernel/security/ima/runtime_measurements_count
+```
+
+The policy should contain measurement rules and no `appraise` rules. The log
+should include `boot_aggregate` and `ima-ng` entries with `sha256:` file digests.
+IMA extends PCR 10 when a supported TPM is available; without a TPM, the in-memory
+measurement log remains available.

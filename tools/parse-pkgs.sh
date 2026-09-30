@@ -87,7 +87,7 @@ resolve_tags() {
   local file="${2:-default}"
   if [ "$tags" != "default" ]; then
       local sedcmd
-      sedcmd=$(echo "$tags" | sed -e "s/^/s#/g" -e "s/$/#g/g" -e "s/=/#/g")
+      sedcmd=$(echo "$tags" | sed -e "s/^/s#/g" -e "s/$/#g/g" -e "s/=/#/")
       sed -e "$sedcmd" "${file:-}"
   fi
 }
@@ -96,6 +96,7 @@ gen_tags() {
 cat <<EOF
 CURDIR=$(pwd)
 KERNEL_TAG=${KERNEL_TAG}
+IMA_CMDLINE=${IMA_CMDLINE:-}
 FW_TAG=${FW_TAG}
 XENTOOLS_TAG=${XENTOOLS_TAG}
 NODE_EXPORTER_TAG=${NODE_EXPORTER_TAG}
