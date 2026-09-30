@@ -135,6 +135,12 @@ const usbStorageUnplugTimeout = 10 * time.Second
 // finds the drive with FindBySerial(id). Fails the test on error, undoing the
 // steps already done.
 //
+// The drive goes into the lowest free port of the controller, and a drive
+// re-plugged under the same id goes back into the port it left while that is
+// free (see usbPortAllocator), like a physical re-plug into the same
+// receptacle; a device-model entry claiming it by bus and port thus keeps
+// matching. The controller has four ports on both providers.
+//
 // Requires RequireCapabilities{CAPABILITY_QMP}.
 func (d *EdgeDevice) AttachUSBStorage(id string, sizeBytes uint64) {
 	hostPath := d.CreateScratchImage(id, sizeBytes)
@@ -149,14 +155,17 @@ func (d *EdgeDevice) AttachUSBStorage(id string, sizeBytes uint64) {
 		}
 		d.th.t.Fatalf("AttachUSBStorage: %v", err)
 	}
+	port := d.claimUSBPort(id)
 	_, err = d.TryExecuteQMP("device_add", map[string]any{
 		"driver": "usb-storage",
 		"id":     id,
 		"bus":    USBControllerBus,
+		"port":   port,
 		"drive":  id,
 		"serial": id,
 	})
 	if err != nil {
+		d.releaseUSBPort(id)
 		if _, delErr := d.TryExecuteQMP("blockdev-del", map[string]any{"node-name": id}); delErr != nil {
 			Logger().Warnf("AttachUSBStorage: cleanup failed: %v", delErr)
 		}
@@ -165,7 +174,22 @@ func (d *EdgeDevice) AttachUSBStorage(id string, sizeBytes uint64) {
 		}
 		d.th.t.Fatalf("AttachUSBStorage: %v", err)
 	}
-	Logger().Infof("Attached USB flash drive %q (%d bytes) to device %q", id, sizeBytes, d.devName)
+	Logger().Infof("Attached USB flash drive %q (%d bytes) to port %s of device %q",
+		id, sizeBytes, port, d.devName)
+}
+
+// claimUSBPort picks the xHCI port for the drive id (see usbPortAllocator).
+func (d *EdgeDevice) claimUSBPort(id string) string {
+	d.th.devicesM.Lock()
+	defer d.th.devicesM.Unlock()
+	return d.th.devices[d.devName].usbPorts.claim(id)
+}
+
+// releaseUSBPort frees the xHCI port of the drive id once it is unplugged.
+func (d *EdgeDevice) releaseUSBPort(id string) {
+	d.th.devicesM.Lock()
+	defer d.th.devicesM.Unlock()
+	d.th.devices[d.devName].usbPorts.release(id)
 }
 
 // DetachUSBStorage unplugs a drive attached by AttachUSBStorage and deletes
@@ -186,5 +210,48 @@ func (d *EdgeDevice) DetachUSBStorage(id string) {
 		time.Sleep(200 * time.Millisecond)
 	}
 	d.DeleteScratchImage(id)
+	d.releaseUSBPort(id)
 	Logger().Infof("Detached USB flash drive %q from device %q", id, d.devName)
+}
+
+// usbPortAllocator chooses the xHCI ports that AttachUSBStorage plugs drives
+// into. Left to QEMU, a drive gets the head of the bus's free-port list, and a
+// released port goes back to its tail, so a re-plugged drive would land on a
+// different port and stop matching a device-model entry that claims it by bus
+// and port. This allocator hands out the lowest free port instead and
+// remembers each id's port, so a re-plugged drive gets the port it left for
+// as long as that is free. Not safe for concurrent use; the harness locks.
+type usbPortAllocator struct {
+	byID map[string]string // id -> port, remembered across release
+	used map[string]string // port -> id currently holding it
+}
+
+// claim returns the port for id: the one it holds or last held if free,
+// otherwise the lowest free port.
+func (a *usbPortAllocator) claim(id string) string {
+	if a.byID == nil {
+		a.byID = make(map[string]string)
+		a.used = make(map[string]string)
+	}
+	if port, ok := a.byID[id]; ok {
+		if holder, taken := a.used[port]; !taken || holder == id {
+			a.used[port] = id
+			return port
+		}
+	}
+	for n := 1; ; n++ {
+		port := strconv.Itoa(n)
+		if _, taken := a.used[port]; !taken {
+			a.used[port] = id
+			a.byID[id] = port
+			return port
+		}
+	}
+}
+
+// release frees the port id holds; id keeps its claim on it for a re-plug.
+func (a *usbPortAllocator) release(id string) {
+	if port, ok := a.byID[id]; ok && a.used[port] == id {
+		delete(a.used, port)
+	}
 }
