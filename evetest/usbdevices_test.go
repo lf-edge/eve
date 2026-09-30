@@ -58,3 +58,31 @@ func TestUSBDeviceListFind(t *testing.T) {
 		t.Fatalf("FindBySerial returned %+v for an unknown serial", dev)
 	}
 }
+
+// The allocator hands out the lowest free xHCI port and gives a drive its
+// previous port back when it is re-plugged, so that a device-model entry
+// claiming the drive by bus and port keeps matching across re-plugs.
+func TestUSBPortAllocator(t *testing.T) {
+	var ports usbPortAllocator
+	if got := ports.claim("a"); got != "1" {
+		t.Fatalf("first claim got port %q, want 1", got)
+	}
+	if got := ports.claim("b"); got != "2" {
+		t.Fatalf("second claim got port %q, want 2", got)
+	}
+	if got := ports.claim("a"); got != "1" {
+		t.Fatalf("claiming a held id again got %q, want its port 1", got)
+	}
+	ports.release("a")
+	if got := ports.claim("a"); got != "1" {
+		t.Fatalf("re-plugging a got port %q, want the port it left, 1", got)
+	}
+	ports.release("a")
+	if got := ports.claim("c"); got != "1" {
+		t.Fatalf("a new drive got port %q, want the lowest free port 1", got)
+	}
+	if got := ports.claim("a"); got != "3" {
+		t.Fatalf("a re-plugged while its port is taken got %q, want the next free port 3", got)
+	}
+	ports.release("unknown") // must not panic
+}
