@@ -186,7 +186,14 @@ func dialQMP(ctx context.Context, log *logrus.Entry, socket string) (*qmpClient,
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to QMP socket %q: %w", socket, err)
 	}
+	return newQMPClient(ctx, log, conn)
+}
 
+// newQMPClient runs the QMP greeting and capability negotiation on an
+// established connection, be it a local Unix socket or a connection forwarded
+// by another host, and returns a client ready for commands. The connection is
+// closed on failure.
+func newQMPClient(ctx context.Context, log *logrus.Entry, conn net.Conn) (*qmpClient, error) {
 	c := &qmpClient{
 		log:     log,
 		conn:    conn,
@@ -200,8 +207,8 @@ func dialQMP(ctx context.Context, log *logrus.Entry, socket string) (*qmpClient,
 	dec := json.NewDecoder(conn)
 	var greeting map[string]any
 	if err := dec.Decode(&greeting); err != nil {
-		conn.Close()
-		return nil, err
+		closeErr := conn.Close()
+		return nil, errors.Join(err, closeErr)
 	}
 
 	go c.reader(dec)
@@ -220,6 +227,13 @@ func (c *qmpClient) execute(ctx context.Context, cmd string, args any, out any) 
 	respCh := make(chan qmpResponse, 1)
 
 	c.mu.Lock()
+	if c.pending == nil {
+		// shutdown ran: the connection is gone and the reader has failed
+		// whatever was pending; a caller that cached this client must
+		// reconnect.
+		c.mu.Unlock()
+		return errors.New("QMP connection is closed")
+	}
 	id := c.nextID
 	c.nextID++
 	c.pending[id] = respCh
@@ -236,13 +250,37 @@ func (c *qmpClient) execute(ctx context.Context, cmd string, args any, out any) 
 		return ctx.Err()
 	case r := <-respCh:
 		if r.Error != nil {
-			return fmt.Errorf("%s (%s)", r.Error.Desc, r.Error.Class)
+			// Class "io" is this client's own marker for a failed connection
+			// (see writer and shutdown), not a reply from QEMU.
+			if r.Error.Class == "io" {
+				return fmt.Errorf("QMP connection failed: %s", r.Error.Desc)
+			}
+			return &QMPError{Class: r.Error.Class, Desc: r.Error.Desc}
 		}
 		if out != nil && len(r.Return) > 0 {
 			return json.Unmarshal(r.Return, out)
 		}
 		return nil
 	}
+}
+
+// executeRaw runs a command whose arguments are already encoded as a JSON
+// object (nil for none) and returns its "return" member verbatim, or "{}" for
+// a command that returns nothing.
+func (c *qmpClient) executeRaw(ctx context.Context, cmd string,
+	args json.RawMessage) (json.RawMessage, error) {
+	var argsAny any
+	if len(args) > 0 {
+		argsAny = args
+	}
+	var out json.RawMessage
+	if err := c.execute(ctx, cmd, argsAny, &out); err != nil {
+		return nil, err
+	}
+	if len(out) == 0 {
+		out = json.RawMessage(`{}`)
+	}
+	return out, nil
 }
 
 // events returns a channel of asynchronous QMP events.
@@ -337,7 +375,9 @@ func (p *QemuProvider) GetSupportedDeviceArchs() ([]api.ArchType, error) {
 // local host and applies the host-level tweaks required to forward link-local
 // L2 protocols, and supports emulated TPM. It also supports network boot.
 func (p *QemuProvider) Capabilities() []api.Capability {
-	return fullCapabilitySet()
+	// Plus QMP access: this provider has a QMP monitor of every device VM that
+	// the broker can reach (see ExecuteQMP).
+	return append(fullCapabilitySet(), api.Capability_CAPABILITY_QMP)
 }
 
 // DiskImageStrategy returns DiskImageOverlay: qemu attaches local files
@@ -1500,10 +1540,11 @@ func (dev *qemuDevice) buildArgs() []string {
 		// add this same standard VGA by default even under -nographic; it is
 		// listed explicitly only to fix its slot and to give it an id for
 		// QMP. The USB 3.0 (xHCI) controller matches the one the proxmox
-		// provider adds; VGA and xHCI sit directly on the root bus at the
-		// same slots as there, each in an IOMMU group of its own.
+		// provider adds, under the same id so that tests can address its bus
+		// (evxhci.0) on either provider; VGA and xHCI sit directly on the root
+		// bus at the same slots as there, each in an IOMMU group of its own.
 		"-device", "VGA,id=vga,bus=pcie.0,addr=0x1",
-		"-device", "qemu-xhci,id=xhci,bus=pcie.0,addr=0x2",
+		"-device", "qemu-xhci,id=evxhci,bus=pcie.0,addr=0x2",
 		// The two ICH9 USB 2.0 controller sets, an EHCI with three UHCI
 		// companions per slot (one IOMMU group each), replicate what PVE's
 		// q35 layout (pve-q35-4.0.cfg) gives the proxmox provider's VM

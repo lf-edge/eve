@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -1740,6 +1741,137 @@ func (b *broker) EditDeviceDisk(
 		return nil, err
 	}
 	return &api.EditDeviceDiskResponse{}, nil
+}
+
+// maxScratchImageBytes caps CreateScratchImage: the proxmox provider uploads
+// the whole image to the PVE host.
+const maxScratchImageBytes = 1 << 30
+
+// lookupEVEDevice resolves the client session and the EVE device that a
+// per-device RPC addresses, returning the device and the session's logger.
+func (b *broker) lookupEVEDevice(clientID, deviceName string) (*device, *logrus.Entry, error) {
+	b.mutex.Lock()
+	clientSession, exists := b.sessions[clientID]
+	b.mutex.Unlock()
+	if !exists {
+		err := clientNotFoundErr(clientID)
+		b.globalLog.Error(err)
+		return nil, nil, err
+	}
+
+	clientSession.mutex.Lock()
+	log := clientSession.log
+	dev, exists := clientSession.eveDevices[deviceName]
+	clientSession.mutex.Unlock()
+	if !exists {
+		err := eveDevNotFoundErr(deviceName)
+		log.Error(err)
+		return nil, nil, err
+	}
+	return dev, log, nil
+}
+
+// ExecuteQMP runs one QMP command on the hypervisor running an EVE device.
+// The broker only checks the request's shape; what the command does to the
+// VM is the test's business. The provider call runs without holding
+// clientSession.mutex; see PowerOffDevice's doc comment.
+func (b *broker) ExecuteQMP(
+	ctx context.Context, req *api.ExecuteQMPRequest) (*api.ExecuteQMPResponse, error) {
+	eveDevice, log, err := b.lookupEVEDevice(req.ClientId, req.DeviceName)
+	if err != nil {
+		return nil, err
+	}
+	ctx = logger.WithLogger(ctx, log)
+
+	if req.GetExecute() == "" {
+		err := fmt.Errorf("no QMP command given for EVE device %q", eveDevice.deviceName)
+		log.Error(err)
+		return nil, err
+	}
+	var arguments json.RawMessage
+	if argsJSON := req.GetArgumentsJson(); argsJSON != "" {
+		var object map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(argsJSON), &object); err != nil {
+			err = fmt.Errorf("arguments of QMP command %q for EVE device %q are not a "+
+				"JSON object: %w", req.GetExecute(), eveDevice.deviceName, err)
+			log.Error(err)
+			return nil, err
+		}
+		arguments = json.RawMessage(argsJSON)
+	}
+
+	ret, err := b.provider.ExecuteQMP(ctx, eveDevice.providerDevName, req.GetExecute(), arguments)
+	if err != nil {
+		err = fmt.Errorf("QMP command %q on EVE device %q failed: %w",
+			req.GetExecute(), eveDevice.deviceName, err)
+		log.Error(err)
+		return nil, err
+	}
+	log.Debugf("QMP command %q on EVE device %q returned %s",
+		req.GetExecute(), eveDevice.deviceName, ret)
+	return &api.ExecuteQMPResponse{ReturnJson: string(ret)}, nil
+}
+
+// CreateScratchImage creates a blank scratch disk image for an EVE device on
+// the hypervisor host. The provider call runs without holding
+// clientSession.mutex; see PowerOffDevice's doc comment.
+func (b *broker) CreateScratchImage(ctx context.Context,
+	req *api.CreateScratchImageRequest) (*api.CreateScratchImageResponse, error) {
+	eveDevice, log, err := b.lookupEVEDevice(req.ClientId, req.DeviceName)
+	if err != nil {
+		return nil, err
+	}
+	ctx = logger.WithLogger(ctx, log)
+
+	if err := provider.ValidateScratchImageName(req.GetName()); err != nil {
+		log.Error(err)
+		return nil, err
+	}
+	if req.GetSizeBytes() == 0 || req.GetSizeBytes() > maxScratchImageBytes {
+		err := fmt.Errorf("scratch image %q for EVE device %q: size must be between 1 and %d "+
+			"bytes, got %d", req.GetName(), eveDevice.deviceName, maxScratchImageBytes,
+			req.GetSizeBytes())
+		log.Error(err)
+		return nil, err
+	}
+
+	hostPath, err := b.provider.CreateScratchImage(ctx, eveDevice.providerDevName,
+		req.GetName(), req.GetSizeBytes())
+	if err != nil {
+		err = fmt.Errorf("failed to create scratch image %q for EVE device %q: %w",
+			req.GetName(), eveDevice.deviceName, err)
+		log.Error(err)
+		return nil, err
+	}
+	log.Infof("Created scratch image %q for EVE device %q at %s",
+		req.GetName(), eveDevice.deviceName, hostPath)
+	return &api.CreateScratchImageResponse{HostPath: hostPath}, nil
+}
+
+// DeleteScratchImage removes a scratch disk image of an EVE device. The
+// provider call runs without holding clientSession.mutex; see PowerOffDevice's
+// doc comment.
+func (b *broker) DeleteScratchImage(ctx context.Context,
+	req *api.DeleteScratchImageRequest) (*api.DeleteScratchImageResponse, error) {
+	eveDevice, log, err := b.lookupEVEDevice(req.ClientId, req.DeviceName)
+	if err != nil {
+		return nil, err
+	}
+	ctx = logger.WithLogger(ctx, log)
+
+	if err := provider.ValidateScratchImageName(req.GetName()); err != nil {
+		log.Error(err)
+		return nil, err
+	}
+	err = b.provider.DeleteScratchImage(ctx, eveDevice.providerDevName, req.GetName())
+	if err != nil {
+		err = fmt.Errorf("failed to delete scratch image %q of EVE device %q: %w",
+			req.GetName(), eveDevice.deviceName, err)
+		log.Error(err)
+		return nil, err
+	}
+	log.Infof("Deleted scratch image %q of EVE device %q", req.GetName(), eveDevice.deviceName)
+	return &api.DeleteScratchImageResponse{}, nil
 }
 
 // RebootDevice reboots a specific EVE device. The provider call runs without
