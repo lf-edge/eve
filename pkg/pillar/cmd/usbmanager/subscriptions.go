@@ -206,8 +206,8 @@ func (usbCtx *usbmanagerContext) handleAssignableAdaptersModify(_ interface{}, _
 		newAssignableAdaptersMap[adapter.Phylabel] = adapter
 	}
 
-	for adapterName, adapter := range oldAssignableAdaptersMap {
-		_, ok := newAssignableAdaptersMap[adapterName]
+	for adapterName, adapter := range newAssignableAdaptersMap {
+		_, ok := oldAssignableAdaptersMap[adapterName]
 		if !ok {
 			log.Noticef("AA modify, add %s", ioBundleLogString(adapter))
 			usbCtx.controller.addIOBundle(adapter)
@@ -216,8 +216,8 @@ func (usbCtx *usbmanagerContext) handleAssignableAdaptersModify(_ interface{}, _
 		}
 	}
 
-	for adapterName, adapter := range newAssignableAdaptersMap {
-		_, ok := oldAssignableAdaptersMap[adapterName]
+	for adapterName, adapter := range oldAssignableAdaptersMap {
+		_, ok := newAssignableAdaptersMap[adapterName]
 		if !ok {
 			log.Noticef("AA modify, remove %s", ioBundleLogString(adapter))
 			usbCtx.controller.removeIOBundle(adapter)
