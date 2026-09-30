@@ -147,6 +147,8 @@ The volume can only be deleted if the reference count is zero. In the case of pe
 
 Any images in the above "unknown" agentScope are garbage collected if no VolumeConfig has claimed then after N minutes after zedagent received its configuration. By default that timer is one hour and is controlled by the timer.gc.vdisk configuration property.
 
+On EVE-k the same tick drains the EVE-kvm app volumes a kvm-to-k conversion carried over, once the partition is committed: a carried file or zvol is removed after the VolumeStatus it was carried for reaches CREATED_VOLUME without error, or after no VolumeStatus has claimed it for the same timer, and the parked kvm vault (`persist/vault.old`) is destroyed once it holds no zvols. See [EVE-K.md](../../../docs/EVE-K.md#carrying-app-volumes-from-eve-kvm).
+
 ## Download Details
 
 On startup, volumemgr registers to receive notifications from agent `"zedmanager"`

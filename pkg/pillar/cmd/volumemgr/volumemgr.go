@@ -154,6 +154,10 @@ type volumemgrContext struct {
 	// confirmed gone (or given up on after maxVolumeDeleteRetries).
 	volumeDeleteRetryCount map[string]int
 
+	// kvmCarryOrphanSince records when drainKvmCarriedVolumes first found each
+	// carried-over EVE-kvm volume unclaimed by any VolumeStatus.
+	kvmCarryOrphanSince map[string]time.Time
+
 	persistType types.PersistType
 
 	capabilities *types.Capabilities
@@ -935,6 +939,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 				gcUnusedInitObjects(&ctx)
 				ctx.initGced = true
 			}
+			drainKvmCarriedVolumes(&ctx)
 			// Re-drive volumes parked in a transient EVE-k cluster-storage
 			// error (longhorn/CDI not ready yet, common right after a kvm->k
 			// conversion) so they recover once the cluster is up.

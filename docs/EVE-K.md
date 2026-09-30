@@ -122,9 +122,63 @@ is a filesystem dataset, which `HV=k` cannot use; the first `HV=k` boot
 migrates it to the zvol layout, and declines when the pool has too little free
 space to stage the copy. See [vaultmgr.md](../pkg/pillar/docs/vaultmgr.md).
 
-Upgrading from `HV=k` to another `HV=` type is not supported in any case: a
-vault migrated to the `HV=k` zvol layout has no path back to a filesystem
-dataset the other flavors can read.
+Upgrading from `HV=k` to another `HV=` type is not supported: a vault migrated
+to the `HV=k` zvol layout has no path back to a filesystem dataset the other
+flavors can read once the conversion is committed. Before that, the automatic
+fallback described below restores the old vault.
+
+### Carrying app volumes from EVE-kvm
+
+Every volume except container volumes becomes a Longhorn PVC on `HV=k`. When
+volumemgr creates the PVC for a volume the device already had on EVE-kvm, it
+fills it with the old volume's contents instead of creating it empty or
+regenerating it from its image. Container volumes are rebuilt from the
+containerd content, which the conversion keeps. Where the old contents come
+from depends on the `/persist` filesystem:
+
+| `/persist` | Encrypted volumes | Clear volumes |
+|------------|-------------------|---------------|
+| ext4 | files, moved on the first `HV=k` boot from `/persist/vault/volumes` (which Longhorn owns on `HV=k`) to `/persist/vault/volumes-kvm` | files, left in `/persist/clear/volumes` |
+| ZFS | zvols, left in the old vault dataset, which the vault migration renames to `persist/vault.old` | zvols, left in `persist/clear/volumes` |
+
+A volume is carried only when its PVC has the name the volume had on EVE-kvm,
+that is, the same volume UUID and generation. A volume the controller changes
+during the conversion gets a new, empty PVC.
+
+The old volumes stay on `/persist` until the `HV=k` partition is committed,
+because until then the device may still fall back to EVE-kvm. Once the partition
+is committed, volumemgr removes each carried volume after its PVC reports
+created. It also removes a carried volume that no configured volume has claimed
+for `timer.gc.vdisk`. On ZFS it destroys `persist/vault.old` once its last zvol
+is gone. Until then `/persist` holds each carried volume twice, once as the old
+volume and once as its PVC.
+
+### Falling back to EVE-kvm during the conversion
+
+The `HV=k` image is booted in the `updating` partition state, and any reboot
+before the partition is committed boots EVE-kvm again. That includes a power
+failure during the test window (`timer.test.baseimage.update`) or before the
+vault migration finishes. The fallback boot restores the EVE-kvm layout before
+anything reads it:
+
+* On ext4, upgradeconverter moves `/persist/vault/volumes-kvm` back to
+  `/persist/vault/volumes`.
+* On ZFS, vaultmgr handles each point the migration can be interrupted at:
+  * Before the copy is complete, it discards the partial staging zvol. The
+    vault was never touched.
+  * Between the two renames of the swap, it renames `persist/vault.old`
+    back to `persist/vault`.
+  * After the swap, it destroys the migrated zvol vault and the etcd zvol,
+    and renames `persist/vault.old` back to `persist/vault`, which brings the
+    app-volume zvols back with it.
+
+What EVE-k wrote in that window, PVC contents included, is discarded. The
+application data is the EVE-kvm data from before the conversion. A retried
+conversion starts over.
+
+The fallback restores the layout only if the EVE-kvm image it boots contains
+this handling. The fallback image is the release the device converted from.
+That release must therefore include it before conversions are enabled.
 
 Converting an in-field device to `HV=k` requires the larger EVE-k boot-disk
 geometry, which older (small-partition) devices do not have. The boot-disk
