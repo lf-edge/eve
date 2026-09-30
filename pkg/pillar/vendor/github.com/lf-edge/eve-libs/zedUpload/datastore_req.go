@@ -28,9 +28,7 @@ type DronaRequest struct {
 	syncEp    DronaEndPoint
 	operation SyncOpType
 
-	// If cancelContext is set it can be used to cancel some operations
-	cancelContext context.Context
-	cancelFunc    context.CancelFunc
+	ctx context.Context
 
 	// Object that needs to be downloaded
 	name      string
@@ -327,21 +325,10 @@ func (req *DronaRequest) postOnChannel() error {
 	}
 }
 
-// Cancel checks if WithCancel was used.
-func (req *DronaRequest) Cancel() error {
-	if req.cancelFunc != nil {
-		req.cancelFunc()
-	}
-	return nil
-}
-
-// WithCancel can be used to setup cancellation
-// Caller should call req.Cancel when done even on success
-func (req *DronaRequest) WithCancel(ctx context.Context) *DronaRequest {
-
-	cancelContext, cancel := context.WithCancel(ctx)
-	req.cancelContext = cancelContext
-	req.cancelFunc = cancel
+// WithContext can be used to setup context
+// This way a caller can select on Done channel
+func (req *DronaRequest) WithContext(ctx context.Context) *DronaRequest {
+	req.ctx = ctx
 	return req
 }
 
