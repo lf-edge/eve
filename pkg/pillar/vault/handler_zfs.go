@@ -264,11 +264,24 @@ func (h *ZFSHandler) unlockVault(vaultPath string) error {
 		}); err != nil {
 			return err
 		}
+		// The parked kvm vault's app-volume zvols have device nodes only while
+		// its key is loaded, and csihandler rolls PVCs out from them.
+		if parked := vaultPath + vaultBackupSuffix; zfs.DatasetExist(h.log, parked) {
+			if err := h.loadDatasetKeyIfUnavailable(parked); err != nil {
+				h.log.Errorf("Cannot load the key of the parked kvm vault %s: %v", parked, err)
+			}
+		}
 		if err := MountVaultZvol(h.log, vaultPath); err != nil {
 			h.log.Errorf("Error unlocking vault: %v", err)
 			return err
 		}
 	} else {
+		// A reverted migration puts back a vault whose key the load above did
+		// not cover: it loaded the key of the migrated zvol.
+		if err := h.loadDatasetKeyIfUnavailable(vaultPath); err != nil {
+			h.log.Errorf("Error unlocking vault: %v", err)
+			return err
+		}
 		if err := zfs.MountDataset(vaultPath); err != nil {
 			h.log.Errorf("Error unlocking vault: %v", err)
 			return err
@@ -320,9 +333,13 @@ const vaultMigrateMountpoint = "/run/vaultmgr/vault-migrate"
 //
 // The sequence stages a new zvol "<vaultPath>2", copies the vault contents into
 // it, records that the copy is complete, then swaps it into place: the old
-// filesystem vault is renamed to "<vaultPath>.old", the staging zvol is renamed
-// to "<vaultPath>", and only then is the old vault destroyed. Until the swap
-// the staging zvol holds a partial copy and is dropped on any failure, so a
+// filesystem vault is renamed to "<vaultPath>.old" and the staging zvol is
+// renamed to "<vaultPath>". The old vault stays parked there together with the
+// kvm app-volume zvols under it, which the copy does not see: EVE-k rolls those
+// into PVCs straight from the parked zvols, and a fallback to EVE-kvm puts the
+// parked vault back. volumemgr destroys it once the EVE-k partition is
+// committed and every carried volume has been consumed. Until the swap the
+// staging zvol holds a partial copy and is dropped on any failure, so a
 // fallback boot to EVE-kvm does not inherit a zvol holding up to the pool's
 // free space. The caller reaches this only when a filesystem vault is present
 // at vaultPath (i.e. the source is intact), so a leftover staging/backup
@@ -472,12 +489,7 @@ func (h *ZFSHandler) migrateVaultFsToZvol(vaultPath, keyFile string, encrypt boo
 	if err := ops.ClearSwapMarker(); err != nil {
 		h.log.Warnf("migrateVaultFsToZvol: cannot clear migration swap state: %v", err)
 	}
-
-	// Best effort: the migrated zvol is now at vaultPath, so the old vault may
-	// be torn down. On failure it is left for the next boot's recovery.
-	if err := h.dropMigrationLeftovers("", backupDataset); err != nil {
-		h.log.Warnf("migrateVaultFsToZvol: %v", err)
-	}
+	h.log.Noticef("migrateVaultFsToZvol: parked the kvm vault at %s", backupDataset)
 
 	if err := ops.MountVaultZvol(vaultPath); err != nil {
 		return fmt.Errorf("mount migrated zvol vault %s: %v", vaultPath, err)
@@ -544,6 +556,14 @@ const (
 	// the interrupted swap was producing, so what is left over is the only copy
 	// of the contents and must be kept.
 	vaultMigrationKeepLeftovers
+	// vaultMigrationKeepParked - EVE-k runs on the migrated zvol with the kvm
+	// vault parked beside it; keep the parked vault for volumemgr to drain and
+	// discard only a staging leftover.
+	vaultMigrationKeepParked
+	// vaultMigrationRevertSwap - EVE-kvm found the migrated zvol in place with
+	// its own vault parked beside it: drop the zvol and put the parked vault
+	// back.
+	vaultMigrationRevertSwap
 )
 
 func (a vaultMigrationRecovery) String() string {
@@ -556,6 +576,10 @@ func (a vaultMigrationRecovery) String() string {
 		return "drop-leftovers"
 	case vaultMigrationKeepLeftovers:
 		return "keep-leftovers"
+	case vaultMigrationKeepParked:
+		return "keep-parked"
+	case vaultMigrationRevertSwap:
+		return "revert-swap"
 	default:
 		return "noop"
 	}
@@ -578,6 +602,16 @@ func (a vaultMigrationRecovery) String() string {
 func planVaultMigrationRecovery(vaultExists, vaultIsZvol, stagingExists, backupExists,
 	swapStaged, partitionCommitted, zvolVaultSupported bool) vaultMigrationRecovery {
 	if vaultExists {
+		// A completed swap: the migrated zvol in place and the kvm vault parked.
+		// EVE-k keeps the parked vault whatever the partition state, because its
+		// app-volume zvols are the source of PVCs that may not exist yet.
+		// EVE-kvm cannot mount the zvol, so it takes its parked vault back.
+		if vaultIsZvol && backupExists {
+			if zvolVaultSupported {
+				return vaultMigrationKeepParked
+			}
+			return vaultMigrationRevertSwap
+		}
 		// EVE-kvm never migrates, so a vault in place beside a parked
 		// pre-migration vault is one EVE-kvm created after the swap renamed the
 		// original aside -- whatever the partition state says. The parked dataset
@@ -682,27 +716,59 @@ func (h *ZFSHandler) recoverInterruptedVaultMigration(vaultPath string) error {
 		return nil
 	}
 
+	dropBackup := backup
 	switch action {
 	case vaultMigrationFinishSwap:
 		if err := ops.RenameDataset(staging, vaultPath); err != nil {
 			return fmt.Errorf("finish interrupted migration rename %s -> %s: %v",
 				staging, vaultPath, err)
 		}
+		dropBackup = ""
 	case vaultMigrationRestoreBackup:
 		if err := ops.RenameDataset(backup, vaultPath); err != nil {
 			return fmt.Errorf("restore interrupted migration rename %s -> %s: %v",
 				backup, vaultPath, err)
 		}
+	case vaultMigrationKeepParked:
+		dropBackup = ""
+	case vaultMigrationRevertSwap:
+		if err := h.revertCompletedSwap(vaultPath, backup); err != nil {
+			return err
+		}
 	}
 
 	// Best effort: a failure to discard a leftover just leaves it for the next
 	// boot, and nothing promotes a staging zvol without the swap marker.
-	if err := h.dropMigrationLeftovers(staging, backup); err != nil {
+	if err := h.dropMigrationLeftovers(staging, dropBackup); err != nil {
 		h.log.Warnf("recoverInterruptedVaultMigration: %v", err)
 	}
 	if err := ops.ClearSwapMarker(); err != nil {
 		h.log.Warnf("recoverInterruptedVaultMigration: cannot clear migration swap state: %v", err)
 	}
+	return nil
+}
+
+// revertCompletedSwap gives EVE-kvm back the vault a completed migration parked
+// at backup, discarding the migrated zvol at vaultPath together with what EVE-k
+// wrote to it and to the etcd zvol before falling back. The etcd zvol goes
+// first and the parked vault is renamed back last, so an interruption leaves a
+// state the next boot plans the same way or as vaultMigrationRestoreBackup.
+func (h *ZFSHandler) revertCompletedSwap(vaultPath, backup string) error {
+	ops := h.zfsOps()
+	if ops.DatasetExist(types.EtcdZvol) {
+		if err := ops.DestroyDataset(types.EtcdZvol); err != nil {
+			return fmt.Errorf("revert migration: cannot remove etcd zvol %s: %v",
+				types.EtcdZvol, err)
+		}
+	}
+	if err := ops.DestroyDataset(vaultPath); err != nil {
+		return fmt.Errorf("revert migration: cannot remove migrated vault %s: %v",
+			vaultPath, err)
+	}
+	if err := ops.RenameDataset(backup, vaultPath); err != nil {
+		return fmt.Errorf("revert migration rename %s -> %s: %v", backup, vaultPath, err)
+	}
+	h.log.Noticef("revertCompletedSwap: restored the kvm vault %s from %s", vaultPath, backup)
 	return nil
 }
 
@@ -731,6 +797,22 @@ func (h *ZFSHandler) loadDatasetKey(dataset string) error {
 		return err
 	}
 	return nil
+}
+
+// loadDatasetKeyIfUnavailable loads the vault key for dataset unless its key is
+// already loaded or it is not encrypted. It stages the key with the derivation
+// the vault unlock resolved.
+func (h *ZFSHandler) loadDatasetKeyIfUnavailable(dataset string) error {
+	keyStatus, err := zfs.GetDatasetKeyStatus(dataset)
+	if err != nil {
+		return err
+	}
+	if keyStatus != "unavailable" {
+		return nil
+	}
+	return h.withStagedKey(h.options.TpmKeyOnlyMode, func() error {
+		return h.loadDatasetKey(dataset)
+	})
 }
 
 // e.g. zfs create -o encryption=aes-256-gcm -o keylocation=file://tmp/raw.key -o keyformat=raw persist/vault
