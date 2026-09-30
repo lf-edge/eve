@@ -15,6 +15,9 @@ DOCKER_PLATFORM_TARGETS := $(foreach platform,$(DOCKER_PLATFORM_LIST),build-vm-i
 
 EVETEST_ORG ?= lfedge
 LINUXKIT ?= linuxkit
+# e.g. --secret for Dockerfile git sources; only set by ../Makefile, whose
+# linuxkit supports it
+LINUXKIT_SECRET_OPTS ?=
 SDN_REPO ?= $(EVETEST_ORG)/evetest-sdn
 SDN_DIR := $(CURDIR)
 SDN_VM_DIR := $(SDN_DIR)/vm
@@ -24,7 +27,7 @@ build-vm-img-%:
 	PLATFORM=$(subst -,/,$*); \
 	ARCH=$$(echo $$PLATFORM | cut -d/ -f2); \
 	SDN_SVC_CONT_TAG=`$(LINUXKIT) pkg show-tag $(SDN_VM_DIR)`-$$ARCH; \
-	$(LINUXKIT) pkg build --platforms $$PLATFORM --build-yml build.yml $(SDN_VM_DIR); \
+	$(LINUXKIT) pkg build $(LINUXKIT_SECRET_OPTS) --platforms $$PLATFORM --build-yml build.yml $(SDN_VM_DIR); \
 	sed 's|SDN_SERVICE_CONTAINER|'"$$SDN_SVC_CONT_TAG"'|g' $(SDN_VM_DIR)/sdn-vm.yml.in | \
 		$(LINUXKIT) build --docker --arch $$ARCH --name sdn-$$ARCH --format raw-bios --dir $(SDN_VM_DIR) -
 

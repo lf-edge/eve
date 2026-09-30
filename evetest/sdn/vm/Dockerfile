@@ -52,8 +52,8 @@ RUN mkdir -p $GOBIN && \
     go build -o $GOBIN/conntrack  ./cmd/conntrack
 
 ARG SCEP_SERVER_VERSION=2.3.0
-RUN git clone --branch v2.3.0 --depth 1 https://github.com/micromdm/scep.git && \
-    go build -C scep/cmd/scepserver -o $GOBIN/scepserver .
+ADD https://github.com/micromdm/scep.git#v${SCEP_SERVER_VERSION} scep
+RUN go build -C scep/cmd/scepserver -o $GOBIN/scepserver .
 
 ###########################
 # Runtime stage
