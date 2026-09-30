@@ -371,7 +371,14 @@ LINUXKIT_PKG_TARGET=build
 # defaults to /etc/buildkit/buildkitd.toml if it exists; override via LINUXKIT_BUILDER_CONFIG
 LINUXKIT_BUILDER_CONFIG ?= $(wildcard /etc/buildkit/buildkitd.toml)
 export LINUXKIT_BUILDER_CONFIG
-LINUXKIT_OPTS=$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL)
+LINUXKIT_OPTS=$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL) $(LINUXKIT_SECRET_OPTS)
+# buildkit fetches Dockerfile `ADD <git url>` sources (and their submodules)
+# itself, ignoring gitconfig and GIT_ASKPASS, so tools/github-askpass.sh does
+# not reach it. If GITHUB_TOKEN is set, hand it to buildkit as its github.com
+# git auth secret. Only `pkg build` and `pkg push` accept --secret, and only
+# the linuxkit pinned by LINUXKIT_GIT_REF is known to support it, so skip it
+# for LINUXKIT_SRC or release builds (see mk/linuxkit.mk).
+LINUXKIT_SECRET_OPTS=$(if $(and $(GITHUB_TOKEN),$(filter build push,$(LINUXKIT_PKG_TARGET)),$(if $(LINUXKIT_SRC),,$(LINUXKIT_GIT_URL))),--secret id=GIT_AUTH_TOKEN.github.com$(comma)env=GITHUB_TOKEN)
 
 ifdef LIVE_FAST
 # Check the makerootfs.sh and the linuxkit tool invocation, the --input-tar

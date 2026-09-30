@@ -24,8 +24,10 @@ LINUXKIT_SOURCE  ?= https://github.com/linuxkit/linuxkit
 
 # LINUXKIT_GIT_REF must be a commit hash (reproducible, no ls-remote needed).
 # Update by running: git ls-remote https://github.com/linuxkit/linuxkit master
-LINUXKIT_GIT_URL ?= https://github.com/linuxkit/linuxkit
-LINUXKIT_GIT_REF ?= 40ad9986e985a61160d2608576e655344318e33e
+# Temporarily pinned to a fork carrying `pkg build --secret` until it lands
+# upstream: https://github.com/linuxkit/linuxkit/pull/4223
+LINUXKIT_GIT_URL ?= https://github.com/europaul/linuxkit
+LINUXKIT_GIT_REF ?= 1e4188b7efffddcaac5faa09c6f583161ae281ba
 # Optional local source tree — takes priority over LINUXKIT_GIT_URL.
 #   make LINUXKIT_SRC=/path/to/linuxkit <target>
 LINUXKIT_SRC ?=
