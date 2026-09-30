@@ -125,7 +125,7 @@ func (p *LibvirtProvider) GetSupportedDeviceArchs() ([]api.ArchType, error) {
 // local host and applies the host-level tweaks required to forward link-local
 // L2 protocols, and supports emulated TPM. It also supports network boot.
 func (p *LibvirtProvider) Capabilities() []api.Capability {
-	return fullCapabilitySet()
+	return commonCapabilities()
 }
 
 // DiskImageStrategy returns DiskImageOverlay: libvirt attaches local files

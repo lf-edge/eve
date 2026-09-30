@@ -72,6 +72,15 @@ Set these up on the PVE host itself before running the installer:
   echo 'net.ipv6.conf.all.forwarding=1' > /etc/sysctl.d/99-evetest-ipv6-forward.conf
   ```
 
+- The broker reaches the QMP monitor of every device VM over **SSH to the PVE host as
+  `root`**, with the same root@pam password it uses for the API. Tests use this to change
+  a device's hardware at runtime, e.g. to hot-plug a USB flash drive (`CAPABILITY_QMP`).
+  PVE's default sshd configuration allows it: `PermitRootLogin yes` and stream-local
+  (Unix socket) forwarding enabled. If you hardened sshd, keep root password login and
+  `AllowStreamLocalForwarding yes` for the broker VM. Nothing is installed on the host
+  for this; each device VM merely gets a second QMP monitor at
+  `/var/run/qemu-server/<vmid>.evqmp`, and PVE's own `<vmid>.qmp` is left alone.
+
 ### Quick summary (everything above, in one place)
 
 Run on the PVE host before the installer:
@@ -255,9 +264,14 @@ The broker runs **inside a VM on the Proxmox host** and is **dual-homed**:
   reachable here by evetest containers.
 - `net1` on the **SDN uplink VNet** (`evu`) — lets the broker reach the SDN VMs' gRPC for
   `ConnectTunnelToSDN` (the only broker→SDN-VM connection; everything else goes through the
-  Proxmox API).
+  Proxmox API, except for the QMP monitors below).
+- **SSH to the PVE host as `root`** (same password as the API), used for one thing only: to
+  reach the device VMs' own QMP monitors (`/var/run/qemu-server/<vmid>.evqmp`, added
+  through the `args` option next to PVE's own monitor) for tests that hot-plug hardware.
+  sshd connects to the Unix socket on the broker's behalf (OpenSSH stream-local
+  forwarding), so no relay or other component runs on the host.
 
-This keeps the hypervisor clean (no Docker/broker/SSH on the PVE host itself). The one
+This keeps the hypervisor clean (no Docker or broker on the PVE host itself). The one
 thing the broker cannot do from inside a VM is the host-level xconnect L2-forwarding tweaks
 (LACP / EAPOL / LLDP / ARP), so those are applied by a **Proxmox hookscript**
 (`evetest-hook.pl`) installed on the host and attached to every VM the broker creates; it

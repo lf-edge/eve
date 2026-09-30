@@ -5,8 +5,11 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"net"
+	"regexp"
 
 	api "github.com/lf-edge/eve/evetest/grpcapi/go"
 )
@@ -117,6 +120,26 @@ type DeviceProvider interface {
 	//
 	// The device must be set up and powered off when this is called.
 	ReconfigureDeviceDisks(ctx context.Context, name string, newDisks []DiskImage) error
+
+	// ExecuteQMP runs one QMP command on the hypervisor running the device and
+	// returns the command's "return" member as raw JSON ("{}" when the command
+	// returns nothing). arguments is the JSON object of the command's
+	// arguments, or nil for none. A QMP error reply is returned as *QMPError,
+	// which tells a refused command from a broken connection. The device must
+	// be powered on.
+	ExecuteQMP(ctx context.Context, name, execute string,
+		arguments json.RawMessage) (json.RawMessage, error)
+
+	// CreateScratchImage creates a blank, sparse raw disk image of the given
+	// size in the device's scratch area on the hypervisor host and returns its
+	// path there, for use in QMP commands such as blockdev-add. imageName is
+	// unique within the device (see ValidateScratchImageName). Scratch images
+	// live until DeleteScratchImage or TeardownDevice.
+	CreateScratchImage(ctx context.Context, name, imageName string,
+		sizeBytes uint64) (hostPath string, err error)
+
+	// DeleteScratchImage removes an image created by CreateScratchImage.
+	DeleteScratchImage(ctx context.Context, name, imageName string) error
 
 	// Close releases all resources associated with the provider connection.
 	Close() error
@@ -276,3 +299,29 @@ const (
 	// DeviceStatusUnknown indicates the device state cannot be determined.
 	DeviceStatusUnknown DeviceStatus = "unknown"
 )
+
+// QMPError is a QMP error reply: the hypervisor understood the command and
+// refused it, as opposed to a transport failure.
+type QMPError struct {
+	Class string
+	Desc  string
+}
+
+func (e *QMPError) Error() string {
+	return fmt.Sprintf("%s (%s)", e.Desc, e.Class)
+}
+
+// scratchImageNameRe is what ValidateScratchImageName accepts: QEMU's rules
+// for ids, so that the same name can serve as block node name and device id,
+// and nothing that could escape the scratch directory.
+var scratchImageNameRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{0,30}$`)
+
+// ValidateScratchImageName checks the name of a scratch image
+// (CreateScratchImage).
+func ValidateScratchImageName(name string) error {
+	if !scratchImageNameRe.MatchString(name) {
+		return fmt.Errorf("invalid scratch image name %q: want a letter followed by "+
+			"up to 30 letters, digits, '-' or '_'", name)
+	}
+	return nil
+}
