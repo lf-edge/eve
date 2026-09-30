@@ -119,7 +119,7 @@ func (ep *GsTransportMethod) processGSUpload(req *DronaRequest) (int, error) {
 		return 0, err
 	}
 
-	sc, err := zedGS.NewGsCtx(req.cancelContext, ep.projectID, ep.apiKey, hClient, true)
+	sc, err := zedGS.NewGsCtx(req.ctx, ep.projectID, ep.apiKey, hClient, true)
 	if err != nil {
 		return 0, err
 	}
@@ -139,7 +139,7 @@ func (ep *GsTransportMethod) processGSDownload(req *DronaRequest) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	s, err := zedGS.NewGsCtx(req.cancelContext, ep.projectID, ep.apiKey, hClient, false)
+	s, err := zedGS.NewGsCtx(req.ctx, ep.projectID, ep.apiKey, hClient, false)
 	if err != nil {
 		return 0, err
 	}
@@ -176,7 +176,7 @@ func (ep *GsTransportMethod) processGSDelete(req *DronaRequest) error {
 	if err != nil {
 		return err
 	}
-	gsctx, err := zedGS.NewGsCtx(req.cancelContext, ep.projectID, ep.apiKey, hClient, true)
+	gsctx, err := zedGS.NewGsCtx(req.ctx, ep.projectID, ep.apiKey, hClient, true)
 	if err != nil {
 		return err
 	}
@@ -202,7 +202,7 @@ func (ep *GsTransportMethod) processGSList(req *DronaRequest) ([]string, int, er
 	if err != nil {
 		return s, 0, err
 	}
-	sc, err := zedGS.NewGsCtx(req.cancelContext, ep.projectID, ep.apiKey, hClient, false)
+	sc, err := zedGS.NewGsCtx(req.ctx, ep.projectID, ep.apiKey, hClient, false)
 	if err != nil {
 		return s, 0, err
 	}
@@ -221,7 +221,7 @@ func (ep *GsTransportMethod) processGSObjectMetaData(req *DronaRequest) (int64, 
 	if err != nil {
 		return 0, "", err
 	}
-	sc, err := zedGS.NewGsCtx(req.cancelContext, ep.projectID, ep.apiKey, hClient, false)
+	sc, err := zedGS.NewGsCtx(req.ctx, ep.projectID, ep.apiKey, hClient, false)
 	if err != nil {
 		return 0, "", err
 	}
