@@ -48,6 +48,7 @@ func RunTestSuite(cases ...TestCase) {
 	// Move testState to testSuiteState.
 	th.testM.Lock()
 	if th.suite != nil {
+		th.testM.Unlock()
 		th.t.Fatalf("Nested test suites are not supported")
 	}
 	th.suite = &testSuiteState{
