@@ -8,7 +8,13 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	uuid "github.com/satori/go.uuid"
 )
+
+// appUSBListTimeout bounds the SSH command behind ListUSBDevicesInsideApp;
+// reaching an application goes through a port forward and sshd inside it.
+const appUSBListTimeout = 20 * time.Second
 
 // USBControllerBus is the QEMU bus name of the USB 3.0 (xHCI) controller that
 // every EVE device VM has on the qemu and proxmox providers, for device_add.
@@ -81,6 +87,21 @@ func (d *EdgeDevice) ListUSBDevices() (USBDeviceList, error) {
 	stdout, _, err := d.RunShellScript(listUSBDevicesScript, quickSSHCommandTimeout, 0)
 	if err != nil {
 		return nil, fmt.Errorf("ListUSBDevices: SSH command failed: %w", err)
+	}
+	return parseUSBDeviceList(stdout)
+}
+
+// ListUSBDevicesInsideApp is ListUSBDevices for the guest of an application:
+// the USB devices its kernel enumerates, read over SSH into the application
+// (see RunShellScriptInsideApp for how it is reached). A device passed
+// through from EVE shows up here with the ids and serial number it has on
+// EVE, but on the guest's own bus and port.
+func (d *EdgeDevice) ListUSBDevicesInsideApp(appUUID uuid.UUID,
+	auth AuthMethod) (USBDeviceList, error) {
+	stdout, _, err := d.RunShellScriptInsideApp(appUUID, auth, listUSBDevicesScript,
+		appUSBListTimeout, 0)
+	if err != nil {
+		return nil, fmt.Errorf("ListUSBDevicesInsideApp: SSH command failed: %w", err)
 	}
 	return parseUSBDeviceList(stdout)
 }
