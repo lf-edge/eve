@@ -44,6 +44,12 @@ One example of of the USB controller is used, can be found in FuzzUSBManagerCont
 3. Iterate over all USB devices and update USB passthroughs accordingly, meaning
     that a different rule may apply now for some USB device and it may be connected to another vm
 
+### Flow when an IOBundle changes
+
+1. If the fields a passthrough rule is built from changed (usbaddr, usbproduct, pcilong, assigngrp,
+    parentassigngrp), remove the old IOBundle and add the new one as described above; a change of
+    runtime fields such as the assigned application does not touch the rules
+
 ### Flow when a new IOBundle is removed
 
 1. Remove the IOBundle
