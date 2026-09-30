@@ -209,6 +209,16 @@ func (usbCtx *usbmanagerContext) handleAssignableAdaptersModify(_ interface{}, _
 	for adapterName, adapter := range oldAssignableAdaptersMap {
 		_, ok := newAssignableAdaptersMap[adapterName]
 		if !ok {
+			log.Noticef("AA modify, remove %s", ioBundleLogString(adapter))
+			usbCtx.controller.removeIOBundle(adapter)
+		} else {
+			log.Noticef("AA modify, not removing '%s'", adapter.Phylabel)
+		}
+	}
+
+	for adapterName, adapter := range newAssignableAdaptersMap {
+		_, ok := oldAssignableAdaptersMap[adapterName]
+		if !ok {
 			log.Noticef("AA modify, add %s", ioBundleLogString(adapter))
 			usbCtx.controller.addIOBundle(adapter)
 		} else {
@@ -216,15 +226,6 @@ func (usbCtx *usbmanagerContext) handleAssignableAdaptersModify(_ interface{}, _
 		}
 	}
 
-	for adapterName, adapter := range newAssignableAdaptersMap {
-		_, ok := oldAssignableAdaptersMap[adapterName]
-		if !ok {
-			log.Noticef("AA modify, remove %s", ioBundleLogString(adapter))
-			usbCtx.controller.removeIOBundle(adapter)
-		} else {
-			log.Noticef("AA modify, not removing '%s'", adapter.Phylabel)
-		}
-	}
 }
 
 func (usbCtx *usbmanagerContext) handleAssignableAdaptersDelete(_ interface{}, _ string,
