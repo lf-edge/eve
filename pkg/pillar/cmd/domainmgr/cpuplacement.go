@@ -119,8 +119,8 @@ func (c *cpuPlacement) publish(ctx *domainContext) {
 	c.publishLocked(ctx)
 }
 
-// publishLocked brings the pool report and the plan mirror in line with the
-// placer and the plan.
+// publishLocked brings the host processes' cpuset, the pool report and the plan
+// mirror in line with the placer and the plan.
 func (c *cpuPlacement) publishLocked(ctx *domainContext) {
 	hk, isolatedOnly := c.placer.HousekeepingCPUs()
 	if isolatedOnly {
@@ -128,6 +128,7 @@ func (c *cpuPlacement) publishLocked(ctx *domainContext) {
 			"housekeeping set would be empty; using it anyway. Narrow isolcpus on "+
 			"the kernel command line.", hk)
 	}
+	ctx.hostCpuset.update(lcpusToUint32(hk))
 	status := cpuPoolStatus(c.placer, c.isolationWarnings)
 	if err := ctx.pubCPUPoolStatus.Publish(status.Key(), status); err != nil {
 		log.Errorf("CPU pool report: publish failed: %v", err)
