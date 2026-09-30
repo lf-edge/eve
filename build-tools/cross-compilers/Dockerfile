@@ -30,9 +30,8 @@ FROM alpine:${ALPINE_VERSION} AS builder-base
 RUN apk add --no-cache build-base wget tar xz patch texinfo linux-headers git bash
 
 ARG MUSL_CROSS_MAKE_TAG
-RUN git clone https://github.com/richfelker/musl-cross-make.git /musl-cross-make
+ADD https://github.com/richfelker/musl-cross-make.git#${MUSL_CROSS_MAKE_TAG} /musl-cross-make
 WORKDIR /musl-cross-make
-RUN git checkout "${MUSL_CROSS_MAKE_TAG}"
 
 # Pin GCC/binutils versions and use reliable mirrors (GNU ftpmirror is often down)
 ARG GCC_VER

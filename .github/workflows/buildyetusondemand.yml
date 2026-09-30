@@ -32,6 +32,8 @@ jobs:
       REPO_NAME: ${{ github.event.repository.full_name }}
       IMG_NAME: "lfedge/eve-yetus"
       IMG_TAG: "0.15.1-eve-2"
+      # authenticates the Dockerfile's github.com git source (see --secret)
+      GITHUB_TOKEN: ${{ github.token }}
     strategy:
       fail-fast: false
 
@@ -60,7 +62,7 @@ jobs:
           password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
       - name: Build and push Yetus image
         run: |
-          docker buildx build --platform linux/amd64,linux/arm64 --push --tag ${{ env.IMG_NAME }}:${{ env.IMG_TAG }} tools/yetus
+          docker buildx build --secret id=GIT_AUTH_TOKEN.github.com,env=GITHUB_TOKEN --platform linux/amd64,linux/arm64 --push --tag ${{ env.IMG_NAME }}:${{ env.IMG_TAG }} tools/yetus
       - name: Post package report
         run: |
           echo Disk usage
