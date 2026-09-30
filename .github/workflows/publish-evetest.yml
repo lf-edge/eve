@@ -63,15 +63,13 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           fetch-depth: 0
-      - name: Ensure linuxkit is available
+      # Use the pinned linuxkit, not one on PATH: the SDN build passes it
+      # --secret (below), which older linuxkit releases don't accept.
+      - name: Build the pinned linuxkit
         if: matrix.needs_linuxkit
         run: |
-          if command -v linuxkit >/dev/null 2>&1; then
-            echo "LINUXKIT=$(command -v linuxkit)" >> "$GITHUB_ENV"
-          else
-            make build-tools
-            echo "LINUXKIT=$(pwd)/build-tools/bin/linuxkit" >> "$GITHUB_ENV"
-          fi
+          make linuxkit
+          echo "LINUXKIT=$(pwd)/build-tools/bin/linuxkit" >> "$GITHUB_ENV"
       - name: Login to Docker Hub
         uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2  # v4.0.0
         with:
@@ -79,6 +77,9 @@ jobs:
           password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
       - name: Build and push ${{ matrix.name }} image
         working-directory: ${{ matrix.dir }}
+        env:
+          # authenticates the SDN VM Dockerfile's github.com git source
+          LINUXKIT_SECRET_OPTS: ${{ matrix.needs_linuxkit && '--secret id=GIT_AUTH_TOKEN.github.com,env=GITHUB_TOKEN' || '' }}
         run: |
           make ${{ matrix.target }} DOCKER_TARGET=push \
             DOCKER_PLATFORM=linux/amd64,linux/arm64

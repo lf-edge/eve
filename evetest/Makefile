@@ -20,6 +20,14 @@ EVETEST_EVE_REPO ?= lfedge/eve
 BUILDTOOLS_BIN := $(abspath $(CURDIR)/../build-tools/bin)
 LINUXKIT := $(BUILDTOOLS_BIN)/linuxkit
 
+# Authenticate Dockerfile `ADD <github git url>` fetches, as ../Makefile does.
+# linuxkit only supports --secret when built from the pinned LINUXKIT_GIT_REF,
+# not from LINUXKIT_SRC or as a release (LINUXKIT_GIT_URL=); see ../mk/linuxkit.mk.
+COMMA := ,
+BUILD_SECRET_OPTS := $(if $(GITHUB_TOKEN),--secret id=GIT_AUTH_TOKEN.github.com$(COMMA)env=GITHUB_TOKEN)
+LINUXKIT_PINNED := $(if $(LINUXKIT_SRC),,$(if $(filter undefined,$(origin LINUXKIT_GIT_URL)),y,$(LINUXKIT_GIT_URL)))
+LINUXKIT_SECRET_OPTS := $(if $(LINUXKIT_PINNED),$(BUILD_SECRET_OPTS))
+
 EVETEST_IMAGE := $(EVETEST_ORG)/evetest:$(EVETEST_VERSION)
 EVETEST_API_PORT ?= 50021
 
@@ -278,7 +286,7 @@ _run_protoc:
 		$(PROTO_SRC_DIR)/*.proto
 
 proto: clone-eve-api clean-proto-go
-	docker build \
+	docker build $(BUILD_SECRET_OPTS) \
 		--build-arg PROTOC_VERSION=$(PROTOC_VERSION) \
 		--build-arg PROTOC_GEN_GO_VERSION=$(PROTOC_GEN_GO_VERSION) \
 		--build-arg PROTOC_GEN_GO_GRPC_VERSION=$(PROTOC_GEN_GO_GRPC_VERSION) \
@@ -437,8 +445,11 @@ install-cli:
 	cd ./cli && go build -ldflags "-X main.version=$(EVETEST_VERSION)" -o $(GOBIN)/evetest
 	@echo "Installed evetest CLI to $(GOBIN)/evetest"
 
-$(LINUXKIT):
+# Always go through the root Makefile (a no-op when up to date), so a linuxkit
+# left over from an older pin is rebuilt rather than reused.
+.PHONY: linuxkit
+linuxkit:
 	@$(MAKE) -C $(CURDIR)/.. linuxkit
 
-build-sdn-container: $(LINUXKIT)
-	@$(MAKE) -C sdn LINUXKIT=$(LINUXKIT) build
+build-sdn-container: linuxkit
+	@$(MAKE) -C sdn LINUXKIT=$(LINUXKIT) LINUXKIT_SECRET_OPTS="$(LINUXKIT_SECRET_OPTS)" build
