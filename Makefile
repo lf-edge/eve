@@ -158,7 +158,7 @@ ifeq ($(IMA),y)
     ifneq ($(ZARCH)-$(PLATFORM),amd64-generic)
         $(error IMA currently supports only ZARCH=amd64 PLATFORM=generic)
     endif
-    IMA_CMDLINE=ima_policy=tcb ima_hash=sha256 ima_template=ima-ng ima_appraise=off
+    IMA_CMDLINE=ima_policy=eve_code ima_hash=sha256 ima_template=ima-ng ima_appraise=off
     IMA_KERNEL_PATCH=$(CURDIR)/tools/ima-measurement-only-kernel.patch
     IMA_CONFIG_HASH=$(shell git hash-object $(IMA_KERNEL_PATCH) | cut -c1-12)
     IMA_KERNEL_SOURCE ?= $(CURDIR)/dist/kernel-ima/$(KERNEL_BRANCH)-$(KERNEL_COMMIT)
@@ -208,6 +208,10 @@ ROOTFS_COMPLETE=$(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT)
 ROOTFS_IMG_BASE=$(ROOTFS)
 
 ROOTFS_IMGS=$(ROOTFS_IMG_BASE).img
+
+# Reference hashes are CI/build artifacts, kept outside the installed rootfs.
+IMA_MANIFEST=$(BUILD_DIR)/ima-rootfs-manifest.json
+IMA_BUILD_ARTIFACTS=$(if $(filter y,$(IMA)),$(IMA_MANIFEST))
 
 ROOTFS_GENERIC_IMG_INTERMEDIATE:=$(ROOTFS_IMG_BASE)-$(PLATFORM).img
 
@@ -857,7 +861,7 @@ build-vm: $(BUILD_VM)
 initrd: $(INITRD_IMG)
 config: $(CONFIG_IMG)		; $(QUIET): "$@: Succeeded, CONFIG_IMG=$(CONFIG_IMG)"
 ssh-key: $(SSH_KEY)
-rootfs: $(ROOTFS_IMGS) current
+rootfs: $(ROOTFS_IMGS) $(IMA_BUILD_ARTIFACTS) current
 sbom: $(SBOM)
 live: $(LIVE_IMG) $(BIOS_IMG) current	; $(QUIET): "$@: Succeeded, LIVE_IMG=$(LIVE_IMG)"
 live-%: $(LIVE).%		current ;  $(QUIET): "$@: Succeeded, LIVE=$(LIVE)"
@@ -901,7 +905,7 @@ ifdef KERNEL_IMAGE
 	tar -P -u --transform="flags=r;s|$(KIMAGE)|/boot/kernel|" -f "$@" "$(KIMAGE)"
 endif
 
-$(INSTALLER_TAR): images/out/installer-$(HV)-$(PLATFORM).yml $(ROOTFS_IMGS) $(PERSIST_IMG) $(CONFIG_IMG) | $(INSTALLER)
+$(INSTALLER_TAR): images/out/installer-$(HV)-$(PLATFORM).yml $(ROOTFS_IMGS) $(PERSIST_IMG) $(CONFIG_IMG) $(IMA_BUILD_ARTIFACTS) | $(INSTALLER)
 	$(QUIET): $@: Begin
 	echo "Building installer tarball from $<"
 	./tools/makerootfs.sh tar $(UPDATE_TAR) -y $< -t $@ -d $(INSTALLER) -a $(ZARCH)
@@ -926,6 +930,15 @@ ifeq ($(ROOTFS_FORMAT),squash)
 	        echo "ERROR: size of $@ is greater than $(ROOTFS_MAXSIZE_MB)MB (bigger than allocated partition)" && exit 1 || :
 endif
 	$(QUIET): $@: Succeeded
+
+.PHONY: ima-manifest
+ima-manifest: $(IMA_MANIFEST)
+
+$(IMA_MANIFEST): $(ROOTFS_IMGS) tools/make-ima-manifest.py
+	python3 tools/make-ima-manifest.py --image "$(ROOTFS_IMGS)" --format "$(ROOTFS_FORMAT)" \
+	  --extractor-image "$(shell $(LINUXKIT) pkg show-tag pkg/mkrootfs-$(ROOTFS_FORMAT))" \
+	  --output "$@" --build-id "$(FULL_VERSION)" --arch "$(ZARCH)" \
+	  --platform "$(PLATFORM)" --kernel-tag "$(KERNEL_TAG)"
 
 $(GET_DEPS): tools/get-deps/*.go
 	$(MAKE) -C $(GET_DEPS_DIR)
@@ -982,7 +995,7 @@ publish_sources: $(COLLECTED_SOURCES)
 	$(QUIET): $@: Succeeded
 
 
-$(LIVE).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMGS) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) $(BIOS_IMG) | $(INSTALLER)
+$(LIVE).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMGS) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) $(BIOS_IMG) $(IMA_BUILD_ARTIFACTS) | $(INSTALLER)
 	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(INSTALLER)"
 	./tools/makeflash.sh "mkimage-raw-efi" -C $| $@ $(LIVE_PART_SPEC)
 	$(QUIET): $@: Succeeded
@@ -1063,7 +1076,7 @@ pkg/%: eve-% FORCE
 $(RUNME) $(BUILD_YML):
 	cp pkg/eve/$(@F) $@
 
-EVE_ARTIFACTS=$(BIOS_IMG) $(EFI_PART) $(CONFIG_IMG) $(PERSIST_IMG) $(INITRD_IMG) $(ROOTFS_IMGS) $(INSTALLER_IMG) $(SBOM) $(BSP_IMX_PART) fullname-rootfs $(BOOT_PART)
+EVE_ARTIFACTS=$(BIOS_IMG) $(EFI_PART) $(CONFIG_IMG) $(PERSIST_IMG) $(INITRD_IMG) $(ROOTFS_IMGS) $(INSTALLER_IMG) $(SBOM) $(BSP_IMX_PART) fullname-rootfs $(BOOT_PART) $(IMA_BUILD_ARTIFACTS)
 eve: $(INSTALLER) $(EVE_ARTIFACTS) current $(RUNME) $(BUILD_YML) | $(BUILD_DIR)
 	$(QUIET): "$@: Begin: EVE_REL=$(EVE_REL), HV=$(HV), LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
 	cp images/out/*.yml $|
@@ -1504,6 +1517,7 @@ help:
 	@echo "                                    heuristics, which have known false positives"
 	@echo "   kernel-tag                       show current KERNEL_TAG"
 	@echo "   ima-kernel                       build the measurement-only kernel (AMD64 generic)"
+	@echo "   ima-manifest                     precompute final rootfs file hashes for IMA"
 	@echo
 	@echo "Eden testing targets:"
 	@echo "   eden                             run Eden tests (clone, build, configure, start, onboard, test)"
