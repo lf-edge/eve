@@ -4,6 +4,7 @@
 package konvert_test
 
 import (
+	"fmt"
 	"regexp"
 	"sort"
 	"strconv"
@@ -32,7 +33,10 @@ const (
 // new measurements; only the boot after that can unlock locally. The conversion
 // has to start from the settled state, because a local unlock on the last
 // pre-conversion boot is exactly what the seal assertion afterwards looks for.
-func settleVaultLocal(t Gomega, device *evetest.EdgeDevice) {
+//
+// It returns where the settle left the device, which the seal assertion uses to
+// tell the post-resize boot's records from the settle's own.
+func settleVaultLocal(t Gomega, device *evetest.EdgeDevice) settleMark {
 	log := evetest.Logger()
 	const maxReboots = 4
 	for attempt := 1; attempt <= maxReboots; attempt++ {
@@ -43,14 +47,15 @@ func settleVaultLocal(t Gomega, device *evetest.EdgeDevice) {
 		}, 12*time.Minute, 10*time.Second).ShouldNot(BeEmpty(),
 			"the vault never reported an unlock method")
 
+		at := logDeviceClock(device, fmt.Sprintf("settle attempt %d unlock=%s", attempt, decided))
 		switch decided {
 		case unlockLocal:
 			log.Infof("vault settled on a local TPM unlock")
-			return
+			return settleMark{at: at, restartCounter: device.GetDeviceInfo().GetRestartCounter()}
 		case unlockNoTPM:
 			t.Expect(decided).NotTo(Equal(unlockNoTPM),
 				"the vault reports no TPM; this test needs one")
-			return
+			return settleMark{}
 		default:
 			log.Infof("vault unlocked from the controller key (attempt %d/%d); rebooting to re-seal",
 				attempt, maxReboots)
@@ -59,6 +64,14 @@ func settleVaultLocal(t Gomega, device *evetest.EdgeDevice) {
 	}
 	t.Expect(false).To(BeTrue(),
 		"the vault did not settle on a local unlock within %d reboots", maxReboots)
+	return settleMark{}
+}
+
+// settleMark is the device's clock and restart counter when its vault settled
+// on a local unlock; zero when either could not be read.
+type settleMark struct {
+	at             time.Time
+	restartCounter uint32
 }
 
 // waitVaultUnlocked blocks until vaultmgr reports how it opened the vault.
@@ -120,6 +133,7 @@ const newlogScanTimeout = 3 * time.Minute
 type vaultUnlock struct {
 	version string
 	method  string
+	at      time.Time
 	// pcrs are the PCRs that failed to match, for a controller-key unlock or a
 	// failed unseal; empty for a local one.
 	pcrs []string
@@ -151,10 +165,19 @@ type vaultUnlock struct {
 // carries the conversion, on the repartitioned disk, and its records are
 // written after the resize, so its unseal is asserted from the log. It must be
 // local: a controller-key fallback there whose line names no PCR would pass
-// the PCR5 check above while the seal was in fact lost. When no record from
-// kvmVersion survived at all, that is logged rather than failed, because the
-// shrink route can lose them together with the settle's.
-func assertSealSurvivedRepartition(t Gomega, device *evetest.EdgeDevice, kvmVersion string) {
+// the PCR5 check above while the seal was in fact lost. Only records written
+// after settled are candidates, so a settle boot's controller-key fallback is
+// never graded as the post-resize boot. When no record from kvmVersion survived
+// at all, that is logged rather than failed, because the shrink route can lose
+// them together with the settle's. When the settle's records survived but
+// nothing after them did, newlog lost the post-resize boot, and the failure
+// says so instead of judging the seal.
+//
+// The boot markers newlog holds after settled are also counted against the
+// restarts the device itself counted since, and any shortfall is logged with an
+// inventory of /persist/newlog.
+func assertSealSurvivedRepartition(t Gomega, device *evetest.EdgeDevice,
+	kvmVersion string, settled settleMark) {
 	log := evetest.Logger()
 	var raw string
 	t.Eventually(func(g Gomega) {
@@ -164,9 +187,41 @@ func assertSealSurvivedRepartition(t Gomega, device *evetest.EdgeDevice, kvmVers
 		g.Expect(raw).NotTo(BeEmpty(), "found no unlock records in /persist/newlog")
 	}, 5*time.Minute, 15*time.Second).Should(Succeed())
 
-	unlocks := parseVaultUnlocks(raw)
+	unlocks, boots := parseVaultUnlocks(raw)
+	for _, b := range boots {
+		log.Infof("boot: version=%s at=%s", b.version, b.at.UTC().Format(time.RFC3339))
+	}
 	for _, u := range unlocks {
-		log.Infof("unlock: version=%s method=%s pcrs=%v", u.version, u.method, u.pcrs)
+		log.Infof("unlock: version=%s method=%s at=%s pcrs=%v",
+			u.version, u.method, u.at.UTC().Format(time.RFC3339), u.pcrs)
+	}
+	logDeviceClock(device, "seal assertion")
+	inventoryDumped := false
+	dumpInventoryOnce := func() {
+		if !inventoryDumped {
+			dumpNewlogInventory(device)
+			inventoryDumped = true
+		}
+	}
+	if !settled.at.IsZero() {
+		after := 0
+		for _, b := range boots {
+			if b.at.After(settled.at) {
+				after++
+			}
+		}
+		rc := device.GetDeviceInfo().GetRestartCounter()
+		log.Infof("newlog holds %d boot marker(s) after the vault settled at %s; "+
+			"the device's restart counter went %d -> %d", after,
+			settled.at.UTC().Format(time.RFC3339), settled.restartCounter, rc)
+		if rc >= settled.restartCounter && after < int(rc-settled.restartCounter) {
+			log.Warnf("newlog is missing boots: %d restart(s) since the settle, %d boot marker(s)",
+				rc-settled.restartCounter, after)
+			dumpInventoryOnce()
+		}
+	}
+	if len(unlocks) == 0 {
+		dumpInventoryOnce()
 	}
 	t.Expect(unlocks).NotTo(BeEmpty(),
 		"no vault unlock was recorded in /persist/newlog, so the seal cannot be judged")
@@ -184,16 +239,32 @@ func assertSealSurvivedRepartition(t Gomega, device *evetest.EdgeDevice, kvmVers
 		"PCR5 appears in a re-seal or failed unseal, so the repartition broke the TPM seal: %v",
 		pcr5Reseals)
 
-	var lastKVM *vaultUnlock
+	var lastKVM, lastSettle *vaultUnlock
 	for i := range unlocks {
-		if unlocks[i].version == kvmVersion {
-			lastKVM = &unlocks[i]
+		if unlocks[i].version != kvmVersion {
+			continue
 		}
+		if settled.at.IsZero() || unlocks[i].at.After(settled.at) {
+			lastKVM = &unlocks[i]
+		} else {
+			lastSettle = &unlocks[i]
+		}
+	}
+	if lastKVM == nil && lastSettle != nil {
+		dumpInventoryOnce()
+		t.Expect(lastKVM).NotTo(BeNil(),
+			"newlog holds %s unlock records up to the settle at %s (last: %+v) but none "+
+				"after it, so the post-resize boot's records are missing and its unseal "+
+				"cannot be judged: newlog is incomplete, not a seal verdict",
+			kvmVersion, settled.at.UTC().Format(time.RFC3339), *lastSettle)
 	}
 	if lastKVM == nil {
 		log.Warnf("no unlock record from %s survived the conversion, so the "+
 			"post-resize boot's unseal cannot be judged", kvmVersion)
 		return
+	}
+	if lastKVM.method != unlockLocal {
+		dumpInventoryOnce()
 	}
 	t.Expect(lastKVM.method).To(Equal(unlockLocal),
 		"the last %s boot, the one after the resize, did not unseal locally: %+v",
@@ -212,13 +283,14 @@ var (
 )
 
 // parseVaultUnlocks turns the scanned log lines into unlock events, each
-// attributed to the version marker that preceded it.
+// attributed to the version marker that preceded it, and returns the version
+// markers themselves as boots: pillar.out logs one per boot.
 //
 // The version marker has to come from pillar.out: baseosmgr also logs a
 // "to EVE version X" line naming the version being installed, which is a
 // different thing entirely and would attribute an unlock to the image the
 // device was moving to rather than the one it was running.
-func parseVaultUnlocks(raw string) []vaultUnlock {
+func parseVaultUnlocks(raw string) (unlocks, boots []vaultUnlock) {
 	type event struct {
 		seconds, nanos int64
 		kind           string
@@ -254,16 +326,17 @@ func parseVaultUnlocks(raw string) []vaultUnlock {
 		return events[i].nanos < events[j].nanos
 	})
 
-	var unlocks []vaultUnlock
 	current := ""
 	for _, e := range events {
+		at := time.Unix(e.seconds, e.nanos)
 		if e.kind == "version" {
 			current = e.value
+			boots = append(boots, vaultUnlock{version: current, at: at})
 			continue
 		}
-		unlocks = append(unlocks, vaultUnlock{version: current, method: e.value, pcrs: e.pcrs})
+		unlocks = append(unlocks, vaultUnlock{version: current, method: e.value, at: at, pcrs: e.pcrs})
 	}
-	return unlocks
+	return unlocks, boots
 }
 
 // mismatchedPCRs reads the PCR list off an unlock line, or nil when it has none.

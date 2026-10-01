@@ -201,7 +201,7 @@ func TestKvmToKRepartitionTopology(test *testing.T) {
 
 	// Phase 4.
 	log.Infof("settling the vault on a local TPM unlock")
-	settleVaultLocal(t, device)
+	settled := settleVaultLocal(t, device)
 	evetest.Checkpoint("vault-settled")
 
 	// Phase 5.
@@ -262,7 +262,7 @@ func TestKvmToKRepartitionTopology(test *testing.T) {
 	captureOnConsoleAlarm(device)
 
 	log.Infof("asserting the repartition preserved the TPM seal")
-	assertSealSurvivedRepartition(t, device, kvmHopVersion)
+	assertSealSurvivedRepartition(t, device, kvmHopVersion, settled)
 	evetest.Checkpoint("seal-preserved")
 
 	// Phase 8.
