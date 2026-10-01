@@ -55,8 +55,13 @@ type EdgeClusterConfig struct {
 // It creates an EdgeDeviceConfig for each node, generates a shared cluster UUID
 // and join token, and sets the cluster configuration on every device.
 // The join token is encrypted individually per device.
-func NewEdgeClusterConfig(
-	clusterType eveconfig.ClusterType, nodes ...ClusterNode) *EdgeClusterConfig {
+// enableNativeK8SOrchestration sets EdgeNodeCluster.EnableNativeK8SOrchestration
+// on every node; for ClusterTypeK3sBase it is a no-op (native orchestration is
+// always on for that type), and for ClusterTypeReplicatedStorage it is the
+// controller opt-in pkg/pillar/types.EdgeNodeClusterConfig.NativeK8sOrchestrationEnabled
+// checks.
+func NewEdgeClusterConfig(clusterType eveconfig.ClusterType,
+	enableNativeK8SOrchestration bool, nodes ...ClusterNode) *EdgeClusterConfig {
 	th := getTestHarness()
 	if len(nodes) == 0 {
 		th.t.Fatalf("Edge Cluster requires at least one node")
@@ -141,12 +146,13 @@ func NewEdgeClusterConfig(
 		}
 
 		dc.Cluster = &eveconfig.EdgeNodeCluster{
-			ClusterId:             cc.ClusterID.String(),
-			ClusterInterface:      node.ClusterInterface,
-			ClusterType:           clusterType,
-			JoinServerIp:          joinServerIP,
-			EncryptedClusterToken: cipherData,
-			TieBreakerNodeId:      tieBreakerNodeID,
+			ClusterId:                    cc.ClusterID.String(),
+			ClusterInterface:             node.ClusterInterface,
+			ClusterType:                  clusterType,
+			JoinServerIp:                 joinServerIP,
+			EncryptedClusterToken:        cipherData,
+			TieBreakerNodeId:             tieBreakerNodeID,
+			EnableNativeK8SOrchestration: enableNativeK8SOrchestration,
 		}
 		if node.ClusterIP != nil {
 			dc.Cluster.ClusterIpPrefix = node.ClusterIP.String()

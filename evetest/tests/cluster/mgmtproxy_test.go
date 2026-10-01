@@ -309,7 +309,7 @@ func TestMgmtProxy(test *testing.T) {
 			}
 		}
 		clusterConfig = evetest.NewEdgeClusterConfig(
-			eveconfig.ClusterType_CLUSTER_TYPE_REPLICATED_STORAGE, nodes...)
+			eveconfig.ClusterType_CLUSTER_TYPE_REPLICATED_STORAGE, false, nodes...)
 
 		mgmtNet := clusterConfig.AddNetwork(
 			evetest.DHCPNetworkConfig{NetworkType: evecommon.NetworkType_V4Only})

@@ -36,6 +36,12 @@ func TestNodeClusterSuite(test *testing.T) {
 			Test: TestSingleNodeCluster,
 		},
 		evetest.TestCase{
+			// Device requirements and network model match TestSingleNodeCluster's
+			// exactly, so the framework reuses its device instead of creating a
+			// new one.
+			Test: TestNativeKubeAppNetworking,
+		},
+		evetest.TestCase{
 			Test: TestAppInstancePurge,
 		},
 		evetest.TestCase{

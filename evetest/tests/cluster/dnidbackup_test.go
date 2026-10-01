@@ -353,6 +353,7 @@ func TestDNIDandBackupDNID(test *testing.T) {
 	}
 	clusterConfig := evetest.NewEdgeClusterConfig(
 		eveconfig.ClusterType_CLUSTER_TYPE_REPLICATED_STORAGE,
+		false,
 		nodes[:]...,
 	)
 
