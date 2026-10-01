@@ -479,6 +479,7 @@ func newThreeNodeClusterConfig(devName [3]string) *evetest.EdgeClusterConfig {
 	}
 	clusterConfig := evetest.NewEdgeClusterConfig(
 		eveconfig.ClusterType_CLUSTER_TYPE_REPLICATED_STORAGE,
+		false,
 		nodes[:]...,
 	)
 
