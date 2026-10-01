@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/onsi/gomega"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -89,6 +90,20 @@ func (d *EdgeDevice) ListUSBDevices() (USBDeviceList, error) {
 		return nil, fmt.Errorf("ListUSBDevices: SSH command failed: %w", err)
 	}
 	return parseUSBDeviceList(stdout)
+}
+
+// WaitForUSBDevice polls ListUSBDevices until a device with the serial number
+// is enumerated and returns it, failing the test through t if timeout passes
+// first. A listing error counts as not enumerated yet and is retried.
+func (d *EdgeDevice) WaitForUSBDevice(t gomega.Gomega, serial string,
+	timeout, polling time.Duration) *USBDeviceInfo {
+	var found *USBDeviceInfo
+	t.Eventually(d.ListUSBDevices, timeout, polling).Should(gomega.Satisfy(
+		func(list USBDeviceList) bool {
+			found = list.FindBySerial(serial)
+			return found != nil
+		}), "EVE enumerates a USB device with serial %q", serial)
+	return found
 }
 
 // ListUSBDevicesInsideApp is ListUSBDevices for the guest of an application:
