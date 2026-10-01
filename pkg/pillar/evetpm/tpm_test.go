@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"reflect"
 	"testing"
@@ -717,5 +718,59 @@ func TestSealModernUnsealLegacy(t *testing.T) {
 	}
 	if !reflect.DeepEqual(dataToSeal, unsealedData) {
 		t.Fatalf("Modern seal / legacy unseal operation failed, want %v, but got %v", dataToSeal, unsealedData)
+	}
+}
+
+// TestNVIndexWritten covers the states a disk key NV index can be in: only an
+// undefined index, or one defined and never written, holds no key.
+func TestNVIndexWritten(t *testing.T) {
+	const handle tpmutil.Handle = 0x1A00000
+	withTPM := func(f func(rw io.ReadWriter) error) {
+		rw, err := tpm2.OpenTPM(TpmDevicePath)
+		if err != nil {
+			t.Fatalf("OpenTPM: %v", err)
+		}
+		defer rw.Close()
+		if err := f(rw); err != nil {
+			t.Fatal(err)
+		}
+	}
+	check := func(want bool) {
+		got, err := nvIndexWritten(handle)
+		if err != nil || got != want {
+			t.Fatalf("nvIndexWritten = %t, %v; want %t, nil", got, err, want)
+		}
+	}
+	undefine := func(rw io.ReadWriter) error {
+		tpm2.NVUndefineSpace(rw, EmptyPassword, tpm2.HandleOwner, handle)
+		return nil
+	}
+	withTPM(undefine)
+	defer withTPM(undefine)
+
+	check(false)
+	withTPM(func(rw io.ReadWriter) error {
+		return tpm2.NVDefineSpace(rw, tpm2.HandleOwner, handle, EmptyPassword,
+			EmptyPassword, nil, tpm2.AttrOwnerWrite|tpm2.AttrOwnerRead, 8)
+	})
+	check(false)
+	withTPM(func(rw io.ReadWriter) error {
+		return tpm2.NVWrite(rw, tpm2.HandleOwner, handle, EmptyPassword,
+			make([]byte, 8), 0)
+	})
+	check(true)
+}
+
+// TestDiskKeyPresentFailsOnTPMError covers that a TPM which cannot be reached
+// yields an error rather than an absent key, which FetchSealedVaultKey would
+// answer by sealing a fresh key over the existing one.
+func TestDiskKeyPresentFailsOnTPMError(t *testing.T) {
+	saved := TpmDevicePath
+	TpmDevicePath = "/nonexistent/tpm"
+	defer func() { TpmDevicePath = saved }()
+
+	present, err := diskKeyPresent(logger, TpmSealedDiskPrivHdl, "sealed")
+	if err == nil || present {
+		t.Fatalf("diskKeyPresent = %t, %v; want an error", present, err)
 	}
 }
