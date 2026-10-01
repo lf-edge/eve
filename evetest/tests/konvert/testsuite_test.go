@@ -20,6 +20,8 @@
 //     the device, both routes to the space
 //   - repartition_volmig_test.go   -- the same conversion with an app volume
 //     carried across it
+//   - repartition_topology_test.go -- the grow route on two-disk and ZFS
+//     layouts, with or without an app volume carried across it
 //   - repartition_refused_test.go  -- the repartition declined, both reasons
 //   - repartition_geometry_test.go -- the resulting partition layout, on its own
 //   - appvolume_test.go   -- what an interrupted shrink does to the data in a
@@ -110,6 +112,12 @@ const (
 	// how much the shrink has to relocate, or whether EVE-K's CSI path can
 	// provision it at all.
 	dataVolMiBParamKey = "DATAVOL_MB"
+	// diskTopologyParamKey selects the disk layout a grow-route conversion
+	// runs on.
+	diskTopologyParamKey = "DISK_TOPOLOGY"
+	// withAppVolumeParamKey selects whether an app data volume is carried
+	// across the conversion.
+	withAppVolumeParamKey = "WITH_APP_VOLUME"
 	// rebootAfterConversionParamKey selects whether the converted device is
 	// rebooted and its gates re-run.
 	rebootAfterConversionParamKey = "REBOOT_AFTER_CONVERSION"
@@ -228,6 +236,35 @@ func TestKonvertSuite(test *testing.T) {
 					Name: "ZFSPersist",
 					Parameters: []evetest.TestParameterValue{
 						{Key: refuseReasonParamKey, Value: refuseZFS},
+					},
+				},
+			},
+		},
+		evetest.TestCase{
+			Test: TestKvmToKRepartitionTopology,
+			Variants: []evetest.TestVariant{
+				{
+					Name: "TwoDiskExt4",
+					Parameters: []evetest.TestParameterValue{
+						{Key: diskTopologyParamKey, Value: topologyTwoDiskExt4},
+					},
+				},
+				{
+					Name: "TwoDiskZFS",
+					Parameters: []evetest.TestParameterValue{
+						{Key: diskTopologyParamKey, Value: topologyTwoDiskZFS},
+					},
+				},
+				{
+					Name: "TwoDiskZFSWhole",
+					Parameters: []evetest.TestParameterValue{
+						{Key: diskTopologyParamKey, Value: topologyTwoDiskZFSWhole},
+					},
+				},
+				{
+					Name: "ZFSTail",
+					Parameters: []evetest.TestParameterValue{
+						{Key: diskTopologyParamKey, Value: topologyZFSTail},
 					},
 				},
 			},
