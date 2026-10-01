@@ -20,7 +20,7 @@ import (
 //     with TPM-sealed state encryption, and the guest can consume the TPM.
 func TestSecuritySuite(test *testing.T) {
 	evetest.Init(test)
-	defer func() { _ = evetest.Close() }()
+	defer evetest.Close()
 
 	evetest.DefineTestParameters(
 		evetest.HypervisorParameter(),

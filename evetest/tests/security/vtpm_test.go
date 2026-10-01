@@ -109,7 +109,7 @@ fi
 func TestAppVTPM(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
-	defer func() { _ = evetest.Close() }()
+	defer evetest.Close()
 
 	evetest.DefineTestParameters(evetest.HypervisorParameter())
 	hypervisor := evetest.GetHypervisorParameterValue()
