@@ -140,7 +140,7 @@ func TestKvmToKRepartitionNoVolmig(test *testing.T) {
 	// Also the pre-conversion half of the seal check: this establishes live that
 	// the last boot before the conversion unsealed from the device's own TPM.
 	log.Infof("settling the vault on a local TPM unlock")
-	settleVaultLocal(t, device)
+	settled := settleVaultLocal(t, device)
 	evetest.Checkpoint("vault-settled")
 
 	// Phase 4. The boundary is a function of the geometry alone, so reading it
@@ -201,7 +201,7 @@ func TestKvmToKRepartitionNoVolmig(test *testing.T) {
 	captureOnConsoleAlarm(device)
 
 	log.Infof("asserting the repartition preserved the TPM seal")
-	assertSealSurvivedRepartition(t, device, kvmHopVersion)
+	assertSealSurvivedRepartition(t, device, kvmHopVersion, settled)
 	evetest.Checkpoint("seal-preserved")
 
 	// Phase 8.

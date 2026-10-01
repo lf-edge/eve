@@ -6,6 +6,7 @@ package konvert_test
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -390,4 +391,53 @@ func logConversionStates(device *evetest.EdgeDevice) (stop func()) {
 		unsubscribe()
 		<-done
 	}
+}
+
+// dumpNewlogInventory records what /persist/newlog holds, for a failure that
+// rests on records being absent from it. It separates newlogd writing nothing
+// from records written and then lost, and both from a scan that missed them:
+// the per-directory counts and newest names (dev.log.<epoch-ms>.gz) date the
+// last chunk each queue received, and the total is what the scan read.
+func dumpNewlogInventory(device *evetest.EdgeDevice) {
+	logDeviceClock(device, "newlog inventory")
+	runProbes(device, "newlog inventory", []probe{
+		{"chunks per directory", `eve exec pillar sh -c "for d in collect keepSentQueue devUpload appUpload failedUpload panicStacks; do echo \$d n=\$(ls /persist/newlog/\$d 2>/dev/null | wc -l) newest: \$(ls /persist/newlog/\$d 2>/dev/null | sort | tail -3 | xargs); done" || echo none`},
+		{"chunks the scan reads", `eve exec pillar sh -c "find /persist/newlog -name \"dev.log.*\" | wc -l" || echo none`},
+		{"collect", "eve exec pillar ls -la /persist/newlog/collect 2>&1 || echo none"},
+		{"newlog space", "eve exec pillar sh -c \"df -k /persist; du -sk /persist/newlog\" 2>&1 || echo none"},
+		{"newlogd process", "ps -o pid,etime,args 2>/dev/null | grep '[n]ewlogd' || ps | grep '[n]ewlogd' || echo NOT RUNNING"},
+		{"reboot-reason.log", "eve exec pillar tail -20 /persist/log/reboot-reason.log 2>&1 || echo none"},
+	})
+}
+
+// logDeviceClock logs the device's clock against the host's and the boot time
+// the device last reported, and returns the device's time (zero when it cannot
+// be read). A guest frozen across a host suspend resumes with a stale clock,
+// which would misplace every record it then writes; the skew shows whether that
+// happened.
+func logDeviceClock(device *evetest.EdgeDevice, label string) time.Time {
+	log := evetest.Logger()
+	out, err := runEVE(device, "date +%s")
+	host := time.Now()
+	var boot string
+	if ts := device.GetDeviceInfo().GetBootTime(); ts != nil {
+		boot = ts.AsTime().UTC().Format(time.RFC3339)
+	}
+	secs, perr := strconv.ParseInt(strings.TrimSpace(lastLine(out)), 10, 64)
+	if err != nil || perr != nil {
+		log.Warnf("[CLOCK] %s: device clock unreadable (out=%q err=%v), host=%s boot=%s",
+			label, out, err, host.UTC().Format(time.RFC3339), boot)
+		return time.Time{}
+	}
+	dev := time.Unix(secs, 0)
+	log.Infof("[CLOCK] %s: device=%s host=%s skew=%s boot=%s restartCounter=%d",
+		label, dev.UTC().Format(time.RFC3339), host.UTC().Format(time.RFC3339),
+		dev.Sub(host).Round(time.Second), boot, device.GetDeviceInfo().GetRestartCounter())
+	return dev
+}
+
+// lastLine returns the last non-empty line of out.
+func lastLine(out string) string {
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	return lines[len(lines)-1]
 }

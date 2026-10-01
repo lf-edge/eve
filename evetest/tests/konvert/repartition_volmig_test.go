@@ -110,7 +110,7 @@ func TestKvmToKRepartitionVolmig(test *testing.T) {
 
 	// Phase 3.
 	log.Infof("settling the vault on a local TPM unlock")
-	settleVaultLocal(t, device)
+	settled := settleVaultLocal(t, device)
 	evetest.Checkpoint("vault-settled")
 
 	// Phase 4. There is no fill here, so the staging tops /persist off itself,
@@ -166,7 +166,7 @@ func TestKvmToKRepartitionVolmig(test *testing.T) {
 	captureOnConsoleAlarm(device)
 
 	log.Infof("asserting the repartition preserved the TPM seal")
-	assertSealSurvivedRepartition(t, device, kvmHopVersion)
+	assertSealSurvivedRepartition(t, device, kvmHopVersion, settled)
 	evetest.Checkpoint("geometry-converted")
 
 	// Phase 7.
