@@ -713,6 +713,7 @@ type LocalNetworkInstanceConfig struct {
 	EnableFlowlog            bool
 	MTU                      uint16
 	ForwardLLDP              bool
+	ClusterWide              bool
 }
 
 func (config LocalNetworkInstanceConfig) toProto(th *TestHarness,
@@ -820,6 +821,7 @@ func (config LocalNetworkInstanceConfig) toProto(th *TestHarness,
 		Mtu:                      uint32(config.MTU),
 		DisableFlowlog:           !config.EnableFlowlog,
 		ForwardLldp:              config.ForwardLLDP,
+		ClusterWide:              config.ClusterWide,
 	}
 }
 
@@ -832,6 +834,7 @@ type SwitchNetworkInstanceConfig struct {
 	MTU             uint16                // used only for airgap switch NI
 	ForwardLLDP     bool
 	VlanAccessPorts []pillartypes.VlanAccessPort // VLAN access port assignments; empty = no VLAN filtering
+	ClusterWide     bool
 }
 
 func (config SwitchNetworkInstanceConfig) toProto(th *TestHarness,
@@ -866,6 +869,7 @@ func (config SwitchNetworkInstanceConfig) toProto(th *TestHarness,
 		DisableFlowlog:  !config.EnableFlowlog,
 		ForwardLldp:     config.ForwardLLDP,
 		VlanAccessPorts: vlanAccessPorts,
+		ClusterWide:     config.ClusterWide,
 	}
 }
 
