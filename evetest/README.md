@@ -337,6 +337,7 @@ device.SyncDisks() // flush filesystem caches, e.g. before PowerOff
 // declare RequireCapabilities{CAPABILITY_QMP} (qemu and proxmox providers).
 device.AttachUSBStorage("flash1", 16<<20) // hot-plug a blank USB flash drive, serial "flash1"
 usbDevices, err := device.ListUSBDevices() // what EVE's kernel enumerates under /sys/bus/usb
+drive := device.WaitForUSBDevice(t, "flash1", time.Minute, 2*time.Second) // poll until enumerated, fail the test on timeout
 appUSBDevices, err := device.ListUSBDevicesInsideApp(appUUID, appAuth) // same, inside an app
 device.DetachUSBStorage("flash1")
 ret := device.ExecuteQMP("query-status", nil) // any other QMP command; raw JSON "return"

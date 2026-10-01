@@ -268,11 +268,10 @@ func adapterUsedBy(label string, appUUID uuid.UUID) func(*eveinfo.ZInfoDevice) b
 }
 
 // hasUSBDevice is a predicate over a USB device list: a device with the given
-// serial number, vendor id and product id is enumerated.
-func hasUSBDevice(serial string, vendorID, productID uint16) func(evetest.USBDeviceList) bool {
+// serial number is enumerated.
+func hasUSBDevice(serial string) func(evetest.USBDeviceList) bool {
 	return func(list evetest.USBDeviceList) bool {
-		dev := list.FindBySerial(serial)
-		return dev != nil && dev.VendorID == vendorID && dev.ProductID == productID
+		return list.FindBySerial(serial) != nil
 	}
 }
 

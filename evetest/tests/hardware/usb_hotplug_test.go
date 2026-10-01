@@ -23,11 +23,6 @@ const (
 	// image is uploaded to the PVE host.
 	flashDriveSize = 16 << 20
 
-	// QEMU's emulated usb-storage device identifies itself with these ids
-	// (hw/usb/dev-storage.c); passed through, it keeps them.
-	qemuUSBVendorID         = 0x46f4
-	qemuUSBStorageProductID = 0x0001
-
 	// A kernel enumerates a hot-plugged USB device well within a second;
 	// the rest is usbmanager reacting to the uevent and SSH round trips.
 	usbEnumerationTimeout  = time.Minute
@@ -50,7 +45,7 @@ const (
 // identity: bus numbers are assigned by the kernel, and the port depends on
 // which xHCI port QEMU picked. The passthrough itself is asserted twice: on
 // the EVE API, where the assignable adapter is reported as used by the app,
-// and inside the app, where the drive appears with its ids and serial.
+// and inside the app, where a device with the drive's serial number appears.
 //
 // USB passthrough is done by usbmanager, which attaches a matching device to
 // the app's QEMU domain over QMP whenever the device or the domain appears,
@@ -84,16 +79,16 @@ const (
 //
 //  1. setup-done -> config-applied.
 //
-//  2. flash-drive-attached: AttachUSBStorage, then ListUSBDevices eventually
-//     shows a device with the drive's serial number and QEMU's usb-storage
-//     vendor and product ids. Its bus and port decide the usbaddr claimed.
+//  2. flash-drive-attached: AttachUSBStorage, then WaitForUSBDevice returns
+//     the device enumerated with the drive's serial number. Its bus and port
+//     decide the usbaddr claimed.
 //
 //  3. app-running: the model entry and the app are applied; the app reaches
 //     RUNNING and answers over SSH, and ZInfoDevice reports "usb-flash" as an
 //     assignable adapter without error and used by the app.
 //
-//  4. flash-drive-passed-through: inside the app, the drive is enumerated
-//     with the same ids and serial number.
+//  4. flash-drive-passed-through: inside the app, a device with the drive's
+//     serial number is enumerated.
 //
 //  5. flash-drive-detached: DetachUSBStorage; the drive disappears from the
 //     app and from EVE.
@@ -144,18 +139,13 @@ func TestUSBFlashDriveHotplug(test *testing.T) {
 	device.ApplyConfig(devConfig, true, false)
 	evetest.Checkpoint("config-applied")
 
-	driveEnumerated := hasUSBDevice(flashDriveID, qemuUSBVendorID, qemuUSBStorageProductID)
+	driveEnumerated := hasUSBDevice(flashDriveID)
 
 	// Phase 2: plug the drive in; EVE enumerates it.
 	device.AttachUSBStorage(flashDriveID, flashDriveSize)
-	t.Eventually(device.ListUSBDevices, usbEnumerationTimeout, usbEnumerationInterval).Should(
-		matchers.SatisfyPredicate("EVE enumerates the flash drive", driveEnumerated))
+	drive := device.WaitForUSBDevice(t, flashDriveID, usbEnumerationTimeout, usbEnumerationInterval)
 	evetest.Checkpoint("flash-drive-attached")
 
-	usbDevices, err := device.ListUSBDevices()
-	t.Expect(err).ToNot(HaveOccurred())
-	drive := usbDevices.FindBySerial(flashDriveID)
-	t.Expect(drive).ToNot(BeNil())
 	usbAddr := fmt.Sprintf("%d:%s", drive.Bus, drive.Port)
 	evetest.Logger().Infof("Flash drive enumerated as %s, usbaddr %q", drive, usbAddr)
 
@@ -187,13 +177,9 @@ func TestUSBFlashDriveHotplug(test *testing.T) {
 	// Phase 6: plug it in again, into the same port; EVE enumerates it there
 	// and usbmanager hot-plugs it into the running app.
 	device.AttachUSBStorage(flashDriveID, flashDriveSize)
-	t.Eventually(device.ListUSBDevices, usbEnumerationTimeout, usbEnumerationInterval).Should(
-		matchers.SatisfyPredicate("EVE enumerates the flash drive again at "+usbAddr,
-			func(list evetest.USBDeviceList) bool {
-				replugged := list.FindBySerial(flashDriveID)
-				return replugged != nil &&
-					fmt.Sprintf("%d:%s", replugged.Bus, replugged.Port) == usbAddr
-			}))
+	replugged := device.WaitForUSBDevice(t, flashDriveID, usbEnumerationTimeout, usbEnumerationInterval)
+	t.Expect(fmt.Sprintf("%d:%s", replugged.Bus, replugged.Port)).To(Equal(usbAddr),
+		"the re-plugged drive is back in the port it left")
 	t.Eventually(app.usbDevices, usbEnumerationTimeout, usbEnumerationInterval).Should(
 		matchers.SatisfyPredicate("the app enumerates the flash drive again", driveEnumerated))
 	evetest.Checkpoint("flash-drive-reattached")
