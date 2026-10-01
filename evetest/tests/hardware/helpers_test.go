@@ -44,11 +44,13 @@ const (
 	niGateway     = "10.11.12.1"
 	appSSHFwdPort = 2222
 
-	// usbFlashLabel names the flash drive in the device model. It serves as
-	// logical label, physical label and assignment group alike: domainmgr
-	// resolves an app adapter name by group, then physical, then logical
-	// label, and usbmanager keys on the physical label.
-	usbFlashLabel = "usb-flash"
+	// usbFlashLabel names the flash drive in the device model when claimed by
+	// its exact bus and port, usbFlashWildcardLabel when claimed by a bus-wide
+	// wildcard. A label serves as logical label, physical label and assignment
+	// group alike: domainmgr resolves an app adapter name by group, then
+	// physical, then logical label, and usbmanager keys on the physical label.
+	usbFlashLabel         = "usb-flash"
+	usbFlashWildcardLabel = "usb-flash-wildcard"
 
 	// devInfoTimeout covers ZInfoDevice reflecting a change to the assignable
 	// adapters after a config apply.
@@ -157,9 +159,9 @@ func usbFlashPhysicalIO(name, usbAddr string) evetest.PhysicalIOConfig {
 	}
 }
 
-// usbFlashApp is the application the drive is assigned to: the ubuntu test
-// container as an HVM domain, reachable over SSH through the local NI.
-func usbFlashApp(ioAdapterName string, niUUID uuid.UUID) evetest.ApplicationInstanceConfig {
+// usbFlashAppConfig is the application the drive is assigned to: the ubuntu
+// test container as an HVM domain, reachable over SSH through the local NI.
+func usbFlashAppConfig(ioAdapterName string, niUUID uuid.UUID) evetest.ApplicationInstanceConfig {
 	return evetest.ApplicationInstanceConfig{
 		DisplayName: "usb-flash-app",
 		Activate:    true,
@@ -180,6 +182,65 @@ func usbFlashApp(ioAdapterName string, niUUID uuid.UUID) evetest.ApplicationInst
 	}
 }
 
+// usbFlashApps deploys applications that have the flash drive assigned. It
+// holds what all of them share: the device, its configuration and the local
+// network instance they hang off, which the factory adds to the configuration
+// (applied together with the first app).
+type usbFlashApps struct {
+	t         *WithT
+	device    *evetest.EdgeDevice
+	devConfig *evetest.EdgeDeviceConfig
+	niUUID    uuid.UUID
+}
+
+func newUSBFlashApps(t *WithT, device *evetest.EdgeDevice,
+	devConfig *evetest.EdgeDeviceConfig) *usbFlashApps {
+	return &usbFlashApps{
+		t:         t,
+		device:    device,
+		devConfig: devConfig,
+		niUUID:    addLocalNI(devConfig),
+	}
+}
+
+// start models the drive as the PhysicalIO label claiming usbAddr, deploys the
+// ubuntu test container with that adapter and returns once the app is RUNNING
+// and answers over SSH.
+func (f *usbFlashApps) start(label, usbAddr string) *usbFlashApp {
+	evetest.Logger().Infof("Deploying app with the flash drive claimed as %q by usbaddr %q",
+		label, usbAddr)
+	f.devConfig.AddPhysicalIO(usbFlashPhysicalIO(label, usbAddr))
+	appUUID := f.devConfig.AddApplication(usbFlashAppConfig(label, f.niUUID))
+	f.device.ApplyConfig(f.devConfig, true, false)
+	f.device.WaitUntilAppIsRunning(appUUID, appRunningTimeout)
+	waitForAppSSH(f.t, f.device, appUUID)
+	return &usbFlashApp{apps: f, label: label, uuid: appUUID}
+}
+
+// usbFlashApp is one running application with the drive assigned.
+type usbFlashApp struct {
+	apps  *usbFlashApps
+	label string
+	uuid  uuid.UUID
+}
+
+// usbDevices lists the USB devices the app's kernel enumerates; a method value
+// for Eventually.
+func (a *usbFlashApp) usbDevices() (evetest.USBDeviceList, error) {
+	return a.apps.device.ListUSBDevicesInsideApp(a.uuid, appAuth)
+}
+
+// stop deletes the app, waits until the device reports it gone, and only then
+// removes its model entry and applies. A confirmed config apply says nothing
+// about the domain teardown, which releases the adapter some thirty seconds
+// after the app is halted, and removing the entry before that used to crash
+// domainmgr.
+func (a *usbFlashApp) stop() {
+	deleteAppAndWait(a.apps.t, a.apps.device, a.apps.devConfig, a.uuid)
+	a.apps.devConfig.DeletePhysicalIO(a.label)
+	a.apps.device.ApplyConfig(a.apps.devConfig, true, false)
+}
+
 // lookupAssignableAdapter returns the reported assignable adapter (group)
 // named label or having label among its members, or nil.
 func lookupAssignableAdapter(dinfo *eveinfo.ZInfoDevice, label string) *eveinfo.ZioBundle {
@@ -196,21 +257,13 @@ func lookupAssignableAdapter(dinfo *eveinfo.ZInfoDevice, label string) *eveinfo.
 	return nil
 }
 
-// adapterUnused is a predicate over ZInfoDevice: the adapter is reported,
-// without error and not assigned to any application.
-func adapterUnused(label string) func(*eveinfo.ZInfoDevice) bool {
-	return func(dinfo *eveinfo.ZInfoDevice) bool {
-		bundle := lookupAssignableAdapter(dinfo, label)
-		return bundle != nil && bundle.GetErr() == nil && bundle.GetUsedByAppUUID() == ""
-	}
-}
-
-// adapterUsedBy is a predicate over ZInfoDevice: the adapter is reported as
-// assigned to the given application.
+// adapterUsedBy is a predicate over ZInfoDevice: the adapter is reported
+// without error and as assigned to the given application.
 func adapterUsedBy(label string, appUUID uuid.UUID) func(*eveinfo.ZInfoDevice) bool {
 	return func(dinfo *eveinfo.ZInfoDevice) bool {
 		bundle := lookupAssignableAdapter(dinfo, label)
-		return bundle != nil && bundle.GetUsedByAppUUID() == appUUID.String()
+		return bundle != nil && bundle.GetErr() == nil &&
+			bundle.GetUsedByAppUUID() == appUUID.String()
 	}
 }
 
