@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -973,24 +974,71 @@ func (h *ZFSHandler) checkOperationalStatus(vaultPath string) error {
 	return nil
 }
 
-// waitPath - Wait up to the requested number of seconds for path to exist or return error
-func waitPath(log *base.LogObject, path string, seconds int64) error {
-	beginTime := time.Now().Unix()
+// waitBlockDevice waits up to seconds for path to resolve to a block device.
+// A zvol's /dev/zvol link is made by udev, so right after a dataset rename the
+// path can still be missing, or still be the directory of links that belonged
+// to a filesystem dataset of that name. Each state is logged when first seen.
+func waitBlockDevice(log *base.LogObject, path string, seconds int64) error {
+	deadline := time.Now().Add(time.Duration(seconds) * time.Second)
+	last := ""
 	for {
-		_, err := os.Stat(path)
-		if err != nil {
-			if os.IsNotExist(err) {
-				log.Warnf("waitPath path:%s missing", path)
-				time.Sleep(1 * time.Second)
-			}
-		} else {
+		state := blockDeviceState(path)
+		if state == "" {
 			return nil
 		}
-		if (time.Now().Unix() - beginTime) > seconds {
-			break
+		if state != last {
+			log.Warnf("waitBlockDevice %s: %s", path, state)
+			last = state
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("%s is not a block device after %d seconds: %s",
+				path, seconds, state)
+		}
+		time.Sleep(time.Second)
+	}
+}
+
+// blockDeviceState returns "" when path resolves to a block device, and
+// otherwise describes what is there instead.
+func blockDeviceState(path string) string {
+	fi, err := os.Stat(path)
+	switch {
+	case os.IsNotExist(err):
+		return "missing"
+	case err != nil:
+		return err.Error()
+	case fi.Mode()&os.ModeDevice != 0 && fi.Mode()&os.ModeCharDevice == 0:
+		return ""
+	case fi.IsDir():
+		entries, _ := os.ReadDir(path)
+		return fmt.Sprintf("a directory with %d entries", len(entries))
+	default:
+		return "mode " + fi.Mode().String()
+	}
+}
+
+// zvolIDPath is the helper the zvol udev rule runs to name /dev/zvol links.
+const zvolIDPath = "/usr/lib/udev/zvol_id"
+
+// findZvolDevice returns the /dev/zd* node of the zvol named dataset, found by
+// asking each zvol its name the way the udev rule does. It is the fallback for
+// a /dev/zvol link udev has not made.
+func findZvolDevice(log *base.LogObject, dataset string) (string, error) {
+	nodes, err := filepath.Glob("/sys/block/zd*")
+	if err != nil {
+		return "", err
+	}
+	for _, n := range nodes {
+		dev := "/dev/" + filepath.Base(n)
+		out, err := base.Exec(log, zvolIDPath, dev).Output()
+		if err != nil {
+			continue
+		}
+		if strings.TrimSpace(string(out)) == dataset {
+			return dev, nil
 		}
 	}
-	return fmt.Errorf("waitPath path %s not found after %d seconds", path, seconds)
+	return "", fmt.Errorf("no zvol device is named %s", dataset)
 }
 
 // TrimVault reclaims blocks freed by ext4 that were never returned to the
@@ -1028,12 +1076,17 @@ func (h *ZFSHandler) TrimVault(timeout time.Duration) error {
 // MountVaultZvol Wrapper with wait for device
 func MountVaultZvol(log *base.LogObject, datasetPath string) error {
 	devPath := zfs.GetZvolPath(datasetPath)
-	err := waitPath(log, devPath, vaultZvolPathWaitSeconds)
-	if err != nil {
-		return fmt.Errorf("Vault zvol dev path missing: %v", err)
+	if err := waitBlockDevice(log, devPath, vaultZvolPathWaitSeconds); err != nil {
+		zd, zerr := findZvolDevice(log, datasetPath)
+		if zerr != nil {
+			return fmt.Errorf("Vault zvol dev path missing: %v; %v", err, zerr)
+		}
+		log.Warnf("MountVaultZvol: %v; mounting %s, which zvol_id names %s",
+			err, zd, datasetPath)
+		devPath = zd
 	}
 
-	_, err = os.Stat("/" + types.SealedDataset)
+	_, err := os.Stat("/" + types.SealedDataset)
 	if err != nil {
 		if os.IsNotExist(err) {
 			err = os.Mkdir("/"+types.SealedDataset, 0755)
@@ -1109,7 +1162,7 @@ func CreateZvolVault(log *base.LogObject, datasetName string, zfsKeyFile string,
 	devPath := zfs.GetZvolPath(types.SealedDataset)
 	// Sometimes we wait for /dev path to the zvol to appear
 	// Since this only occurs on first boot, we can afford to be patient
-	if err = waitPath(log, devPath, vaultZvolPathWaitSeconds); err != nil {
+	if err = waitBlockDevice(log, devPath, vaultZvolPathWaitSeconds); err != nil {
 		return fmt.Errorf("Vault zvol dev path missing: %v", err)
 	}
 
@@ -1139,7 +1192,7 @@ func CreateZvolEtcd(log *base.LogObject, datasetName string, zfsKeyFile string, 
 	devPath := zfs.GetZvolPath(datasetName)
 	// Sometimes we wait for /dev path to the zvol to appear
 	// Since this only occurs on first boot, we can afford to be patient
-	if err = waitPath(log, devPath, vaultZvolPathWaitSeconds); err != nil {
+	if err = waitBlockDevice(log, devPath, vaultZvolPathWaitSeconds); err != nil {
 		return fmt.Errorf("Vault Etcd zvol dev path missing: %v", err)
 	}
 
