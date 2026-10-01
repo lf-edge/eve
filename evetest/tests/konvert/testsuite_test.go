@@ -124,6 +124,14 @@ const (
 	// appNetworkParamKey selects the kind of network instance the app that
 	// NoVolmig deletes and redeploys is attached to.
 	appNetworkParamKey = "APP_NETWORK"
+	// vmAppParamKey selects whether VolumeMigration also carries a VM app.
+	vmAppParamKey = "VM_APP"
+	// persistFilesystemParamKey selects the /persist filesystem for the tests
+	// whose carry-over path differs between the two.
+	persistFilesystemParamKey = "PERSIST_FILESYSTEM"
+	// rebootBeforeDrainParamKey selects whether VolumeMigration reboots EVE-K
+	// while the carried-over kvm volumes are still held.
+	rebootBeforeDrainParamKey = "REBOOT_BEFORE_DRAIN"
 )
 
 // Defaults shared across the package.
