@@ -59,30 +59,49 @@ func TestUSBDeviceListFind(t *testing.T) {
 	}
 }
 
-// The allocator hands out the lowest free xHCI port and gives a drive its
-// previous port back when it is re-plugged, so that a device-model entry
-// claiming the drive by bus and port keeps matching across re-plugs.
+// The allocator hands out the lowest free port of the controller, or of the
+// hub a device goes below, and gives a device its previous port back when it
+// is re-plugged into the same parent, so that a device-model entry claiming
+// it by bus and port keeps matching across re-plugs.
 func TestUSBPortAllocator(t *testing.T) {
 	var ports usbPortAllocator
-	if got := ports.claim("a"); got != "1" {
-		t.Fatalf("first claim got port %q, want 1", got)
+	expect := func(what, got, want string) {
+		t.Helper()
+		if got != want {
+			t.Fatalf("%s: got port %q, want %q", what, got, want)
+		}
 	}
-	if got := ports.claim("b"); got != "2" {
-		t.Fatalf("second claim got port %q, want 2", got)
-	}
-	if got := ports.claim("a"); got != "1" {
-		t.Fatalf("claiming a held id again got %q, want its port 1", got)
-	}
+	expect("first claim", ports.claim("a", ""), "1")
+	expect("second claim", ports.claim("b", ""), "2")
+	expect("claiming a held id again", ports.claim("a", ""), "1")
 	ports.release("a")
-	if got := ports.claim("a"); got != "1" {
-		t.Fatalf("re-plugging a got port %q, want the port it left, 1", got)
-	}
+	expect("re-plugging a", ports.claim("a", ""), "1")
 	ports.release("a")
-	if got := ports.claim("c"); got != "1" {
-		t.Fatalf("a new drive got port %q, want the lowest free port 1", got)
-	}
-	if got := ports.claim("a"); got != "3" {
-		t.Fatalf("a re-plugged while its port is taken got %q, want the next free port 3", got)
-	}
+	expect("a new device", ports.claim("c", ""), "1")
+	expect("a re-plugged while its port is taken", ports.claim("a", ""), "3")
 	ports.release("unknown") // must not panic
+
+	// Below a hub, paths extend the hub's; the re-plug memory only counts
+	// for the same parent.
+	expect("a hub", ports.claim("hub", ""), "4")
+	expect("first device below the hub", ports.claim("d", "4"), "4.1")
+	expect("a nested hub", ports.claim("hub2", "4"), "4.2")
+	expect("a device below the nested hub", ports.claim("e", "4.2"), "4.2.1")
+	ports.release("d")
+	expect("re-plugging d below the hub", ports.claim("d", "4"), "4.1")
+	ports.release("d")
+	expect("plugging d into the controller instead", ports.claim("d", ""), "5")
+
+	if path, ok := ports.path("hub2"); !ok || path != "4.2" {
+		t.Fatalf("path(hub2) = %q, %v; want 4.2, true", path, ok)
+	}
+	if _, ok := ports.path("unknown"); ok {
+		t.Fatal("path(unknown) reported a port")
+	}
+	if got := ports.children("4"); !reflect.DeepEqual(got, []string{"hub2", "e"}) {
+		t.Fatalf("children(4) = %v, want [hub2 e]", got)
+	}
+	if got := ports.children("4.2.1"); len(got) != 0 {
+		t.Fatalf("children(4.2.1) = %v, want none", got)
+	}
 }

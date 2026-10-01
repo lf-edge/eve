@@ -5,6 +5,7 @@ package evetest
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -20,6 +21,14 @@ const appUSBListTimeout = 20 * time.Second
 // USBControllerBus is the QEMU bus name of the USB 3.0 (xHCI) controller that
 // every EVE device VM has on the qemu and proxmox providers, for device_add.
 const USBControllerBus = "evxhci.0"
+
+// USBHubVendorID and USBHubProductID are the ids of QEMU's emulated USB hub
+// (hw/usb/hub.c), the one AttachUSBHub plugs in; a test tells the hubs from
+// the drives by them.
+const (
+	USBHubVendorID  = 0x0409
+	USBHubProductID = 0x55aa
+)
 
 // USBDeviceInfo is one USB device as EVE's kernel enumerates it under
 // /sys/bus/usb/devices. (USBDevice, the vendor/product pair, is a requirement
@@ -175,10 +184,22 @@ const usbStorageUnplugTimeout = 10 * time.Second
 // re-plugged under the same id goes back into the port it left while that is
 // free (see usbPortAllocator), like a physical re-plug into the same
 // receptacle; a device-model entry claiming it by bus and port thus keeps
-// matching. The controller has four ports on both providers.
+// matching. The controller has four ports on both providers. Returns the
+// port, e.g. "2".
 //
 // Requires RequireCapabilities{CAPABILITY_QMP}.
-func (d *EdgeDevice) AttachUSBStorage(id string, sizeBytes uint64) {
+func (d *EdgeDevice) AttachUSBStorage(id string, sizeBytes uint64) string {
+	return d.attachUSBStorage(id, sizeBytes, "")
+}
+
+// AttachUSBStorageBehind is AttachUSBStorage into the lowest free port of the
+// hub hubID (see AttachUSBHub) instead of the controller. Returns the drive's
+// port path, e.g. "2.1" for the first port of a hub in port 2.
+func (d *EdgeDevice) AttachUSBStorageBehind(hubID, id string, sizeBytes uint64) string {
+	return d.attachUSBStorage(id, sizeBytes, hubID)
+}
+
+func (d *EdgeDevice) attachUSBStorage(id string, sizeBytes uint64, parentHubID string) string {
 	hostPath := d.CreateScratchImage(id, sizeBytes)
 	_, err := d.TryExecuteQMP("blockdev-add", map[string]any{
 		"driver":    "raw",
@@ -191,7 +212,7 @@ func (d *EdgeDevice) AttachUSBStorage(id string, sizeBytes uint64) {
 		}
 		d.th.t.Fatalf("AttachUSBStorage: %v", err)
 	}
-	port := d.claimUSBPort(id)
+	port := d.claimUSBPortBelow(id, parentHubID)
 	_, err = d.TryExecuteQMP("device_add", map[string]any{
 		"driver": "usb-storage",
 		"id":     id,
@@ -212,20 +233,80 @@ func (d *EdgeDevice) AttachUSBStorage(id string, sizeBytes uint64) {
 	}
 	Logger().Infof("Attached USB flash drive %q (%d bytes) to port %s of device %q",
 		id, sizeBytes, port, d.devName)
+	return port
 }
 
-// claimUSBPort picks the xHCI port for the drive id (see usbPortAllocator).
-func (d *EdgeDevice) claimUSBPort(id string) string {
+// AttachUSBHub plugs a QEMU usb-hub into the running device, into the lowest
+// free port of the hub parentHubID, or of the xHCI controller when that is
+// "", and returns its port path, e.g. "1" or "1.2". Hubs and drives plugged
+// into it name it by id (AttachUSBHub, AttachUSBStorageBehind). The hub is a
+// full-speed USB 1.1 hub with eight ports, so Linux enumerates it and
+// everything below it on the controller's USB 2 bus, and QEMU accepts chains
+// of up to five hubs. Fails the test on error.
+//
+// Requires RequireCapabilities{CAPABILITY_QMP}.
+func (d *EdgeDevice) AttachUSBHub(id, parentHubID string) string {
+	port := d.claimUSBPortBelow(id, parentHubID)
+	_, err := d.TryExecuteQMP("device_add", map[string]any{
+		"driver": "usb-hub",
+		"id":     id,
+		"bus":    USBControllerBus,
+		"port":   port,
+	})
+	if err != nil {
+		d.releaseUSBPort(id)
+		d.th.t.Fatalf("AttachUSBHub: %v", err)
+	}
+	Logger().Infof("Attached USB hub %q to port %s of device %q", id, port, d.devName)
+	return port
+}
+
+// DetachUSBHub unplugs a hub attached by AttachUSBHub. Everything plugged into
+// it has to be detached first: QEMU would take it down together with the hub,
+// but the block nodes and scratch images of drives would stay behind.
+func (d *EdgeDevice) DetachUSBHub(id string) {
+	if children := d.usbChildren(id); len(children) > 0 {
+		d.th.t.Fatalf("DetachUSBHub: hub %q still has %s plugged in", id,
+			strings.Join(children, ", "))
+	}
+	d.ExecuteQMP("device_del", map[string]any{"id": id})
+	d.releaseUSBPort(id)
+	Logger().Infof("Detached USB hub %q from device %q", id, d.devName)
+}
+
+// claimUSBPortBelow picks the port for the device id below the hub
+// parentHubID, or of the controller when that is "" (see usbPortAllocator).
+func (d *EdgeDevice) claimUSBPortBelow(id, parentHubID string) string {
 	d.th.devicesM.Lock()
 	defer d.th.devicesM.Unlock()
-	return d.th.devices[d.devName].usbPorts.claim(id)
+	ports := &d.th.devices[d.devName].usbPorts
+	parent := ""
+	if parentHubID != "" {
+		var ok bool
+		if parent, ok = ports.path(parentHubID); !ok {
+			d.th.t.Fatalf("no USB hub %q is attached to device %q", parentHubID, d.devName)
+		}
+	}
+	return ports.claim(id, parent)
 }
 
-// releaseUSBPort frees the xHCI port of the drive id once it is unplugged.
+// releaseUSBPort frees the port of the device id once it is unplugged.
 func (d *EdgeDevice) releaseUSBPort(id string) {
 	d.th.devicesM.Lock()
 	defer d.th.devicesM.Unlock()
 	d.th.devices[d.devName].usbPorts.release(id)
+}
+
+// usbChildren lists the ids of the devices plugged into the hub id.
+func (d *EdgeDevice) usbChildren(id string) []string {
+	d.th.devicesM.Lock()
+	defer d.th.devicesM.Unlock()
+	ports := &d.th.devices[d.devName].usbPorts
+	path, ok := ports.path(id)
+	if !ok {
+		return nil
+	}
+	return ports.children(path)
 }
 
 // DetachUSBStorage unplugs a drive attached by AttachUSBStorage and deletes
@@ -250,44 +331,84 @@ func (d *EdgeDevice) DetachUSBStorage(id string) {
 	Logger().Infof("Detached USB flash drive %q from device %q", id, d.devName)
 }
 
-// usbPortAllocator chooses the xHCI ports that AttachUSBStorage plugs drives
-// into. Left to QEMU, a drive gets the head of the bus's free-port list, and a
-// released port goes back to its tail, so a re-plugged drive would land on a
+// usbPortAllocator chooses the ports that the USB hot-plug helpers plug
+// devices into: a root port of the xHCI controller or a port of a hub plugged
+// in before. Left to QEMU, a device gets the head of the free-port list, and a
+// released port goes back to its tail, so a re-plugged device would land on a
 // different port and stop matching a device-model entry that claims it by bus
-// and port. This allocator hands out the lowest free port instead and
-// remembers each id's port, so a re-plugged drive gets the port it left for
-// as long as that is free. Not safe for concurrent use; the harness locks.
+// and port. This allocator hands out the lowest free port of the parent
+// instead and remembers each id's port path, so a re-plugged device gets the
+// path it left for as long as that is free. Not safe for concurrent use; the
+// harness locks.
 type usbPortAllocator struct {
-	byID map[string]string // id -> port, remembered across release
-	used map[string]string // port -> id currently holding it
+	byID map[string]string // id -> port path, remembered across release
+	used map[string]string // port path -> id currently holding it
 }
 
-// claim returns the port for id: the one it holds or last held if free,
-// otherwise the lowest free port.
-func (a *usbPortAllocator) claim(id string) string {
+// claim returns the port path for id below parent, the port path of a hub or
+// "" for the controller: the path it holds or last held if that is below
+// parent and free, otherwise the lowest free port of parent.
+func (a *usbPortAllocator) claim(id, parent string) string {
 	if a.byID == nil {
 		a.byID = make(map[string]string)
 		a.used = make(map[string]string)
 	}
-	if port, ok := a.byID[id]; ok {
-		if holder, taken := a.used[port]; !taken || holder == id {
-			a.used[port] = id
-			return port
+	if path, ok := a.byID[id]; ok && usbParentPath(path) == parent {
+		if holder, taken := a.used[path]; !taken || holder == id {
+			a.used[path] = id
+			return path
 		}
 	}
 	for n := 1; ; n++ {
-		port := strconv.Itoa(n)
-		if _, taken := a.used[port]; !taken {
-			a.used[port] = id
-			a.byID[id] = port
-			return port
+		path := strconv.Itoa(n)
+		if parent != "" {
+			path = parent + "." + path
+		}
+		if _, taken := a.used[path]; !taken {
+			a.used[path] = id
+			a.byID[id] = path
+			return path
 		}
 	}
 }
 
 // release frees the port id holds; id keeps its claim on it for a re-plug.
 func (a *usbPortAllocator) release(id string) {
-	if port, ok := a.byID[id]; ok && a.used[port] == id {
-		delete(a.used, port)
+	if path, ok := a.byID[id]; ok && a.used[path] == id {
+		delete(a.used, path)
 	}
+}
+
+// path returns the port path id currently holds.
+func (a *usbPortAllocator) path(id string) (string, bool) {
+	path, ok := a.byID[id]
+	if !ok || a.used[path] != id {
+		return "", false
+	}
+	return path, true
+}
+
+// children lists the ids holding a port below path, ordered by path.
+func (a *usbPortAllocator) children(path string) []string {
+	var paths []string
+	for used := range a.used {
+		if strings.HasPrefix(used, path+".") {
+			paths = append(paths, used)
+		}
+	}
+	sort.Strings(paths)
+	ids := make([]string, len(paths))
+	for i, p := range paths {
+		ids[i] = a.used[p]
+	}
+	return ids
+}
+
+// usbParentPath returns the port path of the hub that a port path is below,
+// or "" for a root port.
+func usbParentPath(path string) string {
+	if i := strings.LastIndex(path, "."); i >= 0 {
+		return path[:i]
+	}
+	return ""
 }
