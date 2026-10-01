@@ -6,6 +6,7 @@ package volumemgr
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
@@ -126,20 +127,32 @@ func listKvmCarried(persistType types.PersistType) []kvmCarried {
 	return out
 }
 
+// kvmCarryKey is the part of a carried volume's name that identifies its
+// volume and generation. A file's extension is left out: it is the EVE-kvm
+// content format, which the VolumeStatus on EVE-k no longer carries once its
+// PVC exists (ContentFormat is then PVC).
+func kvmCarryKey(name string, zvol bool) string {
+	if zvol {
+		return name
+	}
+	key, _, _ := strings.Cut(name, ".")
+	return key
+}
+
 // planKvmCarryDrain returns the candidates to remove. orphanSince records when
 // each unclaimed candidate was first seen unclaimed; it is updated in place.
 func planKvmCarryDrain(candidates []kvmCarried, statuses []types.VolumeStatus,
 	orphanSince map[string]time.Time, now time.Time, grace time.Duration) []kvmCarried {
 	claimedBy := make(map[string]types.VolumeStatus)
 	for _, st := range statuses {
-		claimedBy[filepath.Base(st.PathName())] = st
-		claimedBy[filepath.Base(st.ZVolName())] = st
+		claimedBy[kvmCarryKey(filepath.Base(st.PathName()), false)] = st
+		claimedBy[kvmCarryKey(filepath.Base(st.ZVolName()), true)] = st
 	}
 	present := make(map[string]bool)
 	var remove []kvmCarried
 	for _, c := range candidates {
 		present[c.location] = true
-		st, claimed := claimedBy[c.name]
+		st, claimed := claimedBy[kvmCarryKey(c.name, c.zvol)]
 		if claimed {
 			delete(orphanSince, c.location)
 			if st.State >= types.CREATED_VOLUME && !st.HasError() {

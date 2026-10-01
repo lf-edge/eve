@@ -53,6 +53,19 @@ func TestPlanKvmCarryDrain(t *testing.T) {
 	}{
 		{name: "created file", candidate: file,
 			statuses: []types.VolumeStatus{carriedStatus(carriedA, types.CREATED_VOLUME)}, wantRemove: true},
+		{name: "created file, status now a PVC", candidate: file,
+			statuses: []types.VolumeStatus{func() types.VolumeStatus {
+				st := carriedStatus(carriedA, types.CREATED_VOLUME)
+				st.ContentFormat = zconfig.Format_PVC
+				return st
+			}()}, wantRemove: true},
+		{name: "file claimed by another generation", candidate: file,
+			statuses: []types.VolumeStatus{func() types.VolumeStatus {
+				st := carriedStatus(carriedA, types.CREATED_VOLUME)
+				st.ContentFormat = zconfig.Format_PVC
+				st.GenerationCounter = 2
+				return st
+			}()}},
 		{name: "created zvol", candidate: zvol,
 			statuses: []types.VolumeStatus{carriedStatus(carriedA, types.CREATED_VOLUME)}, wantRemove: true},
 		{name: "rollout in flight", candidate: zvol,
