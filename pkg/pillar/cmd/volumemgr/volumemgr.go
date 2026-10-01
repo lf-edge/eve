@@ -59,10 +59,11 @@ var (
 
 type volumemgrContext struct {
 	agentbase.AgentBase
-	ps                     *pubsub.PubSub
-	subGlobalConfig        pubsub.Subscription
-	subZedAgentStatus      pubsub.Subscription
-	subKubeLeaderElectInfo pubsub.Subscription
+	ps                       *pubsub.PubSub
+	subGlobalConfig          pubsub.Subscription
+	subZedAgentStatus        pubsub.Subscription
+	subKubeLeaderElectInfo   pubsub.Subscription
+	subEdgeNodeClusterConfig pubsub.Subscription
 	// subKubeNodeInfo is this node's local cache of every node's health,
 	// published by its own zedkube. Backing nodeHealth, it is what lets
 	// isCurrentlyBackupDNIDFunc decide without a live API call.
@@ -202,6 +203,17 @@ func (ctxPtr *volumemgrContext) GetNodeName() string {
 	return ctxPtr.nodeName
 }
 
+// IsTwoNodeHACluster reports whether this node belongs to a 2-physical-node cluster
+// backed by a lightweight etcd-only witness. See VolumeMgr.IsTwoNodeHACluster.
+func (ctxPtr *volumemgrContext) IsTwoNodeHACluster() bool {
+	item, err := ctxPtr.subEdgeNodeClusterConfig.Get("global")
+	if err != nil {
+		return false
+	}
+	encc := item.(types.EdgeNodeClusterConfig)
+	return encc.Valid && encc.WitnessIP != nil
+}
+
 // AddAgentSpecificCLIFlags adds CLI options
 func (ctxPtr *volumemgrContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
 }
@@ -281,6 +293,19 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	log.Functionf("processed GlobalConfig")
 
+	subEdgeNodeClusterConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zedagent",
+		MyAgentName: agentName,
+		TopicImpl:   types.EdgeNodeClusterConfig{},
+		Activate:    true,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subEdgeNodeClusterConfig = subEdgeNodeClusterConfig
+
 	// Look for capabilities
 	subCapabilities, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "domainmgr",
@@ -347,47 +372,29 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		// Resolve ClusterType from EdgeNodeClusterConfig before entering the
 		// kubernetes readiness wait. By this point vault and containerd are
 		// already up, so zedagent will have published EdgeNodeClusterConfig.
+		// ctx.subEdgeNodeClusterConfig was already created and activated above,
+		// before subCapabilities; just wait here for its first delivery.
 		var encc types.EdgeNodeClusterConfig
-		subEncc, subEnccErr := ps.NewSubscription(pubsub.SubscriptionOptions{
-			AgentName:   "zedagent",
-			MyAgentName: agentName,
-			TopicImpl:   types.EdgeNodeClusterConfig{},
-			Activate:    false,
-			Ctx:         &encc,
-			CreateHandler: func(ctxArg interface{}, key string, configArg interface{}) {
-				*ctxArg.(*types.EdgeNodeClusterConfig) = configArg.(types.EdgeNodeClusterConfig)
-			},
-			ModifyHandler: func(ctxArg interface{}, key string, configArg interface{}, _ interface{}) {
-				*ctxArg.(*types.EdgeNodeClusterConfig) = configArg.(types.EdgeNodeClusterConfig)
-			},
-			WarningTime: warningTime,
-			ErrorTime:   errorTime,
-		})
-		if subEnccErr != nil {
-			log.Errorf("volumemgr: subscribe EdgeNodeClusterConfig: %v", subEnccErr)
-		} else {
-			_ = subEncc.Activate()
-			enccTimeout := time.NewTimer(60 * time.Second)
-		enccWait:
-			for {
-				select {
-				case change := <-subEncc.MsgChan():
-					subEncc.ProcessChange(change)
+		enccTimeout := time.NewTimer(60 * time.Second)
+	enccWait:
+		for {
+			select {
+			case change := <-ctx.subEdgeNodeClusterConfig.MsgChan():
+				ctx.subEdgeNodeClusterConfig.ProcessChange(change)
+				if item, err := ctx.subEdgeNodeClusterConfig.Get("global"); err == nil {
+					encc = item.(types.EdgeNodeClusterConfig)
 					if encc.Initialized {
 						break enccWait
 					}
-				case <-enccTimeout.C:
-					log.Warnf("volumemgr: timeout waiting for EdgeNodeClusterConfig")
-					break enccWait
-				case <-stillRunning.C:
-					ps.StillRunning(agentName, warningTime, errorTime)
 				}
-			}
-			enccTimeout.Stop()
-			if err := subEncc.Close(); err != nil {
-				log.Errorf("volumemgr: close EdgeNodeClusterConfig sub: %v", err)
+			case <-enccTimeout.C:
+				log.Warnf("volumemgr: timeout waiting for EdgeNodeClusterConfig")
+				break enccWait
+			case <-stillRunning.C:
+				ps.StillRunning(agentName, warningTime, errorTime)
 			}
 		}
+		enccTimeout.Stop()
 
 		// Resolve this node's Kubernetes node name from EdgeNodeInfo.DeviceName,
 		// used by the kubeapi readiness helpers instead of os.Hostname(). Proceed
@@ -908,6 +915,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-ctx.subKubeLeaderElectInfo.MsgChan():
 			ctx.subKubeLeaderElectInfo.ProcessChange(change)
+
+		case change := <-ctx.subEdgeNodeClusterConfig.MsgChan():
+			ctx.subEdgeNodeClusterConfig.ProcessChange(change)
 
 		case change := <-ctx.subKubeNodeInfo.MsgChan():
 			ctx.subKubeNodeInfo.ProcessChange(change)
