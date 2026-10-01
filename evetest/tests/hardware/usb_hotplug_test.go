@@ -56,19 +56,24 @@ const (
 // so the test also covers the hot-plug into an already running domain. It
 // runs under KVM only, where usbmanager runs.
 //
+// The apps come from the usbFlashApps factory (helpers_test.go): start claims
+// the drive under a label by a usbaddr and deploys an app with that adapter,
+// stop takes the app and its model entry down again in the order the device
+// needs.
+//
 // Network model
 // -------------
 //   - netmodels.SingleEthWithDHCP -- the test is not about networking; a single
 //     port gives the device controller connectivity, SSH reachability and the
-//     uplink of the local network instance the app hangs off.
+//     uplink of the local network instance the apps hang off.
 //
 // Device configuration
 // --------------------
 //   - SystemAdapter for eth0 (DHCP, mgmt+apps).
-//   - From phase 3: a PhysicalIO of type USB device, "usb-flash", claiming the
-//     drive by its exact "bus:port" usbaddr, in an assignment group of its own.
-//   - From phase 4: a local network instance on eth0 and the ubuntu test
-//     container as an HVM app with a VIF on it (sshd port-forwarded) and
+//   - From phase 3: a local network instance on eth0, a PhysicalIO of type USB
+//     device, "usb-flash", claiming the drive by its exact "bus:port" usbaddr
+//     in an assignment group of its own, and the ubuntu test container as an
+//     HVM app with a VIF on the network instance (sshd port-forwarded) and
 //     "usb-flash" as directly assigned adapter.
 //
 // Phases / assertions
@@ -80,24 +85,22 @@ const (
 //     shows a device with the drive's serial number and QEMU's usb-storage
 //     vendor and product ids. Its bus and port decide the usbaddr claimed.
 //
-//  3. adapter-available: the model entry is applied; ZInfoDevice reports
-//     "usb-flash" as an assignable adapter without error and unused.
+//  3. app-running: the model entry and the app are applied; the app reaches
+//     RUNNING and answers over SSH, and ZInfoDevice reports "usb-flash" as an
+//     assignable adapter without error and used by the app.
 //
-//  4. app-running: the app is deployed with the adapter; it reaches RUNNING,
-//     ZInfoDevice reports the adapter as used by it, and it answers over SSH.
-//
-//  5. flash-drive-passed-through: inside the app, the drive is enumerated
+//  4. flash-drive-passed-through: inside the app, the drive is enumerated
 //     with the same ids and serial number.
 //
-//  6. flash-drive-detached: DetachUSBStorage; the drive disappears from the
+//  5. flash-drive-detached: DetachUSBStorage; the drive disappears from the
 //     app and from EVE.
 //
-//  7. flash-drive-reattached: AttachUSBStorage under the same id; EVE
+//  6. flash-drive-reattached: AttachUSBStorage under the same id; EVE
 //     enumerates the drive at the same bus and port again (the helper plugs a
 //     re-plugged drive into the port it left) and it is enumerated inside the
 //     running app again, i.e. usbmanager hot-plugged it into the live domain.
-//     The drive is detached, the app deleted and the entry removed at the end,
-//     so the device is clean for the next test.
+//     The drive is detached and the app stopped at the end, so the device is
+//     clean for the next test.
 //
 // Test params
 // -----------
@@ -146,42 +149,26 @@ func TestUSBFlashDriveHotplug(test *testing.T) {
 	drive := usbDevices.FindBySerial(flashDriveID)
 	t.Expect(drive).ToNot(BeNil())
 	usbAddr := fmt.Sprintf("%d:%s", drive.Bus, drive.Port)
-	evetest.Logger().Infof("Claiming the flash drive at %s with usbaddr %q", drive, usbAddr)
+	evetest.Logger().Infof("Flash drive enumerated as %s, usbaddr %q", drive, usbAddr)
 
-	// Phase 3: model the drive as an assignable adapter.
-	usbIO := usbFlashPhysicalIO(usbFlashLabel, usbAddr)
-	devConfig.AddPhysicalIO(usbIO)
+	// Phase 3: deploy the app with the drive claimed by its exact address.
+	apps := newUSBFlashApps(t, device, devConfig)
 	devUpdates, stopDevWatch := device.WatchDeviceInfo()
 	defer stopDevWatch()
-	device.ApplyConfig(devConfig, true, true)
-	t.Eventually(devUpdates, devInfoTimeout).Should(Receive(matchers.SatisfyPredicate(
-		"the flash drive is reported as an unused assignable adapter",
-		adapterUnused(usbFlashLabel))))
-	evetest.Checkpoint("adapter-available")
-
-	// Phase 4: deploy the app with the drive directly assigned.
-	niUUID := addLocalNI(devConfig)
-	appUUID := devConfig.AddApplication(usbFlashApp(usbFlashLabel, niUUID))
-	device.ApplyConfig(devConfig, true, false)
-	device.WaitUntilAppIsRunning(appUUID, appRunningTimeout)
+	app := apps.start(usbFlashLabel, usbAddr)
 	t.Eventually(devUpdates, devInfoTimeout).Should(Receive(matchers.SatisfyPredicate(
 		"the flash drive is reported as used by the app",
-		adapterUsedBy(usbFlashLabel, appUUID))))
-	waitForAppSSH(t, device, appUUID)
+		adapterUsedBy(usbFlashLabel, app.uuid))))
 	evetest.Checkpoint("app-running")
 
-	listAppUSBDevices := func() (evetest.USBDeviceList, error) {
-		return device.ListUSBDevicesInsideApp(appUUID, appAuth)
-	}
-
-	// Phase 5: the drive is passed through to the app.
-	t.Eventually(listAppUSBDevices, usbEnumerationTimeout, usbEnumerationInterval).Should(
+	// Phase 4: the drive is passed through to the app.
+	t.Eventually(app.usbDevices, usbEnumerationTimeout, usbEnumerationInterval).Should(
 		matchers.SatisfyPredicate("the app enumerates the flash drive", driveEnumerated))
 	evetest.Checkpoint("flash-drive-passed-through")
 
-	// Phase 6: unplug it; it leaves the app and EVE.
+	// Phase 5: unplug it; it leaves the app and EVE.
 	device.DetachUSBStorage(flashDriveID)
-	t.Eventually(listAppUSBDevices, usbEnumerationTimeout, usbEnumerationInterval).Should(
+	t.Eventually(app.usbDevices, usbEnumerationTimeout, usbEnumerationInterval).Should(
 		matchers.SatisfyPredicate("the flash drive is gone from the app",
 			lacksUSBDevice(flashDriveID)))
 	t.Eventually(device.ListUSBDevices, usbEnumerationTimeout, usbEnumerationInterval).Should(
@@ -189,7 +176,7 @@ func TestUSBFlashDriveHotplug(test *testing.T) {
 			lacksUSBDevice(flashDriveID)))
 	evetest.Checkpoint("flash-drive-detached")
 
-	// Phase 7: plug it in again, into the same port; EVE enumerates it there
+	// Phase 6: plug it in again, into the same port; EVE enumerates it there
 	// and usbmanager hot-plugs it into the running app.
 	device.AttachUSBStorage(flashDriveID, flashDriveSize)
 	t.Eventually(device.ListUSBDevices, usbEnumerationTimeout, usbEnumerationInterval).Should(
@@ -199,17 +186,11 @@ func TestUSBFlashDriveHotplug(test *testing.T) {
 				return replugged != nil &&
 					fmt.Sprintf("%d:%s", replugged.Bus, replugged.Port) == usbAddr
 			}))
-	t.Eventually(listAppUSBDevices, usbEnumerationTimeout, usbEnumerationInterval).Should(
+	t.Eventually(app.usbDevices, usbEnumerationTimeout, usbEnumerationInterval).Should(
 		matchers.SatisfyPredicate("the app enumerates the flash drive again", driveEnumerated))
 	evetest.Checkpoint("flash-drive-reattached")
 
-	// Leave the device as found: no drive, no app, no model entry for the
-	// drive. The entry can only go once the app that holds it is gone: a
-	// confirmed config apply says nothing about the domain teardown, which
-	// releases the adapter some thirty seconds after the app is halted, and
-	// removing the entry before that used to crash domainmgr.
+	// Leave the device as found: no drive, no app, no model entry for it.
 	device.DetachUSBStorage(flashDriveID)
-	deleteAppAndWait(t, device, devConfig, appUUID)
-	devConfig.DeletePhysicalIO(usbIO.LogicalLabel)
-	device.ApplyConfig(devConfig, true, false)
+	app.stop()
 }
