@@ -26,6 +26,7 @@
 //     volume it has to relocate
 //   - volmig_test.go      -- an app volume carried across the conversion
 //   - zfsvault_test.go    -- the ZFS vault migration declining for space
+//   - zfsvault_powercut_test.go -- power cut inside that migration's swap
 //   - firstboot_test.go   -- a volume asked for before EVE-K storage exists
 //   - restore_test.go     -- /persist lost or corrupted, recovered offline
 //
@@ -38,6 +39,7 @@
 //     whether the shrink has to relocate it, and whether it can be interrupted
 //   - vault_helpers_test.go   -- vault unlock method and the TPM seal
 //   - zfsvault_helpers_test.go -- ZFS vault datasets, the migration's swap record
+//   - zboot_helpers_test.go   -- which partition boots next, and committing one
 //   - restore_helpers_test.go -- identity backup, controller isolation
 //   - cluster_helpers_test.go -- EVE-K bring-up: k3s, volumemgr, Longhorn
 //   - app_helpers_test.go     -- app deployment, SSH, volume markers, blob reuse
@@ -237,5 +239,6 @@ func TestKonvertSuite(test *testing.T) {
 		// Last, and in this order: both need a ZFS device, and the power cut
 		// leaves one whose partitions have been hand-committed.
 		evetest.TestCase{Test: TestKvmToKZFSVaultMigration},
+		evetest.TestCase{Test: TestKvmToKZFSVaultPowerCutMidSwap},
 	)
 }
