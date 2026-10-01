@@ -102,7 +102,7 @@ func (o realZFSVaultOps) UsedBytes(name string) (uint64, error) {
 
 func (o realZFSVaultOps) FormatStagingZvol(name string) error {
 	devPath := zfs.GetZvolPath(name)
-	if err := waitPath(o.log, devPath, vaultZvolPathWaitSeconds); err != nil {
+	if err := waitBlockDevice(o.log, devPath, vaultZvolPathWaitSeconds); err != nil {
 		return fmt.Errorf("zvol dev path %s missing: %v", devPath, err)
 	}
 	return formatZvol(o.log, devPath, vaultFsType)

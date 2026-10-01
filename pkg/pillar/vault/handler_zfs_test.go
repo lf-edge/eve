@@ -5,6 +5,7 @@ package vault
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
@@ -719,4 +720,21 @@ func TestVaultSwapMarker(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, marked)
 	require.NoError(t, ops.ClearSwapMarker())
+}
+
+// TestBlockDeviceState covers what MountVaultZvol's wait reports for the
+// states a /dev/zvol path passes through around a dataset rename.
+func TestBlockDeviceState(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "part1"), nil, 0o600))
+	file := filepath.Join(dir, "file")
+	require.NoError(t, os.WriteFile(file, nil, 0o600))
+
+	assert.Equal(t, "missing", blockDeviceState(filepath.Join(dir, "absent")))
+	assert.Equal(t, "a directory with 2 entries", blockDeviceState(dir))
+	assert.Equal(t, "mode -rw-------", blockDeviceState(file))
+	assert.Equal(t, "mode Dcrw-rw-rw-", blockDeviceState("/dev/null"))
+	if fi, err := os.Stat("/dev/loop0"); err == nil && fi.Mode()&os.ModeCharDevice == 0 {
+		assert.Equal(t, "", blockDeviceState("/dev/loop0"))
+	}
 }
