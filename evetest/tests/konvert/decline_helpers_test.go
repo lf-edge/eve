@@ -5,6 +5,7 @@ package konvert_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -14,8 +15,29 @@ import (
 	"github.com/lf-edge/eve/evetest"
 )
 
-// assertConversionDeclined asserts EVE refused the conversion and is no worse
-// off for it.
+// Fragments of the errors baseosmgr reports when it declines an update, from
+// pkg/pillar/cmd/baseosmgr: convert.go for a failed conversion pre-flight, and
+// handlebaseos.go for the unconditional EVE-K-to-kvm block.
+const (
+	declinePrefixNotPossible = "conversion not possible: "
+	declinePrefixFromEVEK    = "Upgrade to non EVE-k"
+	declineCauseUnsupported  = "is not supported"
+)
+
+// refusalCause returns the part of storage-resizer's decision reason
+// (pkg/storage-resizer/main.go) that identifies reason, one of refuseZFS or
+// refuseTooFull.
+func refusalCause(reason string) string {
+	if reason == refuseZFS {
+		return "persist is ZFS"
+	}
+	return "persist is too full"
+}
+
+// assertConversionDeclined asserts EVE refused the conversion for the expected
+// reason and is no worse off for it. A reported error must contain both prefix,
+// which names the check that declined, and cause, which names why, so that a
+// decline for any other reason does not pass.
 //
 // Three things have to hold together, and each rules out a different way of
 // "refusing" that would not be acceptable: an error must be reported, so the
@@ -23,21 +45,22 @@ import (
 // the image it was, so nothing was installed; and it must still answer its
 // controller, so a refused conversion has not cost remote management -- which is
 // the whole reason to refuse rather than attempt.
-func assertConversionDeclined(t Gomega, device *evetest.EdgeDevice, kvmVersion string) {
+func assertConversionDeclined(t Gomega, device *evetest.EdgeDevice, kvmVersion, prefix, cause string) {
 	log := evetest.Logger()
 
-	// While waiting for the error, a device that leaves the kvm image has
-	// already failed: it accepted the update. Watching for that during the wait
-	// turns an eight-minute timeout into an immediate, accurate failure.
+	// A device that leaves the kvm image while the error is awaited has accepted
+	// the update, and no amount of waiting turns that into a decline.
 	var reported string
 	t.Eventually(func(g Gomega) {
 		running, err := runEVE(device, "cat /run/eve-release")
 		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(strings.TrimSpace(running)).To(Equal(kvmVersion),
-			"the device left the kvm image, so the conversion was not declined")
+		if got := strings.TrimSpace(running); got != "" && got != kvmVersion {
+			StopTrying(fmt.Sprintf("the device left %s for %s, so the conversion was not declined",
+				kvmVersion, got)).Now()
+		}
 		reported = baseOSError(device)
-		g.Expect(reported).NotTo(BeEmpty(),
-			"no error reported yet; a decline must be reported, not a silent stall")
+		g.Expect(reported).To(And(ContainSubstring(prefix), ContainSubstring(cause)),
+			"no decline for the reason under test reported yet; a decline must be reported, not a silent stall")
 	}, 8*time.Minute, 10*time.Second).Should(Succeed())
 	log.Infof("EVE declined the conversion: %s", reported)
 
@@ -81,13 +104,15 @@ func decodeJSONStream(raw string) []map[string]any {
 	}
 }
 
+// pingController prints the HTTP status of the device's ping of its controller.
+const pingController = `eve exec pillar curl -sk --max-time 5 ` +
+	`https://$(tr -d "\r\n" < /config/server)/api/v2/edgedevice/ping ` +
+	`-o /dev/null -w "%{http_code}"`
+
 // assertControllerReachable asserts EVE can still reach its controller, which is
 // what "still manageable" means in practice: a device that declined a conversion
 // but lost its way back would need a truck roll all the same.
 func assertControllerReachable(t Gomega, device *evetest.EdgeDevice) {
-	const pingController = `eve exec pillar curl -sk --max-time 5 ` +
-		`https://$(tr -d "\r\n" < /config/server)/api/v2/edgedevice/ping ` +
-		`-o /dev/null -w "%{http_code}"`
 	t.Eventually(func(g Gomega) {
 		out, err := runEVE(device, pingController)
 		g.Expect(err).NotTo(HaveOccurred())

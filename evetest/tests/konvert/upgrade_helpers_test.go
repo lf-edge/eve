@@ -10,6 +10,7 @@ import (
 	pillartypes "github.com/lf-edge/eve/pkg/pillar/types"
 
 	"github.com/lf-edge/eve/evetest"
+	"github.com/lf-edge/eve/evetest/constants"
 )
 
 // altHypervisor returns the flavor on the other side of the cross-flavor seam.
@@ -18,6 +19,17 @@ func altHypervisor(h evetest.Hypervisor) evetest.Hypervisor {
 		return evetest.HypervisorKVM
 	}
 	return evetest.HypervisorKubevirt
+}
+
+// requireFlavorAwareTransport fails a test that changes hypervisor flavor when
+// EVETEST_EVE_LIVE_IMAGE is set. That transport delivers the one local build
+// EVETEST_EVE_VERSION names to every upgrade whatever flavor was requested, so
+// a kvm hop and a k hop would receive the same image and the second would
+// wait on a version already active.
+func requireFlavorAwareTransport(t Gomega) {
+	t.Expect(evetest.LocalLiveImageRequested()).To(BeFalse(),
+		"this test changes hypervisor flavor, which the local live-image "+
+			"transport cannot deliver; unset %s%s", constants.EnvPrefix, constants.EVELiveImageEnv)
 }
 
 // resolveCrossFlavorParams resolves the shared axes for a flavor-switch test,

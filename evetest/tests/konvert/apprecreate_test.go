@@ -36,6 +36,7 @@ func TestKvmToKAppRecreate(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
 	defer evetest.Close()
+	requireFlavorAwareTransport(t)
 
 	defineCrossFlavorParameters()
 	p := resolveCrossFlavorParams(t)
@@ -112,7 +113,7 @@ func TestKvmToKAppRecreate(test *testing.T) {
 	}()
 	assertAppReady(t, device, newAppUUID, appRunningAfterSwitchTimeout)
 	appOK = true
-	assertBlobsReused(t, device, beforeBytes)
+	assertBlobsReused(t, device, beforeBytes, false)
 	evetest.Checkpoint("app-recreated")
 
 	// Put the collector back the way it was, so a device reused by the next

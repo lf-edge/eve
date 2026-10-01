@@ -4,6 +4,7 @@
 package konvert_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -41,9 +42,38 @@ const (
 	restoreWiFiPassword = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 )
 
-// resizeTargetSize is the boot-disk size the backup is taken against. These
-// tests never run a real resize, so it only has to be a size the tool accepts.
+// resizeTargetSize is the boot-disk size the backup is taken against. It is
+// larger than the disk, so in resizeFailureReal mode the offline grow that
+// follows the shrink finds no room and aborts.
 const resizeTargetSize = "78G"
+
+// How a restore test's offline resize fails, which decides who writes
+// resize-failed.json. In resizeFailureReal the backup arms a resize that runs
+// on the next boot and aborts, and storage-resize.sh's resize_abort writes the
+// marker and reboots. In resizeFailureSimulated the test writes the marker
+// itself, naming the running release, so the resize is skipped and only the
+// restore runs.
+const (
+	resizeFailureReal      = "real"
+	resizeFailureSimulated = "simulated"
+	// simulatedFailureStep is the step the simulated marker names.
+	simulatedFailureStep = "restore-test"
+)
+
+// restoreParameterDefinitions declares the axis the restore tests add.
+func restoreParameterDefinitions() []evetest.TestParameterDefinition {
+	return []evetest.TestParameterDefinition{
+		{
+			Key:          resizeFailureParamKey,
+			DefaultValue: resizeFailureReal,
+			Description: evetest.TestParameterDescription{
+				Summary:       "Whether the offline resize really aborts or a failure marker is planted",
+				Default:       resizeFailureReal,
+				AllowedValues: resizeFailureReal + "|" + resizeFailureSimulated,
+			},
+		},
+	}
+}
 
 // backupScriptPath is where the backup script is staged for pillar to run. On
 // /persist because that is visible from both the host and the pillar container;
@@ -74,11 +104,11 @@ func addEncryptedWiFiPort(devConfig *evetest.EdgeDeviceConfig) {
 		InterfaceName: restoreWiFiPort,
 		WirelessType:  evecommon.WirelessType_WiFi,
 		NetworkUUID:   wifiNet,
-		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
-		// Costlier than the wired port, so the device keeps talking to its
-		// controller over ethernet and the wireless port is only ever
-		// configured -- which is all this needs.
-		Cost: 10,
+		// Not a management port, so a port with no radio behind it is never
+		// chosen to reach the controller on the offline boot; it only has to
+		// be configured, which is all this needs.
+		Usage: evecommon.PhyIoMemberUsage_PhyIoUsageShared,
+		Cost:  10,
 	})
 }
 
@@ -152,7 +182,15 @@ func anyCipherBlockDecrypted(raw string) bool {
 // asynchronously, so a backup taken too early captures a configuration that
 // predates the credential and the restore afterwards would be judged against
 // something that was never in it.
-func backupIdentityToConfig(t Gomega, device *evetest.EdgeDevice) {
+//
+// With simulatedRelease set, it also writes a resize-failed.json naming that
+// release, which is what makes storage-init skip the resize the flag arms.
+func backupIdentityToConfig(t Gomega, device *evetest.EdgeDevice, simulatedRelease string) {
+	marker := ""
+	if simulatedRelease != "" {
+		marker = fmt.Sprintf(`printf '{"eve_release":"%s","step":"%s","rc":"0","ts":"restore"}' > /tmp/restore-cfg/resize-failed.json`,
+			simulatedRelease, simulatedFailureStep)
+	}
 	script := fmt.Sprintf(`set -u
 CFGP=$(findfs PARTLABEL=CONFIG) || { echo "FAIL: no CONFIG partition"; exit 1; }
 mkdir -p /tmp/restore-cfg
@@ -175,8 +213,9 @@ while [ $i -lt 18 ]; do
     fi
     sync; sleep 10
 done
-if [ ! -f "$LC" ] || ! tr -d '\0' < "$LC" | grep -q %q; then
-    echo "FAIL: the backup never captured the wireless credential"
+if [ ! -f "$LC" ] || ! tr -d '\0' < "$LC" | grep -q %q \
+   || ! ls /tmp/restore-cfg/backup-persist/certs/ecdh.*.pem >/dev/null 2>&1; then
+    echo "FAIL: the backup never captured the wireless credential and an ecdh certificate"
     echo "--- storage-resizer backup (rc=$rc) ---"
     cat /tmp/restore-backup.out 2>&1
     echo "--- /persist/checkpoint ---"
@@ -189,10 +228,14 @@ fi
 # Pillar rotates the previous primary into .bak, so the fallback still predates
 # the credential; the corruption step keeps .bak intact and expects to recover
 # from it, which only works if it is at least as new as what it replaces.
-cp /persist/checkpoint/lastconfig /persist/checkpoint/lastconfig.bak 2>/dev/null || true
+cp /persist/checkpoint/lastconfig /persist/checkpoint/lastconfig.bak \
+    || { echo "FAIL: could not refresh lastconfig.bak"; umount /tmp/restore-cfg; exit 1; }
+tr -d '\0' < /persist/checkpoint/lastconfig.bak | grep -q %q \
+    || { echo "FAIL: the refreshed lastconfig.bak lacks the wireless credential"; umount /tmp/restore-cfg; exit 1; }
+%s
 sync
 umount /tmp/restore-cfg 2>/dev/null
-echo "BACKUP-DONE"`, resizeTargetSize, restoreWiFiSSID, restoreWiFiSSID)
+echo "BACKUP-DONE"`, resizeTargetSize, restoreWiFiSSID, restoreWiFiSSID, restoreWiFiSSID, marker)
 
 	// Run inside pillar: storage-resizer ships in that container, and the
 	// CONFIG mount has to live in the same mount namespace as the tool writing
@@ -290,33 +333,80 @@ func snapshotIdentity(t Gomega, device *evetest.EdgeDevice) map[string]string {
 // than what it saved.
 var identityFiles = []string{
 	"/persist/status/uuid",
-	"/persist/certs/device.cert.pem",
 	"/persist/certs/ecdh.cert.pem",
+	"/persist/certs/attest.cert.pem",
+	"/persist/certs/ek.cert.pem",
 	"/persist/status/zedclient/OnboardingStatus/global.json",
 }
 
-// dpcListPath is the port-configuration list, which is restored but cannot be
-// compared by content: nim rewrites it as it tests ports, so the copy on disk
-// is overtaken as soon as the device runs, and a byte difference is "an
-// ordinary newer version" rather than a failed restore (pkg/pillar/docs/
-// diskconvert.md). Whether the configuration really came back is settled by the
-// credential assertion in phase 4, which needs it to be both present and valid.
+// dpcListPath is the port-configuration list. nim rewrites it as it tests
+// ports, so it is compared with the fields nim updates stripped
+// (normalizedPortConfig) rather than byte for byte.
 const dpcListPath = "/persist/status/nim/DevicePortConfigList/global.json"
 
-// assertPortConfigRestored asserts the port-configuration list came back at all.
-func assertPortConfigRestored(t Gomega, device *evetest.EdgeDevice) {
+// Fields of pillar's DevicePortConfig and NetworkPortConfig (types/dpc.go,
+// with the embedded TestResults of types/conntest.go) that change without the
+// configuration changing: test results, the state machine, and TimePriority and
+// ConfigSource, which zedagent re-stamps when it re-applies a checkpointed
+// configuration offline.
+var (
+	volatileDPCFields  = []string{"State", "LastFailed", "LastSucceeded", "LastError", "LastWarning", "LastIPAndDNS", "TimePriority"}
+	volatilePortFields = []string{"LastFailed", "LastSucceeded", "LastError", "LastWarning", "ConfigSource"}
+)
+
+// readPortConfig returns the port-configuration list with its volatile fields
+// stripped, as canonical JSON, or "" while there is none.
+func readPortConfig(t Gomega, device *evetest.EdgeDevice) string {
+	out, err := runEVE(device, catGlob(dpcListPath))
+	t.Expect(err).NotTo(HaveOccurred())
+	lists := decodeJSONStream(out)
+	if len(lists) == 0 {
+		return ""
+	}
+	return normalizedPortConfig(lists[0])
+}
+
+// normalizedPortConfig strips a DevicePortConfigList of the fields that change
+// on their own and returns it as JSON with sorted keys.
+func normalizedPortConfig(list map[string]any) string {
+	delete(list, "CurrentIndex")
+	dpcs, _ := list["PortConfigList"].([]any)
+	for _, d := range dpcs {
+		dpc, _ := d.(map[string]any)
+		for _, k := range volatileDPCFields {
+			delete(dpc, k)
+		}
+		ports, _ := dpc["Ports"].([]any)
+		for _, p := range ports {
+			port, _ := p.(map[string]any)
+			for _, k := range volatilePortFields {
+				delete(port, k)
+			}
+		}
+	}
+	b, _ := json.Marshal(list)
+	return string(b)
+}
+
+// assertPortConfigRestored asserts the port-configuration list came back with
+// the configuration it held before the damage.
+func assertPortConfigRestored(t Gomega, device *evetest.EdgeDevice, before string) {
+	t.Expect(before).NotTo(BeEmpty(), "there was no port-configuration list before the damage")
+	var after string
 	t.Eventually(func(g Gomega) {
-		out, err := runEVE(device, catGlob(dpcListPath))
-		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(strings.TrimSpace(out)).NotTo(BeEmpty(),
+		after = readPortConfig(g, device)
+		g.Expect(after).NotTo(BeEmpty(),
 			"the port-configuration list did not come back: %s", dpcListPath)
 	}, 5*time.Minute, 15*time.Second).Should(Succeed())
+	t.Expect(after).To(Equal(before),
+		"the port-configuration list came back with a different configuration")
 }
 
 // assertIdentityRestored asserts every identity file came back with the content
 // it had. Files that were absent to begin with are skipped, since there is
 // nothing for them to come back as.
-func assertIdentityRestored(t Gomega, device *evetest.EdgeDevice, before map[string]string) {
+func assertIdentityRestored(t Gomega, device *evetest.EdgeDevice, before map[string]string,
+	portConfigBefore string) {
 	after := snapshotIdentity(t, device)
 	for path, want := range before {
 		if want == "MISSING" {
@@ -325,7 +415,78 @@ func assertIdentityRestored(t Gomega, device *evetest.EdgeDevice, before map[str
 		t.Expect(after[path]).To(Equal(want),
 			"%s did not come back with the content it had", path)
 	}
-	assertPortConfigRestored(t, device)
+	assertPortConfigRestored(t, device, portConfigBefore)
+}
+
+// assertControllerUnreachable asserts the device cannot reach its controller.
+// It is the positive control for isolateFromController: a path that leaked
+// would let the device be told everything again and pass the restore tests
+// having recovered nothing.
+//
+// The ping needs the pillar container, which may still be starting, so it is
+// retried until it runs.
+func assertControllerUnreachable(t Gomega, device *evetest.EdgeDevice) {
+	var out string
+	t.Eventually(func(g Gomega) {
+		var err error
+		// curl fails when it cannot connect, having printed 000 all the same.
+		out, err = runEVE(device, pingController+"; true")
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(strings.TrimSpace(out)).To(MatchRegexp(`[0-9]{3}$`),
+			"the ping did not run")
+	}, 5*time.Minute, 10*time.Second).Should(Succeed())
+	t.Expect(strings.TrimSpace(out)).NotTo(HaveSuffix("200"),
+		"the device still reaches its controller, so the restore would not be offline")
+}
+
+// assertResizeBookkeeping asserts storage-init finished with the conversion's
+// bookkeeping on the CONFIG partition: the repartition flag and the backup are
+// gone, and resize-failed.json is left for baseosmgr, naming the running
+// release, the failed step, and whether /persist was recreated. It returns the
+// marker's step. The leftovers are checked on /config, where storage-init
+// mirrors its removals; the marker is read from the partition, because the
+// restore stamps persist_recreated there only and the RAM copy keeps the
+// unstamped marker until the next boot. baseosmgr reads the partition too.
+func assertResizeBookkeeping(t Gomega, device *evetest.EdgeDevice, mode, running string,
+	wantRecreated bool) string {
+	out, err := runEVE(device, `for f in repartition-inprogress backup-persist; do `+
+		`[ -e /config/$f ] && echo "LEFT $f"; done; true`)
+	t.Expect(err).NotTo(HaveOccurred())
+	t.Expect(strings.TrimSpace(out)).To(BeEmpty(), "restore did not clean up:\n%s", out)
+
+	raw := readConfigPartitionFile(t, device, "resize-failed.json")
+	t.Expect(raw).NotTo(Equal("NONE"), "no resize-failed.json is left for baseosmgr")
+	var marker struct {
+		EveRelease       string `json:"eve_release"`
+		Step             string `json:"step"`
+		PersistRecreated bool   `json:"persist_recreated"`
+	}
+	t.Expect(json.Unmarshal([]byte(raw), &marker)).To(Succeed(), "resize-failed.json: %s", raw)
+	evetest.Logger().Infof("resize-failed.json: %s", raw)
+	t.Expect(marker.EveRelease).To(Equal(running), "the marker names another release: %s", raw)
+	if mode == resizeFailureSimulated {
+		t.Expect(marker.Step).To(Equal(simulatedFailureStep),
+			"the planted marker was replaced, so the resize ran: %s", raw)
+	} else {
+		t.Expect(marker.Step).To(BeElementOf("shrink", "grow"),
+			"the marker is not resize_abort's: %s", raw)
+	}
+	t.Expect(marker.PersistRecreated).To(Equal(wantRecreated),
+		"persist_recreated does not match whether /persist was recreated: %s", raw)
+	return marker.Step
+}
+
+// readConfigPartitionFile returns the contents of name on the CONFIG partition,
+// mounted read-only for the read, or "NONE" when there is no such file.
+func readConfigPartitionFile(t Gomega, device *evetest.EdgeDevice, name string) string {
+	out, err := runEVE(device, fmt.Sprintf(`set -u
+CFGP=$(findfs PARTLABEL=CONFIG) || { echo "FAIL: no CONFIG partition"; exit 1; }
+M=/tmp/konvert-cfg-ro; mkdir -p "$M"
+mount -t vfat -o ro,iocharset=iso8859-1 "$CFGP" "$M" || { echo "FAIL: could not mount CONFIG"; exit 1; }
+cat "$M/%s" 2>/dev/null || echo NONE
+umount "$M"; rmdir "$M"`, name))
+	t.Expect(err).NotTo(HaveOccurred(), "reading %s from the CONFIG partition failed: %s", name, out)
+	return strings.TrimSpace(out)
 }
 
 // assertDeviceUUIDUnchanged asserts the device kept the identity it was

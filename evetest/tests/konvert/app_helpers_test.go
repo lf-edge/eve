@@ -16,22 +16,23 @@ import (
 	eveconfig "github.com/lf-edge/eve-api/go/config"
 	eveinfo "github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/evetest"
+	pillartypes "github.com/lf-edge/eve/pkg/pillar/types"
 )
 
-// The container app the escripts deploy, and how to get into it.
+// The container app the tests deploy, and how to get into it.
 const (
 	appSSHUser     = "root"
 	appSSHPassword = "testpassword"
 	appSSHFwdPort  = 2222
 	sshTimeout     = 20 * time.Second
 
-	// appImageName is the container image the escripts use as their test app
-	// (eden's eclient equivalent for evetest).
+	// appImageName is the test app: a container with sshd, so the tests can
+	// write and read markers inside it.
 	appImageName = "lfedge/evetest-ubuntu-ctr"
 	appImageTag  = "1.0"
 
-	// appMemoryBytes and appCPUs match what the escripts give the container
-	// app (`--memory=512MB`).
+	// appMemoryBytes and appCPUs keep the app small next to the 8 GiB device,
+	// so the app does not compete with EVE-K for memory.
 	appMemoryBytes = 512 * evetest.MiB
 	appCPUs        = 1
 
@@ -94,8 +95,8 @@ func testAppConfig(displayName string, niUUID uuid.UUID) evetest.ApplicationInst
 // assertAppSSH asserts the app answers over SSH, retrying long enough to absorb
 // the app's network reconvergence as well as SSH itself.
 //
-// No separate wait for a routable address first: the escripts do not have one,
-// and folding both into a single retry means a slow reconvergence still passes
+// No separate wait for a routable address first: folding both into a single
+// retry means a slow reconvergence still passes
 // while a genuinely stuck app fails here with the network capture attached.
 func assertAppSSH(t Gomega, device *evetest.EdgeDevice, appUUID uuid.UUID) {
 	t.Eventually(func(g Gomega) {
@@ -106,8 +107,8 @@ func assertAppSSH(t Gomega, device *evetest.EdgeDevice, appUUID uuid.UUID) {
 }
 
 // assertAppReady waits for an app to be usable end to end: running, then
-// answering SSH. The caller chooses the running budget, which the escripts set
-// per scenario.
+// answering SSH. The caller chooses the running budget, which depends on
+// whether the conversion repartitioned.
 func assertAppReady(t Gomega, device *evetest.EdgeDevice, appUUID uuid.UUID,
 	runningTimeout time.Duration) {
 	device.WaitUntilAppIsRunning(appUUID, runningTimeout)
@@ -138,7 +139,8 @@ func assertContentTreeAvailable(t Gomega, device *evetest.EdgeDevice,
 
 // assertNoLiveVolumes asserts the device holds no volume that would block a
 // cross-flavor upgrade. Volumes on their way out are tolerated -- the check is
-// retried, so a delete still settling passes once it completes.
+// retried, so a delete still settling passes once it completes; the budget is
+// what a loaded host can take to tear an app's volumes down.
 func assertNoLiveVolumes(t Gomega, device *evetest.EdgeDevice) {
 	t.Eventually(func(g Gomega) {
 		out, err := runEVE(device,
@@ -146,7 +148,7 @@ func assertNoLiveVolumes(t Gomega, device *evetest.EdgeDevice) {
 		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(strings.TrimSpace(out)).To(Equal("0"),
 			"the device still has live volumes; this test needs none")
-	}, 2*time.Minute, 5*time.Second).Should(Succeed())
+	}, 15*time.Minute, 10*time.Second).Should(Succeed())
 }
 
 // writeVolumeMarker writes a marker into the app's mounted data volume and
@@ -167,25 +169,34 @@ func writeVolumeMarker(t Gomega, device *evetest.EdgeDevice, appUUID uuid.UUID,
 	}, 2*time.Minute, 5*time.Second).Should(Succeed())
 }
 
-// assertVolumeMarker asserts the marker survived, by scanning the volume's raw
-// block device from inside the app.
+// assertVolumeMarker asserts the marker survived, by mounting each of the app's
+// extra block devices read-only and comparing the marker file exactly.
 //
 // Not by reading the mount point: on EVE-K the data volume is not auto-mounted
-// at its MountDir (lf-edge/eve#6145), so a mount-based check would report the
-// data lost when the volume is merely unmounted -- which is a different outcome
-// entirely from the one this is meant to catch. The volume appears as a virtio
-// disk after the rootfs.
+// at its MountDir (lf-edge/eve#6145), so a check there would report the data
+// lost when the volume is merely unmounted. The marker must be per run (see
+// perRunMarker), so a device carrying an older run's file cannot pass. A marker
+// that a raw scan finds but no mount does means the filesystem around it is
+// damaged, and fails as such.
 func assertVolumeMarker(t Gomega, device *evetest.EdgeDevice, appUUID uuid.UUID, marker string) {
 	script := fmt.Sprintf(
-		"for d in /dev/vd[b-z] /dev/sd[b-z]; do [ -b \"$d\" ] || continue; "+
-			"grep -aq %q \"$d\" 2>/dev/null && { echo FOUND-ON $d; exit 0; }; done; "+
+		"m=$(mktemp -d); for d in /dev/vd[b-z] /dev/sd[b-z]; do [ -b \"$d\" ] || continue; "+
+			"mount -o ro -t ext4 \"$d\" \"$m\" 2>/dev/null || { echo UNMOUNTABLE $d; continue; }; "+
+			"if grep -qxF %[1]q \"$m/marker\" 2>/dev/null; then umount \"$m\"; echo FOUND-ON $d; exit 0; fi; "+
+			"echo OTHER-MARKER $d: $(head -c 120 \"$m/marker\" 2>/dev/null); umount \"$m\"; done; "+
+			"for d in /dev/vd[b-z] /dev/sd[b-z]; do [ -b \"$d\" ] && grep -aq %[1]q \"$d\" 2>/dev/null && echo RAW-ONLY $d; done; "+
 			"echo NOT-FOUND; ls -l /dev/vd* /dev/sd* 2>/dev/null; lsblk 2>/dev/null; blkid 2>/dev/null; exit 1",
 		marker)
 	t.Eventually(func(g Gomega) {
 		out, _, err := device.RunShellScriptInsideApp(appUUID, appAuth, script, 90*time.Second, 0)
-		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(err).NotTo(HaveOccurred(), "marker %q not on any mountable volume:\n%s", marker, out)
 		g.Expect(out).To(ContainSubstring("FOUND-ON"))
 	}, 3*time.Minute, 10*time.Second).Should(Succeed())
+}
+
+// perRunMarker makes base unique to this run.
+func perRunMarker(base string) string {
+	return fmt.Sprintf("%s-%d", base, time.Now().UnixNano())
 }
 
 // assertVolumeCreated asserts a volume reaches CREATED_VOLUME, the state in
@@ -203,4 +214,105 @@ func assertVolumeCreated(t Gomega, device *evetest.EdgeDevice,
 		g.Expect(info.GetState()).To(Equal(eveinfo.ZSwState_CREATED_VOLUME),
 			"the volume is %s, not created", info.GetState())
 	}, timeout, 15*time.Second).Should(Succeed())
+}
+
+// deferContentDeleteSeconds keeps a deleted app's blobs alive across the
+// conversion. Without it EVE reclaims them as soon as the app referencing them
+// goes away, and the redeploy afterwards measures a fresh download rather than
+// the reuse the test is about.
+const deferContentDeleteSeconds = 24 * 60 * 60
+
+// Kinds of network instance the redeployed app can be attached to.
+const (
+	appNetworkSwitch = "switch"
+	appNetworkLocal  = "local"
+)
+
+// addAppNetworkInstance adds a network instance of kind on eth0. A local one
+// NATs the app behind the device, so only the port forward reaches it.
+func addAppNetworkInstance(devConfig *evetest.EdgeDeviceConfig, kind string) uuid.UUID {
+	if kind == appNetworkLocal {
+		return devConfig.AddNetworkInstance(evetest.LocalNetworkInstanceConfig{
+			DisplayName: "local-ni",
+			Port:        "eth0",
+			Subnet:      evetest.IPSubnet("10.50.0.0/24"),
+			DHCPRange: pillartypes.IPRange{
+				Start: evetest.IPAddress("10.50.0.2"),
+				End:   evetest.IPAddress("10.50.0.254"),
+			},
+			Gateway: evetest.IPAddress("10.50.0.1"),
+		})
+	}
+	return devConfig.AddNetworkInstance(evetest.SwitchNetworkInstanceConfig{
+		DisplayName: "switch-ni",
+		Port:        "eth0",
+	})
+}
+
+// deployAppThenDeleteKeepingBlobs deploys the test app, confirms it works, then
+// deletes it with the deferred content delete stretched past the conversion, so
+// the device converts with no volume while its blobs stay behind for
+// redeployAssertingBlobReuse. network is the kind of network instance, see
+// addAppNetworkInstance. It returns the app's network instance, which stays in
+// devConfig to be redeployed onto.
+func deployAppThenDeleteKeepingBlobs(t Gomega, device *evetest.EdgeDevice,
+	devConfig *evetest.EdgeDeviceConfig, network string) uuid.UUID {
+	log := evetest.Logger()
+
+	log.Infof("deploying the app before the conversion, on a %s network instance", network)
+	niUUID := addAppNetworkInstance(devConfig, network)
+	appUUID := addTestApp(devConfig, "konvert-repartition-app", niUUID)
+	device.ApplyConfig(devConfig, false, false)
+	assertAppReady(t, device, appUUID, 15*time.Minute)
+	dumpAppNetwork(device, "before the conversion (working)")
+
+	log.Infof("stretching the deferred content delete past the conversion")
+	props := shortBaseImageCooldown()
+	props.SetGlobalValueInt(pillartypes.DeferContentDelete, deferContentDeleteSeconds)
+	devConfig.SetConfigProperties(props)
+	device.ApplyConfig(devConfig, true, true)
+
+	// The conversion's cross-flavor gate refuses to shrink while a volume
+	// exists, and the app's image is one.
+	log.Infof("deleting the app, keeping its network and blobs")
+	devConfig.DeleteApplication(appUUID)
+	device.ApplyConfig(devConfig, true, true)
+	assertNoLiveVolumes(t, device)
+	evetest.Checkpoint("app-deleted")
+	return niUUID
+}
+
+// redeployAssertingBlobReuse redeploys the app deployAppThenDeleteKeepingBlobs
+// deleted, onto the same network instance, asserts it runs on EVE-K and
+// downloaded nothing, and puts the content-delete timer back so a device reused
+// by the next test is not holding blobs for a day. It must be called after the
+// conversion's last reboot, so both downloader readings belong to one boot.
+// persistRecreated is passed through to assertBlobsReused. It returns the
+// redeployed app.
+func redeployAssertingBlobReuse(t Gomega, device *evetest.EdgeDevice,
+	devConfig *evetest.EdgeDeviceConfig, niUUID uuid.UUID, persistRecreated bool) uuid.UUID {
+	beforeBytes := snapshotDownloaderBytes(t, device)
+	// Onto the network instance the device already has: a second switch
+	// instance on the same port would leave two of them bound to eth0, and the
+	// app never starts.
+	evetest.Logger().Infof("redeploying the app on EVE-K")
+	appUUID := addTestApp(devConfig, "konvert-repartition-app", niUUID)
+	device.ApplyConfig(devConfig, false, false)
+
+	appOK := false
+	defer func() {
+		if !appOK {
+			dumpClusterStorage(device)
+			dumpAppNetwork(device, "after the conversion (app FAILED)")
+		}
+	}()
+	waitClusterStorageReady(t, device)
+	assertAppReady(t, device, appUUID, appRunningAfterRepartitionTimeout)
+	appOK = true
+	assertBlobsReused(t, device, beforeBytes, persistRecreated)
+	evetest.Checkpoint("app-redeployed")
+
+	devConfig.SetConfigProperties(shortBaseImageCooldown())
+	device.ApplyConfig(devConfig, true, true)
+	return appUUID
 }

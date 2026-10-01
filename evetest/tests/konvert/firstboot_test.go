@@ -45,6 +45,10 @@ import (
 //  2. Deploy an app with a volume at once, before storage can exist.
 //  3. Cluster storage comes up.
 //  4. The volume is created and the app runs and answers.
+//
+// Not covered: a downloaded qcow2 VM image. Of the two deferred requests here,
+// the blank data volume is created empty and the container image is converted
+// to a raw image; csihandler imports a qcow2 image by a branch of its own.
 func TestFirstBootEVEKAppVolume(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
@@ -68,9 +72,7 @@ func TestFirstBootEVEKAppVolume(test *testing.T) {
 	// as a volume that failed to converge.
 	log.Infof("the device must be a clean EVE-K boot")
 	assertNoLiveVolumes(t, device)
-	startGeometry := readGeometry(t, device)
-	t.Expect(isEVEKLayout(startGeometry)).To(BeTrue(),
-		"this is not an EVE-K boot disk: %s", startGeometry)
+	assertFinalEVEKLayout(t, device)
 	evetest.Checkpoint("fresh-evek-boot")
 
 	// Phase 2. The management network and the app go out together, so the
@@ -96,6 +98,8 @@ func TestFirstBootEVEKAppVolume(test *testing.T) {
 	defer func() {
 		if !appOK {
 			dumpClusterStorage(device)
+			dumpVolumeErrors(device)
+			dumpAppPVCWedge(device)
 			dumpAppNetwork(device, "first boot (app FAILED)")
 		}
 	}()
