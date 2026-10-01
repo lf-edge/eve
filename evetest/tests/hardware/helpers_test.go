@@ -37,20 +37,24 @@ const (
 	ubuntuCtrImage = "lfedge/evetest-ubuntu-ctr"
 	ubuntuCtrTag   = "1.0"
 
-	// Local network instance connecting the app, and the port on the edge
-	// node forwarded to the app's sshd.
-	niDisplayName = "local-ni"
-	niSubnet      = "10.11.12.0/24"
-	niGateway     = "10.11.12.1"
-	appSSHFwdPort = 2222
+	// Local network instance connecting the apps, and the first of the ports
+	// on the edge node forwarded to their sshd: every app the factory starts
+	// gets the next one, since two apps cannot share a forwarded port.
+	niDisplayName     = "local-ni"
+	niSubnet          = "10.11.12.0/24"
+	niGateway         = "10.11.12.1"
+	appSSHFwdPortBase = 2222
 
 	// usbFlashLabel names the flash drive in the device model when claimed by
 	// its exact bus and port, usbFlashWildcardLabel when claimed by a bus-wide
-	// wildcard. A label serves as logical label, physical label and assignment
-	// group alike: domainmgr resolves an app adapter name by group, then
-	// physical, then logical label, and usbmanager keys on the physical label.
+	// wildcard, and usbClaimLabelPrefix followed by the claimed port path, e.g.
+	// "usb-claim-1.1.*", the entries of TestUSBHubChain. A label serves as
+	// logical label, physical label and assignment group alike: domainmgr
+	// resolves an app adapter name by group, then physical, then logical
+	// label, and usbmanager keys on the physical label.
 	usbFlashLabel         = "usb-flash"
 	usbFlashWildcardLabel = "usb-flash-wildcard"
+	usbClaimLabelPrefix   = "usb-claim-"
 
 	// devInfoTimeout covers ZInfoDevice reflecting a change to the assignable
 	// adapters after a config apply.
@@ -124,8 +128,8 @@ func addLocalNI(devConfig *evetest.EdgeDeviceConfig) uuid.UUID {
 
 // singleVIFWithSSH describes the app network adapter used to run commands
 // inside the application: a VIF on the local NI, the sshd port forwarded from
-// the edge node, and an allow-all ACL.
-func singleVIFWithSSH(niUUID uuid.UUID) []evetest.AppNetworkAdapter {
+// the edge node's sshFwdPort, and an allow-all ACL.
+func singleVIFWithSSH(niUUID uuid.UUID, sshFwdPort uint16) []evetest.AppNetworkAdapter {
 	return []evetest.AppNetworkAdapter{
 		evetest.VirtualNetworkAdapter{
 			LogicalLabel:        "vif0",
@@ -133,7 +137,7 @@ func singleVIFWithSSH(niUUID uuid.UUID) []evetest.AppNetworkAdapter {
 			PortFwdRules: []evetest.PortFwdRule{
 				{
 					Protocol:     evetest.NetworkProtocolTCP,
-					EdgeNodePort: appSSHFwdPort,
+					EdgeNodePort: sshFwdPort,
 					AppPort:      22,
 				},
 			},
@@ -160,10 +164,12 @@ func usbFlashPhysicalIO(name, usbAddr string) evetest.PhysicalIOConfig {
 }
 
 // usbFlashAppConfig is the application the drive is assigned to: the ubuntu
-// test container as an HVM domain, reachable over SSH through the local NI.
-func usbFlashAppConfig(ioAdapterName string, niUUID uuid.UUID) evetest.ApplicationInstanceConfig {
+// test container as an HVM domain, reachable over SSH through the local NI
+// on the edge node's sshFwdPort, named after its adapter.
+func usbFlashAppConfig(ioAdapterName string, niUUID uuid.UUID,
+	sshFwdPort uint16) evetest.ApplicationInstanceConfig {
 	return evetest.ApplicationInstanceConfig{
-		DisplayName: "usb-flash-app",
+		DisplayName: ioAdapterName,
 		Activate:    true,
 		Image: evetest.DockerContainer{
 			ImageName: ubuntuCtrImage,
@@ -172,7 +178,7 @@ func usbFlashAppConfig(ioAdapterName string, niUUID uuid.UUID) evetest.Applicati
 		VirtualizationMode: eveconfig.VmMode_HVM,
 		CPUs:               1,
 		MemoryBytes:        500 * evetest.MiB,
-		NetworkAdapters:    singleVIFWithSSH(niUUID),
+		NetworkAdapters:    singleVIFWithSSH(niUUID, sshFwdPort),
 		IOAdapters: []evetest.IOAdapterConfig{
 			{
 				LogicalLabel: ioAdapterName,
@@ -185,12 +191,14 @@ func usbFlashAppConfig(ioAdapterName string, niUUID uuid.UUID) evetest.Applicati
 // usbFlashApps deploys applications that have the flash drive assigned. It
 // holds what all of them share: the device, its configuration and the local
 // network instance they hang off, which the factory adds to the configuration
-// (applied together with the first app).
+// (applied together with the first app), and it counts the apps started so
+// that each gets its own forwarded SSH port.
 type usbFlashApps struct {
 	t         *WithT
 	device    *evetest.EdgeDevice
 	devConfig *evetest.EdgeDeviceConfig
 	niUUID    uuid.UUID
+	started   uint16
 }
 
 func newUSBFlashApps(t *WithT, device *evetest.EdgeDevice,
@@ -210,7 +218,9 @@ func (f *usbFlashApps) start(label, usbAddr string) *usbFlashApp {
 	evetest.Logger().Infof("Deploying app with the flash drive claimed as %q by usbaddr %q",
 		label, usbAddr)
 	f.devConfig.AddPhysicalIO(usbFlashPhysicalIO(label, usbAddr))
-	appUUID := f.devConfig.AddApplication(usbFlashAppConfig(label, f.niUUID))
+	appUUID := f.devConfig.AddApplication(
+		usbFlashAppConfig(label, f.niUUID, appSSHFwdPortBase+f.started))
+	f.started++
 	f.device.ApplyConfig(f.devConfig, true, false)
 	f.device.WaitUntilAppIsRunning(appUUID, appRunningTimeout)
 	waitForAppSSH(f.t, f.device, appUUID)
@@ -267,6 +277,19 @@ func adapterUsedBy(label string, appUUID uuid.UUID) func(*eveinfo.ZInfoDevice) b
 	}
 }
 
+// adaptersUsedBy is a predicate over ZInfoDevice: the adapter of every one of
+// the apps is reported without error and as assigned to that app.
+func adaptersUsedBy(apps []*usbFlashApp) func(*eveinfo.ZInfoDevice) bool {
+	return func(dinfo *eveinfo.ZInfoDevice) bool {
+		for _, app := range apps {
+			if !adapterUsedBy(app.label, app.uuid)(dinfo) {
+				return false
+			}
+		}
+		return true
+	}
+}
+
 // hasUSBDevice is a predicate over a USB device list: a device with the given
 // serial number is enumerated.
 func hasUSBDevice(serial string) func(evetest.USBDeviceList) bool {
@@ -280,6 +303,29 @@ func hasUSBDevice(serial string) func(evetest.USBDeviceList) bool {
 func lacksUSBDevice(serial string) func(evetest.USBDeviceList) bool {
 	return func(list evetest.USBDeviceList) bool {
 		return list.FindBySerial(serial) == nil
+	}
+}
+
+// hasUSBDevicesAt is a predicate over a USB device list: on the given bus,
+// every one of the port paths holds a device with the given vendor and
+// product id.
+func hasUSBDevicesAt(bus uint16, ports []string,
+	vendorID, productID uint16) func(evetest.USBDeviceList) bool {
+	return func(list evetest.USBDeviceList) bool {
+		for _, port := range ports {
+			found := false
+			for _, dev := range list {
+				if dev.Bus == bus && dev.Port == port &&
+					dev.VendorID == vendorID && dev.ProductID == productID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return false
+			}
+		}
+		return true
 	}
 }
 
