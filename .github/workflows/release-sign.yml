@@ -1,0 +1,187 @@
+# Copyright (c) 2026, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+# Signs a release. The caller names it by full path at master,
+#   uses: lf-edge/eve/.github/workflows/release-sign.yml@master
+# so that every certificate identity names this file at that ref, whatever
+# called it; the release tag and its commit are in the certificate's Source
+# Repository Ref and Digest. docs/SIGNING.md describes the policy.
+#
+# The caller uploads what to sign as run artifacts, selected by the images
+# and blobs name patterns (empty for none):
+#   images  images.txt, one <registry>/<repo>@sha256:<hex> per line, and
+#           optionally sbom/<hex>.spdx.json, an SPDX document attested on the
+#           image with that digest
+#   blobs   files to sign with cosign sign-blob
+# The blob bundles, <file>.sigstore.json, are uploaded as the artifact named
+# by the bundles input.
+name: Release sign
+on:  # yamllint disable-line rule:truthy
+  workflow_call:
+    inputs:
+      images:
+        description: name pattern of the image list artifacts
+        type: string
+        default: sign-images-*
+      blobs:
+        description: name pattern of the blob artifacts
+        type: string
+        default: sign-blobs-*
+      bundles:
+        description: artifact name for the blob bundles
+        type: string
+        default: signed-blobs
+    secrets:
+      registry-username:
+        required: true
+      registry-password:
+        required: true
+
+permissions: {}
+
+env:
+  IDENTITY: https://github.com/lf-edge/eve/.github/workflows/release-sign.yml@refs/heads/master
+  REPOSITORY: lf-edge/eve
+  ISSUER: https://token.actions.githubusercontent.com
+
+jobs:
+  # Runs before the environment gate, so an unacceptable caller fails without
+  # asking the reviewers. The check's code comes from master, so a tagger
+  # cannot remove it.
+  check:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Check the caller and its ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CALLER: ${{ github.workflow_ref }}
+        run: |
+          die() { echo "::error::$*"; exit 1; }
+          [ "$GITHUB_REPOSITORY" = "$REPOSITORY" ] || die "called from $GITHUB_REPOSITORY"
+          [[ "$CALLER" == "$REPOSITORY/.github/workflows/publish.yml@$GITHUB_REF" ]] ||
+            die "caller $CALLER may not sign"
+          tag=${GITHUB_REF#refs/tags/}
+          [[ "$GITHUB_REF" == refs/tags/* && "$tag" =~ ^([0-9]+\.[0-9]+)\.[0-9]+(-lts|-rc[0-9]+)?$ ]] ||
+            die "$GITHUB_REF is not a release tag"
+          branches="${BASH_REMATCH[1]} ${BASH_REMATCH[1]}-stable"
+          # The compare API reports the head as "behind" (or "identical")
+          # when it is an ancestor of the base.
+          for b in $branches; do
+            status=$(gh api "repos/$REPOSITORY/compare/$b...$GITHUB_SHA" --jq .status 2> /dev/null) || continue
+            case "$status" in
+            behind|identical)
+              echo "$GITHUB_SHA ($GITHUB_REF) is on $b"
+              exit 0
+              ;;
+            esac
+          done
+          die "$GITHUB_SHA ($GITHUB_REF) is on none of: $branches"
+
+  sign:
+    needs: check
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download images
+        if: inputs.images != ''
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          pattern: ${{ inputs.images }}
+          path: images
+      - name: Download blobs
+        if: inputs.blobs != ''
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          pattern: ${{ inputs.blobs }}
+          path: blobs
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6  # v4.1.2
+        with:
+          cosign-release: v3.1.3
+      - name: Login to the registry
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2  # v4.0.0
+        with:
+          username: ${{ secrets.registry-username }}
+          password: ${{ secrets.registry-password }}
+      - name: Sign images
+        run: |
+          set -euo pipefail
+          die() { echo "::error::$*"; exit 1; }
+          policy=(--certificate-oidc-issuer "$ISSUER" --certificate-identity "$IDENTITY"
+                  --certificate-github-workflow-repository "$REPOSITORY")
+          verified() { cosign verify "${policy[@]}" "$1" > /dev/null 2>&1; }
+          # Docker Hub's referrers listing can lag a push by up to a minute.
+          until_visible() {
+            local waited=0
+            until "$@" > /dev/null 2>&1; do
+              [ "$waited" -lt 60 ] || { "$@" > /dev/null; return; }
+              sleep 5
+              waited=$((waited + 5))
+            done
+          }
+          # download-artifact extracts a single match into images/ itself and
+          # several into images/<artifact>/.
+          mapfile -t refs < <(find images -name images.txt -exec cat {} + 2> /dev/null | sort -u)
+          if [ "${#refs[@]}" -eq 0 ]; then
+            [ -n "$(find blobs -type f 2> /dev/null)" ] || die "nothing to sign"
+            echo "no images to sign"
+            exit 0
+          fi
+          indexes=()
+          for ref in "${refs[@]}"; do
+            [[ "$ref" =~ ^[a-z0-9./-]+(:[0-9]+)?/[a-z0-9._/-]+@sha256:[0-9a-f]{64}$ ]] || die "not a digest reference: $ref"
+            raw=$(docker buildx imagetools inspect --raw "$ref") || die "cannot read $ref"
+            case "$(jq -r .mediaType <<< "$raw")" in
+            *index*|*manifest.list*) indexes+=("$ref"); continue ;;
+            esac
+            if verified "$ref"; then
+              echo "already signed: $ref"
+            else
+              cosign sign --yes "$ref"
+              until_visible cosign verify "${policy[@]}" "$ref" || die "new signature on $ref does not verify"
+              echo "signed: $ref"
+            fi
+          done
+          # An index is signed only when every platform manifest in it is.
+          for ref in "${indexes[@]}"; do
+            for m in $(docker buildx imagetools inspect --raw "$ref" | jq -r '.manifests[]
+                | select(.annotations["vnd.docker.reference.type"] != "attestation-manifest") | .digest'); do
+              verified "${ref%@*}@$m" || die "$ref contains unsigned ${ref%@*}@$m"
+            done
+            cosign sign --yes "$ref"
+            until_visible cosign verify "${policy[@]}" "$ref" || die "new signature on $ref does not verify"
+            echo "signed index: $ref"
+          done
+          find images -path '*/sbom/*.spdx.json' | while read -r sbom; do
+            hex=$(basename "$sbom" .spdx.json)
+            ref=$(printf '%s\n' "${refs[@]}" | grep -m1 "@sha256:$hex$") || die "$sbom names no image to sign"
+            cosign attest --yes --type spdxjson --predicate "$sbom" "$ref"
+            until_visible cosign verify-attestation --type spdxjson "${policy[@]}" "$ref" ||
+              die "SBOM attestation on $ref does not verify"
+            echo "attested SBOM: $ref"
+          done
+      - name: Sign blobs
+        run: |
+          set -euo pipefail
+          mkdir -p bundles
+          [ -d blobs ] || exit 0
+          find blobs -type f | while read -r f; do
+            b="bundles/$(basename "$f").sigstore.json"
+            [ ! -e "$b" ] || { echo "::error::duplicate blob name $(basename "$f")"; exit 1; }
+            cosign sign-blob --yes --bundle "$b" "$f"
+            cosign verify-blob --bundle "$b" --certificate-oidc-issuer "$ISSUER" \
+              --certificate-identity "$IDENTITY" --certificate-github-workflow-repository "$REPOSITORY" \
+              --certificate-github-workflow-ref "$GITHUB_REF" "$f"
+            echo "signed blob: $f"
+          done
+      - name: Upload blob bundles
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+        with:
+          name: ${{ inputs.bundles }}
+          path: bundles
+          if-no-files-found: ignore
