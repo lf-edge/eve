@@ -1198,7 +1198,7 @@ const (
 // the one the vault is encrypted with.
 func diskKeyPresent(log *base.LogObject, handle tpmutil.Handle, kind string) (bool, error) {
 	for attempt := 1; ; attempt++ {
-		present, err := nvIndexWritten(handle)
+		present, err := checkDiskKeyPresence(handle)
 		if err == nil {
 			return present, nil
 		}
