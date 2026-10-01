@@ -1268,8 +1268,12 @@ func handleEdgeNodeClusterConfigImpl(ctxArg interface{}, key string,
 	*encc = config
 }
 
-// GetSupportedReplicaCountForCluster : returns the max replica count a cluster can support
-func GetSupportedReplicaCountForCluster() (int, error) {
+// GetSupportedReplicaCountForCluster : returns the max replica count a cluster can support.
+func GetSupportedReplicaCountForCluster(isTwoNodeHACluster bool) (int, error) {
+	if isTwoNodeHACluster {
+		return DefaultTieBreakerReplicaCount, nil
+	}
+
 	config, err := GetKubeConfig()
 	if err != nil {
 		return DefaultLonghornScFullReplicaCount, err
