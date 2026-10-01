@@ -8,11 +8,28 @@ on:  # yamllint disable-line rule:truthy
       tag_ref:
         required: true
         type: string
+      # Build the files from the images this run pushed by digest, listed in
+      # its sign-images-eve-* artifacts, hand each sha256sums file to
+      # release-sign.yml as a sign-blobs-assets-* artifact, and leave the
+      # draft release for the caller to publish after signing. Otherwise
+      # build from the release tags and publish the pre-release once every
+      # build leg has succeeded.
+      draft:
+        required: false
+        type: boolean
+        default: false
     secrets:
       DOCKERHUB_PULL_TOKEN:
         required: true
       DOCKERHUB_PULL_USER:
         required: true
+    outputs:
+      release_id:
+        description: the release the files were uploaded to
+        value: ${{ jobs.create_release.outputs.release_id }}
+      upload_url:
+        description: its asset upload URL
+        value: ${{ jobs.create_release.outputs.upload_url }}
 
 permissions: {}
 
@@ -33,7 +50,8 @@ jobs:
       release_id: ${{ steps.create_release.outputs.release_id }}
       upload_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
-      # The release stays a draft until publish_release, because a published
+      # The release stays a draft until it is published, by publish_release
+      # or, with draft, by the caller after signing, because a published
       # release in a repository with immutable releases accepts no more
       # assets, and its tag can never be released again even if it is
       # deleted. A re-run reuses the draft an earlier attempt created.
@@ -137,10 +155,24 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_PULL_USER }}
           password: ${{ secrets.DOCKERHUB_PULL_TOKEN }}
+      - name: Download the pushed digests
+        if: inputs.draft
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: sign-images-eve-${{ matrix.arch }}-${{ matrix.hv }}-${{ matrix.platform }}
+          path: pushed
       - name: Pull the EVE release from DockerHUB or build it
+        env:
+          DRAFT: ${{ inputs.draft }}
+          PLATFORM: ${{ matrix.platform }}
         run: |
           HV=${{ matrix.hv }}
-          if [ "${{ github.event.repository.full_name }}" = "lf-edge/eve" ]; then
+          if [ "$DRAFT" = true ]; then
+             # shellcheck disable=SC1090
+             . "pushed/release-$ARCH-$HV-$PLATFORM.env"
+             docker pull "$EVE"
+             echo "EVE_SOURCES=$EVE_SOURCES" >> "$GITHUB_ENV"
+          elif [ "${{ github.event.repository.full_name }}" = "lf-edge/eve" ]; then
              EVE=lfedge/eve:${TAG}-${{ env.PLATFORMVER }}${HV}-${{ env.ARCH }}
              docker pull "$EVE"
           else
@@ -171,10 +203,17 @@ jobs:
              gen installer_net installer-net.tar
           fi
       - name: Export eve-sources to assets/collected_sources.tar
+        env:
+          DRAFT: ${{ inputs.draft }}
         run: |
           HV=${{ matrix.hv }}
-          EVE_SOURCES=lfedge/eve-sources:${TAG}-${{ env.PLATFORMVER }}${HV}-${{ env.ARCH }}
+          EVE_SOURCES=${EVE_SOURCES:-lfedge/eve-sources:${TAG}-${{ env.PLATFORMVER }}${HV}-${{ env.ARCH }}}
           docker pull "$EVE_SOURCES"
+          # The signed sha256sums then also binds the image digests the
+          # files came from.
+          if [ "$DRAFT" = true ]; then
+             printf '%s\n%s\n' "$EVE" "$EVE_SOURCES" > assets/images.txt
+          fi
           docker create --name eve_sources "$EVE_SOURCES" bash
           docker export --output assets/collected_sources.tar eve_sources
           docker rm eve_sources
@@ -231,6 +270,8 @@ jobs:
             curl -s --show-error --fail -X DELETE -H "Authorization: Bearer $GITHUB_TOKEN" \
               "https://api.github.com/repos/$REPO/releases/assets/$asset_id"
           done
+          mkdir -p sums
+          cp "assets/$sha256_file" sums/
           # Upload files. Track failures and fail the job at the end so that
           # all assets are attempted before the run is marked failed.
           upload_failed=0
@@ -252,9 +293,16 @@ jobs:
             fi
           done
           exit "$upload_failed"
+      - name: Hand the sums to release-sign.yml
+        if: inputs.draft
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+        with:
+          name: sign-blobs-assets-${{ matrix.arch }}-${{ matrix.hv }}-${{ matrix.platform }}
+          path: sums
   publish_release:
     runs-on: zededa-ubuntu-2204
     needs: [create_release, build]
+    if: ${{ !inputs.draft }}
     permissions:
       contents: write
     steps:
