@@ -198,3 +198,168 @@ func TestUSBFlashDriveHotplug(test *testing.T) {
 	device.DetachUSBStorage(flashDriveID)
 	appWildcard.stop()
 }
+
+const (
+	// hubChainLength is how many hubs are plugged into each other; the drive
+	// below the last one has a port path of hubChainLength+1 components. USB
+	// allows five hubs between the root hub and a device.
+	hubChainLength = 4
+	// chainedDriveID names the drive behind the hubs towards the hypervisor
+	// and is its USB serial number.
+	chainedDriveID = "evtest-chained"
+)
+
+// TestUSBHubChain verifies that a USB flash drive plugged in behind a chain of
+// four hubs is enumerated by EVE at its full port path and that, among
+// applications claiming it by every prefix of that path, usbmanager passes it
+// through to the one with the most specific claim and hands it down to the
+// next one when that application goes away.
+//
+// The hubs are QEMU's emulated usb-hub, plugged into each other through the
+// hypervisor by EdgeDevice.AttachUSBHub; the drive is the usb-storage device
+// of TestUSBFlashDriveHotplug, plugged into the last hub by
+// EdgeDevice.AttachUSBStorageBehind. EVE's kernel reports the drive at the
+// port path the framework plugged it into, "1.1.1.1.1" when the controller's
+// first port is free, so the paths the device model claims can be predicted
+// from the plugging. A hub cannot be passed through, and the devices behind
+// one enumerate below its port, which is what the usbaddr wildcard exists
+// for: "bus:1.*" claims everything below the outermost hub, "bus:1.1.1.1.*"
+// everything below the innermost one. usbmanager ranks an exact port claim
+// above any wildcard and a longer wildcard prefix above a shorter one, so
+// with five applications claiming the drive by "bus:1.*", "bus:1.1.*",
+// "bus:1.1.1.*", "bus:1.1.1.1.*" and its exact "bus:1.1.1.1.1", the drive
+// belongs to the exact claim, and to the longest remaining prefix once that
+// application is gone.
+//
+// Network model
+// -------------
+//   - netmodels.SingleEthWithDHCP -- as in TestUSBFlashDriveHotplug.
+//
+// Device configuration
+// --------------------
+//   - SystemAdapter for eth0 (DHCP, mgmt+apps).
+//   - From phase 3: a local network instance and, one by one, five PhysicalIO
+//     entries of type USB device named after the port path they claim,
+//     "usb-claim-1.*" to "usb-claim-1.1.1.1.1", and for each entry the ubuntu
+//     test container as an HVM app with that adapter (see usbFlashApps).
+//     Phase 4 removes them again, "usb-claim-1.1.1.1.1" first.
+//
+// Phases / assertions
+// -------------------
+//
+//  1. setup-done -> config-applied.
+//
+//  2. hub-chain-attached: four hubs are plugged into each other and the drive
+//     into the last one. EVE enumerates the drive at the port path the
+//     framework plugged it into, five components deep, and a hub with QEMU's
+//     hub ids at each of the four prefixes of that path, all on one bus.
+//
+//  3. flash-drive-with-exact-claim: the five apps are deployed in the order
+//     above, each claim outranking the one before. After each deployment the
+//     new app enumerates the drive and the previous holder no longer does.
+//     With all five running, ZInfoDevice reports every entry as used by its
+//     app.
+//
+//  4. flash-drive-handed-down: the apps are stopped from the exact claim
+//     downwards; after each stop the app with the next shorter prefix
+//     enumerates the drive. The drive and then the hubs, innermost first, are
+//     detached at the end, so the device is clean for the next test.
+//
+// Test params
+// -----------
+//   - HYPERVISOR. The test skips unless it is KVM; declared so that every
+//     test in the suite states the same device requirements.
+//
+// Suite placement
+// ---------------
+//   - TestHardwareSuite.
+func TestUSBHubChain(test *testing.T) {
+	evetestT := evetest.Init(test)
+	t := NewGomegaWithT(evetestT)
+	defer evetest.Close()
+
+	// Define configurable parameters available for the test.
+	evetest.DefineTestParameters(
+		evetest.HypervisorParameter(),
+	)
+
+	// Get parameter values set for this test execution.
+	hypervisor := evetest.GetHypervisorParameterValue()
+	if hypervisor != evetest.HypervisorKVM {
+		evetestT.Skipf("HYPERVISOR is %s: USB passthrough to applications is done by "+
+			"usbmanager, which runs under KVM only", hypervisor)
+	}
+
+	// Set up the test harness and specify the test prerequisites.
+	device := setupHardwareTestDevice(hypervisor)
+	evetest.Checkpoint("setup-done")
+
+	// Build and apply the device configuration.
+	devConfig := singleMgmtPortConfig()
+	device.ApplyConfig(devConfig, true, false)
+	evetest.Checkpoint("config-applied")
+
+	// Phase 2: plug the hubs into each other and the drive into the last one;
+	// EVE enumerates the whole chain.
+	hubIDs := make([]string, hubChainLength)
+	hubPaths := make([]string, hubChainLength)
+	parentHub := ""
+	for i := range hubIDs {
+		hubIDs[i] = fmt.Sprintf("evtest-hub%d", i+1)
+		hubPaths[i] = device.AttachUSBHub(hubIDs[i], parentHub)
+		parentHub = hubIDs[i]
+	}
+	drivePath := device.AttachUSBStorageBehind(parentHub, chainedDriveID, flashDriveSize)
+	drive := device.WaitForUSBDevice(t, chainedDriveID, usbEnumerationTimeout, usbEnumerationInterval)
+	t.Expect(drive.Port).To(Equal(drivePath), "the drive's port path as EVE enumerates it")
+	t.Expect(device.ListUSBDevices()).To(matchers.SatisfyPredicate(
+		"EVE enumerates a hub at every prefix of the drive's port path",
+		hasUSBDevicesAt(drive.Bus, hubPaths, evetest.USBHubVendorID, evetest.USBHubProductID)))
+	evetest.Checkpoint("hub-chain-attached")
+
+	// Phase 3: five apps claim the drive, by every prefix of its port path and
+	// by the path itself; each new claim outranks the one before and takes the
+	// drive away from the previous holder. An app is labelled by its claim.
+	claims := make([]string, 0, hubChainLength+1)
+	for _, hubPath := range hubPaths {
+		claims = append(claims, hubPath+".*")
+	}
+	claims = append(claims, drivePath)
+	apps := newUSBFlashApps(t, device, devConfig)
+	devUpdates, stopDevWatch := device.WatchDeviceInfo()
+	defer stopDevWatch()
+	holders := make([]*usbFlashApp, 0, len(claims))
+	for i, claim := range claims {
+		app := apps.start(usbClaimLabelPrefix+claim, fmt.Sprintf("%d:%s", drive.Bus, claim))
+		t.Eventually(app.usbDevices, usbEnumerationTimeout, usbEnumerationInterval).Should(
+			matchers.SatisfyPredicate("the app claiming "+claim+" enumerates the drive",
+				hasUSBDevice(chainedDriveID)))
+		if i > 0 {
+			t.Eventually(holders[i-1].usbDevices, usbEnumerationTimeout, usbEnumerationInterval).Should(
+				matchers.SatisfyPredicate("the app claiming "+claims[i-1]+" lost the drive",
+					lacksUSBDevice(chainedDriveID)))
+		}
+		holders = append(holders, app)
+	}
+	t.Eventually(devUpdates, devInfoTimeout).Should(Receive(matchers.SatisfyPredicate(
+		"every entry is reported as used by its app", adaptersUsedBy(holders))))
+	evetest.Checkpoint("flash-drive-with-exact-claim")
+
+	// Phase 4: stopping the holder hands the drive to the next lower claim.
+	for i := len(holders) - 1; i >= 0; i-- {
+		holders[i].stop()
+		if i > 0 {
+			t.Eventually(holders[i-1].usbDevices, usbEnumerationTimeout, usbEnumerationInterval).Should(
+				matchers.SatisfyPredicate("the app claiming "+claims[i-1]+" got the drive",
+					hasUSBDevice(chainedDriveID)))
+		}
+	}
+	evetest.Checkpoint("flash-drive-handed-down")
+
+	// Leave the device as found: the drive and then the hubs, innermost first,
+	// since a hub cannot go while something is plugged into it.
+	device.DetachUSBStorage(chainedDriveID)
+	for i := len(hubIDs) - 1; i >= 0; i-- {
+		device.DetachUSBHub(hubIDs[i])
+	}
+}
