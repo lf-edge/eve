@@ -18,6 +18,8 @@
 //   - upgrade_test.go     -- the flavor switch itself
 //   - repartition_novolmig_test.go -- the boot-disk conversion with no volume on
 //     the device, both routes to the space
+//   - repartition_volmig_test.go   -- the same conversion with an app volume
+//     carried across it
 //   - repartition_refused_test.go  -- the repartition declined, both reasons
 //   - repartition_geometry_test.go -- the resulting partition layout, on its own
 //   - appvolume_test.go   -- what an interrupted shrink does to the data in a
@@ -228,6 +230,7 @@ func TestKonvertSuite(test *testing.T) {
 		},
 		evetest.TestCase{Test: TestKvmToKVolumeMigration},
 		evetest.TestCase{Test: TestFirstBootEVEKAppVolume},
+		evetest.TestCase{Test: TestKvmToKRepartitionVolmig},
 		evetest.TestCase{Test: TestKvmToKRepartitionAppVolume},
 	)
 }
