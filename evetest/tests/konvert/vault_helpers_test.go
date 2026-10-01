@@ -61,6 +61,26 @@ func settleVaultLocal(t Gomega, device *evetest.EdgeDevice) {
 		"the vault did not settle on a local unlock within %d reboots", maxReboots)
 }
 
+// waitVaultUnlocked blocks until vaultmgr reports how it opened the vault.
+//
+// Until it does, the vault dataset is not mounted and /persist/vault is an
+// empty directory on the parent dataset, so anything read through the
+// mountpoint looks destroyed rather than not yet available. The boot after a
+// flavor change takes its time getting there: that change moves the
+// measurements the seal is bound to, so the local unseal fails first and the
+// controller key is what eventually opens it.
+func waitVaultUnlocked(t Gomega, device *evetest.EdgeDevice) {
+	log := evetest.Logger()
+	var method string
+	t.Eventually(func() string {
+		method = readVaultUnlockMethod(device)
+		return method
+	}, 12*time.Minute, 10*time.Second).ShouldNot(BeEmpty(),
+		"vaultmgr never reported an unlock method, so the vault stayed unmounted "+
+			"and its content cannot be read")
+	log.Infof("vault unlocked: method=%s", method)
+}
+
 // readVaultUnlockMethod returns how the vault was unlocked, or "" while
 // vaultmgr has not published yet.
 func readVaultUnlockMethod(device *evetest.EdgeDevice) string {
@@ -126,7 +146,15 @@ type vaultUnlock struct {
 // That claim is established live instead, before the conversion, by
 // settleVaultLocal reading VaultStatus directly, which is stronger evidence
 // than parsing a log for it would be.
-func assertSealSurvivedRepartition(t Gomega, device *evetest.EdgeDevice) {
+//
+// The boot after the resize is different: it runs kvmVersion, the image that
+// carries the conversion, on the repartitioned disk, and its records are
+// written after the resize, so its unseal is asserted from the log. It must be
+// local: a controller-key fallback there whose line names no PCR would pass
+// the PCR5 check above while the seal was in fact lost. When no record from
+// kvmVersion survived at all, that is logged rather than failed, because the
+// shrink route can lose them together with the settle's.
+func assertSealSurvivedRepartition(t Gomega, device *evetest.EdgeDevice, kvmVersion string) {
 	log := evetest.Logger()
 	var raw string
 	t.Eventually(func(g Gomega) {
@@ -155,6 +183,21 @@ func assertSealSurvivedRepartition(t Gomega, device *evetest.EdgeDevice) {
 	t.Expect(pcr5Reseals).To(BeEmpty(),
 		"PCR5 appears in a re-seal or failed unseal, so the repartition broke the TPM seal: %v",
 		pcr5Reseals)
+
+	var lastKVM *vaultUnlock
+	for i := range unlocks {
+		if unlocks[i].version == kvmVersion {
+			lastKVM = &unlocks[i]
+		}
+	}
+	if lastKVM == nil {
+		log.Warnf("no unlock record from %s survived the conversion, so the "+
+			"post-resize boot's unseal cannot be judged", kvmVersion)
+		return
+	}
+	t.Expect(lastKVM.method).To(Equal(unlockLocal),
+		"the last %s boot, the one after the resize, did not unseal locally: %+v",
+		kvmVersion, *lastKVM)
 }
 
 var (

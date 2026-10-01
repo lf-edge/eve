@@ -37,6 +37,7 @@ func TestKvmToKUpgrade(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
 	defer evetest.Close()
+	requireFlavorAwareTransport(t)
 
 	defineCrossFlavorParameters()
 	p := resolveCrossFlavorParams(t)
@@ -74,6 +75,7 @@ func TestKvmToKUpgrade(test *testing.T) {
 	log.Infof("the reverse update (%s → %s) must be refused", altHV, p.initialHypervisor)
 	device.RequestRefusedEVEUpgrade(p.initialVersion, p.initialHypervisor,
 		evetest.BaseOSDatastoreHTTP)
-	assertConversionDeclined(t, device, altRunningVersion)
+	assertConversionDeclined(t, device, altRunningVersion,
+		declinePrefixFromEVEK, declineCauseUnsupported)
 	evetest.Checkpoint("reverse-refused")
 }

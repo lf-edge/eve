@@ -70,7 +70,11 @@ func snapshotDownloaderBytes(t Gomega, device *evetest.EdgeDevice) int64 {
 // Measured in bytes rather than by comparing digests: a redeploy that fetches
 // the same layers again ends up holding the same digests it started with, so a
 // digest comparison would call that a reuse.
-func assertBlobsReused(t Gomega, device *evetest.EdgeDevice, before int64) {
+//
+// persistRecreated says whether /persist was recreated since before. The
+// content store lives there, so a download is then the recreate's consequence
+// rather than a reuse failure of its own, and the failure is labeled which.
+func assertBlobsReused(t Gomega, device *evetest.EdgeDevice, before int64, persistRecreated bool) {
 	after, err := downloaderRecvBytes(device)
 	t.Expect(err).NotTo(HaveOccurred())
 	t.Expect(after).To(BeNumerically(">=", before),
@@ -79,9 +83,13 @@ func assertBlobsReused(t Gomega, device *evetest.EdgeDevice, before int64) {
 		before, after)
 	delta := after - before
 	evetest.Logger().Infof("downloader received %d bytes across the deployment", delta)
+	cause := "blob-reuse"
+	if persistRecreated {
+		cause = "recreate-induced: /persist was recreated, taking the content store with it"
+	}
 	t.Expect(delta).To(BeNumerically("<", blobReuseAllowanceBytes),
-		"the deployment downloaded %d bytes, so it did not reuse the blobs the "+
-			"conversion carried over", delta)
+		"[%s] the deployment downloaded %d bytes, so it did not reuse the blobs the "+
+			"conversion carried over", cause, delta)
 }
 
 // assertNothingDownloadedThisBoot asserts the downloader has pulled essentially

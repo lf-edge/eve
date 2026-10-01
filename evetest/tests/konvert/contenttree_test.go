@@ -31,6 +31,7 @@ func TestKvmToKContentTree(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
 	defer evetest.Close()
+	requireFlavorAwareTransport(t)
 
 	defineCrossFlavorParameters()
 	p := resolveCrossFlavorParams(t)
@@ -92,6 +93,6 @@ func TestKvmToKContentTree(test *testing.T) {
 	}()
 	assertAppReady(t, device, appUUID, appRunningAfterSwitchTimeout)
 	appOK = true
-	assertBlobsReused(t, device, beforeBytes)
+	assertBlobsReused(t, device, beforeBytes, false)
 	evetest.Checkpoint("blobs-reused")
 }
