@@ -1,0 +1,134 @@
+IMA measurement-only rollout TODO
+
+Goal
+Enable measurement-only IMA on every kernel target supported by
+kernel-version.mk. Keep IMA appraisal, EVM, and IMA signature enforcement
+disabled. Existing Secure Boot and module-signing settings are independent.
+
+Current state
+- AMD64 generic: local build patches core and HWE configurations.
+- AMD64 core: kernel/image builds and QEMU runtime measurements validated.
+- Early eve_code policy is locked against replacement and measures all-user
+  file-backed execution, mappings, and stored-file reads, including memfd.
+- Writable executable mappings and later executable transitions emit violation
+  events and remain allowed. No IMA file-signing keys are required.
+- AMD64 HWE: Kconfig validated; full build and runtime validation still needed.
+- Other targets: IMA defaults to disabled; explicit IMA=y is rejected.
+
+Remaining kernel coverage
+[ ] AMD64 generic HWE: build and boot validation.
+[ ] AMD64 RT: merge IMA settings with the RT configuration and validate.
+[ ] ARM64 generic.
+[ ] ARM64 NVIDIA JetPack 5 (nvidia-jp5).
+[ ] ARM64 NVIDIA JetPack 6 (nvidia-jp6).
+[ ] ARM64 NVIDIA JetPack 7 (nvidia-jp7).
+[ ] ARM64 i.MX8MP Pollux (imx8mp_pollux).
+[ ] ARM64 i.MX8MP EPC-R3720 (imx8mp_epc_r3720).
+[ ] ARM64 i.MX8MQ EVK (imx8mq_evk).
+[ ] RISC-V 64 generic.
+
+Build integration
+[ ] Inventory the actual defconfig files, config flavors, and build recipes
+    at each pinned kernel revision; account for shared platform kernels.
+[ ] Apply common measurement-only settings through configuration fragments
+    or version-specific patches, preserving each platform's dependencies.
+[ ] Generalize tools/build-ima-kernel.sh and the Makefile beyond AMD64 generic,
+    including platform-specific kernel recipes and cross-compilation.
+[ ] Validate effective Kconfig: IMA and securityfs enabled, SHA-256 built in,
+    ima-ng selected, PCR 10 selected, policy readable, and appraisal disabled.
+[ ] Enable measurement-only boot parameters by default for each validated
+    target; retain IMA=n and explicit KERNEL_TAG overrides.
+[ ] Verify runtime and installer images, cache reuse, and rebuilds after a
+    kernel revision or configuration patch changes.
+
+Runtime validation for each supported target
+[x] AMD64 core: 384 execution/measurement cases across host, debug, and pillar
+    namespaces; root and UID 1000; disk, tmpfs, RAMFS, and overlay storage.
+    Includes native binaries, libraries, interpreted scripts, memfd, descriptor
+    rewrites/truncation, writable aliases, and executable mapping transitions.
+[x] AMD64 core: reject root attempts to replace the early measurement policy.
+[ ] Boot on representative hardware, or QEMU where the platform is supported.
+[ ] Confirm the active policy contains measurement rules and no appraisal rules.
+[ ] Execute an unsigned program and a modified version; verify both SHA-256
+    digests appear in the measurement log and execution remains permitted.
+[ ] With a supported TPM, verify PCR 10 extension and measurement-log replay.
+[ ] Without a TPM, verify boot and the in-memory measurement log still work.
+[ ] Validate kexec measurement-list preservation where the kernel supports it.
+[ ] Check boot time, CPU use, and measurement-log memory growth under workloads.
+    Include large mutable data and guest-disk I/O: broad read coverage measures
+    host data too, and repeated writes/reads can cause repeated hashing.
+[ ] Refine production measurement policy and mutable-file expectations:
+    QEMU validation found rewritten watchdog/DNS configuration and IMA
+    violations on writable data. Do not blanket-allow unknown hashes or
+    treat legitimate writable data as immutable release content.
+
+eve-api transport
+[ ] Extend proto/attest/attest.proto with a separate, versioned IMA log payload;
+    keep IMA records distinct from the existing TPM firmware binary event log.
+[ ] Define binary log encoding, compression, PCR indices, digest algorithms,
+    template identifiers, boot identity, and entry sequence/cursor metadata.
+[ ] Define bounded full-log and incremental transfers, missing-entry recovery,
+    retries, duplicate handling, and behavior when IMA or a TPM is unavailable.
+[ ] Maintain compatibility with older EVE/controller versions and regenerate
+    bindings; update the vendored API in EVE and Adam.
+
+EVE sender
+[ ] Collect the kernel's binary IMA measurement log and relevant policy metadata.
+[ ] Send the IMA payload through the attestation flow using the new API fields.
+[ ] Include PCR 10 in TPM quotes and bind evidence to the controller's nonce.
+[ ] Obtain a consistent log prefix and quote despite concurrent measurements;
+    handle reboot/cursor resets, size limits, and interrupted uploads.
+
+CI reference measurements
+[x] Generate a versioned SHA-256 file manifest from the final composed rootfs,
+    including kernel modules, init files, and unpacked service/onboot container
+    contents. Associate hashes with file/image identity, not just a basename.
+[ ] Generate the manifest after all rootfs modifications. Define handling for
+    symlinks, hard links, filesystem metadata, and files generated at boot.
+    Final-image generation and regular-file/hardlink/symlink handling are
+    implemented; metadata attestation and boot-generated baselines remain.
+[x] Validate AMD64 core manifest against the running final filesystem:
+    8,749 regular files and 7,700 symlinks, complete inventory and content
+    match, and full-log PCR 10 replay matches SHA-1 and SHA-256 TPM banks.
+    One watchdog seed inode group has the correct hash recorded only with a
+    basename; full source identity cannot be verified from that record.
+    Changed-file, corrupted/reordered/truncated-log, and extraction-failure
+    tests pass. ASCII namespace ambiguity remains; this is local validation,
+    not full production attestation. The full log retains unknown runtime/test
+    data, seven mutable-configuration mismatches, and 208 violation records.
+[ ] Record the exact EVE build ID, kernel/configuration, container image digests,
+    manifest format, and applicable IMA policy. Publish the manifest as a CI
+    artifact associated with the corresponding released image.
+[ ] Make trusted reference manifests available to Adam and select them by
+    device build identity; define how manifests are authenticated and updated.
+[ ] Keep CI file hashes distinct from IMA template digests: file hashes support
+    expected-content checks, while template digests drive TPM PCR replay.
+    CI cannot precompute a complete runtime event log because access order,
+    mutable data, and device-specific boot state affect measurements.
+
+Adam consumer and verification
+[ ] Accept the new IMA payload, enforce resource limits, store it by device/boot,
+    and expose received entries and verification results for inspection.
+[ ] Validate TPM quote signatures, nonce freshness, and selected PCR banks.
+[ ] Parse IMA binary records and reconstruct the serialized template digests;
+    replay PCR 10 for each quoted hash bank in event order, including violation
+    records and supported kexec history, and compare with the quoted PCR value.
+[ ] Compare measured file digests with the CI reference manifest for that build;
+    account for container path collisions, mutable files, and boot_aggregate.
+[ ] Report unknown, changed, missing, truncated, and unverifiable measurements
+    separately. Absence from the log does not prove a file was checked or absent.
+[ ] Define treatment of executable-transition/writable-mapping violations and
+    distinguish expected writable data from unverifiable executed code.
+    ima-ng does not carry the hook, namespace, or code-versus-data provenance.
+[ ] Add an end-to-end CI-manifest -> EVE-log/quote -> Adam-verification scenario,
+    including modified files, forged/truncated logs, stale quotes, and reboots.
+
+Upstream transition
+[ ] Enable the same settings in all relevant lf-edge/eve-kernel configurations.
+[ ] Upstream or maintain the early policy, coverage hooks, and policy lock
+    across supported kernel versions; configuration alone is insufficient.
+[ ] Build and publish kernel images for all supported targets and flavors.
+[ ] Update EVE's pinned kernel commits/tags to those published images.
+[ ] Remove the temporary local patch/build path after all published kernels
+    provide measurement-only IMA; retain an explicit measurement-policy opt-out.
+[ ] Update build and security documentation with the completed platform coverage.
