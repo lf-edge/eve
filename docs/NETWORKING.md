@@ -161,6 +161,7 @@ for further directions.
 - [Wireless connectivity](WIRELESS.md)
 - [Metadata (incl. network info) exposed to applications](ECO-METADATA.md)
 - [Cost-aware Kubernetes/containerd downloads (HV=k)](EVE-K-COST-AWARE-CONTAINERD.md)
+- [Connecting native Kubernetes workloads to Network Instances (HV=k)](EVE-K-NETWORK-INSTANCES.md)
 - Developer's deep-dive into EVE networking-related microservices:
   - [NIM](../pkg/pillar/docs/nim.md)
   - [zedrouter](../pkg/pillar/docs/zedrouter.md)
