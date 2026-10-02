@@ -60,7 +60,9 @@ func movePersistToExtraDisk(t Gomega, device *evetest.EdgeDevice,
 	// does not promptly republish LastRebootTime after an external power cycle,
 	// so the power cycle stays unobserved until the device reports again. A
 	// confirmed config round trip is what makes it report.
+	stopProbe := probeStalledConfigFetch(device)
 	device.ApplyConfig(devConfig, true, true)
+	stopProbe()
 
 	part := persistDiskPartition(t, device, filesystem)
 	log.Infof("/persist is now on %s", part)
@@ -122,7 +124,9 @@ func buildWholeDiskPersistPool(t Gomega, device *evetest.EdgeDevice,
 	// reboot and why a config round trip follows.
 	device.PowerOn(false)
 	waitDeviceResponds(t, device)
+	stopProbe := probeStalledConfigFetch(device)
 	device.ApplyConfig(devConfig, true, true)
+	stopProbe()
 
 	part := persistDiskPartition(t, device, evetest.FilesystemZFS)
 	log.Infof("/persist is now on %s", part)
