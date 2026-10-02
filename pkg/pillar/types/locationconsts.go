@@ -166,6 +166,11 @@ const (
 	// changing this file does not change the actual policy, hence
 	// needs not be protected.
 	PolicyPcrFile = PersistStatusDir + "/policy-pcr.json"
+
+	// KvmToKubePendingFilename - marker under PersistStatusDir that EVE-kvm's
+	// baseosmgr writes before converting the device to EVE-k. The first EVE-k
+	// boot relocates the carried-over kvm volumes and removes it.
+	KvmToKubePendingFilename = "kvm-to-k-pending"
 )
 
 var (
@@ -183,6 +188,13 @@ var (
 	VolumeClearZFSDataset = ClearDataset + "/volumes"
 	//VolumeEncryptedZFSDataset - dataset to create volumes with encryption
 	VolumeEncryptedZFSDataset = SealedDataset + "/volumes"
+	// KvmParkedSealedDataset - the EVE-kvm filesystem vault that the EVE-k
+	// vault migration renames aside. EVE-k keeps it until the app-volume zvols
+	// it holds have been carried into PVCs; an EVE-kvm fallback puts it back.
+	KvmParkedSealedDataset = SealedDataset + ".old"
+	// KvmParkedVolumeEncryptedZFSDataset - the EVE-kvm encrypted app-volume
+	// zvols inside KvmParkedSealedDataset
+	KvmParkedVolumeEncryptedZFSDataset = KvmParkedSealedDataset + "/volumes"
 	// EtcdZvol - zvol encrypted for etcd storage
 	EtcdZvol = PersistDataset + "/etcd-storage"
 	// TpmMeasurementLogFile is a kernel exposed variable that contains the

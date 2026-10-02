@@ -26,6 +26,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 	"unsafe"
 
 	"github.com/google/go-tpm/legacy/tpm2"
@@ -1018,9 +1019,16 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 		return FetchVaultKey(log)
 	}
 
-	//gain some knowledge about existing environment
-	sealedKeyPresent := isSealedKeyPresent()
-	legacyKeyPresent := isLegacyKeyPresent()
+	sealedKeyPresent, err := diskKeyPresent(log, TpmSealedDiskPrivHdl, "sealed")
+	if err != nil {
+		return nil, err
+	}
+	legacyKeyPresent := false
+	if !sealedKeyPresent {
+		if legacyKeyPresent, err = diskKeyPresent(log, TpmDiskKeyHdl, "legacy"); err != nil {
+			return nil, err
+		}
+	}
 
 	// Determine the PCR selection to use
 	pcrSelection := GetDiskKeyPolicyPcrOrDefault(types.PolicyPcrFile)
@@ -1176,21 +1184,53 @@ func sealDiskKeyLegacy(log *base.LogObject, key []byte, pcrSel tpm2.PCRSelection
 	return nil
 }
 
-func isSealedKeyPresent() bool {
+// diskKeyPresenceAttempts and diskKeyPresenceRetryDelay bound the retries of a
+// TPM error while deciding whether a disk key exists. The TPM can answer a
+// command with a transient warning such as RC_RETRY.
+const (
+	diskKeyPresenceAttempts   = 3
+	diskKeyPresenceRetryDelay = 500 * time.Millisecond
+)
+
+// diskKeyPresent reports whether the disk key NV index at handle holds a key,
+// retrying a TPM error. It returns an error when the TPM keeps failing, which
+// the caller must not read as an absent key: that would seal a fresh key over
+// the one the vault is encrypted with.
+func diskKeyPresent(log *base.LogObject, handle tpmutil.Handle, kind string) (bool, error) {
+	for attempt := 1; ; attempt++ {
+		present, err := checkDiskKeyPresence(handle)
+		if err == nil {
+			return present, nil
+		}
+		log.Warnf("checking for the %s disk key (attempt %d/%d): %v",
+			kind, attempt, diskKeyPresenceAttempts, err)
+		if attempt == diskKeyPresenceAttempts {
+			return false, fmt.Errorf("cannot tell whether a %s disk key exists: %w", kind, err)
+		}
+		time.Sleep(diskKeyPresenceRetryDelay)
+	}
+}
+
+// nvIndexWritten reports whether the NV index at handle is defined and has
+// been written. Only the TPM reporting the index undefined, or defined and
+// never written (a seal cut between define and write), yields false; every
+// other failure is returned.
+func nvIndexWritten(handle tpmutil.Handle) (bool, error) {
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
-		return false
+		return false, fmt.Errorf("OpenTPM failed: %w", err)
 	}
 	defer rw.Close()
 
-	_, err = tpm2.NVReadEx(rw, TpmSealedDiskPrivHdl,
-		tpm2.HandleOwner, EmptyPassword, 0)
-	return err == nil
-}
-
-func isLegacyKeyPresent() bool {
-	_, err := readDiskKey()
-	return err == nil
+	pub, err := tpm2.NVReadPublic(rw, handle)
+	var handleErr tpm2.HandleError
+	if errors.As(err, &handleErr) && handleErr.Code == tpm2.RCHandle {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("NVReadPublic(%#x) failed: %w", handle, err)
+	}
+	return pub.Attributes&tpm2.AttrWritten != 0, nil
 }
 
 // unsealDiskKeyLegacy unseals key from TPM using the legacy go-tpm API without
@@ -1394,7 +1434,11 @@ func PolicyPCRSession(rw io.ReadWriteCloser, pcrSel tpm2.PCRSelection) (tpmutil.
 // CompareLegacyandSealedKey compares legacy and sealed keys
 // to record if we are using a new key for sealed vault
 func CompareLegacyandSealedKey(log *base.LogObject) SealedKeyType {
-	if !isSealedKeyPresent() {
+	present, err := nvIndexWritten(TpmSealedDiskPrivHdl)
+	if err != nil {
+		log.Warnf("CompareLegacyandSealedKey: %v", err)
+	}
+	if !present {
 		return SealedKeyTypeUnprotected
 	}
 	legacyKey, err := readDiskKey()

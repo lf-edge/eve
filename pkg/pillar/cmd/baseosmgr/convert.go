@@ -360,6 +360,27 @@ func withConfigPartitionRW(fn func(mountDir string) error) error {
 	return fnErr
 }
 
+// conversionDecision runs the read-only storage-resizer pre-flight check on the
+// boot disk and returns its decision ("proceed"/"grow"/"shrink"/"insufficient").
+// It mounts nothing, writes nothing, and takes no action -- it is the cheap
+// "would this conversion shrink /persist?" probe the cross-flavor volume gate
+// needs before committing to the (network-dependent) image download. The
+// authoritative arming still happens later in maybeConvert; this only informs
+// the gate, and the grow-vs-shrink choice is geometry-stable between the two
+// (no repartition happens in between), so a "grow"/"proceed" here cannot become
+// a "shrink" by the time maybeConvert arms.
+func conversionDecision() (string, error) {
+	bootDisk, err := bootDiskFromCurrentPartition()
+	if err != nil {
+		return "", fmt.Errorf("cannot determine boot disk: %w", err)
+	}
+	c := &diskconvert.Converter{
+		Runner:       diskconvert.BinaryRunner{Binary: convertResizerBinary},
+		PersistLabel: "P3",
+	}
+	return c.CheckOnly(bootDisk)
+}
+
 // bootDiskFromCurrentPartition returns the whole-disk device (e.g. /dev/sda)
 // holding the current root partition.
 func bootDiskFromCurrentPartition() (string, error) {

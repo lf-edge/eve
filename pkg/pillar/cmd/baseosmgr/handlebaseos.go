@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/diskconvert"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 )
@@ -215,11 +216,14 @@ func doBaseOsStatusUpdate(ctx *baseOsMgrContext, uuidStr string,
 	// different /persist layout etc.
 	// The block is asymmetric because the two directions are not
 	// symmetric in what they can disturb:
-	//   - kvm -> EVE-k is allowed when no volume instances exist; without
-	//     them there is no /persist/vault/volumes/ state to disturb.
 	//   - EVE-k -> kvm is always blocked: once the vault has been migrated
 	//     to the EVE-k zvol layout there is no back-migration to a kvm
 	//     filesystem dataset, and EVE-kvm cannot read a zvol-backed vault.
+	//   - kvm -> EVE-k is blocked only when the device has volumes AND the
+	//     conversion would actually disturb /persist — i.e. a "shrink", or a
+	//     state we cannot prove is safe. A grow-only or already-large-geometry
+	//     ("proceed") conversion leaves /persist untouched, so the volumes
+	//     survive and the update is allowed.
 	// TBD Remove this if EVE-k in the future can have kvm personality.
 	// Until volumeStateKnown is true (both volume publishers have signalled
 	// restart), the sets below may be incomplete, so treat the volume state
@@ -233,19 +237,37 @@ func doBaseOsStatusUpdate(ctx *baseOsMgrContext, uuidStr string,
 	if err != nil {
 		log.Warnf("doBaseOsStatusUpdate(%s): %s",
 			config.BaseOsVersion, err)
-	} else if isCurrentKube != isUpdateKube && (isCurrentKube || hasVolumes) {
+	} else if isCurrentKube != isUpdateKube {
 		var errString string
-		if isUpdateKube {
-			errString = fmt.Sprintf("Upgrade to EVE-k (%s) from non EVE-k (%s) is not supported while volumes exist",
-				config.BaseOsVersion, shortVerCurPart)
-		} else {
+		switch {
+		case isCurrentKube:
 			errString = fmt.Sprintf("Upgrade to non EVE-k (%s) from EVE-k (%s) is not supported",
 				config.BaseOsVersion, shortVerCurPart)
+		case hasVolumes:
+			decision, derr := ctx.seams.conversionDecision()
+			switch {
+			case derr != nil:
+				// Cannot read the disk to decide: conservatively block rather
+				// than risk a shrink with volumes present.
+				errString = fmt.Sprintf("Upgrade to EVE-k (%s) blocked while volumes exist: cannot determine whether /persist must be shrunk: %s",
+					config.BaseOsVersion, derr)
+			case diskconvert.WillShrinkPersist(decision):
+				errString = fmt.Sprintf("Upgrade to EVE-k (%s) from non EVE-k (%s) is not supported while volumes exist (boot-disk conversion would shrink /persist)",
+					config.BaseOsVersion, shortVerCurPart)
+			default:
+				// "proceed"/"grow" leave /persist intact; "insufficient"
+				// performs no conversion at all and is reported later by
+				// maybeConvert. Allow the update to continue in all of these.
+				log.Noticef("doBaseOsStatusUpdate(%s): cross-flavor update allowed with volumes; conversion decision %q does not shrink /persist",
+					config.BaseOsVersion, decision)
+			}
 		}
-		log.Error(errString)
-		status.SetErrorNow(errString)
-		changed = true
-		return changed
+		if errString != "" {
+			log.Error(errString)
+			status.SetErrorNow(errString)
+			changed = true
+			return changed
+		}
 	}
 
 	c, proceed := doBaseOsInstall(ctx, uuidStr, config, status)
@@ -270,17 +292,30 @@ func doBaseOsStatusUpdate(ctx *baseOsMgrContext, uuidStr string,
 		return changed
 	}
 
-	// A cross-flavor (EVE-kvm -> EVE-k) update is allowed above only when the
-	// device has no volumes. The image is downloaded and verified by now (the
-	// doBaseOsInstall step waited for ContentTreeStatus); before writing it to
-	// the A/B partition, repartition the boot disk to the EVE-k geometry. The
-	// download must precede the repartition because the shrink path reboots
-	// into an offline resize with no network, and the repartition must not run
-	// before the controller asks for activation: it reboots the device and on
-	// the shrink path shrinks /persist, which a merely pre-staged image must
-	// not trigger. Block activation until the geometry is ready.
+	// A cross-flavor (EVE-kvm -> EVE-k) update reaching here was allowed above:
+	// either the device has no volumes, or the conversion preserves /persist
+	// (grow-only / large geometry already in place). The image is downloaded and
+	// verified by now (the doBaseOsInstall step waited for ContentTreeStatus);
+	// before writing it to the A/B partition, repartition the boot disk to the
+	// large EVE-k geometry. The download must precede the repartition because
+	// the shrink path reboots into an offline resize with no network, and the
+	// repartition must not run before the controller asks for activation: it
+	// reboots the device and on the shrink path shrinks /persist, which a merely
+	// pre-staged image must not trigger. Block activation until the geometry is
+	// ready.
 	if err == nil && isCurrentKube != isUpdateKube {
-		if !maybeConvert(ctx, status) {
+		// Tells the first EVE-k boot to stage this device's kvm volumes for
+		// migration into Longhorn PVCs. Written before conversion starts since
+		// that reboots. Deliberately not in storage-resizer's /config backup: the
+		// shrink that backup guards runs only on devices without volumes.
+		if err := fileutils.WriteRename(ctx.paths.kvmToKubePending, nil); err != nil {
+			errString := fmt.Sprintf("Upgrade to EVE-k (%s): cannot record pending conversion: %s",
+				config.BaseOsVersion, err)
+			log.Error(errString)
+			status.SetErrorNow(errString)
+			return true
+		}
+		if !ctx.seams.maybeConvert(ctx, status) {
 			changed = true
 			return changed
 		}

@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -264,11 +265,24 @@ func (h *ZFSHandler) unlockVault(vaultPath string) error {
 		}); err != nil {
 			return err
 		}
+		// The parked kvm vault's app-volume zvols have device nodes only while
+		// its key is loaded, and csihandler rolls PVCs out from them.
+		if parked := vaultPath + vaultBackupSuffix; zfs.DatasetExist(h.log, parked) {
+			if err := h.loadDatasetKeyIfUnavailable(parked); err != nil {
+				h.log.Errorf("Cannot load the key of the parked kvm vault %s: %v", parked, err)
+			}
+		}
 		if err := MountVaultZvol(h.log, vaultPath); err != nil {
 			h.log.Errorf("Error unlocking vault: %v", err)
 			return err
 		}
 	} else {
+		// A reverted migration puts back a vault whose key the load above did
+		// not cover: it loaded the key of the migrated zvol.
+		if err := h.loadDatasetKeyIfUnavailable(vaultPath); err != nil {
+			h.log.Errorf("Error unlocking vault: %v", err)
+			return err
+		}
 		if err := zfs.MountDataset(vaultPath); err != nil {
 			h.log.Errorf("Error unlocking vault: %v", err)
 			return err
@@ -320,9 +334,13 @@ const vaultMigrateMountpoint = "/run/vaultmgr/vault-migrate"
 //
 // The sequence stages a new zvol "<vaultPath>2", copies the vault contents into
 // it, records that the copy is complete, then swaps it into place: the old
-// filesystem vault is renamed to "<vaultPath>.old", the staging zvol is renamed
-// to "<vaultPath>", and only then is the old vault destroyed. Until the swap
-// the staging zvol holds a partial copy and is dropped on any failure, so a
+// filesystem vault is renamed to "<vaultPath>.old" and the staging zvol is
+// renamed to "<vaultPath>". The old vault stays parked there together with the
+// kvm app-volume zvols under it, which the copy does not see: EVE-k rolls those
+// into PVCs straight from the parked zvols, and a fallback to EVE-kvm puts the
+// parked vault back. volumemgr destroys it once the EVE-k partition is
+// committed and every carried volume has been consumed. Until the swap the
+// staging zvol holds a partial copy and is dropped on any failure, so a
 // fallback boot to EVE-kvm does not inherit a zvol holding up to the pool's
 // free space. The caller reaches this only when a filesystem vault is present
 // at vaultPath (i.e. the source is intact), so a leftover staging/backup
@@ -472,12 +490,7 @@ func (h *ZFSHandler) migrateVaultFsToZvol(vaultPath, keyFile string, encrypt boo
 	if err := ops.ClearSwapMarker(); err != nil {
 		h.log.Warnf("migrateVaultFsToZvol: cannot clear migration swap state: %v", err)
 	}
-
-	// Best effort: the migrated zvol is now at vaultPath, so the old vault may
-	// be torn down. On failure it is left for the next boot's recovery.
-	if err := h.dropMigrationLeftovers("", backupDataset); err != nil {
-		h.log.Warnf("migrateVaultFsToZvol: %v", err)
-	}
+	h.log.Noticef("migrateVaultFsToZvol: parked the kvm vault at %s", backupDataset)
 
 	if err := ops.MountVaultZvol(vaultPath); err != nil {
 		return fmt.Errorf("mount migrated zvol vault %s: %v", vaultPath, err)
@@ -544,6 +557,14 @@ const (
 	// the interrupted swap was producing, so what is left over is the only copy
 	// of the contents and must be kept.
 	vaultMigrationKeepLeftovers
+	// vaultMigrationKeepParked - EVE-k runs on the migrated zvol with the kvm
+	// vault parked beside it; keep the parked vault for volumemgr to drain and
+	// discard only a staging leftover.
+	vaultMigrationKeepParked
+	// vaultMigrationRevertSwap - EVE-kvm found the migrated zvol in place with
+	// its own vault parked beside it: drop the zvol and put the parked vault
+	// back.
+	vaultMigrationRevertSwap
 )
 
 func (a vaultMigrationRecovery) String() string {
@@ -556,6 +577,10 @@ func (a vaultMigrationRecovery) String() string {
 		return "drop-leftovers"
 	case vaultMigrationKeepLeftovers:
 		return "keep-leftovers"
+	case vaultMigrationKeepParked:
+		return "keep-parked"
+	case vaultMigrationRevertSwap:
+		return "revert-swap"
 	default:
 		return "noop"
 	}
@@ -578,6 +603,16 @@ func (a vaultMigrationRecovery) String() string {
 func planVaultMigrationRecovery(vaultExists, vaultIsZvol, stagingExists, backupExists,
 	swapStaged, partitionCommitted, zvolVaultSupported bool) vaultMigrationRecovery {
 	if vaultExists {
+		// A completed swap: the migrated zvol in place and the kvm vault parked.
+		// EVE-k keeps the parked vault whatever the partition state, because its
+		// app-volume zvols are the source of PVCs that may not exist yet.
+		// EVE-kvm cannot mount the zvol, so it takes its parked vault back.
+		if vaultIsZvol && backupExists {
+			if zvolVaultSupported {
+				return vaultMigrationKeepParked
+			}
+			return vaultMigrationRevertSwap
+		}
 		// EVE-kvm never migrates, so a vault in place beside a parked
 		// pre-migration vault is one EVE-kvm created after the swap renamed the
 		// original aside -- whatever the partition state says. The parked dataset
@@ -682,27 +717,59 @@ func (h *ZFSHandler) recoverInterruptedVaultMigration(vaultPath string) error {
 		return nil
 	}
 
+	dropBackup := backup
 	switch action {
 	case vaultMigrationFinishSwap:
 		if err := ops.RenameDataset(staging, vaultPath); err != nil {
 			return fmt.Errorf("finish interrupted migration rename %s -> %s: %v",
 				staging, vaultPath, err)
 		}
+		dropBackup = ""
 	case vaultMigrationRestoreBackup:
 		if err := ops.RenameDataset(backup, vaultPath); err != nil {
 			return fmt.Errorf("restore interrupted migration rename %s -> %s: %v",
 				backup, vaultPath, err)
 		}
+	case vaultMigrationKeepParked:
+		dropBackup = ""
+	case vaultMigrationRevertSwap:
+		if err := h.revertCompletedSwap(vaultPath, backup); err != nil {
+			return err
+		}
 	}
 
 	// Best effort: a failure to discard a leftover just leaves it for the next
 	// boot, and nothing promotes a staging zvol without the swap marker.
-	if err := h.dropMigrationLeftovers(staging, backup); err != nil {
+	if err := h.dropMigrationLeftovers(staging, dropBackup); err != nil {
 		h.log.Warnf("recoverInterruptedVaultMigration: %v", err)
 	}
 	if err := ops.ClearSwapMarker(); err != nil {
 		h.log.Warnf("recoverInterruptedVaultMigration: cannot clear migration swap state: %v", err)
 	}
+	return nil
+}
+
+// revertCompletedSwap gives EVE-kvm back the vault a completed migration parked
+// at backup, discarding the migrated zvol at vaultPath together with what EVE-k
+// wrote to it and to the etcd zvol before falling back. The etcd zvol goes
+// first and the parked vault is renamed back last, so an interruption leaves a
+// state the next boot plans the same way or as vaultMigrationRestoreBackup.
+func (h *ZFSHandler) revertCompletedSwap(vaultPath, backup string) error {
+	ops := h.zfsOps()
+	if ops.DatasetExist(types.EtcdZvol) {
+		if err := ops.DestroyDataset(types.EtcdZvol); err != nil {
+			return fmt.Errorf("revert migration: cannot remove etcd zvol %s: %v",
+				types.EtcdZvol, err)
+		}
+	}
+	if err := ops.DestroyDataset(vaultPath); err != nil {
+		return fmt.Errorf("revert migration: cannot remove migrated vault %s: %v",
+			vaultPath, err)
+	}
+	if err := ops.RenameDataset(backup, vaultPath); err != nil {
+		return fmt.Errorf("revert migration rename %s -> %s: %v", backup, vaultPath, err)
+	}
+	h.log.Noticef("revertCompletedSwap: restored the kvm vault %s from %s", vaultPath, backup)
 	return nil
 }
 
@@ -731,6 +798,22 @@ func (h *ZFSHandler) loadDatasetKey(dataset string) error {
 		return err
 	}
 	return nil
+}
+
+// loadDatasetKeyIfUnavailable loads the vault key for dataset unless its key is
+// already loaded or it is not encrypted. It stages the key with the derivation
+// the vault unlock resolved.
+func (h *ZFSHandler) loadDatasetKeyIfUnavailable(dataset string) error {
+	keyStatus, err := zfs.GetDatasetKeyStatus(dataset)
+	if err != nil {
+		return err
+	}
+	if keyStatus != "unavailable" {
+		return nil
+	}
+	return h.withStagedKey(h.options.TpmKeyOnlyMode, func() error {
+		return h.loadDatasetKey(dataset)
+	})
 }
 
 // e.g. zfs create -o encryption=aes-256-gcm -o keylocation=file://tmp/raw.key -o keyformat=raw persist/vault
@@ -891,24 +974,71 @@ func (h *ZFSHandler) checkOperationalStatus(vaultPath string) error {
 	return nil
 }
 
-// waitPath - Wait up to the requested number of seconds for path to exist or return error
-func waitPath(log *base.LogObject, path string, seconds int64) error {
-	beginTime := time.Now().Unix()
+// waitBlockDevice waits up to seconds for path to resolve to a block device.
+// A zvol's /dev/zvol link is made by udev, so right after a dataset rename the
+// path can still be missing, or still be the directory of links that belonged
+// to a filesystem dataset of that name. Each state is logged when first seen.
+func waitBlockDevice(log *base.LogObject, path string, seconds int64) error {
+	deadline := time.Now().Add(time.Duration(seconds) * time.Second)
+	last := ""
 	for {
-		_, err := os.Stat(path)
-		if err != nil {
-			if os.IsNotExist(err) {
-				log.Warnf("waitPath path:%s missing", path)
-				time.Sleep(1 * time.Second)
-			}
-		} else {
+		state := blockDeviceState(path)
+		if state == "" {
 			return nil
 		}
-		if (time.Now().Unix() - beginTime) > seconds {
-			break
+		if state != last {
+			log.Warnf("waitBlockDevice %s: %s", path, state)
+			last = state
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("%s is not a block device after %d seconds: %s",
+				path, seconds, state)
+		}
+		time.Sleep(time.Second)
+	}
+}
+
+// blockDeviceState returns "" when path resolves to a block device, and
+// otherwise describes what is there instead.
+func blockDeviceState(path string) string {
+	fi, err := os.Stat(path)
+	switch {
+	case os.IsNotExist(err):
+		return "missing"
+	case err != nil:
+		return err.Error()
+	case fi.Mode()&os.ModeDevice != 0 && fi.Mode()&os.ModeCharDevice == 0:
+		return ""
+	case fi.IsDir():
+		entries, _ := os.ReadDir(path)
+		return fmt.Sprintf("a directory with %d entries", len(entries))
+	default:
+		return "mode " + fi.Mode().String()
+	}
+}
+
+// zvolIDPath is the helper the zvol udev rule runs to name /dev/zvol links.
+const zvolIDPath = "/usr/lib/udev/zvol_id"
+
+// findZvolDevice returns the /dev/zd* node of the zvol named dataset, found by
+// asking each zvol its name the way the udev rule does. It is the fallback for
+// a /dev/zvol link udev has not made.
+func findZvolDevice(log *base.LogObject, dataset string) (string, error) {
+	nodes, err := filepath.Glob("/sys/block/zd*")
+	if err != nil {
+		return "", err
+	}
+	for _, n := range nodes {
+		dev := "/dev/" + filepath.Base(n)
+		out, err := base.Exec(log, zvolIDPath, dev).Output()
+		if err != nil {
+			continue
+		}
+		if strings.TrimSpace(string(out)) == dataset {
+			return dev, nil
 		}
 	}
-	return fmt.Errorf("waitPath path %s not found after %d seconds", path, seconds)
+	return "", fmt.Errorf("no zvol device is named %s", dataset)
 }
 
 // TrimVault reclaims blocks freed by ext4 that were never returned to the
@@ -946,12 +1076,17 @@ func (h *ZFSHandler) TrimVault(timeout time.Duration) error {
 // MountVaultZvol Wrapper with wait for device
 func MountVaultZvol(log *base.LogObject, datasetPath string) error {
 	devPath := zfs.GetZvolPath(datasetPath)
-	err := waitPath(log, devPath, vaultZvolPathWaitSeconds)
-	if err != nil {
-		return fmt.Errorf("Vault zvol dev path missing: %v", err)
+	if err := waitBlockDevice(log, devPath, vaultZvolPathWaitSeconds); err != nil {
+		zd, zerr := findZvolDevice(log, datasetPath)
+		if zerr != nil {
+			return fmt.Errorf("Vault zvol dev path missing: %v; %v", err, zerr)
+		}
+		log.Warnf("MountVaultZvol: %v; mounting %s, which zvol_id names %s",
+			err, zd, datasetPath)
+		devPath = zd
 	}
 
-	_, err = os.Stat("/" + types.SealedDataset)
+	_, err := os.Stat("/" + types.SealedDataset)
 	if err != nil {
 		if os.IsNotExist(err) {
 			err = os.Mkdir("/"+types.SealedDataset, 0755)
@@ -1027,7 +1162,7 @@ func CreateZvolVault(log *base.LogObject, datasetName string, zfsKeyFile string,
 	devPath := zfs.GetZvolPath(types.SealedDataset)
 	// Sometimes we wait for /dev path to the zvol to appear
 	// Since this only occurs on first boot, we can afford to be patient
-	if err = waitPath(log, devPath, vaultZvolPathWaitSeconds); err != nil {
+	if err = waitBlockDevice(log, devPath, vaultZvolPathWaitSeconds); err != nil {
 		return fmt.Errorf("Vault zvol dev path missing: %v", err)
 	}
 
@@ -1057,7 +1192,7 @@ func CreateZvolEtcd(log *base.LogObject, datasetName string, zfsKeyFile string, 
 	devPath := zfs.GetZvolPath(datasetName)
 	// Sometimes we wait for /dev path to the zvol to appear
 	// Since this only occurs on first boot, we can afford to be patient
-	if err = waitPath(log, devPath, vaultZvolPathWaitSeconds); err != nil {
+	if err = waitBlockDevice(log, devPath, vaultZvolPathWaitSeconds); err != nil {
 		return fmt.Errorf("Vault Etcd zvol dev path missing: %v", err)
 	}
 

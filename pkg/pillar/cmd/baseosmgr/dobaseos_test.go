@@ -4,10 +4,13 @@
 package baseosmgr
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/diskconvert"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
@@ -204,6 +207,36 @@ func TestDoBaseOsStatusUpdate_RejectsKubeSwitchWithVolumes(t *testing.T) {
 			}
 			if !strings.Contains(st.Error, "while volumes exist") {
 				t.Fatalf("error text doesn't name the volume gate: %q", st.Error)
+			}
+		})
+	}
+}
+
+// With volumes present, kvm -> EVE-k is allowed only when the boot-disk
+// conversion leaves /persist intact; an unreadable disk is refused.
+func TestDoBaseOsStatusUpdate_KubeSwitchWithVolumesByDecision(t *testing.T) {
+	tests := []struct {
+		name     string
+		decision string
+		err      error
+		reject   bool
+	}{
+		{name: "Proceed", decision: diskconvert.DecisionProceed},
+		{name: "Grow", decision: diskconvert.DecisionGrow},
+		{name: "Insufficient", decision: diskconvert.DecisionInsufficient},
+		{name: "CheckError", err: errBoom, reject: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tc := newTestCtx(t)
+			cfg, st := tc.seedKubeMixSwitch()
+			tc.ctx.volumeStateKnown = true
+			tc.subVolumeStatus.items["vol-1"] = types.VolumeStatus{}
+			tc.convDecision, tc.convDecisionErr = tt.decision, tt.err
+
+			doBaseOsStatusUpdate(tc.ctx, "uuid-x", cfg, &st)
+			if st.HasError() != tt.reject {
+				t.Fatalf("reject=%v, want %v: %q", st.HasError(), tt.reject, st.Error)
 			}
 		})
 	}
@@ -562,5 +595,64 @@ func TestDoBaseOsStatusUpdate_CrossFlavorNotActivatedSkipsConversion(t *testing.
 	if st.Converting || st.ConvertSubState != types.DEVICE_SUBSTATE_UNSPECIFIED {
 		t.Fatalf("conversion armed without Activate: converting=%v substate=%v",
 			st.Converting, st.ConvertSubState)
+	}
+	if _, err := os.Stat(tc.ctx.paths.kvmToKubePending); err == nil {
+		t.Fatalf("kvm-to-k marker written for a download-only config")
+	}
+}
+
+// seedActivatedKvmToKube sets up an activated kvm -> EVE-k update with no
+// volumes, which passes the cross-flavor gate and reaches the conversion.
+func (tc *testCtx) seedActivatedKvmToKube() (types.BaseOsConfig, types.BaseOsStatus) {
+	tc.pubZbootStatus.items["IMGA"] = types.ZbootStatus{
+		PartitionLabel: "IMGA", PartitionState: "active", ShortVersion: "13-kvm",
+	}
+	tc.pubZbootStatus.items["IMGB"] = types.ZbootStatus{
+		PartitionLabel: "IMGB", PartitionState: "unused", ShortVersion: "12-kvm",
+	}
+	tc.subContentTreeStatus.items["uuid-x"] = types.ContentTreeStatus{
+		State: types.LOADED,
+	}
+	tc.versionIsKube = map[string]bool{"14-k": true}
+	tc.ctx.volumeStateKnown = true
+	cfg := types.BaseOsConfig{
+		BaseOsVersion:   "14-k",
+		ContentTreeUUID: "uuid-x",
+		Activate:        true,
+	}
+	return cfg, types.BaseOsStatus{BaseOsVersion: "14-k", ContentTreeUUID: "uuid-x"}
+}
+
+// The first EVE-k boot relocates kvm volumes only when this marker exists, and
+// the conversion may reboot, so the marker must be on disk before it starts.
+func TestDoBaseOsStatusUpdate_KvmToKubeWritesMarkerBeforeConversion(t *testing.T) {
+	tc := newTestCtx(t)
+	cfg, st := tc.seedActivatedKvmToKube()
+
+	doBaseOsStatusUpdate(tc.ctx, "uuid-x", cfg, &st)
+	if st.HasError() {
+		t.Fatalf("unexpected error: %q", st.Error)
+	}
+	if tc.convertCalls != 1 || !tc.markerAtConvertCall[0] {
+		t.Fatalf("conversion calls=%d, marker present at call=%v; want 1 call with marker",
+			tc.convertCalls, tc.markerAtConvertCall)
+	}
+}
+
+func TestDoBaseOsStatusUpdate_KvmToKubeMarkerWriteFailureBlocksConversion(t *testing.T) {
+	tc := newTestCtx(t)
+	cfg, st := tc.seedActivatedKvmToKube()
+	notADir := filepath.Join(tc.tmpDir, "file")
+	if err := os.WriteFile(notADir, nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+	tc.ctx.paths.kvmToKubePending = filepath.Join(notADir, types.KvmToKubePendingFilename)
+
+	changed := doBaseOsStatusUpdate(tc.ctx, "uuid-x", cfg, &st)
+	if !changed || !strings.Contains(st.Error, "cannot record pending conversion") {
+		t.Fatalf("expected marker-write error: changed=%v err=%q", changed, st.Error)
+	}
+	if tc.convertCalls != 0 {
+		t.Fatalf("conversion started without the marker")
 	}
 }
