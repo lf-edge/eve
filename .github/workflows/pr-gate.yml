@@ -108,10 +108,12 @@ jobs:
         run: |
           original_run_id=$(gh run --repo "$GH_REPO" list -c "$PR_SHA" --json name,databaseId --limit 100 \
             | jq -r --arg wf "$BUILD_WF_NAME" '.[] | select(.name == $wf) | .databaseId' | head -n1)
-          echo "pr_id=$PR_ID" >> "$GITHUB_OUTPUT"
-          echo "pr_sha=$PR_SHA" >> "$GITHUB_OUTPUT"
-          echo "original_run_id=$original_run_id" >> "$GITHUB_OUTPUT"
-          echo "pr_base_ref=$PR_BASE_REF" >> "$GITHUB_OUTPUT"
+          {
+            echo "pr_id=$PR_ID"
+            echo "pr_sha=$PR_SHA"
+            echo "original_run_id=$original_run_id"
+            echo "pr_base_ref=$PR_BASE_REF"
+          } >> "$GITHUB_OUTPUT"
           if [[ -z "$original_run_id" ]]; then
             echo "resolve_error=No '$BUILD_WF_NAME' run found for $PR_SHA" >> "$GITHUB_OUTPUT"
           fi
@@ -121,12 +123,14 @@ jobs:
         env:
           RESOLVE_ERROR: ${{ steps.from_run.outputs.resolve_error || steps.from_review.outputs.resolve_error }}
         run: |
-          echo "pr_id=${{ steps.from_run.outputs.pr_id   || steps.from_review.outputs.pr_id }}" >> "$GITHUB_OUTPUT"
-          echo "pr_sha=${{ steps.from_run.outputs.pr_sha  || steps.from_review.outputs.pr_sha }}" >> "$GITHUB_OUTPUT"
-          echo "original_run_id=${{ steps.from_run.outputs.original_run_id || steps.from_review.outputs.original_run_id }}" >> "$GITHUB_OUTPUT"
-          echo "pr_base_ref=${{ steps.from_run.outputs.pr_base_ref || steps.from_review.outputs.pr_base_ref }}" >> "$GITHUB_OUTPUT"
-          echo "resolve_fatal=${{ steps.from_run.outputs.resolve_fatal || 'false' }}" >> "$GITHUB_OUTPUT"
-          echo "resolve_error=$RESOLVE_ERROR" >> "$GITHUB_OUTPUT"
+          {
+            echo "pr_id=${{ steps.from_run.outputs.pr_id   || steps.from_review.outputs.pr_id }}"
+            echo "pr_sha=${{ steps.from_run.outputs.pr_sha  || steps.from_review.outputs.pr_sha }}"
+            echo "original_run_id=${{ steps.from_run.outputs.original_run_id || steps.from_review.outputs.original_run_id }}"
+            echo "pr_base_ref=${{ steps.from_run.outputs.pr_base_ref || steps.from_review.outputs.pr_base_ref }}"
+            echo "resolve_fatal=${{ steps.from_run.outputs.resolve_fatal || 'false' }}"
+            echo "resolve_error=$RESOLVE_ERROR"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Check Review Decision
         id: reviews
@@ -190,9 +194,11 @@ jobs:
           fi
 
           if [[ -n "$reason" ]]; then
-            echo "gate_passed=false" >> "$GITHUB_OUTPUT"
-            echo "gate_reason=$reason" >> "$GITHUB_OUTPUT"
-            echo "gate_state=$state" >> "$GITHUB_OUTPUT"
+            {
+              echo "gate_passed=false"
+              echo "gate_reason=$reason"
+              echo "gate_state=$state"
+            } >> "$GITHUB_OUTPUT"
             echo "::error::Gate not satisfied: $reason"
           else
             echo "gate_passed=true" >> "$GITHUB_OUTPUT"
