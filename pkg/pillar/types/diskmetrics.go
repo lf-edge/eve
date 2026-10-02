@@ -39,6 +39,7 @@ var ReportDirPaths = []string{
 	PersistDir + "/pubsub-large",
 	PersistDir + "/reserved",
 	PersistDir + "/etcd-storage",
+	PersistDir + "/witness-storage",
 	PersistDir + "/kcrashes",
 	PersistDir + "/eve-info",
 	PersistDir + "/kubelog",

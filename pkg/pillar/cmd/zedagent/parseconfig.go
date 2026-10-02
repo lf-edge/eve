@@ -3805,7 +3805,11 @@ func parseEdgeNodeClusterConfig(getconfigCtx *getconfigContext,
 
 		ClusterType:                  types.ClusterType(zcfgCluster.ClusterType),
 		EnableNativeK8SOrchestration: zcfgCluster.GetEnableNativeK8SOrchestration(),
+		QuorumRecoveryGeneration:     zcfgCluster.GetQuorumRecoveryGeneration(),
 	}
+
+	parseClusterWitness(zcfgCluster, ipNet, &enClusterConfig)
+	validateQuorumRecoveryGeneration(ctx, &enClusterConfig)
 
 	enClusterConfig.CipherToken, err = parseCipherBlock(getconfigCtx,
 		enClusterConfig.Key(), zcfgCluster.GetEncryptedClusterToken())
@@ -3879,6 +3883,85 @@ func parseEdgeNodeClusterConfig(getconfigCtx *getconfigContext,
 	}
 	getconfigCtx.wasInValidCluster = true
 	ctx.pubEdgeNodeClusterConfig.Publish("global", enClusterConfig)
+}
+
+// parseClusterWitness fills in the witness fields of enClusterConfig from the
+// controller config, validating the witness IP against the cluster subnet.
+//
+// A rejected witness must never invalidate the surrounding cluster config.
+// publishEmptyENCC would zero the ClusterID, which makes encconfig.Present()
+// false in kube-init; its cluster-config monitor reads that as the controller
+// withdrawing cluster membership and converts the node back to single-node,
+// rebooting and restoring the pre-cluster /var/lib on every node that got the
+// config. A typo in one IP field must not cost a healthy cluster. So drop only
+// the witness and record why, for zedkube to report to the controller.
+func parseClusterWitness(zcfgCluster *zconfig.EdgeNodeCluster, clusterIPNet *net.IPNet,
+	enClusterConfig *types.EdgeNodeClusterConfig) {
+
+	witness := zcfgCluster.GetWitness()
+	if witness == nil || witness.GetWitnessIp() == "" {
+		// No witness configured; not an error.
+		return
+	}
+	witnessIP := net.ParseIP(witness.GetWitnessIp())
+	switch {
+	case witnessIP == nil:
+		enClusterConfig.WitnessConfigError = fmt.Sprintf(
+			"failed to parse witness IP %q", witness.GetWitnessIp())
+	case !clusterIPNet.Contains(witnessIP):
+		// The witness reaches the other etcd members over the cluster
+		// interface's L2 segment, so an address outside that subnet is
+		// unreachable no matter what else is configured.
+		enClusterConfig.WitnessConfigError = fmt.Sprintf(
+			"witness IP %s is outside cluster subnet %s", witnessIP, clusterIPNet)
+	default:
+		enClusterConfig.WitnessIP = witnessIP
+		return
+	}
+	log.Errorf("parseClusterWitness: %s", enClusterConfig.WitnessConfigError)
+}
+
+// validateQuorumRecoveryGeneration rejects an increase to
+// QuorumRecoveryGeneration that does not actually name a survivor,
+// freezing it at the last accepted value.
+//
+// A real recovery always changes which device owns JoinServerIP, so it
+// always flips this device's own BootstrapNode status one way or the
+// other: false to true for the promoted survivor, true to false for a
+// seed being withdrawn. An increase that leaves BootstrapNode unchanged
+// is a config bug, not a recovery, and forcing this device to act on it
+// is actively dangerous: applied to an unchanged seed it triggers an
+// unrequested destructive reset of a cluster that may still be healthy,
+// and either way this design has no rejoin action to bring the actual
+// survivor's peer back - the reset would strand it.
+//
+// Compares against what zedagent itself last published, not what
+// zedkube mirrors, since only the config side is guaranteed to have
+// this device's previous BootstrapNode status to compare against.
+func validateQuorumRecoveryGeneration(ctx *zedagentContext,
+	enClusterConfig *types.EdgeNodeClusterConfig) {
+
+	item, err := ctx.pubEdgeNodeClusterConfig.Get("global")
+	if err != nil {
+		return // nothing published yet for this device
+	}
+	prev := item.(types.EdgeNodeClusterConfig)
+	if !prev.Valid || prev.ClusterID.UUID != enClusterConfig.ClusterID.UUID {
+		return // different (or no prior) cluster; no recovery history to violate
+	}
+	if enClusterConfig.QuorumRecoveryGeneration <= prev.QuorumRecoveryGeneration {
+		return // not an increase
+	}
+	if enClusterConfig.BootstrapNode != prev.BootstrapNode {
+		return // this device's role actually changed: a real recovery
+	}
+	enClusterConfig.QuorumRecoveryError = fmt.Sprintf(
+		"quorum_recovery_generation increased from %d to %d without this "+
+			"device's bootstrap status changing (still %v); ignoring the increase",
+		prev.QuorumRecoveryGeneration, enClusterConfig.QuorumRecoveryGeneration,
+		enClusterConfig.BootstrapNode)
+	log.Errorf("validateQuorumRecoveryGeneration: %s", enClusterConfig.QuorumRecoveryError)
+	enClusterConfig.QuorumRecoveryGeneration = prev.QuorumRecoveryGeneration
 }
 
 // cancelClusterDeparture undoes an armed departure suppression when the cluster
