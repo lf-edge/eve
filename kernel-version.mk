@@ -2,12 +2,13 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # This file is included by the main Makefile.
-# Four variables are used as input for the kernel build:
+# Five variables are used as input for the kernel build:
 #   ZARCH - architecture (amd64, arm64)
 #   PLATFORM - platform (generic, nvidia, rt, imx*) based on these two
 #              variables we set kernel version, commit hash and branch
 #              when new kernel is built and pushed to the corresponding
 #              dockerhub
+#   HV - hypervisor (kvm, k, xen, mini)
 #   KERNEL_COMMIT_xxx variable must be manually updated
 #   KERNEL_CONFIG_FLAVOR - optional, used to select kernel's docker tag
 #                          which corresponds to the kernel config file
@@ -35,10 +36,12 @@ ifeq (, $(filter $(PLATFORM), $(PLATFORMS_$(ZARCH))))
 endif
 
 ifeq ($(ZARCH), amd64)
-    KERNEL_VERSION=v6.12.96
+    KERNEL_VERSION=v6.18.46
     KERNEL_FLAVOR=generic
     ifeq ($(PLATFORM), rt)
         KERNEL_CONFIG_FLAVOR=rt
+    else ifeq ($(HV), k)
+        KERNEL_CONFIG_FLAVOR=hwe
     else
         KERNEL_CONFIG_FLAVOR=core
     endif
