@@ -206,18 +206,23 @@ func (usbCtx *usbmanagerContext) handleAssignableAdaptersModify(_ interface{}, _
 		newAssignableAdaptersMap[adapter.Phylabel] = adapter
 	}
 
-	for adapterName, adapter := range oldAssignableAdaptersMap {
-		_, ok := newAssignableAdaptersMap[adapterName]
+	for adapterName, adapter := range newAssignableAdaptersMap {
+		oldAdapter, ok := oldAssignableAdaptersMap[adapterName]
 		if !ok {
 			log.Noticef("AA modify, add %s", ioBundleLogString(adapter))
+			usbCtx.controller.addIOBundle(adapter)
+		} else if ioBundleRuleChanged(oldAdapter, adapter) {
+			log.Noticef("AA modify, replace %s with %s",
+				ioBundleLogString(oldAdapter), ioBundleLogString(adapter))
+			usbCtx.controller.removeIOBundle(oldAdapter)
 			usbCtx.controller.addIOBundle(adapter)
 		} else {
 			log.Noticef("AA modify, not adding '%s'", adapter.Phylabel)
 		}
 	}
 
-	for adapterName, adapter := range newAssignableAdaptersMap {
-		_, ok := oldAssignableAdaptersMap[adapterName]
+	for adapterName, adapter := range oldAssignableAdaptersMap {
+		_, ok := newAssignableAdaptersMap[adapterName]
 		if !ok {
 			log.Noticef("AA modify, remove %s", ioBundleLogString(adapter))
 			usbCtx.controller.removeIOBundle(adapter)
@@ -225,6 +230,17 @@ func (usbCtx *usbmanagerContext) handleAssignableAdaptersModify(_ interface{}, _
 			log.Noticef("AA modify, not removing '%s'", adapter.Phylabel)
 		}
 	}
+}
+
+// ioBundleRuleChanged reports whether the fields a passthrough rule is built
+// from differ between two versions of the same ioBundle. Runtime fields such
+// as UsedByUUID change with every assignment and do not matter here.
+func ioBundleRuleChanged(before, after types.IoBundle) bool {
+	return before.UsbAddr != after.UsbAddr ||
+		before.UsbProduct != after.UsbProduct ||
+		before.PciLong != after.PciLong ||
+		before.AssignmentGroup != after.AssignmentGroup ||
+		before.ParentAssignmentGroup != after.ParentAssignmentGroup
 }
 
 func (usbCtx *usbmanagerContext) handleAssignableAdaptersDelete(_ interface{}, _ string,

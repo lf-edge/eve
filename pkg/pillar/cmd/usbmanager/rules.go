@@ -8,6 +8,8 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -246,23 +248,100 @@ func (cpr *compositionORPassthroughRule) evaluate(ud usbdevice) (passthroughActi
 	return ret, highestPriority
 }
 
+// usbPortWildcardRe accepts the port part of a wildcard usbaddr: "*" for every
+// device on the bus or "<port path>.*" for every device below that port
+var usbPortWildcardRe = regexp.MustCompile(`^(?:(\d+(?:\.\d+)*)\.)?\*$`)
+
+const (
+	usbPortRulePriority         = 20
+	usbPortWildcardBasePriority = 11
+	// USB allows seven tiers with the root hub being the first, so a port
+	// path has at most six components and a wildcard prefix at most five
+	usbMaxPortDepth = 6
+)
+
 type usbPortPassthroughRule struct {
-	busnum  uint16
-	portnum string
+	busnum uint16
+	// port path like "2.3"; with wildcard set only devices below it match
+	// and "" stands for the whole bus
+	portnum  string
+	wildcard bool
 	passthroughRuleVMBase
 }
 
-func (uppr *usbPortPassthroughRule) String() string {
-	return fmt.Sprintf("USB Port Passthrough Rule %x/%s", uppr.busnum, uppr.portnum)
+// usbAddr2passthroughRule converts an IoBundle usbaddr ("busnum:portnum", optionally with
+// a trailing wildcard like "1:2.*" or "1:*") into a port passthrough rule
+func usbAddr2passthroughRule(usbAddr string) (*usbPortPassthroughRule, error) {
+	usbParts := strings.SplitN(usbAddr, ":", 2)
+	if len(usbParts) != 2 {
+		return nil, errors.New("expected busnum:portnum")
+	}
+	busnum, err := strconv.ParseUint(usbParts[0], 10, 16)
+	if err != nil {
+		return nil, fmt.Errorf("busnum %q not parseable", usbParts[0])
+	}
+	rule := &usbPortPassthroughRule{busnum: uint16(busnum), portnum: usbParts[1]}
+	if !strings.Contains(usbParts[1], "*") {
+		return rule, nil
+	}
+	matches := usbPortWildcardRe.FindStringSubmatch(usbParts[1])
+	if matches == nil {
+		return nil, errors.New("wildcard has to be the last port component, e.g. 1:2.* or 1:*")
+	}
+	rule.wildcard = true
+	rule.portnum = matches[1]
+	if components := portComponents(rule.portnum); components >= usbMaxPortDepth {
+		return nil, fmt.Errorf("wildcard prefix with %d components cannot match, USB port paths have at most %d components",
+			components, usbMaxPortDepth)
+	}
+	return rule, nil
 }
 
+func (uppr *usbPortPassthroughRule) portnumString() string {
+	switch {
+	case !uppr.wildcard:
+		return uppr.portnum
+	case uppr.portnum == "":
+		return "*"
+	default:
+		return uppr.portnum + ".*"
+	}
+}
+
+func (uppr *usbPortPassthroughRule) String() string {
+	return fmt.Sprintf("USB Port Passthrough Rule %x/%s", uppr.busnum, uppr.portnumString())
+}
+
+// a wildcard ranks above product matching but below an exact port match,
+// and a longer prefix ranks above a shorter one; usbAddr2passthroughRule bounds the
+// prefix depth so the sum stays below usbPortRulePriority
 func (uppr *usbPortPassthroughRule) priority() uint8 {
-	return 20
+	if !uppr.wildcard {
+		return usbPortRulePriority
+	}
+	return uint8(usbPortWildcardBasePriority + portComponents(uppr.portnum))
+}
+
+func portComponents(portnum string) int {
+	if portnum == "" {
+		return 0
+	}
+	return strings.Count(portnum, ".") + 1
+}
+
+func (uppr *usbPortPassthroughRule) matchesPort(portnum string) bool {
+	switch {
+	case !uppr.wildcard:
+		return uppr.portnum == portnum
+	case uppr.portnum == "":
+		return portnum != ""
+	default:
+		return strings.HasPrefix(portnum, uppr.portnum+".")
+	}
 }
 
 func (uppr *usbPortPassthroughRule) evaluate(ud usbdevice) (passthroughAction, uint8) {
-	if uppr.portnum != ud.portnum ||
-		uppr.busnum != ud.busnum {
+	if uppr.busnum != ud.busnum || !uppr.matchesPort(ud.portnum) {
 		return passthroughNo, uppr.priority()
 	}
 

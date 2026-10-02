@@ -1812,6 +1812,37 @@ func (dc *EdgeDeviceConfig) AddPhysicalIO(config PhysicalIOConfig) {
 	dc.DeviceIoList = append(dc.DeviceIoList, config.toPhysicalIOProto())
 }
 
+// DeletePhysicalIO removes an I/O device added with AddPhysicalIO, identified
+// by its logical label, from the device configuration. Network adapters are
+// removed with DeleteNetworkAdapter instead. The device must not be assigned
+// to any application any more (ApplicationInstanceConfig.IOAdapters); delete
+// or update the application first.
+func (dc *EdgeDeviceConfig) DeletePhysicalIO(logicalLabel string) {
+	for _, app := range dc.Apps {
+		for _, adapter := range app.Adapters {
+			if adapter.Name == logicalLabel {
+				dc.th.t.Fatalf("Cannot delete I/O device %q: still assigned to application %q",
+					logicalLabel, app.Displayname)
+			}
+		}
+	}
+	for i, physIO := range dc.DeviceIoList {
+		if physIO.Logicallabel != logicalLabel {
+			continue
+		}
+		switch physIO.Ptype {
+		case evecommon.PhyIoType_PhyIoNetWLAN,
+			evecommon.PhyIoType_PhyIoNetWWAN,
+			evecommon.PhyIoType_PhyIoNetEth:
+			dc.th.t.Fatalf("I/O device with logical label %q is a network adapter; "+
+				"use DeleteNetworkAdapter", logicalLabel)
+		}
+		dc.DeviceIoList = append(dc.DeviceIoList[:i], dc.DeviceIoList[i+1:]...)
+		return
+	}
+	dc.th.t.Fatalf("I/O device with logical label %q was not found", logicalLabel)
+}
+
 // checkIOLogicalLabelFree fails the test if logicalLabel is already used by any
 // I/O device, system adapter, VLAN or bond adapter.
 func (dc *EdgeDeviceConfig) checkIOLogicalLabelFree(logicalLabel string) {

@@ -83,6 +83,12 @@ const (
 	// Editing a disk rewrites megabytes through qemu-img/qemu-io on a
 	// possibly busy host, so it gets more room than a power operation.
 	brokerEditDeviceDiskTimeout = 5 * time.Minute
+	// brokerExecuteQMPTimeout bounds one QMP command, including the SSH and QMP
+	// connection setup the proxmox provider may have to do first.
+	brokerExecuteQMPTimeout = time.Minute
+	// brokerScratchImageTimeout bounds creating or deleting a scratch image,
+	// which on proxmox uploads up to 1 GiB to the PVE host.
+	brokerScratchImageTimeout = 5 * time.Minute
 
 	// Timeout for triggering an EVE VM reboot (not for waiting for it to boot).
 	brokerRebootEVEDeviceTimeout = time.Minute
@@ -419,6 +425,9 @@ type deviceState struct {
 	serial          string
 	config          *EdgeDeviceConfig
 	consoleInUse    bool
+	// usbPorts assigns the ports of the hubs and drives the USB hot-plug
+	// helpers plug into the device; guarded by TestHarness.devicesM.
+	usbPorts usbPortAllocator
 
 	unsubscribeInfo    func()
 	unsubscribeReq     func()
