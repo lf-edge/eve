@@ -11,6 +11,7 @@ import (
 
 	evecommon "github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve/evetest"
+	api "github.com/lf-edge/eve/evetest/grpcapi/go"
 	"github.com/lf-edge/eve/evetest/netmodels"
 )
 
@@ -154,7 +155,19 @@ func setupDevice(t Gomega, p deviceParams, filesystem evetest.Filesystem,
 		evetest.RequireNetworkModel{NetworkModel: netmodels.SingleEthWithDHCP},
 	}
 	evetest.Setup(append(requirements, extraRequirements...)...)
-	return evetest.GetEdgeDevice(devName)
+	device := evetest.GetEdgeDevice(devName)
+
+	// The harness takes its reboot baseline from the first device info it
+	// handles, and it subscribes only once it has seen the device onboard.
+	// Info the device sent before that is never delivered, so a test that
+	// upgrades straight away can have its first handled message come from the
+	// boot after the upgrade and count zero reboots. A state other than
+	// UNDEFINED means a message from this boot was handled. The device can go
+	// two minutes between info messages, hence the timeout.
+	t.Eventually(device.GetState, 5*time.Minute, 2*time.Second).ShouldNot(
+		Equal(api.EVEDeviceState_EVE_DEVICE_STATE_UNDEFINED),
+		"the harness never handled device info from the device's first boot")
+	return device
 }
 
 // applyMgmtNetwork gives the device its management port, which everything else
