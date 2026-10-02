@@ -306,6 +306,11 @@ const (
 
 const (
 	metadataSrvIP = "169.254.169.254"
+	// K3s defaults used by EVE-K. CoreDNS is exposed through the kube-dns
+	// ClusterIP and serves the Kubernetes cluster domain.
+	kubeDNSServiceIP = "10.43.0.10"
+	kubeDNSDomain    = "cluster.local"
+	kubeDNSNIDomain  = "internal"
 )
 
 // NIToSGName returns the name of the subgraph encapsulating the entire configuration
@@ -1387,6 +1392,17 @@ func (r *LinuxNIReconciler) getIntendedDnsmasqCfg(niID uuid.UUID) (items []dg.It
 	}
 	dnsCfg := generic.DNSServer{
 		ListenIP: listenIP,
+	}
+	if r.withKubernetesNetworking {
+		// CoreDNS is reached through the host Kubernetes service network, not
+		// through an NI port. Limit forwarding to Kubernetes and NI-internal names
+		// so all other queries continue to use the NI-specific upstream resolvers.
+		for _, domain := range []string{kubeDNSDomain, kubeDNSNIDomain} {
+			dnsCfg.UpstreamServers = append(dnsCfg.UpstreamServers, generic.UpstreamDNSServer{
+				IPAddress: net.ParseIP(kubeDNSServiceIP),
+				Domains:   []string{domain},
+			})
+		}
 	}
 	for _, port := range ni.bridge.Ports {
 		for _, dnsSrv := range port.DNSServers {

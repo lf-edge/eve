@@ -32,6 +32,24 @@ type AppNetworkConfig struct {
 	CipherBlockStatus CipherBlockStatus
 	MetaDataType      MetaDataType
 	DeploymentType    AppRuntimeType
+	// KubeApp is set only for app network configs synthesized by zedkube for directly-deployed
+	// Kubernetes workloads (helm/raw yaml) that have no controller-provided AppInstanceConfig.
+	// nil for the controller-managed (ENC) path. It lets zedrouter resolve an inbound CNI pod
+	// to this config by Kubernetes identity (namespace + ReplicaSet name) instead of the UUID
+	// prefix embedded in controller-managed pod names.
+	KubeApp *KubeAppInfo
+}
+
+// KubeAppInfo carries the Kubernetes identity of a directly-deployed workload so zedrouter can
+// resolve an inbound CNI pod to its synthesized AppNetworkConfig. The synthesized
+// AppNetworkConfig.UUIDandVersion.UUID equals base.KubeAppUUID(Namespace, OwnerName).
+type KubeAppInfo struct {
+	// Namespace of the Kubernetes workload.
+	Namespace string
+	// OwnerName is either the exact name of an ownerless bare Pod or the bare ReplicaSet name
+	// (or VMI name). ReplicaSet pods are "<OwnerName>-<5char>"; zedrouter matches inbound pods
+	// against it with base.KubePodMatchesOwner.
+	OwnerName string
 }
 
 // Key :
@@ -112,6 +130,10 @@ type AppNetworkStatus struct {
 	PendingDelete  bool
 	ConfigInSync   bool
 	DisplayName    string
+	// KubeApp is copied from AppNetworkConfig only for directly-deployed
+	// Kubernetes workloads. zedkube uses this identity together with the
+	// zedrouter-assigned adapter addresses to publish NI DNS records.
+	KubeApp *KubeAppInfo
 	// AppPod is only valid in Kubernetes mode.
 	AppPod cnirpc.AppPod
 	// Copy from the AppNetworkConfig; used to delete when config is gone.
@@ -777,6 +799,17 @@ type NetworkInstanceConfig struct {
 	// When enabled, LLDP frames (EtherType 0x88cc) are not dropped or suppressed
 	// by the forwarding plane.
 	ForwardLLDP bool
+
+	// ClusterWide indicates whether this network instance is shared across an
+	// Edge Node Cluster (ENC) rather than being device-specific.
+	// If false (default), the network instance is only instantiated on this
+	// individual device.
+	// If true, the network instance is downloaded to and instantiated identically
+	// on every device that is a member of the Edge Node Cluster, allowing app
+	// instances on any cluster node to attach to the same logical network
+	// instance (e.g. for apps that may be relocated between nodes, or for native
+	// Kubernetes applications).
+	ClusterWide bool
 
 	// Any errors from the parser
 	// ErrorAndTime provides SetErrorNow() and ClearError()
