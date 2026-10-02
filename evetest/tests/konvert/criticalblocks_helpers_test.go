@@ -264,9 +264,13 @@ func criticalStagingVerdict(s criticalSnapshot) (string, string) {
 // each. A small file lands high only if no free extent is left below the
 // boundary, because ext4 allocates near the file's parent directory, so it:
 //
-//  1. tops /persist off to ENOSPC with more chunks and ever smaller tails;
-//  2. frees a hole by deleting chunks whose first block is above the boundary
-//     (after a top-off, name order no longer tracks block order);
+//  1. tops /persist off to ENOSPC with more chunks and ever smaller tails,
+//     with newlogd stopped from the last two chunks' worth of free space until
+//     step 2 has freed space again;
+//  2. frees a hole by deleting chunks whose first block is above the boundary,
+//     found before the top-off when the caller's fill provides them, so that
+//     /persist is full only for as long as the tails take to write (after a
+//     top-off, name order no longer tracks block order);
 //  3. copies each critical file into that hole, checks with filefrag and cmp
 //     that the copy landed high and is identical, and retries the ones that did
 //     not with a bigger hole;
@@ -290,18 +294,43 @@ lowblk() { "$FF" -b4096 -v "$1" 2>/dev/null | awk '
   $1 ~ /^[0-9]+:$/ { split($3, r, /\.\./); a=r[1]+0; if (seen == 0 || a < lo) lo = a; seen++ }
   END { if (seen) print lo }'; }
 ishigh() { [ -n "$1" ] && [ "$1" -ge "$BOUND" ] 2>/dev/null; }
+scan_high() {
+  sync
+  hi_pool=""
+  for cf in "$DIR"/[0-9]*; do
+    [ -f "$cf" ] || continue
+    ishigh "$(lowblk "$cf")" && hi_pool="$hi_pool $cf"
+  done
+}
+# Free space including the root reserve, which df's Available leaves out.
+free_kb() {
+  f=$(stat -f -c '%f %S' /persist 2>/dev/null | awk '{print int($1 * $2 / 1024)}')
+  [ -n "$f" ] || f=$(df -k /persist | awk 'NR==2{print $4}')
+  echo "$f"
+}
+NL=""; paused_at=0
+resume_newlogd() {
+  [ -n "$NL" ] || return 0
+  kill -CONT $NL 2>/dev/null
+  echo "STAGE newlogd paused=$(( $(date +%s) - paused_at ))s pids=$NL"
+  NL=""
+}
+trap resume_newlogd EXIT
 n=$(ls "$DIR" 2>/dev/null | grep -c '^[0-9]'); n0=$n
+scan_high
+while [ "$(free_kb)" -gt $(( CHUNK_MIB * 2048 )) ] &&
+  dd if=/dev/urandom of="$DIR/$(printf %06d "$n")" bs=1M count="$CHUNK_MIB" 2>/dev/null; do
+  n=$((n + 1))
+done
+# newlogd treats a failed write as fatal and reboots the device.
+NL=$(pgrep -x newlogd 2>/dev/null | tr '\n' ' ')
+paused_at=$(date +%s)
+[ -n "$NL" ] && kill -STOP $NL 2>/dev/null
 while dd if=/dev/urandom of="$DIR/$(printf %06d "$n")" bs=1M count="$CHUNK_MIB" 2>/dev/null; do
   n=$((n + 1))
 done
 for bs in 1M 64k 4k; do dd if=/dev/urandom of="$DIR/tail.$bs" bs="$bs" 2>/dev/null; done
-sync
 echo "STAGE topped-off used=$(df -k /persist | awk 'NR==2{print $5}')"
-hi_pool=""
-for cf in "$DIR"/[0-9]*; do
-  [ -f "$cf" ] || continue
-  ishigh "$(lowblk "$cf")" && hi_pool="$hi_pool $cf"
-done
 hole_top=$n
 grow_hole() {
   k=0; rest=""
@@ -315,7 +344,9 @@ grow_hole() {
   sync
 }
 hole_chunks=$(( 2048 / CHUNK_MIB )); [ "$hole_chunks" -ge 1 ] || hole_chunks=1
+[ -n "$hi_pool" ] || scan_high
 grow_hole "$hole_chunks"
+resume_newlogd
 cd /persist || exit 0
 targets=""
 for pat in checkpoint/lastconfig* checkpoint/controllercerts* \
@@ -377,8 +408,10 @@ echo "STAGE-SUMMARY staged=$nstaged already=$already high=$high total=$total bou
 // block allocation, so it reports rather than asserts; the capture before the
 // conversion is what the tally counts.
 //
-// The top-off leaves /persist with no space at all for a few minutes, and
-// nodeagent can enter low-disk maintenance mode if volumemgr samples it then.
+// The top-off leaves /persist with no space at all for seconds when dir holds
+// a fill and for the length of a filefrag scan when it does not. Writers other
+// than newlogd see ENOSPC then, and nodeagent can enter low-disk maintenance
+// mode if volumemgr samples it.
 func stageCriticalsHigh(device *evetest.EdgeDevice, boundary4k int64, dir string,
 	chunkMiB int, release bool) {
 	log := evetest.Logger()
