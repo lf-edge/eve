@@ -933,6 +933,14 @@ sbom_info:
 collected_sources_info:
 	@echo "$(COLLECTED_SOURCES)"
 
+# The release name `eve` pushes as $(EVE_REL)-$(HV)-<arch>; set only when
+# LINUXKIT_PKG_TARGET=push.
+eve_rel_info:
+	@echo "$(EVE_REL)"
+
+force_build_pkgs_info:
+	@echo "$(FORCE_BUILD_PKGS)"
+
 $(ROOTFS)-%.spdx.json: $(BUILD_DIR)/rootfs-%.tar | $(INSTALLER)
 	$(QUIET): $@: Begin
 	# the rootfs-%.tar includes extended PAX headers, which GNU tar does not support.

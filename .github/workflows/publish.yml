@@ -26,6 +26,12 @@ env:
   # github.com clone this job makes.
   GITHUB_TOKEN: ${{ github.token }}
   GIT_ASKPASS: ${{ github.workspace }}/tools/github-askpass.sh
+  # Signature policy for tools/eve-cosign.sh; see docs/SIGNING.md. A tag runs
+  # its own commit's copy of this workflow, so package signatures are
+  # accepted only from protected branches.
+  EVE_COSIGN_IDENTITY_REGEXP: '^https://github\.com/lf-edge/eve/\.github/workflows/(release-sign\.yml@refs/heads/master|publish\.yml@refs/heads/(master|[0-9]+\.[0-9]+(-stable)?))$'
+  EVE_COSIGN_REPOSITORY: lf-edge/eve
+  EVE_COSIGN_ENFORCE: ${{ vars.EVE_COSIGN_ENFORCE }}
 
 jobs:
   # ════════════════════════════════════════════════════════════════════════
@@ -37,6 +43,9 @@ jobs:
   pkgs-amd64:
     if: github.event.repository.full_name == 'lf-edge/eve'
     runs-on: zededa-ubuntu-2204
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Starting Report
         run: |
@@ -59,7 +68,27 @@ jobs:
         with:
           username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
           password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
-      - name: Build and push packages
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6  # v4.1.2
+        with:
+          cosign-release: v3.1.3
+      - name: Build packages
+        run: |
+          SUCCESS=
+          for i in 1 2 3; do
+            echo "Run attempt: $i"
+            if make -e V=1 HV=kvm ZARCH=amd64 PLATFORM=generic LINUXKIT_PKG_TARGET=build PRUNE=1 pkgs; then
+              SUCCESS=true
+              break
+            else
+              docker system prune -f -a --volumes
+            fi
+          done
+          if [ -z "$SUCCESS" ]; then echo "::error::failed to build packages" && exit 1; fi
+      - name: Verify package inputs
+        run: |
+          ./tools/eve-cosign.sh check-inputs "$RUNNER_TEMP/pkgs" amd64
+      - name: Push packages
         run: |
           SUCCESS=
           for i in 1 2 3; do
@@ -67,11 +96,18 @@ jobs:
             if make -e V=1 HV=kvm ZARCH=amd64 PLATFORM=generic LINUXKIT_PKG_TARGET=push PRUNE=1 pkgs; then
               SUCCESS=true
               break
-            else
-              docker system prune -f -a --volumes
             fi
           done
-          if [ -z "$SUCCESS" ]; then echo "::error::failed to build and push packages" && exit 1; fi
+          if [ -z "$SUCCESS" ]; then echo "::error::failed to push packages" && exit 1; fi
+      - name: Sign packages built here
+        run: |
+          ./tools/eve-cosign.sh sign-built "$RUNNER_TEMP/pkgs"
+          mkdir -p pkg-tags && cp "$RUNNER_TEMP/pkgs/built-tags" pkg-tags/pkgs-amd64
+      - name: Hand the built package tags to the manifest job
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+        with:
+          name: pkg-tags-pkgs-amd64
+          path: pkg-tags
       - name: Post package report
         run: |
           echo Disk usage
@@ -90,6 +126,9 @@ jobs:
   pkgs-arm64:
     if: github.event.repository.full_name == 'lf-edge/eve'
     runs-on: zededa-ubuntu-2204-arm64
+    permissions:
+      contents: read
+      id-token: write
     timeout-minutes: 1440
     steps:
       - name: Starting Report
@@ -113,7 +152,27 @@ jobs:
         with:
           username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
           password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
-      - name: Build and push packages
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6  # v4.1.2
+        with:
+          cosign-release: v3.1.3
+      - name: Build packages
+        run: |
+          SUCCESS=
+          for i in 1 2 3; do
+            echo "Run attempt: $i"
+            if make -e V=1 HV=kvm ZARCH=arm64 PLATFORM=generic LINUXKIT_PKG_TARGET=build PRUNE=1 pkgs; then
+              SUCCESS=true
+              break
+            else
+              docker system prune -f -a --volumes
+            fi
+          done
+          if [ -z "$SUCCESS" ]; then echo "::error::failed to build packages" && exit 1; fi
+      - name: Verify package inputs
+        run: |
+          ./tools/eve-cosign.sh check-inputs "$RUNNER_TEMP/pkgs" arm64
+      - name: Push packages
         run: |
           SUCCESS=
           for i in 1 2 3; do
@@ -121,11 +180,18 @@ jobs:
             if make -e V=1 HV=kvm ZARCH=arm64 PLATFORM=generic LINUXKIT_PKG_TARGET=push PRUNE=1 pkgs; then
               SUCCESS=true
               break
-            else
-              docker system prune -f -a --volumes
             fi
           done
-          if [ -z "$SUCCESS" ]; then echo "::error::failed to build and push packages" && exit 1; fi
+          if [ -z "$SUCCESS" ]; then echo "::error::failed to push packages" && exit 1; fi
+      - name: Sign packages built here
+        run: |
+          ./tools/eve-cosign.sh sign-built "$RUNNER_TEMP/pkgs"
+          mkdir -p pkg-tags && cp "$RUNNER_TEMP/pkgs/built-tags" pkg-tags/pkgs-arm64
+      - name: Hand the built package tags to the manifest job
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+        with:
+          name: pkg-tags-pkgs-arm64
+          path: pkg-tags
       - name: Post package report
         run: |
           echo Disk usage
@@ -152,6 +218,9 @@ jobs:
     if: github.event.repository.full_name == 'lf-edge/eve'
     needs: [pkgs-amd64, pkgs-arm64]
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      id-token: write
     timeout-minutes: 1440
     strategy:
       fail-fast: false
@@ -218,28 +287,96 @@ jobs:
         run: |
           APT_INSTALL="sudo apt install -y binfmt-support qemu-user-static"
           $APT_INSTALL || { sudo apt update && $APT_INSTALL ; }
-      - name: Build and push remaining packages
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6  # v4.1.2
+        with:
+          cosign-release: v3.1.3
+      - name: Build remaining packages
+        uses: ./.github/actions/run-make
+        with:
+          command: "V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} PLATFORM=${{ matrix.platform }} LINUXKIT_PKG_TARGET=build PRUNE=1 pkgs"
+          dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+          dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+          clean: false
+      - name: Verify package inputs
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          ./tools/eve-cosign.sh check-inputs "$RUNNER_TEMP/pkgs" "$ARCH" "$(docker version -f '{{.Server.Arch}}')"
+      # On a tag this only adds the release tag to packages a branch build
+      # pushed and signed.
+      - name: Push remaining packages
         uses: ./.github/actions/run-make
         with:
           command: "V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} PLATFORM=${{ matrix.platform }} LINUXKIT_PKG_TARGET=push PRUNE=1 pkgs"
           dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
           dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
           clean: false
-      - name: Build and push EVE
+      - name: Sign packages built here
+        run: |
+          ./tools/eve-cosign.sh sign-built "$RUNNER_TEMP/pkgs"
+      - name: Build EVE
+        uses: ./.github/actions/run-make
+        with:
+          command: "V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} PLATFORM=${{ matrix.platform }} LINUXKIT_PKG_TARGET=build eve"
+          dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+          dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+          clean: false
+      - name: Verify EVE inputs
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          ./tools/eve-cosign.sh check-inputs "$RUNNER_TEMP/eve" "$ARCH" "$(docker version -f '{{.Server.Arch}}')"
+      # A release is pushed by digest in "Push the release for signing", and
+      # tagged only after release-sign.yml has signed it.
+      - name: Push EVE
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         uses: ./.github/actions/run-make
         with:
           command: "V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} PLATFORM=${{ matrix.platform }} LINUXKIT_PKG_TARGET=push eve"
           dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
           dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
           clean: false
+      - name: Sign packages built by the EVE build
+        env:
+          ARCH: ${{ matrix.arch }}
+          HV: ${{ matrix.hv }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          ./tools/eve-cosign.sh sign-built "$RUNNER_TEMP/eve"
+          mkdir -p pkg-tags
+          cat "$RUNNER_TEMP/pkgs/built-tags" "$RUNNER_TEMP/eve/built-tags" > "pkg-tags/eve-$ARCH-$HV-$PLATFORM"
+      - name: Hand the built package tags to the manifest job
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+        with:
+          name: pkg-tags-eve-${{ matrix.arch }}-${{ matrix.hv }}-${{ matrix.platform }}
+          path: pkg-tags
       - name: Collect and push SBOM and sources
         uses: ./.github/actions/run-make
         if: matrix.arch != 'riscv64'
         with:
-          command: "V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} PLATFORM=${{ matrix.platform }} LINUXKIT_PKG_TARGET=push sbom collected_sources compare_sbom_collected_sources publish_sources"
+          command: "V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} PLATFORM=${{ matrix.platform }} LINUXKIT_PKG_TARGET=${{ startsWith(github.ref, 'refs/tags/') && 'build' || 'push' }} sbom collected_sources compare_sbom_collected_sources publish_sources"
           dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
           dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
           clean: false
+      - uses: oras-project/setup-oras@005458ad77f1c8facd38a094e4af2e69e5607ff4  # v2.0.2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          version: 1.3.1
+      - name: Push the release for signing
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          ZARCH: ${{ matrix.arch }}
+          HV: ${{ matrix.hv }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          ./tools/eve-push-release.sh docker.io/lfedge sign
+      - name: Hand the release images to release-sign.yml
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+        with:
+          name: sign-images-eve-${{ matrix.arch }}-${{ matrix.hv }}-${{ matrix.platform }}
+          path: sign
       - name: Clean
         if: ${{ always() }}
         run: |
@@ -256,6 +393,9 @@ jobs:
     if: github.event.repository.full_name == 'lf-edge/eve'
     needs: eve
     runs-on: zededa-ubuntu-2204
+    permissions:
+      contents: read
+      id-token: write
     steps:
       # run-make fetches tags from github.com, so the GITHUB_TOKEN must stay
       # in .git/config; anonymous git is subject to GitHub's rate limits.
@@ -267,6 +407,23 @@ jobs:
           command: "V=1 LINUXKIT_PKG_TARGET=manifest pkgs"
           dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
           dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        with:
+          pattern: pkg-tags-*
+          path: pkg-tags
+          merge-multiple: true
+      - name: Install cosign
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6  # v4.1.2
+        with:
+          cosign-release: v3.1.3
+      # The indexes of packages the run built now list every arch pushed.
+      - name: Sign package indexes
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          cat pkg-tags/* | sort -u > "$RUNNER_TEMP/pkg-tags"
+          ./tools/eve-cosign.sh sign-indexes "$RUNNER_TEMP/pkg-tags"
 
   coverage:
     if: github.event.repository.full_name == 'lf-edge/eve'
@@ -309,9 +466,59 @@ jobs:
           docker system prune -f -a --volumes
           rm -rf ~/.linuxkit
 
+  # ════════════════════════════════════════════════════════════════════════
+  # Stage 4, release tags only: one approval of the release environment
+  # signs the images, indexes and release sums; then they are tagged and the
+  # release is published.
+  # ════════════════════════════════════════════════════════════════════════
+
+  # Merge the per-arch descriptors each eve job pushed into the multi-arch
+  # indexes, pushed by digest.
+  indexes:
+    if: ${{ (startsWith(github.ref, 'refs/tags/')) && (github.event.repository.full_name == 'lf-edge/eve') }}
+    needs: eve
+    runs-on: zededa-ubuntu-2204
+    steps:
+      - uses: oras-project/setup-oras@005458ad77f1c8facd38a094e4af2e69e5607ff4  # v2.0.2
+        with:
+          version: 1.3.1
+      - name: Login to Docker Hub
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2  # v4.0.0
+        with:
+          username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+          password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          pattern: sign-images-eve-*
+          path: eve
+          merge-multiple: true
+      - name: Push the multi-arch indexes
+        run: |
+          set -o pipefail
+          rm -rf sign && mkdir sign
+          : > sign/images.txt
+          : > sign/tags.txt
+          for dir in eve/index/*/*/; do
+            dir=${dir%/}
+            repo=docker.io/lfedge/$(basename "$(dirname "$dir")")
+            jq -s '{schemaVersion: 2, mediaType: "application/vnd.oci.image.index.v1+json", manifests: add}' \
+              "$dir"/*.json > index.json
+            d=$(oras manifest push --descriptor "$repo" index.json | jq -r .digest)
+            [[ "$d" == sha256:* ]] || { echo "::error::pushing the index for $dir failed"; exit 1; }
+            echo "$repo@$d" >> sign/images.txt
+            sed "s|^|$repo@$d |" "$dir/tags" >> sign/tags.txt
+          done
+          cat sign/tags.txt
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+        with:
+          name: sign-images-indexes
+          path: sign
+
+  # Builds the release files from the pushed digests into a draft release,
+  # which only collaborators can see.
   trigger_assets:
     if: ${{ (startsWith(github.ref, 'refs/tags/')) && (github.event.repository.full_name == 'lf-edge/eve') }}
-    needs: [manifest, eve]
+    needs: [manifest, eve, indexes]
     permissions:
       contents: write
     uses: lf-edge/eve/.github/workflows/assets.yml@master  # zizmor: ignore[unpinned-uses] same-repo reusable workflow; @master is this repo's own head, which tagged release builds invoke
@@ -320,3 +527,69 @@ jobs:
       DOCKERHUB_PULL_USER: ${{ secrets.DOCKERHUB_PULL_USER }}
     with:
       tag_ref: ${{ github.ref_name }}
+      draft: true
+
+  sign:
+    if: ${{ (startsWith(github.ref, 'refs/tags/')) && (github.event.repository.full_name == 'lf-edge/eve') }}
+    needs: [eve, indexes, trigger_assets]
+    permissions:
+      contents: read
+      id-token: write
+    uses: lf-edge/eve/.github/workflows/release-sign.yml@master  # zizmor: ignore[unpinned-uses] the signing identity is release-sign.yml at master
+    secrets:
+      registry-username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+      registry-password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+
+  tag:
+    if: ${{ (startsWith(github.ref, 'refs/tags/')) && (github.event.repository.full_name == 'lf-edge/eve') }}
+    needs: sign
+    runs-on: zededa-ubuntu-2204
+    steps:
+      - uses: oras-project/setup-oras@005458ad77f1c8facd38a094e4af2e69e5607ff4  # v2.0.2
+        with:
+          version: 1.3.1
+      - name: Login to Docker Hub
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2  # v4.0.0
+        with:
+          username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+          password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          pattern: sign-images-*
+          path: sign
+      - name: Tag the signed digests
+        run: |
+          find sign -name tags.txt -exec cat {} + | while read -r ref tag; do
+            oras tag "$ref" "$tag"
+          done
+
+  release:
+    if: ${{ (startsWith(github.ref, 'refs/tags/')) && (github.event.repository.full_name == 'lf-edge/eve') }}
+    needs: [trigger_assets, tag]
+    runs-on: zededa-ubuntu-2204
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: signed-blobs
+          path: bundles
+      - name: Upload the sums bundles and publish the release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ needs.trigger_assets.outputs.release_id }}
+          UPLOAD_URL: ${{ needs.trigger_assets.outputs.upload_url }}
+        run: |
+          [ -n "$RELEASE_ID" ] && [ -n "$UPLOAD_URL" ] || { echo "::error::no draft release"; exit 1; }
+          for file in bundles/*.sigstore.json; do
+            name=$(basename "$file")
+            response=$(curl -sS -X POST -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H "Content-Type: application/octet-stream" -T "$file" "$UPLOAD_URL?name=$name")
+            jq -e .id <<< "$response" > /dev/null || { echo "::error::uploading $name failed: $response"; exit 1; }
+            echo "$name uploaded"
+          done
+          response=$(curl -sS -X PATCH -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -d '{"draft": false, "prerelease": true}' \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID")
+          jq -e '.draft == false' <<< "$response" > /dev/null || { echo "::error::publishing failed: $response"; exit 1; }
+          jq -r .html_url <<< "$response"
