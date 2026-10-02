@@ -441,3 +441,54 @@ func lastLine(out string) string {
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 	return lines[len(lines)-1]
 }
+
+// stalledConfigFetchAfter is how long after the device answers SSH the probes of
+// probeStalledConfigFetch wait for a successful config fetch. It must leave the
+// probes time to finish inside the harness's 2-minute config wait
+// (deviceApplyConfigTimeout), because the device is torn down once that fails.
+const stalledConfigFetchAfter = 75 * time.Second
+
+// zedAgentStatusFile is zedagent's ZedAgentStatus publication. ConfigGetStatus 1
+// is types.ConfigGetSuccess.
+const zedAgentStatusFile = "/run/zedagent/ZedAgentStatus/zedagent.json"
+
+// probeStalledConfigFetch records why the device has not fetched its config
+// when it has not done so stalledConfigFetchAfter from now. Run it alongside a
+// config round trip that would otherwise fail with nothing but a timeout: the
+// device has connected to the controller, yet zedagent never asks for config.
+// Returns a stop func; call it once the round trip returns.
+func probeStalledConfigFetch(device *evetest.EdgeDevice) (stop func()) {
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-done:
+			return
+		case <-time.After(stalledConfigFetchAfter):
+		}
+		out, _ := runEVE(device, "cat "+zedAgentStatusFile+" 2>/dev/null")
+		if strings.Contains(out, `"ConfigGetStatus":1`) {
+			return
+		}
+		runProbes(device, "config fetch stalled", []probe{
+			{"ZedAgentStatus", "cat " + zedAgentStatusFile + " 2>&1 || echo NONE"},
+			{"pressure", "cat /proc/pressure/cpu /proc/pressure/io /proc/pressure/memory 2>&1; free -m"},
+			{"uninterruptible tasks", `for p in /proc/[0-9]*; do ` +
+				`[ "$(awk '/^State:/ {print $2}' $p/status 2>/dev/null)" = D ] && ` +
+				`echo "${p#/proc/} $(cat $p/comm) $(cat $p/wchan)"; done; echo end`},
+			// Prints the stacks of every blocked task to the kernel log, and
+			// so to the kept console, without waiting for the hung-task
+			// detector.
+			{"blocked task stacks (sysrq-w)", "echo w > /proc/sysrq-trigger && dmesg | tail -150"},
+			{"persist mounts", "grep -w /persist /proc/mounts; echo pillar:; " +
+				"eve exec pillar grep -w /persist /proc/mounts"},
+			{"persist datasets", "eve exec pillar zfs list -H -o name,mounted,mountpoint,used " +
+				"-r persist 2>&1 || echo none"},
+			{"zpool health", "eve exec pillar zpool status -x 2>&1 || echo none"},
+			{"persist writable", "eve exec pillar sh -c 'f=/persist/.evetest-probe; " +
+				"echo x > $f && sync && rm -f $f && echo writable' 2>&1"},
+			{"checkpoint", "ls -la /persist/checkpoint 2>&1 || echo NONE"},
+			{"zedagent (newlog)", newlogProbe(`grep -a zedagent | tail -40`)},
+		})
+	}()
+	return func() { close(done) }
+}
