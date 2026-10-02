@@ -323,9 +323,12 @@ while [ "$(free_kb)" -gt $(( CHUNK_MIB * 2048 )) ] &&
   n=$((n + 1))
 done
 # newlogd treats a failed write as fatal and reboots the device.
-NL=$(pgrep -x newlogd 2>/dev/null | tr '\n' ' ')
+# By comm: busybox pgrep -x compares against /usr/bin/newlogd.
+for p in /proc/[0-9]*; do
+  [ "$(cat "$p/comm" 2>/dev/null)" = newlogd ] && NL="$NL ${p#/proc/}"
+done
 paused_at=$(date +%s)
-[ -n "$NL" ] && kill -STOP $NL 2>/dev/null
+if [ -n "$NL" ]; then kill -STOP $NL 2>/dev/null; else echo "STAGE newlogd not-found, not paused"; fi
 while dd if=/dev/urandom of="$DIR/$(printf %06d "$n")" bs=1M count="$CHUNK_MIB" 2>/dev/null; do
   n=$((n + 1))
 done
