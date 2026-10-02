@@ -6,3 +6,4 @@ self-hosted-runner:
   labels:
     - zededa-ubuntu-2204
     - zededa-ubuntu-2204-arm64
+    - evetest-runner

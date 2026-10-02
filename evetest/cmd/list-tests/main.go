@@ -13,6 +13,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -76,9 +77,13 @@ type pkgContext struct {
 }
 
 func main() {
+	suitesOnly := flag.Bool("suites-only", false, "print only test suite names, one per line "+
+		"(for scripting, e.g. generating a CI job matrix), instead of the full annotated listing")
+	flag.Parse()
+
 	testsDir := "./tests"
-	if len(os.Args) > 1 {
-		testsDir = os.Args[1]
+	if flag.NArg() > 0 {
+		testsDir = flag.Arg(0)
 	}
 
 	// Parse the evetest framework package (parent of testsDir) to discover
@@ -149,6 +154,13 @@ func main() {
 
 	sort.Slice(suites, func(i, j int) bool { return suites[i].name < suites[j].name })
 	sort.Slice(allTests, func(i, j int) bool { return allTests[i].name < allTests[j].name })
+
+	if *suitesOnly {
+		for _, s := range suites {
+			fmt.Println(s.name)
+		}
+		return
+	}
 
 	// Compute column width for individual tests with parameters.
 	maxTestLen := 0
