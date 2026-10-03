@@ -42,7 +42,14 @@ import (
 //  1. Configure an encrypted wireless credential and confirm it decrypts.
 //  2. Snapshot the identity, and back it up to the CONFIG partition.
 //  3. Cut off the controller, destroy /persist, and boot.
-//  4. Assert the identity came back and the credential decrypts again.
+//  4. Assert the identity came back and the credential decrypts again, and
+//     that storage-init cleaned up and left the failure marker.
+//  5. Reconnect the controller and assert a kvm→k update is declined on that
+//     marker.
+//
+// RESIZE_FAILURE selects how the offline resize the backup arms fails: for
+// real, so resize_abort writes the marker, or simulated by a planted marker so
+// that only the restore runs.
 //
 // Needs an EVE build carrying the conversion (lf-edge/eve#6036, #6063), a TPM,
 // and a provider that can edit the device's disk.
@@ -81,6 +88,9 @@ type persistDamage struct {
 	// needsDiskEditing is true for damage that can only be done with the device
 	// powered off.
 	needsDiskEditing bool
+	// recreatesPersist is true for damage storage-init repairs by reformatting
+	// /persist, which the restore records as persist_recreated.
+	recreatesPersist bool
 	apply            func(t Gomega, device *evetest.EdgeDevice)
 }
 
@@ -93,6 +103,7 @@ type persistDamage struct {
 var damagePersistWipe = persistDamage{
 	name:             "wiping /persist",
 	needsDiskEditing: true,
+	recreatesPersist: true,
 	apply: func(t Gomega, device *evetest.EdgeDevice) {
 		device.SyncDisks()
 		device.PowerOff()
@@ -118,6 +129,7 @@ var damagePersistCorrupt = persistDamage{
 	apply: func(t Gomega, device *evetest.EdgeDevice) {
 		const script = `set -u
 TRUNCATED=0
+LC_SZ=$(stat -c%s /persist/checkpoint/lastconfig 2>/dev/null || echo 0)
 for f in checkpoint/lastconfig checkpoint/controllercerts \
          certs/ecdh.cert.pem certs/attest.cert.pem certs/ek.cert.pem \
          status/nim/DevicePortConfigList/global.json \
@@ -137,6 +149,11 @@ for b in checkpoint/lastconfig.bak checkpoint/controllercerts.bak; do
 done
 sync
 [ "$TRUNCATED" -ge 1 ] || { echo "FAIL: nothing was truncated"; exit 1; }
+# lastconfig has no validator, so it recovers from its .bak; without both a
+# truncated lastconfig and a .bak at least as new, that path is not exercised.
+[ "$LC_SZ" -gt 0 ] || { echo "FAIL: lastconfig was not there to truncate"; exit 1; }
+BAK_SZ=$(stat -c%s /persist/checkpoint/lastconfig.bak 2>/dev/null || echo 0)
+[ "$BAK_SZ" -ge "$LC_SZ" ] || { echo "FAIL: lastconfig.bak ($BAK_SZ B) is older than lastconfig ($LC_SZ B)"; exit 1; }
 echo "CORRUPTED=$TRUNCATED"`
 		out, err := runEVEWithTimeout(device, script, 3*time.Minute)
 		t.Expect(err).NotTo(HaveOccurred(), "could not corrupt /persist:\n%s", out)
@@ -157,11 +174,14 @@ func runRestoreTest(test *testing.T, damage persistDamage) {
 	t := NewGomegaWithT(evetestT)
 	defer evetest.Close()
 
-	defineSharedParameters()
+	defineSharedParameters(restoreParameterDefinitions()...)
 	p := resolveDeviceParams(t)
 	requirePinnedInitialVersion(t, p)
 	t.Expect(p.withTPM).To(BeTrue(),
 		"this test needs a TPM: the key that must survive is TPM-resident")
+	mode := evetest.GetTestParameter[string](resizeFailureParamKey)
+	t.Expect(mode).To(BeElementOf(resizeFailureReal, resizeFailureSimulated),
+		"%s must be %q or %q", resizeFailureParamKey, resizeFailureReal, resizeFailureSimulated)
 
 	var extra []evetest.Requirement
 	if damage.needsDiskEditing {
@@ -194,21 +214,33 @@ func runRestoreTest(test *testing.T, damage persistDamage) {
 	evetest.Checkpoint("credential-decrypts")
 
 	// Phase 2.
+	running := readRunningVersion(t, device)
 	deviceUUID := readDeviceUUID(t, device)
 	identity := snapshotIdentity(t, device)
 	log.Infof("device UUID before the damage: %s", deviceUUID)
-	log.Infof("backing identity up to the CONFIG partition")
-	backupIdentityToConfig(t, device)
+	log.Infof("backing identity up to the CONFIG partition (%s resize failure)", mode)
+	simulatedRelease := ""
+	if mode == resizeFailureSimulated {
+		simulatedRelease = running
+	}
+	backupIdentityToConfig(t, device, simulatedRelease)
+	portConfig := readPortConfig(t, device)
 	evetest.Checkpoint("identity-backed-up")
 
 	// Phase 3. The controller goes away first: the device must come back up
 	// with no way to be told anything, or it would be handed back what it was
 	// supposed to recover.
 	isolateFromController(restoreBaseNetworkModel)
-	defer restoreControllerAccess(t, device, restoreBaseNetworkModel)
+	isolated := true
+	defer func() {
+		if isolated {
+			restoreControllerAccess(t, device, restoreBaseNetworkModel)
+		}
+	}()
 
 	log.Infof("%s", damage.name)
 	damage.apply(t, device)
+	assertControllerUnreachable(t, device)
 	evetest.Checkpoint("damaged-and-rebooted")
 
 	// Phase 4.
@@ -220,9 +252,27 @@ func runRestoreTest(test *testing.T, damage persistDamage) {
 	}()
 	log.Infof("the device must have recovered its identity offline")
 	assertDeviceUUIDUnchanged(t, device, deviceUUID)
-	assertIdentityRestored(t, device, identity)
+	assertIdentityRestored(t, device, identity, portConfig)
 	log.Infof("and must decrypt the credential from the restored key, still offline")
 	assertWiFiCredentialsDecrypted(t, device, 8*time.Minute)
+	log.Infof("storage-init must have cleaned up and left the failure marker")
+	step := assertResizeBookkeeping(t, device, mode, running, damage.recreatesPersist)
 	restoreOK = true
 	evetest.Checkpoint("recovered-offline")
+
+	// Phase 5. The marker is what stops a conversion from re-arming a resize
+	// that already failed under this release, so a kvm→k update must now be
+	// declined for that reason, saying whether /persist was lost.
+	restoreControllerAccess(t, device, restoreBaseNetworkModel)
+	isolated = false
+	log.Infof("a kvm→k update must be declined on the failure marker")
+	device.RequestRefusedEVEUpgrade(p.targetVersion, evetest.HypervisorKubevirt,
+		evetest.BaseOSDatastoreHTTP)
+	cause := "/persist preserved"
+	if damage.recreatesPersist {
+		cause = "/persist was recreated"
+	}
+	assertConversionDeclined(t, device, running,
+		"boot-disk conversion failed ("+step+", ", cause)
+	evetest.Checkpoint("conversion-declined-on-marker")
 }

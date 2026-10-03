@@ -93,7 +93,7 @@ func defineParameters(initialVersion evetest.TestParameterDefinition,
 }
 
 // resolveDeviceParams reads the shared parameters and applies this package's
-// defaults, which are eden's: 4 vCPUs, 8 GiB of RAM, a 64 GiB boot disk.
+// defaults: 4 vCPUs, 8 GiB of RAM, a 64 GiB boot disk.
 func resolveDeviceParams(t Gomega) deviceParams {
 	p := deviceParams{
 		initialVersion:    evetest.GetTestParameter[string](initialEVEVersionParamKey),
@@ -201,4 +201,67 @@ func waitDeviceResponds(t Gomega, device *evetest.EdgeDevice) {
 		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(out).To(ContainSubstring("device-is-up"))
 	}, 15*time.Minute, 15*time.Second).Should(Succeed())
+}
+
+// Floors for a conversion that carries an application volume across it rather
+// than deleting the app first. EVE-K plus Longhorn does not converge on the
+// package defaults once the volume has to survive the conversion: it passes at
+// 16 GiB and 8 vCPUs and stalls below. The package default stays lower, so the
+// other tests keep covering the smaller device.
+const (
+	carriedVolumeRAMMiB = 16384
+	carriedVolumeCPUs   = 8
+)
+
+// raiseFloorsForCarriedVolume raises the device's RAM and vCPU floors to what a
+// conversion carrying an app volume needs.
+//
+// An unset RAM_SIZE_MB / CPUS resolves to the floor instead of the default; a
+// value explicitly set below it fails the run here rather than an hour into a
+// conversion that was never going to converge on a device that size.
+func raiseFloorsForCarriedVolume(t Gomega, p deviceParams) deviceParams {
+	if evetest.GetRAMSizeMiBParameterValue() == 0 {
+		p.ramMiB = carriedVolumeRAMMiB
+	}
+	t.Expect(p.ramMiB).To(BeNumerically(">=", carriedVolumeRAMMiB),
+		"%d MiB of RAM is too little for a conversion carrying an app volume; "+
+			"%s must be at least %d", p.ramMiB, evetest.RAMSizeMiBParameterKey,
+		carriedVolumeRAMMiB)
+	if evetest.GetCPUsParameterValue() == 0 {
+		p.cpus = carriedVolumeCPUs
+	}
+	t.Expect(p.cpus).To(BeNumerically(">=", carriedVolumeCPUs),
+		"%d vCPUs is too few for a conversion carrying an app volume; %s must be "+
+			"at least %d", p.cpus, evetest.CPUsParameterKey, carriedVolumeCPUs)
+	return p
+}
+
+// provisionPolicy is how the boot disk is laid out before the device first boots
+// it, as selected by USE_INSTALLER.
+//
+// The live image is written to the disk whole; the installer boots and writes it
+// the way a field device is provisioned, which takes longer and covers one thing
+// the live path cannot. An installer-written ESP carries a zero-length
+// boot/.boot_repository, and the offline grow relocates the ESP by copying its
+// FAT32 contents, which go-diskfs rejects as "invalid start cluster: 0" without
+// diskfs/go-diskfs#419.
+func provisionPolicy() evetest.ExistingEdgeDeviceReusePolicy {
+	if evetest.GetTestParameter[bool](useInstallerParamKey) {
+		return evetest.CreateFromScratchWithInstaller
+	}
+	return evetest.CreateFromScratchWithLiveImage
+}
+
+// useInstallerParameter declares the axis provisionPolicy reads. It defaults to
+// the installer because every other test here starts from a live image, so these
+// are the only runs that see an installer-written ESP.
+func useInstallerParameter() evetest.TestParameterDefinition {
+	return evetest.TestParameterDefinition{
+		Key:          useInstallerParamKey,
+		DefaultValue: true,
+		Description: evetest.TestParameterDescription{
+			Summary: "Lay the boot disk out with the EVE installer instead of a live image",
+			Default: "true",
+		},
+	}
 }

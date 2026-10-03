@@ -16,10 +16,19 @@
 // Test files are named for the stage of the conversion they cover:
 //
 //   - upgrade_test.go     -- the flavor switch itself
-//   - repartition_test.go -- the boot-disk conversion, both routes to the space
+//   - repartition_novolmig_test.go -- the boot-disk conversion with no volume on
+//     the device, both routes to the space
+//   - repartition_volmig_test.go   -- the same conversion with an app volume
+//     carried across it
+//   - repartition_topology_test.go -- the grow route on two-disk and ZFS
+//     layouts, with or without an app volume carried across it
 //   - repartition_refused_test.go  -- the repartition declined, both reasons
 //   - repartition_geometry_test.go -- the resulting partition layout, on its own
+//   - appvolume_test.go   -- what an interrupted shrink does to the data in a
+//     volume it has to relocate
 //   - volmig_test.go      -- an app volume carried across the conversion
+//   - zfsvault_test.go    -- the ZFS vault migration declining for space
+//   - zfsvault_powercut_test.go -- power cut inside that migration's swap
 //   - firstboot_test.go   -- a volume asked for before EVE-K storage exists
 //   - restore_test.go     -- /persist lost or corrupted, recovered offline
 //
@@ -28,28 +37,39 @@
 //   - device_helpers_test.go  -- shared parameters, device setup, disk sizing
 //   - shell_helpers_test.go   -- running a command on EVE
 //   - geometry_helpers_test.go -- partition table, storage-resizer decisions
+//   - stressfill_helpers_test.go -- where in /persist a volume is allocated,
+//     whether the shrink has to relocate it, and whether it can be interrupted
 //   - vault_helpers_test.go   -- vault unlock method and the TPM seal
+//   - zfsvault_helpers_test.go -- ZFS vault datasets, the migration's swap record
+//   - zboot_helpers_test.go   -- which partition boots next, and committing one
 //   - restore_helpers_test.go -- identity backup, controller isolation
 //   - cluster_helpers_test.go -- EVE-K bring-up: k3s, volumemgr, Longhorn
 //   - app_helpers_test.go     -- app deployment, SSH, volume markers, blob reuse
+//   - clusterwedge_helpers_test.go -- an app whose volume never arrives on EVE-K
+//   - volverify_helpers_test.go -- the volverify pattern: writing it, and the
+//     verdict on what came back
 //   - download_helpers_test.go -- what the downloader pulled, for blob reuse
 //   - diag_helpers_test.go    -- best-effort captures taken when an assertion
 //     is about to fail
 //
 // Every test here needs an EVE that carries the conversion work (lf-edge/eve#6036
-// and #6063). On a stock build baseosmgr refuses a kvm↔k base-OS update outright
+// and #6063). Without it baseosmgr refuses a kvm↔k base-OS update outright
 // (handlebaseos.go, "Upgrade to EVE-k ... is not supported"), so the cross-flavor
-// hop fails before any of this is exercised.
+// hop fails before any of this is exercised. A test that keeps an app volume on
+// the device across the flavor change needs more, which its doc comment states:
+// master refuses that kvm→k update outright, and lf-edge/eve#6658 lets it
+// through only when the conversion does not shrink /persist.
 //
-// Device sizing matches the eden escripts these are ported from
-// (lf-edge/eden#1209): 4 vCPUs and 8 GiB of RAM, eden's own defaults, which
-// those escripts never override. Raising it makes EVE-K and Longhorn converge
-// more easily and stops the tests covering the envelope the escripts cover, so
-// the floors stay where eden put them and move only through RAM_SIZE_MB / CPUS.
+// Devices get 4 vCPUs and 8 GiB of RAM. Raising it makes EVE-K and Longhorn
+// converge more easily and stops the tests covering the smaller device, so the
+// floors move only through RAM_SIZE_MB / CPUS.
+// The exception is a conversion that carries an application volume across it,
+// which does not converge at those figures -- see raiseFloorsForCarriedVolume.
 package konvert_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/lf-edge/eve/evetest"
 )
@@ -77,12 +97,44 @@ const (
 	// fillPersistGiBParamKey sizes the pre-conversion fill that gives a shrink
 	// real blocks to relocate.
 	fillPersistGiBParamKey = "FILL_PERSIST_GIB"
+	// relocateCriticalHighParamKey selects whether that fill also stages the
+	// critical files above the shrink boundary.
+	relocateCriticalHighParamKey = "RELOCATE_CRITICAL_HIGH"
 	// refuseReasonParamKey selects why the conversion must be refused.
 	refuseReasonParamKey = "REFUSE_REASON"
+	// resizeFailureParamKey selects how a restore test's offline resize fails.
+	resizeFailureParamKey = "RESIZE_FAILURE"
+	// useInstallerParamKey selects how the boot disk is laid out before the
+	// device first boots it -- see provisionPolicy.
+	useInstallerParamKey = "USE_INSTALLER"
+	// dataVolMiBParamKey sizes the app data volume a test carries across the
+	// conversion. Its default is per test, since what the size decides differs:
+	// how much the shrink has to relocate, or whether EVE-K's CSI path can
+	// provision it at all.
+	dataVolMiBParamKey = "DATAVOL_MB"
+	// diskTopologyParamKey selects the disk layout a grow-route conversion
+	// runs on.
+	diskTopologyParamKey = "DISK_TOPOLOGY"
+	// withAppVolumeParamKey selects whether an app data volume is carried
+	// across the conversion.
+	withAppVolumeParamKey = "WITH_APP_VOLUME"
+	// rebootAfterConversionParamKey selects whether the converted device is
+	// rebooted and its gates re-run.
+	rebootAfterConversionParamKey = "REBOOT_AFTER_CONVERSION"
+	// appNetworkParamKey selects the kind of network instance the app that
+	// NoVolmig deletes and redeploys is attached to.
+	appNetworkParamKey = "APP_NETWORK"
+	// vmAppParamKey selects whether VolumeMigration also carries a VM app.
+	vmAppParamKey = "VM_APP"
+	// persistFilesystemParamKey selects the /persist filesystem for the tests
+	// whose carry-over path differs between the two.
+	persistFilesystemParamKey = "PERSIST_FILESYSTEM"
+	// rebootBeforeDrainParamKey selects whether VolumeMigration reboots EVE-K
+	// while the carried-over kvm volumes are still held.
+	rebootBeforeDrainParamKey = "REBOOT_BEFORE_DRAIN"
 )
 
-// Defaults shared across the package, reproducing the eden escripts' own, so
-// that a run with nothing set matches what eden runs.
+// Defaults shared across the package.
 const (
 	// defaultInitialEVEVersion is the release the device is brought up on
 	// before the conversion. It has to land inside assertSmallGeometry's window
@@ -95,22 +147,39 @@ const (
 	// actual rootfs may exceed, and 14.5 raises that floor to 1 GiB. 10.1.0 is
 	// the smallest layout inside the window, and its size is fixed rather than
 	// a floor, so the baseline geometry cannot drift with rootfs content.
+	//
+	// Other starts are valid per test. RepartitionGeometry takes 10.1.0,
+	// 12.1.0, 16.13.0 or 17.0.0-rc1. The tests that assert the small layout
+	// at their baseline (Refused, NoVolmig, Topology, RepartitionVolmig,
+	// AppVolume) take 10.1.0 or 12.1.0; from 16.13.0 the 2 GiB ESP fails that
+	// assert. The restore tests are unanalyzed off the default. The variable
+	// reaches every test in the process, including the cross-flavor ones whose
+	// default is the build under test, so set it for one test at a time.
 	defaultInitialEVEVersion = "10.1.0"
 
-	// bootDiskMiB is the single-boot-disk size the escripts use, and the size
-	// EVE-K plus Longhorn needs (prep-kvm-to-k-topology.sh BOOT_DISK_MB).
+	// bootDiskMiB is the single boot disk, the size EVE-K plus Longhorn needs.
 	bootDiskMiB = 65536
 	// splitBootDiskMiB is the boot disk the grow route starts on; the rest of
-	// bootDiskMiB is added afterwards as a free tail
-	// (prep-kvm-to-k-topology.sh EVE_DISK_MB).
+	// bootDiskMiB is added afterwards as a free tail.
 	splitBootDiskMiB = 32768
-	// defaultFillPersistGiB matches the escripts' FILL_PERSIST_GIB. It must stay
-	// below the post-shrink size of /persist, or the shrink cannot fit what the
-	// fill put there.
+	// defaultFillPersistGiB makes the shrink relocate data. It must stay below
+	// the post-shrink size of /persist, or the shrink cannot fit what the fill
+	// put there.
 	defaultFillPersistGiB = 33
-	// deviceRAMMiB and deviceCPUs are eden's defaults
-	// (pkg/defaults/defaults.go DefaultMemory / DefaultCpus), which the
-	// escripts do not override.
+	// conversionUpgradeTimeout is what UpgradeEVE gets for a hop of a
+	// conversion that repartitions. The framework default is sized for an
+	// ordinary base-OS upgrade -- download, one reboot, done -- and a
+	// conversion adds an offline shrink and grow across several reboots and
+	// then a container-cluster bring-up, which lands close enough to that
+	// default for host load to decide the verdict.
+	conversionUpgradeTimeout = 45 * time.Minute
+	// geometryConversionTimeout is the Geometry test's k hop, which may start
+	// from a release whose IMGx partitions are small enough that growing them
+	// dominates: from 16.13.0 that run takes about 70 minutes on constrained
+	// disk I/O. The margin above that is for runners slower still.
+	geometryConversionTimeout = 120 * time.Minute
+	// deviceRAMMiB and deviceCPUs are the device sizing described in the
+	// package doc.
 	deviceRAMMiB = 8192
 	deviceCPUs   = 4
 )
@@ -139,7 +208,7 @@ func TestKonvertSuite(test *testing.T) {
 		evetest.TestCase{Test: TestPersistWipeRestore},
 		evetest.TestCase{Test: TestBackupCorruptRestore},
 		evetest.TestCase{
-			Test: TestKvmToKRepartition,
+			Test: TestKvmToKRepartitionNoVolmig,
 			Variants: []evetest.TestVariant{
 				{
 					Name: "Shrink",
@@ -151,6 +220,13 @@ func TestKonvertSuite(test *testing.T) {
 					Name: "Grow",
 					Parameters: []evetest.TestParameterValue{
 						{Key: expectDecisionParamKey, Value: decisionGrow},
+					},
+				},
+				{
+					Name: "GrowLocalNI",
+					Parameters: []evetest.TestParameterValue{
+						{Key: expectDecisionParamKey, Value: decisionGrow},
+						{Key: appNetworkParamKey, Value: appNetworkLocal},
 					},
 				},
 			},
@@ -172,7 +248,42 @@ func TestKonvertSuite(test *testing.T) {
 				},
 			},
 		},
+		evetest.TestCase{
+			Test: TestKvmToKRepartitionTopology,
+			Variants: []evetest.TestVariant{
+				{
+					Name: "TwoDiskExt4",
+					Parameters: []evetest.TestParameterValue{
+						{Key: diskTopologyParamKey, Value: topologyTwoDiskExt4},
+					},
+				},
+				{
+					Name: "TwoDiskZFS",
+					Parameters: []evetest.TestParameterValue{
+						{Key: diskTopologyParamKey, Value: topologyTwoDiskZFS},
+					},
+				},
+				{
+					Name: "TwoDiskZFSWhole",
+					Parameters: []evetest.TestParameterValue{
+						{Key: diskTopologyParamKey, Value: topologyTwoDiskZFSWhole},
+					},
+				},
+				{
+					Name: "ZFSTail",
+					Parameters: []evetest.TestParameterValue{
+						{Key: diskTopologyParamKey, Value: topologyZFSTail},
+					},
+				},
+			},
+		},
 		evetest.TestCase{Test: TestKvmToKVolumeMigration},
 		evetest.TestCase{Test: TestFirstBootEVEKAppVolume},
+		evetest.TestCase{Test: TestKvmToKRepartitionVolmig},
+		evetest.TestCase{Test: TestKvmToKRepartitionAppVolume},
+		// Last, and in this order: both need a ZFS device, and the power cut
+		// leaves one whose partitions have been hand-committed.
+		evetest.TestCase{Test: TestKvmToKZFSVaultMigration},
+		evetest.TestCase{Test: TestKvmToKZFSVaultPowerCutMidSwap},
 	)
 }

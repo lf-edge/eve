@@ -17,7 +17,7 @@ import (
 // 10 GiB each -- whatever layout the device started on.
 //
 // It deliberately does nothing else. No app, no data volume, no vault settle,
-// no blob-reuse check: those all belong to TestKvmToKRepartition, and mixing
+// no blob-reuse check: those all belong to TestKvmToKRepartitionNoVolmig, and mixing
 // them in here would mean a geometry regression could be masked by, or mistaken
 // for, an app or storage failure. What is left is one claim, stated absolutely
 // rather than relative to the starting sizes, because a conversion that grew
@@ -35,6 +35,7 @@ func TestKvmToKRepartitionGeometry(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
 	defer evetest.Close()
+	requireFlavorAwareTransport(t)
 
 	defineSharedParameters()
 	p := resolveDeviceParams(t)
@@ -54,14 +55,8 @@ func TestKvmToKRepartitionGeometry(test *testing.T) {
 	t.Expect(isEVEKLayout(startGeometry)).To(BeFalse(),
 		"%s is already laid out like EVE-K, so a conversion from it would prove nothing: %s",
 		p.initialVersion, startGeometry)
+	assertStartLayout(t, device, p.initialVersion, startGeometry)
 	evetest.Checkpoint("baseline-captured")
-
-	log.Infof("kvm→kvm hop: landing the conversion code at %s", p.targetVersion)
-	device.UpgradeEVE(p.targetVersion, evetest.HypervisorKVM,
-		evetest.BaseOSDatastoreHTTP, true, false)
-	log.Infof("the hop must not have moved the geometry")
-	assertGeometryUnchanged(t, device, startGeometry)
-	evetest.Checkpoint("conversion-code-landed")
 
 	conversionOK := false
 	defer func() {
@@ -69,16 +64,27 @@ func TestKvmToKRepartitionGeometry(test *testing.T) {
 			dumpConversionFailure(device)
 		}
 	}()
+	log.Infof("kvm→kvm hop: landing the conversion code at %s", p.targetVersion)
+	device.UpgradeEVE(p.targetVersion, evetest.HypervisorKVM,
+		evetest.BaseOSDatastoreHTTP, true, false, conversionUpgradeTimeout)
+	log.Infof("the hop must not have moved the geometry")
+	assertGeometryUnchanged(t, device, startGeometry)
+	evetest.Checkpoint("conversion-code-landed")
+
 	// The offline repartition boots once more than an upgrade does; declared
 	// before the update that causes it.
 	device.ExpectReboots(1)
 	log.Infof("kvm→k hop: running the repartition")
+	stopStates := logConversionStates(device)
 	device.UpgradeEVE(p.targetVersion, evetest.HypervisorKubevirt,
-		evetest.BaseOSDatastoreHTTP, true, false)
+		evetest.BaseOSDatastoreHTTP, true, false, geometryConversionTimeout)
+	stopStates()
 	conversionOK = true
 	evetest.Checkpoint("conversion-complete")
 
 	log.Infof("the boot disk must be at the full EVE-K layout")
 	assertFinalEVEKLayout(t, device)
+	captureOnConsoleAlarm(device)
+	recordResizeFault(device)
 	evetest.Checkpoint("layout-final")
 }

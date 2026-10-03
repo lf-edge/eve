@@ -356,6 +356,19 @@ device.ApplyConfig(newConfig, true, true)
 // Reboot (pass true to wait until the device comes back up)
 device.SoftReboot(true)
 device.HardReboot(true)
+
+// Upgrade to another EVE version and hypervisor. The optional last argument
+// replaces the default wait, which is sized for an ordinary base-OS upgrade.
+device.UpgradeEVE(version, evetest.HypervisorKubevirt, evetest.BaseOSDatastoreHTTP,
+    true, false, 45*time.Minute)
+
+// Everything the device has written to its serial console so far, including
+// what ran before pillar started, such as storage-init
+console, err := device.ConsoleOutput()
+
+// Skip the end-of-test check that the device rebooted as often as expected,
+// for a test whose reboot count is unknowable, such as one that cuts power
+device.DisableRebootAccounting("power cut mid-swap")
 ```
 
 ### Checkpoints

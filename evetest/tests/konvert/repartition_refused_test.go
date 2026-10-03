@@ -21,7 +21,7 @@ const tooFullPercent = 70
 // TestKvmToKRepartitionRefused asserts that a device which cannot be repartitioned declines
 // the conversion cleanly, rather than attempting it and stranding itself.
 //
-// This is the sibling of TestKvmToKRepartition, and the more important of the
+// This is the sibling of TestKvmToKRepartitionNoVolmig, and the more important of the
 // two to get right: a conversion that fails halfway leaves a device with a
 // half-written partition table and no way back. The contract is that EVE works
 // out beforehand that it cannot free the space, refuses, says why, and carries
@@ -52,6 +52,7 @@ func TestKvmToKRepartitionRefused(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
 	defer evetest.Close()
+	requireFlavorAwareTransport(t)
 
 	defineSharedParameters(refusedParameterDefinitions()...)
 	p := resolveDeviceParams(t)
@@ -109,7 +110,8 @@ func TestKvmToKRepartitionRefused(test *testing.T) {
 	log.Infof("pushing the kvm→k update, which must be declined")
 	device.RequestRefusedEVEUpgrade(p.targetVersion, evetest.HypervisorKubevirt,
 		evetest.BaseOSDatastoreHTTP)
-	assertConversionDeclined(t, device, kvmHopVersion)
+	assertConversionDeclined(t, device, kvmHopVersion,
+		declinePrefixNotPossible, refusalCause(reason))
 	evetest.Checkpoint("conversion-declined")
 
 	// Phase 5. The whole point of refusing early is that nothing was touched.

@@ -17,7 +17,7 @@ import (
 	"github.com/lf-edge/eve/evetest"
 )
 
-// Reasons the conversion cannot go ahead, as the escripts name them.
+// Reasons the conversion cannot go ahead.
 const (
 	// refuseZFS is a ZFS /persist with no free tail. ZFS cannot be shrunk, so
 	// with nothing to grow into there is no way to free the space.
@@ -45,9 +45,10 @@ const (
 	miB = int64(1) << 20
 	giB = int64(1) << 30
 
-	// The released layout: a 36 MiB ESP and 512 MiB IMGA/IMGB. The ceilings sit
-	// well above those so that alignment jitter cannot fail the check, while
-	// staying far below anything the conversion produces.
+	// The released layout before 16.13.0: a 36 MiB ESP and 300 MiB (10.1.0) or
+	// at least 512 MiB (12.1.0) IMGA/IMGB. The ceilings sit well above those so
+	// that alignment jitter cannot fail the check, while staying far below
+	// anything the conversion produces.
 	smallESPCeiling = 256 * miB
 	smallImgCeiling = giB
 
@@ -159,16 +160,59 @@ func parseGeometry(dump string) geometry {
 }
 
 // readGeometry returns the device's current boot-disk geometry, retrying while
-// EVE's SSH and pillar come back after a reboot.
+// EVE's SSH and pillar come back after a reboot. Only the boot disk is read: on
+// a two-disk layout the other disk carries a P3 of its own.
 func readGeometry(t Gomega, device *evetest.EdgeDevice) geometry {
 	var g geometry
 	t.Eventually(func(g2 Gomega) {
-		out, err := runEVE(device, partsLsblk)
+		disk, err := bootDiskPath(device)
+		g2.Expect(err).NotTo(HaveOccurred())
+		out, err := runEVE(device, partsLsblk+" "+disk)
 		g2.Expect(err).NotTo(HaveOccurred())
 		g = parseGeometry(out)
+		g2.Expect(g.esp).To(BeNumerically(">", 0), "could not read the ESP size:\n%s", out)
 		g2.Expect(g.imgA).To(BeNumerically(">", 0), "could not read IMGA size:\n%s", out)
+		g2.Expect(g.imgB).To(BeNumerically(">", 0), "could not read IMGB size:\n%s", out)
 	}, 5*time.Minute, 10*time.Second).Should(Succeed())
 	return g
+}
+
+// releaseStartLayout is the ESP and IMGx size, in MiB, pkg/mkimage-raw-efi/
+// make-raw lays down at each release a conversion is run from. From 12.1.0 the
+// IMGx figure is a minimum that a larger rootfs raises. None of them has an
+// ESP-B.
+var releaseStartLayout = map[string]struct{ espMiB, imgMiB int64 }{
+	"10.1.0":     {36, 300},
+	"12.1.0":     {36, 512},
+	"16.13.0":    {2048, 4096},
+	"17.0.0-rc1": {2048, 10240},
+}
+
+// assertStartLayout asserts the device boots version, and that its geometry g
+// is the layout that release lays down: each of ESP, IMGA and IMGB within
+// half to twice the release's figure, and no ESP-B. It is what makes the start
+// release an axis a run can be trusted to have covered, since a device on
+// another release's layout would take another code path through the
+// conversion. A release missing from releaseStartLayout is logged as
+// unchecked.
+func assertStartLayout(t Gomega, device *evetest.EdgeDevice, version string, g geometry) {
+	running := readRunningVersion(t, device)
+	t.Expect(running).To(ContainSubstring(version),
+		"the device runs %s, not the requested start release %s", running, version)
+	want, known := releaseStartLayout[version]
+	if !known {
+		evetest.Logger().Warnf("start layout of %s is unchecked: not in releaseStartLayout", version)
+		return
+	}
+	inBand := func(name string, got, wantMiB int64) {
+		t.Expect(got).To(And(BeNumerically(">=", wantMiB*miB/2), BeNumerically("<=", 2*wantMiB*miB)),
+			"%s is %d bytes, outside half to twice the %d MiB %s lays down: %s",
+			name, got, wantMiB, version, g)
+	}
+	inBand("ESP", g.esp, want.espMiB)
+	inBand("IMGA", g.imgA, want.imgMiB)
+	inBand("IMGB", g.imgB, want.imgMiB)
+	t.Expect(g.espB).To(BeZero(), "%s lays down no ESP-B, yet there is one: %s", version, g)
 }
 
 // assertSmallGeometry asserts the device is still on the released layout, which
@@ -198,6 +242,34 @@ var (
 	// partitionRowRE reads a partition row's start and end sector.
 	partitionRowRE = regexp.MustCompile(`^\s*\d+\s+(\d+)\s+(\d+)\s`)
 )
+
+// longhornMinSchedulableGiB and longhornMinStoragePct are the floors EVE-K's
+// Longhorn pre-flight warns under (pkg/kube/kube-init/components/
+// longhorn_preflight.go): Longhorn places no replica once a disk drops below its
+// minimal-available percentage, so what it can schedule is the free space less
+// that share of the disk.
+const (
+	longhornMinSchedulableGiB = 16
+	longhornMinStoragePct     = 25
+)
+
+// assertPersistRoomForLonghorn asserts /persist has the room EVE-K's Longhorn
+// needs to place a replica, computed the way EVE's pre-flight computes it. A
+// layout short of it still converts, and then stalls in cluster storage for
+// reasons unrelated to the conversion, so it fails here instead.
+func assertPersistRoomForLonghorn(t Gomega, device *evetest.EdgeDevice) {
+	out, err := runEVE(device, "df -Pk /persist | awk 'NR==2{print $2, $4}'")
+	t.Expect(err).NotTo(HaveOccurred())
+	var totalK, availK int64
+	_, err = fmt.Sscan(strings.TrimSpace(out), &totalK, &availK)
+	t.Expect(err).NotTo(HaveOccurred(), "cannot parse df of /persist: %q", out)
+	schedGiB := (availK - totalK*longhornMinStoragePct/100) / (1 << 20)
+	evetest.Logger().Infof("/persist: %d GiB total, %d GiB free, %d GiB schedulable by Longhorn",
+		totalK>>20, availK>>20, schedGiB)
+	t.Expect(schedGiB).To(BeNumerically(">=", longhornMinSchedulableGiB),
+		"/persist leaves Longhorn %d GiB, under its %d GiB floor; enlarge the disk carrying it",
+		schedGiB, longhornMinSchedulableGiB)
+}
 
 // assertFreeTail asserts the GPT exposes enough unallocated space past the last
 // partition for storage-resizer to choose the grow.
@@ -351,41 +423,59 @@ const (
 // delete the earliest -- lowest-block -- files until usage falls back to the
 // target. What survives is concentrated above the boundary, which is exactly
 // what resize2fs then has to move down.
-func fillPersist(t Gomega, device *evetest.EdgeDevice, gib int) {
+//
+// stageAbove4k, when non-zero, also rewrites the critical files above that
+// block at peak fill -- see stageCriticalsHigh -- so the shrink has to move
+// them too.
+func fillPersist(t Gomega, device *evetest.EdgeDevice, gib int, stageAbove4k int64) {
 	if gib <= 0 {
 		return
 	}
 	log := evetest.Logger()
 	log.Infof("filling /persist to %d%% then trimming to %d GiB, so the shrink has high blocks to relocate",
 		peakFillPercent, gib)
-	script := fmt.Sprintf(`set -u
-DIR=%[2]s
+	peak := fmt.Sprintf(`set -u
+DIR=%[1]s
 rm -rf "$DIR"; mkdir -p "$DIR"
 used_kb() { df -k /persist | awk 'NR==2{print $3}'; }
 size_kb=$(df -k /persist | awk 'NR==2{print $2}')
-peak_kb=$(( size_kb * %[4]d / 100 ))
-target_kb=$(( %[1]d * 1024 * 1024 ))
+peak_kb=$(( size_kb * %[3]d / 100 ))
 n=0
 while [ "$(used_kb)" -lt "$peak_kb" ]; do
-  dd if=/dev/urandom of="$DIR/$(printf %%06d $n)" bs=1M count=%[3]d 2>/dev/null || break
+  dd if=/dev/urandom of="$DIR/$(printf %%06d $n)" bs=1M count=%[2]d 2>/dev/null || break
   n=$((n + 1))
 done
 sync
-echo "PEAK files=$n used=$(df -k /persist | awk 'NR==2{print $5}')"
-i=0
-while [ "$i" -lt "$n" ] && [ "$(used_kb)" -gt "$target_kb" ]; do
-  rm -f "$DIR/$(printf %%06d $i)"
-  i=$((i + 1))
-done
-sync
-echo "FILLED trimmed=$i kept=$(( n - i ))"
-df -k /persist | awk 'NR==2{print "PERSIST used="$5}'`, gib, persistFillDir, fillChunkMiB, peakFillPercent)
+echo "PEAK files=$n used=$(df -k /persist | awk 'NR==2{print $5}')"`,
+		persistFillDir, fillChunkMiB, peakFillPercent)
 
 	// One attempt, not a retry: this writes tens of gigabytes, and a second
 	// pass would start over rather than continue.
-	out, err := runEVEWithTimeout(device, script, fillPersistTimeout)
+	out, err := runEVEWithTimeout(device, peak, fillPersistTimeout)
 	t.Expect(err).NotTo(HaveOccurred(), "could not fill /persist:\n%s", out)
-	t.Expect(out).To(ContainSubstring("FILLED"), "could not fill /persist:\n%s", out)
+	t.Expect(out).To(ContainSubstring("PEAK"), "could not fill /persist:\n%s", out)
+	log.Infof("pre-fill peak: %s", strings.TrimSpace(out))
+
+	if stageAbove4k > 0 {
+		stageCriticalsHigh(device, stageAbove4k, persistFillDir, fillChunkMiB, false)
+	}
+
+	// Name order is creation order, so this deletes from the low blocks up.
+	trim := fmt.Sprintf(`set -u
+DIR=%[1]s
+used_kb() { df -k /persist | awk 'NR==2{print $3}'; }
+target_kb=$(( %[2]d * 1024 * 1024 ))
+i=0; kept=0
+for f in "$DIR"/[0-9]*; do
+  [ -f "$f" ] || continue
+  if [ "$(used_kb)" -gt "$target_kb" ]; then rm -f "$f"; i=$((i + 1)); else kept=$((kept + 1)); fi
+done
+sync
+echo "FILLED trimmed=$i kept=$kept"
+df -k /persist | awk 'NR==2{print "PERSIST used="$5}'`, persistFillDir, gib)
+	out, err = runEVEWithTimeout(device, trim, fillPersistTimeout)
+	t.Expect(err).NotTo(HaveOccurred(), "could not trim the /persist fill:\n%s", out)
+	t.Expect(out).To(ContainSubstring("FILLED"), "could not trim the /persist fill:\n%s", out)
 	log.Infof("pre-fill result: %s", strings.TrimSpace(out))
 }
 

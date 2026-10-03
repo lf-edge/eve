@@ -5,28 +5,25 @@ package konvert_test
 
 import (
 	"testing"
-	"time"
 
 	// revive:disable:dot-imports
 	. "github.com/onsi/gomega"
-
-	pillartypes "github.com/lf-edge/eve/pkg/pillar/types"
 
 	api "github.com/lf-edge/eve/evetest/grpcapi/go"
 
 	"github.com/lf-edge/eve/evetest"
 )
 
-// deferContentDeleteSeconds keeps a deleted app's blobs alive across the
-// conversion. Without it EVE reclaims them as soon as the app referencing them
-// goes away, and the redeploy afterwards measures a fresh download rather than
-// the reuse the test is about.
-const deferContentDeleteSeconds = 24 * 60 * 60
-
-// TestKvmToKRepartition drives the in-field boot-disk conversion end to end:
+// TestKvmToKRepartitionNoVolmig drives the in-field boot-disk conversion end to end:
 // a released small-geometry EVE-kvm image, a kvm→kvm hop that lands the
 // conversion code without moving the geometry, and then the kvm→k hop whose
 // cross-flavor seam arms the offline repartition.
+//
+// NoVolmig is the half of the conversion that needs no volume migration: the app
+// is deleted before the flavor change, so the repartition runs with no volume on
+// the device and the run says nothing about what becomes of one.
+// TestKvmToKRepartitionVolmig is the same conversion with an app volume carried
+// across it, which takes the volume-migration work an EVE build may not have.
 //
 // Three hops rather than one because that is the shape of the real thing. A
 // device in the field is on an old release that has no conversion code, so the
@@ -55,26 +52,33 @@ const deferContentDeleteSeconds = 24 * 60 * 60
 //     now decide the expected route.
 //  3. Settle the vault to a local TPM unlock, so the seal assertion afterwards
 //     has a settled boot to look at.
-//  4. (shrink only) Fill /persist so the shrink has real blocks to relocate.
+//  4. (shrink only) Fill /persist so the shrink has real blocks to relocate,
+//     staging the critical files among them.
 //  5. Deploy an app, confirm it works, then delete it with the content-delete
 //     timer stretched so its blobs outlive the conversion.
-//  6. kvm→k hop: the conversion runs offline across reboots.
+//  6. kvm→k hop: the conversion runs offline across reboots. Then free the
+//     fill, which the shrink has made into most of a smaller /persist, so
+//     EVE-K's storage has room to come up.
 //  7. Assert the geometry, and that the repartition did not cost the TPM seal.
-//  8. Free the fill, which the shrink has now made into most of a smaller
-//     /persist, so EVE-K's storage has room to come up.
-//  9. Redeploy the same app and assert it downloaded nothing.
+//  8. Redeploy the same app and assert it downloaded nothing.
+//  9. (REBOOT_AFTER_CONVERSION) Reboot EVE-K; the storage and app gates must
+//     pass again, on a fresh guest boot.
 //
 // Needs an EVE build carrying the conversion (lf-edge/eve#6036, #6063); on a
 // stock build the kvm→k hop is refused outright.
-func TestKvmToKRepartition(test *testing.T) {
+func TestKvmToKRepartitionNoVolmig(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
 	defer evetest.Close()
+	requireFlavorAwareTransport(t)
 
 	defineSharedParameters(repartitionParameterDefinitions()...)
 	p := resolveDeviceParams(t)
 	requirePinnedInitialVersion(t, p)
 	decision := evetest.GetTestParameter[string](expectDecisionParamKey)
+	appNetwork := evetest.GetTestParameter[string](appNetworkParamKey)
+	t.Expect(appNetwork).To(BeElementOf(appNetworkSwitch, appNetworkLocal),
+		"%s must be %q or %q", appNetworkParamKey, appNetworkSwitch, appNetworkLocal)
 	fillGiB := int(evetest.GetTestParameter[uint32](fillPersistGiBParamKey))
 	t.Expect(decision).To(BeElementOf(decisionShrink, decisionGrow),
 		"%s must be %q or %q", expectDecisionParamKey, decisionShrink, decisionGrow)
@@ -116,9 +120,16 @@ func TestKvmToKRepartition(test *testing.T) {
 	evetest.Checkpoint("baseline-small")
 
 	// Phase 2.
+	conversionOK := false
+	defer func() {
+		if !conversionOK {
+			dumpConversionFailure(device)
+		}
+	}()
 	log.Infof("kvm→kvm hop: landing the conversion code at %s", p.targetVersion)
 	device.UpgradeEVE(p.targetVersion, evetest.HypervisorKVM,
-		evetest.BaseOSDatastoreHTTP, true, false)
+		evetest.BaseOSDatastoreHTTP, true, false, conversionUpgradeTimeout)
+	kvmHopVersion := readRunningVersion(t, device)
 	log.Infof("the hop must not have moved the geometry")
 	assertSmallGeometry(t, device)
 	log.Infof("the pre-flight check must decide %q", decision)
@@ -129,58 +140,52 @@ func TestKvmToKRepartition(test *testing.T) {
 	// Also the pre-conversion half of the seal check: this establishes live that
 	// the last boot before the conversion unsealed from the device's own TPM.
 	log.Infof("settling the vault on a local TPM unlock")
-	settleVaultLocal(t, device)
+	settled := settleVaultLocal(t, device)
 	evetest.Checkpoint("vault-settled")
 
-	// Phase 4.
+	// Phase 4. The boundary is a function of the geometry alone, so reading it
+	// before the fill gives the staging the same figure the shrink will use.
+	// Only the shrink route has one; on the grow route the placement is recorded
+	// against none, which reads as SKIP.
+	var criticalBoundary int64
 	if decision == decisionShrink {
-		fillPersist(t, device, fillGiB)
+		criticalBoundary = shrinkBoundaryBlocks(device)
+		stageAbove := int64(0)
+		if evetest.GetTestParameter[bool](relocateCriticalHighParamKey) {
+			stageAbove = criticalBoundary
+		}
+		fillPersist(t, device, fillGiB, stageAbove)
 		evetest.Checkpoint("persist-filled")
 	}
 
 	// Phase 5.
-	log.Infof("deploying the app before the conversion")
-	niUUID := devConfig.AddNetworkInstance(evetest.SwitchNetworkInstanceConfig{
-		DisplayName: "switch-ni",
-		Port:        "eth0",
-	})
-	appUUID := addTestApp(devConfig, "konvert-repartition-app", niUUID)
-	device.ApplyConfig(devConfig, false, false)
-	assertAppReady(t, device, appUUID, 15*time.Minute)
-	dumpAppNetwork(device, "before the conversion (working)")
+	niUUID := deployAppThenDeleteKeepingBlobs(t, device, devConfig, appNetwork)
 
-	log.Infof("stretching the deferred content delete past the conversion")
-	props := shortBaseImageCooldown()
-	props.SetGlobalValueInt(pillartypes.DeferContentDelete, deferContentDeleteSeconds)
-	devConfig.SetConfigProperties(props)
-	device.ApplyConfig(devConfig, true, true)
-
-	// The conversion's cross-flavor gate refuses to run while a volume exists,
-	// so the app goes first; its blobs stay behind under the stretched timer,
-	// and its network instance stays in the configuration to be redeployed onto.
-	log.Infof("deleting the app, keeping its network and blobs")
-	devConfig.DeleteApplication(appUUID)
-	device.ApplyConfig(devConfig, true, true)
-	assertNoLiveVolumes(t, device)
-	evetest.Checkpoint("app-deleted")
+	criticalsBefore := recordCriticalBlocks(device, "pre-conversion", criticalBoundary)
 
 	// Phase 6.
-	conversionOK := false
-	defer func() {
-		if !conversionOK {
-			dumpConversionFailure(device)
-		}
-	}()
 	// The offline repartition boots once more than an upgrade does: its
 	// intermediate resize boot is invisible to the controller, so the audit at
 	// teardown would see one reboot the upgrade did not account for. Declared
 	// before the update that causes it, so the declaration cannot race it.
 	device.ExpectReboots(1)
 	log.Infof("kvm→k hop: arming the offline %s", decision)
+	stopStates := logConversionStates(device)
 	device.UpgradeEVE(p.targetVersion, evetest.HypervisorKubevirt,
-		evetest.BaseOSDatastoreHTTP, true, false)
+		evetest.BaseOSDatastoreHTTP, true, false, conversionUpgradeTimeout)
+	stopStates()
 	conversionOK = true
 	evetest.Checkpoint("conversion-complete")
+
+	// The fill has done its job once the resize is over, and it goes before
+	// the checks below: the shrink left /persist smaller, so what was a third of
+	// it is now nearly all of it, and EVE-K is already bringing Longhorn up,
+	// which reports unhealthy storage forever rather than place a replica with
+	// no room.
+	if decision == decisionShrink {
+		freePersistFill(t, device)
+		evetest.Checkpoint("fill-freed")
+	}
 
 	// Phase 7.
 	wantP3 := p3MustShrink
@@ -190,52 +195,36 @@ func TestKvmToKRepartition(test *testing.T) {
 	log.Infof("asserting the boot disk reached the EVE-K layout via the %s route", decision)
 	assertLargeGeometry(t, device, smallGeometry, wantP3)
 	evetest.Checkpoint("geometry-converted")
+	recordResizeFault(device)
+
+	integrity := logCriticalRelocation(device, criticalsBefore)
+	captureOnConsoleAlarm(device)
 
 	log.Infof("asserting the repartition preserved the TPM seal")
-	assertSealSurvivedRepartition(t, device)
+	assertSealSurvivedRepartition(t, device, kvmHopVersion, settled)
 	evetest.Checkpoint("seal-preserved")
 
-	// The fill has done its job now that the resize is over, and it has to go
-	// before EVE-K brings its storage up: the shrink left /persist smaller, so
-	// what was a third of it is now nearly all of it, and Longhorn reports
-	// unhealthy storage forever rather than place a replica with no room.
-	if decision == decisionShrink {
-		freePersistFill(t, device)
-		evetest.Checkpoint("fill-freed")
+	// Phase 8.
+	appUUID := redeployAssertingBlobReuse(t, device, devConfig, niUUID, integrity.recreated)
+	// Phase 9.
+	if rebootAfterConversionRequested() {
+		rebootAndReassertEVEK(t, device, appUUID)
 	}
-
-	// Phase 8. The snapshot is taken before the redeploy and after the
-	// conversion's last reboot, so both readings belong to the same boot.
-	beforeBytes := snapshotDownloaderBytes(t, device)
-	// Redeployed onto the network instance the device already has. Only the
-	// app was deleted; adding a second switch instance on the same port here
-	// would leave two of them bound to eth0, and the app never starts.
-	log.Infof("redeploying the app on EVE-K")
-	newAppUUID := addTestApp(devConfig, "konvert-repartition-app", niUUID)
-	device.ApplyConfig(devConfig, false, false)
-
-	appOK := false
-	defer func() {
-		if !appOK {
-			dumpClusterStorage(device)
-			dumpAppNetwork(device, "after the conversion (app FAILED)")
-		}
-	}()
-	waitClusterStorageReady(t, device)
-	assertAppReady(t, device, newAppUUID, appRunningAfterRepartitionTimeout)
-	appOK = true
-	assertBlobsReused(t, device, beforeBytes)
-	evetest.Checkpoint("app-redeployed")
-
-	// Leave the collector as it was found, so a device reused by the next test
-	// in the suite is not holding blobs for a day.
-	devConfig.SetConfigProperties(shortBaseImageCooldown())
-	device.ApplyConfig(devConfig, true, true)
 }
 
 // repartitionParameterDefinitions declares the axes this test adds.
 func repartitionParameterDefinitions() []evetest.TestParameterDefinition {
 	return []evetest.TestParameterDefinition{
+		rebootAfterConversionParameter(),
+		{
+			Key:          appNetworkParamKey,
+			DefaultValue: appNetworkSwitch,
+			Description: evetest.TestParameterDescription{
+				Summary:       "Network instance the app is deleted from and redeployed onto",
+				Default:       "switch",
+				AllowedValues: "switch|local",
+			},
+		},
 		{
 			Key:          expectDecisionParamKey,
 			DefaultValue: decisionShrink,
@@ -253,5 +242,6 @@ func repartitionParameterDefinitions() []evetest.TestParameterDefinition {
 				Default: "33",
 			},
 		},
+		relocateCriticalHighParameter(),
 	}
 }
