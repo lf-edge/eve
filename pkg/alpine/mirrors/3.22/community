@@ -11,8 +11,10 @@ i2c-tools
 i2c-tools-dev
 json-glib
 json-glib-dev
+libevdev
 libgudev
 libgudev-dev
+libinput-libs
 libnbd
 librados19
 librbd19
@@ -29,6 +31,7 @@ libvirt-lxc
 libvirt-qemu
 libvncserver
 libvncserver-dev
+mtdev
 ossp-uuid
 perf
 py3-cachecontrol
