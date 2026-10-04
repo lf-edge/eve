@@ -1,7 +1,7 @@
 # Copyright (c) 2023 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-alpine:ef20bcb617db5545765f4d7486621cf606e5595e AS build
+FROM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS build
 ENV PKGS="alpine-baselayout musl-utils bash glib squashfs-tools util-linux e2fsprogs e2fsprogs-extra keyutils dosfstools coreutils sgdisk smartmontools"
 RUN eve-alpine-deploy.sh
 
@@ -9,7 +9,7 @@ RUN eve-alpine-deploy.sh
 # execs it for the offline shrink/grow and the post-mount restore/cleanup. The
 # filesystem/partition tools it shells out to (resize2fs, e2fsck, fsck.fat,
 # sgdisk, partx) are in the PKGS above.
-FROM lfedge/eve-storage-resizer:af6f8349494145cec64da95bb4399bc8c39f68ea AS storage-resizer
+FROM lfedge/eve-storage-resizer:ec778533de829f0379cae6e2d66c1dab393f7704 AS storage-resizer
 
 FROM scratch
 COPY --from=build /out/ /
