@@ -2488,16 +2488,21 @@ func (d *daemon) runHealthWorker(ctx context.Context, mon *monitor.Monitor, sup 
 	d.runSteadyStateStorage(ctx, ct, sup)
 
 	// Persist this node's control-plane rank for the next boot's
-	// staggered startup, and (if the flag is armed) sweep stale
-	// masterleases left from a recent single->cluster conversion.
-	// Both are no-ops in single-node mode and after their work is
-	// done; they share one GetClusterStatus read.
+	// staggered startup, and (if their flags are armed) sweep stale
+	// masterleases and recycle the controller pods left blind by a
+	// recent single->cluster conversion. All are no-ops in single-node
+	// mode and after their work is done; they share one
+	// GetClusterStatus read.
 	if cs, err := k3s.GetClusterStatus(); err == nil {
 		if rankErr := clustermode.SaveStartupRank(ctx, cs); rankErr != nil {
 			log.Printf("WARNING: save startup rank: %v", rankErr)
 		}
 		if leaseErr := clustermode.CleanupStaleMasterleases(ctx, cs); leaseErr != nil {
 			log.Printf("WARNING: masterleases cleanup: %v", leaseErr)
+		}
+		if ctrlErr := clustermode.RestartStaleControllers(ctx, cs,
+			state.ToK8sName(d.deviceName)); ctrlErr != nil {
+			log.Printf("WARNING: restart stale controllers: %v", ctrlErr)
 		}
 	}
 
