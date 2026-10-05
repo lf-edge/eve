@@ -60,25 +60,33 @@ profiles:
 // are satisfied. Returns (false, nil) when conditions are not yet met so the caller
 // can retry, and (false, err) on an API error.
 func IsDeschedulerReady(log *base.LogObject, nodeName string) (bool, error) {
+	ready, _, err := IsDeschedulerReadyWithReason(log, nodeName)
+	return ready, err
+}
+
+// IsDeschedulerReadyWithReason additionally reports what it is waiting
+// for, so a caller that keeps retrying can say why rather than only that
+// it is still waiting.
+func IsDeschedulerReadyWithReason(log *base.LogObject, nodeName string) (bool, string, error) {
 	client, err := GetClientSet()
 	if err != nil {
-		return false, fmt.Errorf("IsDeschedulerReady: GetClientSet: %w", err)
+		return false, "no kubernetes client", fmt.Errorf("IsDeschedulerReady: GetClientSet: %w", err)
 	}
 	return isDeschedulerReadyWithClient(log, client, nodeName)
 }
 
-func isDeschedulerReadyWithClient(log *base.LogObject, client kubernetes.Interface, nodeName string) (bool, error) {
+func isDeschedulerReadyWithClient(log *base.LogObject, client kubernetes.Interface, nodeName string) (bool, string, error) {
 	ctx := context.Background()
 
 	node, err := client.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
 	if err != nil {
-		return false, fmt.Errorf("IsDeschedulerReady: get node %s: %w", nodeName, err)
+		return false, "node not readable", fmt.Errorf("IsDeschedulerReady: get node %s: %w", nodeName, err)
 	}
 	if node.Spec.Unschedulable {
 		// Unschedulable is a permanent state on tie-breaker nodes; suppress
 		// repeated Notice logs since this check runs every 15s for 30 minutes.
 		log.Functionf("IsDeschedulerReady: node %s is unschedulable", nodeName)
-		return false, nil
+		return false, "node is unschedulable", nil
 	}
 	nodeReady := false
 	for _, cond := range node.Status.Conditions {
@@ -89,33 +97,33 @@ func isDeschedulerReadyWithClient(log *base.LogObject, client kubernetes.Interfa
 	}
 	if !nodeReady {
 		log.Noticef("IsDeschedulerReady: node %s is not ready", nodeName)
-		return false, nil
+		return false, "node is not Ready", nil
 	}
 
 	if err := checkLonghornReady(client, nodeName); err != nil {
 		log.Noticef("IsDeschedulerReady: longhorn not ready: %v", err)
-		return false, nil
+		return false, fmt.Sprintf("longhorn not ready: %v", err), nil
 	}
 	if err := checkLonghornSchedulable(nodeName); err != nil {
 		log.Noticef("IsDeschedulerReady: longhorn not schedulable: %v", err)
-		return false, nil
+		return false, fmt.Sprintf("longhorn not schedulable: %v", err), nil
 	}
 
 	_, err = client.CoreV1().Namespaces().Get(ctx, "kubevirt", metav1.GetOptions{})
 	if err == nil {
 		kubeConfig, err := GetKubeConfig()
 		if err != nil {
-			return false, fmt.Errorf("IsDeschedulerReady: GetKubeConfig: %w", err)
+			return false, "no kubeconfig", fmt.Errorf("IsDeschedulerReady: GetKubeConfig: %w", err)
 		}
 		if err := waitForKubevirtReady(kubeConfig); err != nil {
 			log.Noticef("IsDeschedulerReady: kubevirt not ready: %v", err)
-			return false, nil
+			return false, fmt.Sprintf("kubevirt not ready: %v", err), nil
 		}
 	} else if !k8serrors.IsNotFound(err) {
-		return false, fmt.Errorf("IsDeschedulerReady: check kubevirt namespace: %w", err)
+		return false, "kubevirt namespace not readable", fmt.Errorf("IsDeschedulerReady: check kubevirt namespace: %w", err)
 	}
 
-	return true, nil
+	return true, "", nil
 }
 
 // TriggerDescheduler runs the descheduler Job. The caller must have already

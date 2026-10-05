@@ -119,14 +119,22 @@ func expectVMIList(ctrl *gomock.Controller, mc *kubecli.MockKubevirtClient, ns s
 	return mvmi
 }
 
-// vmiOwnedBy builds a VMI owned by vmirsName with a KernelBoot container image.
+// vmiOwnedBy builds a VMI owned by vmirsName, running on testNode, with a
+// KernelBoot container image. Where the VMI runs is what marks its VMIRS
+// as this node's, so every local fixture needs one.
 func vmiOwnedBy(name, vmirsName, image string) virtv1.VirtualMachineInstance {
+	return vmiOwnedByOn(name, vmirsName, testNode, image)
+}
+
+// vmiOwnedByOn is vmiOwnedBy with the node spelled out.
+func vmiOwnedByOn(name, vmirsName, nodeName, image string) virtv1.VirtualMachineInstance {
 	return virtv1.VirtualMachineInstance{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            name,
 			Namespace:       testNS,
 			OwnerReferences: []metav1.OwnerReference{{Name: vmirsName}},
 		},
+		Status: virtv1.VirtualMachineInstanceStatus{NodeName: nodeName},
 		Spec: virtv1.VirtualMachineInstanceSpec{
 			Domain: virtv1.DomainSpec{
 				Firmware: &virtv1.Firmware{
@@ -139,41 +147,47 @@ func vmiOwnedBy(name, vmirsName, image string) virtv1.VirtualMachineInstance {
 	}
 }
 
-// --- vmirsAffinityNode -------------------------------------------------------
+// --- vmirsScheduledHere ------------------------------------------------------
 
-func TestVMIRSAffinityNode_Preferred(t *testing.T) {
-	v := vmirsPreferred("node-a", extBootImgLatest)
-	if got := vmirsAffinityNode(&v); got != "node-a" {
-		t.Fatalf("got %q, want node-a", got)
+func TestVMIRSScheduledHere_ByPlacement(t *testing.T) {
+	vmis := []virtv1.VirtualMachineInstance{
+		vmiOwnedByOn("vmi-a", "vmirs-a", testNode, extBootImgLatest),
+		vmiOwnedByOn("vmi-b", "vmirs-b", "other-node", extBootImgLatest),
+	}
+	got := vmirsScheduledHere(vmis, testNode)
+	if _, ok := got["vmirs-a"]; !ok {
+		t.Error("vmirs-a runs here and was not claimed")
+	}
+	if _, ok := got["vmirs-b"]; ok {
+		t.Error("vmirs-b runs elsewhere and was claimed")
 	}
 }
 
-func TestVMIRSAffinityNode_Required(t *testing.T) {
-	v := vmirsRequired("node-b", extBootImgLatest)
-	if got := vmirsAffinityNode(&v); got != "node-b" {
-		t.Fatalf("got %q, want node-b", got)
+// A label-placed app names no node in its affinity, which is the case
+// that made reading affinity useless for ownership.
+func TestVMIRSScheduledHere_IgnoresAffinity(t *testing.T) {
+	vmi := vmiOwnedByOn("vmi-a", "vmirs-a", testNode, extBootImgLatest)
+	vmi.Spec.Affinity = nil
+	got := vmirsScheduledHere([]virtv1.VirtualMachineInstance{vmi}, testNode)
+	if _, ok := got["vmirs-a"]; !ok {
+		t.Error("a VMI with no affinity at all still runs here")
 	}
 }
 
-func TestVMIRSAffinityNode_NoAffinity(t *testing.T) {
-	v := virtv1.VirtualMachineInstanceReplicaSet{
-		Spec: virtv1.VirtualMachineInstanceReplicaSetSpec{
-			Template: &virtv1.VirtualMachineInstanceTemplateSpec{},
-		},
-	}
-	if got := vmirsAffinityNode(&v); got != "" {
-		t.Fatalf("got %q, want empty", got)
+func TestVMIRSScheduledHere_UnscheduledVMI(t *testing.T) {
+	vmi := vmiOwnedByOn("vmi-a", "vmirs-a", "", extBootImgLatest)
+	if got := vmirsScheduledHere([]virtv1.VirtualMachineInstance{vmi}, testNode); len(got) != 0 {
+		t.Errorf("got %v, want nothing claimed for an unscheduled VMI", got)
 	}
 }
 
-func TestVMIRSAffinityNode_NilTemplate(t *testing.T) {
-	v := virtv1.VirtualMachineInstanceReplicaSet{}
-	if got := vmirsAffinityNode(&v); got != "" {
-		t.Fatalf("got %q, want empty", got)
+func TestVMIRSScheduledHere_NoOwner(t *testing.T) {
+	vmi := vmiOwnedByOn("vmi-a", "vmirs-a", testNode, extBootImgLatest)
+	vmi.OwnerReferences = nil
+	if got := vmirsScheduledHere([]virtv1.VirtualMachineInstance{vmi}, testNode); len(got) != 0 {
+		t.Errorf("got %v, want nothing claimed for an unowned VMI", got)
 	}
 }
-
-// --- kubeVirtCondAvailable ---------------------------------------------------
 
 func TestKubeVirtCondAvailable_True(t *testing.T) {
 	ctrl := gomock.NewController(t)
@@ -229,20 +243,24 @@ func TestMigrateLocalVMIRS_AlreadyLatest(t *testing.T) {
 	mrs.EXPECT().List(gomock.Any(), metav1.ListOptions{}).Return(
 		&virtv1.VirtualMachineInstanceReplicaSetList{Items: []virtv1.VirtualMachineInstanceReplicaSet{v}}, nil)
 	// No Patch expectation — gomock fails on unexpected calls.
-	expectVMIList(ctrl, mc, testNS, nil)
+	expectVMIList(ctrl, mc, testNS, []virtv1.VirtualMachineInstance{
+		vmiOwnedBy("vmi-1", v.Name, extBootImgLatest)})
 	done, err := migrateLocalVMIRSBootImages(testNode, testNS, mc)
 	if err != nil || !done {
 		t.Fatalf("got done=%v err=%v, want done=true err=nil", done, err)
 	}
 }
 
-func TestMigrateLocalVMIRS_AffinityMismatch(t *testing.T) {
+func TestMigrateLocalVMIRS_ScheduledElsewhere(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mc, mrs := mockClientWithRS(ctrl, testNS)
 	v := vmirsPreferred("other-node", "docker.io/lfedge/eve-external-boot-image:1.2.3")
 	mrs.EXPECT().List(gomock.Any(), metav1.ListOptions{}).Return(
 		&virtv1.VirtualMachineInstanceReplicaSetList{Items: []virtv1.VirtualMachineInstanceReplicaSet{v}}, nil)
-	// VMIRS scheduled to other-node: not local, so no VMI list is expected.
+	// The VMI runs on the other node, so this VMIRS is that node's to migrate:
+	// no Patch and no delete here.
+	expectVMIList(ctrl, mc, testNS, []virtv1.VirtualMachineInstance{
+		vmiOwnedByOn("vmi-1", v.Name, "other-node", "docker.io/lfedge/eve-external-boot-image:1.2.3")})
 	done, err := migrateLocalVMIRSBootImages(testNode, testNS, mc)
 	if err != nil || !done {
 		t.Fatalf("got done=%v err=%v, want done=true err=nil", done, err)
@@ -273,7 +291,8 @@ func TestMigrateLocalVMIRS_NoKernelBoot(t *testing.T) {
 	}
 	mrs.EXPECT().List(gomock.Any(), metav1.ListOptions{}).Return(
 		&virtv1.VirtualMachineInstanceReplicaSetList{Items: []virtv1.VirtualMachineInstanceReplicaSet{v}}, nil)
-	expectVMIList(ctrl, mc, testNS, nil)
+	expectVMIList(ctrl, mc, testNS, []virtv1.VirtualMachineInstance{
+		vmiOwnedBy("vmi-1", v.Name, extBootImgLatest)})
 	done, err := migrateLocalVMIRSBootImages(testNode, testNS, mc)
 	if err != nil || !done {
 		t.Fatalf("got done=%v err=%v, want done=true err=nil", done, err)
@@ -287,7 +306,10 @@ func TestMigrateLocalVMIRS_Success(t *testing.T) {
 	mrs.EXPECT().List(gomock.Any(), metav1.ListOptions{}).Return(
 		&virtv1.VirtualMachineInstanceReplicaSetList{Items: []virtv1.VirtualMachineInstanceReplicaSet{v}}, nil)
 	mrs.EXPECT().Patch(gomock.Any(), v.Name, gomock.Any(), gomock.Any(), gomock.Any()).Return(&v, nil)
-	expectVMIList(ctrl, mc, testNS, nil)
+	// The VMI is already on :latest, so the stale sweep has nothing to do and
+	// this stays a test of the template patch.
+	expectVMIList(ctrl, mc, testNS, []virtv1.VirtualMachineInstance{
+		vmiOwnedBy("vmi-1", v.Name, extBootImgLatest)})
 	done, err := migrateLocalVMIRSBootImages(testNode, testNS, mc)
 	if err != nil || !done {
 		t.Fatalf("got done=%v err=%v, want done=true err=nil", done, err)
@@ -301,7 +323,10 @@ func TestMigrateLocalVMIRS_RequiredAffinitySuccess(t *testing.T) {
 	mrs.EXPECT().List(gomock.Any(), metav1.ListOptions{}).Return(
 		&virtv1.VirtualMachineInstanceReplicaSetList{Items: []virtv1.VirtualMachineInstanceReplicaSet{v}}, nil)
 	mrs.EXPECT().Patch(gomock.Any(), v.Name, gomock.Any(), gomock.Any(), gomock.Any()).Return(&v, nil)
-	expectVMIList(ctrl, mc, testNS, nil)
+	// The VMI is already on :latest, so the stale sweep has nothing to do and
+	// this stays a test of the template patch.
+	expectVMIList(ctrl, mc, testNS, []virtv1.VirtualMachineInstance{
+		vmiOwnedBy("vmi-1", v.Name, extBootImgLatest)})
 	done, err := migrateLocalVMIRSBootImages(testNode, testNS, mc)
 	if err != nil || !done {
 		t.Fatalf("got done=%v err=%v, want done=true err=nil", done, err)
@@ -316,7 +341,8 @@ func TestMigrateLocalVMIRS_PatchFails(t *testing.T) {
 		&virtv1.VirtualMachineInstanceReplicaSetList{Items: []virtv1.VirtualMachineInstanceReplicaSet{v}}, nil)
 	mrs.EXPECT().Patch(gomock.Any(), v.Name, gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, errors.New("conflict"))
 	// Stale-VMI sweep still runs after a failed patch; no stale VMIs here.
-	expectVMIList(ctrl, mc, testNS, nil)
+	expectVMIList(ctrl, mc, testNS, []virtv1.VirtualMachineInstance{
+		vmiOwnedBy("vmi-1", v.Name, extBootImgLatest)})
 	done, err := migrateLocalVMIRSBootImages(testNode, testNS, mc)
 	if err != nil || done {
 		t.Fatalf("got done=%v err=%v, want done=false err=nil", done, err)
@@ -385,8 +411,9 @@ func TestMigrateLocalVMIRS_IgnoresForeignVMI(t *testing.T) {
 	v := vmirsPreferred(testNode, extBootImgLatest)
 	mrs.EXPECT().List(gomock.Any(), metav1.ListOptions{}).Return(
 		&virtv1.VirtualMachineInstanceReplicaSetList{Items: []virtv1.VirtualMachineInstanceReplicaSet{v}}, nil)
-	// Stale VMI, but owned by a VMIRS not scheduled to this node.
-	foreign := vmiOwnedBy("vmi-foreign", "vmirs-other-node", "docker.io/lfedge/eve-external-boot-image:1.2.3")
+	// Stale VMI, but running on the other node, so it is that node's to delete.
+	foreign := vmiOwnedByOn("vmi-foreign", "vmirs-other-node", "other-node",
+		"docker.io/lfedge/eve-external-boot-image:1.2.3")
 	expectVMIList(ctrl, mc, testNS, []virtv1.VirtualMachineInstance{foreign})
 
 	done, err := migrateLocalVMIRSBootImages(testNode, testNS, mc)
@@ -477,6 +504,7 @@ func TestBootImgMigratorStep_WaitReadyBothReady_CollapsesToDone(t *testing.T) {
 	mc.EXPECT().ReplicaSet(testNS).Return(mrs).AnyTimes()
 	mrs.EXPECT().List(gomock.Any(), metav1.ListOptions{}).Return(
 		&virtv1.VirtualMachineInstanceReplicaSetList{}, nil)
+	expectVMIList(ctrl, mc, testNS, nil)
 
 	m := bootImgMigrator{imageReady: true}
 	m.step(testNode, testNS, mc)
@@ -490,6 +518,7 @@ func TestBootImgMigratorStep_MigrateNothingToDo(t *testing.T) {
 	mc, mrs := mockClientWithRS(ctrl, testNS)
 	mrs.EXPECT().List(gomock.Any(), metav1.ListOptions{}).Return(
 		&virtv1.VirtualMachineInstanceReplicaSetList{}, nil)
+	expectVMIList(ctrl, mc, testNS, nil)
 
 	m := bootImgMigrator{state: bootImgStateMigrate}
 	m.step(testNode, testNS, mc)
@@ -505,7 +534,8 @@ func TestBootImgMigratorStep_MigratePatchFails_StaysMigrate(t *testing.T) {
 	mrs.EXPECT().List(gomock.Any(), metav1.ListOptions{}).Return(
 		&virtv1.VirtualMachineInstanceReplicaSetList{Items: []virtv1.VirtualMachineInstanceReplicaSet{v}}, nil)
 	mrs.EXPECT().Patch(gomock.Any(), v.Name, gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, errors.New("conflict"))
-	expectVMIList(ctrl, mc, testNS, nil)
+	expectVMIList(ctrl, mc, testNS, []virtv1.VirtualMachineInstance{
+		vmiOwnedBy("vmi-1", v.Name, extBootImgLatest)})
 
 	m := bootImgMigrator{state: bootImgStateMigrate}
 	m.step(testNode, testNS, mc)

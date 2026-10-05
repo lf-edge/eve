@@ -626,9 +626,15 @@ func (s KubeUserServices) Equal(s2 KubeUserServices) bool {
 // enables the on-boot descheduler trigger.
 const VmiDescheduleEventBoot = "boot"
 
+// VmiDescheduleEventPeriodic is the KubernetesVmiDescheduleEvents token that
+// makes each node check periodically whether the apps designated to it run
+// elsewhere, and move them back. Always enabled in a 2-node HA cluster.
+const VmiDescheduleEventPeriodic = "periodic"
+
 // VmiDescheduleConfig holds the set of trigger events for VMI descheduling.
 type VmiDescheduleConfig struct {
-	OnBoot bool // trigger descheduler once per boot
+	OnBoot     bool // trigger descheduler once per boot
+	OnPeriodic bool // move misplaced apps back whenever found
 }
 
 // KubeConfig : A root level structure to pass config from pillar to kube service container

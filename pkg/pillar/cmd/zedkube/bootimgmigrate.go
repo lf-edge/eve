@@ -199,14 +199,17 @@ func migrateLocalVMIRSBootImages(nodeName, namespace string, virtClient kubecli.
 	// can find and replace their stale VMIs below.  Membership is not
 	// conditional on patching: a VMIRS whose template is already :latest can
 	// still own a VMI that predates the migration.
-	localVMIRS := make(map[string]struct{})
+	vmis, lerr := listVMIs(namespace, virtClient)
+	if lerr != nil {
+		return false, lerr
+	}
+	localVMIRS := vmirsScheduledHere(vmis, nodeName)
 	anyFailed := false
 	for i := range list.Items {
 		vmirs := &list.Items[i]
-		if vmirsAffinityNode(vmirs) != nodeName {
+		if _, ok := localVMIRS[vmirs.Name]; !ok {
 			continue
 		}
-		localVMIRS[vmirs.Name] = struct{}{}
 		tmpl := vmirs.Spec.Template
 		if tmpl == nil ||
 			tmpl.Spec.Domain.Firmware == nil ||
@@ -238,14 +241,25 @@ func migrateLocalVMIRSBootImages(nodeName, namespace string, virtClient kubecli.
 	// force-delete budget (pendingVMIMaxDeletes) can be exhausted recreating
 	// old-tag VMIs while this migrator is still blocked in WaitReady waiting for
 	// KubeVirt to report Available.
-	staleVMIs, derr := deleteStaleBootImgVMIs(namespace, localVMIRS, virtClient)
-	if derr != nil {
-		return false, derr
-	}
+	staleVMIs := deleteStaleBootImgVMIs(vmis, localVMIRS, virtClient)
 
 	// Stay out of Done while a stale VMI was just (re)deleted: next tick
 	// re-checks until the ReplicaSet has recreated it from :latest.
 	return !anyFailed && !staleVMIs, nil
+}
+
+// listVMIs fetches the namespace's VMIs once per pass: both which
+// ReplicaSets are scheduled here and which of their VMIs are stale are
+// answered from the same list.
+func listVMIs(namespace string, virtClient kubecli.KubevirtClient) (
+	[]virtv1.VirtualMachineInstance, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	defer cancel()
+	vmiList, err := virtClient.VirtualMachineInstance(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return vmiList.Items, nil
 }
 
 // deleteStaleBootImgVMIs force-deletes VMIs owned by one of the given (local)
@@ -254,19 +268,14 @@ func migrateLocalVMIRSBootImages(nodeName, namespace string, virtClient kubecli.
 // Returns true if any such VMI was found (and a delete attempted) this call, so
 // the caller keeps retrying until none remain.  A VMI recreated from the
 // migrated template carries :latest and is skipped, so this self-terminates.
-func deleteStaleBootImgVMIs(namespace string, localVMIRS map[string]struct{}, virtClient kubecli.KubevirtClient) (bool, error) {
+func deleteStaleBootImgVMIs(vmis []virtv1.VirtualMachineInstance,
+	localVMIRS map[string]struct{}, virtClient kubecli.KubevirtClient) bool {
 	if len(localVMIRS) == 0 {
-		return false, nil
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), kubeAPITimeout)
-	defer cancel()
-	vmiList, err := virtClient.VirtualMachineInstance(namespace).List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return false, err
+		return false
 	}
 	anyStale := false
-	for i := range vmiList.Items {
-		vmi := &vmiList.Items[i]
+	for i := range vmis {
+		vmi := &vmis[i]
 		if len(vmi.OwnerReferences) == 0 {
 			continue
 		}
@@ -288,38 +297,27 @@ func deleteStaleBootImgVMIs(namespace string, localVMIRS map[string]struct{}, vi
 			log.Warnf("bootImgMigrate: delete stale VMI %s: %v", vmi.Name, err)
 		}
 	}
-	return anyStale, nil
+	return anyStale
 }
 
-// vmirsAffinityNode extracts the kubernetes.io/hostname value from the EVE-set
-// node affinity in a VMIRS template spec.  EVE encodes the owner node via
-// setKubeAffinity using either preferredDuringSchedulingIgnoredDuringExecution
-// or requiredDuringSchedulingIgnoredDuringExecution.  Returns "" if neither is
-// present or the hostname matchExpression is absent.
-func vmirsAffinityNode(vmirs *virtv1.VirtualMachineInstanceReplicaSet) string {
-	if vmirs.Spec.Template == nil {
-		return ""
-	}
-	aff := vmirs.Spec.Template.Spec.Affinity
-	if aff == nil || aff.NodeAffinity == nil {
-		return ""
-	}
-	na := aff.NodeAffinity
-	for _, pref := range na.PreferredDuringSchedulingIgnoredDuringExecution {
-		for _, expr := range pref.Preference.MatchExpressions {
-			if expr.Key == "kubernetes.io/hostname" && len(expr.Values) > 0 {
-				return expr.Values[0]
-			}
+// vmirsScheduledHere names the VMIRSes whose VMI currently runs on this
+// node.
+//
+// Taken from where the VMI is rather than from the affinity its template
+// asks for: an app may be placed by a node label instead of a node name,
+// in which case the template names no node at all, and even a
+// hostname-pinned app can be running elsewhere after a failover. What
+// this migration needs is the VMIs it must replace, and those are the
+// ones on this node.
+func vmirsScheduledHere(vmis []virtv1.VirtualMachineInstance,
+	nodeName string) map[string]struct{} {
+	owners := make(map[string]struct{})
+	for i := range vmis {
+		vmi := &vmis[i]
+		if vmi.Status.NodeName != nodeName || len(vmi.OwnerReferences) == 0 {
+			continue
 		}
+		owners[vmi.OwnerReferences[0].Name] = struct{}{}
 	}
-	if req := na.RequiredDuringSchedulingIgnoredDuringExecution; req != nil {
-		for _, term := range req.NodeSelectorTerms {
-			for _, expr := range term.MatchExpressions {
-				if expr.Key == "kubernetes.io/hostname" && len(expr.Values) > 0 {
-					return expr.Values[0]
-				}
-			}
-		}
-	}
-	return ""
+	return owners
 }

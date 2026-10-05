@@ -71,7 +71,7 @@ func TestIsDeschedulerReady_Unschedulable(t *testing.T) {
 	node.Spec.Unschedulable = true
 	client := fake.NewSimpleClientset(node)
 
-	ready, err := isDeschedulerReadyWithClient(newTestLog(), client, "node1")
+	ready, _, err := isDeschedulerReadyWithClient(newTestLog(), client, "node1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestIsDeschedulerReady_NodeNotReady(t *testing.T) {
 	}
 	client := fake.NewSimpleClientset(node)
 
-	ready, err := isDeschedulerReadyWithClient(newTestLog(), client, "node1")
+	ready, _, err := isDeschedulerReadyWithClient(newTestLog(), client, "node1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
