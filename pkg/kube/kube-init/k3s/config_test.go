@@ -18,6 +18,7 @@ import (
 
 	"github.com/lf-edge/eve/pkg/kube/kube-init/encconfig"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/encstatus"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
 )
@@ -765,5 +766,397 @@ func TestRemoveStaleCNIStateMissingPaths(t *testing.T) {
 		filepath.Join(root, "var", "lib", "cni", "networks", "cbr0"))
 	if err != nil {
 		t.Errorf("missing paths must be a no-op, got %v", err)
+	}
+}
+
+// shadowClusterIdentity reroutes clusterIdentityPath and k3sServerDir
+// onto a fresh tmp dir for the lifetime of a single test, mirroring
+// shadowPaths/shadowEtcdInitialized above.
+func shadowClusterIdentity(t *testing.T) (identityPath, serverDir string) {
+	t.Helper()
+	dir := t.TempDir()
+	identityPath = filepath.Join(dir, "cluster-identity")
+	serverDir = filepath.Join(dir, "server")
+
+	// Everything DiscardClusterState removes is redirected too, so a reset
+	// under test can never touch the real node's files.
+	origIdentity, origServer := clusterIdentityPath, k3sServerDir
+	origLabels, origDebug, origKubeconfigs := nodeLabelsMarker, debugUserMarker, derivedKubeconfigs
+	origSubnetEnv, origIPAM := flannelSubnetEnv, cniIPAMStateDir
+	clusterIdentityPath = identityPath
+	k3sServerDir = serverDir
+	nodeLabelsMarker = state.Marker(filepath.Join(dir, "node-labels-initialized"))
+	debugUserMarker = state.Marker(filepath.Join(dir, "debuguser-initialized"))
+	derivedKubeconfigs = []string{filepath.Join(dir, "k3s.yaml")}
+	flannelSubnetEnv = filepath.Join(dir, "subnet.env")
+	cniIPAMStateDir = filepath.Join(dir, "cbr0")
+	t.Cleanup(func() {
+		clusterIdentityPath = origIdentity
+		k3sServerDir = origServer
+		nodeLabelsMarker, debugUserMarker, derivedKubeconfigs = origLabels, origDebug, origKubeconfigs
+		flannelSubnetEnv, cniIPAMStateDir = origSubnetEnv, origIPAM
+	})
+	return
+}
+
+func TestClusterIdentityRoundTrip(t *testing.T) {
+	shadowClusterIdentity(t)
+	want := Generation{ClusterID: "aaaa-bbbb", Counter: 7}
+	if err := writeClusterIdentity(want); err != nil {
+		t.Fatalf("writeClusterIdentity: %v", err)
+	}
+	got, recorded, err := readClusterIdentity()
+	if err != nil {
+		t.Fatalf("readClusterIdentity: %v", err)
+	}
+	if !recorded || got != want {
+		t.Errorf("readClusterIdentity = (%+v, %v), want (%+v, true)", got, recorded, want)
+	}
+}
+
+func TestReadClusterIdentityNoFile(t *testing.T) {
+	shadowClusterIdentity(t)
+	identity, recorded, err := readClusterIdentity()
+	if err != nil {
+		t.Fatalf("readClusterIdentity: %v", err)
+	}
+	if recorded || identity != (Generation{}) {
+		t.Errorf("no file must read as unrecorded, got (%+v, %v)", identity, recorded)
+	}
+}
+
+// TestReadClusterIdentityLegacyFormat covers upgrading from a build
+// that wrote only the ClusterID: it must read as unrecorded, not as a
+// mismatch forcing a reset.
+func TestReadClusterIdentityLegacyFormat(t *testing.T) {
+	path, _ := shadowClusterIdentity(t)
+	if err := os.WriteFile(path, []byte("aaaa-bbbb"), 0644); err != nil {
+		t.Fatalf("write legacy identity file: %v", err)
+	}
+	identity, recorded, err := readClusterIdentity()
+	if err != nil {
+		t.Fatalf("readClusterIdentity: %v", err)
+	}
+	if recorded || identity != (Generation{}) {
+		t.Errorf("legacy single-field file must read as unrecorded, got (%+v, %v)", identity, recorded)
+	}
+}
+
+// TestResetStaleServerStateOnQuorumRecoveryGenerationChange pins the
+// regression: a quorum-loss recovery keeps ClusterID unchanged and
+// only bumps QuorumRecoveryGeneration, so a non-bootstrap node that
+// held bootstrap state here before the reset must still reset it on
+// rejoin.
+func TestResetStaleServerStateOnQuorumRecoveryGenerationChange(t *testing.T) {
+	_, serverDir := shadowClusterIdentity(t)
+
+	// Same ClusterID, earlier recovery generation.
+	if err := writeClusterIdentity(Generation{
+		ClusterID: "u1", Counter: 1,
+	}); err != nil {
+		t.Fatalf("seed stale identity: %v", err)
+	}
+	sentinel := filepath.Join(serverDir, "tls", "server-ca.crt")
+	if err := os.MkdirAll(filepath.Dir(sentinel), 0700); err != nil {
+		t.Fatalf("mkdir server dir: %v", err)
+	}
+	if err := os.WriteFile(sentinel, []byte("stale-ca"), 0600); err != nil {
+		t.Fatalf("write sentinel: %v", err)
+	}
+
+	current := Generation{ClusterID: "u1", Counter: 2}
+	reset, err := resetStaleServerState(current, false)
+	if err != nil {
+		t.Fatalf("resetStaleServerState: %v", err)
+	}
+	if !reset {
+		t.Error("resetStaleServerState must report reset=true on a recovery-generation change")
+	}
+	if _, err := os.Stat(sentinel); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("stale server state must be reset on a recovery-generation "+
+			"change (same ClusterID), stat err = %v", err)
+	}
+}
+
+// TestResetStaleServerStateDefersGenerationChangeForBootstrapNode pins
+// the regression: the node named bootstrap must not have its etcd
+// datastore wiped for its own generation bump — quorum.Promote needs
+// that data to recover from.
+func TestResetStaleServerStateDefersGenerationChangeForBootstrapNode(t *testing.T) {
+	_, serverDir := shadowClusterIdentity(t)
+
+	if err := writeClusterIdentity(Generation{
+		ClusterID: "u1", Counter: 1,
+	}); err != nil {
+		t.Fatalf("seed stale identity: %v", err)
+	}
+	sentinel := filepath.Join(serverDir, "db", "etcd")
+	if err := os.MkdirAll(sentinel, 0700); err != nil {
+		t.Fatalf("mkdir etcd datastore: %v", err)
+	}
+
+	current := Generation{ClusterID: "u1", Counter: 2}
+	reset, err := resetStaleServerState(current, true)
+	if err != nil {
+		t.Fatalf("resetStaleServerState: %v", err)
+	}
+	if reset {
+		t.Error("resetStaleServerState must report reset=false for a bootstrap node's own generation bump")
+	}
+	if _, err := os.Stat(sentinel); err != nil {
+		t.Errorf("bootstrap node's etcd datastore must survive its own generation bump, stat err = %v", err)
+	}
+}
+
+// TestResetStaleServerStateClusterIDChangeAlwaysResetsBootstrapNode
+// covers what the bootstrap gate above must not weaken: a genuine
+// ClusterID change still resets regardless of role.
+func TestResetStaleServerStateClusterIDChangeAlwaysResetsBootstrapNode(t *testing.T) {
+	_, serverDir := shadowClusterIdentity(t)
+
+	if err := writeClusterIdentity(Generation{
+		ClusterID: "old-cluster", Counter: 1,
+	}); err != nil {
+		t.Fatalf("seed stale identity: %v", err)
+	}
+	sentinel := filepath.Join(serverDir, "tls", "server-ca.crt")
+	if err := os.MkdirAll(filepath.Dir(sentinel), 0700); err != nil {
+		t.Fatalf("mkdir server dir: %v", err)
+	}
+	if err := os.WriteFile(sentinel, []byte("foreign-ca"), 0600); err != nil {
+		t.Fatalf("write sentinel: %v", err)
+	}
+
+	current := Generation{ClusterID: "new-cluster", Counter: 1}
+	reset, err := resetStaleServerState(current, true)
+	if err != nil {
+		t.Fatalf("resetStaleServerState: %v", err)
+	}
+	if !reset {
+		t.Error("resetStaleServerState must report reset=true on a ClusterID change even for a bootstrap node")
+	}
+	if _, err := os.Stat(sentinel); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("foreign cluster's state must be reset, stat err = %v", err)
+	}
+}
+
+// TestResetStaleServerStateNoResetWhenIdentityMatches is the control
+// case: nothing is reset when the recorded identity already matches.
+func TestResetStaleServerStateNoResetWhenIdentityMatches(t *testing.T) {
+	_, serverDir := shadowClusterIdentity(t)
+
+	current := Generation{ClusterID: "u1", Counter: 2}
+	if err := writeClusterIdentity(current); err != nil {
+		t.Fatalf("seed matching identity: %v", err)
+	}
+	sentinel := filepath.Join(serverDir, "tls", "server-ca.crt")
+	if err := os.MkdirAll(filepath.Dir(sentinel), 0700); err != nil {
+		t.Fatalf("mkdir server dir: %v", err)
+	}
+	if err := os.WriteFile(sentinel, []byte("current-ca"), 0600); err != nil {
+		t.Fatalf("write sentinel: %v", err)
+	}
+
+	reset, err := resetStaleServerState(current, false)
+	if err != nil {
+		t.Fatalf("resetStaleServerState: %v", err)
+	}
+	if reset {
+		t.Error("resetStaleServerState must report reset=false when identity matches")
+	}
+	if _, err := os.Stat(sentinel); err != nil {
+		t.Errorf("matching identity must NOT reset existing server state, stat err = %v", err)
+	}
+}
+
+// TestRecordSingleNodeIdentityReplacesClusterIdentity pins the failure
+// where a cluster to single-node restore left the post-snapshot cluster
+// identity next to the restored single-node TLS.
+func TestRecordSingleNodeIdentityReplacesClusterIdentity(t *testing.T) {
+	shadowClusterIdentity(t)
+	if err := writeClusterIdentity(Generation{ClusterID: "u1", Counter: 3}); err != nil {
+		t.Fatalf("seed cluster identity: %v", err)
+	}
+	if err := RecordSingleNodeIdentity(); err != nil {
+		t.Fatalf("RecordSingleNodeIdentity: %v", err)
+	}
+	got, recorded, err := readClusterIdentity()
+	if err != nil || !recorded {
+		t.Fatalf("readClusterIdentity = %v, recorded=%v, err=%v", got, recorded, err)
+	}
+	if want := (Generation{ClusterID: SingleNodeClusterID}); got != want {
+		t.Errorf("identity = %v, want %v", got, want)
+	}
+}
+
+// TestResetStaleServerStateResetsRestoredSingleNodeStateForJoiner pins
+// the post-rollback failure: a restore puts the node's own pre-cluster
+// CA back, and a joining node must discard it rather than present it to
+// the cluster ("certificate signed by unknown authority").
+func TestResetStaleServerStateResetsRestoredSingleNodeStateForJoiner(t *testing.T) {
+	_, serverDir := shadowClusterIdentity(t)
+
+	if err := writeClusterIdentity(Generation{ClusterID: SingleNodeClusterID}); err != nil {
+		t.Fatalf("seed single-node identity: %v", err)
+	}
+	sentinel := filepath.Join(serverDir, "tls", "server-ca.crt")
+	if err := os.MkdirAll(filepath.Dir(sentinel), 0700); err != nil {
+		t.Fatalf("mkdir server dir: %v", err)
+	}
+	if err := os.WriteFile(sentinel, []byte("single-node-ca"), 0600); err != nil {
+		t.Fatalf("write sentinel: %v", err)
+	}
+
+	reset, err := resetStaleServerState(Generation{ClusterID: "u1", Counter: 0}, false)
+	if err != nil {
+		t.Fatalf("resetStaleServerState: %v", err)
+	}
+	if !reset {
+		t.Error("restored single-node state must be reset for a joining node")
+	}
+	if _, err := os.Stat(sentinel); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("single-node CA must be removed before joining, stat err = %v", err)
+	}
+}
+
+// TestResetStaleServerStateKeepsRestoredSingleNodeStateForBootstrap is
+// the counterpart: the bootstrap node seeds the cluster from its
+// single-node datastore and CA, so they must survive.
+func TestResetStaleServerStateKeepsRestoredSingleNodeStateForBootstrap(t *testing.T) {
+	_, serverDir := shadowClusterIdentity(t)
+
+	if err := writeClusterIdentity(Generation{ClusterID: SingleNodeClusterID}); err != nil {
+		t.Fatalf("seed single-node identity: %v", err)
+	}
+	sentinel := filepath.Join(serverDir, "tls", "server-ca.crt")
+	if err := os.MkdirAll(filepath.Dir(sentinel), 0700); err != nil {
+		t.Fatalf("mkdir server dir: %v", err)
+	}
+	if err := os.WriteFile(sentinel, []byte("single-node-ca"), 0600); err != nil {
+		t.Fatalf("write sentinel: %v", err)
+	}
+
+	reset, err := resetStaleServerState(Generation{ClusterID: "u1", Counter: 0}, true)
+	if err != nil {
+		t.Fatalf("resetStaleServerState: %v", err)
+	}
+	if reset {
+		t.Error("bootstrap node must keep its restored single-node state")
+	}
+	if _, err := os.Stat(sentinel); err != nil {
+		t.Errorf("bootstrap node's single-node CA must survive, stat err = %v", err)
+	}
+}
+
+// seedClusterState creates, under the paths shadowClusterIdentity
+// redirected, one file for each piece of state DiscardClusterState may
+// remove, and returns them by name.
+func seedClusterState(t *testing.T) map[string]string {
+	t.Helper()
+	paths := map[string]string{
+		"datastore":   filepath.Join(k3sServerDir, "db", "state.db"),
+		"tls":         filepath.Join(k3sServerDir, "tls", "server-ca.crt"),
+		"ipsec":       filepath.Join(k3sServerDir, "cred", "ipsec.psk"),
+		"kubeconfig":  derivedKubeconfigs[0],
+		"subnet.env":  flannelSubnetEnv,
+		"ipam":        filepath.Join(cniIPAMStateDir, "10.42.0.5"),
+		"node-labels": string(nodeLabelsMarker),
+		"debug-user":  string(debugUserMarker),
+	}
+	for name, p := range paths {
+		if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
+			t.Fatalf("mkdir for %s: %v", name, err)
+		}
+		if err := os.WriteFile(p, []byte("x"), 0600); err != nil {
+			t.Fatalf("seed %s: %v", name, err)
+		}
+	}
+	return paths
+}
+
+// TestDiscardClusterState pins what each caller drops. The two failures
+// it guards: a reset that left the node-labels marker set, so the rejoined
+// Node object never got its Longhorn default-disk label and annotation and
+// the node's app volumes were never created; and a debug-user certificate
+// signed by a client CA the reset had removed, never regenerated.
+func TestDiscardClusterState(t *testing.T) {
+	cases := []struct {
+		name          string
+		isBootstrap   bool
+		wipeServerDir bool
+		// gone lists the state that must be removed; everything else
+		// seeded must survive.
+		gone []string
+	}{
+		{
+			name: "joiner after the single to cluster transition",
+			gone: []string{"tls", "ipsec", "kubeconfig", "subnet.env", "ipam", "node-labels", "debug-user"},
+		},
+		{
+			name:        "bootstrap after the single to cluster transition",
+			isBootstrap: true,
+			gone:        []string{"node-labels"},
+		},
+		{
+			name:          "joiner whose state belongs to a different cluster",
+			wipeServerDir: true,
+			gone: []string{"datastore", "tls", "ipsec", "kubeconfig", "subnet.env", "ipam",
+				"node-labels", "debug-user"},
+		},
+		{
+			name:          "bootstrap whose state belongs to a different cluster",
+			isBootstrap:   true,
+			wipeServerDir: true,
+			gone:          []string{"datastore", "tls", "ipsec", "kubeconfig", "node-labels", "debug-user"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			shadowClusterIdentity(t)
+			paths := seedClusterState(t)
+
+			if err := DiscardClusterState(tc.isBootstrap, tc.wipeServerDir); err != nil {
+				t.Fatalf("DiscardClusterState: %v", err)
+			}
+
+			gone := map[string]bool{}
+			for _, name := range tc.gone {
+				gone[name] = true
+			}
+			for name, p := range paths {
+				_, err := os.Stat(p)
+				switch {
+				case gone[name] && !errors.Is(err, os.ErrNotExist):
+					t.Errorf("%s must be removed, stat err = %v", name, err)
+				case !gone[name] && err != nil:
+					t.Errorf("%s must survive, stat err = %v", name, err)
+				}
+			}
+		})
+	}
+}
+
+// TestResetStaleServerStateNoRecordYet is the upgrade-safety case: a
+// device with no recorded identity at all (e.g. upgrading from a build
+// that never tracked one) must not be disrupted.
+func TestResetStaleServerStateNoRecordYet(t *testing.T) {
+	_, serverDir := shadowClusterIdentity(t)
+	sentinel := filepath.Join(serverDir, "tls", "server-ca.crt")
+	if err := os.MkdirAll(filepath.Dir(sentinel), 0700); err != nil {
+		t.Fatalf("mkdir server dir: %v", err)
+	}
+	if err := os.WriteFile(sentinel, []byte("existing-ca"), 0600); err != nil {
+		t.Fatalf("write sentinel: %v", err)
+	}
+
+	reset, err := resetStaleServerState(Generation{ClusterID: "u1", Counter: 2}, false)
+	if err != nil {
+		t.Fatalf("resetStaleServerState: %v", err)
+	}
+	if reset {
+		t.Error("resetStaleServerState must report reset=false with no prior record")
+	}
+	if _, err := os.Stat(sentinel); err != nil {
+		t.Errorf("no prior record must NOT reset existing server state, stat err = %v", err)
 	}
 }

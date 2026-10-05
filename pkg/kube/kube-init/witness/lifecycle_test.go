@@ -62,6 +62,17 @@ func status(clusterID string, gen uint32) *k3s.ClusterStatus {
 	return &k3s.ClusterStatus{ClusterID: clusterID, QuorumRecoveryGeneration: gen}
 }
 
+// TestMembershipMatchesQuorumGeneration pins the witness's marker to the
+// same type the kube role converges on. A format that drifted would
+// make the witness wipe when it should not, or not wipe when it should.
+func TestMembershipMatchesQuorumGeneration(t *testing.T) {
+	cs := status("cluster-a", 3)
+	want := k3s.Generation{ClusterID: "cluster-a", Counter: 3}
+	if got := membership(cs); got != want {
+		t.Errorf("membership() = %v, want %v", got, want)
+	}
+}
+
 func dbExists() bool {
 	_, err := os.Stat(filepath.Join(dataDir, "server", "db", "f"))
 	return err == nil

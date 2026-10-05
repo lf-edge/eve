@@ -8,6 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -52,6 +55,7 @@ func TestTransitionTable(t *testing.T) {
 		event      Event
 		wantState  State
 		asWitness  bool
+		setupFn    func(*daemon)
 		checkFn    func(*testing.T, *daemon)
 	}{
 		// === INIT ===
@@ -609,7 +613,7 @@ func TestTransitionTable(t *testing.T) {
 		{
 			// Must STAY in CLUSTER_TRANSITION and retry. Leaving for
 			// any other state skips the steps after the failed one —
-			// clear-tls-if-join among them — while the cluster-mode
+			// discard-cluster-state among them — while the cluster-mode
 			// marker is already set, so the next state starts k3s in
 			// join mode against the single-node CA and crash-loops
 			// forever. Observed 2026-08-02: a transient CRD race in
@@ -765,6 +769,82 @@ func TestTransitionTable(t *testing.T) {
 				}
 			},
 		},
+
+		// === quorum recovery ===
+		// Reachable from anywhere, because the node that most needs to
+		// converge never reaches RUNNING: it crash-loops between
+		// STARTING_K3S and BACKOFF against a datastore whose cluster no
+		// longer exists, and a queued restart only replays from RUNNING.
+		{
+			name:      "Backoff/QuorumRecovery->StoppingK3s",
+			initState: StateBackoff,
+			event:     Event{Type: EvQuorumRecovery},
+			wantState: StateStoppingK3s,
+			checkFn: func(t *testing.T, d *daemon) {
+				if d.restartReason != restartQuorumRecovery {
+					t.Errorf("restartReason = %v, want quorum-recovery",
+						d.restartReason)
+				}
+			},
+		},
+		{
+			name:      "Running/QuorumRecovery->StoppingK3s",
+			initState: StateRunning,
+			event:     Event{Type: EvQuorumRecovery},
+			wantState: StateStoppingK3s,
+		},
+		{
+			name:      "StartingK3s/QuorumRecovery->StoppingK3s",
+			initState: StateStartingK3s,
+			event:     Event{Type: EvQuorumRecovery},
+			wantState: StateStoppingK3s,
+		},
+		{
+			// Already acting; the intent on disk names what this node
+			// is part way through.
+			name:      "QuorumRecovery/QuorumRecovery queued",
+			initState: StateQuorumRecovery,
+			event:     Event{Type: EvQuorumRecovery},
+			wantState: StateQuorumRecovery,
+			checkFn: func(t *testing.T, d *daemon) {
+				if d.pendingRestart == nil ||
+					*d.pendingRestart != restartQuorumRecovery {
+					t.Errorf("pendingRestart = %v", d.pendingRestart)
+				}
+			},
+		},
+		{
+			name:      "QuorumRecovery/RecoveryDone->Configuring",
+			initState: StateQuorumRecovery,
+			event:     Event{Type: EvRecoveryDone},
+			wantState: StateConfiguring,
+		},
+		{
+			// A withdrawal that arrived mid-recovery is applied once the
+			// recovery finishes. The controller signals it once, on a
+			// transition the monitor does not repeat, so it must not be
+			// dropped by a later higher-priority restart.
+			name:      "QuorumRecovery/RecoveryDone honours a deferred withdrawal",
+			initState: StateQuorumRecovery,
+			event:     Event{Type: EvRecoveryDone},
+			wantState: StateClusterTransition,
+			setupFn:   func(d *daemon) { d.deferredClusterToSingle = true },
+		},
+		{
+			name:      "QuorumRecovery/Error retries in place",
+			initState: StateQuorumRecovery,
+			event:     Event{Type: EvError, Err: errors.New("reset failed")},
+			wantState: StateQuorumRecovery,
+		},
+		{
+			// A recovery restart re-renders: the drop-ins still
+			// describe the cluster as it was.
+			name:       "RunningHooks/HooksDone+QuorumRecovery->Configuring",
+			initState:  StateRunningHooks,
+			initReason: restartQuorumRecovery,
+			event:      Event{Type: EvHooksDone},
+			wantState:  StateConfiguring,
+		},
 	}
 
 	for _, tt := range tests {
@@ -776,6 +856,9 @@ func TestTransitionTable(t *testing.T) {
 			d.state = tt.initState
 			d.phase = tt.initPhase
 			d.restartReason = tt.initReason
+			if tt.setupFn != nil {
+				tt.setupFn(d)
+			}
 
 			d.handleEvent(ctx, tt.event)
 
@@ -799,6 +882,7 @@ func TestGlobalSIGTERM(t *testing.T) {
 		StateStartingK3s, StateImporting, StateWaitK3sReady, StateDeploying,
 		StateSnapshot, StateRunning, StateBackoff, StateStoppingK3s,
 		StateRunningHooks, StateClusterTransition, StateWitnessIdle,
+		StateQuorumRecovery,
 	}
 	ctx := context.Background()
 	for _, s := range allStates {
@@ -821,6 +905,7 @@ func TestGlobalSocketStop(t *testing.T) {
 		StateStartingK3s, StateImporting, StateWaitK3sReady, StateDeploying,
 		StateSnapshot, StateRunning, StateBackoff, StateStoppingK3s,
 		StateRunningHooks, StateClusterTransition, StateWitnessIdle,
+		StateQuorumRecovery,
 	}
 	ctx := context.Background()
 	for _, s := range allStates {
@@ -1116,6 +1201,7 @@ func TestRestartReasonMonitorAlignment(t *testing.T) {
 		{"FullRecycle", restartFullRecycle, monitor.RestartFullRecycle},
 		{"SingleToCluster", restartSingleToCluster, monitor.RestartSingleToCluster},
 		{"ClusterToSingle", restartClusterToSingle, monitor.RestartClusterToSingle},
+		{"QuorumRecovery", restartQuorumRecovery, monitor.RestartQuorumRecovery},
 	}
 	for _, p := range pairs {
 		if int(p.a) != int(p.b) {
@@ -1456,5 +1542,91 @@ func TestWorkConfigureWitnessNoClusterStatus(t *testing.T) {
 	err := newTestDaemon().workConfigureWitness(context.Background())
 	if !errors.Is(err, witness.ErrNotWanted) {
 		t.Fatalf("workConfigureWitness() = %v, want %v", err, witness.ErrNotWanted)
+	}
+}
+
+// TestCrashLogCapturesPanic pins what the last investigation went
+// looking for and could not find: a panic has to survive in a file. The
+// runtime writes them to stderr, which for this service is a FIFO
+// nothing archives, so without this the daemon log simply stops
+// mid-recovery and a crash is indistinguishable from a clean exit.
+func TestCrashLogCapturesPanic(t *testing.T) {
+	if os.Getenv("KUBE_INIT_CRASH_CHILD") == "1" {
+		crashLogPath = os.Getenv("KUBE_INIT_CRASH_PATH")
+		setupCrashLog()
+		panic("deliberate panic from the crash-log test")
+	}
+
+	path := filepath.Join(t.TempDir(), "crash.log")
+	cmd := exec.Command(os.Args[0], "-test.run=TestCrashLogCapturesPanic")
+	cmd.Env = append(os.Environ(),
+		"KUBE_INIT_CRASH_CHILD=1",
+		"KUBE_INIT_CRASH_PATH="+path)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("child exited cleanly, want a panic; output:\n%s", out)
+	}
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read crash log: %v", err)
+	}
+	if !strings.Contains(string(raw), "deliberate panic from the crash-log test") {
+		t.Errorf("crash log lacks the panic message, got:\n%s", raw)
+	}
+	if !strings.Contains(string(raw), "goroutine") {
+		t.Errorf("crash log lacks a stack trace, got:\n%s", raw)
+	}
+}
+
+// TestQuorumRecoveryDeferredDuringBringUp pins where the recovery may
+// interrupt. Acting during INIT, INSTALLING or STARTING_CTRD skips
+// STARTING_CTRD, because the way back from a recovery is to CONFIGURING,
+// and the node is left with no container runtime: observed as IMPORTING
+// hanging forever on a containerd socket that never appeared. The way
+// out of all three runs through CONFIGURING, which evaluates the
+// recovery itself.
+func TestQuorumRecoveryDeferredDuringBringUp(t *testing.T) {
+	deferred := []State{StateInit, StateInstalling, StateStartingCtrd}
+	for _, st := range deferred {
+		t.Run("deferred in "+st.String(), func(t *testing.T) {
+			d := newTestDaemon()
+			d.state = st
+			d.handleEvent(context.Background(), Event{Type: EvQuorumRecovery})
+			if d.state != st {
+				t.Errorf("state = %v, want it to stay %v", d.state, st)
+			}
+		})
+	}
+
+	acts := []State{StateConfiguring, StateStartingK3s, StateWaitK3sReady,
+		StateRunning, StateBackoff}
+	for _, st := range acts {
+		t.Run("acts in "+st.String(), func(t *testing.T) {
+			d := newTestDaemon()
+			d.state = st
+			d.handleEvent(context.Background(), Event{Type: EvQuorumRecovery})
+			if d.state != StateStoppingK3s {
+				t.Errorf("state = %v, want %v", d.state, StateStoppingK3s)
+			}
+			if d.restartReason != restartQuorumRecovery {
+				t.Errorf("restartReason = %v, want restartQuorumRecovery", d.restartReason)
+			}
+		})
+	}
+}
+
+// TestBringUpStatesPrecedeConfiguring pins the ordering the quorum
+// recovery guard relies on: everything below CONFIGURING is bring-up,
+// during which a recovery must not act. Inserting a state there changes
+// what the guard defers, so this fails and forces the decision.
+func TestBringUpStatesPrecedeConfiguring(t *testing.T) {
+	var got []string
+	for st := StateInit; st < StateConfiguring; st++ {
+		got = append(got, st.String())
+	}
+	want := []string{"INIT", "INSTALLING", "STARTING_CTRD"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("states before CONFIGURING = %v, want %v", got, want)
 	}
 }

@@ -45,6 +45,23 @@ var startupRankDelayUnit = 25 * time.Second
 // have been position 2 of 3.
 const replicatedStorageMinMasters = 3
 
+// witnessClusterMinMasters is the same figure for a cluster whose
+// third quorum vote comes from a witness. Two masters is the whole
+// cluster there, not a partial view of three: the witness holds an
+// etcd vote but runs no kubelet, so it has no Node object and never
+// appears in the control-plane list. Waiting for a third would mean
+// never recording a rank, and never staggering.
+const witnessClusterMinMasters = 2
+
+// expectedMasters is how many control-plane nodes this cluster has when
+// whole, which is what makes a partial view recognisable.
+func expectedMasters(status *k3s.ClusterStatus) int {
+	if status != nil && status.WitnessIP != "" {
+		return witnessClusterMinMasters
+	}
+	return replicatedStorageMinMasters
+}
+
 // SaveStartupRank queries the control-plane node list, computes
 // this node's 0-based rank in the sorted list, and writes it to
 // startupRankFile. No-op when:
@@ -56,9 +73,9 @@ const replicatedStorageMinMasters = 3
 //   - the local IP is not yet in the control-plane list (worker
 //     node or master that hasn't finished joining — computeRank
 //     returns -1 and we retry on the next tick);
-//   - replicated storage and fewer than 3 control-plane nodes
-//     are visible (the missing master would compute the wrong
-//     rank — retry on the next health tick).
+//   - replicated storage and fewer control-plane nodes are visible
+//     than the cluster is expected to have (the missing master would
+//     compute the wrong rank — retry on the next health tick).
 //
 // Called once per health worker tick. Idempotent.
 func SaveStartupRank(ctx context.Context, status *k3s.ClusterStatus) error {
@@ -93,9 +110,10 @@ func SaveStartupRank(ctx context.Context, status *k3s.ClusterStatus) error {
 		log.Printf("stagger: get cluster type: %v (assuming replicated)", err)
 		ct = k3s.ClusterTypeReplicated
 	}
-	if ct == k3s.ClusterTypeReplicated && len(masters) < replicatedStorageMinMasters {
+	minMasters := expectedMasters(status)
+	if ct == k3s.ClusterTypeReplicated && len(masters) < minMasters {
 		log.Printf("stagger: %d/%d control-plane nodes visible, will retry",
-			len(masters), replicatedStorageMinMasters)
+			len(masters), minMasters)
 		return nil
 	}
 

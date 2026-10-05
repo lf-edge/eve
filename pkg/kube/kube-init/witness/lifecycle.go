@@ -10,11 +10,11 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/kube/kube-init/etcd"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/k3s"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/quorum"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
 )
 
@@ -23,6 +23,11 @@ import (
 // not the seed, and on every cluster with no witness configured.
 var ErrNotWanted = errors.New("witness not wanted on this device")
 
+// ErrFenced reports that the seed is resetting the cluster and the
+// witness must wait. Transient, unlike ErrNotWanted: the FSM retries
+// rather than parking.
+var ErrFenced = errors.New("witness held off while the seed resets the cluster")
+
 // membershipMarker records which cluster's etcd the data directory
 // belongs to. Under /var/lib, which is the witness's own persistent
 // storage, so it survives reboots alongside the data it describes.
@@ -30,6 +35,16 @@ var membershipMarker = "/var/lib/witness/membership"
 
 // dataDir is the k3s state the witness accumulates as a member.
 var dataDir = "/var/lib/rancher/k3s"
+
+// Fenced reports whether the seed is mid-promote and the witness must
+// hold off, and why.
+//
+// Joining during a reset puts this witness in the membership the reset
+// is about to discard: it vanishes from the cluster while still
+// believing it is a member, and leaves its peer URL registered for the
+// next join to collide with. Waiting costs one vote for the length of a
+// reset, during which the cluster has no quorum to improve anyway.
+func Fenced() (bool, string) { return quorum.WitnessFenceHeld() }
 
 // Wanted reports whether this device should be running the witness.
 //
@@ -43,14 +58,22 @@ func Wanted(cs *k3s.ClusterStatus) bool {
 }
 
 // membership is the identity of the cluster the local data belongs to.
-// The recovery generation is part of it because a quorum recovery
-// forcibly resets the cluster while keeping its ID: the surviving node
-// starts a new etcd cluster with a new cluster ID of etcd's own, and
-// every former member's data becomes unusable. Keying on the cluster
-// UUID alone would miss that, leaving the witness crash-looping against
-// state etcd refuses until someone wipes it by hand.
-func membership(cs *k3s.ClusterStatus) string {
-	return fmt.Sprintf("%s %d", cs.ClusterID, cs.QuorumRecoveryGeneration)
+//
+// The same generation the kube role converges to, and deliberately the
+// same type: a witness keyed on a format that drifted from the nodes'
+// would wipe when it should not, or worse, not when it should.
+//
+// The recovery counter is part of it because a quorum recovery forcibly
+// resets the cluster while keeping the UUID the controller assigned, so
+// the surviving node starts an etcd cluster that every former member's
+// data is incompatible with. Keying on the UUID alone would miss that,
+// leaving the witness crash-looping against state etcd refuses until
+// someone wipes it by hand.
+func membership(cs *k3s.ClusterStatus) k3s.Generation {
+	return k3s.Generation{
+		ClusterID: cs.ClusterID,
+		Counter:   cs.QuorumRecoveryGeneration,
+	}
 }
 
 // SyncMembership wipes the witness's k3s state when it belongs to a
@@ -67,14 +90,14 @@ func membership(cs *k3s.ClusterStatus) string {
 // destroying a freshly joined member each time.
 func SyncMembership(cs *k3s.ClusterStatus) error {
 	want := membership(cs)
-	got, err := readMembership()
+	got, recorded, err := readMembership()
 	if err != nil {
 		return err
 	}
-	if got == want {
+	if recorded && got == want {
 		return nil
 	}
-	if got != "" {
+	if recorded {
 		log.Printf("witness: membership changed (%q -> %q), wiping local etcd state",
 			got, want)
 		if err := wipeDataDir(); err != nil {
@@ -84,21 +107,23 @@ func SyncMembership(cs *k3s.ClusterStatus) error {
 	if err := os.MkdirAll(filepath.Dir(membershipMarker), 0755); err != nil {
 		return fmt.Errorf("create membership dir: %w", err)
 	}
-	if err := state.AtomicWriteFile(membershipMarker, []byte(want+"\n"), 0644); err != nil {
+	if err := state.AtomicWriteFile(membershipMarker,
+		[]byte(want.String()+"\n"), 0644); err != nil {
 		return fmt.Errorf("write membership marker: %w", err)
 	}
 	return nil
 }
 
-func readMembership() (string, error) {
+func readMembership() (g k3s.Generation, recorded bool, err error) {
 	raw, err := os.ReadFile(membershipMarker)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return "", nil
+			return k3s.Generation{}, false, nil
 		}
-		return "", fmt.Errorf("read membership marker: %w", err)
+		return k3s.Generation{}, false,
+			fmt.Errorf("read membership marker: %w", err)
 	}
-	return strings.TrimSpace(string(raw)), nil
+	return k3s.ParseGeneration(string(raw))
 }
 
 // wipeDataDir removes the server state tied to a specific cluster: the
@@ -160,14 +185,15 @@ func Leave(ctx context.Context) {
 
 // PruneMembers removes every witness member from the cluster's etcd.
 //
-// Run by the seed while no witness is joining, so anything found is
-// left over. A witness whose device died had no chance to leave, and its
-// entry keeps the witness address registered: the replacement claims the
-// same address, since the address follows the seed rather than the
-// device, so the two collide and the join fails.
+// Run by the seed while the fence is held, so no witness is joining and
+// anything found is left over. A witness whose device died had no
+// chance to leave, and its entry keeps the witness address registered:
+// the replacement claims the same address, since the address follows the
+// seed rather than the device, so the two collide and the join fails.
 //
-// Best-effort. A cluster that will not answer yet is better retried on
-// the next join than treated as a failure.
+// Best-effort. The etcd it talks to has just come back from a reset, and
+// a cluster that will not answer yet is better retried on the next join
+// than treated as a failed recovery.
 func PruneMembers(ctx context.Context) {
 	members, err := etcd.Members(ctx)
 	if err != nil {

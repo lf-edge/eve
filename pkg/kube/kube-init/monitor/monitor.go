@@ -32,6 +32,7 @@ import (
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kubectlx"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kubeinitstatus"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/prereqs"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/quorum"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/role"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/tiebreaker"
@@ -79,6 +80,9 @@ const (
 	RestartSingleToCluster RestartReason = 5
 	// RestartClusterToSingle — run the cluster → single transition.
 	RestartClusterToSingle RestartReason = 6
+	// RestartQuorumRecovery — converge to the controller's
+	// quorum-recovery generation.
+	RestartQuorumRecovery RestartReason = 7
 )
 
 // Monitor owns the running-state goroutines.
@@ -425,6 +429,16 @@ func ClusterConfig(ctx context.Context, restartCh chan<- RestartReason) error {
 			}
 			inClusterMode = true
 			trySend(restartCh, RestartSingleToCluster, "single→cluster")
+		case encExists && inClusterMode:
+			// Steady state, so the only thing left to notice is the
+			// controller declaring a quorum recovery. Evaluate records
+			// a baseline when nothing is owed, which is what lets a
+			// node that was powered off across a change still see it.
+			if _, needed, err := quorum.Evaluate(); err != nil {
+				log.Printf("warning: evaluate quorum recovery: %v", err)
+			} else if needed {
+				trySend(restartCh, RestartQuorumRecovery, "quorum-recovery")
+			}
 		}
 	}
 
