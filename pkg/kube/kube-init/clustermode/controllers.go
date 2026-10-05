@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -63,9 +65,11 @@ var informerDaemonSets = map[string]bool{
 // everything in the app namespace are left alone: they hold no informer
 // state that matters here, and recycling them would interrupt volume I/O.
 //
-// Gated by ControllerRestartFlag. Tolerates an API that is not reachable
-// yet by leaving the flag in place for the next health-worker tick; the
-// flag is cleared only once every selected pod was deleted.
+// Gated by ControllerRestartFlag. Only pods created before the flag was
+// armed are recycled: k3s is stopped from then until the migration, so
+// anything newer already listed from the new etcd. That keeps a retry,
+// after a failed delete or an unreachable API, from recycling the fresh
+// replacements again. The flag is cleared once every stale pod is gone.
 func RestartStaleControllers(ctx context.Context, status *k3s.ClusterStatus, nodeName string) error {
 	flagged, err := state.IsMarked(ControllerRestartFlag)
 	if err != nil {
@@ -74,6 +78,11 @@ func RestartStaleControllers(ctx context.Context, status *k3s.ClusterStatus, nod
 	if !flagged {
 		return nil
 	}
+	fi, err := os.Stat(string(ControllerRestartFlag))
+	if err != nil {
+		return fmt.Errorf("stat %s: %w", ControllerRestartFlag, err)
+	}
+	armedAt := fi.ModTime()
 	if status == nil || !status.IsBootstrapNode {
 		// Only the bootstrap migrates its datastore. A joining node's
 		// old pods do not exist in the cluster it joins, so its kubelet
@@ -93,8 +102,15 @@ func RestartStaleControllers(ctx context.Context, status *k3s.ClusterStatus, nod
 		return nil
 	}
 
+	onNode := pods.Items[:0]
+	for _, p := range pods.Items {
+		if p.Spec.NodeName == nodeName {
+			onNode = append(onNode, p)
+		}
+	}
+
 	var errs []error
-	stale := staleControllerPods(pods.Items)
+	stale := staleControllerPods(onNode, armedAt)
 	for _, p := range stale {
 		err := kubeclient.Default().Clientset.CoreV1().Pods(p.Namespace).
 			Delete(ctx, p.Name, metav1.DeleteOptions{})
@@ -111,12 +127,15 @@ func RestartStaleControllers(ctx context.Context, status *k3s.ClusterStatus, nod
 }
 
 // staleControllerPods selects the pods RestartStaleControllers recycles:
-// live pods in controllerNamespaces that belong to a Deployment, plus the
-// pods of informerDaemonSets.
-func staleControllerPods(pods []corev1.Pod) []corev1.Pod {
+// live pods created before armedAt in controllerNamespaces that belong to
+// a Deployment, plus the pods of informerDaemonSets.
+func staleControllerPods(pods []corev1.Pod, armedAt time.Time) []corev1.Pod {
 	var out []corev1.Pod
 	for _, p := range pods {
 		if !controllerNamespaces[p.Namespace] || p.DeletionTimestamp != nil {
+			continue
+		}
+		if !p.CreationTimestamp.Time.Before(armedAt) {
 			continue
 		}
 		if p.Status.Phase == corev1.PodSucceeded || p.Status.Phase == corev1.PodFailed {
