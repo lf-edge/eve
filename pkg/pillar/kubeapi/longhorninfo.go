@@ -816,7 +816,7 @@ func lhVolGet(lhVolName string) (*lhv1beta2.Volume, error) {
 		return nil, err
 	}
 	if !apiExists {
-		return nil, nil
+		return nil, fmt.Errorf("lhVolGet: longhorn API not registered")
 	}
 
 	config, err := GetKubeConfig()
@@ -847,7 +847,7 @@ func lhEiDeployedOnNode(lhEiName string, nodeName string) (deployed bool, err er
 		return false, err
 	}
 	if !apiExists {
-		return false, nil
+		return false, fmt.Errorf("lhEiDeployedOnNode: longhorn API not registered")
 	}
 
 	config, err := GetKubeConfig()
@@ -878,8 +878,8 @@ func lhEiDeployedOnNode(lhEiName string, nodeName string) (deployed bool, err er
 		if !exists {
 			return false, fmt.Errorf("engineimage deployment map missing node:%s", nodeName)
 		}
-		deployed = val
+		return val, nil
 	}
 
-	return deployed, nil
+	return false, fmt.Errorf("no engineimage for image:%s", lhEiName)
 }
