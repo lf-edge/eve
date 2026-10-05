@@ -1495,7 +1495,11 @@ func (dev *qemuDevice) buildArgs() []string {
 		// same way.
 		"-global", "ICH9-LPC.noreboot=false",
 		"-watchdog-action", "reset",
-		"-cpu", "host",
+		// No KVM async page faults: with them a guest task faulting on a page
+		// the host has swapped out sleeps until KVM delivers "page ready", and
+		// on an overcommitted host that wakeup has been observed never to
+		// arrive, wedging the guest task (a Longhorn engine) for good.
+		"-cpu", "host,-kvm-asyncpf",
 		"-smp", fmt.Sprintf("%d", dev.spec.CPUs),
 		"-m", fmt.Sprintf("%d", dev.spec.MemoryBytes>>20),
 		"-nographic",
