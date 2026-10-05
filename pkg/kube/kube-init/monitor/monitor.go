@@ -780,9 +780,12 @@ func (m *Monitor) kubeconfigSyncLoop(ctx context.Context) {
 // annotation check we'd otherwise mark the node as initialized and
 // never re-stamp.
 //
-// Verification matches the node name exactly so a different node
-// whose name contains m.deviceName as a substring cannot false-
-// positive.
+// The node is addressed by state.ToK8sName(m.deviceName), the name k3s
+// registers it under, not by the raw device name: an operator-chosen
+// name such as "Dell-5810-3" is not a valid node name, and patching it
+// fails with NotFound on every tick. Verification reads that same node
+// back by exact name, so a different node whose name contains it as a
+// substring cannot false-positive.
 func (m *Monitor) reapplyNodeLabels(ctx context.Context) {
 	if m.uuid == "" {
 		// Without a UUID we can't apply or verify the
@@ -816,8 +819,9 @@ func (m *Monitor) reapplyNodeLabels(ctx context.Context) {
 		log.Printf("warning: build reapply node labels patch: %v", err)
 		return
 	}
+	nodeName := state.ToK8sName(m.deviceName)
 	nodes := kubeclient.Default().Clientset.CoreV1().Nodes()
-	if _, err := nodes.Patch(ctx, m.deviceName,
+	if _, err := nodes.Patch(ctx, nodeName,
 		types.MergePatchType, labelPatch, metav1.PatchOptions{}); err != nil {
 		log.Printf("warning: reapply node labels+annotation: %v", err)
 		return
@@ -825,19 +829,19 @@ func (m *Monitor) reapplyNodeLabels(ctx context.Context) {
 
 	// Verification: read the node back and confirm every field is
 	// present as we wrote it.
-	n, err := nodes.Get(ctx, m.deviceName, metav1.GetOptions{})
+	n, err := nodes.Get(ctx, nodeName, metav1.GetOptions{})
 	if err != nil {
-		log.Printf("node labels verification failed for %s: %v", m.deviceName, err)
+		log.Printf("node labels verification failed for %s: %v", nodeName, err)
 		return
 	}
 	if n.Labels["node-uuid"] != m.uuid ||
 		n.Labels["node.longhorn.io/create-default-disk"] != "config" {
-		log.Printf("node labels verification failed for %s", m.deviceName)
+		log.Printf("node labels verification failed for %s", nodeName)
 		return
 	}
 	if strings.TrimSpace(n.Annotations["node.longhorn.io/default-disks-config"]) == "" {
 		log.Printf("node annotation verification failed for %s (value empty)",
-			m.deviceName)
+			nodeName)
 		return
 	}
 
