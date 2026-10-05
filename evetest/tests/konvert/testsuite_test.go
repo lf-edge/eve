@@ -279,8 +279,10 @@ func TestKonvertSuite(test *testing.T) {
 		},
 		evetest.TestCase{Test: TestKvmToKVolumeMigration},
 		evetest.TestCase{Test: TestFirstBootEVEKAppVolume},
-		evetest.TestCase{Test: TestKvmToKRepartitionVolmig},
-		evetest.TestCase{Test: TestKvmToKRepartitionAppVolume},
+		// Only meaningful if a kvm→k update is ever allowed to shrink
+		// /persist while app volumes exist; baseosmgr refuses that today.
+		// evetest.TestCase{Test: TestKvmToKRepartitionVolmig},
+		// evetest.TestCase{Test: TestKvmToKRepartitionAppVolume},
 		// Last, and in this order: both need a ZFS device, and the power cut
 		// leaves one whose partitions have been hand-committed.
 		evetest.TestCase{Test: TestKvmToKZFSVaultMigration},
