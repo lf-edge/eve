@@ -55,9 +55,11 @@ func (ep *AzureTransportMethod) Action(req *DronaRequest) error {
 		err = fmt.Errorf("Unknown Azure Blob datastore operation")
 	}
 
-	req.asize = int64(size)
+	req.updateAsize(int64(size))
 	if err != nil {
+		req.Lock()
 		req.status = fmt.Sprintf("%v", err)
+		req.Unlock()
 	}
 	return err
 }

@@ -418,7 +418,7 @@ func GetAzureBlobMetaData(
 		return 0, "", fmt.Errorf("could not get blob properties: %v", err)
 	}
 
-	// Content length and ContentMD5 may be nil
+	// Content length may be nil
 	length := int64(0)
 	if resp.ContentLength != nil {
 		length = *resp.ContentLength

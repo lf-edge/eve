@@ -57,9 +57,11 @@ func (ep *AwsTransportMethod) Action(req *DronaRequest) error {
 		err = fmt.Errorf("Unknown AWS S3 datastore operation")
 	}
 
-	req.asize = int64(size)
+	req.updateAsize(int64(size))
 	if err != nil {
+		req.Lock()
 		req.status = fmt.Sprintf("%v", err)
+		req.Unlock()
 	}
 
 	return err
