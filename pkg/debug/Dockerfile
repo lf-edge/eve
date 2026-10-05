@@ -11,7 +11,7 @@
 FROM lfedge/eve-recovertpm:51e7c5736a20438e59319757364c7d93c2b54dfa AS recovertpm
 FROM lfedge/eve-bpftrace:e63c5433618557af58a24e8bbdd56c9763e6910f AS bpftrace
 FROM lfedge/eve-alpine:e9cb3b035e264f89523f8eca848e8baa68a1fbfd AS build
-ENV BUILD_PKGS="abuild curl tar make linux-headers patch g++ git gcc gpg gettext gettext-static ncurses-dev jq autoconf openssl-dev zlib-dev zlib-static gpg-agent"
+ENV BUILD_PKGS="abuild curl tar make linux-headers patch g++ git gcc gpg gettext gettext-static ncurses-dev jq autoconf openssl-dev zlib-dev zlib-static gpg-agent pciutils usbutils lsblk"
 # Feel free to add additional packages here, but be aware that
 # EVE's rootfs image can be no larger than 300Mb (and don't
 # forget to check on all supported architectures: e.g. arm64
@@ -75,6 +75,16 @@ RUN register-sbom-pkg.sh -n hexedit -v 1.5 -l GPL-2.0-only -u https://github.com
 # tweaking various bit
 WORKDIR /out
 COPY debug-services.sh ssh-service.sh edgeview-collectinfo.sh spec.sh scripts/ ./usr/bin/
+
+SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
+# Ensure that the output of spec.sh is valid json
+RUN ./usr/bin/spec.sh -v 2>/dev/null | jq . > /dev/null
+RUN ./usr/bin/spec.sh 2>/dev/null | jq . > /dev/null
+RUN mkdir /tmp/bin
+COPY tests/lsusb /tmp/bin
+RUN chmod a+x /tmp/bin/lsusb
+RUN PATH=/tmp/bin:$PATH /out/usr/bin/spec.sh -u 2>/dev/null | jq .
+
 RUN mkdir -p ./etc/ssh ./root/.ssh && chmod 0700 ./root/.ssh
 RUN cp /etc/passwd /etc/group ./etc/
 RUN ln -s /run ./var/run
