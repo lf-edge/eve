@@ -499,6 +499,9 @@ func RolloutDiskToPVC(ctx context.Context, log *base.LogObject, exists bool,
 
 		uploadDuration := time.Since(startTimeThisUpload)
 		if err != nil && !strings.Contains(string(output), "already successfully imported") {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			err = fmt.Errorf("RolloutDiskToPVC: pvc:%s Failed after %f seconds to convert qcow to PVC %s: %v", pvcName, uploadDuration.Seconds(), output, err)
 			log.Error(err)
 
@@ -507,7 +510,11 @@ func RolloutDiskToPVC(ctx context.Context, log *base.LogObject, exists bool,
 			// of cases. EVE should wait as virtctl will just immediately throw
 			// back some connection error.
 			// 30 secs with 10 tries, 5 mins should be good enough even if k3s server restarts
-			time.Sleep(30 * time.Second)
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(30 * time.Second):
+			}
 			continue
 		}
 
