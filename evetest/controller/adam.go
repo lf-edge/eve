@@ -126,6 +126,11 @@ type AdamClient struct {
 
 	// onboardSerials maps onboarding cert fingerprint → set of serials
 	onboardSerials map[string]map[string]struct{}
+
+	// infoFeeds holds the shared info message feed of every device that has
+	// at least one info subscription.
+	infoFeedsM sync.Mutex
+	infoFeeds  map[uuid.UUID]*infoFeed
 }
 
 // AdamState is a lifecycle notification emitted by AdamClient.
@@ -217,6 +222,7 @@ func NewAdamClient(log *logrus.Entry,
 		statusCh:       statusCh,
 		knownDevices:   make(map[uuid.UUID]struct{}),
 		onboardSerials: make(map[string]map[string]struct{}),
+		infoFeeds:      make(map[uuid.UUID]*infoFeed),
 	}
 }
 
@@ -1497,6 +1503,48 @@ func (ac *AdamClient) SubscribeToAppLogs(
 	return unsubscribe, nil
 }
 
+// fetchDeviceInfoMsgs reads every info message Adam has stored for the device,
+// oldest first, and passes each to fn until fn returns true or an error.
+// It reports whether fn stopped the iteration.
+func (ac *AdamClient) fetchDeviceInfoMsgs(ctx context.Context, devUUID uuid.UUID,
+	fn func(msg *eveinfo.ZInfoMsg) (bool, error)) (bool, error) {
+	url := ac.adminURL("device/" + devUUID.String() + "/info")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return false, fmt.Errorf("failed to create GET %s request: %w", url, err)
+	}
+
+	resp, err := ac.httpClient().Do(req)
+	if err != nil {
+		return false, fmt.Errorf("GET %s failed: %w", url, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("unexpected status from GET %s: %d",
+			url, resp.StatusCode)
+	}
+
+	dec := json.NewDecoder(resp.Body)
+	for {
+		var raw json.RawMessage
+		if err := dec.Decode(&raw); err != nil {
+			if errors.Is(err, io.EOF) {
+				return false, nil
+			}
+			return false, fmt.Errorf("failed to decode info message JSON: %w", err)
+		}
+		msg := &eveinfo.ZInfoMsg{}
+		if err := protojson.Unmarshal(raw, msg); err != nil {
+			return false, fmt.Errorf("failed to proto-unmarshal info message: %w", err)
+		}
+		stop, err := fn(msg)
+		if err != nil || stop {
+			return stop, err
+		}
+	}
+}
+
 // IterateDeviceInfoMsgs retrieves informational messages (ZInfoMsg)
 // published by the specified device and passes matching messages to iterator.
 //
@@ -1519,50 +1567,19 @@ func (ac *AdamClient) IterateDeviceInfoMsgs(ctx context.Context, devUUID uuid.UU
 		return fmt.Errorf("unknown device UUID %q", devUUID)
 	}
 
-	// -------- Initial GET --------
-
-	url := ac.adminURL("device/" + devUUID.String() + "/info")
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create GET %s request: %w", url, err)
-	}
-
-	resp, err := ac.httpClient().Do(req)
-	if err != nil {
-		return fmt.Errorf("GET %s failed: %w", url, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status from GET %s: %d",
-			url, resp.StatusCode)
-	}
-
-	dec := json.NewDecoder(resp.Body)
-
-	for {
-		var raw json.RawMessage
-
-		if err := dec.Decode(&raw); err != nil {
-			if errors.Is(err, io.EOF) {
-				break
+	stopped, err := ac.fetchDeviceInfoMsgs(ctx, devUUID,
+		func(msg *eveinfo.ZInfoMsg) (bool, error) {
+			if match != nil && !match(msg) {
+				return false, nil
 			}
-			return fmt.Errorf("failed to decode info message JSON: %w", err)
-		}
-
-		msg := &eveinfo.ZInfoMsg{}
-		if err = protojson.Unmarshal(raw, msg); err != nil {
-			return fmt.Errorf("failed to proto-unmarshal info message: %w", err)
-		}
-		if match == nil || match(msg) {
 			stop, iterErr := iterator.Iterate(msg)
 			if iterErr != nil {
-				return fmt.Errorf("failed to iterate info message: %w", iterErr)
+				return false, fmt.Errorf("failed to iterate info message: %w", iterErr)
 			}
-			if stop {
-				return nil
-			}
-		}
+			return stop, nil
+		})
+	if err != nil || stopped {
+		return err
 	}
 
 	// -------- Follow mode --------
@@ -1600,113 +1617,32 @@ func (ac *AdamClient) IterateDeviceInfoMsgs(ctx context.Context, devUUID uuid.UU
 // If match is non-nil, only messages for which match(msg) returns true
 // are forwarded. If match is nil, all messages are delivered.
 //
-// The streaming connection is opened synchronously: by the time this method
-// returns, Adam has accepted the request and any subsequent info messages
-// for the device will be delivered. On transient failures after the initial
-// connection, a background goroutine reconnects with a fixed retry delay.
+// Only messages Adam receives after this method returns are delivered; see
+// SubscribeToDeviceInfoMsgsWithLatest for a subscription that starts from
+// the device's current state. Each message is delivered once, including
+// across a reconnect to Adam, and messages Adam received while the
+// connection was down are delivered once it is back.
 //
-// The returned unsubscribe function stops the background stream and waits
-// for it to exit. It is safe to call multiple times. The channel is closed
+// The returned unsubscribe function ends the subscription and waits for its
+// delivery to stop. It is safe to call multiple times. The channel is closed
 // when the subscription ends.
 func (ac *AdamClient) SubscribeToDeviceInfoMsgs(devUUID uuid.UUID,
 	match func(msg *eveinfo.ZInfoMsg) bool,
 	channel chan<- *eveinfo.ZInfoMsg) (unsubscribe func(), err error) {
-	const retryDelay = 3 * time.Second
+	return ac.subscribeToDeviceInfoMsgs(devUUID, match, channel, false)
+}
 
-	if err = ac.checkAdamRunning(); err != nil {
-		return nil, err
-	}
-
-	// Verify device is known.
-	ac.mutex.Lock()
-	_, known := ac.knownDevices[devUUID]
-	ac.mutex.Unlock()
-	if !known {
-		return nil, fmt.Errorf("unknown device UUID %q", devUUID)
-	}
-
-	streamCtx, cancel := context.WithCancel(context.Background())
-	url := ac.adminURL("device/" + devUUID.String() + "/info")
-
-	resp, err := ac.openStream(streamCtx, url)
-	if err != nil {
-		cancel()
-		return nil, err
-	}
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer close(channel)
-
-		current := resp
-		for {
-			if current == nil {
-				select {
-				case <-time.After(retryDelay):
-				case <-streamCtx.Done():
-					return
-				}
-				r, err := ac.openStream(streamCtx, url)
-				if err != nil {
-					if streamCtx.Err() != nil {
-						return
-					}
-					ac.log.Errorf("failed to reopen info message stream: %v", err)
-					continue
-				}
-				current = r
-			}
-
-			func() {
-				defer func() {
-					if err := current.Body.Close(); err != nil {
-						ac.log.Warnf("failed to close response body: %v", err)
-					}
-				}()
-				dec := json.NewDecoder(current.Body)
-				for {
-					var raw json.RawMessage
-					if err := dec.Decode(&raw); err != nil {
-						if streamCtx.Err() != nil {
-							return
-						}
-						if errors.Is(err, io.EOF) {
-							ac.log.Warn("info message stream closed by server")
-							return
-						}
-						ac.log.Errorf("failed to decode streamed info message: %v", err)
-						return
-					}
-					msg := &eveinfo.ZInfoMsg{}
-					if err := protojson.Unmarshal(raw, msg); err != nil {
-						ac.log.Errorf(
-							"failed to proto-unmarshal streamed info message: %v", err)
-						continue
-					}
-					if match != nil && !match(msg) {
-						continue
-					}
-					select {
-					case channel <- msg:
-					case <-streamCtx.Done():
-						return
-					}
-				}
-			}()
-			current = nil
-		}
-	}()
-
-	var once sync.Once
-	unsubscribe = func() {
-		once.Do(func() {
-			cancel()
-			wg.Wait()
-		})
-	}
-	return unsubscribe, nil
+// SubscribeToDeviceInfoMsgsWithLatest is SubscribeToDeviceInfoMsgs, except
+// that the subscription first receives the latest stored message of every
+// object the device reports on (the device itself, each app, network
+// instance, volume, ...), in the order Adam received them, followed by every
+// later message. A subscriber therefore sees the device's current state
+// even when the device sent it before the subscription and has sent nothing
+// since. With nothing stored yet, it behaves as SubscribeToDeviceInfoMsgs.
+func (ac *AdamClient) SubscribeToDeviceInfoMsgsWithLatest(devUUID uuid.UUID,
+	match func(msg *eveinfo.ZInfoMsg) bool,
+	channel chan<- *eveinfo.ZInfoMsg) (unsubscribe func(), err error) {
+	return ac.subscribeToDeviceInfoMsgs(devUUID, match, channel, true)
 }
 
 // IterateDeviceMetrics retrieves metric messages (ZMetricMsg) published by the

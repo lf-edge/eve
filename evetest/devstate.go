@@ -27,9 +27,14 @@ type deviceStateEvent struct {
 // startDeviceStateWatcher subscribes to ZiDevice info messages and API request
 // events for a newly onboarded device, and starts forwarding goroutines that
 // relay them to deviceStateCh.
+//
+// The info subscription starts from the latest stored messages, because the
+// harness detects onboarding only by polling Adam: by then the device may have
+// sent its first-boot info and gone quiet, and that info is the reboot
+// accounting's baseline.
 func (th *TestHarness) startDeviceStateWatcher(devName string, devUUID uuid.UUID) {
 	infoCh := make(chan *eveinfo.ZInfoMsg, 16)
-	unsubInfo, err := th.adamClient.SubscribeToDeviceInfoMsgs(devUUID,
+	unsubInfo, err := th.adamClient.SubscribeToDeviceInfoMsgsWithLatest(devUUID,
 		func(msg *eveinfo.ZInfoMsg) bool {
 			switch msg.GetZtype() {
 			case eveinfo.ZInfoTypes_ZiDevice,
