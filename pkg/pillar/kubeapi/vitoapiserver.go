@@ -485,6 +485,9 @@ func RolloutDiskToPVC(ctx context.Context, log *base.LogObject, exists bool,
 		pvcName, timeout, float64(pvcSize)/1024/1024, volSizeGB)
 
 	startTimeOverall := time.Now()
+	// The diagnostics after the loop can only guess at a cause; the last
+	// virtctl failure is the actual one, so it rides along on every error.
+	lastAttempt := ""
 
 	//
 	// CDI Upload is quick to fail upon short-lived k8s api errors during its own upload-wait status loop
@@ -502,6 +505,8 @@ func RolloutDiskToPVC(ctx context.Context, log *base.LogObject, exists bool,
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
+			lastAttempt = fmt.Sprintf("%s: %v",
+				strings.ReplaceAll(strings.TrimSpace(string(output)), "\n", "; "), err)
 			err = fmt.Errorf("RolloutDiskToPVC: pvc:%s Failed after %f seconds to convert qcow to PVC %s: %v", pvcName, uploadDuration.Seconds(), output, err)
 			log.Error(err)
 
@@ -543,22 +548,25 @@ func RolloutDiskToPVC(ctx context.Context, log *base.LogObject, exists bool,
 	// Attempt to diagnose the root causes and provide
 	// differentiated detailed strings.
 	//
+	uploadFailed := func(format string, args ...interface{}) error {
+		return transientf("%s; last virtctl attempt: %s", fmt.Sprintf(format, args...), lastAttempt)
+	}
 
 	// 1. Use the PVC as our starting point to diagnose, we have it's name
 	pvc, err := PVCGet(pvcName, log)
 	if err != nil {
-		return transientf("PVC Upload for pvc:%s attempts to upload image failed, pvc not created", pvcName)
+		return uploadFailed("PVC Upload for pvc:%s attempts to upload image failed, pvc not created", pvcName)
 	}
 	pvName := pvc.Spec.VolumeName
 	// 2. Check if the uploader marked its annotation on the pvc
 	cdiUploadPodName, exists := pvc.ObjectMeta.Annotations["cdi.kubevirt.io/storage.uploadPodName"]
 	if !exists {
-		return transientf("PVC Upload for pvc:%s attempts to upload image failed, no upload pod annotation", pvcName)
+		return uploadFailed("PVC Upload for pvc:%s attempts to upload image failed, no upload pod annotation", pvcName)
 	}
 	// 3. Did the uploader get created?
 	pod, err := PODGet(cdiUploadPodName, log)
 	if err != nil {
-		return transientf("PVC Upload for pvc:%s attempts to upload image failed, upload pod:%s does not exist", pvcName, cdiUploadPodName)
+		return uploadFailed("PVC Upload for pvc:%s attempts to upload image failed, upload pod:%s does not exist", pvcName, cdiUploadPodName)
 	}
 	uploadNodeName := pod.Spec.NodeName
 	// 3b. The upload pod can reach Ready yet get torn down by CDI (pod.phase Failed /
@@ -582,15 +590,21 @@ func RolloutDiskToPVC(ctx context.Context, log *base.LogObject, exists bool,
 			scratchPvc.ObjectMeta.DeletionTimestamp != nil, scratchSC, scratchPvc.ObjectMeta.Finalizers)
 	}
 	// 4. Did the PVC claim get a backing pv?
+	if pvName == "" {
+		return uploadFailed("PVC Upload for pvc:%s attempts to upload image failed, pvc not bound to a pv", pvcName)
+	}
 	lhVol, err := lhVolGet(pvName)
 	if err != nil {
-		return transientf("PVC Upload for pvc:%s attempts to upload image failed, pv:%s does not exist", pvcName, pvName)
+		return uploadFailed("PVC Upload for pvc:%s attempts to upload image failed, longhorn volume for pv:%s not found: %v", pvcName, pvName, err)
 	}
 	lhVolEi := lhVol.Status.CurrentImage
 	// 5. Does the backing vol have an engine? Is that engine deployed on the node where the uploader is?
+	if lhVolEi == "" {
+		return uploadFailed("PVC Upload for pvc:%s attempts to upload image failed, longhorn volume %s never got an engine", pvcName, pvName)
+	}
 	deployed, err := lhEiDeployedOnNode(lhVolEi, uploadNodeName)
 	if !deployed {
-		return transientf("PVC Upload for pvc:%s attempts to upload image failed, engine not deployed on node:%s %v", pvcName, uploadNodeName, err)
+		return uploadFailed("PVC Upload for pvc:%s attempts to upload image failed, engine not deployed on node:%s %v", pvcName, uploadNodeName, err)
 	}
 
 	// The upload failed after every attempt for a reason none of the diagnostics
@@ -601,7 +615,7 @@ func RolloutDiskToPVC(ctx context.Context, log *base.LogObject, exists bool,
 	// bounded not here but by retryFailedClusterVolumeCreate's maxClusterVolumeRetries
 	// cap, which parks the volume in a terminal error after a finite number of
 	// re-drives -- so this stays transient and the bound provides the escape hatch.
-	return transientf("RolloutDiskToPVC pvc:%s attempts to upload image failed", pvcName)
+	return uploadFailed("RolloutDiskToPVC pvc:%s attempts to upload image failed", pvcName)
 }
 
 // GetPVFromPVC : Returns volume name (PV) from the PVC name
