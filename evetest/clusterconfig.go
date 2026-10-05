@@ -4,6 +4,8 @@
 package evetest
 
 import (
+	"bytes"
+	"compress/gzip"
 	cryptorand "crypto/rand"
 	"encoding/base64"
 	"net"
@@ -49,6 +51,14 @@ type EdgeClusterConfig struct {
 	nodes     []ClusterNode                // preserves ordering
 	ClusterID uuid.UUID
 	Token     string // plaintext join token
+
+	// Cluster-wide settings every node's EdgeNodeCluster block is built from,
+	// so AddNode can configure a later node identically.
+	clusterType      eveconfig.ClusterType
+	joinServerIP     string
+	tieBreakerNodeID string
+	nativeK8s        bool
+	gzipManifest     []byte // gzipped registration manifest, empty if unset
 }
 
 // NewEdgeClusterConfig constructs an EdgeClusterConfig.
@@ -89,9 +99,11 @@ func NewEdgeClusterConfig(
 	}
 
 	cc := &EdgeClusterConfig{
-		th:      th,
-		configs: make(map[string]*EdgeDeviceConfig, len(nodes)),
-		nodes:   nodes,
+		th:           th,
+		configs:      make(map[string]*EdgeDeviceConfig, len(nodes)),
+		nodes:        nodes,
+		clusterType:  clusterType,
+		joinServerIP: joinServerIP,
 	}
 
 	// Create per-device configs.
@@ -121,39 +133,166 @@ func NewEdgeClusterConfig(
 		}
 		tieBreakerNodeID = id.String()
 	}
+	cc.tieBreakerNodeID = tieBreakerNodeID
 
 	// Apply cluster config to each device with its own ClusterIP
 	// and individually encrypted token.
 	for _, node := range nodes {
-		dc := cc.configs[node.DevName]
-		devName := dc.GetDeviceName()
-
-		if !th.isDeviceOnboarded(devName) {
-			th.t.Fatalf("Device %q must be onboarded to encrypt cluster token", devName)
-		}
-		cipherData, err := th.encryptCipherData(devName,
-			&evecommon.EncryptionBlock{
-				ClusterToken: cc.Token,
-			})
-		if err != nil {
-			th.t.Fatalf("Failed to encrypt cluster token for device %q: %v",
-				devName, err)
-		}
-
-		dc.Cluster = &eveconfig.EdgeNodeCluster{
-			ClusterId:             cc.ClusterID.String(),
-			ClusterInterface:      node.ClusterInterface,
-			ClusterType:           clusterType,
-			JoinServerIp:          joinServerIP,
-			EncryptedClusterToken: cipherData,
-			TieBreakerNodeId:      tieBreakerNodeID,
-		}
-		if node.ClusterIP != nil {
-			dc.Cluster.ClusterIpPrefix = node.ClusterIP.String()
-		}
+		cc.setNodeClusterConfig(node)
 	}
 
 	return cc
+}
+
+// setNodeClusterConfig (re)builds one node's EdgeNodeCluster block from the
+// cluster-wide settings plus that node's own cluster IP.
+//
+// The cluster name is preserved: it belongs to the EdgeCluster handle, which
+// stamps it on in ApplyConfig, so rebuilding a block after the first apply
+// would otherwise rename the cluster for that node.
+func (cc *EdgeClusterConfig) setNodeClusterConfig(node ClusterNode) {
+	dc := cc.configs[node.DevName]
+	clusterName := dc.Cluster.GetClusterName()
+	dc.Cluster = &eveconfig.EdgeNodeCluster{
+		ClusterName:                  clusterName,
+		ClusterId:                    cc.ClusterID.String(),
+		ClusterInterface:             node.ClusterInterface,
+		ClusterType:                  cc.clusterType,
+		JoinServerIp:                 cc.joinServerIP,
+		EncryptedClusterToken:        cc.encryptClusterSecrets(node.DevName),
+		TieBreakerNodeId:             cc.tieBreakerNodeID,
+		EnableNativeK8SOrchestration: cc.nativeK8s,
+	}
+	if node.ClusterIP != nil {
+		dc.Cluster.ClusterIpPrefix = node.ClusterIP.String()
+	}
+}
+
+// encryptClusterSecrets encrypts the join token and, when set, the
+// registration manifest for one device. Both ride in one EncryptionBlock
+// because EVE reads them from one cipher block: zedagent's
+// parseEdgeNodeClusterConfig points CipherGzipRegistrationManifestYaml at the
+// block it parsed the token from. Each device has its own key.
+func (cc *EdgeClusterConfig) encryptClusterSecrets(devName string) *evecommon.CipherBlock {
+	if !cc.th.isDeviceOnboarded(devName) {
+		cc.th.t.Fatalf("Device %q must be onboarded to encrypt cluster secrets", devName)
+	}
+	cipherData, err := cc.th.encryptCipherData(devName,
+		&evecommon.EncryptionBlock{
+			ClusterToken:                 cc.Token,
+			GzipRegistrationManifestYaml: cc.gzipManifest,
+		})
+	if err != nil {
+		cc.th.t.Fatalf("Failed to encrypt cluster secrets for device %q: %v",
+			devName, err)
+	}
+	return cipherData
+}
+
+// SetNativeK8SOrchestration enables native Kubernetes orchestration of user
+// workloads ("base mode"), the opt-in that replaced CLUSTER_TYPE_K3S_BASE: EVE
+// then serves EVE-API-scheduled and natively-applied workloads side by side.
+//
+// The EVE API only accepts it on CLUSTER_TYPE_REPLICATED_STORAGE, so any other
+// type fails here rather than being rejected by EVE. AddNode inherits it.
+func (cc *EdgeClusterConfig) SetNativeK8SOrchestration(enabled bool) {
+	if enabled && cc.clusterType != eveconfig.ClusterType_CLUSTER_TYPE_REPLICATED_STORAGE {
+		cc.th.t.Fatalf("Native Kubernetes orchestration requires cluster type %v, "+
+			"but this cluster is %v",
+			eveconfig.ClusterType_CLUSTER_TYPE_REPLICATED_STORAGE, cc.clusterType)
+	}
+	cc.nativeK8s = enabled
+	cc.forEachClusterBlock(func(cluster *eveconfig.EdgeNodeCluster) {
+		cluster.EnableNativeK8SOrchestration = enabled
+	})
+}
+
+// forEachClusterBlock calls fn on every node's EdgeNodeCluster block. A node
+// whose block a test cleared (how a member is converted back to standalone) is
+// skipped, not resurrected.
+func (cc *EdgeClusterConfig) forEachClusterBlock(fn func(cluster *eveconfig.EdgeNodeCluster)) {
+	cc.forEachDevice(func(dc *EdgeDeviceConfig) {
+		if dc.Cluster != nil {
+			fn(dc.Cluster)
+		}
+	})
+}
+
+// SetRegistrationManifest attaches a manifest for the cluster to apply to
+// itself once up -- how a controller registers an EVE-K cluster.
+//
+// It shares the join token's cipher block, so this re-encrypts that block for
+// every node. Only the bootstrap node acts on it: zedkube writes
+// /persist/vault/manifests/registration.yaml, kube-init stages it into the k3s
+// server-manifests dir, and k3s applies it as the "persist-registration" AddOn.
+//
+// Pass nil to remove it. AddNode inherits whatever is set at that point.
+func (cc *EdgeClusterConfig) SetRegistrationManifest(manifestYAML []byte) {
+	if len(manifestYAML) == 0 {
+		cc.gzipManifest = nil
+	} else {
+		cc.gzipManifest = cc.gzipManifestYAML(manifestYAML)
+	}
+	// Re-encrypt the joint token+manifest block for every node.
+	for _, node := range cc.nodes {
+		cluster := cc.configs[node.DevName].Cluster
+		if cluster == nil {
+			continue
+		}
+		cluster.EncryptedClusterToken = cc.encryptClusterSecrets(node.DevName)
+	}
+}
+
+// gzipManifestYAML compresses the manifest as EVE expects to receive it
+// (kubeapi.RegistrationAdd inflates it with compress/gzip).
+func (cc *EdgeClusterConfig) gzipManifestYAML(manifestYAML []byte) []byte {
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	if _, err := gz.Write(manifestYAML); err != nil {
+		cc.th.t.Fatalf("Failed to compress the registration manifest: %v", err)
+	}
+	if err := gz.Close(); err != nil {
+		cc.th.t.Fatalf("Failed to compress the registration manifest: %v", err)
+	}
+	return buf.Bytes()
+}
+
+// AddNode extends a built cluster configuration with one more node, which is
+// how a test grows a running cluster. The device must already be onboarded;
+// call EdgeCluster.ApplyConfig afterwards to push the result.
+//
+// The new node is cloned from the first node, so it shares its networks,
+// adapters, network instances and applications under the same UUIDs -- which
+// is what makes it a peer rather than a lookalike. Only the cluster IP and the
+// per-device secrets are rebuilt. Two consequences:
+//
+//   - Only the first node is the template, so a GetDeviceConfig customization
+//     made on another node is not carried over.
+//   - The new node is never the bootstrap node, and never the tie-breaker:
+//     that has to be named at construction, since every node is told which
+//     node it is.
+func (cc *EdgeClusterConfig) AddNode(node ClusterNode) {
+	if _, exists := cc.configs[node.DevName]; exists {
+		cc.th.t.Fatalf("Device %q is already part of the cluster configuration",
+			node.DevName)
+	}
+	if node.BootstrapNode {
+		cc.th.t.Fatalf("Device %q cannot join as a bootstrap node: the cluster "+
+			"already has one", node.DevName)
+	}
+	if node.TieBreaker {
+		cc.th.t.Fatalf("Device %q cannot join as the tie-breaker: the tie-breaker "+
+			"must be designated when the cluster configuration is created, "+
+			"because every node is told which node it is", node.DevName)
+	}
+	template := cc.configs[cc.nodes[0].DevName].Clone()
+	template.DeviceName = node.DevName
+	// Cipher contexts are per device, so the cloned list is the wrong one;
+	// ApplyConfig republishes the harness-held list anyway.
+	template.CipherContexts = nil
+	cc.configs[node.DevName] = template
+	cc.nodes = append(cc.nodes, node)
+	cc.setNodeClusterConfig(node)
 }
 
 // GetDeviceConfig returns the EdgeDeviceConfig for a specific device,
