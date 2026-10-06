@@ -163,6 +163,8 @@ func imHealthyDaemonsets() []runtime.Object {
 
 // Healthy DaemonSets alone must not make the node ready: the instance-manager
 // gate runs afterwards and its verdict is what checkLonghornReady returns.
+// The disk-status gate that runs after it is stubbed satisfied throughout,
+// since this test is only about the instance-manager gate's own verdict.
 func TestCheckLonghornReadyAppliesInstanceManagerGate(t *testing.T) {
 	gateErr := errors.New("longhorn instance-manager not running on node")
 
@@ -182,9 +184,52 @@ func TestCheckLonghornReadyAppliesInstanceManagerGate(t *testing.T) {
 
 	for name, test := range testMatrix {
 		t.Run(name, func(t *testing.T) {
-			saved := instanceManagerReady
-			t.Cleanup(func() { instanceManagerReady = saved })
+			savedIM, savedDisk := instanceManagerReady, diskStatusReady
+			t.Cleanup(func() {
+				instanceManagerReady = savedIM
+				diskStatusReady = savedDisk
+			})
 			instanceManagerReady = test.gate
+			diskStatusReady = func(context.Context, string) error { return nil }
+
+			client := fake.NewSimpleClientset(imHealthyDaemonsets()...)
+			err := checkLonghornReady(client, imTestNode)
+			if !errors.Is(err, test.expectErr) {
+				t.Errorf("err = %v, want %v", err, test.expectErr)
+			}
+		})
+	}
+}
+
+// TestCheckLonghornReadyAppliesDiskStatusGate pins the gate this change
+// adds: the instance-manager gate passing is not enough on its own, the
+// disk-status gate after it must also pass.
+func TestCheckLonghornReadyAppliesDiskStatusGate(t *testing.T) {
+	gateErr := errors.New("longhorn disk status not yet recorded on node")
+
+	testMatrix := map[string]struct {
+		gate      func(context.Context, string) error
+		expectErr error
+	}{
+		"gate satisfied": {
+			gate:      func(context.Context, string) error { return nil },
+			expectErr: nil,
+		},
+		"gate unsatisfied": {
+			gate:      func(context.Context, string) error { return gateErr },
+			expectErr: gateErr,
+		},
+	}
+
+	for name, test := range testMatrix {
+		t.Run(name, func(t *testing.T) {
+			savedIM, savedDisk := instanceManagerReady, diskStatusReady
+			t.Cleanup(func() {
+				instanceManagerReady = savedIM
+				diskStatusReady = savedDisk
+			})
+			instanceManagerReady = func(context.Context, string) error { return nil }
+			diskStatusReady = test.gate
 
 			client := fake.NewSimpleClientset(imHealthyDaemonsets()...)
 			err := checkLonghornReady(client, imTestNode)
