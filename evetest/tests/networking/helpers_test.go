@@ -51,6 +51,64 @@ func appHasError(info *eveinfo.ZInfoApp) (string, bool) {
 	return "", false
 }
 
+// reportedNetworkForMAC returns the app info network entry of the virtual
+// interface with the given MAC address, or nil if there is none.
+func reportedNetworkForMAC(info *eveinfo.ZInfoApp, mac string) *eveinfo.ZInfoNetwork {
+	for _, network := range info.GetNetwork() {
+		if strings.EqualFold(network.GetMacAddr(), mac) {
+			return network
+		}
+	}
+	return nil
+}
+
+// reportedIPsForMAC returns the IP addresses the app info reports for the
+// virtual interface with the given MAC address.
+func reportedIPsForMAC(info *eveinfo.ZInfoApp, mac string) []string {
+	return reportedNetworkForMAC(info, mac).GetIPAddrs()
+}
+
+// listGuestNICs is a shell snippet printing one "<ifname> <MAC>" line per
+// network interface of a guest, relying on sysfs only (no iproute2 needed).
+const listGuestNICs = `for d in /sys/class/net/*; do echo "${d##*/} $(cat "$d/address")"; done`
+
+// ifNameByMAC parses the output of listGuestNICs and returns the name of
+// the interface with the given MAC address, or an empty string if there is
+// none.
+func ifNameByMAC(nicListing, mac string) string {
+	for _, line := range strings.Split(nicListing, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 2 && strings.EqualFold(fields[1], mac) {
+			return fields[0]
+		}
+	}
+	return ""
+}
+
+// alpineCloudImage describes the arch-specific pinned Alpine Linux
+// cloud-init qcow2 image used to boot VM apps in this package.
+type alpineCloudImage struct {
+	relativePath string
+	sha256       string
+	sizeBytes    uint64
+}
+
+// Alpine 3.24.1 cloud images, pinned by release version (not a rolling
+// "latest" alias) so the SHA256 below stays valid indefinitely. See
+// https://alpinelinux.org/cloud/ for the full image list.
+var alpineCloudImages = map[string]alpineCloudImage{
+	"amd64": {
+		relativePath: "/alpine/v3.24/releases/cloud/generic_alpine-3.24.1-x86_64-bios-cloudinit-r0.qcow2",
+		sha256:       "6e2e6fe0572b6632527f268d3659e8fccebda4e1ee470fafe2c4d7b85b6a4df6",
+		sizeBytes:    183697408,
+	},
+	"arm64": {
+		relativePath: "/alpine/v3.24/releases/cloud/generic_alpine-3.24.1-aarch64-uefi-cloudinit-r0.qcow2",
+		sha256:       "3059a6280977c2122982632e0317c5ddbd39069d46ca1e60480de283091f720f",
+		sizeBytes:    239271936,
+	},
+}
+
 // contentTreeTracker follows the info messages of many content trees and
 // keeps the latest one per tree, so that a test deploying many content trees
 // at once can look at their overall state without draining the watch channels
