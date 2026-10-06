@@ -155,6 +155,26 @@ func signalSwtpm(pid int, id uuid.UUID) (bool, error) {
 	return true, nil
 }
 
+// reapSwtpm reaps a terminated daemon inherited through subreaper mode.
+// A process which is not our child returns ECHILD immediately.
+func reapSwtpm(pid int) {
+	if pid <= 0 {
+		return
+	}
+	for i := 0; i < maxPidWaitTime*10; i++ {
+		var status syscall.WaitStatus
+		waited, err := syscall.Wait4(pid, &status, syscall.WNOHANG, nil)
+		if waited == pid || err == syscall.ECHILD {
+			return
+		}
+		if err != nil && err != syscall.EINTR {
+			log.Errorf("failed to reap swtpm pid %d: %v", pid, err)
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
 // lockID acquires the per-id lock and returns its unlock function.
 func lockID(id uuid.UUID) func() {
 	idMu.Lock()
@@ -561,6 +581,7 @@ func handleTerminate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("vTPM failed to signal SWTPM instance: %v", err), http.StatusFailedDependency)
 		return
 	}
+	go reapSwtpm(inst.pid)
 	m.Lock()
 	delete(instances, id)
 	liveInstances--
@@ -607,6 +628,7 @@ func handlePurge(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("failed to signal SWTPM instance: %v", err), http.StatusFailedDependency)
 			return
 		}
+		go reapSwtpm(inst.pid)
 		log.Noticef("vTPM purged SWTPM instance with id: %s, pid: %d", id, inst.pid)
 	}
 
@@ -640,6 +662,11 @@ func main() {
 	if log == nil {
 		fmt.Println("Failed to create log object")
 		os.Exit(1)
+	}
+	// swtpm double-forks with --daemon. Adopt its daemon child so vtpmd can
+	// reap it instead of leaving a zombie under the container's PID 1 shell.
+	if err := unix.Prctl(unix.PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0); err != nil {
+		log.Warnf("vTPM failed to set child subreaper: %v", err)
 	}
 
 	// this never returns, ideally.

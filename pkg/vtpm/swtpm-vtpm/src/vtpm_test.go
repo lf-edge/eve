@@ -212,6 +212,26 @@ func TestLogForwarderStopWithIdleFIFO(t *testing.T) {
 	}
 }
 
+func TestReapSwtpm(t *testing.T) {
+	cmd := exec.Command("/bin/sh", "-c", "exit 0")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	pid := cmd.Process.Pid
+	reapSwtpm(pid)
+	if waited, err := syscall.Wait4(pid, nil, syscall.WNOHANG, nil); waited != -1 || err != syscall.ECHILD {
+		t.Fatalf("wait after reap = (%d, %v), want (-1, ECHILD)", waited, err)
+	}
+
+	// A PID outside our child set must return promptly rather than polling
+	// through the full timeout.
+	start := time.Now()
+	reapSwtpm(os.Getpid())
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("reaping a non-child took %v", elapsed)
+	}
+}
+
 func generateUUID() uuid.UUID {
 	id, _ := uuid.NewV4()
 	return id
