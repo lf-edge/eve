@@ -282,6 +282,13 @@ func checkSwtpmState(uuid uuid.UUID) (stateBad bool, err error) {
 	return false, nil
 }
 
+func writeSwtpmKey(path string, key []byte) error {
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("failed to remove stale SWTPM key file: %w", err)
+	}
+	return os.WriteFile(path, key, 0600)
+}
+
 func runSwtpm(uuid uuid.UUID) (int, *logForwarder, error) {
 	id := uuid.String()
 	wd := fmt.Sprintf(workDir, id)
@@ -344,7 +351,7 @@ func runSwtpm(uuid uuid.UUID) (int, *logForwarder, error) {
 			}
 		}
 
-		if err := os.WriteFile(binKeyPath, key, 0644); err != nil {
+		if err := writeSwtpmKey(binKeyPath, key); err != nil {
 			lf.stop()
 			return 0, nil, fmt.Errorf("failed to write key to file: %w", err)
 		}
