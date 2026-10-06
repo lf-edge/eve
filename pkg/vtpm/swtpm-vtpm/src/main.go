@@ -7,7 +7,9 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -31,6 +33,7 @@ const (
 	swtpmPath          = "/usr/bin/swtpm"
 	swtpmLogMaxSize    = 10 * 1024 * 1024 // 10MB
 	swtpmLogMaxBackups = 3
+	swtpmCtrlTimeout = 5 * time.Second
 )
 
 type swtpmInstance struct {
@@ -140,49 +143,53 @@ func getSwtpmPid(pidPath string, timeoutSeconds uint) (int, error) {
 	}
 }
 
-func checkSwtpmState(uuid uuid.UUID) error {
+// checkSwtpmState probes a running swtpm's control socket to decide whether its
+// state actually loaded. It returns stateBad=true ONLY when swtpm itself reports
+// a failure to initialize its state (a genuine corruption/decrypt signal). Every
+// transient or IPC problem is returned as err, so the caller never mistakes a
+// hiccup for corruption and destroys good state.
+func checkSwtpmState(uuid uuid.UUID) (stateBad bool, err error) {
 	id := uuid.String()
 	wd := fmt.Sprintf(workDir, id)
 	ctrlSockPath := fmt.Sprintf(swtpmCtrlSockPath, id)
 	pidPath := fmt.Sprintf(swtpmPidPath, id)
 
 	if _, err := os.Stat(wd); err != nil {
-		return fmt.Errorf("failed to check SWTPM state directory: %w", err)
+		return false, fmt.Errorf("failed to check SWTPM state directory: %w", err)
 	}
-
 	if _, err := os.Stat(ctrlSockPath); err != nil {
-		return fmt.Errorf("failed to check SWTPM control socket: %w", err)
+		return false, fmt.Errorf("failed to check SWTPM control socket: %w", err)
 	}
-
 	if _, err := os.Stat(pidPath); err != nil {
-		return fmt.Errorf("failed to check SWTPM pid file: %w", err)
+		return false, fmt.Errorf("failed to check SWTPM pid file: %w", err)
 	}
 
-	// open the control socket and send a CMD_INIT command to check
-	con, err := net.Dial("unix", ctrlSockPath)
+	// Open the control socket and send CMD_INIT. Bound every step so a hung
+	// swtpm cannot block us indefinitely.
+	con, err := net.DialTimeout("unix", ctrlSockPath, swtpmCtrlTimeout)
 	if err != nil {
-		return fmt.Errorf("failed to connect to SWTPM control socket: %w", err)
+		return false, fmt.Errorf("failed to connect to SWTPM control socket: %w", err)
 	}
 	defer con.Close()
+	if err := con.SetDeadline(time.Now().Add(swtpmCtrlTimeout)); err != nil {
+		return false, fmt.Errorf("failed to set SWTPM control deadline: %w", err)
+	}
 
 	// CMD_INIT = 0x00 00 00 02 + flags
 	cmd := []byte{0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00}
 	if _, err := con.Write(cmd); err != nil {
-		return fmt.Errorf("failed to send CMD_INIT command to SWTPM: %w", err)
+		return false, fmt.Errorf("failed to send CMD_INIT command to SWTPM: %w", err)
 	}
 
-	buf := make([]byte, 4)
-	n, err := con.Read(buf)
-	if err != nil {
-		return fmt.Errorf("failed to read response from SWTPM: %w", err)
+	resp := make([]byte, 4)
+	if _, err := io.ReadFull(con, resp); err != nil {
+		return false, fmt.Errorf("failed to read response from SWTPM: %w", err)
 	}
-
 	// expected response is 0x00 00 00 00
-	if n < 4 || buf[0] != 0x00 || buf[1] != 0x00 || buf[2] != 0x00 || buf[3] != 0x00 {
-		return fmt.Errorf("SWTPM is not responding correctly, expected 00 00 00 00, got %x", buf)
+	if code := binary.BigEndian.Uint32(resp); code != 0 {
+		return true, nil
 	}
-
-	return nil
+	return false, nil
 }
 
 func runSwtpm(uuid uuid.UUID) (int, *logForwarder, error) {
@@ -347,7 +354,7 @@ func handleLaunch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// check SWTPM health
-	checkErr := checkSwtpmState(id)
+	stateBad, checkErr := checkSwtpmState(id)
 	// wait for SWTPM instance to get terminated then check for errors
 	for i := 0; i < maxPidWaitTime; i++ {
 		if !isAlive(pid) {
@@ -359,19 +366,32 @@ func handleLaunch(w http.ResponseWriter, r *http.Request) {
 	// The health-check run is done; stop its log forwarder before the next run.
 	lf.stop()
 
-	if checkErr != nil {
-		log.Warnf("SWTPM instance state with id %s is corrupted, resetting the state...", id)
-		// remove the state directory and start a new SWTPM instance
+	switch {
+	case checkErr != nil:
+		// A transient/IPC problem, not proof of corruption. Don't destroy state,
+		// fail the launch and let the caller retry .
+		err := fmt.Sprintf("vTPM health check for id %s failed transiently: %v", id, checkErr)
+		log.Error(err)
+		http.Error(w, err, http.StatusFailedDependency)
+		return
+	case stateBad:
+		// swtpm reported it could not initialize the state (both the primary and
+		// the ,backup copy are unusable). Preserve the bytes for recovery rather
+		// then continue with fresh state so the guest can still boot.
+		log.Errorf("SWTPM state for id %s is unrecoverable; preserving it and starting fresh", id)
 		isEncryptedPath := fmt.Sprintf(stateIsEncryptedPath, id)
 		if utils.FileExists(log, isEncryptedPath) {
 			os.Remove(isEncryptedPath)
 		}
-		if err := os.RemoveAll(fmt.Sprintf(workDir, id)); err != nil {
-			err := fmt.Sprintf("failed to remove SWTPM state directory: %v", err)
+		wd := fmt.Sprintf(workDir, id)
+		corrupt := fmt.Sprintf("%s.corrupt-%d", wd, time.Now().Unix())
+		if err := os.Rename(wd, corrupt); err != nil {
+			err := fmt.Sprintf("failed to preserve corrupt SWTPM state directory: %v", err)
 			http.Error(w, err, http.StatusFailedDependency)
 			return
 		}
-	} else {
+		log.Errorf("preserved corrupt SWTPM state for id %s at %s", id, corrupt)
+	default:
 		log.Noticef("SWTPM instance state with id %s is healthy", id)
 	}
 
