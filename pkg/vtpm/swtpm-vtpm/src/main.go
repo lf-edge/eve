@@ -46,6 +46,11 @@ type swtpmInstance struct {
 	lf  *logForwarder
 }
 
+type instanceLock struct {
+	mu   sync.Mutex
+	refs int
+}
+
 var (
 	maxPidWaitTime = 5  // seconds; overridden in tests
 	maxInstances   = 32 // overridden in tests
@@ -55,7 +60,7 @@ var (
 	instances      = make(map[uuid.UUID]*swtpmInstance)
 	// idLocks serializes launch/terminate/purge for a single id without blocking other ids
 	idMu    sync.Mutex
-	idLocks = make(map[uuid.UUID]*sync.Mutex)
+	idLocks = make(map[uuid.UUID]*instanceLock)
 	// XXX : move the paths to types so we have everything EVE creates in one place.
 	// These are defined as vars to be able to mock them in tests
 	stateDir             = "/persist/swtpm"
@@ -196,6 +201,62 @@ func waitForHealthCheckExit(pid int) {
 	}
 }
 
+// waitSwtpmExit waits on a pidfd so state is not reused or deleted while the
+// daemon is still running. A pidfd cannot switch to a replacement process.
+func waitSwtpmExit(pid int, id uuid.UUID) error {
+	fd, err := openVerifiedSwtpm(pid, id)
+	if err != nil || fd < 0 {
+		if err == nil && pid > 0 {
+			// The daemon may already have exited but still be our zombie.
+			_, _ = syscall.Wait4(pid, nil, syscall.WNOHANG, nil)
+		}
+		return err
+	}
+	defer unix.Close(fd)
+	return waitPidfdExit(pid, fd)
+}
+
+func waitPidfdExit(pid, fd int) error {
+	deadline := time.Now().Add(time.Duration(maxPidWaitTime) * time.Second)
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return fmt.Errorf("swtpm pid %d did not exit", pid)
+		}
+		pollMillis := int(remaining.Milliseconds())
+		if pollMillis < 1 {
+			pollMillis = 1
+		}
+		n, err := unix.Poll([]unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}, pollMillis)
+		if errors.Is(err, unix.EINTR) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("wait for swtpm pid %d: %w", pid, err)
+		}
+		if n > 0 {
+			// In subreaper mode this is our child; elsewhere ECHILD is expected.
+			_, err := syscall.Wait4(pid, nil, syscall.WNOHANG, nil)
+			if err != nil && err != syscall.ECHILD && err != syscall.EINTR {
+				return fmt.Errorf("reap swtpm pid %d: %w", pid, err)
+			}
+			return nil
+		}
+	}
+}
+
+func stopSwtpmAndWait(pid int, id uuid.UUID) error {
+	fd, err := openVerifiedSwtpm(pid, id)
+	if err != nil || fd < 0 {
+		return err
+	}
+	defer unix.Close(fd)
+	if err := unix.PidfdSendSignal(fd, unix.SIGTERM, nil, 0); err != nil && !errors.Is(err, unix.ESRCH) {
+		return fmt.Errorf("signal swtpm pid %d: %w", pid, err)
+	}
+	return waitPidfdExit(pid, fd)
+}
+
 // preserveCorruptStates sets aside the failed state and retains only the ten
 // newest saved copies for this VM. If preservation fails, discard the corrupt
 // active directory so the caller can still start swtpm with fresh state. An
@@ -269,15 +330,24 @@ func lockID(id uuid.UUID) func() {
 	idMu.Lock()
 	l, ok := idLocks[id]
 	if !ok {
-		l = &sync.Mutex{}
+		l = &instanceLock{}
 		idLocks[id] = l
 	}
+	l.refs++
 	idMu.Unlock()
-	l.Lock()
-	return l.Unlock
+	l.mu.Lock()
+	return func() {
+		l.mu.Unlock()
+		idMu.Lock()
+		l.refs--
+		if l.refs == 0 {
+			delete(idLocks, id)
+		}
+		idMu.Unlock()
+	}
 }
 
-func cleanupFiles(uuid uuid.UUID) {
+func cleanupFiles(uuid uuid.UUID) error {
 	id := uuid.String()
 
 	// Drop the map entry under m, then do the slow file work and the
@@ -293,21 +363,31 @@ func cleanupFiles(uuid uuid.UUID) {
 		inst.lf.stop()
 	}
 
-	os.RemoveAll(fmt.Sprintf(workDir, id))
-	os.Remove(fmt.Sprintf(swtpmCtrlSockPath, id))
-	os.Remove(fmt.Sprintf(swtpmPidPath, id))
-	os.Remove(fmt.Sprintf(stateIsEncryptedPath, id))
+	var cleanupErr error
+	if err := os.RemoveAll(fmt.Sprintf(workDir, id)); err != nil {
+		cleanupErr = errors.Join(cleanupErr, err)
+	}
+	for _, file := range []string{
+		fmt.Sprintf(swtpmCtrlSockPath, id),
+		fmt.Sprintf(swtpmPidPath, id),
+		fmt.Sprintf(stateIsEncryptedPath, id),
+	} {
+		if err := os.Remove(file); err != nil && !errors.Is(err, os.ErrNotExist) {
+			cleanupErr = errors.Join(cleanupErr, err)
+		}
+	}
+	return cleanupErr
 }
 
-func makeDirs(dir string) error {
+func makeDirs(dir string, mode os.FileMode) error {
 	// This returns nil if the directory already exists.
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, mode); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
 
 	// if path already exist MkdirAll won't check the perms,
 	// so make sure it has the right permissions by applying it again.
-	if err := os.Chmod(dir, 0755); err != nil {
+	if err := os.Chmod(dir, mode); err != nil {
 		return fmt.Errorf("failed to set permissions for directory: %w", err)
 	}
 
@@ -343,10 +423,9 @@ func getSwtpmPid(pidPath string, timeoutSeconds uint) (int, error) {
 }
 
 // checkSwtpmState probes a running swtpm's control socket to decide whether its
-// state actually loaded. It returns stateBad=true ONLY when swtpm itself reports
-// a failure to initialize its state (a genuine corruption/decrypt signal). Every
-// transient or IPC problem is returned as err, so the caller never mistakes a
-// hiccup for corruption and destroys good state.
+// state actually loaded. It returns stateBad=true when swtpm reports a state
+// initialization failure, which can also mean an incorrect encryption key.
+// Transport and IPC problems are returned as err.
 func checkSwtpmState(uuid uuid.UUID) (stateBad bool, err error) {
 	id := uuid.String()
 	wd := fmt.Sprintf(workDir, id)
@@ -395,7 +474,20 @@ func writeSwtpmKey(path string, key []byte) error {
 	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("failed to remove stale SWTPM key file: %w", err)
 	}
-	return os.WriteFile(path, key, 0600)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(key); err != nil {
+		f.Close()
+		os.Remove(path)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(path)
+		return err
+	}
+	return nil
 }
 
 func runSwtpm(uuid uuid.UUID) (int, *logForwarder, error) {
@@ -408,10 +500,10 @@ func runSwtpm(uuid uuid.UUID) (int, *logForwarder, error) {
 	fifoPath := fmt.Sprintf(instanceLogFifoPath, id)
 	logPath := path.Join(wd, "swtpm.log")
 
-	if err := makeDirs(wd); err != nil {
+	if err := makeDirs(wd, 0700); err != nil {
 		return 0, nil, fmt.Errorf("failed to create SWTPM state directory: %w", err)
 	}
-	if err := makeDirs(path.Dir(fifoPath)); err != nil {
+	if err := makeDirs(path.Dir(fifoPath), 0755); err != nil {
 		return 0, nil, fmt.Errorf("failed to create SWTPM run directory: %w", err)
 	}
 
@@ -423,7 +515,7 @@ func runSwtpm(uuid uuid.UUID) (int, *logForwarder, error) {
 
 	swtpmArgs := []string{"socket", "--tpm2",
 		"--tpmstate", "dir=" + wd + ",backup",
-		"--ctrl", "type=unixio,path=" + ctrlSockPath + ",terminate",
+		"--ctrl", "type=unixio,path=" + ctrlSockPath + ",mode=0600,terminate",
 		"--pid", "file=" + pidPath,
 		"--log", "level=3,file=" + lf.fifoPath,
 		"--daemon"}
@@ -576,10 +668,14 @@ func handleLaunch(w http.ResponseWriter, r *http.Request) {
 
 	// check SWTPM health
 	stateBad, checkErr := checkSwtpmState(id)
-	waitForHealthCheckExit(pid)
+	stopErr := waitSwtpmExit(pid, id)
 
 	// The health-check run is done; stop its log forwarder before the next run.
 	lf.stop()
+	if stopErr != nil {
+		http.Error(w, fmt.Sprintf("vTPM health-check process did not stop: %v", stopErr), http.StatusFailedDependency)
+		return
+	}
 
 	switch {
 	case checkErr != nil:
@@ -708,16 +804,18 @@ func handlePurge(w http.ResponseWriter, r *http.Request) {
 	inst, ok := instances[id]
 	m.Unlock()
 	if ok {
-		if _, err := signalSwtpm(inst.pid, id); err != nil {
-			http.Error(w, fmt.Sprintf("failed to signal SWTPM instance: %v", err), http.StatusFailedDependency)
+		if err := stopSwtpmAndWait(inst.pid, id); err != nil {
+			http.Error(w, fmt.Sprintf("failed to stop SWTPM before purge: %v", err), http.StatusFailedDependency)
 			return
 		}
-		go reapSwtpm(inst.pid)
 		log.Noticef("vTPM purged SWTPM instance with id: %s, pid: %d", id, inst.pid)
 	}
 
 	// clean up the files and send a success response.
-	cleanupFiles(id)
+	if err := cleanupFiles(id); err != nil {
+		http.Error(w, fmt.Sprintf("failed to remove SWTPM files: %v", err), http.StatusFailedDependency)
+		return
+	}
 	w.WriteHeader(http.StatusOK)
 }
 
