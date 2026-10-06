@@ -326,6 +326,37 @@ func TestNoEscrowDataAttestEscrowWait(t *testing.T) {
 	}
 }
 
+// TestEscrowDataOvertakesNoEscrow covers escrow data published while a send
+// that found none is in flight: EventInternalEscrowRecvd reaches the state
+// machine ahead of the EventNoEscrow that send queued, and the escrow must
+// still be sent.
+func TestEscrowDataOvertakesNoEscrow(t *testing.T) {
+	fmt.Println("--------TestEscrowDataOvertakesNoEscrow----")
+	ctx := initTest()
+	setStateAtomic(ctx, types.StateAttestWait)
+	simulateNoEscrowData = true
+	if err := despatchEvent(EventAttestSuccessful, ctx.state, ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	simulateNoEscrowData = false
+	if err := despatchEvent(EventInternalEscrowRecvd, ctx.state, ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	timeout := time.After(5 * time.Second)
+	for ctx.state != types.StateComplete {
+		select {
+		case ctx.event = <-ctx.eventTrigger:
+			if err := despatchEvent(ctx.event, ctx.state, ctx); err != nil {
+				t.Fatal(err)
+			}
+		case <-timeout:
+			t.Fatalf("Expected %s, Got %s", types.StateComplete.String(), ctx.state.String())
+		}
+	}
+}
+
 func TestItokenMismatchAttestEscrowWait(t *testing.T) {
 	fmt.Println("--------TestItokenMismatchAttestEscrowWait----")
 	ctx := initTest()
