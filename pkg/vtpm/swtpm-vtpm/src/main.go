@@ -175,6 +175,25 @@ func reapSwtpm(pid int) {
 	}
 }
 
+// waitForHealthCheckExit waits for the temporary swtpm to exit and reaps it
+// when it became our child through subreaper mode.
+func waitForHealthCheckExit(pid int) {
+	if pid <= 0 {
+		return
+	}
+	for i := 0; i < maxPidWaitTime*10; i++ {
+		waited, err := syscall.Wait4(pid, nil, syscall.WNOHANG, nil)
+		if waited == pid || (err == syscall.ECHILD && !isAlive(pid)) {
+			return
+		}
+		if err != nil && err != syscall.ECHILD && err != syscall.EINTR {
+			log.Errorf("failed to wait for health-check swtpm pid %d: %v", pid, err)
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
 // lockID acquires the per-id lock and returns its unlock function.
 func lockID(id uuid.UUID) func() {
 	idMu.Lock()
@@ -487,13 +506,7 @@ func handleLaunch(w http.ResponseWriter, r *http.Request) {
 
 	// check SWTPM health
 	stateBad, checkErr := checkSwtpmState(id)
-	// wait for SWTPM instance to get terminated then check for errors
-	for i := 0; i < maxPidWaitTime; i++ {
-		if !isAlive(pid) {
-			break
-		}
-		time.Sleep(1 * time.Second)
-	}
+	waitForHealthCheckExit(pid)
 
 	// The health-check run is done; stop its log forwarder before the next run.
 	lf.stop()
