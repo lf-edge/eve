@@ -232,6 +232,37 @@ func TestReapSwtpm(t *testing.T) {
 	}
 }
 
+func TestListenUnix(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "control.sock")
+	listener, err := listenUnix(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode()&os.ModeSocket == 0 {
+		t.Fatalf("created file mode %v, want a socket", info.Mode())
+	}
+	if got := info.Mode().Perm() & 0o077; got != 0 {
+		t.Fatalf("socket was created with group/other permissions %03o", got)
+	}
+
+	// A failed Listen must restore the caller's umask too.
+	previousMask := syscall.Umask(0o022)
+	defer syscall.Umask(previousMask)
+	_, err = listenUnix(filepath.Join(t.TempDir(), "missing", "control.sock"))
+	if err == nil {
+		t.Fatal("expected Listen to fail for a missing parent directory")
+	}
+	gotMask := syscall.Umask(0o022)
+	if gotMask != 0o022 {
+		t.Fatalf("umask after failed Listen = %03o, want 022", gotMask)
+	}
+}
+
 func generateUUID() uuid.UUID {
 	id, _ := uuid.NewV4()
 	return id
