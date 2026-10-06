@@ -66,6 +66,22 @@ func (leases dnsmasqIPLeases) findLease(
 	return nil
 }
 
+// delLeasesForVIF removes all leases granted to the VIF identified by the hostname
+// (application UUID) and the MAC address.
+func (leases dnsmasqIPLeases) delLeasesForVIF(
+	hostname string, macAddr net.HardwareAddr) dnsmasqIPLeases {
+	var kept dnsmasqIPLeases
+	for _, l := range leases {
+		if l.hostname == hostname && bytes.Equal(l.macAddr, macAddr) {
+			log.Infof("%s: Dropping cached lease of removed VIF: %+v",
+				LogAndErrPrefix, l)
+			continue
+		}
+		kept = append(kept, l)
+	}
+	return kept
+}
+
 func (leases dnsmasqIPLeases) addOrUpdateLease(
 	lease dnsmasqIPLease) (newSlice dnsmasqIPLeases, changed bool) {
 	l := leases.findLease(lease.hostname, lease.macAddr, false)
