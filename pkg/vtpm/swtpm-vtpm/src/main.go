@@ -17,6 +17,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -37,6 +38,7 @@ const (
 	swtpmLogMaxSize    = 10 * 1024 * 1024 // 10MB
 	swtpmLogMaxBackups = 3
 	swtpmCtrlTimeout   = 5 * time.Second
+	maxCorruptStates   = 10
 )
 
 type swtpmInstance struct {
@@ -192,6 +194,74 @@ func waitForHealthCheckExit(pid int) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
+}
+
+// preserveCorruptStates sets aside the failed state and retains only the ten
+// newest saved copies for this VM. If preservation fails, discard the corrupt
+// active directory so the caller can still start swtpm with fresh state. An
+// empty result means no copy was preserved; an error means fresh state could
+// not be made available.
+func preserveCorruptStates(workDir string, stamp int64) (string, error) {
+	newest := fmt.Sprintf("%s.corrupt-%d", workDir, stamp)
+	if err := os.Rename(workDir, newest); err != nil {
+		log.Warnf("failed to preserve corrupt SWTPM state directory: %v", err)
+		if err := os.RemoveAll(workDir); err != nil {
+			return "", fmt.Errorf("remove corrupt SWTPM state after failed preservation: %w", err)
+		}
+		return "", nil
+	}
+	if err := pruneCorruptStates(workDir, newest); err != nil {
+		log.Warnf("failed to prune old corrupt SWTPM state: %v", err)
+	}
+	return newest, nil
+}
+
+// pruneCorruptStates protects the new copy even if another entry has a
+// timestamp in the future.
+func pruneCorruptStates(workDir, newest string) error {
+	entries, err := os.ReadDir(filepath.Dir(workDir))
+	if err != nil {
+		return fmt.Errorf("list preserved SWTPM states: %w", err)
+	}
+	type savedState struct {
+		path  string
+		stamp int64
+	}
+	prefix := filepath.Base(workDir) + ".corrupt-"
+	var states []savedState
+	for _, entry := range entries {
+		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), prefix) {
+			continue
+		}
+		stamp, err := strconv.ParseInt(strings.TrimPrefix(entry.Name(), prefix), 10, 64)
+		if err != nil {
+			continue
+		}
+		states = append(states, savedState{
+			path:  filepath.Join(filepath.Dir(workDir), entry.Name()),
+			stamp: stamp,
+		})
+	}
+	sort.Slice(states, func(i, j int) bool {
+		if states[i].stamp == states[j].stamp {
+			return states[i].path < states[j].path
+		}
+		return states[i].stamp < states[j].stamp
+	})
+	remaining := len(states)
+	for _, state := range states {
+		if remaining <= maxCorruptStates {
+			break
+		}
+		if state.path == newest {
+			continue
+		}
+		if err := os.RemoveAll(state.path); err != nil {
+			return fmt.Errorf("remove old SWTPM state %s: %w", state.path, err)
+		}
+		remaining--
+	}
+	return nil
 }
 
 // lockID acquires the per-id lock and returns its unlock function.
@@ -529,13 +599,14 @@ func handleLaunch(w http.ResponseWriter, r *http.Request) {
 			os.Remove(isEncryptedPath)
 		}
 		wd := fmt.Sprintf(workDir, id)
-		corrupt := fmt.Sprintf("%s.corrupt-%d", wd, time.Now().Unix())
-		if err := os.Rename(wd, corrupt); err != nil {
-			err := fmt.Sprintf("failed to preserve corrupt SWTPM state directory: %v", err)
-			http.Error(w, err, http.StatusFailedDependency)
+		corrupt, err := preserveCorruptStates(wd, time.Now().UnixNano())
+		if err != nil {
+			http.Error(w, fmt.Sprintf("failed to clear corrupt SWTPM state: %v", err), http.StatusFailedDependency)
 			return
 		}
-		log.Errorf("preserved corrupt SWTPM state for id %s at %s", id, corrupt)
+		if corrupt != "" {
+			log.Errorf("preserved corrupt SWTPM state for id %s at %s", id, corrupt)
+		}
 	default:
 		log.Noticef("SWTPM instance state with id %s is healthy", id)
 	}
