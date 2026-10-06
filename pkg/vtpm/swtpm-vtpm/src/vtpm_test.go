@@ -248,6 +248,89 @@ func TestWaitForHealthCheckExitReapsChild(t *testing.T) {
 	}
 }
 
+func TestPreserveCorruptStates(t *testing.T) {
+	workDir := filepath.Join(t.TempDir(), "tpm-state-vm")
+	if err := os.Mkdir(workDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workDir, "failed-state"), []byte("keep me"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for stamp := 1; stamp <= 11; stamp++ {
+		if err := os.Mkdir(fmt.Sprintf("%s.corrupt-%d", workDir, stamp), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	otherVM := workDir + "-other.corrupt-0"
+	if err := os.Mkdir(otherVM, 0700); err != nil {
+		t.Fatal(err)
+	}
+	invalid := workDir + ".corrupt-unknown"
+	if err := os.Mkdir(invalid, 0700); err != nil {
+		t.Fatal(err)
+	}
+	symlink := workDir + ".corrupt-0"
+	if err := os.Symlink(otherVM, symlink); err != nil {
+		t.Fatal(err)
+	}
+
+	preserved, err := preserveCorruptStates(workDir, 12)
+	if err != nil || preserved == "" {
+		t.Fatalf("failed to preserve corrupt state: path=%q, err=%v", preserved, err)
+	}
+	if data, err := os.ReadFile(filepath.Join(preserved, "failed-state")); err != nil || string(data) != "keep me" {
+		t.Fatalf("new corrupt state was not preserved: %q, %v", data, err)
+	}
+	for stamp := 1; stamp <= 11; stamp++ {
+		_, err := os.Stat(fmt.Sprintf("%s.corrupt-%d", workDir, stamp))
+		if stamp <= 2 && !os.IsNotExist(err) {
+			t.Errorf("old state %d remains: %v", stamp, err)
+		}
+		if stamp > 2 && err != nil {
+			t.Errorf("retained state %d is missing: %v", stamp, err)
+		}
+	}
+	for _, path := range []string{otherVM, invalid, symlink} {
+		if _, err := os.Lstat(path); err != nil {
+			t.Errorf("unrelated path %s was removed: %v", path, err)
+		}
+	}
+	if got, err := preserveCorruptStates(filepath.Join(t.TempDir(), "missing", "state"), 42); got != "" || err != nil {
+		t.Fatalf("preserveCorruptStates on missing directory = (%q, %v), want (empty, nil)", got, err)
+	}
+}
+
+func TestPreserveCorruptStatesFailedRenameStartsFresh(t *testing.T) {
+	workDir := filepath.Join(t.TempDir(), "tpm-state-vm")
+	if err := os.Mkdir(workDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workDir, "corrupt"), []byte("bad"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	existing := workDir + ".corrupt-42"
+	if err := os.Mkdir(existing, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(existing, "previous"), []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	path, err := preserveCorruptStates(workDir, 42)
+	if err != nil || path != "" {
+		t.Fatalf("failed preservation = (%q, %v), want (empty, nil)", path, err)
+	}
+	if _, err := os.Stat(workDir); !os.IsNotExist(err) {
+		t.Fatalf("corrupt active state still exists: %v", err)
+	}
+	if data, err := os.ReadFile(filepath.Join(existing, "previous")); err != nil || string(data) != "keep" {
+		t.Fatalf("earlier preserved state changed: %q, %v", data, err)
+	}
+	if err := os.Mkdir(workDir, 0700); err != nil {
+		t.Fatalf("fresh state directory cannot be created: %v", err)
+	}
+}
+
 func TestListenUnix(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "control.sock")
 	listener, err := listenUnix(path)
