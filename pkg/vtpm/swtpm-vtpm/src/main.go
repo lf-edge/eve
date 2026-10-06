@@ -8,6 +8,7 @@ package main
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -15,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,13 +29,14 @@ import (
 	utils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/sys/unix"
 )
 
 const (
 	swtpmPath          = "/usr/bin/swtpm"
 	swtpmLogMaxSize    = 10 * 1024 * 1024 // 10MB
 	swtpmLogMaxBackups = 3
-	swtpmCtrlTimeout = 5 * time.Second
+	swtpmCtrlTimeout   = 5 * time.Second
 )
 
 type swtpmInstance struct {
@@ -87,6 +90,71 @@ func isAlive(pid int) bool {
 	return true
 }
 
+// isSwtpm reports whether pid is a live swtpm serving this id. A stale pid
+// file or in-memory record can name another process after pid reuse.
+func isSwtpm(pid int, id uuid.UUID) bool {
+	if pid <= 0 || syscall.Kill(pid, 0) != nil {
+		return false
+	}
+	exe, err := os.Readlink(fmt.Sprintf("/proc/%d/exe", pid))
+	if err != nil {
+		return false
+	}
+	wantExe, err := filepath.EvalSymlinks(swtpmPath)
+	if err != nil || exe != wantExe {
+		return false
+	}
+	cmdline, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
+	if err != nil {
+		return false
+	}
+	// swtpm is launched with an exact "dir=<workDir>,backup" argv token, and
+	// workDir embeds the id, so an exact match identifies this VM's swtpm.
+	wantState := "dir=" + fmt.Sprintf(workDir, id.String()) + ",backup"
+	for _, arg := range strings.Split(string(cmdline), "\x00") {
+		if arg == wantState {
+			return true
+		}
+	}
+	return false
+}
+
+// Open the pidfd before checking /proc. If the process exits and its numeric
+// pid is reused, the fd still refers to the original process and signalling
+// it fails with ESRCH instead of signalling the replacement.
+func openVerifiedSwtpm(pid int, id uuid.UUID) (int, error) {
+	if pid <= 0 {
+		return -1, nil
+	}
+	fd, err := unix.PidfdOpen(pid, 0)
+	if errors.Is(err, unix.ESRCH) {
+		return -1, nil
+	}
+	if err != nil {
+		return -1, fmt.Errorf("open pidfd for swtpm pid %d: %w", pid, err)
+	}
+	if !isSwtpm(pid, id) {
+		unix.Close(fd)
+		return -1, nil
+	}
+	return fd, nil
+}
+
+func signalSwtpm(pid int, id uuid.UUID) (bool, error) {
+	fd, err := openVerifiedSwtpm(pid, id)
+	if err != nil || fd < 0 {
+		return false, err
+	}
+	defer unix.Close(fd)
+	if err := unix.PidfdSendSignal(fd, unix.SIGTERM, nil, 0); err != nil {
+		if errors.Is(err, unix.ESRCH) {
+			return false, nil
+		}
+		return false, fmt.Errorf("signal swtpm pid %d: %w", pid, err)
+	}
+	return true, nil
+}
+
 // lockID acquires the per-id lock and returns its unlock function.
 func lockID(id uuid.UUID) func() {
 	idMu.Lock()
@@ -103,7 +171,7 @@ func lockID(id uuid.UUID) func() {
 func cleanupFiles(uuid uuid.UUID) {
 	id := uuid.String()
 
-	// Drop the map entry under m, then do the slow file work and the 
+	// Drop the map entry under m, then do the slow file work and the
 	// log-forwarder stop outside the lock.
 	m.Lock()
 	inst, ok := instances[uuid]
@@ -341,7 +409,7 @@ func handleLaunch(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, err, http.StatusExpectationFailed)
 				return
 			}
-			if isAlive(pid) {
+			if isSwtpm(pid, id) {
 				log.Noticef("vTPM SWTPM instance with id %s is already running with pid %d", id, inst.pid)
 				w.WriteHeader(http.StatusOK)
 				return
@@ -475,10 +543,6 @@ func handleTerminate(w http.ResponseWriter, r *http.Request) {
 
 	m.Lock()
 	inst, ok := instances[id]
-	if ok {
-		delete(instances, id)
-		liveInstances--
-	}
 	m.Unlock()
 	if !ok {
 		err := fmt.Sprintf("vTPM terminate request failed, SWTPM instance with id %s not found", id)
@@ -486,12 +550,14 @@ func handleTerminate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := syscall.Kill(inst.pid, syscall.SIGTERM); err != nil {
-		if err != syscall.ESRCH {
-			// This should not happen, but log it just in case.
-			log.Errorf("vTPM failed to kill SWTPM instance (terminate request): %v", err)
-		}
+	if _, err := signalSwtpm(inst.pid, id); err != nil {
+		http.Error(w, fmt.Sprintf("vTPM failed to signal SWTPM instance: %v", err), http.StatusFailedDependency)
+		return
 	}
+	m.Lock()
+	delete(instances, id)
+	liveInstances--
+	m.Unlock()
 	if inst.lf != nil {
 		inst.lf.stop()
 	}
@@ -530,11 +596,9 @@ func handlePurge(w http.ResponseWriter, r *http.Request) {
 	inst, ok := instances[id]
 	m.Unlock()
 	if ok {
-		if err := syscall.Kill(inst.pid, syscall.SIGTERM); err != nil {
-			if err != syscall.ESRCH {
-				// This should not happen, but log it just in case.
-				log.Errorf("failed to kill SWTPM instance (purge request): %v", err)
-			}
+		if _, err := signalSwtpm(inst.pid, id); err != nil {
+			http.Error(w, fmt.Sprintf("failed to signal SWTPM instance: %v", err), http.StatusFailedDependency)
+			return
 		}
 		log.Noticef("vTPM purged SWTPM instance with id: %s, pid: %d", id, inst.pid)
 	}
