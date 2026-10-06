@@ -232,6 +232,22 @@ func TestReapSwtpm(t *testing.T) {
 	}
 }
 
+func TestWaitForHealthCheckExitReapsChild(t *testing.T) {
+	cmd := exec.Command("/bin/sh", "-c", "exit 0")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	pid := cmd.Process.Pid
+	start := time.Now()
+	waitForHealthCheckExit(pid)
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("health-check wait took %v for an exited child", elapsed)
+	}
+	if waited, err := syscall.Wait4(pid, nil, syscall.WNOHANG, nil); waited != -1 || err != syscall.ECHILD {
+		t.Fatalf("wait after health-check reap = (%d, %v), want (-1, ECHILD)", waited, err)
+	}
+}
+
 func TestListenUnix(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "control.sock")
 	listener, err := listenUnix(path)
