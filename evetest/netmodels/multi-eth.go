@@ -159,6 +159,47 @@ var TwoMgmtPorts = &api.NetworkModel{
 				},
 				UpstreamServers: []string{"8.8.8.8", "1.1.1.1"},
 			},
+			{
+				// Alternative DNS server for eth1's network, reachable from
+				// bridge1 but not advertised via DHCP by default. Mirrors
+				// dns-server0-alt above: used by tests that need to swap
+				// eth1's DHCP-advertised DNS server (e.g. simulating a WAN
+				// uplink handing out different upstream DNS info across a
+				// reconnect -- a *status* change observed via a live DHCP
+				// renewal, not an EVE-side config change) without breaking
+				// eth1's own controller/http-server reachability.
+				Endpoint: &api.Endpoint{
+					LogicalLabel: "dns-server1-alt",
+					Fqdn:         "dns-server1-alt.test",
+					Ipv4: &api.EndpointIPConfig{
+						Subnet: "10.16.19.0/24",
+						Ip:     "10.16.19.25",
+					},
+				},
+				StaticEntries: []*api.DNSEntry{
+					{
+						FqdnSource: &api.DNSEntry_FqdnLiteral{
+							FqdnLiteral: evetest.GetControllerHostname(),
+						},
+						IpSource: &api.DNSEntry_IpLiteral{
+							IpLiteral: evetest.GetControllerIPv4().String(),
+						},
+					},
+					{
+						FqdnSource: &api.DNSEntry_EndpointFqdnRef{
+							EndpointFqdnRef: "http-server",
+						},
+						IpSource: &api.DNSEntry_EndpointIpRef{
+							EndpointIpRef: &api.EndpointIPRef{
+								LogicalLabel: "http-server",
+								IpVersion:    api.IPVersion_IPV4,
+							},
+						},
+					},
+				},
+				UpstreamServers:  []string{"8.8.8.8", "1.1.1.1"},
+				StaticEntriesTtl: 60,
+			},
 		},
 		HttpServers: []*api.HTTPServer{
 			{

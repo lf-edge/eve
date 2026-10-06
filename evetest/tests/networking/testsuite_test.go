@@ -338,6 +338,10 @@ func TestDeviceConnectivitySuite(test *testing.T) {
 //     around IfInstanceID: a multi-port Switch NI plus a single-port Switch NI
 //     on a VLAN sub-interface, with ports live-switched between DHCP/static/no-IP;
 //     app connectivity through both NIs must survive every change.
+//   - TestLocalNIUplinkFlap -- a Local NI's own uplink port flaps (put
+//     down, address cleared, then brought back up with a changed advertised
+//     DNS server); its dnsmasq instance must not restart and a connected
+//     app must keep its DHCP-assigned IP throughout.
 func TestApplicationConnectivitySuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
@@ -444,6 +448,9 @@ func TestApplicationConnectivitySuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestSwitchNIPortConfigRace,
+		},
+		evetest.TestCase{
+			Test: TestLocalNIUplinkFlap,
 		},
 	)
 }
