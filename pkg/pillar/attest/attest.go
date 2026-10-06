@@ -125,6 +125,9 @@ type Context struct {
 	retryTime             time.Duration //in seconds
 	restartRequestPending bool
 	watchdogTickerTime    time.Duration //in seconds
+	// escrowDataRecvd records escrow data published while an escrow send was
+	// already in flight, so that send's EventNoEscrow retries it.
+	escrowDataRecvd bool
 	//OpaqueCtx for consumer module's own use
 	OpaqueCtx interface{}
 	types.ErrorAndTime
@@ -327,6 +330,7 @@ func handleInternalQuoteRecvdAtInternalQuoteWait(ctx *Context) error {
 func handleAttestSuccessfulAtAttestWait(ctx *Context) error {
 	ctx.log.Trace("handleAttestSuccessfulAtAttestWait")
 	setStateAtomic(ctx, types.StateAttestEscrowWait)
+	ctx.escrowDataRecvd = false
 	err := verifier.SendAttestEscrow(ctx)
 	if err == nil {
 		triggerSelfEvent(ctx, EventAttestEscrowRecorded)
@@ -415,6 +419,11 @@ func handleInternalEscrowRecvdAtAnyOther(ctx *Context) error {
 		ctx.log.Errorf("[ATTEST] Unexpected wildcard handler in (%s, %s)",
 			ctx.state.String(), ctx.event.String())
 		return handleInternalEscrowRecvdAtInternalEscrowWait(ctx)
+	case types.StateAttestEscrowWait:
+		// The send that failed for lack of escrow data has queued
+		// EventNoEscrow, which this event overtook.
+		ctx.escrowDataRecvd = true
+		return nil
 	default:
 		//no-op, since escrow data is already saved by caller
 		//we are not waiting for escrow data
@@ -424,6 +433,10 @@ func handleInternalEscrowRecvdAtAnyOther(ctx *Context) error {
 
 func handleNoEscrowAtAttestEscrowWait(ctx *Context) error {
 	ctx.log.Trace("handleNoEscrowAtAttestEscrowWait")
+	if ctx.escrowDataRecvd {
+		ctx.log.Noticef("[ATTEST] escrow data arrived during a failed send; resending")
+		return handleAttestSuccessfulAtAttestWait(ctx)
+	}
 	//Wait till we get escrow data published
 	setStateAtomic(ctx, types.StateInternalEscrowWait)
 	return nil
