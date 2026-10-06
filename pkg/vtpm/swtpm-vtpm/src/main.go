@@ -48,6 +48,9 @@ var (
 	m              sync.Mutex
 	log            *base.LogObject
 	instances      = make(map[uuid.UUID]*swtpmInstance)
+	// idLocks serializes launch/terminate/purge for a single id without blocking other ids
+	idMu    sync.Mutex
+	idLocks = make(map[uuid.UUID]*sync.Mutex)
 	// XXX : move the paths to types so we have everything EVE creates in one place.
 	// These are defined as vars to be able to mock them in tests
 	stateDir             = "/persist/swtpm"
@@ -84,16 +87,35 @@ func isAlive(pid int) bool {
 	return true
 }
 
+// lockID acquires the per-id lock and returns its unlock function.
+func lockID(id uuid.UUID) func() {
+	idMu.Lock()
+	l, ok := idLocks[id]
+	if !ok {
+		l = &sync.Mutex{}
+		idLocks[id] = l
+	}
+	idMu.Unlock()
+	l.Lock()
+	return l.Unlock
+}
+
 func cleanupFiles(uuid uuid.UUID) {
 	id := uuid.String()
 
-	if inst, ok := instances[uuid]; ok {
-		if inst.lf != nil {
-			inst.lf.stop()
-		}
+	// Drop the map entry under m, then do the slow file work and the 
+	// log-forwarder stop outside the lock.
+	m.Lock()
+	inst, ok := instances[uuid]
+	if ok {
 		delete(instances, uuid)
 		liveInstances--
 	}
+	m.Unlock()
+	if ok && inst.lf != nil {
+		inst.lf.stop()
+	}
+
 	os.RemoveAll(fmt.Sprintf(workDir, id))
 	os.Remove(fmt.Sprintf(swtpmCtrlSockPath, id))
 	os.Remove(fmt.Sprintf(swtpmPidPath, id))
@@ -290,16 +312,6 @@ func handleLaunch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// pids and liveInstances are shared, use a lock.
-	m.Lock()
-	defer m.Unlock()
-
-	if liveInstances >= maxInstances {
-		err := fmt.Sprintf("vTPM max number of SWTPM instances reached %d", liveInstances)
-		http.Error(w, err, http.StatusTooManyRequests)
-		return
-	}
-
 	reqID := r.URL.Query().Get("id")
 	id := uuid.FromStringOrNil(reqID)
 	if id == uuid.Nil {
@@ -307,11 +319,18 @@ func handleLaunch(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err, http.StatusBadRequest)
 		return
 	}
-	// If we have a record of SWTPM instance with the requested id,
-	// check if it's still alive. if it is alive, refuse to launch a new
-	// instance, even though for dir backend lock is always enabled,
-	// better be safe than sorry and not gamble with state corruption.
-	if inst, ok := instances[id]; ok {
+
+	// Serialize on this id so launch/terminate/purge for the same VM cannot
+	// interleave, while other VMs run in parallel.
+	unlock := lockID(id)
+	defer unlock()
+
+	// If we have a record of an SWTPM instance with this id and it is still
+	// alive, reuse it; otherwise drop the stale record.
+	m.Lock()
+	inst, ok := instances[id]
+	m.Unlock()
+	if ok {
 		pidPath := fmt.Sprintf(swtpmPidPath, id)
 		// if pid file does not exist, it means the SWTPM instance gracefully
 		// terminated and we can start a new one.
@@ -322,9 +341,6 @@ func handleLaunch(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, err, http.StatusExpectationFailed)
 				return
 			}
-
-			// if the SWTPM instance is still alive, we can move on. Maybe we should do a health check
-			// here too? but state should be already loaded in memory :-/
 			if isAlive(pid) {
 				log.Noticef("vTPM SWTPM instance with id %s is already running with pid %d", id, inst.pid)
 				w.WriteHeader(http.StatusOK)
@@ -339,10 +355,31 @@ func handleLaunch(w http.ResponseWriter, r *http.Request) {
 		if inst.lf != nil {
 			inst.lf.stop()
 		}
-
-		liveInstances--
+		m.Lock()
 		delete(instances, id)
+		liveInstances--
+		m.Unlock()
 	}
+
+	// Reserve a slot up front so concurrent launches for other ids honour the
+	// cap; roll it back on any failure below.
+	m.Lock()
+	if liveInstances >= maxInstances {
+		m.Unlock()
+		err := fmt.Sprintf("vTPM max number of SWTPM instances reached %d", liveInstances)
+		http.Error(w, err, http.StatusTooManyRequests)
+		return
+	}
+	liveInstances++
+	m.Unlock()
+	launched := false
+	defer func() {
+		if !launched {
+			m.Lock()
+			liveInstances--
+			m.Unlock()
+		}
+	}()
 
 	// Run SWTPM for the health check first, if there is no backup state or
 	// both normal state and backup are corrupted, we do a state reset with a warning.
@@ -407,9 +444,11 @@ func handleLaunch(w http.ResponseWriter, r *http.Request) {
 
 	log.Noticef("vTPM launched SWTPM instance with id: %s, pid: %d", id, pid)
 
-	// Send a success response.
+	// Record the instance (the slot was already reserved above).
+	m.Lock()
 	instances[id] = &swtpmInstance{pid: pid, lf: lf}
-	liveInstances++
+	m.Unlock()
+	launched = true
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -423,10 +462,6 @@ func handleTerminate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// pids and liveInstances is shared, take care of it.
-	m.Lock()
-	defer m.Unlock()
-
 	reqID := r.URL.Query().Get("id")
 	id := uuid.FromStringOrNil(reqID)
 	if id == uuid.Nil {
@@ -434,25 +469,31 @@ func handleTerminate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err, http.StatusBadRequest)
 		return
 	}
+
+	unlock := lockID(id)
+	defer unlock()
+
+	m.Lock()
 	inst, ok := instances[id]
 	if ok {
-		if err := syscall.Kill(inst.pid, syscall.SIGTERM); err != nil {
-			if err != syscall.ESRCH {
-				// This should not happen, but log it just in case.
-				log.Errorf("vTPM failed to kill SWTPM instance (terminate request): %v", err)
-			}
-		}
-
-		if inst.lf != nil {
-			inst.lf.stop()
-		}
-
 		delete(instances, id)
 		liveInstances--
-	} else {
+	}
+	m.Unlock()
+	if !ok {
 		err := fmt.Sprintf("vTPM terminate request failed, SWTPM instance with id %s not found", id)
 		http.Error(w, err, http.StatusNotFound)
 		return
+	}
+
+	if err := syscall.Kill(inst.pid, syscall.SIGTERM); err != nil {
+		if err != syscall.ESRCH {
+			// This should not happen, but log it just in case.
+			log.Errorf("vTPM failed to kill SWTPM instance (terminate request): %v", err)
+		}
+	}
+	if inst.lf != nil {
+		inst.lf.stop()
 	}
 
 	log.Noticef("vTPM terminated SWTPM instance with id: %s, pid: %d", id, inst.pid)
@@ -470,10 +511,6 @@ func handlePurge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// pids and liveInstances is shared, take care of it.
-	m.Lock()
-	defer m.Unlock()
-
 	reqID := r.URL.Query().Get("id")
 	id := uuid.FromStringOrNil(reqID)
 	if id == uuid.Nil {
@@ -482,11 +519,16 @@ func handlePurge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	unlock := lockID(id)
+	defer unlock()
+
 	// we actually expect the SWTPM to be terminated at this point, because qemu
 	// either sends CMD_SHUTDOWN through the control socket or in case of qemu
 	// crashing, SWTPM terminates itself when the control socket is closed since
 	// we run it with the "terminate" flag. but just in case send a term signal
+	m.Lock()
 	inst, ok := instances[id]
+	m.Unlock()
 	if ok {
 		if err := syscall.Kill(inst.pid, syscall.SIGTERM); err != nil {
 			if err != syscall.ESRCH {
@@ -494,15 +536,7 @@ func handlePurge(w http.ResponseWriter, r *http.Request) {
 				log.Errorf("failed to kill SWTPM instance (purge request): %v", err)
 			}
 		}
-
-		if inst.lf != nil {
-			inst.lf.stop()
-		}
-
 		log.Noticef("vTPM purged SWTPM instance with id: %s, pid: %d", id, inst.pid)
-
-		delete(instances, id)
-		liveInstances--
 	}
 
 	// clean up the files and send a success response.
