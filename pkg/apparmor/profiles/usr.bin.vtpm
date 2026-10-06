@@ -37,6 +37,9 @@ profile vtpm /usr/bin/vtpm {
     # allow reading upper limit backlog for listen(2) (golang)
     /proc/sys/net/core/somaxconn                            r,
 
+    # verify that a pid file still names this VM's swtpm before signalling it
+    owner /proc/[0-9]*/{exe,cmdline}                          r,
+
     # allow reading transparent hugepage size (golang)
     /sys/kernel/mm/transparent_hugepage/hpage_pmd_size      r,
 

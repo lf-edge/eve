@@ -21,6 +21,7 @@ import (
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/sys/unix"
 )
 
 const baseDir = "/tmp/swtpm/test"
@@ -48,7 +49,79 @@ func TestMain(m *testing.M) {
 
 	go startServing()
 	time.Sleep(1 * time.Second)
-	m.Run()
+	os.Exit(m.Run())
+}
+
+func TestSignalSwtpmRejectsForgedCommandLine(t *testing.T) {
+	id := generateUUID()
+	wantState := "dir=" + fmt.Sprintf(workDir, id.String()) + ",backup"
+	// A different executable can carry the same state argument. Checking argv
+	// alone would signal it as though it were this VM's swtpm.
+	cmd := exec.Command("/bin/sh", "-c", "while :; do sleep 1; done", "swtpm", wantState)
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	processFD, err := unix.PidfdOpen(cmd.Process.Pid, 0)
+	if err != nil {
+		cmd.Process.Kill()
+		cmd.Wait()
+		t.Fatal(err)
+	}
+	defer func() {
+		cmd.Process.Kill()
+		cmd.Wait()
+		unix.Close(processFD)
+	}()
+
+	fd, err := openVerifiedSwtpm(cmd.Process.Pid, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fd >= 0 {
+		unix.Close(fd)
+		t.Fatal("accepted a non-swtpm executable")
+	}
+	sent, err := signalSwtpm(cmd.Process.Pid, id)
+	if err != nil || sent {
+		t.Fatalf("signalSwtpm = (%v, %v), want (false, nil)", sent, err)
+	}
+	pollFD := []unix.PollFd{{Fd: int32(processFD), Events: unix.POLLIN}}
+	if n, err := unix.Poll(pollFD, 100); err != nil || n != 0 {
+		t.Fatalf("unrelated process exited after signal attempt: poll=%d, err=%v", n, err)
+	}
+}
+
+func TestOpenVerifiedSwtpm(t *testing.T) {
+	id := generateUUID()
+	isTPMAvailable = func() bool { return false }
+	if body, _, err := sendLaunchRequest(id); err != nil {
+		t.Fatalf("launch: %v: %s", err, body)
+	}
+	defer func() {
+		if body, _, err := sendPurgeRequest(id); err != nil {
+			t.Errorf("purge: %v: %s", err, body)
+		}
+	}()
+
+	m.Lock()
+	pid := instances[id].pid
+	m.Unlock()
+	fd, err := openVerifiedSwtpm(pid, id)
+	if err != nil || fd < 0 {
+		t.Fatalf("openVerifiedSwtpm(%d, %s) = (%d, %v)", pid, id, fd, err)
+	}
+	defer unix.Close(fd)
+	if err := unix.PidfdSendSignal(fd, 0, nil, 0); err != nil {
+		t.Fatalf("verified pidfd is not live: %v", err)
+	}
+	otherID := generateUUID()
+	otherFD, err := openVerifiedSwtpm(pid, otherID)
+	if err != nil || otherFD >= 0 {
+		if otherFD >= 0 {
+			unix.Close(otherFD)
+		}
+		t.Fatalf("accepted swtpm belonging to another VM: fd=%d, err=%v", otherFD, err)
+	}
 }
 
 func generateUUID() uuid.UUID {
