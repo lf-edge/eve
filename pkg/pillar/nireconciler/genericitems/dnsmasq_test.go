@@ -125,6 +125,15 @@ func createDnsmasqConfig(dnsmasq genericitems.Dnsmasq) string {
 	return buf.String()
 }
 
+func createDnsmasqOptsFile(dnsmasq genericitems.Dnsmasq) string {
+	var buf bytes.Buffer
+	err := configurator.CreateDnsmasqOptsFile(&buf, dnsmasq)
+	if err != nil {
+		panic(err)
+	}
+	return buf.String()
+}
+
 func TestCreateDnsmasqConfigWithDhcpRangeEnd(t *testing.T) {
 	t.Parallel()
 
@@ -143,27 +152,32 @@ bogus-priv
 neg-ttl=10
 dhcp-ttl=600
 dhcp-leasefile=/run/zedrouter/dnsmasq.leases/br0
-server=1.1.1.1@eth0
-server=141.1.1.1@eth0
-server=208.67.220.220@eth1
+servers-file=/run/zedrouter/dnsmasq.br0.servers
 no-resolv
 ipset=/zededa.com/ipv4.zededa.com,ipv6.zededa.com
 ipset=/example.com/ipv4.example.com,ipv6.example.com
+dhcp-optsfile=/run/zedrouter/dnsmasq.br0.opts
 pid-file=/run/zedrouter/dnsmasq.br0.pid
 interface=br0
 listen-address=10.0.0.1
 hostsdir=/run/zedrouter/hosts.br0
 dhcp-hostsdir=/run/zedrouter/dhcp-hosts.br0
-dhcp-option=option:dns-server,10.0.0.1,1.1.1.1
-dhcp-option=option:ntp-server,94.130.35.4,94.16.114.254
-dhcp-option=option:netmask,255.255.255.255
-dhcp-option=option:router,10.0.0.1
-dhcp-option=tag:endpoint,option:classless-static-route,10.0.0.1/32,0.0.0.0,10.0.0.0/24,10.0.0.1,192.168.1.0/24,10.0.0.1,172.30.0.0/16,10.0.0.1,0.0.0.0/0,10.0.0.1
-dhcp-option=tag:gateway-10-0-0-100,option:classless-static-route,10.0.0.1/32,0.0.0.0,10.0.0.0/24,10.0.0.1,192.168.1.0/24,10.0.0.1,0.0.0.0/0,10.0.0.1
 dhcp-range=10.0.0.2,10.0.0.123,255.255.255.0,60m
 `
 	if configExpected != config {
 		t.Fatalf("expected '%s', but got '%s'", configExpected, config)
+	}
+
+	optsFile := createDnsmasqOptsFile(dnsmasq)
+	optsFileExpected := `option:dns-server,10.0.0.1,1.1.1.1
+option:ntp-server,94.130.35.4,94.16.114.254
+option:netmask,255.255.255.255
+option:router,10.0.0.1
+tag:endpoint,option:classless-static-route,10.0.0.1/32,0.0.0.0,10.0.0.0/24,10.0.0.1,192.168.1.0/24,10.0.0.1,172.30.0.0/16,10.0.0.1,0.0.0.0/0,10.0.0.1
+tag:gateway-10-0-0-100,option:classless-static-route,10.0.0.1/32,0.0.0.0,10.0.0.0/24,10.0.0.1,192.168.1.0/24,10.0.0.1,0.0.0.0/0,10.0.0.1
+`
+	if optsFileExpected != optsFile {
+		t.Fatalf("expected '%s', but got '%s'", optsFileExpected, optsFile)
 	}
 }
 
@@ -190,14 +204,15 @@ func TestCreateDnsmasqConfigWithoutGateway(t *testing.T) {
 	dnsmasq := exampleDnsmasqParams()
 	dnsmasq.DHCPServer.WithDefaultRoute = false
 	config := createDnsmasqConfig(dnsmasq)
+	optsFile := createDnsmasqOptsFile(dnsmasq)
 
-	routerRex := "(?m)^dhcp-option=option:router$"
-	ok, err := regexp.MatchString(routerRex, config)
+	routerRex := "(?m)^option:router$"
+	ok, err := regexp.MatchString(routerRex, optsFile)
 	if err != nil {
 		panic(err)
 	}
 	if !ok {
-		t.Fatalf("expected to match '%s', but got '%s'", routerRex, config)
+		t.Fatalf("expected to match '%s', but got '%s'", routerRex, optsFile)
 	}
 
 	dhcpRangeRex := "(?m)^dhcp-range=10.0.0.2,10.0.0.123,255.255.255.0,60m$"
@@ -224,6 +239,66 @@ func TestCreateDnsmasqConfigWithDisabledAllOnesNetmask(t *testing.T) {
 	}
 	if !ok {
 		t.Fatalf("expected to match '%s', but got '%s'", dhcpRangeRex, config)
+	}
+}
+
+func TestNeedsRecreateIgnoresUpstreamServersChange(t *testing.T) {
+	t.Parallel()
+
+	oldDnsmasq := exampleDnsmasqParams()
+	newDnsmasq := exampleDnsmasqParams()
+	newDnsmasq.DNSServer.UpstreamServers = []genericitems.UpstreamDNSServer{
+		{
+			IPAddress: net.IP{9, 9, 9, 9},
+			Port:      genericitems.NetworkIf{IfName: "eth0"},
+		},
+	}
+	if configurator.NeedsRecreate(oldDnsmasq, newDnsmasq) {
+		t.Fatalf("a change to UpstreamServers alone must not require recreate " +
+			"(it is written to a separate file reloaded via SIGHUP)")
+	}
+}
+
+func TestNeedsRecreateIgnoresDHCPOptionsChange(t *testing.T) {
+	t.Parallel()
+
+	oldDnsmasq := exampleDnsmasqParams()
+	newDnsmasq := exampleDnsmasqParams()
+	newDnsmasq.DHCPServer.WithDefaultRoute = !oldDnsmasq.DHCPServer.WithDefaultRoute
+	newDnsmasq.DHCPServer.GatewayIP = net.IP{10, 0, 0, 9}
+	newDnsmasq.DHCPServer.DomainName = "other.domain"
+	newDnsmasq.DHCPServer.DNSServers = []net.IP{{8, 8, 8, 8}}
+	newDnsmasq.DHCPServer.NTPServers = nil
+	newDnsmasq.DHCPServer.PropagateRoutes = nil
+	newDnsmasq.DHCPServer.MTU = 9000
+	if configurator.NeedsRecreate(oldDnsmasq, newDnsmasq) {
+		t.Fatalf("a change to DHCP options alone (e.g. WithDefaultRoute flipping " +
+			"when a port's default route appears/disappears) must not require " +
+			"recreate (they are written to a separate dhcp-optsfile reloaded via SIGHUP)")
+	}
+}
+
+func TestNeedsRecreateOnSubnetChange(t *testing.T) {
+	t.Parallel()
+
+	oldDnsmasq := exampleDnsmasqParams()
+	newDnsmasq := exampleDnsmasqParams()
+	_, newSubnet, _ := net.ParseCIDR("10.0.1.0/24")
+	newDnsmasq.DHCPServer.Subnet = newSubnet
+	if !configurator.NeedsRecreate(oldDnsmasq, newDnsmasq) {
+		t.Fatalf("a change to Subnet must still require recreate (it affects " +
+			"dhcp-range, which dnsmasq only reads on start)")
+	}
+}
+
+func TestNeedsRecreateOnListenIPChange(t *testing.T) {
+	t.Parallel()
+
+	oldDnsmasq := exampleDnsmasqParams()
+	newDnsmasq := exampleDnsmasqParams()
+	newDnsmasq.DNSServer.ListenIP = net.IP{10, 0, 0, 2}
+	if !configurator.NeedsRecreate(oldDnsmasq, newDnsmasq) {
+		t.Fatalf("a change to ListenIP must still require recreate")
 	}
 }
 
