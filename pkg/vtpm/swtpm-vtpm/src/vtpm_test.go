@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -169,6 +170,241 @@ func TestWriteSwtpmKeyPermissions(t *testing.T) {
 			t.Fatal("expected an error when stale path cannot be removed")
 		}
 	})
+}
+
+func TestWriteSwtpmKeyDoesNotFollowSymlink(t *testing.T) {
+	dir := t.TempDir()
+	victim := filepath.Join(dir, "victim")
+	keyPath := filepath.Join(dir, "key")
+	if err := os.WriteFile(victim, []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(victim, keyPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeSwtpmKey(keyPath, []byte("secret")); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(victim)
+	if err != nil || string(data) != "keep" {
+		t.Fatalf("symlink target changed: %q, err %v", data, err)
+	}
+}
+
+func TestStateDirectoryIsPrivate(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "state")
+	if err := os.Mkdir(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := makeDirs(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0700 {
+		t.Fatalf("state directory mode is %o, want 0700", info.Mode().Perm())
+	}
+}
+
+func TestIDLocksAreReclaimed(t *testing.T) {
+	id := generateUUID()
+	release := lockID(id)
+	release()
+	idMu.Lock()
+	_, exists := idLocks[id]
+	idMu.Unlock()
+	if exists {
+		t.Fatal("unused per-ID lock was retained")
+	}
+}
+
+func TestEncryptedStateResetsWithWrongKey(t *testing.T) {
+	id := generateUUID()
+	oldTPM, oldKey := isTPMAvailable, getEncryptionKey
+	t.Cleanup(func() {
+		isTPMAvailable, getEncryptionKey = oldTPM, oldKey
+		_, _, _ = sendPurgeRequest(id)
+		_ = cleanupFiles(id)
+		corruptDirs, _ := filepath.Glob(fmt.Sprintf(workDir, id.String()) + ".corrupt-*")
+		for _, dir := range corruptDirs {
+			_ = os.RemoveAll(dir)
+		}
+	})
+	isTPMAvailable = func() bool { return true }
+	key := make([]byte, 32)
+	getEncryptionKey = func() ([]byte, error) { return key, nil }
+	if body, _, err := sendLaunchRequest(id); err != nil {
+		t.Fatalf("launch: %v: %s", err, body)
+	}
+	if body, _, err := sendTerminateRequest(id); err != nil {
+		t.Fatalf("terminate: %v: %s", err, body)
+	}
+	state := fmt.Sprintf(workDir, id.String())
+	marker := fmt.Sprintf(stateIsEncryptedPath, id.String())
+	original, err := os.ReadFile(filepath.Join(state, "tpm2-00.permall"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	key[0] = 1
+	if body, _, err := sendLaunchRequest(id); err != nil {
+		t.Fatalf("wrong key launch did not reset state: %v: %s", err, body)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("fresh state is not marked encrypted: %v", err)
+	}
+	if _, err := os.Stat(state); err != nil {
+		t.Fatalf("fresh state missing: %v", err)
+	}
+	corruptDirs, err := filepath.Glob(state + ".corrupt-*")
+	if err != nil || len(corruptDirs) != 1 {
+		t.Fatalf("expected one preserved old state, got %v: %v", corruptDirs, err)
+	}
+	preserved, err := os.ReadFile(filepath.Join(corruptDirs[0], "tpm2-00.permall"))
+	if err != nil || string(preserved) != string(original) {
+		t.Fatalf("old encrypted state was not preserved: err=%v", err)
+	}
+}
+
+func TestPurgeWaitsForSwtpmExit(t *testing.T) {
+	id := generateUUID()
+	oldTPM := isTPMAvailable
+	t.Cleanup(func() { isTPMAvailable = oldTPM; _ = cleanupFiles(id) })
+	isTPMAvailable = func() bool { return false }
+	if body, _, err := sendLaunchRequest(id); err != nil {
+		t.Fatalf("launch: %v: %s", err, body)
+	}
+	ctrlInfo, err := os.Stat(fmt.Sprintf(swtpmCtrlSockPath, id.String()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ctrlInfo.Mode().Perm() != 0600 {
+		t.Fatalf("swtpm control socket mode is %o, want 0600", ctrlInfo.Mode().Perm())
+	}
+	pid, err := readPidFile(fmt.Sprintf(swtpmPidPath, id.String()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body, _, err := sendPurgeRequest(id); err != nil {
+		t.Fatalf("purge: %v: %s", err, body)
+	}
+	if isSwtpm(pid, id) {
+		t.Fatal("purge returned while swtpm was still running")
+	}
+}
+
+func TestPurgePreservesStateWhenSwtpmCannotStop(t *testing.T) {
+	id := generateUUID()
+	oldTPM, oldWait := isTPMAvailable, maxPidWaitTime
+	t.Cleanup(func() { isTPMAvailable, maxPidWaitTime = oldTPM, oldWait; _ = cleanupFiles(id) })
+	isTPMAvailable = func() bool { return false }
+	if body, _, err := sendLaunchRequest(id); err != nil {
+		t.Fatalf("launch: %v: %s", err, body)
+	}
+	pid, err := readPidFile(fmt.Sprintf(swtpmPidPath, id.String()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Kill(pid, syscall.SIGSTOP); err != nil {
+		t.Fatal(err)
+	}
+	defer syscall.Kill(pid, syscall.SIGCONT)
+	maxPidWaitTime = 1
+	if body, status, err := sendPurgeRequest(id); err == nil || status != http.StatusFailedDependency {
+		t.Fatalf("purge of stopped swtpm: status=%d err=%v body=%s", status, err, body)
+	}
+	if _, err := os.Stat(fmt.Sprintf(workDir, id.String())); err != nil {
+		t.Fatalf("state removed while swtpm was still alive: %v", err)
+	}
+	if err := syscall.Kill(pid, syscall.SIGCONT); err != nil {
+		t.Fatal(err)
+	}
+	maxPidWaitTime = oldWait
+	if body, _, err := sendPurgeRequest(id); err != nil {
+		t.Fatalf("retry purge: %v: %s", err, body)
+	}
+}
+
+func TestPurgeReportsCleanupFailure(t *testing.T) {
+	id := generateUUID()
+	oldCtrl := swtpmCtrlSockPath
+	root := t.TempDir()
+	swtpmCtrlSockPath = filepath.Join(root, "%s.ctrl")
+	t.Cleanup(func() { swtpmCtrlSockPath = oldCtrl })
+	blocked := fmt.Sprintf(swtpmCtrlSockPath, id.String())
+	if err := os.Mkdir(blocked, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(blocked, "keep"), []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	handlePurge(w, httptest.NewRequest(http.MethodGet, "/purge?id="+id.String(), nil))
+	if w.Code != http.StatusFailedDependency {
+		t.Fatalf("purge returned %d after cleanup failure: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCheckSwtpmStateReplies(t *testing.T) {
+	oldWork, oldCtrl, oldPid := workDir, swtpmCtrlSockPath, swtpmPidPath
+	dir := t.TempDir()
+	workDir = filepath.Join(dir, "state-%s")
+	swtpmCtrlSockPath = filepath.Join(dir, "%s.sock")
+	swtpmPidPath = filepath.Join(dir, "%s.pid")
+	t.Cleanup(func() { workDir, swtpmCtrlSockPath, swtpmPidPath = oldWork, oldCtrl, oldPid })
+	for _, tc := range []struct {
+		name    string
+		reply   []byte
+		bad     bool
+		wantErr bool
+	}{
+		{"fragmented success", []byte{0, 0, 0, 0}, false, false},
+		{"state failure", []byte{0, 0, 0, 1}, true, false},
+		{"short response", []byte{0, 0, 0}, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			id := generateUUID()
+			if err := os.MkdirAll(fmt.Sprintf(workDir, id.String()), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(fmt.Sprintf(swtpmPidPath, id.String()), []byte("123"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			ln, err := net.Listen("unix", fmt.Sprintf(swtpmCtrlSockPath, id.String()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer ln.Close()
+			done := make(chan error, 1)
+			go func() {
+				conn, err := ln.Accept()
+				if err != nil {
+					done <- err
+					return
+				}
+				defer conn.Close()
+				cmd := make([]byte, 8)
+				_, err = io.ReadFull(conn, cmd)
+				if err == nil {
+					for _, b := range tc.reply {
+						_, err = conn.Write([]byte{b})
+						if err != nil {
+							break
+						}
+					}
+				}
+				done <- err
+			}()
+			bad, err := checkSwtpmState(id)
+			if bad != tc.bad || (err != nil) != tc.wantErr {
+				t.Fatalf("bad=%v err=%v", bad, err)
+			}
+			if err := <-done; err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
 }
 
 func TestLogForwarderStopWithIdleFIFO(t *testing.T) {
@@ -751,12 +987,20 @@ func TestSwtpmStateBackupWithStateEncryption(t *testing.T) {
 		t.Fatalf("failed to write to file: %v", err)
 	}
 
-	// this should succeed since we reset the SWTPM state if both files are corrupted
+	// The failed encrypted state is set aside and a fresh instance starts.
 	b, _, err = sendLaunchRequest(id)
 	if err != nil {
 		t.Fatalf("failed to send request: %v, body : %s", err, b)
 	}
-	time.Sleep(1 * time.Second)
+	corruptDirs, err := filepath.Glob(fmt.Sprintf(workDir, id.String()) + ".corrupt-*")
+	if err != nil || len(corruptDirs) != 1 {
+		t.Fatalf("expected one preserved corrupt state, got %v: %v", corruptDirs, err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(corruptDirs[0]) })
+	preserved, err := os.ReadFile(filepath.Join(corruptDirs[0], "tpm2-00.permall"))
+	if err != nil || string(preserved) != "corrupted data" {
+		t.Fatalf("corrupt encrypted state was not preserved: %q, err %v", preserved, err)
+	}
 
 	b, _, err = sendPurgeRequest(id)
 	if err != nil {
