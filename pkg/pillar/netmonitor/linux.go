@@ -1218,8 +1218,10 @@ func (m *LinuxNetworkMonitor) watcher() {
 				Deleted: routeChange.Type == syscall.RTM_DELROUTE,
 			}
 			m.cacheLock.Lock()
-			if routeChange.Table == syscall.RT_TABLE_MAIN && routeChange.Dst == nil {
-				// The set of default gateways have changed -> remove cached entries.
+			if routeChange.Table == syscall.RT_TABLE_MAIN && event.IsDefaultRoute() {
+				// Default routes no longer have a nil Dst since netlink v1.2.1
+				// (see GetInterfaceDefaultGWs below), so IsDefaultRoute() must be
+				// used here instead of comparing Dst to nil directly.
 				delete(m.ifIndexToGWs, routeChange.LinkIndex)
 			}
 			m.cacheLock.Unlock()
