@@ -97,18 +97,23 @@ func (d DHCPServer) String() string {
 		d.PropagateRoutes, d.MTU)
 }
 
-// Equal compares two DHCPServer instances
-func (d DHCPServer) Equal(d2 DHCPServer, withStaticEntries bool) bool {
+// Equal compares two DHCPServer instances.
+func (d DHCPServer) Equal(d2 DHCPServer, withStaticEntries, withDHCPOptions bool) bool {
 	return netutils.EqualIPNets(d.Subnet, d2.Subnet) &&
 		netutils.EqualIPs(d.IPRange.FromIP, d2.IPRange.FromIP) &&
 		netutils.EqualIPs(d.IPRange.ToIP, d2.IPRange.ToIP) &&
-		netutils.EqualIPs(d.GatewayIP, d2.GatewayIP) &&
+		(!withDHCPOptions || d.equalDHCPOptions(d2)) &&
+		(!withStaticEntries ||
+			generics.EqualSetsFn(d.StaticEntries, d2.StaticEntries, equalMACToIP))
+}
+
+// equalDHCPOptions compares the fields gated by Equal's withDHCPOptions.
+func (d DHCPServer) equalDHCPOptions(d2 DHCPServer) bool {
+	return netutils.EqualIPs(d.GatewayIP, d2.GatewayIP) &&
 		d.WithDefaultRoute == d2.WithDefaultRoute &&
 		d.DomainName == d2.DomainName &&
 		generics.EqualSetsFn(d.DNSServers, d2.DNSServers, netutils.EqualIPs) &&
 		generics.EqualSetsFn(d.NTPServers, d2.NTPServers, netutils.EqualIPs) &&
-		(!withStaticEntries ||
-			generics.EqualSetsFn(d.StaticEntries, d2.StaticEntries, equalMACToIP)) &&
 		generics.EqualSetsFn(d.PropagateRoutes, d2.PropagateRoutes, EqualIPRoutes) &&
 		d.MTU == d2.MTU
 }
@@ -153,10 +158,11 @@ func (d DNSServer) String() string {
 		d.ListenIP, d.UpstreamServers, d.StaticEntries, d.LinuxIPSets)
 }
 
-// Equal compares two DNSServer instances
-func (d DNSServer) Equal(d2 DNSServer, withStaticEntries bool) bool {
+// Equal compares two DNSServer instances.
+func (d DNSServer) Equal(d2 DNSServer, withStaticEntries, withUpstreamServers bool) bool {
 	return netutils.EqualIPs(d.ListenIP, d2.ListenIP) &&
-		generics.EqualSetsFn(d.UpstreamServers, d2.UpstreamServers, equalUpstreamDNSServer) &&
+		(!withUpstreamServers ||
+			generics.EqualSetsFn(d.UpstreamServers, d2.UpstreamServers, equalUpstreamDNSServer)) &&
 		generics.EqualSetsFn(d.LinuxIPSets, d2.LinuxIPSets, equalLinuxIPSet) &&
 		(!withStaticEntries ||
 			generics.EqualSetsFn(d.StaticEntries, d2.StaticEntries, equalHostnameToIP))
@@ -261,8 +267,8 @@ func (d Dnsmasq) Equal(other dg.Item) bool {
 	d2 := other.(Dnsmasq)
 	return d.ForNI == d2.ForNI &&
 		d.ListenIf == d2.ListenIf &&
-		d.DNSServer.Equal(d2.DNSServer, true) &&
-		d.DHCPServer.Equal(d2.DHCPServer, true)
+		d.DNSServer.Equal(d2.DNSServer, true, true) &&
+		d.DHCPServer.Equal(d2.DHCPServer, true, true)
 }
 
 // External returns false.
@@ -362,6 +368,12 @@ func (c *DnsmasqConfigurator) Create(ctx context.Context, item dg.Item) error {
 	if err := c.createDnsmasqConfigFile(dnsmasq); err != nil {
 		return err
 	}
+	if err := c.writeDnsmasqServersFile(dnsmasq); err != nil {
+		return err
+	}
+	if err := c.writeDnsmasqOptsFile(dnsmasq); err != nil {
+		return err
+	}
 	if err := fileutils.EnsureDir(c.dnsmasqDHCPHostsDir(dnsmasq.Name())); err != nil {
 		c.Log.Error(err)
 		return err
@@ -393,13 +405,15 @@ func (c *DnsmasqConfigurator) Create(ctx context.Context, item dg.Item) error {
 	return nil
 }
 
-// Modify applies host-file changes. Pure additions (new app, no app removed
-// and no app re-assigned a different IP) are reloaded with SIGHUP. If any
-// DHCP host disappeared or changed IP we must also evict the matching lease
-// from dnsmasq's in-memory state, otherwise the IP stays reserved for the
-// old MAC and a future app trying to take that IP gets a "not using
-// configured address" fallback. SIGHUP does not reload leases (it only
-// reloads dhcp-host files and updates hostnames on existing leases), and
+// Modify rewrites the servers file (upstream DNS servers, e.g. after a port's
+// DNS servers changed), the dhcp-optsfile (e.g. after a port's default route
+// appeared/disappeared) and applies host-file changes. Pure additions (new
+// app, no app removed and no app re-assigned a different IP) are reloaded
+// with SIGHUP. If any DHCP host disappeared or changed IP we must also evict
+// the matching lease from dnsmasq's in-memory state, otherwise the IP stays
+// reserved for the old MAC and a future app trying to take that IP gets a
+// "not using configured address" fallback. SIGHUP does not reload leases (it
+// only reloads dhcp-host files and updates hostnames on existing leases), and
 // dhcp_release cannot reach our dnsmasq from the host netns (see
 // restartToPruneLeases), so in that case we rewrite the lease file without
 // the stale entries and restart dnsmasq.
@@ -411,6 +425,17 @@ func (c *DnsmasqConfigurator) Modify(ctx context.Context, oldItem, newItem dg.It
 	newDnsmasq, isDnsmasq := newItem.(Dnsmasq)
 	if !isDnsmasq {
 		return fmt.Errorf("invalid item type %T, expected Dnsmasq", newItem)
+	}
+	if !generics.EqualSetsFn(oldDnsmasq.DNSServer.UpstreamServers,
+		newDnsmasq.DNSServer.UpstreamServers, equalUpstreamDNSServer) {
+		if err := c.writeDnsmasqServersFile(newDnsmasq); err != nil {
+			return err
+		}
+	}
+	if !oldDnsmasq.DHCPServer.equalDHCPOptions(newDnsmasq.DHCPServer) {
+		if err := c.writeDnsmasqOptsFile(newDnsmasq); err != nil {
+			return err
+		}
 	}
 	obsoleteDHCPHosts, newDHCPHosts := generics.DiffSetsFn(
 		oldDnsmasq.DHCPServer.StaticEntries, newDnsmasq.DHCPServer.StaticEntries,
@@ -537,6 +562,8 @@ func (c *DnsmasqConfigurator) Delete(ctx context.Context, item dg.Item) error {
 		if err == nil {
 			// Ignore errors from here.
 			_ = c.removeDnsmasqConfigFile(dnsmasq.Name())
+			_ = c.removeDnsmasqServersFile(dnsmasq.Name())
+			_ = c.removeDnsmasqOptsFile(dnsmasq.Name())
 			_ = c.removeDnsmasqLeaseFile(dnsmasq.ListenIf.IfName)
 			_ = c.removeDnsmasqPidFile(dnsmasq.Name())
 			_ = c.removeDnsmasqDHCPHostDir(dnsmasq.Name())
@@ -547,7 +574,10 @@ func (c *DnsmasqConfigurator) Delete(ctx context.Context, item dg.Item) error {
 	return nil
 }
 
-// NeedsRecreate returns false if only DHCP/DNS hosts files have changed.
+// NeedsRecreate returns false if only DHCP/DNS hosts files, the upstream DNS
+// server list (UpstreamServers, written to a separate servers file re-read
+// on SIGHUP) or the DHCP options gated by DHCPServer.Equal's withDHCPOptions
+// (written to a separate dhcp-optsfile re-read on SIGHUP) have changed.
 func (c *DnsmasqConfigurator) NeedsRecreate(oldItem, newItem dg.Item) (recreate bool) {
 	oldDnsmasq, isDnsmasq := oldItem.(Dnsmasq)
 	if !isDnsmasq {
@@ -559,8 +589,8 @@ func (c *DnsmasqConfigurator) NeedsRecreate(oldItem, newItem dg.Item) (recreate 
 	}
 	return oldDnsmasq.ForNI != newDnsmasq.ForNI ||
 		oldDnsmasq.ListenIf != newDnsmasq.ListenIf ||
-		!oldDnsmasq.DNSServer.Equal(newDnsmasq.DNSServer, false) ||
-		!oldDnsmasq.DHCPServer.Equal(newDnsmasq.DHCPServer, false)
+		!oldDnsmasq.DNSServer.Equal(newDnsmasq.DNSServer, false, false) ||
+		!oldDnsmasq.DHCPServer.Equal(newDnsmasq.DHCPServer, false, false)
 }
 
 func (c *DnsmasqConfigurator) dnsmasqConfigPath(instanceName string) string {
@@ -569,6 +599,22 @@ func (c *DnsmasqConfigurator) dnsmasqConfigPath(instanceName string) string {
 
 func (c *DnsmasqConfigurator) dnsmasqPidFile(instanceName string) string {
 	return filepath.Join(zedrouterRunDir, "dnsmasq."+instanceName+".pid")
+}
+
+// dnsmasqServersFile returns the path to the --servers-file, which contains
+// all server= entries and is re-read on SIGHUP, allowing the upstream DNS
+// server list to change without restarting dnsmasq.
+func (c *DnsmasqConfigurator) dnsmasqServersFile(instanceName string) string {
+	return filepath.Join(zedrouterRunDir, "dnsmasq."+instanceName+".servers")
+}
+
+// dnsmasqOptsFile returns the path to the --dhcp-optsfile, which contains
+// all dhcp-option= entries and is re-read on SIGHUP, allowing DHCP options
+// (e.g. the router/classless-static-route options, which depend on whether
+// the port currently has a default route) to change without restarting
+// dnsmasq.
+func (c *DnsmasqConfigurator) dnsmasqOptsFile(instanceName string) string {
+	return filepath.Join(zedrouterRunDir, "dnsmasq."+instanceName+".opts")
 }
 
 func (c *DnsmasqConfigurator) dnsmasqDHCPHostsDir(instanceName string) string {
@@ -591,7 +637,27 @@ func (c *DnsmasqConfigurator) createDnsmasqConfigFile(dnsmasq Dnsmasq) error {
 	return c.CreateDnsmasqConfig(file, dnsmasq)
 }
 
-// CreateDnsmasqConfig builds configuration for dnsmasq and writes it to the given buffer.
+// dnsmasqIsIPv6AndNetmask returns whether dnsmasq listens on an IPv6
+// address, and the IPv4 netmask string derived from DHCPServer.Subnet
+// (defaulting to a /24 when Subnet is unset). Shared by CreateDnsmasqConfig
+// (dhcp-range) and CreateDnsmasqOptsFile (the netmask option and static
+// route building).
+func (c *DnsmasqConfigurator) dnsmasqIsIPv6AndNetmask(dnsmasq Dnsmasq) (isIPv6 bool, ipv4Netmask string) {
+	ipv4Netmask = "255.255.255.0" // Default unless there is a Subnet
+	if listenIP := dnsmasq.DNSServer.ListenIP; listenIP != nil {
+		isIPv6 = listenIP.To4() == nil
+	}
+	if subnet := dnsmasq.DHCPServer.Subnet; subnet != nil {
+		ipv4Netmask = net.IP(subnet.Mask).String()
+	}
+	return isIPv6, ipv4Netmask
+}
+
+// CreateDnsmasqConfig builds the dnsmasq directives that can only take
+// effect by (re)starting the process: interface/listen binding, file paths
+// and dhcp-range (the IP pool, fixed by Subnet/IPRange). Per-client DHCP
+// options (dhcp-option=...) go into a separate dhcp-optsfile instead,
+// re-read on SIGHUP; see CreateDnsmasqOptsFile.
 // The method is exported just to be exercised by unit tests.
 func (c *DnsmasqConfigurator) CreateDnsmasqConfig(buffer io.Writer, dnsmasq Dnsmasq) error {
 	writeErr := func(err error) error {
@@ -625,15 +691,11 @@ func (c *DnsmasqConfigurator) CreateDnsmasqConfig(buffer io.Writer, dnsmasq Dnsm
 		return writeErr(err)
 	}
 
-	// Decide where dnsmasq should send DNS requests upstream.
-	// If we have no port associated with the network instance (air-gapped),
-	// then this is nowhere.
-	for _, srv := range dnsmasq.DNSServer.UpstreamServers {
-		_, err := io.WriteString(buffer,
-			fmt.Sprintf("server=%s@%s\n", srv.IPAddress, srv.Port.IfName))
-		if err != nil {
-			return writeErr(err)
-		}
+	// Upstream DNS servers (server= entries) are in a separate file re-read
+	// on SIGHUP; see writeDnsmasqServersFile.
+	if _, err := io.WriteString(buffer,
+		fmt.Sprintf("servers-file=%s\n", c.dnsmasqServersFile(dnsmasq.Name()))); err != nil {
+		return writeErr(err)
 	}
 	if _, err := io.WriteString(buffer, "no-resolv\n"); err != nil {
 		return writeErr(err)
@@ -648,6 +710,13 @@ func (c *DnsmasqConfigurator) CreateDnsmasqConfig(buffer io.Writer, dnsmasq Dnsm
 		}
 	}
 
+	// Per-client DHCP options (dhcp-option=...) are in a separate file
+	// re-read on SIGHUP; see writeDnsmasqOptsFile.
+	if _, err := io.WriteString(buffer,
+		fmt.Sprintf("dhcp-optsfile=%s\n", c.dnsmasqOptsFile(dnsmasq.Name()))); err != nil {
+		return writeErr(err)
+	}
+
 	pidFile := c.dnsmasqPidFile(dnsmasq.Name())
 	if _, err := io.WriteString(buffer,
 		fmt.Sprintf("pid-file=%s\n", pidFile)); err != nil {
@@ -658,10 +727,7 @@ func (c *DnsmasqConfigurator) CreateDnsmasqConfig(buffer io.Writer, dnsmasq Dnsm
 		fmt.Sprintf("interface=%s\n", dnsmasq.ListenIf.IfName)); err != nil {
 		return writeErr(err)
 	}
-	isIPv6 := false
-	listenIP := dnsmasq.DNSServer.ListenIP
-	if listenIP != nil {
-		isIPv6 = listenIP.To4() == nil
+	if listenIP := dnsmasq.DNSServer.ListenIP; listenIP != nil {
 		if _, err := io.WriteString(buffer,
 			fmt.Sprintf("listen-address=%s\n", listenIP)); err != nil {
 			return writeErr(err)
@@ -681,16 +747,51 @@ func (c *DnsmasqConfigurator) CreateDnsmasqConfig(buffer io.Writer, dnsmasq Dnsm
 		return writeErr(err)
 	}
 
+	isIPv6, ipv4Netmask := c.dnsmasqIsIPv6AndNetmask(dnsmasq)
+	if isIPv6 {
+		if _, err := io.WriteString(buffer, "dhcp-range=::static,0,60m\n"); err != nil {
+			return writeErr(err)
+		}
+	} else {
+		dhcpRange, err := c.CreateDHCPv4RangeConfig(
+			dnsmasq.DHCPServer.IPRange.FromIP, dnsmasq.DHCPServer.IPRange.ToIP)
+		if err != nil {
+			return err
+		}
+		if _, err := io.WriteString(buffer, fmt.Sprintf("dhcp-range=%s,%s,60m\n",
+			dhcpRange, ipv4Netmask)); err != nil {
+			return writeErr(err)
+		}
+	}
+	return nil
+}
+
+// CreateDnsmasqOptsFile builds the per-client DHCP options (domain name,
+// DNS/NTP servers announced via DHCP, netmask, router/classless-static-route,
+// MTU) read from --dhcp-optsfile. Unlike CreateDnsmasqConfig, this file is
+// re-read by dnsmasq on SIGHUP, so e.g. a port's default route
+// appearing/disappearing (DHCPServer.WithDefaultRoute) does not require
+// restarting dnsmasq. Each line has the same format as the value of a
+// dhcp-option= directive, without the "dhcp-option=" prefix.
+// The method is exported just to be exercised by unit tests.
+func (c *DnsmasqConfigurator) CreateDnsmasqOptsFile(buffer io.Writer, dnsmasq Dnsmasq) error {
+	writeErr := func(err error) error {
+		err = fmt.Errorf("failed to write dnsmasq opts file: %w", err)
+		c.Log.Error(err)
+		return err
+	}
+	isIPv6, ipv4Netmask := c.dnsmasqIsIPv6AndNetmask(dnsmasq)
+
 	if dnsmasq.DHCPServer.DomainName != "" {
 		if isIPv6 {
 			if _, err := io.WriteString(buffer,
-				fmt.Sprintf("dhcp-option=option:domain-search,%s\n",
+				fmt.Sprintf("option:domain-search,%s\n",
 					dnsmasq.DHCPServer.DomainName)); err != nil {
 				return writeErr(err)
 			}
 		} else {
 			if _, err := io.WriteString(buffer,
-				fmt.Sprintf("dhcp-option=option:domain-name,%s\n",
+				fmt.Sprintf("option:domain-name,%s\n",
 					dnsmasq.DHCPServer.DomainName)); err != nil {
 				return writeErr(err)
 			}
@@ -703,7 +804,7 @@ func (c *DnsmasqConfigurator) CreateDnsmasqConfig(buffer io.Writer, dnsmasq Dnsm
 	}
 	if len(dnsSrvList) > 0 {
 		if _, err := io.WriteString(buffer,
-			fmt.Sprintf("dhcp-option=option:dns-server,%s\n",
+			fmt.Sprintf("option:dns-server,%s\n",
 				strings.Join(dnsSrvList, ","))); err != nil {
 			return writeErr(err)
 		}
@@ -715,20 +816,17 @@ func (c *DnsmasqConfigurator) CreateDnsmasqConfig(buffer io.Writer, dnsmasq Dnsm
 	}
 	if len(ntpSrvList) != 0 {
 		if _, err := io.WriteString(buffer,
-			fmt.Sprintf("dhcp-option=option:ntp-server,%s\n",
+			fmt.Sprintf("option:ntp-server,%s\n",
 				strings.Join(ntpSrvList, ","))); err != nil {
 			return writeErr(err)
 		}
 	}
 
 	gatewayIP := dnsmasq.DHCPServer.GatewayIP
-	ipv4Netmask := "255.255.255.0" // Default unless there is a Subnet
 	subnet := dnsmasq.DHCPServer.Subnet
 	if subnet != nil {
-		ipv4Netmask = net.IP(subnet.Mask).String()
-		altIPv4Netmask := ipv4Netmask
 		if _, err := io.WriteString(buffer,
-			fmt.Sprintf("dhcp-option=option:netmask,%s\n", altIPv4Netmask)); err != nil {
+			fmt.Sprintf("option:netmask,%s\n", ipv4Netmask)); err != nil {
 			return writeErr(err)
 		}
 	}
@@ -750,7 +848,7 @@ func (c *DnsmasqConfigurator) CreateDnsmasqConfig(buffer io.Writer, dnsmasq Dnsm
 		// XXX IPv6 needs to be handled in radvd.
 		if !isIPv6 {
 			if _, err := io.WriteString(buffer,
-				fmt.Sprintf("dhcp-option=option:router,%s\n",
+				fmt.Sprintf("option:router,%s\n",
 					dnsmasq.DHCPServer.GatewayIP)); err != nil {
 				return writeErr(err)
 			}
@@ -770,16 +868,14 @@ func (c *DnsmasqConfigurator) CreateDnsmasqConfig(buffer io.Writer, dnsmasq Dnsm
 		}
 	} else {
 		if !isIPv6 {
-			if _, err := io.WriteString(buffer,
-				fmt.Sprintf("dhcp-option=option:router\n")); err != nil {
+			if _, err := io.WriteString(buffer, "option:router\n"); err != nil {
 				return writeErr(err)
 			}
 		}
 		if len(dnsSrvList) == 0 {
 			// Handle isolated network by making sure we are not a DNS server.
 			// Can be overridden with the DNSServers option processed above.
-			if _, err := io.WriteString(buffer,
-				fmt.Sprintf("dhcp-option=option:dns-server\n")); err != nil {
+			if _, err := io.WriteString(buffer, "option:dns-server\n"); err != nil {
 				return writeErr(err)
 			}
 		}
@@ -798,7 +894,7 @@ func (c *DnsmasqConfigurator) CreateDnsmasqConfig(buffer io.Writer, dnsmasq Dnsm
 	appGateways = generics.FilterDuplicatesFn(appGateways, netutils.EqualIPs)
 	if len(staticRoutes) > 0 {
 		if _, err := io.WriteString(buffer,
-			fmt.Sprintf("dhcp-option=tag:%s,option:classless-static-route,%s\n",
+			fmt.Sprintf("tag:%s,option:classless-static-route,%s\n",
 				endpointTag, c.formatRoutesForConfig(staticRoutes))); err != nil {
 			return writeErr(err)
 		}
@@ -811,33 +907,17 @@ func (c *DnsmasqConfigurator) CreateDnsmasqConfig(buffer io.Writer, dnsmasq Dnsm
 		gwRoutes := generics.FilterList(staticRoutes, isRouteValid)
 		if len(gwRoutes) > 0 {
 			if _, err := io.WriteString(buffer,
-				fmt.Sprintf("dhcp-option=tag:%s,option:classless-static-route,%s\n",
+				fmt.Sprintf("tag:%s,option:classless-static-route,%s\n",
 					tag, c.formatRoutesForConfig(gwRoutes))); err != nil {
 				return writeErr(err)
 			}
 		}
 	}
 
-	if isIPv6 {
-		if _, err := io.WriteString(buffer, "dhcp-range=::static,0,60m\n"); err != nil {
-			return writeErr(err)
-		}
-	} else {
-		dhcpRange, err := c.CreateDHCPv4RangeConfig(
-			dnsmasq.DHCPServer.IPRange.FromIP, dnsmasq.DHCPServer.IPRange.ToIP)
-		if err != nil {
-			return err
-		}
-		if _, err := io.WriteString(buffer, fmt.Sprintf("dhcp-range=%s,%s,60m\n",
-			dhcpRange, ipv4Netmask)); err != nil {
-			return writeErr(err)
-		}
-	}
-
 	// Propagate MTU to applications.
 	if dnsmasq.DHCPServer.MTU != 0 {
 		_, err := io.WriteString(buffer,
-			fmt.Sprintf("dhcp-option=26,%d\n", dnsmasq.DHCPServer.MTU))
+			fmt.Sprintf("26,%d\n", dnsmasq.DHCPServer.MTU))
 		if err != nil {
 			return writeErr(err)
 		}
@@ -865,6 +945,55 @@ func (c *DnsmasqConfigurator) CreateDHCPv4RangeConfig(start, end net.IP) (string
 		dhcpRange = fmt.Sprintf("%s,%s", start, end)
 	}
 	return dhcpRange, nil
+}
+
+// writeDnsmasqServersFile writes all server= entries listing the upstream
+// DNS servers. dnsmasq re-reads this file on SIGHUP, so a change to the
+// upstream server list (e.g. a port's DNS servers changing after a DHCP
+// renewal) does not require restarting dnsmasq; see NeedsRecreate.
+func (c *DnsmasqConfigurator) writeDnsmasqServersFile(dnsmasq Dnsmasq) error {
+	var b strings.Builder
+	for _, srv := range dnsmasq.DNSServer.UpstreamServers {
+		fmt.Fprintf(&b, "server=%s@%s\n", srv.IPAddress, srv.Port.IfName)
+	}
+	serversPath := c.dnsmasqServersFile(dnsmasq.Name())
+	if err := fileutils.WriteRename(serversPath, []byte(b.String())); err != nil {
+		err = fmt.Errorf("failed to write dnsmasq servers file %s: %w", serversPath, err)
+		c.Log.Error(err)
+		return err
+	}
+	// WriteRename's temp file is created with mode 0600, but dnsmasq for a NI
+	// runs as nobody:nobody, so it needs the file to be world-readable to open
+	// it on start or SIGHUP.
+	if err := os.Chmod(serversPath, 0644); err != nil {
+		err = fmt.Errorf("failed to chmod dnsmasq servers file %s: %w", serversPath, err)
+		c.Log.Error(err)
+		return err
+	}
+	return nil
+}
+
+// writeDnsmasqOptsFile writes the dhcp-optsfile content (see
+// CreateDnsmasqOptsFile); dnsmasq re-reads it on SIGHUP.
+func (c *DnsmasqConfigurator) writeDnsmasqOptsFile(dnsmasq Dnsmasq) error {
+	var b bytes.Buffer
+	if err := c.CreateDnsmasqOptsFile(&b, dnsmasq); err != nil {
+		return err
+	}
+	optsPath := c.dnsmasqOptsFile(dnsmasq.Name())
+	if err := fileutils.WriteRename(optsPath, b.Bytes()); err != nil {
+		err = fmt.Errorf("failed to write dnsmasq opts file %s: %w", optsPath, err)
+		c.Log.Error(err)
+		return err
+	}
+	// Same reasoning as in writeDnsmasqServersFile: dnsmasq for a NI runs as
+	// nobody:nobody, so the file must be made world-readable.
+	if err := os.Chmod(optsPath, 0644); err != nil {
+		err = fmt.Errorf("failed to chmod dnsmasq opts file %s: %w", optsPath, err)
+		c.Log.Error(err)
+		return err
+	}
+	return nil
 }
 
 func (c *DnsmasqConfigurator) addDNSHostFile(instanceName string,
@@ -1024,6 +1153,28 @@ func (c *DnsmasqConfigurator) removeDnsmasqPidFile(instanceName string) error {
 	if err := os.Remove(pidPath); err != nil {
 		err = fmt.Errorf("failed to remove dnsmasq PID file %s: %w",
 			pidPath, err)
+		c.Log.Error(err)
+		return err
+	}
+	return nil
+}
+
+func (c *DnsmasqConfigurator) removeDnsmasqServersFile(instanceName string) error {
+	serversPath := c.dnsmasqServersFile(instanceName)
+	if err := os.Remove(serversPath); err != nil {
+		err = fmt.Errorf("failed to remove dnsmasq servers file %s: %w",
+			serversPath, err)
+		c.Log.Error(err)
+		return err
+	}
+	return nil
+}
+
+func (c *DnsmasqConfigurator) removeDnsmasqOptsFile(instanceName string) error {
+	optsPath := c.dnsmasqOptsFile(instanceName)
+	if err := os.Remove(optsPath); err != nil {
+		err = fmt.Errorf("failed to remove dnsmasq opts file %s: %w",
+			optsPath, err)
 		c.Log.Error(err)
 		return err
 	}
