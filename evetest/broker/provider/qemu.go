@@ -1498,8 +1498,10 @@ func (dev *qemuDevice) buildArgs() []string {
 		// No KVM async page faults: with them a guest task faulting on a page
 		// the host has swapped out sleeps until KVM delivers "page ready", and
 		// on an overcommitted host that wakeup has been observed never to
-		// arrive, wedging the guest task (a Longhorn engine) for good.
-		"-cpu", "host,-kvm-asyncpf",
+		// arrive, wedging the guest task (a Longhorn engine) for good. Both bits
+		// are needed: the Linux guest (6.12) enables async PF on
+		// kvm-asyncpf-int alone.
+		"-cpu", "host,-kvm-asyncpf,-kvm-asyncpf-int",
 		"-smp", fmt.Sprintf("%d", dev.spec.CPUs),
 		"-m", fmt.Sprintf("%d", dev.spec.MemoryBytes>>20),
 		"-nographic",
