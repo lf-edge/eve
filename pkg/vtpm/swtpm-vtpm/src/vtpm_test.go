@@ -124,6 +124,52 @@ func TestOpenVerifiedSwtpm(t *testing.T) {
 	}
 }
 
+func TestWriteSwtpmKeyPermissions(t *testing.T) {
+	for _, stale := range []bool{false, true} {
+		name := "new"
+		if stale {
+			name = "stale"
+		}
+		t.Run(name, func(t *testing.T) {
+			keyPath := t.TempDir() + "/key"
+			if stale {
+				if err := os.WriteFile(keyPath, []byte("old"), 0644); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Chmod(keyPath, 0644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			key := []byte("new key material")
+			if err := writeSwtpmKey(keyPath, key); err != nil {
+				t.Fatal(err)
+			}
+			info, err := os.Stat(keyPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := info.Mode().Perm(); got != 0600 {
+				t.Fatalf("key file mode = %04o, want 0600", got)
+			}
+			if got, err := os.ReadFile(keyPath); err != nil || string(got) != string(key) {
+				t.Fatalf("key file contents = %q, err = %v", got, err)
+			}
+		})
+	}
+	t.Run("stale removal fails", func(t *testing.T) {
+		keyPath := t.TempDir() + "/key"
+		if err := os.Mkdir(keyPath, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(keyPath+"/keep", []byte("keep"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := writeSwtpmKey(keyPath, []byte("secret")); err == nil {
+			t.Fatal("expected an error when stale path cannot be removed")
+		}
+	})
+}
+
 func generateUUID() uuid.UUID {
 	id, _ := uuid.NewV4()
 	return id
