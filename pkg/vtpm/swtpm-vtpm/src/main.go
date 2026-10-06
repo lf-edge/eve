@@ -637,17 +637,26 @@ func handlePurge(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func listenUnix(socketPath string) (net.Listener, error) {
+	oldMask := syscall.Umask(0o077)
+	defer syscall.Umask(oldMask)
+	return net.Listen("unix", socketPath)
+}
+
 func startServing() {
 	if _, err := os.Stat(vtpmdCtrlSockPath); err == nil {
 		os.Remove(vtpmdCtrlSockPath)
 	}
-	listener, err := net.Listen("unix", vtpmdCtrlSockPath)
+	listener, err := listenUnix(vtpmdCtrlSockPath)
 	if err != nil {
 		log.Fatalf("Error creating Unix socket: %v", err)
 	}
 	defer listener.Close()
 
-	os.Chmod(vtpmdCtrlSockPath, 0600)
+	if err := os.Chmod(vtpmdCtrlSockPath, 0o600); err != nil {
+		log.Fatalf("failed to restrict vtpmd control socket permissions: %v", err)
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/launch", handleLaunch)
 	mux.HandleFunc("/terminate", handleTerminate)
