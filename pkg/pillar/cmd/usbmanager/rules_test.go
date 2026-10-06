@@ -68,7 +68,7 @@ func FuzzOverlappingUsbPortRulesPriority(f *testing.F) {
 		action1, priority1 := rule1.evaluate(ud)
 		action2, priority2 := rule2.evaluate(ud)
 		if action1 == passthroughDo && action2 == passthroughDo && priority1 == priority2 {
-			t.Fatalf("%s and %s both match port %q with priority %d",
+			t.Fatalf("%s and %s both match port %q with priority %v",
 				rule1, rule2, devicePort, priority1)
 		}
 	})

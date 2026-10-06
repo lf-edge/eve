@@ -79,20 +79,25 @@ via USB address, the other rule is addressing the device via product and vendor 
 be unexpected if the device would be passed through to the vm with the rule for passing through by vendor
 and product id.
 
-Combined passthrough rules ([see](#list-of-passthrough-rules)) get their priorities added. If several
-passthrough rules within a combined passthrough rule match, the highest priority is returned.
+A priority has two dimensions, one for the USB address and one for the vendor/product id. Priorities are
+compared by the USB address dimension first; the vendor/product dimension only decides between rules
+with an equal USB address dimension. Combined passthrough rules ([see](#list-of-passthrough-rules)) get
+their priorities added per dimension. If several passthrough rules within a combined passthrough rule
+match, the highest priority is returned.
 
 The priorities are chosen so that the more specific claim wins:
 
-| Rule | Priority |
-|------|----------|
-| usbPortPassthroughRule with an exact port (`1:2.3`) | 20 |
-| usbPortPassthroughRule with a wildcard (`1:*`, `1:2.*`, `1:2.3.*`, ...) | 11 + number of fixed port components (11 to 16) |
-| usbDevicePassthroughRule | 10 |
-| pciPassthroughRule | 0 |
+| Rule | USB address | Vendor/product |
+|------|-------------|----------------|
+| usbPortPassthroughRule with an exact port (`1:2.3`) | 10 | 0 |
+| usbPortPassthroughRule with a wildcard (`1:*`, `1:2.*`, `1:2.3.*`, ...) | 1 + number of fixed port components (1 to 6) | 0 |
+| usbDevicePassthroughRule | 0 | 1 |
+| pciPassthroughRule | 0 | 0 |
 
 Therefore an exact port claim beats a wildcard covering that port, a longer wildcard beats a shorter one
-and any location claim beats a vendor/product claim.
+and any location claim beats a vendor/product claim, even one combined with a less specific location:
+`1:2.3` wins over `1:*` plus a vendor/product id, while `1:2.*` plus a vendor/product id wins over a
+plain `1:2.*`.
 
 ### List of Passthrough Rules
 
