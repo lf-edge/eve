@@ -286,7 +286,10 @@ func (r *LinuxNIReconciler) runWatcher(netEvents <-chan netmonitor.Event) {
 			var needReconcile bool
 			switch ev := event.(type) {
 			case netmonitor.RouteChange:
-				if ev.Table == unix.RT_TABLE_MAIN {
+				isMainTable := ev.Table == unix.RT_TABLE_MAIN
+				isPerPortTable := ev.Table >= types.DPCBaseRTIndex &&
+					ev.Table < types.NIBaseRTIndex
+				if isMainTable || isPerPortTable {
 					attrs, err := r.netMonitor.GetInterfaceAttrs(ev.IfIndex)
 					if err != nil {
 						r.log.Warnf("%s: failed to get attributes for ifindex %d "+
@@ -298,14 +301,22 @@ func (r *LinuxNIReconciler) runWatcher(netEvents <-chan netmonitor.Event) {
 						if ni.config.Type == types.NetworkInstanceTypeSwitch {
 							continue
 						}
-						var isNIPort bool
-						for _, port := range ni.bridge.Ports {
-							if ifName == port.IfName {
-								isNIPort = true
-								break
+						var relevant bool
+						if ifName == ni.brIfName {
+							// Bridge routes live in the main table.
+							relevant = isMainTable
+						} else {
+							for _, port := range ni.bridge.Ports {
+								if ifName == port.IfName {
+									// Port routes are read from nim's
+									// per-port table, not main (see
+									// getIntendedNIL3Cfg).
+									relevant = isPerPortTable
+									break
+								}
 							}
 						}
-						if ifName == ni.brIfName || isNIPort {
+						if relevant {
 							r.updateCurrentNIRoutes(ni.config.UUID)
 							r.scheduleNICfgRebuild(ni.config.UUID, "route change")
 							needReconcile = true
