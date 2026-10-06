@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
@@ -168,6 +169,47 @@ func TestWriteSwtpmKeyPermissions(t *testing.T) {
 			t.Fatal("expected an error when stale path cannot be removed")
 		}
 	})
+}
+
+func TestLogForwarderStopWithIdleFIFO(t *testing.T) {
+	for _, withWriter := range []bool{false, true} {
+		name := "no writer"
+		if withWriter {
+			name = "idle writer"
+		}
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			lf, err := newLogForwarder(filepath.Join(dir, "swtpm.fifo"), filepath.Join(dir, "swtpm.log"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var writer *os.File
+			if withWriter {
+				// O_RDWR keeps a writer present even while the forwarder reopens
+				// the read end, without blocking this test on FIFO open ordering.
+				writer, err = os.OpenFile(lf.fifoPath, os.O_RDWR|syscall.O_NONBLOCK, 0)
+				if err != nil {
+					lf.stop()
+					t.Fatal(err)
+				}
+				defer writer.Close()
+				time.Sleep(50 * time.Millisecond)
+			}
+			stopped := make(chan struct{})
+			go func() {
+				lf.stop()
+				close(stopped)
+			}()
+			select {
+			case <-stopped:
+			case <-time.After(2 * time.Second):
+				if writer != nil {
+					writer.Close() // release a blocked read before failing the test
+				}
+				t.Fatal("log forwarder did not stop promptly")
+			}
+		})
+	}
 }
 
 func generateUUID() uuid.UUID {
