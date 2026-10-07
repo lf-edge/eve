@@ -55,6 +55,11 @@ const (
 	// Statically configured IP address, detected using ARP snooping, is considered
 	// valid until we do not see any more ARPs for this IP for more than 10 minutes.
 	staticIPValidDuration = 10 * time.Minute
+
+	// Delays between attempts to (re)start a packet capture which failed
+	// or got closed.
+	pcapRetryMinDelay = time.Second
+	pcapRetryMaxDelay = 30 * time.Second
 )
 
 type capturedPacket struct {
@@ -309,7 +314,6 @@ func (lc *LinuxCollector) sniffDNSandDHCP(ctx context.Context, wg *sync.WaitGrou
 	br NIBridge, niType types.NetworkInstanceType, enableArpSnoop bool) {
 	defer wg.Done()
 	var (
-		err         error
 		snapshotLen int32 = 1280             // draft-madi-dnsop-udp4dns-00
 		promiscuous       = true             // mainly for switched network
 		timeout           = 10 * time.Second // collect enough packets in 10sec before processing
@@ -443,19 +447,55 @@ func (lc *LinuxCollector) sniffDNSandDHCP(ctx context.Context, wg *sync.WaitGrou
 	lc.log.Noticef("%s: Installing pcap on %s, switched=%t, filter=%s",
 		flowLogPrefix, pcapIfDescr, switched, filter)
 
+	// The interface to capture from may not exist yet (for example the mirror
+	// interface is created by the NI reconciler asynchronously), or it may disappear
+	// later. Keep retrying until the PCAP is stopped, otherwise the state collecting
+	// for this NI would be silently disabled until the next device reboot.
+	retryDelay := pcapRetryMinDelay
+	var lastErr string
+	for {
+		err := lc.capturePackets(ctx, br, pcapIfName, pcapIfDescr, filter,
+			rawInstructions, snapshotLen, promiscuous, timeout)
+		if ctx.Err() != nil {
+			lc.log.Noticef("%s: PCAP stopped on %s", flowLogPrefix, pcapIfDescr)
+			return
+		}
+		if err == nil {
+			// PCAP was running and then got closed.
+			retryDelay = pcapRetryMinDelay
+			lastErr = ""
+		} else if err.Error() != lastErr {
+			lc.log.Errorf("%s: Cannot capture packets on %s: %v (will retry)",
+				flowLogPrefix, pcapIfDescr, err)
+			lastErr = err.Error()
+		}
+		timer := time.NewTimer(retryDelay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			lc.log.Noticef("%s: PCAP stopped on %s", flowLogPrefix, pcapIfDescr)
+			return
+		case <-timer.C:
+		}
+		retryDelay = min(2*retryDelay, pcapRetryMaxDelay)
+	}
+}
+
+// capturePackets opens the interface, installs the filter and passes captured packets
+// to the main event loop until the context is cancelled or the PCAP gets closed.
+// Error is returned if the PCAP could not be started.
+func (lc *LinuxCollector) capturePackets(ctx context.Context, br NIBridge,
+	pcapIfName, pcapIfDescr, filter string, rawInstructions []bpf.RawInstruction,
+	snapshotLen int32, promiscuous bool, timeout time.Duration) error {
 	handle, err := pcap.OpenLive(pcapIfName, snapshotLen, promiscuous, timeout, false)
 	if err != nil {
-		lc.log.Errorf("%s: Cannot capture packets on %s: %v",
-			flowLogPrefix, pcapIfDescr, err)
-		return
+		return err
 	}
 	defer handle.Close()
 
 	err = handle.SetRawBPFFilter(rawInstructions)
 	if err != nil {
-		lc.log.Errorf("%s: Cannot install pcap filter [ %s ] on %s: %s",
-			flowLogPrefix, filter, pcapIfDescr, err)
-		return
+		return fmt.Errorf("cannot install pcap filter [ %s ]: %w", filter, err)
 	}
 
 	packetSource := gopacket.NewPacketSource(handle, layers.LinkType(handle.LinkType()))
@@ -464,8 +504,7 @@ func (lc *LinuxCollector) sniffDNSandDHCP(ctx context.Context, wg *sync.WaitGrou
 	for {
 		select {
 		case <-ctx.Done():
-			lc.log.Noticef("%s: PCAP stopped on %s", flowLogPrefix, pcapIfDescr)
-			return
+			return nil
 		case packet, more := <-packetsCh:
 			if !more {
 				lc.log.Noticef("%s: PCAP closed on %s", flowLogPrefix, pcapIfName)
@@ -474,14 +513,13 @@ func (lc *LinuxCollector) sniffDNSandDHCP(ctx context.Context, wg *sync.WaitGrou
 					bridge:     br,
 					pcapClosed: true,
 				})
-				return
+				return nil
 			}
 			if !lc.sendCapturedPacket(ctx, capturedPacket{
 				bridge: br,
 				packet: packet,
 			}) {
-				lc.log.Noticef("%s: PCAP stopped on %s", flowLogPrefix, pcapIfDescr)
-				return
+				return nil
 			}
 		}
 	}
