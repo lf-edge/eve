@@ -6,6 +6,7 @@ package nistate
 import (
 	"context"
 	"net"
+	"sync"
 	"testing"
 	"time"
 
@@ -171,5 +172,40 @@ func TestStopCollectingDoesNotDeadlockWithBusyEventLoop(t *testing.T) {
 	}
 	if _, exists := lc.nis[niID]; exists {
 		t.Fatal("NI was not removed")
+	}
+}
+
+// PCAP must not give up when the interface to capture from does not exist (yet),
+// e.g. when the mirror interface is created by the NI reconciler only after
+// state collecting for the NI was started.
+func TestPCAPRetriesUntilStopped(t *testing.T) {
+	lc := newTestCollector()
+	br := NIBridge{
+		NI:           uuid.Must(uuid.NewV4()),
+		BrNum:        1,
+		BrIfName:     "nonexistent-br",
+		MirrorIfName: "nonexistent-m",
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go lc.sniffDNSandDHCP(ctx, &wg, br, types.NetworkInstanceTypeSwitch, true)
+
+	exited := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(exited)
+	}()
+	select {
+	case <-exited:
+		t.Fatal("PCAP Go routine gave up after failing to open the interface")
+	case <-time.After(pcapRetryMinDelay + 500*time.Millisecond):
+	}
+	cancel()
+	select {
+	case <-exited:
+	case <-time.After(testTimeout):
+		t.Fatal("PCAP Go routine did not stop after the context was cancelled")
 	}
 }
