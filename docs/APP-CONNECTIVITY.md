@@ -338,8 +338,9 @@ is no longer in use and reports this change to the controller.
 For statically assigned IPv4 addresses, EVE captures both ARP reply and request packets to learn
 the application VIF IP assignment from either Sender IP + MAC or Target IP + MAC attribute
 pairs. Since ARP cache entries have a limited lifetime — typically around 2 minutes — EVE expects
-to see at least one ARP packet for every assigned IP within a 10-minute window (this is not
-configurable). If no ARP packet is observed within this period for a previously detected IP
+to see at least one ARP packet for every assigned IP within a 10-minute window (this can be
+changed using the configuration item `network.switch.arpsnoop.expiry`, in seconds).
+If no ARP packet is observed within this period for a previously detected IP
 assignment, EVE assumes that the IP address has been removed and reports this change to
 the controller. EVE also captures ARP packets for IP addresses configured via DHCP, but these
 are ignored as the information from the previously captured DHCPACK takes precedence.

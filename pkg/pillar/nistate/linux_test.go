@@ -209,3 +209,48 @@ func TestPCAPRetriesUntilStopped(t *testing.T) {
 		t.Fatal("PCAP Go routine did not stop after the context was cancelled")
 	}
 }
+
+func TestIPAssignmentsGCInterval(t *testing.T) {
+	tests := []struct {
+		expiry   time.Duration
+		expected time.Duration
+	}{
+		{expiry: defaultARPSnoopExpiry, expected: time.Minute},
+		{expiry: 2 * time.Minute, expected: time.Minute},
+		{expiry: 20 * time.Second, expected: 10 * time.Second},
+		{expiry: 5 * time.Second, expected: 2500 * time.Millisecond},
+		{expiry: time.Second, expected: time.Second},
+		{expiry: 0, expected: time.Second},
+	}
+	for _, test := range tests {
+		if got := ipAssignmentsGCInterval(test.expiry); got != test.expected {
+			t.Errorf("expiry %v: expected GC interval %v, got %v",
+				test.expiry, test.expected, got)
+		}
+	}
+}
+
+func TestSetARPSnoopExpiry(t *testing.T) {
+	lc := newTestCollector()
+	lc.arpSnoopExpiry = defaultARPSnoopExpiry
+	lc.arpSnoopExpiryChanged = make(chan struct{}, 1)
+
+	lc.SetARPSnoopExpiry(defaultARPSnoopExpiry)
+	select {
+	case <-lc.arpSnoopExpiryChanged:
+		t.Fatal("unchanged value should not be signalled")
+	default:
+	}
+
+	// Setting the value must not block even if the event loop is not listening.
+	lc.SetARPSnoopExpiry(30 * time.Second)
+	lc.SetARPSnoopExpiry(20 * time.Second)
+	if lc.arpSnoopExpiry != 20*time.Second {
+		t.Fatalf("unexpected expiry %v", lc.arpSnoopExpiry)
+	}
+	select {
+	case <-lc.arpSnoopExpiryChanged:
+	default:
+		t.Fatal("change should be signalled")
+	}
+}
