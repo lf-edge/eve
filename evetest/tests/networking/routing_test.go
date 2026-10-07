@@ -743,7 +743,7 @@ func TestLocalNIWithMultiplePorts(test *testing.T) {
 	tryConnect := func(ipStr string) error {
 		conn, err := net.DialTimeout("tcp", net.JoinHostPort(ipStr, "2222"), portFwdDialTimeout)
 		if err == nil {
-			conn.Close()
+			_ = conn.Close()
 		}
 		return err
 	}
@@ -1379,7 +1379,7 @@ func TestApplicationGateway(test *testing.T) {
 	// via ni-eth1 (WAN), but the SDN eth1 router has no route to http-server-1's
 	// subnet (10.20.20.0/24), so the packet is dropped.
 	log.Infof("app-client2: curl http-server-1.test (expected timeout)...")
-	out, _, err = device.RunShellScriptInsideApp(appC2UUID, appAuth,
+	_, _, err = device.RunShellScriptInsideApp(appC2UUID, appAuth,
 		"curl --max-time 5 http://http-server-1.test/helloworld",
 		30*time.Second, 0)
 	t.Expect(err).To(HaveOccurred())
