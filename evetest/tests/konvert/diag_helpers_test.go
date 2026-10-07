@@ -487,6 +487,15 @@ func probeStalledConfigFetch(device *evetest.EdgeDevice) (stop func()) {
 			{"persist writable", "eve exec pillar sh -c 'f=/persist/.evetest-probe; " +
 				"echo x > $f && sync && rm -f $f && echo writable' 2>&1"},
 			{"checkpoint", "ls -la /persist/checkpoint 2>&1 || echo NONE"},
+			// zedagent waits in waitUntilOnboarded until zedclient
+			// publishes a device UUID here.
+			{"OnboardingStatus", "eve exec pillar sh -c 'ls -la /persist/status/zedclient/OnboardingStatus; " +
+				"cat /persist/status/zedclient/OnboardingStatus/*.json' 2>&1 || echo NONE"},
+			{"controller reachability", `eve exec pillar sh -c 'echo server=$(cat /config/server); ` +
+				`curl -sS -m 10 -o /dev/null -w "http=%{http_code}\n" ` +
+				`--cacert /config/root-certificate.pem ` +
+				`https://$(cat /config/server)/api/v2/edgedevice/ping' 2>&1`},
+			{"zedclient (newlog)", newlogProbe(`grep -a zedclient | tail -60`)},
 			{"zedagent (newlog)", newlogProbe(`grep -a zedagent | tail -40`)},
 		})
 	}()
