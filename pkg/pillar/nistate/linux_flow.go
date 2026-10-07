@@ -52,9 +52,10 @@ const (
 	// for a maximum of one day (a typical "long" TTL for DNS responses).
 	dnsRecordRetentionTime = 24 * time.Hour
 
-	// Statically configured IP address, detected using ARP snooping, is considered
-	// valid until we do not see any more ARPs for this IP for more than 10 minutes.
-	staticIPValidDuration = 10 * time.Minute
+	// By default, statically configured IP address, detected using ARP snooping,
+	// is considered valid until we do not see any more ARPs for this IP for more
+	// than 10 minutes. Can be changed with SetARPSnoopExpiry.
+	defaultARPSnoopExpiry = 10 * time.Minute
 
 	// Delays between attempts to (re)start a packet capture which failed
 	// or got closed.
@@ -614,7 +615,7 @@ func (lc *LinuxCollector) processARPPacket(
 	} else {
 		gotAddress = arp.DstProtAddress
 	}
-	validUntil := time.Now().Add(staticIPValidDuration)
+	validUntil := time.Now().Add(lc.arpSnoopExpiry)
 	update := vif.addIP(gotAddress, types.AddressSourceStatic, validUntil)
 	if update != nil {
 		addrUpdates = append(addrUpdates, *update)

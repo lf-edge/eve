@@ -294,6 +294,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		MsrvPrometheusMetricsRequestPerSecond,
 		MsrvPrometheusMetricsBurst,
 		MsrvPrometheusMetricsIdleTimeoutSeconds,
+		ARPSnoopIPExpiry,
 		DiagProbeRemoteHTTPEndpoint,
 		DiagProbeRemoteHTTPSEndpoint,
 		EnableTCPMSSClamping,
