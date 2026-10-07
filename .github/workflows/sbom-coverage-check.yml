@@ -17,10 +17,14 @@ on:  # yamllint disable-line rule:truthy
       - "tools/sbom-coverage-allowlist.txt"
       - ".github/workflows/sbom-coverage-check.yml"
 
+permissions: {}
+
 jobs:
   check-sbom-coverage:
     name: Every source-built pkg must call register-sbom-pkg.sh
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
