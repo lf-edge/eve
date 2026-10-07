@@ -341,7 +341,7 @@ TMP_DIR=$(mktemp -d)
 if [ -n "$gitdir" ]; then
     cp -r "$gitdir/." "${TMP_DIR}"
 else
-    pkgurl="https://git.alpinelinux.org/aports.git"
+    pkgurl="https://github.com/alpinelinux/aports.git"
     cloned=
     while IFS= read -r candidate; do
         [ -z "$candidate" ] && continue
