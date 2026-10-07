@@ -59,16 +59,21 @@ func (z *zedrouter) updateVIFsForStateCollecting(
 	networks = generics.FilterDuplicates(networks)
 	// Update state collecting for NIs that the app is or was connected to.
 	for _, network := range networks {
-		netConfig := z.lookupNetworkInstanceConfig(network.String())
-		if netConfig == nil {
-			z.log.Errorf("failed to get config for network instance %v "+
+		// Use the status (which carries the last applied config) instead of looking
+		// up the config. The controller may have already deleted the network instance
+		// while the apps using it are still being removed. The NI then lives on until
+		// its last VIF is gone and the collector still has to be told about every
+		// VIF that leaves.
+		netStatus := z.lookupNetworkInstanceStatus(network.String())
+		if netStatus == nil {
+			z.log.Errorf("failed to get status for network instance %v "+
 				"(needed to update VIF arguments for state collecting)", network)
 			continue
 		}
 		_, vifs, err := z.getArgsForNIStateCollecting(network)
 		if err == nil {
-			err = z.niStateCollector.UpdateCollectingForNI(*netConfig, vifs,
-				z.enableArpSnooping)
+			err = z.niStateCollector.UpdateCollectingForNI(
+				netStatus.NetworkInstanceConfig, vifs, z.enableArpSnooping)
 		}
 		if err != nil {
 			z.log.Error(err)
