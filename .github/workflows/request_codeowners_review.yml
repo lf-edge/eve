@@ -7,6 +7,7 @@ on:
     paths-ignore:
       - '.github/workflows/request_codeowners_review.yml'
 
+permissions: {}
 
 jobs:
   auto_request_review:
