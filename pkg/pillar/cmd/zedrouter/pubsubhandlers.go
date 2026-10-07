@@ -63,14 +63,10 @@ func (z *zedrouter) handleGlobalConfigImpl(ctxArg interface{}, key string,
 					// ARP snooping is only used in Switch NIs.
 					continue
 				}
-				niConfig := z.lookupNetworkInstanceConfig(niStatus.Key())
-				if niConfig == nil {
-					continue
-				}
-				_, vifs, err := z.getArgsForNIStateCollecting(niConfig.UUID)
+				_, vifs, err := z.getArgsForNIStateCollecting(niStatus.UUID)
 				if err == nil {
 					err = z.niStateCollector.UpdateCollectingForNI(
-						*niConfig, vifs, z.enableArpSnooping)
+						niStatus.NetworkInstanceConfig, vifs, z.enableArpSnooping)
 				}
 				if err != nil {
 					z.log.Error(err)
