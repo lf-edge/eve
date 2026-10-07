@@ -38,6 +38,9 @@ type Collector interface {
 	// or when VIF is (dis)connected to/from the NI.
 	// Note that not every change in network instance config is supported. For example,
 	// network instance type (switch / local) cannot change.
+	// The config does not have to be currently published by the controller:
+	// a network instance deleted by the controller stays (and the collector has to be
+	// kept up to date about its VIFs) until the last application interface is removed.
 	UpdateCollectingForNI(
 		niConfig types.NetworkInstanceConfig, vifs []AppVIF, enableArpSnoop bool) error
 
