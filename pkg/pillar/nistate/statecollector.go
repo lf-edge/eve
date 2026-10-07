@@ -12,6 +12,7 @@ package nistate
 import (
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
@@ -47,6 +48,12 @@ type Collector interface {
 	// StopCollectingForNI : stop collecting state data for network instance.
 	// It is called by zedrouter whenever a network instance is about to be deleted.
 	StopCollectingForNI(niID uuid.UUID) error
+
+	// SetARPSnoopExpiry : set how long an IP address learned from ARP packets stays
+	// assigned to a VIF after the last ARP packet carrying this address was seen.
+	// The new value applies to ARP packets captured from now on, addresses already
+	// learned keep their current expiration time until the next ARP packet is seen.
+	SetARPSnoopExpiry(expiry time.Duration)
 
 	// GetIPAssignments returns information about currently assigned IP addresses
 	// to VIFs connected to a given network instance.

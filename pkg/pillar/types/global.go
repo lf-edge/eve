@@ -319,6 +319,11 @@ const (
 	AllowLogFastupload GlobalSettingKey = "newlog.allow.fastupload"
 	// EnableARPSnoopOnNI global setting key
 	EnableARPSnoop GlobalSettingKey = "network.switch.enable.arpsnoop"
+	// ARPSnoopIPExpiry : how long (in seconds) an IP address learned from ARP packets
+	// is still reported as assigned to an application interface after the last ARP
+	// packet carrying this address was seen. After that EVE only stops reporting
+	// the address, it is not removed from the application.
+	ARPSnoopIPExpiry GlobalSettingKey = "network.switch.arpsnoop.expiry"
 	// WwanQueryVisibleProviders : periodically query visible cellular service providers
 	WwanQueryVisibleProviders GlobalSettingKey = "wwan.query.visible.providers"
 	// WwanModemRecoveryWatchdog : trigger watchdog when cellular modem crashes and fails to recover.
@@ -1293,6 +1298,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddBoolItem(ConsoleAccess, true) // Controller likely default to false
 	configItemSpecMap.AddBoolItem(VncShimVMAccess, false)
 	configItemSpecMap.AddBoolItem(EnableARPSnoop, true)
+	configItemSpecMap.AddIntItem(ARPSnoopIPExpiry, 10*MinuteInSec, 5, 24*HourInSec)
 	configItemSpecMap.AddBoolItem(WwanQueryVisibleProviders, false)
 	configItemSpecMap.AddBoolItem(WwanModemRecoveryWatchdog, false)
 	configItemSpecMap.AddBoolItem(WwanModemRecoveryReloadDrivers, false)
