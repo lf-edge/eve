@@ -50,6 +50,8 @@ func (z *zedrouter) handleGlobalConfigImpl(ctxArg interface{}, key string,
 			}
 			z.metricInterval = metricInterval
 		}
+		z.niStateCollector.SetARPSnoopExpiry(
+			time.Duration(gcp.GlobalValueInt(types.ARPSnoopIPExpiry)) * time.Second)
 		enableArpSnooping := gcp.GlobalValueBool(types.EnableARPSnoop)
 		if z.enableArpSnooping != enableArpSnooping {
 			z.enableArpSnooping = enableArpSnooping
