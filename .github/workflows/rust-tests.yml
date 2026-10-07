@@ -29,10 +29,14 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions: {}
+
 jobs:
   test:
     name: cargo test (${{ matrix.crate }})
     runs-on: zededa-ubuntu-2204
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -70,6 +74,8 @@ jobs:
   generated:
     name: generated code up to date
     runs-on: zededa-ubuntu-2204
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417  # v6.3.0
