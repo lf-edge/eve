@@ -342,6 +342,9 @@ func TestDeviceConnectivitySuite(test *testing.T) {
 //     down, address cleared, then brought back up with a changed advertised
 //     DNS server); its dnsmasq instance must not restart and a connected
 //     app must keep its DHCP-assigned IP throughout.
+//   - TestSwitchNIDeletedWithAppsAttached -- regression test for zedrouter
+//     hanging when a Switch NI with a busy packet capture and continuously
+//     expiring ARP-learned app IPs is deleted together with its apps.
 func TestApplicationConnectivitySuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
@@ -451,6 +454,9 @@ func TestApplicationConnectivitySuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestLocalNIUplinkFlap,
+		},
+		evetest.TestCase{
+			Test: TestSwitchNIDeletedWithAppsAttached,
 		},
 	)
 }
