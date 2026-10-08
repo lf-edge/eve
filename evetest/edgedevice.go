@@ -893,6 +893,24 @@ func (d *EdgeDevice) ExpectReboots(count int) {
 	}
 }
 
+// UnexpectedRebootCount is how many times the device has been seen rebooting
+// beyond what the test asked for (RequestReboot, SoftReboot, HardReboot,
+// UpgradeEVE, ExpectReboots): the same count Close audits at the end of every
+// test, exposed so that a test waiting for something a crash would prevent
+// can fail at once, naming the cause, instead of waiting out its timeout. A
+// reboot is recognized from the boot time the device reports in its info
+// messages, so it registers once the device is back up and talking to the
+// controller, not at the moment it goes down.
+func (d *EdgeDevice) UnexpectedRebootCount() int {
+	d.th.devicesM.Lock()
+	defer d.th.devicesM.Unlock()
+	devState, found := d.th.devices[d.devName]
+	if !found {
+		return 0
+	}
+	return max(devState.rebootCount-devState.expectedRebootCount, 0)
+}
+
 // RequestReboot requests a device reboot via configuration and optionally
 // waits until the reboot completes.
 func (d *EdgeDevice) RequestReboot(waitUntilRebooted bool) {

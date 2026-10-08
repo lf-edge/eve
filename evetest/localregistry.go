@@ -4,7 +4,10 @@
 package evetest
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
+	"crypto/rand"
 	"fmt"
 	"io"
 	stdlog "log"
@@ -15,8 +18,13 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/registry"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/empty"
+	"github.com/google/go-containerregistry/pkg/v1/mutate"
+	"github.com/google/go-containerregistry/pkg/v1/partial"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
+	ggcrtypes "github.com/google/go-containerregistry/pkg/v1/types"
 	"github.com/moby/moby/client"
 	"github.com/sirupsen/logrus"
 
@@ -176,4 +184,132 @@ func PushDockerImageToLocalRegistry(imageName string) (DockerContainer, error) {
 		Tag:               tag,
 		TrustedCACertsPEM: []string{string(GetCACertPEM())},
 	}, nil
+}
+
+// staticBlob is a registry blob held in memory, shaped as a v1.Layer so that
+// go-containerregistry can upload it (remote.WriteLayer) or list it in a
+// manifest (mutate.AppendLayers). It is whatever its media type says: a
+// gzip-compressed layer, or an image config, which the registry stores like
+// any other blob.
+type staticBlob struct {
+	data      []byte
+	mediaType ggcrtypes.MediaType
+}
+
+func (b staticBlob) Digest() (v1.Hash, error) {
+	h, _, err := v1.SHA256(bytes.NewReader(b.data))
+	return h, err
+}
+
+func (b staticBlob) Compressed() (io.ReadCloser, error) {
+	return io.NopCloser(bytes.NewReader(b.data)), nil
+}
+
+func (b staticBlob) Size() (int64, error) {
+	return int64(len(b.data)), nil
+}
+
+func (b staticBlob) MediaType() (ggcrtypes.MediaType, error) {
+	return b.mediaType, nil
+}
+
+// randomGzipLayer returns a layer of size random bytes, gzip-compressed, whose
+// digest no other layer shares.
+func randomGzipLayer(size int) (v1.Layer, error) {
+	payload := make([]byte, size)
+	if _, err := rand.Read(payload); err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	if _, err := gz.Write(payload); err != nil {
+		return nil, err
+	}
+	if err := gz.Close(); err != nil {
+		return nil, err
+	}
+	return partial.CompressedToLayer(
+		staticBlob{data: buf.Bytes(), mediaType: ggcrtypes.DockerLayer})
+}
+
+// PushImageWithMissingLayersToLocalRegistry publishes, under repo:tag in
+// evetest's embedded OCI registry, an image of numLayers layers of which only
+// the manifest and the config blob are uploaded: the layer blobs never are. A
+// pull of the image resolves the tag and fetches the manifest and the config
+// without trouble, then fails on every layer with the registry's
+// BLOB_UNKNOWN. That is the shape of a registry, or a pull-through mirror,
+// that has lost or never received the blobs a manifest refers to, and of a
+// registry that becomes unreachable right after serving the manifest: every
+// layer fails on its own, and from every management port the downloader
+// tries it from.
+//
+// Every layer is a few bytes of random gzip, so no two images published this
+// way share a digest and nothing pulled earlier can stand in for a layer. The
+// layers' digests are returned as volumemgr names them (lowercase hex, no
+// "sha256:" prefix), in manifest order, for a test to recognize them in what
+// EVE reports. The returned DockerContainer points an EVE datastore at the
+// image, as PushDockerImageToLocalRegistry does.
+func PushImageWithMissingLayersToLocalRegistry(repo, tag string, numLayers int) (
+	image DockerContainer, layerDigests []string, err error) {
+	th := getTestHarness()
+	log := th.log.WithField("component", "local-registry")
+
+	dstRefStr := fmt.Sprintf("%s/%s:%s", localRegistryPushDomain(), repo, tag)
+	dstRef, err := name.ParseReference(dstRefStr, name.Insecure)
+	if err != nil {
+		return DockerContainer{}, nil, fmt.Errorf(
+			"invalid local registry reference %q: %w", dstRefStr, err)
+	}
+
+	layers := make([]v1.Layer, 0, numLayers)
+	for i := 0; i < numLayers; i++ {
+		layer, err := randomGzipLayer(64)
+		if err != nil {
+			return DockerContainer{}, nil, fmt.Errorf(
+				"failed to generate layer %d of %q: %w", i, dstRefStr, err)
+		}
+		digest, err := layer.Digest()
+		if err != nil {
+			return DockerContainer{}, nil, fmt.Errorf(
+				"failed to digest layer %d of %q: %w", i, dstRefStr, err)
+		}
+		layers = append(layers, layer)
+		layerDigests = append(layerDigests, digest.Hex)
+	}
+	img, err := mutate.AppendLayers(empty.Image, layers...)
+	if err != nil {
+		return DockerContainer{}, nil, fmt.Errorf(
+			"failed to assemble image %q: %w", dstRefStr, err)
+	}
+	rawConfig, err := img.RawConfigFile()
+	if err != nil {
+		return DockerContainer{}, nil, fmt.Errorf(
+			"failed to serialize the config of image %q: %w", dstRefStr, err)
+	}
+	config, err := partial.CompressedToLayer(
+		staticBlob{data: rawConfig, mediaType: ggcrtypes.DockerConfigJSON})
+	if err != nil {
+		return DockerContainer{}, nil, fmt.Errorf(
+			"failed to wrap the config of image %q: %w", dstRefStr, err)
+	}
+
+	log.Infof("Pushing the manifest and config of a %d-layer image, without "+
+		"its layers, into evetest's local OCI registry as %q", numLayers, dstRefStr)
+	if err := remote.WriteLayer(dstRef.Context(), config); err != nil {
+		return DockerContainer{}, nil, fmt.Errorf(
+			"failed to push the config blob of image %q to the local OCI registry: %w",
+			dstRefStr, err)
+	}
+	if err := remote.Put(dstRef, img); err != nil {
+		return DockerContainer{}, nil, fmt.Errorf(
+			"failed to push the manifest of image %q to the local OCI registry: %w",
+			dstRefStr, err)
+	}
+
+	return DockerContainer{
+		Domain:            localRegistryPullDomain(),
+		ImageName:         repo,
+		Tag:               tag,
+		TrustedCACertsPEM: []string{string(GetCACertPEM())},
+	}, layerDigests, nil
 }
