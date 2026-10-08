@@ -18,20 +18,33 @@ jobs:
       release_id: ${{ steps.create_release.outputs.release_id }}
       upload_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
-      - name: Create GitHub Release
+      # The release stays a draft until publish_release, because a published
+      # release in a repository with immutable releases accepts no more
+      # assets, and its tag can never be released again even if it is
+      # deleted. A re-run reuses the draft an earlier attempt created.
+      - name: Create draft GitHub Release
         id: create_release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_REF: ${{ inputs.tag_ref }}
           REPO: ${{ github.repository }}
         run: |
-          payload=$(jq -n --arg tag "$TAG_REF" \
-            '{tag_name: $tag, name: $tag, draft: false, prerelease: true}')
-          response=$(curl -s --show-error -X POST \
+          response=$(curl -s --show-error \
             -H "Authorization: Bearer $GITHUB_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d "$payload" \
-            "https://api.github.com/repos/$REPO/releases")
+            "https://api.github.com/repos/$REPO/releases?per_page=100" \
+            | jq --arg tag "$TAG_REF" \
+              '[.[] | select(.draft and .tag_name == $tag)] | first // empty')
+          if [ -n "$response" ]; then
+            echo "Reusing draft release $(echo "$response" | jq -r .id)"
+          else
+            payload=$(jq -n --arg tag "$TAG_REF" \
+              '{tag_name: $tag, name: $tag, draft: true, prerelease: true}')
+            response=$(curl -s --show-error -X POST \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "$payload" \
+              "https://api.github.com/repos/$REPO/releases")
+          fi
           release_id=$(echo "$response" | jq -r '.id // empty')
           upload_url=$(echo "$response" | jq -r '.upload_url // empty' | sed -e "s/{?name,label}//")
           if [ -z "$release_id" ] || [ -z "$upload_url" ]; then
@@ -117,6 +130,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_ID: ${{ needs.create_release.outputs.release_id }}
           UPLOAD_URL: ${{ needs.create_release.outputs.upload_url }}
+          REPO: ${{ github.repository }}
         run: |
           # Rename all files
           HV=${{ matrix.hv }}
@@ -136,6 +150,24 @@ jobs:
           cd ../
           mv "$sha256_file" assets/
           mv "$sizes_file" assets/
+          # A re-run of this leg finds its earlier uploads on the draft, and
+          # an upload under an existing name is rejected.
+          prefix="${ARCH}.${HV}.${{ matrix.platform }}."
+          stale_ids=""
+          page=1
+          while :; do
+            existing=$(curl -s --show-error --fail -H "Authorization: Bearer $GITHUB_TOKEN" \
+              "https://api.github.com/repos/$REPO/releases/$RELEASE_ID/assets?per_page=100&page=$page")
+            [ "$(echo "$existing" | jq length)" -gt 0 ] || break
+            stale_ids="$stale_ids $(echo "$existing" | jq -r --arg p "$prefix" \
+              '.[] | select(.name | startswith($p)) | .id')"
+            page=$((page + 1))
+          done
+          for asset_id in $stale_ids; do
+            echo "Deleting asset $asset_id left by an earlier attempt"
+            curl -s --show-error --fail -X DELETE -H "Authorization: Bearer $GITHUB_TOKEN" \
+              "https://api.github.com/repos/$REPO/releases/assets/$asset_id"
+          done
           # Upload files. Track failures and fail the job at the end so that
           # all assets are attempted before the run is marked failed.
           upload_failed=0
@@ -157,3 +189,25 @@ jobs:
             fi
           done
           exit "$upload_failed"
+  publish_release:
+    runs-on: zededa-ubuntu-2204
+    needs: [create_release, build]
+    permissions:
+      contents: write
+    steps:
+      - name: Publish the draft release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ needs.create_release.outputs.release_id }}
+          REPO: ${{ github.repository }}
+        run: |
+          response=$(curl -s --show-error -X PATCH \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"draft": false}' \
+            "https://api.github.com/repos/$REPO/releases/$RELEASE_ID")
+          if ! echo "$response" | jq -e '.draft == false' > /dev/null; then
+            echo "::error::Publishing release $RELEASE_ID failed: $response"
+            exit 1
+          fi
+          echo "Published $(echo "$response" | jq -r .html_url)"
