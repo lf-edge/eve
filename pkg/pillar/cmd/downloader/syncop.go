@@ -237,6 +237,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	}
 
 	// Loop through all interfaces until a success
+	var addrErrs addrErrors
 	for addrIndex := 0; addrIndex < addrCount; addrIndex++ {
 		var ifname string
 		var ipSrc net.IP
@@ -246,7 +247,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 				addrIndex, "", downloadMaxPortCost)
 			if err != nil {
 				log.Errorf("GetLocalAddr failed: %s", err)
-				errStr = errStr + "\n" + err.Error()
+				addrErrs.add("", err)
 				continue
 			}
 			ifname = types.GetMgmtPortFromAddr(ctx.deviceNetworkStatus, ipSrc)
@@ -254,7 +255,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			serverURL, ifname, ipSrc, err = findDSmDNS(ctx, serverURL)
 			if err != nil {
 				log.Errorf("find datastore mDNS failed: %s", err)
-				errStr = errStr + "\n" + err.Error()
+				addrErrs.add("", err)
 				break
 			}
 		}
@@ -290,7 +291,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			// and can only be handled with string search here.
 			dnError := strings.Trim(err.Error(), "\n")
 			if !strings.HasSuffix(dnError, logutils.NoSuitableAddrStr) {
-				errStr = errStr + "\n" + err.Error()
+				addrErrs.add(ipSrc.String(), err)
 			}
 			continue
 		}
@@ -325,12 +326,16 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		return handleSyncOpResponse(ctx, config, status,
 			locFilename, key, "", cancelled)
 	}
-	// we skip this error earlier but we must fill errStr
+	if !cancelled {
+		errStr = addrErrs.String()
+	}
+	// The "no suitable address" failures are not collected, so this is what
+	// is left when every address failed that way.
 	if errStr == "" {
 		errStr = logutils.NoSuitableAddrStr
 	}
 	if !cancelled {
-		log.Errorf("All source IP addresses failed. All errors:%s",
+		log.Errorf("All source IP addresses failed. All errors:\n%s",
 			errStr)
 	}
 	if withNetTracing {
