@@ -495,6 +495,14 @@ func probeStalledConfigFetch(device *evetest.EdgeDevice) (stop func()) {
 				`curl -sS -m 10 -o /dev/null -w "http=%{http_code}\n" ` +
 				`--cacert /config/root-certificate.pem ` +
 				`https://$(cat /config/server)/api/v2/edgedevice/ping' 2>&1`},
+			// device-steps.sh runs zedclient only after the device cert,
+			// the server wait and tpmmgr createCerts; its progress lines
+			// are logged as pillar.out.
+			{"device-steps (newlog)", newlogProbe(`grep -a pillar.out | tail -40`)},
+			{"onboarding processes", "ps -o pid,etime,args 2>/dev/null | " +
+				"grep -E '[d]evice-steps|[t]pmmgr|/opt/zededa/bin/[c]lient' || echo none"},
+			{"device cert", "ls -la /config/device.cert.pem /config/device.key.pem " +
+				"/persist/certs 2>&1"},
 			{"zedclient (newlog)", newlogProbe(`grep -a zedclient | tail -60`)},
 			{"zedagent (newlog)", newlogProbe(`grep -a zedagent | tail -40`)},
 		})
