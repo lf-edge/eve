@@ -57,7 +57,7 @@ RUN mkdir -p /nvidia-firmware && \
 ENV RTL8822_FW_VERSION=ca9f4e199efbf8c377e8a1769ba5b05b23f92c82
 ADD https://github.com/lwfinger/rtw88.git#${RTL8822_FW_VERSION} /rtw88
 
-ENV LINUX_FIRMWARE_VERSION=20240811
+ENV LINUX_FIRMWARE_VERSION=20260916
 ENV LINUX_FIRMWARE_URL=https://cdn.kernel.org/pub/linux/kernel/firmware/linux-firmware
 ADD ${LINUX_FIRMWARE_URL}-${LINUX_FIRMWARE_VERSION}.tar.gz /linux-firmware.tar.gz
 RUN mkdir /linux-firmware &&\
@@ -73,17 +73,17 @@ RUN ln -s ../cypress/cyfmac43430-sdio.bin /lib/firmware/brcm/brcmfmac43430-sdio.
 RUN ln -s brcmfmac4356-pcie.gpd-win-pocket.txt '/lib/firmware/brcm/brcmfmac4356-pcie.Kontron America-Agora Gateway 403.txt'
 RUN ln -s brcmfmac4356-pcie.bin '/lib/firmware/brcm/brcmfmac4356-pcie.Kontron America-.bin'
 RUN ln -s brcmfmac4356-pcie.gpd-win-pocket.txt /lib/firmware/brcm/brcmfmac4356-pcie.txt
-# symlinks for Raspberry Pi
+# symlinks for Raspberry Pi. The .txt variants for the 500 and the CM5 are not
+# here: linux-firmware declares those links itself in WHENCE, with the same
+# targets, and creating them again fails the build with "File exists".
 RUN ln -s ../cypress/cyfmac43455-sdio.bin /lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,4-model-b.bin
 RUN ln -s ../cypress/cyfmac43455-sdio.bin /lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,4-compute-module.bin
 RUN ln -s ../cypress/cyfmac43455-sdio.clm_blob /lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,4-compute-module.clm_blob
 RUN ln -s ../cypress/cyfmac43455-sdio.clm_blob /lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,4-model-b.clm_blob
 RUN ln -s ../cypress/cyfmac43455-sdio.bin /lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,500.bin
 RUN ln -s ../cypress/cyfmac43455-sdio.clm_blob /lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,500.clm_blob
-RUN ln -s brcmfmac43455-sdio.raspberrypi,4-model-b.txt /lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,500.txt
 RUN ln -s ../cypress/cyfmac43455-sdio.bin /lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-compute-module.bin
 RUN ln -s ../cypress/cyfmac43455-sdio.clm_blob /lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-compute-module.clm_blob
-RUN ln -s brcmfmac43455-sdio.raspberrypi,4-model-b.txt /lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-compute-module.txt
 RUN ln -s ../cypress/cyfmac43455-sdio.bin /lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-model-b.bin
 RUN ln -s ../cypress/cyfmac43455-sdio.clm_blob /lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-model-b.clm_blob
 
