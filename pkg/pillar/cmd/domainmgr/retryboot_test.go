@@ -42,7 +42,7 @@ func (s *mapSubscription) Close() error                   { return nil }
 // recordingTask is the hypervisor side of one domain, built on the null
 // hypervisor's task so it tracks the types.Task interface of whichever
 // branch it is compiled on. Setup applies the ownership check that the KVM,
-// Xen and kubevirt backends run while rendering the domain config, but
+// kubevirt backends run while rendering the domain config, but
 // records the violation instead of logrus.Fatalf so the test can observe
 // it. Create fails so a boot retry stops after Setup.
 type recordingTask struct {
@@ -222,6 +222,6 @@ func TestRetryBootAfterAdaptersReleased(t *testing.T) {
 
 	if len(task.notOurs) != 0 {
 		t.Fatalf("boot retry rendered a domain config for adapters the domain "+
-			"does not hold; KVM, Xen and kubevirt Fatal here: %v", task.notOurs)
+			"does not hold; KVM and kubevirt Fatal here: %v", task.notOurs)
 	}
 }

@@ -504,7 +504,7 @@ endif
 # 4KB page reads and decompresses the whole block.
 ROOTFS_SQUASHFS_BLOCK_SIZE=
 ifeq ($(ZARCH),amd64)
-    ifneq (,$(filter $(HV),kvm xen))
+    ifeq ($(HV),kvm)
         ROOTFS_SQUASHFS_BLOCK_SIZE=1048576
     endif
 endif
