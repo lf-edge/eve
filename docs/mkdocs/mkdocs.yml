@@ -62,6 +62,7 @@ nav:
       - 'Alpine': 'docs/ALPINE.md'
       - 'Custom Build': 'docs/CUSTOM-BUILD.md'
       - 'SBoM and Sources': 'docs/SBOM-AND-SOURCES.md'
+      - 'Linux firmware': 'docs/FIRMWARE.md'
   - Networking:
       - 'Overview': 'docs/NETWORKING.md'
       - 'Device Connectivity': 'docs/DEVICE-CONNECTIVITY.md'

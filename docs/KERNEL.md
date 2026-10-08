@@ -370,9 +370,24 @@ This must be done on the same machine where you built the kernel.
    ```bash
    cd /path/to/eve
    ./tools/update_kernel_commits.py --branch eve-kernel-amd64-v6.12.96-generic
-   git add kernel-commits.mk
+   tools/update-fw-lists.py
+   git add kernel-commits.mk pkg/fw/firmware-*.txt
    git commit -F kernel-update-commit-message.txt
    ```
+
+   `tools/update-fw-lists.py` regenerates the firmware lists for the new kernel. Review their
+   diff before committing; [FIRMWARE.md](FIRMWARE.md#after-updating-the-kernel) describes what
+   to check.
+
+## Firmware
+
+Many drivers load firmware from `/lib/firmware` when they probe a device. EVE ships it in
+[pkg/fw](../pkg/fw), and on amd64 the firmware in the image is exactly what the pinned kernels
+declare they can load: `tools/update-fw-lists.py` reads the kernel images and writes
+`pkg/fw/firmware-amd64.txt`. A kernel update, a configuration change that adds or removes a
+driver, or a new version of an out-of-tree driver therefore needs the firmware lists
+regenerated, and sometimes new firmware. [FIRMWARE.md](FIRMWARE.md) describes the procedure, and
+how kernel and linux-firmware versions relate.
 
 ## Container-Based Build
 
@@ -443,6 +458,7 @@ on your development needs.
 - [EVE-IMAGE-SOURCES.md](EVE-IMAGE-SOURCES.md) - Source tracing and provenance
 - [DEBUGGING.md](DEBUGGING.md) - Kernel debugging techniques
 - [KERNEL-DUMPS.md](KERNEL-DUMPS.md) - Capturing and analyzing kernel dumps
+- [FIRMWARE.md](FIRMWARE.md) - Firmware the kernel loads, and updating it with the kernel
 
 ## Additional Resources
 
