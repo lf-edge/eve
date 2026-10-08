@@ -146,7 +146,7 @@ func (lc *LinuxCollector) parseIptablesLine(
 	}
 	i := 2
 	for i < len(items) {
-		// Ignore any xen-related entries.
+		// Ignore bridged-physdev entries.
 		if items[i] == "--physdev-is-bridged" {
 			return ac, true
 		}

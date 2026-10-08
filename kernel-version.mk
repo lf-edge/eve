@@ -8,7 +8,7 @@
 #              variables we set kernel version, commit hash and branch
 #              when new kernel is built and pushed to the corresponding
 #              dockerhub
-#   HV - hypervisor (kvm, k, xen, mini)
+#   HV - hypervisor (kvm, k, mini)
 #   KERNEL_COMMIT_xxx variable must be manually updated
 #   KERNEL_CONFIG_FLAVOR - optional, used to select kernel's docker tag
 #                          which corresponds to the kernel config file

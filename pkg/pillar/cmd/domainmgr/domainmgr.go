@@ -80,7 +80,7 @@ func waitForPCINetworkInterface(pciAddr string, timeout time.Duration) (string, 
 const (
 	agentName  = "domainmgr"
 	runDirname = "/run/" + agentName
-	xenDirname = runDirname + "/xen"       // We store xen cfg files here
+	domDirname = runDirname + "/domains"   // hypervisor-specific domain config files
 	ciDirname  = runDirname + "/cloudinit" // For cloud-init images
 
 	// Time limits for event loop handlers
@@ -229,7 +229,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			log.Fatal(err)
 		}
 	}
-	if err := os.RemoveAll(xenDirname); err != nil {
+	if err := os.RemoveAll(domDirname); err != nil {
 		log.Fatal(err)
 	}
 	if _, err := os.Stat(ciDirname); err == nil {
@@ -237,8 +237,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			log.Fatal(err)
 		}
 	}
-	if _, err := os.Stat(xenDirname); err != nil {
-		if err := os.MkdirAll(xenDirname, 0700); err != nil {
+	if _, err := os.Stat(domDirname); err != nil {
+		if err := os.MkdirAll(domDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -911,8 +911,8 @@ func unpublishCipherBlockStatus(ctx *domainContext, key string) {
 	pub.Unpublish(key)
 }
 
-func xenCfgFilename(appNum int) string {
-	return xenDirname + "/xen" + strconv.Itoa(appNum) + ".cfg"
+func domCfgFilename(appNum int) string {
+	return domDirname + "/dom" + strconv.Itoa(appNum) + ".cfg"
 }
 
 // Notify simple struct to pass notification messages
@@ -1384,7 +1384,7 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 		status.ClearError()
 	}
 
-	filename := xenCfgFilename(config.AppNum)
+	filename := domCfgFilename(config.AppNum)
 	file, err := os.Create(filename)
 	if err != nil {
 		//it is retry, so omit error
@@ -2011,7 +2011,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		}
 	}
 
-	filename := xenCfgFilename(config.AppNum)
+	filename := domCfgFilename(config.AppNum)
 	file, err := os.Create(filename)
 	if err != nil {
 		log.Fatal("os.Create for ", filename, err)
@@ -2935,7 +2935,7 @@ func handleModify(ctx *domainContext, key string,
 
 	publishDomainStatus(ctx, status)
 	// XXX Any work?
-	// XXX create tmp xen cfg and diff against existing xen cfg
+	// XXX create tmp domain cfg and diff against existing one
 	// If different then stop and start. XXX domain shutdown takes a while
 	// need to watch status using a go routine?
 
@@ -3064,8 +3064,8 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 	updateUsbAccess(ctx)
 	updateVgaAccess(ctx)
 
-	// Delete xen cfg file for good measure
-	filename := xenCfgFilename(status.AppNum)
+	// Delete the domain cfg file for good measure
+	filename := domCfgFilename(status.AppNum)
 	if err := os.Remove(filename); err != nil {
 		log.Errorln(err)
 	}
@@ -3101,8 +3101,8 @@ func DomainCreate(ctx *domainContext, status types.DomainStatus) (int, error) {
 		err      error
 	)
 
-	filename := xenCfgFilename(status.AppNum)
-	log.Functionf("DomainCreate %s ... xenCfgFilename - %s", status.DomainName, filename)
+	filename := domCfgFilename(status.AppNum)
+	log.Functionf("DomainCreate %s ... domCfgFilename - %s", status.DomainName, filename)
 
 	// Now create a domain
 	log.Functionf("Creating domain with the config - %s", filename)
