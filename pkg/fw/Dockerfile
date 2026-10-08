@@ -105,8 +105,9 @@ ADD ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM4345C0.hcd .
 ADD ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM43430B0.hcd .
 ADD ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM4345C5.hcd .
 
-# Hailo 8 GPU firmware
-ENV HAILO_FW_VERSION=4.21.0
+# Hailo-8 AI accelerator firmware. It must match the hailo_pci driver the
+# kernel builds (HAILO_V4_VERSION in eve-kernel's Dockerfile.gcc).
+ENV HAILO_FW_VERSION=4.24.0
 ADD https://hailo-hailort.s3.eu-west-2.amazonaws.com/Hailo8/${HAILO_FW_VERSION}/FW/hailo8_fw.${HAILO_FW_VERSION}.bin /lib/firmware/hailo/hailo8_fw.bin
 
 # Register firmware packages in the APK DB, mandatory for them to be included in the SBOM.
