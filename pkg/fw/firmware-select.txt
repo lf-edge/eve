@@ -1,0 +1,44 @@
+# Copyright (c) 2026 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Which firmware pkg/fw ships, per architecture. tools/update-fw-lists.py
+# turns these rules into firmware-<arch>.txt, the exact list the Dockerfile
+# copies. Run it after changing the kernel or any firmware version.
+#
+#   <arch> platforms <p>...    read the kernels `make kernel-tag` pins for
+#                              these platforms
+#   <arch> module <m> [<re>]   the firmware module <m> declares
+#                              (MODULE_FIRMWARE), only names matching <re> if
+#                              given; * is every module and built-in driver
+#   <arch> exclude <re>        leave out declared names, or files a declared
+#                              pattern matches, that match <re>
+#   <arch> extra <glob>        files no module declares, because the driver
+#                              builds their names at runtime
+#
+# An architecture without rules keeps the per-device selection in the
+# Dockerfile.
+
+amd64 platforms generic rt
+# Whatever the amd64 kernels can load.
+amd64 module *
+# Broadcom SDIO Wi-Fi is on Arm boards: x86 machines carry PCIe and USB parts.
+amd64 exclude ^brcm/.*-sdio
+# Sensor hub: the per-platform image, not the laptop vendors' variants the
+# loader would prefer.
+amd64 exclude ^intel/ish/ish_[a-z]+_
+# ath10k_pci builds board-2.bin and firmware-<api>.bin names per chip, and
+# declares them for only some of the chips it drives.
+amd64 extra ath10k/QCA9377/hw1.0/board-2.bin
+amd64 extra ath10k/QCA9888/hw2.0/*.bin
+amd64 extra ath10k/QCA9984/hw1.0/*.bin
+amd64 extra ath10k/QCA99X0/hw2.0/*.bin
+# Broadcom USB Bluetooth: btbcm builds the name from the USB IDs.
+amd64 extra brcm/BCM-*.hcd
+# Intel Bluetooth for the AX210 and AX211: btintel builds the name from the
+# controller's IDs. Every Intel Bluetooth part would be another 27 MiB.
+amd64 extra intel/ibt-0040-0041.*
+amd64 extra intel/ibt-0041-0041.*
+# Redpine Wi-Fi (Dell Edge Gateway 300x): the image depends on the mode.
+amd64 extra rsi/*
+# Hailo-8: the out-of-tree hailo_pci declares nothing.
+amd64 extra hailo/*
