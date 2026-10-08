@@ -1,0 +1,161 @@
+# Copyright (c) 2026, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
+# OpenSSF Security Insights: https://github.com/ossf/security-insights
+---
+header:
+  schema-version: 2.2.0
+  last-updated: '2026-10-08'
+  last-reviewed: '2026-10-08'
+  url: https://github.com/lf-edge/eve/blob/master/.github/security-insights.yml
+
+project:
+  name: Project EVE
+  homepage: https://www.lfedge.org/projects/eve/
+  steward:
+    uri: https://www.linuxfoundation.org/security
+    comment: Linux Foundation, CRA open-source steward for EVE.
+  administrators:
+    - name: EVE Technical Steering Committee
+      email: eve-tsc@lists.lfedge.org
+      primary: true
+  repositories:
+    - name: eve
+      url: https://github.com/lf-edge/eve
+      comment: EVE edge operating system.
+    - name: eve-api
+      url: https://github.com/lf-edge/eve-api
+      comment: API between an EVE device and its controller; vendored into EVE.
+    - name: eve-libs
+      url: https://github.com/lf-edge/eve-libs
+      comment: Go libraries vendored into EVE.
+    - name: eve-kernel
+      url: https://github.com/lf-edge/eve-kernel
+      comment: Linux kernel trees built into EVE images.
+    - name: eve-monitor-rs
+      url: https://github.com/lf-edge/eve-monitor-rs
+      comment: Local console monitor shipped in EVE images.
+    - name: eve-rust
+      url: https://github.com/lf-edge/eve-rust
+      comment: Rust build environment for EVE packages.
+    - name: eve-tpmea
+      url: https://github.com/lf-edge/eve-tpmea
+      comment: TPM enhanced authorization library used by EVE.
+    - name: edge-containers
+      url: https://github.com/lf-edge/edge-containers
+      comment: Edge container library vendored into EVE.
+    - name: runx
+      url: https://github.com/lf-edge/runx
+      comment: VM-based container runtime.
+    - name: eden
+      url: https://github.com/lf-edge/eden
+      comment: End-to-end test harness for EVE.
+    - name: adam
+      url: https://github.com/lf-edge/adam
+      comment: Reference controller used in EVE testing.
+    - name: eve-build-tools
+      url: https://github.com/lf-edge/eve-build-tools
+      comment: Build tooling for EVE.
+    - name: eve-tools
+      url: https://github.com/lf-edge/eve-tools
+      comment: Tools and libraries for interacting with EVE.
+    - name: rol
+      url: https://github.com/lf-edge/rol
+      comment: Rack-of-labs hardware test management.
+  vulnerability-reporting:
+    reports-accepted: true
+    bug-bounty-available: false
+    contact:
+      name: EVE security team
+      email: eve-security@lists.lfedge.org
+      primary: true
+    policy: https://github.com/lf-edge/eve/blob/master/SECURITY.md
+    in-scope: https://github.com/lf-edge/eve/blob/master/SECURITY.md#scope
+    comment: >-
+      Report by email or through GitHub private vulnerability reporting.
+      Handling is described in docs/VULNERABILITY-HANDLING.md.
+  documentation:
+    quickstart-guide: https://github.com/lf-edge/eve/blob/master/README.md
+    detailed-guide: https://github.com/lf-edge/eve/blob/master/docs/README.md
+    design: https://github.com/lf-edge/eve/blob/master/docs/README.md
+    code-of-conduct: https://github.com/lf-edge/eve/blob/master/.github/CODE_OF_CONDUCT.md
+    support-policy: https://github.com/lf-edge/eve/blob/master/docs/RELEASE-SUPPORT.md
+
+repository:
+  url: https://github.com/lf-edge/eve
+  status: active
+  accepts-change-request: true
+  accepts-automated-change-request: true
+  core-team:
+    - name: Avi Deitcher
+      email: avi@deitcher.net
+      primary: false
+    - name: Erik Nordmark
+      email: erik@zededa.com
+      primary: true
+    - name: Milan Lenco
+      email: milan@zededa.com
+      primary: false
+    - name: Renê Pinto
+      email: rene@zededa.com
+      primary: false
+    - name: Roman Shaposhnik
+      email: rvs@apache.org
+      primary: false
+    - name: Shahriyar Jalayeri
+      email: shahriyar@zededa.com
+      primary: false
+  license:
+    url: https://github.com/lf-edge/eve/blob/master/LICENSE
+    expression: Apache-2.0
+  documentation:
+    contributing-guide: https://github.com/lf-edge/eve/blob/master/CONTRIBUTING.md
+    governance: https://github.com/lf-edge/eve/blob/master/CONTRIBUTING.md
+    review-policy: https://github.com/lf-edge/eve/blob/master/CONTRIBUTING.md
+    security-policy: https://github.com/lf-edge/eve/blob/master/SECURITY.md
+  release:
+    automated-pipeline: true
+    distribution-points:
+      - uri: https://github.com/lf-edge/eve/releases
+        comment: Release notes, installer and live images, SBOMs and sha256sums.
+      - uri: https://hub.docker.com/r/lfedge/eve
+        comment: EVE images and linuxkit packages, published by the Publish workflow.
+    changelog: https://github.com/lf-edge/eve/releases
+    license:
+      url: https://github.com/lf-edge/eve/blob/master/LICENSE
+      expression: Apache-2.0
+  security:
+    assessments:
+      self:
+        comment: >-
+          Security architecture and threat model; not a formal
+          self-assessment.
+        evidence: https://github.com/lf-edge/eve/blob/master/docs/SECURITY-ARCHITECTURE.md
+    tools:
+      - name: CodeQL
+        type: SAST
+        rulesets: [default]
+        integration: {adhoc: false, ci: true, release: false}
+        results: {}
+        comment: Go and Python.
+      - name: Semgrep
+        type: SAST
+        rulesets: [tests/semgrep-rules]
+        integration: {adhoc: true, ci: true, release: false}
+        results: {}
+      - name: OSV-Scanner
+        type: SCA
+        rulesets: [default]
+        integration: {adhoc: false, ci: true, release: false}
+        results: {}
+      - name: zizmor
+        type: SAST
+        rulesets: [default]
+        integration: {adhoc: false, ci: true, release: false}
+        results: {}
+        comment: GitHub Actions workflows.
+      - name: Go fuzzing
+        type: fuzzing
+        rulesets: [built-in]
+        integration: {adhoc: true, ci: true, release: false}
+        results: {}
