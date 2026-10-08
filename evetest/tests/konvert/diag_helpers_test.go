@@ -503,7 +503,11 @@ func probeStalledConfigFetch(device *evetest.EdgeDevice) (stop func()) {
 				"grep -E '[d]evice-steps|[t]pmmgr|/opt/zededa/bin/[c]lient' || echo none"},
 			{"device cert", "ls -la /config/device.cert.pem /config/device.key.pem " +
 				"/persist/certs 2>&1"},
-			{"zedclient (newlog)", newlogProbe(`grep -a zedclient | tail -60`)},
+			// zedclient registers only once nim's DPC state is usable,
+			// and it logs under its zedbox entrypoint name, client.
+			{"DeviceNetworkStatus state", `eve exec pillar sh -c 'grep -o "\"State\":[0-9]*" ` +
+				`/run/nim/DeviceNetworkStatus/*.json' 2>&1 || echo NONE`},
+			{"client (newlog)", newlogProbe(`grep -a "\"source\":\"client\"" | tail -60`)},
 			{"zedagent (newlog)", newlogProbe(`grep -a zedagent | tail -40`)},
 		})
 	}()
