@@ -10,7 +10,8 @@ on:  # yamllint disable-line rule:truthy
       - "[0-9]+.[0-9]+-stable"
       - "feature/*"
     paths:
-      # Extend this list when adding a crate to the matrix below.
+      # Extend this list and the changes match below when adding a crate
+      # to the matrix.
       - 'pkg/monitor/**'
       - 'pkg/pillar/types/monitorapi/**'  # contract source for pkg/monitor
       - '.github/workflows/rust-tests.yml'
@@ -20,10 +21,6 @@ on:  # yamllint disable-line rule:truthy
       - "[0-9]+.[0-9]+"
       - "[0-9]+.[0-9]+-stable"
       - "feature/*"
-    paths:
-      - 'pkg/monitor/**'
-      - 'pkg/pillar/types/monitorapi/**'
-      - '.github/workflows/rust-tests.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -32,16 +29,26 @@ concurrency:
 permissions: {}
 
 jobs:
+  changes:
+    uses: ./.github/workflows/pr-paths.yml
+    permissions:
+      pull-requests: read
+    with:
+      match: '^(pkg/monitor/|pkg/pillar/types/monitorapi/|\.github/workflows/rust-tests\.yml$)'
+
   test:
     name: cargo test (${{ matrix.crate }})
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: zededa-ubuntu-2204
     permissions:
       contents: read
     strategy:
       fail-fast: false
       matrix:
-        # To add a crate, add its directory here (and its path to the `paths`
-        # filters above). Each entry must contain a Cargo.toml.
+        # To add a crate, add its directory here and its path to the push
+        # filter and the changes match above. Each entry must contain a
+        # Cargo.toml.
         crate:
           - pkg/monitor
           # - pkg/installer
@@ -73,6 +80,8 @@ jobs:
   # pillar in isolation and can't see pkg/monitor).
   generated:
     name: generated code up to date
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: zededa-ubuntu-2204
     permissions:
       contents: read
@@ -84,3 +93,16 @@ jobs:
       - name: check generated contract is in sync
         working-directory: pkg/pillar
         run: go test ./types/monitorapi/ -run TestGeneratedUpToDate -count=1
+
+  result:
+    name: Rust Tests result
+    if: always()
+    needs: [changes, test, generated]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Fail if any job failed or was cancelled
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "$RESULTS"
+          case " $RESULTS " in *" failure "*|*" cancelled "*) exit 1 ;; esac
