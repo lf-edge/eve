@@ -120,6 +120,23 @@ RUN if [ "${TARGETARCH}" = "arm64" ]; then \
         register-sbom-pkg.sh -n rpi-bluez-firmware -v "${RPI_BT_FIRMWARE_VERSION:0:8}" -l proprietary -u https://github.com/RPi-Distro/bluez-firmware -o /sbom-out; \
     fi
 
+# The firmware an architecture's kernels can load, as listed in
+# firmware-<arch>.txt by tools/update-fw-lists.py, which reads the "build"
+# stage above. Architectures without a list use the per-device selection in
+# compactor-common instead; compactor-generic-<arch> below picks one or the
+# other, and an architecture that gets a list is added to both places.
+FROM build AS listed
+ARG TARGETARCH
+COPY firmware-amd64.txt /fw-lists/
+WORKDIR /lib/firmware
+RUN mkdir -p /fw-listed && \
+    if [ -f "/fw-lists/firmware-${TARGETARCH}.txt" ]; then \
+        while read -r f; do \
+            case "$f" in ''|'#'*) continue ;; esac; \
+            cp -a --parents "$f" /fw-listed/ || exit 1; \
+        done < "/fw-lists/firmware-${TARGETARCH}.txt"; \
+    fi
+
 # generate initrd for Intel's and AMD's microcode
 # it makes sense only for x86_64 platform
 FROM --platform=${TARGETPLATFORM} lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS ucode-build-common
@@ -170,7 +187,7 @@ FROM ucode-build-common AS ucode-build-arm64
 FROM ucode-build-common AS ucode-build-riscv64
 FROM ucode-build-${TARGETARCH} AS ucode-build
 
-FROM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS compactor-common
+FROM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS compactor-base
 ENTRYPOINT []
 WORKDIR /
 # Reset the APK DB so the final image only reports source-built/firmware packages
@@ -178,6 +195,21 @@ RUN rm -f /lib/apk/db/installed && register-sbom-pkg.sh -o /
 COPY --from=build /sbom-out/lib/apk/db/installed /tmp/sbom-fw
 COPY --from=ucode-build /sbom-out/lib/apk/db/installed /tmp/sbom-ucode
 RUN cat /tmp/sbom-fw /tmp/sbom-ucode >> /lib/apk/db/installed && rm -f /tmp/sbom-fw /tmp/sbom-ucode
+
+# Exactly the files in firmware-<arch>.txt
+FROM compactor-base AS compactor-listed
+COPY --from=listed /fw-listed/ /lib/firmware/
+# A firmware update can turn a listed file into a link to one the list lacks.
+# Fail rather than ship the dangling link; tools/update-fw-lists.py fixes it.
+RUN dangling="$(find /lib/firmware -type l ! -exec test -e {} \; -print)" && \
+    if [ -n "$dangling" ]; then \
+        echo "dangling firmware links, run tools/update-fw-lists.py:"; \
+        echo "$dangling"; \
+        exit 1; \
+    fi
+
+# A per-device selection, for architectures without a list
+FROM compactor-base AS compactor-common
 COPY --from=build /lib/firmware/regulatory* /lib/firmware/
 COPY --from=build /lib/firmware/bnx2x/* /lib/firmware/bnx2x/
 COPY --from=build /lib/firmware/mrvl/*.bin /lib/firmware/mrvl/
@@ -232,19 +264,6 @@ COPY --from=build /lib/firmware/hailo /lib/firmware/hailo
 ARG TARGETARCH
 
 # Remove unnecessary firmware based on TARGETARCH and print freed space
-RUN if [ "$TARGETARCH" = "amd64" ]; then \
-    initial_size=$(du -sm /lib/firmware | cut -f1); \
-    rm -rf /lib/firmware/nvidia \
-           /lib/firmware/ti-connectivity \
-           /lib/broadcom \
-           /lib/firmware/*t234* \
-           /lib/firmware/*t194* \
-           /lib/firmware/nvpva* ; \
-    final_size=$(du -sm /lib/firmware | cut -f1); \
-    freed_space=$((initial_size - final_size)); \
-    echo "Freed space: ${freed_space} MB"; \
-    fi
-
 RUN if [ "$TARGETARCH" = "arm64" ]; then \
     initial_size=$(du -s /lib/firmware | cut -f1); \
     rm -rf /lib/firmware/ice; \
@@ -263,7 +282,10 @@ RUN cat /tmp/sbom-fw /tmp/sbom-ucode >> /lib/apk/db/installed && rm -f /tmp/sbom
 # get all possible FW
 COPY --from=build /lib/firmware/ /lib/firmware/
 
-FROM compactor-common AS compactor-generic
+FROM compactor-listed AS compactor-generic-amd64
+FROM compactor-common AS compactor-generic-arm64
+FROM compactor-common AS compactor-generic-riscv64
+FROM compactor-generic-${TARGETARCH} AS compactor-generic
 FROM compactor-common AS compactor-nvidia-jp5
 FROM compactor-common AS compactor-nvidia-jp6
 FROM compactor-common AS compactor-nvidia-jp7
