@@ -55,6 +55,8 @@ export KUBECONFIG=/etc/rancher/k3s/k3s.yaml # for virtctl command
 . /usr/bin/tie-breaker-utils.sh
 # shellcheck source=pkg/kube/vnc-proxy.sh
 . /usr/bin/vnc-proxy.sh
+# shellcheck source=pkg/kube/cni-state-utils.sh
+. /usr/bin/cni-state-utils.sh
 
 # get cluster IP address from the cluster status file
 get_cluster_node_ip() {
@@ -854,6 +856,7 @@ change_to_new_token() {
 #    - Create transition pipe/flag for k3s restart coordination
 #    - Terminate k3s process
 #    - Non-bootstrap node join case: remove TLS certs, mark debuguser for reinit
+#    - Non-bootstrap node join case: remove the standalone pod subnet's CNI state
 #    - Provision cluster config (bootstrap or join mode)
 #    - If enc_status_file disappears during wait for joining cluster: revert back to single-node, REBOOT
 #    - Non-bootstrap: create transition tracking file with timestamp, if joining cluster fails repeatedly, may REBOOT
@@ -942,6 +945,11 @@ check_cluster_config_change() {
               rm -rf /var/lib/rancher/k3s/server/tls/*
               # redo the debugger user role binding since certs are changed
               rm /var/lib/debuguser-initialized
+              # drop the standalone pod subnet so no pod is networked against
+              # it after the join; bootstrap nodes keep 10.42.0.0/24
+              if ! remove_stale_cni_state; then
+                logmsg "warning: failed to clear stale CNI state"
+              fi
             fi
 
             logmsg "provision config file for node to cluster mode"

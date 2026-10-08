@@ -15,6 +15,7 @@ or copied in for a one-shot run during cluster debugging.
 | Script | Purpose |
 | ------ | ------- |
 | `kube-test-longhorn-pvc-size.sh` | Compares Longhorn ground-truth PVC sizes (live data + snapshot chain) against EVE's pubsub-reported values in `VolumeStatus.CurrentSize` and `KubeClusterInfo.AllocatedBytes`. Exits 0 if all volumes are within the configurable drift tolerance, 1 otherwise. |
+| `cni-state-utils-test.sh` | Unit test for `remove_stale_cni_state` in `cni-state-utils.sh`. Unlike the other scripts here it runs on the build host, via `make -C pkg/kube test`, which the top-level `make test` calls. |
 
 ## Usage
 

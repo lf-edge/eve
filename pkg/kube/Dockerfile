@@ -70,6 +70,7 @@ RUN mkdir -p /usr/bin/kube/
 RUN mkdir -p /etc/kube/
 COPY cluster-init.sh /usr/bin/
 COPY cluster-utils.sh /usr/bin/
+COPY cni-state-utils.sh /usr/bin/
 COPY cgconfig.conf /etc
 COPY utils.sh /usr/bin/
 COPY pubsub.sh /usr/bin/
