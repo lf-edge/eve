@@ -2072,11 +2072,11 @@ func TestIPv4LocalAndSwitchNIsWithFlowlogging(test *testing.T) {
 	vif2IPRuleIngress := iptables.Rule{
 		RuleLabel: "User-configured ALLOW ACL rule 1 for ingress port eth1",
 		Table:     "mangle",
-		ChainName: "PREROUTING-nbu2x2-IN",
+		ChainName: "FORWARD-nbu2x2-IN",
 		ForIPv6:   false,
 	}
 	t.Expect(itemDescription(dg.Reference(vif2IPRuleIngress))).To(ContainSubstring(
-		"-i eth1 -s 0.0.0.0/0 -j eth1-nbu2x2-1"))
+		"-i eth1 -s 0.0.0.0/0 -j eth1-nbu2x2-in-1"))
 	vif2IPRuleEgress := iptables.Rule{
 		RuleLabel: "User-configured ALLOW ACL rule 1",
 		Table:     "mangle",
@@ -2086,14 +2086,55 @@ func TestIPv4LocalAndSwitchNIsWithFlowlogging(test *testing.T) {
 	t.Expect(itemDescription(dg.Reference(vif2IPRuleEgress))).To(ContainSubstring(
 		"-d 0.0.0.0/0 -j eth1-nbu2x2-1"))
 
+	// Ingress marking of Switch NI is applied in the FORWARD chain, where the output
+	// port of the bridge is known. Otherwise the ingress rules of the VIF traversed
+	// first would mark connections of all the other VIFs.
+	vif2IngressTraversal := iptables.Rule{
+		RuleLabel: "Traverse VIF nbu2x2 ingress ACLs",
+		Table:     "mangle",
+		ChainName: "FORWARD-apps",
+		ForIPv6:   false,
+	}
+	t.Expect(itemDescription(dg.Reference(vif2IngressTraversal))).To(ContainSubstring(
+		"-o eth1 -m physdev --physdev-out nbu2x2 -j FORWARD-nbu2x2-IN"))
+	vif2EgressTraversal := iptables.Rule{
+		RuleLabel: "Traverse VIF nbu2x2 egress ACLs",
+		Table:     "mangle",
+		ChainName: "PREROUTING-nbu2x2",
+		ForIPv6:   false,
+	}
+	t.Expect(itemDescription(dg.Reference(vif2EgressTraversal))).To(ContainSubstring(
+		"-i eth1 -m physdev --physdev-in nbu2x2 -j PREROUTING-nbu2x2-OUT"))
+
+	// Marks of device-wide ACLs (no app ID) must not prevent the app ACLs from marking
+	// the connection.
+	vif2AcceptMarked := iptables.Rule{
+		RuleLabel: "Accept marked connection",
+		Table:     "mangle",
+		ChainName: "eth1-nbu2x2-1",
+		ForIPv6:   false,
+	}
+	t.Expect(itemDescription(dg.Reference(vif2AcceptMarked))).To(ContainSubstring(
+		"-m mark ! --mark 0/4278190080 -j ACCEPT"))
+	// Ingress marking chains of Switch NI are traversed from FORWARD, where they must
+	// not skip the remaining rules (e.g. TCP MSS clamping), hence RETURN.
+	vif2IngressAcceptMarked := iptables.Rule{
+		RuleLabel: "Accept marked connection",
+		Table:     "mangle",
+		ChainName: "eth1-nbu2x2-in-1",
+		ForIPv6:   false,
+	}
+	t.Expect(itemDescription(dg.Reference(vif2IngressAcceptMarked))).To(ContainSubstring(
+		"-m mark ! --mark 0/4278190080 -j RETURN"))
+
 	vif3IPRuleIngress := iptables.Rule{
 		RuleLabel: "User-configured ALLOW ACL rule 1 for ingress port eth1",
 		Table:     "mangle",
-		ChainName: "PREROUTING-nbu3x2-IN",
+		ChainName: "FORWARD-nbu3x2-IN",
 		ForIPv6:   false,
 	}
 	t.Expect(itemDescription(dg.Reference(vif3IPRuleIngress))).To(ContainSubstring(
-		"-i eth1 -s 0.0.0.0/0 -j eth1-nbu3x2-1"))
+		"-i eth1 -s 0.0.0.0/0 -j eth1-nbu3x2-in-1"))
 	vif3IPRuleEgress := iptables.Rule{
 		RuleLabel: "User-configured ALLOW ACL rule 1",
 		Table:     "mangle",
