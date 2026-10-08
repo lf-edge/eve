@@ -18,12 +18,19 @@ on:  # yamllint disable-line rule:truthy
       - "[0-9]+.[0-9]+"
       - "[0-9]+.[0-9]+-stable"
       - "feature/*"
-    paths-ignore:
-      - '**/*.md'
-      - '.github/**'
 
 jobs:
+  changes:
+    uses: ./.github/workflows/pr-paths.yml
+    permissions:
+      pull-requests: read
+    with:
+      match: '.'
+      ignore: '^\.github/|\.md$'
+
   test:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-24.04
     steps:
       - name: Starting Report
@@ -69,3 +76,16 @@ jobs:
           docker system prune -f -a || :
           docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q) || :
           rm -rf ~/.linuxkit || :
+
+  result:
+    name: Go Tests result
+    if: always()
+    needs: [changes, test]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Fail if any job failed or was cancelled
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "$RESULTS"
+          case " $RESULTS " in *" failure "*|*" cancelled "*) exit 1 ;; esac
