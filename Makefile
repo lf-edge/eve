@@ -537,6 +537,7 @@ test: $(LINUXKIT) pkg/pillar | $(DIST)
 	make -C pkg/alpine/dnstest test
 	make -C pkg/debug test
 	make -C pkg/vtpm test
+	make -C pkg/kube test
 	go test -C pkg/newlog/cmd/ -v -race
 	go test -C pkg/edgeview/src/ -v -race
 	$(QUIET): $@: Succeeded
