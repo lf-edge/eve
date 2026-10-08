@@ -307,8 +307,6 @@ func (lc *LinuxCollector) getIptablesACLDrop(counters []aclCounters,
 }
 
 // Look for a DROP entry with More set.
-// zedrouter appends a '+' to the vifname to handle PV/qemu which for some
-// reason have a second <vifname>-emu bridge interface. Need to match that here.
 func (lc *LinuxCollector) getIptablesACLRateLimitDrop(counters []aclCounters,
 	bridgeName string, vifName string, ipVer int, brInput bool) uint64 {
 	matcher := lc.makeIptablesCountersMatcher(bridgeName, vifName, ipVer, brInput)
