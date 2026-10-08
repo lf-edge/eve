@@ -26,7 +26,7 @@ type mgmtProxyContext struct {
 }
 
 // Run is a no-op stub for non-k builds. mgmtproxy is only meaningful in EVE-K
-// where containerd does its own image pulls; on KVM/Xen images all downloads
+// where containerd does its own image pulls; on KVM images all downloads
 // already flow through pillar's cost-aware controllerconn path.
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject,
 	arguments []string, baseDir string) int {
