@@ -152,6 +152,8 @@ func publishVolumeRefStatus(ctx *volumemgrContext, status *types.VolumeRefStatus
 	key := status.Key()
 	log.Tracef("publishVolumeRefStatus(%s)", key)
 	pub := ctx.pubVolumeRefStatus
+	cutErrorIfOversized(key, func() error { return pub.CheckMaxSize(key, *status) },
+		&status.Error)
 	pub.Publish(key, *status)
 	log.Tracef("publishVolumeRefStatus(%s) Done", key)
 }
