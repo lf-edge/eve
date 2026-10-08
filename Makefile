@@ -639,7 +639,8 @@ check-docker-hashes-consistency: $(DOCKERFILE_FROM_CHECKER)
 		$(IGNORE_DOCKERFILE_HASHES_EVE_TOOLS_ARGS) \
 		$(IGNORE_DOCKERFILE_DOT_GO_DIR) \
 		$(IGNORE_DOCKERFILE_EVETEST_DIR) \
-		$(IGNORE_DOCKERFILE_DIST_DIR)
+		$(IGNORE_DOCKERFILE_DIST_DIR) \
+		-i pkg/ubuntu/example/Dockerfile
 
 # checks that the Persistent flag of pubsub subscriptions matches the
 # Persistent flag of the publications they subscribe to, and that all
