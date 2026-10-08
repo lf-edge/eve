@@ -164,6 +164,7 @@ jobs:
             echo "build_ok=false" >>"$GITHUB_OUTPUT"
           else
             echo "build_ok=$([[ "$build_conclusion" == 'success' ]] && echo true || echo false)" >>"$GITHUB_OUTPUT"
+            echo "build_skipped=$([[ "$build_conclusion" == 'skipped' ]] && echo true || echo false)" >>"$GITHUB_OUTPUT"
           fi
 
       - name: Check Gate Condition
@@ -209,9 +210,12 @@ jobs:
         # its workflow file from the pull request's head, so GitHub caps its
         # GITHUB_TOKEN at read-only whenever that head lives in a fork, and the
         # status write comes back 403 however the job declares its permissions.
+        # A pull request that changes no file needing a build skips the EVE
+        # build jobs; it has nothing for Eden to test, so report nothing.
         if: >-
           ${{ github.event_name == 'workflow_run'
           && steps.check.outputs.gate_passed != 'true'
+          && steps.build.outputs.build_skipped != 'true'
           && steps.meta.outputs.pr_sha != '' }}
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8.0.0
         env:
