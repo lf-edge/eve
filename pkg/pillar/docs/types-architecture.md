@@ -141,6 +141,7 @@ type ErrorDescription struct {
 
 ```go
 // Sets the error. Panics if Error string is empty.
+// Cuts Error down to MaxErrorLen bytes (see below).
 // Defaults ErrorSeverity to ErrorSeverityError if unspecified.
 // Defaults ErrorTime to time.Now() if zero.
 func (ed *ErrorDescription) SetErrorDescription(errDescription ErrorDescription)
@@ -148,6 +149,21 @@ func (ed *ErrorDescription) SetErrorDescription(errDescription ErrorDescription)
 // Converts to protobuf info.ErrorInfo. Returns nil if ErrorTime is zero.
 func (ed *ErrorDescription) ToProto() *info.ErrorInfo
 ```
+
+Error strings are bounded. `SetErrorDescription` cuts `Error` down to
+`MaxErrorLen` (4 KiB) with `TruncateError`, which keeps the head and the tail
+of the string around a note of how many bytes were dropped. The bound is what
+keeps a status publishable: a pubsub message carries 64 KiB, and an
+`AppInstanceStatus` embeds one error per volume reference on top of its own,
+so an error that grows with what went wrong would eventually make the socket
+driver kill the agent. Code that builds one error out of many (one
+per source address in the downloader, per blob in volumemgr, per volume in
+zedmanager) uses `JoinErrors`, which joins within a byte budget and says how
+many errors it left out. The publishers of the aggregating statuses
+(`AppInstanceStatus`, `VolumeStatus`, `VolumeRefStatus`, `ContentTreeStatus`)
+additionally check the serialized size with `CheckMaxSize` and cut the errors
+down to `OversizedStatusErrorLen` rather than publish a status that cannot be
+sent.
 
 ### `ErrorAndTime`
 
