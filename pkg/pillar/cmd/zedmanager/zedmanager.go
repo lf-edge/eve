@@ -753,6 +753,14 @@ func publishAppInstanceStatus(ctx *zedmanagerContext,
 			}
 		}
 	}
+	if status.HasError() {
+		if err := pub.CheckMaxSize(key, *status); err != nil {
+			log.Errorf("publishAppInstanceStatus(%s): status does not fit a pubsub "+
+				"message (%v): cutting its errors to %d bytes",
+				key, err, types.OversizedStatusErrorLen)
+			status.TruncateErrors(types.OversizedStatusErrorLen)
+		}
+	}
 	pub.Publish(key, *status)
 }
 
