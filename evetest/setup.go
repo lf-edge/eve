@@ -155,6 +155,8 @@ func (th *TestHarness) buildEveConfig(dev *deviceState) *api.EveConfig {
 	grubOptions := dev.requirement.WithGrubOptions
 	if dev.requirement.WithFilesystem == FilesystemZFS {
 		const enableZFS = "eve_install_zfs_with_raid_level=none"
+		// dom0_extra_args is the spelling every image understands: current
+		// releases alias it to kernel_extra_args, older ones only read this one.
 		grubOptions = append(grubOptions,
 			fmt.Sprintf("set_global dom0_extra_args \"$dom0_extra_args %s \"", enableZFS))
 	}

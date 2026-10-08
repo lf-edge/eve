@@ -35,7 +35,7 @@ Before we proceed describing each type of boot flow in details, let us first est
 
 1. rootfs image (either a [squashfs](https://www.kernel.org/doc/html/latest/filesystems/squashfs.html) or [ext4](https://www.kernel.org/doc/html/latest/filesystems/ext4/index.html))
 2. 2nd stage GRUB (in UEFI format)
-3. Dom0 linux kernel (this doubles as type-2 hypervisor for KVM)
+3. Linux kernel (this doubles as type-2 hypervisor for KVM)
 4. Optional Alpine-derived initramfs [init entrypoint](https://gitlab.alpinelinux.org/alpine/mkinitfs) as a compressed cpio
 5. Optional container that performs [EVE installation](../pkg/mkimage-raw-efi/install) as a compressed cpio
 6. Optional extra files (e.g. content of config partition) as a compressed cpio
@@ -158,10 +158,10 @@ in grub.cfg with graphical GRUB menu to get the device to boot again.
 
 1. Cgroup related options. Please follow the [example](README.md#eve-cgroups) to write
    these values in the correct GRUB variables:
-    1. `dom0_mem` option of `hv_dom0_mem_settings` variable - memory limit for eve cgroup
-       (default is `set_global hv_dom0_mem_settings "dom0_mem=640M,max:800M"`)
-    2. `dom0_max_vcpus` option of `hv_dom0_cpu_settings` variable - cpu limit for eve cgroup
-       (default is `set_global hv_dom0_cpu_settings "dom0_max_vcpus=1"`)
+    1. `sys_mem` option of `hv_sys_mem_settings` variable - memory limit for eve cgroup
+       (default is `set_global hv_sys_mem_settings "sys_mem=640M,max:800M"`)
+    2. `sys_max_vcpus` option of `hv_sys_cpu_settings` variable - cpu limit for eve cgroup
+       (default is `set_global hv_sys_cpu_settings "sys_max_vcpus=1"`)
     3. `eve_mem` - memory limit for cgroups with services of EVE
        (default is `set_global hv_eve_mem_settings "eve_mem=520M,max:650M"`)
     4. `eve_max_vcpus` option of `hv_eve_mem_settings` variable - cpu limit for cgroups with services of EVE
@@ -171,8 +171,8 @@ in grub.cfg with graphical GRUB menu to get the device to boot again.
     6. `ctrd_max_vcpus` option of `hv_ctrd_cpu_settings` variable - cpu limit for cgroups with containerd-shims of EVE
        (default is `set_global hv_ctrd_cpu_settings "ctrd_max_vcpus=1"`)
 2. Installer options. These options are used during [the installation](DEPLOYMENT.md) process and may be set by adding
-   them to `dom0_extra_args` grub variable with line
-   `set_global dom0_extra_args "$dom0_extra_args OPTION1=VAL1 OPTION2 "`, where OPTION fields described below
+   them to `kernel_extra_args` grub variable with line
+   `set_global kernel_extra_args "$kernel_extra_args OPTION1=VAL1 OPTION2 "`, where OPTION fields described below
    (`DISK` below is e.g. `sda`):
     1. `eve_blackbox` - if set, installer will collect [information](../pkg/mkimage-raw-efi/install#L93)
        from EVE to INVENTORY partition on installation media (it must be writable, i.e. USB flash drive)
@@ -196,8 +196,16 @@ in grub.cfg with graphical GRUB menu to get the device to boot again.
     12. `eve_install_skip_zfs_checks` - install zfs by skipping minimum requirement checks.
     13. `eve_install_zfs_with_raid_level` - Sets raid level for zfs storage. Valid values are none,raid1,raid5,raid6. Default value is none. This option also applied for the first boot of a live image to prepare zfs persist pool instead of ext4.
     14. `eve_install_k3s_etcd_sizeGB` - Size in GB of the etcd-storage zvol.  Defaults to 10GB.
-3. General kernel parameters may be adjusted with `set_global dom0_extra_args "$dom0_extra_args OPTION1=VAL1 OPTION2 "`.
+3. General kernel parameters may be adjusted with `set_global kernel_extra_args "$kernel_extra_args OPTION1=VAL1 OPTION2 "`.
    They will be added to kernel cmdline.
+
+   Overrides written before EVE dropped Xen used `dom0_extra_args`, `dom0_console`,
+   `hv_dom0_mem_settings` (`dom0_mem=`) and `hv_dom0_cpu_settings` (`dom0_max_vcpus=`).
+   Those names are still accepted and behave as before: each is kept in step with
+   its current name, so assigning, appending or clearing either with `set_global`
+   works and the last assignment wins. Use
+   `kernel_extra_args`, `kernel_console`, `hv_sys_mem_settings` (`sys_mem=`) and
+   `hv_sys_cpu_settings` (`sys_max_vcpus=`) in new overrides.
 
 4. **Dynamic kernel parameters via EFI variables (Available since EVE 15.9.0):** Kernel command line arguments can be dynamically set at runtime using EFI variables. This method allows adding kernel parameters without modifying grub.cfg files, making it safer for runtime configuration changes. The parameters are read from the EFI variable `eve-kernel-extra-cmdline` with GUID `7AD58F29-2B49-4F5A-9F0B-4E7BF7C2C311` and appended to the existing kernel command line.
 
@@ -205,12 +213,11 @@ in grub.cfg with graphical GRUB menu to get the device to boot again.
 
    **Security Note:** This dynamic modification is secure because grub.cfg is measured to PCR 8, maintaining boot integrity verification through TPM attestation.
 
-As an example of using serial port and VGA as a console for the Dom0 (in Xen terminology,
-but also applies for KVM, which means the "host" operating system) the following
-arguments should be used:
+As an example of using serial port and VGA as a console for the host operating
+system, the following arguments should be used:
 
 ```shell
-set_global dom0_console "console=ttyS0,115200 console=tty0"
+set_global kernel_console "console=ttyS0,115200 console=tty0"
 ```
 
 Multiple `console=` options on the kernel command line define that output

@@ -11,7 +11,7 @@ So, a usual memory hierarchy in the EVE system looks like this:
 
 ```shell
 $ tree /sys/fs/cgroup/memory/eve -d
-/sys/fs/cgroup/memory/eve <--- is set from dom0_mem kernel argument, usually 800Mb (or 8GB for ZFS)
+/sys/fs/cgroup/memory/eve <--- is set from sys_mem kernel argument, usually 800Mb (or 8GB for ZFS)
 ├── containerd <-------------- is set from ctrd_mem kernel argument, usually 400Mb
 └── services <---------------- is set from eve_mem kernel argument, usually 650Mb
     ├── <some services>
@@ -21,7 +21,7 @@ $ tree /sys/fs/cgroup/memory/eve -d
 ```
 
 These limits are set within `pkg/dom0-ztools/rootfs/etc/init.d/010-eve-cgroup`
-script. The "eve" cgroup limit is set according to the `dom0_mem` kernel
+script. The "eve" cgroup limit is set according to the `sys_mem` kernel
 argument, and the "pillar" cgroup (along with the parent "services" cgroup
 and all other sub-cgroups of "services" cgroup) limit is set according the
 `eve_mem` kernel argument.

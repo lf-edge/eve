@@ -34,6 +34,8 @@ func deviceRequirementsForNetAdapterTests(
 		WithGrubOptions: []string{
 			// No applications are deployed in these network adapter tests.
 			// Prioritize maximizing EVE performance and reducing device onboarding time.
+			// hv_dom0_cpu_settings: the spelling every image understands (current
+			// releases alias it to hv_sys_cpu_settings).
 			"set_global hv_dom0_cpu_settings \"dom0_max_vcpus=4\"",
 			"set_global hv_eve_cpu_settings \"eve_max_vcpus=3\"",
 			"set_global hv_ctrd_cpu_settings \"ctrd_max_vcpus=3\""},
