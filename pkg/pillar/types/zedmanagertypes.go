@@ -359,6 +359,17 @@ type AppInstanceStatus struct {
 	IsDesignatedNodeID bool
 }
 
+// TruncateErrors cuts the status's own error and the error of every volume
+// reference down to maxLen bytes each, for a status that would otherwise not
+// fit a pubsub message.
+func (status *AppInstanceStatus) TruncateErrors(maxLen int) {
+	status.Error = TruncateError(status.Error, maxLen)
+	for i := range status.VolumeRefStatusList {
+		status.VolumeRefStatusList[i].Error =
+			TruncateError(status.VolumeRefStatusList[i].Error, maxLen)
+	}
+}
+
 // AppCount is uint8 and it should be sufficient for the number of apps we can support
 type AppCount uint8
 
