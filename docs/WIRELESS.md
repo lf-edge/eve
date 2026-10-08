@@ -23,7 +23,7 @@ In general, WiFi support in EVE is pretty straightforward and largely depends on
 the required driver in the Linux kernel and finding an appropriate firmware binary blob
 to be loaded by the device driver. Please refer to our [new hardware bringup](HARDWARE-BRINGUP.md)
 document for more details on the former and make sure to checkout our [firmware package](../pkg/fw)
-for the latter.
+and [how firmware is selected and added](FIRMWARE.md) for the latter.
 
 ### Wi-Fi configuration
 
