@@ -25,6 +25,13 @@ import (
 const (
 	// How often are conntrack entries listed and app flows collected and published.
 	flowCollectInterval = 120 * time.Second
+
+	// Capacity of the channels used to deliver state updates to watchers.
+	// The collector never blocks on a watcher which is not keeping up (that could
+	// deadlock the collector with the watcher, which calls it synchronously).
+	// Instead, updates which do not fit into the channel are dropped (and the full
+	// state of IP assignments is later sent again, see resyncIPAssignments).
+	watcherChanSize = 100
 )
 
 // LinuxCollector implements state data collecting for network instances
@@ -37,7 +44,10 @@ type LinuxCollector struct {
 	ipLeaseWatcher   *fsnotify.Watcher
 	flowWatchers     []chan types.IPFlow
 	ipAssignWatchers []chan []VIFAddrsUpdate
-	capturedPackets  chan capturedPacket
+	// Set when an IP assignment update was dropped because a watcher was not keeping up.
+	// Only accessed by the event loop.
+	ipAssignResync  bool
+	capturedPackets chan capturedPacket
 }
 
 type niInfo struct {
@@ -272,14 +282,15 @@ func (lc *LinuxCollector) isPcapRequired(niConfig types.NetworkInstanceConfig) b
 // or when VIF is (dis)connected to/from the NI.
 // Note that not every change in network instance config is supported. For example,
 // network instance type (switch / local) cannot change.
+// Calls for the same NI must not be made concurrently.
 func (lc *LinuxCollector) UpdateCollectingForNI(
 	niConfig types.NetworkInstanceConfig, vifs []AppVIF, enableARPSnoop bool) error {
 	lc.mu.Lock()
-	defer lc.mu.Unlock()
-	if _, exists := lc.nis[niConfig.UUID]; !exists {
+	ni, exists := lc.nis[niConfig.UUID]
+	if !exists {
+		lc.mu.Unlock()
 		return ErrUnknownNI{NI: niConfig.UUID}
 	}
-	ni := lc.nis[niConfig.UUID]
 	ni.config = niConfig
 	var newVifs []*vifInfo
 	for _, vif := range vifs {
@@ -293,15 +304,28 @@ func (lc *LinuxCollector) UpdateCollectingForNI(
 		newVifs = append(newVifs, newVif)
 	}
 	ni.vifs = newVifs
+	var stopPCAP context.CancelFunc
 	if ni.cancelPCAP != nil {
 		// Stop current PCAP also if arpSnoopEnabled changed and we need to start
 		// a new PCAP with an updated BPF filter.
-		stopPCAP := !lc.isPcapRequired(niConfig) || ni.arpSnoopEnabled != enableARPSnoop
-		if stopPCAP {
-			ni.cancelPCAP()
-			ni.pcapWG.Wait()
+		if !lc.isPcapRequired(niConfig) || ni.arpSnoopEnabled != enableARPSnoop {
+			stopPCAP = ni.cancelPCAP
 			ni.cancelPCAP = nil
 		}
+	}
+	lc.mu.Unlock()
+
+	// Wait for PCAP to stop without holding the lock, so that the event loop
+	// can keep running.
+	if stopPCAP != nil {
+		stopPCAP()
+		ni.pcapWG.Wait()
+	}
+
+	lc.mu.Lock()
+	defer lc.mu.Unlock()
+	if lc.nis[niConfig.UUID] != ni {
+		return ErrUnknownNI{NI: niConfig.UUID}
 	}
 	ni.arpSnoopEnabled = enableARPSnoop
 	if lc.isPcapRequired(niConfig) && ni.cancelPCAP == nil {
@@ -317,19 +341,28 @@ func (lc *LinuxCollector) UpdateCollectingForNI(
 
 // StopCollectingForNI : stop collecting state data for network instance.
 // It is called by zedrouter whenever a network instance is about to be deleted.
+// Calls for the same NI must not be made concurrently.
 func (lc *LinuxCollector) StopCollectingForNI(niID uuid.UUID) error {
 	lc.mu.Lock()
-	defer lc.mu.Unlock()
-	if _, exists := lc.nis[niID]; !exists {
+	ni, exists := lc.nis[niID]
+	if !exists {
+		lc.mu.Unlock()
 		return ErrUnknownNI{NI: niID}
 	}
-	ni := lc.nis[niID]
-	if ni.cancelPCAP != nil {
-		ni.cancelPCAP()
+	stopPCAP := ni.cancelPCAP
+	ni.cancelPCAP = nil
+	lc.mu.Unlock()
+
+	// Wait for PCAP to stop without holding the lock, so that the event loop
+	// can keep running.
+	if stopPCAP != nil {
+		stopPCAP()
 		ni.pcapWG.Wait()
-		ni.cancelPCAP = nil
 	}
+
+	lc.mu.Lock()
 	delete(lc.nis, niID)
+	lc.mu.Unlock()
 	lc.log.Noticef("%s: Stopped collecting state data for NI %v", LogAndErrPrefix, niID)
 	return nil
 }
@@ -355,7 +388,7 @@ func (lc *LinuxCollector) GetIPAssignments(niID uuid.UUID) (VIFAddrsList, error)
 func (lc *LinuxCollector) WatchIPAssignments() <-chan []VIFAddrsUpdate {
 	lc.mu.Lock()
 	defer lc.mu.Unlock()
-	watcherCh := make(chan []VIFAddrsUpdate)
+	watcherCh := make(chan []VIFAddrsUpdate, watcherChanSize)
 	lc.ipAssignWatchers = append(lc.ipAssignWatchers, watcherCh)
 	return watcherCh
 }
@@ -447,7 +480,7 @@ func (lc *LinuxCollector) GetNetworkMetrics() (types.NetworkMetrics, error) {
 func (lc *LinuxCollector) WatchFlows() <-chan types.IPFlow {
 	lc.mu.Lock()
 	defer lc.mu.Unlock()
-	watcherCh := make(chan types.IPFlow)
+	watcherCh := make(chan types.IPFlow, watcherChanSize)
 	lc.flowWatchers = append(lc.flowWatchers, watcherCh)
 	return watcherCh
 }
@@ -484,12 +517,11 @@ func (lc *LinuxCollector) runStateCollecting() {
 				if len(addrChanges) != 0 {
 					event := fmt.Sprintf("IP Lease event '%s'", leaseChange)
 					lc.logAddrChanges(event, addrChanges)
-					for _, watcherCh := range watchers {
-						watcherCh <- addrChanges
-					}
+					lc.notifyIPAssignWatchers(watchers, addrChanges)
 				}
 			}
 		case <-gcIPAssignments.C:
+			lc.resyncIPAssignments()
 			lc.mu.Lock()
 			var addrChanges []VIFAddrsUpdate
 			for _, ni := range lc.nis {
@@ -514,9 +546,7 @@ func (lc *LinuxCollector) runStateCollecting() {
 			lc.mu.Unlock()
 			if len(addrChanges) != 0 {
 				lc.logAddrChanges("IP Assignment GC event", addrChanges)
-				for _, watcherCh := range watchers {
-					watcherCh <- addrChanges
-				}
+				lc.notifyIPAssignWatchers(watchers, addrChanges)
 			}
 		case <-flowCollectTimer.C:
 			lc.mu.Lock()
@@ -524,10 +554,8 @@ func (lc *LinuxCollector) runStateCollecting() {
 			watchers := lc.flowWatchers
 			lc.mu.Unlock()
 			if len(flows) != 0 {
-				for _, watcherCh := range watchers {
-					for _, flow := range flows {
-						watcherCh <- flow
-					}
+				for _, flow := range flows {
+					notifyWatchers(lc.log, "flow", watchers, flow)
 				}
 			}
 		case capPacket := <-lc.capturedPackets:
@@ -541,12 +569,64 @@ func (lc *LinuxCollector) runStateCollecting() {
 				event := fmt.Sprintf("Captured packet (%s)",
 					gopacket.LayerString(topLayer))
 				lc.logAddrChanges(event, addrChanges)
-				for _, watcherCh := range watchers {
-					watcherCh <- addrChanges
-				}
+				lc.notifyIPAssignWatchers(watchers, addrChanges)
 			}
 		}
 	}
+}
+
+// notifyWatchers delivers an update to all watchers without ever blocking.
+// If a watcher is not keeping up and its channel is full, the update is dropped for it
+// and true is returned.
+func notifyWatchers[T any](log *base.LogObject, kind string, watchers []chan T,
+	update T) (dropped bool) {
+	for _, watcherCh := range watchers {
+		select {
+		case watcherCh <- update:
+		default:
+			log.Warnf("%s: watcher of %s updates is not keeping up, dropping update",
+				LogAndErrPrefix, kind)
+			dropped = true
+		}
+	}
+	return dropped
+}
+
+// notifyIPAssignWatchers sends IP assignment updates to all watchers.
+// Updates are deltas, therefore if one is dropped, the state of the watcher
+// would stay out of sync until the next change of the same IP. To prevent this,
+// the full state is sent again later by resyncIPAssignments.
+func (lc *LinuxCollector) notifyIPAssignWatchers(watchers []chan []VIFAddrsUpdate,
+	addrChanges []VIFAddrsUpdate) {
+	if notifyWatchers(lc.log, "IP assignment", watchers, addrChanges) {
+		lc.ipAssignResync = true
+	}
+}
+
+// resyncIPAssignments sends the current IP assignments of all VIFs to watchers
+// if some update was previously dropped. It is called periodically (together with
+// the garbage collection of IP assignments), until all watchers accept the state.
+func (lc *LinuxCollector) resyncIPAssignments() {
+	if !lc.ipAssignResync {
+		return
+	}
+	lc.mu.Lock()
+	var allAddrs []VIFAddrsUpdate
+	for _, ni := range lc.nis {
+		for _, vif := range ni.vifs {
+			addrs := vif.exportVIFAddrs()
+			allAddrs = append(allAddrs, VIFAddrsUpdate{Prev: addrs, New: addrs})
+		}
+	}
+	watchers := lc.ipAssignWatchers
+	lc.mu.Unlock()
+	lc.ipAssignResync = false
+	if len(allAddrs) == 0 {
+		return
+	}
+	lc.log.Noticef("%s: Sending the full state of IP assignments to watchers "+
+		"after dropped updates", LogAndErrPrefix)
+	lc.notifyIPAssignWatchers(watchers, allAddrs)
 }
 
 func (lc *LinuxCollector) logAddrChanges(event string, changes []VIFAddrsUpdate) {
