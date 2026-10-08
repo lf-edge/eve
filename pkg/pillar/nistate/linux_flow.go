@@ -470,17 +470,33 @@ func (lc *LinuxCollector) sniffDNSandDHCP(ctx context.Context, wg *sync.WaitGrou
 			if !more {
 				lc.log.Noticef("%s: PCAP closed on %s", flowLogPrefix, pcapIfName)
 				// Inform the main event loop.
-				lc.capturedPackets <- capturedPacket{
+				lc.sendCapturedPacket(ctx, capturedPacket{
 					bridge:     br,
 					pcapClosed: true,
-				}
+				})
 				return
 			}
-			lc.capturedPackets <- capturedPacket{
+			if !lc.sendCapturedPacket(ctx, capturedPacket{
 				bridge: br,
 				packet: packet,
+			}) {
+				lc.log.Noticef("%s: PCAP stopped on %s", flowLogPrefix, pcapIfDescr)
+				return
 			}
 		}
+	}
+}
+
+// sendCapturedPacket hands over a captured packet to the main event loop.
+// The send is abandoned (returning false) if the PCAP is stopped meanwhile,
+// otherwise a busy event loop would prevent the PCAP from ever being stopped.
+func (lc *LinuxCollector) sendCapturedPacket(ctx context.Context,
+	packet capturedPacket) bool {
+	select {
+	case lc.capturedPackets <- packet:
+		return true
+	case <-ctx.Done():
+		return false
 	}
 }
 
