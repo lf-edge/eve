@@ -105,6 +105,8 @@ func publishContentTreeStatus(ctx *volumemgrContext, status *types.ContentTreeSt
 	key := status.Key()
 	log.Tracef("publishContentTreeStatus(%s)", key)
 	pub := ctx.pubContentTreeStatus
+	cutErrorIfOversized(key, func() error { return pub.CheckMaxSize(key, *status) },
+		&status.Error)
 	pub.Publish(key, *status)
 	log.Tracef("publishContentTreeStatus(%s) Done", key)
 }

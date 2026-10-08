@@ -16,6 +16,13 @@ import (
 	uuid "github.com/satori/go.uuid"
 )
 
+// maxBlobErrorsLen bounds the error a content tree reports for its blobs:
+// the first failing blob's error in full (itself bounded by the downloader),
+// as many more as fit, and a count of the rest. Which blobs failed is in the
+// error entities regardless. It leaves room, within types.MaxErrorLen, for
+// the prefix the volume puts in front of it.
+const maxBlobErrorsLen = 2048
+
 // doUpdate handles any updates to a VolumeStatus, called by any event handlers
 // that either capture a VolumeStatus change or create one and want it processed.
 // Returns changed
@@ -319,7 +326,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 				blobErrorSeverity = types.ErrorSeverityError
 			}
 			errDescription := types.ErrorDescription{
-				Error:               strings.Join(blobErrors, " / "),
+				Error:               types.JoinMaxErrorStrings(blobErrors, " / ", maxBlobErrorsLen),
 				ErrorRetryCondition: blobRetryCondition,
 				ErrorSeverity:       blobErrorSeverity,
 				ErrorEntities:       blobErrorEntities,

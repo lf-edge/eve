@@ -101,6 +101,7 @@ func (ed *ErrorDescription) SetErrorDescription(errDescription ErrorDescription)
 		logrus.Fatal("Missing error string")
 	}
 	*ed = errDescription
+	ed.Error = TruncateError(ed.Error, MaxErrorLen)
 	if ed.ErrorSeverity == ErrorSeverityUnspecified {
 		ed.ErrorSeverity = ErrorSeverityError
 	}
