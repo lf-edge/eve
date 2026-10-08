@@ -97,9 +97,12 @@ func egressVifChain(chain string, vif vifInfo) string {
 	return chain + "-" + vif.hostIfName + "-OUT"
 }
 
+// matchVifIfName returns the value of the physdev match for the VIF.
+// It has to be the exact interface name: a wildcard would also match other
+// VIFs with a longer name that starts with the same string (e.g. "nbu1x4"
+// vs. "nbu1x40").
 func matchVifIfName(vif vifInfo) string {
-	// Match any suffix - qemu may append "-emu" to the interface name.
-	return vif.hostIfName + "+"
+	return vif.hostIfName
 }
 
 func getEssentialIPv4Protos(niType types.NetworkInstanceType,
@@ -1107,10 +1110,23 @@ func (r *LinuxNIReconciler) getIntendedAppConnNATIptables(vif vifInfo,
 	return items
 }
 
-// Table MANGLE, chain PREROUTING is used to:
-//   - mark connections with the ID of the applied ACL rule
-//
+// Table MANGLE is used to mark connections with the ID of the applied ACL rule.
 // It is only used if flow logging is enabled for the network instance.
+//   - Chain PREROUTING marks traffic *coming out* from the VIF (matched by
+//     --physdev-in). For Local NI it also marks port-mapped traffic coming
+//     into the VIF, which is matched by the destination IP address.
+//   - Chain FORWARD marks traffic *coming into* the VIF of a Switch NI.
+//     Destination of bridged traffic is not known in PREROUTING, therefore
+//     ingress rules cannot be restricted to a single VIF there. Without that
+//     the ingress rules of the VIF whose chain is traversed first would mark
+//     (almost) every connection of the NI as belonging to the app of this VIF.
+//     In FORWARD, the output port of the bridge is known (--physdev-out).
+//     By that time PREROUTING-device has already marked ingress traffic with
+//     a device-wide mark (control protocols) or with the default DROP mark. The
+//     marking chains therefore ignore marks without the application ID.
+//     The FORWARD chain also contains the TCP MSS clamping rule, hence the ingress
+//     marking chains of Switch NI must not ACCEPT (which would finish the traversal
+//     of the mangle FORWARD hook), they RETURN instead.
 func (r *LinuxNIReconciler) getIntendedAppConnMangleIptables(vif vifInfo,
 	cfg types.AppNetAdapterConfig, forIPv6 bool, portIPs map[string][]*net.IPNet) (items []dg.Item) {
 	ni := r.nis[vif.NI]
@@ -1142,22 +1158,15 @@ func (r *LinuxNIReconciler) getIntendedAppConnMangleIptables(vif vifInfo,
 		Target:    vifChain("PREROUTING", vif),
 	})
 	// This is further split into ingress and egress rules.
-	items = append(items, iptables.Chain{
-		Table:     "mangle",
-		ChainName: ingressVifChain("PREROUTING", vif),
-		ForIPv6:   forIPv6,
-	})
-	items = append(items, iptables.Chain{
-		Table:     "mangle",
-		ChainName: egressVifChain("PREROUTING", vif),
-		ForIPv6:   forIPv6,
-	})
+	// Ingress rules of a Switch NI are applied in the FORWARD chain, see the comment
+	// above this function.
+	ingressChain := ingressVifChain("PREROUTING", vif)
 	ingressTraversal := iptables.Rule{
 		RuleLabel: fmt.Sprintf("Traverse VIF %s ingress ACLs", vif.hostIfName),
 		Table:     "mangle",
 		ChainName: vifChain("PREROUTING", vif),
 		ForIPv6:   forIPv6,
-		Target:    ingressVifChain("PREROUTING", vif),
+		Target:    ingressChain,
 	}
 	egressTraversal := iptables.Rule{
 		RuleLabel: fmt.Sprintf("Traverse VIF %s egress ACLs", vif.hostIfName),
@@ -1166,14 +1175,44 @@ func (r *LinuxNIReconciler) getIntendedAppConnMangleIptables(vif vifInfo,
 		ForIPv6:   forIPv6,
 		MatchOpts: []string{"-i", ni.brIfName,
 			"-m", "physdev", "--physdev-in", matchVifIfName(vif)},
-		Target:        egressVifChain("PREROUTING", vif),
-		AppliedBefore: []string{ingressTraversal.RuleLabel},
+		Target: egressVifChain("PREROUTING", vif),
 	}
+	if ni.config.Type == types.NetworkInstanceTypeSwitch {
+		ingressChain = ingressVifChain("FORWARD", vif)
+		ingressTraversal = iptables.Rule{
+			RuleLabel: fmt.Sprintf("Traverse VIF %s ingress ACLs", vif.hostIfName),
+			Table:     "mangle",
+			ChainName: appChain("FORWARD"),
+			ForIPv6:   forIPv6,
+			MatchOpts: []string{"-o", ni.brIfName,
+				"-m", "physdev", "--physdev-out", matchVifIfName(vif)},
+			Target: ingressChain,
+		}
+	} else {
+		egressTraversal.AppliedBefore = []string{ingressTraversal.RuleLabel}
+	}
+	items = append(items, iptables.Chain{
+		Table:     "mangle",
+		ChainName: ingressChain,
+		ForIPv6:   forIPv6,
+	})
+	items = append(items, iptables.Chain{
+		Table:     "mangle",
+		ChainName: egressVifChain("PREROUTING", vif),
+		ForIPv6:   forIPv6,
+	})
 	items = append(items, ingressTraversal, egressTraversal)
 
 	// 1. Add ingress ACL rules
 	// Matched by input interface and possibly also by dst IP address.
 	var ingressRules []iptables.Rule
+	// Ingress marking chains of Switch NI are traversed from the FORWARD chain, which
+	// also contains the TCP MSS clamping rule. Use separate chains for ingress marking
+	// that RETURN instead of ACCEPT.
+	ingressMarkChainPrefix, ingressMarkEnd := markChainPrefix, "ACCEPT"
+	if ni.config.Type == types.NetworkInstanceTypeSwitch {
+		ingressMarkChainPrefix, ingressMarkEnd = markChainPrefix+"in-", "RETURN"
+	}
 	if len(ni.bridge.Ports) == 0 {
 		// Air-gapped - not possible to reach applications from outside.
 		goto mangleEgress
@@ -1183,11 +1222,12 @@ func (r *LinuxNIReconciler) getIntendedAppConnMangleIptables(vif vifInfo,
 		if proto.ingressMatch == nil {
 			continue
 		}
-		markChain := markChainPrefix + proto.markChainName
+		markChain := ingressMarkChainPrefix + proto.markChainName
 		mark := iptables.GetConnmark(
 			uint8(app.appNum), proto.mark, false, false)
 		if _, alreadyAdded := addedMarkChains[markChain]; !alreadyAdded {
-			items = append(items, getMarkingChainCfg(markChain, forIPv6, markToString(mark))...)
+			items = append(items, getMarkingChainCfg(
+				markChain, forIPv6, markToString(mark), ingressMarkEnd)...)
 			addedMarkChains[markChain] = struct{}{}
 		}
 		ingressRules = append(ingressRules, iptables.Rule{
@@ -1213,12 +1253,12 @@ func (r *LinuxNIReconciler) getIntendedAppConnMangleIptables(vif vifInfo,
 		if ni.config.Type != types.NetworkInstanceTypeSwitch && parsedRule.portMap == nil {
 			continue
 		}
-		markChain := markChainPrefix + strconv.Itoa(int(aclRule.RuleID))
+		markChain := ingressMarkChainPrefix + strconv.Itoa(int(aclRule.RuleID))
 		mark := iptables.GetConnmark(
 			uint8(app.appNum), uint32(aclRule.RuleID), true, parsedRule.drop)
 		if _, alreadyAdded := addedMarkChains[markChain]; !alreadyAdded {
-			items = append(items,
-				getMarkingChainCfg(markChain, forIPv6, markToString(mark))...)
+			items = append(items, getMarkingChainCfg(
+				markChain, forIPv6, markToString(mark), ingressMarkEnd)...)
 			addedMarkChains[markChain] = struct{}{}
 		}
 		if parsedRule.portMap != nil {
@@ -1281,7 +1321,8 @@ mangleEgress:
 		mark := iptables.GetConnmark(
 			uint8(app.appNum), proto.mark, false, false)
 		if _, alreadyAdded := addedMarkChains[markChain]; !alreadyAdded {
-			items = append(items, getMarkingChainCfg(markChain, forIPv6, markToString(mark))...)
+			items = append(items, getMarkingChainCfg(
+				markChain, forIPv6, markToString(mark), "ACCEPT")...)
 			addedMarkChains[markChain] = struct{}{}
 		}
 		egressRules = append(egressRules, iptables.Rule{
@@ -1297,7 +1338,7 @@ mangleEgress:
 		markMetadataChain := markChainPrefix + "metadata"
 		if _, alreadyAdded := addedMarkChains[markMetadataChain]; !alreadyAdded {
 			items = append(items,
-				getMarkingChainCfg(markMetadataChain, forIPv6, markToString(httpMark))...)
+				getMarkingChainCfg(markMetadataChain, forIPv6, markToString(httpMark), "ACCEPT")...)
 			addedMarkChains[markMetadataChain] = struct{}{}
 		}
 		egressRules = append(egressRules, iptables.Rule{
@@ -1324,8 +1365,8 @@ mangleEgress:
 		mark := iptables.GetConnmark(
 			uint8(app.appNum), uint32(aclRule.RuleID), true, parsedRule.drop)
 		if _, alreadyAdded := addedMarkChains[markChain]; !alreadyAdded {
-			items = append(items,
-				getMarkingChainCfg(markChain, forIPv6, markToString(mark))...)
+			items = append(items, getMarkingChainCfg(
+				markChain, forIPv6, markToString(mark), "ACCEPT")...)
 			addedMarkChains[markChain] = struct{}{}
 		}
 		iptablesRule := iptables.Rule{
@@ -1347,7 +1388,7 @@ mangleEgress:
 		mark := iptables.GetConnmark(
 			uint8(app.appNum), iptables.DefaultDropAceID, false, true)
 		items = append(items,
-			getMarkingChainCfg(dropAllChain, forIPv6, markToString(mark))...)
+			getMarkingChainCfg(dropAllChain, forIPv6, markToString(mark), "ACCEPT")...)
 		defaultDropMark := iptables.Rule{
 			RuleLabel: "Default DROP mark",
 			Target:    dropAllChain,
@@ -1357,7 +1398,7 @@ mangleEgress:
 
 	// Finally, put all rules together.
 	for i, rule := range ingressRules {
-		rule.ChainName = ingressVifChain("PREROUTING", vif)
+		rule.ChainName = ingressChain
 		rule.Table = "mangle"
 		// Keep exact order.
 		if i < len(ingressRules)-1 {
@@ -1383,7 +1424,14 @@ func markToString(mark uint32) string {
 	return strconv.FormatUint(uint64(mark), 10)
 }
 
-func getMarkingChainCfg(chainName string, forIPv6 bool, markStr string) (items []dg.Item) {
+// getMarkingChainCfg returns a chain which marks the connection with the given mark,
+// unless it is already marked (with an app ID). Terminal rules of the chain use finalTarget.
+// ACCEPT (finishing traversal of the entire hook of the table) is used by the egress
+// chains in PREROUTING, in order to skip device-wide ACLs for the marked traffic.
+// But for the ingress traffic of Switch NI, traversed in the FORWARD chain, RETURN has
+// to be used to not skip the remaining rules of the chain, such as TCP MSS clamping.
+func getMarkingChainCfg(chainName string, forIPv6 bool, markStr string,
+	finalTarget string) (items []dg.Item) {
 	items = append(items, iptables.Chain{
 		Table:     "mangle",
 		ChainName: chainName,
@@ -1397,8 +1445,15 @@ func getMarkingChainCfg(chainName string, forIPv6 bool, markStr string) (items [
 		},
 		{
 			RuleLabel: "Accept marked connection",
-			MatchOpts: []string{"-m", "mark", "!", "--mark", "0"},
-			Target:    "ACCEPT",
+			// Only a mark with an application ID counts. Marks set by the
+			// device-wide ACLs (PREROUTING-device), which are traversed after
+			// the app ACLs in PREROUTING, have no app ID (e.g. SSH mark, or the
+			// default DROP mark applied to all ingress traffic not marked yet).
+			// Ingress rules of the Switch NI are applied later, in the FORWARD
+			// chain, and have to be able to override them.
+			MatchOpts: []string{"-m", "mark", "!", "--mark",
+				fmt.Sprintf("0/%d", uint32(iptables.AppIDMask))},
+			Target: finalTarget,
 		},
 		{
 			RuleLabel:  "Apply mark",
@@ -1412,7 +1467,7 @@ func getMarkingChainCfg(chainName string, forIPv6 bool, markStr string) (items [
 		},
 		{
 			RuleLabel: "Accept newly marked connection",
-			Target:    "ACCEPT",
+			Target:    finalTarget,
 		},
 	}
 	for i, rule := range rules {
