@@ -932,7 +932,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		}
 	}
 	publishDomainConfig(ctx, dc)
-	// Look for xen errors. Ignore if we are going down
+	// Look for domain errors. Ignore if we are going down
 	if status.RestartInprogress != types.BringDown {
 		if ds.HasError() {
 			log.Errorf("Received error from domainmgr for %s: %s",

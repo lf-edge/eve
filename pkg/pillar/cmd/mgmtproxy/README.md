@@ -335,7 +335,7 @@ case; the cni0 listener returns `404` for it regardless of credentials.
 
 ## Build tag
 
-This agent only ships in EVE-K (`//go:build k`). On KVM/Xen builds the package
+This agent only ships in EVE-K (`//go:build k`). On KVM builds the package
 contains a no-op stub (`nomgmtproxy.go`), the same pattern `zedkube` uses.
 
 ## Why a dedicated agent
