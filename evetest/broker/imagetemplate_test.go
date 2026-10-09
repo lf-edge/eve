@@ -22,6 +22,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"github.com/lf-edge/eve/evetest/broker/provider"
 	api "github.com/lf-edge/eve/evetest/grpcapi/go"
 )
 
@@ -62,24 +63,83 @@ func TestTemplateKeyParamsFields(t *testing.T) {
 	}
 }
 
-// TestLiveTemplateKeyParamsIgnoresDiskSize pins the live path's sizing model:
-// disk size is applied per device by resizing the overlay, so two devices
-// asking for different sizes must resolve to the SAME template.
+// TestLocalTemplateKeyParamsIgnoresDiskSize pins the local path's sizing
+// model: a live device's disk size is applied per device by resizing its
+// overlay, and an installer device's by its blank target disk, so two devices
+// asking for different sizes must resolve to the SAME template either way.
 //
 // Note this tests the params helper, not computeTemplateKey -- the hash does
-// include DiskBytes, and it is the live path's job never to set it.
-func TestLiveTemplateKeyParamsIgnoresDiskSize(t *testing.T) {
-	small := liveTemplateKeyParams("abc", api.ArchType_ARCH_AMD64, 8<<30)
-	large := liveTemplateKeyParams("abc", api.ArchType_ARCH_AMD64, 64<<30)
-	if small.DiskBytes != 0 {
-		t.Errorf("DiskBytes = %d, want 0: the live path sizes per device", small.DiskBytes)
+// include DiskBytes, and it is the local path's job never to set it.
+func TestLocalTemplateKeyParamsIgnoresDiskSize(t *testing.T) {
+	for _, installer := range []bool{false, true} {
+		small := localTemplateKeyParams("abc", api.ArchType_ARCH_AMD64, 8<<30, installer)
+		large := localTemplateKeyParams("abc", api.ArchType_ARCH_AMD64, 64<<30, installer)
+		if small.DiskBytes != 0 {
+			t.Errorf("installer=%t: DiskBytes = %d, want 0: the local path sizes "+
+				"per device", installer, small.DiskBytes)
+		}
+		if computeTemplateKey(small) != computeTemplateKey(large) {
+			t.Errorf("installer=%t: two disk sizes produced two templates; they "+
+				"must share one", installer)
+		}
+		other := localTemplateKeyParams("def", api.ArchType_ARCH_AMD64, 8<<30, installer)
+		if computeTemplateKey(small) == computeTemplateKey(other) {
+			t.Errorf("installer=%t: different image hashes produced the same key",
+				installer)
+		}
 	}
-	if computeTemplateKey(small) != computeTemplateKey(large) {
-		t.Error("two disk sizes produced two templates; they must share one")
+}
+
+// TestLocalTemplateKeyParamsCarriesInstaller covers the installer half of the
+// key: an installer template must be keyed as one -- so that it is recorded as
+// an installer and never confused with a live template -- and both callers,
+// BuildImage's miss check and makeDeviceImage's build, must derive the same
+// key from the same request, or every run reports a miss and uploads again.
+func TestLocalTemplateKeyParamsCarriesInstaller(t *testing.T) {
+	live := localTemplateKeyParams("abc", api.ArchType_ARCH_AMD64, 0, false)
+	installer := localTemplateKeyParams("abc", api.ArchType_ARCH_AMD64, 0, true)
+	if live.Installer || !installer.Installer {
+		t.Fatalf("Installer = %t (live), %t (installer); want false, true",
+			live.Installer, installer.Installer)
 	}
-	other := liveTemplateKeyParams("def", api.ArchType_ARCH_AMD64, 8<<30)
-	if computeTemplateKey(small) == computeTemplateKey(other) {
-		t.Error("different live image hashes produced the same key")
+	if computeTemplateKey(live) == computeTemplateKey(installer) {
+		t.Error("a live and an installer template of the same hash share a key")
+	}
+
+	// The real path: a request parsed as BuildImage parses it, its miss-check
+	// key, and the key makeDeviceImage derives from the parameters BuildImage
+	// hands it. The parameters start out as BuildImage builds them for any
+	// request, so the installer flag must come from the parsed request.
+	for name, mutate := range map[string]func(*api.BuildImageRequest){
+		"raw installer": func(*api.BuildImageRequest) {},
+		"live image": func(r *api.BuildImageRequest) {
+			r.LocalInstallerImage = nil
+			r.MakeInstaller = false
+			r.InstallerMedia = api.InstallerMedia_INSTALLER_MEDIA_UNSPECIFIED
+			r.LiveImage = &api.LiveImageRef{Sha256: testInstallerSHA256}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			req := rawInstallerRequest()
+			mutate(req)
+			local, err := parseLocalImageRequest(req, provider.DiskImageOverlay,
+				fakeStrategyProvider{strategy: provider.DiskImageOverlay})
+			if err != nil {
+				t.Fatalf("parse: %v", err)
+			}
+			arch := req.GetImage().GetArch()
+			missCheck := local.templateKeyParams(arch, req.DiskBytes)
+			params := makeDeviceImageParams{
+				arch: arch, diskSize: req.DiskBytes, installer: req.MakeInstaller}
+			local.applyTo(&params, t.TempDir())
+			build := deviceTemplateKeyParams(params)
+			if missCheck != build {
+				t.Errorf("the miss check keys %+v but the build keys %+v", missCheck, build)
+			}
+			if wantInstaller := req.GetLocalInstallerImage() != nil; build.Installer != wantInstaller {
+				t.Errorf("build key Installer = %t, want %t", build.Installer, wantInstaller)
+			}
+		})
 	}
 }
 

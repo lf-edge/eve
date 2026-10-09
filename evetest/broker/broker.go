@@ -157,6 +157,13 @@ func brokerCapabilities(
 	if diskStrategy != provider.DiskImageLegacyBuild {
 		caps = append(caps, api.Capability_CAPABILITY_LOCAL_LIVE_IMAGE)
 	}
+	// One capability per installer medium the broker can build a device from,
+	// derived from the same list BuildImage checks a request against.
+	for _, media := range supportedLocalInstallerMedia(diskStrategy) {
+		if capability, ok := utils.InstallerMediaCapability(media); ok {
+			caps = append(caps, capability)
+		}
+	}
 	// Editing a device's disk means reading and writing the very file that
 	// device boots from, which the broker can only do while the file stays
 	// where it put it. The overlay strategy is exactly that case; a standalone
@@ -577,49 +584,30 @@ func (b *broker) BuildImage(
 		return nil, err
 	}
 
-	// A local live image may exist with no EVE container image on this broker
-	// at all, so its preconditions and miss check must be resolved before any
-	// docker image I/O is attempted: a HaveDockerImage/PullDockerImage below
-	// would otherwise waste (or fail) a multi-GB pull that the live path
-	// never needed.
-	// liveSource is set when this broker can read the client's live image files
-	// itself, which makes the upload pointless.
+	// A local image -- live or installer -- may exist with no EVE container
+	// image on this broker at all, so its preconditions and miss check must be
+	// resolved before any docker image I/O is attempted: a
+	// HaveDockerImage/PullDockerImage below would otherwise waste (or fail) a
+	// multi-GB pull that the local path never needed.
+	local, err := parseLocalImageRequest(req, b.provider.DiskImageStrategy(), b.provider)
+	if err != nil {
+		log.Error(err)
+		return nil, err
+	}
+	// liveSource is set when this broker can read the client's local image
+	// files itself, which makes the upload pointless.
 	var liveSource *api.LocalLiveImageSource
-	if live := req.GetLiveImage(); live != nil {
-		if req.MakeInstaller {
-			err := fmt.Errorf(
-				"device %q requests an installer image, which a local live image "+
-					"cannot provide; unset EVETEST_EVE_LIVE_IMAGE to use the container path",
-				req.DeviceName)
-			log.Error(err)
-			return nil, err
-		}
-		if b.provider.DiskImageStrategy() == provider.DiskImageLegacyBuild {
-			err := fmt.Errorf(
-				"device %q requests a local live image, but the %T provider still uses "+
-					"the per-device container build path and cannot consume one; unset "+
-					"EVETEST_EVE_LIVE_IMAGE to build from the EVE container image",
-				req.DeviceName, b.provider)
-			log.Error(err)
-			return nil, err
-		}
-		if err := validLiveImageSHA256(live.GetSha256()); err != nil {
-			log.Error(err)
-			return nil, err
-		}
+	if local != nil {
 		// Checked before the staged upload and the template cache, and kept even
 		// on a cache hit: a template evicted between this check and the install
 		// then still has a source to be rebuilt from, and asking for an upload
 		// this broker does not need is never right.
-		if localLiveSourceUsable(log, req.GetLiveImageSource()) {
-			liveSource = req.GetLiveImageSource()
+		if localLiveSourceUsable(log, local.source) {
+			liveSource = local.source
 		} else {
-			tarPath := liveUploadPath(b.imageDir, live.GetSha256())
+			tarPath := liveUploadPath(b.imageDir, local.sha256)
 			if _, statErr := os.Stat(tarPath); statErr != nil {
-				if !b.templates.hasTemplate(templateKeyParams{
-					LiveImageSHA256: live.GetSha256(),
-					Arch:            imageArch,
-				}) {
+				if !b.templates.hasTemplate(local.templateKeyParams(imageArch, req.DiskBytes)) {
 					return &api.BuildImageResponse{MissingEveLiveImage: true}, nil
 				}
 			}
@@ -669,32 +657,33 @@ func (b *broker) BuildImage(
 			extraDiskBytes:  req.ExtraDiskBytes,
 		})
 	} else {
-		// No EVE container image need exist on this broker at all on the live
+		// No EVE container image need exist on this broker at all on the local
 		// path, so its content ID is never inspected. The cache key comes from
-		// liveImageSHA256 via liveTemplateKeyParams instead; dockerImageID stays
-		// empty and unused.
-		var dockerImageID string
-		if req.GetLiveImage() == nil {
-			dockerImageID, err = utils.DockerImageID(ctx, dockerImageName)
+		// the local image's hash via deviceTemplateKeyParams instead;
+		// dockerImageID stays empty and unused.
+		params := makeDeviceImageParams{
+			imageDirPath:    imageDirPath,
+			dockerImageName: dockerImageName,
+			arch:            imageArch,
+			config:          req.Config,
+			proxyCACerts:    b.proxyCACerts,
+			softSerial:      softSerial,
+			diskSize:        req.DiskBytes,
+			installer:       req.MakeInstaller,
+			overlay:         b.provider.DiskImageStrategy() == provider.DiskImageOverlay,
+			liveSource:      liveSource,
+			extraDiskBytes:  req.ExtraDiskBytes,
+		}
+		if local == nil {
+			params.dockerImageID, err = utils.DockerImageID(ctx, dockerImageName)
+		} else {
+			// The image, and whether it is an installer, come from the parsed
+			// request -- the same one the miss check above keyed on.
+			local.applyTo(&params, b.imageDir)
 		}
 		if err == nil {
 			eveImage, templateKey, err = makeDeviceImage(ctx, log, b.templates,
-				providerDevName, makeDeviceImageParams{
-					imageDirPath:    imageDirPath,
-					dockerImageName: dockerImageName,
-					dockerImageID:   dockerImageID,
-					arch:            imageArch,
-					config:          req.Config,
-					proxyCACerts:    b.proxyCACerts,
-					softSerial:      softSerial,
-					diskSize:        req.DiskBytes,
-					installer:       req.MakeInstaller,
-					overlay:         b.provider.DiskImageStrategy() == provider.DiskImageOverlay,
-					liveImageSHA256: req.GetLiveImage().GetSha256(),
-					liveTarPath:     liveUploadPath(b.imageDir, req.GetLiveImage().GetSha256()),
-					liveSource:      liveSource,
-					extraDiskBytes:  req.ExtraDiskBytes,
-				})
+				providerDevName, params)
 		}
 	}
 	if err != nil {

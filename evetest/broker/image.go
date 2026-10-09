@@ -596,11 +596,16 @@ type makeDeviceImageParams struct {
 	diskSize uint64
 	// installer, when true, produces an installer image plus a blank target disk.
 	installer bool
+	// installerMedia is the medium of a local installer image, which decides
+	// how the provider presents it to the device. Unspecified for an installer
+	// built from the EVE container, which is a raw disk.
+	installerMedia api.InstallerMedia
 	// overlay selects a QCOW2 backing-file working copy over a standalone copy.
 	overlay bool
-	// liveImageSHA256, when non-empty, selects the live path: the template is
-	// installed by unpacking liveTarPath instead of running the EVE container,
-	// and dockerImageName/dockerImageID are ignored.
+	// liveImageSHA256, when non-empty, selects the local path: the template is
+	// installed from a locally built image -- a live image, or with installer
+	// set an installer image -- by unpacking liveTarPath instead of running the
+	// EVE container, and dockerImageName/dockerImageID are ignored.
 	liveImageSHA256 string
 	// liveTarPath is the staged upload to unpack when liveImageSHA256 is set.
 	liveTarPath string
@@ -612,6 +617,22 @@ type makeDeviceImageParams struct {
 	// and append to the result, beyond the main boot/target disk -- e.g. for
 	// tests that exercise EVE-level disk layout/RAID configuration.
 	extraDiskBytes []uint64
+}
+
+// deviceTemplateKeyParams is the cache key of the template makeDeviceImage
+// derives a device's disk from: the EVE container image's, or on the local
+// path the local image's (see localImageRequest.applyTo).
+func deviceTemplateKeyParams(params makeDeviceImageParams) templateKeyParams {
+	if params.liveImageSHA256 != "" {
+		return localTemplateKeyParams(
+			params.liveImageSHA256, params.arch, params.diskSize, params.installer)
+	}
+	return templateKeyParams{
+		DockerImageID: params.dockerImageID,
+		DiskBytes:     params.diskSize,
+		Installer:     params.installer,
+		Arch:          params.arch,
+	}
 }
 
 // makeDeviceImage derives a device's disk image from a cached template: it
@@ -626,22 +647,14 @@ func makeDeviceImage(ctx context.Context, log *logrus.Entry, cache *templateCach
 		return buildTemplateDisk(ctx, log, params.dockerImageName,
 			params.diskSize, params.installer, dstDir)
 	}
-	keyParams := templateKeyParams{
-		DockerImageID: params.dockerImageID,
-		DiskBytes:     params.diskSize,
-		Installer:     params.installer,
-		Arch:          params.arch,
-	}
 	if params.liveImageSHA256 != "" {
 		build = unpackLiveTemplate(params.liveTarPath, params.liveImageSHA256)
 		if params.liveSource != nil {
 			build = installLocalLiveTemplate(params.liveSource, params.liveImageSHA256)
 		}
-		keyParams = liveTemplateKeyParams(
-			params.liveImageSHA256, params.arch, params.diskSize)
 	}
 
-	tmpl, err := cache.ensureTemplate(ctx, log, keyParams, build)
+	tmpl, err := cache.ensureTemplate(ctx, log, deviceTemplateKeyParams(params), build)
 	if params.liveImageSHA256 != "" {
 		// Removed on both success and failure: a tar that failed to install is
 		// unusable and must not wedge this hash for every later request until the
@@ -694,10 +707,15 @@ func makeDeviceImage(ctx context.Context, log *logrus.Entry, cache *templateCach
 	}
 	// Only the live path needs this, and it needs it for a standalone copy just
 	// as much as for an overlay: a live template is deliberately keyed without
-	// the disk size (see liveTemplateKeyParams), so one template serves every
+	// the disk size (see localTemplateKeyParams), so one template serves every
 	// requested size and the per-device disk is what carries it. A template built
 	// from the EVE container is already built at params.diskSize.
-	if params.liveImageSHA256 != "" {
+	//
+	// Never for an installer: its disk is not the device's target -- the blank
+	// disk created below is, at params.diskSize. Growing the installer would be
+	// pointless, and a requested size below the installer's own would even fail,
+	// since resizeDeviceDisk refuses to shrink.
+	if params.liveImageSHA256 != "" && !params.installer {
 		if resizeErr := resizeDeviceDisk(ctx, diskPath,
 			int64(params.diskSize), tmpl.Meta.DiskVirtualBytes); resizeErr != nil {
 			err = resizeErr
@@ -757,7 +775,10 @@ func makeDeviceImage(ctx context.Context, log *logrus.Entry, cache *templateCach
 			return result, "", err
 		}
 		installerImage := provider.DiskImage{
-			Format: provider.DiskImageFormatQcow2, Path: diskPath}
+			Format: provider.DiskImageFormatQcow2,
+			Path:   diskPath,
+			Media:  installerDiskMedia(params.installerMedia),
+		}
 		result.installerImage = &installerImage
 		result.disks = []provider.DiskImage{targetDisk}
 	}

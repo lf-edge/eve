@@ -163,7 +163,7 @@ func installLocalLiveTemplate(
 			return none, fmt.Errorf("failed to locate the CONFIG partition in %q: %w",
 				diskPath, err)
 		}
-		log.Infof("Installed EVE live image template by reading %q in place "+
+		log.Infof("Installed local EVE image template by reading %q in place "+
 			"(no upload): CONFIG partition at offset %d, length %d",
 			src.GetDiskPath(), part.Offset, part.Length)
 		return part, nil
@@ -320,7 +320,7 @@ func unpackLiveTemplate(tarPath, wantSHA256 string) templateBuilder {
 			return none, fmt.Errorf("failed to locate the CONFIG partition in %q: %w",
 				diskPath, err)
 		}
-		log.Infof("Installed EVE live image template from the uploaded tar: "+
+		log.Infof("Installed local EVE image template from the uploaded tar: "+
 			"CONFIG partition at offset %d, length %d", part.Offset, part.Length)
 		return part, nil
 	}
