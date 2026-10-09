@@ -185,6 +185,16 @@ var (
 	VolumeEncryptedZFSDataset = SealedDataset + "/volumes"
 	// EtcdZvol - zvol encrypted for etcd storage
 	EtcdZvol = PersistDataset + "/etcd-storage"
+	// WitnessZvol - zvol encrypted for the 2-node-HA witness's etcd.
+	// Only created when InstallOptionWitnessZvol was given at install.
+	WitnessZvol = PersistDataset + "/witness-storage"
+	// WitnessZvolMarker records that WitnessZvol was reserved at install
+	// time. The witness cannot tell a zvol that was never reserved from
+	// one whose device node has not appeared yet, and the two need
+	// opposite responses: fall back to vault-backed storage, or wait.
+	// Written by vault once the zvol is created; on /persist so it is
+	// readable before the vault is unsealed.
+	WitnessZvolMarker = PersistDir + "/witness-zvol-reserved"
 	// TpmMeasurementLogFile is a kernel exposed variable that contains the
 	// TPM measurements and events log. it is not a constant so tests can override it.
 	TpmMeasurementLogFile = "/hostfs/sys/kernel/security/tpm0/binary_bios_measurements"

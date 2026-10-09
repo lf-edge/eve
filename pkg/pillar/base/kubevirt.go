@@ -31,6 +31,12 @@ const (
 	DefaultEtcdSizeGB uint32 = 10
 	// EtcdVolBlockSizeBytes is the block size for the etcd volume
 	EtcdVolBlockSizeBytes = uint64(4 * 1024)
+	// InstallOptionWitnessZvol grub option at install time. Reserves a
+	// zvol for the 2-node-HA witness, sized from InstallOptionEtcdSizeGB.
+	// Presence enables it; there is no value. Only meaningful on ZFS,
+	// where the vault zvol otherwise claims the whole remaining pool and
+	// leaves nothing to carve out later.
+	InstallOptionWitnessZvol = "eve_install_k3s_witness"
 	// KubevirtHypervisorName is the name of the imaginary EVE 'k' hypervisor
 	KubevirtHypervisorName = "k"
 )
