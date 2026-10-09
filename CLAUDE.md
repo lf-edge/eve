@@ -161,7 +161,7 @@ Pillar vendors deps (`go mod vendor`). **Do not** use `replace` directives point
 
 ## Repository layout cheatsheet
 
-- `pkg/` — linuxkit OCI packages (each has a `build.yml` and `Dockerfile`). Notable: `pillar/`, `kernel/` (via `eve-kernel` repo, pinned in `kernel-commits.mk`/`kernel-version.mk`), `grub/`, `mkimage-*`, `xen-tools/`, `kube/`, `edgeview/`, `vtpm/`, `newlog/`, `memory-monitor/`.
+- `pkg/` — linuxkit OCI packages (each has a `build.yml` and `Dockerfile`). Notable: `pillar/`, `kernel/` (via `eve-kernel` repo, pinned in `kernel-commits.mk`/`kernel-version.mk`), `grub/`, `mkimage-*`, `qemu/`, `kube/`, `edgeview/`, `vtpm/`, `newlog/`, `memory-monitor/`.
 - `pkg/pillar/cmd/` — one directory per agent (zedagent, zedmanager, zedrouter, domainmgr, nim, …).
 - `images/` — linuxkit YAML manifests assembled into rootfs images.
 - `build-tools/` — vendored linuxkit + cross-compilers; `make build-tools` populates `build-tools/bin/`.

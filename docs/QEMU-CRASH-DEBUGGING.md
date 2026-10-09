@@ -61,8 +61,10 @@ zstd -d --long=31 <ts>.guestmem.elf.zst -o guest.elf
 gdb <guest-kernel-vmlinux> guest.elf        # or: crash <vmlinux> guest.elf
 ```
 
-A qemu process core opens the same way (`gdb $(which qemu-system-x86_64)
-qemu.core`). `tools/qemu/analyse-guest-dump.sh` pulls per-vCPU RIPs from a
+A qemu process core opens the same way, against the device's binary
+(`/containers/services/qemu/rootfs/usr/bin/qemu-system-x86_64`):
+`gdb qemu-system-x86_64 qemu.core`. That binary is stripped; for symbols, build
+pkg/qemu with the debug-info split commented in its Dockerfile. `tools/qemu/analyse-guest-dump.sh` pulls per-vCPU RIPs from a
 guest core regardless of guest OS.
 
 ## Scenario 2 — hold a crashed VM and attach gdb (live inspection)
@@ -107,19 +109,21 @@ Set `debug.qemu.trace.events` to a CSV of qemu trace-event names/globs and/or
 Example: `debug.qemu.trace.events = "@barmap,@iommu,vfio_pci_write_config"`.
 The trace is a **binary simpletrace** log. Retrieve and decode on a host — pull
 both the trace and the matching `trace-events-all` (it must come from the same
-qemu-xen build, so copy it off the device; it lives in the xen-tools container),
-then decode with qemu's `simpletrace.py` from the qemu-xen source tree:
+qemu build, so copy it off the device; it lives in the qemu service's rootfs),
+then decode with `scripts/simpletrace.py` from the source of the same QEMU
+release (`QEMU_VERSION` in `pkg/qemu/Dockerfile`):
 
 ```sh
 scp -i <key> root@<node>:/persist/vault/qemu-trace/<name>.<ts>.trace .
-scp -i <key> root@<node>:/containers/services/xen-tools/rootfs/usr/share/qemu-xen/qemu/trace-events-all .
-<qemu-xen-src>/scripts/simpletrace.py trace-events-all <name>.<ts>.trace
+scp -i <key> root@<node>:/containers/services/qemu/rootfs/usr/share/qemu/trace-events-all .
+<qemu-src>/scripts/simpletrace.py trace-events-all <name>.<ts>.trace
 ```
 
 ## Scenario 4 — fault injection (debug builds only)
 
 For validating the capture path on hardware, a **debug-only** qemu build
-(`CONFIG_EVE_CRASH_INJECTOR`, disabled in production) adds the
+(`CONFIG_EVE_CRASH_INJECTOR`, disabled in production; uncomment its line in
+`pkg/qemu/Dockerfile`) adds the
 `x-inject-internal-error` QMP command, which stops the VM into `internal-error`
 (emitting the same `STOP` a real crash does). `tools/qemu/inject-crash.sh`
 drives both classes on a node:
