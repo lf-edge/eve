@@ -36,10 +36,6 @@ updates:
     schedule:
       interval: "monthly"
   - package-ecosystem: "docker"
-    directory: "/pkg/qrexec-dom0"
-    schedule:
-      interval: "monthly"
-  - package-ecosystem: "docker"
     directory: "/pkg/rngd"
     schedule:
       interval: "monthly"
@@ -49,10 +45,6 @@ updates:
       interval: "monthly"
   - package-ecosystem: "docker"
     directory: "/pkg/watchdog"
-    schedule:
-      interval: "monthly"
-  - package-ecosystem: "docker"
-    directory: "/pkg/wlan"
     schedule:
       interval: "monthly"
   - package-ecosystem: "docker"
