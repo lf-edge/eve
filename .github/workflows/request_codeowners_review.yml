@@ -24,13 +24,13 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Fetch the PR's head ref
+      # Fetch only: the worktree stays on the base ref, so the
+      # .github/CODEOWNERS read below is the base branch's, not the PR's.
+      - name: Fetch the PR's head commit
         env:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
-          git fetch origin "$HEAD_SHA:$HEAD_REF"
-          git checkout "$HEAD_REF"
+          git fetch origin "$HEAD_SHA"
 
       - name: Auto request review
         env:
@@ -45,7 +45,7 @@ jobs:
           # Get changed files in this pull request
           echo "Checking base: $BASE_SHA"
           echo "Checking head: $HEAD_SHA"
-          for changed_file in $(git diff --name-only "$BASE_SHA"...HEAD); do
+          for changed_file in $(git diff --name-only "$BASE_SHA...$HEAD_SHA"); do
             echo "Checking $changed_file"
             while read -r line; do
               # Get pattern of the files owned
