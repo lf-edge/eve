@@ -22,6 +22,7 @@ jobs:
         with:
           ref: ${{ github.base_ref }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Fetch the PR's head ref
         run: |
