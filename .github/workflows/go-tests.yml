@@ -25,6 +25,7 @@ on:  # yamllint disable-line rule:truthy
 jobs:
   test:
     runs-on: ubuntu-24.04
+    timeout-minutes: 1440
     steps:
       - name: Starting Report
         run: |

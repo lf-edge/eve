@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # syntax=docker/dockerfile:1.6.0
-FROM alpine:3.21
+FROM alpine:3.22
 
 ARG TARGETOS=linux
 ARG TARGETARCH

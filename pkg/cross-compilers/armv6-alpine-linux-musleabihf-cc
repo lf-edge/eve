@@ -1,0 +1,52 @@
+#!/usr/bin/perl
+
+# This script circumvents a problem when building binutils for armhf
+#
+# During `make install DESTDIR=...` it tries to link bfd against sframe; the
+# command invocation looks like this:
+# ```
+# + armv6-alpine-linux-musleabihf-cc -shared -fPIC -DPIC .libs/archive.o .libs/archures.o .libs/bfd.o .libs/bfdio.o .libs/cache.o .libs/coff-bfd.o .libs/compress.o .libs/corefile.o .libs/elf-properties.o .libs/format.o .libs/hash.o .libs/libbfd.o .libs/linker.o .libs/merge.o .libs/opncls.o .libs/reloc.o .libs/section.o .libs/simple.o .libs/stab-syms.o .libs/stabs.o .libs/syms.o .libs/targets.o .libs/binary.o .libs/ihex.o .libs/srec.o .libs/tekhex.o .libs/verilog.o .libs/elf32-arm.o .libs/elf32.o .libs/elf-nacl.o .libs/elf-vxworks.o .libs/elf.o .libs/elflink.o .libs/elf-attrs.o .libs/elf-strtab.o .libs/elf-eh-frame.o .libs/elf-sframe.o .libs/dwarf1.o .libs/dwarf2.o .libs/elf32-gen.o .libs/plugin.o .libs/cpu-arm.o .libs/archive64.o -L/home/builder/aports/main/binutils/src/binutils-with-gold-2.44/bfd/../libiberty/pic -liberty -lz -L/home/builder/aports/main/binutils/pkg/binutils/usr/lib -L/usr/lib -lsframe -Os '-Werror=format-security' -O2 -Wl,--as-needed -Wl,-O1 -Wl,--sort-common -Wl,-z -Wl,pack-relative-relocs -Wl,-lc -Wl,--as-needed -Wl,-lm -Wl,--no-as-needed -Wl,-soname -Wl,libbfd-2.44.so -o .libs/libbfd-2.44.so
+# /usr/lib/gcc/armv6-alpine-linux-musleabihf/14.2.0/../../../../armv6-alpine-linux-musleabihf/bin/ld: warning: -z pack-relative-relocs ignored
+# /usr/lib/libc.so: file not recognized: file format not recognized
+# collect2: error: ld returned 1 exit status
+# ```
+#
+# so it is trying to link against /usr/lib/libc.so, but that is the host libc,
+# it is NOT for armhf architecture
+#
+# on aarch64 it is similar:
+# ```
+# + aarch64-alpine-linux-musl-cc -shared -fPIC -DPIC .libs/archive.o .libs/archures.o .libs/bfd.o .libs/bfdio.o .libs/cache.o .libs/coff-bfd.o .libs/compress.o .libs/corefile.o .libs/elf-properties.o .libs/format.o .libs/hash.o .libs/libbfd.o .libs/linker.o .libs/merge.o .libs/opncls.o .libs/reloc.o .libs/section.o .libs/simple.o .libs/stab-syms.o .libs/stabs.o .libs/syms.o .libs/targets.o .libs/binary.o .libs/ihex.o .libs/srec.o .libs/tekhex.o .libs/verilog.o .libs/elf64-aarch64.o .libs/elfxx-aarch64.o .libs/elf-ifunc.o .libs/elf64.o .libs/elf.o .libs/elflink.o .libs/elf-attrs.o .libs/elf-strtab.o .libs/elf-eh-frame.o .libs/elf-sframe.o .libs/dwarf1.o .libs/dwarf2.o .libs/elf32-aarch64.o .libs/elf32.o .libs/elf32-arm.o .libs/elf-nacl.o .libs/elf-vxworks.o .libs/pei-aarch64.o .libs/pe-aarch64igen.o .libs/cofflink.o .libs/coffgen.o .libs/pe-aarch64.o .libs/elf64-gen.o .libs/elf32-gen.o .libs/plugin.o .libs/cpu-aarch64.o .libs/cpu-arm.o .libs/archive64.o -L/home/builder/aports/main/binutils/src/binutils-with-gold-2.44/bfd/../libiberty/pic -liberty -lz -L/home/builder/aports/main/binutils/pkg/binutils/usr/lib -L/usr/lib -lsframe -Os '-Werror=format-security' -O2 -Wl,--as-needed -Wl,-O1 -Wl,--sort-common -Wl,-z -Wl,pack-relative-relocs -Wl,-lc -Wl,--as-needed -Wl,-lm -Wl,--no-as-needed -Wl,-soname -Wl,libbfd-2.44.so -o .libs/libbfd-2.44.so
+# /usr/lib/gcc/aarch64-alpine-linux-musl/14.2.0/../../../../aarch64-alpine-linux-musl/bin/ld: skipping incompatible /usr/lib/libc.so when searching for -lc
+# /usr/lib/gcc/aarch64-alpine-linux-musl/14.2.0/../../../../aarch64-alpine-linux-musl/bin/ld: skipping incompatible /usr/lib/libc.a when searching for -lc
+# /usr/lib/gcc/aarch64-alpine-linux-musl/14.2.0/../../../../aarch64-alpine-linux-musl/bin/ld: skipping incompatible /usr/lib/libssp_nonshared.a when searching for -lssp_nonshared
+# /usr/lib/gcc/aarch64-alpine-linux-musl/14.2.0/../../../../aarch64-alpine-linux-musl/bin/ld: skipping incompatible /usr/lib/libgcc_s.so.1 when searching for libgcc_s.so.1
+# /usr/lib/gcc/aarch64-alpine-linux-musl/14.2.0/../../../../aarch64-alpine-linux-musl/bin/ld: skipping incompatible /usr/lib/libgcc_s.so.1 when searching for libgcc_s.so.1
+# /usr/lib/gcc/aarch64-alpine-linux-musl/14.2.0/../../../../aarch64-alpine-linux-musl/bin/ld: skipping incompatible /usr/lib/libc.so when searching for -lc
+# /usr/lib/gcc/aarch64-alpine-linux-musl/14.2.0/../../../../aarch64-alpine-linux-musl/bin/ld: skipping incompatible /usr/lib/libc.a when searching for -lc
+# /usr/lib/gcc/aarch64-alpine-linux-musl/14.2.0/../../../../aarch64-alpine-linux-musl/bin/ld: skipping incompatible /usr/lib/libgcc_s.so.1 when searching for libgcc_s.so.1
+# /usr/lib/gcc/aarch64-alpine-linux-musl/14.2.0/../../../../aarch64-alpine-linux-musl/bin/ld: skipping incompatible /usr/lib/libgcc_s.so.1 when searching for libgcc_s.so.1
+# ```
+# BUT here `ld` ignores incompatible libraries and continues to search for
+# it in other directories
+
+use strict;
+use warnings;
+
+my @params = @ARGV;
+
+for (my $i = 0; $i < @params; $i++) {
+    # Case 1: element is exactly "-L/usr/lib"
+    if ($params[$i] eq "-L/usr/lib") {
+        splice(@params, $i, 1);
+        $i--;  # adjust index after removal
+    }
+    # Case 2: "-L" followed by "/usr/lib"
+    elsif ($params[$i] eq "-L" && defined $params[$i+1] && $params[$i+1] eq "/usr/lib") {
+        splice(@params, $i, 2);
+        $i--;  # adjust index after removal
+    }
+}
+
+my $e = "/usr/bin/armv6-alpine-linux-musleabihf-cc";
+system($e, @params) == 0 or die "Failed to execute $e: $!";

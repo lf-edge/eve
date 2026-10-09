@@ -1,0 +1,40 @@
+From 9e23a033f5f28378dc995f50c398f07c0cc31c73 Mon, 2 Mar 2026 17:03:23 +0000
+From: Christoph Ostarek <christoph@zededa.com>
+Date: Mon, 2 Mar 2026 17:03:23 +0000
+Subject: [PATCH] Fix signed/unsigned conversion
+
+use unsigned int here to avoid compiler error
+
+---
+ arch/arm/include/asm/irq.h | 2 +-
+ arch/arm/irq.c             | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm/include/asm/irq.h b/arch/arm/include/asm/irq.h
+index ec437ad..88e060b 100644
+--- a/arch/arm/include/asm/irq.h
++++ b/arch/arm/include/asm/irq.h
+@@ -56,7 +56,7 @@ extern const unsigned int nr_irqs;
+ struct irq_desc;
+ struct irqaction;
+ 
+-struct irq_desc *__irq_to_desc(int irq);
++struct irq_desc *__irq_to_desc(unsigned int irq);
+ 
+ #define irq_to_desc(irq)    __irq_to_desc(irq)
+ 
+diff --git a/arch/arm/irq.c b/arch/arm/irq.c
+index 6b89f64..b9757d7 100644
+--- a/arch/arm/irq.c
++++ b/arch/arm/irq.c
+@@ -48,7 +48,7 @@ void irq_end_none(struct irq_desc *irq)
+ static irq_desc_t irq_desc[NR_IRQS];
+ static DEFINE_PER_CPU(irq_desc_t[NR_LOCAL_IRQS], local_irq_desc);
+ 
+-struct irq_desc *__irq_to_desc(int irq)
++struct irq_desc *__irq_to_desc(unsigned int irq)
+ {
+     if ( irq < NR_LOCAL_IRQS )
+         return &this_cpu(local_irq_desc)[irq];
+-- 
+2.49.1

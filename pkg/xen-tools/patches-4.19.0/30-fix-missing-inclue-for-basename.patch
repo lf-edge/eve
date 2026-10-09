@@ -1,0 +1,23 @@
+From d822583ed4d81f3e5b60f39ffcb3cf3b56ca351d 3 Mar 2026 13:16:50 +0000
+From: Christoph Ostarek <christoph@zededa.com>
+Date: Tue, 3 Mar 2026 13:16:50 +0000
+Subject: [PATCH] fix missing include for basename
+
+---
+ tools/qemu-xen/hw/vfio/platform.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/tools/qemu-xen/hw/vfio/platform.c b/tools/qemu-xen/hw/vfio/platform.c
+index 5af73f92..72eacfec 100644
+--- a/tools/qemu-xen/hw/vfio/platform.c
++++ b/tools/qemu-xen/hw/vfio/platform.c
+@@ -18,6 +18,7 @@
+ #include "qapi/error.h"
+ #include <sys/ioctl.h>
+ #include <linux/vfio.h>
++#include <libgen.h>
+ 
+ #include "hw/vfio/vfio-platform.h"
+ #include "migration/vmstate.h"
+-- 
+2.49.1

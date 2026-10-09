@@ -12,6 +12,7 @@ jobs:
     if: |
       github.event.issue.pull_request && startsWith(github.event.comment.body, '/rerun')
     runs-on: ubuntu-latest
+    timeout-minutes: 1440
 
     permissions:
       actions: write
