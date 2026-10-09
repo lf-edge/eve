@@ -26,7 +26,9 @@ var netbootParam = evetest.TestParameterDefinition{
 	Key:          netbootParamKey,
 	DefaultValue: false,
 	Description: evetest.TestParameterDescription{
-		Summary: "Install EVE over the network via iPXE instead of using a local live image",
+		Summary: "Install EVE over the network via iPXE instead of booting a live image; " +
+			"the netboot bundle comes from the EVE container image, so this fails Setup " +
+			"under EVETEST_EVE_LIVE_IMAGE=true until a local installer.net can be delivered",
 		Default: "false",
 	},
 }
@@ -289,7 +291,10 @@ func TestSingleNodeCluster(test *testing.T) {
 //   - FILESYSTEM (ext4|zfs, defaults to ext4) via evetest.FilesystemParameter().
 //   - NETBOOT (bool, defaults to false): when true, all three devices install
 //     EVE over the network via iPXE; requires CAPABILITY_NETBOOT and is skipped
-//     on providers that lack it.
+//     on providers that lack it. The netboot bundle is built from the EVE
+//     container image, so with EVETEST_EVE_LIVE_IMAGE=true Setup fails rather
+//     than mix it with the local build, until local installer.net delivery
+//     (CAPABILITY_LOCAL_INSTALLER_NET) exists.
 //
 // Phases
 // ------
