@@ -55,6 +55,21 @@ func fullCapabilitySet() []api.Capability {
 // Used as a constant.
 var ipv4Loopback = net.IPv4(127, 0, 0, 1)
 
+// checkDiskMedia refuses a disk list containing media no provider attaches
+// yet. Every provider attaches DiskImageMediaDisk; DiskImageMediaCdrom, which
+// an installer ISO needs, is declared but not implemented by any of them.
+// Refusing it is what keeps an ISO from being attached as a plain disk and
+// booting -- or failing to boot -- in some way the test never asked for.
+func checkDiskMedia(disks []DiskImage) error {
+	for _, disk := range disks {
+		if disk.Media != DiskImageMediaDisk {
+			return fmt.Errorf("disk image %q requests %s media, which this "+
+				"provider does not support yet", disk.Path, disk.Media)
+		}
+	}
+	return nil
+}
+
 // ErrNotFound indicates the named device was not found.
 var ErrNotFound = errors.New("device not found")
 
