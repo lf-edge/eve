@@ -7,6 +7,8 @@ on:  # yamllint disable-line rule:truthy
   issue_comment:
     types: [created]
 
+permissions: {}
+
 jobs:
   rerun-workflows:
     if: |
@@ -22,6 +24,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Parse CODEOWNERS to get allowed users
         run: |
@@ -29,8 +33,9 @@ jobs:
           awk '{for(i=1;i<=NF;i++) if($i ~ /^@/) print substr($i,2)}' "$CODEOWNERS" | sort -u > allowed_users.txt
 
       - name: Check if comment author is allowed
+        env:
+          COMMENT_USER: ${{ github.event.comment.user.login }}
         run: |
-          COMMENT_USER="${{ github.event.comment.user.login }}"
           echo "User: $COMMENT_USER"
           if ! grep -Fxq "$COMMENT_USER" allowed_users.txt; then
             echo "User $COMMENT_USER is not allowed to rerun CI." >&2
@@ -39,8 +44,9 @@ jobs:
 
       - name: Set run mode (red or yellow)
         id: mode
+        env:
+          BODY: ${{ github.event.comment.body }}
         run: |
-          BODY="${{ github.event.comment.body }}"
           if [[ "$BODY" =~ ^/rerun[[:space:]]+yellow ]]; then
             echo "mode=yellow" >> $GITHUB_OUTPUT
           elif [[ "$BODY" =~ ^/rerun[[:space:]]+red ]]; then
@@ -54,10 +60,9 @@ jobs:
         id: prinfo
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
         run: |
-          PR_NUMBER="${{ github.event.issue.number }}"
-          REPO="${{ github.repository }}"
-
           BRANCH=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefName -q .headRefName)
           SHA=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid -q .headRefOid)
           echo "branch=$BRANCH" >> $GITHUB_OUTPUT

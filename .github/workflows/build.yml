@@ -13,6 +13,9 @@ on:  # yamllint disable-line rule:truthy
       - '.github/**'
       - '**/*.md'
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
   cancel-in-progress: true
@@ -46,6 +49,7 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
+          persist-credentials: false
       - name: Login to Docker Hub
         if: ${{ github.event.repository.full_name == 'lf-edge/eve' }}
         run: |
@@ -86,6 +90,7 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
+          persist-credentials: false
       - name: Login to Docker Hub
         if: ${{ github.event.repository.full_name == 'lf-edge/eve' }}
         run: |
@@ -129,6 +134,7 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
+          persist-credentials: false
       - uses: ./.github/actions/build-eve
         with:
           arch: amd64
@@ -153,6 +159,7 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
+          persist-credentials: false
       - uses: ./.github/actions/build-eve
         with:
           arch: amd64
@@ -179,6 +186,7 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
+          persist-credentials: false
       - uses: ./.github/actions/build-eve
         with:
           arch: amd64
@@ -205,6 +213,7 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
+          persist-credentials: false
       - uses: ./.github/actions/build-eve
         with:
           arch: amd64
@@ -231,6 +240,7 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
+          persist-credentials: false
       - uses: ./.github/actions/build-eve
         with:
           arch: arm64
@@ -255,6 +265,7 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
+          persist-credentials: false
       - uses: ./.github/actions/build-eve
         with:
           arch: arm64
@@ -305,6 +316,7 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
+          persist-credentials: false
       - uses: ./.github/actions/build-eve
         with:
           arch: arm64
@@ -329,6 +341,7 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
+          persist-credentials: false
       - uses: ./.github/actions/build-eve
         with:
           arch: arm64
@@ -422,6 +435,7 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
+          persist-credentials: false
       - name: Starting Report
         run: |
           echo "Build target: mini-riscv64-generic (cross-build)"
@@ -436,6 +450,7 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
+          persist-credentials: false
       - name: Login to Docker Hub
         if: ${{ github.event.repository.full_name == 'lf-edge/eve' }}
         run: |

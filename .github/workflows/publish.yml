@@ -16,6 +16,9 @@ on:  # yamllint disable-line rule:truthy
       - "[0-9]+.[0-9]+.[0-9]+-lts"
       - "[0-9]+.[0-9]+.[0-9]+-rc[0-9]+"
 
+permissions:
+  contents: read
+
 jobs:
   # ════════════════════════════════════════════════════════════════════════
   # Stage 1: Build and push base generic packages for each architecture.
@@ -35,7 +38,9 @@ jobs:
           df -h
           echo Memory
           free -m
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      # The tag fetch below runs against github.com, so the GITHUB_TOKEN must
+      # stay in .git/config; anonymous git is subject to GitHub's rate limits.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2 # zizmor: ignore[artipacked]
         with:
           fetch-depth: 0
       - name: Force fetch annotated tags (workaround)
@@ -87,7 +92,9 @@ jobs:
           df -h
           echo Memory
           free -m
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      # The tag fetch below runs against github.com, so the GITHUB_TOKEN must
+      # stay in .git/config; anonymous git is subject to GitHub's rate limits.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2 # zizmor: ignore[artipacked]
         with:
           fetch-depth: 0
       - name: Force fetch annotated tags (workaround)
@@ -200,8 +207,10 @@ jobs:
             os: zededa-ubuntu-2204
 
     steps:
+      # run-make fetches tags from github.com, so the GITHUB_TOKEN must stay
+      # in .git/config; anonymous git is subject to GitHub's rate limits.
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2 # zizmor: ignore[artipacked]
         with:
           fetch-depth: 0
       - name: Install qemu for cross-arch build
@@ -248,7 +257,9 @@ jobs:
     needs: eve
     runs-on: zededa-ubuntu-2204
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      # run-make fetches tags from github.com, so the GITHUB_TOKEN must stay
+      # in .git/config; anonymous git is subject to GitHub's rate limits.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2 # zizmor: ignore[artipacked]
         with:
           fetch-depth: 0
       - uses: ./.github/actions/run-make
@@ -269,6 +280,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Login to Docker Hub
         run: |
           docker login
@@ -300,6 +312,8 @@ jobs:
   trigger_assets:
     if: ${{ (startsWith(github.ref, 'refs/tags/')) && (github.event.repository.full_name == 'lf-edge/eve') }}
     needs: [manifest, eve]
+    permissions:
+      contents: write
     uses: lf-edge/eve/.github/workflows/assets.yml@master
     secrets:
       DOCKERHUB_PULL_TOKEN: ${{ secrets.DOCKERHUB_PULL_TOKEN }}
