@@ -15,6 +15,8 @@ use strum::Display;
 // CONF_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30054
 // PERSIST_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30059
 // INSTALLER_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30060
+// INSTALLER_EFI_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30061
+// INSTALLER_DISK_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30062
 
 use super::{
     traits::{DevicePathReadEx, DevicePathWriteEx, NodeExpectedLength, NodeTypeValidator},
