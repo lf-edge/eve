@@ -1,0 +1,74 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mike.malyshev@gmail.com>
+Date: Fri, 9 Oct 2026 14:41:51 +0000
+Subject: [PATCH] hw/isa/lpc_ich9: add an x-device-id property
+
+Proprietary Intel GOP drivers, run from an option ROM for a passed-through
+iGPU, read the device ID of the LPC bridge at 00:1f.0 and refuse to start
+unless it belongs to a PCH they know. q35's ICH9 reports 0x2918, which none
+of them accept, so the display stays dark through the UEFI phase.
+
+x-device-id sets the device ID that ICH9-LPC reports:
+
+    -global ICH9-LPC.x-device-id=0xa082
+
+The default, 0, keeps 0x2918. The ID is applied at realize, before anything
+reads it.
+
+A real PCH ID does not match q35's ACPI tables and power management, and
+some guest graphics drivers choose their quirks by PCH, so set it only for
+firmware that needs it. vfio's x-igd-lpc cannot help on q35: it creates its
+own LPC bridge at 00:1f.0, which ICH9 already occupies.
+
+Upstream-Status: Inappropriate [upstream leaves the IDs of q35's ICH9 alone, see docs/igd-assign.txt]
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
+---
+ hw/isa/lpc_ich9.c             |  6 ++++++
+ include/hw/southbridge/ich9.h | 10 ++++++++++
+ 2 files changed, 16 insertions(+)
+
+diff --git a/hw/isa/lpc_ich9.c b/hw/isa/lpc_ich9.c
+index edf9783..c946218 100644
+--- a/hw/isa/lpc_ich9.c
++++ b/hw/isa/lpc_ich9.c
+@@ -712,6 +712,11 @@ static void ich9_lpc_realize(PCIDevice *d, Error **errp)
+     ISABus *isa_bus;
+     uint32_t irq;
+ 
++    /* Before anything reads the device ID; see device_id_override. */
++    if (lpc->device_id_override != 0) {
++        pci_config_set_device_id(d->config, lpc->device_id_override);
++    }
++
+     if ((lpc->smi_host_features & BIT_ULL(ICH9_LPC_SMI_F_CPU_HOT_UNPLUG_BIT)) &&
+         !(lpc->smi_host_features & BIT_ULL(ICH9_LPC_SMI_F_CPU_HOTPLUG_BIT))) {
+         /*
+@@ -845,6 +850,7 @@ static const Property ich9_lpc_properties[] = {
+                      pm.swsmi_timer_enabled, true),
+     DEFINE_PROP_BOOL("x-smi-periodic-timer", ICH9LPCState,
+                      pm.periodic_timer_enabled, true),
++    DEFINE_PROP_UINT16("x-device-id", ICH9LPCState, device_id_override, 0),
+ };
+ 
+ static void ich9_send_gpe(AcpiDeviceIf *adev, AcpiEventStatusBits ev)
+diff --git a/include/hw/southbridge/ich9.h b/include/hw/southbridge/ich9.h
+index 2c35dd0..9b299cf 100644
+--- a/include/hw/southbridge/ich9.h
++++ b/include/hw/southbridge/ich9.h
+@@ -54,6 +54,16 @@ struct ICH9LPCState {
+     uint8_t rst_cnt;
+     MemoryRegion rst_cnt_mem;
+ 
++    /*
++     * PCI device ID to report instead of the class default (0x2918), set
++     * with the x-device-id property; 0 keeps the default. Proprietary Intel
++     * GOP drivers refuse to start unless the LPC bridge is a PCH they know.
++     * A real PCH ID does not match the q35 ACPI tables and power management,
++     * and it changes which quirks some guest graphics drivers apply, so set
++     * it only for firmware that needs it.
++     */
++    uint16_t device_id_override;
++
+     /* SMI feature negotiation via fw_cfg */
+     uint64_t smi_host_features;       /* guest-invisible, host endian */
+     uint8_t smi_host_features_le[8];  /* guest-visible, read-only, little

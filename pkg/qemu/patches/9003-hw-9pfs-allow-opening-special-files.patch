@@ -1,0 +1,80 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Roja Eswaran <roja@zededa.com>
+Date: Fri, 2 Oct 2026 16:09:55 +0000
+Subject: [PATCH] hw/9pfs: allow opening special files
+
+EVE gives each container app its root filesystem over 9p (fsdriver local,
+security_model=none). Since the fix for CVE-2023-2861, openat_file()
+refuses to open anything that is neither a regular file nor a directory.
+EVE has run without that check since container apps broke on 9p with it
+(lf-edge/eve#4186).
+
+This reopens CVE-2023-2861: a guest that can create or reach a device node
+in the exported tree can open the host device behind it.
+
+Upstream-Status: Inappropriate [reverts a CVE fix]
+Signed-off-by: Roja Eswaran <roja@zededa.com>
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
+---
+ hw/9pfs/9p-util.h | 41 -----------------------------------------
+ 1 file changed, 41 deletions(-)
+
+diff --git a/hw/9pfs/9p-util.h b/hw/9pfs/9p-util.h
+index 8dfa803..a00b552 100644
+--- a/hw/9pfs/9p-util.h
++++ b/hw/9pfs/9p-util.h
+@@ -121,38 +121,6 @@ static inline void close_preserve_errno(int fd)
+     errno = serrno;
+ }
+ 
+-/**
+- * close_if_special_file() - Close @fd if neither regular file nor directory.
+- *
+- * @fd: file descriptor of open file
+- * Return: 0 on regular file or directory, -1 otherwise
+- *
+- * CVE-2023-2861: Prohibit opening any special file directly on host
+- * (especially device files), as a compromised client could potentially gain
+- * access outside exported tree under certain, unsafe setups. We expect
+- * client to handle I/O on special files exclusively on guest side.
+- */
+-static inline int close_if_special_file(int fd)
+-{
+-    struct stat stbuf;
+-
+-    if (qemu_fstat(fd, &stbuf) < 0) {
+-        close_preserve_errno(fd);
+-        return -1;
+-    }
+-    if (!S_ISREG(stbuf.st_mode) && !S_ISDIR(stbuf.st_mode)) {
+-        error_report_once(
+-            "9p: broken or compromised client detected; attempt to open "
+-            "special file (i.e. neither regular file, nor directory)"
+-        );
+-        close(fd);
+-        errno = ENXIO;
+-        return -1;
+-    }
+-
+-    return 0;
+-}
+-
+ static inline int openat_dir(int dirfd, const char *name)
+ {
+     return qemu_openat(dirfd, name,
+@@ -189,15 +157,6 @@ again:
+ 
+     /* Only if O_PATH is not set ... */
+     if (!(flags & O_PATH_9P_UTIL)) {
+-        /*
+-         * Prevent I/O on special files (device files, etc.) on host side,
+-         * however it is safe and required to allow opening them with O_PATH,
+-         * as this is limited to (required) path based operations only.
+-         */
+-        if (close_if_special_file(fd) < 0) {
+-            return -1;
+-        }
+-
+         serrno = errno;
+         /*
+          * O_NONBLOCK was only needed to open the file. Let's drop it. We don't
