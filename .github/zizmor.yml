@@ -25,10 +25,9 @@ rules:
       # A plain pull_request run cannot work here: every PR is from a fork,
       # so the token would be read-only and the secrets unavailable.
       - claude-review.yml
-      # pull_request_target: checks out the base ref, fetches the head
-      # SHA, and only reads .github/CODEOWNERS (base-controlled). The
-      # head ref is interpolated into shell; that template-injection
-      # exposure is fixed separately, not by changing the trigger.
+      # pull_request_target: checks out the base ref and reads
+      # .github/CODEOWNERS from it; the head SHA is fetched only to diff
+      # the file list. PR-controlled values reach the shell through env.
       - request_codeowners_review.yml
       # workflow_run after a successful "PR build": reads only the
       # gate context artifact produced by the trusted workflow and
