@@ -42,11 +42,11 @@ Just as Chromium, we consider two different kinds of adversaries:
 * An opportunistic adversary
 * A dedicated adversary
 
-The opportunistic adversary is just trying to compromise an individual Edge Node and/or data.  They are not targeting a specific user or enterprise, and they are not going to steal, disassemble or modify the Edge Node but they are very likely to have prolonged physical access to it. This level of physical access allows an opportunistic adversary a chance to replace trusted network and I/O connections with those of their own making, though. Unlike Chromium, we assume that this will facilitate things like DNS or other network-level attacks and will place them within an opportunistic adversary's reach.
+The opportunistic adversary is just trying to compromise an individual Edge Node and/or data.  They are not targeting a specific user or enterprise, but they are very likely to have prolonged physical access to the Edge Node, and they may steal it or its storage drive and read or copy the drive offline. They are not going to disassemble the Edge Node or modify its hardware. This level of physical access also allows an opportunistic adversary a chance to replace trusted network and I/O connections with those of their own making. Unlike Chromium, we assume that this will facilitate things like DNS or other network-level attacks and will place them within an opportunistic adversary's reach.
 
-The dedicated adversary may target a user or an enterprise specifically for attack.  They are willing to steal Edge Nodes to recover data or account credentials (not just to re-sell the device to make money). They are also willing and capable of modifying an Edge Node with extra hardware and software components. They may also do anything that the opportunistic adversary can do.
+The dedicated adversary may target a user or an enterprise specifically for attack.  They are willing and capable of modifying an Edge Node with extra hardware and software components. They may also do anything that the opportunistic adversary can do.
 
-The EVE contributors and community need to prioritize which security risks to focus on and in which order. For now, we are focusing mainly on risks posed by opportunistic adversaries. As the project matures and the community grows, we will increase our scope to include dedicated adversaries and other security considerations.
+Theft of an Edge Node or its drive is addressed in [Encrypted Application and User Storage](#encrypted-application-and-user-storage), which also states what a stolen drive still reveals.
 
 ## Isolation between applications and EVE
 
