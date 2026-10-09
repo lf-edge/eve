@@ -90,7 +90,8 @@ identifier a future `BootXXXX` boot entry would reference). Consequently, code
 that locates the active ESP selects ESP-A by its unique partition GUID rather
 than by label: the 1st stage GRUB's [embedded fallback](../pkg/grub/embedded.cfg)
 uses `search.part_uuid` for ESP-A, and the [installer](../pkg/installer/install)
-matches ESP-A's PARTUUID. Reserving ESP-B does not otherwise change the boot
+finds its own media's ESP by that ESP's partition GUID (see installer media
+below). Reserving ESP-B does not otherwise change the boot
 flow — EVE still boots the active rootfs (IMGA/IMGB) selected by `gptprio.next`,
 and ESP-B plays no role until a future change populates and uses it. Partition
 GUIDs are always the fixed values listed above, so `search.part_uuid` reliably
@@ -108,6 +109,21 @@ bootable ESP (ESP-A) must therefore always be the lowest-numbered ESP — which 
 why ESP-A is partition 1 and ESP-B is partition 7. (Verified against EVE's patched
 GRUB for the coreos/~2.02, 2.06 and 2.12 lineages; the EVE gpt/gptprio patches add
 a separate `lib/gpt.c` and do not change `partmap/gpt.c`'s iteration order.)
+
+Installer media: a raw installer image (`make installer-raw`) has fixed GUIDs of
+its own, distinct from those of an installed disk: disk GUID `ad6871ee-...-30062`,
+ESP `ad6871ee-...-30061` and installer partition `ad6871ee-...-30060`. Several
+lookups meant for an installed disk match a partition GUID on **any** disk: the
+firmware resolves the `EVE-OS` boot entry the installer creates with `efibootmgr`
+(an abbreviated `HD()` device path) by the ESP's GUID, and the
+[embedded fallback](../pkg/grub/embedded.cfg) searches for `ad6871ee-...-30051`.
+If the installer stick shared the installed disk's ESP GUID, a stick left plugged
+in after the installation could be booted again through those lookups, and the
+installer itself could copy an internal disk's ESP instead of its own. The GUIDs
+stay fixed rather than random so that measured boot stays reproducible: the
+firmware measures the GPT of the boot disk into PCR 5. Devices whose 1st stage
+GRUB still searches for the ESP by label are not protected by this, because the
+installer's ESP carries the same `EFI System` label.
 
 After 1st stage GRUB determines which partition is active (IMGA or IMGB) it chainloads the 2nd stage GRUB.
 This chainloading is done through the mechanism that is specific to UEFI payloads and is different from

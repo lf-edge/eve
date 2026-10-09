@@ -69,6 +69,12 @@ CONF_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30054
 EFI_B_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30056
 PERSIST_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30059
 INSTALLER_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30060
+# Installer media get their own (still fixed) disk and ESP GUIDs. Boot entries
+# and GUID searches meant for an installed disk (an efibootmgr HD() entry, the
+# embedded.cfg fallback for ESP-A) match by GUID across all disks, so they
+# must never resolve to an installer stick that was left plugged in.
+INSTALLER_EFI_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30061
+INSTALLER_DISK_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30062
 
 # content of rootfs partition
 ROOTFS_IMG=/parts/rootfs.img
@@ -326,9 +332,11 @@ do_system_vfat_part() {
 }
 
 # do_efi create the EFI partition and copy the bootloaders and other boot pieces needed.
+# The optional third argument is the partition GUID of the ESP (default: $EFI_UUID).
 do_efi() {
   eval "local SEC_START=\$$1"
   local customparts=$2
+  local efi_uuid=${3:-$EFI_UUID}
 
   # Create EFI partition and include the bootloaders
   rm -rf /efifs/*
@@ -363,11 +371,11 @@ EOF
     $customparts
   fi
   do_system_vfat_part "$1" "$EFI_PART_SIZE" $SYSTEM_VFAT_PART /efifs
-  sgdisk --partition-guid="$EFI_PART:$EFI_UUID" "$IMGFILE"
+  sgdisk --partition-guid="$EFI_PART:$efi_uuid" "$IMGFILE"
 }
 
 do_efiinstaller() {
-  do_efi "$1" efi_installer_extension
+  do_efi "$1" efi_installer_extension "$INSTALLER_EFI_UUID"
 }
 
 efi_installer_extension() {
@@ -643,7 +651,11 @@ case "$(sgdisk -p "$IMGFILE" 2>/dev/null | sed -ne '/^Number/,$s/^.* //p' | tr '
       ;;
 esac
 
-sgdisk --disk-guid=$DISK_UUID "$IMGFILE"
+if echo "$PARTS" | grep -q "installer"; then
+  sgdisk --disk-guid=$INSTALLER_DISK_UUID "$IMGFILE"
+else
+  sgdisk --disk-guid=$DISK_UUID "$IMGFILE"
+fi
 
 # at this point, the base PART_OFFSET is set, so we can calculate the rest
 SYSTEM_VFAT_PART=$(( PART_OFFSET + SYSTEM_VFAT_PART_OFFSET ))
