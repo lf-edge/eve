@@ -1,0 +1,54 @@
+# Copyright (c) 2026, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+name: Check Firmware Lists
+on:  # yamllint disable-line rule:truthy
+  push:
+    branches:
+      - "master"
+      - "[0-9]+.[0-9]+"
+      - "[0-9]+.[0-9]+-stable"
+      - "feature/*"
+    paths:
+      # A kernel update is what changes the firmware the lists must hold.
+      - 'kernel-commits.mk'
+      - 'kernel-version.mk'
+  pull_request:
+    branches:
+      - "master"
+      - "[0-9]+.[0-9]+"
+      - "[0-9]+.[0-9]+-stable"
+      - "feature/*"
+    paths:
+      - 'kernel-commits.mk'
+      - 'kernel-version.mk'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd  # v4.0.0
+
+      # Regenerates the lists from the pinned kernel images and pkg/fw's build
+      # stage, and fails with a diff if the committed lists differ. Only amd64
+      # has rules in pkg/fw/firmware-select.txt; another architecture needs
+      # docker/setup-qemu-action here to build pkg/fw for it.
+      - name: Check that the firmware lists are up to date
+        shell: bash
+        run: |
+          make check-fw-lists
