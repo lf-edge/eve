@@ -149,9 +149,10 @@ func (b *broker) runImageCleanupLoop() {
 
 // cleanupDockerImages runs one cleanup pass: an age-based sweep (always),
 // followed by a disk-pressure sweep (only if usage is at or above
-// b.diskThresholdPct), which keeps removing the oldest
-// remaining unused images, rechecking usage after each one, until back under
-// the threshold or nothing more can be removed.
+// b.diskThresholdPct AND free space is below b.dockerMinFreeGiB, see
+// shouldEvict), which keeps removing the oldest remaining unused images,
+// rechecking after each one, until either condition stops holding or nothing
+// more can be removed.
 func (b *broker) cleanupDockerImages(ctx context.Context) {
 	log := b.globalLog
 	cli, err := client.NewClientWithOpts(client.FromEnv)
@@ -220,17 +221,18 @@ func (b *broker) cleanupDockerImages(ctx context.Context) {
 		}
 	}
 
-	usagePercent, dockerRoot, err := b.dockerDiskUsagePercent(ctx, cli)
+	usage, dockerRoot, err := b.dockerDiskUsage(ctx, cli)
 	if err != nil {
 		log.Warnf("Image cleanup: failed to check disk usage: %v", err)
 		return
 	}
-	if usagePercent < b.diskThresholdPct {
+	if !shouldEvict(usage, b.diskThresholdPct, b.dockerMinFreeGiB) {
 		return
 	}
-	log.Warnf("Image cleanup: disk usage at %d%% on %s (threshold %d%%), "+
-		"evicting oldest unused images",
-		usagePercent, dockerRoot, b.diskThresholdPct)
+	log.Warnf("Image cleanup: disk usage at %d%% on %s (threshold %d%%) and "+
+		"available space %.1f GiB (floor %d GiB), evicting oldest unused images",
+		usage.UsedPct, dockerRoot, b.diskThresholdPct,
+		usage.freeGiB(), b.dockerMinFreeGiB)
 
 	var remaining []imageCandidate
 	for _, c := range candidates {
@@ -238,59 +240,125 @@ func (b *broker) cleanupDockerImages(ctx context.Context) {
 			remaining = append(remaining, c)
 		}
 	}
-	for _, id := range orderImagesOldestFirst(remaining) {
-		evict(id, "disk pressure")
-		usagePercent, _, err = b.dockerDiskUsagePercent(ctx, cli)
-		if err != nil {
-			log.Warnf("Image cleanup: failed to re-check disk usage: %v", err)
-			return
-		}
-		if usagePercent < b.diskThresholdPct {
-			return
-		}
+	err = evictWhilePressured(orderImagesOldestFirst(remaining),
+		func(id string) { evict(id, "disk pressure") },
+		func() (diskUsage, error) {
+			u, _, err := b.dockerDiskUsage(ctx, cli)
+			return u, err
+		},
+		func(u diskUsage) bool {
+			return shouldEvict(u, b.diskThresholdPct, b.dockerMinFreeGiB)
+		})
+	if err != nil {
+		log.Warnf("Image cleanup: failed to re-check disk usage: %v", err)
 	}
 }
 
-// dockerDiskUsagePercent returns the current disk usage percentage of the
+// dockerDiskUsage returns the current disk usage of the
 // filesystem backing Docker's actual storage directory. It asks Docker
 // itself for that directory (DockerRootDir, from `docker info`) rather than
 // assuming a fixed path like /var/lib/docker, since it can be customized via
 // the daemon's data-root setting.
-func (b *broker) dockerDiskUsagePercent(ctx context.Context, cli *client.Client) (
-	percent int, dockerRoot string, err error) {
+func (b *broker) dockerDiskUsage(ctx context.Context, cli *client.Client) (
+	usage diskUsage, dockerRoot string, err error) {
 	info, err := cli.Info(ctx, client.InfoOptions{})
 	if err != nil {
 		err = fmt.Errorf("failed to query docker info: %w", err)
-		return 0, "", err
+		return diskUsage{}, "", err
 	}
 	dockerRoot = info.Info.DockerRootDir
 	if dockerRoot == "" {
 		err = fmt.Errorf("docker did not report its root directory")
-		return 0, "", err
+		return diskUsage{}, "", err
 	}
-	percent, err = diskUsagePercent(dockerRoot)
-	return percent, dockerRoot, err
+	usage, err = statDiskUsage(dockerRoot)
+	return usage, dockerRoot, err
 }
 
-// diskUsagePercent returns the used-space percentage of the filesystem backing path.
-func diskUsagePercent(path string) (int, error) {
+// diskUsage is the result of one statfs call on a filesystem.
+type diskUsage struct {
+	// UsedPct is the used-space percentage, 0-100.
+	UsedPct int
+	// FreeBytes is the space available to unprivileged users, in bytes.
+	FreeBytes uint64
+	// TotalBytes is the total size of the filesystem, in bytes.
+	TotalBytes uint64
+}
+
+const bytesPerGiB = 1 << 30
+
+func (u diskUsage) freeGiB() float64 {
+	return float64(u.FreeBytes) / bytesPerGiB
+}
+
+// shouldEvict reports whether disk pressure justifies evicting images or
+// templates: usage must be at or above thresholdPct AND free space must be
+// below minFreeGiB. A big disk can sit above a percentage threshold while
+// still having hundreds of GiB free, which is no reason to evict. A
+// non-positive minFreeGiB disables the free-space floor, leaving the
+// percentage as the only trigger.
+func shouldEvict(u diskUsage, thresholdPct, minFreeGiB int) bool {
+	if u.UsedPct < thresholdPct {
+		return false
+	}
+	if minFreeGiB <= 0 {
+		return true
+	}
+	return u.FreeBytes < uint64(minFreeGiB)*bytesPerGiB
+}
+
+// evictWhilePressured evicts ids in order, re-reading disk usage after each
+// eviction, and stops as soon as pressured reports false (either the
+// percentage or the free-space condition cleared), when ids run out, or when
+// usage cannot be read (the error is returned).
+func evictWhilePressured(ids []string, evict func(id string),
+	usage func() (diskUsage, error), pressured func(diskUsage) bool) error {
+	for _, id := range ids {
+		evict(id)
+		u, err := usage()
+		if err != nil {
+			return err
+		}
+		if !pressured(u) {
+			return nil
+		}
+	}
+	return nil
+}
+
+// statDiskUsage returns the used percentage and free bytes of the filesystem
+// backing path, from a single statfs call.
+func statDiskUsage(path string) (diskUsage, error) {
 	var stat syscall.Statfs_t
 	if err := syscall.Statfs(path, &stat); err != nil {
-		return 0, fmt.Errorf("failed to stat %q: %w", path, err)
+		return diskUsage{}, fmt.Errorf("failed to stat %q: %w", path, err)
 	}
-	total := stat.Blocks * uint64(stat.Bsize) //nolint:unconvert
-	free := stat.Bfree * uint64(stat.Bsize)   //nolint:unconvert
+	// Block counts are in units of f_frsize per POSIX; older filesystems
+	// may leave it 0, in which case f_bsize is the best available unit.
+	bsize := uint64(stat.Frsize) //nolint:unconvert
+	if bsize == 0 {
+		bsize = uint64(stat.Bsize) //nolint:unconvert
+	}
+	total := stat.Blocks * bsize
 	if total == 0 {
-		return 0, fmt.Errorf("statfs reported zero total blocks for %q", path)
+		return diskUsage{}, fmt.Errorf("statfs reported zero total blocks for %q", path)
 	}
-	return int((total - free) * 100 / total), nil
+	// Percentage is computed from Bfree (like df's used column); the free
+	// space reported is Bavail, what an unprivileged writer can really use.
+	used := total - stat.Bfree*bsize
+	return diskUsage{
+		UsedPct:    int(used * 100 / total),
+		FreeBytes:  stat.Bavail * bsize,
+		TotalBytes: total,
+	}, nil
 }
 
 // cleanupTemplates runs one template cleanup pass, mirroring
 // cleanupDockerImages: an age-based sweep (skipped when b.tmplRetention is
 // non-positive, an explicit "disable age-based eviction"), then a
 // disk-pressure sweep that removes the oldest remaining templates until usage
-// is back under the threshold -- run regardless of b.tmplRetention, since a
+// is back under the threshold or free space is back above the floor (see
+// shouldEvict) -- run regardless of b.tmplRetention, since a
 // disabled age sweep must not also disable the broker's only protection
 // against filling the disk. Templates still referenced by a live working copy
 // are never candidates.
@@ -323,17 +391,18 @@ func (b *broker) cleanupTemplates(_ context.Context) {
 		}
 	}
 
-	usagePercent, err := b.imageDirUsagePercent()
+	usage, err := b.imageDirUsage()
 	if err != nil {
 		log.Warnf("Template cleanup: failed to check disk usage: %v", err)
 		return
 	}
-	if usagePercent < b.tmplDiskThresholdPct {
+	if !shouldEvict(usage, b.tmplDiskThresholdPct, b.tmplMinFreeGiB) {
 		return
 	}
-	log.Warnf("Template cleanup: disk usage at %d%% on %s (threshold %d%%), "+
-		"evicting oldest unused templates",
-		usagePercent, b.imageDir, b.tmplDiskThresholdPct)
+	log.Warnf("Template cleanup: disk usage at %d%% on %s (threshold %d%%) and "+
+		"available space %.1f GiB (floor %d GiB), evicting oldest unused templates",
+		usage.UsedPct, b.imageDir, b.tmplDiskThresholdPct,
+		usage.freeGiB(), b.tmplMinFreeGiB)
 
 	var remaining []imageCandidate
 	for _, c := range candidates {
@@ -341,22 +410,20 @@ func (b *broker) cleanupTemplates(_ context.Context) {
 			remaining = append(remaining, c)
 		}
 	}
-	for _, key := range orderImagesOldestFirst(remaining) {
-		evict(key, "disk pressure")
-		usagePercent, err = b.imageDirUsagePercent()
-		if err != nil {
-			log.Warnf("Template cleanup: failed to re-check disk usage: %v", err)
-			return
-		}
-		if usagePercent < b.tmplDiskThresholdPct {
-			return
-		}
+	err = evictWhilePressured(orderImagesOldestFirst(remaining),
+		func(key string) { evict(key, "disk pressure") },
+		b.imageDirUsage,
+		func(u diskUsage) bool {
+			return shouldEvict(u, b.tmplDiskThresholdPct, b.tmplMinFreeGiB)
+		})
+	if err != nil {
+		log.Warnf("Template cleanup: failed to re-check disk usage: %v", err)
 	}
 }
 
-// imageDirUsagePercent returns the disk usage percentage of the filesystem
+// imageDirUsage returns the disk usage of the filesystem
 // backing the broker's image directory, which is where templates and working
 // copies live -- not necessarily the same filesystem as Docker's storage.
-func (b *broker) imageDirUsagePercent() (int, error) {
-	return diskUsagePercent(b.imageDir)
+func (b *broker) imageDirUsage() (diskUsage, error) {
+	return statDiskUsage(b.imageDir)
 }

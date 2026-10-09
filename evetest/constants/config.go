@@ -230,9 +230,19 @@ const (
 	// BrokerDockerDiskUsageThresholdEnv specifies the disk usage percentage
 	// (on the filesystem backing Docker's storage) at or above which the
 	// broker aggressively evicts the oldest unused Docker images, regardless
-	// of BrokerDockerImageRetentionEnv, until usage drops back under it.
+	// of BrokerDockerImageRetentionEnv, until usage drops back under it --
+	// but only while free space is also below BrokerDockerMinFreeGiBEnv.
 	// Read by evetest-broker.
 	BrokerDockerDiskUsageThresholdEnv = "BROKER_DOCKER_DISK_USAGE_THRESHOLD"
+
+	// BrokerDockerMinFreeGiBEnv specifies the free-space floor, in GiB, for
+	// Docker image eviction. Aggressive eviction happens only while usage is
+	// at or above BrokerDockerDiskUsageThresholdEnv AND free space on that
+	// filesystem is below this floor, so a big disk that is merely over the
+	// percentage is left alone. Zero disables the floor (percentage-only).
+	// Keep it larger than BrokerTemplateMinFreeGiBEnv so Docker images are
+	// evicted before templates. Read by evetest-broker.
+	BrokerDockerMinFreeGiBEnv = "BROKER_DOCKER_MIN_FREE_GIB"
 
 	// BrokerTemplateRetentionEnv specifies how long (in minutes) an unused EVE
 	// disk-image template is kept before the broker's periodic cleanup removes
@@ -249,8 +259,16 @@ const (
 	// (on the filesystem backing the broker's image directory) at or above
 	// which the broker evicts the oldest unreferenced EVE image templates,
 	// regardless of BrokerTemplateRetentionEnv, until usage drops back under
-	// it. Read by evetest-broker.
+	// it -- but only while free space is also below
+	// BrokerTemplateMinFreeGiBEnv. Read by evetest-broker.
 	BrokerTemplateDiskUsageThresholdEnv = "BROKER_TEMPLATE_DISK_USAGE_THRESHOLD"
+
+	// BrokerTemplateMinFreeGiBEnv specifies the free-space floor, in GiB, for
+	// template eviction. Templates are evicted under disk pressure only while
+	// usage is at or above BrokerTemplateDiskUsageThresholdEnv AND free space
+	// on the image directory's filesystem is below this floor. Zero disables
+	// the floor (percentage-only). Read by evetest-broker.
+	BrokerTemplateMinFreeGiBEnv = "BROKER_TEMPLATE_MIN_FREE_GIB"
 
 	// ExternalArtifactDirEnv specifies a host-side directory path where all test
 	// artifacts should be collected.
@@ -381,8 +399,12 @@ const (
 
 	// DefaultBrokerDockerDiskUsageThresholdPercent triggers aggressive Docker
 	// image cleanup once the filesystem backing Docker's storage is at least
-	// this full.
+	// this full and free space is below DefaultBrokerDockerMinFreeGiB.
 	DefaultBrokerDockerDiskUsageThresholdPercent = 80
+
+	// DefaultBrokerDockerMinFreeGiB is the Docker free-space floor. Larger
+	// than DefaultBrokerTemplateMinFreeGiB so Docker images go first.
+	DefaultBrokerDockerMinFreeGiB = 150
 
 	// DefaultBrokerTemplateRetentionMinutes is 7 days, matching the Docker
 	// image retention default.
@@ -390,7 +412,8 @@ const (
 
 	// DefaultBrokerTemplateDiskUsageThresholdPercent triggers aggressive
 	// template eviction once the filesystem backing the broker's image
-	// directory is at least this full.
+	// directory is at least this full and free space is below
+	// DefaultBrokerTemplateMinFreeGiB.
 	//
 	// Deliberately higher than DefaultBrokerDockerDiskUsageThresholdPercent: a
 	// broker host with ample free space can still idle above 80% full, and at
@@ -399,6 +422,11 @@ const (
 	// thing to give up first -- one is 1-2 GB, where the Docker image store is
 	// tens of GB.
 	DefaultBrokerTemplateDiskUsageThresholdPercent = 90
+
+	// DefaultBrokerTemplateMinFreeGiB is the template free-space floor: on a
+	// 3 TB disk at 90% there are still ~300 GB free, which is no reason to
+	// evict every template.
+	DefaultBrokerTemplateMinFreeGiB = 100
 )
 
 // BrokerTeardownDevicesTimeout bounds one device's own teardown, not the
@@ -463,8 +491,10 @@ func InitViperConfig() {
 	viper.SetDefault(BrokerMaxClientsEnv, DefaultBrokerMaxClients)
 	viper.SetDefault(BrokerDockerImageRetentionEnv, DefaultBrokerDockerImageRetentionMinutes)
 	viper.SetDefault(BrokerDockerDiskUsageThresholdEnv, DefaultBrokerDockerDiskUsageThresholdPercent)
+	viper.SetDefault(BrokerDockerMinFreeGiBEnv, DefaultBrokerDockerMinFreeGiB)
 	viper.SetDefault(BrokerTemplateRetentionEnv, DefaultBrokerTemplateRetentionMinutes)
 	viper.SetDefault(BrokerTemplateDiskUsageThresholdEnv, DefaultBrokerTemplateDiskUsageThresholdPercent)
+	viper.SetDefault(BrokerTemplateMinFreeGiBEnv, DefaultBrokerTemplateMinFreeGiB)
 
 	// Per-registry pull-through cache mirrors
 	for _, e := range RegistryMirrorEntries {

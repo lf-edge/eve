@@ -983,10 +983,20 @@ Common to every provider:
 | `EVETEST_BROKER_PROXY_CA_CHAIN` | Proxy CA certificate chain file | -- |
 | `EVETEST_BROKER_MAX_CLIENTS` | Max concurrent evetest clients the broker will accept; new connections are rejected with an error once this many are already connected (reconnects of existing clients are never blocked) | `-1` (unlimited) |
 | `EVETEST_BROKER_DOCKER_IMAGE_RETENTION` | How long, in minutes, an unused, evetest-managed Docker image (one the broker itself pulled or built) is kept before the broker's periodic cleanup removes it | `10080` (7 days) |
-| `EVETEST_BROKER_DOCKER_DISK_USAGE_THRESHOLD` | Disk usage percent (on the filesystem backing Docker's storage) at or above which the broker aggressively evicts the oldest unused, evetest-managed Docker images, regardless of the retention setting above | `80` |
+| `EVETEST_BROKER_DOCKER_DISK_USAGE_THRESHOLD` | Disk usage percent (on the filesystem backing Docker's storage) at or above which the broker aggressively evicts the oldest unused, evetest-managed Docker images, regardless of the retention setting above -- but only while free space is also below `EVETEST_BROKER_DOCKER_MIN_FREE_GIB` | `80` |
+| `EVETEST_BROKER_DOCKER_MIN_FREE_GIB` | Free-space floor, in GiB, on the filesystem backing Docker's storage. Aggressive Docker image eviction needs **both** usage at or above `EVETEST_BROKER_DOCKER_DISK_USAGE_THRESHOLD` **and** free space below this floor, so a big disk that is merely over the percentage is left alone. Keep it larger than `EVETEST_BROKER_TEMPLATE_MIN_FREE_GIB` so Docker images are evicted before templates. `0` disables the floor (percentage-only eviction) | `150` |
 | `EVETEST_BROKER_TEMPLATE_RETENTION` | How long, in minutes, an unused EVE disk-image template (see [The EVE Image Template Cache](#the-eve-image-template-cache)) is kept before the broker's periodic cleanup removes it. Deliberately generous, since templates let consecutive runs against the same EVE version skip the image build entirely; zero or negative disables age-based eviction, but disk-usage-based eviction still applies regardless. A template still backing a live VM is never removed regardless of this value | `10080` (7 days) |
-| `EVETEST_BROKER_TEMPLATE_DISK_USAGE_THRESHOLD` | Disk usage percent (on the filesystem backing the broker's image directory) at or above which the broker evicts the oldest unreferenced EVE image templates, regardless of the retention setting above. Deliberately higher than `EVETEST_BROKER_DOCKER_DISK_USAGE_THRESHOLD`: broker hosts routinely idle above 80%, so an 80% threshold would evict every unreferenced template on every pass and the cache would never stay warm; templates are also the wrong thing to give up first -- one is 1-2 GB, where the Docker image store is tens of GB | `90` |
+| `EVETEST_BROKER_TEMPLATE_DISK_USAGE_THRESHOLD` | Disk usage percent (on the filesystem backing the broker's image directory) at or above which the broker evicts the oldest unreferenced EVE image templates, regardless of the retention setting above -- but only while free space is also below `EVETEST_BROKER_TEMPLATE_MIN_FREE_GIB`. Deliberately higher than `EVETEST_BROKER_DOCKER_DISK_USAGE_THRESHOLD`: broker hosts routinely idle above 80%, so an 80% threshold would evict every unreferenced template on every pass and the cache would never stay warm; templates are also the wrong thing to give up first -- one is 1-2 GB, where the Docker image store is tens of GB | `90` |
+| `EVETEST_BROKER_TEMPLATE_MIN_FREE_GIB` | Free-space floor, in GiB, on the filesystem backing the broker's image directory. Template eviction under disk pressure needs **both** usage at or above `EVETEST_BROKER_TEMPLATE_DISK_USAGE_THRESHOLD` **and** free space below this floor: on a 3 TB disk at 90% about 300 GB is still free, which is no reason to evict every template. `0` disables the floor (percentage-only eviction) | `100` |
 | `EVETEST_BROKER_PPROF_PORT` | Port for the broker's `net/http/pprof` debug endpoint (listens on all interfaces); `0` disables it | `0` (disabled) |
+
+**Disk-pressure eviction floors.** Existing deployments that set only the percentage
+variables now also get the 100 GiB (templates) and 150 GiB (Docker) free-space floors, so
+on large disks eviction happens less often than before; set
+`EVETEST_BROKER_TEMPLATE_MIN_FREE_GIB=0` / `EVETEST_BROKER_DOCKER_MIN_FREE_GIB=0` to
+restore the old percentage-only behaviour. The Proxmox broker installer template exposes
+only the Docker percentage, so those hosts get the default floors. The floor is compared
+against the space *available* to unprivileged users (`statfs` `f_bavail`).
 
 **`libvirt` provider only:**
 
@@ -1165,7 +1175,8 @@ it across every device and every test run that matches:
 - An image-directory-wide `flock` guards template creation and eviction, so two brokers
   sharing the same `EVETEST_BROKER_IMAGE_DIR` cannot destroy each other's state.
 - Unreferenced templates are evicted by age (`EVETEST_BROKER_TEMPLATE_RETENTION`) and by
-  disk pressure (`EVETEST_BROKER_TEMPLATE_DISK_USAGE_THRESHOLD`), mirroring the existing
+  disk pressure (`EVETEST_BROKER_TEMPLATE_DISK_USAGE_THRESHOLD` together with the
+  `EVETEST_BROKER_TEMPLATE_MIN_FREE_GIB` floor), mirroring the existing
   Docker image cleanup.
 
 Every provider uses the cache; they differ only in how a device's disk is derived from a

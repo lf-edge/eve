@@ -63,12 +63,14 @@ type broker struct {
 	// Periodic Docker image cleanup
 	imgRetention     time.Duration
 	diskThresholdPct int
+	dockerMinFreeGiB int // 0 disables the free-space floor
 	imageUsage       *imageUsageTracker
 
 	// Periodic EVE image template cleanup
 	templates            *templateCache
 	tmplRetention        time.Duration
 	tmplDiskThresholdPct int
+	tmplMinFreeGiB       int // 0 disables the free-space floor
 
 	// mutex protects only broker-global state: sessions, imageUploads
 	// and usedSDNUplinkMACs. It is always held briefly. Per-session state
@@ -169,8 +171,8 @@ func brokerCapabilities(
 
 func newBroker(log *logrus.Logger, provider provider.DeviceProvider,
 	providerName, imageDir string, sdnGrpcPort uint16, maxClients int,
-	imgRetention time.Duration, diskThresholdPct int,
-	tmplRetention time.Duration, tmplDiskThresholdPct int) (*broker, error) {
+	imgRetention time.Duration, diskThresholdPct, dockerMinFreeGiB int,
+	tmplRetention time.Duration, tmplDiskThresholdPct, tmplMinFreeGiB int) (*broker, error) {
 	supportedArchs, err := provider.GetSupportedDeviceArchs()
 	if err != nil {
 		return nil, fmt.Errorf("cannot retrieve supported device architectures: %w", err)
@@ -208,10 +210,12 @@ func newBroker(log *logrus.Logger, provider provider.DeviceProvider,
 		maxClients:           maxClients,
 		imgRetention:         imgRetention,
 		diskThresholdPct:     diskThresholdPct,
+		dockerMinFreeGiB:     dockerMinFreeGiB,
 		imageUsage:           newImageUsageTracker(imageDir),
 		templates:            newTemplateCache(imageDir, log),
 		tmplRetention:        tmplRetention,
 		tmplDiskThresholdPct: tmplDiskThresholdPct,
+		tmplMinFreeGiB:       tmplMinFreeGiB,
 		sessions:             make(map[string]*session),
 		imageUploads:         make(map[string]chan struct{}),
 		usedSDNUplinkMACs:    make(map[string]struct{}),
