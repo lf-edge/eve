@@ -306,6 +306,11 @@ const (
 
 const (
 	metadataSrvIP = "169.254.169.254"
+	// K3s defaults used by EVE-K. CoreDNS is exposed through the kube-dns
+	// ClusterIP and serves the Kubernetes cluster domain.
+	kubeDNSServiceIP = "10.43.0.10"
+	kubeDNSDomain    = "cluster.local"
+	kubeDNSNIDomain  = "internal"
 )
 
 // NIToSGName returns the name of the subgraph encapsulating the entire configuration
@@ -1388,6 +1393,17 @@ func (r *LinuxNIReconciler) getIntendedDnsmasqCfg(niID uuid.UUID) (items []dg.It
 	dnsCfg := generic.DNSServer{
 		ListenIP: listenIP,
 	}
+	if r.withKubernetesNetworking {
+		// CoreDNS is reached through the host Kubernetes service network, not
+		// through an NI port. Limit forwarding to Kubernetes and NI-internal names
+		// so all other queries continue to use the NI-specific upstream resolvers.
+		for _, domain := range []string{kubeDNSDomain, kubeDNSNIDomain} {
+			dnsCfg.UpstreamServers = append(dnsCfg.UpstreamServers, generic.UpstreamDNSServer{
+				IPAddress: net.ParseIP(kubeDNSServiceIP),
+				Domains:   []string{domain},
+			})
+		}
+	}
 	for _, port := range ni.bridge.Ports {
 		for _, dnsSrv := range port.DNSServers {
 			if dnsSrv.To4() == nil && !ni.config.IsIPv6() {
@@ -1505,6 +1521,15 @@ func (r *LinuxNIReconciler) getIntendedRadvdCfg(niID uuid.UUID) (items []dg.Item
 	return items
 }
 
+// isDefaultRouteDst returns true if dst matches all destinations (0.0.0.0/0 or ::/0).
+func isDefaultRouteDst(dst *net.IPNet) bool {
+	if dst == nil {
+		return false
+	}
+	ones, _ := dst.Mask.Size()
+	return ones == 0 && dst.IP.IsUnspecified()
+}
+
 func (r *LinuxNIReconciler) getIntendedAppConnCfg(niID uuid.UUID,
 	vif vifInfo, ul types.AppNetAdapterConfig) dg.Graph {
 	ni := r.nis[vif.NI]
@@ -1556,43 +1581,70 @@ func (r *LinuxNIReconciler) getIntendedAppConnCfg(niID uuid.UUID,
 				EnableARPNotify: &enableARPNotify,
 			}, nil)
 			// Gateways not covered by IP subnets should be routed explicitly
-			// using connected routes.
-			// Note that by default, DHCP servers of local network instances
-			// are intentionally configured to grant IP leases with /32 mask,
-			// so these connected routes are needed.
+			// using connected routes. Usually a no-op for a Local NI's own
+			// gateway, since its normal subnet-masked lease already covers
+			// it (the all-ones /32 netmask this used to require was removed
+			// in EVE 13.7.0, see docs/APP-CONNECTIVITY.md's "Enforced
+			// Routing" section), but still needed for a requested gateway
+			// outside the VIF's own subnet.
 			var routedGws []net.IP
-			for _, ip := range vif.PodVIF.IPAM.IPs {
-				if ip.Gateway == nil {
-					continue
+			addConnectedGwRoute := func(gw net.IP, coveredBySubnet func(net.IP) bool) {
+				if gw == nil || coveredBySubnet(gw) {
+					return
 				}
 				family := netlink.FAMILY_V4
-				if ip.Gateway.To4() == nil {
+				if gw.To4() == nil {
 					family = netlink.FAMILY_V6
 				}
-				if !ip.Address.Contains(ip.Gateway) {
-					routedGws = append(routedGws, ip.Gateway)
-					intendedAppConnCfg.PutItem(linux.Route{
-						Route: netlink.Route{
-							Scope:    netlink.SCOPE_LINK,
-							Protocol: unix.RTPROT_STATIC,
-							Type:     unix.RTN_UNICAST,
-							Family:   family,
-							Dst:      netutils.HostSubnet(ip.Gateway),
-						},
-						OutputIf: appVifRef,
-						ForApp:   itemForApp,
-					}, nil)
-				}
+				routedGws = append(routedGws, gw)
+				intendedAppConnCfg.PutItem(linux.Route{
+					Route: netlink.Route{
+						Scope:    netlink.SCOPE_LINK,
+						Protocol: unix.RTPROT_STATIC,
+						Type:     unix.RTN_UNICAST,
+						Family:   family,
+						Dst:      netutils.HostSubnet(gw),
+					},
+					OutputIf: appVifRef,
+					ForApp:   itemForApp,
+				}, nil)
 			}
+			for _, ip := range vif.PodVIF.IPAM.IPs {
+				addConnectedGwRoute(ip.Gateway, ip.Address.Contains)
+			}
+			if ul.DefaultRouteVia != nil {
+				// The requested gateway may not be covered by any subnet DHCP
+				// handed out for this VIF (e.g. an air-gapped Switch NI, which
+				// has no port and so never runs DHCP at all -- see
+				// niWithDHCP), so it needs the same explicit treatment.
+				addConnectedGwRoute(ul.DefaultRouteVia, func(gw net.IP) bool {
+					for _, ip := range vif.PodVIF.IPAM.IPs {
+						if ip.Address != nil && ip.Address.Contains(gw) {
+							return true
+						}
+					}
+					return false
+				})
+			}
+			var haveDefaultRoute bool
 			for _, route := range vif.PodVIF.IPAM.Routes {
 				family := netlink.FAMILY_V4
 				if route.Dst != nil && route.Dst.IP.To4() == nil {
 					family = netlink.FAMILY_V6
 				}
-				if route.GW != nil && route.GW.To4() == nil {
+				gw := route.GW
+				if gw != nil && gw.To4() == nil {
 					family = netlink.FAMILY_V6
 				}
-				routedGw := generics.ContainsItemFn(routedGws, route.GW, netutils.EqualIPs)
+				if ul.DefaultRouteVia != nil && isDefaultRouteDst(route.Dst) &&
+					(ul.DefaultRouteVia.To4() == nil) == (family == netlink.FAMILY_V6) {
+					// Honor the workload's requested default-route gateway
+					// instead of whatever this Network Instance itself handed
+					// out via DHCP.
+					gw = ul.DefaultRouteVia
+					haveDefaultRoute = true
+				}
+				routedGw := generics.ContainsItemFn(routedGws, gw, netutils.EqualIPs)
 				intendedAppConnCfg.PutItem(linux.Route{
 					Route: netlink.Route{
 						Scope:    netlink.SCOPE_UNIVERSE,
@@ -1600,7 +1652,33 @@ func (r *LinuxNIReconciler) getIntendedAppConnCfg(niID uuid.UUID,
 						Type:     unix.RTN_UNICAST,
 						Family:   family,
 						Dst:      route.Dst,
-						Gw:       route.GW,
+						Gw:       gw,
+					},
+					OutputIf:       appVifRef,
+					GwViaLinkRoute: routedGw,
+					ForApp:         itemForApp,
+				}, nil)
+			}
+			if ul.DefaultRouteVia != nil && !haveDefaultRoute {
+				// This Network Instance would not otherwise hand out a default
+				// route at all (e.g. a Switch NI, or a Local NI whose uplink
+				// is not itself a default route) -- add one explicitly since
+				// the workload asked for this NI to be its default route.
+				family := netlink.FAMILY_V4
+				_, anyDst, _ := net.ParseCIDR("0.0.0.0/0")
+				if ul.DefaultRouteVia.To4() == nil {
+					family = netlink.FAMILY_V6
+					_, anyDst, _ = net.ParseCIDR("::/0")
+				}
+				routedGw := generics.ContainsItemFn(routedGws, ul.DefaultRouteVia, netutils.EqualIPs)
+				intendedAppConnCfg.PutItem(linux.Route{
+					Route: netlink.Route{
+						Scope:    netlink.SCOPE_UNIVERSE,
+						Protocol: unix.RTPROT_STATIC,
+						Type:     unix.RTN_UNICAST,
+						Family:   family,
+						Dst:      anyDst,
+						Gw:       ul.DefaultRouteVia,
 					},
 					OutputIf:       appVifRef,
 					GwViaLinkRoute: routedGw,

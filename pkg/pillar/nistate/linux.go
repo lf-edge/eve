@@ -173,6 +173,55 @@ func (vif *vifInfo) addIP(ip net.IP, source types.AddressSource,
 	}
 }
 
+// setExternalDHCPv4 records the single IPv4 lease most recently acknowledged
+// by an external DHCP server. A VIF can have other IPv4 addresses, but it
+// cannot have multiple active DHCPv4 leases. Replacing the previous lease in a
+// single update prevents consumers from observing a transient empty address
+// set and removes stale pre-migration leases promptly.
+func (vif *vifInfo) setExternalDHCPv4(ip net.IP,
+	validUntil time.Time) (update *VIFAddrsUpdate) {
+	if ip == nil || ip.To4() == nil {
+		return nil
+	}
+	prevAddrs := vif.exportVIFAddrs()
+	newAddr := detectedAddr{
+		AssignedAddr: types.AssignedAddr{
+			Address:    ip,
+			AssignedBy: types.AddressSourceExternalDHCP,
+		},
+		validUntil: validUntil,
+	}
+	var found, changed bool
+	filtered := make([]detectedAddr, 0, len(vif.ipv4Addrs))
+	for _, addr := range vif.ipv4Addrs {
+		if addr.Address.Equal(ip) {
+			found = true
+			if addr.AssignedBy != types.AddressSourceExternalDHCP {
+				changed = true
+			}
+			filtered = append(filtered, newAddr)
+			continue
+		}
+		if addr.AssignedBy == types.AddressSourceExternalDHCP {
+			changed = true
+			continue
+		}
+		filtered = append(filtered, addr)
+	}
+	if !found {
+		changed = true
+		filtered = append(filtered, newAddr)
+	}
+	vif.ipv4Addrs = filtered
+	if !changed {
+		return nil
+	}
+	return &VIFAddrsUpdate{
+		Prev: prevAddrs,
+		New:  vif.exportVIFAddrs(),
+	}
+}
+
 // delIPs removes all or only some IPs based on the source and the expiration.
 func (vif *vifInfo) delIPs(sourceMask int, onlyExpired bool) *VIFAddrsUpdate {
 	var changed bool
