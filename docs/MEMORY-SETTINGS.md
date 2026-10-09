@@ -428,11 +428,11 @@ cgroup:
 * memlogd
 * newlogd
 * pillar
+* qemu
 * sshd
 * vtpm
 * watchdog
 * wwan
-* xen-tools
 
 Don't forget to increase `dom0_mem` value as well, as the `eve/services` cgroup
 is a child of the `eve` cgroup.
