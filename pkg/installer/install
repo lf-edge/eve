@@ -196,11 +196,16 @@ zfs_umount() {
 
 # create_efi_boot_entry creates an EFI NVRAM boot entry for the installed EVE-OS.
 # Any pre-existing "EVE-OS" entries are removed first to avoid duplicates on reinstall.
+# On a legacy BIOS boot there is no EFI NVRAM, so nothing is created.
 # Usage: create_efi_boot_entry DISK
 create_efi_boot_entry() {
    local DISK="$1"
    local BOOTLOADER=''
    local PLATFORM=''
+   if [ ! -d /sys/firmware/efi ]; then
+      logmsg "booted in legacy BIOS mode, not creating an EFI boot entry"
+      return 0
+   fi
    mount -t efivarfs efivarfs /sys/firmware/efi/efivars || bail "FATAL: cannot mount efivarfs"
    # The path to the EFI bootloader differs by architecture
    if [ -e /root/EFI/BOOT/BOOTRISCV64.EFI ]; then
