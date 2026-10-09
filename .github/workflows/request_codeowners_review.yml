@@ -35,12 +35,17 @@ jobs:
       - name: Auto request review
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
         run: |
           reviewers=""
           # Get changed files in this pull request
-          echo "Checking base: ${{ github.event.pull_request.base.sha }}"
-          echo "Checking head: ${{ github.event.pull_request.head.sha }}"
-          for changed_file in $(git diff --name-only ${{ github.event.pull_request.base.sha }}...HEAD); do
+          echo "Checking base: $BASE_SHA"
+          echo "Checking head: $HEAD_SHA"
+          for changed_file in $(git diff --name-only "$BASE_SHA"...HEAD); do
             echo "Checking $changed_file"
             while read -r line; do
               # Get pattern of the files owned
@@ -63,12 +68,10 @@ jobs:
           # Remove @ from reviewers (it stays in the beginning of the username)
           reviewers_cleaned=${reviewers//@/}
           IFS=' ' read -ra reviewers_array <<< "$reviewers_cleaned"
-          # Get username of PR author to exclude from reviewers
-          pr_author="${{ github.event.pull_request.user.login }}"
           # Remove PR author from reviewers
           filtered_reviewers=()
           for reviewer in "${reviewers_array[@]}"; do
-            if [[ "$reviewer" != "$pr_author" ]]; then
+            if [[ "$reviewer" != "$PR_AUTHOR" ]]; then
               filtered_reviewers+=("$reviewer")
             fi
           done
@@ -77,13 +80,13 @@ jobs:
             json_array="[${json_array:1}]" # Remove the leading comma
             echo "JSON array: $json_array"
             echo "Requesting review from: ${filtered_reviewers[*]}"
-            echo https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/requested_reviewers
+            echo "https://api.github.com/repos/$REPO/pulls/$PR_NUMBER/requested_reviewers"
             curl -L \
               -D - \
               -X POST \
               -H "Authorization: Bearer $GITHUB_TOKEN" \
               -H "Accept: application/vnd.github+json" \
-              https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/requested_reviewers \
+              "https://api.github.com/repos/$REPO/pulls/$PR_NUMBER/requested_reviewers" \
               -d "{\"reviewers\": $json_array}"
           else
             echo "No reviewers found for the changed files."

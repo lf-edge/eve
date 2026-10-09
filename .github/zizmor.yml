@@ -26,9 +26,8 @@ rules:
       # so the token would be read-only and the secrets unavailable.
       - claude-review.yml
       # pull_request_target: checks out the base ref, fetches the head
-      # SHA, and only reads .github/CODEOWNERS (base-controlled). The
-      # head ref is interpolated into shell; that template-injection
-      # exposure is fixed separately, not by changing the trigger.
+      # SHA, and only reads .github/CODEOWNERS. PR-controlled values reach
+      # the shell through env, never by template expansion.
       - request_codeowners_review.yml
       # workflow_run after a successful "PR build": reads only the
       # gate context artifact produced by the trusted workflow and
