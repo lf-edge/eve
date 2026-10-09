@@ -1350,9 +1350,14 @@ endif
 	$(QUIET)$(PARSE_PKGS) $< > $@
 	$(QUIET): $@: Succeeded
 
+# Strip the docker.io/ prefix from FROM lines: buildkit matches the named
+# contexts linuxkit provides from its cache by familiar name, so a fully
+# qualified docker.io/ reference (e.g. KERNEL_TAG) bypasses the local cache
+# and is always pulled from the registry, failing for locally built images.
 %/Dockerfile: %/Dockerfile.in $(LINUXKIT) $(RESCAN_DEPS)
 	@echo "Building $@ from $<"
 	$(QUIET)$(PARSE_PKGS) $< > $@
+	$(QUIET)sed -i -E 's#^(FROM[[:space:]]+)docker\.io/#\1#' $@
 	$(QUIET): $@: Succeeded
 
 # If DEV=y and file pkg/my_package/build-dev.yml exists, returns the path to that file.
