@@ -142,9 +142,11 @@ mount_part() {
 
 # Find EFI partition and copy files
 copy_native_efi() {
-    # Both ESP-A and the reserved ESP-B share the "EFI System" label, so select
-    # ESP-A specifically by its unique partition GUID (the active/populated ESP).
-    EFI_PART=$(lsblk -anl -o "NAME,PARTUUID" | awk 'tolower($2)=="ad6871ee-31f9-4cf3-9e09-6f7a25c30051"{print "/dev/"$1; exit}')
+    # Copy the installer media's own ESP. It has its own partition GUID, so an
+    # ESP-A left on an internal disk by an earlier install is never picked up
+    # instead (all ESPs share the "EFI System" label, and every installed disk
+    # has the same ESP-A GUID).
+    EFI_PART=$(lsblk -anl -o "NAME,PARTUUID" | awk -v uuid="$INSTALLER_EFI_UUID" 'tolower($2)==uuid{print "/dev/"$1; exit}')
     if [ -n "$EFI_PART" ]; then
         # EFI partition was found, copy files
         mkdir -p "$BOOT_DIR"
@@ -296,6 +298,10 @@ CONF_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30054
 PERSIST_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30059
 # shellcheck disable=SC2034
 INSTALLER_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30060
+# The installer media's own disk and ESP GUIDs, distinct from the installed ones
+INSTALLER_EFI_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30061
+# shellcheck disable=SC2034
+INSTALLER_DISK_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30062
 
 # measure of last resort: we nuke all partition tables
 # so that we can get to a blank state. NOTE that this
