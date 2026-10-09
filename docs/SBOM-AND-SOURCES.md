@@ -22,7 +22,7 @@ For example,
 $ docker run --rm lfedge/eve:9.9.0 sbom
 ```
 
-For each _release_ of EVE-OS, one SPDX json file per image variant is attached to the release page on github. This normally is at the path `https://github.com/lf-edge/eve/releases/tag/<release>`, for example `https://github.com/lf-edge/eve/releases/tag/17.4.0`. Each asset is named `<arch>.<hv>.<platform>.rootfs.spdx.json`, for example `amd64.kvm.generic.rootfs.spdx.json`.
+For each _release_ of EVE-OS, one SPDX json file per image variant is attached to the release page on github. This normally is at the path `https://github.com/lf-edge/eve/releases/tag/<release>`, for example `https://github.com/lf-edge/eve/releases/tag/17.6.0`. Each asset is named `<arch>.<hv>.<platform>.rootfs.spdx.json`, for example `amd64.kvm.generic.rootfs.spdx.json`. Older releases carry no SPDX asset; their SBoM is available through the container's `sbom` command.
 
 There is one SBoM per image variant rather than one per release because the package set differs between variants: the `k` hypervisor flavor adds the kube service, the NVIDIA platforms add their own drivers, and the kernel version is selected per architecture and platform in `kernel-version.mk`.
 

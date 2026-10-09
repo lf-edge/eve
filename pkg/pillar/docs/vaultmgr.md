@@ -28,7 +28,7 @@ startup. Its main jobs are:
   it under the *current* PCRs, and unlock the vault — this is the
   path that keeps a device upgradable across PCR changes,
 * **wipe and recreate** the vault when the controller has no key for
-  it and the installer-dropped sentinel `/persist/status/allow-vault-clean`
+  it and the sentinel `/persist/status/allow-vault-clean`
   is present,
 * **run the post-vault `upgradeconverter`** exactly once after the
   vault opens, then republish each `VaultStatus` with
@@ -90,7 +90,8 @@ encryption.
   * `/persist/status/allow-vault-clean` — sentinel dropped by the
     installer / `storage-init`; presence means "if controller has no
     key, wipe & recreate". `vault.DisallowVaultCleanup()` removes it
-    once the device is past first boot.
+    when the first volume or content tree is configured, or when the
+    first key escrow to the controller succeeds.
   * `/persist/status/policy-pcr.json` — the controller's last
     advertised PCR selection for the disk-key seal policy. Read by
     `evetpm.GetDiskKeyPolicyPcrOrDefault` when re-sealing.
@@ -446,9 +447,9 @@ EncryptedVaultKeyFromController arrives with EncryptedVaultKey=[]
 ```
 
 The cleanup sentinel `/persist/status/allow-vault-clean` is dropped
-by the installer and storage-init and removed once the device has
-successfully past the first vault open
-(`vault.DisallowVaultCleanup()`). After that point an empty-key
+by the installer and storage-init and removed when the first volume
+or content tree is configured, or when the first key escrow to the
+controller succeeds (`vault.DisallowVaultCleanup()`). After that point an empty-key
 message from the controller is *not* a wipe instruction.
 
 ### 5. Post-vault upgradeconverter
@@ -480,7 +481,8 @@ is what the controller correlates with a known PCR change.
 * `/persist/vault/` — the vault root (or `persist/vault` ZFS dataset)
 * `/persist/status/policy-pcr.json` — controller-supplied PCR
   selection used for re-sealing
-* `/persist/status/allow-vault-clean` — installer-dropped sentinel
+* `/persist/status/allow-vault-clean` — sentinel created at first
+  provisioning,
   permitting wipe-on-controller-empty-key
 * `/persist/status/tpm_measurement_seal_success`,
   `/persist/status/tpm_measurement_unseal_fail` — copies of the
