@@ -1,0 +1,64 @@
+# Copyright (c) 2026, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+# Decides whether a pull request changes files that a calling workflow
+# covers. Workflows whose result is a required status check call this
+# instead of filtering on paths in their trigger: a workflow skipped by a
+# trigger filter never reports, which leaves a required check pending and
+# the pull request unmergeable.
+name: PR paths
+
+on:  # yamllint disable-line rule:truthy
+  workflow_call:
+    inputs:
+      match:
+        description: Extended regex; the caller runs if any changed path matches
+        type: string
+        required: true
+      ignore:
+        description: Extended regex for changed paths that never need the caller
+        type: string
+        default: ''
+    outputs:
+      run:
+        description: "'true' when the caller's jobs should run"
+        value: ${{ jobs.match.outputs.run }}
+
+permissions: {}
+
+jobs:
+  match:
+    runs-on: ubuntu-24.04
+    permissions:
+      pull-requests: read
+    outputs:
+      run: ${{ steps.match.outputs.run }}
+    steps:
+      - name: Match changed paths
+        id: match
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          PR: ${{ github.event.pull_request.number }}
+          CHANGED: ${{ github.event.pull_request.changed_files }}
+          MATCH: ${{ inputs.match }}
+          IGNORE: ${{ inputs.ignore }}
+        run: |
+          # The pull request files API lists at most 3000 files.
+          if [ "$EVENT" != pull_request ] || [ "$CHANGED" -gt 3000 ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          files="$RUNNER_TEMP/files"
+          gh api "repos/$GH_REPO/pulls/$PR/files" --paginate \
+            --jq '.[] | .filename, (.previous_filename // empty)' > "$files"
+          if [ -n "$IGNORE" ]; then
+            grep -Ev "$IGNORE" "$files" > "$files.kept" || :
+            mv "$files.kept" "$files"
+          fi
+          if grep -Eq "$MATCH" "$files"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
