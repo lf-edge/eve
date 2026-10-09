@@ -11,7 +11,7 @@ updates:
     directory: "/pkg/alpine"
     schedule:
       interval: "monthly"
-- package-ecosystem: "docker"
+  - package-ecosystem: "docker"
     directory: "/pkg/gpt-tools"
     schedule:
       interval: "monthly"
