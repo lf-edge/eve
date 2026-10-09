@@ -18,6 +18,9 @@ on:  # yamllint disable-line rule:truthy
       - '**/*.md'
       - '.github/**'
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-24.04
@@ -26,6 +29,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
+          persist-credentials: false
       - name: Test
         run: |
           make test
