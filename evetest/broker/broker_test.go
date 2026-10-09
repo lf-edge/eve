@@ -8,6 +8,7 @@ import (
 
 	"github.com/lf-edge/eve/evetest/broker/provider"
 	api "github.com/lf-edge/eve/evetest/grpcapi/go"
+	"github.com/lf-edge/eve/evetest/utils"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 )
 
@@ -53,5 +54,54 @@ func TestBrokerCapabilitiesPreservesProviderCapabilities(t *testing.T) {
 		if !generics.ContainsItem(got, want) {
 			t.Errorf("brokerCapabilities() = %v, missing provider capability %v", got, want)
 		}
+	}
+}
+
+// TestBrokerCapabilitiesAdvertisesLocalInstallerMedia covers the per-medium
+// installer capabilities: the broker advertises exactly the media it builds a
+// device from. Today that is the raw medium, wherever a local live image is
+// supported too (both need a provider that consumes a template); ISO and NET
+// are declared but not implemented, so advertising them would let a client
+// send requests this broker would then refuse.
+func TestBrokerCapabilitiesAdvertisesLocalInstallerMedia(t *testing.T) {
+	cases := []struct {
+		name     string
+		strategy provider.DiskImageStrategy
+		want     map[api.Capability]bool
+	}{
+		{"overlay", provider.DiskImageOverlay, map[api.Capability]bool{
+			api.Capability_CAPABILITY_LOCAL_INSTALLER_RAW: true,
+			api.Capability_CAPABILITY_LOCAL_INSTALLER_ISO: false,
+			api.Capability_CAPABILITY_LOCAL_INSTALLER_NET: false,
+		}},
+		{"standalone", provider.DiskImageStandalone, map[api.Capability]bool{
+			api.Capability_CAPABILITY_LOCAL_INSTALLER_RAW: true,
+			api.Capability_CAPABILITY_LOCAL_INSTALLER_ISO: false,
+			api.Capability_CAPABILITY_LOCAL_INSTALLER_NET: false,
+		}},
+		{"legacy build", provider.DiskImageLegacyBuild, map[api.Capability]bool{
+			api.Capability_CAPABILITY_LOCAL_INSTALLER_RAW: false,
+			api.Capability_CAPABILITY_LOCAL_INSTALLER_ISO: false,
+			api.Capability_CAPABILITY_LOCAL_INSTALLER_NET: false,
+		}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := brokerCapabilities(nil, c.strategy)
+			for capability, want := range c.want {
+				if has := generics.ContainsItem(got, capability); has != want {
+					t.Errorf("brokerCapabilities(_, %v) contains %v = %v, want %v",
+						c.strategy, capability, has, want)
+				}
+			}
+			// The advertised media and the accepted media are one list.
+			for _, media := range supportedLocalInstallerMedia(c.strategy) {
+				capability, _ := utils.InstallerMediaCapability(media)
+				if !generics.ContainsItem(got, capability) {
+					t.Errorf("medium %v is accepted but %v is not advertised",
+						media, capability)
+				}
+			}
+		})
 	}
 }

@@ -65,10 +65,11 @@ const (
 // passes -p to the EVE container; if that changes, it must be added here.
 type templateKeyParams struct {
 	DockerImageID string
-	// LiveImageSHA256 identifies a locally built live image. Exactly one of
-	// this and DockerImageID is set. Note DiskBytes is left zero on this path:
-	// size is applied per device by resizing the overlay, so one template
-	// serves every requested size.
+	// LiveImageSHA256 identifies a locally built image: a live image, or with
+	// Installer set an installer image. Exactly one of this and DockerImageID
+	// is set. Note DiskBytes is left zero on this path: size is applied per
+	// device (see localTemplateKeyParams), so one template serves every
+	// requested size.
 	LiveImageSHA256 string
 	DiskBytes       uint64
 	Installer       bool
@@ -85,13 +86,20 @@ func computeTemplateKey(p templateKeyParams) string {
 	return hex.EncodeToString(h.Sum(nil))[:32]
 }
 
-// liveTemplateKeyParams builds the cache key inputs for a locally built live
-// image. diskSize is accepted and deliberately dropped: the live path sizes
-// each device by resizing its overlay, so one template serves every requested
-// size.
-func liveTemplateKeyParams(sha256 string, arch api.ArchType, diskSize uint64) templateKeyParams {
+// localTemplateKeyParams builds the cache key inputs for a locally built
+// image: a live image, or with installer set an installer image. It is the one
+// place those inputs are assembled, for both BuildImage's miss check and the
+// template build itself: were the two to disagree, the miss check would look
+// for a template the build never installs, and every run would report a miss
+// and upload the image again.
+//
+// diskSize is accepted and deliberately dropped. A live device is sized by
+// resizing its overlay, and an installer device by its blank target disk, so
+// one template serves every requested size either way.
+func localTemplateKeyParams(sha256 string, arch api.ArchType, diskSize uint64,
+	installer bool) templateKeyParams {
 	_ = diskSize
-	return templateKeyParams{LiveImageSHA256: sha256, Arch: arch}
+	return templateKeyParams{LiveImageSHA256: sha256, Installer: installer, Arch: arch}
 }
 
 // templateMeta is the on-disk description of a built template.
@@ -300,9 +308,13 @@ func (c *templateCache) ensureTemplateAttempt(ctx context.Context, log *logrus.E
 			"stale references or evict templates; building without housekeeping", c.imageDir)
 	}
 	if params.LiveImageSHA256 != "" {
-		// Which live image source is used -- an upload, or the client's own files
-		// read in place -- is the builder's business; it logs that itself.
-		log.Infof("Installing EVE image template %q from an EVE live image", key)
+		// Which source is used -- an upload, or the client's own files read in
+		// place -- is the builder's business; it logs that itself.
+		kind := "live"
+		if params.Installer {
+			kind = "installer"
+		}
+		log.Infof("Installing EVE image template %q from a local EVE %s image", key, kind)
 	} else {
 		log.Infof("Building EVE image template %q", key)
 	}

@@ -579,9 +579,25 @@ type BuildImageRequest struct {
 	// `live_image_source` are ignored: the local live-image transport
 	// delivers a pre-built bootable disk, the opposite of what this device
 	// needs.
-	NetworkBoot   bool `protobuf:"varint,10,opt,name=network_boot,json=networkBoot,proto3" json:"network_boot,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	NetworkBoot bool `protobuf:"varint,10,opt,name=network_boot,json=networkBoot,proto3" json:"network_boot,omitempty"`
+	// The medium the device's EVE installer is delivered on, for a device that
+	// installs EVE: RAW or ISO with make_installer, NET with network_boot.
+	// Unspecified means the medium those flags have always implied (a raw
+	// installer, or a network boot). A broker refuses a medium it cannot build,
+	// rather than building another one.
+	InstallerMedia InstallerMedia `protobuf:"varint,11,opt,name=installer_media,json=installerMedia,proto3,enum=org.lfedge.evetest.InstallerMedia" json:"installer_media,omitempty"`
+	// When set, the device boots a locally built EVE installer image on
+	// installer_media instead of one built from `image`. It is only honoured by
+	// a broker advertising the matching CAPABILITY_LOCAL_INSTALLER_<MEDIA>: an
+	// older broker ignores it, so a client must check that capability before
+	// sending it. installer_media must be set; live_image must not be.
+	LocalInstallerImage *LocalInstallerImageRef `protobuf:"bytes,12,opt,name=local_installer_image,json=localInstallerImage,proto3" json:"local_installer_image,omitempty"`
+	// Where the client's installer image files are, the counterpart of
+	// live_image_source for local_installer_image. Advisory only, exactly as
+	// LocalLiveImageSource is.
+	LocalInstallerSource *LocalInstallerImageSource `protobuf:"bytes,13,opt,name=local_installer_source,json=localInstallerSource,proto3" json:"local_installer_source,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *BuildImageRequest) Reset() {
@@ -684,6 +700,27 @@ func (x *BuildImageRequest) GetNetworkBoot() bool {
 	return false
 }
 
+func (x *BuildImageRequest) GetInstallerMedia() InstallerMedia {
+	if x != nil {
+		return x.InstallerMedia
+	}
+	return InstallerMedia_INSTALLER_MEDIA_UNSPECIFIED
+}
+
+func (x *BuildImageRequest) GetLocalInstallerImage() *LocalInstallerImageRef {
+	if x != nil {
+		return x.LocalInstallerImage
+	}
+	return nil
+}
+
+func (x *BuildImageRequest) GetLocalInstallerSource() *LocalInstallerImageSource {
+	if x != nil {
+		return x.LocalInstallerSource
+	}
+	return nil
+}
+
 // LocalLiveImageSource points at the files behind a LiveImageRef on the
 // client's filesystem. It is purely an optimization hint: a broker that cannot
 // use these paths -- they do not exist, the size disagrees, or the content does
@@ -760,18 +797,100 @@ func (x *LocalLiveImageSource) GetFirmwareDir() string {
 	return ""
 }
 
+// LocalInstallerImageSource points at the files behind a
+// LocalInstallerImageRef on the client's filesystem, with the same advisory
+// contract as LocalLiveImageSource: a broker that cannot use them reports
+// missing_eve_live_image and takes the upload instead.
+//
+// image_path is the image whose content hashes to the reference's sha256. For
+// INSTALLER_MEDIA_RAW that is not installer.raw itself but the compressed
+// qcow2 the client converts it to: the raw image is about 2.5 GiB, most of it
+// an empty EFI partition that compresses away, and everything that handles a
+// template disk expects qcow2.
+type LocalInstallerImageSource struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ImagePath     string                 `protobuf:"bytes,1,opt,name=image_path,json=imagePath,proto3" json:"image_path,omitempty"`               // absolute path to the delivered installer image
+	ImageBytes    int64                  `protobuf:"varint,2,opt,name=image_bytes,json=imageBytes,proto3" json:"image_bytes,omitempty"`           // its size, checked before its content is read
+	ConfigImgPath string                 `protobuf:"bytes,3,opt,name=config_img_path,json=configImgPath,proto3" json:"config_img_path,omitempty"` // absolute path to installer/config.img
+	FirmwareDir   string                 `protobuf:"bytes,4,opt,name=firmware_dir,json=firmwareDir,proto3" json:"firmware_dir,omitempty"`         // absolute path to the dir holding OVMF*.fd
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LocalInstallerImageSource) Reset() {
+	*x = LocalInstallerImageSource{}
+	mi := &file_broker_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LocalInstallerImageSource) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LocalInstallerImageSource) ProtoMessage() {}
+
+func (x *LocalInstallerImageSource) ProtoReflect() protoreflect.Message {
+	mi := &file_broker_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LocalInstallerImageSource.ProtoReflect.Descriptor instead.
+func (*LocalInstallerImageSource) Descriptor() ([]byte, []int) {
+	return file_broker_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *LocalInstallerImageSource) GetImagePath() string {
+	if x != nil {
+		return x.ImagePath
+	}
+	return ""
+}
+
+func (x *LocalInstallerImageSource) GetImageBytes() int64 {
+	if x != nil {
+		return x.ImageBytes
+	}
+	return 0
+}
+
+func (x *LocalInstallerImageSource) GetConfigImgPath() string {
+	if x != nil {
+		return x.ConfigImgPath
+	}
+	return ""
+}
+
+func (x *LocalInstallerImageSource) GetFirmwareDir() string {
+	if x != nil {
+		return x.FirmwareDir
+	}
+	return ""
+}
+
 // Response to a BuildImageRequest, indicating if broker is missing the EVE container image.
 type BuildImageResponse struct {
 	state                    protoimpl.MessageState `protogen:"open.v1"`
 	MissingEveContainerImage bool                   `protobuf:"varint,1,opt,name=missing_eve_container_image,json=missingEveContainerImage,proto3" json:"missing_eve_container_image,omitempty"`
-	MissingEveLiveImage      bool                   `protobuf:"varint,2,opt,name=missing_eve_live_image,json=missingEveLiveImage,proto3" json:"missing_eve_live_image,omitempty"`
-	unknownFields            protoimpl.UnknownFields
-	sizeCache                protoimpl.SizeCache
+	// The broker holds neither the template nor a staged upload for the local
+	// image the request named -- live_image, or local_installer_image -- and
+	// cannot read it in place. The client uploads it with PushEVELiveImage,
+	// which stages any local image by its content hash, and retries.
+	MissingEveLiveImage bool `protobuf:"varint,2,opt,name=missing_eve_live_image,json=missingEveLiveImage,proto3" json:"missing_eve_live_image,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *BuildImageResponse) Reset() {
 	*x = BuildImageResponse{}
-	mi := &file_broker_proto_msgTypes[11]
+	mi := &file_broker_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -783,7 +902,7 @@ func (x *BuildImageResponse) String() string {
 func (*BuildImageResponse) ProtoMessage() {}
 
 func (x *BuildImageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_broker_proto_msgTypes[11]
+	mi := &file_broker_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -796,7 +915,7 @@ func (x *BuildImageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuildImageResponse.ProtoReflect.Descriptor instead.
 func (*BuildImageResponse) Descriptor() ([]byte, []int) {
-	return file_broker_proto_rawDescGZIP(), []int{11}
+	return file_broker_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *BuildImageResponse) GetMissingEveContainerImage() bool {
@@ -829,7 +948,7 @@ type PushImageChunk struct {
 
 func (x *PushImageChunk) Reset() {
 	*x = PushImageChunk{}
-	mi := &file_broker_proto_msgTypes[12]
+	mi := &file_broker_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -841,7 +960,7 @@ func (x *PushImageChunk) String() string {
 func (*PushImageChunk) ProtoMessage() {}
 
 func (x *PushImageChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_broker_proto_msgTypes[12]
+	mi := &file_broker_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -854,7 +973,7 @@ func (x *PushImageChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PushImageChunk.ProtoReflect.Descriptor instead.
 func (*PushImageChunk) Descriptor() ([]byte, []int) {
-	return file_broker_proto_rawDescGZIP(), []int{12}
+	return file_broker_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *PushImageChunk) GetPayload() isPushImageChunk_Payload {
@@ -911,7 +1030,7 @@ type PushImageRequest struct {
 
 func (x *PushImageRequest) Reset() {
 	*x = PushImageRequest{}
-	mi := &file_broker_proto_msgTypes[13]
+	mi := &file_broker_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -923,7 +1042,7 @@ func (x *PushImageRequest) String() string {
 func (*PushImageRequest) ProtoMessage() {}
 
 func (x *PushImageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_broker_proto_msgTypes[13]
+	mi := &file_broker_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -936,7 +1055,7 @@ func (x *PushImageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PushImageRequest.ProtoReflect.Descriptor instead.
 func (*PushImageRequest) Descriptor() ([]byte, []int) {
-	return file_broker_proto_rawDescGZIP(), []int{13}
+	return file_broker_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *PushImageRequest) GetClientId() string {
@@ -963,7 +1082,7 @@ type PushImageResponse struct {
 
 func (x *PushImageResponse) Reset() {
 	*x = PushImageResponse{}
-	mi := &file_broker_proto_msgTypes[14]
+	mi := &file_broker_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -975,7 +1094,7 @@ func (x *PushImageResponse) String() string {
 func (*PushImageResponse) ProtoMessage() {}
 
 func (x *PushImageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_broker_proto_msgTypes[14]
+	mi := &file_broker_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -988,7 +1107,7 @@ func (x *PushImageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PushImageResponse.ProtoReflect.Descriptor instead.
 func (*PushImageResponse) Descriptor() ([]byte, []int) {
-	return file_broker_proto_rawDescGZIP(), []int{14}
+	return file_broker_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *PushImageResponse) GetAlreadyExists() bool {
@@ -1013,7 +1132,7 @@ type PushLiveImageChunk struct {
 
 func (x *PushLiveImageChunk) Reset() {
 	*x = PushLiveImageChunk{}
-	mi := &file_broker_proto_msgTypes[15]
+	mi := &file_broker_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1025,7 +1144,7 @@ func (x *PushLiveImageChunk) String() string {
 func (*PushLiveImageChunk) ProtoMessage() {}
 
 func (x *PushLiveImageChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_broker_proto_msgTypes[15]
+	mi := &file_broker_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1038,7 +1157,7 @@ func (x *PushLiveImageChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PushLiveImageChunk.ProtoReflect.Descriptor instead.
 func (*PushLiveImageChunk) Descriptor() ([]byte, []int) {
-	return file_broker_proto_rawDescGZIP(), []int{15}
+	return file_broker_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *PushLiveImageChunk) GetPayload() isPushLiveImageChunk_Payload {
@@ -1085,7 +1204,10 @@ func (*PushLiveImageChunk_Request) isPushLiveImageChunk_Payload() {}
 
 func (*PushLiveImageChunk_DataChunk) isPushLiveImageChunk_Payload() {}
 
-// PushLiveImageRequest contains metadata describing the EVE live image to be uploaded.
+// PushLiveImageRequest contains metadata describing the EVE live image to be
+// uploaded. A local installer image is uploaded the same way, its hash in
+// live_image.sha256: the upload is staged by content hash alone, and how it is
+// installed is decided by the BuildImageRequest that consumes it.
 type PushLiveImageRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ClientId      string                 `protobuf:"bytes,1,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`
@@ -1096,7 +1218,7 @@ type PushLiveImageRequest struct {
 
 func (x *PushLiveImageRequest) Reset() {
 	*x = PushLiveImageRequest{}
-	mi := &file_broker_proto_msgTypes[16]
+	mi := &file_broker_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1108,7 +1230,7 @@ func (x *PushLiveImageRequest) String() string {
 func (*PushLiveImageRequest) ProtoMessage() {}
 
 func (x *PushLiveImageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_broker_proto_msgTypes[16]
+	mi := &file_broker_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1121,7 +1243,7 @@ func (x *PushLiveImageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PushLiveImageRequest.ProtoReflect.Descriptor instead.
 func (*PushLiveImageRequest) Descriptor() ([]byte, []int) {
-	return file_broker_proto_rawDescGZIP(), []int{16}
+	return file_broker_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *PushLiveImageRequest) GetClientId() string {
@@ -1148,7 +1270,7 @@ type PushLiveImageResponse struct {
 
 func (x *PushLiveImageResponse) Reset() {
 	*x = PushLiveImageResponse{}
-	mi := &file_broker_proto_msgTypes[17]
+	mi := &file_broker_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1160,7 +1282,7 @@ func (x *PushLiveImageResponse) String() string {
 func (*PushLiveImageResponse) ProtoMessage() {}
 
 func (x *PushLiveImageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_broker_proto_msgTypes[17]
+	mi := &file_broker_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1173,7 +1295,7 @@ func (x *PushLiveImageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PushLiveImageResponse.ProtoReflect.Descriptor instead.
 func (*PushLiveImageResponse) Descriptor() ([]byte, []int) {
-	return file_broker_proto_rawDescGZIP(), []int{17}
+	return file_broker_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *PushLiveImageResponse) GetAlreadyExists() bool {
@@ -1195,7 +1317,7 @@ type SetupDevicesRequest struct {
 
 func (x *SetupDevicesRequest) Reset() {
 	*x = SetupDevicesRequest{}
-	mi := &file_broker_proto_msgTypes[18]
+	mi := &file_broker_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1207,7 +1329,7 @@ func (x *SetupDevicesRequest) String() string {
 func (*SetupDevicesRequest) ProtoMessage() {}
 
 func (x *SetupDevicesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_broker_proto_msgTypes[18]
+	mi := &file_broker_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1220,7 +1342,7 @@ func (x *SetupDevicesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetupDevicesRequest.ProtoReflect.Descriptor instead.
 func (*SetupDevicesRequest) Descriptor() ([]byte, []int) {
-	return file_broker_proto_rawDescGZIP(), []int{18}
+	return file_broker_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *SetupDevicesRequest) GetClientId() string {
@@ -1254,7 +1376,7 @@ type SetupDevicesResponse struct {
 
 func (x *SetupDevicesResponse) Reset() {
 	*x = SetupDevicesResponse{}
-	mi := &file_broker_proto_msgTypes[19]
+	mi := &file_broker_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1266,7 +1388,7 @@ func (x *SetupDevicesResponse) String() string {
 func (*SetupDevicesResponse) ProtoMessage() {}
 
 func (x *SetupDevicesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_broker_proto_msgTypes[19]
+	mi := &file_broker_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1279,7 +1401,7 @@ func (x *SetupDevicesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetupDevicesResponse.ProtoReflect.Descriptor instead.
 func (*SetupDevicesResponse) Descriptor() ([]byte, []int) {
-	return file_broker_proto_rawDescGZIP(), []int{19}
+	return file_broker_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *SetupDevicesResponse) GetSdnUplinkIps() []string {
@@ -1301,7 +1423,7 @@ type TeardownDevicesRequest struct {
 
 func (x *TeardownDevicesRequest) Reset() {
 	*x = TeardownDevicesRequest{}
-	mi := &file_broker_proto_msgTypes[20]
+	mi := &file_broker_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1313,7 +1435,7 @@ func (x *TeardownDevicesRequest) String() string {
 func (*TeardownDevicesRequest) ProtoMessage() {}
 
 func (x *TeardownDevicesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_broker_proto_msgTypes[20]
+	mi := &file_broker_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1326,7 +1448,7 @@ func (x *TeardownDevicesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TeardownDevicesRequest.ProtoReflect.Descriptor instead.
 func (*TeardownDevicesRequest) Descriptor() ([]byte, []int) {
-	return file_broker_proto_rawDescGZIP(), []int{20}
+	return file_broker_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *TeardownDevicesRequest) GetClientId() string {
@@ -1345,7 +1467,7 @@ type TeardownDevicesResponse struct {
 
 func (x *TeardownDevicesResponse) Reset() {
 	*x = TeardownDevicesResponse{}
-	mi := &file_broker_proto_msgTypes[21]
+	mi := &file_broker_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1357,7 +1479,7 @@ func (x *TeardownDevicesResponse) String() string {
 func (*TeardownDevicesResponse) ProtoMessage() {}
 
 func (x *TeardownDevicesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_broker_proto_msgTypes[21]
+	mi := &file_broker_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1370,7 +1492,7 @@ func (x *TeardownDevicesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TeardownDevicesResponse.ProtoReflect.Descriptor instead.
 func (*TeardownDevicesResponse) Descriptor() ([]byte, []int) {
-	return file_broker_proto_rawDescGZIP(), []int{21}
+	return file_broker_proto_rawDescGZIP(), []int{22}
 }
 
 // Request to control a specific device (power on/off/reboot).
@@ -1384,7 +1506,7 @@ type DeviceControlRequest struct {
 
 func (x *DeviceControlRequest) Reset() {
 	*x = DeviceControlRequest{}
-	mi := &file_broker_proto_msgTypes[22]
+	mi := &file_broker_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1396,7 +1518,7 @@ func (x *DeviceControlRequest) String() string {
 func (*DeviceControlRequest) ProtoMessage() {}
 
 func (x *DeviceControlRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_broker_proto_msgTypes[22]
+	mi := &file_broker_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1409,7 +1531,7 @@ func (x *DeviceControlRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeviceControlRequest.ProtoReflect.Descriptor instead.
 func (*DeviceControlRequest) Descriptor() ([]byte, []int) {
-	return file_broker_proto_rawDescGZIP(), []int{22}
+	return file_broker_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *DeviceControlRequest) GetClientId() string {
@@ -1435,7 +1557,7 @@ type DeviceControlResponse struct {
 
 func (x *DeviceControlResponse) Reset() {
 	*x = DeviceControlResponse{}
-	mi := &file_broker_proto_msgTypes[23]
+	mi := &file_broker_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1447,7 +1569,7 @@ func (x *DeviceControlResponse) String() string {
 func (*DeviceControlResponse) ProtoMessage() {}
 
 func (x *DeviceControlResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_broker_proto_msgTypes[23]
+	mi := &file_broker_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1460,7 +1582,7 @@ func (x *DeviceControlResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeviceControlResponse.ProtoReflect.Descriptor instead.
 func (*DeviceControlResponse) Descriptor() ([]byte, []int) {
-	return file_broker_proto_rawDescGZIP(), []int{23}
+	return file_broker_proto_rawDescGZIP(), []int{24}
 }
 
 // Request to edit a powered-off device's boot disk in place.
@@ -1484,7 +1606,7 @@ type EditDeviceDiskRequest struct {
 
 func (x *EditDeviceDiskRequest) Reset() {
 	*x = EditDeviceDiskRequest{}
-	mi := &file_broker_proto_msgTypes[24]
+	mi := &file_broker_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1496,7 +1618,7 @@ func (x *EditDeviceDiskRequest) String() string {
 func (*EditDeviceDiskRequest) ProtoMessage() {}
 
 func (x *EditDeviceDiskRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_broker_proto_msgTypes[24]
+	mi := &file_broker_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1509,7 +1631,7 @@ func (x *EditDeviceDiskRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EditDeviceDiskRequest.ProtoReflect.Descriptor instead.
 func (*EditDeviceDiskRequest) Descriptor() ([]byte, []int) {
-	return file_broker_proto_rawDescGZIP(), []int{24}
+	return file_broker_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *EditDeviceDiskRequest) GetClientId() string {
@@ -1619,7 +1741,7 @@ type GrowDisk struct {
 
 func (x *GrowDisk) Reset() {
 	*x = GrowDisk{}
-	mi := &file_broker_proto_msgTypes[25]
+	mi := &file_broker_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1631,7 +1753,7 @@ func (x *GrowDisk) String() string {
 func (*GrowDisk) ProtoMessage() {}
 
 func (x *GrowDisk) ProtoReflect() protoreflect.Message {
-	mi := &file_broker_proto_msgTypes[25]
+	mi := &file_broker_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1644,7 +1766,7 @@ func (x *GrowDisk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GrowDisk.ProtoReflect.Descriptor instead.
 func (*GrowDisk) Descriptor() ([]byte, []int) {
-	return file_broker_proto_rawDescGZIP(), []int{25}
+	return file_broker_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *GrowDisk) GetNewSizeBytes() uint64 {
@@ -1669,7 +1791,7 @@ type DestroyPartitionFilesystem struct {
 
 func (x *DestroyPartitionFilesystem) Reset() {
 	*x = DestroyPartitionFilesystem{}
-	mi := &file_broker_proto_msgTypes[26]
+	mi := &file_broker_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1681,7 +1803,7 @@ func (x *DestroyPartitionFilesystem) String() string {
 func (*DestroyPartitionFilesystem) ProtoMessage() {}
 
 func (x *DestroyPartitionFilesystem) ProtoReflect() protoreflect.Message {
-	mi := &file_broker_proto_msgTypes[26]
+	mi := &file_broker_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1694,7 +1816,7 @@ func (x *DestroyPartitionFilesystem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DestroyPartitionFilesystem.ProtoReflect.Descriptor instead.
 func (*DestroyPartitionFilesystem) Descriptor() ([]byte, []int) {
-	return file_broker_proto_rawDescGZIP(), []int{26}
+	return file_broker_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *DestroyPartitionFilesystem) GetPartitionLabel() string {
@@ -1721,7 +1843,7 @@ type CreatePersistPartition struct {
 
 func (x *CreatePersistPartition) Reset() {
 	*x = CreatePersistPartition{}
-	mi := &file_broker_proto_msgTypes[27]
+	mi := &file_broker_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1733,7 +1855,7 @@ func (x *CreatePersistPartition) String() string {
 func (*CreatePersistPartition) ProtoMessage() {}
 
 func (x *CreatePersistPartition) ProtoReflect() protoreflect.Message {
-	mi := &file_broker_proto_msgTypes[27]
+	mi := &file_broker_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1746,7 +1868,7 @@ func (x *CreatePersistPartition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreatePersistPartition.ProtoReflect.Descriptor instead.
 func (*CreatePersistPartition) Descriptor() ([]byte, []int) {
-	return file_broker_proto_rawDescGZIP(), []int{27}
+	return file_broker_proto_rawDescGZIP(), []int{28}
 }
 
 // DeletePartition removes a partition from the GPT, leaving the space it
@@ -1765,7 +1887,7 @@ type DeletePartition struct {
 
 func (x *DeletePartition) Reset() {
 	*x = DeletePartition{}
-	mi := &file_broker_proto_msgTypes[28]
+	mi := &file_broker_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1777,7 +1899,7 @@ func (x *DeletePartition) String() string {
 func (*DeletePartition) ProtoMessage() {}
 
 func (x *DeletePartition) ProtoReflect() protoreflect.Message {
-	mi := &file_broker_proto_msgTypes[28]
+	mi := &file_broker_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1790,7 +1912,7 @@ func (x *DeletePartition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletePartition.ProtoReflect.Descriptor instead.
 func (*DeletePartition) Descriptor() ([]byte, []int) {
-	return file_broker_proto_rawDescGZIP(), []int{28}
+	return file_broker_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *DeletePartition) GetPartitionLabel() string {
@@ -1809,7 +1931,7 @@ type EditDeviceDiskResponse struct {
 
 func (x *EditDeviceDiskResponse) Reset() {
 	*x = EditDeviceDiskResponse{}
-	mi := &file_broker_proto_msgTypes[29]
+	mi := &file_broker_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1821,7 +1943,7 @@ func (x *EditDeviceDiskResponse) String() string {
 func (*EditDeviceDiskResponse) ProtoMessage() {}
 
 func (x *EditDeviceDiskResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_broker_proto_msgTypes[29]
+	mi := &file_broker_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1834,7 +1956,7 @@ func (x *EditDeviceDiskResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EditDeviceDiskResponse.ProtoReflect.Descriptor instead.
 func (*EditDeviceDiskResponse) Descriptor() ([]byte, []int) {
-	return file_broker_proto_rawDescGZIP(), []int{29}
+	return file_broker_proto_rawDescGZIP(), []int{30}
 }
 
 // ConnectConsoleRequest carries data sent from the client to the broker
@@ -1852,7 +1974,7 @@ type ConnectConsoleRequest struct {
 
 func (x *ConnectConsoleRequest) Reset() {
 	*x = ConnectConsoleRequest{}
-	mi := &file_broker_proto_msgTypes[30]
+	mi := &file_broker_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1864,7 +1986,7 @@ func (x *ConnectConsoleRequest) String() string {
 func (*ConnectConsoleRequest) ProtoMessage() {}
 
 func (x *ConnectConsoleRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_broker_proto_msgTypes[30]
+	mi := &file_broker_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1877,7 +1999,7 @@ func (x *ConnectConsoleRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConnectConsoleRequest.ProtoReflect.Descriptor instead.
 func (*ConnectConsoleRequest) Descriptor() ([]byte, []int) {
-	return file_broker_proto_rawDescGZIP(), []int{30}
+	return file_broker_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *ConnectConsoleRequest) GetPayload() isConnectConsoleRequest_Payload {
@@ -1939,7 +2061,7 @@ type ConnectConsoleResponse struct {
 
 func (x *ConnectConsoleResponse) Reset() {
 	*x = ConnectConsoleResponse{}
-	mi := &file_broker_proto_msgTypes[31]
+	mi := &file_broker_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1951,7 +2073,7 @@ func (x *ConnectConsoleResponse) String() string {
 func (*ConnectConsoleResponse) ProtoMessage() {}
 
 func (x *ConnectConsoleResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_broker_proto_msgTypes[31]
+	mi := &file_broker_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1964,7 +2086,7 @@ func (x *ConnectConsoleResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConnectConsoleResponse.ProtoReflect.Descriptor instead.
 func (*ConnectConsoleResponse) Descriptor() ([]byte, []int) {
-	return file_broker_proto_rawDescGZIP(), []int{31}
+	return file_broker_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *ConnectConsoleResponse) GetPayload() isConnectConsoleResponse_Payload {
@@ -2051,7 +2173,7 @@ const file_broker_proto_rawDesc = "" +
 	"globalJson\x12#\n" +
 	"\roverride_json\x18\n" +
 	" \x01(\tR\foverrideJson\x12.\n" +
-	"\x13bootstrap_config_pb\x18\v \x01(\fR\x11bootstrapConfigPb\"\xe6\x03\n" +
+	"\x13bootstrap_config_pb\x18\v \x01(\fR\x11bootstrapConfigPb\"\xf8\x05\n" +
 	"\x11BuildImageRequest\x12\x1b\n" +
 	"\tclient_id\x18\x01 \x01(\tR\bclientId\x12\x1f\n" +
 	"\vdevice_name\x18\x02 \x01(\tR\n" +
@@ -2066,11 +2188,21 @@ const file_broker_proto_rawDesc = "" +
 	"\x11live_image_source\x18\b \x01(\v2(.org.lfedge.evetest.LocalLiveImageSourceR\x0fliveImageSource\x12(\n" +
 	"\x10extra_disk_bytes\x18\t \x03(\x04R\x0eextraDiskBytes\x12!\n" +
 	"\fnetwork_boot\x18\n" +
-	" \x01(\bR\vnetworkBoot\"\x9d\x01\n" +
+	" \x01(\bR\vnetworkBoot\x12K\n" +
+	"\x0finstaller_media\x18\v \x01(\x0e2\".org.lfedge.evetest.InstallerMediaR\x0einstallerMedia\x12^\n" +
+	"\x15local_installer_image\x18\f \x01(\v2*.org.lfedge.evetest.LocalInstallerImageRefR\x13localInstallerImage\x12c\n" +
+	"\x16local_installer_source\x18\r \x01(\v2-.org.lfedge.evetest.LocalInstallerImageSourceR\x14localInstallerSource\"\x9d\x01\n" +
 	"\x14LocalLiveImageSource\x12\x1b\n" +
 	"\tdisk_path\x18\x01 \x01(\tR\bdiskPath\x12\x1d\n" +
 	"\n" +
 	"disk_bytes\x18\x02 \x01(\x04R\tdiskBytes\x12&\n" +
+	"\x0fconfig_img_path\x18\x03 \x01(\tR\rconfigImgPath\x12!\n" +
+	"\ffirmware_dir\x18\x04 \x01(\tR\vfirmwareDir\"\xa6\x01\n" +
+	"\x19LocalInstallerImageSource\x12\x1d\n" +
+	"\n" +
+	"image_path\x18\x01 \x01(\tR\timagePath\x12\x1f\n" +
+	"\vimage_bytes\x18\x02 \x01(\x03R\n" +
+	"imageBytes\x12&\n" +
 	"\x0fconfig_img_path\x18\x03 \x01(\tR\rconfigImgPath\x12!\n" +
 	"\ffirmware_dir\x18\x04 \x01(\tR\vfirmwareDir\"\x88\x01\n" +
 	"\x12BuildImageResponse\x12=\n" +
@@ -2170,7 +2302,7 @@ func file_broker_proto_rawDescGZIP() []byte {
 	return file_broker_proto_rawDescData
 }
 
-var file_broker_proto_msgTypes = make([]protoimpl.MessageInfo, 32)
+var file_broker_proto_msgTypes = make([]protoimpl.MessageInfo, 33)
 var file_broker_proto_goTypes = []any{
 	(*ConnectRequest)(nil),             // 0: org.lfedge.evetest.ConnectRequest
 	(*ConnectResponse)(nil),            // 1: org.lfedge.evetest.ConnectResponse
@@ -2183,96 +2315,102 @@ var file_broker_proto_goTypes = []any{
 	(*EveConfig)(nil),                  // 8: org.lfedge.evetest.EveConfig
 	(*BuildImageRequest)(nil),          // 9: org.lfedge.evetest.BuildImageRequest
 	(*LocalLiveImageSource)(nil),       // 10: org.lfedge.evetest.LocalLiveImageSource
-	(*BuildImageResponse)(nil),         // 11: org.lfedge.evetest.BuildImageResponse
-	(*PushImageChunk)(nil),             // 12: org.lfedge.evetest.PushImageChunk
-	(*PushImageRequest)(nil),           // 13: org.lfedge.evetest.PushImageRequest
-	(*PushImageResponse)(nil),          // 14: org.lfedge.evetest.PushImageResponse
-	(*PushLiveImageChunk)(nil),         // 15: org.lfedge.evetest.PushLiveImageChunk
-	(*PushLiveImageRequest)(nil),       // 16: org.lfedge.evetest.PushLiveImageRequest
-	(*PushLiveImageResponse)(nil),      // 17: org.lfedge.evetest.PushLiveImageResponse
-	(*SetupDevicesRequest)(nil),        // 18: org.lfedge.evetest.SetupDevicesRequest
-	(*SetupDevicesResponse)(nil),       // 19: org.lfedge.evetest.SetupDevicesResponse
-	(*TeardownDevicesRequest)(nil),     // 20: org.lfedge.evetest.TeardownDevicesRequest
-	(*TeardownDevicesResponse)(nil),    // 21: org.lfedge.evetest.TeardownDevicesResponse
-	(*DeviceControlRequest)(nil),       // 22: org.lfedge.evetest.DeviceControlRequest
-	(*DeviceControlResponse)(nil),      // 23: org.lfedge.evetest.DeviceControlResponse
-	(*EditDeviceDiskRequest)(nil),      // 24: org.lfedge.evetest.EditDeviceDiskRequest
-	(*GrowDisk)(nil),                   // 25: org.lfedge.evetest.GrowDisk
-	(*DestroyPartitionFilesystem)(nil), // 26: org.lfedge.evetest.DestroyPartitionFilesystem
-	(*CreatePersistPartition)(nil),     // 27: org.lfedge.evetest.CreatePersistPartition
-	(*DeletePartition)(nil),            // 28: org.lfedge.evetest.DeletePartition
-	(*EditDeviceDiskResponse)(nil),     // 29: org.lfedge.evetest.EditDeviceDiskResponse
-	(*ConnectConsoleRequest)(nil),      // 30: org.lfedge.evetest.ConnectConsoleRequest
-	(*ConnectConsoleResponse)(nil),     // 31: org.lfedge.evetest.ConnectConsoleResponse
-	(ArchType)(0),                      // 32: org.lfedge.evetest.ArchType
-	(Capability)(0),                    // 33: org.lfedge.evetest.Capability
-	(*ImageRef)(nil),                   // 34: org.lfedge.evetest.ImageRef
-	(*LiveImageRef)(nil),               // 35: org.lfedge.evetest.LiveImageRef
-	(*EVEDevice)(nil),                  // 36: org.lfedge.evetest.EVEDevice
-	(*SDNConfig)(nil),                  // 37: org.lfedge.evetest.SDNConfig
-	(*ConsoleProperties)(nil),          // 38: org.lfedge.evetest.ConsoleProperties
-	(*ConnectTunnelToSDNRequest)(nil),  // 39: org.lfedge.evetest.ConnectTunnelToSDNRequest
-	(*LogMessage)(nil),                 // 40: org.lfedge.evetest.LogMessage
-	(*ConsoleOutputResponse)(nil),      // 41: org.lfedge.evetest.ConsoleOutputResponse
-	(*ConnectTunnelToSDNResponse)(nil), // 42: org.lfedge.evetest.ConnectTunnelToSDNResponse
+	(*LocalInstallerImageSource)(nil),  // 11: org.lfedge.evetest.LocalInstallerImageSource
+	(*BuildImageResponse)(nil),         // 12: org.lfedge.evetest.BuildImageResponse
+	(*PushImageChunk)(nil),             // 13: org.lfedge.evetest.PushImageChunk
+	(*PushImageRequest)(nil),           // 14: org.lfedge.evetest.PushImageRequest
+	(*PushImageResponse)(nil),          // 15: org.lfedge.evetest.PushImageResponse
+	(*PushLiveImageChunk)(nil),         // 16: org.lfedge.evetest.PushLiveImageChunk
+	(*PushLiveImageRequest)(nil),       // 17: org.lfedge.evetest.PushLiveImageRequest
+	(*PushLiveImageResponse)(nil),      // 18: org.lfedge.evetest.PushLiveImageResponse
+	(*SetupDevicesRequest)(nil),        // 19: org.lfedge.evetest.SetupDevicesRequest
+	(*SetupDevicesResponse)(nil),       // 20: org.lfedge.evetest.SetupDevicesResponse
+	(*TeardownDevicesRequest)(nil),     // 21: org.lfedge.evetest.TeardownDevicesRequest
+	(*TeardownDevicesResponse)(nil),    // 22: org.lfedge.evetest.TeardownDevicesResponse
+	(*DeviceControlRequest)(nil),       // 23: org.lfedge.evetest.DeviceControlRequest
+	(*DeviceControlResponse)(nil),      // 24: org.lfedge.evetest.DeviceControlResponse
+	(*EditDeviceDiskRequest)(nil),      // 25: org.lfedge.evetest.EditDeviceDiskRequest
+	(*GrowDisk)(nil),                   // 26: org.lfedge.evetest.GrowDisk
+	(*DestroyPartitionFilesystem)(nil), // 27: org.lfedge.evetest.DestroyPartitionFilesystem
+	(*CreatePersistPartition)(nil),     // 28: org.lfedge.evetest.CreatePersistPartition
+	(*DeletePartition)(nil),            // 29: org.lfedge.evetest.DeletePartition
+	(*EditDeviceDiskResponse)(nil),     // 30: org.lfedge.evetest.EditDeviceDiskResponse
+	(*ConnectConsoleRequest)(nil),      // 31: org.lfedge.evetest.ConnectConsoleRequest
+	(*ConnectConsoleResponse)(nil),     // 32: org.lfedge.evetest.ConnectConsoleResponse
+	(ArchType)(0),                      // 33: org.lfedge.evetest.ArchType
+	(Capability)(0),                    // 34: org.lfedge.evetest.Capability
+	(*ImageRef)(nil),                   // 35: org.lfedge.evetest.ImageRef
+	(*LiveImageRef)(nil),               // 36: org.lfedge.evetest.LiveImageRef
+	(InstallerMedia)(0),                // 37: org.lfedge.evetest.InstallerMedia
+	(*LocalInstallerImageRef)(nil),     // 38: org.lfedge.evetest.LocalInstallerImageRef
+	(*EVEDevice)(nil),                  // 39: org.lfedge.evetest.EVEDevice
+	(*SDNConfig)(nil),                  // 40: org.lfedge.evetest.SDNConfig
+	(*ConsoleProperties)(nil),          // 41: org.lfedge.evetest.ConsoleProperties
+	(*ConnectTunnelToSDNRequest)(nil),  // 42: org.lfedge.evetest.ConnectTunnelToSDNRequest
+	(*LogMessage)(nil),                 // 43: org.lfedge.evetest.LogMessage
+	(*ConsoleOutputResponse)(nil),      // 44: org.lfedge.evetest.ConsoleOutputResponse
+	(*ConnectTunnelToSDNResponse)(nil), // 45: org.lfedge.evetest.ConnectTunnelToSDNResponse
 }
 var file_broker_proto_depIdxs = []int32{
-	32, // 0: org.lfedge.evetest.ConnectResponse.supported_archs:type_name -> org.lfedge.evetest.ArchType
-	33, // 1: org.lfedge.evetest.ConnectResponse.provider_capabilities:type_name -> org.lfedge.evetest.Capability
+	33, // 0: org.lfedge.evetest.ConnectResponse.supported_archs:type_name -> org.lfedge.evetest.ArchType
+	34, // 1: org.lfedge.evetest.ConnectResponse.provider_capabilities:type_name -> org.lfedge.evetest.Capability
 	2,  // 2: org.lfedge.evetest.ConnectResponse.registry_mirrors:type_name -> org.lfedge.evetest.RegistryMirror
-	34, // 3: org.lfedge.evetest.BuildImageRequest.image:type_name -> org.lfedge.evetest.ImageRef
+	35, // 3: org.lfedge.evetest.BuildImageRequest.image:type_name -> org.lfedge.evetest.ImageRef
 	8,  // 4: org.lfedge.evetest.BuildImageRequest.config:type_name -> org.lfedge.evetest.EveConfig
-	35, // 5: org.lfedge.evetest.BuildImageRequest.live_image:type_name -> org.lfedge.evetest.LiveImageRef
+	36, // 5: org.lfedge.evetest.BuildImageRequest.live_image:type_name -> org.lfedge.evetest.LiveImageRef
 	10, // 6: org.lfedge.evetest.BuildImageRequest.live_image_source:type_name -> org.lfedge.evetest.LocalLiveImageSource
-	13, // 7: org.lfedge.evetest.PushImageChunk.request:type_name -> org.lfedge.evetest.PushImageRequest
-	34, // 8: org.lfedge.evetest.PushImageRequest.image:type_name -> org.lfedge.evetest.ImageRef
-	16, // 9: org.lfedge.evetest.PushLiveImageChunk.request:type_name -> org.lfedge.evetest.PushLiveImageRequest
-	35, // 10: org.lfedge.evetest.PushLiveImageRequest.live_image:type_name -> org.lfedge.evetest.LiveImageRef
-	36, // 11: org.lfedge.evetest.SetupDevicesRequest.devices:type_name -> org.lfedge.evetest.EVEDevice
-	37, // 12: org.lfedge.evetest.SetupDevicesRequest.sdn_config:type_name -> org.lfedge.evetest.SDNConfig
-	25, // 13: org.lfedge.evetest.EditDeviceDiskRequest.grow:type_name -> org.lfedge.evetest.GrowDisk
-	26, // 14: org.lfedge.evetest.EditDeviceDiskRequest.destroy_partition_fs:type_name -> org.lfedge.evetest.DestroyPartitionFilesystem
-	27, // 15: org.lfedge.evetest.EditDeviceDiskRequest.create_persist_partition:type_name -> org.lfedge.evetest.CreatePersistPartition
-	28, // 16: org.lfedge.evetest.EditDeviceDiskRequest.delete_partition:type_name -> org.lfedge.evetest.DeletePartition
-	22, // 17: org.lfedge.evetest.ConnectConsoleRequest.connect:type_name -> org.lfedge.evetest.DeviceControlRequest
-	38, // 18: org.lfedge.evetest.ConnectConsoleResponse.connect_reply:type_name -> org.lfedge.evetest.ConsoleProperties
-	0,  // 19: org.lfedge.evetest.Broker.Connect:input_type -> org.lfedge.evetest.ConnectRequest
-	3,  // 20: org.lfedge.evetest.Broker.Close:input_type -> org.lfedge.evetest.CloseRequest
-	5,  // 21: org.lfedge.evetest.Broker.KeepAlive:input_type -> org.lfedge.evetest.KeepAlivePing
-	7,  // 22: org.lfedge.evetest.Broker.StreamLogs:input_type -> org.lfedge.evetest.LogsRequest
-	9,  // 23: org.lfedge.evetest.Broker.BuildImage:input_type -> org.lfedge.evetest.BuildImageRequest
-	12, // 24: org.lfedge.evetest.Broker.PushEVEContainerImage:input_type -> org.lfedge.evetest.PushImageChunk
-	15, // 25: org.lfedge.evetest.Broker.PushEVELiveImage:input_type -> org.lfedge.evetest.PushLiveImageChunk
-	18, // 26: org.lfedge.evetest.Broker.SetupDevices:input_type -> org.lfedge.evetest.SetupDevicesRequest
-	20, // 27: org.lfedge.evetest.Broker.TeardownDevices:input_type -> org.lfedge.evetest.TeardownDevicesRequest
-	22, // 28: org.lfedge.evetest.Broker.PowerOnDevice:input_type -> org.lfedge.evetest.DeviceControlRequest
-	22, // 29: org.lfedge.evetest.Broker.PowerOffDevice:input_type -> org.lfedge.evetest.DeviceControlRequest
-	22, // 30: org.lfedge.evetest.Broker.RebootDevice:input_type -> org.lfedge.evetest.DeviceControlRequest
-	24, // 31: org.lfedge.evetest.Broker.EditDeviceDisk:input_type -> org.lfedge.evetest.EditDeviceDiskRequest
-	22, // 32: org.lfedge.evetest.Broker.GetDeviceConsoleOutput:input_type -> org.lfedge.evetest.DeviceControlRequest
-	30, // 33: org.lfedge.evetest.Broker.ConnectConsoleToDevice:input_type -> org.lfedge.evetest.ConnectConsoleRequest
-	39, // 34: org.lfedge.evetest.Broker.ConnectTunnelToSDN:input_type -> org.lfedge.evetest.ConnectTunnelToSDNRequest
-	1,  // 35: org.lfedge.evetest.Broker.Connect:output_type -> org.lfedge.evetest.ConnectResponse
-	4,  // 36: org.lfedge.evetest.Broker.Close:output_type -> org.lfedge.evetest.CloseResponse
-	6,  // 37: org.lfedge.evetest.Broker.KeepAlive:output_type -> org.lfedge.evetest.KeepAlivePong
-	40, // 38: org.lfedge.evetest.Broker.StreamLogs:output_type -> org.lfedge.evetest.LogMessage
-	11, // 39: org.lfedge.evetest.Broker.BuildImage:output_type -> org.lfedge.evetest.BuildImageResponse
-	14, // 40: org.lfedge.evetest.Broker.PushEVEContainerImage:output_type -> org.lfedge.evetest.PushImageResponse
-	17, // 41: org.lfedge.evetest.Broker.PushEVELiveImage:output_type -> org.lfedge.evetest.PushLiveImageResponse
-	19, // 42: org.lfedge.evetest.Broker.SetupDevices:output_type -> org.lfedge.evetest.SetupDevicesResponse
-	21, // 43: org.lfedge.evetest.Broker.TeardownDevices:output_type -> org.lfedge.evetest.TeardownDevicesResponse
-	23, // 44: org.lfedge.evetest.Broker.PowerOnDevice:output_type -> org.lfedge.evetest.DeviceControlResponse
-	23, // 45: org.lfedge.evetest.Broker.PowerOffDevice:output_type -> org.lfedge.evetest.DeviceControlResponse
-	23, // 46: org.lfedge.evetest.Broker.RebootDevice:output_type -> org.lfedge.evetest.DeviceControlResponse
-	29, // 47: org.lfedge.evetest.Broker.EditDeviceDisk:output_type -> org.lfedge.evetest.EditDeviceDiskResponse
-	41, // 48: org.lfedge.evetest.Broker.GetDeviceConsoleOutput:output_type -> org.lfedge.evetest.ConsoleOutputResponse
-	31, // 49: org.lfedge.evetest.Broker.ConnectConsoleToDevice:output_type -> org.lfedge.evetest.ConnectConsoleResponse
-	42, // 50: org.lfedge.evetest.Broker.ConnectTunnelToSDN:output_type -> org.lfedge.evetest.ConnectTunnelToSDNResponse
-	35, // [35:51] is the sub-list for method output_type
-	19, // [19:35] is the sub-list for method input_type
-	19, // [19:19] is the sub-list for extension type_name
-	19, // [19:19] is the sub-list for extension extendee
-	0,  // [0:19] is the sub-list for field type_name
+	37, // 7: org.lfedge.evetest.BuildImageRequest.installer_media:type_name -> org.lfedge.evetest.InstallerMedia
+	38, // 8: org.lfedge.evetest.BuildImageRequest.local_installer_image:type_name -> org.lfedge.evetest.LocalInstallerImageRef
+	11, // 9: org.lfedge.evetest.BuildImageRequest.local_installer_source:type_name -> org.lfedge.evetest.LocalInstallerImageSource
+	14, // 10: org.lfedge.evetest.PushImageChunk.request:type_name -> org.lfedge.evetest.PushImageRequest
+	35, // 11: org.lfedge.evetest.PushImageRequest.image:type_name -> org.lfedge.evetest.ImageRef
+	17, // 12: org.lfedge.evetest.PushLiveImageChunk.request:type_name -> org.lfedge.evetest.PushLiveImageRequest
+	36, // 13: org.lfedge.evetest.PushLiveImageRequest.live_image:type_name -> org.lfedge.evetest.LiveImageRef
+	39, // 14: org.lfedge.evetest.SetupDevicesRequest.devices:type_name -> org.lfedge.evetest.EVEDevice
+	40, // 15: org.lfedge.evetest.SetupDevicesRequest.sdn_config:type_name -> org.lfedge.evetest.SDNConfig
+	26, // 16: org.lfedge.evetest.EditDeviceDiskRequest.grow:type_name -> org.lfedge.evetest.GrowDisk
+	27, // 17: org.lfedge.evetest.EditDeviceDiskRequest.destroy_partition_fs:type_name -> org.lfedge.evetest.DestroyPartitionFilesystem
+	28, // 18: org.lfedge.evetest.EditDeviceDiskRequest.create_persist_partition:type_name -> org.lfedge.evetest.CreatePersistPartition
+	29, // 19: org.lfedge.evetest.EditDeviceDiskRequest.delete_partition:type_name -> org.lfedge.evetest.DeletePartition
+	23, // 20: org.lfedge.evetest.ConnectConsoleRequest.connect:type_name -> org.lfedge.evetest.DeviceControlRequest
+	41, // 21: org.lfedge.evetest.ConnectConsoleResponse.connect_reply:type_name -> org.lfedge.evetest.ConsoleProperties
+	0,  // 22: org.lfedge.evetest.Broker.Connect:input_type -> org.lfedge.evetest.ConnectRequest
+	3,  // 23: org.lfedge.evetest.Broker.Close:input_type -> org.lfedge.evetest.CloseRequest
+	5,  // 24: org.lfedge.evetest.Broker.KeepAlive:input_type -> org.lfedge.evetest.KeepAlivePing
+	7,  // 25: org.lfedge.evetest.Broker.StreamLogs:input_type -> org.lfedge.evetest.LogsRequest
+	9,  // 26: org.lfedge.evetest.Broker.BuildImage:input_type -> org.lfedge.evetest.BuildImageRequest
+	13, // 27: org.lfedge.evetest.Broker.PushEVEContainerImage:input_type -> org.lfedge.evetest.PushImageChunk
+	16, // 28: org.lfedge.evetest.Broker.PushEVELiveImage:input_type -> org.lfedge.evetest.PushLiveImageChunk
+	19, // 29: org.lfedge.evetest.Broker.SetupDevices:input_type -> org.lfedge.evetest.SetupDevicesRequest
+	21, // 30: org.lfedge.evetest.Broker.TeardownDevices:input_type -> org.lfedge.evetest.TeardownDevicesRequest
+	23, // 31: org.lfedge.evetest.Broker.PowerOnDevice:input_type -> org.lfedge.evetest.DeviceControlRequest
+	23, // 32: org.lfedge.evetest.Broker.PowerOffDevice:input_type -> org.lfedge.evetest.DeviceControlRequest
+	23, // 33: org.lfedge.evetest.Broker.RebootDevice:input_type -> org.lfedge.evetest.DeviceControlRequest
+	25, // 34: org.lfedge.evetest.Broker.EditDeviceDisk:input_type -> org.lfedge.evetest.EditDeviceDiskRequest
+	23, // 35: org.lfedge.evetest.Broker.GetDeviceConsoleOutput:input_type -> org.lfedge.evetest.DeviceControlRequest
+	31, // 36: org.lfedge.evetest.Broker.ConnectConsoleToDevice:input_type -> org.lfedge.evetest.ConnectConsoleRequest
+	42, // 37: org.lfedge.evetest.Broker.ConnectTunnelToSDN:input_type -> org.lfedge.evetest.ConnectTunnelToSDNRequest
+	1,  // 38: org.lfedge.evetest.Broker.Connect:output_type -> org.lfedge.evetest.ConnectResponse
+	4,  // 39: org.lfedge.evetest.Broker.Close:output_type -> org.lfedge.evetest.CloseResponse
+	6,  // 40: org.lfedge.evetest.Broker.KeepAlive:output_type -> org.lfedge.evetest.KeepAlivePong
+	43, // 41: org.lfedge.evetest.Broker.StreamLogs:output_type -> org.lfedge.evetest.LogMessage
+	12, // 42: org.lfedge.evetest.Broker.BuildImage:output_type -> org.lfedge.evetest.BuildImageResponse
+	15, // 43: org.lfedge.evetest.Broker.PushEVEContainerImage:output_type -> org.lfedge.evetest.PushImageResponse
+	18, // 44: org.lfedge.evetest.Broker.PushEVELiveImage:output_type -> org.lfedge.evetest.PushLiveImageResponse
+	20, // 45: org.lfedge.evetest.Broker.SetupDevices:output_type -> org.lfedge.evetest.SetupDevicesResponse
+	22, // 46: org.lfedge.evetest.Broker.TeardownDevices:output_type -> org.lfedge.evetest.TeardownDevicesResponse
+	24, // 47: org.lfedge.evetest.Broker.PowerOnDevice:output_type -> org.lfedge.evetest.DeviceControlResponse
+	24, // 48: org.lfedge.evetest.Broker.PowerOffDevice:output_type -> org.lfedge.evetest.DeviceControlResponse
+	24, // 49: org.lfedge.evetest.Broker.RebootDevice:output_type -> org.lfedge.evetest.DeviceControlResponse
+	30, // 50: org.lfedge.evetest.Broker.EditDeviceDisk:output_type -> org.lfedge.evetest.EditDeviceDiskResponse
+	44, // 51: org.lfedge.evetest.Broker.GetDeviceConsoleOutput:output_type -> org.lfedge.evetest.ConsoleOutputResponse
+	32, // 52: org.lfedge.evetest.Broker.ConnectConsoleToDevice:output_type -> org.lfedge.evetest.ConnectConsoleResponse
+	45, // 53: org.lfedge.evetest.Broker.ConnectTunnelToSDN:output_type -> org.lfedge.evetest.ConnectTunnelToSDNResponse
+	38, // [38:54] is the sub-list for method output_type
+	22, // [22:38] is the sub-list for method input_type
+	22, // [22:22] is the sub-list for extension type_name
+	22, // [22:22] is the sub-list for extension extendee
+	0,  // [0:22] is the sub-list for field type_name
 }
 
 func init() { file_broker_proto_init() }
@@ -2282,25 +2420,25 @@ func file_broker_proto_init() {
 	}
 	file_common_proto_init()
 	file_sdn_proto_init()
-	file_broker_proto_msgTypes[12].OneofWrappers = []any{
+	file_broker_proto_msgTypes[13].OneofWrappers = []any{
 		(*PushImageChunk_Request)(nil),
 		(*PushImageChunk_DataGzipChunk)(nil),
 	}
-	file_broker_proto_msgTypes[15].OneofWrappers = []any{
+	file_broker_proto_msgTypes[16].OneofWrappers = []any{
 		(*PushLiveImageChunk_Request)(nil),
 		(*PushLiveImageChunk_DataChunk)(nil),
 	}
-	file_broker_proto_msgTypes[24].OneofWrappers = []any{
+	file_broker_proto_msgTypes[25].OneofWrappers = []any{
 		(*EditDeviceDiskRequest_Grow)(nil),
 		(*EditDeviceDiskRequest_DestroyPartitionFs)(nil),
 		(*EditDeviceDiskRequest_CreatePersistPartition)(nil),
 		(*EditDeviceDiskRequest_DeletePartition)(nil),
 	}
-	file_broker_proto_msgTypes[30].OneofWrappers = []any{
+	file_broker_proto_msgTypes[31].OneofWrappers = []any{
 		(*ConnectConsoleRequest_Connect)(nil),
 		(*ConnectConsoleRequest_Data)(nil),
 	}
-	file_broker_proto_msgTypes[31].OneofWrappers = []any{
+	file_broker_proto_msgTypes[32].OneofWrappers = []any{
 		(*ConnectConsoleResponse_ConnectReply)(nil),
 		(*ConnectConsoleResponse_Data)(nil),
 	}
@@ -2310,7 +2448,7 @@ func file_broker_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_broker_proto_rawDesc), len(file_broker_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   32,
+			NumMessages:   33,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

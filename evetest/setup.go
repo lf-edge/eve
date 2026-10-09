@@ -282,24 +282,41 @@ func (th *TestHarness) prepareImageForEVEDevice(dev *deviceState) {
 	if err != nil {
 		th.t.Fatalf("%v", err)
 	}
-	// A version pinned by the test itself is never looked for among the local
-	// builds: it names a particular release (TestEVEUpgrade's pre-upgrade
-	// version, say), which is the container transport's job. Only the operator's
-	// EVETEST_EVE_VERSION selects which local build the live transport delivers.
-	localImg, err := resolveLocalLiveImage(zarch, viper.GetString(constants.EVEVersionEnv))
+	transportOn, err := localImageTransport()
 	if err != nil {
-		// The operator explicitly selected the live transport; silently falling
-		// back to the container transport would run the test against a different
-		// EVE build than they asked for.
 		th.t.Fatalf("Failed to resolve the local EVE build: %v", err)
 	}
-	if useLocalLiveImage(dev.requirement, localImg) {
-		if !generics.ContainsItem(
-			th.brokerCapabilities, api.Capability_CAPABILITY_LOCAL_LIVE_IMAGE) {
-			th.t.Fatalf("the broker does not support the live image transport " +
-				"(EVETEST_EVE_LIVE_IMAGE=true): either it predates this feature " +
-				"and must be updated, or its device provider builds images per " +
-				"device and cannot consume one")
+	policyMedia := installerMediaForPolicy(dev.requirement.DeviceReusePolicy)
+	useLocal, media := useLocalBuild(dev.requirement, transportOn)
+	if !useLocal && policyMedia == api.InstallerMedia_INSTALLER_MEDIA_ISO {
+		th.t.Fatalf("Device %q: CreateFromScratchWithInstallerISO is not supported "+
+			"with an EVE container image yet; it needs a local build delivered with "+
+			"%s%s=true and a broker advertising CAPABILITY_LOCAL_INSTALLER_ISO",
+			dev.name, constants.EnvPrefix, constants.EVELiveImageEnv)
+	}
+	var localImg *localImage
+	var localSHA256 string
+	if useLocal {
+		// Checked before anything is resolved, converted or hashed: the medium a
+		// broker cannot serve is the one thing no local build can fix.
+		if err := checkLocalImageCapability(th.brokerCapabilities, media); err != nil {
+			th.t.Fatalf("Device %q: %v", dev.name, err)
+		}
+		art, err := localArtifactFor(media)
+		if err != nil {
+			th.t.Fatalf("Device %q: %v", dev.name, err)
+		}
+		// A version pinned by the test itself is never looked for among the
+		// local builds (useLocalBuild sends such a device to the container
+		// path): it names a particular release, such as TestEVEUpgrade's
+		// pre-upgrade version. Only the operator's EVETEST_EVE_VERSION selects
+		// which local build is delivered.
+		localImg, err = resolveLocalImage(zarch, viper.GetString(constants.EVEVersionEnv), media)
+		if err != nil {
+			// The operator explicitly selected the local transport; silently
+			// falling back to the container transport would run the test against
+			// a different EVE build than they asked for.
+			th.t.Fatalf("Failed to resolve the local EVE build: %v", err)
 		}
 		// A local build that cannot provide the hypervisor this test declares is an
 		// unsatisfiable requirement, so the test is skipped -- the same treatment
@@ -315,9 +332,9 @@ func (th *TestHarness) prepareImageForEVEDevice(dev *deviceState) {
 			if !liveImageSatisfies(required, buildHV) {
 				th.t.Skipf("Test requires the %s hypervisor for device %q, but the "+
 					"local EVE build being delivered (%s) is %s: rebuild with "+
-					"`make HV=%s live`, or unset %s%s to run a %s container image",
+					"`make HV=%s %s`, or unset %s%s to run a %s container image",
 					required, dev.name, localImg.Version, buildHV,
-					hvMakeFlavor(required),
+					hvMakeFlavor(required), art.MakeTarget,
 					constants.EnvPrefix, constants.EVELiveImageEnv, required)
 			}
 			if buildHV != required && required != HypervisorUndefined {
@@ -325,20 +342,51 @@ func (th *TestHarness) prepareImageForEVEDevice(dev *deviceState) {
 					"which provides it", dev.name, required, buildHV)
 			}
 		}
-		sum, err := liveImageSHA256(localImg.DiskPath)
+		if warning := staleLocalInstallerWarning(localImg); warning != "" {
+			th.log.Warnf("Device %q: %s", dev.name, warning)
+		}
+		if media == api.InstallerMedia_INSTALLER_MEDIA_RAW {
+			rawPath := localImg.DiskPath
+			th.log.Infof("Preparing the local raw EVE installer %q", rawPath)
+			converted, err := prepareLocalInstallerRaw(th.ctx, localImg, qemuImgCompress)
+			if err != nil {
+				th.t.Fatalf("Failed to convert the local EVE installer %q: %v", rawPath, err)
+			}
+			if converted {
+				th.log.Infof("Converted the local EVE installer %q to %q",
+					rawPath, localImg.DiskPath)
+			} else {
+				th.log.Infof("Reusing %q, converted from the unchanged %q",
+					localImg.DiskPath, rawPath)
+			}
+		}
+		localSHA256, err = localImageSHA256(localImg.DiskPath)
 		if err != nil {
-			th.t.Fatalf("Failed to hash local EVE live image %q: %v",
+			th.t.Fatalf("Failed to hash the local EVE image %q: %v",
 				localImg.DiskPath, err)
 		}
-		dev.liveImage = &api.LiveImageRef{Sha256: sum, Version: localImg.Version}
-		// Sent unconditionally: whether the broker can actually read these paths
-		// is for the broker to determine, not for the harness to guess from its
-		// deployment mode. One that cannot asks for the upload as before.
-		dev.liveImageSource = &api.LocalLiveImageSource{
-			DiskPath:      localImg.DiskPath,
-			DiskBytes:     uint64(localImg.DiskBytes),
-			ConfigImgPath: localImg.ConfigImgPath,
-			FirmwareDir:   localImg.FirmwareDir,
+		// The source is sent unconditionally: whether the broker can actually
+		// read these paths is for the broker to determine, not for the harness to
+		// guess from its deployment mode. One that cannot asks for the upload.
+		if media == api.InstallerMedia_INSTALLER_MEDIA_UNSPECIFIED {
+			dev.liveImage = &api.LiveImageRef{Sha256: localSHA256, Version: localImg.Version}
+			dev.liveImageSource = &api.LocalLiveImageSource{
+				DiskPath:      localImg.DiskPath,
+				DiskBytes:     uint64(localImg.DiskBytes),
+				ConfigImgPath: localImg.ConfigImgPath,
+				FirmwareDir:   localImg.FirmwareDir,
+			}
+		} else {
+			dev.installerImage = &api.LocalInstallerImageRef{
+				Sha256:  localSHA256,
+				Version: localImg.Version,
+			}
+			dev.installerSource = &api.LocalInstallerImageSource{
+				ImagePath:     localImg.DiskPath,
+				ImageBytes:    localImg.DiskBytes,
+				ConfigImgPath: localImg.ConfigImgPath,
+				FirmwareDir:   localImg.FirmwareDir,
+			}
 		}
 		// The resolved directory is the authority on what is actually being
 		// delivered: when a version was requested it is the one that was found,
@@ -347,9 +395,9 @@ func (th *TestHarness) prepareImageForEVEDevice(dev *deviceState) {
 		if localImg.Version != "" {
 			eveVersion = localImg.Version
 		}
-	} else if localImg != nil {
+	} else if transportOn {
 		th.log.Infof("Device %q requested EVE version %q explicitly; "+
-			"skipping the local EVE live image for this device",
+			"skipping the local EVE build for this device",
 			dev.name, dev.requirement.WithEVEVersion)
 	}
 	if eveVersion == "" {
@@ -382,11 +430,17 @@ func (th *TestHarness) prepareImageForEVEDevice(dev *deviceState) {
 		Image:           dev.imageRef,
 		LiveImage:       dev.liveImage,
 		LiveImageSource: dev.liveImageSource,
-		MakeInstaller:   dev.requirement.DeviceReusePolicy == CreateFromScratchWithInstaller,
-		NetworkBoot:     dev.requirement.DeviceReusePolicy == CreateFromScratchWithNetworkBoot,
-		DiskBytes:       uint64(diskSizeInMiB) << 20,
-		ExtraDiskBytes:  dev.requirement.ExtraDisks,
-		Config:          th.buildEveConfig(dev),
+		MakeInstaller: policyMedia == api.InstallerMedia_INSTALLER_MEDIA_RAW ||
+			policyMedia == api.InstallerMedia_INSTALLER_MEDIA_ISO,
+		NetworkBoot: policyMedia == api.InstallerMedia_INSTALLER_MEDIA_NET,
+		// Named on the container path too: an older broker ignores it, and for
+		// RAW and NET it only restates what the two flags above already imply.
+		InstallerMedia:       policyMedia,
+		DiskBytes:            uint64(diskSizeInMiB) << 20,
+		ExtraDiskBytes:       dev.requirement.ExtraDisks,
+		Config:               th.buildEveConfig(dev),
+		LocalInstallerImage:  dev.installerImage,
+		LocalInstallerSource: dev.installerSource,
 	}
 	ctx, cancel := context.WithTimeout(th.ctx, brokerBuildImageTimeout)
 	buildResp, err := th.brokerClient.BuildImage(ctx, buildReq)
@@ -412,8 +466,9 @@ func (th *TestHarness) prepareImageForEVEDevice(dev *deviceState) {
 		th.log.Infof("BuildImage %q succeeded after pushing image.",
 			dev.imageName)
 	} else if buildResp.MissingEveLiveImage {
-		th.log.Warn("Broker is missing the local EVE live image — pushing it now...")
-		th.pushLiveImageToBroker(localImg, dev.liveImage.Sha256)
+		th.log.Warnf("Broker is missing the local EVE %s — pushing it now...",
+			localImageKind(media))
+		th.pushLiveImageToBroker(localImg, localSHA256)
 
 		// Retry build
 		ctx, cancel = context.WithTimeout(th.ctx, brokerBuildImageTimeout)
@@ -423,17 +478,18 @@ func (th *TestHarness) prepareImageForEVEDevice(dev *deviceState) {
 			th.t.Fatalf("BuildImage %q (retry) failed: %v", dev.imageName, err)
 		}
 		if buildResp.MissingEveLiveImage {
-			th.t.Fatalf("Broker is missing the local EVE live image even after push.")
+			th.t.Fatalf("Broker is missing the local EVE %s even after push.",
+				localImageKind(media))
 		}
-		th.log.Infof("BuildImage %q succeeded after pushing live image.",
-			dev.imageName)
-	} else if dev.liveImage != nil {
+		th.log.Infof("BuildImage %q succeeded after pushing the local EVE %s.",
+			dev.imageName, localImageKind(media))
+	} else if localImg != nil {
 		// Nothing was uploaded and nothing was missing: either the broker still
-		// had the template, or it read the live image out of the dist directory
-		// itself. Reporting a docker image here would be a lie -- the live path
+		// had the template, or it read the image out of the dist directory
+		// itself. Reporting a docker image here would be a lie -- the local path
 		// may run on a broker that has no EVE container image at all.
-		th.log.Infof("BuildImage succeeded using the local EVE live image %q.",
-			dev.liveImage.GetSha256())
+		th.log.Infof("BuildImage succeeded using the local EVE %s %q.",
+			localImageKind(media), localSHA256)
 	} else {
 		th.log.Infof("BuildImage %q succeeded (docker image was already present).",
 			dev.imageName)
@@ -547,10 +603,22 @@ func (th *TestHarness) pushEVEImageToBroker(imageRef *api.ImageRef) {
 	}
 }
 
-// pushLiveImageToBroker streams a locally built EVE live image to the broker
+// localImageKind names what a local delivery on the given installer medium
+// is, for logs.
+func localImageKind(media api.InstallerMedia) string {
+	if media == api.InstallerMedia_INSTALLER_MEDIA_UNSPECIFIED {
+		return "live image"
+	}
+	return utils.InstallerMediaName(media) + " installer image"
+}
+
+// pushLiveImageToBroker streams a locally built EVE live image -- or a raw
+// installer converted to qcow2, which travels the same way -- to the broker
 // as a tar (disk.qcow2, config.img, firmware/<name>), built in-process and
 // written straight into the client-streaming gRPC call -- the tar is never
-// assembled on disk or fully buffered in memory.
+// assembled on disk or fully buffered in memory. The broker stages it by
+// content hash alone; the BuildImageRequest retried afterwards says whether it
+// is a live image or an installer.
 //
 // The qcow2's clusters are already zlib-compressed by `qemu-img convert -c`,
 // so unlike pushEVEImageToBroker this stream is not gzipped: recompressing
@@ -566,7 +634,7 @@ func (th *TestHarness) pushEVEImageToBroker(imageRef *api.ImageRef) {
 // report -- it means the concurrent upload that is about to be reported via
 // AlreadyExists got there first. earlyClose records that so it can be treated
 // as benign instead of fatal, mirroring pushEVEImageToBroker's structure.
-func (th *TestHarness) pushLiveImageToBroker(img *localLiveImage, sum string) {
+func (th *TestHarness) pushLiveImageToBroker(img *localImage, sum string) {
 	ctx, cancel := context.WithTimeout(th.ctx, brokerPushEVEImageTimeout)
 	defer cancel()
 
@@ -639,9 +707,9 @@ func (th *TestHarness) pushLiveImageToBroker(img *localLiveImage, sum string) {
 			"but did not report the image as already existing")
 	}
 	if pushResp.AlreadyExists {
-		th.log.Info("EVE live image already exists on broker.")
+		th.log.Infof("Local EVE %s already exists on broker.", localImageKind(img.Media))
 	} else {
-		th.log.Info("EVE live image pushed successfully.")
+		th.log.Infof("Local EVE %s pushed successfully.", localImageKind(img.Media))
 	}
 }
 
@@ -756,7 +824,7 @@ func (th *TestHarness) setupEVEDevices(
 	setupTimeout := brokerSetupDevicesTimeout
 	for _, dev := range devices {
 		switch dev.requirement.DeviceReusePolicy {
-		case CreateFromScratchWithInstaller:
+		case CreateFromScratchWithInstaller, CreateFromScratchWithInstallerISO:
 			setupTimeout += constants.EVEInstallationTimeout
 		case CreateFromScratchWithNetworkBoot:
 			setupTimeout += constants.EVEInstallationTimeout + constants.NetbootDownloadTimeout
@@ -1357,6 +1425,7 @@ func (th *TestHarness) maybeReuseDevices(
 	}
 	for devName, newReq := range edgeDevReqs {
 		if newReq.DeviceReusePolicy == CreateFromScratchWithInstaller ||
+			newReq.DeviceReusePolicy == CreateFromScratchWithInstallerISO ||
 			newReq.DeviceReusePolicy == CreateFromScratchWithLiveImage ||
 			newReq.DeviceReusePolicy == CreateFromScratchWithNetworkBoot {
 			th.devicesM.Unlock()

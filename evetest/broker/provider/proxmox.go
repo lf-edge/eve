@@ -378,6 +378,10 @@ func (p *ProxmoxProvider) DiskImageStrategy() DiskImageStrategy {
 func (p *ProxmoxProvider) SetupDevice(
 	ctx context.Context, name string, spec DeviceSpec) error {
 	log := logger.FromContext(ctx)
+	if err := checkDiskMedia(spec.Disks); err != nil {
+		log.Error(err)
+		return err
+	}
 
 	p.devMutex.Lock()
 	_, exists := p.devices[name]
@@ -985,6 +989,9 @@ func (p *ProxmoxProvider) TeardownAll(ctx context.Context) error {
 func (p *ProxmoxProvider) ReconfigureDeviceDisks(
 	ctx context.Context, name string, newDisks []DiskImage) error {
 	log := logger.FromContext(ctx)
+	if err := checkDiskMedia(newDisks); err != nil {
+		return err
+	}
 	dev, vm, err := p.lookupVM(ctx, name)
 	if err != nil {
 		return err

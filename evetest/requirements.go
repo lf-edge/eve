@@ -153,7 +153,8 @@ const (
 	// and then reboots the device.
 	ReonboardEdgeDevice
 	// CreateFromScratchWithInstaller : re-create VM even if already exists using
-	// EVE installer image.
+	// EVE installer image: the raw installer disk (installer.raw), booted as
+	// the device's first disk to install EVE onto its blank target disk.
 	CreateFromScratchWithInstaller
 	// CreateFromScratchWithLiveImage : re-create VM even if already exists using
 	// EVE live image.
@@ -164,6 +165,14 @@ const (
 	// (see the network model's DHCP.netboot_server_ip), install EVE onto
 	// the blank disk, and reboot into it.
 	CreateFromScratchWithNetworkBoot
+	// CreateFromScratchWithInstallerISO : re-create VM even if already exists
+	// using the EVE installer ISO (installer.iso), attached as a CD-ROM, rather
+	// than the raw installer disk CreateFromScratchWithInstaller boots. The
+	// device installs EVE onto its blank disk and powers off, exactly as with
+	// the raw installer. Not implemented yet: a device with this policy fails
+	// Setup with a clear error until a broker advertises
+	// CAPABILITY_LOCAL_INSTALLER_ISO.
+	CreateFromScratchWithInstallerISO
 )
 
 // USBDevice identifies a USB device by vendor and product ID.

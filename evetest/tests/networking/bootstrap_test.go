@@ -25,8 +25,9 @@ import (
 )
 
 const (
-	lastResortParamKey   = "LAST_RESORT_ENABLED"
-	useInstallerParamKey = "USE_INSTALLER"
+	lastResortParamKey     = "LAST_RESORT_ENABLED"
+	useInstallerParamKey   = "USE_INSTALLER"
+	installerMediaParamKey = "INSTALLER_MEDIA"
 )
 
 var (
@@ -45,6 +46,17 @@ var (
 		Description: evetest.TestParameterDescription{
 			Summary: "Use EVE installer instead of live image",
 			Default: "false",
+		},
+	}
+
+	installerMediaParam = evetest.TestParameterDefinition{
+		Key:          installerMediaParamKey,
+		DefaultValue: "raw",
+		Description: evetest.TestParameterDescription{
+			Summary: "Medium the EVE installer boots from when USE_INSTALLER is " +
+				"set: raw (installer.raw as a disk) or iso (installer.iso as a CD-ROM)",
+			Default:       "raw",
+			AllowedValues: "raw|iso",
 		},
 	}
 )
@@ -67,14 +79,33 @@ func deviceRequirementsForBootstrap(
 	}
 }
 
-// installerOrLiveImagePolicy resolves the USE_INSTALLER test parameter into
-// the corresponding disk-based reuse policy, for bootstrap tests that offer
-// a choice between the two.
-func installerOrLiveImagePolicy(useInstaller bool) evetest.ExistingEdgeDeviceReusePolicy {
-	if useInstaller {
-		return evetest.CreateFromScratchWithInstaller
+// installerOrLiveImagePolicy resolves the USE_INSTALLER and INSTALLER_MEDIA
+// test parameters into the corresponding disk-based reuse policy, for
+// bootstrap tests that offer a choice between the live image and an installer.
+// Booting the installer over the network needs a netboot network model, which
+// is TestBootstrapWithNetworkBoot's business, so it is not offered here.
+//
+// A medium other than the default asked for without USE_INSTALLER would
+// otherwise be silently ignored; the test is skipped instead, saying so. A
+// skip rather than a failure, because a suite run with INSTALLER_MEDIA set for
+// its installer variant still runs its live variants with the same setting.
+func installerOrLiveImagePolicy(evetestT *evetest.T, t *GomegaWithT,
+	useInstaller bool) evetest.ExistingEdgeDeviceReusePolicy {
+	media := strings.ToLower(evetest.GetTestParameter[string](installerMediaParamKey))
+	t.Expect(media).To(BeElementOf("raw", "iso"),
+		"%s must be raw or iso", installerMediaParamKey)
+	if !useInstaller {
+		if media != "raw" {
+			evetestT.Skipf("%s=%s selects an installer medium, but this test boots "+
+				"the live image: set %s=true to run it from the installer",
+				installerMediaParamKey, media, useInstallerParamKey)
+		}
+		return evetest.CreateFromScratchWithLiveImage
 	}
-	return evetest.CreateFromScratchWithLiveImage
+	if media == "iso" {
+		return evetest.CreateFromScratchWithInstallerISO
+	}
+	return evetest.CreateFromScratchWithInstaller
 }
 
 // TestBootstrapWithLastResort verifies that a freshly installed EVE device,
@@ -138,6 +169,7 @@ func TestBootstrapWithLastResort(test *testing.T) {
 		evetest.HypervisorParameter(),
 		lastResortParam,
 		useInstallerParam,
+		installerMediaParam,
 	)
 
 	// Get parameter values set for this test execution.
@@ -147,7 +179,7 @@ func TestBootstrapWithLastResort(test *testing.T) {
 
 	// Set up the test harness and specify the test prerequisites.
 	devName := "edge-dev"
-	requiredDevice := deviceRequirementsForBootstrap(devName, installerOrLiveImagePolicy(useInstaller), hypervisor)
+	requiredDevice := deviceRequirementsForBootstrap(devName, installerOrLiveImagePolicy(evetestT, t, useInstaller), hypervisor)
 	requiredNetModel := evetest.RequireNetworkModel{
 		NetworkModel: netmodels.SingleEthWithDHCP,
 	}
@@ -275,6 +307,7 @@ func TestBootstrapWithStaticIP(test *testing.T) {
 		evetest.HypervisorParameter(),
 		useOverrideJSONParam,
 		useInstallerParam,
+		installerMediaParam,
 	)
 
 	// Get parameter values set for this test execution.
@@ -305,7 +338,7 @@ func TestBootstrapWithStaticIP(test *testing.T) {
 		})
 
 	// Set up the test harness and specify test prerequisites.
-	requiredDevice := deviceRequirementsForBootstrap(devName, installerOrLiveImagePolicy(useInstaller), hypervisor)
+	requiredDevice := deviceRequirementsForBootstrap(devName, installerOrLiveImagePolicy(evetestT, t, useInstaller), hypervisor)
 	if useOverrideJSON {
 		requiredDevice.WithInjectedNetworkOverride = &pillartypes.DevicePortConfig{
 			Version:      1,
@@ -489,6 +522,7 @@ func TestBootstrapWithProxy(test *testing.T) {
 		evetest.HypervisorParameter(),
 		useOverrideJSONParam,
 		useInstallerParam,
+		installerMediaParam,
 		proxyConfigTypeParam,
 	)
 
@@ -546,7 +580,7 @@ func TestBootstrapWithProxy(test *testing.T) {
 		})
 
 	// Set up the test harness and specify test prerequisites.
-	requiredDevice := deviceRequirementsForBootstrap(devName, installerOrLiveImagePolicy(useInstaller), hypervisor)
+	requiredDevice := deviceRequirementsForBootstrap(devName, installerOrLiveImagePolicy(evetestT, t, useInstaller), hypervisor)
 	if useOverrideJSON {
 		var proxyConfig pillartypes.ProxyConfig
 		switch proxyConfigType {
@@ -706,6 +740,7 @@ func TestBootstrapWithMgmtVLAN(test *testing.T) {
 		evetest.HypervisorParameter(),
 		useOverrideJSONParam,
 		useInstallerParam,
+		installerMediaParam,
 	)
 
 	// Get parameter values set for this test execution.
@@ -737,7 +772,7 @@ func TestBootstrapWithMgmtVLAN(test *testing.T) {
 		})
 
 	// Set up the test harness and specify test prerequisites.
-	requiredDevice := deviceRequirementsForBootstrap(devName, installerOrLiveImagePolicy(useInstaller), hypervisor)
+	requiredDevice := deviceRequirementsForBootstrap(devName, installerOrLiveImagePolicy(evetestT, t, useInstaller), hypervisor)
 	if useOverrideJSON {
 		requiredDevice.WithInjectedNetworkOverride = &pillartypes.DevicePortConfig{
 			Version:      1,
@@ -857,6 +892,7 @@ func TestBootstrapWithLACPBond(test *testing.T) {
 		evetest.HypervisorParameter(),
 		useOverrideJSONParam,
 		useInstallerParam,
+		installerMediaParam,
 	)
 
 	// Get parameter values set for this test execution.
@@ -904,7 +940,7 @@ func TestBootstrapWithLACPBond(test *testing.T) {
 		})
 
 	// Set up the test harness and specify test prerequisites.
-	requiredDevice := deviceRequirementsForBootstrap(devName, installerOrLiveImagePolicy(useInstaller), hypervisor)
+	requiredDevice := deviceRequirementsForBootstrap(devName, installerOrLiveImagePolicy(evetestT, t, useInstaller), hypervisor)
 	if useOverrideJSON {
 		requiredDevice.WithInjectedNetworkOverride = &pillartypes.DevicePortConfig{
 			Version:      1,

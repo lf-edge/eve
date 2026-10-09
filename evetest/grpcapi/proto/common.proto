@@ -61,6 +61,35 @@ enum Capability {
   // that keeps the disk as a file it can still reach after setup, so a
   // provider that hands the image to a remote node does not have it.
   CAPABILITY_EDIT_DEVICE_DISK = 7;
+  // Building an installer-based device from a locally built EVE installer
+  // image delivered as a raw disk (installer.raw), the medium of
+  // CreateFromScratchWithInstaller. The broker turns it into a template and
+  // boots it as the device's first disk, then drops it once the installer
+  // has powered off. Like CAPABILITY_LOCAL_LIVE_IMAGE it needs a provider
+  // that consumes a template rather than building per device.
+  CAPABILITY_LOCAL_INSTALLER_RAW = 8;
+  // As CAPABILITY_LOCAL_INSTALLER_RAW, for an installer delivered as an ISO
+  // (installer.iso) attached as a CD-ROM. Each medium is a capability of its
+  // own because a broker advertises only the media it implements: an older
+  // broker ignores the fields describing a local installer image, and could
+  // otherwise build the device from an EVE container image instead -- a
+  // different EVE build than the one the test asked for.
+  CAPABILITY_LOCAL_INSTALLER_ISO = 9;
+  // As CAPABILITY_LOCAL_INSTALLER_RAW, for an installer delivered over the
+  // network from a locally built netboot bundle (installer.net).
+  CAPABILITY_LOCAL_INSTALLER_NET = 10;
+}
+
+// The medium an EVE installer is delivered on. Each value names the artifact
+// `make installer-<medium>` writes next to the build's installer/ directory.
+enum InstallerMedia {
+  INSTALLER_MEDIA_UNSPECIFIED = 0;
+  // installer.raw: a GPT disk image booted as the device's first disk.
+  INSTALLER_MEDIA_RAW = 1;
+  // installer.iso: an ISO 9660 image booted from a CD-ROM.
+  INSTALLER_MEDIA_ISO = 2;
+  // installer.net: a tar of the iPXE netboot artifacts, booted over the network.
+  INSTALLER_MEDIA_NET = 3;
 }
 
 // Reference to a specific EVE image used for provisioning or testing.
@@ -76,6 +105,17 @@ message ImageRef {
 // name, so only the hash distinguishes one from the next.
 message LiveImageRef {
   string sha256 = 1;  // hex sha256 of live.qcow2
+  string version = 2; // EVE version, from the dist directory name; may be empty
+}
+
+// Reference to a locally built EVE installer image, identified by content for
+// the same reason as LiveImageRef. sha256 is the hash of the bytes the broker
+// installs as the template, which is not always the artifact the build wrote:
+// a raw installer is converted to a compressed qcow2 first (see
+// LocalInstallerImageSource). The medium is not part of the reference; the
+// request carrying it names it once (BuildImageRequest.installer_media).
+message LocalInstallerImageRef {
+  string sha256 = 1;  // hex sha256 of the delivered installer image
   string version = 2; // EVE version, from the dist directory name; may be empty
 }
 

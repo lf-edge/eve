@@ -249,7 +249,9 @@ test; those that do not match the next test’s requirements are torn down and n
 | `ResetDeviceConfigAndReboot` | Clear settings and reboot |
 | `ReonboardEdgeDevice` | Force re-onboarding |
 | `CreateFromScratchWithLiveImage` | Recreate VM with live image |
-| `CreateFromScratchWithInstaller` | Recreate VM using installer image |
+| `CreateFromScratchWithInstaller` | Recreate VM using the raw installer image (`installer.raw`, booted as a disk) |
+| `CreateFromScratchWithInstallerISO` | Recreate VM using the installer ISO (`installer.iso`, booted as a CD-ROM). Not implemented yet: fails `Setup` until a broker advertises `CAPABILITY_LOCAL_INSTALLER_ISO` |
+| `CreateFromScratchWithNetworkBoot` | Recreate VM with a blank disk that installs EVE by booting over the network (iPXE) |
 
 **RequireNetworkModel** -- configure the SDN network environment:
 
@@ -587,13 +589,22 @@ make live                                               # build EVE locally
 EVETEST_EVE_LIVE_IMAGE=true make evetest NAME=<TestName>
 ```
 
+An installer-based test runs from the local build the same way, from the installer
+artifact the device's policy boots:
+
+```bash
+make installer-raw                                      # build the raw installer
+EVETEST_EVE_LIVE_IMAGE=true EVETEST_USE_INSTALLER=true \
+    make evetest NAME=TestBootstrapWithLastResort
+```
+
 **Two independent settings.** Which EVE build runs and how its bits get delivered are
 separate questions:
 
 | | setting | values |
 |---|---|---|
 | **which build** | `EVETEST_EVE_VERSION` | a version (`16.0.0-lts`), or unset |
-| **how it is delivered** | `EVETEST_EVE_LIVE_IMAGE` | `true` = the artifacts `make live` wrote; unset/`false` = an EVE container image |
+| **how it is delivered** | `EVETEST_EVE_LIVE_IMAGE` | `true` = the artifacts `make live` or `make installer-<medium>` wrote; unset/`false` = an EVE container image |
 
 A local build is not a transport: `make eve` produces a local *container* image, and the
 harness pushes it to the broker when the broker does not have it. So
@@ -614,9 +625,54 @@ With the live transport on, the version selects the build directory under
   `TestEVEUpgrade`'s pre-upgrade version) names a *released* build and always comes from
   a container image, whatever the transport setting.
 
-The harness content-hashes the image, then tells the broker both the hash and where the
-files are (`live.qcow2`, `installer/config.img`, `installer/firmware/*`), and the broker
-picks how to get them:
+**Which artifact a device boots** is a third question, answered by its
+`DeviceReusePolicy`. Each artifact sits in the build directory next to `installer/`,
+which provides the `config.img` and UEFI firmware they all need:
+
+| Policy | Artifact | Built by | Broker capability |
+|---|---|---|---|
+| `CreateFromScratchWithInstaller` | `installer.raw` | `make installer-raw` | `CAPABILITY_LOCAL_INSTALLER_RAW` |
+| `CreateFromScratchWithInstallerISO` | `installer.iso` | `make installer-iso` | `CAPABILITY_LOCAL_INSTALLER_ISO` |
+| `CreateFromScratchWithNetworkBoot` | `installer.net` | `make installer-net` | `CAPABILITY_LOCAL_INSTALLER_NET` |
+| any other | `live.qcow2` | `make live` | `CAPABILITY_LOCAL_LIVE_IMAGE` |
+
+Only the artifact a device needs is required, so a build made with `make installer-raw`
+alone serves installer devices, and one made with `make live` alone serves live ones.
+
+Before sending anything the harness checks two things, and fails the test if either is
+missing. The harness itself must deliver the device's medium -- today only the raw one,
+whatever the broker advertises ("this evetest harness does not deliver local ISO
+installer images yet"). And the broker must advertise the medium's capability from the
+table above ("broker does not support local raw installer images"). All three providers
+advertise `CAPABILITY_LOCAL_LIVE_IMAGE` and `CAPABILITY_LOCAL_INSTALLER_RAW` today; a
+broker too old to support a medium, or a future provider that still builds images per
+device (see [The EVE Image Template Cache](#the-eve-image-template-cache)), fails the
+test with a clear error. It never falls back to the container path: a broker that
+predates a medium ignores the request fields describing it, and could build the device
+from a container image instead, testing a different EVE build than the one requested.
+
+So today a test whose device uses the ISO or the network-boot policy fails `Setup` under
+`EVETEST_EVE_LIVE_IMAGE=true` (a network-boot device used to be quietly sent to the
+container path instead), and an ISO device fails without it as well, since the container
+path cannot build an ISO yet. The bootstrap tests that take `USE_INSTALLER` also take
+`INSTALLER_MEDIA` (`raw` or `iso`) to pick the medium; asking for `iso` without
+`USE_INSTALLER=true` skips the test rather than ignoring the setting.
+
+A raw installer is converted once into a compressed qcow2 beside it,
+`installer.evetest.qcow2`, and from then on travels exactly as `live.qcow2` does.
+`installer.raw` is about 2.5 GiB, most of it a largely empty 2 GiB EFI partition; the
+upload is a plain tar that would carry every byte, and everything the broker does with a
+template disk expects qcow2. The conversion is redone only when the size or mtime of
+`installer.raw` changes, as recorded in `installer.evetest.qcow2.source`; a conversion
+runs under a temporary name, and leftovers of a killed one are swept by the next. The
+harness warns when `installer.raw` is older than the build's `installer/rootfs.img`: the
+rootfs was rebuilt in place afterwards, and the installer may still carry the previous
+EVE.
+
+The harness content-hashes the image -- caching the hash beside it in `<image>.sha256`,
+reused until the image's size or mtime changes -- then tells the broker both the hash and
+where the files are (the image, `installer/config.img`, `installer/firmware/*`), and the
+broker picks how to get them:
 
 - **It can read those paths itself** -- all-in-one mode, or a broker you started by hand
   on your own machine. It installs the template straight from the dist directory, and
@@ -665,18 +721,8 @@ image server and takes the version EVE will report from `installer/eve_version`.
 container is pulled and the broker is not involved at all, since the rootfs goes straight
 from the harness to the device.
 
-Two constraints to be aware of:
-
-- **Installer-based tests cannot use this path.** A live qcow2 cannot produce an
-  installer flow, so a test that also requests an installer
-  (`CreateFromScratchWithInstaller`) fails immediately with a clear error instead of
-  silently falling back to the container path.
-- **The broker must advertise `CAPABILITY_LOCAL_LIVE_IMAGE`.** All three providers do
-  today; a broker too old to support the feature, or a future provider that still builds
-  images per device (see
-  [The EVE Image Template Cache](#the-eve-image-template-cache)), fails the test with a
-  clear error rather than quietly falling back and testing a different EVE build than
-  the one requested.
+An upgrade needs `live.qcow2` in the target build as well: it is how the build is
+located, even though only `installer/rootfs.img` is served.
 
 See [Essential Variables](#essential-variables) for the full reference on
 `EVETEST_EVE_LIVE_IMAGE`, `EVETEST_EVE_DIST_DIR`, and `EVETEST_EVE_FIRMWARE_DIR`.
@@ -905,9 +951,9 @@ non-default behavior.
 | `EVETEST_NAME` | Test or suite name to run (**required**) | -- |
 | `EVETEST_OUTPUT_FORMAT` | `go test` output format: `json` (machine-readable, for `gotestfmt`) or `quiet` (compact, no `-v`); default is verbose (`-v`). **Do not combine `quiet` with `EVETEST_PAUSE_ON_FAILURE` or `EVETEST_PAUSE_ON_CHECKPOINT`** — without `-v`, `go test` buffers all output until the test completes, so a pause appears frozen with no visible output. | -- |
 | `EVETEST_EVE_VERSION` | EVE version to test | current repo HEAD |
-| `EVETEST_EVE_LIVE_IMAGE` | **How** EVE's bits reach a device: `true` delivers the artifacts `make live` wrote under `EVETEST_EVE_DIST_DIR`, unset/`false` uses an EVE container image. A boolean only -- **which** build to run is `EVETEST_EVE_VERSION`'s business, so this takes no path, and a non-boolean value is an error. See [Testing a Local EVE Build](#testing-a-local-eve-build) | `false` |
+| `EVETEST_EVE_LIVE_IMAGE` | **How** EVE's bits reach a device: `true` delivers the local build under `EVETEST_EVE_DIST_DIR` -- `live.qcow2`, or the installer artifact (`installer.raw`, `installer.iso`, `installer.net`) the device's policy boots -- unset/`false` uses an EVE container image. A boolean only -- **which** build to run is `EVETEST_EVE_VERSION`'s business, so this takes no path, and a non-boolean value is an error. See [Testing a Local EVE Build](#testing-a-local-eve-build) | `false` |
 | `EVETEST_EVE_DIST_DIR` | EVE build output directory whose `<arch>/<version>/` subdirectories (and the `<arch>/current` symlink) hold the local builds. Must be an absolute path (the harness runs inside a container). Set automatically by `make evetest` when a local `dist/` directory exists | -- |
-| `EVETEST_EVE_FIRMWARE_DIR` | Overrides firmware discovery for a local live image, which otherwise looks for `OVMF*.fd` in `installer/firmware` next to the resolved qcow2 | -- |
+| `EVETEST_EVE_FIRMWARE_DIR` | Overrides firmware discovery for a local build, which otherwise looks for `OVMF*.fd` in `installer/firmware` next to the resolved image | -- |
 | `EVETEST_PREFERRED_ARCH` | Preferred CPU architecture (`amd64`, `arm64`) | `amd64` |
 | `EVETEST_LOG_LEVEL` | Framework log level (`debug`, `info`, `warn`) | `info` |
 | `EVETEST_COLOR_OUTPUT` | Colorize framework log output with ANSI escape codes (`true`/`false`) | auto: enabled only when stdout is a terminal, disabled when piped or redirected |
@@ -1174,6 +1220,13 @@ directly. `proxmox` uses a **standalone copy**: it uploads each device's disk to
 node, where a backing file would not exist. A live-image template is deliberately keyed
 without the disk size, so the per-device disk -- overlay or copy -- is grown to the
 requested size instead.
+
+A local installer image is cached the same way, keyed by its content hash with the
+installer flag set. The device boots its per-device copy first -- with the device's own
+config in the installer's CONFIG partition, which the installer copies to the target --
+next to a blank target disk of the requested size; once the installer powers off, the
+broker drops the installer and the device boots the target. The installer copy is never
+resized, since it is not the device's disk.
 
 With the `proxmox` provider that copy is what the broker uploads, so the per-device cost
 there is one full-size copy plus the upload to the node, against a ~4-minute container

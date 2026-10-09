@@ -352,6 +352,10 @@ func (p *QemuProvider) DiskImageStrategy() DiskImageStrategy {
 func (p *QemuProvider) SetupDevice(
 	ctx context.Context, name string, spec DeviceSpec) error {
 	log := logger.FromContext(ctx)
+	if err := checkDiskMedia(spec.Disks); err != nil {
+		log.Error(err)
+		return err
+	}
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
@@ -1054,6 +1058,9 @@ func (p *QemuProvider) TeardownAll(ctx context.Context) error {
 // preserved because the same qemuDevice entry is reused.
 func (p *QemuProvider) ReconfigureDeviceDisks(
 	ctx context.Context, name string, newDisks []DiskImage) error {
+	if err := checkDiskMedia(newDisks); err != nil {
+		return err
+	}
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 	log := logger.FromContext(ctx)
