@@ -206,25 +206,40 @@ func (usbCtx *usbmanagerContext) handleAssignableAdaptersModify(_ interface{}, _
 		newAssignableAdaptersMap[adapter.Phylabel] = adapter
 	}
 
+	var removed, added []types.IoBundle
 	for adapterName, adapter := range oldAssignableAdaptersMap {
-		_, ok := newAssignableAdaptersMap[adapterName]
-		if !ok {
-			log.Noticef("AA modify, add %s", ioBundleLogString(adapter))
-			usbCtx.controller.addIOBundle(adapter)
-		} else {
-			log.Noticef("AA modify, not adding '%s'", adapter.Phylabel)
-		}
-	}
-
-	for adapterName, adapter := range newAssignableAdaptersMap {
-		_, ok := oldAssignableAdaptersMap[adapterName]
+		newAdapter, ok := newAssignableAdaptersMap[adapterName]
 		if !ok {
 			log.Noticef("AA modify, remove %s", ioBundleLogString(adapter))
-			usbCtx.controller.removeIOBundle(adapter)
-		} else {
-			log.Noticef("AA modify, not removing '%s'", adapter.Phylabel)
+			removed = append(removed, adapter)
+		} else if ioBundleRuleChanged(adapter, newAdapter) {
+			log.Noticef("AA modify, replace %s with %s",
+				ioBundleLogString(adapter), ioBundleLogString(newAdapter))
+			removed = append(removed, adapter)
+			added = append(added, newAdapter)
 		}
 	}
+	for adapterName, adapter := range newAssignableAdaptersMap {
+		if _, ok := oldAssignableAdaptersMap[adapterName]; !ok {
+			log.Noticef("AA modify, add %s", ioBundleLogString(adapter))
+			added = append(added, adapter)
+		}
+	}
+	if len(removed) == 0 && len(added) == 0 {
+		return
+	}
+	usbCtx.controller.applyIOBundleChanges(removed, added)
+}
+
+// ioBundleRuleChanged reports whether the fields a passthrough rule is built
+// from differ between two versions of the same ioBundle. Runtime fields such
+// as UsedByUUID change with every assignment and do not matter here.
+func ioBundleRuleChanged(before, after types.IoBundle) bool {
+	return before.UsbAddr != after.UsbAddr ||
+		before.UsbProduct != after.UsbProduct ||
+		before.PciLong != after.PciLong ||
+		before.AssignmentGroup != after.AssignmentGroup ||
+		before.ParentAssignmentGroup != after.ParentAssignmentGroup
 }
 
 func (usbCtx *usbmanagerContext) handleAssignableAdaptersDelete(_ interface{}, _ string,

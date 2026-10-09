@@ -2474,13 +2474,13 @@ func releaseAdapters(ctx *domainContext, ioAdapterList []types.IoAdapter,
 			adapter.Type, adapter.Name)
 		aa := ctx.assignableAdapters
 		list := aa.LookupIoBundleAny(adapter.Name)
-		// We reserved it in handleCreate so nobody could have stolen it
 		if len(list) == 0 {
-			if ignoreErrors {
-				continue
-			}
-			log.Fatalf("releaseAdapters IoBundle disappeared %d %s for %s",
+			// The controller removed the IoBundle from the model while this
+			// domain still held it (handleIBDelete already returned a PCI
+			// device from pciback). Nothing is left to release.
+			log.Errorf("releaseAdapters IoBundle disappeared %d %s for %s",
 				adapter.Type, adapter.Name, myUUID)
+			continue
 		}
 		for _, ib := range list {
 			if ib == nil {

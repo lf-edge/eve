@@ -44,6 +44,12 @@ One example of of the USB controller is used, can be found in FuzzUSBManagerCont
 3. Iterate over all USB devices and update USB passthroughs accordingly, meaning
     that a different rule may apply now for some USB device and it may be connected to another vm
 
+### Flow when an IOBundle changes
+
+1. If the fields a passthrough rule is built from changed (usbaddr, usbproduct, pcilong, assigngrp,
+    parentassigngrp), remove the old IOBundle and add the new one as described above; a change of
+    runtime fields such as the assigned application does not touch the rules
+
 ### Flow when a new IOBundle is removed
 
 1. Remove the IOBundle
@@ -73,8 +79,25 @@ via USB address, the other rule is addressing the device via product and vendor 
 be unexpected if the device would be passed through to the vm with the rule for passing through by vendor
 and product id.
 
-Combined passthrough rules ([see](#list-of-passthrough-rules)) get their priorities added. If several
-passthrough rules within a combined passthrough rule match, the highest priority is returned.
+A priority has two dimensions, one for the USB address and one for the vendor/product id. Priorities are
+compared by the USB address dimension first; the vendor/product dimension only decides between rules
+with an equal USB address dimension. Combined passthrough rules ([see](#list-of-passthrough-rules)) get
+their priorities added per dimension. If several passthrough rules within a combined passthrough rule
+match, the highest priority is returned.
+
+The priorities are chosen so that the more specific claim wins:
+
+| Rule | USB address | Vendor/product |
+|------|-------------|----------------|
+| usbPortPassthroughRule with an exact port (`1:2.3`) | 10 | 0 |
+| usbPortPassthroughRule with a wildcard (`1:*`, `1:2.*`, `1:2.3.*`, ...) | 1 + number of fixed port components (1 to 6) | 0 |
+| usbDevicePassthroughRule | 0 | 1 |
+| pciPassthroughRule | 0 | 0 |
+
+Therefore an exact port claim beats a wildcard covering that port, a longer wildcard beats a shorter one
+and any location claim beats a vendor/product claim, even one combined with a less specific location:
+`1:2.3` wins over `1:*` plus a vendor/product id, while `1:2.*` plus a vendor/product id wins over a
+plain `1:2.*`.
 
 ### List of Passthrough Rules
 
@@ -84,8 +107,12 @@ passthrough rules within a combined passthrough rule match, the highest priority
     ioBundles
 - pciPassthroughRule - this rule is used to match PCI addresses; it is used so far only in composition rules
 - usbDevicePassthroughRule - this rule matches USB devices via product and vendor id
-- usbPortPassthroughRule - this rule matches by USB bus number and port number
-- usbHubForbidPassthroughRule - this rule prevents passing through of USB hubs as it is not supported
+- usbPortPassthroughRule - this rule matches by USB bus number and port number; a trailing wildcard
+    (`1:2.*`) matches every device below that port, e.g. all devices behind a hub plugged into the port,
+    and `1:*` matches every device on the bus; the device in the port itself does not match a wildcard;
+    a wildcard accepts at most five fixed components as USB port paths have at most six
+- usbHubForbidPassthroughRule - this rule prevents passing through of USB hubs as it is not supported;
+    the devices behind a hub can still be passed through individually, e.g. via a wildcard port rule
 - usbNetworkAdapterForbidPassthroughRule - forbids passing through of network adapters as this could
     take away the only working network adapter from EVE
 

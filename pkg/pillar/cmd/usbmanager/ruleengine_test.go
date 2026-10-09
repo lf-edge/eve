@@ -376,3 +376,91 @@ func FuzzRuleEngine(f *testing.F) {
 
 	})
 }
+
+// ruleFromIoBundle builds the passthrough rule of ioBundle and binds it to vm
+func ruleFromIoBundle(t *testing.T, ioBundle types.IoBundle, vm *virtualmachine) passthroughRule {
+	t.Helper()
+	pr := newIOBundleTree().ioBundle2passthroughRule(ioBundle)
+	if pr == nil {
+		t.Fatalf("no rule for %+v", ioBundle)
+	}
+	pr.setVirtualMachine(vm)
+	return pr
+}
+
+// ruleFromUsbAddr builds the passthrough rule of a plain usbaddr IoBundle and binds it to vm
+func ruleFromUsbAddr(t *testing.T, usbAddr string, vm *virtualmachine) passthroughRule {
+	t.Helper()
+	return ruleFromIoBundle(t, types.IoBundle{UsbAddr: usbAddr}, vm)
+}
+
+func TestExactPortOverWildcardPrecedence(t *testing.T) {
+	vmWildcard := &virtualmachine{qmpSocketPath: "/wildcard.socket"}
+	vmExact := &virtualmachine{qmpSocketPath: "/exact.socket"}
+
+	re := newRuleEngine()
+	re.addRule(ruleFromUsbAddr(t, "1:2.*", vmWildcard))
+	re.addRule(ruleFromUsbAddr(t, "1:2.3", vmExact))
+	if len(re.rules) != 2 {
+		t.Fatalf("expected 2 distinct rules, got %d: %s", len(re.rules), re.String())
+	}
+
+	if vm := re.apply(usbdevice{busnum: 1, portnum: "2.3"}); vm != vmExact {
+		t.Fatalf("device in port 2.3 should go to the exact rule's vm, got %v", vm)
+	}
+	if vm := re.apply(usbdevice{busnum: 1, portnum: "2.4"}); vm != vmWildcard {
+		t.Fatalf("device in port 2.4 should go to the wildcard rule's vm, got %v", vm)
+	}
+}
+
+func TestDeeperWildcardPrecedence(t *testing.T) {
+	vmShallow := &virtualmachine{qmpSocketPath: "/shallow.socket"}
+	vmDeep := &virtualmachine{qmpSocketPath: "/deep.socket"}
+
+	re := newRuleEngine()
+	re.addRule(ruleFromUsbAddr(t, "1:2.*", vmShallow))
+	re.addRule(ruleFromUsbAddr(t, "1:2.3.*", vmDeep))
+
+	if vm := re.apply(usbdevice{busnum: 1, portnum: "2.3.4"}); vm != vmDeep {
+		t.Fatalf("device below port 2.3 should go to the deeper wildcard's vm, got %v", vm)
+	}
+	if vm := re.apply(usbdevice{busnum: 1, portnum: "2.1"}); vm != vmShallow {
+		t.Fatalf("device in port 2.1 should go to the shallow wildcard's vm, got %v", vm)
+	}
+}
+
+func TestWildcardOverDevPrecedence(t *testing.T) {
+	vmWildcard := &virtualmachine{qmpSocketPath: "/wildcard.socket"}
+	vmProduct := &virtualmachine{qmpSocketPath: "/product.socket"}
+
+	re := newRuleEngine()
+	re.addRule(ruleFromUsbAddr(t, "1:*", vmWildcard))
+	productRule := newUSBDevicePassthroughRule(5, 6, "")
+	productRule.vm = vmProduct
+	re.addRule(&productRule)
+
+	ud := usbdevice{busnum: 1, portnum: "4", vendorID: 5, productID: 6}
+	if vm := re.apply(ud); vm != vmWildcard {
+		t.Fatalf("location should beat product, got %v", vm)
+	}
+}
+
+// a wildcard combined with a product is still only a wildcard claim on the
+// port, so an exact port claim beats it
+func TestExactPortOverWildcardWithProductPrecedence(t *testing.T) {
+	vmWildcard := &virtualmachine{qmpSocketPath: "/wildcard-product.socket"}
+	vmExact := &virtualmachine{qmpSocketPath: "/exact.socket"}
+
+	re := newRuleEngine()
+	re.addRule(ruleFromIoBundle(t, types.IoBundle{UsbAddr: "1:*", UsbProduct: "0951:1666"}, vmWildcard))
+	re.addRule(ruleFromUsbAddr(t, "1:2", vmExact))
+
+	ud := usbdevice{busnum: 1, portnum: "2", vendorID: 0x0951, productID: 0x1666}
+	if vm := re.apply(ud); vm != vmExact {
+		t.Fatalf("exact port claim should beat a wildcard combined with a product, got %v", vm)
+	}
+	ud.portnum = "3"
+	if vm := re.apply(ud); vm != vmWildcard {
+		t.Fatalf("outside the exact port the wildcard with product should match, got %v", vm)
+	}
+}

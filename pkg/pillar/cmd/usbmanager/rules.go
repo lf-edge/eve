@@ -8,6 +8,8 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -49,10 +51,30 @@ func (vm virtualmachine) String() string {
 }
 
 type passthroughRule interface {
-	evaluate(ud usbdevice) (passthroughAction, uint8)
+	evaluate(ud usbdevice) (passthroughAction, rulePriority)
 	virtualMachine() *virtualmachine
 	setVirtualMachine(vm *virtualmachine)
 	String() string
+}
+
+// rulePriority ranks the rules that match a device. The usbaddr dimension is
+// compared first, so a claim by port beats a claim by product however the
+// rules are combined; the product dimension only breaks ties between equal
+// port claims.
+type rulePriority struct {
+	addr    uint8
+	product uint8
+}
+
+func (p rulePriority) add(o rulePriority) rulePriority {
+	return rulePriority{addr: p.addr + o.addr, product: p.product + o.product}
+}
+
+func (p rulePriority) higherThan(o rulePriority) bool {
+	if p.addr != o.addr {
+		return p.addr > o.addr
+	}
+	return p.product > o.product
 }
 
 func (pr passthroughAction) String() string {
@@ -88,16 +110,16 @@ func (pr *pciPassthroughForbidRule) String() string {
 	return fmt.Sprintf("PCI Passthrough Forbid Rule %s", pr.pciAddress)
 }
 
-func (pr *pciPassthroughForbidRule) evaluate(ud usbdevice) (passthroughAction, uint8) {
+func (pr *pciPassthroughForbidRule) evaluate(ud usbdevice) (passthroughAction, rulePriority) {
 	if ud.usbControllerPCIAddress == pr.pciAddress && pr.virtualMachine() != nil {
-		return passthroughForbid, 0
+		return passthroughForbid, rulePriority{}
 	}
 
 	return passthroughNo, pr.priority()
 }
 
-func (pr *pciPassthroughForbidRule) priority() uint8 {
-	return 0
+func (pr *pciPassthroughForbidRule) priority() rulePriority {
+	return rulePriority{}
 }
 
 // this rule always returns passthroughForbid
@@ -106,15 +128,15 @@ type neverPassthroughRule struct {
 	passthroughRuleVMBase
 }
 
-func (pr *neverPassthroughRule) priority() uint8 {
-	return math.MaxUint8
+func (pr *neverPassthroughRule) priority() rulePriority {
+	return rulePriority{addr: math.MaxUint8, product: math.MaxUint8}
 }
 
 func (pr *neverPassthroughRule) String() string {
 	return "always no"
 }
 
-func (pr *neverPassthroughRule) evaluate(ud usbdevice) (passthroughAction, uint8) {
+func (pr *neverPassthroughRule) evaluate(ud usbdevice) (passthroughAction, rulePriority) {
 	return passthroughNo, pr.priority()
 }
 
@@ -127,16 +149,16 @@ func (pr *pciPassthroughRule) String() string {
 	return fmt.Sprintf("PCI Passthrough Rule %s", pr.pciAddress)
 }
 
-func (pr *pciPassthroughRule) evaluate(ud usbdevice) (passthroughAction, uint8) {
+func (pr *pciPassthroughRule) evaluate(ud usbdevice) (passthroughAction, rulePriority) {
 	if ud.usbControllerPCIAddress == pr.pciAddress {
 		return passthroughDo, pr.priority()
 	}
 
-	return passthroughNo, 0
+	return passthroughNo, rulePriority{}
 }
 
-func (pr *pciPassthroughRule) priority() uint8 {
-	return 0
+func (pr *pciPassthroughRule) priority() rulePriority {
+	return rulePriority{}
 }
 
 type usbDevicePassthroughRule struct {
@@ -149,14 +171,14 @@ func (udpr *usbDevicePassthroughRule) String() string {
 	return fmt.Sprintf("USB Device Passthrough Rule %x/%x", udpr.vendorID, udpr.productID)
 }
 
-func (udpr *usbDevicePassthroughRule) priority() uint8 {
-	return 10
+func (udpr *usbDevicePassthroughRule) priority() rulePriority {
+	return rulePriority{product: usbProductRulePriority}
 }
 
-func (udpr *usbDevicePassthroughRule) evaluate(ud usbdevice) (passthroughAction, uint8) {
+func (udpr *usbDevicePassthroughRule) evaluate(ud usbdevice) (passthroughAction, rulePriority) {
 	if udpr.vendorID != ud.vendorID ||
 		udpr.productID != ud.productID {
-		return passthroughNo, 0
+		return passthroughNo, rulePriority{}
 	}
 
 	return passthroughDo, udpr.priority()
@@ -167,25 +189,38 @@ type compositionANDPassthroughRule struct {
 	passthroughRuleVMBase
 }
 
-func (cpr *compositionANDPassthroughRule) evaluate(ud usbdevice) (passthroughAction, uint8) {
+func (cpr *compositionANDPassthroughRule) evaluate(ud usbdevice) (passthroughAction, rulePriority) {
 	if len(cpr.rules) == 0 {
-		return passthroughNo, 0
+		return passthroughNo, rulePriority{}
 	}
 
 	var ret passthroughAction
 	ret = passthroughDo
 
-	var composedPriority uint8
+	var composedPriority rulePriority
 
+	countUsbDevicePassthroughRule := 0
+	countUsbPortPassthroughRule := 0
 	for _, rule := range cpr.rules {
+		switch rule.(type) {
+		case *usbDevicePassthroughRule:
+			countUsbDevicePassthroughRule++
+		case *usbPortPassthroughRule:
+			countUsbPortPassthroughRule++
+		}
+
 		action, priority := rule.evaluate(ud)
 		if action == passthroughForbid {
-			return action, 0
+			return action, rulePriority{}
 		}
 		if action == passthroughNo {
-			return passthroughNo, 0
+			return passthroughNo, rulePriority{}
 		}
-		composedPriority += priority
+		composedPriority = composedPriority.add(priority)
+	}
+
+	if countUsbDevicePassthroughRule > 1 || countUsbPortPassthroughRule > 1 {
+		log.Warnf("More than one USB passthrough rule in compositionAND rule: %+v", cpr.rules)
 	}
 
 	return ret, composedPriority
@@ -220,25 +255,25 @@ func (cpr *compositionORPassthroughRule) String() string {
 	return ret
 }
 
-func (cpr *compositionORPassthroughRule) evaluate(ud usbdevice) (passthroughAction, uint8) {
+func (cpr *compositionORPassthroughRule) evaluate(ud usbdevice) (passthroughAction, rulePriority) {
 	if len(cpr.rules) == 0 {
 		log.Warnf("assertion failed, there has to be at least one rule")
-		return passthroughForbid, 0
+		return passthroughForbid, rulePriority{}
 	}
 
 	var ret passthroughAction
 	ret = passthroughNo
 
-	var highestPriority uint8
+	var highestPriority rulePriority
 
 	for _, rule := range cpr.rules {
 		action, priority := rule.evaluate(ud)
 		switch action {
 		case passthroughForbid:
-			return passthroughForbid, 0
+			return passthroughForbid, rulePriority{}
 		case passthroughDo:
 			ret = passthroughDo
-			if priority > highestPriority {
+			if priority.higherThan(highestPriority) {
 				highestPriority = priority
 			}
 		}
@@ -246,23 +281,104 @@ func (cpr *compositionORPassthroughRule) evaluate(ud usbdevice) (passthroughActi
 	return ret, highestPriority
 }
 
+// usbPortWildcardRe accepts the port part of a wildcard usbaddr: "*" for every
+// device on the bus or "<port path>.*" for every device below that port
+var usbPortWildcardRe = regexp.MustCompile(`^(?:(\d+(?:\.\d+)*)\.)?\*$`)
+
+const (
+	// exact port, above every wildcard
+	usbPortRulePriority = 10
+	// plus the number of fixed components of the wildcard
+	usbPortWildcardBasePriority = 1
+	usbProductRulePriority      = 1
+	// USB allows seven tiers with the root hub being the first, so a port
+	// path has at most six components and a wildcard prefix at most five
+	usbMaxPortDepth = 6
+)
+
 type usbPortPassthroughRule struct {
-	busnum  uint16
-	portnum string
+	busnum uint16
+	// port path like "2.3"; with wildcard set only devices below it match
+	// and "" stands for the whole bus
+	portnum  string
+	wildcard bool
 	passthroughRuleVMBase
 }
 
+// usbAddr2passthroughRule converts an IoBundle usbaddr ("busnum:portnum", optionally with
+// a trailing wildcard like "1:2.*" or "1:*") into a port passthrough rule
+func usbAddr2passthroughRule(usbAddr string) (*usbPortPassthroughRule, error) {
+	usbParts := strings.SplitN(usbAddr, ":", 2)
+	if len(usbParts) != 2 {
+		return nil, errors.New("expected busnum:portnum")
+	}
+	busnum, err := strconv.ParseUint(usbParts[0], 10, 16)
+	if err != nil {
+		return nil, fmt.Errorf("busnum %q not parseable", usbParts[0])
+	}
+	rule := &usbPortPassthroughRule{busnum: uint16(busnum), portnum: usbParts[1]}
+	if !strings.Contains(usbParts[1], "*") {
+		return rule, nil
+	}
+	matches := usbPortWildcardRe.FindStringSubmatch(usbParts[1])
+	if matches == nil {
+		return nil, errors.New("wildcard has to be the last port component, e.g. 1:2.* or 1:*")
+	}
+	rule.wildcard = true
+	rule.portnum = matches[1]
+	if components := portComponents(rule.portnum); components >= usbMaxPortDepth {
+		return nil, fmt.Errorf("wildcard prefix with %d components cannot match, USB port paths have at most %d components",
+			components, usbMaxPortDepth)
+	}
+	return rule, nil
+}
+
+func (uppr *usbPortPassthroughRule) portnumString() string {
+	switch {
+	case !uppr.wildcard:
+		return uppr.portnum
+	case uppr.portnum == "":
+		return "*"
+	default:
+		return uppr.portnum + ".*"
+	}
+}
+
 func (uppr *usbPortPassthroughRule) String() string {
-	return fmt.Sprintf("USB Port Passthrough Rule %x/%s", uppr.busnum, uppr.portnum)
+	return fmt.Sprintf("USB Port Passthrough Rule %x/%s", uppr.busnum, uppr.portnumString())
 }
 
-func (uppr *usbPortPassthroughRule) priority() uint8 {
-	return 20
+// a wildcard ranks below an exact port match and a longer prefix above a
+// shorter one; usbAddr2passthroughRule bounds the prefix depth so a wildcard
+// stays below usbPortRulePriority. Product matching lives in the other
+// dimension of rulePriority, so any port claim outranks a product claim
+func (uppr *usbPortPassthroughRule) priority() rulePriority {
+	if !uppr.wildcard {
+		return rulePriority{addr: usbPortRulePriority}
+	}
+	return rulePriority{addr: uint8(usbPortWildcardBasePriority + portComponents(uppr.portnum))}
 }
 
-func (uppr *usbPortPassthroughRule) evaluate(ud usbdevice) (passthroughAction, uint8) {
-	if uppr.portnum != ud.portnum ||
-		uppr.busnum != ud.busnum {
+func portComponents(portnum string) int {
+	if portnum == "" {
+		return 0
+	}
+	return strings.Count(portnum, ".") + 1
+}
+
+func (uppr *usbPortPassthroughRule) matchesPort(portnum string) bool {
+	switch {
+	case !uppr.wildcard:
+		return uppr.portnum == portnum
+	case uppr.portnum == "":
+		return portnum != ""
+	default:
+		return strings.HasPrefix(portnum, uppr.portnum+".")
+	}
+}
+
+func (uppr *usbPortPassthroughRule) evaluate(ud usbdevice) (passthroughAction, rulePriority) {
+	if uppr.busnum != ud.busnum || !uppr.matchesPort(ud.portnum) {
 		return passthroughNo, uppr.priority()
 	}
 
@@ -277,11 +393,11 @@ func (uhfpr *usbHubForbidPassthroughRule) String() string {
 	return "usbHubForbidPassthroughRule"
 }
 
-func (uhfpr *usbHubForbidPassthroughRule) priority() uint8 {
-	return 0
+func (uhfpr *usbHubForbidPassthroughRule) priority() rulePriority {
+	return rulePriority{}
 }
 
-func (uhfpr *usbHubForbidPassthroughRule) evaluate(ud usbdevice) (passthroughAction, uint8) {
+func (uhfpr *usbHubForbidPassthroughRule) evaluate(ud usbdevice) (passthroughAction, rulePriority) {
 	if strings.HasPrefix(ud.devicetype, "9/") {
 		log.Tracef("usb hub forwarding is forbidden - %+v", ud)
 		return passthroughForbid, uhfpr.priority()
@@ -306,11 +422,11 @@ func (unafpr *usbNetworkAdapterForbidPassthroughRule) String() string {
 	return "usbNetworkAdapterForbidPassthroughRule"
 }
 
-func (unafpr *usbNetworkAdapterForbidPassthroughRule) priority() uint8 {
-	return 0
+func (unafpr *usbNetworkAdapterForbidPassthroughRule) priority() rulePriority {
+	return rulePriority{}
 }
 
-func (unafpr *usbNetworkAdapterForbidPassthroughRule) evaluate(ud usbdevice) (passthroughAction, uint8) {
+func (unafpr *usbNetworkAdapterForbidPassthroughRule) evaluate(ud usbdevice) (passthroughAction, rulePriority) {
 	netDevPaths := unafpr.netDevPaths()
 
 	ueventDirname := filepath.Dir(ud.ueventFilePath) + "/"

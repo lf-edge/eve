@@ -658,3 +658,69 @@ func TestTreeWalksGuardCycles(t *testing.T) {
 		iobt.groupParents("loop")
 	})
 }
+
+func TestIOBundleUSBAddrWildcard(t *testing.T) {
+	t.Parallel()
+
+	table := []struct {
+		usbAddr        string
+		busnum         uint16
+		portnum        string
+		expectedAction passthroughAction
+		// only checked for passthroughDo
+		expectedPriority rulePriority
+	}{
+		// devices below the hub in port 2 match
+		{"1:2.*", 1, "2.1", passthroughDo, rulePriority{addr: 2}},
+		{"1:2.*", 1, "2.3.4", passthroughDo, rulePriority{addr: 2}},
+		// strict: the device in port 2 itself does not match
+		{"1:2.*", 1, "2", passthroughNo, rulePriority{}},
+		// component boundary: port 20 is not below port 2
+		{"1:2.*", 1, "20.1", passthroughNo, rulePriority{}},
+		{"1:2.*", 1, "3.1", passthroughNo, rulePriority{}},
+		{"1:2.*", 2, "2.1", passthroughNo, rulePriority{}},
+		{"1:2.1.*", 1, "2.10.3", passthroughNo, rulePriority{}},
+		{"1:2.1.*", 1, "2.1.3", passthroughDo, rulePriority{addr: 3}},
+		// whole bus
+		{"1:*", 1, "5", passthroughDo, rulePriority{addr: 1}},
+		{"1:*", 1, "2.3", passthroughDo, rulePriority{addr: 1}},
+		{"1:*", 1, "", passthroughNo, rulePriority{}},
+		{"1:*", 2, "5", passthroughNo, rulePriority{}},
+		// deepest wildcard the USB topology allows: five fixed components
+		{"1:1.2.3.4.5.*", 1, "1.2.3.4.5.6", passthroughDo, rulePriority{addr: 6}},
+		// exact addresses keep their semantics
+		{"1:2", 1, "2", passthroughDo, rulePriority{addr: 10}},
+		{"1:2", 1, "2.1", passthroughNo, rulePriority{}},
+	}
+
+	for _, test := range table {
+		iobt := newIOBundleTree()
+		pr := iobt.ioBundle2passthroughRule(types.IoBundle{UsbAddr: test.usbAddr})
+		if pr == nil {
+			t.Fatalf("usbaddr %s: expected a rule, got nil", test.usbAddr)
+		}
+		ud := usbdevice{busnum: test.busnum, portnum: test.portnum}
+		action, priority := pr.evaluate(ud)
+		if action != test.expectedAction {
+			t.Fatalf("usbaddr %s vs bus %d port %q: expected %v, got %v",
+				test.usbAddr, test.busnum, test.portnum, test.expectedAction, action)
+		}
+		if action == passthroughDo && priority != test.expectedPriority {
+			t.Fatalf("usbaddr %s vs bus %d port %q: expected priority %v, got %v",
+				test.usbAddr, test.busnum, test.portnum, test.expectedPriority, priority)
+		}
+	}
+}
+
+func TestIOBundleUSBAddrWildcardInvalid(t *testing.T) {
+	t.Parallel()
+
+	// a wildcard with six fixed components can only match a seventh level, which USB does not have
+	for _, usbAddr := range []string{"1:2*", "1:*.2", "1:2.*.3", "1:**", "1:.*", "1:2.**", "1:*2", "1:2.*1", "1:1.2.3.4.5.6.*"} {
+		iobt := newIOBundleTree()
+		pr := iobt.ioBundle2passthroughRule(types.IoBundle{UsbAddr: usbAddr})
+		if pr != nil {
+			t.Fatalf("usbaddr %s: expected no rule, got %s", usbAddr, pr.String())
+		}
+	}
+}

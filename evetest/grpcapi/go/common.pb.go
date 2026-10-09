@@ -167,6 +167,11 @@ const (
 	// that keeps the disk as a file it can still reach after setup, so a
 	// provider that hands the image to a remote node does not have it.
 	Capability_CAPABILITY_EDIT_DEVICE_DISK Capability = 7
+	// QMP access to the hypervisor running the device (ExecuteQMP) and blank
+	// scratch disk images on the hypervisor host (CreateScratchImage), which
+	// together let a test hot-plug devices such as a USB flash drive. Requires a
+	// provider with a QMP monitor the broker can reach.
+	Capability_CAPABILITY_QMP Capability = 8
 )
 
 // Enum value maps for Capability.
@@ -180,6 +185,7 @@ var (
 		5: "CAPABILITY_LOCAL_LIVE_IMAGE",
 		6: "CAPABILITY_NETBOOT",
 		7: "CAPABILITY_EDIT_DEVICE_DISK",
+		8: "CAPABILITY_QMP",
 	}
 	Capability_value = map[string]int32{
 		"CAPABILITY_UNSPECIFIED":      0,
@@ -190,6 +196,7 @@ var (
 		"CAPABILITY_LOCAL_LIVE_IMAGE": 5,
 		"CAPABILITY_NETBOOT":          6,
 		"CAPABILITY_EDIT_DEVICE_DISK": 7,
+		"CAPABILITY_QMP":              8,
 	}
 )
 
@@ -1078,7 +1085,7 @@ const file_common_proto_rawDesc = "" +
 	"\x06HV_KVM\x10\x01\x12\n" +
 	"\n" +
 	"\x06HV_XEN\x10\x02\x12\x0f\n" +
-	"\vHV_KUBEVIRT\x10\x03*\xee\x01\n" +
+	"\vHV_KUBEVIRT\x10\x03*\x82\x02\n" +
 	"\n" +
 	"Capability\x12\x1a\n" +
 	"\x16CAPABILITY_UNSPECIFIED\x10\x00\x12\x1b\n" +
@@ -1088,7 +1095,8 @@ const file_common_proto_rawDesc = "" +
 	"\x0eCAPABILITY_TPM\x10\x04\x12\x1f\n" +
 	"\x1bCAPABILITY_LOCAL_LIVE_IMAGE\x10\x05\x12\x16\n" +
 	"\x12CAPABILITY_NETBOOT\x10\x06\x12\x1f\n" +
-	"\x1bCAPABILITY_EDIT_DEVICE_DISK\x10\a*g\n" +
+	"\x1bCAPABILITY_EDIT_DEVICE_DISK\x10\a\x12\x12\n" +
+	"\x0eCAPABILITY_QMP\x10\b*g\n" +
 	"\vLogSeverity\x12\x0f\n" +
 	"\vLOG_UNKNOWN\x10\x00\x12\r\n" +
 	"\tLOG_DEBUG\x10\x01\x12\f\n" +
