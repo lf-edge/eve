@@ -964,6 +964,118 @@ func (d *EdgeDevice) UnexpectedRebootCount() int {
 	return max(devState.rebootCount-devState.expectedRebootCount, 0)
 }
 
+// CrashWatch tells whether the device crashed since the watch started: an
+// agent died with a fatal, the watchdog gave up on a process, or the device
+// rebooted without being asked to. A test waiting for something a crash
+// would prevent polls Reason to fail at once, naming the cause, instead of
+// waiting out its timeout.
+type CrashWatch struct {
+	device       *EdgeDevice
+	fatals       <-chan LogMsg
+	stop         func()
+	consoleSeen  int       // bytes of console output already examined
+	consoleCheck time.Time // when the console was last fetched
+	reason       string
+}
+
+// crashConsoleMarks are what EVE prints on the serial console when an agent
+// dies with a fatal (the reboot reason it records), when the watchdog stops
+// hearing from a process, and when the kernel panics.
+var crashConsoleMarks = []string{"fatal: agent ", "Watchdog report for", "Kernel panic"}
+
+// consoleCheckInterval is how often Reason fetches the console at most.
+const consoleCheckInterval = 10 * time.Second
+
+// WatchForCrash starts a CrashWatch on the device. Call Stop when done.
+func (d *EdgeDevice) WatchForCrash() *CrashWatch {
+	fatals, stop := d.WatchLogs(LogMsgMatch{Severity: "fatal", NotBefore: time.Now()})
+	return &CrashWatch{
+		device:      d,
+		fatals:      fatals,
+		stop:        stop,
+		consoleSeen: len(d.consoleOutput()),
+	}
+}
+
+// Reason returns why the device is known to have crashed, or "" while it is
+// not known to have. The serial console tells within seconds, whatever
+// becomes of the device afterwards; the other signs register only once the
+// device is back up and talking to the controller, since a fatal log line
+// travels with the next log upload and an unexpected reboot is recognized
+// from the boot time in the device's info messages.
+func (w *CrashWatch) Reason() string {
+	if w.reason != "" {
+		return w.reason
+	}
+	select {
+	case msg, ok := <-w.fatals:
+		if ok {
+			w.reason = fmt.Sprintf("agent %s died: %s", msg.Source, msg.Message)
+			return w.reason
+		}
+	default:
+	}
+	if line := w.consoleCrash(); line != "" {
+		w.reason = "the console shows: " + line
+		return w.reason
+	}
+	if w.device.UnexpectedRebootCount() > 0 {
+		w.reason = fmt.Sprintf("the device rebooted on its own: %s",
+			w.device.GetDeviceInfo().GetLastRebootReason())
+	}
+	return w.reason
+}
+
+// consoleCrash returns the first line the device wrote to its console since
+// the last look that marks a crash, or "".
+func (w *CrashWatch) consoleCrash() string {
+	if time.Since(w.consoleCheck) < consoleCheckInterval {
+		return ""
+	}
+	w.consoleCheck = time.Now()
+	out := w.device.consoleOutput()
+	if len(out) < w.consoleSeen {
+		// The broker started the console over, e.g. with a new VM.
+		w.consoleSeen = 0
+	}
+	fresh := out[w.consoleSeen:]
+	w.consoleSeen = len(out)
+	for _, line := range strings.Split(fresh, "\n") {
+		for _, mark := range crashConsoleMarks {
+			if strings.Contains(line, mark) {
+				line = strings.TrimSpace(line)
+				if len(line) > 400 {
+					line = line[:400] + "..."
+				}
+				return line
+			}
+		}
+	}
+	return ""
+}
+
+// Stop ends the watch.
+func (w *CrashWatch) Stop() {
+	w.stop()
+}
+
+// consoleOutput returns everything the device has written to its serial
+// console since the broker created it, or "" when the broker cannot say.
+func (d *EdgeDevice) consoleOutput() string {
+	ctx, cancel := context.WithTimeout(d.th.ctx, brokerGetConsoleOutputTimeout)
+	defer cancel()
+	resp, err := d.th.brokerClient.GetDeviceConsoleOutput(ctx, &api.DeviceControlRequest{
+		ClientId:   d.th.brokerClientID,
+		DeviceName: d.devName,
+	})
+	if err != nil {
+		d.th.log.Warnf("Failed to retrieve the console output of device %q: %v",
+			d.devName, err)
+		return ""
+	}
+	return resp.ConsoleOutput
+}
+
 // RequestReboot requests a device reboot via configuration.
 //
 // If waitUntilFetched is true, the function blocks until the device has
