@@ -20,6 +20,7 @@ jobs:
         with:
           path: src
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Generate patch locally
         working-directory: src

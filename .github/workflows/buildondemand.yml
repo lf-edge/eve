@@ -51,6 +51,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: ensure zstd for cache  # this should be removed once the arm64 VM includes zstd
         if: ${{ matrix.os == 'buildjet-4vcpu-ubuntu-2204-arm' || matrix.os == 'arm64-secure' }}
         run: |
@@ -119,6 +120,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: update linuxkit cache for our arch
         id: cache_for_packages
         if: ${{ matrix.arch != 'amd64' }}  # because our runner arch is amd64; if that changes, this will have to change
@@ -149,6 +151,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: ./.github/actions/run-make
         with:
           command: "V=1 LINUXKIT_PKG_TARGET=manifest pkgs"
