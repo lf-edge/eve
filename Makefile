@@ -625,6 +625,13 @@ check-pubsub-persistence:
 	@echo "Checking pubsub publications and subscriptions for persistence mismatches"
 	cd pkg/pillar && go run ./tools/pubsubcheck ../../pkg
 
+# The firmware lists in pkg/fw are generated from the pinned kernels and the firmware pkg/fw
+# installs (docs/FIRMWARE.md). Fail if updating either left them stale.
+.PHONY: check-fw-lists
+check-fw-lists:
+	@echo "Checking that the firmware lists in pkg/fw match the kernels and firmware"
+	tools/update-fw-lists.py --check
+
 # Semgrep catches patterns the Go toolchain accepts but that do not mean what
 # they read as, e.g. a file mode written as a decimal literal (tests/semgrep-rules).
 # Only ERROR rules gate: the WARNING rules are deliberately broad heuristics with
@@ -1480,6 +1487,7 @@ help:
 	@echo "                                    Y, the output will be echoed to the console"
 	@echo "   check-docker-hashes-consistency  check for Dockerfile image inconsistencies"
 	@echo "   check-pubsub-persistence  check pubsub publications/subscriptions for persistence mismatches"
+	@echo "   check-fw-lists                   check the pkg/fw firmware lists are up to date with the kernels"
 	@echo "   semgrep                          run the blocking (ERROR) semgrep rules over the tree;"
 	@echo "                                    set SEMGREP_BASELINE=<commit> to report only findings"
 	@echo "                                    introduced since that commit"
