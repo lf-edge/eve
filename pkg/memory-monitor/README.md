@@ -17,7 +17,7 @@ $ tree /sys/fs/cgroup/memory/eve -d
     ├── <some services>
     ├── pillar <-------------- is set from eve_mem kernel argument, usually 650Mb
     ├── <some other services>
-    └── xen-tools
+    └── qemu
 ```
 
 These limits are set within `pkg/dom0-ztools/rootfs/etc/init.d/010-eve-cgroup`

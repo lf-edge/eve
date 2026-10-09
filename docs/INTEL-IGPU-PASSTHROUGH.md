@@ -84,16 +84,14 @@ For this to work in a VM under i440fx:
 UEFI/OVMF in EVE has no CSM (Compatibility Support Module). The VBIOS never executes.
 Nobody sets BDSM. Nobody allocates OpRegion memory. The OS driver fails to initialize.
 
-The q35 machine type permanently occupies `1f.0` with the ICH9 LPC controller. QEMU
-explicitly refuses to enable the legacy VBIOS path when it finds a real device there
-(`hw/vfio/igd.c`: "cannot support legacy mode due to existing devices at 1f.0", also
-called "Sorry Q35" in comments). `x-igd-lpc` — the QEMU option that copies LPC bridge
-device IDs for the VBIOS path — does nothing useful on q35/UEFI.
+The q35 machine type permanently occupies `1f.0` with the ICH9 LPC controller, so the
+legacy VBIOS path, which needs QEMU's own LPC bridge there, is not available on q35.
+`x-igd-lpc` — the QEMU option that copies LPC bridge device IDs for the VBIOS path —
+fails on q35 ("Cannot create LPC bridge due to existing device at 1f.0").
 
-The additional problem was in QEMU's `vfio_probe_igd_bar4_quirk()`: the code that writes
-`etc/igd-bdsm-size` to fw_cfg and emulates BDSM/GMCH was placed *after* the BDF and LPC
-bridge checks. On q35, the "Sorry Q35" path exits early before reaching that code, so the
-fw_cfg entry is never written and BDSM is never emulated.
+Before QEMU 10.0 there was a second problem: the code that writes `etc/igd-bdsm-size`
+to fw_cfg and emulates BDSM sat behind the legacy-mode checks, so on q35 the fw_cfg
+entry was never written and BDSM was never emulated.
 
 ---
 
@@ -127,52 +125,48 @@ VfioIgdPkg builds `igd.rom`, an EFI Option ROM containing:
    - Reads `etc/igd-opregion` from fw_cfg, allocates ACPI NVS memory below 4 GB, copies
      the OpRegion content, and writes the guest physical address to ASLS (0xFC).
    - Registers a PciIo notification callback; when the iGPU PciIo protocol appears, it
-     reads the GMS field from the (emulated) GMCH register, allocates 1 MB-aligned
+     reads the GMS field from the GMCH register, allocates 1 MB-aligned
      reserved memory for stolen memory, and writes the guest physical address to BDSM
      (0x5C for Gen6–Gen10, 0xC0 for Gen11+).
 6. The OS driver (i915 / Intel display driver) initializes successfully.
 
 ### Changes to QEMU's vfio-igd quirk
 
-The QEMU patches in `pkg/xen-tools` (patches 08–11 and 15) rework `hw/vfio/igd.c`:
+Upstream QEMU's `hw/vfio/igd.c` does what q35 and UEFI guests need, on any machine
+type:
 
-**Patch 08 — igd_gen() backport**: upstream's `igd_gen()` returns correct generation
-numbers for Gen7 through Gen12 (Haswell through Raptor Lake).  The old function returned
-8 for all unrecognised device IDs, making generation-specific checks (BDSM register
-offset, GMS encoding) ineffective on Gen9+ hardware.
+- `igd_gen()` maps Gen6 through Gen12 device IDs (Sandy Bridge through Raptor Lake) to
+  their generation, and every known generation is accepted.
+- `vfio_pci_igd_config_quirk()` emulates BDSM and writes the `etc/igd-bdsm-size` fw_cfg
+  file whether or not legacy mode is on, so a q35/OVMF guest gets them. BDSM is emulated
+  at 0x5C (32-bit, Gen6–Gen10) or 0xC0 (64-bit, Gen11+) and starts at zero, so
+  `IgdAssignmentDxe`'s idempotency guard (skip if BDSM ≠ 0) is not triggered by the host
+  address. GMCH comes from the host (it is emulated only when `x-igd-gms` overrides the
+  size), so GMS is the host's, and `igd_stolen_memory_size()` decodes the Gen9+ 0xf0–0xff
+  codes (4 MB granularity) as i915 does.
+- The BAR0 mirror of BDSM at offset `0x1080C0` returns the emulated guest address, the
+  same value PCI config space shows. Without it Tiger Lake and other Gen11+ drivers see
+  two different addresses and fail. Upstream commits
+  [`11b5ce95`](https://github.com/qemu/qemu/commit/11b5ce95beecfd51d1b17858d23fe9cbb0b5783f)
+  "vfio/igd: add new bar0 quirk to emulate BDSM mirror" (Corvin Köhne) and
+  [`f926baa0`](https://github.com/qemu/qemu/commit/f926baa03b7babb8291ea4c1cbeadaf224977dae)
+  "vfio/igd: emulate BDSM in mmio bar0 for gen 6-10 devices" (Tomita Moeko).
 
-**Patch 09 — main rework of `vfio_probe_igd_bar4_quirk()`**:
+Upstream QEMU no longer touches the GTT, and passthrough to Windows and Linux guests
+works without clearing it.
 
-- **GMCH emulation, `etc/igd-bdsm-size` fw_cfg write, and BDSM emulation are moved
-  before the BDF/LPC bridge checks.** On q35 the "Sorry Q35" path exits early; without
-  this move, those registers are never set and `IgdAssignmentDxe` cannot do its job.
-- **BDSM is emulated at the correct PCI config offset**: 0x5C (32-bit) for Gen6–Gen10,
-  0xC0 (64-bit) for Gen11+.  Initialized to zero so `IgdAssignmentDxe`'s idempotency
-  guard (skip if BDSM ≠ 0) is not falsely triggered by the host physical address.
-- **GMS is preserved** in the emulated GMCH register.  The guest driver reads GMS to
-  determine stolen memory size; zeroing it caused the Windows driver to crash (no
-  stolen memory available).  Upstream QEMU does not zero GMS.
-- **Stale GTT entries are cleared** before the BDF check.  After host POST the GTT
-  contains entries pointing to host physical addresses, causing IOMMU faults.
-- **GMS encoding for Gen9+ Atom SKUs** (codes 0xf0–0xff, 4 MB granularity) is fixed to
-  match the Linux kernel's `i915_gem_stolen.c`.
-- The generation check is fixed to accept any recognized generation (`gen >= 0`) instead
-  of the old hard-coded `gen == 6 || gen == 8` which silently blocked Gen9–Gen12 devices.
+EVE adds two vfio-igd behaviour patches in `pkg/qemu/patches` (see its `README.md` for
+the numbering); 9005, which saves the OpRegion for inspection, is described below:
 
-**Patch 10 — BAR0 BDSM MMIO mirror** (backported from upstream): the GPU reads BDSM
-through BAR0 MMIO at offset `0x1080C0` as well as PCI config space.  Without this
-quirk, the MMIO read returns the host physical address while PCI config returns the
-emulated guest PA.  The driver sees conflicting values and crashes.  This was the
-critical missing piece for Tiger Lake and other Gen11+ devices.
+**1002 — host stolen base** (Gen11+): QEMU publishes the host BDSM as the fw_cfg file
+`etc/igd-stolen-base`, and EVE's `igd.rom` (`IgdAssignmentDxe`, see
+`pkg/uefi/vfioigd-patches`) reserves guest stolen memory at that same address. The
+hardware keeps some pointers relative to the host stolen base (the GuC WOPCM, the RC6
+context, `STOLEN_RESERVED`), and the guest driver cannot move them. With guest and host
+stolen memory at the same address they land inside guest stolen memory instead of in
+ordinary guest RAM.
 
-Based on upstream QEMU commits:
-
-- [`11b5ce95`](https://github.com/qemu/qemu/commit/11b5ce95beecfd51d1b17858d23fe9cbb0b5783f)
-  "vfio/igd: add new bar0 quirk to emulate BDSM mirror" by Corvin Köhne
-- [`f926baa0`](https://github.com/qemu/qemu/commit/f926baa03b7babb8291ea4c1cbeadaf224977dae)
-  "vfio/igd: emulate BDSM in mmio bar0 for gen 6-10 devices" by Tomita Moeko
-
-**Patch 15 — DBUF_CTL POWER_STATE sanitize** (Gen9+): on some hosts the firmware
+**1001 — DBUF_CTL POWER_STATE sanitize** (Gen9+): on some hosts the firmware
 POST modeset leaves the display data buffer (DBUF) powered, so the passed-through
 `DBUF_CTL` slice registers (S1..S4) read back `POWER_STATE` (bit30) = 1 while
 `POWER_REQUEST` (bit31) = 0 — a legitimate-but-inconsistent leftover (the device
@@ -182,7 +176,9 @@ Intel driver samples `POWER_STATE` to decide which DBUF slices are already
 enabled, sees the stale "powered" bit, and never issues `POWER_REQUEST`; DBUF
 then powers down, the plane FIFO underruns, and scanout is corrupted (vertical
 stripes) until a full modeset (e.g. a display sleep/wake) re-requests power. The
-quirk traps the `DBUF_CTL` slice registers (as many as the generation exposes) in BAR0 and clears `POWER_STATE` on read whenever
+quirk traps the `DBUF_CTL` slice registers in BAR0 (S1..S4 by generation; `igd_gen()`
+cannot tell 2-slice from 4-slice Gen12 parts, so all four are trapped there) and clears
+`POWER_STATE` on read whenever
 `POWER_REQUEST` is not set, presenting a consistent register — the same approach
 Intel's own GVT device model uses (`gen9_dbuf_ctl_mmio_write`). The guest then
 issues the power request and the real power well brings DBUF up. Native Linux
@@ -233,7 +229,7 @@ no pre-OS framebuffer.
 
 EVE works around this by patching QEMU's `ICH9-LPC` to expose an
 `x-device-id` property
-(`pkg/xen-tools/patches-4.19.0/x86_64/13-lpc-ich9-x-device-id.patch`) and
+(`pkg/qemu/patches/9001-hw-isa-lpc_ich9-add-an-x-device-id-property.patch`) and
 threading the property value through pillar's KVM hypervisor template
 (`-global ICH9-LPC.x-device-id=<value>`), which makes the spoofed PCH
 device ID visible to `IntelGopDriver`'s whitelist check.
@@ -287,9 +283,8 @@ OpRegion to a per-domain file each time `x-igd-opregion=on` populates
 /run/hypervisor/kvm/<qemu-vm-name>/igd-opregion.bin
 ```
 
-(see `pkg/xen-tools/patches-4.19.0/x86_64/12-vfio-igd-opregion-dump.patch`).
-QEMU also logs a one-line `IGD: OpRegion dumped to <path> (<N> bytes,
-magic="IntelGraphicsMem")` to its stderr, which makes it into the EVE
+(see `pkg/qemu/patches/9005-vfio-igd-save-the-host-OpRegion-for-offline-inspecti.patch`).
+QEMU also logs a one-line `IGD: OpRegion (<N> bytes) saved to <path>` to its stderr, which makes it into the EVE
 device log via the `guest_vm_err` channel. The file is the same bytes
 that are passed to the guest through fw_cfg, so what the guest's IGD
 driver reads is exactly what's on disk.
@@ -336,7 +331,7 @@ NODE=root@<edge-node-ip> tools/qemu/igpu-capture.sh good    # after recovery
 tools/qemu/igpu-regdiff.py --a igpu-dumps/bad*.bin --b igpu-dumps/good*.bin
 ```
 
-This is how the DBUF_CTL `POWER_STATE` issue (patch 15) was found and verified.
+This is how the DBUF_CTL `POWER_STATE` issue (patch 1001) was found and verified.
 
 ---
 
@@ -365,7 +360,7 @@ and **removed the BDSM register** from PCI config space. For these devices:
   VfioIgdPkg calculates stolen size from GMS internally, so a missing fw_cfg entry is
   irrelevant.
 - OpRegion passthrough works via `x-igd-opregion=on`, which is independent of
-  `igd_gen()` and the vfio-igd BAR4 quirk. EVE's `kvm.go` always enables this for
+  `igd_gen()` and `vfio_pci_igd_config_quirk()`. EVE's `kvm.go` always enables this for
   Intel iGPUs.
 - The QEMU `igd_gen()` function does not yet recognise Meteor Lake+ device IDs
   (returns -1), so GMCH/BDSM emulation and the BAR0 mirror are skipped. This is
@@ -399,17 +394,17 @@ Check if the new generation uses a new BDSM register offset or width:
   <https://www.intel.com/content/www/us/en/docs/graphics-for-linux/developer-reference/>
 - Look for "Base Data of Stolen Memory" in the PCI config space register map
 - If the offset or width changed, `IgdAssignmentDxe/IgdAssignment.c` in VfioIgdPkg needs
-  a new generation handler, and the QEMU patch in `pkg/xen-tools` may also need updating
+  a new generation handler, and upstream QEMU's `hw/vfio/igd.c` may also need updating
 
 ### 3. QEMU vfio-igd quirk
 
 Check `hw/vfio/igd.c` in the upstream QEMU repository:
 
 - The `igd_gen()` function maps PCI Device IDs to generations — new IDs must be added
-- The `GetStolenSize()` variant for the new generation must handle any GMS encoding
-  changes (check Linux kernel `drivers/gpu/drm/i915/gem/i915_gem_stolen.c` for reference)
-- If upstream QEMU already has support, the patch in `pkg/xen-tools` should be rebased
-  onto the newer xen-qemu base
+- `igd_stolen_memory_size()` must handle any GMS encoding changes (check Linux kernel
+  `drivers/gpu/drm/i915/gem/i915_gem_stolen.c` for reference)
+- If upstream QEMU already has support, move `QEMU_VERSION` in `pkg/qemu/Dockerfile` to a
+  release that has it
 
 ### 4. EDK2 / OVMF compatibility
 
@@ -426,8 +421,7 @@ Check `hw/vfio/igd.c` in the upstream QEMU repository:
 If a new generation introduces new GMS encoding codes in the GMCH register, update both:
 
 - VfioIgdPkg's `IgdAssignmentDxe/IgdPrivate.c` (`GetStolenSize()`)
-- The QEMU patch (`pkg/xen-tools/patches-4.19.0/x86_64/09-vfio-igd-q35-uefi-bdsm-opregion.patch`)
-  — specifically the GMS decoding block before the fw_cfg write
+- Upstream QEMU's `igd_stolen_memory_size()` in `hw/vfio/igd.c`
 
 ---
 
@@ -436,9 +430,9 @@ If a new generation introduces new GMS encoding codes in the GMCH register, upda
 | Component | File | Role |
 | --------- | ---- | ---- |
 | UEFI Option ROM build | `pkg/uefi/Dockerfile`, `pkg/uefi/build.sh` | Builds `igd.rom` from VfioIgdPkg |
-| EFI Option ROM (runtime) | `pkg/xen-tools/` ships `igd.rom` to host rootfs | Loaded by OVMF; runs `IgdAssignmentDxe` |
+| EFI Option ROM (runtime) | `pkg/qemu` ships `igd.rom` in the qemu service, `/usr/share/qemu/igd.rom` | Loaded by OVMF; runs `IgdAssignmentDxe` |
 | KVM hypervisor integration | `pkg/pillar/hypervisor/kvm.go` | Detects iGPU, sets `romfile=`, BDF, opregion |
-| QEMU igd_gen() backport | `pkg/xen-tools/.../08-vfio-igd-backport-igd-gen.patch` | Gen7–Gen12 device ID detection |
-| QEMU vfio-igd rework | `pkg/xen-tools/.../09-vfio-igd-q35-uefi-bdsm-opregion.patch` | GMCH/BDSM/fw_cfg/GTT for q35/UEFI |
-| QEMU BAR0 BDSM mirror | `pkg/xen-tools/.../10-vfio-igd-bar0-bdsm-mirror.patch` | Intercepts BAR0 MMIO BDSM reads |
+| QEMU vfio-igd quirk | upstream `hw/vfio/igd.c` | Generation table, BDSM and `etc/igd-bdsm-size` for q35/UEFI, BAR0 BDSM mirror |
+| QEMU host stolen base | `pkg/qemu/patches/1002-vfio-igd-publish-the-host-stolen-base-to-firmware.patch` | `etc/igd-stolen-base` for `igd.rom` |
+| QEMU DBUF_CTL sanitize | `pkg/qemu/patches/1001-vfio-igd-sanitize-DBUF_CTL-POWER_STATE-for-iGPU-pass.patch` | Consistent DBUF power state for the Windows driver |
 | EDK2 base | `pkg/uefi/edk2-patches/edk2-stable*/` | EVE-specific patches on top of EDK2 |
