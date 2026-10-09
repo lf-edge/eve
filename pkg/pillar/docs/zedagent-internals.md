@@ -148,8 +148,8 @@ Key points:
 - On failure (quote rejected, nonce mismatch, TPM error), the FSM retries with
   exponential backoff via `restartAttestation`.  `attestationTryCount` tracks retries
   and is reported in device info (`ZInfoDevice.attestState`).
-- `storeIntegrityToken` / `readIntegrityToken` persist the integrity token across
-  reboots in `/persist/status/zedagent/`.
+- `storeIntegrityToken` / `readIntegrityToken` keep the integrity token in
+  `/run/eve.integrity_token`, so it does not survive a reboot.
 - On non-TPM devices (`SkipEscrow = true`), the escrow step is skipped; attestation
   reaches `ATTEST_STATE_COMPLETE` after a successful quote exchange.
 - The integrity token is included in subsequent config requests to prove device health

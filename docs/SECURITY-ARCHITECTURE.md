@@ -62,14 +62,21 @@ hypervisor-specific loader boots a VM from it, as described in
 Kubernetes-based configuration ([EVE-K.md](EVE-K.md)) the same container is launched as
 a shim VMI.
 
-There is one deliberate exception. An application configured with `VmMode = NOHYPER` --
-"Do not use a hypervisor" -- runs as a native container on the host, with no VM around
-it:
+There are two deliberate exceptions, and in both the application runs as a native
+container on the host, with no VM around it.
 
-* On the Xen and KVM configurations, such a task is handed to containerd rather than to
-  the hypervisor, and runs as a container in the host (dom0).
+The first is an application configured with `VmMode = NOHYPER` -- "Do not use a
+hypervisor":
+
+* On the KVM configuration, such a task is handed to containerd rather than to the
+  hypervisor, and runs as a container on the host.
 * On the Kubernetes-based configuration, it is created as a plain Kubernetes ReplicaSet
   rather than a KubeVirt `VirtualMachineInstanceReplicaSet`, so there is no launcher VM.
+
+The second is a workload deployed through native Kubernetes orchestration on the
+Kubernetes-based configuration ([EVE-K.md](EVE-K.md#modes)). Such workloads are deployed
+with Helm charts, manifests or other Kubernetes tooling rather than as EVE applications,
+and run as plain pods unless they request a KubeVirt VM.
 
 For these applications the isolation from EVE and from other applications is provided by
 the Linux kernel -- namespaces, cgroups and the container's capability set -- and not by
@@ -114,7 +121,7 @@ In the current implementation of EVE, if TPM is available, controller's address 
 
 ### EVE trusting side-channel configuration
 
-The use of [object signing](https://github.com/lf-edge/eve-api/tree/main/OBJECT-SIGNING.md) is designed to enable delivering device configuration using side channels such as USB sticks. But the details of timestamp checks to avoid replay attacks has yet to be designed and implemented. Those aspects are [TBD](https://github.com/lf-edge/eve/issues/233)
+The use of [object signing](https://github.com/lf-edge/eve-api/tree/main/OBJECT-SIGNING.md) enables delivering device configuration using side channels such as USB sticks, as the [bootstrap configuration](CONFIG.md#bootstrap-configuration) does. Replay is prevented by the configuration timestamp: whatever its source, EVE rejects a configuration whose `config_timestamp` is older than that of the configuration it has already applied. A bootstrap configuration is in addition applied only once, since EVE records its SHA-256 hash.
 
 ### Identity of EVE's instance
 
