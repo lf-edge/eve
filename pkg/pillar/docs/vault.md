@@ -127,9 +127,10 @@ provisioning. As long as that file exists, `IsVaultCleanupAllowed`
 returns true and `vaultmgr` honors an empty
 `EncryptedVaultKeyFromController` as a wipe-and-recreate instruction.
 `DisallowVaultCleanup` removes the sentinel (and syncs its parent
-directory) once the device has successfully opened its vault at least
-once — after that point an empty-key message from the controller is
-ignored.
+directory) as soon as the device has something to lose: when the first
+volume or content tree is configured, or when the first key escrow to
+the controller succeeds. After that point an empty-key message from the
+controller is ignored.
 
 `GetOperationalInfo(log)` is a convenience wrapper that picks the
 handler via `GetHandler` and forwards

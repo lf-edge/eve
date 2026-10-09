@@ -18,7 +18,7 @@ Edge-View container has a script running, constantly monitors the configuration 
 
 The status of Edge-View is defined as `EdgeviewStatus` type in `github.com/lf-edge/eve/pkg/pillar/type/edgeviewtypes.go`. When there is a status change, it will update and send the Edge-View status through the info message to the controller.
 
-For security reasons, the Edge-View container has all the volumes mounted in 'read-only' mode. But for the status update, it needs to have write access on the device. Since the EVE pub/sub infrastructure mostly read/write into the '/run/{module}' directories, the Edge-View container volume mounts the `/run/edgeview` as 'read-write' mode as an exception for publishing the Edge-View status. It publishes status in `/run/edgeview` (this is similar to the `newlogd` container publishing status into `/run/newlogd` directory).
+For security reasons, the Edge-View container has all the volumes mounted in 'read-only' mode. But for the status update, it needs to have write access on the device. Since the EVE pub/sub infrastructure mostly read/write into the '/run/{module}' directories, the Edge-View container volume mounts the `/run/edgeview` as 'read-write' mode as an exception for publishing the Edge-View status. It publishes status in `/run/edgeview` (this is similar to the `newlogd` container publishing status into `/run/newlogd` directory). `/persist/tmp` is also mounted 'read-write'.
 
 ## Logging to Event
 
