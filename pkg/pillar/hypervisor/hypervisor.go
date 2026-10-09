@@ -22,7 +22,8 @@ import (
 )
 
 const (
-	xenToolsPath = "/containers/services/xen-tools"
+	// qemuServicePath is the service whose rootfs every domain's QEMU runs in.
+	qemuServicePath = "/containers/services/qemu"
 
 	// GracefulShutdownWait bounds how long a guest is given to act on the
 	// poweroff request before the stop is escalated to a forced one. It applies

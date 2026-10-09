@@ -6,5 +6,5 @@ FROM XENTOOLS_TAG AS initrd-build
 FROM KERNEL_TAG AS kernel-build
 
 FROM scratch
-COPY --from=initrd-build --chmod=666 /usr/lib/xen/boot/runx-initrd /
+COPY --from=initrd-build --chmod=666 /boot/runx-initrd /
 COPY --from=kernel-build --chmod=666 /kernel /
