@@ -370,6 +370,11 @@ type testState struct {
 	// name is the name of the currently executing test or variant.
 	name string
 
+	// parentName is the underlying test function name (TestCase.Test in
+	// RunTestSuite) a suite subtest variant was derived from; empty when
+	// not running as a suite subtest.
+	parentName string
+
 	// paramDefs are the parameter definitions available to the test.
 	paramDefs []TestParameterDefinition
 
@@ -543,6 +548,11 @@ func Init(t *testing.T) *T {
 			th.t.Fatalf("Multiple Init calls detected")
 		}
 
+		if matched, skip := matchedSkipName(th.test.name, th.test.parentName); skip {
+			t.Skipf("Skipping %q: listed in %s%s", matched,
+				constants.EnvPrefix, constants.SkipEnv)
+		}
+
 		// EVETEST_RESTART_ONLY_FAILED: when running as part of a test suite
 		// (never for a standalone test, since that never reaches this branch),
 		// skip this subtest if it already passed in a previous run of the same
@@ -573,6 +583,16 @@ func Init(t *testing.T) *T {
 	}
 
 	constants.InitViperConfig()
+
+	// Init is called directly from a TestXxx function, so this is a
+	// standalone test's or suite's own name (a suite subtest's own
+	// variant name is matched in the th.suite != nil branch above instead).
+	testName := utils.FuncNameFromStackTrace(2)
+	if matched, skip := matchedSkipName(testName); skip {
+		t.Skipf("Skipping %q: listed in %s%s", matched,
+			constants.EnvPrefix, constants.SkipEnv)
+	}
+
 	th := &TestHarness{}
 	_globalTH = th
 	th.t = &T{T: t, th: th}
@@ -588,8 +608,7 @@ func Init(t *testing.T) *T {
 	signal.Notify(th.sigCh, syscall.SIGTERM, syscall.SIGINT)
 
 	// Set the test name to the calling test function name.
-	// Init is expected to be called directly from a TestXxx function.
-	th.test.name = utils.FuncNameFromStackTrace(2)
+	th.test.name = testName
 	th.test.artifactDir = th.artifactDir
 	if err := os.MkdirAll(th.test.artifactDir, 0o755); err != nil {
 		th.t.Fatalf("failed to create directory for test artifacts: %v", err)
