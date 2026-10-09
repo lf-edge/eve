@@ -2,15 +2,23 @@
 # Copyright (c) 2025-2026 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS build-base
+# The image ships only /boot, whose contents go onto the ESP, plus the apk db
+# for the SBOM. On arm64 /boot holds u-boot.bin and the Raspberry Pi firmware,
+# DTBs and overlays; on riscv64 it holds u-boot.bin, which QEMU loads.
+# amd64 boots through UEFI and uses no u-boot, so its /boot is empty.
+
+FROM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS build-amd64
+RUN eve-alpine-deploy.sh && mkdir -p /boot
+
+FROM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS uboot
 ENV BUILD_PKGS bash binutils-dev build-base bc bison flex gnutls gnutls-dev openssl-dev python3 swig dtc git
-ENV BUILD_PKGS_amd64 linux-headers python3-dev py-pip
 RUN eve-alpine-deploy.sh
 
 SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
 
 ENV UBOOT_VERSION=v2026.04
 ENV UBOOT_REPO=https://github.com/u-boot/u-boot.git
+# hadolint ignore=DL3020
 ADD --keep-git-dir ${UBOOT_REPO}#${UBOOT_VERSION} /u-boot
 
 WORKDIR /u-boot
@@ -22,11 +30,22 @@ RUN git config --global user.email 'builder@projecteve.dev'
 # hadolint ignore=SC2046
 RUN git am /tmp/patches/patches-${UBOOT_VERSION}/*
 
-FROM build-base AS build-amd64
-ENV TARGET qemu-x86_64_defconfig
-FROM build-base AS build-arm64
-ENV TARGET rpi_arm64_defconfig
+# generate default config for the target
+ARG TARGETARCH
+RUN case "${TARGETARCH}" in \
+        arm64) make rpi_arm64_defconfig ;; \
+        riscv64) make qemu-riscv64_smode_defconfig ;; \
+        *) echo "no u-boot target for ${TARGETARCH}"; exit 1 ;; \
+    esac
+RUN make -j "$(getconf _NPROCESSORS_ONLN)"
 
+# export a final set of u-boot artifacts into /boot
+RUN cp /u-boot/u-boot.bin /boot
+
+# Register u-boot in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n u-boot -v "${UBOOT_VERSION}" -l GPL-2.0-only -u https://www.denx.de/wiki/U-Boot
+
+FROM uboot AS build-arm64
 ENV RASPBERRY_FIRMWARE_BLOBS_VERSION=1.20260521
 ENV RASPBERRY_FIRMWARE_BLOBS=https://github.com/raspberrypi/firmware/raw/${RASPBERRY_FIRMWARE_BLOBS_VERSION}
 
@@ -82,30 +101,16 @@ RUN  for i in /tmp/rpi/overlays/*.dts ; do \
      done; \
      cp -r /tmp/rpi/* /boot
 
-FROM build-base AS build-riscv64
-ENV TARGET qemu-riscv64_smode_defconfig
+# Register raspberrypi-firmware in the APK DB, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n raspberrypi-firmware -v "${RASPBERRY_FIRMWARE_BLOBS_VERSION}" -l proprietary -u https://github.com/raspberrypi/firmware
+
+FROM uboot AS build-riscv64
 
 # hadolint ignore=DL3006
 FROM build-${TARGETARCH} AS build
 
-# generate default config for the target
-RUN make "$TARGET"
-RUN make -j "$(getconf _NPROCESSORS_ONLN)"
-
-# export a final set of u-boot artifacts into /boot
-RUN cp /u-boot/u-boot.bin /boot
-
-# Register u-boot in the APK DB, mandatory for it to be included in the SBOM.
-RUN register-sbom-pkg.sh -n u-boot -v "${UBOOT_VERSION}" -l GPL-2.0-only -u https://www.denx.de/wiki/U-Boot
-
-# Register raspberrypi-firmware in the APK DB, mandatory for it to be included in the SBOM.
-RUN if [ "$(uname -m)" = aarch64 ]; then \
-        register-sbom-pkg.sh -n raspberrypi-firmware -v "${RASPBERRY_FIRMWARE_BLOBS_VERSION}" -l proprietary -u https://github.com/raspberrypi/firmware; \
-    fi
-
 FROM scratch
 ENTRYPOINT []
 CMD []
-COPY --from=build /u-boot/u-boot* /u-boot/
 COPY --from=build /boot /boot
 COPY --from=build /out/lib/apk/db/installed /lib/apk/db/installed
