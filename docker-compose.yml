@@ -119,8 +119,8 @@ services:
         networks:
             - eve
 
-    xen-tools:
-        image: ${XENTOOLS_TAG}
+    qemu:
+        image: ${QEMU_TAG}
         privileged: true
         volumes:
             - persist:/persist

@@ -93,6 +93,7 @@ init:
   - lfedge/eve-grub:080a301fbd8f1f1ef99013f81cc3c5aa2effface-amd64
   - lfedge/eve-fw:972657ee489ceb3efe7db7eb5907f9d3aeeaa1fd-amd64
   - lfedge/eve-gpt-tools:ab2e9f924e22709b4e08ebedd6d3c6a2882d071e-amd64
+  - lfedge/eve-xen-tools:8c2a3e9d0f1b4a7c6e5d2f1a0b9c8d7e6f5a4b3c-amd64
 onboot:
    - name: rngd
      image: lfedge/eve-rngd:ee02bc3f3273db42d7d05da21f02e1563072ad10-amd64
@@ -142,9 +143,9 @@ services:
      image: lfedge/eve-watchdog:d4bf7ed4e3fa170061b8e6af6bd09ef7546c9c60-amd64
      cgroupsPath: /eve/services/watchdog
      oomScoreAdj: -1000
-   - name: xen-tools
-     image: lfedge/eve-xen-tools:1335e0e2d14d82ce3030f8d235f916474ae33bf4-amd64
-     cgroupsPath: /eve/services/xen-tools
+   - name: qemu
+     image: lfedge/eve-qemu:1335e0e2d14d82ce3030f8d235f916474ae33bf4-amd64
+     cgroupsPath: /eve/services/qemu
      oomScoreAdj: -999
 files:
    - path: /etc/eve-release

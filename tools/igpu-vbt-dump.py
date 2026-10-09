@@ -6,8 +6,8 @@
 
 """Decode the iGPU OpRegion bytes dumped by EVE's patched QEMU vfio-igd quirk.
 
-EVE's qemu-xen carries a passive diagnostic patch
-(pkg/xen-tools/patches-4.19.0/x86_64/12-vfio-igd-opregion-dump.patch)
+EVE's QEMU carries a passive diagnostic patch
+(pkg/qemu/patches/9005-vfio-igd-save-the-host-OpRegion-for-offline-inspecti.patch)
 that writes a copy of the host iGPU's OpRegion to a per-domain file at
 /run/hypervisor/kvm/<vm-name>/igd-opregion.bin every time
 x-igd-opregion=on populates etc/igd-opregion for the guest.  This

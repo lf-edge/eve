@@ -1,0 +1,21 @@
+# Copyright (c) 2026 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+image: eve-qemu
+org: lfedge
+config:
+  binds:
+    - /run:/run
+    - /dev:/dev
+    - /dev/pts:/dev/pts
+    - /etc/resolv.conf:/etc/resolv.conf
+    - /persist:/persist
+    - /:/hostfs
+  net: host
+  capabilities:
+    - all
+  pid: host
+  userns: host
+  devices:
+    - path: all
+      type: a

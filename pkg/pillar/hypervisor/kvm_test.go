@@ -31,7 +31,7 @@ var swtpmCtrlSock = ""
 // these ones are very much handcrafted just for the tests
 func init() {
 	kvmIntel = KvmContext{
-		devicemodel: "pc-q35-3.1",
+		devicemodel: "pc-q35-11.1",
 		dmExec:      "",
 		dmArgs:      []string{},
 	}
@@ -123,7 +123,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   timestamp = "on"
 
 [machine]
-  type = "pc-q35-3.1"
+  type = "pc-q35-11.1"
   dump-guest-core = "off"
   accel = "kvm"
   vmport = "off"
@@ -306,7 +306,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   type = "tap"
   ifname = "nbu1x1"
   br = "bn0"
-  script = "/etc/xen/scripts/qemu-ifup"
+  script = "/etc/qemu-ifup"
   downscript = "no"
   vhost = "on"
 
@@ -329,7 +329,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   type = "tap"
   ifname = "nbu1x2"
   br = "bn0"
-  script = "/etc/xen/scripts/qemu-ifup"
+  script = "/etc/qemu-ifup"
   downscript = "no"
   vhost = "on"
 
@@ -359,7 +359,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 	})
 
 	config.VirtualizationMode = types.FML
-	config.BootLoader = "/usr/lib/xen/boot/OVMF_CODE.fd"
+	config.BootLoader = "/usr/share/ovmf/OVMF_CODE.fd"
 	t.Run("amd64-fml", func(t *testing.T) {
 		conf.Seek(0, 0)
 		if err := kvmIntel.CreateDomConfig(DefaultDomainName, config, types.DomainStatus{},
@@ -379,7 +379,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   timestamp = "on"
 
 [machine]
-  type = "pc-q35-3.1"
+  type = "pc-q35-11.1"
   dump-guest-core = "off"
   accel = "kvm"
   vmport = "off"
@@ -416,7 +416,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   format = "raw"
   readonly = "on"
   unit = "0"
-  file = "/usr/lib/xen/boot/OVMF_CODE.fd"
+  file = "/usr/share/ovmf/OVMF_CODE.fd"
 
 [drive "drive-ovmf-vars"]
   if = "pflash"
@@ -575,7 +575,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   type = "tap"
   ifname = "nbu1x1"
   br = "bn0"
-  script = "/etc/xen/scripts/qemu-ifup"
+  script = "/etc/qemu-ifup"
   downscript = "no"
   vhost = "on"
 
@@ -598,7 +598,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   type = "tap"
   ifname = "nbu1x2"
   br = "bn0"
-  script = "/etc/xen/scripts/qemu-ifup"
+  script = "/etc/qemu-ifup"
   downscript = "no"
   vhost = "on"
 
@@ -628,7 +628,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 	})
 
 	config.VirtualizationMode = types.HVM
-	config.BootLoader = "/usr/lib/xen/boot/ovmf.bin"
+	config.BootLoader = "/usr/share/ovmf/OVMF.fd"
 	t.Run("arm64", func(t *testing.T) {
 		conf.Seek(0, 0)
 		if err := kvmArm.CreateDomConfig(DefaultDomainName, config, types.DomainStatus{},
@@ -652,7 +652,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   dump-guest-core = "off"
   accel = "kvm:tcg"
   gic-version = "host"
-  firmware = "/usr/lib/xen/boot/ovmf.bin"
+  firmware = "/usr/share/ovmf/OVMF.fd"
   kernel = "/boot/kernel"
   initrd = "/boot/ramdisk"
   append = "init=/bin/sh"
@@ -814,7 +814,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   type = "tap"
   ifname = "nbu1x1"
   br = "bn0"
-  script = "/etc/xen/scripts/qemu-ifup"
+  script = "/etc/qemu-ifup"
   downscript = "no"
   vhost = "on"
 
@@ -837,7 +837,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   type = "tap"
   ifname = "nbu1x2"
   br = "bn0"
-  script = "/etc/xen/scripts/qemu-ifup"
+  script = "/etc/qemu-ifup"
   downscript = "no"
   vhost = "on"
 
@@ -933,7 +933,7 @@ func TestCreateDomConfigAmd64Fml(t *testing.T) {
 	diskConfigs, diskStatuses := qemuDisks()
 	config, aa := domainConfigAndAssignableAdapters(diskConfigs)
 	config.VirtualizationMode = types.FML
-	config.BootLoader = "/usr/lib/xen/boot/OVMF_CODE.fd"
+	config.BootLoader = "/usr/share/ovmf/OVMF_CODE.fd"
 	addNonExistingAdapter(&config, &aa)
 	if err := kvmIntel.CreateDomConfig(DefaultDomainName, config, types.DomainStatus{},
 		diskStatuses, &aa, nil, swtpmCtrlSock, conf); err != nil {
@@ -966,7 +966,7 @@ func TestCreateDomConfigAmd64FmlWithBootOrder(t *testing.T) {
 	diskConfigs, diskStatuses := qemuDisks()
 	config, aa := domainConfigAndAssignableAdapters(diskConfigs)
 	config.VirtualizationMode = types.FML
-	config.BootLoader = "/usr/lib/xen/boot/OVMF_CODE.fd"
+	config.BootLoader = "/usr/share/ovmf/OVMF_CODE.fd"
 	config.BootOrder = zcommon.BootOrder_BOOT_ORDER_USB // Test USB boot order prioritization
 
 	if err := kvmIntel.CreateDomConfig(DefaultDomainName, config, types.DomainStatus{},
@@ -1004,7 +1004,7 @@ func TestCreateDomConfigAmd64FmlWithNoUsbBootOrder(t *testing.T) {
 	diskConfigs, diskStatuses := qemuDisks()
 	config, aa := domainConfigAndAssignableAdapters(diskConfigs)
 	config.VirtualizationMode = types.FML
-	config.BootLoader = "/usr/lib/xen/boot/OVMF_CODE.fd"
+	config.BootLoader = "/usr/share/ovmf/OVMF_CODE.fd"
 	config.BootOrder = zcommon.BootOrder_BOOT_ORDER_NOUSB // Test USB boot order deprioritization
 
 	if err := kvmIntel.CreateDomConfig(DefaultDomainName, config, types.DomainStatus{},
@@ -1039,7 +1039,7 @@ func TestCreateDomConfigAmd64FmlWithoutBootOrder(t *testing.T) {
 	diskConfigs, diskStatuses := qemuDisks()
 	config, aa := domainConfigAndAssignableAdapters(diskConfigs)
 	config.VirtualizationMode = types.FML
-	config.BootLoader = "/usr/lib/xen/boot/OVMF_CODE.fd"
+	config.BootLoader = "/usr/share/ovmf/OVMF_CODE.fd"
 	// config.BootOrder is empty (default) - no boot order modification
 
 	if err := kvmIntel.CreateDomConfig(DefaultDomainName, config, types.DomainStatus{},
@@ -1071,7 +1071,7 @@ func TestCreateDomConfigArm64BootOrderIgnored(t *testing.T) {
 	diskConfigs, diskStatuses := qemuDisks()
 	config, aa := domainConfigAndAssignableAdapters(diskConfigs)
 	config.VirtualizationMode = types.FML
-	config.BootLoader = "/usr/lib/xen/boot/OVMF_CODE.fd"
+	config.BootLoader = "/usr/share/ovmf/OVMF_CODE.fd"
 	config.BootOrder = zcommon.BootOrder_BOOT_ORDER_USB // Set boot order
 
 	// Use ARM context (virt machine) - boot order should be ignored
@@ -1104,7 +1104,7 @@ func TestCreateDomConfigArm64(t *testing.T) {
 	diskConfigs, diskStatuses := qemuDisks()
 	config, aa := domainConfigAndAssignableAdapters(diskConfigs)
 	config.VirtualizationMode = types.HVM
-	config.BootLoader = "/usr/lib/xen/boot/ovmf.bin"
+	config.BootLoader = "/usr/share/ovmf/OVMF.fd"
 	if err := kvmArm.CreateDomConfig(DefaultDomainName, config, types.DomainStatus{},
 		diskStatuses, &aa, nil, swtpmCtrlSock, conf); err != nil {
 		t.Errorf("CreateDomConfig failed %v", err)
@@ -1250,7 +1250,7 @@ func domConfigArm64() string {
   dump-guest-core = "off"
   accel = "kvm:tcg"
   gic-version = "host"
-  firmware = "/usr/lib/xen/boot/ovmf.bin"
+  firmware = "/usr/share/ovmf/OVMF.fd"
   kernel = "/boot/kernel"
   initrd = "/boot/ramdisk"
   append = "init=/bin/sh"
@@ -1434,7 +1434,7 @@ func domConfigArm64() string {
   type = "tap"
   ifname = "nbu1x1"
   br = "bn0"
-  script = "/etc/xen/scripts/qemu-ifup"
+  script = "/etc/qemu-ifup"
   downscript = "no"
   vhost = "on"
 
@@ -1457,7 +1457,7 @@ func domConfigArm64() string {
   type = "tap"
   ifname = "nbu1x2"
   br = "bn0"
-  script = "/etc/xen/scripts/qemu-ifup"
+  script = "/etc/qemu-ifup"
   downscript = "no"
   vhost = "on"
 
@@ -1503,7 +1503,7 @@ func domConfigAmd64FML() string {
   timestamp = "on"
 
 [machine]
-  type = "pc-q35-3.1"
+  type = "pc-q35-11.1"
   dump-guest-core = "off"
   accel = "kvm"
   vmport = "off"
@@ -1540,7 +1540,7 @@ func domConfigAmd64FML() string {
   format = "raw"
   readonly = "on"
   unit = "0"
-  file = "/usr/lib/xen/boot/OVMF_CODE.fd"
+  file = "/usr/share/ovmf/OVMF_CODE.fd"
 
 [drive "drive-ovmf-vars"]
   if = "pflash"
@@ -1723,7 +1723,7 @@ func domConfigAmd64FML() string {
   type = "tap"
   ifname = "nbu1x1"
   br = "bn0"
-  script = "/etc/xen/scripts/qemu-ifup"
+  script = "/etc/qemu-ifup"
   downscript = "no"
   vhost = "on"
 
@@ -1746,7 +1746,7 @@ func domConfigAmd64FML() string {
   type = "tap"
   ifname = "nbu1x2"
   br = "bn0"
-  script = "/etc/xen/scripts/qemu-ifup"
+  script = "/etc/qemu-ifup"
   downscript = "no"
   vhost = "on"
 
@@ -1806,7 +1806,7 @@ func domConfigAmd64Legacy() string {
   timestamp = "on"
 
 [machine]
-  type = "pc-q35-3.1"
+  type = "pc-q35-11.1"
   dump-guest-core = "off"
   accel = "kvm"
   vmport = "off"
@@ -2019,7 +2019,7 @@ func domConfigAmd64Legacy() string {
   type = "tap"
   ifname = "nbu1x1"
   br = "bn0"
-  script = "/etc/xen/scripts/qemu-ifup"
+  script = "/etc/qemu-ifup"
   downscript = "no"
 
 [device "net0"]
@@ -2041,7 +2041,7 @@ func domConfigAmd64Legacy() string {
   type = "tap"
   ifname = "nbu1x2"
   br = "bn0"
-  script = "/etc/xen/scripts/qemu-ifup"
+  script = "/etc/qemu-ifup"
   downscript = "no"
 
 [device "net1"]
@@ -2086,7 +2086,7 @@ func domConfigAmd64() string {
   timestamp = "on"
 
 [machine]
-  type = "pc-q35-3.1"
+  type = "pc-q35-11.1"
   dump-guest-core = "off"
   accel = "kvm"
   vmport = "off"
@@ -2293,7 +2293,7 @@ func domConfigAmd64() string {
   type = "tap"
   ifname = "nbu1x1"
   br = "bn0"
-  script = "/etc/xen/scripts/qemu-ifup"
+  script = "/etc/qemu-ifup"
   downscript = "no"
   vhost = "on"
 
@@ -2316,7 +2316,7 @@ func domConfigAmd64() string {
   type = "tap"
   ifname = "nbu1x2"
   br = "bn0"
-  script = "/etc/xen/scripts/qemu-ifup"
+  script = "/etc/qemu-ifup"
   downscript = "no"
   vhost = "on"
 
@@ -2362,7 +2362,7 @@ func domConfigContainerVNC() string {
   timestamp = "on"
 
 [machine]
-  type = "pc-q35-3.1"
+  type = "pc-q35-11.1"
   dump-guest-core = "off"
   accel = "kvm"
   vmport = "off"
@@ -2568,7 +2568,7 @@ func domConfigContainerVNC() string {
   type = "tap"
   ifname = "nbu1x1"
   br = "bn0"
-  script = "/etc/xen/scripts/qemu-ifup"
+  script = "/etc/qemu-ifup"
   downscript = "no"
   vhost = "on"
 
@@ -2591,7 +2591,7 @@ func domConfigContainerVNC() string {
   type = "tap"
   ifname = "nbu1x2"
   br = "bn0"
-  script = "/etc/xen/scripts/qemu-ifup"
+  script = "/etc/qemu-ifup"
   downscript = "no"
   vhost = "on"
 
@@ -2676,7 +2676,7 @@ func TestCreateDom(t *testing.T) {
   timestamp = "on"
 
 [machine]
-  type = "pc-q35-3.1"
+  type = "pc-q35-11.1"
   vmport = "off"
   dump-guest-core = "off"
 
@@ -3077,7 +3077,7 @@ func TestPCIAddressAllocator(t *testing.T) {
   type = "tap"
   ifname = "nbu1x1"
   br = "br1"
-  script = "/etc/xen/scripts/qemu-ifup"
+  script = "/etc/qemu-ifup"
   downscript = "no"
   vhost = "on"
 
@@ -3101,7 +3101,7 @@ func TestPCIAddressAllocator(t *testing.T) {
   type = "tap"
   ifname = "nbu2x1"
   br = "br2"
-  script = "/etc/xen/scripts/qemu-ifup"
+  script = "/etc/qemu-ifup"
   downscript = "no"
   vhost = "on"
 
@@ -3211,7 +3211,7 @@ func TestPCIAddressAllocator(t *testing.T) {
   type = "tap"
   ifname = "nbu1x1"
   br = "br1"
-  script = "/etc/xen/scripts/qemu-ifup"
+  script = "/etc/qemu-ifup"
   downscript = "no"
   vhost = "on"
 
@@ -3235,7 +3235,7 @@ func TestPCIAddressAllocator(t *testing.T) {
   type = "tap"
   ifname = "nbu2x1"
   br = "br2"
-  script = "/etc/xen/scripts/qemu-ifup"
+  script = "/etc/qemu-ifup"
   downscript = "no"
   vhost = "on"
 

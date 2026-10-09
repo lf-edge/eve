@@ -16,12 +16,25 @@ import (
 
 const (
 	// LegacyBIOS Legacy BIOS binary firmware, as shipped by qemu itself
-	LegacyBIOS = "/usr/share/qemu-xen/qemu/bios-256k.bin"
+	LegacyBIOS = "/usr/share/qemu/bios-256k.bin"
 	// OVMFBIOSCombined UEFI OVMF BIOS firmware (code + variables)
-	OVMFBIOSCombined = "/usr/lib/xen/boot/ovmf.bin"
+	OVMFBIOSCombined = "/usr/share/ovmf/OVMF.fd"
 	// OVMFBIOSCode UEFI OVMF BIOS firmware (only code)
-	OVMFBIOSCode = "/usr/lib/xen/boot/OVMF_CODE.fd"
+	OVMFBIOSCode = "/usr/share/ovmf/OVMF_CODE.fd"
+	// RunxInitrd initrd of the VMs container apps run in, in the host rootfs
+	RunxInitrd = "/hostfs/boot/runx-initrd"
 )
+
+// legacyBootPaths maps the boot file paths of EVE releases that ran QEMU from
+// xen-tools to the current ones, for controllers that still send them.
+var legacyBootPaths = map[string]string{
+	"/usr/lib/xen/boot/seabios.bin":          LegacyBIOS,
+	"/usr/share/qemu-xen/qemu/bios-256k.bin": LegacyBIOS,
+	"/usr/lib/xen/boot/ovmf.bin":             OVMFBIOSCombined,
+	"/usr/lib/xen/boot/ovmf-pvh.bin":         OVMFBIOSCombined,
+	"/usr/lib/xen/boot/OVMF_CODE.fd":         OVMFBIOSCode,
+	"/usr/lib/xen/boot/runx-initrd":          RunxInitrd,
+}
 
 // MaybeAddDomainConfig makes sure we have a DomainConfig
 // Note that it does not publish it since caller often tweaks it; caller must
@@ -144,42 +157,7 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 	// let's fill some of the default values (arguably we may want controller
 	// to do this for us and give us complete config, but it is easier to
 	// fudge DomainConfig for now on our side)
-	if dc.BootLoader == "/usr/bin/pygrub" {
-		// FIXME: pygrub is deprecated but the controller keeps sending it to us
-		// This hack means that the user won't be able to set pygrub explicitly,
-		// but nobody in their right mind should do it anyway.
-		dc.BootLoader = ""
-	}
-	if dc.IsOCIContainer() {
-		if dc.Kernel == "" {
-			dc.Kernel = "/hostfs/boot/kernel"
-		}
-		if dc.Ramdisk == "" {
-			dc.Ramdisk = "/usr/lib/xen/boot/runx-initrd"
-		}
-		if dc.ExtraArgs == "" {
-			dc.ExtraArgs = "console=hvc0 root=9p dhcp=1"
-		}
-		if dc.EnableVnc {
-			dc.ExtraArgs += " console=tty0"
-		} else {
-			dc.GPUConfig = ""
-		}
-		if dc.BootLoader == "" {
-			if runtime.GOARCH == "amd64" {
-				dc.BootLoader = LegacyBIOS
-			} else {
-				dc.BootLoader = OVMFBIOSCombined
-			}
-		}
-	}
-	if dc.BootLoader == "" {
-		if dc.VirtualizationModeOrDefault() == types.FML {
-			dc.BootLoader = OVMFBIOSCode
-		} else if runtime.GOARCH == "arm64" {
-			dc.BootLoader = OVMFBIOSCombined
-		}
-	}
+	setBootDefaults(&dc, runtime.GOARCH)
 	if ns != nil {
 		adapterCount := len(ns.AppNetAdapterList)
 		dc.VifList = make([]types.VifConfig, adapterCount)
@@ -194,6 +172,53 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 	}
 	log.Functionf("MaybeAddDomainConfig done for %s", key)
 	return &dc, nil
+}
+
+// setBootDefaults fills in the boot files of a domain the controller left
+// unset, and maps boot file paths of earlier releases to the current ones.
+func setBootDefaults(dc *types.DomainConfig, arch string) {
+	if dc.BootLoader == "/usr/bin/pygrub" {
+		// FIXME: pygrub is deprecated but the controller keeps sending it to us
+		// This hack means that the user won't be able to set pygrub explicitly,
+		// but nobody in their right mind should do it anyway.
+		dc.BootLoader = ""
+	}
+	if path, ok := legacyBootPaths[dc.BootLoader]; ok {
+		dc.BootLoader = path
+	}
+	if path, ok := legacyBootPaths[dc.Ramdisk]; ok {
+		dc.Ramdisk = path
+	}
+	if dc.IsOCIContainer() {
+		if dc.Kernel == "" {
+			dc.Kernel = "/hostfs/boot/kernel"
+		}
+		if dc.Ramdisk == "" {
+			dc.Ramdisk = RunxInitrd
+		}
+		if dc.ExtraArgs == "" {
+			dc.ExtraArgs = "console=hvc0 root=9p dhcp=1"
+		}
+		if dc.EnableVnc {
+			dc.ExtraArgs += " console=tty0"
+		} else {
+			dc.GPUConfig = ""
+		}
+		if dc.BootLoader == "" {
+			if arch == "amd64" {
+				dc.BootLoader = LegacyBIOS
+			} else {
+				dc.BootLoader = OVMFBIOSCombined
+			}
+		}
+	}
+	if dc.BootLoader == "" {
+		if dc.VirtualizationModeOrDefault() == types.FML {
+			dc.BootLoader = OVMFBIOSCode
+		} else if arch == "arm64" {
+			dc.BootLoader = OVMFBIOSCombined
+		}
+	}
 }
 
 func lookupDomainConfig(ctx *zedmanagerContext, key string) *types.DomainConfig {

@@ -1,4 +1,4 @@
-From b3e4cd12c04834e31b51ae292efc84c12e53f7cb Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Mikhail Malyshev <mikem@zededa.com>
 Date: Thu, 16 Jul 2026 10:37:36 +0000
 Subject: [PATCH] hw/vfio: recover from disabled-BAR mmap SIGBUS as Unsupported
@@ -28,21 +28,28 @@ Notes:
   untracked (which would reintroduce the abort).
 - sigsetjmp saves the signal mask (an rt_sigprocmask per trapped access); it
   cannot be dropped without leaving SIGBUS blocked after siglongjmp, so it is a
-  deliberate cost on the trapped-MMIO slow path only, never the EPT fast path.
+  deliberate cost on the trapped-MMIO slow path only, never the KVM-mapped
+  (EPT/stage-2) fast path.
 
+Upstream Linux handles the disabled-BAR access in KVM instead, and QEMU
+master removes the ram_device read/write ops this hooks (ff77a51511,
+"system/memory: Make ram device region directly accessible"), so the
+patch is to be reworked against both.
+
+Upstream-Status: Inappropriate [stopgap: upstream fixed the disabled-BAR access in the kernel instead]
 Signed-off-by: Mikhail Malyshev <mikem@zededa.com>
 ---
- hw/vfio/helpers.c     |   5 ++
- include/exec/memory.h |  10 ++++
- system/cpus.c         |   8 +++
- system/memory.c       | 125 +++++++++++++++++++++++++++++++++++++++++-
+ hw/vfio/region.c        |   5 ++
+ include/system/memory.h |  10 ++++
+ system/cpus.c           |   8 +++
+ system/memory.c         | 125 +++++++++++++++++++++++++++++++++++++++-
  4 files changed, 147 insertions(+), 1 deletion(-)
 
-diff --git a/hw/vfio/helpers.c b/hw/vfio/helpers.c
-index ea15c79db0a..b0cc13ab89a 100644
---- a/hw/vfio/helpers.c
-+++ b/hw/vfio/helpers.c
-@@ -388,6 +388,7 @@ static void vfio_subregion_unmap(VFIORegion *region, int index)
+diff --git a/hw/vfio/region.c b/hw/vfio/region.c
+index 54ad11a..ddf4675 100644
+--- a/hw/vfio/region.c
++++ b/hw/vfio/region.c
+@@ -280,6 +280,7 @@ static void vfio_subregion_unmap(VFIORegion *region, int index)
                              region->mmaps[index].offset +
                              region->mmaps[index].size - 1);
      memory_region_del_subregion(region->mem, &region->mmaps[index].mem);
@@ -50,7 +57,7 @@ index ea15c79db0a..b0cc13ab89a 100644
      munmap(region->mmaps[index].mmap, region->mmaps[index].size);
      object_unparent(OBJECT(&region->mmaps[index].mem));
      region->mmaps[index].mmap = NULL;
-@@ -435,6 +436,9 @@ int vfio_region_mmap(VFIORegion *region)
+@@ -427,6 +428,9 @@ int vfio_region_mmap(VFIORegion *region)
                                            memory_region_owner(region->mem),
                                            name, region->mmaps[i].size,
                                            region->mmaps[i].mmap);
@@ -60,19 +67,19 @@ index ea15c79db0a..b0cc13ab89a 100644
          g_free(name);
          memory_region_add_subregion(region->mem, region->mmaps[i].offset,
                                      &region->mmaps[i].mem);
-@@ -490,6 +494,7 @@ void vfio_region_finalize(VFIORegion *region)
+@@ -494,6 +498,7 @@ void vfio_region_finalize(VFIORegion *region)
  
      for (i = 0; i < region->nr_mmaps; i++) {
          if (region->mmaps[i].mmap) {
 +            memory_region_ram_device_del_range(region->mmaps[i].mmap);
              munmap(region->mmaps[i].mmap, region->mmaps[i].size);
-             object_unparent(OBJECT(&region->mmaps[i].mem));
          }
-diff --git a/include/exec/memory.h b/include/exec/memory.h
-index 296fd068c0b..9a27fc7f786 100644
---- a/include/exec/memory.h
-+++ b/include/exec/memory.h
-@@ -1461,6 +1461,16 @@ void memory_region_init_ram_device_ptr(MemoryRegion *mr,
+     }
+diff --git a/include/system/memory.h b/include/system/memory.h
+index 2192fc9..3129357 100644
+--- a/include/system/memory.h
++++ b/include/system/memory.h
+@@ -1280,6 +1280,16 @@ void memory_region_init_ram_device_ptr(MemoryRegion *mr,
                                         uint64_t size,
                                         void *ptr);
  
@@ -90,10 +97,10 @@ index 296fd068c0b..9a27fc7f786 100644
   * memory_region_init_alias: Initialize a memory region that aliases all or a
   *                           part of another memory region.
 diff --git a/system/cpus.c b/system/cpus.c
-index 1c818ff6828..1b4a66a3c4c 100644
+index 97e5a5e..823f871 100644
 --- a/system/cpus.c
 +++ b/system/cpus.c
-@@ -371,6 +371,14 @@ static void sigbus_reraise(void)
+@@ -382,6 +382,14 @@ static void sigbus_reraise(void)
  static void sigbus_handler(int n, siginfo_t *siginfo, void *ctx)
  {
      if (siginfo->si_code != BUS_MCEERR_AO && siginfo->si_code != BUS_MCEERR_AR) {
@@ -109,10 +116,10 @@ index 1c818ff6828..1b4a66a3c4c 100644
      }
  
 diff --git a/system/memory.c b/system/memory.c
-index 5e6eb459d5d..48d1bbca4f9 100644
+index 5fc3670..dab6eb0 100644
 --- a/system/memory.c
 +++ b/system/memory.c
-@@ -1335,11 +1335,125 @@ const MemoryRegionOps unassigned_mem_ops = {
+@@ -1364,11 +1364,125 @@ const MemoryRegionOps unassigned_mem_ops = {
      .endianness = DEVICE_NATIVE_ENDIAN,
  };
  
@@ -217,12 +224,12 @@ index 5e6eb459d5d..48d1bbca4f9 100644
 +    uint64_t data;
 +
 +    /*
-+     * sigsetjmp(env, 1) saves the signal mask (an rt_sigprocmask on glibc) on
++     * sigsetjmp(env, 1) saves the signal mask (an rt_sigprocmask syscall) on
 +     * every trapped ram_device access. It can't be dropped: siglongjmp out of
 +     * the SIGBUS handler must restore the mask or SIGBUS stays blocked on the
 +     * thread. This is a deliberate per-access cost, incurred only on the
 +     * trapped-MMIO slow path (quirked/sub-page BARs, teardown), never on the
-+     * EPT fast path.
++     * KVM-mapped fast path.
 +     */
 +    if (sigsetjmp(ram_device_env, 1)) {
 +        /* mmap faulted (BUS_ADRERR): BAR MEM disabled -> Unsupported Request */
@@ -239,7 +246,7 @@ index 5e6eb459d5d..48d1bbca4f9 100644
  
      trace_memory_region_ram_device_read(get_cpu_index(), mr, addr, data, size);
  
-@@ -1353,7 +1467,16 @@ static void memory_region_ram_device_write(void *opaque, hwaddr addr,
+@@ -1382,7 +1496,16 @@ static void memory_region_ram_device_write(void *opaque, hwaddr addr,
  
      trace_memory_region_ram_device_write(get_cpu_index(), mr, addr, data, size);
  
@@ -256,6 +263,3 @@ index 5e6eb459d5d..48d1bbca4f9 100644
  }
  
  static const MemoryRegionOps ram_device_mem_ops = {
--- 
-2.43.0
-

@@ -1,0 +1,74 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mike.malyshev@gmail.com>
+Date: Fri, 9 Oct 2026 14:43:21 +0000
+Subject: [PATCH] vfio/igd: save the host OpRegion for offline inspection
+
+The OpRegion, which carries the Video BIOS Table, is the main piece of
+host-specific state that QEMU hands a guest unchanged (x-igd-opregion=on).
+When iGPU passthrough works on one host and not on another, comparing the
+two VBTs is often the quickest lead, and the guest may be in no state to
+dump its copy.
+
+Write the OpRegion that QEMU has just read for the guest to
+/run/hypervisor/kvm/<name>/igd-opregion.bin, where <name> is -name; EVE's
+tools/igpu-vbt-dump.py decodes it. No device access is added. A failure to
+write the file is reported and ignored.
+
+Upstream-Status: Inappropriate [EVE-specific runtime path]
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
+---
+ hw/vfio/igd.c | 27 +++++++++++++++++++++++++++
+ 1 file changed, 27 insertions(+)
+
+diff --git a/hw/vfio/igd.c b/hw/vfio/igd.c
+index 3b15e37..903d3ab 100644
+--- a/hw/vfio/igd.c
++++ b/hw/vfio/igd.c
+@@ -17,6 +17,7 @@
+ #include "qapi/qmp/qerror.h"
+ #include "hw/core/boards.h"
+ #include "hw/nvram/fw_cfg.h"
++#include "system/system.h"
+ #include "pci.h"
+ #include "pci-quirks.h"
+ #include "trace.h"
+@@ -141,6 +142,30 @@ static uint64_t igd_stolen_memory_size(int gen, uint32_t gmch)
+     return 0;
+ }
+ 
++/*
++ * Keep a copy of the host OpRegion, VBT included, with the domain's other
++ * runtime files, so that it can be compared between hosts without capturing
++ * it inside the guest. Best effort: a failure is reported and ignored.
++ */
++static void vfio_pci_igd_opregion_save(VFIOPCIDevice *vdev, size_t size)
++{
++    const char *name = qemu_get_vm_name();
++    g_autofree char *path = NULL;
++    g_autoptr(GError) err = NULL;
++
++    if (!name) {
++        return;
++    }
++    path = g_strdup_printf("/run/hypervisor/kvm/%s/igd-opregion.bin", name);
++    if (!g_file_set_contents(path, (const char *)vdev->igd_opregion, size,
++                             &err)) {
++        warn_report("IGD: OpRegion copy not saved to %s: %s; "
++                    "passthrough is unaffected", path, err->message);
++        return;
++    }
++    info_report("IGD: OpRegion (%zu bytes) saved to %s", size, path);
++}
++
+ /*
+  * The OpRegion includes the Video BIOS Table, which seems important for
+  * telling the driver what sort of outputs it has.  Without this, the device
+@@ -165,6 +190,8 @@ static bool vfio_pci_igd_opregion_init(VFIOPCIDevice *vdev,
+         return false;
+     }
+ 
++    vfio_pci_igd_opregion_save(vdev, info->size);
++
+     /*
+      * Provide fw_cfg with a copy of the OpRegion which the VM firmware is to
+      * allocate 32bit reserved memory for, copy these contents into, and write
