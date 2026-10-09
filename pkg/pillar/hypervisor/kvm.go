@@ -59,7 +59,7 @@ const (
 	// fw_cfg correctly so the guest's iGPU driver works — but does NOT
 	// publish a UEFI GraphicsOutputProtocol, so there is no pre-OS
 	// framebuffer (UEFI shell, GRUB, Windows boot logo go to nothing).
-	igdRomPath = "/usr/lib/xen/boot/igd.rom"
+	igdRomPath = "/usr/share/qemu/igd.rom"
 
 	// qemuProcessCoreRlimitBytes caps the qemu process core the kernel writes
 	// on a fatal signal (debug.qemu.process.core).  It bounds the raw,
@@ -487,7 +487,7 @@ const qemuNetTemplate = `
   type = "tap"
   ifname = "{{.Vif}}"
   br = "{{.Bridge}}"
-  script = "/etc/xen/scripts/qemu-ifup"
+  script = "/etc/qemu-ifup"
   downscript = "no"
 {{- if eq .Driver "virtio-net-pci" }}
   vhost = "on"
@@ -770,7 +770,7 @@ func newKvm() Hypervisor {
 		return KvmContext{
 			ctrdContext:  *ctrdCtx,
 			devicemodel:  "virt",
-			dmExec:       "/usr/lib/xen/bin/qemu-system-aarch64",
+			dmExec:       "/usr/bin/qemu-system-aarch64",
 			dmArgs:       []string{"-display", "none", "-S", "-no-user-config", "-nodefaults", "-no-shutdown", "-serial", "chardev:charserial0"},
 			dmCPUArgs:    []string{"-cpu", "host"},
 			dmFmlCPUArgs: []string{"-cpu", "host"},
@@ -778,8 +778,8 @@ func newKvm() Hypervisor {
 	case "amd64":
 		return KvmContext{
 			ctrdContext:  *ctrdCtx,
-			devicemodel:  "pc-q35-3.1",
-			dmExec:       "/usr/lib/xen/bin/qemu-system-x86_64",
+			devicemodel:  "pc-q35-11.1",
+			dmExec:       "/usr/bin/qemu-system-x86_64",
 			dmArgs:       []string{"-display", "none", "-S", "-no-user-config", "-nodefaults", "-no-shutdown", "-serial", "chardev:charserial0", "-machine", "hpet=off"},
 			dmCPUArgs:    []string{"-cpu", "host"},
 			dmFmlCPUArgs: []string{"-cpu", "host,hv_time,hv_relaxed,hv_vendor_id=eveitis,hypervisor=off,kvm=off,vmx=off"},
@@ -1003,7 +1003,7 @@ func (ctx KvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 	if err != nil {
 		return logError("failed to load OCI spec for domain %s: %v", status.DomainName, err)
 	}
-	if err = spec.AddLoader(xenToolsPath); err != nil {
+	if err = spec.AddLoader(qemuServicePath); err != nil {
 		return logError("failed to add kvm hypervisor loader to domain %s: %v", status.DomainName, err)
 	}
 	overhead, err := vmmOverhead(domainName, domainUUID, int64(config.Memory), int64(config.VMMMaxMem), int64(config.MaxCpus), int64(config.VCpus), config.IoAdapterList, aa, globalConfig)

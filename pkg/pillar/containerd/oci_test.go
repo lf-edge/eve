@@ -298,7 +298,7 @@ const loaderRuntimeSpec = `
     ],
     "linux": {
         "resources": {},
-        "cgroupsPath": "/eve/services/xen-tools",
+        "cgroupsPath": "/eve/services/qemu",
         "namespaces": [
             {
                 "type": "mount"

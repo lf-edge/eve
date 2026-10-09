@@ -142,7 +142,7 @@ const (
 	// OVMFSettingsDir - directory for OVMF settings, they are stored in per-domain files
 	OVMFSettingsDir = SealedDirName + "/ovmf"
 	// OVMFSettingsTemplate - template file for OVMF settings
-	OVMFSettingsTemplate = "/usr/lib/xen/boot/OVMF_VARS.fd"
+	OVMFSettingsTemplate = "/usr/share/ovmf/OVMF_VARS.fd"
 	// CustomOVMFSettingsDir - directory for custom OVMF settings (for different resolutions)
 	CustomOVMFSettingsDir = "/hostfs/etc/ovmf"
 
