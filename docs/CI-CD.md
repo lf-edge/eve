@@ -108,16 +108,23 @@ including the OS images in Dockerfiles. The limitation is that it only updates t
 not the package versions in the apk add command, so it can only be used in EVE packages that do not
 hardwire package versions.
 
-Dependabot should not be enabled in the reference lf-edge tree.
-Instead use it in user forks and let Dependabot create its PRs there.
-Then the user can cherry-pick the version changes, test, tweak, squash, and submit
-their own PR to lf-edge.
+Dependabot has two independent features, and lf-edge/eve uses only one of them:
 
-To use Dependabot in a user fork:
+* **Security updates** are enabled in the repository settings. Dependabot opens PRs
+  against master for dependencies with a known vulnerability (Go modules, Python
+  packages, etc.). These are reviewed and merged like any other PR, and backported
+  to stable branches as needed.
+* **Version updates** of Dockerfile base images are configured in
+  `.github/dependabot.yml.disabled` but are not enabled in lf-edge/eve.
+  Instead use them in user forks and let Dependabot create its PRs there.
+  Then the user can cherry-pick the version changes, test, tweak, squash, and submit
+  their own PR to lf-edge.
 
-* enable Dependabot options in: Settings -> Security & analysis
+To use Dependabot version updates in a user fork:
+
+* rename `.github/dependabot.yml.disabled` to `.github/dependabot.yml` and push to master
 * open: Insights -> Dependency graph -> Dependabot
-* re-run by: modify this file, push to master
+* re-run by: modify `.github/dependabot.yml`, push to master
 * review generated PRs
 * cherry-pick from dependabot/docker/* branches
 
