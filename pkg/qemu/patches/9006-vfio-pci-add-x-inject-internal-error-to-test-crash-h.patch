@@ -1,0 +1,76 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mike.malyshev@gmail.com>
+Date: Fri, 9 Oct 2026 14:44:10 +0000
+Subject: [PATCH] vfio/pci: add x-inject-internal-error to test crash handling
+
+EVE saves a guest core when a VM stops in the internal-error run state,
+which is where a KVM_RUN failure, such as a fault on a disabled
+passthrough BAR, leaves it. Reaching that state on demand would otherwise
+take the hardware race, so add a QMP command that stops the VM there
+directly.
+
+The command exists only in builds with CONFIG_EVE_CRASH_INJECTOR defined.
+Its QAPI definition carries the same condition, so other builds have
+neither the code nor the command. EVE's tools/qemu/inject-crash.sh sends
+it.
+
+Upstream-Status: Inappropriate [EVE debug aid]
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
+---
+ hw/vfio/pci.c  | 14 ++++++++++++++
+ qapi/vfio.json | 20 ++++++++++++++++++++
+ 2 files changed, 34 insertions(+)
+
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
+index 428ab2f..3d94be3 100644
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -4148,6 +4148,20 @@ static const TypeInfo vfio_pci_nohotplug_info = {
+     .class_init = vfio_pci_nohotplug_class_init,
+ };
+ 
++#ifdef CONFIG_EVE_CRASH_INJECTOR
++#include "qapi/qapi-commands-vfio.h"
++
++/*
++ * Stop the VM in the internal-error run state, as a KVM_RUN failure would,
++ * so that crash handling can be tested without reproducing a real fault.
++ * Debug builds only; see qapi/vfio.json.
++ */
++void qmp_x_inject_internal_error(Error **errp)
++{
++    vm_stop(RUN_STATE_INTERNAL_ERROR);
++}
++#endif
++
+ static void register_vfio_pci_dev_type(void)
+ {
+     /*
+diff --git a/qapi/vfio.json b/qapi/vfio.json
+index 17b6046..81acefe 100644
+--- a/qapi/vfio.json
++++ b/qapi/vfio.json
+@@ -75,3 +75,23 @@
+       'qom-path': 'str',
+       'device-state': 'QapiVfioMigrationState'
+   } }
++
++##
++# @x-inject-internal-error:
++#
++# Stop the VM in the internal-error run state, as a KVM_RUN failure
++# would, so that crash handling can be tested on demand.  Only built
++# with CONFIG_EVE_CRASH_INJECTOR defined.
++#
++# Features:
++#
++# @unstable: This command is meant for testing.
++#
++# .. qmp-example::
++#
++#     -> { "execute": "x-inject-internal-error" }
++#     <- { "return": {} }
++##
++{ 'command': 'x-inject-internal-error',
++  'features': [ 'unstable' ],
++  'if': 'CONFIG_EVE_CRASH_INJECTOR' }
