@@ -62,6 +62,18 @@ func (ni *niInfo) lookupVIFByGuestMAC(mac net.HardwareAddr) *vifInfo {
 	return nil
 }
 
+// containsVIF returns true if the list contains a VIF of the same application,
+// connected to the same network instance with the same guest MAC address.
+func containsVIF(vifs []AppVIF, vif AppVIF) bool {
+	for _, v := range vifs {
+		if v.App == vif.App && v.NI == vif.NI &&
+			bytes.Equal(v.GuestIfMAC, vif.GuestIfMAC) {
+			return true
+		}
+	}
+	return false
+}
+
 type detectedAddr struct {
 	types.AssignedAddr
 	validUntil time.Time // zero timestamp if validity is not known/limited
@@ -281,6 +293,18 @@ func (lc *LinuxCollector) UpdateCollectingForNI(
 	}
 	ni := lc.nis[niConfig.UUID]
 	ni.config = niConfig
+	// Drop the cached IP leases of VIFs which are no longer connected to the NI.
+	// A VIF added back later with the same app and MAC address (e.g. the same
+	// adapter re-added through an app restart) must not inherit the address its
+	// predecessor had leased: the lease is already gone from the lease file and
+	// only the cache would resurrect it.
+	for _, prevVIF := range ni.vifs {
+		if containsVIF(vifs, prevVIF.AppVIF) {
+			continue
+		}
+		ni.ipLeases = ni.ipLeases.delLeasesForVIF(
+			prevVIF.App.String(), prevVIF.GuestIfMAC)
+	}
 	var newVifs []*vifInfo
 	for _, vif := range vifs {
 		newVif := &vifInfo{AppVIF: vif}

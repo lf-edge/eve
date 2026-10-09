@@ -334,6 +334,9 @@ func TestDeviceConnectivitySuite(test *testing.T) {
 //   - TestNICCountChangeOrderedInterface -- the same no-purge NIC addition
 //     with explicitly pinned interface orders: the added adapter must be
 //     enumerated by the guest at the position its order dictates.
+//   - TestNICReaddNoStaleIP -- a NIC removed from a running app and added
+//     back right away (same MAC, same NI, each via a restart) must not be
+//     reported with the IP address its predecessor had leased.
 //   - TestSwitchNIPortConfigRace -- regression test for NIM/zedrouter races
 //     around IfInstanceID: a multi-port Switch NI plus a single-port Switch NI
 //     on a VLAN sub-interface, with ports live-switched between DHCP/static/no-IP;
@@ -441,6 +444,9 @@ func TestApplicationConnectivitySuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestNICCountChangeOrderedInterface,
+		},
+		evetest.TestCase{
+			Test: TestNICReaddNoStaleIP,
 		},
 		evetest.TestCase{
 			Test: TestSwitchNIPortConfigRace,
