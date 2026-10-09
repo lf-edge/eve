@@ -1,7 +1,8 @@
 kernel:
   image: KERNEL_TAG
   # the unified_cgroup_hierarchy forces cgroupsv1, which is required until pillar is ready to support v2
-  cmdline: "rootdelay=3 linuxkit.unified_cgroup_hierarchy=0"
+  # Enable runtime measurements without IMA appraisal or signature enforcement.
+  cmdline: "rootdelay=3 linuxkit.unified_cgroup_hierarchy=0 IMA_CMDLINE"
 init:
   - linuxkit/init:v1.3.0
   - linuxkit/runc:v1.3.0       # runc v3.3.0
