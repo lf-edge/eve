@@ -58,11 +58,31 @@ The interactive installer is introduced as a new container that precedes the sto
 * GRUB Option: Selecting the interactive installation option appends the string "interactive" to /proc/cmdline, distinguishing it from the normal installation.
 * Configuration File: Once the user has finalized their configuration, it is saved in a JSON file, which the system uses to perform the actual installation.
 
-### Updating the vendors
+## Development (host)
 
-When changing the code, we might need to add or update the libraries we use. To update the vendors we need to install rust and cargo,
-and run the following command:
+The Rust code can be built and tested natively on the host with a stock Rust
+toolchain — no need to build the whole EVE image. Dependencies are fetched from
+crates.io (this package is not vendored) and cached under `~/.cargo`, and are
+pinned by `Cargo.lock`.
 
 ```bash
-cargo vendor
+cd pkg/installer
+cargo test            # run the full unit-test suite
+cargo test config     # run only the config module's tests
+cargo build           # debug build
+cargo run             # run the interactive TUI in your terminal
 ```
+
+Adding or updating a dependency is just an edit to `Cargo.toml` (and a
+`cargo update` if you want to move `Cargo.lock`); there is no vendor tree to
+refresh. Commit `Cargo.lock` changes so the pinned versions stay reproducible.
+
+> Note: flows that touch real block devices (disk probing, partitioning,
+> `make-raw`, zfs/ext4, `efibootmgr`) cannot run in a plain host shell. A
+> loopback "files-as-disks" emulation harness for those will land alongside the
+> install-orchestration work.
+
+The container image is built with the linuxkit package build (`make
+pkg/installer`), which needs network access (`build.yml` sets `network: yes`) to
+fetch crates; its Dockerfile uses `cargo-chef` to cache the dependency build in a
+separate layer.

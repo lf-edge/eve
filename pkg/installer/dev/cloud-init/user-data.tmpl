@@ -1,0 +1,24 @@
+#cloud-config
+users:
+  - name: ubuntu
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - __SSH_PUBKEY__
+package_update: true
+packages:
+  - gdisk
+  - mtools
+  - dosfstools
+  - e2fsprogs
+  - libarchive-tools
+  - efibootmgr
+  - util-linux
+  - tpm2-tools
+bootcmd:
+  - [ mkdir, -p, /repo ]
+mounts:
+  - [ repo, /repo, 9p, "trans=virtio,version=9p2000.L,ro,_netdev", "0", "0" ]
+# marker file so the harness can detect cloud-init finished
+runcmd:
+  - [ touch, /run/harness-ready ]
