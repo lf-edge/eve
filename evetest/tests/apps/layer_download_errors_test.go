@@ -229,11 +229,8 @@ func TestLayerDownloadErrorsBounded(test *testing.T) {
 	defer stopCTWatch()
 	metricUpdates, stopMetricWatch := device.WatchDeviceMetrics()
 	defer stopMetricWatch()
-	fatals, stopFatalWatch := device.WatchLogs(evetest.LogMsgMatch{
-		Severity:  "fatal",
-		NotBefore: time.Now(),
-	})
-	defer stopFatalWatch()
+	crash := device.WatchForCrash()
+	defer crash.Stop()
 	device.ApplyConfig(devConfig, false, false)
 	evetest.Checkpoint("app-deployed")
 
@@ -245,18 +242,6 @@ func TestLayerDownloadErrorsBounded(test *testing.T) {
 		lastHeartbeat     time.Time
 		allLayersFailedAt time.Time
 	)
-	crashed := func() string {
-		select {
-		case msg := <-fatals:
-			return fmt.Sprintf("agent %s died: %s", msg.Source, msg.Message)
-		default:
-		}
-		if device.UnexpectedRebootCount() > 0 {
-			return fmt.Sprintf("the device rebooted on its own: %s",
-				device.GetDeviceInfo().GetLastRebootReason())
-		}
-		return ""
-	}
 	t.Eventually(func(g Gomega) {
 		for drained := false; !drained; {
 			select {
@@ -279,7 +264,7 @@ func TestLayerDownloadErrorsBounded(test *testing.T) {
 				drained = true
 			}
 		}
-		if reason := crashed(); reason != "" {
+		if reason := crash.Reason(); reason != "" {
 			StopTrying("pillar did not survive the failed download: " + reason).Now()
 		}
 		failed := failedLayers(latestCT, layerDigests)

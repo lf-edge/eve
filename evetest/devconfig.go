@@ -4,6 +4,7 @@
 package evetest
 
 import (
+	"encoding/base64"
 	"fmt"
 	"net"
 	"strconv"
@@ -426,6 +427,27 @@ type ProxyAutoDiscoveryConfig struct {
 func (config ProxyAutoDiscoveryConfig) toProto(th *TestHarness) *evecommon.ProxyConfig {
 	proxyConfigProto := &evecommon.ProxyConfig{
 		NetworkProxyEnable: true,
+	}
+	for _, cert := range config.ProxyCertsPEM {
+		proxyConfigProto.ProxyCertPEM = append(proxyConfigProto.ProxyCertPEM,
+			[]byte(cert))
+	}
+	return proxyConfigProto
+}
+
+// PACFileProxyConfig represents a proxy configuration given as a proxy
+// auto-config (PAC) script that EVE evaluates for every URL it opens on the
+// port. EVE receives the script the way a controller sends it, base64-encoded
+// inside the network's proxy config.
+type PACFileProxyConfig struct {
+	// PACScript is the JavaScript of the PAC file, i.e. its FindProxyForURL.
+	PACScript     string
+	ProxyCertsPEM []string
+}
+
+func (config PACFileProxyConfig) toProto(th *TestHarness) *evecommon.ProxyConfig {
+	proxyConfigProto := &evecommon.ProxyConfig{
+		Pacfile: base64.StdEncoding.EncodeToString([]byte(config.PACScript)),
 	}
 	for _, cert := range config.ProxyCertsPEM {
 		proxyConfigProto.ProxyCertPEM = append(proxyConfigProto.ProxyCertPEM,
