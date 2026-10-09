@@ -378,7 +378,7 @@ func doInstall(ctx *zedmanagerContext,
 	uuidStr := status.Key()
 
 	log.Functionf("doInstall: UUID: %s", uuidStr)
-	allErrors := ""
+	var volumeErrors []string
 	var errorSource interface{}
 	var errorTime time.Time
 	var entities []*types.ErrorEntity
@@ -521,7 +521,7 @@ func doInstall(ctx *zedmanagerContext,
 		if vrs.HasError() {
 			errorSource = vrs.ErrorSourceType
 			errorTime = vrs.ErrorTime
-			allErrors = appendError(allErrors, vrs.Error)
+			volumeErrors = append(volumeErrors, vrs.Error)
 			entities = append(entities, &types.ErrorEntity{EntityID: vrs.VolumeID.String(), EntityType: types.ErrorEntityVolume})
 			if vrs.ErrorSeverity > severity {
 				severity = vrs.ErrorSeverity
@@ -542,6 +542,9 @@ func doInstall(ctx *zedmanagerContext,
 		changed = true
 	}
 
+	// Every volume's own error travels in VolumeRefStatusList already; the
+	// app-level error is their bounded sum, not another full copy of each.
+	allErrors := types.JoinMaxErrorStrings(volumeErrors, "\n\n", types.MaxErrorLen)
 	if allErrors == "" {
 		status.ClearErrorWithSource()
 	} else if errorSource == nil {
@@ -1371,8 +1374,4 @@ func doInactivateHalt(ctx *zedmanagerContext,
 	changed = true
 	log.Functionf("doInactivateHalt done for %s", uuidStr)
 	return changed
-}
-
-func appendError(allErrors string, lasterr string) string {
-	return fmt.Sprintf("%s%s\n\n", allErrors, lasterr)
 }

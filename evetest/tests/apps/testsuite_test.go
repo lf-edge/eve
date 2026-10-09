@@ -106,6 +106,11 @@ import (
 //     powered off, which is where a reboot lands in the middle of the purge
 //     deterministically rather than by chance. Meaningful on every hypervisor.
 //   - TestLotsOfApps -- starts lots of apps and checks for success
+//   - TestLayerDownloadErrorsBounded -- an application whose image has
+//     every layer fail to download, from both management ports, is reported
+//     in error with a bounded error description and the device stays up;
+//     regression test for zedmanager killing pillar by publishing an
+//     AppInstanceStatus larger than a pubsub message.
 //   - TestVGAPassthroughNoHostAccess -- while the device's VGA controller is
 //     passed through to an app, no host process may open PCI device
 //     attributes for writing or reset, reconfigure or map a PCI device;
@@ -116,9 +121,10 @@ import (
 // The two purge tests come late because they are the expensive ones: they
 // assert on which generation of a workload exists, so each needs a device
 // created from scratch (purgeDeviceRequirements) rather than the warm device
-// the earlier subtests reuse. The VGA passthrough test comes last for the
-// same kind of reason: it is the only one on the TwoMgmtPorts network model,
-// and a differing model makes the framework recreate the device.
+// the earlier subtests reuse. The layer download and VGA passthrough tests
+// come last for the same kind of reason: they are the only ones on the
+// TwoMgmtPorts network model, and a differing model makes the framework
+// recreate the device, so they sit together at the end.
 //
 // Neither declares hypervisor variants. The whole suite is run once per
 // hypervisor (EVETEST_HYPERVISOR=kvm|kubevirt), so a variant here would run
@@ -168,6 +174,9 @@ func TestAppsSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestLotsOfApps,
+		},
+		evetest.TestCase{
+			Test: TestLayerDownloadErrorsBounded,
 		},
 		evetest.TestCase{
 			Test: TestVGAPassthroughNoHostAccess,
