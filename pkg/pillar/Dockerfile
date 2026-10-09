@@ -180,8 +180,8 @@ SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 
 WORKDIR /
 
-RUN mkdir -p /out/usr/lib/xen/boot
-COPY --from=uefi-build /OVMF_VARS.fd /out/usr/lib/xen/boot/OVMF_VARS.fd
+RUN mkdir -p /out/usr/share/ovmf
+COPY --from=uefi-build /OVMF_VARS.fd /out/usr/share/ovmf/OVMF_VARS.fd
 
 COPY --from=zfs /out /out
 COPY --from=fscrypt /opt/zededa/bin /out/opt/zededa/bin

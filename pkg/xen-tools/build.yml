@@ -1,18 +1,2 @@
 image: eve-xen-tools
 org: lfedge
-config:
-  binds:
-    - /run:/run
-    - /dev:/dev
-    - /dev/pts:/dev/pts
-    - /etc/resolv.conf:/etc/resolv.conf
-    - /persist:/persist
-    - /:/hostfs
-  net: host
-  capabilities:
-    - all
-  pid: host
-  userns: host
-  devices:
-    - path: all
-      type: a

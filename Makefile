@@ -429,7 +429,7 @@ FORCE_BUILD=
 # Packages to always rebuild rather than pull/skip (applied by the eve-%
 # rule below). Keyed by name, not a target-specific FORCE_BUILD variable:
 # those propagate to the whole prerequisite subtree in GNU Make, which
-# force-rebuilt their dependencies too (e.g. pkg/uefi via pkg/xen-tools).
+# force-rebuilt their dependencies too (e.g. pkg/xen-tools via pkg/external-boot-image).
 FORCE_BUILD_PKGS=external-boot-image kube
 
 # ROOTFS_DEPS enforces the scan of all rootfs image dependencies

@@ -1,3 +1,0 @@
-#!/bin/sh
-ifconfig "$1" 0.0.0.0 up
-brctl addif "$2" "$1" || true
