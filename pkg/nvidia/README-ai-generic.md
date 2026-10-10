@@ -61,8 +61,11 @@ modules) are never loaded.
   this platform, and labels the node `eve.lfedge.org/nvidia-gpu=true` while
   its GPU is usable.
 * `/opt/vendor/nvidia/init.d/nv-init.sh` - run by pillar at init; loads the
-  compute kernel modules, ensures `/dev/nvidia0` exists, and generates (once)
-  the CDI spec at `/run/cdi/nvidia.yaml`.
+  compute kernel modules and stops if `nvidia` does not load (no NVIDIA GPU),
+  stops with an error if the module and this userland are different driver
+  versions, ensures `/dev/nvidia0` exists, and generates (once) the CDI spec
+  at `/run/cdi/nvidia.yaml`. Each NVML call is bounded by `NVML_TIMEOUT`
+  (120s), because pillar's agents start only after it returns.
 
 ## SBOM
 
