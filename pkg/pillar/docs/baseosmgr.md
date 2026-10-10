@@ -59,10 +59,10 @@ the rootfs image into the partition device.
 * volume sets (the cross-flavor gate)
   * `VolumeConfig` from `zedagent` and `VolumeStatus` from `volumemgr`
   * read only as set sizes, via `GetAll()`. A device with volumes in
-    either set cannot switch HV flavor, because the
-    `/persist/vault/volumes` layout differs between EVE-k and the other
-    flavors. Individual fields are never consumed and there are no
-    handlers.
+    either set cannot switch HV flavor when the conversion would shrink
+    `/persist`; any other conversion carries the volumes across (see
+    [EVE-K.md](../../../docs/EVE-K.md#carrying-app-volumes-from-eve-kvm)).
+    Individual fields are never consumed and there are no handlers.
 * zboot config (the test-complete signal)
   * `ZbootConfig` from `nodeagent`, one entry per partition (`IMGA`,
     `IMGB`); only `TestComplete` is meaningful. When it flips to `true`

@@ -294,17 +294,23 @@ Uses native ZFS encryption. Key paths:
   field from EVE-kvm to EVE-k arrives with `persist/vault` as a
   filesystem dataset, which the EVE-k layout cannot use.
   `migrateVaultFsToZvol` stages a second zvol, copies the vault
-  contents into its ext4, then renames the old dataset aside, renames
-  the staging zvol into place and only then destroys the old one; an
+  contents into its ext4, then renames the old dataset aside to
+  `persist/vault.old` and renames the staging zvol into place; an
   interruption mid-swap is picked up on the next boot by
-  `recoverInterruptedVaultMigration`. The staging zvol is sized to the
+  `recoverInterruptedVaultMigration`. The old dataset stays parked:
+  the EVE-kvm app-volume zvols under it, which the copy does not see,
+  are the source csihandler fills their PVCs from, and an EVE-kvm
+  fallback needs it back. EVE-k loads its key on every unlock so the
+  zvols' device nodes exist, and volumemgr destroys it once the
+  partition is committed and its zvols are drained (see
+  [EVE-K.md](../../../docs/EVE-K.md#carrying-app-volumes-from-eve-kvm)). The staging zvol is sized to the
   pool's free space and the migration declines up front if the vault
   holds more than that. Sizing at migration time has a lasting
   consequence: the migrated vault is smaller than the one a fresh
   EVE-k install creates on a nearly empty pool — smaller by whatever
   else `/persist` holds at conversion time — and the space the old
-  vault frees goes back to the pool rather than into the vault's
-  `volsize`, which is fixed when the zvol is created. The zvol occupies
+  vault frees once drained goes back to the pool rather than into the
+  vault's `volsize`, which is fixed when the zvol is created. The zvol occupies
   only the space actually written to it: pillar creates it through
   libzfs, which — unlike `zfs create` without `-s` — adds no
   `refreservation`.
@@ -327,9 +333,13 @@ Uses native ZFS encryption. Key paths:
   `persist/vault` as a fresh install and create an empty one over the
   parked contents. EVE-kvm cannot mount a zvol, so it restores the
   parked filesystem vault and leaves the copy to the next EVE-k attempt
-  instead of promoting the staging zvol. A vault in place beside a
-  parked one is likewise never the migrated vault on EVE-kvm, so the
-  parked datasets are kept there whatever the partition state says.
+  instead of promoting the staging zvol. After a completed swap it
+  finds the migrated zvol in place beside the parked vault; it destroys
+  the zvol and the etcd zvol, then renames the parked vault back, whose
+  key it loads before the mount. EVE-k finding the same state keeps
+  the parked vault. A filesystem vault in place beside a parked one is
+  never the migrated vault on EVE-kvm, so the parked datasets are kept
+  there whatever the partition state says.
 * **No-TPM ZFS** is supported: a plain unencrypted dataset (or zvol
   on kube) is created instead — `Status` becomes
   `DATASEC_AT_REST_DISABLED`.

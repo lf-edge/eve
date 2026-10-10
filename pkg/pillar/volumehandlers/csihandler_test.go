@@ -11,6 +11,7 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	uuid "github.com/satori/go.uuid"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -148,6 +149,69 @@ func TestCSIHandler_HandleCreatedRequiresUpload(t *testing.T) {
 			}
 			assert.Equal(t, tc.wantLookup, called,
 				"upload check consulted = %v, want %v", called, tc.wantLookup)
+		})
+	}
+}
+
+// TestCSIHandler_KvmCarriedZvolLookup covers where a PVC's source is looked for
+// on a ZFS /persist converted from EVE-kvm: the encrypted zvols in the parked
+// kvm vault, the clear ones in place, and never an empty PVC while a carried
+// zvol exists without its device node.
+func TestCSIHandler_KvmCarriedZvolLookup(t *testing.T) {
+	volumeID := uuid.FromStringOrNil("6f6d2f2a-6b5e-4d0a-9b52-3f2f7d9c1a10")
+	parked := "persist/vault.old/volumes/" + volumeID.String() + ".3"
+	clearZvol := "persist/clear/volumes/" + volumeID.String() + ".3"
+	tests := []struct {
+		name        string
+		encrypted   bool
+		zfs         bool
+		zvolExists  bool
+		wantDataset string
+		wantErr     bool
+	}{
+		{name: "encrypted zvol in the parked kvm vault", encrypted: true, zfs: true,
+			zvolExists: true, wantDataset: parked, wantErr: true},
+		{name: "clear zvol in place", zfs: true, zvolExists: true,
+			wantDataset: clearZvol, wantErr: true},
+		{name: "no carried zvol", encrypted: true, zfs: true, wantDataset: parked},
+		{name: "ext4 persist", encrypted: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			origZFS, origExists := persistIsZFS, zvolDatasetExists
+			defer func() { persistIsZFS, zvolDatasetExists = origZFS, origExists }()
+			var looked []string
+			persistIsZFS = func() bool { return tc.zfs }
+			zvolDatasetExists = func(_ *base.LogObject, dataset string) bool {
+				looked = append(looked, dataset)
+				return tc.zvolExists
+			}
+
+			status := types.VolumeStatus{
+				VolumeID:               volumeID,
+				GenerationCounter:      2,
+				LocalGenerationCounter: 1,
+				Encrypted:              tc.encrypted,
+			}
+			handler := &volumeHandlerCSI{commonVolumeHandler: commonVolumeHandler{
+				status: &status,
+				log:    newTestLog(t),
+			}}
+
+			// No /dev/zvol exists here, so a carried zvol must surface as an
+			// error rather than as "no source".
+			src, err := handler.kvmMigratedSourcePath()
+			assert.Empty(t, src)
+			if tc.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+			if tc.wantDataset == "" {
+				assert.Empty(t, looked)
+			} else {
+				assert.Equal(t, []string{tc.wantDataset}, looked)
+			}
 		})
 	}
 }

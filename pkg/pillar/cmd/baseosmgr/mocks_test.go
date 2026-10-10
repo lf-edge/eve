@@ -5,10 +5,12 @@ package baseosmgr
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/diskconvert"
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -265,6 +267,16 @@ type testCtx struct {
 	currentIsKube    bool
 	versionIsKube    map[string]bool
 	versionIsKubeErr error
+
+	// Boot-disk conversion pre-flight knobs; the default "shrink" keeps
+	// the kvm -> EVE-k volume gate closed.
+	convDecision    string
+	convDecisionErr error
+
+	// maybeConvert seam: records whether the kvm-to-k marker was already on
+	// disk at each call, and reports the conversion as still pending.
+	convertCalls        int
+	markerAtConvertCall []bool
 }
 
 // newTestCtx builds a baseOsMgrContext suitable for handler tests:
@@ -297,6 +309,7 @@ func newTestCtx(t *testing.T) *testCtx {
 		wk:                   newMockWorker(),
 		tmpDir:               tmp,
 		versionIsKube:        map[string]bool{},
+		convDecision:         diskconvert.DecisionShrink,
 	}
 	ctx := &baseOsMgrContext{
 		globalConfig: types.DefaultConfigItemValueMap(),
@@ -304,6 +317,7 @@ func newTestCtx(t *testing.T) *testCtx {
 			currentRetryUpdateCounter: filepath.Join(tmp, "current_retry_update_counter"),
 			configRetryUpdateCounter:  filepath.Join(tmp, "config_retry_update_counter"),
 			forceFallbackCounter:      filepath.Join(tmp, "forceFallbackCounter"),
+			kvmToKubePending:          filepath.Join(tmp, types.KvmToKubePendingFilename),
 		},
 		pubBaseOsStatus:      tc.pubBaseOsStatus,
 		pubZbootStatus:       tc.pubZbootStatus,
@@ -339,6 +353,15 @@ func newTestCtx(t *testing.T) *testCtx {
 			requestNodeDrain: func(_ pubsub.Publication, requester kubeapi.DrainRequester, _ string) error {
 				tc.drainRequestCalls = append(tc.drainRequestCalls, requester)
 				return tc.drainRequestErr
+			},
+			conversionDecision: func() (string, error) {
+				return tc.convDecision, tc.convDecisionErr
+			},
+			maybeConvert: func(ctx *baseOsMgrContext, _ *types.BaseOsStatus) bool {
+				tc.convertCalls++
+				_, err := os.Stat(ctx.paths.kvmToKubePending)
+				tc.markerAtConvertCall = append(tc.markerAtConvertCall, err == nil)
+				return false
 			},
 		},
 	}

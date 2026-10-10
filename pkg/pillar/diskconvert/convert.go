@@ -29,6 +29,22 @@ const (
 	DecisionInsufficient = "insufficient" // cannot make room; stay on current flavor
 )
 
+// WillShrinkPersist reports whether a conversion with the given check decision
+// resizes the ext4 /persist partition -- the only step that touches /persist
+// geometry and can therefore disturb existing volumes. Only "shrink" does;
+// "proceed" (the disk already has the large ESP/IMGA/IMGB geometry) and "grow"
+// (consume the free tail to create those partitions) do not, and "insufficient"
+// performs no conversion at all. baseosmgr uses this to block a cross-flavor
+// update on a device that has volumes only when the conversion would shrink
+// /persist.
+//
+// "shrink" names the partition operation, not data loss: that path still backs
+// up and restores /persist content and resize2fs preserves it in the happy
+// case; the backup exists only for the worst-case unrecoverable filesystem.
+func WillShrinkPersist(decision string) bool {
+	return decision == DecisionShrink
+}
+
 // defaultNeededBytes is the room the new ESP2/IMGA2/IMGB2 partitions need
 // (2 + 10 + 10 GB); used to derive the shrink target if the check did not
 // report one.
@@ -161,6 +177,19 @@ func (c *Converter) Run(bootDisk string) (Result, error) {
 	default:
 		return r, fmt.Errorf("unexpected check decision %q", res.Decision)
 	}
+}
+
+// CheckOnly runs only the pre-flight check and returns its decision
+// ("proceed"/"grow"/"shrink"/"insufficient") without taking any action or
+// writing to /config. baseosmgr uses it together with WillShrinkPersist to gate
+// a cross-flavor update on a device that has volumes: the update is blocked only
+// when the conversion would shrink /persist.
+func (c *Converter) CheckOnly(bootDisk string) (string, error) {
+	res, err := c.Runner.Check(bootDisk)
+	if err != nil {
+		return "", fmt.Errorf("storage-resizer check: %w", err)
+	}
+	return res.Decision, nil
 }
 
 // shrinkTargetBytes is the new persist size that frees the needed room at the

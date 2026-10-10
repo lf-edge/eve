@@ -18,6 +18,8 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
+	"github.com/lf-edge/eve/pkg/pillar/zfs"
 	kerr "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/rest"
 )
@@ -274,12 +276,25 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 				return pvcName, err
 			}
 		} else {
-			qcowFile, err := handler.getVolumeFilePath()
+			// On a device upgraded from EVE-kvm, prefer the carried-over volume
+			// so app-written data survives the conversion instead of being
+			// regenerated from the image.
+			qcowFile, err := handler.kvmMigratedSourcePath()
 			if err != nil {
-				errStr := fmt.Sprintf("Error obtaining file for PVC at volume %s, error=%v",
-					pvcName, err)
-				handler.log.Error(errStr)
-				return pvcName, errors.New(errStr)
+				handler.log.Error(err)
+				return pvcName, err
+			}
+			if qcowFile != "" {
+				handler.log.Noticef("CreateVolume: migrating carried-over EVE-kvm volume %s into PVC %s (preserving app data)",
+					qcowFile, pvcName)
+			} else {
+				qcowFile, err = handler.getVolumeFilePath()
+				if err != nil {
+					errStr := fmt.Sprintf("Error obtaining file for PVC at volume %s, error=%v",
+						pvcName, err)
+					handler.log.Error(errStr)
+					return pvcName, errors.New(errStr)
+				}
 			}
 			// Convert qcow2 to PVC
 			err = kubeapi.RolloutDiskToPVC(createContext, handler.log, pvcExists, qcowFile, pvcName, false, pvcSize, storageClassName)
@@ -290,6 +305,19 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 				handler.log.Error(err)
 				return pvcName, err
 			}
+		}
+	} else if src, err := handler.kvmMigratedSourcePath(); err != nil {
+		handler.log.Error(err)
+		return pvcName, err
+	} else if src != "" {
+		// Blank/data volume carried over from EVE-kvm: migrate its bytes into the
+		// PVC so the data survives the conversion rather than starting empty.
+		handler.log.Noticef("CreateVolume: migrating carried-over EVE-kvm data volume %s into PVC %s (preserving app data)",
+			src, pvcName)
+		if err := kubeapi.RolloutDiskToPVC(createContext, handler.log, false, src, pvcName, false, pvcSize, storageClassName); err != nil {
+			errStr := fmt.Sprintf("Error converting %s to PVC %s: %v", src, pvcName, err)
+			handler.log.Error(errStr)
+			return pvcName, errors.New(errStr)
 		}
 	} else {
 		err := kubeapi.CreatePVC(pvcName, pvcSize, handler.log, storageClassName)
@@ -303,6 +331,63 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 	handler.log.Functionf("CreateVolume(%s) DONE", pvcName)
 	return pvcName, nil
 }
+
+// kvmMigratedSourcePath returns the path of a carried-over EVE-kvm app volume
+// whose bytes should populate this PVC, or "" if none exists. On an ext4
+// /persist it is a file: upgradeconverter relocates the encrypted volumes out of
+// the Longhorn-owned VolumeEncryptedDirName into a sibling "<...>/volumes-kvm"
+// holding dir (matching the relocate handler's kvmVolumesHoldingDirName), and
+// clear volumes stay under VolumeClearDirName. On a ZFS /persist it is the
+// device node of a kvm zvol: the encrypted ones sit in the kvm vault the EVE-k
+// vault migration parks at KvmParkedSealedDataset, the clear ones stay under
+// VolumeClearZFSDataset. It returns an error when such a zvol exists but its
+// device node does not, since creating an empty PVC would lose its data.
+// Container volumes are rebuilt from the preserved containerd content, so they
+// are excluded.
+func (handler *volumeHandlerCSI) kvmMigratedSourcePath() (string, error) {
+	if handler.status.IsContainer() {
+		return "", nil
+	}
+	base := filepath.Base(handler.status.PathName())
+	cand := filepath.Join(types.VolumeClearDirName, base)
+	if handler.status.Encrypted {
+		cand = filepath.Join(types.VolumeEncryptedDirName+"-kvm", base)
+	}
+	if fi, err := os.Stat(cand); err == nil && !fi.IsDir() {
+		return cand, nil
+	}
+	if !persistIsZFS() {
+		return "", nil
+	}
+	dataset := kvmCarriedZvolDataset(*handler.status)
+	if !zvolDatasetExists(handler.log, dataset) {
+		return "", nil
+	}
+	dev := zfs.GetZvolPath(dataset)
+	if _, err := os.Stat(dev); err != nil {
+		return "", fmt.Errorf("carried-over EVE-kvm zvol %s has no device node: %w", dataset, err)
+	}
+	return dev, nil
+}
+
+// kvmCarriedZvolDataset returns the dataset EVE-kvm kept this volume's zvol in,
+// as seen after the EVE-k vault migration parked the kvm vault.
+func kvmCarriedZvolDataset(status types.VolumeStatus) string {
+	parent := types.VolumeClearZFSDataset
+	if status.Encrypted {
+		parent = types.KvmParkedVolumeEncryptedZFSDataset
+	}
+	return parent + "/" + filepath.Base(status.ZVolName())
+}
+
+// persistIsZFS and zvolDatasetExists are variables so tests can decide the
+// carried-over zvol lookup without a pool.
+var (
+	persistIsZFS = func() bool {
+		return persist.ReadPersistType() == types.PersistZFS
+	}
+	zvolDatasetExists = zfs.DatasetExist
+)
 
 func (handler *volumeHandlerCSI) DestroyVolume() (string, error) {
 	pvcName := handler.status.GetPVCName()
