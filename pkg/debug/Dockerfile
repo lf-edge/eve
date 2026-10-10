@@ -79,6 +79,11 @@ RUN mkdir -p ./etc/ssh ./root/.ssh && chmod 0700 ./root/.ssh
 RUN cp /etc/passwd /etc/group ./etc/
 RUN ln -s /run ./var/run
 RUN sed -i -e 's#AllowTcpForwarding.*$#AllowTcpForwarding yes#' ./etc/ssh/sshd_config
+# No account has a password, so key-only login changes nothing that is
+# allowed; it stops sshd from offering password methods to the network.
+RUN mkdir -p ./etc/ssh/sshd_config.d && \
+    printf 'PasswordAuthentication no\nKbdInteractiveAuthentication no\n' \
+      > ./etc/ssh/sshd_config.d/10-eve-pubkey-only.conf
 
 RUN mkdir /bpftrace
 COPY --from=bpftrace / /bpftrace

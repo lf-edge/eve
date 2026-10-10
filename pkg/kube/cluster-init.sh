@@ -1241,10 +1241,11 @@ EOF
           if curl --insecure --max-time 2 "https://$join_serverIP:6443" >/dev/null 2>&1; then
             #logmsg "curl to Endpoint https://$join_serverIP:6443 ready, check cluster status"
             # if we are here, check the bootstrap server is single or cluster mode
-            # cluster status is reported via http://<join_serverIP>:8080/status API and the result if successful is
+            # cluster status is reported via https://<join_serverIP>:12346/status and the result if successful is
             # cluster:<cluster-uuid>, we need to verify the cluster-uuid matches our cluster_uuid in case we are joining
-            # a wrong cluster in duplicate cluster IP address
-            if ! status=$(curl --max-time 2 -s "http://$join_serverIP:$clusterStatusPort/status"); then
+            # a wrong cluster in duplicate cluster IP address. cluster-status-probe authenticates the server and
+            # itself with credentials derived from the join token, which it reads from stdin.
+            if ! status=$(printf '%s' "$cluster_token" | /usr/bin/cluster-status-probe "$join_serverIP" "$clusterStatusPort" 2>/dev/null); then
                 if [ $((counter % 30)) -eq 1 ]; then
                         logmsg "Attempt $counter: Failed to connect to the server. Waiting for 10 seconds..."
                 fi
