@@ -227,6 +227,16 @@ func dumpAppPVCWedge(device *evetest.EdgeDevice) {
 		{"volumemgr rollout (newlog)", newlogProbe(`grep -aiE "RolloutDiskToPVC|retryFailedClusterVolumeCreate|terminating:true|local-path" | tail -200`)},
 		{"PVC recovery actions taken", newlogProbe(`grep -aiE "deleted wedged scratch PVC|could not delete wedged scratch|deleted wedged target PVC" | tail -40`)},
 		{"kubevirt vmi -A", `eve exec kube kubectl get vmi -A -o wide 2>/dev/null || echo none`},
+		// A KubeVirt CR that never goes Available blocks every VMI. Its
+		// condition messages can embed a whole CRD dump, hence the cut.
+		{"KubeVirt CR conditions", `eve exec kube kubectl -n kubevirt get kubevirt -o jsonpath='{range .items[*]}phase={.status.phase}{"\n"}{range .status.conditions[*]}{.type}={.status} {.reason} {.lastTransitionTime}: {.message}{"\n"}{end}{end}' 2>/dev/null | cut -c1-400 || echo none`},
+		{"kubevirt pods", `eve exec kube kubectl -n kubevirt get pods -o wide 2>/dev/null || echo none`},
+		{"kubevirt warning events", `eve exec kube kubectl -n kubevirt get events --field-selector type=Warning --sort-by=.lastTimestamp 2>/dev/null | tail -30 || echo none`},
+		{"virt-operator log", `eve exec kube kubectl -n kubevirt logs -l kubevirt.io=virt-operator --tail=20 --prefix 2>/dev/null | cut -c1-400 || echo none`},
+		// A kube-apiserver watch cache that stops advancing hides objects
+		// created after it froze, so virt-operator retries a CRD create that
+		// fails with "already exists" indefinitely.
+		{"k3s apiserver cache errors", `eve exec pillar sh -c 'grep -aE "Too large resource version|Cache consistency check|required revision has been compacted" /persist/kubelog/k3s.log | tail -20' || echo none`},
 	}, 90*time.Second)
 }
 
@@ -509,6 +519,11 @@ func probeStalledConfigFetch(device *evetest.EdgeDevice) (stop func()) {
 				`/run/nim/DeviceNetworkStatus/*.json' 2>&1 || echo NONE`},
 			{"client (newlog)", newlogProbe(`grep -a "\"source\":\"client\"" | tail -60`)},
 			{"zedagent (newlog)", newlogProbe(`grep -a zedagent | tail -40`)},
+			// zedbox's stderr is logged as source pillar. A runtime fatal
+			// error leaves no panicStacks file, and the watchdog reboot
+			// that follows is the only other trace.
+			{"zedbox crash (newlog)", newlogProbe(`grep -a "\"source\":\"pillar\"," | ` +
+				`grep -a -A40 -E "fatal error|panic:|SIG[A-Z]+: |\[running\]" | head -150`)},
 		})
 	}()
 	return func() { close(done) }
