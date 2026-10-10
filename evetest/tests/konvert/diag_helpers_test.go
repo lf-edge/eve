@@ -509,6 +509,11 @@ func probeStalledConfigFetch(device *evetest.EdgeDevice) (stop func()) {
 				`/run/nim/DeviceNetworkStatus/*.json' 2>&1 || echo NONE`},
 			{"client (newlog)", newlogProbe(`grep -a "\"source\":\"client\"" | tail -60`)},
 			{"zedagent (newlog)", newlogProbe(`grep -a zedagent | tail -40`)},
+			// zedbox's stderr is logged as source pillar. A runtime fatal
+			// error leaves no panicStacks file, and the watchdog reboot
+			// that follows is the only other trace.
+			{"zedbox crash (newlog)", newlogProbe(`grep -a "\"source\":\"pillar\"," | ` +
+				`grep -a -A40 -E "fatal error|panic:|SIG[A-Z]+: |\[running\]" | head -150`)},
 		})
 	}()
 	return func() { close(done) }
