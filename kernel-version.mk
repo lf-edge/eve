@@ -20,7 +20,7 @@ KERNEL_COMPILER=gcc
 # by default the flavor is empty to keep compatibility with the old EVE version
 KERNEL_CONFIG_FLAVOR ?=
 
-PLATFORMS_amd64=generic rt
+PLATFORMS_amd64=generic rt ai-generic
 PLATFORMS_arm64=generic nvidia-jp5 nvidia-jp6 nvidia-jp7 imx8mp_pollux imx8mp_epc_r3720 imx8mq_evk
 PLATFORMS_riscv64=generic
 ARCHS=amd64 arm64 riscv64
@@ -40,6 +40,13 @@ ifeq ($(ZARCH), amd64)
     KERNEL_FLAVOR=generic
     ifeq ($(PLATFORM), rt)
         KERNEL_CONFIG_FLAVOR=rt
+    else ifeq ($(PLATFORM), ai-generic)
+        # hwe plus the NVIDIA open kernel modules and GSP firmware, which the
+        # eve-kernel build signs with its own key (MODULE_SIG_FORCE). eve-k only.
+        ifneq ($(HV), k)
+            $(error "PLATFORM=ai-generic requires HV=k")
+        endif
+        KERNEL_CONFIG_FLAVOR=ai
     else ifeq ($(HV), k)
         KERNEL_CONFIG_FLAVOR=hwe
     else
