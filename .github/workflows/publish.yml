@@ -166,6 +166,10 @@ jobs:
             hv: k
             platform: "generic"
             os: zededa-ubuntu-2204
+          - arch: amd64
+            hv: k
+            platform: "ai-generic"
+            os: zededa-ubuntu-2204
           # arm64 generic
           - arch: arm64
             hv: kvm

@@ -480,12 +480,17 @@ endif
 # and NVIDIA based platforms, and 290MB for x86_64 and other arm64 platforms. That helps in catching image size
 # increases earlier than at later stage.
 # We are currently filtering out a few packages from bulk builds since they are not getting published in Docker HUB
+# pkg/glibc exists only for ai-generic, so every other platform's bulk build
+# leaves it out.
+ifneq ($(PLATFORM),ai-generic)
+        PKGS_PLATFORM_EXCLUDE=|glibc$$
+endif
 ifeq ($(HV),k)
-        PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources$$")
+        PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources$$$(PKGS_PLATFORM_EXCLUDE)")
         ROOTFS_MAXSIZE_MB=10240
 else
         #kube container will not be in non-k builds
-        PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources|kube|external-boot-image$$")
+        PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources|kube|external-boot-image$$$(PKGS_PLATFORM_EXCLUDE)")
         # nvidia platform requires more space
         ifeq (, $(findstring nvidia,$(PLATFORM)))
             ROOTFS_MAXSIZE_MB=290
