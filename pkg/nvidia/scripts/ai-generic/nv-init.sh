@@ -106,12 +106,18 @@ CDI_FP="${CDI_STORE}/fingerprint"
 # driver version and PCI inventory alone do not change across such an update.
 CDI_RECIPE=1
 
-# The recipe, the driver version, and every NVIDIA PCI device present. Changing
-# any of them invalidates the cached spec: a driver bump moves the library paths,
-# and adding or removing a GPU changes the device list the spec enumerates.
+# The recipe, the driver version, the kernel, and every NVIDIA PCI device
+# present. Changing any of them invalidates the cached spec: a driver bump moves
+# the library paths, adding or removing a GPU changes the device list the spec
+# enumerates, and the kernel decides which device nodes exist at all -- a kernel
+# built without nvidia-drm creates no /dev/dri/card* or renderD* for the GPU.
+# Without the kernel here, moving between such kernels at the same driver
+# version restores a spec naming nodes that no longer exist, and every pod
+# requesting a GPU fails at start with "failed to stat CDI host device".
 cdi_fingerprint() {
     echo "recipe ${CDI_RECIPE}"
     cat /sys/module/nvidia/version 2>/dev/null
+    echo "kernel $(uname -r)"
     for d in /sys/bus/pci/devices/*; do
         [ "$(cat "$d/vendor" 2>/dev/null)" = "0x10de" ] || continue
         echo "${d##*/} $(cat "$d/device" 2>/dev/null)"
