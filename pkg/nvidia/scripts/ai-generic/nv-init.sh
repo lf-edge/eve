@@ -10,58 +10,91 @@
 
 VENDOR=/opt/vendor/nvidia
 
-# This script is executed from pillar, so export the tools/libraries it
-# needs to run, same pattern as pkg/nvidia's nv-init.sh for the /hostfs case.
+# This script is executed from pillar, so put the vendor tools first on PATH,
+# same pattern as pkg/nvidia's nv-init.sh for the /hostfs case.
 export PATH="${VENDOR}/bin:${PATH}"
-# /lib/x86_64-linux-gnu is the host's glibc, bind-mounted into pillar (see
-# pkg/pillar/build-k.yml). pillar's own /etc/ld.so.cache is musl's, so the
-# glibc loader gets no cache hits and needs the path spelled out.
-export LD_LIBRARY_PATH="${VENDOR}/dist/usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH}"
+
+# The NVIDIA tools are glibc binaries. Their libraries are the vendor tree and
+# the host's glibc, which images/modifiers/platform/ai-generic/ai-generic.yq
+# bind-mounts into pillar at /lib/x86_64-linux-gnu. pillar's own
+# /etc/ld.so.cache is musl's, so the glibc loader needs the path spelled out -
+# for those tools only, because musl's loader reads LD_LIBRARY_PATH too.
+GLIBC_LIBRARY_PATH="${VENDOR}/dist/usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu"
+
+# Bound on each NVML call below (nvidia-smi, nvidia-ctk). device-steps.sh runs
+# this script synchronously before zedagent and nim start, so a GPU that wedges
+# driver initialisation must not keep the device from reaching its controller.
+# Generous, because the first NVML session initialises every GPU, GSP firmware
+# included.
+NVML_TIMEOUT=${NVML_TIMEOUT:-120}
+
+# Runs an NVIDIA tool with its libraries, bounded by NVML_TIMEOUT.
+nvml() {
+    timeout -k 10 "${NVML_TIMEOUT}" env LD_LIBRARY_PATH="${GLIBC_LIBRARY_PATH}" "$@"
+}
 
 echo "nvidia-dgpu: loading kernel modules"
 
 # Compute-only build: only nvidia and nvidia_uvm are loaded, never
 # nvidia_modeset or nvidia_drm (those belong to the display/KMS stack we
-# deliberately don't ship). A node may simply have no NVIDIA GPU at all, so
-# a failed modprobe is logged as a warning, not treated as fatal.
-if ! modprobe nvidia 2>/dev/null; then
-    echo "nvidia-dgpu: warning: modprobe nvidia failed (no NVIDIA GPU present?)"
+# deliberately don't ship). nvidia.ko refuses to load without an NVIDIA GPU,
+# which a node may simply not have, and everything below needs it - so stop
+# here rather than spend the NVML calls, and their timeouts, on nothing.
+modprobe nvidia 2>/dev/null
+if [ ! -d /sys/module/nvidia ]; then
+    echo "nvidia-dgpu: nvidia module not loaded (no NVIDIA GPU, or the driver rejected it); nothing to configure"
+    exit 0
 fi
 
 if ! modprobe nvidia_uvm 2>/dev/null; then
     echo "nvidia-dgpu: warning: modprobe nvidia_uvm failed"
 fi
 
-# Device nodes. There is no nvidia-modprobe available from Ubuntu's restricted
-# pool, so hotplug relies on 71-nvidia.rules invoking ub-device-create through
-# udev. Install the rules for hotplug, then fall back to nvidia-smi (see below)
-# so node creation does not depend on udev event timing at boot.
-#
-# Note the shipped rules also modprobe nvidia-modeset and nvidia-drm, which this
-# build deliberately does not include; those RUN+= lines fail harmlessly.
+# The kernel module comes with eve-kernel and this userland with
+# pkg/nvidia, and they must be the same driver release. NVML refuses a
+# mismatch ("Driver/library version mismatch"), so nothing below could work,
+# and a cached CDI spec - keyed on the module's version - could name libraries
+# this userland does not have. Say so plainly and stop.
+KMOD_VERSION=$(cat /sys/module/nvidia/version 2>/dev/null)
+USER_VERSION=
+for lib in "${VENDOR}"/dist/usr/lib/x86_64-linux-gnu/libnvidia-ml.so.*.*; do
+    [ -e "${lib}" ] && USER_VERSION=${lib##*/libnvidia-ml.so.}
+done
+if [ -n "${KMOD_VERSION}" ] && [ "${KMOD_VERSION}" != "${USER_VERSION}" ]; then
+    echo "nvidia-dgpu: error: kernel module ${KMOD_VERSION} does not match userland ${USER_VERSION:-(no libnvidia-ml)}; GPU left unconfigured - eve-kernel and pkg/nvidia must ship the same driver version"
+    exit 1
+fi
+
+# Device nodes come from nvidia-smi below. 71-nvidia.rules is installed for
+# what else it does: runtime power management of the GPU's audio and USB
+# functions. Its RUN+= lines fail harmlessly - they modprobe nvidia-modeset and
+# nvidia-drm, which this compute-only build does not have, and call
+# /sbin/ub-device-create, which EVE does not have (the deb's copy needs
+# libpciaccess.so.0, which is not shipped).
 if [ -d "${VENDOR}/etc/udev/rules.d" ]; then
     mkdir -p /run/udev/rules.d
     cp "${VENDOR}"/etc/udev/rules.d/* /run/udev/rules.d/ 2>/dev/null || true
     udevadm control --reload 2>/dev/null || true
-    # Re-run the rules for NVIDIA PCI devices so 71-nvidia.rules gets a chance to
-    # invoke ub-device-create through udev. Scoped to vendor 0x10de so this does
-    # not re-trigger add events for unrelated hardware. udevd is persistent on EVE
-    # (pkg/udev/etc/init.d/008-udevd starts it with --daemon), so a reload plus a
-    # scoped trigger is sufficient; the direct call below remains the fallback.
+    # Replay add events for NVIDIA PCI functions only, so unrelated hardware is
+    # not re-triggered. udevd is persistent on EVE
+    # (pkg/udev/etc/init.d/008-udevd starts it with --daemon), so a reload plus
+    # a scoped trigger is sufficient.
     udevadm trigger --subsystem-match=pci --attr-match=vendor=0x10de --action=add 2>/dev/null || true
     udevadm settle -t 10 2>/dev/null || true
 fi
 
 # nvidia-smi creates the full set of nodes (/dev/nvidia0, nvidiactl, nvidia-uvm,
 # nvidia-uvm-tools, nvidia-caps/*) as a side effect of enumerating the GPU as
-# root, and it is already shipped here. ub-device-create is NOT usable: it links
-# libpciaccess.so.0, which Ubuntu's restricted pool does not ship alongside the
-# driver, so it exits 127. A node may legitimately have no NVIDIA GPU, so a
-# failure here is a warning, not fatal.
+# root, and it is already shipped here; there is no nvidia-modprobe and no
+# usable ub-device-create (see above). A failure here is a warning, not fatal.
 if [ ! -e /dev/nvidia0 ]; then
     echo "nvidia-dgpu: no /dev/nvidia0, creating device nodes via nvidia-smi"
-    if ! "${VENDOR}/bin/nvidia-smi" -L; then
-        echo "nvidia-dgpu: warning: nvidia-smi failed (no NVIDIA GPU present?)"
+    nvml "${VENDOR}/bin/nvidia-smi" -L
+    rc=$?
+    if [ "${rc}" = 124 ]; then
+        echo "nvidia-dgpu: warning: nvidia-smi timed out after ${NVML_TIMEOUT}s"
+    elif [ "${rc}" != 0 ]; then
+        echo "nvidia-dgpu: warning: nvidia-smi failed (rc ${rc})"
     fi
 fi
 
@@ -110,7 +143,8 @@ CDI_RECIPE=1
 # present. Changing any of them invalidates the cached spec: a driver bump moves
 # the library paths, adding or removing a GPU changes the device list the spec
 # enumerates, and the kernel decides which device nodes exist at all -- a kernel
-# built without nvidia-drm creates no /dev/dri/card* or renderD* for the GPU.
+# built without nvidia-drm creates no /dev/dri/card* or /dev/dri/render* nodes
+# for the GPU.
 # Without the kernel here, moving between such kernels at the same driver
 # version restores a spec naming nodes that no longer exist, and every pod
 # requesting a GPU fails at start with "failed to stat CDI host device".
@@ -132,7 +166,7 @@ if [ -f "${CDI_CACHE}" ] && [ "$(cat "${CDI_FP}" 2>/dev/null)" = "${FP}" ]; then
     cp "${CDI_CACHE}" "${CDI_RUN}"
 else
     echo "nvidia-dgpu: generating CDI spec at ${CDI_RUN}"
-    if "${VENDOR}/bin/nvidia-ctk" cdi generate \
+    if nvml "${VENDOR}/bin/nvidia-ctk" cdi generate \
         --mode=nvml \
         --driver-root="${VENDOR}/dist" \
         --dev-root=/ \
@@ -155,7 +189,9 @@ else
             && echo "nvidia-dgpu: cached CDI spec under ${CDI_STORE}" \
             || echo "nvidia-dgpu: warning: could not cache CDI spec under ${CDI_STORE}"
     else
-        echo "nvidia-dgpu: warning: nvidia-ctk cdi generate failed"
+        # A timed-out generate can leave a partial spec behind.
+        rm -f "${CDI_RUN}"
+        echo "nvidia-dgpu: warning: nvidia-ctk cdi generate failed or timed out"
     fi
 fi
 
