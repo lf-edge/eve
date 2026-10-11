@@ -26,10 +26,13 @@ import (
 
 const imageToQcowScript = "/opt/zededa/bin/copy-image-to-qcow.sh"
 
-// pvcUploadComplete reports whether CDI finished writing an image into the
-// named PVC. A variable so the content check in HandleCreated can be decided
-// in a test without a cluster.
-var pvcUploadComplete = kubeapi.IsPVCUploadComplete
+// pvcUploadState reports whether CDI was asked to write an image into the
+// named PVC and whether it finished. A variable so the content checks can be
+// decided in a test without a cluster.
+var pvcUploadState = kubeapi.GetPVCUploadState
+
+// findPVC is kubeapi.FindPVC, a variable for the same reason.
+var findPVC = kubeapi.FindPVC
 
 type volumeHandlerCSI struct {
 	commonVolumeHandler
@@ -113,18 +116,18 @@ func (handler *volumeHandlerCSI) HandleCreated() (bool, error) {
 	// ever wrote the image into it. Reporting the volume created is what lets
 	// it reach CREATED_VOLUME, which is the state zedmanager gates app
 	// activation on -- so confirm the content actually landed rather than
-	// trusting that the upload worker returned. A volume with no
-	// ReferenceName was never given content to upload (the CreatePVC path),
-	// so there is nothing to confirm for it.
-	if handler.status.ReferenceName != "" {
-		uploaded, err := pvcUploadComplete(pvcName, handler.log)
-		if err != nil {
-			return false, fmt.Errorf("cannot confirm upload into PVC %s: %w",
-				pvcName, err)
-		}
-		if !uploaded {
-			return false, fmt.Errorf("upload into PVC %s did not complete", pvcName)
-		}
+	// trusting that the upload worker returned. A volume with a ReferenceName
+	// must have a completed upload; any other PVC that CDI was asked to fill
+	// must not be left partly written.
+	state, err := pvcUploadState(pvcName, handler.log)
+	if err != nil && handler.status.ReferenceName != "" {
+		return false, fmt.Errorf("cannot confirm upload into PVC %s: %w",
+			pvcName, err)
+	}
+	if state == kubeapi.PVCUploadIncomplete ||
+		(handler.status.ReferenceName != "" && state != kubeapi.PVCUploadComplete) {
+		return false, fmt.Errorf("upload into PVC %s did not complete (upload state %s)",
+			pvcName, state)
 	}
 
 	// Though we convert container image to PVC, we need to keep the image format to tell domainmgr
@@ -187,17 +190,21 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 	// was still coming up): fall through and re-drive the upload against the
 	// existing PVC rather than declaring the volume done with no data.
 	pvcExists := false
-	if found, err := kubeapi.FindPVC(pvcName, handler.log); err == nil && found {
+	if found, err := findPVC(pvcName, handler.log); err == nil && found {
 		pvcExists = true
-		if handler.status.ReferenceName == "" {
-			handler.log.Noticef("CreateVolume: PVC %s already exists, skipping creation", pvcName)
+		state, uerr := pvcUploadState(pvcName, handler.log)
+		if uerr != nil {
+			return pvcName, fmt.Errorf("cannot determine upload state of existing PVC %s: %w",
+				pvcName, uerr)
+		}
+		if state == kubeapi.PVCUploadComplete ||
+			(state == kubeapi.PVCNoUpload && handler.status.ReferenceName == "") {
+			handler.log.Noticef("CreateVolume: PVC %s already exists (upload state %s), skipping creation",
+				pvcName, state)
 			return pvcName, nil
 		}
-		if uploaded, uerr := kubeapi.IsPVCUploadComplete(pvcName, handler.log); uerr == nil && uploaded {
-			handler.log.Noticef("CreateVolume: PVC %s already exists and upload complete, skipping creation", pvcName)
-			return pvcName, nil
-		}
-		handler.log.Noticef("CreateVolume: PVC %s exists but upload not complete, re-driving upload", pvcName)
+		handler.log.Noticef("CreateVolume: PVC %s exists but upload not complete (upload state %s), re-driving upload",
+			pvcName, state)
 	}
 
 	repCount, err := kubeapi.GetSupportedReplicaCountForCluster()
@@ -464,7 +471,7 @@ func (handler *volumeHandlerCSI) Populate() (bool, error) {
 			return true, nil
 		}
 	} else {
-		_, err := kubeapi.FindPVC(pvcName, handler.log)
+		_, err := findPVC(pvcName, handler.log)
 		if err != nil {
 			// Its OK if not found since PVC might not be created yet.
 			if kerr.IsNotFound(err) {
@@ -476,6 +483,18 @@ func (handler *volumeHandlerCSI) Populate() (bool, error) {
 			// routes this through the normal create path (which waits in PrepareVolume)
 			// rather than setting a hard error on VolumeStatus with no retry.
 			handler.log.Noticef("Populate: FindPVC(%s) transient error, treating as not-yet-created: %v", pvcName, err)
+			return false, nil
+		}
+		// A reboot during the CDI upload leaves a PVC holding part of the
+		// image. Adopting it would hand the app a volume with missing data,
+		// so leave it to the create path, which re-drives the upload.
+		state, err := pvcUploadState(pvcName, handler.log)
+		if err != nil {
+			handler.log.Noticef("Populate: PVC %s upload state unknown, treating as not-yet-created: %v", pvcName, err)
+			return false, nil
+		}
+		handler.log.Noticef("Populate: PVC %s upload state %s", pvcName, state)
+		if state == kubeapi.PVCUploadIncomplete {
 			return false, nil
 		}
 	}

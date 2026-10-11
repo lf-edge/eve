@@ -52,8 +52,10 @@ func waitForPVCUploadComplete(ctx context.Context, pvcName string, log *base.Log
 	return fmt.Errorf("waitForPVCUploadComplete: time expired")
 }
 
+const cdiPodPhaseAnnotation = "cdi.kubevirt.io/storage.pod.phase"
+
 func cdiUploadIsComplete(log *base.LogObject, pvc *corev1.PersistentVolumeClaim) bool {
-	annotationKey := "cdi.kubevirt.io/storage.pod.phase"
+	annotationKey := cdiPodPhaseAnnotation
 	annotationExpectedVal := "Succeeded"
 	foundVal, ok := pvc.Annotations[annotationKey]
 	if !ok {
@@ -79,21 +81,65 @@ func cdiUploadIsComplete(log *base.LogObject, pvc *corev1.PersistentVolumeClaim)
 	return true
 }
 
-// IsPVCUploadComplete reports whether the CDI image upload into the named PVC has
-// finished. A non-nil error means the PVC could not be queried; callers should
-// treat that as "not known complete". Used after a reboot that left a PVC behind
-// to decide whether the upload still needs to be re-driven against it.
-func IsPVCUploadComplete(pvcName string, log *base.LogObject) (bool, error) {
+// cdiUploadTargetAnnotation marks a PVC as the target of a CDI image upload.
+// virtctl image-upload sets it on every PVC it creates, and adds it to an
+// existing PVC before uploading into it, so it is present from before the first
+// byte is written. A PVC made by CreatePVC never carries it.
+const cdiUploadTargetAnnotation = "cdi.kubevirt.io/storage.upload.target"
+
+// PVCUploadState says whether a PVC was the target of a CDI image upload and,
+// if so, whether that upload finished.
+type PVCUploadState int
+
+const (
+	// PVCNoUpload means no upload was ever started into the PVC (a blank PVC).
+	PVCNoUpload PVCUploadState = iota
+	// PVCUploadComplete means CDI reports the upload finished.
+	PVCUploadComplete
+	// PVCUploadIncomplete means an upload was started but CDI has not
+	// reported it finished; the PVC holds partial data.
+	PVCUploadIncomplete
+)
+
+func (s PVCUploadState) String() string {
+	switch s {
+	case PVCNoUpload:
+		return "no-upload"
+	case PVCUploadComplete:
+		return "complete"
+	case PVCUploadIncomplete:
+		return "incomplete"
+	}
+	return fmt.Sprintf("PVCUploadState(%d)", int(s))
+}
+
+// GetPVCUploadState reports the CDI upload state of the named PVC. An error
+// means the PVC could not be read, and is a TransientError when retrying can
+// succeed. Used after a reboot that left a PVC behind to decide whether an
+// interrupted upload must be re-driven before the volume is reported created.
+func GetPVCUploadState(pvcName string, log *base.LogObject) (PVCUploadState, error) {
 	clientset, err := GetClientSet()
 	if err != nil {
-		return false, fmt.Errorf("failed to get clientset: %v", err)
+		return PVCNoUpload, transientf("failed to get clientset: %v", err)
 	}
 	pvc, err := clientset.CoreV1().PersistentVolumeClaims(EVEKubeNameSpace).
 		Get(context.Background(), pvcName, metav1.GetOptions{})
 	if err != nil {
-		return false, fmt.Errorf("failed to get PVC %s: %v", pvcName, err)
+		return PVCNoUpload, asTransient(fmt.Errorf("failed to get PVC %s: %w", pvcName, err))
 	}
-	return cdiUploadIsComplete(log, pvc), nil
+	return pvcUploadState(log, pvc), nil
+}
+
+func pvcUploadState(log *base.LogObject, pvc *corev1.PersistentVolumeClaim) PVCUploadState {
+	_, target := pvc.Annotations[cdiUploadTargetAnnotation]
+	_, phase := pvc.Annotations[cdiPodPhaseAnnotation]
+	if !target && !phase {
+		return PVCNoUpload
+	}
+	if cdiUploadIsComplete(log, pvc) {
+		return PVCUploadComplete
+	}
+	return PVCUploadIncomplete
 }
 
 // PVCAdoptionState is the outcome of checking whether an existing PVC can be

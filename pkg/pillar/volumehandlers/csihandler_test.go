@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
 	"github.com/stretchr/testify/assert"
@@ -80,26 +81,27 @@ func TestCSIHandler_HandleCreatedRequiresUpload(t *testing.T) {
 	tests := []struct {
 		name          string
 		referenceName string
-		uploaded      bool
+		state         kubeapi.PVCUploadState
 		lookupErr     error
 		wantCreated   bool
-		wantErr       bool
-		wantLookup    bool
 	}{
 		{
 			name:          "upload complete reports created",
 			referenceName: "some-image-ref",
-			uploaded:      true,
+			state:         kubeapi.PVCUploadComplete,
 			wantCreated:   true,
-			wantLookup:    true,
 		},
 		{
-			// The live failure this exists for: the PVC is bound so it
-			// attaches and the domain boots, but CDI never wrote the image.
+			// The PVC is bound so it attaches and the domain boots, but CDI
+			// never finished writing the image.
 			name:          "upload incomplete refuses to report created",
 			referenceName: "some-image-ref",
-			wantErr:       true,
-			wantLookup:    true,
+			state:         kubeapi.PVCUploadIncomplete,
+		},
+		{
+			name:          "image volume with no upload refuses to report created",
+			referenceName: "some-image-ref",
+			state:         kubeapi.PVCNoUpload,
 		},
 		{
 			// Cannot confirm is not the same as confirmed, and keeping the
@@ -107,26 +109,37 @@ func TestCSIHandler_HandleCreatedRequiresUpload(t *testing.T) {
 			name:          "unconfirmable upload refuses to report created",
 			referenceName: "some-image-ref",
 			lookupErr:     errors.New("apiserver unreachable"),
-			wantErr:       true,
-			wantLookup:    true,
 		},
 		{
 			// A blank volume (the CreatePVC path) was never given content to
 			// upload, so there is nothing to confirm for it.
-			name:        "no reference name skips the check",
+			name:        "blank PVC reports created",
+			state:       kubeapi.PVCNoUpload,
+			wantCreated: true,
+		},
+		{
+			// A volume without an image reference can still be filled by an
+			// upload, e.g. from a disk file; a partial one must not be used.
+			name:  "incomplete upload with no reference name refuses to report created",
+			state: kubeapi.PVCUploadIncomplete,
+		},
+		{
+			// The create worker has just reported success, and a blank
+			// volume must not be parked on a transient API error.
+			name:        "unknown upload state with no reference name reports created",
+			lookupErr:   errors.New("apiserver unreachable"),
+			wantCreated: true,
+		},
+		{
+			name:        "complete upload with no reference name reports created",
+			state:       kubeapi.PVCUploadComplete,
 			wantCreated: true,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			called := false
-			orig := pvcUploadComplete
-			pvcUploadComplete = func(string, *base.LogObject) (bool, error) {
-				called = true
-				return tc.uploaded, tc.lookupErr
-			}
-			defer func() { pvcUploadComplete = orig }()
+			mockUploadState(t, tc.state, tc.lookupErr)
 
 			// MaxVolSize is set so updateVolumeSizes has nothing to ask the
 			// cluster for on the paths that get that far.
@@ -142,13 +155,11 @@ func TestCSIHandler_HandleCreatedRequiresUpload(t *testing.T) {
 
 			created, err := handler.HandleCreated()
 			assert.Equal(t, tc.wantCreated, created)
-			if tc.wantErr {
-				assert.Error(t, err)
-			} else {
+			if tc.wantCreated {
 				assert.NoError(t, err)
+			} else {
+				assert.Error(t, err)
 			}
-			assert.Equal(t, tc.wantLookup, called,
-				"upload check consulted = %v, want %v", called, tc.wantLookup)
 		})
 	}
 }
@@ -214,4 +225,66 @@ func TestCSIHandler_KvmCarriedZvolLookup(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestCSIHandler_PopulateRejectsPartialUpload covers the reboot path: volumemgr
+// adopts a PVC left from the previous boot through Populate, and a PVC whose
+// upload was cut short by that reboot must go back through the create path,
+// which re-drives the upload, rather than be reported created.
+func TestCSIHandler_PopulateRejectsPartialUpload(t *testing.T) {
+	tests := []struct {
+		name        string
+		state       kubeapi.PVCUploadState
+		lookupErr   error
+		wantCreated bool
+	}{
+		{
+			name:        "complete upload is adopted",
+			state:       kubeapi.PVCUploadComplete,
+			wantCreated: true,
+		},
+		{
+			name:        "blank PVC is adopted",
+			state:       kubeapi.PVCNoUpload,
+			wantCreated: true,
+		},
+		{
+			name:  "incomplete upload is not adopted",
+			state: kubeapi.PVCUploadIncomplete,
+		},
+		{
+			name:      "unknown upload state is not adopted",
+			lookupErr: errors.New("apiserver unreachable"),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			origFind := findPVC
+			findPVC = func(string, *base.LogObject) (bool, error) { return true, nil }
+			defer func() { findPVC = origFind }()
+			mockUploadState(t, tc.state, tc.lookupErr)
+
+			status := types.VolumeStatus{}
+			handler := NewCSIHandler(commonVolumeHandler{
+				volumeManager: &mockVolumeMgr{},
+				status:        &status,
+				log:           newTestLog(t),
+			}, false)
+
+			created, err := handler.Populate()
+			assert.NoError(t, err)
+			assert.Equal(t, tc.wantCreated, created)
+		})
+	}
+}
+
+// mockUploadState makes pvcUploadState return state and err for the rest of
+// the test.
+func mockUploadState(t *testing.T, state kubeapi.PVCUploadState, err error) {
+	orig := pvcUploadState
+	pvcUploadState = func(string, *base.LogObject) (kubeapi.PVCUploadState, error) {
+		return state, err
+	}
+	t.Cleanup(func() { pvcUploadState = orig })
 }
