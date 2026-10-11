@@ -226,6 +226,7 @@ func TestKvmToKRepartitionAppVolume(test *testing.T) {
 	waitDeviceOnTarget(t, device, evetest.HypervisorKubevirt, conversionUpgradeTimeout)
 	stopStates()
 	conversionOK = true
+	defer recordPVCUpload(device)
 	// The offline repartition boots once more than an upgrade does; declared
 	// here rather than before the update because UpgradeEVE was not asked to
 	// wait, so nothing can race the declaration.
