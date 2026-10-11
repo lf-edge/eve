@@ -155,6 +155,7 @@ func TestKvmToKRepartitionVolmig(test *testing.T) {
 		evetest.BaseOSDatastoreHTTP, true, false, conversionUpgradeTimeout)
 	stopStates()
 	conversionOK = true
+	defer recordPVCUpload(device)
 	evetest.Checkpoint("conversion-complete")
 
 	// Phase 6.
