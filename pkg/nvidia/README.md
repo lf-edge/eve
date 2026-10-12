@@ -1,9 +1,25 @@
-# NVIDIA Jetson Platform Package
+# NVIDIA Platform Package
 
 ## Introduction
 
 This package integrates libraries and artifacts from NVIDIA Jetpack to
 EVE-OS.
+
+## Variants
+
+The image is built per `PLATFORM`, selected by `build.yml` (`nvidia-jp5`) or
+`build-<platform>.yml`:
+
+* `nvidia-jp5`, `nvidia-jp6`, `nvidia-jp7` (arm64): the Jetson Linux
+  userland, described in the rest of this file.
+* `ai-generic` (amd64): the userland for NVIDIA discrete GPUs, from Ubuntu's
+  driver packages. See [README-ai-generic.md](README-ai-generic.md).
+
+The two share only the output layout under `/opt/vendor/nvidia`. The
+Dockerfile builds each from its own stages, and its last stage,
+`FROM final-${PLATFORM}`, picks the one to build. Under `HV=k` the Makefile
+and `tools/parse-pkgs.sh` prefer a `build-k.yml`, so adding one to this
+package would override every variant above.
 
 ## How it works?
 

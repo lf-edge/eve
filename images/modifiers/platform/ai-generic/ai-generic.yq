@@ -1,4 +1,4 @@
 with(select(.services[] | select(.name == "pillar"));
-  .init += ["GLIBC_TAG"]
+  .init += ["GLIBC_TAG", "NVIDIA_TAG"]
   | (.services[] | select(.name == "pillar") | ."binds.add") += ["/usr/lib64:/lib64:ro", "/usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu:ro"]
   | (.services[] | select(.name == "kube") | ."binds.add") += ["/usr/lib64:/lib64:ro", "/usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu:ro"])
