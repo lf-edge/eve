@@ -76,81 +76,61 @@ if [ -z "${ctrd_cgroup_cpus_limit}" ] || [ "${ctrd_cgroup_cpus_limit}" = "0" ]; 
     ctrd_cgroup_cpus_limit=$default_cgroup_cpus_limit
 fi
 
-CGROUPS="cpuset cpu cpuacct blkio memory devices freezer net_cls perf_event net_prio hugetlb pids systemd "
+CGROOT=/sys/fs/cgroup
+if [ ! -f "$CGROOT/cgroup.controllers" ]; then
+    echo "cgroup v2 is not mounted at $CGROOT"
+    exit 1
+fi
 
-#Creating eve cgroup which will be parent/dom0 cgroup
-for cg in $CGROUPS; do
-    mkdir -p /sys/fs/cgroup/"${cg}"/eve
-done
+# A CPU limit above what the parent has is capped: /eve at the online CPUs,
+# /eve/services and /eve/containerd at /eve's.
+cap_cpus() {
+    if [ "$1" -gt "$2" ]; then echo "$2"; else echo "$1"; fi
+}
+cpu_count=$(awk -F, '{n = 0; for (i = 1; i <= NF; i++) { split($i, r, "-"); n += (r[2] == "" ? 1 : r[2] - r[1] + 1) } print n}' "$CGROOT/cpuset.cpus.effective")
+dom0_cgroup_cpus_limit=$(cap_cpus "$dom0_cgroup_cpus_limit" "$cpu_count")
+eve_cgroup_cpus_limit=$(cap_cpus "$eve_cgroup_cpus_limit" "$dom0_cgroup_cpus_limit")
+ctrd_cgroup_cpus_limit=$(cap_cpus "$ctrd_cgroup_cpus_limit" "$dom0_cgroup_cpus_limit")
 
-#Creating cgroup for individual eve services
+# A cgroup that passes controllers to its children cannot hold a process, so
+# processes live only in the leaves: /eve/containerd (both containerd daemons
+# and their shims) and /eve/services/<service>.
+mkdir -p "$CGROOT/eve/containerd"
 for srv in $EVESERVICES; do
-    for cg in $CGROUPS; do
-        mkdir -p /sys/fs/cgroup/"${cg}"/eve/services/"${srv}"
+    mkdir -p "$CGROOT/eve/services/$srv"
+done
+for cg in "$CGROOT" "$CGROOT/eve" "$CGROOT/eve/services"; do
+    read -r ctrls < "$cg/cgroup.controllers"
+    for ctrl in $ctrls; do
+        echo "+$ctrl" > "$cg/cgroup.subtree_control" || echo "Cannot enable $ctrl in $cg"
     done
 done
 
-#Creating cgroup for containerd
-mkdir -p /sys/fs/cgroup/memory/eve/containerd
+set_cg() { # set_cg <cgroup> <file> <value>
+    echo "$3" > "$CGROOT/$1/$2" || echo "Cannot write $3 to $1/$2"
+}
 
-existingCPULimit=$(</sys/fs/cgroup/cpuset/cpuset.cpus grep -o '0-[1-9]*' | cut -d '-' -f 2)
-if [ -z "${existingCPULimit}" ]; then
-    existingCPULimit=$(cat /sys/fs/cgroup/cpuset/cpuset.cpus)
-fi
+# memory.max is the hard limit. The soft value of the kernel arguments becomes
+# memory.low, a protection floor: memory below it is reclaimed only when
+# nothing unprotected is left. A parent's memory.low protects only children
+# that claim protection too, so every service under /eve/services claims the
+# aggregate's value. These lows are overcommitted, and the kernel splits
+# /eve/services' protection among the services in proportion to their usage:
+# the aggregate protects the subtree and the services compete freely inside
+# it, with no root mount flag (memory_recursiveprot) needed.
+set_cg eve memory.max "$dom0_cgroup_memory_limit"
+set_cg eve memory.low "$dom0_cgroup_memory_soft_limit"
+set_cg eve cpuset.cpus "0-$((dom0_cgroup_cpus_limit-1))"
 
-/bin/echo $dom0_cgroup_memory_limit > /sys/fs/cgroup/memory/eve/memory.limit_in_bytes
-# cpuset.mems holds memory node numbers, not CPUs: every cpuset below copies
-# its parent's list. A child whose parent's block was skipped gets an empty
-# list (containerd's check below then removes its cpuset).
-#Value that we are trying to update should not be greater than the existing value in cgroup system.
-if [ -n "${existingCPULimit}" ] && [ "$existingCPULimit" -ge "$dom0_cgroup_cpus_limit" ]; then
-    /bin/echo "0-$((dom0_cgroup_cpus_limit-1))" > /sys/fs/cgroup/cpuset/eve/cpuset.cpus
-    cat /sys/fs/cgroup/cpuset/cpuset.mems > /sys/fs/cgroup/cpuset/eve/cpuset.mems
-fi
+set_cg eve/containerd memory.max "$ctrd_cgroup_memory_limit"
+set_cg eve/containerd memory.low "$ctrd_cgroup_memory_soft_limit"
+set_cg eve/containerd cpuset.cpus "0-$((ctrd_cgroup_cpus_limit-1))"
 
-# Both containerd daemons and their shims join every controller in which
-# /eve/containerd exists, and containerd does not start if that fails. So the
-# cpuset is kept only with valid CPUs and memory nodes, within /eve's CPUs.
-if [ "$ctrd_cgroup_cpus_limit" -gt "$dom0_cgroup_cpus_limit" ]; then
-    ctrd_cgroup_cpus_limit=$dom0_cgroup_cpus_limit
-fi
-ctrd_cpuset=/sys/fs/cgroup/cpuset/eve/containerd
-mkdir -p "$ctrd_cpuset"
-if ! /bin/echo "0-$((ctrd_cgroup_cpus_limit-1))" > "$ctrd_cpuset"/cpuset.cpus ||
-   ! cat /sys/fs/cgroup/cpuset/eve/cpuset.mems > "$ctrd_cpuset"/cpuset.mems ||
-   [ -z "$(cat "$ctrd_cpuset"/cpuset.cpus)" ] || [ -z "$(cat "$ctrd_cpuset"/cpuset.mems)" ]; then
-    echo "Cannot confine containerd to $ctrd_cgroup_cpus_limit CPU(s), leaving its CPUs unlimited"
-    rmdir "$ctrd_cpuset"
-fi
-
-/bin/echo $ctrd_cgroup_memory_limit > /sys/fs/cgroup/memory/eve/containerd/memory.limit_in_bytes
-
-/bin/echo $eve_cgroup_memory_limit > /sys/fs/cgroup/memory/eve/services/memory.limit_in_bytes
-if [ -n "${existingCPULimit}" ] && [ "$existingCPULimit" -ge "$eve_cgroup_cpus_limit" ]; then
-    /bin/echo "0-$((eve_cgroup_cpus_limit-1))" > /sys/fs/cgroup/cpuset/eve/services/cpuset.cpus
-    cat /sys/fs/cgroup/cpuset/eve/cpuset.mems > /sys/fs/cgroup/cpuset/eve/services/cpuset.mems
-fi
+set_cg eve/services memory.max "$eve_cgroup_memory_limit"
+set_cg eve/services memory.low "$eve_cgroup_memory_soft_limit"
+set_cg eve/services cpuset.cpus "0-$((eve_cgroup_cpus_limit-1))"
 
 for srv in $EVESERVICES; do
-    /bin/echo $eve_cgroup_memory_limit > /sys/fs/cgroup/memory/eve/services/"${srv}"/memory.limit_in_bytes
-    if [ -n "${existingCPULimit}" ] && [ "$existingCPULimit" -ge "$eve_cgroup_cpus_limit" ]; then
-        /bin/echo "0-$((eve_cgroup_cpus_limit-1))" > /sys/fs/cgroup/cpuset/eve/services/"${srv}"/cpuset.cpus
-        cat /sys/fs/cgroup/cpuset/eve/services/cpuset.mems > /sys/fs/cgroup/cpuset/eve/services/"${srv}"/cpuset.mems
-    fi
-done
-
-# Set memory soft limits if supported (not available on RT kernels where
-# writes to memory.soft_limit_in_bytes return -EOPNOTSUPP)
-if /bin/echo $dom0_cgroup_memory_soft_limit > /sys/fs/cgroup/memory/eve/memory.soft_limit_in_bytes 2>/dev/null; then
-    /bin/echo $ctrd_cgroup_memory_soft_limit > /sys/fs/cgroup/memory/eve/containerd/memory.soft_limit_in_bytes
-    /bin/echo $eve_cgroup_memory_soft_limit > /sys/fs/cgroup/memory/eve/services/memory.soft_limit_in_bytes
-    for srv in $EVESERVICES; do
-        /bin/echo $eve_cgroup_memory_soft_limit > /sys/fs/cgroup/memory/eve/services/"${srv}"/memory.soft_limit_in_bytes
-    done
-fi
-
-# Once all 'cpuset.cpus' and 'cpuset.mems' are prepared copy memlogd
-# tasks from 'memory' controller to the 'cpuset' controller.
-for pid in $(cat /sys/fs/cgroup/memory/eve/services/memlogd/tasks); do
-    echo $pid > /sys/fs/cgroup/cpuset/eve/services/memlogd/tasks;
+    set_cg eve/services/"$srv" memory.max "$eve_cgroup_memory_limit"
+    set_cg eve/services/"$srv" memory.low "$eve_cgroup_memory_soft_limit"
 done
