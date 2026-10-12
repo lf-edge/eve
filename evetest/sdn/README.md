@@ -315,17 +315,17 @@ The SDN VM image is built in two stages:
    (tagged `lfedge/evetest-sdn:<version>`) using `Dockerfile.vm`. This is the image the
    broker pulls and extracts when setting up the SDN VM.
 
-Whenever you make changes to the SDN agent or any of its packages, bump
-`evetest/sdn/VERSION` before building. The version is read during the build and used as
-the Docker image tag, so it must be incremented to produce a distinctly versioned image
-that the broker will recognise as new.
+The Docker image tag is a content hash of everything under `evetest/sdn/` (except
+Markdown files and `pics/`), computed by `evetest/content-hash.sh sdn`. There is no
+version to bump: any change to the SDN sources produces a new tag. Run
+`make sdn-version` in `evetest/` to print the tag for the current sources.
 
 ```bash
 # Build (requires the linuxkit binary):
 make build-sdn-container LINUXKIT=/path/to/linuxkit
 ```
 
-After building, either set `EVETEST_SDN_VERSION` to the new version when running tests,
-or update `DefaultSDNVersion` in `constants/` so it becomes the default.
+`make evetest` expects the image with this tag, pulling it or building it locally
+(with the command above) when it is not published yet, and tells the harness to use it.
 
-See the top-level `evetest/README.md` for a full summary of what to rebuild when.
+See the top-level `evetest/README.md` ("Image Tags") for how the images are versioned and rebuilt.

@@ -21,7 +21,8 @@ LINUXKIT_SECRET_OPTS ?=
 SDN_REPO ?= $(EVETEST_ORG)/evetest-sdn
 SDN_DIR := $(CURDIR)
 SDN_VM_DIR := $(SDN_DIR)/vm
-SDN_VERSION := $(shell grep -v '^\#' VERSION | head -n1)
+# Content hash of the sources baked into the image (see ../content-hash.sh).
+SDN_VERSION ?= $(shell $(CURDIR)/../content-hash.sh sdn)
 
 build-vm-img-%:
 	PLATFORM=$(subst -,/,$*); \

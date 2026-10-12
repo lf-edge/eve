@@ -122,8 +122,8 @@ The broker authenticates to the Proxmox API as the real `root@pam` user (not an 
 token), so the installer always prompts you interactively for that account's password
 (masked, never accepted as a flag, never touching shell history). The password/URL/etc.
 are written into the broker VM's `/etc/evetest/broker.env`. The broker container image
-tag is **baked into the installer** from `evetest/VERSION` at assembly time (e.g.
-`lfedge/evetest-broker:1.0`); override with `--broker-image`.
+tag is **baked into the installer** at assembly time from the content hash of the
+evetest sources (`make version`, e.g. `lfedge/evetest-broker:27f0c790bfbf2936`); override with `--broker-image`.
 
 ### Stable LAN IP across reinstalls
 
