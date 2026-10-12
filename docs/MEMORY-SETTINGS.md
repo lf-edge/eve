@@ -6,26 +6,26 @@
 set_global hv_dom0_mem_settings "dom0_mem=1G,max:2G"
 ```
 
-sets the soft limit of the `/sys/fs/cgroup/memory/eve/` cgroup to 1G and the
-hard limit to 2G.
+sets `memory.low` of the `/sys/fs/cgroup/eve/` cgroup to 1G and
+`memory.max` to 2G.
 
 ```text
 set_global hv_eve_mem_settings "eve_mem=1000M,max:1200M"
 ```
 
-sets the soft limit of the `/sys/fs/cgroup/memory/eve/services/` cgroup to
-1000M and the hard limit to 1200M.
+sets `memory.low` of the `/sys/fs/cgroup/eve/services/` cgroup and of
+each service cgroup below it to 1000M and their `memory.max` to 1200M.
 
 ```text
 set_global hv_ctrd_mem_settings "ctrd_mem=700M,max:800M"
 ```
 
-sets the soft limit of the `/sys/fs/cgroup/memory/eve/containerd/` cgroup to
-700M and the hard limit to 800M.
+sets `memory.low` of the `/sys/fs/cgroup/eve/containerd/` cgroup to
+700M and `memory.max` to 800M.
 
 ## Cgroups in EVE
 
-In EVE OS we use cgroups v1 to manage resources.
+In EVE OS we use cgroups v2 to manage resources.
 
 ### What are cgroups
 
@@ -33,27 +33,21 @@ Cgroups are a Linux kernel feature that limits, accounts for, and isolates the
 resource usage of a collection of processes. Cgroups are used to control the
 memory, CPU, and I/O resources that a process can use.
 
-Official documentation: [cgroups](https://www.kernel.org/doc/Documentation/cgroup-v1/cgroups.txt)
+Official documentation: [cgroups](https://docs.kernel.org/admin-guide/cgroup-v2.html)
 
 ### Cgroups memory limits
 
 Each cgroup has its own memory limits. In EVE OS, we use the memory limits of
-two types: soft and hard.
+two settings: low and max.
 
-1. **Soft Limit** (`memory.soft_limit_in_bytes`):
-   The soft limit is more of a guidance for memory allocation rather than a
-   strict enforcement. It allows processes in the cgroup to use more memory than
-   the soft limit if there is free memory available in the system. If the system
-   is under memory pressure, the kernel will try to reclaim memory from
-   processes in cgroups that have exceeded their soft limits before reclaiming
-   from other processes that are within their soft limits.
-2. **Hard Limit** (`memory.limit_in_bytes`):
-   The hard limit is a strict upper boundary on the memory usage of a cgroup.
-   Processes in the cgroup are not allowed to use more memory than this limit.
-   If a process in the cgroup tries to allocate more memory than the hard limit
-   allows, the allocation will fail, and this could result in the
-   Out-Of-Memory (OOM) killer terminating processes within the cgroup to enforce
-   the limit.
+1. **Low** (`memory.low`), set from the first value of `dom0_mem`, `eve_mem`
+   and `ctrd_mem`: a protection floor. When the host is short of memory, the
+   cgroup's memory below it is reclaimed only when nothing unprotected is
+   left. EVE sets it on the `eve`, `eve/containerd` and `eve/services`
+   cgroups and on each service cgroup below `eve/services`. It replaces the
+   cgroup v1 soft limit, the same way runc maps a soft limit on cgroup v2.
+2. **Max** (`memory.max`), set from the `max:` value: the hard limit. A
+   cgroup that reaches it is reclaimed, then its processes are OOM-killed.
 
 ### EVE cgroups hierarchy
 
@@ -96,14 +90,23 @@ cgroup. Each user application has its own sub-cgroup.
 ### Memory settings in EVE
 
 We use explicit memory settings for several of the cgroups. Namely, we set
-memory limits for the `eve`, `eve/containerd`, `pillar`, and all the sub-cgroups
-of the `eve-user-apps` cgroup.
+`memory.low` and `memory.max` for the `eve`, `eve/containerd` and
+`eve/services` cgroups and for each service cgroup below `eve/services`
+(`pillar` included). The cgroups of the user applications get their memory
+limits at runtime, not from these settings.
 
-By default, we set the soft memory limits to 80% of the hard memory limits. It's
-done to give the Kernel target value for the memory usage of the cgroup.
-When memory rebalancing is needed, the kernel will try to keep the memory usage
-of the cgroup at the soft limit. The rebalancing is triggered in different
-situations, for example, when the system is under memory pressure.
+By default, the `memory.low` values are 80% of the `memory.max` values.
+`memory.low` is a protection floor, not a target the kernel steers the usage
+to: when the host is short of memory, a cgroup's memory below its
+`memory.low` is reclaimed only when nothing unprotected is left, and its
+memory above it is reclaimed like any other.
+
+A parent's `memory.low` protects only the children that claim protection
+too, so each service cgroup below `eve/services` claims the value of
+`eve/services`. Their claims add up to more than `eve/services` has, and the
+kernel divides the protection of `eve/services` among the services in
+proportion to their usage: together they are protected up to the
+`memory.low` of `eve/services`, and inside it they compete freely.
 
 For the EVE-related cgroups, we set the memory limits in the kernel command line
 arguments. For the user applications, we set the memory in runtime using the
@@ -127,38 +130,40 @@ The memory settings in EVE are set using kernel command line arguments:
 All "<cmd_component_name>_mem" settings have the following format:
 
 ```text
-<cmd_component_name>_mem=<soft_limit>,max:<hard_limit>
+<cmd_component_name>_mem=<low>,max:<max>
 ```
 
 where:
 
 * `<cmd_component_name>` is one of the following: `dom0`, `eve`, `ctrd`
-* `<soft_limit>` is the soft limit for the memory usage of the cgroup.
-* `<hard_limit>` is the hard limit for the memory usage of the cgroup.
+* `<low>` is `memory.low` of the cgroup (the value that used to be the cgroup
+  v1 soft limit).
+* `<max>` is `memory.max` of the cgroup, the hard limit.
 
-The `<soft_limit>` and `<hard_limit>` are values in human-readable format. They
+The `<low>` and `<max>` are values in human-readable format. They
 can be specified in the following units: `M` (megabytes), `G` (gigabytes). If no
 unit is specified, the value is treated as bytes. For example, `1G` means 1
 gigabyte, `100M` means 100 megabytes, and `1000000` means 1000000 bytes.
 
-If the hard limit is not specified, the soft limit is used as the hard limit.
+If `max:` is not specified, `<low>` is used as `memory.max`.
 
 #### Component to cgroup mapping
 
 The mapping of the `<cmd_component_name>` to the cgroup is not straightforward
 and is misleading. The following table shows the mapping:
 
-| Component   | cgroup            | default soft limit | default hard limit |
-|-------------|-------------------|--------------------|--------------------|
-| `dom0`      | `eve`             | 640M               | 800M               |
-| `ctrd`      | `eve/containerd/` | 320M               | 400M               |
-| `eve`       | `eve/services/`   | 520M               | 650M               |
-| `eve`       | `eve/services/*`  | 520M               | 650M               |
+| Component   | cgroup            | default `memory.low` | default `memory.max` |
+|-------------|-------------------|----------------------|----------------------|
+| `dom0`      | `eve`             | 640M                 | 800M                 |
+| `ctrd`      | `eve/containerd/` | 320M                 | 400M                 |
+| `eve`       | `eve/services/`   | 520M                 | 650M                 |
+| `eve`       | `eve/services/*`  | 520M                 | 650M                 |
 
 That way, the `dom0_mem` setting sets the memory limits for the `eve` cgroup,
 the `ctrd_mem` setting sets the memory limits for the `eve/containerd` cgroup,
-and the `eve_mem` setting sets the memory limits for the `eve/services` cgroup
-and all the sub-cgroups of the `eve/services` cgroup.
+and the `eve_mem` setting sets `memory.low` and `memory.max` for the
+`eve/services` cgroup and for all the sub-cgroups of the `eve/services`
+cgroup.
 
 For example, the following kernel command line arguments:
 
@@ -166,10 +171,11 @@ For example, the following kernel command line arguments:
 dom0_mem=1G,max:2G eve_mem=1000M,max:1200M ctrd_mem=700M,max:800M
 ```
 
-will set the soft limit of the `/sys/fs/cgroup/eve/` cgroup to 1G and the hard
-limit to 2G, the soft limit of the `/sys/fs/cgroup/eve/services/` and all the
-sub-cgroups to 1000M and the hard limit to 1200M, and the soft limit of the
-`/sys/fs/cgroup/eve/containerd/` cgroup to 700M and the hard limit to 800M.
+will set `memory.low` of the `/sys/fs/cgroup/eve/` cgroup to 1G and
+`memory.max` to 2G, `memory.low` of the `/sys/fs/cgroup/eve/services/` cgroup
+and of all its sub-cgroups to 1000M and their `memory.max` to 1200M, and
+`memory.low` of the `/sys/fs/cgroup/eve/containerd/` cgroup to 700M and
+`memory.max` to 800M.
 
 #### GRUB override file
 
@@ -205,12 +211,12 @@ behavior, which are available through the EVE debug settings:
 
    By default, EVE setting is disabled (set to 0), meaning the Golang runtime
    memory limit will be set according to the following equation based on the
-   `memory.limit_in_bytes` hard memory limit provided by the pillar `cgroups`:
+   `memory.max` hard memory limit provided by the pillar `cgroups`:
 
-   `limit = memory.limit_in_bytes * 0.6`
+   `limit = memory.max * 0.6`
 
    The constant 0.6 was chosen empirically and is explained by simple logic:
-   `memory.limit_in_bytes` is a hard limit for the whole pillar cgroup, meaning
+   `memory.max` is a hard limit for the whole pillar cgroup, meaning
    when reached, likely one of the processes will be killed by OOM. In turn
    Golang runtime memory limit is a soft limit, so the difference must be
    significant to ensure that after the soft limit is reached, there will be
@@ -229,11 +235,14 @@ please read the [documentation](https://tip.golang.org/doc/gc-guide) carefully.
 ## Forced execution of the Golang runtime garbage collector settings
 
 Setting a soft limit for Golang garbage collector may not be enough:
-the whole system may experience memory pressure due to other
-applications in the same of other memory cgroups. In such cases, GC
-can be forced from the memory pressure event handler. The following
-parameters are available for configuring this algorithm in order to
-minimize frequent GC calls:
+pillar's cgroup may come under memory pressure from other processes
+in it or in its parent cgroups. In such cases, GC is forced from the
+memory pressure event handler of pillar's watcher, which arms a PSI
+trigger on pillar's cgroup (`memory.pressure`: tasks stalled for
+150 ms within 1 s). On a kernel without PSI it wakes on changes of the
+cgroup's `memory.events` instead, i.e. when pillar hits its limit. The
+following parameters are available for configuring this algorithm in
+order to minimize frequent GC calls:
 
 1. `gogc.forced.interval.seconds` sets minimum interval of forced GC
     loop in seconds, meaning that GC is called explicitly no more than

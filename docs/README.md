@@ -341,14 +341,15 @@ For some of the details on EVE internals you may want to check out:
 ## EVE CGroups
 
 Resources like memory and CPU used by EVE services, containerd, memlogd and edge applications are controlled by their respective [CGroups](https://www.kernel.org/doc/Documentation/cgroup-v2.txt).
+EVE uses the single cgroup v2 hierarchy mounted at `/sys/fs/cgroup`, where only the leaves hold processes.
 CGroups in EVE follows the below hierarchy:
 
 ```text
-Parent cgroup (/sys/fs/cgroup/<subsystems>/)
+/sys/fs/cgroup/
 ├── eve
 │   └── services
 │   │   └── newlogd
-│   │   └── ntpd
+│   │   └── memlogd
 │   │   └── sshd
 │   │   └── wwan
 │   │   └── guacd
@@ -358,11 +359,14 @@ Parent cgroup (/sys/fs/cgroup/<subsystems>/)
 │   │   └── qemu
 │   │
 │   └── containerd
-│   └── memlogd
 │
 └── eve-user-apps
     └── (edge applications)
 ```
+
+Each edge application runs in its own cgroup under `eve-user-apps`, with the memory and CPU
+limits of the application. So does the QEMU of a VM: it runs from the rootfs of the `qemu`
+service, but not in `eve/services/qemu`, which holds only the service itself.
 
 Memory and CPU limits of `eve`, `eve/services` and `eve/containerd` cgroups can be changed via
 `hv_dom0_*`, `hv_eve_*` and `hv_ctrd_*` respectively in `/config/grub.cfg`.

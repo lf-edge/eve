@@ -85,7 +85,7 @@ make check-docker-hashes-consistency # Check if packages are pointing to the lat
 ## Debugging on a live device
 
 - `eve version`, `zboot curpart` — running version and active IMGA/IMGB partition.
-- EVE services cgroups: `/sys/fs/cgroup/memory/eve/services/<pillar|newlogd|...>/memory.usage_in_bytes`; per-app cgroups under `/eve-user-apps/<uuid>.<x>.<y>`.
+- EVE services cgroups: `/sys/fs/cgroup/eve/services/<pillar|newlogd|...>/memory.current`; per-app cgroups under `/eve-user-apps/<uuid>.<x>.<y>`.
 - QMP sockets: `/run/hypervisor/kvm/<app-uuid>.<x>.<y>/qmp` (domain names are `<uuid>.<gen>.<instance>`).
 - Pubsub state on disk: `/run/<agent>/<topic>/*.json` (ephemeral), `/persist/status/...` (persistent).
 - Memory analysis docs: `docs/MEMORY-SETTINGS.md`, `docs/INTERNAL-MEMORY-MONITOR.md`, `pkg/memory-monitor/`. Config knob reference: `docs/CONFIG-PROPERTIES.md` (e.g. `debug.enable.ssh`, `memory.apps.ignore.check`, `memory.eve.limit.MiB`).
