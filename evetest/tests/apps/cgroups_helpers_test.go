@@ -6,6 +6,9 @@
 package apps_test
 
 import (
+	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -31,6 +34,63 @@ func deviceFacts(t *WithT, device *evetest.EdgeDevice, script string) map[string
 		}
 	}
 	return facts
+}
+
+// kernelArg returns the value of name=<value> on the kernel command line.
+func kernelArg(cmdline, name string) string {
+	m := regexp.MustCompile(`(?:^|\s)` + regexp.QuoteMeta(name) + `=(\S*)`).FindStringSubmatch(cmdline)
+	if m == nil {
+		return ""
+	}
+	return m[1]
+}
+
+// memArg returns, in bytes, the soft and hard values of a "<soft>[,max:<hard>]"
+// memory argument (dom0_mem, eve_mem, ctrd_mem) as 010-eve-cgroup applies it:
+// hard defaults to soft, soft to def.
+func memArg(cmdline, name string, def uint64) (soft, hard uint64) {
+	softStr, hardStr, _ := strings.Cut(kernelArg(cmdline, name), ",max:")
+	soft = sizeBytes(softStr, def)
+	return soft, sizeBytes(hardStr, soft)
+}
+
+// sizeBytes parses a size with an optional K, M or G suffix; def when empty.
+func sizeBytes(s string, def uint64) uint64 {
+	if s == "" {
+		return def
+	}
+	mult := map[string]uint64{"K": 1 << 10, "M": 1 << 20, "G": 1 << 30}[strings.ToUpper(s[len(s)-1:])]
+	if mult != 0 {
+		s = s[:len(s)-1]
+	} else {
+		mult = 1
+	}
+	n, err := strconv.ParseUint(s, 10, 64)
+	if err != nil {
+		return def
+	}
+	return n * mult
+}
+
+// cpusArg returns the CPU count of name=<n> capped at ceiling, 1 when absent
+// or 0, as 010-eve-cgroup applies it.
+func cpusArg(cmdline, name string, ceiling int) int {
+	n, err := strconv.Atoi(kernelArg(cmdline, name))
+	if err != nil || n == 0 {
+		n = 1
+	}
+	if n > ceiling {
+		n = ceiling
+	}
+	return n
+}
+
+// cpuList is the cpuset list of the first n CPUs.
+func cpuList(n int) string {
+	if n == 1 {
+		return "0"
+	}
+	return fmt.Sprintf("0-%d", n-1)
 }
 
 // addMgmtPort makes eth0 a DHCP management and apps port.
