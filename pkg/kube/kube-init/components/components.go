@@ -223,7 +223,7 @@ func DeployAll(
 func applyConcurrency() int {
 	n := prereqs.KubeCPUCount()
 	if n <= 0 {
-		// No cpuset to read (cgroup v2, or an unconfined host).
+		// No kube cgroup to read, e.g. outside EVE.
 		n = runtime.NumCPU()
 	}
 	return max(2, n)

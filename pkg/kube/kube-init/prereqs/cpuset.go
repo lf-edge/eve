@@ -4,7 +4,6 @@
 package prereqs
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -17,32 +16,32 @@ import (
 // by default (pkg/grub/rootfs.cfg). That puts kube-init and the whole k3s
 // control plane — API server, etcd, scheduler, kubelet — on a single core
 // while the rest of the machine sits idle. Pods are unaffected: kubelet
-// places them under /sys/fs/cgroup/cpuset/kubepods, which keeps the full
-// host mask.
+// places them under /sys/fs/cgroup/kubepods, which keeps the full host
+// mask.
 //
 // A first boot is the one time that hurts and the one time nothing is
 // competing: no app workloads exist yet, and the deploy drives hundreds of
 // API writes, CRD establishments and pod admissions through that single
 // core. So the confinement is lifted for the deploy and restored on
 // reaching RUNNING.
-var cpusetRoot = "/sys/fs/cgroup/cpuset"
+var cpusetRoot = "/sys/fs/cgroup"
 
-// cpusetAncestors is ordered parent-first. cgroup v1 requires a child's
-// cpus to be a subset of its parent's, so widening walks it forwards and
-// restoring walks it backwards.
+// cpusetAncestors is ordered parent-first. On cgroup v2 a write outside the
+// parent's CPUs is accepted but takes effect only once the parent widens,
+// so ancestors still go first and are restored last.
 var cpusetAncestors = []string{"eve", "eve/services"}
 
 // cpusetServices are the per-service leaves under eve/services.
 //
-// Widening an ancestor only raises its ceiling — each leaf keeps its own
-// cpuset.cpus, which 010-eve-cgroup writes from eve_max_vcpus (1 by
-// default). So freeing the ancestors alone frees nothing, and freeing
-// only "kube" leaves every sibling pinned to CPU 0.
+// On cgroup v2 the service leaves inherit their parent's CPUs unless one
+// has a mask of its own (010-eve-cgroup no longer writes one per leaf), so
+// widening the ancestors frees the inheriting leaves and only a leaf with
+// its own mask needs a write of its own.
 //
 // pillar matters as much as kube here: it downloads and hash-verifies
 // the images a first boot needs. Empty means "every leaf present",
-// mirroring what eve_max_vcpus does, rather than hard-coding a service
-// list that would drift from EVESERVICES.
+// rather than hard-coding a service list that would drift from
+// EVESERVICES.
 var cpusetServices []string
 
 // CPUSetLoan is the widened cpuset, held so it can be given back.
@@ -53,21 +52,20 @@ type CPUSetLoan struct {
 // WidenEVECPUs gives the EVE base services the host's full CPU mask —
 // kube-init and k3s, and equally pillar, which downloads and verifies the
 // images a first boot needs. Returns nil (not an error) when there is
-// nothing to widen: a cgroup v2 host, or an already-unconfined cpuset.
+// nothing to widen: nothing is confined, or nothing could be widened.
 //
 // A crash before Restore leaves the mask wide until the next reboot, when
 // dom0-ztools' 010-eve-cgroup rewrites it from the kernel cmdline.
 func WidenEVECPUs() *CPUSetLoan {
-	all, err := readCPUSet("")
-	if err != nil {
-		log.Printf("cpuset: cannot read host mask, leaving CPU limits alone: %v", err)
+	all, err := readCPUSetFile("", "cpuset.cpus.effective")
+	if err != nil || all == "" {
+		log.Printf("cpuset: cannot read host mask (%q, %v), leaving CPU limits alone", all, err)
 		return nil
 	}
 
 	loan := &CPUSetLoan{saved: make(map[string]string)}
-	// Ancestors first, and a failure there aborts: cgroup v1 will not let a
-	// leaf exceed its parent, so widening leaves under an un-widened parent
-	// cannot work.
+	// Ancestors first, and a failure there aborts: a leaf widened
+	// under an un-widened parent takes effect only once the parent opens.
 	for _, cg := range cpusetAncestors {
 		if !loan.widen(cg, all) {
 			log.Printf("cpuset: cannot widen ancestor %s; leaving CPU limits alone", cg)
@@ -109,16 +107,17 @@ func WidenEVECPUs() *CPUSetLoan {
 }
 
 // widen records the current mask and replaces it with all. Reports false
-// when the group could not be read or written; a group already at all is
-// a no-op success with nothing to give back.
+// when the group could not be read or written; a group already at all, or
+// one that inherits (empty cpuset.cpus), is a no-op success with nothing to
+// give back.
 func (l *CPUSetLoan) widen(cgroup, all string) bool {
-	cur, err := readCPUSet(cgroup)
+	cur, err := readCPUSetFile(cgroup, "cpuset.cpus")
 	if err != nil {
 		log.Printf("cpuset: read %s: %v", cgroup, err)
 		return false
 	}
-	if cur == all {
-		return true
+	if cur == "" || cur == all {
+		return true // an inheriting group follows its widened parent
 	}
 	if err := writeCPUSet(cgroup, all); err != nil {
 		log.Printf("cpuset: write %s: %v", cgroup, err)
@@ -128,14 +127,15 @@ func (l *CPUSetLoan) widen(cgroup, all string) bool {
 	return true
 }
 
-// Restore puts back the masks WidenKubeCPUs replaced. Safe on a nil loan
+// Restore puts back the masks WidenEVECPUs replaced. Safe on a nil loan
 // and safe to call twice.
 func (l *CPUSetLoan) Restore() {
 	if l == nil || len(l.saved) == 0 {
 		return
 	}
 	restored := 0
-	// Child-first: a parent cannot narrow below what a child still holds.
+	// Child-first: a parent narrowed first would cut the CPUs a child still
+	// lists.
 	chain := append(append([]string(nil), cpusetAncestors...), cpusetLeaves()...)
 	for i := len(chain) - 1; i >= 0; i-- {
 		cg := chain[i]
@@ -157,7 +157,7 @@ func (l *CPUSetLoan) Restore() {
 // Read live rather than via runtime.NumCPU, which caches the mask at
 // process start and so cannot see a widening.
 func KubeCPUCount() int {
-	s, err := readCPUSet("eve/services/kube")
+	s, err := readCPUSetFile("eve/services/kube", "cpuset.cpus.effective")
 	if err != nil {
 		return 0
 	}
@@ -204,24 +204,23 @@ func cpusetLeavesNow() []string {
 	return leaves
 }
 
-func cpusetPath(cgroup string) string {
-	return filepath.Join(cpusetRoot, cgroup, "cpuset.cpus")
+func cpusetPath(cgroup, file string) string {
+	return filepath.Join(cpusetRoot, cgroup, file)
 }
 
-func readCPUSet(cgroup string) (string, error) {
-	b, err := os.ReadFile(cpusetPath(cgroup))
+// readCPUSetFile reads a cpuset list file such as cpuset.cpus or
+// cpuset.cpus.effective. An empty cpuset.cpus means the cgroup inherits its
+// parent's CPUs, as EVE's per-service cgroups do on cgroup v2.
+func readCPUSetFile(cgroup, file string) (string, error) {
+	b, err := os.ReadFile(cpusetPath(cgroup, file))
 	if err != nil {
 		return "", err
 	}
-	s := strings.TrimSpace(string(b))
-	if s == "" {
-		return "", fmt.Errorf("%s is empty", cpusetPath(cgroup))
-	}
-	return s, nil
+	return strings.TrimSpace(string(b)), nil
 }
 
 func writeCPUSet(cgroup, mask string) error {
-	return os.WriteFile(cpusetPath(cgroup), []byte(mask), 0644)
+	return os.WriteFile(cpusetPath(cgroup, "cpuset.cpus"), []byte(mask), 0644)
 }
 
 // countCPUList counts the CPUs in a cpuset list such as "0", "0-7" or
