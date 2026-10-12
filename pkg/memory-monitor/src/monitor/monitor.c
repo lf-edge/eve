@@ -30,7 +30,7 @@
 
 // There are extra 3 threads that are used to monitor the system:
 // * procfs monitor thread: to check stats of the zedbox process
-// * cgroups eventfd polling thread: to check the memory usage of the eve and pillar cgroups
+// * cgroups thread: PSI triggers and thresholds of the eve and pillar cgroups
 // * PSI (Pressure Stall Information) monitoring thread: to check the memory pressure of the entire system
 #define MONITORING_THREADS_COUNT 3
 
@@ -230,96 +230,44 @@ static pthread_t run_procfs_monitor(config_t *config) {
 }
 
 static pthread_t run_cgroups_events_monitor(config_t *config, fds_to_close_t *fds_to_close) {
-    // Read the eve cgroup limit and set the threshold to 95% of it
-    unsigned long eve_limit_bytes, eve_threshold_bytes;
-
-    int result = cgroup_get_memory_limit(EVE_CGROUP, &eve_limit_bytes);
-    if (result == -1) {
+    unsigned long eve_limit_bytes;
+    if (cgroup_read_value(EVE_CGROUP, "memory.max", &eve_limit_bytes) != 0) {
         syslog(LOG_INFO, "Failed to read the eve cgroup limit\n");
         // Let's consider 0 as an invalid thread id
         return 0;
     }
-    // Set the threshold to 95% of the limit
-    eve_threshold_bytes = eve_limit_bytes / 100 * config->cgroup_eve_threshold_percent;
 
-    // Open the event control file for the eve cgroup
-    int eve_control_fd = event_open_control(EVE_CGROUP);
-    if (eve_control_fd == -1) {
-        syslog(LOG_WARNING, "Failed to open the event control file for the eve cgroup\n");
+    #define EVENTS_COUNT 4
+    event_desc_t *events = calloc(EVENTS_COUNT, sizeof(event_desc_t));
+    if (events == NULL) {
+        syslog(LOG_ERR, "Failed to allocate the cgroups events\n");
+        return 0;
     }
+    events[0] = (event_desc_t) {.cgroup_name = EVE_CGROUP, .type = THRESHOLD_EVENT, .fd = -1,
+                                .threshold = eve_limit_bytes / 100 * config->cgroup_eve_threshold_percent};
+    // "full" (all of EVE's tasks stalled) stands in for v1's "critical" pressure level:
+    // "low" and "medium" fired too often, e.g. when the cache was reclaimed.
+    events[1] = (event_desc_t) {.cgroup_name = EVE_CGROUP, .type = PRESSURE_EVENT, .fd = -1,
+                                .psi_trigger = "full 100000 1000000"};
+    events[2] = (event_desc_t) {.cgroup_name = PILLAR_CGROUP, .type = THRESHOLD_EVENT, .fd = -1,
+                                .threshold = config->cgroup_pillar_threshold_bytes};
+    // "some" (any pillar task stalled) stands in for v1's "low" pressure level, with
+    // the watcher's threshold: pillar's tasks also stall briefly while /eve's page
+    // cache is reclaimed, so a shorter stall fires during normal operation.
+    events[3] = (event_desc_t) {.cgroup_name = PILLAR_CGROUP, .type = PRESSURE_EVENT, .fd = -1,
+                                .psi_trigger = "some 150000 1000000"};
 
-    event_desc_t eve_threshold_desc = {
-            .cgroup_name = EVE_CGROUP,
-            .control_fd = eve_control_fd,
-            .type = THRESHOLD_EVENT,
-            .threshold = eve_threshold_bytes,
-            .event_fd = -1, // will be set by the event_register function
-            .trigger_fd = -1, // will be set by the event_register function
-    };
-    result = event_register(&eve_threshold_desc);
-    if (result == -1) {
-        syslog(LOG_WARNING, "Failed to register event for the eve cgroup\n");
-    }
-
-    event_desc_t eve_pressure_desc = {
-            .cgroup_name = EVE_CGROUP,
-            .control_fd = eve_control_fd,
-            .type = PRESSURE_EVENT,
-            // Use "critical" pressure level for the eve cgroup, as "low" and "medium" are triggered too often,
-            // for example, when the system reclaim the memory used by the cache
-            .pressure_level = PRESSURE_LEVEL_CRITICAL,
-            .event_fd = -1, // will be set by the event_register function
-            .trigger_fd = -1, // will be set by the event_register function
-    };
-    result = event_register(&eve_pressure_desc);
-    if (result == -1) {
-        syslog(LOG_WARNING, "Failed to register pressure event for the eve cgroup\n");
-    }
-
-    // Open the event control file for the Pillar cgroup
-    int pillar_control_fd = event_open_control(PILLAR_CGROUP);
-    if (pillar_control_fd == -1) {
-        syslog(LOG_WARNING, "Failed to open the event control file for the pillar cgroup\n");
-    }
-    event_desc_t pillar_threshold_desc = {
-            .cgroup_name = PILLAR_CGROUP,
-            .control_fd = pillar_control_fd,
-            .type = THRESHOLD_EVENT,
-            .threshold = config->cgroup_pillar_threshold_bytes,
-            .event_fd = -1, // will be set by the event_register function
-            .trigger_fd = -1, // will be set by the event_register function
-    };
-    result = event_register(&pillar_threshold_desc);
-    if (result == -1) {
-        syslog(LOG_WARNING, "Failed to register event for the pillar cgroup\n");
-    }
-
-    event_desc_t pillar_pressure_desc = (event_desc_t) {
-            .cgroup_name = PILLAR_CGROUP,
-            .control_fd = pillar_control_fd,
-            .type = PRESSURE_EVENT,
-            .pressure_level = PRESSURE_LEVEL_LOW,
-            .event_fd = -1, // will be set by the event_register function
-            .trigger_fd = -1, // will be set by the event_register function
-    };
-    result = event_register(&pillar_pressure_desc);
-    if (result == -1) {
-        syslog(LOG_WARNING, "Failed to register pressure event for the pillar cgroup\n");
+    for (size_t i = 0; i < EVENTS_COUNT; i++) {
+        if (event_register(&events[i]) != 0) {
+            syslog(LOG_WARNING, "No pressure events for the %s cgroup\n", events[i].cgroup_name);
+        }
     }
 
     syslog(LOG_INFO, "Waiting for cgroups events\n");
 
-    #define EVENTS_COUNT 4
-
-    event_desc_t *events_descs = malloc(sizeof(event_desc_t) * EVENTS_COUNT);
-    events_descs[0] = eve_threshold_desc;
-    events_descs[1] = eve_pressure_desc;
-    events_descs[2] = pillar_threshold_desc;
-    events_descs[3] = pillar_pressure_desc;
-
     pthread_t thread;
     monitor_cgroups_events_args_t *args = malloc(sizeof(monitor_cgroups_events_args_t));
-    args->events = (event_desc_t*)events_descs;
+    args->events = events;
     args->events_count = EVENTS_COUNT;
     if (pthread_create(&thread, NULL, cgroups_events_monitor_thread, args) != 0) {
         free(args);
@@ -327,15 +275,11 @@ static pthread_t run_cgroups_events_monitor(config_t *config, fds_to_close_t *fd
         return 0;
     }
 
-    // Add the fds to the list to return them to the caller, so they can be closed later
-    // For each event, we have 3 fds: event_fd, trigger_fd, and control_fd
-    fds_to_close->count = EVENTS_COUNT * 3;
+    // Return the PSI trigger fds to the caller, so they can be closed later
+    fds_to_close->count = EVENTS_COUNT;
     fds_to_close->fds = malloc(sizeof(int) * fds_to_close->count);
     for (int i = 0; i < EVENTS_COUNT; i++) {
-        event_desc_t *event_p = &events_descs[i];
-        fds_to_close->fds[i * 3] = event_p->event_fd;
-        fds_to_close->fds[i * 3 + 1] = event_p->trigger_fd;
-        fds_to_close->fds[i * 3 + 2] = event_p->control_fd;
+        fds_to_close->fds[i] = events[i].fd;
     }
 
     return thread;
