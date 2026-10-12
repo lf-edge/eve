@@ -23,6 +23,7 @@ import (
 	"github.com/containerd/containerd/oci"
 	zconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/cgroup"
 	"github.com/linuxkit/linuxkit/src/cmd/linuxkit/moby"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/runtime-spec/specs-go"
@@ -535,11 +536,7 @@ func (s *ociSpec) UpdateFromDomain(dom *types.DomainConfig, status *types.Domain
 		s.Linux.Resources.CPU.Period = &p
 		s.Linux.Resources.CPU.Quota = &q
 		if len(status.VmConfig.CPUs) != 0 {
-			cpusAsString := make([]string, len(status.VmConfig.CPUs))
-			for i, cpu := range status.VmConfig.CPUs {
-				cpusAsString[i] = fmt.Sprintf("%d", cpu)
-			}
-			s.Linux.Resources.CPU.Cpus = strings.Join(cpusAsString, ",")
+			s.Linux.Resources.CPU.Cpus = cgroup.FormatCPUs(status.VmConfig.CPUs)
 		}
 
 		s.Linux.CgroupsPath = fmt.Sprintf("/%s/%s", ctrdServicesNamespace, dom.GetTaskName())
