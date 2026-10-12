@@ -328,6 +328,9 @@ github.com/cncf/xds/go/xds/type/v3
 ## explicit; go 1.17
 github.com/containerd/cgroups
 github.com/containerd/cgroups/stats/v1
+# github.com/containerd/cgroups/v3 v3.1.0
+## explicit; go 1.22.0
+github.com/containerd/cgroups/v3/cgroup2/stats
 # github.com/containerd/containerd v1.7.36
 ## explicit; go 1.25.0
 github.com/containerd/containerd
@@ -997,7 +1000,7 @@ github.com/opencontainers/go-digest
 github.com/opencontainers/image-spec/identity
 github.com/opencontainers/image-spec/specs-go
 github.com/opencontainers/image-spec/specs-go/v1
-# github.com/opencontainers/runtime-spec v1.1.0
+# github.com/opencontainers/runtime-spec v1.2.0
 ## explicit
 github.com/opencontainers/runtime-spec/specs-go
 # github.com/opencontainers/runtime-tools v0.9.1-0.20221107090550-2e043c6bd626
