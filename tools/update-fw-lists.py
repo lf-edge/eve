@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
-"""Regenerate pkg/fw/firmware-<arch>.txt, the firmware an architecture ships.
+"""Regenerate pkg/fw/firmware-<list>.txt, the firmware an image ships.
 
-The list is what that architecture's kernels can load: every firmware name
-their modules and built-in drivers declare (MODULE_FIRMWARE), resolved
-against the files pkg/fw's build stage installs, narrowed by the rules in
-pkg/fw/firmware-select.txt. Run it after changing the kernel or any firmware
-version in pkg/fw:
+A list is named after its architecture, with a suffix for a variant such as
+amd64-k for eve-k. It holds what the variant's kernels can load: every
+firmware name their modules and built-in drivers declare (MODULE_FIRMWARE),
+resolved against the files pkg/fw's build stage installs, narrowed by the
+rules in pkg/fw/firmware-select.txt. Run it after changing the kernel or any
+firmware version in pkg/fw:
 
-    tools/update-fw-lists.py            # every architecture in the rules
-    tools/update-fw-lists.py amd64      # one
+    tools/update-fw-lists.py            # every list in the rules
+    tools/update-fw-lists.py amd64-k    # one
     tools/update-fw-lists.py --check    # fail if a committed list is stale
 
 It needs docker with buildx. Kernel images are the ones the Makefile pins
@@ -23,6 +24,7 @@ It needs docker with buildx. Kernel images are the ones the Makefile pins
 import argparse
 import difflib
 import fnmatch
+import functools
 import io
 import lzma
 import os
@@ -59,18 +61,22 @@ def run(cmd, **kw):
 
 
 def parse_rules(path):
-    """Read firmware-select.txt into {arch: {...}}."""
-    rules = {}
+    """Read firmware-select.txt into {list: {...}}."""
+    rules, includes = {}, []
     with open(path, encoding='utf-8') as f:
         for n, line in enumerate(f, 1):
             line = line.split('#', 1)[0].split()
             if not line:
                 continue
-            arch, kind, args = line[0], line[1], line[2:]
-            r = rules.setdefault(arch, {'platforms': [], 'modules': [], 'excludes': [],
-                                        'extras': []})
+            name, kind, args = line[0], line[1], line[2:]
+            r = rules.setdefault(name, {'platforms': [], 'hv': None, 'modules': [],
+                                        'excludes': [], 'extras': []})
             if kind == 'platforms':
                 r['platforms'] += args
+            elif kind == 'hv' and len(args) == 1:
+                r['hv'] = args[0]
+            elif kind == 'include' and len(args) == 1:
+                includes.append((name, args[0], n))
             elif kind == 'module' and len(args) in (1, 2):
                 r['modules'].append((args[0], re.compile(args[1]) if len(args) == 2 else None))
             elif kind == 'exclude' and len(args) == 1:
@@ -79,13 +85,18 @@ def parse_rules(path):
                 r['extras'].append(args[0])
             else:
                 sys.exit(f'{path}:{n}: cannot parse')
+    for name, other, n in includes:
+        if other not in rules:
+            sys.exit(f'{path}:{n}: no rules for {other}')
+        for key in ('modules', 'excludes', 'extras'):
+            rules[name][key] += rules[other][key]
     return rules
 
 
-def kernel_tag(arch, platform):
-    """The kernel image the Makefile pins for arch and platform."""
-    out = run(['make', '-s', f'ZARCH={arch}', f'PLATFORM={platform}', 'kernel-tag'], cwd=ROOT)
-    return out.decode().split()[-1]
+def kernel_tag(arch, platform, hv):
+    """The kernel image the Makefile pins for arch, platform and hypervisor."""
+    cmd = ['make', '-s', f'ZARCH={arch}', f'PLATFORM={platform}', *([f'HV={hv}'] if hv else [])]
+    return run([*cmd, 'kernel-tag'], cwd=ROOT).decode().split()[-1]
 
 
 def modinfo_firmware(data):
@@ -122,6 +133,7 @@ def declared(arch, tag):
     return out
 
 
+@functools.cache
 def firmware_tree(arch):
     """{path: link target or None} under /lib/firmware of pkg/fw's build stage."""
     tree = {}
@@ -192,7 +204,7 @@ def declared_names(rule, decl):
             yield from ((m, n) for n in sorted(names) if not pattern or pattern.search(n))
 
 
-def select(arch, rule, decl, tree):
+def select(list_name, rule, decl, tree):
     """The files rule selects from tree, and the declared names tree lacks."""
     out, missing = set(), set()
     for mod, name in declared_names(rule, decl):
@@ -204,23 +216,24 @@ def select(arch, rule, decl, tree):
     for glob in rule['extras']:
         hits = [f for f in tree if fnmatch.fnmatchcase(f, glob)]
         if not hits:
-            sys.exit(f'{arch}: extra {glob} matches nothing in the firmware tree')
+            sys.exit(f'{list_name}: extra {glob} matches nothing in the firmware tree')
         for f in hits:
             add(f, tree, out)
     return out, missing
 
 
-def generate(arch, rule):
-    """The contents of pkg/fw/firmware-<arch>.txt."""
-    tags = [kernel_tag(arch, p) for p in rule['platforms']]
+def generate(name, rule):
+    """The contents of pkg/fw/firmware-<name>.txt."""
+    arch = name.split('-', 1)[0]
+    tags = [kernel_tag(arch, p, rule['hv']) for p in rule['platforms']]
     decl = {}
     for tag in tags:
-        print(f'{arch}: reading {tag}', file=sys.stderr)
+        print(f'{name}: reading {tag}', file=sys.stderr)
         for mod, names in declared(arch, tag).items():
             decl.setdefault(mod, set()).update(names)
-    print(f'{arch}: building pkg/fw build stage', file=sys.stderr)
-    out, missing = select(arch, rule, decl, firmware_tree(arch))
-    print(f'{arch}: {len(out)} files; '
+    print(f'{name}: building pkg/fw build stage for {arch}', file=sys.stderr)
+    out, missing = select(name, rule, decl, firmware_tree(arch))
+    print(f'{name}: {len(out)} files; '
           f'{len(missing)} declared names are not in the firmware tree', file=sys.stderr)
     return ''.join([f'# {GENERATED}\n',
                     *(f'# kernel: {tag}\n' for tag in tags),
@@ -232,17 +245,17 @@ def generate(arch, rule):
 def main():
     """Entry point."""
     ap = argparse.ArgumentParser(description=__doc__.split('\n', 1)[0])
-    ap.add_argument('arch', nargs='*', help='architectures to regenerate (default: all)')
+    ap.add_argument('list', nargs='*', help='lists to regenerate (default: all)')
     ap.add_argument('--check', action='store_true',
                     help='write nothing; show the difference and fail if a list is stale')
     args = ap.parse_args()
     rules = parse_rules(RULES)
     stale = []
-    for arch in args.arch or sorted(rules):
-        if arch not in rules:
-            sys.exit(f'no rules for {arch} in {RULES}')
-        text = generate(arch, rules[arch])
-        path = os.path.join(PKG, f'firmware-{arch}.txt')
+    for name in args.list or sorted(rules):
+        if name not in rules:
+            sys.exit(f'no rules for {name} in {RULES}')
+        text = generate(name, rules[name])
+        path = os.path.join(PKG, f'firmware-{name}.txt')
         rel = os.path.relpath(path, ROOT)
         if not args.check:
             with open(path, 'w', encoding='utf-8') as f:
