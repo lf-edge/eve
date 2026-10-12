@@ -85,6 +85,10 @@ import (
 //     version and survives an app restart.
 //   - TestAppLogs -- application stdout is collected and delivered to the
 //     controller, including after the app is stopped and started again.
+//   - TestCgroupTree -- the cgroup v2 tree EVE builds, and where its
+//     processes run in it; shares TestAppLogs' device.
+//   - TestMemoryPressureEvents -- squeezing pillar's cgroup makes the watcher
+//     force a GC and memory-monitor record a pressure event; same device.
 //   - TestAppRestart -- controller-requested restarts (restart counter
 //     bumps, no purge) bring the app back to RUNNING; regression test for
 //     a stale QMP handler quitting the re-created domain.
@@ -160,6 +164,12 @@ func TestAppsSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestAppLogs,
+		},
+		evetest.TestCase{
+			Test: TestCgroupTree,
+		},
+		evetest.TestCase{
+			Test: TestMemoryPressureEvents,
 		},
 		evetest.TestCase{
 			Test: TestAppRestart,
