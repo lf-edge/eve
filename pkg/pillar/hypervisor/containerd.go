@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
+	v2stats "github.com/containerd/cgroups/v3/cgroup2/stats"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/opencontainers/runtime-spec/specs-go"
@@ -320,48 +321,56 @@ func (ctx ctrdContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
 	}
 
 	for _, id := range ids {
-		var usedMem, maxUsedMem, availMem, totalMem uint32
-		var usedMemPerc float64
-		var cpuTotal uint64
-
-		if metric, err := ctx.ctrdClient.CtrGetContainerMetrics(ctrdCtx, id); err == nil {
-			if metric.Memory == nil || metric.Memory.Usage == nil {
-				logrus.Errorf("GetDomsCPUMem nil returned in metric.Memory: %v", metric)
-			} else {
-				usedMem = uint32(roundFromBytesToMbytes(metric.Memory.Usage.Usage))
-				maxUsedMem = uint32(roundFromBytesToMbytes(metric.Memory.Usage.Max))
-				totalMem = uint32(roundFromBytesToMbytes(metric.Memory.HierarchicalMemoryLimit))
-				availMem = 0
-				if totalMem > usedMem {
-					availMem = totalMem - usedMem
-				}
-				if totalMem != 0 {
-					usedMemPerc = float64(100 * float32(usedMem) / float32(totalMem))
-				} else {
-					usedMemPerc = 0
-				}
-			}
-			if metric.CPU == nil || metric.CPU.Usage == nil {
-				logrus.Errorf("GetDomsCPUMem nil returned in metric.CPU: %v", metric)
-			} else {
-				cpuTotal = metric.CPU.Usage.Total
-			}
-		} else {
+		metric, err := ctx.ctrdClient.CtrGetContainerMetrics(ctrdCtx, id)
+		if err != nil {
 			logrus.Errorf("GetDomsCPUMem failed with error %v", err)
+			res[id] = types.DomainMetric{CPUScaled: 1}
+			continue
 		}
-
-		res[id] = types.DomainMetric{
-			UUIDandVersion:    types.UUIDandVersion{},
-			CPUTotalNs:        cpuTotal, // Caller will scale
-			CPUScaled:         1,
-			AllocatedMB:       totalMem,
-			UsedMemory:        usedMem,
-			MaxUsedMemory:     maxUsedMem,
-			AvailableMemory:   availMem,
-			UsedMemoryPercent: usedMemPerc,
-		}
+		res[id] = domainMetric(metric)
 	}
 	return res, nil
+}
+
+// domainMetric converts a task's cgroup v2 metrics into the DomainMetric
+// pillar reports. A task without a memory limit reports UsageLimit
+// math.MaxUint64, which counts as no allocation.
+func domainMetric(m *v2stats.Metrics) types.DomainMetric {
+	var usedMem, maxUsedMem, availMem, totalMem uint32
+	var usedMemPerc float64
+	var cpuTotal uint64
+
+	if m.Memory == nil {
+		logrus.Errorf("GetDomsCPUMem nil returned in metric.Memory: %v", m)
+	} else {
+		usedMem = uint32(roundFromBytesToMbytes(m.Memory.Usage))
+		maxUsedMem = uint32(roundFromBytesToMbytes(m.Memory.MaxUsage))
+		if m.Memory.UsageLimit != math.MaxUint64 {
+			totalMem = uint32(roundFromBytesToMbytes(m.Memory.UsageLimit))
+		}
+		if totalMem > usedMem {
+			availMem = totalMem - usedMem
+		}
+		if totalMem != 0 {
+			usedMemPerc = float64(100 * float32(usedMem) / float32(totalMem))
+		}
+	}
+	if m.CPU == nil {
+		logrus.Errorf("GetDomsCPUMem nil returned in metric.CPU: %v", m)
+	} else {
+		cpuTotal = m.CPU.UsageUsec * 1000
+	}
+
+	return types.DomainMetric{
+		UUIDandVersion:    types.UUIDandVersion{},
+		CPUTotalNs:        cpuTotal, // Caller will scale
+		CPUScaled:         1,
+		AllocatedMB:       totalMem,
+		UsedMemory:        usedMem,
+		MaxUsedMemory:     maxUsedMem,
+		AvailableMemory:   availMem,
+		UsedMemoryPercent: usedMemPerc,
+	}
 }
 
 func (ctx ctrdContext) VirtualTPMSetup(domainName string, wp *types.WatchdogParam) error {
