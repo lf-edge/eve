@@ -55,7 +55,9 @@ _linuxkit_tag() {
       build_yml_cmd=(--build-yml build-k-dev.yml)
     elif [[ "${is_dev_build}" == 1 ]]; then
       build_yml_cmd=(--build-yml build-dev.yml)
-    elif [[ "${is_k_build}" == 1 ]]; then
+    elif [[ "${is_k_build}" == 1 && -f "${pkg}/build-k-${PLATFORM}.yml" ]]; then
+      build_yml_cmd=(--build-yml "build-k-${PLATFORM}.yml")
+    elif [[ "${is_k_build}" == 1 && -f "${pkg}/build-k.yml" ]]; then
       build_yml_cmd=(--build-yml build-k.yml)
     elif [[ -f "${pkg}/build-${PLATFORM}.yml" ]]; then
       build_yml_cmd=(--build-yml "build-${PLATFORM}.yml")

@@ -1311,6 +1311,7 @@ endif
 # If DEV=y and file pkg/my_package/build-dev.yml exists, returns the path to that file.
 # If RSTATS=y and file pkg/my_package/build-rstats.yml exists, returns the path to that file.
 # If HV=k and DEV=y and file pkg/my_package/build-k-dev.yml exists, returns the path to that file.
+# If HV=k and DEV!=y and file pkg/my_package/build-k-<PLATFORM>.yml exists, returns the path to that file.
 # If HV=k and DEV!=y and file pkg/my_package/build-k.yml exists, returns the path to that file.
 # If pkg/my_package/build-<PLATFORM>.yml exists, returns the path to that file.
 # Otherwise returns pkg/my_package/build.yml.
@@ -1322,7 +1323,8 @@ get_pkg_build_plat_yml = $(if $(wildcard pkg/$1/build-$(PLATFORM).yml),build-$(P
 get_pkg_build_dev_yml = $(if $(wildcard pkg/$1/build-dev.yml),build-dev.yml,build.yml)
 get_pkg_build_rstats_yml = $(if $(wildcard pkg/$1/build-rstats.yml),build-rstats.yml,build.yml)
 get_pkg_build_k_yml = $(if $(and $(filter y,$(DEV)),$(wildcard pkg/$1/build-k-dev.yml)),build-k-dev.yml, \
-                             $(if $(wildcard pkg/$1/build-k.yml),build-k.yml,$(call get_pkg_build_plat_yml,$1)))
+                             $(if $(wildcard pkg/$1/build-k-$(PLATFORM).yml),build-k-$(PLATFORM).yml, \
+                             $(if $(wildcard pkg/$1/build-k.yml),build-k.yml,$(call get_pkg_build_plat_yml,$1))))
 
 eve-%: pkg/%/Dockerfile $(LINUXKIT) $(RESCAN_DEPS)
 	$(QUIET): "$@: Begin: LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
