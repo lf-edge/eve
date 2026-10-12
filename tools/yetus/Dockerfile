@@ -57,6 +57,15 @@ COPY golangci-lint-plugin.patch /tmp/golangci-lint-plugin.patch
 WORKDIR /
 RUN patch -Np1 < /tmp/golangci-lint-plugin.patch && rm /tmp/golangci-lint-plugin.patch
 
+# Use upstream hadolint instead of the one that comes with Yetus. Release
+# assets are named x86_64/arm64, so fetch both and install the matching one.
+ENV HADOLINT_VERSION=2.15.1
+ADD --checksum=sha256:c7187db94eeeeca956519a6af171adc31453941a1e777961f6e680f697c8c507 \
+    https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-linux-x86_64 /tmp/hadolint-amd64
+ADD --checksum=sha256:f6198ef8090f404dbb771abfee086eb8c48ac177f30da7fd3510aca35b344b5d \
+    https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-linux-arm64 /tmp/hadolint-arm64
+RUN install -m 0755 /tmp/hadolint-${TARGETARCH} /usr/bin/hadolint && rm /tmp/hadolint-*
+
 # Clean up
 RUN rm -r /tmp/zfs
 
