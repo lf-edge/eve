@@ -16,8 +16,9 @@ const (
 	EnvPrefix = "EVETEST_"
 
 	// VersionEnv specifies the version of the evetest framework.
-	// This is read from the VERSION file by Makefile and set inside
-	// the evetest (and also inside the broker) container by Dockerfile.
+	// This is a content hash of the framework sources computed by Makefile
+	// (see content-hash.sh) and set inside the evetest (and also inside the
+	// broker) container by Dockerfile.
 	VersionEnv = "VERSION"
 
 	// LogLevelEnv sets the log level for the evetest framework (not EVE).
@@ -364,9 +365,6 @@ const (
 	// DefaultAdamVersion specifies the Adam version to use by default.
 	DefaultAdamVersion = "0.0.82"
 
-	// DefaultSDNVersion specifies the SDN version to use by default.
-	DefaultSDNVersion = "1.2"
-
 	// DefaultSDNUplinkIPv4Subnet species the IPv4 subnet used for SDN uplink
 	// interfaces by default.
 	DefaultSDNUplinkIPv4Subnet = "192.168.170.0/24"
@@ -478,7 +476,7 @@ func InitViperConfig() {
 	viper.SetDefault(AdamRepoEnv, DefaultAdamRepo)
 
 	// SDN image config
-	viper.SetDefault(SDNVersionEnv, DefaultSDNVersion)
+	viper.SetDefault(SDNVersionEnv, "") // Set by "make evetest" to the hash of sdn/
 	viper.SetDefault(SDNRepoEnv, DefaultSDNRepo)
 	viper.SetDefault(SDNUplinkIPv4SubnetEnv, DefaultSDNUplinkIPv4Subnet)
 	viper.SetDefault(SDNUplinkIPv6SubnetEnv, DefaultSDNUplinkIPv6Subnet)

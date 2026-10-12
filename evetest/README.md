@@ -953,12 +953,12 @@ same terminal session beforehand.
 | `EVETEST_ORG` | Docker Hub organization for evetest and evetest-broker images | `lfedge` |
 | `EVETEST_EVE_REPO` | EVE image repository | `lfedge/eve` |
 | `EVETEST_ADAM_VERSION` | Adam controller version *(build-time only, see note below)* | `0.0.81` |
-| `EVETEST_SDN_VERSION` | SDN emulator version | `1.2` |
+| `EVETEST_SDN_VERSION` | SDN emulator image tag | content hash of `sdn/` (`make sdn-version`) |
 
 > **`EVETEST_ADAM_VERSION` requires evetest container rebuild.** Unlike the other
 > variables above, Adam's binary is baked into the evetest image at build time
 > (`Dockerfile.evetest` copies it in from `lfedge/adam:$EVETEST_ADAM_VERSION`);
-> the evetest image tag is just `evetest:<EVETEST_VERSION>`, so it does not encode
+> the evetest image tag is a hash of the evetest sources, so it does not encode
 > which Adam version is inside. Setting `EVETEST_ADAM_VERSION` as a runtime environment
 > variable before `make evetest` has **no effect** on which Adam binary actually runs.
 > To test against a different (e.g. custom-built) Adam version, rebuild the image first:
@@ -1234,6 +1234,7 @@ and the framework subscribes to Adam's data streams to keep device state up to d
 |--------|-------------|
 | `make list-tests` | List all available tests and test suites with their configurable parameters |
 | `make evetest` | Run a test (requires `NAME=...`) |
+| `make version` / `make sdn-version` | Print the image tag (content hash of the sources) of the evetest and broker images / of the SDN image; see [Image Tags](#image-tags) |
 | `make build-container` | Build the evetest container; set `DOCKER_PLATFORM=linux/<arch>` to cross-compile for a different architecture (Go build stage runs natively on the host, no QEMU emulation); use `DOCKER_TARGET=push` to publish to a registry instead of loading locally |
 | `make build-broker-container` | Build broker Docker image only; set `DOCKER_PLATFORM=linux/<arch>` to cross-compile for a different architecture (Go build stage runs natively on the host, no QEMU emulation); CGO (and therefore the libvirt provider) is only enabled when `DOCKER_PLATFORM` matches the build host's own arch -- e.g. building on an arm64 host with the default `DOCKER_PLATFORM` gets full libvirt support, but cross-compiling to a *different* arch than the host (as CI does to publish the arm64 image from an amd64 runner) sets `CGO_ENABLED=0` and drops libvirt (qemu and proxmox providers are unaffected either way); use `DOCKER_TARGET=push` to publish to a registry instead of loading locally |
 | `make build-sdn-container` | Build SDN VM container (requires linuxkit, with the `LINUXKIT` variable pointing to the binary); set `DOCKER_PLATFORM=linux/<arch>` to cross-compile for a different architecture (Go build stage runs natively on the host, no QEMU emulation); use `DOCKER_TARGET=push` to publish to a registry instead of loading locally |
@@ -1531,16 +1532,15 @@ evetest/
 ├── logger/             # Logging utilities
 ├── protobuilder/       # Helpers for building protobuf config messages
 ├── sdn/
-│   ├── vm/             # SDN agent (separate Go module, built into LinuxKit VM)
-│   │   └── pkg/configitems/  # Network config item implementations
-│   └── VERSION         # SDN version
+│   └── vm/             # SDN agent (separate Go module, built into LinuxKit VM)
+│       └── pkg/configitems/  # Network config item implementations
 ├── tests/              # Integration tests (mounted into container at runtime)
 │   ├── networking/     # Network-related tests and test suites
 │   ├── cluster/        # Kubernetes cluster tests
 │   └── lps/            # Local Profile Server tests
 ├── netmodels/          # Reusable network model definitions for tests (mounted into container at runtime)
 ├── utils/              # Shared utilities (crypto, networking, etc.)
-├── VERSION             # Evetest + broker version
+├── content-hash.sh     # Computes the image tags (content hashes of the sources)
 ├── Makefile
 ├── Dockerfile.evetest  # Evetest container image
 └── Dockerfile.broker   # Broker container image
@@ -1564,40 +1564,42 @@ evetest  ◀──depends on──  sdn/vm
 
 When you change dependencies, run `go mod tidy` in the affected module's directory.
 
-### Version Files
+### Image Tags
 
-Two `VERSION` files track component versions. Increment them when making changes
-to the corresponding component:
+There are no version files to bump. The Docker image tags are content hashes of the
+sources baked into each image, computed by `evetest/content-hash.sh` from the working
+tree (committed, modified and untracked files, but not git-ignored ones; Markdown files
+are ignored). A given tag therefore always contains exactly the sources it was hashed
+from, and a published image is never overwritten with different content.
 
-| File | Covers | Used by |
-|------|--------|---------|
-| `evetest/VERSION` | Evetest framework, broker, CLI | `lfedge/evetest` and `lfedge/evetest-broker` Docker image tags |
-| `evetest/sdn/VERSION` | SDN agent and VM image | `lfedge/evetest-sdn` Docker image tag |
+| Command | Tag of | Hashed sources |
+|---------|--------|----------------|
+| `make version` | `lfedge/evetest` and `lfedge/evetest-broker` | `evetest/` except `tests/`, `netmodels/`, `matchers/`, `testapps/`, `sdn/`, `deploy/` and the `eve-api` submodule |
+| `make sdn-version` | `lfedge/evetest-sdn` | `evetest/sdn/` except `pics/` |
 
-Changes to tests (`evetest/tests/`) do **not** require bumping `evetest/VERSION` —
-tests are compiled inside the container at runtime from the mounted source, so no
-image rebuild is needed. The exception is when test changes also introduce new
-dependencies (i.e., `go.mod` changes): in that case bump the version and rebuild
-the container so the pre-downloaded module cache in the image stays current.
+`make evetest` expects the images with these tags: for each it uses the local one, else
+tries to pull it, else builds it. The SDN image is not checked when
+`EVETEST_BROKER_ADDRESS` or `EVETEST_SDN_VERSION` is set (a remote broker pulls it
+itself). CI (`publish-evetest.yml`) publishes the images of `master` under the same tags.
 
-### What to Rebuild When
+Changes to tests (`evetest/tests/`) do not change the tag, because tests are compiled
+inside the container at runtime from the mounted source. A `go.mod` change does, which
+keeps the module cache baked into the image current.
 
-Different changes require different rebuild steps. The table below summarizes what
-needs to happen after each type of change:
+Every edit of the framework or SDN sources yields a new tag and thus a new local image;
+remove the stale ones with `docker image prune -a` or by tag.
 
-| What changed | What to do |
-|--------------|------------|
-| **Test code** (`tests/`) | Nothing -- tests are mounted into the container and compiled there. Just re-run `make evetest`. Exception: if `go.mod` changed (new dependencies added), rebuild the evetest container (`make build-container`) so the new deps are pre-downloaded in the image; otherwise they will be downloaded on every test run. |
-| **Evetest framework** (root package: `harness.go`, `edgedevice.go`, `devconfig.go`, ...) | If the change also affects `sdn/vm` (e.g., a shared package it imports), run `go mod tidy` in `sdn/vm/`. Rebuild the evetest container (`make build-container`). Bump `VERSION`. |
-| **gRPC API** (`grpcapi/proto/`) | Regenerate Go code (`make proto`). Then rebuild whichever containers consume the changed API -- typically the evetest container and potentially the broker container and SDN VM. Bump `VERSION` and/or `sdn/VERSION` as appropriate. |
-| **eve-api submodule** (`grpcapi/eve-api/`) | Checkout the desired commit inside the submodule (`git -C grpcapi/eve-api checkout <commit>`), then `git add grpcapi/eve-api` from within `evetest/` and commit. Regenerate Go code afterwards (`make proto`). |
-| **Broker** (`broker/`) | Rebuild the broker container (`make build-broker-container`) and the evetest container (`make build-container`, since all-in-one mode embeds the broker). Bump `VERSION`. |
-| **CLI** (`cli/`) | Reinstall the CLI on the host (`make install-cli`). Rebuild the evetest container (`make build-container`) to update the CLI inside it. Bump `VERSION`. |
-| **SDN agent** (`sdn/vm/`) | Rebuild the SDN container (`make build-sdn-container`, requires linuxkit). Bump `sdn/VERSION`. To use the new version, either set `EVETEST_SDN_VERSION` when running tests or update `DefaultSDNVersion` in `constants/` so the new version is used by default. |
-| **Controller client** (`controller/`) | Rebuild the evetest container (`make build-container`). Bump `VERSION`. |
-| **Constants** (`constants/`) | May affect all components. Rebuild the evetest container and, if the SDN imports the changed constant, rebuild the SDN container. Bump `VERSION` and/or `sdn/VERSION`. |
-| **Shared utilities** (`utils/`) | Rebuild the evetest container. If `sdn/vm` imports the changed utility, also rebuild the SDN container. Bump `VERSION` and/or `sdn/VERSION`. |
+### Manual Steps After Changes
 
-As a rule of thumb: if you change anything under `evetest/` (other than `tests` and `sdn/vm/`),
-bump `evetest/VERSION`. If you change anything under `evetest/sdn/vm/`, bump
-`evetest/sdn/VERSION`.
+Images are rebuilt automatically by `make evetest` (see [Image Tags](#image-tags)).
+Only these steps are not automatic:
+
+- **gRPC API** (`grpcapi/proto/`): regenerate the Go code with `make proto`.
+- **eve-api submodule** (`grpcapi/eve-api/`): check out the desired commit
+  (`git -C grpcapi/eve-api checkout <commit>`), `git add grpcapi/eve-api` from within
+  `evetest/`, then run `make proto`.
+- **CLI** (`cli/`): `make install-cli` to update the `evetest` binary on the host (the
+  copy inside the container is rebuilt automatically).
+- **Shared packages used by `sdn/vm`** (`constants/`, `utils/`, `grpcapi/`): `sdn/vm`
+  imports them as a pinned Go module version, so bump that version in
+  `sdn/vm/go.mod` (and run `go mod tidy` there) for the SDN image to pick up the change.

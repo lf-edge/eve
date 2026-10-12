@@ -14,6 +14,8 @@ on:  # yamllint disable-line rule:truthy
       - "!evetest/tests/**"
       - "!evetest/netmodels/**"
       - "!evetest/matchers/**"
+      - "!evetest/**/*.md"
+      - "!evetest/deploy/**"
 
 permissions:
   contents: read

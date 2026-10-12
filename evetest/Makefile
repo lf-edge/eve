@@ -1,11 +1,18 @@
 # Copyright (c) 2026 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-# \# is make's escape for a literal '#'; expand it via a variable so the shell
-# does not receive the backslash (newer grep warns about stray '\' before '#').
-HASH := \#
-EVETEST_VERSION := $(shell grep -v '^$(HASH)' VERSION | head -n1)
 EVETEST_ORG ?= lfedge
+
+# Image tags are content hashes (see content-hash.sh), so they change exactly
+# when the sources baked into the image change. EVETEST_VERSION tags both the
+# evetest and the evetest-broker image, SDN_VERSION the evetest-sdn image.
+# Skipped when already set, e.g. inside the image builds, which have no git.
+ifndef EVETEST_VERSION
+EVETEST_VERSION := $(shell ./content-hash.sh framework)
+endif
+ifndef SDN_VERSION
+SDN_VERSION := $(shell ./content-hash.sh sdn)
+endif
 
 EVETEST_ADAM_VERSION ?= 0.0.82
 EVETEST_ADAM_REPO ?= lfedge/adam
@@ -30,22 +37,7 @@ LINUXKIT_SECRET_OPTS := $(if $(LINUXKIT_PINNED),$(BUILD_SECRET_OPTS))
 
 EVETEST_IMAGE := $(EVETEST_ORG)/evetest:$(EVETEST_VERSION)
 EVETEST_API_PORT ?= 50021
-
-# Label on the evetest image recording the framework content signature it was
-# built from; used by ensure-evetest-image to detect stale images.
-FRAMEWORK_SIG_LABEL := org.lfedge.evetest.framework-sig
-
-# Framework paths baked into the evetest image. tests/, netmodels/ and
-# matchers/ are bind-mounted into the container at run time and testapps/
-# images are built separately, so changes there never require a rebuild.
-FRAMEWORK_PATHSPEC := . ':(exclude)tests' ':(exclude)netmodels' ':(exclude)matchers' ':(exclude)testapps'
-
-# Content signature of the framework sources: the last commit touching them
-# plus any uncommitted (staged or unstaged) changes. Git-based, so a git
-# fsmonitor daemon keeps it fast; untracked files are not considered until
-# they are added to git. Constant outside a git checkout.
-FRAMEWORK_SIG = $(shell { git log -1 --format=%H -- $(FRAMEWORK_PATHSPEC); \
-	git diff HEAD -- $(FRAMEWORK_PATHSPEC); } 2>/dev/null | sha256sum | cut -d' ' -f1)
+SDN_IMAGE := $(EVETEST_ORG)/evetest-sdn:$(SDN_VERSION)
 
 PROTOC_VERSION ?= 31.1
 PROTOC_GEN_GO_VERSION ?= 1.36.6
@@ -69,14 +61,21 @@ DOCKER_PLATFORM ?= $(shell uname -s | tr '[A-Z]' '[a-z]')/$(subst aarch64,arm64,
 # Allocate a pseudo-TTY only when stdout is a terminal (i.e. interactive use).
 DOCKER_IT := $(shell [ -t 1 ] && echo '-it' || echo '-i')
 
-.PHONY: evetest list-tests _run_protoc proto clone-eve-api _install-broker proxmox-broker-installer
+.PHONY: version sdn-version evetest list-tests _run_protoc proto clone-eve-api _install-broker proxmox-broker-installer
+
+# Image tags of the current sources.
+version:
+	@echo $(EVETEST_VERSION)
+
+sdn-version:
+	@echo $(SDN_VERSION)
 
 list-tests: ensure-evetest-image
 	@docker run --rm $(DOCKER_IT) \
 		-v $(REPO_ROOT)/evetest/tests:/evetest/tests \
 		$(EVETEST_IMAGE)
 
-evetest: ensure-evetest-image
+evetest: ensure-evetest-image ensure-sdn-image
 ifndef EVETEST_NAME
 ifndef NAME
 	$(error EVETEST_NAME or NAME must be set. Run 'make list-tests' to see available tests)
@@ -124,8 +123,12 @@ ifeq ($(strip $(filter-out false False FALSE 0 f F,$(EVETEST_EVE_LIVE_IMAGE))),)
 	$(eval EVE_VERSION_ENV := -e EVETEST_EVE_VERSION=$(EVETEST_EVE_VERSION))
 endif
 endif
-	@echo "Running evetest $(EVETEST_NAME) for EVE $(or $(EVETEST_EVE_VERSION),the newest local build) with evetest image version $(EVETEST_VERSION) (adam $(EVETEST_ADAM_VERSION))..."
+	@echo "Running evetest $(EVETEST_NAME) for EVE $(or $(EVETEST_EVE_VERSION),the newest local build) with evetest image version $(EVETEST_VERSION), SDN image version $(SDN_VERSION) (adam $(EVETEST_ADAM_VERSION))..."
 	$(eval ENV_VARS := $(shell env | grep '^EVETEST_' | grep -v '^EVETEST_NAME=' | sed 's/^/-e /'))
+	@# Tell the harness which SDN image matches this checkout, unless overridden.
+ifndef EVETEST_SDN_VERSION
+	$(eval ENV_VARS += -e EVETEST_SDN_VERSION=$(SDN_VERSION))
+endif
 	$(eval ARTIFACTS_MOUNT :=)
 ifneq ($(EVETEST_COLLECT_ARTIFACTS),)
 	$(eval ARTIFACTS_MOUNT := -v $(EVETEST_COLLECT_ARTIFACTS):/artifacts)
@@ -256,25 +259,32 @@ endif
 		-e EVETEST_HOST_GID=$(EVETEST_HOST_GID) \
 		$(EVETEST_IMAGE)
 
-# Ensure a usable evetest image exists locally: pull or build when it is
-# missing, and rebuild when the framework signature recorded in the image
-# label no longer matches the current sources (an image without the label,
-# e.g. one predating this check, is always considered stale).
+# Ensure the evetest image for the current sources exists locally: pull it, or
+# build it if it is not published (the tag is a content hash, so an existing
+# image is always up to date).
 ensure-evetest-image:
 	@if ! docker image inspect $(EVETEST_IMAGE) >/dev/null 2>&1; then \
 		echo "Docker image $(EVETEST_IMAGE) not found locally, trying to pull..."; \
 		if ! docker pull $(EVETEST_IMAGE); then \
 			echo "Pull failed, building image locally..."; \
 			$(MAKE) build-container; \
-			exit 0; \
 		fi; \
-	fi; \
-	if [ "$$(docker image inspect \
-			-f '{{index .Config.Labels "$(FRAMEWORK_SIG_LABEL)"}}' \
-			$(EVETEST_IMAGE) 2>/dev/null)" != "$(FRAMEWORK_SIG)" ]; then \
-		echo "evetest framework sources changed, rebuilding $(EVETEST_IMAGE)..."; \
-		$(MAKE) build-container; \
 	fi
+
+# Same for the SDN image, which the broker needs. Skipped with a remote broker,
+# which pulls the image itself (and cannot use one built here).
+ensure-sdn-image:
+ifndef EVETEST_BROKER_ADDRESS
+ifndef EVETEST_SDN_VERSION
+	@if ! docker image inspect $(SDN_IMAGE) >/dev/null 2>&1; then \
+		echo "Docker image $(SDN_IMAGE) not found locally, trying to pull..."; \
+		if ! docker pull $(SDN_IMAGE); then \
+			echo "Pull failed, building image locally (requires linuxkit)..."; \
+			$(MAKE) build-sdn-container; \
+		fi; \
+	fi
+endif
+endif
 
 # Internal target: invoked by proto inside the builder container.
 # Run make proto instead.
@@ -308,7 +318,6 @@ build-container:
 	docker buildx build \
 		--$(DOCKER_TARGET) \
 		--platform $(DOCKER_PLATFORM) \
-		--label $(FRAMEWORK_SIG_LABEL)=$(FRAMEWORK_SIG) \
 		--build-arg EVETEST_VERSION=$(EVETEST_VERSION) \
 		--build-arg EVETEST_ADAM_REPO=$(EVETEST_ADAM_REPO) \
 		--build-arg EVETEST_ADAM_VERSION=$(EVETEST_ADAM_VERSION) \
@@ -452,4 +461,4 @@ linuxkit:
 	@$(MAKE) -C $(CURDIR)/.. linuxkit
 
 build-sdn-container: linuxkit
-	@$(MAKE) -C sdn LINUXKIT=$(LINUXKIT) LINUXKIT_SECRET_OPTS="$(LINUXKIT_SECRET_OPTS)" build
+	@$(MAKE) -C sdn SDN_VERSION=$(SDN_VERSION) LINUXKIT=$(LINUXKIT) LINUXKIT_SECRET_OPTS="$(LINUXKIT_SECRET_OPTS)" build

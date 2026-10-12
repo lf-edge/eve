@@ -52,8 +52,9 @@ LAN_BRIDGE="vmbr0"
 # effect when reusing an existing one.
 BROKER_LAN_MAC=""
 UPLINK_VNET="evu"
-# @@VERSION@@ is replaced with evetest/VERSION when the installer is assembled
-# (make proxmox-broker-installer), e.g. lfedge/evetest-broker:1.0.
+# @@VERSION@@ is replaced with the evetest content hash (make version) when the
+# installer is assembled (make proxmox-broker-installer), e.g.
+# lfedge/evetest-broker:27f0c790bfbf2936.
 BROKER_IMAGE="lfedge/evetest-broker:@@VERSION@@"
 BROKER_VM_CORES="4"
 BROKER_VM_MEMORY="8192"
