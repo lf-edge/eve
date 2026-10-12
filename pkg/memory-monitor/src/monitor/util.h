@@ -38,4 +38,17 @@ long strtodec(const char *str, bool *error);
 unsigned long strtoudec(const char *str, bool *error);
 char* get_tail(const char *file_path, size_t lines);
 
+/**
+ * Report whether value crossed threshold upwards since the previous call,
+ * keeping the state in *above.
+ */
+bool threshold_crossed(bool *above, unsigned long value, unsigned long threshold);
+
+/**
+ * Report whether a cgroup using usage bytes can get new_limit as memory.max.
+ * On cgroup v2 a limit below the usage makes the kernel reclaim and then
+ * OOM-kill inside the cgroup until the usage fits.
+ */
+bool memory_limit_can_lower(unsigned long usage, long new_limit);
+
 #endif //MM_UTILS_H
