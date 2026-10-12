@@ -37,20 +37,31 @@ made depends on the architecture:
 - **amd64** ships exactly the files listed in
   [pkg/fw/firmware-amd64.txt](../pkg/fw/firmware-amd64.txt). The list is
   generated from the kernel, as described below.
+- **eve-k on amd64** (`HV=k`) ships
+  [pkg/fw/firmware-amd64-k.txt](../pkg/fw/firmware-amd64-k.txt), generated the
+  same way from the `hwe` kernel eve-k runs, which builds far more drivers.
 - **arm64 and riscv64** ship a per-device selection written by hand in the
   `compactor-common` stage of the Dockerfile. Most of their firmware is chosen
   by board name (device tree compatible strings, NVRAM per board), which needs
-  rules of its own.
+  rules of its own. eve-k on these architectures runs the same kernel as kvm,
+  so it ships the same selection.
+
+An `HV=k` build picks pkg/fw's `build-k-<PLATFORM>.yml` when it exists, before
+`build-k.yml`. Only `build-k-generic.yml` exists, and it builds the
+`-generic-k` image with the eve-k list; the NVIDIA platforms keep their own
+image, with the JetPack firmware, for eve-k too.
 
 ### The generated list
 
 [tools/update-fw-lists.py](../tools/update-fw-lists.py) writes
-`pkg/fw/firmware-<arch>.txt` from the rules in
-[pkg/fw/firmware-select.txt](../pkg/fw/firmware-select.txt). For each
-architecture with rules, it:
+`pkg/fw/firmware-<list>.txt` from the rules in
+[pkg/fw/firmware-select.txt](../pkg/fw/firmware-select.txt). A list is named
+after its architecture, with a suffix for a variant: `amd64` and `amd64-k`. For
+each list, it:
 
 1. Reads the kernel images that `make kernel-tag` pins for the platforms the
-   rules name (for amd64: `generic` and `rt`).
+   rules name (for amd64: `generic` and `rt`; for amd64-k: `generic` with
+   `HV=k`).
 1. Collects every firmware name the kernels declare with `MODULE_FIRMWARE`:
    the `firmware=` entries in each module's modinfo, and in
    `modules.builtin.modinfo` for built-in drivers.
@@ -70,10 +81,12 @@ The rules are:
 
 | Rule | Meaning |
 |---|---|
-| `<arch> platforms <p>...` | Read the kernels `make kernel-tag` pins for these platforms |
-| `<arch> module <m> [<re>]` | Ship the firmware module `<m>` declares, only names matching `<re>` if given; `*` is every module and built-in driver |
-| `<arch> exclude <re>` | Leave out declared names, or files a declared pattern matches, that match `<re>` |
-| `<arch> extra <glob>` | Ship files that no module declares because the driver builds their names at runtime. The tool fails if a glob matches nothing |
+| `<list> platforms <p>...` | Read the kernels `make kernel-tag` pins for these platforms |
+| `<list> hv <hv>` | ... with `HV=<hv>` |
+| `<list> module <m> [<re>]` | Ship the firmware module `<m>` declares, only names matching `<re>` if given; `*` is every module and built-in driver |
+| `<list> exclude <re>` | Leave out declared names, or files a declared pattern matches, that match `<re>` |
+| `<list> extra <glob>` | Ship files that no module declares because the driver builds their names at runtime. The tool fails if a glob matches nothing |
+| `<list> include <other>` | Also apply the `module`, `exclude` and `extra` rules of `<other>` |
 
 Every `exclude` and `extra` carries a comment saying why, usually the device it
 is for.
@@ -220,7 +233,7 @@ Direct firmware load for iwlwifi-so-a0-gf4-a0-89.ucode failed with error -2
 Some drivers try several names in turn, so failures followed by a successful
 load are normal: iwlwifi walks its firmware API down, and ath10k tries
 `board-2.bin` before `board.bin`. A driver that ends without loading anything
-is missing its firmware. Compare the name with `pkg/fw/firmware-<arch>.txt` and
+is missing its firmware. Compare the name with `pkg/fw/firmware-<list>.txt` and
 with linux-firmware.
 
 ## See Also

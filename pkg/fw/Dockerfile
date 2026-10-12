@@ -122,20 +122,24 @@ RUN if [ "${TARGETARCH}" = "arm64" ]; then \
     fi
 
 # The firmware an architecture's kernels can load, as listed in
-# firmware-<arch>.txt by tools/update-fw-lists.py, which reads the "build"
-# stage above. Architectures without a list use the per-device selection in
-# compactor-common instead; compactor-generic-<arch> below picks one or the
-# other, and an architecture that gets a list is added to both places.
+# firmware-<arch><variant>.txt by tools/update-fw-lists.py, which reads the
+# "build" stage above. FW_VARIANT is "-k" for eve-k (build-k-generic.yml),
+# whose amd64 kernel builds more drivers. Architectures without a list use the
+# per-device selection in compactor-common instead; compactor-generic-<arch>
+# below picks one or the other, and an architecture that gets a list is added
+# to both places.
 FROM build AS listed
 ARG TARGETARCH
-COPY firmware-amd64.txt /fw-lists/
+ARG FW_VARIANT
+COPY firmware-amd64.txt firmware-amd64-k.txt /fw-lists/
 WORKDIR /lib/firmware
 RUN mkdir -p /fw-listed && \
-    if [ -f "/fw-lists/firmware-${TARGETARCH}.txt" ]; then \
+    list="/fw-lists/firmware-${TARGETARCH}${FW_VARIANT}.txt" && \
+    if [ -f "$list" ]; then \
         while read -r f; do \
             case "$f" in ''|'#'*) continue ;; esac; \
             cp -a --parents "$f" /fw-listed/ || exit 1; \
-        done < "/fw-lists/firmware-${TARGETARCH}.txt"; \
+        done < "$list"; \
     fi
 
 # generate initrd for Intel's and AMD's microcode
@@ -197,7 +201,7 @@ COPY --from=build /sbom-out/lib/apk/db/installed /tmp/sbom-fw
 COPY --from=ucode-build /sbom-out/lib/apk/db/installed /tmp/sbom-ucode
 RUN cat /tmp/sbom-fw /tmp/sbom-ucode >> /lib/apk/db/installed && rm -f /tmp/sbom-fw /tmp/sbom-ucode
 
-# Exactly the files in firmware-<arch>.txt
+# Exactly the files in firmware-<arch><variant>.txt
 FROM compactor-base AS compactor-listed
 COPY --from=listed /fw-listed/ /lib/firmware/
 # A firmware update can turn a listed file into a link to one the list lacks.
@@ -273,15 +277,6 @@ RUN if [ "$TARGETARCH" = "arm64" ]; then \
     echo "Freed space: ${freed_space} KB"; \
     fi
 
-
-FROM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS compactor-full
-# Reset the APK DB so the final image only reports source-built/firmware packages
-RUN rm -f /lib/apk/db/installed && register-sbom-pkg.sh -o /
-COPY --from=build /sbom-out/lib/apk/db/installed /tmp/sbom-fw
-COPY --from=ucode-build /sbom-out/lib/apk/db/installed /tmp/sbom-ucode
-RUN cat /tmp/sbom-fw /tmp/sbom-ucode >> /lib/apk/db/installed && rm -f /tmp/sbom-fw /tmp/sbom-ucode
-# get all possible FW
-COPY --from=build /lib/firmware/ /lib/firmware/
 
 FROM compactor-listed AS compactor-generic-amd64
 FROM compactor-common AS compactor-generic-arm64
