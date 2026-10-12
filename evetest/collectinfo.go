@@ -215,7 +215,7 @@ func (th *TestHarness) collectInfoFromDevice(
 		Prefix: fmt.Sprintf("collect-info (%s): ", devName),
 	}
 	// Expect collect-info.sh to emit stdout at least once every 5 minutes.
-	// The relatively long timeout accounts for copying /sys/fs/cgroup/memory,
+	// The relatively long timeout accounts for copying the memory and cpuset files of every cgroup,
 	// which can be slow due to the large number of cgroups (notably on eve-k).
 	stdoutWatchdogTimeout := 5 * time.Minute
 	err = th.runScriptOnEVEOverSSH(ctx,

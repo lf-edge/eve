@@ -702,7 +702,11 @@ ln -s /persist/kcrashes     "$DIR/persist-kcrashes"
 [ -d /persist/memory-monitor/output ] && ln -s /persist/memory-monitor/output "$DIR/persist-memory-monitor-output"
 [ -f /persist/agentdebug/watcher/sigusr1 ] && cp /persist/agentdebug/watcher/sigusr1 "$DIR/goroutin-leak-detector-stacks-dump"
 ln -s /run                  "$DIR/root-run"
-cp -r /sys/fs/cgroup/memory "$DIR/sys-fs-cgroup-memory" >/dev/null 2>&1
+# Memory and cpuset state of every cgroup, plus who is in it.
+(cd /sys/fs/cgroup && find . -type f \( -name 'memory.*' -o -name 'cpuset.*' -o -name 'cgroup.procs' \)) | while read -r f; do
+    mkdir -p "$DIR/sys-fs-cgroup/$(dirname "$f")"
+    cat "/sys/fs/cgroup/$f" > "$DIR/sys-fs-cgroup/$f" 2>/dev/null
+done
 [ -f /persist/SMART_details.json ] && ln -s /persist/SMART_details* "$DIR/"
 cp    /config/grub.cfg      "$DIR/config-grub.cfg"
 cp    /config/server        "$DIR/config-server"

@@ -407,7 +407,7 @@ case "$1" in
           ID=$(${CTR_CMD} t ls | awk '/^'${2:-pillar}' /{print $2;}' 2>/dev/null)
           CMD="${3:-sh}"
           shift ; shift ; shift
-          for c in /sys/fs/cgroup/*/tasks; do echo "$$" >> "$c"; done
+          echo "$$" > /sys/fs/cgroup/cgroup.procs
           # shellcheck disable=SC2086
           exec nsenter ${NO_FORK} -a -t "${ID:-1}" "$CMD" "$@"
           ;;
