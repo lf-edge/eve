@@ -132,6 +132,8 @@ RUN chmod +x /usr/bin/kubevip-apply.sh /usr/bin/kubevip-delete.sh
 RUN mkdir -p /etc/nvidia-container-runtime
 COPY nvidia-container-runtime/config.toml /etc/nvidia-container-runtime
 COPY nvidia-container-runtime/nvidia-device-plugin.yml /etc/k3s-manifests/
+COPY nvidia-container-runtime/nvidia-cdi-hook-eve.sh /usr/bin/nvidia-cdi-hook-eve
+RUN chmod +x /usr/bin/nvidia-cdi-hook-eve
 
 COPY sriov/sriov-device-plugin.yaml /etc/k3s-manifests/
 
