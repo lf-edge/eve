@@ -102,14 +102,6 @@ const (
 	NewlogUploadAppDir = NewlogDir + "/appUpload"
 	// NewlogKeepSentQueueDir - a circular queue of gzip files already been sent
 	NewlogKeepSentQueueDir = NewlogDir + "/keepSentQueue"
-	// PillarHardMemoryLimitFile - hard memory reserved for pillar
-	PillarHardMemoryLimitFile = "/hostfs/sys/fs/cgroup/memory/eve/services/pillar/memory.limit_in_bytes"
-	// EveMemoryLimitFile - stores memory reserved for eve
-	EveMemoryLimitFile = "/hostfs/sys/fs/cgroup/memory/eve/memory.limit_in_bytes"
-	// EveMemoryUsageFile - current usage
-	EveMemoryUsageFile = "/hostfs/sys/fs/cgroup/memory/eve/memory.usage_in_bytes"
-	// EveKmemUsageFile - current kernel usage
-	EveKmemUsageFile = "/hostfs/sys/fs/cgroup/memory/eve/memory.kmem.usage_in_bytes"
 	// ZFSArcMaxSizeFile - file with zfs_arc_max size in bytes
 	ZFSArcMaxSizeFile = "/hostfs/sys/module/zfs/parameters/zfs_arc_max"
 
