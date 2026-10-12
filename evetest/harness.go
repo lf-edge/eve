@@ -30,6 +30,7 @@ import (
 	"github.com/lf-edge/eve/evetest/constants"
 	"github.com/lf-edge/eve/evetest/controller"
 	api "github.com/lf-edge/eve/evetest/grpcapi/go"
+	"github.com/lf-edge/eve/evetest/instances"
 	"github.com/lf-edge/eve/evetest/logger"
 	"github.com/lf-edge/eve/evetest/utils"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
@@ -286,6 +287,8 @@ type TestHarness struct {
 	// gRPC server
 	grpcServer *grpc.Server
 	listener   net.Listener
+	// unregisterInstance removes this instance from the CLI-visible registry.
+	unregisterInstance func()
 
 	// CA
 	caCert *x509.Certificate
@@ -703,6 +706,17 @@ func Init(t *testing.T) *T {
 	th.listener = listener
 
 	th.log.Infof("Evetest gRPC server listening on %s", listenAddr)
+	// Make the instance discoverable by the evetest CLI without it having to
+	// know the API port.
+	th.unregisterInstance, err = instances.Register(instances.Instance{
+		Name:        viper.GetString(constants.TestNameEnv),
+		Port:        port,
+		Container:   viper.GetString(constants.ContainerNameEnv),
+		ArtifactDir: th.artifactDir,
+	})
+	if err != nil {
+		th.log.Warnf("failed to register the evetest instance: %v", err)
+	}
 	th.wg.Add(1)
 	go func() {
 		defer th.wg.Done()
@@ -988,6 +1002,10 @@ func Close() {
 		th.grpcServer.GracefulStop()
 	}
 	th.wg.Wait()
+
+	if th.unregisterInstance != nil {
+		th.unregisterInstance()
+	}
 
 	// Close the gRPC listener.
 	if th.listener != nil {

@@ -6,9 +6,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/spf13/viper"
-	"net"
-	"strconv"
 
 	"github.com/lf-edge/eve/evetest/constants"
 	pb "github.com/lf-edge/eve/evetest/grpcapi/go"
@@ -18,6 +15,10 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
+// needsClientAnnotation marks the commands which talk to an evetest instance
+// over gRPC; subcommands inherit it from their ancestors.
+const needsClientAnnotation = "evetest/needs-client"
+
 var (
 	// version is set using "go build -ldflags", this here is just a fallback value.
 	version = "v0.0.1"
@@ -26,16 +27,37 @@ var (
 
 func main() {
 	constants.InitViperConfig()
-	grpcClient, err := newGrpcClient()
-	if err != nil {
-		log.Fatalf("failed to create gRPC client: %v", err)
-	}
-	defer grpcClient.Close()
-	client = pb.NewEvetestClient(grpcClient)
+	var instanceFlag string
+	var grpcClient *grpc.ClientConn
 
 	rootCmd := &cobra.Command{
-		Use:   "evetest",
-		Short: "evetest CLI for controlling and inspecting EVE test runs",
+		Use:         "evetest",
+		Short:       "evetest CLI for controlling and inspecting EVE test runs",
+		Annotations: map[string]string{needsClientAnnotation: "root"},
+		// Errors such as an unresolvable instance are not usage mistakes.
+		SilenceUsage: true,
+		// Connect to the instance only for commands which need it, so that
+		// e.g. "evetest instances", "use" and "completion" work without one.
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if !needsClient(cmd) {
+				return nil
+			}
+			t, err := resolveTarget(instanceFlag)
+			if err != nil {
+				return err
+			}
+			grpcClient, err = newGrpcClient(t)
+			if err != nil {
+				return fmt.Errorf("failed to create gRPC client: %w", err)
+			}
+			client = pb.NewEvetestClient(grpcClient)
+			return nil
+		},
+		PersistentPostRun: func(cmd *cobra.Command, args []string) {
+			if grpcClient != nil {
+				_ = grpcClient.Close()
+			}
+		},
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Println("evetest CLI version:", version)
 			req := &pb.StatusRequest{}
@@ -49,13 +71,26 @@ func main() {
 		},
 	}
 
-	rootCmd.AddCommand(
+	rootCmd.PersistentFlags().StringVarP(&instanceFlag, "instance", "i", "",
+		"evetest instance to talk to: name, API port or number from \"evetest instances\" "+
+			"(default: the one chosen with \"evetest use\", or the only running one)")
+
+	for _, c := range []*cobra.Command{
 		continueCmd(),
 		exitCmd(),
 		statusCmd(),
 		eveCommand(),
 		clusterCommand(),
 		sdnCommand(),
+	} {
+		c.Annotations = map[string]string{needsClientAnnotation: "yes"}
+		rootCmd.AddCommand(c)
+	}
+	rootCmd.AddCommand(
+		instancesCommand(),
+		useCommand(),
+		logsCommand(&instanceFlag),
+		stopCommand(&instanceFlag),
 	)
 
 	if err := rootCmd.Execute(); err != nil {
@@ -63,17 +98,21 @@ func main() {
 	}
 }
 
-func newGrpcClient() (*grpc.ClientConn, error) {
-	ip := viper.GetString(constants.APIAddressEnv)
-	if ip == "" {
-		// evetest gRPC server address is unset.
-		// Assume that the evetest container runs on the same host.
-		ip = "localhost"
+// needsClient tells whether the command (or one of its ancestors) talks to an
+// evetest instance.
+func needsClient(cmd *cobra.Command) bool {
+	for c := cmd; c != nil; c = c.Parent() {
+		if _, ok := c.Annotations[needsClientAnnotation]; ok {
+			// The root command only needs a client when run without arguments.
+			return c.Annotations[needsClientAnnotation] != "root" || cmd == c
+		}
 	}
-	port := strconv.Itoa(viper.GetInt(constants.APIPortEnv))
-	address := net.JoinHostPort(ip, port)
+	return false
+}
+
+func newGrpcClient(t target) (*grpc.ClientConn, error) {
 	return grpc.NewClient(
-		address,
+		t.hostPort(),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 }
