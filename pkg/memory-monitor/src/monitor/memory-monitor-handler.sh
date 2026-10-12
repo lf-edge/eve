@@ -125,9 +125,9 @@ show_pid_mem_usage() {
   echo "Memory usage for the cgroup $cgroup_name" > "$output_file"
   echo "Started at: $(date +%T)" >> "$output_file"
 
-  usage_in_bytes=$(cat /sys/fs/cgroup/memory/"$cgroup_name"/memory.usage_in_bytes)
-  cache_in_bytes=$(grep 'total_cache' /sys/fs/cgroup/memory/"$cgroup_name"/memory.stat | awk '{print $2}')
-  usage_in_KB=$((usage_in_bytes / 1024))
+  current_bytes=$(cat /sys/fs/cgroup/"$cgroup_name"/memory.current)
+  cache_in_bytes=$(awk '$1 == "file" {print $2}' /sys/fs/cgroup/"$cgroup_name"/memory.stat)
+  usage_in_KB=$((current_bytes / 1024))
   cache_in_KB=$((cache_in_bytes / 1024))
 
   echo "Total usage according to cgroup: $usage_in_KB KB, cache: $cache_in_KB KB" >> "$output_file"
@@ -198,8 +198,8 @@ show_pid_mem_usage() {
 }
 
 # Start from the root of your target memory cgroup
-cgroup_eve="/sys/fs/cgroup/memory/eve"
-cgroup_pillar="/sys/fs/cgroup/memory/eve/services/pillar"
+cgroup_eve="/sys/fs/cgroup/eve"
+cgroup_pillar="/sys/fs/cgroup/eve/services/pillar"
 
 # Create a temporary file to hold all encountered PIDs
 eve_processes=$(mktemp)

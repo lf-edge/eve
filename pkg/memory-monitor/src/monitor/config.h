@@ -26,7 +26,7 @@ typedef struct {
     // Threshold for the cgroup memory/eve/services/pillar, in bytes
     unsigned long cgroup_pillar_threshold_bytes;
     // Threshold for the cgroups eve, in percent from the memory limit of the cgroup
-    // The limit itself is read from memory.limit_in_bytes in runtime
+    // The limit itself is read from memory.max in runtime
     unsigned int cgroup_eve_threshold_percent;
     // Threshold for the proc zedbox, in bytes
     unsigned long proc_zedbox_threshold_bytes;
