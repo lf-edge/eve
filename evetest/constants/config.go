@@ -47,6 +47,34 @@ const (
 	// that the evetest CLI can show the container logs or stop the instance.
 	ContainerNameEnv = "CONTAINER_NAME"
 
+	// ParallelEnv is the maximum number of evetest instances "make evetest" runs
+	// at the same time when several tests are requested (NAME=a,b,c, or no NAME
+	// to run all test suites).
+	ParallelEnv = "PARALLEL"
+
+	// FailFastEnv makes a multi-test run cancel everything still queued or
+	// running as soon as one test fails.
+	FailFastEnv = "FAIL_FAST"
+
+	// UIEnv selects how a multi-test run presents the instances: "tmux" (one
+	// pane per instance, in a tmux session), "prefixed" (output of all instances
+	// interleaved, each line prefixed with the test name) or "plain" (status
+	// changes only, full output in per-test log files). Default (empty) picks
+	// tmux on a terminal and plain otherwise.
+	UIEnv = "UI"
+
+	// TmuxPrefixEnv is the prefix key of the tmux session of the "tmux" UI.
+	TmuxPrefixEnv = "TMUX_PREFIX"
+
+	// RunIDEnv, RunNamesEnv, RunArgsFileEnv and RunImageEnv are set by the Makefile
+	// for the container running "evetest run": the run's identifier, the
+	// comma-separated tests to run (empty: all test suites), the file with the
+	// "docker run" options shared by the instances, and the evetest image.
+	RunIDEnv       = "RUN_ID"
+	RunNamesEnv    = "RUN_NAMES"
+	RunArgsFileEnv = "RUN_ARGS_FILE"
+	RunImageEnv    = "RUN_IMAGE"
+
 	// SDNPortEnv specifies the port on which the SDN exposes its gRPC API.
 	// This is read by the SDN, the evetest broker and the evetest container.
 	SDNPortEnv = "SDN_PORT"
@@ -472,6 +500,9 @@ func InitViperConfig() {
 	viper.SetDefault(CollectCoverageEnv, false)
 	viper.SetDefault(RestartOnlyFailedEnv, false)
 	viper.SetDefault(ControllerFaultsEnv, false)
+	viper.SetDefault(ParallelEnv, 1)
+	viper.SetDefault(FailFastEnv, false)
+	viper.SetDefault(TmuxPrefixEnv, "C-a")
 
 	// EVE image config
 	viper.SetDefault(EVEVersionEnv, "") // Empty = derive from repo

@@ -817,10 +817,83 @@ make install-cli
 
 Or use it from inside the container (`docker exec -it evetest-<API-port> bash`).
 
-### Running Several Instances
+### Running Several Tests in Parallel
 
-Each `make evetest` runs one instance (container) on its own API port. To run several
-at once, start each in its own terminal with a different `EVETEST_API_PORT`:
+`make evetest` accepts several comma-separated names, or none at all, which runs every
+test suite. Each test then runs as its own instance (container) with its own API port,
+and `EVETEST_PARALLEL` limits how many run at the same time (default `1`, i.e. one
+after another):
+
+```bash
+EVETEST_PARALLEL=3 make evetest NAME=TestA,TestB,TestC
+EVETEST_PARALLEL=4 make evetest                  # all test suites
+```
+
+A container started by `make` (the orchestrator) starts and watches the instances.
+Its output depends on `EVETEST_UI`:
+
+| `EVETEST_UI` | Output |
+|--------------|--------|
+| `tmux` | One tmux session, the instances in tiled panes of a single window. Default on a terminal |
+| `prefixed` | Output of all instances interleaved, each line prefixed with the test name |
+| `plain` | Only starts, results and, for a failed test, the end of its output. Default when not on a terminal, e.g. when started by a script or an AI agent, or with `nohup` on a remote host |
+
+The full output of every test is also written to `~/.evetest/runs/<run-id>/<test>.log`
+(and the usual artifacts are collected as with a single test). The directories of earlier
+runs, whose orchestrator is no longer running and which nothing has written to for
+5 minutes, are removed when a new run starts, so copy the logs you want to keep, or
+collect artifacts. A summary table closes
+the run, and `make` exits non-zero if any test failed. With `EVETEST_FAIL_FAST=true`
+the first failure cancels the tests still running or queued.
+
+**tmux UI.** Each instance runs in the foreground of its own pane, so it takes keyboard
+input as when run alone (e.g. to resume a paused test), has scrollback and can be zoomed.
+The pane border shows the test, its API port and its state. When a test fails, its pane
+moves to a window of its own (`FAILED <test>`), so its output stays on screen while the
+remaining tests continue. The pane of a test which passed closes right away (its output is in
+its log file). The
+first window (`orchestrator`) lists what happened and, at the end, the summary with a reminder of where
+to find the output of each test (the `FAILED <test>` windows, the log files). The status line
+shows how many tests are running, queued, passed and failed. The session stays open after
+the last test finishes, until it is closed.
+
+The tmux prefix key is `Ctrl-a` (change it with `EVETEST_TMUX_PREFIX`, e.g. `C-b`),
+which differs from tmux's default so as not to clash with a tmux you run the make in.
+Mouse support is on (click a pane to focus it). Useful keys, after the prefix:
+
+| Keys | Action |
+|------|--------|
+| `Q` | Close the session; asks first while tests are still running, which are then stopped gracefully |
+| `X` | Stop all tests gracefully |
+| arrow keys / `o` / `;` | Select the pane above, below, left or right / the next pane / the previous pane (or click a pane); the selected pane gets your keystrokes |
+| `q` and a number | Show the pane numbers, then select that pane |
+| `e` | Open a shell for the `evetest` CLI below the selected test (`exit` closes it) |
+| `z` | Zoom the current pane in or out |
+| `n` / `p` / `0`-`9` | Next / previous / numbered window (the orchestrator and failed tests) |
+| `[` | Scrollback and search of the pane, with `PgUp`/`PgDn`/arrows and `/` (`q` leaves); the mouse wheel scrolls a pane as well |
+
+Detaching is disabled: closing the session stops the run.
+
+A test's pane runs the test, so it cannot take commands. To use the `evetest` CLI for a
+test, select its pane and press `Ctrl-a e`: a shell opens below it, set up for that test.
+`evetest status`, `evetest eve ssh` and the like work in it without `-i` (add
+`-d <device>` when the test has several EVE devices). Its border says
+`<test>: evetest CLI shell`, so it is not mistaken for the test. Type `exit` to close it.
+(`Ctrl-a "` does the same, and `Ctrl-a %` puts the shell to the right of the test instead.)
+
+With the other UIs, Ctrl-C stops all instances gracefully (they clean up their VMs); a
+second Ctrl-C kills them. Instances which outlive the orchestrator can be stopped with
+`evetest stop --all`. A test stopped that way is reported as cancelled (its container exits
+with code 143 or 130). Those UIs do not forward keyboard input to the instances, so a
+paused test is resumed with `evetest -i <test> continue` (or `exit`).
+
+You can also interact with any instance with the CLI from another terminal as described
+below, for example `EVETEST_PAUSE_ON_FAILURE=true` combined with `evetest -i TestB eve ssh`.
+
+### Running Several Instances Manually
+
+Each single-test `make evetest` runs one instance (container) on its own API port. To run
+several at once by hand, start each in its own terminal with a different `EVETEST_API_PORT`:
 
 ```bash
 make evetest NAME=networking/dpc                          # port 50021 (default)
@@ -978,6 +1051,10 @@ non-default behavior.
 | `EVETEST_SUITE_MAX_FAILURES` | Max failures before aborting suite (`-1` = unlimited) | `1` |
 | `EVETEST_RESTART_ONLY_FAILED` | Skip suite subtests that already passed in a previous run (requires `EVETEST_COLLECT_ARTIFACTS`); see [Rerunning Only Failed Subtests](#rerunning-only-failed-subtests) | `false` |
 | `EVETEST_CONTROLLER_FAULTS` | Run the controller behind a proxy which a test can tell to answer, delay or drop selected device requests (`ArmControllerFault`). Off by default: with no fault armed the proxy forwards everything unchanged, but it terminates TLS and re-originates the request, so it stays out of the path unless a test needs it. Tests which arm faults skip without it | `false` |
+| `EVETEST_PARALLEL` | Maximum number of instances running at the same time when `make evetest` runs several tests; see [Running Several Tests in Parallel](#running-several-tests-in-parallel) | `1` |
+| `EVETEST_FAIL_FAST` | In a multi-test run, cancel the other tests once one fails | `false` |
+| `EVETEST_UI` | Output mode of a multi-test run: `tmux`, `prefixed` or `plain` | `tmux` on a terminal, else `plain` |
+| `EVETEST_TMUX_PREFIX` | Prefix key of the tmux session of the `tmux` UI | `C-a` |
 
 ### Deployment Variables
 

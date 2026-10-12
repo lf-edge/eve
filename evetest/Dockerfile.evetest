@@ -103,6 +103,11 @@ RUN apk add --no-cache nmap nmap-scripts
 # hadolint ignore=DL3018
 RUN apk add --no-cache docker-cli docker-cli-buildx git
 
+# Install tmux, which shows the instances of a multi-test run ("evetest run")
+# side by side in one terminal.
+# hadolint ignore=DL3018
+RUN apk add --no-cache tmux
+
 # Pull adam binary
 COPY --from=adam /bin/adam /usr/local/bin/adam
 
