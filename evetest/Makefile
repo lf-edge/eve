@@ -50,6 +50,10 @@ PROTOC_OUT_OPTS = paths=source_relative
 
 REPO_ROOT := $(abspath $(CURDIR)/..)
 
+# shq quotes its argument for the shell, so that a path or value containing
+# spaces stays a single docker argument.
+shq = '$(subst ','\'',$(1))'
+
 GOBIN ?= $(shell go env GOBIN)
 ifeq ($(GOBIN),)
 GOBIN := $(HOME)/go/bin
@@ -82,13 +86,13 @@ list-test-suites: ensure-evetest-image
 		-e EVETEST_LIST_SUITES_ONLY=true \
 		$(EVETEST_IMAGE)
 
+# A single name runs one instance in the foreground. Several comma-separated
+# names, or none (= all test suites), run one instance per test in parallel
+# (at most EVETEST_PARALLEL at a time), driven by "evetest run" in an
+# orchestrator container; see the evetest README.
 evetest: ensure-evetest-image ensure-sdn-image
-ifndef EVETEST_NAME
-ifndef NAME
-	$(error EVETEST_NAME or NAME must be set. Run 'make list-tests' to see available tests)
-endif
-	$(eval EVETEST_NAME := $(NAME))
-endif
+	$(eval EVETEST_NAME := $(or $(EVETEST_NAME),$(NAME)))
+	$(eval EVETEST_MULTI := $(if $(EVETEST_NAME),$(findstring $(COMMA),$(EVETEST_NAME)),y))
 	@# Default the EVE version to this checkout's, which is what the container
 	@# transport needs to name an image. Deliberately NOT defaulted under
 	@# EVETEST_EVE_LIVE_IMAGE: the live transport looks the version up among the
@@ -127,18 +131,18 @@ ifeq ($(strip $(filter-out false False FALSE 0 f F,$(EVETEST_EVE_LIVE_IMAGE))),)
 		fi; \
 		echo "$$v" \
 	)))
-	$(eval EVE_VERSION_ENV := -e EVETEST_EVE_VERSION=$(EVETEST_EVE_VERSION))
+	$(eval EVE_VERSION_ENV := -e $(call shq,EVETEST_EVE_VERSION=$(EVETEST_EVE_VERSION)))
 endif
 endif
-	@echo "Running evetest $(EVETEST_NAME) for EVE $(or $(EVETEST_EVE_VERSION),the newest local build) with evetest image version $(EVETEST_VERSION), SDN image version $(SDN_VERSION) (adam $(EVETEST_ADAM_VERSION))..."
-	$(eval ENV_VARS := $(shell env | grep '^EVETEST_' | grep -v '^EVETEST_NAME=' | sed 's/^/-e /'))
+	@echo "Running evetest $(or $(EVETEST_NAME),all test suites) for EVE $(or $(EVETEST_EVE_VERSION),the newest local build) with evetest image version $(EVETEST_VERSION), SDN image version $(SDN_VERSION) (adam $(EVETEST_ADAM_VERSION))..."
+	$(eval ENV_VARS := $(shell env | grep '^EVETEST_' | grep -v '^EVETEST_NAME=' | sed "s/'/'\\\\''/g; s/.*/-e '&'/"))
 	@# Tell the harness which SDN image matches this checkout, unless overridden.
 ifndef EVETEST_SDN_VERSION
 	$(eval ENV_VARS += -e EVETEST_SDN_VERSION=$(SDN_VERSION))
 endif
 	$(eval ARTIFACTS_MOUNT :=)
 ifneq ($(EVETEST_COLLECT_ARTIFACTS),)
-	$(eval ARTIFACTS_MOUNT := -v $(EVETEST_COLLECT_ARTIFACTS):/artifacts)
+	$(eval ARTIFACTS_MOUNT := -v $(call shq,$(EVETEST_COLLECT_ARTIFACTS):/artifacts))
 endif
 	$(eval BROKER_IMAGE_MOUNT :=)
 	$(eval BROKER_IMAGE_ENV :=)
@@ -147,11 +151,11 @@ endif
 	@# from inside the container (e.g. rootfs extraction for upgrades) resolve
 	@# correctly on the host.
 	$(eval EVETEST_HOME_DIR := $(HOME)/.evetest)
-	$(eval EVETEST_HOME_MOUNT := -v $(EVETEST_HOME_DIR):$(EVETEST_HOME_DIR))
+	$(eval EVETEST_HOME_MOUNT := -v $(call shq,$(EVETEST_HOME_DIR):$(EVETEST_HOME_DIR)))
 	@# The instances directory is created here, as the host user, so that the
 	@# registry records the (root) container writes into it can be removed by
 	@# the evetest CLI.
-	@mkdir -p $(EVETEST_HOME_DIR)/instances
+	@mkdir -p $(call shq,$(EVETEST_HOME_DIR)/instances)
 	@# Tests that compile a bpftrace script for the device's kernel (see
 	@# tests/apps/pciaccess_helpers_test.go) run eve-tools/bpftrace-compiler
 	@# from the checkout, mounted at the same position relative to /evetest/tests
@@ -160,10 +164,10 @@ endif
 	@# only when the directory exists; mounting both from the evetest home makes
 	@# them survive runs.
 	$(eval BPFTRACE_COMPILER_MOUNTS := \
-		-v $(REPO_ROOT)/eve-tools/bpftrace-compiler:/eve-tools/bpftrace-compiler:ro \
-		-v $(EVETEST_HOME_DIR)/linuxkit-cache:/root/.linuxkit/cache \
-		-v $(EVETEST_HOME_DIR)/bpftrace-compiler-cache:/root/.bpftrace-compiler/cache)
-	@mkdir -p $(EVETEST_HOME_DIR)/linuxkit-cache $(EVETEST_HOME_DIR)/bpftrace-compiler-cache
+		-v $(call shq,$(REPO_ROOT)/eve-tools/bpftrace-compiler:/eve-tools/bpftrace-compiler:ro) \
+		-v $(call shq,$(EVETEST_HOME_DIR)/linuxkit-cache:/root/.linuxkit/cache) \
+		-v $(call shq,$(EVETEST_HOME_DIR)/bpftrace-compiler-cache:/root/.bpftrace-compiler/cache))
+	@mkdir -p $(call shq,$(EVETEST_HOME_DIR)/linuxkit-cache) $(call shq,$(EVETEST_HOME_DIR)/bpftrace-compiler-cache)
 ifndef EVETEST_BROKER_ADDRESS
 	@# Broker runs inside the container; it stores per-VM disk images on the
 	@# host. Default to <home-dir>/.evetest because /tmp is usually on the small
@@ -171,12 +175,12 @@ ifndef EVETEST_BROKER_ADDRESS
 	$(eval IMAGE_DIR := $(or $(EVETEST_BROKER_IMAGE_DIR),$(EVETEST_HOME_DIR)))
 	@# Only add a broker image mount when the image dir differs from EVETEST_HOME_DIR
 	@# to avoid a duplicate bind-mount error.
-	$(eval BROKER_IMAGE_MOUNT := $(if $(filter-out $(EVETEST_HOME_DIR),$(IMAGE_DIR)),-v $(IMAGE_DIR):$(IMAGE_DIR),))
-	$(eval BROKER_IMAGE_ENV := -e EVETEST_BROKER_IMAGE_DIR=$(IMAGE_DIR))
+	$(eval BROKER_IMAGE_MOUNT := $(if $(filter-out $(EVETEST_HOME_DIR),$(IMAGE_DIR)),-v $(call shq,$(IMAGE_DIR):$(IMAGE_DIR)),))
+	$(eval BROKER_IMAGE_ENV := -e $(call shq,EVETEST_BROKER_IMAGE_DIR=$(IMAGE_DIR)))
 ifneq ($(EVETEST_BROKER_PROXY_CA_CHAIN),)
-	$(eval BROKER_PROXY_CA_MOUNT := -v $(EVETEST_BROKER_PROXY_CA_CHAIN):/etc/evetest/proxy/ca-chain.pem:ro)
+	$(eval BROKER_PROXY_CA_MOUNT := -v $(call shq,$(EVETEST_BROKER_PROXY_CA_CHAIN):/etc/evetest/proxy/ca-chain.pem:ro))
 endif
-	@mkdir -p $(IMAGE_DIR)
+	@mkdir -p $(call shq,$(IMAGE_DIR))
 endif
 	@# Detect host Go build cache (optional, used to speed up the test build)
 	$(eval HOST_GOCACHE := $(strip $(shell \
@@ -187,12 +191,12 @@ endif
 	$(eval GO_CACHE_MOUNT :=)
 	$(eval GO_CACHE_ENV :=)
 	$(if $(HOST_GOCACHE), \
-		$(eval GO_CACHE_MOUNT := -v $(HOST_GOCACHE):/go-build-cache) \
-		$(eval GO_CACHE_ENV := -e GOCACHE=/go-build-cache) \
+		$(eval GO_CACHE_MOUNT := -v $(call shq,$(HOST_GOCACHE):/go-build-cache)) \
+		$(eval GO_CACHE_ENV := -e $(call shq,GOCACHE=/go-build-cache)) \
 	)
 	$(eval DOCKER_CONFIG_MOUNT :=)
-	$(if $(wildcard $(HOME)/.docker/config.json), \
-		$(eval DOCKER_CONFIG_MOUNT := -v $(HOME)/.docker/config.json:/root/.docker/config.json:ro) \
+	$(if $(shell [ -f $(call shq,$(HOME)/.docker/config.json) ] && echo y), \
+		$(eval DOCKER_CONFIG_MOUNT := -v $(call shq,$(HOME)/.docker/config.json:/root/.docker/config.json:ro)) \
 	)
 	$(eval EVETEST_HOST_UID := $(shell id -u))
 	$(eval EVETEST_HOST_GID := $(shell id -g))
@@ -210,18 +214,49 @@ endif
 	$(eval EVETEST_DIST_DIR := $(or $(EVETEST_EVE_DIST_DIR),$(REPO_ROOT)/dist))
 	$(eval DIST_DIR_MOUNT :=)
 	$(eval DIST_DIR_ENV :=)
-	$(if $(wildcard $(EVETEST_DIST_DIR)), \
-		$(eval DIST_DIR_MOUNT := -v $(EVETEST_DIST_DIR):$(EVETEST_DIST_DIR)) \
-		$(eval DIST_DIR_ENV := -e EVETEST_EVE_DIST_DIR=$(EVETEST_DIST_DIR)) \
+	$(if $(shell [ -d $(call shq,$(EVETEST_DIST_DIR)) ] && echo y), \
+		$(eval DIST_DIR_MOUNT := -v $(call shq,$(EVETEST_DIST_DIR):$(EVETEST_DIST_DIR))) \
+		$(eval DIST_DIR_ENV := -e $(call shq,EVETEST_EVE_DIST_DIR=$(EVETEST_DIST_DIR))) \
 	)
-	@if docker inspect --type container evetest-$(EVETEST_API_PORT) >/dev/null 2>&1; then \
+	@# Everything the instances (containers) share. A single run passes this to
+	@# "docker run" below; a multi-test run hands it to "evetest run" in a file,
+	@# which adds the per-instance name, port and artifacts options.
+	$(eval DOCKER_COMMON_ARGS := \
+		-v $(call shq,$(REPO_ROOT)/evetest/tests:/evetest/tests) \
+		-v $(call shq,$(REPO_ROOT)/evetest/netmodels:/evetest/netmodels) \
+		-v $(call shq,$(REPO_ROOT)/evetest/matchers:/evetest/matchers) \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		--cap-add=NET_ADMIN \
+		--sysctl net.ipv6.conf.all.disable_ipv6=0 \
+		--sysctl net.ipv6.conf.default.disable_ipv6=0 \
+		--sysctl net.ipv6.conf.all.forwarding=1 \
+		--sysctl net.ipv6.conf.default.forwarding=1 \
+		--device=/dev/net/tun \
+		$(KVM_DEVICE) \
+		$(EVETEST_HOME_MOUNT) \
+		$(BPFTRACE_COMPILER_MOUNTS) \
+		$(BROKER_IMAGE_MOUNT) \
+		$(BROKER_PROXY_CA_MOUNT) \
+		$(DIST_DIR_MOUNT) \
+		$(GO_CACHE_MOUNT) \
+		$(DOCKER_CONFIG_MOUNT) \
+		$(ENV_VARS) \
+		$(EVE_VERSION_ENV) \
+		$(BROKER_IMAGE_ENV) \
+		$(DIST_DIR_ENV) \
+		$(GO_CACHE_ENV) \
+		-e $(call shq,EVETEST_HOME=$(EVETEST_HOME_DIR)) \
+		-e $(call shq,EVETEST_HOST_UID=$(EVETEST_HOST_UID)) \
+		-e $(call shq,EVETEST_HOST_GID=$(EVETEST_HOST_GID)))
+	@if [ -z "$(EVETEST_MULTI)" ] && docker inspect --type container evetest-$(EVETEST_API_PORT) >/dev/null 2>&1; then \
 		echo ""; \
 		echo "Error: evetest instance 'evetest-$(EVETEST_API_PORT)' is already running."; \
 		echo ""; \
 		echo "To run multiple instances in parallel, set a different EVETEST_API_PORT for"; \
-		echo "each one (default is 50021):"; \
+		echo "each one (default is 50021), or let one make run several tests at once:"; \
 		echo ""; \
 		echo "  EVETEST_API_PORT=50022 make evetest NAME=<test-name>"; \
+		echo "  EVETEST_PARALLEL=3 make evetest NAME=<test1>,<test2>,<test3>"; \
 		echo ""; \
 		echo "The evetest CLI finds running instances on its own. With several running,"; \
 		echo "choose one for the current terminal, or per command:"; \
@@ -232,47 +267,56 @@ endif
 		echo ""; \
 		exit 1; \
 	fi >&2
+	@# The orchestrator of a multi-test run needs a terminal for its tmux UI. As
+	@# for the colors, only the recipe shell can tell whether there is one.
 	@# Colorize framework log output only when stdout is a terminal. The test
 	@# runs inside the container where stdout is never a TTY (go test pipes it),
 	@# so the detection must happen here. It also cannot use $(shell [ -t 1 ])
 	@# because within $(shell) stdout is make's capture pipe, never a terminal;
 	@# only a recipe shell sees make's real stdout.
-	[ -t 1 ] && COLOR=true || COLOR=false; \
-	docker run --rm $(DOCKER_IT) \
-		--name evetest-$(EVETEST_API_PORT) \
-		-p $(EVETEST_API_PORT):$(EVETEST_API_PORT) \
-		-v $(REPO_ROOT)/evetest/tests:/evetest/tests \
-		-v $(REPO_ROOT)/evetest/netmodels:/evetest/netmodels \
-		-v $(REPO_ROOT)/evetest/matchers:/evetest/matchers \
-		-v /var/run/docker.sock:/var/run/docker.sock \
-		--cap-add=NET_ADMIN \
-		--sysctl net.ipv6.conf.all.disable_ipv6=0 \
-		--sysctl net.ipv6.conf.default.disable_ipv6=0 \
-		--sysctl net.ipv6.conf.all.forwarding=1 \
-		--sysctl net.ipv6.conf.default.forwarding=1 \
-		--device=/dev/net/tun \
-		$(KVM_DEVICE) \
-		$(ARTIFACTS_MOUNT) \
-		$(EVETEST_HOME_MOUNT) \
-		$(BPFTRACE_COMPILER_MOUNTS) \
-		$(BROKER_IMAGE_MOUNT) \
-		$(BROKER_PROXY_CA_MOUNT) \
-		$(DIST_DIR_MOUNT) \
-		$(GO_CACHE_MOUNT) \
-		$(DOCKER_CONFIG_MOUNT) \
-		-e EVETEST_COLOR_OUTPUT=$$COLOR \
-		$(ENV_VARS) \
-		$(EVE_VERSION_ENV) \
-		$(BROKER_IMAGE_ENV) \
-		$(DIST_DIR_ENV) \
-		$(GO_CACHE_ENV) \
-		-e EVETEST_NAME=$(EVETEST_NAME) \
-		-e EVETEST_API_PORT=$(EVETEST_API_PORT) \
-		-e EVETEST_CONTAINER_NAME=evetest-$(EVETEST_API_PORT) \
-		-e EVETEST_HOME=$(EVETEST_HOME_DIR) \
-		-e EVETEST_HOST_UID=$(EVETEST_HOST_UID) \
-		-e EVETEST_HOST_GID=$(EVETEST_HOST_GID) \
-		$(EVETEST_IMAGE)
+	@[ -t 1 ] && COLOR=true || COLOR=false; \
+	if [ -n "$(EVETEST_MULTI)" ]; then \
+		[ -t 0 ] && [ -t 1 ] && ORCH_IT=-it || ORCH_IT=-i; \
+		RUN_ID=$$(date '+%Y%m%d-%H%M%S'); \
+		RUN_DIR=$(call shq,$(EVETEST_HOME_DIR)/runs)/$$RUN_ID; \
+		mkdir -p "$$RUN_DIR"; \
+		printf '%s\n' $(DOCKER_COMMON_ARGS) > "$$RUN_DIR/docker-args"; \
+		docker run --rm $$ORCH_IT \
+			--name evetest-orchestrator-$$RUN_ID \
+			--network host \
+			-v /var/run/docker.sock:/var/run/docker.sock \
+			-v $(call shq,$(REPO_ROOT)/evetest/tests:/evetest/tests) \
+			$(EVETEST_HOME_MOUNT) \
+			$(if $(EVETEST_COLLECT_ARTIFACTS),-v $(call shq,$(EVETEST_COLLECT_ARTIFACTS):$(EVETEST_COLLECT_ARTIFACTS))) \
+			-e EVETEST_COLOR_OUTPUT=$$COLOR \
+			$(ENV_VARS) \
+			$(EVE_VERSION_ENV) \
+			-e EVETEST_RUN_ID=$$RUN_ID \
+			-e $(call shq,EVETEST_RUN_NAMES=$(EVETEST_NAME)) \
+			-e "EVETEST_RUN_ARGS_FILE=$$RUN_DIR/docker-args" \
+			-e $(call shq,EVETEST_RUN_IMAGE=$(EVETEST_IMAGE)) \
+			-e $(call shq,EVETEST_API_PORT=$(EVETEST_API_PORT)) \
+			$(if $(EVETEST_PARALLEL),-e $(call shq,EVETEST_PARALLEL=$(EVETEST_PARALLEL))) \
+			$(if $(EVETEST_FAIL_FAST),-e $(call shq,EVETEST_FAIL_FAST=$(EVETEST_FAIL_FAST))) \
+			$(if $(EVETEST_UI),-e $(call shq,EVETEST_UI=$(EVETEST_UI))) \
+			$(if $(EVETEST_TMUX_PREFIX),-e $(call shq,EVETEST_TMUX_PREFIX=$(EVETEST_TMUX_PREFIX))) \
+			-e $(call shq,EVETEST_HOME=$(EVETEST_HOME_DIR)) \
+			-e $(call shq,EVETEST_HOST_UID=$(EVETEST_HOST_UID)) \
+			-e $(call shq,EVETEST_HOST_GID=$(EVETEST_HOST_GID)) \
+			$(EVETEST_IMAGE); \
+	else \
+		echo "Starting container evetest-$(EVETEST_API_PORT) on API port $(EVETEST_API_PORT)$(if $(EVETEST_COLLECT_ARTIFACTS), with artifacts in $(EVETEST_COLLECT_ARTIFACTS))"; \
+		docker run --rm $(DOCKER_IT) \
+			--name evetest-$(EVETEST_API_PORT) \
+			-p $(EVETEST_API_PORT):$(EVETEST_API_PORT) \
+			$(ARTIFACTS_MOUNT) \
+			-e EVETEST_COLOR_OUTPUT=$$COLOR \
+			$(DOCKER_COMMON_ARGS) \
+			-e $(call shq,EVETEST_NAME=$(EVETEST_NAME)) \
+			-e $(call shq,EVETEST_API_PORT=$(EVETEST_API_PORT)) \
+			-e $(call shq,EVETEST_CONTAINER_NAME=evetest-$(EVETEST_API_PORT)) \
+			$(EVETEST_IMAGE); \
+	fi
 
 # Ensure the evetest image for the current sources exists locally: pull it, or
 # build it if it is not published (the tag is a content hash, so an existing

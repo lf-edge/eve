@@ -91,6 +91,7 @@ func main() {
 		useCommand(),
 		logsCommand(&instanceFlag),
 		stopCommand(&instanceFlag),
+		runCommand(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {
