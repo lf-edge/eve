@@ -129,6 +129,7 @@ func selfDomCPUMem() (types.HostMemory, error) {
 	if err != nil {
 		logrus.Error(err)
 	} else {
+		// memory.current already includes the kernel memory reported below.
 		hm.UsedEveMB = roundFromBytesToMbytes(usage)
 	}
 	kmemUsage, err := types.GetEveKmemUsageInBytes()
@@ -137,9 +138,6 @@ func selfDomCPUMem() (types.HostMemory, error) {
 	} else {
 		hm.KmemUsedEveMB = roundFromBytesToMbytes(kmemUsage)
 	}
-	hm.UsedEveMB = roundFromBytesToMbytes(usage + kmemUsage)
-	// /hostfs/sys/fs/cgroup/memory/eve/memory.kmem.usage_in_bytes
-	// /hostfs/sys/fs/cgroup/memory/eve/memory.usage_in_bytes
 	info, err := cpu.Info()
 	if err != nil {
 		return hm, err
