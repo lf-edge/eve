@@ -52,7 +52,7 @@ spec:
         - name: DEVICE_DISCOVERY_STRATEGY
           value: nvml
         - name: NVIDIA_CTK_PATH
-          value: /opt/vendor/nvidia/bin/nvidia-ctk
+          value: /usr/bin/nvidia-cdi-hook-eve
         - name: CONTAINER_DRIVER_ROOT
           value: /opt/vendor/nvidia/dist
         securityContext:
