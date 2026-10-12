@@ -76,7 +76,6 @@ RUN mkdir -p /usr/bin/kube/
 
 # Kube general path for all manifests before applying to each cluster mode
 RUN mkdir -p /etc/kube/
-COPY cgconfig.conf /etc
 RUN mkdir -p /etc/k3s-manifests
 COPY manifests/* /etc/k3s-manifests/
 
