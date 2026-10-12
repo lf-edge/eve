@@ -19,6 +19,9 @@ config:
     - /persist:/persist:rshared,rbind
     - /usr/bin/containerd:/usr/bin/containerd
     - /opt/vendor:/opt/vendor:ro
+    # the host's cgroup tree: the user containerd creates /eve-user-apps/<task>
+    # and joins /eve/containerd, pillar adjusts cpusets and reads accounting
+    - /sys/fs/cgroup:/sys/fs/cgroup:rshared,rbind,rw
     # Expose host firmware for Wi-Fi drivers that defer firmware loading
     # until first interface use, from within the container context.
     - /lib/firmware:/lib/firmware
