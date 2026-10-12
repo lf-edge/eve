@@ -56,11 +56,12 @@ const (
 	// running as soon as one test fails.
 	FailFastEnv = "FAIL_FAST"
 
-	// UIEnv selects how a multi-test run presents the instances: "tmux" (one
-	// pane per instance, in a tmux session), "prefixed" (output of all instances
-	// interleaved, each line prefixed with the test name) or "plain" (status
-	// changes only, full output in per-test log files). Default (empty) picks
-	// tmux on a terminal and plain otherwise.
+	// UIEnv selects how a multi-test run presents the instances: "dashboard"
+	// (one screen with a table of the instances and a log view of the selected
+	// one), "tmux" (one pane per instance, in a tmux session), "prefixed"
+	// (output of all instances interleaved, each line prefixed with the test
+	// name) or "plain" (status changes only, full output in per-test log
+	// files). Default (empty) picks dashboard on a terminal and plain otherwise.
 	UIEnv = "UI"
 
 	// TmuxPrefixEnv is the prefix key of the tmux session of the "tmux" UI.

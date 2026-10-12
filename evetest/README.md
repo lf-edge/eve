@@ -834,7 +834,8 @@ Its output depends on `EVETEST_UI`:
 
 | `EVETEST_UI` | Output |
 |--------------|--------|
-| `tmux` | One tmux session, the instances in tiled panes of a single window. Default on a terminal |
+| `dashboard` | One screen with a table of the instances and a full-screen output view of the selected one. Default on a terminal |
+| `tmux` | One tmux session, the instances in tiled panes of a single window |
 | `prefixed` | Output of all instances interleaved, each line prefixed with the test name |
 | `plain` | Only starts, results and, for a failed test, the end of its output. Default when not on a terminal, e.g. when started by a script or an AI agent, or with `nohup` on a remote host |
 
@@ -842,20 +843,43 @@ The full output of every test is also written to `~/.evetest/runs/<run-id>/<test
 (and the usual artifacts are collected as with a single test). The directories of earlier
 runs, whose orchestrator is no longer running and which nothing has written to for
 5 minutes, are removed when a new run starts, so copy the logs you want to keep, or
-collect artifacts. A summary table closes
-the run, and `make` exits non-zero if any test failed. With `EVETEST_FAIL_FAST=true`
-the first failure cancels the tests still running or queued.
+collect artifacts. A summary table closes the run, and `make` exits non-zero if any test failed.
+With `EVETEST_FAIL_FAST=true` the first failure cancels the tests still running or queued.
 
-**tmux UI.** Each instance runs in the foreground of its own pane, so it takes keyboard
-input as when run alone (e.g. to resume a paused test), has scrollback and can be zoomed.
+#### Dashboard UI
+
+`EVETEST_UI=dashboard`, the default on a terminal. A single screen, not a terminal multiplexer:
+a table with one row per test (state, time, last line of output), and a full-screen scrollable
+view of the output of the selected test. A running test shows what it is doing: `paused
+(checkpoint ...)` or `paused (test failed)` when paused. Tests are controlled from the same
+screen, with no prefix key. It stays open after the last test finishes, until `q`, and then the
+summary is left in the terminal.
+
+| Key | Action |
+|-----|--------|
+| `up` / `down` / `j` / `k`, `1`-`9` | Select a test (scroll, in the output view) |
+| `enter` / `esc` | Show the output of the selected test / back to the table |
+| `pgup` / `pgdn`, `g` / `G` | Scroll the output; top / follow the end |
+| `s` | Open an ssh session to the EVE device of the selected test; a test with several devices asks which one first (leave the session with `exit`; a failed ssh waits for Enter so its error can be read) |
+| `c` | Resume the selected test if it is paused (`evetest continue`) |
+| `x` | Stop the selected test gracefully |
+| `q` / `Ctrl-c` | Stop all tests (asks first); pressed again while stopping, kills them |
+
+Unlike the tmux UI below, the dashboard has no panes, so a test cannot read the keyboard directly, and
+there is no scrollback outside the output view; on the other hand it needs nothing but the
+orchestrator, and shows every test's state at a glance, also for many tests.
+
+#### tmux UI
+
+`EVETEST_UI=tmux`. Each instance runs in the foreground of its own pane, so it takes keyboard input
+as when run alone (e.g. to resume a paused test), has scrollback and can be zoomed.
 The pane border shows the test, its API port and its state. When a test fails, its pane
 moves to a window of its own (`FAILED <test>`), so its output stays on screen while the
 remaining tests continue. The pane of a test which passed closes right away (its output is in
-its log file). The
-first window (`orchestrator`) lists what happened and, at the end, the summary with a reminder of where
-to find the output of each test (the `FAILED <test>` windows, the log files). The status line
-shows how many tests are running, queued, passed and failed. The session stays open after
-the last test finishes, until it is closed.
+its log file). The first window (`orchestrator`) lists what happened and, at the end, the summary
+with a reminder of where to find the output of each test (the `FAILED <test>` windows, the log
+files). The status line shows how many tests are running, queued, passed and failed. The session
+stays open after the last test finishes, until it is closed.
 
 The tmux prefix key is `Ctrl-a` (change it with `EVETEST_TMUX_PREFIX`, e.g. `C-b`),
 which differs from tmux's default so as not to clash with a tmux you run the make in.
@@ -867,7 +891,7 @@ Mouse support is on (click a pane to focus it). Useful keys, after the prefix:
 | `X` | Stop all tests gracefully |
 | arrow keys / `o` / `;` | Select the pane above, below, left or right / the next pane / the previous pane (or click a pane); the selected pane gets your keystrokes |
 | `q` and a number | Show the pane numbers, then select that pane |
-| `e` | Open a shell for the `evetest` CLI below the selected test (`exit` closes it) |
+| `e` / `%` | Open a shell for the `evetest` CLI below / to the right of the selected test (`exit` closes it) |
 | `z` | Zoom the current pane in or out |
 | `n` / `p` / `0`-`9` | Next / previous / numbered window (the orchestrator and failed tests) |
 | `[` | Scrollback and search of the pane, with `PgUp`/`PgDn`/arrows and `/` (`q` leaves); the mouse wheel scrolls a pane as well |
@@ -875,17 +899,20 @@ Mouse support is on (click a pane to focus it). Useful keys, after the prefix:
 Detaching is disabled: closing the session stops the run.
 
 A test's pane runs the test, so it cannot take commands. To use the `evetest` CLI for a
-test, select its pane and press `Ctrl-a e`: a shell opens below it, set up for that test.
-`evetest status`, `evetest eve ssh` and the like work in it without `-i` (add
-`-d <device>` when the test has several EVE devices). Its border says
+test, select its pane and press `Ctrl-a e`: a shell opens below it (`Ctrl-a %` opens it to the
+right instead), set up for that test. `evetest status`, `evetest eve ssh` and the like work in it
+without `-i` (add `-d <device>` when the test has several EVE devices). Its border says
 `<test>: evetest CLI shell`, so it is not mistaken for the test. Type `exit` to close it.
-(`Ctrl-a "` does the same, and `Ctrl-a %` puts the shell to the right of the test instead.)
 
-With the other UIs, Ctrl-C stops all instances gracefully (they clean up their VMs); a
-second Ctrl-C kills them. Instances which outlive the orchestrator can be stopped with
-`evetest stop --all`. A test stopped that way is reported as cancelled (its container exits
-with code 143 or 130). Those UIs do not forward keyboard input to the instances, so a
-paused test is resumed with `evetest -i <test> continue` (or `exit`).
+#### Other UIs and stopping instances
+
+With the `prefixed` and `plain` UIs, Ctrl-C stops all instances gracefully (they clean up
+their VMs); a second Ctrl-C kills them. They do not forward keyboard input to the instances,
+so a paused test is resumed with `evetest -i <test> continue` (or `exit`).
+
+With any UI, instances which outlive the orchestrator can be stopped with
+`evetest stop --all`. A test stopped from outside is reported as cancelled (its container
+exits with code 143 or 130).
 
 You can also interact with any instance with the CLI from another terminal as described
 below, for example `EVETEST_PAUSE_ON_FAILURE=true` combined with `evetest -i TestB eve ssh`.
@@ -1053,7 +1080,7 @@ non-default behavior.
 | `EVETEST_CONTROLLER_FAULTS` | Run the controller behind a proxy which a test can tell to answer, delay or drop selected device requests (`ArmControllerFault`). Off by default: with no fault armed the proxy forwards everything unchanged, but it terminates TLS and re-originates the request, so it stays out of the path unless a test needs it. Tests which arm faults skip without it | `false` |
 | `EVETEST_PARALLEL` | Maximum number of instances running at the same time when `make evetest` runs several tests; see [Running Several Tests in Parallel](#running-several-tests-in-parallel) | `1` |
 | `EVETEST_FAIL_FAST` | In a multi-test run, cancel the other tests once one fails | `false` |
-| `EVETEST_UI` | Output mode of a multi-test run: `tmux`, `prefixed` or `plain` | `tmux` on a terminal, else `plain` |
+| `EVETEST_UI` | Output mode of a multi-test run: `tmux`, `dashboard`, `prefixed` or `plain` | `dashboard` on a terminal, else `plain` |
 | `EVETEST_TMUX_PREFIX` | Prefix key of the tmux session of the `tmux` UI | `C-a` |
 
 ### Deployment Variables

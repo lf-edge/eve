@@ -140,6 +140,9 @@ func New(cfg Config, exec Executor) (*Orchestrator, error) {
 	if c, ok := cfg.Output.(CountsConsumer); ok {
 		c.SetCounts(r.counts)
 	}
+	if c, ok := cfg.Output.(SnapshotConsumer); ok {
+		c.SetSnapshot(r.snapshot)
+	}
 	seen := map[string]bool{}
 	for _, name := range cfg.Names {
 		if seen[name] {
@@ -192,6 +195,39 @@ func (r *Orchestrator) Run(ctx context.Context) []*Job {
 	wg.Wait()
 	r.cfg.Output.Finished(r.jobs)
 	return r.jobs
+}
+
+// JobInfo is a consistent copy of a job's state.
+type JobInfo struct {
+	Name      string
+	State     State
+	Port      int
+	Container string
+	ExitCode  int
+	Started   time.Time
+	Finished  time.Time
+}
+
+// Duration of the job so far, or in total once finished.
+func (j JobInfo) Duration() time.Duration {
+	if j.Started.IsZero() {
+		return 0
+	}
+	if j.Finished.IsZero() {
+		return time.Since(j.Started).Round(time.Second)
+	}
+	return j.Finished.Sub(j.Started).Round(time.Second)
+}
+
+// snapshot returns a copy of the state of all jobs, in order.
+func (r *Orchestrator) snapshot() []JobInfo {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	infos := make([]JobInfo, len(r.jobs))
+	for i, j := range r.jobs {
+		infos[i] = JobInfo{j.Name, j.State, j.Port, j.Container, j.ExitCode, j.Started, j.Finished}
+	}
+	return infos
 }
 
 // counts returns the number of jobs in each state.

@@ -4,7 +4,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,11 +12,8 @@ import (
 	"text/tabwriter"
 	"time"
 
-	pb "github.com/lf-edge/eve/evetest/grpcapi/go"
 	"github.com/lf-edge/eve/evetest/instances"
 	"github.com/spf13/cobra"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 // stopTimeout bounds how long "docker stop" waits for the graceful shutdown
@@ -65,38 +61,11 @@ func instanceStates(list []instances.Instance) []string {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			states[i] = instanceState(inst)
+			states[i] = instances.State(inst)
 		}()
 	}
 	wg.Wait()
 	return states
-}
-
-func instanceState(inst instances.Instance) string {
-	conn, err := grpc.NewClient(instanceTarget(inst).hostPort(),
-		grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		return "unknown"
-	}
-	defer conn.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	resp, err := pb.NewEvetestClient(conn).Status(ctx, &pb.StatusRequest{})
-	if err != nil {
-		return "unreachable"
-	}
-	state := "running"
-	if resp.TestName != "" && resp.TestName != inst.Name {
-		state += " " + resp.TestName
-	}
-	if resp.Paused {
-		if resp.TestFailure != "" {
-			state = "paused (test failed)"
-		} else {
-			state = "paused (checkpoint " + resp.CurrentCheckpoint + ")"
-		}
-	}
-	return state
 }
 
 func useCommand() *cobra.Command {

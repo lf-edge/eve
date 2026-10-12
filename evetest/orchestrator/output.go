@@ -34,6 +34,12 @@ type CountsConsumer interface {
 	SetCounts(func() map[State]int)
 }
 
+// SnapshotConsumer is implemented by an Output which wants to read the state
+// of the jobs. The Orchestrator hands it a function returning a consistent copy.
+type SnapshotConsumer interface {
+	SetSnapshot(func() []JobInfo)
+}
+
 type discard struct{}
 
 func (discard) Write(p []byte) (int, error) { return len(p), nil }

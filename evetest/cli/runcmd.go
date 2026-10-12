@@ -51,7 +51,7 @@ them while they run.`,
 	cmd.Flags().BoolVar(&failFast, "fail-fast", viper.GetBool(constants.FailFastEnv),
 		"cancel all other tests once one fails ("+constants.EnvPrefix+constants.FailFastEnv+")")
 	cmd.Flags().StringVar(&ui, "ui", viper.GetString(constants.UIEnv),
-		"output mode: tmux, prefixed or plain ("+constants.EnvPrefix+constants.UIEnv+")")
+		"output mode: tmux, dashboard, prefixed or plain ("+constants.EnvPrefix+constants.UIEnv+")")
 	return cmd
 }
 
@@ -98,17 +98,20 @@ func runTests(cmd *cobra.Command, names []string, parallel int, failFast bool, u
 	eve := eveUnderTest()
 	isTTY := term.IsTerminal(int(os.Stdout.Fd()))
 	if ui == "" {
-		// On a terminal show the jobs in tmux panes. Without one (scripts, nohup, pipes)
+		// On a terminal show the dashboard. Without one (scripts, nohup, pipes)
 		// report status changes only; the full output of each test is in its
 		// log file.
 		ui = "plain"
 		if isTTY {
-			ui = "tmux"
+			ui = "dashboard"
 		}
 	}
 	var output orchestrator.Output
 	var executor orchestrator.Executor = &docker
 	var tmuxUI *orchestrator.TmuxUI
+	var dashboard *orchestrator.Dashboard
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	switch ui {
 	case "plain":
 		printEVE(eve)
@@ -136,8 +139,26 @@ func runTests(cmd *cobra.Command, names []string, parallel int, failFast bool, u
 		}
 		defer tmuxUI.Close()
 		output, executor = tmuxUI, tmuxUI.Executor()
+	case "dashboard":
+		if !isTTY {
+			return fmt.Errorf("%s%s=dashboard needs a terminal", constants.EnvPrefix, constants.UIEnv)
+		}
+		self, err := os.Executable()
+		if err != nil {
+			return err
+		}
+		docker.ColorOutput = "true"
+		executor = &docker
+		dashboard = orchestrator.NewDashboard(orchestrator.DashboardConfig{
+			RunID:   runID,
+			EVE:     eve,
+			Ctx:     ctx,
+			Cancel:  cancel,
+			CLIPath: self,
+		}, names)
+		output = dashboard
 	default:
-		return fmt.Errorf("unknown %s%s %q (want tmux, prefixed or plain)",
+		return fmt.Errorf("unknown %s%s %q (want tmux, dashboard, prefixed or plain)",
 			constants.EnvPrefix, constants.UIEnv, ui)
 	}
 
@@ -156,8 +177,6 @@ func runTests(cmd *cobra.Command, names []string, parallel int, failFast bool, u
 
 	// The first signal stops the instances gracefully (they clean up their
 	// VMs, which takes a while); the second kills them.
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	sigs := make(chan os.Signal, 2)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
@@ -177,7 +196,25 @@ func runTests(cmd *cobra.Command, names []string, parallel int, failFast bool, u
 		}()
 	}
 
-	jobs := r.Run(ctx)
+	var jobs []*orchestrator.Job
+	if dashboard != nil {
+		dashboard.SetKillAll(r.KillAll)
+		runDone := make(chan struct{})
+		go func() {
+			defer close(runDone)
+			jobs = r.Run(ctx)
+		}()
+		// Returns when the user quits; the run is over or being cancelled.
+		err := dashboard.Run()
+		cancel()
+		<-runDone
+		if err != nil {
+			return err
+		}
+		orchestrator.WriteSummary(os.Stdout, jobs)
+	} else {
+		jobs = r.Run(ctx)
+	}
 	if tmuxUI != nil {
 		// Keep the session open for inspecting the panes until the user
 		// closes it, then leave the results in the terminal's scrollback.

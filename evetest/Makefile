@@ -267,7 +267,7 @@ endif
 		echo ""; \
 		exit 1; \
 	fi >&2
-	@# The orchestrator of a multi-test run needs a terminal for its tmux UI. As
+	@# The orchestrator of a multi-test run needs a terminal for its dashboard and tmux UIs. As
 	@# for the colors, only the recipe shell can tell whether there is one.
 	@# Colorize framework log output only when stdout is a terminal. The test
 	@# runs inside the container where stdout is never a TTY (go test pipes it),
