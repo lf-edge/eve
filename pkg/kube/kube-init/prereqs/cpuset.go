@@ -77,7 +77,7 @@ func WidenEVECPUs() *CPUSetLoan {
 	}
 	// Then every leaf. One unreadable leaf must not abandon its siblings —
 	// each is independent once the ancestors are open.
-	for _, cg := range cpusetLeavesNow() {
+	for _, cg := range cpusetLeaves() {
 		if !loan.widen(cg, all) {
 			log.Printf("cpuset: skipping leaf %s", cg)
 		}
@@ -136,7 +136,7 @@ func (l *CPUSetLoan) Restore() {
 	}
 	restored := 0
 	// Child-first: a parent cannot narrow below what a child still holds.
-	chain := append(append([]string(nil), cpusetAncestors...), cpusetLeavesNow()...)
+	chain := append(append([]string(nil), cpusetAncestors...), cpusetLeaves()...)
 	for i := len(chain) - 1; i >= 0; i-- {
 		cg := chain[i]
 		was, ok := l.saved[cg]
@@ -162,6 +162,21 @@ func KubeCPUCount() int {
 		return 0
 	}
 	return countCPUList(s)
+}
+
+// cpusetContainerd is the cgroup both containerd daemons and their shims
+// run in. The user containerd pulls and unpacks every image a first boot
+// deploys, so it is widened with the services.
+const cpusetContainerd = "eve/containerd"
+
+// cpusetLeaves returns the leaves to widen: every service, and containerd
+// where 010-eve-cgroup gave it a cpuset.
+func cpusetLeaves() []string {
+	leaves := cpusetLeavesNow()
+	if _, err := os.Stat(filepath.Join(cpusetRoot, cpusetContainerd)); err == nil {
+		leaves = append(leaves, cpusetContainerd)
+	}
+	return leaves
 }
 
 // cpusetLeavesNow returns every per-service leaf under eve/services, read
