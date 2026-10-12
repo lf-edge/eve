@@ -65,6 +65,8 @@ spec:
           readOnly: true
         - name: dev
           mountPath: /dev
+        - name: cdi-root
+          mountPath: /var/run/cdi
       volumes:
       - name: kubelet-device-plugins-dir
         hostPath:
@@ -77,3 +79,7 @@ spec:
       - name: dev
         hostPath:
           path: /dev
+      - name: cdi-root
+        hostPath:
+          path: /var/run/cdi
+          type: DirectoryOrCreate
