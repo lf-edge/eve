@@ -5,34 +5,48 @@ package types
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"runtime/debug"
 	"strconv"
 	"strings"
+
+	"github.com/lf-edge/eve/pkg/pillar/utils/cgroup"
 )
 
-// GetPillarHardMemoryLimitInBytes returns hard memory limit
-// reserved for pillar in bytes
+// EveCgroup and PillarCgroup name EVE's cgroup and pillar's, relative to the
+// cgroup v2 root (see pkg/dom0-ztools/rootfs/etc/init.d/010-eve-cgroup).
+const (
+	EveCgroup    = "eve"
+	PillarCgroup = "eve/services/pillar"
+)
+
+// GetPillarHardMemoryLimitInBytes returns pillar's cgroup memory.max;
+// cgroup.Unlimited when it has none.
 func GetPillarHardMemoryLimitInBytes() (uint64, error) {
-	return readUint64File(PillarHardMemoryLimitFile)
+	return cgroup.ReadUint(PillarCgroup, "memory.max")
 }
 
-// GetEveMemoryLimitInBytes returns memory limit
-// reserved for eve in bytes
+// GetEveMemoryLimitInBytes returns EVE's cgroup memory.max.
 func GetEveMemoryLimitInBytes() (uint64, error) {
-	return readUint64File(EveMemoryLimitFile)
+	return cgroup.ReadUint(EveCgroup, "memory.max")
 }
 
-// GetEveMemoryUsageInBytes returns memory limit
-// reserved for eve in bytes
+// GetEveMemoryUsageInBytes returns the memory charged to EVE's cgroup, kernel
+// memory included.
 func GetEveMemoryUsageInBytes() (uint64, error) {
-	return readUint64File(EveMemoryUsageFile)
+	return cgroup.ReadUint(EveCgroup, "memory.current")
 }
 
-// GetEveKmemUsageInBytes returns memory limit
-// reserved for eve in bytes
+// GetEveKmemUsageInBytes returns the kernel memory charged to EVE's cgroup,
+// already part of GetEveMemoryUsageInBytes; 0 on kernels before 5.18, whose
+// memory.stat has no "kernel" line.
 func GetEveKmemUsageInBytes() (uint64, error) {
-	return readUint64File(EveKmemUsageFile)
+	stat, err := cgroup.MemoryStat(EveCgroup)
+	if err != nil {
+		return 0, err
+	}
+	return stat["kernel"], nil
 }
 
 // GetZFSArcMaxSizeInBytes returns memory limit
@@ -71,7 +85,12 @@ func ConfigureGOGC(limit int64, percent int) (int64, int, error) {
 		// significant to ensure that after the soft limit is reached, there
 		// will be enough memory for the GOGC to do its job and, fortunately,
 		// not to hit the hard limit.
-		limit = int64(ulimit) * 600 / 1000
+		if ulimit == cgroup.Unlimited || ulimit > math.MaxInt64/600 {
+			// No cgroup limit (or one too large to scale), so no Go memory limit either.
+			limit = math.MaxInt64
+		} else {
+			limit = int64(ulimit) * 600 / 1000
+		}
 	}
 	if percent == 0 {
 		// Disable GC
