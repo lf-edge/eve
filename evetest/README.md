@@ -817,6 +817,43 @@ make install-cli
 
 Or use it from inside the container (`docker exec -it evetest-<API-port> bash`).
 
+### Running Several Instances
+
+Each `make evetest` runs one instance (container) on its own API port. To run several
+at once, start each in its own terminal with a different `EVETEST_API_PORT`:
+
+```bash
+make evetest NAME=networking/dpc                          # port 50021 (default)
+EVETEST_API_PORT=50022 make evetest NAME=apps/lps         # port 50022
+```
+
+The CLI finds running instances by itself, there is no need to know their ports:
+
+```bash
+evetest instances         # list running instances (alias: ps); * marks this terminal's choice
+evetest use lps           # use this instance in the current terminal (name, unique part of it,
+                          # port or number from the list); without argument: choose from a menu
+evetest status            # talks to the chosen instance
+evetest -i dpc eve ssh    # one-off override with --instance / -i (or EVETEST_INSTANCE=dpc)
+evetest logs -f           # follow the container output of the instance
+evetest stop              # stop the instance gracefully (--all: every instance)
+evetest use --clear       # forget the choice
+```
+
+The CLI picks the instance in this order: `--instance`, `EVETEST_INSTANCE`, an explicitly
+set `EVETEST_API_PORT`/`EVETEST_API_ADDRESS`, the instance chosen with `evetest use` in
+this terminal, the only running instance, and finally, if several are running, an
+interactive menu (whose choice is remembered like `evetest use`).
+
+The choice made by `evetest use` is remembered per terminal session (a window or tmux
+pane), not globally. It is not remembered when there is no terminal (scripts); use
+`--instance` there, or set the variable in the shell with
+`eval "$(evetest use --env <instance>)"`.
+
+Instances register themselves in `~/.evetest/instances/` while running. Remote use
+(`EVETEST_API_ADDRESS`, below) is not affected: the registry only describes instances
+on the local host.
+
 The CLI can also be used from a **remote machine** (e.g. a developer's laptop while
 the test runs inside a self-hosted CI runner). Set `EVETEST_API_ADDRESS` to the IP
 or hostname of the machine running the evetest container, and `EVETEST_API_PORT` if
@@ -953,10 +990,10 @@ non-default behavior.
 | `EVETEST_API_ADDRESS` | IP/hostname of the machine running the evetest container, used by the CLI to connect remotely (unset = `localhost`) | -- |
 
 When running multiple evetests in parallel on the same host, each test must use
-a different `EVETEST_API_PORT` to avoid port conflicts.
-When running the `evetest` CLI against an instance using a non-default API port or
-on a remote machine, set `EVETEST_API_PORT` and/or `EVETEST_API_ADDRESS` in the
-same terminal session beforehand.
+a different `EVETEST_API_PORT` to avoid port conflicts. The `evetest` CLI finds
+local instances on its own (see [Running Several Instances](#running-several-instances-manually)).
+Only when running the CLI against an instance on a remote machine, set
+`EVETEST_API_PORT` and/or `EVETEST_API_ADDRESS` in the same terminal session beforehand.
 
 ### Version Overrides
 

@@ -42,6 +42,11 @@ const (
 	// This is used by the evetest CLI to connect to a running evetest instance.
 	APIPortEnv = "API_PORT"
 
+	// ContainerNameEnv specifies the name of the Docker container running the evetest
+	// instance. It is set by the Makefile and recorded in the instance registry, so
+	// that the evetest CLI can show the container logs or stop the instance.
+	ContainerNameEnv = "CONTAINER_NAME"
+
 	// SDNPortEnv specifies the port on which the SDN exposes its gRPC API.
 	// This is read by the SDN, the evetest broker and the evetest container.
 	SDNPortEnv = "SDN_PORT"

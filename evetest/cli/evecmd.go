@@ -884,7 +884,7 @@ func evePortFwdCmd() *cobra.Command {
 			}
 		},
 	}
-	cmd.Flags().StringVarP(&interfaceName, "interface", "i", "",
+	cmd.Flags().StringVar(&interfaceName, "interface", "",
 		"EVE interface logical label (e.g. eth0)")
 	return cmd
 }

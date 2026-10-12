@@ -148,7 +148,10 @@ endif
 	@# correctly on the host.
 	$(eval EVETEST_HOME_DIR := $(HOME)/.evetest)
 	$(eval EVETEST_HOME_MOUNT := -v $(EVETEST_HOME_DIR):$(EVETEST_HOME_DIR))
-	@mkdir -p $(EVETEST_HOME_DIR)
+	@# The instances directory is created here, as the host user, so that the
+	@# registry records the (root) container writes into it can be removed by
+	@# the evetest CLI.
+	@mkdir -p $(EVETEST_HOME_DIR)/instances
 	@# Tests that compile a bpftrace script for the device's kernel (see
 	@# tests/apps/pciaccess_helpers_test.go) run eve-tools/bpftrace-compiler
 	@# from the checkout, mounted at the same position relative to /evetest/tests
@@ -220,9 +223,12 @@ endif
 		echo ""; \
 		echo "  EVETEST_API_PORT=50022 make evetest NAME=<test-name>"; \
 		echo ""; \
-		echo "When using the evetest CLI against a non-default port, set the same variable:"; \
+		echo "The evetest CLI finds running instances on its own. With several running,"; \
+		echo "choose one for the current terminal, or per command:"; \
 		echo ""; \
-		echo "  EVETEST_API_PORT=50022 evetest status"; \
+		echo "  evetest instances"; \
+		echo "  evetest use <name>"; \
+		echo "  evetest -i <name> status"; \
 		echo ""; \
 		exit 1; \
 	fi >&2
@@ -261,6 +267,8 @@ endif
 		$(DIST_DIR_ENV) \
 		$(GO_CACHE_ENV) \
 		-e EVETEST_NAME=$(EVETEST_NAME) \
+		-e EVETEST_API_PORT=$(EVETEST_API_PORT) \
+		-e EVETEST_CONTAINER_NAME=evetest-$(EVETEST_API_PORT) \
 		-e EVETEST_HOME=$(EVETEST_HOME_DIR) \
 		-e EVETEST_HOST_UID=$(EVETEST_HOST_UID) \
 		-e EVETEST_HOST_GID=$(EVETEST_HOST_GID) \
