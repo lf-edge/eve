@@ -118,6 +118,26 @@ func TestWidenEVECPUsCoversEveryLeafAndRestores(t *testing.T) {
 	}
 }
 
+// containerd is confined like the services when 010-eve-cgroup gave it a
+// cpuset, and the user containerd unpacks every first-boot image, so it is
+// widened and restored with them.
+func TestWidenEVECPUsCoversContainerd(t *testing.T) {
+	root := fakeCPUSetTree(t, "eve/services/kube", "eve/containerd")
+
+	loan := WidenEVECPUs()
+	if loan == nil {
+		t.Fatal("WidenEVECPUs returned nil on a confined tree")
+	}
+	if got := readMask(t, root, "eve/containerd"); got != "0-7" {
+		t.Errorf("eve/containerd = %q after widen, want \"0-7\"", got)
+	}
+
+	loan.Restore()
+	if got := readMask(t, root, "eve/containerd"); got != "0" {
+		t.Errorf("eve/containerd = %q after restore, want \"0\"", got)
+	}
+}
+
 // One unreadable leaf must not abandon its siblings — each is independent
 // once the ancestors are open.
 func TestWidenEVECPUsSkipsBadLeafButKeepsSiblings(t *testing.T) {
