@@ -1,7 +1,6 @@
 kernel:
   image: KERNEL_TAG
-  # the unified_cgroup_hierarchy forces cgroupsv1, which is required until pillar is ready to support v2
-  cmdline: "rootdelay=3 linuxkit.unified_cgroup_hierarchy=0"
+  cmdline: "rootdelay=3"
 init:
   - linuxkit/init:v1.3.0
   - linuxkit/runc:v1.3.0       # runc v3.3.0
@@ -80,7 +79,7 @@ services:
       - debug-tools:/debug:ro
   - name: memory-monitor
     image: MEMORY_MONITOR_TAG
-    cgroupsPath: /eve/services/memory-monitor
+    cgroupsPath: /eve-memory-monitor
     oomScoreAdj: -1000
   - name: vtpm
     image: VTPM_TAG
