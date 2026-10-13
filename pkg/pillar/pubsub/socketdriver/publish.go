@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -39,9 +40,15 @@ type Publisher struct {
 	log            *base.LogObject
 	doneChan       chan struct{}
 	rootDir        string
+	largestSent    atomic.Int64 // largest message above warnSize sent so far
+	stats          *pubsub.PubStats
 }
 
 const maxFileName = 255
+
+// warnSize is the message size above which the publisher logs a warning, so
+// that a value growing towards maxsize is noticed before it reaches it.
+const warnSize = 64 * 1024
 
 // Publish publish a key-value pair
 func (s *Publisher) Publish(key string, item []byte) error {
@@ -226,7 +233,6 @@ func (s *Publisher) Start() error {
 			}
 			s.log.Functionf("Creating %s at %s", "s.serveConnection", logutils.GetMyStack())
 			go s.serveConnection(c, instance)
-			maybeLogAllocated(s.log)
 			instance++
 		}
 		s.log.Warnf("Start(%s) acceptor goroutine exiting", s.name)
@@ -279,29 +285,24 @@ func (s *Publisher) LargeDirName() string {
 func (s *Publisher) serveConnection(conn net.Conn, instance int) {
 	s.log.Functionf("serveConnection(%s/%d)\n", s.name, instance)
 	defer conn.Close()
+	s.stats.Connections.Add(1)
+	defer s.stats.Connections.Add(-1)
 
 	// Track the set of keys/values we are sending to the peer
 	sendToPeer := make(pubsub.LocalCollection)
 	sentRestartCounter := 0
 
-	// Small buffer since we only read "request <topic>"
-	buf := make([]byte, 256)
-
 	// Read request
-	res, err := conn.Read(buf)
+	reader := NewFrameReader(conn)
+	frame, err := reader.ReadFrame()
 	if err != nil {
 		// Peer process could have died
 		s.log.Errorf("serveConnection(%s/%d) error: %v", s.name, instance, err)
 		return
 	}
-	if res == len(buf) {
-		// Likely truncated
-		// Peer process could have died
-		s.log.Errorf("serveConnection(%s/%d) request likely truncated\n", s.name, instance)
-		return
-	}
 
-	request := strings.Split(string(buf[0:res]), " ")
+	request := strings.Split(string(frame), " ")
+	reader.Release()
 	s.log.Functionf("serveConnection read %d: %v\n", len(request), request)
 	if len(request) != 2 || request[0] != "request" || request[1] != s.topic {
 		s.log.Errorf("Invalid request message: %v\n", request)
@@ -312,7 +313,7 @@ func (s *Publisher) serveConnection(conn net.Conn, instance int) {
 	// between its Persistent option and ours. Older subscribers ignore the
 	// extra field.
 	hello := fmt.Sprintf("hello %s %t", s.topic, s.persistent)
-	_, err = conn.Write([]byte(hello))
+	err = s.send(conn, []byte(hello), "")
 	if err != nil {
 		s.log.Errorf("serveConnection(%s/%d) failed %s\n", s.name, instance, err)
 		return
@@ -417,16 +418,26 @@ func (s *Publisher) sendUpdate(sock net.Conn, key string,
 	val []byte) error {
 
 	s.log.Tracef("sendUpdate(%s): key %s\n", s.name, key)
-	// base64-encode to avoid having spaces in the key and val
-	sendKey := base64.StdEncoding.EncodeToString([]byte(key))
-	sendVal := base64.StdEncoding.EncodeToString(val)
-	buf := fmt.Sprintf("update %s %s %s", s.topic, sendKey, sendVal)
-	if len(buf) >= maxsize {
-		s.log.Fatalf("Too large message (%d bytes) sent to %s topic %s key %s",
-			len(buf), s.name, s.topic, key)
-	}
-	_, err := sock.Write([]byte(buf))
-	return err
+	return s.send(sock, s.updateMessage(key, val), key)
+}
+
+// updateMessage returns "update topic key val" with key base64-encoded to
+// avoid having spaces in it. val is sent as is; it is the last field, so it
+// may contain spaces. The message is built in a single allocation since
+// val can be large.
+func (s *Publisher) updateMessage(key string, val []byte) []byte {
+	buf := make([]byte, 0, s.updateMessageLen(key, val))
+	buf = append(buf, "update "...)
+	buf = append(buf, s.topic...)
+	buf = append(buf, ' ')
+	buf = base64.StdEncoding.AppendEncode(buf, []byte(key))
+	buf = append(buf, ' ')
+	return append(buf, val...)
+}
+
+func (s *Publisher) updateMessageLen(key string, val []byte) int {
+	return len("update ") + len(s.topic) + 1 +
+		base64.StdEncoding.EncodedLen(len(key)) + 1 + len(val)
 }
 
 func (s *Publisher) sendDelete(sock net.Conn, key string) error {
@@ -434,46 +445,55 @@ func (s *Publisher) sendDelete(sock net.Conn, key string) error {
 	// base64-encode to avoid having spaces in the key
 	sendKey := base64.StdEncoding.EncodeToString([]byte(key))
 	buf := fmt.Sprintf("delete %s %s", s.topic, sendKey)
-	if len(buf) >= maxsize {
-		s.log.Fatalf("Too large message (%d bytes) sent to %s topic %s key %s",
-			len(buf), s.name, s.topic, key)
-	}
-	_, err := sock.Write([]byte(buf))
-	return err
+	return s.send(sock, []byte(buf), key)
 }
 
 func (s *Publisher) sendRestarted(sock net.Conn, restartCounter int) error {
 	s.log.Functionf("sendRestarted(%s)\n", s.name)
 	buf := fmt.Sprintf("restarted %s %d", s.topic, restartCounter)
-	if len(buf) >= maxsize {
-		s.log.Fatalf("Too large message (%d bytes) sent to %s topic %s",
-			len(buf), s.name, s.topic)
-	}
-	_, err := sock.Write([]byte(buf))
-	return err
+	return s.send(sock, []byte(buf), "")
 }
 
 func (s *Publisher) sendComplete(sock net.Conn) error {
 	s.log.Functionf("sendComplete(%s)\n", s.name)
 	buf := fmt.Sprintf("complete %s", s.topic)
-	if len(buf) >= maxsize {
-		s.log.Fatalf("Too large message (%d bytes) sent to %s topic %s",
-			len(buf), s.name, s.topic)
+	return s.send(sock, []byte(buf), "")
+}
+
+// send writes msg as one frame. A message larger than maxsize is a bug in
+// the publishing agent, hence fatal. A message larger than warnSize is
+// logged whenever the publication reaches a new largest size.
+func (s *Publisher) send(sock net.Conn, msg []byte, key string) error {
+	size := int64(len(msg))
+	if size > maxsize {
+		s.log.Fatalf("Too large message (%d bytes) sent to %s topic %s key %s",
+			size, s.name, s.topic, key)
 	}
-	_, err := sock.Write([]byte(buf))
-	return err
+	s.stats.AddMessage(len(msg))
+	if size > warnSize {
+		s.stats.LargeWarnings.Add(1)
+	}
+	for size > warnSize {
+		largest := s.largestSent.Load()
+		if size <= largest {
+			break
+		}
+		if s.largestSent.CompareAndSwap(largest, size) {
+			s.log.Warnf("Large message (%d bytes, max %d) sent to %s topic %s key %s",
+				size, maxsize, s.name, s.topic, key)
+			break
+		}
+	}
+	return WriteFrame(sock, msg)
 }
 
 // CheckMaxSize returns an error if too large
 func (s *Publisher) CheckMaxSize(key string, val []byte) error {
 	s.log.Tracef("CheckMaxSize(%s): key %s\n", s.name, key)
-	// base64-encode to avoid having spaces in the key and val
-	sendKey := base64.StdEncoding.EncodeToString([]byte(key))
-	sendVal := base64.StdEncoding.EncodeToString(val)
-	buf := fmt.Sprintf("update %s %s %s", s.topic, sendKey, sendVal)
-	if len(buf) >= maxsize {
+	size := s.updateMessageLen(key, val)
+	if size > maxsize {
 		return fmt.Errorf("key %s serialized to size %d exceeds max %d",
-			key, len(buf), maxsize)
+			key, size, maxsize)
 	}
 	return nil
 }

@@ -26,6 +26,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub/socketdriver"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/sirupsen/logrus"
 )
@@ -76,23 +77,22 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	name := nameString(agentName, agentScope, topic)
 	sockName := fmt.Sprintf("/run/%s.sock", name)
-	s, err := net.Dial("unixpacket", sockName)
+	s, err := net.Dial("unix", sockName)
 	if err != nil {
 		log.Fatal("Dial:", err)
 	}
 	req := fmt.Sprintf("request %s", topic)
-	s.Write([]byte(req))
-	buf := make([]byte, 65536)
+	if err := socketdriver.WriteFrame(s, []byte(req)); err != nil {
+		log.Fatal("Write:", err)
+	}
+	reader := socketdriver.NewFrameReader(s)
 	for {
-		res, err := s.Read(buf)
+		frame, err := reader.ReadFrame()
 		if err != nil {
 			log.Fatal("Read:", err)
 		}
-		if res == len(buf) {
-			// Likely truncated
-			log.Fatalf("Message likely truncated\n")
-		}
-		reply := strings.Split(string(buf[0:res]), " ")
+		// The value of an update is the last field and may contain spaces.
+		reply := strings.SplitN(string(frame), " ", 4)
 		count := len(reply)
 		if count < 2 {
 			log.Errorf("Too short: %v\n", reply)
@@ -129,20 +129,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 				log.Errorf("Too short update: %v\n", reply)
 				continue
 			}
-			if count > 4 {
-				log.Errorf("Too long update: %v\n", reply)
-				continue
-			}
 			recvKey := reply[2]
 			key, err := base64.StdEncoding.DecodeString(recvKey)
 			if err != nil {
 				log.Errorf("base64: %s\n", err)
 			}
-			recvVal := reply[3]
-			val, err := base64.StdEncoding.DecodeString(recvVal)
-			if err != nil {
-				log.Errorf("base64: %s\n", err)
-			}
+			val := []byte(reply[3])
 
 			switch format {
 			case "go":
