@@ -88,6 +88,7 @@ func (pub *PublicationImpl) CheckMaxSize(key string, item interface{}) error {
 	if err != nil {
 		pub.log.Fatal("json Marshal in CheckMaxSize", err)
 	}
+	PublicationStats(name).AllocMarshal.Add(len(b))
 	return pub.driver.CheckMaxSize(key, b)
 }
 
@@ -116,6 +117,7 @@ func (pub *PublicationImpl) Publish(key string, item interface{}) error {
 	if err != nil {
 		pub.log.Fatal("json Marshal in Publish", err)
 	}
+	PublicationStats(name).AllocMarshal.Add(len(b))
 	// Refuse a value which does not fit in a message before it is stored or
 	// checkpointed: sending it would fail on every connection, and after
 	// every reboot if checkpointed.
@@ -307,6 +309,7 @@ func (pub *PublicationImpl) DetermineDiffs(localCollection LocalCollection) []st
 		if err != nil {
 			pub.log.Fatalf("json Marshal in DetermineDiffs for origin key %s: %v", originKey, err)
 		}
+		PublicationStats(name).AllocMarshal.Add(len(originb))
 
 		local := lookupLocal(localCollection, originKey)
 		if local == nil {

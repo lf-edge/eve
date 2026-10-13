@@ -250,7 +250,9 @@ func (s *Subscriber) connectAndRead() (string, string, []byte) {
 			s.reader = NewFrameReaderWithStats(sock, s.stats)
 			s.stats.Subscribers.Add(1)
 			req := fmt.Sprintf("request %s", s.topic)
-			err = WriteFrame(sock, []byte(req))
+			s.stats.AllocDecode.Add(len(req))
+			s.stats.AllocDecode.Add(len(req))
+			err = writeFrame(sock, []byte(req), false, &s.stats.AllocDecode)
 			if err != nil {
 				errStr := fmt.Sprintf("connectAndRead(%s): sock write failed %s",
 					s.name, err)
@@ -292,6 +294,7 @@ func (s *Subscriber) read() (string, string, []byte) {
 	// The frame is reused by the next read, hence everything returned
 	// is copied out of it.
 	reply := bytes.SplitN(frame, []byte(" "), 4)
+	s.stats.AllocDecode.Add(cap(reply) * 24)
 	count := len(reply)
 	if count < 2 {
 		errStr := fmt.Sprintf("connectAndRead(%s): too short read", s.name)
@@ -300,6 +303,8 @@ func (s *Subscriber) read() (string, string, []byte) {
 	}
 	msg := string(reply[0])
 	t := string(reply[1])
+	addString(&s.stats.AllocDecode, len(msg))
+	addString(&s.stats.AllocDecode, len(t))
 
 	if t != s.topic {
 		errStr := fmt.Sprintf("connectAndRead(%s): mismatched topic %s vs. %s for %s", s.name, t, s.topic, msg)
@@ -313,6 +318,7 @@ func (s *Subscriber) read() (string, string, []byte) {
 	case "hello", "complete":
 		s.log.Tracef("connectAndRead(%s) Got message %s type %s\n", s.name, msg, t)
 		if msg == "hello" && count >= 3 {
+			s.stats.AllocDecode.AddTemp(len(reply[2]))
 			s.checkPublisherPersistence(string(reply[2]))
 		}
 		return msg, "", nil
@@ -324,6 +330,7 @@ func (s *Subscriber) read() (string, string, []byte) {
 			return "", "", nil
 		}
 		counter := string(reply[2])
+		addString(&s.stats.AllocDecode, len(counter))
 		s.log.Tracef("connectAndRead(%s) Got message %s type %s counter %s", s.name, msg, t, counter)
 		return msg, counter, nil
 
@@ -335,6 +342,7 @@ func (s *Subscriber) read() (string, string, []byte) {
 		}
 		recvKey := reply[2]
 
+		s.stats.AllocDecode.Add(base64.StdEncoding.DecodedLen(len(recvKey)))
 		key, err := base64.StdEncoding.AppendDecode(nil, recvKey)
 		if err != nil {
 			errStr := fmt.Sprintf("connectAndRead(%s): base64 failed %s", s.name, err)
@@ -344,6 +352,7 @@ func (s *Subscriber) read() (string, string, []byte) {
 		if s.logger.GetLevel() == logrus.TraceLevel {
 			s.log.Tracef("connectAndRead(%s): delete type %s key %s\n", s.name, t, string(key))
 		}
+		addString(&s.stats.AllocDecode, len(key))
 		return msg, string(key), nil
 
 	case "update":
@@ -354,6 +363,7 @@ func (s *Subscriber) read() (string, string, []byte) {
 		}
 		recvKey := reply[2]
 		recvVal := reply[3]
+		s.stats.AllocDecode.Add(base64.StdEncoding.DecodedLen(len(recvKey)))
 		key, err := base64.StdEncoding.AppendDecode(nil, recvKey)
 		if err != nil {
 			errStr := fmt.Sprintf("connectAndRead(%s): base64 key failed %s", s.name, err)
@@ -365,10 +375,12 @@ func (s *Subscriber) read() (string, string, []byte) {
 		val := recvVal
 		if !s.reader.Owned() {
 			val = bytes.Clone(recvVal)
+			s.stats.AllocDecode.Add(len(recvVal))
 		}
 		if s.logger.GetLevel() == logrus.TraceLevel {
 			s.log.Tracef("connectAndRead(%s): update type %s key %s val %s\n", s.name, t, string(key), string(val))
 		}
+		addString(&s.stats.AllocDecode, len(key))
 		return msg, string(key), val
 
 	default:
@@ -510,5 +522,13 @@ func (s *Subscriber) translate(in <-chan string, out chan<- pubsub.Change) {
 				s.log.Fatal("Unknown operation from Watcher: ", operation)
 			}
 		}
+	}
+}
+
+// addString counts a string(b) conversion of n bytes which escapes: Go
+// does not allocate for strings of one byte or less.
+func addString(a *pubsub.Alloc, n int) {
+	if n > 1 {
+		a.Add(n)
 	}
 }
