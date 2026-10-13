@@ -86,9 +86,47 @@ func TestStaleControllerPodsSelection(t *testing.T) {
 
 func withControllerFlag(t *testing.T) {
 	t.Helper()
-	saved := ControllerRestartFlag
-	ControllerRestartFlag = state.Marker(filepath.Join(t.TempDir(), "controller-restart-needed"))
-	t.Cleanup(func() { ControllerRestartFlag = saved })
+	savedFlag, savedPending := ControllerRestartFlag, ControllerRestartPending
+	dir := t.TempDir()
+	ControllerRestartFlag = state.Marker(filepath.Join(dir, "controller-restart-needed"))
+	ControllerRestartPending = state.Marker(filepath.Join(dir, "run", "controller-restart-pending"))
+	t.Cleanup(func() { ControllerRestartFlag, ControllerRestartPending = savedFlag, savedPending })
+}
+
+func pendingMarked(t *testing.T) bool {
+	t.Helper()
+	marked, err := state.IsMarked(ControllerRestartPending)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return marked
+}
+
+func TestRestartStaleControllersNoFlagClearsStalePending(t *testing.T) {
+	withControllerFlag(t)
+	if err := state.Mark(ControllerRestartPending); err != nil {
+		t.Fatal(err)
+	}
+	if err := RestartStaleControllers(context.Background(),
+		&k3s.ClusterStatus{IsBootstrapNode: true}, "node"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if pendingMarked(t) {
+		t.Error("pending marker kept without an armed flag")
+	}
+}
+
+func TestArmControllerRestartSetsBothMarkers(t *testing.T) {
+	withControllerFlag(t)
+	if err := ArmControllerRestart(); err != nil {
+		t.Fatal(err)
+	}
+	if marked, _ := state.IsMarked(ControllerRestartFlag); !marked {
+		t.Error("flag not armed")
+	}
+	if !pendingMarked(t) {
+		t.Error("pending marker not set")
+	}
 }
 
 func TestRestartStaleControllersNoFlagIsNoop(t *testing.T) {
@@ -112,6 +150,9 @@ func TestRestartStaleControllersNonBootstrapClearsFlag(t *testing.T) {
 		if marked, _ := state.IsMarked(ControllerRestartFlag); marked {
 			t.Errorf("flag still armed for status %+v", cs)
 		}
+		if pendingMarked(t) {
+			t.Errorf("pending marker left behind for status %+v", cs)
+		}
 	}
 }
 
@@ -127,6 +168,9 @@ func TestRestartStaleControllersWithoutClientKeepsFlag(t *testing.T) {
 	}
 	if marked, _ := state.IsMarked(ControllerRestartFlag); !marked {
 		t.Error("flag cleared although no pod was recycled")
+	}
+	if !pendingMarked(t) {
+		t.Error("pending marker missing while the recycle is still outstanding")
 	}
 }
 
@@ -180,6 +224,9 @@ func TestRestartStaleControllersDeletesOnlyStalePodsOnThisNode(t *testing.T) {
 	}
 	if marked, _ := state.IsMarked(ControllerRestartFlag); marked {
 		t.Error("flag still armed after every stale pod was deleted")
+	}
+	if pendingMarked(t) {
+		t.Error("pending marker left behind after the recycle completed")
 	}
 }
 
