@@ -287,7 +287,7 @@ OpRegion to a per-domain file each time `x-igd-opregion=on` populates
 /run/hypervisor/kvm/<qemu-vm-name>/igd-opregion.bin
 ```
 
-(see `pkg/xen-tools/patches-4.19.0/x86_64/12-vfio-igd-opregion-dump.patch`).
+(see `pkg/xen-tools/patches-4.21.1/x86_64/12-vfio-igd-opregion-dump.patch`).
 QEMU also logs a one-line `IGD: OpRegion dumped to <path> (<N> bytes,
 magic="IntelGraphicsMem")` to its stderr, which makes it into the EVE
 device log via the `guest_vm_err` channel. The file is the same bytes
@@ -301,12 +301,17 @@ $ scp root@<edge>:/run/hypervisor/kvm/<vm>/igd-opregion.bin .
 $ tools/igpu-vbt-dump.py igd-opregion.bin
 ```
 
-It prints the OpRegion header (magic, version, mailbox flags, BIOS /
-driver version strings), the embedded VBT header (signature, version,
-BDB offset), and the BDB block list with recognised names. Useful for
-side-by-side comparison across host platforms (e.g. TGL vs RPL-P) when
-diagnosing GOP / connector init differences. Multiple dumps can be passed
-in one invocation; the decoder is read-only.
+It prints the OpRegion header (magic, version, mailbox flags, platform
+configuration, BIOS / driver version strings), the ACPI, SWSCI, ASLE and
+ASLE_EXT mailbox fields, the embedded VBT header (signature, version,
+BDB offset), the BDB block list with the kernel's block names, and the
+decoded Driver Features block. The Driver Features flags are what the
+BIOS advertises to the graphics driver, including Graphics Render
+Standby (`grs_enabled`, RC6); flags the BDB version no longer defines
+are marked as such. Useful for side-by-side comparison across host
+platforms (e.g. TGL vs RPL-P) when diagnosing GOP / connector init or
+power-management differences. Multiple dumps can be passed in one
+invocation; the decoder is read-only.
 
 ### Debugging scanout corruption (iGPU MMIO register diff)
 
