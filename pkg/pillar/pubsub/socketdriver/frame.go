@@ -10,14 +10,28 @@ import (
 	"net"
 	"sync"
 
+	"github.com/klauspost/compress/zstd"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 )
 
 // Messages are sent over unix stream sockets as frames: a 4-byte
-// little-endian payload length followed by the payload.
+// little-endian payload length followed by the payload. A message larger
+// than maxsize is sent compressed with zstd, and compressedFlag set in the
+// length marks such a frame.
 const (
-	// maxsize is the largest frame payload we send or accept.
+	// maxsize is the largest frame payload we send or accept, and the
+	// largest message sent as it is.
 	maxsize = 1024 * 1024
+	// maxMessageSize is the largest message: one above maxsize must
+	// compress into a frame of at most maxsize.
+	maxMessageSize = 128 * 1024 * 1024
+	// compressedFlag in the length of a frame marks a compressed payload.
+	compressedFlag = 1 << 31
+	// maxWindow is the largest zstd window used. Messages repeat the same
+	// content, e.g. certificates in every port of every DevicePortConfig of
+	// a DevicePortConfigList, so the window should span a whole such
+	// repetition.
+	maxWindow = 32 * 1024 * 1024
 	// poolMaxSize is the largest frame read into a pooled buffer. Larger
 	// frames get a buffer of their own, garbage once the frame is consumed.
 	poolMaxSize = 64 * 1024
@@ -34,12 +48,22 @@ var (
 
 // WriteFrame writes payload as a single frame.
 func WriteFrame(w io.Writer, payload []byte) error {
+	return writeFrame(w, payload, false)
+}
+
+// writeFrame writes payload as a single frame, flagged as compressed if
+// it is.
+func writeFrame(w io.Writer, payload []byte, compressed bool) error {
 	if len(payload) > maxsize {
 		return fmt.Errorf("frame of %d bytes exceeds max %d",
 			len(payload), maxsize)
 	}
+	n := uint32(len(payload))
+	if compressed {
+		n |= compressedFlag
+	}
 	var hdr [4]byte
-	binary.LittleEndian.PutUint32(hdr[:], uint32(len(payload)))
+	binary.LittleEndian.PutUint32(hdr[:], n)
 	bufs := net.Buffers{hdr[:], payload}
 	_, err := bufs.WriteTo(w)
 	return err
@@ -65,8 +89,15 @@ func NewFrameReaderWithStats(r io.Reader, stats *pubsub.SubStats) *FrameReader {
 	return &FrameReader{r: r, stats: stats}
 }
 
+// Owned reports whether the current frame is in a buffer of its own, not
+// one from a pool: its caller may keep parts of it after Release.
+func (fr *FrameReader) Owned() bool {
+	return fr.buf != nil && fr.class < 0
+}
+
 // Release gives back the buffer of the current frame, which must no longer
-// be used. ReadFrame does it before waiting for the next frame.
+// be used unless Owned. ReadFrame does it before waiting for the next
+// frame.
 func (fr *FrameReader) Release() {
 	if fr.buf == nil {
 		return
@@ -108,15 +139,17 @@ func (fr *FrameReader) acquire(size int) []byte {
 	return (*fr.buf)[:size]
 }
 
-// ReadFrame returns the payload of the next frame, valid until Release or
-// the next ReadFrame. After an error the stream is no longer in sync and
-// must be closed.
+// ReadFrame returns the payload of the next frame, decompressed if it was
+// compressed, valid until Release or the next ReadFrame. After an error the
+// stream is no longer in sync and must be closed.
 func (fr *FrameReader) ReadFrame() ([]byte, error) {
 	fr.Release()
 	if _, err := io.ReadFull(fr.r, fr.hdr[:]); err != nil {
 		return nil, err
 	}
 	n := binary.LittleEndian.Uint32(fr.hdr[:])
+	compressed := n&compressedFlag != 0
+	n &^= compressedFlag
 	if n > maxsize {
 		return nil, fmt.Errorf("frame of %d bytes exceeds max %d", n, maxsize)
 	}
@@ -131,5 +164,65 @@ func (fr *FrameReader) ReadFrame() ([]byte, error) {
 	if fr.stats != nil {
 		fr.stats.AddFrame(len(buf))
 	}
+	if compressed {
+		return fr.decompress(buf)
+	}
 	return buf, nil
+}
+
+// decompress replaces the compressed frame in buf by its message, in a
+// buffer of its own.
+func (fr *FrameReader) decompress(buf []byte) ([]byte, error) {
+	msg, err := decompress(buf)
+	fr.Release()
+	if err != nil {
+		return nil, fmt.Errorf("frame of %d bytes: %w", len(buf), err)
+	}
+	fr.buf, fr.class = &msg, -1
+	if fr.stats != nil {
+		fr.stats.RetainedBufBytes.Add(int64(cap(msg)))
+		fr.stats.CompressedFrames.Add(1)
+		fr.stats.DecompressedBytes.Add(int64(len(msg)))
+	}
+	return msg, nil
+}
+
+// compress returns msg compressed with zstd, or an error if msg is larger
+// than maxMessageSize or does not compress into maxsize bytes. Messages this
+// large are rare, so an encoder is made for each and its window, which is
+// most of its memory, is sized to the message.
+func compress(msg []byte) ([]byte, error) {
+	if len(msg) > maxMessageSize {
+		return nil, fmt.Errorf("message of %d bytes exceeds max %d",
+			len(msg), maxMessageSize)
+	}
+	window := zstd.MinWindowSize
+	for window < len(msg) && window < maxWindow {
+		window *= 2
+	}
+	enc, err := zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.SpeedFastest),
+		zstd.WithEncoderConcurrency(1), zstd.WithWindowSize(window))
+	if err != nil {
+		return nil, err
+	}
+	defer enc.Close()
+	out := enc.EncodeAll(msg, nil)
+	if len(out) > maxsize {
+		return nil, fmt.Errorf("message of %d bytes compresses to %d bytes, max %d",
+			len(msg), len(out), maxsize)
+	}
+	return out, nil
+}
+
+// decompress returns the message in a compressed frame. The decoder refuses
+// a message above maxMessageSize before allocating it.
+func decompress(frame []byte) ([]byte, error) {
+	dec, err := zstd.NewReader(nil, zstd.WithDecoderConcurrency(1),
+		zstd.WithDecoderMaxMemory(maxMessageSize),
+		zstd.WithDecoderMaxWindow(maxWindow))
+	if err != nil {
+		return nil, err
+	}
+	defer dec.Close()
+	return dec.DecodeAll(frame, nil)
 }

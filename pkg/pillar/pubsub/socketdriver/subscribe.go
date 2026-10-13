@@ -360,7 +360,12 @@ func (s *Subscriber) read() (string, string, []byte) {
 			s.log.Errorln(errStr)
 			return "", "", nil
 		}
-		val := bytes.Clone(recvVal)
+		// A frame in a buffer of its own, a large or decompressed one, is
+		// not reused: keep the value in it instead of copying it out.
+		val := recvVal
+		if !s.reader.Owned() {
+			val = bytes.Clone(recvVal)
+		}
 		if s.logger.GetLevel() == logrus.TraceLevel {
 			s.log.Tracef("connectAndRead(%s): update type %s key %s val %s\n", s.name, t, string(key), string(val))
 		}
