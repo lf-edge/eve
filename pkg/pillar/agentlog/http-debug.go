@@ -236,7 +236,7 @@ func ListenDebug(log *base.LogObject, stacksDumpFileName, memDumpFileName string
 
 		<li><strong>Pubsub Statistics</strong>:</br>
 			Endpoint: <code>GET /debug/pubsub/stats</code></br>
-			Description: Per-topic pubsub counters as JSON: messages and bytes sent and received, largest message, read buffers kept and pubsub-large files.</li>
+			Description: Per-topic pubsub counters as JSON: messages and bytes sent and received, largest message and the read buffers held.</li>
 		<li><strong>Memory PSI Collector - Start</strong>:</br>
 			Endpoint: <code>POST /memory-monitor/psi-collector/start</code></br>
 			Description: Starts the memory PSI (Pressure Stall Information) collector to monitor memory pressure.</br>

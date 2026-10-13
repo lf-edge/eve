@@ -79,8 +79,7 @@ func TestStatsJSON(t *testing.T) {
 	if pub["messages"] != 1 || pub["bytes"] != 42 || pub["max_message"] != 42 {
 		t.Fatalf("publication counters %v", pub)
 	}
-	for _, field := range []string{"connections", "large_warnings",
-		"large_files_written", "large_bytes_written"} {
+	for _, field := range []string{"connections", "large_warnings"} {
 		if _, ok := pub[field]; !ok {
 			t.Errorf("publication counters lack %q", field)
 		}
@@ -90,7 +89,7 @@ func TestStatsJSON(t *testing.T) {
 		t.Fatalf("subscription counters %v", sub)
 	}
 	for _, field := range []string{"subscribers", "frames", "bytes", "max_frame",
-		"oversized_frames", "large_files_read"} {
+		"oversized_frames"} {
 		if _, ok := sub[field]; !ok {
 			t.Errorf("subscription counters lack %q", field)
 		}
