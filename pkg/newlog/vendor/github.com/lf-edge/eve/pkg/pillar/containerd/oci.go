@@ -116,11 +116,11 @@ func (s *ociSpec) AddLoader(volume string) error {
 		return err
 	}
 
-	// we're gonna use a little hack: since we already have the rootfs of a xen-tools container
+	// we're gonna use a little hack: since we already have the rootfs of the loader service
 	// laid out on disk, but don't have it in a form of a snapshot or an image, we're going to
 	// create an empty snapshot and then overlay the rootfs on top of it - this way we can save
-	// ourselves copying the rootfs around and still have the newest version of xen-tools on every
-	// boot, while the original xen-tools rootfs stays read-only
+	// ourselves copying the rootfs around and still have the newest version of the loader on every
+	// boot, while the original loader rootfs stays read-only
 
 	ctrdCtx, done := s.client.CtrNewUserServicesCtx()
 	defer done()
@@ -350,10 +350,13 @@ func (s *ociSpec) UpdateWithIoBundles(config *types.DomainConfig, aa *types.Assi
 			if ib == nil {
 				continue
 			}
+			// domainmgr's adapter bookkeeping can disagree with the domain
+			// being started; warn rather than take the node down over it.
 			if ib.UsedByUUID != config.UUIDandVersion.UUID {
-				logrus.Fatalf("IoBundle not ours %s: %d %s for %v\n",
+				logrus.Warnf("IoBundle not ours %s: %d %s for %v\n",
 					ib.UsedByUUID, adapter.Type, adapter.Name,
 					domainID)
+				continue
 			}
 
 			// Video devices

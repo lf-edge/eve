@@ -88,6 +88,11 @@ type BaseOsStatus struct {
 	// Minimum state across all steps/StorageStatus.
 	// Error* set implies error.
 	State SwState
+	// Converting is set while the boot disk is being repartitioned for an
+	// EVE-kvm -> EVE-k flavor change (before the A/B install). zedagent maps it
+	// to DEVICE_STATE_CONVERTING; ConvertSubState carries the progress phase.
+	Converting      bool
+	ConvertSubState DeviceSubState
 	// error strings across all steps/StorageStatus
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
@@ -265,6 +270,7 @@ const (
 	BootReasonVaultFailure         // Vault was not ready within the expected time
 	BootReasonPoweroffCmd          // Start after Local Profile Server poweroff
 	BootReasonKubeTransition       // Transition to/from kubernetes single/cluster modes
+	BootReasonHWWatchdog           // Hardware watchdog reset the device; only on drivers reporting WDIOF_CARDRESET
 	BootReasonParseFail      = 255 // BootReasonFromString didn't find match
 )
 
@@ -303,6 +309,8 @@ func (br BootReason) String() string {
 		return "BootReasonPoweroffCmd"
 	case BootReasonKubeTransition:
 		return "BootReasonKubeTransition"
+	case BootReasonHWWatchdog:
+		return "BootReasonHWWatchdog"
 	default:
 		return fmt.Sprintf("Unknown BootReason %d", br)
 	}
@@ -345,6 +353,8 @@ func (br BootReason) StartWithSavedConfig() bool {
 		return true
 	case BootReasonKubeTransition:
 		return true
+	case BootReasonHWWatchdog:
+		return false
 	default:
 		return false
 	}
@@ -388,6 +398,8 @@ func BootReasonFromString(str string) BootReason {
 		return BootReasonPoweroffCmd
 	case "BootReasonKubeTransition":
 		return BootReasonKubeTransition
+	case "BootReasonHWWatchdog":
+		return BootReasonHWWatchdog
 	default:
 		return BootReasonParseFail
 	}
@@ -592,6 +604,24 @@ const (
 	DEVICE_STATE_PREPARING_POWEROFF             = 6
 	DEVICE_STATE_POWERING_OFF                   = 7
 	DEVICE_STATE_PREPARED_POWEROFF              = 8
+	DEVICE_STATE_CONVERTING                     = 9
+)
+
+//revive:enable:var-naming
+
+// DeviceSubState mirrors ZDeviceSubState in lf-edge/eve-api: the sub-state
+// reported alongside DEVICE_STATE_CONVERTING for the EVE-kvm -> EVE-k
+// boot-disk conversion.
+type DeviceSubState uint8
+
+// Integer values must match those in ZDeviceSubState in lf-edge/eve-api/proto/info/info.proto
+//
+//revive:disable:var-naming
+const (
+	DEVICE_SUBSTATE_UNSPECIFIED DeviceSubState = iota
+	DEVICE_SUBSTATE_CONVERT_REBOOTING_TO_RESIZE
+	DEVICE_SUBSTATE_CONVERT_INSTALLING
+	DEVICE_SUBSTATE_CONVERT_REBOOTING_TO_TARGET
 )
 
 //revive:enable:var-naming
@@ -616,6 +646,8 @@ func (ds DeviceState) String() string {
 		return "powering_off"
 	case DEVICE_STATE_PREPARED_POWEROFF:
 		return "prepared_poweroff"
+	case DEVICE_STATE_CONVERTING:
+		return "converting"
 	default:
 		return fmt.Sprintf("Unknown state %d", ds)
 	}

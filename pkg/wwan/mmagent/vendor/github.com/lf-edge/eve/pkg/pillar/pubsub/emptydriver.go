@@ -61,11 +61,6 @@ func (e *EmptyDriverPublisher) Stop() error {
 	return nil
 }
 
-// LargeDirName where to put large fields
-func (e *EmptyDriverPublisher) LargeDirName() string {
-	return "/tmp"
-}
-
 // EmptyDriverSubscriber struct
 type EmptyDriverSubscriber struct{}
 
@@ -83,9 +78,4 @@ func (e *EmptyDriverSubscriber) Load() (map[string][]byte, int, error) {
 // Stop function
 func (e *EmptyDriverSubscriber) Stop() error {
 	return nil
-}
-
-// LargeDirName where to put large fields
-func (e *EmptyDriverSubscriber) LargeDirName() string {
-	return "/tmp"
 }
