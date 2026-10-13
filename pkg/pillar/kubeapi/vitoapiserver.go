@@ -497,17 +497,21 @@ func RolloutDiskToPVC(ctx context.Context, log *base.LogObject, exists bool,
 		uploadTry++
 
 		startTimeThisUpload := time.Now()
+		// Only stderr is read: virtctl v1.7.3 draws its progress bar and status
+		// lines on stdout and prints the error Execute() returns, including
+		// "already successfully imported", on stderr. Both the success check
+		// below and the failure text depend on that split, so a VIRTCTL_VERSION
+		// bump in pkg/kube/Dockerfile must re-verify it.
 		output, err := base.Exec(log, "/containers/services/kube/rootfs/usr/bin/virtctl", args...).
-			WithContext(ctx).WithUnlimitedTimeout(timeout * time.Second).CombinedOutput()
+			WithContext(ctx).WithUnlimitedTimeout(timeout * time.Second).ErrorOutput()
 
 		uploadDuration := time.Since(startTimeThisUpload)
 		if err != nil && !strings.Contains(string(output), "already successfully imported") {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			lastAttempt = fmt.Sprintf("%s: %v",
-				strings.ReplaceAll(strings.TrimSpace(string(output)), "\n", "; "), err)
-			err = fmt.Errorf("RolloutDiskToPVC: pvc:%s Failed after %f seconds to convert qcow to PVC %s: %v", pvcName, uploadDuration.Seconds(), output, err)
+			lastAttempt = virtctlFailure(output, err)
+			err = fmt.Errorf("RolloutDiskToPVC: pvc:%s Failed after %f seconds to convert qcow to PVC: %s", pvcName, uploadDuration.Seconds(), lastAttempt)
 			log.Error(err)
 
 			// This is a backoff to handle cases where the kubernetes api server
@@ -616,6 +620,35 @@ func RolloutDiskToPVC(ctx context.Context, log *base.LogObject, exists bool,
 	// cap, which parks the volume in a terminal error after a finite number of
 	// re-drives -- so this stays transient and the bound provides the escape hatch.
 	return uploadFailed("RolloutDiskToPVC pvc:%s attempts to upload image failed", pvcName)
+}
+
+// maxVirtctlFailureLen bounds the virtctl text RolloutDiskToPVC appends to its
+// error, which ends up in VolumeStatus/AppInstanceStatus and so in pubsub
+// messages capped at 64 KiB.
+const maxVirtctlFailureLen = 1024
+
+// virtctlFailure condenses a failed virtctl run into one line for an error
+// string. The progress bar and status lines go to stdout and are not
+// captured. stderr holds virtctl's logger output followed by the error
+// Execute() returns, which is printed last, so when the text is too long
+// the tail is kept.
+func virtctlFailure(stderr []byte, err error) string {
+	var lines []string
+	for _, l := range strings.Split(string(stderr), "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			lines = append(lines, l)
+		}
+	}
+	msg := fmt.Sprint(err)
+	if len(lines) > 0 {
+		msg = fmt.Sprintf("%s: %v", strings.Join(lines, "; "), err)
+	}
+	if len(msg) > maxVirtctlFailureLen {
+		// The cut may split a rune; the result reaches protobuf string fields,
+		// which must be valid UTF-8.
+		msg = "..." + strings.ToValidUTF8(msg[len(msg)-maxVirtctlFailureLen+3:], "")
+	}
+	return msg
 }
 
 // GetPVFromPVC : Returns volume name (PV) from the PVC name
