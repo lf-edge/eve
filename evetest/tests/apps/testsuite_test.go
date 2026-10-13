@@ -130,6 +130,9 @@ import (
 // hypervisor (EVETEST_HYPERVISOR=kvm|kubevirt), so a variant here would run
 // the same combination a second time; a test that cannot say anything on the
 // hypervisor it was given skips instead.
+//
+// TestContainerdCPUs is the very last test: its boot options differ, so the
+// framework creates yet another device for it.
 func TestAppsSuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
@@ -180,6 +183,9 @@ func TestAppsSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestVGAPassthroughNoHostAccess,
+		},
+		evetest.TestCase{
+			Test: TestContainerdCPUs,
 		},
 	)
 }
