@@ -207,7 +207,16 @@ Wherever one of these names appears, `dom0` means the EVE host, not a virtual ma
     13. `eve_install_zfs_with_raid_level` - Sets raid level for zfs storage. Valid values are none,raid1,raid5,raid6. Default value is none. This option also applied for the first boot of a live image to prepare zfs persist pool instead of ext4.
     14. `eve_install_k3s_etcd_sizeGB` - Size in GB of the etcd-storage zvol.  Defaults to 10GB.
 3. General kernel parameters may be adjusted with `set_global dom0_extra_args "$dom0_extra_args OPTION1=VAL1 OPTION2 "`.
-   They will be added to kernel cmdline.
+   They will be added to kernel cmdline. EVE itself reads these:
+    1. `eve_pubsub_max_frame=SIZE` - the largest frame EVE services exchange over [pubsub](IPC.md), and the largest
+       message they send as it is: a larger message is compressed and must compress into a frame. Default `1M`,
+       at least `64K`, at most `1G`.
+    2. `eve_pubsub_max_message=SIZE` - the largest pubsub message, uncompressed. A larger value is refused and
+       logged instead of published. Default `30M`, at least the frame size, at most `1G`. Raise it if the logs
+       report refused values, e.g. for a very large network configuration with many ports, certificates and
+       PAC files.
+
+   `SIZE` is a number of bytes, optionally with a `K`, `M` or `G` suffix (binary units).
 
 4. **Dynamic kernel parameters via EFI variables (Available since EVE 15.9.0):** Kernel command line arguments can be dynamically set at runtime using EFI variables. This method allows adding kernel parameters without modifying grub.cfg files, making it safer for runtime configuration changes. The parameters are read from the EFI variable `eve-kernel-extra-cmdline` with GUID `7AD58F29-2B49-4F5A-9F0B-4E7BF7C2C311` and appended to the existing kernel command line.
 

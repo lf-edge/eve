@@ -4,6 +4,8 @@
 package pubsub_test
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"os"
 	"testing"
 	"time"
@@ -43,8 +45,9 @@ func TestCheckMaxSize(t *testing.T) {
 	}
 	ps := pubsub.New(&driver, logger, log)
 
-	// A string of 900KB fits in the 1MB message limit and one of 1100KB
-	// does not.
+	// A string of 900KB fits in the 1MB message limit as it is. A larger
+	// one fits if it compresses into 1MB, as repetitive content does, and
+	// random content of 1500KB does not.
 	myCtx := context{}
 	testMatrix := map[string]struct {
 		agentName   string
@@ -52,8 +55,18 @@ func TestCheckMaxSize(t *testing.T) {
 		persistent  bool
 		stringSize  int
 		stringCSize int
+		random      bool
 		expectFail  bool
 	}{
+		"IPC compressed": {
+			agentName:  "testagent1",
+			stringSize: 5 * 1024 * 1024,
+		},
+		"IPC with persistent compressed using large tag": {
+			agentName:   "testagent2",
+			persistent:  true,
+			stringCSize: 5 * 1024 * 1024,
+		},
 		"File small enough": {
 			agentName: "",
 			//			agentScope: "testscope1",
@@ -73,20 +86,23 @@ func TestCheckMaxSize(t *testing.T) {
 		"File too large": {
 			agentName: "",
 			//			agentScope: "testscope1",
-			stringSize: 1100 * 1024,
+			stringSize: 1500 * 1024,
+			random:     true,
 			expectFail: true,
 		},
 		"IPC too large": {
 			agentName: "testagent1",
 			//			agentScope: "testscope",
-			stringSize: 1100 * 1024,
+			stringSize: 1500 * 1024,
+			random:     true,
 			expectFail: true,
 		},
 		"IPC with persistent too large": {
 			agentName: "testagent2",
 			//			agentScope: "testscope",
 			persistent: true,
-			stringSize: 1100 * 1024,
+			stringSize: 1500 * 1024,
+			random:     true,
 			expectFail: true,
 		},
 		"File using large tag": {
@@ -108,20 +124,23 @@ func TestCheckMaxSize(t *testing.T) {
 		"File too large using large tag": {
 			agentName: "",
 			//			agentScope: "testscope1",
-			stringCSize: 1048576,
+			stringCSize: 1500 * 1024,
+			random:      true,
 			expectFail:  true,
 		},
 		"IPC too large using large tag": {
 			agentName: "testagent1",
 			//			agentScope: "testscope",
-			stringCSize: 1048576,
+			stringCSize: 1500 * 1024,
+			random:      true,
 			expectFail:  true,
 		},
 		"IPC with persistent too large using large tag": {
 			agentName: "testagent2",
 			//			agentScope: "testscope",
 			persistent:  true,
-			stringCSize: 1048576,
+			stringCSize: 1500 * 1024,
+			random:      true,
 			expectFail:  true,
 		},
 	}
@@ -169,14 +188,8 @@ func TestCheckMaxSize(t *testing.T) {
 			largeItems := sub.GetAll()
 			assert.Equal(t, 1, len(largeItems))
 
-			largeString := make([]byte, test.stringSize)
-			for i := range largeString {
-				largeString[i] = byte(0x40 + i%25)
-			}
-			largeStringC := make([]byte, test.stringCSize)
-			for i := range largeStringC {
-				largeStringC[i] = byte(0x40 + i%25)
-			}
+			largeString := testString(test.stringSize, test.random)
+			largeStringC := testString(test.stringCSize, test.random)
 			largeItem2 := largeItem{
 				StrA: string(largeString),
 				StrC: string(largeStringC),
@@ -296,4 +309,18 @@ func TestCheckMaxSize(t *testing.T) {
 		})
 	}
 	os.RemoveAll(rootPath)
+}
+
+// testString returns size bytes of printable text, repeating or random.
+func testString(size int, random bool) []byte {
+	if random {
+		b := make([]byte, size*3/4+3)
+		_, _ = rand.Read(b)
+		return []byte(base64.StdEncoding.EncodeToString(b))[:size]
+	}
+	b := make([]byte, size)
+	for i := range b {
+		b[i] = byte(0x40 + i%25)
+	}
+	return b
 }
