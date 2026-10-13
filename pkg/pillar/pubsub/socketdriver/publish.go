@@ -285,6 +285,7 @@ func (s *Publisher) serveConnection(conn net.Conn, instance int) {
 
 	// Read request
 	reader := NewFrameReader(conn)
+	reader.alloc = &s.stats.AllocMessage
 	frame, err := reader.ReadFrame()
 	if err != nil {
 		// Peer process could have died
@@ -293,6 +294,8 @@ func (s *Publisher) serveConnection(conn net.Conn, instance int) {
 	}
 
 	request := strings.Split(string(frame), " ")
+	s.stats.AllocMessage.Add(len(frame))
+	s.stats.AllocMessage.Add(cap(request) * 16)
 	reader.Release()
 	s.log.Functionf("serveConnection read %d: %v\n", len(request), request)
 	if len(request) != 2 || request[0] != "request" || request[1] != s.topic {
@@ -304,6 +307,8 @@ func (s *Publisher) serveConnection(conn net.Conn, instance int) {
 	// between its Persistent option and ours. Older subscribers ignore the
 	// extra field.
 	hello := fmt.Sprintf("hello %s %t", s.topic, s.persistent)
+	s.stats.AllocMessage.Add(len(hello))
+	s.stats.AllocMessage.Add(len(hello))
 	err = s.send(conn, []byte(hello), "")
 	if err != nil {
 		s.log.Errorf("serveConnection(%s/%d) failed %s\n", s.name, instance, err)
@@ -417,7 +422,10 @@ func (s *Publisher) sendUpdate(sock net.Conn, key string,
 // may contain spaces. The message is built in a single allocation since
 // val can be large.
 func (s *Publisher) updateMessage(key string, val []byte) []byte {
-	buf := make([]byte, 0, s.updateMessageLen(key, val))
+	n := s.updateMessageLen(key, val)
+	s.stats.AllocMessage.Add(n)
+	s.stats.AllocMessage.AddTemp(len(key))
+	buf := make([]byte, 0, n)
 	buf = append(buf, "update "...)
 	buf = append(buf, s.topic...)
 	buf = append(buf, ' ')
@@ -436,18 +444,27 @@ func (s *Publisher) sendDelete(sock net.Conn, key string) error {
 	// base64-encode to avoid having spaces in the key
 	sendKey := base64.StdEncoding.EncodeToString([]byte(key))
 	buf := fmt.Sprintf("delete %s %s", s.topic, sendKey)
+	s.stats.AllocMessage.AddTemp(len(key))
+	s.stats.AllocMessage.Add(len(sendKey)) // EncodeToString: buffer
+	s.stats.AllocMessage.Add(len(sendKey)) // and string
+	s.stats.AllocMessage.Add(len(buf))
+	s.stats.AllocMessage.Add(len(buf))
 	return s.send(sock, []byte(buf), key)
 }
 
 func (s *Publisher) sendRestarted(sock net.Conn, restartCounter int) error {
 	s.log.Functionf("sendRestarted(%s)\n", s.name)
 	buf := fmt.Sprintf("restarted %s %d", s.topic, restartCounter)
+	s.stats.AllocMessage.Add(len(buf))
+	s.stats.AllocMessage.Add(len(buf))
 	return s.send(sock, []byte(buf), "")
 }
 
 func (s *Publisher) sendComplete(sock net.Conn) error {
 	s.log.Functionf("sendComplete(%s)\n", s.name)
 	buf := fmt.Sprintf("complete %s", s.topic)
+	s.stats.AllocMessage.Add(len(buf))
+	s.stats.AllocMessage.Add(len(buf))
 	return s.send(sock, []byte(buf), "")
 }
 
@@ -475,7 +492,7 @@ func (s *Publisher) send(sock net.Conn, msg []byte, key string) error {
 		}
 	}
 	if size <= maxsize {
-		return WriteFrame(sock, msg)
+		return writeFrame(sock, msg, false, &s.stats.AllocMessage)
 	}
 	frame, err := compress(msg)
 	if err != nil {
@@ -484,9 +501,10 @@ func (s *Publisher) send(sock net.Conn, msg []byte, key string) error {
 			s.name, s.topic, key, err)
 		return nil
 	}
+	s.stats.AllocMessage.Add(cap(frame))
 	s.stats.CompressedMessages.Add(1)
 	s.stats.CompressedBytes.Add(int64(len(frame)))
-	return writeFrame(sock, frame, true)
+	return writeFrame(sock, frame, true, &s.stats.AllocMessage)
 }
 
 // CheckMaxSize returns an error if the value does not fit in a message:
@@ -496,8 +514,10 @@ func (s *Publisher) CheckMaxSize(key string, val []byte) error {
 	if s.updateMessageLen(key, val) <= maxsize {
 		return nil
 	}
-	if _, err := compress(s.updateMessage(key, val)); err != nil {
+	frame, err := compress(s.updateMessage(key, val))
+	if err != nil {
 		return fmt.Errorf("key %s: %w", key, err)
 	}
+	s.stats.AllocMessage.Add(cap(frame))
 	return nil
 }

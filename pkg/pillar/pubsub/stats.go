@@ -21,6 +21,10 @@ type PubStats struct {
 	CompressedMessages atomic.Int64 // messages above the frame size, sent compressed
 	CompressedBytes    atomic.Int64 // their size on the wire
 	Refused            atomic.Int64 // values too large even compressed
+
+	AllocMarshal Alloc // JSON of published items
+	AllocMessage Alloc // wire messages built for subscribers
+	AllocLarge   Alloc // fields tagged pubsub-large moved out to files
 }
 
 // SubStats counts what the subscriptions to a publication received, over
@@ -32,9 +36,14 @@ type SubStats struct {
 	MaxFrame         atomic.Int64
 	RetainedBufBytes atomic.Int64 // read buffers held while frames are read
 	OversizedFrames  atomic.Int64 // frames read into a one-off buffer
+	BufTakenBytes    atomic.Int64 // read buffer bytes handed out, over all reads
 
 	CompressedFrames  atomic.Int64 // compressed frames received
 	DecompressedBytes atomic.Int64 // the size of their messages
+
+	AllocReadBuf Alloc // read buffers: pool misses, one-off and decompressed buffers
+	AllocDecode  Alloc // copies and decoding of received messages
+	AllocLarge   Alloc // fields tagged pubsub-large read back from files
 }
 
 var (
@@ -79,7 +88,7 @@ func storeMax(max *atomic.Int64, v int64) {
 }
 
 func (s *PubStats) snapshot() map[string]int64 {
-	return map[string]int64{
+	m := map[string]int64{
 		"connections":    s.Connections.Load(),
 		"messages":       s.Messages.Load(),
 		"bytes":          s.Bytes.Load(),
@@ -90,10 +99,14 @@ func (s *PubStats) snapshot() map[string]int64 {
 		"compressed_bytes":    s.CompressedBytes.Load(),
 		"refused":             s.Refused.Load(),
 	}
+	s.AllocMarshal.snapshot("marshal", m)
+	s.AllocMessage.snapshot("message", m)
+	s.AllocLarge.snapshot("large", m)
+	return m
 }
 
 func (s *SubStats) snapshot() map[string]int64 {
-	return map[string]int64{
+	m := map[string]int64{
 		"subscribers":        s.Subscribers.Load(),
 		"frames":             s.Frames.Load(),
 		"bytes":              s.Bytes.Load(),
@@ -102,7 +115,12 @@ func (s *SubStats) snapshot() map[string]int64 {
 		"oversized_frames":   s.OversizedFrames.Load(),
 		"compressed_frames":  s.CompressedFrames.Load(),
 		"decompressed_bytes": s.DecompressedBytes.Load(),
+		"buf_taken_bytes":    s.BufTakenBytes.Load(),
 	}
+	s.AllocReadBuf.snapshot("readbuf", m)
+	s.AllocDecode.snapshot("decode", m)
+	s.AllocLarge.snapshot("large", m)
+	return m
 }
 
 // StatsJSON returns all counters as one line of JSON:
@@ -121,8 +139,12 @@ func StatsJSON() []byte {
 		})
 		return out
 	}
+	pubs := collect(&pubStats)
+	deepCopy := make(map[string]int64)
+	deepCopyAlloc.snapshot("deepcopy", deepCopy)
+	pubs["(DeepCopy)"] = deepCopy
 	b, _ := json.Marshal(map[string]map[string]map[string]int64{
-		"publications":  collect(&pubStats),
+		"publications":  pubs,
 		"subscriptions": collect(&subStats),
 	})
 	return b
