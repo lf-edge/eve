@@ -5,6 +5,7 @@ package types
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"strconv"
@@ -60,6 +61,14 @@ type DomainConfig struct {
 	RestartCounter uint32
 	// if this node is the DNiD of the App
 	IsDNidNode bool
+
+	// DesignatedNodeUUID is the device UUID of the app's actual designated
+	// node, whichever node that is -- copied from AppInstanceConfig's field
+	// of the same name. IsDNidNode above only answers whether *this* node
+	// is it; this is what lets the node creating the domain (e.g. a backup
+	// node standing in during a DNID outage) resolve and encode the true
+	// home's node affinity instead of always encoding its own.
+	DesignatedNodeUUID string
 
 	// Node Affinity for cluster IsDesignatedNodeID
 	AffinityType Affinity
@@ -137,11 +146,6 @@ func (config DomainConfig) GetTaskName() string {
 
 // DomainnameToUUID does the reverse of GetTaskName
 func DomainnameToUUID(name string) (uuid.UUID, string, int, error) {
-	// FIXME: we can likely drop this altogether
-	if name == "Domain-0" {
-		return uuid.UUID{}, "", 0, nil
-	}
-
 	res := strings.Split(name, ".")
 	if len(res) != 3 {
 		return uuid.UUID{}, "", 0, fmt.Errorf("Unknown domainname format %s",
@@ -179,6 +183,9 @@ func (config DomainConfig) VirtualizationModeOrDefault() VmMode {
 func (status DiskStatus) GetPVCNameFromVolumeKey() (string, error) {
 	volumeIDAndGeneration := status.VolumeKey
 	generation := strings.Split(volumeIDAndGeneration, "#")
+	if len(generation) < 2 {
+		return "", fmt.Errorf("invalid volume key %q: missing generation", volumeIDAndGeneration)
+	}
 	volUUID, err := uuid.FromString(generation[0])
 	if err != nil {
 		return "", fmt.Errorf("failed to parse volUUID: %w", err)
@@ -261,8 +268,8 @@ func (config DomainConfig) LogKey() string {
 type VmConfig struct {
 	Kernel     string // default ""
 	Ramdisk    string // default ""
-	Memory     int    // in kbytes; Rounded up to Mbytes for xen
-	MaxMem     int    // in kbytes; Default equal to 'Memory', so no ballooning for xen
+	Memory     int    // in kbytes
+	MaxMem     int    // in kbytes; Default equal to 'Memory', so no ballooning
 	VCpus      int    // default 1
 	MaxCpus    int    // default VCpus
 	RootDev    string // default "/dev/xvda1"
@@ -327,6 +334,51 @@ type Task interface {
 	Delete(string) error
 	Info(string) (int, SwState, error)
 	Cleanup(string) error
+	// WatchCrash returns a channel on which the hypervisor reports that the
+	// domain's virtual machine has crashed into a capturable, still-alive
+	// state (KVM: QMP STOP with run-state internal-error — "mode A"). It lets
+	// domainmgr own crash policy while the QMP details stay in the hypervisor
+	// package. Returns nil for hypervisors without this capability (all but
+	// KVM); a nil channel blocks forever in a select, which is the intent.
+	WatchCrash(domainName string) <-chan DomainCrashEvent
+	// DumpGuestMemory writes the guest's physical RAM as an ELF core to the
+	// io.Writer (streamed, so pillar can compress and quota it on the fly). It
+	// is a policy-free primitive; the caller decides when to dump and what to
+	// do afterwards. includeUnusedRAM controls dump-guest-memory's paging
+	// flag. Not supported (returns an error) on non-KVM hypervisors.
+	DumpGuestMemory(domainName string, w io.Writer) error
+	// GetDomainRunState returns the raw hypervisor run-state string
+	// ("running", "internal-error", "paused", …) as a pollable backstop for a
+	// missed WatchCrash event. Empty string / error on hypervisors without it.
+	GetDomainRunState(domainName string) (string, error)
+}
+
+// CrashHandlingState tracks where a domain is in domainmgr's capture-first
+// crash state machine. Any value other than CrashNone freezes reconcile for
+// the domain so neither the reconcile loop nor an incoming controller config
+// tears down or restarts qemu while a dump is in flight or the domain is held
+// for inspection.
+type CrashHandlingState uint8
+
+const (
+	// CrashNone means the domain is not handling a crash (the normal state).
+	CrashNone CrashHandlingState = iota
+	// CrashCaptureInProgress means a guest-core dump is being taken; teardown
+	// must wait for it to finish or fail.
+	CrashCaptureInProgress
+	// CrashCaptured means the dump completed (or failed) and policy has
+	// been/will be applied.
+	CrashCaptured
+	// CrashHeld means pause-on-crash is holding qemu alive for live inspection.
+	CrashHeld
+)
+
+// DomainCrashEvent is the hypervisor-agnostic notification that a domain's VM
+// crashed into a capturable state (mode A). RunState is the raw run-state that
+// identified the crash (e.g. "internal-error").
+type DomainCrashEvent struct {
+	RunState string
+	When     time.Time
 }
 
 type DomainStatus struct {
@@ -347,7 +399,20 @@ type DomainStatus struct {
 	PendingAdd     bool
 	PendingModify  bool
 	PendingDelete  bool
-	DomainName     string // Name of Xen domain
+	DomainName     string // Name of the domain
+	// DomainId identifies the running domain, with hypervisor-specific meaning:
+	// for kvm it is the underlying qemu process's pid; for kubevirt (HV=k)
+	// it is a value derived from the app's current VMIRS/ReplicaSet identity
+	// (see hypervisor/kubevirt.go's workloadID), since there is no pid.
+	//
+	// The one invariant every hypervisor backend must uphold, and every
+	// consumer relies on: DomainId is zero if and only if the domain is
+	// confirmed not present (no process for kvm; VMIRS/ReplicaSet
+	// confirmed absent for kubevirt). It must never be zero merely because
+	// the answer is unknown or unattributable - doInactivate's teardown
+	// gates and doCleanup's success test both key on zero meaning "already
+	// gone", so a zero returned for any other reason skips a teardown that
+	// never happened and reports it as done.
 	DomainId       int
 	BootTime       time.Time
 	DiskStatusList []DiskStatus
@@ -385,6 +450,23 @@ type DomainStatus struct {
 	// emitted the "trusting cluster to recover" log line. Used to deduplicate
 	// that log to state transitions only. Zero = not yet logged. KubeVirt only.
 	KubeTrustLoggedState SwState `json:"-"`
+
+	// Crash-dump handling (KVM "mode A" crash).
+	// CrashState != CrashNone is the authoritative freeze flag: while set,
+	// reconcile must not tear down or restart the domain.
+	CrashState CrashHandlingState
+	// CrashRunState is the hypervisor run-state that identified the crash
+	// (e.g. "internal-error").
+	CrashRunState string
+	// GuestCoreDumpPath is the vault path of the most recent guest core.
+	GuestCoreDumpPath string
+	// LastDumpTaken is set once a guest core has been captured for the current
+	// crash, so releasing a held domain does not needlessly re-dump.
+	LastDumpTaken bool `json:"-"`
+	// HoldUntil is when a pause-on-crash hold auto-releases (mode A).
+	HoldUntil time.Time
+	// GdbSocket is the gdbstub UNIX socket exposed for a held domain, if any.
+	GdbSocket string
 }
 
 func (status DomainStatus) Key() string {
@@ -500,7 +582,7 @@ type VifInfo struct {
 	VifUsed string // Has -emu in name in Status if appropriate
 }
 
-// DomainManager will pass these to the xen xl config file
+// DomainManager will pass these to the domain config file
 // The vdev is automatically assigned as xvd[x], where X is a, b, c etc,
 // based on the order in the DiskList
 // Note that vdev in general can be hd[x], xvd[x], sd[x] but here we only
@@ -666,7 +748,6 @@ type OemWindowsLicenseKeyInfo struct {
 	Qemu       struct {
 		DomainArguments []string
 	}
-	Xen struct{}
 }
 
 // DmiSystemInfo hold system information extracted from dmidecode

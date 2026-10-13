@@ -36,13 +36,13 @@ var ReportDirPaths = []string{
 	PersistDir + "/checkpoint",
 	PersistDir + "/containerd-system-root",
 	PersistDir + "/netdump",
-	PersistDir + "/pubsub-large",
 	PersistDir + "/reserved",
 	PersistDir + "/etcd-storage",
 	PersistDir + "/kcrashes",
 	PersistDir + "/eve-info",
 	PersistDir + "/kubelog",
 	PersistDir + "/kube-save-var-lib",
+	PersistDir + "/lost+found", // e2fsck orphans; unowned, never reclaimed
 }
 
 // AppPersistPaths  Application-related files live here

@@ -86,6 +86,12 @@ type KubeNodeInfo struct {
 	NodeID             string
 }
 
+// Key returns the pubsub key for a KubeNodeInfo: the EVE device UUID it
+// describes, so subscribers can look a node up by UUID directly.
+func (kni KubeNodeInfo) Key() string {
+	return kni.NodeID
+}
+
 // ZKubeNodeInfo - Converts pubsub KubeNodeInfo to eve-api info.KubeNodeInfo
 func (kni KubeNodeInfo) ZKubeNodeInfo() *info.KubeNodeInfo {
 	iKni := new(info.KubeNodeInfo)

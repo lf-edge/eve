@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"reflect"
+	"sort"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -168,6 +169,10 @@ const (
 
 	// LpsDPCKey : key used for DPC containing local configuration changes submitted by LPS.
 	LpsDPCKey = "lps"
+
+	// ControllerDPCKey : key used for DPC submitted by zedagent, based on
+	// configuration received from the controller (or LOC).
+	ControllerDPCKey = "zedagent"
 )
 
 // DevicePortConfig is a misnomer in that it includes the total test results
@@ -488,6 +493,21 @@ func (config *DevicePortConfig) DoSanitize(log *base.LogObject, args DPCSanitize
 	}
 }
 
+// GetMgmtPortsSortedByCost returns all management ports sorted by cost in ascending
+// order. Ports with equal cost retain their original relative order (stable sort).
+func (config *DevicePortConfig) GetMgmtPortsSortedByCost() []NetworkPortConfig {
+	var ports []NetworkPortConfig
+	for _, port := range config.Ports {
+		if port.IsMgmt {
+			ports = append(ports, port)
+		}
+	}
+	sort.SliceStable(ports, func(i, j int) bool {
+		return ports[i].Cost < ports[j].Cost
+	})
+	return ports
+}
+
 // CountMgmtPorts returns the number of management ports
 // Exclude any broken ones with Dhcp = DhcpTypeNone
 // Optionally exclude mgmt ports with invalid config
@@ -593,6 +613,13 @@ func (config DevicePortConfig) IsDPCUntested() bool {
 func (config DevicePortConfig) IsDPCUsable() bool {
 	mgmtCount := config.CountMgmtPorts(true)
 	return mgmtCount > 0
+}
+
+// IsFromController returns true if this DPC originates from the controller
+// (submitted by zedagent, based on configuration received from the
+// controller or LOC).
+func (config DevicePortConfig) IsFromController() bool {
+	return config.Key == ControllerDPCKey
 }
 
 // WasDPCWorking - Check if the last results for the DPC was Success
