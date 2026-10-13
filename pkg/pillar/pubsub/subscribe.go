@@ -220,7 +220,7 @@ func handleModify(ctxArg interface{}, key string, itemcb []byte) {
 	name := sub.nameString()
 	sub.log.Tracef("pubsub.handleModify(%s) key %s\n", name, key)
 	// Any large items which were stored separately?
-	itemcb, err := readAddLarge(sub.log, itemcb)
+	itemcb, err := readAddLarge(sub.log, itemcb, name)
 	if err != nil {
 		errStr := fmt.Sprintf("handleModify(%s): readAddLarge failed %s",
 			name, err)

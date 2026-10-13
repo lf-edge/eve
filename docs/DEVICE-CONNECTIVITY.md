@@ -554,7 +554,7 @@ This is by design, for the following reasons:
   Moreover, retrying such obsolete configs adds unnecessary delay to the network testing process,
   during which the device may remain unreachable on the network.
 - To stay within size limits: The `DPCL` is persisted and published via PubSub, which has
-  a maximum message size limit of 64 KB. Retaining too many entries can cause this limit
+  a maximum message size limit of 1 MB. Retaining too many entries can cause this limit
   to be exceeded, leading to fatal errors.
 
 To balance reliability with resource constraints, the following entries are retained in the DPCL:

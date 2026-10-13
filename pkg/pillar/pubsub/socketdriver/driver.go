@@ -10,21 +10,22 @@ import (
 	"os"
 	"path"
 	"strings"
-	"sync"
-	"sync/atomic"
+	"syscall"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/sirupsen/logrus"
 )
 
-// Protocol over AF_UNIX or other IPC mechanism
+// Protocol over AF_UNIX stream sockets; each message is sent as a frame
+// (see frame.go).
 // "request" from client after connect to sanity check subject.
 // Server sends the other messages; "update" for initial values.
 // "complete" once all initial keys/values in collection have been sent.
 // "restarted" if/when pub.km.restartCounter is set.
 // Ongoing we send "update" and "delete" messages.
-// They keys and values are base64-encoded since they might contain spaces.
+// The keys are base64-encoded since they might contain spaces. The json-val
+// is the last field of a message, hence sent as is.
 // We include typeName after command word for sanity checks.
 // Hence the message format is
 //	"request" topic
@@ -47,7 +48,6 @@ const (
 	// being directory in /run/global
 	fixedName = "global"
 	fixedDir  = "/run/" + fixedName
-	maxsize   = 65535 // Max size for json which can be read or written
 )
 
 // SocketDriver driver for pubsub using local unix-domain socket and files
@@ -119,10 +119,16 @@ func (s *SocketDriver) Publisher(global bool, name, topic string, persistent boo
 			// This could either be a left-over in the filesystem
 			// or some other process (or ourselves) using the same
 			// name to publish. Try connect to see if it is the latter.
-			sock, err := net.Dial("unixpacket", sockName)
+			sock, err := net.Dial("unix", sockName)
 			if err == nil {
 				sock.Close()
 				s.Log.Fatalf("Cannot publish %s since it is already used",
+					sockName)
+			}
+			if errors.Is(err, syscall.EPROTOTYPE) {
+				// A live socket of another type, not a leftover.
+				s.Log.Fatalf("Cannot publish %s since it is already used by "+
+					"a publisher speaking a different pubsub wire protocol",
 					sockName)
 			}
 			if err := os.Remove(sockName); err != nil {
@@ -131,7 +137,7 @@ func (s *SocketDriver) Publisher(global bool, name, topic string, persistent boo
 				return nil, errors.New(errStr)
 			}
 		}
-		listener, err = net.Listen("unixpacket", sockName)
+		listener, err = net.Listen("unix", sockName)
 		if err != nil {
 			errStr := fmt.Sprintf("Publish(%s): failed %s",
 				name, err)
@@ -154,6 +160,7 @@ func (s *SocketDriver) Publisher(global bool, name, topic string, persistent boo
 		log:            s.Log,
 		doneChan:       doneChan,
 		rootDir:        s.RootDir,
+		stats:          pubsub.PublicationStats(name),
 	}, nil
 }
 
@@ -211,6 +218,7 @@ func (s *SocketDriver) Subscriber(global bool, name, topic string, persistent bo
 		log:              s.Log,
 		doneChan:         doneChan,
 		rootDir:          s.RootDir,
+		stats:            pubsub.SubscriptionStats(name),
 	}, nil
 }
 
@@ -233,41 +241,6 @@ func (s *SocketDriver) fixedDirName(name string) string {
 
 func (s *SocketDriver) persistentDirName(name string) string {
 	return fmt.Sprintf("%s/%s/status/%s", s.RootDir, "/persist", name)
-}
-
-// Use a buffer pool to minimize memory usage
-var bufPool = &sync.Pool{
-	New: func() interface{} {
-		buffer := make([]byte, maxsize+1)
-		return buffer
-	},
-}
-
-// Track allocations for debug
-var allocated uint32
-
-// GetBuffer returns a buffer and a done func to call at defer.
-func GetBuffer() ([]byte, func()) {
-	buf := bufPool.Get().([]byte)
-	atomic.AddUint32(&allocated, 1)
-	return buf, func() {
-		bufPool.Put(buf)
-		atomic.AddUint32(&allocated, ^uint32(0))
-	}
-}
-
-// logs a message if the allocation changed
-var lastLoggedAllocated uint32
-
-func maybeLogAllocated(log *base.LogObject) {
-	currentAllocated := atomic.LoadUint32(&allocated)
-	currentLastAllocated := atomic.LoadUint32(&lastLoggedAllocated)
-	if currentLastAllocated == currentAllocated {
-		return
-	}
-	log.Functionf("pubsub buffer allocation changed from %d to  %d",
-		currentLastAllocated, currentAllocated)
-	atomic.StoreUint32(&lastLoggedAllocated, currentAllocated)
 }
 
 // Poll to check if we should go away
