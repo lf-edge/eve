@@ -78,11 +78,6 @@ func RestartStaleControllers(ctx context.Context, status *k3s.ClusterStatus, nod
 	if !flagged {
 		return nil
 	}
-	fi, err := os.Stat(string(ControllerRestartFlag))
-	if err != nil {
-		return fmt.Errorf("stat %s: %w", ControllerRestartFlag, err)
-	}
-	armedAt := fi.ModTime()
 	if status == nil || !status.IsBootstrapNode {
 		// Only the bootstrap migrates its datastore. A joining node's
 		// old pods do not exist in the cluster it joins, so its kubelet
@@ -92,6 +87,11 @@ func RestartStaleControllers(ctx context.Context, status *k3s.ClusterStatus, nod
 	if !kubeclient.HasDefault() {
 		return nil
 	}
+	fi, err := os.Stat(string(ControllerRestartFlag))
+	if err != nil {
+		return fmt.Errorf("stat %s: %w", ControllerRestartFlag, err)
+	}
+	armedAt := fi.ModTime()
 
 	podClient := kubeclient.Default().Clientset.CoreV1().Pods(metav1.NamespaceAll)
 	pods, err := podClient.List(ctx, metav1.ListOptions{
