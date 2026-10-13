@@ -43,9 +43,8 @@ func TestCheckMaxSize(t *testing.T) {
 	}
 	ps := pubsub.New(&driver, logger, log)
 
-	// The values 48000 and 49122 have been determined experimentally
-	// to be what fits and not for this particular struct and string
-	// content.
+	// A string of 900KB fits in the 1MB message limit and one of 1100KB
+	// does not.
 	myCtx := context{}
 	testMatrix := map[string]struct {
 		agentName   string
@@ -58,36 +57,36 @@ func TestCheckMaxSize(t *testing.T) {
 		"File small enough": {
 			agentName: "",
 			//			agentScope: "testscope1",
-			stringSize: 48000,
+			stringSize: 900 * 1024,
 		},
 		"IPC small enough": {
 			agentName: "testagent1",
 			//			agentScope: "testscope",
-			stringSize: 48000,
+			stringSize: 900 * 1024,
 		},
 		"IPC with persistent small enough": {
 			agentName: "testagent2",
 			//			agentScope: "testscope",
 			persistent: true,
-			stringSize: 48000,
+			stringSize: 900 * 1024,
 		},
 		"File too large": {
 			agentName: "",
 			//			agentScope: "testscope1",
-			stringSize: 49122,
+			stringSize: 1100 * 1024,
 			expectFail: true,
 		},
 		"IPC too large": {
 			agentName: "testagent1",
 			//			agentScope: "testscope",
-			stringSize: 49122,
+			stringSize: 1100 * 1024,
 			expectFail: true,
 		},
 		"IPC with persistent too large": {
 			agentName: "testagent2",
 			//			agentScope: "testscope",
 			persistent: true,
-			stringSize: 49122,
+			stringSize: 1100 * 1024,
 			expectFail: true,
 		},
 		"File using large tag": {

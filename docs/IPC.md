@@ -314,9 +314,16 @@ This socket is unique to this table; each table has its own socket.
 
 #### Wire Protocol
 
-The messages exchanged over the socket connection are space-separated plain
-text, sent as individual `unixpacket` datagrams. Keys and values are
-base64-encoded so that they cannot contain spaces. The subscriber opens the
+The socket is a stream (`SOCK_STREAM`) socket. Each message is sent as a frame:
+a 4-byte little-endian length followed by that many bytes of message. A
+message must not exceed 1 MiB; the publisher treats a larger one as a fatal
+error and logs a warning for every new largest message above 64 KiB, so that a
+value growing towards the limit is noticed before it hits it.
+
+The messages are space-separated plain text. Keys are base64-encoded so that
+they cannot contain spaces. A value is the JSON encoding of the table entry,
+sent as is; it is always the last field of a message, so it may contain spaces.
+The subscriber opens the
 conversation by requesting the topic; the publisher answers with a greeting,
 a dump of the current table state and then a stream of incremental updates:
 

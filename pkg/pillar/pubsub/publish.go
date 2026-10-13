@@ -268,7 +268,7 @@ func (pub *PublicationImpl) populate() {
 	}
 	for key, itemB := range pairs {
 		// Just in case large items were stored separately
-		itemB, err = readAddLarge(pub.log, itemB)
+		itemB, err = readAddLarge(pub.log, itemB, pub.nameString())
 		if err != nil {
 			// Handle missing files??
 			pub.log.Error(err)
@@ -319,7 +319,7 @@ func (pub *PublicationImpl) DetermineDiffs(localCollection LocalCollection) []st
 			pub.log.Tracef("determineDiffs(%s): key %s added\n",
 				name, originKey)
 			// Extract large fields and save to file
-			originb, err = writeAndRemoveLarge(pub.log, originb, dirname)
+			originb, err = writeAndRemoveLarge(pub.log, originb, dirname, name)
 			if err != nil {
 				pub.log.Fatal(err)
 			}
@@ -329,7 +329,7 @@ func (pub *PublicationImpl) DetermineDiffs(localCollection LocalCollection) []st
 			pub.log.Tracef("determineDiffs(%s): key %s replacing due to diff\n",
 				name, originKey)
 			// Extract large fields and save to file
-			originb, err = writeAndRemoveLarge(pub.log, originb, dirname)
+			originb, err = writeAndRemoveLarge(pub.log, originb, dirname, name)
 			if err != nil {
 				pub.log.Fatal(err)
 			}
