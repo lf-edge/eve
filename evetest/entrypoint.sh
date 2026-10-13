@@ -16,6 +16,16 @@ if [ -z "$EVETEST_NAME" ]; then
     exec /usr/local/bin/list-tests
 fi
 
+# Run only the packages which define the test. With "./tests/..." go test also
+# builds and starts every other test package, which then print "no tests to run".
+# It also makes a mistyped name an error, instead of a successful run of nothing.
+TEST_PACKAGES=$(find tests -name '*_test.go' -exec grep -lE "^func[[:space:]]+${EVETEST_NAME}[[:space:]]*\(" {} + \
+    | sed 's|/[^/]*$||' | sort -u | sed 's|^|./|')
+if [ -z "$TEST_PACKAGES" ]; then
+    echo "ERROR: test or suite ${EVETEST_NAME} not found under tests/" >&2
+    exit 1
+fi
+
 # Create artifact directory for this test execution
 TIMESTAMP="$(date '+%Y-%m-%d_%H-%M-%S')"
 export EVETEST_ARTIFACT_DIR="/artifacts/${EVETEST_NAME}-${TIMESTAMP}"
@@ -88,9 +98,11 @@ fi
 
 echo "Starting test: $EVETEST_NAME"
 
-# shellcheck disable=SC3001  # process substitution is supported by bash (used in golang image)
+# SC3001: process substitution is supported by bash (used in golang image).
+# SC2086: the package list is split on purpose.
+# shellcheck disable=SC3001,SC2086
 go test $GO_TEST_FLAGS -timeout 0 -parallel 1 -p 1 \
-        -run "^${EVETEST_NAME}$" ./tests/... > >(tee "$GO_TEST_OUTPUT_FILE") &
+        -run "^${EVETEST_NAME}$" $TEST_PACKAGES > >(tee "$GO_TEST_OUTPUT_FILE") &
 GO_TEST_PID=$!
 
 # Setup signal handler for cleanup
