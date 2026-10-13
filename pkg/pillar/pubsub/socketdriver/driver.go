@@ -60,6 +60,7 @@ type SocketDriver struct {
 // Publisher return an implementation of `pubsub.DriverPublisher` for
 // `SocketDriver`
 func (s *SocketDriver) Publisher(global bool, name, topic string, persistent bool, updaterList *pubsub.Updaters, restarted pubsub.Restarted, differ pubsub.Differ) (pubsub.DriverPublisher, error) {
+	logLimits(s.Log)
 	var (
 		dirName, sockName string
 		publishToDir      bool
@@ -167,6 +168,7 @@ func (s *SocketDriver) Publisher(global bool, name, topic string, persistent boo
 // Subscriber return an implementation of `pubsub.DriverSubscriber` for
 // `SocketDriver`
 func (s *SocketDriver) Subscriber(global bool, name, topic string, persistent bool, C chan pubsub.Change) (pubsub.DriverSubscriber, error) {
+	logLimits(s.Log)
 	var (
 		sockName   = s.sockName(name)
 		dirName    string

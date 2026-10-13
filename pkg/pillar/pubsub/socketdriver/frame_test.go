@@ -23,7 +23,7 @@ func payload(size int) []byte {
 }
 
 func TestFrameRoundTrip(t *testing.T) {
-	sizes := []int{0, 1, 1000, poolMaxSize, poolMaxSize + 1, maxsize}
+	sizes := []int{0, 1, 1000, poolMaxSize, poolMaxSize + 1, maxFrameSize()}
 	var stream bytes.Buffer
 	for _, size := range sizes {
 		if err := WriteFrame(&stream, payload(size)); err != nil {
@@ -48,8 +48,8 @@ func TestFrameRoundTrip(t *testing.T) {
 
 func TestWriteFrameRejectsOversized(t *testing.T) {
 	var stream bytes.Buffer
-	if err := WriteFrame(&stream, payload(maxsize+1)); err == nil {
-		t.Fatal("expected an error for a frame larger than maxsize")
+	if err := WriteFrame(&stream, payload(maxFrameSize()+1)); err == nil {
+		t.Fatal("expected an error for a frame larger than maxFrameSize")
 	}
 	if stream.Len() != 0 {
 		t.Fatalf("oversized frame must not be written, got %d bytes", stream.Len())
@@ -63,7 +63,7 @@ func TestFrameReaderRejectsOversizedLength(t *testing.T) {
 	stream.Write(hdr[:])
 	fr := NewFrameReader(&stream)
 	if _, err := fr.ReadFrame(); err == nil {
-		t.Fatal("expected an error for a length prefix larger than maxsize")
+		t.Fatal("expected an error for a length prefix larger than maxFrameSize")
 	}
 	if fr.buf != nil {
 		t.Fatalf("a buffer was taken for a rejected frame")
