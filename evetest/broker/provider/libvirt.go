@@ -139,6 +139,10 @@ func (p *LibvirtProvider) DiskImageStrategy() DiskImageStrategy {
 func (p *LibvirtProvider) SetupDevice(
 	ctx context.Context, name string, spec DeviceSpec) error {
 	log := logger.FromContext(ctx)
+	if err := checkDiskMedia(spec.Disks); err != nil {
+		log.Error(err)
+		return err
+	}
 
 	// Network definition
 	var interfaces []libvirtxml.DomainInterface
@@ -959,6 +963,9 @@ func (p *LibvirtProvider) lookupDomainByName(name string) (*libvirt.Domain, erro
 func (p *LibvirtProvider) ReconfigureDeviceDisks(
 	ctx context.Context, name string, newDisks []DiskImage) error {
 	log := logger.FromContext(ctx)
+	if err := checkDiskMedia(newDisks); err != nil {
+		return err
+	}
 
 	dom, err := p.lookupDomainByName(name)
 	if err != nil {

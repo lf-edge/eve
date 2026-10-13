@@ -411,6 +411,11 @@ type deviceState struct {
 	// broker sharing this filesystem installs the template by reading them
 	// instead of taking an upload of bytes it can already see.
 	liveImageSource *api.LocalLiveImageSource
+	// installerImage and installerSource are the installer counterparts of
+	// liveImage and liveImageSource, set only when EVETEST_EVE_LIVE_IMAGE
+	// delivers the local build to a device whose policy boots an installer.
+	installerImage  *api.LocalInstallerImageRef
+	installerSource *api.LocalInstallerImageSource
 	spec            *api.EVEDevice
 	ID              uuid.UUID
 	onboardCert     *x509.Certificate

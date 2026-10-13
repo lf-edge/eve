@@ -69,7 +69,22 @@ func qcow2FromRaw(t *testing.T, raw []byte) []byte {
 
 func liveTarMembers(t *testing.T) map[string][]byte {
 	t.Helper()
-	head, err := os.ReadFile("testdata/gpt-head-live.bin")
+	return tarMembersFromHead(t, "testdata/gpt-head-live.bin")
+}
+
+// installerTarMembers is liveTarMembers for a raw installer: the upload a
+// harness sends for one has the same members, its disk being the installer
+// converted to qcow2.
+func installerTarMembers(t *testing.T) map[string][]byte {
+	t.Helper()
+	return tarMembersFromHead(t, "testdata/gpt-head-installer.bin")
+}
+
+// tarMembersFromHead builds an upload's members around a disk whose leading
+// bytes are the given GPT fixture.
+func tarMembersFromHead(t *testing.T, fixture string) map[string][]byte {
+	t.Helper()
+	head, err := os.ReadFile(fixture)
 	if err != nil {
 		t.Fatalf("fixture: %v", err)
 	}
@@ -154,6 +169,28 @@ func TestUnpackLiveTemplateVerifiesDiskHash(t *testing.T) {
 	}
 	if part.Length == 0 {
 		t.Error("expected a non-zero CONFIG partition length")
+	}
+}
+
+// TestUnpackLiveTemplateInstallerLayout covers the upload path of a raw
+// installer: the same tar format as a live image, with the CONFIG partition
+// found where the installer layout puts it -- after the 2 GiB EFI system
+// partition -- rather than where a live image has it.
+func TestUnpackLiveTemplateInstallerLayout(t *testing.T) {
+	dir := t.TempDir()
+	tarPath := filepath.Join(dir, "u.tar")
+	members := installerTarMembers(t)
+	writeLiveTar(t, tarPath, members)
+
+	log := logrus.NewEntry(logrus.New())
+	log.Logger.SetOutput(io.Discard)
+	part, err := unpackLiveTemplate(tarPath, liveTarDiskSHA256(members))(
+		context.Background(), log, t.TempDir())
+	if err != nil {
+		t.Fatalf("unpackLiveTemplate: %v", err)
+	}
+	if part.Length != 5<<20 || part.Offset < 2<<30 {
+		t.Errorf("CONFIG partition = %+v, want 5 MiB after the 2 GiB EFI partition", part)
 	}
 }
 

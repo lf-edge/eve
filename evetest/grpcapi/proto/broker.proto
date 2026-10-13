@@ -30,8 +30,9 @@ service Broker {
   rpc BuildImage(BuildImageRequest) returns (BuildImageResponse);
   // PushEVEContainerImage streams a pre-built EVE container image to the broker.
   rpc PushEVEContainerImage(stream PushImageChunk) returns (PushImageResponse);
-  // Uploads a locally built EVE live image as a tar stream containing
-  // live.qcow2, config.img and firmware/*.
+  // Uploads a locally built EVE live image, or a local raw installer image
+  // converted to qcow2, as a tar stream containing disk.qcow2, config.img and
+  // firmware/*.
   rpc PushEVELiveImage(stream PushLiveImageChunk) returns (PushLiveImageResponse);
 
   // Provision and start up EVE devices and SDN for the client.
@@ -171,6 +172,22 @@ message BuildImageRequest {
   // delivers a pre-built bootable disk, the opposite of what this device
   // needs.
   bool network_boot = 10;
+  // The medium the device's EVE installer is delivered on, for a device that
+  // installs EVE: RAW or ISO with make_installer, NET with network_boot.
+  // Unspecified means the medium those flags have always implied (a raw
+  // installer, or a network boot). A broker refuses a medium it cannot build,
+  // rather than building another one.
+  InstallerMedia installer_media = 11;
+  // When set, the device boots a locally built EVE installer image on
+  // installer_media instead of one built from `image`. It is only honoured by
+  // a broker advertising the matching CAPABILITY_LOCAL_INSTALLER_<MEDIA>: an
+  // older broker ignores it, so a client must check that capability before
+  // sending it. installer_media must be set; live_image must not be.
+  LocalInstallerImageRef local_installer_image = 12;
+  // Where the client's installer image files are, the counterpart of
+  // live_image_source for local_installer_image. Advisory only, exactly as
+  // LocalLiveImageSource is.
+  LocalInstallerImageSource local_installer_source = 13;
 }
 
 // LocalLiveImageSource points at the files behind a LiveImageRef on the
@@ -188,9 +205,30 @@ message LocalLiveImageSource {
   string firmware_dir = 4;    // absolute path to the dir holding OVMF*.fd
 }
 
+// LocalInstallerImageSource points at the files behind a
+// LocalInstallerImageRef on the client's filesystem, with the same advisory
+// contract as LocalLiveImageSource: a broker that cannot use them reports
+// missing_eve_live_image and takes the upload instead.
+//
+// image_path is the image whose content hashes to the reference's sha256. For
+// INSTALLER_MEDIA_RAW that is not installer.raw itself but the compressed
+// qcow2 the client converts it to: the raw image is about 2.5 GiB, most of it
+// an empty EFI partition that compresses away, and everything that handles a
+// template disk expects qcow2.
+message LocalInstallerImageSource {
+  string image_path = 1;      // absolute path to the delivered installer image
+  int64 image_bytes = 2;      // its size, checked before its content is read
+  string config_img_path = 3; // absolute path to installer/config.img
+  string firmware_dir = 4;    // absolute path to the dir holding OVMF*.fd
+}
+
 // Response to a BuildImageRequest, indicating if broker is missing the EVE container image.
 message BuildImageResponse {
   bool missing_eve_container_image = 1;
+  // The broker holds neither the template nor a staged upload for the local
+  // image the request named -- live_image, or local_installer_image -- and
+  // cannot read it in place. The client uploads it with PushEVELiveImage,
+  // which stages any local image by its content hash, and retries.
   bool missing_eve_live_image = 2;
 }
 
@@ -230,7 +268,10 @@ message PushLiveImageChunk {
   }
 }
 
-// PushLiveImageRequest contains metadata describing the EVE live image to be uploaded.
+// PushLiveImageRequest contains metadata describing the EVE live image to be
+// uploaded. A local installer image is uploaded the same way, its hash in
+// live_image.sha256: the upload is staged by content hash alone, and how it is
+// installed is decided by the BuildImageRequest that consumes it.
 message PushLiveImageRequest {
   string client_id = 1;
   LiveImageRef live_image = 2;

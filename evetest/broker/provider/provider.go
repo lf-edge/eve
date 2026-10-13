@@ -5,6 +5,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net"
 
@@ -149,6 +150,32 @@ const (
 	DiskImageOverlay
 )
 
+// DiskImageMedia is the kind of device a disk image is presented to the guest
+// as.
+type DiskImageMedia int32
+
+const (
+	// DiskImageMediaDisk is a writable disk, the default: every image the
+	// broker attaches is one, except an installer ISO.
+	DiskImageMediaDisk DiskImageMedia = iota
+	// DiskImageMediaCdrom is a read-only CD-ROM, which is how an EVE installer
+	// ISO boots. It maps to `media=cdrom` for qemu, `<disk device='cdrom'>` for
+	// libvirt and an `ide2` CD-ROM for Proxmox. Like any installer image it is
+	// dropped by ReconfigureDeviceDisks once the installer has powered off.
+	DiskImageMediaCdrom
+)
+
+// String returns the media name used in logs and errors.
+func (m DiskImageMedia) String() string {
+	switch m {
+	case DiskImageMediaDisk:
+		return "disk"
+	case DiskImageMediaCdrom:
+		return "cdrom"
+	}
+	return fmt.Sprintf("DiskImageMedia(%d)", int32(m))
+}
+
 // DiskImage describes a single disk to attach to a device.
 type DiskImage struct {
 	// Format is the on-disk format of the image file.
@@ -156,6 +183,9 @@ type DiskImage struct {
 	// Path is the filesystem path to the image file.
 	// The file must already exist when SetupDevice is called.
 	Path string
+	// Media is how the image is presented to the guest. The zero value is a
+	// writable disk.
+	Media DiskImageMedia
 }
 
 // DeviceSpec defines the configuration for a compute device.

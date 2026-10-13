@@ -112,6 +112,36 @@ func TestFindGPTPartitionRealImage(t *testing.T) {
 	}
 }
 
+// TestFindGPTPartitionRealInstallerImage runs the parser against the leading
+// 16 KiB of a real installer.raw (`make installer-raw`), whose layout differs
+// from the live image's: make-raw's do_conf_win puts the CONFIG partition after
+// a 2 GiB EFI system partition, and numbers it 4. A local raw installer gets
+// the device's config injected there, exactly as the container path does.
+func TestFindGPTPartitionRealInstallerImage(t *testing.T) {
+	head, err := os.ReadFile("testdata/gpt-head-installer.bin")
+	if err != nil {
+		t.Skipf("fixture not available: %v", err)
+	}
+	got, err := findGPTPartition(head, gptConfigPartName)
+	if err != nil {
+		t.Fatalf("findGPTPartition: %v", err)
+	}
+	const configPartSize = 5 * 1024 * 1024
+	if got.Length != configPartSize {
+		t.Errorf("Length = %d, want %d (make-raw CONF_PART_SIZE)", got.Length, configPartSize)
+	}
+	if got.Offset%(1<<20) != 0 {
+		t.Errorf("Offset = %d, expected 1 MiB alignment", got.Offset)
+	}
+	if got.Offset < 2<<30 {
+		t.Errorf("Offset = %d, expected CONFIG after the 2 GiB EFI system partition",
+			got.Offset)
+	}
+	if _, err := findGPTPartition(head, "INSTALLER"); err != nil {
+		t.Errorf("findGPTPartition(INSTALLER): %v -- is this an installer image?", err)
+	}
+}
+
 // TestFindGPTPartitionOverflowingHeader covers a corrupt header whose entry
 // array location overflows int64: the offset wraps negative, which an
 // upper-bound-only check would let through into a panicking slice.

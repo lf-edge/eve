@@ -63,8 +63,9 @@ type BrokerClient interface {
 	BuildImage(ctx context.Context, in *BuildImageRequest, opts ...grpc.CallOption) (*BuildImageResponse, error)
 	// PushEVEContainerImage streams a pre-built EVE container image to the broker.
 	PushEVEContainerImage(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[PushImageChunk, PushImageResponse], error)
-	// Uploads a locally built EVE live image as a tar stream containing
-	// live.qcow2, config.img and firmware/*.
+	// Uploads a locally built EVE live image, or a local raw installer image
+	// converted to qcow2, as a tar stream containing disk.qcow2, config.img and
+	// firmware/*.
 	PushEVELiveImage(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[PushLiveImageChunk, PushLiveImageResponse], error)
 	// Provision and start up EVE devices and SDN for the client.
 	SetupDevices(ctx context.Context, in *SetupDevicesRequest, opts ...grpc.CallOption) (*SetupDevicesResponse, error)
@@ -313,8 +314,9 @@ type BrokerServer interface {
 	BuildImage(context.Context, *BuildImageRequest) (*BuildImageResponse, error)
 	// PushEVEContainerImage streams a pre-built EVE container image to the broker.
 	PushEVEContainerImage(grpc.ClientStreamingServer[PushImageChunk, PushImageResponse]) error
-	// Uploads a locally built EVE live image as a tar stream containing
-	// live.qcow2, config.img and firmware/*.
+	// Uploads a locally built EVE live image, or a local raw installer image
+	// converted to qcow2, as a tar stream containing disk.qcow2, config.img and
+	// firmware/*.
 	PushEVELiveImage(grpc.ClientStreamingServer[PushLiveImageChunk, PushLiveImageResponse]) error
 	// Provision and start up EVE devices and SDN for the client.
 	SetupDevices(context.Context, *SetupDevicesRequest) (*SetupDevicesResponse, error)
