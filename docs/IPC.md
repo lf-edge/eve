@@ -315,10 +315,20 @@ This socket is unique to this table; each table has its own socket.
 #### Wire Protocol
 
 The socket is a stream (`SOCK_STREAM`) socket. Each message is sent as a frame:
-a 4-byte little-endian length followed by that many bytes of message. A
-message must not exceed 1 MiB; the publisher treats a larger one as a fatal
-error and logs a warning for every new largest message above 64 KiB, so that a
-value growing towards the limit is noticed before it hits it.
+a 4-byte little-endian length followed by that many bytes of message. A frame
+carries at most 1 MiB. A message up to 1 MiB is sent as it is; a larger one is
+compressed with zstd and sent with the top bit of the length set, and it must
+compress into 1 MiB and be at most 128 MiB uncompressed. Values which repeat
+the same content, such as the proxy configuration in every port of every
+`DevicePortConfig` of a `DevicePortConfigList`, compress by orders of
+magnitude.
+
+A value that does not fit is refused, never sent: `Publish` returns an error
+before the value is stored or checkpointed, logs it and counts it in the
+`refused` counter of `/debug/pubsub/stats`, and the publisher skips such a
+value if it reaches it otherwise, e.g. from a checkpoint. The publisher also
+logs a warning for every new largest message above 64 KiB, so that a value
+growing towards the limit is noticed before it hits it.
 
 The messages are space-separated plain text. Keys are base64-encoded so that
 they cannot contain spaces. A value is the JSON encoding of the table entry,

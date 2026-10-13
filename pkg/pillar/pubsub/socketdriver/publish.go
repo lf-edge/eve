@@ -451,15 +451,14 @@ func (s *Publisher) sendComplete(sock net.Conn) error {
 	return s.send(sock, []byte(buf), "")
 }
 
-// send writes msg as one frame. A message larger than maxsize is a bug in
-// the publishing agent, hence fatal. A message larger than warnSize is
-// logged whenever the publication reaches a new largest size.
+// send writes msg as one frame, compressed if it is larger than maxsize. A
+// message which does not fit even compressed is not sent: Publish refuses
+// such values, so only a checkpoint written by another version of EVE can
+// bring one here, and it must not make the publisher exit on every boot. A
+// message larger than warnSize is logged whenever the publication reaches
+// a new largest size.
 func (s *Publisher) send(sock net.Conn, msg []byte, key string) error {
 	size := int64(len(msg))
-	if size > maxsize {
-		s.log.Fatalf("Too large message (%d bytes) sent to %s topic %s key %s",
-			size, s.name, s.topic, key)
-	}
 	s.stats.AddMessage(len(msg))
 	if size > warnSize {
 		s.stats.LargeWarnings.Add(1)
@@ -470,21 +469,35 @@ func (s *Publisher) send(sock net.Conn, msg []byte, key string) error {
 			break
 		}
 		if s.largestSent.CompareAndSwap(largest, size) {
-			s.log.Warnf("Large message (%d bytes, max %d) sent to %s topic %s key %s",
+			s.log.Warnf("Large message (%d bytes, max %d uncompressed) sent to %s topic %s key %s",
 				size, maxsize, s.name, s.topic, key)
 			break
 		}
 	}
-	return WriteFrame(sock, msg)
+	if size <= maxsize {
+		return WriteFrame(sock, msg)
+	}
+	frame, err := compress(msg)
+	if err != nil {
+		s.stats.Refused.Add(1)
+		s.log.Errorf("Not sending to %s topic %s key %s: %v",
+			s.name, s.topic, key, err)
+		return nil
+	}
+	s.stats.CompressedMessages.Add(1)
+	s.stats.CompressedBytes.Add(int64(len(frame)))
+	return writeFrame(sock, frame, true)
 }
 
-// CheckMaxSize returns an error if too large
+// CheckMaxSize returns an error if the value does not fit in a message:
+// one larger than maxsize must compress into maxsize bytes.
 func (s *Publisher) CheckMaxSize(key string, val []byte) error {
 	s.log.Tracef("CheckMaxSize(%s): key %s\n", s.name, key)
-	size := s.updateMessageLen(key, val)
-	if size > maxsize {
-		return fmt.Errorf("key %s serialized to size %d exceeds max %d",
-			key, size, maxsize)
+	if s.updateMessageLen(key, val) <= maxsize {
+		return nil
+	}
+	if _, err := compress(s.updateMessage(key, val)); err != nil {
+		return fmt.Errorf("key %s: %w", key, err)
 	}
 	return nil
 }

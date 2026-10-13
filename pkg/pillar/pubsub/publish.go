@@ -106,11 +106,25 @@ func (pub *PublicationImpl) Publish(key string, item interface{}) error {
 	}
 	// Perform a deepCopy in case the caller might change a map etc
 	newItem := DeepCopy(pub.log, item)
-	if m, ok := pub.km.key.Load(key); ok {
-		if cmp.Equal(m, newItem) {
-			pub.log.Tracef("Publish(%s/%s) unchanged\n", name, key)
-			return nil
-		}
+	m, ok := pub.km.key.Load(key)
+	if ok && cmp.Equal(m, newItem) {
+		pub.log.Tracef("Publish(%s/%s) unchanged\n", name, key)
+		return nil
+	}
+	// marshal to json bytes to send to the driver
+	b, err := json.Marshal(item)
+	if err != nil {
+		pub.log.Fatal("json Marshal in Publish", err)
+	}
+	// Refuse a value which does not fit in a message before it is stored or
+	// checkpointed: sending it would fail on every connection, and after
+	// every reboot if checkpointed.
+	if err := pub.driver.CheckMaxSize(key, b); err != nil {
+		PublicationStats(name).Refused.Add(1)
+		pub.log.Errorf("Publish(%s/%s) refused: %v", name, key, err)
+		return err
+	}
+	if ok {
 		// DO NOT log Values. They may contain sensitive information.
 		pub.log.Tracef("Publish(%s/%s) replacing due to diff\n",
 			name, key)
@@ -133,12 +147,6 @@ func (pub *PublicationImpl) Publish(key string, item interface{}) error {
 		pub.dump("after Publish")
 	}
 	pub.updatersNotify(name)
-	// marshal to json bytes to send to the driver
-	b, err := json.Marshal(item)
-	if err != nil {
-		pub.log.Fatal("json Marshal in Publish", err)
-	}
-
 	return pub.driver.Publish(key, b)
 }
 

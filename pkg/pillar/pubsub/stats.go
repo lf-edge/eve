@@ -17,6 +17,10 @@ type PubStats struct {
 	Bytes         atomic.Int64
 	MaxMessage    atomic.Int64
 	LargeWarnings atomic.Int64 // messages above the warning size
+
+	CompressedMessages atomic.Int64 // messages above the frame size, sent compressed
+	CompressedBytes    atomic.Int64 // their size on the wire
+	Refused            atomic.Int64 // values too large even compressed
 }
 
 // SubStats counts what the subscriptions to a publication received, over
@@ -28,6 +32,9 @@ type SubStats struct {
 	MaxFrame         atomic.Int64
 	RetainedBufBytes atomic.Int64 // read buffers held while frames are read
 	OversizedFrames  atomic.Int64 // frames read into a one-off buffer
+
+	CompressedFrames  atomic.Int64 // compressed frames received
+	DecompressedBytes atomic.Int64 // the size of their messages
 }
 
 var (
@@ -78,6 +85,10 @@ func (s *PubStats) snapshot() map[string]int64 {
 		"bytes":          s.Bytes.Load(),
 		"max_message":    s.MaxMessage.Load(),
 		"large_warnings": s.LargeWarnings.Load(),
+
+		"compressed_messages": s.CompressedMessages.Load(),
+		"compressed_bytes":    s.CompressedBytes.Load(),
+		"refused":             s.Refused.Load(),
 	}
 }
 
@@ -89,6 +100,8 @@ func (s *SubStats) snapshot() map[string]int64 {
 		"max_frame":          s.MaxFrame.Load(),
 		"retained_buf_bytes": s.RetainedBufBytes.Load(),
 		"oversized_frames":   s.OversizedFrames.Load(),
+		"compressed_frames":  s.CompressedFrames.Load(),
+		"decompressed_bytes": s.DecompressedBytes.Load(),
 	}
 }
 
