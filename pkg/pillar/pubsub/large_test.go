@@ -39,7 +39,7 @@ func TestRemoveAndAddLarge(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cannot marshal %v: %s", originalObject, err)
 	}
-	originb, err = writeAndRemoveLarge(log, originb, rootPath)
+	originb, err = writeAndRemoveLarge(log, originb, rootPath, "largetest")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestRemoveAndAddLarge(t *testing.T) {
 		t.Errorf("cannot find directory (%s) in %s %s", rootPath, tagFile+"LargeNestedData", largeNestedDataString)
 	}
 
-	originb, err = readAddLarge(log, originb)
+	originb, err = readAddLarge(log, originb, "largetest")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +158,7 @@ func TestRemoveAndAddLargeWithArray(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cannot marshal %v: %s", originalObject, err)
 	}
-	originb, err = writeAndRemoveLarge(log, originb, rootPath)
+	originb, err = writeAndRemoveLarge(log, originb, rootPath, "largetest")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +214,7 @@ func TestRemoveAndAddLargeWithArray(t *testing.T) {
 		}
 	}
 
-	originb, err = readAddLarge(log, originb)
+	originb, err = readAddLarge(log, originb, "largetest")
 	if err != nil {
 		t.Fatal(err)
 	}
