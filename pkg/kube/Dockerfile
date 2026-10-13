@@ -148,6 +148,10 @@ RUN chmod +x /usr/bin/k3s-control /usr/bin/k3s-sctl && \
     ln -s /usr/bin/k3s-control /usr/bin/k3s-start && \
     ln -s /usr/bin/k3s-control /usr/bin/k3s-status
 
+# pillar's RolloutDiskToPVC reads only virtctl image-upload's stderr: it
+# relies on the progress bar and status lines going to stdout, and on the
+# returned error ("already successfully imported" included) going to stderr.
+# Re-verify that split when bumping this version.
 ENV VIRTCTL_VERSION=v1.7.3
 ADD https://github.com/kubevirt/kubevirt/releases/download/${VIRTCTL_VERSION}/virtctl-${VIRTCTL_VERSION}-linux-${TARGETARCH} .
 
