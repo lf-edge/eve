@@ -219,14 +219,6 @@ func handleModify(ctxArg interface{}, key string, itemcb []byte) {
 	sub := ctxArg.(*SubscriptionImpl)
 	name := sub.nameString()
 	sub.log.Tracef("pubsub.handleModify(%s) key %s\n", name, key)
-	// Any large items which were stored separately?
-	itemcb, err := readAddLarge(sub.log, itemcb, name)
-	if err != nil {
-		errStr := fmt.Sprintf("handleModify(%s): readAddLarge failed %s",
-			name, err)
-		sub.log.Errorln(errStr)
-		return
-	}
 	item, err := parseTemplate(sub.log, itemcb, sub.topicType)
 	if err != nil {
 		errStr := fmt.Sprintf("handleModify(%s): json failed %s",

@@ -173,11 +173,6 @@ func (s *Subscriber) Stop() error {
 	}
 }
 
-// LargeDirName where to put large fields
-func (s *Subscriber) LargeDirName() string {
-	return fmt.Sprintf("%s/persist/pubsub-large", s.rootDir)
-}
-
 func (s *Subscriber) watchSock() {
 	for {
 		msg, key, val := s.connectAndRead()

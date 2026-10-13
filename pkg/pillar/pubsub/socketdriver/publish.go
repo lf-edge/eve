@@ -273,15 +273,6 @@ func (s *Publisher) Restart(restartCounter int) error {
 	return nil
 }
 
-// LargeDirName where to put large fields
-// Note that this is in /persist to avoid using overlayfs aka memory for
-// content which might be Megabytes in size, but there is no assumption that
-// it is persisted across reboots. In fact, the directory should be cleaned up
-// on boot since we do not garbage collect old files from here.
-func (s *Publisher) LargeDirName() string {
-	return fmt.Sprintf("%s/persist/pubsub-large", s.rootDir)
-}
-
 func (s *Publisher) serveConnection(conn net.Conn, instance int) {
 	s.log.Functionf("serveConnection(%s/%d)\n", s.name, instance)
 	defer conn.Close()

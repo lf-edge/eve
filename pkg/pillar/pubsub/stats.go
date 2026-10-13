@@ -12,13 +12,11 @@ import (
 
 // PubStats counts what a publication sent, over all its subscribers.
 type PubStats struct {
-	Connections       atomic.Int64 // subscriber connections being served
-	Messages          atomic.Int64
-	Bytes             atomic.Int64
-	MaxMessage        atomic.Int64
-	LargeWarnings     atomic.Int64 // messages above the warning size
-	LargeFilesWritten atomic.Int64 // pubsub-large files
-	LargeBytesWritten atomic.Int64
+	Connections   atomic.Int64 // subscriber connections being served
+	Messages      atomic.Int64
+	Bytes         atomic.Int64
+	MaxMessage    atomic.Int64
+	LargeWarnings atomic.Int64 // messages above the warning size
 }
 
 // SubStats counts what the subscriptions to a publication received, over
@@ -30,7 +28,6 @@ type SubStats struct {
 	MaxFrame         atomic.Int64
 	RetainedBufBytes atomic.Int64 // read buffers held while frames are read
 	OversizedFrames  atomic.Int64 // frames read into a one-off buffer
-	LargeFilesRead   atomic.Int64 // pubsub-large files
 }
 
 var (
@@ -76,13 +73,11 @@ func storeMax(max *atomic.Int64, v int64) {
 
 func (s *PubStats) snapshot() map[string]int64 {
 	return map[string]int64{
-		"connections":         s.Connections.Load(),
-		"messages":            s.Messages.Load(),
-		"bytes":               s.Bytes.Load(),
-		"max_message":         s.MaxMessage.Load(),
-		"large_warnings":      s.LargeWarnings.Load(),
-		"large_files_written": s.LargeFilesWritten.Load(),
-		"large_bytes_written": s.LargeBytesWritten.Load(),
+		"connections":    s.Connections.Load(),
+		"messages":       s.Messages.Load(),
+		"bytes":          s.Bytes.Load(),
+		"max_message":    s.MaxMessage.Load(),
+		"large_warnings": s.LargeWarnings.Load(),
 	}
 }
 
@@ -94,7 +89,6 @@ func (s *SubStats) snapshot() map[string]int64 {
 		"max_frame":          s.MaxFrame.Load(),
 		"retained_buf_bytes": s.RetainedBufBytes.Load(),
 		"oversized_frames":   s.OversizedFrames.Load(),
-		"large_files_read":   s.LargeFilesRead.Load(),
 	}
 }
 
