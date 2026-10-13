@@ -6,9 +6,12 @@
 package kubeapi
 
 import (
+	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	corev1 "k8s.io/api/core/v1"
 )
@@ -119,5 +122,39 @@ func TestNewPVCDefinitionRequestsRoundedSize(t *testing.T) {
 	}
 	if got%longhornVolumeBlockSize != 0 {
 		t.Errorf("claim requests %d bytes, not a multiple of %d", got, longhornVolumeBlockSize)
+	}
+}
+
+func TestVirtctlFailure(t *testing.T) {
+	exitErr := errors.New("exit status 1")
+
+	got := virtctlFailure([]byte("dial tcp 127.0.0.1:6443: connect: connection refused\n"+
+		"\nGet \"https://127.0.0.1:6443/api\": connection refused\n"), exitErr)
+	want := "dial tcp 127.0.0.1:6443: connect: connection refused; " +
+		"Get \"https://127.0.0.1:6443/api\": connection refused: exit status 1"
+	if got != want {
+		t.Errorf("virtctlFailure() = %q, want %q", got, want)
+	}
+
+	if got := virtctlFailure(nil, exitErr); got != "exit status 1" {
+		t.Errorf("virtctlFailure(no stderr) = %q", got)
+	}
+
+	// A chatty logger ahead of the real error: the cap keeps the tail, which
+	// is where virtctl prints the error it returns.
+	noise := strings.Repeat(`{"level":"info","msg":"retrying"}`+"\n", 2000)
+	got = virtctlFailure([]byte(noise+"Provisioning failed: volume already exists\n"), exitErr)
+	if len(got) != maxVirtctlFailureLen {
+		t.Errorf("len = %d, want %d", len(got), maxVirtctlFailureLen)
+	}
+	if !strings.HasPrefix(got, "...") ||
+		!strings.HasSuffix(got, "Provisioning failed: volume already exists: exit status 1") {
+		t.Errorf("tail not kept: %q", got[len(got)-80:])
+	}
+
+	// The cut must not leave a split rune behind.
+	got = virtctlFailure([]byte(strings.Repeat("é", 2000)), exitErr)
+	if !utf8.ValidString(got) || len(got) > maxVirtctlFailureLen {
+		t.Errorf("invalid or oversized after cut: valid=%v len=%d", utf8.ValidString(got), len(got))
 	}
 }
