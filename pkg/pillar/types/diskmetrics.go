@@ -36,7 +36,6 @@ var ReportDirPaths = []string{
 	PersistDir + "/checkpoint",
 	PersistDir + "/containerd-system-root",
 	PersistDir + "/netdump",
-	PersistDir + "/pubsub-large",
 	PersistDir + "/reserved",
 	PersistDir + "/etcd-storage",
 	PersistDir + "/witness-storage",

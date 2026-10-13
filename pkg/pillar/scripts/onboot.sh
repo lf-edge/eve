@@ -188,9 +188,8 @@ percent_used() {
     fi
 }
 
-# /persist/pubsub-large does not need to be persisted across reboots, but
-# is in /persist to avoid using overlayfs aka memory for content which might
-# be Megabytes in size
+# EVE versions before pubsub carried large fields inline wrote them to
+# /persist/pubsub-large; remove what they left behind.
 rm -rf /persist/pubsub-large
 
 # free_space <dataset name> (without leading '/')

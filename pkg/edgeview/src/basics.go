@@ -39,7 +39,6 @@ var (
 	netopts       []string
 	pubsubopts    []string
 	pubsubpersist []string
-	pubsublarge   []string
 	sysopts       []string
 	logdirectory  []string
 	basics        basicItems
@@ -109,10 +108,6 @@ func initOpts() {
 		"zedclient",
 		"zedmanager",
 		"zedrouter"}
-
-	pubsublarge = []string{
-		"zedagent",
-		"zedmanager"}
 
 	sysopts = []string{
 		"app",

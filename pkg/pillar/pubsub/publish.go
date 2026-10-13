@@ -88,11 +88,6 @@ func (pub *PublicationImpl) CheckMaxSize(key string, item interface{}) error {
 	if err != nil {
 		pub.log.Fatal("json Marshal in CheckMaxSize", err)
 	}
-	// Remove the large items which would use files
-	b, err = removeLarge(pub.log, b, pub.driver.LargeDirName())
-	if err != nil {
-		return err
-	}
 	return pub.driver.CheckMaxSize(key, b)
 }
 
@@ -144,8 +139,6 @@ func (pub *PublicationImpl) Publish(key string, item interface{}) error {
 		pub.log.Fatal("json Marshal in Publish", err)
 	}
 
-	// We pass the full json to the driver including any pubsub-large
-	// items to have a complete checkpoint.
 	return pub.driver.Publish(key, b)
 }
 
@@ -267,12 +260,6 @@ func (pub *PublicationImpl) populate() {
 		return
 	}
 	for key, itemB := range pairs {
-		// Just in case large items were stored separately
-		itemB, err = readAddLarge(pub.log, itemB, pub.nameString())
-		if err != nil {
-			// Handle missing files??
-			pub.log.Error(err)
-		}
 		item, err := parseTemplate(pub.log, itemB, pub.topicType)
 		if err != nil {
 			// Handle bad files such as those of size zero
@@ -296,7 +283,6 @@ func (pub *PublicationImpl) DetermineDiffs(localCollection LocalCollection) []st
 	var keys []string
 	name := pub.nameString()
 	items := pub.GetAll()
-	dirname := fmt.Sprintf("%s/%s", pub.driver.LargeDirName(), pub.nameString())
 	// Look for deleted
 	for localKey := range localCollection {
 		_, ok := items[localKey]
@@ -318,21 +304,11 @@ func (pub *PublicationImpl) DetermineDiffs(localCollection LocalCollection) []st
 		if local == nil {
 			pub.log.Tracef("determineDiffs(%s): key %s added\n",
 				name, originKey)
-			// Extract large fields and save to file
-			originb, err = writeAndRemoveLarge(pub.log, originb, dirname, name)
-			if err != nil {
-				pub.log.Fatal(err)
-			}
 			localCollection[originKey] = originb
 			keys = append(keys, originKey)
 		} else if bytes.Compare(originb, local) != 0 {
 			pub.log.Tracef("determineDiffs(%s): key %s replacing due to diff\n",
 				name, originKey)
-			// Extract large fields and save to file
-			originb, err = writeAndRemoveLarge(pub.log, originb, dirname, name)
-			if err != nil {
-				pub.log.Fatal(err)
-			}
 			localCollection[originKey] = originb
 			keys = append(keys, originKey)
 		} else {
