@@ -88,6 +88,10 @@ import (
 //   - TestAppRestart -- controller-requested restarts (restart counter
 //     bumps, no purge) bring the app back to RUNNING; regression test for
 //     a stale QMP handler quitting the re-created domain.
+//   - TestAppTeardownWithRemovedAdapter -- the app and the model entry of
+//     its assigned adapter are deleted in one configuration; the device
+//     must release the adapter without the entry and not reboot; regression
+//     test for a crash of domainmgr at the release.
 //   - TestHaltAfterImmediateDeactivate -- an app stopped in the same second
 //     it reports RUNNING still halts promptly; regression test for the
 //     graceful budget an unset virtualization mode used to be granted.
@@ -159,6 +163,9 @@ func TestAppsSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestAppRestart,
+		},
+		evetest.TestCase{
+			Test: TestAppTeardownWithRemovedAdapter,
 		},
 		evetest.TestCase{
 			Test: TestHaltAfterImmediateDeactivate,
