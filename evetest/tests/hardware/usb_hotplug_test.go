@@ -32,7 +32,8 @@ const (
 // TestUSBFlashDriveHotplug verifies that a USB flash drive hot-plugged into the
 // running device through the hypervisor is enumerated by EVE, is passed
 // through to an application that claims it in the device model by its bus and
-// port, and follows unplugging and re-plugging while that application runs.
+// port, follows unplugging and re-plugging while that application runs, and
+// is passed through as well when claimed by a bus-wide usbaddr wildcard.
 //
 // The drive is QEMU's emulated usb-storage device backed by a blank scratch
 // image on the hypervisor host, attached to the EVE VM's xHCI controller by
@@ -70,6 +71,8 @@ const (
 //     in an assignment group of its own, and the ubuntu test container as an
 //     HVM app with a VIF on the network instance (sshd port-forwarded) and
 //     "usb-flash" as directly assigned adapter.
+//   - Phase 7 replaces the entry and the app by "usb-flash-wildcard", claiming
+//     the drive's bus with a "bus:*" usbaddr, and an app assigned that.
 //
 // Phases / assertions
 // -------------------
@@ -94,6 +97,11 @@ const (
 //     enumerates the drive at the same bus and port again (the helper plugs a
 //     re-plugged drive into the port it left) and it is enumerated inside the
 //     running app again, i.e. usbmanager hot-plugged it into the live domain.
+//
+//  7. flash-drive-wildcard-passed-through: the drive is detached and the app
+//     stopped; a second app claims the drive's whole bus with a "bus:*"
+//     usbaddr wildcard under another label, and the drive plugged in again is
+//     enumerated inside that app. Needs an EVE with usbaddr wildcard support.
 //     The drive is detached and the app stopped at the end, so the device is
 //     clean for the next test.
 //
@@ -176,7 +184,17 @@ func TestUSBFlashDriveHotplug(test *testing.T) {
 		matchers.SatisfyPredicate("the app enumerates the flash drive again", driveEnumerated))
 	evetest.Checkpoint("flash-drive-reattached")
 
-	// Leave the device as found: no drive, no app, no model entry for it.
+	// Phase 7: claim the drive by a bus-wide wildcard instead.
 	device.DetachUSBStorage(flashDriveID)
 	app.stop()
+	appWildcard := apps.start(usbFlashWildcardLabel, fmt.Sprintf("%d:*", drive.Bus))
+	device.AttachUSBStorage(flashDriveID, flashDriveSize)
+	t.Eventually(appWildcard.usbDevices, usbEnumerationTimeout, usbEnumerationInterval).Should(
+		matchers.SatisfyPredicate("the app enumerates the flash drive via the wildcard",
+			driveEnumerated))
+	evetest.Checkpoint("flash-drive-wildcard-passed-through")
+
+	// Leave the device as found: no drive, no app, no model entry for it.
+	device.DetachUSBStorage(flashDriveID)
+	appWildcard.stop()
 }

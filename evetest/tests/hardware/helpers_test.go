@@ -45,11 +45,12 @@ const (
 	appSSHFwdPort = 2222
 
 	// usbFlashLabel names the flash drive in the device model when claimed by
-	// its exact bus and port. A label serves as logical label, physical label
-	// and assignment group alike: domainmgr resolves an app adapter name by
-	// group, then physical, then logical label, and usbmanager keys on the
-	// physical label.
-	usbFlashLabel = "usb-flash"
+	// its exact bus and port, usbFlashWildcardLabel when claimed by a bus-wide
+	// wildcard. A label serves as logical label, physical label and assignment
+	// group alike: domainmgr resolves an app adapter name by group, then
+	// physical, then logical label, and usbmanager keys on the physical label.
+	usbFlashLabel         = "usb-flash"
+	usbFlashWildcardLabel = "usb-flash-wildcard"
 
 	// devInfoTimeout covers ZInfoDevice reflecting a change to the assignable
 	// adapters after a config apply.
