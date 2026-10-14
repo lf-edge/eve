@@ -1483,6 +1483,7 @@ func (b *broker) SetupDevices(
 		dev.CPUs = uint(eveDevice.GetCpus())
 		dev.MemoryBytes = eveDevice.GetMemoryBytes()
 		dev.WithTPM = eveDevice.GetWithTpm()
+		dev.TPMPCRBanks = eveDevice.GetTpmPcrBanks()
 		dev.SerialNumber = eveDevice.GetSerialNumber()
 		for _, eveIntf := range eveDevice.GetInterfaces() {
 			sdnIntfName := fmt.Sprintf("%s-%s", deviceName, eveIntf.GetName())
