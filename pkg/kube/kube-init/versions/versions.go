@@ -26,7 +26,7 @@ package versions
 const (
 	K3s      = "v1.34.2+k3s1"
 	KubeVirt = "v1.7.3"
-	CDI      = "v1.57.1"
+	CDI      = "v1.66.1"
 	Longhorn = "v1.9.1"
 	Multus   = "v3.9.3"
 
