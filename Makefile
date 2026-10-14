@@ -371,7 +371,9 @@ LINUXKIT_PKG_TARGET=build
 # defaults to /etc/buildkit/buildkitd.toml if it exists; override via LINUXKIT_BUILDER_CONFIG
 LINUXKIT_BUILDER_CONFIG ?= $(wildcard /etc/buildkit/buildkitd.toml)
 export LINUXKIT_BUILDER_CONFIG
-LINUXKIT_OPTS=$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL) $(LINUXKIT_SECRET_OPTS)
+# Packages are pushed under their content tag only; `eve` and `eve-sources`
+# pass --release $(EVE_REL) themselves.
+LINUXKIT_OPTS=$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(LINUXKIT_SECRET_OPTS)
 # buildkit fetches Dockerfile `ADD <git url>` sources (and their submodules)
 # itself, ignoring gitconfig and GIT_ASKPASS, so tools/github-askpass.sh does
 # not reach it. If GITHUB_TOKEN is set, hand it to buildkit as its github.com
