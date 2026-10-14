@@ -277,6 +277,10 @@ func TestKvmToKRepartitionTopology(test *testing.T) {
 		}
 		return
 	}
+	if midUploadPowerCycleRequested() {
+		powerCycleMidUpload(t, device, dataVolUUID)
+		evetest.Checkpoint("mid-upload-power-cycled")
+	}
 	// Before EVE-K's storage imports the volume: this is the reading that
 	// survives an app that never comes back.
 	assertVolumeCarriedIntoPVC(t, device, dataVolUUID)
@@ -333,5 +337,6 @@ func topologyParameterDefinitions() []evetest.TestParameterDefinition {
 			},
 		},
 		rebootAfterConversionParameter(),
+		midUploadPowerCycleParameter(),
 	)
 }
