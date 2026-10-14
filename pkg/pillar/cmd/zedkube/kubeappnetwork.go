@@ -133,16 +133,16 @@ func (z *zedkube) reconcileKubeAppNetworksWithClient(
 		// reconciliation succeeds.
 		log.Warnf("reconcileKubeAppNetworks: list ReplicaSets: %v", err)
 	}
-	var deploymentNames map[string]string
+	var replicaSetInfos map[string]replicaSetInfo
 	if replicaSets != nil {
-		deploymentNames = deploymentNamesByReplicaSet(replicaSets.Items)
+		replicaSetInfos = replicaSetInfosByKey(replicaSets.Items)
 	}
 
 	desired := make(map[string]types.AppNetworkConfig)
 	markers := make(map[string]kubeAppNetKind, len(pods.Items))
 	for i := range pods.Items {
 		pod := &pods.Items[i]
-		config, niDefault, attached := z.kubeAppNetConfigForPod(pod, deploymentNames)
+		config, niDefault, attached := z.kubeAppNetConfigForPod(pod, replicaSetInfos)
 		if attached {
 			desired[config.Key()] = config
 		}
@@ -171,17 +171,21 @@ func (z *zedkube) reconcileKubeAppNetworksWithClient(
 // attaching to a per-NI NAD, in which case config and niDefault are
 // meaningless. niDefault reports whether any of the pod's NI attachments
 // requested default-route (see kubeAppNetKindNativeNIDefault).
+// A pod owned by a ReplicaSet with more than one replica is rejected the same
+// way: all replicas would share the same synthesized AppNetworkConfig (and thus
+// MAC/IP), so only a single replica is supported.
 // A pod referencing the same NI more than once is not supported (the CNI call
-// identifies the adapter only by NI) and is left unattached, so that its
-// interface setup fails visibly instead of yielding colliding interfaces.
+// identifies the adapter only by NI). Such a pod gets an inactive config that
+// carries KubeAppInfo.ConfigError, so that its interface setup fails with the
+// reason instead of yielding colliding interfaces.
 func (z *zedkube) kubeAppNetConfigForPod(
-	pod *corev1.Pod, deploymentNames map[string]string,
+	pod *corev1.Pod, replicaSets map[string]replicaSetInfo,
 ) (config types.AppNetworkConfig, niDefault bool, attached bool) {
-	return kubeAppNetConfigForPodWithResolver(pod, deploymentNames, z.niUUIDForNAD)
+	return kubeAppNetConfigForPodWithResolver(pod, replicaSets, z.niUUIDForNAD)
 }
 
 func kubeAppNetConfigForPodWithResolver(pod *corev1.Pod,
-	deploymentNames map[string]string,
+	replicaSets map[string]replicaSetInfo,
 	niUUIDForNAD func(namespace, nadName string) (uuid.UUID, bool),
 ) (config types.AppNetworkConfig, niDefault bool, attached bool) {
 	// VMIs are out of scope for now (see file comment).
@@ -200,10 +204,9 @@ func kubeAppNetConfigForPodWithResolver(pod *corev1.Pod,
 			continue
 		}
 		if _, dup := attachedNIs[niUUID]; dup {
-			log.Errorf("kubeAppNetConfigForPod: pod %s/%s attaches to Network "+
-				"Instance %s more than once, which is not supported",
-				pod.Namespace, pod.Name, niUUID)
-			return types.AppNetworkConfig{}, false, false
+			return kubeAppNetErrorConfig(pod, replicaSets, fmt.Sprintf(
+				"attaches to Network Instance %s more than once, which is not supported",
+				niUUID)), false, true
 		}
 		attachedNIs[niUUID] = struct{}{}
 		gatewayVia := parseRequestedGateway(pod, sel.GatewayRequest)
@@ -235,7 +238,12 @@ func kubeAppNetConfigForPodWithResolver(pod *corev1.Pod,
 	// Deployment Pods this is the ReplicaSet name, which prevents old and
 	// new rollout generations from sharing a MAC. Use the Deployment name
 	// only as the human-facing display/DNS name.
-	ownerName, displayName := kubeAppNames(pod, deploymentNames)
+	ownerName, displayName := kubeAppNames(pod, replicaSets)
+	if info, ok := ownerReplicaSet(pod, replicaSets); ok && info.replicas > 1 {
+		return kubeAppNetErrorConfig(pod, replicaSets, fmt.Sprintf(
+			"is a ReplicaSet with %d replicas; attaching to Network "+
+				"Instances supports only a single replica", info.replicas)), false, true
+	}
 	appUUID := base.KubeAppUUID(pod.Namespace, ownerName)
 	config = types.AppNetworkConfig{
 		UUIDandVersion:    types.UUIDandVersion{UUID: appUUID, Version: "1"},
@@ -248,6 +256,27 @@ func kubeAppNetConfigForPodWithResolver(pod *corev1.Pod,
 		},
 	}
 	return config, niDefault, true
+}
+
+// kubeAppNetErrorConfig builds an inactive, adapter-less AppNetworkConfig that
+// only identifies the pod's workload and carries the reason its network
+// attachments are unsupported (see KubeAppInfo.ConfigError). The reason is also
+// logged.
+func kubeAppNetErrorConfig(pod *corev1.Pod, replicaSets map[string]replicaSetInfo,
+	reason string) types.AppNetworkConfig {
+	ownerName, displayName := kubeAppNames(pod, replicaSets)
+	configError := fmt.Sprintf("kube workload %s/%s %s", pod.Namespace, ownerName, reason)
+	log.Errorf("kubeAppNetConfigForPod: pod %s/%s: %s", pod.Namespace, pod.Name, configError)
+	return types.AppNetworkConfig{
+		UUIDandVersion: types.UUIDandVersion{
+			UUID: base.KubeAppUUID(pod.Namespace, ownerName), Version: "1"},
+		DisplayName: displayName,
+		KubeApp: &types.KubeAppInfo{
+			Namespace:   pod.Namespace,
+			OwnerName:   ownerName,
+			ConfigError: configError,
+		},
+	}
 }
 
 // parseRequestedMAC parses an optional user-requested static MAC from a
@@ -348,27 +377,58 @@ func isControllerEVEAppPod(pod *corev1.Pod) bool {
 	return true
 }
 
-// deploymentNamesByReplicaSet maps "namespace/replicaset" to the name of its
-// controlling Deployment. A directly-created ReplicaSet has no entry and
-// therefore keeps its own name.
-func deploymentNamesByReplicaSet(replicaSets []appsv1.ReplicaSet) map[string]string {
-	names := make(map[string]string)
+// replicaSetInfo carries the ReplicaSet properties relevant to network
+// synthesis.
+type replicaSetInfo struct {
+	// deployment is the name of the controlling Deployment, if any.
+	deployment string
+	// replicas is the desired replica count (1 if unspecified).
+	replicas int32
+}
+
+// replicaSetInfosByKey maps "namespace/replicaset" to its replicaSetInfo. A
+// directly-created ReplicaSet has no deployment and therefore keeps its own
+// name.
+func replicaSetInfosByKey(replicaSets []appsv1.ReplicaSet) map[string]replicaSetInfo {
+	infos := make(map[string]replicaSetInfo, len(replicaSets))
 	for i := range replicaSets {
 		rs := &replicaSets[i]
+		info := replicaSetInfo{replicas: 1}
+		if rs.Spec.Replicas != nil {
+			info.replicas = *rs.Spec.Replicas
+		}
 		for _, ref := range rs.OwnerReferences {
 			if ref.Controller != nil && *ref.Controller && ref.Kind == "Deployment" {
-				names[rs.Namespace+"/"+rs.Name] = ref.Name
+				info.deployment = ref.Name
 				break
 			}
 		}
+		infos[rs.Namespace+"/"+rs.Name] = info
 	}
-	return names
+	return infos
+}
+
+// ownerReplicaSet returns the info of the ReplicaSet controlling the pod, if
+// the pod is controlled by a known ReplicaSet.
+func ownerReplicaSet(pod *corev1.Pod, replicaSets map[string]replicaSetInfo) (
+	replicaSetInfo, bool) {
+	for _, ref := range pod.OwnerReferences {
+		if ref.Controller == nil || !*ref.Controller {
+			continue
+		}
+		if ref.Kind != "ReplicaSet" {
+			return replicaSetInfo{}, false
+		}
+		info, ok := replicaSets[pod.Namespace+"/"+ref.Name]
+		return info, ok
+	}
+	return replicaSetInfo{}, false
 }
 
 // kubeAppNames returns the stable immediate-controller identity used for Pod
 // matching and MAC generation, plus a human-facing display name used by DNS
 // and status reporting.
-func kubeAppNames(pod *corev1.Pod, deploymentNames map[string]string) (
+func kubeAppNames(pod *corev1.Pod, replicaSets map[string]replicaSetInfo) (
 	ownerName, displayName string) {
 	ownerName = pod.Name
 	displayName = pod.Name
@@ -379,9 +439,8 @@ func kubeAppNames(pod *corev1.Pod, deploymentNames map[string]string) (
 		ownerName = ref.Name
 		displayName = ownerName
 		if ref.Kind == "ReplicaSet" {
-			deploymentKey := pod.Namespace + "/" + ownerName
-			if deploymentName := deploymentNames[deploymentKey]; deploymentName != "" {
-				displayName = deploymentName
+			if name := replicaSets[pod.Namespace+"/"+ownerName].deployment; name != "" {
+				displayName = name
 			}
 		}
 		break

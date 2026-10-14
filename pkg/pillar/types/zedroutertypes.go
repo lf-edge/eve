@@ -50,6 +50,12 @@ type KubeAppInfo struct {
 	// (or VMI name). ReplicaSet pods are "<OwnerName>-<5char>"; zedrouter matches inbound pods
 	// against it with base.KubePodMatchesOwner.
 	OwnerName string
+	// ConfigError is set by zedkube when the workload's network attachments cannot be
+	// supported (e.g. a ReplicaSet with more than one replica). Such a config is published
+	// inactive and without adapters, only so that zedrouter can fail the workload's CNI
+	// requests with this message (returned verbatim, so it must be self-explanatory)
+	// instead of a generic "config not found".
+	ConfigError string
 }
 
 // Key :

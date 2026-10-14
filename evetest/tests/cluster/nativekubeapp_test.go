@@ -49,7 +49,9 @@ const (
 	appSSHPass   = "testpassword"
 
 	nativeBarePodName    = "native-bare-pod"
+	dupNIPodName         = "native-dup-ni-pod"
 	nativeReplicaSetName = "native-replica-app"
+	multiReplicaSetName  = "native-multi-replica-app"
 	eveAppName           = "eve-app"
 
 	// barePodLocalPort / replicaSetLocalPort are the external (host) ports
@@ -221,6 +223,15 @@ func networksAnnotationJSON(t *WithT, sels []nativeNetSelection) string {
 //     MAC on both local-ni and switch-ni must match what was recorded
 //     before scaling down, proving the derived identity (and therefore the
 //     MAC) survived the recreate.
+//  7. multi-replica-rejected: a second ReplicaSet with replicas: 2 attaching
+//     to local-ni is deployed. All replicas of one ReplicaSet would share
+//     the same derived identity (and MAC), which is unsupported, so zedkube
+//     must not synthesize a network config for it and none of its pods may
+//     ever become Ready.
+//  8. duplicate-ni-attachment-rejected: a bare Pod that references local-ni
+//     twice is deployed. The CNI call identifies an adapter only by its
+//     Network Instance, so this is unsupported: zedkube must report it and
+//     the pod must never become Ready, with the reason in its events.
 //
 // Test parameters
 // ---------------
@@ -658,6 +669,125 @@ spec:
 	t.Expect(switchMACAfter).To(Equal(switchMACBefore),
 		"switch-ni MAC must be identical after a bare ReplicaSet scale-to-zero-and-back")
 
+	// --- Phase 6: a ReplicaSet with more than one replica must not deploy ---
+	//
+	// All replicas of a ReplicaSet share one derived identity (appUUID, MAC),
+	// so zedkube refuses to synthesize an AppNetworkConfig for it and the
+	// pods' NI interface setup keeps failing, leaving them un-Ready.
+	multiAnnotation := networksAnnotationJSON(t, []nativeNetSelection{{
+		Name:      localNIName,
+		Namespace: localNINamespace,
+		Interface: "localni",
+	}})
+	multiLabel := "app=" + multiReplicaSetName
+	multiManifest := fmt.Sprintf(`apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: %s
+  template:
+    metadata:
+      labels:
+        app: %s
+      annotations:
+        k8s.v1.cni.cncf.io/networks: '%s'
+    spec:
+      containers:
+      - name: %s
+        image: %s:%s
+`, multiReplicaSetName, nativeTestNamespace, multiReplicaSetName, multiReplicaSetName,
+		multiAnnotation, multiReplicaSetName, appImageName, appImageTag)
+	log.Infof("Deploying the multi-replica ReplicaSet %s/%s (expected to fail to deploy)",
+		nativeTestNamespace, multiReplicaSetName)
+	applyManifest(t, device, multiManifest, shortTimeout)
+	t.Eventually(func() int {
+		return countPodsByLabel(device, nativeTestNamespace, multiLabel, shortTimeout)
+	}, 2*time.Minute, 5*time.Second).Should(Equal(2),
+		"the multi-replica ReplicaSet must still get its pods created")
+	log.Infof("Waiting for zedkube to log the unsupported replica count")
+	t.Eventually(func() int {
+		return len(device.GetLogs(evetest.LogMsgMatch{
+			Severity: "error",
+			MsgHasSubstring: fmt.Sprintf("kube workload %s/%s is a ReplicaSet with 2 replicas",
+				nativeTestNamespace, multiReplicaSetName),
+		}))
+	}, 2*time.Minute, 5*time.Second).Should(BeNumerically(">", 0),
+		"zedkube must report the unsupported multi-replica ReplicaSet as an error")
+	log.Infof("Waiting for the CNI error to reach the pods' events")
+	t.Eventually(func() string {
+		out, _, _ := device.RunShellScript(fmt.Sprintf(
+			"eve exec kube kubectl get events -n %s --field-selector reason=FailedCreatePodSandBox "+
+				"-o jsonpath='{.items[*].message}'", nativeTestNamespace),
+			shortTimeout, 0)
+		return out
+	}, 5*time.Minute, 10*time.Second).Should(ContainSubstring(
+		"supports only a single replica"),
+		"the unsupported replica count must be reported in the pod events")
+	t.Consistently(func() int {
+		return countReadyPodsByLabel(device, nativeTestNamespace, multiLabel, shortTimeout)
+	}, 2*time.Minute, 10*time.Second).Should(Equal(0),
+		"pods of a ReplicaSet with more than one replica must never become Ready")
+	evetest.Checkpoint("multi-replica-rejected")
+
+	// --- Phase 7: a Pod attaching to the same NI twice must not deploy ---
+	//
+	// The CNI call identifies the adapter only by NI, so two attachments to
+	// local-ni would collide. Multus requires distinct interface names, hence
+	// "localni" and "localni2".
+	dupAnnotation := networksAnnotationJSON(t, []nativeNetSelection{
+		{Name: localNIName, Namespace: localNINamespace, Interface: "localni"},
+		{Name: localNIName, Namespace: localNINamespace, Interface: "localni2"},
+	})
+	dupManifest := fmt.Sprintf(`apiVersion: v1
+kind: Pod
+metadata:
+  name: %s
+  namespace: %s
+  annotations:
+    k8s.v1.cni.cncf.io/networks: '%s'
+spec:
+  containers:
+  - name: %s
+    image: %s:%s
+`, dupNIPodName, nativeTestNamespace, dupAnnotation, dupNIPodName, appImageName, appImageTag)
+	log.Infof("Deploying the Pod %s/%s attaching to local-ni twice (expected to fail to deploy)",
+		nativeTestNamespace, dupNIPodName)
+	applyManifest(t, device, dupManifest, shortTimeout)
+	log.Infof("Waiting for zedkube to log the duplicate NI attachment")
+	t.Eventually(func() int {
+		return len(device.GetLogs(evetest.LogMsgMatch{
+			Severity: "error",
+			MsgHasSubstring: fmt.Sprintf(
+				"kube workload %s/%s attaches to Network Instance %s more than once",
+				nativeTestNamespace, dupNIPodName, localNIUUID),
+		}))
+	}, 2*time.Minute, 5*time.Second).Should(BeNumerically(">", 0),
+		"zedkube must report the duplicate NI attachment as an error")
+	log.Infof("Waiting for the CNI error to reach the pod's events")
+	t.Eventually(func() string {
+		out, _, _ := device.RunShellScript(fmt.Sprintf(
+			"eve exec kube kubectl get events -n %s "+
+				"--field-selector reason=FailedCreatePodSandBox,involvedObject.name=%s "+
+				"-o jsonpath='{.items[*].message}'", nativeTestNamespace, dupNIPodName),
+			shortTimeout, 0)
+		return out
+	}, 5*time.Minute, 10*time.Second).Should(ContainSubstring("more than once"),
+		"the duplicate NI attachment must be reported in the pod events")
+	t.Consistently(func() string {
+		out, _, _ := device.RunShellScript(fmt.Sprintf(
+			"eve exec kube kubectl get pod %s -n %s -o "+
+				`jsonpath='{.status.conditions[?(@.type=="Ready")].status}'`,
+			dupNIPodName, nativeTestNamespace), shortTimeout, 0)
+		return strings.TrimSpace(out)
+	}, time.Minute, 10*time.Second).ShouldNot(Equal("True"),
+		"a Pod attaching to the same Network Instance twice must never become Ready")
+	evetest.Checkpoint("duplicate-ni-attachment-rejected")
+
 	// --- Cleanup: undeploy everything this test created ---
 	//
 	// ResetDeviceConfig (this test's own reuse policy, and the one every
@@ -673,6 +803,14 @@ spec:
 	_, _, _ = device.RunShellScript(
 		fmt.Sprintf("eve exec kube kubectl delete replicaset %s -n %s --wait=false",
 			nativeReplicaSetName, nativeTestNamespace),
+		shortTimeout, 0)
+	_, _, _ = device.RunShellScript(
+		fmt.Sprintf("eve exec kube kubectl delete pod %s -n %s --wait=false",
+			dupNIPodName, nativeTestNamespace),
+		shortTimeout, 0)
+	_, _, _ = device.RunShellScript(
+		fmt.Sprintf("eve exec kube kubectl delete replicaset %s -n %s --wait=false",
+			multiReplicaSetName, nativeTestNamespace),
 		shortTimeout, 0)
 	devConfig.DeleteApplication(eveAppUUID)
 	device.ApplyConfig(devConfig, true, true)
@@ -816,6 +954,24 @@ func countPodsByLabel(device *evetest.EdgeDevice, namespace, label string,
 		}
 	}
 	return count
+}
+
+// countReadyPodsByLabel returns the number of pods in namespace matching label
+// that report the Ready condition, or -1 on error (so a caller polling inside
+// Eventually/Consistently never confuses a transient kubectl failure with
+// "0 Ready pods").
+func countReadyPodsByLabel(device *evetest.EdgeDevice, namespace, label string,
+	timeout time.Duration) int {
+
+	script := fmt.Sprintf(
+		"eve exec kube kubectl get pods -n %s -l %s -o "+
+			`jsonpath='{.items[*].status.conditions[?(@.type=="Ready")].status}'`,
+		namespace, label)
+	out, _, err := device.RunShellScript(script, timeout, 0)
+	if err != nil {
+		return -1
+	}
+	return strings.Count(out, "True")
 }
 
 // scaleReplicaSet sets spec.replicas on name in namespace.
