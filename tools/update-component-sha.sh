@@ -31,8 +31,8 @@ Replace by image:
 
 Replace by pkg directory:
         $0 --pkg <PATH/TO/PKG> <NEW>
-        Example: $0 --pkg ./pkg/xen-tools
-           Will use linuxkit pkg show-tag on the directory ./pkg/xen-tools, and then
+        Example: $0 --pkg ./pkg/qemu
+           Will use linuxkit pkg show-tag on the directory ./pkg/qemu, and then
      tag all instances with the result
 
 EOF

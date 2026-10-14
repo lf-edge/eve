@@ -243,7 +243,7 @@ func ntpSourcesSynced(sources *eveinfo.ZInfoNTPSources, expectedAddrs []string) 
 //
 // Known limitation: EVE's per-NI dnsmasq does advertise the NTP list via
 // DHCP option 42 (the same mechanism that carries DNS servers), but the
-// shim-VM's DHCP client script (pkg/xen-tools/initrd/udhcpc_script.sh) only
+// shim-VM's DHCP client script (pkg/pillar/initrd/udhcpc_script.sh) only
 // acts on the DNS/IP/route options it receives -- it never writes the NTP
 // option (udhcpc's "$ntpsrv") anywhere inside the guest. So unlike DNS
 // servers (verifiable via nslookup from inside the app), there is currently

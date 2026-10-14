@@ -3441,7 +3441,7 @@ func getCloudInitVersion(config types.DomainConfig) string {
 // HV=k container shim VMIs use a separate NoCloud-disk DiskStatus emitted by
 // the caller (the rootfs PVC is read-only at activate time, so we cannot bake
 // /environment into it; the eve-external-boot-image initrd reads the attached
-// cidata disk instead — see configToStatus and pkg/xen-tools/initrd).
+// cidata disk instead — see configToStatus and pkg/pillar/initrd).
 func appendCloudInitDisk(ctx *domainContext, config types.DomainConfig,
 	userData string, status *types.DomainStatus) error {
 	switch config.MetaDataType {
