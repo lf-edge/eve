@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"fmt"
@@ -222,9 +223,9 @@ func TestIDLocksAreReclaimed(t *testing.T) {
 
 func TestEncryptedStateResetsWithWrongKey(t *testing.T) {
 	id := generateUUID()
-	oldTPM, oldKey := isTPMAvailable, getEncryptionKey
+	oldTPM, oldKey, oldPCR := isTPMAvailable, getEncryptionKey, sha256PCRAvailable
 	t.Cleanup(func() {
-		isTPMAvailable, getEncryptionKey = oldTPM, oldKey
+		isTPMAvailable, getEncryptionKey, sha256PCRAvailable = oldTPM, oldKey, oldPCR
 		_, _, _ = sendPurgeRequest(id)
 		_ = cleanupFiles(id)
 		corruptDirs, _ := filepath.Glob(fmt.Sprintf(workDir, id.String()) + ".corrupt-*")
@@ -233,6 +234,7 @@ func TestEncryptedStateResetsWithWrongKey(t *testing.T) {
 		}
 	})
 	isTPMAvailable = func() bool { return true }
+	sha256PCRAvailable = func() bool { return false }
 	key := make([]byte, 32)
 	getEncryptionKey = func() ([]byte, error) { return key, nil }
 	if body, _, err := sendLaunchRequest(id); err != nil {
@@ -264,6 +266,376 @@ func TestEncryptedStateResetsWithWrongKey(t *testing.T) {
 	preserved, err := os.ReadFile(filepath.Join(corruptDirs[0], "tpm2-00.permall"))
 	if err != nil || string(preserved) != string(original) {
 		t.Fatalf("old encrypted state was not preserved: err=%v", err)
+	}
+}
+
+func prepareLegacyStateForMigration(t *testing.T, id uuid.UUID) ([]byte, []byte, func()) {
+	t.Helper()
+	legacyKey := make([]byte, 32)
+	protectedKey := make([]byte, 32)
+	if _, err := rand.Read(legacyKey); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rand.Read(protectedKey); err != nil {
+		t.Fatal(err)
+	}
+	oldTPM, oldPCR, oldGetKey, oldLegacy := isTPMAvailable, sha256PCRAvailable, getEncryptionKey, getLegacyEncryptionKey
+	protectedMode := false
+	isTPMAvailable = func() bool { return true }
+	sha256PCRAvailable = func() bool { return protectedMode }
+	getEncryptionKey = func() ([]byte, error) {
+		if protectedMode {
+			return protectedKey, nil
+		}
+		return legacyKey, nil
+	}
+	getLegacyEncryptionKey = func() ([]byte, error) { return legacyKey, nil }
+	t.Cleanup(func() {
+		_, _, _ = sendPurgeRequest(id)
+		_ = cleanupFiles(id)
+		corruptDirs, _ := filepath.Glob(fmt.Sprintf(workDir, id.String()) + ".corrupt-*")
+		for _, dir := range corruptDirs {
+			_ = os.RemoveAll(dir)
+		}
+		isTPMAvailable, sha256PCRAvailable, getEncryptionKey, getLegacyEncryptionKey = oldTPM, oldPCR, oldGetKey, oldLegacy
+	})
+	if body, _, err := sendLaunchRequest(id); err != nil {
+		t.Fatalf("create legacy state: %v: %s", err, body)
+	}
+	conn := simulateVMAttach(t, id)
+	conn.Close()
+	m.Lock()
+	pid := instances[id].pid
+	m.Unlock()
+	fd, err := openVerifiedSwtpm(pid, id)
+	if err != nil || fd < 0 {
+		t.Fatalf("open legacy SWTPM pidfd: fd=%d err=%v", fd, err)
+	}
+	if body, _, err := sendTerminateRequest(id); err != nil {
+		unix.Close(fd)
+		t.Fatalf("terminate legacy instance: %v: %s", err, body)
+	}
+	if err := waitPidfdExit(pid, fd); err != nil {
+		unix.Close(fd)
+		t.Fatalf("wait for legacy SWTPM shutdown: %v", err)
+	}
+	unix.Close(fd)
+	return legacyKey, protectedKey, func() { protectedMode = true }
+}
+
+func TestLegacyEncryptedStateMigratesToProtectedKey(t *testing.T) {
+	id := generateUUID()
+	legacyKey, protectedKey, enableProtected := prepareLegacyStateForMigration(t, id)
+	state := fmt.Sprintf(workDir, id.String())
+	oldState, err := os.ReadFile(filepath.Join(state, "tpm2-00.permall"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Establish the migration precondition using the same saved state: the
+	// protected key cannot load it, while the legacy key still can.
+	for _, probe := range []struct {
+		name    string
+		key     []byte
+		wantBad bool
+	}{
+		{name: "protected", key: protectedKey, wantBad: true},
+		{name: "legacy", key: legacyKey, wantBad: false},
+	} {
+		opts := swtpmOptions(id)
+		opts.key = probe.key
+		pid, lf, err := startSwtpm(opts)
+		if err != nil {
+			t.Fatalf("start pre-migration probe with %s key: %v", probe.name, err)
+		}
+		bad, probeErr := checkSwtpmState(id)
+		waitErr := waitSwtpmExit(pid, id)
+		lf.stop()
+		if probeErr != nil || bad != probe.wantBad || waitErr != nil {
+			t.Fatalf("pre-migration %s key: bad=%t, probe=%v, wait=%v; want bad=%t", probe.name, bad, probeErr, waitErr, probe.wantBad)
+		}
+	}
+	enableProtected()
+	if body, _, err := sendLaunchRequest(id); err != nil {
+		t.Fatalf("migrate legacy state: %v: %s", err, body)
+	}
+	if body, _, err := sendTerminateRequest(id); err != nil {
+		t.Fatalf("terminate migrated instance: %v: %s", err, body)
+	}
+	newState, err := os.ReadFile(filepath.Join(state, "tpm2-00.permall"))
+	if err != nil || bytes.Equal(oldState, newState) {
+		t.Fatalf("state was not re-encrypted: err=%v", err)
+	}
+	// The old key must no longer decrypt the active files.
+	opts := swtpmOptions(id)
+	opts.key = legacyKey
+	pid, lf, err := startSwtpm(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad, probeErr := checkSwtpmState(id)
+	waitErr := waitSwtpmExit(pid, id)
+	lf.stop()
+	if probeErr != nil || !bad || waitErr != nil {
+		t.Fatalf("old key loaded migrated state: bad=%t probe=%v wait=%v", bad, probeErr, waitErr)
+	}
+	if body, _, err := sendLaunchRequest(id); err != nil {
+		t.Fatalf("reload with protected key: %v: %s", err, body)
+	}
+}
+
+func TestLegacyMigrationFailurePreservesState(t *testing.T) {
+	id := generateUUID()
+	_, _, enableProtected := prepareLegacyStateForMigration(t, id)
+	oldIoctl := invokeSwtpmIoctl
+	t.Cleanup(func() { invokeSwtpmIoctl = oldIoctl })
+	invokeSwtpmIoctl = func(ctrl string, args ...string) error {
+		if len(args) > 0 && args[0] == "--load" {
+			return fmt.Errorf("injected import failure")
+		}
+		return oldIoctl(ctrl, args...)
+	}
+	enableProtected()
+	if body, status, err := sendLaunchRequest(id); err == nil || status != http.StatusFailedDependency {
+		t.Fatalf("expected migration failure: status=%d err=%v body=%s", status, err, body)
+	}
+	// The original state is still loadable with the legacy key.
+	sha256PCRAvailable = func() bool { return false }
+	getEncryptionKey = func() ([]byte, error) { return getLegacyEncryptionKey() }
+	if body, _, err := sendLaunchRequest(id); err != nil {
+		t.Fatalf("legacy state lost after migration failure: %v: %s", err, body)
+	}
+}
+
+func TestProtectedKeyFailureWithoutLegacyKeyPreservesState(t *testing.T) {
+	id := generateUUID()
+	_, _, enableProtected := prepareLegacyStateForMigration(t, id)
+	oldLegacy := getLegacyEncryptionKey
+	t.Cleanup(func() { getLegacyEncryptionKey = oldLegacy })
+	getLegacyEncryptionKey = func() ([]byte, error) { return nil, fmt.Errorf("injected TPM NV read failure") }
+	enableProtected()
+	if body, status, err := sendLaunchRequest(id); err == nil || status != http.StatusFailedDependency {
+		t.Fatalf("expected legacy-key lookup failure: status=%d err=%v body=%s", status, err, body)
+	}
+	if _, err := os.Stat(filepath.Join(fmt.Sprintf(workDir, id.String()), "tpm2-00.permall")); err != nil {
+		t.Fatalf("original state lost: %v", err)
+	}
+}
+
+func TestBothEncryptionKeysFailPreservesCorruptState(t *testing.T) {
+	id := generateUUID()
+	_, _, enableProtected := prepareLegacyStateForMigration(t, id)
+	state := fmt.Sprintf(workDir, id.String())
+	for _, name := range []string{"tpm2-00.permall", "tpm2-00.permall.bak"} {
+		if err := os.WriteFile(filepath.Join(state, name), []byte("corrupted data"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	enableProtected()
+	if body, _, err := sendLaunchRequest(id); err != nil {
+		t.Fatalf("start fresh after both keys failed: %v: %s", err, body)
+	}
+	corruptDirs, err := filepath.Glob(state + ".corrupt-*")
+	if err != nil || len(corruptDirs) != 1 {
+		t.Fatalf("expected one preserved corrupt state, got %v: %v", corruptDirs, err)
+	}
+	for _, name := range []string{"tpm2-00.permall", "tpm2-00.permall.bak"} {
+		data, err := os.ReadFile(filepath.Join(corruptDirs[0], name))
+		if err != nil || string(data) != "corrupted data" {
+			t.Fatalf("old state %s was not preserved: %q, err=%v", name, data, err)
+		}
+	}
+}
+
+func TestMigrationNeverFallsBackToLegacyKeyAgain(t *testing.T) {
+	id := generateUUID()
+	_, _, enableProtected := prepareLegacyStateForMigration(t, id)
+	enableProtected()
+	if body, _, err := sendLaunchRequest(id); err != nil {
+		t.Fatalf("migrate legacy state: %v: %s", err, body)
+	}
+	if body, _, err := sendTerminateRequest(id); err != nil {
+		t.Fatalf("terminate migrated instance: %v: %s", err, body)
+	}
+	state := fmt.Sprintf(workDir, id.String())
+	if _, err := os.Stat(filepath.Join(state, protectedStateMarker)); err != nil {
+		t.Fatalf("migration marker missing: %v", err)
+	}
+	oldGetKey, oldLegacy, oldPCR := getEncryptionKey, getLegacyEncryptionKey, sha256PCRAvailable
+	t.Cleanup(func() { getEncryptionKey, getLegacyEncryptionKey, sha256PCRAvailable = oldGetKey, oldLegacy, oldPCR })
+	legacyCalls := 0
+	getLegacyEncryptionKey = func() ([]byte, error) {
+		legacyCalls++
+		return nil, fmt.Errorf("legacy fallback must not run")
+	}
+	wrongKey := make([]byte, 32)
+	wrongKey[0] = 1
+	getEncryptionKey = func() ([]byte, error) { return wrongKey, nil }
+	if body, status, err := sendLaunchRequest(id); err == nil || status != http.StatusFailedDependency {
+		t.Fatalf("expected protected-key failure: status=%d err=%v body=%s", status, err, body)
+	}
+	if legacyCalls != 0 {
+		t.Fatalf("legacy key retried %d times after migration", legacyCalls)
+	}
+	if _, err := os.Stat(filepath.Join(state, protectedStateMarker)); err != nil {
+		t.Fatalf("migrated state marker lost: %v", err)
+	}
+	// Removing SHA-256 PCR support must also leave protected state untouched.
+	sha256PCRAvailable = func() bool { return false }
+	if body, status, err := sendLaunchRequest(id); err == nil || status != http.StatusFailedDependency {
+		t.Fatalf("expected no-PCR failure: status=%d err=%v body=%s", status, err, body)
+	}
+	if legacyCalls != 0 {
+		t.Fatalf("legacy key retried without PCR support")
+	}
+}
+
+func TestMigrationMarkerFailureLeavesLegacyStateActive(t *testing.T) {
+	id := generateUUID()
+	_, _, enableProtected := prepareLegacyStateForMigration(t, id)
+	oldWrite := writeProtectedMarker
+	t.Cleanup(func() { writeProtectedMarker = oldWrite })
+	writeProtectedMarker = func(string) error { return fmt.Errorf("injected marker write failure") }
+	enableProtected()
+	if body, status, err := sendLaunchRequest(id); err == nil || status != http.StatusFailedDependency {
+		t.Fatalf("expected migration marker failure: status=%d err=%v body=%s", status, err, body)
+	}
+	state := fmt.Sprintf(workDir, id.String())
+	if _, err := os.Stat(filepath.Join(state, protectedStateMarker)); !os.IsNotExist(err) {
+		t.Fatalf("protected marker appeared before migration: %v", err)
+	}
+	sha256PCRAvailable = func() bool { return false }
+	getEncryptionKey = func() ([]byte, error) { return getLegacyEncryptionKey() }
+	if body, _, err := sendLaunchRequest(id); err != nil {
+		t.Fatalf("legacy state lost after marker failure: %v: %s", err, body)
+	}
+}
+
+func TestMigrationSecondRenameFailureRestoresLegacyState(t *testing.T) {
+	id := generateUUID()
+	_, _, enableProtected := prepareLegacyStateForMigration(t, id)
+	oldRename := renameStateDir
+	t.Cleanup(func() { renameStateDir = oldRename })
+	active := fmt.Sprintf(workDir, id.String())
+	renameStateDir = func(oldPath, newPath string) error {
+		if oldPath == filepath.Join(migrationStageRoot(id), "state") && newPath == active {
+			return fmt.Errorf("injected second rename failure")
+		}
+		return oldRename(oldPath, newPath)
+	}
+	enableProtected()
+	if body, status, err := sendLaunchRequest(id); err == nil || status != http.StatusFailedDependency {
+		t.Fatalf("expected migration rename failure: status=%d err=%v body=%s", status, err, body)
+	}
+	if _, err := os.Stat(filepath.Join(active, "tpm2-00.permall")); err != nil {
+		t.Fatalf("legacy state was not restored: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(active, protectedStateMarker)); !os.IsNotExist(err) {
+		t.Fatalf("legacy state unexpectedly marked protected: %v", err)
+	}
+	sha256PCRAvailable = func() bool { return false }
+	getEncryptionKey = func() ([]byte, error) { return getLegacyEncryptionKey() }
+	if body, _, err := sendLaunchRequest(id); err != nil {
+		t.Fatalf("legacy state could not load after rollback: %v: %s", err, body)
+	}
+}
+
+func TestRecoverMigrationStopsStagedSwtpmBeforeCleanup(t *testing.T) {
+	id := generateUUID()
+	stageRoot := migrationStageRoot(id)
+	stageState := filepath.Join(stageRoot, "state")
+	if err := os.Mkdir(stageRoot, 0700); err != nil {
+		t.Fatal(err)
+	}
+	opts := migrationSwtpmOptions(id, stageRoot, "protected", stageState)
+	opts.terminate = false
+	pid, lf, err := startSwtpm(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = forceStopSwtpmAt(pid, stageState)
+		lf.stop()
+		_ = cleanupMigrationStages(id)
+	})
+	fd, err := openVerifiedSwtpmAt(pid, stageState)
+	if err != nil || fd < 0 {
+		t.Fatalf("open staged SWTPM pidfd: fd=%d err=%v", fd, err)
+	}
+	defer unix.Close(fd)
+	if err := recoverMigrationStage(id); err != nil {
+		t.Fatalf("recover migration with a running staged SWTPM: %v", err)
+	}
+	if err := waitPidfdExit(pid, fd); err != nil {
+		t.Fatalf("staged SWTPM survived recovery: %v", err)
+	}
+	if _, err := os.Stat(migrationStageRoot(id)); !os.IsNotExist(err) {
+		t.Fatalf("staged directory was not removed: %v", err)
+	}
+}
+
+func TestRecoverInterruptedKeyMigration(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		activePresent bool
+		activePolicy  bool
+		legacyPresent bool
+	}{
+		{"before first rename", true, false, false},
+		{"between renames", false, false, true},
+		{"after second rename", true, true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			oldWork := workDir
+			workDir = filepath.Join(t.TempDir(), "tpm-state-%s")
+			t.Cleanup(func() { workDir = oldWork })
+			id := generateUUID()
+			active := fmt.Sprintf(workDir, id.String())
+			stageRoot := migrationStageRoot(id)
+			if err := os.Mkdir(stageRoot, 0700); err != nil {
+				t.Fatal(err)
+			}
+			newState := filepath.Join(stageRoot, "state")
+			if err := os.Mkdir(newState, 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(newState, protectedStateMarker), []byte("Y"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if tc.activePresent {
+				if err := os.Mkdir(active, 0700); err != nil {
+					t.Fatal(err)
+				}
+				if tc.activePolicy {
+					if err := os.WriteFile(filepath.Join(active, protectedStateMarker), []byte("Y"), 0600); err != nil {
+						t.Fatal(err)
+					}
+				} else if err := os.WriteFile(filepath.Join(active, "old"), []byte("legacy"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tc.legacyPresent {
+				legacy := filepath.Join(stageRoot, "legacy")
+				if err := os.Mkdir(legacy, 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(legacy, "old"), []byte("legacy"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := recoverMigrationStage(id); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := os.Stat(stageRoot); !os.IsNotExist(err) {
+				t.Fatalf("migration staging directory remains: %v", err)
+			}
+			file := "old"
+			if tc.activePolicy {
+				file = protectedStateMarker
+			}
+			if _, err := os.Stat(filepath.Join(active, file)); err != nil {
+				t.Fatalf("active state not recovered: %v", err)
+			}
+		})
 	}
 }
 
@@ -881,6 +1253,9 @@ func TestSwtpmStateBackupWithStateEncryption(t *testing.T) {
 	if !swtpmSupportsBackup() {
 		t.Skip("swtpm does not support tpmstate-dir-backend-opt-backup")
 	}
+	oldPCR := sha256PCRAvailable
+	sha256PCRAvailable = func() bool { return false }
+	t.Cleanup(func() { sha256PCRAvailable = oldPCR })
 	id := generateUUID()
 	key := make([]byte, 32)
 	_, _ = rand.Read(key)

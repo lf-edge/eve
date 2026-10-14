@@ -7,6 +7,8 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -24,6 +26,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/go-tpm/legacy/tpm2"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -34,11 +37,13 @@ import (
 )
 
 const (
-	swtpmPath          = "/usr/bin/swtpm"
-	swtpmLogMaxSize    = 10 * 1024 * 1024 // 10MB
-	swtpmLogMaxBackups = 3
-	swtpmCtrlTimeout   = 5 * time.Second
-	maxCorruptStates   = 10
+	swtpmPath            = "/usr/bin/swtpm"
+	swtpmIoctlPath       = "/usr/bin/swtpm_ioctl"
+	swtpmLogMaxSize      = 10 * 1024 * 1024 // 10MB
+	swtpmLogMaxBackups   = 3
+	swtpmCtrlTimeout     = 5 * time.Second
+	maxCorruptStates     = 10
+	protectedStateMarker = ".pcr-protected"
 )
 
 type swtpmInstance struct {
@@ -76,8 +81,23 @@ var (
 		_, err := os.Stat(etpm.TpmDevicePath)
 		return err == nil
 	}
+	sha256PCRAvailable = etpm.PCRBankSHA256Enabled
+	// Read the legacy key without FetchVaultKey's generate-on-miss behavior.
+	getLegacyEncryptionKey = func() ([]byte, error) {
+		rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
+		if err != nil {
+			return nil, err
+		}
+		defer rw.Close()
+		return tpm2.NVReadEx(rw, etpm.TpmDiskKeyHdl, tpm2.HandleOwner, etpm.EmptyPassword, 0)
+	}
+	invokeSwtpmIoctl     = swtpmIoctl
+	renameStateDir       = os.Rename
+	writeProtectedMarker = func(statePath string) error {
+		return utils.WriteRename(filepath.Join(statePath, protectedStateMarker), []byte("Y"))
+	}
 	getEncryptionKey = func() ([]byte, error) {
-		if etpm.PCRBankSHA256Enabled() {
+		if sha256PCRAvailable() {
 			pcrSelection := etpm.GetDiskKeyPolicyPcrOrDefault(types.PolicyPcrFile)
 			return etpm.UnsealDiskKeyWithRecovery(log, pcrSelection)
 		}
@@ -100,6 +120,10 @@ func isAlive(pid int) bool {
 // isSwtpm reports whether pid is a live swtpm serving this id. A stale pid
 // file or in-memory record can name another process after pid reuse.
 func isSwtpm(pid int, id uuid.UUID) bool {
+	return isSwtpmAt(pid, fmt.Sprintf(workDir, id.String()))
+}
+
+func isSwtpmAt(pid int, statePath string) bool {
 	if pid <= 0 || syscall.Kill(pid, 0) != nil {
 		return false
 	}
@@ -117,7 +141,7 @@ func isSwtpm(pid int, id uuid.UUID) bool {
 	}
 	// swtpm is launched with an exact "dir=<workDir>,backup" argv token, and
 	// workDir embeds the id, so an exact match identifies this VM's swtpm.
-	wantState := "dir=" + fmt.Sprintf(workDir, id.String()) + ",backup"
+	wantState := "dir=" + statePath + ",backup"
 	for _, arg := range strings.Split(string(cmdline), "\x00") {
 		if arg == wantState {
 			return true
@@ -130,6 +154,10 @@ func isSwtpm(pid int, id uuid.UUID) bool {
 // pid is reused, the fd still refers to the original process and signalling
 // it fails with ESRCH instead of signalling the replacement.
 func openVerifiedSwtpm(pid int, id uuid.UUID) (int, error) {
+	return openVerifiedSwtpmAt(pid, fmt.Sprintf(workDir, id.String()))
+}
+
+func openVerifiedSwtpmAt(pid int, statePath string) (int, error) {
 	if pid <= 0 {
 		return -1, nil
 	}
@@ -140,7 +168,7 @@ func openVerifiedSwtpm(pid int, id uuid.UUID) (int, error) {
 	if err != nil {
 		return -1, fmt.Errorf("open pidfd for swtpm pid %d: %w", pid, err)
 	}
-	if !isSwtpm(pid, id) {
+	if !isSwtpmAt(pid, statePath) {
 		unix.Close(fd)
 		return -1, nil
 	}
@@ -204,7 +232,11 @@ func waitForHealthCheckExit(pid int) {
 // waitSwtpmExit waits on a pidfd so state is not reused or deleted while the
 // daemon is still running. A pidfd cannot switch to a replacement process.
 func waitSwtpmExit(pid int, id uuid.UUID) error {
-	fd, err := openVerifiedSwtpm(pid, id)
+	return waitSwtpmExitAt(pid, fmt.Sprintf(workDir, id.String()))
+}
+
+func waitSwtpmExitAt(pid int, statePath string) error {
+	fd, err := openVerifiedSwtpmAt(pid, statePath)
 	if err != nil || fd < 0 {
 		if err == nil && pid > 0 {
 			// The daemon may already have exited but still be our zombie.
@@ -246,13 +278,29 @@ func waitPidfdExit(pid, fd int) error {
 }
 
 func stopSwtpmAndWait(pid int, id uuid.UUID) error {
-	fd, err := openVerifiedSwtpm(pid, id)
+	return stopSwtpmAndWaitAt(pid, fmt.Sprintf(workDir, id.String()))
+}
+
+func stopSwtpmAndWaitAt(pid int, statePath string) error {
+	fd, err := openVerifiedSwtpmAt(pid, statePath)
 	if err != nil || fd < 0 {
 		return err
 	}
 	defer unix.Close(fd)
 	if err := unix.PidfdSendSignal(fd, unix.SIGTERM, nil, 0); err != nil && !errors.Is(err, unix.ESRCH) {
 		return fmt.Errorf("signal swtpm pid %d: %w", pid, err)
+	}
+	return waitPidfdExit(pid, fd)
+}
+
+func forceStopSwtpmAt(pid int, statePath string) error {
+	fd, err := openVerifiedSwtpmAt(pid, statePath)
+	if err != nil || fd < 0 {
+		return err
+	}
+	defer unix.Close(fd)
+	if err := unix.PidfdSendSignal(fd, unix.SIGKILL, nil, 0); err != nil && !errors.Is(err, unix.ESRCH) {
+		return fmt.Errorf("force-stop SWTPM pid %d: %w", pid, err)
 	}
 	return waitPidfdExit(pid, fd)
 }
@@ -367,6 +415,9 @@ func cleanupFiles(uuid uuid.UUID) error {
 	if err := os.RemoveAll(fmt.Sprintf(workDir, id)); err != nil {
 		cleanupErr = errors.Join(cleanupErr, err)
 	}
+	if err := cleanupMigrationStages(uuid); err != nil {
+		cleanupErr = errors.Join(cleanupErr, err)
+	}
 	for _, file := range []string{
 		fmt.Sprintf(swtpmCtrlSockPath, id),
 		fmt.Sprintf(swtpmPidPath, id),
@@ -377,6 +428,53 @@ func cleanupFiles(uuid uuid.UUID) error {
 		}
 	}
 	return cleanupErr
+}
+
+func migrationStageRoot(id uuid.UUID) string {
+	return filepath.Join(filepath.Dir(fmt.Sprintf(workDir, id.String())), ".vtpm-migrate-"+id.String())
+}
+
+func cleanupMigrationStages(id uuid.UUID) error {
+	stageRoot := migrationStageRoot(id)
+	for _, process := range []struct{ name, state string }{
+		{"legacy", fmt.Sprintf(workDir, id.String())},
+		{"protected", filepath.Join(stageRoot, "state")},
+	} {
+		pid, err := readPidFile(filepath.Join(stageRoot, process.name+".pid"))
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("read %s migration pid: %w", process.name, err)
+		}
+		if err := forceStopSwtpmAt(pid, process.state); err != nil {
+			return fmt.Errorf("stop %s migration SWTPM before cleanup: %w", process.name, err)
+		}
+	}
+	return os.RemoveAll(stageRoot)
+}
+
+// recoverMigrationStage repairs an interruption between the two directory
+// renames. Before the new directory is active, the old state is authoritative.
+func recoverMigrationStage(id uuid.UUID) error {
+	active := fmt.Sprintf(workDir, id.String())
+	stageRoot := migrationStageRoot(id)
+	legacy := filepath.Join(stageRoot, "legacy")
+	if _, err := os.Stat(active); errors.Is(err, os.ErrNotExist) {
+		if _, legacyErr := os.Stat(legacy); legacyErr == nil {
+			if err := os.Rename(legacy, active); err != nil {
+				return fmt.Errorf("restore legacy SWTPM state after interrupted migration: %w", err)
+			}
+		} else if !errors.Is(legacyErr, os.ErrNotExist) {
+			return fmt.Errorf("check interrupted SWTPM migration: %w", legacyErr)
+		}
+	} else if err != nil {
+		return fmt.Errorf("check active SWTPM state during migration recovery: %w", err)
+	}
+	if err := cleanupMigrationStages(id); err != nil {
+		return fmt.Errorf("remove interrupted SWTPM migration files: %w", err)
+	}
+	return nil
 }
 
 func makeDirs(dir string, mode os.FileMode) error {
@@ -428,9 +526,10 @@ func getSwtpmPid(pidPath string, timeoutSeconds uint) (int, error) {
 // Transport and IPC problems are returned as err.
 func checkSwtpmState(uuid uuid.UUID) (stateBad bool, err error) {
 	id := uuid.String()
-	wd := fmt.Sprintf(workDir, id)
-	ctrlSockPath := fmt.Sprintf(swtpmCtrlSockPath, id)
-	pidPath := fmt.Sprintf(swtpmPidPath, id)
+	return checkSwtpmStateAt(fmt.Sprintf(workDir, id), fmt.Sprintf(swtpmCtrlSockPath, id), fmt.Sprintf(swtpmPidPath, id))
+}
+
+func checkSwtpmStateAt(wd, ctrlSockPath, pidPath string) (stateBad bool, err error) {
 
 	if _, err := os.Stat(wd); err != nil {
 		return false, fmt.Errorf("failed to check SWTPM state directory: %w", err)
@@ -490,93 +589,285 @@ func writeSwtpmKey(path string, key []byte) error {
 	return nil
 }
 
-func runSwtpm(uuid uuid.UUID) (int, *logForwarder, error) {
-	id := uuid.String()
-	wd := fmt.Sprintf(workDir, id)
-	ctrlSockPath := fmt.Sprintf(swtpmCtrlSockPath, id)
-	binKeyPath := fmt.Sprintf(stateEncryptionKey, id)
-	pidPath := fmt.Sprintf(swtpmPidPath, id)
-	isEncryptedPath := fmt.Sprintf(stateIsEncryptedPath, id)
-	fifoPath := fmt.Sprintf(instanceLogFifoPath, id)
-	logPath := path.Join(wd, "swtpm.log")
+type swtpmRunOptions struct {
+	stateDir     string
+	ctrlPath     string
+	pidPath      string
+	fifoPath     string
+	keyPath      string
+	key          []byte
+	migrationKey []byte
+	terminate    bool
+	incoming     bool
+}
 
-	if err := makeDirs(wd, 0700); err != nil {
+func migrationSwtpmOptions(id uuid.UUID, stageRoot, name, stateDir string) swtpmRunOptions {
+	opts := swtpmOptions(id)
+	opts.stateDir = stateDir
+	opts.ctrlPath = filepath.Join(stageRoot, name+".ctrl")
+	opts.pidPath = filepath.Join(stageRoot, name+".pid")
+	opts.fifoPath = filepath.Join(stageRoot, name+".fifo")
+	opts.keyPath = filepath.Join(stageRoot, name+".key")
+	return opts
+}
+
+func swtpmOptions(id uuid.UUID) swtpmRunOptions {
+	s := id.String()
+	return swtpmRunOptions{
+		stateDir:  fmt.Sprintf(workDir, s),
+		ctrlPath:  fmt.Sprintf(swtpmCtrlSockPath, s),
+		pidPath:   fmt.Sprintf(swtpmPidPath, s),
+		fifoPath:  fmt.Sprintf(instanceLogFifoPath, s),
+		keyPath:   fmt.Sprintf(stateEncryptionKey, s),
+		terminate: true,
+	}
+}
+
+func runSwtpm(id uuid.UUID) (int, *logForwarder, error) {
+	if !isTPMAvailable() {
+		return runSwtpmWithKey(id, nil)
+	}
+	key, err := getEncryptionKey()
+	if err != nil {
+		return 0, nil, fmt.Errorf("failed to get SWTPM state encryption key: %w", err)
+	}
+	return runSwtpmWithKey(id, key)
+}
+
+func runSwtpmWithKey(id uuid.UUID, key []byte) (int, *logForwarder, error) {
+	opts := swtpmOptions(id)
+	opts.key = key
+	marker := fmt.Sprintf(stateIsEncryptedPath, id.String())
+	if key == nil {
+		if utils.FileExists(log, marker) {
+			return 0, nil, fmt.Errorf("state encryption was enabled for SWTPM, but TPM is no longer available")
+		}
+		log.Noticef("TPM is not available, starting SWTPM without state encryption!")
+	} else if !utils.FileExists(log, marker) {
+		if err := utils.WriteRename(marker, []byte("Y")); err != nil {
+			return 0, nil, fmt.Errorf("failed to mark the app SWTPM state as encrypted: %w", err)
+		}
+	}
+	return startSwtpm(opts)
+}
+
+func startSwtpm(opts swtpmRunOptions) (int, *logForwarder, error) {
+	if err := makeDirs(opts.stateDir, 0700); err != nil {
 		return 0, nil, fmt.Errorf("failed to create SWTPM state directory: %w", err)
 	}
-	if err := makeDirs(path.Dir(fifoPath), 0755); err != nil {
+	if err := makeDirs(path.Dir(opts.fifoPath), 0755); err != nil {
 		return 0, nil, fmt.Errorf("failed to create SWTPM run directory: %w", err)
 	}
-
-	// create a log forwarder for this SWTPM instance
-	lf, err := newLogForwarder(fifoPath, logPath)
+	lf, err := newLogForwarder(opts.fifoPath, path.Join(opts.stateDir, "swtpm.log"))
 	if err != nil {
 		return 0, nil, fmt.Errorf("failed to create log forwarder: %w", err)
 	}
-
-	swtpmArgs := []string{"socket", "--tpm2",
-		"--tpmstate", "dir=" + wd + ",backup",
-		"--ctrl", "type=unixio,path=" + ctrlSockPath + ",mode=0600,terminate",
-		"--pid", "file=" + pidPath,
+	ctrl := "type=unixio,path=" + opts.ctrlPath + ",mode=0600"
+	if opts.terminate {
+		ctrl += ",terminate"
+	}
+	args := []string{"socket", "--tpm2",
+		"--tpmstate", "dir=" + opts.stateDir + ",backup",
+		"--ctrl", ctrl,
+		"--pid", "file=" + opts.pidPath,
 		"--log", "level=3,file=" + lf.fifoPath,
 		"--daemon"}
-
-	if !isTPMAvailable() {
-		log.Noticef("TPM is not available, starting SWTPM without state encryption!")
-		// if SWTPM state for app marked as as encrypted, and TPM is not available
-		// anymore, fail because this might corrupt the SWTPM state.
-		if utils.FileExists(log, isEncryptedPath) {
-			lf.stop()
-			return 0, nil, fmt.Errorf("state encryption was enabled for SWTPM, but TPM is no longer available")
-		}
-
-		cmd := exec.Command(swtpmPath, swtpmArgs...)
-		if err := cmd.Run(); err != nil {
-			lf.stop()
-			return 0, nil, fmt.Errorf("failed to start SWTPM: %w", err)
-		}
-	} else {
-		log.Noticef("TPM is available, starting SWTPM with state encryption")
-
-		key, err := getEncryptionKey()
-		if err != nil {
-			lf.stop()
-			return 0, nil, fmt.Errorf("failed to get SWTPM state encryption key : %w", err)
-		}
-
-		// we are about to write the key to the disk, so mark the SWTPM state
-		// as encrypted
-		if !utils.FileExists(log, isEncryptedPath) {
-			if err := utils.WriteRename(isEncryptedPath, []byte("Y")); err != nil {
-				lf.stop()
-				return 0, nil, fmt.Errorf("failed to mark the app SWTPM state as encrypted: %w", err)
-			}
-		}
-
-		if err := writeSwtpmKey(binKeyPath, key); err != nil {
-			lf.stop()
-			return 0, nil, fmt.Errorf("failed to write key to file: %w", err)
-		}
-
-		swtpmArgs = append(swtpmArgs, "--key", "file="+binKeyPath+",format=binary,mode=aes-256-cbc,remove=true")
-		cmd := exec.Command(swtpmPath, swtpmArgs...)
-		if err := cmd.Run(); err != nil {
-			// this shall not fail 🧙🏽‍♂️
-			rmErr := os.Remove(binKeyPath)
-			lf.stop()
-			if rmErr != nil {
-				return 0, nil, fmt.Errorf("failed to start SWTPM: %w, failed to remove key file %w", err, rmErr)
-			}
-			return 0, nil, fmt.Errorf("failed to start SWTPM: %w", err)
-		}
+	if opts.incoming {
+		args = append(args, "--migration", "incoming")
 	}
-
-	pid, err := getSwtpmPid(pidPath, uint(maxPidWaitTime))
+	var keyFiles []string
+	defer func() {
+		for _, file := range keyFiles {
+			_ = os.Remove(file)
+		}
+	}()
+	if opts.key != nil {
+		if err := writeSwtpmKey(opts.keyPath, opts.key); err != nil {
+			lf.stop()
+			return 0, nil, fmt.Errorf("failed to write SWTPM key: %w", err)
+		}
+		keyFiles = append(keyFiles, opts.keyPath)
+		args = append(args, "--key", "file="+opts.keyPath+",format=binary,mode=aes-256-cbc,remove=true")
+	}
+	if opts.migrationKey != nil {
+		migrationKeyPath := opts.keyPath + ".migration"
+		if err := writeSwtpmKey(migrationKeyPath, opts.migrationKey); err != nil {
+			lf.stop()
+			return 0, nil, fmt.Errorf("failed to write SWTPM migration key: %w", err)
+		}
+		keyFiles = append(keyFiles, migrationKeyPath)
+		args = append(args, "--migration-key", "file="+migrationKeyPath+",format=binary,mode=aes-256-cbc,remove=true")
+	}
+	if err := exec.Command(swtpmPath, args...).Run(); err != nil {
+		lf.stop()
+		return 0, nil, fmt.Errorf("failed to start SWTPM: %w", err)
+	}
+	pid, err := getSwtpmPid(opts.pidPath, uint(maxPidWaitTime))
 	if err != nil {
 		lf.stop()
 		return 0, nil, fmt.Errorf("failed to get SWTPM pid: %w", err)
 	}
-
 	return pid, lf, nil
+}
+
+func swtpmIoctl(ctrlPath string, args ...string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), swtpmCtrlTimeout)
+	defer cancel()
+	argv := append([]string{"--unix", ctrlPath}, args...)
+	out, err := exec.CommandContext(ctx, swtpmIoctlPath, argv...).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("swtpm_ioctl %v: %w: %s", args, err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// tryLegacyAndMigrate checks whether the existing state belongs to the legacy
+// key. On success it exports an encrypted migration blob and imports it into a
+// separate state directory using the PCR-protected key. The original directory
+// stays active until the new state has passed its own health check.
+func tryLegacyAndMigrate(id uuid.UUID, legacyKey, protectedKey []byte) (bool, error) {
+	stageRoot := migrationStageRoot(id)
+	opts := migrationSwtpmOptions(id, stageRoot, "legacy", fmt.Sprintf(workDir, id.String()))
+	if err := os.Mkdir(stageRoot, 0700); err != nil {
+		return false, fmt.Errorf("create state migration directory: %w", err)
+	}
+	keepStageRoot := false
+	stopMigrationProcess := func(pid *int, statePath string) error {
+		if *pid <= 0 {
+			return nil
+		}
+		err := stopSwtpmAndWaitAt(*pid, statePath)
+		if err == nil {
+			*pid = 0
+			return nil
+		}
+		if forceErr := forceStopSwtpmAt(*pid, statePath); forceErr != nil {
+			keepStageRoot = true
+			return errors.Join(err, forceErr)
+		}
+		*pid = 0
+		return err
+	}
+	defer func() {
+		if keepStageRoot {
+			return
+		}
+		if err := os.RemoveAll(stageRoot); err != nil {
+			log.Warnf("failed to remove SWTPM migration directory %s: %v", stageRoot, err)
+		}
+	}()
+	blob := filepath.Join(stageRoot, "permanent.blob")
+	newState := filepath.Join(stageRoot, "state")
+
+	opts.key = legacyKey
+	opts.migrationKey = protectedKey
+	opts.terminate = false
+	pid, lf, err := startSwtpm(opts)
+	if err != nil {
+		return false, fmt.Errorf("start SWTPM with legacy key: %w", err)
+	}
+	defer func() {
+		if pid > 0 {
+			stoppingPID := pid
+			if err := stopMigrationProcess(&pid, opts.stateDir); err != nil {
+				log.Errorf("failed to stop legacy-key SWTPM pid %d: %v", stoppingPID, err)
+			}
+		}
+		if lf != nil {
+			lf.stop()
+		}
+	}()
+	bad, err := checkSwtpmStateAt(opts.stateDir, opts.ctrlPath, opts.pidPath)
+	if err != nil {
+		return false, fmt.Errorf("probe SWTPM with legacy key: %w", err)
+	}
+	if bad {
+		if err := stopMigrationProcess(&pid, opts.stateDir); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	if err := invokeSwtpmIoctl(opts.ctrlPath, "--save", "permanent", blob); err != nil {
+		return false, fmt.Errorf("export legacy SWTPM state: %w", err)
+	}
+	if err := stopMigrationProcess(&pid, opts.stateDir); err != nil {
+		return false, err
+	}
+	lf.stop()
+	lf = nil
+
+	newOpts := migrationSwtpmOptions(id, stageRoot, "protected", newState)
+	newOpts.key = protectedKey
+	newOpts.migrationKey = protectedKey
+	newOpts.terminate = false
+	newOpts.incoming = true
+	newPID, newLF, err := startSwtpm(newOpts)
+	if err != nil {
+		return false, fmt.Errorf("start protected SWTPM for state import: %w", err)
+	}
+	defer func() {
+		if newPID > 0 {
+			stoppingPID := newPID
+			if err := stopMigrationProcess(&newPID, newState); err != nil {
+				log.Errorf("failed to stop state-import SWTPM pid %d: %v", stoppingPID, err)
+			}
+		}
+		if newLF != nil {
+			newLF.stop()
+		}
+	}()
+	if err := invokeSwtpmIoctl(newOpts.ctrlPath, "--load", "permanent", blob); err != nil {
+		return false, fmt.Errorf("import protected SWTPM state: %w", err)
+	}
+	if err := invokeSwtpmIoctl(newOpts.ctrlPath, "-i"); err != nil {
+		return false, fmt.Errorf("initialize imported SWTPM state: %w", err)
+	}
+	if err := invokeSwtpmIoctl(newOpts.ctrlPath, "-s"); err != nil {
+		return false, fmt.Errorf("save imported SWTPM state: %w", err)
+	}
+	if err := stopMigrationProcess(&newPID, newState); err != nil {
+		return false, err
+	}
+	newLF.stop()
+	newLF = nil
+
+	// A second load verifies that the committed files can be read with the
+	// protected key, not merely imported into a running TPM.
+	newOpts.migrationKey = nil
+	newOpts.incoming = false
+	newOpts.terminate = true
+	newPID, newLF, err = startSwtpm(newOpts)
+	if err != nil {
+		return false, fmt.Errorf("verify protected SWTPM state: %w", err)
+	}
+	bad, err = checkSwtpmStateAt(newState, newOpts.ctrlPath, newOpts.pidPath)
+	waitErr := waitSwtpmExitAt(newPID, newState)
+	if waitErr == nil {
+		newPID = 0
+	} else {
+		waitErr = errors.Join(waitErr, stopMigrationProcess(&newPID, newState))
+	}
+	newLF.stop()
+	newLF = nil
+	if err != nil || bad || waitErr != nil {
+		return false, fmt.Errorf("verify protected SWTPM state: bad=%t probe=%v wait=%v", bad, err, waitErr)
+	}
+	if err := writeProtectedMarker(newState); err != nil {
+		return false, fmt.Errorf("mark protected SWTPM state: %w", err)
+	}
+	legacy := filepath.Join(stageRoot, "legacy")
+	if err := renameStateDir(opts.stateDir, legacy); err != nil {
+		return false, fmt.Errorf("set aside legacy SWTPM state: %w", err)
+	}
+	if err := renameStateDir(newState, opts.stateDir); err != nil {
+		if rollbackErr := renameStateDir(legacy, opts.stateDir); rollbackErr != nil {
+			keepStageRoot = true
+			return false, fmt.Errorf("activate protected SWTPM state: %w; restore legacy state: %v", err, rollbackErr)
+		}
+		return false, fmt.Errorf("activate protected SWTPM state: %w", err)
+	}
+	log.Noticef("migrated SWTPM state for id %s from legacy to PCR-protected key", id)
+	return true, nil
 }
 
 // Domain manager is requesting to launch a new VM/App, run a new SWTPM
@@ -600,6 +891,10 @@ func handleLaunch(w http.ResponseWriter, r *http.Request) {
 	// interleave, while other VMs run in parallel.
 	unlock := lockID(id)
 	defer unlock()
+	if err := recoverMigrationStage(id); err != nil {
+		http.Error(w, fmt.Sprintf("failed to clear stale SWTPM migration state: %v", err), http.StatusFailedDependency)
+		return
+	}
 
 	// If we have a record of an SWTPM instance with this id and it is still
 	// alive, reuse it; otherwise drop the stale record.
@@ -656,10 +951,38 @@ func handleLaunch(w http.ResponseWriter, r *http.Request) {
 			m.Unlock()
 		}
 	}()
+	protectedMode := isTPMAvailable() && sha256PCRAvailable()
+	statePath := fmt.Sprintf(workDir, id.String())
+	_, markerErr := os.Stat(filepath.Join(statePath, protectedStateMarker))
+	if markerErr != nil && !errors.Is(markerErr, os.ErrNotExist) {
+		http.Error(w, fmt.Sprintf("failed to check PCR-protected state marker: %v", markerErr), http.StatusFailedDependency)
+		return
+	}
+	protectedBefore := markerErr == nil
+	if protectedBefore && !protectedMode {
+		http.Error(w, "PCR-protected SWTPM state requires the protected TPM key", http.StatusFailedDependency)
+		return
+	}
+	var protectedKey []byte
+	if protectedMode {
+		var err error
+		protectedKey, err = getEncryptionKey()
+		if err != nil {
+			http.Error(w, fmt.Sprintf("failed to get PCR-protected SWTPM key: %v", err), http.StatusFailedDependency)
+			return
+		}
+	}
+	launch := func() (int, *logForwarder, error) {
+		if protectedMode {
+			return runSwtpmWithKey(id, protectedKey)
+		}
+		return runSwtpm(id)
+	}
+	encryptedBefore := utils.FileExists(log, fmt.Sprintf(stateIsEncryptedPath, id.String()))
 
 	// Run SWTPM for the health check first, if there is no backup state or
 	// both normal state and backup are corrupted, we do a state reset with a warning.
-	pid, lf, err := runSwtpm(id)
+	pid, lf, err := launch()
 	if err != nil {
 		err := fmt.Sprintf("vTPM failed to start SWTPM instance for health check: %v", err)
 		http.Error(w, err, http.StatusFailedDependency)
@@ -686,6 +1009,27 @@ func handleLaunch(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err, http.StatusFailedDependency)
 		return
 	case stateBad:
+		if protectedBefore {
+			http.Error(w, "PCR-protected SWTPM state could not be loaded; state preserved", http.StatusFailedDependency)
+			return
+		}
+		if protectedMode && encryptedBefore {
+			legacyKey, err := getLegacyEncryptionKey()
+			if err != nil {
+				http.Error(w, fmt.Sprintf("failed to read legacy SWTPM key; state preserved: %v", err), http.StatusFailedDependency)
+				return
+			}
+			if !bytes.Equal(legacyKey, protectedKey) {
+				loaded, err := tryLegacyAndMigrate(id, legacyKey, protectedKey)
+				if err != nil {
+					http.Error(w, fmt.Sprintf("failed to migrate legacy SWTPM state; state preserved: %v", err), http.StatusFailedDependency)
+					return
+				}
+				if loaded {
+					break
+				}
+			}
+		}
 		// swtpm reported it could not initialize the state (both the primary and
 		// the ,backup copy are unusable). Preserve the bytes for recovery rather
 		// then continue with fresh state so the guest can still boot.
@@ -710,11 +1054,19 @@ func handleLaunch(w http.ResponseWriter, r *http.Request) {
 	// Run SWTPM again, since we run SWTPM with the "terminate" flag, it will
 	// terminate itself when the control socket is closed in checkSwtpmState.
 	// in any case, this should work.
-	pid, lf, err = runSwtpm(id)
+	pid, lf, err = launch()
 	if err != nil {
 		err := fmt.Sprintf("vTPM failed to start SWTPM instance: %v", err)
 		http.Error(w, err, http.StatusFailedDependency)
 		return
+	}
+	if protectedMode {
+		if err := writeProtectedMarker(statePath); err != nil {
+			_ = stopSwtpmAndWait(pid, id)
+			lf.stop()
+			http.Error(w, fmt.Sprintf("failed to mark PCR-protected SWTPM state: %v", err), http.StatusFailedDependency)
+			return
+		}
 	}
 
 	log.Noticef("vTPM launched SWTPM instance with id: %s, pid: %d", id, pid)
