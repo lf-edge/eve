@@ -132,6 +132,9 @@ const (
 	// rebootBeforeDrainParamKey selects whether VolumeMigration reboots EVE-K
 	// while the carried-over kvm volumes are still held.
 	rebootBeforeDrainParamKey = "REBOOT_BEFORE_DRAIN"
+	// midUploadPowerCycleParamKey selects whether the topology test cuts power
+	// while the carried data volume is uploading into its PVC.
+	midUploadPowerCycleParamKey = "MID_UPLOAD_POWER_CYCLE"
 )
 
 // Defaults shared across the package.
