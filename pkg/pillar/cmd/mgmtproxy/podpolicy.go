@@ -224,6 +224,12 @@ func markClusterWide() error {
 	if !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("stat %s: %w", clusterWideSecretsMarker, err)
 	}
+	// On a fresh node nothing has created the directory yet: the marker is
+	// written before the secrets (see applyProxySecrets), which is what
+	// would otherwise create it.
+	if err := os.MkdirAll(filepath.Dir(clusterWideSecretsMarker), 0o700); err != nil {
+		return fmt.Errorf("mkdir %s: %w", filepath.Dir(clusterWideSecretsMarker), err)
+	}
 	return os.WriteFile(clusterWideSecretsMarker, nil, 0o600)
 }
 
