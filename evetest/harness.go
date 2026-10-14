@@ -1107,6 +1107,12 @@ func Setup(requirements ...Requirement) {
 			if req.WithTPM {
 				requiredCaps = append(requiredCaps, api.Capability_CAPABILITY_TPM)
 			}
+			if req.WithTPMPCRBanks != "" {
+				if !req.WithTPM {
+					th.t.Fatalf("TPM PCR banks require WithTPM for device %q", req.Name)
+				}
+				requiredCaps = append(requiredCaps, api.Capability_CAPABILITY_TPM_PCR_BANKS)
+			}
 		case RequireNetworkModel:
 			netModel = proto.CloneOf(req.NetworkModel)
 		case RequireInternetConnectivity:
