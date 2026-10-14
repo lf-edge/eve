@@ -492,6 +492,12 @@ spec:
 	checkMgmtProxyGuardrail(t, step1Runner,
 		"step 1 (kubectl apply, unprivileged, default route only)")
 
+	// dvImportTimeout bounds each DataVolume import below. Besides the transfer
+	// itself (about 0.8 MB/s through mgmtproxy for the 184 MB Alpine image),
+	// it covers PVC and scratch-volume provisioning and a possible runtime pull
+	// of the cdi-importer image.
+	const dvImportTimeout = 10 * time.Minute
+
 	// --- Step 2: standalone CDI DataVolume, importer pod fetches an image ---
 	//
 	// No VM needs to actually exist for CDI to create an importer pod and
@@ -554,10 +560,11 @@ spec:
 
 	dvWaitScript := fmt.Sprintf(
 		"eve exec kube kubectl wait --for=jsonpath='{.status.phase}'=Succeeded "+
-			"datavolume/%s -n %s --timeout=300s", cdiDataVolume, mgmtProxyTestNamespace)
+			"datavolume/%s -n %s --timeout=%ds", cdiDataVolume, mgmtProxyTestNamespace,
+		int(dvImportTimeout.Seconds()))
 	log.Infof("Waiting for DataVolume %s/%s to report Succeeded",
 		mgmtProxyTestNamespace, cdiDataVolume)
-	_, _, err = device.RunShellScript(dvWaitScript, 6*time.Minute, 0)
+	_, _, err = device.RunShellScript(dvWaitScript, dvImportTimeout+time.Minute, 0)
 	t.Expect(err).ToNot(HaveOccurred(), "wait for the DataVolume import to succeed")
 	log.Infof("DataVolume %s/%s import Succeeded", mgmtProxyTestNamespace, cdiDataVolume)
 	evetest.Checkpoint("step2-is-deployed")
@@ -599,10 +606,11 @@ spec:
 
 	dvPublicWaitScript := fmt.Sprintf(
 		"eve exec kube kubectl wait --for=jsonpath='{.status.phase}'=Succeeded "+
-			"datavolume/%s -n %s --timeout=300s", cdiPublicDataVolume, mgmtProxyTestNamespace)
+			"datavolume/%s -n %s --timeout=%ds", cdiPublicDataVolume, mgmtProxyTestNamespace,
+		int(dvImportTimeout.Seconds()))
 	log.Infof("Waiting for DataVolume %s/%s (no certConfigMap) to report Succeeded",
 		mgmtProxyTestNamespace, cdiPublicDataVolume)
-	_, _, err = device.RunShellScript(dvPublicWaitScript, 6*time.Minute, 0)
+	_, _, err = device.RunShellScript(dvPublicWaitScript, dvImportTimeout+time.Minute, 0)
 	t.Expect(err).ToNot(HaveOccurred(),
 		"wait for the DataVolume import without certConfigMap to succeed; the "+
 			"importer must trust mgmtproxy's cni0 CA via the CDI CR's trustedCAProxy")
