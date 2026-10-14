@@ -39,6 +39,7 @@ func initTest(test *testing.T, withKube bool) *GomegaWithT {
 	t := NewGomegaWithT(test)
 	t.SetDefaultEventuallyTimeout(5 * time.Second)
 	t.SetDefaultConsistentlyDuration(5 * time.Second)
+	initFixtures()
 	logger := logrus.StandardLogger()
 	log := base.NewSourceLogObject(logger, "test", 1234)
 	networkMonitor = &netmonitor.MockNetworkMonitor{
@@ -271,6 +272,60 @@ func TestHostIpsetBasename(t *testing.T) {
 */
 
 var (
+	keth0         netmonitor.MockInterface
+	eth0          netmonitor.MockInterface
+	eth0Routes    []netmonitor.Route
+	keth1         netmonitor.MockInterface
+	eth1          netmonitor.MockInterface
+	eth1Routes    []netmonitor.Route
+	keth2         netmonitor.MockInterface
+	eth2          netmonitor.MockInterface
+	eth2Routes    []netmonitor.Route
+	keth3         netmonitor.MockInterface
+	eth3          netmonitor.MockInterface
+	eth3Routes    []netmonitor.Route
+	ni1UUID       types.UUIDandVersion
+	ni1Config     types.NetworkInstanceConfig
+	ni1Bridge     nirec.NIBridge
+	ni1BridgeIf   netmonitor.MockInterface
+	ni2UUID       types.UUIDandVersion
+	ni2Config     types.NetworkInstanceConfig
+	ni2Bridge     nirec.NIBridge
+	ni3UUID       types.UUIDandVersion
+	ni3Config     types.NetworkInstanceConfig
+	ni3Bridge     nirec.NIBridge
+	ni3BridgeIf   netmonitor.MockInterface
+	ni4UUID       types.UUIDandVersion
+	ni4Config     types.NetworkInstanceConfig
+	ni4Bridge     nirec.NIBridge
+	ni5UUID       types.UUIDandVersion
+	ni5Config     types.NetworkInstanceConfig
+	ni5Bridge     nirec.NIBridge
+	ni5BridgeIf   netmonitor.MockInterface
+	app1UUID      types.UUIDandVersion
+	app1Num       int
+	app1NetConfig types.AppNetworkConfig
+	app1VIFs      []nirec.AppVIF
+	app1VIF1      netmonitor.MockInterface
+	app2UUID      types.UUIDandVersion
+	app2Num       int
+	app2NetConfig types.AppNetworkConfig
+	app2VIFs      []nirec.AppVIF
+	app2VIF1      netmonitor.MockInterface
+	app2VIF2      netmonitor.MockInterface
+	app2VIF3      netmonitor.MockInterface
+	app2VIF4      netmonitor.MockInterface
+	app3UUID      types.UUIDandVersion
+	app3Num       int
+	app3NetConfig types.AppNetworkConfig
+	app3VIFs      []nirec.AppVIF
+	app3VIF1      netmonitor.MockInterface
+	app3VIF2      netmonitor.MockInterface
+)
+
+// initFixtures (re)initializes all test fixtures, which are modified by
+// some tests, so that every test starts from the same state.
+func initFixtures() {
 	// Device network port "eth0"
 	keth0 = netmonitor.MockInterface{
 		Attrs: netmonitor.IfAttrs{
@@ -474,7 +529,7 @@ var (
 	}
 
 	// Local IPv4 network instance "ni1"
-	ni1UUID   = makeUUID("0d6a128b-b36f-4bd0-a71c-087ba2d71ebc")
+	ni1UUID = makeUUID("0d6a128b-b36f-4bd0-a71c-087ba2d71ebc")
 	ni1Config = types.NetworkInstanceConfig{
 		UUIDandVersion: ni1UUID,
 		DisplayName:    "ni1",
@@ -513,7 +568,7 @@ var (
 	}
 
 	// Switch network instance "ni2" (IPv4)
-	ni2UUID   = makeUUID("68a6e10a-78e9-4fc8-ba22-8fcccbbad690")
+	ni2UUID = makeUUID("68a6e10a-78e9-4fc8-ba22-8fcccbbad690")
 	ni2Config = types.NetworkInstanceConfig{
 		UUIDandVersion: ni2UUID,
 		DisplayName:    "ni2",
@@ -538,7 +593,7 @@ var (
 	}
 
 	// Local IPv6 network instance "ni3"
-	ni3UUID   = makeUUID("6dde0993-b095-44c2-b0bb-f657c5f08a6f")
+	ni3UUID = makeUUID("6dde0993-b095-44c2-b0bb-f657c5f08a6f")
 	ni3Config = types.NetworkInstanceConfig{
 		UUIDandVersion: ni3UUID,
 		DisplayName:    "ni3",
@@ -584,7 +639,7 @@ var (
 	}
 
 	// (IPv6) Switch network instance "ni4"
-	ni4UUID   = makeUUID("73cecbd5-102f-41a2-998b-33d42b57cbad")
+	ni4UUID = makeUUID("73cecbd5-102f-41a2-998b-33d42b57cbad")
 	ni4Config = types.NetworkInstanceConfig{
 		UUIDandVersion: ni4UUID,
 		DisplayName:    "ni4",
@@ -609,7 +664,7 @@ var (
 	}
 
 	// Local IPv4 network instance "ni5" with multiple ports.
-	ni5UUID   = makeUUID("1664a775-9107-4663-976e-c6e3c37bf0e9")
+	ni5UUID = makeUUID("1664a775-9107-4663-976e-c6e3c37bf0e9")
 	ni5Config = types.NetworkInstanceConfig{
 		UUIDandVersion: ni5UUID,
 		DisplayName:    "ni5",
@@ -658,8 +713,8 @@ var (
 	}
 
 	// Application "app1"
-	app1UUID      = makeUUID("f9a3acd0-85ae-4c1f-8fb2-0ac22b5dd312")
-	app1Num       = 1
+	app1UUID = makeUUID("f9a3acd0-85ae-4c1f-8fb2-0ac22b5dd312")
+	app1Num = 1
 	app1NetConfig = types.AppNetworkConfig{
 		UUIDandVersion: app1UUID,
 		DisplayName:    "app1",
@@ -762,8 +817,8 @@ var (
 	}
 
 	// Application "app2"
-	app2UUID      = makeUUID("fd6147dc-7232-40df-90f3-dbe963d76d4b")
-	app2Num       = 2
+	app2UUID = makeUUID("fd6147dc-7232-40df-90f3-dbe963d76d4b")
+	app2Num = 2
 	app2NetConfig = types.AppNetworkConfig{
 		UUIDandVersion: app2UUID,
 		DisplayName:    "app2",
@@ -972,8 +1027,8 @@ var (
 	}
 
 	// Application "app3"
-	app3UUID      = makeUUID("c009c3c0-8342-4a7a-9ec3-672882e9060f")
-	app3Num       = 3
+	app3UUID = makeUUID("c009c3c0-8342-4a7a-9ec3-672882e9060f")
+	app3Num = 3
 	app3NetConfig = types.AppNetworkConfig{
 		UUIDandVersion: app3UUID,
 		DisplayName:    "app3",
@@ -1142,7 +1197,7 @@ var (
 		},
 		HwAddr: macAddress("02:00:00:00:03:06"),
 	}
-)
+}
 
 func TestSingleLocalNI(test *testing.T) {
 	t := initTest(test, false)
