@@ -242,13 +242,22 @@ const bootTimeJitter = 5 * time.Second
 func (th *TestHarness) countReboots(devName string, dev *deviceState,
 	restartCounter uint32, bootTime time.Time) {
 
-	newBoot := !bootTime.IsZero() && !dev.lastBootTime.IsZero() &&
-		bootTime.Sub(dev.lastBootTime).Abs() >= bootTimeJitter
+	bothBootTimes := !bootTime.IsZero() && !dev.lastBootTime.IsZero()
+	newBoot := bothBootTimes && bootTime.Sub(dev.lastBootTime).Abs() >= bootTimeJitter
 
 	switch {
 	case !dev.haveRestartCounter:
 		th.log.Infof("Device %s reboot baseline: restart counter %d, boot time %s",
 			devName, restartCounter, bootTimeString(bootTime))
+
+	// zedagent reports a restart counter of 0 until nodeagent's status reaches
+	// it, so the first info message of a boot can carry 0 and the next one the
+	// real value. Within one boot that is a baseline correction, not a reboot.
+	case restartCounter > dev.lastRestartCounter && bothBootTimes && !newBoot:
+		th.log.Warnf("Device %s: restart counter advanced %d -> %d within boot %s; "+
+			"taking it as the baseline, total observed reboots this test: %d",
+			devName, dev.lastRestartCounter, restartCounter,
+			bootTimeString(bootTime), dev.rebootCount)
 
 	case restartCounter > dev.lastRestartCounter:
 		n := int(restartCounter - dev.lastRestartCounter)
@@ -259,7 +268,7 @@ func (th *TestHarness) countReboots(devName string, dev *deviceState,
 			bootTimeString(bootTime), dev.rebootCount)
 		if !newBoot {
 			th.log.Warnf("Device %s: restart counter advanced by %d without a "+
-				"matching boot time change", devName, n)
+				"boot time to confirm it", devName, n)
 		}
 
 	case newBoot:
