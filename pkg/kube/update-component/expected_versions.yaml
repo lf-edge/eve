@@ -3,5 +3,5 @@
 ---
 multus: "v3.9.3"
 kubevirt: "v1.7.3"
-cdi: "v1.57.1"
+cdi: "v1.66.1"
 longhorn: "v1.9.1"
