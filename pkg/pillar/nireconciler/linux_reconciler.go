@@ -181,12 +181,16 @@ func NewLinuxNIReconciler(log *base.LogObject, logger *logrus.Logger,
 }
 
 // GetCurrentState : get the current state (read-only).
+// The watcher is paused until release is called.
 // Exported only for unit-testing purposes.
-func (r *LinuxNIReconciler) GetCurrentState() dg.GraphR {
-	return r.currentState
+func (r *LinuxNIReconciler) GetCurrentState() (graph dg.GraphR, release func()) {
+	release = r.pauseWatcher()
+	return r.currentState, release
 }
 
 // GetIntendedState : get the intended state (read-only).
+// Unlike the current state, the intended state is only modified by API calls
+// (never by the watcher), hence it is safe to read between API calls.
 // Exported only for unit-testing purposes.
 func (r *LinuxNIReconciler) GetIntendedState() dg.GraphR {
 	return r.intendedState

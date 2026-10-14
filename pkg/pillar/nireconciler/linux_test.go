@@ -51,7 +51,8 @@ func initTest(test *testing.T, withKube bool) *GomegaWithT {
 }
 
 func printCurrentState() {
-	currentState := niReconciler.GetCurrentState()
+	currentState, release := niReconciler.GetCurrentState()
+	defer release()
 	dotExporter := &dg.DotExporter{CheckDeps: true}
 	dot, _ := dotExporter.Export(currentState)
 	fmt.Println(dot)
@@ -65,7 +66,8 @@ func printIntendedState() {
 }
 
 func printCombinedState() {
-	currentState := niReconciler.GetCurrentState()
+	currentState, release := niReconciler.GetCurrentState()
+	defer release()
 	intendedState := niReconciler.GetIntendedState()
 	dotExporter := &dg.DotExporter{CheckDeps: true}
 	dot, _ := dotExporter.ExportTransition(currentState, intendedState)
@@ -73,12 +75,16 @@ func printCombinedState() {
 }
 
 func itemIsCreated(itemRef dg.ItemRef) bool {
-	_, state, _, found := niReconciler.GetCurrentState().Item(itemRef)
+	currentState, release := niReconciler.GetCurrentState()
+	defer release()
+	_, state, _, found := currentState.Item(itemRef)
 	return found && state.IsCreated()
 }
 
 func itemDescription(itemRef dg.ItemRef) string {
-	item, _, _, found := niReconciler.GetCurrentState().Item(itemRef)
+	currentState, release := niReconciler.GetCurrentState()
+	defer release()
+	item, _, _, found := currentState.Item(itemRef)
 	if !found {
 		return ""
 	}
@@ -86,7 +92,8 @@ func itemDescription(itemRef dg.ItemRef) string {
 }
 
 func itemCount(match func(item dg.Item) bool) (count int) {
-	currentState := niReconciler.GetCurrentState()
+	currentState, release := niReconciler.GetCurrentState()
+	defer release()
 	iter := currentState.Items(true)
 	for iter.Next() {
 		item, _ := iter.Item()
@@ -98,7 +105,8 @@ func itemCount(match func(item dg.Item) bool) (count int) {
 }
 
 func itemCountWithType(itemType string) (count int) {
-	currentState := niReconciler.GetCurrentState()
+	currentState, release := niReconciler.GetCurrentState()
+	defer release()
 	iter := currentState.Items(true)
 	for iter.Next() {
 		item, _ := iter.Item()
@@ -1355,13 +1363,15 @@ func TestSingleLocalNI(test *testing.T) {
 	t.Expect(recUpdate.AppConnStatus.VIFs[0].InProgress).To(BeFalse())
 	t.Expect(recUpdate.AppConnStatus.VIFs[0].FailedItems).To(BeEmpty())
 
-	graphs := []dg.GraphR{niReconciler.GetIntendedState(), niReconciler.GetCurrentState()}
+	currentState, release := niReconciler.GetCurrentState()
+	graphs := []dg.GraphR{niReconciler.GetIntendedState(), currentState}
 	for _, graph := range graphs {
 		niSG := graph.SubGraph(nirec.NIToSGName(ni1UUID.UUID))
 		t.Expect(niSG).ToNot(BeNil())
 		appSG := niSG.SubGraph(nirec.AppConnSGName(app1UUID.UUID, app1VIFs[0].NetAdapterName))
 		t.Expect(appSG).ToNot(BeNil())
 	}
+	release()
 
 	// Simulate port losing IP address.
 	ips := eth0.IPAddrs
@@ -1442,13 +1452,15 @@ func TestSingleLocalNI(test *testing.T) {
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
 	niReconciler.ResumeReconcile(ctx)
 
-	graphs = []dg.GraphR{niReconciler.GetIntendedState(), niReconciler.GetCurrentState()}
+	currentState, release = niReconciler.GetCurrentState()
+	graphs = []dg.GraphR{niReconciler.GetIntendedState(), currentState}
 	for _, graph := range graphs {
 		niSG := graph.SubGraph(nirec.NIToSGName(ni1UUID.UUID))
 		t.Expect(niSG).ToNot(BeNil())
 		appSG := niSG.SubGraph(nirec.AppConnSGName(app1UUID.UUID, app1VIFs[0].NetAdapterName))
 		t.Expect(appSG).To(BeNil())
 	}
+	release()
 
 	// Delete network instance
 	niStatus, err = niReconciler.DelNI(ctx, ni1UUID.UUID)
@@ -1464,11 +1476,13 @@ func TestSingleLocalNI(test *testing.T) {
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
 	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
 
-	graphs = []dg.GraphR{niReconciler.GetIntendedState(), niReconciler.GetCurrentState()}
+	currentState, release = niReconciler.GetCurrentState()
+	graphs = []dg.GraphR{niReconciler.GetIntendedState(), currentState}
 	for _, graph := range graphs {
 		niSG := graph.SubGraph(nirec.NIToSGName(ni1UUID.UUID))
 		t.Expect(niSG).To(BeNil())
 	}
+	release()
 }
 
 func TestIPv4LocalAndSwitchNIs(test *testing.T) {
