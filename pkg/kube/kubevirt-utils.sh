@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 KUBEVIRT_VERSION=v1.7.3
-CDI_VERSION=v1.57.1
+CDI_VERSION=v1.66.1
 
 Kubevirt_install() {
     # Though PR https://github.com/kubevirt/kubevirt/pull/9668 is merged to upstream kubevirt
