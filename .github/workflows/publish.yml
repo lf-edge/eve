@@ -314,7 +314,7 @@ jobs:
     needs: [manifest, eve]
     permissions:
       contents: write
-    uses: lf-edge/eve/.github/workflows/assets.yml@master
+    uses: lf-edge/eve/.github/workflows/assets.yml@17.0-stable
     secrets:
       DOCKERHUB_PULL_TOKEN: ${{ secrets.DOCKERHUB_PULL_TOKEN }}
       DOCKERHUB_PULL_USER: ${{ secrets.DOCKERHUB_PULL_USER }}
