@@ -126,6 +126,12 @@ var numNodesParam = evetest.TestParameterDefinition{
 //     via the *legitimate* cni0 consumer mgmtproxy exists to serve,
 //     proxied through the CDI CR's importProxy config
 //     (pkg/kube/kube-init/mgmtproxy/cni0.go:PatchCDIProxyConfig).
+//     2b. A second standalone DataVolume with a plain public HTTPS source.url
+//     and NO certConfigMap: the target's certificate chains to a public CA,
+//     so the only trust the importer needs beyond its defaults is for the
+//     proxy itself. That must come from the CDI CR's trustedCAProxy
+//     (mgmtproxy's cni0 TLS cert, published by kube-init), without any
+//     per-DataVolume configuration from the user.
 //  3. The identical image, deployed through the EVE API as a native
 //     (NOHYPER) container. A kubevirt-VM-mode app gets no interface
 //     bridged onto cni0 in the guest at all -- domainmgr only wires up
@@ -164,7 +170,9 @@ var numNodesParam = evetest.TestParameterDefinition{
 //  4. step2-is-deployed: the DataVolume reports Succeeded; /healthz
 //     requests and eth0 successes must have increased again (CDI's
 //     importer just fetched the image through mgmtproxy).
-//  5. step3-is-deployed: the EVE-API app is running; /healthz counters must
+//  5. step2b-is-deployed: the second DataVolume (no certConfigMap) reports
+//     Succeeded; /healthz requests must have increased again.
+//  6. step3-is-deployed: the EVE-API app is running; /healthz counters must
 //     not have decreased (no new pull expected); confirm the cni0
 //     guardrail from inside it too.
 //
@@ -563,6 +571,51 @@ spec:
 	log.Infof("After step 2, /healthz (summed): requests=%d (was %d after step 1)",
 		afterStep2.Requests, afterStep1.Requests)
 
+	// --- Step 2b: CDI DataVolume with a public HTTPS source, no certConfigMap ---
+	//
+	// Unlike step 2, nothing here tells the importer which CA to trust: the
+	// target is a public HTTPS site, so the only extra trust required is for
+	// mgmtproxy's own self-signed cni0 certificate, which is expected to reach
+	// the importer via the CDI CR's trustedCAProxy. A failure shows up as
+	// "proxyconnect tcp: x509: certificate signed by unknown authority" in
+	// the importer log and a DataVolume stuck in ImportInProgress.
+	const cdiPublicDataVolume = "mgmtproxy-test-public-dv"
+	step2bManifest := fmt.Sprintf(`apiVersion: cdi.kubevirt.io/v1beta1
+kind: DataVolume
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  source:
+    http:
+      url: "https://download.cirros-cloud.net/0.6.2/cirros-0.6.2-x86_64-disk.img"
+  storage:
+    storageClassName: longhorn
+    resources:
+      requests:
+        storage: 1Gi
+`, cdiPublicDataVolume, mgmtProxyTestNamespace)
+	applyManifest(t, device, step2bManifest, shortTimeout)
+
+	dvPublicWaitScript := fmt.Sprintf(
+		"eve exec kube kubectl wait --for=jsonpath='{.status.phase}'=Succeeded "+
+			"datavolume/%s -n %s --timeout=300s", cdiPublicDataVolume, mgmtProxyTestNamespace)
+	log.Infof("Waiting for DataVolume %s/%s (no certConfigMap) to report Succeeded",
+		mgmtProxyTestNamespace, cdiPublicDataVolume)
+	_, _, err = device.RunShellScript(dvPublicWaitScript, 6*time.Minute, 0)
+	t.Expect(err).ToNot(HaveOccurred(),
+		"wait for the DataVolume import without certConfigMap to succeed; the "+
+			"importer must trust mgmtproxy's cni0 CA via the CDI CR's trustedCAProxy")
+	log.Infof("DataVolume %s/%s import Succeeded", mgmtProxyTestNamespace, cdiPublicDataVolume)
+	evetest.Checkpoint("step2b-is-deployed")
+
+	afterStep2b := mustSumMgmtProxyHealthz(t, devices, shortTimeout)
+	t.Expect(afterStep2b.Requests).To(BeNumerically(">", afterStep2.Requests),
+		"mgmtproxy should have served the second importer's fetch")
+	t.Expect(afterStep2b.SuccessByPort["eth0"]).To(
+		BeNumerically(">", afterStep2.SuccessByPort["eth0"]),
+		"the second importer's fetch must have gone out via eth0")
+
 	// --- Step 3: EVE-API path, NOHYPER container ---
 	//
 	// The container app's own network instance is air-gapped (no uplink
@@ -640,13 +693,13 @@ spec:
 	step3Runner := kubectlExecRunner(device, "eve-kube-app", step3Pod, shortTimeout)
 
 	afterStep3 := mustSumMgmtProxyHealthz(t, devices, shortTimeout)
-	t.Expect(afterStep3.Requests).To(BeNumerically(">=", afterStep2.Requests),
+	t.Expect(afterStep3.Requests).To(BeNumerically(">=", afterStep2b.Requests),
 		"mgmtproxy request count must never go down")
-	log.Infof("After step 3, /healthz (summed): requests=%d (was %d after step 2; "+
+	log.Infof("After step 3, /healthz (summed): requests=%d (was %d after step 2b; "+
 		"a container app's own OCI image is always ImagePullPolicy:Never/"+
 		"pre-staged by pillar's downloader, so no new pull through mgmtproxy "+
 		"is expected from this step)",
-		afterStep3.Requests, afterStep2.Requests)
+		afterStep3.Requests, afterStep2b.Requests)
 
 	// Step 3 is privileged (every NOHYPER container app is), so it can add
 	// the route needed to reach the cni0 listener.
@@ -662,6 +715,10 @@ spec:
 	_, _, _ = device.RunShellScript(
 		fmt.Sprintf("eve exec kube kubectl delete datavolume %s -n %s --wait=false",
 			cdiDataVolume, mgmtProxyTestNamespace),
+		shortTimeout, 0)
+	_, _, _ = device.RunShellScript(
+		fmt.Sprintf("eve exec kube kubectl delete datavolume %s -n %s --wait=false",
+			cdiPublicDataVolume, mgmtProxyTestNamespace),
 		shortTimeout, 0)
 	_, _, _ = device.RunShellScript(
 		fmt.Sprintf("eve exec kube kubectl delete configmap %s -n %s --wait=false",
