@@ -92,6 +92,7 @@ var (
 		return tpm2.NVReadEx(rw, etpm.TpmDiskKeyHdl, tpm2.HandleOwner, etpm.EmptyPassword, 0)
 	}
 	invokeSwtpmIoctl     = swtpmIoctl
+	probeSwtpmState      = checkSwtpmState
 	renameStateDir       = os.Rename
 	writeProtectedMarker = func(statePath string) error {
 		return utils.WriteRename(filepath.Join(statePath, protectedStateMarker), []byte("Y"))
@@ -210,25 +211,6 @@ func reapSwtpm(pid int) {
 	}
 }
 
-// waitForHealthCheckExit waits for the temporary swtpm to exit and reaps it
-// when it became our child through subreaper mode.
-func waitForHealthCheckExit(pid int) {
-	if pid <= 0 {
-		return
-	}
-	for i := 0; i < maxPidWaitTime*10; i++ {
-		waited, err := syscall.Wait4(pid, nil, syscall.WNOHANG, nil)
-		if waited == pid || (err == syscall.ECHILD && !isAlive(pid)) {
-			return
-		}
-		if err != nil && err != syscall.ECHILD && err != syscall.EINTR {
-			log.Errorf("failed to wait for health-check swtpm pid %d: %v", pid, err)
-			return
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-}
-
 // waitSwtpmExit waits on a pidfd so state is not reused or deleted while the
 // daemon is still running. A pidfd cannot switch to a replacement process.
 func waitSwtpmExit(pid int, id uuid.UUID) error {
@@ -303,6 +285,25 @@ func forceStopSwtpmAt(pid int, statePath string) error {
 		return fmt.Errorf("force-stop SWTPM pid %d: %w", pid, err)
 	}
 	return waitPidfdExit(pid, fd)
+}
+
+// stopHealthCheckSwtpm waits for the normal control-socket termination. If the
+// probe failed before connecting, signal the daemon ourselves. A daemon that
+// still does not exit is force-stopped before its state can be reused.
+func stopHealthCheckSwtpm(pid int, id uuid.UUID, probeErr error) error {
+	var err error
+	if probeErr == nil {
+		err = waitSwtpmExit(pid, id)
+	} else {
+		err = stopSwtpmAndWait(pid, id)
+	}
+	if err == nil {
+		return nil
+	}
+	if forceErr := forceStopSwtpmAt(pid, fmt.Sprintf(workDir, id.String())); forceErr != nil {
+		return errors.Join(err, forceErr)
+	}
+	return err
 }
 
 // preserveCorruptStates sets aside the failed state and retains only the ten
@@ -434,13 +435,18 @@ func migrationStageRoot(id uuid.UUID) string {
 	return filepath.Join(filepath.Dir(fmt.Sprintf(workDir, id.String())), ".vtpm-migrate-"+id.String())
 }
 
+func migrationRunRoot(id uuid.UUID) string {
+	return filepath.Join(runDir, ".vtpm-migrate-"+id.String())
+}
+
 func cleanupMigrationStages(id uuid.UUID) error {
 	stageRoot := migrationStageRoot(id)
+	runtimeRoot := migrationRunRoot(id)
 	for _, process := range []struct{ name, state string }{
 		{"legacy", fmt.Sprintf(workDir, id.String())},
 		{"protected", filepath.Join(stageRoot, "state")},
 	} {
-		pid, err := readPidFile(filepath.Join(stageRoot, process.name+".pid"))
+		pid, err := readPidFile(filepath.Join(runtimeRoot, process.name+".pid"))
 		if errors.Is(err, os.ErrNotExist) {
 			continue
 		}
@@ -451,7 +457,7 @@ func cleanupMigrationStages(id uuid.UUID) error {
 			return fmt.Errorf("stop %s migration SWTPM before cleanup: %w", process.name, err)
 		}
 	}
-	return os.RemoveAll(stageRoot)
+	return errors.Join(os.RemoveAll(stageRoot), os.RemoveAll(runtimeRoot))
 }
 
 // recoverMigrationStage repairs an interruption between the two directory
@@ -601,13 +607,14 @@ type swtpmRunOptions struct {
 	incoming     bool
 }
 
-func migrationSwtpmOptions(id uuid.UUID, stageRoot, name, stateDir string) swtpmRunOptions {
+func migrationSwtpmOptions(id uuid.UUID, name, stateDir string) swtpmRunOptions {
 	opts := swtpmOptions(id)
 	opts.stateDir = stateDir
-	opts.ctrlPath = filepath.Join(stageRoot, name+".ctrl")
-	opts.pidPath = filepath.Join(stageRoot, name+".pid")
-	opts.fifoPath = filepath.Join(stageRoot, name+".fifo")
-	opts.keyPath = filepath.Join(stageRoot, name+".key")
+	runtimeRoot := migrationRunRoot(id)
+	opts.ctrlPath = filepath.Join(runtimeRoot, name+".ctrl")
+	opts.pidPath = filepath.Join(runtimeRoot, name+".pid")
+	opts.fifoPath = filepath.Join(runtimeRoot, name+".fifo")
+	opts.keyPath = filepath.Join(runtimeRoot, name+".key")
 	return opts
 }
 
@@ -727,9 +734,14 @@ func swtpmIoctl(ctrlPath string, args ...string) error {
 // stays active until the new state has passed its own health check.
 func tryLegacyAndMigrate(id uuid.UUID, legacyKey, protectedKey []byte) (bool, error) {
 	stageRoot := migrationStageRoot(id)
-	opts := migrationSwtpmOptions(id, stageRoot, "legacy", fmt.Sprintf(workDir, id.String()))
+	runtimeRoot := migrationRunRoot(id)
+	opts := migrationSwtpmOptions(id, "legacy", fmt.Sprintf(workDir, id.String()))
 	if err := os.Mkdir(stageRoot, 0700); err != nil {
 		return false, fmt.Errorf("create state migration directory: %w", err)
+	}
+	if err := os.Mkdir(runtimeRoot, 0700); err != nil {
+		_ = os.Remove(stageRoot)
+		return false, fmt.Errorf("create SWTPM migration runtime directory: %w", err)
 	}
 	keepStageRoot := false
 	stopMigrationProcess := func(pid *int, statePath string) error {
@@ -752,8 +764,8 @@ func tryLegacyAndMigrate(id uuid.UUID, legacyKey, protectedKey []byte) (bool, er
 		if keepStageRoot {
 			return
 		}
-		if err := os.RemoveAll(stageRoot); err != nil {
-			log.Warnf("failed to remove SWTPM migration directory %s: %v", stageRoot, err)
+		if err := cleanupMigrationStages(id); err != nil {
+			log.Warnf("failed to remove SWTPM migration files for id %s: %v", id, err)
 		}
 	}()
 	blob := filepath.Join(stageRoot, "permanent.blob")
@@ -796,7 +808,7 @@ func tryLegacyAndMigrate(id uuid.UUID, legacyKey, protectedKey []byte) (bool, er
 	lf.stop()
 	lf = nil
 
-	newOpts := migrationSwtpmOptions(id, stageRoot, "protected", newState)
+	newOpts := migrationSwtpmOptions(id, "protected", newState)
 	newOpts.key = protectedKey
 	newOpts.migrationKey = protectedKey
 	newOpts.terminate = false
@@ -990,8 +1002,8 @@ func handleLaunch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// check SWTPM health
-	stateBad, checkErr := checkSwtpmState(id)
-	stopErr := waitSwtpmExit(pid, id)
+	stateBad, checkErr := probeSwtpmState(id)
+	stopErr := stopHealthCheckSwtpm(pid, id, checkErr)
 
 	// The health-check run is done; stop its log forwarder before the next run.
 	lf.stop()

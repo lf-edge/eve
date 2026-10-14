@@ -36,6 +36,10 @@ func TestMain(m *testing.M) {
 	maxPidWaitTime = 15
 	maxInstances = 3
 	os.MkdirAll(baseDir, 0755)
+	runDir = baseDir + "/run"
+	if err := os.MkdirAll(runDir, 0700); err != nil {
+		panic(err)
+	}
 
 	stateEncryptionKey = baseDir + "/%s.binkey"
 	stateIsEncryptedPath = baseDir + "/%s.encrypted"
@@ -358,6 +362,11 @@ func TestLegacyEncryptedStateMigratesToProtectedKey(t *testing.T) {
 	if body, _, err := sendLaunchRequest(id); err != nil {
 		t.Fatalf("migrate legacy state: %v: %s", err, body)
 	}
+	for _, dir := range []string{migrationStageRoot(id), migrationRunRoot(id)} {
+		if _, err := os.Stat(dir); !os.IsNotExist(err) {
+			t.Fatalf("migration directory %s remains: %v", dir, err)
+		}
+	}
 	if body, _, err := sendTerminateRequest(id); err != nil {
 		t.Fatalf("terminate migrated instance: %v: %s", err, body)
 	}
@@ -542,11 +551,15 @@ func TestMigrationSecondRenameFailureRestoresLegacyState(t *testing.T) {
 func TestRecoverMigrationStopsStagedSwtpmBeforeCleanup(t *testing.T) {
 	id := generateUUID()
 	stageRoot := migrationStageRoot(id)
+	runtimeRoot := migrationRunRoot(id)
 	stageState := filepath.Join(stageRoot, "state")
 	if err := os.Mkdir(stageRoot, 0700); err != nil {
 		t.Fatal(err)
 	}
-	opts := migrationSwtpmOptions(id, stageRoot, "protected", stageState)
+	if err := os.Mkdir(runtimeRoot, 0700); err != nil {
+		t.Fatal(err)
+	}
+	opts := migrationSwtpmOptions(id, "protected", stageState)
 	opts.terminate = false
 	pid, lf, err := startSwtpm(opts)
 	if err != nil {
@@ -571,6 +584,24 @@ func TestRecoverMigrationStopsStagedSwtpmBeforeCleanup(t *testing.T) {
 	if _, err := os.Stat(migrationStageRoot(id)); !os.IsNotExist(err) {
 		t.Fatalf("staged directory was not removed: %v", err)
 	}
+	if _, err := os.Stat(runtimeRoot); !os.IsNotExist(err) {
+		t.Fatalf("migration runtime directory was not removed: %v", err)
+	}
+}
+
+func TestMigrationKeepsKeyPathsOffPersistentStorage(t *testing.T) {
+	id := generateUUID()
+	stageRoot := migrationStageRoot(id)
+	runtimeRoot := migrationRunRoot(id)
+	opts := migrationSwtpmOptions(id, "legacy", fmt.Sprintf(workDir, id.String()))
+	for _, path := range []string{opts.keyPath, opts.keyPath + ".migration", opts.ctrlPath, opts.pidPath, opts.fifoPath} {
+		if filepath.Dir(path) != runtimeRoot {
+			t.Fatalf("migration runtime path %s is not under %s", path, runtimeRoot)
+		}
+		if strings.HasPrefix(path, stageRoot+string(os.PathSeparator)) {
+			t.Fatalf("migration runtime path %s is under persistent state", path)
+		}
+	}
 }
 
 func TestRecoverInterruptedKeyMigration(t *testing.T) {
@@ -591,7 +622,14 @@ func TestRecoverInterruptedKeyMigration(t *testing.T) {
 			id := generateUUID()
 			active := fmt.Sprintf(workDir, id.String())
 			stageRoot := migrationStageRoot(id)
+			runtimeRoot := migrationRunRoot(id)
 			if err := os.Mkdir(stageRoot, 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Mkdir(runtimeRoot, 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(runtimeRoot, "stale"), []byte("stale"), 0600); err != nil {
 				t.Fatal(err)
 			}
 			newState := filepath.Join(stageRoot, "state")
@@ -627,6 +665,9 @@ func TestRecoverInterruptedKeyMigration(t *testing.T) {
 			}
 			if _, err := os.Stat(stageRoot); !os.IsNotExist(err) {
 				t.Fatalf("migration staging directory remains: %v", err)
+			}
+			if _, err := os.Stat(runtimeRoot); !os.IsNotExist(err) {
+				t.Fatalf("migration runtime directory remains: %v", err)
 			}
 			file := "old"
 			if tc.activePolicy {
@@ -840,19 +881,67 @@ func TestReapSwtpm(t *testing.T) {
 	}
 }
 
-func TestWaitForHealthCheckExitReapsChild(t *testing.T) {
-	cmd := exec.Command("/bin/sh", "-c", "exit 0")
-	if err := cmd.Start(); err != nil {
+func TestHealthCheckProbeFailureStopsSwtpm(t *testing.T) {
+	id := generateUUID()
+	oldProbe, oldTPM := probeSwtpmState, isTPMAvailable
+	t.Cleanup(func() {
+		probeSwtpmState, isTPMAvailable = oldProbe, oldTPM
+		_, _, _ = sendPurgeRequest(id)
+	})
+	isTPMAvailable = func() bool { return false }
+	var pid, fd int
+	probeSwtpmState = func(id uuid.UUID) (bool, error) {
+		var err error
+		pid, err = readPidFile(fmt.Sprintf(swtpmPidPath, id.String()))
+		if err != nil {
+			return false, err
+		}
+		fd, err = openVerifiedSwtpm(pid, id)
+		if err != nil || fd < 0 {
+			return false, fmt.Errorf("open health-check pidfd: fd=%d err=%v", fd, err)
+		}
+		return false, fmt.Errorf("injected failure before control-socket connect")
+	}
+	body, status, err := sendLaunchRequest(id)
+	if err == nil || status != http.StatusFailedDependency {
+		t.Fatalf("expected health-check failure: status=%d err=%v body=%s", status, err, body)
+	}
+	if fd < 0 || pid <= 0 {
+		t.Fatalf("health-check process was not captured: pid=%d fd=%d", pid, fd)
+	}
+	defer unix.Close(fd)
+	if n, err := unix.Poll([]unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}, 100); err != nil || n != 1 {
+		t.Fatalf("health-check SWTPM survived failed probe: poll=%d err=%v", n, err)
+	}
+	probeSwtpmState = oldProbe
+	if body, _, err := sendLaunchRequest(id); err != nil {
+		t.Fatalf("launch after failed health check: %v: %s", err, body)
+	}
+}
+
+func TestHealthCheckTimeoutForceStopsSwtpm(t *testing.T) {
+	id := generateUUID()
+	oldTimeout := maxPidWaitTime
+	maxPidWaitTime = 1
+	t.Cleanup(func() { maxPidWaitTime = oldTimeout })
+	opts := swtpmOptions(id)
+	opts.terminate = false
+	pid, lf, err := startSwtpm(opts)
+	if err != nil {
 		t.Fatal(err)
 	}
-	pid := cmd.Process.Pid
-	start := time.Now()
-	waitForHealthCheckExit(pid)
-	if elapsed := time.Since(start); elapsed > 2*time.Second {
-		t.Fatalf("health-check wait took %v for an exited child", elapsed)
+	defer lf.stop()
+	t.Cleanup(func() { _ = forceStopSwtpmAt(pid, opts.stateDir); _ = cleanupFiles(id) })
+	fd, err := openVerifiedSwtpm(pid, id)
+	if err != nil || fd < 0 {
+		t.Fatalf("open health-check pidfd: fd=%d err=%v", fd, err)
 	}
-	if waited, err := syscall.Wait4(pid, nil, syscall.WNOHANG, nil); waited != -1 || err != syscall.ECHILD {
-		t.Fatalf("wait after health-check reap = (%d, %v), want (-1, ECHILD)", waited, err)
+	defer unix.Close(fd)
+	if err := stopHealthCheckSwtpm(pid, id, nil); err == nil {
+		t.Fatal("expected health-check timeout before force-stop")
+	}
+	if n, err := unix.Poll([]unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}, 100); err != nil || n != 1 {
+		t.Fatalf("health-check SWTPM survived timeout: poll=%d err=%v", n, err)
 	}
 }
 
