@@ -33,6 +33,28 @@ const namePrefix = "ev-"
 // expressions even when the operand is a constant.
 var networkPrefix = strings.TrimSuffix(namePrefix, "-")
 
+func parseTPMPCRBanks(value string) ([]string, error) {
+	if value == "" {
+		return []string{"sha256"}, nil
+	}
+	var banks []string
+	seen := make(map[string]bool)
+	for _, bank := range strings.Split(value, ",") {
+		bank = strings.TrimSpace(bank)
+		switch bank {
+		case "sha1", "sha256", "sha384", "sha512":
+		default:
+			return nil, fmt.Errorf("unsupported TPM PCR bank %q", bank)
+		}
+		if seen[bank] {
+			return nil, fmt.Errorf("duplicate TPM PCR bank %q", bank)
+		}
+		seen[bank] = true
+		banks = append(banks, bank)
+	}
+	return banks, nil
+}
+
 // uplinkNetwork is the name of the uplink network (dual-stack whenever an
 // IPv6 uplink subnet is configured), used verbatim by all providers as both
 // the internal bookkeeping key and the actual bridge/VNet resource name.
@@ -47,6 +69,7 @@ func commonCapabilities() []api.Capability {
 		api.Capability_CAPABILITY_FORWARD_EAPOL,
 		api.Capability_CAPABILITY_FORWARD_LLDP,
 		api.Capability_CAPABILITY_TPM,
+		api.Capability_CAPABILITY_TPM_PCR_BANKS,
 		api.Capability_CAPABILITY_NETBOOT,
 	}
 }
