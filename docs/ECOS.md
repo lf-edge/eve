@@ -184,7 +184,7 @@ ECI Configuration is a json file with the following schema:
 ## Configuration of Docker/OCI based ECOs
 
 We use special prepared VMs to run ECOs based on Docker/OCI (if edge-node supports hardware-assistance virtualization).
-In this case we start VM with the kernel of EVE and with pre-build [initrd](../pkg/xen-tools/initrd). Inside init we
+In this case we start VM with the kernel of EVE and with pre-build [initrd](../pkg/pillar/initrd). Inside init we
 make needed system mounts, mount rootfs (to /mnt) and block devices attached (to mount points defined in the file
 `mountPoints`). Static IP address is assigned to the network interface if the option `ip` defined in the kernel cmdline,
 otherwise dhcp is enabled.

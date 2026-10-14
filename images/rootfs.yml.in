@@ -13,7 +13,6 @@ init:
   - FW_TAG
   - GPTTOOLS_TAG
   - UDEV_TAG
-  - XENTOOLS_TAG
 onboot:
   - name: rngd
     image: RNGD_TAG
