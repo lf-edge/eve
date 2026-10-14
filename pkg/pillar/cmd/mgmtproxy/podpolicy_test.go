@@ -501,6 +501,19 @@ func TestMarkClusterWideSetsMarker(t *testing.T) {
 	}
 }
 
+// TestMarkClusterWideCreatesMissingDir verifies markClusterWide works on a
+// fresh node where the marker's directory does not exist yet.
+func TestMarkClusterWideCreatesMissingDir(t *testing.T) {
+	withDerivedFiles(t)
+	clusterWideSecretsMarker = filepath.Join(t.TempDir(), "mgmtproxy", "cluster-wide-secrets")
+	if err := markClusterWide(); err != nil {
+		t.Fatalf("markClusterWide: %v", err)
+	}
+	if _, err := os.Stat(clusterWideSecretsMarker); err != nil {
+		t.Errorf("marker not created: %v", err)
+	}
+}
+
 // TestMarkClusterWideIdempotent verifies a second call is a cheap no-op.
 func TestMarkClusterWideIdempotent(t *testing.T) {
 	_, _, _, marker := withDerivedFiles(t)
