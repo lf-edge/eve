@@ -24,7 +24,7 @@ defaults, when possible.
 
 | Variable | Description | Default | Examples |
 | --- | --- | --- | --- |
-| `ROOTFS_VERSION` | Version ID of the EVE image | calculated from the git commit | `snapshot`, `1.2.3-abcd567` |
+| `ROOTFS_VERSION` | Version ID of the EVE image | calculated from the git commit | `1.2.3`, `0.0.0-mybranch-abcd5678` |
 | `ZARCH` | Hardware architecture of the resulting image | your current platform | `amd64`, `arm64`, `riscv64` |
 | `HV` | Hypervisor flavor of the resulting image | `kvm` (amd64, arm64) or `mini` (riscv64) | `kvm`, `mini`, `k` |
 | `PLATFORM` | Specific platform for which to build | `generic` | `generic`, `rt`, `nvidia-jp6`, `imx8mp_pollux` |
@@ -37,30 +37,30 @@ As much as possible, incompatible combinations will be caught and prevent a buil
 You can specify an arbitrary combinations of these knobs to set the desired outcome of the build.
 
 For example, the following command line will build a generic qcow2 live image with the default
-hypervisor set to `kvm`, hardware architecture set to `amd64` and the version ID set to `snapshot`:
+hypervisor set to `kvm` and hardware architecture set to `amd64`:
 
 ```shell
-make ROOTFS_VERSION=snapshot ZARCH=amd64 HV=kvm live
+make ZARCH=amd64 HV=kvm live
 ```
 
 To build the same image but for Google Compute Platform (notice the different target):
 
 ```shell
-make ROOTFS_VERSION=snapshot ZARCH=amd64 HV=kvm live-gcp
+make ZARCH=amd64 HV=kvm live-gcp
 ```
 
 Same way, since HV applies at
 the rootfs level (rootfs binary is then fed wholesale into live and installer builds) you can build
-a `snapshot` rootfs with the hypervisor set to k by doing either:
+a rootfs with the hypervisor set to k by doing either:
 
 ```shell
-make ROOTFS_VERSION=snapshot HV=k rootfs
+make HV=k rootfs
 ```
 
 or
 
 ```shell
-make ROOTFS_VERSION=snapshot rootfs-k
+make rootfs-k
 ```
 
 In this hierarchy, think of `ZARCH` and `ROOTFS_VERSION` as applicable to anything hence they don't get a -foo shortcut treatment.
