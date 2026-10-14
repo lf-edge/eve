@@ -122,6 +122,7 @@ RUN apk add --no-cache gcc musl-dev \
     libseccomp glib json-glib gnutls libtasn1 json-c libffi
 # copy swtpm, its modules, and libtpms from the C build stage
 COPY --from=build-c /out/usr/bin/swtpm /usr/bin/swtpm
+COPY --from=build-c /out/usr/bin/swtpm_ioctl /usr/bin/swtpm_ioctl
 COPY --from=build-c /out/usr/lib/ /usr/lib/
 WORKDIR /vtpm-build
 COPY swtpm-vtpm/src/ /vtpm-build/.
