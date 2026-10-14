@@ -6,6 +6,7 @@ package zedrouter
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/rpc"
@@ -400,6 +401,9 @@ func (z *zedrouter) getAppByKubeWorkload(namespace, podName string) (
 	if match == nil {
 		return nil, nil, fmt.Errorf(
 			"failed to find app network config for kube workload %s/%s", namespace, podName)
+	}
+	if match.KubeApp.ConfigError != "" {
+		return nil, nil, errors.New(match.KubeApp.ConfigError)
 	}
 	appStatus := z.lookupAppNetworkStatus(match.Key())
 	if appStatus == nil {

@@ -136,7 +136,33 @@ func TestKubeAppNetConfigForPodRejectsDuplicateNIAttachment(t *testing.T) {
 
 	double := `[{"name":"ni-local-ni","namespace":"eve-kube-app"},` +
 		`{"name":"ni-local-ni","namespace":"eve-kube-app"}]`
-	if _, _, attached := kubeAppNetConfigForPodWithResolver(newPod(double), nil, resolve); attached {
-		t.Fatal("duplicate attachment to one Network Instance was accepted")
+	config, _, _ = kubeAppNetConfigForPodWithResolver(newPod(double), nil, resolve)
+	if config.KubeApp == nil || config.KubeApp.ConfigError == "" ||
+		len(config.AppNetAdapterList) != 0 || config.Activate {
+		t.Fatalf("duplicate attachment to one Network Instance was accepted: %+v", config)
+	}
+}
+
+func TestKubeAppNetConfigForPodRejectsMultiReplicaSet(t *testing.T) {
+	niUUID := uuid.NewV5(uuid.NamespaceDNS, "ni")
+	resolve := func(namespace, name string) (uuid.UUID, bool) {
+		return niUUID, namespace == "eve-kube-app" && name == "ni-local-ni"
+	}
+	isController := true
+	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{
+		Name: "web-abc12", Namespace: "default",
+		Annotations: map[string]string{networksAnnotation: `[{"name":"ni-local-ni","namespace":"eve-kube-app"}]`},
+		OwnerReferences: []metav1.OwnerReference{
+			{Kind: "ReplicaSet", Name: "web", Controller: &isController}},
+	}}
+	for replicas, wantAccepted := range map[int32]bool{1: true, 2: false} {
+		infos := map[string]replicaSetInfo{"default/web": {replicas: replicas}}
+		config, _, _ := kubeAppNetConfigForPodWithResolver(pod, infos, resolve)
+		accepted := config.KubeApp != nil && config.KubeApp.ConfigError == "" &&
+			len(config.AppNetAdapterList) == 1
+		if accepted != wantAccepted {
+			t.Errorf("replicas=%d: accepted=%v, want %v (%+v)",
+				replicas, accepted, wantAccepted, config.KubeApp)
+		}
 	}
 }

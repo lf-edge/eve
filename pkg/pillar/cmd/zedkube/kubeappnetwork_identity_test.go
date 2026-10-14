@@ -41,7 +41,7 @@ func TestKubeAppNamesUseDeploymentForDisplayOnly(t *testing.T) {
 		OwnerReferences: []metav1.OwnerReference{controllerRef("apps/v1", "ReplicaSet", replicaSetName)},
 	}}
 
-	ownerName, displayName := kubeAppNames(pod, deploymentNamesByReplicaSet(replicaSets))
+	ownerName, displayName := kubeAppNames(pod, replicaSetInfosByKey(replicaSets))
 	if ownerName != replicaSetName {
 		t.Fatalf("owner name changed to %q, want ReplicaSet %q", ownerName, replicaSetName)
 	}
