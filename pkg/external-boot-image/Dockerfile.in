@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
 
 # hadolint ignore=DL3006
-FROM XENTOOLS_TAG AS initrd-build
+FROM PILLAR_TAG AS initrd-build
 # hadolint ignore=DL3006
 FROM KERNEL_TAG AS kernel-build
 

@@ -22,6 +22,25 @@ RUN while read -r x; do \
         fi \
     done < /etc/zfs-files
 
+# runx-initrd: the initrd of the VMs that container apps run in. pillar boots
+# them with the host kernel and this initrd, which mounts the app's rootfs and
+# starts the app from the files containerd/oci.go leaves under /mnt.
+# hadolint ignore=DL3006
+FROM ${EVE_ALPINE_IMAGE} AS initrd-build
+ENV BUILD_PKGS="mkinitfs gcc musl-dev e2fsprogs chrony agetty"
+RUN eve-alpine-deploy.sh
+RUN rm -f /sbin/poweroff /etc/mkinitfs/features.d/base.files
+COPY initrd/base.files /etc/mkinitfs/features.d/base.files
+COPY initrd/init-initrd initrd/mount_disk.sh initrd/udhcpc_script.sh /
+COPY initrd/poweroff /sbin/poweroff
+COPY initrd/chroot2.c initrd/hacf.c /tmp/
+COPY initrd/00000080 /etc/acpi/PWRF/
+COPY initrd/eve-enter-container /bin/
+COPY initrd/dotprofile /root/.profile
+RUN gcc -s -o /chroot2 /tmp/chroot2.c -Wall -Werror
+RUN gcc -s -o /hacf /tmp/hacf.c -Wall -Werror
+RUN mkinitfs -n -F base -i /init-initrd -o /runx-initrd
+
 # hadolint ignore=DL3006
 FROM ${EVE_ALPINE_IMAGE} AS build-native
 ARG BUILD_PKGS_BASE
@@ -182,6 +201,8 @@ WORKDIR /
 
 RUN mkdir -p /out/usr/share/ovmf
 COPY --from=uefi-build /OVMF_VARS.fd /out/usr/share/ovmf/OVMF_VARS.fd
+# QEMU loads it through /hostfs, see RunxInitrd in cmd/zedmanager.
+COPY --from=initrd-build /runx-initrd /out/boot/runx-initrd
 
 COPY --from=zfs /out /out
 COPY --from=fscrypt /opt/zededa/bin /out/opt/zededa/bin
