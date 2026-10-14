@@ -287,7 +287,7 @@ sign_tag() {
 # images that the packages listed in $1 are built from: those a FROM line
 # names, with or without --platform, and those an ARG pins for a later
 # `FROM ${ARG}`. A tag must start with a lowercase letter or digit, which
-# leaves out Dockerfile.in placeholders such as XENTOOLS_TAG. A base the
+# leaves out Dockerfile.in placeholders such as PILLAR_TAG. A base the
 # registry does not serve is printed as its bare tag, which then fails
 # verification; bases listed in $2 are skipped, since this job built them and
 # signs them after pushing. No match is not an error: a job that pulled every

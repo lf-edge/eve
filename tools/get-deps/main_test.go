@@ -19,7 +19,7 @@ func TestParseDockerfile(t *testing.T) {
 		"lfedge/eve-alpine:1f7685f95a475c6bbe682f0b976f121":       false,
 		"lfedge/eve-alpine:1f7685f95a475c6bbe682f0b976f121-amd64": false,
 		"lfedge/eve-rust:1.80.1":                                  false,
-		"lfedge/eve-xen-tools:":                                   false,
+		"lfedge/eve-qemu:":                                        false,
 	}
 
 	for _, target := range targets {
@@ -45,7 +45,7 @@ func readDockerFile() []string {
 			FROM lfedge/eve-alpine:1f7685f95a475c6bbe682f0b976f121
 			FROM lfedge/eve-alpine:1f7685f95a475c6bbe682f0b976f121-amd64
 			FROM lfedge/eve-rust:1.80.1
-			FROM lfedge/eve-xen-tools:$XENTOOLS
+			FROM lfedge/eve-qemu:$QEMU_TAG
 
 			FROM f
 			RUN echo
@@ -158,7 +158,7 @@ func TestNoneLinuxKitImage(t *testing.T) {
 	filtered := filterPkg(targets)
 	sort.Strings(filtered)
 
-	expected := []string{"pkg/alpine", "pkg/xen-tools"}
+	expected := []string{"pkg/alpine", "pkg/qemu"}
 	sort.Strings(expected)
 
 	if len(filtered) != len(expected) {
