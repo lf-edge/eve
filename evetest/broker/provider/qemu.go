@@ -435,6 +435,18 @@ func (p *QemuProvider) SetupDevice(
 			log.Error(err)
 			return err
 		}
+		if spec.TPMPCRBanks != "" {
+			banks, err := parseTPMPCRBanks(spec.TPMPCRBanks)
+			if err != nil {
+				return err
+			}
+			out, err := exec.Command("swtpm_setup", "--tpm2", "--tpm-state", "dir://"+tpmDir,
+				"--pcr-banks", strings.Join(banks, ",")).CombinedOutput()
+			if err != nil {
+				return fmt.Errorf("configure TPM PCR banks for device %q: %w: %s",
+					name, err, strings.TrimSpace(string(out)))
+			}
+		}
 		dev.tpm.stateDir = tpmDir
 		dev.tpm.socket = filepath.Join(tpmDir, "swtpm.sock")
 		dev.tpm.logFile = filepath.Join(artifactDir, "swtpm.log")

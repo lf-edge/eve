@@ -172,6 +172,8 @@ const (
 	// together let a test hot-plug devices such as a USB flash drive. Requires a
 	// provider with a QMP monitor the broker can reach.
 	Capability_CAPABILITY_QMP Capability = 8
+	// Selecting the active PCR banks of an emulated host TPM.
+	Capability_CAPABILITY_TPM_PCR_BANKS Capability = 9
 )
 
 // Enum value maps for Capability.
@@ -186,6 +188,7 @@ var (
 		6: "CAPABILITY_NETBOOT",
 		7: "CAPABILITY_EDIT_DEVICE_DISK",
 		8: "CAPABILITY_QMP",
+		9: "CAPABILITY_TPM_PCR_BANKS",
 	}
 	Capability_value = map[string]int32{
 		"CAPABILITY_UNSPECIFIED":      0,
@@ -197,6 +200,7 @@ var (
 		"CAPABILITY_NETBOOT":          6,
 		"CAPABILITY_EDIT_DEVICE_DISK": 7,
 		"CAPABILITY_QMP":              8,
+		"CAPABILITY_TPM_PCR_BANKS":    9,
 	}
 )
 
@@ -575,14 +579,16 @@ func (x *LogMessage) GetTimestamp() *timestamppb.Timestamp {
 
 // Describes a single EVE device instance managed by the test framework.
 type EVEDevice struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	DeviceName    string                 `protobuf:"bytes,1,opt,name=device_name,json=deviceName,proto3" json:"device_name,omitempty"`
-	Cpus          uint32                 `protobuf:"varint,2,opt,name=cpus,proto3" json:"cpus,omitempty"`
-	MemoryBytes   uint64                 `protobuf:"varint,3,opt,name=memory_bytes,json=memoryBytes,proto3" json:"memory_bytes,omitempty"`
-	WithTpm       bool                   `protobuf:"varint,4,opt,name=with_tpm,json=withTpm,proto3" json:"with_tpm,omitempty"`
-	SerialNumber  string                 `protobuf:"bytes,5,opt,name=serial_number,json=serialNumber,proto3" json:"serial_number,omitempty"`
-	Interfaces    []*EVEInterface        `protobuf:"bytes,6,rep,name=interfaces,proto3" json:"interfaces,omitempty"`
-	Image         *ImageRef              `protobuf:"bytes,7,opt,name=image,proto3" json:"image,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	DeviceName   string                 `protobuf:"bytes,1,opt,name=device_name,json=deviceName,proto3" json:"device_name,omitempty"`
+	Cpus         uint32                 `protobuf:"varint,2,opt,name=cpus,proto3" json:"cpus,omitempty"`
+	MemoryBytes  uint64                 `protobuf:"varint,3,opt,name=memory_bytes,json=memoryBytes,proto3" json:"memory_bytes,omitempty"`
+	WithTpm      bool                   `protobuf:"varint,4,opt,name=with_tpm,json=withTpm,proto3" json:"with_tpm,omitempty"`
+	SerialNumber string                 `protobuf:"bytes,5,opt,name=serial_number,json=serialNumber,proto3" json:"serial_number,omitempty"`
+	Interfaces   []*EVEInterface        `protobuf:"bytes,6,rep,name=interfaces,proto3" json:"interfaces,omitempty"`
+	Image        *ImageRef              `protobuf:"bytes,7,opt,name=image,proto3" json:"image,omitempty"`
+	// Comma-separated PCR banks for the emulated TPM; empty uses provider defaults.
+	TpmPcrBanks   string `protobuf:"bytes,8,opt,name=tpm_pcr_banks,json=tpmPcrBanks,proto3" json:"tpm_pcr_banks,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -664,6 +670,13 @@ func (x *EVEDevice) GetImage() *ImageRef {
 		return x.Image
 	}
 	return nil
+}
+
+func (x *EVEDevice) GetTpmPcrBanks() string {
+	if x != nil {
+		return x.TpmPcrBanks
+	}
+	return ""
 }
 
 // Reports the current runtime status of an EVE device.
@@ -1034,7 +1047,7 @@ const file_common_proto_rawDesc = "" +
 	"\amessage\x18\x01 \x01(\tR\amessage\x12;\n" +
 	"\bseverity\x18\x02 \x01(\x0e2\x1f.org.lfedge.evetest.LogSeverityR\bseverity\x12\x16\n" +
 	"\x06source\x18\x03 \x01(\tR\x06source\x128\n" +
-	"\ttimestamp\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\"\x99\x02\n" +
+	"\ttimestamp\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\"\xbd\x02\n" +
 	"\tEVEDevice\x12\x1f\n" +
 	"\vdevice_name\x18\x01 \x01(\tR\n" +
 	"deviceName\x12\x12\n" +
@@ -1045,7 +1058,8 @@ const file_common_proto_rawDesc = "" +
 	"\n" +
 	"interfaces\x18\x06 \x03(\v2 .org.lfedge.evetest.EVEInterfaceR\n" +
 	"interfaces\x122\n" +
-	"\x05image\x18\a \x01(\v2\x1c.org.lfedge.evetest.ImageRefR\x05image\"\xc6\x01\n" +
+	"\x05image\x18\a \x01(\v2\x1c.org.lfedge.evetest.ImageRefR\x05image\x12\"\n" +
+	"\rtpm_pcr_banks\x18\b \x01(\tR\vtpmPcrBanks\"\xc6\x01\n" +
 	"\x0fEVEDeviceStatus\x121\n" +
 	"\x04spec\x18\x01 \x01(\v2\x1d.org.lfedge.evetest.EVEDeviceR\x04spec\x128\n" +
 	"\x05state\x18\x02 \x01(\x0e2\".org.lfedge.evetest.EVEDeviceStateR\x05state\x12F\n" +
@@ -1085,7 +1099,7 @@ const file_common_proto_rawDesc = "" +
 	"\x06HV_KVM\x10\x01\x12\n" +
 	"\n" +
 	"\x06HV_XEN\x10\x02\x12\x0f\n" +
-	"\vHV_KUBEVIRT\x10\x03*\x82\x02\n" +
+	"\vHV_KUBEVIRT\x10\x03*\xa0\x02\n" +
 	"\n" +
 	"Capability\x12\x1a\n" +
 	"\x16CAPABILITY_UNSPECIFIED\x10\x00\x12\x1b\n" +
@@ -1096,7 +1110,8 @@ const file_common_proto_rawDesc = "" +
 	"\x1bCAPABILITY_LOCAL_LIVE_IMAGE\x10\x05\x12\x16\n" +
 	"\x12CAPABILITY_NETBOOT\x10\x06\x12\x1f\n" +
 	"\x1bCAPABILITY_EDIT_DEVICE_DISK\x10\a\x12\x12\n" +
-	"\x0eCAPABILITY_QMP\x10\b*g\n" +
+	"\x0eCAPABILITY_QMP\x10\b\x12\x1c\n" +
+	"\x18CAPABILITY_TPM_PCR_BANKS\x10\t*g\n" +
 	"\vLogSeverity\x12\x0f\n" +
 	"\vLOG_UNKNOWN\x10\x00\x12\r\n" +
 	"\tLOG_DEBUG\x10\x01\x12\f\n" +
