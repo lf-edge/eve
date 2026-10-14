@@ -894,6 +894,7 @@ func (th *TestHarness) setupEVEDevices(
 			MemoryBytes:  uint64(memSizeInMiB) << 20,
 			SerialNumber: dev.serial,
 			WithTpm:      dev.requirement.WithTPM,
+			TpmPcrBanks:  dev.requirement.WithTPMPCRBanks,
 			Image:        dev.imageRef,
 			Interfaces:   interfaces,
 		}
@@ -1532,6 +1533,7 @@ func (th *TestHarness) maybeReuseDevices(
 			newReq.WithFilesystem == prevReq.WithFilesystem &&
 			newReq.WithDirSync == prevReq.WithDirSync &&
 			newReq.WithTPM == prevReq.WithTPM &&
+			newReq.WithTPMPCRBanks == prevReq.WithTPMPCRBanks &&
 			newReq.WithSoftSerial == prevReq.WithSoftSerial &&
 			generics.EqualLists(newReq.WithGrubOptions, prevReq.WithGrubOptions) &&
 			generics.EqualSets(newReq.WithUSBPassthrough, prevReq.WithUSBPassthrough) &&
