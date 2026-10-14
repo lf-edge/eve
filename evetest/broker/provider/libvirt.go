@@ -378,6 +378,23 @@ func (p *LibvirtProvider) SetupDevice(
 	}
 
 	if spec.WithTPM {
+		bankNames, err := parseTPMPCRBanks(spec.TPMPCRBanks)
+		if err != nil {
+			return err
+		}
+		activePCRBanks := &libvirtxml.DomainTPMBackendPCRBanks{}
+		for _, bank := range bankNames {
+			switch bank {
+			case "sha1":
+				activePCRBanks.SHA1 = &libvirtxml.DomainTPMBackendPCRBank{}
+			case "sha256":
+				activePCRBanks.SHA256 = &libvirtxml.DomainTPMBackendPCRBank{}
+			case "sha384":
+				activePCRBanks.SHA384 = &libvirtxml.DomainTPMBackendPCRBank{}
+			case "sha512":
+				activePCRBanks.SHA512 = &libvirtxml.DomainTPMBackendPCRBank{}
+			}
+		}
 		tpmModel := "tpm-tis"
 		if detectLibvirtArch() == "aarch64" {
 			tpmModel = "tpm-tis-device"
@@ -387,11 +404,9 @@ func (p *LibvirtProvider) SetupDevice(
 			Model: tpmModel,
 			Backend: &libvirtxml.DomainTPMBackend{
 				Emulator: &libvirtxml.DomainTPMBackendEmulator{
-					Version: "2.0",
-					Debug:   5,
-					ActivePCRBanks: &libvirtxml.DomainTPMBackendPCRBanks{
-						SHA256: &libvirtxml.DomainTPMBackendPCRBank{},
-					},
+					Version:        "2.0",
+					Debug:          5,
+					ActivePCRBanks: activePCRBanks,
 					Profile: &libvirtxml.DomainTPMBackendProfile{
 						Source:         "local:restricted",
 						RemoveDisabled: "check",
