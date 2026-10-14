@@ -17,12 +17,15 @@ import (
 	pcitypes "github.com/jaypipes/pcidb/types"
 	"github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/cputopology"
 	"github.com/lf-edge/eve/pkg/pillar/evetpm"
+	"github.com/sirupsen/logrus"
 	"github.com/zededa/ghw"
 	"github.com/zededa/ghw/pkg/can"
 	"github.com/zededa/ghw/pkg/option"
 	"github.com/zededa/ghw/pkg/pci/address"
 	"github.com/zededa/ghw/pkg/watchdog"
+	"google.golang.org/protobuf/proto"
 )
 
 func GetInventoryInfo(log *base.LogObject) (*info.HardwareInventory, error) {
@@ -36,6 +39,7 @@ func GetInventoryInfo(log *base.LogObject) (*info.HardwareInventory, error) {
 	inventory.CanDevices, errs["CAN"] = getCANDevices()
 	inventory.Bios, errs["BIOS"] = getBIOSInfo()
 	inventory.CpuInfo, errs["CPU"] = getCPUInfo()
+	inventory.KernelCpuIsolation = getKernelCPUIsolation()
 	inventory.TotalMemoryBytes, errs["Memory"] = getMemoryBytes()
 	inventory.TotalStorageBytes, errs["Storage"] = getStorageBytes()
 	inventory.WatchdogPresent, errs["Watchdog"] = watchdogPresent()
@@ -155,6 +159,7 @@ func getPCIDevices() ([]*info.PCIDevice, error) {
 			ClassId:                classId,
 			SubclassId:             subclassId,
 			IommuGroup:             pci.IOMMUGroup,
+			LocalCpuIds:            pciLocalCPUs(pci.Address),
 		})
 	}
 
@@ -425,18 +430,147 @@ func getCPUInfo() (*info.CPUInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Model and vendor are per-package. Every logical CPU reports the first
+	// package's values; only the no-topology fallback below reports each CPU's
+	// own package's.
+	model, vendor := "", ""
+	if len(cpuInfo.Processors) > 0 {
+		model = cpuInfo.Processors[0].Model
+		vendor = cpuInfo.Processors[0].Vendor
+	}
+
 	cpuInfoProto := &info.CPUInfo{}
-	for _, proc := range cpuInfo.Processors {
-		for _, core := range proc.Cores {
-			c := info.CPU{
-				Model:  proc.Model,
-				Vendor: proc.Vendor,
-				Id:     uint32(core.ID),
+
+	// One entry per *logical* CPU, each carrying its position in the topology.
+	// Reporting one entry per physical core (as this did before) loses the
+	// SMT structure entirely, which is exactly what a consumer reasoning about
+	// CPU placement needs -- and it made the reported ids ambiguous, since a
+	// core id is not a schedulable CPU id.
+	topo, terr := cputopology.DiscoverTopology()
+	if terr != nil {
+		// Without topology we can still report the CPUs themselves, but nothing
+		// about where they sit: the coordinates are left unset, which is how the
+		// API says "topology unknown" (a zero would claim socket 0, core 0), and
+		// a controller must then not ask this node for CPUs of a workload's own.
+		logrus.Warnf("getCPUInfo: topology discovery failed: %v", terr)
+		for _, proc := range cpuInfo.Processors {
+			for _, core := range proc.Cores {
+				for _, lcpu := range core.LogicalProcessors {
+					cpuInfoProto.Cpus = append(cpuInfoProto.Cpus, &info.CPU{
+						Model:  proc.Model,
+						Vendor: proc.Vendor,
+						Id:     uint32(lcpu),
+					})
+				}
 			}
-			cpuInfoProto.Cpus = append(cpuInfoProto.Cpus, &c)
+		}
+		return cpuInfoProto, nil
+	}
+
+	cacheDomains := readCacheDomains()
+	// Both ids come from the cache domains reported below, so each names the
+	// CacheDomain containing the CPU even where the platform exposes no cache id
+	// and the domains are named by their lowest CPU. The topology's own L3 id is
+	// unknown there, and would report every core as sharing L3 domain 0.
+	l2IDs := cacheIDsByCPU(cacheDomains, 2)
+	l3IDs := cacheIDsByCPU(cacheDomains, 3)
+	var allCPUs []uint32
+	for _, core := range topo.Cores {
+		for _, lcpu := range core.Siblings {
+			allCPUs = append(allCPUs, uint32(lcpu))
 		}
 	}
+	classes := coreClasses(allCPUs)
+	for _, core := range topo.Cores {
+		for _, lcpu := range core.Siblings {
+			id := uint32(lcpu)
+			cpu := &info.CPU{
+				Model:     model,
+				Vendor:    vendor,
+				Id:        id,
+				SocketId:  proto.Uint32(uint32(core.Socket)),
+				CoreId:    proto.Uint32(uint32(core.CoreID)),
+				NumaNode:  proto.Uint32(uint32(core.NUMA)),
+				CoreClass: classes[id],
+			}
+			if l2, ok := l2IDs[id]; ok {
+				cpu.L2Id = proto.Uint32(l2)
+			}
+			if l3, ok := l3IDs[id]; ok {
+				cpu.L3Id = proto.Uint32(l3)
+			}
+			baseKHz, maxKHz := cpuFrequencies(id)
+			if baseKHz > 0 {
+				cpu.BaseFreqKhz = proto.Uint64(baseKHz)
+			}
+			if maxKHz > 0 {
+				cpu.MaxFreqKhz = proto.Uint64(maxKHz)
+			}
+			cpuInfoProto.Cpus = append(cpuInfoProto.Cpus, cpu)
+		}
+	}
+
+	for _, domain := range cacheDomains {
+		level := cacheLevelToProto(domain)
+		if level == info.CacheLevel_CACHE_LEVEL_UNSPECIFIED {
+			continue
+		}
+		cache := &info.CacheDomain{
+			Level:  level,
+			Id:     domain.ID,
+			CpuIds: domain.CPUs,
+		}
+		if domain.SizeBytes > 0 {
+			cache.SizeBytes = proto.Uint64(domain.SizeBytes)
+		}
+		cpuInfoProto.Caches = append(cpuInfoProto.Caches, cache)
+	}
 	return cpuInfoProto, nil
+}
+
+// cacheLevelToProto maps a sysfs cache onto the reported level. Level 1 is
+// split into instruction and data caches, which sysfs tells apart by type; a
+// unified level-1 cache, or a level beyond 3, has no reported level and is left
+// out.
+func cacheLevelToProto(domain cacheDomain) info.CacheLevel {
+	switch {
+	case domain.Level == 1 && domain.Type == "Data":
+		return info.CacheLevel_CACHE_LEVEL_L1D
+	case domain.Level == 1 && domain.Type == "Instruction":
+		return info.CacheLevel_CACHE_LEVEL_L1I
+	case domain.Level == 2:
+		return info.CacheLevel_CACHE_LEVEL_L2
+	case domain.Level == 3:
+		return info.CacheLevel_CACHE_LEVEL_L3
+	default:
+		return info.CacheLevel_CACHE_LEVEL_UNSPECIFIED
+	}
+}
+
+// pciSysfsRoot is a var so tests can point pciLocalCPUs at a fixture tree.
+var pciSysfsRoot = "/sys/bus/pci/devices"
+
+// pciLocalCPUs reads the logical CPUs local to a PCI device: the CPUs of the
+// NUMA node its DMA and interrupts are local to, or every online CPU when the
+// platform gives the device no NUMA affinity. The device's NUMA node is the
+// one these CPUs report. Nil when the attribute cannot be read.
+func pciLocalCPUs(address string) []uint32 {
+	cpus, _ := readCPUList(filepath.Join(pciSysfsRoot, address, "local_cpulist"))
+	return cpus
+}
+
+// getKernelCPUIsolation reports the kernel-level CPU isolation actually in
+// effect. These are node facts, not CPU facts, and deliberately describe what
+// the kernel is doing rather than what its command line asked for.
+func getKernelCPUIsolation() *info.KernelCPUIsolation {
+	isolated, nohzFull, err := IsolatedCPUSets()
+	if err != nil {
+		logrus.Warnf("kernel CPU isolation: %v", err)
+	}
+	return &info.KernelCPUIsolation{
+		IsolatedCpuIds: isolated,
+		NohzFullCpuIds: nohzFull,
+	}
 }
 
 func getMemoryBytes() (uint64, error) {
