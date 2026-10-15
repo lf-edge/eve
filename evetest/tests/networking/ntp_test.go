@@ -249,8 +249,13 @@ func ntpSourcesSynced(sources *eveinfo.ZInfoNTPSources, expectedAddrs []string) 
 // servers (verifiable via nslookup from inside the app), there is currently
 // no guest-visible effect of the DHCP-advertised NTP list to check over SSH;
 // this test can only verify what EVE itself reports it configured
-// (ZInfoNetwork.ntp_servers), which is exactly the per-NI DHCP server's
-// computed advertisement.
+// (ZInfoNetwork.ntp_servers).
+//
+// EVE 17.0 limitation: the per-NI DHCP server advertises the union of the
+// port-level and NI-level NTP servers, but zedagent reports only the
+// NI-level list in ZInfoNetwork.ntp_servers (the report of the combined list
+// is not backported). The test therefore expects only the NI-level server
+// in the reported info.
 //
 // NTP servers used
 // -----------------
@@ -285,14 +290,13 @@ func ntpSourcesSynced(sources *eveinfo.ZInfoNTPSources, expectedAddrs []string) 
 // ------
 //  1. WaitUntilAppIsRunning, then wait (WatchAppInfo) until the app's VIF
 //     receives an IP from the NI subnet and ZInfoNetwork.ntp_servers equals
-//     exactly the port union NI set: {Cloudflare primary, Cloudflare
-//     secondary, Google time2}. Set equality (not subset) also catches
-//     eth1's Google time1 address leaking through, which must not happen
-//     since the NI doesn't use eth1.
+//     exactly the NI-level set: {Google time2}. Set equality (not subset)
+//     also catches eth1's Google time1 address leaking through, which must
+//     not happen since the NI doesn't use eth1.
 //  2. Runtime update: removes the NI's NTPServers entry (UpdateNetworkInstance)
 //     and deactivates/reactivates the app to force a fresh DHCP cycle.
-//     Eventually ZInfoNetwork.ntp_servers drops the Google time2 address,
-//     leaving only the two eth0 port-level servers.
+//     Eventually ZInfoNetwork.ntp_servers drops the Google time2 address
+//     and is empty.
 //
 // Test params
 // -----------
@@ -425,7 +429,7 @@ func TestApplicationNTPConfig(test *testing.T) {
 
 	// Phase 1: app VIF NTP server set.
 	log.Infof("Phase 1: waiting for the app VIF to report the expected NTP servers...")
-	expectedNTPServers := []string{ntpCloudflarePrimary, ntpCloudflareSecondary, ntpGoogleTime2}
+	expectedNTPServers := []string{ntpGoogleTime2}
 	t.Eventually(appUpdates, timeout).Should(Receive(matchers.SatisfyPredicate(
 		"App VIF has an IP from the NI subnet and the expected NTP server set",
 		func(info *eveinfo.ZInfoApp) bool {
@@ -454,7 +458,7 @@ func TestApplicationNTPConfig(test *testing.T) {
 	device.DeactivateApplication(appUUID, true, timeout)
 	device.ActivateApplication(appUUID, true, timeout)
 
-	expectedNTPServersAfterUpdate := []string{ntpCloudflarePrimary, ntpCloudflareSecondary}
+	expectedNTPServersAfterUpdate := []string{}
 	t.Eventually(appUpdates, timeout).Should(Receive(matchers.SatisfyPredicate(
 		"App VIF NTP servers no longer include the removed NI-level server",
 		func(info *eveinfo.ZInfoApp) bool {

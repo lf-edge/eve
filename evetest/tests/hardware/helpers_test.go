@@ -46,15 +46,11 @@ const (
 	appSSHFwdPortBase = 2222
 
 	// usbFlashLabel names the flash drive in the device model when claimed by
-	// its exact bus and port, usbFlashWildcardLabel when claimed by a bus-wide
-	// wildcard, and usbClaimLabelPrefix followed by the claimed port path, e.g.
-	// "usb-claim-1.1.*", the entries of TestUSBHubChain. A label serves as
-	// logical label, physical label and assignment group alike: domainmgr
-	// resolves an app adapter name by group, then physical, then logical
-	// label, and usbmanager keys on the physical label.
-	usbFlashLabel         = "usb-flash"
-	usbFlashWildcardLabel = "usb-flash-wildcard"
-	usbClaimLabelPrefix   = "usb-claim-"
+	// its exact bus and port. A label serves as logical label, physical label
+	// and assignment group alike: domainmgr resolves an app adapter name by
+	// group, then physical, then logical label, and usbmanager keys on the
+	// physical label.
+	usbFlashLabel = "usb-flash"
 
 	// devInfoTimeout covers ZInfoDevice reflecting a change to the assignable
 	// adapters after a config apply.
@@ -277,19 +273,6 @@ func adapterUsedBy(label string, appUUID uuid.UUID) func(*eveinfo.ZInfoDevice) b
 	}
 }
 
-// adaptersUsedBy is a predicate over ZInfoDevice: the adapter of every one of
-// the apps is reported without error and as assigned to that app.
-func adaptersUsedBy(apps []*usbFlashApp) func(*eveinfo.ZInfoDevice) bool {
-	return func(dinfo *eveinfo.ZInfoDevice) bool {
-		for _, app := range apps {
-			if !adapterUsedBy(app.label, app.uuid)(dinfo) {
-				return false
-			}
-		}
-		return true
-	}
-}
-
 // hasUSBDevice is a predicate over a USB device list: a device with the given
 // serial number is enumerated.
 func hasUSBDevice(serial string) func(evetest.USBDeviceList) bool {
@@ -303,29 +286,6 @@ func hasUSBDevice(serial string) func(evetest.USBDeviceList) bool {
 func lacksUSBDevice(serial string) func(evetest.USBDeviceList) bool {
 	return func(list evetest.USBDeviceList) bool {
 		return list.FindBySerial(serial) == nil
-	}
-}
-
-// hasUSBDevicesAt is a predicate over a USB device list: on the given bus,
-// every one of the port paths holds a device with the given vendor and
-// product id.
-func hasUSBDevicesAt(bus uint16, ports []string,
-	vendorID, productID uint16) func(evetest.USBDeviceList) bool {
-	return func(list evetest.USBDeviceList) bool {
-		for _, port := range ports {
-			found := false
-			for _, dev := range list {
-				if dev.Bus == bus && dev.Port == port &&
-					dev.VendorID == vendorID && dev.ProductID == productID {
-					found = true
-					break
-				}
-			}
-			if !found {
-				return false
-			}
-		}
-		return true
 	}
 }
 

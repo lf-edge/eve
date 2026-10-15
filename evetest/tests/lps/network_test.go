@@ -72,14 +72,14 @@ import (
 //     - Runtime PortStatus for eth0: LinkUp, IPs assigned, DNS does NOT
 //     include the rejected 10.16.18.25.
 //     - Runtime PortStatus for eth1: Mtu=9000.
-//     - On EVE itself: /run/nim/dnsmasq.mgmt.servers does NOT contain
+//     - On EVE itself: /etc/resolv.conf does NOT contain
 //     10.16.18.25, /sys/class/net/eth1/mtu == "9000".
 //  4. Enable AllowLocalModifications=true on eth0 via UpdateNetworkAdapter
 //     and re-ApplyConfig. Assert:
 //     - LocalConfig.Ports[eth0]: no "not permitted" error,
 //     ConfigApplied=true.
 //     - PortStatus for eth0: DNS now includes 10.16.18.25.
-//     - On EVE: /run/nim/dnsmasq.mgmt.servers now contains 10.16.18.25.
+//     - On EVE: /etc/resolv.conf now contains 10.16.18.25.
 //  5. Push an empty config via the LPS management API
 //     ({"serverToken":..., "ports":[]}). Assert that both ports revert
 //     to the controller-supplied config:
@@ -87,7 +87,7 @@ import (
 //     no longer 9000.
 //     - PortStatus for eth0: DNS no longer contains the LPS-supplied
 //     entries; PortStatus for eth1: Mtu back to 1500.
-//     - On EVE: dnsmasq.mgmt.servers no longer contains 10.16.18.25;
+//     - On EVE: /etc/resolv.conf no longer contains 10.16.18.25;
 //     /sys/class/net/eth1/mtu == "1500".
 //
 // Hypervisor / suite placement
@@ -251,7 +251,7 @@ func TestNetworkLocalChanges(test *testing.T) {
 		// Verify on the EVE device itself: eth0 should NOT have custom DNS,
 		// eth1 should have MTU 9000.
 		output, _, err = device.RunShellScript(
-			"cat /run/nim/dnsmasq.mgmt.servers", sshTimeout, 0)
+			"cat /etc/resolv.conf", sshTimeout, 0)
 		t.Expect(err).ToNot(HaveOccurred())
 		t.Expect(output).ToNot(ContainSubstring("10.16.18.25"),
 			"eth0 DNS should not be applied")
@@ -300,7 +300,7 @@ func TestNetworkLocalChanges(test *testing.T) {
 
 		// Verify on the EVE device: eth0 should now have custom DNS.
 		output, _, err = device.RunShellScript(
-			"cat /run/nim/dnsmasq.mgmt.servers", sshTimeout, 0)
+			"cat /etc/resolv.conf", sshTimeout, 0)
 		t.Expect(err).ToNot(HaveOccurred())
 		t.Expect(output).To(ContainSubstring("10.16.18.25"),
 			"eth0 DNS should now be applied")
@@ -341,7 +341,7 @@ func TestNetworkLocalChanges(test *testing.T) {
 
 		// Verify on the EVE device: DNS reverted, MTU back to 1500.
 		output, _, err = device.RunShellScript(
-			"cat /run/nim/dnsmasq.mgmt.servers", sshTimeout, 0)
+			"cat /etc/resolv.conf", sshTimeout, 0)
 		t.Expect(err).ToNot(HaveOccurred())
 		t.Expect(output).ToNot(ContainSubstring("10.16.18.25"),
 			"eth0 DNS should have reverted")
