@@ -70,14 +70,14 @@ func TestSignalSwtpmRejectsForgedCommandLine(t *testing.T) {
 	}
 	processFD, err := unix.PidfdOpen(cmd.Process.Pid, 0)
 	if err != nil {
-		cmd.Process.Kill()
-		cmd.Wait()
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
 		t.Fatal(err)
 	}
 	defer func() {
-		cmd.Process.Kill()
-		cmd.Wait()
-		unix.Close(processFD)
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		_ = unix.Close(processFD)
 	}()
 
 	fd, err := openVerifiedSwtpm(cmd.Process.Pid, id)
@@ -85,7 +85,7 @@ func TestSignalSwtpmRejectsForgedCommandLine(t *testing.T) {
 		t.Fatal(err)
 	}
 	if fd >= 0 {
-		unix.Close(fd)
+		_ = unix.Close(fd)
 		t.Fatal("accepted a non-swtpm executable")
 	}
 	sent, err := signalSwtpm(cmd.Process.Pid, id)
@@ -117,7 +117,7 @@ func TestOpenVerifiedSwtpm(t *testing.T) {
 	if err != nil || fd < 0 {
 		t.Fatalf("openVerifiedSwtpm(%d, %s) = (%d, %v)", pid, id, fd, err)
 	}
-	defer unix.Close(fd)
+	defer func() { _ = unix.Close(fd) }()
 	if err := unix.PidfdSendSignal(fd, 0, nil, 0); err != nil {
 		t.Fatalf("verified pidfd is not live: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestOpenVerifiedSwtpm(t *testing.T) {
 	otherFD, err := openVerifiedSwtpm(pid, otherID)
 	if err != nil || otherFD >= 0 {
 		if otherFD >= 0 {
-			unix.Close(otherFD)
+			_ = unix.Close(otherFD)
 		}
 		t.Fatalf("accepted swtpm belonging to another VM: fd=%d, err=%v", otherFD, err)
 	}
@@ -307,7 +307,7 @@ func prepareLegacyStateForMigration(t *testing.T, id uuid.UUID) ([]byte, []byte,
 		t.Fatalf("create legacy state: %v: %s", err, body)
 	}
 	conn := simulateVMAttach(t, id)
-	conn.Close()
+	_ = conn.Close()
 	m.Lock()
 	pid := instances[id].pid
 	m.Unlock()
@@ -316,14 +316,14 @@ func prepareLegacyStateForMigration(t *testing.T, id uuid.UUID) ([]byte, []byte,
 		t.Fatalf("open legacy SWTPM pidfd: fd=%d err=%v", fd, err)
 	}
 	if body, _, err := sendTerminateRequest(id); err != nil {
-		unix.Close(fd)
+		_ = unix.Close(fd)
 		t.Fatalf("terminate legacy instance: %v: %s", err, body)
 	}
 	if err := waitPidfdExit(pid, fd); err != nil {
-		unix.Close(fd)
+		_ = unix.Close(fd)
 		t.Fatalf("wait for legacy SWTPM shutdown: %v", err)
 	}
-	unix.Close(fd)
+	_ = unix.Close(fd)
 	return legacyKey, protectedKey, func() { protectedMode = true }
 }
 
@@ -574,7 +574,7 @@ func TestRecoverMigrationStopsStagedSwtpmBeforeCleanup(t *testing.T) {
 	if err != nil || fd < 0 {
 		t.Fatalf("open staged SWTPM pidfd: fd=%d err=%v", fd, err)
 	}
-	defer unix.Close(fd)
+	defer func() { _ = unix.Close(fd) }()
 	if err := recoverMigrationStage(id); err != nil {
 		t.Fatalf("recover migration with a running staged SWTPM: %v", err)
 	}
@@ -722,7 +722,7 @@ func TestPurgePreservesStateWhenSwtpmCannotStop(t *testing.T) {
 	if err := syscall.Kill(pid, syscall.SIGSTOP); err != nil {
 		t.Fatal(err)
 	}
-	defer syscall.Kill(pid, syscall.SIGCONT)
+	defer func() { _ = syscall.Kill(pid, syscall.SIGCONT) }()
 	maxPidWaitTime = 1
 	if body, status, err := sendPurgeRequest(id); err == nil || status != http.StatusFailedDependency {
 		t.Fatalf("purge of stopped swtpm: status=%d err=%v body=%s", status, err, body)
@@ -788,7 +788,7 @@ func TestCheckSwtpmStateReplies(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer ln.Close()
+			defer func() { _ = ln.Close() }()
 			done := make(chan error, 1)
 			go func() {
 				conn, err := ln.Accept()
@@ -796,7 +796,7 @@ func TestCheckSwtpmStateReplies(t *testing.T) {
 					done <- err
 					return
 				}
-				defer conn.Close()
+				defer func() { _ = conn.Close() }()
 				cmd := make([]byte, 8)
 				_, err = io.ReadFull(conn, cmd)
 				if err == nil {
@@ -841,7 +841,7 @@ func TestLogForwarderStopWithIdleFIFO(t *testing.T) {
 					lf.stop()
 					t.Fatal(err)
 				}
-				defer writer.Close()
+				defer func() { _ = writer.Close() }()
 				time.Sleep(50 * time.Millisecond)
 			}
 			stopped := make(chan struct{})
@@ -853,7 +853,7 @@ func TestLogForwarderStopWithIdleFIFO(t *testing.T) {
 			case <-stopped:
 			case <-time.After(2 * time.Second):
 				if writer != nil {
-					writer.Close() // release a blocked read before failing the test
+					_ = writer.Close() // release a blocked read before failing the test
 				}
 				t.Fatal("log forwarder did not stop promptly")
 			}
@@ -909,7 +909,7 @@ func TestHealthCheckProbeFailureStopsSwtpm(t *testing.T) {
 	if fd < 0 || pid <= 0 {
 		t.Fatalf("health-check process was not captured: pid=%d fd=%d", pid, fd)
 	}
-	defer unix.Close(fd)
+	defer func() { _ = unix.Close(fd) }()
 	if n, err := unix.Poll([]unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}, 100); err != nil || n != 1 {
 		t.Fatalf("health-check SWTPM survived failed probe: poll=%d err=%v", n, err)
 	}
@@ -936,7 +936,7 @@ func TestHealthCheckTimeoutForceStopsSwtpm(t *testing.T) {
 	if err != nil || fd < 0 {
 		t.Fatalf("open health-check pidfd: fd=%d err=%v", fd, err)
 	}
-	defer unix.Close(fd)
+	defer func() { _ = unix.Close(fd) }()
 	if err := stopHealthCheckSwtpm(pid, id, nil); err == nil {
 		t.Fatal("expected health-check timeout before force-stop")
 	}
@@ -1034,7 +1034,7 @@ func TestListenUnix(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 	info, err := os.Stat(path)
 	if err != nil {
 		t.Fatal(err)
@@ -1210,7 +1210,7 @@ func testExhaustSwtpmInstances(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to send request: %v, body : %s", err, b)
 		}
-		defer cleanupFiles(id)
+		defer func() { _ = cleanupFiles(id) }()
 		ids = append(ids, id)
 	}
 	time.Sleep(5 * time.Second)
@@ -1247,7 +1247,7 @@ func testExhaustSwtpmInstances(t *testing.T) {
 
 func TestLaunchAndPurgeWithoutStateEncryption(t *testing.T) {
 	id := generateUUID()
-	defer cleanupFiles(id)
+	defer func() { _ = cleanupFiles(id) }()
 	isTPMAvailable = func() bool {
 		return false
 	}
@@ -1257,7 +1257,7 @@ func TestLaunchAndPurgeWithoutStateEncryption(t *testing.T) {
 
 func TestLaunchAndPurgeWithStateEncryption(t *testing.T) {
 	id := generateUUID()
-	defer cleanupFiles(id)
+	defer func() { _ = cleanupFiles(id) }()
 	isTPMAvailable = func() bool {
 		return true
 	}
@@ -1293,7 +1293,7 @@ func TestExhaustSwtpmInstancesWithStateEncryption(t *testing.T) {
 
 func TestSwtpmStateChange(t *testing.T) {
 	id := generateUUID()
-	defer cleanupFiles(id)
+	defer func() { _ = cleanupFiles(id) }()
 	isTPMAvailable = func() bool {
 		return true
 	}
@@ -1348,7 +1348,7 @@ func TestSwtpmStateBackupWithStateEncryption(t *testing.T) {
 	id := generateUUID()
 	key := make([]byte, 32)
 	_, _ = rand.Read(key)
-	defer cleanupFiles(id)
+	defer func() { _ = cleanupFiles(id) }()
 	isTPMAvailable = func() bool {
 		return true
 	}
@@ -1477,7 +1477,7 @@ func TestSwtpmStateBackup(t *testing.T) {
 		t.Skip("swtpm does not support tpmstate-dir-backend-opt-backup")
 	}
 	id := generateUUID()
-	defer cleanupFiles(id)
+	defer func() { _ = cleanupFiles(id) }()
 	isTPMAvailable = func() bool {
 		return false
 	}
@@ -1592,7 +1592,7 @@ func TestSwtpmStateBackup(t *testing.T) {
 
 func TestDeleteRequest(t *testing.T) {
 	id := generateUUID()
-	defer cleanupFiles(id)
+	defer func() { _ = cleanupFiles(id) }()
 
 	// this doesn't matter
 	isTPMAvailable = func() bool {
@@ -1624,7 +1624,7 @@ func TestSwtpmAbruptTerminationRequest(t *testing.T) {
 	// 2. read swtpm pid file and terminate it
 	// 3. send launch request again, this should not fail
 	id := generateUUID()
-	defer cleanupFiles(id)
+	defer func() { _ = cleanupFiles(id) }()
 
 	// this doesn't matter
 	isTPMAvailable = func() bool {
@@ -1679,7 +1679,7 @@ func TestLaunchWithRealTPMEncryption(t *testing.T) {
 	}
 
 	id := generateUUID()
-	defer cleanupFiles(id)
+	defer func() { _ = cleanupFiles(id) }()
 
 	origTpmPath := etpm.TpmDevicePath
 	etpm.TpmDevicePath = etpm.SimTpmPath
@@ -1759,7 +1759,7 @@ func TestSwtpmMultipleLaucnhRequest(t *testing.T) {
 	// 1. send launch request multiple times, it all should succeed
 	// 2. clean up
 	id := generateUUID()
-	defer cleanupFiles(id)
+	defer func() { _ = cleanupFiles(id) }()
 
 	// this doesn't matter
 	isTPMAvailable = func() bool {
