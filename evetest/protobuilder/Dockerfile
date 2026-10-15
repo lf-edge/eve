@@ -23,7 +23,7 @@ RUN arch="$(uname -m)"; \
   unzip protobuf.zip -d /usr/local; \
   rm -f protobuf.zip
 
-RUN git clone https://github.com/seamia/protodot.git /protodot
+ADD https://github.com/seamia/protodot.git#34af90078d6734231f744e1c7d3e5773e0d39805 /protodot
 RUN go build -C /protodot -o /usr/local/bin/protodot .
 
 RUN mkdir -p "$(go env GOPATH)"

@@ -31,6 +31,11 @@ const (
 	dnsmasqRunDir       = "/run/dnsmasq"
 
 	dhcpSrvNamePrefix = "dhcpsrv-"
+
+	// netbootIpxeFile is the fixed, well-known filename evetest always
+	// stages ipxe.efi under, at the image server's root (see evetest's
+	// buildNetbootArtifacts) -- announced via DHCP option 67.
+	netbootIpxeFile = "ipxe.efi"
 )
 
 // DhcpServer : DHCP/DHCPv6 server.
@@ -91,18 +96,14 @@ type DhcpServer struct {
 	IPv4LeaseTime time.Duration
 	// IPv6LeaseTime : DHCPv6 lease duration advertised to clients. Zero uses the default (1 hour).
 	IPv6LeaseTime time.Duration
-
-	//nolint:godox
-	// TODO: Netboot
-	//  Example dnsmasq.conf for Netboot:
-	//    # use custom tftp-server instead machine running dnsmasq
-	//    dhcp-boot=pxelinux,server.name,192.168.1.100
-	//    # Boot for iPXE. The idea is to send two different
-	//    # filenames, the first loads iPXE, and the second tells iPXE what to
-	//    # load. The dhcp-match sets the ipxe tag for requests from iPXE.
-	//    dhcp-boot=undionly.kpxe
-	//    dhcp-match=set:ipxe,175 # iPXE sends a 175 option.
-	//    dhcp-boot=tag:ipxe,http://boot.ipxe.org/demo/boot.php
+	// NetbootServerIP : IP address of a netboot (TFTP+HTTP) server, external
+	// to Evetest-SDN, to announce to clients via DHCP option 66
+	// (next-server), enabling iPXE network booting. Only a literal IP address
+	// is supported: dnsmasq has no way to resolve an FQDN itself before
+	// putting an address into the DHCP response. Leave nil to disable
+	// netboot options. See netbootIpxeFile below for the (fixed, well-known)
+	// boot filename announced alongside it.
+	NetbootServerIP net.IP
 }
 
 // IPRange : a range of IP addresses.
@@ -156,7 +157,8 @@ func (s DhcpServer) Equal(other depgraph.Item) bool {
 		generics.EqualSetsFn(s.DNSServers, s2.DNSServers, netutils.EqualIPs) &&
 		s.IPv4NTPServer == s2.IPv4NTPServer &&
 		s.IPv6NTPServer == s2.IPv6NTPServer &&
-		s.WPAD == s2.WPAD
+		s.WPAD == s2.WPAD &&
+		s.NetbootServerIP.Equal(s2.NetbootServerIP)
 }
 
 // External returns false.
@@ -218,15 +220,41 @@ func (c *DhcpServerConfigurator) createDnsmasqConfFile(server DhcpServer) error 
 		log.Error(err)
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		if cerr := f.Close(); cerr != nil {
+			log.Warnf("Failed to close config file %s: %v", cfgPath, cerr)
+		}
+	}()
+
+	writeLine := func(format string, args ...interface{}) error {
+		if _, err := fmt.Fprintf(f, format, args...); err != nil {
+			err = fmt.Errorf("failed to write config file %s: %w", cfgPath, err)
+			log.Error(err)
+			return err
+		}
+		return nil
+	}
 
 	// Base configuration
-	fmt.Fprintf(f, "pid-file=%s\n", dnsmasqPidFile(srvName))
-	fmt.Fprintf(f, "dhcp-leasefile=%s\n", dnsmasqLeaseFile(srvName))
-	fmt.Fprintf(f, "log-dhcp\n")
-	fmt.Fprintf(f, "log-facility=%s\n", dnsmasqLogFile(srvName))
-	fmt.Fprintf(f, "port=0\n") // To disable dnsmasq's DNS server functionality.
-	fmt.Fprintf(f, "interface=%s\n", server.VethPeerIfName)
+	if err := writeLine("pid-file=%s\n", dnsmasqPidFile(srvName)); err != nil {
+		return err
+	}
+	if err := writeLine("dhcp-leasefile=%s\n", dnsmasqLeaseFile(srvName)); err != nil {
+		return err
+	}
+	if err := writeLine("log-dhcp\n"); err != nil {
+		return err
+	}
+	if err := writeLine("log-facility=%s\n", dnsmasqLogFile(srvName)); err != nil {
+		return err
+	}
+	// To disable dnsmasq's DNS server functionality.
+	if err := writeLine("port=0\n"); err != nil {
+		return err
+	}
+	if err := writeLine("interface=%s\n", server.VethPeerIfName); err != nil {
+		return err
+	}
 
 	// IPv4 DHCP range
 	if server.IPv4Subnet != nil {
@@ -236,23 +264,59 @@ func (c *DhcpServerConfigurator) createDnsmasqConfFile(server DhcpServer) error 
 		if server.IPv4LeaseTime > 0 {
 			leaseTime = fmt.Sprintf("%ds", int(server.IPv4LeaseTime.Seconds()))
 		}
-		fmt.Fprintf(f, "dhcp-range=%s,%s,%s\n", start4, end4, leaseTime)
+		if err := writeLine("dhcp-range=%s,%s,%s\n", start4, end4, leaseTime); err != nil {
+			return err
+		}
 
 		if server.GatewayIPv4 != nil {
 			// DHCP option 3.
-			fmt.Fprintf(f, "dhcp-option=option:router,%s\n", server.GatewayIPv4.String())
+			if err := writeLine("dhcp-option=option:router,%s\n", server.GatewayIPv4.String()); err != nil {
+				return err
+			}
+		} else {
+			// Explicitly suppress option 3. Without this, dnsmasq falls back
+			// to advertising its own listening address on this subnet as the
+			// router.
+			if err := writeLine("dhcp-option=option:router\n"); err != nil {
+				return err
+			}
 		}
 		if server.DomainName != "" {
 			// DHCP option 15.
-			fmt.Fprintf(f, "dhcp-option=option:domain-name,%s\n", server.DomainName)
+			if err := writeLine("dhcp-option=option:domain-name,%s\n", server.DomainName); err != nil {
+				return err
+			}
 		}
 		if server.IPv4NTPServer != "" {
 			// DHCP option 42.
-			fmt.Fprintf(f, "dhcp-option=option:ntp-server,%s\n", server.IPv4NTPServer)
+			if err := writeLine("dhcp-option=option:ntp-server,%s\n", server.IPv4NTPServer); err != nil {
+				return err
+			}
 		}
 		if server.WPAD != "" {
 			// DHCP option 252: WPAD.
-			fmt.Fprintf(f, "dhcp-option=252,%s\n", server.WPAD)
+			if err := writeLine("dhcp-option=252,%s\n", server.WPAD); err != nil {
+				return err
+			}
+		}
+		if server.NetbootServerIP != nil {
+			// DHCP options 66 (next-server) and 67 (boot filename): point
+			// clients at evetest's own netboot (TFTP+HTTP) image server,
+			// external to Evetest-SDN, using the fixed, well-known
+			// netbootIpxeFile evetest always stages at the image server's
+			// root (see buildNetbootArtifacts). Every request gets the same
+			// answer, including ipxe.efi's own re-DHCP once it boots
+			// (identifying itself via DHCP option 77 user-class "iPXE"):
+			// EVE's ipxe.efi is built with an embedded script
+			// (pkg/ipxe/embedded.cfg) that re-derives "${filename}.cfg"
+			// itself and chains to that -- so handing it netbootIpxeFile
+			// again (rather than the .cfg script directly) is required,
+			// not an oversight; giving it the .cfg name here would make the
+			// embedded script append ".cfg" a second time.
+			if err := writeLine("dhcp-boot=%s,,%s\n",
+				netbootIpxeFile, server.NetbootServerIP.String()); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -265,15 +329,21 @@ func (c *DhcpServerConfigurator) createDnsmasqConfFile(server DhcpServer) error 
 		if server.IPv6LeaseTime > 0 {
 			leaseTime6 = fmt.Sprintf("%ds", int(server.IPv6LeaseTime.Seconds()))
 		}
-		fmt.Fprintf(f, "dhcp-range=%s,%s,%d,%s\n", start6, end6, prefixLen, leaseTime6)
+		if err := writeLine("dhcp-range=%s,%s,%d,%s\n", start6, end6, prefixLen, leaseTime6); err != nil {
+			return err
+		}
 
 		if server.DomainName != "" {
 			// DHCPv6 option 24.
-			fmt.Fprintf(f, "dhcp-option=option6:domain-search,%s\n", server.DomainName)
+			if err := writeLine("dhcp-option=option6:domain-search,%s\n", server.DomainName); err != nil {
+				return err
+			}
 		}
 		if server.IPv6NTPServer != "" {
 			// DHCPv6 option 56.
-			fmt.Fprintf(f, "dhcp-option=option6:ntp-server,[%s]\n", server.IPv6NTPServer)
+			if err := writeLine("dhcp-option=option6:ntp-server,[%s]\n", server.IPv6NTPServer); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -289,11 +359,15 @@ func (c *DhcpServerConfigurator) createDnsmasqConfFile(server DhcpServer) error 
 	}
 	if len(dns4) > 0 && server.IPv4Subnet != nil {
 		// DHCP option 6.
-		fmt.Fprintf(f, "dhcp-option=option:dns-server,%s\n", strings.Join(dns4, ","))
+		if err := writeLine("dhcp-option=option:dns-server,%s\n", strings.Join(dns4, ",")); err != nil {
+			return err
+		}
 	}
 	if len(dns6) > 0 && server.IPv6Subnet != nil {
 		// DHCPv6 option 23.
-		fmt.Fprintf(f, "dhcp-option=option6:dns-server,%s\n", strings.Join(dns6, ","))
+		if err := writeLine("dhcp-option=option6:dns-server,%s\n", strings.Join(dns6, ",")); err != nil {
+			return err
+		}
 	}
 
 	// Static host entries
@@ -301,9 +375,13 @@ func (c *DhcpServerConfigurator) createDnsmasqConfFile(server DhcpServer) error 
 		mac := entry.MAC.String()
 		ip := entry.IP.String()
 		if entry.IP.To4() != nil {
-			fmt.Fprintf(f, "dhcp-host=%s,%s\n", mac, ip)
+			if err := writeLine("dhcp-host=%s,%s\n", mac, ip); err != nil {
+				return err
+			}
 		} else {
-			fmt.Fprintf(f, "dhcp-host=%s,[%s]\n", mac, ip)
+			if err := writeLine("dhcp-host=%s,[%s]\n", mac, ip); err != nil {
+				return err
+			}
 		}
 	}
 

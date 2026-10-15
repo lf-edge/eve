@@ -25,14 +25,14 @@ import (
 
 const (
 	_ = iota
-	// KB is the number of bytes in a kilobyte.
-	KB uint64 = 1 << (10 * iota)
-	// MB is the number of bytes in a megabyte.
-	MB
-	// GB is the number of bytes in a gigabyte.
-	GB
-	// TB is the number of bytes in a terabyte.
-	TB
+	// KiB is the number of bytes in a kibibyte.
+	KiB uint64 = 1 << (10 * iota)
+	// MiB is the number of bytes in a mebibyte.
+	MiB
+	// GiB is the number of bytes in a gibibyte.
+	GiB
+	// TiB is the number of bytes in a tebibyte.
+	TiB
 )
 
 // NilUUID is special form of UUID that is specified to have all
@@ -442,6 +442,12 @@ type NetworkAdapterConfig struct {
 	Usage         evecommon.PhyIoMemberUsage
 	PNAC          PNAC
 
+	// AssignmentGroup overrides the PhysicalIO assignment group. Defaults to
+	// LogicalLabel when empty.
+	AssignmentGroup string
+	// ParentAssignmentGroup sets the parent assignment group (empty if none).
+	ParentAssignmentGroup string
+
 	// AllowLocalModifications enables the Local Profile Server (LPS) to modify
 	// the network configuration of this adapter.
 	AllowLocalModifications bool
@@ -488,13 +494,69 @@ func (config NetworkAdapterConfig) toPhysicalIOProto() *eveconfig.PhysicalIO {
 	default:
 		phyIoType = evecommon.PhyIoType_PhyIoNetEth
 	}
+	assigngrp := config.AssignmentGroup
+	if assigngrp == "" {
+		assigngrp = config.LogicalLabel
+	}
 	return &eveconfig.PhysicalIO{
-		Ptype:        phyIoType,
-		Logicallabel: config.LogicalLabel,
-		Assigngrp:    config.LogicalLabel,
-		Phylabel:     config.PhysicalLabel,
-		Phyaddrs:     physAddrs,
-		Usage:        config.Usage,
+		Ptype:           phyIoType,
+		Logicallabel:    config.LogicalLabel,
+		Assigngrp:       assigngrp,
+		Parentassigngrp: config.ParentAssignmentGroup,
+		Phylabel:        config.PhysicalLabel,
+		Phyaddrs:        physAddrs,
+		Usage:           config.Usage,
+	}
+}
+
+// PhysicalIOConfig represents a raw PhysicalIO (assignable I/O) device in the
+// device model. Use it for non-network devices and for deliberately
+// inconsistent device models that AddNetworkAdapter cannot express (a specific
+// Ptype, a phantom device at a chosen PCI address, a custom assignment group,
+// etc.). A given logical label is owned by exactly one of AddNetworkAdapter or
+// AddPhysicalIO.
+type PhysicalIOConfig struct {
+	LogicalLabel  string
+	PhysicalLabel string
+	Type          evecommon.PhyIoType
+	// AssignmentGroup defaults to LogicalLabel when empty.
+	AssignmentGroup       string
+	ParentAssignmentGroup string
+	Usage                 evecommon.PhyIoMemberUsage
+	// Physical addresses; every non-empty field is written into Phyaddrs.
+	PCIAddress    string
+	USBAddress    string
+	InterfaceName string
+	Serial        string
+}
+
+// toPhysicalIOProto returns the EVE protobuf PhysicalIO for this device.
+func (config PhysicalIOConfig) toPhysicalIOProto() *eveconfig.PhysicalIO {
+	physAddrs := map[string]string{}
+	if config.PCIAddress != "" {
+		physAddrs["pcilong"] = config.PCIAddress
+	}
+	if config.USBAddress != "" {
+		physAddrs["usbaddr"] = config.USBAddress
+	}
+	if config.InterfaceName != "" {
+		physAddrs["ifname"] = config.InterfaceName
+	}
+	if config.Serial != "" {
+		physAddrs["serial"] = config.Serial
+	}
+	assigngrp := config.AssignmentGroup
+	if assigngrp == "" {
+		assigngrp = config.LogicalLabel
+	}
+	return &eveconfig.PhysicalIO{
+		Ptype:           config.Type,
+		Logicallabel:    config.LogicalLabel,
+		Assigngrp:       assigngrp,
+		Parentassigngrp: config.ParentAssignmentGroup,
+		Phylabel:        config.PhysicalLabel,
+		Phyaddrs:        physAddrs,
+		Usage:           config.Usage,
 	}
 }
 
@@ -651,6 +713,7 @@ type LocalNetworkInstanceConfig struct {
 	EnableFlowlog            bool
 	MTU                      uint16
 	ForwardLLDP              bool
+	ClusterWide              bool
 }
 
 func (config LocalNetworkInstanceConfig) toProto(th *TestHarness,
@@ -758,6 +821,7 @@ func (config LocalNetworkInstanceConfig) toProto(th *TestHarness,
 		Mtu:                      uint32(config.MTU),
 		DisableFlowlog:           !config.EnableFlowlog,
 		ForwardLldp:              config.ForwardLLDP,
+		ClusterWide:              config.ClusterWide,
 	}
 }
 
@@ -770,6 +834,7 @@ type SwitchNetworkInstanceConfig struct {
 	MTU             uint16                // used only for airgap switch NI
 	ForwardLLDP     bool
 	VlanAccessPorts []pillartypes.VlanAccessPort // VLAN access port assignments; empty = no VLAN filtering
+	ClusterWide     bool
 }
 
 func (config SwitchNetworkInstanceConfig) toProto(th *TestHarness,
@@ -804,27 +869,76 @@ func (config SwitchNetworkInstanceConfig) toProto(th *TestHarness,
 		DisableFlowlog:  !config.EnableFlowlog,
 		ForwardLldp:     config.ForwardLLDP,
 		VlanAccessPorts: vlanAccessPorts,
+		ClusterWide:     config.ClusterWide,
 	}
 }
 
 // ApplicationInstanceConfig wraps configuration for a single application deployed on EVE.
 type ApplicationInstanceConfig struct {
-	DisplayName         string
-	Activate            bool
-	ProfileList         []string
-	Image               ApplicationImageStorage
-	VirtualizationMode  eveconfig.VmMode
-	CPUs                uint
-	MemoryBytes         uint64
-	DiskBytes           uint64
-	EnableVNC           bool
-	VNCDisplay          uint
-	VNCPassword         string
+	DisplayName        string
+	Activate           bool
+	ProfileList        []string
+	Image              ApplicationImageStorage
+	VirtualizationMode eveconfig.VmMode
+	CPUs               uint
+	MemoryBytes        uint64
+	DiskBytes          uint64
+	EnableVNC          bool
+	VNCDisplay         uint
+	VNCPassword        string
+	// RemoteConsole gates VNC access under the Kubevirt hypervisor: unlike
+	// KVM (where EnableVNC/VNCDisplay/VNCPassword directly configure a raw
+	// QEMU VNC socket reachable on the device's uplink IP), Kubevirt exposes
+	// VNC via zedkube's virtctl-based proxy, which only binds the VNC port
+	// on 127.0.0.1 and is gated by this field, not by EnableVNC. VNCDisplay
+	// still selects the port (5900+VNCDisplay); VNCPassword is not enforced
+	// -- see pkg/pillar/docs/vnc-workflows.md. zedkube only starts/stops the
+	// proxy on a *change* of this field, and only one remote-console session
+	// is allowed on the device at a time.
+	RemoteConsole       bool
 	DisableLogs         bool
 	UserData            string
 	NetworkAdapters     []AppNetworkAdapter
 	EnforceNetIntfOrder bool
+	// IOAdapters are I/O devices other than network adapters (a GPU, a USB
+	// controller, a serial port, ...) directly assigned to the application,
+	// each referencing a PhysicalIO entry added with
+	// EdgeDeviceConfig.AddPhysicalIO.
+	IOAdapters []IOAdapterConfig
+	// Mounts are additional volumes attached to the application alongside its
+	// root disk (built from Image/DiskBytes). Each entry references an
+	// existing, independently created volume (see EdgeDeviceConfig.AddVolume
+	// / AddBlankVolume) -- AddApplication/UpdateApplication only wire up (or
+	// rewire) the app's VolumeRefList to point at it; they never create or
+	// remove the volume itself.
+	Mounts []MountConfig
 	// Many more parameters can be configured; they will be added later as needed.
+}
+
+// MountConfig attaches an existing volume to an application, in addition to
+// its root disk. The volume must already exist in the device configuration
+// (created via EdgeDeviceConfig.AddVolume or AddBlankVolume) --
+// AddApplication/UpdateApplication fail if VolumeUUID does not reference one.
+// The volume's lifecycle is independent of any application that mounts it:
+// deleting the application does not delete it (use DeleteVolume explicitly),
+// and DeleteVolume itself fails while any application still mounts it.
+type MountConfig struct {
+	// VolumeUUID is the UUID of an existing volume, as returned by AddVolume
+	// or AddBlankVolume.
+	VolumeUUID uuid.UUID
+	// MountDir is the path where the volume is mounted inside the guest.
+	// Empty means the volume is attached as a raw block device instead: no
+	// guest-side mount is performed, and the disk shows up as a plain block
+	// device (e.g. /dev/sdX for a VM, or a device node under
+	// /dev/eve/volumes/by-id for a container) -- see VolumeRefConfig.MountDir
+	// handling in pillar's zedmanager/domainmgr/containerd.
+	MountDir string
+	// ReadOnly marks the volume as read-only inside the guest. This sets
+	// Volume.Readonly, a property of the volume itself (the EVE API has no
+	// separate per-reference read-only flag) -- so mounting the same volume
+	// read-write from one application and read-only from another is not
+	// possible; the last MountConfig applied wins.
+	ReadOnly bool
 }
 
 func (config ApplicationInstanceConfig) toProto(th *TestHarness, devName string,
@@ -839,7 +953,7 @@ func (config ApplicationInstanceConfig) toProto(th *TestHarness, devName string,
 		EnforceNetworkInterfaceOrder: config.EnforceNetIntfOrder,
 	}
 	if config.MemoryBytes != 0 {
-		vmConfig.Memory = uint32(config.MemoryBytes / KB)
+		vmConfig.Memory = uint32(config.MemoryBytes / KiB)
 	}
 	appInstConfig := &eveconfig.AppInstanceConfig{
 		Uuidandversion: &eveconfig.UUIDandVersion{
@@ -850,6 +964,7 @@ func (config ApplicationInstanceConfig) toProto(th *TestHarness, devName string,
 		Fixedresources: vmConfig,
 		Activate:       config.Activate,
 		ProfileList:    config.ProfileList,
+		RemoteConsole:  config.RemoteConsole,
 	}
 	if volumeUUID != NilUUID {
 		appInstConfig.VolumeRefList = append(appInstConfig.VolumeRefList,
@@ -861,10 +976,14 @@ func (config ApplicationInstanceConfig) toProto(th *TestHarness, devName string,
 	for i, netAdapter := range config.NetworkAdapters {
 		switch adapter := netAdapter.(type) {
 		case DirectlyAssignedNetworkAdapter:
+			interfaceOrder := uint32(i)
+			if adapter.InterfaceOrder != nil {
+				interfaceOrder = *adapter.InterfaceOrder
+			}
 			appInstConfig.Adapters = append(appInstConfig.Adapters, &eveconfig.Adapter{
 				Type:           evecommon.PhyIoType_PhyIoNetEth,
 				Name:           adapter.LogicalLabel,
-				InterfaceOrder: uint32(i),
+				InterfaceOrder: interfaceOrder,
 			})
 		case VirtualNetworkAdapter:
 			var ipAddr string
@@ -941,6 +1060,10 @@ func (config ApplicationInstanceConfig) toProto(th *TestHarness, devName string,
 					Id: aclID,
 				})
 			}
+			interfaceOrder := uint32(i)
+			if adapter.InterfaceOrder != nil {
+				interfaceOrder = *adapter.InterfaceOrder
+			}
 			appInstConfig.Interfaces = append(appInstConfig.Interfaces,
 				&eveconfig.NetworkAdapter{
 					Name:           adapter.LogicalLabel,
@@ -949,9 +1072,15 @@ func (config ApplicationInstanceConfig) toProto(th *TestHarness, devName string,
 					MacAddress:     adapter.MAC.String(),
 					Acls:           acls,
 					AccessVlanId:   uint32(adapter.AccessVLAN),
-					InterfaceOrder: uint32(i),
+					InterfaceOrder: interfaceOrder,
 				})
 		}
+	}
+	for _, ioAdapter := range config.IOAdapters {
+		appInstConfig.Adapters = append(appInstConfig.Adapters, &eveconfig.Adapter{
+			Type: ioAdapter.Type,
+			Name: ioAdapter.LogicalLabel,
+		})
 	}
 	if config.UserData != "" {
 		if th.isDeviceOnboarded(devName) {
@@ -963,6 +1092,11 @@ func (config ApplicationInstanceConfig) toProto(th *TestHarness, devName string,
 				th.t.Fatalf("Failed to encrypt user data for application %v: %v",
 					config.DisplayName, err)
 			}
+			// Deliberately leaves UserData unset. domainmgr's getCloudInitUserData
+			// silently falls back to the plaintext field when the decrypt fails,
+			// booting the application with cleartext and reporting no error at all
+			// - so setting both would make every encrypted-user-data assertion
+			// unable to fail.
 			appInstConfig.CipherData = cipherData
 		} else {
 			// This is initial device configuration.
@@ -990,6 +1124,15 @@ type DockerContainer struct {
 	// Username and password are not configurable here.
 	// Instead, evetest pulls credentials from the docker client running on the host
 	// (docker socket will be mounted to evetest container).
+
+	// TrustedCACertsPEM lists CA certificates EVE should trust when connecting
+	// to Domain over HTTPS, in addition to its normal trust store -- e.g. the
+	// harness's own CA (GetCACertPEM) when Domain points at evetest's embedded
+	// OCI registry (see PushDockerImageToLocalRegistry), or an enterprise
+	// registry's own internal CA. Mirrors HTTPStorage.HTTPSTrustedCACertsPEM;
+	// leave unset for a registry already trusted via the normal chain (e.g.
+	// Docker Hub).
+	TrustedCACertsPEM []string
 }
 
 func (container DockerContainer) toProto(th *TestHarness, log *logrus.Entry,
@@ -1011,8 +1154,17 @@ func (container DockerContainer) toProto(th *TestHarness, log *logrus.Entry,
 	if domain == "" || domain == "index.docker.io" {
 		domain = "docker.io"
 	}
-	mirrors := constants.LoadRegistryMirrors()
-	if mirrorURL, ok := mirrors[domain]; ok {
+	var mirrorURL string
+	if !th.skipRegistryMirrors {
+		mirrors := constants.LoadRegistryMirrors()
+		if addrs, ok := mirrors[domain]; ok {
+			// If th.ipv6OnlyRegistryMirrors is set but this registry has no IPv6
+			// mirror address, mirrorURL stays empty and we fall through below —
+			// the app is simply pulled from the real, un-mirrored registry.
+			mirrorURL, _ = constants.SelectRegistryMirror(addrs, th.ipv6OnlyRegistryMirrors)
+		}
+	}
+	if mirrorURL != "" {
 		// Strip transport scheme — EVE's datastore FQDN uses docker:// as a
 		// registry-type marker, not a transport scheme.
 		bare := mirrorURL
@@ -1024,6 +1176,9 @@ func (container DockerContainer) toProto(th *TestHarness, log *logrus.Entry,
 		dsConfig.Fqdn = "docker://index.docker.io"
 	} else {
 		dsConfig.Fqdn = fmt.Sprintf("docker://%s", domain)
+	}
+	for _, cert := range container.TrustedCACertsPEM {
+		dsConfig.DsCertPEM = append(dsConfig.DsCertPEM, []byte(cert))
 	}
 	username, password, err := utils.GetDockerAuthPlain(log, dsConfig.Fqdn)
 	if err != nil {
@@ -1257,10 +1412,20 @@ type AppNetworkAdapter interface {
 // DirectlyAssignedNetworkAdapter represents network adapter directly assigned
 // to an application (e.g. using PCI passthrough).
 type DirectlyAssignedNetworkAdapter struct {
-	LogicalLabel string
+	LogicalLabel   string
+	InterfaceOrder *uint32
 }
 
 func (DirectlyAssignedNetworkAdapter) isAppNetworkAdapter() {}
+
+// IOAdapterConfig represents an I/O device other than a network adapter
+// directly assigned to an application, e.g. a GPU (PhyIoHDMI) or a USB
+// controller (PhyIoUSBController). LogicalLabel names the PhysicalIO entry
+// (see EdgeDeviceConfig.AddPhysicalIO) and Type must match its type.
+type IOAdapterConfig struct {
+	LogicalLabel string
+	Type         evecommon.PhyIoType
+}
 
 // VirtualNetworkAdapter represents application virtual network adapters
 // (e.g., virtio, e1000).
@@ -1272,6 +1437,7 @@ type VirtualNetworkAdapter struct {
 	AccessVLAN          uint16
 	PortFwdRules        []PortFwdRule
 	ACLAllowRules       []ACLAllowRule
+	InterfaceOrder      *uint32
 }
 
 func (VirtualNetworkAdapter) isAppNetworkAdapter() {}
@@ -1625,6 +1791,12 @@ func (dc *EdgeDeviceConfig) AddNetworkAdapter(config NetworkAdapterConfig) {
 				"by a bond adapter", config.LogicalLabel)
 		}
 	}
+	for _, physIO := range dc.DeviceIoList {
+		if physIO.Logicallabel == config.LogicalLabel {
+			dc.th.t.Fatalf("Network adapter logical label %q is already in use "+
+				"by an I/O device", config.LogicalLabel)
+		}
+	}
 	dc.checkAdapterNetwork(config)
 	dc.DeviceIoList = append(dc.DeviceIoList, config.toPhysicalIOProto())
 	if config.PNAC.Enable {
@@ -1632,6 +1804,75 @@ func (dc *EdgeDeviceConfig) AddNetworkAdapter(config NetworkAdapterConfig) {
 	}
 	if config.NetworkUUID != NilUUID {
 		dc.SystemAdapterList = append(dc.SystemAdapterList, config.toSystemAdapterProto())
+	}
+}
+
+// AddPhysicalIO adds a raw PhysicalIO (assignable I/O) device to the device
+// configuration. Use it for non-network devices and for device-model
+// inconsistencies that AddNetworkAdapter cannot express. A given logical label
+// is owned by exactly one of AddNetworkAdapter or AddPhysicalIO.
+func (dc *EdgeDeviceConfig) AddPhysicalIO(config PhysicalIOConfig) {
+	dc.checkIOLogicalLabelFree(config.LogicalLabel)
+	dc.DeviceIoList = append(dc.DeviceIoList, config.toPhysicalIOProto())
+}
+
+// DeletePhysicalIO removes an I/O device added with AddPhysicalIO, identified
+// by its logical label, from the device configuration. Network adapters are
+// removed with DeleteNetworkAdapter instead. The device must not be assigned
+// to any application any more (ApplicationInstanceConfig.IOAdapters); delete
+// or update the application first.
+func (dc *EdgeDeviceConfig) DeletePhysicalIO(logicalLabel string) {
+	for _, app := range dc.Apps {
+		for _, adapter := range app.Adapters {
+			if adapter.Name == logicalLabel {
+				dc.th.t.Fatalf("Cannot delete I/O device %q: still assigned to application %q",
+					logicalLabel, app.Displayname)
+			}
+		}
+	}
+	for i, physIO := range dc.DeviceIoList {
+		if physIO.Logicallabel != logicalLabel {
+			continue
+		}
+		switch physIO.Ptype {
+		case evecommon.PhyIoType_PhyIoNetWLAN,
+			evecommon.PhyIoType_PhyIoNetWWAN,
+			evecommon.PhyIoType_PhyIoNetEth:
+			dc.th.t.Fatalf("I/O device with logical label %q is a network adapter; "+
+				"use DeleteNetworkAdapter", logicalLabel)
+		}
+		dc.DeviceIoList = append(dc.DeviceIoList[:i], dc.DeviceIoList[i+1:]...)
+		return
+	}
+	dc.th.t.Fatalf("I/O device with logical label %q was not found", logicalLabel)
+}
+
+// checkIOLogicalLabelFree fails the test if logicalLabel is already used by any
+// I/O device, system adapter, VLAN or bond adapter.
+func (dc *EdgeDeviceConfig) checkIOLogicalLabelFree(logicalLabel string) {
+	for _, physIO := range dc.DeviceIoList {
+		if physIO.Logicallabel == logicalLabel {
+			dc.th.t.Fatalf("I/O device with logical label %q already exists",
+				logicalLabel)
+		}
+	}
+	for _, adapter := range dc.SystemAdapterList {
+		if adapter.Name == logicalLabel {
+			dc.th.t.Fatalf("logical label %q is already in use by a system adapter",
+				logicalLabel)
+		}
+	}
+	for _, vlan := range dc.Vlans {
+		if vlan.Logicallabel == logicalLabel {
+			dc.th.t.Fatalf("logical label %q is already in use by a VLAN adapter",
+				logicalLabel)
+		}
+	}
+	for _, bond := range dc.Bonds {
+		if bond.Logicallabel == logicalLabel {
+			dc.th.t.Fatalf("logical label %q is already in use by a bond adapter",
+				logicalLabel)
+		}
 	}
 }
 
@@ -1759,6 +2000,10 @@ func (dc *EdgeDeviceConfig) setDefaultConfigProperties() {
 		{Key: string(pillartypes.LocationCloudInterval), Value: "300"},
 		{Key: string(pillartypes.AllowLogFastupload), Value: "true"},
 		{Key: string(pillartypes.DownloadRetryTime), Value: "60"},
+
+		// timer.cert.interval is deliberately left at its 24h default: lowering it
+		// would make EVE refetch /certs on a timer, which is exactly the fallback
+		// the certificate rotation tests must not be able to rely on.
 
 		// Reduce the post-upgrade testing period so upgrades complete faster in tests.
 		{Key: string(pillartypes.MintimeUpdateSuccess), Value: "60"},
@@ -2118,26 +2363,6 @@ func (dc *EdgeDeviceConfig) DeleteNetworkInstance(niUUID uuid.UUID) {
 	dc.th.t.Fatalf("Network instance with UUID %q was not found", uuidStr)
 }
 
-// AddContentTree adds a ContentTree that no Volume and no application refers to,
-// and returns its UUID.
-//
-// volumemgr downloads a ContentTree eagerly, so the image blobs land in the
-// content-addressable store without a Volume, a PVC or a CDI import ever being
-// created. A test whose subject is the blobs themselves -- that they survive an
-// event, or that a later deployment reuses them instead of downloading again --
-// wants exactly that, since going through AddVolume would drag the storage
-// pipeline into the result.
-func (dc *EdgeDeviceConfig) AddContentTree(
-	displayName string, image ApplicationImageStorage) uuid.UUID {
-	contentTreeUUID := dc.th.newUUID("content tree")
-	datastoreUUID := dc.th.newUUID("content tree datastore")
-	contentTree, dsConfig := image.toProto(dc.th, dc.log, dc.DeviceName,
-		contentTreeUUID, datastoreUUID, displayName)
-	dc.ContentInfo = append(dc.ContentInfo, contentTree)
-	dc.Datastores = append(dc.Datastores, dsConfig)
-	return contentTreeUUID
-}
-
 // AddApplication adds a new application instance to the device configuration
 // and returns its generated UUID.
 func (dc *EdgeDeviceConfig) AddApplication(config ApplicationInstanceConfig) uuid.UUID {
@@ -2179,13 +2404,65 @@ func (dc *EdgeDeviceConfig) addApplicationWithUUIDs(
 		contentTreeUUID, datastoreUUID, config.DisplayName)
 	dc.ContentInfo = append(dc.ContentInfo, contentTree)
 	dc.Datastores = append(dc.Datastores, dsConfig)
+
+	// appInstConfig.VolumeRefList currently holds only the root disk (index
+	// 0); append one VolumeRef per mount, referencing already-existing
+	// volumes (see MountConfig / buildMountRefs).
+	appInstConfig.VolumeRefList = append(appInstConfig.VolumeRefList,
+		dc.buildMountRefs(config.DisplayName, config.Mounts)...)
+}
+
+// findVolume returns the Volume with the given UUID, or nil if not found.
+func (dc *EdgeDeviceConfig) findVolume(volUUID string) *eveconfig.Volume {
+	for _, v := range dc.Volumes {
+		if v.Uuid == volUUID {
+			return v
+		}
+	}
+	return nil
+}
+
+// buildMountRefs validates config.Mounts against the device's existing
+// volumes (see AddVolume/AddBlankVolume) and returns the corresponding
+// VolumeRefs. It fails the test if a mount references a volume that does not
+// exist, or if the same volume is mounted more than once by appDisplayName.
+// It does not create or remove any volume -- that is the caller's
+// responsibility via AddVolume/AddBlankVolume/DeleteVolume.
+func (dc *EdgeDeviceConfig) buildMountRefs(
+	appDisplayName string, mounts []MountConfig) []*eveconfig.VolumeRef {
+	seen := make(map[string]bool, len(mounts))
+	refs := make([]*eveconfig.VolumeRef, 0, len(mounts))
+	for _, mount := range mounts {
+		volUUIDStr := mount.VolumeUUID.String()
+		volume := dc.findVolume(volUUIDStr)
+		if volume == nil {
+			dc.th.t.Fatalf(
+				"Application %q mount references non-existent volume %q "+
+					"(create it first with AddVolume/AddBlankVolume)",
+				appDisplayName, volUUIDStr)
+			continue
+		}
+		if seen[volUUIDStr] {
+			dc.th.t.Fatalf("Application %q mounts volume %q more than once",
+				appDisplayName, volUUIDStr)
+			continue
+		}
+		seen[volUUIDStr] = true
+		volume.Readonly = mount.ReadOnly
+		refs = append(refs, &eveconfig.VolumeRef{
+			Uuid:     volUUIDStr,
+			MountDir: mount.MountDir,
+		})
+	}
+	return refs
 }
 
 // UpdateApplication updates an existing application instance identified
 // by its UUID.
 func (dc *EdgeDeviceConfig) UpdateApplication(
 	appUUID uuid.UUID, newConfig ApplicationInstanceConfig) {
-	// For now, we will only allow to change Activation flag, profile list and adapters.
+	// For now, we will only allow to change Activation flag, profile list,
+	// adapters, and mounts.
 	for i, app := range dc.Apps {
 		if app.Uuidandversion.Uuid == appUUID.String() {
 			newProtoConfig := newConfig.toProto(dc.th, dc.DeviceName, appUUID, NilUUID)
@@ -2195,29 +2472,51 @@ func (dc *EdgeDeviceConfig) UpdateApplication(
 			if !proto.Equal(app.Fixedresources, newProtoConfig.Fixedresources) {
 				dc.th.t.Fatalf("It is not allowed to change application Fixedresources")
 			}
+			var needRestart bool
 			var needPurge bool
 			equalAdapter := func(a1, a2 *eveconfig.Adapter) bool {
 				return proto.Equal(a1, a2)
 			}
 			if !generics.EqualSetsFn(app.Adapters, newProtoConfig.Adapters, equalAdapter) {
-				needPurge = true
+				needRestart = true
 			}
 			equalNetAdapter := func(a1, a2 *eveconfig.NetworkAdapter) bool {
 				return proto.Equal(a1, a2)
 			}
 			if !generics.EqualSetsFn(app.Interfaces, newProtoConfig.Interfaces, equalNetAdapter) {
+				needRestart = true
+			}
+			// The root ref (VolumeRefList[0]) is always left untouched;
+			// buildMountRefs only ever references existing volumes, it does
+			// not create or remove any. Any change to the mount refs
+			// (add/remove/move) requires a purge.
+			newMountRefs := dc.buildMountRefs(newConfig.DisplayName, newConfig.Mounts)
+			equalVolumeRef := func(a1, a2 *eveconfig.VolumeRef) bool {
+				return proto.Equal(a1, a2)
+			}
+			if !generics.EqualSetsFn(app.VolumeRefList[1:], newMountRefs, equalVolumeRef) {
 				needPurge = true
 			}
+			// A purge subsumes a restart -- it stops the app, recreates its
+			// volumes and starts it again, which also applies any adapter
+			// change that is otherwise staged until the next restart. So when
+			// both are needed, bumping the purge counter alone is enough.
 			if needPurge {
 				if app.Purge == nil {
 					app.Purge = &eveconfig.InstanceOpsCmd{Counter: 0}
 				}
 				app.Purge.Counter++
+			} else if needRestart {
+				if app.Restart == nil {
+					app.Restart = &eveconfig.InstanceOpsCmd{Counter: 0}
+				}
+				app.Restart.Counter++
 			}
 			dc.Apps[i].Activate = newProtoConfig.Activate
 			dc.Apps[i].ProfileList = newProtoConfig.ProfileList
 			dc.Apps[i].Adapters = newProtoConfig.Adapters
 			dc.Apps[i].Interfaces = newProtoConfig.Interfaces
+			dc.Apps[i].VolumeRefList = append(app.VolumeRefList[:1:1], newMountRefs...)
 			return
 		}
 	}
@@ -2226,14 +2525,19 @@ func (dc *EdgeDeviceConfig) UpdateApplication(
 }
 
 // DeleteApplication removes an application instance identified by its UUID
-// and cleans up all associated resources.
+// and its root volume (the one created together with it from
+// ApplicationInstanceConfig.Image/DiskBytes). Any volumes referenced through
+// Mounts are left untouched -- their lifecycle is independent of the
+// application (see MountConfig); remove them explicitly with DeleteVolume.
 func (dc *EdgeDeviceConfig) DeleteApplication(appUUID uuid.UUID) {
 	var found bool
-	var volumeRefs []*eveconfig.VolumeRef
+	var rootVolUUID string
 	uuidStr := appUUID.String()
 	for i, app := range dc.Apps {
 		if app.Uuidandversion.Uuid == uuidStr {
-			volumeRefs = app.VolumeRefList
+			if len(app.VolumeRefList) > 0 {
+				rootVolUUID = app.VolumeRefList[0].Uuid
+			}
 			// Remove the application instance from the slice.
 			dc.Apps = append(dc.Apps[:i], dc.Apps[i+1:]...)
 			found = true
@@ -2243,46 +2547,304 @@ func (dc *EdgeDeviceConfig) DeleteApplication(appUUID uuid.UUID) {
 	if !found {
 		dc.th.t.Fatalf("Application instance with UUID %q was not found", uuidStr)
 	}
+	if rootVolUUID != "" {
+		dc.deleteVolumeAndDeps(rootVolUUID)
+	}
+}
 
-	// Remove volumes for the app.
-	var contentTreeIDs []string
-	for _, volumeRef := range volumeRefs {
-		for i, volume := range dc.Volumes {
-			if volume.Uuid == volumeRef.Uuid {
-				if volume.Origin.Type == eveconfig.VolumeContentOriginType_VCOT_DOWNLOAD {
-					contentTreeIDs = append(contentTreeIDs,
-						volume.Origin.DownloadContentTreeID)
-				}
-				// Remove the volume from the slice.
-				dc.Volumes = append(dc.Volumes[:i], dc.Volumes[i+1:]...)
-				break
+// deleteVolumeAndDeps removes the Volume with the given UUID from the device
+// configuration and, if it is a VCOT_DOWNLOAD volume, its ContentTree and the
+// Datastores that ContentTree referenced. Returns whether the volume was
+// found.
+func (dc *EdgeDeviceConfig) deleteVolumeAndDeps(volUUID string) bool {
+	var contentTreeID string
+	var found bool
+	for i, volume := range dc.Volumes {
+		if volume.Uuid == volUUID {
+			if volume.Origin.Type == eveconfig.VolumeContentOriginType_VCOT_DOWNLOAD {
+				contentTreeID = volume.Origin.DownloadContentTreeID
 			}
+			dc.Volumes = append(dc.Volumes[:i], dc.Volumes[i+1:]...)
+			found = true
+			break
 		}
 	}
+	if !found || contentTreeID == "" {
+		return found
+	}
+	dc.deleteContentTreeAndDeps(contentTreeID)
+	return true
+}
 
-	// Remove content trees created for the app.
+// deleteContentTreeAndDeps removes the ContentTree with the given UUID and the
+// Datastores it referenced. Reports whether the ContentTree was found.
+func (dc *EdgeDeviceConfig) deleteContentTreeAndDeps(contentTreeID string) bool {
 	var datastoreIDs []string
-	for _, contentTreeID := range contentTreeIDs {
-		for i, contentTree := range dc.ContentInfo {
-			if contentTree.Uuid == contentTreeID {
-				datastoreIDs = append(datastoreIDs, contentTree.DsIdsList...)
-				// Remove the content tree from the slice.
-				dc.ContentInfo = append(dc.ContentInfo[:i], dc.ContentInfo[i+1:]...)
-				break
-			}
+	var found bool
+	for i, contentTree := range dc.ContentInfo {
+		if contentTree.Uuid == contentTreeID {
+			datastoreIDs = append(datastoreIDs, contentTree.DsIdsList...)
+			dc.ContentInfo = append(dc.ContentInfo[:i], dc.ContentInfo[i+1:]...)
+			found = true
+			break
 		}
 	}
-
-	// Remove datastore configs created for the app.
+	if !found {
+		return false
+	}
 	for _, datastoreID := range datastoreIDs {
 		for i, datastore := range dc.Datastores {
 			if datastore.Id == datastoreID {
-				// Remove the datastore config from the slice.
 				dc.Datastores = append(dc.Datastores[:i], dc.Datastores[i+1:]...)
 				break
 			}
 		}
 	}
+	return true
+}
+
+// AddBlankVolume adds a standalone empty (VCOT_BLANK) volume of the requested
+// size to the device configuration and returns its UUID.
+//
+// A blank volume is created by volumemgr as an empty block device of the given
+// size, with no content downloaded into it and no application reference
+// required (volumemgr creates standalone volumes; see the
+// VolumeConfig.HasNoAppReferences handling in volumemgr). On a device whose
+// /persist is ZFS, a non-container, non-ISO volume is backed by a ZFS zvol
+// whose "volsize" property equals sizeBytes (rounded up to the ZFS
+// volblocksize). That volsize is the provisioned size volumemgr reports in
+// AppDiskMetric.ProvisionedBytes, which zedagent surfaces to the controller as
+// ZMetricVolume.TotalBytes and VolumeResources.MaxSizeBytes.
+//
+// clearText selects whether the volume is created outside the vault. A
+// clear-text volume can be created while the vault is still locked, which
+// isolates a test from vault readiness; an encrypted one exercises the
+// vault-dependent path instead. Tests that are not about encryption should
+// say which they mean rather than relying on a default, since the choice
+// changes what the volume creation actually exercises.
+func (dc *EdgeDeviceConfig) AddBlankVolume(
+	displayName string, sizeBytes uint64, clearText bool) uuid.UUID {
+	volumeUUID := dc.th.newUUID("blank volume")
+	dc.Volumes = append(dc.Volumes, &eveconfig.Volume{
+		Uuid: volumeUUID.String(),
+		Origin: &eveconfig.VolumeContentOrigin{
+			Type: eveconfig.VolumeContentOriginType_VCOT_BLANK,
+		},
+		Maxsizebytes: int64(sizeBytes),
+		DisplayName:  displayName,
+		ClearText:    clearText,
+	})
+	return volumeUUID
+}
+
+// AddVolume adds a standalone (app-unreferenced) VCOT_DOWNLOAD volume of the
+// requested size, with content sourced from image, and returns its UUID.
+//
+// Unlike AddBlankVolume, the volume's content is populated by a real
+// download (e.g. from a docker registry, or evetest's built-in HTTP/SFTP
+// image server -- see CreateBlankImageFile), so this exercises the
+// download and (for non-raw formats) disk-format conversion path in
+// volumemgr, rather than the empty zero-content path.
+func (dc *EdgeDeviceConfig) AddVolume(
+	displayName string, image ApplicationImageStorage, sizeBytes uint64) uuid.UUID {
+	volumeUUID := dc.th.newUUID("volume")
+	contentTreeUUID := dc.th.newUUID("volume content tree")
+	datastoreUUID := dc.th.newUUID("volume datastore")
+	dc.Volumes = append(dc.Volumes, &eveconfig.Volume{
+		Uuid: volumeUUID.String(),
+		Origin: &eveconfig.VolumeContentOrigin{
+			Type:                  eveconfig.VolumeContentOriginType_VCOT_DOWNLOAD,
+			DownloadContentTreeID: contentTreeUUID.String(),
+		},
+		Maxsizebytes: int64(sizeBytes),
+		DisplayName:  displayName,
+	})
+	contentTree, dsConfig := image.toProto(dc.th, dc.log, dc.DeviceName,
+		contentTreeUUID, datastoreUUID, displayName)
+	dc.ContentInfo = append(dc.ContentInfo, contentTree)
+	dc.Datastores = append(dc.Datastores, dsConfig)
+	return volumeUUID
+}
+
+// AddContentTree adds a ContentTree that no Volume and no application refers to,
+// and returns its UUID.
+//
+// volumemgr downloads a ContentTree eagerly, so the image blobs land in the
+// content-addressable store without a Volume, a PVC or a CDI import ever being
+// created. A test whose subject is the blobs themselves -- that they survive an
+// event, or that a later deployment reuses them instead of downloading again --
+// wants exactly that, since going through AddVolume would drag the storage
+// pipeline into the result.
+func (dc *EdgeDeviceConfig) AddContentTree(
+	displayName string, image ApplicationImageStorage) uuid.UUID {
+	contentTreeUUID := dc.th.newUUID("content tree")
+	datastoreUUID := dc.th.newUUID("content tree datastore")
+	contentTree, dsConfig := image.toProto(dc.th, dc.log, dc.DeviceName,
+		contentTreeUUID, datastoreUUID, displayName)
+	dc.ContentInfo = append(dc.ContentInfo, contentTree)
+	dc.Datastores = append(dc.Datastores, dsConfig)
+	return contentTreeUUID
+}
+
+// DeleteContentTree removes a ContentTree added by AddContentTree, and the
+// Datastore it referenced, from the device configuration.
+func (dc *EdgeDeviceConfig) DeleteContentTree(contentTreeUUID uuid.UUID) {
+	uuidStr := contentTreeUUID.String()
+	for _, volume := range dc.Volumes {
+		if volume.GetOrigin().GetDownloadContentTreeID() == uuidStr {
+			dc.th.t.Fatalf(
+				"Cannot delete content tree %q: still referenced by volume %q",
+				uuidStr, volume.GetDisplayName())
+		}
+	}
+	if !dc.deleteContentTreeAndDeps(uuidStr) {
+		dc.th.t.Fatalf("Content tree with UUID %q was not found", uuidStr)
+	}
+}
+
+// DeleteVolume removes a standalone volume (created via AddVolume or
+// AddBlankVolume) and its associated ContentTree/Datastore, if any, from the
+// device configuration. The volume must not currently be referenced by any
+// application; detach it first with DetachVolume.
+func (dc *EdgeDeviceConfig) DeleteVolume(volumeUUID uuid.UUID) {
+	uuidStr := volumeUUID.String()
+	for _, app := range dc.Apps {
+		for _, ref := range app.VolumeRefList {
+			if ref.Uuid == uuidStr {
+				dc.th.t.Fatalf(
+					"Cannot delete volume %q: still attached to application %q",
+					uuidStr, app.Displayname)
+			}
+		}
+	}
+	if !dc.deleteVolumeAndDeps(uuidStr) {
+		dc.th.t.Fatalf("Volume with UUID %q was not found", uuidStr)
+	}
+}
+
+// DiskLayoutType is the desired ZFS/RAID disk-array layout for
+// EdgeDeviceConfig.SetDisksLayout.
+type DiskLayoutType int
+
+const (
+	// DiskLayoutUnspecified leaves EVE's automatic (default) disk selection
+	// in place -- no explicit layout is configured.
+	DiskLayoutUnspecified DiskLayoutType = iota
+	// DiskLayoutRAID1 mirrors 2 disks.
+	DiskLayoutRAID1
+	// DiskLayoutRAID10 stripes 2 RAID1 mirrors (4 disks total).
+	DiskLayoutRAID10
+)
+
+// DisksLayout describes the desired ZFS/RAID disk-array layout of a device's
+// extra (non-boot) virtio disks (see RequireEdgeDevice.ExtraDisks), mirroring
+// eden's own disks-layout model (pkg/device/disksLayout.go in the eden
+// repo, adapted here since evetest's broker only ever attaches virtio
+// disks -- see DiskName). Disk slot indices below (0..3 for RAID10, 0..1 for
+// RAID1) refer to positions within the layout, not the device's overall
+// extra-disk list.
+type DisksLayout struct {
+	LayoutType DiskLayoutType
+	// OfflineDisks marks disk slots as ZFS_OFFLINE.
+	OfflineDisks []uint
+	// UnusedDisks marks disk slots as UNUSED (removed from the array).
+	UnusedDisks []uint
+	// ReplaceDisks requests replacing the disk currently at the given slot
+	// with a spare disk, selected in order from the device's extra disks
+	// beyond what the layout itself occupies (e.g. for RAID1, slot 0's
+	// replacement is the device's 3rd extra disk).
+	ReplaceDisks []uint
+}
+
+// DiskName returns the virtio device name (e.g. "/dev/vdc") of the
+// zero-based extraDiskIdx-th extra (non-boot) disk requested via
+// RequireEdgeDevice.ExtraDisks: extraDiskIdx 0 is /dev/vdb, since /dev/vda is
+// always the device's boot disk.
+func DiskName(extraDiskIdx uint) string {
+	return fmt.Sprintf("/dev/vd%c", rune('b'+extraDiskIdx))
+}
+
+// maxDisks returns how many disk slots this layout occupies.
+func (layout DisksLayout) maxDisks() uint {
+	switch layout.LayoutType {
+	case DiskLayoutRAID1:
+		return 2
+	case DiskLayoutRAID10:
+		return 4
+	default:
+		return 0
+	}
+}
+
+func (layout DisksLayout) diskState(slot uint) eveconfig.DiskConfigType {
+	for _, s := range layout.OfflineDisks {
+		if s == slot {
+			return eveconfig.DiskConfigType_DISK_CONFIG_TYPE_ZFS_OFFLINE
+		}
+	}
+	for _, s := range layout.UnusedDisks {
+		if s == slot {
+			return eveconfig.DiskConfigType_DISK_CONFIG_TYPE_UNUSED
+		}
+	}
+	return eveconfig.DiskConfigType_DISK_CONFIG_TYPE_ZFS_ONLINE
+}
+
+func (layout DisksLayout) diskConfig(slot uint) *eveconfig.DiskConfig {
+	cfg := &eveconfig.DiskConfig{
+		Disk:       &evecommon.DiskDescription{Name: DiskName(slot)},
+		DiskConfig: layout.diskState(slot),
+	}
+	for i, s := range layout.ReplaceDisks {
+		if s == slot {
+			cfg.OldDisk = cfg.Disk
+			cfg.Disk = &evecommon.DiskDescription{
+				Name: DiskName(layout.maxDisks() + uint(i)),
+			}
+			break
+		}
+	}
+	return cfg
+}
+
+// SetDisksLayout configures the device's ZFS/RAID disk-array layout for its
+// extra (non-boot) virtio disks (see RequireEdgeDevice.ExtraDisks).
+//
+// Both DiskLayoutRAID1 and DiskLayoutRAID10 are represented, at the EVE API
+// level, as a top-level DisksConfig with ArrayType RAID0 (stripe) whose
+// Children are the individual RAID1 mirrors -- a single mirror for RAID1, two
+// mirrors for RAID10 -- exactly matching how eden itself builds this
+// structure (pkg/device/disksLayout.go, GetDisksConfig).
+func (dc *EdgeDeviceConfig) SetDisksLayout(layout DisksLayout) {
+	var cfg eveconfig.DisksConfig
+	switch layout.LayoutType {
+	case DiskLayoutUnspecified:
+		// Nothing to configure.
+	case DiskLayoutRAID1:
+		cfg.ArrayType = eveconfig.DisksArrayType_DISKS_ARRAY_TYPE_RAID0
+		cfg.Children = append(cfg.Children, &eveconfig.DisksConfig{
+			ArrayType: eveconfig.DisksArrayType_DISKS_ARRAY_TYPE_RAID1,
+			Disks: []*eveconfig.DiskConfig{
+				layout.diskConfig(0), layout.diskConfig(1)},
+		})
+	case DiskLayoutRAID10:
+		cfg.ArrayType = eveconfig.DisksArrayType_DISKS_ARRAY_TYPE_RAID0
+		cfg.Children = append(cfg.Children,
+			&eveconfig.DisksConfig{
+				ArrayType: eveconfig.DisksArrayType_DISKS_ARRAY_TYPE_RAID1,
+				Disks: []*eveconfig.DiskConfig{
+					layout.diskConfig(0), layout.diskConfig(1)},
+			},
+			&eveconfig.DisksConfig{
+				ArrayType: eveconfig.DisksArrayType_DISKS_ARRAY_TYPE_RAID1,
+				Disks: []*eveconfig.DiskConfig{
+					layout.diskConfig(2), layout.diskConfig(3)},
+			},
+		)
+	default:
+		dc.th.t.Fatalf("Unsupported disk layout type: %v", layout.LayoutType)
+	}
+	dc.Disks = &cfg
 }
 
 // SetLPS configures the Local Profile Server (LPS) settings for the device.

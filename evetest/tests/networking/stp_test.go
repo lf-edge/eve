@@ -83,7 +83,7 @@ import (
 //   - Switch NI "switch-ni" with Port="switch-ports" (resolves to ethernet1,
 //     ethernet2, ethernet3). BPDU enabled for ethernet3 by referencing
 //     the "edge-port" label.
-//   - One container app (milan4zededa/evetest-ubuntu-ctr:1.0) with one VIF
+//   - One container app (lfedge/evetest-ubuntu-ctr:1.0) with one VIF
 //     on the NI and allow-all ACL. The SDN router on bridge1 provides DHCP,
 //     so the app obtains an IP from 10.51.0.0/24.
 //
@@ -119,8 +119,7 @@ import (
 //
 // Test params
 // -----------
-//   - HYPERVISOR. The test calls evetest.SkipIfHypervisorKubevirt() right
-//     after reading the parameter -- Kubevirt is reserved for cluster tests.
+//   - HYPERVISOR (defaults to KVM).
 func TestSwitchNIWithMultiplePorts(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
@@ -130,8 +129,6 @@ func TestSwitchNIWithMultiplePorts(test *testing.T) {
 		evetest.HypervisorParameter(),
 	)
 	hypervisor := evetest.GetHypervisorParameterValue()
-	// Kubevirt is only supported by cluster tests.
-	evetest.SkipIfHypervisorKubevirt()
 
 	devName := "edge-dev"
 	requiredDevice := evetest.RequireEdgeDevice{
@@ -191,6 +188,9 @@ func TestSwitchNIWithMultiplePorts(test *testing.T) {
 
 	// Apply the base adapter configuration.
 	device.ApplyConfig(devConfig, true, true)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
 
 	// Add Switch NI with all three app-shared ports.
 	// BPDU guard is enabled on eth3 ("edge-port" label).
@@ -208,12 +208,12 @@ func TestSwitchNIWithMultiplePorts(test *testing.T) {
 		DisplayName: "container-app",
 		Activate:    true,
 		Image: evetest.DockerContainer{
-			ImageName: "milan4zededa/evetest-ubuntu-ctr",
+			ImageName: "lfedge/evetest-ubuntu-ctr",
 			Tag:       "1.0",
 		},
 		VirtualizationMode: eveconfig.VmMode_HVM, // PV does not work in xen
 		CPUs:               1,
-		MemoryBytes:        500 * evetest.MB,
+		MemoryBytes:        500 * evetest.MiB,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
 				LogicalLabel:        "vif0",
@@ -301,17 +301,6 @@ func TestSwitchNIWithMultiplePorts(test *testing.T) {
 	t.Expect(niInfo.Vifs[0].MacAddress).To(Equal(appMACAddr))
 	t.Expect(niInfo.Vifs[0].AppID).To(Equal(appUUID.String()))
 
-	// readBpduGuard reads the BPDU guard sysfs flag for a named bridge port.
-	// Returns "0", "1", or "" if the path cannot be read.
-	readBpduGuard := func(portName string) string {
-		path := "/sys/class/net/" + bridgeName + "/brif/" + portName + "/bpdu_guard"
-		output, _, err := device.RunShellScript("cat "+path, sshTimeout, 0)
-		if err != nil {
-			return ""
-		}
-		return strings.TrimSpace(output)
-	}
-
 	// -----------------------------------------------------------------------
 	// Phase 1: STP convergence
 	// -----------------------------------------------------------------------
@@ -339,13 +328,13 @@ func TestSwitchNIWithMultiplePorts(test *testing.T) {
 
 	// BPDU guard: app VIF and eth3 ("edge-port") have it on; eth1/eth2 are
 	// active STP participants and must have it off.
-	t.Expect(readBpduGuard(vifName)).To(Equal("1"),
+	t.Expect(readBpduGuard(device, bridgeName, vifName, sshTimeout)).To(Equal("1"),
 		"BPDU guard must be on for app VIF")
-	t.Expect(readBpduGuard("eth1")).To(Equal("0"),
+	t.Expect(readBpduGuard(device, bridgeName, "eth1", sshTimeout)).To(Equal("0"),
 		"BPDU guard must be off for eth1")
-	t.Expect(readBpduGuard("eth2")).To(Equal("0"),
+	t.Expect(readBpduGuard(device, bridgeName, "eth2", sshTimeout)).To(Equal("0"),
 		"BPDU guard must be off for eth2")
-	t.Expect(readBpduGuard("eth3")).To(Equal("1"),
+	t.Expect(readBpduGuard(device, bridgeName, "eth3", sshTimeout)).To(Equal("1"),
 		"BPDU guard must be on for eth3 (edge-port)")
 
 	// App connectivity: curl through whichever port STP chose as forwarding.

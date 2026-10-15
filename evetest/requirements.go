@@ -77,6 +77,19 @@ func (h Hypervisor) toAPIType() api.HypervisorType {
 	}
 }
 
+// hypervisorFromAPIType is the inverse of toAPIType, for deciding what a device
+// that is already running reports itself as.
+func hypervisorFromAPIType(t api.HypervisorType) Hypervisor {
+	switch t {
+	case api.HypervisorType_HV_XEN:
+		return HypervisorXen
+	case api.HypervisorType_HV_KUBEVIRT:
+		return HypervisorKubevirt
+	default:
+		return HypervisorKVM
+	}
+}
+
 // Filesystem identifies the filesystem type required or detected on an EVE device.
 type Filesystem int
 
@@ -145,6 +158,12 @@ const (
 	// CreateFromScratchWithLiveImage : re-create VM even if already exists using
 	// EVE live image.
 	CreateFromScratchWithLiveImage
+	// CreateFromScratchWithNetworkBoot : re-create VM even if already exists,
+	// with no boot disk image attached (only a blank target disk sized
+	// MinDiskSizeInMiB). The device is expected to boot over the network
+	// (see the network model's DHCP.netboot_server_ip), install EVE onto
+	// the blank disk, and reboot into it.
+	CreateFromScratchWithNetworkBoot
 )
 
 // USBDevice identifies a USB device by vendor and product ID.
@@ -166,11 +185,15 @@ type RequireEdgeDevice struct {
 
 	// Zero values mean that the test does not care about the particular resource size.
 	// None of these will be ever created with zero count - not even ethernet interfaces.
-	MinCPUs         uint8  // Default will be 4.
-	MinRAMInMB      uint32 // Default will be 8192 MB.
-	MinDiskSizeInMB uint32 // Default will be 28576 MB.
+	MinCPUs          uint8  // Default will be 4.
+	MinRAMInMiB      uint32 // Default will be 8 GiB (8192 MiB).
+	MinDiskSizeInMiB uint32 // Default will be 64 GiB (65536 MiB).
 
 	WithEVEVersion string
+	// WithEVERepo overrides the repo WithEVEVersion is pulled from; empty
+	// means EVETEST_EVE_REPO. For a device that must use a different repo
+	// than the one under test (e.g. TestEVEUpgrade's pre-upgrade device).
+	WithEVERepo    string
 	WithHypervisor Hypervisor
 	WithTPM        bool
 
@@ -195,6 +218,14 @@ type RequireEdgeDevice struct {
 	WithUSBPassthrough []USBDevice // TODO
 	WithPCIPassthrough []PCIDevice // TODO
 
+	// ExtraDisks specifies additional blank disks (size in bytes each) to
+	// attach to the device's VM, beyond its main boot disk (MinDiskSizeInMiB).
+	// Each entry becomes one extra virtio-blk disk, in the given order (i.e.
+	// the first extra disk is the device's second disk overall). Intended for
+	// tests that configure EVE-level disk layout/RAID via
+	// EdgeDeviceConfig.SetDisksConfig.
+	ExtraDisks []uint64
+
 	// What to do if EdgeDevice is already available (and still manageable)
 	// from the previous test:
 	DeviceReusePolicy ExistingEdgeDeviceReusePolicy
@@ -216,3 +247,31 @@ type RequireInternetConnectivity struct {
 }
 
 func (r RequireInternetConnectivity) isRequirement() {}
+
+// RequireCapabilities : requirement for one or more optional, provider-specific
+// capabilities (e.g. forwarding of link-local L2 protocols). A test declaring
+// this requirement is skipped when the active device provider does not advertise
+// all of the listed capabilities.
+type RequireCapabilities struct {
+	Capabilities []api.Capability
+}
+
+func (r RequireCapabilities) isRequirement() {}
+
+// RequireIPv6OnlyRegistryMirrors : requirement to only use IPv6 addresses of
+// configured OCI registry mirrors when building app image datastore configs
+// (for tests where the device itself is IPv6-only). A registry with no IPv6
+// mirror address configured is simply not mirrored for that app (falls back
+// to pulling from the real, un-mirrored registry) rather than failing or
+// skipping the test -- a missing mirror is only a performance optimization.
+type RequireIPv6OnlyRegistryMirrors struct{}
+
+func (r RequireIPv6OnlyRegistryMirrors) isRequirement() {}
+
+// RequireDirectRegistryPulls : requirement to skip applying configured
+// REGISTRY_MIRROR_* mirrors, everywhere evetest would otherwise use them
+// (K3s/containerd config on kubevirt devices, app datastore FQDNs), so every
+// image pull goes to the real registry instead of a mirror's own address.
+type RequireDirectRegistryPulls struct{}
+
+func (r RequireDirectRegistryPulls) isRequirement() {}

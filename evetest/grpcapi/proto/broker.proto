@@ -30,6 +30,9 @@ service Broker {
   rpc BuildImage(BuildImageRequest) returns (BuildImageResponse);
   // PushEVEContainerImage streams a pre-built EVE container image to the broker.
   rpc PushEVEContainerImage(stream PushImageChunk) returns (PushImageResponse);
+  // Uploads a locally built EVE live image as a tar stream containing
+  // live.qcow2, config.img and firmware/*.
+  rpc PushEVELiveImage(stream PushLiveImageChunk) returns (PushLiveImageResponse);
 
   // Provision and start up EVE devices and SDN for the client.
   rpc SetupDevices(SetupDevicesRequest) returns (SetupDevicesResponse);
@@ -42,6 +45,19 @@ service Broker {
   rpc PowerOffDevice(DeviceControlRequest) returns (DeviceControlResponse);
   // Reboot a specific EVE device.
   rpc RebootDevice(DeviceControlRequest) returns (DeviceControlResponse);
+
+  // Edit a powered-off device's boot disk in place. Requires
+  // CAPABILITY_EDIT_DEVICE_DISK.
+  rpc EditDeviceDisk(EditDeviceDiskRequest) returns (EditDeviceDiskResponse);
+
+  // Run one QMP command on the hypervisor running the device.
+  // Requires CAPABILITY_QMP.
+  rpc ExecuteQMP(ExecuteQMPRequest) returns (ExecuteQMPResponse);
+  // Create a blank scratch disk image for the device on the hypervisor host,
+  // e.g. to back a hot-plugged drive. Requires CAPABILITY_QMP.
+  rpc CreateScratchImage(CreateScratchImageRequest) returns (CreateScratchImageResponse);
+  // Delete a scratch disk image created by CreateScratchImage.
+  rpc DeleteScratchImage(DeleteScratchImageRequest) returns (DeleteScratchImageResponse);
 
   // Get the console output from the device.
   rpc GetDeviceConsoleOutput(DeviceControlRequest) returns (ConsoleOutputResponse);
@@ -78,6 +94,20 @@ message ConnectResponse {
   // PEM-encoded proxy CA certificates loaded by the broker.
   // Each string is a single PEM certificate.
   repeated string proxy_ca_certs = 4;
+  // Optional provider-specific capabilities advertised by the active device
+  // provider. Tests use these to skip scenarios the provider cannot support.
+  repeated Capability provider_capabilities = 5;
+  // Pull-through cache mirror addresses for OCI registries, configured on
+  // the broker (e.g. by the Proxmox installer's --with-oci-registry-mirrors).
+  // The client applies these unless it already has the corresponding
+  // REGISTRY_MIRROR_* env var set.
+  repeated RegistryMirror registry_mirrors = 6;
+}
+
+// A pull-through cache mirror for a single OCI registry.
+message RegistryMirror {
+  string registry = 1;    // e.g. "docker.io"
+  repeated string urls = 2; // e.g. ["http://192.168.170.2:5000", "http://[fd11::2]:5000"]
 }
 
 // Request to close a client session.
@@ -128,11 +158,49 @@ message BuildImageRequest {
   bool make_installer = 4; // "live" image otherwise
   uint64 disk_bytes = 5;
   EveConfig config = 6;
+  // When set, the broker builds from this local live image and ignores `image`.
+  LiveImageRef live_image = 7;
+  // Where the client's live image files are, so a broker sharing the
+  // filesystem installs the template by reading them instead of having the
+  // client upload bytes it can already see. Advisory only -- see
+  // LocalLiveImageSource.
+  LocalLiveImageSource live_image_source = 8;
+  // Sizes (in bytes) of additional blank disks to attach to the device's VM,
+  // beyond its main boot disk (disk_bytes). Each entry becomes one extra
+  // virtio-blk disk, in the given order, e.g. for device-side disk
+  // layout/RAID testing (see EdgeDevConfig.disks).
+  repeated uint64 extra_disk_bytes = 9;
+  // When set, the broker attaches no EVE image content to the main boot disk
+  // (disk_bytes) at all -- it is left blank, for a device that is expected
+  // to install EVE onto it by booting over the network (see
+  // DHCP.netboot_server_ip in sdn.proto) rather than from a locally attached
+  // installer/live image. `image` is still used -- to extract the UEFI
+  // firmware the device boots with -- but `live_image` and
+  // `live_image_source` are ignored: the local live-image transport
+  // delivers a pre-built bootable disk, the opposite of what this device
+  // needs.
+  bool network_boot = 10;
+}
+
+// LocalLiveImageSource points at the files behind a LiveImageRef on the
+// client's filesystem. It is purely an optimization hint: a broker that cannot
+// use these paths -- they do not exist, the size disagrees, or the content does
+// not hash to the declared sha256 -- reports missing_eve_live_image and takes
+// the upload instead. The content check is what makes trusting the paths safe:
+// a file is only ever installed as the template when it hashes to the value the
+// client already declared, so a wrong or hostile path cannot substitute a
+// different image, it can only fail.
+message LocalLiveImageSource {
+  string disk_path = 1;       // absolute path to live.qcow2
+  uint64 disk_bytes = 2;      // its size, checked before its content is read
+  string config_img_path = 3; // absolute path to installer/config.img
+  string firmware_dir = 4;    // absolute path to the dir holding OVMF*.fd
 }
 
 // Response to a BuildImageRequest, indicating if broker is missing the EVE container image.
 message BuildImageResponse {
   bool missing_eve_container_image = 1;
+  bool missing_eve_live_image = 2;
 }
 
 // PushImageChunk represents a single message in the EVE docker image upload stream.
@@ -156,6 +224,29 @@ message PushImageRequest {
 
 // PushImageResponse is returned after the EVE docker image upload completes.
 message PushImageResponse {
+  bool already_exists = 1;
+}
+
+// PushLiveImageChunk is one message in the live-image upload stream. The first
+// message MUST be a PushLiveImageRequest; the rest are tar bytes.
+message PushLiveImageChunk {
+  oneof payload {
+    PushLiveImageRequest request = 1;
+    // Raw tar bytes -- deliberately not gzipped. The qcow2 inside is already
+    // zlib-compressed by `qemu-img convert -c`, so re-compressing costs CPU
+    // for almost nothing.
+    bytes data_chunk = 2;
+  }
+}
+
+// PushLiveImageRequest contains metadata describing the EVE live image to be uploaded.
+message PushLiveImageRequest {
+  string client_id = 1;
+  LiveImageRef live_image = 2;
+}
+
+// PushLiveImageResponse is returned after the EVE live image upload completes.
+message PushLiveImageResponse {
   bool already_exists = 1;
 }
 
@@ -189,6 +280,111 @@ message DeviceControlRequest {
 
 // Generic response to a device control operation.
 message DeviceControlResponse {}
+
+// Request to edit a powered-off device's boot disk in place.
+message EditDeviceDiskRequest {
+  string client_id = 1;
+  string device_name = 2;
+  // Which of the device's disks to edit: 0 is the boot disk, 1 the first
+  // extra disk requested via RequireEdgeDevice.ExtraDisks, and so on.
+  uint32 disk_index = 5;
+  oneof edit {
+    GrowDisk grow = 3;
+    DestroyPartitionFilesystem destroy_partition_fs = 4;
+    CreatePersistPartition create_persist_partition = 6;
+    DeletePartition delete_partition = 7;
+  }
+}
+
+// GrowDisk enlarges the device's boot disk without touching its partition
+// table, so the added space is left unallocated past the last partition. That
+// free tail is what a test needs to make EVE's in-field repartition grow into
+// slack rather than shrink an existing partition to make room.
+message GrowDisk {
+  // Total size the disk should have afterwards. Must be larger than its
+  // current size; shrinking a disk is not supported.
+  uint64 new_size_bytes = 1;
+}
+
+// DestroyPartitionFilesystem makes the filesystem on one partition
+// unrecoverable, so that EVE reformats it on the next boot. It is the
+// fault-injection half of a data-loss test, and deliberately not a "delete the
+// partition" operation: the partition table is left intact, which is the state
+// a real filesystem loss leaves behind.
+message DestroyPartitionFilesystem {
+  // GPT partition name, e.g. "P3" for EVE's /persist partition.
+  string partition_label = 1;
+}
+
+// CreatePersistPartition writes a fresh GPT on a blank disk, with a single
+// partition spanning it, named and typed as EVE's /persist partition. It is
+// how a test puts /persist on a disk of its own rather than on the boot disk.
+//
+// The partition is left unformatted on purpose. storage-init finds it by
+// partition label wherever it lives, sees no filesystem, and formats it itself
+// on the next boot -- so the test exercises EVE's own formatting, encryption
+// feature and all, rather than a lookalike built here that could differ in
+// ways the test was not written to notice.
+message CreatePersistPartition {}
+
+// DeletePartition removes a partition from the GPT, leaving the space it
+// occupied unallocated.
+//
+// Deleting /persist from the boot disk is the other half of moving /persist to
+// its own disk, and leaves behind exactly the free tail an in-field repartition
+// grows into.
+message DeletePartition {
+  // GPT partition name, e.g. "P3" for EVE's /persist partition.
+  string partition_label = 1;
+}
+
+// Generic response to a disk edit.
+message EditDeviceDiskResponse {}
+
+// Request to run one QMP command on the hypervisor running the device.
+message ExecuteQMPRequest {
+  string client_id = 1;
+  string device_name = 2;
+  // QMP command name, e.g. "device_add".
+  string execute = 3;
+  // JSON object with the command's arguments; empty for a command without
+  // arguments.
+  string arguments_json = 4;
+}
+
+message ExecuteQMPResponse {
+  // The command's "return" member as JSON; "{}" for a command that returns
+  // nothing.
+  string return_json = 1;
+}
+
+// Request to create a blank, sparse raw disk image in the device's scratch
+// area on the hypervisor host. Scratch images live until DeleteScratchImage or
+// the device's teardown.
+message CreateScratchImageRequest {
+  string client_id = 1;
+  string device_name = 2;
+  // Name of the image, unique within the device: a letter followed by up to 30
+  // letters, digits, '-' or '_'.
+  string name = 3;
+  // Size of the image; at most 1 GiB.
+  uint64 size_bytes = 4;
+}
+
+message CreateScratchImageResponse {
+  // Path of the image on the hypervisor host, for use in QMP commands such as
+  // blockdev-add.
+  string host_path = 1;
+}
+
+// Request to delete a scratch disk image created by CreateScratchImage.
+message DeleteScratchImageRequest {
+  string client_id = 1;
+  string device_name = 2;
+  string name = 3;
+}
+
+message DeleteScratchImageResponse {}
 
 // ConnectConsoleRequest carries data sent from the client to the broker
 // during a console session.

@@ -175,14 +175,6 @@ func (n *Network) ReferencesFromItem() []LogicalLabelRef {
 				RefKey:           "ntp-for-network-" + netKey,
 			})
 		}
-		if dhcpConfig.GetNetbootServer() != "" {
-			refs = append(refs, LogicalLabelRef{
-				ItemType:         (&Endpoint{}).ItemType(),
-				ItemCategory:     (&NetbootServer{}).ItemCategory(),
-				ItemLogicalLabel: dhcpConfig.GetNetbootServer(),
-				RefKey:           "netboot-for-network-" + netKey,
-			})
-		}
 	}
 	// Routable networks.
 	if n.GetRouter() != nil {
@@ -230,9 +222,6 @@ func (eps *Endpoints) GetAll() (all []*Endpoint) {
 	}
 	for _, tProxy := range eps.GetTransparentProxies() {
 		all = append(all, tProxy.GetEndpoint())
-	}
-	for _, netBootSrv := range eps.GetNetbootServers() {
-		all = append(all, netBootSrv.GetEndpoint())
 	}
 	for _, scepSrv := range eps.GetScepServers() {
 		all = append(all, scepSrv.GetEndpoint())
@@ -419,26 +408,6 @@ func (e *TransparentProxy) ReferencesFromItem() []LogicalLabelRef {
 		})
 	}
 	return refs
-}
-
-// ItemType just returns the underlying Endpoint item type.
-func (e *NetbootServer) ItemType() string {
-	return e.GetEndpoint().ItemType()
-}
-
-// ItemCategory is "netboot-server"
-func (e *NetbootServer) ItemCategory() string {
-	return "netboot-server"
-}
-
-// ItemLogicalLabel returns the logical label of the endpoint.
-func (e *NetbootServer) ItemLogicalLabel() string {
-	return e.GetEndpoint().ItemLogicalLabel()
-}
-
-// ReferencesFromItem returns references of the underlying Endpoint.
-func (e *NetbootServer) ReferencesFromItem() []LogicalLabelRef {
-	return e.GetEndpoint().ReferencesFromItem()
 }
 
 // ItemType just returns the underlying Endpoint item type.

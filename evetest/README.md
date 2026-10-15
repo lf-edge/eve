@@ -21,6 +21,26 @@ make evetest NAME=<test-name>
   published `lfedge/eve` image matching the version you want to test
 - **Go 1.25+** (only needed if installing the evetest CLI locally)
 - **Nested virtualization** support in your CPU/hypervisor (for all-in-one mode)
+- **QEMU 11.1.0+** (or 11.0.4+ from the 11.0 stable series) wherever the VM actually
+  runs -- see the QEMU version note below
+
+**QEMU version note:** older QEMU builds hit
+[issue #2777](https://gitlab.com/qemu-project/qemu/-/issues/2777): on a q35 machine with
+an AHCI disk, a guest that submits an NCQ command with a zero-length PRDT trips an
+assertion in `ide_dma_cb` and the emulator aborts, taking the VM down mid-test. Commit
+`443e024106` replaces that assertion with proper error handling; it first shipped in
+v11.1.0 and was backported to v11.0.4, and no 10.2.x release carries it.
+
+Which QEMU that means depends on the provider. `libvirt` and `proxmox` run the VM on the
+hypervisor host, so that host must meet the floor. All-in-one mode (the `qemu` provider)
+runs QEMU inside the evetest container instead, and `Dockerfile.evetest` pins
+`ALPINE_VERSION=3.24`, whose `qemu` package is 11.0.3 -- so that path is currently exposed
+and cannot be fixed by raising the pin: Alpine's community repository has no stable
+release at or above the floor (3.22 ships 10.0.0, 3.23 ships 10.1.5 and 3.24 ships 11.0.3,
+one patch release short of the 11.0.4 backport; only edge, at 11.1.1, clears it, as of
+September 2026). Closing the gap means a 3.24 package update to qemu 11.0.4 or later, or
+moving the base image once a stable Alpine ships qemu 11.1.0 or later; re-check the index
+at that point.
 
 **macOS note:** the test container is a Linux container and runs normally under Docker
 Desktop. However, Docker Desktop's Linux VM does not support nested virtualization, so
@@ -197,9 +217,10 @@ See `HypervisorParameter` for an example.
 ### Test Requirements and Setup
 
 `evetest.Setup(requirements...)` declares what the test needs. The framework handles
-all the behind-the-scenes work: building EVE images, creating VMs, configuring
-networks, waiting for devices to boot and onboard, and establishing tunnels for
-seamless connectivity between EVE devices, Adam controller and the test framework itself.
+all the behind-the-scenes work: building EVE images (live or installer), creating VMs,
+running the two-step installer boot when requested, configuring networks, waiting for
+devices to boot and onboard, and establishing tunnels for seamless connectivity between
+EVE devices, starting and initializing the Adam controller and the test framework itself.
 
 **RequireEdgeDevice** -- deploy an EVE device VM:
 
@@ -207,8 +228,8 @@ seamless connectivity between EVE devices, Adam controller and the test framewor
 evetest.RequireEdgeDevice{
     Name:              "dev1",          // logical name to reference the device
     MinCPUs:           4,               // default: 4
-    MinRAMInMB:        8192,            // default: 8192
-    MinDiskSizeInMB:   28576,           // default: 28576
+    MinRAMInMiB:       8192,            // default: 8 GiB
+    MinDiskSizeInMiB:  65536,           // default: 64 GiB
     WithHypervisor:    evetest.HypervisorKVM,
     WithFilesystem:    evetest.FilesystemZFS,
     WithTPM:           true,
@@ -251,6 +272,16 @@ evetest.RequireInternetConnectivity{
 }
 ```
 
+**RequireIPv6OnlyRegistryMirrors** -- for IPv6-only devices, only use configured
+registry mirror addresses that are themselves IPv6 (an IPv4-only mirror is unreachable
+to such a device). A registry with no IPv6 mirror configured is simply not mirrored for
+that app (falls back to the real, un-mirrored registry) rather than failing or skipping
+the test:
+
+```go
+evetest.RequireIPv6OnlyRegistryMirrors{}
+```
+
 If any requirement cannot be satisfied, the test is marked as skipped.
 
 ### Building and Applying Configuration
@@ -289,12 +320,37 @@ device := evetest.GetEdgeDevice("dev1")
 // Run commands via SSH
 stdout, stderr, err := device.RunShellScript("uptime", timeout, stdoutWatchdogTimeout)
 
+// Inspect the device filesystem (prefer these over ad-hoc shell scripts)
+data, err := device.ReadFile("/persist/status/nodeagent/global.json")
+// FileExists covers regular files and fails the test if the check cannot run;
+// PathExists accepts any node type and returns the error instead, so it can be
+// retried inside Eventually while the device is still converging.
+hasReason := device.FileExists("/persist/reboot-reason")
+hasVolumeDir, err := device.PathExists("/persist/vault/volumes")
+// Sorted entries; a directory EVE has not created yet yields an empty list.
+names, err := device.ListDirEntries("/run/hypervisor/kvm")
+device.WriteFile("/persist/marker", []byte("x"))
+device.DeleteFile("/persist/marker")
+device.SyncDisks() // flush filesystem caches, e.g. before PowerOff
+
+// Change the device's hardware at runtime through the hypervisor; the test must
+// declare RequireCapabilities{CAPABILITY_QMP} (qemu and proxmox providers).
+device.AttachUSBStorage("flash1", 16<<20) // hot-plug a blank USB flash drive, serial "flash1"
+usbDevices, err := device.ListUSBDevices() // what EVE's kernel enumerates under /sys/bus/usb
+drive := device.WaitForUSBDevice(t, "flash1", time.Minute, 2*time.Second) // poll until enumerated, fail the test on timeout
+appUSBDevices, err := device.ListUSBDevicesInsideApp(appUUID, appAuth) // same, inside an app
+device.DetachUSBStorage("flash1")
+hubPort := device.AttachUSBHub("hub1", "") // hot-plug a QEMU USB hub into a root port; "" = no parent hub
+device.AttachUSBStorageBehind("hub1", "flash2", 16<<20) // a drive into the lowest free port of that hub
+device.DetachUSBHub("hub1") // once everything plugged into it is detached
+ret := device.ExecuteQMP("query-status", nil) // any other QMP command; raw JSON "return"
+
 // Read EVE's internal published state (pubsub)
 var dpcl pillartypes.DevicePortConfigList
-evetest.ReadPublication(device, "nim", true, "global", &dpcl)
+err := evetest.ReadPublication(device, "nim", true, "global", &dpcl)
 
 // Read all publications of a type
-items := evetest.ReadAllPublications[pillartypes.AppInstanceStatus](
+items, err := evetest.ReadAllPublications[pillartypes.AppInstanceStatus](
     device, "zedmanager", false)
 
 // Get the latest device info/metrics (or nil if not yet received)
@@ -312,6 +368,19 @@ device.ApplyConfig(newConfig, true, true)
 // Reboot (pass true to wait until the device comes back up)
 device.SoftReboot(true)
 device.HardReboot(true)
+
+// Upgrade to another EVE version and hypervisor. The optional last argument
+// replaces the default wait, which is sized for an ordinary base-OS upgrade.
+device.UpgradeEVE(version, evetest.HypervisorKubevirt, evetest.BaseOSDatastoreHTTP,
+    true, false, 45*time.Minute)
+
+// Everything the device has written to its serial console so far, including
+// what ran before pillar started, such as storage-init
+console, err := device.ConsoleOutput()
+
+// Skip the end-of-test check that the device rebooted as often as expected,
+// for a test whose reboot count is unknowable, such as one that cuts power
+device.DisableRebootAccounting("power cut mid-swap")
 ```
 
 ### Checkpoints
@@ -388,7 +457,18 @@ Use the CLI to inspect state, then run `evetest continue` to resume.
 - **Reuse existing package-level helpers** before writing new ones. Each test package
   has shared helpers for common patterns — for example the networking package has
   `getDevicePort`, `getCurrentDPC`, `appHasError`, `niHasError`. Check the other
-  `_test.go` files in the package before duplicating logic.
+  `_test.go` files in the package before duplicating logic. A helper that says
+  nothing about the subject under test — reading a file, listing a directory,
+  checking a path, flushing caches — belongs on `EdgeDevice` in
+  `evetest/edgedevice.go` instead, where every package can reuse it.
+
+- **Keep helpers out of the test files.** Small packages put all shared helpers in
+  `helpers_test.go`. When a package accumulates more than that file can carry,
+  split it into files whose names end in `_helpers_test.go`, so that a file named
+  for a test contains only that test. Name each helper file for the state it
+  observes — not for the test that first needed it — and record the layout in the
+  package comment in that package's `testsuite_test.go`; see `tests/apps/` for a
+  worked example. Check that comment before adding a helper.
 
 - **Do not mutate shared global state.** If a test needs to modify a package-level
   variable (e.g. a network model defined in `evetest/netmodels/`), operate on a deep
@@ -453,6 +533,39 @@ Run a suite like any other test:
 make evetest NAME=TestBootstrapSuite
 ```
 
+### Rerunning Only Failed Subtests
+
+`EVETEST_RESTART_ONLY_FAILED=true` reruns a suite while skipping every subtest that
+already passed in a previous run, reporting it as SKIPPED instead of re-executing it
+(a skip does not count as a failure). This is useful both locally, to quickly tell
+whether a failure is deterministic or a fluke without waiting on the whole suite
+again, and in CI, to quickly confirm whether a failure in an open PR is real by
+rerunning just the failed subtests.
+
+The feature requires `EVETEST_COLLECT_ARTIFACTS` -- it works by reading `gotest.txt`
+(or `gotest.json`, if the previous run used `EVETEST_OUTPUT_FORMAT=json`) from a
+previous run's artifact directory. Since every artifact directory is named
+`<test-name>-<timestamp>` (e.g. `TestBootstrapSuite-2026-08-07_08-16-29`), the
+previous run is simply the newest directory of the same suite that predates the
+current run; runs of other suites are ignored. This also means that a run
+performed elsewhere (e.g. a previous CI attempt) can be consulted just by
+unpacking its artifact directory, under its original name, into the artifacts
+directory. `EVETEST_RESTART_ONLY_FAILED` never applies to a standalone test run
+outside of a suite. A previous run made with `EVETEST_OUTPUT_FORMAT=quiet` cannot
+be used, since that mode records no per-test results at all.
+
+```bash
+EVETEST_COLLECT_ARTIFACTS=/tmp/evetest-artifacts \
+    make evetest NAME=TestBootstrapSuite
+# ... some subtest fails ...
+
+EVETEST_COLLECT_ARTIFACTS=/tmp/evetest-artifacts \
+EVETEST_RESTART_ONLY_FAILED=true \
+    make evetest NAME=TestBootstrapSuite
+# Subtests that passed last time are reported as SKIPPED right away; only the
+# previously-failed (or previously-unreached) subtests actually run.
+```
+
 ## Running Tests
 
 ### Basic Usage
@@ -476,6 +589,110 @@ EVETEST_COLLECT_ARTIFACTS=/tmp/evetest-artifacts \
     make evetest NAME=TestDHCPIPv4Only
 ```
 
+### Testing a Local EVE Build
+
+A developer iterating on EVE can point evetest at their own `make live` output instead
+of pulling or building an EVE container image:
+
+```bash
+make live                                               # build EVE locally
+EVETEST_EVE_LIVE_IMAGE=true make evetest NAME=<TestName>
+```
+
+**Two independent settings.** Which EVE build runs and how its bits get delivered are
+separate questions:
+
+| | setting | values |
+|---|---|---|
+| **which build** | `EVETEST_EVE_VERSION` | a version (`16.0.0-lts`), or unset |
+| **how it is delivered** | `EVETEST_EVE_LIVE_IMAGE` | `true` = the artifacts `make live` wrote; unset/`false` = an EVE container image |
+
+A local build is not a transport: `make eve` produces a local *container* image, and the
+harness pushes it to the broker when the broker does not have it. So
+`EVETEST_EVE_LIVE_IMAGE` says only *how*, never *which* — it is a plain boolean and takes
+no path.
+
+With the live transport on, the version selects the build directory under
+`EVETEST_EVE_DIST_DIR` (set automatically by `make evetest`):
+
+- **`EVETEST_EVE_VERSION` unset** — the newest build, via `dist/<arch>/current`; the run
+  reports whatever version that turns out to be. Note the symlink is **arch-scoped**
+  (`dist/amd64/current`, not `dist/current`).
+- **`EVETEST_EVE_VERSION=<v>`** — `dist/<arch>/<v>/`. If that version is not built here,
+  the run **fails** rather than quietly fetching it from a registry: you asked for a
+  specific build *and* for the live transport, and silently delivering different bits is
+  the kind of thing that costs an afternoon to notice.
+- A version pinned by the test itself (`RequireEdgeDevice.WithEVEVersion`, e.g.
+  `TestEVEUpgrade`'s pre-upgrade version) names a *released* build and always comes from
+  a container image, whatever the transport setting.
+
+The harness content-hashes the image, then tells the broker both the hash and where the
+files are (`live.qcow2`, `installer/config.img`, `installer/firmware/*`), and the broker
+picks how to get them:
+
+- **It can read those paths itself** -- all-in-one mode, or a broker you started by hand
+  on your own machine. It installs the template straight from the dist directory, and
+  nothing is uploaded at all. Whether the paths are readable is decided by the broker,
+  by looking; the harness does not guess from its deployment mode.
+- **It cannot** (the usual distributed setup, where the broker is a different machine).
+  It reports the image as missing and the harness uploads it as a tar, exactly as
+  before.
+
+Either way the upload/read happens only when the broker does not already hold that hash,
+and the template is then installed through the machinery described in
+[The EVE Image Template Cache](#the-eve-image-template-cache). The version reported for the
+run is the resolved build directory's name (e.g. `0.0.0-my-branch-abc123`), which is the
+authority on what was actually delivered.
+
+A local read is only ever used when the file's size **and** its sha256 match what the
+harness declared, so a broker can never install different content under a hash another
+run will later ask for -- the same check the upload path applies to received bytes.
+
+This is dramatically faster than the container path: there is no container build and no
+multi-gigabyte pull. Rebuilding with `make live` produces a qcow2 with different content
+and therefore a new hash, so the next run performs exactly one new upload -- nothing is
+re-uploaded until the image actually changes.
+
+#### Upgrading *to* a local build
+
+`TestEVEUpgrade` boots `INITIAL_EVE_VERSION` and upgrades to `EVE_VERSION`, and the two
+axes make both useful shapes fall out without any special-casing:
+
+```bash
+# A released version upgraded to another released version
+EVETEST_INITIAL_EVE_VERSION=16.0.0-lts EVETEST_EVE_VERSION=16.1.0-lts \
+    make evetest NAME=TestEVEUpgrade
+
+# A released version upgraded to your working tree
+make live
+EVETEST_INITIAL_EVE_VERSION=16.0.0-lts EVETEST_EVE_LIVE_IMAGE=true \
+    make evetest NAME=TestEVEUpgrade
+```
+
+The pre-upgrade device pins `INITIAL_EVE_VERSION`, so it always comes from a container
+image — a released build is the point of that field. Only the *target* uses the live
+transport, and it needs a different artifact than a fresh device does: an upgrade installs
+a base OS image, so the harness serves the build's own `installer/rootfs.img` from its HTTP
+image server and takes the version EVE will report from `installer/eve_version`. No
+container is pulled and the broker is not involved at all, since the rootfs goes straight
+from the harness to the device.
+
+Two constraints to be aware of:
+
+- **Installer-based tests cannot use this path.** A live qcow2 cannot produce an
+  installer flow, so a test that also requests an installer
+  (`CreateFromScratchWithInstaller`) fails immediately with a clear error instead of
+  silently falling back to the container path.
+- **The broker must advertise `CAPABILITY_LOCAL_LIVE_IMAGE`.** All three providers do
+  today; a broker too old to support the feature, or a future provider that still builds
+  images per device (see
+  [The EVE Image Template Cache](#the-eve-image-template-cache)), fails the test with a
+  clear error rather than quietly falling back and testing a different EVE build than
+  the one requested.
+
+See [Essential Variables](#essential-variables) for the full reference on
+`EVETEST_EVE_LIVE_IMAGE`, `EVETEST_EVE_DIST_DIR`, and `EVETEST_EVE_FIRMWARE_DIR`.
+
 ### Code Coverage
 
 When EVE is built with `COVER=y`, the `zedbox` binary is instrumented for
@@ -483,7 +700,9 @@ Go coverage.  Setting `EVETEST_COLLECT_COVERAGE=true` (together with
 `EVETEST_COLLECT_ARTIFACTS`) tells the framework to collect coverage data:
 
 - **Before every device reboot** (`HardReboot`, `SoftReboot`, `RequestReboot`,
-  and the CLI `evetest eve hard-reboot` / `evetest eve soft-reboot`).
+  `UpgradeEVE`, `ExpectReboots`, and the CLI `evetest eve hard-reboot` /
+  `evetest eve soft-reboot`). A reverted upgrade's second reboot has no such
+  hook, since EVE (not evetest) decides when to revert.
 - **At test completion** (inside `Close()`).
 
 For each collection the framework:
@@ -598,6 +817,150 @@ make install-cli
 
 Or use it from inside the container (`docker exec -it evetest-<API-port> bash`).
 
+### Running Several Tests in Parallel
+
+`make evetest` accepts several comma-separated names, or none at all, which runs every
+test suite. Each test then runs as its own instance (container) with its own API port,
+and `EVETEST_PARALLEL` limits how many run at the same time (default `1`, i.e. one
+after another):
+
+```bash
+EVETEST_PARALLEL=3 make evetest NAME=TestA,TestB,TestC
+EVETEST_PARALLEL=4 make evetest                  # all test suites
+```
+
+A container started by `make` (the orchestrator) starts and watches the instances.
+Its output depends on `EVETEST_UI`:
+
+| `EVETEST_UI` | Output |
+|--------------|--------|
+| `dashboard` | One screen with a table of the instances and a full-screen output view of the selected one. Default on a terminal |
+| `tmux` | One tmux session, the instances in tiled panes of a single window |
+| `prefixed` | Output of all instances interleaved, each line prefixed with the test name |
+| `plain` | Only starts, results and, for a failed test, the end of its output. Default when not on a terminal, e.g. when started by a script or an AI agent, or with `nohup` on a remote host |
+
+The full output of every test is also written to `~/.evetest/runs/<run-id>/<test>.log`
+(and the usual artifacts are collected as with a single test). The directories of earlier
+runs, whose orchestrator is no longer running and which nothing has written to for
+5 minutes, are removed when a new run starts, so copy the logs you want to keep, or
+collect artifacts. A summary table closes the run, and `make` exits non-zero if any test failed.
+With `EVETEST_FAIL_FAST=true` the first failure cancels the tests still running or queued.
+
+#### Dashboard UI
+
+`EVETEST_UI=dashboard`, the default on a terminal. A single screen, not a terminal multiplexer:
+a table with one row per test (state, time, last line of output), and a full-screen scrollable
+view of the output of the selected test. A running test shows what it is doing: `paused
+(checkpoint ...)` or `paused (test failed)` when paused. Tests are controlled from the same
+screen, with no prefix key. It stays open after the last test finishes, until `q`, and then the
+summary is left in the terminal. A rerun reads the files under `tests/`, `netmodels/` and `matchers/`
+afresh (they are mounted from the checkout), so edits made since the previous run are picked up. The
+framework code (the evetest root package, `broker/`, ...) and the SDN are baked into the images, so
+to pick up changes to them, build the images of the new sources first, unless they are published (`make -C evetest build-container`
+and `build-sdn-container`) and enter their versions (`make -C evetest version` and `sdn-version` print them)
+in the rerun prompt.
+A rerun pulls images which are not local, like `make evetest`, and is refused if that fails; it does not build.
+
+| Key | Action |
+|-----|--------|
+| `up` / `down` / `j` / `k`, `1`-`9` | Select a test (scroll, in the output view) |
+| `enter` / `esc` | Show the output of the selected test / back to the table |
+| `pgup` / `pgdn`, `g` / `G` | Scroll the output; top / follow the end |
+| `s` | Open an ssh session to the EVE device of the selected test; a test with several devices asks which one first (leave the session with `exit`; a failed ssh waits for Enter so its error can be read) |
+| `c` | Resume the selected test if it is paused (`evetest continue`) |
+| `x` | Stop the selected test gracefully; a queued test is cancelled instead, so that it does not run (`r` queues it again) |
+| `r` | Rerun the selected test, once it is done (passed, failed or stopped). It first asks which evetest and SDN image versions to use (`enter` keeps those of the previous run, `esc` cancels). The test then goes back to the queue; its output continues in the output view below a divider, and the log of each run is kept in a file of its own (`<test>.2.log`, ...) |
+| `q` / `Ctrl-c` | Stop all tests (asks first); pressed again while stopping, kills them |
+
+Unlike the tmux UI below, the dashboard has no panes, so a test cannot read the keyboard directly, and
+there is no scrollback outside the output view; on the other hand it needs nothing but the
+orchestrator, and shows every test's state at a glance, also for many tests.
+
+#### tmux UI
+
+`EVETEST_UI=tmux`. Each instance runs in the foreground of its own pane, so it takes keyboard input
+as when run alone (e.g. to resume a paused test), has scrollback and can be zoomed.
+The pane border shows the test, its API port and its state. When a test fails, its pane
+moves to a window of its own (`FAILED <test>`), so its output stays on screen while the
+remaining tests continue. The pane of a test which passed closes right away (its output is in
+its log file). The first window (`orchestrator`) lists what happened and, at the end, the summary
+with a reminder of where to find the output of each test (the `FAILED <test>` windows, the log
+files). The status line shows how many tests are running, queued, passed and failed. The session
+stays open after the last test finishes, until it is closed.
+
+The tmux prefix key is `Ctrl-a` (change it with `EVETEST_TMUX_PREFIX`, e.g. `C-b`),
+which differs from tmux's default so as not to clash with a tmux you run the make in.
+Mouse support is on (click a pane to focus it). Useful keys, after the prefix:
+
+| Keys | Action |
+|------|--------|
+| `Q` | Close the session; asks first while tests are still running, which are then stopped gracefully |
+| `X` | Stop all tests gracefully |
+| arrow keys / `o` / `;` | Select the pane above, below, left or right / the next pane / the previous pane (or click a pane); the selected pane gets your keystrokes |
+| `q` and a number | Show the pane numbers, then select that pane |
+| `e` / `%` | Open a shell for the `evetest` CLI below / to the right of the selected test (`exit` closes it) |
+| `z` | Zoom the current pane in or out |
+| `n` / `p` / `0`-`9` | Next / previous / numbered window (the orchestrator and failed tests) |
+| `[` | Scrollback and search of the pane, with `PgUp`/`PgDn`/arrows and `/` (`q` leaves); the mouse wheel scrolls a pane as well |
+
+Detaching is disabled: closing the session stops the run.
+
+A test's pane runs the test, so it cannot take commands. To use the `evetest` CLI for a
+test, select its pane and press `Ctrl-a e`: a shell opens below it (`Ctrl-a %` opens it to the
+right instead), set up for that test. `evetest status`, `evetest eve ssh` and the like work in it
+without `-i` (add `-d <device>` when the test has several EVE devices). Its border says
+`<test>: evetest CLI shell`, so it is not mistaken for the test. Type `exit` to close it.
+
+#### Other UIs and stopping instances
+
+With the `prefixed` and `plain` UIs, Ctrl-C stops all instances gracefully (they clean up
+their VMs); a second Ctrl-C kills them. They do not forward keyboard input to the instances,
+so a paused test is resumed with `evetest -i <test> continue` (or `exit`).
+
+With any UI, instances which outlive the orchestrator can be stopped with
+`evetest stop --all`. A test stopped from outside is reported as cancelled (its container
+exits with code 143 or 130).
+
+You can also interact with any instance with the CLI from another terminal as described
+below, for example `EVETEST_PAUSE_ON_FAILURE=true` combined with `evetest -i TestB eve ssh`.
+
+### Running Several Instances Manually
+
+Each single-test `make evetest` runs one instance (container) on its own API port. To run
+several at once by hand, start each in its own terminal with a different `EVETEST_API_PORT`:
+
+```bash
+make evetest NAME=networking/dpc                          # port 50021 (default)
+EVETEST_API_PORT=50022 make evetest NAME=apps/lps         # port 50022
+```
+
+The CLI finds running instances by itself, there is no need to know their ports:
+
+```bash
+evetest instances         # list running instances (alias: ps); * marks this terminal's choice
+evetest use lps           # use this instance in the current terminal (name, unique part of it,
+                          # port or number from the list); without argument: choose from a menu
+evetest status            # talks to the chosen instance
+evetest -i dpc eve ssh    # one-off override with --instance / -i (or EVETEST_INSTANCE=dpc)
+evetest logs -f           # follow the container output of the instance
+evetest stop              # stop the instance gracefully (--all: every instance)
+evetest use --clear       # forget the choice
+```
+
+The CLI picks the instance in this order: `--instance`, `EVETEST_INSTANCE`, an explicitly
+set `EVETEST_API_PORT`/`EVETEST_API_ADDRESS`, the instance chosen with `evetest use` in
+this terminal, the only running instance, and finally, if several are running, an
+interactive menu (whose choice is remembered like `evetest use`).
+
+The choice made by `evetest use` is remembered per terminal session (a window or tmux
+pane), not globally. It is not remembered when there is no terminal (scripts); use
+`--instance` there, or set the variable in the shell with
+`eval "$(evetest use --env <instance>)"`.
+
+Instances register themselves in `~/.evetest/instances/` while running. Remote use
+(`EVETEST_API_ADDRESS`, below) is not affected: the registry only describes instances
+on the local host.
+
 The CLI can also be used from a **remote machine** (e.g. a developer's laptop while
 the test runs inside a self-hosted CI runner). Set `EVETEST_API_ADDRESS` to the IP
 or hostname of the machine running the evetest container, and `EVETEST_API_PORT` if
@@ -662,6 +1025,7 @@ evetest eve scp --from-device src dst   # copy files from EVE
 evetest eve scp --to-device src dst     # copy files to EVE
 evetest eve console                     # enter interactive console (telnet)
 evetest eve collect-info                # collect diagnostic tarball
+evetest eve kubectl [kubectl-args...]   # interact with K3s running on EVE-k
 
 evetest eve hard-reboot                 # hard reboot
 evetest eve soft-reboot                 # soft reboot
@@ -697,16 +1061,20 @@ non-default behavior.
 | `EVETEST_NAME` | Test or suite name to run (**required**) | -- |
 | `EVETEST_OUTPUT_FORMAT` | `go test` output format: `json` (machine-readable, for `gotestfmt`) or `quiet` (compact, no `-v`); default is verbose (`-v`). **Do not combine `quiet` with `EVETEST_PAUSE_ON_FAILURE` or `EVETEST_PAUSE_ON_CHECKPOINT`** — without `-v`, `go test` buffers all output until the test completes, so a pause appears frozen with no visible output. | -- |
 | `EVETEST_EVE_VERSION` | EVE version to test | current repo HEAD |
+| `EVETEST_EVE_LIVE_IMAGE` | **How** EVE's bits reach a device: `true` delivers the artifacts `make live` wrote under `EVETEST_EVE_DIST_DIR`, unset/`false` uses an EVE container image. A boolean only -- **which** build to run is `EVETEST_EVE_VERSION`'s business, so this takes no path, and a non-boolean value is an error. See [Testing a Local EVE Build](#testing-a-local-eve-build) | `false` |
+| `EVETEST_EVE_DIST_DIR` | EVE build output directory whose `<arch>/<version>/` subdirectories (and the `<arch>/current` symlink) hold the local builds. Must be an absolute path (the harness runs inside a container). Set automatically by `make evetest` when a local `dist/` directory exists | -- |
+| `EVETEST_EVE_FIRMWARE_DIR` | Overrides firmware discovery for a local live image, which otherwise looks for `OVMF*.fd` in `installer/firmware` next to the resolved qcow2 | -- |
 | `EVETEST_PREFERRED_ARCH` | Preferred CPU architecture (`amd64`, `arm64`) | `amd64` |
 | `EVETEST_LOG_LEVEL` | Framework log level (`debug`, `info`, `warn`) | `info` |
+| `EVETEST_COLOR_OUTPUT` | Colorize framework log output with ANSI escape codes (`true`/`false`) | auto: enabled only when stdout is a terminal, disabled when piped or redirected |
 | `EVETEST_COLLECT_ARTIFACTS` | Host path for artifacts (logs, collect-info) | -- |
 | `EVETEST_COLLECT_COVERAGE` | Collect Go coverage profiles (requires `EVETEST_COLLECT_ARTIFACTS` and EVE built with `COVER=y`) | `false` |
-| `EVETEST_REGISTRY_MIRROR_DOCKER` | Pull-through cache URL (`[scheme://]host:port[/path]`) for docker.io | -- |
-| `EVETEST_REGISTRY_MIRROR_GHCR` | Pull-through cache URL for ghcr.io | -- |
-| `EVETEST_REGISTRY_MIRROR_QUAY` | Pull-through cache URL for quay.io | -- |
-| `EVETEST_REGISTRY_MIRROR_K8S` | Pull-through cache URL for registry.k8s.io | -- |
-| `EVETEST_REGISTRY_MIRROR_GCR` | Pull-through cache URL for gcr.io | -- |
-| `EVETEST_REGISTRY_MIRROR_MCR` | Pull-through cache URL for mcr.microsoft.com | -- |
+| `EVETEST_REGISTRY_MIRROR_DOCKER` | Pull-through cache URL(s) for docker.io — one or more comma-separated `[scheme://]host:port[/path]` (IPv6 hosts bracketed, e.g. `http://[fd11::5]:5000`); see `RequireIPv6OnlyRegistryMirrors` | -- |
+| `EVETEST_REGISTRY_MIRROR_GHCR` | Pull-through cache URL(s) for ghcr.io | -- |
+| `EVETEST_REGISTRY_MIRROR_QUAY` | Pull-through cache URL(s) for quay.io | -- |
+| `EVETEST_REGISTRY_MIRROR_K8S` | Pull-through cache URL(s) for registry.k8s.io | -- |
+| `EVETEST_REGISTRY_MIRROR_GCR` | Pull-through cache URL(s) for gcr.io | -- |
+| `EVETEST_REGISTRY_MIRROR_MCR` | Pull-through cache URL(s) for mcr.microsoft.com | -- |
 
 ### Debugging Variables
 
@@ -715,6 +1083,12 @@ non-default behavior.
 | `EVETEST_PAUSE_ON_FAILURE` | Pause when a test fails | `false` |
 | `EVETEST_PAUSE_ON_CHECKPOINT` | Pause at the named checkpoint | -- |
 | `EVETEST_SUITE_MAX_FAILURES` | Max failures before aborting suite (`-1` = unlimited) | `1` |
+| `EVETEST_RESTART_ONLY_FAILED` | Skip suite subtests that already passed in a previous run (requires `EVETEST_COLLECT_ARTIFACTS`); see [Rerunning Only Failed Subtests](#rerunning-only-failed-subtests) | `false` |
+| `EVETEST_CONTROLLER_FAULTS` | Run the controller behind a proxy which a test can tell to answer, delay or drop selected device requests (`ArmControllerFault`). Off by default, except that tests which arm faults ask for it themselves (`evetest.WithControllerFaults()`), so nothing needs setting to run them; an explicit `true` turns it on for every test and `false` turns it off for all, which makes the fault tests skip. With no fault armed the proxy forwards everything unchanged, but it terminates TLS and re-originates the request, so it stays out of the path unless a test needs it. | `false` |
+| `EVETEST_PARALLEL` | Maximum number of instances running at the same time when `make evetest` runs several tests; see [Running Several Tests in Parallel](#running-several-tests-in-parallel) | `1` |
+| `EVETEST_FAIL_FAST` | In a multi-test run, cancel the other tests once one fails | `false` |
+| `EVETEST_UI` | Output mode of a multi-test run: `tmux`, `dashboard`, `prefixed` or `plain` | `dashboard` on a terminal, else `plain` |
+| `EVETEST_TMUX_PREFIX` | Prefix key of the tmux session of the `tmux` UI | `C-a` |
 
 ### Deployment Variables
 
@@ -722,15 +1096,15 @@ non-default behavior.
 |----------|-------------|---------|
 | `EVETEST_BROKER_ADDRESS` | Broker IP (unset = embedded broker) | -- |
 | `EVETEST_BROKER_PORT` | Broker gRPC port | `50221` |
-| `EVETEST_BROKER_DEVICE_PROVIDER` | `libvirt` or `qemu` | `libvirt` |
+| `EVETEST_BROKER_DEVICE_PROVIDER` | `qemu`, `libvirt`, or `proxmox` | `libvirt` |
 | `EVETEST_API_PORT` | gRPC API port exposed by evetest container | `50021` |
 | `EVETEST_API_ADDRESS` | IP/hostname of the machine running the evetest container, used by the CLI to connect remotely (unset = `localhost`) | -- |
 
 When running multiple evetests in parallel on the same host, each test must use
-a different `EVETEST_API_PORT` to avoid port conflicts.
-When running the `evetest` CLI against an instance using a non-default API port or
-on a remote machine, set `EVETEST_API_PORT` and/or `EVETEST_API_ADDRESS` in the
-same terminal session beforehand.
+a different `EVETEST_API_PORT` to avoid port conflicts. The `evetest` CLI finds
+local instances on its own (see [Running Several Instances](#running-several-instances-manually)).
+Only when running the CLI against an instance on a remote machine, set
+`EVETEST_API_PORT` and/or `EVETEST_API_ADDRESS` in the same terminal session beforehand.
 
 ### Version Overrides
 
@@ -738,18 +1112,70 @@ same terminal session beforehand.
 |----------|-------------|---------|
 | `EVETEST_ORG` | Docker Hub organization for evetest and evetest-broker images | `lfedge` |
 | `EVETEST_EVE_REPO` | EVE image repository | `lfedge/eve` |
-| `EVETEST_ADAM_VERSION` | Adam controller version | `0.0.75` |
-| `EVETEST_SDN_VERSION` | SDN emulator version | `v0.0.1` |
+| `EVETEST_ADAM_VERSION` | Adam controller version *(build-time only, see note below)* | `0.0.81` |
+| `EVETEST_SDN_VERSION` | SDN emulator image tag | content hash of `sdn/` (`make sdn-version`) |
+
+> **`EVETEST_ADAM_VERSION` requires evetest container rebuild.** Unlike the other
+> variables above, Adam's binary is baked into the evetest image at build time
+> (`Dockerfile.evetest` copies it in from `lfedge/adam:$EVETEST_ADAM_VERSION`);
+> the evetest image tag is a hash of the evetest sources, so it does not encode
+> which Adam version is inside. Setting `EVETEST_ADAM_VERSION` as a runtime environment
+> variable before `make evetest` has **no effect** on which Adam binary actually runs.
+> To test against a different (e.g. custom-built) Adam version, rebuild the image first:
+> `make build-container EVETEST_ADAM_VERSION=<version>`, then run tests as usual
+> against that locally-built image.
 
 ### Broker Variables (for distributed mode)
 
+These are read by `evetest-broker` itself, not the evetest container -- set them in the
+broker's own environment (`make libvirt-run-broker-container`, or the Proxmox broker
+VM's `/etc/evetest/broker.env`, written by the [Proxmox broker
+installer](deploy/proxmox/README.md)). Which ones apply depends on
+`EVETEST_BROKER_DEVICE_PROVIDER`.
+
+Common to every provider:
+
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `EVETEST_BROKER_LIBVIRT_URI` | Libvirt connection URI | `qemu:///system` |
-| `EVETEST_BROKER_IMAGE_DIR` | VM image storage directory | `$HOME/.evetest` (all-in-one / qemu provider), `/home/eve-broker/images` (libvirt provider; created and configured by `make setup-broker-user`) |
+| `EVETEST_BROKER_IMAGE_DIR` | VM image storage directory | `$HOME/.evetest` (all-in-one / qemu provider), `/home/eve-broker/images` (libvirt provider; created and configured by `make libvirt-setup-broker-user`), `/root/.evetest/images` (proxmox provider; set by the Proxmox broker installer) |
 | `EVETEST_SDN_UPLINK_IPV4_SUBNET` | IPv4 subnet for SDN uplink | `192.168.170.0/24` |
 | `EVETEST_SDN_UPLINK_IPV6_SUBNET` | IPv6 subnet for SDN uplink | `fd11:778b:03dd:2222::/64` |
 | `EVETEST_BROKER_PROXY_CA_CHAIN` | Proxy CA certificate chain file | -- |
+| `EVETEST_BROKER_MAX_CLIENTS` | Max concurrent evetest clients the broker will accept; new connections are rejected with an error once this many are already connected (reconnects of existing clients are never blocked) | `-1` (unlimited) |
+| `EVETEST_BROKER_DOCKER_IMAGE_RETENTION` | How long, in minutes, an unused, evetest-managed Docker image (one the broker itself pulled or built) is kept before the broker's periodic cleanup removes it | `10080` (7 days) |
+| `EVETEST_BROKER_DOCKER_DISK_USAGE_THRESHOLD` | Disk usage percent (on the filesystem backing Docker's storage) at or above which the broker aggressively evicts the oldest unused, evetest-managed Docker images, regardless of the retention setting above -- but only while free space is also below `EVETEST_BROKER_DOCKER_MIN_FREE_GIB` | `80` |
+| `EVETEST_BROKER_DOCKER_MIN_FREE_GIB` | Free-space floor, in GiB, on the filesystem backing Docker's storage. Aggressive Docker image eviction needs **both** usage at or above `EVETEST_BROKER_DOCKER_DISK_USAGE_THRESHOLD` **and** free space below this floor, so a big disk that is merely over the percentage is left alone. Keep it larger than `EVETEST_BROKER_TEMPLATE_MIN_FREE_GIB` so Docker images are evicted before templates. `0` disables the floor (percentage-only eviction) | `150` |
+| `EVETEST_BROKER_TEMPLATE_RETENTION` | How long, in minutes, an unused EVE disk-image template (see [The EVE Image Template Cache](#the-eve-image-template-cache)) is kept before the broker's periodic cleanup removes it. Deliberately generous, since templates let consecutive runs against the same EVE version skip the image build entirely; zero or negative disables age-based eviction, but disk-usage-based eviction still applies regardless. A template still backing a live VM is never removed regardless of this value | `10080` (7 days) |
+| `EVETEST_BROKER_TEMPLATE_DISK_USAGE_THRESHOLD` | Disk usage percent (on the filesystem backing the broker's image directory) at or above which the broker evicts the oldest unreferenced EVE image templates, regardless of the retention setting above -- but only while free space is also below `EVETEST_BROKER_TEMPLATE_MIN_FREE_GIB`. Deliberately higher than `EVETEST_BROKER_DOCKER_DISK_USAGE_THRESHOLD`: broker hosts routinely idle above 80%, so an 80% threshold would evict every unreferenced template on every pass and the cache would never stay warm; templates are also the wrong thing to give up first -- one is 1-2 GB, where the Docker image store is tens of GB | `90` |
+| `EVETEST_BROKER_TEMPLATE_MIN_FREE_GIB` | Free-space floor, in GiB, on the filesystem backing the broker's image directory. Template eviction under disk pressure needs **both** usage at or above `EVETEST_BROKER_TEMPLATE_DISK_USAGE_THRESHOLD` **and** free space below this floor: on a 3 TB disk at 90% about 300 GB is still free, which is no reason to evict every template. `0` disables the floor (percentage-only eviction) | `100` |
+| `EVETEST_BROKER_PPROF_PORT` | Port for the broker's `net/http/pprof` debug endpoint (listens on all interfaces); `0` disables it | `0` (disabled) |
+
+**Disk-pressure eviction floors.** Existing deployments that set only the percentage
+variables now also get the 100 GiB (templates) and 150 GiB (Docker) free-space floors, so
+on large disks eviction happens less often than before; set
+`EVETEST_BROKER_TEMPLATE_MIN_FREE_GIB=0` / `EVETEST_BROKER_DOCKER_MIN_FREE_GIB=0` to
+restore the old percentage-only behaviour. The Proxmox broker installer template exposes
+only the Docker percentage, so those hosts get the default floors. The floor is compared
+against the space *available* to unprivileged users (`statfs` `f_bavail`).
+
+**`libvirt` provider only:**
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `EVETEST_BROKER_LIBVIRT_URI` | Libvirt connection URI (not yet configurable -- the provider always uses this value) | `qemu:///system` |
+
+**`proxmox` provider only** (see [deploy/proxmox/README.md](deploy/proxmox/README.md)
+for the full setup guide; in normal use these are generated for you by the Proxmox
+broker installer, not set by hand):
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `EVETEST_BROKER_PROXMOX_API_URL` | Proxmox VE REST API base URL, e.g. `https://192.168.1.50:8006/api2/json` | -- (required) |
+| `EVETEST_BROKER_PROXMOX_PASSWORD` | Password for the `root@pam` Proxmox user. Must be the literal `root@pam` account, not an API token -- Proxmox hardcodes some VM options (`hookscript`, `args`) as settable only by a real `root@pam` session regardless of a token's ACLs | -- (required) |
+| `EVETEST_BROKER_PROXMOX_NODE` | Proxmox node name to create VMs on | auto-detected on a single-node install; required for multi-node clusters |
+| `EVETEST_BROKER_PROXMOX_STORAGE` | Proxmox storage ID used for VM disks, e.g. `local-lvm` | -- (required) |
+| `EVETEST_BROKER_PROXMOX_IMPORT_STORAGE` | Proxmox storage ID (with the `import` content type enabled) that VM disk images are uploaded to before being imported into VM disk storage | `local` |
+| `EVETEST_BROKER_PROXMOX_TLS_SKIP_VERIFY` | Disable TLS certificate verification for the Proxmox API connection (useful with the default self-signed PVE certificate) | `false` |
 
 ## Deployment Modes
 
@@ -772,6 +1198,11 @@ The container is started with `NET_ADMIN` capability and access to the Docker so
 on macOS, where Docker Desktop's Linux VM does not support nested virtualization).
 Without KVM, QEMU falls back to TCG software emulation.
 The embedded broker uses QEMU directly to start and manage EVE and SDN VMs.
+The checkout's `eve-tools/bpftrace-compiler` is mounted read-only at
+`/eve-tools/bpftrace-compiler`, with its linuxkit cache and its cache of compiled
+scripts persisted under `~/.evetest/linuxkit-cache` and
+`~/.evetest/bpftrace-compiler-cache`, for tests that compile a bpftrace script
+for the device's kernel (see `TestVGAPassthroughNoHostAccess`).
 
 Best for:
 
@@ -789,21 +1220,30 @@ laptop) while the broker runs on a separate, (typically more powerful) hyperviso
 EVE VMs run directly on the host hypervisor, avoiding nested virtualization
 (which would occur in All-in-One Mode when executed inside a virtualized CI runner).
 
-The broker uses its device provider (typically libvirt) to create VMs and acts as a
-tunnel proxy, forwarding IP packets between the evetest container and the SDN VM.
-From the test's perspective, this is transparent -- the same test code works in both
-modes.
+The broker uses a device provider (`libvirt` or `proxmox`; see [Broker
+(`evetest-broker`)](#broker-evetest-broker) below) to create VMs and acts as a tunnel
+proxy, forwarding IP packets between the evetest container and the SDN VM. From the
+test's perspective, this is transparent -- the same test code works in both modes.
 
 ![Distributed evetest setup](pics/evetest-distributed.png)
 
+With the **libvirt** provider, the broker runs as a container on the hypervisor host
+itself:
+
 ```bash
 # One-time setup on the hypervisor server:
-sudo make setup-broker-user
-make run-broker-container
+sudo make libvirt-setup-broker-user
+make libvirt-run-broker-container
 
 # On the runner/laptop (192.168.1.100 is example of the server IP address):
 EVETEST_BROKER_ADDRESS=192.168.1.100 make evetest NAME=TestDHCPIPv4Only
 ```
+
+With the **proxmox** provider, the broker instead runs inside a VM on the Proxmox
+host, talking to the Proxmox API to create/manage EVE and SDN VMs -- see
+[deploy/proxmox/README.md](deploy/proxmox/README.md) for the installer that sets this
+up end to end (no manual broker setup step; it prints the `EVETEST_BROKER_ADDRESS` to
+use once ready).
 
 Best for:
 
@@ -834,9 +1274,10 @@ The container is the execution environment where tests run. Inside it you'll fin
 - Optionally, an **embedded broker** (in all-in-one mode)
 
 The container has the evetest framework and its dependencies baked in. Only
-`evetest/tests/` is mounted at runtime (allowing live test edits without rebuilding
-the image). Optionally, `/artifacts` is mounted for collecting outputs. It runs
-with `NET_ADMIN` capability for network configuration and tunnel management.
+`evetest/tests/` and `evetest/netmodels` are mounted at runtime (allowing live test
+edits without rebuilding the image). Optionally, `/artifacts` is mounted for collecting
+outputs. It runs with `NET_ADMIN` capability for network configuration and tunnel
+management.
 
 Running tests inside a container ensures a consistent, isolated, and reproducible
 environment. All dependencies (including QEMU) are encapsulated within the container,
@@ -855,12 +1296,63 @@ platforms.
 The broker currently supports the following **device providers**:
 
 - **QEMU** — direct QEMU invocation, used in all-in-one mode
-- **libvirt** — uses libvirt APIs, used in distributed mode
+- **libvirt** — uses libvirt APIs, used in distributed mode; the broker runs as a
+  container on the hypervisor host (see `make libvirt-setup-broker-user` /
+  `make libvirt-run-broker-container` above). Requires CGO, which is only
+  enabled for a **native** broker build (build host arch == target arch) --
+  building `make build-broker-container` directly on an amd64 or arm64 host
+  gets full libvirt support either way. The **published** arm64 broker image
+  is *cross-compiled* from an amd64 CI runner, so it is built with
+  `CGO_ENABLED=0` and falls back to a stub that returns an error if the
+  libvirt provider is selected (see the note on `make build-broker-container`
+  below)
+- **proxmox** — uses the Proxmox VE REST API, used in distributed mode; the broker
+  itself runs inside a VM on the Proxmox host, set up end to end by the installer in
+  [deploy/proxmox/README.md](deploy/proxmox/README.md)
 
 It manages the VM lifecycle (create, power on/off, reboot, destroy), caches EVE images
 for reuse across tests, and acts as a tunnel proxy forwarding IP packets between the
 evetest container and the SDN VM. This tunneling allows the evetest container to operate
 without direct network connectivity to the VMs -- it only needs access to the broker.
+
+#### The EVE Image Template Cache
+
+Building an EVE image used to mean one full container build per device -- roughly 4
+minutes and 2 GB of I/O -- run serially, even though most of that work (unpacking the
+container, laying out the disk) does not depend on anything device-specific like the
+onboarding certificate. The broker now builds a **configuration-independent template**
+once per distinct (docker image content ID, disk size, installer flag, arch) and reuses
+it across every device and every test run that matches:
+
+- Templates are cached under `$EVETEST_BROKER_IMAGE_DIR/templates/<key>/`, keyed by
+  content rather than by EVE version string, so identical image content built under a
+  different tag still hits the cache.
+- Each device gets its own qcow2 copy-on-write overlay backed by the template's disk,
+  with that device's own 5 MiB FAT config partition written into the overlay's CONFIG
+  partition -- the template itself is never modified.
+- Templates are reference-counted: one currently backing a live VM is never deleted,
+  regardless of age or disk pressure.
+- An image-directory-wide `flock` guards template creation and eviction, so two brokers
+  sharing the same `EVETEST_BROKER_IMAGE_DIR` cannot destroy each other's state.
+- Unreferenced templates are evicted by age (`EVETEST_BROKER_TEMPLATE_RETENTION`) and by
+  disk pressure (`EVETEST_BROKER_TEMPLATE_DISK_USAGE_THRESHOLD` together with the
+  `EVETEST_BROKER_TEMPLATE_MIN_FREE_GIB` floor), mirroring the existing
+  Docker image cleanup.
+
+Every provider uses the cache; they differ only in how a device's disk is derived from a
+template. `libvirt` and `qemu` use **overlays**, since both attach local image files
+directly. `proxmox` uses a **standalone copy**: it uploads each device's disk to the PVE
+node, where a backing file would not exist. A live-image template is deliberately keyed
+without the disk size, so the per-device disk -- overlay or copy -- is grown to the
+requested size instead.
+
+With the `proxmox` provider that copy is what the broker uploads, so the per-device cost
+there is one full-size copy plus the upload to the node, against a ~4-minute container
+build per device before.
+
+With the `qemu` provider the broker lives inside the short-lived evetest container, so
+its 30-minute cleanup loop would rarely tick before the container exits. There the sweep
+runs once at broker startup instead -- same age and disk-pressure rules, same variables.
 
 ### SDN (Software Defined Network)
 
@@ -902,14 +1394,16 @@ and the framework subscribes to Adam's data streams to keep device state up to d
 |--------|-------------|
 | `make list-tests` | List all available tests and test suites with their configurable parameters |
 | `make evetest` | Run a test (requires `NAME=...`) |
+| `make version` / `make sdn-version` | Print the image tag (content hash of the sources) of the evetest and broker images / of the SDN image; see [Image Tags](#image-tags) |
 | `make build-container` | Build the evetest container; set `DOCKER_PLATFORM=linux/<arch>` to cross-compile for a different architecture (Go build stage runs natively on the host, no QEMU emulation); use `DOCKER_TARGET=push` to publish to a registry instead of loading locally |
-| `make build-broker-container` | Build broker Docker image only; set `DOCKER_PLATFORM=linux/<arch>` to build for a different architecture (the builder runs under QEMU emulation since the broker requires CGO for libvirt); use `DOCKER_TARGET=push` to publish to a registry instead of loading locally |
+| `make build-broker-container` | Build broker Docker image only; set `DOCKER_PLATFORM=linux/<arch>` to cross-compile for a different architecture (Go build stage runs natively on the host, no QEMU emulation); CGO (and therefore the libvirt provider) is only enabled when `DOCKER_PLATFORM` matches the build host's own arch -- e.g. building on an arm64 host with the default `DOCKER_PLATFORM` gets full libvirt support, but cross-compiling to a *different* arch than the host (as CI does to publish the arm64 image from an amd64 runner) sets `CGO_ENABLED=0` and drops libvirt (qemu and proxmox providers are unaffected either way); use `DOCKER_TARGET=push` to publish to a registry instead of loading locally |
 | `make build-sdn-container` | Build SDN VM container (requires linuxkit, with the `LINUXKIT` variable pointing to the binary); set `DOCKER_PLATFORM=linux/<arch>` to cross-compile for a different architecture (Go build stage runs natively on the host, no QEMU emulation); use `DOCKER_TARGET=push` to publish to a registry instead of loading locally |
 | `make build-test-apps` | Build all test apps under `testapps/` by invoking each app's `build` target; supports the same `DOCKER_PLATFORM`, `DOCKER_TARGET`, and `EVETEST_ORG` variables |
 | `make install-cli` | Install the `evetest` CLI binary |
 | `make proto` | Regenerate protobuf Go code from `.proto` files (Docker-based) |
-| `make setup-broker-user` | One-time setup for libvirt broker (requires sudo) |
-| `make run-broker-container` | Start the broker container (distributed mode) |
+| `make libvirt-setup-broker-user` | One-time setup for the libvirt broker (requires sudo) |
+| `make libvirt-run-broker-container` | Start the broker container for the libvirt provider (distributed mode) |
+| `make proxmox-broker-installer` | Assemble the self-contained Proxmox broker installer script (see [deploy/proxmox/README.md](deploy/proxmox/README.md)) |
 
 ## Advanced Host Setup
 
@@ -922,6 +1416,13 @@ variables route image pulls for specific registries through a local pull-through
 
 Each variable accepts a full mirror URL including scheme and, if needed, a path
 (e.g. a Harbor proxy-cache project): `[scheme://]host:port[/path]`.
+
+> **proxmox provider:** none of the manual setup below is needed. Pass
+> `--with-oci-registry-mirrors` to the [Proxmox broker
+> installer](deploy/proxmox/README.md) and it runs its own pull-through cache
+> containers on the broker VM and sends their addresses to every evetest client
+> automatically -- no `EVETEST_REGISTRY_MIRROR_*` variables to set by hand. Set one of
+> them yourself only to override a specific registry's mirror.
 
 The mirror is applied in two places automatically:
 
@@ -1095,6 +1596,41 @@ by the host.
 sudo systemctl restart NetworkManager
 ```
 
+### Docker Bridge MTU vs. a Lower-MTU Network Path
+
+In distributed deployment mode, traffic between the evetest container and the broker
+travels over whatever network path connects the two hosts. If that path has a lower
+MTU than Docker's default bridge MTU (1500) -- e.g. a VPN tunnel between the
+test-runner host and the broker's network -- large gRPC responses can silently stall:
+TCP segments sized for the full 1500-byte MTU get dropped on the lower-MTU link, and if
+the path also blocks the ICMP "Fragmentation Needed" messages that would normally let
+TCP discover and adapt to the real path MTU (common behind corporate firewalls), the
+same oversized segment gets retransmitted and dropped repeatedly until the connection
+is eventually reset. Symptom: a test fails partway through a long-running RPC (e.g.
+`BuildImage`) with `rpc error: code = Unavailable desc = error reading from server:
+... connection reset by peer`, even though small messages (including gRPC keepalive
+pings) keep flowing fine right up until the failure.
+
+Check for a mismatch:
+
+```bash
+ip link show <vpn-interface>   # e.g. ppp0, tun0, wg0
+ip link show docker0
+```
+
+If the VPN/tunnel interface's MTU is lower than `docker0`'s (1500), lower Docker's
+bridge MTU to match (or a little under) it in `/etc/docker/daemon.json`:
+
+```json
+{
+    "mtu": 1400
+}
+```
+
+Then restart Docker (`sudo systemctl restart docker`) and recreate any evetest
+containers/networks -- this only affects the default bridge and networks created
+afterward, not ones already running.
+
 ### Enabling IPv6 Connectivity Tests
 
 In all-in-one deployment mode, IPv6 connectivity between EVE devices and the controller
@@ -1105,9 +1641,15 @@ However, tests that require IPv6 Internet access
 (`RequireInternetConnectivity{RequireIPv6: true}`) will be skipped if the host
 does not have IPv6 connectivity.
 
+> **proxmox provider:** the steps below don't apply -- IPv6 for the SDN uplink is
+> provided by Proxmox's own SDN zone (DHCPv6 + SNAT), not by Docker/host NAT66. The
+> [Proxmox broker installer](deploy/proxmox/README.md) sets this up automatically as
+> part of creating the `evu` uplink VNet; see that doc's Prerequisites section for the
+> (different) host-level IPv6 requirements specific to Proxmox SDN.
+
 For tests requiring IPv6 Internet access, you must also:
 
-1. **Enable IPv6 in Docker**
+1. **Enable IPv6 in Docker** -- all-in-one mode only, skip for distributed modes:
 
    ```bash
    # Add to the docker daemon config (generate subnet using https://unique-local-ipv6.com/):
@@ -1120,7 +1662,9 @@ For tests requiring IPv6 Internet access, you must also:
    sudo systemctl restart docker
    ```
 
-2. **Enable IPv6 forwarding and NAT66 on the host**
+2. **Enable IPv6 forwarding and NAT66 on the host** -- needed for all-in-one mode and
+   for distributed mode with the libvirt provider (there, apply this on the host
+   running libvirt, not the host running the evetest container):
 
    ```bash
    sudo sysctl -w net.ipv6.conf.all.forwarding=1
@@ -1137,7 +1681,7 @@ For tests requiring IPv6 Internet access, you must also:
 ```text
 evetest/
 ├── broker/             # Broker binary (VM lifecycle, tunnel proxy)
-│   └── provider/       # Device provider implementations (QEMU, libvirt)
+│   └── provider/       # Device provider implementations (QEMU, libvirt, Proxmox)
 ├── cli/                # evetest CLI binary
 ├── constants/          # Shared constants and Viper config
 ├── controller/         # Adam controller client (Go wrapper around Adam REST API)
@@ -1148,16 +1692,15 @@ evetest/
 ├── logger/             # Logging utilities
 ├── protobuilder/       # Helpers for building protobuf config messages
 ├── sdn/
-│   ├── vm/             # SDN agent (separate Go module, built into LinuxKit VM)
-│   │   └── pkg/configitems/  # Network config item implementations
-│   └── VERSION         # SDN version
+│   └── vm/             # SDN agent (separate Go module, built into LinuxKit VM)
+│       └── pkg/configitems/  # Network config item implementations
 ├── tests/              # Integration tests (mounted into container at runtime)
 │   ├── networking/     # Network-related tests and test suites
 │   ├── cluster/        # Kubernetes cluster tests
 │   └── lps/            # Local Profile Server tests
 ├── netmodels/          # Reusable network model definitions for tests (mounted into container at runtime)
 ├── utils/              # Shared utilities (crypto, networking, etc.)
-├── VERSION             # Evetest + broker version
+├── content-hash.sh     # Computes the image tags (content hashes of the sources)
 ├── Makefile
 ├── Dockerfile.evetest  # Evetest container image
 └── Dockerfile.broker   # Broker container image
@@ -1181,40 +1724,42 @@ evetest  ◀──depends on──  sdn/vm
 
 When you change dependencies, run `go mod tidy` in the affected module's directory.
 
-### Version Files
+### Image Tags
 
-Two `VERSION` files track component versions. Increment them when making changes
-to the corresponding component:
+There are no version files to bump. The Docker image tags are content hashes of the
+sources baked into each image, computed by `evetest/content-hash.sh` from the working
+tree (committed, modified and untracked files, but not git-ignored ones; Markdown files
+are ignored). A given tag therefore always contains exactly the sources it was hashed
+from, and a published image is never overwritten with different content.
 
-| File | Covers | Used by |
-|------|--------|---------|
-| `evetest/VERSION` | Evetest framework, broker, CLI | `lfedge/evetest` and `lfedge/evetest-broker` Docker image tags |
-| `evetest/sdn/VERSION` | SDN agent and VM image | `lfedge/evetest-sdn` Docker image tag |
+| Command | Tag of | Hashed sources |
+|---------|--------|----------------|
+| `make version` | `lfedge/evetest` and `lfedge/evetest-broker` | `evetest/` except `tests/`, `netmodels/`, `matchers/`, `testapps/`, `sdn/`, `deploy/` and the `eve-api` submodule |
+| `make sdn-version` | `lfedge/evetest-sdn` | `evetest/sdn/` except `pics/` |
 
-Changes to tests (`evetest/tests/`) do **not** require bumping `evetest/VERSION` —
-tests are compiled inside the container at runtime from the mounted source, so no
-image rebuild is needed. The exception is when test changes also introduce new
-dependencies (i.e., `go.mod` changes): in that case bump the version and rebuild
-the container so the pre-downloaded module cache in the image stays current.
+`make evetest` expects the images with these tags: for each it uses the local one, else
+tries to pull it, else builds it. The SDN image is not checked when
+`EVETEST_BROKER_ADDRESS` or `EVETEST_SDN_VERSION` is set (a remote broker pulls it
+itself). CI (`publish-evetest.yml`) publishes the images of `master` under the same tags.
 
-### What to Rebuild When
+Changes to tests (`evetest/tests/`) do not change the tag, because tests are compiled
+inside the container at runtime from the mounted source. A `go.mod` change does, which
+keeps the module cache baked into the image current.
 
-Different changes require different rebuild steps. The table below summarizes what
-needs to happen after each type of change:
+Every edit of the framework or SDN sources yields a new tag and thus a new local image;
+remove the stale ones with `docker image prune -a` or by tag.
 
-| What changed | What to do |
-|--------------|------------|
-| **Test code** (`tests/`) | Nothing -- tests are mounted into the container and compiled there. Just re-run `make evetest`. Exception: if `go.mod` changed (new dependencies added), rebuild the evetest container (`make build-container`) so the new deps are pre-downloaded in the image; otherwise they will be downloaded on every test run. |
-| **Evetest framework** (root package: `harness.go`, `edgedevice.go`, `devconfig.go`, ...) | If the change also affects `sdn/vm` (e.g., a shared package it imports), run `go mod tidy` in `sdn/vm/`. Rebuild the evetest container (`make build-container`). Bump `VERSION`. |
-| **gRPC API** (`grpcapi/proto/`) | Regenerate Go code (`make proto`). Then rebuild whichever containers consume the changed API -- typically the evetest container and potentially the broker container and SDN VM. Bump `VERSION` and/or `sdn/VERSION` as appropriate. |
-| **eve-api submodule** (`grpcapi/eve-api/`) | Checkout the desired commit inside the submodule (`git -C grpcapi/eve-api checkout <commit>`), then `git add grpcapi/eve-api` from within `evetest/` and commit. Regenerate Go code afterwards (`make proto`). |
-| **Broker** (`broker/`) | Rebuild the broker container (`make build-broker-container`) and the evetest container (`make build-container`, since all-in-one mode embeds the broker). Bump `VERSION`. |
-| **CLI** (`cli/`) | Reinstall the CLI on the host (`make install-cli`). Rebuild the evetest container (`make build-container`) to update the CLI inside it. Bump `VERSION`. |
-| **SDN agent** (`sdn/vm/`) | Rebuild the SDN container (`make build-sdn-container`, requires linuxkit). Bump `sdn/VERSION`. To use the new version, either set `EVETEST_SDN_VERSION` when running tests or update `DefaultSDNVersion` in `constants/` so the new version is used by default. |
-| **Controller client** (`controller/`) | Rebuild the evetest container (`make build-container`). Bump `VERSION`. |
-| **Constants** (`constants/`) | May affect all components. Rebuild the evetest container and, if the SDN imports the changed constant, rebuild the SDN container. Bump `VERSION` and/or `sdn/VERSION`. |
-| **Shared utilities** (`utils/`) | Rebuild the evetest container. If `sdn/vm` imports the changed utility, also rebuild the SDN container. Bump `VERSION` and/or `sdn/VERSION`. |
+### Manual Steps After Changes
 
-As a rule of thumb: if you change anything under `evetest/` (other than `tests` and `sdn/vm/`),
-bump `evetest/VERSION`. If you change anything under `evetest/sdn/vm/`, bump
-`evetest/sdn/VERSION`.
+Images are rebuilt automatically by `make evetest` (see [Image Tags](#image-tags)).
+Only these steps are not automatic:
+
+- **gRPC API** (`grpcapi/proto/`): regenerate the Go code with `make proto`.
+- **eve-api submodule** (`grpcapi/eve-api/`): check out the desired commit
+  (`git -C grpcapi/eve-api checkout <commit>`), `git add grpcapi/eve-api` from within
+  `evetest/`, then run `make proto`.
+- **CLI** (`cli/`): `make install-cli` to update the `evetest` binary on the host (the
+  copy inside the container is rebuilt automatically).
+- **Shared packages used by `sdn/vm`** (`constants/`, `utils/`, `grpcapi/`): `sdn/vm`
+  imports them as a pinned Go module version, so bump that version in
+  `sdn/vm/go.mod` (and run `go mod tidy` there) for the SDN image to pick up the change.

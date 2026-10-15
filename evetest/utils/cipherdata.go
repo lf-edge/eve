@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"fmt"
+	"slices"
 	"strings"
 
 	googleuuid "github.com/google/uuid"
@@ -31,9 +32,6 @@ type CryptoConfig struct {
 // certificate's public key and the controller's private key.
 func NewCryptoConfig(devECDHCert, controllerECDHCert *x509.Certificate,
 	controllerECDHKey *ecdsa.PrivateKey) (*CryptoConfig, error) {
-	// Adam trims whitespace characters before calculating hash.
-	pem := strings.TrimSpace(string(CertToPEM(controllerECDHCert)))
-	ctrlHash := sha256.Sum256([]byte(pem))
 	// EVE (tpmmgr) calculates cert hash without trimming whitespace characters.
 	devHash := sha256.Sum256(CertToPEM(devECDHCert))
 	symmetricKey, err := calculateSymmetricKeyForEcdhAES(devECDHCert, controllerECDHKey)
@@ -41,10 +39,26 @@ func NewCryptoConfig(devECDHCert, controllerECDHCert *x509.Certificate,
 		return nil, err
 	}
 	return &CryptoConfig{
-		ControllerEncCertHash: ctrlHash[:],
+		ControllerEncCertHash: ControllerCertHash(controllerECDHCert),
 		DevCertHash:           devHash[:],
 		SymmetricKey:          symmetricKey,
 	}, nil
+}
+
+// ControllerCertHash returns the full SHA-256 of a controller certificate,
+// computed the way Adam computes it: over the PEM encoding with surrounding
+// whitespace trimmed. The full 32-byte value is what Adam puts into
+// AuthContainer.SenderCertHash.
+//
+// Nothing on the device ever holds the full value. /certs truncates it to 16
+// bytes (flagged HashAlgo=SHA256_16BYTES), which is what lands in
+// types.ControllerCert.CertHash, and CreateCipherCtx likewise stores only the
+// first 16 bytes in CipherContext.ControllerCertHash. Truncate before comparing
+// against anything device-side.
+func ControllerCertHash(cert *x509.Certificate) []byte {
+	trimmed := strings.TrimSpace(string(CertToPEM(cert)))
+	sum := sha256.Sum256([]byte(trimmed))
+	return sum[:]
 }
 
 // CreateCipherCtx constructs a CipherContext using certificate hashes to
@@ -53,7 +67,9 @@ func CreateCipherCtx(cfg *CryptoConfig) (*evecommon.CipherContext, error) {
 	if len(cfg.DevCertHash) == 0 {
 		return nil, fmt.Errorf("missing device cert hash")
 	}
-	hashSeed := append(cfg.ControllerEncCertHash[:16], cfg.DevCertHash[:16]...)
+	// slices.Concat, not append: ControllerCertHash returns a full 32-byte array
+	// slice, so appending into it would overwrite the caller's own bytes 16-31.
+	hashSeed := slices.Concat(cfg.ControllerEncCertHash[:16], cfg.DevCertHash[:16])
 	ctxID := googleuuid.NewSHA1(googleuuid.UUID{}, hashSeed).String()
 
 	return &evecommon.CipherContext{
@@ -92,16 +108,16 @@ func DecryptBlock(cipher *evecommon.CipherBlock,
 	return &block, nil
 }
 
-// CipherDataHolder represents an object that contains CipherData.
-type CipherDataHolder interface {
-	GetCipherData() *evecommon.CipherBlock
-}
-
-// ReEncryptCipherData decrypts cipher data using the old CryptoConfig and
-// re-encrypts it using the new CryptoConfig and CipherContext.
-func ReEncryptCipherData(holder CipherDataHolder, oldCfg, newCfg *CryptoConfig,
-	cipherCtx *evecommon.CipherContext) error {
-	cipherData := holder.GetCipherData()
+// ReEncryptCipherBlock decrypts a CipherBlock using the old CryptoConfig and
+// re-encrypts it in place using the new CryptoConfig and CipherContext.
+// A nil block is a no-op, so callers can pass an optional field directly.
+//
+// This deliberately takes the block rather than its owner: not every cipher
+// block in the EVE API lives in a field named CipherData (the SCEP challenge
+// password and the cluster join token do not), so an owner-based interface would
+// silently exclude them.
+func ReEncryptCipherBlock(cipherData *evecommon.CipherBlock,
+	oldCfg, newCfg *CryptoConfig, cipherCtx *evecommon.CipherContext) error {
 	if cipherData == nil {
 		return nil
 	}

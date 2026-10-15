@@ -34,6 +34,9 @@ type DNSServer struct {
 	// UpstreamServers : list of IP addresses of public DNS servers to forward
 	// requests to (unless there is a static entry).
 	UpstreamServers []net.IP
+	// StaticEntriesTTL : TTL in seconds for static (address=) entries.
+	// When 0, dnsmasq defaults to 0s (not cached by querying resolvers).
+	StaticEntriesTTL uint32
 }
 
 // DNSEntry : Mapping between FQDN and an IP address.
@@ -79,7 +82,8 @@ func (s DNSServer) Equal(other depgraph.Item) bool {
 	}
 	return s.NetNamespace == s2.NetNamespace &&
 		s.VethName == s2.VethName &&
-		s.VethPeerIfName == s2.VethPeerIfName
+		s.VethPeerIfName == s2.VethPeerIfName &&
+		s.StaticEntriesTTL == s2.StaticEntriesTTL
 }
 
 // External returns false.
@@ -141,26 +145,78 @@ func (c *DNSServerConfigurator) createDnsmasqConfFile(server DNSServer) error {
 		log.Error(err)
 		return err
 	}
-	defer file.Close()
+	defer func() {
+		if cerr := file.Close(); cerr != nil {
+			log.Warnf("Failed to close config file %s: %v", cfgPath, cerr)
+		}
+	}()
+
+	writeLine := func(format string, args ...interface{}) error {
+		if _, err := fmt.Fprintf(file, format, args...); err != nil {
+			err = fmt.Errorf("failed to write config file %s: %w", cfgPath, err)
+			log.Error(err)
+			return err
+		}
+		return nil
+	}
+
 	// PID file is also used by Delete method.
-	file.WriteString(fmt.Sprintf("pid-file=%s\n", dnsmasqPidFile(srvName)))
+	if err := writeLine("pid-file=%s\n", dnsmasqPidFile(srvName)); err != nil {
+		return err
+	}
 	// Set the interface on which dnsmasq operates.
-	file.WriteString(fmt.Sprintf("interface=%s\n", server.VethPeerIfName))
+	if err := writeLine("interface=%s\n", server.VethPeerIfName); err != nil {
+		return err
+	}
 	// Disable DHCP.
-	file.WriteString(fmt.Sprintf("no-dhcp-interface=%s\n", server.VethPeerIfName))
+	if err := writeLine("no-dhcp-interface=%s\n", server.VethPeerIfName); err != nil {
+		return err
+	}
 	// Logging.
-	file.WriteString("log-queries\n")
-	file.WriteString(fmt.Sprintf("log-facility=%s\n", dnsmasqLogFile(srvName)))
+	if err := writeLine("log-queries\n"); err != nil {
+		return err
+	}
+	if err := writeLine("log-facility=%s\n", dnsmasqLogFile(srvName)); err != nil {
+		return err
+	}
 	// Upstream DNS servers.
 	for _, upstreamSrv := range server.UpstreamServers {
-		file.WriteString(fmt.Sprintf("server=%s\n", upstreamSrv))
+		if err := writeLine("server=%s\n", upstreamSrv); err != nil {
+			return err
+		}
 	}
-	file.WriteString("no-resolv\n")
+	if err := writeLine("no-resolv\n"); err != nil {
+		return err
+	}
 	// Static DNS entries.
-	for _, entry := range server.StaticEntries {
-		file.WriteString(fmt.Sprintf("address=/%s/%s\n", entry.FQDN, entry.IP.String()))
+	if len(server.StaticEntries) > 0 && server.StaticEntriesTTL > 0 {
+		if err := writeLine("local-ttl=%d\n", server.StaticEntriesTTL); err != nil {
+			return err
+		}
 	}
-	file.WriteString("no-hosts\n")
+	// Collect unique FQDNs for local= directives written below.
+	seenFQDNs := make(map[string]bool)
+	for _, entry := range server.StaticEntries {
+		if err := writeLine("address=/%s/%s\n", entry.FQDN, entry.IP.String()); err != nil {
+			return err
+		}
+		seenFQDNs[entry.FQDN] = true
+	}
+	// For each statically configured FQDN, add a local= directive so that
+	// dnsmasq returns NXDOMAIN (not REFUSED) for query types that have no
+	// matching address= entry (e.g., A query when only AAAA is configured).
+	// Without this, dnsmasq would try to forward the unsatisfied query to an
+	// upstream server; with no upstream configured it returns REFUSED, and
+	// upstream dnsmasq instances treat REFUSED identically to a timeout --
+	// retrying indefinitely and blocking Go's DNS resolver goroutine.
+	for fqdn := range seenFQDNs {
+		if err := writeLine("local=/%s/\n", fqdn); err != nil {
+			return err
+		}
+	}
+	if err := writeLine("no-hosts\n"); err != nil {
+		return err
+	}
 	if err = file.Sync(); err != nil {
 		err = fmt.Errorf("failed to sync config file %s: %w", cfgPath, err)
 		log.Error(err)

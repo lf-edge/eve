@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	eveflowlog "github.com/lf-edge/eve-api/go/flowlog"
 	eveinfo "github.com/lf-edge/eve-api/go/info"
 	evemetrics "github.com/lf-edge/eve-api/go/metrics"
 	"github.com/lf-edge/eve/evetest/constants"
@@ -24,6 +25,7 @@ import (
 	uuid "github.com/satori/go.uuid"
 	"github.com/spf13/viper"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/proto"
 )
 
 type infoMsgGrpcIterator[T any] struct {
@@ -71,6 +73,23 @@ func (w *metricMsgGrpcIterator[T]) Iterate(msg *evemetrics.ZMetricMsg) (bool, er
 	return false, w.stream.Send(resp)
 }
 
+type flowMsgGrpcIterator[T any] struct {
+	stream grpc.ServerStreamingServer[T]
+	// mapper extracts a response from a flow message; returns nil to skip.
+	mapper func(*eveflowlog.FlowMessage) (*T, error)
+}
+
+func (w *flowMsgGrpcIterator[T]) Iterate(msg *eveflowlog.FlowMessage) (bool, error) {
+	resp, err := w.mapper(msg)
+	if err != nil {
+		return false, err
+	}
+	if resp == nil {
+		return false, nil
+	}
+	return false, w.stream.Send(resp)
+}
+
 func (th *TestHarness) errIfBrokerNotReady() error {
 	if th.brokerClientID == "" {
 		return errors.New("broker is not yet connected")
@@ -90,12 +109,16 @@ func (th *TestHarness) Continue(
 	ctx context.Context, req *api.ContinueRequest) (*api.ContinueResponse, error) {
 	th.checkpointM.Lock()
 	defer th.checkpointM.Unlock()
+	// Closing (not sending on) resume wakes every waiter at once, e.g.
+	// several RunParallel workers joined on the same pause (see T.fail).
 	switch {
 	case th.pausedAtCheckpoint != "":
-		th.resume <- struct{}{}
+		close(th.resume)
+		th.resume = make(chan struct{})
 		th.pausedAtCheckpoint = ""
 	case th.pausedOnFailure != "":
-		th.resume <- struct{}{}
+		close(th.resume)
+		th.resume = make(chan struct{})
 		th.pausedOnFailure = ""
 	}
 	th.pauseAtCheckpoint = req.GetUntilCheckpoint()
@@ -212,7 +235,10 @@ func (th *TestHarness) GetEVEConfig(
 	if th.devices[devName].config == nil {
 		return nil, fmt.Errorf("no config submitted for device %s", devName)
 	}
-	config := th.devices[devName].config.EdgeDevConfig
+	// Cloned, not aliased: gRPC marshals the response only after this handler has
+	// released devicesM, so returning the live message would race with any writer
+	// that mutates the harness-held config in place.
+	config := proto.CloneOf(th.devices[devName].config.EdgeDevConfig)
 	return &api.EVEConfigResponse{Config: config}, nil
 }
 
@@ -396,8 +422,38 @@ func (th *TestHarness) GetAppLogs(
 // GetAppFlowLogs streams flow logs and DNS request logs for an application.
 func (th *TestHarness) GetAppFlowLogs(
 	req *api.AppRequest, stream api.Evetest_GetAppFlowLogsServer) error {
-	// TODO
-	return errors.New("not implemented")
+	if err := th.errIfAdamNotReady(); err != nil {
+		return err
+	}
+	devName, devUUID, err := th.resolveEVEDeviceName(req.GetDeviceName())
+	if err != nil {
+		return err
+	}
+	if devUUID == uuid.Nil {
+		return fmt.Errorf("device %q is not onboarded", devName)
+	}
+	appUUID, err := th.resolveAppUUID(stream.Context(), devUUID, req.GetAppNameOrUuid())
+	if err != nil {
+		return err
+	}
+	appUUIDStr := appUUID.String()
+	match := func(msg *eveflowlog.FlowMessage) bool {
+		return msg.GetScope().GetUuid() == appUUIDStr
+	}
+	iterator := &flowMsgGrpcIterator[api.AppFlowLogsResponse]{
+		stream: stream,
+		mapper: func(msg *eveflowlog.FlowMessage) (*api.AppFlowLogsResponse, error) {
+			if len(msg.GetFlows()) == 0 && len(msg.GetDnsReqs()) == 0 {
+				return nil, nil
+			}
+			return &api.AppFlowLogsResponse{
+				IpFlows:     msg.GetFlows(),
+				DnsRequests: msg.GetDnsReqs(),
+			}, nil
+		},
+	}
+	return th.adamClient.IterateDeviceFlowLogs(
+		stream.Context(), devUUID, match, iterator, req.GetFollow())
 }
 
 // GetNIInfo streams info (ZInfoNetworkInstance) about a network instance (NI).
@@ -795,7 +851,9 @@ func (th *TestHarness) ConnectConsoleToEVE(
 	th.devicesM.Unlock()
 	defer func() {
 		th.devicesM.Lock()
-		th.devices[devName].consoleInUse = false
+		if th.devices[devName] != nil {
+			th.devices[devName].consoleInUse = false
+		}
 		th.devicesM.Unlock()
 	}()
 

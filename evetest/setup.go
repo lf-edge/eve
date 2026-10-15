@@ -4,6 +4,8 @@
 package evetest
 
 import (
+	"archive/tar"
+	"bytes"
 	"context"
 	"crypto/x509"
 	"encoding/json"
@@ -13,6 +15,7 @@ import (
 	"math/big"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -29,12 +32,28 @@ import (
 	"github.com/spf13/viper"
 	"github.com/vishvananda/netlink"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
 
-// prepareEVEDeviceForOnboarding generates serial number and onboarding certificates
-// for the device.
+// liveImageChunkBytes is the gRPC chunk size used for both the container
+// image push (pushEVEImageToBroker) and the live image push
+// (pushLiveImageToBroker), so the two paths behave the same way on the wire.
+const liveImageChunkBytes = 1024 * 1024
+
+// prepareEVEDeviceForOnboarding generates a hardware serial number for the
+// device and either its own onboarding certificate, or -- for a
+// CreateFromScratchWithNetworkBoot device -- reuses the one shared onboarding
+// certificate generated for every netboot device in this Setup() call.
+//
+// This mirrors how iPXE-booted EVE devices are onboarded in production: one
+// onboarding certificate and one set of netboot artifacts serve every device,
+// which are then told apart only by the hardware serial number each broker
+// provider encodes into its own VM (e.g. via smbios) -- see
+// AdamClient.OnboardDevice. WithSoftSerial (a config.img-injected identifier)
+// is therefore redundant for netboot devices and not supported.
 func (th *TestHarness) prepareEVEDeviceForOnboarding(dev *deviceState) {
 	var err error
 	dev.serial, err = utils.RandomDeviceSerial(8)
@@ -42,6 +61,27 @@ func (th *TestHarness) prepareEVEDeviceForOnboarding(dev *deviceState) {
 		th.t.Fatalf("Failed to generate serial number for device %q: %v",
 			dev.name, err)
 	}
+
+	if dev.requirement.DeviceReusePolicy == CreateFromScratchWithNetworkBoot {
+		if dev.requirement.WithSoftSerial != "" {
+			th.t.Fatalf("Device %q: WithSoftSerial is not supported for "+
+				"CreateFromScratchWithNetworkBoot devices; they are told "+
+				"apart by their hardware serial instead (see "+
+				"prepareEVEDeviceForOnboarding)", dev.name)
+		}
+		if th.netbootOnboardCert == nil {
+			onboardUUID := th.newUUID("netboot onboarding certificate")
+			th.netbootOnboardCert, th.netbootOnboardKey, err = utils.GenServerCertElliptic(
+				th.caCert, th.caKey, big.NewInt(2), nil, nil, onboardUUID.String())
+			if err != nil {
+				th.t.Fatalf("Failed to generate shared netboot onboarding certificate: %v", err)
+			}
+		}
+		dev.onboardCert = th.netbootOnboardCert
+		dev.onboardKey = th.netbootOnboardKey
+		return
+	}
+
 	onboardUUID := th.newUUID("onboarding certificate")
 	dev.onboardCert, dev.onboardKey, err = utils.GenServerCertElliptic(
 		th.caCert, th.caKey, big.NewInt(2), nil, nil, onboardUUID.String())
@@ -80,55 +120,30 @@ func (th *TestHarness) selectArch() api.ArchType {
 	return fallback
 }
 
-// prepareImageForEVEDevice prepares an EVE image reference for the given device
-// and ensures that the corresponding EVE (live or installer) VM image is built
-// on the broker.
-//
-// The method determines the EVE version and hypervisor to use (from the device
-// requirements and environment), constructs an ImageRef, and requests the broker
-// to build the image. If the broker reports that the required EVE container image
-// is missing, the image is extracted from the local Docker daemon, pushed to the
-// broker, and the build is retried.
-//
-// Any failure is considered fatal for the test and will terminate execution.
-func (th *TestHarness) prepareImageForEVEDevice(dev *deviceState) {
-	eveVersion := dev.requirement.WithEVEVersion
-	if eveVersion == "" {
-		eveVersion = viper.GetString(constants.EVEVersionEnv)
+// zarchDirName converts arch into the ZARCH-named dist directory (e.g.
+// dist/amd64/current) that `make live` builds into.
+func zarchDirName(arch api.ArchType) (string, error) {
+	switch arch {
+	case api.ArchType_ARCH_AMD64:
+		return "amd64", nil
+	case api.ArchType_ARCH_ARM64:
+		return "arm64", nil
+	default:
+		return "", fmt.Errorf("unsupported architecture: %v", arch)
 	}
-	if eveVersion == "" {
-		th.t.Fatalf("EVE version is not defined")
-	}
-	var err error
-	var hypervisor api.HypervisorType
-	switch dev.requirement.WithHypervisor {
-	case HypervisorUndefined:
-		// Use KVM by default.
-		hypervisor = api.HypervisorType_HV_KVM
-	case HypervisorKVM:
-		hypervisor = api.HypervisorType_HV_KVM
-	case HypervisorXen:
-		hypervisor = api.HypervisorType_HV_XEN
-	case HypervisorKubevirt:
-		hypervisor = api.HypervisorType_HV_KUBEVIRT
-	}
-	arch := th.selectArch()
-	dev.imageRef = &api.ImageRef{
-		Repo:       viper.GetString(constants.EVERepoEnv),
-		Version:    eveVersion,
-		Hypervisor: hypervisor,
-		Arch:       arch,
-	}
-	dev.imageName, err = utils.EVEDockerImageName(dev.imageRef)
-	if err != nil {
-		th.t.Fatalf("Invalid EVE image reference %v: %v", dev.imageRef, err)
-	}
+}
 
-	diskSizeInMB := dev.requirement.MinDiskSizeInMB
-	if diskSizeInMB == 0 {
-		diskSizeInMB = constants.DefaultEVEDeviceDiskSizeInMB
-	}
-
+// buildEveConfig builds the EveConfig for a device: onboarding cert/key,
+// controller root cert, grub options (incl. ZFS/no-dirsync/Xen memory
+// defaults), injected bootstrap config/network override, and global config
+// properties (debug logging, SSH access, fast polling intervals for tests).
+//
+// Shared by prepareImageForEVEDevice (fed to the broker's BuildImageRequest,
+// which injects it into a device's local disk image via
+// utils.MakeEVEConfigDir) and buildNetbootArtifacts (which injects the same
+// config directly into a network-boot device's installer_net bundle, since
+// there is no broker-built disk to inject it into for that policy).
+func (th *TestHarness) buildEveConfig(dev *deviceState) *api.EveConfig {
 	onboardKeyPEM, err := utils.ECDSAPrivateKeyToPEM(dev.onboardKey)
 	if err != nil {
 		th.t.Fatalf(
@@ -218,24 +233,160 @@ func (th *TestHarness) prepareImageForEVEDevice(dev *deviceState) {
 	}
 	globalPropertiesJSON := string(globalPropertiesBytes)
 
+	return &api.EveConfig{
+		ServerName:        fmt.Sprintf("%s:%d", GetControllerHostname(), GetControllerPort()),
+		SoftSerial:        dev.requirement.WithSoftSerial,
+		OnboardCertPem:    string(utils.CertToPEM(dev.onboardCert)),
+		OnboardKeyPem:     string(onboardKeyPEM),
+		V2TlsCertsPem:     []string{string(rootCert)},
+		RootCertPem:       string(rootCert),
+		GrubOptions:       grubOptions,
+		BootstrapConfigPb: bootstrapConfigPb,
+		OverrideJson:      overrideJSON,
+		GlobalJson:        globalPropertiesJSON,
+	}
+}
+
+// prepareImageForEVEDevice prepares an EVE image reference for the given device
+// and ensures that the corresponding EVE (live or installer) VM image is built
+// on the broker.
+//
+// The method determines the EVE version and hypervisor to use (from the device
+// requirements and environment), constructs an ImageRef, and requests the broker
+// to build the image. If the broker reports that the required EVE container image
+// is missing, the image is extracted from the local Docker daemon, pushed to the
+// broker, and the build is retried.
+//
+// Any failure is considered fatal for the test and will terminate execution.
+func (th *TestHarness) prepareImageForEVEDevice(dev *deviceState) {
+	eveVersion := dev.requirement.WithEVEVersion
+	if eveVersion == "" {
+		eveVersion = viper.GetString(constants.EVEVersionEnv)
+	}
+	var err error
+	var hypervisor api.HypervisorType
+	switch dev.requirement.WithHypervisor {
+	case HypervisorUndefined:
+		// Use KVM by default.
+		hypervisor = api.HypervisorType_HV_KVM
+	case HypervisorKVM:
+		hypervisor = api.HypervisorType_HV_KVM
+	case HypervisorXen:
+		hypervisor = api.HypervisorType_HV_XEN
+	case HypervisorKubevirt:
+		hypervisor = api.HypervisorType_HV_KUBEVIRT
+	}
+	arch := th.selectArch()
+
+	zarch, err := zarchDirName(arch)
+	if err != nil {
+		th.t.Fatalf("%v", err)
+	}
+	// A version pinned by the test itself is never looked for among the local
+	// builds: it names a particular release (TestEVEUpgrade's pre-upgrade
+	// version, say), which is the container transport's job. Only the operator's
+	// EVETEST_EVE_VERSION selects which local build the live transport delivers.
+	localImg, err := resolveLocalLiveImage(zarch, viper.GetString(constants.EVEVersionEnv))
+	if err != nil {
+		// The operator explicitly selected the live transport; silently falling
+		// back to the container transport would run the test against a different
+		// EVE build than they asked for.
+		th.t.Fatalf("Failed to resolve the local EVE build: %v", err)
+	}
+	if useLocalLiveImage(dev.requirement, localImg) {
+		if !generics.ContainsItem(
+			th.brokerCapabilities, api.Capability_CAPABILITY_LOCAL_LIVE_IMAGE) {
+			th.t.Fatalf("the broker does not support the live image transport " +
+				"(EVETEST_EVE_LIVE_IMAGE=true): either it predates this feature " +
+				"and must be updated, or its device provider builds images per " +
+				"device and cannot consume one")
+		}
+		// A local build that cannot provide the hypervisor this test declares is an
+		// unsatisfiable requirement, so the test is skipped -- the same treatment
+		// RequireInternetConnectivity gets, and what Setup documents. Decided here,
+		// before anything is hashed, transferred or booted: otherwise the mismatch
+		// surfaces only as the test's own assertions timing out much later, with
+		// nothing pointing at the flavor of the build that was delivered.
+		//
+		// This is about satisfying a declared requirement, not about judging
+		// whether an EVE image is compatible with a device -- that is EVE's call.
+		if buildHV, known := liveImageHypervisor(localImg.ShortVersion); known {
+			required := dev.requirement.WithHypervisor
+			if !liveImageSatisfies(required, buildHV) {
+				th.t.Skipf("Test requires the %s hypervisor for device %q, but the "+
+					"local EVE build being delivered (%s) is %s: rebuild with "+
+					"`make HV=%s live`, or unset %s%s to run a %s container image",
+					required, dev.name, localImg.Version, buildHV,
+					hvMakeFlavor(required),
+					constants.EnvPrefix, constants.EVELiveImageEnv, required)
+			}
+			if buildHV != required && required != HypervisorUndefined {
+				th.log.Infof("Device %q requires %s and the local build is %s, "+
+					"which provides it", dev.name, required, buildHV)
+			}
+		}
+		sum, err := liveImageSHA256(localImg.DiskPath)
+		if err != nil {
+			th.t.Fatalf("Failed to hash local EVE live image %q: %v",
+				localImg.DiskPath, err)
+		}
+		dev.liveImage = &api.LiveImageRef{Sha256: sum, Version: localImg.Version}
+		// Sent unconditionally: whether the broker can actually read these paths
+		// is for the broker to determine, not for the harness to guess from its
+		// deployment mode. One that cannot asks for the upload as before.
+		dev.liveImageSource = &api.LocalLiveImageSource{
+			DiskPath:      localImg.DiskPath,
+			DiskBytes:     uint64(localImg.DiskBytes),
+			ConfigImgPath: localImg.ConfigImgPath,
+			FirmwareDir:   localImg.FirmwareDir,
+		}
+		// The resolved directory is the authority on what is actually being
+		// delivered: when a version was requested it is the one that was found,
+		// and when none was, `current` decides it. Either way it is reported
+		// rather than the wrapper's guess at the checkout's version.
+		if localImg.Version != "" {
+			eveVersion = localImg.Version
+		}
+	} else if localImg != nil {
+		th.log.Infof("Device %q requested EVE version %q explicitly; "+
+			"skipping the local EVE live image for this device",
+			dev.name, dev.requirement.WithEVEVersion)
+	}
+	if eveVersion == "" {
+		th.t.Fatalf("EVE version is not defined")
+	}
+
+	repo := dev.requirement.WithEVERepo
+	if repo == "" {
+		repo = viper.GetString(constants.EVERepoEnv)
+	}
+	dev.imageRef = &api.ImageRef{
+		Repo:       repo,
+		Version:    eveVersion,
+		Hypervisor: hypervisor,
+		Arch:       arch,
+	}
+	dev.imageName, err = utils.EVEDockerImageName(dev.imageRef)
+	if err != nil {
+		th.t.Fatalf("Invalid EVE image reference %v: %v", dev.imageRef, err)
+	}
+
+	diskSizeInMiB := dev.requirement.MinDiskSizeInMiB
+	if diskSizeInMiB == 0 {
+		diskSizeInMiB = constants.DefaultEVEDeviceDiskSizeInMiB
+	}
+
 	buildReq := &api.BuildImageRequest{
-		ClientId:      th.brokerClientID,
-		DeviceName:    dev.name,
-		Image:         dev.imageRef,
-		MakeInstaller: dev.requirement.DeviceReusePolicy == CreateFromScratchWithInstaller,
-		DiskBytes:     uint64(diskSizeInMB) << 20,
-		Config: &api.EveConfig{
-			ServerName:        fmt.Sprintf("%s:%d", GetControllerHostname(), GetControllerPort()),
-			SoftSerial:        dev.requirement.WithSoftSerial,
-			OnboardCertPem:    string(utils.CertToPEM(dev.onboardCert)),
-			OnboardKeyPem:     string(onboardKeyPEM),
-			V2TlsCertsPem:     []string{string(rootCert)},
-			RootCertPem:       string(rootCert),
-			GrubOptions:       grubOptions,
-			BootstrapConfigPb: bootstrapConfigPb,
-			OverrideJson:      overrideJSON,
-			GlobalJson:        globalPropertiesJSON,
-		},
+		ClientId:        th.brokerClientID,
+		DeviceName:      dev.name,
+		Image:           dev.imageRef,
+		LiveImage:       dev.liveImage,
+		LiveImageSource: dev.liveImageSource,
+		MakeInstaller:   dev.requirement.DeviceReusePolicy == CreateFromScratchWithInstaller,
+		NetworkBoot:     dev.requirement.DeviceReusePolicy == CreateFromScratchWithNetworkBoot,
+		DiskBytes:       uint64(diskSizeInMiB) << 20,
+		ExtraDiskBytes:  dev.requirement.ExtraDisks,
+		Config:          th.buildEveConfig(dev),
 	}
 	ctx, cancel := context.WithTimeout(th.ctx, brokerBuildImageTimeout)
 	buildResp, err := th.brokerClient.BuildImage(ctx, buildReq)
@@ -260,6 +411,29 @@ func (th *TestHarness) prepareImageForEVEDevice(dev *deviceState) {
 		}
 		th.log.Infof("BuildImage %q succeeded after pushing image.",
 			dev.imageName)
+	} else if buildResp.MissingEveLiveImage {
+		th.log.Warn("Broker is missing the local EVE live image — pushing it now...")
+		th.pushLiveImageToBroker(localImg, dev.liveImage.Sha256)
+
+		// Retry build
+		ctx, cancel = context.WithTimeout(th.ctx, brokerBuildImageTimeout)
+		buildResp, err = th.brokerClient.BuildImage(ctx, buildReq)
+		cancel()
+		if err != nil {
+			th.t.Fatalf("BuildImage %q (retry) failed: %v", dev.imageName, err)
+		}
+		if buildResp.MissingEveLiveImage {
+			th.t.Fatalf("Broker is missing the local EVE live image even after push.")
+		}
+		th.log.Infof("BuildImage %q succeeded after pushing live image.",
+			dev.imageName)
+	} else if dev.liveImage != nil {
+		// Nothing was uploaded and nothing was missing: either the broker still
+		// had the template, or it read the live image out of the dist directory
+		// itself. Reporting a docker image here would be a lie -- the live path
+		// may run on a broker that has no EVE container image at all.
+		th.log.Infof("BuildImage succeeded using the local EVE live image %q.",
+			dev.liveImage.GetSha256())
 	} else {
 		th.log.Infof("BuildImage %q succeeded (docker image was already present).",
 			dev.imageName)
@@ -323,7 +497,7 @@ func (th *TestHarness) pushEVEImageToBroker(imageRef *api.ImageRef) {
 
 	var sentBytes int64
 	nextLogPercent := int64(10)
-	buf := make([]byte, 1024*1024) // 1MB chunks
+	buf := make([]byte, liveImageChunkBytes)
 	earlyClose := false
 
 	for {
@@ -373,6 +547,158 @@ func (th *TestHarness) pushEVEImageToBroker(imageRef *api.ImageRef) {
 	}
 }
 
+// pushLiveImageToBroker streams a locally built EVE live image to the broker
+// as a tar (disk.qcow2, config.img, firmware/<name>), built in-process and
+// written straight into the client-streaming gRPC call -- the tar is never
+// assembled on disk or fully buffered in memory.
+//
+// The qcow2's clusters are already zlib-compressed by `qemu-img convert -c`,
+// so unlike pushEVEImageToBroker this stream is not gzipped: recompressing
+// already-compressed data would only burn CPU.
+//
+// A broker that predates local live image support rejects the RPC with
+// codes.Unimplemented; that case fails with a message telling the operator to
+// update the broker rather than silently falling back to the container path.
+//
+// A broker that already has this hash staged calls SendAndClose without
+// draining the stream, exactly as PushEVEContainerImage does: every Send after
+// that fails (typically with EOF), which is not this client's failure to
+// report -- it means the concurrent upload that is about to be reported via
+// AlreadyExists got there first. earlyClose records that so it can be treated
+// as benign instead of fatal, mirroring pushEVEImageToBroker's structure.
+func (th *TestHarness) pushLiveImageToBroker(img *localLiveImage, sum string) {
+	ctx, cancel := context.WithTimeout(th.ctx, brokerPushEVEImageTimeout)
+	defer cancel()
+
+	stream, err := th.brokerClient.PushEVELiveImage(ctx)
+	if err != nil {
+		th.t.Fatalf("PushEVELiveImage failed: %v", err)
+	}
+
+	earlyClose := false
+	send := func(chunk *api.PushLiveImageChunk, action string) error {
+		if err := stream.Send(chunk); err != nil {
+			if status.Code(err) == codes.Unimplemented {
+				th.t.Fatalf("this broker predates local live image support; " +
+					"update the broker")
+			}
+			earlyClose = true
+			return err
+		}
+		return nil
+	}
+
+	// The metadata Send itself may already be the one the broker abandons, so
+	// its error is not fatal either; the loop below and tw.Close() all check
+	// earlyClose rather than treating any of this as an unexpected failure.
+	_ = send(&api.PushLiveImageChunk{
+		Payload: &api.PushLiveImageChunk_Request{
+			Request: &api.PushLiveImageRequest{
+				ClientId:  th.brokerClientID,
+				LiveImage: &api.LiveImageRef{Sha256: sum, Version: img.Version},
+			},
+		},
+	}, "failed to send live image metadata")
+
+	tw := tar.NewWriter(&liveImageChunkWriter{send: func(data []byte) error {
+		return send(&api.PushLiveImageChunk{
+			Payload: &api.PushLiveImageChunk_DataChunk{DataChunk: data},
+		}, "failed to send live image data")
+	}})
+
+	buf := make([]byte, liveImageChunkBytes)
+	th.writeTarFile(tw, buf, "disk.qcow2", img.DiskPath, &earlyClose)
+	th.writeTarFile(tw, buf, "config.img", img.ConfigImgPath, &earlyClose)
+
+	firmwareFiles, err := os.ReadDir(img.FirmwareDir)
+	if err != nil {
+		th.t.Fatalf("failed to read firmware dir %q: %v", img.FirmwareDir, err)
+	}
+	for _, f := range firmwareFiles {
+		if f.IsDir() {
+			continue
+		}
+		fp := filepath.Join(img.FirmwareDir, f.Name())
+		th.writeTarFile(tw, buf, "firmware/"+f.Name(), fp, &earlyClose)
+	}
+	if err := tw.Close(); err != nil && !earlyClose {
+		th.t.Fatalf("failed to finalize live image tar stream: %v", err)
+	}
+
+	pushResp, err := stream.CloseAndRecv()
+	if err != nil {
+		if status.Code(err) == codes.Unimplemented {
+			th.t.Fatalf("this broker predates local live image support; " +
+				"update the broker")
+		}
+		th.t.Fatalf("PushEVELiveImage failed: %v", err)
+	}
+
+	if earlyClose && !pushResp.AlreadyExists {
+		th.t.Fatalf("Server closed live image upload stream early " +
+			"but did not report the image as already existing")
+	}
+	if pushResp.AlreadyExists {
+		th.log.Info("EVE live image already exists on broker.")
+	} else {
+		th.log.Info("EVE live image pushed successfully.")
+	}
+}
+
+// liveImageChunkWriter adapts the PushEVELiveImage client stream to an
+// io.Writer, so archive/tar can write tar entries directly into the gRPC
+// stream one chunk at a time.
+type liveImageChunkWriter struct {
+	send func(data []byte) error
+}
+
+func (w *liveImageChunkWriter) Write(p []byte) (int, error) {
+	// io.Writer requires a zero-length Write to be a harmless no-op; both
+	// archive/tar and io.CopyBuffer can legitimately call Write(nil/[]byte{}).
+	// Sending it anyway would put an empty chunk on the wire for the broker
+	// to reject.
+	if len(p) == 0 {
+		return 0, nil
+	}
+	if err := w.send(p); err != nil {
+		return 0, err
+	}
+	return len(p), nil
+}
+
+// writeTarFile writes one tar header plus its contents, copied via buf so
+// that streaming a multi-gigabyte disk image never holds more than
+// len(buf) bytes in memory at once.
+//
+// earlyClose is checked before treating a tar-writing error as fatal: once it
+// is true, tw has already recorded that error internally and every further
+// call on it returns the same cached error without touching the underlying
+// gRPC stream again, so it is safe to keep calling this for the remaining
+// files.
+func (th *TestHarness) writeTarFile(tw *tar.Writer, buf []byte, name, path string, earlyClose *bool) {
+	f, err := os.Open(path)
+	if err != nil {
+		th.t.Fatalf("failed to open %q: %v", path, err)
+	}
+	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
+	if err != nil {
+		th.t.Fatalf("failed to stat %q: %v", path, err)
+	}
+	if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o600, Size: info.Size()}); err != nil {
+		if *earlyClose {
+			return
+		}
+		th.t.Fatalf("failed to write tar header for %q: %v", name, err)
+	}
+	if _, err := io.CopyBuffer(tw, f, buf); err != nil {
+		if *earlyClose {
+			return
+		}
+		th.t.Fatalf("failed to stream %q into tar: %v", path, err)
+	}
+}
+
 // setupEVEDevices requests the broker to provision and configure EVE devices
 // according to the provided device requirements and network model.
 //
@@ -385,14 +711,12 @@ func (th *TestHarness) pushEVEImageToBroker(imageRef *api.ImageRef) {
 // from DHCP server during the SDN setup. Any failure is considered fatal for
 // the test and will terminate execution.
 func (th *TestHarness) setupEVEDevices(
-	devices map[string]*deviceState, netModel *api.NetworkModel,
-	withIPv6 bool) (sdnUplinkIPs []string) {
+	devices map[string]*deviceState, netModel *api.NetworkModel) (sdnUplinkIPs []string) {
 	setupReq := &api.SetupDevicesRequest{
 		ClientId: th.brokerClientID,
 		SdnConfig: &api.SDNConfig{
 			ImageRepo:    viper.GetString(constants.SDNRepoEnv),
 			ImageVersion: viper.GetString(constants.SDNVersionEnv),
-			EnableIpv6:   withIPv6,
 		},
 	}
 
@@ -403,9 +727,9 @@ func (th *TestHarness) setupEVEDevices(
 		if cpus == 0 {
 			cpus = constants.DefaultEVEDeviceCPUs
 		}
-		memSizeInMB := dev.requirement.MinRAMInMB
-		if memSizeInMB == 0 {
-			memSizeInMB = constants.DefaultEVEDeviceRAMInMB
+		memSizeInMiB := dev.requirement.MinRAMInMiB
+		if memSizeInMiB == 0 {
+			memSizeInMiB = constants.DefaultEVEDeviceRAMInMiB
 		}
 		var interfaces []*api.EVEInterface
 		for i, port := range netModel.Ports {
@@ -420,7 +744,7 @@ func (th *TestHarness) setupEVEDevices(
 		dev.spec = &api.EVEDevice{
 			DeviceName:   dev.requirement.Name,
 			Cpus:         uint32(cpus),
-			MemoryBytes:  uint64(memSizeInMB) << 20,
+			MemoryBytes:  uint64(memSizeInMiB) << 20,
 			SerialNumber: dev.serial,
 			WithTpm:      dev.requirement.WithTPM,
 			Image:        dev.imageRef,
@@ -429,7 +753,16 @@ func (th *TestHarness) setupEVEDevices(
 		setupReq.Devices = append(setupReq.Devices, dev.spec)
 	}
 
-	ctx, cancel := context.WithTimeout(th.ctx, brokerSetupDevicesTimeout)
+	setupTimeout := brokerSetupDevicesTimeout
+	for _, dev := range devices {
+		switch dev.requirement.DeviceReusePolicy {
+		case CreateFromScratchWithInstaller:
+			setupTimeout += constants.EVEInstallationTimeout
+		case CreateFromScratchWithNetworkBoot:
+			setupTimeout += constants.EVEInstallationTimeout + constants.NetbootDownloadTimeout
+		}
+	}
+	ctx, cancel := context.WithTimeout(th.ctx, setupTimeout)
 	th.log.Debugf("Submitting request to setup devices: %s", setupReq)
 	setupResp, err := th.brokerClient.SetupDevices(ctx, setupReq)
 	cancel()
@@ -681,34 +1014,62 @@ func (th *TestHarness) setupSDNTunnelRoutes(sdnUplinkIPs []string) {
 
 // Onboard devices into Adam and potentially also apply the initial device configurations.
 func (th *TestHarness) onboardEVEDevices() {
+	// Snapshot the device list under devicesM and release it immediately:
+	// the power-on/onboarding RPCs below can each run for many minutes (a
+	// CreateFromScratchWithNetworkBoot device's PowerOnDevice call waits out
+	// its whole network-boot install), and devicesM must stay free during
+	// that time for other RPCs (e.g. the "evetest status" Status handler)
+	// that need it too.
 	th.devicesM.Lock()
-
-	// Power-on EVE devices first.
+	devices := make([]deviceState, 0, len(th.devices))
 	for _, dev := range th.devices {
-		devCtrlReq := &api.DeviceControlRequest{
-			ClientId:   th.brokerClientID,
-			DeviceName: dev.name,
+		devices = append(devices, *dev)
+	}
+	th.devicesM.Unlock()
+
+	// Power-on EVE devices first, in parallel. For a CreateFromScratchWithNetworkBoot
+	// device this single call also runs and waits out the whole network-boot
+	// install on the broker side (see broker.PowerOnDevice), so it needs a much
+	// larger budget than the short brokerPowerOnEVEDeviceTimeout used for a
+	// plain power-on -- NetbootDownloadTimeout for the network boot
+	// itself plus EVEInstallationTimeout for the installer it then runs.
+	powerOnErrCh := make(chan error, len(devices))
+	for _, dev := range devices {
+		go func(dev deviceState) {
+			devCtrlReq := &api.DeviceControlRequest{
+				ClientId:   th.brokerClientID,
+				DeviceName: dev.name,
+			}
+			timeout := brokerPowerOnEVEDeviceTimeout
+			if dev.requirement.DeviceReusePolicy == CreateFromScratchWithNetworkBoot {
+				timeout += constants.NetbootDownloadTimeout + constants.EVEInstallationTimeout
+			}
+			ctx, cancel := context.WithTimeout(th.ctx, timeout)
+			_, err := th.brokerClient.PowerOnDevice(ctx, devCtrlReq)
+			cancel()
+			if err != nil {
+				powerOnErrCh <- fmt.Errorf("failed to power on device %q: %w", dev.name, err)
+				return
+			}
+			th.log.Infof("Device %q powered on", dev.name)
+			powerOnErrCh <- nil
+		}(dev)
+	}
+	for range devices {
+		if err := <-powerOnErrCh; err != nil {
+			th.t.Fatal(err)
 		}
-		ctx, cancel := context.WithTimeout(th.ctx, brokerPowerOnEVEDeviceTimeout)
-		_, err := th.brokerClient.PowerOnDevice(ctx, devCtrlReq)
-		cancel()
-		if err != nil {
-			th.t.Fatalf("Failed to power on device %q: %v", dev.name, err)
-		}
-		th.log.Infof("Device %q powered on", dev.name)
 	}
 
 	// Perform onboarding in parallel.
-	errCh := make(chan error, len(th.devices))
-	for _, dev := range th.devices {
+	errCh := make(chan error, len(devices))
+	for _, dev := range devices {
 		go func(dev deviceState) {
 			err := th.onboardEVEDevice(dev)
 			errCh <- err
-		}(*dev)
+		}(dev)
 	}
-
-	th.devicesM.Unlock()
-	for range th.devices {
+	for range devices {
 		err := <-errCh
 		if err != nil {
 			th.t.Fatal(err)
@@ -762,6 +1123,19 @@ func (th *TestHarness) isDeviceOnboarded(devName string) bool {
 	defer th.devicesM.Unlock()
 	devState, found := th.devices[devName]
 	return found && devState.ID != uuid.Nil
+}
+
+// deviceUUID returns the UUID assigned to the device during onboarding.
+// The second return value is false if the device is unknown or is not
+// onboarded yet, in which case it has no UUID to report.
+func (th *TestHarness) deviceUUID(devName string) (uuid.UUID, bool) {
+	th.devicesM.Lock()
+	defer th.devicesM.Unlock()
+	devState, found := th.devices[devName]
+	if !found || devState.ID == uuid.Nil {
+		return uuid.Nil, false
+	}
+	return devState.ID, true
 }
 
 // Wait for the device to publish its ECDH certificate to the controller.
@@ -942,13 +1316,13 @@ func (th *TestHarness) checkInternetConnectivity(req RequireInternetConnectivity
 	})
 	cancel()
 	if err != nil {
-		th.t.Fatal(err)
+		th.log.Error(err)
 	}
-	if !resp.ReachableOverIpv4 {
+	if err != nil || !resp.ReachableOverIpv4 {
 		th.t.Skipf("Test %q requires IPv4 Internet connectivity "+
 			"which is (currently) not available", th.t.Name())
 	}
-	if !resp.ReachableOverIpv6 && req.RequireIPv6 {
+	if (err != nil || !resp.ReachableOverIpv6) && req.RequireIPv6 {
 		th.t.Skipf("Test %q requires IPv6 Internet connectivity "+
 			"which is (currently) not available", th.t.Name())
 	}
@@ -958,6 +1332,14 @@ func (th *TestHarness) checkInternetConnectivity(req RequireInternetConnectivity
 // and the reuse policy for this test allows it.
 func (th *TestHarness) maybeReuseDevices(
 	edgeDevReqs map[string]RequireEdgeDevice, netModel *api.NetworkModel) bool {
+	// Never reuse devices left behind by a failed test: matching requirements
+	// alone cannot tell whether that failure left them in a broken state.
+	if th.prevTestFailed {
+		th.prevTestFailed = false
+		th.log.Infof("Previous test failed; not reusing its devices")
+		return false
+	}
+
 	// For simplicity, we will avoid reusing devices between tests when the network
 	// model differs.
 	th.netModelM.Lock()
@@ -975,7 +1357,8 @@ func (th *TestHarness) maybeReuseDevices(
 	}
 	for devName, newReq := range edgeDevReqs {
 		if newReq.DeviceReusePolicy == CreateFromScratchWithInstaller ||
-			newReq.DeviceReusePolicy == CreateFromScratchWithLiveImage {
+			newReq.DeviceReusePolicy == CreateFromScratchWithLiveImage ||
+			newReq.DeviceReusePolicy == CreateFromScratchWithNetworkBoot {
 			th.devicesM.Unlock()
 			return false
 		}
@@ -1000,8 +1383,8 @@ func (th *TestHarness) maybeReuseDevices(
 		// Cannot reuse device if requirements changed.
 		prevReq := dev.requirement
 		equalReqs := newReq.MinCPUs == prevReq.MinCPUs &&
-			newReq.MinRAMInMB == prevReq.MinRAMInMB &&
-			newReq.MinDiskSizeInMB == prevReq.MinDiskSizeInMB &&
+			newReq.MinRAMInMiB == prevReq.MinRAMInMiB &&
+			newReq.MinDiskSizeInMiB == prevReq.MinDiskSizeInMiB &&
 			newReq.WithEVEVersion == prevReq.WithEVEVersion &&
 			newReq.WithHypervisor == prevReq.WithHypervisor &&
 			newReq.WithFilesystem == prevReq.WithFilesystem &&
@@ -1059,6 +1442,8 @@ func (th *TestHarness) reuseDevice(dev deviceState, newReq RequireEdgeDevice) er
 		th.devicesM.Lock()
 		th.devices[dev.name].rebootCount = 0
 		th.devices[dev.name].expectedRebootCount = 0
+		th.devices[dev.name].rebootAccountingOff = false
+		th.devices[dev.name].rebootAccountingOffReason = ""
 		th.devicesM.Unlock()
 		return nil
 	}
@@ -1070,9 +1455,11 @@ func (th *TestHarness) reuseDevice(dev deviceState, newReq RequireEdgeDevice) er
 		}
 	}
 
-	// Snapshot the boot time before any reboot so we can later determine
+	// Snapshot the reboot indicators before any reboot so we can later determine
 	// whether the post-reboot info message has already been processed.
 	th.devicesM.Lock()
+	preReuseCounter := th.devices[dev.name].lastRestartCounter
+	preReuseHaveCounter := th.devices[dev.name].haveRestartCounter
 	preReuseBootTime := th.devices[dev.name].lastBootTime
 	th.devicesM.Unlock()
 	rebooted := false
@@ -1140,16 +1527,20 @@ func (th *TestHarness) reuseDevice(dev deviceState, newReq RequireEdgeDevice) er
 	}
 
 	// Reset reboot counters so the test body starts from a clean baseline.
-	// When the reuse policy triggered a reboot, we must account for whether
-	// the post-reboot info message (carrying the new BootTime) has already
-	// been processed asynchronously:
-	//   - If not yet processed (lastBootTime unchanged): set expectedRebootCount=1
-	//     so the pending increment of rebootCount will match it.
-	//   - If already processed (lastBootTime changed): both counters reset to 0.
+	// A reuse reboot is observed asynchronously, so it may or may not have been
+	// counted by the time we get here. It is still pending when neither the
+	// restart counter nor the boot time has moved yet; expectedRebootCount=1
+	// then matches the increment still to come. Without a pre-reboot counter the
+	// first observation only establishes the baseline and counts nothing.
 	th.devicesM.Lock()
 	currentDev := th.devices[dev.name]
+	observedReboot := currentDev.lastRestartCounter != preReuseCounter ||
+		currentDev.lastBootTime.Sub(preReuseBootTime).Abs() >= bootTimeJitter
+	pendingReboot := rebooted && preReuseHaveCounter && !observedReboot
 	currentDev.rebootCount = 0
-	if rebooted && currentDev.lastBootTime.Equal(preReuseBootTime) {
+	currentDev.rebootAccountingOff = false
+	currentDev.rebootAccountingOffReason = ""
+	if pendingReboot {
 		currentDev.expectedRebootCount = 1
 	} else {
 		currentDev.expectedRebootCount = 0
@@ -1209,8 +1600,9 @@ func (th *TestHarness) forceDeviceReonboarding(dev deviceState) error {
 // only the network settings. All application-level state (apps, network instances,
 // datastores, content info, volumes, patch envelopes, profile settings, and config items)
 // is cleared so the next test starts from a clean application baseline without disrupting
-// the device's network connectivity. The new config is versioned, applied via the
-// controller, and saved in the harness's in-memory device record.
+// the device's network connectivity. Everything encrypted is cleared as well, so that no
+// test can inherit a cipher block from its predecessor. The new config is versioned,
+// applied via the controller, and saved in the harness's in-memory device record.
 func (th *TestHarness) resetDeviceConfig(dev deviceState) error {
 	th.devicesM.Lock()
 	if dev.config == nil {
@@ -1231,6 +1623,19 @@ func (th *TestHarness) resetDeviceConfig(dev deviceState) error {
 	newConfig.LocalProfileServer = ""
 	newConfig.GlobalProfile = ""
 	newConfig.ProfileServerToken = ""
+
+	// Cipher blocks also hide in retained objects (wireless credentials, the SCEP
+	// challenge password, the cluster join token), and one encrypted against a
+	// certificate the next device does not hold is undetectable until it fails to
+	// decrypt. Dropping the cipher contexts along with them is safe: no block
+	// survives the reset, and ApplyConfig republishes the context list from the
+	// harness-held config, so encryptCipherData re-adds a context on demand.
+	// This also makes the direct ApplyDeviceConfig push below (which bypasses
+	// ApplyConfig's checkCipherBlocksUseCurrentECDHCert guard) trivially valid.
+	if err := clearCipherBlocks(newConfig.EdgeDevConfig); err != nil {
+		return err
+	}
+	newConfig.CipherContexts = nil
 
 	// Set config ID.
 	configVer := th.nextConfigVersion(newConfig)
@@ -1268,6 +1673,9 @@ func (th *TestHarness) resetDeviceConfig(dev deviceState) error {
 // allow configuring a registry mirror for K3s (containerd) through device config,
 // so that evetest does not need to directly manipulate files on the EVE device.
 func (th *TestHarness) applyK3sRegistryMirrorIfConfigured() {
+	if th.skipRegistryMirrors {
+		return
+	}
 	mirrors := constants.LoadRegistryMirrors()
 	if len(mirrors) == 0 {
 		return
@@ -1297,7 +1705,12 @@ func (th *TestHarness) applyK3sRegistryMirrorIfConfigured() {
 //
 // /run is shared between EVE containers, so the script is staged there and then
 // executed inside the kube container via "eve exec" (nsenter-based, no TTY needed).
-func (th *TestHarness) configureContainerdRegistryMirror(devName string, mirrors map[string]string) {
+//
+// Registry mirrors are a pull-through cache used purely to speed up image
+// pulls; they are not required for correctness. So any failure here is logged
+// as a warning and the function just returns, rather than failing the test.
+func (th *TestHarness) configureContainerdRegistryMirror(
+	devName string, mirrors map[string][]string) {
 	const (
 		certsD     = "/etc/containerd/certs.d"
 		ctrdConfig = "/etc/containerd/config-k3s.toml"
@@ -1307,7 +1720,11 @@ func (th *TestHarness) configureContainerdRegistryMirror(devName string, mirrors
 	var sb strings.Builder
 	// Iterate in stable order using RegistryMirrorEntries.
 	for _, e := range constants.RegistryMirrorEntries {
-		mirrorURL, ok := mirrors[e.Registry]
+		addrs, ok := mirrors[e.Registry]
+		if !ok {
+			continue
+		}
+		mirrorURL, ok := constants.SelectRegistryMirror(addrs, th.ipv6OnlyRegistryMirrors)
 		if !ok {
 			continue
 		}
@@ -1348,13 +1765,15 @@ func (th *TestHarness) configureContainerdRegistryMirror(devName string, mirrors
 
 	tmpFile, err := os.CreateTemp("", "setup-containerd-mirror-*.sh")
 	if err != nil {
-		th.t.Fatalf(
+		th.log.Warnf(
 			"configureContainerdRegistryMirror: failed to create temp file: %v", err)
+		return
 	}
 	defer os.Remove(tmpFile.Name())
 	if _, err = tmpFile.WriteString(sb.String()); err != nil {
-		th.t.Fatalf(
+		th.log.Warnf(
 			"configureContainerdRegistryMirror: failed to write temp file: %v", err)
+		return
 	}
 	tmpFile.Close()
 
@@ -1362,17 +1781,21 @@ func (th *TestHarness) configureContainerdRegistryMirror(devName string, mirrors
 	err = th.scpToEVE(ctx, devName, tmpFile.Name(), scriptPath, false)
 	cancel()
 	if err != nil {
-		th.t.Fatalf("configureContainerdRegistryMirror: failed to scp script to %q: %v",
+		th.log.Warnf("configureContainerdRegistryMirror: failed to scp script to %q: %v",
 			devName, err)
+		return
 	}
 
+	var stdoutBuf, stderrBuf bytes.Buffer
 	ctx, cancel = context.WithTimeout(th.ctx, quickSSHCommandTimeout)
 	err = th.runScriptOnEVEOverSSH(ctx, devName,
-		"eve exec kube sh "+scriptPath, nil, nil, 0)
+		"eve exec kube sh "+scriptPath, &stdoutBuf, &stderrBuf, 0)
 	cancel()
 	if err != nil {
-		th.t.Fatalf("configureContainerdRegistryMirror: script failed on %q: %v",
-			devName, err)
+		th.log.Warnf("configureContainerdRegistryMirror: script failed on %q: %v "+
+			"(stdout: %s, stderr: %s)", devName, err, stdoutBuf.String(),
+			stderrBuf.String())
+		return
 	}
 	th.log.Infof("Containerd registry mirrors configured on device %q", devName)
 }

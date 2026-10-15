@@ -40,7 +40,7 @@ const enableFlowlogParamKey = "ENABLE_FLOWLOG"
 // ------
 //  1. Setup: one Local NI ("local-ni") on ethernet0, subnet 10.11.12.0/24,
 //     EnableFlowlog controlled by the ENABLE_FLOWLOG parameter.
-//     Two container apps (milan4zededa/evetest-ubuntu-ctr:1.0) deployed on the
+//     Two container apps (lfedge/evetest-ubuntu-ctr:1.0) deployed on the
 //     same NI, each with a fixed MAC, an SSH port-forward (2222->22 and 2223->22),
 //     and distinct ACL rule sets:
 //     - acl-app-1: allow FQDN "http-server.test", allow FQDN netmodels.LongFQDN,
@@ -75,8 +75,7 @@ const enableFlowlogParamKey = "ENABLE_FLOWLOG"
 //
 // Test params
 // -----------
-//   - HYPERVISOR. The test calls evetest.SkipIfHypervisorKubevirt() -- Kubevirt
-//     is reserved for cluster tests.
+//   - HYPERVISOR (defaults to KVM).
 //   - ENABLE_FLOWLOG: enable flow logging on the Local NI (default: false).
 func TestLocalNetInstanceACLs(test *testing.T) {
 	evetestT := evetest.Init(test)
@@ -96,7 +95,6 @@ func TestLocalNetInstanceACLs(test *testing.T) {
 	)
 
 	hypervisor := evetest.GetHypervisorParameterValue()
-	evetest.SkipIfHypervisorKubevirt()
 	enableFlowlog := evetest.GetTestParameter[bool](enableFlowlogParamKey)
 
 	devName := "edge-dev"
@@ -125,6 +123,9 @@ func TestLocalNetInstanceACLs(test *testing.T) {
 		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
 	})
 	device.ApplyConfig(devConfig, true, true)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
 
 	const (
 		niGateway   = "10.11.12.1"
@@ -164,12 +165,12 @@ func TestLocalNetInstanceACLs(test *testing.T) {
 		DisplayName: "acl-app-1",
 		Activate:    true,
 		Image: evetest.DockerContainer{
-			ImageName: "milan4zededa/evetest-ubuntu-ctr",
+			ImageName: "lfedge/evetest-ubuntu-ctr",
 			Tag:       "1.0",
 		},
 		VirtualizationMode: eveconfig.VmMode_HVM,
 		CPUs:               1,
-		MemoryBytes:        500 * evetest.MB,
+		MemoryBytes:        500 * evetest.MiB,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
 				LogicalLabel:        "vif0",
@@ -199,12 +200,12 @@ func TestLocalNetInstanceACLs(test *testing.T) {
 		DisplayName: "acl-app-2",
 		Activate:    true,
 		Image: evetest.DockerContainer{
-			ImageName: "milan4zededa/evetest-ubuntu-ctr",
+			ImageName: "lfedge/evetest-ubuntu-ctr",
 			Tag:       "1.0",
 		},
 		VirtualizationMode: eveconfig.VmMode_HVM,
 		CPUs:               1,
-		MemoryBytes:        500 * evetest.MB,
+		MemoryBytes:        500 * evetest.MiB,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
 				LogicalLabel:        "vif0",
@@ -369,12 +370,12 @@ func TestLocalNetInstanceACLs(test *testing.T) {
 		DisplayName: "acl-app-1",
 		Activate:    true,
 		Image: evetest.DockerContainer{
-			ImageName: "milan4zededa/evetest-ubuntu-ctr",
+			ImageName: "lfedge/evetest-ubuntu-ctr",
 			Tag:       "1.0",
 		},
 		VirtualizationMode: eveconfig.VmMode_HVM,
 		CPUs:               1,
-		MemoryBytes:        500 * evetest.MB,
+		MemoryBytes:        500 * evetest.MiB,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
 				LogicalLabel:        "vif0",
@@ -458,7 +459,7 @@ func TestLocalNetInstanceACLs(test *testing.T) {
 // Phases
 // ------
 //  1. Setup: one Switch NI ("switch-ni") on ethernet0.
-//     Two container apps (milan4zededa/evetest-ubuntu-ctr:1.0) bridged into the same
+//     Two container apps (lfedge/evetest-ubuntu-ctr:1.0) bridged into the same
 //     SDN L2 segment (172.20.20.0/24), each with a fixed MAC and distinct ACL rules:
 //     - acl-app-1: allow TCP to 10.17.17.25/32 (http-server) on port 80; allow TCP
 //     from 172.20.20.1/32 to cover inbound SSH. The SDN SNAT's connections from
@@ -490,8 +491,7 @@ func TestLocalNetInstanceACLs(test *testing.T) {
 //
 // Test params
 // -----------
-//   - HYPERVISOR. The test calls evetest.SkipIfHypervisorKubevirt() -- Kubevirt is
-//     reserved for cluster tests.
+//   - HYPERVISOR (defaults to KVM).
 //   - ENABLE_FLOWLOG: enable flow logging on the Switch NI (default: false).
 func TestSwitchNetInstanceACLs(test *testing.T) {
 	evetestT := evetest.Init(test)
@@ -511,7 +511,6 @@ func TestSwitchNetInstanceACLs(test *testing.T) {
 	)
 
 	hypervisor := evetest.GetHypervisorParameterValue()
-	evetest.SkipIfHypervisorKubevirt()
 	enableFlowlog := evetest.GetTestParameter[bool](enableFlowlogParamKey)
 
 	devName := "edge-dev"
@@ -540,6 +539,9 @@ func TestSwitchNetInstanceACLs(test *testing.T) {
 		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
 	})
 	device.ApplyConfig(devConfig, true, true)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
 
 	const (
 		app1MACAddr = "02:16:3e:00:00:03"
@@ -573,12 +575,12 @@ func TestSwitchNetInstanceACLs(test *testing.T) {
 		DisplayName: "acl-app-1",
 		Activate:    true,
 		Image: evetest.DockerContainer{
-			ImageName: "milan4zededa/evetest-ubuntu-ctr",
+			ImageName: "lfedge/evetest-ubuntu-ctr",
 			Tag:       "1.0",
 		},
 		VirtualizationMode: eveconfig.VmMode_HVM,
 		CPUs:               1,
-		MemoryBytes:        500 * evetest.MB,
+		MemoryBytes:        500 * evetest.MiB,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
 				LogicalLabel:        "vif0",
@@ -601,12 +603,12 @@ func TestSwitchNetInstanceACLs(test *testing.T) {
 		DisplayName: "acl-app-2",
 		Activate:    true,
 		Image: evetest.DockerContainer{
-			ImageName: "milan4zededa/evetest-ubuntu-ctr",
+			ImageName: "lfedge/evetest-ubuntu-ctr",
 			Tag:       "1.0",
 		},
 		VirtualizationMode: eveconfig.VmMode_HVM,
 		CPUs:               1,
-		MemoryBytes:        500 * evetest.MB,
+		MemoryBytes:        500 * evetest.MiB,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
 				LogicalLabel:        "vif0",
@@ -746,12 +748,12 @@ func TestSwitchNetInstanceACLs(test *testing.T) {
 		DisplayName: "acl-app-1",
 		Activate:    true,
 		Image: evetest.DockerContainer{
-			ImageName: "milan4zededa/evetest-ubuntu-ctr",
+			ImageName: "lfedge/evetest-ubuntu-ctr",
 			Tag:       "1.0",
 		},
 		VirtualizationMode: eveconfig.VmMode_HVM,
 		CPUs:               1,
-		MemoryBytes:        500 * evetest.MB,
+		MemoryBytes:        500 * evetest.MiB,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
 				LogicalLabel:        "vif0",

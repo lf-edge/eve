@@ -70,7 +70,7 @@ import (
 //     the NI bridge IP 10.50.1.1 when advertising via DHCP option 121).
 //     - ni-eth2 (10.50.2.0/24, bridge 10.50.2.1): PropagateConnectedRoutes=false,
 //     static route 10.22.22.0/24 via 10.50.2.1.
-//     One container app (milan4zededa/evetest-ubuntu-ctr:1.0) with three
+//     One container app (lfedge/evetest-ubuntu-ctr:1.0) with three
 //     VIFs (vif0..vif2), one per NI, EnforceNetIntfOrder=true for
 //     deterministic vif-to-interface mapping inside the app, default-allow
 //     ACL on each VIF, and a TCP 2222->22 port-forward on vif0.
@@ -96,8 +96,7 @@ import (
 //
 // Test params
 // -----------
-//   - HYPERVISOR. SkipIfHypervisorKubevirt() is called immediately after
-//     reading the parameter -- Kubevirt is reserved for cluster tests.
+//   - HYPERVISOR (defaults to KVM).
 func TestPropagatedRoutes(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
@@ -105,7 +104,6 @@ func TestPropagatedRoutes(test *testing.T) {
 
 	evetest.DefineTestParameters(evetest.HypervisorParameter())
 	hypervisor := evetest.GetHypervisorParameterValue()
-	evetest.SkipIfHypervisorKubevirt()
 
 	devName := "edge-dev"
 	evetest.Setup(
@@ -164,9 +162,14 @@ func TestPropagatedRoutes(test *testing.T) {
 	})
 
 	device.ApplyConfig(devConfig, true, true)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
 
 	// ni-eth0: PropagateConnectedRoutes=true so the eth0 port subnet (172.22.12.0/24)
-	// is delivered to the app. Static route to http-server-0's subnet.
+	// is delivered to the app. Static route to http-server-0's subnet; EVE normalizes
+	// the gateway (172.22.12.1) to the NI bridge IP (10.50.0.1) when advertising via
+	// DHCP option 121.
 	ni0UUID := devConfig.AddNetworkInstance(evetest.LocalNetworkInstanceConfig{
 		DisplayName: "ni-eth0",
 		Port:        "ethernet0",
@@ -180,7 +183,7 @@ func TestPropagatedRoutes(test *testing.T) {
 		StaticRoutes: []pillartypes.IPRouteConfig{
 			{
 				DstNetwork: evetest.IPSubnet("10.20.20.0/24"),
-				Gateway:    evetest.IPAddress("10.50.0.1"),
+				Gateway:    evetest.IPAddress("172.22.12.1"),
 			},
 		},
 		MTU: 1500,
@@ -212,6 +215,8 @@ func TestPropagatedRoutes(test *testing.T) {
 	// ni-eth2: PropagateConnectedRoutes=false (negative case — the eth2 port subnet
 	// 10.140.2.0/24 must NOT reach the app). Static routes are propagated regardless
 	// of PropagateConnectedRoutes, so the app still receives the route to http-server-2.
+	// EVE normalizes the gateway (10.140.2.1) to the NI bridge IP (10.50.2.1) when
+	// advertising via DHCP option 121.
 	ni2UUID := devConfig.AddNetworkInstance(evetest.LocalNetworkInstanceConfig{
 		DisplayName: "ni-eth2",
 		Port:        "ethernet2",
@@ -225,7 +230,7 @@ func TestPropagatedRoutes(test *testing.T) {
 		StaticRoutes: []pillartypes.IPRouteConfig{
 			{
 				DstNetwork: evetest.IPSubnet("10.22.22.0/24"),
-				Gateway:    evetest.IPAddress("10.50.2.1"),
+				Gateway:    evetest.IPAddress("10.140.2.1"),
 			},
 		},
 		MTU: 1500,
@@ -240,12 +245,12 @@ func TestPropagatedRoutes(test *testing.T) {
 		DisplayName: "multi-ni-app",
 		Activate:    true,
 		Image: evetest.DockerContainer{
-			ImageName: "milan4zededa/evetest-ubuntu-ctr",
+			ImageName: "lfedge/evetest-ubuntu-ctr",
 			Tag:       "1.0",
 		},
 		VirtualizationMode:  eveconfig.VmMode_HVM,
 		CPUs:                1,
-		MemoryBytes:         500 * evetest.MB,
+		MemoryBytes:         500 * evetest.MiB,
 		EnforceNetIntfOrder: true,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
@@ -453,7 +458,7 @@ func TestPropagatedRoutes(test *testing.T) {
 //     NI: 0.0.0.0/0 via label "internet" with gateway ping (GwPingMaxCost=5,
 //     PreferLowerCost=true); 10.88.88.0/24 via label "httpserver" with TCP
 //     probe to 10.88.88.70:80 (PreferLowerCost=true). One container app
-//     (milan4zededa/evetest-ubuntu-ctr:1.0) with a VIF on the NI, a TCP
+//     (lfedge/evetest-ubuntu-ctr:1.0) with a VIF on the NI, a TCP
 //     2222->22 port-forward scoped to shared label "portfwd" (eth3 lacks
 //     "portfwd" and does not forward), and a default-allow ACL.
 //  2. Initial routing: WatchNetworkInstanceInfo waits until the NI is ONLINE
@@ -474,8 +479,7 @@ func TestPropagatedRoutes(test *testing.T) {
 //
 // Test params
 // -----------
-//   - HYPERVISOR. SkipIfHypervisorKubevirt() is called immediately after
-//     reading the parameter -- Kubevirt is reserved for cluster tests.
+//   - HYPERVISOR (defaults to KVM).
 func TestLocalNIWithMultiplePorts(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
@@ -483,7 +487,6 @@ func TestLocalNIWithMultiplePorts(test *testing.T) {
 
 	evetest.DefineTestParameters(evetest.HypervisorParameter())
 	hypervisor := evetest.GetHypervisorParameterValue()
-	evetest.SkipIfHypervisorKubevirt()
 
 	devName := "edge-dev"
 	evetest.Setup(
@@ -568,6 +571,9 @@ func TestLocalNIWithMultiplePorts(test *testing.T) {
 	})
 
 	device.ApplyConfig(devConfig, true, true)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
 
 	// Local NI spanning all 4 ports (port="all").
 	// Static routes use shared labels with probing:
@@ -615,12 +621,12 @@ func TestLocalNIWithMultiplePorts(test *testing.T) {
 		DisplayName: "multi-port-app",
 		Activate:    true,
 		Image: evetest.DockerContainer{
-			ImageName: "milan4zededa/evetest-ubuntu-ctr",
+			ImageName: "lfedge/evetest-ubuntu-ctr",
 			Tag:       "1.0",
 		},
 		VirtualizationMode:  eveconfig.VmMode_HVM,
 		CPUs:                1,
-		MemoryBytes:         500 * evetest.MB,
+		MemoryBytes:         500 * evetest.MiB,
 		EnforceNetIntfOrder: true,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
@@ -652,18 +658,37 @@ func TestLocalNIWithMultiplePorts(test *testing.T) {
 	device.ApplyConfig(devConfig, false, false)
 
 	// Phase 1: verify initial routing state.
-	// NI should be ONLINE with both static routes selecting ethernet0 (lowest cost).
+	// NI should be ONLINE with both static routes selecting ethernet0 (lowest
+	// cost) and all four port subnets present as connected routes
+	// (PropagateConnectedRoutes=true). These populate independently and not
+	// necessarily together -- e.g. ethernet0's own connected subnet route has
+	// been observed to lag its own static routes by up to ~20s -- so all of
+	// it is required together in a single predicate. Checking a mix of
+	// captured-early niInfo and fresh state later would otherwise flake on
+	// whichever connected route happens to still be missing.
 	timeout := 3 * time.Minute
 	var niInfo *eveinfo.ZInfoNetworkInstance
 	t.Eventually(niUpdates, timeout).Should(Receive(matchers.SatisfyPredicate(
-		"NI ONLINE with default route via ethernet0",
+		"NI ONLINE with both static routes via ethernet0 and all connected routes present",
 		func(info *eveinfo.ZInfoNetworkInstance) bool {
 			niInfo = info
 			if info.State != eveinfo.ZNetworkInstanceState_ZNETINST_STATE_ONLINE {
 				return false
 			}
-			route := findRoute(info.IpRoutes, "0.0.0.0/0")
-			return route != nil && route.Port == "ethernet0"
+			defaultRoute := findRoute(info.IpRoutes, "0.0.0.0/0")
+			httpRoute := findRoute(info.IpRoutes, "10.88.88.0/24")
+			if defaultRoute == nil || defaultRoute.Port != "ethernet0" ||
+				httpRoute == nil || httpRoute.Port != "ethernet0" {
+				return false
+			}
+			for _, connectedSubnet := range []string{
+				"172.22.10.0/24", "172.28.20.0/24", "192.168.30.0/24", "10.40.40.0/24",
+			} {
+				if findRoute(info.IpRoutes, connectedSubnet) == nil {
+					return false
+				}
+			}
+			return true
 		}).StopIf(niHasError)))
 	stopNIWatch()
 	t.Expect(niInfo.NetworkErr).To(BeEmpty())
@@ -673,21 +698,6 @@ func TestLocalNIWithMultiplePorts(test *testing.T) {
 	device.WaitUntilAppIsRunning(appUUID, 5*time.Minute)
 
 	evetest.Checkpoint("app-running")
-
-	// Both static routes should be resolved via ethernet0 (cost=0, lowest).
-	defaultRoute := findRoute(niInfo.IpRoutes, "0.0.0.0/0")
-	t.Expect(defaultRoute).NotTo(BeNil())
-	t.Expect(defaultRoute.Port).To(Equal("ethernet0"))
-
-	httpRoute := findRoute(niInfo.IpRoutes, "10.88.88.0/24")
-	t.Expect(httpRoute).NotTo(BeNil())
-	t.Expect(httpRoute.Port).To(Equal("ethernet0"))
-
-	// All four port subnets must appear as connected routes (PropagateConnectedRoutes=true).
-	t.Expect(findRoute(niInfo.IpRoutes, "172.22.10.0/24")).NotTo(BeNil())
-	t.Expect(findRoute(niInfo.IpRoutes, "172.28.20.0/24")).NotTo(BeNil())
-	t.Expect(findRoute(niInfo.IpRoutes, "192.168.30.0/24")).NotTo(BeNil())
-	t.Expect(findRoute(niInfo.IpRoutes, "10.40.40.0/24")).NotTo(BeNil())
 
 	// Wait for the app VIF to receive an IP from the NI subnet.
 	niSubnet := evetest.IPSubnet("10.50.0.0/24")
@@ -733,7 +743,7 @@ func TestLocalNIWithMultiplePorts(test *testing.T) {
 	tryConnect := func(ipStr string) error {
 		conn, err := net.DialTimeout("tcp", net.JoinHostPort(ipStr, "2222"), portFwdDialTimeout)
 		if err == nil {
-			conn.Close()
+			_ = conn.Close()
 		}
 		return err
 	}
@@ -793,11 +803,16 @@ func TestLocalNIWithMultiplePorts(test *testing.T) {
 	evetest.Checkpoint("failover-done")
 
 	// HTTP server must still be reachable after failover (now via ethernet2).
+	// Retry: right after failover, the NI's dnsmasq may still be bound to the
+	// now-dead ethernet0 uplink for one of its upstream DNS queries, causing
+	// a transient resolution stall.
 	log.Infof("Phase 2: verifying HTTP connectivity after failover (via ethernet2)...")
-	output, _, err = device.RunShellScriptInsideApp(appUUID, appAuth,
-		"curl -sS --max-time 10 http://http-server.test/helloworld", sshTimeout, 0)
-	t.Expect(err).ToNot(HaveOccurred())
-	t.Expect(output).To(ContainSubstring("Hello from HTTP server!"))
+	t.Eventually(func(t Gomega) {
+		output, _, err := device.RunShellScriptInsideApp(appUUID, appAuth,
+			"curl -sS --max-time 10 http://http-server.test/helloworld", sshTimeout, 0)
+		t.Expect(err).ToNot(HaveOccurred())
+		t.Expect(output).To(ContainSubstring("Hello from HTTP server!"))
+	}, 5*time.Minute, polling).Should(Succeed())
 
 	// Phase 3: restore eth0. Both routes must converge back to ethernet0.
 	log.Infof("Phase 3: restoring eth0, expecting routes to converge back to ethernet0...")
@@ -817,11 +832,15 @@ func TestLocalNIWithMultiplePorts(test *testing.T) {
 
 	evetest.Checkpoint("routes-restored")
 
+	// Retry for the same reason as the Phase 2 check above: dnsmasq may
+	// briefly still be bound to a stale uplink right after convergence.
 	log.Infof("Phase 3: verifying HTTP connectivity after route restoration...")
-	output, _, err = device.RunShellScriptInsideApp(appUUID, appAuth,
-		"curl -sS --max-time 10 http://http-server.test/helloworld", sshTimeout, 0)
-	t.Expect(err).ToNot(HaveOccurred())
-	t.Expect(output).To(ContainSubstring("Hello from HTTP server!"))
+	t.Eventually(func(t Gomega) {
+		output, _, err := device.RunShellScriptInsideApp(appUUID, appAuth,
+			"curl -sS --max-time 10 http://http-server.test/helloworld", sshTimeout, 0)
+		t.Expect(err).ToNot(HaveOccurred())
+		t.Expect(output).To(ContainSubstring("Hello from HTTP server!"))
+	}, 5*time.Minute, polling).Should(Succeed())
 }
 
 // findRoute returns the first IPRoute in routes whose DestinationNetwork matches dst,
@@ -882,7 +901,7 @@ func findRoute(routes []*eveinfo.IPRoute, dst string) *eveinfo.IPRoute {
 //     10.21.21.0/24 via 172.28.1.2, DNSServers=[10.16.16.25]); airgap2
 //     (Local, no uplink, 172.28.2.0/24, StaticRoute 0.0.0.0/0 via 172.28.2.2,
 //     DNSServers=[172.28.2.1], StaticDNSEntries=[http-server-2.test, http-server-1.test]).
-//     Three container apps (milan4zededa/evetest-ubuntu-ctr:1.0) with
+//     Three container apps (lfedge/evetest-ubuntu-ctr:1.0) with
 //     default-allow ACLs: app-gw (3 VIFs: vif0→ni-eth1 MAC 02:16:3e:01:00:00,
 //     vif1→airgap1 static 172.28.1.2, vif2→airgap2 static 172.28.2.2);
 //     app-client1 (2 VIFs: vif0→ni-eth0 portfwd 2222→22, vif1→airgap1 static
@@ -916,8 +935,7 @@ func findRoute(routes []*eveinfo.IPRoute, dst string) *eveinfo.IPRoute {
 //
 // Test params
 // -----------
-//   - HYPERVISOR. SkipIfHypervisorKubevirt() is called immediately after
-//     reading the parameter -- Kubevirt is reserved for cluster tests.
+//   - HYPERVISOR (defaults to KVM).
 func TestApplicationGateway(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
@@ -925,7 +943,6 @@ func TestApplicationGateway(test *testing.T) {
 
 	evetest.DefineTestParameters(evetest.HypervisorParameter())
 	hypervisor := evetest.GetHypervisorParameterValue()
-	evetest.SkipIfHypervisorKubevirt()
 
 	devName := "edge-dev"
 	evetest.Setup(
@@ -966,6 +983,9 @@ func TestApplicationGateway(test *testing.T) {
 	})
 
 	device.ApplyConfig(devConfig, true, true)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
 
 	// ni-eth0: Local NI on eth0 — used by app-client1 for its default route
 	// and SSH access (portfwd 2222→22).
@@ -1051,7 +1071,7 @@ func TestApplicationGateway(test *testing.T) {
 	)
 
 	appImage := evetest.DockerContainer{
-		ImageName: "milan4zededa/evetest-ubuntu-ctr",
+		ImageName: "lfedge/evetest-ubuntu-ctr",
 		Tag:       "1.0",
 	}
 
@@ -1072,7 +1092,7 @@ func TestApplicationGateway(test *testing.T) {
 		Image:               appImage,
 		VirtualizationMode:  eveconfig.VmMode_HVM,
 		CPUs:                1,
-		MemoryBytes:         500 * evetest.MB,
+		MemoryBytes:         500 * evetest.MiB,
 		EnforceNetIntfOrder: true,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
@@ -1107,7 +1127,7 @@ func TestApplicationGateway(test *testing.T) {
 		Image:               appImage,
 		VirtualizationMode:  eveconfig.VmMode_HVM,
 		CPUs:                1,
-		MemoryBytes:         500 * evetest.MB,
+		MemoryBytes:         500 * evetest.MiB,
 		EnforceNetIntfOrder: true,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
@@ -1143,7 +1163,7 @@ func TestApplicationGateway(test *testing.T) {
 		Image:               appImage,
 		VirtualizationMode:  eveconfig.VmMode_HVM,
 		CPUs:                1,
-		MemoryBytes:         500 * evetest.MB,
+		MemoryBytes:         500 * evetest.MiB,
 		EnforceNetIntfOrder: true,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
@@ -1359,7 +1379,7 @@ func TestApplicationGateway(test *testing.T) {
 	// via ni-eth1 (WAN), but the SDN eth1 router has no route to http-server-1's
 	// subnet (10.20.20.0/24), so the packet is dropped.
 	log.Infof("app-client2: curl http-server-1.test (expected timeout)...")
-	out, _, err = device.RunShellScriptInsideApp(appC2UUID, appAuth,
+	_, _, err = device.RunShellScriptInsideApp(appC2UUID, appAuth,
 		"curl --max-time 5 http://http-server-1.test/helloworld",
 		30*time.Second, 0)
 	t.Expect(err).To(HaveOccurred())
@@ -1376,7 +1396,450 @@ func TestApplicationGateway(test *testing.T) {
 	t.Expect(out).To(ContainSubstring("MASQUERADE_ACTIVE:"))
 }
 
-// TestMgmtTrafficRoutedViaApp : TODO replicate github.com/lf-edge/eden/examples/mgmt-over-app
+// TestMgmtTrafficRoutedViaApp verifies that EVE's own device-management
+// traffic (not just application traffic) can be routed through an
+// application acting as a NAT gateway, and that this arrangement survives a
+// full device reboot.
+//
+// Topology
+// --------
+//
+//	 +------------+
+//	 | controller |
+//	 +------------+
+//	       |
+//	       |
+//		+--------------------+   +-----------+   +---------------------+
+//		|  eth0 (app-shared) |---| ni-wan    |---| mgmt-gw-app         |
+//		|  Switch NI, WAN    |   | (Switch)  |   | (vif0) 10.60.10.150 |
+//		+--------------------+   +-----------+   |     ^  MASQUERADE   |
+//		                                         |     |  + forwarding |
+//		                                         |     v               |
+//		+--------------------+   +-----------+   | (vif1)              |
+//		|  eth1 (management) |---| ni-lan    |---| 10.60.20.150        |
+//		|  static IP, gw=app |   | (Switch)  |   +---------------------+
+//		+--------------------+   +-----------+
+//		  EVE: 10.60.20.5
+//
+// Network model
+// -------------
+//   - netmodels.MgmtViaAppTopology -- two ports, each hosting a Switch NI:
+//     eth0/wan-network (10.60.10.0/24) is fully reachable (controller,
+//     dns-server) and hands out a DHCP static reservation for the app's WAN
+//     VIF MAC -> 10.60.10.150; eth1/lan-network (10.60.20.0/24) has no
+//     outside reachability and suppresses the DHCP router option
+//     (WithoutDefaultRoute) -- it only provides L2 connectivity between
+//     EVE's own static IP and the app's LAN VIF (reserved -> 10.60.20.150).
+//
+// Phases
+// ------
+//  1. Device config (safe state): both eth0 and eth1 start out as ordinary
+//     PhyIoUsageMgmtAndApps DHCP ports, so EVE keeps a normal, working
+//     controller path via eth0 while the gateway app is brought up.
+//     Two Switch NIs are created: ni-wan on ethernet0, ni-lan on ethernet1,
+//     and one container app with vif0 on ni-wan (MAC 02:16:3e:02:00:00)
+//     and vif1 on ni-lan (MAC 02:16:3e:02:00:01), both with default-allow ACLs.
+//  2. NI/app readiness: both NIs reach ONLINE, WaitUntilAppIsRunning
+//     succeeds, and WatchAppInfo confirms vif0=10.60.10.150 and
+//     vif1=10.60.20.150 (the SDN's static MAC reservations).
+//  3. Gateway setup: `ip route` must already show a single default route
+//     via ni-wan (10.60.10.1) -- ni-lan's WithoutDefaultRoute keeps vif1
+//     from contributing one. IP forwarding and
+//     `POSTROUTING -o eth0 MASQUERADE` are then enabled on the WAN VIF.
+//  4. Migrate EVE's management path onto the app: eth0 is reconfigured to
+//     PhyIoUsageShared with no EVE-side IP (the app's vif0 is now the only
+//     address on that segment), and eth1 is reconfigured from DHCP to a
+//     static IP (10.60.20.5/24) whose gateway is set to the app's LAN VIF
+//     (10.60.20.150) instead of the SDN's own router address -- so all of
+//     EVE's own outbound traffic (DNS, controller) that isn't for a
+//     directly-connected subnet is sent to the app, NATed, and exits via
+//     eth0. WatchDeviceInfo must report a fresh ZInfoDevice update within a
+//     bounded timeout (proving the new path works), and GetState() must be
+//     ONLINE. EVE's DPC list retains the pre-migration DPC as a fallback
+//     candidate, but reactivating it conflicts with eth0 now being bridged
+//     into ni-wan, so that fallback attempt is itself doomed to fail before
+//     the migrated DPC gets retried -- timer.port.testduration/
+//     testinterval/testfailinterval are all lowered above to bound both.
+//  5. Firewall restriction: UpdateNetworkModel adds a Firewall rule set that
+//     allows both controller and dns-server (10.16.16.25) access only from
+//     the app's WAN IP (10.60.10.150) and drops each from every other
+//     source. Two consecutive fresh-info waits (each well under the ~5-minute
+//     threshold before EVE would report itself SUSPECT) confirm sustained,
+//     not just momentary, connectivity -- the decisive proof that all of this
+//     traffic really is sourced from the app's IP, since any other path would
+//     now be dropped by the SDN firewall.
+//  6. Reboot via the controller: RequestReboot is issued without waiting
+//     (waiting would deadlock on the very SSH-driven step needed to bring
+//     the path back up), since a full device reboot also restarts the
+//     gateway app's container, discarding its MASQUERADE setup. The test
+//     polls SSH connectivity to the app's WAN VIF directly (independent of
+//     EVE's own management path) until the fresh container responds, then
+//     reapplies the same IP-forwarding + MASQUERADE commands. Only then
+//     does WatchDeviceInfo wait for a ZInfoDevice with LastRebootTime newer
+//     than the reboot request, confirming EVE is back online via the
+//     app-routed management path after a full reboot.
+//
+// Test params
+// -----------
+//   - HYPERVISOR (defaults to KVM).
 func TestMgmtTrafficRoutedViaApp(test *testing.T) {
-	test.Skip("not yet implemented")
+	evetestT := evetest.Init(test)
+	t := NewGomegaWithT(evetestT)
+	defer evetest.Close()
+
+	evetest.DefineTestParameters(evetest.HypervisorParameter())
+	hypervisor := evetest.GetHypervisorParameterValue()
+
+	devName := "edge-dev"
+	evetest.Setup(
+		evetest.RequireEdgeDevice{
+			Name:              devName,
+			WithHypervisor:    hypervisor,
+			DeviceReusePolicy: evetest.ResetDeviceConfig,
+		},
+		evetest.RequireNetworkModel{
+			NetworkModel: netmodels.MgmtViaAppTopology,
+		},
+	)
+	device := evetest.GetEdgeDevice(devName)
+	evetest.Checkpoint("setup-done")
+
+	devConfig := evetest.NewEdgeDeviceConfig(devName)
+
+	// Lower the periodic device-info publish interval so a bounded "a fresh
+	// ZInfoDevice arrives" wait can serve as a direct, real-time signal that
+	// EVE is still getting through to the controller (see
+	// TestIntermittentConnectivity for the same rationale).
+	cfgProps := pillartypes.NewConfigItemValueMap()
+	cfgProps.SetGlobalValueInt(pillartypes.DevInfoInterval, 30)
+	// Phase 4 below migrates the mgmt path onto a DPC with no other
+	// management port to fall back on if this one is briefly unreachable
+	// right at the interface cutover (see waitForFreshInfo's rationale).
+	// EVE's own DPC list retains the still-good pre-migration DPC as a
+	// fallback candidate, but reactivating it conflicts with eth0 now being
+	// bridged into the app's ni-wan Switch NI, so that fallback attempt is
+	// itself doomed to fail -- lowering NetworkTestDuration caps how long
+	// each of its IP/DNS-wait retries takes before giving up. Lowering
+	// NetworkTestInterval and NetworkTestFailInterval to their 1 min floors
+	// then lets the real (migrated) DPC be retried again soon after, instead
+	// of waiting out their 5 min defaults.
+	cfgProps.SetGlobalValueInt(pillartypes.NetworkTestDuration, 10)
+	cfgProps.SetGlobalValueInt(pillartypes.NetworkTestInterval, pillartypes.MinuteInSec)
+	cfgProps.SetGlobalValueInt(pillartypes.NetworkTestFailInterval, pillartypes.MinuteInSec)
+	devConfig.SetConfigProperties(cfgProps)
+
+	const (
+		wanAppIP    = "10.60.10.150" // SDN static reservation, wan-network
+		lanAppIP    = "10.60.20.150" // SDN static reservation, lan-network
+		wanGateway  = "10.60.10.1"
+		lanDeviceIP = "10.60.20.5"
+		vifWanMAC   = "02:16:3e:02:00:00"
+		vifLanMAC   = "02:16:3e:02:00:01"
+		dnsServerIP = "10.16.16.25" // netmodels.MgmtViaAppTopology's dns-server endpoint
+	)
+
+	// Phase 1: safe starting state -- both ports are ordinary
+	// PhyIoUsageMgmtAndApps DHCP ports. eth0 gives EVE a normal, working
+	// controller path while the gateway app is brought up; eth1's DHCP
+	// attempt never succeeds as a DPC (lan-network has no outside
+	// reachability), which is harmless.
+	eth0Net := devConfig.AddNetwork(evetest.DHCPNetworkConfig{
+		NetworkType: evecommon.NetworkType_V4Only,
+	})
+	devConfig.AddNetworkAdapter(evetest.NetworkAdapterConfig{
+		LogicalLabel:  "ethernet0",
+		PhysicalLabel: "eth0",
+		InterfaceName: "eth0",
+		NetworkUUID:   eth0Net,
+		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+	})
+	eth1Net := devConfig.AddNetwork(evetest.DHCPNetworkConfig{
+		NetworkType: evecommon.NetworkType_V4Only,
+	})
+	devConfig.AddNetworkAdapter(evetest.NetworkAdapterConfig{
+		LogicalLabel:  "ethernet1",
+		PhysicalLabel: "eth1",
+		InterfaceName: "eth1",
+		NetworkUUID:   eth1Net,
+		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+	})
+
+	devUpdates, stopDevWatch := device.WatchDeviceInfo()
+	defer stopDevWatch()
+	device.ApplyConfig(devConfig, true, true)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
+	evetest.Checkpoint("safe-port-config-applied")
+
+	// Two Switch NIs -- one per port -- and the gateway app connected to both.
+	niWanUUID := devConfig.AddNetworkInstance(evetest.SwitchNetworkInstanceConfig{
+		DisplayName: "ni-wan",
+		Port:        "ethernet0",
+		MTU:         1500,
+	})
+	niLanUUID := devConfig.AddNetworkInstance(evetest.SwitchNetworkInstanceConfig{
+		DisplayName: "ni-lan",
+		Port:        "ethernet1",
+		MTU:         1500,
+	})
+
+	allowAll := []evetest.ACLAllowRule{
+		{
+			Protocol:     evetest.NetworkProtocolAny,
+			RemoteSubnet: evetest.IPSubnet("0.0.0.0/0"),
+		},
+	}
+	appUUID := devConfig.AddApplication(evetest.ApplicationInstanceConfig{
+		DisplayName: "mgmt-gw-app",
+		Activate:    true,
+		Image: evetest.DockerContainer{
+			ImageName: "lfedge/evetest-ubuntu-ctr", Tag: "1.0"},
+		VirtualizationMode:  eveconfig.VmMode_HVM,
+		CPUs:                1,
+		MemoryBytes:         500 * evetest.MiB,
+		EnforceNetIntfOrder: true,
+		NetworkAdapters: []evetest.AppNetworkAdapter{
+			evetest.VirtualNetworkAdapter{
+				LogicalLabel:        "vif0",
+				NetworkInstanceUUID: niWanUUID,
+				MAC:                 evetest.MACAddress(vifWanMAC),
+				ACLAllowRules:       allowAll,
+			},
+			evetest.VirtualNetworkAdapter{
+				LogicalLabel:        "vif1",
+				NetworkInstanceUUID: niLanUUID,
+				MAC:                 evetest.MACAddress(vifLanMAC),
+				ACLAllowRules:       allowAll,
+			},
+		},
+	})
+
+	niWanUpdates, stopNIWanWatch := device.WatchNetworkInstanceInfo(niWanUUID)
+	niLanUpdates, stopNILanWatch := device.WatchNetworkInstanceInfo(niLanUUID)
+	appUpdates, stopAppWatch := device.WatchAppInfo(appUUID)
+	device.ApplyConfig(devConfig, false, false)
+
+	niTimeout := 3 * time.Minute
+	t.Eventually(niWanUpdates, niTimeout).Should(Receive(matchers.SatisfyPredicate(
+		"ni-wan is ONLINE",
+		func(info *eveinfo.ZInfoNetworkInstance) bool {
+			return info.State == eveinfo.ZNetworkInstanceState_ZNETINST_STATE_ONLINE
+		}).StopIf(niHasError)))
+	stopNIWanWatch()
+
+	t.Eventually(niLanUpdates, niTimeout).Should(Receive(matchers.SatisfyPredicate(
+		"ni-lan is ONLINE",
+		func(info *eveinfo.ZInfoNetworkInstance) bool {
+			return info.State == eveinfo.ZNetworkInstanceState_ZNETINST_STATE_ONLINE
+		}).StopIf(niHasError)))
+	stopNILanWatch()
+
+	evetest.Checkpoint("nis-online")
+
+	device.WaitUntilAppIsRunning(appUUID, 5*time.Minute)
+	evetest.Checkpoint("app-running")
+
+	var appInfo *eveinfo.ZInfoApp
+	t.Eventually(appUpdates, niTimeout).Should(Receive(matchers.SatisfyPredicate(
+		"app reports 2 VIFs with the reserved IPs",
+		func(info *eveinfo.ZInfoApp) bool {
+			appInfo = info
+			if len(info.Network) != 2 {
+				return false
+			}
+			for _, vif := range info.Network {
+				if len(vif.IPAddrs) == 0 {
+					return false
+				}
+			}
+			return true
+		}).StopIf(appHasError)))
+	stopAppWatch()
+
+	t.Expect(appInfo.Network[0].IPAddrs).To(ContainElement(wanAppIP))
+	t.Expect(appInfo.Network[1].IPAddrs).To(ContainElement(lanAppIP))
+
+	appAuth := evetest.UsernamePasswordAuth{
+		Username: "root",
+		Password: "testpassword",
+	}
+	sshTimeout := 20 * time.Second
+	polling := 3 * time.Second
+	log := evetest.Logger()
+
+	// Phase 3: gateway setup, over SSH via ni-wan's IP directly (Switch NI
+	// VIFs are reachable from the evetest host without a port-forward).
+	log.Infof("Waiting for gateway app SSH...")
+	var routes string
+	t.Eventually(func(gt Gomega) {
+		out, _, err := device.RunShellScriptInsideApp(appUUID, appAuth,
+			"ip route", sshTimeout, 0)
+		gt.Expect(err).ToNot(HaveOccurred())
+		gt.Expect(out).To(ContainSubstring("default via " + wanGateway))
+		routes = out
+	}, 5*time.Minute, polling).Should(Succeed())
+	// ni-lan's WithoutDefaultRoute keeps vif1 from also contributing a
+	// default route -- there must be exactly one, via the WAN leg.
+	t.Expect(routes).To(ContainSubstring("default via " + wanGateway))
+
+	evetest.Checkpoint("app-ssh-ready")
+
+	configureGateway := func() {
+		_, _, err := device.RunShellScriptInsideApp(appUUID, appAuth,
+			"sysctl -w net.ipv4.ip_forward=1; "+
+				"iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE",
+			sshTimeout, 0)
+		t.Expect(err).ToNot(HaveOccurred())
+	}
+	log.Infof("Configuring gateway app: IP forwarding + MASQUERADE on eth0 (WAN)")
+	configureGateway()
+	evetest.Checkpoint("app-gateway-configured")
+
+	// Phase 4: migrate EVE's own management path onto the app. eth0 loses
+	// its EVE-side IP (app-shared only); eth1 switches from DHCP to a
+	// static IP whose gateway is the app's LAN VIF instead of the SDN's own
+	// router address.
+	log.Infof("Phase 4: migrating EVE's management path via the gateway app...")
+	devConfig.UpdateNetwork(eth0Net, evetest.NoIPNetworkConfig{})
+	devConfig.UpdateNetworkAdapter(evetest.NetworkAdapterConfig{
+		LogicalLabel:  "ethernet0",
+		PhysicalLabel: "eth0",
+		InterfaceName: "eth0",
+		NetworkUUID:   eth0Net,
+		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageShared,
+	})
+	devConfig.UpdateNetwork(eth1Net, evetest.StaticNetworkConfig{
+		NetworkType: evecommon.NetworkType_V4Only,
+		Subnet:      evetest.IPSubnet("10.60.20.0/24"),
+		Gateway:     evetest.IPAddress(lanAppIP),
+		DNSServers:  []net.IP{evetest.IPAddress(dnsServerIP)},
+	})
+	devConfig.UpdateNetworkAdapter(evetest.NetworkAdapterConfig{
+		LogicalLabel:  "ethernet1",
+		PhysicalLabel: "eth1",
+		InterfaceName: "eth1",
+		NetworkUUID:   eth1Net,
+		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+		StaticIP:      evetest.IPAddress(lanDeviceIP),
+	})
+	// waitUntilConfirmed is deliberately left false: this config changes the
+	// management port, and EVE may not be able to publish metrics again
+	// until the app-routed path above is actually working.
+	device.ApplyConfig(devConfig, true, false)
+
+	// infoTimeout bounds how long a fresh ZInfoDevice update may take once
+	// the app-routed path takes over (DevInfoInterval was lowered to 30s
+	// above). Budget for: the doomed fallback attempt at the still-good
+	// pre-migration DPC (up to 5 * NetworkTestDuration = 50s of IP/DNS-wait
+	// retries before it gives up), then the migrated DPC itself getting
+	// retried at least twice (accepting one hiccup on the first attempt,
+	// e.g. right at the interface cutover) at the 1 min NetworkTestInterval/
+	// NetworkTestFailInterval floor set above, plus a safety margin.
+	infoTimeout := 3 * time.Minute
+	waitForFreshInfo := func(reason string) {
+	drainBacklog:
+		for {
+			select {
+			case <-devUpdates:
+			default:
+				break drainBacklog
+			}
+		}
+		log.Infof("Waiting for a fresh device info update (%s)...", reason)
+		t.Eventually(devUpdates, infoTimeout).Should(Receive(),
+			"EVE should get device info through to the controller via the "+
+				"app-routed management path (%s)", reason)
+	}
+	waitForFreshInfo("mgmt path migrated to the gateway app")
+	t.Expect(device.GetState()).To(Equal(api.EVEDeviceState_EVE_DEVICE_STATE_ONLINE))
+	evetest.Checkpoint("mgmt-via-app-active")
+
+	// Phase 5: restrict the SDN firewall so both the controller and the DNS
+	// server are reachable only from the app's WAN IP -- covering DNS too
+	// closes off the obvious "cheat" of resolving the controller hostname
+	// (or anything else) via some other, non-app-routed path while still
+	// routing the actual controller connection through the app. Sustained
+	// (not just momentary) connectivity from here on is the decisive proof
+	// that all of this traffic is genuinely sourced from the app, since any
+	// other path is now dropped.
+	log.Infof("Phase 5: restricting controller and DNS access to the app's WAN IP...")
+	restrictedModel := proto.Clone(netmodels.MgmtViaAppTopology).(*api.NetworkModel)
+	restrictedModel.Firewall = &api.Firewall{
+		Rules: []*api.FwRule{
+			{
+				SrcSubnet: wanAppIP + "/32",
+				DstSubnet: evetest.GetControllerIPv4().String() + "/32",
+				Action:    api.FwAction_FW_ALLOW,
+			},
+			{
+				SrcSubnet: "0.0.0.0/0",
+				DstSubnet: evetest.GetControllerIPv4().String() + "/32",
+				Action:    api.FwAction_FW_DROP,
+			},
+			{
+				SrcSubnet: wanAppIP + "/32",
+				DstSubnet: dnsServerIP + "/32",
+				Action:    api.FwAction_FW_ALLOW,
+			},
+			{
+				SrcSubnet: "0.0.0.0/0",
+				DstSubnet: dnsServerIP + "/32",
+				Action:    api.FwAction_FW_DROP,
+			},
+		},
+	}
+	evetest.UpdateNetworkModel(restrictedModel)
+	defer evetest.UpdateNetworkModel(netmodels.MgmtViaAppTopology)
+
+	waitForFreshInfo("firewall restricted, check 1/2")
+	waitForFreshInfo("firewall restricted, check 2/2")
+	t.Expect(device.GetState()).To(Equal(api.EVEDeviceState_EVE_DEVICE_STATE_ONLINE))
+	evetest.Checkpoint("firewall-restricted")
+
+	// Phase 6: reboot via the controller. RequestReboot is issued without
+	// waiting: a full device reboot also restarts the gateway app's
+	// container, discarding its MASQUERADE setup, so waiting here would
+	// deadlock on the very SSH-driven step below that brings the
+	// management path back up.
+	//
+	// /proc/sys/kernel/random/boot_id is captured beforehand so the
+	// post-reboot poll can tell a genuinely fresh container (running under
+	// a rebooted shim VM/kernel) apart from the pre-reboot instance still
+	// answering SSH: RequestReboot only requests a reboot -- it does not
+	// wait for it -- so an early poll attempt could otherwise reach the
+	// old, not-yet-rebooted container and report success prematurely.
+	preRebootBootID, _, err := device.RunShellScriptInsideApp(appUUID, appAuth,
+		"cat /proc/sys/kernel/random/boot_id", sshTimeout, 0)
+	t.Expect(err).ToNot(HaveOccurred())
+
+	log.Infof("Phase 6: triggering reboot via the controller...")
+	rebootIssuedAt := time.Now()
+	device.RequestReboot(false)
+
+	// Poll SSH connectivity to the app's WAN VIF directly -- independent of
+	// EVE's own management path -- until boot_id differs from the
+	// pre-reboot value, proving the container is genuinely running under a
+	// fresh boot. Then reconfigure it (container state does not survive a
+	// full device reboot).
+	log.Infof("Waiting for the gateway app to come back up after reboot...")
+	t.Eventually(func(gt Gomega) {
+		bootID, _, err := device.RunShellScriptInsideApp(appUUID, appAuth,
+			"cat /proc/sys/kernel/random/boot_id", sshTimeout, 0)
+		gt.Expect(err).ToNot(HaveOccurred())
+		gt.Expect(bootID).ToNot(Equal(preRebootBootID),
+			"still answering as the pre-reboot instance")
+	}, 10*time.Minute, polling).Should(Succeed())
+	configureGateway()
+	evetest.Checkpoint("app-gateway-reconfigured-post-reboot")
+
+	rebootTimeout := 10 * time.Minute
+	t.Eventually(devUpdates, rebootTimeout).Should(Receive(matchers.SatisfyPredicate(
+		"device reports a fresh reboot via the app-routed management path",
+		func(info *eveinfo.ZInfoDevice) bool {
+			ts := info.GetLastRebootTime()
+			return ts != nil && ts.AsTime().After(rebootIssuedAt)
+		})))
+	t.Expect(device.GetState()).To(Equal(api.EVEDeviceState_EVE_DEVICE_STATE_ONLINE))
+	evetest.Checkpoint("device-back-online-post-reboot")
 }

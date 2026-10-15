@@ -4,10 +4,10 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
-	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,33 +31,73 @@ import (
 )
 
 const (
-	// If the broker does not receive any keep-alive messages from a client for 10 minutes,
+	// If the broker does not receive any keep-alive messages from a client for 5 minutes,
 	// the client session and all associated resources are automatically released.
-	keepAliveTimeout = 10 * time.Minute
+	keepAliveTimeout = 5 * time.Minute
 	// proxyChainPath is the default path where the optional proxy CA chain PEM file
 	// is expected. If present, its certificates will be loaded and appended to each EVE
 	// device trusted TLS roots. This is useful when running a transparent caching proxy
 	// to avoid re-downloading application images and Docker containers from remote
 	// registries or data stores.
 	proxyChainPath = "/etc/evetest/proxy/ca-chain.pem"
+	// sdnConnectTimeout bounds how long ConnectTunnelToSDN retries dialing the SDN's
+	// gRPC service before giving up -- the SDN VM takes time to finish booting, so
+	// early attempts are expected to fail. Bounds only the connect retry loop, not
+	// the tunnel stream itself.
+	sdnConnectTimeout       = 5 * time.Minute
+	sdnConnectRetryInterval = 3 * time.Second
 )
 
 type broker struct {
 	api.UnimplementedBrokerServer
-	globalLog      *logrus.Logger
-	provider       provider.DeviceProvider
-	providerName   string
-	imageDir       string
-	sdnGrpcPort    uint16
-	supportedArchs []api.ArchType
-	proxyCACerts   []*pem.Block
-	mutex          sync.Mutex
-	sessions       map[string]*session      // key: client ID
-	imageUploads   map[string]chan struct{} // key: docker image name; closed on completion
+	globalLog       *logrus.Logger
+	provider        provider.DeviceProvider
+	providerName    string
+	imageDir        string
+	sdnGrpcPort     uint16
+	supportedArchs  []api.ArchType
+	capabilities    []api.Capability
+	proxyCACerts    []*pem.Block
+	registryMirrors map[string][]string // key: registry hostname
+	maxClients      int                 // -1 means unlimited
+
+	// Periodic Docker image cleanup
+	imgRetention     time.Duration
+	diskThresholdPct int
+	dockerMinFreeGiB int // 0 disables the free-space floor
+	imageUsage       *imageUsageTracker
+
+	// Periodic EVE image template cleanup
+	templates            *templateCache
+	tmplRetention        time.Duration
+	tmplDiskThresholdPct int
+	tmplMinFreeGiB       int // 0 disables the free-space floor
+
+	// mutex protects only broker-global state: sessions, imageUploads
+	// and usedSDNUplinkMACs. It is always held briefly. Per-session state
+	// (session.eveDevices, session.sdnDevice) is protected by that session's
+	// own mutex instead, so slow work for one client never blocks unrelated clients.
+	//
+	// Lock ordering invariant: if a call path needs both locks, acquire a
+	// session's mutex BEFORE this one, never the reverse (see generateSDNUplinkMAC/
+	// usedSDNUplinkMACs, which briefly take this mutex while a caller holds its own
+	// session's mutex) -- this avoids an AB-BA deadlock between two sessions.
+	mutex             sync.Mutex
+	sessions          map[string]*session      // key: client ID
+	imageUploads      map[string]chan struct{} // key: docker image name; closed on completion
+	usedSDNUplinkMACs map[string]struct{}      // key: MAC address
 }
 
 type session struct {
-	clientID   string
+	clientID string
+	// mutex protects sdnDevice and eveDevices below, and serializes this
+	// session's own device operations (BuildImage, SetupDevices,
+	// TeardownDevices, console/tunnel device lookups). It never blocks a
+	// different session. See the lock ordering invariant on broker.mutex.
+	// PowerOnDevice is the one exception: it only holds this mutex for its
+	// own map lookup/field updates, not across a device's potentially
+	// long-running network-boot wait (see PowerOnDevice's doc comment).
+	mutex      sync.Mutex
 	sdnDevice  *device
 	eveDevices map[string]*device // key: deviceName
 	log        *logrus.Entry
@@ -83,10 +124,56 @@ type device struct {
 	// Flag to indicate that device has been successfully set up and should be eventually
 	// torn down.
 	created bool
+
+	// installerImage is set only for devices that boot an EVE installer image first.
+	// When non-nil, SetupDevices runs the installer VM (which writes EVE onto the
+	// target disk), then reconfigures the device to boot from disks only.
+	// Nil for live (non-installer) devices and for the SDN device.
+	installerImage *provider.DiskImage
+
+	// disks holds the persistent disk image(s). For live devices this is the
+	// live QCOW2; for installer devices this is the blank target QCOW2 that the
+	// installer writes EVE into. Also set for the SDN device.
+	disks []provider.DiskImage
+
+	// templateKey identifies the cached EVE image template backing this
+	// device's disk, if any. Empty for legacy-build devices and for the SDN
+	// device. Teardown releases the template reference recorded under this key.
+	templateKey string
+
+	// netbootInstalled is set once a NetworkBootFallback device's first
+	// PowerOnDevice call has waited out its network-boot install (see
+	// PowerOnDevice). It guards that wait against running again on a later
+	// PowerOnDevice call (e.g. a reboot test power-cycling the now-installed
+	// device), when the VM boots straight into the installed EVE instead.
+	netbootInstalled bool
+}
+
+// brokerCapabilities composes the full capability set advertised to clients:
+// the provider's own capabilities plus the two the broker decides itself.
+// A provider never builds, receives or edits an EVE image, so both depend on
+// the provider only through its disk image strategy, which is why they live
+// here rather than in provider.Capabilities().
+func brokerCapabilities(
+	providerCaps []api.Capability, diskStrategy provider.DiskImageStrategy) []api.Capability {
+	caps := append([]api.Capability{}, providerCaps...)
+	if diskStrategy != provider.DiskImageLegacyBuild {
+		caps = append(caps, api.Capability_CAPABILITY_LOCAL_LIVE_IMAGE)
+	}
+	// Editing a device's disk means reading and writing the very file that
+	// device boots from, which the broker can only do while the file stays
+	// where it put it. The overlay strategy is exactly that case; a standalone
+	// disk may since have been handed to a node the broker cannot reach.
+	if diskStrategy == provider.DiskImageOverlay {
+		caps = append(caps, api.Capability_CAPABILITY_EDIT_DEVICE_DISK)
+	}
+	return caps
 }
 
 func newBroker(log *logrus.Logger, provider provider.DeviceProvider,
-	providerName, imageDir string, sdnGrpcPort uint16) (*broker, error) {
+	providerName, imageDir string, sdnGrpcPort uint16, maxClients int,
+	imgRetention time.Duration, diskThresholdPct, dockerMinFreeGiB int,
+	tmplRetention time.Duration, tmplDiskThresholdPct, tmplMinFreeGiB int) (*broker, error) {
 	supportedArchs, err := provider.GetSupportedDeviceArchs()
 	if err != nil {
 		return nil, fmt.Errorf("cannot retrieve supported device architectures: %w", err)
@@ -111,28 +198,75 @@ func newBroker(log *logrus.Logger, provider provider.DeviceProvider,
 		log.Infof("Loaded %d proxy CA certificates from %s",
 			len(proxyCACerts), proxyChainPath)
 	}
-	return &broker{
-		globalLog:      log,
-		provider:       provider,
-		providerName:   providerName,
-		imageDir:       imageDir,
-		sdnGrpcPort:    sdnGrpcPort,
-		supportedArchs: supportedArchs,
-		proxyCACerts:   proxyCACerts,
-		sessions:       make(map[string]*session),
-		imageUploads:   make(map[string]chan struct{}),
-	}, nil
+	b := &broker{
+		globalLog:            log,
+		provider:             provider,
+		providerName:         providerName,
+		imageDir:             imageDir,
+		sdnGrpcPort:          sdnGrpcPort,
+		supportedArchs:       supportedArchs,
+		capabilities:         brokerCapabilities(provider.Capabilities(), provider.DiskImageStrategy()),
+		proxyCACerts:         proxyCACerts,
+		registryMirrors:      constants.LoadRegistryMirrors(),
+		maxClients:           maxClients,
+		imgRetention:         imgRetention,
+		diskThresholdPct:     diskThresholdPct,
+		dockerMinFreeGiB:     dockerMinFreeGiB,
+		imageUsage:           newImageUsageTracker(imageDir),
+		templates:            newTemplateCache(imageDir, log),
+		tmplRetention:        tmplRetention,
+		tmplDiskThresholdPct: tmplDiskThresholdPct,
+		tmplMinFreeGiB:       tmplMinFreeGiB,
+		sessions:             make(map[string]*session),
+		imageUploads:         make(map[string]chan struct{}),
+		usedSDNUplinkMACs:    make(map[string]struct{}),
+	}
+	// Claim the image directory before the cleanup goroutine starts: it reads
+	// b.templates.owner, so the lock must be taken first. A second broker
+	// sharing the directory runs in non-owner mode and never deletes anything.
+	if err := b.templates.tryLock(); err != nil {
+		return nil, err
+	}
+	// Client sessions do not survive a broker restart, so every reference on
+	// disk is stale and any in-progress build was abandoned. Both are no-ops
+	// unless this broker owns the directory: a non-owner must never delete
+	// another broker's in-progress build or its live VMs' refs.
+	if err := b.templates.removeStaleTmpDirs(); err != nil {
+		log.Warnf("Failed to sweep stale template builds: %v", err)
+	}
+	if err := b.templates.clearAllRefs(); err != nil {
+		log.Warnf("Failed to clear stale template references: %v", err)
+	}
+	if err := b.templates.removeStaleLiveUploads(); err != nil {
+		log.Warnf("Failed to sweep stale live image uploads: %v", err)
+	}
+	// The qemu provider runs the broker embedded inside the short-lived evetest
+	// container itself (all-in-one mode), so it exits when the test ends -- there's
+	// no long-lived Docker storage to protect, and a 30-minute periodic loop would
+	// usually never tick. Templates do outlive it, though: the image directory is a
+	// host mount shared by every run. Sweep them once here instead, right after
+	// clearAllRefs, where nothing is referenced yet and the whole cache is visible
+	// to the age and disk-pressure passes.
+	if providerName == "qemu" {
+		b.cleanupTemplates(context.Background())
+	} else {
+		go b.runImageCleanupLoop()
+	}
+	return b, nil
 }
 
-// generateClientID generates a short, URL-safe client ID.
-// 4 random bytes → 6 characters in base64 (URL-safe, no padding).
+// generateClientID generates a short client ID. It gets embedded directly into
+// generated VM names (e.g. "eve-<client-id>-<device-name>"), so hex is used
+// rather than base64: some providers (Proxmox) require VM names to look like
+// valid DNS labels, which rules out base64's '_' and '-' altogether -- hex's
+// alphabet ([0-9a-f]) is always safe there.
 func generateClientID() (string, error) {
 	const length = 4
 	b := make([]byte, length)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
-	return base64.URLEncoding.WithPadding(base64.NoPadding).EncodeToString(b), nil
+	return hex.EncodeToString(b), nil
 }
 
 func sdnProviderDevNameForClient(clientID string) string {
@@ -145,6 +279,10 @@ func clientNotFoundErr(clientID string) error {
 
 func eveDevNotFoundErr(devName string) error {
 	return fmt.Errorf("EVE device %q not found", devName)
+}
+
+func maxClientsReachedErr(current, limit int) error {
+	return fmt.Errorf("broker is at maximum client capacity (%d/%d); try again later", current, limit)
 }
 
 // generateUniqueClientID generates a unique client ID that doesn't exist
@@ -184,6 +322,11 @@ func (b *broker) Connect(
 		clientSession.log.Info("Reconnecting existing client")
 	} else {
 		// New client
+		if b.maxClients >= 0 && len(b.sessions) >= b.maxClients {
+			err := maxClientsReachedErr(len(b.sessions), b.maxClients)
+			b.globalLog.Error(err)
+			return nil, err
+		}
 		var err error
 		clientID, err = b.generateUniqueClientID()
 		if err != nil {
@@ -193,7 +336,7 @@ func (b *broker) Connect(
 		}
 
 		clientLogger := b.globalLog.WithField("client_id", clientID)
-		logHook := &logger.LogrusGrpcHook{}
+		logHook := logger.NewLogrusGrpcHook(clientID)
 		clientLogger.Logger.AddHook(logHook)
 
 		clientSession = &session{
@@ -213,52 +356,80 @@ func (b *broker) Connect(
 		proxyCaCerts = append(proxyCaCerts, string(pemData))
 	}
 
+	// Advertise configured OCI registry mirrors in a stable order.
+	var registryMirrors []*api.RegistryMirror
+	for _, e := range constants.RegistryMirrorEntries {
+		if urls, ok := b.registryMirrors[e.Registry]; ok {
+			registryMirrors = append(registryMirrors,
+				&api.RegistryMirror{Registry: e.Registry, Urls: urls})
+		}
+	}
+
 	return &api.ConnectResponse{
-		ClientId:       clientID,
-		BrokerVersion:  version,
-		SupportedArchs: b.supportedArchs,
-		ProxyCaCerts:   proxyCaCerts,
+		ClientId:             clientID,
+		BrokerVersion:        version,
+		SupportedArchs:       b.supportedArchs,
+		ProviderCapabilities: b.capabilities,
+		ProxyCaCerts:         proxyCaCerts,
+		RegistryMirrors:      registryMirrors,
 	}, nil
 }
 
 // Close terminates an active client session.
 func (b *broker) Close(
 	ctx context.Context, req *api.CloseRequest) (*api.CloseResponse, error) {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
-	clientSession, exists := b.sessions[req.ClientId]
-	if !exists {
+	clientSession := b.removeSession(req.ClientId)
+	if clientSession == nil {
 		err := clientNotFoundErr(req.ClientId)
 		b.globalLog.Error(err)
 		return nil, err
 	}
-	b.closeLocked(ctx, clientSession)
+	b.closeSession(clientSession)
 	return &api.CloseResponse{}, nil
 }
 
-func (b *broker) closeLocked(ctx context.Context, clientSession *session) {
-	if _, exists := b.sessions[clientSession.clientID]; !exists {
-		// NOOP
-		return
+// removeSession atomically removes and returns the session for clientID, or nil
+// if it doesn't exist (e.g. already removed by a racing Close/timeout/CloseAll).
+// Only b.sessions is touched here; the actual (possibly slow) per-session
+// teardown happens in closeSession, without holding b.mutex, so it never blocks
+// unrelated clients.
+func (b *broker) removeSession(clientID string) *session {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	clientSession, exists := b.sessions[clientID]
+	if !exists {
+		return nil
 	}
-	// Teardown all remaining devices created for the client.
-	b.teardownDevices(ctx, clientSession)
+	delete(b.sessions, clientID)
+	return clientSession
+}
 
-	// Remove session from the broker map.
-	delete(b.sessions, clientSession.clientID)
+// closeSession tears down all devices for a session already removed from
+// b.sessions (via removeSession) and signals clientSession.closed. Since the
+// session was already removed, concurrent lookups for this client fail fast
+// instead of blocking on clientSession.mutex.
+func (b *broker) closeSession(clientSession *session) {
+	clientSession.mutex.Lock()
+	b.teardownDevices(clientSession)
+	clientSession.mutex.Unlock()
 
 	// Signal any goroutines (e.g. KeepAlive timer) that the session is gone.
 	close(clientSession.closed)
 }
 
 // CloseAll closes all active sessions.
-func (b *broker) CloseAll(ctx context.Context) {
+func (b *broker) CloseAll() {
 	b.mutex.Lock()
-	defer b.mutex.Unlock()
+	sessions := make([]*session, 0, len(b.sessions))
 	for _, clientSession := range b.sessions {
-		b.closeLocked(ctx, clientSession)
+		sessions = append(sessions, clientSession)
 	}
-	return
+	b.sessions = make(map[string]*session)
+	b.mutex.Unlock()
+
+	for _, clientSession := range sessions {
+		b.closeSession(clientSession)
+	}
 }
 
 // KeepAlive is a bidirectional stream used by the client to maintain an active session
@@ -294,12 +465,10 @@ func (b *broker) KeepAlive(
 	go func() {
 		select {
 		case <-timer.C:
-			b.mutex.Lock()
-			if _, exists := b.sessions[clientID]; exists {
+			if removedSession := b.removeSession(clientID); removedSession != nil {
 				log.Infof("KeepAlive timeout exceeded, closing client session %s", clientID)
-				b.closeLocked(context.Background(), clientSession)
+				b.closeSession(removedSession)
 			}
-			b.mutex.Unlock()
 		case <-clientSession.closed:
 			timer.Stop()
 		}
@@ -372,13 +541,15 @@ func (b *broker) StreamLogs(
 func (b *broker) BuildImage(
 	ctx context.Context, req *api.BuildImageRequest) (*api.BuildImageResponse, error) {
 	b.mutex.Lock()
-	defer b.mutex.Unlock()
 	clientSession, exists := b.sessions[req.ClientId]
+	b.mutex.Unlock()
 	if !exists {
 		err := clientNotFoundErr(req.ClientId)
 		b.globalLog.Error(err)
 		return nil, err
 	}
+	clientSession.mutex.Lock()
+	defer clientSession.mutex.Unlock()
 	log := clientSession.log
 
 	imageArch := req.GetImage().GetArch()
@@ -395,13 +566,15 @@ func (b *broker) BuildImage(
 
 	// Check if image already exists for this device
 	eveDevice, exists := clientSession.eveDevices[req.DeviceName]
-	if exists && (eveDevice.Qcow2ImagePath != "" || eveDevice.RawImagePath != "") {
+	if exists && len(eveDevice.Disks) > 0 {
 		err := fmt.Errorf("image for EVE device %q already exists", req.DeviceName)
 		log.Error(err)
 		return nil, err
 	}
 
-	// Resolve Docker image name from ImageRef
+	// Resolve Docker image name from ImageRef. Still resolved on the live path
+	// too: the harness always sends an ImageRef for reporting, and this is a
+	// pure string computation, no I/O.
 	dockerImageName, err := utils.EVEDockerImageName(req.Image)
 	if err != nil {
 		err = fmt.Errorf("invalid image reference: %w", err)
@@ -409,28 +582,126 @@ func (b *broker) BuildImage(
 		return nil, err
 	}
 
-	// Check if the Docker image exists locally
-	haveImage, err := utils.HaveDockerImage(ctx, log, dockerImageName)
-	if err != nil {
-		err = fmt.Errorf("failed to check for image %q presence: %w",
-			dockerImageName, err)
-		log.Error(err)
-		return nil, err
-	}
-	if !haveImage {
-		log.Infof("Docker image %q not found locally, trying to pull...", dockerImageName)
-		err = utils.PullDockerImage(ctx, log, dockerImageName)
-		if err != nil {
-			log.Warnf("Failed to pull Docker image %q: %v", dockerImageName, err)
-			return &api.BuildImageResponse{MissingEveContainerImage: true}, nil
+	// A local live image may exist with no EVE container image on this broker
+	// at all, so its preconditions and miss check must be resolved before any
+	// docker image I/O is attempted: a HaveDockerImage/PullDockerImage below
+	// would otherwise waste (or fail) a multi-GB pull that the live path
+	// never needed.
+	// liveSource is set when this broker can read the client's live image files
+	// itself, which makes the upload pointless.
+	var liveSource *api.LocalLiveImageSource
+	if live := req.GetLiveImage(); live != nil {
+		if req.MakeInstaller {
+			err := fmt.Errorf(
+				"device %q requests an installer image, which a local live image "+
+					"cannot provide; unset EVETEST_EVE_LIVE_IMAGE to use the container path",
+				req.DeviceName)
+			log.Error(err)
+			return nil, err
 		}
+		if b.provider.DiskImageStrategy() == provider.DiskImageLegacyBuild {
+			err := fmt.Errorf(
+				"device %q requests a local live image, but the %T provider still uses "+
+					"the per-device container build path and cannot consume one; unset "+
+					"EVETEST_EVE_LIVE_IMAGE to build from the EVE container image",
+				req.DeviceName, b.provider)
+			log.Error(err)
+			return nil, err
+		}
+		if err := validLiveImageSHA256(live.GetSha256()); err != nil {
+			log.Error(err)
+			return nil, err
+		}
+		// Checked before the staged upload and the template cache, and kept even
+		// on a cache hit: a template evicted between this check and the install
+		// then still has a source to be rebuilt from, and asking for an upload
+		// this broker does not need is never right.
+		if localLiveSourceUsable(log, req.GetLiveImageSource()) {
+			liveSource = req.GetLiveImageSource()
+		} else {
+			tarPath := liveUploadPath(b.imageDir, live.GetSha256())
+			if _, statErr := os.Stat(tarPath); statErr != nil {
+				if !b.templates.hasTemplate(templateKeyParams{
+					LiveImageSHA256: live.GetSha256(),
+					Arch:            imageArch,
+				}) {
+					return &api.BuildImageResponse{MissingEveLiveImage: true}, nil
+				}
+			}
+		}
+	} else {
+		// Check if the Docker image exists locally
+		haveImage, err := utils.HaveDockerImage(ctx, log, dockerImageName)
+		if err != nil {
+			err = fmt.Errorf("failed to check for image %q presence: %w",
+				dockerImageName, err)
+			log.Error(err)
+			return nil, err
+		}
+		if !haveImage {
+			log.Infof("Docker image %q not found locally, trying to pull...", dockerImageName)
+			err = utils.PullDockerImage(ctx, log, dockerImageName)
+			if err != nil {
+				log.Warnf("Failed to pull Docker image %q: %v", dockerImageName, err)
+				return &api.BuildImageResponse{MissingEveContainerImage: true}, nil
+			}
+		}
+		b.imageUsage.touch(dockerImageName)
 	}
 
-	// Build QCOW2 or RAW image
 	providerDevName := fmt.Sprintf("eve-%s-%s", clientSession.clientID, req.DeviceName)
 	imageDirPath := filepath.Join(b.imageDir, providerDevName)
-	imageSpec, err := buildEVEImage(ctx, log, imageDirPath, dockerImageName,
-		req.Config, b.proxyCACerts, req.DiskBytes, req.MakeInstaller)
+	softSerial := resolveSoftSerial(req.GetConfig().GetSoftSerial())
+
+	var eveImage buildEVEImageResult
+	var templateKey string
+	if req.NetworkBoot {
+		eveImage, err = buildNetworkBootImage(ctx, log, buildNetworkBootImageParams{
+			imageDirPath:    imageDirPath,
+			dockerImageName: dockerImageName,
+			diskSize:        req.DiskBytes,
+			extraDiskBytes:  req.ExtraDiskBytes,
+		})
+	} else if b.provider.DiskImageStrategy() == provider.DiskImageLegacyBuild {
+		eveImage, err = buildEVEImage(ctx, log, buildEVEImageParams{
+			imageDirPath:    imageDirPath,
+			dockerImageName: dockerImageName,
+			config:          req.Config,
+			proxyCACerts:    b.proxyCACerts,
+			softSerial:      softSerial,
+			diskSize:        req.DiskBytes,
+			installer:       req.MakeInstaller,
+			extraDiskBytes:  req.ExtraDiskBytes,
+		})
+	} else {
+		// No EVE container image need exist on this broker at all on the live
+		// path, so its content ID is never inspected. The cache key comes from
+		// liveImageSHA256 via liveTemplateKeyParams instead; dockerImageID stays
+		// empty and unused.
+		var dockerImageID string
+		if req.GetLiveImage() == nil {
+			dockerImageID, err = utils.DockerImageID(ctx, dockerImageName)
+		}
+		if err == nil {
+			eveImage, templateKey, err = makeDeviceImage(ctx, log, b.templates,
+				providerDevName, makeDeviceImageParams{
+					imageDirPath:    imageDirPath,
+					dockerImageName: dockerImageName,
+					dockerImageID:   dockerImageID,
+					arch:            imageArch,
+					config:          req.Config,
+					proxyCACerts:    b.proxyCACerts,
+					softSerial:      softSerial,
+					diskSize:        req.DiskBytes,
+					installer:       req.MakeInstaller,
+					overlay:         b.provider.DiskImageStrategy() == provider.DiskImageOverlay,
+					liveImageSHA256: req.GetLiveImage().GetSha256(),
+					liveTarPath:     liveUploadPath(b.imageDir, req.GetLiveImage().GetSha256()),
+					liveSource:      liveSource,
+					extraDiskBytes:  req.ExtraDiskBytes,
+				})
+		}
+	}
 	if err != nil {
 		err = fmt.Errorf("failed to build EVE image for device %q: %v",
 			req.DeviceName, err)
@@ -438,11 +709,20 @@ func (b *broker) BuildImage(
 		return nil, err
 	}
 
-	// Register the new device image
+	// For installer builds, prepend the installer image to disks for the first boot.
+	firstBootDisks := eveImage.disks
+	if eveImage.installerImage != nil {
+		firstBootDisks = append(
+			[]provider.DiskImage{*eveImage.installerImage}, eveImage.disks...)
+	}
+
+	// Register the new device image.
 	eveDevice = &device{
 		DeviceSpec: provider.DeviceSpec{
-			ImageSpec: imageSpec,
-			Arch:      imageArch,
+			Disks:               firstBootDisks,
+			UEFIFirmwareDirPath: eveImage.firmwareDir,
+			Arch:                imageArch,
+			NetworkBootFallback: req.NetworkBoot,
 
 			// These fields are set by SetupDevices.
 			CPUs:              0,
@@ -451,12 +731,14 @@ func (b *broker) BuildImage(
 		},
 		deviceName:      req.DeviceName,
 		providerDevName: providerDevName,
+		installerImage:  eveImage.installerImage,
+		disks:           eveImage.disks,
+		templateKey:     templateKey,
 		created:         false, // device is created by SetupDevices
 	}
 	clientSession.eveDevices[req.DeviceName] = eveDevice
 
-	log.Infof("Built EVE image for device %q at %q", req.DeviceName,
-		imageSpec.ImageFilePath())
+	log.Infof("Built EVE image for device %q at %q", req.DeviceName, imageDirPath)
 	return &api.BuildImageResponse{MissingEveContainerImage: false}, nil
 }
 
@@ -521,20 +803,20 @@ func (b *broker) PushEVEContainerImage(
 		return err
 	}
 
-	// Check if image already exists or is being uploaded by another client.
-	// SendAndClose without draining is safe — the client handles the early
-	// close by breaking out of its send loop and calling CloseAndRecv.
-	b.mutex.Lock()
+	// Check if image already exists locally. This is a Docker-daemon query, so
+	// it must not run under b.mutex -- that's the broker-wide lock every RPC
+	// handler also takes just to look up a session, and a stalled daemon would
+	// otherwise block session lookups for every client on the broker, not just
+	// image pushes.
 	haveImage, err := utils.HaveDockerImage(ctx, log, dockerImageName)
 	if err != nil {
-		b.mutex.Unlock()
 		err = fmt.Errorf("failed to check for image %q presence: %w",
 			dockerImageName, err)
 		log.Error(err)
 		return err
 	}
 	if haveImage {
-		b.mutex.Unlock()
+		b.imageUsage.touch(dockerImageName)
 		log.Infof("Image %q already present in Docker image store",
 			dockerImageName)
 		return stream.SendAndClose(&api.PushImageResponse{
@@ -542,6 +824,11 @@ func (b *broker) PushEVEContainerImage(
 		})
 	}
 
+	// Check if it's already being uploaded by another client, and reserve this
+	// upload otherwise. Only the map access needs b.mutex.
+	// SendAndClose without draining is safe — the client handles the early
+	// close by breaking out of its send loop and calling CloseAndRecv.
+	b.mutex.Lock()
 	if uploadDone, uploading := b.imageUploads[dockerImageName]; uploading {
 		b.mutex.Unlock()
 		log.Infof("Image %q is already being uploaded by another client, waiting...",
@@ -597,14 +884,148 @@ func (b *broker) PushEVEContainerImage(
 	}()
 
 	// Load image directly from streamed gzip
-	if err := utils.LoadDockerImageFromReader(ctx, log, pr); err != nil {
+	if err := utils.LoadDockerImageFromReader(ctx, log, pr, dockerImageName); err != nil {
 		err = fmt.Errorf("failed to load Docker image from stream: %w", err)
 		log.Error(err)
 		return err
 	}
 
+	b.imageUsage.touch(dockerImageName)
 	log.Infof("Loaded EVE docker image: %s", dockerImageName)
 	return stream.SendAndClose(&api.PushImageResponse{
+		AlreadyExists: false,
+	})
+}
+
+// PushEVELiveImage receives a locally built EVE live image, uploaded as a tar
+// stream (disk.qcow2, config.img, firmware/*), and stages it at
+// liveUploadPath for BuildImage's retry to install via unpackLiveTemplate.
+//
+// Modelled on PushEVEContainerImage: the first message carries metadata, the
+// rest are raw tar bytes. The stream is written to a ".part" file and renamed
+// into place only once it completes without error, so a client disconnect or
+// broker crash mid-upload never leaves a tar that looks complete -- the
+// partial is removed on every error return instead.
+func (b *broker) PushEVELiveImage(
+	stream grpc.ClientStreamingServer[api.PushLiveImageChunk, api.PushLiveImageResponse]) error {
+	// Receive first message (metadata)
+	firstChunk, err := stream.Recv()
+	if err != nil {
+		err = fmt.Errorf("failed to receive live image metadata: %v", err)
+		b.globalLog.Error(err)
+		return err
+	}
+
+	req := firstChunk.GetRequest()
+	if req == nil {
+		err = fmt.Errorf("first message must contain live image metadata")
+		b.globalLog.Error(err)
+		return err
+	}
+
+	// Lookup client session
+	b.mutex.Lock()
+	clientSession, exists := b.sessions[req.ClientId]
+	b.mutex.Unlock()
+	if !exists {
+		err = clientNotFoundErr(req.ClientId)
+		b.globalLog.Error(err)
+		return err
+	}
+	log := clientSession.log
+
+	sha := req.GetLiveImage().GetSha256()
+	if err = validLiveImageSHA256(sha); err != nil {
+		log.Error(err)
+		return err
+	}
+	tarPath := liveUploadPath(b.imageDir, sha)
+
+	// The staged tar is keyed only on content hash, so this check is enough on
+	// its own to skip a redundant 2.1 GB upload -- no need to also drain the
+	// stream first. SendAndClose without draining is safe, as in
+	// PushEVEContainerImage: the client handles the early close by breaking out
+	// of its send loop and calling CloseAndRecv.
+	if _, statErr := os.Stat(tarPath); statErr == nil {
+		log.Infof("Live image %q is already staged, skipping upload", sha)
+		return stream.SendAndClose(&api.PushLiveImageResponse{AlreadyExists: true})
+	}
+
+	if err = os.MkdirAll(filepath.Dir(tarPath), 0o755); err != nil {
+		err = fmt.Errorf("failed to create live image upload dir: %w", err)
+		log.Error(err)
+		return err
+	}
+
+	// Unique per upload: two clients streaming the same hash concurrently must
+	// not share a part file, or each O_TRUNC would truncate the other's inode
+	// and the two streams would interleave into one garbled tar. os.Rename onto
+	// tarPath is atomic on Linux, so whichever upload finishes last still wins
+	// with correct (for a given hash, identical) content.
+	uploadID := make([]byte, 8)
+	if _, err = rand.Read(uploadID); err != nil {
+		err = fmt.Errorf("failed to generate upload id: %w", err)
+		log.Error(err)
+		return err
+	}
+	partPath := fmt.Sprintf("%s.%s.part", tarPath, hex.EncodeToString(uploadID))
+	f, err := os.OpenFile(partPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		err = fmt.Errorf("failed to create %q: %w", partPath, err)
+		log.Error(err)
+		return err
+	}
+	defer func() { _ = f.Close() }()
+
+	installed := false
+	defer func() {
+		if !installed {
+			if rmErr := os.Remove(partPath); rmErr != nil && !os.IsNotExist(rmErr) {
+				log.Warnf("Failed to remove partial live image upload %q: %v",
+					partPath, rmErr)
+			}
+		}
+	}()
+
+	for {
+		chunk, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			err = fmt.Errorf("failed to receive live image chunk: %w", err)
+			log.Error(err)
+			return err
+		}
+		data := chunk.GetDataChunk()
+		if len(data) == 0 {
+			// The client's chunking io.Writer can legitimately emit a
+			// zero-length Write (e.g. from archive/tar or io.CopyBuffer);
+			// tolerate it rather than aborting a multi-gigabyte transfer
+			// over a message that carries no bytes.
+			continue
+		}
+		if _, err := f.Write(data); err != nil {
+			err = fmt.Errorf("failed to write %q: %w", partPath, err)
+			log.Error(err)
+			return err
+		}
+	}
+
+	if err = f.Close(); err != nil {
+		err = fmt.Errorf("failed to close %q: %w", partPath, err)
+		log.Error(err)
+		return err
+	}
+	if err = os.Rename(partPath, tarPath); err != nil {
+		err = fmt.Errorf("failed to install uploaded live image %q: %w", tarPath, err)
+		log.Error(err)
+		return err
+	}
+	installed = true
+
+	log.Infof("Received uploaded EVE live image %q at %q", sha, tarPath)
+	return stream.SendAndClose(&api.PushLiveImageResponse{
 		AlreadyExists: false,
 	})
 }
@@ -613,13 +1034,15 @@ func (b *broker) PushEVEContainerImage(
 func (b *broker) SetupDevices(
 	ctx context.Context, req *api.SetupDevicesRequest) (*api.SetupDevicesResponse, error) {
 	b.mutex.Lock()
-	defer b.mutex.Unlock()
 	clientSession, exists := b.sessions[req.ClientId]
+	b.mutex.Unlock()
 	if !exists {
 		err := clientNotFoundErr(req.ClientId)
 		b.globalLog.Error(err)
 		return nil, err
 	}
+	clientSession.mutex.Lock()
+	defer clientSession.mutex.Unlock()
 
 	log := clientSession.log
 	ctx = logger.WithLogger(ctx, log)
@@ -657,6 +1080,7 @@ func (b *broker) SetupDevices(
 			return nil, err
 		}
 	}
+	b.imageUsage.touch(sdnDockerImageName)
 
 	// Determine and validate the device architecture.
 	// All EVE devices in a single setup request must use the same architecture.
@@ -688,7 +1112,7 @@ func (b *broker) SetupDevices(
 
 	// Build the SDN Qcow2 image.
 	sdnImageDirPath := filepath.Join(b.imageDir, sdnProvDevName)
-	sdnImageSpec, err := buildSdnImage(ctx, log, sdnImageDirPath, sdnDockerImageName, arch)
+	sdnDisks, err := buildSdnImage(ctx, log, sdnImageDirPath, sdnDockerImageName, arch)
 	if err != nil {
 		err = fmt.Errorf("failed to build SDN image: %w", err)
 		log.Error(err)
@@ -697,8 +1121,9 @@ func (b *broker) SetupDevices(
 	sdnDevice := &device{
 		deviceName:      constants.SDNDeviceName,
 		providerDevName: sdnProvDevName,
+		disks:           sdnDisks,
 		DeviceSpec: provider.DeviceSpec{
-			ImageSpec:   sdnImageSpec,
+			Disks:       sdnDisks,
 			Arch:        arch,
 			CPUs:        constants.SDNDeviceCPUCount,
 			MemoryBytes: constants.SDNDeviceMemBytes,
@@ -717,11 +1142,10 @@ func (b *broker) SetupDevices(
 		// The BuildImage step should have created the QCOW2 image for this device.
 		deviceName := eveDevice.DeviceName
 		dev, exists := clientSession.eveDevices[deviceName]
-		if !exists ||
-			(dev.DeviceSpec.Qcow2ImagePath == "" && dev.DeviceSpec.RawImagePath == "") {
+		if !exists || len(dev.Disks) == 0 {
 			err = fmt.Errorf("disk image for EVE device %q not found", deviceName)
 			log.Error(err)
-			b.teardownDevices(ctx, clientSession)
+			b.teardownDevices(clientSession)
 			return nil, err
 		}
 
@@ -739,7 +1163,7 @@ func (b *broker) SetupDevices(
 					err = fmt.Errorf("invalid EVE interface MAC %q: %w",
 						macStr, err)
 					log.Error(err)
-					b.teardownDevices(ctx, clientSession)
+					b.teardownDevices(clientSession)
 					return nil, err
 				}
 				eveIntfMAC = mac
@@ -750,7 +1174,7 @@ func (b *broker) SetupDevices(
 					err = fmt.Errorf("invalid SDN interface MAC %q: %w",
 						macStr, err)
 					log.Error(err)
-					b.teardownDevices(ctx, clientSession)
+					b.teardownDevices(clientSession)
 					return nil, err
 				}
 				sdnIntfMAC = mac
@@ -779,18 +1203,13 @@ func (b *broker) SetupDevices(
 				})
 		}
 
-		// Create EVE device
-		err := b.provider.SetupDevice(ctx, dev.providerDevName, dev.DeviceSpec)
-		if err != nil {
-			err = fmt.Errorf("failed to setup EVE device %q: %w",
-				deviceName, err)
-			log.Error(err)
-			b.teardownDevices(ctx, clientSession)
-			return nil, err
-		}
-		dev.created = true
-		log.Infof("EVE device %q provisioned using %s with name %q",
-			deviceName, b.providerName, dev.providerDevName)
+	}
+
+	// Provision all EVE devices in parallel (live or installer).
+	if err = b.provisionEVEDevices(ctx, log, clientSession); err != nil {
+		log.Error(err)
+		b.teardownDevices(clientSession)
+		return nil, err
 	}
 
 	// Add uplink interface connecting SDN with the host network.
@@ -798,7 +1217,7 @@ func (b *broker) SetupDevices(
 	if err != nil {
 		err = fmt.Errorf("failed to prepare SDN device spec: %w", err)
 		log.Error(err)
-		b.teardownDevices(ctx, clientSession)
+		b.teardownDevices(clientSession)
 		return nil, err
 	}
 	sdnDevice.NetworkInterfaces = append(sdnDevice.NetworkInterfaces,
@@ -806,9 +1225,7 @@ func (b *broker) SetupDevices(
 			Name:       constants.SDNUplinkPortName,
 			MACAddress: uplinkMAC,
 			Connection: provider.ConnectionSpec{
-				Uplink: &provider.UplinkSpec{
-					EnableIPv6: req.SdnConfig.GetEnableIpv6(),
-				},
+				Uplink: &provider.UplinkSpec{},
 			},
 		})
 
@@ -817,7 +1234,7 @@ func (b *broker) SetupDevices(
 	if err != nil {
 		err = fmt.Errorf("failed to setup SDN device: %w", err)
 		log.Error(err)
-		b.teardownDevices(ctx, clientSession)
+		b.teardownDevices(clientSession)
 		return nil, err
 	}
 	sdnDevice.created = true
@@ -866,11 +1283,154 @@ func (b *broker) SetupDevices(
 	}, nil
 }
 
+// provisionEVEDevices provisions all EVE devices in the client session in parallel.
+// Each device is handled by provisionEVEDevice, which selects the appropriate
+// flow (live one-step or installer two-step). Called from SetupDevices while
+// clientSession.mutex is held; goroutines only call provider methods (provider has
+// its own mutex) so there is no deadlock.
+func (b *broker) provisionEVEDevices(ctx context.Context, log *logrus.Entry,
+	clientSession *session) error {
+	errCh := make(chan error, len(clientSession.eveDevices))
+	for _, dev := range clientSession.eveDevices {
+		dev := dev
+		go func() {
+			errCh <- b.provisionEVEDevice(ctx, log, dev)
+		}()
+	}
+	var errs []string
+	for range clientSession.eveDevices {
+		if err := <-errCh; err != nil {
+			errs = append(errs, err.Error())
+		}
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("%s", strings.Join(errs, ", "))
+	}
+	return nil
+}
+
+// provisionEVEDevice provisions a single EVE device. For live (non-installer) devices
+// it calls provider.SetupDevice directly. For installer devices it delegates to
+// runDeviceInstaller, which runs the full two-step installation flow.
+func (b *broker) provisionEVEDevice(ctx context.Context, log *logrus.Entry,
+	dev *device) error {
+	if dev.installerImage == nil {
+		if err := b.provider.SetupDevice(ctx, dev.providerDevName, dev.DeviceSpec); err != nil {
+			return fmt.Errorf("failed to setup EVE device %q: %w", dev.deviceName, err)
+		}
+		dev.created = true
+		log.Infof("EVE device %q provisioned using %s with name %q",
+			dev.deviceName, b.providerName, dev.providerDevName)
+		return nil
+	}
+	return b.runDeviceInstaller(ctx, log, dev)
+}
+
+// runDeviceInstaller performs the EVE installer two-step for a single device:
+//  1. Set up the device with the installer image prepended to the disk list.
+//  2. Power it on and wait for the installer to stop (installation complete).
+//  3. Reconfigure the disk list to remove the installer image.
+//
+// Reusing the same provider device across both phases preserves TPM state,
+// UEFI NVRAM, and all other device-local state without any explicit migration.
+func (b *broker) runDeviceInstaller(ctx context.Context, log *logrus.Entry,
+	dev *device) error {
+	log.Infof("Running EVE installer for device %q", dev.deviceName)
+
+	if err := b.provider.SetupDevice(ctx, dev.providerDevName, dev.DeviceSpec); err != nil {
+		return fmt.Errorf("failed to setup device %q for installation: %w",
+			dev.deviceName, err)
+	}
+	// Mark created as soon as the underlying VM exists, not only once the
+	// whole installer flow succeeds: if a later step fails (power-on,
+	// waiting for the installer to stop, disk reconfiguration), the
+	// caller's SetupDevices error path falls back to teardownDevices for
+	// the whole session, which only tears down devices with created=true.
+	// Setting it late left a real, already-created VM invisible to that
+	// fallback -- observed in practice as an orphaned VM after the
+	// installer wait below was cut short by the client disconnecting.
+	dev.created = true
+	if err := b.provider.PowerOnDevice(ctx, dev.providerDevName); err != nil {
+		if err2 := teardownDeviceFresh(b.provider, log, dev.providerDevName); err2 != nil {
+			log.Warnf("Failed to teardown device %q after power-on failure: %v",
+				dev.deviceName, err2)
+		}
+		return fmt.Errorf("failed to power on installer for device %q: %w",
+			dev.deviceName, err)
+	}
+	log.Infof("EVE installer running for device %q, waiting for completion...",
+		dev.deviceName)
+	if err := b.waitForDeviceStop(ctx, log, dev, constants.EVEInstallationTimeout); err != nil {
+		return err
+	}
+	log.Infof("EVE installation completed for device %q", dev.deviceName)
+
+	// Reconfigure the device to boot from the persistent disks only (no installer).
+	dev.Disks = dev.disks
+	dev.installerImage = nil
+	err := b.provider.ReconfigureDeviceDisks(ctx, dev.providerDevName, dev.Disks)
+	if err != nil {
+		if err2 := teardownDeviceFresh(b.provider, log, dev.providerDevName); err2 != nil {
+			log.Warnf("Failed to teardown device %q after disk reconfiguration failure: %v",
+				dev.deviceName, err2)
+		}
+		return fmt.Errorf("failed to reconfigure disks for device %q "+
+			"after installation: %w", dev.deviceName, err)
+	}
+
+	log.Infof("EVE device %q provisioned after installation using %s",
+		dev.deviceName, b.providerName)
+	return nil
+}
+
+// waitForDeviceStop blocks until dev's VM reports DeviceStatusStopped or
+// timeout elapses. The EVE installer -- disk- or network-booted, both set
+// eve_reboot_after_install in their kernel args -- halts the VM once it has
+// finished writing EVE onto the target disk, which is what this observes.
+// On timeout (or the status channel closing without ever reporting Stopped),
+// it tears the device down so the caller doesn't leak provider resources,
+// and returns an error.
+func (b *broker) waitForDeviceStop(ctx context.Context, log *logrus.Entry,
+	dev *device, timeout time.Duration) error {
+	installCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	statusCh := b.provider.WatchDeviceStatus(installCtx, dev.providerDevName)
+	for status := range statusCh {
+		if status == provider.DeviceStatusStopped {
+			return nil
+		}
+	}
+	if err := teardownDeviceFresh(b.provider, log, dev.providerDevName); err != nil {
+		log.Warnf("Failed to teardown device %q after installation timeout: %v",
+			dev.deviceName, err)
+	}
+	return fmt.Errorf("EVE installation timed out or failed for device %q",
+		dev.deviceName)
+}
+
+// teardownDeviceFresh tears down a single device on a context detached from
+// any request context, carrying only log. This is often called precisely
+// because the caller's own ctx already failed or was canceled (e.g. the
+// client disconnected), and a context derived from an already-canceled one
+// can never succeed -- see the same reasoning on teardownDevices.
+func teardownDeviceFresh(p provider.DeviceProvider, log *logrus.Entry, providerDevName string) error {
+	ctx, cancel := context.WithTimeout(
+		logger.WithLogger(context.Background(), log), constants.BrokerTeardownDevicesTimeout)
+	defer cancel()
+	return p.TeardownDevice(ctx, providerDevName)
+}
+
 // generateSDNUplinkMAC generates a unique MAC address for an SDN uplink port.
 // The first 3 bytes are the fixed prefix. The last 3 bytes are randomly generated.
-// Ensures uniqueness across all client sessions in this broker process.
-// Function assumes that the broker is in the locked state.
+// Uniqueness is tracked via b.usedSDNUplinkMACs (guarded by b.mutex) rather than by
+// scanning other sessions' sdnDevice directly: the caller (SetupDevices) holds its
+// own session's mutex while calling this, and peeking at another session's sdnDevice
+// would require that other session's mutex too -- risking an AB-BA deadlock against
+// its own concurrent SetupDevices call. See the lock ordering invariant on
+// broker.mutex.
 func (b *broker) generateSDNUplinkMAC() (net.HardwareAddr, error) {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
 	for {
 		mac := make(net.HardwareAddr, 6)
 		copy(mac, constants.SDNHostPortMACPrefix)
@@ -878,23 +1438,23 @@ func (b *broker) generateSDNUplinkMAC() (net.HardwareAddr, error) {
 		if _, err := rand.Read(mac[3:6]); err != nil {
 			return nil, fmt.Errorf("failed to generate random MAC: %v", err)
 		}
-		var collision bool
-		for _, session := range b.sessions {
-			if session.sdnDevice == nil {
-				continue
-			}
-			for _, intf := range session.sdnDevice.NetworkInterfaces {
-				if bytes.Equal(mac, intf.MACAddress) {
-					collision = true
-					break
-				}
-			}
-			if collision {
-				break
-			}
-		}
-		if !collision {
+		key := mac.String()
+		if _, used := b.usedSDNUplinkMACs[key]; !used {
+			b.usedSDNUplinkMACs[key] = struct{}{}
 			return mac, nil
+		}
+	}
+}
+
+// releaseSDNUplinkMAC frees the SDN uplink MAC reserved for sdnDevice (if any) so
+// it can be reused by a future session. Called from teardownDevices.
+func (b *broker) releaseSDNUplinkMAC(sdnDevice *device) {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	for _, intf := range sdnDevice.NetworkInterfaces {
+		if intf.Name == constants.SDNUplinkPortName {
+			delete(b.usedSDNUplinkMACs, intf.MACAddress.String())
+			return
 		}
 	}
 }
@@ -903,14 +1463,16 @@ func (b *broker) generateSDNUplinkMAC() (net.HardwareAddr, error) {
 func (b *broker) TeardownDevices(
 	ctx context.Context, req *api.TeardownDevicesRequest) (*api.TeardownDevicesResponse, error) {
 	b.mutex.Lock()
-	defer b.mutex.Unlock()
 	clientSession, exists := b.sessions[req.ClientId]
+	b.mutex.Unlock()
 	if !exists {
 		err := clientNotFoundErr(req.ClientId)
 		b.globalLog.Error(err)
 		return nil, err
 	}
-	b.teardownDevices(ctx, clientSession)
+	clientSession.mutex.Lock()
+	defer clientSession.mutex.Unlock()
+	b.teardownDevices(clientSession)
 	return &api.TeardownDevicesResponse{}, nil
 }
 
@@ -918,23 +1480,31 @@ func (b *broker) TeardownDevices(
 // It attempts to teardown each device via the provider and deletes the corresponding
 // QCOW2/RAW image files from the filesystem. Any errors during teardown or file removal
 // are logged but do not prevent the function from continuing.
-func (b *broker) teardownDevices(ctx context.Context, clientSession *session) {
+func (b *broker) teardownDevices(clientSession *session) {
 	log := clientSession.log
-	ctx = logger.WithLogger(ctx, log)
 	log.Infof("Starting teardown of devices from the client session %q",
 		clientSession.clientID)
 
-	// Teardown all EVE devices
+	// Teardown must not depend on the caller's ctx staying alive: this is
+	// often called precisely because that ctx already failed or was
+	// canceled (e.g. the client disconnected mid-SetupDevices), and a
+	// context derived from an already-canceled one can never succeed.
+	// Use a fresh, independent context instead. Each device still gets its
+	// own constants.BrokerTeardownDevicesTimeout, so a device stuck/hanging
+	// during teardown cannot consume the time budget meant for the others.
+	ctx := logger.WithLogger(context.Background(), log)
 	for deviceName, dev := range clientSession.eveDevices {
 		if dev.created {
-			err := b.provider.TeardownDevice(ctx, dev.providerDevName)
+			devCtx, cancel := context.WithTimeout(ctx, constants.BrokerTeardownDevicesTimeout)
+			err := b.provider.TeardownDevice(devCtx, dev.providerDevName)
+			cancel()
 			if err != nil {
 				log.Warnf("Failed to teardown EVE device %q: %v", deviceName, err)
 			} else {
 				log.Infof("EVE device %q was torn down", deviceName)
 			}
 		}
-		imageDir := filepath.Dir(dev.ImageFilePath())
+		imageDir := filepath.Join(b.imageDir, dev.providerDevName)
 		if imageDir != "" {
 			err := os.RemoveAll(imageDir)
 			if err != nil {
@@ -945,6 +1515,12 @@ func (b *broker) teardownDevices(ctx context.Context, clientSession *session) {
 					deviceName, imageDir)
 			}
 		}
+		if dev.templateKey != "" {
+			if err := b.templates.removeRef(dev.templateKey, dev.providerDevName); err != nil {
+				log.Warnf("Failed to release template ref for EVE device %q: %v",
+					deviceName, err)
+			}
+		}
 	}
 	clientSession.eveDevices = nil
 
@@ -952,14 +1528,17 @@ func (b *broker) teardownDevices(ctx context.Context, clientSession *session) {
 	if clientSession.sdnDevice != nil {
 		providerDevName := clientSession.sdnDevice.providerDevName
 		if clientSession.sdnDevice.created {
-			err := b.provider.TeardownDevice(ctx, providerDevName)
+			devCtx, cancel := context.WithTimeout(ctx, constants.BrokerTeardownDevicesTimeout)
+			err := b.provider.TeardownDevice(devCtx, providerDevName)
+			cancel()
 			if err != nil {
 				log.Warnf("Failed to teardown SDN device: %v", err)
 			} else {
 				log.Infof("SDN device was torn down")
 			}
 		}
-		imageDir := filepath.Dir(clientSession.sdnDevice.ImageFilePath())
+		b.releaseSDNUplinkMAC(clientSession.sdnDevice)
+		imageDir := filepath.Join(b.imageDir, clientSession.sdnDevice.providerDevName)
 		if imageDir != "" {
 			err := os.RemoveAll(imageDir)
 			if err != nil {
@@ -974,27 +1553,45 @@ func (b *broker) teardownDevices(ctx context.Context, clientSession *session) {
 	clientSession.sdnDevice = nil
 }
 
-// PowerOnDevice powers on a specific EVE device.
+// PowerOnDevice powers on a specific EVE device. For a device's first
+// power-on under NetworkBootFallback (see provider.DeviceSpec), this also runs
+// and waits out the whole network-boot install before returning -- see
+// waitForDeviceStop -- since network booting can only begin once the device
+// is powered on with the SDN network already configured, unlike an installer
+// image (which runs during SetupDevices instead, before the caller's own
+// separate PowerOnDevice call boots the freshly-installed device for real).
+//
+// The network-boot wait can take many minutes, so it deliberately runs
+// without holding clientSession.mutex: that mutex is meant to serialize
+// access to the session's own maps, not to block every other device's power
+// control for as long as one device is network-installing -- multiple
+// NetworkBootFallback devices in the same test (e.g. a netbooted cluster) need
+// to install in parallel.
 func (b *broker) PowerOnDevice(
 	ctx context.Context, req *api.DeviceControlRequest) (*api.DeviceControlResponse, error) {
 	b.mutex.Lock()
-	defer b.mutex.Unlock()
 	clientSession, exists := b.sessions[req.ClientId]
+	b.mutex.Unlock()
 	if !exists {
 		err := clientNotFoundErr(req.ClientId)
 		b.globalLog.Error(err)
 		return nil, err
 	}
 
+	clientSession.mutex.Lock()
 	log := clientSession.log
-	ctx = logger.WithLogger(ctx, log)
-
 	eveDevice, exists := clientSession.eveDevices[req.DeviceName]
+	var netbootInstalled bool
+	if exists {
+		netbootInstalled = eveDevice.netbootInstalled
+	}
+	clientSession.mutex.Unlock()
 	if !exists {
 		err := eveDevNotFoundErr(req.DeviceName)
 		log.Error(err)
 		return nil, err
 	}
+	ctx = logger.WithLogger(ctx, log)
 
 	err := b.provider.PowerOnDevice(ctx, eveDevice.providerDevName)
 	if err != nil {
@@ -1004,31 +1601,57 @@ func (b *broker) PowerOnDevice(
 		return nil, err
 	}
 
+	if eveDevice.NetworkBootFallback && !netbootInstalled {
+		log.Infof("EVE network-boot installer running for device %q, "+
+			"waiting for completion...", eveDevice.deviceName)
+		timeout := constants.NetbootDownloadTimeout + constants.EVEInstallationTimeout
+		if err := b.waitForDeviceStop(ctx, log, eveDevice, timeout); err != nil {
+			return nil, err
+		}
+		log.Infof("EVE network-boot installation completed for device %q, "+
+			"booting installed image", eveDevice.deviceName)
+		if err := b.provider.PowerOnDevice(ctx, eveDevice.providerDevName); err != nil {
+			err = fmt.Errorf("failed to power on device %q after network-boot install: %w",
+				eveDevice.deviceName, err)
+			log.Error(err)
+			return nil, err
+		}
+		clientSession.mutex.Lock()
+		eveDevice.netbootInstalled = true
+		clientSession.mutex.Unlock()
+	}
+
 	log.Infof("Successfully powered ON EVE device %q", eveDevice.deviceName)
 	return &api.DeviceControlResponse{}, nil
 }
 
 // PowerOffDevice powers off a specific EVE device.
+//
+// The provider call runs without holding clientSession.mutex: that mutex
+// serializes this session's own device operations, not every other device's
+// power control for as long as one provider call takes -- see PowerOnDevice's
+// doc comment.
 func (b *broker) PowerOffDevice(
 	ctx context.Context, req *api.DeviceControlRequest) (*api.DeviceControlResponse, error) {
 	b.mutex.Lock()
-	defer b.mutex.Unlock()
 	clientSession, exists := b.sessions[req.ClientId]
+	b.mutex.Unlock()
 	if !exists {
 		err := clientNotFoundErr(req.ClientId)
 		b.globalLog.Error(err)
 		return nil, err
 	}
 
+	clientSession.mutex.Lock()
 	log := clientSession.log
-	ctx = logger.WithLogger(ctx, log)
-
 	eveDevice, exists := clientSession.eveDevices[req.DeviceName]
+	clientSession.mutex.Unlock()
 	if !exists {
 		err := eveDevNotFoundErr(req.DeviceName)
 		log.Error(err)
 		return nil, err
 	}
+	ctx = logger.WithLogger(ctx, log)
 
 	err := b.provider.PowerOffDevice(ctx, eveDevice.providerDevName)
 	if err != nil {
@@ -1042,27 +1665,242 @@ func (b *broker) PowerOffDevice(
 	return &api.DeviceControlResponse{}, nil
 }
 
-// RebootDevice reboots a specific EVE device.
-func (b *broker) RebootDevice(
-	ctx context.Context, req *api.DeviceControlRequest) (*api.DeviceControlResponse, error) {
+// EditDeviceDisk edits a powered-off device's boot disk in place: it grows the
+// disk, or destroys the filesystem on one of its partitions.
+//
+// Both edits rewrite the file the device boots from, so a running device would
+// see its disk change underneath it and, for the grow, qemu-img would be
+// writing an image QEMU still has mapped. The device is therefore required to
+// be powered off, and that is checked rather than left to the tools to notice.
+func (b *broker) EditDeviceDisk(
+	ctx context.Context, req *api.EditDeviceDiskRequest) (*api.EditDeviceDiskResponse, error) {
 	b.mutex.Lock()
-	defer b.mutex.Unlock()
 	clientSession, exists := b.sessions[req.ClientId]
+	b.mutex.Unlock()
 	if !exists {
 		err := clientNotFoundErr(req.ClientId)
 		b.globalLog.Error(err)
 		return nil, err
 	}
 
+	clientSession.mutex.Lock()
 	log := clientSession.log
-	ctx = logger.WithLogger(ctx, log)
-
 	eveDevice, exists := clientSession.eveDevices[req.DeviceName]
+	clientSession.mutex.Unlock()
 	if !exists {
 		err := eveDevNotFoundErr(req.DeviceName)
 		log.Error(err)
 		return nil, err
 	}
+	ctx = logger.WithLogger(ctx, log)
+
+	// Disk 0 is the boot disk; the extra disks follow in the order they were
+	// requested.
+	diskIndex := int(req.GetDiskIndex())
+	if diskIndex >= len(eveDevice.disks) {
+		err := fmt.Errorf("EVE device %q has no disk at index %d (it has %d)",
+			eveDevice.deviceName, diskIndex, len(eveDevice.disks))
+		log.Error(err)
+		return nil, err
+	}
+	disk := eveDevice.disks[diskIndex]
+	if disk.Format != provider.DiskImageFormatQcow2 {
+		err := fmt.Errorf("disk %d of EVE device %q is not QCOW2; cannot edit it",
+			diskIndex, eveDevice.deviceName)
+		log.Error(err)
+		return nil, err
+	}
+
+	status, err := b.provider.GetDeviceStatus(ctx, eveDevice.providerDevName)
+	if err != nil {
+		err = fmt.Errorf("failed to read status of EVE device %q: %w",
+			eveDevice.deviceName, err)
+		log.Error(err)
+		return nil, err
+	}
+	if status != provider.DeviceStatusStopped {
+		err = fmt.Errorf(
+			"EVE device %q is %s; power it off before editing its disk",
+			eveDevice.deviceName, status)
+		log.Error(err)
+		return nil, err
+	}
+
+	switch edit := req.GetEdit().(type) {
+	case *api.EditDeviceDiskRequest_Grow:
+		err = growDisk(ctx, log, disk.Path, edit.Grow.GetNewSizeBytes())
+	case *api.EditDeviceDiskRequest_DestroyPartitionFs:
+		err = destroyPartitionFilesystem(ctx, log, disk.Path,
+			edit.DestroyPartitionFs.GetPartitionLabel())
+	case *api.EditDeviceDiskRequest_CreatePersistPartition:
+		err = createPersistPartition(ctx, log, disk.Path)
+	case *api.EditDeviceDiskRequest_DeletePartition:
+		err = deletePartition(ctx, log, disk.Path,
+			edit.DeletePartition.GetPartitionLabel())
+	default:
+		err = fmt.Errorf("no edit requested for EVE device %q", eveDevice.deviceName)
+	}
+	if err != nil {
+		log.Error(err)
+		return nil, err
+	}
+	return &api.EditDeviceDiskResponse{}, nil
+}
+
+// maxScratchImageBytes caps CreateScratchImage: the proxmox provider uploads
+// the whole image to the PVE host.
+const maxScratchImageBytes = 1 << 30
+
+// lookupEVEDevice resolves the client session and the EVE device that a
+// per-device RPC addresses, returning the device and the session's logger.
+func (b *broker) lookupEVEDevice(clientID, deviceName string) (*device, *logrus.Entry, error) {
+	b.mutex.Lock()
+	clientSession, exists := b.sessions[clientID]
+	b.mutex.Unlock()
+	if !exists {
+		err := clientNotFoundErr(clientID)
+		b.globalLog.Error(err)
+		return nil, nil, err
+	}
+
+	clientSession.mutex.Lock()
+	log := clientSession.log
+	dev, exists := clientSession.eveDevices[deviceName]
+	clientSession.mutex.Unlock()
+	if !exists {
+		err := eveDevNotFoundErr(deviceName)
+		log.Error(err)
+		return nil, nil, err
+	}
+	return dev, log, nil
+}
+
+// ExecuteQMP runs one QMP command on the hypervisor running an EVE device.
+// The broker only checks the request's shape; what the command does to the
+// VM is the test's business. The provider call runs without holding
+// clientSession.mutex; see PowerOffDevice's doc comment.
+func (b *broker) ExecuteQMP(
+	ctx context.Context, req *api.ExecuteQMPRequest) (*api.ExecuteQMPResponse, error) {
+	eveDevice, log, err := b.lookupEVEDevice(req.ClientId, req.DeviceName)
+	if err != nil {
+		return nil, err
+	}
+	ctx = logger.WithLogger(ctx, log)
+
+	if req.GetExecute() == "" {
+		err := fmt.Errorf("no QMP command given for EVE device %q", eveDevice.deviceName)
+		log.Error(err)
+		return nil, err
+	}
+	var arguments json.RawMessage
+	if argsJSON := req.GetArgumentsJson(); argsJSON != "" {
+		var object map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(argsJSON), &object); err != nil {
+			err = fmt.Errorf("arguments of QMP command %q for EVE device %q are not a "+
+				"JSON object: %w", req.GetExecute(), eveDevice.deviceName, err)
+			log.Error(err)
+			return nil, err
+		}
+		arguments = json.RawMessage(argsJSON)
+	}
+
+	ret, err := b.provider.ExecuteQMP(ctx, eveDevice.providerDevName, req.GetExecute(), arguments)
+	if err != nil {
+		err = fmt.Errorf("QMP command %q on EVE device %q failed: %w",
+			req.GetExecute(), eveDevice.deviceName, err)
+		log.Error(err)
+		return nil, err
+	}
+	log.Debugf("QMP command %q on EVE device %q returned %s",
+		req.GetExecute(), eveDevice.deviceName, ret)
+	return &api.ExecuteQMPResponse{ReturnJson: string(ret)}, nil
+}
+
+// CreateScratchImage creates a blank scratch disk image for an EVE device on
+// the hypervisor host. The provider call runs without holding
+// clientSession.mutex; see PowerOffDevice's doc comment.
+func (b *broker) CreateScratchImage(ctx context.Context,
+	req *api.CreateScratchImageRequest) (*api.CreateScratchImageResponse, error) {
+	eveDevice, log, err := b.lookupEVEDevice(req.ClientId, req.DeviceName)
+	if err != nil {
+		return nil, err
+	}
+	ctx = logger.WithLogger(ctx, log)
+
+	if err := provider.ValidateScratchImageName(req.GetName()); err != nil {
+		log.Error(err)
+		return nil, err
+	}
+	if req.GetSizeBytes() == 0 || req.GetSizeBytes() > maxScratchImageBytes {
+		err := fmt.Errorf("scratch image %q for EVE device %q: size must be between 1 and %d "+
+			"bytes, got %d", req.GetName(), eveDevice.deviceName, maxScratchImageBytes,
+			req.GetSizeBytes())
+		log.Error(err)
+		return nil, err
+	}
+
+	hostPath, err := b.provider.CreateScratchImage(ctx, eveDevice.providerDevName,
+		req.GetName(), req.GetSizeBytes())
+	if err != nil {
+		err = fmt.Errorf("failed to create scratch image %q for EVE device %q: %w",
+			req.GetName(), eveDevice.deviceName, err)
+		log.Error(err)
+		return nil, err
+	}
+	log.Infof("Created scratch image %q for EVE device %q at %s",
+		req.GetName(), eveDevice.deviceName, hostPath)
+	return &api.CreateScratchImageResponse{HostPath: hostPath}, nil
+}
+
+// DeleteScratchImage removes a scratch disk image of an EVE device. The
+// provider call runs without holding clientSession.mutex; see PowerOffDevice's
+// doc comment.
+func (b *broker) DeleteScratchImage(ctx context.Context,
+	req *api.DeleteScratchImageRequest) (*api.DeleteScratchImageResponse, error) {
+	eveDevice, log, err := b.lookupEVEDevice(req.ClientId, req.DeviceName)
+	if err != nil {
+		return nil, err
+	}
+	ctx = logger.WithLogger(ctx, log)
+
+	if err := provider.ValidateScratchImageName(req.GetName()); err != nil {
+		log.Error(err)
+		return nil, err
+	}
+	err = b.provider.DeleteScratchImage(ctx, eveDevice.providerDevName, req.GetName())
+	if err != nil {
+		err = fmt.Errorf("failed to delete scratch image %q of EVE device %q: %w",
+			req.GetName(), eveDevice.deviceName, err)
+		log.Error(err)
+		return nil, err
+	}
+	log.Infof("Deleted scratch image %q of EVE device %q", req.GetName(), eveDevice.deviceName)
+	return &api.DeleteScratchImageResponse{}, nil
+}
+
+// RebootDevice reboots a specific EVE device. The provider call runs without
+// holding clientSession.mutex; see PowerOffDevice's doc comment.
+func (b *broker) RebootDevice(
+	ctx context.Context, req *api.DeviceControlRequest) (*api.DeviceControlResponse, error) {
+	b.mutex.Lock()
+	clientSession, exists := b.sessions[req.ClientId]
+	b.mutex.Unlock()
+	if !exists {
+		err := clientNotFoundErr(req.ClientId)
+		b.globalLog.Error(err)
+		return nil, err
+	}
+
+	clientSession.mutex.Lock()
+	log := clientSession.log
+	eveDevice, exists := clientSession.eveDevices[req.DeviceName]
+	clientSession.mutex.Unlock()
+	if !exists {
+		err := eveDevNotFoundErr(req.DeviceName)
+		log.Error(err)
+		return nil, err
+	}
+	ctx = logger.WithLogger(ctx, log)
 
 	err := b.provider.RebootDevice(ctx, eveDevice.providerDevName)
 	if err != nil {
@@ -1076,27 +1914,30 @@ func (b *broker) RebootDevice(
 	return &api.DeviceControlResponse{}, nil
 }
 
-// GetDeviceConsoleOutput returns the console output from the device.
+// GetDeviceConsoleOutput returns the console output from the device. The
+// provider call runs without holding clientSession.mutex; see
+// PowerOffDevice's doc comment.
 func (b *broker) GetDeviceConsoleOutput(
 	ctx context.Context, req *api.DeviceControlRequest) (*api.ConsoleOutputResponse, error) {
 	b.mutex.Lock()
-	defer b.mutex.Unlock()
 	clientSession, exists := b.sessions[req.ClientId]
+	b.mutex.Unlock()
 	if !exists {
 		err := clientNotFoundErr(req.ClientId)
 		b.globalLog.Error(err)
 		return nil, err
 	}
 
+	clientSession.mutex.Lock()
 	log := clientSession.log
-	ctx = logger.WithLogger(ctx, log)
-
 	eveDevice, exists := clientSession.eveDevices[req.DeviceName]
+	clientSession.mutex.Unlock()
 	if !exists {
 		err := eveDevNotFoundErr(req.DeviceName)
 		log.Error(err)
 		return nil, err
 	}
+	ctx = logger.WithLogger(ctx, log)
 
 	output, err := b.provider.GetDeviceConsoleOutput(ctx, eveDevice.providerDevName)
 	if err != nil {
@@ -1105,7 +1946,12 @@ func (b *broker) GetDeviceConsoleOutput(
 		log.Error(err)
 		return nil, err
 	}
-	return &api.ConsoleOutputResponse{ConsoleOutput: output}, nil
+	// A serial console carries bytes that are not valid UTF-8 -- GRUB draws its
+	// menu in CP437 -- and a proto string field cannot hold them, so gRPC fails
+	// the whole response rather than the offending run of bytes.
+	return &api.ConsoleOutputResponse{
+		ConsoleOutput: strings.ToValidUTF8(output, ""),
+	}, nil
 }
 
 // ConnectConsoleToDevice establishes a bidirectional gRPC tunnel between
@@ -1133,8 +1979,8 @@ func (b *broker) ConnectConsoleToDevice(
 
 	b.mutex.Lock()
 	clientSession, clientExists := b.sessions[clientID]
+	b.mutex.Unlock()
 	if !clientExists {
-		b.mutex.Unlock()
 		err := clientNotFoundErr(clientID)
 		b.globalLog.Error(err)
 		return err
@@ -1142,15 +1988,18 @@ func (b *broker) ConnectConsoleToDevice(
 	log := clientSession.log
 	ctx := logger.WithLogger(stream.Context(), log)
 
+	clientSession.mutex.Lock()
 	eveDev, devExists := clientSession.eveDevices[devName]
+	var providerDevName string
+	if devExists {
+		providerDevName = eveDev.providerDevName
+	}
+	clientSession.mutex.Unlock()
 	if !devExists {
-		b.mutex.Unlock()
 		err = eveDevNotFoundErr(devName)
 		log.Error(err)
 		return err
 	}
-	providerDevName := eveDev.providerDevName
-	b.mutex.Unlock()
 
 	// Attach to provider’s console stream.
 	consoleStream, echoed, telnet, err := b.provider.AttachToDeviceConsole(
@@ -1199,11 +2048,64 @@ func (b *broker) ConnectConsoleToDevice(
 	return nil
 }
 
+// sdnTunnelClientStream and sdnTunnelServerStream shorten the long generic
+// instantiations used throughout the SDN tunnel connect/retry logic below.
+type (
+	sdnTunnelClientStream = grpc.BidiStreamingClient[
+		api.ConnectTunnelToSDNRequest, api.ConnectTunnelToSDNResponse]
+	sdnTunnelServerStream = grpc.BidiStreamingServer[
+		api.ConnectTunnelToSDNRequest, api.ConnectTunnelToSDNResponse]
+)
+
+// connectSDNTunnel dials the SDN's gRPC endpoint at sdnAddr, opens the
+// ConnectTunnel stream, forwards the client's initial connect request, and
+// waits for the tunnel properties response. On any failure it cleans up and
+// returns an error, so the caller can just retry the whole thing on the next
+// attempt.
+func (b *broker) connectSDNTunnel(
+	ctx context.Context, sdnAddr string, initMsg *api.ConnectTunnelToSDNRequest) (
+	conn *grpc.ClientConn,
+	sdnStream sdnTunnelClientStream,
+	resp *api.ConnectTunnelToSDNResponse,
+	err error,
+) {
+	// Note: no I/O is performed by grpc.NewClient, connection to SDN
+	// is established with the first RPC call, which is ConnectTunnel() below.
+	conn, err = grpc.NewClient(sdnAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		err = fmt.Errorf("failed to create SDN client: %w", err)
+		return nil, nil, nil, err
+	}
+	sdnClient := api.NewSDNClient(conn)
+
+	sdnStream, err = sdnClient.ConnectTunnel(ctx)
+	if err != nil {
+		_ = conn.Close()
+		err = fmt.Errorf("failed to establish tunnel to SDN: %w", err)
+		return nil, nil, nil, err
+	}
+
+	if err = sdnStream.Send(initMsg); err != nil {
+		_ = conn.Close()
+		err = fmt.Errorf("failed to send connect request: %w", err)
+		return nil, nil, nil, err
+	}
+
+	resp, err = sdnStream.Recv()
+	if err != nil {
+		_ = conn.Close()
+		err = fmt.Errorf("failed to receive tunnel properties: %w", err)
+		return nil, nil, nil, err
+	}
+
+	return conn, sdnStream, resp, nil
+}
+
 // ConnectTunnelToSDN establishes a bidirectional gRPC tunnel for carrying
 // raw IP packets between the client and the SDN.
 // The tunnel allows full-duplex communication over a point-to-point link.
-func (b *broker) ConnectTunnelToSDN(
-	stream grpc.BidiStreamingServer[api.ConnectTunnelToSDNRequest, api.ConnectTunnelToSDNResponse]) error {
+func (b *broker) ConnectTunnelToSDN(stream sdnTunnelServerStream) error {
 	// Receive the first message from the client to extract the client ID.
 	initMsg, err := stream.Recv()
 	if err != nil {
@@ -1219,9 +2121,9 @@ func (b *broker) ConnectTunnelToSDN(
 	}
 	clientID := connectReq.GetClientId()
 
-	var sdnIPs []net.IP
 	b.mutex.Lock()
 	clientSession, exists := b.sessions[clientID]
+	b.mutex.Unlock()
 	if !exists {
 		err := clientNotFoundErr(clientID)
 		b.globalLog.Error(err)
@@ -1229,55 +2131,63 @@ func (b *broker) ConnectTunnelToSDN(
 	}
 	log := clientSession.log
 	ctx := logger.WithLogger(stream.Context(), log)
-	if clientSession.sdnDevice == nil {
+
+	clientSession.mutex.Lock()
+	var sdnIPs []net.IP
+	if clientSession.sdnDevice != nil {
+		sdnIPs = clientSession.sdnDevice.uplinkIPs
+	}
+	sdnDeviceSetUp := clientSession.sdnDevice != nil
+	clientSession.mutex.Unlock()
+	if !sdnDeviceSetUp {
 		err := fmt.Errorf("SDN device is not set up for this session")
 		log.Error(err)
 		return err
 	}
-	if len(clientSession.sdnDevice.uplinkIPs) == 0 {
+	if len(sdnIPs) == 0 {
 		err := fmt.Errorf("SDN management IP is not available")
 		log.Error(err)
 		return err
 	}
-	sdnIPs = clientSession.sdnDevice.uplinkIPs
-	b.mutex.Unlock()
 
-	// Connect to SDN gRPC endpoint; try every uplink IP address.
+	// Connect to SDN gRPC endpoint and complete its initial handshake; try every
+	// uplink IP, retrying until one succeeds or sdnConnectTimeout elapses -- the
+	// SDN VM takes real wall-clock time to finish booting and its mgmt agent to
+	// become ready, so early attempts can fail at any step, not just the dial.
+	connectCtx, cancel := context.WithTimeout(ctx, sdnConnectTimeout)
+	defer cancel()
 	var (
 		lastErr   error
 		conn      *grpc.ClientConn
-		sdnClient api.SDNClient
-		sdnStream grpc.BidiStreamingClient[
-			api.ConnectTunnelToSDNRequest, api.ConnectTunnelToSDNResponse]
+		sdnStream sdnTunnelClientStream
+		resp      *api.ConnectTunnelToSDNResponse
 	)
-	for _, sdnIP := range sdnIPs {
-		sdnAddr := net.JoinHostPort(sdnIP.String(), strconv.Itoa(int(b.sdnGrpcPort)))
+connectLoop:
+	for {
+		for _, sdnIP := range sdnIPs {
+			select {
+			case <-connectCtx.Done():
+				break connectLoop
+			default:
+			}
 
-		// Note: no I/O is performed by grpc.NewClient, connection to SDN
-		// is established with the first RPC call, which is ConnectTunnel() -- see below.
-		conn, lastErr = grpc.NewClient(sdnAddr,
-			grpc.WithTransportCredentials(insecure.NewCredentials()))
-		if lastErr != nil {
-			conn = nil
-			lastErr = fmt.Errorf("failed to create SDN client: %w", lastErr)
-			log.Warn(lastErr)
-			continue
-		}
-		sdnClient = api.NewSDNClient(conn)
+			sdnAddr := net.JoinHostPort(sdnIP.String(), strconv.Itoa(int(b.sdnGrpcPort)))
+			conn, sdnStream, resp, lastErr = b.connectSDNTunnel(ctx, sdnAddr, initMsg)
+			if lastErr != nil {
+				log.Warnf("Failed to connect to SDN gRPC at %s (will retry): %v",
+					sdnAddr, lastErr)
+				continue
+			}
 
-		// Send ConnectTunnel to SDN to establish point-to-point tunnel
-		sdnStream, lastErr = sdnClient.ConnectTunnel(ctx)
-		if lastErr != nil {
-			sdnClient = nil
-			_ = conn.Close()
-			conn = nil
-			lastErr = fmt.Errorf("failed to establish tunnel to SDN: %w", lastErr)
-			log.Warn(lastErr)
-			continue
+			log.Infof("Connected to SDN gRPC at %s", sdnAddr)
+			break connectLoop
 		}
 
-		log.Infof("Connected to SDN gRPC at %s", sdnAddr)
-		break
+		select {
+		case <-connectCtx.Done():
+			break connectLoop
+		case <-time.After(sdnConnectRetryInterval):
+		}
 	}
 	if conn == nil || sdnStream == nil {
 		err = fmt.Errorf(
@@ -1289,20 +2199,7 @@ func (b *broker) ConnectTunnelToSDN(
 	defer conn.Close()
 	defer sdnStream.CloseSend()
 
-	// Forward the initial request from the client to the SDN.
-	if err = sdnStream.Send(initMsg); err != nil {
-		err = fmt.Errorf("failed to send connect request: %w", err)
-		log.Error(err)
-		return err
-	}
-
-	// Receive and forward tunnel properties.
-	resp, err := sdnStream.Recv()
-	if err != nil {
-		err = fmt.Errorf("failed to receive tunnel properties: %w", err)
-		log.Error(err)
-		return err
-	}
+	// Forward the tunnel properties received from the SDN back to the client.
 	if err := stream.Send(resp); err != nil {
 		err = fmt.Errorf("failed to send SDN tunnel properties: %v", err)
 		log.Error(err)

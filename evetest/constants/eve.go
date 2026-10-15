@@ -3,13 +3,29 @@
 
 package constants
 
+import "time"
+
 const (
 	// DefaultEVEDeviceCPUs is the default number of virtual CPUs for an EVE device VM.
 	DefaultEVEDeviceCPUs = 4
-	// DefaultEVEDeviceRAMInMB is the default amount of RAM in megabytes for an EVE device VM.
-	DefaultEVEDeviceRAMInMB = 8192
-	// DefaultEVEDeviceDiskSizeInMB is the default disk size in megabytes for an EVE device VM.
-	DefaultEVEDeviceDiskSizeInMB = 28576
+	// DefaultEVEDeviceRAMInMiB is the default amount of RAM (in MiB) for an EVE device VM.
+	DefaultEVEDeviceRAMInMiB = 8192
+	// DefaultEVEDeviceDiskSizeInMiB is the default disk size (in MiB) for an EVE device VM.
+	// 64 GiB ensures /persist has enough free space above EVE's 4096 MiB cleanup threshold
+	// regardless of image type (live or installer) and HV type (including eve-k system pods),
+	// with enough headroom left over to accommodate smaller test applications.
+	DefaultEVEDeviceDiskSizeInMiB = 65536
+	// EVEInstallationTimeout is the maximum time allowed for the EVE installer to complete.
+	// Used by both the broker (to bound the installer wait) and the harness (to extend
+	// the SetupDevices RPC deadline when installation is requested).
+	EVEInstallationTimeout = 10 * time.Minute
+	// NetbootDownloadTimeout is the maximum time allowed for a device to boot
+	// over the network (DHCP/TFTP/HTTP) and reach the point of starting the EVE
+	// installer -- i.e. iPXE bootloader plus installer.iso transfer, not the
+	// installer's own run time (see EVEInstallationTimeout, added on top of this
+	// for the full budget). Network transfer is slower and less predictable
+	// than reading from a locally attached disk image.
+	NetbootDownloadTimeout = 10 * time.Minute
 )
 
 const (

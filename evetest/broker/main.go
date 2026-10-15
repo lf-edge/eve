@@ -4,9 +4,11 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"net"
+	"net/http"
+	// Registers its handlers on http.DefaultServeMux; served via pprofAddr below.
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
@@ -41,6 +43,17 @@ func main() {
 	})
 	log.SetLevel(logLevel)
 	log.Infof("Starting Evetest Broker version %q", version)
+
+	// Optionally expose net/http/pprof for debugging memory/goroutine growth.
+	if pprofPort := viper.GetInt(constants.BrokerPprofPortEnv); pprofPort != 0 {
+		pprofAddr := fmt.Sprintf(":%d", pprofPort)
+		go func() {
+			log.Infof("Starting pprof debug endpoint on %s", pprofAddr)
+			if err := http.ListenAndServe(pprofAddr, nil); err != nil {
+				log.Errorf("pprof debug endpoint failed: %v", err)
+			}
+		}()
+	}
 
 	// Start TCP listener for the gRPC API.
 	port := viper.GetInt(constants.BrokerPortEnv)
@@ -79,6 +92,20 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to create qemu device provider: %v", err)
 		}
+	case "proxmox":
+		conf := provider.ProxmoxProviderConf{
+			CommonProviderConf: commonProviderConf,
+			APIURL:             viper.GetString(constants.BrokerProxmoxAPIURLEnv),
+			Password:           viper.GetString(constants.BrokerProxmoxPasswordEnv),
+			Node:               viper.GetString(constants.BrokerProxmoxNodeEnv),
+			Storage:            viper.GetString(constants.BrokerProxmoxStorageEnv),
+			ImportStorage:      viper.GetString(constants.BrokerProxmoxImportStorageEnv),
+			TLSSkipVerify:      viper.GetBool(constants.BrokerProxmoxTLSSkipVerifyEnv),
+		}
+		deviceProvider, err = provider.NewProxmoxProvider(conf)
+		if err != nil {
+			log.Fatalf("Failed to create proxmox device provider: %v", err)
+		}
 	default:
 		log.Fatalf("Unsupported device provider: %q", providerName)
 	}
@@ -87,7 +114,16 @@ func main() {
 	// Instantiate evetest broker.
 	sdnGrpcPort := viper.GetUint16(constants.SDNPortEnv)
 	imageDir := viper.GetString(constants.BrokerImageDirEnv)
-	broker, err := newBroker(log, deviceProvider, providerName, imageDir, sdnGrpcPort)
+	maxClients := viper.GetInt(constants.BrokerMaxClientsEnv)
+	imgRetention := time.Duration(viper.GetInt(constants.BrokerDockerImageRetentionEnv)) * time.Minute
+	diskThresholdPct := viper.GetInt(constants.BrokerDockerDiskUsageThresholdEnv)
+	dockerMinFreeGiB := viper.GetInt(constants.BrokerDockerMinFreeGiBEnv)
+	tmplRetention := time.Duration(viper.GetInt(constants.BrokerTemplateRetentionEnv)) * time.Minute
+	tmplDiskThresholdPct := viper.GetInt(constants.BrokerTemplateDiskUsageThresholdEnv)
+	tmplMinFreeGiB := viper.GetInt(constants.BrokerTemplateMinFreeGiBEnv)
+	broker, err := newBroker(log, deviceProvider, providerName, imageDir, sdnGrpcPort, maxClients,
+		imgRetention, diskThresholdPct, dockerMinFreeGiB,
+		tmplRetention, tmplDiskThresholdPct, tmplMinFreeGiB)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -109,6 +145,6 @@ func main() {
 		log.Fatalf("Failed to serve: %v", err)
 	}
 	log.Infof("Broker gRPC server exited")
-	broker.CloseAll(context.Background())
+	broker.CloseAll()
 	log.Info("CloseAll done.")
 }

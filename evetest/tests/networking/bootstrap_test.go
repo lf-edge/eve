@@ -17,13 +17,16 @@ import (
 	"github.com/lf-edge/eve-api/go/evecommon"
 	eveinfo "github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/evetest"
+	api "github.com/lf-edge/eve/evetest/grpcapi/go"
 	"github.com/lf-edge/eve/evetest/matchers"
 	"github.com/lf-edge/eve/evetest/netmodels"
 	pillartypes "github.com/lf-edge/eve/pkg/pillar/types"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
-	lastResortParamKey = "LAST_RESORT_ENABLED"
+	lastResortParamKey   = "LAST_RESORT_ENABLED"
+	useInstallerParamKey = "USE_INSTALLER"
 )
 
 var (
@@ -35,12 +38,23 @@ var (
 			Default: "false",
 		},
 	}
+
+	useInstallerParam = evetest.TestParameterDefinition{
+		Key:          useInstallerParamKey,
+		DefaultValue: false,
+		Description: evetest.TestParameterDescription{
+			Summary: "Use EVE installer instead of live image",
+			Default: "false",
+		},
+	}
 )
 
-func deviceRequirementsForBootstrap(devName string) evetest.RequireEdgeDevice {
+func deviceRequirementsForBootstrap(
+	devName string, reusePolicy evetest.ExistingEdgeDeviceReusePolicy,
+	hypervisor evetest.Hypervisor) evetest.RequireEdgeDevice {
 	return evetest.RequireEdgeDevice{
 		Name:           devName,
-		WithHypervisor: evetest.HypervisorKVM,
+		WithHypervisor: hypervisor,
 		MinCPUs:        4,
 		WithGrubOptions: []string{
 			// No applications are deployed in network bootstrapping tests.
@@ -49,8 +63,18 @@ func deviceRequirementsForBootstrap(devName string) evetest.RequireEdgeDevice {
 			"set_global hv_eve_cpu_settings \"eve_max_vcpus=3\"",
 			"set_global hv_ctrd_cpu_settings \"ctrd_max_vcpus=3\""},
 		// We start from scratch to test device connectivity bootstrapping.
-		DeviceReusePolicy: evetest.CreateFromScratchWithLiveImage,
+		DeviceReusePolicy: reusePolicy,
 	}
+}
+
+// installerOrLiveImagePolicy resolves the USE_INSTALLER test parameter into
+// the corresponding disk-based reuse policy, for bootstrap tests that offer
+// a choice between the two.
+func installerOrLiveImagePolicy(useInstaller bool) evetest.ExistingEdgeDeviceReusePolicy {
+	if useInstaller {
+		return evetest.CreateFromScratchWithInstaller
+	}
+	return evetest.CreateFromScratchWithLiveImage
 }
 
 // TestBootstrapWithLastResort verifies that a freshly installed EVE device,
@@ -103,7 +127,7 @@ func deviceRequirementsForBootstrap(devName string) evetest.RequireEdgeDevice {
 //
 // Hypervisor
 // ----------
-//   - Hardcoded HypervisorKVM (Bootstrap-suite test; not parameterized).
+//   - HYPERVISOR (defaults to KVM).
 func TestBootstrapWithLastResort(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
@@ -111,15 +135,19 @@ func TestBootstrapWithLastResort(test *testing.T) {
 
 	// Define configurable parameters available for the test.
 	evetest.DefineTestParameters(
+		evetest.HypervisorParameter(),
 		lastResortParam,
+		useInstallerParam,
 	)
 
 	// Get parameter values set for this test execution.
+	hypervisor := evetest.GetHypervisorParameterValue()
 	lastResortExplicitlyEnabled := evetest.GetTestParameter[bool](lastResortParamKey)
+	useInstaller := evetest.GetTestParameter[bool](useInstallerParamKey)
 
 	// Set up the test harness and specify the test prerequisites.
 	devName := "edge-dev"
-	requiredDevice := deviceRequirementsForBootstrap(devName)
+	requiredDevice := deviceRequirementsForBootstrap(devName, installerOrLiveImagePolicy(useInstaller), hypervisor)
 	requiredNetModel := evetest.RequireNetworkModel{
 		NetworkModel: netmodels.SingleEthWithDHCP,
 	}
@@ -153,6 +181,9 @@ func TestBootstrapWithLastResort(test *testing.T) {
 			Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
 		})
 	device.ApplyConfig(devConfig, true, true)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
 	evetest.Checkpoint("config-applied")
 
 	// Wait for device info to report the expected DevicePortStatus list.
@@ -233,7 +264,7 @@ var (
 //
 // Hypervisor
 // ----------
-//   - Hardcoded HypervisorKVM (Bootstrap-suite test; not parameterized).
+//   - HYPERVISOR (defaults to KVM).
 func TestBootstrapWithStaticIP(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
@@ -241,11 +272,15 @@ func TestBootstrapWithStaticIP(test *testing.T) {
 
 	// Define configurable parameters available for the test.
 	evetest.DefineTestParameters(
+		evetest.HypervisorParameter(),
 		useOverrideJSONParam,
+		useInstallerParam,
 	)
 
 	// Get parameter values set for this test execution.
+	hypervisor := evetest.GetHypervisorParameterValue()
 	useOverrideJSON := evetest.GetTestParameter[bool](useOverrideJSONParamKey)
+	useInstaller := evetest.GetTestParameter[bool](useInstallerParamKey)
 
 	// Build bootstrap configuration.
 	devName := "edge-dev"
@@ -270,7 +305,7 @@ func TestBootstrapWithStaticIP(test *testing.T) {
 		})
 
 	// Set up the test harness and specify test prerequisites.
-	requiredDevice := deviceRequirementsForBootstrap(devName)
+	requiredDevice := deviceRequirementsForBootstrap(devName, installerOrLiveImagePolicy(useInstaller), hypervisor)
 	if useOverrideJSON {
 		requiredDevice.WithInjectedNetworkOverride = &pillartypes.DevicePortConfig{
 			Version:      1,
@@ -308,6 +343,9 @@ func TestBootstrapWithStaticIP(test *testing.T) {
 
 	// Apply the same bootstrap configuration also through the controller.
 	device.ApplyConfig(bootstrapConfig, true, true)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
 	evetest.Checkpoint("config-applied")
 
 	// Neither bootstrap config nor override.json remain persisted after
@@ -440,7 +478,7 @@ var (
 //
 // Hypervisor
 // ----------
-//   - Hardcoded HypervisorKVM (Bootstrap-suite test).
+//   - HYPERVISOR (defaults to KVM).
 func TestBootstrapWithProxy(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
@@ -448,12 +486,16 @@ func TestBootstrapWithProxy(test *testing.T) {
 
 	// Define configurable parameters available for the test.
 	evetest.DefineTestParameters(
+		evetest.HypervisorParameter(),
 		useOverrideJSONParam,
+		useInstallerParam,
 		proxyConfigTypeParam,
 	)
 
 	// Get parameter values set for this test execution.
+	hypervisor := evetest.GetHypervisorParameterValue()
 	useOverrideJSON := evetest.GetTestParameter[bool](useOverrideJSONParamKey)
+	useInstaller := evetest.GetTestParameter[bool](useInstallerParamKey)
 	proxyConfigType := evetest.GetTestParameter[ProxyConfigType](proxyConfigTypeParamKey)
 
 	// Build bootstrap configuration.
@@ -504,7 +546,7 @@ func TestBootstrapWithProxy(test *testing.T) {
 		})
 
 	// Set up the test harness and specify test prerequisites.
-	requiredDevice := deviceRequirementsForBootstrap(devName)
+	requiredDevice := deviceRequirementsForBootstrap(devName, installerOrLiveImagePolicy(useInstaller), hypervisor)
 	if useOverrideJSON {
 		var proxyConfig pillartypes.ProxyConfig
 		switch proxyConfigType {
@@ -592,6 +634,9 @@ func TestBootstrapWithProxy(test *testing.T) {
 
 	// Apply the same bootstrap configuration also through the controller.
 	device.ApplyConfig(bootstrapConfig, true, true)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
 	evetest.Checkpoint("config-applied")
 
 	// Neither bootstrap config nor override.json remain persisted after
@@ -650,7 +695,7 @@ func TestBootstrapWithProxy(test *testing.T) {
 //
 // Hypervisor
 // ----------
-//   - Hardcoded HypervisorKVM (Bootstrap-suite test).
+//   - HYPERVISOR (defaults to KVM).
 func TestBootstrapWithMgmtVLAN(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
@@ -658,11 +703,15 @@ func TestBootstrapWithMgmtVLAN(test *testing.T) {
 
 	// Define configurable parameters available for the test.
 	evetest.DefineTestParameters(
+		evetest.HypervisorParameter(),
 		useOverrideJSONParam,
+		useInstallerParam,
 	)
 
 	// Get parameter values set for this test execution.
+	hypervisor := evetest.GetHypervisorParameterValue()
 	useOverrideJSON := evetest.GetTestParameter[bool](useOverrideJSONParamKey)
+	useInstaller := evetest.GetTestParameter[bool](useInstallerParamKey)
 
 	// Build bootstrap configuration.
 	devName := "edge-dev"
@@ -688,7 +737,7 @@ func TestBootstrapWithMgmtVLAN(test *testing.T) {
 		})
 
 	// Set up the test harness and specify test prerequisites.
-	requiredDevice := deviceRequirementsForBootstrap(devName)
+	requiredDevice := deviceRequirementsForBootstrap(devName, installerOrLiveImagePolicy(useInstaller), hypervisor)
 	if useOverrideJSON {
 		requiredDevice.WithInjectedNetworkOverride = &pillartypes.DevicePortConfig{
 			Version:      1,
@@ -737,6 +786,9 @@ func TestBootstrapWithMgmtVLAN(test *testing.T) {
 
 	// Apply the same bootstrap configuration also through the controller.
 	device.ApplyConfig(bootstrapConfig, true, true)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
 	evetest.Checkpoint("config-applied")
 
 	// Neither bootstrap config nor override.json remain persisted after
@@ -794,7 +846,7 @@ func TestBootstrapWithMgmtVLAN(test *testing.T) {
 //
 // Hypervisor
 // ----------
-//   - Hardcoded HypervisorKVM (Bootstrap-suite test).
+//   - HYPERVISOR (defaults to KVM).
 func TestBootstrapWithLACPBond(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
@@ -802,11 +854,15 @@ func TestBootstrapWithLACPBond(test *testing.T) {
 
 	// Define configurable parameters available for the test.
 	evetest.DefineTestParameters(
+		evetest.HypervisorParameter(),
 		useOverrideJSONParam,
+		useInstallerParam,
 	)
 
 	// Get parameter values set for this test execution.
+	hypervisor := evetest.GetHypervisorParameterValue()
 	useOverrideJSON := evetest.GetTestParameter[bool](useOverrideJSONParamKey)
+	useInstaller := evetest.GetTestParameter[bool](useInstallerParamKey)
 
 	// Build bootstrap configuration with an LACP bond.
 	// With bootstrap config, EVE creates the bond at boot time, before
@@ -848,7 +904,7 @@ func TestBootstrapWithLACPBond(test *testing.T) {
 		})
 
 	// Set up the test harness and specify test prerequisites.
-	requiredDevice := deviceRequirementsForBootstrap(devName)
+	requiredDevice := deviceRequirementsForBootstrap(devName, installerOrLiveImagePolicy(useInstaller), hypervisor)
 	if useOverrideJSON {
 		requiredDevice.WithInjectedNetworkOverride = &pillartypes.DevicePortConfig{
 			Version:      1,
@@ -898,7 +954,12 @@ func TestBootstrapWithLACPBond(test *testing.T) {
 	requiredNetModel := evetest.RequireNetworkModel{
 		NetworkModel: netmodels.TwoMgmtPortsWithLACPBond,
 	}
-	evetest.Setup(requiredDevice, requiredNetModel)
+	// The SDN-side LACP bond requires the provider to forward LACPDUs across
+	// the simulated links between EVE and the SDN; skip on providers that cannot.
+	requiredCaps := evetest.RequireCapabilities{
+		Capabilities: []api.Capability{api.Capability_CAPABILITY_FORWARD_LACP},
+	}
+	evetest.Setup(requiredDevice, requiredNetModel, requiredCaps)
 
 	// If we got here, device was able to bootstrap controller connectivity using
 	// the bootstrap config or override.json.
@@ -909,10 +970,122 @@ func TestBootstrapWithLACPBond(test *testing.T) {
 
 	// Apply the same bootstrap configuration also through the controller.
 	device.ApplyConfig(bootstrapConfig, true, true)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
 	evetest.Checkpoint("config-applied")
 
 	// Neither bootstrap config nor override.json remain persisted after
 	// the controller connectivity was established.
+	timeout := 3 * time.Minute
+	t.Eventually(devUpdates, timeout).Should(Receive(matchers.SatisfyPredicate(
+		"Device has applied and reported expected network configuration",
+		func(dinfo *eveinfo.ZInfoDevice) bool {
+			return matchSystemAdapterInfo(dinfo.GetSystemAdapter(), 0, []string{"zedagent"})
+		})))
+}
+
+// TestBootstrapWithNetworkBoot verifies that an EVE device with no boot disk
+// content at all can install itself over the network via iPXE (DHCP -> TFTP
+// -> iPXE -> installer -> reboot into the installed EVE), then reach the
+// controller through the same "last resort" DHCP fallback DPC that
+// TestBootstrapWithLastResort exercises.
+//
+// See docs/BOOT-INSTALLER.md's "PXE" section for the full boot chain this
+// exercises. The netboot server here is not SDN-hosted: dnsmasq's DHCP options
+// 66/67 point clients directly at evetest's own HTTP/HTTPS/SFTP/TFTP image server,
+// which serves the installer_net artifact bundle built from the device's
+// target EVE image (see TestHarness.buildNetbootArtifacts). That bundle's
+// config.img *is* injected with the device's onboarding cert/bootstrap
+// config the same way disk-based devices get theirs (see
+// utils.MakeEVEConfigDir) -- this test just doesn't
+// request any (no WithInjectedBootstrapConfig), so it exercises last-resort
+// fallback instead, same as TestBootstrapWithLastResort's default case.
+//
+// Network model
+// -------------
+//   - netmodels.SingleEthWithDHCP, cloned with its DHCP's netboot_server_ip
+//     field set to evetest's own image server.
+//
+// Device configuration
+// --------------------
+//   - DeviceReusePolicy=CreateFromScratchWithNetworkBoot: no disk image is
+//     attached at all, only a blank target disk for the installer to write
+//     EVE onto.
+//
+// Assertions
+// ----------
+//   - evetest.Setup succeeding is itself the primary assertion: it means the
+//     device booted over the network, ran the installer, rebooted, and
+//     reached the controller via last-resort DHCP fallback.
+//   - WatchDeviceInfo until SystemAdapterInfo.CurrentIndex=0 and the DPC
+//     list contains exactly one entry "zedagent", once a controller network
+//     config is applied -- last-resort is pruned the same way
+//     TestBootstrapWithLastResort's default (LAST_RESORT_ENABLED=false) case
+//     verifies.
+//
+// Hypervisor
+// ----------
+//   - HYPERVISOR (defaults to KVM). Requires CAPABILITY_NETBOOT; skipped on
+//     any provider that cannot configure a disk-first, network-fallback
+//     boot order for the device.
+func TestBootstrapWithNetworkBoot(test *testing.T) {
+	evetestT := evetest.Init(test)
+	t := NewGomegaWithT(evetestT)
+	defer evetest.Close()
+
+	// Define configurable parameters available for the test.
+	evetest.DefineTestParameters(evetest.HypervisorParameter())
+
+	// Get parameter values set for this test execution.
+	hypervisor := evetest.GetHypervisorParameterValue()
+
+	// Set up the test harness and specify the test prerequisites.
+	devName := "edge-dev"
+	requiredDevice := deviceRequirementsForBootstrap(
+		devName, evetest.CreateFromScratchWithNetworkBoot, hypervisor)
+	netModel := proto.Clone(netmodels.SingleEthWithDHCP).(*api.NetworkModel)
+	netModel.Networks[0].Ipv4.Dhcp.NetbootServerIp = evetest.GetImageServerIPv4().String()
+	requiredNetModel := evetest.RequireNetworkModel{
+		NetworkModel: netModel,
+	}
+	// Skip on any provider that cannot configure a disk-first, network-fallback
+	// boot order for the device (see CAPABILITY_NETBOOT's doc comment).
+	requiredCaps := evetest.RequireCapabilities{
+		Capabilities: []api.Capability{api.Capability_CAPABILITY_NETBOOT},
+	}
+	evetest.Setup(requiredDevice, requiredNetModel, requiredCaps)
+
+	// If we got here, the device booted over the network, installed EVE,
+	// rebooted, and reached the controller via last-resort DHCP fallback.
+	device := evetest.GetEdgeDevice(devName)
+	devUpdates, stopDevWatch := device.WatchDeviceInfo()
+	defer stopDevWatch()
+	evetest.Checkpoint("setup-done")
+
+	// Apply a normal controller network configuration, same as any other device.
+	devConfig := evetest.NewEdgeDeviceConfig(devName)
+	dhcpNet := devConfig.AddNetwork(
+		evetest.DHCPNetworkConfig{
+			NetworkType: evecommon.NetworkType_V4,
+		})
+	devConfig.AddNetworkAdapter(
+		evetest.NetworkAdapterConfig{
+			LogicalLabel:  "eth0",
+			PhysicalLabel: "eth0",
+			InterfaceName: "eth0",
+			NetworkUUID:   dhcpNet,
+			Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+		})
+	device.ApplyConfig(devConfig, true, true)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
+	evetest.Checkpoint("config-applied")
+
+	// Last-resort was used only for the device's very first contact with the
+	// controller; once controller connectivity is working it gets pruned from
+	// the DPCL per the default retention policy.
 	timeout := 3 * time.Minute
 	t.Eventually(devUpdates, timeout).Should(Receive(matchers.SatisfyPredicate(
 		"Device has applied and reported expected network configuration",

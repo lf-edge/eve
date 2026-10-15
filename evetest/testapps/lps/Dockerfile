@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
+ARG GOLANG_VERSION=1.25
+
 # hadolint ignore=DL3029
-FROM --platform=$BUILDPLATFORM golang:1.24 AS build
+FROM --platform=$BUILDPLATFORM golang:${GOLANG_VERSION} AS build
 
 ARG TARGETOS
 ARG TARGETARCH

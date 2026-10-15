@@ -35,6 +35,16 @@ func (p *LibvirtProvider) GetSupportedDeviceArchs() ([]api.ArchType, error) {
 	panic("unreachable")
 }
 
+// Capabilities is not implemented in CGO-disabled builds.
+func (p *LibvirtProvider) Capabilities() []api.Capability {
+	panic("unreachable")
+}
+
+// DiskImageStrategy is not implemented in CGO-disabled builds.
+func (p *LibvirtProvider) DiskImageStrategy() DiskImageStrategy {
+	panic("unreachable")
+}
+
 // SetupDevice is not implemented in CGO-disabled builds.
 func (p *LibvirtProvider) SetupDevice(_ context.Context, _ string, _ DeviceSpec) error {
 	panic("unreachable")
@@ -98,6 +108,11 @@ func (p *LibvirtProvider) ListDevices(_ context.Context) ([]string, error) {
 
 // TeardownAll is not implemented in CGO-disabled builds.
 func (p *LibvirtProvider) TeardownAll(_ context.Context) error {
+	panic("unreachable")
+}
+
+// ReconfigureDeviceDisks is not implemented in CGO-disabled builds.
+func (p *LibvirtProvider) ReconfigureDeviceDisks(_ context.Context, _ string, _ []DiskImage) error {
 	panic("unreachable")
 }
 

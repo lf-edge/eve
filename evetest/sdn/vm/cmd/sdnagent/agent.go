@@ -95,7 +95,9 @@ func (a *agent) init() error {
 	a.isPortAuthenticated = make(map[string]bool)
 	a.updateCurrentState()
 	a.updateIntendedState()
-	a.reconcile()
+	if err := a.reconcile(); err != nil {
+		log.Warnf("Initial reconcile failed: %v", err)
+	}
 	go a.run(linkChan)
 	return nil
 }
@@ -111,7 +113,9 @@ func (a *agent) run(linkChan chan netlink.LinkUpdate) {
 
 		case <-a.resumeReconciliation:
 			a.Lock()
-			a.reconcile()
+			if err := a.reconcile(); err != nil {
+				log.Warnf("Reconcile (resumed) failed: %v", err)
+			}
 			a.Unlock()
 
 		case ev := <-a.pnacEvents:
@@ -157,7 +161,9 @@ func (a *agent) run(linkChan chan netlink.LinkUpdate) {
 				logicalLabel, ev.IsAuthenticated)
 			a.updateCurrentState()
 			a.updateIntendedState()
-			a.reconcile()
+			if err := a.reconcile(); err != nil {
+				log.Warnf("Reconcile (PNAC event) failed: %v", err)
+			}
 			a.Unlock()
 
 		case linkUpdate, ok := <-linkChan:
@@ -184,7 +190,9 @@ func (a *agent) run(linkChan chan netlink.LinkUpdate) {
 					changed = true
 				}
 				if changed {
-					a.reconcile()
+					if err := a.reconcile(); err != nil {
+						log.Warnf("Reconcile (link update) failed: %v", err)
+					}
 				}
 				a.Unlock()
 			}
@@ -320,7 +328,6 @@ func (a *agent) allocNetworkIndexes() {
 			// Keep already allocated index.
 			continue
 		}
-		index = 0
 		for a.isNetworkIndexUsed(index) {
 			index++
 		}
@@ -522,7 +529,9 @@ func (a *agent) CheckConnectivity(
 		cancel()
 
 		if err == nil {
-			conn.Close()
+			if err := conn.Close(); err != nil {
+				log.Warnf("Failed to close probe connection to %s: %v", target, err)
+			}
 			if isV4 {
 				reachable4 = true
 			} else {
@@ -596,7 +605,9 @@ func (a *agent) ConnectTunnel(
 		delete(a.tunnels, tunnelReq.ClientId)
 		a.updateCurrentState()
 		a.updateIntendedState()
-		a.reconcile()
+		if err := a.reconcile(); err != nil {
+			log.Warnf("Reconcile (tunnel cleanup) failed: %v", err)
+		}
 		a.kickRunMethod()
 	}()
 

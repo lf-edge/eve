@@ -318,8 +318,5 @@ func (c *BondConfigurator) Delete(ctx context.Context, item depgraph.Item) error
 func (c *BondConfigurator) NeedsRecreate(oldItem, newItem depgraph.Item) (recreate bool) {
 	oldBondCfg := oldItem.(Bond)
 	newBondCfg := newItem.(Bond)
-	if !proto.Equal(oldBondCfg.Bond, newBondCfg.Bond) {
-		return true
-	}
-	return false
+	return !proto.Equal(oldBondCfg.Bond, newBondCfg.Bond)
 }

@@ -63,7 +63,11 @@ func main() {
 		if err != nil {
 			log.Fatalf("failed to write PID file %s: %v", httpSrvConfig.PidFile, err)
 		}
-		defer os.Remove(httpSrvConfig.PidFile)
+		defer func() {
+			if err := os.Remove(httpSrvConfig.PidFile); err != nil {
+				log.Warnf("Failed to remove PID file %s: %v", httpSrvConfig.PidFile, err)
+			}
+		}()
 	}
 
 	for path, content := range httpSrvConfig.Paths {

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	eveinfo "github.com/lf-edge/eve-api/go/info"
-	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -38,11 +37,19 @@ func NewEdgeCluster(clusterName string) *EdgeCluster {
 // ApplyConfig applies the configuration from the given EdgeClusterConfig
 // to all cluster devices in parallel. The waitUntilFetched and
 // waitUntilConfirmed arguments are forwarded to each device's ApplyConfig;
-// see EdgeDevice.ApplyConfig for their semantics.
+// see EdgeDevice.ApplyConfig for their semantics. excludeFromWait names
+// devices the config is still pushed to, but without waiting on either flag
+// -- e.g. a device deliberately powered off for the test, which would
+// otherwise block waitUntilFetched/waitUntilConfirmed forever.
 // The set of cluster devices is collected from the EdgeClusterConfig nodes
 // and stored for use by subsequent methods.
-func (ec *EdgeCluster) ApplyConfig(
-	clusterConfig *EdgeClusterConfig, waitUntilFetched bool, waitUntilConfirmed bool) {
+func (ec *EdgeCluster) ApplyConfig(clusterConfig *EdgeClusterConfig,
+	waitUntilFetched, waitUntilConfirmed bool, excludeFromWait ...string) {
+	excluded := make(map[string]bool, len(excludeFromWait))
+	for _, name := range excludeFromWait {
+		excluded[name] = true
+	}
+
 	// Set the cluster name on each device's config and collect devices.
 	nodes := clusterConfig.nodes
 	ec.devices = make([]*EdgeDevice, len(nodes))
@@ -55,8 +62,12 @@ func (ec *EdgeCluster) ApplyConfig(
 	}
 	RunParallel(len(nodes), func(i int) {
 		node := nodes[i]
+		fetched, confirmed := waitUntilFetched, waitUntilConfirmed
+		if excluded[node.DevName] {
+			fetched, confirmed = false, false
+		}
 		ec.devices[i].ApplyConfig(
-			clusterConfig.GetDeviceConfig(node.DevName), waitUntilFetched, waitUntilConfirmed)
+			clusterConfig.GetDeviceConfig(node.DevName), fetched, confirmed)
 	})
 }
 
@@ -86,8 +97,16 @@ func (ec *EdgeCluster) WaitUntilNodesAreReady(timeout time.Duration) {
 	closeOnce := sync.Once{}
 	RunParallel(len(ec.devices), func(i int) {
 		dev := ec.devices[i]
+		// Subscribe before taking the initial snapshot, so a transition
+		// landing between the two calls can never be missed.
 		updates, stop := dev.WatchClusterInfo()
 		defer stop()
+		if info := dev.GetClusterInfo(); info != nil && allNodesReady(info, expectedNodes) {
+			ec.th.log.Infof("All cluster nodes already ready per device %q",
+				dev.devName)
+			closeOnce.Do(func() { close(doneCh) })
+			return
+		}
 		var tickerCh <-chan time.Time
 		if i == 0 {
 			ticker := time.NewTicker(1 * time.Minute)
@@ -121,32 +140,62 @@ func (ec *EdgeCluster) WaitUntilNodesAreReady(timeout time.Duration) {
 	})
 }
 
-// allNodesReady returns true if the cluster info reports every node in
-// expectedNodes as Ready.
+// allNodesReady returns true if the cluster storage is healthy and every
+// node in expectedNodes is reported as Ready.
 func allNodesReady(info *eveinfo.ZInfoKubeCluster, expectedNodes []string) bool {
-	const nodeReadyCond = eveinfo.KubeNodeConditionType_KUBE_NODE_CONDITION_TYPE_READY
-	var readyNodes []string
-	for _, node := range info.GetNodes() {
-		for _, cond := range node.GetConditions() {
-			if cond.GetType() == nodeReadyCond && cond.GetSet() {
-				readyNodes = append(readyNodes, node.GetName())
-				break
-			}
+	for _, name := range expectedNodes {
+		if !clusterNodeReady(info, name) {
+			return false
 		}
 	}
-	return generics.EqualSets(readyNodes, expectedNodes)
+	return true
+}
+
+// clusterNodeReady returns true if the given cluster info reports the named
+// node as Ready and the cluster's storage as healthy.
+func clusterNodeReady(info *eveinfo.ZInfoKubeCluster, nodeName string) bool {
+	const nodeReadyCond = eveinfo.KubeNodeConditionType_KUBE_NODE_CONDITION_TYPE_READY
+	if info.GetStorage().GetHealth() != eveinfo.ServiceStatus_SERVICE_STATUS_HEALTHY {
+		return false
+	}
+	for _, node := range info.GetNodes() {
+		if node.GetName() != nodeName {
+			continue
+		}
+		for _, cond := range node.GetConditions() {
+			if cond.GetType() == nodeReadyCond {
+				return cond.GetSet()
+			}
+		}
+		return false
+	}
+	return false
 }
 
 // FindDeviceHostingApp finds the cluster device that hosts the given application.
 // It watches ZInfoKubeCluster updates from all devices and returns the device
 // whose cluster info reports the app (matched by display name) in EveApps
 // or EveVmApps with a non-empty NodeName.
-func (ec *EdgeCluster) FindDeviceHostingApp(
-	appUUID uuid.UUID, timeout time.Duration) *EdgeDevice {
+//
+// Pass excludeDevNames to wait for the app to move OFF the named devices, which
+// is what a failover test needs. Without it, this can return a device that no
+// longer hosts the app: each device's last published cluster info is consulted
+// first, and that snapshot can predate the event the caller is waiting for -
+// most visibly when the excluded device is powered off, since its own stale
+// snapshot still names it as the host and it publishes nothing further.
+// Excluded devices are skipped as a source of cluster info and are never
+// returned, so the answer can only come from a device that is still up.
+func (ec *EdgeCluster) FindDeviceHostingApp(appUUID uuid.UUID,
+	timeout time.Duration, excludeDevNames ...string) *EdgeDevice {
 	ec.checkDevices("FindDeviceHostingApp")
 	ctx, cancel := context.WithTimeout(ec.th.ctx, timeout)
 	defer cancel()
 	appUUIDStr := appUUID.String()
+
+	excluded := make(map[string]bool, len(excludeDevNames))
+	for _, name := range excludeDevNames {
+		excluded[name] = true
+	}
 
 	// Look up the app display name from the first device's config.
 	var appDisplayName string
@@ -167,24 +216,29 @@ func (ec *EdgeCluster) FindDeviceHostingApp(
 			appUUID)
 	}
 
-	// First check already published cluster info from all devices.
-	for _, dev := range ec.devices {
-		if info := dev.GetClusterInfo(); info != nil {
-			if nodeName := findAppNodeName(info, appDisplayName); nodeName != "" {
-				for _, d := range ec.devices {
-					if d.devName == nodeName {
-						return d
-					}
-				}
-				ec.th.t.Fatalf("Node %q reports hosting app %q, but no matching "+
-					"device was found in cluster %q",
-					nodeName, appUUID, ec.clusterName)
-			}
+	// hostingNode returns the node the info reports as hosting the app, unless
+	// that node is excluded - an excluded node is what the caller is waiting for
+	// the app to leave, so reporting it is never the answer.
+	hostingNode := func(info *eveinfo.ZInfoKubeCluster) string {
+		nodeName := findAppNodeName(info, appDisplayName)
+		if nodeName == "" || excluded[nodeName] {
+			return ""
 		}
+		return nodeName
 	}
 
-	// Subscribe to cluster info from all devices and wait for the app
-	// to appear with a node name.
+	// deviceByName maps a reported node name back to a cluster device.
+	deviceByName := func(nodeName string) *EdgeDevice {
+		for _, dev := range ec.devices {
+			if dev.devName == nodeName {
+				return dev
+			}
+		}
+		ec.th.t.Fatalf("Node %q reports hosting app %q, but no matching device "+
+			"was found in cluster %q", nodeName, appUUID, ec.clusterName)
+		return nil
+	}
+
 	type result struct {
 		nodeName string
 	}
@@ -193,9 +247,17 @@ func (ec *EdgeCluster) FindDeviceHostingApp(
 	subCtx, subCancel := context.WithCancel(ctx)
 	defer subCancel()
 
+	// Subscribe before taking the cached snapshot below, so an update landing
+	// between the two is not missed.
 	for _, dev := range ec.devices {
+		if excluded[dev.devName] {
+			// A device the app must move off is not a trustworthy source: if it
+			// is powered off it publishes nothing, and its last snapshot is
+			// stale by definition.
+			continue
+		}
 		updates, stop := dev.WatchClusterInfo()
-		go func(dev *EdgeDevice, updates <-chan *eveinfo.ZInfoKubeCluster, stop func()) {
+		go func(updates <-chan *eveinfo.ZInfoKubeCluster, stop func()) {
 			defer stop()
 			for {
 				select {
@@ -203,8 +265,7 @@ func (ec *EdgeCluster) FindDeviceHostingApp(
 					if !ok {
 						return
 					}
-					nodeName := findAppNodeName(info, appDisplayName)
-					if nodeName != "" {
+					if nodeName := hostingNode(info); nodeName != "" {
 						select {
 						case resultCh <- result{nodeName: nodeName}:
 						default:
@@ -215,21 +276,31 @@ func (ec *EdgeCluster) FindDeviceHostingApp(
 					return
 				}
 			}
-		}(dev, updates, stop)
+		}(updates, stop)
+	}
+
+	// Then check the cluster info each still-eligible device has already
+	// published, so the common case does not have to wait for a fresh message.
+	for _, dev := range ec.devices {
+		if excluded[dev.devName] {
+			continue
+		}
+		if info := dev.GetClusterInfo(); info != nil {
+			if nodeName := hostingNode(info); nodeName != "" {
+				return deviceByName(nodeName)
+			}
+		}
 	}
 
 	select {
 	case res := <-resultCh:
 		subCancel()
-		// Map node name back to an EdgeDevice.
-		for _, dev := range ec.devices {
-			if dev.devName == res.nodeName {
-				return dev
-			}
-		}
-		ec.th.t.Fatalf("Node %q reports hosting app %q, but no matching device "+
-			"was found in cluster %q", res.nodeName, appUUID, ec.clusterName)
+		return deviceByName(res.nodeName)
 	case <-ctx.Done():
+		if len(excludeDevNames) > 0 {
+			ec.th.t.Fatalf("Timed out waiting for app %q to move off %v in cluster %q",
+				appUUID, excludeDevNames, ec.clusterName)
+		}
 		ec.th.t.Fatalf("Timed out waiting for app %q to be scheduled in cluster %q",
 			appUUID, ec.clusterName)
 	}
@@ -238,7 +309,7 @@ func (ec *EdgeCluster) FindDeviceHostingApp(
 
 // findAppNodeName checks if the given cluster info contains the app
 // (by display name) in EveApps or EveVmApps with a non-empty NodeName.
-// Kubernetes adds a hash suffix to the display name (e.g. "my-app-584dbd8fnx"),
+// Kubernetes adds a hash suffix to the display name (e.g. "my-app-abcde12345"),
 // so we match by prefix with a "-" separator.
 func findAppNodeName(info *eveinfo.ZInfoKubeCluster, appDisplayName string) string {
 	prefix := appDisplayName + "-"
@@ -322,15 +393,20 @@ func (ec *EdgeCluster) RebootApplication(appUUID uuid.UUID, waitUntilRebooted bo
 
 // PurgeApplication purges the specified application across the cluster.
 // The purge counter is incremented on all devices, but the wait (if requested)
-// is performed only on the device hosting the application.
-func (ec *EdgeCluster) PurgeApplication(appUUID uuid.UUID, waitUntilPurged bool,
-	timeout time.Duration) {
+// is performed only on the device hosting the application. See
+// EdgeDevice.PurgeApplication for volumeGen.
+//
+// Name in excludeDevNames any node that must not be taken for the host, such as
+// one the caller has powered off: the cluster info it published before going
+// down still names it as the host, and waiting there never completes.
+func (ec *EdgeCluster) PurgeApplication(appUUID uuid.UUID, volumeGen VolumeGenerationPolicy,
+	waitUntilPurged bool, timeout time.Duration, excludeDevNames ...string) {
 	ec.checkDevices("PurgeApplication")
-	hostDev := ec.FindDeviceHostingApp(appUUID, timeout)
+	hostDev := ec.FindDeviceHostingApp(appUUID, timeout, excludeDevNames...)
 	ec.forEachDeviceExcept(hostDev, func(dev *EdgeDevice) {
-		dev.PurgeApplication(appUUID, false, 0)
+		dev.PurgeApplication(appUUID, volumeGen, false, 0)
 	})
-	hostDev.PurgeApplication(appUUID, waitUntilPurged, timeout)
+	hostDev.PurgeApplication(appUUID, volumeGen, waitUntilPurged, timeout)
 }
 
 // ActivateApplication activates the specified application across the cluster.

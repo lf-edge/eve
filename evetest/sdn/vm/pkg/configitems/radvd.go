@@ -150,7 +150,11 @@ func (c *RadvdConfigurator) createRadvdConfFile(radvd Radvd) error {
 	if err != nil {
 		return fmt.Errorf("failed to create radvd config file: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if cerr := file.Close(); cerr != nil {
+			log.Warnf("Failed to close radvd config file %s: %v", filePath, cerr)
+		}
+	}()
 
 	var b strings.Builder
 
@@ -166,7 +170,8 @@ func (c *RadvdConfigurator) createRadvdConfFile(radvd Radvd) error {
 		b.WriteString("    AdvOtherConfigFlag on;\n")
 	}
 	if radvd.MTU > 0 {
-		b.WriteString(fmt.Sprintf("    AdvLinkMTU %d;\n", radvd.MTU))
+		// strings.Builder.Write never returns a non-nil error.
+		_, _ = fmt.Fprintf(&b, "    AdvLinkMTU %d;\n", radvd.MTU)
 	}
 
 	b.WriteString("    prefix ")

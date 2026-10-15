@@ -31,6 +31,7 @@ import (
 
 	evecerts "github.com/lf-edge/eve-api/go/certs"
 	eveconfig "github.com/lf-edge/eve-api/go/config"
+	eveflowlog "github.com/lf-edge/eve-api/go/flowlog"
 	eveinfo "github.com/lf-edge/eve-api/go/info"
 	evelogs "github.com/lf-edge/eve-api/go/logs"
 	evemetrics "github.com/lf-edge/eve-api/go/metrics"
@@ -68,6 +69,13 @@ const (
 	streamValue  = "true"
 )
 
+// adamLoopbackIP is the address Adam listens on when a fault proxy takes over
+// the device-facing addresses. Only the proxy and the harness then reach Adam,
+// both from inside the harness' network namespace, which keeps Adam off the
+// device network: a device cannot sidestep an injected fault by reaching the
+// controller directly.
+const adamLoopbackIP = "127.0.0.1"
+
 // AdamClient manages the lifecycle of an Adam controller instance.
 // It is responsible for generating TLS assets, starting the Adam process,
 // monitoring it for unexpected exits, and shutting it down cleanly.
@@ -77,12 +85,22 @@ type AdamClient struct {
 	hostname   string
 	listenIPs  []net.IP
 	listenPort uint16
+	withFaults bool
+	faultProxy *FaultProxy
 
-	// certificates and their corresponding private keys
-	caCert      *x509.Certificate
-	caKey       *rsa.PrivateKey
-	tlsCert     *x509.Certificate
-	tlsKey      *ecdsa.PrivateKey
+	// Certificates and their corresponding private keys that are never rotated:
+	// the CA is set at construction, the TLS pair once in generateCerts.
+	caCert  *x509.Certificate
+	caKey   *rsa.PrivateKey
+	tlsCert *x509.Certificate
+	tlsKey  *ecdsa.PrivateKey
+
+	// certsM guards the fields below: the signing and ECDH keypairs are
+	// rotatable at runtime (see RotateSigningKeyPair, RotateECDHKeyPair) while
+	// tests and per-device setup goroutines read them concurrently.
+	certsM      sync.RWMutex
+	certDir     string // directory holding the certificate files Adam reads
+	certSerial  int64  // serial number for the next generated certificate
 	signingCert *x509.Certificate
 	signingKey  *ecdsa.PrivateKey
 	ecdhCert    *x509.Certificate
@@ -108,6 +126,11 @@ type AdamClient struct {
 
 	// onboardSerials maps onboarding cert fingerprint → set of serials
 	onboardSerials map[string]map[string]struct{}
+
+	// infoFeeds holds the shared info message feed of every device that has
+	// at least one info subscription.
+	infoFeedsM sync.Mutex
+	infoFeeds  map[uuid.UUID]*infoFeed
 }
 
 // AdamState is a lifecycle notification emitted by AdamClient.
@@ -168,6 +191,16 @@ type MetricMsgIterator interface {
 	Iterate(msg *evemetrics.ZMetricMsg) (stop bool, err error)
 }
 
+// FlowMsgIterator iterates over device flow log messages (FlowMessage), each
+// of which carries both flow records and DNS request records for one
+// application VIF. Iterate is called for each message that passes the match
+// filter. Returning stop=true signals that no further messages are needed
+// and iteration should stop cleanly. Returning a non-nil error aborts
+// iteration and propagates the error to the caller.
+type FlowMsgIterator interface {
+	Iterate(msg *eveflowlog.FlowMessage) (stop bool, err error)
+}
+
 // NewAdamClient creates a new AdamClient.
 // The caller is responsible for providing a CA certificate and key used
 // to sign all Adam server certificates.
@@ -189,7 +222,46 @@ func NewAdamClient(log *logrus.Entry,
 		statusCh:       statusCh,
 		knownDevices:   make(map[uuid.UUID]struct{}),
 		onboardSerials: make(map[string]map[string]struct{}),
+		infoFeeds:      make(map[uuid.UUID]*infoFeed),
 	}
+}
+
+// EnableFaultInjection puts a fault injecting proxy on the addresses the devices
+// connect to and moves Adam itself to loopback behind it, so that a test can make
+// the controller fail in a chosen way (see FaultRule). The harness goes on
+// reaching Adam directly, so reading what the controller knows is never affected
+// by an injected fault.
+// Must be called before Start.
+func (ac *AdamClient) EnableFaultInjection() {
+	ac.withFaults = true
+}
+
+// adamListenIPs returns the addresses Adam itself binds: the device-facing ones,
+// or loopback when the fault proxy has taken those over.
+func (ac *AdamClient) adamListenIPs() []string {
+	if ac.withFaults {
+		return []string{adamLoopbackIP}
+	}
+	ips := make([]string, 0, len(ac.listenIPs))
+	for _, listenIP := range ac.listenIPs {
+		ips = append(ips, listenIP.String())
+	}
+	return ips
+}
+
+// adamHostIP returns the address the harness reaches Adam at.
+func (ac *AdamClient) adamHostIP() string {
+	if ac.withFaults {
+		return adamLoopbackIP
+	}
+	return ac.listenIPs[0].String()
+}
+
+// FaultProxy returns the proxy the devices reach Adam through, which a test uses
+// to make the controller fail in a chosen way (see FaultRule). It is nil unless
+// EnableFaultInjection was called before Start.
+func (ac *AdamClient) FaultProxy() *FaultProxy {
+	return ac.faultProxy
 }
 
 // Start generates TLS certificates and launches the Adam controller.
@@ -222,9 +294,8 @@ func (ac *AdamClient) Start() error {
 	args = append(args,
 		"server",
 		"--port", strconv.Itoa(int(ac.listenPort)))
-	for _, listenIP := range ac.listenIPs {
-		args = append(args,
-			"--ip", listenIP.String())
+	for _, adamIP := range ac.adamListenIPs() {
+		args = append(args, "--ip", adamIP)
 	}
 	args = append(args,
 		"--db-url", dbDir,
@@ -257,7 +328,7 @@ func (ac *AdamClient) Start() error {
 	ac.adamCmd = cmd
 	ac.adamPid = cmd.Process.Pid
 	ac.log.Infof("Adam process started and listening on IPs:%v, port:%d",
-		ac.listenIPs, ac.listenPort)
+		ac.adamListenIPs(), ac.listenPort)
 	ac.publish(AdamStateRunning, nil)
 
 	// Signal when qemu process exits.
@@ -275,6 +346,25 @@ func (ac *AdamClient) Start() error {
 			ac.publish(AdamStateStopped, nil)
 		}
 	}()
+
+	if ac.withFaults {
+		caPool := x509.NewCertPool()
+		caPool.AddCert(ac.caCert)
+		ac.faultProxy = NewFaultProxy(
+			ac.log.WithField("component", "fault-proxy"),
+			ac.listenIPs, ac.listenPort,
+			filepath.Join(certDir, "tls.pem"),
+			filepath.Join(certDir, "tls-key.pem"),
+			net.JoinHostPort(adamLoopbackIP, strconv.Itoa(int(ac.listenPort))),
+			ac.hostname, caPool)
+		if err := ac.faultProxy.Start(); err != nil {
+			// Nothing can reach Adam on loopback without the proxy in front of
+			// it, so do not leave it running and holding its database directory.
+			_ = ac.Stop()
+			ac.publish(AdamStateCrashed, err)
+			return err
+		}
+	}
 	return nil
 }
 
@@ -286,6 +376,10 @@ func (ac *AdamClient) Stop() error {
 
 	ac.publish(AdamStateStopping, nil)
 	ac.log.Info("Stopping Adam")
+
+	if ac.faultProxy != nil {
+		ac.faultProxy.Stop()
+	}
 
 	if err := ac.adamCmd.Process.Signal(syscall.SIGTERM); err != nil {
 		err = fmt.Errorf("failed to send SIGTERM to Adam: %v", err)
@@ -310,6 +404,10 @@ func (ac *AdamClient) httpClient() *http.Client {
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{
 			RootCAs: pool,
+			// Behind the fault proxy Adam is reached over loopback, an address
+			// its certificate does not name, so verify against the name it is
+			// issued for instead of the one dialed.
+			ServerName: ac.hostname,
 		},
 	}
 	return &http.Client{Transport: tr}
@@ -317,7 +415,7 @@ func (ac *AdamClient) httpClient() *http.Client {
 
 func (ac *AdamClient) adminURL(pathSuffix string) string {
 	return fmt.Sprintf("https://%s:%d/admin/%s",
-		ac.listenIPs[0].String(), ac.listenPort, pathSuffix)
+		ac.adamHostIP(), ac.listenPort, pathSuffix)
 }
 
 func (ac *AdamClient) checkAdamRunning() error {
@@ -353,16 +451,124 @@ func (ac *AdamClient) openStream(ctx context.Context, url string) (*http.Respons
 	return resp, nil
 }
 
+// KeyPair is a controller certificate together with its private key.
+type KeyPair struct {
+	Cert *x509.Certificate
+	Key  *ecdsa.PrivateKey
+}
+
 // GetSigningCertAndKey returns certificate+key used by the controller to sign payload
 // send to a device wrapped inside AuthContainer.
 func (ac *AdamClient) GetSigningCertAndKey() (*x509.Certificate, *ecdsa.PrivateKey) {
+	ac.certsM.RLock()
+	defer ac.certsM.RUnlock()
 	return ac.signingCert, ac.signingKey
 }
 
 // GetECDHCertAndKey returns certificate+key used by the controller for object-level
 // encryption (e.g., for WiFi password).
 func (ac *AdamClient) GetECDHCertAndKey() (*x509.Certificate, *ecdsa.PrivateKey) {
+	ac.certsM.RLock()
+	defer ac.certsM.RUnlock()
 	return ac.ecdhCert, ac.ecdhKey
+}
+
+// RotateSigningKeyPair generates a fresh keypair for the controller signing
+// certificate, installs it into Adam's certificate directory and makes it the
+// pair returned by GetSigningCertAndKey. It returns the new pair and the pair it
+// replaced.
+//
+// Adam must not be restarted for this to take effect -- it re-reads signing.pem
+// and signing-key.pem from disk on every API request. A restart would in fact
+// undo the rotation, because Start unconditionally regenerates all keypairs.
+func (ac *AdamClient) RotateSigningKeyPair() (newPair, oldPair KeyPair, err error) {
+	ac.certsM.Lock()
+	defer ac.certsM.Unlock()
+
+	oldPair = KeyPair{Cert: ac.signingCert, Key: ac.signingKey}
+	newPair, err = ac.rotateKeyPair("signing", "signing.pem", "signing-key.pem")
+	if err != nil {
+		return KeyPair{}, oldPair, err
+	}
+	ac.signingCert, ac.signingKey = newPair.Cert, newPair.Key
+	return newPair, oldPair, nil
+}
+
+// RotateECDHKeyPair generates a fresh keypair for the controller ECDH
+// (object-level encryption) certificate, installs it into Adam's certificate
+// directory and makes it the pair returned by GetECDHCertAndKey. It returns the
+// new pair and the pair it replaced; the old private key is needed to decrypt
+// cipher blocks that are being migrated onto the new certificate.
+//
+// As with RotateSigningKeyPair, Adam picks the change up without a restart.
+func (ac *AdamClient) RotateECDHKeyPair() (newPair, oldPair KeyPair, err error) {
+	ac.certsM.Lock()
+	defer ac.certsM.Unlock()
+
+	oldPair = KeyPair{Cert: ac.ecdhCert, Key: ac.ecdhKey}
+	newPair, err = ac.rotateKeyPair("ECDH", "ecdh.pem", "ecdh-key.pem")
+	if err != nil {
+		return KeyPair{}, oldPair, err
+	}
+	ac.ecdhCert, ac.ecdhKey = newPair.Cert, newPair.Key
+	return newPair, oldPair, nil
+}
+
+// rotateKeyPair generates an ECDSA keypair signed by the harness CA and installs
+// it into Adam's certificate directory under the given file names. The file names
+// are evetest's own, not Adam's defaults (which are encrypt.pem/encrypt-key.pem
+// for the ECDH pair); Start passes them explicitly via --encrypt-cert et al.
+//
+// The two files cannot be replaced as one, so a failure after the first write
+// would leave Adam holding a mismatched pair, answering 500 to every request
+// needing a signed response. That would break not only the test that asked for
+// the rotation but every later test sharing the harness, so the previous
+// contents are restored before the error is returned.
+//
+// The caller must hold certsM for writing.
+func (ac *AdamClient) rotateKeyPair(
+	desc, certFilename, keyFilename string) (KeyPair, error) {
+	if ac.certDir == "" {
+		return KeyPair{}, errors.New(
+			"the Adam certificate directory is not known yet")
+	}
+	certPath := filepath.Join(ac.certDir, certFilename)
+	keyPath := filepath.Join(ac.certDir, keyFilename)
+	prevCert, prevCertErr := os.ReadFile(certPath)
+	prevKey, prevKeyErr := os.ReadFile(keyPath)
+	restorePrevious := func() {
+		if prevCertErr != nil || prevKeyErr != nil {
+			ac.log.Errorf("Cannot restore the previous Adam %s pair, it was not "+
+				"readable (cert: %v, key: %v)", desc, prevCertErr, prevKeyErr)
+			return
+		}
+		if err := utils.WriteFileAtomic(keyPath, prevKey, 0o600); err != nil {
+			ac.log.Errorf("Failed to restore the previous Adam %s key: %v", desc, err)
+			return
+		}
+		if err := utils.WriteFileAtomic(certPath, prevCert, 0o644); err != nil {
+			ac.log.Errorf("Failed to restore the previous Adam %s certificate: %v",
+				desc, err)
+			return
+		}
+		ac.log.Warnf("Restored the previous Adam %s certificate and key", desc)
+	}
+
+	serial := big.NewInt(ac.certSerial)
+	ac.certSerial++
+	cert, key, err := utils.GenServerCertElliptic(ac.caCert, ac.caKey, serial,
+		ac.listenIPs, []string{ac.hostname}, ac.hostname)
+	if err != nil {
+		return KeyPair{}, fmt.Errorf(
+			"failed to generate Adam %s certificate: %w", desc, err)
+	}
+	if err := utils.OutputCertAndKeyAtomic(cert, key, certPath, keyPath); err != nil {
+		restorePrevious()
+		return KeyPair{}, fmt.Errorf(
+			"failed to install Adam %s certificate: %w", desc, err)
+	}
+	ac.log.Infof("Installed a new Adam %s certificate (serial %s)", desc, serial)
+	return KeyPair{Cert: cert, Key: key}, nil
 }
 
 // RegisterDevice directly registers a device certificate with Adam,
@@ -527,11 +733,12 @@ func (ac *AdamClient) OnboardDevice(ctx context.Context,
 				ac.knownDevices[devUUID] = struct{}{}
 				ac.mutex.Unlock()
 				ac.log.Infof(
-					"Device UUID %q (onboard cert CN=%q) onboarded into Adam controller",
-					devUUID, cn)
+					"Device UUID %q (onboard cert CN=%q, serial=%q) onboarded into Adam controller",
+					devUUID, cn, devSerial)
 				return devUUID, nil
 			}
-			ac.log.Infof("Waiting for device (onboard cert CN=%q) to onboard...", cn)
+			ac.log.Infof("Waiting for device (onboard cert CN=%q, serial=%q) to onboard...",
+				cn, devSerial)
 		case <-ac.exitCh:
 			if err := ac.checkAdamRunning(); err != nil {
 				return uuid.Nil, err
@@ -1296,6 +1503,48 @@ func (ac *AdamClient) SubscribeToAppLogs(
 	return unsubscribe, nil
 }
 
+// fetchDeviceInfoMsgs reads every info message Adam has stored for the device,
+// oldest first, and passes each to fn until fn returns true or an error.
+// It reports whether fn stopped the iteration.
+func (ac *AdamClient) fetchDeviceInfoMsgs(ctx context.Context, devUUID uuid.UUID,
+	fn func(msg *eveinfo.ZInfoMsg) (bool, error)) (bool, error) {
+	url := ac.adminURL("device/" + devUUID.String() + "/info")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return false, fmt.Errorf("failed to create GET %s request: %w", url, err)
+	}
+
+	resp, err := ac.httpClient().Do(req)
+	if err != nil {
+		return false, fmt.Errorf("GET %s failed: %w", url, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("unexpected status from GET %s: %d",
+			url, resp.StatusCode)
+	}
+
+	dec := json.NewDecoder(resp.Body)
+	for {
+		var raw json.RawMessage
+		if err := dec.Decode(&raw); err != nil {
+			if errors.Is(err, io.EOF) {
+				return false, nil
+			}
+			return false, fmt.Errorf("failed to decode info message JSON: %w", err)
+		}
+		msg := &eveinfo.ZInfoMsg{}
+		if err := protojson.Unmarshal(raw, msg); err != nil {
+			return false, fmt.Errorf("failed to proto-unmarshal info message: %w", err)
+		}
+		stop, err := fn(msg)
+		if err != nil || stop {
+			return stop, err
+		}
+	}
+}
+
 // IterateDeviceInfoMsgs retrieves informational messages (ZInfoMsg)
 // published by the specified device and passes matching messages to iterator.
 //
@@ -1318,50 +1567,19 @@ func (ac *AdamClient) IterateDeviceInfoMsgs(ctx context.Context, devUUID uuid.UU
 		return fmt.Errorf("unknown device UUID %q", devUUID)
 	}
 
-	// -------- Initial GET --------
-
-	url := ac.adminURL("device/" + devUUID.String() + "/info")
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create GET %s request: %w", url, err)
-	}
-
-	resp, err := ac.httpClient().Do(req)
-	if err != nil {
-		return fmt.Errorf("GET %s failed: %w", url, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status from GET %s: %d",
-			url, resp.StatusCode)
-	}
-
-	dec := json.NewDecoder(resp.Body)
-
-	for {
-		var raw json.RawMessage
-
-		if err := dec.Decode(&raw); err != nil {
-			if errors.Is(err, io.EOF) {
-				break
+	stopped, err := ac.fetchDeviceInfoMsgs(ctx, devUUID,
+		func(msg *eveinfo.ZInfoMsg) (bool, error) {
+			if match != nil && !match(msg) {
+				return false, nil
 			}
-			return fmt.Errorf("failed to decode info message JSON: %w", err)
-		}
-
-		msg := &eveinfo.ZInfoMsg{}
-		if err = protojson.Unmarshal(raw, msg); err != nil {
-			return fmt.Errorf("failed to proto-unmarshal info message: %w", err)
-		}
-		if match == nil || match(msg) {
 			stop, iterErr := iterator.Iterate(msg)
 			if iterErr != nil {
-				return fmt.Errorf("failed to iterate info message: %w", iterErr)
+				return false, fmt.Errorf("failed to iterate info message: %w", iterErr)
 			}
-			if stop {
-				return nil
-			}
-		}
+			return stop, nil
+		})
+	if err != nil || stopped {
+		return err
 	}
 
 	// -------- Follow mode --------
@@ -1399,113 +1617,32 @@ func (ac *AdamClient) IterateDeviceInfoMsgs(ctx context.Context, devUUID uuid.UU
 // If match is non-nil, only messages for which match(msg) returns true
 // are forwarded. If match is nil, all messages are delivered.
 //
-// The streaming connection is opened synchronously: by the time this method
-// returns, Adam has accepted the request and any subsequent info messages
-// for the device will be delivered. On transient failures after the initial
-// connection, a background goroutine reconnects with a fixed retry delay.
+// Only messages Adam receives after this method returns are delivered; see
+// SubscribeToDeviceInfoMsgsWithLatest for a subscription that starts from
+// the device's current state. Each message is delivered once, including
+// across a reconnect to Adam, and messages Adam received while the
+// connection was down are delivered once it is back.
 //
-// The returned unsubscribe function stops the background stream and waits
-// for it to exit. It is safe to call multiple times. The channel is closed
+// The returned unsubscribe function ends the subscription and waits for its
+// delivery to stop. It is safe to call multiple times. The channel is closed
 // when the subscription ends.
 func (ac *AdamClient) SubscribeToDeviceInfoMsgs(devUUID uuid.UUID,
 	match func(msg *eveinfo.ZInfoMsg) bool,
 	channel chan<- *eveinfo.ZInfoMsg) (unsubscribe func(), err error) {
-	const retryDelay = 3 * time.Second
+	return ac.subscribeToDeviceInfoMsgs(devUUID, match, channel, false)
+}
 
-	if err = ac.checkAdamRunning(); err != nil {
-		return nil, err
-	}
-
-	// Verify device is known.
-	ac.mutex.Lock()
-	_, known := ac.knownDevices[devUUID]
-	ac.mutex.Unlock()
-	if !known {
-		return nil, fmt.Errorf("unknown device UUID %q", devUUID)
-	}
-
-	streamCtx, cancel := context.WithCancel(context.Background())
-	url := ac.adminURL("device/" + devUUID.String() + "/info")
-
-	resp, err := ac.openStream(streamCtx, url)
-	if err != nil {
-		cancel()
-		return nil, err
-	}
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer close(channel)
-
-		current := resp
-		for {
-			if current == nil {
-				select {
-				case <-time.After(retryDelay):
-				case <-streamCtx.Done():
-					return
-				}
-				r, err := ac.openStream(streamCtx, url)
-				if err != nil {
-					if streamCtx.Err() != nil {
-						return
-					}
-					ac.log.Errorf("failed to reopen info message stream: %v", err)
-					continue
-				}
-				current = r
-			}
-
-			func() {
-				defer func() {
-					if err := current.Body.Close(); err != nil {
-						ac.log.Warnf("failed to close response body: %v", err)
-					}
-				}()
-				dec := json.NewDecoder(current.Body)
-				for {
-					var raw json.RawMessage
-					if err := dec.Decode(&raw); err != nil {
-						if streamCtx.Err() != nil {
-							return
-						}
-						if errors.Is(err, io.EOF) {
-							ac.log.Warn("info message stream closed by server")
-							return
-						}
-						ac.log.Errorf("failed to decode streamed info message: %v", err)
-						return
-					}
-					msg := &eveinfo.ZInfoMsg{}
-					if err := protojson.Unmarshal(raw, msg); err != nil {
-						ac.log.Errorf(
-							"failed to proto-unmarshal streamed info message: %v", err)
-						continue
-					}
-					if match != nil && !match(msg) {
-						continue
-					}
-					select {
-					case channel <- msg:
-					case <-streamCtx.Done():
-						return
-					}
-				}
-			}()
-			current = nil
-		}
-	}()
-
-	var once sync.Once
-	unsubscribe = func() {
-		once.Do(func() {
-			cancel()
-			wg.Wait()
-		})
-	}
-	return unsubscribe, nil
+// SubscribeToDeviceInfoMsgsWithLatest is SubscribeToDeviceInfoMsgs, except
+// that the subscription first receives the latest stored message of every
+// object the device reports on (the device itself, each app, network
+// instance, volume, ...), in the order Adam received them, followed by every
+// later message. A subscriber therefore sees the device's current state
+// even when the device sent it before the subscription and has sent nothing
+// since. With nothing stored yet, it behaves as SubscribeToDeviceInfoMsgs.
+func (ac *AdamClient) SubscribeToDeviceInfoMsgsWithLatest(devUUID uuid.UUID,
+	match func(msg *eveinfo.ZInfoMsg) bool,
+	channel chan<- *eveinfo.ZInfoMsg) (unsubscribe func(), err error) {
+	return ac.subscribeToDeviceInfoMsgs(devUUID, match, channel, true)
 }
 
 // IterateDeviceMetrics retrieves metric messages (ZMetricMsg) published by the
@@ -1704,6 +1841,224 @@ func (ac *AdamClient) SubscribeToDeviceMetrics(devUUID uuid.UUID,
 	return unsubscribe, nil
 }
 
+// IterateDeviceFlowLogs retrieves flow log messages (FlowMessage) published
+// by the specified device and passes matching messages to iterator. Flow
+// messages are stored and served per-device, not per-app (each one carries
+// a Scope identifying which app/VIF it belongs to), so callers that only
+// care about one application filter by msg.GetScope().GetUuid() in match (or
+// inside iterator) themselves.
+//
+// It first performs a one-shot GET request to fetch all currently available
+// messages. If follow is true, it then subscribes to the streaming endpoint
+// and continues delivering new messages until ctx is canceled.
+//
+// If match is non-nil, only messages for which match(msg) returns true are
+// iterated. If match is nil, all messages are iterated.
+func (ac *AdamClient) IterateDeviceFlowLogs(ctx context.Context, devUUID uuid.UUID,
+	match func(msg *eveflowlog.FlowMessage) bool, iterator FlowMsgIterator,
+	follow bool) error {
+	if err := ac.checkAdamRunning(); err != nil {
+		return err
+	}
+
+	ac.mutex.Lock()
+	_, known := ac.knownDevices[devUUID]
+	ac.mutex.Unlock()
+	if !known {
+		return fmt.Errorf("unknown device UUID %q", devUUID)
+	}
+
+	// -------- Initial GET --------
+
+	url := ac.adminURL("device/" + devUUID.String() + "/flowlogs")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create GET %s request: %w", url, err)
+	}
+
+	resp, err := ac.httpClient().Do(req)
+	if err != nil {
+		return fmt.Errorf("GET %s failed: %w", url, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	// No flow logs recorded yet for this device.
+	if resp.StatusCode != http.StatusNotFound {
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("unexpected status from GET %s: %d", url, resp.StatusCode)
+		}
+
+		dec := json.NewDecoder(resp.Body)
+		for {
+			var raw json.RawMessage
+			if err := dec.Decode(&raw); err != nil {
+				if errors.Is(err, io.EOF) {
+					break
+				}
+				return fmt.Errorf("failed to decode flow message JSON: %w", err)
+			}
+
+			msg := &eveflowlog.FlowMessage{}
+			if err := protojson.Unmarshal(raw, msg); err != nil {
+				return fmt.Errorf("failed to proto-unmarshal flow message: %w", err)
+			}
+			if match == nil || match(msg) {
+				stop, iterErr := iterator.Iterate(msg)
+				if iterErr != nil {
+					return fmt.Errorf("failed to iterate flow message: %w", iterErr)
+				}
+				if stop {
+					return nil
+				}
+			}
+		}
+	}
+
+	// -------- Follow mode --------
+
+	if !follow {
+		return nil
+	}
+
+	flowMsgCh := make(chan *eveflowlog.FlowMessage, 100)
+	unsubscribe, err := ac.SubscribeToDeviceFlowLogs(devUUID, match, flowMsgCh)
+	if err != nil {
+		return err
+	}
+	defer unsubscribe()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case msg := <-flowMsgCh:
+			stop, iterErr := iterator.Iterate(msg)
+			if iterErr != nil {
+				return fmt.Errorf("failed to iterate flow message: %w", iterErr)
+			}
+			if stop {
+				return nil
+			}
+		}
+	}
+}
+
+// SubscribeToDeviceFlowLogs subscribes to flow log messages (FlowMessage)
+// emitted by the specified device and delivers matching messages to
+// channel. Flow messages are stored and served per-device, not per-app; see
+// IterateDeviceFlowLogs.
+//
+// If match is non-nil, only messages for which match(msg) returns true are
+// forwarded. If match is nil, all messages are delivered.
+//
+// The streaming connection is opened synchronously: by the time this method
+// returns, Adam has accepted the request and any subsequent flow messages
+// for the device will be delivered. On transient failures after the initial
+// connection, a background goroutine reconnects with a fixed retry delay.
+//
+// The returned unsubscribe function stops the background stream and waits
+// for it to exit. It is safe to call multiple times. The channel is closed
+// when the subscription ends.
+func (ac *AdamClient) SubscribeToDeviceFlowLogs(devUUID uuid.UUID,
+	match func(msg *eveflowlog.FlowMessage) bool,
+	channel chan<- *eveflowlog.FlowMessage) (unsubscribe func(), err error) {
+	const retryDelay = 3 * time.Second
+
+	if err = ac.checkAdamRunning(); err != nil {
+		return nil, err
+	}
+
+	ac.mutex.Lock()
+	_, known := ac.knownDevices[devUUID]
+	ac.mutex.Unlock()
+	if !known {
+		return nil, fmt.Errorf("unknown device UUID %q", devUUID)
+	}
+
+	streamCtx, cancel := context.WithCancel(context.Background())
+	url := ac.adminURL("device/" + devUUID.String() + "/flowlogs")
+
+	resp, err := ac.openStream(streamCtx, url)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer close(channel)
+
+		current := resp
+		for {
+			if current == nil {
+				select {
+				case <-time.After(retryDelay):
+				case <-streamCtx.Done():
+					return
+				}
+				r, err := ac.openStream(streamCtx, url)
+				if err != nil {
+					if streamCtx.Err() != nil {
+						return
+					}
+					ac.log.Errorf("failed to reopen flow log stream: %v", err)
+					continue
+				}
+				current = r
+			}
+
+			func() {
+				defer func() {
+					if err := current.Body.Close(); err != nil {
+						ac.log.Warnf("failed to close response body: %v", err)
+					}
+				}()
+				dec := json.NewDecoder(current.Body)
+				for {
+					var raw json.RawMessage
+					if err := dec.Decode(&raw); err != nil {
+						if streamCtx.Err() != nil {
+							return
+						}
+						if errors.Is(err, io.EOF) {
+							ac.log.Warn("flow log stream closed by server")
+							return
+						}
+						ac.log.Errorf("failed to decode streamed flow message: %v", err)
+						return
+					}
+					msg := &eveflowlog.FlowMessage{}
+					if err := protojson.Unmarshal(raw, msg); err != nil {
+						ac.log.Errorf(
+							"failed to proto-unmarshal streamed flow message: %v", err)
+						continue
+					}
+					if match != nil && !match(msg) {
+						continue
+					}
+					select {
+					case channel <- msg:
+					case <-streamCtx.Done():
+						return
+					}
+				}
+			}()
+			current = nil
+		}
+	}()
+
+	var once sync.Once
+	unsubscribe = func() {
+		once.Do(func() {
+			cancel()
+			wg.Wait()
+		})
+	}
+	return unsubscribe, nil
+}
+
 // findDeviceUUID searches Adam for a device with certificates/serial matching
 // the given callback and returns its UUID if found.
 func (ac *AdamClient) findDeviceUUID(ctx context.Context, httpClient *http.Client,
@@ -1844,12 +2199,24 @@ func (ac *AdamClient) findDeviceByOnboard(ctx context.Context, httpClient *http.
 }
 
 // Generate server, signing and encryption certificates for Adam.
+// The directory is remembered on the client so that the signing and ECDH
+// keypairs can later be rotated in place (see RotateSigningKeyPair).
 func (ac *AdamClient) generateCerts() (certDir string, err error) {
+	ac.certsM.Lock()
+	defer ac.certsM.Unlock()
+
 	certDir = filepath.Join(ac.runDir, "adam-certs")
 	if err := os.MkdirAll(certDir, 0o755); err != nil {
 		err = fmt.Errorf("failed to create Adam cert directory: %w", err)
 		return certDir, err
 	}
+	ac.certDir = certDir
+	// Start past the serials hardcoded below. Uniqueness within the CA is not
+	// achieved and not needed: the harness issues 2 for every device onboarding
+	// certificate and 3 for the image server from the same CA, and nothing
+	// consumes (issuer, serial) -- Adam identifies certificates by PEM hash.
+	// The counter exists only so that a rotation is visible in logs.
+	ac.certSerial = 4
 
 	ac.log.Debug("Generating Adam TLS certificate")
 	ac.tlsCert, ac.tlsKey, err = utils.GenServerCertElliptic(

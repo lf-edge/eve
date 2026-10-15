@@ -236,7 +236,6 @@ func (c *VethConfigurator) configurePeer(peer VethPeer) error {
 			if err != nil {
 				log.Warnf("Failed to remove native VLAN from veth peer %s: %v",
 					peer.IfName, err)
-				err = nil
 			}
 		}
 	}
