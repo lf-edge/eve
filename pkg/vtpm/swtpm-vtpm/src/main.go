@@ -88,7 +88,7 @@ var (
 		if err != nil {
 			return nil, err
 		}
-		defer rw.Close()
+		defer func() { _ = rw.Close() }()
 		return tpm2.NVReadEx(rw, etpm.TpmDiskKeyHdl, tpm2.HandleOwner, etpm.EmptyPassword, 0)
 	}
 	invokeSwtpmIoctl     = swtpmIoctl
@@ -110,13 +110,6 @@ var (
 		return etpm.FetchVaultKey(log)
 	}
 )
-
-func isAlive(pid int) bool {
-	if err := syscall.Kill(pid, 0); err != nil {
-		return false
-	}
-	return true
-}
 
 // isSwtpm reports whether pid is a live swtpm serving this id. A stale pid
 // file or in-memory record can name another process after pid reuse.
@@ -170,7 +163,7 @@ func openVerifiedSwtpmAt(pid int, statePath string) (int, error) {
 		return -1, fmt.Errorf("open pidfd for swtpm pid %d: %w", pid, err)
 	}
 	if !isSwtpmAt(pid, statePath) {
-		unix.Close(fd)
+		_ = unix.Close(fd)
 		return -1, nil
 	}
 	return fd, nil
@@ -181,7 +174,7 @@ func signalSwtpm(pid int, id uuid.UUID) (bool, error) {
 	if err != nil || fd < 0 {
 		return false, err
 	}
-	defer unix.Close(fd)
+	defer func() { _ = unix.Close(fd) }()
 	if err := unix.PidfdSendSignal(fd, unix.SIGTERM, nil, 0); err != nil {
 		if errors.Is(err, unix.ESRCH) {
 			return false, nil
@@ -226,7 +219,7 @@ func waitSwtpmExitAt(pid int, statePath string) error {
 		}
 		return err
 	}
-	defer unix.Close(fd)
+	defer func() { _ = unix.Close(fd) }()
 	return waitPidfdExit(pid, fd)
 }
 
@@ -268,7 +261,7 @@ func stopSwtpmAndWaitAt(pid int, statePath string) error {
 	if err != nil || fd < 0 {
 		return err
 	}
-	defer unix.Close(fd)
+	defer func() { _ = unix.Close(fd) }()
 	if err := unix.PidfdSendSignal(fd, unix.SIGTERM, nil, 0); err != nil && !errors.Is(err, unix.ESRCH) {
 		return fmt.Errorf("signal swtpm pid %d: %w", pid, err)
 	}
@@ -280,7 +273,7 @@ func forceStopSwtpmAt(pid int, statePath string) error {
 	if err != nil || fd < 0 {
 		return err
 	}
-	defer unix.Close(fd)
+	defer func() { _ = unix.Close(fd) }()
 	if err := unix.PidfdSendSignal(fd, unix.SIGKILL, nil, 0); err != nil && !errors.Is(err, unix.ESRCH) {
 		return fmt.Errorf("force-stop SWTPM pid %d: %w", pid, err)
 	}
@@ -584,12 +577,12 @@ func writeSwtpmKey(path string, key []byte) error {
 		return err
 	}
 	if _, err := f.Write(key); err != nil {
-		f.Close()
-		os.Remove(path)
+		_ = f.Close()
+		_ = os.Remove(path)
 		return err
 	}
 	if err := f.Close(); err != nil {
-		os.Remove(path)
+		_ = os.Remove(path)
 		return err
 	}
 	return nil
