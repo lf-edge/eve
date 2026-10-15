@@ -193,6 +193,7 @@ const (
 func TestKonvertSuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
+	defer stopLRUGenHold()
 
 	evetest.DefineTestParameters(
 		evetest.TPMParameter(),

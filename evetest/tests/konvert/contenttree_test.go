@@ -31,6 +31,7 @@ func TestKvmToKContentTree(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
 	defer evetest.Close()
+	defer stopLRUGenHold()
 	requireFlavorAwareTransport(t)
 
 	defineCrossFlavorParameters()

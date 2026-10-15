@@ -5,6 +5,7 @@ package konvert_test
 
 import (
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/lf-edge/eve/evetest"
@@ -40,9 +41,26 @@ v=$(cat $f)
 [ "$v" = 0x0000 ] && { echo off; exit 0; }
 echo n > $f && echo "cleared $v -> $(cat $f)"`
 
-// holdLRUGenOff keeps the multi-gen LRU disabled on the device for the rest of
-// the process, logging each state change and every time it had to clear it.
-func holdLRUGenOff(device *evetest.EdgeDevice) {
+// lruGenHold is the running holdLRUGenOff loop, if any: closing stop ends it,
+// and done closes once it has returned.
+var lruGenHold struct {
+	stop, done chan struct{}
+	once       sync.Once
+}
+
+// startLRUGenHold starts holdLRUGenOff in the background.
+func startLRUGenHold(device *evetest.EdgeDevice) {
+	lruGenHold.stop = make(chan struct{})
+	lruGenHold.done = make(chan struct{})
+	lruGenHold.once = sync.Once{}
+	go holdLRUGenOff(device, lruGenHold.stop, lruGenHold.done)
+}
+
+// holdLRUGenOff keeps the multi-gen LRU disabled on the device until stop
+// closes, logging each state change and every time it had to clear it. It
+// closes done on return.
+func holdLRUGenOff(device *evetest.EdgeDevice, stop <-chan struct{}, done chan<- struct{}) {
+	defer close(done)
 	evetest.Logger().Infof("LRU_GEN_OFF: holding /sys/kernel/mm/lru_gen/enabled at 0")
 	last := ""
 	for {
@@ -59,6 +77,21 @@ func holdLRUGenOff(device *evetest.EdgeDevice) {
 			evetest.Logger().Infof("LRU_GEN_OFF: switch %s", state)
 			last = state
 		}
-		time.Sleep(lruGenPoll)
+		select {
+		case <-stop:
+			return
+		case <-time.After(lruGenPoll):
+		}
 	}
+}
+
+// stopLRUGenHold ends the holdLRUGenOff loop and waits for a poll in flight to
+// finish. A test defers it after evetest.Close, so it runs first: a poll that
+// outlives Close fails the test on the cancelled controller context.
+func stopLRUGenHold() {
+	if lruGenHold.stop == nil {
+		return
+	}
+	lruGenHold.once.Do(func() { close(lruGenHold.stop) })
+	<-lruGenHold.done
 }

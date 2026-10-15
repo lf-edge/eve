@@ -157,7 +157,7 @@ func setupDevice(t Gomega, p deviceParams, filesystem evetest.Filesystem,
 	evetest.Setup(append(requirements, extraRequirements...)...)
 	device := evetest.GetEdgeDevice(devName)
 	if evetest.GetTestParameter[bool](lruGenOffParamKey) {
-		go holdLRUGenOff(device)
+		startLRUGenHold(device)
 	}
 	return device
 }
