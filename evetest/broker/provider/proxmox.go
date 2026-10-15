@@ -566,6 +566,9 @@ func (p *ProxmoxProvider) DiskImageStrategy() DiskImageStrategy {
 func (p *ProxmoxProvider) SetupDevice(
 	ctx context.Context, name string, spec DeviceSpec) error {
 	log := logger.FromContext(ctx)
+	if len(spec.TPMPCRBanks) != 0 {
+		return fmt.Errorf("TPM PCR bank selection is not supported by Proxmox")
+	}
 
 	p.devMutex.Lock()
 	leftover, exists := p.devices[name]
