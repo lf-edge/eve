@@ -2472,19 +2472,22 @@ func (dc *EdgeDeviceConfig) UpdateApplication(
 			if !proto.Equal(app.Fixedresources, newProtoConfig.Fixedresources) {
 				dc.th.t.Fatalf("It is not allowed to change application Fixedresources")
 			}
-			var needRestart bool
 			var needPurge bool
 			equalAdapter := func(a1, a2 *eveconfig.Adapter) bool {
 				return proto.Equal(a1, a2)
 			}
+			// On EVE 17.0 a change of the adapters (I/O or network) of a
+			// deployed app is rejected by zedmanager unless the controller
+			// also requests a purge; staging such a change until the next
+			// restart is not supported.
 			if !generics.EqualSetsFn(app.Adapters, newProtoConfig.Adapters, equalAdapter) {
-				needRestart = true
+				needPurge = true
 			}
 			equalNetAdapter := func(a1, a2 *eveconfig.NetworkAdapter) bool {
 				return proto.Equal(a1, a2)
 			}
 			if !generics.EqualSetsFn(app.Interfaces, newProtoConfig.Interfaces, equalNetAdapter) {
-				needRestart = true
+				needPurge = true
 			}
 			// The root ref (VolumeRefList[0]) is always left untouched;
 			// buildMountRefs only ever references existing volumes, it does
@@ -2497,20 +2500,11 @@ func (dc *EdgeDeviceConfig) UpdateApplication(
 			if !generics.EqualSetsFn(app.VolumeRefList[1:], newMountRefs, equalVolumeRef) {
 				needPurge = true
 			}
-			// A purge subsumes a restart -- it stops the app, recreates its
-			// volumes and starts it again, which also applies any adapter
-			// change that is otherwise staged until the next restart. So when
-			// both are needed, bumping the purge counter alone is enough.
 			if needPurge {
 				if app.Purge == nil {
 					app.Purge = &eveconfig.InstanceOpsCmd{Counter: 0}
 				}
 				app.Purge.Counter++
-			} else if needRestart {
-				if app.Restart == nil {
-					app.Restart = &eveconfig.InstanceOpsCmd{Counter: 0}
-				}
-				app.Restart.Counter++
 			}
 			dc.Apps[i].Activate = newProtoConfig.Activate
 			dc.Apps[i].ProfileList = newProtoConfig.ProfileList
