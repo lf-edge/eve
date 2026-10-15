@@ -60,13 +60,12 @@ type qemuDevice struct {
 	name string
 	spec DeviceSpec
 
-	args      []string
-	cmd       *exec.Cmd
-	pid       int
-	exitCh    chan struct{}
-	exitAcked bool
-	taps      []qemuTap
-	status    DeviceStatus
+	args   []string
+	cmd    *exec.Cmd
+	pid    int
+	exitCh chan struct{}
+	taps   []qemuTap
+	status DeviceStatus
 
 	artifactDir string
 	tmpDir      string
@@ -80,15 +79,14 @@ type qemuDevice struct {
 }
 
 type qemuNetwork struct {
-	name        string
-	bridge      string
-	isUplink    bool
-	ipv6Enabled bool
-	dir         string
-	dnsmasqPid  int
-	dnsmasqCmd  *exec.Cmd
-	radvdPid    int
-	radvdCmd    *exec.Cmd
+	name       string
+	bridge     string
+	isUplink   bool
+	dir        string
+	dnsmasqPid int
+	dnsmasqCmd *exec.Cmd
+	radvdPid   int
+	radvdCmd   *exec.Cmd
 }
 
 type qemuTap struct {
@@ -188,7 +186,14 @@ func dialQMP(ctx context.Context, log *logrus.Entry, socket string) (*qmpClient,
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to QMP socket %q: %w", socket, err)
 	}
+	return newQMPClient(ctx, log, conn)
+}
 
+// newQMPClient runs the QMP greeting and capability negotiation on an
+// established connection, be it a local Unix socket or a connection forwarded
+// by another host, and returns a client ready for commands. The connection is
+// closed on failure.
+func newQMPClient(ctx context.Context, log *logrus.Entry, conn net.Conn) (*qmpClient, error) {
 	c := &qmpClient{
 		log:     log,
 		conn:    conn,
@@ -202,8 +207,8 @@ func dialQMP(ctx context.Context, log *logrus.Entry, socket string) (*qmpClient,
 	dec := json.NewDecoder(conn)
 	var greeting map[string]any
 	if err := dec.Decode(&greeting); err != nil {
-		conn.Close()
-		return nil, err
+		closeErr := conn.Close()
+		return nil, errors.Join(err, closeErr)
 	}
 
 	go c.reader(dec)
@@ -222,6 +227,13 @@ func (c *qmpClient) execute(ctx context.Context, cmd string, args any, out any) 
 	respCh := make(chan qmpResponse, 1)
 
 	c.mu.Lock()
+	if c.pending == nil {
+		// shutdown ran: the connection is gone and the reader has failed
+		// whatever was pending; a caller that cached this client must
+		// reconnect.
+		c.mu.Unlock()
+		return errors.New("QMP connection is closed")
+	}
 	id := c.nextID
 	c.nextID++
 	c.pending[id] = respCh
@@ -238,13 +250,37 @@ func (c *qmpClient) execute(ctx context.Context, cmd string, args any, out any) 
 		return ctx.Err()
 	case r := <-respCh:
 		if r.Error != nil {
-			return fmt.Errorf("%s (%s)", r.Error.Desc, r.Error.Class)
+			// Class "io" is this client's own marker for a failed connection
+			// (see writer and shutdown), not a reply from QEMU.
+			if r.Error.Class == "io" {
+				return fmt.Errorf("QMP connection failed: %s", r.Error.Desc)
+			}
+			return &QMPError{Class: r.Error.Class, Desc: r.Error.Desc}
 		}
 		if out != nil && len(r.Return) > 0 {
 			return json.Unmarshal(r.Return, out)
 		}
 		return nil
 	}
+}
+
+// executeRaw runs a command whose arguments are already encoded as a JSON
+// object (nil for none) and returns its "return" member verbatim, or "{}" for
+// a command that returns nothing.
+func (c *qmpClient) executeRaw(ctx context.Context, cmd string,
+	args json.RawMessage) (json.RawMessage, error) {
+	var argsAny any
+	if len(args) > 0 {
+		argsAny = args
+	}
+	var out json.RawMessage
+	if err := c.execute(ctx, cmd, argsAny, &out); err != nil {
+		return nil, err
+	}
+	if len(out) == 0 {
+		out = json.RawMessage(`{}`)
+	}
+	return out, nil
 }
 
 // events returns a channel of asynchronous QMP events.
@@ -335,6 +371,22 @@ func (p *QemuProvider) GetSupportedDeviceArchs() ([]api.ArchType, error) {
 	return archFromRuntime()
 }
 
+// Capabilities returns the full capability set: the qemu provider runs on the
+// local host and applies the host-level tweaks required to forward link-local
+// L2 protocols, and supports emulated TPM. It also supports network boot.
+func (p *QemuProvider) Capabilities() []api.Capability {
+	// Plus QMP access: this provider has a QMP monitor of every device VM that
+	// the broker can reach (see ExecuteQMP).
+	return append(commonCapabilities(), api.Capability_CAPABILITY_QMP)
+}
+
+// DiskImageStrategy returns DiskImageOverlay: qemu attaches local files
+// directly, so a device disk can be a QCOW2 overlay on a shared template
+// (-drive file=<overlay>,format=qcow2 resolves the backing file itself).
+func (p *QemuProvider) DiskImageStrategy() DiskImageStrategy {
+	return DiskImageOverlay
+}
+
 // SetupDevice creates a VM configuration and prepares network resources,
 // but does not start the VM (powered-off state).
 func (p *QemuProvider) SetupDevice(
@@ -394,17 +446,16 @@ func (p *QemuProvider) SetupDevice(
 		var network *qemuNetwork
 		switch {
 		case iface.Connection.Uplink != nil:
-			uplink := iface.Connection.Uplink
-			network, err = p.ensureUplinkNetwork(log, uplink.EnableIPv6)
+			network, err = p.ensureUplinkNetwork(log)
 			if err != nil {
 				return err
 			}
 
 		case iface.Connection.XConnect != nil:
 			xconnect := iface.Connection.XConnect
-			prefixedNetName := xconnectNetworkName(
+			netName := xconnectNetworkName(
 				name, iface.Name, xconnect.PeerDeviceName, xconnect.PeerInterfaceName)
-			network, err = p.ensureXConnectNetwork(log, prefixedNetName)
+			network, err = p.ensureXConnectNetwork(log, netName)
 			if err != nil {
 				return err
 			}
@@ -444,87 +495,14 @@ func (p *QemuProvider) SetupDevice(
 		log.Warnf("Failed to enable LACP forwarding: %v", err)
 	}
 
-	// Build arguments for the Qemu process.
-	dev.args = []string{
-		"-enable-kvm",
-		"-machine", "q35",
-		"-cpu", "host",
-		"-smp", fmt.Sprintf("%d", dev.spec.CPUs),
-		"-m", fmt.Sprintf("%d", dev.spec.MemoryBytes>>20),
-		"-nographic",
-	}
-
-	// -> SMBIOS (system serial number)
-	if spec.SerialNumber != "" {
-		dev.args = append(dev.args,
-			"-smbios", fmt.Sprintf("type=1,serial=%s", spec.SerialNumber),
-		)
-	}
-
-	if spec.WithTPM {
-		tpmDev := "tpm-tis"
-		if qemuArch() == "arm64" {
-			tpmDev = "tpm-tis-device"
-		}
-		dev.args = append(dev.args,
-			"-chardev", fmt.Sprintf("socket,id=chrtpm,path=%s", dev.tpm.socket),
-			"-tpmdev", "emulator,id=tpm0,chardev=chrtpm",
-			"-device", fmt.Sprintf("%s,tpmdev=tpm0", tpmDev),
-		)
-	}
-
-	// -> disks (virtio)
-	if dev.spec.Qcow2ImagePath != "" {
-		dev.args = append(dev.args,
-			"-drive", fmt.Sprintf("file=%s,if=virtio,format=qcow2",
-				dev.spec.Qcow2ImagePath))
-	} else {
-		dev.args = append(dev.args,
-			"-drive", fmt.Sprintf("file=%s,if=virtio,format=raw",
-				dev.spec.RawImagePath))
-	}
-
-	// -> UEFI (pflash)
-	if dev.spec.UEFIFirmwareDirPath != "" {
-		code := filepath.Join(dev.spec.UEFIFirmwareDirPath, "OVMF_CODE.fd")
-		vars := filepath.Join(dev.spec.UEFIFirmwareDirPath, "OVMF_VARS.fd")
-		dev.args = append(dev.args,
-			"-drive", fmt.Sprintf("if=pflash,format=raw,readonly=on,file=%s", code),
-			"-drive", fmt.Sprintf("if=pflash,format=raw,file=%s", vars),
-		)
-	}
-
-	// -> networking (virtio-net-pci)
-	for i, tap := range dev.taps {
-		dev.args = append(dev.args,
-			"-netdev", fmt.Sprintf(
-				"tap,id=net%d,ifname=%s,script=no,downscript=no", i, tap.name),
-			"-device", fmt.Sprintf(
-				"virtio-net-pci,netdev=net%d,mac=%s,speed=1000,duplex=full",
-				i, tap.guestMAC.String()),
-		)
-	}
-
-	// Console: TCP telnet socket + output file
+	// Allocate the console port now so buildArgs can embed it.
 	consolePort, err := utils.FindUnusedPort(ipv4Loopback)
 	if err != nil {
 		log.Error(err)
 		return err
 	}
 	dev.consolePort = consolePort
-
-	dev.args = append(dev.args,
-		"-chardev", fmt.Sprintf(
-			"socket,id=char0,host=127.0.0.1,port=%d,server=on,wait=off,telnet=on,"+
-				"logfile=%s,logappend=on", consolePort, dev.consoleLog,
-		),
-		"-serial", "chardev:char0",
-	)
-
-	// -> QMP used for shutdown/reboot/status
-	dev.args = append(dev.args,
-		"-qmp", "unix:"+dev.qmpSocket+",server,nowait",
-	)
+	dev.args = dev.buildArgs()
 	log.Debugf("Device %q arguments: %s", name, dev.args)
 
 	p.devices[name] = dev
@@ -628,9 +606,12 @@ func (p *QemuProvider) PowerOnDevice(ctx context.Context, name string) error {
 	// Signal when qemu process exits.
 	exitCh := make(chan struct{})
 	dev.exitCh = exitCh
-	dev.exitAcked = false
 
-	// Goroutine that waits for the QEMU process to exit.
+	// Goroutine that waits for the QEMU process to exit. This is the sole
+	// place that clears dev.cmd/pid and reports DeviceStatusStopped/Crashed:
+	// cmd.Wait() only returns once the process has truly terminated, so
+	// callers waiting on that status (e.g. to power the device back on) are
+	// guaranteed the old process has released its sockets/disk file/taps.
 	go func() {
 		err := cmd.Wait()
 		_ = stdoutFile.Close()
@@ -639,22 +620,16 @@ func (p *QemuProvider) PowerOnDevice(ctx context.Context, name string) error {
 
 		p.mutex.Lock()
 		defer p.mutex.Unlock()
-		if !dev.exitAcked {
-			dev.cmd = nil
-			dev.pid = 0
-			if err == nil {
-				log.Infof("Device %q exited normally, updating status to STOPPED",
-					dev.name)
-				p.updateDeviceStatus(dev, DeviceStatusStopped)
-			} else {
-				log.Warnf("Device %q exited with error: %v, updating status to CRASHED",
-					dev.name, err)
-				p.updateDeviceStatus(dev, DeviceStatusCrashed)
-			}
-			dev.exitAcked = true
-		} else {
-			log.Debugf("Device %q exit already acknowledged, skipping status update",
+		dev.cmd = nil
+		dev.pid = 0
+		if err == nil {
+			log.Infof("Device %q exited normally, updating status to STOPPED",
 				dev.name)
+			p.updateDeviceStatus(dev, DeviceStatusStopped)
+		} else {
+			log.Warnf("Device %q exited with error: %v, updating status to CRASHED",
+				dev.name, err)
+			p.updateDeviceStatus(dev, DeviceStatusCrashed)
 		}
 		if dev.spec.WithTPM {
 			if err := stopSWTPM(dev.tpm.pid); err != nil {
@@ -739,16 +714,17 @@ func (p *QemuProvider) PowerOnDevice(ctx context.Context, name string) error {
 
 				switch event.name {
 				case "STOP", "SHUTDOWN", "POWERDOWN":
+					// Deliberately not updating dev.cmd/pid/status here: this
+					// event only means the guest asked to power off, not that
+					// the qemu process has actually exited yet (it still has
+					// to flush disk writes and tear down before doing so).
+					// The cmd.Wait() goroutine above is the only place that
+					// knows the process is truly gone, and is what reports
+					// DeviceStatusStopped -- reporting it early here raced a
+					// caller's next PowerOnDevice against the still-exiting
+					// old process for its QMP/console sockets and disk file.
 					log.Infof("QMP event %q received for device %q, "+
-						"updating status to STOPPED", event.name, dev.name)
-					p.mutex.Lock()
-					if !dev.exitAcked {
-						dev.cmd = nil
-						dev.pid = 0
-						p.updateDeviceStatus(dev, DeviceStatusStopped)
-						dev.exitAcked = true
-					}
-					p.mutex.Unlock()
+						"guest is shutting down", event.name, dev.name)
 
 				case "SUSPEND":
 					log.Infof("QMP event %q received for device %q, "+
@@ -1046,17 +1022,19 @@ func (p *QemuProvider) WatchDeviceStatus(
 
 	go func() {
 		defer func() {
-			// Remove watcher from the list when context is canceled
+			// Remove this watcher from the list and close the channel.
+			// If teardownStoppedDevice already closed and removed it, skip the close
+			// to avoid a double-close panic.
 			p.mutex.Lock()
 			defer p.mutex.Unlock()
 			wlist := p.watchers[name]
 			for i, c := range wlist {
 				if c == ch {
 					p.watchers[name] = append(wlist[:i], wlist[i+1:]...)
+					close(ch)
 					break
 				}
 			}
-			close(ch)
 		}()
 
 		// Send initial status
@@ -1111,6 +1089,30 @@ func (p *QemuProvider) TeardownAll(ctx context.Context) error {
 	return nil
 }
 
+// ReconfigureDeviceDisks swaps the disk list of a stopped device in place.
+// The swtpm state, UEFI NVRAM, console socket, and network taps are all
+// preserved because the same qemuDevice entry is reused.
+func (p *QemuProvider) ReconfigureDeviceDisks(
+	ctx context.Context, name string, newDisks []DiskImage) error {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	log := logger.FromContext(ctx)
+
+	dev, ok := p.devices[name]
+	if !ok {
+		return fmt.Errorf("device %q not found", name)
+	}
+	if dev.cmd != nil {
+		return fmt.Errorf("device %q is running; stop it before reconfiguring disks",
+			name)
+	}
+
+	dev.spec.Disks = newDisks
+	dev.args = dev.buildArgs()
+	log.Infof("Reconfigured disk list for device %q (%d disk(s))", name, len(newDisks))
+	return nil
+}
+
 // --------- helpers ---------
 
 // ensureUplinkNetwork creates or ensures a NAT network used for uplink connectivity
@@ -1121,23 +1123,16 @@ func (p *QemuProvider) TeardownAll(ctx context.Context) error {
 //   - iptables/ip6tables NAT rules for outbound connectivity
 //
 // QemuProvider.mutex must be held by the caller.
-func (p *QemuProvider) ensureUplinkNetwork(
-	log *logrus.Entry, ipv6Enabled bool) (*qemuNetwork, error) {
+func (p *QemuProvider) ensureUplinkNetwork(log *logrus.Entry) (*qemuNetwork, error) {
 
-	// Resolve deterministic network + bridge names.
-	prefixedNetName, brName := uplinkNetworkName(ipv6Enabled)
-	netName := unprefixedName(prefixedNetName)
+	netName := uplinkNetwork
 
 	// Fast path: network already exists.
 	if network, ok := p.networks[netName]; ok {
 		return network, nil
 	}
 
-	// Select IPv4 subnet depending on single-stack vs dual-stack mode.
-	v4Subnet := p.conf.SDNUplinkIPv4OnlySubnet
-	if ipv6Enabled {
-		v4Subnet = p.conf.SDNUplinkIPv4DualStackSubnet
-	}
+	v4Subnet := p.conf.SDNUplinkIPv4Subnet
 
 	// Calculate bridge IPs and DHCP range.
 	bridgeIPv4 := utils.GetFirstHostIP(v4Subnet)
@@ -1149,16 +1144,15 @@ func (p *QemuProvider) ensureUplinkNetwork(
 	}
 
 	var bridgeIPv6 net.IP
-	if ipv6Enabled && p.conf.SDNUplinkIPv6Subnet != nil {
+	if p.conf.SDNUplinkIPv6Subnet != nil {
 		bridgeIPv6 = utils.GetFirstHostIP(p.conf.SDNUplinkIPv6Subnet)
 		brIPs = append(brIPs,
 			utils.NewIPNet(bridgeIPv6, p.conf.SDNUplinkIPv6Subnet))
 	}
 
 	// Create and bring up the Linux bridge with assigned IPs.
-	if err := utils.CreateBridge(brName, brIPs, 0); err != nil {
-		err = fmt.Errorf("failed to create bridge %q for network %q: %w",
-			brName, netName, err)
+	if err := utils.CreateBridge(netName, brIPs, 0); err != nil {
+		err = fmt.Errorf("failed to create bridge %q: %w", netName, err)
 		log.Error(err)
 		return nil, err
 	}
@@ -1207,7 +1201,7 @@ server=8.8.4.4
 server=1.1.1.1
 server=1.0.0.1
 `,
-		brName,
+		netName,
 		dhcpStart.String(),
 		dhcpEnd.String(),
 		leaseFile,
@@ -1216,7 +1210,7 @@ server=1.0.0.1
 	))
 
 	// IPv6 DNS support.
-	if ipv6Enabled && bridgeIPv6 != nil {
+	if bridgeIPv6 != nil {
 		conf.WriteString(`
 # Upstream IPv6 DNS
 server=2001:4860:4860::8888
@@ -1242,17 +1236,16 @@ server=2606:4700:4700::1001
 	}
 
 	network := &qemuNetwork{
-		name:        netName,
-		bridge:      brName,
-		isUplink:    true,
-		ipv6Enabled: ipv6Enabled,
-		dir:         dir,
-		dnsmasqCmd:  cmd,
-		dnsmasqPid:  cmd.Process.Pid,
+		name:       netName,
+		bridge:     netName,
+		isUplink:   true,
+		dir:        dir,
+		dnsmasqCmd: cmd,
+		dnsmasqPid: cmd.Process.Pid,
 	}
 
 	// Configure and start radvd for IPv6 RA.
-	if ipv6Enabled && p.conf.SDNUplinkIPv6Subnet != nil {
+	if p.conf.SDNUplinkIPv6Subnet != nil {
 		radvdConf := filepath.Join(dir, "radvd.conf")
 		radvdData := fmt.Sprintf(`
 interface %s {
@@ -1268,7 +1261,7 @@ interface %s {
 		AdvRDNSSLifetime 600;
 	};
 };
-`, brName, p.conf.SDNUplinkIPv6Subnet.String(), bridgeIPv6.String())
+`, netName, p.conf.SDNUplinkIPv6Subnet.String(), bridgeIPv6.String())
 
 		if err := os.WriteFile(radvdConf, []byte(radvdData), 0o644); err != nil {
 			err = fmt.Errorf("failed to write radvd config file %q for network %q: %w",
@@ -1292,7 +1285,7 @@ interface %s {
 
 	// Enable forwarding.
 	_ = exec.Command("sysctl", "-w", "net.ipv4.ip_forward=1").Run()
-	if ipv6Enabled {
+	if p.conf.SDNUplinkIPv6Subnet != nil {
 		_ = exec.Command("sysctl", "-w", "net.ipv6.conf.all.forwarding=1").Run()
 	}
 
@@ -1308,7 +1301,7 @@ interface %s {
 	}
 
 	// Configure IPv6 NAT (NAT66).
-	if ipv6Enabled && p.conf.SDNUplinkIPv6Subnet != nil {
+	if p.conf.SDNUplinkIPv6Subnet != nil {
 		if err := exec.Command(
 			"ip6tables", "-t", "nat", "-A", "POSTROUTING",
 			"-s", p.conf.SDNUplinkIPv6Subnet.String(), "-j", "MASQUERADE",
@@ -1331,11 +1324,7 @@ interface %s {
 // VMs exists.
 // QemuProvider.mutex must be held by the caller.
 func (p *QemuProvider) ensureXConnectNetwork(
-	log *logrus.Entry, prefixedName string) (*qemuNetwork, error) {
-
-	// Resolve deterministic network + bridge names.
-	netName := unprefixedName(prefixedName)
-	brName := generateXConnectBridgeName(prefixedName)
+	log *logrus.Entry, netName string) (*qemuNetwork, error) {
 
 	// Fast path: network already exists.
 	if network, ok := p.networks[netName]; ok {
@@ -1349,16 +1338,15 @@ func (p *QemuProvider) ensureXConnectNetwork(
 	// (kernel rejects BR_GROUPFWD_RESTRICTED). It is enabled separately via
 	// the per-port IFLA_BRPORT_GROUP_FWD_MASK in enableLACPForwardingOnXConnectBridges.
 	groupFwdMask := uint16(0x4008) // EAPOL + LLDP
-	if err := utils.CreateBridge(brName, nil, groupFwdMask); err != nil {
-		err = fmt.Errorf("failed to create bridge %q for network %q: %w",
-			brName, netName, err)
+	if err := utils.CreateBridge(netName, nil, groupFwdMask); err != nil {
+		err = fmt.Errorf("failed to create bridge %q: %w", netName, err)
 		log.Error(err)
 		return nil, err
 	}
 
 	network := &qemuNetwork{
 		name:   netName,
-		bridge: brName,
+		bridge: netName,
 	}
 	p.networks[netName] = network
 	log.Infof("Created xconnect network %q", netName)
@@ -1394,6 +1382,11 @@ func (p *QemuProvider) teardownStoppedDevice(log *logrus.Entry, dev *qemuDevice)
 	dev.taps = nil
 
 	_ = os.RemoveAll(dev.tmpDir)
+	// Close all watcher channels so callers blocked on WatchDeviceStatus unblock.
+	for _, ch := range p.watchers[dev.name] {
+		close(ch)
+	}
+	delete(p.watchers, dev.name)
 	delete(p.devices, dev.name)
 	log.Infof("Device %q was torn-down", dev.name)
 	return nil
@@ -1454,11 +1447,7 @@ func (p *QemuProvider) teardownUnusedNetworks(ctx context.Context, log *logrus.E
 		// Remove NAT rules for uplink networks.
 		if network.isUplink {
 			// Remove IPv4 NAT (MASQUERADE) rule.
-			subnet := p.conf.SDNUplinkIPv4OnlySubnet
-			if network.ipv6Enabled {
-				subnet = p.conf.SDNUplinkIPv4DualStackSubnet
-			}
-
+			subnet := p.conf.SDNUplinkIPv4Subnet
 			if subnet != nil {
 				if err := exec.Command(
 					"iptables",
@@ -1473,7 +1462,7 @@ func (p *QemuProvider) teardownUnusedNetworks(ctx context.Context, log *logrus.E
 			}
 
 			// Remove IPv6 NAT (NAT66) rule if applicable.
-			if network.ipv6Enabled && p.conf.SDNUplinkIPv6Subnet != nil {
+			if p.conf.SDNUplinkIPv6Subnet != nil {
 				if err := exec.Command(
 					"ip6tables",
 					"-t", "nat",
@@ -1529,6 +1518,141 @@ func qemuArch() string {
 	default:
 		return runtime.GOARCH
 	}
+}
+
+// buildArgs assembles the full QEMU command-line argument list from the
+// current device spec. It must be called after dev.consolePort is set.
+func (dev *qemuDevice) buildArgs() []string {
+	args := []string{
+		"-enable-kvm",
+		"-machine", "q35,kernel-irqchip=split",
+		// Let the chipset watchdog actually reset the guest. q35 brings the ICH9
+		// LPC bridge and with it the iTCO watchdog EVE drives through
+		// /dev/watchdog, but the bridge only latches a status bit on timeout
+		// unless noreboot is cleared. Without these two a guest silently survives
+		// a watchdog it should have died on, which hides watchdog regressions and
+		// quietly disarms any test that injects one. eden configures its QEMU the
+		// same way.
+		"-global", "ICH9-LPC.noreboot=false",
+		"-watchdog-action", "reset",
+		// No KVM async page faults: with them a guest task faulting on a page
+		// the host has swapped out sleeps until KVM delivers "page ready", and
+		// on an overcommitted host that wakeup has been observed never to
+		// arrive, wedging the guest task (a Longhorn engine) for good. Both bits
+		// are needed: the Linux guest (6.12) enables async PF on
+		// kvm-asyncpf-int alone.
+		"-cpu", "host,-kvm-asyncpf,-kvm-asyncpf-int",
+		"-smp", fmt.Sprintf("%d", dev.spec.CPUs),
+		"-m", fmt.Sprintf("%d", dev.spec.MemoryBytes>>20),
+		"-nographic",
+		// vIOMMU (with the split irqchip its interrupt remapping requires),
+		// so that EVE inside the VM can use VFIO to pass PCI devices such
+		// as NICs through to application VMs.
+		"-device", "intel-iommu,intremap=on,caching-mode=on,aw-bits=48",
+		// A VGA controller and USB host controllers, for tests that pass
+		// either class of device through to an application (EVE treats both
+		// specially, see debug.enable.vga and debug.enable.usb). QEMU would
+		// add this same standard VGA by default even under -nographic; it is
+		// listed explicitly only to fix its slot and to give it an id for
+		// QMP. The USB 3.0 (xHCI) controller matches the one the proxmox
+		// provider adds, under the same id so that tests can address its bus
+		// (evxhci.0) on either provider; VGA and xHCI sit directly on the root
+		// bus at the same slots as there, each in an IOMMU group of its own.
+		"-device", "VGA,id=vga,bus=pcie.0,addr=0x1",
+		"-device", "qemu-xhci,id=evxhci,bus=pcie.0,addr=0x2",
+		// The two ICH9 USB 2.0 controller sets, an EHCI with three UHCI
+		// companions per slot (one IOMMU group each), replicate what PVE's
+		// q35 layout (pve-q35-4.0.cfg) gives the proxmox provider's VM
+		// anyway, so both providers present the same USB controllers.
+		"-device", "ich9-usb-ehci1,id=ehci,multifunction=on,bus=pcie.0,addr=0x1d.0x7",
+		"-device", "ich9-usb-uhci1,id=uhci-1,multifunction=on,bus=pcie.0,addr=0x1d.0x0," +
+			"masterbus=ehci.0,firstport=0",
+		"-device", "ich9-usb-uhci2,id=uhci-2,multifunction=on,bus=pcie.0,addr=0x1d.0x1," +
+			"masterbus=ehci.0,firstport=2",
+		"-device", "ich9-usb-uhci3,id=uhci-3,multifunction=on,bus=pcie.0,addr=0x1d.0x2," +
+			"masterbus=ehci.0,firstport=4",
+		"-device", "ich9-usb-ehci2,id=ehci-2,multifunction=on,bus=pcie.0,addr=0x1a.0x7",
+		"-device", "ich9-usb-uhci4,id=uhci-4,multifunction=on,bus=pcie.0,addr=0x1a.0x0," +
+			"masterbus=ehci-2.0,firstport=0",
+		"-device", "ich9-usb-uhci5,id=uhci-5,multifunction=on,bus=pcie.0,addr=0x1a.0x1," +
+			"masterbus=ehci-2.0,firstport=2",
+		"-device", "ich9-usb-uhci6,id=uhci-6,multifunction=on,bus=pcie.0,addr=0x1a.0x2," +
+			"masterbus=ehci-2.0,firstport=4",
+	}
+
+	if dev.spec.SerialNumber != "" {
+		args = append(args,
+			"-smbios", fmt.Sprintf("type=1,serial=%s", dev.spec.SerialNumber),
+		)
+	}
+
+	if dev.spec.NetworkBootFallback {
+		// Try the disk first, falling through to the network (PXE/iPXE) only
+		// when it has nothing bootable -- the standard BIOS/UEFI boot-order
+		// fallthrough semantics, not a QEMU-specific "one-shot" flag. While the
+		// target disk is blank, "c" (hd) fails and firmware falls through to
+		// "n" (network); once the network installer has written EVE onto it,
+		// "c" succeeds outright and network is never attempted again. This
+		// needs no reconfiguration step after installation, and the same
+		// static setting is correct for the device's entire lifetime.
+		args = append(args, "-boot", "order=cn")
+	}
+
+	if dev.spec.WithTPM {
+		tpmDev := "tpm-tis"
+		if qemuArch() == "arm64" {
+			tpmDev = "tpm-tis-device"
+		}
+		args = append(args,
+			"-chardev", fmt.Sprintf("socket,id=chrtpm,path=%s", dev.tpm.socket),
+			"-tpmdev", "emulator,id=tpm0,chardev=chrtpm",
+			"-device", fmt.Sprintf("%s,tpmdev=tpm0", tpmDev),
+		)
+	}
+
+	for _, disk := range dev.spec.Disks {
+		format := "qcow2"
+		if disk.Format == DiskImageFormatRaw {
+			format = "raw"
+		}
+		args = append(args, "-drive",
+			fmt.Sprintf("file=%s,if=virtio,format=%s", disk.Path, format))
+	}
+
+	if dev.spec.UEFIFirmwareDirPath != "" {
+		code := filepath.Join(dev.spec.UEFIFirmwareDirPath, "OVMF_CODE.fd")
+		vars := filepath.Join(dev.spec.UEFIFirmwareDirPath, "OVMF_VARS.fd")
+		args = append(args,
+			"-drive", fmt.Sprintf("if=pflash,format=raw,readonly=on,file=%s", code),
+			"-drive", fmt.Sprintf("if=pflash,format=raw,file=%s", vars),
+		)
+	}
+
+	for i, tap := range dev.taps {
+		args = append(args,
+			"-netdev", fmt.Sprintf(
+				"tap,id=net%d,ifname=%s,script=no,downscript=no", i, tap.name),
+			// Modern-only virtio honoring the vIOMMU (iommu_platform), so
+			// that the NIC itself can be passed through to an app VM.
+			"-device", fmt.Sprintf(
+				"virtio-net-pci,netdev=net%d,mac=%s,speed=1000,duplex=full,"+
+					"disable-legacy=on,disable-modern=off,iommu_platform=on",
+				i, tap.guestMAC.String()),
+		)
+	}
+
+	args = append(args,
+		"-chardev", fmt.Sprintf(
+			"socket,id=char0,host=127.0.0.1,port=%d,server=on,wait=off,telnet=on,"+
+				"logfile=%s,logappend=on", dev.consolePort, dev.consoleLog,
+		),
+		"-serial", "chardev:char0",
+	)
+
+	args = append(args,
+		"-qmp", "unix:"+dev.qmpSocket+",server,nowait",
+	)
+	return args
 }
 
 func (p *QemuProvider) deviceArtifactDir(name string) string {
@@ -1643,7 +1767,29 @@ func getDnsmasqLeases(log *logrus.Entry, leaseFilePath string,
 	return ips, nil
 }
 
-// startSWTPM starts a swtpm process in the given stateDir and socket path.
+// swtpmSocketTimeout bounds the wait for swtpm to bind its control socket.
+const swtpmSocketTimeout = 30 * time.Second
+
+// waitForUnixSocket returns once a connection to path succeeds, or the last
+// dial error once timeout has elapsed. Dialling and closing does not disturb
+// swtpm's control channel: it keeps listening and serves the next client.
+func waitForUnixSocket(path string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		conn, err := net.DialTimeout("unix", path, time.Second)
+		if err == nil {
+			_ = conn.Close()
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return err
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// startSWTPM starts a swtpm process in the given stateDir and socket path and
+// waits until its control socket accepts connections.
 // Returns the PID of the swtpm process, so it can be stopped later.
 func startSWTPM(stateDir, sockPath, logFile string) (pid int, err error) {
 	args := []string{
@@ -1674,6 +1820,17 @@ func startSWTPM(stateDir, sockPath, logFile string) (pid int, err error) {
 		_ = cmd.Wait()
 		_ = logF.Close()
 	}()
+
+	// QEMU dials this socket while parsing -chardev, well before it reaches
+	// QMP, and a failed dial is fatal: it exits with "Failed to connect to
+	// ...: No such file or directory" and the device presents as having
+	// crashed during boot. swtpm binds the socket a few milliseconds after
+	// exec, so hold the caller here until it is connectable.
+	if err := waitForUnixSocket(sockPath, swtpmSocketTimeout); err != nil {
+		_ = cmd.Process.Kill()
+		return 0, fmt.Errorf("swtpm did not open its control socket %q: %w",
+			sockPath, err)
+	}
 	return cmd.Process.Pid, nil
 }
 

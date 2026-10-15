@@ -54,6 +54,64 @@ func (th *TestHarness) runScriptOnEVEOverSSH(ctx context.Context, devName string
 		stdout, stderr, stdoutWatchdogTimeout)
 }
 
+// dialViaSSH opens an SSH connection to the given EVE device and tunnels a
+// TCP connection to remoteAddr through it (an SSH direct-tcpip channel), as
+// if network is dialed from the device itself. Useful for reaching services
+// that only listen on the device's own loopback interface, e.g. the Kubevirt
+// VNC proxy (see pkg/pillar/docs/vnc-workflows.md).
+//
+// The returned net.Conn owns the underlying SSH client: closing it also
+// closes the SSH connection.
+func (th *TestHarness) dialViaSSH(ctx context.Context, devName string,
+	network, remoteAddr string) (net.Conn, error) {
+
+	eveIP, err := th.getReachableEVEAddr(ctx, devName, 22, "")
+	if err != nil {
+		return nil, err
+	}
+
+	keyPEM, err := os.ReadFile("/root/.ssh/eve_rsa")
+	if err != nil {
+		return nil, fmt.Errorf("failed to read EVE SSH key: %w", err)
+	}
+	signer, err := ssh.ParsePrivateKey(keyPEM)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse client key: %w", err)
+	}
+
+	addr := net.JoinHostPort(eveIP, "22")
+	sshConfig := &ssh.ClientConfig{
+		User:            "root",
+		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         5 * time.Second,
+	}
+	client, err := ssh.Dial("tcp", addr, sshConfig)
+	if err != nil {
+		return nil, fmt.Errorf("SSH dial to %s failed: %w", addr, err)
+	}
+
+	conn, err := client.Dial(network, remoteAddr)
+	if err != nil {
+		_ = client.Close()
+		return nil, fmt.Errorf("SSH tunnel dial to %s failed: %w", remoteAddr, err)
+	}
+	return &sshTunnelConn{Conn: conn, client: client}, nil
+}
+
+// sshTunnelConn wraps an SSH-tunneled net.Conn so that closing it also closes
+// the underlying SSH client connection that carries it.
+type sshTunnelConn struct {
+	net.Conn
+	client *ssh.Client
+}
+
+func (c *sshTunnelConn) Close() error {
+	err := c.Conn.Close()
+	_ = c.client.Close()
+	return err
+}
+
 // runScriptOverSSH executes a shell script on a remote host over SSH
 // using the Go crypto/ssh client library. It supports username/password and
 // client-certificate authentication methods (see AuthMethod).
@@ -152,13 +210,26 @@ func (th *TestHarness) scpFromEVE(ctx context.Context,
 	if recursive {
 		scpArgs = append(scpArgs, "-r")
 	}
+	// Pass the remote path verbatim: scp speaks SFTP (the OpenSSH 9.x default,
+	// and no -O here selects the legacy protocol), so no remote shell splits
+	// it and quoting it would make the quotes part of the file name. Spaces
+	// are safe because this is a single argv element -- exec runs scp
+	// directly, with no local shell.
 	scpArgs = append(scpArgs,
 		"-i", "/root/.ssh/eve_rsa",
 		"root@"+scpHost(eveIP)+":"+remotePath,
 		localPath,
 	)
 	cmd := exec.CommandContext(ctx, "scp", scpArgs...)
-	return cmd.Run()
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		if msg := strings.TrimSpace(stderr.String()); msg != "" {
+			return fmt.Errorf("%w: %s", err, msg)
+		}
+		return err
+	}
+	return nil
 }
 
 // scpHost formats a device address for use in an scp target: an IPv6 address
@@ -191,7 +262,15 @@ func (th *TestHarness) scpToEVE(ctx context.Context,
 		"root@"+scpHost(eveIP)+":"+remotePath,
 	)
 	cmd := exec.CommandContext(ctx, "scp", scpArgs...)
-	return cmd.Run()
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		if msg := strings.TrimSpace(stderr.String()); msg != "" {
+			return fmt.Errorf("%w: %s", err, msg)
+		}
+		return err
+	}
+	return nil
 }
 
 // getReachableEVEAddr finds a reachable IP for the given device at the specified

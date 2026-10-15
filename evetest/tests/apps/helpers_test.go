@@ -4,9 +4,16 @@
 package apps_test
 
 import (
+	"time"
+
+	// revive:disable:dot-imports
+	. "github.com/onsi/gomega"
+
 	uuid "github.com/satori/go.uuid"
 
+	eveinfo "github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/evetest"
+	"github.com/lf-edge/eve/evetest/matchers"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
@@ -18,6 +25,11 @@ const (
 	ubuntuCtrImage = "lfedge/evetest-ubuntu-ctr"
 	ubuntuCtrTag   = "1.0"
 
+	// Image of the container that prints a startup banner and periodic
+	// heartbeats, used by the application log test.
+	loggerCtrImage = "lfedge/evetest-logger-ctr"
+	loggerCtrTag   = "1.0"
+
 	// Local network instance shared by the tests in this package.
 	niDisplayName = "local-ni"
 	niSubnet      = "10.11.12.0/24"
@@ -26,6 +38,12 @@ const (
 	// Port on the edge node forwarded to the app's sshd.
 	appSSHFwdPort = 2222
 )
+
+// Credentials baked into the evetest-ubuntu-ctr image.
+var appAuth = evetest.UsernamePasswordAuth{
+	Username: "root",
+	Password: "testpassword",
+}
 
 // addLocalNI adds the local network instance shared by the tests in this
 // package: 10.11.12.0/24 on ethernet0, which is also where the metadata
@@ -68,4 +86,41 @@ func singleVIFWithSSH(niUUID uuid.UUID) []evetest.AppNetworkAdapter {
 			},
 		},
 	}
+}
+
+// deleteAppAndWait removes the application from the device configuration,
+// applies it, and blocks until the device reports the instance as gone. Tests
+// wait for this rather than just applying the deletion, so that teardown
+// cannot race the device-config reset performed before the next test in the
+// suite.
+func deleteAppAndWait(t *WithT, device *evetest.EdgeDevice,
+	devConfig *evetest.EdgeDeviceConfig, appUUID uuid.UUID) {
+	const timeout = 5 * time.Minute
+	appUpdates, stopAppWatch := device.WatchAppInfo(appUUID)
+	defer stopAppWatch()
+	devConfig.DeleteApplication(appUUID)
+	device.ApplyConfig(devConfig, false, false)
+	t.Eventually(appUpdates, timeout).Should(Receive(matchers.SatisfyPredicate(
+		"Application instance is deleted",
+		func(info *eveinfo.ZInfoApp) bool {
+			return info.State == eveinfo.ZSwState_INVALID
+		})))
+}
+
+// waitForAppSSH blocks until commands can be executed inside the application
+// over the port-forwarded sshd. Reaching RUNNING only means the domain was
+// created; sshd inside the container needs more time to accept connections.
+func waitForAppSSH(t *WithT, device *evetest.EdgeDevice, appUUID uuid.UUID) {
+	const (
+		sshTimeout = 20 * time.Second
+		timeout    = 3 * time.Minute
+		polling    = 5 * time.Second
+	)
+	evetest.Logger().Infof("Waiting for app %q SSH to become reachable...", appUUID)
+	t.Eventually(func(t Gomega) {
+		output, _, err := device.RunShellScriptInsideApp(appUUID, appAuth,
+			"echo hello", sshTimeout, 0)
+		t.Expect(err).ToNot(HaveOccurred())
+		t.Expect(output).To(ContainSubstring("hello"))
+	}, timeout, polling).Should(Succeed())
 }

@@ -28,11 +28,16 @@ const (
 	Broker_StreamLogs_FullMethodName             = "/org.lfedge.evetest.Broker/StreamLogs"
 	Broker_BuildImage_FullMethodName             = "/org.lfedge.evetest.Broker/BuildImage"
 	Broker_PushEVEContainerImage_FullMethodName  = "/org.lfedge.evetest.Broker/PushEVEContainerImage"
+	Broker_PushEVELiveImage_FullMethodName       = "/org.lfedge.evetest.Broker/PushEVELiveImage"
 	Broker_SetupDevices_FullMethodName           = "/org.lfedge.evetest.Broker/SetupDevices"
 	Broker_TeardownDevices_FullMethodName        = "/org.lfedge.evetest.Broker/TeardownDevices"
 	Broker_PowerOnDevice_FullMethodName          = "/org.lfedge.evetest.Broker/PowerOnDevice"
 	Broker_PowerOffDevice_FullMethodName         = "/org.lfedge.evetest.Broker/PowerOffDevice"
 	Broker_RebootDevice_FullMethodName           = "/org.lfedge.evetest.Broker/RebootDevice"
+	Broker_EditDeviceDisk_FullMethodName         = "/org.lfedge.evetest.Broker/EditDeviceDisk"
+	Broker_ExecuteQMP_FullMethodName             = "/org.lfedge.evetest.Broker/ExecuteQMP"
+	Broker_CreateScratchImage_FullMethodName     = "/org.lfedge.evetest.Broker/CreateScratchImage"
+	Broker_DeleteScratchImage_FullMethodName     = "/org.lfedge.evetest.Broker/DeleteScratchImage"
 	Broker_GetDeviceConsoleOutput_FullMethodName = "/org.lfedge.evetest.Broker/GetDeviceConsoleOutput"
 	Broker_ConnectConsoleToDevice_FullMethodName = "/org.lfedge.evetest.Broker/ConnectConsoleToDevice"
 	Broker_ConnectTunnelToSDN_FullMethodName     = "/org.lfedge.evetest.Broker/ConnectTunnelToSDN"
@@ -61,6 +66,9 @@ type BrokerClient interface {
 	BuildImage(ctx context.Context, in *BuildImageRequest, opts ...grpc.CallOption) (*BuildImageResponse, error)
 	// PushEVEContainerImage streams a pre-built EVE container image to the broker.
 	PushEVEContainerImage(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[PushImageChunk, PushImageResponse], error)
+	// Uploads a locally built EVE live image as a tar stream containing
+	// live.qcow2, config.img and firmware/*.
+	PushEVELiveImage(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[PushLiveImageChunk, PushLiveImageResponse], error)
 	// Provision and start up EVE devices and SDN for the client.
 	SetupDevices(ctx context.Context, in *SetupDevicesRequest, opts ...grpc.CallOption) (*SetupDevicesResponse, error)
 	// Tear down and clean up resources for the client's devices and SDN.
@@ -71,6 +79,17 @@ type BrokerClient interface {
 	PowerOffDevice(ctx context.Context, in *DeviceControlRequest, opts ...grpc.CallOption) (*DeviceControlResponse, error)
 	// Reboot a specific EVE device.
 	RebootDevice(ctx context.Context, in *DeviceControlRequest, opts ...grpc.CallOption) (*DeviceControlResponse, error)
+	// Edit a powered-off device's boot disk in place. Requires
+	// CAPABILITY_EDIT_DEVICE_DISK.
+	EditDeviceDisk(ctx context.Context, in *EditDeviceDiskRequest, opts ...grpc.CallOption) (*EditDeviceDiskResponse, error)
+	// Run one QMP command on the hypervisor running the device.
+	// Requires CAPABILITY_QMP.
+	ExecuteQMP(ctx context.Context, in *ExecuteQMPRequest, opts ...grpc.CallOption) (*ExecuteQMPResponse, error)
+	// Create a blank scratch disk image for the device on the hypervisor host,
+	// e.g. to back a hot-plugged drive. Requires CAPABILITY_QMP.
+	CreateScratchImage(ctx context.Context, in *CreateScratchImageRequest, opts ...grpc.CallOption) (*CreateScratchImageResponse, error)
+	// Delete a scratch disk image created by CreateScratchImage.
+	DeleteScratchImage(ctx context.Context, in *DeleteScratchImageRequest, opts ...grpc.CallOption) (*DeleteScratchImageResponse, error)
 	// Get the console output from the device.
 	GetDeviceConsoleOutput(ctx context.Context, in *DeviceControlRequest, opts ...grpc.CallOption) (*ConsoleOutputResponse, error)
 	// ConnectConsoleToDevice establishes a bidirectional gRPC tunnel between
@@ -173,6 +192,19 @@ func (c *brokerClient) PushEVEContainerImage(ctx context.Context, opts ...grpc.C
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type Broker_PushEVEContainerImageClient = grpc.ClientStreamingClient[PushImageChunk, PushImageResponse]
 
+func (c *brokerClient) PushEVELiveImage(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[PushLiveImageChunk, PushLiveImageResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &Broker_ServiceDesc.Streams[3], Broker_PushEVELiveImage_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[PushLiveImageChunk, PushLiveImageResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Broker_PushEVELiveImageClient = grpc.ClientStreamingClient[PushLiveImageChunk, PushLiveImageResponse]
+
 func (c *brokerClient) SetupDevices(ctx context.Context, in *SetupDevicesRequest, opts ...grpc.CallOption) (*SetupDevicesResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SetupDevicesResponse)
@@ -223,6 +255,46 @@ func (c *brokerClient) RebootDevice(ctx context.Context, in *DeviceControlReques
 	return out, nil
 }
 
+func (c *brokerClient) EditDeviceDisk(ctx context.Context, in *EditDeviceDiskRequest, opts ...grpc.CallOption) (*EditDeviceDiskResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EditDeviceDiskResponse)
+	err := c.cc.Invoke(ctx, Broker_EditDeviceDisk_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *brokerClient) ExecuteQMP(ctx context.Context, in *ExecuteQMPRequest, opts ...grpc.CallOption) (*ExecuteQMPResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ExecuteQMPResponse)
+	err := c.cc.Invoke(ctx, Broker_ExecuteQMP_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *brokerClient) CreateScratchImage(ctx context.Context, in *CreateScratchImageRequest, opts ...grpc.CallOption) (*CreateScratchImageResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateScratchImageResponse)
+	err := c.cc.Invoke(ctx, Broker_CreateScratchImage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *brokerClient) DeleteScratchImage(ctx context.Context, in *DeleteScratchImageRequest, opts ...grpc.CallOption) (*DeleteScratchImageResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteScratchImageResponse)
+	err := c.cc.Invoke(ctx, Broker_DeleteScratchImage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *brokerClient) GetDeviceConsoleOutput(ctx context.Context, in *DeviceControlRequest, opts ...grpc.CallOption) (*ConsoleOutputResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ConsoleOutputResponse)
@@ -235,7 +307,7 @@ func (c *brokerClient) GetDeviceConsoleOutput(ctx context.Context, in *DeviceCon
 
 func (c *brokerClient) ConnectConsoleToDevice(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ConnectConsoleRequest, ConnectConsoleResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &Broker_ServiceDesc.Streams[3], Broker_ConnectConsoleToDevice_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &Broker_ServiceDesc.Streams[4], Broker_ConnectConsoleToDevice_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -248,7 +320,7 @@ type Broker_ConnectConsoleToDeviceClient = grpc.BidiStreamingClient[ConnectConso
 
 func (c *brokerClient) ConnectTunnelToSDN(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ConnectTunnelToSDNRequest, ConnectTunnelToSDNResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &Broker_ServiceDesc.Streams[4], Broker_ConnectTunnelToSDN_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &Broker_ServiceDesc.Streams[5], Broker_ConnectTunnelToSDN_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -282,6 +354,9 @@ type BrokerServer interface {
 	BuildImage(context.Context, *BuildImageRequest) (*BuildImageResponse, error)
 	// PushEVEContainerImage streams a pre-built EVE container image to the broker.
 	PushEVEContainerImage(grpc.ClientStreamingServer[PushImageChunk, PushImageResponse]) error
+	// Uploads a locally built EVE live image as a tar stream containing
+	// live.qcow2, config.img and firmware/*.
+	PushEVELiveImage(grpc.ClientStreamingServer[PushLiveImageChunk, PushLiveImageResponse]) error
 	// Provision and start up EVE devices and SDN for the client.
 	SetupDevices(context.Context, *SetupDevicesRequest) (*SetupDevicesResponse, error)
 	// Tear down and clean up resources for the client's devices and SDN.
@@ -292,6 +367,17 @@ type BrokerServer interface {
 	PowerOffDevice(context.Context, *DeviceControlRequest) (*DeviceControlResponse, error)
 	// Reboot a specific EVE device.
 	RebootDevice(context.Context, *DeviceControlRequest) (*DeviceControlResponse, error)
+	// Edit a powered-off device's boot disk in place. Requires
+	// CAPABILITY_EDIT_DEVICE_DISK.
+	EditDeviceDisk(context.Context, *EditDeviceDiskRequest) (*EditDeviceDiskResponse, error)
+	// Run one QMP command on the hypervisor running the device.
+	// Requires CAPABILITY_QMP.
+	ExecuteQMP(context.Context, *ExecuteQMPRequest) (*ExecuteQMPResponse, error)
+	// Create a blank scratch disk image for the device on the hypervisor host,
+	// e.g. to back a hot-plugged drive. Requires CAPABILITY_QMP.
+	CreateScratchImage(context.Context, *CreateScratchImageRequest) (*CreateScratchImageResponse, error)
+	// Delete a scratch disk image created by CreateScratchImage.
+	DeleteScratchImage(context.Context, *DeleteScratchImageRequest) (*DeleteScratchImageResponse, error)
 	// Get the console output from the device.
 	GetDeviceConsoleOutput(context.Context, *DeviceControlRequest) (*ConsoleOutputResponse, error)
 	// ConnectConsoleToDevice establishes a bidirectional gRPC tunnel between
@@ -337,6 +423,9 @@ func (UnimplementedBrokerServer) BuildImage(context.Context, *BuildImageRequest)
 func (UnimplementedBrokerServer) PushEVEContainerImage(grpc.ClientStreamingServer[PushImageChunk, PushImageResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method PushEVEContainerImage not implemented")
 }
+func (UnimplementedBrokerServer) PushEVELiveImage(grpc.ClientStreamingServer[PushLiveImageChunk, PushLiveImageResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method PushEVELiveImage not implemented")
+}
 func (UnimplementedBrokerServer) SetupDevices(context.Context, *SetupDevicesRequest) (*SetupDevicesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetupDevices not implemented")
 }
@@ -351,6 +440,18 @@ func (UnimplementedBrokerServer) PowerOffDevice(context.Context, *DeviceControlR
 }
 func (UnimplementedBrokerServer) RebootDevice(context.Context, *DeviceControlRequest) (*DeviceControlResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RebootDevice not implemented")
+}
+func (UnimplementedBrokerServer) EditDeviceDisk(context.Context, *EditDeviceDiskRequest) (*EditDeviceDiskResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EditDeviceDisk not implemented")
+}
+func (UnimplementedBrokerServer) ExecuteQMP(context.Context, *ExecuteQMPRequest) (*ExecuteQMPResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ExecuteQMP not implemented")
+}
+func (UnimplementedBrokerServer) CreateScratchImage(context.Context, *CreateScratchImageRequest) (*CreateScratchImageResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateScratchImage not implemented")
+}
+func (UnimplementedBrokerServer) DeleteScratchImage(context.Context, *DeleteScratchImageRequest) (*DeleteScratchImageResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteScratchImage not implemented")
 }
 func (UnimplementedBrokerServer) GetDeviceConsoleOutput(context.Context, *DeviceControlRequest) (*ConsoleOutputResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetDeviceConsoleOutput not implemented")
@@ -461,6 +562,13 @@ func _Broker_PushEVEContainerImage_Handler(srv interface{}, stream grpc.ServerSt
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type Broker_PushEVEContainerImageServer = grpc.ClientStreamingServer[PushImageChunk, PushImageResponse]
 
+func _Broker_PushEVELiveImage_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(BrokerServer).PushEVELiveImage(&grpc.GenericServerStream[PushLiveImageChunk, PushLiveImageResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Broker_PushEVELiveImageServer = grpc.ClientStreamingServer[PushLiveImageChunk, PushLiveImageResponse]
+
 func _Broker_SetupDevices_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SetupDevicesRequest)
 	if err := dec(in); err != nil {
@@ -551,6 +659,78 @@ func _Broker_RebootDevice_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Broker_EditDeviceDisk_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EditDeviceDiskRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BrokerServer).EditDeviceDisk(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Broker_EditDeviceDisk_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BrokerServer).EditDeviceDisk(ctx, req.(*EditDeviceDiskRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Broker_ExecuteQMP_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ExecuteQMPRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BrokerServer).ExecuteQMP(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Broker_ExecuteQMP_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BrokerServer).ExecuteQMP(ctx, req.(*ExecuteQMPRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Broker_CreateScratchImage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateScratchImageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BrokerServer).CreateScratchImage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Broker_CreateScratchImage_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BrokerServer).CreateScratchImage(ctx, req.(*CreateScratchImageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Broker_DeleteScratchImage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteScratchImageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BrokerServer).DeleteScratchImage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Broker_DeleteScratchImage_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BrokerServer).DeleteScratchImage(ctx, req.(*DeleteScratchImageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Broker_GetDeviceConsoleOutput_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(DeviceControlRequest)
 	if err := dec(in); err != nil {
@@ -623,6 +803,22 @@ var Broker_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Broker_RebootDevice_Handler,
 		},
 		{
+			MethodName: "EditDeviceDisk",
+			Handler:    _Broker_EditDeviceDisk_Handler,
+		},
+		{
+			MethodName: "ExecuteQMP",
+			Handler:    _Broker_ExecuteQMP_Handler,
+		},
+		{
+			MethodName: "CreateScratchImage",
+			Handler:    _Broker_CreateScratchImage_Handler,
+		},
+		{
+			MethodName: "DeleteScratchImage",
+			Handler:    _Broker_DeleteScratchImage_Handler,
+		},
+		{
 			MethodName: "GetDeviceConsoleOutput",
 			Handler:    _Broker_GetDeviceConsoleOutput_Handler,
 		},
@@ -642,6 +838,11 @@ var Broker_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "PushEVEContainerImage",
 			Handler:       _Broker_PushEVEContainerImage_Handler,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "PushEVELiveImage",
+			Handler:       _Broker_PushEVELiveImage_Handler,
 			ClientStreams: true,
 		},
 		{

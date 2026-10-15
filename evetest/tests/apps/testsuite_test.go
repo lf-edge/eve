@@ -3,48 +3,196 @@
 
 // Package apps_test holds the EVE application-lifecycle tests.
 //
-// On master this package carries the full suite rewritten from Eden
-// (restart, halt, purge, metadata, ...); on this branch only the load test
-// and the adapter teardown test below were backported, so the suite
-// registers just those two.
+// Helper layout. Every file whose name ends in _helpers_test.go contains no
+// tests, only helpers; a file named for a test contains only that test, so the
+// tests themselves stay easy to find.
 //
-// Subtests
-// --------
-//   - TestLotsOfApps -- deploys more app instances than volumemgr's worker
-//     pool has slots and checks that all of them come up (regression test
-//     for the pool-saturation fixes).
-//   - TestAppTeardownWithRemovedAdapter -- the app and the model entry of
-//     its assigned adapter are deleted in one configuration; the device
-//     must release the adapter without the entry and not reboot; regression
-//     test for a crash of domainmgr at the release.
+// helpers_test.go holds the general app-lifecycle helpers shared by the whole
+// package (device name, image and NI constants, app SSH auth, addLocalNI,
+// singleVIFWithSSH, deleteAppAndWait, waitForAppSSH). The remaining helper files
+// are named for the STATE THEY OBSERVE rather than for the test that first
+// needed them, and each owns both its readers and the invariants about that
+// state:
+//
+//	appstate_helpers_test.go     pillar's own view of the app - pubsub and
+//	                             persisted state keyed by app UUID
+//	appworkload_helpers_test.go  where the app is running as the hypervisor sees
+//	                             it - VMIRS objects, qemu domain state
+//	                             directories, and the kubectl reads the volume
+//	                             helpers share
+//	appvolumes_helpers_test.go   the app's disk in all three forms -
+//	                             VolumeStatus, PVC, file under /persist - and the
+//	                             storage invariants
+//	pciaccess_helpers_test.go    the PCI devices of host and guest, the driver a
+//	                             device is bound to, and every access to a PCI
+//	                             device by host processes, observed with a
+//	                             bpftrace tracer (testdata/pciaccess.bt) run
+//	                             through eve-tools/bpftrace-compiler
+//	<topic>_helpers_test.go      what one topic's tests build before they run,
+//	                             plus the assertions meaningless outside it;
+//	                             purge_helpers_test.go is the worked example
+//
+// Reading a file, listing a directory, testing for a path and flushing caches
+// are NOT here: they are EdgeDevice methods in the framework
+// (evetest/edgedevice.go), so every test package gets them. Prefer adding one
+// there over a local helper whenever the operation says nothing about apps.
+//
+// Where does a new helper go?
+//
+//	Q0  Is it generic device access, useful to any test package?
+//	      Yes -> an EdgeDevice method in evetest/edgedevice.go
+//	Q1  Is it generally useful to any app test?
+//	      Yes -> helpers_test.go
+//	Q2  Would it still make sense in a test that never purges anything?
+//	      Yes -> the helper file for the state it observes
+//	      No  -> <topic>_helpers_test.go
+//
+// A new test scenario adds one <topic>_<scenario>_test.go and no helper file. A
+// new topic (restart, delete, snapshot) adds its tests plus at most one
+// <topic>_helpers_test.go and reuses the observation files unchanged. A new
+// observation subject adds one app<Subject>_helpers_test.go.
 package apps_test
 
 import (
 	"testing"
 
-	eveinfo "github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/evetest"
 )
 
-// TestAppsSuite drives the application-lifecycle scenarios in this package.
+// TestAppsSuite drives application-lifecycle scenarios that are not
+// specifically about networking (regression tests for zedmanager/volumemgr
+// bugs, VNC console access, how configuration and data flow between the
+// controller, EVE and a running application) -- kept separate from
+// evetest/tests/networking's TestApplicationConnectivitySuite, which is
+// already large and focused on network connectivity.
+//
+// Every subtest deploys at least one application and therefore shares the
+// HYPERVISOR parameter -- the suite declares evetest.HypervisorParameter()
+// once and each subtest reads it via evetest.GetHypervisorParameterValue(),
+// except the two purge tests noted below.
+//
+// Subtests
+// --------
+//   - TestPurgeNeverActivatedApp -- regression test for a zedmanager bug
+//     where purging an app that never activated (failed image download)
+//     would leave it stuck instead of recovering.
+//   - TestVNC -- VNC access to a VM app, a container app, and the container
+//     app's shim VM console.
+//   - TestAppInstanceMetadata -- app posts metadata to the link-local
+//     metadata server; EVE reports it to the controller.
+//   - TestAppUserData -- plain key=value user-data becomes container
+//     environment; cloud-config write_files is applied once per user-data
+//     version and survives an app restart.
+//   - TestAppLogs -- application stdout is collected and delivered to the
+//     controller, including after the app is stopped and started again.
+//   - TestAppRestart -- controller-requested restarts (restart counter
+//     bumps, no purge) bring the app back to RUNNING; regression test for
+//     a stale QMP handler quitting the re-created domain.
+//   - TestAppTeardownWithRemovedAdapter -- the app and the model entry of
+//     its assigned adapter are deleted in one configuration; the device
+//     must release the adapter without the entry and not reboot; regression
+//     test for a crash of domainmgr at the release.
+//   - TestHaltAfterImmediateDeactivate -- an app stopped in the same second
+//     it reports RUNNING still halts promptly; regression test for the
+//     graceful budget an unset virtualization mode used to be granted.
+//   - TestHaltUnresponsiveGuest -- a guest which never services the ACPI
+//     poweroff request still halts promptly, because the stop escalates to
+//     terminating the domain. Pulls its image from dl-cdn.alpinelinux.org.
+//   - TestWorkerPoolSaturation -- with volumemgr's worker pool shrunk to a
+//     single worker, refused submissions must be reported as deferral
+//     warnings and retried, not lost: all apps reach RUNNING and the
+//     warnings clear; regression test for apps wedged in LOADING with no
+//     error when the pool saturated.
+//   - TestVMAppPurgeReplacesVMIRS -- a plain purge of a healthy app leaves
+//     exactly one VMIRS, named for the new generation. Kubevirt only; skips
+//     on any other hypervisor.
+//   - TestVMAppPurgeAfterPowerCycle -- a purge issued while the device is
+//     powered off, which is where a reboot lands in the middle of the purge
+//     deterministically rather than by chance. Meaningful on every hypervisor.
+//   - TestLotsOfApps -- starts lots of apps and checks for success
+//   - TestLayerDownloadErrorsBounded -- an application whose image has
+//     every layer fail to download, from both management ports, is reported
+//     in error with a bounded error description and the device stays up;
+//     regression test for zedmanager killing pillar by publishing an
+//     AppInstanceStatus larger than a pubsub message.
+//   - TestVGAPassthroughNoHostAccess -- while the device's VGA controller is
+//     passed through to an app, no host process may open PCI device
+//     attributes for writing or reset, reconfigure or map a PCI device;
+//     observed with a bpftrace tracer run through eve-tools/bpftrace-compiler
+//     across a quiet window, a management-port DNS change, debug.enable.usb
+//     and debug.enable.vga toggles and an app restart.
+//
+// The two purge tests come late because they are the expensive ones: they
+// assert on which generation of a workload exists, so each needs a device
+// created from scratch (purgeDeviceRequirements) rather than the warm device
+// the earlier subtests reuse. The layer download and VGA passthrough tests
+// come last for the same kind of reason: they are the only ones on the
+// TwoMgmtPorts network model, and a differing model makes the framework
+// recreate the device, so they sit together at the end.
+//
+// Neither declares hypervisor variants. The whole suite is run once per
+// hypervisor (EVETEST_HYPERVISOR=kvm|kubevirt), so a variant here would run
+// the same combination a second time; a test that cannot say anything on the
+// hypervisor it was given skips instead.
+//
+// TestContainerdCPUs is the very last test: its boot options differ, so the
+// framework creates yet another device for it.
 func TestAppsSuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
 
+	evetest.DefineTestParameters(
+		evetest.HypervisorParameter(),
+	)
+
 	evetest.RunTestSuite(
 		evetest.TestCase{
-			Test: TestLotsOfApps,
+			Test: TestPurgeNeverActivatedApp,
+		},
+		evetest.TestCase{
+			Test: TestVNC,
+		},
+		evetest.TestCase{
+			Test: TestAppInstanceMetadata,
+		},
+		evetest.TestCase{
+			Test: TestAppUserData,
+		},
+		evetest.TestCase{
+			Test: TestAppLogs,
+		},
+		evetest.TestCase{
+			Test: TestAppRestart,
 		},
 		evetest.TestCase{
 			Test: TestAppTeardownWithRemovedAdapter,
 		},
+		evetest.TestCase{
+			Test: TestHaltAfterImmediateDeactivate,
+		},
+		evetest.TestCase{
+			Test: TestHaltUnresponsiveGuest,
+		},
+		evetest.TestCase{
+			Test: TestWorkerPoolSaturation,
+		},
+		evetest.TestCase{
+			Test: TestVMAppPurgeReplacesVMIRS,
+		},
+		evetest.TestCase{
+			Test: TestVMAppPurgeAfterPowerCycle,
+		},
+		evetest.TestCase{
+			Test: TestLotsOfApps,
+		},
+		evetest.TestCase{
+			Test: TestLayerDownloadErrorsBounded,
+		},
+		evetest.TestCase{
+			Test: TestVGAPassthroughNoHostAccess,
+		},
+		evetest.TestCase{
+			Test: TestContainerdCPUs,
+		},
 	)
-}
-
-func appHasError(info *eveinfo.ZInfoApp) (string, bool) {
-	stop := info.State == eveinfo.ZSwState_ERROR
-	if stop {
-		return "Application instance is in error state", true
-	}
-	return "", false
 }

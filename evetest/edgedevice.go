@@ -6,26 +6,32 @@ package evetest
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net"
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	evecerts "github.com/lf-edge/eve-api/go/certs"
 	eveconfig "github.com/lf-edge/eve-api/go/config"
 	eveflowlog "github.com/lf-edge/eve-api/go/flowlog"
 	eveinfo "github.com/lf-edge/eve-api/go/info"
 	evelogs "github.com/lf-edge/eve-api/go/logs"
 	evemetrics "github.com/lf-edge/eve-api/go/metrics"
+	"github.com/lf-edge/eve/evetest/constants"
 	api "github.com/lf-edge/eve/evetest/grpcapi/go"
 	"github.com/lf-edge/eve/evetest/logger"
 	"github.com/lf-edge/eve/evetest/utils"
+	pillartypes "github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	uuid "github.com/satori/go.uuid"
+	"github.com/spf13/viper"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -47,6 +53,11 @@ func GetEdgeDevice(devName string) *EdgeDevice {
 		th.t.Fatalf("Unknown device %q", devName)
 	}
 	return &EdgeDevice{th: th, devName: devName}
+}
+
+// Name returns the device name.
+func (d *EdgeDevice) Name() string {
+	return d.devName
 }
 
 // GetAllEdgeDevices returns handles for all EdgeDevices currently known to the
@@ -230,9 +241,23 @@ func (d *EdgeDevice) ApplyConfig(config *EdgeDeviceConfig, waitUntilFetched bool
 		newConfig.Shutdown = &eveconfig.DeviceOpsCmd{Counter: 0, DesiredState: false}
 	}
 
-	// Preserve cipher contexts.
+	// Preserve cipher contexts. The list is taken from the harness-held config
+	// and not from the caller's, which makes the harness-held config the single
+	// owner of the cipher-context list: addCipherCtxToDevice appends there and
+	// every ApplyConfig republishes whatever it finds. Anything that changes the
+	// cipher contexts (e.g. RotateControllerEncryptCert) must therefore mutate
+	// the harness-held config, not just the config it is about to apply.
 	if prevConfig != nil {
 		newConfig.CipherContexts = prevConfig.GetCipherContexts()
+	}
+
+	// Never push a cipher block encrypted against a retired controller
+	// certificate; see checkCipherBlocksUseCurrentECDHCert for why that failure
+	// would otherwise stay invisible until a reboot.
+	if err := d.th.checkCipherBlocksUseCurrentECDHCert(
+		newConfig.EdgeDevConfig, newConfig.GetCipherContexts()); err != nil {
+		d.th.t.Fatalf("Refusing to apply configuration (version %s) for device %q: %v",
+			configVer, d.devName, err)
 	}
 
 	ctx, cancel := context.WithTimeout(d.th.ctx, adamApplyConfigTimeout)
@@ -358,15 +383,156 @@ func (d *EdgeDevice) GetDeviceIPAddress(netAdapterLogicalLabel string) []net.IP 
 	return ips
 }
 
+// GetArch returns the CPU architecture of the device ("amd64" or "arm64"),
+// as determined during Setup (see TestHarness.selectArch) -- not merely the
+// preferred architecture requested via EVETEST_PREFERRED_ARCH, which can
+// differ from the device's actual one on a broker that does not support it
+// (selectArch falls back to whatever the broker does support).
+func (d *EdgeDevice) GetArch() string {
+	d.th.devicesM.Lock()
+	devState, found := d.th.devices[d.devName]
+	d.th.devicesM.Unlock()
+	if !found {
+		d.th.t.Fatalf("Unknown device %q", d.devName)
+	}
+	switch devState.imageRef.Arch {
+	case api.ArchType_ARCH_AMD64:
+		return "amd64"
+	case api.ArchType_ARCH_ARM64:
+		return "arm64"
+	default:
+		d.th.t.Fatalf("Device %q has unknown architecture: %v",
+			d.devName, devState.imageRef.Arch)
+		return ""
+	}
+}
+
+// BaseOSDatastoreType selects how EdgeDevice.UpgradeEVE delivers the target
+// EVE rootfs to the device.
+type BaseOSDatastoreType int
+
+const (
+	// BaseOSDatastoreHTTP has evetest extract the raw rootfs image from the
+	// locally-pulled EVE docker image and serve it over evetest's own
+	// embedded HTTP image server. This is the traditional/default path and
+	// works even when the target image is not (or cannot be) hosted on a
+	// registry reachable from the device.
+	BaseOSDatastoreHTTP BaseOSDatastoreType = iota
+	// BaseOSDatastoreOCI has EVE pull the target rootfs directly from the
+	// same OCI registry the target image was tagged in (e.g. Docker Hub),
+	// using a container-registry Datastore. evetest still pulls the image
+	// locally first to determine the target short version, but skips
+	// extracting the raw rootfs and serving it over HTTP.
+	BaseOSDatastoreOCI
+)
+
+func (t BaseOSDatastoreType) String() string {
+	switch t {
+	case BaseOSDatastoreOCI:
+		return "oci"
+	case BaseOSDatastoreHTTP:
+		fallthrough
+	default:
+		return "http"
+	}
+}
+
+// FromString parses a datastore type name string and sets the
+// BaseOSDatastoreType value.
+func (t *BaseOSDatastoreType) FromString(s string) error {
+	switch strings.ToLower(s) {
+	case "", "http":
+		*t = BaseOSDatastoreHTTP
+	case "oci":
+		*t = BaseOSDatastoreOCI
+	default:
+		return fmt.Errorf("invalid BaseOSDatastoreType: %q", s)
+	}
+	return nil
+}
+
 // UpgradeEVE upgrades the EVE OS to the specified version and optionally
 // waits until the upgrade completes or reverts.
+// datastoreType selects how the target rootfs is delivered to the device --
+// see BaseOSDatastoreType.
 // When expectRevert is true, the upgrade is expected to fail and EVE to revert
 // to the previous version -- the function then waits for the target version to
 // show a FAILED status instead of waiting for it to become active.
 // A reverted upgrade causes two reboots (one to try the new version, one to
 // revert), so the expected reboot count is incremented accordingly.
+//
+// An optional timeout bounds the wait instead of the default, which is sized
+// for an ordinary base-OS upgrade: download, one reboot, done. A cross-flavor
+// boot-disk conversion is a different animal -- it also runs an offline
+// shrink+grow across several reboots and then brings up a whole
+// container-cluster stack -- and it lands close enough to the default that a
+// healthy conversion and an expired budget are separated by a couple of minutes
+// of host load. A test driving one should pass a longer timeout, otherwise it
+// reports a conversion that was still progressing as a failure.
 func (d *EdgeDevice) UpgradeEVE(targetEVEVersion string, targetEVEHypervisor Hypervisor,
-	waitUntilUpgraded bool, expectRevert bool) {
+	datastoreType BaseOSDatastoreType, waitUntilUpgraded bool, expectRevert bool,
+	timeout ...time.Duration) {
+
+	if len(timeout) > 1 {
+		d.th.t.Fatalf("UpgradeEVE: at most one timeout may be given, got %d", len(timeout))
+	}
+	upgradeWait := eveUpgradeTimeout
+	if len(timeout) == 1 {
+		upgradeWait = timeout[0]
+	}
+	outcome := upgradeSucceeds
+	if expectRevert {
+		outcome = upgradeReverts
+	}
+	d.upgradeEVE(targetEVEVersion, targetEVEHypervisor, datastoreType,
+		waitUntilUpgraded, outcome, upgradeWait)
+}
+
+// RequestRefusedEVEUpgrade applies a base-OS update that EVE is expected to
+// reject outright, and returns as soon as the configuration is applied.
+//
+// A rejection is not a failed upgrade. EVE refuses in place -- before it writes
+// a partition and before it reboots -- so there is nothing to wait for and no
+// reboot to account for, which is what separates this from UpgradeEVE's
+// expectRevert: that one waits out two reboots for an image that was installed
+// and then rolled back. What the rejection looks like is the caller's to assert:
+// the reported error, and that the device is still running what it was.
+func (d *EdgeDevice) RequestRefusedEVEUpgrade(targetEVEVersion string,
+	targetEVEHypervisor Hypervisor, datastoreType BaseOSDatastoreType) {
+	d.upgradeEVE(targetEVEVersion, targetEVEHypervisor, datastoreType,
+		false, upgradeRefused, eveUpgradeTimeout)
+}
+
+// upgradeOutcome is what the test expects EVE to do with a base-OS update. It
+// decides how many reboots the harness books and what, if anything, it waits
+// for.
+type upgradeOutcome int
+
+const (
+	// upgradeSucceeds: EVE installs the image and boots it. One reboot.
+	upgradeSucceeds upgradeOutcome = iota
+	// upgradeReverts: EVE installs the image, fails to confirm it, and rolls
+	// back. Two reboots -- one into the new image, one back.
+	upgradeReverts
+	// upgradeRefused: EVE rejects the update without installing it. No reboot.
+	upgradeRefused
+)
+
+// expectedReboots is how many reboots an outcome causes.
+func (o upgradeOutcome) expectedReboots() int {
+	switch o {
+	case upgradeReverts:
+		return 2
+	case upgradeRefused:
+		return 0
+	default:
+		return 1
+	}
+}
+
+func (d *EdgeDevice) upgradeEVE(targetEVEVersion string, targetEVEHypervisor Hypervisor,
+	datastoreType BaseOSDatastoreType, waitUntilUpgraded bool, outcome upgradeOutcome,
+	upgradeWait time.Duration) {
 
 	// Read current device arch (set during Setup).
 	d.th.devicesM.Lock()
@@ -378,8 +544,35 @@ func (d *EdgeDevice) UpgradeEVE(targetEVEVersion string, targetEVEHypervisor Hyp
 	currentImageRef := devState.imageRef
 	d.th.devicesM.Unlock()
 
+	// BaseOSDatastoreOCI has EVE pull a container image, while the live image transport
+	// delivers a local disk image instead of a container.
+	// This combination does not make sense.
+	if datastoreType == BaseOSDatastoreOCI && LocalLiveImageRequested() {
+		d.th.t.Fatalf(
+			"UpgradeEVE: BaseOSDatastoreOCI requires EVE to pull a container image, but "+
+				"%s%s selects a local EVE live (disk) image instead of a container image -- "+
+				"unset %s%s to upgrade via OCI, or use BaseOSDatastoreHTTP to upgrade with "+
+				"the live image",
+			constants.EnvPrefix, constants.EVELiveImageEnv,
+			constants.EnvPrefix, constants.EVELiveImageEnv)
+	}
+
+	// The live transport delivers an upgrade as the raw rootfs the local build
+	// already contains, rather than pulling a container image to extract the same
+	// file from. Which build that is comes from the version axis exactly as it
+	// does for a fresh device, so an explicitly requested target version is
+	// honoured (and must be built locally) while an unset one means the newest.
+	if datastoreType == BaseOSDatastoreHTTP && LocalLiveImageRequested() {
+		d.upgradeEVEFromLocalBuild(targetEVEVersion, currentImageRef.Arch,
+			currentImageRef.Hypervisor, waitUntilUpgraded, outcome, upgradeWait)
+		return
+	}
+
+	// Deliberately EVETEST_EVE_REPO, not currentImageRef.Repo: the initial
+	// device may pull from a different repo (RequireEdgeDevice.WithEVERepo),
+	// but the upgrade target is the version under test.
 	targetImageRef := &api.ImageRef{
-		Repo:       currentImageRef.Repo,
+		Repo:       viper.GetString(constants.EVERepoEnv),
 		Version:    targetEVEVersion,
 		Hypervisor: targetEVEHypervisor.toAPIType(),
 		Arch:       currentImageRef.Arch,
@@ -415,6 +608,20 @@ func (d *EdgeDevice) UpgradeEVE(targetEVEVersion string, targetEVEHypervisor Hyp
 	shortVersion := strings.TrimSpace(versionOut)
 	d.th.log.Debugf("Target EVE short version is %q", shortVersion)
 
+	if datastoreType == BaseOSDatastoreOCI {
+		// Publish imageName to evetest's own embedded OCI registry.
+		dockerContainer, err := PushDockerImageToLocalRegistry(imageName)
+		if err != nil {
+			d.th.t.Fatalf("UpgradeEVE: %v", err)
+		}
+		d.th.log.Infof(
+			"Configuring EVE to pull rootfs %s from evetest's local OCI registry", imageName)
+		config := d.GetConfig()
+		config.SetBaseOS(dockerContainer, shortVersion)
+		d.applyUpgradeConfig(config, shortVersion, waitUntilUpgraded, outcome, upgradeWait)
+		return
+	}
+
 	// Extract rootfs (cache by short version to avoid re-extraction on reuse).
 	rootfsFilename := "rootfs-" + shortVersion + ".img"
 	rootfsPath := filepath.Join(d.th.imgServerDir, rootfsFilename)
@@ -436,6 +643,82 @@ func (d *EdgeDevice) UpgradeEVE(targetEVEVersion string, targetEVEHypervisor Hyp
 		d.th.log.Infof("Reusing cached rootfs %s", rootfsFilename)
 	}
 
+	d.applyUpgradeOverHTTP(rootfsPath, rootfsFilename, shortVersion,
+		waitUntilUpgraded, outcome, upgradeWait)
+}
+
+// upgradeEVEFromLocalBuild delivers an upgrade from a local build's own
+// installer/rootfs.img instead of pulling a container image to extract the same
+// file out of. targetEVEVersion selects which local build, empty meaning the
+// newest; the target hypervisor is not a choice here, since a build is delivered
+// as it was built.
+func (d *EdgeDevice) upgradeEVEFromLocalBuild(targetEVEVersion string,
+	arch api.ArchType, runningHypervisor api.HypervisorType,
+	waitUntilUpgraded bool, outcome upgradeOutcome, upgradeWait time.Duration) {
+
+	zarch, err := zarchDirName(arch)
+	if err != nil {
+		d.th.t.Fatalf("UpgradeEVE: %v", err)
+	}
+	img, err := resolveLocalLiveImage(zarch, targetEVEVersion)
+	if err != nil {
+		d.th.t.Fatalf("UpgradeEVE: failed to resolve the local EVE build: %v", err)
+	}
+	if img == nil {
+		// Unreachable: this path is only taken when the live transport is on.
+		d.th.t.Fatalf("UpgradeEVE: the live image transport is not configured")
+		return
+	}
+	if img.RootfsPath == "" {
+		d.th.t.Fatalf("UpgradeEVE: local EVE build %q has no installer/rootfs.img "+
+			"to upgrade to", img.Version)
+	}
+	if img.ShortVersion == "" {
+		d.th.t.Fatalf("UpgradeEVE: local EVE build %q records no "+
+			"installer/eve_version, so the upgraded version could not be "+
+			"recognised in the device's reported software list", img.Version)
+	}
+	// Whether an upgrade may change hypervisor flavor is EVE's call, not the test
+	// framework's -- today EVE rejects it (the rootfs has to fit partitions sized
+	// for the flavor that made them), and that is expected to change. So this
+	// delivers the build either way and only leaves a breadcrumb, because EVE
+	// reports the rejection as a FAILED base OS with an empty sub-status, which
+	// says nothing about the cause.
+	if buildHV, known := liveImageHypervisor(img.ShortVersion); known {
+		if runningHV := hypervisorFromAPIType(runningHypervisor); runningHV != buildHV {
+			d.th.log.Warnf("Device %q runs %s and the local EVE build being "+
+				"delivered (%s) is %s; EVE may reject a base OS that changes "+
+				"hypervisor flavor", d.devName, runningHV, img.Version, buildHV)
+		}
+	}
+
+	// Staged as a copy rather than a link: the file is served for the whole
+	// download, and rebuilding in place (LIVE_UPDATE=1) would otherwise change it
+	// under the device mid-transfer. Named by version so consecutive tests
+	// against the same build reuse it, exactly as the container path does.
+	rootfsFilename := "rootfs-" + img.ShortVersion + ".img"
+	rootfsPath := filepath.Join(d.th.imgServerDir, rootfsFilename)
+	if _, statErr := os.Stat(rootfsPath); os.IsNotExist(statErr) {
+		d.th.log.Infof("Staging local EVE rootfs %s for the upgrade", img.RootfsPath)
+		if copyErr := utils.CopyFile(img.RootfsPath, rootfsPath); copyErr != nil {
+			d.th.t.Fatalf("UpgradeEVE: failed to stage rootfs %q: %v",
+				img.RootfsPath, copyErr)
+		}
+	} else {
+		d.th.log.Infof("Reusing staged rootfs %s", rootfsFilename)
+	}
+
+	d.applyUpgradeOverHTTP(rootfsPath, rootfsFilename, img.ShortVersion,
+		waitUntilUpgraded, outcome, upgradeWait)
+}
+
+// applyUpgradeOverHTTP points the device's BaseOS config at a rootfs image
+// already staged in the harness's HTTP image server and, optionally, waits
+// for the outcome. Shared by the two HTTP-serving transports (registry-pulled
+// and local-build): they differ only in how rootfsPath got there.
+func (d *EdgeDevice) applyUpgradeOverHTTP(rootfsPath, rootfsFilename, shortVersion string,
+	waitUntilUpgraded bool, outcome upgradeOutcome, upgradeWait time.Duration) {
+
 	sha256hex, fileSize, err := utils.FileHashAndSize(rootfsPath)
 	if err != nil {
 		d.th.t.Fatalf("UpgradeEVE: failed to hash rootfs %s: %v", rootfsPath, err)
@@ -452,30 +735,44 @@ func (d *EdgeDevice) UpgradeEVE(targetEVEVersion string, targetEVEHypervisor Hyp
 		ServerPort:        GetImageServerPort(),
 	}, shortVersion)
 
+	d.applyUpgradeConfig(config, shortVersion, waitUntilUpgraded, outcome, upgradeWait)
+}
+
+// applyUpgradeConfig applies an already-built upgrade device config and,
+// optionally, waits for the outcome. Shared by all datastore transports:
+// they differ only in how the BaseOS config gets built.
+func (d *EdgeDevice) applyUpgradeConfig(config *EdgeDeviceConfig, shortVersion string,
+	waitUntilUpgraded bool, outcome upgradeOutcome, upgradeWait time.Duration) {
+
 	d.th.log.Infof("Applying EVE upgrade config (target=%s)", shortVersion)
-	// A successful upgrade reboots once; a reverted upgrade reboots twice
-	// (once to try the new version, once to revert to the previous one).
-	d.th.incExpectedRebootCount(d.devName)
-	if expectRevert {
+	for i := 0; i < outcome.expectedReboots(); i++ {
 		d.th.incExpectedRebootCount(d.devName)
 	}
+	// Only captures coverage up to this point, before the config is applied
+	// below -- a reverted upgrade's second reboot has no such hook, since
+	// EVE (not evetest) decides when to revert.
+	d.th.collectCoverageFromDevice(d.th.ctx, d.devName)
 	d.th.devicesM.Lock()
 	d.th.devices[d.devName].wasUpgraded = true
 	d.th.devicesM.Unlock()
 	d.ApplyConfig(config, false, false)
 
-	if waitUntilUpgraded {
-		if expectRevert {
-			d.waitForRevert(shortVersion)
-		} else {
-			d.waitForUpgrade(shortVersion)
-		}
+	if !waitUntilUpgraded {
+		return
+	}
+	switch outcome {
+	case upgradeReverts:
+		d.waitForRevert(shortVersion)
+	case upgradeRefused:
+		// Nothing to wait for: the caller asserts what the rejection looks like.
+	default:
+		d.waitForUpgrade(shortVersion, upgradeWait)
 	}
 }
 
 // waitForUpgrade blocks until the device's SwList contains an entry for
 // targetShortVersion with PartitionState=="active", or fatals on failure/timeout.
-func (d *EdgeDevice) waitForUpgrade(targetShortVersion string) {
+func (d *EdgeDevice) waitForUpgrade(targetShortVersion string, upgradeWait time.Duration) {
 	d.th.log.Infof("Waiting for device %q to upgrade to %s",
 		d.devName, targetShortVersion)
 	devUUID := d.getDevUUID()
@@ -491,10 +788,10 @@ func (d *EdgeDevice) waitForUpgrade(targetShortVersion string) {
 	}
 	defer unsub()
 
-	ctx, cancel := context.WithTimeout(d.th.ctx, eveUpgradeTimeout)
+	ctx, cancel := context.WithTimeout(d.th.ctx, upgradeWait)
 	defer cancel()
 
-	var lastLoggedState, lastLoggedStatus string
+	var lastLoggedState, lastLoggedStatus, lastLoggedRetry string
 	for {
 		select {
 		case msg, ok := <-infoCh:
@@ -506,8 +803,35 @@ func (d *EdgeDevice) waitForUpgrade(targetShortVersion string) {
 					continue
 				}
 				if sw.GetUserStatus() == eveinfo.BaseOsStatus_FAILED {
+					// Pillar reports FAILED for any non-empty error description,
+					// including a transient it has already scheduled a retry for --
+					// a datastore config that has not yet reached the downloader,
+					// say. Those clear themselves, so a failure is terminal only
+					// when no retry is pending.
+					if swErr := sw.GetSwErr(); swErr.GetRetryCondition() != "" &&
+						swErr.GetSeverity() < eveinfo.Severity_SEVERITY_ERROR {
+						if swErr.GetDescription() != lastLoggedRetry {
+							d.th.log.Infof("Device %q reported a retrying upgrade "+
+								"error, waiting (%s): %s", d.devName,
+								swErr.GetRetryCondition(), swErr.GetDescription())
+							lastLoggedRetry = swErr.GetDescription()
+						}
+						continue
+					}
+					// FAILED is reached by an override that keys off SwErr and
+					// leaves SubStatusStr alone, so the progress string still
+					// narrates the step the device was on -- "Download 0% done"
+					// for a download that failed outright. SwErr carries the
+					// error itself and is what the status was derived from.
+					reason := sw.GetSwErr().GetDescription()
+					if reason == "" {
+						reason = sw.GetSubStatusStr()
+					}
+					if reason == "" {
+						reason = "no failure reason reported by the device"
+					}
 					d.th.t.Fatalf("EVE upgrade to %s failed: %s",
-						targetShortVersion, sw.GetSubStatusStr())
+						targetShortVersion, reason)
 				}
 				if sw.GetPartitionState() == "active" {
 					d.th.log.Infof("Device %q successfully upgraded to %s",
@@ -582,10 +906,57 @@ func (d *EdgeDevice) waitForRevert(targetShortVersion string) {
 	}
 }
 
+// ExpectReboots declares that the device will reboot count times on its
+// own, as a required consequence of a configuration change rather than at
+// the test's request.
+//
+// Close audits observed reboots against expected ones, so a reboot EVE
+// performs by design is reported as a failure unless it is declared. The
+// reboot-driven flows the framework itself drives (RequestReboot,
+// SoftReboot, HardReboot, UpgradeEVE) declare their own; this is for
+// flows where the trigger is a config change and the reboot is EVE's
+// chosen means of carrying it out — converting a cluster member back to
+// a single node, for instance, which reboots to restore the pre-cluster
+// /var/lib before k3s starts.
+//
+// Declare it before applying the config that causes it: the audit only
+// compares totals, but a declaration that races the observation reads as
+// an accident in the log.
+//
+// A cross-flavor boot-disk conversion is the other case: it runs an offline
+// shrink/grow across more reboots than UpgradeEVE accounts for, and how many is
+// known only to the test driving it, since a plain kvm<->k conversion with no
+// resize reboots differently than a shrink+grow.
+func (d *EdgeDevice) ExpectReboots(count int) {
+	d.th.collectCoverageFromDevice(d.th.ctx, d.devName)
+	for i := 0; i < count; i++ {
+		d.th.incExpectedRebootCount(d.devName)
+	}
+}
+
+// UnexpectedRebootCount is how many times the device has been seen rebooting
+// beyond what the test asked for (RequestReboot, SoftReboot, HardReboot,
+// UpgradeEVE, ExpectReboots): the same count Close audits at the end of every
+// test, exposed so that a test waiting for something a crash would prevent
+// can fail at once, naming the cause, instead of waiting out its timeout. A
+// reboot is recognized from the boot time the device reports in its info
+// messages, so it registers once the device is back up and talking to the
+// controller, not at the moment it goes down.
+func (d *EdgeDevice) UnexpectedRebootCount() int {
+	d.th.devicesM.Lock()
+	defer d.th.devicesM.Unlock()
+	devState, found := d.th.devices[d.devName]
+	if !found {
+		return 0
+	}
+	return max(devState.rebootCount-devState.expectedRebootCount, 0)
+}
+
 // RequestReboot requests a device reboot via configuration and optionally
 // waits until the reboot completes.
 func (d *EdgeDevice) RequestReboot(waitUntilRebooted bool) {
 	d.th.incExpectedRebootCount(d.devName)
+	d.th.collectCoverageFromDevice(d.th.ctx, d.devName)
 	config := d.getConfig(true)
 	reboot := config.GetReboot()
 	if reboot == nil {
@@ -598,6 +969,21 @@ func (d *EdgeDevice) RequestReboot(waitUntilRebooted bool) {
 	d.rebootAndWait(waitUntilRebooted, func() {
 		d.ApplyConfig(config, false, false)
 	})
+}
+
+// PrepareShutdown signals a graceful shutdown via EdgeDevConfig.Shutdown:
+// pillar deactivates every app instance on the device in response. Unlike
+// Reboot/PowerOff, this has no power effect of its own -- the device stays
+// up, which is why callers pair it with a separate power-off step.
+func (d *EdgeDevice) PrepareShutdown() {
+	config := d.getConfig(true)
+	shutdown := config.GetShutdown()
+	if shutdown == nil {
+		config.Shutdown = &eveconfig.DeviceOpsCmd{Counter: 1, DesiredState: true}
+	} else {
+		config.Shutdown = &eveconfig.DeviceOpsCmd{Counter: shutdown.GetCounter() + 1, DesiredState: true}
+	}
+	d.ApplyConfig(config, false, false)
 }
 
 // SoftReboot reboots the device from the console/SSH.
@@ -632,6 +1018,184 @@ func (d *EdgeDevice) HardReboot(waitUntilRebooted bool) {
 				d.devName, err)
 		}
 	})
+}
+
+// ConsoleOutput returns everything the device has written to its serial console
+// so far in this test. The console log is opened in append mode, so output from
+// earlier boots is still present: this is the only way a test can see what ran
+// before pillar started, which is where storage-init and the offline resizer
+// live. Returns an error rather than failing the test, so a caller can treat
+// missing console output as inconclusive rather than fatal.
+func (d *EdgeDevice) ConsoleOutput() (string, error) {
+	ctx, cancel := context.WithTimeout(d.th.ctx, brokerGetConsoleOutputTimeout)
+	defer cancel()
+	resp, err := d.th.brokerClient.GetDeviceConsoleOutput(ctx,
+		&api.DeviceControlRequest{
+			ClientId:   d.th.brokerClientID,
+			DeviceName: d.devName,
+		})
+	if err != nil {
+		return "", err
+	}
+	return resp.GetConsoleOutput(), nil
+}
+
+// PowerOff hard-powers off the device through the broker (bypassing any
+// graceful ACPI shutdown). The broker RPC blocks until the provider confirms
+// the VM is stopped, so no separate wait parameter is needed.
+func (d *EdgeDevice) PowerOff() {
+	d.th.collectCoverageFromDevice(d.th.ctx, d.devName)
+	devCtrlReq := &api.DeviceControlRequest{
+		ClientId:   d.th.brokerClientID,
+		DeviceName: d.devName,
+	}
+	ctx, cancel := context.WithTimeout(d.th.ctx, brokerPowerOffEVEDeviceTimeout)
+	defer cancel()
+	_, err := d.th.brokerClient.PowerOffDevice(ctx, devCtrlReq)
+	if err != nil {
+		d.th.t.Fatalf("PowerOff: broker failed to power off device %q: %v",
+			d.devName, err)
+	}
+}
+
+// PowerOn powers the device back on through the broker and optionally waits
+// until it boots and reports back to the controller.
+//
+// TODO: following a true hard power-off, nodeagent does not reliably
+// republish an updated ZInfoDevice.LastRebootTime (the reboot-reason
+// detection that rebootAndWait's wait relies on appears to assume a
+// cooperative in-place OS reboot, not an external power-cycle).
+// Until that's root-caused on the EVE side, pass waitUntilOnline=false here
+// and confirm recovery some other way (e.g. via WaitUntilAppIsRunning
+// on the relevant apps).
+func (d *EdgeDevice) PowerOn(waitUntilOnline bool) {
+	d.th.incExpectedRebootCount(d.devName)
+	d.th.countPowerCycleReboot(d.devName)
+	d.rebootAndWait(waitUntilOnline, func() {
+		devCtrlReq := &api.DeviceControlRequest{
+			ClientId:   d.th.brokerClientID,
+			DeviceName: d.devName,
+		}
+		ctx, cancel := context.WithTimeout(d.th.ctx, brokerPowerOnEVEDeviceTimeout)
+		defer cancel()
+		_, err := d.th.brokerClient.PowerOnDevice(ctx, devCtrlReq)
+		if err != nil {
+			d.th.t.Fatalf("PowerOn: broker failed to power on device %q: %v",
+				d.devName, err)
+		}
+	})
+}
+
+// GrowDisk enlarges the device's boot disk to newSizeBytes, leaving the added
+// space unallocated past the last partition rather than extending any
+// partition into it.
+//
+// That free tail is the precondition for EVE's in-field repartition to grow
+// into slack instead of shrinking /persist to make room, and it cannot be
+// arranged at device creation: EVE's own image generator sizes the partitions
+// to fill whatever disk it is given.
+//
+// The device must be powered off (PowerOff), and the test must have declared
+// RequireCapabilities{CAPABILITY_EDIT_DEVICE_DISK}.
+func (d *EdgeDevice) GrowDisk(newSizeBytes uint64) {
+	req := d.editDiskRequest()
+	req.Edit = &api.EditDeviceDiskRequest_Grow{
+		Grow: &api.GrowDisk{NewSizeBytes: newSizeBytes},
+	}
+	d.editDisk("GrowDisk", req)
+}
+
+// DestroyPartitionFilesystem makes the filesystem on the named GPT partition
+// (e.g. "P3", EVE's /persist) unrecoverable, so that EVE reformats it on the
+// next boot. The partition table is left intact, which is the state a real
+// filesystem loss leaves behind.
+//
+// The device must be powered off (PowerOff), and the test must have declared
+// RequireCapabilities{CAPABILITY_EDIT_DEVICE_DISK}.
+func (d *EdgeDevice) DestroyPartitionFilesystem(partitionLabel string) {
+	req := d.editDiskRequest()
+	req.Edit = &api.EditDeviceDiskRequest_DestroyPartitionFs{
+		DestroyPartitionFs: &api.DestroyPartitionFilesystem{
+			PartitionLabel: partitionLabel,
+		},
+	}
+	d.editDisk("DestroyPartitionFilesystem", req)
+}
+
+// CreatePersistPartition writes a fresh GPT on the extraDiskIdx-th extra disk
+// (see RequireEdgeDevice.ExtraDisks), with a single partition spanning it,
+// typed and named as EVE's /persist.
+//
+// This is how a test gives a device a /persist on a disk of its own. Pair it
+// with DeletePartition("P3") on the boot disk: EVE locates /persist by
+// partition label across every disk, so with the boot disk's copy gone it
+// adopts this one, and the space freed on the boot disk becomes a tail an
+// in-field repartition can grow into.
+//
+// The partition is left unformatted, and EVE formats it on the next boot just
+// as it would a factory-fresh disk -- so the filesystem under test is EVE's
+// own, not a lookalike built by the harness.
+//
+// The device must be powered off (PowerOff), and the test must have declared
+// RequireCapabilities{CAPABILITY_EDIT_DEVICE_DISK}.
+func (d *EdgeDevice) CreatePersistPartition(extraDiskIdx uint) {
+	req := d.editDiskRequest()
+	req.DiskIndex = uint32(extraDiskIdx) + 1
+	req.Edit = &api.EditDeviceDiskRequest_CreatePersistPartition{
+		CreatePersistPartition: &api.CreatePersistPartition{},
+	}
+	d.editDisk("CreatePersistPartition", req)
+}
+
+// DeletePartition removes the named GPT partition (e.g. "P3", EVE's /persist)
+// from the device's boot disk, leaving the space it occupied unallocated.
+//
+// Distinct from DestroyPartitionFilesystem, which keeps the partition and only
+// ruins its contents: this removes the partition itself, so EVE does not find
+// one at all and looks elsewhere.
+//
+// The device must be powered off (PowerOff), and the test must have declared
+// RequireCapabilities{CAPABILITY_EDIT_DEVICE_DISK}.
+func (d *EdgeDevice) DeletePartition(partitionLabel string) {
+	req := d.editDiskRequest()
+	req.Edit = &api.EditDeviceDiskRequest_DeletePartition{
+		DeletePartition: &api.DeletePartition{PartitionLabel: partitionLabel},
+	}
+	d.editDisk("DeletePartition", req)
+}
+
+// editDiskRequest builds the addressing half of a disk-edit request, addressing
+// the boot disk; the caller fills in which edit it wants, and overrides
+// DiskIndex to reach an extra disk.
+func (d *EdgeDevice) editDiskRequest() *api.EditDeviceDiskRequest {
+	return &api.EditDeviceDiskRequest{
+		ClientId:   d.th.brokerClientID,
+		DeviceName: d.devName,
+	}
+}
+
+// editDisk sends one disk edit to the broker, failing the test if it is
+// refused. caller names the exported method for the failure message.
+func (d *EdgeDevice) editDisk(caller string, req *api.EditDeviceDiskRequest) {
+	ctx, cancel := context.WithTimeout(d.th.ctx, brokerEditDeviceDiskTimeout)
+	defer cancel()
+	if _, err := d.th.brokerClient.EditDeviceDisk(ctx, req); err != nil {
+		d.th.t.Fatalf("%s: broker failed to edit the disk of device %q: %v",
+			caller, d.devName, err)
+	}
+}
+
+// DisableRebootAccounting stops the teardown check that a device's observed
+// reboot count matches the expected one, recording why.
+//
+// A hard power-cycle is what this exists for. Following one the device sometimes
+// republishes the reboot time the harness counts from and sometimes does not
+// (see PowerOn), so the same test lands on different counts from run to run and
+// no fixed declaration can be right. Use it only where the count is genuinely
+// unknowable; a test whose reboots are merely more numerous than the harness
+// assumes should declare them with ExpectReboots instead.
+func (d *EdgeDevice) DisableRebootAccounting(reason string) {
+	d.th.disableRebootAccounting(d.devName, reason)
 }
 
 // rebootAndWait executes triggerFn to initiate a device reboot and, if
@@ -709,6 +1273,35 @@ func (d *EdgeDevice) GetLogs(match LogMsgMatch) []LogMsg {
 	return collector.msgs
 }
 
+// WatchLogs subscribes to device log entries and returns a buffered channel
+// that receives each new matching LogMsg as it arrives.
+// Call the returned stop function to unsubscribe and close the channel.
+func (d *EdgeDevice) WatchLogs(match LogMsgMatch) (logs <-chan LogMsg, stop func()) {
+	devUUID := d.getDevUUID()
+	collector := &logMsgCollector{match: match}
+	rawCh := make(chan *evelogs.LogEntry, watchChannelBufSize)
+	unsub, err := d.th.adamClient.SubscribeToDeviceLogs(
+		devUUID, rawCh, collector.toMatcher())
+	if err != nil {
+		d.th.t.Fatalf("WatchLogs: failed to subscribe to device logs "+
+			"for device %q: %v", d.devName, err)
+	}
+	ch := make(chan LogMsg, watchChannelBufSize)
+	go func() {
+		defer close(ch)
+		for entry := range rawCh {
+			ch <- LogMsg{
+				Severity:  entry.GetSeverity(),
+				Source:    entry.GetSource(),
+				Filename:  entry.GetFilename(),
+				Message:   entry.GetContent(),
+				Timestamp: entry.GetTimestamp().AsTime(),
+			}
+		}
+	}()
+	return ch, d.trackWatcherUnsub(unsub)
+}
+
 // GetAppLogs returns application log messages matching the provided criteria.
 func (d *EdgeDevice) GetAppLogs(appUUID uuid.UUID, match LogMsgMatch) []LogMsg {
 	devUUID := d.getDevUUID()
@@ -727,66 +1320,201 @@ func (d *EdgeDevice) GetAppLogs(appUUID uuid.UUID, match LogMsgMatch) []LogMsg {
 // GetAppFlowLogs returns flow records for the specified application
 // matching the provided criteria.
 func (d *EdgeDevice) GetAppFlowLogs(
-	appUUID uuid.UUID, match FlowLogMatch) []eveflowlog.FlowRecord {
-	// TODO: implement AdamClient.IterateAppFlowLogs first
-	d.th.t.Fatalf("GetAppFlowLogs is not implemented")
-	return nil
+	appUUID uuid.UUID, match FlowLogMatch) []*eveflowlog.FlowRecord {
+	devUUID := d.getDevUUID()
+	scopeMatch := flowScopeMatcher(appUUID, match.VirtualNetAdapter, match.NetworkInstance)
+
+	var records []*eveflowlog.FlowRecord
+	ctx, cancel := context.WithTimeout(d.th.ctx, gatherLogsTimeout)
+	err := d.th.adamClient.IterateDeviceFlowLogs(ctx, devUUID, scopeMatch,
+		flowMsgIterFn(func(msg *eveflowlog.FlowMessage) (bool, error) {
+			for _, rec := range msg.GetFlows() {
+				if flowRecordMatches(rec, match) {
+					records = append(records, rec)
+				}
+			}
+			return false, nil
+		}), false)
+	cancel()
+	if err != nil {
+		d.th.t.Fatalf("Failed to retrieve app flow logs for device %q app %q: %v",
+			d.devName, appUUID, err)
+	}
+	return records
+}
+
+// flowScopeMatcher returns a match function for IterateDeviceFlowLogs /
+// SubscribeToDeviceFlowLogs that selects FlowMessages belonging to the given
+// application and, if non-empty/non-zero, the given VIF logical label and
+// network instance.
+func flowScopeMatcher(appUUID uuid.UUID, virtualNetAdapter string,
+	networkInstance uuid.UUID) func(*eveflowlog.FlowMessage) bool {
+	appUUIDStr := appUUID.String()
+	niUUIDStr := networkInstance.String()
+	return func(msg *eveflowlog.FlowMessage) bool {
+		scope := msg.GetScope()
+		if scope.GetUuid() != appUUIDStr {
+			return false
+		}
+		if virtualNetAdapter != "" && scope.GetIntf() != virtualNetAdapter {
+			return false
+		}
+		if networkInstance != NilUUID && scope.GetNetInstUUID() != niUUIDStr {
+			return false
+		}
+		return true
+	}
+}
+
+// flowRecordMatches reports whether rec satisfies match's flow-record-level
+// criteria. Scope-level criteria (VirtualNetAdapter, NetworkInstance) are
+// checked by the caller against the enclosing FlowMessage's Scope instead,
+// since FlowRecord itself carries no scope information.
+func flowRecordMatches(rec *eveflowlog.FlowRecord, match FlowLogMatch) bool {
+	if rec.GetInbound() != match.Inbound {
+		return false
+	}
+	if match.Flow != nil {
+		flow := rec.GetFlow()
+		if match.Flow.GetSrc() != "" && flow.GetSrc() != match.Flow.GetSrc() {
+			return false
+		}
+		if match.Flow.GetSrcPort() != 0 && flow.GetSrcPort() != match.Flow.GetSrcPort() {
+			return false
+		}
+		if match.Flow.GetDest() != "" && flow.GetDest() != match.Flow.GetDest() {
+			return false
+		}
+		if match.Flow.GetDestPort() != 0 && flow.GetDestPort() != match.Flow.GetDestPort() {
+			return false
+		}
+		if match.Flow.GetProtocol() != 0 && flow.GetProtocol() != match.Flow.GetProtocol() {
+			return false
+		}
+	}
+	ts := rec.GetStartTime().AsTime()
+	if !match.NotBefore.IsZero() && ts.Before(match.NotBefore) {
+		return false
+	}
+	if !match.NotAfter.IsZero() && ts.After(match.NotAfter) {
+		return false
+	}
+	return true
 }
 
 // GetAppDNSLogs returns DNS request logs for the specified application
 // matching the provided criteria.
 func (d *EdgeDevice) GetAppDNSLogs(
-	appUUID uuid.UUID, match DNSLogMatch) []eveflowlog.DnsRequest {
-	// TODO: implement AdamClient.IterateAppFlowLogs first
-	d.th.t.Fatalf("GetAppDNSLogs is not implemented")
-	return nil
+	appUUID uuid.UUID, match DNSLogMatch) []*eveflowlog.DnsRequest {
+	devUUID := d.getDevUUID()
+	scopeMatch := flowScopeMatcher(appUUID, match.VirtualNetAdapter, match.NetworkInstance)
+
+	var records []*eveflowlog.DnsRequest
+	ctx, cancel := context.WithTimeout(d.th.ctx, gatherLogsTimeout)
+	err := d.th.adamClient.IterateDeviceFlowLogs(ctx, devUUID, scopeMatch,
+		flowMsgIterFn(func(msg *eveflowlog.FlowMessage) (bool, error) {
+			for _, req := range msg.GetDnsReqs() {
+				ts := req.GetRequestTime().AsTime()
+				if !match.NotBefore.IsZero() && ts.Before(match.NotBefore) {
+					continue
+				}
+				if !match.NotAfter.IsZero() && ts.After(match.NotAfter) {
+					continue
+				}
+				records = append(records, req)
+			}
+			return false, nil
+		}), false)
+	cancel()
+	if err != nil {
+		d.th.t.Fatalf("Failed to retrieve app DNS logs for device %q app %q: %v",
+			d.devName, appUUID, err)
+	}
+	return records
 }
 
 // waitUntilAppState waits until the app reaches one of targetStates,
 // logging every state transition along the way.
+//
+// Safe to call even if the app already has matching state history from an
+// earlier phase (e.g. it was already RUNNING before): it subscribes to live
+// updates before checking the current snapshot, so a stale historical
+// record can never be mistaken for a new transition.
+//
 // ctx controls the deadline; callers must derive it from d.th.ctx.
 // Calls t.Fatalf on timeout or error.
 func (d *EdgeDevice) waitUntilAppState(
 	ctx context.Context, appUUID uuid.UUID, targetStates ...eveinfo.ZSwState) {
 	devUUID := d.getDevUUID()
 	appUUIDStr := appUUID.String()
-
-	var lastState = eveinfo.ZSwState_INVALID
+	filter := func(msg *eveinfo.ZInfoMsg) bool {
+		if msg.GetZtype() != eveinfo.ZInfoTypes_ZiApp {
+			return false
+		}
+		ainfo := msg.GetAinfo()
+		return ainfo != nil && ainfo.GetAppID() == appUUIDStr
+	}
 
 	d.th.log.Infof("Waiting for app %q on device %q to reach state(s) %v",
 		appUUID, d.devName, targetStates)
-	err := d.th.adamClient.IterateDeviceInfoMsgs(ctx, devUUID,
-		func(msg *eveinfo.ZInfoMsg) bool {
-			if msg.GetZtype() != eveinfo.ZInfoTypes_ZiApp {
-				return false
-			}
-			ainfo := msg.GetAinfo()
-			return ainfo != nil && ainfo.GetAppID() == appUUIDStr
-		},
-		infoMsgIterFn(func(msg *eveinfo.ZInfoMsg) (bool, error) {
-			ainfo := msg.GetAinfo()
-			state := ainfo.GetState()
-			if state != lastState {
-				lastState = state
-				d.th.log.Infof("App %q (%s) on device %q state changed to %s",
-					appUUID, ainfo.GetAppName(), d.devName, state)
-			}
-			if generics.ContainsItem(targetStates, state) {
-				return true, nil
-			}
-			return false, nil
-		}),
-		true,
-	)
 
+	// Subscribe before taking the initial snapshot, so a transition landing
+	// between the two calls can never be missed.
+	ch := make(chan *eveinfo.ZInfoMsg, watchChannelBufSize)
+	unsub, err := d.th.adamClient.SubscribeToDeviceInfoMsgs(devUUID, filter, ch)
 	if err != nil {
-		d.th.t.Fatalf("Waiting for app %q on device %q to reach state(s) %v: %v",
-			appUUID, d.devName, targetStates, err)
+		d.th.t.Fatalf("Failed to subscribe to info messages for app %q on device %q: %v",
+			appUUID, d.devName, err)
+	}
+	defer unsub()
+
+	var lastState = eveinfo.ZSwState_INVALID
+	logIfChanged := func(ainfo *eveinfo.ZInfoApp) {
+		state := ainfo.GetState()
+		if state != lastState {
+			lastState = state
+			d.th.log.Infof("App %q (%s) on device %q state changed to %s",
+				appUUID, ainfo.GetAppName(), d.devName, state)
+		}
+	}
+
+	// Snapshot: the app may already be in one of the target states right now.
+	// Logged as the current state, not a "change", since nothing just
+	// happened -- this is a fact we already knew, not a new event.
+	if info := d.GetAppInfo(appUUID); info != nil {
+		lastState = info.GetState()
+		d.th.log.Infof("App %q (%s) on device %q currently in state %s",
+			appUUID, info.GetAppName(), d.devName, lastState)
+		if generics.ContainsItem(targetStates, lastState) {
+			return
+		}
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			d.th.t.Fatalf("Waiting for app %q on device %q to reach state(s) %v: %v",
+				appUUID, d.devName, targetStates, ctx.Err())
+		case msg, ok := <-ch:
+			if !ok {
+				d.th.t.Fatalf("Info subscription closed while waiting for app %q "+
+					"on device %q to reach state(s) %v", appUUID, d.devName, targetStates)
+			}
+			logIfChanged(msg.GetAinfo())
+			if generics.ContainsItem(targetStates, lastState) {
+				return
+			}
+		}
 	}
 }
 
 // WaitUntilAppIsRunning waits until the specified application reaches
 // the running state or fails.
+//
+// Safe to call even if the app already has RUNNING history from an earlier
+// phase: it subscribes to live updates before checking the current
+// snapshot, so a stale historical record can never be mistaken for a new
+// transition.
 //
 // timeoutExcludingDownload is the maximum time to wait excluding any
 // period spent actively downloading (i.e. in DOWNLOAD_STARTED state with
@@ -812,27 +1540,11 @@ func (d *EdgeDevice) WaitUntilAppIsRunning(
 		lastAppErrs        string // concatenated error descriptions for change detection
 		// Keyed by volume UUID; accumulates the latest ZInfoVolume for each volume.
 		volumes = make(map[string]*eveinfo.ZInfoVolume)
+		// timer is nil during the initial snapshot replay (see below), so
+		// iterCb's Reset calls are guarded and become no-ops until the live
+		// phase arms it.
+		timer *time.Timer
 	)
-
-	// ctx is canceled either by the timer below (timeout) or by d.th.ctx (test end).
-	ctx, cancel := context.WithCancel(d.th.ctx)
-	defer cancel()
-
-	// The timer drives timeouts when no info messages arrive:
-	//   - non-download phase: fires after the remaining non-download budget
-	//   - download phase: fires after downloadStalledTimeout with no progress
-	// iterCb resets it on each relevant transition or progress update.
-	timer := time.NewTimer(timeoutExcludingDownload)
-	defer timer.Stop()
-
-	// Cancel the context when the timer fires so IterateDeviceInfoMsgs unblocks.
-	go func() {
-		select {
-		case <-timer.C:
-			cancel()
-		case <-ctx.Done():
-		}
-	}()
 
 	// Accept ZiApp messages for this app and all ZiVolume messages.
 	// Volume messages are further filtered in the iterator once the app's
@@ -848,7 +1560,13 @@ func (d *EdgeDevice) WaitUntilAppIsRunning(
 		return false
 	}
 
-	iterCb := func(msg *eveinfo.ZInfoMsg) (bool, error) {
+	// iterCb processes a single info message, updating all the tracking state
+	// above. live distinguishes the two contexts it's called from: false
+	// during the initial snapshot replay (state is still established, but
+	// nothing is logged -- these are historical facts, not new events, and
+	// logging each one would misleadingly read as if they just happened);
+	// true during the live phase (normal logging of genuinely new events).
+	iterCb := func(msg *eveinfo.ZInfoMsg, live bool) (bool, error) {
 		// Handle volume updates: store the latest state for each volume
 		// and re-evaluate download progress if the app is currently downloading.
 		if msg.GetZtype() == eveinfo.ZInfoTypes_ZiVolume {
@@ -856,16 +1574,30 @@ func (d *EdgeDevice) WaitUntilAppIsRunning(
 			if vinfo == nil {
 				return false, nil
 			}
+			prev, hadPrev := volumes[vinfo.GetUuid()]
 			volumes[vinfo.GetUuid()] = vinfo
+			// A volume of THIS app moving to another state is progress even
+			// when the percentage does not move: EVE reports 0/0 bytes for
+			// container-registry downloads (downloader's resp.Progress()), so
+			// the percentage is not a liveness signal for those at all. The
+			// membership check matters: `volumes` accumulates every volume on
+			// the device, and an unrelated one flapping states would otherwise
+			// keep this app's stall timer alive forever.
+			stateChanged := isAppVolume(vinfo.GetUuid(), volumeRefs) &&
+				(!hadPrev || prev.GetState() != vinfo.GetState())
 			// If the app is in DOWNLOAD_STARTED state, a volume update may
 			// change the reported progress -- check and log.
 			if inDownload {
 				pct := appDownloadProgress(volumeRefs, volumes)
+				if timer != nil && (stateChanged || pct != lastDownloadPct) {
+					timer.Reset(downloadStalledTimeout)
+				}
 				if pct != lastDownloadPct {
 					lastDownloadPct = pct
-					timer.Reset(downloadStalledTimeout)
-					d.th.log.Infof("App %q (%s) on device %q state changed to %s (%d%%)",
-						appUUID, appName, d.devName, lastState, pct)
+					if live {
+						d.th.log.Infof("App %q (%s) on device %q state changed to %s (%d%%)",
+							appUUID, appName, d.devName, lastState, pct)
+					}
 				}
 			}
 			return false, nil
@@ -883,20 +1615,26 @@ func (d *EdgeDevice) WaitUntilAppIsRunning(
 		nowInDownload := state == eveinfo.ZSwState_DOWNLOAD_STARTED
 		if inDownload && !nowInDownload {
 			// Leaving download: resume non-download clock and set timer to
-			// the remaining non-download budget.
+			// the remaining non-download budget. Only meaningful once the
+			// live timer is armed -- during the initial snapshot replay,
+			// elapsed wall-clock time is negligible and this check is skipped.
 			nonDownloadStart = time.Now()
-			remaining := timeoutExcludingDownload - nonDownloadElapsed
-			if remaining <= 0 {
-				return true, fmt.Errorf(
-					"timed out after %s (excluding download) waiting for app %q (%s) "+
-						"on device %q to reach RUNNING state (last state: %s)",
-					timeoutExcludingDownload, appUUID, appName, d.devName, state)
+			if timer != nil {
+				remaining := timeoutExcludingDownload - nonDownloadElapsed
+				if remaining <= 0 {
+					return true, fmt.Errorf(
+						"timed out after %s (excluding download) waiting for app %q (%s) "+
+							"on device %q to reach RUNNING state (last state: %s)",
+						timeoutExcludingDownload, appUUID, appName, d.devName, state)
+				}
+				timer.Reset(remaining)
 			}
-			timer.Reset(remaining)
 		} else if !inDownload && nowInDownload {
 			// Entering download: freeze non-download clock and arm stall timer.
 			nonDownloadElapsed += time.Since(nonDownloadStart)
-			timer.Reset(downloadStalledTimeout)
+			if timer != nil {
+				timer.Reset(downloadStalledTimeout)
+			}
 		}
 		inDownload = nowInDownload
 
@@ -906,9 +1644,11 @@ func (d *EdgeDevice) WaitUntilAppIsRunning(
 			if state == eveinfo.ZSwState_DOWNLOAD_STARTED {
 				pct := appDownloadProgress(volumeRefs, volumes)
 				lastDownloadPct = pct
-				d.th.log.Infof("App %q (%s) on device %q state changed to %s (%d%%)",
-					appUUID, appName, d.devName, state, pct)
-			} else {
+				if live {
+					d.th.log.Infof("App %q (%s) on device %q state changed to %s (%d%%)",
+						appUUID, appName, d.devName, state, pct)
+				}
+			} else if live {
 				d.th.log.Infof("App %q (%s) on device %q state changed to %s",
 					appUUID, appName, d.devName, state)
 			}
@@ -916,9 +1656,13 @@ func (d *EdgeDevice) WaitUntilAppIsRunning(
 			pct := appDownloadProgress(volumeRefs, volumes)
 			if pct != lastDownloadPct {
 				lastDownloadPct = pct
-				timer.Reset(downloadStalledTimeout)
-				d.th.log.Infof("App %q (%s) on device %q state changed to %s (%d%%)",
-					appUUID, appName, d.devName, state, pct)
+				if timer != nil {
+					timer.Reset(downloadStalledTimeout)
+				}
+				if live {
+					d.th.log.Infof("App %q (%s) on device %q state changed to %s (%d%%)",
+						appUUID, appName, d.devName, state, pct)
+				}
 			}
 		}
 
@@ -932,12 +1676,14 @@ func (d *EdgeDevice) WaitUntilAppIsRunning(
 		currentAppErrs := strings.Join(errDescs, "; ")
 		if currentAppErrs != lastAppErrs {
 			lastAppErrs = currentAppErrs
-			if currentAppErrs != "" {
-				d.th.log.Warnf("App %q (%s) on device %q errors: %s",
-					appUUID, appName, d.devName, currentAppErrs)
-			} else {
-				d.th.log.Infof("App %q (%s) on device %q errors cleared",
-					appUUID, appName, d.devName)
+			if live {
+				if currentAppErrs != "" {
+					d.th.log.Warnf("App %q (%s) on device %q errors: %s",
+						appUUID, appName, d.devName, currentAppErrs)
+				} else {
+					d.th.log.Infof("App %q (%s) on device %q errors cleared",
+						appUUID, appName, d.devName)
+				}
 			}
 		}
 
@@ -955,41 +1701,107 @@ func (d *EdgeDevice) WaitUntilAppIsRunning(
 
 		// Success.
 		if state == eveinfo.ZSwState_RUNNING {
-			d.th.log.Infof("App %q (%s) on device %q is RUNNING",
-				appUUID, appName, d.devName)
+			if live {
+				d.th.log.Infof("App %q (%s) on device %q is RUNNING",
+					appUUID, appName, d.devName)
+			}
 			return true, nil
 		}
 
 		return false, nil
 	}
 
-	err := d.th.adamClient.IterateDeviceInfoMsgs(ctx, devUUID, filter,
-		infoMsgIterFn(iterCb), true)
-
+	// Subscribe before taking the initial snapshot, so a transition landing
+	// between the two calls can never be missed.
+	ch := make(chan *eveinfo.ZInfoMsg, watchChannelBufSize)
+	unsub, err := d.th.adamClient.SubscribeToDeviceInfoMsgs(devUUID, filter, ch)
 	if err != nil {
-		// If the test framework context was canceled, propagate the error.
-		if d.th.ctx.Err() != nil {
-			d.th.t.Fatalf("%v", err)
-		}
+		d.th.t.Fatalf("Failed to subscribe to info messages for app %q on device %q: %v",
+			appUUID, d.devName, err)
+	}
+	defer unsub()
 
-		// If our context was not canceled, the error came from iterCb
-		// (e.g. ZSwState_ERROR or explicit failure).
-		if ctx.Err() == nil {
-			d.th.t.Fatalf("%v", err)
+	// Snapshot: replay every already-known message (app and volume) through
+	// iterCb with no timer armed (its Reset calls are then no-ops), keeping
+	// only the LAST app-state evaluation -- i.e. the app's current state,
+	// not the first historical occurrence of any target condition.
+	var (
+		snapshotDone bool
+		snapshotErr  error
+	)
+	d.iterateInfoMsgs(devUUID, filter, func(msg *eveinfo.ZInfoMsg) {
+		done, cbErr := iterCb(msg, false)
+		if msg.GetZtype() == eveinfo.ZInfoTypes_ZiApp {
+			snapshotDone, snapshotErr = done, cbErr
 		}
+	})
+	if snapshotDone {
+		if snapshotErr != nil {
+			d.th.t.Fatalf("%v", snapshotErr)
+		}
+		d.th.log.Infof("App %q (%s) on device %q is already RUNNING",
+			appUUID, appName, d.devName)
+		return
+	}
+	d.th.log.Infof("App %q (%s) on device %q currently in state %s; "+
+		"waiting for it to reach RUNNING", appUUID, appName, d.devName, lastState)
 
-		// Otherwise our timer fired — determine which timeout occurred.
-		if inDownload {
+	// Live phase: arm the real timer -- matching the app's current phase,
+	// established during the snapshot above -- and wait for a genuinely
+	// new transition.
+	nonDownloadStart = time.Now()
+	initialTimeout := timeoutExcludingDownload
+	if inDownload {
+		initialTimeout = downloadStalledTimeout
+	}
+	timer = time.NewTimer(initialTimeout)
+	defer timer.Stop()
+
+	// ctx is canceled either by the timer above (timeout) or by d.th.ctx (test end).
+	ctx, cancel := context.WithCancel(d.th.ctx)
+	defer cancel()
+	go func() {
+		select {
+		case <-timer.C:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+
+	for {
+		select {
+		case <-ctx.Done():
+			// If the test framework context was canceled, propagate that.
+			if d.th.ctx.Err() != nil {
+				d.th.t.Fatalf("Waiting for app %q (%s) on device %q to reach "+
+					"RUNNING state: %v", appUUID, appName, d.devName, d.th.ctx.Err())
+			}
+
+			// Otherwise our own timer fired -- determine which timeout occurred.
+			if inDownload {
+				d.th.t.Fatalf(
+					"app %q (%s) on device %q download stalled at %d%% for more than %s",
+					appUUID, appName, d.devName, lastDownloadPct, downloadStalledTimeout)
+			}
+			nonDownloadTotal := nonDownloadElapsed + time.Since(nonDownloadStart)
 			d.th.t.Fatalf(
-				"app %q (%s) on device %q download stalled at %d%% for more than %s",
-				appUUID, appName, d.devName, lastDownloadPct, downloadStalledTimeout)
+				"timed out after %s (excluding download) waiting for app %q (%s) "+
+					"on device %q to reach RUNNING state (last state: %s)",
+				nonDownloadTotal, appUUID, appName, d.devName, lastState)
+		case msg, ok := <-ch:
+			if !ok {
+				d.th.t.Fatalf("Info subscription closed while waiting for app %q "+
+					"(%s) on device %q to reach RUNNING state", appUUID, appName, d.devName)
+			}
+			done, cbErr := iterCb(msg, true)
+			if !done {
+				continue
+			}
+			if cbErr != nil {
+				d.th.t.Fatalf("%v", cbErr)
+			}
+			return
 		}
-
-		nonDownloadTotal := nonDownloadElapsed + time.Since(nonDownloadStart)
-		d.th.t.Fatalf(
-			"timed out after %s (excluding download) waiting for app %q (%s) "+
-				"on device %q to reach RUNNING state (last state: %s)",
-			nonDownloadTotal, appUUID, appName, d.devName, lastState)
 	}
 }
 
@@ -1026,9 +1838,29 @@ func (d *EdgeDevice) RebootApplication(appUUID uuid.UUID, waitUntilRebooted bool
 	}
 }
 
+// VolumeGenerationPolicy controls how PurgeApplication treats the
+// GenerationCount on the app's referenced volumes, modeling the two shapes
+// a real controller's purge can take depending on the volume being purged.
+type VolumeGenerationPolicy int
+
+const (
+	// BumpVolumeGeneration increments GenerationCount on every volume the
+	// app references: a purge that rebuilds the app's storage from scratch
+	// alongside its domain. Per eve-api's storage.proto, "generationCount
+	// indicates the mutated volume needs to be purged and built from
+	// scratch."
+	BumpVolumeGeneration VolumeGenerationPolicy = iota
+	// ReplaceVolumeConfig gives every volume the app references a fresh
+	// UUID (GenerationCount reset to 0) rather than bumping the counter on
+	// the one EVE already has, cycling the domain the same as
+	// BumpVolumeGeneration.
+	ReplaceVolumeConfig
+)
+
 // PurgeApplication purges the specified application instance and its state.
-func (d *EdgeDevice) PurgeApplication(appUUID uuid.UUID, waitUntilPurged bool,
-	timeout time.Duration) {
+// See VolumeGenerationPolicy for volumeGen.
+func (d *EdgeDevice) PurgeApplication(appUUID uuid.UUID, volumeGen VolumeGenerationPolicy,
+	waitUntilPurged bool, timeout time.Duration) {
 	config := d.getConfig(true)
 	appUUIDStr := appUUID.String()
 
@@ -1041,6 +1873,31 @@ func (d *EdgeDevice) PurgeApplication(appUUID uuid.UUID, waitUntilPurged bool,
 				app.Purge = &eveconfig.InstanceOpsCmd{Counter: 1}
 			} else {
 				app.Purge = &eveconfig.InstanceOpsCmd{Counter: purge.GetCounter() + 1}
+			}
+			if volumeGen == BumpVolumeGeneration {
+				for _, volRef := range app.GetVolumeRefList() {
+					volRef.GenerationCount++
+					for _, vol := range config.GetVolumes() {
+						if vol.GetUuid() == volRef.GetUuid() {
+							vol.GenerationCount++
+							break
+						}
+					}
+				}
+			} else if volumeGen == ReplaceVolumeConfig {
+				for _, volRef := range app.GetVolumeRefList() {
+					for _, vol := range config.GetVolumes() {
+						if vol.GetUuid() != volRef.GetUuid() {
+							continue
+						}
+						newVolUUID := d.th.newUUID("volume")
+						vol.Uuid = newVolUUID.String()
+						vol.GenerationCount = 0
+						volRef.Uuid = newVolUUID.String()
+						volRef.GenerationCount = 0
+						break
+					}
+				}
 			}
 			found = true
 			break
@@ -1057,6 +1914,26 @@ func (d *EdgeDevice) PurgeApplication(appUUID uuid.UUID, waitUntilPurged bool,
 			eveinfo.ZSwState_PURGING, eveinfo.ZSwState_HALTING)
 		d.waitUntilAppState(ctx, appUUID, eveinfo.ZSwState_RUNNING)
 	}
+}
+
+// DialViaSSH opens a TCP connection to address, tunneled through an SSH
+// connection to this device (an SSH direct-tcpip channel), as if address is
+// dialed from the device itself. Useful for reaching services that only
+// listen on the device's own loopback interface, e.g. the Kubevirt VNC proxy
+// gated by ApplicationInstanceConfig.RemoteConsole.
+func (d *EdgeDevice) DialViaSSH(network, address string) (net.Conn, error) {
+	return d.th.dialViaSSH(d.th.ctx, d.devName, network, address)
+}
+
+// ReachableAddress returns the host:port through which the given TCP port of
+// the device can be reached from the test process, for handing an endpoint of
+// the device, such as its SSH port, to a tool the test runs.
+func (d *EdgeDevice) ReachableAddress(port uint16) (string, error) {
+	host, err := d.th.getReachableEVEAddr(d.th.ctx, d.devName, uint32(port), "")
+	if err != nil {
+		return "", err
+	}
+	return net.JoinHostPort(host, fmt.Sprintf("%d", port)), nil
 }
 
 // ActivateApplication activates the specified application instance.
@@ -1329,8 +2206,13 @@ func getAdaptersByLabel(config *EdgeDeviceConfig, label string) []string {
 
 // FileExists checks whether a file exists on the device.
 func (d *EdgeDevice) FileExists(fileName string) bool {
+	// "; true" forces the overall exit status to 0 regardless of whether
+	// the file exists, so a missing file (test -f exits nonzero) can't be
+	// conflated with a genuine SSH/transport failure -- err is asserted nil
+	// for the latter, and only the "EXISTS" marker in stdout answers the
+	// actual question.
 	stdout, _, err := d.RunShellScript(
-		"test -f "+shellEscape(fileName)+" && echo EXISTS",
+		"test -f "+shellEscape(fileName)+" && echo EXISTS; true",
 		quickSSHCommandTimeout, 0)
 	if err != nil {
 		d.th.t.Fatalf("FileExists: SSH command failed: %v", err)
@@ -1338,14 +2220,61 @@ func (d *EdgeDevice) FileExists(fileName string) bool {
 	return strings.Contains(stdout, "EXISTS")
 }
 
+// PathExists checks whether a path exists on the device, whatever kind of node
+// it is - a directory, a symlink or a device node, not just a regular file.
+//
+// Two differences from FileExists, which is otherwise equivalent: this accepts
+// any node type, and it reports a failure of the check itself as an error
+// instead of failing the test. That makes it usable from inside Eventually,
+// where a device may be rebooting or still converging and the caller wants to
+// retry rather than fail.
+func (d *EdgeDevice) PathExists(target string) (bool, error) {
+	// "; true" forces the overall exit status to 0 regardless of whether
+	// the path exists, so a missing path (test -e exits nonzero) can't be
+	// conflated with a genuine SSH/transport failure -- only the "EXISTS"
+	// marker in stdout answers the actual question.
+	stdout, _, err := d.RunShellScript(
+		"test -e "+shellEscape(target)+" && echo EXISTS; true",
+		quickSSHCommandTimeout, 0)
+	if err != nil {
+		return false, fmt.Errorf("PathExists: SSH command failed: %w", err)
+	}
+	return strings.Contains(stdout, "EXISTS"), nil
+}
+
+// ListDirEntries returns the sorted names of the entries in a directory on the
+// device.
+//
+// A directory that does not exist yields an empty list and no error: EVE
+// creates many of its directories lazily, when a particular hypervisor,
+// storage backend or agent first needs one, so "not there yet" is a normal
+// observation rather than a failure. An error means the listing itself could
+// not be run.
+func (d *EdgeDevice) ListDirEntries(dir string) ([]string, error) {
+	stdout, _, err := d.RunShellScript(
+		"ls -1 "+shellEscape(dir)+" 2>/dev/null || true",
+		quickSSHCommandTimeout, 0)
+	if err != nil {
+		return nil, fmt.Errorf("ListDirEntries: SSH command failed: %w", err)
+	}
+	var names []string
+	for _, line := range strings.Split(strings.TrimSpace(stdout), "\n") {
+		if name := strings.TrimSpace(line); name != "" {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
 // ReadFile reads the contents of a file from the device.
-func (d *EdgeDevice) ReadFile(fileName string) []byte {
+func (d *EdgeDevice) ReadFile(fileName string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(d.th.ctx, fileTransferTimeout)
 	defer cancel()
 
 	tmpFile, err := os.CreateTemp("", "eve-file-*")
 	if err != nil {
-		d.th.t.Fatalf("ReadFile: failed to create temp file: %v", err)
+		return nil, fmt.Errorf("ReadFile: failed to create temp file: %w", err)
 	}
 	tmpPath := tmpFile.Name()
 	tmpFile.Close()
@@ -1353,15 +2282,15 @@ func (d *EdgeDevice) ReadFile(fileName string) []byte {
 
 	err = d.th.scpFromEVE(ctx, d.devName, fileName, tmpPath, false)
 	if err != nil {
-		d.th.t.Fatalf("ReadFile: failed to copy %q from device %q: %v",
+		return nil, fmt.Errorf("ReadFile: failed to copy %q from device %q: %w",
 			fileName, d.devName, err)
 	}
 
 	data, err := os.ReadFile(tmpPath)
 	if err != nil {
-		d.th.t.Fatalf("ReadFile: failed to read temp file: %v", err)
+		return nil, fmt.Errorf("ReadFile: failed to read temp file: %w", err)
 	}
-	return data
+	return data, nil
 }
 
 // WriteFile writes content to a file on the device.
@@ -1395,6 +2324,16 @@ func (d *EdgeDevice) DeleteFile(fileName string) {
 		"rm -f "+shellEscape(fileName), quickSSHCommandTimeout, 0)
 	if err != nil {
 		d.th.t.Fatalf("DeleteFile: SSH command failed: %v", err)
+	}
+}
+
+// SyncDisks flushes the device's filesystem caches. Call this before PowerOff:
+// test devices mount /persist without dirsync (Setup adds set_no_dirsync), so a
+// hard power-off can otherwise leave an app's image layers as zero-length files.
+func (d *EdgeDevice) SyncDisks() {
+	_, _, err := d.RunShellScript("sync", syncDisksTimeout, 0)
+	if err != nil {
+		d.th.t.Fatalf("SyncDisks: SSH command failed: %v", err)
 	}
 }
 
@@ -1934,6 +2873,85 @@ func (d *EdgeDevice) WatchNTPSources() (
 	return ch, d.trackWatcherUnsub(unsub)
 }
 
+// EVEKubeAppNamespace is the Kubernetes namespace EVE runs app workloads in;
+// both VMIRS objects and their PVCs live there. See
+// pkg/pillar/kubeapi.EVEKubeNameSpace.
+const EVEKubeAppNamespace = "eve-kube-app"
+
+// appDomainNameLabel holds the owning app's DomainName,
+// "<uuid>.<version>.<appnum>" (the eveLabelKey constant in
+// hypervisor/kubevirt.go). EVE puts this label in the VMIRS
+// spec.selector.matchLabels and in the VMI template, but not in the VMIRS
+// metadata.labels, so attribution reads the selector - the same way pillar
+// attributes a VMIRS in sweepStaleGenerations.
+const appDomainNameLabel = "App-Domain-Name"
+
+// RunKubectl runs kubectl on the device with the given arguments and returns
+// its trimmed standard output. The call goes through "eve exec kube" because
+// kubectl exists only in the kube container, so the device has to be an EVE-K
+// node.
+//
+// The returned error carries kubectl's own standard error, which says why the
+// command was refused. A caller polling a cluster that is still coming up
+// should treat any error as a retryable "not yet": kubectl fails this way
+// while k3s is starting, and that is indistinguishable here from a real
+// refusal.
+func (d *EdgeDevice) RunKubectl(args string, timeout time.Duration) (string, error) {
+	stdout, stderr, err := d.RunShellScript(
+		"eve exec kube kubectl "+args, timeout, 0)
+	if err != nil {
+		return "", fmt.Errorf("kubectl %s: %w (stderr: %s)",
+			args, err, strings.TrimSpace(stderr))
+	}
+	return strings.TrimSpace(stdout), nil
+}
+
+// ListAppVMIRS returns the sorted names of every VMIRS belonging to appUUID,
+// whichever purge generation each one is. A VMIRS name embeds the app's purge
+// counter (base.GetAppKubeNameWithPurge), which makes this the one vantage
+// point from which a stale generation surviving a purge is observable at all:
+// pillar's own DomainStatus is keyed by app UUID and so can only ever describe
+// one of them.
+//
+// Attribution is by the appDomainNameLabel selector rather than the name,
+// since the label value also carries a version and an appnum that do not
+// matter here. An empty list with a nil error means the app has no VMIRS; an
+// error means the list could not be read, which a caller inside an Eventually
+// should retry rather than fail on.
+func (d *EdgeDevice) ListAppVMIRS(
+	appUUID uuid.UUID, timeout time.Duration) ([]string, error) {
+	stdout, err := d.RunKubectl(
+		"-n "+EVEKubeAppNamespace+" get vmirs -o json", timeout)
+	if err != nil {
+		return nil, err
+	}
+	var list struct {
+		Items []struct {
+			Metadata struct {
+				Name string `json:"name"`
+			} `json:"metadata"`
+			Spec struct {
+				Selector struct {
+					MatchLabels map[string]string `json:"matchLabels"`
+				} `json:"selector"`
+			} `json:"spec"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &list); err != nil {
+		return nil, fmt.Errorf("parsing kubectl vmirs output: %w", err)
+	}
+	prefix := appUUID.String() + "."
+	var names []string
+	for _, item := range list.Items {
+		if strings.HasPrefix(
+			item.Spec.Selector.MatchLabels[appDomainNameLabel], prefix) {
+			names = append(names, item.Metadata.Name)
+		}
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
 // GetClusterInfo returns the last recorded information about the Kubernetes
 // cluster, or nil if no such info message has been received yet.
 func (d *EdgeDevice) GetClusterInfo() *eveinfo.ZInfoKubeCluster {
@@ -1977,6 +2995,47 @@ func (d *EdgeDevice) WatchClusterInfo() (
 		}
 	}()
 	return ch, d.trackWatcherUnsub(unsub)
+}
+
+// WaitForClusterNodeIsReady waits until this device's own ZInfoKubeCluster
+// report shows this device as a Ready node with healthy cluster storage.
+//
+// Only the elected leader node publishes cluster info, so this is only
+// meaningful when called on a single-node cluster (where the sole device is
+// necessarily the leader) or on a device already known to be the leader; for
+// a multi-node cluster where the leader isn't known in advance, use
+// EdgeCluster.WaitUntilNodesAreReady instead.
+func (d *EdgeDevice) WaitForClusterNodeIsReady(timeout time.Duration) {
+	d.th.log.Infof("Waiting for cluster node %q to become ready...", d.devName)
+
+	// Subscribe before taking the initial snapshot, so a transition landing
+	// between the two calls can never be missed.
+	updates, stop := d.WatchClusterInfo()
+	defer stop()
+
+	if info := d.GetClusterInfo(); info != nil && clusterNodeReady(info, d.devName) {
+		d.th.log.Infof("Cluster node %q is already ready", d.devName)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(d.th.ctx, timeout)
+	defer cancel()
+	for {
+		select {
+		case info, ok := <-updates:
+			if !ok {
+				d.th.t.Fatalf("Cluster info subscription closed while waiting "+
+					"for node %q to become ready", d.devName)
+			}
+			if clusterNodeReady(info, d.devName) {
+				d.th.log.Infof("Cluster node %q is now ready", d.devName)
+				return
+			}
+		case <-ctx.Done():
+			d.th.t.Fatalf("Timed out waiting for cluster node %q to become ready",
+				d.devName)
+		}
+	}
 }
 
 // GetClusterUpdateInfo returns the last recorded information regarding the Kubernetes
@@ -2250,23 +3309,28 @@ func (d *EdgeDevice) WatchClusterMetrics() (
 //   - key: identifies the specific message within the topic to fetch
 //   - output: pointer to a value of type T to unmarshal the message into
 //
-// Returns an error if the topic or message does not exist, cannot be read, or
-// fails to unmarshal into the provided output type.
+// Returns an error if the message does not exist yet (e.g. before the agent has
+// first published it), cannot be read, or does not unmarshal into T. Callers
+// waiting for a message to appear should poll until the error clears.
 func ReadPublication[T any](d *EdgeDevice, fromAgent string, persistent bool,
-	key string, output *T) {
+	key string, output *T) error {
 	fullName := fmt.Sprintf("%T", *new(T))
 	typeName := fullName[strings.LastIndex(fullName, ".")+1:]
 	var path string
 	if persistent {
-		path = fmt.Sprintf("/persistent/status/%s/%s/%s.json", fromAgent, typeName, key)
+		path = fmt.Sprintf("/persist/status/%s/%s/%s.json", fromAgent, typeName, key)
 	} else {
 		path = fmt.Sprintf("/run/%s/%s/%s.json", fromAgent, typeName, key)
 	}
-	data := d.ReadFile(path)
+	data, err := d.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("ReadPublication: %w", err)
+	}
 	if err := json.Unmarshal(data, output); err != nil {
-		d.th.t.Fatalf("ReadPublication: failed to unmarshal %q from device %q: %v",
+		return fmt.Errorf("ReadPublication: failed to unmarshal %q from device %q: %w",
 			path, d.devName, err)
 	}
+	return nil
 }
 
 // ReadAllPublications retrieves all messages from a pub-sub topic published by
@@ -2278,12 +3342,13 @@ func ReadPublication[T any](d *EdgeDevice, fromAgent string, persistent bool,
 //
 // Returns a slice of values of type T representing all messages from the topic,
 // or an error if reading or unmarshaling fails.
-func ReadAllPublications[T any](d *EdgeDevice, fromAgent string, persistent bool) []T {
+func ReadAllPublications[T any](d *EdgeDevice, fromAgent string,
+	persistent bool) ([]T, error) {
 	fullName := fmt.Sprintf("%T", *new(T))
 	typeName := fullName[strings.LastIndex(fullName, ".")+1:]
 	var dir string
 	if persistent {
-		dir = fmt.Sprintf("/persistent/status/%s/%s", fromAgent, typeName)
+		dir = fmt.Sprintf("/persist/status/%s/%s", fromAgent, typeName)
 	} else {
 		dir = fmt.Sprintf("/run/%s/%s", fromAgent, typeName)
 	}
@@ -2292,20 +3357,93 @@ func ReadAllPublications[T any](d *EdgeDevice, fromAgent string, persistent bool
 		"find "+shellEscape(dir)+" -maxdepth 1 -name '*.json' -type f 2>/dev/null || true",
 		quickSSHCommandTimeout, 0)
 	if err != nil {
-		d.th.t.Fatalf("ReadAllPublications: failed to list %q on device %q: %v",
+		return nil, fmt.Errorf("ReadAllPublications: failed to list %q on device %q: %w",
 			dir, d.devName, err)
 	}
 	var results []T
-	for _, file := range strings.Fields(stdout) {
-		data := d.ReadFile(file)
+	// Pubsub keys become file names and may contain spaces.
+	for _, file := range strings.Split(stdout, "\n") {
+		file = strings.TrimRight(file, "\r")
+		if file == "" {
+			continue
+		}
+		data, err := d.ReadFile(file)
+		if err != nil {
+			return nil, fmt.Errorf("ReadAllPublications: %w", err)
+		}
 		var item T
 		if err := json.Unmarshal(data, &item); err != nil {
-			d.th.t.Fatalf("ReadAllPublications: failed to unmarshal %q from device %q: %v",
+			return nil, fmt.Errorf(
+				"ReadAllPublications: failed to unmarshal %q from device %q: %w",
 				file, d.devName, err)
 		}
 		results = append(results, item)
 	}
-	return results
+	return results, nil
+}
+
+// WaitUntilHasControllerCert blocks until the device publishes the given
+// controller certificate of the given type.
+//
+// The device side is the only place this can be observed: /certs is an
+// unauthenticated pull carrying no device UUID, so the controller does not even
+// record the request, and the device never acknowledges which certificates it
+// accepted. The ControllerCert publication is ephemeral (/run), which makes the
+// observation inherently fresh across a reboot.
+//
+// Certificates are matched on the PEM rather than on the hash, because the hash
+// is truncated on its way to the device (Adam serves only the first 16 bytes,
+// flagged SHA256_16BYTES) and comparing lengths that differ by truncation is easy
+// to get wrong. The PEM is compared trimmed, matching Adam's own normalization.
+// The type is part of the match because a certificate is only ever meaningful for
+// the role it was served under.
+func (d *EdgeDevice) WaitUntilHasControllerCert(
+	certType evecerts.ZCertType, certPEM []byte, timeout time.Duration) {
+
+	expectedPEM := strings.TrimSpace(string(certPEM))
+	d.th.log.Infof("Waiting for device %q to publish a controller certificate "+
+		"of type %v...", d.devName, certType)
+
+	deadline := time.Now().Add(timeout)
+	for {
+		certs, readErr := ReadAllPublications[pillartypes.ControllerCert](
+			d, "zedagent", false)
+		if readErr != nil {
+			// Warn, not Debug: a read path broken for an unrelated reason would
+			// otherwise burn the whole timeout without a trace.
+			d.th.log.Warnf("Reading ControllerCert from device %q failed: %v",
+				d.devName, readErr)
+		}
+		var published []string
+		for _, ctrlCert := range certs {
+			if ctrlCert.Type == certType &&
+				strings.TrimSpace(string(ctrlCert.Cert)) == expectedPEM {
+				d.th.log.Infof("Device %q published the expected controller "+
+					"certificate of type %v", d.devName, certType)
+				return
+			}
+			published = append(published, fmt.Sprintf("type=%v hash=%s",
+				ctrlCert.Type, hex.EncodeToString(ctrlCert.CertHash)))
+		}
+		if time.Now().After(deadline) {
+			// Naming the path matters: the topic only became ephemeral in EVE
+			// 16.9.3, so on an older build the certificates are published under
+			// /persist/status and an empty list here does not mean the device
+			// holds none.
+			d.th.t.Fatalf("Device %q did not publish the expected controller "+
+				"certificate of type %v within %v; certificates found under "+
+				"/run/zedagent/ControllerCert (EVE >= 16.9.3): [%s]; "+
+				"last read error: %v",
+				d.devName, certType, timeout, strings.Join(published, ", "), readErr)
+		}
+		select {
+		case <-time.After(deviceCertPollInterval):
+		case <-d.th.ctx.Done():
+			d.th.t.Fatalf("Interrupted while waiting for device %q to publish "+
+				"the expected controller certificate of type %v",
+				d.devName, certType)
+		}
+	}
 }
 
 // getDevUUID returns the device UUID, calling t.Fatalf if not found/onboarded.
@@ -2366,14 +3504,33 @@ type metricMsgIterFn func(*evemetrics.ZMetricMsg) (bool, error)
 
 func (f metricMsgIterFn) Iterate(msg *evemetrics.ZMetricMsg) (bool, error) { return f(msg) }
 
+// flowMsgIterFn adapts a function to the controller.FlowMsgIterator interface.
+type flowMsgIterFn func(*eveflowlog.FlowMessage) (bool, error)
+
+func (f flowMsgIterFn) Iterate(msg *eveflowlog.FlowMessage) (bool, error) { return f(msg) }
+
 // appDownloadProgress returns the average download progress (0–100) across
 // the app's volumes. For each volume UUID listed in volumeRefs the progress
 // is taken from the latest ZInfoVolume in volumes:
-//   - INVALID or INITIAL state → 0%
-//   - DOWNLOADED or above      → 100%
-//   - any other state          → ProgressPercentage as reported
+//   - not started yet (INVALID, INITIAL, RESOLVING_TAG, RESOLVED_TAG) → 0%
+//   - failed (ERROR)                                                  → 0%
+//   - DOWNLOAD_STARTED → ProgressPercentage as reported by the device
+//   - anything past the download (DOWNLOADED, DELIVERED, INSTALLED,
+//     CREATING_VOLUME, VERIFYING, LOADING, LOADED, BOOTING, RUNNING, …) → 100%
+//
+// The classification is explicit because ZSwState is not ordered by progress.
 //
 // Returns 0 if volumeRefs is empty or no volume info has been received yet.
+// isAppVolume reports whether uuid is one of the app's own volumes.
+func isAppVolume(uuid string, volumeRefs []string) bool {
+	for _, ref := range volumeRefs {
+		if ref == uuid {
+			return true
+		}
+	}
+	return false
+}
+
 func appDownloadProgress(
 	volumeRefs []string, volumes map[string]*eveinfo.ZInfoVolume) uint32 {
 	if len(volumeRefs) == 0 {
@@ -2386,14 +3543,26 @@ func appDownloadProgress(
 			// No info received yet for this volume; treat as 0%.
 			continue
 		}
-		state := vol.GetState()
-		switch {
-		case state == eveinfo.ZSwState_INVALID || state == eveinfo.ZSwState_INITIAL:
-			// 0 -- nothing added
-		case state >= eveinfo.ZSwState_DOWNLOADED:
-			total += 100
-		default:
+		// ZSwState is NOT ordered by progress. The states appended after the
+		// original sequence carry higher numbers than DOWNLOADED (3) while
+		// happening earlier: RESOLVING_TAG is 12, RESOLVED_TAG 13. Comparing
+		// with >= therefore reported an image as 100% downloaded while its tag
+		// was still being resolved, and the figure then "fell" to 0% once the
+		// download genuinely started. Classify explicitly instead.
+		switch vol.GetState() {
+		case eveinfo.ZSwState_INVALID, eveinfo.ZSwState_INITIAL,
+			eveinfo.ZSwState_RESOLVING_TAG, eveinfo.ZSwState_RESOLVED_TAG:
+			// Nothing downloaded yet.
+		case eveinfo.ZSwState_ERROR:
+			// A failed volume is not a downloaded one. Reporting 100% here
+			// would retire the stall timer and leave the app to fail against
+			// the (much longer) non-download budget instead.
+		case eveinfo.ZSwState_DOWNLOAD_STARTED:
 			total += vol.GetProgressPercentage()
+		default:
+			// DOWNLOADED and every state past it (DELIVERED, INSTALLED,
+			// CREATING_VOLUME, VERIFYING, LOADING, LOADED, BOOTING, RUNNING...).
+			total += 100
 		}
 	}
 	return total / uint32(len(volumeRefs))

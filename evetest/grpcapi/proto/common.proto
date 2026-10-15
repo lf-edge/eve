@@ -24,12 +24,64 @@ enum HypervisorType {
   HV_KUBEVIRT = 3;
 }
 
+// Capability describes an optional, provider-specific feature that a device
+// provider may or may not support. Tests declare the capabilities they need as
+// requirements; a test is skipped when the active provider does not advertise a
+// required capability. Mostly used for special features that are not universally
+// available across all providers (e.g. forwarding of link-local L2 protocols,
+// which some providers can only enable via host-level tweaks).
+enum Capability {
+  CAPABILITY_UNSPECIFIED = 0;
+  // Forwarding of LACP (802.3ad link aggregation control) frames across the
+  // simulated point-to-point links between the EVE device and the SDN.
+  CAPABILITY_FORWARD_LACP = 1;
+  // Forwarding of EAPOL (Extensible Authentication Protocol over LAN, used by
+  // IEEE 802.1X port-based authentication) frames across the simulated links.
+  CAPABILITY_FORWARD_EAPOL = 2;
+  // Forwarding of LLDP (Link Layer Discovery Protocol) frames across the
+  // simulated links.
+  CAPABILITY_FORWARD_LLDP = 3;
+  // Attachment of an emulated TPM (Trusted Platform Module) to the device.
+  CAPABILITY_TPM = 4;
+  // Deriving a device's disk from a locally built EVE live image uploaded by
+  // the client, instead of building it from an EVE container image. Requires a
+  // provider that attaches the qcow2 directly, so it tracks the provider's disk
+  // image strategy.
+  CAPABILITY_LOCAL_LIVE_IMAGE = 5;
+  // Booting a device with a blank target disk over the network (PXE/iPXE),
+  // falling back to the disk once it has something bootable. Requires a
+  // provider that can configure a disk-first, network-fallback boot order
+  // for the device. No reconfiguration is needed after installation: the
+  // same setting is correct for the device's entire lifetime, since
+  // firmware only falls through to network when the disk has nothing
+  // bootable.
+  CAPABILITY_NETBOOT = 6;
+  // Editing a powered-off device's boot disk in place: growing it, or
+  // destroying the filesystem on one of its partitions. Requires a provider
+  // that keeps the disk as a file it can still reach after setup, so a
+  // provider that hands the image to a remote node does not have it.
+  CAPABILITY_EDIT_DEVICE_DISK = 7;
+  // QMP access to the hypervisor running the device (ExecuteQMP) and blank
+  // scratch disk images on the hypervisor host (CreateScratchImage), which
+  // together let a test hot-plug devices such as a USB flash drive. Requires a
+  // provider with a QMP monitor the broker can reach.
+  CAPABILITY_QMP = 8;
+}
+
 // Reference to a specific EVE image used for provisioning or testing.
 message ImageRef {
   string repo = 1; // e.g. "lfedge/eve"
   string version = 2; // e.g. "14.5.0-lts"
   HypervisorType hypervisor = 3;
   ArchType arch = 4;
+}
+
+// Reference to a locally built EVE live disk image, identified by content
+// rather than by tag: the developer's build is rebuilt under an unchanged
+// name, so only the hash distinguishes one from the next.
+message LiveImageRef {
+  string sha256 = 1;  // hex sha256 of live.qcow2
+  string version = 2; // EVE version, from the dist directory name; may be empty
 }
 
 // Severity levels for logs generated during test or device operation.

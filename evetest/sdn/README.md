@@ -182,7 +182,9 @@ Both can be set simultaneously for dual-stack networks.
 Each IP config block includes the subnet, gateway IP, and an optional **DHCP** block
 covering: IP range, static MAC-to-IP assignments, domain name, DNS server references
 (private SDN endpoints or public IPs), NTP server (private or public), a WPAD/PAC file
-URL, a netboot server reference, and a flag to suppress the default route advertisement.
+URL, the IP address/FQDN of an external netboot server for iPXE/PXE network
+booting (see `DHCP.netboot_server_ip`), and a flag to suppress the default
+route advertisement.
 For IPv6, omitting all options except DNS keeps SLAAC as the sole address-assignment
 method; any additional option enables DHCPv6.
 
@@ -228,11 +230,6 @@ Available endpoint types:
   Simple Certificate Enrollment Protocol. Used together with PNAC bridges for
   certificate-based 802.1X device onboarding. Configurable CA certificate and optional
   challenge password.
-
-- **Netboot server** -- HTTP + TFTP server providing all artifacts needed to boot EVE OS
-  over a network (iPXE chainloading). When TFTP and HTTP artifact lists are left empty,
-  evetest automatically provides the iPXE bootloader (TFTP) and the EVE OS boot
-  artifacts (HTTP). Referenced from `DHCP.netboot_server`.
 
 ### Firewall
 
@@ -318,17 +315,17 @@ The SDN VM image is built in two stages:
    (tagged `lfedge/evetest-sdn:<version>`) using `Dockerfile.vm`. This is the image the
    broker pulls and extracts when setting up the SDN VM.
 
-Whenever you make changes to the SDN agent or any of its packages, bump
-`evetest/sdn/VERSION` before building. The version is read during the build and used as
-the Docker image tag, so it must be incremented to produce a distinctly versioned image
-that the broker will recognise as new.
+The Docker image tag is a content hash of everything under `evetest/sdn/` (except
+Markdown files and `pics/`), computed by `evetest/content-hash.sh sdn`. There is no
+version to bump: any change to the SDN sources produces a new tag. Run
+`make sdn-version` in `evetest/` to print the tag for the current sources.
 
 ```bash
 # Build (requires the linuxkit binary):
 make build-sdn-container LINUXKIT=/path/to/linuxkit
 ```
 
-After building, either set `EVETEST_SDN_VERSION` to the new version when running tests,
-or update `DefaultSDNVersion` in `constants/` so it becomes the default.
+`make evetest` expects the image with this tag, pulling it or building it locally
+(with the command above) when it is not published yet, and tells the harness to use it.
 
-See the top-level `evetest/README.md` for a full summary of what to rebuild when.
+See the top-level `evetest/README.md` ("Image Tags") for how the images are versioned and rebuilt.

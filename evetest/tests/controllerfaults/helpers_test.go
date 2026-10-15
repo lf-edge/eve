@@ -59,7 +59,7 @@ func appDeviceConfig() (*evetest.EdgeDeviceConfig, uuid.UUID) {
 			Tag:       "1.0",
 		},
 		CPUs:        1,
-		MemoryBytes: 500 * evetest.MB,
+		MemoryBytes: 500 * evetest.MiB,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
 				LogicalLabel:        "vif0",
