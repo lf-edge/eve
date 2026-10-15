@@ -112,7 +112,10 @@ func initTest(test *testing.T, expectBootstrapDPCsOpt ...bool) *GomegaWithT {
 		PubDeviceNetworkStatus:   pubDNS,
 		ZedcloudMetrics:          zedcloud.NewAgentMetrics(),
 	}
-	ctx := reconciler.MockRun(context.Background())
+	// Stop the manager when the test ends so that it does not keep running
+	// (and competing for CPU) during subsequent tests.
+	ctx, cancel := context.WithCancel(reconciler.MockRun(context.Background()))
+	test.Cleanup(cancel)
 	if err := dpcManager.Init(ctx); err != nil {
 		log.Fatal(err)
 	}
@@ -786,6 +789,10 @@ func TestSingleDPC(test *testing.T) {
 	t.Eventually(dpcKeyCb(0)).Should(Equal("zedagent"))
 	t.Eventually(dpcTimePrioCb(0, timePrio1)).Should(BeTrue())
 	t.Eventually(dnsKeyCb()).Should(Equal("zedagent"))
+	// DPCL is published with the passed DPC before verification ends, but the
+	// forced lastresort DPC is only compressed out once verification is over.
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcListLenCb()).Should(Equal(1))
 	t.Expect(getDPC(0).State).To(Equal(types.DPCStateSuccess))
 	idx, dpcList := getDPCList()
 	t.Expect(idx).To(Equal(0))
