@@ -132,7 +132,8 @@ RUN chmod +x /usr/bin/kubevip-apply.sh /usr/bin/kubevip-delete.sh
 # nvidia-container-runtime config
 RUN mkdir -p /etc/nvidia-container-runtime
 COPY nvidia-container-runtime/config.toml /etc/nvidia-container-runtime
-COPY nvidia-container-runtime/nvidia-device-plugin-18.0.yml /etc/k3s-manifests/
+COPY nvidia-container-runtime/nvidia-device-plugin-18.0.yml \
+     nvidia-container-runtime/nvidia-device-plugin-18.0-dgpu.yml /etc/k3s-manifests/
 
 COPY sriov/sriov-device-plugin.yaml /etc/k3s-manifests/
 

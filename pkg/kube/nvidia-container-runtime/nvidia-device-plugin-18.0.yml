@@ -28,6 +28,10 @@ spec:
       labels:
         name: nvidia-device-plugin-ds
     spec:
+      # kube-init labels a node while nvidia.ko is loaded and the Jetson CDI
+      # spec is present; without them the pod could never start.
+      nodeSelector:
+        eve.lfedge.org/nvidia-gpu: "true"
       tolerations:
       - key: nvidia.com/gpu
         operator: Exists
