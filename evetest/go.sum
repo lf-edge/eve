@@ -129,8 +129,8 @@ github.com/lf-edge/eve-api/go v0.0.0-20260907084402-08ba01c79328 h1:YcNJqvAYlbzD
 github.com/lf-edge/eve-api/go v0.0.0-20260907084402-08ba01c79328/go.mod h1:6HxNA/qKJVEqwpuOFkcQ0h3QyotvAs/cjHLC961FPOY=
 github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d h1:tUBb9M6u42LXwHAYHyh22wJeUUQlTpDkXwRXalpRqbo=
 github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d/go.mod h1:Nn3juMJJ1G8dyHOebdZyS4jOB/fuxAd5fIajBaWjHr8=
-github.com/lf-edge/eve/pkg/pillar v0.0.0-20260908064046-68014620df6f h1:7sdKscHejbA7ivGq3cFyB0MBRGTa7J776XxHmrcISMY=
-github.com/lf-edge/eve/pkg/pillar v0.0.0-20260908064046-68014620df6f/go.mod h1:d5oL5xkNtDg9z0s0MqsjSi+Bza+W+6dkuEkD2VBYFug=
+github.com/lf-edge/eve/pkg/pillar v0.0.0-20261016095447-da1f21294aba h1:et+nYdO0/6vu363dF/o5I/xwtKTdmKAs+5U1H8Cs9xE=
+github.com/lf-edge/eve/pkg/pillar v0.0.0-20261016095447-da1f21294aba/go.mod h1:s4cP0LrbqD9yjdeGthh/A08kYvrlooTaLoOuL55nTNA=
 github.com/lucasb-eyer/go-colorful v1.4.1 h1:1EO+WB73+EH8EVbzlrG3KLAfEypQWVHIBqlTf+2hNss=
 github.com/lucasb-eyer/go-colorful v1.4.1/go.mod h1:R4dSotOR9KMtayYi1e77YzuveK+i7ruzyGqttikkLy0=
 github.com/luthermonson/go-proxmox v0.8.0 h1:KwrgeLrTXTlAezj7zt/tU4bm70VFQiJfej/5sL8rqO8=
