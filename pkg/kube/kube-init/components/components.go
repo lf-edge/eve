@@ -92,8 +92,6 @@ const (
 	// of convergence. Matches the e2e suite's own budget for this gate.
 	longhornReadyCeiling = 90 * time.Minute
 
-	nvidiaVendorDir = "/opt/vendor/nvidia"
-
 	// Multus readiness identity. The DaemonSet's pods write
 	// 00-multus.conf into k3s's CNI dir; because 00- sorts first that
 	// file is the node's primary CNI config, so components that create
@@ -722,14 +720,14 @@ func WaitCDIReady(ctx context.Context) error {
 // Storage manifests
 // ---------------------------------------------------------------------------
 
-// CopyManifests stages storage-classes.yaml (and optionally the
-// NVIDIA device-plugin manifest) into the k3s auto-deploy dir.
-// EnsureStorageClasses owns the MkdirAll of manifestsDst.
+// CopyManifests stages storage-classes.yaml into the k3s auto-deploy
+// dir. EnsureStorageClasses owns the MkdirAll of manifestsDst. The NVIDIA
+// device plugin manifest is ReconcileNvidiaGPU's, on every tick.
 func CopyManifests() error {
 	if err := EnsureStorageClasses(); err != nil {
 		return fmt.Errorf("copy storage-classes.yaml: %w", err)
 	}
-	return copyOptionalNvidiaManifest()
+	return nil
 }
 
 // EnsureStorageClasses copies storage-classes.yaml from manifestsSrc
@@ -749,35 +747,6 @@ func EnsureStorageClasses() error {
 		return fmt.Errorf("copy %s: %w", storageClassesYaml, err)
 	}
 	log.Printf("ensured %s in %s", storageClassesYaml, manifestsDst)
-	return nil
-}
-
-// copyOptionalNvidiaManifest stages the NVIDIA device-plugin
-// manifest into the auto-deploy dir on hardware that exposes
-// /opt/vendor/nvidia. ENOENT on either the vendor dir or the
-// manifest is a no-op (no NVIDIA hardware / minimal build). A
-// copy failure on hardware that does have the vendor dir IS
-// surfaced — silent failure means GPUs are invisible to k8s
-// and the misconfiguration is undiagnosable from the daemon log.
-func copyOptionalNvidiaManifest() error {
-	if _, err := os.Stat(nvidiaVendorDir); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
-		return fmt.Errorf("stat %s: %w", nvidiaVendorDir, err)
-	}
-	nvSrc := filepath.Join(manifestsSrc, "nvidia-device-plugin-18.0.yml")
-	nvDst := filepath.Join(manifestsDst, "nvidia-device-plugin-18.0.yml")
-	if _, err := os.Stat(nvSrc); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
-		return fmt.Errorf("stat %s: %w", nvSrc, err)
-	}
-	if err := copyFile(nvSrc, nvDst); err != nil {
-		return fmt.Errorf("copy NVIDIA manifest: %w", err)
-	}
-	log.Printf("copied NVIDIA device plugin manifest")
 	return nil
 }
 

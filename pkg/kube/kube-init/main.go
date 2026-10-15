@@ -2437,6 +2437,14 @@ func (d *daemon) runHealthWorker(ctx context.Context, mon *monitor.Monitor, sup 
 		log.Printf("WARNING: reconcile SR-IOV manifests: %v", err)
 	}
 
+	// The NVIDIA device plugin is reconciled the same way: the manifest
+	// for this image's NVIDIA platform staged, the node labelled while its
+	// GPU is usable. Without an NVIDIA userland only a stale label is
+	// dropped, once.
+	if err := components.ReconcileNvidiaGPU(ctx); err != nil {
+		log.Printf("WARNING: reconcile NVIDIA device plugin: %v", err)
+	}
+
 	// Keep the stale-mount-cleanup daemon alive. It shares the
 	// kubelet mount namespace (inside the kube container) and
 	// reaps stale Longhorn CSI block-volume staging mounts that
