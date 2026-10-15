@@ -159,7 +159,7 @@ func (z *zedkube) checkAppsFailover(wdFunc func()) {
 		log.Functionf("aiDisplayName:%s aiUUID:%s newStatus:%v",
 			aiconfig.DisplayName, aiconfig.UUIDandVersion.UUID, encAppStatus)
 
-		if encAppStatus.ScheduledOnThisNode {
+		if encAppStatus.ScheduledOnThisNode && terminatingVirtLauncherPod != "" {
 			// Suppress checkStuckPendingVMI for this app while failover is
 			// landing on this node. The window is refreshed each tick as long
 			// as the Terminating pod still exists, so it self-extends.
