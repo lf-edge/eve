@@ -9,7 +9,7 @@ require (
 	github.com/anatol/smart.go v0.0.0-20241126061019-f03d79b340d2
 	github.com/andrewd-zededa/go-libzfs v0.0.0-20251014191158-755aaeb96a92
 	github.com/containerd/cgroups v1.1.0
-	github.com/containerd/containerd v1.7.35
+	github.com/containerd/containerd v1.7.36
 	github.com/containerd/containerd/api v1.8.0
 	github.com/containerd/typeurl v1.0.2
 	github.com/docker/docker v28.5.2+incompatible
@@ -18,7 +18,7 @@ require (
 	github.com/facebook/time v0.0.0-20260421154427-cee44983d290
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/getlantern/framed v0.0.0-20190601192238-ceb6431eeede
-	github.com/go-chi/chi/v5 v5.2.2
+	github.com/go-chi/chi/v5 v5.2.4
 	github.com/go-playground/validator/v10 v10.15.5
 	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/golang/protobuf v1.5.4
