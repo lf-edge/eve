@@ -853,7 +853,13 @@ a table with one row per test (state, time, last line of output), and a full-scr
 view of the output of the selected test. A running test shows what it is doing: `paused
 (checkpoint ...)` or `paused (test failed)` when paused. Tests are controlled from the same
 screen, with no prefix key. It stays open after the last test finishes, until `q`, and then the
-summary is left in the terminal.
+summary is left in the terminal. A rerun reads the files under `tests/`, `netmodels/` and `matchers/`
+afresh (they are mounted from the checkout), so edits made since the previous run are picked up. The
+framework code (the evetest root package, `broker/`, ...) and the SDN are baked into the images, so
+to pick up changes to them, build the images of the new sources first, unless they are published (`make -C evetest build-container`
+and `build-sdn-container`) and enter their versions (`make -C evetest version` and `sdn-version` print them)
+in the rerun prompt.
+A rerun pulls images which are not local, like `make evetest`, and is refused if that fails; it does not build.
 
 | Key | Action |
 |-----|--------|
@@ -862,7 +868,8 @@ summary is left in the terminal.
 | `pgup` / `pgdn`, `g` / `G` | Scroll the output; top / follow the end |
 | `s` | Open an ssh session to the EVE device of the selected test; a test with several devices asks which one first (leave the session with `exit`; a failed ssh waits for Enter so its error can be read) |
 | `c` | Resume the selected test if it is paused (`evetest continue`) |
-| `x` | Stop the selected test gracefully |
+| `x` | Stop the selected test gracefully; a queued test is cancelled instead, so that it does not run (`r` queues it again) |
+| `r` | Rerun the selected test, once it is done (passed, failed or stopped). It first asks which evetest and SDN image versions to use (`enter` keeps those of the previous run, `esc` cancels). The test then goes back to the queue; its output continues in the output view below a divider, and the log of each run is kept in a file of its own (`<test>.2.log`, ...) |
 | `q` / `Ctrl-c` | Stop all tests (asks first); pressed again while stopping, kills them |
 
 Unlike the tmux UI below, the dashboard has no panes, so a test cannot read the keyboard directly, and

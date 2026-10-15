@@ -24,7 +24,8 @@ type Output interface {
 	Event(job *Job, text string)
 	// JobDone is called when a job has finished, after its final Event.
 	JobDone(job *Job)
-	// Finished is called once, after all jobs are done.
+	// Finished is called when all jobs are done. It is called again if jobs
+	// are rerun and done again.
 	Finished(jobs []*Job)
 }
 
@@ -93,7 +94,11 @@ func openJobLog(dir string, job *Job) (*os.File, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
-	job.LogPath = filepath.Join(dir, strings.ReplaceAll(job.Name, "/", "_")+".log")
+	name := strings.ReplaceAll(job.Name, "/", "_")
+	if job.Attempt > 1 {
+		name += fmt.Sprintf(".%d", job.Attempt)
+	}
+	job.LogPath = filepath.Join(dir, name+".log")
 	return os.Create(job.LogPath)
 }
 

@@ -169,6 +169,7 @@ func runTests(cmd *cobra.Command, names []string, parallel int, failFast bool, u
 		PortBase:        viper.GetInt(constants.APIPortEnv),
 		LogDir:          logDir,
 		Output:          output,
+		Versions:        orchestrator.Versions{Evetest: imageTag(image), SDN: viper.GetString(constants.SDNVersionEnv)},
 		ContainerExists: orchestrator.ContainerExists,
 	}, executor)
 	if err != nil {
@@ -199,6 +200,8 @@ func runTests(cmd *cobra.Command, names []string, parallel int, failFast bool, u
 	var jobs []*orchestrator.Job
 	if dashboard != nil {
 		dashboard.SetKillAll(r.KillAll)
+		dashboard.SetCancelQueued(r.CancelQueued)
+		dashboard.SetRerun(rerunWithChecks(r, docker.Image))
 		runDone := make(chan struct{})
 		go func() {
 			defer close(runDone)
@@ -208,6 +211,8 @@ func runTests(cmd *cobra.Command, names []string, parallel int, failFast bool, u
 		err := dashboard.Run()
 		cancel()
 		<-runDone
+		// Also the reruns, which are not part of Run.
+		r.Wait()
 		if err != nil {
 			return err
 		}
@@ -226,6 +231,47 @@ func runTests(cmd *cobra.Command, names []string, parallel int, failFast bool, u
 		os.Exit(1)
 	}
 	return nil
+}
+
+// imageTag returns the tag of an image reference.
+func imageTag(ref string) string {
+	if i := strings.LastIndex(ref, ":"); i > strings.LastIndex(ref, "/") {
+		return ref[i+1:]
+	}
+	return ""
+}
+
+// rerunWithChecks reruns a test after making sure that the images of the
+// versions asked for exist: missing ones are pulled, like "make evetest" does,
+// but not built, because a build takes long and has its own output.
+func rerunWithChecks(r *orchestrator.Orchestrator, evetestImage string) func(string, orchestrator.Versions) error {
+	evetestRepo := orchestrator.ImageRepo(evetestImage)
+	sdnRepo := viper.GetString(constants.SDNRepoEnv)
+	// Like "make evetest", a remote broker brings its own SDN image.
+	remoteBroker := viper.GetString(constants.BrokerAddressEnv) != ""
+	ensure := func(ref, buildTarget string) error {
+		if orchestrator.ImageExists(ref) {
+			return nil
+		}
+		if err := orchestrator.PullImage(ref); err != nil {
+			return fmt.Errorf("image %s is not local and cannot be pulled (%v); build it with \"make -C evetest %s\"",
+				ref, err, buildTarget)
+		}
+		return nil
+	}
+	return func(name string, v orchestrator.Versions) error {
+		if v.Evetest != "" {
+			if err := ensure(evetestRepo+":"+v.Evetest, "build-container"); err != nil {
+				return err
+			}
+		}
+		if v.SDN != "" && !remoteBroker {
+			if err := ensure(sdnRepo+":"+v.SDN, "build-sdn-container"); err != nil {
+				return err
+			}
+		}
+		return r.Rerun(name, v)
+	}
 }
 
 // eveUnderTest describes which EVE the tests run against, as the Makefile passes

@@ -63,6 +63,12 @@ type DashboardConfig struct {
 	Cancel context.CancelFunc
 	// KillAll terminates all running jobs immediately.
 	KillAll func()
+	// CancelQueued cancels the job of the given name, which is waiting for a
+	// free slot, so that it does not run.
+	CancelQueued func(name string) error
+	// Rerun queues the finished job of the given name to run again, with
+	// the given image versions.
+	Rerun func(name string, versions Versions) error
 	// EVE says which EVE is tested, e.g. "EVE 0.0.0-master-e933b992"; it is shown
 	// at the right end of the header. May be empty.
 	EVE string
@@ -86,8 +92,10 @@ type Dashboard struct {
 }
 
 type dashJob struct {
-	lines []string
-	last  string
+	// attempt is the execution of the job which the lines are from.
+	attempt int
+	lines   []string
+	last    string
 	// state is what the instance itself reports while the job runs.
 	state string
 }
@@ -105,6 +113,16 @@ func NewDashboard(cfg DashboardConfig, names []string) *Dashboard {
 // SetKillAll sets the function which terminates all running jobs immediately.
 func (d *Dashboard) SetKillAll(f func()) {
 	d.cfg.KillAll = f
+}
+
+// SetCancelQueued sets the function which cancels a job waiting in the queue.
+func (d *Dashboard) SetCancelQueued(f func(name string) error) {
+	d.cfg.CancelQueued = f
+}
+
+// SetRerun sets the function which queues a finished job to run again.
+func (d *Dashboard) SetRerun(rerun func(name string, versions Versions) error) {
+	d.cfg.Rerun = rerun
 }
 
 // Run shows the dashboard until the user quits it.
@@ -170,6 +188,13 @@ func (d *Dashboard) Line(job *Job, line string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	j := d.jobs[job.Name]
+	if job.Attempt != j.attempt {
+		// A rerun: keep the earlier output, to compare with, behind a divider.
+		if j.attempt != 0 {
+			j.lines = append(j.lines, "", fmt.Sprintf("--- run %d ---", job.Attempt), "")
+		}
+		j.attempt, j.last = job.Attempt, ""
+	}
 	line = sanitizeLine(line)
 	j.lines = append(j.lines, line)
 	if len(j.lines) > dashboardLogLines {
@@ -235,6 +260,31 @@ type dashModel struct {
 	menu       []string
 	menuCursor int
 	menuJob    JobInfo
+	// prompt asks for the image versions of a rerun; nil when closed.
+	prompt *versionPrompt
+}
+
+// versionPrompt is the form shown before a rerun: one field per image version,
+// each starting out as the version of the previous run.
+type versionPrompt struct {
+	job    JobInfo
+	fields []*promptField
+	cursor int
+}
+
+type promptField struct {
+	label string
+	// current is what the previous run used, which an empty input keeps.
+	current string
+	input   string
+}
+
+// value is what the field stands for: the input, or else the previous version.
+func (f *promptField) value() string {
+	if f.input != "" {
+		return f.input
+	}
+	return f.current
 }
 
 func (m *dashModel) setFlash(text string) {
@@ -292,14 +342,28 @@ func (m *dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// finished tells whether the run is over: all jobs are done and no rerun has
+// been queued since.
 func (m *dashModel) finished() bool {
 	m.d.mu.Lock()
-	defer m.d.mu.Unlock()
-	return m.d.finished
+	finished := m.d.finished
+	m.d.mu.Unlock()
+	if !finished {
+		return false
+	}
+	for _, info := range m.infos() {
+		if info.State == Queued || info.State == Running {
+			return false
+		}
+	}
+	return true
 }
 
 func (m *dashModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
+	if m.prompt != nil {
+		return m.handlePromptKey(msg)
+	}
 	if m.menu != nil {
 		return m.handleMenuKey(key)
 	}
@@ -353,6 +417,8 @@ func (m *dashModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.continueCmd()
 	case "x":
 		return m, m.stopCmd()
+	case "r":
+		return m, m.rerunCmd()
 	default:
 		if len(key) == 1 && key[0] >= '1' && key[0] <= '9' {
 			if n := int(key[0] - '1'); n < len(m.d.names) {
@@ -448,11 +514,21 @@ func (m *dashModel) continueCmd() tea.Cmd {
 	}
 }
 
-// stopCmd stops the selected job gracefully.
+// stopCmd stops the selected job gracefully; a job waiting in the queue is
+// cancelled, so that it does not start.
 func (m *dashModel) stopCmd() tea.Cmd {
 	info, ok := m.selected()
-	if !ok || info.State != Running {
-		m.setFlash("no running test selected")
+	switch {
+	case ok && info.State == Queued && m.d.cfg.CancelQueued != nil:
+		cancelQueued := m.d.cfg.CancelQueued
+		return func() tea.Msg {
+			if err := cancelQueued(info.Name); err != nil {
+				return flashMsg(fmt.Sprintf("%s: cannot cancel: %v", info.Name, err))
+			}
+			return nil
+		}
+	case !ok || info.State != Running:
+		m.setFlash("no running or queued test selected")
 		return nil
 	}
 	m.setFlash(info.Name + ": stopping")
@@ -460,6 +536,96 @@ func (m *dashModel) stopCmd() tea.Cmd {
 		_ = exec.Command("docker", "stop", "-t", gracefulStopTimeout, info.Container).Run()
 		return flashMsg(info.Name + ": stopped")
 	}
+}
+
+// rerunCmd starts asking for the image versions to rerun the selected job
+// with, which must be done. The test code is read afresh when it starts, so
+// changes made to the tests since are picked up; the framework is the one of
+// the image version chosen.
+func (m *dashModel) rerunCmd() tea.Cmd {
+	info, ok := m.selected()
+	switch {
+	case !ok:
+		return nil
+	case info.State == Queued || info.State == Running:
+		m.setFlash(info.Name + ": already " + string(info.State) + ", stop it first to rerun it")
+		return nil
+	case m.d.cfg.Rerun == nil:
+		m.setFlash("rerun is not available")
+		return nil
+	}
+	m.openPrompt(info)
+	return nil
+}
+
+func (m *dashModel) openPrompt(info JobInfo) {
+	p := &versionPrompt{job: info}
+	p.fields = append(p.fields, &promptField{label: "evetest image", current: info.Versions.Evetest})
+	if info.Versions.SDN != "" {
+		p.fields = append(p.fields, &promptField{label: "SDN image", current: info.Versions.SDN})
+	}
+	m.prompt = p
+}
+
+func (m *dashModel) handlePromptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	p := m.prompt
+	field := p.fields[p.cursor]
+	switch msg.Type {
+	case tea.KeyEsc, tea.KeyCtrlC:
+		m.prompt = nil
+	case tea.KeyEnter:
+		if p.cursor < len(p.fields)-1 {
+			p.cursor++
+			return m, nil
+		}
+		m.prompt = nil
+		return m, m.submitRerun(p)
+	case tea.KeyUp, tea.KeyShiftTab:
+		p.cursor = max(0, p.cursor-1)
+	case tea.KeyDown:
+		p.cursor = min(len(p.fields)-1, p.cursor+1)
+	case tea.KeyBackspace:
+		if r := []rune(field.input); len(r) > 0 {
+			field.input = string(r[:len(r)-1])
+		}
+	case tea.KeyCtrlU:
+		field.input = ""
+	case tea.KeyRunes:
+		field.input += strings.TrimSpace(string(msg.Runes))
+	}
+	return m, nil
+}
+
+// submitRerun queues the job with the versions entered.
+func (m *dashModel) submitRerun(p *versionPrompt) tea.Cmd {
+	versions := Versions{Evetest: p.fields[0].value()}
+	if len(p.fields) > 1 {
+		versions.SDN = p.fields[1].value()
+	}
+	rerun, name := m.d.cfg.Rerun, p.job.Name
+	m.setFlash(name + ": checking the images, pulling missing ones")
+	return func() tea.Msg {
+		if err := rerun(name, versions); err != nil {
+			return flashMsg(fmt.Sprintf("%s: cannot rerun: %v", name, err))
+		}
+		return nil
+	}
+}
+
+func (m *dashModel) promptBody() []string {
+	p := m.prompt
+	lines := []string{styleBold.Render("Rerun " + p.job.Name + " with which versions?"), ""}
+	for i, f := range p.fields {
+		input := f.input
+		if input == "" {
+			input = styleDim.Render(f.current + " (as in the previous run)")
+		}
+		if i == p.cursor {
+			input += styleCursor.Render(" ")
+		}
+		lines = append(lines, fmt.Sprintf(" %-14s %s", f.label, input))
+	}
+	return lines
 }
 
 var (
@@ -478,6 +644,8 @@ func (m *dashModel) View() string {
 	}
 	var body []string
 	switch {
+	case m.prompt != nil:
+		body = m.promptBody()
 	case m.menu != nil:
 		body = m.menuBody()
 	case m.mode == logView:
@@ -636,6 +804,8 @@ func (m *dashModel) menuBody() []string {
 
 func (m *dashModel) footer() string {
 	switch {
+	case m.prompt != nil:
+		return styleDim.Render("type a version, or enter to keep the previous one  up/down: field  esc: cancel")
 	case m.menu != nil:
 		return styleDim.Render("up/down or 1-9: select  enter: open ssh  esc: cancel")
 	case m.confirm:
@@ -643,7 +813,7 @@ func (m *dashModel) footer() string {
 	case m.flash != "" && time.Since(m.flashAt) < flashDuration:
 		return ansi.Truncate(m.flash, m.width, "…")
 	case m.mode == logView:
-		return styleDim.Render("esc: back  up/down, pgup/pgdn: scroll  g/G: top/follow  s: ssh to EVE  c: continue  x: stop test  q: quit")
+		return styleDim.Render("esc: back  up/down, pgup/pgdn: scroll  g/G: top/follow  s: ssh to EVE  c: continue  x: stop or cancel test  r: rerun  q: quit")
 	}
-	return styleDim.Render("up/down or 1-9: select  enter: output  s: ssh to EVE  c: continue paused test  x: stop test  q: quit")
+	return styleDim.Render("up/down or 1-9: select  enter: output  s: ssh to EVE  c: continue paused test  x: stop or cancel test  r: rerun  q: quit")
 }

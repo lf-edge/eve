@@ -5,6 +5,7 @@ package orchestrator
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -198,10 +199,133 @@ func TestDashboardActionsNeedRunningJob(t *testing.T) {
 		if _, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)}); cmd != nil {
 			t.Errorf("key %q on a finished job started a command", key)
 		}
-		if !strings.Contains(m.flash, "no running test selected") {
+		if !strings.Contains(m.flash, "no running") {
 			t.Errorf("key %q: flash = %q", key, m.flash)
 		}
 		m.flash = ""
+	}
+}
+
+func typeText(m *dashModel, text string) {
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(text)})
+}
+
+// openRerunPrompt presses r on the selected test.
+func openRerunPrompt(t *testing.T, m *dashModel) {
+	t.Helper()
+	press(m, "r")
+	if m.prompt == nil {
+		t.Fatal("r did not open the prompt")
+	}
+}
+
+func TestDashboardRerunKeepsPreviousVersionsOnEnter(t *testing.T) {
+	infos := []JobInfo{{Name: "TestA", State: Failed, Versions: Versions{Evetest: "e1", SDN: "s1"}}}
+	m, _ := newTestDashboard(t, infos)
+	var gotName string
+	var got Versions
+	m.d.SetRerun(func(name string, v Versions) error { gotName, got = name, v; return nil })
+	openRerunPrompt(t, m)
+	view := ansi.Strip(m.View())
+	if !strings.Contains(view, "e1 (as in the previous run)") || !strings.Contains(view, "s1 (as in") {
+		t.Errorf("prompt does not show the previous versions:\n%s", view)
+	}
+	press(m, "enter")
+	_, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil || cmd() != nil {
+		t.Fatal("the second enter must start the rerun")
+	}
+	if gotName != "TestA" || got != (Versions{Evetest: "e1", SDN: "s1"}) || m.prompt != nil {
+		t.Errorf("rerun %q with %+v, prompt open: %v", gotName, got, m.prompt != nil)
+	}
+}
+
+func TestDashboardRerunWithTypedVersions(t *testing.T) {
+	infos := []JobInfo{{Name: "TestA", State: Passed, Versions: Versions{Evetest: "e1", SDN: "s1"}}}
+	m, _ := newTestDashboard(t, infos)
+	var got Versions
+	m.d.SetRerun(func(_ string, v Versions) error { got = v; return nil })
+	openRerunPrompt(t, m)
+	typeText(m, "e9")
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	typeText(m, "custom")
+	m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	_, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	cmd()
+	if got != (Versions{Evetest: "e9", SDN: "custo"}) {
+		t.Errorf("rerun with %+v", got)
+	}
+}
+
+func TestDashboardRerunPromptCanBeCancelled(t *testing.T) {
+	m, _ := newTestDashboard(t, []JobInfo{{Name: "TestA", State: Failed, Versions: Versions{Evetest: "e1"}}})
+	called := false
+	m.d.SetRerun(func(string, Versions) error { called = true; return nil })
+	openRerunPrompt(t, m)
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if m.prompt != nil || called {
+		t.Error("esc must close the prompt without rerunning")
+	}
+}
+
+func TestDashboardRerunNeedsFinishedJob(t *testing.T) {
+	m, _ := newTestDashboard(t, []JobInfo{{Name: "TestA", State: Running}, {Name: "TestB", State: Queued}})
+	m.d.SetRerun(func(string, Versions) error { return nil })
+	for range 2 {
+		press(m, "r")
+		if m.prompt != nil {
+			t.Error("r on an unfinished test opened the prompt")
+		}
+		if !strings.Contains(m.flash, "already") {
+			t.Errorf("flash = %q", m.flash)
+		}
+		press(m, "down")
+	}
+}
+
+func TestDashboardRerunError(t *testing.T) {
+	m, _ := newTestDashboard(t, []JobInfo{{Name: "TestA", State: Passed, Versions: Versions{Evetest: "e1"}}})
+	m.d.SetRerun(func(string, Versions) error { return errors.New("image e1 does not exist") })
+	openRerunPrompt(t, m)
+	_, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	if flash, ok := cmd().(flashMsg); !ok || !strings.Contains(string(flash), "does not exist") {
+		t.Errorf("error not reported: %v", flash)
+	}
+}
+
+func TestDashboardNotFinishedWhileRerunQueued(t *testing.T) {
+	infos := []JobInfo{{Name: "TestA", State: Queued}}
+	m, _ := newTestDashboard(t, infos)
+	m.d.finished = true
+	if m.finished() {
+		t.Error("a run with a queued rerun is reported as finished")
+	}
+}
+
+func TestDashboardRerunKeepsEarlierOutput(t *testing.T) {
+	m, _ := newTestDashboard(t, []JobInfo{{Name: "TestA", State: Running}})
+	job := &Job{Name: "TestA", Attempt: 1}
+	m.d.Line(job, "first")
+	job.Attempt = 2
+	m.d.Line(job, "second")
+	lines := m.d.jobs["TestA"].lines
+	if strings.Join(lines, "|") != "first||--- run 2 ---||second" {
+		t.Errorf("lines = %q", lines)
+	}
+}
+
+func TestDashboardXCancelsQueuedTest(t *testing.T) {
+	m, _ := newTestDashboard(t, []JobInfo{{Name: "TestA", State: Queued}})
+	var got []string
+	m.d.SetCancelQueued(func(name string) error { got = append(got, name); return nil })
+	_, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	if cmd == nil || cmd() != nil || len(got) != 1 || got[0] != "TestA" {
+		t.Errorf("x on a queued test cancelled %v", got)
+	}
+	m.d.SetCancelQueued(func(string) error { return errors.New("test is not waiting in the queue") })
+	_, cmd = m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	if flash, ok := cmd().(flashMsg); !ok || !strings.Contains(string(flash), "cannot cancel") {
+		t.Errorf("error not reported: %v", flash)
 	}
 }
 

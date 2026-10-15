@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -44,6 +45,13 @@ const (
 // started because its API port is already in use.
 var ErrPortBusy = errors.New("API port is already in use")
 
+// Versions are the versions of the evetest and SDN images a job runs with. An
+// empty field means that the shared setting of the run applies.
+type Versions struct {
+	Evetest string
+	SDN     string
+}
+
 // Job is one test or suite execution.
 type Job struct {
 	Name      string
@@ -54,6 +62,11 @@ type Job struct {
 	Started   time.Time
 	Finished  time.Time
 	LogPath   string
+	// Attempt counts the executions of the job: 1 for the first, more for
+	// each rerun.
+	Attempt int
+	// Versions of the images the job runs with; a rerun may change them.
+	Versions Versions
 
 	tail []string
 }
@@ -99,6 +112,8 @@ type Config struct {
 	LogDir string
 	// Output reports progress and job output.
 	Output Output
+	// Versions the jobs run with at first.
+	Versions Versions
 
 	// PortFree reports whether a TCP port can be bound on this host. The
 	// default tries to listen on it.
@@ -114,8 +129,27 @@ type Orchestrator struct {
 	exec Executor
 	jobs []*Job
 
-	mu    sync.Mutex // guards port allocation and job state
-	ports map[int]bool
+	// notifyMu serializes the call of Output.Finished, which tells that the
+	// orchestrator went idle, with Rerun, which ends the idleness. It is taken
+	// before mu.
+	notifyMu sync.Mutex
+
+	mu      sync.Mutex // guards port allocation, job state and the queue
+	ports   map[int]bool
+	pending []queuedJob
+	workers int // goroutines executing jobs, at most Config.Parallel
+	// parent is the context passed to Run; reruns are bound to it.
+	parent context.Context
+	idle   *sync.Cond
+}
+
+// queuedJob is a job waiting for a free slot.
+type queuedJob struct {
+	job *Job
+	ctx context.Context
+	// cancel stops the other jobs of the same Run call once this one fails,
+	// if fail-fast is on; nil for a rerun.
+	cancel context.CancelFunc
 }
 
 // New creates an Orchestrator. Duplicate names are rejected: the artifacts of two
@@ -137,6 +171,7 @@ func New(cfg Config, exec Executor) (*Orchestrator, error) {
 		cfg.Output = NewPlainOutput(discard{})
 	}
 	r := &Orchestrator{cfg: cfg, exec: exec, ports: map[int]bool{}}
+	r.idle = sync.NewCond(&r.mu)
 	if c, ok := cfg.Output.(CountsConsumer); ok {
 		c.SetCounts(r.counts)
 	}
@@ -149,7 +184,7 @@ func New(cfg Config, exec Executor) (*Orchestrator, error) {
 			return nil, fmt.Errorf("test %q is listed more than once", name)
 		}
 		seen[name] = true
-		r.jobs = append(r.jobs, &Job{Name: name, State: Queued})
+		r.jobs = append(r.jobs, &Job{Name: name, State: Queued, Versions: cfg.Versions})
 	}
 	return r, nil
 }
@@ -161,40 +196,148 @@ func (r *Orchestrator) Jobs() []*Job {
 
 // Run executes all jobs, at most Config.Parallel at a time, and returns once
 // all of them have finished or been cancelled. Cancelling ctx stops running
-// jobs gracefully and cancels the queued ones.
+// jobs gracefully and cancels the queued ones. Jobs may be run again with
+// Rerun after that; Wait then tells when they are done.
 func (r *Orchestrator) Run(ctx context.Context) []*Job {
-	ctx, cancel := context.WithCancel(ctx)
+	batch, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	queue := make(chan *Job, len(r.jobs))
-	for _, job := range r.jobs {
-		queue <- job
-	}
-	close(queue)
-
 	r.cfg.Output.Started(r.jobs, r.cfg.Parallel)
-	var wg sync.WaitGroup
-	for i := 0; i < min(r.cfg.Parallel, len(r.jobs)); i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for job := range queue {
-				if ctx.Err() != nil {
-					r.setState(job, Cancelled)
-					r.cfg.Output.Event(job, "cancelled before it started")
-					continue
-				}
-				r.runJob(ctx, job)
-				if job.State == Failed && r.cfg.FailFast {
-					r.cfg.Output.Event(job, "failed, cancelling the other tests (fail-fast)")
-					cancel()
-				}
-			}
-		}()
+	r.mu.Lock()
+	r.parent = ctx
+	for _, job := range r.jobs {
+		r.pending = append(r.pending, queuedJob{job: job, ctx: batch, cancel: cancel})
 	}
-	wg.Wait()
-	r.cfg.Output.Finished(r.jobs)
+	r.mu.Unlock()
+	r.schedule()
+	r.Wait()
 	return r.jobs
+}
+
+// Wait blocks until no job is queued or running.
+func (r *Orchestrator) Wait() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for r.workers > 0 || len(r.pending) > 0 {
+		r.idle.Wait()
+	}
+}
+
+// Rerun queues a finished job to be executed again, with a fresh output and
+// log, and with the given versions of the images; empty fields keep those of
+// the previous execution. It fails if the job is queued or running, or if the run is being
+// stopped. Fail-fast does not apply to reruns.
+func (r *Orchestrator) Rerun(name string, versions Versions) error {
+	r.notifyMu.Lock()
+	defer r.notifyMu.Unlock()
+	r.mu.Lock()
+	var job *Job
+	for _, j := range r.jobs {
+		if j.Name == name {
+			job = j
+		}
+	}
+	switch {
+	case job == nil:
+		r.mu.Unlock()
+		return fmt.Errorf("no test %q in this run", name)
+	case r.parent == nil:
+		r.mu.Unlock()
+		return errors.New("the run has not started")
+	case r.parent.Err() != nil:
+		r.mu.Unlock()
+		return errors.New("the run is being stopped")
+	case job.State != Passed && job.State != Failed && job.State != Cancelled:
+		state := job.State
+		r.mu.Unlock()
+		return fmt.Errorf("test is %s", state)
+	}
+	job.State, job.ExitCode = Queued, 0
+	job.Started, job.Finished = time.Time{}, time.Time{}
+	job.Port, job.Container, job.tail = 0, "", nil
+	if versions.Evetest != "" {
+		job.Versions.Evetest = versions.Evetest
+	}
+	if versions.SDN != "" {
+		job.Versions.SDN = versions.SDN
+	}
+	r.pending = append(r.pending, queuedJob{job: job, ctx: r.parent})
+	r.mu.Unlock()
+	r.schedule()
+	r.cfg.Output.Event(job, "queued for a rerun")
+	return nil
+}
+
+// CancelQueued cancels a job which is still waiting for a free slot, so that it
+// does not run; Rerun queues it again. It fails if the job is not waiting, e.g.
+// because it has just been started.
+func (r *Orchestrator) CancelQueued(name string) error {
+	r.mu.Lock()
+	var job *Job
+	for i, q := range r.pending {
+		if q.job.Name == name {
+			job = q.job
+			r.pending = slices.Delete(r.pending, i, i+1)
+			job.State = Cancelled
+			break
+		}
+	}
+	r.mu.Unlock()
+	if job == nil {
+		return errors.New("test is not waiting in the queue")
+	}
+	r.cfg.Output.Event(job, "cancelled before it started")
+	return nil
+}
+
+// schedule starts workers for queued jobs while there are free slots.
+func (r *Orchestrator) schedule() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for r.workers < r.cfg.Parallel && len(r.pending) > 0 {
+		q := r.pending[0]
+		r.pending = r.pending[1:]
+		r.workers++
+		go r.work(q)
+	}
+}
+
+// work executes queued jobs one after another until none is left. The last
+// worker to finish reports that the orchestrator is idle.
+func (r *Orchestrator) work(q queuedJob) {
+	for {
+		if q.ctx.Err() != nil {
+			r.setState(q.job, Cancelled)
+			r.cfg.Output.Event(q.job, "cancelled before it started")
+		} else {
+			r.runJob(q.ctx, q.job)
+			if q.job.State == Failed && r.cfg.FailFast && q.cancel != nil {
+				r.cfg.Output.Event(q.job, "failed, cancelling the other tests (fail-fast)")
+				q.cancel()
+			}
+		}
+
+		r.notifyMu.Lock()
+		r.mu.Lock()
+		if len(r.pending) > 0 {
+			q = r.pending[0]
+			r.pending = r.pending[1:]
+			r.mu.Unlock()
+			r.notifyMu.Unlock()
+			continue
+		}
+		last := r.workers == 1
+		r.mu.Unlock()
+		if last {
+			r.cfg.Output.Finished(r.jobs)
+		}
+		r.mu.Lock()
+		r.workers--
+		r.idle.Broadcast()
+		r.mu.Unlock()
+		r.notifyMu.Unlock()
+		return
+	}
 }
 
 // JobInfo is a consistent copy of a job's state.
@@ -206,6 +349,7 @@ type JobInfo struct {
 	ExitCode  int
 	Started   time.Time
 	Finished  time.Time
+	Versions  Versions
 }
 
 // Duration of the job so far, or in total once finished.
@@ -225,7 +369,7 @@ func (r *Orchestrator) snapshot() []JobInfo {
 	defer r.mu.Unlock()
 	infos := make([]JobInfo, len(r.jobs))
 	for i, j := range r.jobs {
-		infos[i] = JobInfo{j.Name, j.State, j.Port, j.Container, j.ExitCode, j.Started, j.Finished}
+		infos[i] = JobInfo{j.Name, j.State, j.Port, j.Container, j.ExitCode, j.Started, j.Finished, j.Versions}
 	}
 	return infos
 }
@@ -263,6 +407,9 @@ func (r *Orchestrator) setState(job *Job, state State) {
 }
 
 func (r *Orchestrator) runJob(ctx context.Context, job *Job) {
+	r.mu.Lock()
+	job.Attempt++
+	r.mu.Unlock()
 	logFile, err := openJobLog(r.cfg.LogDir, job)
 	if err != nil {
 		r.cfg.Output.Event(job, fmt.Sprintf("cannot create the log file: %v", err))
