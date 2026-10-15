@@ -1391,7 +1391,7 @@ func (th *TestHarness) maybeReuseDevices(
 			newReq.WithFilesystem == prevReq.WithFilesystem &&
 			newReq.WithDirSync == prevReq.WithDirSync &&
 			newReq.WithTPM == prevReq.WithTPM &&
-			newReq.WithTPMPCRBanks == prevReq.WithTPMPCRBanks &&
+			generics.EqualSets(newReq.WithTPMPCRBanks, prevReq.WithTPMPCRBanks) &&
 			newReq.WithSoftSerial == prevReq.WithSoftSerial &&
 			generics.EqualLists(newReq.WithGrubOptions, prevReq.WithGrubOptions) &&
 			generics.EqualSets(newReq.WithUSBPassthrough, prevReq.WithUSBPassthrough) &&
