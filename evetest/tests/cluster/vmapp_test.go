@@ -70,13 +70,6 @@ var vmAppAlpineImages = map[string]vmAppAlpineImage{
 // Test params
 // -----------
 //   - TPM (bool), FILESYSTEM.
-//
-// Suite placement
-// ---------------
-//   - Not in TestNodeClusterSuite yet: this is the first VM app ever
-//     deployed in the cluster suite, and the boot timing/failure modes
-//     (image fetch, CDI import, VMI creation) need a real run to pin down
-//     before it belongs alongside the suite's other tests.
 func TestClusterVMApp(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
