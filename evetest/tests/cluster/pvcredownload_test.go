@@ -84,13 +84,6 @@ const (
 // Test params
 // -----------
 //   - TPM (bool), FILESYSTEM.
-//
-// Suite placement
-// ---------------
-//   - Not in TestNodeClusterSuite yet. This is the first test to combine
-//     multi-node power-cycling, network-model changes mid-test, and a VM
-//     app in one sequence; it needs a real run before its timing and
-//     failure modes are understood well enough to place it.
 func TestClusterPVCRedownload(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
