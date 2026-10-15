@@ -38,6 +38,8 @@ type RebootStore interface {
 	DiscardRebootImage()
 	WriteRebootReason(reason string, br types.BootReason,
 		agent string, pid int, last bool)
+	WriteKernelRebootReason(reason, stack string, br types.BootReason,
+		ts time.Time) error
 }
 
 // pathConfig holds the on-disk paths nodeagent reads or writes.
@@ -50,6 +52,8 @@ type pathConfig struct {
 	faultInjectionFile string
 	smartCurrent       string
 	smartPrevious      string
+	pstoreDir          string
+	kcrashesDir        string
 }
 
 func defaultPathConfig() pathConfig {
@@ -61,6 +65,8 @@ func defaultPathConfig() pathConfig {
 		faultInjectionFile: "/persist/fault-injection/readfile",
 		smartCurrent:       "/persist/SMART_details.json",
 		smartPrevious:      "/persist/SMART_details_previous.json",
+		pstoreDir:          pstoreDir,
+		kcrashesDir:        kcrashesDir,
 	}
 }
 
@@ -96,4 +102,8 @@ func (r realRebootStore) DiscardRebootImage()    { agentlog.DiscardRebootImage(r
 func (r realRebootStore) WriteRebootReason(reason string, br types.BootReason,
 	agent string, pid int, last bool) {
 	agentlog.RebootReason(reason, br, agent, pid, last)
+}
+func (r realRebootStore) WriteKernelRebootReason(reason, stack string,
+	br types.BootReason, ts time.Time) error {
+	return agentlog.WriteKernelRebootReason(reason, stack, br, ts)
 }

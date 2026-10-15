@@ -130,6 +130,10 @@ type nodeagentContext struct {
 	// by tests so they don't actually call zboot.Reset / zboot.Poweroff.
 	startNodeOperation func(types.DeviceOperation)
 
+	// pstoreLoggedStack is the reboot stack handlePstoreRecords wrote and
+	// already logged, so handleLastRebootReason need not log it again.
+	pstoreLoggedStack string
+
 	// Test seams. Defaulted to real implementations in
 	// newNodeagentContext; overridden by tests.
 	zboot       Zboot
@@ -223,6 +227,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	//Parse SMART data
 	parseSMARTData(ctxPtr)
 	// get the last reboot reason
+	handlePstoreRecords(ctxPtr)
 	handleLastRebootReason(ctxPtr)
 	// send Installation log and remove first-boot from installation
 	handleInstallationLog(ctxPtr)
@@ -629,7 +634,9 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 
 	ctx.rebootStore.DiscardBootReason()
 	// Make sure we log the reboot stack or dmesg
-	if len(rebootStack) > 0 {
+	if len(rebootStack) > 0 && rebootStack == ctx.pstoreLoggedStack {
+		log.Noticef("reboot-stack is the kernel panic stack trace logged from pstore")
+	} else if len(rebootStack) > 0 {
 		lines := strings.Split(rebootStack, "\n")
 
 		// Tag each line for easy grep
@@ -719,7 +726,7 @@ func synthesizeRebootReason(firstBoot bool, storedBootReason types.BootReason,
 				dateStr)
 			bootReason = types.BootReasonHWWatchdog
 		} else {
-			reason = fmt.Sprintf("Reboot reason - system reset, reboot or kernel panic due to watchdog or kernel bug (no kdump) - at %s",
+			reason = fmt.Sprintf("Reboot reason - system reset, reboot or kernel panic due to watchdog or kernel bug (no panic record) - at %s",
 				dateStr)
 			bootReason = types.BootReasonKernel
 		}

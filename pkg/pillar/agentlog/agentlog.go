@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	dbg "runtime/debug"
 	"strings"
@@ -376,6 +377,27 @@ func RebootStack(log *base.LogObject, stacks string, agentName string, agentPid 
 		log.Errorf("overWriteFile failed %s\n", err)
 	}
 	syscall.Sync()
+}
+
+// WriteKernelRebootReason records a kernel panic found after the reboot it
+// caused: it replaces /persist/reboot-stack, boot-reason (br) and
+// reboot-reason, with ts as their mtime unless ts is zero. Each file is replaced atomically and fsynced, and
+// reboot-reason is written last, so its presence means the other two are
+// complete. Returns the first error.
+func WriteKernelRebootReason(reason, stack string, br types.BootReason,
+	ts time.Time) error {
+	files := []struct{ name, content string }{
+		{stackFile, stack},
+		{bootReasonFile, br.String()},
+		{reasonFile, reason + "\n"},
+	}
+	for _, f := range files {
+		filename := filepath.Join(types.PersistDir, f.name)
+		if err := fileutils.WriteRenameWithMtime(filename, []byte(f.content), ts); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // GetRebootReason returns the RebootReason string together with

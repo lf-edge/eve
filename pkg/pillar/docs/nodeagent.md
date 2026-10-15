@@ -139,6 +139,11 @@ device-ops into local `handleDeviceCmd()` calls.
 
 ### Reboot-reason reconstruction (`nodeagent.go`)
 
+`handlePstoreRecords()` runs first. It turns kernel panic records left in
+pstore by earlier boots into `/persist/kcrashes` copies and, for the newest
+panic since the previous boot, the reboot-reason files described in
+[KERNEL-DUMPS.md](../../../docs/KERNEL-DUMPS.md).
+
 `handleLastRebootReason()` is called once at startup. It reads anything the
 *previous* boot left behind (`agentlog.GetRebootReason()`,
 `GetBootReason()`, `GetRebootImage()`), and if nothing was recorded it
@@ -148,7 +153,7 @@ synthesizes a default using two side-channel signals:
 * the `PowerCycleCount` delta between current and previous SMART snapshots
   → `BootReasonPowerFail` (count went up: dirty power cycle) versus
   `BootReasonKernel` (count unchanged: kernel panic / watchdog with no
-  kdump),
+  panic record),
 * fallback: `BootReasonUnknown`.
 
 The reboot stack, if any, is logged line-by-line and (if it is bigger than

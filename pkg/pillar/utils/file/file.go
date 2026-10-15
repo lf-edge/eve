@@ -184,6 +184,39 @@ func writeRename(fileName string, b []byte, withBackup bool, tmpPath ...string) 
 	return DirSync(filepath.Dir(fileName))
 }
 
+// WriteRenameWithMtime atomically replaces fileName with b, setting its mtime
+// to mtime unless mtime is zero, and fsyncs the file and its directory.
+func WriteRenameWithMtime(fileName string, b []byte, mtime time.Time) error {
+	dirName := filepath.Dir(fileName)
+	tmpfile, err := os.CreateTemp(dirName, "tmp")
+	if err != nil {
+		return fmt.Errorf("WriteRenameWithMtime(%s): create temp: %w", fileName, err)
+	}
+	defer tmpfile.Close()
+	defer os.Remove(tmpfile.Name())
+	if _, err := tmpfile.Write(b); err != nil {
+		return fmt.Errorf("WriteRenameWithMtime(%s): %w", fileName, err)
+	}
+	if err := tmpfile.Chmod(0o644); err != nil {
+		return fmt.Errorf("WriteRenameWithMtime(%s): %w", fileName, err)
+	}
+	if !mtime.IsZero() {
+		if err := os.Chtimes(tmpfile.Name(), mtime, mtime); err != nil {
+			return fmt.Errorf("WriteRenameWithMtime(%s): %w", fileName, err)
+		}
+	}
+	if err := tmpfile.Sync(); err != nil {
+		return fmt.Errorf("WriteRenameWithMtime(%s): sync: %w", fileName, err)
+	}
+	if err := tmpfile.Close(); err != nil {
+		return fmt.Errorf("WriteRenameWithMtime(%s): %w", fileName, err)
+	}
+	if err := os.Rename(tmpfile.Name(), fileName); err != nil {
+		return fmt.Errorf("WriteRenameWithMtime(%s): %w", fileName, err)
+	}
+	return DirSync(dirName)
+}
+
 // Writable checks if the directory is writable
 func Writable(dir string) bool {
 	return unix.Access(dir, unix.W_OK) == nil
