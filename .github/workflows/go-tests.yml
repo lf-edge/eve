@@ -30,13 +30,32 @@ jobs:
   test:
     needs: changes
     if: needs.changes.outputs.run == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: zededa-ubuntu-2204
+    env:
+      GH_REF: ${{ github.ref }}
     steps:
+      - name: Starting Report
+        run: |
+          echo Git Ref: "${GH_REF}"
+          echo GitHub Event: ${{ github.event_name }}
+          echo Disk usage
+          df -h
+          echo Memory
+          free -m
+      - name: Clear repository
+        run: |
+          sudo rm -fr "$GITHUB_WORKSPACE" && mkdir "$GITHUB_WORKSPACE"
+          rm -fr ~/.linuxkit
+          docker system prune --all --force --volumes
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Login to Docker Hub
+        if: ${{ github.event.repository.full_name == 'lf-edge/eve' }}
+        run: | # Runners must provide default credentials
+          docker login
       - name: Test
         run: |
           make test
@@ -56,6 +75,14 @@ jobs:
           path: ${{ github.workspace }}/dist
       - name: Get code coverage
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2  # v6.0.0
+      - name: Clean
+        if: ${{ always() }}
+        run: |
+          make clean || :
+          docker system prune -f -a || :
+          docker ps -aq | xargs -r docker rm -f || :
+          docker volume ls -q | xargs -r docker volume rm -f || :
+          rm -rf ~/.linuxkit || :
 
   result:
     name: Go Tests result
