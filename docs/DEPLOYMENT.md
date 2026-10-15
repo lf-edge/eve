@@ -114,7 +114,7 @@ iPXE expects a configuration file and access to a set of binary artifacts
 at certain URLs in order to proceed with the boot process. Every release of EVE-OS
 (including the master builds) produces an ```ipxe.cfg``` file and publishes all the required artifacts on GitHub
 in the tagged release assets area. The same set of artifacts can be obtained locally by running
-```docker run lfedge/eve installer_net | tar xf -```. Regardless of whether you're using
+```docker run lfedge/eve:<version>-kvm installer_net | tar xf -```. Regardless of whether you're using
 artifacts published on GitHub or on your local http server, as long as iPXE can successfully
 resolve and access their URLs, the process will work. The default ```ipxe.cfg```
 file published by EVE-OS releases assumes GitHub URLs. Therefore it needs to be edited
@@ -224,7 +224,7 @@ include the argument ```eve_install_server=FQDN_OF_YOUR_CONTROLLER``` in the iPX
 
 To run an installer image from boot media:
 
-1. Produce a disk-based installer image ```docker run lfedge/eve:latest installer_raw > installer.raw```
+1. Produce a disk-based installer image ```docker run lfedge/eve:<version>-kvm installer_raw > installer.raw```
 2. Determine the target install media, such as USB stick or SD card via `fdisk -l` (Linux) or `diskutil list` (macOS)
 3. Burn ```installer.raw``` image file onto the installation media via `dd`
 4. Insert the installation media into the edge node
@@ -244,7 +244,7 @@ take no responsibility for those tools. Evaluate and use them at your own risk.
 
 In rare cases (such as using HPE iLO or Dell DRAC) your BIOS will not be able
 to boot from a disk-based image. The fallback here could be an ISO image. The only
-difference is in step #1 that then becomes ```docker run lfedge/eve installer_iso > installer.iso```.
+difference is in step #1 that then becomes ```docker run lfedge/eve:<version>-kvm installer_iso > installer.iso```.
 
 At the end of its run, the installer process will shut down the edge node and it will create a folder
 on the USB stick's INVENTORY partition which is named identical to the soft serial number. Using that
@@ -264,7 +264,7 @@ you can't just pop the hard drive out to write to it).
 The good news, of course, is that there's no real difference between a live
 EVE-OS image and installer EVE-OS image. Just as for the installer image you will:
 
-1. produce a live image (by running ```docker run lfedge/eve:latest live > live.img``` command)
+1. produce a live image (by running ```docker run lfedge/eve:<version>-kvm live > live.img``` command)
 2. burn the resulting ```live.img``` image file onto a microSD card
 3. insert the microSD card into your SBC and power it on
 

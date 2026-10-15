@@ -72,9 +72,9 @@ and thus is available on every running eve-os device.
 It also is in the `lfedge/eve` container image, so you can run:
 
 ```sh
-$ docker run --rm lfedge/eve:<version> build_config
+$ docker run --rm lfedge/eve:<version>-<hv> build_config
 # e.g.
-$ docker run --rm lfedge/eve:8.11.0 build_config
+$ docker run --rm lfedge/eve:8.11.0-kvm build_config
 ```
 
 A sample configuration is:

@@ -32,9 +32,10 @@ and [go 1.13+](https://golang.org) installed in your system.
 ### Use pre-built release binaries
 
 EVE is an agile software project with bi-weekly release schedule. Each release gets tagged
-with x.y.z version in Git and a corresponding build is published on [DockerHUB](https://hub.docker.com/r/lfedge/eve).
-As is common with Docker releases, EVE also uses version `latest` to designate the latest
-official release and `snapshot` to designate the latest build off of master branch.
+with x.y.z version in Git and a corresponding build is published on [DockerHUB](https://hub.docker.com/r/lfedge/eve)
+as `lfedge/eve:<version>-<hv>`, for example `lfedge/eve:17.9.0-kvm` or `lfedge/eve:17.9.0-k`.
+The [latest LTS release](https://github.com/lf-edge/eve/releases/latest) on GitHub names its
+version and carries prebuilt installer and live images.
 
 Since EVE is not just an application, but a compute engine that expects to be deployed
 on real (or virtualized) hardware, you can't simply do `docker run` to give it a try.
@@ -44,13 +45,13 @@ such as Google Compute Platform (GCP).
 
 EVE Docker container `lfedge/eve:<version>` is used to produce these deployment artifacts.
 
-Try running `docker run lfedge/eve` to get the most up-to-date help message.
+Try running `docker run lfedge/eve:<version>-kvm` to get the most up-to-date help message.
 
 The versions in the tag of `lfedge/eve:<version>` contain information as to which hypervisor and target architecture they
 support. The options are:
 
 * architecture: `amd64`, `arm64`, `riscv64`
-* hypervisor: `kvm`, `mini`
+* hypervisor: `kvm`, `k`, `mini`
 
 Note that not all hypervisors are supported on all architectures.
 
@@ -64,12 +65,12 @@ Note that `<command>` is the appropriate command to run; leave it blank to get t
 If you leave off the architecture it will default to whatever architecture you
 are running on.
 
-If you just use `snapshot` or `latest`, it will default to the architecture you are running on and the `kvm` hypervisor.
+The hypervisor is always part of the tag.
 
 For example:
 
 * `docker run lfedge/eve:8.11.0-kvm <command>`: installer for 8.11.0 using kvm on your architecture
-* `docker run lfedge/eve:latest <command>`: installer for latest image using kvm on your architecture
+* `docker run lfedge/eve:17.9.0-k <command>`: installer for 17.9.0 using k on your architecture
 
 Note that each docker image is built for the architecture for which it runs. Thus `lfedge/eve:8.11.0-kvm-arm64` not only
 installs an arm64 EVE image, but the docker image is intended to be run on arm64. If you are running on arm64, e.g. Mac M1,
@@ -558,19 +559,19 @@ To install any binary EVE artifact, such as `installer.img`, onto an installatio
 
 ### 1. Prepare the artifact
 
-Prepare the artifact, either by downloading from the [releases page](http://github.com/lf-edge/eve/releases) or running the EVE
-docker command `docker run lfedge/eve <command>`. For example, `docker run lfedge/eve` will show the help message.
+Prepare the artifact, either by downloading from the [latest LTS release](https://github.com/lf-edge/eve/releases/latest) or running the EVE
+docker command `docker run lfedge/eve:<version>-kvm <command>`. For example, `docker run lfedge/eve:<version>-kvm` will show the help message.
 
 If you want a raw disk image to install, which is useful for SD cards and USB, run:
 
 ```sh
-docker run lfedge/eve installer_raw > installer.img
+docker run lfedge/eve:<version>-kvm installer_raw > installer.img
 ```
 
 For an ISO, useful for CD/DVD:
 
 ```sh
-docker run lfedge/eve installer_iso > installer.iso
+docker run lfedge/eve:<version>-kvm installer_iso > installer.iso
 ```
 
 ### 2. Find the target device

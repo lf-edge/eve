@@ -979,19 +979,16 @@ compare_sbom_collected_sources: $(SBOM) $(COLLECTED_SOURCES) $(COMPARESOURCES)
 	$(QUIET): $@: Succeeded
 
 # Push the image built from $(1) under $(ROOTFS_VERSION)-$(HV) and, when
-# pushing, under the release names $(EVE_REL)-$(HV) and, for $(HV_DEFAULT),
-# $(EVE_REL). $(2) is added to the first push, which builds the image.
+# pushing, under the release name $(EVE_REL)-$(HV). $(2) is added to the
+# first push, which builds the image.
 # linuxkit pushes a release tag only if it does not exist yet, but merges an
-# image's own tag into the index already in the registry. So each release
+# image's own tag into the index already in the registry. So the release
 # name is pushed again as the image's own tag, from the local cache entry
-# that the push before it wrote.
+# that the first push wrote.
 define push-eve-image
 	$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) --platforms linux/$(ZARCH) --hash-path $(CURDIR) --hash $(ROOTFS_VERSION)-$(HV) --docker $(if $(strip $(EVE_REL)),--release) $(EVE_REL)$(if $(strip $(EVE_REL)),-$(HV)) $(2) $(1)
 	$(QUIET)if [ -n "$(EVE_REL)" ]; then \
-		$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) --platforms linux/$(ZARCH) --hash-path $(CURDIR) --hash $(EVE_REL)-$(HV) --docker --release $(EVE_REL)$(if $(filter-out $(HV_DEFAULT),$(HV)),-$(HV)) $(1) ;\
-	fi
-	$(QUIET)if [ -n "$(EVE_REL)" ] && [ $(HV) = $(HV_DEFAULT) ]; then \
-		$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) --platforms linux/$(ZARCH) --hash-path $(CURDIR) --hash $(EVE_REL) --docker --release $(EVE_REL) $(1) ;\
+		$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) --platforms linux/$(ZARCH) --hash-path $(CURDIR) --hash $(EVE_REL)-$(HV) --docker --release $(EVE_REL)-$(HV) $(1) ;\
 	fi
 endef
 

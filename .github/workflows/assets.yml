@@ -127,7 +127,14 @@ jobs:
           else
              echo "PLATFORMVER=" >> "$GITHUB_ENV"
           fi
-          echo "TAG=$(git describe --always --tags | grep -E '[0-9]+\.[0-9]+\.[0-9]' || echo snapshot)" >> "$GITHUB_ENV"
+          # Same release-tag pattern as REPO_TAG in the Makefile, which named
+          # the images this job pulls.
+          TAG=$(git describe --always --tags)
+          if ! echo "$TAG" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-lts|-rc[0-9]+)?$'; then
+             echo "::error::$REF resolves to $TAG, which is not a release tag"
+             exit 1
+          fi
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
       - name: Ensure clean assets directory
         run: |
           rm -rf assets && mkdir -p assets
