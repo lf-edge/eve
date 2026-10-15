@@ -23,10 +23,11 @@ const (
 	// CDI upload pod of the carried data volume to run. EVE-K brings up k3s
 	// and Longhorn first, which takes minutes.
 	midUploadPodWait = 30 * time.Minute
-	// The cut lands this long after the upload pod runs. A 2 GiB upload takes
-	// about two minutes on kernel 6.12, so the range keeps it mid-transfer.
-	midUploadCutMin = 10 * time.Second
-	midUploadCutMax = 40 * time.Second
+	// The cut lands this long after the upload pod is seen running. On kernel
+	// 6.12 the pod finishes a 2 GiB upload within 20 s of that, so the range
+	// keeps the cut mid-transfer.
+	midUploadCutMin = 2 * time.Second
+	midUploadCutMax = 8 * time.Second
 )
 
 // midUploadPowerCycleParameter declares whether TestKvmToKRepartitionTopology
@@ -49,7 +50,7 @@ func midUploadPowerCycleRequested() bool {
 }
 
 // powerCycleMidUpload waits for the CDI upload into volUUID's claim to start,
-// lets it run for a random 10-40 s and, if it is still running, power-cycles
+// lets it run for a random 2-8 s and, if it is still running, power-cycles
 // the device and waits for EVE to answer SSH on the new boot. It logs one
 // [MID-UPLOAD] line and fails the test when the cut cannot land mid-upload,
 // since such a run would not exercise the partly uploaded claim.
@@ -66,7 +67,7 @@ func powerCycleMidUpload(t Gomega, device *evetest.EdgeDevice, volUUID uuid.UUID
 			pod = f[0]
 			break
 		}
-		time.Sleep(3 * time.Second)
+		time.Sleep(time.Second)
 	}
 	if pod == "" {
 		log.Errorf("[MID-UPLOAD] cut=missed reason=no-running-upload-pod waited=%s",
