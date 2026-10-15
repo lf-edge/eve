@@ -35,6 +35,14 @@ type DockerExecutor struct {
 	Interactive bool
 }
 
+// ImageRepo returns the repository of an image reference, without the tag.
+func ImageRepo(ref string) string {
+	if i := strings.LastIndex(ref, ":"); i > strings.LastIndex(ref, "/") {
+		return ref[:i]
+	}
+	return ref
+}
+
 func (d *DockerExecutor) runArgs(job *Job) []string {
 	port := fmt.Sprint(job.Port)
 	args := []string{"run", "--rm"}
@@ -53,11 +61,19 @@ func (d *DockerExecutor) runArgs(job *Job) []string {
 		args = append(args, "-v", d.ArtifactsHostDir+":/artifacts")
 	}
 	args = append(args, d.CommonArgs...)
+	image := d.Image
+	if job.Versions.Evetest != "" {
+		image = ImageRepo(d.Image) + ":" + job.Versions.Evetest
+	}
+	if job.Versions.SDN != "" {
+		// After the shared arguments, so that it wins over theirs.
+		args = append(args, "-e", "EVETEST_SDN_VERSION="+job.Versions.SDN)
+	}
 	return append(args,
 		"-e", "EVETEST_NAME="+job.Name,
 		"-e", "EVETEST_API_PORT="+port,
 		"-e", "EVETEST_CONTAINER_NAME="+job.Container,
-		d.Image)
+		image)
 }
 
 // Run implements Executor.
@@ -131,6 +147,24 @@ func RunActive(runID string) (bool, error) {
 		return false, nil
 	}
 	return false, fmt.Errorf("docker inspect: %w: %s", err, strings.TrimSpace(string(out)))
+}
+
+// ImageExists tells whether a Docker image of the reference exists locally.
+func ImageExists(ref string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return exec.CommandContext(ctx, "docker", "image", "inspect", ref).Run() == nil
+}
+
+// PullImage pulls a Docker image, returning the last line of the output of
+// "docker pull" as the error if that fails.
+func PullImage(ref string) error {
+	out, err := exec.Command("docker", "pull", "--quiet", ref).CombinedOutput()
+	if err == nil {
+		return nil
+	}
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	return fmt.Errorf("%s", lines[len(lines)-1])
 }
 
 // ContainerExists tells whether a container (in any state) of the name exists.

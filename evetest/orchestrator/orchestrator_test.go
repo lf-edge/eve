@@ -254,6 +254,119 @@ func TestLogFileHasFullOutput(t *testing.T) {
 	}
 }
 
+func TestRerun(t *testing.T) {
+	dir := t.TempDir()
+	exec := &fakeExecutor{exitCodes: map[string]int{"a": 1}}
+	var finished int
+	r := newTestOrchestrator(t, Config{
+		Names: []string{"a", "b"}, Parallel: 2, LogDir: dir,
+		Output: &finishCounter{Output: NewPlainOutput(discard{}), n: &finished},
+	}, exec)
+	jobs := r.Run(context.Background())
+	if jobs[0].State != Failed || jobs[1].State != Passed || finished != 1 {
+		t.Fatalf("states %s, %s, finished %d", jobs[0].State, jobs[1].State, finished)
+	}
+	if err := r.Rerun("b", Versions{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Rerun("nosuch", Versions{}); err == nil {
+		t.Error("rerun of an unknown test accepted")
+	}
+	exec.mu.Lock()
+	exec.exitCodes["a"] = 0
+	exec.mu.Unlock()
+	r.Wait()
+	if err := r.Rerun("a", Versions{}); err != nil {
+		t.Fatal(err)
+	}
+	r.Wait()
+	if jobs[0].State != Passed || jobs[0].ExitCode != 0 || jobs[0].Attempt != 2 {
+		t.Errorf("a: state %s, exit code %d, attempt %d", jobs[0].State, jobs[0].ExitCode, jobs[0].Attempt)
+	}
+	if finished != 3 {
+		t.Errorf("Finished called %d times, want 3", finished)
+	}
+	if !strings.HasSuffix(jobs[0].LogPath, "a.2.log") {
+		t.Errorf("log of the rerun overwrites the first: %s", jobs[0].LogPath)
+	}
+}
+
+func TestRerunChangesVersions(t *testing.T) {
+	exec := &fakeExecutor{}
+	r := newTestOrchestrator(t, Config{
+		Names: []string{"a", "b"}, Parallel: 2, Versions: Versions{Evetest: "e1", SDN: "s1"},
+	}, exec)
+	jobs := r.Run(context.Background())
+	if err := r.Rerun("a", Versions{Evetest: "e2"}); err != nil {
+		t.Fatal(err)
+	}
+	r.Wait()
+	if got := jobs[0].Versions; got != (Versions{Evetest: "e2", SDN: "s1"}) {
+		t.Errorf("a runs with %+v, want e2 and the previous SDN version", got)
+	}
+	if got := jobs[1].Versions; got != (Versions{Evetest: "e1", SDN: "s1"}) {
+		t.Errorf("b was changed to %+v", got)
+	}
+}
+
+func TestCancelQueuedJobDoesNotRunAndCanBeRerun(t *testing.T) {
+	exec := &fakeExecutor{delay: 300 * time.Millisecond}
+	r := newTestOrchestrator(t, Config{Names: []string{"a", "b", "c"}, Parallel: 1}, exec)
+	done := make(chan []*Job)
+	go func() { done <- r.Run(context.Background()) }()
+	time.Sleep(50 * time.Millisecond)
+	if err := r.CancelQueued("b"); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.CancelQueued("a"); err == nil {
+		t.Error("a running test was cancelled as if queued")
+	}
+	jobs := <-done
+	if jobs[0].State != Passed || jobs[1].State != Cancelled || jobs[2].State != Passed {
+		t.Fatalf("states %s, %s, %s; want passed, cancelled, passed", jobs[0].State, jobs[1].State, jobs[2].State)
+	}
+	if _, ran := exec.ports["b"]; ran {
+		t.Error("the cancelled test ran")
+	}
+	if err := r.Rerun("b", Versions{}); err != nil {
+		t.Fatal(err)
+	}
+	r.Wait()
+	if jobs[1].State != Passed {
+		t.Errorf("rerun of the cancelled test: %s", jobs[1].State)
+	}
+}
+
+func TestRerunRefusedWhileActiveOrStopping(t *testing.T) {
+	exec := &fakeExecutor{delay: 5 * time.Second}
+	r := newTestOrchestrator(t, Config{Names: []string{"a", "b"}, Parallel: 1}, exec)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { r.Run(ctx); close(done) }()
+	time.Sleep(50 * time.Millisecond)
+	if err := r.Rerun("a", Versions{}); err == nil {
+		t.Error("rerun of a running test accepted")
+	}
+	if err := r.Rerun("b", Versions{}); err == nil {
+		t.Error("rerun of a queued test accepted")
+	}
+	cancel()
+	<-done
+	if err := r.Rerun("a", Versions{}); err == nil {
+		t.Error("rerun accepted after the run was stopped")
+	}
+}
+
+type finishCounter struct {
+	Output
+	n *int
+}
+
+func (f *finishCounter) Finished(jobs []*Job) {
+	*f.n++
+	f.Output.Finished(jobs)
+}
+
 func TestParseNames(t *testing.T) {
 	got := ParseNames(" a, b ,,c ")
 	if strings.Join(got, "|") != "a|b|c" {
