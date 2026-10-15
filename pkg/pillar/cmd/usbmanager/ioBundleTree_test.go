@@ -312,14 +312,14 @@ func FuzzIOBundleTree(f *testing.F) {
 		phyLabel5 string,
 		assigngrp5 string,
 
-		delBundle1 int,
-		delBundle1Pos int,
+		delBundle1 uint,
+		delBundle1Pos uint,
 
-		delBundle2 int,
-		delBundle2Pos int,
+		delBundle2 uint,
+		delBundle2Pos uint,
 
-		delBundle3 int,
-		delBundle3Pos int,
+		delBundle3 uint,
+		delBundle3Pos uint,
 
 	) {
 
@@ -351,25 +351,15 @@ func FuzzIOBundleTree(f *testing.F) {
 		}
 
 		ioBundlesArray := []*types.IoBundle{&ioBundle1, &ioBundle2, &ioBundle3, &ioBundle4, &ioBundle5}
+		n := uint(len(ioBundlesArray))
 
 		delBundleCmd := []struct {
 			index int
 			pos   int
 		}{
-			{delBundle1, delBundle1Pos},
-			{delBundle2, delBundle2Pos},
-			{delBundle3, delBundle3Pos},
-		}
-
-		for i := range delBundleCmd {
-			if delBundleCmd[i].index < 0 {
-				delBundleCmd[i].index = -1 * delBundleCmd[i].index
-			}
-			if delBundleCmd[i].pos < 0 {
-				delBundleCmd[i].pos = -1 * delBundleCmd[i].pos
-			}
-			delBundleCmd[i].index = delBundleCmd[i].index % len(ioBundlesArray)
-			delBundleCmd[i].pos = delBundleCmd[i].pos % len(ioBundlesArray)
+			{int(delBundle1 % n), int(delBundle1Pos % n)},
+			{int(delBundle2 % n), int(delBundle2Pos % n)},
+			{int(delBundle3 % n), int(delBundle3Pos % n)},
 		}
 
 		for pos, ioBundle := range ioBundlesArray {
