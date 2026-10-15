@@ -79,42 +79,22 @@ func DefineTestParameters(params ...TestParameterDefinition) {
 // the test will fail.
 func GetTestParameter[T any](key string) T {
 	th := getTestHarness()
-	th.testM.Lock()
-	defer th.testM.Unlock()
-
-	// Check that the given parameter is defined for the current test.
-	var definition TestParameterDefinition
-	for _, param := range th.test.paramDefs {
-		if param.Key == key {
-			definition = param
-			break
-		}
-	}
-	if th.suite != nil {
-		for _, param := range th.suite.paramDefs {
-			if param.Key == key {
-				definition = param
-				break
-			}
-		}
-	}
+	definition, suiteValue, suiteSet, testName := th.lookupTestParameter(key)
 	if definition.Key == "" {
 		th.t.Fatalf("Parameter %q is not defined for test %q",
-			key, th.test.name)
+			key, testName)
 	}
 
 	// Check if RunTestSuite has set some value for the parameter.
-	for _, param := range th.test.paramVals {
-		if param.Key == key {
-			val, ok := param.Value.(T)
-			if !ok {
-				th.t.Fatalf(
-					"parameter %q has type %T, expected %T",
-					key, param.Value, *new(T),
-				)
-			}
-			return val
+	if suiteSet {
+		val, ok := suiteValue.(T)
+		if !ok {
+			th.t.Fatalf(
+				"parameter %q has type %T, expected %T",
+				key, suiteValue, *new(T),
+			)
 		}
+		return val
 	}
 
 	// Check environment variables.
@@ -215,6 +195,37 @@ func GetTestParameter[T any](key string) T {
 	return defVal
 }
 
+// lookupTestParameter returns the definition of key for the current test, the
+// value RunTestSuite set for it if any, and the test's name. It holds testM only
+// for the lookup: T.fail takes testM too, so GetTestParameter must not fail
+// while holding it.
+func (th *TestHarness) lookupTestParameter(key string) (
+	definition TestParameterDefinition, value any, set bool, testName string) {
+	th.testM.Lock()
+	defer th.testM.Unlock()
+	for _, param := range th.test.paramDefs {
+		if param.Key == key {
+			definition = param
+			break
+		}
+	}
+	if th.suite != nil {
+		for _, param := range th.suite.paramDefs {
+			if param.Key == key {
+				definition = param
+				break
+			}
+		}
+	}
+	for _, param := range th.test.paramVals {
+		if param.Key == key {
+			value, set = param.Value, true
+			break
+		}
+	}
+	return definition, value, set, th.test.name
+}
+
 // HypervisorParameterKey is the key used for the Hypervisor parameter.
 const HypervisorParameterKey = "HYPERVISOR"
 
@@ -268,14 +279,14 @@ func GetEVEVersionParameterValue() string {
 const DiskSizeMiBParameterKey = "DISK_SIZE_MB"
 
 // DiskSizeMiBParameter is a predefined TestParameterDefinition for the device disk size.
-// A value of 0 means the framework default (36864 MiB) is used.
+// A value of 0 means the framework default (65536 MiB) is used.
 func DiskSizeMiBParameter() TestParameterDefinition {
 	return TestParameterDefinition{
 		Key:          DiskSizeMiBParameterKey,
 		DefaultValue: uint32(0),
 		Description: TestParameterDescription{
 			Summary: "Device disk size in MiB",
-			Default: "0 (use framework default 36864 MiB)",
+			Default: "0 (use framework default 65536 MiB)",
 		},
 	}
 }
@@ -283,19 +294,6 @@ func DiskSizeMiBParameter() TestParameterDefinition {
 // GetDiskSizeMiBParameterValue returns the value set for the DiskSizeMiB parameter.
 func GetDiskSizeMiBParameterValue() uint32 {
 	return GetTestParameter[uint32](DiskSizeMiBParameterKey)
-}
-
-// SkipIfHypervisorKubevirt skips the current test if the resolved HYPERVISOR
-// parameter is HypervisorKubevirt. Kubevirt is only supported by tests under
-// `evetest/tests/cluster`; non-cluster tests should call this helper right
-// after defining the HypervisorParameter to ensure they are not accidentally
-// exercised on a Kubevirt-flavored EVE build.
-func SkipIfHypervisorKubevirt() {
-	th := getTestHarness()
-	if GetHypervisorParameterValue() == HypervisorKubevirt {
-		th.t.Skipf("Kubevirt hypervisor is only supported by cluster tests " +
-			"(under evetest/tests/cluster); use kvm or xen")
-	}
 }
 
 // FilesystemParameterKey is the key used for the Filesystem parameter.
@@ -337,4 +335,48 @@ func TPMParameter() TestParameterDefinition {
 // GetTPMParameterValue returns the value set for the TPM parameter.
 func GetTPMParameterValue() (useTPM bool) {
 	return GetTestParameter[bool](TPMParameterKey)
+}
+
+// RAMSizeMiBParameterKey is the key used for the RAMSizeMiB parameter.
+const RAMSizeMiBParameterKey = "RAM_SIZE_MB"
+
+// RAMSizeMiBParameter is a predefined TestParameterDefinition for the device RAM size.
+// A value of 0 means the framework default (8192 MiB) is used, unless the test
+// raises it to a floor of its own.
+func RAMSizeMiBParameter() TestParameterDefinition {
+	return TestParameterDefinition{
+		Key:          RAMSizeMiBParameterKey,
+		DefaultValue: uint32(0),
+		Description: TestParameterDescription{
+			Summary: "Device RAM size in MiB",
+			Default: "0 (use framework default 8192 MiB, or the test's own floor)",
+		},
+	}
+}
+
+// GetRAMSizeMiBParameterValue returns the value set for the RAMSizeMiB parameter.
+func GetRAMSizeMiBParameterValue() uint32 {
+	return GetTestParameter[uint32](RAMSizeMiBParameterKey)
+}
+
+// CPUsParameterKey is the key used for the CPUs parameter.
+const CPUsParameterKey = "CPUS"
+
+// CPUsParameter is a predefined TestParameterDefinition for the device vCPU count.
+// A value of 0 means the framework default (4 vCPUs) is used, unless the test
+// raises it to a floor of its own.
+func CPUsParameter() TestParameterDefinition {
+	return TestParameterDefinition{
+		Key:          CPUsParameterKey,
+		DefaultValue: uint8(0),
+		Description: TestParameterDescription{
+			Summary: "Number of virtual CPUs for the EVE device",
+			Default: "0 (use framework default 4 vCPUs, or the test's own floor)",
+		},
+	}
+}
+
+// GetCPUsParameterValue returns the value set for the CPUs parameter.
+func GetCPUsParameterValue() uint8 {
+	return GetTestParameter[uint8](CPUsParameterKey)
 }

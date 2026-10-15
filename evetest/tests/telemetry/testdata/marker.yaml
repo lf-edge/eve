@@ -1,0 +1,81 @@
+# Copyright (c) 2025-2026 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+---
+data_dir: "${VECTOR_DATA_DIR:-/var/lib/vector}"  # where Vector stores its data files (mostly buffers)
+
+sources:
+  dev_keep:
+    type: socket
+    mode: unix_stream
+    path: "${DEV_KEEP_SOURCE_SOCK:-/run/devKeep_source.sock}"
+
+  dev_upload:
+    type: socket
+    mode: unix_stream
+    path: "${DEV_UPLOAD_SOURCE_SOCK:-/run/devUpload_source.sock}"
+
+  vector_metrics:
+    type: internal_metrics
+
+transforms:
+  parse_json_keep:
+    type: remap
+    inputs:
+      - dev_keep
+    source: |
+      . = parse_json!(.message)
+
+  parse_json_upload:
+    type: remap
+    inputs:
+      - dev_upload
+    source: |
+      . = parse_json!(.message)
+
+  # this transform overwrites the `source` field of every upload event with a
+  # sentinel value. `source` is one of the few log fields the controller parses
+  # and exposes for matching, so a test can confirm that this config is the one
+  # Vector runs by asking the controller for logs carrying the sentinel.
+  # @MARKER_SOURCE@ is substituted with a run-unique value before the config is
+  # pushed; keep the placeholder in sync with markerSourcePlaceholder.
+  mark_upload:
+    type: remap
+    inputs:
+      - parse_json_upload
+    source: |
+      .source = "@MARKER_SOURCE@"
+
+sinks:
+  keep_sent_queue_socket:
+    type: socket
+    inputs:
+      - parse_json_keep
+    mode: unix_stream
+    path: "${DEV_KEEP_SINK_SOCK:-/run/devKeep_sink.sock}"
+    encoding:
+      codec: json  # write events as JSON objects
+    buffer:
+      type: disk
+      max_size: 268435488  # 256 MB
+      when_full: block
+
+  dev_upload_socket:
+    type: socket
+    inputs:
+      - mark_upload
+    mode: unix_stream
+    path: "${DEV_UPLOAD_SINK_SOCK:-/run/devUpload_sink.sock}"
+    encoding:
+      codec: json
+    buffer:
+      type: disk
+      max_size: 268435488  # 256 MB
+      when_full: block
+
+  prometheus:
+    type: prometheus_exporter
+    inputs:
+      - vector_metrics
+    address: "127.0.0.1:8889"
+    namespace: "vector"

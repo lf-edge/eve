@@ -25,8 +25,15 @@ type GrpcLogStream interface {
 // It can be attached to a logrus.Logger to automatically send logs to a remote
 // gRPC client.
 type LogrusGrpcHook struct {
-	mu     sync.RWMutex
-	stream GrpcLogStream
+	clientID string
+	mu       sync.RWMutex
+	stream   GrpcLogStream
+}
+
+// NewLogrusGrpcHook creates a hook that only forwards log entries tagged with
+// the given client_id field.
+func NewLogrusGrpcHook(clientID string) *LogrusGrpcHook {
+	return &LogrusGrpcHook{clientID: clientID}
 }
 
 // SetStream sets the gRPC stream used for log forwarding. Pass nil to detach.
@@ -111,6 +118,11 @@ func (h *LogrusGrpcHook) Levels() []logrus.Level {
 // Fire sends a single logrus.Entry over the gRPC stream as an api.LogMessage.
 // Implements the logrus.Hook interface.
 func (h *LogrusGrpcHook) Fire(entry *logrus.Entry) error {
+	if h.clientID != "" {
+		if cid, _ := entry.Data["client_id"].(string); cid != h.clientID {
+			return nil
+		}
+	}
 	h.mu.RLock()
 	stream := h.stream
 	h.mu.RUnlock()

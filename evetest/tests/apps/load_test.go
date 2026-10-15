@@ -44,12 +44,7 @@ func TestLotsOfApps(test *testing.T) {
 		Name:              devName,
 		WithHypervisor:    hypervisor,
 		DeviceReusePolicy: evetest.ResetDeviceConfig,
-		MinRAMInMB:        24576,
-		// This branch's harness defaults the device disk to ~28 GB (master
-		// defaults to 64 GiB): 25 container volumes plus the image blobs run
-		// volumemgr's reserve to zero there, which parks the deploy and puts
-		// the device into LOW_DISK_SPACE maintenance mode. Size it explicitly.
-		MinDiskSizeInMB: 65536,
+		MinRAMInMiB:       24576,
 	}
 	requiredNetModel := evetest.RequireNetworkModel{
 		NetworkModel: netmodels.SingleEthWithDHCP,
@@ -97,7 +92,7 @@ func TestLotsOfApps(test *testing.T) {
 			},
 			VirtualizationMode: eveconfig.VmMode_HVM, // PV does not work in xen, shim VM fails to start
 			CPUs:               1,
-			MemoryBytes:        500 * evetest.MB,
+			MemoryBytes:        500 * evetest.MiB,
 			NetworkAdapters: []evetest.AppNetworkAdapter{
 				evetest.VirtualNetworkAdapter{
 					LogicalLabel:        fmt.Sprintf("vif%d", i),

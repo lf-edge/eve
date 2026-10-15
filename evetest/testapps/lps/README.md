@@ -176,9 +176,9 @@ card's inputs are disabled and a notice replaces the editable area.
 ## Building and Pushing
 
 ```bash
-make build            # builds docker image
-make push             # builds and pushes to Docker Hub
-REPO=myrepo make push # use a different Docker Hub repository
+make build                                       # build and load the image locally
+make build DOCKER_TARGET=push                    # build and push to Docker Hub
+make build EVETEST_ORG=myorg DOCKER_TARGET=push  # push to a different Docker Hub org
 ```
 
 ## Command-line Flags

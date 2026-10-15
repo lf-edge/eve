@@ -74,7 +74,7 @@ import (
 //     ethernet2 → VLAN 100 (access port, PVID 100), ethernet3 → VLAN 200
 //     (access port, PVID 200). ethernet1 has no VlanAccessPort entry and acts
 //     as the trunk (carries both VLANs tagged toward the SDN router).
-//   - Two container apps (milan4zededa/evetest-ubuntu-ctr:1.0):
+//   - Two container apps (lfedge/evetest-ubuntu-ctr:1.0):
 //     app1 with AccessVLAN=100, app2 with AccessVLAN=200, each with an
 //     allow-all ACL.
 //
@@ -105,8 +105,7 @@ import (
 //
 // Test params
 // -----------
-//   - HYPERVISOR. The test calls evetest.SkipIfHypervisorKubevirt() right
-//     after reading the parameter — Kubevirt is reserved for cluster tests.
+//   - HYPERVISOR (defaults to KVM).
 func TestAccessVLANs(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
@@ -114,7 +113,6 @@ func TestAccessVLANs(test *testing.T) {
 
 	evetest.DefineTestParameters(evetest.HypervisorParameter())
 	hypervisor := evetest.GetHypervisorParameterValue()
-	evetest.SkipIfHypervisorKubevirt()
 
 	devName := "edge-dev"
 	evetest.Setup(
@@ -171,6 +169,9 @@ func TestAccessVLANs(test *testing.T) {
 		SharedLabels:  []string{"switch-ports"},
 	})
 	device.ApplyConfig(devConfig, true, true)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
 
 	// Switch NI: eth1 is trunk (carries VLAN 100 and 200 tagged via the SDN router);
 	// eth2 is access port for VLAN 100; eth3 is access port for VLAN 200.
@@ -202,12 +203,12 @@ func TestAccessVLANs(test *testing.T) {
 		DisplayName: "vlan100-app",
 		Activate:    true,
 		Image: evetest.DockerContainer{
-			ImageName: "milan4zededa/evetest-ubuntu-ctr",
+			ImageName: "lfedge/evetest-ubuntu-ctr",
 			Tag:       "1.0",
 		},
 		VirtualizationMode: eveconfig.VmMode_HVM,
 		CPUs:               1,
-		MemoryBytes:        500 * evetest.MB,
+		MemoryBytes:        500 * evetest.MiB,
 		NetworkAdapters:    []evetest.AppNetworkAdapter{app1Vif},
 	}
 	app1UUID := devConfig.AddApplication(app1Config)
@@ -227,12 +228,12 @@ func TestAccessVLANs(test *testing.T) {
 		DisplayName: "vlan200-app",
 		Activate:    true,
 		Image: evetest.DockerContainer{
-			ImageName: "milan4zededa/evetest-ubuntu-ctr",
+			ImageName: "lfedge/evetest-ubuntu-ctr",
 			Tag:       "1.0",
 		},
 		VirtualizationMode: eveconfig.VmMode_HVM,
 		CPUs:               1,
-		MemoryBytes:        500 * evetest.MB,
+		MemoryBytes:        500 * evetest.MiB,
 		NetworkAdapters:    []evetest.AppNetworkAdapter{app2Vif},
 	}
 	app2UUID := devConfig.AddApplication(app2Config)
@@ -535,7 +536,7 @@ func TestAccessVLANs(test *testing.T) {
 //     the NI gateway port 2222 → app port 22.
 //   - NI2 (Local, 10.50.77.0/24) on ethernet0. SSH into app2 is forwarded
 //     from the NI gateway port 2223 → app port 22.
-//   - Two container apps (milan4zededa/evetest-ubuntu-ctr:1.0): app1 on NI1,
+//   - Two container apps (lfedge/evetest-ubuntu-ctr:1.0): app1 on NI1,
 //     app2 on NI2, each with an allow-all ACL.
 //
 // Bootstrap note
@@ -568,8 +569,7 @@ func TestAccessVLANs(test *testing.T) {
 //
 // Test params
 // -----------
-//   - HYPERVISOR. The test calls evetest.SkipIfHypervisorKubevirt() right
-//     after reading the parameter — Kubevirt is reserved for cluster tests.
+//   - HYPERVISOR (defaults to KVM).
 func TestVLANSubinterfaces(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
@@ -577,7 +577,6 @@ func TestVLANSubinterfaces(test *testing.T) {
 
 	evetest.DefineTestParameters(evetest.HypervisorParameter())
 	hypervisor := evetest.GetHypervisorParameterValue()
-	evetest.SkipIfHypervisorKubevirt()
 
 	devName := "edge-dev"
 	// Clone the bootstrap model and shorten the DHCP lease on the management network.
@@ -645,6 +644,9 @@ func TestVLANSubinterfaces(test *testing.T) {
 	// waitUntilConfirmed=false: after the model switch below, EVE may temporarily
 	// lose controller connectivity, delaying the LastProcessedConfig metric publish.
 	device.ApplyConfig(devConfig, true, false)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
 	// Give EVE a moment to process the port config (activate vlan interfaces)
 	// before switching the SDN side, so the new interfaces are ready to carry
 	// traffic as soon as VLAN tagging is enabled.
@@ -692,7 +694,7 @@ func TestVLANSubinterfaces(test *testing.T) {
 	// Phase 2: Application connectivity
 	// -----------------------------------------------------------------------
 
-	const appImage = "milan4zededa/evetest-ubuntu-ctr"
+	const appImage = "lfedge/evetest-ubuntu-ctr"
 	const appTag = "1.0"
 	appAuth := evetest.UsernamePasswordAuth{
 		Username: "root",
@@ -733,7 +735,7 @@ func TestVLANSubinterfaces(test *testing.T) {
 		},
 		VirtualizationMode: eveconfig.VmMode_HVM,
 		CPUs:               1,
-		MemoryBytes:        500 * evetest.MB,
+		MemoryBytes:        500 * evetest.MiB,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
 				LogicalLabel:        "vif0",
@@ -765,7 +767,7 @@ func TestVLANSubinterfaces(test *testing.T) {
 		},
 		VirtualizationMode: eveconfig.VmMode_HVM,
 		CPUs:               1,
-		MemoryBytes:        500 * evetest.MB,
+		MemoryBytes:        500 * evetest.MiB,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
 				LogicalLabel:        "vif0",
@@ -913,8 +915,7 @@ func TestVLANSubinterfaces(test *testing.T) {
 //
 // Test params
 // -----------
-//   - HYPERVISOR. The test calls evetest.SkipIfHypervisorKubevirt() right
-//     after reading the parameter — Kubevirt is reserved for cluster tests.
+//   - HYPERVISOR (defaults to KVM).
 func TestVLANSubinterfacesOnTopOfLAGs(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
@@ -922,7 +923,6 @@ func TestVLANSubinterfacesOnTopOfLAGs(test *testing.T) {
 
 	evetest.DefineTestParameters(evetest.HypervisorParameter())
 	hypervisor := evetest.GetHypervisorParameterValue()
-	evetest.SkipIfHypervisorKubevirt()
 
 	devName := "edge-dev"
 
@@ -1025,6 +1025,9 @@ func TestVLANSubinterfacesOnTopOfLAGs(test *testing.T) {
 	// because after the SDN model switch below, EVE may temporarily lose controller
 	// connectivity while LACP negotiates.
 	device.ApplyConfig(devConfig, true, false)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
 	// Give EVE a moment to create the bond and VLAN sub-interfaces before switching
 	// the SDN side, so the interfaces are ready to carry traffic immediately.
 	time.Sleep(10 * time.Second)
@@ -1103,7 +1106,7 @@ func TestVLANSubinterfacesOnTopOfLAGs(test *testing.T) {
 	// Phase 2: Application connectivity
 	// -----------------------------------------------------------------------
 
-	const appImage = "milan4zededa/evetest-ubuntu-ctr"
+	const appImage = "lfedge/evetest-ubuntu-ctr"
 	const appTag = "1.0"
 	appAuth := evetest.UsernamePasswordAuth{
 		Username: "root",
@@ -1145,7 +1148,7 @@ func TestVLANSubinterfacesOnTopOfLAGs(test *testing.T) {
 		},
 		VirtualizationMode: eveconfig.VmMode_HVM,
 		CPUs:               1,
-		MemoryBytes:        500 * evetest.MB,
+		MemoryBytes:        500 * evetest.MiB,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
 				LogicalLabel:        "vif0",
@@ -1178,7 +1181,7 @@ func TestVLANSubinterfacesOnTopOfLAGs(test *testing.T) {
 		},
 		VirtualizationMode: eveconfig.VmMode_HVM,
 		CPUs:               1,
-		MemoryBytes:        500 * evetest.MB,
+		MemoryBytes:        500 * evetest.MiB,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
 				LogicalLabel:        "vif0",
@@ -1206,7 +1209,7 @@ func TestVLANSubinterfacesOnTopOfLAGs(test *testing.T) {
 		},
 		VirtualizationMode: eveconfig.VmMode_HVM,
 		CPUs:               1,
-		MemoryBytes:        500 * evetest.MB,
+		MemoryBytes:        500 * evetest.MiB,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
 				LogicalLabel:        "vif0",

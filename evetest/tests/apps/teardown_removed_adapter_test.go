@@ -137,7 +137,7 @@ func TestAppTeardownWithRemovedAdapter(test *testing.T) {
 		},
 		VirtualizationMode: eveconfig.VmMode_HVM,
 		CPUs:               1,
-		MemoryBytes:        500 * evetest.MB,
+		MemoryBytes:        500 * evetest.MiB,
 		NetworkAdapters:    singleVIFWithSSH(niUUID),
 		IOAdapters: []evetest.IOAdapterConfig{
 			{
