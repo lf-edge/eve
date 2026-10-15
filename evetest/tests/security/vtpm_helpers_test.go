@@ -18,6 +18,7 @@ import (
 
 	eveconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve/evetest"
+	api "github.com/lf-edge/eve/evetest/grpcapi/go"
 	"github.com/lf-edge/eve/evetest/netmodels"
 )
 
@@ -31,10 +32,10 @@ const (
 )
 
 func setupVTPMDevice(t *evetest.T, withTPM bool) (*evetest.EdgeDevice, *evetest.EdgeDeviceConfig, uuid.UUID) {
-	return setupVTPMDeviceWithPCRBanks(t, withTPM, "")
+	return setupVTPMDeviceWithPCRBanks(t, withTPM, nil)
 }
 
-func setupVTPMDeviceWithPCRBanks(t *evetest.T, withTPM bool, banks string) (*evetest.EdgeDevice, *evetest.EdgeDeviceConfig, uuid.UUID) {
+func setupVTPMDeviceWithPCRBanks(t *evetest.T, withTPM bool, banks []api.TPMPCRBank) (*evetest.EdgeDevice, *evetest.EdgeDeviceConfig, uuid.UUID) {
 	evetest.DefineTestParameters(evetest.HypervisorParameter())
 	hypervisor := evetest.GetHypervisorParameterValue()
 	if hypervisor != evetest.HypervisorKVM {

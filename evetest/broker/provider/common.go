@@ -33,24 +33,31 @@ const namePrefix = "ev-"
 // expressions even when the operand is a constant.
 var networkPrefix = strings.TrimSuffix(namePrefix, "-")
 
-func parseTPMPCRBanks(value string) ([]string, error) {
-	if value == "" {
+func tpmPCRBankNames(value []api.TPMPCRBank) ([]string, error) {
+	if len(value) == 0 {
 		return []string{"sha256"}, nil
 	}
 	var banks []string
-	seen := make(map[string]bool)
-	for _, bank := range strings.Split(value, ",") {
-		bank = strings.TrimSpace(bank)
+	seen := make(map[api.TPMPCRBank]bool)
+	for _, bank := range value {
+		var name string
 		switch bank {
-		case "sha1", "sha256", "sha384", "sha512":
+		case api.TPMPCRBank_TPM_PCR_BANK_SHA1:
+			name = "sha1"
+		case api.TPMPCRBank_TPM_PCR_BANK_SHA256:
+			name = "sha256"
+		case api.TPMPCRBank_TPM_PCR_BANK_SHA384:
+			name = "sha384"
+		case api.TPMPCRBank_TPM_PCR_BANK_SHA512:
+			name = "sha512"
 		default:
-			return nil, fmt.Errorf("unsupported TPM PCR bank %q", bank)
+			return nil, fmt.Errorf("unsupported TPM PCR bank %d", bank)
 		}
 		if seen[bank] {
-			return nil, fmt.Errorf("duplicate TPM PCR bank %q", bank)
+			return nil, fmt.Errorf("duplicate TPM PCR bank %s", name)
 		}
 		seen[bank] = true
-		banks = append(banks, bank)
+		banks = append(banks, name)
 	}
 	return banks, nil
 }
@@ -69,7 +76,6 @@ func commonCapabilities() []api.Capability {
 		api.Capability_CAPABILITY_FORWARD_EAPOL,
 		api.Capability_CAPABILITY_FORWARD_LLDP,
 		api.Capability_CAPABILITY_TPM,
-		api.Capability_CAPABILITY_TPM_PCR_BANKS,
 		api.Capability_CAPABILITY_NETBOOT,
 	}
 }

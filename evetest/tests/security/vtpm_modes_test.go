@@ -13,6 +13,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/lf-edge/eve/evetest"
+	api "github.com/lf-edge/eve/evetest/grpcapi/go"
 )
 
 func vtpmAppArmorDenials(output string) map[string]bool {
@@ -73,7 +74,8 @@ func TestAppVTPMLegacyKeyWithoutSHA256(test *testing.T) {
 	t := NewGomegaWithT(evetestT)
 	defer evetest.Close()
 
-	device, config, niUUID := setupVTPMDeviceWithPCRBanks(evetestT, true, "sha1")
+	device, config, niUUID := setupVTPMDeviceWithPCRBanks(evetestT, true,
+		[]api.TPMPCRBank{api.TPMPCRBank_TPM_PCR_BANK_SHA1})
 	// EVE's host shell does not carry tpm2-tools; the vtpm service image does.
 	_, stderr, err := device.RunShellScript("eve exec vtpm /usr/bin/tpm2 pcrread sha1:0", appSSHTimeout, 0)
 	t.Expect(err).ToNot(HaveOccurred(), "SHA1 PCR bank is unavailable: %s", stderr)
