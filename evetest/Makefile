@@ -14,7 +14,7 @@ ifndef SDN_VERSION
 SDN_VERSION := $(shell ./content-hash.sh sdn)
 endif
 
-EVETEST_ADAM_VERSION ?= 0.0.82
+EVETEST_ADAM_VERSION ?= 0.0.85
 EVETEST_ADAM_REPO ?= lfedge/adam
 
 # Repository holding built EVE images (mirrors constants.DefaultEVERepo).
