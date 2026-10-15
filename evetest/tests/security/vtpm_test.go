@@ -17,13 +17,6 @@ import (
 	"github.com/lf-edge/eve/evetest/netmodels"
 )
 
-// vtpmAppImageTag is the evetest-ubuntu-ctr version that carries tpm2-tools
-// (added to that image in its :1.1). Only this test needs the TPM userspace.
-// On this branch the image is pulled from Docker Hub (master's CI publishes
-// :1.1), like the app images of the other test suites here: this branch's
-// evetest predates delivery through evetest's own OCI registry.
-const vtpmAppImageTag = "1.1"
-
 // tpmGetRandomScript consumes the application's TPM with tpm2-tools: it asks
 // the TPM for 8 random bytes and prints them as "RAND=<hex>", which the test
 // parses. The device check up front tells a missing vTPM (domainmgr booted
@@ -85,8 +78,9 @@ fi
 //
 // Network model
 // -------------
-//   - netmodels.SingleEthWithDHCP -- controller reachability and Docker Hub
-//     egress for the app image.
+//   - netmodels.SingleEthWithDHCP -- controller reachability. The app image
+//     is served from evetest's own OCI registry, so no Internet egress is
+//     required.
 //
 // Phases
 // ------
@@ -144,18 +138,18 @@ func TestAppVTPM(test *testing.T) {
 		NetworkUUID:   eth0Net,
 		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
 	})
+
 	niUUID := addLocalNI(devConfig)
 	appUUID := devConfig.AddApplication(evetest.ApplicationInstanceConfig{
 		DisplayName: "vtpm-test-app",
 		Activate:    true,
-		// The app image carries tpm2-tools (evetest-ubuntu-ctr:1.1).
 		Image: evetest.DockerContainer{
 			ImageName: ubuntuCtrImage,
-			Tag:       vtpmAppImageTag,
+			Tag:       ubuntuCtrTag,
 		},
 		VirtualizationMode: eveconfig.VmMode_HVM,
 		CPUs:               1,
-		MemoryBytes:        512 * evetest.MB,
+		MemoryBytes:        512 * evetest.MiB,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
 				LogicalLabel:        "vif0",

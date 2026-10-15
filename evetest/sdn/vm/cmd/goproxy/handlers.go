@@ -141,7 +141,11 @@ func isConnect(req *http.Request, ctx *goproxy.ProxyCtx) bool {
 func nonProxyHandler(proxy *goproxy.ProxyHttpServer) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		if req.Host == "" {
-			fmt.Fprintln(w, "Cannot handle requests without Host header, e.g., HTTP 1.0")
+			_, err := fmt.Fprintln(
+				w, "Cannot handle requests without Host header, e.g., HTTP 1.0")
+			if err != nil {
+				log.Warnf("Failed to write response: %v", err)
+			}
 			return
 		}
 		req.URL.Scheme = "http"

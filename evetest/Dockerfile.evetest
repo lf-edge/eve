@@ -2,10 +2,18 @@
 
 # Input arguments
 ARG EVETEST_VERSION=dev
-ARG ALPINE_VERSION=3.21
-ARG GOLANG_VERSION=1.25
+# The Alpine release also selects the Go toolchain. Docker Hub builds each
+# golang:<go>-alpine<n> image only while Alpine n is among the two newest
+# releases; afterwards it stays at the last Go it got, and the golang images
+# set GOTOOLCHAIN=local, so go cannot fetch a newer toolchain on its own.
+# alpine3.21 froze at Go 1.25.5, below the 1.25.9 that the go.mod of
+# eve-tools/bpftrace-compiler has required since dded2ea8c1 (tests build
+# the compiler in this image, see tests/apps/pciaccess_helpers_test.go),
+# and alpine3.22 froze at 1.26.4. See README.md for the qemu side of the pin.
+ARG ALPINE_VERSION=3.24
+ARG GOLANG_VERSION=1.26
 ARG EVETEST_ADAM_REPO=lfedge/adam
-ARG EVETEST_ADAM_VERSION=0.0.75
+ARG EVETEST_ADAM_VERSION=0.0.85
 
 ###########################
 # Pull adam binary stage
@@ -66,10 +74,16 @@ ENV GOFLAGS="-mod=readonly"
 # hadolint ignore=DL3018
 RUN apk add --no-cache iptables dnsmasq radvd swtpm
 
-# Install QEMU
+# Install QEMU. qemu-img also provides qemu-io/qemu-nbd; mtools provides mcopy,
+# used together to assemble a device's config partition and write it into a
+# template-backed disk image (see Dockerfile.broker). sgdisk relocates the backup
+# GPT after a disk is grown -- without it the added space is not usable.
 # hadolint ignore=DL3018
 RUN apk add --no-cache \
     qemu \
+    qemu-img \
+    sgdisk \
+    mtools \
     qemu-system-x86_64 \
     qemu-system-aarch64
 
@@ -77,6 +91,22 @@ RUN apk add --no-cache \
 # hadolint ignore=DL3018
 RUN apk add --no-cache bash inetutils-telnet tcpdump \
                        strace busybox-extras socat openssh-client
+
+# Install nmap for tests/portscan, which scans devices from the network side.
+# hadolint ignore=DL3018
+RUN apk add --no-cache nmap nmap-scripts
+
+# Install what eve-tools/bpftrace-compiler needs when a test compiles a
+# bpftrace script for the device's kernel (see
+# tests/apps/pciaccess_helpers_test.go): linuxkit drives docker (through
+# the mounted socket) and git to build the compile VM's image.
+# hadolint ignore=DL3018
+RUN apk add --no-cache docker-cli docker-cli-buildx git
+
+# Install tmux, which shows the instances of a multi-test run ("evetest run")
+# side by side in one terminal.
+# hadolint ignore=DL3018
+RUN apk add --no-cache tmux
 
 # Pull adam binary
 COPY --from=adam /bin/adam /usr/local/bin/adam

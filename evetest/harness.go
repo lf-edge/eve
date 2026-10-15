@@ -7,24 +7,30 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"fmt"
 	"io"
+	"math/big"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
 	"time"
 
+	evecerts "github.com/lf-edge/eve-api/go/certs"
 	eveinfo "github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/evetest/constants"
 	"github.com/lf-edge/eve/evetest/controller"
 	api "github.com/lf-edge/eve/evetest/grpcapi/go"
+	"github.com/lf-edge/eve/evetest/instances"
 	"github.com/lf-edge/eve/evetest/logger"
 	"github.com/lf-edge/eve/evetest/utils"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
@@ -45,25 +51,48 @@ const (
 	// all resources associated with the client.
 	brokerCloseTimeout = time.Minute
 
-	// Timeout for the broker to build an EVE VM image.
-	brokerBuildImageTimeout = 5 * time.Minute
+	// Interval between KeepAlive pings sent to the broker. This is what keeps
+	// the underlying gRPC connection from going idle -- some network paths
+	// between the evetest container and a remote broker (e.g. NAT/firewalls)
+	// silently drop a TCP connection that's been quiet for less than a
+	// minute, even mid-RPC (surfacing later as a "connection reset by peer" on
+	// whichever call/stream tries to use it next). Kept well under that.
+	brokerKeepAlivePingInterval = 15 * time.Second
+
+	// brokerBuildImageTimeout bounds a BuildImage call. It covers not only this
+	// client's own image build but also waiting for another client's in-flight
+	// build of a shared EVE image template, so it is deliberately generous.
+	brokerBuildImageTimeout = 20 * time.Minute
 
 	// Timeout for uploading an EVE Docker image to the broker.
 	brokerPushEVEImageTimeout = 10 * time.Minute
 
 	// Timeout for the broker to set up requested devices.
-	// This includes starting the SDN VM and waiting for it to acquire
-	// IP addresses via DHCP.
-	brokerSetupDevicesTimeout = 5 * time.Minute
+	// This includes building a disk image for every requested EVE device
+	// (with the libvirt provider, a multi-device cluster can spend well over
+	// a minute per device on this alone), starting the SDN VM and waiting
+	// for it to acquire IP addresses via DHCP.
+	brokerSetupDevicesTimeout = 15 * time.Minute
 
 	// Timeout for powering on an EVE VM (not for waiting for it to boot).
-	brokerPowerOnEVEDeviceTimeout = 20 * time.Second
+	brokerPowerOnEVEDeviceTimeout = time.Minute
+
+	// Timeout for powering off an EVE VM. The broker RPC blocks until the
+	// provider confirms the VM is stopped, so this must accommodate a
+	// graceful ACPI-less hard power-off, not just issuing the request.
+	brokerPowerOffEVEDeviceTimeout = time.Minute
+	// Editing a disk rewrites megabytes through qemu-img/qemu-io on a
+	// possibly busy host, so it gets more room than a power operation.
+	brokerEditDeviceDiskTimeout = 5 * time.Minute
+	// brokerExecuteQMPTimeout bounds one QMP command, including the SSH and QMP
+	// connection setup the proxmox provider may have to do first.
+	brokerExecuteQMPTimeout = time.Minute
+	// brokerScratchImageTimeout bounds creating or deleting a scratch image,
+	// which on proxmox uploads up to 1 GiB to the PVE host.
+	brokerScratchImageTimeout = 5 * time.Minute
 
 	// Timeout for triggering an EVE VM reboot (not for waiting for it to boot).
-	brokerRebootEVEDeviceTimeout = 20 * time.Second
-
-	// Timeout for the broker to tear-down all devices.
-	brokerTeardownDevicesTimeout = time.Minute
+	brokerRebootEVEDeviceTimeout = time.Minute
 
 	// Timeout for retrieving the full console output for a single EVE device.
 	brokerGetConsoleOutputTimeout = 30 * time.Second
@@ -77,11 +106,22 @@ const (
 	// Timeout for a device to fetch the latest configuration from Adam.
 	deviceApplyConfigTimeout = 2 * time.Minute
 
+	// Timeout for a device to pick up a rotated controller certificate: notice
+	// the changed controllercert_confighash in a config response, refetch /certs
+	// and republish ControllerCert. Generous because a single failed fetch is
+	// never re-triggered by config and recovery then falls to zedagent's
+	// post-failure retry, which waits shortTime=120s.
+	deviceCertRefetchTimeout = 5 * time.Minute
+
+	// Polling interval while waiting for a controller certificate to appear on
+	// a device.
+	deviceCertPollInterval = 5 * time.Second
+
 	// Timeout for a device to be removed from the Adam controller.
 	deviceRemoveTimeout = 20 * time.Second
 
 	// Timeout for EVE device to perform reboot.
-	deviceRebootTimeout = 3 * time.Minute
+	deviceRebootTimeout = 5 * time.Minute
 
 	// Timeout for establishing a connection to the SDN gRPC service.
 	sdnConnectTimeout = 5 * time.Minute
@@ -117,6 +157,12 @@ const (
 	// to finish quickly.
 	quickSSHCommandTimeout = 5 * time.Second
 
+	// Timeout for flushing the device's filesystem caches
+	// (see EdgeDevice.SyncDisks). Far more generous than a quick SSH command:
+	// a sync issued right after an app's image layers were unpacked has tens
+	// of megabytes of dirty pages to write back.
+	syncDisksTimeout = time.Minute
+
 	// Timeout for file transfers from the EVE device initiated by tests
 	// (see EdgeDevice.ReadFile).
 	// These transfers are expected to involve reasonably sized files, not
@@ -125,7 +171,14 @@ const (
 	fileTransferTimeout = time.Minute
 
 	// If download progress does not advance for this long, WaitUntilAppIsRunning fails.
-	downloadStalledTimeout = time.Minute
+	// downloadStalledTimeout bounds how long an app may sit in
+	// DOWNLOAD_STARTED without any observable progress. Generous on purpose:
+	// for a container-registry pull EVE reports 0/0 bytes throughout (the
+	// downloader's resp.Progress() carries no size for OCI blobs), so the only
+	// liveness signals the controller ever sees are volume state changes and
+	// the occasional per-blob update. A minute here failed healthy pulls of
+	// images that were still downloading minutes later.
+	downloadStalledTimeout = 5 * time.Minute
 
 	// Timeout for pulling an EVE docker image and extracting its rootfs.
 	eveImagePullTimeout = 15 * time.Minute
@@ -133,12 +186,32 @@ const (
 	// Timeout for an EVE device to complete an OS upgrade (download, install, reboot,
 	// complete the testing period, and mark the new partition as active).
 	eveUpgradeTimeout = 20 * time.Minute
+
+	// staleImageCacheRetention is how long an img-cache-* directory is kept
+	// before being swept as stale (see removeStaleImageCacheDirs). Each
+	// harness process gets its own such directory, created in Init and
+	// removed in Close; a container killed before Close runs (SIGKILL,
+	// `docker stop` without a graceful shutdown) skips that cleanup and
+	// leaks it otherwise. A generous margin over any realistic single test
+	// or suite run, so it never races a run still legitimately in progress
+	// under a different img-cache dir.
+	staleImageCacheRetention = 3 * 24 * time.Hour
 )
 
 const (
 	controllerIntfName = "controller"
 	imgServerIntfName  = "img-server"
 	imgServerPort      = 80
+	// imgServerSFTPPort is the default SFTP port (22), matching the port
+	// SFTPStorage assumes when ServerPort is left unset.
+	imgServerSFTPPort = 22
+	// imgServerHTTPSPort is the default HTTPS port (443), matching the port
+	// HTTPStorage assumes when UseHTTPS is set and ServerPort is left unset.
+	imgServerHTTPSPort = 443
+	// imgServerTFTPPort is the standard TFTP port (69). Unlike the other
+	// image server ports, this one is not just a convention: TFTP clients
+	// (PXE ROMs, iPXE) always use port 69, it is not configurable via DHCP.
+	imgServerTFTPPort = 69
 
 	sdnTunName = "sdn-tun"
 	sdnTunMTU  = 1500
@@ -178,10 +251,11 @@ const (
 type TestHarness struct {
 	api.UnimplementedEvetestServer
 
-	t         *T
-	log       *logrus.Logger
-	userLog   *logrus.Logger
-	brokerLog *logrus.Logger
+	t           *T
+	log         *logrus.Logger
+	userLog     *logrus.Logger
+	brokerLog   *logrus.Logger
+	colorOutput bool
 
 	artifactDir string
 
@@ -195,6 +269,16 @@ type TestHarness struct {
 	test  testState
 	suite *testSuiteState // nil if running a single test
 
+	// ipv6OnlyRegistryMirrors is set for the currently running test from its
+	// RequireIPv6OnlyRegistryMirrors requirement (or false if not declared;
+	// reset on every Setup() call so it never leaks into the next test).
+	ipv6OnlyRegistryMirrors bool
+
+	// skipRegistryMirrors is set for the currently running test from its
+	// RequireDirectRegistryPulls requirement (or false if not declared;
+	// reset on every Setup() call so it never leaks into the next test).
+	skipRegistryMirrors bool
+
 	// Go routines management
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -203,10 +287,18 @@ type TestHarness struct {
 	// gRPC server
 	grpcServer *grpc.Server
 	listener   net.Listener
+	// unregisterInstance removes this instance from the CLI-visible registry.
+	unregisterInstance func()
 
 	// CA
 	caCert *x509.Certificate
 	caKey  *rsa.PrivateKey
+
+	// Onboarding certificate shared by every CreateFromScratchWithNetworkBoot
+	// device in the current Setup() call (see prepareEVEDeviceForOnboarding).
+	// Reset at the start of each non-reused Setup() call.
+	netbootOnboardCert *x509.Certificate
+	netbootOnboardKey  *ecdsa.PrivateKey
 
 	// Broker
 	brokerInContainer    bool
@@ -214,14 +306,31 @@ type TestHarness struct {
 	brokerClient         api.BrokerClient
 	brokerClientID       string
 	brokerSupportedArchs []api.ArchType
+	brokerCapabilities   []api.Capability
 
 	// Controller
 	adamClient   *controller.AdamClient
 	adamStatusCh chan controller.AdamState
+	// controllerFaults tells whether the controller runs behind the fault
+	// injecting proxy; resolved once by Init, see InitOption.
+	controllerFaults bool
 
 	// Image server (HTTP file server serving EVE and app images).
 	imgServerListener net.Listener
 	imgServerDir      string // temp dir under $HOME/.evetest; removed in Close()
+
+	// SFTP listener serving the same imgServerDir as an alternate download
+	// transport (see DsType_DsSFTP / SFTPStorage).
+	sftpServerListener net.Listener
+
+	// HTTPS listener serving the same imgServerDir as the plain HTTP image
+	// server, over TLS with a certificate signed by the harness's own CA
+	// (see DsType_DsHttps / HTTPStorage.UseHTTPS, GetCACertPEM).
+	imgServerTLSListener net.Listener
+
+	// TFTP listener serving the same imgServerDir, for devices network-booting
+	// via iPXE/PXE (see DHCP.netboot_server_ip).
+	tftpServerConn net.PacketConn
 
 	// SDN
 	sdnConn   *grpc.ClientConn
@@ -251,9 +360,20 @@ type TestHarness struct {
 	pausedAtCheckpoint string
 	pauseOnFailure     bool
 	pausedOnFailure    string
+	// hasPausedOnFailure: has the current test already paused once on
+	// failure (see T.fail)? Reset per test/subtest by Init.
+	hasPausedOnFailure bool
 	resume             chan struct{}
 	exitCh             chan struct{}
 	sigCh              chan os.Signal
+
+	// prevTestFailed records whether the most recently completed test in the
+	// same suite failed (or panicked). maybeReuseDevices consults and clears
+	// it: a failed test may have left devices in a broken state that matching
+	// requirements alone cannot detect (e.g. a botched network reconfiguration
+	// or a wedged cluster join), so the next test must not reuse them even
+	// though it would otherwise be eligible to.
+	prevTestFailed bool
 }
 
 // testState contains per-test execution state, including parameter
@@ -261,6 +381,11 @@ type TestHarness struct {
 type testState struct {
 	// name is the name of the currently executing test or variant.
 	name string
+
+	// parentName is the underlying test function name (TestCase.Test in
+	// RunTestSuite) a suite subtest variant was derived from; empty when
+	// not running as a suite subtest.
+	parentName string
 
 	// paramDefs are the parameter definitions available to the test.
 	paramDefs []TestParameterDefinition
@@ -292,18 +417,28 @@ type testSuiteState struct {
 }
 
 type deviceState struct {
-	name         string
-	requirement  RequireEdgeDevice
-	imageRef     *api.ImageRef
-	imageName    string
-	spec         *api.EVEDevice
-	ID           uuid.UUID
-	onboardCert  *x509.Certificate
-	onboardKey   *ecdsa.PrivateKey
-	ecdhCert     *x509.Certificate
-	serial       string
-	config       *EdgeDeviceConfig
-	consoleInUse bool
+	name        string
+	requirement RequireEdgeDevice
+	imageRef    *api.ImageRef
+	imageName   string
+	// liveImage is set only when EVETEST_EVE_LIVE_IMAGE selects a locally
+	// built live.qcow2 in place of an EVE container image.
+	liveImage *api.LiveImageRef
+	// liveImageSource accompanies liveImage with the paths behind it, so a
+	// broker sharing this filesystem installs the template by reading them
+	// instead of taking an upload of bytes it can already see.
+	liveImageSource *api.LocalLiveImageSource
+	spec            *api.EVEDevice
+	ID              uuid.UUID
+	onboardCert     *x509.Certificate
+	onboardKey      *ecdsa.PrivateKey
+	ecdhCert        *x509.Certificate
+	serial          string
+	config          *EdgeDeviceConfig
+	consoleInUse    bool
+	// usbPorts assigns the ports of the hubs and drives the USB hot-plug
+	// helpers plug into the device; guarded by TestHarness.devicesM.
+	usbPorts usbPortAllocator
 
 	unsubscribeInfo    func()
 	unsubscribeReq     func()
@@ -333,12 +468,20 @@ type deviceState struct {
 	configAppliedCond *sync.Cond
 
 	// Reboot detection.
+	// lastRestartCounter is the most recently observed ZInfoDevice.RestartCounter,
+	// and haveRestartCounter whether any observation has arrived yet.
 	// lastBootTime is the most recently observed BootTime from ZInfoDevice messages.
 	// rebootCount is incremented by processDeviceStateEvents on each observed reboot.
 	// expectedRebootCount is incremented by RequestReboot, SoftReboot, HardReboot, etc.
+	lastRestartCounter  uint32
+	haveRestartCounter  bool
 	lastBootTime        time.Time
 	rebootCount         int
 	expectedRebootCount int
+	// rebootAccountingOff suppresses the teardown reboot-count check for a
+	// device whose reboots cannot be counted reliably, with the reason.
+	rebootAccountingOff       bool
+	rebootAccountingOffReason string
 
 	// wasUpgraded is set to true once UpgradeEVE has applied an upgrade config.
 	// Upgraded devices must not be reused across tests.
@@ -357,10 +500,61 @@ func getTestHarness() *TestHarness {
 	return _globalTH
 }
 
+// removeStaleImageCacheDirs removes img-cache-* directories under
+// imgCacheParent whose mtime is older than staleImageCacheRetention -- ones a
+// prior harness process left behind by being killed before its own Close()
+// could remove its img-cache dir. A directory's mtime advances every time a
+// file is added inside it (i.e. every download served during that run), so an
+// abandoned one simply stops advancing at whenever that run ended.
+// Best-effort: failures only leave a stale directory for the next attempt.
+func removeStaleImageCacheDirs(log *logrus.Logger, imgCacheParent string) {
+	entries, err := os.ReadDir(imgCacheParent)
+	if err != nil {
+		return
+	}
+	cutoff := time.Now().Add(-staleImageCacheRetention)
+	for _, e := range entries {
+		if !e.IsDir() || !strings.HasPrefix(e.Name(), "img-cache-") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil || info.ModTime().After(cutoff) {
+			continue
+		}
+		path := filepath.Join(imgCacheParent, e.Name())
+		if err := os.RemoveAll(path); err != nil {
+			log.Warnf("Failed to remove stale image cache dir %q: %v", path, err)
+			continue
+		}
+		log.Infof("Removed stale image cache dir %q (older than %s)",
+			path, staleImageCacheRetention)
+	}
+}
+
+// prefixColor returns the given log-prefix color when colorized output is
+// enabled, PrefixColorNone otherwise.
+func (th *TestHarness) prefixColor(c logger.PrefixColor) logger.PrefixColor {
+	if th.colorOutput {
+		return c
+	}
+	return logger.PrefixColorNone
+}
+
+// InitOption customizes how Init sets up the test harness.
+type InitOption func(*initOptions)
+
+type initOptions struct {
+	controllerFaults bool
+}
+
 // Init initializes the test harness and must be called exactly once per test.
 // When used inside a test suite, Init may be called multiple times, once per
 // test case, but only a single harness instance will be created.
-func Init(t *testing.T) *T {
+//
+// Options only take effect for the Init call that creates the harness: a test
+// that may run standalone passes the options it needs, and inside a suite the
+// ones given to the suite's own Init apply.
+func Init(t *testing.T, opts ...InitOption) *T {
 	if _globalTH != nil {
 		// Test harness already exists, meaning this test is likely running as part
 		// of a test suite.
@@ -373,24 +567,66 @@ func Init(t *testing.T) *T {
 		default:
 		}
 
+		// Every exit below unlocks testM first, because T.fail takes it too.
 		th.testM.Lock()
-		defer th.testM.Unlock()
 		if th.test.initialized {
+			th.testM.Unlock()
 			th.t.Fatalf("Multiple Init calls detected")
 		}
+
+		if matched, skip := matchedSkipName(th.test.name, th.test.parentName); skip {
+			t.Skipf("Skipping %q: listed in %s%s", matched,
+				constants.EnvPrefix, constants.SkipEnv)
+		}
+
+		// EVETEST_RESTART_ONLY_FAILED: when running as part of a test suite
+		// (never for a standalone test, since that never reaches this branch),
+		// skip this subtest if it already passed in a previous run of the same
+		// suite. There is no public API to make a test PASS without actually
+		// returning from it, so the subtest is reported as SKIP rather than PASS;
+		// that does not count as a failure for RunTestSuite's own bookkeeping either.
+		if th.suite != nil {
+			if passedAt, ok := th.previouslyPassedAt(th.suite.name, th.test.name); ok {
+				th.testM.Unlock()
+				t.Skipf(restartOnlyFailedSkipMsgTmpl,
+					th.suite.name+"/"+th.test.name, passedAt)
+			}
+		}
+
 		th.test.artifactDir = filepath.Join(th.artifactDir, th.test.name)
 		if err := os.MkdirAll(th.test.artifactDir, 0o755); err != nil {
+			th.testM.Unlock()
 			th.t.Fatalf("failed to create directory for test artifacts: %v", err)
 		}
 		th.test.failedCh = make(chan struct{})
+		th.checkpointM.Lock()
+		th.hasPausedOnFailure = false
+		th.checkpointM.Unlock()
 		th.test.initialized = true
 		th.t = &T{T: t, th: th}
+		th.testM.Unlock()
 		return th.t
 	}
 
 	constants.InitViperConfig()
+
+	// Init is called directly from a TestXxx function, so this is a
+	// standalone test's or suite's own name (a suite subtest's own
+	// variant name is matched in the th.suite != nil branch above instead).
+	testName := utils.FuncNameFromStackTrace(2)
+	if matched, skip := matchedSkipName(testName); skip {
+		t.Skipf("Skipping %q: listed in %s%s", matched,
+			constants.EnvPrefix, constants.SkipEnv)
+	}
+
+	var initOpts initOptions
+	for _, opt := range opts {
+		opt(&initOpts)
+	}
+
 	th := &TestHarness{}
 	_globalTH = th
+	th.controllerFaults = resolveControllerFaults(initOpts.controllerFaults)
 	th.t = &T{T: t, th: th}
 	th.ctx, th.cancel = context.WithCancel(context.Background())
 	th.artifactDir = viper.GetString(constants.InternalArtifactDirEnv)
@@ -404,13 +640,13 @@ func Init(t *testing.T) *T {
 	signal.Notify(th.sigCh, syscall.SIGTERM, syscall.SIGINT)
 
 	// Set the test name to the calling test function name.
-	// Init is expected to be called directly from a TestXxx function.
-	th.test.name = utils.FuncNameFromStackTrace(2)
+	th.test.name = testName
 	th.test.artifactDir = th.artifactDir
 	if err := os.MkdirAll(th.test.artifactDir, 0o755); err != nil {
 		th.t.Fatalf("failed to create directory for test artifacts: %v", err)
 	}
 	th.test.failedCh = make(chan struct{})
+	th.hasPausedOnFailure = false // th isn't shared with other goroutines yet
 	th.test.initialized = true
 
 	// Setup logging
@@ -419,16 +655,17 @@ func Init(t *testing.T) *T {
 	if err != nil {
 		th.t.Fatalf("Failed to parse log level %q: %v", logLevelStr, err)
 	}
+	th.colorOutput = viper.GetBool(constants.ColorOutputEnv)
 	th.log = logrus.New()
 	th.log.SetFormatter(&logger.PrefixedFormatter{
 		Prefix: "HARNESS ",
-		Color:  logger.PrefixColorBlue,
+		Color:  th.prefixColor(logger.PrefixColorBlue),
 	})
 	th.log.SetLevel(logLevel)
 	th.userLog = logrus.New()
 	th.userLog.SetFormatter(&logger.PrefixedFormatter{
 		Prefix: "TEST    ",
-		Color:  logger.PrefixColorCyan,
+		Color:  th.prefixColor(logger.PrefixColorCyan),
 	})
 	th.userLog.SetLevel(logLevel)
 
@@ -436,7 +673,7 @@ func Init(t *testing.T) *T {
 	th.brokerLog = logrus.New()
 	th.brokerLog.SetFormatter(&logger.PrefixedFormatter{
 		Prefix: "BROKER  ",
-		Color:  logger.PrefixColorPurple,
+		Color:  th.prefixColor(logger.PrefixColorPurple),
 	})
 	th.brokerLog.SetLevel(logLevel)
 
@@ -489,6 +726,17 @@ func Init(t *testing.T) *T {
 	th.listener = listener
 
 	th.log.Infof("Evetest gRPC server listening on %s", listenAddr)
+	// Make the instance discoverable by the evetest CLI without it having to
+	// know the API port.
+	th.unregisterInstance, err = instances.Register(instances.Instance{
+		Name:        viper.GetString(constants.TestNameEnv),
+		Port:        port,
+		Container:   viper.GetString(constants.ContainerNameEnv),
+		ArtifactDir: th.artifactDir,
+	})
+	if err != nil {
+		th.log.Warnf("failed to register the evetest instance: %v", err)
+	}
 	th.wg.Add(1)
 	go func() {
 		defer th.wg.Done()
@@ -515,6 +763,9 @@ func Init(t *testing.T) *T {
 	th.adamClient = controller.NewAdamClient(
 		adamLog, th.artifactDir, GetControllerHostname(),
 		adamIPs, GetControllerPort(), th.caCert, th.caKey, th.adamStatusCh)
+	if th.controllerFaults {
+		th.adamClient.EnableFaultInjection()
+	}
 	err = th.adamClient.Start()
 	if err != nil {
 		th.t.Fatalf("Failed to start Adam controller: %v", err)
@@ -529,6 +780,7 @@ func Init(t *testing.T) *T {
 	// host), which is bind-mounted at the same path inside the container so that
 	// Docker bind-mounts issued via RunDockerCommand resolve correctly on the host.
 	imgCacheParent := viper.GetString(constants.HomeDirEnv)
+	removeStaleImageCacheDirs(th.log, imgCacheParent)
 	if err = os.MkdirAll(imgCacheParent, 0755); err != nil {
 		th.t.Fatalf("failed to create image cache parent dir: %v", err)
 	}
@@ -543,17 +795,86 @@ func Init(t *testing.T) *T {
 	if err != nil {
 		th.t.Fatalf("failed to create image server interface: %v", err)
 	}
+	imgServerMux := http.NewServeMux()
+	// Registered before the file-serving "/" handler: EVE and app images
+	// never happen to be named "v2", so the two handlers never collide, and
+	// this lets EVE (or evetest itself) pull/push OCI content without it
+	// having to already exist in a real, reachable registry (see
+	// PushDockerImageToLocalRegistry).
+	imgServerMux.Handle("/v2/", newLocalRegistryHandler(th.imgServerDir, th.log))
+	imgServerMux.Handle("/", http.FileServer(http.Dir(th.imgServerDir)))
+
 	imgListenAddr := net.JoinHostPort(imgServerIPv4.String(), strconv.Itoa(imgServerPort))
 	th.imgServerListener, err = net.Listen("tcp", imgListenAddr)
 	if err != nil {
 		th.t.Fatalf("failed to listen on image server address %s: %v", imgListenAddr, err)
 	}
 	go func() {
-		mux := http.NewServeMux()
-		mux.Handle("/", http.FileServer(http.Dir(th.imgServerDir)))
-		_ = http.Serve(th.imgServerListener, mux)
+		_ = http.Serve(th.imgServerListener, imgServerMux)
 	}()
 	th.log.Infof("Image server listening on http://%s/ (serving %s)", imgListenAddr, th.imgServerDir)
+
+	// Start an HTTPS listener on the same interface and directory, using a
+	// certificate signed by the harness's own CA (see GetCACertPEM) -- an
+	// alternate download transport for tests that exercise DsType_DsHttps
+	// (see HTTPStorage.UseHTTPS).
+	imgServerCert, imgServerKey, err := utils.GenServerCertElliptic(
+		th.caCert, th.caKey, big.NewInt(3), []net.IP{imgServerIPv4}, nil,
+		"evetest image server")
+	if err != nil {
+		th.t.Fatalf("failed to generate image server TLS certificate: %v", err)
+	}
+	imgServerTLSConfig := &tls.Config{
+		Certificates: []tls.Certificate{{
+			Certificate: [][]byte{imgServerCert.Raw},
+			PrivateKey:  imgServerKey,
+		}},
+	}
+	imgServerHTTPSAddr := net.JoinHostPort(
+		imgServerIPv4.String(), strconv.Itoa(imgServerHTTPSPort))
+	th.imgServerTLSListener, err = tls.Listen("tcp", imgServerHTTPSAddr, imgServerTLSConfig)
+	if err != nil {
+		th.t.Fatalf("failed to listen on image server HTTPS address %s: %v",
+			imgServerHTTPSAddr, err)
+	}
+	go func() {
+		_ = http.Serve(th.imgServerTLSListener, imgServerMux)
+	}()
+	th.log.Infof("Image server listening on https://%s/ (serving %s)",
+		imgServerHTTPSAddr, th.imgServerDir)
+	th.log.Infof("OCI registry listening on https://%s/v2/ (serving %s)",
+		imgServerHTTPSAddr, th.imgServerDir)
+
+	// Start an SFTP server on the same image-server interface, serving the
+	// same directory, as an alternate download transport for tests that
+	// exercise DsType_DsSFTP (see SFTPStorage).
+	sftpListenAddr := net.JoinHostPort(imgServerIPv4.String(), strconv.Itoa(imgServerSFTPPort))
+	th.sftpServerListener, err = net.Listen("tcp", sftpListenAddr)
+	if err != nil {
+		th.t.Fatalf("failed to listen on SFTP server address %s: %v", sftpListenAddr, err)
+	}
+	go th.runSFTPServer(th.sftpServerListener, th.imgServerDir)
+	th.log.Infof("SFTP server listening on sftp://%s/ (serving %s)", sftpListenAddr, th.imgServerDir)
+
+	// Start a TFTP server on the same image-server interface, serving the
+	// same directory, for devices network-booting via iPXE/PXE (see
+	// DHCP.netboot_server_ip). TFTP always uses port 69 -- unlike the
+	// other image-server ports, this is not a convention devices could be
+	// told to use otherwise, real PXE ROMs/iPXE hardcode it.
+	tftpListenAddr := net.JoinHostPort(imgServerIPv4.String(), strconv.Itoa(imgServerTFTPPort))
+	tftpUDPAddr, err := net.ResolveUDPAddr("udp", tftpListenAddr)
+	if err != nil {
+		th.t.Fatalf("failed to resolve TFTP server address %s: %v", tftpListenAddr, err)
+	}
+	th.tftpServerConn, err = net.ListenUDP("udp", tftpUDPAddr)
+	if err != nil {
+		th.t.Fatalf("failed to listen on TFTP server address %s: %v", tftpListenAddr, err)
+	}
+	tftpServer := th.newImgServerTFTPServer()
+	go func() {
+		_ = tftpServer.Serve(th.tftpServerConn)
+	}()
+	th.log.Infof("TFTP server listening on udp://%s/ (serving %s)", tftpListenAddr, th.imgServerDir)
 
 	// Create broker client.
 	brokerAddr := viper.GetString(constants.BrokerAddressEnv)
@@ -582,9 +903,27 @@ func Init(t *testing.T) *T {
 	}
 	th.brokerClientID = connectResp.ClientId
 	th.brokerSupportedArchs = connectResp.SupportedArchs
-	th.log.Infof("Connected to broker at %s (client_id=%s, version=%s, archs=%v)",
+	th.brokerCapabilities = connectResp.ProviderCapabilities
+	th.log.Infof("Connected to broker at %s (client_id=%s, version=%s, archs=%v, capabilities=%v)",
 		brokerAddr, th.brokerClientID, connectResp.BrokerVersion,
-		th.brokerSupportedArchs)
+		th.brokerSupportedArchs, th.brokerCapabilities)
+
+	// Apply broker-provided OCI registry mirrors, unless the user already
+	// set the corresponding REGISTRY_MIRROR_* env var on this container.
+	for _, m := range connectResp.RegistryMirrors {
+		envVar, ok := constants.RegistryMirrorEnvVar(m.Registry)
+		if !ok {
+			continue
+		}
+		if os.Getenv(constants.EnvPrefix+envVar) != "" {
+			th.log.Debugf("Ignoring broker-provided registry mirror for %s: "+
+				"%s is already set", m.Registry, envVar)
+			continue
+		}
+		urls := strings.Join(m.Urls, ",")
+		viper.Set(envVar, urls)
+		th.log.Infof("Applied broker-provided registry mirror for %s: %s", m.Registry, urls)
+	}
 
 	// Run broker keep-alive stream.
 	th.wg.Add(1)
@@ -610,6 +949,13 @@ func Init(t *testing.T) *T {
 func Close() {
 	panicErr := recover()
 	th := getTestHarness()
+
+	// Record whether this test failed so the next test's maybeReuseDevices
+	// (called from within the next Setup()) knows not to reuse devices that
+	// may have been left in a broken state.
+	if !th.test.executedTestSuite {
+		th.prevTestFailed = th.t.Failed() || panicErr != nil
+	}
 
 	// Unsubscribe any Watch* subscriptions that the test forgot to stop.
 	th.devicesM.Lock()
@@ -677,6 +1023,10 @@ func Close() {
 	}
 	th.wg.Wait()
 
+	if th.unregisterInstance != nil {
+		th.unregisterInstance()
+	}
+
 	// Close the gRPC listener.
 	if th.listener != nil {
 		_ = th.listener.Close()
@@ -698,10 +1048,29 @@ func Close() {
 		th.log.Infof("Closed broker connection")
 	}
 
-	// Stop the image server and remove its cache directory.
+	// Stop the SFTP server.
+	if th.sftpServerListener != nil {
+		if err := th.sftpServerListener.Close(); err != nil {
+			th.log.Warnf("Failed to close SFTP server listener: %v", err)
+		}
+	}
+
+	// Stop the TFTP server.
+	if th.tftpServerConn != nil {
+		if err := th.tftpServerConn.Close(); err != nil {
+			th.log.Warnf("Failed to close TFTP server connection: %v", err)
+		}
+	}
+
+	// Stop the image server (HTTP and HTTPS) and remove its cache directory.
 	if th.imgServerListener != nil {
 		if err := th.imgServerListener.Close(); err != nil {
 			th.log.Warnf("Failed to close image server listener: %v", err)
+		}
+	}
+	if th.imgServerTLSListener != nil {
+		if err := th.imgServerTLSListener.Close(); err != nil {
+			th.log.Warnf("Failed to close image server HTTPS listener: %v", err)
 		}
 	}
 	if th.imgServerDir != "" {
@@ -753,9 +1122,25 @@ func Logger() *logrus.Logger {
 // SDN virtual machines, establish connectivity to the SDN gRPC service using
 // a broker-proxied IP-over-TCP tunnel, and apply the requested network model.
 //
-// When Setup returns successfully, all requirements are satisfied and the
-// EVE device(s) is/are powered on and onboarded into the controller. Any failure
-// during setup results in the test being failed or skipped.
+// requireCapabilities skips the current test if the active device provider
+// (as advertised by the broker at connect time) does not support all of the
+// given capabilities. Duplicate and unspecified entries are ignored.
+func (th *TestHarness) requireCapabilities(required []api.Capability) {
+	for _, cap := range required {
+		if cap == api.Capability_CAPABILITY_UNSPECIFIED {
+			continue
+		}
+		if !generics.ContainsItem(th.brokerCapabilities, cap) {
+			th.t.Skipf("the active device provider does not support required "+
+				"capability %s", cap)
+		}
+	}
+}
+
+// Setup processes the given requirements. When it returns successfully, all
+// requirements are satisfied and the EVE device(s) is/are powered on and
+// onboarded into the controller. Any failure during setup results in the
+// test being failed or skipped.
 func Setup(requirements ...Requirement) {
 	th := getTestHarness()
 	defer th.log.Infof("Setup complete")
@@ -764,6 +1149,9 @@ func Setup(requirements ...Requirement) {
 	edgeDevReqs := make(map[string]RequireEdgeDevice) // key: device name
 	var netModel *api.NetworkModel
 	var internetReq *RequireInternetConnectivity
+	var requiredCaps []api.Capability
+	th.ipv6OnlyRegistryMirrors = false
+	th.skipRegistryMirrors = false
 
 	for _, requirement := range requirements {
 		switch req := requirement.(type) {
@@ -772,14 +1160,27 @@ func Setup(requirements ...Requirement) {
 				th.t.Fatalf("Duplicate edge device name: %s", req.Name)
 			}
 			edgeDevReqs[req.Name] = req
+			// A device that requires a TPM needs a provider able to attach one.
+			if req.WithTPM {
+				requiredCaps = append(requiredCaps, api.Capability_CAPABILITY_TPM)
+			}
 		case RequireNetworkModel:
 			netModel = proto.CloneOf(req.NetworkModel)
 		case RequireInternetConnectivity:
 			internetReq = &req
+		case RequireCapabilities:
+			requiredCaps = append(requiredCaps, req.Capabilities...)
+		case RequireDirectRegistryPulls:
+			th.skipRegistryMirrors = true
+		case RequireIPv6OnlyRegistryMirrors:
+			th.ipv6OnlyRegistryMirrors = true
 		default:
 			th.t.Fatalf("Unsupported requirement: %T", req)
 		}
 	}
+
+	// Skip the test if the active provider does not advertise a required capability.
+	th.requireCapabilities(requiredCaps)
 
 	// Validate edge device requirement.
 	if len(edgeDevReqs) == 0 {
@@ -813,6 +1214,13 @@ func Setup(requirements ...Requirement) {
 				for name := range edgeDevReqs {
 					port.EveDeviceName = name
 				}
+			}
+			if _, requested := edgeDevReqs[port.GetEveDeviceName()]; !requested {
+				th.t.Fatalf(
+					"Network model port %q references device %q, which was not "+
+						"requested for this test; the network model must match "+
+						"the requested devices exactly",
+					port.LogicalLabel, port.GetEveDeviceName())
 			}
 			if port.GetSdnMacAddress() == "" {
 				mac := utils.GenerateMAC(constants.SDNDeviceName, port.LogicalLabel)
@@ -856,15 +1264,29 @@ func Setup(requirements ...Requirement) {
 	}
 
 	// Setup EVE devices.
+	th.netbootOnboardCert = nil
+	th.netbootOnboardKey = nil
+	var netbootRefDev *deviceState
 	devices := make(map[string]*deviceState)
-	withIPv6 := internetReq != nil && internetReq.RequireIPv6
 	for devName, devReq := range edgeDevReqs {
 		devState := &deviceState{name: devName, requirement: devReq}
 		devices[devName] = devState
 		th.prepareEVEDeviceForOnboarding(devState)
 		th.prepareImageForEVEDevice(devState)
+		if devReq.DeviceReusePolicy == CreateFromScratchWithNetworkBoot {
+			// All netboot devices share one artifact bundle (see
+			// buildNetbootArtifacts' doc comment), so it only needs to be
+			// built once, for a representative device; every other netboot
+			// device must request the same EVE image/config.
+			if netbootRefDev == nil {
+				netbootRefDev = devState
+				th.buildNetbootArtifacts(devState)
+			} else {
+				th.verifyNetbootDeviceMatches(netbootRefDev, devState)
+			}
+		}
 	}
-	sdnUplinkIPs := th.setupEVEDevices(devices, netModel, withIPv6)
+	sdnUplinkIPs := th.setupEVEDevices(devices, netModel)
 	th.devicesM.Lock()
 	th.devices = devices
 	th.devicesM.Unlock()
@@ -961,17 +1383,21 @@ func Checkpoint(name string) {
 	if name == "" {
 		th.t.Fatalf("missing checkpoint name")
 	}
+	// Log the reached checkpoint on behalf of the test using the test logger.
+	Logger().Infof("Reached checkpoint %q", name)
 	th.checkpointM.Lock()
 	shouldPause := th.pauseAtCheckpoint == name
 	if shouldPause {
 		th.pausedAtCheckpoint = name
 	}
+	// Captured under lock: Continue swaps th.resume on release.
+	resumeCh := th.resume
 	th.checkpointM.Unlock()
 
 	if shouldPause {
 		th.log.Infof("Paused at checkpoint %q", name)
 		select {
-		case <-th.resume:
+		case <-resumeCh:
 			th.log.Infof("Resumed after checkpoint %q", name)
 		case sig := <-th.sigCh:
 			th.t.Fatalf("Received signal %v while paused at checkpoint %q", sig, name)
@@ -1041,13 +1467,202 @@ func UpdateNetworkModel(netModel *api.NetworkModel) {
 	th.log.Info("Successfully applied the new network model")
 }
 
-// ChangeSigningCert replaces the controller signing certificate
-// with the provided one.
-func ChangeSigningCert(newSignCertPEM string) error {
+// RotateControllerSigningCert rotates the certificate and private key with which
+// the controller signs the AuthContainer that wraps every API response.
+//
+// Nothing has to be re-encrypted and no configuration has to be pushed: evetest
+// always derives cipher contexts from the controller's ECDH certificate, never
+// from the signing certificate (see encryptCipherData), so object-level
+// encryption is untouched. Use RotateControllerEncryptCert for that.
+//
+// Unlike RotateControllerEncryptCert this does not wait for the device to pick
+// the new certificate up; the caller decides what to wait for.
+//
+// Adam is deliberately not restarted: it re-reads the signing certificate and key
+// from disk on every request, whereas a restart would regenerate all keypairs and
+// undo the rotation.
+func RotateControllerSigningCert() {
 	th := getTestHarness()
-	// TODO
-	th.t.Fatalf("ChangeSigningCert is not implemented")
-	return nil
+	newPair, oldPair, err := th.adamClient.RotateSigningKeyPair()
+	if err != nil {
+		th.t.Fatalf("Failed to rotate the controller signing certificate: %v", err)
+	}
+	th.log.Infof("Rotated the controller signing certificate (serial %s -> %s)",
+		oldPair.Cert.SerialNumber, newPair.Cert.SerialNumber)
+}
+
+// RotateControllerEncryptCert rotates the controller's ECDH certificate and
+// private key -- the material every evetest cipher context is derived from --
+// and migrates the deployed configuration onto it: for every onboarded device it
+// registers a cipher context derived from the new certificate, re-encrypts every
+// cipher block from the retired context to the new one, and re-applies the
+// configuration.
+//
+// Pass the EdgeDeviceConfig builders the test still holds, and pass the ones it
+// has been applying: configurations are pushed as they are, and EVE config is
+// declarative, so a builder that is a subset of what the device has deployed
+// silently un-deploys the difference. A builder left out keeps blocks encrypted
+// against the retired certificate; a device with no builder given has its
+// harness-held configuration migrated instead, and only if it holds cipher blocks.
+//
+// Ordering is load-bearing: install the certificates, wait for the device to
+// publish the new one, only then push. Reversed, the device parses a cipher
+// context for a certificate it does not have yet and takes a failed decrypt plus
+// domainmgr's 30s retry. The wait is on EVE's ControllerCert publication because
+// the /certs refetch is only triggered asynchronously, by
+// controllercert_confighash (Adam >= 0.0.81), and a fetch that fails is not
+// re-triggered. The push is required even though nothing else changed: zedagent
+// skips re-parsing cipher contexts while the hash over the set is unchanged.
+//
+// Not safe to call while devices are still being set up: it mutates the
+// harness-held configuration, which ApplyConfig also reads outside devicesM.
+func RotateControllerEncryptCert(deviceConfigs ...*EdgeDeviceConfig) {
+	th := getTestHarness()
+
+	configByDevice := make(map[string]*EdgeDeviceConfig, len(deviceConfigs))
+	for _, config := range deviceConfigs {
+		if config == nil {
+			continue
+		}
+		configByDevice[config.GetDeviceName()] = config
+	}
+	th.devicesM.Lock()
+	for devName := range configByDevice {
+		if _, found := th.devices[devName]; !found {
+			th.devicesM.Unlock()
+			th.t.Fatalf("RotateControllerEncryptCert was given a configuration "+
+				"for unknown device %q", devName)
+		}
+	}
+	th.devicesM.Unlock()
+
+	// Snapshot the devices to migrate; crypto and HTTP below must not run with
+	// devicesM held. A device the caller did not pass a builder for is only
+	// migrated if its harness-held config actually contains cipher blocks:
+	// otherwise it would get a cipher context it has no use for, and the resulting
+	// config push would flip zedagent's cipher-context-set hash and force a
+	// pointless re-parse of its app, network and datastore config. Devices whose
+	// builder was passed explicitly are always processed, so a caller can force a
+	// push. Sorted by name to keep the order of pushes deterministic.
+	type rotationTarget struct {
+		devName     string
+		devECDHCert *x509.Certificate
+		config      *EdgeDeviceConfig
+	}
+	var targets []rotationTarget
+	var onboarded []string
+	th.devicesM.Lock()
+	for devName, devState := range th.devices {
+		if devState.ID == NilUUID {
+			continue
+		}
+		onboarded = append(onboarded, devName)
+		if devState.ecdhCert == nil {
+			continue
+		}
+		config, explicit := configByDevice[devName]
+		if !explicit {
+			config = devState.config
+			if config == nil || !hasCipherBlocks(config.EdgeDevConfig) {
+				continue
+			}
+		}
+		targets = append(targets, rotationTarget{
+			devName:     devName,
+			devECDHCert: devState.ecdhCert,
+			config:      config,
+		})
+	}
+	th.devicesM.Unlock()
+	sort.Slice(targets, func(i, j int) bool {
+		return targets[i].devName < targets[j].devName
+	})
+	sort.Strings(onboarded)
+
+	newPair, oldPair, err := th.adamClient.RotateECDHKeyPair()
+	if err != nil {
+		th.t.Fatalf("Failed to rotate the controller ECDH certificate: %v", err)
+	}
+	th.log.Infof("Rotated the controller ECDH certificate (serial %s -> %s)",
+		oldPair.Cert.SerialNumber, newPair.Cert.SerialNumber)
+
+	// Every onboarded device is waited for, not just the ones being migrated: a
+	// device skipped for having nothing encrypted still holds only the retired
+	// certificate when this returns, so a later ApplyConfig that does introduce a
+	// cipher block would reference a certificate the device does not have yet.
+	for _, devName := range onboarded {
+		GetEdgeDevice(devName).WaitUntilHasControllerCert(
+			evecerts.ZCertType_CERT_TYPE_CONTROLLER_ECDH_EXCHANGE,
+			utils.CertToPEM(newPair.Cert), deviceCertRefetchTimeout)
+	}
+
+	for _, target := range targets {
+		oldCryptoCfg, err := utils.NewCryptoConfig(
+			target.devECDHCert, oldPair.Cert, oldPair.Key)
+		if err != nil {
+			th.t.Fatalf("Failed to create crypto config for the retired "+
+				"controller ECDH certificate (device %q): %v", target.devName, err)
+		}
+		newCryptoCfg, err := utils.NewCryptoConfig(
+			target.devECDHCert, newPair.Cert, newPair.Key)
+		if err != nil {
+			th.t.Fatalf("Failed to create crypto config for the new "+
+				"controller ECDH certificate (device %q): %v", target.devName, err)
+		}
+		cipherCtx, err := utils.CreateCipherCtx(newCryptoCfg)
+		if err != nil {
+			th.t.Fatalf("Failed to create cipher context for device %q: %v",
+				target.devName, err)
+		}
+		cipherCtx, err = th.addCipherCtxToDevice(target.devName, cipherCtx)
+		if err != nil {
+			th.t.Fatalf("Failed to add cipher context to device %q: %v",
+				target.devName, err)
+		}
+
+		// Under devicesM: on the implicit path target.config *is* the harness-held
+		// config, which readers holding the lock (GetEVEConfig, getConfig) must not
+		// observe half-migrated. Only the re-encryption is covered -- it is
+		// CPU-only, whereas the push below does I/O and waits on the device.
+		th.devicesM.Lock()
+		err = reEncryptCipherBlocks(
+			target.config.EdgeDevConfig, oldCryptoCfg, newCryptoCfg, cipherCtx)
+		th.devicesM.Unlock()
+		if err != nil {
+			th.t.Fatalf("Failed to re-encrypt configuration of device %q: %v",
+				target.devName, err)
+		}
+		GetEdgeDevice(target.devName).ApplyConfig(target.config, true, true)
+		th.log.Infof("Device %q configuration migrated to the new controller "+
+			"ECDH certificate", target.devName)
+	}
+}
+
+// GetControllerSigningCertPEM returns the PEM encoding of the certificate the
+// controller currently uses to sign API responses (see
+// RotateControllerSigningCert). The device receives the same certificate via
+// /certs as CERT_TYPE_CONTROLLER_SIGNING.
+func GetControllerSigningCertPEM() []byte {
+	th := getTestHarness()
+	cert, _ := th.adamClient.GetSigningCertAndKey()
+	if cert == nil {
+		th.t.Fatalf("The controller signing certificate is not available yet; " +
+			"the controller has not been started")
+	}
+	return utils.CertToPEM(cert)
+}
+
+// GetControllerEncryptCertPEM returns the PEM encoding of the controller's
+// current ECDH certificate (see RotateControllerEncryptCert). The device receives
+// the same certificate via /certs as CERT_TYPE_CONTROLLER_ECDH_EXCHANGE.
+func GetControllerEncryptCertPEM() []byte {
+	th := getTestHarness()
+	cert, _ := th.adamClient.GetECDHCertAndKey()
+	if cert == nil {
+		th.t.Fatalf("The controller ECDH certificate is not available yet; " +
+			"the controller has not been started")
+	}
+	return utils.CertToPEM(cert)
 }
 
 // GetControllerHostname returns the controller hostname (stored inside /config/server)
@@ -1079,6 +1694,28 @@ func GetImageServerIPv4() net.IP {
 // GetImageServerPort returns the port of the HTTP image server.
 func GetImageServerPort() uint16 {
 	return imgServerPort
+}
+
+// GetImageServerSFTPPort returns the port of the SFTP server that serves the
+// same directory as the HTTP image server (see DefaultSFTPUsername/Password).
+func GetImageServerSFTPPort() uint16 {
+	return imgServerSFTPPort
+}
+
+// GetImageServerHTTPSPort returns the port of the HTTPS listener that serves
+// the same directory as the HTTP image server (see GetCACertPEM for the CA
+// certificate trusting it).
+func GetImageServerHTTPSPort() uint16 {
+	return imgServerHTTPSPort
+}
+
+// GetCACertPEM returns the PEM encoding of the harness's own CA certificate
+// -- the one that signed the image server's HTTPS certificate (see
+// GetImageServerHTTPSPort). Pass it via HTTPStorage.HTTPSTrustedCACertsPEM
+// to trust downloads from the built-in image server over HTTPS.
+func GetCACertPEM() []byte {
+	th := getTestHarness()
+	return utils.CertToPEM(th.caCert)
 }
 
 // GetSrcIPv4ForInternetAccess returns the first non-link-local IPv4 address
@@ -1178,7 +1815,7 @@ func (th *TestHarness) runBrokerKeepAlive() {
 		return
 	}
 
-	ticker := time.NewTicker(time.Minute)
+	ticker := time.NewTicker(brokerKeepAlivePingInterval)
 	defer ticker.Stop()
 
 	// Loop to send periodic pings and receive pongs

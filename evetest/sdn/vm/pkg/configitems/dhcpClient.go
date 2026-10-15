@@ -120,7 +120,6 @@ func (c *DhcpClientConfigurator) Create(ctx context.Context, item depgraph.Item)
 		}
 		log.Debugf("dhcpcd for interface %s is running", ifName)
 		done(nil)
-		return
 	}()
 	return nil
 }
@@ -196,7 +195,6 @@ func (c *DhcpClientConfigurator) Delete(ctx context.Context, item depgraph.Item)
 			ifName, time.Since(startTime))
 		log.Error(err)
 		done(err)
-		return
 	}()
 	return nil
 }

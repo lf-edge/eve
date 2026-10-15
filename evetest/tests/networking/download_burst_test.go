@@ -242,7 +242,7 @@ func TestDownloadBurstWithDeadMgmtPorts(test *testing.T) {
 
 	// Phase 2: deploy all content trees against a datastore path that does
 	// not exist, so that every download fails fast and parks in error.
-	const fileSize = 256 * evetest.KB
+	const fileSize = 256 * evetest.KiB
 	trees := make([]burstTree, 0, parallelDownloads)
 	treeUUIDs := make([]uuid.UUID, 0, parallelDownloads)
 	for i := range parallelDownloads {

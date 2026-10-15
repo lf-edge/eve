@@ -13,33 +13,63 @@ import (
 
 	eveconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve-api/go/evecommon"
-	eveinfo "github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/evetest"
-	"github.com/lf-edge/eve/evetest/matchers"
+	api "github.com/lf-edge/eve/evetest/grpcapi/go"
 	"github.com/lf-edge/eve/evetest/netmodels"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"google.golang.org/protobuf/proto"
 )
 
-func clusterDeviceRequirements(devName string, withTPM bool) evetest.RequireEdgeDevice {
+const netbootParamKey = "NETBOOT"
+
+var netbootParam = evetest.TestParameterDefinition{
+	Key:          netbootParamKey,
+	DefaultValue: false,
+	Description: evetest.TestParameterDescription{
+		Summary: "Install EVE over the network via iPXE instead of using a local live image",
+		Default: "false",
+	},
+}
+
+func clusterDeviceRequirements(devName string, withTPM bool,
+	filesystem evetest.Filesystem, netboot bool) evetest.RequireEdgeDevice {
+	reusePolicy := evetest.ResetDeviceConfig
+	if netboot {
+		reusePolicy = evetest.CreateFromScratchWithNetworkBoot
+	}
 	return evetest.RequireEdgeDevice{
 		Name:           devName,
 		WithTPM:        withTPM,
 		WithHypervisor: evetest.HypervisorKubevirt,
-		// The eve-kvm default (28576 MB) is too small for eve-k: system pods
-		// (k3s, KubeVirt, CDI, Longhorn) collectively fill the disk enough to
-		// trigger the "DiskPressure" node condition and cause pod evictions.
-		MinDiskSizeInMB: 36864,
 		// We want to test cluster creation.
-		DeviceReusePolicy: evetest.CreateFromScratchWithLiveImage,
-		WithFilesystem:    evetest.FilesystemZFS,
-		WithGrubOptions: []string{
-			// Application performance is not a primary concern; instead, we focus
-			// on minimizing device onboarding time and accelerating cluster formation.
-			"set_global hv_dom0_cpu_settings \"dom0_max_vcpus=4\"",
-			"set_global hv_eve_cpu_settings \"eve_max_vcpus=3\"",
-			"set_global hv_ctrd_cpu_settings \"ctrd_max_vcpus=3\"",
-		},
+		DeviceReusePolicy: reusePolicy,
+		// Filesystem is configurable via the FILESYSTEM parameter and defaults
+		// to ext4. EVE-k formation is fsync-heavy (k3s/etcd WAL, Longhorn/CDI/
+		// KubeVirt image extraction); ZFS's synchronous ZIL commit adds enough
+		// fsync latency to crash-loop the in-process apiserver during the
+		// single->multi-node etcd transition, whereas ext4 stays healthy. Kept
+		// configurable because a lot of EVE-k behaves differently per filesystem.
+		WithFilesystem: filesystem,
+		// No grub CPU options: kube-init widens the EVE cpuset for the duration
+		// of the deploy and restores it on RUNNING (prereqs.WidenEVECPUs), so
+		// cluster formation no longer depends on the test raising eve_max_vcpus
+		// itself.
 	}
+}
+
+// clusterDeviceRequirementsForVMApp is clusterDeviceRequirements without the
+// vCPU caps above. Those caps constrain the eve/pillar and k3s-control-plane
+// cgroups (not Kubernetes pods, which kubelet places under the unconstrained
+// kubepods cgroup), so a real CDI disk import -- whose RolloutDiskToPVC calls
+// repeatedly hit that same constrained control plane while it is also doing
+// first-time Longhorn/CDI bring-up -- can starve and fail retries that never
+// hit a resource ceiling on a single, uncapped device. tests/apps/vnc_test.go
+// uploads this same image successfully with no such caps.
+func clusterDeviceRequirementsForVMApp(
+	devName string, withTPM bool, filesystem evetest.Filesystem) evetest.RequireEdgeDevice {
+	req := clusterDeviceRequirements(devName, withTPM, filesystem, false)
+	req.WithGrubOptions = nil
+	return req
 }
 
 // TestSingleNodeCluster verifies that an EVE-K device boots, forms a
@@ -56,9 +86,8 @@ func clusterDeviceRequirements(devName string, withTPM bool) evetest.RequireEdge
 // --------------------
 //   - clusterDeviceRequirements (top of this file): WithHypervisor=Kubevirt,
 //     DeviceReusePolicy=CreateFromScratchWithLiveImage (we want to test
-//     fresh cluster formation), MinRAMInMB=8192, MinCPUs=4,
-//     MinDiskSizeInMB=24576, WithFilesystem=ZFS, plus grub options that
-//     cap dom0/eve/ctrd vcpus so cluster formation onboarding is fast.
+//     fresh cluster formation), default ext4 (changeable via the FILESYSTEM
+//     parameter).
 //   - SystemAdapter on eth0 (DHCP, mgmt+app, NetworkType=V4Only).
 //   - One Local NI "local-ni" (10.11.12.0/24, EnableFlowlog=true) and one
 //     container app with default-allow + port-fwd 2222->22.
@@ -66,17 +95,18 @@ func clusterDeviceRequirements(devName string, withTPM bool) evetest.RequireEdge
 // Test parameters
 // ---------------
 //   - TPM (bool) via evetest.TPMParameter().
+//   - FILESYSTEM (ext4|zfs, defaults to ext4) via evetest.FilesystemParameter().
 //
 // Phases
 // ------
 //  1. setup-done -> initial-config-applied: apply the bare device config
-//     (no app yet) and start watching ClusterInfo.
-//  2. k3s-is-ready: ZInfoKubeCluster eventually reports a single node
-//     whose NodeReady condition is true AND
-//     Storage.Health=SERVICE_STATUS_HEALTHY. Then assert ClusterId is
-//     non-empty, the node is RoleServer + Schedulable, and that no
-//     EveApps / EveVmApps / PodNameSpaces have been created yet
-//     (clean-slate cluster, no workload).
+//     (no app yet).
+//  2. k3s-is-ready: device.WaitForClusterNodeIsReady waits until this
+//     device reports itself as a Ready node with healthy cluster storage.
+//     Then assert there is exactly one node, ClusterId is non-empty, the
+//     node is RoleServer + Schedulable, and that no EveApps / EveVmApps /
+//     PodNameSpaces have been created yet (clean-slate cluster, no
+//     workload).
 //  3. app-config-is-submitted: add the local NI + the container app to the
 //     config and re-apply.
 //  4. app-is-deployed: WaitUntilAppIsRunning (the helper tracks
@@ -100,14 +130,16 @@ func TestSingleNodeCluster(test *testing.T) {
 	// Define configurable parameters available for the test.
 	evetest.DefineTestParameters(
 		evetest.TPMParameter(),
+		evetest.FilesystemParameter(),
 	)
 
 	// Get parameter values set for this test execution.
 	withTPM := evetest.GetTPMParameterValue()
+	filesystem := evetest.GetFilesystemParameterValue()
 
 	// Set up the test harness and specify the test prerequisites.
 	devName := "edge-dev"
-	requiredDevice := clusterDeviceRequirements(devName, withTPM)
+	requiredDevice := clusterDeviceRequirements(devName, withTPM, filesystem, false)
 	requiredNetModel := evetest.RequireNetworkModel{
 		NetworkModel: netmodels.SingleEthWithDHCP,
 	}
@@ -129,31 +161,13 @@ func TestSingleNodeCluster(test *testing.T) {
 			Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
 		})
 	device := evetest.GetEdgeDevice(devName)
-	clusterUpdates, stopClusterWatch := device.WatchClusterInfo()
-	defer stopClusterWatch()
 	device.ApplyConfig(devConfig, true, true)
 	evetest.Checkpoint("initial-config-applied")
 
 	timeout := 20 * time.Minute
-	var clusterInfo *eveinfo.ZInfoKubeCluster
-	const nodeReadyCond = eveinfo.KubeNodeConditionType_KUBE_NODE_CONDITION_TYPE_READY
-	t.Eventually(clusterUpdates, timeout).Should(Receive(matchers.SatisfyPredicate(
-		"K3s is ready",
-		func(info *eveinfo.ZInfoKubeCluster) bool {
-			clusterInfo = info
-			if len(info.Nodes) != 1 {
-				return false
-			}
-			if clusterInfo.Storage.Health != eveinfo.ServiceStatus_SERVICE_STATUS_HEALTHY {
-				return false
-			}
-			for _, cond := range info.Nodes[0].GetConditions() {
-				if cond.GetType() == nodeReadyCond {
-					return cond.GetSet()
-				}
-			}
-			return false
-		})))
+	device.WaitForClusterNodeIsReady(timeout)
+	clusterInfo := device.GetClusterInfo()
+	t.Expect(clusterInfo.Nodes).To(HaveLen(1))
 	t.Expect(clusterInfo.ClusterId).NotTo(BeEmpty())
 	t.Expect(clusterInfo.Nodes[0].RoleServer).To(BeTrue())
 	t.Expect(clusterInfo.Nodes[0].Schedulable).To(BeTrue())
@@ -180,11 +194,11 @@ func TestSingleNodeCluster(test *testing.T) {
 		DisplayName: "container-app",
 		Activate:    true,
 		Image: evetest.DockerContainer{
-			ImageName: "milan4zededa/evetest-ubuntu-ctr",
+			ImageName: "lfedge/evetest-ubuntu-ctr",
 			Tag:       "1.0",
 		},
 		CPUs:        1,
-		MemoryBytes: 500 * evetest.MB,
+		MemoryBytes: 500 * evetest.MiB,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
 				LogicalLabel:        "vif0",
@@ -257,7 +271,7 @@ func TestSingleNodeCluster(test *testing.T) {
 // --------------------
 //   - Three RequireEdgeDevice entries built via clusterDeviceRequirements
 //     (same params as TestSingleNodeCluster: Kubevirt, fresh image,
-//     ZFS, 8 GB RAM, 4 vCPUs, vcpu-cap grub options).
+//     ext4 by default / configurable via FILESYSTEM, 8 GB RAM, 4 vCPUs).
 //   - ClusterConfig (evetest.NewEdgeClusterConfig) with three
 //     ClusterNode entries: each device gets a distinct ClusterIP from
 //     10.244.244.0/24 (.2, .3, .4) on ClusterInterface="ethernet1".
@@ -272,6 +286,10 @@ func TestSingleNodeCluster(test *testing.T) {
 // Test parameters
 // ---------------
 //   - TPM via evetest.TPMParameter().
+//   - FILESYSTEM (ext4|zfs, defaults to ext4) via evetest.FilesystemParameter().
+//   - NETBOOT (bool, defaults to false): when true, all three devices install
+//     EVE over the network via iPXE; requires CAPABILITY_NETBOOT and is skipped
+//     on providers that lack it.
 //
 // Phases
 // ------
@@ -279,7 +297,7 @@ func TestSingleNodeCluster(test *testing.T) {
 //     with a 30-min budget. K3s must form across the three nodes via the
 //     dedicated cluster network.
 //  2. app-config-is-submitted: add a Local NI + a container app
-//     (milan4zededa/evetest-ubuntu-ctr:1.0) as a
+//     (lfedge/evetest-ubuntu-ctr:1.0) as a
 //     ClusterApplicationInstanceConfig with
 //     DesignatedNodeName=devName[0] and Affinity=PREFERRED -- the
 //     scheduler should prefer node 1 but is allowed to pick a different
@@ -303,66 +321,19 @@ func TestThreeNodesCluster(test *testing.T) {
 	// Define configurable parameters available for the test.
 	evetest.DefineTestParameters(
 		evetest.TPMParameter(),
+		evetest.FilesystemParameter(),
+		netbootParam,
 	)
 
 	// Get parameter values set for this test execution.
 	withTPM := evetest.GetTPMParameterValue()
+	filesystem := evetest.GetFilesystemParameterValue()
+	netboot := evetest.GetTestParameter[bool](netbootParamKey)
 
-	// Set up the test harness and specify the test prerequisites.
-	var requiredDevices [3]evetest.Requirement
-	var devName [3]string
-	for i := 0; i < 3; i++ {
-		devName[i] = fmt.Sprintf("edge-dev%d", i+1)
-		requiredDevices[i] = clusterDeviceRequirements(devName[i], withTPM)
-	}
-
-	requiredNetModel := evetest.RequireNetworkModel{
-		NetworkModel: netmodels.SeparateClusterPort,
-	}
-	var requirements []evetest.Requirement
-	requirements = append(requirements, requiredDevices[:]...)
-	requirements = append(requirements, requiredNetModel)
-	evetest.Setup(requirements...)
+	devName := setupThreeNodes(withTPM, filesystem, netboot)
 	evetest.Checkpoint("setup-done")
 
-	// Build the cluster configuration.
-	var nodes [3]evetest.ClusterNode
-	for i := 0; i < 3; i++ {
-		clusterIP := evetest.IPAddressWithPrefix(fmt.Sprintf("10.244.244.%d/24", i+2))
-		nodes[i] = evetest.ClusterNode{
-			DevName:          devName[i],
-			ClusterIP:        clusterIP,
-			ClusterInterface: "ethernet1",
-			BootstrapNode:    i == 0,
-		}
-	}
-	clusterConfig := evetest.NewEdgeClusterConfig(
-		eveconfig.ClusterType_CLUSTER_TYPE_REPLICATED_STORAGE,
-		nodes[:]...,
-	)
-
-	// Configure network adapters and networks (applied to all devices).
-	dhcpNet := clusterConfig.AddNetwork(
-		evetest.DHCPNetworkConfig{
-			NetworkType: evecommon.NetworkType_V4Only,
-		})
-	noIPNet := clusterConfig.AddNetwork(evetest.NoIPNetworkConfig{})
-	clusterConfig.AddNetworkAdapter(
-		evetest.NetworkAdapterConfig{
-			LogicalLabel:  "ethernet0",
-			PhysicalLabel: "eth0",
-			InterfaceName: "eth0",
-			NetworkUUID:   dhcpNet,
-			Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
-		})
-	clusterConfig.AddNetworkAdapter(
-		evetest.NetworkAdapterConfig{
-			LogicalLabel:  "ethernet1",
-			PhysicalLabel: "eth1",
-			InterfaceName: "eth1",
-			NetworkUUID:   noIPNet,
-			Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageShared,
-		})
+	clusterConfig := newThreeNodeClusterConfig(devName)
 
 	// Apply the initial configuration to each device in parallel.
 	cluster := evetest.NewEdgeCluster("test-cluster")
@@ -391,11 +362,11 @@ func TestThreeNodesCluster(test *testing.T) {
 			DisplayName: "container-app",
 			Activate:    true,
 			Image: evetest.DockerContainer{
-				ImageName: "milan4zededa/evetest-ubuntu-ctr",
+				ImageName: "lfedge/evetest-ubuntu-ctr",
 				Tag:       "1.0",
 			},
 			CPUs:        1,
-			MemoryBytes: 500 * evetest.MB,
+			MemoryBytes: 500 * evetest.MiB,
 			NetworkAdapters: []evetest.AppNetworkAdapter{
 				evetest.VirtualNetworkAdapter{
 					LogicalLabel:        "vif0",
@@ -452,4 +423,86 @@ func TestThreeNodesCluster(test *testing.T) {
 		"curl -sS http://http-server.test/helloworld", sshTimeout, 0)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Expect(output).To(ContainSubstring("Hello world!"))
+}
+
+// setupThreeNodes sets up the three EVE-k devices and the
+// netmodels.SeparateClusterPort network model that TestThreeNodesCluster
+// describes, and returns the device names. Tests calling it with the same
+// arguments reuse the same devices.
+func setupThreeNodes(withTPM bool, filesystem evetest.Filesystem,
+	netboot bool) [3]string {
+	var requiredDevices [3]evetest.Requirement
+	var devName [3]string
+	for i := 0; i < 3; i++ {
+		devName[i] = fmt.Sprintf("edge-dev%d", i+1)
+		requiredDevices[i] = clusterDeviceRequirements(devName[i], withTPM, filesystem, netboot)
+	}
+
+	clusterNetModel := proto.Clone(netmodels.SeparateClusterPort(devName[:]...)).(*api.NetworkModel)
+	if netboot {
+		// Point the network's DHCP at evetest's own image server (see
+		// TestHarness.buildNetbootArtifacts).
+		clusterNetModel.Networks[0].Ipv4.Dhcp.NetbootServerIp =
+			evetest.GetImageServerIPv4().String()
+	}
+	requiredNetModel := evetest.RequireNetworkModel{
+		NetworkModel: clusterNetModel,
+	}
+	var requirements []evetest.Requirement
+	requirements = append(requirements, requiredDevices[:]...)
+	requirements = append(requirements, requiredNetModel)
+	if netboot {
+		// Skip on any provider that cannot configure a disk-first, network-fallback
+		// boot order for the device (see CAPABILITY_NETBOOT's doc comment).
+		requirements = append(requirements, evetest.RequireCapabilities{
+			Capabilities: []api.Capability{api.Capability_CAPABILITY_NETBOOT},
+		})
+	}
+	evetest.Setup(requirements...)
+	return devName
+}
+
+// newThreeNodeClusterConfig returns the replicated-storage cluster config
+// that TestThreeNodesCluster describes: node i gets ClusterIP
+// 10.244.244.<i+2> on ethernet1, node 1 bootstraps the cluster, and every
+// node has a DHCP mgmt+app port on eth0 and a no-IP shared port on eth1.
+func newThreeNodeClusterConfig(devName [3]string) *evetest.EdgeClusterConfig {
+	var nodes [3]evetest.ClusterNode
+	for i := 0; i < 3; i++ {
+		clusterIP := evetest.IPAddressWithPrefix(fmt.Sprintf("10.244.244.%d/24", i+2))
+		nodes[i] = evetest.ClusterNode{
+			DevName:          devName[i],
+			ClusterIP:        clusterIP,
+			ClusterInterface: "ethernet1",
+			BootstrapNode:    i == 0,
+		}
+	}
+	clusterConfig := evetest.NewEdgeClusterConfig(
+		eveconfig.ClusterType_CLUSTER_TYPE_REPLICATED_STORAGE,
+		nodes[:]...,
+	)
+
+	// Configure network adapters and networks (applied to all devices).
+	dhcpNet := clusterConfig.AddNetwork(
+		evetest.DHCPNetworkConfig{
+			NetworkType: evecommon.NetworkType_V4Only,
+		})
+	noIPNet := clusterConfig.AddNetwork(evetest.NoIPNetworkConfig{})
+	clusterConfig.AddNetworkAdapter(
+		evetest.NetworkAdapterConfig{
+			LogicalLabel:  "ethernet0",
+			PhysicalLabel: "eth0",
+			InterfaceName: "eth0",
+			NetworkUUID:   dhcpNet,
+			Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+		})
+	clusterConfig.AddNetworkAdapter(
+		evetest.NetworkAdapterConfig{
+			LogicalLabel:  "ethernet1",
+			PhysicalLabel: "eth1",
+			InterfaceName: "eth1",
+			NetworkUUID:   noIPNet,
+			Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageShared,
+		})
+	return clusterConfig
 }

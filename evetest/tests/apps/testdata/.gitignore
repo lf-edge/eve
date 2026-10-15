@@ -1,0 +1,3 @@
+# Compiled bpftrace scripts are specific to one EVE kernel; whoever compiles
+# one by hand next to its script must not commit it.
+*.aot
