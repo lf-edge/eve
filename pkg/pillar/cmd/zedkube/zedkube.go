@@ -142,10 +142,11 @@ type zedkube struct {
 	lastPublishedClusterIfName string
 	nodeuuid                   string
 	nodeName                   string
-	// statsElection arbitrates the stats collector, the node-prune sweep and
-	// isDecisionNode. appOpElection decides the one node allowed to act on
-	// an app whose designated node is down. elections is every election this
-	// agent runs, so that controller reachability drives all of them alike.
+	// statsElection arbitrates the stats collector and the node-prune sweep.
+	// appOpElection decides the one node allowed to act on an app whose
+	// designated node is down, isDecisionNode included. elections is every
+	// election this agent runs, so that controller reachability drives all
+	// of them alike.
 	statsElection *leaderElection
 	appOpElection *leaderElection
 	elections     []*leaderElection

@@ -20,13 +20,14 @@ import (
 
 const retryDelay = 5 * time.Minute
 
-// statsLeaseName is the lease the stats collector, the node-prune sweep and
-// isDecisionNode all arbitrate on. Pinned as a constant because a hand-typed
-// copy elsewhere would drift from it silently.
+// statsLeaseName is the lease the stats collector and the node-prune sweep
+// arbitrate on. Pinned as a constant because a hand-typed copy elsewhere would
+// drift from it silently.
 const statsLeaseName = "eve-kube-stats-leader"
 
 // appOpLeaseName is the lease that decides the one node allowed to act on an
-// app whose designated node is down. Pinned for the same reason.
+// app whose designated node is down, isDecisionNode included. Pinned for the
+// same reason.
 const appOpLeaseName = "eve-app-op"
 
 // leaderElection is one Kubernetes leader election: its lease, the two flags
@@ -127,7 +128,7 @@ func (z *zedkube) scheduleReEntry(e *leaderElection) time.Duration {
 }
 
 // isStatsLeader reports whether this node holds the stats lease. Readers are
-// kubestatscollect, prunenodes and isDecisionNode.
+// kubestatscollect, prunenodes, ninad and kubeappdns.
 func (z *zedkube) isStatsLeader() bool {
 	return z.statsElection.isLeader.Load()
 }
