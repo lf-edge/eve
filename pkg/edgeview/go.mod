@@ -7,7 +7,7 @@ toolchain go1.24.5
 require (
 	github.com/coreos/go-semver v0.3.1
 	github.com/fsnotify/fsnotify v1.7.0
-	github.com/gorilla/websocket v1.5.0
+	github.com/gorilla/websocket v1.5.3
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/lf-edge/eve-api/go v0.0.0-20260116205402-bac92fb1f235
 	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260325052340-21987cccd573

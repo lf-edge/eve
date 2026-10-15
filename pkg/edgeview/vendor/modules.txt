@@ -62,7 +62,7 @@ github.com/google/go-tpm/tpmutil/tbs
 ## explicit; go 1.12
 github.com/google/gofuzz
 github.com/google/gofuzz/bytesource
-# github.com/gorilla/websocket v1.5.0
+# github.com/gorilla/websocket v1.5.3
 ## explicit; go 1.12
 github.com/gorilla/websocket
 # github.com/grandcat/zeroconf v1.0.0
