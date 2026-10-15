@@ -34,7 +34,9 @@ jobs:
   test:
     needs: changes
     if: needs.changes.outputs.run == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: zededa-ubuntu-2204
+    env:
+      GH_REF: ${{ github.ref }}
     steps:
       - name: Starting Report
         run: |
@@ -54,6 +56,10 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Login to Docker Hub
+        if: ${{ github.event.repository.full_name == 'lf-edge/eve' }}
+        run: | # Runners must provide default credentials
+          docker login
       - name: Test
         run: |
           make test
