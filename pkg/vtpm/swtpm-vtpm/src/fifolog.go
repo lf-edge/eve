@@ -98,7 +98,7 @@ func (lf *logForwarder) run(ctx context.Context) {
 		// swtpm.
 		for {
 			if ctx.Err() != nil {
-				fifo.Close()
+				_ = fifo.Close()
 				return
 			}
 			_ = fifo.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
