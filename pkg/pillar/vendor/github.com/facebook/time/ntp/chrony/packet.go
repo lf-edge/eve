@@ -22,8 +22,6 @@ import (
 	"fmt"
 	"net"
 	"time"
-
-	log "github.com/sirupsen/logrus"
 )
 
 // original C++ versions of those consts/structs
@@ -78,20 +76,24 @@ const (
 	reqServerStats   CommandType = 54
 	reqNTPData       CommandType = 57
 	reqNTPSourceName CommandType = 65
+	reqSelectData    CommandType = 69
 )
 
 // reply types
 const (
-	rpyNSources      ReplyType = 2
-	rpySourceData    ReplyType = 3
-	rpyTracking      ReplyType = 5
-	rpySourceStats   ReplyType = 6
-	rpyActivity      ReplyType = 12
-	rpyServerStats   ReplyType = 14
-	rpyNTPData       ReplyType = 16
-	rpyNTPSourceName ReplyType = 19
-	rpyServerStats2  ReplyType = 22
-	rpyServerStats3  ReplyType = 24
+	RpyNSources      ReplyType = 2
+	RpySourceData    ReplyType = 3
+	RpyTracking      ReplyType = 5
+	RpySourceStats   ReplyType = 6
+	RpyActivity      ReplyType = 12
+	RpyServerStats   ReplyType = 14
+	RpyNTPData       ReplyType = 16
+	RpyNTPSourceName ReplyType = 19
+	RpyServerStats2  ReplyType = 22
+	RpySelectData    ReplyType = 23
+	RpyServerStats3  ReplyType = 24
+	RpyServerStats4  ReplyType = 25
+	RpyNTPData2      ReplyType = 26
 )
 
 // source modes
@@ -117,6 +119,14 @@ const (
 	FlagPrefer   uint16 = 0x2
 	FlagTrust    uint16 = 0x4
 	FlagRequire  uint16 = 0x8
+)
+
+// select data flags
+const (
+	FlagSDOptionNoSelect uint16 = 0x1
+	FlagSDOptionPrefer   uint16 = 0x2
+	FlagSDOptionTrust    uint16 = 0x4
+	FlagSDOptionRequire  uint16 = 0x8
 )
 
 // ntpdata flags
@@ -245,7 +255,7 @@ type RequestPacket interface {
 // ResponsePacket is an interface to abstract all different incoming packets
 type ResponsePacket interface {
 	GetCommand() CommandType
-	GetType() PacketType
+	GetType() ReplyType
 	GetStatus() ResponseStatusType
 }
 
@@ -269,7 +279,7 @@ type RequestSourceData struct {
 // As of now, it's only allowed by Chrony over unix socket connection.
 type RequestNTPData struct {
 	RequestHead
-	IPAddr ipAddr
+	IPAddr IPAddr
 	EOR    int32
 	// we pass at max ipv6 addr - 16 bytes
 	data [maxDataLen - 16]uint8
@@ -278,7 +288,7 @@ type RequestNTPData struct {
 // RequestNTPSourceName - packet to request source name for peer IP.
 type RequestNTPSourceName struct {
 	RequestHead
-	IPAddr ipAddr
+	IPAddr IPAddr
 	EOR    int32
 	// we pass at max ipv6 addr - 16 bytes
 	data [maxDataLen - 16]uint8
@@ -314,6 +324,15 @@ type RequestActivity struct {
 	data [maxDataLen]uint8
 }
 
+// RequestSelectData - packet to request 'selectdata' data
+type RequestSelectData struct {
+	RequestHead
+	Index int32
+	EOR   int32
+	// we pass i32 - 4 bytes
+	data [maxDataLen - 4]uint8
+}
+
 // ReplyHead is the first (common) part of the reply packet,
 // in a format that can be directly passed to binary.Read
 type ReplyHead struct {
@@ -338,8 +357,8 @@ func (r *ReplyHead) GetCommand() CommandType {
 }
 
 // GetType returns reply packet type
-func (r *ReplyHead) GetType() PacketType {
-	return r.PKTType
+func (r *ReplyHead) GetType() ReplyType {
+	return r.Reply
 }
 
 // GetStatus returns reply packet status
@@ -358,7 +377,7 @@ type ReplySources struct {
 }
 
 type replySourceDataContent struct {
-	IPAddr         ipAddr
+	IPAddr         IPAddr
 	Poll           int16
 	Stratum        uint16
 	State          SourceStateType
@@ -373,7 +392,7 @@ type replySourceDataContent struct {
 
 // SourceData contains parsed version of 'source data' reply
 type SourceData struct {
-	IPAddr         net.IP
+	IPAddr         *IPAddr
 	Poll           int16
 	Stratum        uint16
 	State          SourceStateType
@@ -388,7 +407,7 @@ type SourceData struct {
 
 func newSourceData(r *replySourceDataContent) *SourceData {
 	return &SourceData{
-		IPAddr:         r.IPAddr.ToNetIP(),
+		IPAddr:         &r.IPAddr,
 		Poll:           r.Poll,
 		Stratum:        r.Stratum,
 		State:          r.State,
@@ -410,7 +429,7 @@ type ReplySourceData struct {
 
 type replyTrackingContent struct {
 	RefID              uint32
-	IPAddr             ipAddr // our current sync source
+	IPAddr             IPAddr // our current sync source
 	Stratum            uint16
 	LeapStatus         uint16
 	RefTime            timeSpec
@@ -470,7 +489,7 @@ type ReplyTracking struct {
 
 type replySourceStatsContent struct {
 	RefID              uint32
-	IPAddr             ipAddr
+	IPAddr             IPAddr
 	NSamples           uint32
 	NRuns              uint32
 	SpanSeconds        uint32
@@ -484,7 +503,7 @@ type replySourceStatsContent struct {
 // SourceStats contains stats about the source
 type SourceStats struct {
 	RefID              uint32
-	IPAddr             net.IP
+	IPAddr             *IPAddr
 	NSamples           uint32
 	NRuns              uint32
 	SpanSeconds        uint32
@@ -498,7 +517,7 @@ type SourceStats struct {
 func newSourceStats(r *replySourceStatsContent) *SourceStats {
 	return &SourceStats{
 		RefID:              r.RefID,
-		IPAddr:             r.IPAddr.ToNetIP(),
+		IPAddr:             &r.IPAddr,
 		NSamples:           r.NSamples,
 		NRuns:              r.NRuns,
 		SpanSeconds:        r.SpanSeconds,
@@ -517,8 +536,8 @@ type ReplySourceStats struct {
 }
 
 type replyNTPDataContent struct {
-	RemoteAddr      ipAddr
-	LocalAddr       ipAddr
+	RemoteAddr      IPAddr
+	LocalAddr       IPAddr
 	RemotePort      uint16
 	Leap            uint8
 	Version         uint8
@@ -607,18 +626,109 @@ type ReplyNTPData struct {
 	NTPData
 }
 
+type replyNTPData2Content struct {
+	RemoteAddr      IPAddr
+	LocalAddr       IPAddr
+	RemotePort      uint16
+	Leap            uint8
+	Version         uint8
+	Mode            uint8
+	Stratum         uint8
+	Poll            int8
+	Precision       int8
+	RootDelay       chronyFloat
+	RootDispersion  chronyFloat
+	RefID           uint32
+	RefTime         timeSpec
+	Offset          chronyFloat
+	PeerDelay       chronyFloat
+	PeerDispersion  chronyFloat
+	ResponseTime    chronyFloat
+	JitterAsymmetry chronyFloat
+	Flags           uint16
+	TXTssChar       uint8
+	RXTssChar       uint8
+	TotalTXCount    uint32
+	TotalRXCount    uint32
+	TotalValidCount uint32
+	TotalKernelTXts uint32
+	TotalKernelRXts uint32
+	TotalHWTXts     uint32
+	TotalHWRXts     uint32
+	Reserved        [4]int32
+}
+
+// NTPData2 contains parsed version of a new 'ntpdata' reply
+type NTPData2 struct {
+	NTPData
+
+	TotalKernelTXts uint32
+	TotalKernelRXts uint32
+	TotalHWTXts     uint32
+	TotalHWRXts     uint32
+}
+
+func newNTPData2(r *replyNTPData2Content) *NTPData2 {
+	return &NTPData2{
+		NTPData: NTPData{
+			RemoteAddr:      r.RemoteAddr.ToNetIP(),
+			LocalAddr:       r.LocalAddr.ToNetIP(),
+			RemotePort:      r.RemotePort,
+			Leap:            r.Leap,
+			Version:         r.Version,
+			Mode:            r.Mode,
+			Stratum:         r.Stratum,
+			Poll:            r.Poll,
+			Precision:       r.Precision,
+			RootDelay:       r.RootDelay.ToFloat(),
+			RootDispersion:  r.RootDispersion.ToFloat(),
+			RefID:           r.RefID,
+			RefTime:         r.RefTime.ToTime(),
+			Offset:          r.Offset.ToFloat(),
+			PeerDelay:       r.PeerDelay.ToFloat(),
+			PeerDispersion:  r.PeerDispersion.ToFloat(),
+			ResponseTime:    r.ResponseTime.ToFloat(),
+			JitterAsymmetry: r.JitterAsymmetry.ToFloat(),
+			Flags:           r.Flags,
+			TXTssChar:       r.TXTssChar,
+			RXTssChar:       r.RXTssChar,
+			TotalTXCount:    r.TotalTXCount,
+			TotalRXCount:    r.TotalRXCount,
+			TotalValidCount: r.TotalValidCount,
+		},
+		TotalKernelTXts: r.TotalKernelTXts,
+		TotalKernelRXts: r.TotalKernelRXts,
+		TotalHWTXts:     r.TotalHWTXts,
+		TotalHWRXts:     r.TotalHWRXts,
+	}
+}
+
+// ReplyNTPData2 is a what end user will get in 'ntp data' response
+type ReplyNTPData2 struct {
+	ReplyHead
+	NTPData2
+}
+
 type replyNTPSourceNameContent struct {
 	Name [256]uint8
 }
 
 // NTPSourceName contains parsed version of 'sourcename' reply
 type NTPSourceName struct {
-	Name [256]uint8
+	Name string
 }
 
 func newNTPSourceName(r *replyNTPSourceNameContent) *NTPSourceName {
+	// Find the first null terminator to avoid reading garbage
+	nullIndex := bytes.IndexByte(r.Name[:], 0)
+	if nullIndex >= 0 {
+		return &NTPSourceName{
+			Name: string(r.Name[:nullIndex]),
+		}
+	}
+
 	return &NTPSourceName{
-		Name: r.Name,
+		Name: string(r.Name[:]),
 	}
 }
 
@@ -697,6 +807,85 @@ type ReplyServerStats3 struct {
 	ServerStats3
 }
 
+// ServerStats4 contains parsed version of 'serverstats4' reply
+type ServerStats4 struct {
+	NTPHits               uint64
+	NKEHits               uint64
+	CMDHits               uint64
+	NTPDrops              uint64
+	NKEDrops              uint64
+	CMDDrops              uint64
+	LogDrops              uint64
+	NTPAuthHits           uint64
+	NTPInterleavedHits    uint64
+	NTPTimestamps         uint64
+	NTPSpanSeconds        uint64
+	NTPDaemonRxtimestamps uint64
+	NTPDaemonTxtimestamps uint64
+	NTPKernelRxtimestamps uint64
+	NTPKernelTxtimestamps uint64
+	NTPHwRxTimestamps     uint64
+	NTPHwTxTimestamps     uint64
+}
+
+// ReplyServerStats4 is a usable version of 'serverstats4' response
+type ReplyServerStats4 struct {
+	ReplyHead
+	ServerStats4
+}
+
+type replySelectData struct {
+	RefID          uint32
+	IPAddr         IPAddr
+	StateChar      uint8
+	Authentication uint8
+	Leap           uint8
+	Pad            uint8
+	ConfOptions    uint16
+	EFFOptions     uint16
+	LastSampleAgo  uint32
+	Score          chronyFloat
+	LoLimit        chronyFloat
+	HiLimit        chronyFloat
+}
+
+// SelectData contains parsed version of 'selectdata' reply
+type SelectData struct {
+	RefID          uint32
+	IPAddr         net.IP
+	StateChar      uint8
+	Authentication uint8
+	Leap           uint8
+	ConfOptions    uint16
+	EFFOptions     uint16
+	LastSampleAgo  uint32
+	Score          float64
+	LoLimit        float64
+	HiLimit        float64
+}
+
+// ReplySelectData is a usable version of 'selectdata' response
+type ReplySelectData struct {
+	ReplyHead
+	SelectData
+}
+
+func newSelectData(r *replySelectData) *SelectData {
+	return &SelectData{
+		RefID:          r.RefID,
+		IPAddr:         r.IPAddr.ToNetIP(),
+		StateChar:      r.StateChar,
+		Authentication: r.Authentication,
+		Leap:           r.Leap,
+		ConfOptions:    r.ConfOptions,
+		EFFOptions:     r.EFFOptions,
+		LastSampleAgo:  r.LastSampleAgo,
+		Score:          r.Score.ToFloat(),
+		LoLimit:        r.LoLimit.ToFloat(),
+		HiLimit:        r.HiLimit.ToFloat(),
+	}
+}
+
 // here go request constructors
 
 // NewSourcesPacket creates new packet to request number of sources (peers)
@@ -750,27 +939,27 @@ func NewSourceDataPacket(sourceID int32) *RequestSourceData {
 }
 
 // NewNTPDataPacket creates new packet to request 'ntp data' information for given peer IP
-func NewNTPDataPacket(ip net.IP) *RequestNTPData {
+func NewNTPDataPacket(ip *IPAddr) *RequestNTPData {
 	return &RequestNTPData{
 		RequestHead: RequestHead{
 			Version: protoVersionNumber,
 			PKTType: pktTypeCmdRequest,
 			Command: reqNTPData,
 		},
-		IPAddr: *newIPAddr(ip),
+		IPAddr: *ip,
 		data:   [maxDataLen - 16]uint8{},
 	}
 }
 
 // NewNTPSourceNamePacket creates new packet to request 'source name' information for given peer IP
-func NewNTPSourceNamePacket(ip net.IP) *RequestNTPSourceName {
+func NewNTPSourceNamePacket(ip *IPAddr) *RequestNTPSourceName {
 	return &RequestNTPSourceName{
 		RequestHead: RequestHead{
 			Version: protoVersionNumber,
 			PKTType: pktTypeCmdRequest,
 			Command: reqNTPSourceName,
 		},
-		IPAddr: *newIPAddr(ip),
+		IPAddr: *ip,
 		data:   [maxDataLen - 16]uint8{},
 	}
 }
@@ -799,7 +988,49 @@ func NewActivityPacket() *RequestActivity {
 	}
 }
 
-// decodePacket decodes bytes to valid response packet
+// NewSelectDataPacket creates new packet to request 'selectdata' information
+func NewSelectDataPacket(sourceID int32) *RequestSelectData {
+	return &RequestSelectData{
+		RequestHead: RequestHead{
+			Version: protoVersionNumber,
+			PKTType: pktTypeCmdRequest,
+			Command: reqSelectData,
+		},
+		Index: sourceID,
+		data:  [maxDataLen - 4]uint8{},
+	}
+}
+
+// possible clock sources
+const (
+	ClockSourceUnspec     = "unspec"
+	ClockSourcePPS        = "pps"
+	ClockSourceLFRadio    = "lf_radio"
+	ClockSourceHFRadio    = "hf_radio"
+	ClockSourceUHFRadio   = "uhf_radio"
+	ClockSourceLocal      = "local"
+	ClockSourceNTP        = "ntp"
+	ClockSourceOther      = "other"
+	ClockSourceWristWatch = "wristwatch"
+	ClockSourceTelephone  = "telephone"
+)
+
+// ClockSourceDesc stores human-readable descriptions of ClockSource field
+var ClockSourceDesc = [10]string{
+	ClockSourceUnspec,     // 00
+	ClockSourcePPS,        // 01
+	ClockSourceLFRadio,    // 02
+	ClockSourceHFRadio,    // 03
+	ClockSourceUHFRadio,   // 04
+	ClockSourceLocal,      // 05
+	ClockSourceNTP,        // 06
+	ClockSourceOther,      // 07
+	ClockSourceWristWatch, // 08
+	ClockSourceTelephone,  // 09
+}
+
+// decodePacket decodes bytes to valid response packet.
+// an easy way to test this is to use 'testchrony' tool we have.
 func decodePacket(response []byte) (ResponsePacket, error) {
 	var err error
 	r := bytes.NewReader(response)
@@ -807,110 +1038,140 @@ func decodePacket(response []byte) (ResponsePacket, error) {
 	if err = binary.Read(r, binary.BigEndian, head); err != nil {
 		return nil, err
 	}
-	log.Debugf("response head: %+v", head)
+	Logger.Printf("response head: %+v", head)
 	if head.Status != sttSuccess {
 		return nil, fmt.Errorf("got status %s (%d)", head.Status, head.Status)
 	}
 	switch head.Reply {
-	case rpyNSources:
+	case RpyNSources:
 		data := new(replySourcesContent)
 		if err = binary.Read(r, binary.BigEndian, data); err != nil {
 			return nil, err
 		}
-		log.Debugf("response data: %+v", data)
+		Logger.Printf("response data: %+v", data)
 		return &ReplySources{
 			ReplyHead: *head,
 			NSources:  int(data.NSources),
 		}, nil
-	case rpySourceData:
+	case RpySourceData:
 		data := new(replySourceDataContent)
 		if err = binary.Read(r, binary.BigEndian, data); err != nil {
 			return nil, err
 		}
-		log.Debugf("response data: %+v", data)
+		Logger.Printf("response data: %+v", data)
 		return &ReplySourceData{
 			ReplyHead:  *head,
 			SourceData: *newSourceData(data),
 		}, nil
-	case rpyTracking:
+	case RpyTracking:
 		data := new(replyTrackingContent)
 		if err = binary.Read(r, binary.BigEndian, data); err != nil {
 			return nil, err
 		}
-		log.Debugf("response data: %+v", data)
+		Logger.Printf("response data: %+v", data)
 		return &ReplyTracking{
 			ReplyHead: *head,
 			Tracking:  *newTracking(data),
 		}, nil
-	case rpySourceStats:
+	case RpySourceStats:
 		data := new(replySourceStatsContent)
 		if err = binary.Read(r, binary.BigEndian, data); err != nil {
 			return nil, err
 		}
-		log.Debugf("response data: %+v", data)
+		Logger.Printf("response data: %+v", data)
 		return &ReplySourceStats{
 			ReplyHead:   *head,
 			SourceStats: *newSourceStats(data),
 		}, nil
-	case rpyActivity:
+	case RpyActivity:
 		data := new(Activity)
 		if err = binary.Read(r, binary.BigEndian, data); err != nil {
 			return nil, err
 		}
-		log.Debugf("response data: %+v", data)
+		Logger.Printf("response data: %+v", data)
 		return &ReplyActivity{
 			ReplyHead: *head,
 			Activity:  *data,
 		}, nil
-	case rpyServerStats:
+	case RpyServerStats:
 		data := new(ServerStats)
 		if err = binary.Read(r, binary.BigEndian, data); err != nil {
 			return nil, err
 		}
-		log.Debugf("response data: %+v", data)
+		Logger.Printf("response data: %+v", data)
 		return &ReplyServerStats{
 			ReplyHead:   *head,
 			ServerStats: *data,
 		}, nil
-	case rpyNTPData:
+	case RpyNTPData:
 		data := new(replyNTPDataContent)
 		if err = binary.Read(r, binary.BigEndian, data); err != nil {
 			return nil, err
 		}
-		log.Debugf("response data: %+v", data)
+		Logger.Printf("response data: %+v", data)
 		return &ReplyNTPData{
 			ReplyHead: *head,
 			NTPData:   *newNTPData(data),
 		}, nil
-	case rpyNTPSourceName:
+	case RpyNTPData2:
+		data := new(replyNTPData2Content)
+		if err = binary.Read(r, binary.BigEndian, data); err != nil {
+			return nil, err
+		}
+		Logger.Printf("response data: %+v", data)
+		return &ReplyNTPData2{
+			ReplyHead: *head,
+			NTPData2:  *newNTPData2(data),
+		}, nil
+	case RpyNTPSourceName:
 		data := new(replyNTPSourceNameContent)
 		if err = binary.Read(r, binary.BigEndian, data); err != nil {
 			return nil, err
 		}
-		log.Debugf("response data: %+v", data)
+		Logger.Printf("response data: %+v", data)
 		return &ReplyNTPSourceName{
 			ReplyHead:     *head,
 			NTPSourceName: *newNTPSourceName(data),
 		}, nil
-	case rpyServerStats2:
+	case RpyServerStats2:
 		data := new(ServerStats2)
 		if err = binary.Read(r, binary.BigEndian, data); err != nil {
 			return nil, err
 		}
-		log.Debugf("response data: %+v", data)
+		Logger.Printf("response data: %+v", data)
 		return &ReplyServerStats2{
 			ReplyHead:    *head,
 			ServerStats2: *data,
 		}, nil
-	case rpyServerStats3:
+	case RpyServerStats3:
 		data := new(ServerStats3)
 		if err = binary.Read(r, binary.BigEndian, data); err != nil {
 			return nil, err
 		}
-		log.Debugf("response data: %+v", data)
+		Logger.Printf("response data: %+v", data)
 		return &ReplyServerStats3{
 			ReplyHead:    *head,
 			ServerStats3: *data,
+		}, nil
+	case RpyServerStats4:
+		data := new(ServerStats4)
+		if err = binary.Read(r, binary.BigEndian, data); err != nil {
+			return nil, err
+		}
+		Logger.Printf("response data: %+v", data)
+		return &ReplyServerStats4{
+			ReplyHead:    *head,
+			ServerStats4: *data,
+		}, nil
+	case RpySelectData:
+		data := new(replySelectData)
+		if err = binary.Read(r, binary.BigEndian, data); err != nil {
+			return nil, err
+		}
+		Logger.Printf("response data: %+v", data)
+		return &ReplySelectData{
+			ReplyHead:  *head,
+			SelectData: *newSelectData(data),
 		}, nil
 	default:
 		return nil, fmt.Errorf("not implemented reply type %d from %+v", head.Reply, head)

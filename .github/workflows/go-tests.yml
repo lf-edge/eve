@@ -35,6 +35,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 1440
     steps:
       - name: Starting Report
         run: |
