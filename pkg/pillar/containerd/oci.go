@@ -304,6 +304,9 @@ func (s *ociSpec) CreateContainer(removeExisting bool) error {
 	defer done()
 
 	containerOpts := append(s.containerOpts, containerd.WithSpec(&s.Spec))
+	if opt := shimCgroupOpt(s.client.ctrdClient.Runtime(), HostMemoryCgroupRoot); opt != nil {
+		containerOpts = append(containerOpts, opt)
+	}
 
 	_, err := s.client.ctrdClient.NewContainer(ctrdCtx, s.name, containerOpts...)
 	// if container exists, is stopped and we are asked to remove existing - try that
