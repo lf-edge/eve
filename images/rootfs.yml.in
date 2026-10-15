@@ -13,7 +13,6 @@ init:
   - GRUB_TAG
   - FW_TAG
   - GPTTOOLS_TAG
-  - KEXEC_TAG
   - UDEV_TAG
   - XENTOOLS_TAG
 onboot:
@@ -29,9 +28,6 @@ onboot:
       - CAP_NET_ADMIN
   - name: storage-init
     image: STORAGE_INIT_TAG
-  # kdump goes strictly after storage-init
-  - name: kdump
-    image: KDUMP_TAG
   - name: pillar-onboot
     image: PILLAR_TAG
     command: ["/opt/zededa/bin/onboot.sh"]

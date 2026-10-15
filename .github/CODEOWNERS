@@ -46,8 +46,6 @@
 /pkg/guacd/                           @eriknordmark
 /pkg/installer/                       @eriknordmark @rucoder @rene @christoph-zededa
 /pkg/ipxe/                            @rene @milan-zededa
-/pkg/kdump/                           @eriknordmark
-/pkg/kexec/                           @eriknordmark
 /pkg/kube/                            @andrewd-zededa @naiming-zededa @rucoder
 /pkg/measure-config/                  @rucoder @shjala
 /pkg/memory-monitor/                  @christoph-zededa @eriknordmark
