@@ -412,6 +412,8 @@ EVE's zedkube `checkAppsFailover()` polls every **10 seconds** (`logcollectInter
 
 If no new scheduling pod appears within ~2 minutes of the pod entering `Terminating`, EVE's zedkube microservice triggers `DetachUtilVmirsReplicaReset()`. This scales the `VirtualMachineInstanceReplicaSet` (VMIRs) from 1 replica to 0 and back to 1, prompting KubeVirt to schedule a new VMI and virt-launcher pod onto an available node.
 
+Only the holder of the `eve-app-op` lease performs the reset, so exactly one node acts. That lease has a 60-second duration, so when its holder is the node that went down a survivor takes it over before the 2-minute threshold expires. The `eve-kube-stats-leader` lease is not used here: its 300-second duration would hold the reset back for up to five minutes whenever the failed node was the stats leader.
+
 ### 4. New virt-launcher pod → Pending on failover node
 
 KubeVirt creates a replacement VMI and virt-launcher pod, which is scheduled onto a surviving cluster node. The pod remains in `Pending` state because its PVC is still bound to a `VolumeAttachment` referencing the failed node.
