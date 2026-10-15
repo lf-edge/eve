@@ -32,11 +32,11 @@ top-level Makefile:
   the registry. Branch builds add no other tag. A release tag build also gives the packages it
   pushes the release tag, which linuxkit takes from the git tag on HEAD.
 * The EVE image (`lfedge/eve`) and its sources (`lfedge/eve-sources`) are pushed under
-  `<version>-<hv>`, where `<version>` is the release tag or `0.0.0-<branch>-<git sha>`, and under a
-  release name: `snapshot` on `master`, the branch name on `x.y` and `x.y-stable`, and the tag on a
-  release tag (e.g. `lfedge/eve:snapshot-kvm`). The release name gets `-<platform>` for platforms
-  other than `generic`, and the default hypervisor, `kvm`, also gets it without `-<hv>` (e.g.
-  `lfedge/eve:snapshot`).
+  `<version>-<hv>`, where `<version>` is the release tag or `0.0.0-<branch>-<git sha>`, and under
+  `<release name>-<hv>`, where the release name is `snapshot` on `master`, the branch name on `x.y`
+  and `x.y-stable`, and the tag on a release tag (e.g. `lfedge/eve:snapshot-kvm`). The release name
+  gets `-<platform>` for platforms other than `generic`. No tag omits `-<hv>`; the ones in the
+  registry that do are stale.
 
 Tags without an `-<arch>` suffix are multi-arch indexes. Publish does not push `latest` tags; the
 ones in the registry are stale.

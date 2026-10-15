@@ -19,7 +19,7 @@ For each build of EVE-OS, it can be retrieved by running the EVE-OS container an
 For example,
 
 ```bash
-$ docker run --rm lfedge/eve:9.9.0 sbom
+$ docker run --rm lfedge/eve:9.9.0-kvm sbom
 ```
 
 For each _release_ of EVE-OS, one SPDX json file per image variant is attached to the release page on github. This normally is at the path `https://github.com/lf-edge/eve/releases/tag/<release>`, for example `https://github.com/lf-edge/eve/releases/tag/17.6.0`. Each asset is named `<arch>.<hv>.<platform>.rootfs.spdx.json`, for example `amd64.kvm.generic.rootfs.spdx.json`. Older releases carry no SPDX asset; their SBoM is available through the container's `sbom` command.

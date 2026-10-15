@@ -351,7 +351,7 @@ sudo rpi-eeprom-update -d -f ./${RPI_EEPROM_VERSION}-netboot.bin
 
 ### Files to load into tftp/http
 
-You need to extract needed files with something like `docker run lfedge/eve:latest-arm64 installer_net |tar xf -`.
+You need to extract needed files with something like `docker run lfedge/eve:<version>-kvm-arm64 installer_net |tar xf -`.
 You will see a set of files in the current directory to locate into you tftp server to boot Raspberry from it. Also, you should set dhcp-boot option of your
 dhcp server to `ipxe.efi` (actually, it will use configuration from `ipxe.efi.cfg`). The `EFI/` directory with its `BOOT*.EFI`, `grub.cfg` files, and the `installer.iso`,
 should be available via HTTP/HTTPs and you need to modify `ipxe.efi.cfg` with location of those files.

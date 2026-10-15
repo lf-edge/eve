@@ -55,13 +55,13 @@ dump() {
 
 do_help() {
 cat <<__EOT__
-Usage: docker run [-v <option>] lfedge/eve [-f <fmt>] [-p <platform>] [--accept-license] version|rootfs|live|installer_raw|installer_iso|installer_net
+Usage: docker run [-v <option>] lfedge/eve:<version>-<hv> [-f <fmt>] [-p <platform>] [--accept-license] version|rootfs|live|installer_raw|installer_iso|installer_net
 
 The artifact will be produced on stdout, so don't forget to redirect
 it to a file or use the /out option below.
 
 Example:
-docker run --rm lfedge/eve installer_raw > installer.raw
+docker run --rm lfedge/eve:<version>-kvm installer_raw > installer.raw
 
 Where "--rm" is a generic optional Docker argument that simply means
 to remove the locally pulled container after the command completes.
@@ -74,9 +74,9 @@ This allows you to overwrite files in the EVE-OS config partition with
 your own local modifications of those files (must have the same name).
 
 Example:
-docker run -v /path/to/eve/conf:/in --rm lfedge/eve:latest installer_raw > installer.raw
+docker run -v /path/to/eve/conf:/in --rm lfedge/eve:<version>-kvm installer_raw > installer.raw
 or
-docker run -v /path/to/eve/conf/server:/in/server -v /path/to/eve/pkg/pillar/conf/root-certificate.pem:/in/root-certificate.pem --rm lfedge/eve:latest installer_raw > installer.raw
+docker run -v /path/to/eve/conf/server:/in/server -v /path/to/eve/pkg/pillar/conf/root-certificate.pem:/in/root-certificate.pem --rm lfedge/eve:<version>-kvm installer_raw > installer.raw
 
 Where your local "conf" directory contains files like server or root-certificate.pem that
 you want to use instead of the default ones in the image.
@@ -88,7 +88,7 @@ This allows you to redirect output from stdout to a file, with your
 choice of path.
 
 Example:
-docker run -v $HOME/eve-images:/out --rm lfedge/eve:latest installer_raw
+docker run -v $HOME/eve-images:/out --rm lfedge/eve:<version>-kvm installer_raw
 
 Optionally you can specify an alternate image format:
 
@@ -98,7 +98,7 @@ This specifies a packaging format: raw (default), qcow2, parallels,
 vdi, and gcp are all valid options.
 
 Example:
-docker run --rm lfedge/eve -f qcow2 installer_iso > eve-iso.img
+docker run --rm lfedge/eve:<version>-kvm -f qcow2 installer_iso > eve-iso.img
 
 The two raw formats "live" and "installer_raw" support an optional
 last argument specifying the size of the image in Mb.
@@ -117,13 +117,13 @@ instance: nvidia-jp6 images cannot be used with any other platform other
 than nvidia-jp6. The same applies for nvidia-jp5.
 
 Example:
-docker run --rm lfedge/eve -f raw -p imx8mq_evk live > live.raw
+docker run --rm lfedge/eve:<version>-kvm -f raw -p imx8mq_evk live > live.raw
 
 In some cases, you will have to agree to a license when creating
 EVE-OS images. To do this, use the --accept-license option.
 
 Example:
-docker run --rm lfedge/eve -f raw -p imx8mq_evk --accept-license live > live.raw
+docker run --rm lfedge/eve:<version>-kvm -f raw -p imx8mq_evk --accept-license live > live.raw
 __EOT__
   exit 0
 }
