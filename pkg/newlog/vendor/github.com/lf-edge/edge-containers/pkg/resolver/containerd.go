@@ -1,12 +1,12 @@
 package resolver
 
 /*
- Provides a github.com/containerd/containerd/remotes#Resolver that resolves
- to a containerd socket
+ Provides an oras target backed by a containerd content store and image service.
 
 */
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -16,34 +16,29 @@ import (
 
 	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/content"
+	"github.com/containerd/containerd/errdefs"
 	"github.com/containerd/containerd/images"
 	"github.com/containerd/containerd/namespaces"
 	"github.com/containerd/containerd/reference"
-	"github.com/containerd/containerd/remotes"
-	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	oras "oras.land/oras-go/v2"
 )
 
 const (
 	containerdGCRef = "containerd.io/gc.ref.content"
 )
 
-// Containerd resolver to push to/pull from containerd.
-// Due to an inability to know when a pusher is complete,
-// we complete here on the Containerd resolver, which means
-// this should be used exactly once for Pusher, and then discarded,
-// as finalize will be called.
-// See https://github.com/deislabs/oras/issues/172
-// When the above is fixed, we can do better with this.
+// Containerd resolver to push to/pull from containerd. Finalize releases the
+// lease taken when the resolver was created, so a Containerd is good for one
+// unit of work and should be discarded afterwards.
 type Containerd struct {
 	client    *containerd.Client
 	namespace string // we do not really need to keep this, as we consume it on NewContainer; just here for posterity
-	pusher    *containerdPusher
 	done      func(context.Context) error
 	ctx       context.Context
 }
 
-// NewContainerd create a containerd ResolverFinalizer given the containerd address and namespace (optional)
+// NewContainerd create a containerd resolver given the containerd address and namespace (optional)
 func NewContainerd(ctx context.Context, address, namespace string) (context.Context, *Containerd, error) {
 	client, err := containerd.New(address)
 	if err != nil {
@@ -59,7 +54,7 @@ func NewContainerd(ctx context.Context, address, namespace string) (context.Cont
 	return ctx, &Containerd{client: client, ctx: ctx, namespace: namespace, done: done}, nil
 }
 
-// NewContainerdWithClient create a containerd ResolverFinalizer with an existing containerd client connection
+// NewContainerdWithClient create a containerd resolver with an existing containerd client connection
 func NewContainerdWithClient(ctx context.Context, client *containerd.Client) (context.Context, *Containerd, error) {
 	if client == nil {
 		return nil, nil, errors.New("no containerd client provided")
@@ -71,28 +66,9 @@ func NewContainerdWithClient(ctx context.Context, client *containerd.Client) (co
 	return ctx, &Containerd{client: client, ctx: ctx, done: done}, nil
 }
 
-func (d *Containerd) Resolve(ctx context.Context, ref string) (name string, desc ocispec.Descriptor, err error) {
-	if _, err := reference.Parse(ref); err != nil {
-		return "", ocispec.Descriptor{}, err
-	}
-
-	// get our image
-	is := d.client.ImageService()
-	image, err := is.Get(ctx, ref)
-	if err != nil {
-		return "", ocispec.Descriptor{}, err
-	}
-	return ref, image.Target, nil
-}
-
-func (d Containerd) Fetcher(ctx context.Context, ref string) (remotes.Fetcher, error) {
-	return containerdFetcher{ref, d.client.ContentStore()}, nil
-}
-
-func (d *Containerd) Pusher(ctx context.Context, ref string) (remotes.Pusher, error) {
-	p := containerdPusher{ref, d.client}
-	d.pusher = &p
-	return p, nil
+// Target returns the containerd store, which serves every reference it holds.
+func (d *Containerd) Target(_ context.Context, _ string) (oras.Target, error) {
+	return d, nil
 }
 
 func (d *Containerd) Finalize(ctx context.Context) error {
@@ -106,155 +82,129 @@ func (d *Containerd) Context() context.Context {
 	return d.ctx
 }
 
-type containerdFetcher struct {
-	ref string
-	cs  content.Store
+// Resolve look up the image by reference and return the descriptor it points at.
+func (d *Containerd) Resolve(ctx context.Context, ref string) (ocispec.Descriptor, error) {
+	if _, err := reference.Parse(ref); err != nil {
+		return ocispec.Descriptor{}, err
+	}
+	image, err := d.client.ImageService().Get(ctx, ref)
+	if err != nil {
+		return ocispec.Descriptor{}, err
+	}
+	return image.Target, nil
 }
 
-func (d containerdFetcher) Fetch(ctx context.Context, desc ocispec.Descriptor) (io.ReadCloser, error) {
-	reader, err := d.cs.ReaderAt(ctx, desc)
+// Tag point the given reference at desc, creating the image if it is not there yet.
+func (d *Containerd) Tag(ctx context.Context, desc ocispec.Descriptor, ref string) error {
+	is := d.client.ImageService()
+	existing, err := is.Get(ctx, ref)
+	// TODO: should differentiate between communication error and image-not-there error
+	if err != nil || existing.Target.Digest.String() == "" {
+		_, err = is.Create(ctx, images.Image{
+			Name:      ref,
+			Target:    desc,
+			CreatedAt: time.Now(),
+		})
+		return err
+	}
+	_, err = is.Update(ctx, images.Image{
+		Name:   ref,
+		Target: desc,
+	})
+	return err
+}
+
+// Fetch return a reader for the content named by desc.
+func (d *Containerd) Fetch(ctx context.Context, desc ocispec.Descriptor) (io.ReadCloser, error) {
+	readerAt, err := d.client.ContentStore().ReaderAt(ctx, desc)
 	if err != nil {
 		return nil, err
 	}
-	return &containerdReader{
-		reader: content.NewReader(reader),
-	}, nil
+	return &containerdReader{readerAt: readerAt, reader: content.NewReader(readerAt)}, nil
+}
+
+// Exists report whether the content named by desc is already in the store.
+func (d *Containerd) Exists(ctx context.Context, desc ocispec.Descriptor) (bool, error) {
+	_, err := d.client.ContentStore().Info(ctx, desc.Digest)
+	if err == nil {
+		return true, nil
+	}
+	if errdefs.IsNotFound(err) {
+		return false, nil
+	}
+	return false, err
+}
+
+// Push write the content to the store. A manifest or index is also given the
+// containerd GC labels that keep its children from being collected; without them
+// containerd is free to remove blobs this manifest still references.
+func (d *Containerd) Push(ctx context.Context, expected ocispec.Descriptor, r io.Reader) error {
+	cs := d.client.ContentStore()
+	writer, err := content.OpenWriter(ctx, cs, content.WithDescriptor(expected), content.WithRef(expected.Digest.String()))
+	if err != nil {
+		if errdefs.IsAlreadyExists(err) {
+			return nil
+		}
+		return err
+	}
+	defer func() { _ = writer.Close() }()
+
+	// a manifest or index has to be read back to find its children, and is small
+	// enough to keep while it streams past
+	var cache *bytes.Buffer
+	if isManifest(expected.MediaType) {
+		cache = &bytes.Buffer{}
+		r = io.TeeReader(r, cache)
+	}
+
+	if _, err := io.Copy(writer, r); err != nil {
+		return err
+	}
+	if err := writer.Commit(ctx, expected.Size, expected.Digest); err != nil {
+		if errdefs.IsAlreadyExists(err) {
+			return nil
+		}
+		return err
+	}
+	if cache == nil {
+		return nil
+	}
+
+	labels, err := getChildRefs(cache.Bytes(), expected.MediaType)
+	if err != nil {
+		return err
+	}
+	updatedFields := make([]string, 0, len(labels))
+	for k := range labels {
+		updatedFields = append(updatedFields, fmt.Sprintf("labels.%s", k))
+	}
+	if len(updatedFields) == 0 {
+		return nil
+	}
+	_, err = cs.Update(ctx, content.Info{Digest: expected.Digest, Labels: labels}, updatedFields...)
+	return err
+}
+
+func isManifest(mediaType string) bool {
+	switch mediaType {
+	case images.MediaTypeDockerSchema2Manifest, ocispec.MediaTypeImageManifest,
+		images.MediaTypeDockerSchema2ManifestList, ocispec.MediaTypeImageIndex:
+		return true
+	}
+	return false
 }
 
 type containerdReader struct {
-	reader io.Reader
+	readerAt content.ReaderAt
+	reader   io.Reader
 }
 
 func (c *containerdReader) Close() error {
-	return nil
+	return c.readerAt.Close()
 }
 
 func (c *containerdReader) Read(p []byte) (n int, err error) {
 	return c.reader.Read(p)
-}
-
-type containerdPusher struct {
-	ref    string
-	client *containerd.Client
-}
-
-func (d containerdPusher) Push(ctx context.Context, desc ocispec.Descriptor) (content.Writer, error) {
-	cs := d.client.ContentStore()
-	writer, err := content.OpenWriter(ctx, cs, content.WithDescriptor(desc), content.WithRef(desc.Digest.String()))
-	if err != nil {
-		return nil, err
-	}
-	// if it is a manifest or index, we will cache the data
-	var cache []byte
-	switch desc.MediaType {
-	case images.MediaTypeDockerSchema2Manifest, ocispec.MediaTypeImageManifest,
-		images.MediaTypeDockerSchema2ManifestList, ocispec.MediaTypeImageIndex:
-		cache = make([]byte, 0)
-	}
-	return &containerdWriter{
-		writer: writer,
-		client: d.client,
-		desc:   desc,
-		ref:    d.ref,
-		cache:  cache,
-	}, nil
-}
-
-type containerdWriter struct {
-	writer    content.Writer
-	client    *containerd.Client
-	ref       string
-	desc      ocispec.Descriptor
-	committed bool
-	cache     []byte
-}
-
-// Digest may return empty digest or panics until committed.
-func (c *containerdWriter) Digest() digest.Digest {
-	return c.desc.Digest
-}
-
-func (c *containerdWriter) Close() error {
-	return c.writer.Close()
-}
-
-// Commit commits the blob (but no roll-back is guaranteed on an error).
-// size and expected can be zero-value when unknown.
-// Commit always closes the writer, even on error.
-// ErrAlreadyExists aborts the writer.
-func (c *containerdWriter) Commit(ctx context.Context, size int64, expected digest.Digest, opts ...content.Opt) error {
-	if c.committed {
-		return nil
-	}
-	if err := c.writer.Commit(ctx, size, expected); err != nil {
-		return err
-	}
-	// when we commit, we also need to write the image and the various parentage tags
-	is := c.client.ImageService()
-
-	switch c.desc.MediaType {
-	case images.MediaTypeDockerSchema2Manifest, ocispec.MediaTypeImageManifest,
-		images.MediaTypeDockerSchema2ManifestList, ocispec.MediaTypeImageIndex:
-		existingImage, err := is.Get(ctx, c.ref)
-		// TODO: should differentiate between communication error and image-not-there error
-		if err != nil || existingImage.Target.Digest.String() == "" {
-			image := images.Image{
-				Name:      c.ref,
-				Labels:    nil,
-				Target:    c.desc,
-				CreatedAt: time.Now(),
-				UpdatedAt: time.Time{},
-			}
-			_, err = is.Create(ctx, image)
-		} else {
-			image := images.Image{
-				Name:      c.ref,
-				Labels:    nil,
-				Target:    c.desc,
-				UpdatedAt: time.Time{},
-			}
-			_, err = is.Update(ctx, image)
-		}
-		if err != nil {
-			return err
-		}
-		// add GC prevention tags
-		labels, err := getChildRefs(c.cache, c.desc.MediaType)
-		if err != nil {
-			return err
-		}
-
-		updatedFields := make([]string, 0)
-		for k := range labels {
-			updatedFields = append(updatedFields, fmt.Sprintf("labels.%s", k))
-		}
-		updatedContentInfo := content.Info{
-			Digest: digest.Digest(c.desc.Digest),
-			Labels: labels,
-		}
-		if _, err := c.client.ContentStore().Update(ctx, updatedContentInfo, updatedFields...); err != nil {
-			return err
-		}
-	}
-	c.committed = true
-	// clear the cache
-	c.cache = nil
-	return nil
-}
-
-// Status returns the current state of write
-func (c *containerdWriter) Status() (content.Status, error) {
-	return c.writer.Status()
-}
-
-func (c *containerdWriter) Truncate(size int64) error {
-	return c.writer.Truncate(size)
-}
-func (c *containerdWriter) Write(p []byte) (n int, err error) {
-	if c.cache != nil {
-		c.cache = append(c.cache, p...)
-	}
-	return c.writer.Write(p)
 }
 
 func getChildRefs(b []byte, mediaType string) (labels map[string]string, err error) {

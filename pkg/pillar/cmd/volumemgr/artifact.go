@@ -101,12 +101,7 @@ func createManifestsForBareBlob(artifact *registry.Artifact) ([]*types.BlobStatu
 	})
 
 	ctx := context.TODO()
-	fetcher, err := provider.Fetcher(ctx, ref)
-	if err != nil {
-		return nil, fmt.Errorf("getManifestsForBlob: Exception while getting config Fetcher: %s",
-			err.Error())
-	}
-	reader, err := fetcher.Fetch(ctx, manifest.Config)
+	reader, err := provider.Fetch(ctx, manifest.Config)
 	if err != nil {
 		return nil, fmt.Errorf("getManifestsForBlob: Exception while getting config reader: %s",
 			err.Error())
