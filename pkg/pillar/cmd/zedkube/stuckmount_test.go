@@ -23,8 +23,6 @@ import (
 	k8stesting "k8s.io/client-go/testing"
 )
 
-const testNodeName = "this-node"
-
 // stuckMountFakes drives the cluster and host lookups the detector makes.
 // claims binds a PVC name to its PV; attachedPVs and presentPVs are the PVs
 // this node reports as attached and as having a /dev/longhorn device.
