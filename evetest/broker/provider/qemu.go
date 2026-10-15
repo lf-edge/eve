@@ -377,7 +377,8 @@ func (p *QemuProvider) GetSupportedDeviceArchs() ([]api.ArchType, error) {
 func (p *QemuProvider) Capabilities() []api.Capability {
 	// Plus QMP access: this provider has a QMP monitor of every device VM that
 	// the broker can reach (see ExecuteQMP).
-	return append(commonCapabilities(), api.Capability_CAPABILITY_QMP)
+	return append(commonCapabilities(), api.Capability_CAPABILITY_QMP,
+		api.Capability_CAPABILITY_TPM_PCR_BANKS)
 }
 
 // DiskImageStrategy returns DiskImageOverlay: qemu attaches local files
@@ -435,8 +436,8 @@ func (p *QemuProvider) SetupDevice(
 			log.Error(err)
 			return err
 		}
-		if spec.TPMPCRBanks != "" {
-			banks, err := parseTPMPCRBanks(spec.TPMPCRBanks)
+		if len(spec.TPMPCRBanks) != 0 {
+			banks, err := tpmPCRBankNames(spec.TPMPCRBanks)
 			if err != nil {
 				return err
 			}
