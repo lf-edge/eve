@@ -1164,7 +1164,7 @@ func Setup(requirements ...Requirement) {
 			if req.WithTPM {
 				requiredCaps = append(requiredCaps, api.Capability_CAPABILITY_TPM)
 			}
-			if req.WithTPMPCRBanks != "" {
+			if len(req.WithTPMPCRBanks) != 0 {
 				if !req.WithTPM {
 					th.t.Fatalf("TPM PCR banks require WithTPM for device %q", req.Name)
 				}

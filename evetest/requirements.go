@@ -196,9 +196,9 @@ type RequireEdgeDevice struct {
 	WithEVERepo    string
 	WithHypervisor Hypervisor
 	WithTPM        bool
-	// Comma-separated host TPM PCR banks (for example "sha1"). Empty uses
-	// the provider default. Requires WithTPM and provider support.
-	WithTPMPCRBanks string
+	// Active host TPM PCR banks. Empty uses the provider default.
+	// Requires WithTPM and provider support.
+	WithTPMPCRBanks []api.TPMPCRBank
 
 	WithFilesystem Filesystem
 	// Mount the vault (or the entire persist partition when using ext4) with the
