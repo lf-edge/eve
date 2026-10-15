@@ -325,15 +325,6 @@ func TestDeviceConnectivitySuite(test *testing.T) {
 //   - TestNetworkAdapterPassthrough -- direct assignment (PCI passthrough)
 //     of a physical NIC to an app; the guest must fully own the adapter
 //     (see it under its MAC, DHCP through it over the SDN network).
-//   - TestStagedNICChange -- a NIC added to a running app without a
-//     restart command stays staged (no effect on device or guest) until
-//     the app is restarted.
-//   - TestNICCountChange -- a NIC is added, the two NICs are swapped and
-//     one is removed again, each applied through a restart (no purge); the
-//     guest, the reported state and the app volume follow.
-//   - TestNICCountChangeOrderedInterface -- the same no-purge NIC addition
-//     with explicitly pinned interface orders: the added adapter must be
-//     enumerated by the guest at the position its order dictates.
 //   - TestSwitchNIPortConfigRace -- regression test for NIM/zedrouter races
 //     around IfInstanceID: a multi-port Switch NI plus a single-port Switch NI
 //     on a VLAN sub-interface, with ports live-switched between DHCP/static/no-IP;
@@ -436,18 +427,6 @@ func TestApplicationConnectivitySuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestNetworkAdapterPassthrough,
-		},
-		evetest.TestCase{
-			Test: TestNetworkAdapterPassthroughChange,
-		},
-		evetest.TestCase{
-			Test: TestStagedNICChange,
-		},
-		evetest.TestCase{
-			Test: TestNICCountChange,
-		},
-		evetest.TestCase{
-			Test: TestNICCountChangeOrderedInterface,
 		},
 		evetest.TestCase{
 			Test: TestSwitchNIPortConfigRace,

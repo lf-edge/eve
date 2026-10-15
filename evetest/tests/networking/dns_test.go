@@ -23,22 +23,9 @@ import (
 )
 
 // TestDNSFunctionality verifies how EVE merges DHCP-provided and statically
-// configured DNS servers into the mgmt dnsmasq pool, writes the result to
-// /etc/resolv.conf and /run/nim/dnsmasq.mgmt.servers, and propagates the
-// per-port subset to applications via the per-NI dnsmasq.
-//
-// DNS architecture
-// ----------------
-// EVE runs a single mgmt dnsmasq on 127.0.0.1:53 that pools all management
-// port DNS servers. /etc/resolv.conf contains only "nameserver 127.0.0.1".
-// The upstream servers in dnsmasq.mgmt.servers are sorted by port cost (lowest
-// first); dnsmasq strict-order means the lowest-cost port's server is tried
-// first for every resolution.
-//
-// Known limitation: because all ports share one DNS pool, a bad upstream
-// server on an individual port is not surfaced as a per-port error. eth3's
-// bad-dns3 server is tried first (cost=0) but the other ports' working
-// servers succeed, so eth3.err stays empty.
+// configured DNS servers, surfaces the resulting per-port DNS state, writes
+// the complete set to /etc/resolv.conf, and propagates the per-port subset
+// to applications via the per-NI dnsmasq.
 //
 // Network model
 // -------------
@@ -67,18 +54,19 @@ import (
 //  1. Per-port DNS state: waits (WatchDeviceInfo) until all four ports have
 //     acquired DHCP addresses and DevicePort.dns.DNSservers matches the
 //     expected set exactly (ConsistOf -- set equality, not subset). Asserts:
-//     - DevicePort.err of ethernet3 is empty. This confirms the
+//     - ethernet0..ethernet2: DevicePort.err is empty. This confirms the
 //     regression fix: EVE used to cap resolv.conf at 3 entries and mark
 //     ports whose DNS servers did not fit as errored. With 7 DNS servers
 //     total across four ports, the old code would have set errors on
 //     ethernet2; the new code must not.
-//     - Active DPC lastError is empty: the device stays online via the
-//     working ports.
-//  2. /etc/resolv.conf and mgmt dnsmasq config verification:
-//     - /etc/resolv.conf contains only "nameserver 127.0.0.1".
-//     - /run/nim/dnsmasq.mgmt.servers lists all expected upstream servers
-//     ordered by port cost (eth3 cost=0 first, eth2 cost=1, eth0/eth1
-//     cost=2). dhcpDns2 must be absent (excluded by DnsConfigExclusively).
+//     - ethernet3: DevicePort.err is non-empty (badDns3 cannot resolve the
+//     controller, causing EVE's per-port connectivity check to fail).
+//     - Active DPC lastError is empty: the device stays online via the three
+//     working ports despite ethernet3's failure.
+//  2. resolv.conf completeness: reads /etc/resolv.conf over SSH. Asserts
+//     that all 7 unique effective DNS server IPs appear as "nameserver"
+//     lines. dhcpDns2 (overridden by DnsConfigExclusively on ethernet2)
+//     must NOT appear. Entry order is not asserted.
 //  3. DNS verification failure triggers DPC fallback: applies a new DPC
 //     with only ethernet2 (non-existent static DNS) and ethernet3
 //     (bad-dns3). Both ports have IP connectivity but neither can resolve
@@ -241,14 +229,9 @@ func TestDNSFunctionality(test *testing.T) {
 	//
 	// Wait until:
 	//   - All four ports have acquired DHCP IPs and have their expected DNS sets.
-	//   - (lowest-cost) eth3 has no error reported (DNS server of another mgmt port
-	//     is used to resolve the controller hostname)
+	//   - eth0..eth2 have no error and eth3 has a DNS resolution error
+	//     (bad-dns3 cannot resolve the controller hostname).
 	//   - The active DPC has an empty lastError (device is online).
-	//
-	// Note: with mgmt dnsmasq, all ports share one DNS pool. eth3's bad upstream
-	// server (bad-dns3) is not detected as broken because the other ports' working
-	// servers resolve the controller hostname successfully. Per-port DNS error
-	// precision is a known limitation of the mgmt dnsmasq approach.
 	// ------------------------------------------------------------------
 	log := evetest.Logger()
 	log.Infof("Phase 1: waiting for per-port DNS state to settle...")
@@ -270,7 +253,8 @@ func TestDNSFunctionality(test *testing.T) {
 	const networkTestInterval = 5 * time.Minute
 	phase1Timeout := networkTestInterval + 2*time.Minute
 	t.Eventually(devUpdates, phase1Timeout).Should(Receive(matchers.SatisfyPredicate(
-		"All four ports have expected DNS servers; all ports error-free; DPC is healthy",
+		"All four ports have expected DNS servers; "+
+			"eth3 has DNS resolution error; DPC is healthy",
 		func(dinfo *eveinfo.ZInfoDevice) bool {
 			eth0 := getDevicePort("ethernet0", dinfo)
 			eth1 := getDevicePort("ethernet1", dinfo)
@@ -304,10 +288,14 @@ func TestDNSFunctionality(test *testing.T) {
 				return false
 			}
 
-			// eth3's bad upstream DNS server (bad-dns3) is not surfaced
-			// as an error because the mgmt dnsmasq pools all servers and the other
-			// ports' working servers resolve the controller hostname successfully.
-			if eth3.GetErr().GetDescription() != "" {
+			// Only eth3, whose DNS server cannot resolve the controller,
+			// reports an error.
+			if eth0.GetErr().GetDescription() != "" ||
+				eth1.GetErr().GetDescription() != "" ||
+				eth2.GetErr().GetDescription() != "" {
+				return false
+			}
+			if eth3.GetErr().GetDescription() == "" {
 				return false
 			}
 
@@ -322,117 +310,32 @@ func TestDNSFunctionality(test *testing.T) {
 	evetest.Checkpoint("phase1-complete")
 
 	// ------------------------------------------------------------------
-	// Phase 2: /etc/resolv.conf and mgmt dnsmasq config verification.
+	// Phase 2: /etc/resolv.conf on EVE contains all expected DNS server IPs.
 	//
-	// /etc/resolv.conf must contain a single nameserver pointing to the
-	// mgmt dnsmasq (127.0.0.1).
-	// /run/nim/dnsmasq.mgmt.servers must list all expected upstream DNS
-	// servers, ordered by port cost (eth3 cost=0 first, then eth2 cost=1,
-	// then eth0/eth1 cost=2). strict-order in dnsmasq means eth3's server
-	// is tried first for every resolution, confirming cost-based ordering.
-	// dhcpDns2 must be absent (excluded by DnsConfigExclusively on eth2).
+	// The expected set is the union of the four per-port effective DNS sets:
+	//   eth0: dhcp-dns0, static-dns0
+	//   eth1: dhcp-dns1a, dhcp-dns1b, static-dns1
+	//   eth2: static-dns2   (dhcp-dns2 is excluded by DnsConfigExclusively)
+	//   eth3: bad-dns3
+	// Total: 7 unique IPs -- above the historical 3-entry cap.
 	// ------------------------------------------------------------------
-	log.Infof("Phase 2: verifying /etc/resolv.conf and mgmt dnsmasq config...")
+	log.Infof("Phase 2: verifying /etc/resolv.conf on the EVE device...")
 
-	resolvConf, err := device.ReadFile("/etc/resolv.conf")
-	t.Expect(err).NotTo(HaveOccurred())
-	t.Expect(string(resolvConf)).To(ContainSubstring("nameserver 127.0.0.1"))
+	sshTimeout := 20 * time.Second
+	nameservers, err := getResolvConfNameservers(device, sshTimeout)
+	t.Expect(err).ToNot(HaveOccurred())
 
-	// The main config file contains static options only; upstream server
-	// entries live in the separate servers file re-read on SIGHUP.
-	const (
-		configFilePath  = "/run/nim/dnsmasq.mgmt.conf"
-		serversFilePath = "/run/nim/dnsmasq.mgmt.servers"
-	)
-	dnsmasqConf, err := device.ReadFile(configFilePath)
-	t.Expect(err).NotTo(HaveOccurred())
-	t.Expect(string(dnsmasqConf)).To(ContainSubstring("servers-file=" + serversFilePath))
-
-	// The servers file may still be updating after Phase 1 — wait for it
-	// to contain all expected servers in cost-ascending order.
-	t.Eventually(func(g Gomega) {
-		serversFile, err := device.ReadFile(serversFilePath)
-		g.Expect(err).NotTo(HaveOccurred())
-		dnsmasqServers := string(serversFile)
-		// All expected upstream servers must be present.
-		g.Expect(dnsmasqServers).To(ContainSubstring(badDNS3IP),
-			"eth3 (cost=0) server must appear in mgmt dnsmasq servers file")
-		g.Expect(dnsmasqServers).To(ContainSubstring(staticDNS2IP),
-			"eth2 (cost=1) server must appear in mgmt dnsmasq servers file")
-		g.Expect(dnsmasqServers).To(ContainSubstring(dhcpDNS0IP),
-			"eth0 (cost=2) DHCP server must appear in mgmt dnsmasq servers file")
-		g.Expect(dnsmasqServers).To(ContainSubstring(staticDNS0IP),
-			"eth0 (cost=2) static server must appear in mgmt dnsmasq servers file")
-		g.Expect(dnsmasqServers).To(ContainSubstring(dhcpDNS1aIP),
-			"eth1 (cost=2) DHCP server a must appear in mgmt dnsmasq servers file")
-		g.Expect(dnsmasqServers).To(ContainSubstring(dhcpDNS1bIP),
-			"eth1 (cost=2) DHCP server b must appear in mgmt dnsmasq servers file")
-		g.Expect(dnsmasqServers).To(ContainSubstring(staticDNS1IP),
-			"eth1 (cost=2) static server must appear in mgmt dnsmasq servers file")
-		// dhcpDns2 must be absent: excluded by DnsConfigExclusively on ethernet2.
-		g.Expect(dnsmasqServers).ToNot(ContainSubstring(dhcpDNS2IP),
-			"dhcpDns2 must be excluded by DnsConfigExclusively on ethernet2")
-		// Cost ordering in the default (non-domain) server entries:
-		// eth3 (cost=0) before eth2 (cost=1) before eth0 (cost=2).
-		// We search for "\nserver=IP" to match only the default section
-		// entries and not the split-horizon entries ("server=/domain/IP").
-		defaultIdx := func(ip string) int {
-			return strings.Index(dnsmasqServers, "\nserver="+ip)
-		}
-		g.Expect(defaultIdx(badDNS3IP)).To(
-			BeNumerically("<", defaultIdx(staticDNS2IP)),
-			"badDNS3IP (cost=0) must appear before staticDNS2IP (cost=1) in default section")
-		g.Expect(defaultIdx(staticDNS2IP)).To(
-			BeNumerically("<", defaultIdx(dhcpDNS0IP)),
-			"staticDNS2IP (cost=1) must appear before dhcpDNS0IP (cost=2) in default section")
-	}, 2*time.Minute, 5*time.Second).Should(Succeed())
-
-	// Verify the forwarding order via a single, fresh nslookup for a name
-	// EVE itself never queries. The controller hostname doesn't work for
-	// this: pillar's own background connectivity checks re-resolve it every
-	// few seconds, and dnsmasq's query deduplication (lookup_frec() in
-	// dnsmasq's forward.c) folds a new query for the same name+type into
-	// any still-outstanding forward record instead of starting over at the
-	// top of the server list -- so a later query can inherit an earlier
-	// one's already-advanced-past-eth3 position, making the observed order
-	// unreliable. http-server1.test sidesteps this: nothing else resolves
-	// it, so this one nslookup is guaranteed to start a fresh lookup.
-	// bad-dns3 (eth3, cost=0) has no static entries and cannot resolve it;
-	// static-dns0/dhcp-dns0 (eth0, cost=2) can -- so with strict-order the
-	// expected sequence is eth3 (fails) then eth0's static server.
-	nslookupAt := time.Now()
-	_, stderr, err := device.RunShellScript(
-		"nslookup "+httpServer1FQDN+" 127.0.0.1", 0, 5*time.Second)
-	t.Expect(err).NotTo(HaveOccurred(), "nslookup %s failed: %s", httpServer1FQDN, stderr)
-
-	var eth0Idx, eth3Idx int
-	t.Eventually(func(g Gomega) {
-		forwardLogs := device.GetLogs(evetest.LogMsgMatch{
-			MsgHasSubstring: "forwarded " + httpServer1FQDN,
-			NotBefore:       nslookupAt,
-		})
-		g.Expect(forwardLogs).NotTo(BeEmpty(),
-			"dnsmasq must have logged forwarding attempts for "+httpServer1FQDN)
-		eth0Idx = -1
-		eth3Idx = -1
-		for i, msg := range forwardLogs {
-			if eth3Idx == -1 && strings.Contains(msg.Message, badDNS3IP) {
-				eth3Idx = i
-			}
-			if eth0Idx == -1 && strings.Contains(msg.Message, staticDNS0IP) {
-				eth0Idx = i
-			}
-		}
-		// bad-dns3 (eth3) returns REFUSED, so dnsmasq retries with eth0.
-		// Both entries must appear; if eth0 hasn't arrived yet the
-		// Eventually will retry until the full pair is seen.
-		g.Expect(eth3Idx).To(BeNumerically(">=", 0),
-			"dnsmasq must have forwarded to badDNS3IP (eth3, cost=0)")
-		g.Expect(eth0Idx).To(BeNumerically(">=", 0),
-			"dnsmasq must have forwarded to staticDNS0IP (eth0, cost=2)")
-	}, 2*time.Minute, 5*time.Second).Should(Succeed())
-	t.Expect(eth0Idx).To(BeNumerically(">", eth3Idx),
-		"eth3 (cost=0) must be forwarded to before eth0 (cost=2)")
+	// Expect exactly the 7 effective DNS server IPs -- no extras, no duplicates.
+	// dhcpDns2 must be absent: excluded by DnsConfigExclusively on ethernet2.
+	t.Expect(nameservers).To(ConsistOf(
+		dhcpDNS0IP,
+		staticDNS0IP,
+		dhcpDNS1aIP,
+		dhcpDNS1bIP,
+		staticDNS1IP,
+		staticDNS2IP,
+		badDNS3IP,
+	))
 
 	evetest.Checkpoint("phase2-complete")
 
@@ -577,7 +480,6 @@ func TestDNSFunctionality(test *testing.T) {
 		Username: "root",
 		Password: "testpassword",
 	}
-	sshTimeout := 20 * time.Second
 	polling := 3 * time.Second
 
 	// Wait for the SSH daemon to start and become reachable.
@@ -681,4 +583,22 @@ func nslookupFailed(output string, err error) bool {
 	return strings.Contains(lower, "can't resolve") ||
 		strings.Contains(lower, "nxdomain") ||
 		strings.Contains(lower, "** server can't find")
+}
+
+// getResolvConfNameservers reads /etc/resolv.conf from the device over SSH and
+// returns all IP addresses listed on "nameserver" lines.
+func getResolvConfNameservers(device *evetest.EdgeDevice, sshTimeout time.Duration) ([]string, error) {
+	output, _, err := device.RunShellScript("cat /etc/resolv.conf", sshTimeout, 0)
+	if err != nil {
+		return nil, err
+	}
+	var nameservers []string
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "nameserver ") {
+			nameservers = append(nameservers,
+				strings.TrimSpace(strings.TrimPrefix(line, "nameserver ")))
+		}
+	}
+	return nameservers, nil
 }
