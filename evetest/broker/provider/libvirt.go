@@ -125,7 +125,7 @@ func (p *LibvirtProvider) GetSupportedDeviceArchs() ([]api.ArchType, error) {
 // local host and applies the host-level tweaks required to forward link-local
 // L2 protocols, and supports emulated TPM. It also supports network boot.
 func (p *LibvirtProvider) Capabilities() []api.Capability {
-	return commonCapabilities()
+	return append(commonCapabilities(), api.Capability_CAPABILITY_TPM_PCR_BANKS)
 }
 
 // DiskImageStrategy returns DiskImageOverlay: libvirt attaches local files
@@ -378,7 +378,7 @@ func (p *LibvirtProvider) SetupDevice(
 	}
 
 	if spec.WithTPM {
-		bankNames, err := parseTPMPCRBanks(spec.TPMPCRBanks)
+		bankNames, err := tpmPCRBankNames(spec.TPMPCRBanks)
 		if err != nil {
 			return err
 		}
