@@ -311,6 +311,9 @@ type TestHarness struct {
 	// Controller
 	adamClient   *controller.AdamClient
 	adamStatusCh chan controller.AdamState
+	// controllerFaults tells whether the controller runs behind the fault
+	// injecting proxy; resolved once by Init, see InitOption.
+	controllerFaults bool
 
 	// Image server (HTTP file server serving EVE and app images).
 	imgServerListener net.Listener
@@ -537,10 +540,21 @@ func (th *TestHarness) prefixColor(c logger.PrefixColor) logger.PrefixColor {
 	return logger.PrefixColorNone
 }
 
+// InitOption customizes how Init sets up the test harness.
+type InitOption func(*initOptions)
+
+type initOptions struct {
+	controllerFaults bool
+}
+
 // Init initializes the test harness and must be called exactly once per test.
 // When used inside a test suite, Init may be called multiple times, once per
 // test case, but only a single harness instance will be created.
-func Init(t *testing.T) *T {
+//
+// Options only take effect for the Init call that creates the harness: a test
+// that may run standalone passes the options it needs, and inside a suite the
+// ones given to the suite's own Init apply.
+func Init(t *testing.T, opts ...InitOption) *T {
 	if _globalTH != nil {
 		// Test harness already exists, meaning this test is likely running as part
 		// of a test suite.
@@ -605,8 +619,14 @@ func Init(t *testing.T) *T {
 			constants.EnvPrefix, constants.SkipEnv)
 	}
 
+	var initOpts initOptions
+	for _, opt := range opts {
+		opt(&initOpts)
+	}
+
 	th := &TestHarness{}
 	_globalTH = th
+	th.controllerFaults = resolveControllerFaults(initOpts.controllerFaults)
 	th.t = &T{T: t, th: th}
 	th.ctx, th.cancel = context.WithCancel(context.Background())
 	th.artifactDir = viper.GetString(constants.InternalArtifactDirEnv)
@@ -743,7 +763,7 @@ func Init(t *testing.T) *T {
 	th.adamClient = controller.NewAdamClient(
 		adamLog, th.artifactDir, GetControllerHostname(),
 		adamIPs, GetControllerPort(), th.caCert, th.caKey, th.adamStatusCh)
-	if ControllerFaultsEnabled() {
+	if th.controllerFaults {
 		th.adamClient.EnableFaultInjection()
 	}
 	err = th.adamClient.Start()
