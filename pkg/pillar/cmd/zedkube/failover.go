@@ -21,12 +21,12 @@ func (z *zedkube) shouldDetachApp(oldStatus *types.ENClusterAppStatus, newStatus
 	return (oldStatus == nil) && newStatus.ScheduledOnThisNode
 }
 
-// Interface to determining a node allowed to make cluster-wide operations
-func (z *zedkube) isDecisionNode() (isNode bool) {
-	if z.isStatsLeader() {
-		isNode = true
-	}
-	return isNode
+// isDecisionNode reports whether this node may act on an app whose node
+// is down. It follows the eve-app-op lease rather than the stats lease: the
+// node that died is often the stats leader, and the 300s stats lease would
+// keep every survivor from acting for five minutes after it went down.
+func (z *zedkube) isDecisionNode() bool {
+	return z.appOpElection.isLeader.Load()
 }
 
 func (z *zedkube) checkAppsFailover(wdFunc func()) {
