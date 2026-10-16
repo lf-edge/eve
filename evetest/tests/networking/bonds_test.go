@@ -443,7 +443,9 @@ func TestLACPBond(test *testing.T) {
 	// Wait for device info to report the LACP bond interface with an IP address,
 	// no errors, and LACP status.
 	log := evetest.Logger()
-	timeout := 5 * time.Minute
+	// A port error is only cleared by the next periodic connectivity test, which
+	// runs every 5 minutes by default, so allow for more than one interval.
+	timeout := 10 * time.Minute
 	var bondIP net.IP
 	var bondStatus *eveinfo.BondStatus
 	t.Eventually(devUpdates, timeout).Should(Receive(matchers.SatisfyPredicate(
