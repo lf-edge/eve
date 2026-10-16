@@ -975,7 +975,7 @@ func (b *broker) PushEVELiveImage(
 		log.Error(err)
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	installed := false
 	defer func() {
@@ -1142,7 +1142,7 @@ func (b *broker) SetupDevices(
 		// The BuildImage step should have created the QCOW2 image for this device.
 		deviceName := eveDevice.DeviceName
 		dev, exists := clientSession.eveDevices[deviceName]
-		if !exists || len(dev.DeviceSpec.Disks) == 0 {
+		if !exists || len(dev.Disks) == 0 {
 			err = fmt.Errorf("disk image for EVE device %q not found", deviceName)
 			log.Error(err)
 			b.teardownDevices(clientSession)
@@ -1366,9 +1366,9 @@ func (b *broker) runDeviceInstaller(ctx context.Context, log *logrus.Entry,
 	log.Infof("EVE installation completed for device %q", dev.deviceName)
 
 	// Reconfigure the device to boot from the persistent disks only (no installer).
-	dev.DeviceSpec.Disks = dev.disks
+	dev.Disks = dev.disks
 	dev.installerImage = nil
-	err := b.provider.ReconfigureDeviceDisks(ctx, dev.providerDevName, dev.DeviceSpec.Disks)
+	err := b.provider.ReconfigureDeviceDisks(ctx, dev.providerDevName, dev.Disks)
 	if err != nil {
 		if err2 := teardownDeviceFresh(b.provider, log, dev.providerDevName); err2 != nil {
 			log.Warnf("Failed to teardown device %q after disk reconfiguration failure: %v",

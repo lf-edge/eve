@@ -35,7 +35,9 @@ func baseKeyParams() templateKeyParams {
 }
 
 func TestComputeTemplateKeyIsStable(t *testing.T) {
-	if computeTemplateKey(baseKeyParams()) != computeTemplateKey(baseKeyParams()) {
+	first := computeTemplateKey(baseKeyParams())
+	second := computeTemplateKey(baseKeyParams())
+	if first != second {
 		t.Fatal("same inputs produced different keys")
 	}
 }

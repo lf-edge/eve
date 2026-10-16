@@ -26,7 +26,7 @@ func writeLiveTar(t *testing.T, path string, members map[string][]byte) {
 	if err != nil {
 		t.Fatalf("create tar: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	tw := tar.NewWriter(f)
 	for name, data := range members {
 		if err := tw.WriteHeader(&tar.Header{

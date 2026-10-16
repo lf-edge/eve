@@ -712,7 +712,7 @@ func makeDeviceImage(ctx context.Context, log *logrus.Entry, cache *templateCach
 		err = fmt.Errorf("failed to prepare EVE config dir: %w", err)
 		return result, "", err
 	}
-	defer os.RemoveAll(configDir)
+	defer func() { _ = os.RemoveAll(configDir) }()
 
 	// The config partition image is staged outside the device directory: its
 	// path is passed through qemu-io's own tokenizer, and the device directory
@@ -723,7 +723,7 @@ func makeDeviceImage(ctx context.Context, log *logrus.Entry, cache *templateCach
 		err = fmt.Errorf("failed to create temp dir for the config partition: %w", err)
 		return result, "", err
 	}
-	defer os.RemoveAll(cfgDir)
+	defer func() { _ = os.RemoveAll(cfgDir) }()
 	cfgImgPath := filepath.Join(cfgDir, "config.img")
 	if err = writeConfigPartition(ctx, log, tmpl.configImgPath(), configDir, cfgImgPath); err != nil {
 		return result, "", err

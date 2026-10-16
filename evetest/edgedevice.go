@@ -667,6 +667,7 @@ func (d *EdgeDevice) upgradeEVEFromLocalBuild(targetEVEVersion string,
 	if img == nil {
 		// Unreachable: this path is only taken when the live transport is on.
 		d.th.t.Fatalf("UpgradeEVE: the live image transport is not configured")
+		return
 	}
 	if img.RootfsPath == "" {
 		d.th.t.Fatalf("UpgradeEVE: local EVE build %q has no installer/rootfs.img "+
