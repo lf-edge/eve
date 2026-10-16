@@ -952,7 +952,9 @@ func TestIntermittentConnectivity(test *testing.T) {
 	// Phase 5: full outage window.
 	log.Infof("Phase 5: taking eth0 down, then restoring it...")
 	const outageWindow = 90 * time.Second
-	recoveryTimeout := 5 * time.Minute
+	// The periodic connectivity test runs every 5 minutes by default, so allow
+	// for more than one interval.
+	recoveryTimeout := 10 * time.Minute
 	downModel := proto.Clone(netmodels.SingleEthWithDHCP).(*api.NetworkModel)
 	for _, p := range downModel.Ports {
 		if p.LogicalLabel == "eth0" {

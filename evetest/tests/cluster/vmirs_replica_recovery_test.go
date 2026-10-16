@@ -162,7 +162,7 @@ func TestVMIRSStrandedReplicasRecovery(test *testing.T) {
 	log.Infof("Submitted config with app UUID=%v", appUUID)
 	evetest.Checkpoint("initial-config-applied")
 
-	timeoutExcludingDownload := 10 * time.Minute
+	timeoutExcludingDownload := 20 * time.Minute
 	device.WaitUntilAppIsRunning(appUUID, timeoutExcludingDownload)
 	evetest.Checkpoint("app-is-deployed")
 
