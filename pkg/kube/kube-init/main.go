@@ -2451,6 +2451,12 @@ func (d *daemon) runHealthWorker(ctx context.Context, mon *monitor.Monitor, sup 
 		log.Printf("WARNING: reconcile NVIDIA device plugin: %v", err)
 	}
 
+	// Restart the NVIDIA device-plugin pods when the EVE or user plugin
+	// config ConfigMaps change; config-manager only reacts to node labels.
+	if err := components.ReconcileNvidiaConfig(ctx); err != nil {
+		log.Printf("WARNING: reconcile NVIDIA device-plugin config: %v", err)
+	}
+
 	// Keep the stale-mount-cleanup daemon alive. It shares the
 	// kubelet mount namespace (inside the kube container) and
 	// reaps stale Longhorn CSI block-volume staging mounts that
