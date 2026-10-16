@@ -19,6 +19,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -709,6 +710,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		waitForKubevirtFlag := true
 
 		if encc.Valid && encc.ClusterType != types.ClusterTypeReplicatedStorage {
+			waitForKubevirtFlag = false
+		}
+		// KubeVirt is only installed on amd64, other arches run apps as pods
+		if runtime.GOARCH != "amd64" {
 			waitForKubevirtFlag = false
 		}
 		kubeOpts := kubeapi.WaitForKubernetesOptions{
