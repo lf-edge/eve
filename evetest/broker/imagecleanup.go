@@ -155,7 +155,7 @@ func (b *broker) runImageCleanupLoop() {
 // more can be removed.
 func (b *broker) cleanupDockerImages(ctx context.Context) {
 	log := b.globalLog
-	cli, err := client.NewClientWithOpts(client.FromEnv)
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		log.Warnf("Image cleanup: failed to create docker client: %v", err)
 		return

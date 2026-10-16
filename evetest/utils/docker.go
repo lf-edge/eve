@@ -87,7 +87,7 @@ func GetDockerAuthPlain(log *logrus.Entry, fqdn string) (string, string, error) 
 // HaveDockerImage checks if a Docker image exists locally.
 // Returns true if the image exists, false if not, and an error if the check itself fails.
 func HaveDockerImage(ctx context.Context, log *logrus.Entry, image string) (bool, error) {
-	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
+	dockerClient, err := client.New(client.FromEnv)
 	if err != nil {
 		return false, fmt.Errorf("failed to create docker client: %w", err)
 	}
@@ -100,7 +100,7 @@ func HaveDockerImage(ctx context.Context, log *logrus.Entry, image string) (bool
 // than on the image name: the normal development loop rebuilds EVE and pushes
 // it under an unchanged tag, so a name-keyed cache would serve stale results.
 func DockerImageID(ctx context.Context, imageName string) (string, error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv)
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return "", fmt.Errorf("failed to create docker client: %w", err)
 	}
@@ -122,7 +122,7 @@ func IsErrDockerImageNotFound(err error) bool {
 
 // GetDockerImageSizeBytes returns the size of the given image in bytes.
 func GetDockerImageSizeBytes(ctx context.Context, imageName string) (int64, error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv)
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create docker client: %w", err)
 	}
@@ -144,7 +144,7 @@ func GetDockerImageSizeBytes(ctx context.Context, imageName string) (int64, erro
 // avoiding loading the full image into memory. The caller must read the
 // stream until EOF and close it to release underlying resources.
 func StreamDockerImageGzip(ctx context.Context, imageName string) (io.ReadCloser, error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv)
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Docker client: %w", err)
 	}
@@ -182,7 +182,7 @@ func StreamDockerImageGzip(ctx context.Context, imageName string) (io.ReadCloser
 // large images to be loaded without buffering the entire archive in memory.
 func LoadDockerImageFromReader(
 	ctx context.Context, log *logrus.Entry, r io.Reader, imageName string) error {
-	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
+	dockerClient, err := client.New(client.FromEnv)
 	if err != nil {
 		return fmt.Errorf("failed to create docker client: %w", err)
 	}
@@ -208,7 +208,7 @@ func LoadDockerImageFromReader(
 // PullDockerImage ensures a Docker image is available locally by pulling it if necessary.
 // If the image already exists, the function returns immediately.
 func PullDockerImage(ctx context.Context, log *logrus.Entry, imageName string) error {
-	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
+	dockerClient, err := client.New(client.FromEnv)
 	if err != nil {
 		return fmt.Errorf("failed to create docker client: %w", err)
 	}
@@ -229,7 +229,7 @@ func PullDockerImage(ctx context.Context, log *logrus.Entry, imageName string) e
 	if err != nil {
 		return fmt.Errorf("failed to pull Docker image %q: %w", imageName, err)
 	}
-	defer resp.Close()
+	defer func() { _ = resp.Close() }()
 
 	if err = logDockerResp(log, resp, imageName); err != nil {
 		log.Warnf("Failed to log ImagePull response: %v", err)
@@ -260,7 +260,7 @@ func RunDockerCommand(ctx context.Context, log *logrus.Entry, image string, comm
 	log.Debugf("Running 'docker run %s %s' (platform=%q) with volumes %v",
 		image, command, platform, volumeMap)
 
-	cli, err := client.NewClientWithOpts(client.FromEnv)
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return "", fmt.Errorf("failed to create docker client: %w", err)
 	}
@@ -356,7 +356,7 @@ func RunDockerCommand(ctx context.Context, log *logrus.Entry, image string, comm
 //   - containerPath: Path inside the image (container filesystem) to extract.
 func ExtractFromDockerImage(ctx context.Context, log *logrus.Entry,
 	imageName, localPath, containerPath string) error {
-	cli, err := client.NewClientWithOpts(client.FromEnv)
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return fmt.Errorf("failed to create docker client: %w", err)
 	}
@@ -385,7 +385,7 @@ func ExtractFromDockerImage(ctx context.Context, log *logrus.Entry,
 	if err != nil {
 		return fmt.Errorf("failed to copy %q from container: %w", containerPath, err)
 	}
-	defer copied.Content.Close()
+	defer func() { _ = copied.Content.Close() }()
 
 	// Extract the TAR stream to the target path
 	if err := ExtractFromTar(copied.Content, localPath); err != nil {

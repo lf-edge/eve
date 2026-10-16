@@ -177,14 +177,14 @@ func copyAndHash(srcPath, dstPath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to open %q: %w", srcPath, err)
 	}
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 	out, err := os.OpenFile(dstPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
 		return "", fmt.Errorf("failed to create %q: %w", dstPath, err)
 	}
 	hasher := sha256.New()
 	if _, err := io.Copy(io.MultiWriter(out, hasher), in); err != nil {
-		out.Close()
+		_ = out.Close()
 		return "", fmt.Errorf("failed to copy %q to %q: %w", srcPath, dstPath, err)
 	}
 	if err := out.Close(); err != nil {
@@ -233,7 +233,7 @@ func unpackLiveTemplate(tarPath, wantSHA256 string) templateBuilder {
 			return none, fmt.Errorf("failed to open the uploaded live image %q: %w",
 				tarPath, err)
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 
 		dstDir, err = filepath.Abs(dstDir)
 		if err != nil {
@@ -289,7 +289,7 @@ func unpackLiveTemplate(tarPath, wantSHA256 string) templateBuilder {
 				dst = io.MultiWriter(out, diskHasher)
 			}
 			if _, err := io.Copy(dst, tr); err != nil {
-				out.Close()
+				_ = out.Close()
 				return none, fmt.Errorf("failed to write %q: %w", target, err)
 			}
 			if err := out.Close(); err != nil {

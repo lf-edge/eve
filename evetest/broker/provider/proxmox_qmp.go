@@ -69,7 +69,7 @@ func (p *ProxmoxProvider) sshConnect(ctx context.Context) (*ssh.Client, error) {
 	}
 	sshConn, chans, reqs, err := ssh.NewClientConn(conn, addr, sshConfig)
 	if err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, fmt.Errorf("SSH handshake with the PVE host at %s failed (root login "+
 			"with the root@pam password must be allowed): %w", addr, err)
 	}

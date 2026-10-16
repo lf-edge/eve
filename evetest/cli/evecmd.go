@@ -948,7 +948,7 @@ func runConsoleViaTelnet(grpcPipe utils.GrpcClientPipe[
 			doneCh <- nil // listener closed
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		connPipe := utils.ReadWriterPipe{
 			PipeName: "local telnet connection",
@@ -967,8 +967,8 @@ func runConsoleViaTelnet(grpcPipe utils.GrpcClientPipe[
 	}
 	err = utils.RunCommandForeground(
 		"telnet", telnetArgs, utils.SetThisProcessStdin())
-	ln.Close()
-	_ = <-doneCh
+	_ = ln.Close()
+	<-doneCh
 	if err != nil {
 		return fmt.Errorf("telnet command failed: %w", err)
 	}

@@ -680,7 +680,7 @@ func (th *TestHarness) writeTarFile(tw *tar.Writer, buf []byte, name, path strin
 	if err != nil {
 		th.t.Fatalf("failed to open %q: %v", path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	info, err := f.Stat()
 	if err != nil {
 		th.t.Fatalf("failed to stat %q: %v", path, err)
