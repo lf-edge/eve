@@ -1,0 +1,9 @@
+#!/bin/sh
+# The runtime the domains' containers name, run by the system containerd on
+# the host: join the shim cgroup, in the memory hierarchy, before the shim
+# allocates anything, so that no page of it is charged to containerd's cgroup
+# under /eve. The cgroup is the one pillar creates for the ShimCgroup option
+# (pkg/pillar/containerd/shimcgroup.go); when it does not exist, as under
+# cgroup v2, the shim simply runs where containerd does.
+echo $$ > /sys/fs/cgroup/memory/eve-user-apps/shims/cgroup.procs 2>/dev/null
+exec /usr/bin/containerd-shim-runc-v2 "$@"

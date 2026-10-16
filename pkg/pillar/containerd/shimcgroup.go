@@ -13,9 +13,12 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// hostfsRoot is where pillar sees the host's root filesystem.
+const hostfsRoot = "/hostfs"
+
 // HostMemoryCgroupRoot is the cgroup v1 memory hierarchy. Pillar's own
 // cgroupfs mount is read-only, so the hierarchy is reached through hostfs.
-const HostMemoryCgroupRoot = "/hostfs/sys/fs/cgroup/memory"
+const HostMemoryCgroupRoot = hostfsRoot + "/sys/fs/cgroup/memory"
 
 // ErrNoMemoryHierarchy is returned by UserAppsMemoryCgroup when there is no
 // cgroup v1 memory hierarchy to create the cgroup in, as under cgroup v2.
@@ -50,11 +53,22 @@ func UserAppsMemoryCgroup(memoryRoot, name string) (string, string, error) {
 	return cgroup, hostDir, nil
 }
 
+// shimWrapper is the program a domain's container names as its runtime, by
+// the path the system containerd, a host process, sees pillar's rootfs at:
+// pillar's eve-shim, which joins the shim cgroup and then executes the real
+// shim, containerd-shim-runc-v2. The shim itself joins ShimCgroup only once
+// it runs, after its runtime allocated its first pages in the cgroup it was
+// born in, containerd's, and cgroup v1 leaves those pages charged there, a few
+// MB per domain. Born in the shim cgroup, it leaves nothing behind.
+const shimWrapper = "/containers/services/pillar/rootfs/opt/zededa/bin/eve-shim"
+
 // shimCgroupOpt returns the container option that starts the container's shim
-// in the shim cgroup, creating the cgroup if needed. Without a cgroup v1 memory
-// hierarchy at memoryRoot, or when the cgroup cannot be created, it returns nil
-// and the shim stays in containerd's cgroup.
-func shimCgroupOpt(runtime, memoryRoot string) containerd.NewContainerOpts {
+// in the shim cgroup, creating the cgroup if needed: through the shim wrapper
+// when hostfs, the host's root as pillar sees it, holds it, and in any case
+// with the runc option that makes the shim join the cgroup. Without a cgroup
+// v1 memory hierarchy at memoryRoot, or when the cgroup cannot be created, it
+// returns nil and the shim stays in containerd's cgroup.
+func shimCgroupOpt(runtime, memoryRoot, hostfs string) containerd.NewContainerOpts {
 	cgroup, _, err := UserAppsMemoryCgroup(memoryRoot, shimCgroupName)
 	if errors.Is(err, ErrNoMemoryHierarchy) {
 		logrus.Warnf("no cgroup v1 memory hierarchy at %s, shims stay in containerd's cgroup",
@@ -64,6 +78,12 @@ func shimCgroupOpt(runtime, memoryRoot string) containerd.NewContainerOpts {
 	if err != nil {
 		logrus.Errorf("cannot create the shim cgroup, shims stay in containerd's cgroup: %v", err)
 		return nil
+	}
+	if _, err := os.Stat(filepath.Join(hostfs, shimWrapper)); err == nil {
+		runtime = shimWrapper
+	} else {
+		logrus.Warnf("no shim wrapper at %s, the shims' first pages stay in containerd's cgroup: %v",
+			shimWrapper, err)
 	}
 	return containerd.WithRuntime(runtime, &options.Options{ShimCgroup: cgroup})
 }

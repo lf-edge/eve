@@ -304,7 +304,7 @@ func (s *ociSpec) CreateContainer(removeExisting bool) error {
 	defer done()
 
 	containerOpts := append(s.containerOpts, containerd.WithSpec(&s.Spec))
-	if opt := shimCgroupOpt(s.client.ctrdClient.Runtime(), HostMemoryCgroupRoot); opt != nil {
+	if opt := shimCgroupOpt(s.client.ctrdClient.Runtime(), HostMemoryCgroupRoot, hostfsRoot); opt != nil {
 		containerOpts = append(containerOpts, opt)
 	}
 
