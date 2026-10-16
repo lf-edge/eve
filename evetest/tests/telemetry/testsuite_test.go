@@ -29,7 +29,7 @@ import (
 // been run under KVM.
 //
 // The subtests are grouped by subject - what EVE reports, then how the log
-// pipeline is configured - and the two that reboot the device go last so that
+// pipeline is configured - and the three that reboot the device go last so that
 // the others do not pay for a reboot. Nothing beyond that is load-bearing: the
 // framework resets the device configuration between subtests, and each subtest
 // establishes the state it needs before it asserts anything, so the order can be
@@ -55,6 +55,8 @@ import (
 //     without stopping the device or its local log collection.
 //   - TestHardwareInventory -- ZInfoHardware describes the device EVE runs on
 //     and stays identical across a reboot.
+//   - TestKernelPanicReport -- a kernel panic recorded in pstore is reported to
+//     the controller and saved under /persist after the reboot it causes.
 func TestTelemetrySuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
@@ -92,6 +94,9 @@ func TestTelemetrySuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestHardwareInventory,
+		},
+		evetest.TestCase{
+			Test: TestKernelPanicReport,
 		},
 	)
 }
