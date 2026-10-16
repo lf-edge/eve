@@ -51,6 +51,7 @@ const longhornInformerResync = 10 * time.Minute
 var (
 	kubevirtGVK = schema.GroupVersionKind{Group: "kubevirt.io", Version: "v1", Kind: "KubeVirt"}
 	cdiGVK      = schema.GroupVersionKind{Group: "cdi.kubevirt.io", Version: "v1beta1", Kind: "CDI"}
+	cdiGVR      = schema.GroupVersionResource{Group: "cdi.kubevirt.io", Version: "v1beta1", Resource: "cdis"}
 )
 
 // Component manifest paths, baked into the container image at build
@@ -117,6 +118,10 @@ const (
 	cdiCRDeployedWaitTimeout = 10 * time.Minute
 	cdiOperatorReadyCeiling  = 20 * time.Minute
 	cdiCRReadyCeiling        = 30 * time.Minute
+
+	// cdiProbeTimeout bounds each EnsureCDI API read, which runs on the
+	// steady-state tick and must not stall it on a hung API server.
+	cdiProbeTimeout = 10 * time.Second
 )
 
 // Multus + DHCP-daemon + debug-user paths. Exported because the
@@ -186,10 +191,10 @@ type NodeAddress struct {
 // rollback point for a later cluster→single conversion.
 func DeployAll(
 	ctx, retryCtx context.Context, bus *deploy.Bus,
-	deviceName string, installKubevirt bool,
+	deviceName string, installKubevirt, installCDI bool,
 ) error {
-	log.Printf("starting component deployment (device=%s, kubevirt=%v)",
-		deviceName, installKubevirt)
+	log.Printf("starting component deployment (device=%s, kubevirt=%v, cdi=%v)",
+		deviceName, installKubevirt, installCDI)
 
 	// Resolve node IP up front so the Multus closure captures concrete
 	// values; a network misconfig fails fast before any kubectl runs.
@@ -198,7 +203,7 @@ func DeployAll(
 		return fmt.Errorf("resolve node IP: %w", err)
 	}
 
-	g := buildDeployGraph(deviceName, addr, installKubevirt)
+	g := buildDeployGraph(deviceName, addr, installKubevirt, installCDI)
 	// Daemon-scoped so a re-entered deploy sees signals earlier passes
 	// already established, and the control socket can report them.
 	g.Bus = bus
@@ -250,15 +255,16 @@ func ensureEveKubeAppNamespace(ctx context.Context) error {
 }
 
 // GraphEdges returns the resolved dependency edges of the deploy
-// graph without running it. installKubevirt mirrors the DeployAll
-// flag so the reported graph matches what a live boot would execute.
+// graph without running it. installKubevirt and installCDI mirror the
+// DeployAll flags so the reported graph matches what a live boot would
+// execute.
 //
 // The graph is built with placeholder deviceName + NodeAddress —
 // those affect the Apply closures, not the edges, so the placeholders
 // are safe. If the plan itself is malformed (a coding bug), the
 // underlying error is surfaced.
-func GraphEdges(installKubevirt bool) ([]deploy.Edge, error) {
-	g := buildDeployGraph("<sctl>", NodeAddress{IP: "0.0.0.0", Prefix: "/32"}, installKubevirt)
+func GraphEdges(installKubevirt, installCDI bool) ([]deploy.Edge, error) {
+	g := buildDeployGraph("<sctl>", NodeAddress{IP: "0.0.0.0", Prefix: "/32"}, installKubevirt, installCDI)
 	return g.Edges()
 }
 
@@ -272,7 +278,7 @@ func GraphEdges(installKubevirt bool) ([]deploy.Edge, error) {
 // to declarative Manifests so the runner's structural rules can
 // derive edges automatically; until then, ordering rides on
 // PolicyDeps.
-func buildDeployGraph(deviceName string, addr NodeAddress, installKubevirt bool) deploy.Graph {
+func buildDeployGraph(deviceName string, addr NodeAddress, installKubevirt, installCDI bool) deploy.Graph {
 	g := deploy.Graph{
 		MaxParallel: applyConcurrency(),
 		// Operator breakpoint per component, so /persist/k3s/wait_longhorn
@@ -348,6 +354,13 @@ func buildDeployGraph(deviceName string, addr NodeAddress, installKubevirt bool)
 				Progress:     componentProgress(kubectlx.KubeVirtNamespace),
 				ReadyCeiling: kubevirtCRReadyCeiling,
 			},
+		)
+	}
+	// CDI fills app PVCs from uploaded images, so it is needed wherever
+	// pillar creates app volumes, including NOHYPER (pod) apps on arches
+	// without KubeVirt.
+	if installCDI {
+		g.Components = append(g.Components,
 			deploy.Component{
 				Name:         "cdi-operator",
 				Requires:     []deploy.Signal{deploy.MultusCNIReady},
@@ -716,6 +729,48 @@ func WaitCDIReady(ctx context.Context) error {
 		cdiGVK, "", cdiCRName,
 		"{.status.phase}", "Deployed",
 		kubectlx.WaitFromContext)
+}
+
+// EnsureCDI installs CDI on a node that completed first boot without it
+// (an arm64 node initialized before CDI was deployed there), which the
+// first-boot deploy graph never revisits. It advances at most one step per
+// call so the steady-state tick never waits on the operator rollout, and
+// reports whether the CDI CR exists. A K3sBase conversion removes CDI on
+// purpose, so nothing is done while one is in flight or after it.
+func EnsureCDI(ctx context.Context) (bool, error) {
+	for _, m := range []state.Marker{longhornUninstallGuard, state.NativeKubernetesMode} {
+		marked, err := state.IsMarked(m)
+		if err != nil {
+			return false, fmt.Errorf("check marker %s: %w", m, err)
+		}
+		if marked {
+			return false, nil
+		}
+	}
+	kc := kubeclient.Default()
+	getCtx, cancel := context.WithTimeout(ctx, cdiProbeTimeout)
+	_, err := kc.Dynamic.Resource(cdiGVR).Get(getCtx, cdiCRName, metav1.GetOptions{})
+	cancel()
+	if err == nil {
+		return true, nil
+	}
+	if !apierrors.IsNotFound(err) {
+		return false, fmt.Errorf("get CDI CR: %w", err)
+	}
+	getCtx, cancel = context.WithTimeout(ctx, cdiProbeTimeout)
+	op, err := kc.Clientset.AppsV1().Deployments(kubectlx.CDINamespace).
+		Get(getCtx, cdiOperatorDeployment, metav1.GetOptions{})
+	cancel()
+	if apierrors.IsNotFound(err) {
+		return false, InstallCDIOperator(ctx)
+	}
+	if err != nil {
+		return false, fmt.Errorf("get deployment %s: %w", cdiOperatorDeployment, err)
+	}
+	if op.Status.AvailableReplicas < 1 {
+		return false, nil
+	}
+	return false, InstallCDICR(ctx)
 }
 
 // ---------------------------------------------------------------------------
