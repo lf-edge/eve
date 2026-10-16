@@ -154,6 +154,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [device]
   driver = "intel-iommu"
   caching-mode = "on"
+  aw-bits = "39"
 
 [overcommit]
   mem-lock = "off"
@@ -410,6 +411,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [device]
   driver = "intel-iommu"
   caching-mode = "on"
+  aw-bits = "39"
 
 [drive "drive-ovmf-code"]
   if = "pflash"
@@ -1534,6 +1536,7 @@ func domConfigAmd64FML() string {
 [device]
   driver = "intel-iommu"
   caching-mode = "on"
+  aw-bits = "39"
 
 [drive "drive-ovmf-code"]
   if = "pflash"
@@ -1837,6 +1840,7 @@ func domConfigAmd64Legacy() string {
 [device]
   driver = "intel-iommu"
   caching-mode = "on"
+  aw-bits = "39"
 
 [overcommit]
   mem-lock = "off"
@@ -2117,6 +2121,7 @@ func domConfigAmd64() string {
 [device]
   driver = "intel-iommu"
   caching-mode = "on"
+  aw-bits = "39"
 
 [overcommit]
   mem-lock = "off"
@@ -2393,6 +2398,7 @@ func domConfigContainerVNC() string {
 [device]
   driver = "intel-iommu"
   caching-mode = "on"
+  aw-bits = "39"
 
 [overcommit]
   mem-lock = "off"
