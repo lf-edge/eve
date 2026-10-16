@@ -86,12 +86,14 @@ func TestAppInstanceStatusTruncateErrors(t *testing.T) {
 		VolumeRefStatusList: []VolumeRefStatus{{}, {}},
 	}
 	status.Error = long
+	status.RuntimeErr.Error = long
 	status.VolumeRefStatusList[0].Error = long
 	status.VolumeRefStatusList[1].Error = "short"
 
 	status.TruncateErrors(200)
 
 	assert.LessOrEqual(t, len(status.Error), 200)
+	assert.LessOrEqual(t, len(status.RuntimeErr.Error), 200)
 	assert.LessOrEqual(t, len(status.VolumeRefStatusList[0].Error), 200)
 	assert.Equal(t, "short", status.VolumeRefStatusList[1].Error)
 }
