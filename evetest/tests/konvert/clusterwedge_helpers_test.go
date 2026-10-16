@@ -41,11 +41,12 @@ const (
 // surfaces immediately rather than burning the whole budget.
 func waitDeviceOnTarget(t Gomega, device *evetest.EdgeDevice,
 	hv evetest.Hypervisor, timeout time.Duration) {
-	// The target's short version carries a flavor suffix; for the conversion
-	// that suffix is the only thing distinguishing it from the kvm hop.
-	suffix := "-kvm-"
+	// The short version is <version>-<flavor>-<arch>; for the conversion the
+	// flavor is the only thing distinguishing it from the kvm hop. Match that
+	// field alone, since a branch-named version can itself contain "-k-".
+	flavor := "kvm"
 	if hv == evetest.HypervisorKubevirt {
-		suffix = "-k-"
+		flavor = "k"
 	}
 	t.Eventually(func(g Gomega) {
 		info := device.GetDeviceInfo()
@@ -54,7 +55,7 @@ func waitDeviceOnTarget(t Gomega, device *evetest.EdgeDevice,
 		for _, sw := range info.GetSwList() {
 			ver, state := sw.GetShortVersion(), sw.GetPartitionState()
 			seen = append(seen, fmt.Sprintf("%s[%s/%s]", ver, state, sw.GetUserStatus()))
-			if !strings.Contains(ver, suffix) {
+			if f := strings.Split(ver, "-"); len(f) < 3 || f[len(f)-2] != flavor {
 				continue
 			}
 			g.Expect(sw.GetUserStatus()).NotTo(Equal(eveinfo.BaseOsStatus_FAILED),
@@ -64,7 +65,7 @@ func waitDeviceOnTarget(t Gomega, device *evetest.EdgeDevice,
 				return
 			}
 		}
-		g.Expect(false).To(BeTrue(), "device not running a %s image yet: %v", suffix, seen)
+		g.Expect(false).To(BeTrue(), "device not running a -%s- image yet: %v", flavor, seen)
 	}, timeout, 15*time.Second).Should(Succeed())
 }
 
