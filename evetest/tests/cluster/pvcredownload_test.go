@@ -278,7 +278,7 @@ func TestClusterPVCRedownload(test *testing.T) {
 	// one destination is matched.
 	//
 	// Step 5: bring down only Node B's cluster-interconnect port
-	// (dev2-eth1). Node A and Node C keep their own cluster ports up and
+	// (edge-dev2-eth1). Node A and Node C keep their own cluster ports up and
 	// reform the cluster between themselves; Node B's isolation is what
 	// keeps it out.
 	restrictedModel := proto.Clone(netmodels.SeparateClusterPort(devName[:]...)).(*api.NetworkModel)
@@ -292,7 +292,7 @@ func TestClusterPVCRedownload(test *testing.T) {
 		},
 	}
 	for _, p := range restrictedModel.Ports {
-		if p.LogicalLabel == "dev2-eth1" {
+		if p.LogicalLabel == fmt.Sprintf("%s-eth1", devName[1]) {
 			p.AdminUp = false
 		}
 	}
