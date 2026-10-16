@@ -41,7 +41,12 @@ RUN echo "Cargo target: $CARGO_BUILD_TARGET"
 # building the final image
 FROM toolchain AS builder
 ARG VECTOR_FEATURES
-ADD https://github.com/vectordotdev/vector.git#v0.54.0 /app
+ADD --keep-git-dir=true https://github.com/vectordotdev/vector.git#v0.54.0 /app
+
+# The vendored OpenSSL embeds SOURCE_DATE_EPOCH, or else the build time, in
+# its "built on:" string; use the commit time of the tag. Drop .git so
+# vector's build.rs embeds no git hash.
+RUN git -C /app log -1 --format=%ct > /source-date-epoch && rm -rf /app/.git
 
 # Drop upstream vector's own .cargo (pins rust-toolchain etc) and replace
 # with ours. Our config.toml merges with eve-rust's per-target linker config
@@ -52,7 +57,7 @@ COPY cargo-config.toml /app/.cargo/config.toml
 
 WORKDIR /app
 
-RUN cargo build --release $VECTOR_FEATURES
+RUN SOURCE_DATE_EPOCH=$(cat /source-date-epoch) cargo build --release $VECTOR_FEATURES
 
 # Symbols are stripped via `profile.release.strip = "symbols"` in
 # cargo-config.toml. Doing it in the Rust profile (rather than invoking
