@@ -283,12 +283,18 @@ func (z *zedrouter) checkForPortMapOverlap(adapterCfgList1 []types.AppNetAdapter
 	adapterCfgList2 []types.AppNetAdapterConfig) bool {
 	for _, adapterCfg1 := range adapterCfgList1 {
 		network1 := adapterCfg1.Network
+		if !z.niAppliesPortMaps(network1) {
+			continue
+		}
 		// Validate whether there are duplicate portmap rules within one VIF.
 		if z.detectPortMapConflictWithinAdapter(adapterCfg1.ACLs) {
 			return true
 		}
 		for _, adapterCfg2 := range adapterCfgList2 {
 			network2 := adapterCfg2.Network
+			if !z.niAppliesPortMaps(network2) {
+				continue
+			}
 			if network1 == network2 || z.checkPortOverlap(network1, network2) {
 				if z.detectPortMapConflictAcrossAdapters(adapterCfg1.ACLs, adapterCfg2.ACLs) {
 					return true
@@ -297,6 +303,19 @@ func (z *zedrouter) checkForPortMapOverlap(adapterCfgList1 []types.AppNetAdapter
 		}
 	}
 	return false
+}
+
+// Check if port-map ACL rules take effect for apps connected to the given
+// network instance. Only Local NI implements port mapping (DNAT); for other
+// NI types (e.g. Switch) the rules are ignored by NIReconciler, therefore
+// they cannot conflict with port maps of other apps.
+// If the NI config is not known (yet), assume port maps apply.
+func (z *zedrouter) niAppliesPortMaps(network uuid.UUID) bool {
+	netInstConfig := z.lookupNetworkInstanceConfig(network.String())
+	if netInstConfig == nil {
+		return true
+	}
+	return netInstConfig.Type == types.NetworkInstanceTypeLocal
 }
 
 // Check if network instances are using the same port label.
