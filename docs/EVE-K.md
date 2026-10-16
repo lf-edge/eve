@@ -232,6 +232,58 @@ Volume replicas are blocked from scheduling onto a tie breaker node to decrease 
 
 Volumemgr queries the kubernetes node objects to determine if a tie breaker node exists.  If found then all volume instances are created using the above mentioned storage class 'lh-sc-rep2' which ensures that all volumes only contain 2 replicas and schedule to only nodes not set as a tie breaker.
 
+## NVIDIA Device Plugin Configuration
+
+On NVIDIA hardware EVE deploys the NVIDIA device plugin from
+`pkg/kube/nvidia-container-runtime/nvidia-device-plugin.yml`. The DaemonSet
+belongs to EVE and is replaced on every EVE upgrade, so do not patch it.
+Configure the plugin through a ConfigMap instead (e.g. for
+[GPU time-slicing](https://github.com/NVIDIA/k8s-device-plugin#shared-access-to-gpus)).
+
+The plugin reads its config files from two ConfigMaps in `kube-system`:
+
+- `nvidia-device-plugin-eve`: owned by EVE and replaced on upgrade. Provides the `default` config.
+- `nvidia-device-plugin-config`: owned by the user and never touched by EVE. Optional.
+
+Each key of the user ConfigMap is a plugin config file. A `default` key replaces
+EVE's default on every node. Other keys are selected per node with the label
+`nvidia.com/device-plugin.config=<key>`:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nvidia-device-plugin-config
+  namespace: kube-system
+data:
+  default: |
+    version: v1
+  timeslice-4: |
+    version: v1
+    sharing:
+      timeSlicing:
+        failRequestsGreaterThanOne: true
+        resources:
+        - name: nvidia.com/gpu
+          replicas: 4
+```
+
+```sh
+kubectl label node <node> nvidia.com/device-plugin.config=timeslice-4 --overwrite
+```
+
+The ConfigMap can be applied with kubectl, a Helm chart or a GitOps tool. Since it
+names a fixed object in `kube-system`, ship it from a release of its own rather
+than from an application chart: uninstalling that release deletes it.
+
+The plugin picks up a label change right away. kube-init restarts the plugin pods
+when the content of either ConfigMap changes. Notes:
+
+- The environment variables EVE sets on the plugin (driver root, device discovery,
+  CDI hook path) take precedence over any config file. They cannot be overridden.
+- A label naming a key that does not exist keeps the plugin pod from starting on that node.
+- Time-slicing provides no memory or fault isolation between pods sharing a GPU.
+
 ## User Volumes - Default PVC Options
 
 The available default storage classes will vary depending on the mode which eve-k is
