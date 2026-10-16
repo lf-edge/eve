@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -436,11 +437,16 @@ func TestNvidiaManifestSelectsNodeLabel(t *testing.T) {
 		t.Fatalf("read %s: %v", name, err)
 	}
 	var ds appsv1.DaemonSet
-	if err := yaml.Unmarshal(data, &ds); err != nil {
-		t.Fatalf("parse %s: %v", name, err)
+	for _, doc := range strings.Split(string(data), "\n---\n") {
+		if err := yaml.Unmarshal([]byte(doc), &ds); err != nil {
+			t.Fatalf("parse %s: %v", name, err)
+		}
+		if ds.Kind == "DaemonSet" {
+			break
+		}
 	}
 	if ds.Kind != "DaemonSet" {
-		t.Fatalf("%s is a %q, want a DaemonSet", name, ds.Kind)
+		t.Fatalf("%s declares no DaemonSet", name)
 	}
 	if got := ds.Spec.Template.Spec.NodeSelector[NvidiaGPUNodeLabel]; got != "true" {
 		t.Errorf("%s nodeSelector[%s] = %q, want \"true\"", name, NvidiaGPUNodeLabel, got)

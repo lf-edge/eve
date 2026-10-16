@@ -12,6 +12,57 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Plugin configuration is split between two ConfigMaps, merged into one
+# directory by a projected volume:
+#
+#   - nvidia-device-plugin-eve: owned by EVE, shipped in this manifest and
+#     replaced on every EVE upgrade. Provides the "default" config.
+#   - nvidia-device-plugin-config: owned by the user, never shipped by EVE,
+#     so it survives EVE upgrades. Optional. Each key is a plugin config
+#     file (e.g. time-slicing); a "default" key overrides EVE's one.
+#
+# config-manager selects the config named by the node label
+# nvidia.com/device-plugin.config, or "default" when the node is unlabeled.
+# EVE's env vars on the plugin container take precedence over any config
+# file, so a user config cannot override the EVE driver and CDI setup.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nvidia-device-plugin
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: nvidia-device-plugin
+rules:
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: nvidia-device-plugin
+subjects:
+- kind: ServiceAccount
+  name: nvidia-device-plugin
+  namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: nvidia-device-plugin
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nvidia-device-plugin-eve
+  namespace: kube-system
+data:
+  default: |
+    version: v1
+---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -41,10 +92,79 @@ spec:
       # be rescheduled after a failure.
       # See https://kubernetes.io/docs/tasks/administer-cluster/guaranteed-scheduling-critical-addon-pods/
       priorityClassName: "system-node-critical"
+      serviceAccountName: nvidia-device-plugin
+      # Lets the config-manager sidecar SIGHUP the plugin on a label change.
+      shareProcessNamespace: true
+      initContainers:
+      - image: nvcr.io/nvidia/k8s-device-plugin:v0.20.0
+        name: nvidia-device-plugin-init
+        command: ["config-manager"]
+        env:
+        - name: ONESHOT
+          value: "true"
+        - name: KUBECONFIG
+          value: ""
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: NODE_LABEL
+          value: nvidia.com/device-plugin.config
+        - name: CONFIG_FILE_SRCDIR
+          value: /available-configs
+        - name: CONFIG_FILE_DST
+          value: /config/config.yaml
+        - name: FALLBACK_STRATEGIES
+          value: named
+        - name: SEND_SIGNAL
+          value: "false"
+        - name: SIGNAL
+          value: ""
+        - name: PROCESS_TO_SIGNAL
+          value: ""
+        volumeMounts:
+        - name: available-configs
+          mountPath: /available-configs
+        - name: config
+          mountPath: /config
       containers:
       - image: nvcr.io/nvidia/k8s-device-plugin:v0.20.0
-        name: nvidia-device-plugin-ctr
+        name: nvidia-device-plugin-sidecar
+        command: ["config-manager"]
         env:
+        - name: ONESHOT
+          value: "false"
+        - name: KUBECONFIG
+          value: ""
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: NODE_LABEL
+          value: nvidia.com/device-plugin.config
+        - name: CONFIG_FILE_SRCDIR
+          value: /available-configs
+        - name: CONFIG_FILE_DST
+          value: /config/config.yaml
+        - name: FALLBACK_STRATEGIES
+          value: named
+        - name: SEND_SIGNAL
+          value: "true"
+        - name: SIGNAL
+          value: "1" # SIGHUP
+        - name: PROCESS_TO_SIGNAL
+          value: nvidia-device-plugin
+        volumeMounts:
+        - name: available-configs
+          mountPath: /available-configs
+        - name: config
+          mountPath: /config
+      - image: nvcr.io/nvidia/k8s-device-plugin:v0.20.0
+        name: nvidia-device-plugin-ctr
+        command: ["nvidia-device-plugin"]
+        env:
+        - name: CONFIG_FILE
+          value: /config/config.yaml
         - name: NVIDIA_DRIVER_ROOT
           value: /opt/vendor/nvidia/dist
         - name: NVIDIA_DEV_ROOT
@@ -67,6 +187,10 @@ spec:
           mountPath: /dev
         - name: cdi-root
           mountPath: /var/run/cdi
+        - name: available-configs
+          mountPath: /available-configs
+        - name: config
+          mountPath: /config
       volumes:
       - name: kubelet-device-plugins-dir
         hostPath:
@@ -83,3 +207,15 @@ spec:
         hostPath:
           path: /var/run/cdi
           type: DirectoryOrCreate
+      # Later sources win on a key collision, so the user ConfigMap can
+      # override EVE's "default".
+      - name: available-configs
+        projected:
+          sources:
+          - configMap:
+              name: nvidia-device-plugin-eve
+          - configMap:
+              name: nvidia-device-plugin-config
+              optional: true
+      - name: config
+        emptyDir: {}
