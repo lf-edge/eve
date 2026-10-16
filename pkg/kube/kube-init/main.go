@@ -200,6 +200,7 @@ type initResult struct {
 	uuid            string
 	eveRelease      string
 	installKubevirt bool
+	installCDI      bool
 	phase           Phase
 }
 
@@ -408,6 +409,7 @@ type daemon struct {
 	uuid            string
 	eveRelease      string
 	installKubevirt bool
+	installCDI      bool
 
 	// initRes is the work-goroutine's output. The channel send in
 	// startAsync happens-after the write, so handleInit sees the
@@ -615,6 +617,7 @@ func main() {
 
 	d := &daemon{
 		installKubevirt: true,
+		installCDI:      true,
 		phase:           PhaseFirstBoot,
 		backoff:         minBackoff,
 		eventCh:         make(chan Event, 32),
@@ -801,6 +804,7 @@ func (d *daemon) handleInit(ctx context.Context, ev Event) {
 			d.uuid = d.initRes.uuid
 			d.eveRelease = d.initRes.eveRelease
 			d.installKubevirt = d.initRes.installKubevirt
+			d.installCDI = d.initRes.installCDI
 			d.phase = d.initRes.phase
 			d.initRes = nil
 		}
@@ -1546,6 +1550,7 @@ func (d *daemon) workInit(workCtx context.Context) error {
 		uuid:            uuid,
 		eveRelease:      eveRelease,
 		installKubevirt: true,
+		installCDI:      true,
 	}
 
 	// KubeVirt is amd64-only upstream.
@@ -1559,8 +1564,9 @@ func (d *daemon) workInit(workCtx context.Context) error {
 		return fmt.Errorf("check native-kubernetes-mode marker: %w", err)
 	}
 	if nkm {
-		log.Printf("native-kubernetes-mode (post K3sBase conversion) — KubeVirt disabled")
+		log.Printf("native-kubernetes-mode (post K3sBase conversion) — KubeVirt and CDI disabled")
 		res.installKubevirt = false
+		res.installCDI = false
 	}
 
 	pendingConvert, err := state.IsConvertToSingleNode()
@@ -1679,7 +1685,7 @@ func (d *daemon) initKubeclient() error {
 // so the snapshot does not copy a datastore mid-write.
 func (d *daemon) workDeploy(workCtx context.Context) error {
 	return components.DeployAll(workCtx, d.rootCtx, d.signals,
-		d.deviceName, d.installKubevirt)
+		d.deviceName, d.installKubevirt, d.installCDI)
 }
 
 // publishInitialized publishes the post-bootstrap phase on the
@@ -2060,7 +2066,7 @@ func (d *daemon) handleSocketConn(conn net.Conn) {
 		// tell a component that has not run yet from one that is blocked
 		// and on what. Multi-line response terminated by conn close
 		// (deferred above).
-		edges, err := components.GraphEdges(d.installKubevirt)
+		edges, err := components.GraphEdges(d.installKubevirt, d.installCDI)
 		if err != nil {
 			_, _ = fmt.Fprintf(conn, "ERR: graph: %v\n", err)
 			return
@@ -2466,15 +2472,18 @@ func (d *daemon) runHealthWorker(ctx context.Context, mon *monitor.Monitor, sup 
 	//   - PatchCDIProxyConfig re-asserts the CDI CR's importProxy
 	//     spec so importer pods get the proxy env; safe to repeat
 	//     because kubectl patch is idempotent.
-	// Both are gated on kubevirt being requested for this device —
-	// native-kubernetes-mode and arm64 don't carry CDI.
-	if d.installKubevirt {
+	// Both are gated on CDI being requested for this device —
+	// native-kubernetes-mode doesn't carry CDI. EnsureCDI installs it
+	// on nodes initialized before CDI was deployed on their arch.
+	if d.installCDI {
 		if res, err := mgmtproxy.SetupCNI0ProxyIP(); err != nil {
 			log.Printf("WARNING: setup cni0 proxy anchor: %v", err)
 		} else if res == mgmtproxy.CNI0Assigned {
 			log.Printf("mgmtproxy: assigned %s/32 to cni0", mgmtproxy.CNI0IP)
 		}
-		if marked, err := state.IsMarked(state.KubevirtInitialized); err == nil && marked {
+		if installed, err := components.EnsureCDI(ctx); err != nil {
+			log.Printf("WARNING: ensure CDI: %v", err)
+		} else if installed {
 			if err := mgmtproxy.PatchCDIProxyConfig(ctx); err != nil {
 				log.Printf("WARNING: patch CDI proxy config: %v", err)
 			}
