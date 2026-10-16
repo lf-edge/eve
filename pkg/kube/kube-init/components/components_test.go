@@ -121,15 +121,15 @@ func TestBuildFeatureGatesPatch(t *testing.T) {
 //     dir before its config applies. A regression here is silent in
 //     unit-land and only manifests at runtime.
 //
-//  2. kubevirt/cdi must be appended ONLY when installKubevirt is
-//     true, AND each must carry ReadyTimeout matching the CR-
-//     converge budget (without it the deploy package's 30-second
-//     default cap fires prematurely).
+//  2. kubevirt must be appended ONLY when installKubevirt is true and
+//     cdi ONLY when installCDI is true, AND each must carry
+//     ReadyTimeout matching the CR-converge budget (without it the
+//     deploy package's 30-second default cap fires prematurely).
 func TestBuildDeployGraph(t *testing.T) {
 	addr := NodeAddress{IP: "10.0.0.5", Prefix: "/32"}
 
 	t.Run("longhorn depends on manifests", func(t *testing.T) {
-		g := buildDeployGraph("dev", addr, false /*installKubevirt*/)
+		g := buildDeployGraph("dev", addr, false /*installKubevirt*/, false /*installCDI*/)
 		longhorn := findComponent(t, g.Components, "longhorn")
 		if len(longhorn.PolicyDeps) != 1 || longhorn.PolicyDeps[0] != "manifests" {
 			t.Errorf("longhorn.PolicyDeps = %v, want [manifests]", longhorn.PolicyDeps)
@@ -146,18 +146,29 @@ func TestBuildDeployGraph(t *testing.T) {
 		}
 	})
 
-	t.Run("kubevirt/cdi omitted when flag false", func(t *testing.T) {
-		g := buildDeployGraph("dev", addr, false)
+	t.Run("kubevirt/cdi omitted when flags false", func(t *testing.T) {
+		g := buildDeployGraph("dev", addr, false, false)
 		gated := map[string]bool{"kubevirt": true, "cdi": true, "cdi-operator": true}
 		for _, c := range g.Components {
 			if gated[c.Name] {
-				t.Errorf("did not expect component %q when installKubevirt=false", c.Name)
+				t.Errorf("did not expect component %q when both flags are false", c.Name)
 			}
 		}
 	})
 
-	t.Run("kubevirt/cdi present with BestEffort + timeout when flag true", func(t *testing.T) {
-		g := buildDeployGraph("dev", addr, true)
+	t.Run("cdi without kubevirt", func(t *testing.T) {
+		g := buildDeployGraph("dev", addr, false, true)
+		findComponent(t, g.Components, "cdi-operator")
+		findComponent(t, g.Components, "cdi")
+		for _, c := range g.Components {
+			if c.Name == "kubevirt" {
+				t.Errorf("did not expect kubevirt when installKubevirt=false")
+			}
+		}
+	})
+
+	t.Run("kubevirt/cdi present with BestEffort + timeout when flags true", func(t *testing.T) {
+		g := buildDeployGraph("dev", addr, true, true)
 		kv := findComponent(t, g.Components, "kubevirt")
 		cdiOp := findComponent(t, g.Components, "cdi-operator")
 		cdi := findComponent(t, g.Components, "cdi")
@@ -217,10 +228,11 @@ func TestRealGraphSignalEdges(t *testing.T) {
 	cases := []struct {
 		name            string
 		installKubevirt bool
+		installCDI      bool
 		want            []deploy.Edge
 	}{
 		{
-			name: "without kubevirt",
+			name: "without kubevirt or cdi",
 			want: []deploy.Edge{
 				{From: "manifests", To: "longhorn", Rule: "policy"},
 				{From: "multus", To: "longhorn", Rule: "signal", Signal: deploy.MultusCNIReady},
@@ -231,8 +243,20 @@ func TestRealGraphSignalEdges(t *testing.T) {
 			// CDI is two components: the operator serves its own CR's
 			// admission webhook, so the CR waits on CDIOperatorReady
 			// and inherits MultusCNIReady transitively.
-			name:            "with kubevirt",
+			name:       "cdi without kubevirt",
+			installCDI: true,
+			want: []deploy.Edge{
+				{From: "cdi-operator", To: "cdi", Rule: "signal", Signal: deploy.CDIOperatorReady},
+				{From: "manifests", To: "longhorn", Rule: "policy"},
+				{From: "multus", To: "cdi-operator", Rule: "signal", Signal: deploy.MultusCNIReady},
+				{From: "multus", To: "longhorn", Rule: "signal", Signal: deploy.MultusCNIReady},
+				{From: "namespace", To: "multus", Rule: "signal", Signal: deploy.EveKubeAppNamespaceExists},
+			},
+		},
+		{
+			name:            "with kubevirt and cdi",
 			installKubevirt: true,
+			installCDI:      true,
 			want: []deploy.Edge{
 				{From: "cdi-operator", To: "cdi", Rule: "signal", Signal: deploy.CDIOperatorReady},
 				{From: "manifests", To: "longhorn", Rule: "policy"},
@@ -247,7 +271,7 @@ func TestRealGraphSignalEdges(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			// Also asserts signal validation passes: an unproduced or
 			// doubly-produced signal fails here rather than at boot.
-			got, err := GraphEdges(c.installKubevirt)
+			got, err := GraphEdges(c.installKubevirt, c.installCDI)
 			if err != nil {
 				t.Fatalf("GraphEdges: %v", err)
 			}
