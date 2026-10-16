@@ -18,6 +18,7 @@ import (
 	"github.com/lf-edge/eve/evetest"
 	api "github.com/lf-edge/eve/evetest/grpcapi/go"
 	"github.com/lf-edge/eve/evetest/netmodels"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -82,7 +83,11 @@ const (
 // instance additionally attaches a data volume of random content that is
 // distinct per instance, so every app has an image of its own to download,
 // verify and copy, like the diversified images of a real deployment; the
-// device disk is sized to hold them all twice.
+// device disk is sized to hold them all twice. EVE's admission check for
+// application memory is switched off: it pads every instance by the VMM
+// overhead it estimates, which would make the default batch need a 40 GiB
+// device, while EVE's own budgets, which are what runs out, do not depend
+// on it.
 //
 // Phases:
 //  1. Apply the base configuration (port, NI) and record the device's boot
@@ -332,6 +337,15 @@ func TestBulkAppDeployment(test *testing.T) {
 
 	// Phase 1: base configuration, boot time and budgets.
 	devConfig := evetest.NewEdgeDeviceConfig(devName)
+	// EVE admits an instance only if its memory plus the VMM overhead it
+	// estimates (about 380 MiB even for a small container) still fits in
+	// the device's RAM, which would make the default batch need a 40 GiB
+	// device for the fraction of it the batch really uses. The field
+	// devices had RAM to spare, and what runs out here are EVE's own
+	// budgets, which this check does not touch.
+	cfgProps := types.NewConfigItemValueMap()
+	cfgProps.SetGlobalValueBool(types.IgnoreMemoryCheckForApps, true)
+	devConfig.SetConfigProperties(cfgProps)
 	dhcpNet := devConfig.AddNetwork(evetest.DHCPNetworkConfig{
 		NetworkType: evecommon.NetworkType_V4Only,
 	})
