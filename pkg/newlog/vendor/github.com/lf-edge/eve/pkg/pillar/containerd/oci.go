@@ -350,10 +350,13 @@ func (s *ociSpec) UpdateWithIoBundles(config *types.DomainConfig, aa *types.Assi
 			if ib == nil {
 				continue
 			}
+			// domainmgr's adapter bookkeeping can disagree with the domain
+			// being started; warn rather than take the node down over it.
 			if ib.UsedByUUID != config.UUIDandVersion.UUID {
-				logrus.Fatalf("IoBundle not ours %s: %d %s for %v\n",
+				logrus.Warnf("IoBundle not ours %s: %d %s for %v\n",
 					ib.UsedByUUID, adapter.Type, adapter.Name,
 					domainID)
+				continue
 			}
 
 			// Video devices

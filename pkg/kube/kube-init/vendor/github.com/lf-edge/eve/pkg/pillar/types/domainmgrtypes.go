@@ -62,6 +62,14 @@ type DomainConfig struct {
 	// if this node is the DNiD of the App
 	IsDNidNode bool
 
+	// DesignatedNodeUUID is the device UUID of the app's actual designated
+	// node, whichever node that is -- copied from AppInstanceConfig's field
+	// of the same name. IsDNidNode above only answers whether *this* node
+	// is it; this is what lets the node creating the domain (e.g. a backup
+	// node standing in during a DNID outage) resolve and encode the true
+	// home's node affinity instead of always encoding its own.
+	DesignatedNodeUUID string
+
 	// Node Affinity for cluster IsDesignatedNodeID
 	AffinityType Affinity
 
@@ -138,11 +146,6 @@ func (config DomainConfig) GetTaskName() string {
 
 // DomainnameToUUID does the reverse of GetTaskName
 func DomainnameToUUID(name string) (uuid.UUID, string, int, error) {
-	// FIXME: we can likely drop this altogether
-	if name == "Domain-0" {
-		return uuid.UUID{}, "", 0, nil
-	}
-
 	res := strings.Split(name, ".")
 	if len(res) != 3 {
 		return uuid.UUID{}, "", 0, fmt.Errorf("Unknown domainname format %s",
@@ -180,6 +183,9 @@ func (config DomainConfig) VirtualizationModeOrDefault() VmMode {
 func (status DiskStatus) GetPVCNameFromVolumeKey() (string, error) {
 	volumeIDAndGeneration := status.VolumeKey
 	generation := strings.Split(volumeIDAndGeneration, "#")
+	if len(generation) < 2 {
+		return "", fmt.Errorf("invalid volume key %q: missing generation", volumeIDAndGeneration)
+	}
 	volUUID, err := uuid.FromString(generation[0])
 	if err != nil {
 		return "", fmt.Errorf("failed to parse volUUID: %w", err)
@@ -262,8 +268,8 @@ func (config DomainConfig) LogKey() string {
 type VmConfig struct {
 	Kernel     string // default ""
 	Ramdisk    string // default ""
-	Memory     int    // in kbytes; Rounded up to Mbytes for xen
-	MaxMem     int    // in kbytes; Default equal to 'Memory', so no ballooning for xen
+	Memory     int    // in kbytes
+	MaxMem     int    // in kbytes; Default equal to 'Memory', so no ballooning
 	VCpus      int    // default 1
 	MaxCpus    int    // default VCpus
 	RootDev    string // default "/dev/xvda1"
@@ -393,7 +399,20 @@ type DomainStatus struct {
 	PendingAdd     bool
 	PendingModify  bool
 	PendingDelete  bool
-	DomainName     string // Name of Xen domain
+	DomainName     string // Name of the domain
+	// DomainId identifies the running domain, with hypervisor-specific meaning:
+	// for kvm it is the underlying qemu process's pid; for kubevirt (HV=k)
+	// it is a value derived from the app's current VMIRS/ReplicaSet identity
+	// (see hypervisor/kubevirt.go's workloadID), since there is no pid.
+	//
+	// The one invariant every hypervisor backend must uphold, and every
+	// consumer relies on: DomainId is zero if and only if the domain is
+	// confirmed not present (no process for kvm; VMIRS/ReplicaSet
+	// confirmed absent for kubevirt). It must never be zero merely because
+	// the answer is unknown or unattributable - doInactivate's teardown
+	// gates and doCleanup's success test both key on zero meaning "already
+	// gone", so a zero returned for any other reason skips a teardown that
+	// never happened and reports it as done.
 	DomainId       int
 	BootTime       time.Time
 	DiskStatusList []DiskStatus
@@ -563,7 +582,7 @@ type VifInfo struct {
 	VifUsed string // Has -emu in name in Status if appropriate
 }
 
-// DomainManager will pass these to the xen xl config file
+// DomainManager will pass these to the domain config file
 // The vdev is automatically assigned as xvd[x], where X is a, b, c etc,
 // based on the order in the DiskList
 // Note that vdev in general can be hd[x], xvd[x], sd[x] but here we only
@@ -729,7 +748,6 @@ type OemWindowsLicenseKeyInfo struct {
 	Qemu       struct {
 		DomainArguments []string
 	}
-	Xen struct{}
 }
 
 // DmiSystemInfo hold system information extracted from dmidecode

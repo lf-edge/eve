@@ -26,7 +26,7 @@ func runPubsub(pubStr string) {
 		return
 	}
 
-	startdir := []string{"/run/", "/persist/status/", "/persist/pubsub-large/"}
+	startdir := []string{"/run/", "/persist/status/"}
 	for _, p := range opts {
 		printTitle("\n === Pub/Sub: <"+p+"> ===\n\n", colorPURPLE, false)
 
@@ -58,11 +58,6 @@ func runPubsub(pubStr string) {
 		for _, sdir := range startdir {
 			if sdir == "/persist/status/" {
 				opts1, _ := checkOpts(pubStr, pubsubpersist)
-				if len(opts1) == 0 {
-					break
-				}
-			} else if sdir == "/persist/pubsub-large/" {
-				opts1, _ := checkOpts(pubStr, pubsublarge)
 				if len(opts1) == 0 {
 					break
 				}

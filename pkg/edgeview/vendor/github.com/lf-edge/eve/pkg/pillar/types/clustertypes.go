@@ -89,10 +89,19 @@ type EdgeNodeClusterConfig struct {
 	// TieBreakerNodeID - uuid of a node which will be unscheduled for all workloads
 	TieBreakerNodeID UUIDandVersion
 
+	// EnableNativeK8SOrchestration, when true on a ClusterTypeReplicatedStorage
+	// cluster, enables native Kubernetes orchestration of user workloads
+	// (registration manifest + kube-vip load balancer) in addition to the
+	// EVE-API-managed scheduling. Unlike ClusterTypeK3sBase it does NOT remove
+	// longhorn/kubevirt; the full replicated-storage stack keeps running.
+	// Sourced from EdgeNodeCluster.enable_native_k8s_orchestration.
+	EnableNativeK8SOrchestration bool
+
 	// LBInterfaces - load balancer interface configurations from the controller.
-	// Populated only for ClusterTypeK3sBase clusters. Mirrors the LoadBalancerService
-	// interfaces array from the protobuf; each entry holds one interface name and its
-	// first CIDR from address_cidrs.
+	// Populated when native k8s orchestration is enabled (see
+	// NativeK8sOrchestrationEnabled). Mirrors the LoadBalancerService interfaces
+	// array from the protobuf; each entry holds one interface name and its first
+	// CIDR from address_cidrs.
 	LBInterfaces []LBInterfaceConfig
 
 	// MasterNodeIDs - UUIDs of all designated control-plane nodes in the cluster
@@ -162,6 +171,44 @@ func (config EdgeNodeClusterConfig) Key() string {
 	return config.ClusterID.UUID.String()
 }
 
+// NativeK8sOrchestrationEnabled reports whether native Kubernetes orchestration
+// of user workloads is active for this cluster: always for the legacy
+// ClusterTypeK3sBase, and for ClusterTypeReplicatedStorage when the controller
+// opts in via EnableNativeK8SOrchestration. It gates the registration manifest
+// and the kube-vip load balancer. The replicated-storage opt-in, unlike
+// K3sBase, keeps longhorn/kubevirt installed.
+func (config EdgeNodeClusterConfig) NativeK8sOrchestrationEnabled() bool {
+	if config.ClusterType == ClusterTypeK3sBase {
+		return true
+	}
+	return config.ClusterType == ClusterTypeReplicatedStorage &&
+		config.EnableNativeK8SOrchestration
+}
+
+// IsTieBreakerNode reports whether nodeUUID is the tie-breaker node the
+// controller designated for this cluster. A tie-breaker node exists only to
+// hold a quorum vote: it is kept cordoned, runs no workloads and carries no
+// Longhorn replicas, so node-local storage configuration does not apply to it.
+//
+// This is the authoritative test. Do not infer tie-breaker-ness from a node
+// being unschedulable: Longhorn drives its node Schedulable condition off the
+// Kubernetes cordon, which every node passes through at boot and during
+// drains, so that signal would misclassify ordinary storage nodes.
+//
+// Returns false when the controller designated no tie-breaker (zero UUID) or
+// nodeUUID does not parse, so a node is only treated as the tie-breaker on
+// positive evidence from the EVE API config.
+func (config EdgeNodeClusterConfig) IsTieBreakerNode(nodeUUID string) bool {
+	if config.TieBreakerNodeID.UUID == uuid.Nil {
+		return false
+	}
+	parsed, err := uuid.FromString(nodeUUID)
+	if err != nil {
+		return false
+	}
+	return parsed == config.TieBreakerNodeID.UUID
+}
+
 // EdgeNodeClusterStatus - Status of the multi-node cluster published by zedkube
 type EdgeNodeClusterStatus struct {
 	ClusterName string
@@ -212,13 +259,21 @@ type EdgeNodeClusterStatus struct {
 	Error ErrorDescription
 }
 
-// KubeLeaderElectInfo - Information about the status reporter leader election
+// KubeLeaderElectInfo - Information about the leader elections this node runs.
+// InLeaderElection, IsStatsLeader, ElectionRunning, and LeaderIdentity
+// describe the status-reporter election only.
 type KubeLeaderElectInfo struct {
 	InLeaderElection bool
 	IsStatsLeader    bool
 	ElectionRunning  bool
 	LeaderIdentity   string
-	LatestChange     time.Time
+	// IsAppOpLeader reports whether this node holds the eve-app-op lease,
+	// which is what decides the one node allowed to act on an app whose
+	// designated node is down. AppOpLeaderIdentity is the holder this node
+	// last observed, whether or not that is this node.
+	IsAppOpLeader       bool
+	AppOpLeaderIdentity string
+	LatestChange        time.Time
 }
 
 // VmiVNCConfig is the JSON structure for vmiVNC.run file.

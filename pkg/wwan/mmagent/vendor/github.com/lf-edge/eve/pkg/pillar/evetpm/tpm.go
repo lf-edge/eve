@@ -26,6 +26,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 	"unsafe"
 
 	"github.com/google/go-tpm/legacy/tpm2"
@@ -89,6 +90,9 @@ const (
 	PCRIndexMax = 15
 	// PCRIndexSRTM is the PCR index for Static Root of Trust for Measurement
 	PCRIndexSRTM = 0
+	// PCRIndexBootManagerCode is the PCR index for the boot manager/OS loader
+	// binary (EVE's GRUB), measured by firmware per the TCG PC Client profile.
+	PCRIndexBootManagerCode = 4
 	// PCRIndexGPT is the PCR index for GPT partition table and boot manager configuration
 	PCRIndexGPT = 5
 	// PCRIndexOS is the PCR index for defined by the OS or user.
@@ -134,6 +138,14 @@ var (
 		}
 		return tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: pcrs}
 	}()
+
+	// criticalFirmwarePCRs are the firmware-owned SHA-256 PCRs that must carry a
+	// genuine measurement for the measured-boot chain to be anchored: PCR 0 (firmware
+	// / S-CRTM version) and PCR 4 (the boot manager measurement of the launched
+	// bootloader, EVE's GRUB). If either is left at its all-zero reset value, firmware
+	// did no SHA-256 measured boot, so the value is forgeable by any code that runs
+	// after ExitBootServices, defeating the seal.
+	criticalFirmwarePCRs = []int{PCRIndexSRTM, PCRIndexBootManagerCode}
 
 	// TpmDevicePath is the TPM device file path, it is not a constant due to
 	// test usage.
@@ -1007,9 +1019,16 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 		return FetchVaultKey(log)
 	}
 
-	//gain some knowledge about existing environment
-	sealedKeyPresent := isSealedKeyPresent()
-	legacyKeyPresent := isLegacyKeyPresent()
+	sealedKeyPresent, err := diskKeyPresent(log, TpmSealedDiskPrivHdl, "sealed")
+	if err != nil {
+		return nil, err
+	}
+	legacyKeyPresent := false
+	if !sealedKeyPresent {
+		if legacyKeyPresent, err = diskKeyPresent(log, TpmDiskKeyHdl, "legacy"); err != nil {
+			return nil, err
+		}
+	}
 
 	// Determine the PCR selection to use
 	pcrSelection := GetDiskKeyPolicyPcrOrDefault(types.PolicyPcrFile)
@@ -1165,21 +1184,53 @@ func sealDiskKeyLegacy(log *base.LogObject, key []byte, pcrSel tpm2.PCRSelection
 	return nil
 }
 
-func isSealedKeyPresent() bool {
+// diskKeyPresenceAttempts and diskKeyPresenceRetryDelay bound the retries of a
+// TPM error while deciding whether a disk key exists. The TPM can answer a
+// command with a transient warning such as RC_RETRY.
+const (
+	diskKeyPresenceAttempts   = 3
+	diskKeyPresenceRetryDelay = 500 * time.Millisecond
+)
+
+// diskKeyPresent reports whether the disk key NV index at handle holds a key,
+// retrying a TPM error. It returns an error when the TPM keeps failing, which
+// the caller must not read as an absent key: that would seal a fresh key over
+// the one the vault is encrypted with.
+func diskKeyPresent(log *base.LogObject, handle tpmutil.Handle, kind string) (bool, error) {
+	for attempt := 1; ; attempt++ {
+		present, err := nvIndexWritten(handle)
+		if err == nil {
+			return present, nil
+		}
+		log.Warnf("checking for the %s disk key (attempt %d/%d): %v",
+			kind, attempt, diskKeyPresenceAttempts, err)
+		if attempt == diskKeyPresenceAttempts {
+			return false, fmt.Errorf("cannot tell whether a %s disk key exists: %w", kind, err)
+		}
+		time.Sleep(diskKeyPresenceRetryDelay)
+	}
+}
+
+// nvIndexWritten reports whether the NV index at handle is defined and has
+// been written. Only the TPM reporting the index undefined, or defined and
+// never written (a seal cut between define and write), yields false; every
+// other failure is returned.
+func nvIndexWritten(handle tpmutil.Handle) (bool, error) {
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
-		return false
+		return false, fmt.Errorf("OpenTPM failed: %w", err)
 	}
 	defer rw.Close()
 
-	_, err = tpm2.NVReadEx(rw, TpmSealedDiskPrivHdl,
-		tpm2.HandleOwner, EmptyPassword, 0)
-	return err == nil
-}
-
-func isLegacyKeyPresent() bool {
-	_, err := readDiskKey()
-	return err == nil
+	pub, err := tpm2.NVReadPublic(rw, handle)
+	var handleErr tpm2.HandleError
+	if errors.As(err, &handleErr) && handleErr.Code == tpm2.RCHandle {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("NVReadPublic(%#x) failed: %w", handle, err)
+	}
+	return pub.Attributes&tpm2.AttrWritten != 0, nil
 }
 
 // unsealDiskKeyLegacy unseals key from TPM using the legacy go-tpm API without
@@ -1228,6 +1279,17 @@ func unsealDiskKeyLegacy(pcrSel tpm2.PCRSelection) ([]byte, error) {
 // protect the key on the CPU-TPM bus. Otherwise, it falls back to the
 // legacy unencrypted seal path.
 func SealDiskKey(log *base.LogObject, key []byte, pcrSel tpm2.PCRSelection) error {
+	// Never seal to firmware anchor PCRs that were left at their all-zero
+	// reset value. An all-zero PCR 0 or 4 means firmware did not extend the
+	// SHA-256 bank, so the value is forgeable by any code running after
+	// ExitBootServices (EVE's GRUB is unsigned) and the seal would provide
+	// no tamper protection.
+	if zeroed, err := unextendedCriticalPCRs(); err != nil {
+		return fmt.Errorf("checking firmware PCRs before sealing: %w", err)
+	} else if len(zeroed) > 0 {
+		return fmt.Errorf("refusing to seal disk key: firmware anchor PCR(s) %v are all-zero in the SHA-256 bank, measured-boot chain is not anchored (TPM Carte Blanche attack)", zeroed)
+	}
+
 	if tpmSupportsAES128CFB() {
 		log.Noticef("TPM supports AES-128-CFB, sealing with parameter encryption")
 		if err := sealDiskKeyEncrypted(log, key, pcrSel); err != nil {
@@ -1372,7 +1434,11 @@ func PolicyPCRSession(rw io.ReadWriteCloser, pcrSel tpm2.PCRSelection) (tpmutil.
 // CompareLegacyandSealedKey compares legacy and sealed keys
 // to record if we are using a new key for sealed vault
 func CompareLegacyandSealedKey(log *base.LogObject) SealedKeyType {
-	if !isSealedKeyPresent() {
+	present, err := nvIndexWritten(TpmSealedDiskPrivHdl)
+	if err != nil {
+		log.Warnf("CompareLegacyandSealedKey: %v", err)
+	}
+	if !present {
 		return SealedKeyTypeUnprotected
 	}
 	legacyKey, err := readDiskKey()
@@ -1443,6 +1509,33 @@ func pcrBankSHA256EnabledHelper() bool {
 	//test is by reading PCR index 0 from SHA256 bank
 	_, err = tpm2.ReadPCR(rw, 0, tpm2.AlgSHA256)
 	return err == nil
+}
+
+// unextendedCriticalPCRs reads the critical firmware PCRs (criticalFirmwarePCRs)
+// from the SHA-256 bank and returns those still at their all-zero reset value.
+// An all-zero firmware PCR means firmware never extended the SHA-256 bank for it,
+// so the value can be reproduced (forged) by any code that runs after
+// ExitBootServices. Sealing to such a PCR provides no tamper protection
+// (TPM Carte Blanche attack).
+func unextendedCriticalPCRs() ([]int, error) {
+	rw, err := tpm2.OpenTPM(TpmDevicePath)
+	if err != nil {
+		return nil, err
+	}
+	defer rw.Close()
+
+	zero := make([]byte, sha256.Size)
+	zeroed := make([]int, 0, len(criticalFirmwarePCRs))
+	for _, idx := range criticalFirmwarePCRs {
+		val, err := tpm2.ReadPCR(rw, idx, tpm2.AlgSHA256)
+		if err != nil {
+			return nil, fmt.Errorf("reading PCR %d from SHA-256 bank: %w", idx, err)
+		}
+		if bytes.Equal(val, zero) {
+			zeroed = append(zeroed, idx)
+		}
+	}
+	return zeroed, nil
 }
 
 func backupCopiedMeasurementLogs() error {

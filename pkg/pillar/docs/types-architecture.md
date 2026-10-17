@@ -153,7 +153,7 @@ func (ed *ErrorDescription) ToProto() *info.ErrorInfo
 Error strings are bounded. `SetErrorDescription` cuts `Error` down to
 `MaxErrorLen` (4 KiB) with `TruncateError`, which keeps the head and the tail
 of the string around a note of how many bytes were dropped. The bound is what
-keeps a status publishable: a pubsub message carries 64 KiB, and an
+keeps a status publishable: a pubsub message carries 1 MiB, and an
 `AppInstanceStatus` embeds one error per volume reference on top of its own,
 so an error that grows with what went wrong would eventually make the socket
 driver kill the agent. Code that builds one error out of many (one

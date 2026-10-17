@@ -18,10 +18,10 @@ import (
 
 const (
 	/*
-	 * execution timeout is supposed to be less than the watchdog timeout,
-	 * as otherwise the watchdog might fire and reboot the system before
-	 * the timeout fires
-	 * exceptions are when an executable is started from a different goroutine
+	 * timeoutLimit caps the timeout WithLimitedTimeout accepts: a command that
+	 * hangs is then reported as an error rather than left to trip the
+	 * watchdog. WithUnlimitedTimeout lifts the cap and instead relies on the
+	 * touch-file refresh execCommand performs while waiting.
 	 * source of the error timeout and the watchdog timeout:
 	 * error timeout: $ grep -r errorTime pkg/pillar/cmd/ | grep time
 	 * watchdog timeout: $ grep hv_watchdog_timer pkg/grub/rootfs.cfg
@@ -123,7 +123,13 @@ func (c *Command) WithLimitedTimeout(timeout time.Duration) *Command {
 	return c
 }
 
-// WithUnlimitedTimeout set custom timeout for command not bound to any limits for when run in a separate goroutine
+// WithUnlimitedTimeout sets a timeout for the command that is not capped by
+// timeoutLimit. While waiting, execCommand refreshes the calling agent's
+// watchdog touch file every 25 seconds, so a timeout longer than the watchdog
+// interval is safe on an agent's main goroutine as well. That refresh requires
+// getAgentName to resolve an agent from the calling goroutine's stack, which
+// only holds when a pkg/pillar/cmd/<agent> frame is on it: a command issued
+// from a goroutine started inside a library package gets no refresh.
 func (c *Command) WithUnlimitedTimeout(timeout time.Duration) *Command {
 	c.timeout = timeout
 
