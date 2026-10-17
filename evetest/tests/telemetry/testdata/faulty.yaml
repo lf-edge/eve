@@ -1,0 +1,56 @@
+# Copyright (c) 2025-2026 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+---
+sources:
+  dev_keep:
+    type: socket
+    mode: unix_stream
+    path: "${DEV_KEEP_SOURCE_SOCK:-/run/devKeep_source.sock}"
+
+  dev_upload:
+    type: socket
+    mode: unix_stream
+    path: "${DEV_UPLOAD_SOURCE_SOCK:-/run/devUpload_source.sock}"
+
+transforms:
+  parse_json_keep:
+    type: remap
+    inputs:
+      - dev_keep
+    source: |
+      . = parse_json!(.message)
+
+  # parse_json_upload:
+  #   type: remap
+  #   inputs:
+  #     - dev_upload
+  #   source: |
+  #     . = parse_json!(.message)
+
+sinks:
+  keep_sent_queue_socket:
+    type: socket
+    inputs:
+      - parse_json_keep
+    mode: unix_stream
+    path: "${DEV_KEEP_SINK_SOCK:-/run/devKeep_sink.sock}"
+    encoding:
+      codec: json  # write events as JSON objects
+    buffer:
+      type: disk
+      max_size: 268435488  # 256 MB
+      when_full: block
+
+  dev_upload_socket:
+    type: socket
+    inputs:
+      - parse_json_upload
+    mode: unix_stream
+    path: "${DEV_UPLOAD_SINK_SOCK:-/run/devUpload_sink.sock}"
+    encoding:
+      codec: json
+    buffer:
+      type: disk
+      max_size: 268435488  # 256 MB
+      when_full: block
