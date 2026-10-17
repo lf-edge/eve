@@ -1,6 +1,11 @@
 // Copyright (c) 2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+// Package networking_test holds the EVE networking tests.
+//
+// helpers_test.go holds helpers shared across multiple tests in this
+// package. New shared helpers belong there too, not alongside the test
+// that first needed them.
 package networking_test
 
 import (
@@ -33,12 +38,16 @@ import (
 //   - TestBootstrapWithLACPBond (variants: bootstrap / override.json) --
 //     SDN-side LACP peer requires the bond to be configured before EVE
 //     ever transmits, hence bootstrap-only path.
+//   - TestBootstrapWithNetworkBoot: install EVE over the network via iPXE.
 //
-// All bootstrap tests hardcode WithHypervisor=HypervisorKVM and do not
-// parameterize the hypervisor.
+// All bootstrap tests share the HYPERVISOR parameter (defaults to KVM).
 func TestBootstrapSuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
+
+	evetest.DefineTestParameters(
+		evetest.HypervisorParameter(),
+	)
 
 	// This below will be implemented using t.Run()
 	// Note that evetest.Close needs to behave differently when test is part of
@@ -57,6 +66,14 @@ func TestBootstrapSuite(test *testing.T) {
 					Name: "TestBootstrapWithLastResortEnabled",
 					Parameters: []evetest.TestParameterValue{
 						{Key: lastResortParamKey, Value: true},
+					},
+				},
+				// Add at least one bootstrap test exercising EVE installation.
+				{
+					Name: "TestBootstrapWithInstaller",
+					Parameters: []evetest.TestParameterValue{
+						{Key: lastResortParamKey, Value: false},
+						{Key: useInstallerParamKey, Value: true},
 					},
 				},
 			},
@@ -159,16 +176,16 @@ func TestBootstrapSuite(test *testing.T) {
 				},
 			},
 		},
+		evetest.TestCase{
+			Test: TestBootstrapWithNetworkBoot,
+		},
 	)
 }
 
 // TestDeviceConnectivitySuite drives every device-side networking
 // scenario: how EVE itself manages its physical / L2 / IP adapters and
-// keeps controller connectivity alive. None of the subtests deploy an
-// application -- they focus on the EVE control plane only -- and therefore
-// none parameterize the hypervisor (all hardcode HypervisorKVM via the
-// shared deviceRequirementsForNetAdapterTests / deviceRequirementsForBootstrap
-// helpers or directly).
+// keeps controller connectivity alive.
+// All subtests share the HYPERVISOR parameter (defaults to KVM).
 //
 // Subtests
 // --------
@@ -182,9 +199,12 @@ func TestBootstrapSuite(test *testing.T) {
 //   - TestPortFailover / TestNetworkConfigFallback /
 //     TestIntermittentConnectivity -- fail-over / fallback resilience
 //     (currently stub scenarios).
+//   - TestMgmtTrafficRoutedViaApp -- EVE's own device-management traffic
+//     routed through an app-based NAT gateway, surviving a full reboot.
 //   - TestDeviceIPv6Connectivity -- IPv6-only device side (stub scenario).
-//   - TestDeviceNTPConfig -- per-port NTP server propagation to EVE's
-//     chrony (stub scenario; needs SDN-side NTP daemon).
+//   - TestDeviceNTPConfig -- per-port NTP server aggregation (DHCP + static,
+//     exclusive-override) and chronyd synchronization against real public
+//     NTP servers.
 //   - TestActiveBackupBond / TestLACPBond -- bond status, failover,
 //     LACP negotiation.
 //   - TestVLANSubinterfaces / TestVLANSubinterfacesOnTopOfLAGs -- VLAN
@@ -194,6 +214,10 @@ func TestBootstrapSuite(test *testing.T) {
 func TestDeviceConnectivitySuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
+
+	evetest.DefineTestParameters(
+		evetest.HypervisorParameter(),
+	)
 
 	evetest.RunTestSuite(
 		evetest.TestCase{
@@ -232,6 +256,9 @@ func TestDeviceConnectivitySuite(test *testing.T) {
 			Test: TestIntermittentConnectivity,
 		},
 		evetest.TestCase{
+			Test: TestMgmtTrafficRoutedViaApp,
+		},
+		evetest.TestCase{
 			Test: TestDeviceIPv6Connectivity,
 		},
 		evetest.TestCase{
@@ -262,14 +289,21 @@ func TestDeviceConnectivitySuite(test *testing.T) {
 // networking scenario. All subtests deploy at least one application and
 // therefore share the HYPERVISOR parameter -- the suite declares
 // evetest.HypervisorParameter() once and every subtest reads it via
-// evetest.GetHypervisorParameterValue(). Each subtest also calls
-// evetest.SkipIfHypervisorKubevirt() right after reading the value:
-// Kubevirt is reserved for cluster tests under evetest/tests/cluster.
+// evetest.GetHypervisorParameterValue() (defaults to KVM).
 //
 // Subtests
 // --------
 //   - TestLocalNI / TestSwitchNI -- canonical Local-NI / Switch-NI
 //     life-cycles plus connected-app smoke tests.
+//   - TestNIReplace -- rapid NI delete+recreate (and subnet reuse across
+//     NIs) within single config applies.
+//   - TestMoveAppBetweenNIs -- moving an app's VIF from one Local NI to
+//     another at runtime.
+//   - TestAirGapSwitchNI -- portless Switch NI IP-detection via packet
+//     snooping: statically-assigned IPs and multiple IPs per VIF MAC
+//     (e.g. via VLAN sub-interfaces).
+//   - TestLimitedIPSpace -- app deployment/replacement on a NI with only a
+//     single free IP address available.
 //   - TestFlowLog -- per-app flow log + DNS log assertions
 //     (skipped; depends on GetAppFlowLogs / GetAppDNSLogs which are not
 //     yet wired up in evetest).
@@ -277,16 +311,31 @@ func TestDeviceConnectivitySuite(test *testing.T) {
 //     filtering on Local / Switch NIs (variants: ENABLE_FLOWLOG=false / =true).
 //   - TestApplicationIPv6Connectivity -- app on a Switch NI in an
 //     IPv6-only segment (stub scenario).
-//   - TestApplicationNTPConfig -- DHCP-propagated NTP server set
-//     reaching the application (stub scenario; needs SDN NTP daemon).
+//   - TestApplicationNTPConfig -- per-NI DHCP-advertised NTP server set
+//     (port union NI) reaching the application's published VIF status.
 //   - TestPropagatedRoutes / TestLocalNIWithMultiplePorts /
 //     TestApplicationGateway -- IP-routing-related scenarios mirroring
 //     the eden app-routing examples (stub scenarios).
+//   - TestPortForwarding -- port-forwarding (D-NAT) hairpin connectivity,
+//     including across two different uplink adapters, and changing a
+//     port-fwd rule's external port at runtime.
 //   - TestSwitchNIWithMultiplePorts -- STP / BPDU-guard on a Switch NI
 //     with redundant L2 links (stub scenario).
 //   - TestAccessVLANs -- VLAN-aware Switch NI (stub scenario).
-//   - TestNetworkAdapterPassthrough -- direct adapter assignment to an
-//     app (stub scenario; needs broker QEMU flag tweak).
+//   - TestNetworkAdapterPassthrough -- direct assignment (PCI passthrough)
+//     of a physical NIC to an app; the guest must fully own the adapter
+//     (see it under its MAC, DHCP through it over the SDN network).
+//   - TestSwitchNIPortConfigRace -- regression test for NIM/zedrouter races
+//     around IfInstanceID: a multi-port Switch NI plus a single-port Switch NI
+//     on a VLAN sub-interface, with ports live-switched between DHCP/static/no-IP;
+//     app connectivity through both NIs must survive every change.
+//   - TestLocalNIUplinkFlap -- a Local NI's own uplink port flaps (put
+//     down, address cleared, then brought back up with a changed advertised
+//     DNS server); its dnsmasq instance must not restart and a connected
+//     app must keep its DHCP-assigned IP throughout.
+//   - TestSwitchNIDeletedWithAppsAttached -- regression test for zedrouter
+//     hanging when a Switch NI with a busy packet capture and continuously
+//     expiring ARP-learned app IPs is deleted together with its apps.
 func TestApplicationConnectivitySuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
@@ -302,6 +351,18 @@ func TestApplicationConnectivitySuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestSwitchNI,
+		},
+		evetest.TestCase{
+			Test: TestNIReplace,
+		},
+		evetest.TestCase{
+			Test: TestMoveAppBetweenNIs,
+		},
+		evetest.TestCase{
+			Test: TestAirGapSwitchNI,
+		},
+		evetest.TestCase{
+			Test: TestLimitedIPSpace,
 		},
 		evetest.TestCase{
 			Test: TestFlowLog,
@@ -356,6 +417,9 @@ func TestApplicationConnectivitySuite(test *testing.T) {
 			Test: TestApplicationGateway,
 		},
 		evetest.TestCase{
+			Test: TestPortForwarding,
+		},
+		evetest.TestCase{
 			Test: TestSwitchNIWithMultiplePorts,
 		},
 		evetest.TestCase{
@@ -364,17 +428,24 @@ func TestApplicationConnectivitySuite(test *testing.T) {
 		evetest.TestCase{
 			Test: TestNetworkAdapterPassthrough,
 		},
+		evetest.TestCase{
+			Test: TestSwitchNIPortConfigRace,
+		},
+		evetest.TestCase{
+			Test: TestLocalNIUplinkFlap,
+		},
+		evetest.TestCase{
+			Test: TestSwitchNIDeletedWithAppsAttached,
+		},
 	)
 }
 
 // TestDatastoreSuite drives every datastore-pull scenario: EVE downloads
 // an application content tree from a backend (HTTP, HTTPS, S3, SFTP,
 // Azure, container registry), verifies the SHA, and brings the resulting
-// app up. The suite does not parameterize the hypervisor -- datastore
-// tests deploy a tiny "consumer" app but the test value is in the
-// download/verification plumbing, not in the app runtime, so the
-// hypervisor is hardcoded to KVM per the same rule applied to Device-suite
-// tests.
+// app up. Datastore tests deploy a tiny "consumer" app but the test value
+// is in the download/verification plumbing, not in the app runtime; the
+// suite still shares the HYPERVISOR parameter (defaults to KVM).
 //
 // Subtests
 // --------
@@ -395,6 +466,10 @@ func TestApplicationConnectivitySuite(test *testing.T) {
 func TestDatastoreSuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
+
+	evetest.DefineTestParameters(
+		evetest.HypervisorParameter(),
+	)
 
 	evetest.RunTestSuite(
 		evetest.TestCase{
@@ -418,5 +493,58 @@ func TestDatastoreSuite(test *testing.T) {
 		evetest.TestCase{
 			Test: TestDownloadBurstWithDeadMgmtPorts,
 		},
+	)
+}
+
+// TestPcibackErrorSuite drives every assignable-adapter / PhysicalIO
+// error-reporting scenario: EVE detects an inconsistency in the model
+// (phantom PCI address, self-parent assign-group, USB address collision,
+// interface-name mismatch, cross-group PCI conflict, warning+error bundle)
+// and reports it to the controller with the correct severity, then clears
+// it once the model is fixed. No application is deployed, but the suite
+// still shares the HYPERVISOR parameter (defaults to KVM).
+//
+// Every scenario but the last runs on the TwoMgmtPorts model and reuses
+// the same device via ResetDeviceConfig. TestReportWarningsOnly needs the
+// four-port ManyDNSServers model; a differing network model forces the
+// framework to recreate and reonboard the device, so it runs last to incur
+// that cost once rather than twice (switching away and back mid-suite).
+//
+// Subtests
+// --------
+//   - TestReportMissingDevice -- phantom device with a non-existent PCI
+//     address (error).
+//   - TestReportParentAssigngrp -- self-parent assignment group (error).
+//   - TestReportCycleDetected -- parentassigngrp cycle (error).
+//   - TestReportCollision -- USB address collision within a group
+//     (single group-level error).
+//   - TestReportIfnameMismatch -- model interface name disagrees with the
+//     kernel (warning; kept in host and matched by PCI).
+//   - TestReportAssignmentGroupConflict -- device shares an in-use port's
+//     PCI in another group (error).
+//   - TestReportWarningPlusError -- bundle carrying both a warning and a
+//     hard error (reported as error).
+//   - TestReportClearsOnFix -- inconsistency is reported and then clears
+//     once the model is corrected.
+//   - TestReportWarningsOnly -- warnings-only across multiple ports
+//     (four-port model; runs last).
+func TestPcibackErrorSuite(test *testing.T) {
+	evetest.Init(test)
+	defer evetest.Close()
+
+	evetest.DefineTestParameters(
+		evetest.HypervisorParameter(),
+	)
+
+	evetest.RunTestSuite(
+		evetest.TestCase{Test: TestReportMissingDevice},
+		evetest.TestCase{Test: TestReportParentAssigngrp},
+		evetest.TestCase{Test: TestReportCycleDetected},
+		evetest.TestCase{Test: TestReportCollision},
+		evetest.TestCase{Test: TestReportIfnameMismatch},
+		evetest.TestCase{Test: TestReportAssignmentGroupConflict},
+		evetest.TestCase{Test: TestReportWarningPlusError},
+		evetest.TestCase{Test: TestReportClearsOnFix},
+		evetest.TestCase{Test: TestReportWarningsOnly},
 	)
 }

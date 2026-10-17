@@ -6,10 +6,11 @@ package logger
 import (
 	"encoding/json"
 	"fmt"
-	evelogs "github.com/lf-edge/eve-api/go/logs"
-	api "github.com/lf-edge/eve/evetest/grpcapi/go"
 	"io"
 	"strings"
+
+	evelogs "github.com/lf-edge/eve-api/go/logs"
+	api "github.com/lf-edge/eve/evetest/grpcapi/go"
 )
 
 // LogEntryMatcher defines a predicate used to determine whether

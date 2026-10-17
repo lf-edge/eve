@@ -496,7 +496,11 @@ func runHostapdEventWatcher(
 
 func handleEventConn(watcher *eventWatcher, conn net.Conn, publishCh chan<- PNACEvent) {
 	defer watcher.wg.Done()
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			log.Warnf("Failed to close hostapd event connection: %v", err)
+		}
+	}()
 
 	buf := make([]byte, 512)
 	n, err := conn.Read(buf)
@@ -716,7 +720,11 @@ func createHostapdConfFile(config Hostapd) error {
 		log.Error(err)
 		return err
 	}
-	defer file.Close()
+	defer func() {
+		if cerr := file.Close(); cerr != nil {
+			log.Warnf("Failed to close hostapd config file %s: %v", cfgPath, cerr)
+		}
+	}()
 	eapUsersFile := hostapdEAPUsersFile(config.DaemonName)
 	certDir := hostapdCertDir(config.DaemonName)
 
@@ -772,7 +780,11 @@ func createHostapdEAPUsersFile(config Hostapd) error {
 		log.Error(err)
 		return err
 	}
-	defer file.Close()
+	defer func() {
+		if cerr := file.Close(); cerr != nil {
+			log.Warnf("Failed to close hostapd EAP users file %s: %v", eapUsersPath, cerr)
+		}
+	}()
 
 	for _, u := range config.Users {
 		var methods []string

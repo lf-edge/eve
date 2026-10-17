@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -30,8 +31,9 @@ import (
 )
 
 // LibvirtProvider manages the lifecycle of VMs and networks using libvirt.
-// It creates domains and networks with a fixed prefix (see namePrefix) and
-// provides methods for setup, teardown, status watching, and cleanup.
+// It creates domains with a fixed prefix (see namePrefix) and networks with a
+// fixed, shorter prefix (see networkPrefix), and provides methods for setup,
+// teardown, status watching, and cleanup.
 type LibvirtProvider struct {
 	conf  LibvirtProviderConf
 	conn  *libvirt.Connect
@@ -119,6 +121,20 @@ func (p *LibvirtProvider) GetSupportedDeviceArchs() ([]api.ArchType, error) {
 	}
 }
 
+// Capabilities returns the full capability set: the libvirt provider runs on the
+// local host and applies the host-level tweaks required to forward link-local
+// L2 protocols, and supports emulated TPM. It also supports network boot.
+func (p *LibvirtProvider) Capabilities() []api.Capability {
+	return commonCapabilities()
+}
+
+// DiskImageStrategy returns DiskImageOverlay: libvirt attaches local files
+// directly, so a QCOW2 backed by a cached template works and is near-instant
+// to create.
+func (p *LibvirtProvider) DiskImageStrategy() DiskImageStrategy {
+	return DiskImageOverlay
+}
+
 // SetupDevice creates a VM in a powered-off state.
 func (p *LibvirtProvider) SetupDevice(
 	ctx context.Context, name string, spec DeviceSpec) error {
@@ -130,9 +146,8 @@ func (p *LibvirtProvider) SetupDevice(
 		var netName string
 		switch {
 		case iface.Connection.Uplink != nil:
-			uplink := iface.Connection.Uplink
-			netName, _ = uplinkNetworkName(uplink.EnableIPv6)
-			if err := p.ensureUplinkNetwork(log, uplink.EnableIPv6); err != nil {
+			netName = uplinkNetwork
+			if err := p.ensureUplinkNetwork(log); err != nil {
 				return err
 			}
 
@@ -170,40 +185,27 @@ func (p *LibvirtProvider) SetupDevice(
 		interfaces = append(interfaces, ifaceXML)
 	}
 
-	// Disk definition (local qcow2 or raw). Optionally configure UEFI firmware
-	// if UEFIFirmwareDirPath is set on the device spec.
+	// Disk definitions. Optionally configure UEFI firmware if
+	// UEFIFirmwareDirPath is set on the device spec.
 	var disks []libvirtxml.DomainDisk
 
-	// Ensure we have exactly one image specified
-	if spec.Qcow2ImagePath == "" && spec.RawImagePath == "" {
-		err := fmt.Errorf(
-			"no disk image specified: either Qcow2ImagePath or RawImagePath must be set")
+	if len(spec.Disks) == 0 {
+		err := fmt.Errorf("no disk images specified for device %q", name)
 		log.Error(err)
 		return err
 	}
-	if spec.Qcow2ImagePath != "" && spec.RawImagePath != "" {
-		err := fmt.Errorf(
-			"both Qcow2ImagePath and RawImagePath are set; only one must be defined")
-		log.Error(err)
-		return err
-	}
-
-	var imagePath, diskType string
-	if spec.Qcow2ImagePath != "" {
-		imagePath = spec.Qcow2ImagePath
-		diskType = "qcow2"
-	} else {
-		imagePath = spec.RawImagePath
-		diskType = "raw"
-	}
-	imageAbsPath, err := utils.ResolveFile(imagePath)
-	if err != nil {
-		err = fmt.Errorf("failed to resolve path %q: %w", imagePath, err)
-		log.Error(err)
-		return err
-	}
-	disks = []libvirtxml.DomainDisk{
-		{
+	for i, disk := range spec.Disks {
+		diskType := "qcow2"
+		if disk.Format == DiskImageFormatRaw {
+			diskType = "raw"
+		}
+		absPath, err := utils.ResolveFile(disk.Path)
+		if err != nil {
+			err = fmt.Errorf("failed to resolve disk path %q: %w", disk.Path, err)
+			log.Error(err)
+			return err
+		}
+		disks = append(disks, libvirtxml.DomainDisk{
 			Device: "disk",
 			Driver: &libvirtxml.DomainDiskDriver{
 				Name: "qemu",
@@ -211,14 +213,14 @@ func (p *LibvirtProvider) SetupDevice(
 			},
 			Source: &libvirtxml.DomainDiskSource{
 				File: &libvirtxml.DomainDiskSourceFile{
-					File: imageAbsPath,
+					File: absPath,
 				},
 			},
 			Target: &libvirtxml.DomainDiskTarget{
-				Dev: "vda",
+				Dev: fmt.Sprintf("vd%c", rune('a'+i)),
 				Bus: "virtio",
 			},
-		},
+		})
 	}
 
 	// Console definition
@@ -272,19 +274,39 @@ func (p *LibvirtProvider) SetupDevice(
 	memKiB := uint(spec.MemoryBytes >> 10)
 
 	// Build the Domain.OS with optional loader/nvram if UEFI dir was provided.
+	bootDevices := []libvirtxml.DomainBootDevice{{Dev: "hd"}}
+	if spec.NetworkBootFallback {
+		// Standard BIOS/UEFI boot-order fallthrough: firmware tries "hd" first,
+		// falling through to "network" only while the target disk has nothing
+		// bootable. Once a network installer has written EVE onto it, "hd"
+		// succeeds outright and network is never attempted again -- this same
+		// static setting is correct for the device's entire lifetime, no
+		// reconfiguration needed after installation.
+		bootDevices = append(bootDevices, libvirtxml.DomainBootDevice{Dev: "network"})
+	}
 	domainOS := &libvirtxml.DomainOS{
 		Type: &libvirtxml.DomainOSType{
 			Arch:    detectLibvirtArch(),
 			Machine: "q35",
 			Type:    "hvm",
 		},
-		BootDevices: []libvirtxml.DomainBootDevice{
-			{Dev: "hd"},
-		},
+		BootDevices: bootDevices,
+	}
+
+	// Unlike QEMU run directly (where ACPI is enabled by default), libvirt
+	// disables ACPI unless it is explicitly requested. Without ACPI, a q35
+	// guest cannot bring PCIe devices behind root ports out of the D3cold
+	// power state ("can't change power state from D3cold to D0"), leaving
+	// e.g. virtio NICs of the BIOS-booted SDN VM undetected.
+	features := &libvirtxml.DomainFeatureList{
+		ACPI: &libvirtxml.DomainFeature{},
+		APIC: &libvirtxml.DomainFeatureAPIC{},
+		// Split irqchip (I/O APIC emulated in QEMU), required by the
+		// interrupt remapping of the vIOMMU defined below.
+		IOAPIC: &libvirtxml.DomainFeatureIOAPIC{Driver: "qemu"},
 	}
 
 	// If UEFI firmware was configured, attach loader + nvram.
-	var features *libvirtxml.DomainFeatureList
 	if spec.UEFIFirmwareDirPath != "" {
 		codePath := filepath.Join(spec.UEFIFirmwareDirPath, "OVMF_CODE.fd")
 		varsPath := filepath.Join(spec.UEFIFirmwareDirPath, "OVMF_VARS.fd")
@@ -309,10 +331,6 @@ func (p *LibvirtProvider) SetupDevice(
 		}
 		domainOS.NVRam = &libvirtxml.DomainNVRam{
 			NVRam: varsPath,
-		}
-		features = &libvirtxml.DomainFeatureList{
-			ACPI: &libvirtxml.DomainFeature{},
-			APIC: &libvirtxml.DomainFeatureAPIC{},
 		}
 	}
 
@@ -347,6 +365,16 @@ func (p *LibvirtProvider) SetupDevice(
 		Disks:      disks,
 		Interfaces: interfaces,
 		Consoles:   []libvirtxml.DomainConsole{console},
+		// vIOMMU, so that EVE inside the VM can use VFIO to pass PCI
+		// devices such as NICs through to application VMs.
+		IOMMU: &libvirtxml.DomainIOMMU{
+			Model: "intel",
+			Driver: &libvirtxml.DomainIOMMUDriver{
+				IntRemap:    "on",
+				CachingMode: "on",
+				AWBits:      48,
+			},
+		},
 	}
 
 	if spec.WithTPM {
@@ -379,12 +407,21 @@ func (p *LibvirtProvider) SetupDevice(
 	// expose these properties natively for virtio-net; qemu:override would work
 	// but requires libvirt >= 8.6. Using -global covers all virtio-net-pci
 	// instances regardless of libvirt version.
+	// Additionally make every NIC modern-only virtio honoring the vIOMMU
+	// (iommu_platform), so that the NIC itself can be passed through to an
+	// app VM.
 	qemuCmdline := &libvirtxml.DomainQEMUCommandline{
 		Args: []libvirtxml.DomainQEMUCommandlineArg{
 			{Value: "-global"},
 			{Value: "virtio-net-pci.speed=1000"},
 			{Value: "-global"},
 			{Value: "virtio-net-pci.duplex=full"},
+			{Value: "-global"},
+			{Value: "virtio-net-pci.disable-legacy=on"},
+			{Value: "-global"},
+			{Value: "virtio-net-pci.disable-modern=off"},
+			{Value: "-global"},
+			{Value: "virtio-net-pci.iommu_platform=on"},
 		},
 	}
 
@@ -434,6 +471,17 @@ func (p *LibvirtProvider) SetupDevice(
 	return nil
 }
 
+// nvramTagPattern matches a domain XML "<nvram>" element opening tag, with or
+// without attributes. Real libvirt always emits attributes on this element (e.g.
+// format='raw', template='...', type='file'), so the match must not require a bare
+// "<nvram>" -- that never occurs in practice and would silently defeat detection.
+var nvramTagPattern = regexp.MustCompile(`<nvram[ >/]`)
+
+// domainHasNvram reports whether a domain's XML description declares an NVRAM element.
+func domainHasNvram(xmlDesc string) bool {
+	return nvramTagPattern.MatchString(xmlDesc)
+}
+
 // TeardownDevice stops the device (if running) and removes it completely,
 // including all associated resources (disks, network interfaces, NVRAM, etc.).
 func (p *LibvirtProvider) TeardownDevice(ctx context.Context, name string) error {
@@ -464,16 +512,20 @@ func (p *LibvirtProvider) TeardownDevice(ctx context.Context, name string) error
 		log.Warnf("Failed to get XML description for domain %q: %v", name, err)
 	}
 
-	hasNvram := strings.Contains(xmlDesc, "<nvram>")
+	hasNvram := domainHasNvram(xmlDesc)
 	log.Debugf("Domain %q has NVRAM: %t", name, hasNvram)
 
-	// Undefine domain, including NVRAM if present
+	// Undefine domain, including NVRAM if present. libvirt errors out either way if the
+	// flag doesn't match reality: DOMAIN_UNDEFINE_NVRAM on a domain with no nvram fails
+	// with "cannot undefine domain with no nvram", and omitting it on a domain that has
+	// one fails with "cannot undefine domain with nvram" -- so this must be conditional.
 	var undefineFlags libvirt.DomainUndefineFlagsValues
 	if hasNvram {
 		undefineFlags = libvirt.DOMAIN_UNDEFINE_NVRAM
 	}
 	if err := dom.UndefineFlags(undefineFlags); err != nil {
-		err = fmt.Errorf("failed to undefine domain %q: %w", name, err)
+		err = fmt.Errorf("failed to undefine domain %q, its definition leaked and will "+
+			"collide with \"already exists\" on a later run of the same test: %w", name, err)
 		log.Error(err)
 		return err
 	}
@@ -703,8 +755,7 @@ func (p *LibvirtProvider) GetDeviceUplinkIPs(
 		if iface.Source == nil || iface.Source.Network == nil {
 			continue
 		}
-		netName := unprefixedName(iface.Source.Network.Network)
-		if netName != uplinkIPv4OnlyNetwork && netName != uplinkDualStackNetwork {
+		if iface.Source.Network.Network != uplinkNetwork {
 			continue
 		}
 		if iface.MAC == nil || iface.MAC.Address == "" {
@@ -714,14 +765,14 @@ func (p *LibvirtProvider) GetDeviceUplinkIPs(
 		// Lookup network
 		netObj, err := p.conn.LookupNetworkByName(iface.Source.Network.Network)
 		if err != nil {
-			log.Warnf("failed to lookup network %q: %v", netName, err)
+			log.Warnf("failed to lookup network %q: %v", uplinkNetwork, err)
 			continue
 		}
 
 		leases, err := netObj.GetDHCPLeases()
 		netObj.Free()
 		if err != nil {
-			log.Warnf("failed to get DHCP leases for network %q: %v", netName, err)
+			log.Warnf("failed to get DHCP leases for network %q: %v", uplinkNetwork, err)
 			continue
 		}
 
@@ -844,10 +895,9 @@ func (p *LibvirtProvider) TeardownAll(ctx context.Context) error {
 	}
 	for _, n := range nets {
 		name, _ := n.GetName()
-		if strings.HasPrefix(name, namePrefix) {
+		if strings.HasPrefix(name, networkPrefix) {
 			if err = p.removeNetwork(log, name); err != nil {
-				log.Warnf("failed to remove network %q: %v",
-					unprefixedName(name), err)
+				log.Warnf("failed to remove network %q: %v", name, err)
 			}
 		}
 		n.Free()
@@ -901,6 +951,96 @@ func (p *LibvirtProvider) lookupDomainByName(name string) (*libvirt.Domain, erro
 	return dom, nil
 }
 
+// ReconfigureDeviceDisks updates the disk list of a stopped domain by
+// undefining and redefining it with a new disk set. The domain UUID is
+// preserved so libvirt's swtpm state (keyed by UUID) survives the operation.
+// UEFI NVRAM is preserved by undefining without the NVRAM flag.
+// The domain must be in the stopped (shut-off) state before calling this.
+func (p *LibvirtProvider) ReconfigureDeviceDisks(
+	ctx context.Context, name string, newDisks []DiskImage) error {
+	log := logger.FromContext(ctx)
+
+	dom, err := p.lookupDomainByName(name)
+	if err != nil {
+		return fmt.Errorf("failed to lookup domain %q: %w", name, err)
+	}
+	defer dom.Free()
+
+	state, _, err := dom.GetState()
+	if err != nil {
+		return fmt.Errorf("failed to get state of domain %q: %w", name, err)
+	}
+	if state != libvirt.DOMAIN_SHUTOFF {
+		err = fmt.Errorf(
+			"domain %q must be stopped before reconfiguring disks (state: %v)",
+			name, state)
+		return err
+	}
+
+	xmlDesc, err := dom.GetXMLDesc(0)
+	if err != nil {
+		return fmt.Errorf("failed to get XML description for domain %q: %w", name, err)
+	}
+	var domain libvirtxml.Domain
+	if err := domain.Unmarshal(xmlDesc); err != nil {
+		return fmt.Errorf("failed to unmarshal domain XML for %q: %w", name, err)
+	}
+
+	// Rebuild virtio data disks; leave any non-virtio entries (e.g. CDROMs) in place.
+	var keep []libvirtxml.DomainDisk
+	for _, d := range domain.Devices.Disks {
+		if d.Target == nil || d.Target.Bus != "virtio" {
+			keep = append(keep, d)
+		}
+	}
+	for i, disk := range newDisks {
+		diskType := "qcow2"
+		if disk.Format == DiskImageFormatRaw {
+			diskType = "raw"
+		}
+		absPath, err := utils.ResolveFile(disk.Path)
+		if err != nil {
+			return fmt.Errorf("failed to resolve disk path %q: %w", disk.Path, err)
+		}
+		keep = append(keep, libvirtxml.DomainDisk{
+			Device: "disk",
+			Driver: &libvirtxml.DomainDiskDriver{
+				Name: "qemu",
+				Type: diskType,
+			},
+			Source: &libvirtxml.DomainDiskSource{
+				File: &libvirtxml.DomainDiskSourceFile{
+					File: absPath,
+				},
+			},
+			Target: &libvirtxml.DomainDiskTarget{
+				Dev: fmt.Sprintf("vd%c", rune('a'+i)),
+				Bus: "virtio",
+			},
+		})
+	}
+	domain.Devices.Disks = keep
+
+	updatedXML, err := domain.Marshal()
+	if err != nil {
+		return fmt.Errorf("failed to marshal updated domain XML for %q: %w", name, err)
+	}
+
+	// Keep NVRAM so OVMF_VARS.fd survives the undefine/redefine cycle.
+	if err := dom.UndefineFlags(libvirt.DOMAIN_UNDEFINE_KEEP_NVRAM); err != nil {
+		return fmt.Errorf("failed to undefine domain %q: %w", name, err)
+	}
+
+	if _, err := p.conn.DomainDefineXML(updatedXML); err != nil {
+		// Best-effort rollback: restore the original definition so teardown can proceed.
+		_, _ = p.conn.DomainDefineXML(xmlDesc)
+		return fmt.Errorf("failed to redefine domain %q after disk reconfiguration: %w",
+			name, err)
+	}
+	log.Infof("Reconfigured disk list for domain %q (%d disk(s))", name, len(newDisks))
+	return nil
+}
+
 // getDeviceConsoleLogFile returns the filesystem path for storing the console log
 // for a given device name.
 func (p *LibvirtProvider) getDeviceConsoleLogFile(name string) string {
@@ -916,7 +1056,7 @@ func (p *LibvirtProvider) getDeviceConsolePort(name string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer dom.Free()
+	defer func() { _ = dom.Free() }()
 
 	xmlDesc, err := dom.GetXMLDesc(0)
 	if err != nil {
@@ -938,10 +1078,9 @@ func (p *LibvirtProvider) getDeviceConsolePort(name string) (int, error) {
 
 // ensureUplinkNetwork creates or ensures a NAT network used for uplink connectivity
 // exists.
-func (p *LibvirtProvider) ensureUplinkNetwork(log *logrus.Entry, ipv6Enabled bool) error {
-	prefixedNetName, brName := uplinkNetworkName(ipv6Enabled)
-	netName := unprefixedName(prefixedNetName)
-	network, err := p.conn.LookupNetworkByName(prefixedNetName)
+func (p *LibvirtProvider) ensureUplinkNetwork(log *logrus.Entry) error {
+	netName := uplinkNetwork
+	network, err := p.conn.LookupNetworkByName(netName)
 	if err == nil {
 		defer network.Free()
 		return nil // already exists
@@ -949,59 +1088,41 @@ func (p *LibvirtProvider) ensureUplinkNetwork(log *logrus.Entry, ipv6Enabled boo
 
 	// Build network XML
 	networkXML := &libvirtxml.Network{
-		Name: prefixedNetName,
+		Name: netName,
 		Forward: &libvirtxml.NetworkForward{
 			Mode: "nat",
 		},
 		Bridge: &libvirtxml.NetworkBridge{
-			Name: brName,
+			Name: netName,
 		},
 	}
 
-	if ipv6Enabled && p.conf.SDNUplinkIPv6Subnet != nil {
-		// Dual-stack uplink network.
-		bridgeIP := utils.GetFirstHostIP(p.conf.SDNUplinkIPv4DualStackSubnet)
-		dhcpStart := utils.GetNextIP(bridgeIP)
-		dhcpEnd := utils.GetLastHostIP(p.conf.SDNUplinkIPv4DualStackSubnet)
-		bridgeIPv6 := utils.GetFirstHostIP(p.conf.SDNUplinkIPv6Subnet)
-		networkXML.IPs = append(networkXML.IPs,
-			libvirtxml.NetworkIP{
-				Family:  "ipv4",
-				Address: bridgeIP.String(),
-				Netmask: net.IP(p.conf.SDNUplinkIPv4DualStackSubnet.Mask).String(),
-				DHCP: &libvirtxml.NetworkDHCP{
-					Ranges: []libvirtxml.NetworkDHCPRange{
-						{
-							Start: dhcpStart.String(),
-							End:   dhcpEnd.String(),
-						},
+	bridgeIP := utils.GetFirstHostIP(p.conf.SDNUplinkIPv4Subnet)
+	dhcpStart := utils.GetNextIP(bridgeIP)
+	dhcpEnd := utils.GetLastHostIP(p.conf.SDNUplinkIPv4Subnet)
+	networkXML.IPs = append(networkXML.IPs,
+		libvirtxml.NetworkIP{
+			Family:  "ipv4",
+			Address: bridgeIP.String(),
+			Netmask: net.IP(p.conf.SDNUplinkIPv4Subnet.Mask).String(),
+			DHCP: &libvirtxml.NetworkDHCP{
+				Ranges: []libvirtxml.NetworkDHCPRange{
+					{
+						Start: dhcpStart.String(),
+						End:   dhcpEnd.String(),
 					},
 				},
 			},
+		},
+	)
+
+	if p.conf.SDNUplinkIPv6Subnet != nil {
+		bridgeIPv6 := utils.GetFirstHostIP(p.conf.SDNUplinkIPv6Subnet)
+		networkXML.IPs = append(networkXML.IPs,
 			libvirtxml.NetworkIP{
 				Family:  "ipv6",
 				Address: bridgeIPv6.String(),
 				Prefix:  utils.GetSubnetPrefixLen(p.conf.SDNUplinkIPv6Subnet),
-			},
-		)
-	} else {
-		// Ipv4-only uplink network.
-		bridgeIP := utils.GetFirstHostIP(p.conf.SDNUplinkIPv4OnlySubnet)
-		dhcpStart := utils.GetNextIP(bridgeIP)
-		dhcpEnd := utils.GetLastHostIP(p.conf.SDNUplinkIPv4OnlySubnet)
-		networkXML.IPs = append(networkXML.IPs,
-			libvirtxml.NetworkIP{
-				Family:  "ipv4",
-				Address: bridgeIP.String(),
-				Netmask: net.IP(p.conf.SDNUplinkIPv4OnlySubnet.Mask).String(),
-				DHCP: &libvirtxml.NetworkDHCP{
-					Ranges: []libvirtxml.NetworkDHCPRange{
-						{
-							Start: dhcpStart.String(),
-							End:   dhcpEnd.String(),
-						},
-					},
-				},
 			},
 		)
 	}
@@ -1038,10 +1159,8 @@ func (p *LibvirtProvider) ensureUplinkNetwork(log *logrus.Entry, ipv6Enabled boo
 // ensureXConnectNetwork creates or ensures a bridge network exists for
 // a point-to-point link.
 func (p *LibvirtProvider) ensureXConnectNetwork(log *logrus.Entry,
-	prefixedName string) error {
-	netName := unprefixedName(prefixedName)
-	brName := generateXConnectBridgeName(prefixedName)
-	net, err := p.conn.LookupNetworkByName(prefixedName)
+	netName string) error {
+	net, err := p.conn.LookupNetworkByName(netName)
 	if err == nil {
 		defer net.Free()
 		return nil // already exists
@@ -1049,9 +1168,9 @@ func (p *LibvirtProvider) ensureXConnectNetwork(log *logrus.Entry,
 
 	// bridge network XML
 	netXML := libvirtxml.Network{
-		Name: prefixedName,
+		Name: netName,
 		Bridge: &libvirtxml.NetworkBridge{
-			Name: brName,
+			Name: netName,
 			STP:  "off",
 		},
 	}
@@ -1088,10 +1207,10 @@ func (p *LibvirtProvider) ensureXConnectNetwork(log *logrus.Entry,
 	// (kernel rejects BR_GROUPFWD_RESTRICTED). It is enabled separately via
 	// the per-port IFLA_BRPORT_GROUP_FWD_MASK in enableLACPForwardingOnXConnectBridges.
 	groupFwdMask := "0x4008" // EAPOL + LLDP
-	path := fmt.Sprintf("/sys/class/net/%s/bridge/group_fwd_mask", brName)
+	path := fmt.Sprintf("/sys/class/net/%s/bridge/group_fwd_mask", netName)
 	if err := os.WriteFile(path, []byte(groupFwdMask), 0o644); err != nil {
-		err = fmt.Errorf("failed to set group_fwd_mask (%s) on bridge %q "+
-			"for network %q: %w", groupFwdMask, brName, netName, err)
+		err = fmt.Errorf("failed to set group_fwd_mask (%s) on bridge %q: %w",
+			groupFwdMask, netName, err)
 		log.Error(err)
 		return err
 	}
@@ -1099,10 +1218,9 @@ func (p *LibvirtProvider) ensureXConnectNetwork(log *logrus.Entry,
 	// Prevent the host from answering ARP for its own IPs on this bridge.
 	// Without this, VMs resolve the host's management IP to the bridge MAC and
 	// send traffic directly to the host instead of through the SDN VM.
-	arpIgnorePath := fmt.Sprintf("/proc/sys/net/ipv4/conf/%s/arp_ignore", brName)
+	arpIgnorePath := fmt.Sprintf("/proc/sys/net/ipv4/conf/%s/arp_ignore", netName)
 	if err := os.WriteFile(arpIgnorePath, []byte("1"), 0o644); err != nil {
-		err = fmt.Errorf("failed to set arp_ignore on bridge %q "+
-			"for network %q: %w", brName, netName, err)
+		err = fmt.Errorf("failed to set arp_ignore on bridge %q: %w", netName, err)
 		log.Error(err)
 		return err
 	}
@@ -1112,9 +1230,9 @@ func (p *LibvirtProvider) ensureXConnectNetwork(log *logrus.Entry,
 	// result, Docker's DNAT rules in nat PREROUTING intercept bridged packets
 	// before they reach the SDN VM. Insert a RETURN rule ahead of Docker's rules
 	// in both iptables and ip6tables to skip DNAT for all traffic on this bridge.
-	if err := ensureXConnectNATReturn(brName); err != nil {
-		err = fmt.Errorf("failed to add iptables RETURN rule for bridge %q "+
-			"for network %q: %w", brName, netName, err)
+	if err := ensureXConnectNATReturn(netName); err != nil {
+		err = fmt.Errorf("failed to add iptables RETURN rule for bridge %q: %w",
+			netName, err)
 		log.Error(err)
 		return err
 	}
@@ -1134,12 +1252,14 @@ func (p *LibvirtProvider) domainLifecycleCallback(
 		// ignore domains we can't identify
 		return
 	}
+	// libvirt returns the full prefixed name; watchers are keyed by unprefixed name.
+	name := unprefixedName(domName)
 	status := deviceStatusFromLibvirtEvent(*event)
 
 	// Send the status update to all registered watchers for this domain
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
-	for _, ch := range p.watchers[domName] {
+	for _, ch := range p.watchers[name] {
 		select {
 		case ch <- status:
 		default:
@@ -1173,8 +1293,7 @@ func deviceStatusFromLibvirtEvent(event libvirt.DomainEventLifecycle) DeviceStat
 	switch event.Event {
 	case libvirt.DOMAIN_EVENT_STARTED:
 		return DeviceStatusRunning
-	case libvirt.DOMAIN_EVENT_STOPPED,
-		libvirt.DOMAIN_EVENT_SHUTDOWN:
+	case libvirt.DOMAIN_EVENT_STOPPED:
 		return DeviceStatusStopped
 	case libvirt.DOMAIN_EVENT_CRASHED:
 		return DeviceStatusCrashed
@@ -1188,7 +1307,7 @@ func deviceStatusFromLibvirtEvent(event libvirt.DomainEventLifecycle) DeviceStat
 
 // isNetworkInUse checks if any domain still uses the given network.
 func (p *LibvirtProvider) isNetworkInUse(log *logrus.Entry,
-	prefixedName string) (bool, error) {
+	netName string) (bool, error) {
 	doms, err := p.conn.ListAllDomains(0)
 	if err != nil {
 		err = fmt.Errorf("failed to list domains: %w", err)
@@ -1212,7 +1331,7 @@ func (p *LibvirtProvider) isNetworkInUse(log *logrus.Entry,
 		}
 		for _, iface := range domCfg.Devices.Interfaces {
 			if iface.Source != nil && iface.Source.Network != nil &&
-				iface.Source.Network.Network == prefixedName {
+				iface.Source.Network.Network == netName {
 				return true, nil
 			}
 		}
@@ -1223,9 +1342,8 @@ func (p *LibvirtProvider) isNetworkInUse(log *logrus.Entry,
 // removeNetwork destroys and undefines a libvirt network with the given prefixed name.
 // If the network does not exist, it silently returns without error.
 // Logs success or any errors encountered during destruction or undefinition.
-func (p *LibvirtProvider) removeNetwork(log *logrus.Entry, prefixedName string) error {
-	netName := unprefixedName(prefixedName)
-	net, err := p.conn.LookupNetworkByName(prefixedName)
+func (p *LibvirtProvider) removeNetwork(log *logrus.Entry, netName string) error {
+	net, err := p.conn.LookupNetworkByName(netName)
 	if err != nil {
 		var lverr libvirt.Error
 		if errors.As(err, &lverr) {
@@ -1244,11 +1362,10 @@ func (p *LibvirtProvider) removeNetwork(log *logrus.Entry, prefixedName string) 
 		log.Error(err)
 		return err
 	}
-	if strings.Contains(prefixedName, "xconnect") {
-		brName := generateXConnectBridgeName(prefixedName)
-		if err := deleteXConnectNATReturn(brName); err != nil {
+	if strings.HasPrefix(netName, xconnectBridgePrefix) {
+		if err := deleteXConnectNATReturn(netName); err != nil {
 			log.Warnf("Failed to remove iptables RETURN rule for bridge %q: %v",
-				brName, err)
+				netName, err)
 		}
 	}
 	log.Infof("Removed network %q", netName)
@@ -1328,7 +1445,7 @@ func (p *LibvirtProvider) teardownUnusedNetworks(log *logrus.Entry) {
 		if err != nil {
 			continue
 		}
-		if !strings.HasPrefix(name, namePrefix) {
+		if !strings.HasPrefix(name, networkPrefix) {
 			continue
 		}
 		inUse, err := p.isNetworkInUse(log, name)

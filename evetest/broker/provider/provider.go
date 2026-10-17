@@ -5,8 +5,11 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"net"
+	"regexp"
 
 	api "github.com/lf-edge/eve/evetest/grpcapi/go"
 )
@@ -19,6 +22,16 @@ type DeviceProvider interface {
 	// GetSupportedDeviceArchs returns a list of CPU architectures supported by
 	// this device provider (and the host it is running on in case of virtualization).
 	GetSupportedDeviceArchs() ([]api.ArchType, error)
+
+	// Capabilities returns the set of optional, provider-specific features that
+	// this provider supports (e.g. forwarding of link-local L2 protocols, TPM
+	// attachment). Tests declare required capabilities and are skipped when the
+	// active provider does not advertise them.
+	Capabilities() []api.Capability
+
+	// DiskImageStrategy reports how the broker should produce per-device disk
+	// images for this provider. See DiskImageStrategy.
+	DiskImageStrategy() DiskImageStrategy
 
 	// SetupDevice creates a new device in a powered-off state with the specified configuration.
 	// The device must be created but not started, allowing for additional configuration
@@ -34,8 +47,11 @@ type DeviceProvider interface {
 	//   - Resource allocation fails
 	SetupDevice(ctx context.Context, name string, spec DeviceSpec) error
 
-	// TeardownDevice stops the device (if running) and removes it completely,
-	// including all associated resources (disks, network interfaces, etc.).
+	// TeardownDevice stops the device (if running) and removes the device definition
+	// from the provider (e.g. undefines the libvirt domain). It also removes any
+	// provider-managed side-files such as NVRAM (OVMF_VARS.fd) and unused virtual
+	// networks. It does NOT delete the disk image files referenced in DeviceSpec.Disks;
+	// disk cleanup is the caller's responsibility.
 	TeardownDevice(ctx context.Context, name string) error
 
 	// PowerOnDevice starts a previously created device.
@@ -94,42 +110,85 @@ type DeviceProvider interface {
 	// TeardownAll removes all VMs, networks, etc., created by the provider.
 	TeardownAll(ctx context.Context) error
 
+	// ReconfigureDeviceDisks updates the disk list of a stopped device in place,
+	// without tearing it down and recreating it. All other device state (TPM,
+	// UEFI NVRAM, console port, network interfaces) is preserved.
+	//
+	// Intended for the EVE installer two-step flow: after the installer VM has
+	// finished writing EVE to disk, call this to drop the installer image from
+	// the disk list so the next PowerOnDevice boots directly into EVE.
+	//
+	// The device must be set up and powered off when this is called.
+	ReconfigureDeviceDisks(ctx context.Context, name string, newDisks []DiskImage) error
+
+	// ExecuteQMP runs one QMP command on the hypervisor running the device and
+	// returns the command's "return" member as raw JSON ("{}" when the command
+	// returns nothing). arguments is the JSON object of the command's
+	// arguments, or nil for none. A QMP error reply is returned as *QMPError,
+	// which tells a refused command from a broken connection. The device must
+	// be powered on.
+	ExecuteQMP(ctx context.Context, name, execute string,
+		arguments json.RawMessage) (json.RawMessage, error)
+
+	// CreateScratchImage creates a blank, sparse raw disk image of the given
+	// size in the device's scratch area on the hypervisor host and returns its
+	// path there, for use in QMP commands such as blockdev-add. imageName is
+	// unique within the device (see ValidateScratchImageName). Scratch images
+	// live until DeleteScratchImage or TeardownDevice.
+	CreateScratchImage(ctx context.Context, name, imageName string,
+		sizeBytes uint64) (hostPath string, err error)
+
+	// DeleteScratchImage removes an image created by CreateScratchImage.
+	DeleteScratchImage(ctx context.Context, name, imageName string) error
+
 	// Close releases all resources associated with the provider connection.
 	Close() error
 }
 
-// ImageSpec defines the input disk images and UEFI firmware needed to
-// provision a virtual device.
-//
-// Either Qcow2ImagePath or RawImagePath should be specified, but not both.
-// Qcow2ImagePath refers to a QCOW2 disk image, while RawImagePath refers to
-// a raw disk image. UEFIFirmwareDirPath points to a directory containing the
-// UEFI firmware binaries required to boot QCOW2-based devices.
-type ImageSpec struct {
-	// Qcow2ImagePath is the path to the base qcow2 image to use for the device.
-	Qcow2ImagePath string
+// DiskImageFormat is the on-disk format of a disk image file.
+type DiskImageFormat int32
 
-	// UEFIFirmwareDirPath specifies the path to a directory containing UEFI
-	// firmware binaries (e.g., OVMF_CODE.fd, OVMF_VARS.fd) used by the provider
-	// to boot a QCOW2-based machine.
-	UEFIFirmwareDirPath string
+const (
+	// DiskImageFormatQcow2 is the QCOW2 disk image format.
+	DiskImageFormatQcow2 DiskImageFormat = iota
+	// DiskImageFormatRaw is the raw disk image format.
+	DiskImageFormatRaw
+)
 
-	// RawImagePath specifies the path to a RAW disk image.
-	// Either this or Qcow2ImagePath should be defined, but not both.
-	RawImagePath string
-}
+// DiskImageStrategy describes how the broker should produce a per-device disk
+// image for a given provider.
+type DiskImageStrategy int
 
-// ImageFilePath returns the actual disk image path for the device.
-func (spec ImageSpec) ImageFilePath() string {
-	if spec.Qcow2ImagePath != "" {
-		return spec.Qcow2ImagePath
-	}
-	return spec.RawImagePath
+const (
+	// DiskImageLegacyBuild runs a full per-device EVE container build. The
+	// default for providers not yet validated against the template cache.
+	DiskImageLegacyBuild DiskImageStrategy = iota
+	// DiskImageStandalone derives the device disk from a cached template by
+	// copying it, for providers that move the image elsewhere before use --
+	// Proxmox uploads it to the PVE node, where a backing file would not exist.
+	DiskImageStandalone
+	// DiskImageOverlay derives the device disk as a QCOW2 whose backing file is
+	// the cached template, for providers that attach local files directly.
+	DiskImageOverlay
+)
+
+// DiskImage describes a single disk to attach to a device.
+type DiskImage struct {
+	// Format is the on-disk format of the image file.
+	Format DiskImageFormat
+	// Path is the filesystem path to the image file.
+	// The file must already exist when SetupDevice is called.
+	Path string
 }
 
 // DeviceSpec defines the configuration for a compute device.
 type DeviceSpec struct {
-	ImageSpec
+	// Disks is an ordered list of disk images to attach to the device, in boot order.
+	Disks []DiskImage
+
+	// UEFIFirmwareDirPath is the path to a directory containing UEFI firmware
+	// binaries (OVMF_CODE.fd, OVMF_VARS.fd). Leave empty to omit UEFI.
+	UEFIFirmwareDirPath string
 
 	// CPU architecture.
 	Arch api.ArchType
@@ -150,8 +209,16 @@ type DeviceSpec struct {
 	// NetworkInterfaces defines the network configuration for the device.
 	NetworkInterfaces []NetworkInterfaceSpec
 
-	// Future considerations:
-	// - AdditionalDisks []DiskSpec // For multiple disks
+	// NetworkBootFallback requests a disk-first, network-fallback (PXE/iPXE)
+	// boot order: firmware tries the attached disk first, falling through to
+	// the network only while that disk has nothing bootable. This same
+	// static order is correct for the device's entire lifetime -- once a
+	// network installer has written EVE onto the disk, it boots straight
+	// from disk and the network is never attempted again, with no
+	// reconfiguration needed. Used for devices provisioned with a blank
+	// target disk and no installer/live image content attached (see
+	// BuildImageRequest.network_boot).
+	NetworkBootFallback bool
 }
 
 // NetworkInterfaceSpec defines a single network interface for a device.
@@ -185,11 +252,10 @@ type ConnectionSpec struct {
 	XConnect *XConnectSpec
 }
 
-// UplinkSpec defines connection to the host network.
+// UplinkSpec defines connection to the host network. It carries no fields;
+// its presence (non-nil) is what selects the uplink connection type in
+// ConnectionSpec.
 type UplinkSpec struct {
-	// EnableIPv6 is used to enable IPv6 (additionally to IPv4) on the uplink interface
-	// (if available).
-	EnableIPv6 bool
 }
 
 // XConnectSpec defines a direct cross-connect to another device's interface.
@@ -214,7 +280,7 @@ const (
 	TransportProtocolUDP TransportProtocol = "udp"
 )
 
-// DeviceStatus represents the current state of a device.
+// DeviceStatus represents the current power/lifecycle state of a device.
 type DeviceStatus string
 
 const (
@@ -233,3 +299,29 @@ const (
 	// DeviceStatusUnknown indicates the device state cannot be determined.
 	DeviceStatusUnknown DeviceStatus = "unknown"
 )
+
+// QMPError is a QMP error reply: the hypervisor understood the command and
+// refused it, as opposed to a transport failure.
+type QMPError struct {
+	Class string
+	Desc  string
+}
+
+func (e *QMPError) Error() string {
+	return fmt.Sprintf("%s (%s)", e.Desc, e.Class)
+}
+
+// scratchImageNameRe is what ValidateScratchImageName accepts: QEMU's rules
+// for ids, so that the same name can serve as block node name and device id,
+// and nothing that could escape the scratch directory.
+var scratchImageNameRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{0,30}$`)
+
+// ValidateScratchImageName checks the name of a scratch image
+// (CreateScratchImage).
+func ValidateScratchImageName(name string) error {
+	if !scratchImageNameRe.MatchString(name) {
+		return fmt.Errorf("invalid scratch image name %q: want a letter followed by "+
+			"up to 30 letters, digits, '-' or '_'", name)
+	}
+	return nil
+}

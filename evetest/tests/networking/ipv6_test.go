@@ -47,8 +47,8 @@ import (
 // Phases
 // ------
 //  1. Apply DHCPNetworkConfig{V6Only} on ethernet0 (mgmt+app).
-//  2. Wait until ethernet0 reports a global-unicast IPv6 address and no IPv4
-//     address in DevicePortStatus.
+//  2. Wait until ethernet0 reports a global-unicast IPv6 address, no IPv4
+//     address, and a default router in DevicePortStatus.
 //  3. Assert DPC health: SystemAdapterInfo.CurrentIndex==0 and
 //     DevicePortStatus.LastError is empty.
 //  4. Assert the default router for ethernet0 is a link-local IPv6 address.
@@ -61,10 +61,19 @@ import (
 //     - ip -6 route show contains a default route via a fe80:: link-local
 //     address (RA-derived routes always use the router's link-local address).
 //     - ip -4 addr show dev eth0 contains no "inet" lines (no IPv4).
+//
+// Test params
+// -----------
+//   - HYPERVISOR (defaults to KVM).
 func TestDeviceIPv6Connectivity(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
 	defer evetest.Close()
+
+	evetest.DefineTestParameters(
+		evetest.HypervisorParameter(),
+	)
+	hypervisor := evetest.GetHypervisorParameterValue()
 
 	devName := "edge-dev"
 	// Clone the shared model so we can modify it without side effects.
@@ -78,7 +87,7 @@ func TestDeviceIPv6Connectivity(test *testing.T) {
 	evetest.Setup(
 		evetest.RequireEdgeDevice{
 			Name:              devName,
-			WithHypervisor:    evetest.HypervisorKVM,
+			WithHypervisor:    hypervisor,
 			DeviceReusePolicy: evetest.ResetDeviceConfig,
 		},
 		evetest.RequireNetworkModel{
@@ -102,21 +111,33 @@ func TestDeviceIPv6Connectivity(test *testing.T) {
 	devUpdates, stopDevWatch := device.WatchDeviceInfo()
 	defer stopDevWatch()
 	device.ApplyConfig(devConfig, true, true)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
 	evetest.Checkpoint("config-applied")
 
 	log := evetest.Logger()
 	timeout := 5 * time.Minute
 
-	// Wait for ethernet0 to acquire a global-unicast IPv6 and no IPv4.
+	// Wait for ethernet0 to acquire a global-unicast IPv6, no IPv4, and a
+	// default router. NIM may publish the SLAAC address slightly before it
+	// records the RA-derived default route, so a snapshot can briefly show
+	// the address with no default router yet; wait for both together to
+	// avoid racing that gap.
 	var dinfo *eveinfo.ZInfoDevice
 	var eth0IPv6 net.IP
-	log.Infof("Waiting for ethernet0 to acquire a global-unicast IPv6 (no IPv4)...")
+	log.Infof("Waiting for ethernet0 to acquire a global-unicast IPv6 (no IPv4) " +
+		"and a default router...")
 	t.Eventually(devUpdates, timeout).Should(Receive(matchers.SatisfyPredicate(
-		"ethernet0 has global-unicast IPv6 and no IPv4",
+		"ethernet0 has global-unicast IPv6, no IPv4, and a default router",
 		func(info *eveinfo.ZInfoDevice) bool {
 			dinfo = info
 			eth0IPv6 = getPortIPv6GlobalAddr("ethernet0", info)
-			return eth0IPv6 != nil && getPortIPv4Addr("ethernet0", info) == nil
+			if eth0IPv6 == nil || getPortIPv4Addr("ethernet0", info) != nil {
+				return false
+			}
+			port := getDevicePort("ethernet0", info)
+			return port != nil && len(port.GetDefaultRouters()) > 0
 		})))
 
 	evetest.Checkpoint("ipv6-addr-acquired")
@@ -199,7 +220,7 @@ func TestDeviceIPv6Connectivity(test *testing.T) {
 // ------
 //  1. Apply DHCPNetworkConfig{V6Only} on ethernet0 (mgmt+app). Add a Switch
 //     NI ("switch-ni-v6") on ethernet0 with MTU=1500. Deploy container app
-//     (milan4zededa/evetest-ubuntu-ctr:1.0, VmMode_HVM) on the switch NI
+//     (lfedge/evetest-ubuntu-ctr:1.0, VmMode_HVM) on the switch NI
 //     with a fixed MAC and an allow-all IPv6 ACL (::/0).
 //     WaitUntilAppIsRunning.
 //  2. Watch app info: the VIF eventually reports at least one global-unicast
@@ -225,8 +246,7 @@ func TestDeviceIPv6Connectivity(test *testing.T) {
 //
 // Test params
 // -----------
-//   - HYPERVISOR. evetest.SkipIfHypervisorKubevirt() is called after reading
-//     the parameter -- Kubevirt is reserved for cluster tests.
+//   - HYPERVISOR (defaults to KVM).
 func TestApplicationIPv6Connectivity(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
@@ -236,8 +256,6 @@ func TestApplicationIPv6Connectivity(test *testing.T) {
 		evetest.HypervisorParameter(),
 	)
 	hypervisor := evetest.GetHypervisorParameterValue()
-	// Kubevirt is only supported by cluster tests.
-	evetest.SkipIfHypervisorKubevirt()
 
 	// IPv6 address of the SDN HTTP server and DNS server defined in netmodels.SingleEthIPv6Only.
 	const httpServerIPv6 = "fdde:55a:74d4::7"
@@ -256,6 +274,9 @@ func TestApplicationIPv6Connectivity(test *testing.T) {
 		// IPv6 internet access is required: the device is IPv6-only, so the
 		// app image must be pulled over IPv6.
 		evetest.RequireInternetConnectivity{RequireIPv6: true},
+		// The device has no IPv4 route, so an IPv4-only registry mirror is
+		// unreachable; only use mirror addresses that are themselves IPv6.
+		evetest.RequireIPv6OnlyRegistryMirrors{},
 	)
 	device := evetest.GetEdgeDevice(devName)
 	evetest.Checkpoint("setup-done")
@@ -288,12 +309,12 @@ func TestApplicationIPv6Connectivity(test *testing.T) {
 		DisplayName: "container-app",
 		Activate:    true,
 		Image: evetest.DockerContainer{
-			ImageName: "milan4zededa/evetest-ubuntu-ctr",
+			ImageName: "lfedge/evetest-ubuntu-ctr",
 			Tag:       "1.0",
 		},
 		VirtualizationMode: eveconfig.VmMode_HVM,
 		CPUs:               1,
-		MemoryBytes:        500 * evetest.MB,
+		MemoryBytes:        500 * evetest.MiB,
 		NetworkAdapters: []evetest.AppNetworkAdapter{
 			evetest.VirtualNetworkAdapter{
 				LogicalLabel:        "vif0",
@@ -314,6 +335,9 @@ func TestApplicationIPv6Connectivity(test *testing.T) {
 	appUpdates, stopAppWatch := device.WatchAppInfo(appUUID)
 	defer stopAppWatch()
 	device.ApplyConfig(devConfig, true, true)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
 
 	timeoutExcludingDownload := 5 * time.Minute
 	device.WaitUntilAppIsRunning(appUUID, timeoutExcludingDownload)

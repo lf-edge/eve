@@ -11,11 +11,48 @@ import (
 	"sync"
 	"time"
 
+	// revive:disable:dot-imports
+	. "github.com/onsi/gomega"
+
 	eveinfo "github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/evetest"
 	pillartypes "github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
 )
+
+// readBpduGuard reads the BPDU guard sysfs flag for a named bridge port.
+// Returns "0", "1", or "" if the path cannot be read.
+func readBpduGuard(device *evetest.EdgeDevice, bridgeName, portName string,
+	sshTimeout time.Duration) string {
+	path := "/sys/class/net/" + bridgeName + "/brif/" + portName + "/bpdu_guard"
+	output, _, err := device.RunShellScript("cat "+path, sshTimeout, 0)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(output)
+}
+
+// niHasError is a matchers.SatisfyPredicate StopIf callback: it stops an
+// Eventually early if the network instance has reached the ERROR state,
+// instead of waiting out the full timeout.
+func niHasError(info *eveinfo.ZInfoNetworkInstance) (string, bool) {
+	stop := info.State == eveinfo.ZNetworkInstanceState_ZNETINST_STATE_ERROR
+	if stop {
+		return "Network instance is in error state", true
+	}
+	return "", false
+}
+
+// appHasError is a matchers.SatisfyPredicate StopIf callback: it stops an
+// Eventually early if the application instance has reached the ERROR state,
+// instead of waiting out the full timeout.
+func appHasError(info *eveinfo.ZInfoApp) (string, bool) {
+	stop := info.State == eveinfo.ZSwState_ERROR
+	if stop {
+		return "Application instance is in error state", true
+	}
+	return "", false
+}
 
 // contentTreeTracker follows the info messages of many content trees and
 // keeps the latest one per tree, so that a test deploying many content trees
@@ -142,8 +179,12 @@ func logDownloaderView(device *evetest.EdgeDevice, namesBySHA map[string]string,
 			break
 		}
 		logged++
-		data := device.ReadFile("/run/downloader/DownloaderStatus/" +
+		data, err := device.ReadFile("/run/downloader/DownloaderStatus/" +
 			strings.ToLower(sha256Hex) + ".json")
+		if err != nil {
+			log.Warnf("Cannot read the DownloaderStatus of %s: %v", name, err)
+			continue
+		}
 		var status pillartypes.DownloaderStatus
 		if err := json.Unmarshal(data, &status); err != nil {
 			log.Warnf("Cannot parse the DownloaderStatus of %s: %v", name, err)
@@ -153,4 +194,56 @@ func logDownloaderView(device *evetest.EdgeDevice, namesBySHA map[string]string,
 			"retries=%d error=%q", name, status.State, status.Progress,
 			status.CurrentSize, status.TotalSize, status.RetryCount, status.Error)
 	}
+}
+
+// appHasIP returns true if the application reports the given IP address on any
+// of its network adapters.
+func appHasIP(info *eveinfo.ZInfoApp, ip string) bool {
+	for _, adapter := range info.Network {
+		for _, adapterIP := range adapter.IPAddrs {
+			if adapterIP == ip {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// startSwitchNITraffic starts a background script inside the application which
+// mimics an app that replaces the IP address received over DHCP with a static
+// one (as cloud-init does) and then generates traffic that EVE snoops on a Switch NI:
+//   - an ARP request (sent from the static IP) every arpPeriod, which is how EVE
+//     learns the static IP of the app,
+//   - a steady stream of UDP packets to port 53, which EVE captures as DNS traffic
+//     and which is intended to keep the packet capture busy.
+//
+// The script is detached, therefore the call returns before the DHCP address
+// is replaced and the app stops being reachable over it.
+func startSwitchNITraffic(t Gomega, device *evetest.EdgeDevice, appUUID uuid.UUID,
+	staticIP, gatewayIP, dnsIP string, arpPeriod time.Duration) {
+	script := fmt.Sprintf(`cat > /tmp/traffic.sh <<'SCRIPT'
+#!/bin/bash
+IF=$(ip -o route get %[2]s | sed -n 's/.* dev \([^ ]*\).*/\1/p')
+sleep 3
+ip addr flush dev "$IF"
+ip addr add %[1]s/24 dev "$IF"
+ip route add default via %[2]s dev "$IF"
+(
+  exec 3<>/dev/udp/%[3]s/53
+  while true; do echo x >&3; sleep 0.005; done
+) &
+while true; do
+  ip neigh flush dev "$IF"
+  ping -c1 -W1 -I %[1]s %[2]s >/dev/null 2>&1
+  sleep %[4]d
+done
+SCRIPT
+chmod +x /tmp/traffic.sh
+nohup /tmp/traffic.sh >/tmp/traffic.log 2>&1 </dev/null &
+`, staticIP, gatewayIP, dnsIP, int(arpPeriod.Seconds()))
+	_, _, err := device.RunShellScriptInsideApp(appUUID, evetest.UsernamePasswordAuth{
+		Username: "root",
+		Password: "testpassword",
+	}, script, 20*time.Second, 0)
+	t.Expect(err).ToNot(HaveOccurred())
 }
