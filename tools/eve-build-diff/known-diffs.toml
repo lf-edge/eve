@@ -1,0 +1,189 @@
+# Copyright (c) 2026 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# Known differences between a released EVE rootfs and a rebuild of the same tag.
+# A difference is FLAGGED only when a rule's paths match the file and its checker
+# confirms that nothing else differs. Paths are globs relative to the rootfs
+# root: "*" and "?" stay within one path segment, "**" crosses segments.
+
+[[rule]]
+name = "go-build-commit"
+kind = "go-build-version"
+# GOPKGVERSION comes from the repository HEAD, so a Go package built at another
+# commit embeds a different -X main.Version. linuxkit before v1.8.1 did not trim
+# git's output, so packages it built carry a trailing space in the version.
+trailing_space = true
+paths = [
+  "containers/onboot/*-rngd/rootfs/sbin/rngd",
+  "containers/onboot/*-measure-config/lower/usr/bin/measure-config",
+  "containers/services/edgeview/lower/usr/bin/edge-view",
+  "containers/services/newlogd/lower/usr/bin/newlogd",
+  "containers/services/vtpm/lower/usr/bin/vtpm",
+]
+
+[[rule]]
+name = "vector-openssl-date-in-place"
+kind = "volatile-strings"
+# Vendored OpenSSL embeds its build time. This explains it only when the date
+# keeps its place in mold's merged strings (16.0.2-lts). When it moves, the
+# references to the strings it displaces change, which cannot be checked without
+# relocations, so vector is an ERROR until its build is reproducible.
+paths = ["containers/services/vector/lower/usr/bin/vector"]
+patterns = ['built on: [A-Z][a-z]{2} [A-Z][a-z]{2} [ 0-9]\d \d\d:\d\d:\d\d \d{4} UTC']
+
+[[rule]]
+name = "xen-tools-build-date"
+kind = "volatile-strings"
+paths = [
+  "containers/services/xen-tools/lower/usr/lib/xen/boot/hvmloader",
+  "containers/services/xen-tools/lower/usr/lib/xen/boot/seabios.bin",
+]
+patterns = [
+  '\d\d/\d\d/\d{4}',                                              # hvmloader BIOS date
+  'dirty-\d{8}_\d{6}-',                                           # seabios version
+]
+
+[[rule]]
+name = "xen-shim-build-date"
+kind = "volatile-strings"
+# Xen's linker script places its compile date inside .text.
+code_sections = true
+paths = ["containers/services/xen-tools/lower/usr/lib/xen/boot/xen-shim"]
+patterns = [
+  '[A-Z][a-z]{2} [A-Z][a-z]{2} [ 0-9]\d \d\d:\d\d:\d\d UTC \d{4}',
+  '\d\d:\d\d:\d\d',
+]
+
+[[rule]]
+name = "xen-build-date"
+kind = "volatile-strings"
+paths = ["boot/xen.gz"]
+decompress = "gzip"
+code_sections = true
+patterns = [
+  '[A-Z][a-z]{2} [A-Z][a-z]{2} [ 0-9]\d \d\d:\d\d:\d\d UTC \d{4}',
+  '\d\d:\d\d:\d\d',
+]
+
+[[rule]]
+name = "runx-initrd-cpio-metadata"
+kind = "cpio-metadata"
+# Member mtimes, and the group-write bit and owner that follow the checkout.
+paths = [
+  "boot/runx-initrd",
+  "containers/services/xen-tools/lower/usr/lib/xen/boot/runx-initrd",
+]
+fields = ["mtime", "ino", "uid", "gid"]
+mode_mask = "020"
+uids = [0, 1000]
+gids = [0, 1000, 1001]
+
+[[rule]]
+name = "ucode-cpio-metadata"
+kind = "cpio-metadata"
+paths = ["boot/ucode.img"]
+fields = ["mtime", "ino"]
+
+[[rule]]
+name = "ovmf-iscsidxe-padding"
+kind = "known-variant"
+# Two eve-uefi builds of the same tag differ in one padding byte in IScsiDxe,
+# which LZMA spreads over the firmware volume (17.0.0-lts notes, section 1).
+paths = [
+  "containers/services/xen-tools/lower/usr/lib/xen/boot/ovmf.bin",
+  "containers/services/xen-tools/lower/usr/lib/xen/boot/OVMF_CODE.fd",
+]
+pairs = [
+  ["17711e18dee26c38840f3f24fb8aee6a0c1e74bc356b4a05fc17cd9bc693b397",
+   "81863ad9494a1e087c629715991e32de2744daebccd98353c048b0156f8046d6"],
+  ["67c203314df8d358ad335e15e38ceadcd2e04dd190ca3dce1f7eeeea25e1e74b",
+   "2cc1fb1735bb6211c6e882f7ba23fed3fd6c9908e4aeaa5abf0bf7c2147db6a3"],
+]
+
+[[rule]]
+name = "manpage-date"
+kind = "line-subst"
+paths = ["containers/services/vtpm/lower/usr/share/man/man*/swtpm*"]
+patterns = ['^(\.TH \S+ \S+ "?)\d{4}-\d\d-\d\d']
+what = "the .TH date"
+
+[[rule]]
+name = "shadow-lastchg"
+kind = "line-subst"
+paths = ["containers/*/*/lower/etc/shadow", "containers/*/*/lower/etc/shadow-"]
+patterns = ['^([^:]*:[^:]*:)\d*']
+what = "the last-change day"
+
+[[rule]]
+name = "machine-id"
+kind = "line-subst"
+paths = ["containers/*/*/lower/etc/machine-id"]
+patterns = ['^[0-9a-f]{32}$']
+what = "the random machine ID"
+
+[[rule]]
+name = "zfs-files-order"
+kind = "line-set"
+paths = ["etc/zfs-files"]
+
+[[rule]]
+name = "apk-db-local-package"
+kind = "apk-db"
+# A package built inside the image (debug's musl) gets a new build time, size
+# and checksum; its installed files are compared separately.
+paths = ["containers/*/*/lower/lib/apk/db/installed"]
+fields = ["C", "S", "t"]
+
+[[rule]]
+name = "apk-scripts-mtime"
+kind = "tar-metadata"
+# Older apk-tools stamp the install time on each member of scripts.tar.
+paths = ["lib/apk/db/scripts.tar", "containers/*/*/lower/lib/apk/db/scripts.tar"]
+fields = ["mtime"]
+
+[[rule]]
+name = "eve-alpine-builder-key"
+kind = "pem-public-key"
+one_sided = true
+# eve-alpine runs abuild-keygen, and the key name is its creation time. Release
+# packages built from a different eve-alpine build carry a different key
+# (16.0.2-lts: 68a726b5 and another 68a726b8, both 2025-08-21).
+paths = ["etc/apk/keys/builder@projecteve.dev-*.rsa.pub",
+         "containers/*/*/lower/etc/apk/keys/builder@projecteve.dev-*.rsa.pub"]
+
+[[rule]]
+name = "apk-world-checksum"
+kind = "line-subst"
+paths = ["containers/*/*/lower/etc/apk/world"]
+patterns = ['><Q1[A-Za-z0-9+/=]{27}']
+what = "a pinned package checksum"
+
+[[rule]]
+name = "cargo-sbom"
+kind = "spdx"
+paths = ["containers/services/monitor/lower/sbin/sbom.spdx.json",
+         "containers/services/vector/lower/sbom.spdx.json"]
+
+[[rule]]
+name = "linuxkit-sbom"
+kind = "spdx"
+paths = ["sbom.spdx.json"]
+allow_cpe_drift = true
+allow_layer_comment = true
+allow_relationship_drift = true
+allow_additions = true
+# Packages built with linuxkit v1.7.0 were scanned by an older syft, which lists
+# fewer files, writes Go purls as module#subpath and empty files as a zero SHA1.
+older_syft = true
+
+[[rule]]
+name = "checkout-umask"
+kind = "metadata"
+# Files COPY'd from the build context keep the checkout's owner and mode: the
+# release CI checkouts have umask 022 and are owned 1000:1001 or 0:0, a typical
+# workstation 1000:1000 with umask 002. Only group write may differ; a change in
+# other-write is an ERROR.
+paths = ["**"]
+mode_mask = "020"
+uids = [0, 1000]
+gids = [0, 1000, 1001]
