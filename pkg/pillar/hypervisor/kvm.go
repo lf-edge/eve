@@ -2313,8 +2313,15 @@ func (ctx KvmContext) VirtualTPMSetup(domainName string, wp *types.WatchdogParam
 	if err != nil {
 		return fmt.Errorf("failed to extract UUID from domain name: %v", err)
 	}
-	return requestvTPMLaunch(domainUUID, wp, swtpmTimeout)
-
+	if err := requestvTPMLaunch(domainUUID, wp, swtpmTimeout); err != nil {
+		return err
+	}
+	// The swtpm is running (vtpm waits for its pid file) and charged to vtpm's
+	// cgroup; staying there is harmless, so a failure to move it is only logged.
+	if err := joinSwtpmCgroup(containerd.HostMemoryCgroupRoot, "/proc", domainUUID); err != nil {
+		logrus.Warnf("swtpm of %s stays in vtpm's cgroup: %v", domainName, err)
+	}
+	return nil
 }
 
 // VirtualTPMTerminate terminates the vTPM instance

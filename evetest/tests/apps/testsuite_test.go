@@ -23,11 +23,19 @@
 //	appvolumes_helpers_test.go   the app's disk in all three forms -
 //	                             VolumeStatus, PVC, file under /persist - and the
 //	                             storage invariants
+//	controlplane_helpers_test.go EVE's own control plane under load - the log
+//	                             signatures of an agent falling behind and of
+//	                             watchdog(8) arming, and a sampler of the eve
+//	                             cgroup's budget
 //	pciaccess_helpers_test.go    the PCI devices of host and guest, the driver a
 //	                             device is bound to, and every access to a PCI
 //	                             device by host processes, observed with a
 //	                             bpftrace tracer (testdata/pciaccess.bt) run
 //	                             through eve-tools/bpftrace-compiler
+//	bulkdeploy_helpers_test.go   what the bulk-deployment test builds and drives
+//	                             inside its containers once they run - the
+//	                             churn a scale-test tool applies, the real
+//	                             workload images - and its wait for RUNNING
 //	<topic>_helpers_test.go      what one topic's tests build before they run,
 //	                             plus the assertions meaningless outside it;
 //	                             purge_helpers_test.go is the worked example
@@ -115,6 +123,14 @@ import (
 //     in error with a bounded error description and the device stays up;
 //     regression test for zedmanager killing pillar by publishing an
 //     AppInstanceStatus larger than a pubsub message.
+//   - TestBulkAppDeployment -- a batch of 50 container apps applied in one
+//     configuration change all reach RUNNING, and stay up through a
+//     power cycle that restarts them all at once, without the device
+//     rebooting on its own or any EVE service stalling long enough to arm
+//     the watchdog; regression test for a well-provisioned server
+//     resetting itself under a bulk deployment because EVE's own memory
+//     and CPU budgets do not scale with the hardware. Needs a device of
+//     at least 8 vCPUs, 32 GiB of RAM and 64 GiB of disk.
 //   - TestVGAPassthroughNoHostAccess -- while the device's VGA controller is
 //     passed through to an app, no host process may open PCI device
 //     attributes for writing or reset, reconfigure or map a PCI device;
@@ -187,6 +203,9 @@ func TestAppsSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestLayerDownloadErrorsBounded,
+		},
+		evetest.TestCase{
+			Test: TestBulkAppDeployment,
 		},
 		evetest.TestCase{
 			Test: TestVGAPassthroughNoHostAccess,
