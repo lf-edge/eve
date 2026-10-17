@@ -158,3 +158,82 @@ func TestDoInstallWaitsForStaleVolumeRefWithLiveStatus(t *testing.T) {
 			"must be marked pending removal while waiting for volumemgr's delete")
 	}
 }
+
+// TestDoInstallErroredStaleVolumeRefHeldByDomainDoesNotBlock is the
+// regression test for a second purge wedge, distinct from the two above: a
+// VolumeRefStatus dropped from the current config but still used by the
+// running domain is correctly kept (not dropped, not marked PendingAdd) so
+// its release can be ordered after the domain is torn down. But if that
+// stale entry also carries an error - e.g. a pre-existing volume failure
+// unrelated to the purge - that error must not propagate into doInstall's
+// aggregate error/done computation. Doing so would make doInstall return
+// done=false forever, which prevents doUpdate from ever reaching the domain
+// teardown that is the only thing that lets this stale entry go away -
+// deadlocking the purge on exactly the state it needs to get past.
+func TestDoInstallErroredStaleVolumeRefHeldByDomainDoesNotBlock(t *testing.T) {
+	appUUID := uuid.Must(uuid.FromString("11111111-1111-1111-1111-111111111111"))
+	staleVolumeID := uuid.Must(uuid.FromString("22222222-2222-2222-2222-222222222222"))
+	newVolumeID := uuid.Must(uuid.FromString("33333333-3333-3333-3333-333333333333"))
+
+	staleVrs := types.VolumeRefStatus{
+		VolumeID:   staleVolumeID,
+		AppUUID:    appUUID,
+		State:      types.CREATING_VOLUME,
+		VerifyOnly: false,
+		ErrorAndTimeWithSource: types.ErrorAndTimeWithSource{
+			ErrorDescription: types.ErrorDescription{
+				Error:         "PVC upload failed, no upload pod annotation",
+				ErrorSeverity: types.ErrorSeverityError,
+			},
+		},
+	}
+	// volumemgr still reports this volume as live (matches reality: the
+	// volume genuinely exists, it is just stuck in a terminal error).
+	ctx := newDoInstallTestContext(t, []types.VolumeRefStatus{staleVrs})
+
+	// The running domain still has a disk pointing at the stale volume - this
+	// is what makes doInstall keep the stale VolumeRefStatus around instead
+	// of dropping or PendingAdd-ing it.
+	domainConfig := types.DomainConfig{
+		UUIDandVersion: types.UUIDandVersion{UUID: appUUID, Version: "1"},
+		DiskConfigList: []types.DiskConfig{
+			{VolumeKey: staleVrs.VolumeKey()},
+		},
+	}
+	assert.NoError(t, ctx.pubDomainConfig.Publish(domainConfig.Key(), domainConfig))
+
+	newVrc := types.VolumeRefConfig{VolumeID: newVolumeID, AppUUID: appUUID, VerifyOnly: true}
+	config := types.AppInstanceConfig{
+		UUIDandVersion:      types.UUIDandVersion{UUID: appUUID, Version: "2"},
+		VolumeRefConfigList: []types.VolumeRefConfig{newVrc},
+	}
+	newVrs := types.VolumeRefStatus{
+		VolumeID:   newVolumeID,
+		AppUUID:    appUUID,
+		State:      types.LOADED,
+		VerifyOnly: true,
+	}
+	status := &types.AppInstanceStatus{
+		UUIDandVersion:      config.UUIDandVersion,
+		PurgeInprogress:     types.DownloadAndVerify,
+		VolumeRefStatusList: []types.VolumeRefStatus{staleVrs, newVrs},
+	}
+
+	_, done := doInstall(ctx, config, status)
+
+	assert.True(t, done,
+		"the new volume is LOADED; doInstall must not stay blocked by the stale, "+
+			"domain-held volume's unrelated error")
+	assert.False(t, status.HasError(),
+		"the stale volume's error must not become the app's own error")
+
+	foundStale := false
+	for _, vrs := range status.VolumeRefStatusList {
+		if vrs.VolumeID == staleVolumeID {
+			foundStale = true
+			assert.False(t, vrs.PendingAdd,
+				"the domain still uses it, so it must not be marked pending removal")
+		}
+	}
+	assert.True(t, foundStale, "the domain-held stale volume ref must still be present")
+}
