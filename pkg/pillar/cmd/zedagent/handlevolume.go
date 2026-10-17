@@ -54,9 +54,9 @@ func parseVolumeConfig(ctx *getconfigContext,
 		var cfgVolume *zconfig.Volume
 		for _, cfgVolume = range cfgVolumeList {
 			// Search by UUID and (remote) Generation counter, ignore local gen. counter.
-			if cfgVolume.Uuid == uuid {
+			if cfgVolume.GetUuid() == uuid {
 				foundVolume = true
-				sameGenCounter = cfgVolume.GenerationCount == genCounter
+				sameGenCounter = cfgVolume.GetGenerationCount() == genCounter
 				break
 			}
 		}
@@ -127,9 +127,9 @@ func checkVolumeHasNoAppReferences(ctx *getconfigContext, cfgVolume *zconfig.Vol
 
 	appInstanceList := devConfig.GetApps()
 	for _, el := range appInstanceList {
-		for _, vr := range el.VolumeRefList {
-			if vr.Uuid == cfgVolume.GetUuid() &&
-				vr.GenerationCount == cfgVolume.GenerationCount {
+		for _, vr := range el.GetVolumeRefList() {
+			if vr.GetUuid() == cfgVolume.GetUuid() &&
+				vr.GetGenerationCount() == cfgVolume.GetGenerationCount() {
 				return false
 			}
 		}
