@@ -1,0 +1,86 @@
+# Copyright (c) 2019, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# The discrete-GPU variant of nvidia-device-plugin-18.0.yml, for
+# PLATFORM=ai-generic. kube-init stages it on ai-generic nodes under that
+# manifest's file name, so a node only ever runs one of the two, and labels a
+# node eve.lfedge.org/nvidia-gpu=true while nvidia.ko is loaded and the CDI
+# spec nv-init.sh generates exists (pkg/kube/kube-init/components/nvidia_gpu.go).
+
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nvidia-device-plugin-daemonset
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      name: nvidia-device-plugin-ds
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        name: nvidia-device-plugin-ds
+    spec:
+      # Without a GPU, or without the CDI spec, the pod could never start.
+      nodeSelector:
+        eve.lfedge.org/nvidia-gpu: "true"
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      # Mark this pod as a critical add-on; when enabled, the critical add-on
+      # scheduler reserves resources for critical add-on pods so that they can
+      # be rescheduled after a failure.
+      # See https://kubernetes.io/docs/tasks/administer-cluster/guaranteed-scheduling-critical-addon-pods/
+      priorityClassName: "system-node-critical"
+      # The plugin's NVML discovery needs the driver libraries and device nodes
+      # inside its own container. EVE registers an "nvidia" containerd runtime
+      # (pkg/kube/config-k3s.toml) whose nvidia-container-runtime runs in CDI
+      # mode and injects both from the spec nv-init.sh generates. Without this
+      # the plugin's "auto" strategy finds nothing and exits.
+      runtimeClassName: nvidia
+      containers:
+        - image: nvcr.io/nvidia/k8s-device-plugin:v0.18.0
+          name: nvidia-device-plugin-ctr
+          env:
+            # nvidia-ctk and nvidia-cdi-hook live under /opt/vendor/nvidia on
+            # EVE, not in /usr/bin where the plugin looks by default. The path
+            # is baked into any CDI specification the plugin generates, so a
+            # wrong value fails at container start rather than here.
+            - name: NVIDIA_CTK_PATH
+              value: /opt/vendor/nvidia/bin/nvidia-ctk
+            - name: NVIDIA_CDI_HOOK_PATH
+              value: /opt/vendor/nvidia/bin/nvidia-cdi-hook
+            # Asks the runtime above for the GPU. compute+utility is
+            # deliberate: this is a compute-only build with no display/OpenGL
+            # userland.
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: all
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: compute,utility
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: kubelet-device-plugins-dir
+              mountPath: /var/lib/kubelet/device-plugins
+      volumes:
+        - name: kubelet-device-plugins-dir
+          hostPath:
+            path: /var/lib/kubelet/device-plugins
+            type: Directory
