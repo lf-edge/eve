@@ -7,22 +7,27 @@
 // fixed reproducible-build date and creators, and leaves one DESCRIBES edge
 // per input image. sbom-stamp replaces those, adds an EVE-OS package that the
 // document describes and that contains the per-image roots, and drops entries
-// that linuxkit's merge duplicated byte for byte.
+// that linuxkit's merge duplicated byte for byte. From the rest of the tar it
+// names and versions each image root after its image and adds file SHA1s; it
+// also fills in suppliers it can tell for packages the scanner left without.
 package main
 
 import (
 	"archive/tar"
 	"bytes"
+	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"hash"
 	"io"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -156,6 +161,8 @@ type Stats struct {
 	DroppedDuplicates int
 	Reparented        int
 	ConflictingIDs    int
+	NoSupplier        int
+	NoSHA1            int
 }
 
 // dedup drops byte-identical array entries, keeping the first occurrence.
@@ -193,7 +200,7 @@ func spdxID(item json.RawMessage) string {
 
 // Stamp returns the stamped document. It is idempotent: stamping its own
 // output yields the same bytes.
-func Stamp(in []byte, o Options) ([]byte, Stats, error) {
+func Stamp(in []byte, o Options, c Content) ([]byte, Stats, error) {
 	var st Stats
 	var doc object
 	if err := json.Unmarshal(in, &doc); err != nil {
@@ -213,11 +220,40 @@ func Stamp(in []byte, o Options) ([]byte, Stats, error) {
 		return nil, st, err
 	}
 
+	for i := range pkgs {
+		if pkgs[i], err = fillPackage(pkgs[i], o, c); err != nil {
+			return nil, st, err
+		}
+	}
+	for i := range files {
+		if files[i], _, err = fillFile(files[i], c); err != nil {
+			return nil, st, err
+		}
+	}
+
 	var n int
 	pkgs, n = dedup(pkgs)
 	st.DroppedDuplicates += n
 	files, n = dedup(files)
 	st.DroppedDuplicates += n
+	for _, p := range pkgs {
+		var v pkgInfo
+		if err := json.Unmarshal(p, &v); err != nil {
+			return nil, st, err
+		}
+		if v.Supplier == "" || v.Supplier == "NOASSERTION" {
+			st.NoSupplier++
+		}
+	}
+	for _, f := range files {
+		_, ok, err := fillFile(f, Content{})
+		if err != nil {
+			return nil, st, err
+		}
+		if !ok {
+			st.NoSHA1++
+		}
+	}
 
 	ids := map[string]int{}
 	hasRoot := false
@@ -357,7 +393,8 @@ func Stamp(in []byte, o Options) ([]byte, Stats, error) {
 
 // stampTar rewrites the tar at path with member stamped, streaming through a
 // temporary file, and replaces path only if the content changed so that make
-// sees an unchanged mtime.
+// sees an unchanged mtime. The Content passed to Stamp comes from the entries
+// before member; linuxkit writes the SBoM last, and stampTar fails otherwise.
 func stampTar(path, member string, o Options) (st Stats, err error) {
 	in, err := os.Open(path)
 	if err != nil {
@@ -385,6 +422,7 @@ func stampTar(path, member string, o Options) (st Stats, err error) {
 	src := io.TeeReader(in, inSum)
 	tr := tar.NewReader(src)
 	tw := tar.NewWriter(io.MultiWriter(tmp, outSum))
+	c := Content{SHA1: map[string]string{}, Images: map[string]string{}}
 	found := false
 	for {
 		hdr, err := tr.Next()
@@ -394,12 +432,27 @@ func stampTar(path, member string, o Options) (st Stats, err error) {
 		if err != nil {
 			return st, err
 		}
+		if found {
+			return st, fmt.Errorf("%s: %s is not the last entry", path, member)
+		}
 		if hdr.Name != member || hdr.Typeflag != tar.TypeReg {
+			if src, ok := hdr.PAXRecords["LINUXKIT.source"]; ok && hdr.Typeflag == tar.TypeDir {
+				c.Images[strings.Trim(filepath.Clean(hdr.Name), "/")] = src
+			}
 			if err := tw.WriteHeader(hdr); err != nil {
 				return st, err
 			}
-			if _, err := io.Copy(tw, tr); err != nil {
+			w := io.Writer(tw)
+			var h1, h256 hash.Hash
+			if hdr.Typeflag == tar.TypeReg {
+				h1, h256 = sha1.New(), sha256.New()
+				w = io.MultiWriter(tw, h1, h256)
+			}
+			if _, err := io.Copy(w, tr); err != nil {
 				return st, err
+			}
+			if h1 != nil {
+				c.SHA1[hex.EncodeToString(h256.Sum(nil))] = hex.EncodeToString(h1.Sum(nil))
 			}
 			continue
 		}
@@ -407,7 +460,7 @@ func stampTar(path, member string, o Options) (st Stats, err error) {
 		if err != nil {
 			return st, err
 		}
-		if body, st, err = Stamp(body, o); err != nil {
+		if body, st, err = Stamp(body, o, c); err != nil {
 			return st, fmt.Errorf("%s: %w", member, err)
 		}
 		hdr.Size = int64(len(body))
@@ -476,6 +529,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	fmt.Fprintf(os.Stderr, "sbom-stamp: %s: %d duplicate entries dropped, %d image roots placed under %s, %d SPDX IDs still not unique\n",
-		flag.Arg(0), st.DroppedDuplicates, st.Reparented, rootID, st.ConflictingIDs)
+	fmt.Fprintf(os.Stderr, "sbom-stamp: %s: %d duplicate entries dropped, %d image roots placed under %s, "+
+		"%d SPDX IDs still not unique, %d packages without supplier, %d files without SHA1\n",
+		flag.Arg(0), st.DroppedDuplicates, st.Reparented, rootID, st.ConflictingIDs, st.NoSupplier, st.NoSHA1)
 }

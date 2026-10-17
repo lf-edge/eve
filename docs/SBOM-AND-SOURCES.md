@@ -108,6 +108,12 @@ the EVE-OS build and two builds of the same commit produce the same bytes:
 * the document `DESCRIBES` a root package `SPDXRef-Package-EVE-OS` carrying the version, the source commit and a `pkg:docker/lfedge/eve` purl; each image's root is `CONTAINED` in it
 * byte-identical duplicate packages, files and relationships, one copy per image that ships them, are dropped
 
+It also fills in what the scanner leaves out, using the rest of the rootfs tar:
+
+* each image's root is named and versioned after the image linuxkit unpacked in its directory, with a `pkg:docker` purl; the root for the images at the top of the rootfs gets the EVE-OS version
+* every file gets the SHA1 checksum SPDX 2.3 requires, computed from the tar
+* packages the scanner left with a `NOASSERTION` supplier get `Organization: LF Edge` if EVE builds them (packages recorded by `pkg/alpine/register-sbom-pkg.sh`, and `github.com/lf-edge` Go modules) and `Organization: Alpine Linux` if they are Alpine `-r<N>` apk packages
+
 To generate the sources, run `make collected_sources`. This does the following:
 
 1. Build the eve image components in `dist/<arch>/<release>`, if not yet built
