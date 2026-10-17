@@ -31,6 +31,5 @@ profile vector /usr/bin/vector flags=(attach_disconnected) {
     owner /proc/*/cgroup r,
     owner /proc/*/mountinfo r,
     owner /proc/*/mounts r,
-    owner /sys/fs/cgroup/cpu/cpu.cfs_period_us r,
-    owner /sys/fs/cgroup/cpu/cpu.cfs_quota_us r,
+    owner /sys/fs/cgroup/**/cpu.max r,
 }

@@ -10,8 +10,8 @@ including "eve/services", and, in particular, "eve/services/pillar".
 So, a usual memory hierarchy in the EVE system looks like this:
 
 ```shell
-$ tree /sys/fs/cgroup/memory/eve -d
-/sys/fs/cgroup/memory/eve <--- is set from dom0_mem kernel argument, usually 800Mb (or 8GB for ZFS)
+$ tree /sys/fs/cgroup/eve -d
+/sys/fs/cgroup/eve <--- is set from dom0_mem kernel argument, usually 800Mb (or 8GB for ZFS)
 ├── containerd <-------------- is set from ctrd_mem kernel argument, usually 400Mb
 └── services <---------------- is set from eve_mem kernel argument, usually 650Mb
     ├── <some services>
@@ -30,7 +30,7 @@ In its turn, the "pillar" cgroup encapsulates several processes, the most
 important of which is `zedbox`:
 
 ```shell
-$ for pid in $(cat /sys/fs/cgroup/memory/eve/services/pillar/cgroup.procs); do echo "CMD: $(cat /proc/$pid/cmdline | tr '\0' ' ')"; done
+$ for pid in $(cat /sys/fs/cgroup/eve/services/pillar/cgroup.procs); do echo "CMD: $(cat /proc/$pid/cmdline | tr '\0' ' ')"; done
 CMD: /bin/sh /init.sh
 CMD: /bin/sh /opt/zededa/bin/device-steps.sh
 CMD: /opt/zededa/bin/zedbox <--- zedbox process
@@ -49,8 +49,8 @@ server, and some other services.
 ### RSS, cache, and the cgroup memory usage
 
 Each cgroup contains a file that shows the memory usage of the cgroup:
-`/sys/fs/cgroup/memory/*/memory.usage_in_bytes`. The same information is
-used by the cgroup events subsystem to trigger events. The memory usage of
+`/sys/fs/cgroup/*/memory.current`. The same information is
+polled by the memory monitor to detect threshold crossings. The memory usage of
 the cgroup is calculated as the sum of the memory usage of all processes
 in the cgroup.
 
@@ -59,9 +59,8 @@ usually easy to reclaim, so it is not considered a problem if the cgroup memory
 usage is close to the limit. The problem arises when the Resident Set Size (RSS)
 of the process is close to the limit.
 
-Unfortunately, the cgroup memory threshold events are triggered based on the
-cgroup memory usage, which includes cache. During the threshold events handling,
-we take into account the cache size, not to report false positives.
+Unfortunately, `memory.current` includes cache. When checking the thresholds,
+we subtract the page cache (`file` in memory.stat), not to report false positives.
 However, for better results we also monitor the RSS of the zedbox process
 separately in a dedicated thread, reading the `/proc/<zedbox_pid>/statm` file
 every 5 seconds.
@@ -114,24 +113,16 @@ Here are the specific memory events that are being monitored:
 monitored. If the Resident Set Size (RSS) of the Zedbox process exceeds a
 predefined threshold, a handler script is triggered. The RSS is checked every 5
 seconds.
-* **eve cgroup memory usage**: The memory usage of the eve cgroup is monitored
-in two
-ways:
-  * **Threshold Event**: If the memory usage of the eve cgroup exceeds a certain
-    percentage (98% by default) of its memory limit, a handler script is
-    triggered.
-  * **Pressure Event**: If the memory pressure level of the EVE cgroup reaches
-    the "medium" level, a handler script is triggered. Memory pressure level is
-    a measure of how the system is reclaiming memory from the cgroup. We set the
-    level to "medium", not "low", to avoid triggering the event too often,
-    for example, when the system reclaims cache memory.
-* **Pillar Cgroup Memory Usage**: The memory usage of the pillar cgroup is also
-monitored in two ways:
-  * Threshold Event: If the memory usage of the pillar cgroup exceeds a
-    predefined threshold in bytes, a handler script is triggered. Here we
-    exclude cache from the memory usage calculation.
-  * Pressure Event: If the memory pressure level of the pillar cgroup reaches
-    the "low" level, a handler script is triggered.
+* **eve cgroup memory**:
+  * Threshold: memory.current minus the page cache (`file` in memory.stat)
+    reaches a percentage (98% by default) of memory.max. Polled every 5
+    seconds; the handler runs once per crossing.
+  * Pressure: a PSI trigger on `memory.pressure`, `full 100 ms within 1 s`:
+    all of EVE's tasks stalled on memory.
+* **pillar cgroup memory**:
+  * Threshold: memory.current minus the page cache reaches a number of bytes.
+    Polled every 5 seconds; the handler runs once per crossing.
+  * Pressure: a PSI trigger on `memory.pressure`, `some 150 ms within 1 s`.
 * **PSI Metrics**: The PSI metrics are monitored. If the `full avg10` value of
   the PSI metrics exceeds a predefined threshold (90% by default), a handler
   script is triggered.
@@ -222,15 +213,17 @@ also copied to the dist directory, but not to the final container image.
 
 During the initialization the tool removes itself from the current memory cgroup
 and moves to the root one, so it does not affect the memory usage  of the
-eve cgroup.
+eve cgroup. On cgroup v2 this also takes it out of EVE's cpuset.
 
 Before the tool starts the handling script, part of which is to dump the memory
 usage of the pillar, accessing the internal golang debugging http server, it
-temporarily increases the memory limit of the pillar cgroup by 50Mb. This is
+temporarily increases `memory.max` of the pillar cgroup by 50Mb. This is
 done to avoid the situation when the memory usage of the pillar cgroup is close
 to the limit, and the handler script cannot run because of the lack of memory.
 After the handler script finishes, the memory limit of the pillar cgroup is
-restored to the original value.
+restored to the original value, unless the usage of the pillar cgroup is then
+above it: cgroup v2 would reclaim and OOM-kill inside the cgroup until the
+usage fits, so the raised limit is kept and a warning is logged.
 
 ## Run as a standalone tool on older versions of EVE
 
@@ -394,7 +387,7 @@ The fields are:
   threshold (we exclude cache), the handler script is triggered.
 * `CGROUP_EVE_THRESHOLD_PERCENT`: The threshold for the memory usage of the EVE
   cgroup. The threshold then is calculated as a percentage of the memory limit
-  of the eve cgroup, that is read from `/sys/fs/cgroup/memory/eve/memory.limit_in_bytes`
+  of the eve cgroup, that is read from `/sys/fs/cgroup/eve/memory.max`
   in runtime.
 * `PROC_ZEDBOX_THRESHOLD_MB`: The threshold in megabytes for the Resident Set
   Size (RSS) of the zedbox process. It will be compared every 5 second to the

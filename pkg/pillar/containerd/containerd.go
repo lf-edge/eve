@@ -28,7 +28,7 @@ import (
 	"github.com/containerd/containerd/namespaces"
 	"github.com/containerd/containerd/oci"
 	"github.com/containerd/containerd/snapshots"
-	"github.com/containerd/typeurl"
+	"github.com/containerd/typeurl/v2"
 	"github.com/lf-edge/edge-containers/pkg/resolver"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -37,7 +37,7 @@ import (
 	runtimespecs "github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/vishvananda/netlink"
 
-	v1stat "github.com/containerd/cgroups/stats/v1"
+	v2stats "github.com/containerd/cgroups/v3/cgroup2/stats"
 	imagespecs "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/sirupsen/logrus"
 )
@@ -455,8 +455,8 @@ func (client *Client) CtrListContainer(ctx context.Context) ([]containerd.Contai
 	return client.ctrdClient.Containers(ctx)
 }
 
-// CtrGetContainerMetrics returns all runtime metrics associated with a container ID
-func (client *Client) CtrGetContainerMetrics(ctx context.Context, containerID string) (*v1stat.Metrics, error) {
+// CtrGetContainerMetrics returns the cgroup v2 metrics of a container's task
+func (client *Client) CtrGetContainerMetrics(ctx context.Context, containerID string) (*v2stats.Metrics, error) {
 	if err := client.verifyCtr(ctx, true); err != nil {
 		return nil, fmt.Errorf("CtrGetContainerMetrics: exception while verifying ctrd client: %s", err.Error())
 	}
@@ -474,18 +474,21 @@ func (client *Client) CtrGetContainerMetrics(ctx context.Context, containerID st
 	if err != nil {
 		return nil, err
 	}
+	return decodeMetrics(m.Data.GetTypeUrl(), m.Data.GetValue())
+}
 
-	data, err := typeurl.UnmarshalByTypeURL(m.Data.GetTypeUrl(), m.Data.GetValue())
+// decodeMetrics decodes a task's metrics as the runc shim reports them on a
+// cgroup v2 host.
+func decodeMetrics(typeURL string, value []byte) (*v2stats.Metrics, error) {
+	data, err := typeurl.UnmarshalByTypeURL(typeURL, value)
 	if err != nil {
 		return nil, err
 	}
-
-	switch v := data.(type) {
-	case *v1stat.Metrics:
-		return v, nil
-	default:
-		return nil, fmt.Errorf("can't parse task metric %v", data)
+	m, ok := data.(*v2stats.Metrics)
+	if !ok {
+		return nil, fmt.Errorf("can't parse task metric %T (%s)", data, typeURL)
 	}
+	return m, nil
 }
 
 // CtrContainerInfo returns PID, exit code and status of a container's main task

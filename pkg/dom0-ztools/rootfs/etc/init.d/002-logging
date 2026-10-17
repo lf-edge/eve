@@ -5,13 +5,9 @@ if test -f /proc/vmcore; then
     exit 0;
 fi
 
-# Create 'memory' controller for the 'memlogd' making it part
-# of the eve/services
-mkdir -p /sys/fs/cgroup/memory/eve/services/memlogd
-
-# Add 'memlogd' to the 'memory' controller. Further 'memlogd'
-# cgroup changes happen in the 010-eve-cgroup, see all the
-# details there.
-echo $$ > /sys/fs/cgroup/memory/eve/services/memlogd/tasks
+# memlogd starts before 010-eve-cgroup builds the tree, so it is put into its
+# leaf now; the limits of eve/services apply once 010-eve-cgroup sets them.
+mkdir -p /sys/fs/cgroup/eve/services/memlogd
+echo $$ > /sys/fs/cgroup/eve/services/memlogd/cgroup.procs
 
 /usr/bin/memlogd -daemonize -max-line-len 8192

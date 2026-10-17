@@ -34,6 +34,12 @@ $(BIN_DIR)/pressure: $(PRESSURE_OBJ)
 	$(CC) $(CFLAGS) -o $@ $^
 pressure: $(BIN_DIR)/pressure
 
+.PHONY: test
+test:
+	mkdir -p $(BIN_DIR)
+	$(CC) -Wall -Werror -I src/monitor -o $(BIN_DIR)/util_test src/monitor/tests/util_test.c src/monitor/util.c
+	./$(BIN_DIR)/util_test
+
 TARGETS=memory-monitor pressure
 
 all: $(TARGETS)

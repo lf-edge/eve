@@ -6,7 +6,6 @@ package watcher
 import (
 	"flag"
 	"fmt"
-	"os"
 	"runtime"
 	"sync"
 	"time"
@@ -14,12 +13,12 @@ import (
 	ctrdd "github.com/containerd/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 
-	"github.com/containerd/cgroups"
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/cgroup"
 	"github.com/lf-edge/eve/pkg/pillar/utils/wait"
 	"github.com/sirupsen/logrus"
 )
@@ -156,25 +155,30 @@ func updateMemoryMonitorConfig(ctx *watcherContext) {
 	return
 }
 
-// Listens to root cgroup in hierarchy mode (events always propagate
-// up to the root) and call Go garbage collector with reasonable
-// interval when certain amount of memory has been allocated (presumably
-// there is something to reclaim) by an application.
+// memoryPressureNotifier wakes the watcher when pillar's cgroup is under
+// memory pressure: a PSI trigger (tasks stalled 150 ms within 1 s), or, on a
+// kernel without PSI, any change of memory.events (pillar hit its limit).
+func memoryPressureNotifier() (*cgroup.Notifier, error) {
+	n, err := cgroup.NewPressureTrigger(types.PillarCgroup, "memory", "some", 150*time.Millisecond, time.Second)
+	if err == nil {
+		return n, nil
+	}
+	log.Warnf("handleMemoryPressureEvents(): no PSI trigger on %s (%v), waking on memory.events instead",
+		types.PillarCgroup, err)
+	return cgroup.NewChangeNotifier(types.PillarCgroup, "memory.events")
+}
+
+// Waits for memory pressure on pillar's cgroup (a PSI trigger, or changes of
+// memory.events on a kernel without PSI) and calls the Go garbage collector
+// with reasonable interval when certain amount of memory has been allocated
+// (presumably there is something to reclaim) by an application.
 func handleMemoryPressureEvents() {
-	controller, err := cgroups.Load(cgroups.V1, cgroups.StaticPath(""))
+	n, err := memoryPressureNotifier()
 	if err != nil {
-		log.Warnf("handleMemoryPressureEvents(): failed to find root cgroups directory")
+		log.Warnf("handleMemoryPressureEvents(): cannot watch memory pressure: %v", err)
 		return
 	}
-	defer controller.Delete()
-	event := cgroups.MemoryPressureEvent(cgroups.MediumPressure,
-		cgroups.HierarchyMode)
-	efd, err := controller.RegisterMemoryEvent(event)
-
-	fd := os.NewFile(efd, "efd")
-	defer fd.Close()
-
-	buf := make([]byte, 8)
+	defer n.Close()
 
 	var before, after runtime.MemStats
 	var expected uint64
@@ -182,8 +186,8 @@ func handleMemoryPressureEvents() {
 
 	// Infinite loop until error or death
 	for {
-		if _, err := fd.Read(buf); err != nil {
-			log.Warnf("handleMemoryPressureEvents(): can't read eventfd, exiting loop")
+		if err := n.Wait(); err != nil {
+			log.Warnf("handleMemoryPressureEvents(): %v, exiting loop", err)
 			return
 		}
 		// GC is called explicitly no more than once every @interval,

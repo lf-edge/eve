@@ -116,8 +116,8 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // Move the process to the root cgroup
-    cgroup_move_process_to_root_memory(getpid());
+    // Move the process to the root cgroup, out of EVE's limits
+    cgroup_move_process_to_root(getpid());
 
     // Save the binary location, as the handler script is in the same directory
     // First, get the full path to the binary

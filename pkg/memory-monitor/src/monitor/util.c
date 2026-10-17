@@ -206,3 +206,14 @@ char *get_tail(const char *file_path, size_t num_lines) {
     fclose(file);
     return buffer;
 }
+
+bool threshold_crossed(bool *above, unsigned long value, unsigned long threshold) {
+    bool now_above = value >= threshold;
+    bool crossed = now_above && !*above;
+    *above = now_above;
+    return crossed;
+}
+
+bool memory_limit_can_lower(unsigned long usage, long new_limit) {
+    return new_limit >= 0 && usage <= (unsigned long)new_limit;
+}

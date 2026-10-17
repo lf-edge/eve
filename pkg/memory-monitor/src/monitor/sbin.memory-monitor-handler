@@ -8,7 +8,7 @@
   /proc/*/status r,
   /proc/*/smaps r,
   /proc/*/tasks r,
-  /sys/fs/cgroup/memory/** r,
+  /sys/fs/cgroup/** r,
 
   # Allow execution of /bin/sh
   /bin/sh ixr,

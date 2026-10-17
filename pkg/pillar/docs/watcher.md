@@ -15,9 +15,12 @@ efficient memory management and helps prevent the system from running out of
 memory.
 
 We monitor memory pressure events using the `handleMemoryPressureEvents`
-function. This function listens for memory pressure notifications from the
-system's cgroups at a medium pressure level. By doing so, we can respond
-promptly when the system experiences memory constraints.
+function. This function arms a PSI trigger on pillar's cgroup
+(`/sys/fs/cgroup/eve/services/pillar/memory.pressure`), which fires when
+pillar's tasks stall on memory for 150 ms within 1 s. On a kernel without PSI
+it wakes on changes of the cgroup's `memory.events` instead, i.e. when pillar
+hits its memory limit. By doing so, we can respond promptly when pillar
+experiences memory constraints.
 
 When a memory pressure event is detected, the `handleMemoryPressureEvents`
 function checks if certain conditions are met before triggering garbage
