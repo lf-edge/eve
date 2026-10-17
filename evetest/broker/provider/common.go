@@ -33,6 +33,35 @@ const namePrefix = "ev-"
 // expressions even when the operand is a constant.
 var networkPrefix = strings.TrimSuffix(namePrefix, "-")
 
+func tpmPCRBankNames(value []api.TPMPCRBank) ([]string, error) {
+	if len(value) == 0 {
+		return []string{"sha256"}, nil
+	}
+	var banks []string
+	seen := make(map[api.TPMPCRBank]bool)
+	for _, bank := range value {
+		var name string
+		switch bank {
+		case api.TPMPCRBank_TPM_PCR_BANK_SHA1:
+			name = "sha1"
+		case api.TPMPCRBank_TPM_PCR_BANK_SHA256:
+			name = "sha256"
+		case api.TPMPCRBank_TPM_PCR_BANK_SHA384:
+			name = "sha384"
+		case api.TPMPCRBank_TPM_PCR_BANK_SHA512:
+			name = "sha512"
+		default:
+			return nil, fmt.Errorf("unsupported TPM PCR bank %d", bank)
+		}
+		if seen[bank] {
+			return nil, fmt.Errorf("duplicate TPM PCR bank %s", name)
+		}
+		seen[bank] = true
+		banks = append(banks, name)
+	}
+	return banks, nil
+}
+
 // uplinkNetwork is the name of the uplink network (dual-stack whenever an
 // IPv6 uplink subnet is configured), used verbatim by all providers as both
 // the internal bookkeeping key and the actual bridge/VNet resource name.
