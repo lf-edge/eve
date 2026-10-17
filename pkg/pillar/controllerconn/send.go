@@ -148,7 +148,9 @@ type RequestOptions struct {
 	// actually sending the data.
 	DryRun bool
 	// BailOnHTTPErr causes SendOnAllIntf to stop trying other interfaces if a 4xx or 5xx
-	// HTTP error is received from the server.
+	// HTTP error is received from the server. The response is still handed back to the
+	// caller; the option only limits how many ports are tried and says nothing about
+	// whether the request is worth repeating later.
 	BailOnHTTPErr bool
 	// Accept4xxErrors allows VerifyAllIntf to treat 4xx HTTP status codes as a valid
 	// indication of port connectivity.
@@ -217,6 +219,17 @@ type SendRetval struct {
 	HTTPResp     *http.Response
 	RespContents []byte
 	TracedReqs   []netdump.TracedNetRequest
+	// LastHTTPStatusCode is the status code of the most recent response received
+	// from the server, or zero if the server never responded. Unlike HTTPResp it
+	// is also set when the request ultimately failed on every port, so that
+	// a caller can tell a rejection by the controller apart from a connectivity
+	// failure.
+	//
+	// It is the code from the port which answered last, not a summary: should
+	// several ports answer with different codes, the earlier ones are not
+	// reported. Ports are tried in a rotating order, so a caller repeating the
+	// request may well be told about a different one next time.
+	LastHTTPStatusCode int
 }
 
 // VerifyRetval is returned from connectivity verification (VerifyAllIntf).
@@ -335,6 +348,9 @@ func (c *Client) SendOnAllIntf(ctx context.Context, url string, b *bytes.Buffer,
 		sendOnIntfOpts.UseOnboard = false
 		rv, err := c.SendOnIntf(ctx, url, intf, b, sendOnIntfOpts)
 		combinedRV.TracedReqs = append(combinedRV.TracedReqs, rv.TracedReqs...)
+		if rv.LastHTTPStatusCode != 0 {
+			combinedRV.LastHTTPStatusCode = rv.LastHTTPStatusCode
+		}
 		// This changes original boolean logic a little in V2 API.
 		// Basically the last status non-zero enum would overwrite the previous one
 		// in the loop if they differ.
@@ -377,6 +393,14 @@ func (c *Client) SendOnAllIntf(ctx context.Context, url string, b *bytes.Buffer,
 		}
 		combinedRV.HTTPResp = rv.HTTPResp
 		combinedRV.RespContents = rv.RespContents
+		// The request was delivered by this port, so report its status rather
+		// than one collected from a port which failed to deliver it. A non-2xx
+		// can reach this point through Accept4xxErrors, and there the status
+		// derived from the response above is the answer the caller wants.
+		if rv.HTTPResp != nil && rv.HTTPResp.StatusCode >= 200 &&
+			rv.HTTPResp.StatusCode < 300 {
+			combinedRV.Status = rv.Status
+		}
 		return combinedRV, nil
 	}
 	errStr := fmt.Sprintf("All attempts to connect to %s failed: %s",
@@ -856,11 +880,16 @@ func (c *Client) SendOnIntf(ctx context.Context, destURL string, intf string,
 				c.log, intf, reqURL, reqlen, resplen, totalTimeMillis, sessionResume)
 		}
 
+		rv.LastHTTPStatusCode = resp.StatusCode
+
 		switch resp.StatusCode {
 		case http.StatusOK, http.StatusCreated, http.StatusNotModified, http.StatusNoContent:
 			c.log.Tracef("SendOnIntf to %s, response %s\n", reqURL, resp.Status)
 			rv.HTTPResp = resp
 			rv.RespContents = contents
+			// This source address delivered the request, so do not report
+			// a problem hit with one of the addresses tried before it.
+			rv.Status = types.SenderStatusNone
 			return rv, nil
 		default:
 			// Get caller to schedule a retry based on StatusCode
