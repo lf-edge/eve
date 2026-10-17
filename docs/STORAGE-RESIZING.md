@@ -223,10 +223,9 @@ the CONFIG partition stops a pathological loop.
 device with a magic-sysrq write (`echo b > /proc/sysrq-trigger`) after a `sync`,
 not with a graceful `reboot`. storage-init is an onboot container with its own
 PID namespace, so a graceful `reboot` there signals that namespace's init rather
-than the host and has no effect; the sysrq write acts on the host kernel, and is
-the mechanism `pkg/kdump` uses for the same reason. Both reboot forms are kept as
-fallbacks in case sysrq is unavailable, and if none of them takes effect
-storage-init halts rather than proceeding with a mid-resize disk. Resetting hard
+than the host and has no effect; the sysrq write acts on the host kernel. Both
+reboot forms are kept as fallbacks in case sysrq is unavailable, and if none of
+them takes effect storage-init halts rather than proceeding with a mid-resize disk. Resetting hard
 costs nothing here: `/persist` is unmounted, the CONFIG writes are synced and
 unmounted before the reset, and the GPT is either committed or not.
 

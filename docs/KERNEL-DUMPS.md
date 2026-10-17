@@ -1,58 +1,90 @@
-# Kernel dump collection in EVE-OS
+# Kernel panic records in EVE-OS
 
-## Intruduction to kexec and kdump
+EVE-OS records a kernel panic with pstore: the panicking kernel writes the tail
+of its log to firmware storage, and on the next boot nodeagent turns the newest
+panic into the reboot reason and stack reported to the controller. There is no
+crash kernel, no `crashkernel=` memory reservation and no vmcore.
 
-`kdump` is a standard Linux mechanism to dump machine memory content on kernel crash. `kdump` is based on `kexec`. `kdump` utilizes two kernels: system kernel and dump-capture kernel. System kernel is a normal kernel that is booted with special kdump-specific flags. We need to tell the system kernel to reserve some amount of physical memory where dump-capture kernel will be loaded. We need to load the dump-capture kernel in advance because at the moment crash happens there is no way to read any data from disk because kernel is broken.
+## What the kernel writes
 
-Once kernel crash happens the kernel crash handler uses `kexec` mechanism to boot dump-capture kernel. Please note that memory with system kernel is untouched and accessible from dump-capture kernel as seen at the moment of crash. Once dump-capture kernel is booted, the user can use the file `/proc/vmcore` to get access to memory of crashed system kernel. The dump can be saved to disk or copied over network to some other machine for further investigation.
+On a panic, or an oops (EVE sets `CONFIG_PANIC_ON_OOPS`), `kmsg_dump` hands the
+log to pstore, which stores it from the newest end backwards in records of the
+backend's size until `pstore.kmsg_bytes` (10240) compressed bytes are written.
+That is about 25 KB of log, enough for the panic message and the whole call
+trace.
 
-In the EVE environment, the system kernel and the dump-capture kernel are the same. Since the EVE kernel is quite minimal and contains all the options needed for a dump-capture kernel, a single compiled kernel binary simplifies the entire build process and does not require additional disk space to store the capture kernel.
+The backend depends on the platform:
 
-## Setup dump-capture kernel in EVE-OS
+| Platform | Backend | Files in `/sys/fs/pstore` |
+|---|---|---|
+| UEFI | efi-pstore: one EFI variable per record | `dmesg-efi_pstore-<id>` |
+| ACPI ERST (many servers) | ERST | `dmesg-erst-<id>` |
 
-First, memory must be reserved for dump capture kernel. The EVE-OS grub configuration has a kernel parameter `crashkernel=128M` which is only specified for the x86_64 architecture. After the system kernel is booted, the `/etc/init.d/000-kexec` script loads the same kernel binary into the reserved area by calling the kexec system tool.
+Each record starts with a line `<reason>#<count> Part<n>`, where Part1 holds the
+newest part of the log, and the file's mtime is the time it was written. A
+record the running kernel cannot decompress appears with an `.enc.z` suffix.
+Deleting a file erases the record from firmware storage.
 
-At the moment, the only architecture supported for capturing kernel dumps is x86_64 with kvm virtualization (see pkg/grub/rootfs.cfg for details).
+Firmware storage is small. OVMF's 256 KB variable store holds about 20 panics;
+the kernel then refuses further writes rather than fill it, so the first panics
+of a loop are kept and later ones are not recorded. Platforms with neither
+backend, and hangs that end in a watchdog reset, leave no record.
 
-`kexec` loads the dump-capture kernel reusing the same command line with a couple of important differences: `irqpoll nr_cpus=1 reset_devices nomodule`, where:
+## What EVE does on the next boot
 
-* The `irqpoll` boot parameter reduces driver initialization failures due to shared interrupts in the dump-capture kernel.
+Before it handles the reboot reason, nodeagent reads `/sys/fs/pstore` (through
+`/hostfs`) and:
 
-* We generally don't have to bring up a SMP kernel just to capture the dump, hence we specify `nr_cpus=1` option while loading dump-capture kernel to restrict number of CPUs to 1 and to save memory.
+1. Groups the records into dumps and reassembles each dump's log.
+2. Treats a dump as current if it was written after the previous boot reached
+   nodeagent (the mtime of `/persist/status/restartcounter`), and as stale
+   otherwise, for example records left by an EVE version without this reader.
+3. Logs every dump the way a Go fatal stack trace is logged: an error
+   `Kernel panic stack trace from pstore (Panic#1 at <time>, …)` with the panic
+   message, each line of the kernel log as `[kernel panic #N]: <line>` on a log
+   object of type `kernel_panic_stacks`, and `Kernel panic stack trace: end of
+   stack`. Dumps written for another reason (`Shutdown`, `Emergency`) are
+   logged as `Kernel log dump` at warning level.
+4. Saves every dump, all of its records reassembled into one file, to
+   `/persist/kcrashes/pstore-<time>.log`, keeping the 10 newest dumps. Records
+   the kernel cannot decompress are copied under their own names and do not
+   count toward that limit, since they cannot be grouped into dumps.
+5. If the newest current dump is a panic or an oops, writes
+   `/persist/reboot-reason`, `/persist/reboot-stack` and `/persist/boot-reason`
+   with the time of the panic:
 
-* `reset_devices` force drivers to reset the underlying device during initialization.
+   | `/persist/reboot-reason` already present | Reboot reason | Boot reason |
+   |---|---|---|
+   | No | "kernel panic, pstore: \<panic message\>" | `BootReasonKernel` |
+   | Yes, with `BootReasonKernel` | The stored files stand | |
+   | Yes, older than the panic | "kernel panic after \<stored reason\>" | The stored one |
+   | Yes, newer than the panic | The stored files stand | |
 
-* `nomodule` disable module load: make system simple and prevent possible further crash in the dump-capture kernel
+   More than one current panic adds "(N panics)" to the reason.
 
-Once `kexec` is called the system kernel is ready to handle a system crash by jumping to a dump-capture kernel in case of a panic.
+   A reason older than the panic means EVE was already rebooting when the
+   kernel panicked, for example a driver that panics on shutdown after the
+   watchdog or a reboot command decided to reboot. The boot reason stays the one
+   EVE wrote, because zedagent picks the configuration to start from by it: after
+   a watchdog or fatal-error reboot it starts from the backup configuration to
+   avoid a reboot loop, and a panic on the way down must not change that. The
+   panic stack replaces `/persist/reboot-stack`; a Go stack stored there is also
+   in `/persist/log/reboot-stack.log`.
+6. Erases each record whose dump now has a durable copy on `/persist`.
 
-**Note**: `kexec` load happens as a one-time operation via an early boot service and then immediately any further `kexec` gets blocked by writing to `/proc/sys/kernel/kexec_load_disabled`.
+The controller then receives `lastRebootReason`, `lastBootReason`
+(`BOOT_REASON_KERNEL` unless EVE was already rebooting) and, as
+`lastRebootStack`, the log from the "Kernel
+panic - not syncing" line onward, cut to its first 1600 characters. A dump
+without that line, such as an oops that did not panic, sends the last 1600
+characters instead. If the device reboots before that, the next boot logs the
+reboot stack from `/persist/reboot-stack` as `[dmesg #N]` lines instead.
 
-## EVE-OS behaviour in case of a system crash (kernel panic)
+To find kernel panics in the device log, search for `kernel_panic_stacks` or
+`Kernel panic stack trace`.
 
-After successfully loading the dump-capture kernel as previously described in the introduction, the system will reboot into the dump-capture kernel if a system crash is triggered.  Trigger points are located in panic(), die(), die_nmi() and in the sysrq handler (ALT-SysRq-c). After the dump-capture kernel is booted, the file `/proc/vmcore` is used to get access to the memory of the crashed system kernel.
+## Testing
 
-EVE-OS has a `kdump` container that checks for `/proc/vmcore` and generates a minimal crash dump by calling the makedumpfile tool. The `kdump` container is part of the linuxkit onboot process and is run strictly after the storage is initialized. The minimal kernel dump collection includes the following steps:
-
-* Minimal kernel dump will be generated in the `/persist/kcrashes` folder.
-* Dmesg (kernel ring buffer) of the crashed kernel will be saved in the `/persist/kcrashes` folder.
-* Only 5 fresh kernel dumps and dmesgs are stored in the folder, old files are deleted.
-* The whole dmesg from the crashed system buffer is written to the EVE-OS `/persist/reboot-stack` file.
-* Only kernel panic message from the crashed system buffer is redirected to the tty console in order to show it on the connected monitor for debug purposes.
-* Boot reason string "BootReasonKernel" is written to the EVE-OS `/persist/boot-reason` file.
-* Reboot reason string "kernel panic, kdump collected: $KDUMP_PATH" is written to the EVE-OS `/persist/reboot-reason` file.
-* After the crash dump is created, the kernel will be rebooted according to the `/proc/sys/kernel/panic` timeout configuration value.
-
-As was mentioned earlier `makedumpfile` generates minimal kernel dump which excludes zeroed, cache, private, free and user-space memory pages. This is done not only to minimize the resulting dump file, but also for security reasons: customer data does not leak.
-
-## Analysis of minimal kernel crash dumps
-
-All kernel dumps should be downloaded from the `/persist/kcrashes` folder of the EVE-OS to the stable system with 'crash' tool installed.
-
-   [crash utility](https://github.com/crash-utility/crash)
-
-Crash document can be found at:
-
-   [crash doc](https://crash-utility.github.io/)
-
-In order to debug a minimal crash dump the kernel debug information is stored in 'kernel-debug.tar' archive and should be extracted from the EVE-OS `lfedge/eve-kernel` container.
+`echo c > /proc/sysrq-trigger` panics the kernel. After the reboot (120 seconds
+later, per `panic=120`), check the reboot reason at the controller, the
+`/persist/kcrashes/pstore-*.log` file, and that `/sys/fs/pstore` is empty.

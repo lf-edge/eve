@@ -115,6 +115,8 @@ type mockRebootStore struct {
 	discardedBootReason   bool
 	discardedRebootImage  bool
 	written               []rebootWrite
+	kernelWrites          int
+	writeKernelErr        error
 }
 
 type rebootWrite struct {
@@ -138,6 +140,19 @@ func (m *mockRebootStore) DiscardRebootImage()    { m.discardedRebootImage = tru
 func (m *mockRebootStore) WriteRebootReason(reason string, br types.BootReason,
 	agent string, pid int, last bool) {
 	m.written = append(m.written, rebootWrite{reason, br, agent, pid, last})
+}
+
+// WriteKernelRebootReason fails with writeKernelErr when set; otherwise it
+// stores the values so a following handleLastRebootReason reads them back.
+func (m *mockRebootStore) WriteKernelRebootReason(reason, stack string,
+	br types.BootReason, ts time.Time) error {
+	if m.writeKernelErr != nil {
+		return m.writeKernelErr
+	}
+	m.kernelWrites++
+	m.rebootReason, m.rebootStack, m.rebootTime = reason, stack, ts
+	m.bootReason, m.bootTime = br, ts
+	return nil
 }
 
 // --- testCtx --------------------------------------------------------

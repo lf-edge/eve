@@ -77,9 +77,9 @@ _marker_eve_release() {
 # Magic sysrq comes first because it is the mechanism measured to reset the
 # host from here: this container has its own PID namespace, so busybox reboot
 # signals the container's own PID 1, and across the fault-injection soak runs
-# it never rebooted the device while the sysrq write always did (kdump.sh uses
-# the same mechanism). reboot -f and reboot are kept as fallbacks in case sysrq
-# is unavailable; never fall through into a half-resized mount.
+# it never rebooted the device while the sysrq write always did. reboot -f and
+# reboot are kept as fallbacks in case sysrq is unavailable; never fall through
+# into a half-resized mount.
 resize_reboot() {
     sync
     echo b > /proc/sysrq-trigger 2>/dev/null || true
