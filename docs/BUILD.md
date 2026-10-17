@@ -1076,3 +1076,168 @@ make LINUXKIT_MIRROR="http://localhost:5001" pkgs eve
 ```
 
 This tells linuxkit to pull base images through the mirror instead of hitting Docker Hub directly, which is useful in CI environments or when working with rate-limited registries.
+
+
+## IMA measurement-only kernel
+
+AMD64 generic builds enable IMA measurements by default. Run the usual image
+build command, for example `make live` or `make installer`. Before composing the
+image, Make checks out the kernel revision pinned in `kernel-commits.mk` under
+`dist/kernel-ima/`, applies
+[the IMA configuration and coverage patch](../tools/ima-measurement-only-kernel.patch), and
+builds the kernel with the existing kernel repository's `Makefile.eve`. This is
+a temporary build path until the upstream kernel provides these IMA settings,
+policy, and coverage hooks.
+
+The local kernel image tag includes the pinned commit, configuration flavor,
+compiler, and patch hash. Subsequent builds reuse the image from the LinuxKit
+cache. No kernel image is published. `make ima-kernel` builds just the kernel;
+`make kernel-tag` prints the image tag selected for the build.
+
+The kernel configuration enables SHA-256, PCR 10, the `ima-ng` template, policy
+readback, and measurement-list preservation across supported kexec boots.
+IMA appraisal, EVM, and integrity signature verification are disabled. Existing
+Secure Boot and module-signing settings remain independent of IMA.
+
+The image command line selects `ima_policy=eve_code`, `ima_hash=sha256`,
+`ima_template=ima-ng`, and `ima_appraise=off`. The patched kernel installs the
+EVE policy before userspace starts and rejects attempts to replace it through
+securityfs. This protection needs no IMA signing keys or certificates.
+
+The policy covers executable loads and file-backed mappings without filesystem
+or UID exclusions. Ordinary stored-file reads are measured for every UID,
+including tmpfs, RAMFS, and memfd. This broad read rule covers interpreted
+scripts because the kernel cannot distinguish a script read from a data read.
+An additional read hook covers inherited descriptors and memfd passed directly
+to an interpreter as standard input. Writes through an open descriptor reset
+its cached measurement before later reads; truncation also resets the cache.
+Kernel-generated interfaces such as
+procfs, sysfs, and securityfs are excluded from ordinary read hashing; their
+executable-load and mapping hooks still precede these exclusions.
+
+Writable executable mappings and executable mappings with an existing writable
+alias produce an IMA violation while remaining allowed.
+A file mapped without execute permission and later changed to executable with
+`mprotect` produces an IMA violation event while execution remains allowed.
+Hashing at that transition would invert the kernel's mmap/inode lock order.
+The event therefore marks the transition as unverifiable rather than claiming
+a trusted hash of its final contents. Attestation must retain and evaluate these
+violations. Files need no IMA signatures or `security.ima` extended attributes.
+The `ima-ng` template does not label records as code versus ordinary data reads.
+The broad read/mapping coverage also measures data files, can expose concurrent
+writer violations, adds hashing work, and uses memory for the runtime log.
+
+This covers file-backed code in EVE and host containers. It does not enumerate
+commands typed into a shell, generated anonymous code, or instructions injected
+into a process. Guest VM programs are outside this policy's scope. IMA is a
+measurement history, not an event for every repeated invocation.
+
+Use `make IMA=n live` to build with the stock prebuilt kernel and omit the IMA
+boot parameters. Other architectures and platforms default to `IMA=n`; explicitly
+requesting IMA on those targets fails with an unsupported-target message. An
+explicit `KERNEL_TAG` skips the local kernel build; when IMA is enabled, that image
+must already contain this patched `eve_code` policy and coverage hooks; generic
+IMA support alone does not recognize the new boot parameter. `IMA_KERNEL_SOURCE` and
+`IMA_KERNEL_REPOSITORY` can override the generated source directory and clone URL.
+An existing source directory must be at the pinned commit and accept the patch.
+
+After boot, verify from the EVE host namespace:
+
+```sh
+cat /proc/cmdline
+cat /sys/kernel/security/ima/policy
+head /sys/kernel/security/ima/ascii_runtime_measurements
+cat /sys/kernel/security/ima/runtime_measurements_count
+```
+
+The policy should begin with execution/mapping rules, contain a UID-independent
+`FILE_CHECK` read rule, and contain no `appraise` rules. The log
+should include `boot_aggregate` and `ima-ng` entries with `sha256:` file digests.
+IMA extends PCR 10 when a supported TPM is available; without a TPM, the in-memory
+measurement log remains available.
+
+
+### Precomputed rootfs hashes for IMA
+
+IMA-enabled `make rootfs`, `make live`, and installer builds also generate
+`dist/<arch>/current/ima-rootfs-manifest.json` (under the versioned build directory).
+`make ima-manifest` builds this artifact explicitly, including when `IMA=n`.
+CI should retain it alongside the corresponding image.
+
+The generator reads the completed `installer/rootfs.img`, not the intermediate
+LinuxKit tar. It records SHA-256 for every regular file, including hardlinked
+names and files in packaged service/onboot containers. Symlinks are recorded as
+links and are not followed. Directories and special files are counted without
+content hashes. Container entries include their service/onboot identity, their
+path within that container, and their original path in the rootfs image; both
+ordinary `rootfs` directories and overlay `lower` directories are covered.
+
+The JSON includes a schema version, build identity, architecture, platform,
+kernel image tag, and the final rootfs image's SHA-256. It is written outside
+the installed rootfs, so it does not enlarge the device image or measure itself.
+Entries are sorted and output is replaced atomically only after successful
+extraction and hashing. A complete manifest needs Python 3 and Docker. SquashFS
+extraction uses the existing mkrootfs builder image; ext4 extraction mounts the
+image read-only in a privileged container with journal replay disabled.
+
+For example, a regular-file entry has this shape:
+
+```json
+{
+  "source_path": "/containers/services/pillar/rootfs/opt/zededa/bin/zedagent",
+  "scope": "services/pillar",
+  "path": "/opt/zededa/bin/zedagent",
+  "type": "file",
+  "size": 12345,
+  "sha256": "<SHA-256 of file contents>"
+}
+```
+
+Use the entry's `sha256` to check the file digest in an IMA record. This manifest
+is an expected-content baseline; it does not make IMA measure every file. The
+`eve_code` policy still measures qualifying accesses. Files created or changed at
+boot, `/persist`, and `/config` require separate expectations. The manifest does
+not contain runtime event ordering or precomputed PCR values. Content hashes
+also do not attest file ownership, permissions, extended attributes, or symlink
+targets; symlink targets are included for separate inventory validation.
+
+Compare a complete ASCII log with the matching manifest using:
+
+```sh
+python3 tools/check-ima-manifest.py \
+  --manifest dist/amd64/current/ima-rootfs-manifest.json \
+  --measurements ascii_runtime_measurements.txt \
+  --output ima-comparison.json \
+  --pcr-sha256 <PCR-10-SHA256-hex> --pcr-sha1 <PCR-10-SHA1-hex>
+```
+
+The checker accounts for every line, checks the serialized `ima-ng` template's
+SHA-1 digest, and replays PCR 10 for SHA-1 and SHA-256 banks from zero. Supply
+PCR values from a stable snapshot of the same boot. Without an external PCR
+value, a well-formed truncated log cannot be detected. Other templates, hash
+algorithms, PCR indices, and nonzero initial PCR state are unsupported by this
+diagnostic tool. Authenticated TPM quote verification, nonce freshness, binary
+log transport, and kexec history remain controller integration work.
+
+The report retains matches, unknown paths, hash mismatches, IMA violations,
+malformed records, and unobserved manifest files. Violation events extend an
+all-ones digest, as the kernel does. The command returns failure for unknown,
+changed, invalid, or violation records, an empty/incomplete log, or a supplied
+PCR that does not match replay. Unobserved files are reported separately: an
+access-based policy does not guarantee a distinct measurement for every name.
+Hardlink aliases whose inode group has a matching measurement are listed
+separately without claiming that each alias was measured.
+
+ASCII paths lack mount namespace identity. The checker lists all matching
+container candidates and marks ambiguous matches; it cannot prove which
+container supplied the file. Kernel filename encoding also replaces spaces
+with underscores. Runtime bind mounts and rewritten files require explicit
+expectations rather than automatically accepting unknown digests.
+
+For a controlled whole-image scan, mount the exact rootfs image read-only at
+a separate directory and read every regular file there. Use
+`--image-mount-prefix /path/to/mount` to map those measurement paths to exact
+image source paths. This alias is an explicit assertion by the operator; the
+checker does not verify the mount. Independently enumerate the mounted image
+and compare its complete inventory, hashes, and symlink targets to the manifest.
+Normal access-based boot logs alone do not establish whole-image coverage.
