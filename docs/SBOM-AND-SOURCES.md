@@ -112,6 +112,7 @@ It also fills in what the scanner leaves out, using the rest of the rootfs tar:
 
 * each image's root is named and versioned after the image linuxkit unpacked in its directory, with a `pkg:docker` purl; the root for the images at the top of the rootfs gets the EVE-OS version
 * every file gets the SHA1 checksum SPDX 2.3 requires, computed from the tar
+* a package that the scanner left without a purl gets the purl of the other copies of it (same SPDX ID, name and version) when they all agree on one
 * packages the scanner left with a `NOASSERTION` supplier get `Organization: LF Edge` if EVE builds them (packages recorded by `pkg/alpine/register-sbom-pkg.sh`, and `github.com/lf-edge` Go modules) and `Organization: Alpine Linux` if they are Alpine `-r<N>` apk packages
 
 To generate the sources, run `make collected_sources`. This does the following:

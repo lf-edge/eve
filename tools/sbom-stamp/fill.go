@@ -157,6 +157,62 @@ func fillPackage(raw json.RawMessage, o Options, c Content) (json.RawMessage, er
 	return json.Marshal(po)
 }
 
+// fillPURLs gives a package without a purl the purl of the other copies of
+// it, the copies that share its SPDXID, name and version, when they all agree
+// on one. linuxkit's merge keeps one copy per image, and the scanner leaves
+// the purl off some of them. It returns how many copies it filled.
+func fillPURLs(pkgs []json.RawMessage) (int, error) {
+	type key struct{ id, name, version string }
+	keyOf := func(raw json.RawMessage) (key, pkgInfo, error) {
+		var p struct {
+			pkgInfo
+			Name string `json:"name"`
+		}
+		err := json.Unmarshal(raw, &p)
+		return key{p.SPDXID, p.Name, p.VersionInfo}, p.pkgInfo, err
+	}
+	purls := map[key]map[string]bool{}
+	for _, raw := range pkgs {
+		k, p, err := keyOf(raw)
+		if err != nil {
+			return 0, err
+		}
+		if purl := p.purl(); purl != "" {
+			if purls[k] == nil {
+				purls[k] = map[string]bool{}
+			}
+			purls[k][purl] = true
+		}
+	}
+	n := 0
+	for i, raw := range pkgs {
+		k, p, err := keyOf(raw)
+		if err != nil {
+			return 0, err
+		}
+		if p.purl() != "" || len(purls[k]) != 1 {
+			continue
+		}
+		var purl string
+		for p := range purls[k] {
+			purl = p
+		}
+		var obj object
+		if err := json.Unmarshal(raw, &obj); err != nil {
+			return 0, err
+		}
+		refs := append(p.ExternalRefs, externalRef{"PACKAGE-MANAGER", "purl", purl})
+		if obj, err = obj.set("externalRefs", refs, ""); err != nil {
+			return 0, err
+		}
+		if pkgs[i], err = json.Marshal(obj); err != nil {
+			return 0, err
+		}
+		n++
+	}
+	return n, nil
+}
+
 type checksum struct {
 	Algorithm     string `json:"algorithm"`
 	ChecksumValue string `json:"checksumValue"`

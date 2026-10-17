@@ -161,6 +161,7 @@ type Stats struct {
 	DroppedDuplicates int
 	Reparented        int
 	ConflictingIDs    int
+	FilledPURLs       int
 	NoSupplier        int
 	NoSHA1            int
 }
@@ -224,6 +225,9 @@ func Stamp(in []byte, o Options, c Content) ([]byte, Stats, error) {
 		if pkgs[i], err = fillPackage(pkgs[i], o, c); err != nil {
 			return nil, st, err
 		}
+	}
+	if st.FilledPURLs, err = fillPURLs(pkgs); err != nil {
+		return nil, st, err
 	}
 	for i := range files {
 		if files[i], _, err = fillFile(files[i], c); err != nil {
@@ -530,6 +534,8 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Fprintf(os.Stderr, "sbom-stamp: %s: %d duplicate entries dropped, %d image roots placed under %s, "+
-		"%d SPDX IDs still not unique, %d packages without supplier, %d files without SHA1\n",
-		flag.Arg(0), st.DroppedDuplicates, st.Reparented, rootID, st.ConflictingIDs, st.NoSupplier, st.NoSHA1)
+		"%d SPDX IDs still not unique, %d purls copied between copies of a package, "+
+		"%d packages without supplier, %d files without SHA1\n",
+		flag.Arg(0), st.DroppedDuplicates, st.Reparented, rootID, st.ConflictingIDs, st.FilledPURLs,
+		st.NoSupplier, st.NoSHA1)
 }
