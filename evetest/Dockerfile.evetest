@@ -1,0 +1,144 @@
+# syntax=docker/dockerfile:1.6
+
+# Input arguments
+ARG EVETEST_VERSION=dev
+# The Alpine release also selects the Go toolchain. Docker Hub builds each
+# golang:<go>-alpine<n> image only while Alpine n is among the two newest
+# releases; afterwards it stays at the last Go it got, and the golang images
+# set GOTOOLCHAIN=local, so go cannot fetch a newer toolchain on its own.
+# alpine3.21 froze at Go 1.25.5, below the 1.25.9 that the go.mod of
+# eve-tools/bpftrace-compiler has required since dded2ea8c1 (tests build
+# the compiler in this image, see tests/apps/pciaccess_helpers_test.go),
+# and alpine3.22 froze at 1.26.4. See README.md for the qemu side of the pin.
+ARG ALPINE_VERSION=3.24
+ARG GOLANG_VERSION=1.26
+ARG EVETEST_ADAM_REPO=lfedge/adam
+ARG EVETEST_ADAM_VERSION=0.0.85
+
+###########################
+# Pull adam binary stage
+###########################
+FROM ${EVETEST_ADAM_REPO}:${EVETEST_ADAM_VERSION} AS adam
+
+###########################
+# Go build stage
+# Runs natively on the build host using --platform=$BUILDPLATFORM so that
+# go vet / go build execute without QEMU emulation.
+# CGO_ENABLED=0 automatically excludes the libvirt provider (via the "cgo"
+# build tag), so no C toolchain or libvirt headers are needed.
+###########################
+# hadolint ignore=DL3029
+FROM --platform=$BUILDPLATFORM golang:${GOLANG_VERSION}-alpine${ALPINE_VERSION} AS build-go
+
+ARG TARGETOS
+ARG TARGETARCH
+ARG EVETEST_VERSION=dev
+
+WORKDIR /evetest
+ENV GOBIN=/go/bin
+ENV CGO_ENABLED=0
+ENV GOOS=$TARGETOS
+ENV GOARCH=$TARGETARCH
+
+# Install build dependencies
+# hadolint ignore=DL3018
+RUN apk add --no-cache make
+
+# Download dependencies first for better layer caching.
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build the broker (CGO_ENABLED=0 excludes the libvirt provider via build tag).
+RUN go build -ldflags "-X main.version=${EVETEST_VERSION}" \
+    -o $GOBIN/evetest-broker ./broker
+
+# Build CLI and list-tests utilities.
+RUN make install-cli EVETEST_VERSION=${EVETEST_VERSION}
+RUN go build -o $GOBIN/list-tests ./cmd/list-tests/
+
+###########################
+# Final runtime image
+###########################
+FROM golang:${GOLANG_VERSION}-alpine${ALPINE_VERSION}
+
+# Set evetest version
+ARG EVETEST_VERSION=dev
+ENV EVETEST_VERSION=${EVETEST_VERSION}
+# Use the pre-downloaded module cache; ignore vendor/ even if it appears in a mount.
+ENV GOFLAGS="-mod=readonly"
+
+# Install runtime dependencies of the evetest broker
+# hadolint ignore=DL3018
+RUN apk add --no-cache iptables dnsmasq radvd swtpm
+
+# Install QEMU. qemu-img also provides qemu-io/qemu-nbd; mtools provides mcopy,
+# used together to assemble a device's config partition and write it into a
+# template-backed disk image (see Dockerfile.broker). sgdisk relocates the backup
+# GPT after a disk is grown -- without it the added space is not usable.
+# hadolint ignore=DL3018
+RUN apk add --no-cache \
+    qemu \
+    qemu-img \
+    sgdisk \
+    mtools \
+    qemu-system-x86_64 \
+    qemu-system-aarch64
+
+# Install some useful tools for troubleshooting
+# hadolint ignore=DL3018
+RUN apk add --no-cache bash inetutils-telnet tcpdump \
+                       strace busybox-extras socat openssh-client
+
+# Install nmap for tests/portscan, which scans devices from the network side.
+# hadolint ignore=DL3018
+RUN apk add --no-cache nmap nmap-scripts
+
+# Install what eve-tools/bpftrace-compiler needs when a test compiles a
+# bpftrace script for the device's kernel (see
+# tests/apps/pciaccess_helpers_test.go): linuxkit drives docker (through
+# the mounted socket) and git to build the compile VM's image.
+# hadolint ignore=DL3018
+RUN apk add --no-cache docker-cli docker-cli-buildx git
+
+# Install tmux, which shows the instances of a multi-test run ("evetest run")
+# side by side in one terminal.
+# hadolint ignore=DL3018
+RUN apk add --no-cache tmux
+
+# Pull adam binary
+COPY --from=adam /bin/adam /usr/local/bin/adam
+
+# Copy built binaries
+COPY --from=build-go /go/bin/evetest-broker /usr/local/bin/evetest-broker
+COPY --from=build-go /go/bin/evetest /usr/local/bin/evetest
+COPY --from=build-go /go/bin/list-tests /usr/local/bin/list-tests
+
+# Bake the evetest framework into the image with pre-downloaded dependencies.
+# tests/ is excluded via .dockerignore and mounted at runtime instead.
+WORKDIR /evetest
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+
+RUN mkdir -p /artifacts
+
+# Copy the entrypoint script
+COPY --from=build-go evetest/entrypoint.sh /usr/local/bin/evetest-entrypoint
+RUN chmod +x /usr/local/bin/evetest-entrypoint
+
+# Copy the private key used for SSH access to SDN VM
+COPY ./sdn/vm/cert/ssh/sdn_rsa /root/.ssh/sdn_rsa
+RUN chmod 600 /root/.ssh/sdn_rsa
+
+# Copy the private key used for SSH access to EVE VM
+COPY ./cert/eve_rsa /root/.ssh/eve_rsa
+RUN chmod 600 /root/.ssh/eve_rsa
+
+# Expose the evetest gRPC port
+EXPOSE 50021
+
+# Set default entrypoint
+ENTRYPOINT ["/usr/local/bin/evetest-entrypoint"]

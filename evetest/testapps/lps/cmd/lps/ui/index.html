@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EVE Local Profile Server</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #f5f5f5; color: #333; }
+  header { background: #1a1a2e; color: #fff; padding: 1rem 2rem; }
+  header h1 { font-size: 1.3rem; font-weight: 600; }
+  header small { color: #aaa; }
+  .container { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; padding: 1rem; max-width: 1400px; margin: 0 auto; }
+  @media (max-width: 900px) { .container { grid-template-columns: 1fr; } }
+  .panel { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .panel-header { padding: 0.75rem 1rem; border-bottom: 1px solid #eee; font-weight: 600; font-size: 0.95rem; }
+  .panel-body { padding: 1rem; }
+  .section { margin-bottom: 1rem; }
+  .section-title { font-size: 0.85rem; font-weight: 600; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.5px; }
+  pre { background: #f8f8f8; border: 1px solid #e0e0e0; border-radius: 4px; padding: 0.75rem; font-size: 0.8rem; overflow-x: auto; max-height: 300px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; }
+  .empty { color: #999; font-style: italic; font-size: 0.85rem; }
+  label { display: block; font-size: 0.85rem; font-weight: 500; margin-bottom: 0.3rem; }
+  input[type="text"], textarea, select { width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; font-family: inherit; }
+  textarea { resize: vertical; min-height: 80px; font-family: monospace; }
+  input:disabled, textarea:disabled, select:disabled { background: #eee; color: #888; cursor: not-allowed; }
+  .form-group { margin-bottom: 0.75rem; }
+  .btn { padding: 0.5rem 1rem; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: 500; }
+  .btn-primary { background: #2563eb; color: #fff; }
+  .btn-primary:hover { background: #1d4ed8; }
+  .btn-danger { background: #dc2626; color: #fff; }
+  .btn-danger:hover { background: #b91c1c; }
+  .btn-row { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+  .toggle { display: flex; align-items: center; gap: 0.5rem; }
+  .toggle input { width: 18px; height: 18px; }
+  .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .status-dot.green { background: #22c55e; }
+  .status-dot.gray { background: #aaa; }
+  .toast { position: fixed; bottom: 1rem; right: 1rem; padding: 0.75rem 1rem; border-radius: 6px; color: #fff; font-size: 0.85rem; z-index: 100; opacity: 0; transition: opacity 0.3s; }
+  .toast.show { opacity: 1; }
+  .toast.ok { background: #22c55e; }
+  .toast.err { background: #dc2626; }
+  .np-lock-notice { margin-top: 0.4rem; padding: 0.4rem 0.6rem; background: #fff3cd;
+                    border-left: 3px solid #f59e0b; border-radius: 3px;
+                    font-size: 0.8rem; color: #78350f; }
+  .net-port-card[data-locked="true"] { background: #fafafa; }
+  .conn-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+              margin-right: 6px; vertical-align: middle; }
+  .conn-dot.connected { background: #22c55e; }
+  .conn-dot.disconnected { background: #dc2626; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>EVE Local Profile Server</h1>
+  <small><span id="conn-dot" class="conn-dot disconnected"></span><span id="conn-label">Connecting...</span></small>
+</header>
+
+<div class="container">
+  <!-- LEFT: Monitoring -->
+  <div>
+    <div class="panel">
+      <div class="panel-header">Received from EVE</div>
+      <div class="panel-body">
+        <div class="section">
+          <div class="section-title">Device Info</div>
+          <pre id="devinfo" class="empty">Waiting for data...</pre>
+        </div>
+        <div class="section">
+          <div class="section-title">App Info</div>
+          <pre id="appinfo" class="empty">Waiting for data...</pre>
+        </div>
+        <div class="section">
+          <div class="section-title">Radio Status</div>
+          <pre id="radio-status" class="empty">Waiting for data...</pre>
+        </div>
+        <div class="section">
+          <div class="section-title">Location</div>
+          <pre id="location" class="empty">Waiting for data...</pre>
+        </div>
+        <div class="section">
+          <div class="section-title">Network Info</div>
+          <pre id="network" class="empty">Waiting for data...</pre>
+        </div>
+        <div class="section">
+          <div class="section-title">App Boot Info</div>
+          <pre id="appbootinfo" class="empty">Waiting for data...</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: Control -->
+  <div>
+    <div class="panel">
+      <div class="panel-header">Current Config</div>
+      <div class="panel-body">
+        <pre id="config" class="empty">Loading...</pre>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:1rem">
+      <div class="panel-header">Controls</div>
+      <div class="panel-body">
+        <div class="section">
+          <div class="section-title">Server Token</div>
+          <div class="form-group">
+            <input type="text" id="token-input" placeholder="Enter server token">
+          </div>
+          <button class="btn btn-primary" onclick="setToken()">Set Token</button>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Local Profile</div>
+          <div class="form-group">
+            <input type="text" id="profile-input" placeholder="e.g. office, warehouse">
+          </div>
+          <button class="btn btn-primary" onclick="setProfile()">Set Profile</button>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Radio Silence</div>
+          <div class="toggle">
+            <input type="checkbox" id="radio-silence-cb">
+            <label for="radio-silence-cb">Enable Radio Silence</label>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-primary" onclick="setRadioSilence()">Apply</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Device Command</div>
+          <div class="form-group">
+            <label>Command</label>
+            <select id="dev-cmd-select">
+              <option value="">-- none --</option>
+              <option value="COMMAND_SHUTDOWN">Shutdown</option>
+              <option value="COMMAND_GRACEFUL_POWEROFF">Graceful Poweroff</option>
+              <option value="COMMAND_GRACEFUL_REBOOT">Graceful Reboot</option>
+              <option value="COMMAND_COLLECT_INFO">Collect Info</option>
+            </select>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-primary" onclick="setDevCommand()">Send Command</button>
+            <button class="btn btn-danger" onclick="clearDevCommand()">Clear</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">App Command</div>
+          <div class="form-group">
+            <label>App UUID or Display Name</label>
+            <input type="text" id="app-cmd-id" placeholder="e.g. 12345678-abcd-...">
+          </div>
+          <div class="form-group">
+            <label>Command</label>
+            <select id="app-cmd-select">
+              <option value="">-- select --</option>
+              <option value="COMMAND_RESTART">Restart</option>
+              <option value="COMMAND_PURGE">Purge</option>
+            </select>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-primary" onclick="setAppCommand()">Send Command</button>
+            <button class="btn btn-danger" onclick="clearAppCommands()">Clear All</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Local Network Config</div>
+          <div id="net-config-ports"></div>
+          <div class="btn-row">
+            <button class="btn btn-primary" onclick="addNetPort()">+ Add Port</button>
+            <button class="btn btn-primary" onclick="setNetworkConfig()">Apply</button>
+            <button class="btn btn-danger" onclick="clearNetworkConfig()">Revert to Controller</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+const BASE = window.location.origin;
+
+// knownPorts is the list of ports reported by EVE via NetworkInfo, used
+// to populate the port-label dropdown and to decide whether a port may
+// be locally configured. Rebuilt on every SSE update.
+let knownPorts = [];
+
+function toast(msg, ok) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show ' + (ok ? 'ok' : 'err');
+  setTimeout(() => el.className = 'toast', 2000);
+}
+
+async function api(method, path, body) {
+  const opts = { method };
+  if (body !== undefined) {
+    opts.headers = { 'Content-Type': 'application/json' };
+    opts.body = JSON.stringify(body);
+  }
+  const resp = await fetch(BASE + path, opts);
+  if (!resp.ok && resp.status !== 404) {
+    throw new Error(`${resp.status} ${resp.statusText}`);
+  }
+  return resp;
+}
+
+function fmt(data) {
+  return JSON.stringify(data, null, 2);
+}
+
+// ---------- SSE-driven render ----------
+
+function setConnState(connected) {
+  const dot = document.getElementById('conn-dot');
+  const lbl = document.getElementById('conn-label');
+  if (connected) {
+    dot.className = 'conn-dot connected';
+    lbl.textContent = 'Live updates connected';
+  } else {
+    dot.className = 'conn-dot disconnected';
+    lbl.textContent = 'Reconnecting to server...';
+  }
+}
+
+function applyState(all) {
+  renderConfig(all.config || {});
+  renderReceived(all.received || {});
+  updateKnownPorts((all.received || {}).networkInfo);
+  refreshAllNetCards();
+}
+
+function renderConfig(cfg) {
+  const el = document.getElementById('config');
+  el.textContent = fmt(cfg);
+  el.className = '';
+  // Placeholders reflect current value; input value is not overwritten so
+  // the operator does not lose in-progress typing when a push arrives.
+  document.getElementById('token-input').placeholder =
+    cfg.serverToken || 'Enter server token';
+  document.getElementById('profile-input').placeholder =
+    cfg.profile || 'e.g. office, warehouse';
+  document.getElementById('radio-silence-cb').checked = !!cfg.radioSilence;
+}
+
+function renderReceived(recv) {
+  renderPre('devinfo', recv.devInfo);
+  renderPre('appinfo', recv.appInfoList);
+  renderPre('radio-status', recv.radioStatus);
+  renderPre('location', recv.location);
+  renderPre('network', recv.networkInfo);
+  renderPre('appbootinfo', recv.appBootInfo);
+}
+
+function renderPre(id, data) {
+  const el = document.getElementById(id);
+  if (data === null || data === undefined) {
+    el.textContent = 'Waiting for data...';
+    el.className = 'empty';
+  } else {
+    el.textContent = fmt(data);
+    el.className = '';
+  }
+}
+
+function updateKnownPorts(netInfo) {
+  const ports = [];
+  const seen = new Set();
+  // Prefer latest_config; fall back to fallback_config entries that are
+  // not already present (gives the operator something to pick from even
+  // if the device is currently on fallback).
+  const sources = [netInfo?.latestConfig, netInfo?.fallbackConfig];
+  for (const src of sources) {
+    if (!Array.isArray(src)) continue;
+    for (const p of src) {
+      if (!p.logicalLabel || seen.has(p.logicalLabel)) continue;
+      seen.add(p.logicalLabel);
+      ports.push({
+        label: p.logicalLabel,
+        // localModificationsAllowed is a proto bool that serializes as
+        // true / false / omitted. "Locked" only when explicitly false.
+        allowed: p.localModificationsAllowed !== false,
+        errorMessage: p.errorMessage || '',
+      });
+    }
+  }
+  ports.sort((a, b) => a.label.localeCompare(b.label));
+  knownPorts = ports;
+}
+
+function portInfo(label) {
+  return knownPorts.find(p => p.label === label) || null;
+}
+
+function refreshAllNetCards() {
+  for (const card of document.querySelectorAll('[id^="net-port-"]')) {
+    populatePortSelect(card);
+    applyLockState(card);
+  }
+}
+
+function populatePortSelect(card) {
+  const sel = card.querySelector('.np-label');
+  const current = sel.value;
+  let html = '<option value="">-- select port --</option>';
+  let currentStillValid = false;
+  for (const p of knownPorts) {
+    const suffix = p.allowed ? '' : ' (locked)';
+    const isSel = p.label === current;
+    if (isSel) currentStillValid = true;
+    // Locked ports are marked disabled so the browser greys them out
+    // and the operator cannot add a new card for such a port. A port
+    // that was selectable when added and later became locked remains
+    // selected programmatically; the card's inputs are gated by
+    // applyLockState below.
+    const disabled = p.allowed ? '' : ' disabled';
+    html += `<option value="${escapeHtml(p.label)}"${isSel ? ' selected' : ''}${disabled}>` +
+            `${escapeHtml(p.label)}${suffix}</option>`;
+  }
+  // If the previously-selected port disappeared from NetworkInfo, keep
+  // the old value visible as an "(unknown)" option so the operator can
+  // see what was there.
+  if (current && !currentStillValid) {
+    html += `<option value="${escapeHtml(current)}" selected>` +
+            `${escapeHtml(current)} (unknown)</option>`;
+  }
+  sel.innerHTML = html;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
+function applyLockState(card) {
+  const label = card.querySelector('.np-label').value;
+  const info = portInfo(label);
+  const locked = info !== null && !info.allowed;
+  card.dataset.locked = locked ? 'true' : 'false';
+  // Gate every input/select/textarea in the card except the port-label
+  // select itself, so the operator can still switch to a different port.
+  for (const el of card.querySelectorAll('input, select, textarea')) {
+    if (el.classList.contains('np-label')) continue;
+    el.disabled = locked;
+  }
+  let notice = card.querySelector('.np-lock-notice');
+  if (locked) {
+    if (!notice) {
+      notice = document.createElement('div');
+      notice.className = 'np-lock-notice';
+      // Insert just below the label row.
+      card.insertBefore(notice, card.children[1]);
+    }
+    notice.textContent = 'Network configuration changes are not permitted for "'
+      + label + '" by the controller.';
+  } else if (notice) {
+    notice.remove();
+  }
+}
+
+// ---------- Actions ----------
+
+async function setToken() {
+  const val = document.getElementById('token-input').value;
+  try {
+    await api('PUT', '/manage/v1/token', { token: val });
+    toast('Token updated', true);
+  } catch (e) { toast('Error: ' + e.message, false); }
+}
+
+async function setProfile() {
+  const val = document.getElementById('profile-input').value;
+  try {
+    await api('PUT', '/manage/v1/profile', { profile: val });
+    toast('Profile updated', true);
+  } catch (e) { toast('Error: ' + e.message, false); }
+}
+
+async function setRadioSilence() {
+  const val = document.getElementById('radio-silence-cb').checked;
+  try {
+    await api('PUT', '/manage/v1/radio-config', { radioSilence: val });
+    toast('Radio config updated', true);
+  } catch (e) { toast('Error: ' + e.message, false); }
+}
+
+async function setDevCommand() {
+  const cmd = document.getElementById('dev-cmd-select').value;
+  if (!cmd) { toast('Select a command first', false); return; }
+  try {
+    await api('PUT', '/manage/v1/dev-command',
+      { timestamp: Date.now(), command: cmd });
+    toast('Device command sent', true);
+  } catch (e) { toast('Error: ' + e.message, false); }
+}
+
+async function clearDevCommand() {
+  try {
+    await api('PUT', '/manage/v1/dev-command', null);
+    toast('Device command cleared', true);
+  } catch (e) { toast('Error: ' + e.message, false); }
+}
+
+async function setAppCommand() {
+  const id = document.getElementById('app-cmd-id').value.trim();
+  const cmd = document.getElementById('app-cmd-select').value;
+  if (!id) { toast('Enter an app UUID or display name', false); return; }
+  if (!cmd) { toast('Select a command', false); return; }
+  try {
+    const isUUID = /^[0-9a-f]{8}-/.test(id);
+    const entry = { command: cmd, timestamp: String(Date.now()) };
+    if (isUUID) { entry.id = id; } else { entry.displayname = id; }
+    await api('PUT', '/manage/v1/app-command', [entry]);
+    toast('App command sent', true);
+  } catch (e) { toast('Error: ' + e.message, false); }
+}
+
+async function clearAppCommands() {
+  try {
+    await api('PUT', '/manage/v1/app-command', []);
+    toast('App commands cleared', true);
+  } catch (e) { toast('Error: ' + e.message, false); }
+}
+
+// ---------- Local Network Config ----------
+
+let netPortCounter = 0;
+
+function addNetPort() {
+  netPortCounter++;
+  const id = netPortCounter;
+  const container = document.getElementById('net-config-ports');
+  const card = document.createElement('div');
+  card.id = 'net-port-' + id;
+  card.className = 'form-group net-port-card';
+  card.style.cssText = 'border:1px solid #e0e0e0;border-radius:4px;padding:0.5rem;margin-bottom:0.5rem;position:relative';
+  card.innerHTML = `
+    <button class="btn btn-danger" style="position:absolute;top:0.3rem;right:0.3rem;padding:0.2rem 0.5rem;font-size:0.75rem"
+      onclick="document.getElementById('net-port-${id}').remove()">Remove</button>
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+      <div style="flex:1;min-width:120px">
+        <label>Logical Label *</label>
+        <select class="np-label" onchange="applyLockState(this.closest('.net-port-card'))"></select>
+      </div>
+      <div style="flex:1;min-width:120px">
+        <label>IP Version</label>
+        <select class="np-ipver">
+          <option value="">(default)</option>
+          <option value="IP_VERSION_IPV4_ONLY">IPv4 only</option>
+          <option value="IP_VERSION_IPV6_ONLY">IPv6 only</option>
+          <option value="IP_VERSION_DUAL_STACK">Dual stack</option>
+        </select>
+      </div>
+      <div style="flex:0 0 auto">
+        <label>&nbsp;</label>
+        <div class="toggle">
+          <input type="checkbox" class="np-dhcp" checked>
+          <label>DHCP</label>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.3rem">
+      <div style="flex:1;min-width:150px">
+        <label>IP Addresses (CIDR, comma-sep)</label>
+        <input type="text" class="np-ips" placeholder="e.g. 192.168.1.10/24">
+      </div>
+      <div style="flex:1;min-width:150px">
+        <label>Gateways (comma-sep)</label>
+        <input type="text" class="np-gw" placeholder="e.g. 192.168.1.1">
+      </div>
+    </div>
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.3rem">
+      <div style="flex:1;min-width:150px">
+        <label>DNS Servers (comma-sep)</label>
+        <input type="text" class="np-dns" placeholder="e.g. 8.8.8.8, 1.1.1.1">
+      </div>
+      <div style="flex:1;min-width:100px">
+        <label>DNS Domain</label>
+        <input type="text" class="np-domain" placeholder="e.g. local">
+      </div>
+    </div>
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.3rem">
+      <div style="flex:1;min-width:100px">
+        <label>NTP Servers (comma-sep)</label>
+        <input type="text" class="np-ntp" placeholder="e.g. pool.ntp.org">
+      </div>
+      <div style="flex:0 0 80px">
+        <label>MTU</label>
+        <input type="text" class="np-mtu" placeholder="1500">
+      </div>
+      <div style="flex:0 0 auto;padding-top:1.4rem">
+        <div class="toggle">
+          <input type="checkbox" class="np-noroute">
+          <label>No default route</label>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:0.3rem">
+      <label>Proxy Config (JSON, optional)</label>
+      <textarea class="np-proxy" style="min-height:40px" placeholder='{"networkProxyEnable":true,...}'></textarea>
+    </div>
+    <div style="margin-top:0.5rem;border-top:1px solid #eee;padding-top:0.5rem">
+      <label>Wireless</label>
+      <select class="np-wireless" onchange="toggleWireless(this)">
+        <option value="">None (ethernet)</option>
+        <option value="WIRELESS_TYPE_CELLULAR">Cellular</option>
+        <option value="WIRELESS_TYPE_WIFI">WiFi</option>
+      </select>
+    </div>
+    <div class="np-cell-section" style="display:none;margin-top:0.3rem;padding:0.5rem;background:#f8f8f8;border-radius:4px">
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+        <div style="flex:1;min-width:80px">
+          <label>SIM Slot</label>
+          <input type="text" class="np-cell-sim" placeholder="0 = unspecified">
+        </div>
+        <div style="flex:2;min-width:120px">
+          <label>APN</label>
+          <input type="text" class="np-cell-apn" placeholder="e.g. internet">
+        </div>
+        <div style="flex:1;min-width:120px">
+          <label>IP Type</label>
+          <select class="np-cell-iptype">
+            <option value="">(default)</option>
+            <option value="CELLULAR_IP_TYPE_IPV4">IPv4</option>
+            <option value="CELLULAR_IP_TYPE_IPV6">IPv6</option>
+            <option value="CELLULAR_IP_TYPE_IPV4_AND_IPV6">IPv4+IPv6</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:flex;gap:1rem;margin-top:0.3rem">
+        <div class="toggle">
+          <input type="checkbox" class="np-cell-loc">
+          <label>Location tracking</label>
+        </div>
+      </div>
+    </div>
+    <div class="np-wifi-section" style="display:none;margin-top:0.3rem;padding:0.5rem;background:#f8f8f8;border-radius:4px">
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+        <div style="flex:2;min-width:120px">
+          <label>SSID</label>
+          <input type="text" class="np-wifi-ssid" placeholder="Network name">
+        </div>
+        <div style="flex:1;min-width:120px">
+          <label>Key Scheme</label>
+          <select class="np-wifi-key">
+            <option value="">(none)</option>
+            <option value="WPAPSK">WPA-PSK</option>
+            <option value="WPAEAP">WPA-EAP</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.3rem">
+        <div style="flex:1;min-width:120px">
+          <label>Identity (EAP username)</label>
+          <input type="text" class="np-wifi-identity" placeholder="Optional">
+        </div>
+        <div style="flex:1;min-width:120px">
+          <label>Password / PSK</label>
+          <input type="text" class="np-wifi-pass" placeholder="Hashed PSK or password">
+        </div>
+      </div>
+    </div>`;
+  container.appendChild(card);
+  populatePortSelect(card);
+  applyLockState(card);
+}
+
+function toggleWireless(sel) {
+  const card = sel.closest('[id^="net-port-"]');
+  card.querySelector('.np-cell-section').style.display =
+    sel.value === 'WIRELESS_TYPE_CELLULAR' ? 'block' : 'none';
+  card.querySelector('.np-wifi-section').style.display =
+    sel.value === 'WIRELESS_TYPE_WIFI' ? 'block' : 'none';
+}
+
+function splitCSV(val) {
+  return val.split(',').map(s => s.trim()).filter(Boolean);
+}
+
+function collectNetPorts() {
+  const cards = document.querySelectorAll('[id^="net-port-"]');
+  const ports = [];
+  for (const card of cards) {
+    // Locked ports are silently skipped; inputs were already disabled
+    // by applyLockState, so there is nothing meaningful to submit.
+    if (card.dataset.locked === 'true') continue;
+    const label = card.querySelector('.np-label').value.trim();
+    if (!label) continue;
+    const entry = { logicalLabel: label };
+    const ipVer = card.querySelector('.np-ipver').value;
+    if (ipVer) entry.ipVersion = ipVer;
+    if (card.querySelector('.np-dhcp').checked) entry.useDhcp = true;
+    const ips = splitCSV(card.querySelector('.np-ips').value);
+    if (ips.length) entry.ipAddresses = ips;
+    const gw = splitCSV(card.querySelector('.np-gw').value);
+    if (gw.length) entry.gateways = gw;
+    if (card.querySelector('.np-noroute').checked) entry.withoutDefaultRoute = true;
+    const dns = splitCSV(card.querySelector('.np-dns').value);
+    if (dns.length) entry.dnsServers = dns;
+    const domain = card.querySelector('.np-domain').value.trim();
+    if (domain) entry.dnsDomain = domain;
+    const ntp = splitCSV(card.querySelector('.np-ntp').value);
+    if (ntp.length) entry.ntpServers = ntp;
+    const mtu = parseInt(card.querySelector('.np-mtu').value);
+    if (mtu) entry.mtu = mtu;
+    const proxyRaw = card.querySelector('.np-proxy').value.trim();
+    if (proxyRaw) {
+      try { entry.proxyConfig = JSON.parse(proxyRaw); }
+      catch (e) { toast('Invalid proxy JSON for ' + label, false); return null; }
+    }
+    const wType = card.querySelector('.np-wireless').value;
+    if (wType === 'WIRELESS_TYPE_CELLULAR') {
+      entry.wirelessDeviceType = wType;
+      const cellCfg = {};
+      const sim = parseInt(card.querySelector('.np-cell-sim').value);
+      if (sim) cellCfg.activateSimSlot = sim;
+      const apn = card.querySelector('.np-cell-apn').value.trim();
+      if (apn) cellCfg.apn = apn;
+      const ipType = card.querySelector('.np-cell-iptype').value;
+      if (ipType) cellCfg.ipType = ipType;
+      if (card.querySelector('.np-cell-loc').checked) cellCfg.locationTracking = true;
+      if (Object.keys(cellCfg).length) entry.cellularConfig = cellCfg;
+    } else if (wType === 'WIRELESS_TYPE_WIFI') {
+      entry.wirelessDeviceType = wType;
+      const wifiCfg = {};
+      const ssid = card.querySelector('.np-wifi-ssid').value.trim();
+      if (ssid) wifiCfg.ssid = ssid;
+      const keyScheme = card.querySelector('.np-wifi-key').value;
+      if (keyScheme) wifiCfg.keyScheme = keyScheme;
+      const identity = card.querySelector('.np-wifi-identity').value.trim();
+      if (identity) wifiCfg.identity = identity;
+      const pass = card.querySelector('.np-wifi-pass').value.trim();
+      if (pass) wifiCfg.password = pass;
+      if (Object.keys(wifiCfg).length) entry.wifiConfig = wifiCfg;
+    }
+    ports.push(entry);
+  }
+  return ports;
+}
+
+async function setNetworkConfig() {
+  const ports = collectNetPorts();
+  if (ports === null) return;
+  try {
+    const cfgResp = await api('GET', '/manage/v1/config');
+    const cfg = await cfgResp.json();
+    await api('PUT', '/manage/v1/network-config',
+      { serverToken: cfg.serverToken || '', ports: ports });
+    toast('Network config applied (' + ports.length + ' port(s))', true);
+  } catch (e) { toast('Error: ' + e.message, false); }
+}
+
+async function clearNetworkConfig() {
+  try {
+    const cfgResp = await api('GET', '/manage/v1/config');
+    const cfg = await cfgResp.json();
+    await api('PUT', '/manage/v1/network-config',
+      { serverToken: cfg.serverToken || '', ports: [] });
+    document.getElementById('net-config-ports').innerHTML = '';
+    toast('Network config reverted to controller', true);
+  } catch (e) { toast('Error: ' + e.message, false); }
+}
+
+// ---------- SSE connection ----------
+
+let eventSource = null;
+
+function connectEvents() {
+  if (eventSource) eventSource.close();
+  eventSource = new EventSource(BASE + '/manage/v1/events');
+  eventSource.addEventListener('open', () => setConnState(true));
+  eventSource.addEventListener('snapshot',
+    ev => { setConnState(true); applyState(JSON.parse(ev.data)); });
+  eventSource.addEventListener('update',
+    ev => { setConnState(true); applyState(JSON.parse(ev.data)); });
+  eventSource.addEventListener('error', () => setConnState(false));
+  // EventSource auto-reconnects on error; no manual retry needed.
+}
+
+connectEvents();
+</script>
+</body>
+</html>
