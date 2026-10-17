@@ -96,8 +96,7 @@ const (
 //
 // Test params
 // -----------
-//   - HYPERVISOR. Under Kubevirt the test waits for the cluster node to
-//     become ready before deploying the app.
+//   - HYPERVISOR.
 //
 // Suite placement
 // ---------------
@@ -165,9 +164,6 @@ func TestAppUserData(test *testing.T) {
 	}
 	appUUID := devConfig.AddApplication(appConfig)
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 	evetest.Checkpoint("env-userdata-config-applied")
 
 	// Phase 1: plain key=value user-data becomes container environment.

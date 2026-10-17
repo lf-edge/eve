@@ -197,9 +197,6 @@ func TestLayerDownloadErrorsBounded(test *testing.T) {
 	devUpdates, stopDevWatch := device.WatchDeviceInfo()
 	defer stopDevWatch()
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 	t.Eventually(devUpdates, 5*time.Minute).Should(Receive(matchers.SatisfyPredicate(
 		"controller port config is current, both management ports have an "+
 			"IPv4 address and no error",

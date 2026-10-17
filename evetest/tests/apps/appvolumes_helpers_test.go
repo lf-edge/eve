@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// The app's disk, in all three forms it takes: volumemgr's own VolumeStatus, the
-// PVC on eve-k, and the file or snapshot directory under /persist on kvm/xen.
+// The app's disk, in both forms it takes: volumemgr's own VolumeStatus and the
+// file or snapshot directory under /persist on kvm/xen.
 //
 // Rule for this file: readers and invariants about STORAGE. The "no artifact
 // exists that EVE no longer references" checks live here rather than with the
@@ -12,16 +12,11 @@
 // (EdgeDevice.ListDirEntries, EdgeDevice.PathExists); nothing here shells out on
 // its own.
 //
-// Two scope caveats apply to everything in this file, because types.VolumeStatus
+// A scope caveat applies to everything in this file, because types.VolumeStatus
 // carries no app UUID (the join is AppInstanceStatus.VolumeRefStatusList):
-//
-//   - Device-scoped, not app-scoped. These helpers describe every volume on the
-//     node. They are only valid while the suite deploys exactly one app; the
-//     moment a second app appears they must filter through VolumeRefStatusList.
-//   - Single-node only. assertNoOrphanedPVCs compares cluster-wide `kubectl get
-//     pvc` output against ONE node's publications, which in a replicated-storage
-//     cluster generates false failures - a cluster test must skip volume
-//     checks entirely rather than call it.
+// these helpers are device-scoped, not app-scoped. They describe every volume on
+// the node, so they are only valid while the suite deploys exactly one app; the
+// moment a second app appears they must filter through VolumeRefStatusList.
 
 package apps_test
 
@@ -56,45 +51,6 @@ func soleVolumeStatus(g Gomega, dev *evetest.EdgeDevice) types.VolumeStatus {
 	return vols[0]
 }
 
-// listPVCNames returns the names of every PVC in the namespace EVE runs app
-// workloads in, regardless of which app or generation it belongs to - see
-// assertNoOrphanedPVCs, which is what attributes them.
-func listPVCNames(dev *evetest.EdgeDevice) []string {
-	list, ok := kubectlListItems(dev, "pvc")
-	if !ok {
-		return nil
-	}
-	var names []string
-	for _, item := range list.Items {
-		names = append(names, item.Metadata.Name)
-	}
-	return names
-}
-
-// assertNoOrphanedPVCs cross-checks every PVC actually present in the cluster
-// against the PVC name volumemgr's own current VolumeStatus publications would
-// produce (VolumeStatus.GetPVCName): "<volume-id>-pvc-<generation>". A PVC that
-// exists in Kubernetes but that no published VolumeStatus would name is orphaned
-// - Kubernetes still has the disk, but EVE no longer references it.
-//
-// This is strictly stronger than a volume count: the stale-generation sweep in
-// hypervisor/kubevirt.go reconciles the VMIRS/ReplicaSet and its pods only, not
-// PVCs, so a purge that otherwise completes cleanly can still leave a stale
-// generation's disk behind indefinitely and nothing else here would catch it.
-func assertNoOrphanedPVCs(g Gomega, dev *evetest.EdgeDevice) {
-	vols, err := evetest.ReadAllPublications[types.VolumeStatus](dev, "volumemgr", false)
-	g.Expect(err).ToNot(HaveOccurred(), "reading volumemgr's VolumeStatus publications")
-	expected := make(map[string]bool, len(vols))
-	for _, v := range vols {
-		expected[v.GetPVCName()] = true
-	}
-	for _, name := range listPVCNames(dev) {
-		g.Expect(expected).To(HaveKey(name),
-			"PVC %q exists in the cluster but no currently published VolumeStatus "+
-				"would produce it - orphaned disk left behind by a stale generation", name)
-	}
-}
-
 // listVolumeArtifacts returns the full path of every entry in EVE's volume
 // directories. Entries can be files (a qcow2 or raw disk) or directories (a
 // container volume's snapshot mount), so this does not filter by type - see
@@ -116,16 +72,13 @@ func listVolumeArtifacts(g Gomega, dev *evetest.EdgeDevice) []string {
 	return paths
 }
 
-// assertNoStaleVolumeArtifacts is assertNoOrphanedPVCs' counterpart for a local
-// hypervisor: it cross-checks every artifact on disk against the path each
+// assertNoStaleVolumeArtifacts cross-checks every artifact on disk against the path each
 // published VolumeStatus would produce (VolumeStatus.PathName). An artifact that
 // exists but that no live VolumeStatus names is a stale generation's disk - the
 // storage is still consumed, but EVE no longer references it.
 //
-// This carries the most weight on the kvm path. A duplicate workload is
-// structurally impossible there (no cluster-side object outlives the node), so
-// a purge that goes wrong on kvm shows up as a disk nobody owns rather than as a
-// second running domain.
+// A duplicate workload is structurally impossible on kvm, so a purge that goes
+// wrong shows up as a disk nobody owns rather than as a second running domain.
 func assertNoStaleVolumeArtifacts(g Gomega, dev *evetest.EdgeDevice) {
 	vols, err := evetest.ReadAllPublications[types.VolumeStatus](dev, "volumemgr", false)
 	g.Expect(err).ToNot(HaveOccurred(), "reading volumemgr's VolumeStatus publications")

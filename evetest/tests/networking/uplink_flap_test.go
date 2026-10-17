@@ -201,9 +201,6 @@ func TestLocalNIUplinkFlap(test *testing.T) {
 	devUpdates, stopDevWatch := device.WatchDeviceInfo()
 	defer stopDevWatch()
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 	evetest.Checkpoint("port-config-applied")
 
 	niSubnet := evetest.IPSubnet("10.1.0.0/24")

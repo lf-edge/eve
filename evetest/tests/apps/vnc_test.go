@@ -62,17 +62,6 @@ var alpineCloudImages = map[string]alpineCloudImage{
 // shim VM console (reached via the documented key-combo switch once shim-VM
 // VNC access is enabled).
 //
-// Under KVM the VNC server is a raw QEMU socket reachable directly on the
-// device's uplink IP. Under Kubevirt there is no such socket: zedkube starts
-// a `virtctl vnc --proxy-only` process (see pkg/pillar/docs/
-// vnc-workflows.md) that bridges the VMI's console onto a TCP port bound to
-// 127.0.0.1 only, gated by AppInstanceConfig.RemoteConsole rather than
-// EnableVNC. This test reaches that port through an SSH tunnel to the device
-// (EdgeDevice.DialViaSSH) instead of a direct dial, and falls back to VNC's
-// "none" security type when the server doesn't offer password auth (virtctl
-// relies on Kubernetes RBAC for access control, not a VNC password) -- see
-// connectVNC.
-//
 // Network model
 // -------------
 //   - netmodels.SingleEthWithDHCP -- only needed for controller reachability
@@ -88,22 +77,18 @@ var alpineCloudImages = map[string]alpineCloudImage{
 //     pkg/pillar/dpcreconciler/linux.go) and debug.enable.vnc.shim.vm (a
 //     per-node flag which, combined with a VM's own EnableVnc, additionally
 //     allows switching into the shim VM console -- see
-//     pkg/pillar/hypervisor/kvm.go, isVncShimVMEnabled). Both are KVM-only
-//     knobs (harmless, but ineffective, under Kubevirt).
+//     pkg/pillar/hypervisor/kvm.go, isVncShimVMEnabled).
 //  2. VM app: deploy an Alpine Linux VM (VirtualizationMode=HVM, image from
 //     alpineCloudImages matching the device's actual arch (device.GetArch()),
 //     EnableVNC=true, VNCDisplay=1, a fixed VNCPassword). No UserData/
 //     cloud-init is configured -- VNC reaches the QEMU console as soon as
 //     the VM starts, independent of what the guest OS is doing.
-//     WaitUntilAppIsRunning, then (under Kubevirt) enable RemoteConsole on
-//     the app config and re-apply, connect a real VNC/RFB client to port
-//     5901 (directly under KVM, through an SSH tunnel under Kubevirt),
-//     authenticate, and assert the handshake succeeds. Delete the app
-//     afterwards (disabling RemoteConsole first under Kubevirt, since only
-//     one remote-console session is allowed on the device at a time).
+//     WaitUntilAppIsRunning, then connect a real VNC/RFB client to port
+//     5901 on the device's uplink IP, authenticate, and assert the
+//     handshake succeeds. Delete the app afterwards.
 //  3. Container app: deploy lfedge/evetest-ubuntu-ctr:1.0 with EnableVNC=true,
 //     VNCDisplay=2, the same VNCPassword. WaitUntilAppIsRunning, then connect
-//     to port 5902 (same per-hypervisor path as above) and assert the same
+//     to port 5902 and assert the same
 //     successful handshake -- proving VNC also works for container apps
 //     (viewing the shim VM's console showing the container's entry point).
 //  4. Shim VM console switch: on that same VNC connection, send the
@@ -169,9 +154,6 @@ func TestVNC(test *testing.T) {
 		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
 	})
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 
 	const vncPassword = "12345678" // classic VNC (DES) auth is limited to 8 chars
 	timeout := 3 * time.Minute
@@ -184,64 +166,17 @@ func TestVNC(test *testing.T) {
 	image, ok := alpineCloudImages[arch]
 	t.Expect(ok).To(BeTrue(), "no pinned Alpine cloud image for arch %q", arch)
 
-	var deviceIP []net.IP
-	if hypervisor != evetest.HypervisorKubevirt {
-		deviceIP = device.GetDeviceIPAddress("ethernet0")
-		t.Expect(deviceIP).ToNot(BeEmpty())
-	}
+	deviceIP := device.GetDeviceIPAddress("ethernet0")
+	t.Expect(deviceIP).ToNot(BeEmpty())
 
 	// vncDialer returns a description (for log/error messages) and a dial
-	// function for the VNC endpoint at 5900+vncDisplay: a direct dial to the
-	// device's uplink IP under KVM/Xen, or a dial tunneled over SSH to the
-	// device's own loopback under Kubevirt (see the doc comment above).
+	// function for the VNC endpoint at 5900+vncDisplay on the device's uplink IP.
 	vncDialer := func(vncDisplay uint) (string, func() (net.Conn, error)) {
 		port := fmt.Sprintf("%d", 5900+vncDisplay)
-		if hypervisor == evetest.HypervisorKubevirt {
-			addr := net.JoinHostPort("127.0.0.1", port)
-			return addr + " (via SSH tunnel)", func() (net.Conn, error) {
-				return device.DialViaSSH("tcp", addr)
-			}
-		}
 		addr := net.JoinHostPort(deviceIP[0].String(), port)
 		return addr, func() (net.Conn, error) {
 			return net.DialTimeout("tcp", addr, 5*time.Second)
 		}
-	}
-
-	// setRemoteConsole toggles AppInstanceConfig.RemoteConsole for the app
-	// identified by appUUIDStr and re-applies the device config. This is the
-	// field that gates Kubevirt's virtctl-based VNC proxy (see
-	// ApplicationInstanceConfig.RemoteConsole).
-	setRemoteConsole := func(appUUIDStr string, enable bool) {
-		found := false
-		for _, app := range devConfig.Apps {
-			if app.GetUuidandversion().GetUuid() == appUUIDStr {
-				app.RemoteConsole = enable
-				found = true
-				break
-			}
-		}
-		t.Expect(found).To(BeTrue(), "app %q not found in device config", appUUIDStr)
-		device.ApplyConfig(devConfig, false, false)
-	}
-
-	// waitRemoteConsoleReleased polls (via the same SSH-tunneled dial used to
-	// reach it) until the Kubevirt VNC proxy for vncDisplay has stopped
-	// listening, i.e. zedkube has torn it down after RemoteConsole was
-	// disabled. Only one remote-console session is allowed on the device at
-	// a time (see pkg/pillar/docs/vnc-workflows.md, canClaimVNCFile), so the
-	// next app's setRemoteConsole(true) would otherwise be silently ignored
-	// while the previous proxy is still up.
-	waitRemoteConsoleReleased := func(vncDisplay uint) {
-		_, dial := vncDialer(vncDisplay)
-		t.Eventually(func() error {
-			conn, err := dial()
-			if err == nil {
-				_ = conn.Close()
-				return fmt.Errorf("VNC proxy for display %d is still listening", vncDisplay)
-			}
-			return nil
-		}, 30*time.Second, 2*time.Second).Should(Succeed())
 	}
 
 	// Phase 2: VM app VNC access.
@@ -268,24 +203,12 @@ func TestVNC(test *testing.T) {
 	device.WaitUntilAppIsRunning(vmAppUUID, timeoutExcludingDownload)
 	evetest.Checkpoint("vm-app-running")
 
-	vmAppUUIDStr := vmAppUUID.String()
-	if hypervisor == evetest.HypervisorKubevirt {
-		setRemoteConsole(vmAppUUIDStr, true)
-	}
 	log.Infof("Testing VNC access to the VM app")
 	vmVNCDesc, vmVNCDial := vncDialer(1)
 	vmConn := connectVNC(t, vmVNCDesc, vmVNCDial, vncPassword)
 	log.Infof("Connected to VM app VNC desktop %q", vmConn.DesktopName)
 	t.Expect(vmConn.Close()).To(Succeed())
 	evetest.Checkpoint("vm-app-vnc-verified")
-
-	if hypervisor == evetest.HypervisorKubevirt {
-		// Release the remote-console session before deleting the app: only
-		// one is allowed on the device at a time, and the container app's
-		// session below would otherwise be silently blocked.
-		setRemoteConsole(vmAppUUIDStr, false)
-		waitRemoteConsoleReleased(1)
-	}
 
 	devConfig.DeleteApplication(vmAppUUID)
 	device.ApplyConfig(devConfig, false, false)
@@ -312,15 +235,11 @@ func TestVNC(test *testing.T) {
 		VNCDisplay:         2,
 		VNCPassword:        vncPassword,
 	})
-	ctrAppUUIDStr := ctrAppUUID.String()
 	ctrAppUpdates, stopCtrAppWatch := device.WatchAppInfo(ctrAppUUID)
 	device.ApplyConfig(devConfig, false, false)
 	device.WaitUntilAppIsRunning(ctrAppUUID, timeoutExcludingDownload)
 	evetest.Checkpoint("container-app-running")
 
-	if hypervisor == evetest.HypervisorKubevirt {
-		setRemoteConsole(ctrAppUUIDStr, true)
-	}
 	log.Infof("Testing VNC access to the container app")
 	ctrVNCDesc, ctrVNCDial := vncDialer(2)
 	ctrConn := connectVNC(t, ctrVNCDesc, ctrVNCDial, vncPassword)
@@ -343,9 +262,6 @@ func TestVNC(test *testing.T) {
 	evetest.Checkpoint("shim-vm-switch-verified")
 
 	// Cleanup.
-	if hypervisor == evetest.HypervisorKubevirt {
-		setRemoteConsole(ctrAppUUIDStr, false)
-	}
 	devConfig.DeleteApplication(ctrAppUUID)
 	device.ApplyConfig(devConfig, false, false)
 
@@ -357,9 +273,8 @@ func TestVNC(test *testing.T) {
 	stopCtrAppWatch()
 }
 
-// connectVNC calls dial (retrying while the endpoint isn't reachable yet --
-// under Kubevirt the virtctl proxy takes a few seconds to start after
-// RemoteConsole is enabled), then performs the full RFB handshake and
+// connectVNC calls dial (retrying while the endpoint isn't reachable yet),
+// then performs the full RFB handshake and
 // returns the connected client. dialDesc identifies the endpoint in log/error
 // messages. It fails the test (via t) rather than returning an error, since a
 // broken VNC connection always indicates a test failure at the call sites
@@ -382,11 +297,7 @@ func connectVNC(t *WithT, dialDesc string, dial func() (net.Conn, error),
 		"failed to dial VNC endpoint %s", dialDesc)
 
 	clientConn, err := client.NewClientConn(conn, &client.ClientConfig{
-		// A raw QEMU VNC socket (KVM) offers VNC password auth; Kubevirt's
-		// virtctl proxy offers only the "none" security type, relying on
-		// Kubernetes RBAC instead of a VNC password. Offering both lets the
-		// client pick whichever the server actually supports.
-		Auth:      []client.ClientAuth{&client.PasswordAuth{Password: password}, new(client.ClientAuthNone)},
+		Auth:      []client.ClientAuth{&client.PasswordAuth{Password: password}},
 		Exclusive: false,
 	})
 	t.Expect(err).ToNot(HaveOccurred())

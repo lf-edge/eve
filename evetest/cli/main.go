@@ -80,7 +80,6 @@ func main() {
 		exitCmd(),
 		statusCmd(),
 		eveCommand(),
-		clusterCommand(),
 		sdnCommand(),
 	} {
 		c.Annotations = map[string]string{needsClientAnnotation: "yes"}

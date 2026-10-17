@@ -247,7 +247,7 @@ func consistentlyLiveVectorConfig(t *WithT, device *evetest.EdgeDevice,
 // exists in eve-api but pillar never populates it, and domainmgr's per-process
 // metrics do reach the controller inside ZMetricMsg.Pr carrying process names,
 // but the framework exposes no accessor for them - EdgeDevice surfaces only the
-// device, app, network-instance, volume and cluster metrics.
+// device, app, network-instance, and volume metrics.
 //
 // Network model
 // -------------
@@ -309,9 +309,6 @@ func TestWorkingConfig(test *testing.T) {
 	defer stopLogWatch()
 	device.ApplyConfig(vectorConfigItem(markerConfig), true, true)
 	evetest.Checkpoint("config-applied")
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(clusterNodeReadyTimeout)
-	}
 
 	// Phase 2: the promoted config stamps uploaded events with the sentinel.
 	log.Infof("Waiting for an uploaded log event with source %q...", markerSource)
@@ -433,9 +430,6 @@ func TestFaultyConfig(test *testing.T) {
 	// Phase 1: establish a promoted custom config as the baseline.
 	markerSource, markerConfig := installMarkerConfig(t, device)
 	markerHash := sha256Hex(markerConfig)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(clusterNodeReadyTimeout)
-	}
 
 	// Phase 2: push the faulty config.
 	devUpdates, stopDevWatch := device.WatchDeviceInfo()
@@ -579,9 +573,6 @@ func TestEmptyConfig(test *testing.T) {
 	t.Expect(sha256Hex(markerConfig)).ToNot(Equal(defaultHash),
 		"the marker and the default Vector config must differ for the revert "+
 			"to be observable")
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(clusterNodeReadyTimeout)
-	}
 
 	// Phase 2: clear vector.config. EVE keeps logging continuously, so the
 	// watch for unmarked events can be created after the push - unlike a
@@ -692,9 +683,6 @@ func TestInvalidBase64Config(test *testing.T) {
 	defer stopDevWatch()
 	device.ApplyConfig(vectorConfigItemRaw(invalidVectorConfigValue), true, true)
 	evetest.Checkpoint("invalid-config-applied")
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(clusterNodeReadyTimeout)
-	}
 
 	t.Eventually(devUpdates, vectorDevInfoTimeout).Should(Receive(matchers.SatisfyPredicate(
 		"EVE reports vector.config as unparsable and does not store the value",

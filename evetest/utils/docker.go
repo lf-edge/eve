@@ -48,8 +48,6 @@ func EVEDockerImageName(ref *api.ImageRef) (string, error) {
 		hv = "kvm"
 	case api.HypervisorType_HV_XEN:
 		hv = "xen"
-	case api.HypervisorType_HV_KUBEVIRT:
-		hv = "k"
 	default:
 		return "", fmt.Errorf("unknown hypervisor type: %v", ref.Hypervisor)
 	}

@@ -10,8 +10,6 @@ Before writing or reviewing any evetest code, familiarize yourself with the fram
    - `evetest/devconfig.go` -- device configuration builder
    - `evetest/edgedevice.go` -- `EdgeDevice` interface (apply config, watch info/metrics,
      run shell scripts, etc.)
-   - `evetest/edgecluster.go` -- `EdgeCluster` interface
-   - `evetest/clusterconfig.go` -- cluster configuration builder
 3. Familiarize yourself with the EVE API Go types used in assertions:
    `pkg/pillar/vendor/github.com/lf-edge/eve-api/go/`
 4. Look at all existing fully-implemented tests under `evetest/tests/` to understand
@@ -78,7 +76,7 @@ evetest continue                # resume the test
 evetest exit                    # tear down and exit
 ```
 
-Run `evetest eve`, `evetest sdn`, `evetest cluster`, or `evetest --help` to see the full
+Run `evetest eve`, `evetest sdn`, or `evetest --help` to see the full
 list of available subcommands and their descriptions.
 
 All commands accept `--devicename <name>` when multiple devices are involved.

@@ -26,8 +26,6 @@ const (
 	HypervisorKVM
 	// HypervisorXen represents the Xen hypervisor.
 	HypervisorXen
-	// HypervisorKubevirt represents the KubeVirt hypervisor.
-	HypervisorKubevirt
 )
 
 func (h Hypervisor) String() string {
@@ -36,8 +34,6 @@ func (h Hypervisor) String() string {
 		return "kvm"
 	case HypervisorXen:
 		return "xen"
-	case HypervisorKubevirt:
-		return "kubevirt"
 	case HypervisorUndefined:
 		fallthrough
 	default:
@@ -52,8 +48,6 @@ func (h *Hypervisor) FromString(s string) error {
 		*h = HypervisorKVM
 	case "xen":
 		*h = HypervisorXen
-	case "kubevirt":
-		*h = HypervisorKubevirt
 	case "", "undefined":
 		*h = HypervisorUndefined
 	default:
@@ -70,8 +64,6 @@ func (h Hypervisor) toAPIType() api.HypervisorType {
 		return api.HypervisorType_HV_KVM
 	case HypervisorXen:
 		return api.HypervisorType_HV_XEN
-	case HypervisorKubevirt:
-		return api.HypervisorType_HV_KUBEVIRT
 	default:
 		return api.HypervisorType_HV_KVM
 	}
@@ -83,8 +75,6 @@ func hypervisorFromAPIType(t api.HypervisorType) Hypervisor {
 	switch t {
 	case api.HypervisorType_HV_XEN:
 		return HypervisorXen
-	case api.HypervisorType_HV_KUBEVIRT:
-		return HypervisorKubevirt
 	default:
 		return HypervisorKVM
 	}
@@ -270,7 +260,7 @@ func (r RequireIPv6OnlyRegistryMirrors) isRequirement() {}
 
 // RequireDirectRegistryPulls : requirement to skip applying configured
 // REGISTRY_MIRROR_* mirrors, everywhere evetest would otherwise use them
-// (K3s/containerd config on kubevirt devices, app datastore FQDNs), so every
+// (app datastore FQDNs), so every
 // image pull goes to the real registry instead of a mirror's own address.
 type RequireDirectRegistryPulls struct{}
 

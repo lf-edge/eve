@@ -31,8 +31,6 @@ const devName = "edge-dev"
 // Device configuration
 // --------------------
 //   - SystemAdapter on eth0 (DHCP, mgmt+app, NetworkType=V4Only).
-//   - On Kubevirt the device forms a single-node K3s cluster with no cluster
-//     interface configured.
 //
 // Test parameters
 // ---------------
@@ -41,12 +39,10 @@ const devName = "edge-dev"
 // Phases
 // ------
 //  1. initial-config-applied: apply the device config.
-//  2. k3s-is-ready (Kubevirt only): wait until the node is Ready, so that
-//     every K3s listener is up before the scan.
-//  3. ports-scanned: SYN scan and UDP scan of all 65535 ports of each IPv4
+//  2. ports-scanned: SYN scan and UDP scan of all 65535 ports of each IPv4
 //     management address. Every open port is logged. The SSH port must be
 //     open on each address, which proves the scan reached it.
-//  4. Every open UDP port fails the test, since it cannot be HTTPS. Every
+//  3. Every open UDP port fails the test, since it cannot be HTTPS. Every
 //     open TCP port other than SSH must accept only TLS 1.2+ with ciphers
 //     ssl-enum-ciphers grades A, refuse plaintext HTTP, and reject a request
 //     without credentials with HTTP 401 or by demanding a client
@@ -87,11 +83,6 @@ func TestExternalPortScan(test *testing.T) {
 	device := evetest.GetEdgeDevice(devName)
 	device.ApplyConfig(devConfig, true, true)
 	evetest.Checkpoint("initial-config-applied")
-
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-		evetest.Checkpoint("k3s-is-ready")
-	}
 
 	log := evetest.Logger()
 	var targets []string
