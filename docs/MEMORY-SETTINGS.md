@@ -3,7 +3,7 @@
 ## TL;DR
 
 ```text
-set_global hv_dom0_mem_settings "dom0_mem=1G,max:2G"
+set_global hv_sys_mem_settings "sys_mem=1G,max:2G"
 ```
 
 sets the soft limit of the `/sys/fs/cgroup/memory/eve/` cgroup to 1G and the
@@ -118,9 +118,14 @@ arguments.
 
 The memory settings in EVE are set using kernel command line arguments:
 
-* dom0_mem
+* sys_mem
 * eve_mem
 * ctrd_mem
+
+`sys_mem` was called `dom0_mem` (and `sys_max_vcpus` `dom0_max_vcpus`,
+`hv_sys_*_settings` `hv_dom0_*_settings`) while EVE still shipped Xen. The old
+names are still honoured when found in `/config/grub.cfg`, but new overrides
+should use the current ones.
 
 #### Format of memory settings
 
@@ -132,7 +137,7 @@ All "<cmd_component_name>_mem" settings have the following format:
 
 where:
 
-* `<cmd_component_name>` is one of the following: `dom0`, `eve`, `ctrd`
+* `<cmd_component_name>` is one of the following: `sys`, `eve`, `ctrd`
 * `<soft_limit>` is the soft limit for the memory usage of the cgroup.
 * `<hard_limit>` is the hard limit for the memory usage of the cgroup.
 
@@ -150,12 +155,12 @@ and is misleading. The following table shows the mapping:
 
 | Component   | cgroup            | default soft limit | default hard limit |
 |-------------|-------------------|--------------------|--------------------|
-| `dom0`      | `eve`             | 640M               | 800M               |
+| `sys`       | `eve`             | 640M               | 800M               |
 | `ctrd`      | `eve/containerd/` | 320M               | 400M               |
 | `eve`       | `eve/services/`   | 520M               | 650M               |
 | `eve`       | `eve/services/*`  | 520M               | 650M               |
 
-That way, the `dom0_mem` setting sets the memory limits for the `eve` cgroup,
+That way, the `sys_mem` setting sets the memory limits for the `eve` cgroup,
 the `ctrd_mem` setting sets the memory limits for the `eve/containerd` cgroup,
 and the `eve_mem` setting sets the memory limits for the `eve/services` cgroup
 and all the sub-cgroups of the `eve/services` cgroup.
@@ -163,7 +168,7 @@ and all the sub-cgroups of the `eve/services` cgroup.
 For example, the following kernel command line arguments:
 
 ```text
-dom0_mem=1G,max:2G eve_mem=1000M,max:1200M ctrd_mem=700M,max:800M
+sys_mem=1G,max:2G eve_mem=1000M,max:1200M ctrd_mem=700M,max:800M
 ```
 
 will set the soft limit of the `/sys/fs/cgroup/eve/` cgroup to 1G and the hard
@@ -177,7 +182,7 @@ These settings can be changed using the `set_global` command in the
 GRUB override file.
 
 ```text
-set_global hv_dom0_mem_settings "dom0_mem=<value>,max:<value>"
+set_global hv_sys_mem_settings "sys_mem=<value>,max:<value>"
 set_global hv_eve_mem_settings "eve_mem=<value>,max:<value>"
 set_global hv_ctrd_mem_settings "ctrd_mem=<value>,max:<value>"
 ```
@@ -187,7 +192,7 @@ It can be done on the device by mounting the config partition and editing the
 
 ```bash
 eve config mount /mnt
-echo "set_global hv_dom0_mem_settings \"dom0_mem=1G,max:2G\"" >> /mnt/grub.cfg
+echo "set_global hv_sys_mem_settings \"sys_mem=1G,max:2G\"" >> /mnt/grub.cfg
 eve config unmount /mnt
 reboot
 ```
@@ -314,15 +319,15 @@ components in EVE OS. For each setting, we provide guidelines on when it makes
 sense to increase or decrease the values, as well as the potential impact of
 setting them too high or too low.
 
-### dom0_mem
+### sys_mem
 
-The `dom0_mem` setting controls the memory allocated to the EVE OS's system
+The `sys_mem` setting controls the memory allocated to the EVE OS's system
 services: the `eve` cgroup. This cgroup includes the `eve/services` cgroup and
 the `eve/containerd` cgroup.
 
-#### When to increase `dom0_mem`?
+#### When to increase `sys_mem`?
 
-Increase `dom0_mem` if you observe that the overall memory usage of the EVE
+Increase `sys_mem` if you observe that the overall memory usage of the EVE
 services and the containerd service is frequently reaching their memory limits.
 It can be identified by instances where the Out-Of-Memory (OOM) killer is fired
 with constraint `CONSTRAINT_MEMCG` and the `oom_memcg` value set `eve` cgroup:
@@ -333,7 +338,7 @@ oom-kill:constraint=CONSTRAINT_MEMCG,...,oom_memcg=/eve/,...
 
 Technically, it means that while not reaching the memory limits of any
 sub-cgroup, the overall memory usage of the `eve` cgroup is too high. It is a
-possible situation, as the default value of `dom0_mem` is set to 800M, while the
+possible situation, as the default value of `sys_mem` is set to 800M, while the
 default value of `eve_mem` is set to 650M and the default value of `ctrd_mem` is
 set to 400M. So the overall memory usage of the `eve` cgroup can be up to 1250M.
 
@@ -342,9 +347,9 @@ intensive EVE management operations, such as updating apps, reconfiguring
 settings, or downloading large blobs. If such operations are common, increasing
 these memory settings can prevent OOM situations.
 
-#### When to decrease `dom0_mem`?
+#### When to decrease `sys_mem`?
 
-Decrease `dom0_mem` limit if you find that user applications require more
+Decrease `sys_mem` limit if you find that user applications require more
 memory, and you suspect that the current memory limits for EVE services are
 unnecessarily high. Reducing the memory allocated to EVE services can free up
 resources for user applications, improving their performance and stability.
@@ -368,30 +373,30 @@ value set to one of the cgroups of the user applications:
 oom-kill:constraint=CONSTRAINT_NONE,...,oom_memcg=/eve-user-apps/<uuid>,...
 ```
 
-When decreasing `dom0_mem`, don't forget to decrease at least one or both of
+When decreasing `sys_mem`, don't forget to decrease at least one or both of
 `eve_mem` and `ctrd_mem` values as well, as the `eve` cgroup is a parent of
 and `eve/services` and `eve/containerd` cgroups.
 
-Also be sure not to decrease `dom0_mem` less than `eve_mem` or `ctrd_mem`, as
+Also be sure not to decrease `sys_mem` less than `eve_mem` or `ctrd_mem`, as
 it is not possible for the parent cgroup to have less memory than any of its
 children.
 
-#### Impact of setting `dom0_mem` too high
+#### Impact of setting `sys_mem` too high
 
-In the simplest case setting `dom0_mem` too high may lead to inefficient use of
+In the simplest case setting `sys_mem` too high may lead to inefficient use of
 system resources, where memory is reserved but not fully utilized. It takes
 memory away from the user applications, potentially preventing them from
 starting or causing them to frequently hit memory limits.
 
-See the section "When to decrease `dom0_mem`?" for more details.
+See the section "When to decrease `sys_mem`?" for more details.
 
-#### Impact of setting `dom0_mem` too low
+#### Impact of setting `sys_mem` too low
 
-Setting `dom0_mem` too low could cause the EVE services or containerd processes
+Setting `sys_mem` too low could cause the EVE services or containerd processes
 to frequently hit memory limits, triggering the OOM killer within the `eve`
 cgroup.
 
-See the section "When to increase `dom0_mem`?" for more details.
+See the section "When to increase `sys_mem`?" for more details.
 
 ### eve_mem
 
@@ -401,7 +406,7 @@ and all the sub-cgroups of the `eve/services` cgroup.
 
 #### When to increase `eve_mem`?
 
-Increase `eve_mem` (along with `dom0_mem`, as it is its parent) if you observe
+Increase `eve_mem` (along with `sys_mem`, as it is its parent) if you observe
 that the EVE services (under `eve/services/*` cgroup) are frequently reaching
 their memory limits. This can be identified by instances where the
 Out-Of-Memory (OOM) killer is fired with constraint `CONSTRAINT_MEMCG` and
@@ -434,21 +439,21 @@ cgroup:
 * watchdog
 * wwan
 
-Don't forget to increase `dom0_mem` value as well, as the `eve/services` cgroup
+Don't forget to increase `sys_mem` value as well, as the `eve/services` cgroup
 is a child of the `eve` cgroup.
 
 #### When to decrease `eve_mem`?
 
-Decrease `eve_mem` when you need to decrease the value of `dom0_mem`. See the
-section "When to decrease `dom0_mem`?" for more details.
+Decrease `eve_mem` when you need to decrease the value of `sys_mem`. See the
+section "When to decrease `sys_mem`?" for more details.
 
 #### Impact of setting `eve_mem` too high
 
 In the simplest case setting `eve_mem` too high leads to too high value of
-`dom0_mem` (the `eve` cgroup), which can lead to inefficient use of system
+`sys_mem` (the `eve` cgroup), which can lead to inefficient use of system
 resources, where memory is reserved and not available for user applications.
 
-See the section "Impact of setting `dom0_mem` too high" for more details.
+See the section "Impact of setting `sys_mem` too high" for more details.
 
 #### Impact of setting `eve_mem` too low
 
@@ -473,21 +478,21 @@ the `eve/containerd` cgroup:
 oom-kill:constraint=CONSTRAINT_MEMCG,...,oom_memcg=/eve/containerd,...
 ```
 
-Don't forget to increase `dom0_mem` value as well, as the `eve/containerd` cgroup
+Don't forget to increase `sys_mem` value as well, as the `eve/containerd` cgroup
 is a child of the `eve` cgroup.
 
 #### When to decrease `ctrd_mem`?
 
-Decrease `ctrd_mem` when you need to decrease the value of `dom0_mem`. See the
-section "When to decrease `dom0_mem`?" for more details.
+Decrease `ctrd_mem` when you need to decrease the value of `sys_mem`. See the
+section "When to decrease `sys_mem`?" for more details.
 
 #### Impact of setting `ctrd_mem` too high
 
 In the simplest case setting `ctrd_mem` too high leads to too high value of
-`dom0_mem` (the `eve` cgroup), which can lead to inefficient use of system
+`sys_mem` (the `eve` cgroup), which can lead to inefficient use of system
 resources, where memory is reserved and not available for user applications.
 
-See the section "Impact of setting `dom0_mem` too high" for more details.
+See the section "Impact of setting `sys_mem` too high" for more details.
 
 #### Impact of setting `ctrd_mem` too low
 
@@ -520,7 +525,7 @@ limits on the host.
 
 Decrease the VMM overhead if you need to free up memory for the EVE services,
 for example, if you need to give more memory to the EVE services. See the
-sections "When to increase `dom0_mem`?", "When to increase `eve_mem`?", and
+sections "When to increase `sys_mem`?", "When to increase `eve_mem`?", and
 "When to increase `ctrd_mem`?" for more details.
 
 Also, decreasing the VMM overhead can be useful if you want to try to run more

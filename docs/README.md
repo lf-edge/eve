@@ -365,13 +365,13 @@ Parent cgroup (/sys/fs/cgroup/<subsystems>/)
 ```
 
 Memory and CPU limits of `eve`, `eve/services` and `eve/containerd` cgroups can be changed via
-`hv_dom0_*`, `hv_eve_*` and `hv_ctrd_*` respectively in `/config/grub.cfg`.
+`hv_sys_*`, `hv_eve_*` and `hv_ctrd_*` respectively in `/config/grub.cfg`.
 
 Example:
 
 ```text
-set_global hv_dom0_mem_settings "dom0_mem=640M,max:800M"
-set_global hv_dom0_cpu_settings "dom0_max_vcpus=1 dom0_vcpus_pin"
+set_global hv_sys_mem_settings "sys_mem=640M,max:800M"
+set_global hv_sys_cpu_settings "sys_max_vcpus=1"
 set_global hv_eve_mem_settings "eve_mem=520M,max:650M"
 set_global hv_eve_cpu_settings "eve_max_vcpus=1"
 set_global hv_ctrd_mem_settings "ctrd_mem=320M,max:400M"

@@ -431,7 +431,7 @@ FORCE_BUILD=
 # Packages to always rebuild rather than pull/skip (applied by the eve-%
 # rule below). Keyed by name, not a target-specific FORCE_BUILD variable:
 # those propagate to the whole prerequisite subtree in GNU Make, which
-# force-rebuilt their dependencies too (e.g. pkg/xen-tools via pkg/external-boot-image).
+# force-rebuilt their dependencies too (e.g. pkg/pillar via pkg/external-boot-image).
 FORCE_BUILD_PKGS=external-boot-image kube
 
 # ROOTFS_DEPS enforces the scan of all rootfs image dependencies
@@ -504,7 +504,7 @@ endif
 # 4KB page reads and decompresses the whole block.
 ROOTFS_SQUASHFS_BLOCK_SIZE=
 ifeq ($(ZARCH),amd64)
-    ifneq (,$(filter $(HV),kvm xen))
+    ifeq ($(HV),kvm)
         ROOTFS_SQUASHFS_BLOCK_SIZE=1048576
     endif
 endif
@@ -1050,14 +1050,14 @@ pkgs: $(LINUXKIT) $(PKGS) $(LK_POSSIBLE_BUILD_ARG_TARGETS)
 pkg/kernel:
 	$(QUIET): $@: No-op pkg/kernel
 
-# external-boot-image's runtime contents (runx-initrd from XENTOOLS_TAG, kernel
+# external-boot-image's runtime contents (runx-initrd from PILLAR_TAG, kernel
 # from KERNEL_TAG) are baked in at build time via Dockerfile.in placeholder
 # substitution. `linuxkit pkg show-tag` only hashes git-tracked files under
 # pkg/external-boot-image/ — Dockerfile.in and build.yml — neither of which
-# changes when xen-tools or the kernel does. So the package tag is git-stable
+# changes when pillar or the kernel does. So the package tag is git-stable
 # but runtime-content-variable; without --force, linuxkit's "skip if tag is
 # already in cache/registry" behavior serves a stale runx-initrd whenever
-# xen-tools changes (e.g. an init-initrd edit produces a new xen-tools tag but
+# pillar changes (e.g. an init-initrd edit produces a new pillar tag but
 # the same external-boot-image tag, so the cached external-boot-image wins).
 # Forced via FORCE_BUILD_PKGS above, applied by the eve-% rule below.
 

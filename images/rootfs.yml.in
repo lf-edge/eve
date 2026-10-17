@@ -15,7 +15,6 @@ init:
   - GPTTOOLS_TAG
   - KEXEC_TAG
   - UDEV_TAG
-  - XENTOOLS_TAG
 onboot:
   - name: rngd
     image: RNGD_TAG

@@ -11,7 +11,7 @@ ARG BUILD_PKGS_BASE="git gcc linux-headers libc-dev make linux-pam-dev m4 findut
 ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d
 
 FROM lfedge/eve-uefi:69dbd346e47296abc02b605cc54b3f6e4fba4e98 AS uefi-build
-FROM lfedge/eve-dom0-ztools:71b99842c0fe6395bfbcfaab079262586ec6b6ab  AS zfs
+FROM lfedge/eve-dom0-ztools:6e86362e897de77bf901593e4c1b41a8855ecca1  AS zfs
 RUN mkdir /out
 # copy zfs-related files from dom0-ztools using prepared list of files
 RUN while read -r x; do \
@@ -21,6 +21,25 @@ RUN while read -r x; do \
           cp -P "$x" "/out/$x"; \
         fi \
     done < /etc/zfs-files
+
+# runx-initrd: the initrd of the VMs that container apps run in. pillar boots
+# them with the host kernel and this initrd, which mounts the app's rootfs and
+# starts the app from the files containerd/oci.go leaves under /mnt.
+# hadolint ignore=DL3006
+FROM ${EVE_ALPINE_IMAGE} AS initrd-build
+ENV BUILD_PKGS="mkinitfs gcc musl-dev e2fsprogs chrony agetty"
+RUN eve-alpine-deploy.sh
+RUN rm -f /sbin/poweroff /etc/mkinitfs/features.d/base.files
+COPY initrd/base.files /etc/mkinitfs/features.d/base.files
+COPY initrd/init-initrd initrd/mount_disk.sh initrd/udhcpc_script.sh /
+COPY initrd/poweroff /sbin/poweroff
+COPY initrd/chroot2.c initrd/hacf.c /tmp/
+COPY initrd/00000080 /etc/acpi/PWRF/
+COPY initrd/eve-enter-container /bin/
+COPY initrd/dotprofile /root/.profile
+RUN gcc -s -o /chroot2 /tmp/chroot2.c -Wall -Werror
+RUN gcc -s -o /hacf /tmp/hacf.c -Wall -Werror
+RUN mkinitfs -n -F base -i /init-initrd -o /runx-initrd
 
 # hadolint ignore=DL3006
 FROM ${EVE_ALPINE_IMAGE} AS build-native
@@ -182,6 +201,8 @@ WORKDIR /
 
 RUN mkdir -p /out/usr/share/ovmf
 COPY --from=uefi-build /OVMF_VARS.fd /out/usr/share/ovmf/OVMF_VARS.fd
+# QEMU loads it through /hostfs, see RunxInitrd in cmd/zedmanager.
+COPY --from=initrd-build /runx-initrd /out/boot/runx-initrd
 
 COPY --from=zfs /out /out
 COPY --from=fscrypt /opt/zededa/bin /out/opt/zededa/bin

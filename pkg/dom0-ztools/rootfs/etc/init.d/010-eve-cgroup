@@ -19,9 +19,19 @@ case $hv in
        ;;
 esac
 
-dom0_cgroup_memory_soft_limit=$(</proc/cmdline grep -o '\bdom0_mem=[^, ]*' | cut -d = -f 2)
-dom0_cgroup_memory_limit=$(</proc/cmdline grep -o "\bdom0_mem=[^,]*,max:[^ ]*" | cut -d : -f 2)
-dom0_cgroup_cpus_limit=$(</proc/cmdline grep -o '\bdom0_max_vcpus=[^ ]*' | cut -d = -f 2)
+sys_cgroup_memory_soft_limit=$(</proc/cmdline grep -o '\bsys_mem=[^, ]*' | cut -d = -f 2)
+sys_cgroup_memory_limit=$(</proc/cmdline grep -o "\bsys_mem=[^, ]*,max:[^ ]*" | cut -d : -f 2)
+sys_cgroup_cpus_limit=$(</proc/cmdline grep -o '\bsys_max_vcpus=[^ ]*' | cut -d = -f 2)
+
+# dom0_mem and dom0_max_vcpus are the Xen-era names of the same settings; a
+# /config/grub.cfg override from before the rename still emits them.
+if [ -z "${sys_cgroup_memory_soft_limit}" ]; then
+    sys_cgroup_memory_soft_limit=$(</proc/cmdline grep -o '\bdom0_mem=[^, ]*' | cut -d = -f 2)
+    sys_cgroup_memory_limit=$(</proc/cmdline grep -o "\bdom0_mem=[^, ]*,max:[^ ]*" | cut -d : -f 2)
+fi
+if [ -z "${sys_cgroup_cpus_limit}" ]; then
+    sys_cgroup_cpus_limit=$(</proc/cmdline grep -o '\bdom0_max_vcpus=[^ ]*' | cut -d = -f 2)
+fi
 
 eve_cgroup_memory_soft_limit=$(</proc/cmdline grep -o '\beve_mem=[^, ]*' | cut -d = -f 2)
 eve_cgroup_memory_limit=$(</proc/cmdline grep -o "\beve_mem=[^,]*,max:[^ ]*" | cut -d : -f 2)
@@ -31,19 +41,19 @@ ctrd_cgroup_memory_soft_limit=$(</proc/cmdline grep -o '\bctrd_mem=[^, ]*' | cut
 ctrd_cgroup_memory_limit=$(</proc/cmdline grep -o "\bctrd_mem=[^,]*,max:[^ ]*" | cut -d : -f 2)
 ctrd_cgroup_cpus_limit=$(</proc/cmdline grep -o '\bctrd_max_vcpus=[^ ]*' | cut -d = -f 2)
 
-if [ -z "${dom0_cgroup_memory_soft_limit}" ]; then
-    echo "Setting default value of $default_cgroup_memory_limit for dom0_cgroup_memory_soft_limit"
-    dom0_cgroup_memory_soft_limit=$default_cgroup_memory_limit
+if [ -z "${sys_cgroup_memory_soft_limit}" ]; then
+    echo "Setting default value of $default_cgroup_memory_limit for sys_cgroup_memory_soft_limit"
+    sys_cgroup_memory_soft_limit=$default_cgroup_memory_limit
 fi
 
-if [ -z "${dom0_cgroup_memory_limit}" ]; then
-    echo "Setting value of $dom0_cgroup_memory_soft_limit for dom0_cgroup_memory_limit"
-    dom0_cgroup_memory_limit=$dom0_cgroup_memory_soft_limit
+if [ -z "${sys_cgroup_memory_limit}" ]; then
+    echo "Setting value of $sys_cgroup_memory_soft_limit for sys_cgroup_memory_limit"
+    sys_cgroup_memory_limit=$sys_cgroup_memory_soft_limit
 fi
 
-if [ -z "${dom0_cgroup_cpus_limit}" ] || [ "${dom0_cgroup_cpus_limit}" = "0" ]; then
-    echo "Setting default value of $default_cgroup_cpus_limit for dom0_cgroup_cpus_limit"
-    dom0_cgroup_cpus_limit=$default_cgroup_cpus_limit
+if [ -z "${sys_cgroup_cpus_limit}" ] || [ "${sys_cgroup_cpus_limit}" = "0" ]; then
+    echo "Setting default value of $default_cgroup_cpus_limit for sys_cgroup_cpus_limit"
+    sys_cgroup_cpus_limit=$default_cgroup_cpus_limit
 fi
 
 if [ -z "${eve_cgroup_memory_soft_limit}" ]; then
@@ -78,7 +88,7 @@ fi
 
 CGROUPS="cpuset cpu cpuacct blkio memory devices freezer net_cls perf_event net_prio hugetlb pids systemd "
 
-#Creating eve cgroup which will be parent/dom0 cgroup
+#Creating eve cgroup which will be the parent of all EVE cgroups
 for cg in $CGROUPS; do
     mkdir -p /sys/fs/cgroup/"${cg}"/eve
 done
@@ -98,21 +108,21 @@ if [ -z "${existingCPULimit}" ]; then
     existingCPULimit=$(cat /sys/fs/cgroup/cpuset/cpuset.cpus)
 fi
 
-/bin/echo $dom0_cgroup_memory_limit > /sys/fs/cgroup/memory/eve/memory.limit_in_bytes
+/bin/echo $sys_cgroup_memory_limit > /sys/fs/cgroup/memory/eve/memory.limit_in_bytes
 # cpuset.mems holds memory node numbers, not CPUs: every cpuset below copies
 # its parent's list. A child whose parent's block was skipped gets an empty
 # list (containerd's check below then removes its cpuset).
 #Value that we are trying to update should not be greater than the existing value in cgroup system.
-if [ -n "${existingCPULimit}" ] && [ "$existingCPULimit" -ge "$dom0_cgroup_cpus_limit" ]; then
-    /bin/echo "0-$((dom0_cgroup_cpus_limit-1))" > /sys/fs/cgroup/cpuset/eve/cpuset.cpus
+if [ -n "${existingCPULimit}" ] && [ "$existingCPULimit" -ge "$sys_cgroup_cpus_limit" ]; then
+    /bin/echo "0-$((sys_cgroup_cpus_limit-1))" > /sys/fs/cgroup/cpuset/eve/cpuset.cpus
     cat /sys/fs/cgroup/cpuset/cpuset.mems > /sys/fs/cgroup/cpuset/eve/cpuset.mems
 fi
 
 # Both containerd daemons and their shims join every controller in which
 # /eve/containerd exists, and containerd does not start if that fails. So the
 # cpuset is kept only with valid CPUs and memory nodes, within /eve's CPUs.
-if [ "$ctrd_cgroup_cpus_limit" -gt "$dom0_cgroup_cpus_limit" ]; then
-    ctrd_cgroup_cpus_limit=$dom0_cgroup_cpus_limit
+if [ "$ctrd_cgroup_cpus_limit" -gt "$sys_cgroup_cpus_limit" ]; then
+    ctrd_cgroup_cpus_limit=$sys_cgroup_cpus_limit
 fi
 ctrd_cpuset=/sys/fs/cgroup/cpuset/eve/containerd
 mkdir -p "$ctrd_cpuset"
@@ -141,7 +151,7 @@ done
 
 # Set memory soft limits if supported (not available on RT kernels where
 # writes to memory.soft_limit_in_bytes return -EOPNOTSUPP)
-if /bin/echo $dom0_cgroup_memory_soft_limit > /sys/fs/cgroup/memory/eve/memory.soft_limit_in_bytes 2>/dev/null; then
+if /bin/echo $sys_cgroup_memory_soft_limit > /sys/fs/cgroup/memory/eve/memory.soft_limit_in_bytes 2>/dev/null; then
     /bin/echo $ctrd_cgroup_memory_soft_limit > /sys/fs/cgroup/memory/eve/containerd/memory.soft_limit_in_bytes
     /bin/echo $eve_cgroup_memory_soft_limit > /sys/fs/cgroup/memory/eve/services/memory.soft_limit_in_bytes
     for srv in $EVESERVICES; do
