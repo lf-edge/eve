@@ -25,6 +25,33 @@ func TestContentTreeStatusIsContainer(t *testing.T) {
 	assert.False(t, s.IsContainer())
 }
 
+// ContentTreeStatus.AllDatastoresAreOCIRegistry
+
+func TestContentTreeStatusAllDatastoresAreOCIRegistry(t *testing.T) {
+	oci := zconfig.DsType_DsContainerRegistry.String()
+	other := zconfig.DsType_DsHttp.String()
+
+	// No datastores resolved yet: vacuously true.
+	s := ContentTreeStatus{}
+	assert.True(t, s.AllDatastoresAreOCIRegistry())
+
+	// Single OCI registry.
+	s.DatastoreTypesList = []string{oci}
+	assert.True(t, s.AllDatastoresAreOCIRegistry())
+
+	// Multiple OCI registries (OCI + OCI fallbacks) is allowed.
+	s.DatastoreTypesList = []string{oci, oci}
+	assert.True(t, s.AllDatastoresAreOCIRegistry())
+
+	// Mixing OCI and non-OCI datastores is not allowed.
+	s.DatastoreTypesList = []string{oci, other}
+	assert.False(t, s.AllDatastoresAreOCIRegistry())
+
+	// Only non-OCI datastores.
+	s.DatastoreTypesList = []string{other, other}
+	assert.False(t, s.AllDatastoresAreOCIRegistry())
+}
+
 // ContentTreeStatus.ReferenceID
 
 func TestContentTreeStatusReferenceID(t *testing.T) {
