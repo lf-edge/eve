@@ -172,19 +172,187 @@ func GetSoftSerial(log *base.LogObject) string {
 	return strings.TrimSuffix(getOverride(log, softSerialFile), "\n")
 }
 
-func GetProductSerial(log *base.LogObject) string {
-	serial, err := base.Exec(log, "dmidecode", "-s", "system-serial-number").Output()
+// dmiPlaceholders holds values firmware reports for a field it never
+// programmed. They appear as literal filler ("To be filled by O.E.M."), as an
+// echo of the field's own name ("System Serial Number"), or as a counting
+// pattern ("0123456789"). Every unit of an affected model reports the same
+// string, so accepting one as a serial number makes distinct devices
+// indistinguishable to a controller. Keys are lower-case; lookups trim and
+// fold case first.
+//
+// The set is the union of the placeholder lists these projects apply to
+// serial-number and asset-tag fields. Paths and symbol names rather than line
+// numbers, so the references survive upstream edits:
+//
+//	glpi-project/glpi			src/Blacklist.php (getDefaults)
+//	saltstack/salt				salt/grains/core.py (_clean_value)
+//	saltstack/salt				salt/modules/smbios.py (_dmi_isclean)
+//	lpereira/hardinfo			hardinfo/dmi_util.c (ignore_placeholder_strings)
+//	reactos/reactos				dll/cpl/sysdm/smbios.c (IsGenericSystemName)
+//	memtest86plus/memtest86plus		system/smbios.c (dmi_string_is_junk)
+//	osquery/osquery				osquery/core/system.cpp (kPlaceholderHardwareUUIDList)
+//	freebsd/freebsd-src			libexec/rc/rc.d/hostid (valid_hostid)
+//	linuxhw/hw-probe			hw-probe.pl (emptyVal)
+//	openshift/assisted-installer-agent	src/scanners/machine_uuid_scanner.go
+//	sergelogvinov/proxmox-csi-plugin	pkg/utils/node/smbios.go
+//
+// "Not Present" and "Not Settable" are dmidecode's own renderings of an all-FF
+// and an all-zero field respectively (mirror/dmidecode dmidecode.c), so they
+// reach a caller as literal text.
+var dmiPlaceholders = map[string]bool{
+	"default":                  true,
+	"default string":           true,
+	"system serial number":     true,
+	"chassis serial number":    true,
+	"base board serial number": true,
+	"systemserialnumb":         true,
+	"oem_serial":               true,
+	"not specified":            true,
+	"not available":            true,
+	"not applicable":           true,
+	"not defined":              true,
+	"not present":              true,
+	"not settable":             true,
+	"none":                     true,
+	"(none)":                   true,
+	"n/a":                      true,
+	"na":                       true,
+	"null":                     true,
+	"(null string)":            true,
+	"no string":                true,
+	"empty":                    true,
+	"unknown":                  true,
+	"unknow":                   true,
+	"uknown":                   true,
+	"undefined":                true,
+	"invalid":                  true,
+	"inva":                     true,
+	"out of spec":              true,
+	"reserved":                 true,
+	"eval":                     true,
+	"0123456789":               true,
+	"123456789":                true,
+	"1234567890":               true,
+	"sys-1234567890":           true,
+	"mb-1234567890":            true,
+	"asset-1234567890":         true,
+	"sn-12345":                 true,
+	"nnnnnnn":                  true,
+}
+
+// isRepeatedRune reports whether s is one rune repeated, such as "0000000000"
+// or "xxxx". The empty string is not repetition, and reporting false for it
+// keeps the first-rune access below in range for every input.
+func isRepeatedRune(s string) bool {
+	if s == "" {
+		return false
+	}
+	runes := []rune(s)
+	for _, r := range runes[1:] {
+		if r != runes[0] {
+			return false
+		}
+	}
+	return true
+}
+
+// isDMIPlaceholder reports whether s carries no device-specific information:
+// an empty string, a known placeholder, an unprogrammed-field marker beginning
+// "to be filled", or a single repeated rune. dmidecode itself prints
+// "Not Present" and "Not Settable" for an all-FF and all-zero SMBIOS UUID, and
+// those spellings reach this path too.
+func isDMIPlaceholder(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return true
+	}
+	lower := strings.ToLower(s)
+	if dmiPlaceholders[lower] || strings.HasPrefix(lower, "to be filled") {
+		return true
+	}
+	return isRepeatedRune(s)
+}
+
+// serialSource names one origin of a device serial number and reads it.
+type serialSource struct {
+	name string
+	read func(*base.LogObject) string
+}
+
+// dmidecodeString returns the value dmidecode reports for keyword, or "" when
+// dmidecode fails or the platform has no SMBIOS.
+func dmidecodeString(log *base.LogObject, keyword string) string {
+	out, err := base.Exec(log, "dmidecode", "-s", keyword).Output()
 	if err != nil {
-		log.Errorf("GetProductSerial system-serial-number failed %s\n",
-			err)
-		serial = []byte{}
+		log.Errorf("GetProductSerial %s failed %s\n", keyword, err)
+		return ""
 	}
-	strserial := strings.TrimSuffix(string(serial), "\n")
-	if strserial != "" && strserial != "Not Specified" {
-		return strserial
-	} else {
-		return getCPUSerial(log)
+	return string(out)
+}
+
+// productSerialSources are consulted in order. The SMBIOS system serial comes
+// first because it is the value a vendor prints on the chassis label and quotes
+// on an invoice, so it is the one an operator can pre-register. The baseboard
+// serial follows: a board sold to an integrator often carries the only
+// programmed serial on the unit, and some vendors write the label value there
+// rather than into the system field. The CPU or SoC serial is last, being the
+// only source on ARM platforms and normally absent on x86.
+var productSerialSources = []serialSource{
+	{
+		name: "system-serial-number",
+		read: func(log *base.LogObject) string {
+			return dmidecodeString(log, "system-serial-number")
+		},
+	},
+	{
+		name: "baseboard-serial-number",
+		read: func(log *base.LogObject) string {
+			return dmidecodeString(log, "baseboard-serial-number")
+		},
+	},
+	{
+		name: "cpu-serial",
+		read: getCPUSerial,
+	},
+}
+
+// firstUsableSerial returns the first source value that is not a placeholder,
+// together with the name of the source it came from, and logs which source was
+// used so an operator can tell where a reported serial originated. Both results
+// are "" when no source carries a device-specific value.
+func firstUsableSerial(log *base.LogObject, sources []serialSource) (serial, source string) {
+	for i, src := range sources {
+		value := strings.TrimSpace(src.read(log))
+		if isDMIPlaceholder(value) {
+			if value != "" {
+				log.Warnf("GetProductSerial: ignoring placeholder %s %q\n",
+					src.name, value)
+			}
+			continue
+		}
+		if i == 0 {
+			log.Functionf("GetProductSerial: using %s\n", src.name)
+		} else {
+			log.Noticef("GetProductSerial: falling back to %s\n", src.name)
+		}
+		return value, src.name
 	}
+	log.Warnf("GetProductSerial: no source carries a device-specific serial\n")
+	return "", ""
+}
+
+// GetProductSerial returns the device's hardware serial number, taking the
+// first of the SMBIOS system serial, the SMBIOS baseboard serial and the
+// CPU/SoC serial that is not a firmware placeholder. The result is "" when none
+// of them carries a device-specific value; a caller must treat "" as "unknown"
+// and never as an identifier.
+//
+// Because the baseboard serial is not disclosed to a purchaser by any vendor,
+// a value sourced from it can identify a device to a controller but cannot be
+// pre-registered from the paperwork. The source is logged for that reason.
+func GetProductSerial(log *base.LogObject) string {
+	serial, _ := firstUsableSerial(log, productSerialSources)
+	return serial
 }
 
 // Returns productManufacturer, productName, productVersion, productSerial, productUuid
