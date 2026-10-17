@@ -54,64 +54,6 @@ func (th *TestHarness) runScriptOnEVEOverSSH(ctx context.Context, devName string
 		stdout, stderr, stdoutWatchdogTimeout)
 }
 
-// dialViaSSH opens an SSH connection to the given EVE device and tunnels a
-// TCP connection to remoteAddr through it (an SSH direct-tcpip channel), as
-// if network is dialed from the device itself. Useful for reaching services
-// that only listen on the device's own loopback interface, e.g. the Kubevirt
-// VNC proxy (see pkg/pillar/docs/vnc-workflows.md).
-//
-// The returned net.Conn owns the underlying SSH client: closing it also
-// closes the SSH connection.
-func (th *TestHarness) dialViaSSH(ctx context.Context, devName string,
-	network, remoteAddr string) (net.Conn, error) {
-
-	eveIP, err := th.getReachableEVEAddr(ctx, devName, 22, "")
-	if err != nil {
-		return nil, err
-	}
-
-	keyPEM, err := os.ReadFile("/root/.ssh/eve_rsa")
-	if err != nil {
-		return nil, fmt.Errorf("failed to read EVE SSH key: %w", err)
-	}
-	signer, err := ssh.ParsePrivateKey(keyPEM)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse client key: %w", err)
-	}
-
-	addr := net.JoinHostPort(eveIP, "22")
-	sshConfig := &ssh.ClientConfig{
-		User:            "root",
-		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		Timeout:         5 * time.Second,
-	}
-	client, err := ssh.Dial("tcp", addr, sshConfig)
-	if err != nil {
-		return nil, fmt.Errorf("SSH dial to %s failed: %w", addr, err)
-	}
-
-	conn, err := client.Dial(network, remoteAddr)
-	if err != nil {
-		_ = client.Close()
-		return nil, fmt.Errorf("SSH tunnel dial to %s failed: %w", remoteAddr, err)
-	}
-	return &sshTunnelConn{Conn: conn, client: client}, nil
-}
-
-// sshTunnelConn wraps an SSH-tunneled net.Conn so that closing it also closes
-// the underlying SSH client connection that carries it.
-type sshTunnelConn struct {
-	net.Conn
-	client *ssh.Client
-}
-
-func (c *sshTunnelConn) Close() error {
-	err := c.Conn.Close()
-	_ = c.client.Close()
-	return err
-}
-
 // runScriptOverSSH executes a shell script on a remote host over SSH
 // using the Go crypto/ssh client library. It supports username/password and
 // client-certificate authentication methods (see AuthMethod).
@@ -206,28 +148,72 @@ func (th *TestHarness) scpFromEVE(ctx context.Context,
 		return err
 	}
 
-	scpArgs := append([]string{}, utils.EveSSHCommonArgs...)
+	return runSCP(ctx, func(legacy bool) []string {
+		args := scpBaseArgs(recursive, legacy)
+		return append(args, "root@"+scpHost(eveIP)+":"+scpRemotePath(remotePath, legacy),
+			localPath)
+	})
+}
+
+// scpBaseArgs returns the options common to all scp invocations against EVE.
+func scpBaseArgs(recursive, legacy bool) []string {
+	args := append([]string{}, utils.EveSSHCommonArgs...)
 	if recursive {
-		scpArgs = append(scpArgs, "-r")
+		args = append(args, "-r")
 	}
-	// Pass the remote path verbatim: scp speaks SFTP (the OpenSSH 9.x default,
-	// and no -O here selects the legacy protocol), so no remote shell splits
-	// it and quoting it would make the quotes part of the file name. Spaces
-	// are safe because this is a single argv element -- exec runs scp
-	// directly, with no local shell.
-	scpArgs = append(scpArgs,
-		"-i", "/root/.ssh/eve_rsa",
-		"root@"+scpHost(eveIP)+":"+remotePath,
-		localPath,
-	)
-	cmd := exec.CommandContext(ctx, "scp", scpArgs...)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		if msg := strings.TrimSpace(stderr.String()); msg != "" {
-			return fmt.Errorf("%w: %s", err, msg)
+	if legacy {
+		args = append(args, "-O")
+	}
+	return append(args, "-i", "/root/.ssh/eve_rsa")
+}
+
+// scpRemotePath formats a remote path for scp. Over SFTP the path is passed
+// verbatim (no remote shell splits it, so escaping would become part of the
+// file name). The legacy protocol (-O) hands it to the remote shell, so shell
+// metacharacters have to be escaped. Backslashes are used rather than quotes:
+// the scp client matches the file names sent back by the remote scp against
+// the last path component of the request as a glob pattern, which honours
+// backslash escapes but would see surrounding quotes as part of the name
+// ("filename does not match request").
+func scpRemotePath(remotePath string, legacy bool) string {
+	if !legacy {
+		return remotePath
+	}
+	var b strings.Builder
+	for _, r := range remotePath {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' ||
+			strings.ContainsRune("/._-,:@%+=#", r)) {
+			b.WriteByte('\\')
 		}
-		return err
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// runSCP runs scp over SFTP (the OpenSSH 9.x default) and, if that fails,
+// retries once with the legacy SCP protocol (-O). EVE 16.0-stable ships an
+// sshd whose "Subsystem sftp" path does not exist, so SFTP never works there
+// ("scp: Connection closed"), while the legacy protocol only needs the scp
+// binary on the device.
+func runSCP(ctx context.Context, buildArgs func(legacy bool) []string) error {
+	run := func(legacy bool) error {
+		cmd := exec.CommandContext(ctx, "scp", buildArgs(legacy)...)
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			if msg := strings.TrimSpace(stderr.String()); msg != "" {
+				return fmt.Errorf("%w: %s", err, msg)
+			}
+			return err
+		}
+		return nil
+	}
+	sftpErr := run(false)
+	if sftpErr == nil || ctx.Err() != nil {
+		return sftpErr
+	}
+	if err := run(true); err != nil {
+		return fmt.Errorf("%w (SFTP attempt: %v)", err, sftpErr)
 	}
 	return nil
 }
@@ -252,25 +238,11 @@ func (th *TestHarness) scpToEVE(ctx context.Context,
 		return err
 	}
 
-	scpArgs := append([]string{}, utils.EveSSHCommonArgs...)
-	if recursive {
-		scpArgs = append(scpArgs, "-r")
-	}
-	scpArgs = append(scpArgs,
-		"-i", "/root/.ssh/eve_rsa",
-		localPath,
-		"root@"+scpHost(eveIP)+":"+remotePath,
-	)
-	cmd := exec.CommandContext(ctx, "scp", scpArgs...)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		if msg := strings.TrimSpace(stderr.String()); msg != "" {
-			return fmt.Errorf("%w: %s", err, msg)
-		}
-		return err
-	}
-	return nil
+	return runSCP(ctx, func(legacy bool) []string {
+		args := scpBaseArgs(recursive, legacy)
+		return append(args, localPath,
+			"root@"+scpHost(eveIP)+":"+scpRemotePath(remotePath, legacy))
+	})
 }
 
 // getReachableEVEAddr finds a reachable IP for the given device at the specified

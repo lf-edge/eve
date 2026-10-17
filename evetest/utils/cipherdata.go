@@ -114,7 +114,7 @@ func DecryptBlock(cipher *evecommon.CipherBlock,
 //
 // This deliberately takes the block rather than its owner: not every cipher
 // block in the EVE API lives in a field named CipherData (the SCEP challenge
-// password and the cluster join token do not), so an owner-based interface would
+// password does not), so an owner-based interface would
 // silently exclude them.
 func ReEncryptCipherBlock(cipherData *evecommon.CipherBlock,
 	oldCfg, newCfg *CryptoConfig, cipherCtx *evecommon.CipherContext) error {

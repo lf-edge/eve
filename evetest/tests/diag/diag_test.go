@@ -53,8 +53,8 @@ var (
 // Why this matters
 // ----------------
 // diag is EVE's only operator-facing summary of device health: connectivity to
-// the controller, attestation and vault state, application status and the
-// readiness of cluster storage. None of it is reported through the EVE API, so
+// the controller, attestation and vault state, application status and
+// storage readiness. None of it is reported through the EVE API, so
 // nothing else in the test suites would notice diag going silent, losing a
 // section, or filling with errors on an otherwise healthy device.
 //
@@ -89,14 +89,12 @@ var (
 //     and connected, the port count, the management port up, and the
 //     deployed application listed as running.
 //  3. Cross-check the storage state diag reports against volumemgr's own
-//     VolumeMgrStatus publication: on a non-EVE-k node storage is usable from
-//     the start, so the status must say so and diag must not print the
-//     cluster-storage warning.
+//     VolumeMgrStatus publication: storage is usable from the start, so the
+//     status must say so.
 //
 // Parameters
 // ----------
-//   - HYPERVISOR: kvm or xen. Kubevirt is skipped -- it is reserved for the
-//     cluster tests, and this test deploys an application.
+//   - HYPERVISOR: kvm or xen.
 func TestDiagOutput(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
@@ -106,10 +104,6 @@ func TestDiagOutput(test *testing.T) {
 		evetest.HypervisorParameter(),
 	)
 	hypervisor := evetest.GetHypervisorParameterValue()
-	if hypervisor == evetest.HypervisorKubevirt {
-		evetestT.Skipf("HYPERVISOR %s is reserved for the cluster tests",
-			hypervisor)
-	}
 
 	devName := "edge-dev"
 	evetest.Setup(
@@ -258,6 +252,5 @@ func TestDiagOutput(test *testing.T) {
 	}, timeout, polling).Should(Succeed())
 
 	t.Expect(volumeMgrStatus.Initialized).To(BeTrue(),
-		"storage is usable from the start on a node without cluster storage")
-	t.Expect(summary).ToNot(ContainSubstring("cluster storage not ready"))
+		"storage is usable from the start")
 }

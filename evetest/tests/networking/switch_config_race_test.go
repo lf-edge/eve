@@ -235,9 +235,6 @@ func TestSwitchNIPortConfigRace(test *testing.T) {
 	})
 
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 	evetest.Checkpoint("port-config-applied")
 
 	// multiswitch-ni: Switch NI spanning ethernet1 + ethernet2. STP is

@@ -219,9 +219,6 @@ func TestDNSFunctionality(test *testing.T) {
 	})
 
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 	evetest.Checkpoint("config-applied")
 
 	// ------------------------------------------------------------------

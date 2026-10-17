@@ -12,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	eveflowlog "github.com/lf-edge/eve-api/go/flowlog"
@@ -45,21 +44,6 @@ type metricMsgGrpcIterator[T any] struct {
 	stream grpc.ServerStreamingServer[T]
 	// mapper extracts a response from a metrics message; returns nil to skip.
 	mapper func(*evemetrics.ZMetricMsg) (*T, error)
-}
-
-// syncStream wraps a gRPC server stream with a mutex so that Send can be
-// called concurrently from multiple goroutines. It embeds the underlying
-// stream to satisfy the full grpc.ServerStreamingServer interface.
-type syncStream[T any] struct {
-	grpc.ServerStream
-	stream grpc.ServerStreamingServer[T]
-	mu     sync.Mutex
-}
-
-func (s *syncStream[T]) Send(msg *T) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.stream.Send(msg)
 }
 
 func (w *metricMsgGrpcIterator[T]) Iterate(msg *evemetrics.ZMetricMsg) (bool, error) {
@@ -519,146 +503,6 @@ func (th *TestHarness) GetNIMetrics(
 	}
 	return th.adamClient.IterateDeviceMetrics(
 		stream.Context(), devUUID, iterator, req.GetFollow())
-}
-
-// GetClusterInfo streams summary information for the entire Kubernetes cluster
-// from all devices.
-func (th *TestHarness) GetClusterInfo(
-	req *api.ClusterRequest, stream api.Evetest_GetClusterInfoServer) error {
-	if err := th.errIfAdamNotReady(); err != nil {
-		return err
-	}
-	devices := th.getOnboardedDevices()
-	if len(devices) == 0 {
-		return fmt.Errorf("no device is onboarded")
-	}
-	matcher := func(msg *eveinfo.ZInfoMsg) bool {
-		return msg.GetZtype() == eveinfo.ZInfoTypes_ZiKubeCluster &&
-			msg.GetClusterInfo() != nil
-	}
-	safeStream := &syncStream[api.ClusterInfoResponse]{stream: stream}
-	ctx, cancel := context.WithCancel(stream.Context())
-	defer cancel()
-	errCh := make(chan error, len(devices))
-	for devName, devUUID := range devices {
-		go func(devName string, devUUID uuid.UUID) {
-			iterator := &infoMsgGrpcIterator[api.ClusterInfoResponse]{
-				stream: safeStream,
-				mapper: func(msg *eveinfo.ZInfoMsg) (*api.ClusterInfoResponse, error) {
-					return &api.ClusterInfoResponse{
-						ClusterInfo: msg.GetClusterInfo(),
-						FromNode:    devName,
-					}, nil
-				},
-			}
-			errCh <- th.adamClient.IterateDeviceInfoMsgs(
-				ctx, devUUID, matcher, iterator, req.GetFollow())
-		}(devName, devUUID)
-	}
-	return waitForParallelStreams(ctx, cancel, errCh, len(devices))
-}
-
-// GetClusterUpdateInfo streams information about ongoing cluster updates.
-func (th *TestHarness) GetClusterUpdateInfo(
-	req *api.ClusterRequest, stream api.Evetest_GetClusterUpdateInfoServer) error {
-	if err := th.errIfAdamNotReady(); err != nil {
-		return err
-	}
-	devices := th.getOnboardedDevices()
-	if len(devices) == 0 {
-		return fmt.Errorf("no device is onboarded")
-	}
-	matcher := func(msg *eveinfo.ZInfoMsg) bool {
-		return msg.GetZtype() == eveinfo.ZInfoTypes_ZiKubeClusterUpdateStatus &&
-			msg.GetClusterUpdateInfo() != nil
-	}
-	safeStream := &syncStream[api.ClusterUpdateInfoResponse]{stream: stream}
-	ctx, cancel := context.WithCancel(stream.Context())
-	defer cancel()
-	errCh := make(chan error, len(devices))
-	for devName, devUUID := range devices {
-		go func(devName string, devUUID uuid.UUID) {
-			iterator := &infoMsgGrpcIterator[api.ClusterUpdateInfoResponse]{
-				stream: safeStream,
-				mapper: func(msg *eveinfo.ZInfoMsg) (*api.ClusterUpdateInfoResponse, error) {
-					return &api.ClusterUpdateInfoResponse{
-						ClusterUpdateInfo: msg.GetClusterUpdateInfo(),
-						FromNode:          devName,
-					}, nil
-				},
-			}
-			errCh <- th.adamClient.IterateDeviceInfoMsgs(
-				ctx, devUUID, matcher, iterator, req.GetFollow())
-		}(devName, devUUID)
-	}
-	return waitForParallelStreams(ctx, cancel, errCh, len(devices))
-}
-
-// GetClusterMetrics streams metrics for the Kubernetes cluster (KubeClusterMetrics)
-// from all devices.
-func (th *TestHarness) GetClusterMetrics(
-	req *api.ClusterRequest, stream api.Evetest_GetClusterMetricsServer) error {
-	devices := th.getOnboardedDevices()
-	if len(devices) == 0 {
-		return fmt.Errorf("no device is onboarded")
-	}
-	if err := th.errIfAdamNotReady(); err != nil {
-		return err
-	}
-	safeStream := &syncStream[api.ClusterMetricsResponse]{stream: stream}
-	ctx, cancel := context.WithCancel(stream.Context())
-	defer cancel()
-	errCh := make(chan error, len(devices))
-	for devName, devUUID := range devices {
-		go func(devName string, devUUID uuid.UUID) {
-			iterator := &metricMsgGrpcIterator[api.ClusterMetricsResponse]{
-				stream: safeStream,
-				mapper: func(msg *evemetrics.ZMetricMsg) (*api.ClusterMetricsResponse, error) {
-					cm := msg.GetCm()
-					if cm == nil {
-						return nil, nil
-					}
-					return &api.ClusterMetricsResponse{
-						ClusterMetrics: cm,
-						FromNode:       devName,
-					}, nil
-				},
-			}
-			errCh <- th.adamClient.IterateDeviceMetrics(
-				ctx, devUUID, iterator, req.GetFollow())
-		}(devName, devUUID)
-	}
-	return waitForParallelStreams(ctx, cancel, errCh, len(devices))
-}
-
-// getOnboardedDevices returns a map of device name to UUID for all onboarded devices.
-func (th *TestHarness) getOnboardedDevices() map[string]uuid.UUID {
-	th.devicesM.Lock()
-	defer th.devicesM.Unlock()
-	devices := make(map[string]uuid.UUID)
-	for devName, devState := range th.devices {
-		if devState.ID != uuid.Nil {
-			devices[devName] = devState.ID
-		}
-	}
-	return devices
-}
-
-// waitForParallelStreams waits for all goroutines to finish and returns the
-// first non-nil, non-context-canceled error. If any goroutine fails, the
-// context is canceled to stop the others.
-func waitForParallelStreams(ctx context.Context, cancel context.CancelFunc,
-	errCh <-chan error, count int) error {
-	var firstErr error
-	for i := 0; i < count; i++ {
-		if err := <-errCh; err != nil && firstErr == nil {
-			if ctx.Err() == nil {
-				firstErr = err
-				cancel()
-			}
-		}
-	}
-	return firstErr
 }
 
 // resolveAppUUID parses appNameOrUUID as a UUID.

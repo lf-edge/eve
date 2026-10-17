@@ -21,7 +21,6 @@ enum HypervisorType {
   HV_UNKNOWN = 0;
   HV_KVM = 1;
   HV_XEN = 2;
-  HV_KUBEVIRT = 3;
 }
 
 // Capability describes an optional, provider-specific feature that a device

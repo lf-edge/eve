@@ -665,9 +665,13 @@ func startPCIAccessTracer(evetestT *evetest.T, device *evetest.EdgeDevice,
 		evetestT.Fatalf("Failed to create a directory for the compiler: %v", err)
 	}
 	compiler := filepath.Join(tr.binDir, "bpftrace-compiler")
-	// The compiler vendors its dependencies and is not part of any Go
-	// workspace the test runner may have set up.
-	buildEnv := append(os.Environ(), "GOFLAGS=-mod=vendor", "GOWORK=off")
+	// The compiler is not part of any Go workspace the test runner may have
+	// set up. It builds from its vendor directory where the checkout has one;
+	// stable branches do not, and then the modules are downloaded.
+	buildEnv := append(os.Environ(), "GOWORK=off")
+	if _, err := os.Stat(filepath.Join(compilerDir, "vendor", "modules.txt")); err == nil {
+		buildEnv = append(buildEnv, "GOFLAGS=-mod=vendor")
+	}
 	log.Infof("Building bpftrace-compiler from %s...", compilerDir)
 	buildCtx, cancelBuild := context.WithTimeout(ctx, pciTracerStartTimeout)
 	defer cancelBuild()

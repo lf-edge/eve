@@ -1,5 +1,3 @@
-github.com/Masterminds/semver v1.5.0 h1:H65muMkzWKEuNDnfl9d70GUjFniHKHRbFPGBuZ3QEww=
-github.com/Masterminds/semver v1.5.0/go.mod h1:MB6lktGJrhw8PrUyiEoblNEGEQ+RzHPF078ddwwvV3Y=
 github.com/Masterminds/semver/v3 v3.4.0 h1:Zog+i5UMtVoCU8oKka5P7i9q9HgrJeGzI9SA1Xbatp0=
 github.com/Masterminds/semver/v3 v3.4.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
@@ -129,8 +127,8 @@ github.com/lf-edge/eve-api/go v0.0.0-20260907084402-08ba01c79328 h1:YcNJqvAYlbzD
 github.com/lf-edge/eve-api/go v0.0.0-20260907084402-08ba01c79328/go.mod h1:6HxNA/qKJVEqwpuOFkcQ0h3QyotvAs/cjHLC961FPOY=
 github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d h1:tUBb9M6u42LXwHAYHyh22wJeUUQlTpDkXwRXalpRqbo=
 github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d/go.mod h1:Nn3juMJJ1G8dyHOebdZyS4jOB/fuxAd5fIajBaWjHr8=
-github.com/lf-edge/eve/pkg/pillar v0.0.0-20261016095447-da1f21294aba h1:et+nYdO0/6vu363dF/o5I/xwtKTdmKAs+5U1H8Cs9xE=
-github.com/lf-edge/eve/pkg/pillar v0.0.0-20261016095447-da1f21294aba/go.mod h1:s4cP0LrbqD9yjdeGthh/A08kYvrlooTaLoOuL55nTNA=
+github.com/lf-edge/eve/pkg/pillar v0.0.0-20261017125847-ab59605c635b h1:0SFHeKpZYXJTigUTpspn0IDCRXJTCwwNBkHfBPCfi54=
+github.com/lf-edge/eve/pkg/pillar v0.0.0-20261017125847-ab59605c635b/go.mod h1:nkQTT0V8Rt4gICHBUE5pVZiEdLAGqDbA3youSjPlcWQ=
 github.com/lucasb-eyer/go-colorful v1.4.1 h1:1EO+WB73+EH8EVbzlrG3KLAfEypQWVHIBqlTf+2hNss=
 github.com/lucasb-eyer/go-colorful v1.4.1/go.mod h1:R4dSotOR9KMtayYi1e77YzuveK+i7ruzyGqttikkLy0=
 github.com/luthermonson/go-proxmox v0.8.0 h1:KwrgeLrTXTlAezj7zt/tU4bm70VFQiJfej/5sL8rqO8=

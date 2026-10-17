@@ -237,7 +237,7 @@ func HypervisorParameter() TestParameterDefinition {
 		Description: TestParameterDescription{
 			Summary:       "Hypervisor to use for the test",
 			Default:       "kvm",
-			AllowedValues: "kvm|xen|kubevirt",
+			AllowedValues: "kvm|xen",
 		},
 	}
 }

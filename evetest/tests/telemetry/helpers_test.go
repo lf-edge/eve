@@ -38,15 +38,6 @@ const (
 	// Generous, because log entries are batched into gzip bundles before they
 	// are uploaded.
 	logProbeUploadTimeout = 10 * time.Minute
-
-	// Bringing up k3s takes minutes; same allowance as the other suites that
-	// run under kubevirt.
-	//
-	// Under kubevirt every test has to wait for its node to become ready, and
-	// that wait belongs *after* the first ApplyConfig: kube-init blocks the
-	// cluster bring-up on the device name, which zedagent publishes only when
-	// it parses a configuration received from the controller.
-	clusterNodeReadyTimeout = 20 * time.Minute
 )
 
 // setupTelemetryTestDevice declares the prerequisites shared by every test in

@@ -22,33 +22,30 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Evetest_Continue_FullMethodName             = "/org.lfedge.evetest.Evetest/Continue"
-	Evetest_Exit_FullMethodName                 = "/org.lfedge.evetest.Evetest/Exit"
-	Evetest_Status_FullMethodName               = "/org.lfedge.evetest.Evetest/Status"
-	Evetest_HardRebootEVEDevice_FullMethodName  = "/org.lfedge.evetest.Evetest/HardRebootEVEDevice"
-	Evetest_SoftRebootEVEDevice_FullMethodName  = "/org.lfedge.evetest.Evetest/SoftRebootEVEDevice"
-	Evetest_GetEVEConfig_FullMethodName         = "/org.lfedge.evetest.Evetest/GetEVEConfig"
-	Evetest_GetEVEInfo_FullMethodName           = "/org.lfedge.evetest.Evetest/GetEVEInfo"
-	Evetest_GetEVEMetrics_FullMethodName        = "/org.lfedge.evetest.Evetest/GetEVEMetrics"
-	Evetest_GetEVELogs_FullMethodName           = "/org.lfedge.evetest.Evetest/GetEVELogs"
-	Evetest_GetEVEConsoleOutput_FullMethodName  = "/org.lfedge.evetest.Evetest/GetEVEConsoleOutput"
-	Evetest_GetAppInfo_FullMethodName           = "/org.lfedge.evetest.Evetest/GetAppInfo"
-	Evetest_GetAppMetrics_FullMethodName        = "/org.lfedge.evetest.Evetest/GetAppMetrics"
-	Evetest_GetAppLogs_FullMethodName           = "/org.lfedge.evetest.Evetest/GetAppLogs"
-	Evetest_GetAppFlowLogs_FullMethodName       = "/org.lfedge.evetest.Evetest/GetAppFlowLogs"
-	Evetest_GetNIInfo_FullMethodName            = "/org.lfedge.evetest.Evetest/GetNIInfo"
-	Evetest_GetNIMetrics_FullMethodName         = "/org.lfedge.evetest.Evetest/GetNIMetrics"
-	Evetest_GetClusterInfo_FullMethodName       = "/org.lfedge.evetest.Evetest/GetClusterInfo"
-	Evetest_GetClusterUpdateInfo_FullMethodName = "/org.lfedge.evetest.Evetest/GetClusterUpdateInfo"
-	Evetest_GetClusterMetrics_FullMethodName    = "/org.lfedge.evetest.Evetest/GetClusterMetrics"
-	Evetest_CollectInfo_FullMethodName          = "/org.lfedge.evetest.Evetest/CollectInfo"
-	Evetest_ConnectTunnelToEVE_FullMethodName   = "/org.lfedge.evetest.Evetest/ConnectTunnelToEVE"
-	Evetest_ConnectConsoleToEVE_FullMethodName  = "/org.lfedge.evetest.Evetest/ConnectConsoleToEVE"
-	Evetest_GetSDNStatus_FullMethodName         = "/org.lfedge.evetest.Evetest/GetSDNStatus"
-	Evetest_GetSDNNetworkModel_FullMethodName   = "/org.lfedge.evetest.Evetest/GetSDNNetworkModel"
-	Evetest_GetSDNConfigGraph_FullMethodName    = "/org.lfedge.evetest.Evetest/GetSDNConfigGraph"
-	Evetest_StreamSDNLogs_FullMethodName        = "/org.lfedge.evetest.Evetest/StreamSDNLogs"
-	Evetest_ConnectTunnelToSDN_FullMethodName   = "/org.lfedge.evetest.Evetest/ConnectTunnelToSDN"
+	Evetest_Continue_FullMethodName            = "/org.lfedge.evetest.Evetest/Continue"
+	Evetest_Exit_FullMethodName                = "/org.lfedge.evetest.Evetest/Exit"
+	Evetest_Status_FullMethodName              = "/org.lfedge.evetest.Evetest/Status"
+	Evetest_HardRebootEVEDevice_FullMethodName = "/org.lfedge.evetest.Evetest/HardRebootEVEDevice"
+	Evetest_SoftRebootEVEDevice_FullMethodName = "/org.lfedge.evetest.Evetest/SoftRebootEVEDevice"
+	Evetest_GetEVEConfig_FullMethodName        = "/org.lfedge.evetest.Evetest/GetEVEConfig"
+	Evetest_GetEVEInfo_FullMethodName          = "/org.lfedge.evetest.Evetest/GetEVEInfo"
+	Evetest_GetEVEMetrics_FullMethodName       = "/org.lfedge.evetest.Evetest/GetEVEMetrics"
+	Evetest_GetEVELogs_FullMethodName          = "/org.lfedge.evetest.Evetest/GetEVELogs"
+	Evetest_GetEVEConsoleOutput_FullMethodName = "/org.lfedge.evetest.Evetest/GetEVEConsoleOutput"
+	Evetest_GetAppInfo_FullMethodName          = "/org.lfedge.evetest.Evetest/GetAppInfo"
+	Evetest_GetAppMetrics_FullMethodName       = "/org.lfedge.evetest.Evetest/GetAppMetrics"
+	Evetest_GetAppLogs_FullMethodName          = "/org.lfedge.evetest.Evetest/GetAppLogs"
+	Evetest_GetAppFlowLogs_FullMethodName      = "/org.lfedge.evetest.Evetest/GetAppFlowLogs"
+	Evetest_GetNIInfo_FullMethodName           = "/org.lfedge.evetest.Evetest/GetNIInfo"
+	Evetest_GetNIMetrics_FullMethodName        = "/org.lfedge.evetest.Evetest/GetNIMetrics"
+	Evetest_CollectInfo_FullMethodName         = "/org.lfedge.evetest.Evetest/CollectInfo"
+	Evetest_ConnectTunnelToEVE_FullMethodName  = "/org.lfedge.evetest.Evetest/ConnectTunnelToEVE"
+	Evetest_ConnectConsoleToEVE_FullMethodName = "/org.lfedge.evetest.Evetest/ConnectConsoleToEVE"
+	Evetest_GetSDNStatus_FullMethodName        = "/org.lfedge.evetest.Evetest/GetSDNStatus"
+	Evetest_GetSDNNetworkModel_FullMethodName  = "/org.lfedge.evetest.Evetest/GetSDNNetworkModel"
+	Evetest_GetSDNConfigGraph_FullMethodName   = "/org.lfedge.evetest.Evetest/GetSDNConfigGraph"
+	Evetest_StreamSDNLogs_FullMethodName       = "/org.lfedge.evetest.Evetest/StreamSDNLogs"
+	Evetest_ConnectTunnelToSDN_FullMethodName  = "/org.lfedge.evetest.Evetest/ConnectTunnelToSDN"
 )
 
 // EvetestClient is the client API for Evetest service.
@@ -90,12 +87,6 @@ type EvetestClient interface {
 	GetNIInfo(ctx context.Context, in *NIRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[NIInfoResponse], error)
 	// Stream metrics (ZMetricNetworkInstance) for a network instance.
 	GetNIMetrics(ctx context.Context, in *NIRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[NIMetricsResponse], error)
-	// Stream summary information for the entire Kubernetes cluster.
-	GetClusterInfo(ctx context.Context, in *ClusterRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ClusterInfoResponse], error)
-	// Stream information about ongoing cluster updates.
-	GetClusterUpdateInfo(ctx context.Context, in *ClusterRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ClusterUpdateInfoResponse], error)
-	// Stream metrics for the Kubernetes cluster (KubeClusterMetrics).
-	GetClusterMetrics(ctx context.Context, in *ClusterRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ClusterMetricsResponse], error)
 	// Obtain debug information from a device (eve-info tarball).
 	CollectInfo(ctx context.Context, in *EVEDeviceRequest, opts ...grpc.CallOption) (*CollectInfoResponse, error)
 	// ConnectTunnelToEVE opens a single TCP tunnel over gRPC to a given port on
@@ -369,63 +360,6 @@ func (c *evetestClient) GetNIMetrics(ctx context.Context, in *NIRequest, opts ..
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type Evetest_GetNIMetricsClient = grpc.ServerStreamingClient[NIMetricsResponse]
 
-func (c *evetestClient) GetClusterInfo(ctx context.Context, in *ClusterRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ClusterInfoResponse], error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &Evetest_ServiceDesc.Streams[9], Evetest_GetClusterInfo_FullMethodName, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &grpc.GenericClientStream[ClusterRequest, ClusterInfoResponse]{ClientStream: stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
-	return x, nil
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type Evetest_GetClusterInfoClient = grpc.ServerStreamingClient[ClusterInfoResponse]
-
-func (c *evetestClient) GetClusterUpdateInfo(ctx context.Context, in *ClusterRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ClusterUpdateInfoResponse], error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &Evetest_ServiceDesc.Streams[10], Evetest_GetClusterUpdateInfo_FullMethodName, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &grpc.GenericClientStream[ClusterRequest, ClusterUpdateInfoResponse]{ClientStream: stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
-	return x, nil
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type Evetest_GetClusterUpdateInfoClient = grpc.ServerStreamingClient[ClusterUpdateInfoResponse]
-
-func (c *evetestClient) GetClusterMetrics(ctx context.Context, in *ClusterRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ClusterMetricsResponse], error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &Evetest_ServiceDesc.Streams[11], Evetest_GetClusterMetrics_FullMethodName, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &grpc.GenericClientStream[ClusterRequest, ClusterMetricsResponse]{ClientStream: stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
-	return x, nil
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type Evetest_GetClusterMetricsClient = grpc.ServerStreamingClient[ClusterMetricsResponse]
-
 func (c *evetestClient) CollectInfo(ctx context.Context, in *EVEDeviceRequest, opts ...grpc.CallOption) (*CollectInfoResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CollectInfoResponse)
@@ -438,7 +372,7 @@ func (c *evetestClient) CollectInfo(ctx context.Context, in *EVEDeviceRequest, o
 
 func (c *evetestClient) ConnectTunnelToEVE(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ConnectTunnelToEVERequest, ConnectTunnelToEVEResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &Evetest_ServiceDesc.Streams[12], Evetest_ConnectTunnelToEVE_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &Evetest_ServiceDesc.Streams[9], Evetest_ConnectTunnelToEVE_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -451,7 +385,7 @@ type Evetest_ConnectTunnelToEVEClient = grpc.BidiStreamingClient[ConnectTunnelTo
 
 func (c *evetestClient) ConnectConsoleToEVE(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ConnectConsoleToEVERequest, ConnectConsoleToEVEResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &Evetest_ServiceDesc.Streams[13], Evetest_ConnectConsoleToEVE_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &Evetest_ServiceDesc.Streams[10], Evetest_ConnectConsoleToEVE_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -494,7 +428,7 @@ func (c *evetestClient) GetSDNConfigGraph(ctx context.Context, in *SDNRequest, o
 
 func (c *evetestClient) StreamSDNLogs(ctx context.Context, in *SDNRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[LogMessage], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &Evetest_ServiceDesc.Streams[14], Evetest_StreamSDNLogs_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &Evetest_ServiceDesc.Streams[11], Evetest_StreamSDNLogs_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -513,7 +447,7 @@ type Evetest_StreamSDNLogsClient = grpc.ServerStreamingClient[LogMessage]
 
 func (c *evetestClient) ConnectTunnelToSDN(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ConnectSSHTunnelToSDNRequest, ConnectSSHTunnelToSDNResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &Evetest_ServiceDesc.Streams[15], Evetest_ConnectTunnelToSDN_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &Evetest_ServiceDesc.Streams[12], Evetest_ConnectTunnelToSDN_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -563,12 +497,6 @@ type EvetestServer interface {
 	GetNIInfo(*NIRequest, grpc.ServerStreamingServer[NIInfoResponse]) error
 	// Stream metrics (ZMetricNetworkInstance) for a network instance.
 	GetNIMetrics(*NIRequest, grpc.ServerStreamingServer[NIMetricsResponse]) error
-	// Stream summary information for the entire Kubernetes cluster.
-	GetClusterInfo(*ClusterRequest, grpc.ServerStreamingServer[ClusterInfoResponse]) error
-	// Stream information about ongoing cluster updates.
-	GetClusterUpdateInfo(*ClusterRequest, grpc.ServerStreamingServer[ClusterUpdateInfoResponse]) error
-	// Stream metrics for the Kubernetes cluster (KubeClusterMetrics).
-	GetClusterMetrics(*ClusterRequest, grpc.ServerStreamingServer[ClusterMetricsResponse]) error
 	// Obtain debug information from a device (eve-info tarball).
 	CollectInfo(context.Context, *EVEDeviceRequest) (*CollectInfoResponse, error)
 	// ConnectTunnelToEVE opens a single TCP tunnel over gRPC to a given port on
@@ -648,15 +576,6 @@ func (UnimplementedEvetestServer) GetNIInfo(*NIRequest, grpc.ServerStreamingServ
 }
 func (UnimplementedEvetestServer) GetNIMetrics(*NIRequest, grpc.ServerStreamingServer[NIMetricsResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method GetNIMetrics not implemented")
-}
-func (UnimplementedEvetestServer) GetClusterInfo(*ClusterRequest, grpc.ServerStreamingServer[ClusterInfoResponse]) error {
-	return status.Errorf(codes.Unimplemented, "method GetClusterInfo not implemented")
-}
-func (UnimplementedEvetestServer) GetClusterUpdateInfo(*ClusterRequest, grpc.ServerStreamingServer[ClusterUpdateInfoResponse]) error {
-	return status.Errorf(codes.Unimplemented, "method GetClusterUpdateInfo not implemented")
-}
-func (UnimplementedEvetestServer) GetClusterMetrics(*ClusterRequest, grpc.ServerStreamingServer[ClusterMetricsResponse]) error {
-	return status.Errorf(codes.Unimplemented, "method GetClusterMetrics not implemented")
 }
 func (UnimplementedEvetestServer) CollectInfo(context.Context, *EVEDeviceRequest) (*CollectInfoResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CollectInfo not implemented")
@@ -928,39 +847,6 @@ func _Evetest_GetNIMetrics_Handler(srv interface{}, stream grpc.ServerStream) er
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type Evetest_GetNIMetricsServer = grpc.ServerStreamingServer[NIMetricsResponse]
 
-func _Evetest_GetClusterInfo_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(ClusterRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
-	}
-	return srv.(EvetestServer).GetClusterInfo(m, &grpc.GenericServerStream[ClusterRequest, ClusterInfoResponse]{ServerStream: stream})
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type Evetest_GetClusterInfoServer = grpc.ServerStreamingServer[ClusterInfoResponse]
-
-func _Evetest_GetClusterUpdateInfo_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(ClusterRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
-	}
-	return srv.(EvetestServer).GetClusterUpdateInfo(m, &grpc.GenericServerStream[ClusterRequest, ClusterUpdateInfoResponse]{ServerStream: stream})
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type Evetest_GetClusterUpdateInfoServer = grpc.ServerStreamingServer[ClusterUpdateInfoResponse]
-
-func _Evetest_GetClusterMetrics_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(ClusterRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
-	}
-	return srv.(EvetestServer).GetClusterMetrics(m, &grpc.GenericServerStream[ClusterRequest, ClusterMetricsResponse]{ServerStream: stream})
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type Evetest_GetClusterMetricsServer = grpc.ServerStreamingServer[ClusterMetricsResponse]
-
 func _Evetest_CollectInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(EVEDeviceRequest)
 	if err := dec(in); err != nil {
@@ -1161,21 +1047,6 @@ var Evetest_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "GetNIMetrics",
 			Handler:       _Evetest_GetNIMetrics_Handler,
-			ServerStreams: true,
-		},
-		{
-			StreamName:    "GetClusterInfo",
-			Handler:       _Evetest_GetClusterInfo_Handler,
-			ServerStreams: true,
-		},
-		{
-			StreamName:    "GetClusterUpdateInfo",
-			Handler:       _Evetest_GetClusterUpdateInfo_Handler,
-			ServerStreams: true,
-		},
-		{
-			StreamName:    "GetClusterMetrics",
-			Handler:       _Evetest_GetClusterMetrics_Handler,
 			ServerStreams: true,
 		},
 		{

@@ -96,9 +96,6 @@ func TestDeviceMetrics(test *testing.T) {
 	defer stopMetricWatch()
 	device.ApplyConfig(devConfig, true, true)
 	evetest.Checkpoint("config-applied")
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(clusterNodeReadyTimeout)
-	}
 
 	// Phase 2: per-port network counters are reported and moving.
 	timeout := 5 * time.Minute

@@ -158,9 +158,6 @@ func TestHTTPDatastore(test *testing.T) {
 		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
 	})
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 	evetest.Checkpoint("mgmt-network-ready")
 	log := evetest.Logger()
 
@@ -287,9 +284,6 @@ func TestHTTPSDatastore(test *testing.T) {
 		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
 	})
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 	evetest.Checkpoint("mgmt-network-ready")
 	log := evetest.Logger()
 
@@ -448,9 +442,6 @@ func TestSFTPDatastore(test *testing.T) {
 		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
 	})
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 	evetest.Checkpoint("mgmt-network-ready")
 	log := evetest.Logger()
 
@@ -623,9 +614,6 @@ func TestContainerRegistry(test *testing.T) {
 		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
 	})
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 	evetest.Checkpoint("mgmt-network-ready")
 	log := evetest.Logger()
 

@@ -120,7 +120,6 @@ func cipherBlockSites(config *eveconfig.EdgeDevConfig) []cipherBlockSite {
 	for _, scep := range config.GetScepProfiles() {
 		add("SCEP profile "+scep.GetProfileName(), scep.GetScepChallengePassword())
 	}
-	add("cluster join token", config.GetCluster().GetEncryptedClusterToken())
 	return sites
 }
 
@@ -164,9 +163,6 @@ func clearCipherBlocks(config *eveconfig.EdgeDevConfig) error {
 		if scep != nil {
 			scep.ScepChallengePassword = nil
 		}
-	}
-	if config.GetCluster() != nil {
-		config.Cluster.EncryptedClusterToken = nil
 	}
 
 	if left := cipherBlockSites(config); len(left) > 0 {

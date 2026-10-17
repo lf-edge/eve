@@ -123,9 +123,6 @@ func TestLocalNetInstanceACLs(test *testing.T) {
 		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
 	})
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 
 	const (
 		niGateway   = "10.11.12.1"
@@ -539,9 +536,6 @@ func TestSwitchNetInstanceACLs(test *testing.T) {
 		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
 	})
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 
 	const (
 		app1MACAddr = "02:16:3e:00:00:03"
