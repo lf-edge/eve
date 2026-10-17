@@ -1,7 +1,7 @@
 #!/bin/bash
 # Usage:
 #
-#     ./makerootfs.sh mode [-y <image.yml>] [-i <output rootfs image>] [-t <tar file>] [-f <filesystem format>] [-a <arch>] [-b <squashfs block size>] [-d <directory where to execute>]
+#     ./makerootfs.sh mode [-y <image.yml>] [-i <output rootfs image>] [-t <tar file>] [-f <filesystem format>] [-a <arch>] [-b <squashfs block size>] [-d <directory where to execute>] [-s <sbom stamp command>]
 # <fs> defaults to squash
 # <arch> defaults to the current machine architecture
 # <squashfs block size> defaults to the mksquashfs default, and is ignored for ext4
@@ -29,6 +29,14 @@ do_image() {
   linuxkit build --docker ${ARCHARG} -o - "$ymlfile" | docker run -i --rm -v /dev:/dev --privileged -v "$IMAGE:/rootfs.img" "${MKROOTFS_TAG}"
 }
 
+# rewrite the SBoM linuxkit put in a tar, when -s gave a stamp command
+stamp_sbom() {
+  if [ -n "$sbomstamp" ]; then
+    # shellcheck disable=SC2086
+    env $sbomstamp "$1"
+  fi
+}
+
 # mode 1 - generate tarfile from yml and save
 do_tar() {
   # shellcheck disable=SC2166
@@ -44,9 +52,11 @@ do_tar() {
   if [ -z "$updatetar" ] || [ ! -e "${tarfile}" ]; then
     # shellcheck disable=SC2086
     linuxkit build --docker ${ARCHARG} --o "${tarfile}" "$ymlfile"
+    stamp_sbom "${tarfile}"
   else
     # shellcheck disable=SC2086
     linuxkit build --docker ${ARCHARG} --o "${tarfile}.new" --input-tar "${tarfile}"  "$ymlfile"
+    stamp_sbom "${tarfile}.new"
     newmd5=$(md5sum "${tarfile}.new" | awk '{print $1}')
     oldmd5=$(md5sum "${tarfile}" | awk '{print $1}')
     # Don't touch the modification time if files are equal. Crucial for Makefile.
@@ -114,7 +124,7 @@ help() {
   echo "  generate final image from yml:" >&2
   echo "    $0 image [-y <image.yml>] [-i <output rootfs image>] [-f {ext4|squash}] [-a <arch>]" >&2
   echo "  generate tar from yml:" >&2
-  echo "    $0 tar [-y <image.yml>] [-t <output tarfile>] [-a <arch>]" >&2
+  echo "    $0 tar [-y <image.yml>] [-t <output tarfile>] [-a <arch>] [-s <sbom stamp command>]" >&2
   echo "  generate final image from tar:" >&2
   echo "    $0 imagefromtar [-i <output rootfs image>] [-f {ext4|squash}] [-t <input tarfile>] [-b <squashfs block size>]" >&2
   echo
@@ -129,8 +139,8 @@ help() {
 mode="$1"
 shift
 
-unset tarfile imgfile arch format ymlfile execidr updatetar
-while getopts "t:i:a:f:y:d:b:uh" o
+unset tarfile imgfile arch format ymlfile execidr updatetar sbomstamp
+while getopts "t:i:a:f:y:d:b:s:uh" o
 do
   case $o in
     t)
@@ -153,6 +163,9 @@ do
       ;;
     d)
       execdir=$(abspath "$OPTARG")
+      ;;
+    s)
+      sbomstamp="$OPTARG"
       ;;
     u)
       updatetar=1

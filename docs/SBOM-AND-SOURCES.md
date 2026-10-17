@@ -93,10 +93,20 @@ file. It is a comma-separated value file, with the following columns:
 
 To generate the SBoM, run `make sbom`. This does the following:
 
-1. Build the eve image components in `dist/<arch>/<release>`, if not yet built
-1. Expand the `rootfs.tar` in the directory to a temporary directory
-1. Run [syft](https://github.com/anchore/syft) on the temporary directory, outputting the SBoM to `dist/<arch>/<release>/installer/rootfs.spdx.json`
-1. Remove the temporary directory
+1. Build each package with its SPDX attestation, which buildkit's syft scanner generates
+1. Build the rootfs tar; linuxkit merges the package attestations into `/sbom.spdx.json` at the root of the image
+1. Rewrite that document in place in the tar with [tools/sbom-stamp](../tools/sbom-stamp/)
+1. Extract it to `dist/<arch>/<release>/installer/rootfs-<platform>.spdx.json`
+
+linuxkit writes a random `documentNamespace`, a fixed 2017 `created` time and an
+anonymous root per image. `sbom-stamp` replaces them so that the document identifies
+the EVE-OS build and two builds of the same commit produce the same bytes:
+
+* `name` is `eve-<version>`
+* `created` is `SOURCE_DATE_EPOCH`, defaulting to the commit's committer date
+* `documentNamespace` is `https://github.com/lf-edge/eve/spdx/eve-<version>-<hash>`, where the hash covers the document's content
+* the document `DESCRIBES` a root package `SPDXRef-Package-EVE-OS` carrying the version, the source commit and a `pkg:docker/lfedge/eve` purl; each image's root is `CONTAINED` in it
+* byte-identical duplicate packages, files and relationships, one copy per image that ships them, are dropped
 
 To generate the sources, run `make collected_sources`. This does the following:
 

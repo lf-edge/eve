@@ -450,6 +450,18 @@ GOSOURCES_SOURCE=github.com/deitch/go-sources-and-licenses
 COMPARESOURCES=$(BUILDTOOLS_BIN)/compare-sbom-sources
 COMPARE_SOURCE=./tools/compare-sbom-sources
 
+SBOM_STAMP=$(BUILDTOOLS_BIN)/sbom-stamp
+# A commit's committer date is covered by its hash, so every clone of it
+# agrees; a dirty tree has no commit describing it and uses the build time.
+ifeq ($(REPO_DIRTY_TAG),)
+SOURCE_DATE_EPOCH ?= $(shell git log -1 --pretty=%ct 2>/dev/null || date -u +%s)
+else
+SOURCE_DATE_EPOCH ?= $(shell date -u +%s)
+endif
+SBOM_STAMP_CMD=SOURCE_DATE_EPOCH=$(SOURCE_DATE_EPOCH) $(SBOM_STAMP) -name eve -version $(FULL_VERSION) \
+	-download $(if $(REPO_DIRTY_TAG),NOASSERTION,git+https://github.com/lf-edge/eve.git@$(shell git rev-parse HEAD 2>/dev/null)) \
+	-purl pkg:docker/lfedge/eve@$(FULL_VERSION)
+
 # tool for scan docker package dependencies
 GET_DEPS_DIR=./tools/get-deps
 GET_DEPS=./tools/get-deps/get-deps
@@ -894,10 +906,10 @@ $(PERSIST_IMG): | $(INSTALLER)
 	dd if=/dev/zero bs=1048576 count=1 >> $@
 	$(QUIET): $@: Succeeded
 
-$(ROOTFS_TAR_BASE)-%.tar: images/out/rootfs-$(HV)-%.yml | $(INSTALLER)
+$(ROOTFS_TAR_BASE)-%.tar: images/out/rootfs-$(HV)-%.yml | $(INSTALLER) $(SBOM_STAMP)
 	$(QUIET): $@: Begin
 	echo "Building rootfs tarball $@ from $<"
-	./tools/makerootfs.sh tar $(UPDATE_TAR) -y $< -t $@ -d $(INSTALLER) -a $(ZARCH)
+	./tools/makerootfs.sh tar $(UPDATE_TAR) -y $< -t $@ -d $(INSTALLER) -a $(ZARCH) -s "$(SBOM_STAMP_CMD)"
 	$(QUIET): $@: Succeeded
 ifdef KERNEL_IMAGE
 	# Consider this as a cry from the heart: enormous amount of time is
@@ -969,6 +981,11 @@ $(SOURCES_DIR):
 $(COLLECTED_SOURCES): $(ROOTFS_TARS) $(GOSOURCES)| $(INSTALLER) $(SOURCES_DIR)
 	$(QUIET): $@: Begin
 	bash tools/collect-sources.sh $< $(CURDIR) $@
+	$(QUIET): $@: Succeeded
+
+$(SBOM_STAMP): tools/sbom-stamp/*.go tools/sbom-stamp/go.mod | $(BUILDTOOLS_BIN)
+	$(QUIET): $@: Begin
+	cd tools/sbom-stamp && CGO_ENABLED=0 go build -o $@ .
 	$(QUIET): $@: Succeeded
 
 $(COMPARESOURCES):
