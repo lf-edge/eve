@@ -391,3 +391,45 @@ func TestImageRef(t *testing.T) {
 		t.Errorf("purl %s", p)
 	}
 }
+
+func TestFillPURLs(t *testing.T) {
+	cpe := `{"referenceCategory":"SECURITY","referenceType":"cpe23Type","referenceLocator":"cpe:2.3:a:zlib:zlib:1.3.2-r0:*:*:*:*:*:*:*"}`
+	purl := func(p string) string {
+		return `,{"referenceCategory":"PACKAGE-MANAGER","referenceType":"purl","referenceLocator":"` + p + `"}`
+	}
+	pkg := func(id, version, refs string) json.RawMessage {
+		return json.RawMessage(`{"name":"zlib","SPDXID":"` + id + `","versionInfo":"` + version +
+			`","externalRefs":[` + cpe + refs + `]}`)
+	}
+	zlib := "pkg:apk/busybox/zlib@1.3.2-r0?arch=x86_64"
+	pkgs := []json.RawMessage{
+		pkg("SPDXRef-zlib", "1.3.2-r0", ""),
+		pkg("SPDXRef-zlib", "1.3.2-r0", purl(zlib)),
+		pkg("SPDXRef-zlib", "1.3.1-r2", ""),   // another version: not a copy
+		pkg("SPDXRef-zlib-x", "1.3.2-r0", ""), // another ID: not a copy
+		pkg("SPDXRef-zlib-y", "1.3.2-r0", ""), // copies disagree: left alone
+		pkg("SPDXRef-zlib-y", "1.3.2-r0", purl(zlib)),
+		pkg("SPDXRef-zlib-y", "1.3.2-r0", purl(zlib+"&x=1")),
+	}
+	n, err := fillPURLs(pkgs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := pkg("SPDXRef-zlib", "1.3.2-r0", purl(zlib)); n != 1 || !bytes.Equal(pkgs[0], want) {
+		t.Errorf("filled %d:\n%s\nwant 1:\n%s", n, pkgs[0], want)
+	}
+	for _, i := range []int{2, 3, 4} {
+		if (pkgInfo{ExternalRefs: refsOf(t, pkgs[i])}).purl() != "" {
+			t.Errorf("package %d got a purl: %s", i, pkgs[i])
+		}
+	}
+}
+
+func refsOf(t *testing.T, raw json.RawMessage) []externalRef {
+	t.Helper()
+	var p pkgInfo
+	if err := json.Unmarshal(raw, &p); err != nil {
+		t.Fatal(err)
+	}
+	return p.ExternalRefs
+}
