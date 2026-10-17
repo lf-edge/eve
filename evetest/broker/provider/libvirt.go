@@ -1056,7 +1056,7 @@ func (p *LibvirtProvider) getDeviceConsolePort(name string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer dom.Free()
+	defer func() { _ = dom.Free() }()
 
 	xmlDesc, err := dom.GetXMLDesc(0)
 	if err != nil {

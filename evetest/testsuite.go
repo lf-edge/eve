@@ -73,10 +73,13 @@ func RunTestSuite(cases ...TestCase) {
 			break
 		}
 
+		parentName := testFuncName(tc.Test)
+
 		if len(tc.Variants) == 0 {
 			th.testM.Lock()
-			testName := testFuncName(tc.Test)
+			testName := parentName
 			th.test.name = testName
+			th.test.parentName = parentName
 			th.test.paramDefs = nil
 			th.test.paramVals = nil
 			th.test.failedCh = nil
@@ -100,6 +103,7 @@ func RunTestSuite(cases ...TestCase) {
 			th.testM.Lock()
 			testName := variant.Name
 			th.test.name = testName
+			th.test.parentName = parentName
 			th.test.paramDefs = nil
 			th.test.paramVals = variant.Parameters
 			th.test.failedCh = nil
@@ -118,6 +122,7 @@ func RunTestSuite(cases ...TestCase) {
 	// Move testSuiteState back to testState.
 	th.testM.Lock()
 	th.test.name = th.suite.name
+	th.test.parentName = ""
 	th.test.paramDefs = th.suite.paramDefs
 	th.test.paramVals = nil
 	th.test.failedCh = suiteFailedCh

@@ -275,7 +275,7 @@ func liveImageSHA256(path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to open %q: %w", path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
 		return "", fmt.Errorf("failed to read %q: %w", path, err)

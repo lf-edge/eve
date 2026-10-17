@@ -35,7 +35,7 @@ func writeFakeBuild(t *testing.T, root, version string, cfgSize int) string {
 		t.Fatalf("write config.img: %v", err)
 	}
 	link := filepath.Join(root, "amd64", "current")
-	os.Remove(link)
+	_ = os.Remove(link)
 	if err := os.Symlink(verDir, link); err != nil {
 		t.Fatalf("symlink: %v", err)
 	}

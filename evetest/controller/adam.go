@@ -1880,7 +1880,7 @@ func (ac *AdamClient) IterateDeviceFlowLogs(ctx context.Context, devUUID uuid.UU
 	if err != nil {
 		return fmt.Errorf("GET %s failed: %w", url, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// No flow logs recorded yet for this device.
 	if resp.StatusCode != http.StatusNotFound {

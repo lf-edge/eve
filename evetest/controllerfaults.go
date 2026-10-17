@@ -4,6 +4,7 @@
 package evetest
 
 import (
+	"os"
 	"time"
 
 	"github.com/lf-edge/eve/evetest/constants"
@@ -28,11 +29,30 @@ const (
 	FaultDelay = controller.FaultActionDelay
 )
 
+// WithControllerFaults makes Init run the controller behind the fault injecting
+// proxy, for tests which call ArmControllerFault. It only supplies the default:
+// EVETEST_CONTROLLER_FAULTS, when the user sets it, decides either way, so that
+// the proxy can still be forced off to check that these tests skip, or forced
+// on for every test.
+func WithControllerFaults() InitOption {
+	return func(o *initOptions) { o.controllerFaults = true }
+}
+
+// resolveControllerFaults picks the proxy setting: an explicit
+// EVETEST_CONTROLLER_FAULTS wins over what the test asked for.
+func resolveControllerFaults(requested bool) bool {
+	if _, set := os.LookupEnv(constants.EnvPrefix + constants.ControllerFaultsEnv); set {
+		return viper.GetBool(constants.ControllerFaultsEnv)
+	}
+	return requested
+}
+
 // ControllerFaultsEnabled reports whether the controller runs behind the fault
-// injecting proxy, which EVETEST_CONTROLLER_FAULTS asks for. It is off by
-// default, so a test which arms faults has to skip when it returns false.
+// injecting proxy. A test which arms faults has to skip when it returns false,
+// which happens when the user turned the proxy off with
+// EVETEST_CONTROLLER_FAULTS=false.
 func ControllerFaultsEnabled() bool {
-	return viper.GetBool(constants.ControllerFaultsEnv)
+	return getTestHarness().controllerFaults
 }
 
 // ArmControllerFault makes the controller fail the device requests matching the
@@ -40,7 +60,7 @@ func ControllerFaultsEnabled() bool {
 // cleared with ClearControllerFaults. Several faults can be armed at once; the
 // first one matching a request applies.
 //
-// Requires EVETEST_CONTROLLER_FAULTS - see ControllerFaultsEnabled. Only the
+// Requires the proxy - see WithControllerFaults. Only the
 // requests devices make can be failed: the harness reaches the controller
 // directly, so watching info or metrics is never disturbed by an injected fault.
 //
@@ -57,7 +77,7 @@ func ArmControllerFault(fault ControllerFault) {
 	th := getTestHarness()
 	proxy := th.adamClient.FaultProxy()
 	if proxy == nil {
-		th.t.Fatalf("ArmControllerFault requires %s%s=true",
+		th.t.Fatalf("ArmControllerFault requires the fault proxy: pass WithControllerFaults to Init and do not set %s%s=false",
 			constants.EnvPrefix, constants.ControllerFaultsEnv)
 	}
 	proxy.ArmFault(fault)
@@ -69,7 +89,7 @@ func ClearControllerFaults() {
 	th := getTestHarness()
 	proxy := th.adamClient.FaultProxy()
 	if proxy == nil {
-		th.t.Fatalf("ClearControllerFaults requires %s%s=true",
+		th.t.Fatalf("ClearControllerFaults requires the fault proxy: pass WithControllerFaults to Init and do not set %s%s=false",
 			constants.EnvPrefix, constants.ControllerFaultsEnv)
 	}
 	proxy.ClearFaults()

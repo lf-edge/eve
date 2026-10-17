@@ -164,7 +164,7 @@ func (f *infoFeed) connect(ctx context.Context) (*http.Response, error) {
 			return false, nil
 		})
 	if err != nil {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, err
 	}
 	return resp, nil

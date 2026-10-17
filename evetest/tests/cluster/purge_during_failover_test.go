@@ -242,9 +242,9 @@ func assertExactlyOneVMIRSAtGeneration(
 //
 // Suite placement
 // ---------------
-//   - TestNodeClusterSuite, after the other three-node subtests: it powers a
-//     node off and needs a cluster of its own, so it is the most expensive one
-//     to set up.
+//   - TestNodeClusterResilienceSuite, after the other three-node subtests: it
+//     powers a node off and needs a cluster of its own, so it is the most
+//     expensive one to set up.
 func TestVMAppPurgeDuringFailover(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)

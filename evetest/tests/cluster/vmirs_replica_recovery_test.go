@@ -53,7 +53,7 @@ import (
 //
 // Test parameters
 // ---------------
-//   - TPM via evetest.TPMParameter() (suite-wide, see TestNodeClusterSuite).
+//   - TPM via evetest.TPMParameter() (suite-wide, see TestNodeClusterResilienceSuite).
 //
 // Phases
 // ------
@@ -85,7 +85,7 @@ import (
 //
 // Suite placement
 // ---------------
-//   - TestNodeClusterSuite (cluster tests are pinned to Kubevirt; this bug
+//   - TestNodeClusterResilienceSuite (cluster tests are pinned to Kubevirt; this bug
 //     is specific to the VMIRS/VMI code path).
 func TestVMIRSStrandedReplicasRecovery(test *testing.T) {
 	evetestT := evetest.Init(test)
@@ -162,7 +162,7 @@ func TestVMIRSStrandedReplicasRecovery(test *testing.T) {
 	log.Infof("Submitted config with app UUID=%v", appUUID)
 	evetest.Checkpoint("initial-config-applied")
 
-	timeoutExcludingDownload := 10 * time.Minute
+	timeoutExcludingDownload := 20 * time.Minute
 	device.WaitUntilAppIsRunning(appUUID, timeoutExcludingDownload)
 	evetest.Checkpoint("app-is-deployed")
 

@@ -1527,7 +1527,9 @@ help:
 	@echo "                                    accepts UNIT_COV_FILE=<path> EXTRA_COVERAGE_DIR='<d>...'"
 	@echo
 	@echo "evetest integration testing targets:"
-	@echo "   evetest NAME=<test>              run a named test or test suite (NAME or EVETEST_NAME required)"
+	@echo "   evetest NAME=<test>              run a named test or test suite (EVETEST_NAME works too)"
+	@echo "   evetest NAME=<t1>,<t2>,...       run several in parallel instances, at most EVETEST_PARALLEL at a time"
+	@echo "   evetest                          without NAME: run all test suites like that"
 	@echo "                                    execution can be customized via EVETEST_* env variables;"
 	@echo "                                    see evetest/README.md for the full list"
 	@echo "   evetest-list-tests               list available tests and test suites with their parameters"

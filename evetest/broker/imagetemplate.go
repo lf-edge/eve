@@ -79,7 +79,7 @@ type templateKeyParams struct {
 // characters: it names a directory, and collisions are not adversarial here.
 func computeTemplateKey(p templateKeyParams) string {
 	h := sha256.New()
-	fmt.Fprintf(h, "v%d\n%s\n%s\n%d\n%t\n%s\n",
+	_, _ = fmt.Fprintf(h, "v%d\n%s\n%s\n%d\n%t\n%s\n",
 		templateFormatVersion, p.DockerImageID, p.LiveImageSHA256,
 		p.DiskBytes, p.Installer, p.Arch)
 	return hex.EncodeToString(h.Sum(nil))[:32]
@@ -523,7 +523,7 @@ func (c *templateCache) tryLock() error {
 		return fmt.Errorf("failed to open %q: %w", path, err)
 	}
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		f.Close()
+		_ = f.Close()
 		c.log.Warnf("Another broker owns the image directory %q: this broker will "+
 			"use templates but will not clear stale references or evict them. "+
 			"To run brokers in parallel, give each its own %s.",

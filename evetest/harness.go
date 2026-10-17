@@ -30,6 +30,7 @@ import (
 	"github.com/lf-edge/eve/evetest/constants"
 	"github.com/lf-edge/eve/evetest/controller"
 	api "github.com/lf-edge/eve/evetest/grpcapi/go"
+	"github.com/lf-edge/eve/evetest/instances"
 	"github.com/lf-edge/eve/evetest/logger"
 	"github.com/lf-edge/eve/evetest/utils"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
@@ -286,6 +287,8 @@ type TestHarness struct {
 	// gRPC server
 	grpcServer *grpc.Server
 	listener   net.Listener
+	// unregisterInstance removes this instance from the CLI-visible registry.
+	unregisterInstance func()
 
 	// CA
 	caCert *x509.Certificate
@@ -308,6 +311,9 @@ type TestHarness struct {
 	// Controller
 	adamClient   *controller.AdamClient
 	adamStatusCh chan controller.AdamState
+	// controllerFaults tells whether the controller runs behind the fault
+	// injecting proxy; resolved once by Init, see InitOption.
+	controllerFaults bool
 
 	// Image server (HTTP file server serving EVE and app images).
 	imgServerListener net.Listener
@@ -375,6 +381,11 @@ type TestHarness struct {
 type testState struct {
 	// name is the name of the currently executing test or variant.
 	name string
+
+	// parentName is the underlying test function name (TestCase.Test in
+	// RunTestSuite) a suite subtest variant was derived from; empty when
+	// not running as a suite subtest.
+	parentName string
 
 	// paramDefs are the parameter definitions available to the test.
 	paramDefs []TestParameterDefinition
@@ -529,10 +540,21 @@ func (th *TestHarness) prefixColor(c logger.PrefixColor) logger.PrefixColor {
 	return logger.PrefixColorNone
 }
 
+// InitOption customizes how Init sets up the test harness.
+type InitOption func(*initOptions)
+
+type initOptions struct {
+	controllerFaults bool
+}
+
 // Init initializes the test harness and must be called exactly once per test.
 // When used inside a test suite, Init may be called multiple times, once per
 // test case, but only a single harness instance will be created.
-func Init(t *testing.T) *T {
+//
+// Options only take effect for the Init call that creates the harness: a test
+// that may run standalone passes the options it needs, and inside a suite the
+// ones given to the suite's own Init apply.
+func Init(t *testing.T, opts ...InitOption) *T {
 	if _globalTH != nil {
 		// Test harness already exists, meaning this test is likely running as part
 		// of a test suite.
@@ -550,6 +572,11 @@ func Init(t *testing.T) *T {
 		if th.test.initialized {
 			th.testM.Unlock()
 			th.t.Fatalf("Multiple Init calls detected")
+		}
+
+		if matched, skip := matchedSkipName(th.test.name, th.test.parentName); skip {
+			t.Skipf("Skipping %q: listed in %s%s", matched,
+				constants.EnvPrefix, constants.SkipEnv)
 		}
 
 		// EVETEST_RESTART_ONLY_FAILED: when running as part of a test suite
@@ -582,8 +609,24 @@ func Init(t *testing.T) *T {
 	}
 
 	constants.InitViperConfig()
+
+	// Init is called directly from a TestXxx function, so this is a
+	// standalone test's or suite's own name (a suite subtest's own
+	// variant name is matched in the th.suite != nil branch above instead).
+	testName := utils.FuncNameFromStackTrace(2)
+	if matched, skip := matchedSkipName(testName); skip {
+		t.Skipf("Skipping %q: listed in %s%s", matched,
+			constants.EnvPrefix, constants.SkipEnv)
+	}
+
+	var initOpts initOptions
+	for _, opt := range opts {
+		opt(&initOpts)
+	}
+
 	th := &TestHarness{}
 	_globalTH = th
+	th.controllerFaults = resolveControllerFaults(initOpts.controllerFaults)
 	th.t = &T{T: t, th: th}
 	th.ctx, th.cancel = context.WithCancel(context.Background())
 	th.artifactDir = viper.GetString(constants.InternalArtifactDirEnv)
@@ -597,8 +640,7 @@ func Init(t *testing.T) *T {
 	signal.Notify(th.sigCh, syscall.SIGTERM, syscall.SIGINT)
 
 	// Set the test name to the calling test function name.
-	// Init is expected to be called directly from a TestXxx function.
-	th.test.name = utils.FuncNameFromStackTrace(2)
+	th.test.name = testName
 	th.test.artifactDir = th.artifactDir
 	if err := os.MkdirAll(th.test.artifactDir, 0o755); err != nil {
 		th.t.Fatalf("failed to create directory for test artifacts: %v", err)
@@ -684,6 +726,17 @@ func Init(t *testing.T) *T {
 	th.listener = listener
 
 	th.log.Infof("Evetest gRPC server listening on %s", listenAddr)
+	// Make the instance discoverable by the evetest CLI without it having to
+	// know the API port.
+	th.unregisterInstance, err = instances.Register(instances.Instance{
+		Name:        viper.GetString(constants.TestNameEnv),
+		Port:        port,
+		Container:   viper.GetString(constants.ContainerNameEnv),
+		ArtifactDir: th.artifactDir,
+	})
+	if err != nil {
+		th.log.Warnf("failed to register the evetest instance: %v", err)
+	}
 	th.wg.Add(1)
 	go func() {
 		defer th.wg.Done()
@@ -710,7 +763,7 @@ func Init(t *testing.T) *T {
 	th.adamClient = controller.NewAdamClient(
 		adamLog, th.artifactDir, GetControllerHostname(),
 		adamIPs, GetControllerPort(), th.caCert, th.caKey, th.adamStatusCh)
-	if ControllerFaultsEnabled() {
+	if th.controllerFaults {
 		th.adamClient.EnableFaultInjection()
 	}
 	err = th.adamClient.Start()
@@ -969,6 +1022,10 @@ func Close() {
 		th.grpcServer.GracefulStop()
 	}
 	th.wg.Wait()
+
+	if th.unregisterInstance != nil {
+		th.unregisterInstance()
+	}
 
 	// Close the gRPC listener.
 	if th.listener != nil {

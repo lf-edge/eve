@@ -69,11 +69,11 @@ const convergeTimeout = 8 * time.Minute
 // -----------
 //   - HYPERVISOR (defaults to KVM).
 func TestInfoRetriedAfterServerError(test *testing.T) {
-	evetestT := evetest.Init(test)
+	evetestT := evetest.Init(test, evetest.WithControllerFaults())
 	defer evetest.Close()
 	if !evetest.ControllerFaultsEnabled() {
-		test.Skip("controller fault injection is off; " +
-			"set EVETEST_CONTROLLER_FAULTS=true to run this test")
+		test.Skip("controller fault injection was turned off; " +
+			"unset EVETEST_CONTROLLER_FAULTS to run this test")
 	}
 	t := NewGomegaWithT(evetestT)
 
@@ -173,11 +173,11 @@ func TestInfoRetriedAfterServerError(test *testing.T) {
 // -----------
 //   - HYPERVISOR (defaults to KVM).
 func TestInfoRetriedAfterLostController(test *testing.T) {
-	evetestT := evetest.Init(test)
+	evetestT := evetest.Init(test, evetest.WithControllerFaults())
 	defer evetest.Close()
 	if !evetest.ControllerFaultsEnabled() {
-		test.Skip("controller fault injection is off; " +
-			"set EVETEST_CONTROLLER_FAULTS=true to run this test")
+		test.Skip("controller fault injection was turned off; " +
+			"unset EVETEST_CONTROLLER_FAULTS to run this test")
 	}
 	t := NewGomegaWithT(evetestT)
 
@@ -285,11 +285,11 @@ func TestInfoRetriedAfterLostController(test *testing.T) {
 // -----------
 //   - HYPERVISOR (defaults to KVM).
 func TestInfoDroppedOnRejectionKeepsDeviceReporting(test *testing.T) {
-	evetestT := evetest.Init(test)
+	evetestT := evetest.Init(test, evetest.WithControllerFaults())
 	defer evetest.Close()
 	if !evetest.ControllerFaultsEnabled() {
-		test.Skip("controller fault injection is off; " +
-			"set EVETEST_CONTROLLER_FAULTS=true to run this test")
+		test.Skip("controller fault injection was turned off; " +
+			"unset EVETEST_CONTROLLER_FAULTS to run this test")
 	}
 	t := NewGomegaWithT(evetestT)
 

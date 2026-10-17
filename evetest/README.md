@@ -817,6 +817,150 @@ make install-cli
 
 Or use it from inside the container (`docker exec -it evetest-<API-port> bash`).
 
+### Running Several Tests in Parallel
+
+`make evetest` accepts several comma-separated names, or none at all, which runs every
+test suite. Each test then runs as its own instance (container) with its own API port,
+and `EVETEST_PARALLEL` limits how many run at the same time (default `1`, i.e. one
+after another):
+
+```bash
+EVETEST_PARALLEL=3 make evetest NAME=TestA,TestB,TestC
+EVETEST_PARALLEL=4 make evetest                  # all test suites
+```
+
+A container started by `make` (the orchestrator) starts and watches the instances.
+Its output depends on `EVETEST_UI`:
+
+| `EVETEST_UI` | Output |
+|--------------|--------|
+| `dashboard` | One screen with a table of the instances and a full-screen output view of the selected one. Default on a terminal |
+| `tmux` | One tmux session, the instances in tiled panes of a single window |
+| `prefixed` | Output of all instances interleaved, each line prefixed with the test name |
+| `plain` | Only starts, results and, for a failed test, the end of its output. Default when not on a terminal, e.g. when started by a script or an AI agent, or with `nohup` on a remote host |
+
+The full output of every test is also written to `~/.evetest/runs/<run-id>/<test>.log`
+(and the usual artifacts are collected as with a single test). The directories of earlier
+runs, whose orchestrator is no longer running and which nothing has written to for
+5 minutes, are removed when a new run starts, so copy the logs you want to keep, or
+collect artifacts. A summary table closes the run, and `make` exits non-zero if any test failed.
+With `EVETEST_FAIL_FAST=true` the first failure cancels the tests still running or queued.
+
+#### Dashboard UI
+
+`EVETEST_UI=dashboard`, the default on a terminal. A single screen, not a terminal multiplexer:
+a table with one row per test (state, time, last line of output), and a full-screen scrollable
+view of the output of the selected test. A running test shows what it is doing: `paused
+(checkpoint ...)` or `paused (test failed)` when paused. Tests are controlled from the same
+screen, with no prefix key. It stays open after the last test finishes, until `q`, and then the
+summary is left in the terminal. A rerun reads the files under `tests/`, `netmodels/` and `matchers/`
+afresh (they are mounted from the checkout), so edits made since the previous run are picked up. The
+framework code (the evetest root package, `broker/`, ...) and the SDN are baked into the images, so
+to pick up changes to them, build the images of the new sources first, unless they are published (`make -C evetest build-container`
+and `build-sdn-container`) and enter their versions (`make -C evetest version` and `sdn-version` print them)
+in the rerun prompt.
+A rerun pulls images which are not local, like `make evetest`, and is refused if that fails; it does not build.
+
+| Key | Action |
+|-----|--------|
+| `up` / `down` / `j` / `k`, `1`-`9` | Select a test (scroll, in the output view) |
+| `enter` / `esc` | Show the output of the selected test / back to the table |
+| `pgup` / `pgdn`, `g` / `G` | Scroll the output; top / follow the end |
+| `s` | Open an ssh session to the EVE device of the selected test; a test with several devices asks which one first (leave the session with `exit`; a failed ssh waits for Enter so its error can be read) |
+| `c` | Resume the selected test if it is paused (`evetest continue`) |
+| `x` | Stop the selected test gracefully; a queued test is cancelled instead, so that it does not run (`r` queues it again) |
+| `r` | Rerun the selected test, once it is done (passed, failed or stopped). It first asks which evetest and SDN image versions to use (`enter` keeps those of the previous run, `esc` cancels). The test then goes back to the queue; its output continues in the output view below a divider, and the log of each run is kept in a file of its own (`<test>.2.log`, ...) |
+| `q` / `Ctrl-c` | Stop all tests (asks first); pressed again while stopping, kills them |
+
+Unlike the tmux UI below, the dashboard has no panes, so a test cannot read the keyboard directly, and
+there is no scrollback outside the output view; on the other hand it needs nothing but the
+orchestrator, and shows every test's state at a glance, also for many tests.
+
+#### tmux UI
+
+`EVETEST_UI=tmux`. Each instance runs in the foreground of its own pane, so it takes keyboard input
+as when run alone (e.g. to resume a paused test), has scrollback and can be zoomed.
+The pane border shows the test, its API port and its state. When a test fails, its pane
+moves to a window of its own (`FAILED <test>`), so its output stays on screen while the
+remaining tests continue. The pane of a test which passed closes right away (its output is in
+its log file). The first window (`orchestrator`) lists what happened and, at the end, the summary
+with a reminder of where to find the output of each test (the `FAILED <test>` windows, the log
+files). The status line shows how many tests are running, queued, passed and failed. The session
+stays open after the last test finishes, until it is closed.
+
+The tmux prefix key is `Ctrl-a` (change it with `EVETEST_TMUX_PREFIX`, e.g. `C-b`),
+which differs from tmux's default so as not to clash with a tmux you run the make in.
+Mouse support is on (click a pane to focus it). Useful keys, after the prefix:
+
+| Keys | Action |
+|------|--------|
+| `Q` | Close the session; asks first while tests are still running, which are then stopped gracefully |
+| `X` | Stop all tests gracefully |
+| arrow keys / `o` / `;` | Select the pane above, below, left or right / the next pane / the previous pane (or click a pane); the selected pane gets your keystrokes |
+| `q` and a number | Show the pane numbers, then select that pane |
+| `e` / `%` | Open a shell for the `evetest` CLI below / to the right of the selected test (`exit` closes it) |
+| `z` | Zoom the current pane in or out |
+| `n` / `p` / `0`-`9` | Next / previous / numbered window (the orchestrator and failed tests) |
+| `[` | Scrollback and search of the pane, with `PgUp`/`PgDn`/arrows and `/` (`q` leaves); the mouse wheel scrolls a pane as well |
+
+Detaching is disabled: closing the session stops the run.
+
+A test's pane runs the test, so it cannot take commands. To use the `evetest` CLI for a
+test, select its pane and press `Ctrl-a e`: a shell opens below it (`Ctrl-a %` opens it to the
+right instead), set up for that test. `evetest status`, `evetest eve ssh` and the like work in it
+without `-i` (add `-d <device>` when the test has several EVE devices). Its border says
+`<test>: evetest CLI shell`, so it is not mistaken for the test. Type `exit` to close it.
+
+#### Other UIs and stopping instances
+
+With the `prefixed` and `plain` UIs, Ctrl-C stops all instances gracefully (they clean up
+their VMs); a second Ctrl-C kills them. They do not forward keyboard input to the instances,
+so a paused test is resumed with `evetest -i <test> continue` (or `exit`).
+
+With any UI, instances which outlive the orchestrator can be stopped with
+`evetest stop --all`. A test stopped from outside is reported as cancelled (its container
+exits with code 143 or 130).
+
+You can also interact with any instance with the CLI from another terminal as described
+below, for example `EVETEST_PAUSE_ON_FAILURE=true` combined with `evetest -i TestB eve ssh`.
+
+### Running Several Instances Manually
+
+Each single-test `make evetest` runs one instance (container) on its own API port. To run
+several at once by hand, start each in its own terminal with a different `EVETEST_API_PORT`:
+
+```bash
+make evetest NAME=networking/dpc                          # port 50021 (default)
+EVETEST_API_PORT=50022 make evetest NAME=apps/lps         # port 50022
+```
+
+The CLI finds running instances by itself, there is no need to know their ports:
+
+```bash
+evetest instances         # list running instances (alias: ps); * marks this terminal's choice
+evetest use lps           # use this instance in the current terminal (name, unique part of it,
+                          # port or number from the list); without argument: choose from a menu
+evetest status            # talks to the chosen instance
+evetest -i dpc eve ssh    # one-off override with --instance / -i (or EVETEST_INSTANCE=dpc)
+evetest logs -f           # follow the container output of the instance
+evetest stop              # stop the instance gracefully (--all: every instance)
+evetest use --clear       # forget the choice
+```
+
+The CLI picks the instance in this order: `--instance`, `EVETEST_INSTANCE`, an explicitly
+set `EVETEST_API_PORT`/`EVETEST_API_ADDRESS`, the instance chosen with `evetest use` in
+this terminal, the only running instance, and finally, if several are running, an
+interactive menu (whose choice is remembered like `evetest use`).
+
+The choice made by `evetest use` is remembered per terminal session (a window or tmux
+pane), not globally. It is not remembered when there is no terminal (scripts); use
+`--instance` there, or set the variable in the shell with
+`eval "$(evetest use --env <instance>)"`.
+
+Instances register themselves in `~/.evetest/instances/` while running. Remote use
+(`EVETEST_API_ADDRESS`, below) is not affected: the registry only describes instances
+on the local host.
+
 The CLI can also be used from a **remote machine** (e.g. a developer's laptop while
 the test runs inside a self-hosted CI runner). Set `EVETEST_API_ADDRESS` to the IP
 or hostname of the machine running the evetest container, and `EVETEST_API_PORT` if
@@ -940,7 +1084,11 @@ non-default behavior.
 | `EVETEST_PAUSE_ON_CHECKPOINT` | Pause at the named checkpoint | -- |
 | `EVETEST_SUITE_MAX_FAILURES` | Max failures before aborting suite (`-1` = unlimited) | `1` |
 | `EVETEST_RESTART_ONLY_FAILED` | Skip suite subtests that already passed in a previous run (requires `EVETEST_COLLECT_ARTIFACTS`); see [Rerunning Only Failed Subtests](#rerunning-only-failed-subtests) | `false` |
-| `EVETEST_CONTROLLER_FAULTS` | Run the controller behind a proxy which a test can tell to answer, delay or drop selected device requests (`ArmControllerFault`). Off by default: with no fault armed the proxy forwards everything unchanged, but it terminates TLS and re-originates the request, so it stays out of the path unless a test needs it. Tests which arm faults skip without it | `false` |
+| `EVETEST_CONTROLLER_FAULTS` | Run the controller behind a proxy which a test can tell to answer, delay or drop selected device requests (`ArmControllerFault`). Off by default, except that tests which arm faults ask for it themselves (`evetest.WithControllerFaults()`), so nothing needs setting to run them; an explicit `true` turns it on for every test and `false` turns it off for all, which makes the fault tests skip. With no fault armed the proxy forwards everything unchanged, but it terminates TLS and re-originates the request, so it stays out of the path unless a test needs it. | `false` |
+| `EVETEST_PARALLEL` | Maximum number of instances running at the same time when `make evetest` runs several tests; see [Running Several Tests in Parallel](#running-several-tests-in-parallel) | `1` |
+| `EVETEST_FAIL_FAST` | In a multi-test run, cancel the other tests once one fails | `false` |
+| `EVETEST_UI` | Output mode of a multi-test run: `tmux`, `dashboard`, `prefixed` or `plain` | `dashboard` on a terminal, else `plain` |
+| `EVETEST_TMUX_PREFIX` | Prefix key of the tmux session of the `tmux` UI | `C-a` |
 
 ### Deployment Variables
 
@@ -953,10 +1101,10 @@ non-default behavior.
 | `EVETEST_API_ADDRESS` | IP/hostname of the machine running the evetest container, used by the CLI to connect remotely (unset = `localhost`) | -- |
 
 When running multiple evetests in parallel on the same host, each test must use
-a different `EVETEST_API_PORT` to avoid port conflicts.
-When running the `evetest` CLI against an instance using a non-default API port or
-on a remote machine, set `EVETEST_API_PORT` and/or `EVETEST_API_ADDRESS` in the
-same terminal session beforehand.
+a different `EVETEST_API_PORT` to avoid port conflicts. The `evetest` CLI finds
+local instances on its own (see [Running Several Instances](#running-several-instances-manually)).
+Only when running the CLI against an instance on a remote machine, set
+`EVETEST_API_PORT` and/or `EVETEST_API_ADDRESS` in the same terminal session beforehand.
 
 ### Version Overrides
 

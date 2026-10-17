@@ -121,7 +121,7 @@ func readDiskHead(ctx context.Context, diskPath string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temp dir: %w", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 	headPath := filepath.Join(tmpDir, "head.bin")
 	out, err := exec.CommandContext(ctx, "qemu-img", "dd",
 		"-f", "qcow2", "-O", "raw",

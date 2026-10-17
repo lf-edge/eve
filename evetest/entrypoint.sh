@@ -3,8 +3,27 @@
 # Copyright (c) 2026 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
+# Multi-test run ("make evetest" with several names, or none): this container is
+# the orchestrator, which starts one evetest container per test.
+if [ -n "$EVETEST_RUN_ID" ]; then
+    exec /usr/local/bin/evetest run
+fi
+
 if [ -z "$EVETEST_NAME" ]; then
+    if [ "$EVETEST_LIST_SUITES_ONLY" = "true" ]; then
+        exec /usr/local/bin/list-tests -suites-only
+    fi
     exec /usr/local/bin/list-tests
+fi
+
+# Run only the packages which define the test. With "./tests/..." go test also
+# builds and starts every other test package, which then print "no tests to run".
+# It also makes a mistyped name an error, instead of a successful run of nothing.
+TEST_PACKAGES=$(find tests -name '*_test.go' -exec grep -lE "^func[[:space:]]+${EVETEST_NAME}[[:space:]]*\(" {} + \
+    | sed 's|/[^/]*$||' | sort -u | sed 's|^|./|')
+if [ -z "$TEST_PACKAGES" ]; then
+    echo "ERROR: test or suite ${EVETEST_NAME} not found under tests/" >&2
+    exit 1
 fi
 
 # Create artifact directory for this test execution
@@ -79,12 +98,17 @@ fi
 
 echo "Starting test: $EVETEST_NAME"
 
-# shellcheck disable=SC3001  # process substitution is supported by bash (used in golang image)
+# SC3001: process substitution is supported by bash (used in golang image).
+# SC2086: the package list is split on purpose.
+# shellcheck disable=SC3001,SC2086
 go test $GO_TEST_FLAGS -timeout 0 -parallel 1 -p 1 \
-        -run "^${EVETEST_NAME}$" ./tests/... > >(tee "$GO_TEST_OUTPUT_FILE") &
+        -run "^${EVETEST_NAME}$" $TEST_PACKAGES > >(tee "$GO_TEST_OUTPUT_FILE") &
 GO_TEST_PID=$!
 
 # Setup signal handler for cleanup
+# The exit code is 128 + the signal number, as for any process killed by a signal,
+# so that whoever stopped the container (docker stop, Ctrl-C, "evetest stop") does
+# not see it as a successful test run.
 # shellcheck disable=SC2317,SC2015  # false positives: function is called via trap
 cleanup() {
     echo "Received termination signal, forwarding to child processes..."
@@ -109,7 +133,7 @@ cleanup() {
     # above (final test/broker output, etc.), in case this does run to completion.
     set_artifact_ownership
     echo "Cleanup completed"
-    exit 0
+    exit "$1"
 }
 
 # Make sure the artifacts are readable for the user.
@@ -150,7 +174,9 @@ wait_with_timeout() {
     return "$rc"
 }
 
-trap cleanup TERM INT QUIT
+trap 'cleanup 143' TERM
+trap 'cleanup 130' INT
+trap 'cleanup 131' QUIT
 
 # Wait for go test to finish
 wait "$GO_TEST_PID"

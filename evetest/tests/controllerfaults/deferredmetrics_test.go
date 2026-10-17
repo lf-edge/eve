@@ -189,11 +189,11 @@ func settleApp(t *WithT, updates <-chan *eveinfo.ZInfoApp) {
 // -----------
 //   - HYPERVISOR (defaults to KVM).
 func TestDeferredQueueBacklogReported(test *testing.T) {
-	evetestT := evetest.Init(test)
+	evetestT := evetest.Init(test, evetest.WithControllerFaults())
 	defer evetest.Close()
 	if !evetest.ControllerFaultsEnabled() {
-		test.Skip("controller fault injection is off; " +
-			"set EVETEST_CONTROLLER_FAULTS=true to run this test")
+		test.Skip("controller fault injection was turned off; " +
+			"unset EVETEST_CONTROLLER_FAULTS to run this test")
 	}
 	t := NewGomegaWithT(evetestT)
 
@@ -325,11 +325,11 @@ func TestDeferredQueueBacklogReported(test *testing.T) {
 // -----------
 //   - HYPERVISOR (defaults to KVM).
 func TestDeferredQueueDropsReported(test *testing.T) {
-	evetestT := evetest.Init(test)
+	evetestT := evetest.Init(test, evetest.WithControllerFaults())
 	defer evetest.Close()
 	if !evetest.ControllerFaultsEnabled() {
-		test.Skip("controller fault injection is off; " +
-			"set EVETEST_CONTROLLER_FAULTS=true to run this test")
+		test.Skip("controller fault injection was turned off; " +
+			"unset EVETEST_CONTROLLER_FAULTS to run this test")
 	}
 	t := NewGomegaWithT(evetestT)
 
