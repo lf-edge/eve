@@ -111,12 +111,15 @@ func (z *zedkube) handleLeaderElection() {
 			},
 		}
 
-		// Define the leader election configuration
+		// Define the leader election configuration. The lease also gates
+		// isDecisionNode, so its handover bounds how long a VMIRS replica reset
+		// waits when the leader is the node that went down: a 300s lease held
+		// it back for five minutes.
 		lec := leaderelection.LeaderElectionConfig{
 			Lock:            lock,
-			LeaseDuration:   300 * time.Second,
-			RenewDeadline:   180 * time.Second,
-			RetryPeriod:     15 * time.Second,
+			LeaseDuration:   60 * time.Second,
+			RenewDeadline:   45 * time.Second,
+			RetryPeriod:     10 * time.Second,
 			ReleaseOnCancel: true,
 			Callbacks: leaderelection.LeaderCallbacks{
 				OnStartedLeading: func(baseCtx context.Context) {
