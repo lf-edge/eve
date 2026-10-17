@@ -173,6 +173,7 @@ func runRestoreTest(test *testing.T, damage persistDamage) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
 	defer evetest.Close()
+	defer stopLRUGenHold()
 
 	defineSharedParameters(restoreParameterDefinitions()...)
 	p := resolveDeviceParams(t)

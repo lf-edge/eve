@@ -69,6 +69,7 @@ func TestKvmToKRepartitionVolmig(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
 	defer evetest.Close()
+	defer stopLRUGenHold()
 	requireFlavorAwareTransport(t)
 
 	defineSharedParameters(volmigRepartitionParameterDefinitions()...)
@@ -155,6 +156,7 @@ func TestKvmToKRepartitionVolmig(test *testing.T) {
 		evetest.BaseOSDatastoreHTTP, true, false, conversionUpgradeTimeout)
 	stopStates()
 	conversionOK = true
+	defer recordPVCUpload(device)
 	evetest.Checkpoint("conversion-complete")
 
 	// Phase 6.

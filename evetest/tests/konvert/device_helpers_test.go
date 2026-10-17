@@ -88,6 +88,7 @@ func defineParameters(initialVersion evetest.TestParameterDefinition,
 				AllowedValues: "kvm|xen|kubevirt",
 			},
 		},
+		lruGenOffParameterDefinition(),
 	}
 	evetest.DefineTestParameters(append(shared, extra...)...)
 }
@@ -154,7 +155,11 @@ func setupDevice(t Gomega, p deviceParams, filesystem evetest.Filesystem,
 		evetest.RequireNetworkModel{NetworkModel: netmodels.SingleEthWithDHCP},
 	}
 	evetest.Setup(append(requirements, extraRequirements...)...)
-	return evetest.GetEdgeDevice(devName)
+	device := evetest.GetEdgeDevice(devName)
+	if evetest.GetTestParameter[bool](lruGenOffParamKey) {
+		startLRUGenHold(device)
+	}
+	return device
 }
 
 // applyMgmtNetwork gives the device its management port, which everything else
