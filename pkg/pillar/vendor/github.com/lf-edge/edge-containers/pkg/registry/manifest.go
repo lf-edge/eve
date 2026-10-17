@@ -1,25 +1,23 @@
 package registry
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"path"
 	"time"
 
-	"github.com/containerd/containerd/remotes"
 	"github.com/lf-edge/edge-containers/pkg/tgz"
 
-	"oras.land/oras-go/pkg/content"
-	"oras.land/oras-go/pkg/target"
+	oras "oras.land/oras-go/v2"
 
 	digest "github.com/opencontainers/go-digest"
+	specs "github.com/opencontainers/image-spec/specs-go"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 // Manifest create the manifest for the given Artifact.
-func (a Artifact) Manifest(format Format, configOpts ConfigOpts, ref string, legacyOpts ...LegacyOpt) (*ocispec.Manifest, target.Target, error) {
+func (a Artifact) Manifest(format Format, configOpts ConfigOpts, ref string, legacyOpts ...LegacyOpt) (*ocispec.Manifest, oras.ReadOnlyTarget, error) {
 	var (
 		desc  ocispec.Descriptor
 		err   error
@@ -31,11 +29,7 @@ func (a Artifact) Manifest(format Format, configOpts ConfigOpts, ref string, leg
 	}
 
 	// Go through each file type in the registry and add the appropriate file type and path, along with annotations
-	fileStore := content.NewFile("")
-	defer func() { _ = fileStore.Close() }()
-	memStore := content.NewMemory()
-	multiStore := content.MultiReader{}
-	multiStore.AddStore(fileStore, memStore)
+	src := newArtifactSource(ref)
 
 	// if we have the container format, we need to create tgz layers
 	var (
@@ -55,7 +49,7 @@ func (a Artifact) Manifest(format Format, configOpts ConfigOpts, ref string, leg
 
 	if a.Kernel != nil {
 		name := "kernel"
-		desc, err = createLayerAndDesc(RoleKernel, name, MimeTypeECIKernel, tmpDir, format, lOpts.timestamp, a.Kernel, fileStore, memStore)
+		desc, err = createLayerAndDesc(RoleKernel, name, MimeTypeECIKernel, tmpDir, format, lOpts.timestamp, a.Kernel, src)
 		if err != nil {
 			return nil, nil, fmt.Errorf("error adding kernel: %v", err)
 		}
@@ -74,7 +68,7 @@ func (a Artifact) Manifest(format Format, configOpts ConfigOpts, ref string, leg
 		layerHash = ""
 		customMediaType := MimeTypeECIInitrd
 
-		desc, err = createLayerAndDesc(role, name, customMediaType, tmpDir, format, lOpts.timestamp, a.Initrd, fileStore, memStore)
+		desc, err = createLayerAndDesc(role, name, customMediaType, tmpDir, format, lOpts.timestamp, a.Initrd, src)
 		if err != nil {
 			return nil, nil, fmt.Errorf("error adding initrd: %v", err)
 		}
@@ -96,7 +90,7 @@ func (a Artifact) Manifest(format Format, configOpts ConfigOpts, ref string, leg
 		name := fmt.Sprintf("disk-root-%s", disk.Source.GetName())
 		customMediaType := TypeToMime[disk.Type]
 
-		desc, err = createLayerAndDesc(role, name, customMediaType, tmpDir, format, lOpts.timestamp, disk.Source, fileStore, memStore)
+		desc, err = createLayerAndDesc(role, name, customMediaType, tmpDir, format, lOpts.timestamp, disk.Source, src)
 		if err != nil {
 			return nil, nil, fmt.Errorf("error adding %s disk: %v", name, err)
 		}
@@ -115,7 +109,7 @@ func (a Artifact) Manifest(format Format, configOpts ConfigOpts, ref string, leg
 			name := fmt.Sprintf("disk-%d-%s", i, disk.Source.GetName())
 			customMediaType := TypeToMime[disk.Type]
 
-			desc, err = createLayerAndDesc(role, name, customMediaType, tmpDir, format, lOpts.timestamp, disk.Source, fileStore, memStore)
+			desc, err = createLayerAndDesc(role, name, customMediaType, tmpDir, format, lOpts.timestamp, disk.Source, src)
 			if err != nil {
 				return nil, nil, fmt.Errorf("error adding %s disk: %v", name, err)
 			}
@@ -134,7 +128,7 @@ func (a Artifact) Manifest(format Format, configOpts ConfigOpts, ref string, leg
 			customMediaType := MimeTypeECIOther
 			name := other.GetName()
 
-			desc, err = createLayerAndDesc("", name, customMediaType, tmpDir, format, lOpts.timestamp, other, fileStore, memStore)
+			desc, err = createLayerAndDesc("", name, customMediaType, tmpDir, format, lOpts.timestamp, other, src)
 			if err != nil {
 				return nil, nil, fmt.Errorf("error adding other: %v", err)
 			}
@@ -153,7 +147,7 @@ func (a Artifact) Manifest(format Format, configOpts ConfigOpts, ref string, leg
 		name := "config.json"
 		customMediaType := MimeTypeECIConfig
 
-		desc, err = createLayerAndDesc("", name, customMediaType, tmpDir, format, lOpts.timestamp, a.Config, fileStore, memStore)
+		desc, err = createLayerAndDesc("", name, customMediaType, tmpDir, format, lOpts.timestamp, a.Config, src)
 		if err != nil {
 			return nil, nil, fmt.Errorf("error adding %s: %v", name, err)
 		}
@@ -189,7 +183,7 @@ func (a Artifact) Manifest(format Format, configOpts ConfigOpts, ref string, leg
 
 		name := "config.json"
 		mediaType := MimeTypeOCIImageConfig
-		desc, err = memStore.Add(name, mediaType, configBytes)
+		desc, err = src.addBytes(name, mediaType, configBytes)
 		if err != nil {
 			return nil, nil, fmt.Errorf("error adding OCI config: %v", err)
 		}
@@ -197,6 +191,8 @@ func (a Artifact) Manifest(format Format, configOpts ConfigOpts, ref string, leg
 	// make our manifest
 	mediaType := ocispec.MediaTypeImageManifest
 	manifest := &ocispec.Manifest{
+		// a registry rejects a manifest that does not declare schema version 2
+		Versioned: specs.Versioned{SchemaVersion: 2},
 		Config:    desc,
 		Layers:    pushContents,
 		MediaType: mediaType,
@@ -205,19 +201,13 @@ func (a Artifact) Manifest(format Format, configOpts ConfigOpts, ref string, leg
 	if err != nil {
 		return nil, nil, fmt.Errorf("unable to convert manifest to json: %v", err)
 	}
-	manifestDesc := ocispec.Descriptor{
+	src.setManifest(ocispec.Descriptor{
 		MediaType: mediaType,
 		Size:      int64(len(b)),
 		Digest:    digest.FromBytes(b),
-	}
-	target := newMultiTarget(multiStore)
-	// It is a bit annoying that we need to store this twice, but the only oras structure
-	// that supports multiple backends is content.MultiReader, and that does not have
-	// support for Resolve(), only for Fetch().
-	_ = memStore.StoreManifest(ref, manifestDesc, b)
-	_ = target.StoreManifest(ref, manifestDesc, b)
+	}, b)
 
-	return manifest, target, nil
+	return manifest, src, nil
 }
 
 func getManifest(dig, name, mediaType string, size int64) (ocispec.Descriptor, error) {
@@ -225,14 +215,13 @@ func getManifest(dig, name, mediaType string, size int64) (ocispec.Descriptor, e
 		annotations map[string]string
 		desc        ocispec.Descriptor
 	)
+	annotations = map[string]string{}
 	if name != "" {
-		annotations = map[string]string{
-			ocispec.AnnotationTitle: name,
-		}
+		annotations[ocispec.AnnotationTitle] = name
 	}
 
 	if mediaType == "" {
-		mediaType = content.DefaultBlobMediaType
+		mediaType = ocispec.MediaTypeImageLayer
 	}
 
 	dige, err := digest.Parse(dig)
@@ -248,7 +237,7 @@ func getManifest(dig, name, mediaType string, size int64) (ocispec.Descriptor, e
 	return desc, nil
 }
 
-func createLayerAndDesc(role, name, customMediaType, tmpDir string, format Format, timestamp *time.Time, source Source, fileStore *content.File, memStore *content.Memory) (ocispec.Descriptor, error) {
+func createLayerAndDesc(role, name, customMediaType, tmpDir string, format Format, timestamp *time.Time, source Source, src *artifactSource) (ocispec.Descriptor, error) {
 	var (
 		desc ocispec.Descriptor
 		err  error
@@ -265,12 +254,12 @@ func createLayerAndDesc(role, name, customMediaType, tmpDir string, format Forma
 			}
 			filepath = tgzfile
 		}
-		desc, err = fileStore.Add(name, mediaType, filepath)
+		desc, err = src.addFile(name, mediaType, filepath)
 		if err != nil {
 			return desc, fmt.Errorf("error adding %s from file at %s: %v", name, filepath, err)
 		}
 	case source.GetContent() != nil:
-		desc, err = memStore.Add(name, mediaType, source.GetContent())
+		desc, err = src.addBytes(name, mediaType, source.GetContent())
 		if err != nil {
 			return desc, fmt.Errorf("error adding content for %s: %v", name, err)
 		}
@@ -286,30 +275,4 @@ func createLayerAndDesc(role, name, customMediaType, tmpDir string, format Forma
 	desc.Annotations[AnnotationRole] = role
 	desc.Annotations[ocispec.AnnotationTitle] = name
 	return desc, nil
-}
-
-// multiTarget wrap a multiReader so it can be a proper target.Target. This really should be upstream in oras.
-type multiTarget struct {
-	reader *content.MultiReader
-	memory *content.Memory
-}
-
-func newMultiTarget(reader content.MultiReader) *multiTarget {
-	return &multiTarget{
-		reader: &reader,
-		memory: content.NewMemory(),
-	}
-}
-
-func (m *multiTarget) StoreManifest(ref string, manifest ocispec.Descriptor, b []byte) error {
-	return m.memory.StoreManifest(ref, manifest, b)
-}
-func (m *multiTarget) Fetcher(ctx context.Context, ref string) (remotes.Fetcher, error) {
-	return m.reader, nil
-}
-func (m *multiTarget) Pusher(ctx context.Context, ref string) (remotes.Pusher, error) {
-	return nil, fmt.Errorf("unsupported")
-}
-func (m *multiTarget) Resolve(ctx context.Context, ref string) (name string, desc ocispec.Descriptor, err error) {
-	return m.memory.Resolve(ctx, ref)
 }
