@@ -86,7 +86,7 @@ removes a version of a package.
 
 GitHub provides a feature called **Dependabot** that fixes several kinds of out of date versions
 including the OS images in Dockerfiles. The limitation is that it only updates the base OS image,
-not the package versions in the apk add command, so it can only be used in EVE packages that do not
+not the package versions in the `PKGS` lists, so it can only be used in EVE packages that do not
 hardwire package versions.
 
 Dependabot has two independent features, and lf-edge/eve uses only one of them:
@@ -111,7 +111,7 @@ To use Dependabot version updates in a user fork:
 
 ### ver-update to List Package Versions
 
-Dependabot will not help in EVE packages that use hardwired apk package versions.
+Dependabot will not help in EVE packages that use hardwired package versions.
 Updating them is a manual process.
 The hard part is finding the out of date versions and knowing what to replace them with.
 That part can be done automatically with the scripts in build-tools/ver-update.

@@ -567,27 +567,29 @@ as part of `lf-edge/eve` Github actions for the master branch and EVE releases.
 
 Packages are built within a docker container as defined by the `Dockerfile` within the package directory. The `Dockerfile` also specifies how the package will be built within the container. Some packages have a separate script to built them which is then invoked using the `RUN` clause within the `Dockerfile`. For some others like the `kernel` package, the entire build script is specified within the `Dockerfile`. Finally, the built docker images are published on [DockerHub under lfedge](https://hub.docker.com/u/lfedge). Please note that since our organization on DockerHub is managed by Linux Foundation, we have to request that they create a new package namespace for us every time we add a new package. For example, if you're adding `pkg/eve-foo` you will have to request a `New Repository` named `https://hub.docker.com/r/lfedge/eve-foo` via [LF JIRA](https://jira.linuxfoundation.org/plugins/servlet/desk/portal/2). Don't forget to ask for permissions setting to be copied from `https://hub.docker.com/r/lfedge/eve`.
 
-Packages are meant to be the building blocks for [reproducible builds](https://reproducible-builds.org/). Currently, however, the builds are not strictly speaking reproducible, but rather guaranteed. EVE build system is not bootstrapping everything from the source up, instead it uses [Alpine Linux](https://pkgs.alpinelinux.org/packages) as the source of binary artifacts. All of the Alpine binary packages that are consumed by EVE are collected in the Docker image archive and published under `lfedge/eve-alpine` name. That way, EVE build system _pins_ all Alpine packages that it needs and can guarantee that they won't change until the archive is updated. All of the packages in the archive are listed under [mirrors](../pkg/alpine/mirrors) folder and the archive can be updated by updating that list. While currently re-building of the archive image is done by fetching required packages from the official Alpine mirrors, we can always add an additional step of bootstrapping all the same packages from source (which will give EVE true reproducible builds).
+Packages are meant to be the building blocks for [reproducible builds](https://reproducible-builds.org/). Currently, however, the builds are not strictly speaking reproducible, but rather guaranteed. EVE build system is not bootstrapping everything from the source up, instead it uses [Ubuntu](https://packages.ubuntu.com) as the source of binary artifacts, resolved against a single timestamp of the [Ubuntu snapshot service](https://snapshot.ubuntu.com). All of the Ubuntu binary packages that are consumed by EVE are collected in the Docker image archive and published under `lfedge/eve-ubuntu` name. That way, EVE build system _pins_ all Ubuntu packages that it needs and can guarantee that they won't change until the archive is updated. All of the packages in the archive are listed under [mirrors](../pkg/ubuntu/mirrors) folder and the archive can be updated by updating that list.
 
-Since updating content of the `lfedge/eve-alpine` package is a bit of an unusual process -- it is described in details in the [ALPINE.md](./ALPINE.md) document.
+#### How to update eve-ubuntu package
 
-Reliance on `lfedge/eve-alpine` archive enforces a particular structure on individual Dockerfile from EVE packages. For one, they always start with `FROM lfedge/eve-alpine:TAG` and they always produce the final output in the `FROM scratch` step (to avoid layer dependency on the large `lfedge/eve-alpine` package). In addition, `lfedge/eve-alpine` archive package defines a helper script `eve-alpine-deploy.sh` that provides and easy entry point for setting up of the build environment and the final, Alpine-based output of the build. This helper script is driven by looking up the following environment variable (which are very similar to [Requires](https://docs.fedoraproject.org/en-US/packaging-guidelines/#_dependency_types) and [BuildRequires](https://docs.fedoraproject.org/en-US/packaging-guidelines/#buildrequires) in RPMs):
+Since updating content of the `lfedge/eve-ubuntu` package is a bit of an unusual process -- it is described in details in the [UBUNTU.md](./UBUNTU.md) document.
+
+Reliance on `lfedge/eve-ubuntu` archive enforces a particular structure on individual Dockerfile from EVE packages. For one, they always start with `FROM lfedge/eve-ubuntu:TAG` and they always produce the final output in the `FROM scratch` step (to avoid layer dependency on the large `lfedge/eve-ubuntu` package). In addition, `lfedge/eve-ubuntu` archive package defines a helper script `eve-ubuntu-deploy.sh` that provides and easy entry point for setting up of the build environment and the final, Ubuntu-based output of the build. This helper script is driven by looking up the following environment variable (which are very similar to [Requires](https://docs.fedoraproject.org/en-US/packaging-guidelines/#_dependency_types) and [BuildRequires](https://docs.fedoraproject.org/en-US/packaging-guidelines/#buildrequires) in RPMs):
 
 * PKGS, PKGS_amd64, PKGS_arm64, PKGS_riscv64: used to list packages required for the final binary output of the build
 * BUILD_PKGS, BUILD_PKGS_amd64, BUILD_PKGS_arm64, BUILD_PKGS_riscv64: used to list packages required to be present for the build itself, but not in the final output
 
-_Note_: `lfedge/eve-alpine` already includes the go toolchain, so you don't need to include it in the `BUILD_PKGS` list. The version of the go toolchain is set in [Dockerfile](../pkg/alpine/Dockerfile) of `eve-alpine` package.
+_Note_: `lfedge/eve-ubuntu` already includes the go toolchain (Ubuntu's `golang-go` of the pinned snapshot), so you don't need to include it in the `BUILD_PKGS` list.
 
-The only tiny annoyance is that one should not forget an explicit `RUN eve-alpine-deploy.sh` stanza in the Dockerfile after these ENV variables are defined. Calling `eve-alpine-deploy.sh` in the RUN stanza has an effect of all the BUILD time packages getting installed in the build context and all the runtime packages getting installed in the special folder `/out` (if there are additional binary artifacts produced by the build -- they too need to be added to the `/out` folder).
+The only tiny annoyance is that one should not forget an explicit `RUN eve-ubuntu-deploy.sh` stanza in the Dockerfile after these ENV variables are defined. Calling `eve-ubuntu-deploy.sh` in the RUN stanza has an effect of all the BUILD time packages getting installed in the build context and all the runtime packages getting installed in the special folder `/out` (if there are additional binary artifacts produced by the build -- they too need to be added to the `/out` folder).
 
 A typical EVE Dockerfile drving the build will start from something like:
 
 ```shell
-FROM lfedge/eve-alpine:XXX as build
-ENV PKGS foo bar
-ENV PKGS_arm64 baz-for-arm
-ENV BUILD_PKGS gcc
-RUN eve-alpine-deploy.sh
+FROM lfedge/eve-ubuntu:XXX as build
+ENV PKGS="foo bar"
+ENV PKGS_arm64="baz-for-arm"
+ENV BUILD_PKGS="gcc"
+RUN eve-ubuntu-deploy.sh
 ...
 FROM scratch
 COPY --from=build /out/ /
@@ -861,9 +863,14 @@ Last but not least, is this completely necessary?
 
 ## Cross-compilation support
 
-### cross-compilers package
+### Cross toolchains
 
-In order to enable cross-compilation we add `pkg/cross-compilers` which contains `binutils`, `gcc` and `g++` prepared with target architecture different from host one.
+Cross-compilation uses Ubuntu's cross toolchain packages: `gcc-aarch64-linux-gnu`, `gcc-x86-64-linux-gnu`,
+`gcc-riscv64-linux-gnu` and `gcc-arm-linux-gnueabihf` (the latter for the 32-bit ARM parts of firmware such as the
+OP-TEE trusted applications). They are part of the `lfedge/eve-ubuntu` mirror of the amd64 and arm64 build hosts, see
+[pkg/ubuntu/mirrors/resolute/main.amd64](../pkg/ubuntu/mirrors/resolute/main.amd64) and `main.arm64`; Ubuntu provides no
+cross toolchains on riscv64 hosts. They come from the same snapshot as the native toolchain, so a cross build and a native
+build use the same gcc and binutils versions.
 
 Cross-compilers support matrix are inside the following table (`Y` - supported, `N` - not supported, `-` - not expected).
 
@@ -872,20 +879,6 @@ Cross-compilers support matrix are inside the following table (`Y` - supported, 
 |    x86_64   |      -      |      Y       |      N       |
 |   aarch64   |      Y      |      -       |      N       |
 |   riscv64   |      Y      |      Y       |      -       |
-
-The package use [aports](https://gitlab.alpinelinux.org/alpine/aports) repository as a base to build cross-compilers
-with the same revision as used for eve-alpine package. It helps us to use the same versions of tools with the same configuration and patches applied.
-Only two patches applied to aports repository:
-
-1. [0001-only-cross-compile-prepare.patch](.../pkg/cross-compilers/patches/aports/0001-only-cross-compile-prepare.patch) - allow us to use the bootstrap script provided in repo and stops the process of bootstrap right after preparing of cross-compilers
-2. [0002-adjust-sysroot.patch](.../pkg/cross-compilers/patches/aports/0002-adjust-sysroot.patch) - modifies sysroot configured during building of gcc to be pointed onto reasonable directory (e.g. `/usr/riscv64-alpine-linux-musl` instead of `/home/builder/sysroot-riscv64` bootstrap process use internally)
-
-Note that cross-compiler packages inside aports are not distributed and involved in the bootstrap process only, so patches are not expected to be upstreamed.
-
-The build process of the image is quite time-consuming, but we need to rebuild it only in case of moving onto the next alpine release, e.g. from `3.16` to `3.17`, when we will update gcc/binutils.
-Update of packages inside `eve-alpine` without moving to the next Alpine release will not affect versions of gcc as we reuse them from cache.
-
-Building of cross-compilers for `riscv64` host architecture is not supported now because of no `gcc-gnat` available (additional patches required).
 
 ### Enabling of cross-compilation
 
@@ -897,65 +890,59 @@ In order to cross compile, you need the following at compile time:
 
 * env vars, specifically:
   * `BUILDARCH` - the architecture in go format for where you are building, e.g. amd64 or arm64
-  * `EVE_BUILD_ARCH` - the architecture in uname format for where you are building, e.g. x86_64 or aarch64
   * `TARGETARCH` - the architecture in go format for the platform you are targeting, e.g. amd64 or arm64
-  * `EVE_TARGET_ARCH` - the architecture in uname format for the platform you are targeting, e.g. x86_64 or aarch64
-  * `CROSS_COMPILE_ENV` - cross-compiler prefix to use in `CC` with gcc suffix or in `CROSS_COMPILE` env variable
+  * `CROSS_COMPILE_ENV` - cross-compiler prefix to use in `CC` with gcc suffix or in `CROSS_COMPILE` env variable: `aarch64-linux-gnu-`, `x86_64-linux-gnu-`, `riscv64-linux-gnu-`, or empty for a native build
 * compilers in your build architecture that can compile binaries for your target architecture
-  * `gcc`/`g++`/`binutils` with cross-compilation support - provided by `lfedge/eve-cross-compilers`
-  * libraries for the target architecture - natively from `eve-alpine` for the target architecture
+  * `gcc`/`g++`/`binutils` with cross-compilation support - Ubuntu's `gcc-<triple>` packages from the `lfedge/eve-ubuntu` mirror
+  * libraries and headers for the target architecture, if the result is a userland program - a sysroot made from `/out` of `lfedge/eve-ubuntu` for the target architecture (freestanding firmware does not need one)
 
 Below we provide step-by-step processes for cross-compilation in Dockerfile, each step of which provides one or more of the requirements:
 
-1. Add another base eve-alpine image with `--platform=${BUILDPLATFORM}`. This way we enforce builder to use the same platform we are running on (not the target platform):
+1. Add another base eve-ubuntu image with `--platform=${BUILDPLATFORM}`. This way we enforce builder to use the same platform we are running on (not the target platform):
 
     ```dockerfile
-    ARG BUILD_PKGS_BASE="git gcc linux-headers libc-dev make linux-pam-dev m4 findutils util-linux make patch \
-                         libintl libuuid libtirpc libblkid libcrypto1.1 zlib tar"
+    ARG BUILD_PKGS_BASE="git gcc linux-libc-dev libc6-dev make m4 findutils util-linux patch tar uuid-dev libtirpc-dev libblkid-dev"
+    ARG EVE_UBUNTU_IMAGE=lfedge/eve-ubuntu:9a6ebfad80ca4d18950553f8bf2c01a068869805
     # native base image
-    FROM lfedge/eve-alpine:e0280f097450d1f53dd483ab98acd7c7cf2273ce as build-native
+    FROM ${EVE_UBUNTU_IMAGE} AS build-native
     ARG BUILD_PKGS_BASE
-    RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
+    RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-ubuntu-deploy.sh
+    ENV CROSS_COMPILE_ENV=""
     # cross-compile base image
-    FROM --platform=${BUILDPLATFORM} lfedge/eve-alpine:e0280f097450d1f53dd483ab98acd7c7cf2273ce as build-cross
+    FROM --platform=${BUILDPLATFORM} ${EVE_UBUNTU_IMAGE} AS build-cross
     ARG BUILD_PKGS_BASE
-    RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
+    RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-ubuntu-deploy.sh
     ```
 
-2. Use cross-compilers image for the host platform to install packages from it later:
+2. Add libraries and headers required to build for the target platform (userland programs only). This stage runs for the target platform, so apt installs the target's packages into `/out`:
 
     ```dockerfile
-    FROM --platform=${BUILDPLATFORM} lfedge/eve-cross-compilers:e39535ae301b2b64e900e434ef197612cb3a6fa9 AS cross-compilers
+    FROM ${EVE_UBUNTU_IMAGE} AS cross-compile-libs
+    ENV PKGS="libc6-dev linux-libc-dev libgcc-s1 uuid-dev libtirpc-dev libblkid-dev"
+    RUN eve-ubuntu-deploy.sh
     ```
 
-3. Add libraries required to build for the target platform:
-
-    ```dockerfile
-    FROM lfedge/eve-alpine:e0280f097450d1f53dd483ab98acd7c7cf2273ce AS cross-compile-libs
-    ENV PKGS musl-dev libgcc libintl libuuid libtirpc libblkid
-    RUN eve-alpine-deploy.sh
-    ```
-
-4. Adjust `EVE_TARGET_ARCH` environment variable for cross-compiler:
+3. Install the cross compiler for every target and set the prefix:
 
     ```dockerfile
     FROM build-cross AS build-cross-target-arm64
-    ENV EVE_TARGET_ARCH=aarch64
+    RUN BUILD_PKGS=gcc-aarch64-linux-gnu eve-ubuntu-deploy.sh
+    ENV CROSS_COMPILE_ENV=aarch64-linux-gnu-
     FROM build-cross AS build-cross-target-amd64
-    ENV EVE_TARGET_ARCH=x86_64
+    RUN BUILD_PKGS=gcc-x86-64-linux-gnu eve-ubuntu-deploy.sh
+    ENV CROSS_COMPILE_ENV=x86_64-linux-gnu-
     ```
 
-5. Install cross-compilers and copy libraries into your image:
+4. Copy the sysroot into the image and point the compiler at it:
 
     ```dockerfile
     FROM build-cross-target-${TARGETARCH} AS build-cross-target
-    ENV CROSS_COMPILE_ENV="${EVE_TARGET_ARCH}"-alpine-linux-musl-
-    COPY --from=cross-compilers /packages /packages
-    RUN apk add --no-cache --allow-untrusted -X /packages build-base-"${EVE_TARGET_ARCH}"
-    COPY --from=cross-compile-libs /out/ /usr/"${EVE_TARGET_ARCH}"-alpine-linux-musl/
+    COPY --from=cross-compile-libs /out/ /sysroot/
+    ENV CGO_CFLAGS="--sysroot=/sysroot"
+    ENV CGO_LDFLAGS="--sysroot=/sysroot"
     ```
 
-6. Chain images to use the same notation for cross and native cases:
+5. Chain images to use the same notation for cross and native cases:
 
     ```dockerfile
     # cross-compilers
@@ -966,7 +953,7 @@ Below we provide step-by-step processes for cross-compilation in Dockerfile, eac
     FROM build-native AS target-arm64-build-arm64
     ```
 
-7. Use cross compilation (here we put go sample that uses cgo):
+6. Use cross compilation (here we put go sample that uses cgo):
 
     ```dockerfile
     FROM target-${TARGETARCH}-build-${BUILDARCH} AS build
@@ -983,21 +970,21 @@ Below we provide step-by-step processes for cross-compilation in Dockerfile, eac
     # RUN go build .
     ```
 
-8. Copy out build artifacts into the image based on target arch. Do not forget to install runtime libraries there.
+7. Copy out build artifacts into the image based on target arch. Do not forget to install runtime libraries there.
 
-Note that `EVE_BUILD_ARCH` and `EVE_TARGET_ARCH` environment variables are set in eve-alpine image to be aligned with its arch (e.g. `x86_64` for `adm64`), so we need to override them only for cross-compilation.
-`BUILDARCH` and `TARGETARCH` exposed by build system itself.
+`BUILDARCH` and `TARGETARCH` are exposed by the build system itself; use `TARGETARCH` (`amd64`, `arm64`, `riscv64`) for decisions
+in `RUN` steps, e.g. firmware that only exists for one architecture.
 
 The whole flow looks like this:
 
-* For native builds, e.g. amd64 -> amd64, stage `build` inherits from `target-amd64-build-amd64`, which inherits from `build-native`, which is just `eve-alpine`.
+* For native builds, e.g. amd64 -> amd64, stage `build` inherits from `target-amd64-build-amd64`, which inherits from `build-native`, which is just `eve-ubuntu` with an empty `CROSS_COMPILE_ENV`.
 * For cross-compile builds, e.g. amd64 (host) -> arm64 (target):
   * Stage `build` inherits from `target-arm64-build-amd64`, which inherits from `build-cross-target`
   * Stage `build-cross-target`:
-    * installs the cross-compilers for host (amd64) and target (arm64) arch combination from `cross-compilers` image. We use `EVE_TARGET_ARCH` there to compose the package name notation `build-base-aarch64` to install.
-    * installs the target arch libraries from `cross-compile-libs`, which is based on `eve-alpine` for the `TARGETARCH`
-    * sets `CROSS_COMPILE_ENV="${EVE_TARGET_ARCH}"-alpine-linux-musl-` environment variable to use later as cross-compile prefix
-    * inherits from `build-cross-target-${TARGETARCH}`, which adjust the `EVE_TARGET_ARCH` environment variable and inherits from `build-cross` stage based on `eve-alpine`
+    * copies the target libraries and headers from `cross-compile-libs`, which is `eve-ubuntu` for the `TARGETARCH`, into `/sysroot`
+    * inherits from `build-cross-target-${TARGETARCH}`, which installs the matching `gcc-<triple>` package and sets `CROSS_COMPILE_ENV`, and inherits from `build-cross` stage based on `eve-ubuntu` for the `BUILDPLATFORM`
+
+[pkg/pillar](../pkg/pillar/Dockerfile) follows this pattern for a cgo program, [pkg/optee-os](../pkg/optee-os/Dockerfile) and [pkg/bsp-imx](../pkg/bsp-imx/Dockerfile) for freestanding firmware, which needs no sysroot.
 
 ## Using a local container registry
 
@@ -1042,7 +1029,7 @@ Use `LINUXKIT_PKG_ORG` to redirect package pushes to a local registry. For examp
     {
       "repositories": [
         "lfedge/eve",
-        "lfedge/eve-alpine",
+        "lfedge/eve-ubuntu",
         "lfedge/eve-apparmor",
         "lfedge/eve-bpftrace",
         "lfedge/eve-bsp-imx",

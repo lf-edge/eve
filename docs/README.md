@@ -279,7 +279,7 @@ Both IMGA and IMGB host a filesystem containing the following software component
 * Second stage [GRUB bootloader](../pkg/grub) and [its configuration](../pkg/grub/rootfs.cfg) in `/EFI` folder
 * Linux Kernel in `/boot` folder (kernel is now built from [lf-edge/eve-kernel](https://github.com/lf-edge/eve-kernel), see [KERNEL.md](KERNEL.md))
 * [EVE microservices](../pkg/pillar) in `/containers` folder
-* Minimalistic [Alpine Linux](https://alpinelinux.org)-derived UNIX environment
+* Minimalistic [Ubuntu](https://ubuntu.com)-derived UNIX environment
 
 EVE microservices are ultimately responsible for providing the entire EVE
 experience and they are described in greater details below.

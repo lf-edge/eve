@@ -135,7 +135,7 @@ VM applications are required to perform DHCP requests themselves. Cloud-init is 
 to instruct the app OS to perform DHCP on selected network interfaces.
 
 Data-plane of VIFs spans across both guest and host network stacks. Packet sent from an application
-is routed by the guest OS (Alpine Linux for container apps) and transmitted across a VIF
+is routed by the guest OS (the busybox based shim VM for container apps) and transmitted across a VIF
 into the host network stack. It arrives via the TAP device and gets forwarded to the NI bridge.
 Next, ACLs implemented using iptables are applied and the packet is either allowed to continue
 or gets dropped. If [flow logging](#flow-logging) is enabled, this is done by marking the packet with

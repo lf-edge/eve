@@ -21,7 +21,7 @@ The stages are:
    * Local content
    * Go modules
    * External sources
-   * Alpine packages
+   * Ubuntu packages
 
 ## Binary to source commit
 
@@ -336,412 +336,107 @@ RUN mkdir /rpi-firmware &&\
 
 By inspecting the Dockerfile, we can see the source of the Raspberry Pi firmware used and the precise commit.
 
-### Alpine packages
+### Ubuntu packages
 
-The source for standard packages, such as `go` or `gcc` for compilation or `openssl` or `bash` for useful utilities, is the operating
-system package manager. In the case of all or almost all of the container images, the base image, shown as `FROM` in the Dockerfile,
-that is [Alpine Linux](https://www.alpinelinux.org).
+The source for standard packages, such as `gcc` for compilation or `openssl` or `bash` for useful utilities, is the operating
+system package manager. In the case of all of the container images, the base image, shown as `FROM` in the Dockerfile,
+is [Ubuntu](https://ubuntu.com), in the form of EVE's own base image [lfedge/eve-ubuntu](https://hub.docker.com/r/lfedge/eve-ubuntu),
+whose source is at [pkg/ubuntu](../pkg/ubuntu). All container images included in EVE OS **must** use that image as the base.
 
-Alpine Linux uses the [apk package manager](https://wiki.alpinelinux.org/wiki/Package_management). Unfortunately, apk changes
-package versions for the default install via `apk add <packagename>`, and even when pinned to a specific version, it can change the
-underlying bits for a particular version. This can make it challenging to track precisely which version of a apckage was used and,
-therefore, which software.
+Ubuntu's archive moves: `apt-get install <packagename>` gives whatever version the `-updates` and `-security` pockets carry
+that day. `lfedge/eve-ubuntu` therefore resolves every package against one timestamp of the
+[Ubuntu snapshot service](https://snapshot.ubuntu.com), `UBUNTU_SNAPSHOT` in [pkg/ubuntu/Dockerfile](../pkg/ubuntu/Dockerfile),
+and mirrors the resulting `.deb` files inside the image. The snapshot service keeps every version it served, so the exact
+binary package, and from it the exact source package, can always be retrieved again.
 
-For example, [pkg/pillar](../pkgs/pillar) requires the following Alpine packages to be installed via apk:
-`alpine-baselayout musl-utils bash glib squashfs-tools util-linux e2fsprogs e2fsprogs-extra keyutils dosfstools coreutils sgdisk smartmontools`.
-
-Given that `apk add alpine-baselayout` or `apk add glib` can be any version, EVE provides a methdology for tracking the precise package and, by
-extension, source used when installing those packages.
-
-All container images used in the EVE OS image do **not** source from [the standard Alpine container image](https://hub.docker.com/_/alpine).
-Instead, EVE itself creates an Alpine package cache called [lfedge/eve-alpine](https://hub.docker.com/r/lfedge/eve-alpine), whose source is
-at [pkg/alpine](../pkg/alpine). All container images included in EVE OS **must** use that cache as the base.
-
-The Alpine cache image often is referred to as the Alpine "base" image.
-
-Further, the cache container image includes a utility called `eve-alpine-deploy.sh`, which simplifies installation of apk packages based
+The base image includes a utility called `eve-ubuntu-deploy.sh`, which simplifies installation of packages based
 on environment variables.
 
-For example, [pkg/pillar/Dockerfile](../pkg/pillar/Dockerfile) starts with:
+For example, [pkg/mkconf/Dockerfile](../pkg/mkconf/Dockerfile) starts with:
 
 ```dockerfile
-FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 as build
-ENV PKGS alpine-baselayout musl-utils bash glib squashfs-tools util-linux e2fsprogs e2fsprogs-extra keyutils dosfstools coreutils sgdisk smartmontools
-RUN eve-alpine-deploy.sh
+FROM lfedge/eve-ubuntu:9a6ebfad80ca4d18950553f8bf2c01a068869805 AS build
+ENV PKGS="mtools dosfstools"
+RUN eve-ubuntu-deploy.sh
 ```
 
 The above means:
 
-1. Use the cache, or base, image `lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52`
-1. Use `eve-alpine-deploy.sh` to install all of the packages listed in `PKGS` from the cache image: `alpine-baselayout musl-utils bash glib squashfs-tools util-linux e2fsprogs e2fsprogs-extra keyutils dosfstools coreutils sgdisk smartmontools`
+1. Use the base image `lfedge/eve-ubuntu:9a6ebfad80ca4d18950553f8bf2c01a068869805`
+1. Use `eve-ubuntu-deploy.sh` to install all of the packages listed in `PKGS` from the mirror in the base image: `mtools dosfstools`
 
-The images in the cache are stored in `.apk` format.
-
-Using the above, we can trace the apk packages and sources for a particular container image, assuming we already have the source
+Using the above, we can trace the packages and sources for a particular container image, assuming we already have the source
 repository and git commit, from the previous steps. The steps below will be followed by an example.
 
 1. Locate the `Dockerfile` in the source for the container image.
-1. From the `Dockerfile`, find the `lfedge/eve-alpine` cache image used.
-1. From the container image itself, retrieve the Alpine apk installed database at `/lib/apk/db/installed`
-1. From the `installed` file, retrieve the specific URL to the source and version or commit used to build the package.
+1. From the `Dockerfile`, find the `lfedge/eve-ubuntu` base image used.
+1. From the container image itself, retrieve the dpkg status database at `/var/lib/dpkg/status`, and the records of
+   packages built from source at `/var/lib/dpkg/status.d/*`.
+1. From the records, retrieve the source package name and version, and from the snapshot the source package itself.
 
-We will walk through a practical example, continuing to use our `lfedge/eve-pillar` image from above.
+We will walk through a practical example with the `lfedge/eve-mkconf` image.
 
-From the `Dockerfile`, we retrieved the cache image of `lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52`.
-
-We now need to retrieve the list of all packages and versions installed. If it **not** sufficient to just look at the list
+We now need to retrieve the list of all packages and versions installed. It is **not** sufficient to just look at the list
 in the `Dockerfile`, as one package may have upstream dependencies that get installed automatically. Instead, we need to look at the actual
-image itself, and specifically Alpine's installed list at `/lib/apk/db/installed`.
+image itself, and specifically dpkg's status file at `/var/lib/dpkg/status`.
 
 You can use any tool you like to copy files from a container image. We use a simple `docker create` then
 `docker cp` then `docker rm`.
 
 ```sh
-    $ docker create lfedge/eve-pillar:17837a9fcd05c765e9a1f6707b2e48f0f1dd215b-amd64
+    $ docker create lfedge/eve-mkconf:a455da5203e484bbcc3212e0dae8536287a8ff1c-amd64
     364cdf9537a77bff25379c557da7d63f4993ecd4baf9b567e745bfe855e937e7
-    $ docker cp 364cdf9537a77bff25379c557da7d63f4993ecd4baf9b567e745bfe855e937e7:/lib/apk/db/installed /tmp/installed
+    $ docker cp 364cdf9537a77bff25379c557da7d63f4993ecd4baf9b567e745bfe855e937e7:/var/lib/dpkg/status /tmp/status
     $ docker rm 364cdf9537a77bff25379c557da7d63f4993ecd4baf9b567e745bfe855e937e7
     364cdf9537a77bff25379c557da7d63f4993ecd4baf9b567e745bfe855e937e7
 ```
 
-The `installed` file's structure is described at [the official page](https://wiki.alpinelinux.org/wiki/Apk_spec#Index_Format_V2).
+The `status` file's structure is described in [deb-control(5)](https://manpages.ubuntu.com/manpages/noble/man5/deb-control.5.html) and
+[dpkg(1)](https://manpages.ubuntu.com/manpages/noble/man1/dpkg.1.html).
 
 The key parts are that each package is given in a paragraph, with blank lines separating packages. For example:
 
 ```text
-C:Q1aCu0LmUDoAFSOX49uHvkYC1WasQ=
-P:musl
-V:1.2.3-r0
-A:x86_64
-S:383304
-I:622592
-T:the musl c library (libc) implementation
-U:https://musl.libc.org/
-L:MIT
-o:musl
-m:Timo Teräs <timo.teras@iki.fi>
-t:1649396308
-c:ee13d43a53938d8a04ba787b9423f3270a3c14a7
-p:so:libc.musl-x86_64.so.1=1
-F:lib
-R:ld-musl-x86_64.so.1
-a:0:0:755
-Z:Q1ZZqflKEvStJz4SXV0SDMi3wOtM0=
-R:libc.musl-x86_64.so.1
-a:0:0:777
-Z:Q17yJ3JFNypA4mxhJJr0ou6CzsJVI=
-
-C:Q1iZ+C2JJdBlm2KKtAOkSkM7zZegY=
-P:busybox
-V:1.35.0-r17
-A:x86_64
-S:507831
-I:962560
-T:Size optimized toolbox of many common UNIX utilities
-U:https://busybox.net/
-L:GPL-2.0-only
-o:busybox
-m:Sören Tempel <soeren+alpine@soeren-tempel.net>
-t:1659366884
-c:2bf6ec48e526113f87216683cd341a78af5f0b3f
-D:so:libc.musl-x86_64.so.1
-p:/bin/sh cmd:busybox=1.35.0-r17 cmd:sh=1.35.0-r17
-r:busybox-initscripts
-F:bin
-R:busybox
-a:0:0:755
-Z:Q1WUwBY0eOGgzgVxTZxJBZPyQUicI=
-R:sh
-a:0:0:777
-Z:Q1pcfTfDNEbNKQc2s1tia7da05M8Q=
-F:etc
-R:securetty
-Z:Q1mB95Hq2NUTZ599RDiSsj9w5FrOU=
-R:udhcpd.conf
-Z:Q1EgLFjj67ou3eMqp4m3r2ZjnQ7QU=
-F:etc/logrotate.d
-R:acpid
-Z:Q1TylyCINVmnS+A/Tead4vZhE7Bks=
-F:etc/network
-F:etc/network/if-down.d
-F:etc/network/if-post-down.d
-F:etc/network/if-post-up.d
-F:etc/network/if-pre-down.d
-F:etc/network/if-pre-up.d
-F:etc/network/if-up.d
-R:dad
-a:0:0:775
-Z:Q1ORf+lPRKuYgdkBBcKoevR1t60Q4=
-F:sbin
-F:tmp
-M:0:0:1777
-F:usr
-F:usr/sbin
-F:usr/share
-F:usr/share/udhcpc
-R:default.script
-a:0:0:755
-Z:Q1t9vir/ZrX3nbSIYT9BDLWZenkVQ=
-F:var
-F:var/cache
-F:var/cache/misc
-F:var/lib
-F:var/lib/udhcpd
-
-...
-
-C:Q1JdllpChcMaHc7DnVs+DRWAnD2zE=
-P:ip6tables
-V:1.8.8-r1
-A:x86_64
-S:41963
-I:348160
-T:Linux kernel firewall, NAT and packet mangling tools
-U:https://www.netfilter.org/projects/iptables/index.html
-L:GPL-2.0-or-later
-o:iptables
-m:Natanael Copa <ncopa@alpinelinux.org>
-t:1652905555
-c:e7e60a9e6ff8cc55b004dac6392b75e4993518da
-D:iptables=1.8.8-r1 so:libc.musl-x86_64.so.1 so:libxtables.so.12
-r:ebtables
-F:sbin
-R:ip6tables
-a:0:0:777
-Z:Q12mo8ikesb2KnfgWolLj1gsf4cwc=
-R:ip6tables-apply
-a:0:0:777
-Z:Q1D7sdEIH4PzvxaB7e3X8EmxgVsu4=
-R:ip6tables-legacy
-a:0:0:777
-Z:Q12mo8ikesb2KnfgWolLj1gsf4cwc=
-R:ip6tables-legacy-restore
-a:0:0:777
-Z:Q12mo8ikesb2KnfgWolLj1gsf4cwc=
-R:ip6tables-legacy-save
-a:0:0:777
-Z:Q12mo8ikesb2KnfgWolLj1gsf4cwc=
-R:ip6tables-nft
-a:0:0:777
-Z:Q1WPPdXUGL+Fma+jYAArGGbVCwOqk=
-R:ip6tables-nft-restore
-a:0:0:777
-Z:Q1WPPdXUGL+Fma+jYAArGGbVCwOqk=
-R:ip6tables-nft-save
-a:0:0:777
-Z:Q1WPPdXUGL+Fma+jYAArGGbVCwOqk=
-R:ip6tables-restore
-a:0:0:777
-Z:Q12mo8ikesb2KnfgWolLj1gsf4cwc=
-R:ip6tables-restore-translate
-a:0:0:777
-Z:Q1WPPdXUGL+Fma+jYAArGGbVCwOqk=
-R:ip6tables-save
-a:0:0:777
-Z:Q12mo8ikesb2KnfgWolLj1gsf4cwc=
-R:ip6tables-translate
-a:0:0:777
-Z:Q1WPPdXUGL+Fma+jYAArGGbVCwOqk=
-F:usr
-F:usr/lib
-F:usr/lib/xtables
-R:libip6t_DNPT.so
-a:0:0:755
-Z:Q1WraOfsi+kgSlIN7aQ+Rq35GP1S4=
-R:libip6t_HL.so
-a:0:0:755
-Z:Q1lZ7H8yyq0Vu0wFW80bpvoP2gnug=
-R:libip6t_LOG.so
-a:0:0:755
-Z:Q1jPvkFPJ9Wlmu6G44oaB4odBdqf0=
-R:libip6t_MASQUERADE.so
-a:0:0:755
-Z:Q11PFah9jKg2t3CrG2+YK9NshCE6o=
-R:libip6t_NETMAP.so
-a:0:0:755
-Z:Q13g7xSrZBAfa3Nr78FdkHF+pFctM=
-R:libip6t_REJECT.so
-a:0:0:755
-Z:Q1vM7gC27Uv7lEoDXI+EIDqvqXpss=
-R:libip6t_SNAT.so
-a:0:0:755
-Z:Q1j/XbdyaCkMPOJbyGZqprs7HXdas=
-R:libip6t_SNPT.so
-a:0:0:755
-Z:Q1WB5IwC5Q9mr5okiSdLgw4ezo7u4=
-R:libip6t_ah.so
-a:0:0:755
-Z:Q1hFgkHm/vd4Fjc+LQ8Uoe6bPIt7o=
-R:libip6t_dst.so
-a:0:0:755
-Z:Q1drVG6nuYR9TJZWhaUHtKHyg6tkc=
-R:libip6t_eui64.so
-a:0:0:755
-Z:Q1vleF/Hbue2DhlyoKJ4wJtDHgJjo=
-R:libip6t_frag.so
-a:0:0:755
-Z:Q1ejt6B8/0AwnyX9N0LBh8q//f+kU=
-R:libip6t_hbh.so
-a:0:0:755
-Z:Q16IsIQy+q7V5qdxt710Mqds6M0e8=
-R:libip6t_hl.so
-a:0:0:755
-Z:Q1udmHKTC6alJKFzVBdbSJz23ATZY=
-R:libip6t_icmp6.so
-a:0:0:755
-Z:Q1QGhlbChLsiMHYHrji3SLp62wRQQ=
-R:libip6t_ipv6header.so
-a:0:0:755
-Z:Q1XI/vQ7njuNFN8aNA0LKTSgCaxXg=
-R:libip6t_mh.so
-a:0:0:755
-Z:Q1hESH+jdme+AnTNPQ4c5HIXS8qCY=
-R:libip6t_rt.so
-a:0:0:755
-Z:Q1vLoeZs41MWkOdJX9ceGnmN7MYyA=
-R:libip6t_srh.so
-a:0:0:755
-Z:Q1ry15xfrU3eLcYzqoMj32ZTRTaY8=
-F:var
-F:var/lib
-F:var/lib/ip6tables
+Package: mtools
+Status: install ok installed
+Priority: optional
+Section: otherosfs
+Installed-Size: 388
+Maintainer: Ubuntu Developers <ubuntu-devel-discuss@lists.ubuntu.com>
+Architecture: amd64
+Version: 4.0.48-1
+Depends: libc6 (>= 2.38)
+Description: Tools for manipulating MSDOS files
+Homepage: https://www.gnu.org/software/mtools/
 ```
 
-The package listing provides information about every file installed: the name of the package, the origin of the package if it is
-an alias, the source commit used to build the package, and every file installed with its permissions.
+The most important parts for our purposes are:
 
-Using the `ip6tables` install above as an example, it contains a lot of information. the most important parts for our purposes are:
+* The name: `Package: mtools`
+* The version: `Version: 4.0.48-1`
+* The source package, if its name differs from the binary package: `Source: glibc` (for `libc6`), optionally with a version in parentheses when it differs
 
-* The name: `P:ip6tables`
-* The origin, i.e. the original package: `o:iptables`
-* The version: `V:1.8.8-r1`
-* The commit: `c:e7e60a9e6ff8cc55b004dac6392b75e4993518da`
-
-If `o` for origin exists, then that is the name of the package as stored in the Alpine package source; the package name `P` is just an alias.
-
-The commit `c` is not the commit of the original source, but the commit in the Alpine packages git repository that built the package.
-To get the full source, we go to the Alpine Linux git URL that includes the package name and hash:
+The binary packages of one source package, e.g. `libc6`, `libc6-dev` and `libc-bin` from `glibc`, share the source. To get it,
+look the source package up in the `Sources` index of the same snapshot the base image was built from: the timestamp is in
+`pkg/ubuntu/Dockerfile`, and every container carries it in `/etc/apt/sources.list.upstream`. The index at
 
 ```sh
-https://git.alpinelinux.org/aports/tree/main/${PACKAGENAME}/APKBUILD?id=${COMMIT}
+https://snapshot.ubuntu.com/ubuntu/${TIMESTAMP}/dists/${POCKET}/${COMPONENT}/source/Sources.gz
 ```
 
-For our example, that is:
+names, for each source package and version, the `.dsc` file, the upstream tarball and the Debian/Ubuntu packaging tarball
+in the `pool/` of the archive, with their checksums. For `mtools 4.0.48-1` these are `mtools_4.0.48-1.dsc`,
+`mtools_4.0.48.orig.tar.bz2` and `mtools_4.0.48-1.debian.tar.xz` below `pool/main/m/mtools/`. The `.dsc` lists the
+upstream `Homepage` and the packaging tarball contains the patches Ubuntu applied, `debian/patches/series` being their order.
 
-```sh
-https://git.alpinelinux.org/aports/tree/main/iptables/APKBUILD?id=e7e60a9e6ff8cc55b004dac6392b75e4993518da
-```
+Packages built from source by a Dockerfile rather than installed from Ubuntu, such as `kexec-tools` in
+[pkg/kexec](../pkg/kexec/Dockerfile), are recorded by `register-sbom-pkg.sh` as one file per package below
+`/var/lib/dpkg/status.d/`, with the upstream URL as `Homepage` and the version the Dockerfile fetched; the Dockerfile's
+`ADD` line is the source reference for those.
 
-The file there shows:
-
-```sh
-# Maintainer: Natanael Copa <ncopa@alpinelinux.org>
-pkgname=iptables
-pkgver=1.8.8
-pkgrel=1
-pkgdesc="Linux kernel firewall, NAT and packet mangling tools"
-url="https://www.netfilter.org/projects/iptables/index.html"
-arch="all"
-license="GPL-2.0-or-later"
-depends_dev="linux-headers"
-makedepends="$depends_dev libnftnl-dev bison flex autoconf automake"
-subpackages="ip6tables $pkgname-doc $pkgname-dev $pkgname-openrc ip6tables-openrc:ip6tables_openrc"
-provides="ebtables" # for backwards compat
-replaces="ebtables"
-source="https://www.netfilter.org/projects/iptables/files/iptables-$pkgver.tar.bz2
-    use-sh-iptables-apply.patch
-    iptables.initd
-    iptables.confd
-    ip6tables.confd
-    ebtables.initd
-    ebtables.confd
-
-    fix-xtables.patch
-    fix-u_int16_t.patch
-    "
-
-build() {
-    export CFLAGS="$CFLAGS -D_GNU_SOURCE"
-    ./configure \
-        --build="$CBUILD" \
-        --host="$CHOST" \
-        --prefix=/usr \
-        --mandir=/usr/share/man \
-        --sbindir=/sbin \
-        --sysconfdir=/etc \
-        --without-kernel \
-        --enable-devel \
-        --enable-libipq \
-        --enable-shared
-
-    # do not use rpath
-    sed -i 's|^hardcode_libdir_flag_spec=.*|hardcode_libdir_flag_spec=""|g' libtool
-    sed -i 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' libtool
-
-    make
-}
-
-package() {
-    make -j1 install DESTDIR="$pkgdir"
-
-    mkdir -p "$pkgdir"/usr/include/libiptc \
-        "$pkgdir"/usr/lib \
-        "$pkgdir"/var/lib/iptables \
-        "$pkgdir"/etc/iptables
-
-    install -m644 include/iptables.h include/ip6tables.h \
-        "$pkgdir"/usr/include/
-    install include/libiptc/*.h "$pkgdir"/usr/include/libiptc/
-
-    install -D -m755 "$srcdir"/iptables.initd "$pkgdir"/etc/init.d/iptables
-    install -D -m644 "$srcdir"/iptables.confd "$pkgdir"/etc/conf.d/iptables
-    install -D -m755 "$srcdir"/ebtables.initd "$pkgdir"/etc/init.d/ebtables
-    install -D -m644 "$srcdir"/ebtables.confd "$pkgdir"/etc/conf.d/ebtables
-}
-
-ip6tables() {
-    mkdir -p "$subpkgdir"
-    cd "$subpkgdir"
-
-    mkdir -p sbin \
-        var/lib/ip6tables \
-        usr/lib/xtables
-
-    mv "$pkgdir"/sbin/ip6* sbin/
-    mv "$pkgdir"/usr/lib/xtables/libip6* usr/lib/xtables/
-}
-
-ip6tables_openrc() {
-    default_openrc
-
-    install -D -m755 "$srcdir"/iptables.initd "$subpkgdir"/etc/init.d/ip6tables
-    install -D -m644 "$srcdir"/ip6tables.confd "$subpkgdir"/etc/conf.d/ip6tables
-}
-
-sha512sums="
-f21df23279a77531a23f3fcb1b8f0f8ec0c726bda236dd0e33af74b06753baff6ce3f26fb9fcceb6fada560656ba901e68fc6452eb840ac1b206bc4654950f59  iptables-1.8.8.tar.bz2
-ac78898c2acbe66ed8d32a06f41ff08cde7c22c3df6dfec6bc89a912d2cef2bde730de19d25a5407886d567cb0972a0b7bde7e6b18a34c4511495b4dad3b90ad  use-sh-iptables-apply.patch
-a37c17a5382c756fcfb183af73af2283f0d09932c5a767241cbab5d784738f6f587f287a0cdf13b4fa74724ecd3a2063a9689ccee84c1bda02e730f63480f74d  iptables.initd
-cb7fecd5cab2c78bd3f215a41f39ec11c37eb360efbe83982378a0e647e0aa9dc0b7ec915a5b5081aa2f7747464787e69404aa15ba15a063c32cb8fb7dd13d1e  iptables.confd
-0897a7a22f8b700f7f1f5c355ad6cbf39740e44d6c962af99e479978d8a2d556ca7fe4e31f238829046b4a871ce0b5fd52e2544f1361d15dd1ea3e33992646c4  ip6tables.confd
-8809d6fc69fbaa7d83ca4675d9e605f73e74ea8907495d39abdfbdca5c74bafb4fe0e413c88a4bd9470688a243581fa239527af06be15c9c94190664d9557fca  ebtables.initd
-1623109d7b564b817904e35b6c6964ce84fe123a8ae1b656944648a39cfef719431cfad313b48eb36ae53a0d1a6b388a5caec1a990448d02f77e5d12b1f7ee9d  ebtables.confd
-ce8c4ff001be49b77bb82efc3cb8b9f3c8f8684abcb07d079c6a00fab5c7a22e0d7f66f8ccdf3aab63d8fdb2b01b249679a89561e2f723111c8ce4075681b134  fix-xtables.patch
-015ca550cf27802446d74521b7618095a342663d4fd73700975f3186428ecdc9eec27016f4d40862d3837cbbe0bb43509c1022b19ef8692ab28cc24e18831d57  fix-u_int16_t.patch
-"
-```
-
-Describing how apk builds work and how to read the entire `APKBUILD` file is beyond the scope of this document. The important points
-for our purposes are:
-
-* The URL to the source code: `source="https://www.netfilter.org/projects/iptables/files/iptables-$pkgver.tar.bz2"`
-* Any referenced versions or commits used in that URL: `pkgver=1.8.8`
-
-The above is a reference to the original root source code for the binaries distributed.
-
-There is an example of a script which follows the above description to download the APKBUILD files, and any patches, as well as any http and https references i.e., the complete source for the underlying package plus the alpine build recipe in [tools/get-alpine-pkg-source.sh](../tools/get-alpine-pkg-source.sh). See comment in the script for its usage.
-
-Some of the servers referenced by the `source=` lines, notably `ftp.gnu.org`, rate-limit or drop the requests coming from our CI runners, which makes source collection fail. Since those URLs come from Alpine and cannot be changed, the script rewrites them at runtime using the mirror table in [tools/.mirrors.yaml](../tools/.mirrors.yaml): every entry maps a URL prefix to one or more mirror prefixes, which are tried in the listed order before falling back to the original URL. Each candidate is validated against the `sha512sums` of the `APKBUILD`, so a mirror serving stale or bogus content (a 404 page, a "too many requests" page) is skipped in favour of the next one, and nothing that fails its checksum is kept. Conversely, a source for which the `APKBUILD` provides no checksum -- no `sha512sums` block at all, or no entry for that particular file -- is always downloaded from the original server, since there would be no way to tell a genuine file from an error page served by a mirror. Use `-m <file>` to point the script at a different mirror table.
+There is a script which follows the above description to download the source packages for every Ubuntu package found in an
+EVE image in [tools/get-deb-pkg-source.sh](../tools/get-deb-pkg-source.sh). It is used by
+[tools/collect-sources.sh](../tools/collect-sources.sh) to collect the sources of a release, see [SBOM-AND-SOURCES.md](SBOM-AND-SOURCES.md).
 
 **Note:** The kernel is no longer built from source under `pkg/kernel/`. It is now maintained in a separate repository ([lf-edge/eve-kernel](https://github.com/lf-edge/eve-kernel)) and consumed by EVE as a pre-built container image. See [KERNEL.md](KERNEL.md) for current kernel build documentation.
 

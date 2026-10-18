@@ -59,7 +59,7 @@ nav:
       - 'How to build EVE': 'docs/BUILD.md'
       - 'EVE image reproducibility': 'docs/EVE-IMAGE-REPRODUCIBILITY.md'
       - 'EVE image sources': 'docs/EVE-IMAGE-SOURCES.md'
-      - 'Alpine': 'docs/ALPINE.md'
+      - 'Ubuntu': 'docs/UBUNTU.md'
       - 'Custom Build': 'docs/CUSTOM-BUILD.md'
       - 'SBoM and Sources': 'docs/SBOM-AND-SOURCES.md'
       - 'Linux firmware': 'docs/FIRMWARE.md'

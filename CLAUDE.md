@@ -16,7 +16,7 @@ Build artifacts land under `dist/$(ZARCH)/$(ROOTFS_VERSION)/` with a `dist/$(ZAR
 
 Conceptual layers (see `docs/BUILD.md` and `docs/images/build-process.png`):
 
-1. **linuxkit OCI packages** in `pkg/` — built via `linuxkit pkg build` (e.g. `make pkg/pillar`)
+1. **linuxkit OCI packages** in `pkg/` — built via `linuxkit pkg build` (e.g. `make pkg/pillar`). Every package is `FROM lfedge/eve-ubuntu:<hash>`, the snapshot-pinned Ubuntu base built from `pkg/ubuntu` (toolchains, a local apt mirror and the `/out` container rootfs); see `docs/UBUNTU.md` for adding packages to it and bumping the hash.
 2. **rootfs image** — composed from those packages (`make rootfs`)
 3. **live image** — bootable disk including rootfs and EFI/grub (`make live`, `make live-raw`, `make live-gcp`, …)
 4. **installer image** — flashable many-use installer (`make installer`, `make installer-raw`, `make installer-iso`, `make installer-net`)

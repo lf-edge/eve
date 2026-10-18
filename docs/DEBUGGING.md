@@ -478,7 +478,7 @@ To check for a PCR mismatch issue, enter debug container and after installing `j
 
 ```text
 # eve enter debug
-# apk add jq
+# apt-get update && apt-get install jq
 # zcat /persist/newlog/keepSentQueue/* | jq .content | grep mismatch
 # cat /persist/newlog/collect/* | jq .content | grep mismatch
 "Error deriving key for accessing the vault: UnsealWithSession failed: session 1, error code 0x1d : a policy check failed, copied (failed unseal) TPM measurement log, possibly mismatching PCR indexes: [1]"

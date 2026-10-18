@@ -177,7 +177,7 @@ Includes the raw EFI status code in the GRUB error message when a TPM operation 
 
 ### fw
 
-[fw](../pkg/fw/) adds specific firmware. Most of the added firmware already is in the `alpine:3.8` and above standard distributions, added via `apk add linux-firmware-<platform>`. The package itself uses the standard except in 2 cases, one of which (`ath10k`) is in the process of being upstreamed.
+[fw](../pkg/fw/) adds specific firmware. Most of the added firmware already is in the standard distributions' `linux-firmware` package; EVE fetches the upstream linux-firmware release itself to pick the files it ships. The package itself uses the standard except in 2 cases, one of which (`ath10k`) is in the process of being upstreamed.
 
 This is unlikely to be replaced anywhere. The closest option is linuxkit, which has no custom firmware solutions at this time. Since it is modular via OCI images, the likely solution is to use a firmware-specific OCI image in the `init` section, which is precisely what we are doing.
 
@@ -204,4 +204,4 @@ There is a case to be made for upstreaming this into linuxkit itself, at least i
 
 ### mkinitfs
 
-There are two files [initramfs-init](../pkg/mkimage-raw-efi/initramfs-init) and [nlplug-findfs.c](../pkg/mkimage-raw-efi/nlplug-findfs.c) that came directly from Alpine's [initramfs](https://github.com/alpinelinux/mkinitfs) project but they contain a few small tweaks making them applicable to our installation needs.
+The init script of the live and installer initrd and `nlplug-findfs` come directly from Alpine's [mkinitfs](https://github.com/alpinelinux/mkinitfs) project, which [pkg/mkimage-raw-efi](../pkg/mkimage-raw-efi/Dockerfile) builds from source; [initramfs-init.patch](../pkg/mkimage-raw-efi/initramfs-init.patch) contains a few small tweaks making the init script applicable to our installation needs.

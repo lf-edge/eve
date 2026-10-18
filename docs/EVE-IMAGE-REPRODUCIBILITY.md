@@ -114,7 +114,7 @@ The sources to all components used in the image, based on the `Dockerfile`, must
 |Another container image|Using `FROM` in the Dockerfile|Must use a properly immutably tagged image or one that includes the content hash|
 |Internet|`curl`, `wget` or other download|Must download a specific version and, wherever possible, check the content hash, md5 or sha|
 |Go packages|`go mod` or `go get`|Go inherently records the specific hash of the package version used in `go.sum`, which itself is git committed|
-|OS packages|`apk add`|See next section|
+|OS packages|`eve-ubuntu-deploy.sh` (`apt-get install` from the base image mirror)|See next section|
 
 It is possible for human error in any of the above to slip through. EVE uses peer review and maintainer approval to reduce the probabilities of
 any non-reproducible source slipping in.
@@ -127,103 +127,84 @@ Further, the EVE project is exploring additional gates. These include:
 
 ## Linux Packages
 
-The primary source for many software packages in Linux is the OS packaging system. All of the OCI images used in EVE are based on
-[Alpine](https://hub.docker.com/_/alpine), which uses the [apk package manager](https://wiki.alpinelinux.org/wiki/Alpine_Package_Keeper).
+The primary source for many software packages in Linux is the OS packaging system. All of the `lfedge/eve-*` OCI images used
+in EVE are based on [Ubuntu](https://ubuntu.com), which uses the [apt package manager](https://ubuntu.com/server/docs/package-management)
+and `.deb` packages; the `linuxkit/*` images EVE takes from upstream are based on [Alpine](https://hub.docker.com/_/alpine)
+and its [apk package manager](https://wiki.alpinelinux.org/wiki/Alpine_Package_Keeper).
 
-For example, to install bash:
+For example, to install bash on Ubuntu:
 
     ```sh
-    apk add bash
+    apt-get install bash
     ```
 
-Alpine packages creates unique challenges for reproducibility. Specifically:
+Distribution packages create unique challenges for reproducibility. Specifically:
 
-1. The version of the package changes when changing the alpine version. `apk add bash` can give entirely different bits when running on `alpine:3.15` vs `alpine:3.16`.
-1. The version of the package can change even _without_ changing the alpine version. `apk add bash` can give a different version running today on `alpine:3.16` vs yesterday or tomorrow on the same base `alpine:3.16`.
+1. The version of the package changes when changing the distribution release. `apt-get install bash` can give entirely different bits on Ubuntu 24.04 vs 26.04.
+1. The version of the package can change even _without_ changing the release. `apt-get install bash` can give a different version running today vs yesterday or tomorrow on the same release, as the `-updates` and `-security` pockets move.
 
 It is possible to mitigate, but not completely solve, the above issue by adding a specific version:
 
     ```sh
-    apk add bash=5.1.16-r2
+    apt-get install bash=5.2.37-1ubuntu1
     ```
 
-The above does not completely solve it, as sometimes alpine packages change their bits _even for the same version_. Thus, running
-`apk add bash=5.1.16-r2` on the same base `alpine:3.16` can give different bits on different days. Alpine packages are changed "under the covers"
-when bugs are found or updates are provided.
-
-In addition, often the public Alpine apk repositories only contain the most recent versions of packages. Thus, if the source
-installed bash version `5.1.16-r2`, but the most recent update is `5.1.16-r3`, then the one used, `5.1.16-r2`, may not be available.
+The above does not completely solve it, as the public archive only keeps the most recent version of a package: if the
+source installed version `5.2.37-1ubuntu1`, but the most recent update is `5.2.37-1ubuntu1.1`, then the one used may no longer be available.
 
 In order to resolve this issue, both the external/upstream `linuxkit/*` packages and the `lfedge/eve-*` packages in this repository follow the same principles.
 
-1. Create an alpine "cache" image: `linuxkit/alpine` and `lfedge/eve-alpine`. These are used as the base `FROM` for downstream images.
-1. All packages included in the composed EVE image **must** use `FROM lfedge/eve-alpine` or, in the case of linuxkit packages, `FROM linuxkit/alpine`, in their `Dockerfile`. `FROM alpine` is strictly forbidden.
-1. The cache images source from upstream alpine, download all necessary apk packages needed by downstream, `lfedge/eve-alpine` for EVE packages and `linuxkit/alpine` for linuxkit packages, and cache them.
-1. When downstream images need to install packages, they run `apk add package` which sources it solely from the cache in the cache image.
+1. Create a base image that acts as a package cache: `lfedge/eve-ubuntu` for EVE packages and `linuxkit/alpine` for linuxkit packages. These are used as the base `FROM` for downstream images.
+1. All packages included in the composed EVE image **must** use `FROM lfedge/eve-ubuntu` or, in the case of linuxkit packages, `FROM linuxkit/alpine`, in their `Dockerfile`. `FROM ubuntu` or `FROM alpine` is strictly forbidden.
+1. The base images download all necessary packages needed by downstream and cache them: `lfedge/eve-ubuntu` resolves everything against one timestamp of the [Ubuntu snapshot service](https://snapshot.ubuntu.com), `linuxkit/alpine` against the Alpine mirrors.
+1. When downstream images need to install packages, they install solely from the cache in the base image.
 
-The cache images - `lfedge/eve-alpine` and `linuxkit/alpine` - act as pinning cache, with precise versions and bits of each package.
+The base images - `lfedge/eve-ubuntu` and `linuxkit/alpine` - act as pinning cache, with precise versions and bits of each package.
 
-Only when the cache is regenerated, i.e. when `lfedge/eve-alpine` or `linuxkit/alpine` is rebuilt, can these change.
+Only when the cache is regenerated, i.e. when `lfedge/eve-ubuntu` or `linuxkit/alpine` is rebuilt, can these change.
 
-Further, the caches maintain hashes of the local cache contents, to ensure that any changes are known and captured.
-
-To make this more concrete, we will walk through a specific example, `lfedge/eve-dom0-ztools`, which is based in [../pkg/dom0-ztools](../pkg/dom0-ztools/).
+To make this more concrete, we will walk through a specific example, `lfedge/eve-mkconf`, which is based in [../pkg/mkconf](../pkg/mkconf/).
 
 The key parts of the Dockerfile are as follows:
 
     ```dockerfile
-    FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 as zfs
-    ENV BUILD_PKGS git patch ca-certificates util-linux build-base gettext-dev libtirpc-dev automake autoconf \
-        libtool linux-headers attr-dev e2fsprogs-dev glib-dev openssl-dev util-linux-dev coreutils
-    ENV PKGS ca-certificates util-linux libintl libuuid libtirpc libblkid libcrypto1.1 zlib
-    RUN eve-alpine-deploy.sh
+    FROM lfedge/eve-ubuntu:9a6ebfad80ca4d18950553f8bf2c01a068869805 AS build
+    ENV PKGS="mtools dosfstools"
+    RUN eve-ubuntu-deploy.sh
     ...
     FROM scratch
-    COPY --from=zfs /out/ /
-    ADD rootfs/ /
+    COPY --from=build /out /
     ```
 
 Note the key elements:
 
 * The final image is based on `scratch`
-* The `FROM` image for installing necessary packages is **not** `alpine:3.16`, but rather the eve alpine cache image `lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52`
-* The packages needed to be installed are set in the `PKGS` environment variable: `ca-certificates util-linux libintl libuuid libtirpc libblkid libcrypto1.1 zlib`
-* The build packages needed to be installed are set in the `BUILD_PKGS` environment variable: `git patch ca-certificates util-linux build-base gettext-dev libtirpc-dev automake autoconf libtool linux-headers attr-dev e2fsprogs-dev glib-dev openssl-dev util-linux-dev coreutils`
+* The `FROM` image for installing necessary packages is **not** `ubuntu:resolute`, but rather the EVE base image `lfedge/eve-ubuntu:9a6ebfad80ca4d18950553f8bf2c01a068869805`
+* The packages needed to be installed are set in the `PKGS` environment variable: `mtools dosfstools`
+* Packages needed only to build would be set in the `BUILD_PKGS` environment variable
 
-The usage of the `PKGS` and `BUILD_PKGS` environment variables and the script `eve-alpine-deploy.sh` is a simplified way to install packages.
-It is similar to calling:
-`apk add ca-certificates util-linux libintl libuuid libtirpc libblkid libcrypto1.1 zlib`, but
-do so from the cache.
+The usage of the `PKGS` and `BUILD_PKGS` environment variables and the script `eve-ubuntu-deploy.sh` is a simplified way to install packages.
+It is similar to calling `apt-get install mtools dosfstools`, but does so from the mirror inside the base image, never from the network.
 
 * Those packages listed in `BUILD_PKGS` are installed and available during the build of the `Dockerfile`.
-* Those packages listed in `PKGS` are installed and available during the build of the `Dockerfile`, but are also available in `/out/`. This enables copying them over to the final image.
+* Those packages listed in `PKGS` are installed into `/out/`, the Ubuntu rootfs that becomes the final image.
 
-## How the Alpine cache image is built
+## How the base images are built
 
-The two alpine cache images, linuxkit and EVE, use similar but slightly different caching techniques.
-Both use the official apk local cache feature described [here](https://wiki.alpinelinux.org/wiki/Alpine_Package_Keeper#Local_Cache).
+The two base images, linuxkit and EVE, use different caching techniques.
 
-Both follow the same primary process in the Dockerfile:
+### EVE Ubuntu base image
 
-1. Install the tools necessary for working with apk
-1. Create a local mirror directory and set it up according to the above documentation
-1. Go through the list of packages required for all platforms, as well as platform specific, and install it to local cache
-1. Change the apk configuration so that any downstream container image that uses it and runs `apk add` will get it from cache, rather than the Internet
+The EVE base image is `lfedge/eve-ubuntu`, source at [../pkg/ubuntu](../pkg/ubuntu/), described in [UBUNTU.md](./UBUNTU.md).
 
-### EVE alpine cache image
+The list of packages to mirror is in [../pkg/ubuntu/mirrors](../pkg/ubuntu/mirrors/): one directory per Ubuntu release, with a
+file `main` for every architecture and `main.<arch>` files for architecture specific packages. The build resolves the
+transitive dependency closure of those lists with apt against `https://snapshot.ubuntu.com/ubuntu/<timestamp>`, downloads
+the `.deb` files into `/mirror/archives` and indexes them with `dpkg-scanpackages`. The same timestamp is used to bootstrap
+the `/out` rootfs and to install the builder's toolchains, so one `UBUNTU_SNAPSHOT` in the Dockerfile pins every bit of the image.
 
-The EVE alpine cache image is `lfedge/eve-alpine`, source at [../pkg/alpine](../pkg/alpine/)
-
-The list of packages to install is in [../pkg/alpine/mirrors](../pkg/alpine/mirrors/). There is a subdirectory for each version of alpine package
-repository we want, for example [../pkg/alpine/mirrors/3.16](../pkg/alpine/mirrors/3.16). Underneath those is a file for each repository type.
-Every package listed in those files will be installed to the cache.
-
-* `main` - list of packages to cache from the `main` package repository for all architectures
-* `community` - list of packages to cache from the `community` package repository for all architectures
-
-Optionally, there can be files with architecture extensions, which will be installed only on those architectures. For example:
-
-* `main.aarch64` - list packages from `main` to be installed only on `aarch64`.
+The snapshot service keeps every package version it ever served, so unlike a mirror of the moving archive, a rebuild of the
+image with the same timestamp and lists reproduces the same package set.
 
 ### Linuxkit alpine cache image
 
@@ -286,6 +267,6 @@ and the file [versions.x86_64](https://github.com/linuxkit/linuxkit/tree/master/
    * specific versioned software from the Internet
    * go modules with hashes
    * hash-based other container images
-   * apk packages solely from the EVE or linuxkit alpine cache image
-1. The EVE or linuxkit alpine cache can be used as an immutable cache, and changes only when specifically selected to do so
+   * Ubuntu packages solely from the EVE base image, apk packages solely from the linuxkit alpine cache image
+1. The EVE base image and the linuxkit alpine cache can be used as an immutable cache, and change only when specifically selected to do so
 1. The images are functionally reproducible, rather than precisely reproducible, because of potential variants in file timestamps and random data used

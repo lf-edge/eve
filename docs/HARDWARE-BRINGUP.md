@@ -2,7 +2,7 @@
 
 EVE-OS currently supports x86 and ARM Edge Nodes. It works best when minimum [hardware security requirement](SECURITY-HARDWARE.md) is met and hardware assisted virtualization is available (ideally from existing [Alpine Linux](https://alpinelinux.org) support for the hardware), but it can run with reduced functionality on pretty much anything supported by the Linux kernel. Bringing EVE-OS up on a new hardware configuration typically involves:
 
-0. Confirming that Alpine Linux supports the processor architecture.
+0. Confirming that Ubuntu supports the processor architecture.
 1. For ARM boards, figuring out the right device trees
 2. Getting a reliable console (this could be graphical or serial) for early output
 3. Figuring out your firmware/bootloader situation
@@ -91,10 +91,10 @@ echo eeprom 0x50 > /sys/bus/i2c/devices/i2c-3/new_device
 
 When dealing with any bus (even sophisticated ones like USB), tools that aid in probing and discovery are a must (you will find most of them in EVE's debug container):
 
-* [lspci](https://pkgs.alpinelinux.org/package/edge/main/x86_64/pciutils) for PCI discovery
-* [lsusb](https://pkgs.alpinelinux.org/package/edge/main/x86/usbutils) for USB discovery
-* [i2c-tools](https://pkgs.alpinelinux.org/package/edge/community/x86_64/i2c-tools) for I2C discovery
-* [spi-tools](https://pkgs.alpinelinux.org/package/edge/community/x86_64/spi-tools) for SPI discovery
+* [lspci](https://packages.ubuntu.com/pciutils) for PCI discovery
+* [lsusb](https://packages.ubuntu.com/usbutils) for USB discovery
+* [i2c-tools](https://packages.ubuntu.com/i2c-tools) for I2C discovery
+* [spi-tools](https://packages.ubuntu.com/spi-tools) for SPI discovery
 
 If all else fails you may need to write [your own client](https://www.kernel.org/doc/Documentation/i2c/writing-clients).
 
@@ -109,7 +109,7 @@ Bit-banging is generally slow (the speed at which you can oscillate between 1s a
 
 Linux kernel manages pin muxing through its [pin control subsystem](https://www.kernel.org/doc/html/latest/driver-api/pinctl.html) which is inextricably [linked with GPIO](https://www.kernel.org/doc/html/latest/driver-api/pinctl.html#interaction-with-the-gpio-subsystem). At the end of the day, when pin muxing has done its job, some pins will be made available to the user via [Linux's GPIO subsystem](https://www.kernel.org/doc/html/latest/driver-api/gpio/intro.html) and some will be attached to electronic components. The problem with pinmuxing in Linux kernel is that it is rather invisible. Its settings are controlled either via ACPI tables or device tree entries (sometimes it is even [statically defined](https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/drivers/pinctrl/intel/pinctrl-baytrail.c#n109) in the source itself). Only the tip of the pinctrl iceberg is showing through the GPIO subsystem.
 
-When it comes to the GPIO subsystem, the tools of the trade are `/sys/class/gpio/` and [gpiotools](https://pkgs.alpinelinux.org/package/edge/community/x86_64/libgpiod) (although on RaspberryPi an amazing [wiringpi](http://wiringpi.com/) toolset is also available). `gpioinfo` is particularly useful, since it tracks pin assignment as well (something that is not readily available from `sysfs`). The importance of the correct pin assignment (done by the pinctrl subsystem) can *not* be overstated: get it wrong and you will be cut off from the ability to communicate with eMMC cards, certain buses, and some really deep subsystems in your SoC. The rule of thumb is this: if something is mysteriously broken, check pinctrl first. A lot of times tracking the lineage of SoCs can be helpful in debugging pinctrl issues and one great resource for that is [WikiChip](https://en.wikichip.org/wiki/WikiChip)
+When it comes to the GPIO subsystem, the tools of the trade are `/sys/class/gpio/` and [gpiotools](https://packages.ubuntu.com/gpiod) (although on RaspberryPi an amazing [wiringpi](http://wiringpi.com/) toolset is also available). `gpioinfo` is particularly useful, since it tracks pin assignment as well (something that is not readily available from `sysfs`). The importance of the correct pin assignment (done by the pinctrl subsystem) can *not* be overstated: get it wrong and you will be cut off from the ability to communicate with eMMC cards, certain buses, and some really deep subsystems in your SoC. The rule of thumb is this: if something is mysteriously broken, check pinctrl first. A lot of times tracking the lineage of SoCs can be helpful in debugging pinctrl issues and one great resource for that is [WikiChip](https://en.wikichip.org/wiki/WikiChip)
 
 Finally, be aware that GPIO can also be used for input. In fact, it can be used for input as early as firmware on some systems. For example, tying certain pins to ground (0, or low voltage) is how Raspberry Pi can allow [conditionals in its boot process](https://www.raspberrypi.org/documentation/configuration/config-txt/conditional.md).
 
