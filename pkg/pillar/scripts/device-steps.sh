@@ -124,9 +124,8 @@ format_chrony_args() {
     prepend="$2"
     append="$3"
 
-    # '-e' for echo to enable interpretation of \n
-    # shellcheck disable=SC3037
-    list=$(echo -e "$ntp_servers" | while read -r mode && read -r server; do
+    # '%b' interprets the \n in the list, which echo -e did on busybox
+    list=$(printf '%b\n' "$ntp_servers" | while read -r mode && read -r server; do
         # shellcheck disable=SC3037
         echo -n "\"$prepend $mode $server $append\" "
     done)
@@ -138,7 +137,7 @@ format_chrony_args() {
 # Wait until NTP synchronised
 wait_ntp_sync() {
     echo "$(date -Ins -u) Wait NTP sync for 1 min"
-    /usr/bin/chronyc waitsync 6
+    /usr/bin/chronyc -u root waitsync 6
     ret_code=$?
     echo "$(date -Ins -u) chronyc waitsync: $ret_code"
 }
@@ -151,7 +150,7 @@ populate_ntp_sources() {
     # Creates string of servers in "add $mode $server iburst" format
     args=$(format_chrony_args "$ns" "add" "iburst")
     echo "$(date -Ins -u) chronyc -m $args"
-    echo "$args" | xargs /usr/bin/chronyc -m
+    echo "$args" | xargs /usr/bin/chronyc -u root -m
     ret_code=$?
     echo "$(date -Ins -u) chronyc: $ret_code"
     if [ "$ret_code" = "0" ]; then
@@ -167,13 +166,13 @@ reload_ntp_sources() {
     echo "$(date -Ins -u) Remove all NTP sources from chronyd"
     while true; do
         # Get all sources, skip 2 lines header, take first line
-        ip=$(/usr/bin/chronyc -n sources | tail +3 | head -1 | awk '{print $2}')
+        ip=$(/usr/bin/chronyc -u root -n sources | tail +3 | head -1 | awk '{print $2}')
         if [ -z "$ip" ]; then
             break
         fi
         # Delete IP
         echo "$(date -Ins -u) chronyc delete \"$ip\""
-        /usr/bin/chronyc delete "$ip"
+        /usr/bin/chronyc -u root delete "$ip"
         ret_code=$?
         echo "$(date -Ins -u) chronyc: $ret_code"
         if [ "$ret_code" != "0" ]; then

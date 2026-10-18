@@ -1,5 +1,5 @@
---- out/usr/lib/dhcpcd/dhcpcd-hooks/20-resolv.conf
-+++ out/usr/lib/dhcpcd/dhcpcd-hooks/20-resolv.conf
+--- out/usr/libexec/dhcpcd-hooks/20-resolv.conf
++++ out/usr/libexec/dhcpcd-hooks/20-resolv.conf
 @@ -63,8 +63,8 @@
  	else
  		echo "# /etc/resolv.conf.tail can replace this line" >> "$cf"

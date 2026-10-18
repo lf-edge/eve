@@ -4,64 +4,54 @@
 # Dockerfile to build pillar
 
 # use the same set of packages for simplicity
-ARG BUILD_PKGS_BASE="git gcc linux-headers libc-dev make linux-pam-dev m4 findutils util-linux make patch \
-                     libintl libuuid libtirpc libblkid libcrypto3 zlib tar"
+ARG BUILD_PKGS_BASE="git gcc linux-libc-dev libc6-dev make libpam0g-dev m4 findutils util-linux patch tar \
+                     uuid-dev libtirpc-dev libblkid-dev libssl-dev zlib1g-dev pkg-config"
 
 # we use the same image in several places
-ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d
+ARG EVE_UBUNTU_IMAGE=lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544
 
-FROM lfedge/eve-uefi:69dbd346e47296abc02b605cc54b3f6e4fba4e98 AS uefi-build
-FROM lfedge/eve-dom0-ztools:71b99842c0fe6395bfbcfaab079262586ec6b6ab  AS zfs
-RUN mkdir /out
-# copy zfs-related files from dom0-ztools using prepared list of files
-RUN while read -r x; do \
-        if [ -d "$x" ]; then \
-          mkdir -p "/out/$x"; \
-        else \
-          cp -P "$x" "/out/$x"; \
-        fi \
-    done < /etc/zfs-files
+FROM lfedge/eve-uefi:cbe04da0bf4436fdffbebed11a6a436d31519189 AS uefi-build
+# qemu-img and qemu-nbd of the qemu that runs the VMs; Ubuntu's qemu-utils would
+# drag python3 in through ubuntu-virt
+FROM lfedge/eve-xen-tools:04383aadea99b1bedb416fe8165dc3a128be815b AS qemu
+# the zfs userland pillar links against and ships, see pkg/dom0-ztools
+FROM lfedge/eve-dom0-ztools:f836fb86393a7bfef79e11ab1165d94b81e155e5  AS zfs
 
+# native build
 # hadolint ignore=DL3006
-FROM ${EVE_ALPINE_IMAGE} AS build-native
+FROM ${EVE_UBUNTU_IMAGE} AS build-native
 ARG BUILD_PKGS_BASE
-RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
-ENV CGO_CFLAGS="-Dfstat64=fstat -Dstat64=stat"
+RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-ubuntu-deploy.sh
+ENV CROSS_COMPILE_ENV=""
+COPY --from=zfs / /zfs/
+RUN while read -r x; do mkdir -p "$(dirname "$x")"; cp -P "/zfs$x" "$x"; done < /zfs/etc/zfs-files
 
+# cross build: Ubuntu's cross compiler on the build host, with a sysroot made
+# from the target's eve-ubuntu rootfs (libraries, headers, the zfs userland)
 # hadolint ignore=DL3006,DL3029
-FROM --platform=${BUILDPLATFORM} ${EVE_ALPINE_IMAGE} AS build-cross
+FROM --platform=${BUILDPLATFORM} ${EVE_UBUNTU_IMAGE} AS build-cross
 ARG BUILD_PKGS_BASE
-RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
+RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-ubuntu-deploy.sh
 
-# hadolint ignore=DL3029
-FROM --platform=${BUILDPLATFORM} lfedge/eve-cross-compilers:d794c049baf50389be1dd48da056fb2472574c3e AS cross-compilers
-
-# will use several packages from target arch and copy them to sysroot
 # hadolint ignore=DL3006
-FROM ${EVE_ALPINE_IMAGE} AS cross-compile-libs
-ENV PKGS musl-dev libgcc libintl libuuid libtirpc libblkid linux-headers
-RUN eve-alpine-deploy.sh
-# we need zfs files during build
-COPY --from=zfs / /
+FROM ${EVE_UBUNTU_IMAGE} AS cross-compile-libs
+ENV PKGS="libc6-dev linux-libc-dev libgcc-s1 uuid-dev libtirpc-dev libblkid-dev libssl-dev zlib1g-dev libpam0g-dev"
+RUN eve-ubuntu-deploy.sh
+COPY --from=zfs / /zfs/
+RUN while read -r x; do mkdir -p "/out$(dirname "$x")"; cp -P "/zfs$x" "/out$x"; done < /zfs/etc/zfs-files
 
-# adjust EVE_TARGET_ARCH for cross-compiler
 FROM build-cross AS build-cross-target-arm64
-ENV EVE_TARGET_ARCH=aarch64
+RUN BUILD_PKGS=gcc-aarch64-linux-gnu eve-ubuntu-deploy.sh
+ENV CROSS_COMPILE_ENV=aarch64-linux-gnu-
 FROM build-cross AS build-cross-target-amd64
-ENV EVE_TARGET_ARCH=x86_64
+RUN BUILD_PKGS=gcc-x86-64-linux-gnu eve-ubuntu-deploy.sh
+ENV CROSS_COMPILE_ENV=x86_64-linux-gnu-
 
 # hadolint ignore=DL3006
 FROM build-cross-target-${TARGETARCH} AS build-cross-target
-ENV CROSS_COMPILE_ENV="${EVE_TARGET_ARCH}"-alpine-linux-musl-
-COPY --from=cross-compilers /packages /packages
-# hadolint ignore=DL3018
-RUN apk add --no-cache --allow-untrusted -X /packages build-base-"${EVE_TARGET_ARCH}"
-COPY --from=cross-compile-libs /out/ /usr/"${EVE_TARGET_ARCH}"-alpine-linux-musl/
-ENV CGO_CFLAGS="-Dfstat64=fstat -Dstat64=stat --sysroot=/usr/${EVE_TARGET_ARCH}-alpine-linux-musl"
-# GCC 14 no longer implicitly forwards --with-sysroot to the linker when acting as a
-# linker driver. Passing it explicitly via CGO_LDFLAGS ensures ld.bfd finds crt1.o and
-# all target libraries in the cross-compilation sysroot rather than the host arm64 paths.
-ENV CGO_LDFLAGS="--sysroot=/usr/${EVE_TARGET_ARCH}-alpine-linux-musl"
+COPY --from=cross-compile-libs /out/ /sysroot/
+ENV CGO_CFLAGS="--sysroot=/sysroot"
+ENV CGO_LDFLAGS="--sysroot=/sysroot"
 
 # cross-compilers
 FROM build-cross-target AS target-arm64-build-amd64
@@ -92,9 +82,6 @@ ENV ARTIFICIAL_LEAK=${ARTIFICIAL_LEAK}
 ARG FAULT_INJECTION=n
 ENV FAULT_INJECTION=${FAULT_INJECTION}
 ARG COVER=n
-
-# we need zfs files during build
-COPY --from=zfs /out /
 
 COPY ./  /pillar/
 
@@ -145,45 +132,46 @@ RUN --mount=type=cache,target=/root/.cache/go-build if [ ${DEV} = "y" ]; then \
     cp dlv /final/opt/ ; \
 fi
 WORKDIR /
+# hadolint ignore=DL3008
 RUN --mount=type=cache,target=/root/.cache/go-build if [ "${TEST_TOOLS}" = "y" ]; then \
-    apk add --no-cache dmidecode pciutils; \
+    apt-get -y install --no-install-recommends dmidecode pciutils; \
     GOBIN=/final/opt/ GOFLAGS="" go install gotest.tools/gotestsum@v1.7.0; \
 fi
 
-FROM lfedge/eve-fscrypt:aec0819edd44c2c3b6c23f9377ef812119683e7c AS fscrypt
-FROM lfedge/eve-gpt-tools:97629c8357a7de0f6fecacbae151ff9b5ea5bcd2 AS gpttools
-FROM lfedge/eve-storage-resizer:ec778533de829f0379cae6e2d66c1dab393f7704 AS storage-resizer
-
-# dhcpcd: Alpine 3.21+ ships a sufficiently up-to-date version (10.x with required IPv6 fixes).
-# No --platform means Docker BuildKit uses the target platform, giving us the correct binary arch.
-# hadolint ignore=DL3006
-FROM ${EVE_ALPINE_IMAGE} AS dhcpcd-bin
-ENV PKGS dhcpcd
-RUN eve-alpine-deploy.sh
+FROM lfedge/eve-fscrypt:1666aba771b27456204a7382149dfacbb97d48ee AS fscrypt
+FROM lfedge/eve-gpt-tools:a18f4b89a5b6ffd6a282f99b5aa1eda57946d8ef AS gpttools
+FROM lfedge/eve-storage-resizer:ad51054ea6af2262b6442ef482e509e1b1f884a2 AS storage-resizer
 
 # collector collects everything together and then does any processing like stripping binaries.
 # We use this interim "collector" so that we can do processing.
 # hadolint ignore=DL3006
-FROM ${EVE_ALPINE_IMAGE} AS collector
-ENV BUILD_PKGS patch
-ENV PKGS alpine-baselayout musl-utils libtasn1-progs pciutils yajl xz bash iptables ip6tables iproute2 \
-    coreutils dmidecode libbz2 libuuid ipset curl radvd ethtool util-linux e2fsprogs libcrypto3 xorriso \
-    qemu-img jq e2fsprogs-extra keyutils ca-certificates ip6tables-openrc iptables-openrc ipset-openrc hdparm \
-    libintl libtirpc libblkid zlib rsync chrony wireless-tools wpa_supplicant dnsmasq
-RUN eve-alpine-deploy.sh
+FROM ${EVE_UBUNTU_IMAGE} AS collector
+ENV BUILD_PKGS="patch"
+ENV PKGS="pciutils xz-utils bash iptables iproute2 coreutils dmidecode libbz2-1.0 libuuid1 ipset curl radvd ethtool \
+    util-linux mount e2fsprogs libssl3t64 xorriso jq keyutils ca-certificates hdparm libtirpc3t64 libblkid1 zlib1g \
+    rsync chrony wpasupplicant dnsmasq-base dhcpcd-base net-tools procps kmod uuid-runtime openssl gzip tar bsdutils rfkill busybox-static"
+RUN eve-ubuntu-deploy.sh
+# zedrouter runs dnsmasq as nobody:nobody; Debian names gid 65534 nogroup
+RUN echo "nobody:x:65534:" >> /out/etc/group
+# domainmgr builds cloud-init ISOs with mkisofs; Ubuntu ships only xorriso's emulation
+RUN ln -s xorrisofs /out/usr/bin/mkisofs && test -x /out/usr/bin/mkisofs
+# zboot reset/poweroff run busybox reboot -n -f and poweroff -f, as any Alpine based container could
+RUN for a in reboot poweroff halt; do ln -s ../bin/busybox /out/usr/sbin/$a; done
 
-# Snapshot collector's own apk DB (alpine PKGS installed above) before the
-# cross-stage COPY instructions below would overwrite /out/lib/apk/db/installed.
-RUN cp /out/lib/apk/db/installed /tmp/apk-collector.installed
-
-SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
+SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
 
 WORKDIR /
 
 RUN mkdir -p /out/usr/share/ovmf
 COPY --from=uefi-build /OVMF_VARS.fd /out/usr/share/ovmf/OVMF_VARS.fd
 
-COPY --from=zfs /out /out
+# the zfs userland of pkg/dom0-ztools, by its file list
+COPY --from=zfs / /zfs/
+RUN while read -r x; do mkdir -p "/out$(dirname "$x")"; cp -P "/zfs$x" "/out$x"; done < /zfs/etc/zfs-files
+# qemu-img and qemu-nbd with their libraries and dpkg records, see above
+COPY --from=qemu / /qemu/
+RUN copy-with-libs.sh -m -r /qemu -o /out /usr/lib/xen/bin/qemu-img /usr/lib/xen/bin/qemu-nbd && \
+    ln -s ../lib/xen/bin/qemu-img /out/usr/bin/qemu-img && ln -s ../lib/xen/bin/qemu-nbd /out/usr/bin/qemu-nbd
 COPY --from=fscrypt /opt/zededa/bin /out/opt/zededa/bin
 COPY --from=gpttools / /out
 # baseosmgr execs /usr/bin/storage-resizer for the online check/backup/grow steps
@@ -192,8 +180,6 @@ COPY --from=storage-resizer /usr/bin/storage-resizer /out/usr/bin/storage-resize
 # we use final directory and move the line to the bottom
 # to avoid conflicts and speedup re-builds
 COPY --from=build /final /out
-COPY --from=dhcpcd-bin /out/usr/lib/dhcpcd /out/usr/lib/dhcpcd
-COPY --from=dhcpcd-bin /out/sbin/dhcpcd /out/sbin/dhcpcd
 
 COPY scripts/device-steps.sh \
     scripts/onboot.sh \
@@ -215,36 +201,27 @@ RUN set -e && for patch in /sys-patches/*.patch; do \
 COPY rootfs/ /out
 
 # We will start experimenting with stripping go binaries on ARM only for now
+# hadolint ignore=DL3008
 RUN if [ "$(uname -m)" = "aarch64" ] ; then                                             \
-       apk add --no-cache findutils binutils file                                      ;\
+       apt-get -y install --no-install-recommends binutils file                          ;\
        find /out -type f -executable -exec file {} \; | grep 'not stripped' | cut -f1 -d: |\
        xargs strip                                                                     ;\
-       apk del findutils binutils file                                                 ;\
     fi
 
-# Merge apk DBs from every source pkg into /out/lib/apk/db/installed so the
-# final SBOM reflects entries from every contributing pkg image.
-COPY --from=zfs /lib/apk/db/installed /tmp/apk-zfs.installed
-COPY --from=fscrypt /lib/apk/db/installed /tmp/apk-fscrypt.installed
-COPY --from=gpttools /lib/apk/db/installed /tmp/apk-gpttools.installed
-COPY --from=uefi-build /lib/apk/db/installed /tmp/apk-uefi.installed
-COPY --from=dhcpcd-bin /out/lib/apk/db/installed /tmp/apk-dhcpcd.installed
-RUN merge-sbom-db.sh -o /out/lib/apk/db/installed \
-        /tmp/apk-collector.installed \
-        /tmp/apk-zfs.installed \
-        /tmp/apk-fscrypt.installed \
-        /tmp/apk-gpttools.installed \
-        /tmp/apk-uefi.installed \
-        /tmp/apk-dhcpcd.installed && \
-    rm -f /tmp/apk-*.installed
+# Merge the dpkg status records from every source pkg into /out so the final
+# SBOM reflects entries from every contributing pkg image: the source-built
+# packages come as one file each below status.d, the Ubuntu packages behind the
+# zfs userland as the records of the dom0-ztools image.
+COPY --from=zfs /var/lib/dpkg/status.d /out/var/lib/dpkg/status.d
+COPY --from=fscrypt /var/lib/dpkg/status.d /out/var/lib/dpkg/status.d
+COPY --from=uefi-build /var/lib/dpkg/status.d /out/var/lib/dpkg/status.d
+RUN merge-sbom-db.sh -o /out/var/lib/dpkg/status /out/var/lib/dpkg/status /zfs/var/lib/dpkg/status
 
 FROM scratch
 
 SHELL ["/bin/sh", "-c"]
 
 COPY --from=collector /out /
-
-RUN rm -rf /usr/bin/qemu-storage-daemon
 
 # FIXME: replace with tini+monit ASAP
 WORKDIR /
