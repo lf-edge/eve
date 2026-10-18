@@ -151,7 +151,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build if [ "${TEST_TOOLS}" = "y" ]
 fi
 
 FROM lfedge/eve-fscrypt:71939e715234476c75aef9c438823a79ce5768de AS fscrypt
-FROM lfedge/eve-gpt-tools:656572e057abee206a4486caa6f9601c882cee5a AS gpttools
+FROM lfedge/eve-gpt-tools:c2d021e15af4472537fdf92fffb80ed23f70bb07 AS gpttools
 FROM lfedge/eve-storage-resizer:8f70a7de0f633befac0a93bba74bc2794a7c0212 AS storage-resizer
 
 # dhcpcd: Alpine 3.21+ ships a sufficiently up-to-date version (10.x with required IPv6 fixes).
