@@ -16,6 +16,7 @@ import (
 	"github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
+	"github.com/lf-edge/eve/pkg/pillar/kernelcmdline"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zfs"
 	"golang.org/x/sys/unix"
@@ -1112,16 +1113,8 @@ func vaultMountFlags() uintptr {
 }
 
 func noDirsyncRequested() bool {
-	data, err := os.ReadFile("/proc/cmdline")
-	if err != nil {
-		return false
-	}
-	for _, arg := range strings.Fields(string(data)) {
-		if arg == cmdlineNoDirsync {
-			return true
-		}
-	}
-	return false
+	cmdline, _ := kernelcmdline.Current()
+	return cmdline.Has(cmdlineNoDirsync)
 }
 
 // formatZvol apply an ext4 fs to the device path given
@@ -1204,22 +1197,17 @@ func CreateZvolEtcd(log *base.LogObject, datasetName string, zfsKeyFile string, 
 
 func getEtcdSizeSetting() (uint32, error) {
 	size := base.DefaultEtcdSizeGB
-	data, err := os.ReadFile("/proc/cmdline")
+	cmdline, err := kernelcmdline.Current()
 	if err != nil {
 		return size, err
 	}
-	bootArgs := strings.Fields(string(data))
-	for _, arg := range bootArgs {
-		if strings.HasPrefix(arg, base.InstallOptionEtcdSizeGB) {
-			argSplitted := strings.Split(arg, "=")
-			if len(argSplitted) == 2 {
-				valGB, err := strconv.ParseUint(argSplitted[1], 10, 32)
-				if err == nil {
-					return uint32(valGB), nil
-				}
-				return size, err
-			}
-		}
+	value, ok := cmdline.Value(base.InstallOptionEtcdSizeGB)
+	if !ok {
+		return size, nil
 	}
-	return size, nil
+	valGB, err := strconv.ParseUint(value, 10, 32)
+	if err != nil {
+		return size, err
+	}
+	return uint32(valGB), nil
 }
