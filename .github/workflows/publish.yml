@@ -107,12 +107,12 @@ jobs:
       - name: Sign packages built here
         run: |
           ./tools/eve-cosign.sh sign-built "$RUNNER_TEMP/pkgs"
-          mkdir -p pkg-tags && cp "$RUNNER_TEMP/pkgs/built-tags" pkg-tags/pkgs-amd64
+          mkdir -p "$RUNNER_TEMP/pkg-tags.d" && cp "$RUNNER_TEMP/pkgs/built-tags" "$RUNNER_TEMP/pkg-tags.d/pkgs-amd64"
       - name: Hand the built package tags to the manifest job
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
         with:
           name: pkg-tags-pkgs-amd64
-          path: pkg-tags
+          path: ${{ runner.temp }}/pkg-tags.d
       - name: Post package report
         run: |
           echo Disk usage
@@ -193,12 +193,12 @@ jobs:
       - name: Sign packages built here
         run: |
           ./tools/eve-cosign.sh sign-built "$RUNNER_TEMP/pkgs"
-          mkdir -p pkg-tags && cp "$RUNNER_TEMP/pkgs/built-tags" pkg-tags/pkgs-arm64
+          mkdir -p "$RUNNER_TEMP/pkg-tags.d" && cp "$RUNNER_TEMP/pkgs/built-tags" "$RUNNER_TEMP/pkg-tags.d/pkgs-arm64"
       - name: Hand the built package tags to the manifest job
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
         with:
           name: pkg-tags-pkgs-arm64
-          path: pkg-tags
+          path: ${{ runner.temp }}/pkg-tags.d
       - name: Post package report
         run: |
           echo Disk usage
@@ -355,13 +355,13 @@ jobs:
           PLATFORM: ${{ matrix.platform }}
         run: |
           ./tools/eve-cosign.sh sign-built "$RUNNER_TEMP/eve"
-          mkdir -p pkg-tags
-          cat "$RUNNER_TEMP/pkgs/built-tags" "$RUNNER_TEMP/eve/built-tags" > "pkg-tags/eve-$ARCH-$HV-$PLATFORM"
+          mkdir -p "$RUNNER_TEMP/pkg-tags.d"
+          cat "$RUNNER_TEMP/pkgs/built-tags" "$RUNNER_TEMP/eve/built-tags" > "$RUNNER_TEMP/pkg-tags.d/eve-$ARCH-$HV-$PLATFORM"
       - name: Hand the built package tags to the manifest job
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
         with:
           name: pkg-tags-eve-${{ matrix.arch }}-${{ matrix.hv }}-${{ matrix.platform }}
-          path: pkg-tags
+          path: ${{ runner.temp }}/pkg-tags.d
       - name: Collect and push SBOM and sources
         uses: ./.github/actions/run-make
         if: matrix.arch != 'riscv64'
@@ -423,7 +423,7 @@ jobs:
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         with:
           pattern: pkg-tags-*
-          path: pkg-tags
+          path: ${{ runner.temp }}/pkg-tags.d
           merge-multiple: true
       - name: Install cosign
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
@@ -434,7 +434,7 @@ jobs:
       - name: Sign package indexes
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         run: |
-          cat pkg-tags/* | sort -u > "$RUNNER_TEMP/pkg-tags"
+          cat "$RUNNER_TEMP"/pkg-tags.d/* | sort -u > "$RUNNER_TEMP/pkg-tags"
           ./tools/eve-cosign.sh sign-indexes "$RUNNER_TEMP/pkg-tags"
 
   coverage:
