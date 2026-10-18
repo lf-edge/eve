@@ -11,6 +11,7 @@ import (
 	"github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
+	"github.com/lf-edge/eve/pkg/pillar/kernelcmdline"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -74,7 +75,8 @@ func PublishHardwareInfoToZedCloud(ctx *zedagentContext, dest destinationBitset)
 	hwInfo.EvePlatform = hardware.GetHardwareModel(log)
 	hwInfo.Partition = agentlog.EveCurrentPartition()
 	hwInfo.KernelVersion = hardware.GetKernelVersion()
-	hwInfo.KernelCmdline = hardware.GetKernelCmdline()
+	cmdline, _ := kernelcmdline.Current()
+	hwInfo.KernelCmdline = cmdline.String()
 	hwInfo.KernelFlavor = hardware.GetKernelFlavor()
 
 	// Get information about disks
