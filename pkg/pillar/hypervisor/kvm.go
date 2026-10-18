@@ -80,6 +80,16 @@ var (
 		Transport: vtpmClientUDSTransport(),
 		Timeout:   5 * time.Second,
 	}
+	// A launch makes the vTPM service run swtpm twice, once for a health
+	// check of the saved state and once for the instance, each start
+	// unsealing the state key from the TPM and waiting for swtpm's pid file,
+	// and in between it waits for the health-check instance to flush its
+	// state and exit. On a loaded host or an emulated TPM that takes longer
+	// than the 5 seconds the other requests get.
+	vTPMLaunchClient = &http.Client{
+		Transport: vtpmClientUDSTransport(),
+		Timeout:   30 * time.Second,
+	}
 )
 
 // vtpmRequestResult holds the result of a vTPM request.
@@ -2409,7 +2419,7 @@ func makeRequest(client *http.Client, wk *procutils.WatchdogKicker, endpoint, id
 
 func requestvTPMLaunch(id uuid.UUID, wp *types.WatchdogParam, timeoutSeconds uint) error {
 	wk := procutils.NewWatchdogKicker(wp.Ps, wp.AgentName, wp.WarnTime, wp.ErrTime)
-	body, err := makeRequest(vTPMClient, wk, vtpmLaunchEndpoint, id.String())
+	body, err := makeRequest(vTPMLaunchClient, wk, vtpmLaunchEndpoint, id.String())
 	if err != nil {
 		return fmt.Errorf("failed to launch vTPM instance: %w (%s)", err, body)
 	}
