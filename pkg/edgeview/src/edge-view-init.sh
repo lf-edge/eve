@@ -7,7 +7,8 @@ if [ -z "$EDGEVIEW_CLIENT" ]; then
   while true;
   do
     sleep 10
-    PID=$(pgrep /usr/bin/edge-view)
+    # procps pgrep matches the process name, not argv[0] as busybox did
+    PID=$(pgrep -x edge-view)
     if [ -n "$PID" ]; then
       PID=$(echo "$PID" | tr '\n' ' ')
     fi
@@ -33,7 +34,7 @@ if [ -z "$EDGEVIEW_CLIENT" ]; then
             /usr/bin/edge-view -server -inst "$a" -token "$TOKEN" &
           done
         fi
-        sleep 2 && PID=$(pgrep /usr/bin/edge-view)
+        sleep 2 && PID=$(pgrep -x edge-view)
         PID=$(echo "$PID" | tr '\n' ' ')
         echo "started edge-view with pid $PID"
       else

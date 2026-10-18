@@ -441,7 +441,7 @@ func getModel() {
 
 func getHW() {
 	printTitle("HW:", colorCYAN, false)
-	err := addPackage("/usr/sbin/lshw", "lshw")
+	err := addPackage("/usr/bin/lshw", "lshw")
 	if err != nil {
 		fmt.Printf("add package: %v\n", err)
 		return
@@ -518,11 +518,13 @@ func getLastReboot() {
 
 func runUSB() {
 	printTitle("USB:", colorCYAN, false)
-	prog := "apk"
-	args := []string{"add", "usbutils"}
-	_, _ = runCmd(prog, args, false)
-	prog = "lsusb"
-	args = []string{"-v"}
+	err := addPackage("/usr/bin/lsusb", "usbutils")
+	if err != nil {
+		fmt.Printf("add package: %v\n", err)
+		return
+	}
+	prog := "lsusb"
+	args := []string{"-v"}
 	retStr, err := runCmd(prog, args, false)
 	if err != nil {
 		fmt.Printf("%v\n", err)
@@ -533,7 +535,7 @@ func runUSB() {
 
 func runPCI() {
 	printTitle("PCI:", colorCYAN, false)
-	err := addPackage("/usr/sbin/lspci", "pciutils")
+	err := addPackage("/usr/bin/lspci", "pciutils")
 	if err != nil {
 		fmt.Printf("add package: %v\n", err)
 		return
@@ -1017,7 +1019,7 @@ func togglePprof(opt string) {
 }
 
 func runPprof() {
-	cmd := exec.Command("/usr/bin/pkill", "-USR2", "/opt/zededa/bin/zedbox")
+	cmd := exec.Command("/usr/bin/pkill", "-USR2", "-x", "zedbox")
 
 	err := cmd.Run()
 	if err != nil {

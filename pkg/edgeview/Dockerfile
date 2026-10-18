@@ -2,12 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # hadolint ignore=DL3006
-FROM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS runtime
-ENV PKGS alpine-baselayout musl-utils iproute2 iptables
-RUN eve-alpine-deploy.sh
+FROM lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544 AS runtime
+# lspci, lsusb, lshw and tcpdump used to be installed on demand with apk;
+# the Ubuntu image has no package manager, so they ship with it
+ENV PKGS="iproute2 iptables pciutils usbutils lshw tcpdump ca-certificates iw procps"
+RUN eve-ubuntu-deploy.sh
 
 # hadolint ignore=DL3029
-FROM --platform=$BUILDPLATFORM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS build
+FROM --platform=$BUILDPLATFORM lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544 AS build
 ARG TARGETARCH
 
 COPY src/  /edge-view/.
@@ -18,7 +20,7 @@ ARG GOPKGVERSION
 WORKDIR /edge-view
 
 ENV CGO_ENABLED=0
-SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
+SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
 # hadolint ignore=SC2046
 RUN echo "Running go vet" && GOARCH=${TARGETARCH} go vet ./... && echo "Running go fmt" && \
     ERR=$(gofmt -e -l -s $(find . -name \*.go | grep -v /vendor/)) && \

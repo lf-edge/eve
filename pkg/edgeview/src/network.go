@@ -1493,10 +1493,7 @@ func maskPSK(line string) string {
 }
 
 func runWireless() {
-	err := addPackage("/usr/sbin/iwconfig", "wireless-tools")
-	if err != nil {
-		return
-	}
+	haveIw := addPackage("/usr/sbin/iw", "iw") == nil
 
 	var deviceNetStatus types.DeviceNetworkStatus
 	retbytes, err := os.ReadFile("/run/nim/DeviceNetworkStatus/global.json")
@@ -1512,10 +1509,11 @@ func runWireless() {
 		if port.WirelessCfg.WType != types.WirelessTypeWifi {
 			continue
 		}
-		printTitle(fmt.Sprintf("\n iwconfig %s", port.IfName), colorCYAN, false)
-		prog := "iwconfig"
-		args := []string{port.IfName}
-		_, _ = runCmd(prog, args, true)
+		if haveIw {
+			printTitle(fmt.Sprintf("\n iw dev %s info/link", port.IfName), colorCYAN, false)
+			_, _ = runCmd("iw", []string{"dev", port.IfName, "info"}, true)
+			_, _ = runCmd("iw", []string{"dev", port.IfName, "link"}, true)
+		}
 
 		retbytes, err = os.ReadFile(
 			fmt.Sprintf("/run/nim/wpa_supplicant-%s.conf", port.IfName))

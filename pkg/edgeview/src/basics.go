@@ -404,21 +404,17 @@ func getBasics() {
 	closePipe(true)
 }
 
-// dynamically install package for uncommon options
+// addPackage checks that the tool at pathName, provided by the package
+// pkgName, is part of the image. Tools used to be installed on demand
+// with apk; the Ubuntu based image ships without a package manager.
 func addPackage(pathName, pkgName string) error {
-	prog := "apk"
 	_, err := os.Stat(pathName)
 	if err != nil {
 		if os.IsNotExist(err) {
-			args := []string{"add", pkgName}
-			_, err = runCmdInFunction(prog, args)
-			if err != nil {
-				fmt.Printf("%v\n", err)
-				return err
-			}
-		} else {
-			return err
+			err = fmt.Errorf("%s is not available: package %s is not part of this image", pathName, pkgName)
+			fmt.Printf("%v\n", err)
 		}
+		return err
 	}
 	return nil
 }
