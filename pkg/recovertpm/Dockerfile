@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # hadolint ignore=DL3029
-FROM --platform=$BUILDPLATFORM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS build
+FROM --platform=$BUILDPLATFORM lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544 AS build
 ARG TARGETARCH
 
 # build the tpm-recovery tool
@@ -10,7 +10,7 @@ WORKDIR /
 COPY src/ recover-tpm/
 
 WORKDIR /recover-tpm
-SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
+SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
 # hadolint ignore=SC2046
 RUN echo "Running go vet" && GOARCH=${TARGETARCH} go vet ./... && echo "Running go fmt" && \
     ERR=$(gofmt -e -l -s $(find . -name \*.go | grep -v /vendor/)) && \

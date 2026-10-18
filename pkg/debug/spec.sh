@@ -1,5 +1,5 @@
 #!/bin/sh
-#shellcheck disable=SC2039,SC3043,SC3057
+#shellcheck disable=SC2039,SC3043
 
 # Copyright (c) 2024 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
@@ -118,11 +118,10 @@ pci_to_ztype() {
         local ztype
         ifname=$(ls "/sys/bus/pci/devices/${pci}/net")
         ztype=1
-        if [ "${ifname:0:4}" = "wlan" ]; then
-            ztype=5
-        elif [ "${ifname:0:4}" = "wwan" ]; then
-            ztype=6
-        fi
+        case "$ifname" in
+            wlan*) ztype=5 ;;
+            wwan*) ztype=6 ;;
+        esac
     elif echo "$lspci_ds" | grep -q USB; then
         ztype=2
     elif echo "$lspci_ds" | grep -q Audio; then

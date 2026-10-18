@@ -7,13 +7,13 @@
 # Script version, don't forget to bump up once something is changed
 
 VERSION=44
-# Add required packages here, it will be passed to "apk add".
+# Add required packages here, it will be passed to "apt-get install".
 # Once something added here don't forget to add the same package
 # to the Dockerfile ('ENV PKGS' line) of the debug container,
 # because we don't want to fail in case of network problems, on
 # the other hand we want to support old versions of EVE, so we
 # still attempt to install those packages.
-PKG_DEPS="procps tar dmidecode iptables dhcpcd"
+PKG_DEPS="procps tar dmidecode iptables dhcpcd-base"
 
 DATE=$(date "+%Y-%m-%d-%H-%M-%S")
 # Function to get device identifier (UUID if onboarding, serial otherwise)
@@ -372,10 +372,10 @@ mkdir -p "$DIR/network"
 
 # Check for internet access, timeouts at 30 seconds,
 # If there is internet access, install required GNU utilities and networking tools.
-if nc -z -w 30 dl-cdn.alpinelinux.org 443 2>/dev/null; then
+if nc -z -w 30 snapshot.ubuntu.com 443 2>/dev/null; then
   echo "- install GNU utilities and networking tools"
   # shellcheck disable=SC2086
-  apk add $PKG_DEPS >/dev/null 2>&1
+  apt-get -q update >/dev/null 2>&1 && apt-get -y -q install $PKG_DEPS >/dev/null 2>&1
 fi
 
 check_tar_flags() {

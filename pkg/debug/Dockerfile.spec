@@ -1,13 +1,13 @@
-FROM lfedge/eve-alpine:47d267f35e4832f639bf65bbe8a2e7b2f31e3e36
+FROM lfedge/eve-ubuntu:ce501daedafe54c66d1d2561e0cd215d49ea1f60
 
-ENV BUILD_PKGS="jq pciutils usbutils lsblk"
+ENV BUILD_PKGS="jq pciutils usbutils util-linux"
 
-RUN eve-alpine-deploy.sh
+RUN eve-ubuntu-deploy.sh
 
 WORKDIR /usr/bin
 COPY spec.sh .
 
-SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
+SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
 
 RUN echo "Testing spec.sh -v..." && \
     ./spec.sh -v | tee /dev/stderr | jq . > /dev/null

@@ -2,15 +2,15 @@
 
 # Copyright (c) 2024 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
-FROM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS build
+FROM lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544 AS build
 
-ENV BUILD_PKGS libbpf-dev make gcc g++ git perl linux-headers musl-dev cmake elfutils-dev llvm17-libs llvm17-dev llvm17-gtest llvm17-static cereal flex bison clang17-extra-tools clang17-dev clang17-static pahole gtest-dev bash py3-setuptools zip zlib-dev
+ENV BUILD_PKGS="libbpf-dev make gcc g++ git perl linux-libc-dev libc6-dev cmake libelf-dev libdw-dev llvm-17-dev libclang-17-dev libclang-cpp17-dev clang-17 clang-tools-17 libpolly-17-dev libcereal-dev flex bison pahole libgtest-dev libgmock-dev googletest bash python3-setuptools zip xxd zlib1g-dev libzstd-dev pkg-config pax-utils"
 
-RUN eve-alpine-deploy.sh
+RUN eve-ubuntu-deploy.sh
 
-RUN ln -s /usr/lib/cmake/clang17 /usr/lib/cmake/clang
+ENV CMAKE_PREFIX_PATH=/usr/lib/llvm-17
 
-# compile bcc from source as alpine's bcc crashes in bcc_elf_is_shared_obj(rel_path.c_str()); during bpftrace test
+# compile bcc from source as the distribution's bcc crashes in bcc_elf_is_shared_obj(rel_path.c_str()); during bpftrace test
 WORKDIR /usr/src
 # bcc compilation process needs .git directory
 ADD --keep-git-dir=true https://github.com/iovisor/bcc.git#v0.27.0 /usr/src/bcc
@@ -20,7 +20,8 @@ WORKDIR /usr/src/bcc/build
 RUN perl -pni.bak -e 's/CMAKE_CXX_STANDARD 14/CMAKE_CXX_STANDARD 17/g' ../CMakeLists.txt
 RUN perl -pni.bak -e 's!llvm-c/Transforms/IPO.h!llvm/Transforms/IPO.h!g' ../src/cc/bpf_module.cc
 RUN perl -pni.bak -e 's/#pragma GCC poison reallocarray strlcpy//g' ../src/cc/libbpf/src/libbpf_internal.h
-RUN cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_CXX_COMPILER=clang++-17 -DCMAKE_C_COMPILER=clang-17 -DENABLE_EXAMPLES=OFF -DENABLE_MAN=OFF ..
+# bcc still declares cmake_minimum_required 3.1, which Ubuntu's cmake 4 refuses
+RUN cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_CXX_COMPILER=clang++-17 -DCMAKE_C_COMPILER=clang-17 -DENABLE_EXAMPLES=OFF -DENABLE_MAN=OFF -DENABLE_LLVM_SHARED=ON ..
 RUN make -j "$(getconf _NPROCESSORS_ONLN)"
 RUN make install
 
@@ -52,23 +53,19 @@ RUN if [ "$TARGETARCH" = "$BUILDARCH" ]; then \
         echo "Running bpftrace tests is disabled, because TARGETARCH=${TARGETARCH} and BUILDARCH=${BUILDARCH}"; \
     fi
 
-FROM scratch AS bin
-COPY --from=build /out/lib/apk/db/installed /lib/apk/db/installed
-COPY --from=build /usr/bin/bpftrace /bpftrace/usr/bin/bpftrace
-COPY --from=build /usr/bin/bpftrace-aotrt /bpftrace-aotrt/usr/bin/bpftrace-aotrt
+# Two trees for the consumers: /bpftrace holds the compiler, which
+# eve-tools/bpftrace-compiler runs in a VM, /bpftrace-aotrt the ahead-of-time
+# runtime that pkg/debug ships, each with the libraries it needs and the dpkg
+# records of the packages they came from (see copy-with-libs.sh).
+WORKDIR /
+RUN copy-with-libs.sh -m -r / -o /bpftrace /usr/bin/bpftrace && \
+    copy-with-libs.sh -m -r / -o /bpftrace-aotrt /usr/bin/bpftrace-aotrt && \
+    cp -a /out/var/lib/dpkg/status.d /bpftrace/var/lib/dpkg/ && \
+    cp -a /out/var/lib/dpkg/status.d /bpftrace-aotrt/var/lib/dpkg/
 
-COPY --from=build /usr/lib/libbpf.so.1 /bpftrace-aotrt//usr/lib/libbpf.so.1
-COPY --from=build /usr/lib/libz.so.1 /bpftrace-aotrt//usr/lib/libz.so.1
-COPY --from=build /usr/lib/libbcc_bpf.so.0 /bpftrace-aotrt//usr/lib/libbcc_bpf.so.0
-COPY --from=build /usr/lib/libdw.so.1 /bpftrace-aotrt//usr/lib/libdw.so.1
-COPY --from=build /usr/lib/libstdc++.so.6 /bpftrace-aotrt//usr/lib/libstdc++.so.6
-COPY --from=build /usr/lib/libgcc_s.so.1 /bpftrace-aotrt//usr/lib/libgcc_s.so.1
-COPY --from=build /usr/lib/libelf.so.1 /bpftrace-aotrt//usr/lib/libelf.so.1
-COPY --from=build /usr/lib/liblzma.so.5 /bpftrace-aotrt//usr/lib/liblzma.so.5
-COPY --from=build /usr/lib/libfts.so.0 /bpftrace-aotrt//usr/lib/libfts.so.0
-COPY --from=build /usr/lib/libzstd.so.1 /bpftrace-aotrt//usr/lib/libzstd.so.1
-COPY --from=build /usr/lib/libbz2.so.1 /bpftrace-aotrt//usr/lib/libbz2.so.1
-COPY --from=build /out/lib/apk/db/installed /bpftrace-aotrt/
+FROM scratch AS bin
+COPY --from=build /bpftrace /bpftrace
+COPY --from=build /bpftrace-aotrt /bpftrace-aotrt
 
 FROM bin AS bin-amd64
 FROM bin AS bin-arm64

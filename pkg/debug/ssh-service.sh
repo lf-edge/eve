@@ -19,5 +19,7 @@ if [ -f "/config/remote_access_disabled" ]; then
         sleep inf
     done
 else
+    # Ubuntu's sshd exits without its privilege separation directory
+    mkdir -p /run/sshd
     exec /usr/sbin/sshd -D -e
 fi

@@ -1,0 +1,22 @@
+From: EVE build <builder@projecteve.dev>
+Subject: [PATCH] semantic_analyser: do not dereference an empty optional in signal()
+
+get_int_literal() returns nullopt for a positional parameter that is not
+numeric; the error message then dereferenced it. Ubuntu builds libstdc++
+with assertions enabled, which turns that into an abort in the unit tests.
+
+--- a/src/ast/passes/semantic_analyser.cpp
++++ b/src/ast/passes/semantic_analyser.cpp
+@@ -1225,7 +1225,11 @@
+     else if (arg.type.IsIntTy() && arg.is_literal)
+     {
+       auto sig = bpftrace_.get_int_literal(&arg);
+-      if (!sig.has_value() || *sig < 1 || *sig > 64)
++      if (!sig.has_value())
++      {
++        LOG(ERROR, call.loc, err_) << "signal: not a valid integer literal";
++      }
++      else if (*sig < 1 || *sig > 64)
+       {
+         LOG(ERROR, call.loc, err_)
+             << std::to_string(*sig)

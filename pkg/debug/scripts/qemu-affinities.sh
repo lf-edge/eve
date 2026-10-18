@@ -3,10 +3,9 @@
 # Output affinities for each QEMU thread
 #
 
-# We need GNU version of the 'ps' tool
-apk=$(apk add procps 2>&1)
-if [ $? -ne 0 ]; then
-    echo "$apk"
+# We need GNU version of the 'ps' tool and taskset
+if ! command -v taskset >/dev/null 2>&1 || ! ps -T -o spid= -p 1 >/dev/null 2>&1; then
+    echo "procps (GNU ps) and util-linux (taskset) are required"
     exit 1
 fi
 
