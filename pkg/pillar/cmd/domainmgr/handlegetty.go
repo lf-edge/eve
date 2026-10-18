@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/kernelcmdline"
 	"github.com/shirou/gopsutil/process"
 )
 
@@ -19,18 +20,12 @@ const cmdlineGettyFlag = "getty"
 var gettyStarted bool
 
 func hasInitGettyStarted(log *base.LogObject) bool {
-	data, err := os.ReadFile("/proc/cmdline")
+	cmdline, err := kernelcmdline.Current()
 	if err != nil {
 		log.Errorf("cannot read /proc/cmdline: %v", err)
 		return false
 	}
-	bootArgs := strings.Fields(string(data))
-	for _, arg := range bootArgs {
-		if arg == cmdlineGettyFlag {
-			return true
-		}
-	}
-	return false
+	return cmdline.Has(cmdlineGettyFlag)
 }
 
 func startGetty(log *base.LogObject) {

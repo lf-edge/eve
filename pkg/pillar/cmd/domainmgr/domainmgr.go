@@ -40,6 +40,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cpuallocator"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
+	"github.com/lf-edge/eve/pkg/pillar/kernelcmdline"
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/qemudump"
@@ -823,25 +824,19 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 }
 
 func getReservedCPUsNum() (uint32, error) {
-	data, err := os.ReadFile("/proc/cmdline")
+	cmdline, err := kernelcmdline.Current()
 	if err != nil {
 		return 1, err
 	}
-	bootArgs := strings.Fields(string(data))
-	for _, arg := range bootArgs {
-		if strings.HasPrefix(arg, "eve_max_vcpus") {
-			argSplit := strings.Split(arg, "=")
-			if len(argSplit) < 2 {
-				return 1, errors.New("kernel arg 'eve_max_vcpus' is malformed")
-			}
-			cpusReserved, err := strconv.ParseUint(argSplit[1], 10, 32)
-			if err != nil {
-				return 1, errors.New("value of kernel arg 'eve_max_vcpus' is malformed")
-			}
-			return uint32(cpusReserved), nil
-		}
+	value, ok := cmdline.Value("eve_max_vcpus")
+	if !ok {
+		return 1, errors.New("kernel arg 'eve_max_vcpus' not found")
 	}
-	return 1, errors.New("kernel arg 'eve_max_vcpus' not found")
+	cpusReserved, err := strconv.ParseUint(value, 10, 32)
+	if err != nil {
+		return 1, errors.New("value of kernel arg 'eve_max_vcpus' is malformed")
+	}
+	return uint32(cpusReserved), nil
 }
 
 func publishProcessesHandler(domainCtx *domainContext) {
