@@ -7,7 +7,7 @@
 # previous DaemonSet's nodeSelector.
 #
 # Declare this stage BEFORE `build` so all the build-stage RUN/COPY commands
-# below (eve-alpine-deploy, etcdctl, eve-bridge, etc.) execute inside `build`
+# below (eve-ubuntu-deploy, etcdctl, eve-bridge, etc.) execute inside `build`
 # and not inside this passthrough stage — otherwise the COPY --from=sriov-cni-bin
 # below ends up referencing the stage it's running in (circular dependency).
 #
@@ -19,13 +19,21 @@
 # hadolint ignore=DL3029
 FROM --platform=linux/amd64 ghcr.io/k8snetworkplumbingwg/sriov-cni@sha256:fce504e683275ab59215065ddf6433ca80d1b4b53f0d4b0cdf037da6701c7cb4 AS sriov-cni-bin
 
-FROM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS build
+FROM lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544 AS build
 
 ARG TARGETARCH
-ENV PKGS="alpine-baselayout musl-utils iproute2 iptables curl openrc \
-         open-iscsi libvirt libvirt-client util-linux grep findutils jq \
-         cni-plugins nfs-utils inotify-tools sqlite"
-RUN eve-alpine-deploy.sh
+ENV PKGS="iproute2 iptables curl bash \
+         open-iscsi util-linux mount grep findutils jq \
+         containernetworking-plugins nfs-common inotify-tools sqlite3 tar busybox-static"
+RUN eve-ubuntu-deploy.sh
+# kube-init reboots the node with /sbin/reboot
+RUN for a in reboot poweroff halt; do ln -s ../bin/busybox /out/usr/sbin/$a; done
+# kube-init stages the CNI plugins from /usr/libexec/cni, where Alpine kept them
+RUN ln -s ../lib/cni /out/usr/libexec/cni
+# the initiator name is not generated at image build time: Ubuntu's open-iscsi
+# leaves a GenerateName=yes placeholder for its init scripts, which never run
+# here, and Alpine's package shipped no file at all
+RUN rm -f /out/etc/iscsi/initiatorname.iscsi
 
 ENV ETCDCTL_VERSION=v3.5.5
 ADD https://github.com/etcd-io/etcd/releases/download/${ETCDCTL_VERSION}/etcd-${ETCDCTL_VERSION}-linux-${TARGETARCH}.tar.gz /tmp/etcd.tar.gz
@@ -36,14 +44,14 @@ RUN mkdir -p /out/usr/bin /tmp/etcdtmp && \
     rm -rf /tmp/etcd.tar.gz /tmp/etcdtmp
 COPY --from=sriov-cni-bin /usr/bin/sriov /out/usr/bin/sriov
 
-# Register etcdctl in the APK DB, mandatory for it to be included in the SBOM.
+# Register etcdctl in the dpkg status area, mandatory for it to be included in the SBOM.
 RUN register-sbom-pkg.sh -n etcdctl -v "${ETCDCTL_VERSION}" -l Apache-2.0 -u https://github.com/etcd-io/etcd
 
 # Note: virtctl itself is downloaded and installed in the final scratch stage below;
-# the APK DB entry is added here in the build stage so it propagates via COPY /out/.
+# the dpkg status entry is added here in the build stage so it propagates via COPY /out/.
 # Keep this version aligned with VIRTCTL_VERSION in the final stage.
 ENV VIRTCTL_VERSION=v1.7.3
-# Register virtctl in the APK DB, mandatory for it to be included in the SBOM.
+# Register virtctl in the dpkg status area, mandatory for it to be included in the SBOM.
 RUN register-sbom-pkg.sh -n virtctl -v "${VIRTCTL_VERSION}" -l Apache-2.0 -u https://github.com/kubevirt/kubevirt
 
 COPY eve-bridge /plugins/eve-bridge
