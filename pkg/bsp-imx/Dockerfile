@@ -1,54 +1,42 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
 
 # use the same set of packages for simplicity
-ARG BUILD_PKGS_BASE="bash binutils-dev build-base bc bison flex openssl-dev util-linux-dev swig gnutls-dev perl python3 python3-dev py3-setuptools py3-pycryptodome py3-elftools"
+ARG BUILD_PKGS_BASE="bash binutils-dev build-essential bc bison flex libssl-dev uuid-dev swig libgnutls28-dev perl python3 python3-dev python3-setuptools python3-pycryptodome python3-pyelftools device-tree-compiler"
 
 # we use the same image in several places
-ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d
+ARG EVE_UBUNTU_IMAGE=lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544
 
 # OPTEE-OS images
-FROM lfedge/eve-optee-os:df086d35825880fcb992aa0b4c2777c1a1dbbdfe AS optee-os
+FROM lfedge/eve-optee-os:aafcd786fd1b68baa7a1a72f55532f1979137dca AS optee-os
 
+# native build: the compiler of the build host targets the firmware's architecture already
 # hadolint ignore=DL3006
-FROM ${EVE_ALPINE_IMAGE} AS build-native
+FROM ${EVE_UBUNTU_IMAGE} AS build-native
 ARG BUILD_PKGS_BASE
-RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
+RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-ubuntu-deploy.sh
+ENV CROSS_COMPILE_ENV=""
 
+# cross build: Ubuntu's cross compiler for the target on the build host
 # hadolint ignore=DL3006,DL3029
-FROM --platform=${BUILDPLATFORM} ${EVE_ALPINE_IMAGE} AS build-cross
+FROM --platform=${BUILDPLATFORM} ${EVE_UBUNTU_IMAGE} AS build-cross
 ARG BUILD_PKGS_BASE
-RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
+RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-ubuntu-deploy.sh
 
-# hadolint ignore=DL3029
-FROM --platform=${BUILDPLATFORM} lfedge/eve-cross-compilers:d794c049baf50389be1dd48da056fb2472574c3e AS cross-compilers
-
-# will use several packages from target arch and copy them to sysroot
-# hadolint ignore=DL3006
-FROM ${EVE_ALPINE_IMAGE} AS cross-compile-libs
-ENV PKGS="musl-dev libgcc libintl libuuid libtirpc libblkid"
-RUN eve-alpine-deploy.sh
-
-# adjust EVE_TARGET_ARCH for cross-compiler
 FROM build-cross AS build-cross-target-amd64
-ENV EVE_TARGET_ARCH=x86_64
+RUN BUILD_PKGS=gcc-x86-64-linux-gnu eve-ubuntu-deploy.sh
+ENV CROSS_COMPILE_ENV=x86_64-linux-gnu-
 FROM build-cross AS build-cross-target-arm64
-ENV EVE_TARGET_ARCH=aarch64
+RUN BUILD_PKGS=gcc-aarch64-linux-gnu eve-ubuntu-deploy.sh
+ENV CROSS_COMPILE_ENV=aarch64-linux-gnu-
 FROM build-cross AS build-cross-target-riscv64
-ENV EVE_TARGET_ARCH=riscv64
-
-# hadolint ignore=DL3006
-FROM build-cross-target-${TARGETARCH} AS build-cross-target
-ENV CROSS_COMPILE_ENV="${EVE_TARGET_ARCH}-alpine-linux-musl-"
-COPY --from=cross-compilers /packages /packages
-# hadolint ignore=DL3018
-RUN apk add --no-cache --allow-untrusted -X /packages build-base-"${EVE_TARGET_ARCH}"
-COPY --from=cross-compile-libs /out/ /usr/"${EVE_TARGET_ARCH}"-alpine-linux-musl/
+RUN BUILD_PKGS=gcc-riscv64-linux-gnu eve-ubuntu-deploy.sh
+ENV CROSS_COMPILE_ENV=riscv64-linux-gnu-
 
 # cross-compilers
-FROM build-cross-target AS target-arm64-build-amd64
-FROM build-cross-target AS target-amd64-build-arm64
-FROM build-cross-target AS target-riscv64-build-amd64
-FROM build-cross-target AS target-riscv64-build-arm64
+FROM build-cross-target-arm64 AS target-arm64-build-amd64
+FROM build-cross-target-amd64 AS target-amd64-build-arm64
+FROM build-cross-target-riscv64 AS target-riscv64-build-amd64
+FROM build-cross-target-riscv64 AS target-riscv64-build-arm64
 # native
 FROM build-native AS target-amd64-build-amd64
 FROM build-native AS target-arm64-build-arm64
@@ -56,6 +44,7 @@ FROM build-native AS target-riscv64-build-riscv64
 
 # hadolint ignore=DL3006
 FROM target-${TARGETARCH}-build-${BUILDARCH} AS build
+ARG TARGETARCH
 
 SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
 
@@ -100,7 +89,7 @@ ADD https://github.com/nxp-imx/imx-atf.git#${ATF_COMMIT_imx8mp_pollux} ${ATF_SRC
 ADD https://github.com/nxp-imx/imx-atf.git#${ATF_COMMIT_imx8mp_epc_r3720} ${ATF_SRC_imx8mp_epc_r3720}
 # hadolint ignore=DL3003,SC2086
 RUN for t in ${ATF_TARGETS}; do \
-        [ "$EVE_TARGET_ARCH" != "aarch64" ] && break ;\
+        [ "$TARGETARCH" != "arm64" ] && break ;\
         target=$(eval echo \$ATF_${t}) ;\
         spd=$(eval echo \$ATF_SPD_${t}) ;\
         repo=$(eval echo \$ATF_SRC_${t}) ;\
@@ -176,7 +165,7 @@ ENV FLASH_OFFSET_imx8mp_epc_r3720 "32"
 
 # hadolint ignore=SC2086
 RUN for target in ${UBOOT_TARGETS}; do \
-        [ "$EVE_TARGET_ARCH" != "aarch64" ] && break ;\
+        [ "$TARGETARCH" != "arm64" ] && break ;\
         make CROSS_COMPILE="${CROSS_COMPILE_ENV}" clean && \
             rm -rf bl31*.bin tee.bin && \
         ([ -f "${target}"-bl31-tee.bin ] && \
@@ -197,8 +186,8 @@ RUN for target in ${UBOOT_TARGETS}; do \
         [ -f "$udtb" ] && cp $udtb /bsp/ ;\
     done
 
-# Register imx-atf, firmware-imx and uboot-imx in the APK DB, mandatory for them to be included in the SBOM.
-RUN if [ "$EVE_TARGET_ARCH" = "aarch64" ]; then \
+# Register imx-atf, firmware-imx and uboot-imx in the dpkg status area, mandatory for them to be included in the SBOM.
+RUN register-sbom-pkg.sh && if [ "$TARGETARCH" = "arm64" ]; then \
         register-sbom-pkg.sh -n imx-atf -v "${ATF_COMMIT_imx8mp_pollux:0:8}" -l BSD-3-Clause -u https://github.com/nxp-imx/imx-atf && \
         register-sbom-pkg.sh -n firmware-imx -v "${FIRMWARE_VER}" -l proprietary -u https://www.nxp.com && \
         register-sbom-pkg.sh -n uboot-imx -v "${UBOOT_VERSION}" -l GPL-2.0-only -u https://github.com/nxp-imx/uboot-imx; \
@@ -208,5 +197,5 @@ FROM scratch
 ENTRYPOINT []
 CMD []
 COPY --from=build /bsp /bsp-imx
-COPY --from=build /out/lib/apk/db/installed /lib/apk/db/installed
+COPY --from=build /out/var/lib/dpkg/status.d /var/lib/dpkg/status.d
 

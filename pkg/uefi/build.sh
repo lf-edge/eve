@@ -16,7 +16,10 @@ TARGET=RELEASE
 # anyone with a keyboard attached.
 UEFI_BOOT_TIMEOUT=${UEFI_BOOT_TIMEOUT:-0}
 
-make -C BaseTools -j "$(nproc)"
+# EXTRA_OPTFLAGS is appended last to the BaseTools CFLAGS: the host tools
+# are built with -Werror, which newer gcc releases keep tripping over.
+# Fail here rather than later with "BaseTools C Tool binary was not found".
+make -C BaseTools -j "$(nproc)" EXTRA_OPTFLAGS=-Wno-error || exit 1
 OVMF_COMMON_FLAGS="-DNETWORK_TLS_ENABLE"
 OVMF_COMMON_FLAGS+=" -DSECURE_BOOT_ENABLE=TRUE"
 OVMF_COMMON_FLAGS+=" -DTPM2_CONFIG_ENABLE=TRUE"
@@ -52,7 +55,7 @@ case $(uname -m) in
              cp Build/ArmVirtQemu-AARCH64/${TARGET}_GCC5/FV/QEMU_EFI.fd OVMF.fd
              cp Build/ArmVirtQemu-AARCH64/${TARGET}_GCC5/FV/QEMU_VARS.fd OVMF_VARS.fd
              # now let's build PVH UEFI kernel
-             make -C BaseTools/Source/C -j "$(nproc)"
+             make -C BaseTools/Source/C -j "$(nproc)" EXTRA_OPTFLAGS=-Wno-error
              build -b ${TARGET} -t GCC5 -a AARCH64 -n "$(nproc)" -p ArmVirtPkg/ArmVirtXen.dsc
              cp Build/ArmVirtXen-AARCH64/${TARGET}_*/FV/XEN_EFI.fd OVMF_PVH.fd
              ;;

@@ -3,35 +3,26 @@
 # Copyright (c) 2026 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS build-arm64
+FROM lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544 AS build-arm64
 
-ARG BUILD_PKGS="bash binutils-dev bsd-compat-headers build-base bc bison \
-  cmake flex openssl-dev util-linux-dev linux-headers swig git gnutls-dev \
-  perl python3 python3-dev py3-setuptools py3-pycryptodome py3-elftools pkgconfig"
+ARG BUILD_PKGS="bash binutils-dev build-essential bc bison \
+  cmake flex libssl-dev uuid-dev linux-libc-dev swig git libgnutls28-dev \
+  perl python3 python3-dev python3-setuptools python3-pycryptodome python3-pyelftools pkg-config"
 
 # hadolint ignore=DL3006
-RUN eve-alpine-deploy.sh
-
-COPY patches /patches
+RUN eve-ubuntu-deploy.sh
 
 ENV OPTEE_CLIENT_VERSION=4.9.0
 ADD --keep-git-dir=true https://github.com/OP-TEE/optee_client.git#${OPTEE_CLIENT_VERSION} /optee_client
 
 WORKDIR /optee_client
 
-# Apply patches
-RUN git config --global user.name 'Project EVE' && \
-    git config --global user.email 'builder@projecteve.dev' && \
-    for x in /patches/*.patch; do \
-      git am $x; \
-    done
-
 # Build tee-supplicant
 RUN cmake -DCMAKE_INSTALL_PREFIX=/build/usr && \
       make -j "$(getconf _NPROCESSORS_ONLN)" && \
       make install
 
-# Register optee_client in the APK DB, mandatory for it to be included in the SBOM.
+# Register optee_client in the dpkg status area, mandatory for it to be included in the SBOM.
 RUN register-sbom-pkg.sh -n optee_client -v "${OPTEE_CLIENT_VERSION}" -l BSD-2-Clause -u https://github.com/OP-TEE/optee_client
 
 FROM scratch AS output-amd64
@@ -44,6 +35,7 @@ ADD rootfs/ /
 COPY --from=build-arm64 /build/usr/etc/* /etc/
 COPY --from=build-arm64 /build/usr/lib/* /usr/lib/
 COPY --from=build-arm64 /build/usr/sbin/* /usr/sbin/
+COPY --from=build-arm64 /out/var/lib/dpkg/status.d /var/lib/dpkg/status.d
 
 ARG TARGETARCH
 FROM output-${TARGETARCH}

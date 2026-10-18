@@ -1,17 +1,17 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
 ARG PLATFORM=generic
 
-FROM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS build-base
+FROM lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544 AS build-base
 
 ARG TARGETARCH
 
-ENV BUILD_PKGS="tar make binutils zstd rdfind coreutils"
-RUN eve-alpine-deploy.sh
+ENV BUILD_PKGS="tar make binutils zstd rdfind coreutils gzip bzip2 cpio"
+RUN eve-ubuntu-deploy.sh
 
 ENV WIRELESS_REGDB_VERSION=2024.01.23
 ENV WIRELESS_REGDB_REPO=https://mirrors.edge.kernel.org/pub/software/network/wireless-regdb/wireless-regdb
 ADD ${WIRELESS_REGDB_REPO}-${WIRELESS_REGDB_VERSION}.tar.gz /wireless-regdb.tar.gz
-RUN mkdir /wireless-regdb &&\
+RUN mkdir -p /wireless-regdb /lib/firmware &&\
     tar -xz --strip-components=1 -C /wireless-regdb -f /wireless-regdb.tar.gz &&\
     cp /wireless-regdb/regulatory.db /wireless-regdb/regulatory.db.p7s /lib/firmware
 
@@ -110,15 +110,15 @@ ADD ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM4345C5.hcd .
 ENV HAILO_FW_VERSION=4.24.0
 ADD https://hailo-hailort.s3.eu-west-2.amazonaws.com/Hailo8/${HAILO_FW_VERSION}/FW/hailo8_fw.${HAILO_FW_VERSION}.bin /lib/firmware/hailo/hailo8_fw.bin
 
-# Register firmware packages in the APK DB, mandatory for them to be included in the SBOM.
+# Register firmware packages in the dpkg status area, mandatory for them to be included in the SBOM.
 RUN register-sbom-pkg.sh -n wireless-regdb -v "${WIRELESS_REGDB_VERSION}" -l ISC -u https://wireless.wiki.kernel.org/en/developers/regulatory/wireless-regdb -o /sbom-out
 RUN register-sbom-pkg.sh -n linux-firmware -v "${LINUX_FIRMWARE_VERSION}" -l GPL-2.0-only -u https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git -o /sbom-out
-RUN register-sbom-pkg.sh -n rtw88-firmware -v "${RTL8822_FW_VERSION:0:8}" -l GPL-2.0-only -u https://github.com/lwfinger/rtw88 -o /sbom-out
+RUN register-sbom-pkg.sh -n rtw88-firmware -v "$(printf '%.8s' "${RTL8822_FW_VERSION}")" -l GPL-2.0-only -u https://github.com/lwfinger/rtw88 -o /sbom-out
 RUN register-sbom-pkg.sh -n hailo8-firmware -v "${HAILO_FW_VERSION}" -l proprietary -u https://hailo.ai -o /sbom-out
 RUN register-sbom-pkg.sh -n nvidia-l4t-firmware -v "${NVIDIA_FW_TEGRA}" -l proprietary -u https://repo.download.nvidia.com/jetson -o /sbom-out
 RUN if [ "${TARGETARCH}" = "arm64" ]; then \
-        register-sbom-pkg.sh -n rpi-firmware-nonfree -v "${RPI_FIRMWARE_VERSION:0:8}" -l proprietary -u https://github.com/RPi-Distro/firmware-nonfree -o /sbom-out && \
-        register-sbom-pkg.sh -n rpi-bluez-firmware -v "${RPI_BT_FIRMWARE_VERSION:0:8}" -l proprietary -u https://github.com/RPi-Distro/bluez-firmware -o /sbom-out; \
+        register-sbom-pkg.sh -n rpi-firmware-nonfree -v "$(printf '%.8s' "${RPI_FIRMWARE_VERSION}")" -l proprietary -u https://github.com/RPi-Distro/firmware-nonfree -o /sbom-out && \
+        register-sbom-pkg.sh -n rpi-bluez-firmware -v "$(printf '%.8s' "${RPI_BT_FIRMWARE_VERSION}")" -l proprietary -u https://github.com/RPi-Distro/bluez-firmware -o /sbom-out; \
     fi
 
 # The firmware an architecture's kernels can load, as listed in
@@ -144,15 +144,15 @@ RUN mkdir -p /fw-listed && \
 
 # generate initrd for Intel's and AMD's microcode
 # it makes sense only for x86_64 platform
-FROM --platform=${TARGETPLATFORM} lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS ucode-build-common
+FROM --platform=${TARGETPLATFORM} lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544 AS ucode-build-common
 RUN mkdir -p /boot /tmp/ucode/intel /tmp/ucode/amd /usr/share/licenses/ucode
-# Ensure /sbom-out/lib/apk/db/installed exists for all archs so the COPY in
+# Ensure /sbom-out/var/lib/dpkg/status.d exists for all archs so the COPY in
 # compactor-common works even when no ucode registrations run (arm64/riscv64).
-RUN register-sbom-pkg.sh -o /sbom-out
+RUN register-sbom-pkg.sh -o /sbom-out && mkdir -p /sbom-out/usr/share/doc
 
 FROM ucode-build-common AS ucode-build-amd64
-ENV BUILD_PKGS=iucode-tool
-RUN eve-alpine-deploy.sh
+ENV BUILD_PKGS="iucode-tool cpio"
+RUN eve-ubuntu-deploy.sh
 
 # build intel microcode
 ENV INTEL_UCODE_VERSION=20260812
@@ -184,7 +184,7 @@ RUN cp /tmp/ucode/amd/linux-firmware/LICENSES/LICENSE.amd-ucode /usr/share/licen
 # merge intel and amd microcode
 RUN cat /tmp/ucode/intel/intel-ucode.img /tmp/ucode/amd/amd-ucode.img >/boot/ucode.img
 
-# Register intel-ucode and amd-ucode in the APK DB, mandatory for them to be included in the SBOM.
+# Register intel-ucode and amd-ucode in the dpkg status area, mandatory for them to be included in the SBOM.
 RUN register-sbom-pkg.sh -n intel-ucode -v "${INTEL_UCODE_VERSION}" -l proprietary -u https://github.com/intel/Intel-Linux-Processor-Microcode-Data-Files -o /sbom-out
 RUN register-sbom-pkg.sh -n amd-ucode -v "${AMD_UCODE_VERSION}" -l proprietary -u https://www.amd.com -o /sbom-out
 
@@ -192,14 +192,15 @@ FROM ucode-build-common AS ucode-build-arm64
 FROM ucode-build-common AS ucode-build-riscv64
 FROM ucode-build-${TARGETARCH} AS ucode-build
 
-FROM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS compactor-base
+FROM lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544 AS compactor-base
 ENTRYPOINT []
 WORKDIR /
-# Reset the APK DB so the final image only reports source-built/firmware packages
-RUN rm -f /lib/apk/db/installed && register-sbom-pkg.sh -o /
-COPY --from=build /sbom-out/lib/apk/db/installed /tmp/sbom-fw
-COPY --from=ucode-build /sbom-out/lib/apk/db/installed /tmp/sbom-ucode
-RUN cat /tmp/sbom-fw /tmp/sbom-ucode >> /lib/apk/db/installed && rm -f /tmp/sbom-fw /tmp/sbom-ucode
+# The final image only reports source-built/firmware packages: collect their
+# registrations (one file per package) from the stages that made them
+COPY --from=build /sbom-out/var/lib/dpkg/status.d /sbom/var/lib/dpkg/status.d
+COPY --from=ucode-build /sbom-out/var/lib/dpkg/status.d /sbom/var/lib/dpkg/status.d
+COPY --from=build /sbom-out/usr/share/doc /sbom/usr/share/doc
+COPY --from=ucode-build /sbom-out/usr/share/doc /sbom/usr/share/doc
 
 # Exactly the files in firmware-<arch><variant>.txt
 FROM compactor-base AS compactor-listed
@@ -293,6 +294,6 @@ ENTRYPOINT []
 WORKDIR /
 
 COPY --from=compactor /lib/firmware /lib/firmware
-COPY --from=compactor /lib/apk/db/installed /lib/apk/db/installed
+COPY --from=compactor /sbom/ /
 COPY --from=ucode-build /boot/ /boot/
 COPY --from=ucode-build /usr/share/licenses/ucode /usr/share/licenses/ucode

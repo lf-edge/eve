@@ -2,17 +2,17 @@
 # Copyright (c) 2025-2026 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-# The image ships only /boot, whose contents go onto the ESP, plus the apk db
-# for the SBOM. On arm64 /boot holds u-boot.bin and the Raspberry Pi firmware,
-# DTBs and overlays; on riscv64 it holds u-boot.bin, which QEMU loads.
-# amd64 boots through UEFI and uses no u-boot, so its /boot is empty.
+# The image ships only /boot, whose contents go onto the ESP, plus the dpkg
+# status area for the SBOM. On arm64 /boot holds u-boot.bin and the Raspberry
+# Pi firmware, DTBs and overlays; on riscv64 it holds u-boot.bin, which QEMU
+# loads. amd64 boots through UEFI and uses no u-boot, so its /boot is empty.
 
-FROM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS build-amd64
-RUN eve-alpine-deploy.sh && mkdir -p /boot
+FROM lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544 AS build-amd64
+RUN eve-ubuntu-deploy.sh && register-sbom-pkg.sh && mkdir -p /boot
 
-FROM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS uboot
-ENV BUILD_PKGS bash binutils-dev build-base bc bison flex gnutls gnutls-dev openssl-dev python3 swig dtc git
-RUN eve-alpine-deploy.sh
+FROM lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544 AS uboot
+ENV BUILD_PKGS="bash binutils-dev build-essential bc bison flex gnutls-bin libgnutls28-dev libssl-dev uuid-dev python3 python3-dev python3-setuptools python3-pyelftools swig device-tree-compiler git"
+RUN eve-ubuntu-deploy.sh
 
 SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
 
@@ -42,7 +42,7 @@ RUN make -j "$(getconf _NPROCESSORS_ONLN)"
 # export a final set of u-boot artifacts into /boot
 RUN cp /u-boot/u-boot.bin /boot
 
-# Register u-boot in the APK DB, mandatory for it to be included in the SBOM.
+# Register u-boot in the dpkg status area, mandatory for it to be included in the SBOM.
 RUN register-sbom-pkg.sh -n u-boot -v "${UBOOT_VERSION}" -l GPL-2.0-only -u https://www.denx.de/wiki/U-Boot
 
 FROM uboot AS build-arm64
@@ -101,7 +101,7 @@ RUN  for i in /tmp/rpi/overlays/*.dts ; do \
      done; \
      cp -r /tmp/rpi/* /boot
 
-# Register raspberrypi-firmware in the APK DB, mandatory for it to be included in the SBOM.
+# Register raspberrypi-firmware in the dpkg status area, mandatory for it to be included in the SBOM.
 RUN register-sbom-pkg.sh -n raspberrypi-firmware -v "${RASPBERRY_FIRMWARE_BLOBS_VERSION}" -l proprietary -u https://github.com/raspberrypi/firmware
 
 FROM uboot AS build-riscv64
@@ -113,4 +113,4 @@ FROM scratch
 ENTRYPOINT []
 CMD []
 COPY --from=build /boot /boot
-COPY --from=build /out/lib/apk/db/installed /lib/apk/db/installed
+COPY --from=build /out/var/lib/dpkg/status.d /var/lib/dpkg/status.d

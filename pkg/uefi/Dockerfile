@@ -10,11 +10,11 @@
 #   git clone https://git.linaro.org/uefi/uefi-tools.git
 #   ./uefi-tools/edk2-build.sh -b DEBUG -b RELEASE all
 #
-FROM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS build
-ENV BUILD_PKGS make gcc g++ python3 libuuid nasm util-linux-dev bash git util-linux patch
-ENV BUILD_PKGS_amd64 iasl
-ENV BUILD_PKGS_arm64 iasl
-RUN eve-alpine-deploy.sh
+FROM lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544 AS build
+ENV BUILD_PKGS="make gcc g++ python3 python-is-python3 uuid-dev nasm bash git util-linux patch libc6-dev"
+ENV BUILD_PKGS_amd64="acpica-tools"
+ENV BUILD_PKGS_arm64="acpica-tools"
+RUN eve-ubuntu-deploy.sh
 
 COPY edk2-patches /edk2-patches
 COPY vfioigd-patches /vfioigd-patches
@@ -97,15 +97,16 @@ RUN case $(uname -m) in \
         ;; \
     esac
 
-# Register source-built UEFI components in the APK DB, mandatory for them to be included in the SBOM.
+# Register source-built UEFI components in the dpkg status area, mandatory for them to be included in the SBOM.
 RUN case "$(uname -m)" in \
         x86_64)  register-sbom-pkg.sh -n edk2 -v "${EDK_VERSION}" -l BSD-2-Clause-Patent -u https://github.com/tianocore/edk2 -o /sbom-out && \
-                 register-sbom-pkg.sh -n VfioIgdPkg -v "${VFIOIGD_COMMIT:0:8}" -l BSD-2-Clause-Patent -u https://github.com/tomitamoeko/VfioIgdPkg -o /sbom-out ;; \
+                 register-sbom-pkg.sh -n VfioIgdPkg -v "$(printf '%.8s' "${VFIOIGD_COMMIT}")" -l BSD-2-Clause-Patent -u https://github.com/tomitamoeko/VfioIgdPkg -o /sbom-out ;; \
         aarch64) register-sbom-pkg.sh -n edk2 -v "${EDK_VERSION}" -l BSD-2-Clause-Patent -u https://github.com/tianocore/edk2 -o /sbom-out ;; \
-        riscv64) register-sbom-pkg.sh -n opensbi -v "${SBI_COMMIT:0:8}" -l BSD-2-Clause -u https://github.com/riscv/opensbi -o /sbom-out ;; \
+        riscv64) register-sbom-pkg.sh -n opensbi -v "$(printf '%.8s' "${SBI_COMMIT}")" -l BSD-2-Clause -u https://github.com/riscv/opensbi -o /sbom-out ;; \
     esac
 
 
 FROM scratch
-COPY --from=build-interim /sbom-out/lib/apk/db/installed /lib/apk/db/installed
+COPY --from=build-interim /sbom-out/var/lib/dpkg/status.d /var/lib/dpkg/status.d
+COPY --from=build-interim /sbom-out/usr/share/doc /usr/share/doc
 COPY --from=build-interim /out/* /

@@ -2,8 +2,9 @@
 # Copyright (c) 2025-2026 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS grub-build-base
+FROM lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544 AS grub-build-base
 ENV BUILD_PKGS="automake \
+               autopoint \
                make \
                bison \
                gettext \
@@ -11,17 +12,16 @@ ENV BUILD_PKGS="automake \
                gcc \
                git \
                libtool \
-               libc-dev \
-               linux-headers \
+               libc6-dev \
+               linux-libc-dev \
                python3 \
                autoconf \
-               pkgconf \
+               pkg-config \
                patch \
-               gettext-dev \
                bash \
                gawk \
                coreutils"
-RUN eve-alpine-deploy.sh
+RUN eve-ubuntu-deploy.sh
 
 # list of grub modules that are portable between x86_64 and aarch64
 ENV GRUB_MODULES_PORT="part_gpt fat ext2 iso9660 squash4 gzio linux acpi normal cpio crypto disk boot crc64 \
@@ -97,13 +97,13 @@ RUN case "$(uname -m)" in \
     ./grub-mkimage -O riscv64-efi -d /grub-lib/grub/riscv64-efi -o /grub-lib/BOOTRISCV64.EFI -p /EFI/BOOT ${GRUB_MODULES_PORT} ${GRUB_MODULES} ;;\
   esac
 
-# Register grub in the APK DB, mandatory for it to be included in the SBOM.
+# Register grub in the dpkg status area, mandatory for it to be included in the SBOM.
 RUN register-sbom-pkg.sh -n grub -v "${GRUB_COMMIT}" -l GPL-3.0-only -u https://www.gnu.org/software/grub
 
 FROM scratch
 ENTRYPOINT []
 CMD []
-COPY --from=grub-build /out/lib/apk/db/installed /lib/apk/db/installed
+COPY --from=grub-build /out/var/lib/dpkg/status.d /var/lib/dpkg/status.d
 WORKDIR /EFI/BOOT
 COPY --from=grub-build /grub-lib/BOOT* ./
 COPY rootfs.cfg grub.cfg

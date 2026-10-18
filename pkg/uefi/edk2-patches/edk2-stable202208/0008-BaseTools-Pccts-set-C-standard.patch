@@ -1,0 +1,47 @@
+From: EVE build <builder@projecteve.dev>
+Subject: [PATCH] BaseTools/Pccts: set the C and C++ standards
+
+Backport of upstream e063f8b8a5 ("BaseTools/Pccts: set C standard") and
+of the -std=c++14 that the VfrCompile GNUmakefile carries since
+edk2-stable202502. GCC 15 defaults to C23, where "void (*f)()" takes no
+arguments and Pccts' K&R-style function pointers no longer compile,
+and to C++17, which rejects the "register" storage class VfrCompile
+uses. Without the host tools the firmware build fails with "BaseTools C
+Tool binary was not found (VfrCompile)".
+
+--- a/BaseTools/Source/C/VfrCompile/Pccts/antlr/makefile
++++ b/BaseTools/Source/C/VfrCompile/Pccts/antlr/makefile
+@@ -174,7 +174,7 @@
+ DLG=${BIN_DIR}/dlg
+ OBJ_EXT=o
+ OUT_OBJ = -o
+-BUILD_CFLAGS= $(COPT) -I. -I$(SET) -I$(PCCTS_H) -DUSER_ZZSYN $(COTHER) -DZZLEXBUFSIZE=65536
++BUILD_CFLAGS= $(COPT) -I. -I$(SET) -I$(PCCTS_H) -DUSER_ZZSYN $(COTHER) -DZZLEXBUFSIZE=65536 -std=gnu11
+ BUILD_CPPFLAGS=
+ #
+ # SGI Users, use this CFLAGS
+--- a/BaseTools/Source/C/VfrCompile/Pccts/dlg/makefile
++++ b/BaseTools/Source/C/VfrCompile/Pccts/dlg/makefile
+@@ -122,7 +122,7 @@
+ COPT=-O
+ ANTLR=${BIN_DIR}/antlr
+ DLG=${BIN_DIR}/dlg
+-BUILD_CFLAGS= $(COPT) -I. -I$(SET) -I$(PCCTS_H) -DUSER_ZZSYN -DZZLEXBUFSIZE=65536
++BUILD_CFLAGS= $(COPT) -I. -I$(SET) -I$(PCCTS_H) -DUSER_ZZSYN -DZZLEXBUFSIZE=65536 -std=gnu11
+ BUILD_CPPFLAGS=
+ OBJ_EXT=o
+ OUT_OBJ = -o
+--- a/BaseTools/Source/C/VfrCompile/GNUmakefile
++++ b/BaseTools/Source/C/VfrCompile/GNUmakefile
+@@ -17,9 +17,9 @@
+ OBJECTS = AParser.o DLexerBase.o ATokenBuffer.o EfiVfrParser.o VfrLexer.o VfrSyntax.o \
+           VfrFormPkg.o VfrError.o VfrUtilityLib.o VfrCompiler.o
+ ifeq ($(CXX), llvm)
+-VFR_CPPFLAGS = -Wno-deprecated-register -DPCCTS_USE_NAMESPACE_STD $(BUILD_CPPFLAGS)
++VFR_CPPFLAGS = -Wno-deprecated-register -std=c++14 -DPCCTS_USE_NAMESPACE_STD $(BUILD_CPPFLAGS)
+ else
+-VFR_CPPFLAGS = -DPCCTS_USE_NAMESPACE_STD $(BUILD_CPPFLAGS)
++VFR_CPPFLAGS = -std=c++14 -DPCCTS_USE_NAMESPACE_STD $(BUILD_CPPFLAGS)
+ endif
+ # keep BUILD_OPTFLAGS last
+ VFR_CXXFLAGS = $(BUILD_OPTFLAGS)

@@ -1,52 +1,41 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
 
 # use the same set of packages for simplicity
-ARG BUILD_PKGS_BASE="autoconf automake bash binutils binutils-dev build-base bc bison curl dtc expat flex openssl-dev util-linux-dev swig gnutls-dev perl python3 python3-dev py3-setuptools py3-pycryptodome py3-elftools py3-cryptography"
+ARG BUILD_PKGS_BASE="autoconf automake bash binutils binutils-dev build-essential bc bison curl device-tree-compiler libexpat1-dev flex libssl-dev uuid-dev swig libgnutls28-dev perl python3 python3-dev python3-setuptools python3-pycryptodome python3-pyelftools python3-cryptography"
 
 # we use the same image in several places
-ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d
+ARG EVE_UBUNTU_IMAGE=lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544
 
+# native build: the compiler of the build host targets the firmware's
+# architecture already. The 32-bit ARM compiler is needed by every build for
+# the arm32 TAs and does not exist on riscv64, where nothing is built anyway.
 # hadolint ignore=DL3006
-FROM ${EVE_ALPINE_IMAGE} AS build-native
+FROM ${EVE_UBUNTU_IMAGE} AS build-native
 ARG BUILD_PKGS_BASE
-RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
+RUN BUILD_PKGS="${BUILD_PKGS_BASE}" BUILD_PKGS_amd64=gcc-arm-linux-gnueabihf BUILD_PKGS_arm64=gcc-arm-linux-gnueabihf eve-ubuntu-deploy.sh
+ENV CROSS_COMPILE_ENV=""
 
+# cross build: Ubuntu's cross compiler for the target on the build host
 # hadolint ignore=DL3006,DL3029
-FROM --platform=${BUILDPLATFORM} ${EVE_ALPINE_IMAGE} AS build-cross
+FROM --platform=${BUILDPLATFORM} ${EVE_UBUNTU_IMAGE} AS build-cross
 ARG BUILD_PKGS_BASE
-RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
+RUN BUILD_PKGS="${BUILD_PKGS_BASE}" BUILD_PKGS_amd64=gcc-arm-linux-gnueabihf BUILD_PKGS_arm64=gcc-arm-linux-gnueabihf eve-ubuntu-deploy.sh
 
-# hadolint ignore=DL3029
-FROM --platform=${BUILDPLATFORM} lfedge/eve-cross-compilers:d794c049baf50389be1dd48da056fb2472574c3e AS cross-compilers
-
-# will use several packages from target arch and copy them to sysroot
-# hadolint ignore=DL3006
-FROM ${EVE_ALPINE_IMAGE} AS cross-compile-libs
-ENV PKGS musl-dev libgcc libintl libuuid libtirpc libblkid libattr
-RUN eve-alpine-deploy.sh
-
-# adjust EVE_TARGET_ARCH for cross-compiler
 FROM build-cross AS build-cross-target-amd64
-ENV EVE_TARGET_ARCH=x86_64
+RUN BUILD_PKGS=gcc-x86-64-linux-gnu eve-ubuntu-deploy.sh
+ENV CROSS_COMPILE_ENV=x86_64-linux-gnu-
 FROM build-cross AS build-cross-target-arm64
-ENV EVE_TARGET_ARCH=aarch64
+RUN BUILD_PKGS=gcc-aarch64-linux-gnu eve-ubuntu-deploy.sh
+ENV CROSS_COMPILE_ENV=aarch64-linux-gnu-
 FROM build-cross AS build-cross-target-riscv64
-ENV EVE_TARGET_ARCH=riscv64
-
-# hadolint ignore=DL3006
-FROM build-cross-target-${TARGETARCH} AS build-cross-target
-ENV CROSS_COMPILE_ENV="${EVE_TARGET_ARCH}"-alpine-linux-musl-
-ENV CROSS_COMPILE_ARM32_ENV="armv6-alpine-linux-musleabihf-"
-COPY --from=cross-compilers /packages /packages
-# hadolint ignore=DL3018
-RUN apk add --no-cache --allow-untrusted -X /packages build-base-"${EVE_TARGET_ARCH}" build-base-armhf
-COPY --from=cross-compile-libs /out/ /usr/"${EVE_TARGET_ARCH}"-alpine-linux-musl/
+RUN BUILD_PKGS=gcc-riscv64-linux-gnu eve-ubuntu-deploy.sh
+ENV CROSS_COMPILE_ENV=riscv64-linux-gnu-
 
 # cross-compilers
-FROM build-cross-target AS target-arm64-build-amd64
-FROM build-cross-target AS target-amd64-build-arm64
-FROM build-cross-target AS target-riscv64-build-amd64
-FROM build-cross-target AS target-riscv64-build-arm64
+FROM build-cross-target-arm64 AS target-arm64-build-amd64
+FROM build-cross-target-amd64 AS target-amd64-build-arm64
+FROM build-cross-target-riscv64 AS target-riscv64-build-amd64
+FROM build-cross-target-riscv64 AS target-riscv64-build-arm64
 # native
 FROM build-native AS target-amd64-build-amd64
 FROM build-native AS target-arm64-build-arm64
@@ -54,12 +43,10 @@ FROM build-native AS target-riscv64-build-riscv64
 
 # hadolint ignore=DL3006
 FROM target-${TARGETARCH}-build-${BUILDARCH} AS build
+ARG TARGETARCH
 
 # ARM32 compiler is needed on all platforms
-ENV CROSS_COMPILE_ARM32_ENV="armv6-alpine-linux-musleabihf-"
-COPY --from=cross-compilers /packages /packages
-# hadolint ignore=DL3018
-RUN apk add --no-cache --allow-untrusted -X /packages build-base-armhf
+ENV CROSS_COMPILE_ARM32_ENV="arm-linux-gnueabihf-"
 
 SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
 
@@ -110,7 +97,7 @@ ADD https://github.com/nxp-imx/imx-optee-os.git#${OPTEEOS_REV_imx8mp_pollux} ${O
 
 # hadolint ignore=DL3003,SC2086
 RUN for t in ${OPTEEOS_TARGETS}; do \
-        [ "$EVE_TARGET_ARCH" != "aarch64" ] && break ;\
+        [ "$TARGETARCH" != "arm64" ] && break ;\
         target=$(eval echo \$OPTEEOS_${t}) ;\
         repo=$(eval echo \$OPTEEOS_SRC_${t}) ;\
         uartbase=$(eval echo \$OPTEEOS_UART_${t}) ;\
@@ -140,7 +127,13 @@ RUN for t in ${OPTEEOS_TARGETS}; do \
          cp -r out/arm/export-ta_arm64 "/opteeos_bins/${t}/export-ta_arm64") ;\
     done
 
+# Register optee_os in the dpkg status area, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh && if [ "$TARGETARCH" = "arm64" ]; then \
+        register-sbom-pkg.sh -n optee_os -v "$(printf '%.8s' "${OPTEEOS_REV_qemu}")" -l BSD-2-Clause -u https://github.com/OP-TEE/optee_os && \
+        register-sbom-pkg.sh -n imx-optee-os -v "$(printf '%.8s' "${OPTEEOS_REV_imx8mp_pollux}")" -l BSD-2-Clause -u https://github.com/nxp-imx/imx-optee-os; \
+    fi
+
 FROM scratch
 COPY --from=build /opteeos_bins/ /opteeos_images
 COPY --from=build /optee_os/*.pem /opteeos_images
-
+COPY --from=build /out/var/lib/dpkg/status.d /var/lib/dpkg/status.d
