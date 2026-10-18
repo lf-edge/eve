@@ -1,13 +1,12 @@
 # Copyright (c) 2026 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-ubuntu:9a6ebfad80ca4d18950553f8bf2c01a068869805 AS ubuntu
-FROM ubuntu AS build
+FROM lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544 AS build
 
 ENV PKGS="curl"
 ENV BUILD_PKGS="gcc openssh-client"
 
-RUN --mount=type=bind,from=ubuntu,source=/mirror,target=/out/mirror sh -x /bin/eve-ubuntu-deploy.sh
+RUN eve-ubuntu-deploy.sh
 
 FROM scratch
 COPY --from=build /out/ /

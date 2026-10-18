@@ -47,7 +47,8 @@ func (d *dnsmasqProcess) Stop() {
 			}
 		}
 	}
-	os.Remove(dnsmasqPidFile)
+	// the pid file may not exist
+	_ = os.Remove(dnsmasqPidFile)
 
 	err = d.cmd.Process.Signal(syscall.SIGTERM)
 	if err != nil {

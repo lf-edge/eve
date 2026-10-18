@@ -1,0 +1,9 @@
+# Copyright (c) 2026 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
+# arm64 only: cross toolchains for the other EVE architectures
+gcc-x86-64-linux-gnu
+g++-x86-64-linux-gnu
+gcc-riscv64-linux-gnu
+gcc-arm-linux-gnueabihf
+acpi
