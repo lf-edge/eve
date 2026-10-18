@@ -7,23 +7,25 @@ FROM ${EVE_KERNEL} AS kernel
 
 FROM lfedge/eve-bpftrace:12b393f966ce2fb81d10e80f487b7b179d6a86b3 AS eve-bpftrace
 
-FROM lfedge/eve-ubuntu:ce501daedafe54c66d1d2561e0cd215d49ea1f60 AS bpftrace
+FROM lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544 AS bpftrace
 
-# the headers libclang needs to parse the kernel headers at run time come
-# with clang; bpftrace itself and its libraries come from the eve-bpftrace image
-ENV PKGS="binutils make gcc g++ git perl libc6-dev cmake zlib1g-dev libbpf-dev libcereal-dev flex bison llvm-17-dev libclang-17-dev clang-17 pahole libgtest-dev bash"
+# The tracer root is assembled from scratch in /tracer, as the Alpine one was:
+# linuxkit merges it with the kernel's /lib/modules, which does not go together
+# with the usr-merge links (lib -> usr/lib, ...) of the base's container rootfs.
+# bpftrace, bpftrace-aotrt and every library they need come complete from the
+# eve-bpftrace image; busybox has to be the static one, there is no musl loader.
+ENV BUILD_PKGS="busybox-static"
 RUN eve-ubuntu-deploy.sh
-WORKDIR /
-COPY copy-out.sh /
-RUN mkdir /out/bin /out/mnt
+RUN mkdir -p /tracer/bin /tracer/mnt /tracer/usr/bin && cp /usr/bin/busybox /tracer/usr/bin/
 
 COPY --from=kernel /kernel-headers.tar /
-WORKDIR /out
+WORKDIR /tracer
 RUN tar xvf /kernel-headers.tar
 
-COPY --from=eve-bpftrace /bpftrace/ /out/
-COPY --from=eve-bpftrace /bpftrace-aotrt/ /out/
-RUN /copy-out.sh /out/usr/bin/bpftrace /out
+COPY --from=eve-bpftrace /bpftrace/ /tracer/
+COPY --from=eve-bpftrace /bpftrace-aotrt/ /tracer/
+# the dynamic loader under its canonical path (/lib64/ld-linux-x86-64.so.2, /lib/ld-linux-aarch64.so.1)
+RUN for l in usr/lib64/ld-*.so* usr/lib/ld-*.so*; do [ -e "$l" ] || continue; d=${l%/*}; d=${d#usr/}; mkdir -p "$d" && ln -s "../$l" "$d/${l##*/}"; done
 
 RUN mkdir -p /usr/src/bpftrace-helper
 COPY bpftrace-helper /usr/src/bpftrace-helper
@@ -35,8 +37,7 @@ RUN chmod a+x /bpftrace-aotrt
 
 FROM scratch
 WORKDIR /
-COPY --from=bpftrace /out /
+COPY --from=bpftrace /tracer /
 # init
 COPY --from=bpftrace /bpftrace-helper /sbin/init
 COPY --from=bpftrace /bpftrace-aotrt /usr/bin/bpftrace-aotrt
-COPY --from=alpine:3.21 /bin/busybox /usr/bin/busybox
