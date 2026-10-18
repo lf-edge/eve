@@ -42,6 +42,23 @@ The tool needs `unsquashfs` and Python 3.11 or later. It does not need root.
   tag under test, in a disposable VM without credentials. The report prints
   the sha256 of both (`tool_sha256` and `rules_sha256` in the JSON) so the
   approver can check which ones ran.
+
+  `release-rebuild/release-rebuild.sh` does all of this for a draft release.
+  It takes one line of the draft listing in `docs/SIGNING.md` and rebuilds
+  the tag in a fresh Multipass VM. It refuses a build user or checkout whose
+  group or mode would differ from the release runners, and compares the
+  rebuild with the `eve` digest in the draft's `images.txt`:
+
+  ```sh
+  release-rebuild/release-rebuild.sh run <tag> <release-id> <release-url>
+  ```
+
+  Exit 0 and a `RESULT: every target matches` line mean every difference is
+  known. Two tests run everything but the build. `FAKE_BUILD=1` uses the
+  release's own rootfs as the rebuild, and must exit 0.
+  `release-rebuild/make-test-env.sh` loads a finished build into a VM for
+  `release-rebuild.sh finish`. Both label their RESULT `TEST ENV, NOT
+  APPROVABLE`.
 - **Kernel view of the release.** `unsquashfs` and the kernel are two squashfs
   parsers. To compare what a device's kernel sees, mount the release image
   read-only in the VM, with a kernel close to EVE's, and pass the mount point:
