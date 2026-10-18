@@ -157,6 +157,14 @@ The differences that bit during the port and are easy to reintroduce:
 * `busybox --install -s` places applets by busybox's own idea of bin/sbin:
   the debug container removes the `logread` links so the host's logread bound
   into `/usr/bin` wins in root's PATH.
+* Assertions: GCC 15's libstdc++ enables `_GLIBCXX_ASSERTIONS` by itself for
+  any compile without an optimisation level, which Alpine's gcc 14 did not.
+  A CMake project built without `CMAKE_BUILD_TYPE` (bpftrace in
+  `pkg/bpftrace`, on master too; bcc picks Release itself) therefore aborts
+  at run time where it used to get away with undefined behaviour, such as
+  dereferencing a null `unique_ptr` or an empty `optional` (bpftrace patches
+  0005 and 0006). Fix the code, or set a build type if an optimised build is
+  wanted.
 
 ## Adding new packages to eve-ubuntu
 

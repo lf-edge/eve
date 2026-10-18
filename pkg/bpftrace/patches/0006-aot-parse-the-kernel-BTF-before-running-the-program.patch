@@ -1,0 +1,20 @@
+From: EVE build <builder@projecteve.dev>
+Subject: [PATCH] aot: parse the kernel BTF before running the program
+
+The AOT runtime constructs BPFtrace and runs the loaded program without
+the parse_btf() call the bpftrace binary makes first; run() then hands
+*btf_ to every AttachedProbe. With a null pointer that is undefined
+behaviour the Alpine builds got away with; Ubuntu builds libstdc++ with
+assertions enabled and bpftrace-aotrt aborts in unique_ptr::operator*
+before the first probe is attached.
+
+--- a/src/aot/aot_main.cpp
++++ b/src/aot/aot_main.cpp
+@@ -115,6 +115,7 @@ int main(int argc, char* argv[])
+     return 1;
+ 
+   BPFtrace bpftrace(std::move(output));
++  bpftrace.parse_btf({});
+   int err = aot::load(bpftrace, argv[optind]);
+   if (err)
+   {
