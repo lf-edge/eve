@@ -5,10 +5,18 @@
 
 ARG PLATFORM=generic
 
-FROM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS build-base
-ENV BUILD_PKGS="autoconf automake build-base coreutils gettext git glib-dev libtool libmd-dev ncurses-dev tar xz-dev yq zstd-dev dpkg"
+FROM lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544 AS build-base
+ENV BUILD_PKGS="autoconf automake build-essential coreutils gettext git libglib2.0-dev libtool libmd-dev libncurses-dev tar xz-utils bzip2 libzstd-dev dpkg"
 
-RUN eve-alpine-deploy.sh
+RUN eve-ubuntu-deploy.sh
+
+# the CDI edits below are written for mikefarah's yq, which Alpine shipped as
+# yq; Ubuntu's yq package is the jq wrapper of the same name
+ARG TARGETARCH
+ENV YQ_VERSION=4.54.1
+# hadolint ignore=DL3020
+ADD https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_${TARGETARCH} /usr/bin/yq
+RUN chmod 0755 /usr/bin/yq
 
 # Set EVE_PLATFORM
 ARG PLATFORM
@@ -91,8 +99,8 @@ RUN mkdir -p /ldconfig-bin && \
     dpkg -x /libc-bin_2.31-0ubuntu9_arm64.deb /ldconfig && \
     cp /ldconfig/sbin/ldconfig.real /ldconfig-bin/ldconfig-glibc
 
-# Register source-built / downloaded NVIDIA components in the APK DB, mandatory
-# for them to be included in the SBOM.
+# Register source-built / downloaded NVIDIA components in the dpkg status area,
+# mandatory for them to be included in the SBOM.
 RUN case "${JETPACK_VER}" in \
         jp5) JL_VER=r35.5.0 ;; \
         jp6) JL_VER=r36.3.0 ;; \
@@ -143,7 +151,8 @@ COPY --from=build /nvct/dist/* /opt/vendor/nvidia/bin/
 COPY --from=build /nv-dev-nodes.sh /opt/vendor/nvidia/bin/
 COPY --from=build /nv-init.sh /opt/vendor/nvidia/init.d/
 COPY --from=build /eve-platform /opt/vendor/nvidia/
-COPY --from=build /sbom-out/lib/apk/db/installed /lib/apk/db/installed
+COPY --from=build /sbom-out/var/lib/dpkg/status.d /var/lib/dpkg/status.d
+COPY --from=build /sbom-out/usr/share/doc /usr/share/doc
 
 ENTRYPOINT []
 CMD []
