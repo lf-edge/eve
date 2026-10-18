@@ -26,14 +26,15 @@ ENV PKGS="iproute2 iptables curl bash \
          open-iscsi util-linux mount grep findutils jq \
          containernetworking-plugins nfs-common inotify-tools sqlite3 tar busybox-static"
 RUN eve-ubuntu-deploy.sh
-# kube-init reboots the node with /sbin/reboot
-RUN for a in reboot poweroff halt; do ln -s ../bin/busybox /out/usr/sbin/$a; done
+# The Alpine image had every busybox applet; kube-init and the scripts still
+# rely on some of them (reboot for the node reboot, modprobe for the kernel
+# modules, killall, gzip, wget). The links are only created where no real
+# binary exists, so the util-linux/procps/coreutils tools keep precedence.
+RUN chroot /out /bin/busybox --install -s
 # kube-init stages the CNI plugins from /usr/libexec/cni, where Alpine kept them
 RUN ln -s ../lib/cni /out/usr/libexec/cni
-# the initiator name is not generated at image build time: Ubuntu's open-iscsi
-# leaves a GenerateName=yes placeholder for its init scripts, which never run
-# here, and Alpine's package shipped no file at all
-RUN rm -f /out/etc/iscsi/initiatorname.iscsi
+# open-iscsi's postinst generates /etc/iscsi/initiatorname.iscsi (as Alpine's
+# post-install did); longhorn's iscsiadm refuses discovery without it
 
 ENV ETCDCTL_VERSION=v3.5.5
 ADD https://github.com/etcd-io/etcd/releases/download/${ETCDCTL_VERSION}/etcd-${ETCDCTL_VERSION}-linux-${TARGETARCH}.tar.gz /tmp/etcd.tar.gz
