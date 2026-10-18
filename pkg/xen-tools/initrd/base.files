@@ -1,26 +1,11 @@
-/bin/busybox
+# files of the shim VM initrd, see eve-mkinitramfs.sh for how it is built
 /bin/eve-enter-container
 /sbin/agetty
 /sbin/mke2fs
-/lib/libext2fs.so.2*
-/lib/libcom_err.so.2*
-/lib/libe2p.so.2*
-/usr/lib/libnettle.so.*
-/usr/lib/libgnutls.so.*
-/usr/lib/libcap.so.*
-/usr/lib/libp11-kit.so.*
-/usr/lib/libunistring.so.*
-/usr/lib/libtasn1.so.*
-/usr/lib/libhogweed.so.*
-/usr/lib/libgmp.so.*
-/usr/lib/libffi.so.*
-/etc/modprobe.d/*.conf
 /chroot2
 /hacf
 /mount_disk.sh
 /udhcpc_script.sh
-/mnt
-/bin/sh
 /sbin/poweroff
 /etc/acpi/PWRF/00000080
 /usr/sbin/chronyd
