@@ -14,8 +14,8 @@ func TestParseDockerfile(t *testing.T) {
 		"abcd:12345": false,
 		"f":          false,
 		"f-amd64":    false,
-		"lfedge/eve-alpine:1f7685f95a475c6bbe682f0b976f121":       false,
-		"lfedge/eve-alpine:1f7685f95a475c6bbe682f0b976f121-amd64": false,
+		"lfedge/eve-ubuntu:1f7685f95a475c6bbe682f0b976f121":       false,
+		"lfedge/eve-ubuntu:1f7685f95a475c6bbe682f0b976f121-amd64": false,
 		"lfedge/eve-rust:1.80.1":                                  false,
 		"lfedge/eve-xen-tools:":                                   false,
 	}
@@ -40,8 +40,8 @@ func readDockerFile() []string {
 			FROM abcd:12345 AS f
 			RUN echo \
 			FROM thisshouldnotbeincluded:666666
-			FROM lfedge/eve-alpine:1f7685f95a475c6bbe682f0b976f121
-			FROM lfedge/eve-alpine:1f7685f95a475c6bbe682f0b976f121-amd64
+			FROM lfedge/eve-ubuntu:1f7685f95a475c6bbe682f0b976f121
+			FROM lfedge/eve-ubuntu:1f7685f95a475c6bbe682f0b976f121-amd64
 			FROM lfedge/eve-rust:1.80.1
 			FROM lfedge/eve-xen-tools:$XENTOOLS
 
@@ -89,7 +89,7 @@ func TestNoneLinuxKitImage(t *testing.T) {
 	filtered := filterPkg(targets)
 	sort.Strings(filtered)
 
-	expected := []string{"pkg/alpine", "pkg/xen-tools"}
+	expected := []string{"pkg/ubuntu", "pkg/xen-tools"}
 	sort.Strings(expected)
 
 	if len(filtered) != len(expected) {

@@ -18,7 +18,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var defaultTypes = []string{"golang", "alpine"}
+var defaultTypes = []string{"golang", "debian"}
 
 type singlePackage struct {
 	nameVersion string
@@ -95,22 +95,36 @@ func parseJSONFile(r io.Reader) (map[string]*singlePackage, error) {
 				nameVersion: packageNameAndVersion,
 				ptype:       packageType,
 			}
-		case "apk":
+		case "deb":
+			// pkg:deb/ubuntu/<binary>@<version>?arch=...&upstream=<source>[@<version>]
+			// the collected sources are keyed by the source package
 			lastSlashIndex := strings.LastIndex(packageNameAndVersion, "/")
 			if lastSlashIndex == -1 {
 				continue
 			}
 			packageNameAndVersion = packageNameAndVersion[lastSlashIndex+1:]
-			packageNameAndVersion = strings.SplitN(packageNameAndVersion, "?", 2)[0]
-			parts := strings.SplitN(packageNameAndVersion, "@", 2)
+			nameVersionAndQualifiers := strings.SplitN(packageNameAndVersion, "?", 2)
+			parts := strings.SplitN(nameVersionAndQualifiers[0], "@", 2)
 			name, version := parts[0], ""
 			if len(parts) == 2 {
 				version = parts[1]
 			}
+			if len(nameVersionAndQualifiers) == 2 {
+				for _, q := range strings.Split(nameVersionAndQualifiers[1], "&") {
+					if !strings.HasPrefix(q, "upstream=") {
+						continue
+					}
+					upstream := strings.SplitN(strings.TrimPrefix(q, "upstream="), "@", 2)
+					name = upstream[0]
+					if len(upstream) == 2 && upstream[1] != "" {
+						version = upstream[1]
+					}
+				}
+			}
 
 			resolved = &singlePackage{
-				nameVersion: fmt.Sprintf("%s-%s", name, version),
-				ptype:       "alpine",
+				nameVersion: fmt.Sprintf("%s@%s", name, version),
+				ptype:       "debian",
 			}
 		default:
 			continue
@@ -149,7 +163,7 @@ func parseCSVFile(r io.Reader) (map[string]*singlePackage, error) {
 				nameVersion: packageNameWithVersion,
 				ptype:       packageType,
 			}
-		case "alpine":
+		case "debian":
 			resolved = &singlePackage{
 				nameVersion: packageNameWithVersion,
 				ptype:       packageType,

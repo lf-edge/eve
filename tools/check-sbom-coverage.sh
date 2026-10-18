@@ -6,7 +6,8 @@
 #
 # CI check: every pkg/*/Dockerfile that pulls external source code MUST also
 # call register-sbom-pkg.sh so that syft picks up the resulting package in the
-# SBOM via the apk-db-cataloger.
+# SBOM via the dpkg-db-cataloger (one record per package below
+# /var/lib/dpkg/status.d).
 #
 # Heuristic:
 #   - Count ADD lines targeting an external URL (ADD https://..., including
@@ -17,8 +18,9 @@
 #     tools/sbom-coverage-allowlist.txt with a justification.
 #
 # Out of scope: Go modules (go.mod/go.sum) and Rust crates (Cargo.lock) are
-# resolved by syft's language-specific catalogers and do not need apk-db
-# entries. apk add ... is handled by Alpine's own apk database.
+# resolved by syft's language-specific catalogers and do not need dpkg
+# records. Packages installed with eve-ubuntu-deploy.sh are recorded in
+# /var/lib/dpkg/status by dpkg itself.
 
 set -eu
 
@@ -61,8 +63,8 @@ if [ "$failures" -gt 0 ]; then
 
 One or more Dockerfiles fetch external source code (ADD https:// or
 ADD --keep-git-dir=...) but do not register the resulting package in the
-APK DB via register-sbom-pkg.sh. Without that call, syft cannot include
-the package in the final SBOM.
+dpkg status area via register-sbom-pkg.sh. Without that call, syft cannot
+include the package in the final SBOM.
 
 Either:
 
@@ -72,8 +74,8 @@ Either:
        RUN register-sbom-pkg.sh \\
            -n <name> -v <version> -l <SPDX-license> -u <upstream-url>
 
-     See pkg/alpine/register-sbom-pkg.sh for the full interface, and
-     pkg/dnsmasq/Dockerfile for a typical example.
+     See pkg/ubuntu/register-sbom-pkg.sh for the full interface, and
+     pkg/kexec/Dockerfile for a typical example.
 
   2. If the Dockerfile legitimately does not need a registration (e.g., the
      fetched artifact is a build-time toolchain that never reaches the final

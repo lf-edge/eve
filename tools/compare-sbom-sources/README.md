@@ -14,9 +14,9 @@ packageType,packageNameWithVersion,commit,path
 
 Where:
 
-* `packageType` is one of the supported package types, currently: `golang`, `alpine`
+* `packageType` is one of the supported package types, currently: `golang`, `debian`
 * `packageNameWithVersion` is the package name with version, separated by the natural format for that package type:
-  * alpine: `name-version`, e.g. `agetty-2.38-r1`
+  * debian: `source@version`, e.g. `util-linux@2.41.2-1ubuntu1`
   * golang: `name@version`, e.g. `github.com/eriknordmark/ipinfo@v0.0.0-20190220084921-7ee0839158f9`
 * `commit` is the commit for the package in its source repository, if known
 * `path` is the path to the package in a packaged sources file, like a zip or tar file
@@ -34,8 +34,8 @@ compare <csv_file> <spdx_file>
 You can limit the types to compare by using the `--types` flag:
 
 ```bash
-# will only report on and compare alpine packages
-compare --types alpine <csv_file> <spdx_file>
+# will only report on and compare debian packages
+compare --types debian <csv_file> <spdx_file>
 ```
 
 ### Reading from tar and tar.gz files
@@ -79,14 +79,14 @@ There are 3 sections:
 The summary statistics list the number of packages found in each file, the number
 overlapping in both files, and the number in one but not the other.
 
-For example, a successful, fully-reconciled alpine comparison shows:
+For example, a successful, fully-reconciled debian comparison shows:
 
 ```text
 Packages in CSV file but not in SPDX file:
 
 Packages in SPDX file but not in CSV file:
 
-For types: [alpine]
+For types: [debian]
 Total in SPDX file: 228
 Total in CSV file: 228
 In SPDX but not in CSV: 0

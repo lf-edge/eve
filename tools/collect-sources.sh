@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # collect-sources.sh
-# collect sources for alpine and go packages used in eve
+# collect sources for ubuntu and go packages used in eve
 # arg1=tarfile with rootfs.tar
 # arg2=path to eve root
 # arg3=path to tar.gz file for output. If blank, will send to stdout
@@ -32,7 +32,7 @@ tar "${tar_opts}" -xf "$rootfs" -C "$tmproot" --exclude "dev/*" --exclude "var/l
 echo "${tmpout}"
 echo "${outfile}"
 {
-"${eve}/tools/get-alpine-pkg-source.sh" -s "${tmpout}" -e "${tmproot}" -p alpine
+"${eve}/tools/get-deb-pkg-source.sh" -s "${tmpout}" -e "${tmproot}" -p debian
 "${eve}/build-tools/bin/go-sources-and-licenses" sources -s "${eve}/pkg" --find --out "${tmpout}" --prefix golang --template 'golang,{{.Module}}@{{.Version}},{{.Version}},{{.Path}}'
 "${eve}/build-tools/bin/go-sources-and-licenses" sources -b "${tmproot}" --find --out "${tmpout}" --prefix golang --template 'golang,{{.Module}}@{{.Version}},{{.Version}},{{.Path}}'
 } > "${manifest}"

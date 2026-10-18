@@ -4,7 +4,7 @@
 #
 # Run bump_dockerfiles.pl in a loop, creating/amending a single
 # "Update all package hashes" commit until no more changes are found.
-# Also updates pkg/eve/Dockerfile.in with the new eve-alpine hash.
+# Also updates pkg/eve/Dockerfile.in with the new eve-ubuntu hash.
 #
 # Usage: ./tools/bump-and-commit.sh
 #   from the repository root, on a clean working tree, after
@@ -51,16 +51,16 @@ for i in $(seq 1 $MAX_ITERATIONS); do
 done
 
 # Update pkg/eve/Dockerfile.in, which bump_dockerfiles.pl doesn't handle.
-# alpine-show-tag needs build-tools/bin/linuxkit.
-ALPINE_HASH=$(make --no-print-directory -s alpine-show-tag | tail -1 | sed 's/.*://')
-if [ -z "$ALPINE_HASH" ]; then
-    echo "Could not read the eve-alpine tag; run 'make build-tools' first." >&2
+# ubuntu-show-tag needs build-tools/bin/linuxkit.
+UBUNTU_HASH=$(make --no-print-directory -s ubuntu-show-tag | tail -1 | sed 's/.*://')
+if [ -z "$UBUNTU_HASH" ]; then
+    echo "Could not read the eve-ubuntu tag; run 'make build-tools' first." >&2
     exit 1
 fi
-CURRENT=$(sed -n 's/.*eve-alpine:\([a-f0-9][a-f0-9]*\).*/\1/p' pkg/eve/Dockerfile.in | head -1)
-if [ -n "$CURRENT" ] && [ "$CURRENT" != "$ALPINE_HASH" ]; then
-    echo "=== Updating pkg/eve/Dockerfile.in: $CURRENT -> $ALPINE_HASH ==="
-    sed -i.bak "s|eve-alpine:${CURRENT}|eve-alpine:${ALPINE_HASH}|g" pkg/eve/Dockerfile.in
+CURRENT=$(sed -n 's/.*eve-ubuntu:\([a-f0-9][a-f0-9]*\).*/\1/p' pkg/eve/Dockerfile.in | head -1)
+if [ -n "$CURRENT" ] && [ "$CURRENT" != "$UBUNTU_HASH" ]; then
+    echo "=== Updating pkg/eve/Dockerfile.in: $CURRENT -> $UBUNTU_HASH ==="
+    sed -i.bak "s|eve-ubuntu:${CURRENT}|eve-ubuntu:${UBUNTU_HASH}|g" pkg/eve/Dockerfile.in
     rm -f pkg/eve/Dockerfile.in.bak
     commit_bump
 fi
