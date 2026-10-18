@@ -41,15 +41,6 @@ func GetKernelVersion() string {
 	return strings.TrimSpace(string(out))
 }
 
-// GetKernelCmdline reads and returns the kernel command line from /proc/cmdline
-func GetKernelCmdline() string {
-	out, err := os.ReadFile("/proc/cmdline")
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
-}
-
 // GetKernelFlavor tries to deduce the kernel flavor
 func GetKernelFlavor() string {
 	// Try to deduce from kernel version or /proc/version
