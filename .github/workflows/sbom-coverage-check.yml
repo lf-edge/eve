@@ -12,7 +12,7 @@ on:  # yamllint disable-line rule:truthy
       - "feature/*"
     paths:
       - "pkg/**/Dockerfile"
-      - "pkg/alpine/register-sbom-pkg.sh"
+      - "pkg/ubuntu/register-sbom-pkg.sh"
       - "tools/check-sbom-coverage.sh"
       - "tools/sbom-coverage-allowlist.txt"
       - ".github/workflows/sbom-coverage-check.yml"

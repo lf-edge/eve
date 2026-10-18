@@ -27,12 +27,10 @@
 /tools/                               @rene @christoph-zededa @rucoder
 
 # linuxkit packages
-/pkg/alpine/                          @christoph-zededa @rucoder
-/pkg/alpine-base/                     @christoph-zededa @rucoder @rene
+/pkg/ubuntu/                          @christoph-zededa @rucoder
 /pkg/apparmor/                        @shjala
 /pkg/bpftrace/                        @christoph-zededa
 /pkg/bsp-imx/                         @rene
-/pkg/cross-compilers/                 @rene
 /pkg/debug/                           @christoph-zededa @eriknordmark
 /pkg/debug/lshw/                      @rene
 /pkg/dom0-ztools/                     @rucoder @christoph-zededa @rene

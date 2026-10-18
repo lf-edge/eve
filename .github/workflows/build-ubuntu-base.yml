@@ -1,0 +1,87 @@
+# Copyright (c) 2026, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+name: Ubuntu base image - build and publish on demand
+on:  # yamllint disable-line rule:truthy
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+env:
+  # The build clones from github.com (linuxkit). GitHub throttles anonymous
+  # fetches per source IP, which makes those clones fail in bursts on the
+  # shared self-hosted runners, so authenticate every github.com clone this
+  # job makes.
+  GITHUB_TOKEN: ${{ github.token }}
+  GIT_ASKPASS: ${{ github.workspace }}/tools/github-askpass.sh
+
+jobs:
+  # Step 1: Build eve-ubuntu for each arch. The image is pinned to one
+  # snapshot.ubuntu.com timestamp (see pkg/ubuntu/Dockerfile), so a forced
+  # rebuild reproduces the same package set; this workflow exists for the case
+  # that the published image has to be recreated.
+  build-ubuntu:
+    permissions:
+      contents: read
+    if: github.ref_name == github.event.repository.default_branch
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: zededa-ubuntu-2204
+          - arch: arm64
+            runner: zededa-ubuntu-2204-arm64
+          - arch: riscv64
+            runner: zededa-ubuntu-2204
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up QEMU for cross-arch builds
+        if: matrix.arch == 'riscv64'
+        run: |
+          APT_INSTALL="sudo apt install -y binfmt-support qemu-user-static"
+          $APT_INSTALL || { sudo apt update && $APT_INSTALL ; }
+      - name: Login to Docker Hub
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2  # v4.0.0
+        with:
+          username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+          password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+      - name: Build and push eve-ubuntu (${{ matrix.arch }})
+        run: |
+          make V=1 ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push \
+            \
+            LINUXKIT_EXTRA_BUILD_ARGS="--force --disable-cache" \
+            pkg/ubuntu
+
+  # Step 2: Create multi-arch manifest for eve-ubuntu
+  manifest-ubuntu:
+    needs: build-ubuntu
+    runs-on: zededa-ubuntu-2204
+    if: github.ref_name == github.event.repository.default_branch
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Login to Docker Hub
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2  # v4.0.0
+        with:
+          username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+          password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+      - name: Create multi-arch manifest for eve-ubuntu
+        run: |
+          make V=1 LINUXKIT_PKG_TARGET=manifest \
+            \
+            pkg/ubuntu

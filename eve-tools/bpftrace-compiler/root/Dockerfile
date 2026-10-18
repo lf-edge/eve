@@ -5,24 +5,24 @@ ARG EVE_KERNEL
 # hadolint ignore=DL3006
 FROM ${EVE_KERNEL} AS kernel
 
-FROM lfedge/eve-bpftrace:ba87314486aa816c78d29ede899a267a5eb35be1 AS eve-bpftrace
+FROM lfedge/eve-bpftrace:12b393f966ce2fb81d10e80f487b7b179d6a86b3 AS eve-bpftrace
 
-FROM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS bpftrace
+FROM lfedge/eve-ubuntu:ce501daedafe54c66d1d2561e0cd215d49ea1f60 AS bpftrace
 
-# hadolint ignore=DL3018
-RUN apk add --no-cache --initdb binutils make gcc g++ git perl musl-dev cmake zlib-dev bcc-dev libbpf-dev cereal flex bison llvm17-libs llvm17-dev llvm17-static clang17-dev clang17-static pahole gtest-dev bash
+# the headers libclang needs to parse the kernel headers at run time come
+# with clang; bpftrace itself and its libraries come from the eve-bpftrace image
+ENV PKGS="binutils make gcc g++ git perl libc6-dev cmake zlib1g-dev libbpf-dev libcereal-dev flex bison llvm-17-dev libclang-17-dev clang-17 pahole libgtest-dev bash"
+RUN eve-ubuntu-deploy.sh
 WORKDIR /
 COPY copy-out.sh /
-RUN mkdir /out
-RUN mkdir /out/bin
-RUN mkdir /out/mnt
+RUN mkdir /out/bin /out/mnt
 
 COPY --from=kernel /kernel-headers.tar /
 WORKDIR /out
 RUN tar xvf /kernel-headers.tar
 
-COPY --from=eve-bpftrace /bpftrace/usr/bin/bpftrace /out/usr/bin/bpftrace
-COPY --from=eve-bpftrace /bpftrace-aotrt/ /out
+COPY --from=eve-bpftrace /bpftrace/ /out/
+COPY --from=eve-bpftrace /bpftrace-aotrt/ /out/
 RUN /copy-out.sh /out/usr/bin/bpftrace /out
 
 RUN mkdir -p /usr/src/bpftrace-helper
