@@ -19,7 +19,7 @@ rdev () {
 }
 
 rootdev=$(echo "/dev/"$(rdev))
-rootdsk=$(echo "/dev/"$(lsblk -no pkname ${rootdev}))
+rootdsk="/dev/$(lsblk -dno pkname "${rootdev}")"
 
 usage() {
     echo "${ZX} Boot Control and Administration API tool."
@@ -60,7 +60,7 @@ curpart() {
     if [ ! $# -eq 0 ]; then
         usage
     fi
-    lsblk -o PARTLABEL -n ${rootdev}
+    lsblk -d -o PARTLABEL -n "${rootdev}"
 }
 
 #
@@ -81,7 +81,7 @@ partdevsize() {
         usage
     fi
     dev="$(partdev "$@")"
-    lsblk -b -n -o SIZE "$dev"
+    lsblk -d -b -n -o SIZE "$dev"
 }
 
 #
