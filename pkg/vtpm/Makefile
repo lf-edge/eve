@@ -5,7 +5,9 @@
 
 test:
 	make -C ../../ vtpm-cache-export-docker-load
-	docker run --rm \
+	# swtpm daemonizes; without an init as PID 1 its exited instances stay zombies
+	# and every health check waits for the full pid timeout
+	docker run --rm --init \
 		-v $$(pwd):/output \
 		$$(docker build --target=test -q .) \
 		env CGO_ENABLED=1 go test -v -race -timeout 30m \

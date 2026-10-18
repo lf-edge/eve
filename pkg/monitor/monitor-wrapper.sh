@@ -5,5 +5,7 @@
 
 /sbin/monitor
 # wait for key press so user can see the panic info
-# shellcheck disable=SC3045,SC2162
-read -r -p "Press any key to continue... " -n1 -s
+printf "Press any key to continue... "
+stty -icanon -echo 2>/dev/null
+dd bs=1 count=1 2>/dev/null >/dev/null
+stty sane 2>/dev/null

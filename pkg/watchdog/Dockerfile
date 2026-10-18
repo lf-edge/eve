@@ -1,10 +1,12 @@
 # Copyright (c) 2023 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS watchdog-build
-ENV BUILD_PKGS build-base file libtirpc-dev linux-headers tar util-linux
-ENV PKGS alpine-baselayout musl-utils libsmartcols
-RUN eve-alpine-deploy.sh
+FROM lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544 AS watchdog-build
+ENV BUILD_PKGS="build-essential file libtirpc-dev linux-libc-dev tar util-linux"
+# musl: ctr, bind-mounted from the Alpine based linuxkit host, is a musl binary
+# util-linux-extra: wdctl, used by init.sh
+ENV PKGS="util-linux libtirpc3t64 musl util-linux-extra procps"
+RUN eve-ubuntu-deploy.sh
 
 # Version 5.15
 ENV WATCHDOGD_VERSION 5.15
@@ -30,19 +32,18 @@ RUN \
         patch -p1 < "$patch"; \
     done
 
-# XXX: NFS 'support' is a right pain on alpine, and of unclear benefit.
+# XXX: NFS 'support' is of unclear benefit.
 ENV CONFIGURE_OPTS "--disable-nfs"
 
 RUN \
     CPPFLAGS=-I/usr/include/tirpc ./configure ${CONFIGURE_OPTS} && make -j "$(getconf _NPROCESSORS_ONLN)" && make install DESTDIR=/out
 
-# Register watchdog in the APK DB, mandatory for it to be included in the SBOM.
+# Register watchdog in the dpkg status area, mandatory for it to be included in the SBOM.
 RUN register-sbom-pkg.sh -n watchdog -v "${WATCHDOGD_VERSION}" -l GPL-2.0-only -u https://sourceforge.net/projects/watchdog
 
 FROM scratch
 WORKDIR /
 COPY --from=watchdog-build /out/ /
-COPY --from=watchdog-build /bin/wdctl /bin/wdctl
 COPY init.sh /
 COPY watchdog.conf.seed /etc/
 COPY watchdog-report.sh /sbin/

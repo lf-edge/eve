@@ -1,8 +1,8 @@
 # Copyright (c) 2023 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
-FROM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS build
-ENV BUILD_PKGS gcc musl-dev linux-headers
-RUN eve-alpine-deploy.sh
+FROM lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544 AS build
+ENV BUILD_PKGS="gcc libc6-dev linux-libc-dev"
+RUN eve-ubuntu-deploy.sh
 
 ENV GOPATH=/go PATH=$PATH:/go/bin
 

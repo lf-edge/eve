@@ -29,7 +29,8 @@ NEWLOGD_RESTART_COUNT=0
 while true;
 do
     sleep 10
-    PID=$(pgrep /usr/bin/newlogd)
+    # procps pgrep matches the process name, not argv[0] as busybox did
+    PID=$(pgrep -x newlogd)
     if [ "$NEWLOGD_RESTART_COUNT" -eq "0" ] && [ "$PID" != "$NEWLOGD_PID" ]; then
         if [ -n "$PID" ]; then
           # kill old process

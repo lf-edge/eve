@@ -53,32 +53,32 @@ RUN cp "/app/target/$CARGO_BUILD_TARGET/release/monitor" /app/target/
 RUN awk -F'"' '/^version = / {print $2; exit}' Cargo.toml > /app/monitor-version.txt
 
 
-FROM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS runtime
-ENV PKGS="kbd pciutils usbutils"
-RUN eve-alpine-deploy.sh
+FROM lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544 AS runtime
+SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
+ENV BUILD_PKGS="console-setup"
+ENV PKGS="kbd pciutils usbutils util-linux coreutils"
+RUN eve-ubuntu-deploy.sh
 
-# Register the monitor TUI in the APK DB (mandatory for SBOM inclusion). The
+# Ubuntu ships no compiled console keymaps: generate the us keymap that
+# run-monitor.sh loads from the xkb data, where loadkeys looks for it
+RUN mkdir -p /out/usr/share/keymaps/xkb && ckbcomp us | gzip -9n > /out/usr/share/keymaps/xkb/us.map.gz
+# kbd depends on console-setup, which brings fonts and the X keyboard database
+# that nothing here uses: run-monitor.sh only needs loadkeys, openvt and the
+# keymap generated above
+RUN rm -rf /out/usr/share/consolefonts /out/usr/share/consoletrans /out/usr/share/unimaps \
+           /out/usr/share/X11 /out/usr/share/xkeyboard-config-2 /out/usr/share/keymaps/i386 \
+           /out/usr/share/keymaps/include /out/usr/share/keymaps/mac /out/usr/share/keymaps/amiga \
+           /out/usr/share/keymaps/atari /out/usr/share/keymaps/sun /out/usr/share/keymaps/ppc \
+           /out/usr/share/console-setup /out/etc/console-setup
+
+# Register the monitor TUI in the dpkg status area (mandatory for SBOM inclusion). The
 # version comes from the crate manifest (Cargo.toml) — the single source of
 # truth now that the source is colocated and no longer pulled by git tag.
 COPY --from=builder /app/monitor-version.txt /tmp/monitor-version
 RUN register-sbom-pkg.sh -n eve-monitor-rs -v "$(cat /tmp/monitor-version)" -l Apache-2.0 -u https://github.com/lf-edge/eve/tree/master/pkg/monitor
 
 FROM scratch
-COPY --from=runtime /out/usr/bin/openvt /usr/bin/openvt
-COPY --from=runtime /out/usr/bin/loadkeys /usr/bin/loadkeys
-COPY --from=runtime /out/bin/dmesg /usr/bin/dmesg
-COPY --from=runtime /out/usr/bin/lsusb /usr/bin/lsusb
-COPY --from=runtime /out/usr/bin/lspci /usr/bin/lspci
-COPY --from=runtime /out/usr/share/keymaps/xkb/us.map.gz /usr/share/keymaps/xkb/us.map.gz
-COPY --from=runtime /out/lib /lib
-COPY --from=runtime /out/usr/lib /usr/lib
-
-# copy busybox and install all symbolic links but just for debugging
-COPY --from=runtime /out/bin/busybox /bin/busybox
-# using an 'exec' form of RUN, shell form of 'RUN'
-# command expects /bin/sh which doesn't yet exist
-RUN [ "/bin/busybox", "--install", "-s", "/bin" ]
-COPY --from=runtime /out/usr/bin/du /usr/bin/du
+COPY --from=runtime /out/ /
 
 COPY --from=builder /app/target/monitor /sbin/monitor
 COPY --from=builder /app/sbom.spdx.json /sbin/sbom.spdx.json

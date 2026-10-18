@@ -166,8 +166,8 @@ show_pid_mem_usage() {
     fi
     while read -r line; do
       # Check for lines containing 'Pss:'
-      # shellcheck disable=SC3010 # we use the busybox version of sh, which does support the [[ operator
-      if [[ "$line" == Pss:* ]]; then
+      case "$line" in
+      Pss:*)
         rss=$(echo "$line" | awk '{print $2}')
         rss_pid=$((rss_pid + rss))
         # We assume the name is already obtained from the previous line
@@ -178,9 +178,12 @@ show_pid_mem_usage() {
         if [ "$detailed" -eq 1 ]; then
           echo "  $current_name: $rss KB" >> "$output_file"
         fi
-      elif [[ "$line" =~ ^[0-9a-fA-F]+-[0-9a-fA-F]+ ]]; then
+        ;;
+      # Mapping header lines start with the hex address range
+      [0-9a-fA-F]*-[0-9a-fA-F]*\ *)
         current_name=$(echo "$line" | awk '{print $6}') # The name is the 6th field
-      fi
+        ;;
+      esac
     done < "$tmp_smaps"
     rm "$tmp_smaps"
     if [ -n "$rss_pid" ]; then

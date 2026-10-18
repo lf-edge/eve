@@ -3,12 +3,12 @@
 # Copyright (c) 2023 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS build
-ENV BUILD_PKGS linux-headers musl-dev musl-utils musl-libintl git gcc g++ \
+FROM lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544 AS build
+ENV BUILD_PKGS="linux-libc-dev libc6-dev git gcc g++ \
                autoconf autoconf-archive automake libtool make flex bison \
-               bash sed gettext
-ENV PKGS alpine-baselayout
-RUN eve-alpine-deploy.sh
+               bash sed gettext pkg-config"
+ENV PKGS="libstdc++6"
+RUN eve-ubuntu-deploy.sh
 
 ADD https://gitlab.com/apparmor/apparmor.git#v4.1.3 /apparmor
 WORKDIR /apparmor/libraries/libapparmor
@@ -20,7 +20,7 @@ WORKDIR /apparmor/parser
 RUN ../common/list_af_names.sh > base_af_names.h
 RUN make CFLAGS="-Os"
 
-# Register apparmor in the APK DB, mandatory for it to be included in the SBOM.
+# Register apparmor in the dpkg status area, mandatory for it to be included in the SBOM.
 RUN register-sbom-pkg.sh -n apparmor -v 4.1.3 -l GPL-2.0-only -u https://gitlab.com/apparmor/apparmor.git
 
 #Pull a selected set of artifacts into the final stage.

@@ -104,7 +104,7 @@ static void read_psi_values(current_psi_values_t *psi_values) {
 }
 
 static int psi_check_threshold(float threshold) {
-    static atomic_bool handler_executed = ATOMIC_VAR_INIT(false);
+    static atomic_bool handler_executed = false;
     current_psi_values_t psi_values;
     read_psi_values(&psi_values);
     // Check if full_avg10 exceeds the threshold to detect potential upcoming OOM.
@@ -114,7 +114,7 @@ static int psi_check_threshold(float threshold) {
     // it's still useful for predicting fast OOMs and detecting memory pressure before the system fully stalls.
     // We avoid relying too much on avg60 and avg300 because they can be too slow to react to rapid changes.
     if (psi_values.full10_value > threshold) {
-        atomic_bool expected = ATOMIC_VAR_INIT(false);
+        atomic_bool expected = false;
         if (!atomic_compare_exchange_strong(&handler_executed, &expected, true)) {
             return 0;
         }

@@ -43,7 +43,7 @@ PIDFILE=/var/run/vector.pid
 
 if ! command -v inotifywait >/dev/null 2>&1; then
   echo "ERROR: inotifywait not found. Install with:"
-  echo "  apk add --no-cache inotify-tools"
+  echo "  apt-get install inotify-tools"
   exit 1
 fi
 

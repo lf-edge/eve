@@ -27,13 +27,15 @@ if [ $# -ge 2 ]; then
     if [ -n "$agent" ]; then
         bootReason="BootReasonWatchdogHung" # Must match string in types package
         log "Watchdog report for $agent"
-        echo "pkill -USR1 /opt/zededa/bin/zedbox"
-        pkill -USR1 /opt/zededa/bin/zedbox
+        # procps pkill matches the process name, not argv[0] as busybox did
+        echo "pkill -USR1 -x zedbox"
+        pkill -USR1 -x zedbox
     fi
 fi
 
 log "Watchdog report for $CURPART EVE version $EVE_VERSION at $DATE: $*"
-ps >>/persist/log/watchdog.log
+# procps ps without options lists only the caller's session; busybox listed everything
+ps -ef >>/persist/log/watchdog.log
 log "Watchdog report done"
 
 # If a /run/<agent.pid> then look for an oom message in dmesg for that agent
