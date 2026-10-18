@@ -135,7 +135,9 @@ The differences that bit during the port and are easy to reintroduce:
   name (comm) unless `-f`, busybox matched argv[0], so `pgrep /usr/bin/foo`
   silently matches nothing (use `pgrep -x foo` or `-f`); procps `ps` without
   options shows only the caller's session (`ps -ef`); `chronyc` drops to
-  `_chrony` before talking to the daemon (`chronyc -u root`); Debian's busybox
+  `_chrony` before talking to the daemon, so chronyd runs as `_chrony` too
+  (its Ubuntu default) and any client socket it must answer has to be
+  writable for that user (zedagent's is 0666, as chronyc's own); Debian's busybox
   lacks `brctl show`; `awk` is mawk; kmod's `modprobe` looks up built-in
   modules in the binary indexes, where the eve-kernel's `modules.builtin.bin`
   does not resolve them, so `modprobe usb_storage` fails where busybox

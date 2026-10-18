@@ -137,7 +137,7 @@ format_chrony_args() {
 # Wait until NTP synchronised
 wait_ntp_sync() {
     echo "$(date -Ins -u) Wait NTP sync for 1 min"
-    /usr/bin/chronyc -u root waitsync 6
+    /usr/bin/chronyc waitsync 6
     ret_code=$?
     echo "$(date -Ins -u) chronyc waitsync: $ret_code"
 }
@@ -150,7 +150,7 @@ populate_ntp_sources() {
     # Creates string of servers in "add $mode $server iburst" format
     args=$(format_chrony_args "$ns" "add" "iburst")
     echo "$(date -Ins -u) chronyc -m $args"
-    echo "$args" | xargs /usr/bin/chronyc -u root -m
+    echo "$args" | xargs /usr/bin/chronyc -m
     ret_code=$?
     echo "$(date -Ins -u) chronyc: $ret_code"
     if [ "$ret_code" = "0" ]; then
@@ -166,13 +166,13 @@ reload_ntp_sources() {
     echo "$(date -Ins -u) Remove all NTP sources from chronyd"
     while true; do
         # Get all sources, skip 2 lines header, take first line
-        ip=$(/usr/bin/chronyc -u root -n sources | tail +3 | head -1 | awk '{print $2}')
+        ip=$(/usr/bin/chronyc -n sources | tail +3 | head -1 | awk '{print $2}')
         if [ -z "$ip" ]; then
             break
         fi
         # Delete IP
         echo "$(date -Ins -u) chronyc delete \"$ip\""
-        /usr/bin/chronyc -u root delete "$ip"
+        /usr/bin/chronyc delete "$ip"
         ret_code=$?
         echo "$(date -Ins -u) chronyc: $ret_code"
         if [ "$ret_code" != "0" ]; then
@@ -200,9 +200,12 @@ reload_ntp_sources_in_loop() {
 start_ntp_daemon() {
     echo "$(date -Ins -u) Check for NTP config"
     if [ -f /usr/sbin/chronyd ]; then
-        # Run chronyd to keep it in sync.
-        echo "$(date -Ins -u) chronyd -u root -f /etc/chrony/chrony.conf"
-        /usr/sbin/chronyd -u root -f /etc/chrony/chrony.conf
+        # Run chronyd to keep it in sync. It drops to the _chrony user as on
+        # any Ubuntu system (keeping CAP_SYS_TIME); chronyc drops to the same
+        # user before talking to the daemon, so running chronyd as root would
+        # leave chronyc unable to reach the command socket.
+        echo "$(date -Ins -u) chronyd -f /etc/chrony/chrony.conf"
+        /usr/sbin/chronyd -f /etc/chrony/chrony.conf
         ret_code=$?
         echo "$(date -Ins -u) chronyd: $ret_code"
         # Add chronyd to watchdog

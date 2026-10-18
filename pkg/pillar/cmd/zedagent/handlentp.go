@@ -250,7 +250,9 @@ func dialUnixWithChronyd(address string) (*chronyConn, error) {
 		os.Remove(local)
 		return nil, err
 	}
-	if err := os.Chmod(local, 0600); err != nil {
+	// chronyd runs unprivileged and answers on this socket, so it must be
+	// writable for its user; chronyc itself uses 0666 for the same reason
+	if err := os.Chmod(local, 0666); err != nil {
 		conn.Close()
 		os.Remove(local)
 		return nil, err
