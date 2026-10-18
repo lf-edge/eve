@@ -5,23 +5,26 @@
 #   /EFI/BOOT/grub.cfg - Chainloads main bootloader
 #   /UsbInvocationScript.txt - Enables USB boot on Dell 3000 series
 #
-FROM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS build
-SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
-ENV BUILD_PKGS="grep patch git make gcc linux-headers musl-dev autoconf automake pkgconfig kmod-dev util-linux-dev cryptsetup-dev lddtree libgcc mkinitfs"
-ENV PKGS="mtools dosfstools libarchive-tools sgdisk e2fsprogs util-linux squashfs-tools coreutils tar dmidecode \
-    kmod-libs cryptsetup-libs libblkid"
-RUN eve-alpine-deploy.sh
+FROM lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544 AS build
+SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
+ENV BUILD_PKGS="grep patch git make gcc linux-libc-dev libc6-dev pkg-config libkmod-dev libblkid-dev libcryptsetup-dev pax-utils busybox-static cpio gzip"
+ENV PKGS="mtools dosfstools libarchive-tools gdisk fdisk e2fsprogs util-linux mount squashfs-tools coreutils tar dmidecode \
+    kpartx parted qemu-utils gzip cpio xz-utils"
+RUN eve-ubuntu-deploy.sh
 
-# get mkinitfs source from git and build it locally
-# it depends on mod-libs cryptsetup-libs libblkid at runtime and lddtree to run mkinitfs itself
-# we could build APK file ourselves but 'apk add' would failed because networking is disabled for almost all linuxkit images
+# mkinitfs provides nlplug-findfs, which locates the root device from inside
+# the initrd, and initramfs-init, the init script of the live and installer
+# initrd. The initrd itself is assembled by eve-mkinitramfs.sh from the
+# static busybox of this build stage.
 WORKDIR /tmp/mkinitfs
 ADD https://github.com/alpinelinux/mkinitfs.git#3.8.1 /tmp/mkinitfs
-RUN make -j "$(getconf _NPROCESSORS_ONLN)"
+# mkinitfs builds with -Werror; Ubuntu's gcc defaults add warnings it does not expect
+RUN CFLAGS="-Wall -g" make nlplug-findfs/nlplug-findfs initramfs-init && \
+    install -m 755 nlplug-findfs/nlplug-findfs /sbin/nlplug-findfs && \
+    install -D -m 755 initramfs-init /usr/share/mkinitfs/initramfs-init
 WORKDIR /
-RUN make -C /tmp/mkinitfs install
 
-# Register mkinitfs in the APK DB, mandatory for it to be included in the SBOM.
+# Register mkinitfs in the dpkg status area, mandatory for it to be included in the SBOM.
 RUN register-sbom-pkg.sh -n mkinitfs -v 3.8.1 -l GPL-2.0-only -u https://github.com/alpinelinux/mkinitfs
 
 WORKDIR /out
@@ -33,22 +36,14 @@ COPY make-raw UsbInvocationScript.txt ./
 WORKDIR /
 COPY initramfs-init.patch /tmp/
 RUN patch -p1 < /tmp/initramfs-init.patch
-
-# from https://git.alpinelinux.org/aports/tree/main/mkinitfs/mkinitfs.post-install?id=7b64ec6e904040bd75ea21529b4fce61c908a553
-# we need to simulate mkinitfs.post-install from the original APK file
-# --- Quote ---
-# safety. if nlplug-findfs is missing in the initramfs image we may end up
-# with an unbootable system.
-RUN if ! grep -q -w /sbin/nlplug-findfs  /etc/mkinitfs/features.d/base.files; then \
-        echo "/sbin/nlplug-findfs" >> /etc/mkinitfs/features.d/base.files; \
-    fi
-
-RUN echo /bin/grep >> /etc/mkinitfs/features.d/base.files
-RUN mkinitfs -n -o /out/initrd.img
+RUN eve-mkinitramfs.sh -i /usr/share/mkinitfs/initramfs-init -o /out/initrd.img /sbin/nlplug-findfs
 
 FROM scratch
-SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
+SHELL ["/bin/sh", "-c"]
 
 COPY --from=build /out/ /
 
+# glibc's bsdtar needs a UTF-8 locale for the non-ASCII file names in the rootfs
+# (ca-certificates), the built-in C.UTF-8 does without locale files
+ENV LC_ALL=C.UTF-8
 ENTRYPOINT [ "/make-raw" ]

@@ -1,6 +1,6 @@
-FROM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS tools
-ENV PKGS="qemu-img tar u-boot-tools coreutils dosfstools"
-RUN eve-alpine-deploy.sh
+FROM lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544 AS tools
+ENV PKGS="qemu-utils tar u-boot-tools coreutils dosfstools mtools squashfs-tools xz-utils gzip mount"
+RUN eve-ubuntu-deploy.sh
 
 # hadolint ignore=DL3006
 FROM MKISO_TAG as iso

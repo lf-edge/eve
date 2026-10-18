@@ -285,8 +285,7 @@ prepare_for_hv() {
 # Lets' parse global options first
 while true; do
    case "$1" in
-     -f*) #shellcheck disable=SC2039,SC3060
-          FMT="${1/-f/}"
+     -f*) FMT="${1#-f}"
           if [ -z "$FMT" ]; then
              FMT="$2"
              shift
@@ -294,16 +293,14 @@ while true; do
           shift
           [ "$FMT" != "raw" ] && [ "$FMT" != "gcp" ] && [ "$FMT" != "qcow2" ] && [ "$FMT" != "parallels" ] && [ "$FMT" != "vdi" ] && bail "Unknown format: $FMT"
           ;;
-     -p*) #shellcheck disable=SC2039,SC3060
-          PLATFORM="${1/-p/}"
+     -p*) PLATFORM="${1#-p}"
           if [ -z "$PLATFORM" ]; then
              PLATFORM="$2"
              shift
           fi
           shift
           ;;
-     --accept-license*) #shellcheck disable=SC2039,SC3060
-          ACCEPT=1
+     --accept-license*) ACCEPT=1
           shift
           ;;
        *) break
@@ -339,8 +336,7 @@ prepare_for_hv "${image_hv}"
 
 # Let's see what was it that we were asked to do
 ACTION="do_$1"
-#shellcheck disable=SC2039,SC3045
-[ "$(type -t "$ACTION")" = "$ACTION" ] || bail "Error: unsupported command '$1' - use 'help' command for more information."
+[ "$(command -v "$ACTION")" = "$ACTION" ] || bail "Error: unsupported command '$1' - use 'help' command for more information."
 shift
 
 # If /in has content, we assume it was put there to override configs

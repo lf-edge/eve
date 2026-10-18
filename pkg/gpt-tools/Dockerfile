@@ -1,32 +1,11 @@
-FROM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS build
-ENV BUILD_PKGS="gcc make file patch libc-dev linux-headers openssl-dev g++ tar coreutils"
-# util-linux-static on riscv64 is broken; we build libuuid from source instead (see below).
-ENV BUILD_PKGS_amd64="util-linux-static util-linux-dev"
-ENV BUILD_PKGS_arm64="util-linux-static util-linux-dev"
-ENV BUILD_PKGS_riscv64="sqlite-dev"
-RUN eve-alpine-deploy.sh
+FROM lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544 AS build
+ENV BUILD_PKGS="gcc make file patch libc6-dev linux-libc-dev libssl-dev g++ tar coreutils uuid-dev pkg-config"
+RUN eve-ubuntu-deploy.sh
 
 ENV POPT_VERSION=1.16
 ENV GPTFDISK_VERSION=1.0.3
 ENV VBOOT_REPO=https://github.com/coreboot/vboot.git
 ENV VBOOT_COMMIT=ed6cb4054134efdd67215d9504f501cd36030d6a
-
-ARG TARGETARCH
-ADD https://www.kernel.org/pub/linux/utils/util-linux/v2.41/util-linux-2.41.tar.gz /tmp/ul.tar.gz
-RUN if [ "${TARGETARCH}" = "riscv64" ]; then \
-      tar -xzf /tmp/ul.tar.gz -C /tmp/ && \
-      cd /tmp/util-linux-2.41 && \
-      ./configure --enable-static --disable-shared && \
-      make libuuid.la && \
-      cp .libs/libuuid.a /usr/lib/libuuid.a && \
-      mkdir -p /usr/include/uuid && \
-      cp libuuid/src/uuid.h /usr/include/uuid/uuid.h; \
-    fi
-
-# Register util-linux in the APK DB, mandatory for it to be included in the SBOM.
-RUN if [ "${TARGETARCH}" = "riscv64" ]; then \
-      register-sbom-pkg.sh -n util-linux -v 2.41 -l GPL-2.0-only -u https://github.com/util-linux/util-linux; \
-    fi
 
 #
 # Step 1: Install SGDISK
@@ -43,6 +22,9 @@ COPY patches/popt* /popt
 RUN for patch in /popt/*patch ; do patch -p1 < $patch ; done
 RUN ./configure && make -j "$(getconf _NPROCESSORS_ONLN)" && make install
 
+# Register popt in the dpkg status area, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n popt -v "${POPT_VERSION}" -l MIT -u https://github.com/rpm-software-management/popt
+
 WORKDIR /
 RUN mkdir -p /sgdisk/patches
 COPY gptfdisk-${GPTFDISK_VERSION}.tar.gz /sgdisk
@@ -56,11 +38,11 @@ RUN set -e && for patch in ../patches/sgdisk-*.patch; do \
         echo "Applying $patch"; \
         patch -p1 < "$patch"; \
     done
-RUN make -j "$(getconf _NPROCESSORS_ONLN)" CXXFLAGS="-Dfstat64=fstat -Dstat64=stat -Dlseek64=lseek" LDFLAGS=-static sgdisk
+RUN make -j "$(getconf _NPROCESSORS_ONLN)" LDFLAGS=-static sgdisk
 RUN strip sgdisk
 RUN cp sgdisk /out/sgdisk
 
-# Register gptfdisk in the APK DB, mandatory for it to be included in the SBOM.
+# Register gptfdisk in the dpkg status area, mandatory for it to be included in the SBOM.
 RUN register-sbom-pkg.sh -n gptfdisk -v "${GPTFDISK_VERSION}" -l GPL-2.0-only -u https://sourceforge.net/projects/gptfdisk
 
 
@@ -73,14 +55,15 @@ ADD --keep-git-dir=true ${VBOOT_REPO}#${VBOOT_COMMIT} /vboot
 
 WORKDIR /vboot
 RUN [ -d host/arch/riscv64 ] || cp -r host/arch/arm host/arch/riscv64
-RUN make cgpt -j "$(getconf _NPROCESSORS_ONLN)" USE_FLASHROM=0 LDFLAGS=-static
+# gcc 15 adds warnings vboot does not know yet; its -Werror comes via WERROR
+RUN make cgpt -j "$(getconf _NPROCESSORS_ONLN)" USE_FLASHROM=0 LDFLAGS=-static WERROR=
 RUN cp build/cgpt/cgpt /out/cgpt
 
-# Register vboot in the APK DB, mandatory for it to be included in the SBOM.
-RUN register-sbom-pkg.sh -n vboot -v "${VBOOT_COMMIT:0:8}" -l GPL-3.0-only -u https://github.com/coreboot/vboot
+# Register vboot in the dpkg status area, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n vboot -v "$(printf '%.8s' "${VBOOT_COMMIT}")" -l GPL-3.0-only -u https://github.com/coreboot/vboot
 
 FROM scratch
 COPY --from=build /out/sgdisk /usr/bin/sgdisk
 COPY --from=build /out/cgpt /usr/bin/cgpt
-COPY --from=build /out/lib/apk/db/installed /lib/apk/db/installed
+COPY --from=build /out/var/lib/dpkg/status.d /var/lib/dpkg/status.d
 COPY files/zboot /usr/bin/zboot

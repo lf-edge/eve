@@ -1,7 +1,7 @@
-FROM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS build
+FROM lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544 AS build
 
-ENV PKGS mtools dosfstools
-RUN eve-alpine-deploy.sh
+ENV PKGS="mtools dosfstools"
+RUN eve-ubuntu-deploy.sh
 
 COPY make-config /out/
 RUN mkdir -p /out/conf/raw

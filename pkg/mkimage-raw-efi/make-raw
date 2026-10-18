@@ -156,7 +156,7 @@ sgdisk() {
   #   https://github.com/kini/gptfdisk/blob/master/diskio-unix.cc#L153
   local OUT
   local RET
-  OUT=$(/usr/bin/sgdisk "$@" 2>&1)
+  OUT=$(command sgdisk "$@" 2>&1)
   RET=$?
   echo "$OUT" | grep -Ev "$(echo '^Disk device is
 when determining sector size! Setting sector size to 512
@@ -303,7 +303,8 @@ dir2vfat() {
   (rm -rf /tmp/data
    mkdir /tmp/data
    mkfs.vfat "$FORCE_FAT32" -v -n "$LABEL" -C "$IMG" "$2"
-   mcopy -i "$IMG" -s "$1"/* ::/ ) >&2
+   # some partitions start out empty: an unmatched glob makes mcopy fail
+   if [ -n "$(ls -A "$1")" ]; then mcopy -i "$IMG" -s "$1"/* ::/; fi ) >&2
   echo "$IMG"
 }
 

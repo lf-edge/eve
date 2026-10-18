@@ -1,15 +1,17 @@
 # Copyright (c) 2023 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS build
-ENV PKGS="alpine-baselayout musl-utils bash glib squashfs-tools util-linux e2fsprogs e2fsprogs-extra keyutils dosfstools coreutils sgdisk smartmontools"
-RUN eve-alpine-deploy.sh
+FROM lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544 AS build
+ENV PKGS="bash libglib2.0-0t64 squashfs-tools util-linux mount e2fsprogs keyutils dosfstools coreutils gdisk smartmontools parted procps busybox-static"
+RUN eve-ubuntu-deploy.sh
+# storage-resize.sh reboots the device after it recorded a failed resize
+RUN for a in reboot poweroff halt; do ln -s ../bin/busybox /out/usr/sbin/$a; done
 
 # storage-resizer drives the EVE-kvm<->EVE-k boot-disk repartition; storage-init
 # execs it for the offline shrink/grow and the post-mount restore/cleanup. The
 # filesystem/partition tools it shells out to (resize2fs, e2fsck, fsck.fat,
 # sgdisk, partx) are in the PKGS above.
-FROM lfedge/eve-storage-resizer:ec778533de829f0379cae6e2d66c1dab393f7704 AS storage-resizer
+FROM lfedge/eve-storage-resizer:ad51054ea6af2262b6442ef482e509e1b1f884a2 AS storage-resizer
 
 FROM scratch
 COPY --from=build /out/ /

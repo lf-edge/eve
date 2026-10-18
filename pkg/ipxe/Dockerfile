@@ -1,7 +1,7 @@
-FROM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS build
+FROM lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544 AS build
 
-ENV BUILD_PKGS="patch make gcc perl util-linux-dev git mtools linux-headers musl-dev xz-dev"
-RUN eve-alpine-deploy.sh
+ENV BUILD_PKGS="patch make gcc perl uuid-dev git mtools linux-libc-dev libc6-dev liblzma-dev binutils"
+RUN eve-ubuntu-deploy.sh
 
 ENV IPXE_VERSION="5b3ebf8b24ae40a6f9f9f78491702d508f843e56"
 
@@ -24,9 +24,9 @@ RUN mkdir -p /ws/src/bin-riscv64 && touch /ws/src/bin-riscv64/ipxe.riscv64 && to
 RUN mv /ws/src/bin/undionly.kpxe /ws/src/bin/ipxe.undionly 2>/dev/null || :
 RUN rm /ws/src/bin*/*.*.*
 
-# Register ipxe in the APK DB, mandatory for it to be included in the SBOM.
-RUN register-sbom-pkg.sh -n ipxe -v "${IPXE_VERSION:0:8}" -l GPL-2.0-only -u https://ipxe.org
+# Register ipxe in the dpkg status area, mandatory for it to be included in the SBOM.
+RUN register-sbom-pkg.sh -n ipxe -v "$(printf '%.8s' "${IPXE_VERSION}")" -l GPL-2.0-only -u https://ipxe.org
 
 FROM scratch
-COPY --from=build /out/lib/apk/db/installed /lib/apk/db/installed
+COPY --from=build /out/var/lib/dpkg/status.d /var/lib/dpkg/status.d
 COPY --from=build /ws/src/bin*/ipxe.* /

@@ -87,6 +87,8 @@ eve_flavor=$(cat /hostfs/etc/eve-hv-type)
 ln -s "$CONFIGDIR" "/var/$CONFIGDIR"
 ln -s "$PERSISTDIR" "/var/$PERSISTDIR"
 
+log "Starting storage-init"
+
 if CONFIG=$(findfs PARTLABEL=CONFIG) && [ -n "$CONFIG" ]; then
     if ! fsck.vfat -y "$CONFIG"; then
         echo "$(date -Ins -u) fsck.vfat $CONFIG failed"
@@ -98,7 +100,7 @@ if CONFIG=$(findfs PARTLABEL=CONFIG) && [ -n "$CONFIG" ]; then
     fi
 
     mount -t tmpfs -o rw,nosuid,nodev,noexec,relatime,size=5120k,mode=755 tmpfs $CONFIGDIR
-    echo "$(date -Ins -u) Create a copy of CONFIG partition in RAM"
+    log "Create a copy of CONFIG partition in RAM"
     cp -r $CONFIGDIR_PERSIST/* $CONFIGDIR
     umount "$CONFIG"
     mount -o remount,ro $CONFIGDIR
@@ -238,13 +240,13 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
        # zfs_member is part of zfs type
        P3_FS_TYPE="zfs"
     fi
-    echo "$(date -Ins -u) Using $P3 (formatted with $P3_FS_TYPE), for $PERSISTDIR"
+    log "Using $P3 (formatted with $P3_FS_TYPE), for $PERSISTDIR"
 
     if [ "$P3_FS_TYPE" = zfs ]; then
         if ! chroot /hostfs zpool import -f persist; then
             # Don't re-format the fs if we are in kdump kernel
             if [ "$IS_IN_KDUMP_KERNEL" = 0 ]; then
-                echo "$(date -Ins -u) Cannot import persist pool on P3 partition $P3 of type $P3_FS_TYPE, recreating it as $P3_FS_TYPE_DEFAULT"
+                log "Cannot import persist pool on P3 partition $P3 of type $P3_FS_TYPE, recreating it as $P3_FS_TYPE_DEFAULT"
                 INIT_FS=1
                 P3_FS_TYPE="$P3_FS_TYPE_DEFAULT"
             fi
@@ -256,16 +258,19 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
         #the device when falling back to old images expecting P3 to be ext3. Migrate to ext4
         #when we do usb install, this way the transition is more controlled.
         #Any fsck error (ext3 or ext4), will lead to formatting P3 with ext4
+        log "Checking $P3"
         if { [ "$P3_FS_TYPE" != ext3 ] && [ "$P3_FS_TYPE" != ext4 ]; } || ! "fsck.$P3_FS_TYPE" -y "$P3" ; then
             # Don't re-format the fs if we are in kdump kernel
             if [ "$IS_IN_KDUMP_KERNEL" = 0 ]; then
-                echo "$(date -Ins -u) P3 partition $P3 of type $P3_FS_TYPE appears to be corrupted, recreating it as $P3_FS_TYPE_DEFAULT"
+                log "P3 partition $P3 of type $P3_FS_TYPE appears to be corrupted, recreating it as $P3_FS_TYPE_DEFAULT"
                 INIT_FS=1
                 P3_FS_TYPE="$P3_FS_TYPE_DEFAULT"
             fi
         fi
+        log "Check of $P3 done"
     fi
 
+    log "Mounting $P3 as $P3_FS_TYPE"
     case "$P3_FS_TYPE" in
              ext3) mount -t ext3 -o noatime${DIRSYNC_OPT} "$P3" $PERSISTDIR
                    ;;
@@ -290,7 +295,8 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
                       fi
                    fi
                    ;;
-    esac || echo "$(date -Ins -u) mount of $P3 as $P3_FS_TYPE failed"
+    esac || log "mount of $P3 as $P3_FS_TYPE failed"
+    log "Mount step for $P3 finished"
 
     # deposit fs type into /run
     echo "$P3_FS_TYPE" > /run/eve.persist_type
@@ -368,3 +374,5 @@ fi
 #      mount --bind "$s" "/containers/services/$(basename "$s")/lower"
 #   fi
 # done
+
+log "storage-init done"

@@ -4,7 +4,7 @@ This package will build a docker image that will store the collected_sources.tar
 
 Collected_sources.tar.gz includes:
 
-* alpine, kernel and golang packages.
+* debian, kernel and golang packages.
 * A manifest file collected_sources_manifest.csv that holds the metadata for all the packages.
 
 ## Workflow

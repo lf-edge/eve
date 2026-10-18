@@ -28,27 +28,23 @@ RUN cargo sbom > sbom.spdx.json
 
 RUN cp "/usr/local/my-installer/target/$CARGO_BUILD_TARGET/release/installer" /usr/local/my-installer/target/installer
 
-FROM lfedge/eve-debug:a99bfc7d51c9061ea3d8de762e951ac08ca8b619 AS debug
+FROM lfedge/eve-debug:bf4555da8b11ed2a82501a32735041d3d32e7cf5 AS debug
 
 # Dockerfile to build installer img initrd
-FROM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS build
-SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
-ENV BUILD_PKGS="mkinitfs grep patch make coreutils musl-dev gcc g++ perl \
-    autoconf automake libtool file bsd-compat-headers libc-dev \
-    util-linux-dev flex linux-headers glib-dev libxrandr-dev zlib-dev \
-    libusb-dev kmod-dev curl curl-dev eudev-dev libdrm-dev i2c-tools-dev hwinfo \
-    binutils-dev libaio-dev zlib-static libvncserver-dev python3 pixman-dev \
-    py3-setuptools bash cmake m4 pkgconf pkgconfig autoconf-archive \
-    cryptsetup-dev lddtree git"
-ENV PKGS="mtools dosfstools libarchive-tools sgdisk e2fsprogs util-linux \
-    squashfs-tools coreutils tar dmidecode smartmontools libaio libaio-dev \
-    glib zlib libusb curl libcurl xz pciutils usbutils hdparm ncurses-dev jq \
-    wireless-tools libxrandr eudev-libs sudo fio iperf3 sysstat \
-    lm-sensors acpi iw libdrm hwinfo dhcpcd e2fsprogs-extra \
-    libgcc pixman libvncserver musl-utils \
-    tpm2-tss-esys tpm2-tss-fapi tpm2-tss-rc \
-    kmod-libs tpm2-tss-sys tpm2-tss-tctildr tpm2-abrmd libblkid cryptsetup-libs efibootmgr"
-RUN eve-alpine-deploy.sh
+FROM lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544 AS build
+SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
+ENV PKGS="mtools dosfstools libarchive-tools gdisk e2fsprogs util-linux mount \
+    squashfs-tools coreutils tar gzip dmidecode smartmontools libaio1t64 \
+    libglib2.0-0t64 zlib1g libusb-1.0-0 curl xz-utils pciutils usbutils hdparm jq \
+    libxrandr2 libudev1 sudo fio iperf3 sysstat \
+    lm-sensors acpi iw libdrm2 hwinfo dhcpcd-base \
+    libgcc-s1 libpixman-1-0 libvncserver1 bash procps psmisc iproute2 kmod uuid-runtime nvme-cli login \
+    tpm2-tools tpm2-abrmd libkmod2 libblkid1 libcryptsetup12 efibootmgr busybox-static"
+RUN eve-ubuntu-deploy.sh
+
+# the installer reboots or powers off the device when it is done; those are
+# busybox applets here
+RUN ln -s /usr/bin/busybox /out/usr/sbin/reboot && ln -s /usr/bin/busybox /out/usr/sbin/poweroff
 
 COPY src/ /src/
 WORKDIR /src
@@ -56,32 +52,6 @@ RUN go build -o /out/tpmmgr ./tpmmgr
 RUN go build -o /out/vmcap ./vmcap
 
 WORKDIR /out
-
-ADD --keep-git-dir=true https://github.com/tpm2-software/tpm2-tools.git#5.5 /out/tpm2-tools-5.5
-
-# build tpm2-tss, it is needed by tpm2-tools
-WORKDIR /tpm2-tss
-ADD --keep-git-dir=true https://github.com/tpm2-software/tpm2-tss.git#4.0.1 /tpm2-tss
-RUN ./bootstrap && \
-    ./configure --disable-dependency-tracking && \
-    make -j$(nproc) && \
-    make install
-RUN cp /usr/local/lib/libtss2* /out/usr/lib/
-RUN strip --strip-unneeded /out/usr/lib/libtss2*.so*
-
-# Register tpm2-tss in the APK DB, mandatory for it to be included in the SBOM.
-RUN register-sbom-pkg.sh -n tpm2-tss -v 4.0.1 -l BSD-2-Clause -u https://github.com/tpm2-software/tpm2-tss
-
-WORKDIR /out/tpm2-tools-5.5
-RUN ./bootstrap
-RUN ./configure --prefix=/out/usr CFLAGS="-Wno-error"
-RUN make -j"$(nproc)" CFLAGS="-Wno-error"
-RUN make install
-
-# Register tpm2-tools in the APK DB, mandatory for it to be included in the SBOM.
-RUN register-sbom-pkg.sh -n tpm2-tools -v 5.5 -l BSD-3-Clause -u https://github.com/tpm2-software/tpm2-tools
-
-RUN rm -rf /out/tpm2-tools-5.5
 
 COPY --from=rust /usr/local/my-installer/target/installer /out/sbin/installer
 COPY --from=rust /usr/local/my-installer/sbom.spdx.json /out/sbin/sbom.spdx.json

@@ -26,10 +26,6 @@ mkdir -p $ROOTFS
 cd $ROOTFS
 bsdtar xzf -
 
-# BUSYBOXDIR will be used to extract busybox and its components for use in initrd
-BUSYBOXDIR=/var/busybox-$$
-mkdir -p $BUSYBOXDIR
-
 # Create and change to a working directory for the ISO image
 TMPDIR=/var/efiparts-$$
 mkdir -p $TMPDIR
@@ -49,7 +45,6 @@ if [ -n "$IN_IMAGE" ]; then
          # extract the rootfs from the squashfs image
          unsquashfs -d . rootfs_installer.img EFI
          unsquashfs -d . rootfs_installer.img boot
-         unsquashfs -d ${BUSYBOXDIR} rootfs_installer.img bin lib
          ;;
       raw)
          # extract the rootfs from the raw image
@@ -57,8 +52,6 @@ if [ -n "$IN_IMAGE" ]; then
          mount -o loop,ro rootfs_installer.img /mnt
          cp -r /mnt/boot .
          cp -r /mnt/EFI .
-         cp -r /mnt/bin ${BUSYBOXDIR}/
-         cp -r /mnt/lib ${BUSYBOXDIR}/
          umount ${ROOTFS}
          ;;
       *)
@@ -70,8 +63,6 @@ else
    # Some files must also be present at the rootfs of the boot device
    cp -r ${ROOTFS}/EFI .
    cp -r ${ROOTFS}/boot .
-   cp -r ${ROOTFS}/bin ${BUSYBOXDIR}/
-   cp -r ${ROOTFS}/lib ${BUSYBOXDIR}/
    mkdir -p ./etc
    cp -r ${ROOTFS}/etc/eve-release ./etc/
 
@@ -119,16 +110,8 @@ if [ -n "$VOLUME_LABEL" ]; then
 fi
 
 if [ ! -e boot/initrd.img ]; then
-   # all of the things we need to make a simple initrd
-   mkdir -p /tmp/initrd
-   (cd /tmp/initrd
-   mkdir -p bin lib sbin etc proc sys newroot
-   cp /initrd.sh init
-   cp "${BUSYBOXDIR}"/bin/busybox bin/
-   cp "${BUSYBOXDIR}"/lib/ld-musl* lib/
-   /bin/busybox --install -s /tmp/initrd/bin
-   find . | cpio -H newc -o | gzip > /tmp/initrd.img)
-   mv /tmp/initrd.img boot/initrd.img
+   # a simple initrd: busybox, blkid for the root device lookup and initrd.sh as init
+   eve-mkinitramfs.sh -r / -i /initrd.sh -o boot/initrd.img /usr/sbin/blkid
 fi
 
 # shellcheck disable=SC2086

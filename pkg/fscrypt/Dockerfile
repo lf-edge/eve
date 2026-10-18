@@ -2,7 +2,7 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS build-base
+FROM lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544 AS build-base
 
 FROM build-base AS build-amd64
 FROM build-base AS build-arm64
@@ -11,8 +11,8 @@ FROM build-base AS build-riscv64
 # hadolint ignore=DL3006
 FROM build-${TARGETARCH} AS build
 
-ENV BUILD_PKGS git gcc make libc-dev linux-pam-dev m4 findutils util-linux make patch
-RUN eve-alpine-deploy.sh
+ENV BUILD_PKGS="git gcc make libc6-dev libpam0g-dev m4 findutils util-linux patch"
+RUN eve-ubuntu-deploy.sh
 
 ENV FSCRYPT_COMMIT=v0.3.4
 WORKDIR /go/src/github.com/google/fscrypt
@@ -28,9 +28,9 @@ RUN set -e && for patch in *.patch; do \
 
 RUN make -j "$(getconf _NPROCESSORS_ONLN)" && make DESTDIR="/out/opt/zededa" PREFIX="" install
 
-# Register fscrypt in the APK DB, mandatory for it to be included in the SBOM.
+# Register fscrypt in the dpkg status area, mandatory for it to be included in the SBOM.
 RUN register-sbom-pkg.sh -n fscrypt -v "${FSCRYPT_COMMIT}" -l Apache-2.0 -u https://github.com/google/fscrypt
 
 FROM scratch
 COPY --from=build /out/opt/zededa/bin /opt/zededa/bin
-COPY --from=build /out/lib/apk/db/installed /lib/apk/db/installed
+COPY --from=build /out/var/lib/dpkg/status.d /var/lib/dpkg/status.d

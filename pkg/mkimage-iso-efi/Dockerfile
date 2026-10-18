@@ -1,22 +1,20 @@
-FROM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS build
+FROM lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544 AS build
 
-ENV PKGS="dosfstools libarchive-tools binutils mtools xorriso mkinitfs squashfs-tools"
-RUN eve-alpine-deploy.sh
+ENV PKGS="dosfstools libarchive-tools binutils mtools xorriso squashfs-tools coreutils util-linux mount \
+          busybox-static pax-utils cpio gzip"
+RUN eve-ubuntu-deploy.sh
 
 RUN echo "mtools_skip_check=1" >> /out/etc/mtools.conf
 
-# from https://git.alpinelinux.org/aports/tree/main/mkinitfs/mkinitfs.post-install?id=7b64ec6e904040bd75ea21529b4fce61c908a553
-# we need to simulate mkinitfs.post-install from the original APK file
-# --- Quote ---
-# safety. if nlplug-findfs is missing in the initramfs image we may end up
-# with an unbootable system.
-RUN if ! grep -q -w /sbin/nlplug-findfs  /out/etc/mkinitfs/features.d/base.files; then \
-        echo "/sbin/nlplug-findfs" >> /out/etc/mkinitfs/features.d/base.files; \
-    fi
-RUN echo /bin/grep >> /out/etc/mkinitfs/features.d/base.files
+# make-efi assembles the initrd of the ISO at run time out of this image's own
+# busybox and blkid, see eve-mkinitramfs.sh
+RUN cp /bin/eve-mkinitramfs.sh /bin/copy-with-libs.sh /bin/merge-sbom-db.sh /out/usr/bin/
 
 FROM scratch
 COPY --from=build /out /
 COPY . /
 WORKDIR /
+# glibc's bsdtar needs a UTF-8 locale for the non-ASCII file names in the rootfs
+# (ca-certificates), the built-in C.UTF-8 does without locale files
+ENV LC_ALL=C.UTF-8
 ENTRYPOINT [ "/make-efi" ]
