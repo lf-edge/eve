@@ -3,11 +3,11 @@
 # Copyright (c) 2025 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS zfs
-ENV BUILD_PKGS="git patch ca-certificates util-linux build-base gettext-dev libtirpc-dev automake autoconf \
-    libtool linux-headers attr-dev e2fsprogs-dev glib-dev openssl-dev util-linux-dev coreutils"
-ENV PKGS="ca-certificates util-linux libintl libuuid libtirpc libblkid libcrypto3 zlib"
-RUN eve-alpine-deploy.sh
+FROM lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544 AS zfs
+ENV BUILD_PKGS="git patch ca-certificates util-linux build-essential gettext libtirpc-dev automake autoconf \
+    libtool linux-libc-dev libattr1-dev libssl-dev uuid-dev libblkid-dev zlib1g-dev libaio-dev pkg-config coreutils"
+ENV PKGS="ca-certificates util-linux libuuid1 libtirpc3t64 libblkid1 libssl3t64 zlib1g libaio1t64"
+RUN eve-ubuntu-deploy.sh
 
 # should be aligned with kernel
 #  * ZFS on Linux
@@ -29,6 +29,7 @@ RUN ./autogen.sh && \
     --with-config=user \
     --with-udevdir=/usr/lib/udev \
     --disable-systemd \
+    --disable-pyzfs \
     --disable-static && \
     ./scripts/make_gitrev.sh && \
     make -j "$(getconf _NPROCESSORS_ONLN)" && \
@@ -38,35 +39,32 @@ RUN ./autogen.sh && \
 RUN rm -rf /tmp/zfs-out/usr/share && rm -rf /tmp/zfs-out/usr/src && \
     rm -rf /tmp/zfs-out/etc/init.d && rm -rf /tmp/zfs-out/etc/conf.d
 
-# make the list of files built from zfs to reuse later
+# make the list of files built from zfs to reuse later (pillar copies them),
+# with the paths they have in a merged-/usr rootfs like /out
 # hadolint ignore=DL4006
-RUN find /tmp/zfs-out -mindepth 1|sed 's@/tmp/zfs-out@@'>/out/etc/zfs-files
-RUN cp -r /tmp/zfs-out/* /out
+RUN find /tmp/zfs-out \( -type f -o -type l \) | sed -e 's@/tmp/zfs-out@@' -e 's@^/\(bin\|sbin\|lib\|lib64\)/@/usr/\1/@' > /tmp/zfs-files
+# hadolint ignore=DL4006
+RUN tar -C /tmp/zfs-out -cf - . | tar -C /out --keep-directory-symlink -xf -
 
-# Register zfs in the APK DB, mandatory for it to be included in the SBOM.
+# Register zfs in the dpkg status area, mandatory for it to be included in the SBOM.
 RUN register-sbom-pkg.sh -n zfs -v "${ZFS_VERSION}" -l CDDL-1.0 -u https://github.com/openzfs/zfs
 
-# Add directory for CDI files
-RUN mkdir -p /out/etc/cdi
+# The image is an init overlay of the EVE host rootfs, whose userland is
+# linuxkit's musl busybox: stage the zfs userland with the libraries it
+# needs, glibc included, as plain directories (no merged-/usr symlinks).
+# hadolint ignore=SC2046
+RUN copy-with-libs.sh -o /stage $(cat /tmp/zfs-files) && \
+    cp /tmp/zfs-files /stage/etc/zfs-files && \
+    cp -a /out/var/lib/dpkg/status.d /stage/var/lib/dpkg/ && \
+    mkdir -p /stage/etc/cdi
+
+### Create system-wide groups and users ###
+# root, nobody, the tpms group that owns /dev/tpm* (see mdev.conf) and the
+# vtpm user of the vtpm container, which is a member of tpms
+RUN printf 'root:x:0:0:root:/root:/bin/sh\nnobody:x:65534:65534:nobody:/nonexistent:/bin/false\nvtpm:x:101:101:vtpm:/nonexistent:/bin/false\n' > /stage/etc/passwd && \
+    printf 'root:x:0:\ndisk:x:6:\ntpms:x:100:vtpm\nvtpm:x:101:\nnogroup:x:65534:\n' > /stage/etc/group
 
 FROM scratch
-COPY --from=zfs /out/ /
+COPY --from=zfs /stage/ /
 # hadolint ignore=DL3020
 ADD rootfs/ /
-### Create system-wide groups and users ###
-# add initial root user
-RUN touch /etc/group && touch /etc/passwd
-RUN addgroup -g 0 root
-RUN adduser -D -H -h /root -s /bin/sh -g "root" -G root -u 0 root
-# add nobody user and group
-RUN addgroup -g 65534 nogroup
-RUN adduser -D -H -h /nonexistent -s /bin/false -g "nobody" -u 65534 -G nogroup nobody
-# add tpms group so /dev/tpm* is accessible to non-root users via tpms group,
-# the group is set for /dev/tpm* in the mdev.conf file
-RUN addgroup -g 100 tpms
-# setup user and group for vtpm container and allow TPM access via tpms group
-RUN addgroup -g 101 vtpm
-RUN adduser -D -H -h /nonexistent -s /bin/false -g "vtpm" -G vtpm -u 101 vtpm
-RUN addgroup vtpm tpms
-# setup group for disk access, mdev handling
-RUN addgroup -g 6 disk
