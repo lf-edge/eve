@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -279,7 +280,7 @@ func TestFill(t *testing.T) {
 		"SPDXRef-DocumentRoot-Directory-sbom": {"lfedge/eve-rngd", "ba4c5b192f086f3d2dfadc46061b71afc44edd62", lfEdge,
 			"pkg:docker/lfedge/eve-rngd@ba4c5b192f086f3d2dfadc46061b71afc44edd62"},
 		"SPDXRef-DocumentRoot-Directory-core": {"core", opts.Version, lfEdge, ""},
-		"SPDXRef-Package-apk-libtpms-1":       {"libtpms", "0.10.0", lfEdge, "pkg:apk/busybox/libtpms@0.10.0"},
+		"SPDXRef-Package-apk-libtpms-1":       {"libtpms", "0.10.0", lfEdge, "pkg:generic/libtpms@0.10.0"},
 		"SPDXRef-Package-apk-busybox-1":       {"busybox", "1.37.0-r20", alpine, "pkg:apk/busybox/busybox@1.37.0-r20"},
 		"SPDXRef-Package-apk-ssl-client-1":    {"ssl_client", "1.37.0-r20", alpine, ""},
 		"SPDXRef-Package-apk-musl-1": {"musl", "1.2.5-r10", "Person: Natanael Copa (ncopa@alpinelinux.org)",
@@ -432,4 +433,28 @@ func refsOf(t *testing.T, raw json.RawMessage) []externalRef {
 		t.Fatal(err)
 	}
 	return p.ExternalRefs
+}
+
+func TestSourcePURL(t *testing.T) {
+	cpe := externalRef{"SECURITY", "cpe23Type", "cpe:2.3:a:qemu:qemu:11.1.2:*:*:*:*:*:*:*"}
+	apk := externalRef{"PACKAGE-MANAGER", "purl", "pkg:apk/busybox/qemu@11.1.2?arch=x86_64&distro=busybox-1.37.0"}
+	for _, tc := range []struct {
+		p    pkgInfo
+		want string
+		refs []externalRef
+	}{
+		{pkgInfo{Name: "qemu", VersionInfo: "11.1.2", ExternalRefs: []externalRef{cpe, apk}},
+			"pkg:generic/qemu@11.1.2", []externalRef{cpe, {"PACKAGE-MANAGER", "purl", "pkg:generic/qemu@11.1.2"}}},
+		{pkgInfo{Name: "linux-firmware", VersionInfo: "20260916"},
+			"pkg:generic/linux-firmware@20260916", []externalRef{{"PACKAGE-MANAGER", "purl", "pkg:generic/linux-firmware@20260916"}}},
+		{pkgInfo{Name: "x y", VersionInfo: "1.0+git/1@2"}, "pkg:generic/x%20y@1.0%2Bgit%2F1%402", nil},
+	} {
+		got := sourcePURL(tc.p)
+		if got != tc.want {
+			t.Errorf("sourcePURL(%+v) = %q, want %q", tc.p, got, tc.want)
+		}
+		if refs := withPURL(tc.p.ExternalRefs, got); tc.refs != nil && !reflect.DeepEqual(refs, tc.refs) {
+			t.Errorf("withPURL = %+v, want %+v", refs, tc.refs)
+		}
+	}
 }
