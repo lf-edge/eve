@@ -17,12 +17,10 @@
 //	appstate_helpers_test.go     pillar's own view of the app - pubsub and
 //	                             persisted state keyed by app UUID
 //	appworkload_helpers_test.go  where the app is running as the hypervisor sees
-//	                             it - VMIRS objects, qemu domain state
-//	                             directories, and the kubectl reads the volume
-//	                             helpers share
-//	appvolumes_helpers_test.go   the app's disk in all three forms -
-//	                             VolumeStatus, PVC, file under /persist - and the
-//	                             storage invariants
+//	                             it - qemu domain state directories
+//	appvolumes_helpers_test.go   the app's disk in both forms - VolumeStatus,
+//	                             file under /persist - and the storage
+//	                             invariants
 //	pciaccess_helpers_test.go    the PCI devices of host and guest, the driver a
 //	                             device is bound to, and every access to a PCI
 //	                             device by host processes, observed with a
@@ -103,9 +101,6 @@ import (
 //     warnings and retried, not lost: all apps reach RUNNING and the
 //     warnings clear; regression test for apps wedged in LOADING with no
 //     error when the pool saturated.
-//   - TestVMAppPurgeReplacesVMIRS -- a plain purge of a healthy app leaves
-//     exactly one VMIRS, named for the new generation. Kubevirt only; skips
-//     on any other hypervisor.
 //   - TestVMAppPurgeAfterPowerCycle -- a purge issued while the device is
 //     powered off, which is where a reboot lands in the middle of the purge
 //     deterministically rather than by chance. Meaningful on every hypervisor.
@@ -131,12 +126,9 @@ import (
 // recreate the device, so they sit together at the end.
 //
 // Neither declares hypervisor variants. The whole suite is run once per
-// hypervisor (EVETEST_HYPERVISOR=kvm|kubevirt), so a variant here would run
+// hypervisor (EVETEST_HYPERVISOR=kvm), so a variant here would run
 // the same combination a second time; a test that cannot say anything on the
 // hypervisor it was given skips instead.
-//
-// TestContainerdCPUs is the very last test: its boot options differ, so the
-// framework creates yet another device for it.
 func TestAppsSuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
@@ -177,9 +169,6 @@ func TestAppsSuite(test *testing.T) {
 			Test: TestWorkerPoolSaturation,
 		},
 		evetest.TestCase{
-			Test: TestVMAppPurgeReplacesVMIRS,
-		},
-		evetest.TestCase{
 			Test: TestVMAppPurgeAfterPowerCycle,
 		},
 		evetest.TestCase{
@@ -190,9 +179,6 @@ func TestAppsSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestVGAPassthroughNoHostAccess,
-		},
-		evetest.TestCase{
-			Test: TestContainerdCPUs,
 		},
 	)
 }

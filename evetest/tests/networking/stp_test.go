@@ -188,9 +188,6 @@ func TestSwitchNIWithMultiplePorts(test *testing.T) {
 
 	// Apply the base adapter configuration.
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 
 	// Add Switch NI with all three app-shared ports.
 	// BPDU guard is enabled on eth3 ("edge-port" label).

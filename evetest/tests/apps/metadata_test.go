@@ -73,8 +73,7 @@ const metadataServerURL = "http://169.254.169.254/eve/v1"
 //
 // Test params
 // -----------
-//   - HYPERVISOR. Under Kubevirt the test waits for the cluster node to
-//     become ready before deploying the app.
+//   - HYPERVISOR.
 //
 // Suite placement
 // ---------------
@@ -132,9 +131,6 @@ func TestAppInstanceMetadata(test *testing.T) {
 		NetworkAdapters:    singleVIFWithSSH(niUUID),
 	})
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 	evetest.Checkpoint("config-applied")
 
 	device.WaitUntilAppIsRunning(appUUID, 10*time.Minute)

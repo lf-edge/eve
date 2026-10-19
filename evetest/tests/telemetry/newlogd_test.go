@@ -139,9 +139,6 @@ func TestRemoteLogLevelNone(test *testing.T) {
 	setUnmutedLogLevels(devConfig)
 	device.ApplyConfig(devConfig, true, true)
 	evetest.Checkpoint("unmuted-config-applied")
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(clusterNodeReadyTimeout)
-	}
 
 	// Phase 2: positive control.
 	expectKernelLogProbe(t, device, "unmuted")

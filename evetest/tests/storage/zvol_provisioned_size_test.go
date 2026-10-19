@@ -115,9 +115,6 @@ func TestZVolProvisionedSizeReported(test *testing.T) {
 	volInfoUpdates, stopVolInfoWatch := device.WatchVolumeInfo(volUUID)
 	defer stopVolInfoWatch()
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 	evetest.Checkpoint("blank-volume-config-applied")
 
 	// Wait for the volume to be created. CREATED_VOLUME is the volume-equivalent

@@ -213,9 +213,6 @@ func TestVCom(test *testing.T) {
 		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
 	})
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 
 	niUUID := devConfig.AddNetworkInstance(evetest.LocalNetworkInstanceConfig{
 		DisplayName: "local-ni",

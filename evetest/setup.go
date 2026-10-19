@@ -5,7 +5,6 @@ package evetest
 
 import (
 	"archive/tar"
-	"bytes"
 	"context"
 	"crypto/x509"
 	"encoding/json"
@@ -273,8 +272,6 @@ func (th *TestHarness) prepareImageForEVEDevice(dev *deviceState) {
 		hypervisor = api.HypervisorType_HV_KVM
 	case HypervisorXen:
 		hypervisor = api.HypervisorType_HV_XEN
-	case HypervisorKubevirt:
-		hypervisor = api.HypervisorType_HV_KUBEVIRT
 	}
 	arch := th.selectArch()
 
@@ -1657,147 +1654,6 @@ func (th *TestHarness) resetDeviceConfig(dev deviceState) error {
 	th.devices[dev.name].config = newConfig
 	th.devicesM.Unlock()
 	return nil
-}
-
-// applyK3sRegistryMirrorIfConfigured configures containerd inside the kube
-// container to use per-registry pull-through cache mirrors for every kubevirt device.
-//
-// EVE's K3s setup uses an externally-managed containerd (started by cluster-init.sh
-// with --config /etc/containerd/config-k3s.toml, not by K3s itself), so K3s never
-// processes registries.yaml. Instead we configure containerd directly by writing
-// per-registry hosts.toml files and setting config_path in the containerd config.
-// At the point this runs (right after onboarding) containerd is not yet running,
-// so no restart is needed — it picks up the config when cluster-init.sh starts it.
-//
-// Note: This is a temporary workaround. Eventually EVE should be enhanced to
-// allow configuring a registry mirror for K3s (containerd) through device config,
-// so that evetest does not need to directly manipulate files on the EVE device.
-func (th *TestHarness) applyK3sRegistryMirrorIfConfigured() {
-	if th.skipRegistryMirrors {
-		return
-	}
-	mirrors := constants.LoadRegistryMirrors()
-	if len(mirrors) == 0 {
-		return
-	}
-
-	th.devicesM.Lock()
-	var kubevirtDevNames []string
-	for _, dev := range th.devices {
-		if dev.requirement.WithHypervisor == HypervisorKubevirt {
-			kubevirtDevNames = append(kubevirtDevNames, dev.name)
-		}
-	}
-	th.devicesM.Unlock()
-
-	if len(kubevirtDevNames) == 0 {
-		return
-	}
-
-	for _, devName := range kubevirtDevNames {
-		th.configureContainerdRegistryMirror(devName, mirrors)
-	}
-}
-
-// configureContainerdRegistryMirror writes per-registry hosts.toml files under
-// /etc/containerd/certs.d/ inside the kube container and adds config_path to
-// /etc/containerd/config-k3s.toml so containerd picks up the mirror on startup.
-//
-// /run is shared between EVE containers, so the script is staged there and then
-// executed inside the kube container via "eve exec" (nsenter-based, no TTY needed).
-//
-// Registry mirrors are a pull-through cache used purely to speed up image
-// pulls; they are not required for correctness. So any failure here is logged
-// as a warning and the function just returns, rather than failing the test.
-func (th *TestHarness) configureContainerdRegistryMirror(
-	devName string, mirrors map[string][]string) {
-	const (
-		certsD     = "/etc/containerd/certs.d"
-		ctrdConfig = "/etc/containerd/config-k3s.toml"
-		scriptPath = "/run/setup-containerd-mirror.sh"
-	)
-
-	var sb strings.Builder
-	// Iterate in stable order using RegistryMirrorEntries.
-	for _, e := range constants.RegistryMirrorEntries {
-		addrs, ok := mirrors[e.Registry]
-		if !ok {
-			continue
-		}
-		mirrorURL, ok := constants.SelectRegistryMirror(addrs, th.ipv6OnlyRegistryMirrors)
-		if !ok {
-			continue
-		}
-		// Ensure the endpoint has a scheme; default to https://.
-		endpoint := mirrorURL
-		if !strings.Contains(mirrorURL, "://") {
-			endpoint = "https://" + mirrorURL
-		}
-		// When the URL has a path component (e.g. a Harbor proxy-cache project),
-		// containerd requires override_path = true and the path must start with /v2/.
-		// Without override_path, containerd appends /v2/ after the path, producing
-		// an invalid URL. See: https://github.com/containerd/containerd/discussions/11129
-		overridePath := false
-		if idx := strings.Index(endpoint, "://"); idx != -1 {
-			hostAndRest := endpoint[idx+3:]
-			if slashIdx := strings.Index(hostAndRest, "/"); slashIdx != -1 {
-				// Path present: prepend /v2 and enable override_path.
-				path := hostAndRest[slashIdx:]
-				endpoint = endpoint[:idx+3] + hostAndRest[:slashIdx] + "/v2" + path
-				overridePath = true
-			}
-		}
-		fmt.Fprintf(&sb, "mkdir -p %s/%s\n", certsD, e.Registry)
-		if overridePath {
-			fmt.Fprintf(&sb,
-				"printf '[host.\"%%s\"]\\n  capabilities = [\"pull\", \"resolve\"]\\n"+
-					"  override_path = true\\n' %q > %s/%s/hosts.toml\n",
-				endpoint, certsD, e.Registry)
-		} else {
-			fmt.Fprintf(&sb,
-				"printf '[host.\"%%s\"]\\n  capabilities = [\"pull\", \"resolve\"]\\n'"+
-					" %q > %s/%s/hosts.toml\n", endpoint, certsD, e.Registry)
-		}
-	}
-	fmt.Fprintf(&sb,
-		" printf '\\n[plugins.\"io.containerd.grpc.v1.cri\".registry]\\n"+
-			"  config_path = \"%s\"\\n' >> %s\n", certsD, ctrdConfig)
-
-	tmpFile, err := os.CreateTemp("", "setup-containerd-mirror-*.sh")
-	if err != nil {
-		th.log.Warnf(
-			"configureContainerdRegistryMirror: failed to create temp file: %v", err)
-		return
-	}
-	defer os.Remove(tmpFile.Name())
-	if _, err = tmpFile.WriteString(sb.String()); err != nil {
-		th.log.Warnf(
-			"configureContainerdRegistryMirror: failed to write temp file: %v", err)
-		return
-	}
-	tmpFile.Close()
-
-	ctx, cancel := context.WithTimeout(th.ctx, fileTransferTimeout)
-	err = th.scpToEVE(ctx, devName, tmpFile.Name(), scriptPath, false)
-	cancel()
-	if err != nil {
-		th.log.Warnf("configureContainerdRegistryMirror: failed to scp script to %q: %v",
-			devName, err)
-		return
-	}
-
-	var stdoutBuf, stderrBuf bytes.Buffer
-	ctx, cancel = context.WithTimeout(th.ctx, quickSSHCommandTimeout)
-	err = th.runScriptOnEVEOverSSH(ctx, devName,
-		"eve exec kube sh "+scriptPath, &stdoutBuf, &stderrBuf, 0)
-	cancel()
-	if err != nil {
-		th.log.Warnf("configureContainerdRegistryMirror: script failed on %q: %v "+
-			"(stdout: %s, stderr: %s)", devName, err, stdoutBuf.String(),
-			stderrBuf.String())
-		return
-	}
-	th.log.Infof("Containerd registry mirrors configured on device %q", devName)
 }
 
 func (th *TestHarness) nextConfigVersion(currentConfig *EdgeDeviceConfig) string {

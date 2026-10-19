@@ -3,8 +3,7 @@
 
 // Package portscan scans EVE devices from the network side with nmap and
 // checks that whatever they expose is HTTPS-only and refuses anonymous
-// access. Its tests cover a standalone device; tests/cluster reuses it for a
-// three-node EVE-k cluster.
+// access.
 package portscan
 
 import (
@@ -163,17 +162,8 @@ func (a TLSAssessment) String() string {
 		a.UnauthStatus, a.PlaintextStatus, a.Problems)
 }
 
-// probeAppUUID names no application; zedkube must refuse an unauthenticated
-// request for it before looking it up.
-const probeAppUUID = "00000000-0000-0000-0000-000000000000"
-
-// unauthProbePaths are requested without credentials. "/" alone is not
-// enough: a service with nothing at the root answers 404 whether or not it
-// requires authentication, as the kubelet does, while it answers 401 for
-// /pods. The last three are zedkube's cluster-status and App-Tracker
-// endpoints on 12346.
-var unauthProbePaths = []string{"/", "/pods", "/status",
-	"/app/" + probeAppUUID, "/cluster-app/" + probeAppUUID}
+// unauthProbePaths are requested without credentials.
+var unauthProbePaths = []string{"/"}
 
 // AssessTLSService checks that the TCP service at addr:port speaks only TLS
 // 1.2 or newer with strong ciphers, never answers plaintext HTTP, and rejects
@@ -184,8 +174,8 @@ func AssessTLSService(addr string, port uint16, timeout time.Duration) TLSAssess
 	var a TLSAssessment
 	hostPort := net.JoinHostPort(addr, strconv.Itoa(int(port)))
 
-	// "+" runs the script even where its port rule would not, since EVE-k
-	// services sit on ports nmap does not associate with TLS.
+	// "+" runs the script even where its port rule would not, since EVE
+	// services may sit on ports nmap does not associate with TLS.
 	run, err := runNmap(2*timeout, "-Pn", "-n", "-sT", "-p", strconv.Itoa(int(port)),
 		"--script", "+ssl-enum-ciphers", "--script-timeout", timeout.String(), addr)
 	if err != nil {
@@ -234,7 +224,7 @@ func AssessTLSService(addr string, port uint16, timeout time.Duration) TLSAssess
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
 				// The probe carries no credentials, and the device's
-				// certificate chains to a cluster CA the test does not have.
+				// certificate chains to a CA the test does not have.
 				InsecureSkipVerify: true, //nolint:gosec
 				GetClientCertificate: func(*tls.CertificateRequestInfo) (
 					*tls.Certificate, error) {
