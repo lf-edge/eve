@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-// helperPkg declares its parameters the way tests/konvert does: the test calls
+// helperPkg declares its parameters the way some test packages do: the test calls
 // a package-local helper, which collects the shared set in a local variable,
 // appends what the caller passed, and spreads the result into
 // evetest.DefineTestParameters.

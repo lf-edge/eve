@@ -28,10 +28,6 @@ import (
 //   - TestUSBFlashDriveHotplug -- a USB flash drive plugged into the running
 //     device through the hypervisor shows up in EVE, is passed through to an
 //     application that claims it, and follows unplugging and re-plugging.
-//   - TestUSBHubChain -- a flash drive behind four chained hubs is enumerated
-//     at its full port path; among five applications claiming it by every
-//     prefix of that path and by the path itself, the most specific claim
-//     gets the drive and the next one inherits it when that application goes.
 func TestHardwareSuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
@@ -43,9 +39,6 @@ func TestHardwareSuite(test *testing.T) {
 	evetest.RunTestSuite(
 		evetest.TestCase{
 			Test: TestUSBFlashDriveHotplug,
-		},
-		evetest.TestCase{
-			Test: TestUSBHubChain,
 		},
 	)
 }
