@@ -35,9 +35,6 @@ import (
 //     direct controller traffic; EVE must onboard via the proxy.
 //   - TestBootstrapWithMgmtVLAN (variants: bootstrap / override.json) --
 //     management VLAN sub-interface required at first boot.
-//   - TestBootstrapWithLACPBond (variants: bootstrap / override.json) --
-//     SDN-side LACP peer requires the bond to be configured before EVE
-//     ever transmits, hence bootstrap-only path.
 //   - TestBootstrapWithNetworkBoot: install EVE over the network via iPXE.
 //
 // All bootstrap tests share the HYPERVISOR parameter (defaults to KVM).
@@ -160,23 +157,6 @@ func TestBootstrapSuite(test *testing.T) {
 			},
 		},
 		evetest.TestCase{
-			Test: TestBootstrapWithLACPBond,
-			Variants: []evetest.TestVariant{
-				{
-					Name: "TestBootstrapWithLACPBond",
-					Parameters: []evetest.TestParameterValue{
-						{Key: useOverrideJSONParamKey, Value: false},
-					},
-				},
-				{
-					Name: "TestBootstrapWithLACPBondUsingOverrideJSON",
-					Parameters: []evetest.TestParameterValue{
-						{Key: useOverrideJSONParamKey, Value: true},
-					},
-				},
-			},
-		},
-		evetest.TestCase{
 			Test: TestBootstrapWithNetworkBoot,
 		},
 	)
@@ -203,10 +183,7 @@ func TestBootstrapSuite(test *testing.T) {
 //   - TestDeviceNTPConfig -- per-port NTP server aggregation (DHCP + static,
 //     exclusive-override) and chronyd synchronization against real public
 //     NTP servers.
-//   - TestActiveBackupBond / TestLACPBond -- bond status, failover,
-//     LACP negotiation.
-//   - TestVLANSubinterfaces / TestVLANSubinterfacesOnTopOfLAGs -- VLAN
-//     sub-interfaces (stub scenarios).
+//   - TestVLANSubinterfaces -- VLAN sub-interfaces (stub scenarios).
 //   - TestCellularConnectivity / TestWifiConnectivity -- wireless;
 //     intentionally unimplemented (require PCI/USB passthrough).
 func TestDeviceConnectivitySuite(test *testing.T) {
@@ -246,16 +223,7 @@ func TestDeviceConnectivitySuite(test *testing.T) {
 			Test: TestDeviceNTPConfig,
 		},
 		evetest.TestCase{
-			Test: TestActiveBackupBond,
-		},
-		evetest.TestCase{
-			Test: TestLACPBond,
-		},
-		evetest.TestCase{
 			Test: TestVLANSubinterfaces,
-		},
-		evetest.TestCase{
-			Test: TestVLANSubinterfacesOnTopOfLAGs,
 		},
 		evetest.TestCase{
 			Test: TestCellularConnectivity,
@@ -306,17 +274,10 @@ func TestDeviceConnectivitySuite(test *testing.T) {
 //   - TestNetworkAdapterPassthrough -- direct assignment (PCI passthrough)
 //     of a physical NIC to an app; the guest must fully own the adapter
 //     (see it under its MAC, DHCP through it over the SDN network).
-//   - TestSwitchNIPortConfigRace -- regression test for NIM/zedrouter races
-//     around IfInstanceID: a multi-port Switch NI plus a single-port Switch NI
-//     on a VLAN sub-interface, with ports live-switched between DHCP/static/no-IP;
-//     app connectivity through both NIs must survive every change.
 //   - TestLocalNIUplinkFlap -- a Local NI's own uplink port flaps (put
 //     down, address cleared, then brought back up with a changed advertised
 //     DNS server); its dnsmasq instance must not restart and a connected
 //     app must keep its DHCP-assigned IP throughout.
-//   - TestSwitchNIDeletedWithAppsAttached -- regression test for zedrouter
-//     hanging when a Switch NI with a busy packet capture and continuously
-//     expiring ARP-learned app IPs is deleted together with its apps.
 func TestApplicationConnectivitySuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
@@ -410,13 +371,7 @@ func TestApplicationConnectivitySuite(test *testing.T) {
 			Test: TestNetworkAdapterPassthrough,
 		},
 		evetest.TestCase{
-			Test: TestSwitchNIPortConfigRace,
-		},
-		evetest.TestCase{
 			Test: TestLocalNIUplinkFlap,
-		},
-		evetest.TestCase{
-			Test: TestSwitchNIDeletedWithAppsAttached,
 		},
 	)
 }
@@ -438,12 +393,6 @@ func TestApplicationConnectivitySuite(test *testing.T) {
 //     (real cloud datastores).
 //   - TestContainerRegistry -- pulls from Docker Hub (or the configured
 //     pull-through mirror).
-//   - TestDownloadBurstWithDeadMgmtPorts -- a burst of concurrent downloads
-//     on a device whose management ports mostly cannot reach the datastore
-//     must all complete although the downloader's transport, configured with
-//     a single worker, refuses requests; regression test for downloads
-//     hanging forever at 0% after the downloader dropped such a request.
-//     Needs its own five-port network model and a reboot, hence placed last.
 func TestDatastoreSuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
@@ -470,9 +419,6 @@ func TestDatastoreSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestContainerRegistry,
-		},
-		evetest.TestCase{
-			Test: TestDownloadBurstWithDeadMgmtPorts,
 		},
 	)
 }

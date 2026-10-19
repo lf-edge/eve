@@ -1444,7 +1444,7 @@ func TestApplicationGateway(test *testing.T) {
 //     (10.60.20.150) instead of the SDN's own router address -- so all of
 //     EVE's own outbound traffic (DNS, controller) that isn't for a
 //     directly-connected subnet is sent to the app, NATed, and exits via
-//     eth0. WatchDeviceInfo must report a fresh ZInfoDevice update within a
+//     eth0. WatchDeviceMetrics must report a fresh DeviceMetric update within a
 //     bounded timeout (proving the new path works), and GetState() must be
 //     ONLINE. EVE's DPC list retains the pre-migration DPC as a fallback
 //     candidate, but reactivating it conflicts with eth0 now being bridged
@@ -1497,12 +1497,10 @@ func TestMgmtTrafficRoutedViaApp(test *testing.T) {
 
 	devConfig := evetest.NewEdgeDeviceConfig(devName)
 
-	// Lower the periodic device-info publish interval so a bounded "a fresh
-	// ZInfoDevice arrives" wait can serve as a direct, real-time signal that
-	// EVE is still getting through to the controller (see
-	// TestIntermittentConnectivity for the same rationale).
+	// The periodic device metrics (published every 20s) serve as a direct,
+	// real-time signal that EVE is still getting through to the controller
+	// (see TestIntermittentConnectivity for the same rationale).
 	cfgProps := pillartypes.NewConfigItemValueMap()
-	cfgProps.SetGlobalValueInt(pillartypes.DevInfoInterval, 30)
 	// Phase 4 below migrates the mgmt path onto a DPC with no other
 	// management port to fall back on if this one is briefly unreachable
 	// right at the interface cutover (see waitForFreshInfo's rationale).
@@ -1557,6 +1555,8 @@ func TestMgmtTrafficRoutedViaApp(test *testing.T) {
 
 	devUpdates, stopDevWatch := device.WatchDeviceInfo()
 	defer stopDevWatch()
+	metricUpdates, stopMetricWatch := device.WatchDeviceMetrics()
+	defer stopMetricWatch()
 	device.ApplyConfig(devConfig, true, true)
 	evetest.Checkpoint("safe-port-config-applied")
 
@@ -1716,27 +1716,27 @@ func TestMgmtTrafficRoutedViaApp(test *testing.T) {
 	// until the app-routed path above is actually working.
 	device.ApplyConfig(devConfig, true, false)
 
-	// infoTimeout bounds how long a fresh ZInfoDevice update may take once
-	// the app-routed path takes over (DevInfoInterval was lowered to 30s
-	// above). Budget for: the doomed fallback attempt at the still-good
-	// pre-migration DPC (up to 5 * NetworkTestDuration = 50s of IP/DNS-wait
-	// retries before it gives up), then the migrated DPC itself getting
-	// retried at least twice (accepting one hiccup on the first attempt,
-	// e.g. right at the interface cutover) at the 1 min NetworkTestInterval/
-	// NetworkTestFailInterval floor set above, plus a safety margin.
+	// infoTimeout bounds how long a fresh DeviceMetric update (published every
+	// 20s) may take once the app-routed path takes over. Budget for: the
+	// doomed fallback attempt at the still-good pre-migration DPC (up to
+	// 5 * NetworkTestDuration = 50s of IP/DNS-wait retries before it gives
+	// up), then the migrated DPC itself getting retried at least twice
+	// (accepting one hiccup on the first attempt, e.g. right at the interface
+	// cutover) at the 1 min NetworkTestInterval/NetworkTestFailInterval floor
+	// set above, plus a safety margin.
 	infoTimeout := 3 * time.Minute
 	waitForFreshInfo := func(reason string) {
 	drainBacklog:
 		for {
 			select {
-			case <-devUpdates:
+			case <-metricUpdates:
 			default:
 				break drainBacklog
 			}
 		}
-		log.Infof("Waiting for a fresh device info update (%s)...", reason)
-		t.Eventually(devUpdates, infoTimeout).Should(Receive(),
-			"EVE should get device info through to the controller via the "+
+		log.Infof("Waiting for a fresh device metric update (%s)...", reason)
+		t.Eventually(metricUpdates, infoTimeout).Should(Receive(),
+			"EVE should get device metrics through to the controller via the "+
 				"app-routed management path (%s)", reason)
 	}
 	waitForFreshInfo("mgmt path migrated to the gateway app")

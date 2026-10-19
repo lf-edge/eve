@@ -15,17 +15,17 @@ func TestUpgradeSuite(test *testing.T) {
 	defer evetest.Close()
 
 	const (
-		initialEVEVersionForKVM = "16.0.0-lts"
+		initialEVEVersionForKVM = "14.5.0-lts"
 
 		// The OCI-datastore variant points EVE at evetest's own embedded OCI
 		// registry (see PushDockerImageToLocalRegistry), which is fronted by
 		// the harness's self-signed CA. Resolving an OCI tag against a
 		// custom-CA registry only honors the datastore's trusted certificates
-		// since pillar commit 90fb8664 ("downloader: ds custom certs when
-		// resolving OCI"), which is not part of 16.0.0-lts. If this variant
-		// fails on the latest 16.0.x release, backport the fix and bump this
-		// to the new patch release.
-		initialEVEVersionForOCIDatastore = "16.0.2-lts"
+		// since commit 42a70aa515 ("downloader: ds custom certs when
+		// resolving OCI"), which is not part of any 14.5.x release yet. Start
+		// from the 14.5-stable snapshot build of that commit; once a release
+		// includes it, switch to that release.
+		initialEVEVersionForOCIDatastore = "0.0.0-14.5-stable-42a70aa5"
 	)
 
 	// Define configurable parameters available for the test suite.
