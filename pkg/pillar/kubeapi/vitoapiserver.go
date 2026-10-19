@@ -23,6 +23,7 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 )
 
 // Granularity Longhorn rounds a claim up to: longhorn-manager util.SizeAlignment,
@@ -502,13 +503,19 @@ func RolloutDiskToPVC(ctx context.Context, log *base.LogObject, exists bool,
 		// "already successfully imported", on stderr. Both the success check
 		// below and the failure text depend on that split, so a VIRTCTL_VERSION
 		// bump in pkg/kube/Dockerfile must re-verify it.
-		output, err := base.Exec(log, "/containers/services/kube/rootfs/usr/bin/virtctl", args...).
-			WithContext(ctx).WithUnlimitedTimeout(timeout * time.Second).ErrorOutput()
+		output, serverFailure, err := runVirtctlUpload(ctx, log, clientset, pvcName, args, timeout*time.Second)
 
 		uploadDuration := time.Since(startTimeThisUpload)
 		if err != nil && !strings.Contains(string(output), "already successfully imported") {
 			if ctx.Err() != nil {
 				return ctx.Err()
+			}
+			if serverFailure != "" {
+				// A crash-looping upload server fails the same way on every
+				// attempt; report it now instead of after the remaining tries.
+				err = transientf("PVC Upload for pvc:%s failed: %s", pvcName, serverFailure)
+				log.Error(err)
+				return err
 			}
 			lastAttempt = virtctlFailure(output, err)
 			err = fmt.Errorf("RolloutDiskToPVC: pvc:%s Failed after %f seconds to convert qcow to PVC: %s", pvcName, uploadDuration.Seconds(), lastAttempt)
@@ -620,6 +627,36 @@ func RolloutDiskToPVC(ctx context.Context, log *base.LogObject, exists bool,
 	// cap, which parks the volume in a terminal error after a finite number of
 	// re-drives -- so this stays transient and the bound provides the escape hatch.
 	return uploadFailed("RolloutDiskToPVC pvc:%s attempts to upload image failed", pvcName)
+}
+
+// runVirtctlUpload runs one virtctl image-upload attempt and returns its
+// stderr and error. While it runs, the CDI upload server for pvcName is
+// watched; if it crash-loops the attempt is cancelled and serverFailure says
+// why. clientset may be nil, in which case the attempt is not watched.
+func runVirtctlUpload(ctx context.Context, log *base.LogObject, clientset kubernetes.Interface,
+	pvcName string, args []string, timeout time.Duration) (output []byte, serverFailure string, err error) {
+	attemptCtx, cancelAttempt := context.WithCancel(ctx)
+	defer cancelAttempt()
+
+	done := make(chan struct{})
+	if clientset != nil {
+		go func() {
+			defer close(done)
+			watchUploadServer(attemptCtx, log, newUploadServerWatch(clientset, pvcName),
+				uploadServerCheckInterval, func(reason string) {
+					serverFailure = reason
+					cancelAttempt()
+				})
+		}()
+	} else {
+		close(done)
+	}
+
+	output, err = base.Exec(log, "/containers/services/kube/rootfs/usr/bin/virtctl", args...).
+		WithContext(attemptCtx).WithUnlimitedTimeout(timeout).ErrorOutput()
+	cancelAttempt()
+	<-done
+	return output, serverFailure, err
 }
 
 // maxVirtctlFailureLen bounds the virtctl text RolloutDiskToPVC appends to its
