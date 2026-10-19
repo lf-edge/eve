@@ -996,7 +996,7 @@ $(COLLECTED_SOURCES): $(ROOTFS_TARS) $(GOSOURCES)| $(INSTALLER) $(SOURCES_DIR)
 	bash tools/collect-sources.sh $< $(CURDIR) $@
 	$(QUIET): $@: Succeeded
 
-$(SBOM_STAMP): tools/sbom-stamp/*.go tools/sbom-stamp/go.mod | $(BUILDTOOLS_BIN)
+$(SBOM_STAMP): tools/sbom-stamp/*.go tools/sbom-stamp/go.mod tools/sbom-stamp/suppliers.txt | $(BUILDTOOLS_BIN)
 	$(QUIET): $@: Begin
 	cd tools/sbom-stamp && CGO_ENABLED=0 go build -o $@ .
 	$(QUIET): $@: Succeeded
