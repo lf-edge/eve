@@ -29,7 +29,7 @@ env:
   # Signature policy for tools/eve-cosign.sh; see docs/SIGNING.md. A tag runs
   # its own commit's copy of this workflow, so package signatures are
   # accepted only from protected branches.
-  EVE_COSIGN_IDENTITY_REGEXP: '^https://github\.com/lf-edge/eve/\.github/workflows/(release-sign\.yml@refs/heads/master|publish\.yml@refs/heads/(master|[0-9]+\.[0-9]+(-stable)?))$'
+  EVE_COSIGN_IDENTITY_REGEXP: '^https://github\.com/lf-edge/eve/\.github/workflows/(release-sign\.yml@refs/heads/master|build-alpine-base\.yml@refs/heads/master|publish\.yml@refs/heads/(master|[0-9]+\.[0-9]+(-stable)?))$'
   EVE_COSIGN_REPOSITORY: lf-edge/eve
   EVE_COSIGN_ENFORCE: ${{ vars.EVE_COSIGN_ENFORCE }}
 

@@ -14,6 +14,7 @@ its own builds the same way.
 | `lfedge/eve:<tag>[-<platform>]-<hv>-<arch>`, `lfedge/eve-sources:…`, their multi-arch indexes, and an SPDX SBOM attestation on each EVE image except riscv64 | `release-sign.yml@refs/heads/master` | release tags, after approval |
 | `<arch>.<hv>.<platform>.sha256sums` release asset | `release-sign.yml@refs/heads/master` | release tags, after approval |
 | `lfedge/eve-<pkg>` platform manifests and indexes | `publish.yml@refs/heads/<branch>` | pushes to `master`, `N.N` and `N.N-stable` that build the package |
+| `lfedge/eve-alpine-base` and `lfedge/eve-alpine` platform manifests and indexes | `build-alpine-base.yml@refs/heads/master` | manual runs of that workflow on `master` |
 
 Each `sha256sums` also covers `<arch>.<hv>.<platform>.images.txt`, which names
 the image digests the release files were extracted from. Its signature is the
@@ -163,17 +164,19 @@ after `make pkgs` and again after `make eve`, with `tools/eve-cosign.sh`:
 
 Packages are pushed only under their content tag, and only by branch builds.
 
-The policy accepts `release-sign.yml@refs/heads/master`, and
-`publish.yml` at `master`, `N.N` and `N.N-stable`. A job signs the packages
+The policy accepts `release-sign.yml@refs/heads/master`,
+`build-alpine-base.yml@refs/heads/master`, and `publish.yml` at `master`,
+`N.N` and `N.N-stable`. A job signs the packages
 it built after pushing them, and the `manifest` job signs their indexes once
 every platform manifest in an index verifies. A re-run of a branch build
 also signs reused packages that do not verify, since an earlier attempt may
 have pushed them and failed before signing.
 
-The jobs that sign packages hold `id-token: write` for their whole run,
-including `make` and the package Dockerfiles, on self-hosted runners that also
-build pull requests. A compromised step in such a job can sign anything as
-`publish.yml` on that branch, as well as push it with the job's registry
+The jobs that sign packages, in `publish.yml` and `build-alpine-base.yml`,
+hold `id-token: write` for their whole run, including `make` and the package
+Dockerfiles, on self-hosted runners that also build pull requests. A
+compromised step in such a job can sign anything as that workflow on that
+branch, as well as push it with the job's registry
 login. Release signatures are outside this boundary: only `release-sign.yml`'s
 signing job, on a GitHub-hosted runner, can produce them.
 
@@ -196,8 +199,10 @@ and `lfedge/eve-rust` (published by the eve-kernel and eve-rust repositories),
 2. Package images pushed before signing carry no signature and are reused by
    content hash indefinitely. Change every package's source on the branch so
    that the next build rebuilds, pushes and signs all of them.
-3. Set `EVE_COSIGN_ENFORCE` to `true` once every branch that builds releases
-   has been through step 2.
+3. Run `build-alpine-base.yml` on `master`, so that `eve-alpine-base`, which
+   every `eve-alpine` build starts from, is signed.
+4. Set `EVE_COSIGN_ENFORCE` to `true` once every branch that builds releases
+   has been through step 2, and step 3 has run.
 
 A package pushed by one build and pulled by another before the first has
 signed it, a window of a few seconds, fails enforced verification; re-running
