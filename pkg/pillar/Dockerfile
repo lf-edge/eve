@@ -8,10 +8,10 @@ ARG BUILD_PKGS_BASE="git gcc linux-headers libc-dev make linux-pam-dev m4 findut
                      libintl libuuid libtirpc libblkid libcrypto3 zlib tar"
 
 # we use the same image in several places
-ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d
+ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:1fdf3241f1aef1dd3e8ad7433c85474bc522f3f5
 
-FROM lfedge/eve-uefi:69dbd346e47296abc02b605cc54b3f6e4fba4e98 AS uefi-build
-FROM lfedge/eve-dom0-ztools:71b99842c0fe6395bfbcfaab079262586ec6b6ab  AS zfs
+FROM lfedge/eve-uefi:3f3413e719c910ad307ff5f3efe2c77eb5db11e9 AS uefi-build
+FROM lfedge/eve-dom0-ztools:4ea50cf4bcb01d959ce57d0aa97970597616f966  AS zfs
 RUN mkdir /out
 # copy zfs-related files from dom0-ztools using prepared list of files
 RUN while read -r x; do \
@@ -34,7 +34,7 @@ ARG BUILD_PKGS_BASE
 RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
 
 # hadolint ignore=DL3029
-FROM --platform=${BUILDPLATFORM} lfedge/eve-cross-compilers:d794c049baf50389be1dd48da056fb2472574c3e AS cross-compilers
+FROM --platform=${BUILDPLATFORM} lfedge/eve-cross-compilers:c86cb13f88256ac3ca3ec1f8d746dc3ed74b1ed2 AS cross-compilers
 
 # will use several packages from target arch and copy them to sysroot
 # hadolint ignore=DL3006
@@ -150,9 +150,9 @@ RUN --mount=type=cache,target=/root/.cache/go-build if [ "${TEST_TOOLS}" = "y" ]
     GOBIN=/final/opt/ GOFLAGS="" go install gotest.tools/gotestsum@v1.7.0; \
 fi
 
-FROM lfedge/eve-fscrypt:aec0819edd44c2c3b6c23f9377ef812119683e7c AS fscrypt
-FROM lfedge/eve-gpt-tools:97629c8357a7de0f6fecacbae151ff9b5ea5bcd2 AS gpttools
-FROM lfedge/eve-storage-resizer:ec778533de829f0379cae6e2d66c1dab393f7704 AS storage-resizer
+FROM lfedge/eve-fscrypt:d79820ab562f36f43403e02682bc3091c6c2995d AS fscrypt
+FROM lfedge/eve-gpt-tools:0bdfe0a3c168928711d46d6cf63348637cbf02e9 AS gpttools
+FROM lfedge/eve-storage-resizer:146f2fac20a62c6888cc1f2e79ba7d43252b4ad6 AS storage-resizer
 
 # dhcpcd: Alpine 3.21+ ships a sufficiently up-to-date version (10.x with required IPv6 fixes).
 # No --platform means Docker BuildKit uses the target platform, giving us the correct binary arch.
