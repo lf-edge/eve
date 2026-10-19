@@ -164,7 +164,9 @@ That way, the `dom0_mem` setting sets the memory limits for the `eve` cgroup,
 the `ctrd_mem` setting sets the memory limits for the `eve/containerd` cgroup,
 and the `eve_mem` setting sets `memory.low` and `memory.max` for the
 `eve/services` cgroup and for all the sub-cgroups of the `eve/services`
-cgroup.
+cgroup. `dom0` is the Xen-era name of the host system, kept so that existing
+`/config/grub.cfg` overrides keep working (see
+[BOOTING.md](BOOTING.md#grub-options-on-the-config-partition)).
 
 For example, the following kernel command line arguments:
 
