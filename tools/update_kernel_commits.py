@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # pylint: disable=too-many-lines
 """
-Copyright (c) 2023-2025 Zededa, Inc.
+Copyright (c) 2023-2026 Zededa, Inc.
 SPDX-License-Identifier: Apache-2.0
 
 This script does two things:
@@ -880,60 +880,105 @@ def _fetch_tags_per_branch(branches, verbose=False):
     return tags
 
 
-def fetch_docker_tags(branches, verbose=False):
+def group_docker_tags(branches, known_branches, docker_tag_list, compiler="gcc"):
+    """
+    Groups Docker tags by image name and assigns each group to its branch.
+
+    A branch with config flavours pushes one image per flavour, e.g.
+    eve-kernel-amd64-v6.18.55-generic-core-<commit>-gcc. A group belongs to the
+    longest known branch name it equals or extends with "-<flavour>", so tags of
+    eve-kernel-arm64-v5.10.192-nvidia-jp5 that a query for
+    eve-kernel-arm64-v5.10.192-nvidia returns stay with their own branch.
+
+    Args:
+        branches (iterable): Branch names the tags were queried for.
+        known_branches (iterable): Every branch name on GitHub and in kernel-commits.mk.
+        docker_tag_list (list): (tag, last pushed date) tuples.
+        compiler (str): The compiler of the images the build pulls
+        (KERNEL_COMPILER in kernel-version.mk); other images do not count.
+
+    Returns:
+        dict: {branch: {group: {commit: last pushed date}}} for the queried branches.
+    """
+    branches = set(branches)
+    candidates = sorted(set(known_branches) | branches, key=len, reverse=True)
+    branch_groups = {}
+    for tag, tag_last_pushed in docker_tag_list:
+        match = re.match(r"^(eve-kernel-.*)-([a-f0-9]+)-(gcc|clang)$", tag)
+        if not match:
+            print(f"Warning: tag '{tag}' doesn't match regex")
+            continue
+        group, commit, tag_compiler = match.groups()
+        branch = next(
+            (b for b in candidates if group == b or group.startswith(b + "-")), None
+        )
+        if branch not in branches or tag_compiler != compiler:
+            continue
+        groups = branch_groups.setdefault(branch, {})
+        groups.setdefault(group, {})[commit] = tag_last_pushed
+    return branch_groups
+
+
+def select_docker_commits(branch_groups):
+    """
+    Picks for each branch the most recent commit whose image was pushed to every
+    group (flavour) of the branch. A commit dates from its earliest push among
+    the groups, so rebuilding an old commit does not make it recent.
+
+    Args:
+        branch_groups (dict): The result of group_docker_tags().
+
+    Returns:
+        dict: {branch: commit}. A branch with no commit common to all its groups
+        is left out.
+    """
+    docker_commits = {}
+    for branch, groups in branch_groups.items():
+        common = set.intersection(*(set(commits) for commits in groups.values()))
+        if common:
+            _, docker_commits[branch] = max(
+                (min(commits[commit] for commits in groups.values()), commit)
+                for commit in common
+            )
+    return docker_commits
+
+
+def fetch_docker_tags(branches, known_branches, verbose=False):
     """
     Fetches kernel commits from docker hub and returns them as a dictionary of
     (branch, commit) pairs.
 
     Args:
-        branches (iterable): Branch names to look up tags for. Each one is queried
+        branches (list): Branch names to look up tags for. Each one is queried
         separately so no single listing runs past the anonymous pagination limit.
+        known_branches (iterable): Every branch name, to assign tags to the right one.
         verbose (bool): If True, prints all tags with decoded dates and all kernel commits
         from docker hub.
 
     Returns:
         dict: A dictionary of (branch, commit) pairs.
     """
-    docker_tag_list = _fetch_tags_per_branch(branches, verbose)
-
-    # group tags by common capture group e.g. amd64-v6.1.38-generic
-    tag_groups = {}
-    for tag, tag_last_pushed in docker_tag_list:
-        match = re.match(r"^(eve-kernel-.*)-[a-f0-9]+-gcc|clang$", tag)
-        if match:
-            branch_name = match.group(1)
-            if branch_name not in tag_groups:
-                tag_groups[branch_name] = []
-            tag_groups[branch_name].append((tag, tag_last_pushed))
-        else:
-            print(f"Warning: tag '{tag}' doesn't match regex")
-
-    # sort each group by date in descending order
-    # so the first tag in each group is the most recent one
-    for branch, docker_tag_list in tag_groups.items():
-        docker_tag_list.sort(key=lambda x: x[1], reverse=True)
-        tag_groups[branch] = docker_tag_list
+    branch_groups = group_docker_tags(
+        branches, known_branches, _fetch_tags_per_branch(branches, verbose)
+    )
 
     # print all tags with decoded dates
     if verbose:
         print("All tags:")
-        for branch, docker_tag_list in tag_groups.items():
+        for branch, groups in branch_groups.items():
             print(branch)
-            for tag, tag_last_pushed in docker_tag_list:
-                # decode date from tag. Not really needed. To make sure we can handle date format
-                date = datetime.datetime.strptime(
-                    tag_last_pushed, "%Y-%m-%dT%H:%M:%S.%fZ"
-                )
-                print(f"\t{tag} : {date.isoformat()}")
+            for group, commits in groups.items():
+                print(f"  {group}")
+                for commit, tag_last_pushed in sorted(
+                    commits.items(), key=lambda x: x[1], reverse=True
+                ):
+                    # not really needed, makes sure we can handle the date format
+                    date = datetime.datetime.strptime(
+                        tag_last_pushed, "%Y-%m-%dT%H:%M:%S.%fZ"
+                    )
+                    print(f"\t{commit} : {date.isoformat()}")
 
-    # and collect (branch, commit) pairs by splitting tag name by '-'
-    # and taking second last element as commit
-    docker_commits = {}
-    for branch, docker_tag_list in tag_groups.items():
-        # take first tag from each group. The is the most recent one
-        latest_tag = docker_tag_list[0][0]
-        commit = latest_tag.split("-")[-2]
-        docker_commits[branch] = commit
+    docker_commits = select_docker_commits(branch_groups)
 
     # print all kernel commits from docker hub
     if verbose:
@@ -943,6 +988,70 @@ def fetch_docker_tags(branches, verbose=False):
             print(f"{branch} : {docker_commits[branch]}")
 
     return docker_commits
+
+
+if PYTEST_AVAILABLE:
+
+    def test_docker_commits_cover_every_flavour():
+        """
+        Flavoured tags map to their branch and the newest commit pushed for
+        every flavour wins; one missing in a flavour is not chosen, and a
+        rebuild of an old commit does not make it the newest.
+        """
+        branch = "eve-kernel-amd64-v6.18.55-generic"
+        flavours = ["", "ai-", "core-", "hwe-", "rt-"]
+        tags = [
+            (f"{branch}-{flavour}{commit}-gcc", pushed)
+            for commit, pushed in [
+                ("111111111111", "2026-01-01T00:00:00.000000Z"),
+                ("222222222222", "2026-02-01T00:00:00.000000Z"),
+            ]
+            for flavour in flavours
+        ] + [
+            (f"{branch}-{flavour}333333333333-gcc", "2026-03-01T00:00:00.000000Z")
+            for flavour in flavours
+            if flavour != "rt-"
+        ]
+
+        branch_groups = group_docker_tags([branch], [branch], tags)
+        assert sorted(branch_groups[branch]) == [
+            branch + suffix for suffix in ["", "-ai", "-core", "-hwe", "-rt"]
+        ]
+        assert select_docker_commits(branch_groups) == {branch: "222222222222"}
+
+        rebuilt = f"{branch}-core-111111111111-gcc"
+        tags = [
+            (tag, "2026-04-01T00:00:00.000000Z" if tag == rebuilt else pushed)
+            for tag, pushed in tags
+        ]
+        branch_groups = group_docker_tags([branch], [branch], tags)
+        assert select_docker_commits(branch_groups) == {branch: "222222222222"}
+
+    def test_docker_commits_plain_branch():
+        """
+        A branch without config flavours has a single group and its newest gcc
+        image wins: clang images do not count, and the tags of a longer branch
+        that the name query also returns stay with that branch.
+        """
+        nvidia = "eve-kernel-arm64-v5.10.192-nvidia"
+        jp5 = nvidia + "-jp5"
+        tags = [
+            (f"{nvidia}-444444444444-gcc", "2026-01-01T00:00:00.000000Z"),
+            (f"{nvidia}-555555555555-gcc", "2026-02-01T00:00:00.000000Z"),
+            (f"{nvidia}-666666666666-clang", "2026-03-01T00:00:00.000000Z"),
+            (f"{jp5}-777777777777-gcc", "2026-04-01T00:00:00.000000Z"),
+        ]
+
+        branch_groups = group_docker_tags([nvidia], [nvidia, jp5], tags)
+        assert branch_groups == {
+            nvidia: {
+                nvidia: {
+                    "444444444444": "2026-01-01T00:00:00.000000Z",
+                    "555555555555": "2026-02-01T00:00:00.000000Z",
+                }
+            }
+        }
+        assert select_docker_commits(branch_groups) == {nvidia: "555555555555"}
 
 
 def print_user_tips():
@@ -1055,7 +1164,9 @@ def parse_cmd_args():
     return args
 
 
-def adjust_branches_by_docker_tags(new_commits, updated_branches, docker_tags):
+def adjust_branches_by_docker_tags(
+    new_commits, updated_branches, docker_tags, pinned_branches
+):
     """
     Adjusts the branches by comparing the commits from GitHub and Docker Hub.
 
@@ -1063,20 +1174,13 @@ def adjust_branches_by_docker_tags(new_commits, updated_branches, docker_tags):
         new_commits (dict): A dictionary containing the new commits.
         updated_branches (dict): A dictionary containing the updated branches.
         docker_tags (dict): A dictionary containing the Docker tags.
+        pinned_branches (iterable): The branches in kernel-commits.mk.
 
     Returns:
         bool: A boolean value indicating whether an error occurred.
     """
-    for branch, docker_commit in docker_tags.items():
-        is_error = False
-        # only for updated branches
-        if branch not in updated_branches:
-            continue
-        # if a commit from docker doesn't match commit from github
-        # it means the image was not pushed so we cannot use commit from github
-        # and we fallback to the commit from docker hub
-        current_gh_commit, latest_gh_commit = updated_branches[branch]
-
+    is_error = False
+    for branch, (current_gh_commit, latest_gh_commit) in list(updated_branches.items()):
         if current_gh_commit is None and latest_gh_commit is None:
             # branch was removed. Print nice info message
             print(
@@ -1087,6 +1191,41 @@ def adjust_branches_by_docker_tags(new_commits, updated_branches, docker_tags):
             )
             continue
 
+        docker_commit = docker_tags.get(branch)
+        if docker_commit is None and branch in pinned_branches:
+            # dropping the pin would break the build
+            is_error = True
+            print(
+                Fore.RED
+                + "[Error]"
+                + Style.RESET_ALL
+                + f" :{branch}: no commit has an image on docker hub for every flavour.\n"
+                + "\tKeeping the pinned commit: "
+                + Fore.GREEN
+                + f"{current_gh_commit}"
+            )
+            del updated_branches[branch]
+            new_commits[branch] = current_gh_commit
+            continue
+        if docker_commit is None:
+            print(
+                Fore.YELLOW
+                + "[ WARN ]"
+                + Style.RESET_ALL
+                + f" :{branch}: the image for commit {latest_gh_commit} was not pushed to "
+                + "docker.\n\tNo docker tag found for the branch. Is this a new branch?"
+            )
+            print(
+                f"Deleting the branch from updated branches. "
+                f"{branch} will not be updated."
+            )
+            del updated_branches[branch]
+            del new_commits[branch]
+            continue
+
+        # if a commit from docker doesn't match commit from github
+        # it means the image was not pushed so we cannot use commit from github
+        # and we fallback to the commit from docker hub
         if docker_commit != latest_gh_commit:
             is_error = True
             msg = (
@@ -1116,30 +1255,50 @@ def adjust_branches_by_docker_tags(new_commits, updated_branches, docker_tags):
         # always update to our source of truth
         new_commits[branch] = docker_commit
 
-        # After processing all branches, handle branches not in docker_tags
-        # Make a copy of keys to avoid modification during iteration
-        branches_to_check = list(updated_branches.keys())
+    return is_error
 
-        for branch in branches_to_check:
-            if branch not in docker_tags:
-                current_gh_commit, latest_gh_commit = updated_branches[branch]
 
-                print(
-                    Fore.YELLOW
-                    + "[ WARN ]"
-                    + Style.RESET_ALL
-                    + f" :{branch}: the image for commit {latest_gh_commit} was not pushed to "
-                    + "docker.\n\tNo docker tag found for the branch. Is this a new branch?"
-                )
-                print(
-                    f"Deleting the branch from updated branches. "
-                    f"{branch} will not be updated."
-                )
-                del updated_branches[branch]
-                # a branch removed from github is not in new_commits at all
-                new_commits.pop(branch, None)
+if PYTEST_AVAILABLE:
 
-        return is_error
+    def test_adjust_branches_by_docker_tags_checks_every_branch():
+        """
+        Every updated branch is checked against Docker Hub, not only the first:
+        the second one falls back to its Docker commit and the error is reported,
+        a new branch without Docker tags is dropped.
+        """
+        amd64 = "eve-kernel-amd64-v6.18.55-generic"
+        arm64 = "eve-kernel-arm64-v6.1.155-generic"
+        riscv64 = "eve-kernel-riscv64-v6.1.112-generic"
+        new_commits = {amd64: "a2", arm64: "b3", riscv64: "c2"}
+        updated_branches = {
+            amd64: ("a1", "a2"),
+            arm64: ("b1", "b3"),
+            riscv64: ("v6.1.112", "c2"),
+        }
+        docker_tags = {amd64: "a2", arm64: "b2"}
+
+        assert adjust_branches_by_docker_tags(
+            new_commits, updated_branches, docker_tags, [amd64, arm64]
+        )
+        assert updated_branches == {amd64: ("a1", "a2"), arm64: ("b1", "b2")}
+        assert new_commits == {amd64: "a2", arm64: "b2"}
+
+    def test_adjust_branches_by_docker_tags_keeps_pins(capsys):
+        """
+        A pinned branch without a usable Docker commit keeps its pinned commit and
+        is an error; a removed branch needs no image.
+        """
+        jp5 = "eve-kernel-arm64-v5.10.192-nvidia-jp5"
+        removed = "eve-kernel-amd64-v6.1.112-generic"
+        new_commits = {jp5: "d2"}
+        updated_branches = {jp5: ("d1", "d2"), removed: (None, None)}
+
+        assert adjust_branches_by_docker_tags(
+            new_commits, updated_branches, {}, [jp5, removed]
+        )
+        assert updated_branches == {removed: (None, None)}
+        assert new_commits == {jp5: "d1"}
+        assert "commit None" not in capsys.readouterr().out
 
 
 def print_commit_errors(errors):
@@ -1235,15 +1394,12 @@ def main():
 
     print_updated_branches(updated_branches)
 
-    # branches gone from github are still in kernel-commits.mk and their docker tags
-    # linger, so query them too to have them reported as removed rather than untagged
-    queried_branches = list(new_commits) + [
-        branch for branch in updated_branches if branch not in new_commits
-    ]
-
     # fetch tags from docker hub and convert them to branch names
+    docker_tags = fetch_docker_tags(
+        list(new_commits), set(new_commits) | set(old_commits), args.verbose
+    )
     if adjust_branches_by_docker_tags(
-        new_commits, updated_branches, fetch_docker_tags(queried_branches, args.verbose)
+        new_commits, updated_branches, docker_tags, old_commits
     ):
         print(
             Fore.RED
