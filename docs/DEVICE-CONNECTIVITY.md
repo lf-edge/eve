@@ -959,7 +959,7 @@ troubleshooting:
  each was assigned to the corresponding domain and available to be used either by NIM (for mgmt or
  as app-shared) or by an app (as app-direct). NIM waits for `AssignableAdapters` before applying
  DPC config. Change in `AssignableAdapters` can also trigger DPC re-testing or unblock NIM
- to apply a given DPC (e.g. a particular port is finally available in dom0).
+ to apply a given DPC (e.g. a particular port is finally available in the host).
 
 - `/persist/status/zedclient/OnboardingStatus/global.json`: the status of the onboarding procedure.
  Once device is onboarded, `DeviceUUID` field will be non-empty and contain the assigned

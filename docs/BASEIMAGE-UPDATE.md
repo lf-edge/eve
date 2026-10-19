@@ -1,6 +1,6 @@
 # Baseimage update
 
-The API and EVE code supports updating the base image (the EVE rootfs including the hypervisor, dom0 kernel, and the EVE agents/microservices) using dual partitions and priority boot support in grub. This is robust against getting a power failure during the write to the flash, and hung boot, as well as bugs in the EVE code or the dom0 kernel resulting in crashing or hung agents or e.g., a busted kernel Ethernet device driver which can no longer communicate.
+The API and EVE code supports updating the base image (the EVE rootfs including the kernel and the EVE agents/microservices) using dual partitions and priority boot support in grub. This is robust against getting a power failure during the write to the flash, and hung boot, as well as bugs in the EVE code or the kernel resulting in crashing or hung agents or e.g., a busted kernel Ethernet device driver which can no longer communicate.
 
 The EVE code current makes sure the device remains functional (can connect to the controller and no agent crashes or hangs) for 10 minutes running the new version, and then the system commits to that new version. Plan is to add a handshake with the controller so that the user can run their own application tests before committing to the new version.
 

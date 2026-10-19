@@ -27,25 +27,25 @@ Normally, a user-space program will require more context switches and will alway
 * [Firecracker](https://github.com/firecracker-microvm/firecracker/blob/master/docs/design.md)
 * [ukvm/solo5](https://www.usenix.org/sites/default/files/conference/protected-files/hotcloud16_slides_williams.pdf)
 
-Obviously, every time we have a choice (e.g. we have full control over the device drivers running in the task's kernel), we will make sure that tasks can use device models that are mostly satisfied by the Linux kernel itself. The following table summarizes the choices available for Xen and KVM:
+Obviously, every time we have a choice (e.g. we have full control over the device drivers running in the task's kernel), we will make sure that tasks can use device models that are mostly satisfied by the Linux kernel itself. The following table summarizes the choices available with KVM:
 
-|                      |Xen         |KVM                                                          |
-|----------------------|------------|-------------------------------------------------------------|
-|Specialized VMM Bus   | XEN_XENBUS | [Virtio-PCI, Virtio-MMIO](https://lwn.net/Articles/808235/) |
-|PCI bus               | N/A        | VIRTIO_PCI, VOP (Virtio over PCIe)                          |
-|Direct PCI assignment | XEN_PCIDEV_FRONTEND,BACKEND | [VFIO](https://www.kernel.org/doc/Documentation/vfio.txt) [QEMU intel-iommu](https://wiki.qemu.org/Features/VT-d) |
-|Block devices         | XEN_BLKDEV_FRONTEND,BACKEND | VIRTIO_BLK                                 |
-|SCSI block devices    | XEN_SCSI_BACKEND            | [VHOST_SCSI, SCSI_VIRTIO](https://www.ovirt.org/develop/release-management/features/storage/virtio-scsi.html) |
-|POSIX filesystem      | NET_9P_XEN                  | NET_9P_VIRTIO                              |
-|Network               | XEN_NETDEV_BACKEND/FRONTEND | VHOST_NET, VIRTIO_NET                      |
-|Keyboard/console      | INPUT_XEN_KBDDEV_FRONTEND, HVC_XEN_FRONTEND  | VIRTIO_CONSOLE, VIRTIO_INPUT |
-|Framebuffer           | XEN_FBDEV_FRONTEND          | DRM_VIRTIO_GPU (qemu -vga virtio)          |
-|DRM framebuffer       | DRM_XEN_FRONTEND            | DRM_VIRTIO_GPU                             |
-|Sound devices         | SND_XEN_FRONTEND            | N/A                                        |
-|Crypto devices        | TCG_XEN                     | [CRYPTO_DEV_VIRTIO](http://events17.linuxfoundation.org/sites/events/files/slides/Introduction%20of%20virtio%20crypto%20device.pdf), HW_RANDOM_VIRTIO        |
-|X-domain comms        | XEN_DEV_EVTCHN, XEN_PVCALLS_BACKEND,FRONTEND | VHOST_RING, VHOST_VSOCK, VIRTIO_VSOCKETS |
+|                      |KVM                                                          |
+|----------------------|-------------------------------------------------------------|
+|Specialized VMM Bus   | [Virtio-PCI, Virtio-MMIO](https://lwn.net/Articles/808235/) |
+|PCI bus               | VIRTIO_PCI, VOP (Virtio over PCIe)                          |
+|Direct PCI assignment | [VFIO](https://www.kernel.org/doc/Documentation/vfio.txt) [QEMU intel-iommu](https://wiki.qemu.org/Features/VT-d) |
+|Block devices         | VIRTIO_BLK                                 |
+|SCSI block devices    | [VHOST_SCSI, SCSI_VIRTIO](https://www.ovirt.org/develop/release-management/features/storage/virtio-scsi.html) |
+|POSIX filesystem      | NET_9P_VIRTIO                              |
+|Network               | VHOST_NET, VIRTIO_NET                      |
+|Keyboard/console      | VIRTIO_CONSOLE, VIRTIO_INPUT |
+|Framebuffer           | DRM_VIRTIO_GPU (qemu -vga virtio)          |
+|DRM framebuffer       | DRM_VIRTIO_GPU                             |
+|Sound devices         | N/A                                        |
+|Crypto devices        | [CRYPTO_DEV_VIRTIO](http://events17.linuxfoundation.org/sites/events/files/slides/Introduction%20of%20virtio%20crypto%20device.pdf), HW_RANDOM_VIRTIO        |
+|X-domain comms        | VHOST_RING, VHOST_VSOCK, VIRTIO_VSOCKETS |
 
-As a general rule of thumb, Xen uses [xenbus](https://wiki.xen.org/wiki/XenBus) and Front/Back paravirtualized device drivers. KVM uses [VirtIO framework](https://wiki.osdev.org/Virtio) that relies on a standard PCI bus interface with virtualized devices having VirtIO specific PCI VendorID and DeviceID.
+KVM uses the [VirtIO framework](https://wiki.osdev.org/Virtio) that relies on a standard PCI bus interface with virtualized devices having VirtIO specific PCI VendorID and DeviceID.
 
 Using QEMU as example: it emulates the control plane of virtio PCI device like device status, feature bits and device configuration space, while the implementation of virtqueue backend data plane has three options as of this writing:
 
@@ -59,25 +59,19 @@ NOTE on virtio-bus vs virtio-pci-bus split: QEMU has gone through [a refactoring
 
 While conceptually creation of the domain itself (allocating RAM, CPU and setting up of an execution context) and supplying it with the device model are orthogonal, almost always the two get wrapped together into a single entry point managed by a user-space CLI utility. The job of any such utility is to take a configuration file that fully describes device model + hypervisor specific domain settings and execute all the necessary [hypervisor plumbing](https://lwn.net/Articles/658511/) and device model creation in a single shot:
 
-* [xl for Xen](https://xenbits.xen.org/docs/unstable/man/xl.1.html). NOTE: xl by itself, can only instruct the Linux Kernel to provide device model to a domain. If, however, a true user-space device model implementation is required, xl delegates that to qemu by invoking it with the device model [crafted by xl](https://github.com/xen-project/xen/blob/master/tools/libxl/libxl_dm.c#L674) mostly corresponding to the virtual devices that are missing in the kernel. The *mostly* part is a tricky one, because xl tries to be smart and a lot of times (e.g. for disks) would create a kernel-based part of the device model AND a user-space based one just in case
 * [qemu for KVM](https://qemu.weilnetz.de/doc/qemu-doc.html)
 * [jailer for Firecracker](https://github.com/firecracker-microvm/firecracker/blob/master/docs/jailer.md)
 
-All these utilities share one common trait: once they are done executing they always leave some kind of an *anchor process* daemonized process to keep track of state transitions in the running domain. Type-2 hypervisors have an additional benefit in that all the hypervisor-level resource accounting (RAM allocated vs. consumed, CPU assigned vs. running, etc.) can be attributed directly to the anchor process in a very traditional UNIX/Linux sense (or to put it a different way: you can get all that information by querying /proc filesystem). With type-1 hypervisors no direct attribution of this kind is possible and they all require a centralized daemon that keeps track of each domain's resource consumption:
+All these utilities share one common trait: once they are done executing they always leave some kind of an *anchor process* daemonized process to keep track of state transitions in the running domain. With a type-2 hypervisor such as KVM all the hypervisor-level resource accounting (RAM allocated vs. consumed, CPU assigned vs. running, etc.) can be attributed directly to the anchor process in a very traditional UNIX/Linux sense (or to put it a different way: you can get all that information by querying /proc filesystem). The anchor process is the same user-space process that serves up the device model.
 
-* [xenstored for Xen](https://wiki.xen.org/wiki/XenStore)
-
-Typically this anchor process is the same user-space process that serves up the device model, with the only exception to the rule here being Xen. As was noted above: xl actually delegates device model to qemu which means while xl itself serves as an anchor process, it actually has a child qemu process running as well.
-
-Regardless of whether an anchor process runs by itself or, like in case of xl, forks off children, if one wants to interact with a running domain ones has to, somehow, talk to the anchor process. This is typically done by a custom protocol:
+If one wants to interact with a running domain one has to, somehow, talk to the anchor process. This is typically done by a custom protocol:
 
 * [QMP for qemu based anchor processes](https://qemu.weilnetz.de/doc/qemu-qmp-ref.html)
 * [Firecracker API for firecracker](https://github.com/firecracker-microvm/firecracker/blob/master/src/api_server/swagger/firecracker.yaml)
-* [A Hodge-Podge of APIs fronted by xl CLI](https://wiki.xen.org/wiki/Choice_of_Toolstacks)
 
 ## How EVE manages hypervisors
 
-EVE has a pluggable hypervisor architecture defined in a [hypervisor package](../pkg/pillar/hypervisor). Any hypervisor implementation is expected to implement the [following methods](../pkg/pillar/hypervisor/hypervisor.go#L15).
+EVE has a pluggable hypervisor architecture defined in a [hypervisor package](../pkg/pillar/hypervisor). Any hypervisor implementation is expected to implement the [following methods](../pkg/pillar/hypervisor/hypervisor.go#L15). Two backends ship today: `kvm`, where pillar runs QEMU itself, and `kubevirt` on [EVE-K](EVE-K.md), where pillar hands the domain to Kubernetes and KubeVirt starts QEMU. The rest of this section describes the `kvm` backend.
 
 On a running system, EVE keeps hypervisor state under `/run/hypervisor/<HYPERVISOR NAME>/<DOMAIN NAME>` and that state typically consists of:
 
@@ -87,9 +81,9 @@ On a running system, EVE keeps hypervisor state under `/run/hypervisor/<HYPERVIS
 
 ## IOMMU support
 
-EVE relies on modern [IOMMU support](https://vfio.blogspot.com/2014/08/iommu-groups-inside-and-out.html) via [VT-d on Intel](https://software.intel.com/en-us/articles/intel-virtualization-technology-for-directed-io-vt-d-enhancing-intel-platforms-for-efficient-virtualization-of-io-devices) and [SMMU on ARM](https://developer.arm.com/architectures/system-architectures/system-components/system-mmu-support) to allow for direct assignment of PCI devices to domains. For type-1 hypervisors IOMMU support is provided by the hypervisor itself, while in type-2 hypervisor case we're relying on [VFIO support in the Linux Kernel](https://www.kernel.org/doc/Documentation/vfio.txt).
+EVE relies on modern [IOMMU support](https://vfio.blogspot.com/2014/08/iommu-groups-inside-and-out.html) via [VT-d on Intel](https://software.intel.com/en-us/articles/intel-virtualization-technology-for-directed-io-vt-d-enhancing-intel-platforms-for-efficient-virtualization-of-io-devices) and [SMMU on ARM](https://developer.arm.com/architectures/system-architectures/system-components/system-mmu-support) to allow for direct assignment of PCI devices to domains, relying on [VFIO support in the Linux Kernel](https://www.kernel.org/doc/Documentation/vfio.txt).
 
-It must be noted, that given dual nature of IOMMU support in the Linux kernel itself (it can be used to optimized device drivers in addition to providing virtualization and user-space capabilities) they have an extra incentive to focus on properly enabling access controls via PCIe ACS (Access Control Services). Sadly, a lot of PCIe hardware is still [very](https://www.redhat.com/archives/vfio-users/2016-July/msg00043.html), [very](https://bugzilla.redhat.com/show_bug.cgi?id=1037684) badly broken and has to be worked around. For now, EVE takes a blunt approach of punting on fine-grained ACS controls with both [Xen](https://lists.gt.net/xen/devel/345180) and [KVM](https://lkml.org/lkml/2013/5/30/513) hypervisors.
+It must be noted, that given dual nature of IOMMU support in the Linux kernel itself (it can be used to optimized device drivers in addition to providing virtualization and user-space capabilities) they have an extra incentive to focus on properly enabling access controls via PCIe ACS (Access Control Services). Sadly, a lot of PCIe hardware is still [very](https://www.redhat.com/archives/vfio-users/2016-July/msg00043.html), [very](https://bugzilla.redhat.com/show_bug.cgi?id=1037684) badly broken and has to be worked around. For now, EVE takes a blunt approach of [punting on fine-grained ACS controls](https://lkml.org/lkml/2013/5/30/513).
 
 ### ACS override on the kernel command line
 
@@ -97,16 +91,22 @@ Historically EVE booted with `pcie_acs_override=downstream,multifunction` on the
 
 EVE-K (the Kubernetes flavor) boots without `pcie_acs_override` — see `set_k_boot` in [`pkg/grub/rootfs.cfg`](../pkg/grub/rootfs.cfg). IOMMU groups on EVE-K therefore reflect the platform's actual ACS topology: devices that genuinely share a group remain grouped, and passthrough on such hardware must be configured deliberately rather than relying on the override to split a shared group.
 
-Further details of Xen vs. KVM IOMMU handling are [documented here](https://docs.google.com/document/d/12-z6JD41J_oNrCg_c0yAxGWg5ADBQ8_bSiP_NH6Hqwo/edit#).
+Further details of IOMMU handling are [documented here](https://docs.google.com/document/d/12-z6JD41J_oNrCg_c0yAxGWg5ADBQ8_bSiP_NH6Hqwo/edit#).
 
-Hardware quirks aside, EVE uses the following hypervisor capabilities to manage IOMMU-based device assignments to domains:
+Hardware quirks aside, EVE uses [QEMU/VFIO Passthrough](https://wiki.archlinux.org/index.php/PCI_passthrough_via_OVMF) to manage IOMMU-based device assignments to domains.
 
-* [Xen PCI Passthrough](https://wiki.xenproject.org/wiki/Xen_PCI_Passthrough) for Xen
-* [QEMU/VFIO Passthrough](https://wiki.archlinux.org/index.php/PCI_passthrough_via_OVMF) for KVM
-
-While IOMMU tries to make hardware presented to the domain look indistinguishable from the bare-metal hardware, some device drivers running inside of the domain (most notably [NVidia ones](https://forum.level1techs.com/t/the-pragmatic-neckbeard-3-vfio-iommu-and-pcie/111251)) will try to detect this and degrade their capabilities. EVE uses hypervisor spoofing techniques to trick the drivers into thinking that they are truly operating on bare-metal hardware:
-
-* [Xen spoofing](../pkg/xen-tools/patches-4.13.0/05-xen-spoofing.patch)
-* [KVM spoofing](https://forum.level1techs.com/t/the-pragmatic-neckbeard-4-kvm-and-libvirt/112397)
+While IOMMU tries to make hardware presented to the domain look indistinguishable from the bare-metal hardware, some device drivers running inside of the domain (most notably [NVidia ones](https://forum.level1techs.com/t/the-pragmatic-neckbeard-3-vfio-iommu-and-pcie/111251)) will try to detect this and degrade their capabilities. EVE uses [hypervisor spoofing](https://forum.level1techs.com/t/the-pragmatic-neckbeard-4-kvm-and-libvirt/112397) to trick the drivers into thinking that they are truly operating on bare-metal hardware.
 
 Finally, BIOS/firmware running as part of the domain plays a big role in how well IOMMU capabilities can be utilized. EVE has an option of switching to [UEFI firmware](../pkg/uefi) from a more compact [SeaBIOS](https://seabios.org/SeaBIOS) implementation whenever needed.
+
+## Xen, historically
+
+Releases up to 17.5.0 could also be built with the Xen hypervisor (`HV=xen`), and the 17.0-stable LTS branch still carries it. Xen support was removed in 17.6.0 in favor of KVM, the default hypervisor.
+
+Some names from the Xen era are kept on purpose, because they are part of the interface a device keeps across updates:
+
+* `dom0` is Xen's name for the privileged host domain. The GRUB variables and kernel parameters that size and tune the EVE host (`dom0_mem`, `dom0_max_vcpus`, `dom0_console`, `dom0_extra_args`, `dom0_platform_tweaks`, see [BOOTING.md](BOOTING.md)) keep the prefix. Wherever they appear, `dom0` means the EVE host system.
+* The `pkg/dom0-ztools` package and the `storage.dom0.*` configuration properties keep their names for the same reason.
+* The `PV` virtualization mode of the API, its default value, is accepted and runs the application as an `HVM` virtual machine.
+
+A device updating from a Xen-based release needs no manual step: its GRUB overrides keep working, and the Xen-era firmware paths an application configuration may carry (`/usr/lib/xen/boot/...`) are mapped to their current locations.

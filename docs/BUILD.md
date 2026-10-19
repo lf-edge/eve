@@ -507,7 +507,7 @@ The following custom packages are used:
 
 #### Custom Live Packages
 
-* kernel: EVE uses its own custom kernel (taken from [eve-kernel](https://github.com/lf-edge/eve-kernel) project), rather than one of the standard linuxkit ones. This is primarily due to kernel modules and drivers, especially on arm, as well as Xen requirements.
+* kernel: EVE uses its own custom kernel (taken from [eve-kernel](https://github.com/lf-edge/eve-kernel) project), rather than one of the standard linuxkit ones. This is primarily due to kernel modules and drivers, especially on arm.
 * `init` packages:
   * `lfedge/eve-grub` - CoreOS inspired GRUB required to enable CoreOS-style dual partition upgrades. See [UPSTREAMING.md](./UPSTREAMING.md#grub) for a more detailed discussion of what is unique in this grub.
   * `lfedge/eve-fw` - various firmware required for device drivers.
@@ -521,7 +521,7 @@ The following custom packages are used:
 
 #### Custom Installer Packages
 
-* kernel: EVE uses its own custom kernel (taken from [eve-kernel](https://github.com/lf-edge/eve-kernel) project), rather than one of the standard linuxkit ones. This is primarily due to kernel modules and drivers, especially on arm, as well as Xen requirements.
+* kernel: EVE uses its own custom kernel (taken from [eve-kernel](https://github.com/lf-edge/eve-kernel) project), rather than one of the standard linuxkit ones. This is primarily due to kernel modules and drivers, especially on arm.
 * `init` packages:
   * `lfedge/eve-grub` - CoreOS inspired GRUB required to enable CoreOS-style dual partition upgrades.
   * `lfedge/eve-devices-trees` - device trees for all the ARM platforms that EVE supports.

@@ -435,7 +435,6 @@ that indicates a successful install will look like this:
 [  119.801805]  mmcblk0: p1 p2 p3 p4 p5 p6 p7 p8 p11 p12 p13 p14
 [  120.992048]  mmcblk0: p1 p2 p3 p4 p5 p6 p7 p8 p11 p12 p13 p14 p19
 [  127.191119] reboot: Power down
-(XEN) Hardware Dom0 halted: halting machine
 ```
 
 At this point you should remove your SD card from HiKey's slot and reboot

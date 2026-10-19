@@ -16,7 +16,7 @@ Domain Manager interacts with the Cloud controller (e.g. zedcloud) indirectly us
 
 - DomainConfig from controller is fed to domainmgr. This contains the configuration information about a DomU instance. DomainConfig is defined in `pillar/types/domainmgrtypes.go`
 - DomainStatus is fed from `domainmgr` to controller. This contains the operational information about a DomU instance. DomainStatus is defined in `pillar/types/domainmgrtypes.go`
-- DomainMetric with CPU and memory metrics for the host (dom0) and the applications
+- DomainMetric with CPU and memory metrics for the host and the applications
 - PhysicalIOAdapterList specifies the set of physical I/O adapters which can potentially be used for adapter assignment.
 
 zedmanager publishes DomainConfig and subscribes to DomainStatus, while zedagent publishes PhysicalIOAdapterList and subscribes to DomainMetric.
@@ -42,6 +42,5 @@ zedmanager publishes DomainConfig and subscribes to DomainStatus, while zedagent
 
 - Look at the respective input/output files:
 - `/run/zedmanager/DomainConfig` and `/run/domainmgr/DomainStatus` shows the key input and output
-- We’ve seen cases where PV doesn’t boot but HVM does due to a missing dom0 qemu process (started by `/etc/init.d/xencommons`). So please check if `/usr/lib/xen/bin/qemu-system-i386 -xen-domid 0` is running
 - If domUs fail to boot domainmgr will retry after 10  minutes. You can control it with `timer.boot.retry` global configuration variable. The option value is in seconds. e.g. if you want to change retry time to 1 minute, then use `--config=timer.boot.retry:60`
 - If USB keyboard disappears (stops working after boot) could be that domainmgr didn’t initially start; For instance, during onboarding domainmgr does not run hence USB is open

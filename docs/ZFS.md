@@ -92,7 +92,7 @@ background. Progress is visible via `zpool status persist`.
 On EVE-k nodes `/persist/vault` is an ext4 filesystem on a ZFS zvol.
 When files are deleted, ext4 marks the blocks as free but does not
 notify ZFS. The zvol retains the blocks as allocated, inflating
-`logicalused` on the persist pool and causing EVE to overestimate dom0
+`logicalused` on the persist pool and causing EVE to overestimate its own
 disk usage. In severe cases this can incorrectly trigger maintenance
 mode.
 
