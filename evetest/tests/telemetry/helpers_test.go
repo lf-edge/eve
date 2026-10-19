@@ -4,7 +4,6 @@
 package telemetry_test
 
 import (
-	"crypto/sha256"
 	"fmt"
 	"time"
 
@@ -91,49 +90,6 @@ func replaceConfigProperties(devConfig *evetest.EdgeDeviceConfig,
 	devConfig.SetConfigProperties(cfgProps)
 }
 
-// sha256Hex returns the hex-encoded SHA-256 digest of b.
-func sha256Hex(b []byte) string {
-	return fmt.Sprintf("%x", sha256.Sum256(b))
-}
-
-// installMarkerConfig pushes a freshly rendered marker Vector config (see
-// newMarkerConfig) and returns only once the controller has received an
-// uploaded log event stamped with its sentinel source, i.e. the config has been
-// promoted and is processing uploads. It returns the sentinel and the exact
-// config bytes that were pushed.
-//
-// Note that while a marker config is promoted, the source of *every* uploaded
-// device log event is overwritten with the sentinel - including the entries a
-// later assertion in the same test may want to match by source.
-func installMarkerConfig(t *WithT, device *evetest.EdgeDevice) (
-	markerSource string, markerConfig []byte) {
-	markerSource, markerConfig = newMarkerConfig(t)
-	markedLogs, stopLogWatch := device.WatchLogs(evetest.LogMsgMatch{
-		Source: markerSource,
-	})
-	defer stopLogWatch()
-	device.ApplyConfig(vectorConfigItem(markerConfig), true, true)
-	evetest.Checkpoint("marker-applied")
-
-	evetest.Logger().Infof(
-		"Waiting for the marker Vector config to become active...")
-	t.Eventually(markedLogs, vectorLogUploadTimeout).Should(Receive(),
-		"the marker Vector config was never promoted: no uploaded log event "+
-			"carried its sentinel source")
-	evetest.Checkpoint("marker-active")
-	return markerSource, markerConfig
-}
-
-// clearVectorConfig empties the vector.config item, which makes newlogd restore
-// the Vector config built into the EVE image.
-//
-// Tests do not need to call this to clean up after themselves: the framework's
-// ResetDeviceConfig policy nils ConfigItems, so vector.config is cleared between
-// tests anyway. It is here for the test whose subject is the clearing itself.
-func clearVectorConfig(device *evetest.EdgeDevice) {
-	device.ApplyConfig(vectorConfigItem(nil), true, true)
-}
-
 // newLogProbeMarker returns a marker string unique to a single probe.
 func newLogProbeMarker(probeName string) string {
 	return fmt.Sprintf("%s-%s-%d",
@@ -164,8 +120,7 @@ func emitKernelLogProbe(t Gomega, device *evetest.EdgeDevice, marker string) {
 // Two preconditions: the caller must have configured
 // debug.kernel.remote.loglevel to "info" or lower, because the kernel path is
 // gated by its own knobs, separate from the debug.default.* ones the framework
-// sets; and no Vector config that rewrites `source` may be promoted at the time
-// (see installMarkerConfig), or the Source assertion below cannot hold.
+// sets.
 func expectKernelLogProbe(t Gomega, device *evetest.EdgeDevice, probeName string) {
 	marker := newLogProbeMarker(probeName)
 	logs, stopLogWatch := device.WatchLogs(evetest.LogMsgMatch{

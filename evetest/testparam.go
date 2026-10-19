@@ -264,7 +264,7 @@ func EVEVersionParameter() TestParameterDefinition {
 		Key:          EVEVersionParameterKey,
 		DefaultValue: "",
 		Description: TestParameterDescription{
-			Summary: "EVE version to run on the device (e.g. \"16.0.0-lts\")",
+			Summary: "EVE version to run on the device (e.g. \"14.5.0-lts\")",
 			Default: "HEAD of the checked-out EVE repo (determined by the evetest Makefile)",
 		},
 	}

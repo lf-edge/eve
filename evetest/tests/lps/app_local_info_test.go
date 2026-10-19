@@ -217,6 +217,19 @@ func TestAppLocalInfo(test *testing.T) {
 		device.WaitUntilAppIsRunning(app1UUID, timeout)
 		waitApp1SSHReachable()
 	}
+	// discardBufferedApp1Updates must be called before issuing a command whose
+	// effect is awaited with waitAppTransientThenRunning: updates buffered by
+	// earlier steps (e.g. the HALTING of the previous purge) would otherwise
+	// satisfy that wait before the command took effect.
+	discardBufferedApp1Updates := func() {
+		for {
+			select {
+			case <-app1Updates:
+			default:
+				return
+			}
+		}
+	}
 	touchApp1 := func(path string) {
 		_, _, err := device.RunShellScriptInsideApp(app1UUID, lpsAppAuth,
 			"touch "+path, sshTimeout, 0)
@@ -241,6 +254,7 @@ func TestAppLocalInfo(test *testing.T) {
 	log.Infof("Testing LPS-driven purge")
 	touchApp1("/root/purge_test")
 	waitLastCmdTimestamp(0, "app1 has no LPS command applied yet")
+	discardBufferedApp1Updates()
 	putLPSAppCommand(t, device, lpsAppUUID, "app1", 123, "COMMAND_PURGE")
 	waitAppTransientThenRunning(eveinfo.ZSwState_PURGING, eveinfo.ZSwState_HALTING)
 	waitLastCmdTimestamp(123, "app1 should report the LPS purge command timestamp")
@@ -264,6 +278,7 @@ func TestAppLocalInfo(test *testing.T) {
 	log.Infof("Testing LPS-driven restart")
 	touchApp1("/tmp/restart_test")
 	touchApp1("/root/purge_test")
+	discardBufferedApp1Updates()
 	putLPSAppCommand(t, device, lpsAppUUID, "app1", 456, "COMMAND_RESTART")
 	waitAppTransientThenRunning(eveinfo.ZSwState_RESTARTING, eveinfo.ZSwState_HALTING)
 	waitLastCmdTimestamp(456, "app1 should report the LPS restart command timestamp")

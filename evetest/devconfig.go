@@ -1979,7 +1979,6 @@ func (dc *EdgeDeviceConfig) setDefaultConfigProperties() {
 		// to speed up test execution.
 		{Key: string(pillartypes.ConfigInterval), Value: "5"},
 		{Key: string(pillartypes.MetricInterval), Value: "20"},
-		{Key: string(pillartypes.DevInfoInterval), Value: "30"},
 		{Key: string(pillartypes.LocationAppInterval), Value: "20"},
 		{Key: string(pillartypes.LocationCloudInterval), Value: "300"},
 		{Key: string(pillartypes.AllowLogFastupload), Value: "true"},
@@ -2460,7 +2459,7 @@ func (dc *EdgeDeviceConfig) UpdateApplication(
 			equalAdapter := func(a1, a2 *eveconfig.Adapter) bool {
 				return proto.Equal(a1, a2)
 			}
-			// On EVE 17.0 a change of the adapters (I/O or network) of a
+			// On EVE 14.5 a change of the adapters (I/O or network) of a
 			// deployed app is rejected by zedmanager unless the controller
 			// also requests a purge; staging such a change until the next
 			// restart is not supported.

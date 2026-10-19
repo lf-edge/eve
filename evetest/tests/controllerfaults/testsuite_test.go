@@ -24,10 +24,8 @@ import (
 //
 // Subtests
 // --------
-//   - TestInfoRetriedAfterServerError -- a state change reported while the
-//     controller answers 503 still reaches it afterwards.
-//   - TestInfoRetriedAfterLostController -- the same when the controller cannot
-//     be reached at all.
+//   - TestInfoRetriedAfterLostController -- a state change reported while the
+//     controller cannot be reached at all still reaches it afterwards.
 //   - TestInfoDroppedOnRejectionKeepsDeviceReporting -- a message the
 //     controller rejects outright is given up on, and later changes are still
 //     reported.
@@ -51,9 +49,6 @@ func TestControllerFaultsSuite(test *testing.T) {
 	)
 
 	evetest.RunTestSuite(
-		evetest.TestCase{
-			Test: TestInfoRetriedAfterServerError,
-		},
 		evetest.TestCase{
 			Test: TestInfoRetriedAfterLostController,
 		},

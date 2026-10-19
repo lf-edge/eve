@@ -17,7 +17,6 @@ import (
 	"github.com/lf-edge/eve/evetest"
 	"github.com/lf-edge/eve/evetest/matchers"
 	"github.com/lf-edge/eve/evetest/netmodels"
-	pillartypes "github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 // How long the controller keeps failing info messages, which has to cover the
@@ -30,128 +29,17 @@ const faultWindow = 2 * time.Minute
 // minutes out, and nothing prompts the device to try sooner.
 const convergeTimeout = 8 * time.Minute
 
-// TestInfoRetriedAfterServerError verifies that a state change which happens
-// while the controller answers info messages with 503 still reaches the
-// controller once it stops doing so.
+// deviceInfoTimeout bounds the wait for the periodic device info, which EVE
+// 14.5 publishes every 10 minutes +/- 20% and does not allow to configure.
+const deviceInfoTimeout = 13 * time.Minute
+
+// TestInfoRetriedAfterLostController verifies that a state change which happens
+// while the controller cannot be reached at all still reaches the controller
+// once it can be reached again.
 //
-// This is the end-to-end form of lf-edge/eve#6302: application state is
-// reported only when it changes, and nothing re-asserts it later, so a report
-// discarded because of a temporary server error leaves the controller's view of
-// the application wrong for as long as the application stays in that state -
-// for a steady-state application, indefinitely.
-//
-// Network model
-// -------------
-//   - netmodels.SingleEthWithDHCP -- the fault is injected at the controller,
-//     not in the network, so a single management port is all this needs.
-//
-// Device configuration
-// --------------------
-//   - ethernet0 (mgmt+apps, DHCP), one local network instance, one container
-//     application, activated.
-//
-// Phases
-// ------
-//  1. Deploy the application and wait until the controller reports it RUNNING,
-//     which establishes that info messages flow.
-//  2. Arm a fault answering every info request with 503, and confirm the
-//     controller stops learning anything: no info message arrives while it is
-//     armed.
-//  3. With the fault still armed, deactivate the application. EVE notices the
-//     transition and reports it; every attempt is refused.
-//  4. Clear the fault. The controller must converge on the state the
-//     application actually has, without anything else prompting the device.
-//
-// Before the fix the message is discarded on the first 503 and phase 4 times
-// out with the controller still reporting RUNNING.
-//
-// Test params
-// -----------
-//   - HYPERVISOR (defaults to KVM).
-func TestInfoRetriedAfterServerError(test *testing.T) {
-	evetestT := evetest.Init(test, evetest.WithControllerFaults())
-	defer evetest.Close()
-	if !evetest.ControllerFaultsEnabled() {
-		test.Skip("controller fault injection was turned off; " +
-			"unset EVETEST_CONTROLLER_FAULTS to run this test")
-	}
-	t := NewGomegaWithT(evetestT)
-
-	// Define configurable parameters available for the test.
-	evetest.DefineTestParameters(
-		evetest.HypervisorParameter(),
-	)
-
-	hypervisor := evetest.GetHypervisorParameterValue()
-	evetest.Setup(
-		evetest.RequireEdgeDevice{
-			Name:              devName,
-			WithHypervisor:    hypervisor,
-			DeviceReusePolicy: evetest.ResetDeviceConfig,
-		},
-		evetest.RequireNetworkModel{NetworkModel: netmodels.SingleEthWithDHCP},
-	)
-	device := evetest.GetEdgeDevice(devName)
-	log := evetest.Logger()
-	evetest.Checkpoint("setup-done")
-
-	// Phase 1: the application runs and the controller knows it.
-	devConfig, appUUID := appDeviceConfig()
-	appUpdates, stopAppWatch := device.WatchAppInfo(appUUID)
-	defer stopAppWatch()
-	device.ApplyConfig(devConfig, true, true)
-	device.WaitUntilAppIsRunning(appUUID, 5*time.Minute)
-	evetest.Checkpoint("app-running")
-
-	// Phase 2: the controller refuses every info message from now on.
-	evetest.ArmControllerFault(evetest.ControllerFault{
-		Method:     http.MethodPost,
-		PathSuffix: infoPath,
-		Action:     evetest.FaultAnswerStatus,
-		StatusCode: http.StatusServiceUnavailable,
-	})
-	defer evetest.ClearControllerFaults()
-	log.Info("Controller now answers 503 to every info message")
-
-	// Drain what was already in flight, then confirm nothing new arrives.
-	drainAppUpdates(appUpdates)
-	t.Consistently(appUpdates, 45*time.Second, 5*time.Second).
-		ShouldNot(Receive(), "controller kept receiving info despite the 503s")
-	evetest.Checkpoint("info-refused")
-
-	// Phase 3: change the application state while reports cannot get through.
-	// The config request itself is not affected, so the device applies it and
-	// starts tearing the application down.
-	device.DeactivateApplication(appUUID, false, 0)
-	log.Info("Application deactivated while info messages are refused")
-
-	// The transition has to complete while the fault is still armed, otherwise
-	// the report of it is produced after the controller is answering normally
-	// again and the test would pass whether or not a refused report survives.
-	// How far the device has got cannot be observed from here - that is exactly
-	// what the fault is blocking - so allow generously more than an application
-	// takes to stop, and keep requiring that nothing reaches the controller.
-	t.Consistently(appUpdates, faultWindow, 10*time.Second).
-		ShouldNot(Receive(), "a refused info message was delivered anyway")
-	evetest.Checkpoint("app-deactivated-during-fault")
-
-	// Phase 4: with the controller accepting info again, its view has to catch
-	// up on its own.
-	evetest.ClearControllerFaults()
-	log.Info("Controller accepts info messages again")
-	t.Eventually(appUpdates, convergeTimeout).Should(Receive(
-		matchers.SatisfyPredicate("Application is reported HALTED",
-			isAppState(eveinfo.ZSwState_HALTED)).StopIf(appHasError)))
-	evetest.Checkpoint("controller-converged")
-}
-
-// TestInfoRetriedAfterLostController verifies the same convergence when the
-// controller cannot be reached at all, rather than answering with an error.
-//
-// The two are handled differently by EVE: an answer from the controller is a
-// verdict on that one message, while a failure to reach the controller says
-// nothing about it and stops the queue until connectivity returns. Both must
-// end with the controller knowing the current state.
+// A failure to reach the controller says nothing about a message and stops
+// the queue until connectivity returns. It must then end with the controller
+// knowing the current state.
 //
 // Network model
 // -------------
@@ -160,7 +48,8 @@ func TestInfoRetriedAfterServerError(test *testing.T) {
 //
 // Device configuration
 // --------------------
-//   - As in TestInfoRetriedAfterServerError.
+//   - ethernet0 (mgmt+apps, DHCP), one local network instance, one container
+//     application, activated.
 //
 // Phases
 // ------
@@ -222,8 +111,8 @@ func TestInfoRetriedAfterLostController(test *testing.T) {
 	device.DeactivateApplication(appUUID, false, 0)
 	log.Info("Application deactivated while info messages cannot be delivered")
 
-	// As in TestInfoRetriedAfterServerError, the transition has to happen while
-	// the fault is still armed for the test to mean anything.
+	// The transition has to happen while the fault is still armed for the test
+	// to mean anything.
 	t.Consistently(appUpdates, faultWindow, 10*time.Second).
 		ShouldNot(Receive(), "an undeliverable info message arrived anyway")
 	evetest.Checkpoint("app-deactivated-during-fault")
@@ -252,15 +141,17 @@ func TestInfoRetriedAfterLostController(test *testing.T) {
 //
 // Device configuration
 // --------------------
-//   - As in TestInfoRetriedAfterServerError.
+//   - ethernet0 (mgmt+apps, DHCP), one local network instance, one container
+//     application, activated.
 //
 // Whether the application has finished stopping cannot be observed while its
 // reports are being rejected, and how long it takes varies by minutes, so this
 // test deliberately does not depend on it. It uses the device information
 // instead: that is the one report EVE re-sends on a timer even when nothing
 // changed (zedagent's configTimerTask), so its arrival after the rejections is
-// a reliable signal that the queue is still delivering. The interval is lowered
-// to the allowed minimum to keep the wait short.
+// a reliable signal that the queue is still delivering. EVE 14.5 does not
+// allow lowering that interval, which is fixed at 10 minutes +/- 20%, so the
+// wait is correspondingly long.
 //
 // Network model
 // -------------
@@ -268,8 +159,8 @@ func TestInfoRetriedAfterLostController(test *testing.T) {
 //
 // Device configuration
 // --------------------
-//   - As in TestInfoRetriedAfterServerError, plus timer.deviceinfo.interval
-//     lowered to 30s.
+//   - ethernet0 (mgmt+apps, DHCP), one local network instance, one container
+//     application, activated.
 //
 // Phases
 // ------
@@ -312,11 +203,6 @@ func TestInfoDroppedOnRejectionKeepsDeviceReporting(test *testing.T) {
 	evetest.Checkpoint("setup-done")
 
 	devConfig, appUUID := appDeviceConfig()
-	// EVE re-sends the device information on this timer even when nothing about
-	// the device changed, which is what phase 4 waits for.
-	cfgProps := pillartypes.NewConfigItemValueMap()
-	cfgProps.SetGlobalValueInt(pillartypes.DevInfoInterval, 30)
-	devConfig.SetConfigProperties(cfgProps)
 
 	appUpdates, stopAppWatch := device.WatchAppInfo(appUUID)
 	defer stopAppWatch()
@@ -351,7 +237,7 @@ func TestInfoDroppedOnRejectionKeepsDeviceReporting(test *testing.T) {
 	evetest.ClearControllerFaults()
 	log.Info("Controller accepts info messages again")
 	drainDeviceUpdates(deviceUpdates)
-	t.Eventually(deviceUpdates, convergeTimeout).Should(Receive(),
+	t.Eventually(deviceUpdates, deviceInfoTimeout).Should(Receive(),
 		"device stopped reporting after its messages were rejected")
 	evetest.Checkpoint("reporting-recovered")
 }

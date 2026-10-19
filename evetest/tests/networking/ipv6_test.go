@@ -54,8 +54,8 @@ import (
 //  4. Assert the default router for ethernet0 is a link-local IPv6 address.
 //     Per RFC 4861, RA-derived default routes are always announced via the
 //     router's link-local address, not its global-unicast address.
-//  5. Wait for DevicePortStatus.LastSucceeded to advance past its initial
-//     value, confirming ongoing controller reachability.
+//  5. Wait for a fresh DeviceMetric message (published periodically), confirming
+//     ongoing controller reachability.
 //  6. SSH checks (ip tooling):
 //     - ip -6 addr show dev eth0 contains the reported global-unicast IPv6.
 //     - ip -6 route show contains a default route via a fe80:: link-local
@@ -110,6 +110,8 @@ func TestDeviceIPv6Connectivity(test *testing.T) {
 	})
 	devUpdates, stopDevWatch := device.WatchDeviceInfo()
 	defer stopDevWatch()
+	metricUpdates, stopMetricWatch := device.WatchDeviceMetrics()
+	defer stopMetricWatch()
 	device.ApplyConfig(devConfig, true, true)
 	evetest.Checkpoint("config-applied")
 
@@ -156,15 +158,12 @@ func TestDeviceIPv6Connectivity(test *testing.T) {
 	t.Expect(routerIP).ToNot(BeNil())
 	t.Expect(routerIP.IsLinkLocalUnicast()).To(BeTrue())
 
-	// Wait for LastSucceeded to advance, confirming ongoing controller connectivity.
-	firstSucceeded := dpc.GetLastSucceeded().AsTime()
-	log.Infof("Waiting for DPC LastSucceeded to advance (periodic connectivity probe)...")
-	t.Eventually(devUpdates, timeout).Should(Receive(matchers.SatisfyPredicate(
-		"DPC LastSucceeded has advanced",
-		func(info *eveinfo.ZInfoDevice) bool {
-			dpc = getCurrentDPC(info)
-			return dpc != nil && dpc.GetLastSucceeded().AsTime().After(firstSucceeded)
-		})))
+	// Wait for a fresh periodic metric message, confirming ongoing controller
+	// connectivity over IPv6. (EVE 14.5 does not publish device info on
+	// DPC LastSucceeded changes and its periodic device info is too slow.)
+	log.Infof("Waiting for a fresh device metric message...")
+	t.Eventually(metricUpdates, timeout).Should(Receive(),
+		"EVE should keep delivering metrics to the controller over IPv6")
 
 	evetest.Checkpoint("controller-reachable")
 

@@ -41,9 +41,6 @@ const (
 	// which the framework accounts for separately.
 	appReadyTimeout = 10 * time.Minute
 
-	// purgeCompleteTimeout bounds PurgeApplication(waitUntilPurged=true).
-	purgeCompleteTimeout = 5 * time.Minute
-
 	// baselineTimeout bounds reading the pre-purge state. Everything it reads is
 	// already published by the time the app reports RUNNING, so this only
 	// absorbs publication lag.
