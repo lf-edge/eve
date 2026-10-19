@@ -311,137 +311,245 @@ def parse_kernel_commits_file(file_path):
     return commits
 
 
-def check_tag_exists(tag_name, repo_owner, repo_name, token=None, verbose=False):
+def parse_kernel_version(tag, missing_patch=0):
     """
-    Check if a specific tag exists in the repository.
+    Parse the leading vMAJOR.MINOR[.PATCH] of a kernel tag, e.g. v6.18.55,
+    v6.17-rc7 or v6.1.111-rt42.
 
     Parameters:
-    - tag_name (str): The tag name to check (e.g., "v6.1.111").
-    - repo_owner (str): The owner of the GitHub repository.
-    - repo_name (str): The name of the GitHub repository.
-    - token (str): GitHub personal access token for authentication.
-    - verbose (bool): Enable verbose output.
+    - tag (str): The tag name.
+    - missing_patch: The patch level of a vMAJOR.MINOR tag. float("inf") makes
+      v5.10 an upper bound that every v5.10.x is at or below.
 
     Returns:
-    - bool: True if the tag exists, False otherwise.
+    - tuple: (major, minor, patch) to compare versions numerically, or None if
+      the tag does not start with a kernel version.
     """
-    headers = {"Accept": "application/vnd.github.v3+json"}
-    if token:
-        headers["Authorization"] = f"token {token}"
-
-    # Check if tag exists using the git refs API
-    api_url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/git/refs/tags/{tag_name}"
-
-    try:
-        response = requests.get(api_url, headers=headers, timeout=30)
-        if response.status_code == 200:
-            if verbose:
-                print(f"    Tag {tag_name} exists in repository")
-            return True
-        if response.status_code == 403:
-            # API rate limit - assume tag exists since we can't verify
-            if verbose:
-                print(
-                    f"    Tag {tag_name} not found in repository "
-                    f"(status: {response.status_code})"
-                )
-            return False
-        # For other status codes, assume tag doesn't exist
-        if verbose:
-            print(f"    Tag {tag_name} not found (status: {response.status_code})")
-        return False
-    except (requests.RequestException, KeyError, ValueError) as exc:
-        if verbose:
-            print(f"    Error checking tag {tag_name}: {exc}")
-        return False
-
-
-def _fetch_kernel_tags(repo_owner, repo_name, headers, verbose):
-    """Helper function to fetch kernel tags from GitHub."""
-    api_url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/tags?per_page=100&page=1"
-    try:
-        response = requests.get(api_url, headers=headers, timeout=30)
-        if response.status_code != 200:
-            if verbose:
-                print(f"    Failed to fetch tags: {response.status_code}")
-            return None
-
-        page_tags = response.json()
-        # Filter for Linux kernel version tags (vX.Y.Z or vX.Y format)
-        tags = [
-            tag for tag in page_tags if re.match(r"^v\d+\.\d+(\.\d+)?$", tag["name"])
-        ]
-        return tags
-    except (requests.RequestException, KeyError, ValueError) as exc:
-        if verbose:
-            print(f"    Error fetching tags: {exc}")
+    match = re.match(r"v(\d+)\.(\d+)(?:\.(\d+))?", tag)
+    if not match:
         return None
+    major, minor, patch = match.groups()
+    return int(major), int(minor), missing_patch if patch is None else int(patch)
 
 
-def _check_single_tag(tag, commit_sha, repo_config, headers, verbose):
-    """Helper to check a single tag and return ahead_by count."""
+def _fetch_kernel_tags(repo_config, headers, verbose, version_hint=None):
+    """
+    Helper function to fetch kernel tag names from GitHub: the most recent 100
+    tags plus, with a version hint, every tag of its vMAJOR.MINOR line, which
+    can be older than those.
+    """
     repo_owner, repo_name = repo_config
-    tag_name = tag["name"]
+    api_url = f"https://api.github.com/repos/{repo_owner}/{repo_name}"
+    queries = [(f"{api_url}/tags?per_page=100&page=1", lambda tag: tag["name"])]
+    version = parse_kernel_version(version_hint) if version_hint else None
+    if version:
+        queries.append(
+            (
+                # pylint: disable-next=unsubscriptable-object
+                f"{api_url}/git/matching-refs/tags/v{version[0]}.{version[1]}",
+                lambda ref: ref["ref"].removeprefix("refs/tags/"),
+            )
+        )
+
+    tags = []
+    for url, tag_name in queries:
+        try:
+            response = requests.get(url, headers=headers, timeout=30)
+            if response.status_code == 200:
+                tags += [tag_name(item) for item in response.json()]
+            elif verbose:
+                print(f"    Failed to fetch tags: {response.status_code}")
+        except (requests.RequestException, KeyError, ValueError) as exc:
+            if verbose:
+                print(f"    Error fetching tags: {exc}")
+    return tags
+
+
+def _below_hint(tag, version_hint):
+    """True for a kernel tag other than the hint whose version is not beyond it."""
+    version = parse_kernel_version(tag)
+    if version is None or tag == version_hint:
+        return False
+    return not version_hint or version <= parse_kernel_version(
+        version_hint, float("inf")
+    )
+
+
+def base_tag_candidates(tags, version_hint=None):
+    """
+    Order the tags that may be the base of a new branch besides the hint itself:
+    the kernel tags at or below the hint's version (all without a hint), newest
+    first.
+
+    Parameters:
+    - tags (iterable): Tag names. Those without a leading kernel version are dropped.
+    - version_hint (str): The kernel version in the branch name (e.g. v6.18.55),
+      or None.
+
+    Returns:
+    - list: The candidate tag names.
+    """
+    return sorted(
+        (tag for tag in dict.fromkeys(tags) if _below_hint(tag, version_hint)),
+        key=parse_kernel_version,
+        reverse=True,
+    )
+
+
+def _ancestor_tag_distance(compare):
+    """
+    Returns how many commits the commit is ahead of the tag, given the GitHub
+    compare/{tag}...{commit} result, or None if there is no result or the tag
+    is not an ancestor of the commit (the two diverged or the commit is behind
+    the tag).
+    """
+    if not compare or compare.get("status") not in ("ahead", "identical"):
+        return None
+    if compare.get("behind_by") != 0:
+        return None
+    return compare.get("ahead_by", float("inf"))
+
+
+def select_base_tag(distances, version_hint=None):
+    """
+    Choose the base tag of a new branch: the tag of the kernel version in the
+    branch name if it is an ancestor of the branch commit, otherwise the
+    ancestor tag at or below that version with the fewest commits ahead.
+    Without a version hint any ancestor tag qualifies.
+
+    Parameters:
+    - distances (dict): For each compared tag, the commits the branch commit is
+      ahead of it, or None if the tag is not an ancestor.
+    - version_hint (str): The kernel version in the branch name, or None.
+
+    Returns:
+    - str: The base tag, or None if no tag qualifies.
+    """
+    if version_hint and distances.get(version_hint) is not None:
+        return version_hint
+    ancestors = {
+        tag: distance
+        for tag, distance in distances.items()
+        if distance is not None and _below_hint(tag, version_hint)
+    }
+    return min(ancestors, key=ancestors.get) if ancestors else None
+
+
+if PYTEST_AVAILABLE:
+
+    def test_ancestor_tag_distance():
+        """
+        Only a tag the commit contains qualifies as its base.
+        """
+        for compare, expected in [
+            ({"status": "ahead", "ahead_by": 42, "behind_by": 0}, 42),
+            ({"status": "identical", "ahead_by": 0, "behind_by": 0}, 0),
+            ({"status": "diverged", "ahead_by": 12, "behind_by": 345}, None),
+            ({"status": "behind", "ahead_by": 0, "behind_by": 7}, None),
+            ({"ahead_by": 3}, None),
+            (None, None),
+        ]:
+            assert _ancestor_tag_distance(compare) == expected
+
+    def test_base_tag_candidates():
+        """
+        Versions compare numerically, tags beyond the hint and tags that are not
+        kernel versions are dropped, and a two-part hint covers its patch levels.
+        """
+        assert parse_kernel_version("v6.18.55") > parse_kernel_version("v6.18.9")
+        assert parse_kernel_version("v6.19") > parse_kernel_version("v6.18.55")
+        assert parse_kernel_version("v6.1.111-rt42") == (6, 1, 111)
+        assert parse_kernel_version("v6.17-rc7") == (6, 17, 0)
+        assert parse_kernel_version("v5.10", float("inf")) == (5, 10, float("inf"))
+        assert parse_kernel_version("platform-drivers-x86-v4.5-3") is None
+        tags = ["v6.18.9", "v6.19", "v6.18.55", "latest", "v6.18.56", "v6.18-rc7"]
+        assert base_tag_candidates(tags, "v6.18.55") == ["v6.18.9", "v6.18-rc7"]
+        assert base_tag_candidates(tags) == [
+            "v6.19",
+            "v6.18.56",
+            "v6.18.55",
+            "v6.18.9",
+            "v6.18-rc7",
+        ]
+        assert base_tag_candidates(
+            ["v5.9", "v5.10", "v5.10.186", "v5.11", "v5.10.192"], "v5.10"
+        ) == ["v5.10.192", "v5.10.186", "v5.9"]
+
+    def test_select_base_tag():
+        """
+        The hint tag wins if it is an ancestor; otherwise the nearest ancestor at
+        or below the hint, never a newer or a diverged tag.
+        """
+        distances = {
+            "v6.19": 3,
+            "v6.18.56": 4,
+            "v6.18.55": 500,
+            "v6.18.54": None,
+            "v6.18.53": 60,
+            "v6.18.50": 80,
+            "v6.1.111-rt42": 70,
+        }
+
+        assert select_base_tag(distances, "v6.18.55") == "v6.18.55"
+        assert select_base_tag(distances, "v6.18.54") == "v6.18.53"
+        no_hint_tag = {**distances, "v6.18.55": None}
+        assert select_base_tag(no_hint_tag, "v6.18.55") == "v6.18.53"
+        assert select_base_tag(distances, "v6.1.111") == "v6.1.111-rt42"
+        assert select_base_tag(distances) == "v6.19"
+        assert select_base_tag(distances, "v6.0") is None
+        assert select_base_tag({"v6.18.54": None}) is None
+        series = {"v5.10": None, "v5.10.186": 50, "v5.9": 900}
+        assert select_base_tag(series, "v5.10") == "v5.10.186"
+
+
+def _check_single_tag(tag_name, commit_sha, repo_config, headers, verbose):
+    """Helper to check a single tag: its ahead_by count, None if not an ancestor."""
+    repo_owner, repo_name = repo_config
 
     api_url = (
         f"https://api.github.com/repos/{repo_owner}/{repo_name}/"
         f"compare/{tag_name}...{commit_sha}"
     )
 
-    response = requests.get(api_url, headers=headers, timeout=30)
-    if response.status_code != 200:
+    try:
+        response = requests.get(api_url, headers=headers, timeout=30)
+        if response.status_code != 200:
+            if verbose:
+                print(f"      {tag_name}: not found ({response.status_code})")
+            return None
+        compare = response.json()
+    except (requests.RequestException, ValueError) as exc:
+        if verbose:
+            print(f"      Error checking {tag_name}: {exc}")
         return None
 
-    data = response.json()
-    ahead_by = data.get("ahead_by", float("inf"))
-
+    ahead_by = _ancestor_tag_distance(compare)
     if verbose:
-        print(f"      {tag_name}: {ahead_by} commits ahead")
+        if ahead_by is None:
+            print(
+                f"      {tag_name}: not an ancestor ({compare.get('status')}), skipped"
+            )
+        else:
+            print(f"      {tag_name}: {ahead_by} commits ahead")
 
     return ahead_by
 
 
-def _find_best_tag(tags, commit_sha, repo_config, headers, verbose):
-    """Helper function to find the best tag among candidates."""
-    best_tag = None
-    smallest_ahead = float("inf")
-
-    # Check only first 20 tags to limit API calls
-    for tag in tags[:20]:
-        try:
-            ahead_by = _check_single_tag(tag, commit_sha, repo_config, headers, verbose)
-            if ahead_by is None:
-                continue
-
-            if ahead_by < smallest_ahead:
-                smallest_ahead = ahead_by
-                best_tag = tag["name"]
-
-                # Early exit if we found a good match
-                if ahead_by < 100:
-                    if verbose:
-                        print("    Found good match, stopping search early")
-                    break
-        except (requests.RequestException, KeyError, ValueError) as exc:
-            if verbose:
-                print(f"      Error checking {tag.get('name', 'unknown')}: {exc}")
-
-    return best_tag, smallest_ahead
-
-
 def find_nearest_kernel_tag(
-    commit_sha, repo_owner, repo_name, token=None, verbose=False
+    commit_sha, repo_config, token=None, verbose=False, version_hint=None
 ):
     """
-    Find the nearest Linux kernel tag (vX.Y.Z format) that is an ancestor of the given commit.
+    Find the nearest Linux kernel tag that is an ancestor of the given commit.
     This simulates 'git describe --tags' using GitHub API.
 
     Parameters:
     - commit_sha (str): The commit SHA to find the nearest tag for.
-    - repo_owner (str): The owner of the GitHub repository.
-    - repo_name (str): The name of the GitHub repository.
+    - repo_config (tuple): (repo_owner, repo_name) for the GitHub repository.
     - token (str): GitHub personal access token for authentication.
     - verbose (bool): Enable verbose output.
+    - version_hint (str): The kernel version in the branch name (e.g. v6.18.55),
+      or None. That tag is checked first and chosen if it is an ancestor; a tag
+      beyond that version never is (see select_base_tag()).
 
     Returns:
     - str: The nearest kernel tag, or None if not found.
@@ -453,25 +561,76 @@ def find_nearest_kernel_tag(
     if verbose:
         print(f"  Searching for nearest kernel tag for commit {commit_sha[:12]}...")
 
-    # Get only the first page of tags (most recent 100)
-    tags = _fetch_kernel_tags(repo_owner, repo_name, headers, verbose)
-    if not tags:
+    distances = {}
+    if version_hint:
+        distances[version_hint] = _check_single_tag(
+            version_hint, commit_sha, repo_config, headers, verbose
+        )
+    if distances.get(version_hint) is None:
+        candidates = base_tag_candidates(
+            _fetch_kernel_tags(repo_config, headers, verbose, version_hint),
+            version_hint,
+        )
         if verbose:
-            print("    No kernel tags found")
-        return None
+            print(f"    Checking {len(candidates[:20])} candidate kernel tags...")
+        # Check only first 20 tags to limit API calls
+        for tag in candidates[:20]:
+            distances[tag] = _check_single_tag(
+                tag, commit_sha, repo_config, headers, verbose
+            )
+            if distances[tag] is not None and distances[tag] < 100:
+                if verbose:
+                    print("    Found good match, stopping search early")
+                break
 
-    if verbose:
-        print(f"    Checking {len(tags)} recent kernel tags...")
-
-    # Find the best tag among candidates
-    best_tag, smallest_ahead = _find_best_tag(
-        tags, commit_sha, (repo_owner, repo_name), headers, verbose
-    )
+    best_tag = select_base_tag(distances, version_hint)
 
     if best_tag and verbose:
-        print(f"    Found nearest tag: {best_tag} ({smallest_ahead} commits ahead)")
+        print(
+            f"    Found nearest tag: {best_tag} ({distances[best_tag]} commits ahead)"
+        )
 
     return best_tag
+
+
+if PYTEST_AVAILABLE:
+
+    def test_find_nearest_kernel_tag(monkeypatch):
+        """
+        The hint tag is checked first and, if it is an ancestor, no tag list is
+        fetched; otherwise the candidates are compared newest first until one is
+        less than 100 commits behind the commit.
+        """
+        compared = []
+
+        def check(tag_name, *_):
+            compared.append(tag_name)
+            return {"v6.18.46": 13, "v6.18.44": 150, "v6.18.9": 90}.get(tag_name)
+
+        def tags(*_):
+            return ["v6.19", "v6.18.45", "v6.18.44", "v6.18.9", "v6.18.8", "latest"]
+
+        monkeypatch.setitem(globals(), "_check_single_tag", check)
+        monkeypatch.setitem(globals(), "_fetch_kernel_tags", tags)
+
+        assert find_nearest_kernel_tag("c", ("o", "r"), version_hint="v6.18.46") == (
+            "v6.18.46"
+        )
+        assert compared == ["v6.18.46"]
+
+        compared.clear()
+        assert find_nearest_kernel_tag("c", ("o", "r"), version_hint="v6.18.47") == (
+            "v6.18.9"
+        )
+        assert compared == ["v6.18.47", "v6.18.45", "v6.18.44", "v6.18.9"]
+
+        compared.clear()
+        assert find_nearest_kernel_tag("c", ("o", "r")) == "v6.18.9"
+        assert compared == ["v6.19", "v6.18.45", "v6.18.44", "v6.18.9"]
+
+        compared.clear()
+        assert find_nearest_kernel_tag("c", ("o", "r"), version_hint="v6.0") is None
+        assert compared == ["v6.0"]
 
 
 def find_merge_base_for_next_branch(
@@ -498,10 +657,7 @@ def find_merge_base_for_next_branch(
     next_commit = all_branches[branch_name]
 
     # Find the nearest kernel tag using GitHub API
-    repo_owner, repo_name = repo_config
-    nearest_tag = find_nearest_kernel_tag(
-        next_commit, repo_owner, repo_name, token, verbose
-    )
+    nearest_tag = find_nearest_kernel_tag(next_commit, repo_config, token, verbose)
 
     if nearest_tag:
         if verbose:
@@ -525,7 +681,7 @@ def _validate_old_commit(repo_owner, repo_name, old_commit, headers):
         return
 
     # If not found as commit, check if it's a tag (for new branches)
-    if re.match(r"^v\d+\.\d+(\.\d+)?$", old_commit):
+    if parse_kernel_version(old_commit):
         tag_url = (
             f"https://api.github.com/repos/{repo_owner}/{repo_name}"
             f"/git/refs/tags/{old_commit}"
@@ -687,19 +843,10 @@ def _process_versioned_branch(branch, new_commit, token, verbose):
 
     if verbose:
         print(f"    New versioned branch: {branch}, commit: {new_commit}")
-        print(f"    Checking if tag {tag} exists...")
+        print(f"    Searching for tag {tag} or the nearest tag below it...")
 
-    # Check if the tag exists in the repository
-    if check_tag_exists(tag, "lf-edge", "eve-kernel", token, verbose):
-        if verbose:
-            print(f"    Using tag {tag} as starting point")
-        return (tag, new_commit)
-
-    # Tag doesn't exist, try to find the nearest tag
-    if verbose:
-        print(f"    Tag {tag} not found, searching for nearest tag...")
     nearest_tag = find_nearest_kernel_tag(
-        new_commit, "lf-edge", "eve-kernel", token, verbose
+        new_commit, ("lf-edge", "eve-kernel"), token, verbose, version_hint=tag
     )
     if nearest_tag:
         if verbose:
