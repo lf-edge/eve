@@ -93,9 +93,6 @@ import (
 //   - TestHaltAfterImmediateDeactivate -- an app stopped in the same second
 //     it reports RUNNING still halts promptly; regression test for the
 //     graceful budget an unset virtualization mode used to be granted.
-//   - TestHaltUnresponsiveGuest -- a guest which never services the ACPI
-//     poweroff request still halts promptly, because the stop escalates to
-//     terminating the domain. Pulls its image from dl-cdn.alpinelinux.org.
 //   - TestWorkerPoolSaturation -- with volumemgr's worker pool shrunk to a
 //     single worker, refused submissions must be reported as deferral
 //     warnings and retried, not lost: all apps reach RUNNING and the
@@ -161,9 +158,6 @@ func TestAppsSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestHaltAfterImmediateDeactivate,
-		},
-		evetest.TestCase{
-			Test: TestHaltUnresponsiveGuest,
 		},
 		evetest.TestCase{
 			Test: TestWorkerPoolSaturation,

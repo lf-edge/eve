@@ -604,7 +604,7 @@ separate questions:
 
 | | setting | values |
 |---|---|---|
-| **which build** | `EVETEST_EVE_VERSION` | a version (`16.0.0-lts`), or unset |
+| **which build** | `EVETEST_EVE_VERSION` | a version (`14.5.0-lts`), or unset |
 | **how it is delivered** | `EVETEST_EVE_LIVE_IMAGE` | `true` = the artifacts `make live` wrote; unset/`false` = an EVE container image |
 
 A local build is not a transport: `make eve` produces a local *container* image, and the
@@ -660,12 +660,12 @@ axes make both useful shapes fall out without any special-casing:
 
 ```bash
 # A released version upgraded to another released version
-EVETEST_INITIAL_EVE_VERSION=16.0.0-lts EVETEST_EVE_VERSION=16.1.0-lts \
+EVETEST_INITIAL_EVE_VERSION=14.5.0-lts EVETEST_EVE_VERSION=14.5.1-lts \
     make evetest NAME=TestEVEUpgrade
 
 # A released version upgraded to your working tree
 make live
-EVETEST_INITIAL_EVE_VERSION=16.0.0-lts EVETEST_EVE_LIVE_IMAGE=true \
+EVETEST_INITIAL_EVE_VERSION=14.5.0-lts EVETEST_EVE_LIVE_IMAGE=true \
     make evetest NAME=TestEVEUpgrade
 ```
 

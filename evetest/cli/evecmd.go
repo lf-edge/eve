@@ -1040,25 +1040,3 @@ func runConsoleRaw(grpcPipe utils.GrpcClientPipe[
 		"EVE console", grpcPipe, stdioPipe)
 	return nil
 }
-
-// extractDeviceFlag removes -d/--devicename flags from args (added by cobra's
-// parent persistent-flag passthrough when DisableFlagParsing is true) and
-// returns the device name value and the remaining args.
-func extractDeviceFlag(args []string) (devName string, remaining []string) {
-	for i := 0; i < len(args); i++ {
-		switch {
-		case (args[i] == "-d" || args[i] == "--devicename") && i+1 < len(args):
-			if devName == "" {
-				devName = args[i+1]
-			}
-			i++
-		case strings.HasPrefix(args[i], "--devicename="):
-			if devName == "" {
-				devName = strings.TrimPrefix(args[i], "--devicename=")
-			}
-		default:
-			remaining = append(remaining, args[i])
-		}
-	}
-	return devName, remaining
-}

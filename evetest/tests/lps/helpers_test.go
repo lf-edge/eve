@@ -163,15 +163,6 @@ func getLPSDevInfo(t Gomega, device *evetest.EdgeDevice, appUUID uuid.UUID) *pro
 	return &info
 }
 
-// getLPSNetworkInfo retrieves and parses the network info that EVE posted to the LPS.
-func getLPSNetworkInfo(t Gomega, device *evetest.EdgeDevice,
-	appUUID uuid.UUID) *profile.NetworkInfo {
-	output := runInLPSApp(t, device, appUUID, "curl -sS "+lpsManageURL+"/network")
-	var netInfo profile.NetworkInfo
-	t.Expect(protojson.Unmarshal([]byte(output), &netInfo)).To(Succeed())
-	return &netInfo
-}
-
 // putLPSProfile sets the local profile the LPS reports back to EVE
 // (PUT /manage/v1/profile).
 func putLPSProfile(t Gomega, device *evetest.EdgeDevice, appUUID uuid.UUID, profileName string) {
@@ -209,16 +200,6 @@ func putLPSDevCommand(t Gomega, device *evetest.EdgeDevice, appUUID uuid.UUID,
 		`curl -sS -X PUT -d '%s' `+lpsManageDevCommandURL, body))
 }
 
-// putLPSNetworkConfig sets the local network config the LPS reports back to
-// EVE (PUT /manage/v1/network-config). portsJSON is the raw JSON array for
-// the "ports" field (e.g. "[]" to revert to the controller-supplied config).
-func putLPSNetworkConfig(t Gomega, device *evetest.EdgeDevice, appUUID uuid.UUID, portsJSON string) {
-	body := fmt.Sprintf(`{"ports":%s}`, portsJSON)
-	runInLPSApp(t, device, appUUID, fmt.Sprintf(
-		`curl -sS -X PUT -H 'Content-Type: application/json' -d '%s' `+lpsManageNetConfigURL,
-		body))
-}
-
 // appInfoByName returns the LocalAppInfo entry matching the given
 // displayname, or nil if the LPS has no entry for it yet.
 func appInfoByName(list *profile.LocalAppInfoList, name string) *profile.LocalAppInfo {
@@ -227,21 +208,5 @@ func appInfoByName(list *profile.LocalAppInfoList, name string) *profile.LocalAp
 			return info
 		}
 	}
-	return nil
-}
-
-// portStatusByLabel returns the NetworkPortStatus entry matching the given
-// logical label. Fails the assertion if no such entry is present in the
-// NetworkInfo published by EVE.
-func portStatusByLabel(t Gomega, netInfo *profile.NetworkInfo,
-	label string) *profile.NetworkPortStatus {
-	for _, ps := range netInfo.PortStatus {
-		if ps.LogicalLabel == label {
-			return ps
-		}
-	}
-	t.Expect(netInfo.PortStatus).To(ContainElement(
-		HaveField("LogicalLabel", label)),
-		"NetworkInfo.PortStatus should include "+label)
 	return nil
 }

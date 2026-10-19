@@ -3154,13 +3154,13 @@ func (d *EdgeDevice) WaitUntilHasControllerCert(
 				ctrlCert.Type, hex.EncodeToString(ctrlCert.CertHash)))
 		}
 		if time.Now().After(deadline) {
-			// Naming the path matters: the topic only became ephemeral in EVE
-			// 16.9.3, so on an older build the certificates are published under
+			// Naming the path matters: the topic is ephemeral only on newer
+			// builds, so on an older build the certificates are published under
 			// /persist/status and an empty list here does not mean the device
 			// holds none.
 			d.th.t.Fatalf("Device %q did not publish the expected controller "+
 				"certificate of type %v within %v; certificates found under "+
-				"/run/zedagent/ControllerCert (EVE >= 16.9.3): [%s]; "+
+				"/run/zedagent/ControllerCert: [%s]; "+
 				"last read error: %v",
 				d.devName, certType, timeout, strings.Join(published, ", "), readErr)
 		}
