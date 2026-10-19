@@ -230,7 +230,8 @@ func TestStampTar(t *testing.T) {
 
 // scanned mimics the packages and files of two scanned images: one root with
 // the image's directory in the tar, one at the top of the rootfs, and the
-// package kinds whose supplier the scanner leaves as NOASSERTION.
+// package kinds whose supplier the scanner leaves as NOASSERTION, among them
+// a copy of a Go module without its purl.
 func scanned() []byte {
 	pkg := func(id, name, version, supplier, description, purl string) string {
 		return `{"name":"` + name + `","SPDXID":"` + id + `","versionInfo":"` + version + `","supplier":"` + supplier +
@@ -244,7 +245,9 @@ func scanned() []byte {
 		`{"name":"ssl_client","SPDXID":"SPDXRef-Package-apk-ssl-client-1","versionInfo":"1.37.0-r20","supplier":"NOASSERTION"},` +
 		pkg("SPDXRef-Package-apk-musl-1", "musl", "1.2.5-r10", "Person: Natanael Copa (ncopa@alpinelinux.org)", "", "pkg:apk/busybox/musl@1.2.5-r10") + `,` +
 		pkg("SPDXRef-Package-go-module-pillar-1", "github.com/lf-edge/eve/pkg/pillar", "v0.0.0", "NOASSERTION", "", "pkg:golang/github.com/lf-edge/eve/pkg/pillar@v0.0.0") + `,` +
-		pkg("SPDXRef-Package-go-module-errors-1", "github.com/pkg/errors", "v0.9.1", "NOASSERTION", "", "pkg:golang/github.com/pkg/errors@v0.9.1") + `],` +
+		pkg("SPDXRef-Package-go-module-sys-1", "golang.org/x/sys", "v0.30.0", "NOASSERTION", "", "pkg:golang/golang.org/x/sys@v0.30.0") + `,` +
+		`{"name":"golang.org/x/sys","SPDXID":"SPDXRef-Package-go-module-sys-1","versionInfo":"v0.30.0","supplier":"NOASSERTION"},` +
+		pkg("SPDXRef-Package-go-module-unmapped-1", "example.com/unmapped", "v0.9.1", "NOASSERTION", "", "pkg:golang/example.com/unmapped@v0.9.1") + `],` +
 		`"files":[{"fileName":"bin/busybox","SPDXID":"SPDXRef-File-bin-busybox-1","checksums":[{"algorithm":"SHA256","checksumValue":"9d75f0d7c398df565d7ac04c6819b62d6d8f9560f5eb4672596ecd8f7e96ae91"}]},` +
 		`{"fileName":"etc/gone","SPDXID":"SPDXRef-File-etc-gone-1","checksums":[{"algorithm":"SHA256","checksumValue":"00"}]},` +
 		`{"fileName":"etc/hosts","SPDXID":"SPDXRef-File-etc-hosts-1","checksums":[{"algorithm":"SHA256","checksumValue":"11"}]}],` +
@@ -297,8 +300,10 @@ func TestFill(t *testing.T) {
 			"pkg:apk/busybox/musl@1.2.5-r10"},
 		"SPDXRef-Package-go-module-pillar-1": {"github.com/lf-edge/eve/pkg/pillar", "v0.0.0", lfEdge,
 			"pkg:golang/github.com/lf-edge/eve/pkg/pillar@v0.0.0"},
-		"SPDXRef-Package-go-module-errors-1": {"github.com/pkg/errors", "v0.9.1", "NOASSERTION",
-			"pkg:golang/github.com/pkg/errors@v0.9.1"},
+		"SPDXRef-Package-go-module-sys-1": {"golang.org/x/sys", "v0.30.0", "Organization: The Go Authors",
+			"pkg:golang/golang.org/x/sys@v0.30.0"},
+		"SPDXRef-Package-go-module-unmapped-1": {"example.com/unmapped", "v0.9.1", "NOASSERTION",
+			"pkg:golang/example.com/unmapped@v0.9.1"},
 	} {
 		if got[id] != w {
 			t.Errorf("%s: got %+v, want %+v", id, got[id], w)
@@ -481,5 +486,40 @@ func TestSourcePURL(t *testing.T) {
 		if refs := withPURL(tc.p.ExternalRefs, got); tc.refs != nil && !reflect.DeepEqual(refs, tc.refs) {
 			t.Errorf("withPURL = %+v, want %+v", refs, tc.refs)
 		}
+	}
+}
+
+func TestSuppliers(t *testing.T) {
+	m, err := parseSuppliers("# comment\n\npkg:golang/github.com/sirupsen\tPerson: Simon Eskildsen\n" +
+		"pkg:golang/k8s.io\tOrganization: Kubernetes\npkg:golang/k8s.io/klog\tOrganization: klog\n" +
+		"pkg:cargo/serde\tOrganization: serde-rs\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for purl, want := range map[string]string{
+		"pkg:golang/github.com/sirupsen/logrus@v1.9.3":  "Person: Simon Eskildsen",
+		"pkg:golang/k8s.io/api@v0.31.0":                 "Organization: Kubernetes",
+		"pkg:golang/k8s.io/klog/v2@v2.130.1":            "Organization: klog",
+		"pkg:cargo/serde@1.0.219":                       "Organization: serde-rs",
+		"pkg:cargo/serde_json@1.0.140":                  "",
+		"pkg:golang/github.com/sirupsenx/logrus@v1.0.0": "",
+		"pkg:golang/k8s.io#sub":                         "Organization: Kubernetes",
+	} {
+		if got := mappedSupplier(m, purl); got != want {
+			t.Errorf("mappedSupplier(%q) = %q, want %q", purl, got, want)
+		}
+	}
+	for _, bad := range []string{
+		"pkg:cargo/serde Organization: serde-rs\n",
+		"pkg:cargo/serde@1.0\tOrganization: serde-rs\n",
+		"pkg:cargo/serde\tserde-rs\n",
+		"pkg:cargo/serde\tPerson: a\npkg:cargo/serde\tPerson: b\n",
+	} {
+		if _, err := parseSuppliers(bad); err == nil {
+			t.Errorf("parseSuppliers(%q) succeeded", bad)
+		}
+	}
+	if len(suppliers) == 0 {
+		t.Error("suppliers.txt has no entries")
 	}
 }

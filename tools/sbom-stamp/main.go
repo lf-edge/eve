@@ -223,13 +223,14 @@ func Stamp(in []byte, o Options, c Content) ([]byte, Stats, error) {
 		return nil, st, err
 	}
 
+	// Suppliers are looked up by purl, so fill the purls first.
+	if st.FilledPURLs, err = fillPURLs(pkgs); err != nil {
+		return nil, st, err
+	}
 	for i := range pkgs {
 		if pkgs[i], err = fillPackage(pkgs[i], o, c); err != nil {
 			return nil, st, err
 		}
-	}
-	if st.FilledPURLs, err = fillPURLs(pkgs); err != nil {
-		return nil, st, err
 	}
 	kept := files[:0]
 	dropped := map[string]bool{}
