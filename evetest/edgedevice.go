@@ -3199,6 +3199,37 @@ func (d *EdgeDevice) WatchClusterInfo() (
 	return ch, d.trackWatcherUnsub(unsub)
 }
 
+// WatchClusterNodeInfo subscribes to this device's reports of its own
+// connection to its cluster and returns a buffered channel that receives each
+// new ZInfoClusterNode as it arrives. Unlike ZInfoKubeCluster, which only the
+// elected leader sends and only while the Kubernetes API is up, every cluster
+// member sends this, also when its cluster has lost quorum.
+// Call the returned close function to stop watching and close the channel.
+func (d *EdgeDevice) WatchClusterNodeInfo() (
+	updates <-chan *eveinfo.ZInfoClusterNode, stop func()) {
+	devUUID := d.getDevUUID()
+	rawCh := make(chan *eveinfo.ZInfoMsg, watchChannelBufSize)
+	unsub, err := d.th.adamClient.SubscribeToDeviceInfoMsgs(devUUID,
+		func(msg *eveinfo.ZInfoMsg) bool {
+			return msg.GetZtype() == eveinfo.ZInfoTypes_ZiClusterNode &&
+				msg.GetClusterNode() != nil
+		},
+		rawCh,
+	)
+	if err != nil {
+		d.th.t.Fatalf("WatchClusterNodeInfo: failed to subscribe to info messages "+
+			"for device %q: %v", d.devName, err)
+	}
+	ch := make(chan *eveinfo.ZInfoClusterNode, watchChannelBufSize)
+	go func() {
+		defer close(ch)
+		for msg := range rawCh {
+			ch <- msg.GetClusterNode()
+		}
+	}()
+	return ch, d.trackWatcherUnsub(unsub)
+}
+
 // WaitForClusterNodeIsReady waits until this device's own ZInfoKubeCluster
 // report shows this device as a Ready node with healthy cluster storage.
 //
