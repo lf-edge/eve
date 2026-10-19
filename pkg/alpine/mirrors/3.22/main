@@ -108,6 +108,7 @@ alpine-baselayout
 alpine-baselayout-data
 alpine-conf
 alpine-keys
+alpine-release
 apk-tools
 argon2-libs
 argp-standalone

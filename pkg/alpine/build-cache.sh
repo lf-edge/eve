@@ -42,4 +42,4 @@ cp -r /etc/apk/keys "$ROOTFS/etc/apk"
 cp ~/.abuild/*.rsa.pub "$ROOTFS/etc/apk/keys/"
 cp ~/.abuild/*.rsa.pub /etc/apk/keys/
 echo "$CACHE/.." > "$ROOTFS/etc/apk/repositories"
-apk add -X "$CACHE/.." --no-cache --initdb -p "$ROOTFS" busybox
+apk add -X "$CACHE/.." --no-cache --initdb -p "$ROOTFS" busybox alpine-release
