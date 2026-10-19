@@ -114,6 +114,7 @@ It also fills in what the scanner leaves out, using the rest of the rootfs tar:
 * every file gets the SHA1 checksum SPDX 2.3 requires, computed from the tar
 * a package that the scanner left without a purl gets the purl of the other copies of it (same SPDX ID, name and version) when they all agree on one
 * packages the scanner left with a `NOASSERTION` supplier get `Organization: LF Edge` if EVE builds them (packages recorded by `pkg/alpine/register-sbom-pkg.sh`, and `github.com/lf-edge` Go modules) and `Organization: Alpine Linux` if they are Alpine `-r<N>` apk packages
+* packages recorded by `register-sbom-pkg.sh` get a `pkg:generic/<name>@<version>` purl in place of the `pkg:apk` one the scanner gives them, since EVE builds them from source
 
 To generate the sources, run `make collected_sources`. This does the following:
 

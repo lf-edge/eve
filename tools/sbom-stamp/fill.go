@@ -5,6 +5,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"regexp"
 	"strings"
 )
@@ -73,6 +74,7 @@ func imageSupplier(repo string) string {
 
 type pkgInfo struct {
 	SPDXID          string        `json:"SPDXID"`
+	Name            string        `json:"name"`
 	VersionInfo     string        `json:"versionInfo"`
 	Supplier        string        `json:"supplier"`
 	Description     string        `json:"description"`
@@ -87,6 +89,53 @@ func (p pkgInfo) purl() string {
 		}
 	}
 	return ""
+}
+
+// purlEscape percent-encodes s as a purl name or version: everything but
+// letters, digits, ".-_~" and ":" (purl-spec clause 5.4).
+func purlEscape(s string) string {
+	var b strings.Builder
+	for _, c := range []byte(s) {
+		switch {
+		case 'a' <= c && c <= 'z', 'A' <= c && c <= 'Z', '0' <= c && c <= '9',
+			strings.IndexByte(".-_~:", c) >= 0:
+			b.WriteByte(c)
+		default:
+			fmt.Fprintf(&b, "%%%02X", c)
+		}
+	}
+	return b.String()
+}
+
+// sourcePURL is the purl of a package EVE builds from source. The scanner
+// labels it pkg:apk because register-sbom-pkg.sh records it in the apk
+// database, which would match it against the distro's package of the same
+// name. purl-spec defines the generic type for upstream-from-distro packages.
+func sourcePURL(p pkgInfo) string {
+	purl := "pkg:generic/" + purlEscape(p.Name)
+	if p.VersionInfo != "" {
+		purl += "@" + purlEscape(p.VersionInfo)
+	}
+	return purl
+}
+
+// withPURL replaces the purl in refs, or adds one, keeping the other refs.
+func withPURL(refs []externalRef, purl string) []externalRef {
+	out := []externalRef{}
+	added := false
+	for _, r := range refs {
+		if r.ReferenceType == "purl" {
+			if added {
+				continue
+			}
+			r.ReferenceLocator, added = purl, true
+		}
+		out = append(out, r)
+	}
+	if !added {
+		out = append(out, externalRef{"PACKAGE-MANAGER", "purl", purl})
+	}
+	return out
 }
 
 // knownSupplier names the supplier of a package the scanner left without one,
@@ -151,6 +200,11 @@ func fillPackage(raw json.RawMessage, o Options, c Content) (json.RawMessage, er
 			set("supplier", s, "versionInfo")
 		}
 	}
+	if strings.HasSuffix(p.Description, builtFromSource) {
+		if purl := sourcePURL(p); purl != p.purl() {
+			set("externalRefs", withPURL(p.ExternalRefs, purl), "")
+		}
+	}
 	if err != nil || !changed {
 		return raw, err
 	}
@@ -164,12 +218,9 @@ func fillPackage(raw json.RawMessage, o Options, c Content) (json.RawMessage, er
 func fillPURLs(pkgs []json.RawMessage) (int, error) {
 	type key struct{ id, name, version string }
 	keyOf := func(raw json.RawMessage) (key, pkgInfo, error) {
-		var p struct {
-			pkgInfo
-			Name string `json:"name"`
-		}
+		var p pkgInfo
 		err := json.Unmarshal(raw, &p)
-		return key{p.SPDXID, p.Name, p.VersionInfo}, p.pkgInfo, err
+		return key{p.SPDXID, p.Name, p.VersionInfo}, p, err
 	}
 	purls := map[key]map[string]bool{}
 	for _, raw := range pkgs {
