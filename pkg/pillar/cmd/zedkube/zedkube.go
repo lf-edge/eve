@@ -176,6 +176,13 @@ type zedkube struct {
 
 	// Block 'uncordon' after running it once at boot-up
 	onBootUncordonCheckComplete bool
+	// kubeAlive caches the last apiserver liveness probe, with the time it
+	// was taken, so the per-tick collectors can be skipped while the
+	// apiserver cannot serve rather than each one discovering it again.
+	kubeAlive        bool
+	kubeAliveChecked time.Time
+	kubeAliveLogged  bool
+
 	// deschedulerOnBootStarted ensures the watcher goroutine is launched at most once per boot.
 	deschedulerOnBootStarted bool
 	receivedENCC             bool
@@ -917,8 +924,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		// collectAppLogs() returns early on stream timeout so this branch
 		// is bounded by a single kubeAPITimeout, not N*kubeAPITimeout.
 		case <-appLogTimer.C:
-			zedkubeCtx.collectAppLogs()
-			zedkubeWdUpdate()
+			if zedkubeCtx.kubernetesAlive() {
+				zedkubeCtx.collectAppLogs()
+				zedkubeWdUpdate()
+			}
 			appLogTimer = time.NewTimer(logcollectInterval * time.Second)
 
 		// Timer 2: failover detection and per-app cluster status.
@@ -927,34 +936,42 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		// needs its own because a recovery attempt adds the supervisor-socket
 		// handshake on top of its pod LIST.
 		case <-appStatusTimer.C:
-			zedkubeCtx.checkAppsFailover(zedkubeWdUpdate)
-			zedkubeCtx.checkStuckPendingVMI()
-			zedkubeWdUpdate()
-			zedkubeCtx.checkStuckVolumeMount()
-			zedkubeWdUpdate()
-			zedkubeCtx.checkAppsStatus()
-			zedkubeCtx.reconcileVMIRSAffinity(zedkubeWdUpdate)
-			zedkubeWdUpdate()
-			zedkubeCtx.publishNodeHealth()
+			if zedkubeCtx.kubernetesAlive() {
+				zedkubeCtx.checkAppsFailover(zedkubeWdUpdate)
+				zedkubeCtx.checkStuckPendingVMI()
+				zedkubeWdUpdate()
+				zedkubeCtx.checkStuckVolumeMount()
+				zedkubeWdUpdate()
+				zedkubeCtx.checkAppsStatus()
+				zedkubeCtx.reconcileVMIRSAffinity(zedkubeWdUpdate)
+				zedkubeWdUpdate()
+				zedkubeCtx.publishNodeHealth()
+			}
 			appStatusTimer = time.NewTimer(logcollectInterval * time.Second)
 
 		// Timer 3: cluster-wide stats and service health (leader-only, less frequent).
 		// zedkubeWdUpdate between the two calls resets the watchdog budget.
 		case <-kubeStatsTimer.C:
-			zedkubeCtx.collectKubeStats()
-			zedkubeWdUpdate()
-			zedkubeCtx.collectKubeSvcs()
-			// On the leader->true edge, ensure a NAD exists for every known NI
-			// (handlers only fire for NIs that change after the lease is won).
-			isLeader := zedkubeCtx.isStatsLeader()
-			if isLeader && !nadWasLeader {
-				zedkubeCtx.reconcileAllNINADs()
+			if zedkubeCtx.kubernetesAlive() {
+				zedkubeCtx.collectKubeStats()
+				zedkubeWdUpdate()
+				zedkubeCtx.collectKubeSvcs()
+				// On the leader->true edge, ensure a NAD exists for every known NI
+				// (handlers only fire for NIs that change after the lease is won).
+				isLeader := zedkubeCtx.isStatsLeader()
+				if isLeader && !nadWasLeader {
+					zedkubeCtx.reconcileAllNINADs()
+				}
+				nadWasLeader = isLeader
 			}
-			nadWasLeader = isLeader
 			kubeStatsTimer = time.NewTimer(kubeStatsInterval * time.Second)
 
 		// Timer 4: cluster-wide component config application
 		case <-kubeCfgTimer.C:
+			if !zedkubeCtx.kubernetesAlive() {
+				kubeCfgTimer = time.NewTimer(kubeCfgInterval * time.Second)
+				break
+			}
 			zedkubeCtx.applyLonghornDiskReserved()
 			zedkubeCtx.applyLonghornRecurringSnapshot()
 			// Safety net for the SR-IOV device-plugin ConfigMap.  The primary
@@ -988,6 +1005,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		// event-driven path and from the boot race where ENCC arrives
 		// before this node wins the kube-stats lease.
 		case <-pruneStaleMasterTimer.C:
+			if !zedkubeCtx.kubernetesAlive() {
+				pruneStaleMasterTimer = time.NewTimer(pruneStaleMasterInterval * time.Second)
+				break
+			}
 			zedkubeCtx.pruneStaleMasterNodes(&zedkubeCtx.clusterConfig)
 			pruneStaleMasterTimer = time.NewTimer(pruneStaleMasterInterval * time.Second)
 
@@ -1514,4 +1535,37 @@ func nodeOnBootHealthStatusWatcher(z *zedkube) {
 			log.Errorf("zedkube Unable to uncordon local node: %v", err)
 		}
 	}
+}
+
+// kubeAlivePeriod is how long a liveness verdict is reused. A tick that
+// skips its work is cheap to repeat, so this only has to keep the probe
+// off the hot path.
+const kubeAlivePeriod = 10 * time.Second
+
+// kubernetesAlive reports whether the local apiserver can serve, caching
+// the verdict for kubeAlivePeriod.
+//
+// The collectors on the periodic timers all talk to Kubernetes, and when
+// it is down they do not fail quickly: client-go retries, and the calls
+// share the select loop with the EdgeNodeClusterConfig subscription. A
+// quorum recovery lands on that subscription, and it is asked for exactly
+// when Kubernetes is down, so a stalled loop delays the one operation
+// that would bring it back. Skipping work that cannot succeed keeps the
+// loop responsive to config.
+func (z *zedkube) kubernetesAlive() bool {
+	if time.Since(z.kubeAliveChecked) < kubeAlivePeriod {
+		return z.kubeAlive
+	}
+	z.kubeAlive = kubeapi.APIServerReachable()
+	z.kubeAliveChecked = time.Now()
+	if z.kubeAlive != z.kubeAliveLogged {
+		if z.kubeAlive {
+			log.Noticef("kubernetesAlive: apiserver is serving again")
+		} else {
+			log.Noticef("kubernetesAlive: apiserver is not serving, " +
+				"skipping the periodic Kubernetes collectors")
+		}
+		z.kubeAliveLogged = z.kubeAlive
+	}
+	return z.kubeAlive
 }
