@@ -82,6 +82,12 @@ jobs:
         run: |
           df -h && free -m
           docker system df -v
+      - name: Clean
+        if: ${{ always() }}
+        run: |
+          make clean
+          docker system prune -f -a --volumes
+          rm -rf ~/.linuxkit
 
   pkgs-arm64-generic:
     needs: changes
@@ -125,6 +131,12 @@ jobs:
         run: |
           df -h && free -m
           docker system df -v
+      - name: Clean
+        if: ${{ always() }}
+        run: |
+          make clean
+          docker system prune -f -a --volumes
+          rm -rf ~/.linuxkit
 
   # ════════════════════════════════════════════════════════════════════════
   # Stage 2: Build EVE images using reusable workflow.

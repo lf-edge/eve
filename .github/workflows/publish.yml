@@ -47,6 +47,12 @@ jobs:
       contents: read
       id-token: write
     steps:
+      - name: Clear runner state
+        run: |
+          rm -rf ~/.linuxkit
+          docker rm -f linuxkit-builder || :
+          docker volume rm -f linuxkit-builder-state
+          docker system prune --all --force --volumes
       - name: Starting Report
         run: |
           echo Git Ref: ${{ github.ref }}
@@ -136,6 +142,12 @@ jobs:
       id-token: write
     timeout-minutes: 1440
     steps:
+      - name: Clear runner state
+        run: |
+          rm -rf ~/.linuxkit
+          docker rm -f linuxkit-builder || :
+          docker volume rm -f linuxkit-builder-state
+          docker system prune --all --force --volumes
       - name: Starting Report
         run: |
           echo Git Ref: ${{ github.ref }}
@@ -287,6 +299,12 @@ jobs:
             os: zededa-ubuntu-2204
 
     steps:
+      - name: Clear runner state
+        run: |
+          rm -rf ~/.linuxkit
+          docker rm -f linuxkit-builder || :
+          docker volume rm -f linuxkit-builder-state
+          docker system prune --all --force --volumes
       # run-make fetches tags from github.com, so the GITHUB_TOKEN must stay
       # in .git/config; anonymous git is subject to GitHub's rate limits.
       - name: Checkout
@@ -408,6 +426,12 @@ jobs:
       contents: read
       id-token: write
     steps:
+      - name: Clear runner state
+        run: |
+          rm -rf ~/.linuxkit
+          docker rm -f linuxkit-builder || :
+          docker volume rm -f linuxkit-builder-state
+          docker system prune --all --force --volumes
       # run-make fetches tags from github.com, so the GITHUB_TOKEN must stay
       # in .git/config; anonymous git is subject to GitHub's rate limits.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2 # zizmor: ignore[artipacked]
@@ -436,6 +460,12 @@ jobs:
         run: |
           cat "$RUNNER_TEMP"/pkg-tags.d/* | sort -u > "$RUNNER_TEMP/pkg-tags"
           ./tools/eve-cosign.sh sign-indexes "$RUNNER_TEMP/pkg-tags"
+      - name: Clean
+        if: ${{ always() }}
+        run: |
+          make clean
+          docker system prune -f -a --volumes
+          rm -rf ~/.linuxkit
 
   coverage:
     if: github.event.repository.full_name == 'lf-edge/eve'
