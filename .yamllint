@@ -5,3 +5,6 @@ rules:
     line-length:
         max: 300
         level: warning
+
+ignore:
+  - evetest/deploy/proxmox/broker-cloudinit.yaml

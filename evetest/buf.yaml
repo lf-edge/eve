@@ -1,0 +1,38 @@
+# Copyright (c) 2026 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+version: v2
+deps:
+  - buf.build/envoyproxy/protoc-gen-validate
+modules:
+  - path: grpcapi/proto
+  - path: grpcapi/eve-api/proto
+    lint:
+      use: []
+    breaking:
+      use: []
+lint:
+  use:
+    - STANDARD
+  # The evetest protos follow the EVE-API naming conventions, so we disable the
+  # same opinionated rules that lf-edge/eve-api disables in its own buf.yaml.
+  except:
+    - PACKAGE_DIRECTORY_MATCH
+    - PACKAGE_VERSION_SUFFIX
+    - FIELD_LOWER_SNAKE_CASE
+    - ENUM_VALUE_UPPER_SNAKE_CASE
+    - ENUM_PASCAL_CASE
+    - MESSAGE_PASCAL_CASE
+    - ONEOF_LOWER_SNAKE_CASE
+    - ENUM_ZERO_VALUE_SUFFIX
+    - ENUM_VALUE_PREFIX
+    - ENUM_NO_ALLOW_ALIAS
+    # The evetest gRPC services reuse request/response types and don't follow
+    # buf's opinionated service/RPC naming, so disable those rules too.
+    - SERVICE_SUFFIX
+    - RPC_REQUEST_STANDARD_NAME
+    - RPC_RESPONSE_STANDARD_NAME
+    - RPC_REQUEST_RESPONSE_UNIQUE
+breaking:
+  use:
+    - FILE
