@@ -491,12 +491,11 @@ ifeq ($(HV),k)
 else
         #kube container will not be in non-k builds
         PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|ubuntu$$|sources|kube|external-boot-image$$$(PKGS_PLATFORM_EXCLUDE)")
-        # nvidia platform requires more space; the glibc/Ubuntu userland makes the
-        # kvm rootfs about 28 MB larger than the musl/Alpine one was (282 MB), i.e.
-        # it no longer fits the 300 MB rootfs partitions of devices installed before
-        # EVE 10.2.0: those cannot update to this image (see docs/UBUNTU.md)
+        # nvidia platform requires more space. 295 MB (master had 290) keeps the
+        # Ubuntu kvm rootfs, 291 MB with its binaries stripped, under the 300 MB
+        # rootfs partitions of devices installed before EVE 10.2.0 (docs/UBUNTU.md).
         ifeq (, $(findstring nvidia,$(PLATFORM)))
-            ROOTFS_MAXSIZE_MB=330
+            ROOTFS_MAXSIZE_MB=295
         else
             ROOTFS_MAXSIZE_MB=10240
         endif

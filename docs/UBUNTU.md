@@ -142,15 +142,18 @@ The differences that bit during the port and are easy to reintroduce:
   modules in the binary indexes, where the eve-kernel's `modules.builtin.bin`
   does not resolve them, so `modprobe usb_storage` fails where busybox
   succeeded.
-* Size: the kvm rootfs is about 310 MiB against 282 MiB on Alpine. The glibc
+* Size: the kvm rootfs is 291 MiB against 282 MiB on Alpine. The glibc
   builds of the same tools are simply larger (coreutils, openssh, iproute2,
-  iptables, libssl, glib, wpa_supplicant ...); removing everything a container
-  never runs (perl, the dpkg and debconf tools, fonts, unused qemu helpers)
-  measured at only 5 MiB. `ROOTFS_MAXSIZE_MB` in the Makefile was raised from
-  290 to 330, which drops the ability to update devices installed before EVE
-  10.2.0 (300 MiB IMGA/IMGB partitions); 10.2.0 and later use 512 MiB or more.
-  The evetest konvert and restore tests therefore have to start from 10.2.0
-  (`EVETEST_INITIAL_EVE_VERSION=10.2.0`) instead of their default 10.1.0.
+  iptables, libssl, glib, wpa_supplicant ...). Stripping the three binaries
+  that shipped with their symbol tables on both bases (mmagent, node_exporter,
+  runc) took 19 MiB off and brought the image back under the 300 MiB
+  IMGA/IMGB partitions of devices installed before EVE 10.2.0 (10.2.0 and
+  later use 512 MiB or more). `ROOTFS_MAXSIZE_MB` in the Makefile is 295
+  (master: 290) so that margin stays visible. Removing everything a container
+  never runs (perl, the dpkg and debconf tools, docs, locales, fonts, unused
+  qemu and swtpm helpers) would give another 8 MiB; the firmware tree is the
+  far bigger lever (53 MiB of the image, 39 of them iwlwifi versions the
+  kernel never loads and board-only blobs), but that is not an Ubuntu matter.
 * Names: gid 65534 is `nogroup`, not `nobody` (pillar adds a `nobody` group
   alias for dnsmasq); `mkisofs` does not exist, only `xorrisofs` (pillar links
   it); `/var/run` is a symlink to `/run`.
