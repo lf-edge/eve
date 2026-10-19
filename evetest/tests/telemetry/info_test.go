@@ -111,9 +111,6 @@ func TestDeviceInfo(test *testing.T) {
 	defer stopDevWatch()
 	device.ApplyConfig(devConfig, true, true)
 	evetest.Checkpoint("config-applied")
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(clusterNodeReadyTimeout)
-	}
 
 	// Phase 2: EVE reports the network configuration it applied.
 	timeout := 5 * time.Minute

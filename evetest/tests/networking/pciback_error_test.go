@@ -137,9 +137,6 @@ func TestReportMissingDevice(test *testing.T) {
 	devUpdates, stopDevWatch := device.WatchDeviceInfo()
 	defer stopDevWatch()
 	device.ApplyConfig(cfg, true, false)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 
 	t.Eventually(devUpdates, pcibackReportTimeout).Should(Receive(matchers.SatisfyPredicate(
 		"phantom device with a non-existent PCI address is reported as an error",
@@ -186,9 +183,6 @@ func TestReportParentAssigngrp(test *testing.T) {
 	devUpdates, stopDevWatch := device.WatchDeviceInfo()
 	defer stopDevWatch()
 	device.ApplyConfig(cfg, true, false)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 
 	t.Eventually(devUpdates, pcibackReportTimeout).Should(Receive(matchers.SatisfyPredicate(
 		"self-parent assignment group is reported as an error",
@@ -247,9 +241,6 @@ func TestReportCycleDetected(test *testing.T) {
 	devUpdates, stopDevWatch := device.WatchDeviceInfo()
 	defer stopDevWatch()
 	device.ApplyConfig(cfg, true, false)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 
 	t.Eventually(devUpdates, pcibackReportTimeout).Should(Receive(matchers.SatisfyPredicate(
 		"parentassigngrp cycle is reported as an error",
@@ -298,9 +289,6 @@ func TestReportCollision(test *testing.T) {
 	devUpdates, stopDevWatch := device.WatchDeviceInfo()
 	defer stopDevWatch()
 	device.ApplyConfig(cfg, true, false)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 
 	t.Eventually(devUpdates, pcibackReportTimeout).Should(Receive(matchers.SatisfyPredicate(
 		"USB collision is reported once as an error for the group",
@@ -341,9 +329,6 @@ func TestReportIfnameMismatch(test *testing.T) {
 
 	// Phase 1: correct config; let EVE resolve eth1's real PCI address.
 	device.ApplyConfig(newBaseNetConfig(pcibackErrDevName), true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 	pci := portPciLong(t, device, "eth1")
 
 	// Phase 2: give eth1 a bogus model interface name but the real PCI address.
@@ -384,9 +369,6 @@ func TestReportAssignmentGroupConflict(test *testing.T) {
 	defer stopDevWatch()
 
 	device.ApplyConfig(newBaseNetConfig(pcibackErrDevName), true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 	pci := portPciLong(t, device, "eth1")
 
 	cfg := newBaseNetConfig(pcibackErrDevName)
@@ -436,9 +418,6 @@ func TestReportWarningPlusError(test *testing.T) {
 	defer stopDevWatch()
 
 	device.ApplyConfig(newBaseNetConfig(pcibackErrDevName), true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 	pci := portPciLong(t, device, "eth1")
 
 	// eth1 gets a wrong ifname (warning) and a phantom shares its PCI in another
@@ -510,9 +489,6 @@ func TestReportClearsOnFix(test *testing.T) {
 
 	// Break it: self-parent -> error reported.
 	device.ApplyConfig(phantomParentConfig("grpx"), true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 	t.Eventually(devUpdates, pcibackReportTimeout).Should(Receive(matchers.SatisfyPredicate(
 		"self-parent assignment group is reported as an error",
 		func(info *eveinfo.ZInfoDevice) bool {
@@ -593,9 +569,6 @@ func TestReportWarningsOnly(test *testing.T) {
 
 	// Phase 1: correct config; resolve eth1 and eth2 real PCI addresses.
 	device.ApplyConfig(manyPortsConfig(pcibackErrDevName, "eth1", "", "eth2", ""), true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 	pci1 := portPciLong(t, device, "eth1")
 	pci2 := portPciLong(t, device, "eth2")
 

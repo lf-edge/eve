@@ -15,7 +15,6 @@ package apps_test
 
 import (
 	"fmt"
-	"strconv"
 	"time"
 
 	// revive:disable:dot-imports
@@ -23,7 +22,6 @@ import (
 
 	eveconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve/evetest"
-	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
 )
@@ -76,19 +74,10 @@ const (
 	// purgeEndStateTimeout when they are re-run after a reboot, where the app
 	// has to be brought up again rather than merely still be running. It must
 	// clear pillar's boot-retry interval (timer.boot.retry, default ten
-	// minutes): a reboot can land domainmgr's workload create before kubevirt's
-	// virt-api is serving, and the validating webhook then refuses the
-	// connection. That marks the domain BootFailed, and maybeRetryBoot leaves it
-	// that way until the interval elapses - so a budget shorter than the
-	// interval reports a transient race as a purge that did not hold.
+	// minutes): a transient boot failure leaves the domain BootFailed until
+	// the interval elapses - so a budget shorter than the interval reports a
+	// transient race as a purge that did not hold.
 	postRebootEndStateTimeout = 15 * time.Minute
-
-	// clusterReadyTimeout bounds a single eve-k node becoming Ready. k3s and
-	// Longhorn take minutes to come up, and an app deployed before that sits in
-	// INITIAL - burning the app-ready budget on something that is not the app.
-	// Measured at about six minutes on a 4-vCPU node; every other test in this
-	// package allows twenty.
-	clusterReadyTimeout = 20 * time.Minute
 )
 
 // purgeDeviceRequirements returns the RequireEdgeDevice used by every test in
@@ -97,10 +86,6 @@ const (
 // this one - the invariants asserted here are precisely about what generations
 // exist, so a warm/reused device would make a false pass indistinguishable
 // from a true one.
-//
-// No grub CPU options: kube-init widens the EVE cpuset for the duration of the
-// deploy and restores it on RUNNING (prereqs.WidenEVECPUs), so cluster
-// formation no longer depends on the test raising eve_max_vcpus itself.
 func purgeDeviceRequirements(devName string, withTPM bool,
 	filesystem evetest.Filesystem, hv evetest.Hypervisor) evetest.RequireEdgeDevice {
 	return evetest.RequireEdgeDevice{
@@ -114,12 +99,8 @@ func purgeDeviceRequirements(devName string, withTPM bool,
 
 // vmShimApplication returns the ApplicationInstanceConfig for the app used
 // throughout this suite: the standard evetest-ubuntu-ctr container image run
-// with VirtualizationMode=HVM. On eve-k, HVM (rather than the
-// container-native NOHYPER default) makes domainmgr's kube path create a
-// VMIRS (hypervisor/kubevirt.go CreateReplicaVMIConfig) instead of a plain
-// pod, so this "shim VM" is the cheapest fixture that exercises the
-// VMIRS-lifecycle code this suite is testing. On kvm/xen the same config
-// yields an ordinary qemu domain, which is what makes the two comparable.
+// with VirtualizationMode=HVM, which yields an ordinary qemu domain
+// on kvm/xen.
 func vmShimApplication(
 	displayName string, niUUID uuid.UUID) evetest.ApplicationInstanceConfig {
 	return evetest.ApplicationInstanceConfig{
@@ -137,9 +118,7 @@ func vmShimApplication(
 }
 
 // assertPurgeCompleted asserts everything a completed purge must satisfy on every
-// hypervisor, so one test sequence can be driven against eve-k and kvm with only
-// the closing detector differing (assertKubePurgeEndState or
-// assertLocalDomainPurgeEndState).
+// hypervisor; assertLocalDomainPurgeEndState closes the sequence.
 //
 // The purge-phase check is the one that catches a purge which never finishes, as
 // opposed to one which finishes wrongly - see appPurgePhase for that failure mode.
@@ -177,73 +156,14 @@ func assertPurgeCompleted(g Gomega, dev *evetest.EdgeDevice, appUUID uuid.UUID,
 		"the app's volume must be a new generation, not the pre-purge one")
 }
 
-// assertDomainReplaced asserts the workload the app runs in is a different one
-// than before the purge, identified by DomainId: the qemu pid on kvm/xen, and on
-// eve-k a value derived from the VMIRS's own metadata.uid. A purge must stop the
-// old domain and start a new one, so an unchanged id means the purge advanced its
-// counter without doing the work.
+// assertLocalDomainPurgeEndState is the end-state detector for a hypervisor
+// whose workload is a local process.
 //
-// Only useful where nothing ELSE restarted the domain in the meantime - a reboot
-// changes the id by itself, so a test that power-cycles the device cannot draw any
-// conclusion from this.
-func assertDomainReplaced(g Gomega, dev *evetest.EdgeDevice, appUUID uuid.UUID,
-	baselineDomainID int) {
-	domStatus, found := appDomainStatus(dev, appUUID)
-	g.Expect(found).To(BeTrue(), "expected a published DomainStatus for the app")
-	g.Expect(domStatus.DomainId).NotTo(BeZero(),
-		"DomainId must identify a live domain; zero means 'confirmed absent'")
-	g.Expect(domStatus.DomainId).NotTo(Equal(baselineDomainID),
-		"the domain must have been replaced by the purge, but DomainId is still %d "+
-			"- the purge counter advanced without the domain being recreated",
-		baselineDomainID)
-}
-
-// assertExactlyOneVMIRSAtGeneration is the primary end-state detector this suite
-// is built around: after a purge to newCounter there must be exactly one VMIRS for
-// the app, and it must be named for the NEW generation - not the old one (a
-// stalled purge leaves the old generation's VMIRS alone) and not both (the old
-// generation's VMIRS surviving alongside a newly created one).
-func assertExactlyOneVMIRSAtGeneration(
-	g Gomega, dev *evetest.EdgeDevice, appUUID uuid.UUID, appDisplayName string,
-	newCounter uint32) {
-	// base.GetAppKubeNameWithPurge would be the exact match for this (name + "-" +
-	// purge counter), but it is newer than the pillar module version currently
-	// pinned by evetest's go.mod, so the suffix is appended here instead - see
-	// base.GetAppKubeNameWithPurge's own implementation for why this is exactly
-	// equivalent.
-	wantName := base.GetAppKubeName(appDisplayName, appUUID) + "-" +
-		strconv.FormatUint(uint64(newCounter), 10)
-	names, err := dev.ListAppVMIRS(appUUID, sshCmdTimeout)
-	g.Expect(err).ToNot(HaveOccurred(),
-		"could not list VMIRS objects; k3s may still be starting")
-	g.Expect(names).To(HaveLen(1),
-		"expected exactly one VMIRS for the app, found %v", names)
-	if len(names) == 1 {
-		g.Expect(names[0]).To(Equal(wantName),
-			"the surviving VMIRS must be the NEW generation %q, not a stale one", wantName)
-	}
-}
-
-// assertKubePurgeEndState is the eve-k end-state detector: the decisive "exactly
-// one VMIRS, and it is the new generation" check.
-//
-// Reclaiming the old generation's PVC is NOT checked here, for the same reason
-// the local path does not check its disk here - see assertOldVolumeReclaimed.
-// Callers run assertNoOrphanedPVCs separately, on the slower clock.
-func assertKubePurgeEndState(g Gomega, dev *evetest.EdgeDevice, appUUID uuid.UUID,
-	appDisplayName string, newCounter uint32) {
-	assertExactlyOneVMIRSAtGeneration(g, dev, appUUID, appDisplayName, newCounter)
-}
-
-// assertLocalDomainPurgeEndState is assertKubePurgeEndState's counterpart for a
-// hypervisor whose workload is a local process rather than a cluster object.
-//
-// Two things differ from the kube case. The first is what CANNOT be asserted:
-// there is no "exactly one generation" check, because a kvm domain name carries no
-// purge counter (see listKVMDomainDirs) - which is also why a surviving
+// There is no "exactly one generation" check, because a kvm domain name carries
+// no purge counter (see listKVMDomainDirs) - which is also why a surviving
 // generation cannot take this shape on kvm at all.
 //
-// The second is reclaiming the old disk, which does NOT belong here: volumemgr
+// Reclaiming the old disk does NOT belong here: volumemgr
 // removes the previous generation's artifact on its own clock, observed at
 // roughly five minutes after the purge completed, so a check for it inside the
 // purge's own end-state window fails on timing rather than on substance. See

@@ -136,9 +136,6 @@ func TestPortFailover(test *testing.T) {
 	devUpdates, stopDevWatch := device.WatchDeviceInfo()
 	defer stopDevWatch()
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 	evetest.Checkpoint("port-config-applied")
 
 	// Local NI on "uplink" (predefined shared label matching every mgmt port).
@@ -527,9 +524,6 @@ func TestNetworkConfigFallback(test *testing.T) {
 	devUpdates, stopDevWatch := device.WatchDeviceInfo()
 	defer stopDevWatch()
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 	evetest.Checkpoint("baseline-applied")
 
 	log := evetest.Logger()
@@ -773,9 +767,6 @@ func TestIntermittentConnectivity(test *testing.T) {
 	})
 
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 
 	niUUID := devConfig.AddNetworkInstance(evetest.LocalNetworkInstanceConfig{
 		DisplayName: "local-ni",

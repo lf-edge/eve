@@ -31,7 +31,7 @@ type paramInfo struct {
 	key           string
 	defValue      string // from Description.Default
 	hasDefault    bool   // true when Description.Default was explicitly set (even if "")
-	allowedValues string // from Description.AllowedValues (e.g. "kvm|xen|kubevirt")
+	allowedValues string // from Description.AllowedValues (e.g. "kvm|xen")
 	typeHint      string // inferred from DefaultValue literal: "bool", "string", "int", …
 }
 

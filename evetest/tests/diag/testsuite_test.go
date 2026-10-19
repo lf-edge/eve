@@ -21,7 +21,7 @@ import (
 // Subtests
 // --------
 //   - TestDiagOutput -- the full summary on a healthy onboarded device, read
-//     through GET /eve/v1/diag, plus a cross-check of the reported cluster
+//     through GET /eve/v1/diag, plus a cross-check of the reported
 //     storage state against volumemgr's own publication.
 func TestDiagSuite(test *testing.T) {
 	evetest.Init(test)

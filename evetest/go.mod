@@ -16,7 +16,7 @@ require (
 	github.com/google/go-containerregistry v0.21.9
 	github.com/google/uuid v1.6.0
 	github.com/lf-edge/eve-api/go v0.0.0-20260907084402-08ba01c79328
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20261016095447-da1f21294aba
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20261017125847-ab59605c635b
 	github.com/luthermonson/go-proxmox v0.8.0
 	github.com/moby/moby/api v1.55.0
 	github.com/moby/moby/client v0.5.1
@@ -39,7 +39,6 @@ require (
 )
 
 require (
-	github.com/Masterminds/semver v1.5.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/buger/goterm v1.0.4 // indirect

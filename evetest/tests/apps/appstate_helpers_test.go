@@ -64,8 +64,8 @@ func appPurgePhase(dev *evetest.EdgeDevice, appUUID uuid.UUID) (
 // appDomainStatus returns domainmgr's published DomainStatus for the app. There
 // is at most one, because DomainStatus is keyed by app UUID - which is exactly
 // why it cannot be used to count workload generations (see
-// EdgeDevice.ListAppVMIRS and listKVMDomainDirs in appworkload_helpers_test.go). It is authoritative for the
-// domain's id, name and attached disks.
+// listKVMDomainDirs in appworkload_helpers_test.go). It is authoritative for
+// the domain's id, name and attached disks.
 func appDomainStatus(
 	dev *evetest.EdgeDevice, appUUID uuid.UUID) (types.DomainStatus, bool) {
 	return appPublication[types.DomainStatus](dev, "domainmgr", appUUID)

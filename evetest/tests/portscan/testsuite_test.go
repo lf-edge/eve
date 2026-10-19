@@ -10,7 +10,7 @@ import (
 )
 
 // TestPortScanSuite scans the network-facing ports of an EVE device, once per
-// hypervisor flavor: EVE-kvm and single-node EVE-k.
+// hypervisor flavor (EVE-kvm).
 func TestPortScanSuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
@@ -23,12 +23,6 @@ func TestPortScanSuite(test *testing.T) {
 					Name: "TestExternalPortScanKVM",
 					Parameters: []evetest.TestParameterValue{
 						{Key: evetest.HypervisorParameterKey, Value: evetest.HypervisorKVM},
-					},
-				},
-				{
-					Name: "TestExternalPortScanKubevirt",
-					Parameters: []evetest.TestParameterValue{
-						{Key: evetest.HypervisorParameterKey, Value: evetest.HypervisorKubevirt},
 					},
 				},
 			},

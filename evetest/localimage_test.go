@@ -346,11 +346,10 @@ func TestLiveImageHypervisor(t *testing.T) {
 		known        bool
 	}{
 		{"0.0.0-branch-abc1234-kvm-amd64", HypervisorKVM, true},
-		{"0.0.0-branch-abc1234-k-amd64", HypervisorKubevirt, true},
 		{"0.0.0-branch-abc1234-xen-amd64", HypervisorXen, true},
-		// eve-k builds carry "-k-amd64" mid-string too; only the suffix counts.
-		{"0.0.0-b-abc-k-amd64-v6.12.49-generic-core-deadbeef-user-gcc-k-amd64",
-			HypervisorKubevirt, true},
+		// Only the flavor suffix counts, not a "-kvm-amd64" mid-string.
+		{"0.0.0-b-abc-xen-amd64-v6.12.49-generic-core-deadbeef-user-gcc-kvm-amd64",
+			HypervisorKVM, true},
 		{"16.0.0-lts-kvm-arm64", HypervisorKVM, true},
 		{"", HypervisorUndefined, false},
 		{"0.0.0-no-flavor-here", HypervisorUndefined, false},
@@ -366,19 +365,15 @@ func TestLiveImageHypervisor(t *testing.T) {
 	}
 }
 
-// TestLiveImageSatisfies pins the one substitution that is allowed: eve-k is KVM
-// plus kubevirt orchestration, so it serves a KVM requirement, while a KVM build
-// can never serve a test that needs kubevirt.
+// TestLiveImageSatisfies checks that only an exact flavor match, or no
+// requirement at all, is served by a build.
 func TestLiveImageSatisfies(t *testing.T) {
 	cases := []struct {
 		required, build Hypervisor
 		want            bool
 	}{
 		{HypervisorKVM, HypervisorKVM, true},
-		{HypervisorKubevirt, HypervisorKubevirt, true},
-		{HypervisorUndefined, HypervisorKubevirt, true},
-		{HypervisorKVM, HypervisorKubevirt, true},
-		{HypervisorKubevirt, HypervisorKVM, false},
+		{HypervisorUndefined, HypervisorKVM, true},
 		{HypervisorXen, HypervisorKVM, false},
 		{HypervisorKVM, HypervisorXen, false},
 	}

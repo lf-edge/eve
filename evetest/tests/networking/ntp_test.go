@@ -137,9 +137,6 @@ func TestDeviceNTPConfig(test *testing.T) {
 	devUpdates, stopDevWatch := device.WatchDeviceInfo()
 	defer stopDevWatch()
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 	evetest.Checkpoint("config-applied")
 
 	log := evetest.Logger()
@@ -366,9 +363,6 @@ func TestApplicationNTPConfig(test *testing.T) {
 	})
 
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 
 	niSubnet := evetest.IPSubnet("10.11.12.0/24")
 	niUUID := devConfig.AddNetworkInstance(evetest.LocalNetworkInstanceConfig{

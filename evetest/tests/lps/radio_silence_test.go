@@ -106,9 +106,6 @@ func TestRadioSilence(test *testing.T) {
 	lpsAppUUID := devConfig.AddApplication(newLPSAppConfig("lps-app", niUUID, 2222))
 	lpsAppUpdates, stopLPSAppWatch := device.WatchAppInfo(lpsAppUUID)
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 	device.WaitUntilAppIsRunning(lpsAppUUID, 5*time.Minute)
 	evetest.Checkpoint("lps-app-running")
 

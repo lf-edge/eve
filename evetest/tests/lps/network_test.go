@@ -158,9 +158,6 @@ func TestNetworkLocalChanges(test *testing.T) {
 
 	device := evetest.GetEdgeDevice(devName)
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 	evetest.Checkpoint("initial-config-applied")
 
 	device.WaitUntilAppIsRunning(appUUID, 10*time.Minute)

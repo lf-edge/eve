@@ -159,9 +159,6 @@ func TestSwitchNIDeletedWithAppsAttached(test *testing.T) {
 		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
 	})
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 	evetest.Checkpoint("port-config-applied")
 
 	niUUID := devConfig.AddNetworkInstance(evetest.SwitchNetworkInstanceConfig{

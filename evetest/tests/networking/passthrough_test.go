@@ -56,8 +56,7 @@ import (
 //     actually happened via a changed kernel boot ID, and re-run the check
 //     of phase 3 -- the adapter must be re-attached cleanly.
 //
-// Parameters: HYPERVISOR (kubevirt is skipped -- reserved for cluster
-// tests).
+// Parameters: HYPERVISOR.
 //
 // Note: nested VFIO passthrough requires the EVE VM itself to run with a
 // vIOMMU and with iommu_platform=on set on its virtio NICs. All evetest

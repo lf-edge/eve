@@ -96,9 +96,6 @@ func TestDeviceLogs(test *testing.T) {
 	devConfig.SetConfigProperties(cfgProps)
 	device.ApplyConfig(devConfig, true, true)
 	evetest.Checkpoint("config-applied")
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(clusterNodeReadyTimeout)
-	}
 
 	// Phase 2: a kernel log probe reaches the controller.
 	expectKernelLogProbe(t, device, "device-logs")

@@ -131,7 +131,7 @@ func TestMyFeature(test *testing.T) {
     )
 
     // 5. Obtain a handle to the device and interact with it.
-    //    Multiple devices can also be requested and used (e.g., for clustering tests).
+    //    Multiple devices can also be requested and used.
     device := evetest.GetEdgeDevice("dev1")
     devUpdates, stopDevWatch := device.WatchDeviceInfo()
     defer stopDevWatch()
@@ -371,7 +371,7 @@ device.HardReboot(true)
 
 // Upgrade to another EVE version and hypervisor. The optional last argument
 // replaces the default wait, which is sized for an ordinary base-OS upgrade.
-device.UpgradeEVE(version, evetest.HypervisorKubevirt, evetest.BaseOSDatastoreHTTP,
+device.UpgradeEVE(version, evetest.HypervisorKVM, evetest.BaseOSDatastoreHTTP,
     true, false, 45*time.Minute)
 
 // Everything the device has written to its serial console so far, including
@@ -1025,7 +1025,6 @@ evetest eve scp --from-device src dst   # copy files from EVE
 evetest eve scp --to-device src dst     # copy files to EVE
 evetest eve console                     # enter interactive console (telnet)
 evetest eve collect-info                # collect diagnostic tarball
-evetest eve kubectl [kubectl-args...]   # interact with K3s running on EVE-k
 
 evetest eve hard-reboot                 # hard reboot
 evetest eve soft-reboot                 # soft reboot
@@ -1039,13 +1038,6 @@ evetest sdn net-model                   # current network model
 evetest sdn graph                       # config graph (Graphviz dot)
 evetest sdn logs                        # stream SDN logs
 evetest sdn ssh [command...]            # SSH into SDN VM
-```
-
-### Cluster Commands
-
-```bash
-evetest cluster info [-f]               # Kubernetes cluster info
-evetest cluster metrics [-f]            # Kubernetes cluster metrics
 ```
 
 ## Configuration
@@ -1424,19 +1416,9 @@ Each variable accepts a full mirror URL including scheme and, if needed, a path
 > automatically -- no `EVETEST_REGISTRY_MIRROR_*` variables to set by hand. Set one of
 > them yourself only to override a specific registry's mirror.
 
-The mirror is applied in two places automatically:
-
-- Application docker-datastore config: EVE is configured to pull app images from the
-  per-registry mirror URL instead of the upstream registry. This applies to any registry
-  that has a mirror configured.
-- Containerd mirror config: for kubevirt devices, per-registry `hosts.toml` files are
-  written under `/etc/containerd/certs.d/` inside the kube container before containerd
-  starts, and `config_path` is added to `/etc/containerd/config-k3s.toml`. EVE's K3s
-  setup uses an externally-managed containerd (not K3s-managed), so K3s's own
-  `registries.yaml` is ineffective; configuring containerd directly is the correct
-  approach. Only registries that have a mirror configured get a `hosts.toml` entry.
-  This is a temporary solution until EVE is enhanced to allow configuring a registry
-  mirror for K3s/containerd through device config.
+The mirror is applied automatically to application docker-datastore config:
+EVE is configured to pull app images from the per-registry mirror URL instead of the
+upstream registry. This applies to any registry that has a mirror configured.
 
 #### Deploying Docker Registry as a Docker Hub Mirror
 
@@ -1696,7 +1678,6 @@ evetest/
 │       └── pkg/configitems/  # Network config item implementations
 ├── tests/              # Integration tests (mounted into container at runtime)
 │   ├── networking/     # Network-related tests and test suites
-│   ├── cluster/        # Kubernetes cluster tests
 │   └── lps/            # Local Profile Server tests
 ├── netmodels/          # Reusable network model definitions for tests (mounted into container at runtime)
 ├── utils/              # Shared utilities (crypto, networking, etc.)
