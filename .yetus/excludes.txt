@@ -19,5 +19,8 @@
 ^.+go.mod
 ^.+go.sum
 ^.+/vendor/.+
+^evetest/grpcapi/eve-api/
+^evetest/.+/testdata/.+
 ^.codespellignorelines
 eve-tools/bpftrace-compiler/examples/.+\.bt
+^evetest/deploy/proxmox/evetest-hook\.pl
