@@ -177,7 +177,7 @@ func TestKubeRegistrationClusterSetup(test *testing.T) {
 		// Prove the masking rather than assume it: a spare that had silently
 		// joined would still report Ready above, and the next test would then
 		// be admitting a node that was already a member.
-		spareInfo := spareDev.GetClusterInfo()
+		spareInfo, _ := spareDev.GetClusterInfo()
 		t.Expect(readyClusterInfoNodes(spareInfo)).To(ConsistOf(spareName),
 			"%s should be a cluster of its own, not a member of %v",
 			spareName, members)
