@@ -1,0 +1,89 @@
+/*
+ * pciaccess.bt -- records every host process that opens a PCI device
+ * attribute, and every call of a kernel function through which a PCI device
+ * is reset, its config space written or one of its BARs mapped. It also
+ * records opens of the console attach points through which the host takes a
+ * VGA device's framebuffer (the framebuffer platform drivers' bind/unbind and
+ * the vtconsole bind files).
+ *
+ * Tracer of TestVGAPassthroughNoHostAccess; pciAccessTracer in
+ * pciaccess_helpers_test.go parses the printf lines, so keep their format in
+ * sync. The debug container ships only the AOT runtime, so the test runs this
+ * through eve-tools/bpftrace-compiler's run-via-ssh, which compiles it for the
+ * device's kernel (keeping the result in ~/.bpftrace-compiler/cache) and runs
+ * it there. To compile it by hand:
+ *
+ *   cd eve-tools/bpftrace-compiler && go run . compile amd64 <kernel image> \
+ *     ../../evetest/tests/networking/testdata/pciaccess.bt \
+ *     ../../evetest/tests/networking/testdata/pciaccess.aot
+ *
+ * open(2) is traced as well as openat(2) because musl on x86_64 still issues
+ * the open syscall, and most of EVE's host tools are musl binaries. The
+ * script is for amd64 devices, the only ones evetest creates; an arm64 kernel
+ * has no open(2) and would need that probe left out.
+ *
+ * Every record names the accessing process, its parent and its grandparent
+ * (pid and comm each), so a short-lived tool can be attributed to the service
+ * that spawned it, through an intermediate shell, even after all of them
+ * have exited. The ancestry is remembered at fork time, in the forking
+ * process's context: the forker becomes the child's parent and the forker's
+ * own recorded parent the child's grandparent. This needs no kernel type
+ * information, which the compile VM lacks (neither BTF nor the kernel's
+ * internal headers). Processes older than the tracer have no entry and are
+ * reported with pid 0 and an empty comm, and so is the grandparent of a
+ * process whose parent is older than the tracer. The keys are cast to the
+ * type of the pid builtin so the lookups match.
+ */
+
+tracepoint:sched:sched_process_fork
+{
+	@ppid[(uint32)args.child_pid] = pid;
+	@pcomm[(uint32)args.child_pid] = comm;
+	@gppid[(uint32)args.child_pid] = @ppid[pid];
+	@gpcomm[(uint32)args.child_pid] = @pcomm[pid];
+}
+
+tracepoint:sched:sched_process_exit
+{
+	delete(@ppid[(uint32)args.pid]);
+	delete(@pcomm[(uint32)args.pid]);
+	delete(@gppid[(uint32)args.pid]);
+	delete(@gpcomm[(uint32)args.pid]);
+}
+
+tracepoint:syscalls:sys_enter_open,
+tracepoint:syscalls:sys_enter_openat
+/strncmp(str(args.filename), "/sys/bus/pci/", 13) == 0 ||
+ strncmp(str(args.filename), "/sys/devices/pci", 16) == 0 ||
+ strncmp(str(args.filename), "/proc/bus/pci/", 14) == 0 ||
+ strncmp(str(args.filename), "/dev/mem", 9) == 0 ||
+ strncmp(str(args.filename), "/sys/bus/platform/drivers/", 26) == 0 ||
+ strncmp(str(args.filename), "/sys/class/vtconsole/", 21) == 0/
+{
+	printf("open comm=%s pid=%d ppid=%d pcomm=%s gppid=%d gpcomm=%s flags=0x%x path=%s\n",
+	    comm, pid, @ppid[pid], @pcomm[pid], @gppid[pid], @gpcomm[pid],
+	    args.flags, str(args.filename));
+	/* The test ends the run by opening this marker; see pciAccessTracer. */
+	if (strncmp(str(args.filename), "/sys/bus/pci/evetest-phase/end", 30) == 0) {
+		exit();
+	}
+}
+
+kprobe:pci_reset_function,
+kprobe:pci_try_reset_function,
+kprobe:pci_user_write_config_byte,
+kprobe:pci_user_write_config_word,
+kprobe:pci_user_write_config_dword,
+kprobe:pci_mmap_resource_range
+{
+	printf("kernel comm=%s pid=%d ppid=%d pcomm=%s gppid=%d gpcomm=%s func=%s\n",
+	    comm, pid, @ppid[pid], @pcomm[pid], @gppid[pid], @gpcomm[pid], func);
+}
+
+END
+{
+	clear(@ppid);
+	clear(@pcomm);
+	clear(@gppid);
+	clear(@gpcomm);
+}
