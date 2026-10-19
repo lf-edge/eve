@@ -56,13 +56,6 @@ service Evetest {
   // Stream metrics (ZMetricNetworkInstance) for a network instance.
   rpc GetNIMetrics(NIRequest) returns (stream NIMetricsResponse);
 
-  // Stream summary information for the entire Kubernetes cluster.
-  rpc GetClusterInfo(ClusterRequest) returns (stream ClusterInfoResponse);
-  // Stream information about ongoing cluster updates.
-  rpc GetClusterUpdateInfo(ClusterRequest) returns (stream ClusterUpdateInfoResponse);
-  // Stream metrics for the Kubernetes cluster (KubeClusterMetrics).
-  rpc GetClusterMetrics(ClusterRequest) returns (stream ClusterMetricsResponse);
-
   // Obtain debug information from a device (eve-info tarball).
   rpc CollectInfo(EVEDeviceRequest) returns (CollectInfoResponse);
 
@@ -186,29 +179,6 @@ message NIInfoResponse {
 // Network instance metrics.
 message NIMetricsResponse {
   org.lfedge.eve.metrics.ZMetricNetworkInstance ni_metrics = 1;
-}
-
-// Request for querying cluster-wide data.
-message ClusterRequest {
-  bool follow = 1;
-}
-
-// Summary information for nodes, pods, and storage.
-message ClusterInfoResponse {
-  org.lfedge.eve.info.ZInfoKubeCluster cluster_info = 1;
-  string from_node = 2;
-}
-
-// Contains details about an ongoing cluster update.
-message ClusterUpdateInfoResponse {
-  org.lfedge.eve.info.ZInfoKubeClusterUpdateStatus cluster_update_info = 1;
-  string from_node = 2;
-}
-
-// Metrics from the Kubernetes cluster.
-message ClusterMetricsResponse {
-  org.lfedge.eve.metrics.KubeClusterMetrics cluster_metrics = 1;
-  string from_node = 2;
 }
 
 // Response with a path to the obtained eve-info tarball.

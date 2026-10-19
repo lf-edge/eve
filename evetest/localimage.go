@@ -180,35 +180,18 @@ func liveImageHypervisor(shortVersion string) (Hypervisor, bool) {
 		return HypervisorKVM, true
 	case "xen":
 		return HypervisorXen, true
-	case "k":
-		return HypervisorKubevirt, true
 	}
 	return HypervisorUndefined, false
 }
 
 // liveImageSatisfies reports whether a build of flavor buildHV can serve a
 // device that asked for requiredHV.
-//
-// Exact matches aside, the one flavor that substitutes for another is eve-k: it
-// is KVM plus kubevirt orchestration, so it satisfies a plain KVM requirement
-// (verified: the networking tests, which pin KVM, pass against an eve-k build).
-// The reverse cannot work -- a KVM build has no k3s or kubevirt at all, so a
-// test that needs them would not fail until its cluster assertions time out
-// twenty minutes later, which is exactly the kind of thing worth refusing up
-// front.
 func liveImageSatisfies(requiredHV, buildHV Hypervisor) bool {
-	if requiredHV == HypervisorUndefined || requiredHV == buildHV {
-		return true
-	}
-	return requiredHV == HypervisorKVM && buildHV == HypervisorKubevirt
+	return requiredHV == HypervisorUndefined || requiredHV == buildHV
 }
 
-// hvMakeFlavor is the HV= value that builds a given hypervisor flavor, which is
-// not always the flavor's own name ("kubevirt" is built as HV=k).
+// hvMakeFlavor is the HV= value that builds a given hypervisor flavor.
 func hvMakeFlavor(h Hypervisor) string {
-	if h == HypervisorKubevirt {
-		return "k"
-	}
 	if h == HypervisorUndefined {
 		return "kvm"
 	}

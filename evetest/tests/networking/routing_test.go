@@ -162,9 +162,6 @@ func TestPropagatedRoutes(test *testing.T) {
 	})
 
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 
 	// ni-eth0: PropagateConnectedRoutes=true so the eth0 port subnet (172.22.12.0/24)
 	// is delivered to the app. Static route to http-server-0's subnet; EVE normalizes
@@ -571,9 +568,6 @@ func TestLocalNIWithMultiplePorts(test *testing.T) {
 	})
 
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 
 	// Local NI spanning all 4 ports (port="all").
 	// Static routes use shared labels with probing:
@@ -983,9 +977,6 @@ func TestApplicationGateway(test *testing.T) {
 	})
 
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 
 	// ni-eth0: Local NI on eth0 — used by app-client1 for its default route
 	// and SSH access (portfwd 2222→22).
@@ -1567,9 +1558,6 @@ func TestMgmtTrafficRoutedViaApp(test *testing.T) {
 	devUpdates, stopDevWatch := device.WatchDeviceInfo()
 	defer stopDevWatch()
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 	evetest.Checkpoint("safe-port-config-applied")
 
 	// Two Switch NIs -- one per port -- and the gateway app connected to both.

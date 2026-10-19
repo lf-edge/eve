@@ -939,210 +939,6 @@ func (x *NIMetricsResponse) GetNiMetrics() *metrics.ZMetricNetworkInstance {
 	return nil
 }
 
-// Request for querying cluster-wide data.
-type ClusterRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Follow        bool                   `protobuf:"varint,1,opt,name=follow,proto3" json:"follow,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ClusterRequest) Reset() {
-	*x = ClusterRequest{}
-	mi := &file_evetest_proto_msgTypes[19]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ClusterRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ClusterRequest) ProtoMessage() {}
-
-func (x *ClusterRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_evetest_proto_msgTypes[19]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ClusterRequest.ProtoReflect.Descriptor instead.
-func (*ClusterRequest) Descriptor() ([]byte, []int) {
-	return file_evetest_proto_rawDescGZIP(), []int{19}
-}
-
-func (x *ClusterRequest) GetFollow() bool {
-	if x != nil {
-		return x.Follow
-	}
-	return false
-}
-
-// Summary information for nodes, pods, and storage.
-type ClusterInfoResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ClusterInfo   *info.ZInfoKubeCluster `protobuf:"bytes,1,opt,name=cluster_info,json=clusterInfo,proto3" json:"cluster_info,omitempty"`
-	FromNode      string                 `protobuf:"bytes,2,opt,name=from_node,json=fromNode,proto3" json:"from_node,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ClusterInfoResponse) Reset() {
-	*x = ClusterInfoResponse{}
-	mi := &file_evetest_proto_msgTypes[20]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ClusterInfoResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ClusterInfoResponse) ProtoMessage() {}
-
-func (x *ClusterInfoResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_evetest_proto_msgTypes[20]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ClusterInfoResponse.ProtoReflect.Descriptor instead.
-func (*ClusterInfoResponse) Descriptor() ([]byte, []int) {
-	return file_evetest_proto_rawDescGZIP(), []int{20}
-}
-
-func (x *ClusterInfoResponse) GetClusterInfo() *info.ZInfoKubeCluster {
-	if x != nil {
-		return x.ClusterInfo
-	}
-	return nil
-}
-
-func (x *ClusterInfoResponse) GetFromNode() string {
-	if x != nil {
-		return x.FromNode
-	}
-	return ""
-}
-
-// Contains details about an ongoing cluster update.
-type ClusterUpdateInfoResponse struct {
-	state             protoimpl.MessageState             `protogen:"open.v1"`
-	ClusterUpdateInfo *info.ZInfoKubeClusterUpdateStatus `protobuf:"bytes,1,opt,name=cluster_update_info,json=clusterUpdateInfo,proto3" json:"cluster_update_info,omitempty"`
-	FromNode          string                             `protobuf:"bytes,2,opt,name=from_node,json=fromNode,proto3" json:"from_node,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
-}
-
-func (x *ClusterUpdateInfoResponse) Reset() {
-	*x = ClusterUpdateInfoResponse{}
-	mi := &file_evetest_proto_msgTypes[21]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ClusterUpdateInfoResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ClusterUpdateInfoResponse) ProtoMessage() {}
-
-func (x *ClusterUpdateInfoResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_evetest_proto_msgTypes[21]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ClusterUpdateInfoResponse.ProtoReflect.Descriptor instead.
-func (*ClusterUpdateInfoResponse) Descriptor() ([]byte, []int) {
-	return file_evetest_proto_rawDescGZIP(), []int{21}
-}
-
-func (x *ClusterUpdateInfoResponse) GetClusterUpdateInfo() *info.ZInfoKubeClusterUpdateStatus {
-	if x != nil {
-		return x.ClusterUpdateInfo
-	}
-	return nil
-}
-
-func (x *ClusterUpdateInfoResponse) GetFromNode() string {
-	if x != nil {
-		return x.FromNode
-	}
-	return ""
-}
-
-// Metrics from the Kubernetes cluster.
-type ClusterMetricsResponse struct {
-	state          protoimpl.MessageState      `protogen:"open.v1"`
-	ClusterMetrics *metrics.KubeClusterMetrics `protobuf:"bytes,1,opt,name=cluster_metrics,json=clusterMetrics,proto3" json:"cluster_metrics,omitempty"`
-	FromNode       string                      `protobuf:"bytes,2,opt,name=from_node,json=fromNode,proto3" json:"from_node,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
-}
-
-func (x *ClusterMetricsResponse) Reset() {
-	*x = ClusterMetricsResponse{}
-	mi := &file_evetest_proto_msgTypes[22]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ClusterMetricsResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ClusterMetricsResponse) ProtoMessage() {}
-
-func (x *ClusterMetricsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_evetest_proto_msgTypes[22]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ClusterMetricsResponse.ProtoReflect.Descriptor instead.
-func (*ClusterMetricsResponse) Descriptor() ([]byte, []int) {
-	return file_evetest_proto_rawDescGZIP(), []int{22}
-}
-
-func (x *ClusterMetricsResponse) GetClusterMetrics() *metrics.KubeClusterMetrics {
-	if x != nil {
-		return x.ClusterMetrics
-	}
-	return nil
-}
-
-func (x *ClusterMetricsResponse) GetFromNode() string {
-	if x != nil {
-		return x.FromNode
-	}
-	return ""
-}
-
 // Response with a path to the obtained eve-info tarball.
 type CollectInfoResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -1153,7 +949,7 @@ type CollectInfoResponse struct {
 
 func (x *CollectInfoResponse) Reset() {
 	*x = CollectInfoResponse{}
-	mi := &file_evetest_proto_msgTypes[23]
+	mi := &file_evetest_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1165,7 +961,7 @@ func (x *CollectInfoResponse) String() string {
 func (*CollectInfoResponse) ProtoMessage() {}
 
 func (x *CollectInfoResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_evetest_proto_msgTypes[23]
+	mi := &file_evetest_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1178,7 +974,7 @@ func (x *CollectInfoResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CollectInfoResponse.ProtoReflect.Descriptor instead.
 func (*CollectInfoResponse) Descriptor() ([]byte, []int) {
-	return file_evetest_proto_rawDescGZIP(), []int{23}
+	return file_evetest_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *CollectInfoResponse) GetArtifactPath() string {
@@ -1203,7 +999,7 @@ type EVETunnelConnect struct {
 
 func (x *EVETunnelConnect) Reset() {
 	*x = EVETunnelConnect{}
-	mi := &file_evetest_proto_msgTypes[24]
+	mi := &file_evetest_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1215,7 +1011,7 @@ func (x *EVETunnelConnect) String() string {
 func (*EVETunnelConnect) ProtoMessage() {}
 
 func (x *EVETunnelConnect) ProtoReflect() protoreflect.Message {
-	mi := &file_evetest_proto_msgTypes[24]
+	mi := &file_evetest_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1228,7 +1024,7 @@ func (x *EVETunnelConnect) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EVETunnelConnect.ProtoReflect.Descriptor instead.
 func (*EVETunnelConnect) Descriptor() ([]byte, []int) {
-	return file_evetest_proto_rawDescGZIP(), []int{24}
+	return file_evetest_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *EVETunnelConnect) GetDeviceName() string {
@@ -1261,7 +1057,7 @@ type TunnelConnected struct {
 
 func (x *TunnelConnected) Reset() {
 	*x = TunnelConnected{}
-	mi := &file_evetest_proto_msgTypes[25]
+	mi := &file_evetest_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1273,7 +1069,7 @@ func (x *TunnelConnected) String() string {
 func (*TunnelConnected) ProtoMessage() {}
 
 func (x *TunnelConnected) ProtoReflect() protoreflect.Message {
-	mi := &file_evetest_proto_msgTypes[25]
+	mi := &file_evetest_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1286,7 +1082,7 @@ func (x *TunnelConnected) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TunnelConnected.ProtoReflect.Descriptor instead.
 func (*TunnelConnected) Descriptor() ([]byte, []int) {
-	return file_evetest_proto_rawDescGZIP(), []int{25}
+	return file_evetest_proto_rawDescGZIP(), []int{21}
 }
 
 // Client-to-server messages for ConnectTunnelToEVE.
@@ -1303,7 +1099,7 @@ type ConnectTunnelToEVERequest struct {
 
 func (x *ConnectTunnelToEVERequest) Reset() {
 	*x = ConnectTunnelToEVERequest{}
-	mi := &file_evetest_proto_msgTypes[26]
+	mi := &file_evetest_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1315,7 +1111,7 @@ func (x *ConnectTunnelToEVERequest) String() string {
 func (*ConnectTunnelToEVERequest) ProtoMessage() {}
 
 func (x *ConnectTunnelToEVERequest) ProtoReflect() protoreflect.Message {
-	mi := &file_evetest_proto_msgTypes[26]
+	mi := &file_evetest_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1328,7 +1124,7 @@ func (x *ConnectTunnelToEVERequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConnectTunnelToEVERequest.ProtoReflect.Descriptor instead.
 func (*ConnectTunnelToEVERequest) Descriptor() ([]byte, []int) {
-	return file_evetest_proto_rawDescGZIP(), []int{26}
+	return file_evetest_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *ConnectTunnelToEVERequest) GetPayload() isConnectTunnelToEVERequest_Payload {
@@ -1386,7 +1182,7 @@ type ConnectTunnelToEVEResponse struct {
 
 func (x *ConnectTunnelToEVEResponse) Reset() {
 	*x = ConnectTunnelToEVEResponse{}
-	mi := &file_evetest_proto_msgTypes[27]
+	mi := &file_evetest_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1398,7 +1194,7 @@ func (x *ConnectTunnelToEVEResponse) String() string {
 func (*ConnectTunnelToEVEResponse) ProtoMessage() {}
 
 func (x *ConnectTunnelToEVEResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_evetest_proto_msgTypes[27]
+	mi := &file_evetest_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1411,7 +1207,7 @@ func (x *ConnectTunnelToEVEResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConnectTunnelToEVEResponse.ProtoReflect.Descriptor instead.
 func (*ConnectTunnelToEVEResponse) Descriptor() ([]byte, []int) {
-	return file_evetest_proto_rawDescGZIP(), []int{27}
+	return file_evetest_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ConnectTunnelToEVEResponse) GetPayload() isConnectTunnelToEVEResponse_Payload {
@@ -1469,7 +1265,7 @@ type ConnectConsoleToEVERequest struct {
 
 func (x *ConnectConsoleToEVERequest) Reset() {
 	*x = ConnectConsoleToEVERequest{}
-	mi := &file_evetest_proto_msgTypes[28]
+	mi := &file_evetest_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1481,7 +1277,7 @@ func (x *ConnectConsoleToEVERequest) String() string {
 func (*ConnectConsoleToEVERequest) ProtoMessage() {}
 
 func (x *ConnectConsoleToEVERequest) ProtoReflect() protoreflect.Message {
-	mi := &file_evetest_proto_msgTypes[28]
+	mi := &file_evetest_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1494,7 +1290,7 @@ func (x *ConnectConsoleToEVERequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConnectConsoleToEVERequest.ProtoReflect.Descriptor instead.
 func (*ConnectConsoleToEVERequest) Descriptor() ([]byte, []int) {
-	return file_evetest_proto_rawDescGZIP(), []int{28}
+	return file_evetest_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ConnectConsoleToEVERequest) GetPayload() isConnectConsoleToEVERequest_Payload {
@@ -1552,7 +1348,7 @@ type ConnectConsoleToEVEResponse struct {
 
 func (x *ConnectConsoleToEVEResponse) Reset() {
 	*x = ConnectConsoleToEVEResponse{}
-	mi := &file_evetest_proto_msgTypes[29]
+	mi := &file_evetest_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1564,7 +1360,7 @@ func (x *ConnectConsoleToEVEResponse) String() string {
 func (*ConnectConsoleToEVEResponse) ProtoMessage() {}
 
 func (x *ConnectConsoleToEVEResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_evetest_proto_msgTypes[29]
+	mi := &file_evetest_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1577,7 +1373,7 @@ func (x *ConnectConsoleToEVEResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConnectConsoleToEVEResponse.ProtoReflect.Descriptor instead.
 func (*ConnectConsoleToEVEResponse) Descriptor() ([]byte, []int) {
-	return file_evetest_proto_rawDescGZIP(), []int{29}
+	return file_evetest_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *ConnectConsoleToEVEResponse) GetPayload() isConnectConsoleToEVEResponse_Payload {
@@ -1635,7 +1431,7 @@ type ConnectSSHTunnelToSDNRequest struct {
 
 func (x *ConnectSSHTunnelToSDNRequest) Reset() {
 	*x = ConnectSSHTunnelToSDNRequest{}
-	mi := &file_evetest_proto_msgTypes[30]
+	mi := &file_evetest_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1647,7 +1443,7 @@ func (x *ConnectSSHTunnelToSDNRequest) String() string {
 func (*ConnectSSHTunnelToSDNRequest) ProtoMessage() {}
 
 func (x *ConnectSSHTunnelToSDNRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_evetest_proto_msgTypes[30]
+	mi := &file_evetest_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1660,7 +1456,7 @@ func (x *ConnectSSHTunnelToSDNRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConnectSSHTunnelToSDNRequest.ProtoReflect.Descriptor instead.
 func (*ConnectSSHTunnelToSDNRequest) Descriptor() ([]byte, []int) {
-	return file_evetest_proto_rawDescGZIP(), []int{30}
+	return file_evetest_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *ConnectSSHTunnelToSDNRequest) GetPayload() isConnectSSHTunnelToSDNRequest_Payload {
@@ -1718,7 +1514,7 @@ type ConnectSSHTunnelToSDNResponse struct {
 
 func (x *ConnectSSHTunnelToSDNResponse) Reset() {
 	*x = ConnectSSHTunnelToSDNResponse{}
-	mi := &file_evetest_proto_msgTypes[31]
+	mi := &file_evetest_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1730,7 +1526,7 @@ func (x *ConnectSSHTunnelToSDNResponse) String() string {
 func (*ConnectSSHTunnelToSDNResponse) ProtoMessage() {}
 
 func (x *ConnectSSHTunnelToSDNResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_evetest_proto_msgTypes[31]
+	mi := &file_evetest_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1743,7 +1539,7 @@ func (x *ConnectSSHTunnelToSDNResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConnectSSHTunnelToSDNResponse.ProtoReflect.Descriptor instead.
 func (*ConnectSSHTunnelToSDNResponse) Descriptor() ([]byte, []int) {
-	return file_evetest_proto_rawDescGZIP(), []int{31}
+	return file_evetest_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ConnectSSHTunnelToSDNResponse) GetPayload() isConnectSSHTunnelToSDNResponse_Payload {
@@ -1845,18 +1641,7 @@ const file_evetest_proto_rawDesc = "" +
 	"\ani_info\x18\x01 \x01(\v2).org.lfedge.eve.info.ZInfoNetworkInstanceR\x06niInfo\"b\n" +
 	"\x11NIMetricsResponse\x12M\n" +
 	"\n" +
-	"ni_metrics\x18\x01 \x01(\v2..org.lfedge.eve.metrics.ZMetricNetworkInstanceR\tniMetrics\"(\n" +
-	"\x0eClusterRequest\x12\x16\n" +
-	"\x06follow\x18\x01 \x01(\bR\x06follow\"|\n" +
-	"\x13ClusterInfoResponse\x12H\n" +
-	"\fcluster_info\x18\x01 \x01(\v2%.org.lfedge.eve.info.ZInfoKubeClusterR\vclusterInfo\x12\x1b\n" +
-	"\tfrom_node\x18\x02 \x01(\tR\bfromNode\"\x9b\x01\n" +
-	"\x19ClusterUpdateInfoResponse\x12a\n" +
-	"\x13cluster_update_info\x18\x01 \x01(\v21.org.lfedge.eve.info.ZInfoKubeClusterUpdateStatusR\x11clusterUpdateInfo\x12\x1b\n" +
-	"\tfrom_node\x18\x02 \x01(\tR\bfromNode\"\x8a\x01\n" +
-	"\x16ClusterMetricsResponse\x12S\n" +
-	"\x0fcluster_metrics\x18\x01 \x01(\v2*.org.lfedge.eve.metrics.KubeClusterMetricsR\x0eclusterMetrics\x12\x1b\n" +
-	"\tfrom_node\x18\x02 \x01(\tR\bfromNode\":\n" +
+	"ni_metrics\x18\x01 \x01(\v2..org.lfedge.eve.metrics.ZMetricNetworkInstanceR\tniMetrics\":\n" +
 	"\x13CollectInfoResponse\x12#\n" +
 	"\rartifact_path\x18\x01 \x01(\tR\fartifactPath\"{\n" +
 	"\x10EVETunnelConnect\x12\x1f\n" +
@@ -1889,7 +1674,7 @@ const file_evetest_proto_rawDesc = "" +
 	"\x1dConnectSSHTunnelToSDNResponse\x12C\n" +
 	"\tconnected\x18\x01 \x01(\v2#.org.lfedge.evetest.TunnelConnectedH\x00R\tconnected\x12\x14\n" +
 	"\x04data\x18\x02 \x01(\fH\x00R\x04dataB\t\n" +
-	"\apayload2\xb8\x14\n" +
+	"\apayload2\x83\x12\n" +
 	"\aEvetest\x12U\n" +
 	"\bContinue\x12#.org.lfedge.evetest.ContinueRequest\x1a$.org.lfedge.evetest.ContinueResponse\x12I\n" +
 	"\x04Exit\x12\x1f.org.lfedge.evetest.ExitRequest\x1a .org.lfedge.evetest.ExitResponse\x12O\n" +
@@ -1910,10 +1695,7 @@ const file_evetest_proto_rawDesc = "" +
 	"GetAppLogs\x12\x1e.org.lfedge.evetest.AppRequest\x1a\x1e.org.lfedge.evetest.LogMessage0\x01\x12[\n" +
 	"\x0eGetAppFlowLogs\x12\x1e.org.lfedge.evetest.AppRequest\x1a'.org.lfedge.evetest.AppFlowLogsResponse0\x01\x12P\n" +
 	"\tGetNIInfo\x12\x1d.org.lfedge.evetest.NIRequest\x1a\".org.lfedge.evetest.NIInfoResponse0\x01\x12V\n" +
-	"\fGetNIMetrics\x12\x1d.org.lfedge.evetest.NIRequest\x1a%.org.lfedge.evetest.NIMetricsResponse0\x01\x12_\n" +
-	"\x0eGetClusterInfo\x12\".org.lfedge.evetest.ClusterRequest\x1a'.org.lfedge.evetest.ClusterInfoResponse0\x01\x12k\n" +
-	"\x14GetClusterUpdateInfo\x12\".org.lfedge.evetest.ClusterRequest\x1a-.org.lfedge.evetest.ClusterUpdateInfoResponse0\x01\x12e\n" +
-	"\x11GetClusterMetrics\x12\".org.lfedge.evetest.ClusterRequest\x1a*.org.lfedge.evetest.ClusterMetricsResponse0\x01\x12\\\n" +
+	"\fGetNIMetrics\x12\x1d.org.lfedge.evetest.NIRequest\x1a%.org.lfedge.evetest.NIMetricsResponse0\x01\x12\\\n" +
 	"\vCollectInfo\x12$.org.lfedge.evetest.EVEDeviceRequest\x1a'.org.lfedge.evetest.CollectInfoResponse\x12w\n" +
 	"\x12ConnectTunnelToEVE\x12-.org.lfedge.evetest.ConnectTunnelToEVERequest\x1a..org.lfedge.evetest.ConnectTunnelToEVEResponse(\x010\x01\x12z\n" +
 	"\x13ConnectConsoleToEVE\x12..org.lfedge.evetest.ConnectConsoleToEVERequest\x1a/.org.lfedge.evetest.ConnectConsoleToEVEResponse(\x010\x01\x12U\n" +
@@ -1935,140 +1717,124 @@ func file_evetest_proto_rawDescGZIP() []byte {
 	return file_evetest_proto_rawDescData
 }
 
-var file_evetest_proto_msgTypes = make([]protoimpl.MessageInfo, 32)
+var file_evetest_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
 var file_evetest_proto_goTypes = []any{
-	(*ContinueRequest)(nil),                   // 0: org.lfedge.evetest.ContinueRequest
-	(*ContinueResponse)(nil),                  // 1: org.lfedge.evetest.ContinueResponse
-	(*ExitRequest)(nil),                       // 2: org.lfedge.evetest.ExitRequest
-	(*ExitResponse)(nil),                      // 3: org.lfedge.evetest.ExitResponse
-	(*StatusRequest)(nil),                     // 4: org.lfedge.evetest.StatusRequest
-	(*StatusResponse)(nil),                    // 5: org.lfedge.evetest.StatusResponse
-	(*EVEDeviceRequest)(nil),                  // 6: org.lfedge.evetest.EVEDeviceRequest
-	(*EVEDeviceStreamableRequest)(nil),        // 7: org.lfedge.evetest.EVEDeviceStreamableRequest
-	(*EVERebootResponse)(nil),                 // 8: org.lfedge.evetest.EVERebootResponse
-	(*EVEConfigResponse)(nil),                 // 9: org.lfedge.evetest.EVEConfigResponse
-	(*EVEInfoResponse)(nil),                   // 10: org.lfedge.evetest.EVEInfoResponse
-	(*EVEMetricsResponse)(nil),                // 11: org.lfedge.evetest.EVEMetricsResponse
-	(*AppRequest)(nil),                        // 12: org.lfedge.evetest.AppRequest
-	(*AppInfoResponse)(nil),                   // 13: org.lfedge.evetest.AppInfoResponse
-	(*AppMetricsResponse)(nil),                // 14: org.lfedge.evetest.AppMetricsResponse
-	(*AppFlowLogsResponse)(nil),               // 15: org.lfedge.evetest.AppFlowLogsResponse
-	(*NIRequest)(nil),                         // 16: org.lfedge.evetest.NIRequest
-	(*NIInfoResponse)(nil),                    // 17: org.lfedge.evetest.NIInfoResponse
-	(*NIMetricsResponse)(nil),                 // 18: org.lfedge.evetest.NIMetricsResponse
-	(*ClusterRequest)(nil),                    // 19: org.lfedge.evetest.ClusterRequest
-	(*ClusterInfoResponse)(nil),               // 20: org.lfedge.evetest.ClusterInfoResponse
-	(*ClusterUpdateInfoResponse)(nil),         // 21: org.lfedge.evetest.ClusterUpdateInfoResponse
-	(*ClusterMetricsResponse)(nil),            // 22: org.lfedge.evetest.ClusterMetricsResponse
-	(*CollectInfoResponse)(nil),               // 23: org.lfedge.evetest.CollectInfoResponse
-	(*EVETunnelConnect)(nil),                  // 24: org.lfedge.evetest.EVETunnelConnect
-	(*TunnelConnected)(nil),                   // 25: org.lfedge.evetest.TunnelConnected
-	(*ConnectTunnelToEVERequest)(nil),         // 26: org.lfedge.evetest.ConnectTunnelToEVERequest
-	(*ConnectTunnelToEVEResponse)(nil),        // 27: org.lfedge.evetest.ConnectTunnelToEVEResponse
-	(*ConnectConsoleToEVERequest)(nil),        // 28: org.lfedge.evetest.ConnectConsoleToEVERequest
-	(*ConnectConsoleToEVEResponse)(nil),       // 29: org.lfedge.evetest.ConnectConsoleToEVEResponse
-	(*ConnectSSHTunnelToSDNRequest)(nil),      // 30: org.lfedge.evetest.ConnectSSHTunnelToSDNRequest
-	(*ConnectSSHTunnelToSDNResponse)(nil),     // 31: org.lfedge.evetest.ConnectSSHTunnelToSDNResponse
-	(*EVEDeviceStatus)(nil),                   // 32: org.lfedge.evetest.EVEDeviceStatus
-	(*config.EdgeDevConfig)(nil),              // 33: org.lfedge.eve.config.EdgeDevConfig
-	(*info.ZInfoDevice)(nil),                  // 34: org.lfedge.eve.info.ZInfoDevice
-	(*metrics.DeviceMetric)(nil),              // 35: org.lfedge.eve.metrics.deviceMetric
-	(*info.ZInfoApp)(nil),                     // 36: org.lfedge.eve.info.ZInfoApp
-	(*metrics.AppMetric)(nil),                 // 37: org.lfedge.eve.metrics.appMetric
-	(*flowlog.FlowRecord)(nil),                // 38: org.lfedge.eve.flowlog.FlowRecord
-	(*flowlog.DnsRequest)(nil),                // 39: org.lfedge.eve.flowlog.DnsRequest
-	(*info.ZInfoNetworkInstance)(nil),         // 40: org.lfedge.eve.info.ZInfoNetworkInstance
-	(*metrics.ZMetricNetworkInstance)(nil),    // 41: org.lfedge.eve.metrics.ZMetricNetworkInstance
-	(*info.ZInfoKubeCluster)(nil),             // 42: org.lfedge.eve.info.ZInfoKubeCluster
-	(*info.ZInfoKubeClusterUpdateStatus)(nil), // 43: org.lfedge.eve.info.ZInfoKubeClusterUpdateStatus
-	(*metrics.KubeClusterMetrics)(nil),        // 44: org.lfedge.eve.metrics.KubeClusterMetrics
-	(*ConsoleProperties)(nil),                 // 45: org.lfedge.evetest.ConsoleProperties
-	(*SDNRequest)(nil),                        // 46: org.lfedge.evetest.SDNRequest
-	(*LogMessage)(nil),                        // 47: org.lfedge.evetest.LogMessage
-	(*ConsoleOutputResponse)(nil),             // 48: org.lfedge.evetest.ConsoleOutputResponse
-	(*SDNStatusResponse)(nil),                 // 49: org.lfedge.evetest.SDNStatusResponse
-	(*SDNGetNetworkModelResponse)(nil),        // 50: org.lfedge.evetest.SDNGetNetworkModelResponse
-	(*SDNConfigGraphResponse)(nil),            // 51: org.lfedge.evetest.SDNConfigGraphResponse
+	(*ContinueRequest)(nil),                // 0: org.lfedge.evetest.ContinueRequest
+	(*ContinueResponse)(nil),               // 1: org.lfedge.evetest.ContinueResponse
+	(*ExitRequest)(nil),                    // 2: org.lfedge.evetest.ExitRequest
+	(*ExitResponse)(nil),                   // 3: org.lfedge.evetest.ExitResponse
+	(*StatusRequest)(nil),                  // 4: org.lfedge.evetest.StatusRequest
+	(*StatusResponse)(nil),                 // 5: org.lfedge.evetest.StatusResponse
+	(*EVEDeviceRequest)(nil),               // 6: org.lfedge.evetest.EVEDeviceRequest
+	(*EVEDeviceStreamableRequest)(nil),     // 7: org.lfedge.evetest.EVEDeviceStreamableRequest
+	(*EVERebootResponse)(nil),              // 8: org.lfedge.evetest.EVERebootResponse
+	(*EVEConfigResponse)(nil),              // 9: org.lfedge.evetest.EVEConfigResponse
+	(*EVEInfoResponse)(nil),                // 10: org.lfedge.evetest.EVEInfoResponse
+	(*EVEMetricsResponse)(nil),             // 11: org.lfedge.evetest.EVEMetricsResponse
+	(*AppRequest)(nil),                     // 12: org.lfedge.evetest.AppRequest
+	(*AppInfoResponse)(nil),                // 13: org.lfedge.evetest.AppInfoResponse
+	(*AppMetricsResponse)(nil),             // 14: org.lfedge.evetest.AppMetricsResponse
+	(*AppFlowLogsResponse)(nil),            // 15: org.lfedge.evetest.AppFlowLogsResponse
+	(*NIRequest)(nil),                      // 16: org.lfedge.evetest.NIRequest
+	(*NIInfoResponse)(nil),                 // 17: org.lfedge.evetest.NIInfoResponse
+	(*NIMetricsResponse)(nil),              // 18: org.lfedge.evetest.NIMetricsResponse
+	(*CollectInfoResponse)(nil),            // 19: org.lfedge.evetest.CollectInfoResponse
+	(*EVETunnelConnect)(nil),               // 20: org.lfedge.evetest.EVETunnelConnect
+	(*TunnelConnected)(nil),                // 21: org.lfedge.evetest.TunnelConnected
+	(*ConnectTunnelToEVERequest)(nil),      // 22: org.lfedge.evetest.ConnectTunnelToEVERequest
+	(*ConnectTunnelToEVEResponse)(nil),     // 23: org.lfedge.evetest.ConnectTunnelToEVEResponse
+	(*ConnectConsoleToEVERequest)(nil),     // 24: org.lfedge.evetest.ConnectConsoleToEVERequest
+	(*ConnectConsoleToEVEResponse)(nil),    // 25: org.lfedge.evetest.ConnectConsoleToEVEResponse
+	(*ConnectSSHTunnelToSDNRequest)(nil),   // 26: org.lfedge.evetest.ConnectSSHTunnelToSDNRequest
+	(*ConnectSSHTunnelToSDNResponse)(nil),  // 27: org.lfedge.evetest.ConnectSSHTunnelToSDNResponse
+	(*EVEDeviceStatus)(nil),                // 28: org.lfedge.evetest.EVEDeviceStatus
+	(*config.EdgeDevConfig)(nil),           // 29: org.lfedge.eve.config.EdgeDevConfig
+	(*info.ZInfoDevice)(nil),               // 30: org.lfedge.eve.info.ZInfoDevice
+	(*metrics.DeviceMetric)(nil),           // 31: org.lfedge.eve.metrics.deviceMetric
+	(*info.ZInfoApp)(nil),                  // 32: org.lfedge.eve.info.ZInfoApp
+	(*metrics.AppMetric)(nil),              // 33: org.lfedge.eve.metrics.appMetric
+	(*flowlog.FlowRecord)(nil),             // 34: org.lfedge.eve.flowlog.FlowRecord
+	(*flowlog.DnsRequest)(nil),             // 35: org.lfedge.eve.flowlog.DnsRequest
+	(*info.ZInfoNetworkInstance)(nil),      // 36: org.lfedge.eve.info.ZInfoNetworkInstance
+	(*metrics.ZMetricNetworkInstance)(nil), // 37: org.lfedge.eve.metrics.ZMetricNetworkInstance
+	(*ConsoleProperties)(nil),              // 38: org.lfedge.evetest.ConsoleProperties
+	(*SDNRequest)(nil),                     // 39: org.lfedge.evetest.SDNRequest
+	(*LogMessage)(nil),                     // 40: org.lfedge.evetest.LogMessage
+	(*ConsoleOutputResponse)(nil),          // 41: org.lfedge.evetest.ConsoleOutputResponse
+	(*SDNStatusResponse)(nil),              // 42: org.lfedge.evetest.SDNStatusResponse
+	(*SDNGetNetworkModelResponse)(nil),     // 43: org.lfedge.evetest.SDNGetNetworkModelResponse
+	(*SDNConfigGraphResponse)(nil),         // 44: org.lfedge.evetest.SDNConfigGraphResponse
 }
 var file_evetest_proto_depIdxs = []int32{
-	32, // 0: org.lfedge.evetest.StatusResponse.eve_devices:type_name -> org.lfedge.evetest.EVEDeviceStatus
-	33, // 1: org.lfedge.evetest.EVEConfigResponse.config:type_name -> org.lfedge.eve.config.EdgeDevConfig
-	34, // 2: org.lfedge.evetest.EVEInfoResponse.device_info:type_name -> org.lfedge.eve.info.ZInfoDevice
-	35, // 3: org.lfedge.evetest.EVEMetricsResponse.device_metrics:type_name -> org.lfedge.eve.metrics.deviceMetric
-	36, // 4: org.lfedge.evetest.AppInfoResponse.app_info:type_name -> org.lfedge.eve.info.ZInfoApp
-	37, // 5: org.lfedge.evetest.AppMetricsResponse.app_metrics:type_name -> org.lfedge.eve.metrics.appMetric
-	38, // 6: org.lfedge.evetest.AppFlowLogsResponse.ip_flows:type_name -> org.lfedge.eve.flowlog.FlowRecord
-	39, // 7: org.lfedge.evetest.AppFlowLogsResponse.dns_requests:type_name -> org.lfedge.eve.flowlog.DnsRequest
-	40, // 8: org.lfedge.evetest.NIInfoResponse.ni_info:type_name -> org.lfedge.eve.info.ZInfoNetworkInstance
-	41, // 9: org.lfedge.evetest.NIMetricsResponse.ni_metrics:type_name -> org.lfedge.eve.metrics.ZMetricNetworkInstance
-	42, // 10: org.lfedge.evetest.ClusterInfoResponse.cluster_info:type_name -> org.lfedge.eve.info.ZInfoKubeCluster
-	43, // 11: org.lfedge.evetest.ClusterUpdateInfoResponse.cluster_update_info:type_name -> org.lfedge.eve.info.ZInfoKubeClusterUpdateStatus
-	44, // 12: org.lfedge.evetest.ClusterMetricsResponse.cluster_metrics:type_name -> org.lfedge.eve.metrics.KubeClusterMetrics
-	24, // 13: org.lfedge.evetest.ConnectTunnelToEVERequest.connect:type_name -> org.lfedge.evetest.EVETunnelConnect
-	25, // 14: org.lfedge.evetest.ConnectTunnelToEVEResponse.connected:type_name -> org.lfedge.evetest.TunnelConnected
-	6,  // 15: org.lfedge.evetest.ConnectConsoleToEVERequest.connect:type_name -> org.lfedge.evetest.EVEDeviceRequest
-	45, // 16: org.lfedge.evetest.ConnectConsoleToEVEResponse.connect_reply:type_name -> org.lfedge.evetest.ConsoleProperties
-	46, // 17: org.lfedge.evetest.ConnectSSHTunnelToSDNRequest.connect:type_name -> org.lfedge.evetest.SDNRequest
-	25, // 18: org.lfedge.evetest.ConnectSSHTunnelToSDNResponse.connected:type_name -> org.lfedge.evetest.TunnelConnected
-	0,  // 19: org.lfedge.evetest.Evetest.Continue:input_type -> org.lfedge.evetest.ContinueRequest
-	2,  // 20: org.lfedge.evetest.Evetest.Exit:input_type -> org.lfedge.evetest.ExitRequest
-	4,  // 21: org.lfedge.evetest.Evetest.Status:input_type -> org.lfedge.evetest.StatusRequest
-	6,  // 22: org.lfedge.evetest.Evetest.HardRebootEVEDevice:input_type -> org.lfedge.evetest.EVEDeviceRequest
-	6,  // 23: org.lfedge.evetest.Evetest.SoftRebootEVEDevice:input_type -> org.lfedge.evetest.EVEDeviceRequest
-	6,  // 24: org.lfedge.evetest.Evetest.GetEVEConfig:input_type -> org.lfedge.evetest.EVEDeviceRequest
-	7,  // 25: org.lfedge.evetest.Evetest.GetEVEInfo:input_type -> org.lfedge.evetest.EVEDeviceStreamableRequest
-	7,  // 26: org.lfedge.evetest.Evetest.GetEVEMetrics:input_type -> org.lfedge.evetest.EVEDeviceStreamableRequest
-	7,  // 27: org.lfedge.evetest.Evetest.GetEVELogs:input_type -> org.lfedge.evetest.EVEDeviceStreamableRequest
-	6,  // 28: org.lfedge.evetest.Evetest.GetEVEConsoleOutput:input_type -> org.lfedge.evetest.EVEDeviceRequest
-	12, // 29: org.lfedge.evetest.Evetest.GetAppInfo:input_type -> org.lfedge.evetest.AppRequest
-	12, // 30: org.lfedge.evetest.Evetest.GetAppMetrics:input_type -> org.lfedge.evetest.AppRequest
-	12, // 31: org.lfedge.evetest.Evetest.GetAppLogs:input_type -> org.lfedge.evetest.AppRequest
-	12, // 32: org.lfedge.evetest.Evetest.GetAppFlowLogs:input_type -> org.lfedge.evetest.AppRequest
-	16, // 33: org.lfedge.evetest.Evetest.GetNIInfo:input_type -> org.lfedge.evetest.NIRequest
-	16, // 34: org.lfedge.evetest.Evetest.GetNIMetrics:input_type -> org.lfedge.evetest.NIRequest
-	19, // 35: org.lfedge.evetest.Evetest.GetClusterInfo:input_type -> org.lfedge.evetest.ClusterRequest
-	19, // 36: org.lfedge.evetest.Evetest.GetClusterUpdateInfo:input_type -> org.lfedge.evetest.ClusterRequest
-	19, // 37: org.lfedge.evetest.Evetest.GetClusterMetrics:input_type -> org.lfedge.evetest.ClusterRequest
-	6,  // 38: org.lfedge.evetest.Evetest.CollectInfo:input_type -> org.lfedge.evetest.EVEDeviceRequest
-	26, // 39: org.lfedge.evetest.Evetest.ConnectTunnelToEVE:input_type -> org.lfedge.evetest.ConnectTunnelToEVERequest
-	28, // 40: org.lfedge.evetest.Evetest.ConnectConsoleToEVE:input_type -> org.lfedge.evetest.ConnectConsoleToEVERequest
-	46, // 41: org.lfedge.evetest.Evetest.GetSDNStatus:input_type -> org.lfedge.evetest.SDNRequest
-	46, // 42: org.lfedge.evetest.Evetest.GetSDNNetworkModel:input_type -> org.lfedge.evetest.SDNRequest
-	46, // 43: org.lfedge.evetest.Evetest.GetSDNConfigGraph:input_type -> org.lfedge.evetest.SDNRequest
-	46, // 44: org.lfedge.evetest.Evetest.StreamSDNLogs:input_type -> org.lfedge.evetest.SDNRequest
-	30, // 45: org.lfedge.evetest.Evetest.ConnectTunnelToSDN:input_type -> org.lfedge.evetest.ConnectSSHTunnelToSDNRequest
-	1,  // 46: org.lfedge.evetest.Evetest.Continue:output_type -> org.lfedge.evetest.ContinueResponse
-	3,  // 47: org.lfedge.evetest.Evetest.Exit:output_type -> org.lfedge.evetest.ExitResponse
-	5,  // 48: org.lfedge.evetest.Evetest.Status:output_type -> org.lfedge.evetest.StatusResponse
-	8,  // 49: org.lfedge.evetest.Evetest.HardRebootEVEDevice:output_type -> org.lfedge.evetest.EVERebootResponse
-	8,  // 50: org.lfedge.evetest.Evetest.SoftRebootEVEDevice:output_type -> org.lfedge.evetest.EVERebootResponse
-	9,  // 51: org.lfedge.evetest.Evetest.GetEVEConfig:output_type -> org.lfedge.evetest.EVEConfigResponse
-	10, // 52: org.lfedge.evetest.Evetest.GetEVEInfo:output_type -> org.lfedge.evetest.EVEInfoResponse
-	11, // 53: org.lfedge.evetest.Evetest.GetEVEMetrics:output_type -> org.lfedge.evetest.EVEMetricsResponse
-	47, // 54: org.lfedge.evetest.Evetest.GetEVELogs:output_type -> org.lfedge.evetest.LogMessage
-	48, // 55: org.lfedge.evetest.Evetest.GetEVEConsoleOutput:output_type -> org.lfedge.evetest.ConsoleOutputResponse
-	13, // 56: org.lfedge.evetest.Evetest.GetAppInfo:output_type -> org.lfedge.evetest.AppInfoResponse
-	14, // 57: org.lfedge.evetest.Evetest.GetAppMetrics:output_type -> org.lfedge.evetest.AppMetricsResponse
-	47, // 58: org.lfedge.evetest.Evetest.GetAppLogs:output_type -> org.lfedge.evetest.LogMessage
-	15, // 59: org.lfedge.evetest.Evetest.GetAppFlowLogs:output_type -> org.lfedge.evetest.AppFlowLogsResponse
-	17, // 60: org.lfedge.evetest.Evetest.GetNIInfo:output_type -> org.lfedge.evetest.NIInfoResponse
-	18, // 61: org.lfedge.evetest.Evetest.GetNIMetrics:output_type -> org.lfedge.evetest.NIMetricsResponse
-	20, // 62: org.lfedge.evetest.Evetest.GetClusterInfo:output_type -> org.lfedge.evetest.ClusterInfoResponse
-	21, // 63: org.lfedge.evetest.Evetest.GetClusterUpdateInfo:output_type -> org.lfedge.evetest.ClusterUpdateInfoResponse
-	22, // 64: org.lfedge.evetest.Evetest.GetClusterMetrics:output_type -> org.lfedge.evetest.ClusterMetricsResponse
-	23, // 65: org.lfedge.evetest.Evetest.CollectInfo:output_type -> org.lfedge.evetest.CollectInfoResponse
-	27, // 66: org.lfedge.evetest.Evetest.ConnectTunnelToEVE:output_type -> org.lfedge.evetest.ConnectTunnelToEVEResponse
-	29, // 67: org.lfedge.evetest.Evetest.ConnectConsoleToEVE:output_type -> org.lfedge.evetest.ConnectConsoleToEVEResponse
-	49, // 68: org.lfedge.evetest.Evetest.GetSDNStatus:output_type -> org.lfedge.evetest.SDNStatusResponse
-	50, // 69: org.lfedge.evetest.Evetest.GetSDNNetworkModel:output_type -> org.lfedge.evetest.SDNGetNetworkModelResponse
-	51, // 70: org.lfedge.evetest.Evetest.GetSDNConfigGraph:output_type -> org.lfedge.evetest.SDNConfigGraphResponse
-	47, // 71: org.lfedge.evetest.Evetest.StreamSDNLogs:output_type -> org.lfedge.evetest.LogMessage
-	31, // 72: org.lfedge.evetest.Evetest.ConnectTunnelToSDN:output_type -> org.lfedge.evetest.ConnectSSHTunnelToSDNResponse
-	46, // [46:73] is the sub-list for method output_type
-	19, // [19:46] is the sub-list for method input_type
-	19, // [19:19] is the sub-list for extension type_name
-	19, // [19:19] is the sub-list for extension extendee
-	0,  // [0:19] is the sub-list for field type_name
+	28, // 0: org.lfedge.evetest.StatusResponse.eve_devices:type_name -> org.lfedge.evetest.EVEDeviceStatus
+	29, // 1: org.lfedge.evetest.EVEConfigResponse.config:type_name -> org.lfedge.eve.config.EdgeDevConfig
+	30, // 2: org.lfedge.evetest.EVEInfoResponse.device_info:type_name -> org.lfedge.eve.info.ZInfoDevice
+	31, // 3: org.lfedge.evetest.EVEMetricsResponse.device_metrics:type_name -> org.lfedge.eve.metrics.deviceMetric
+	32, // 4: org.lfedge.evetest.AppInfoResponse.app_info:type_name -> org.lfedge.eve.info.ZInfoApp
+	33, // 5: org.lfedge.evetest.AppMetricsResponse.app_metrics:type_name -> org.lfedge.eve.metrics.appMetric
+	34, // 6: org.lfedge.evetest.AppFlowLogsResponse.ip_flows:type_name -> org.lfedge.eve.flowlog.FlowRecord
+	35, // 7: org.lfedge.evetest.AppFlowLogsResponse.dns_requests:type_name -> org.lfedge.eve.flowlog.DnsRequest
+	36, // 8: org.lfedge.evetest.NIInfoResponse.ni_info:type_name -> org.lfedge.eve.info.ZInfoNetworkInstance
+	37, // 9: org.lfedge.evetest.NIMetricsResponse.ni_metrics:type_name -> org.lfedge.eve.metrics.ZMetricNetworkInstance
+	20, // 10: org.lfedge.evetest.ConnectTunnelToEVERequest.connect:type_name -> org.lfedge.evetest.EVETunnelConnect
+	21, // 11: org.lfedge.evetest.ConnectTunnelToEVEResponse.connected:type_name -> org.lfedge.evetest.TunnelConnected
+	6,  // 12: org.lfedge.evetest.ConnectConsoleToEVERequest.connect:type_name -> org.lfedge.evetest.EVEDeviceRequest
+	38, // 13: org.lfedge.evetest.ConnectConsoleToEVEResponse.connect_reply:type_name -> org.lfedge.evetest.ConsoleProperties
+	39, // 14: org.lfedge.evetest.ConnectSSHTunnelToSDNRequest.connect:type_name -> org.lfedge.evetest.SDNRequest
+	21, // 15: org.lfedge.evetest.ConnectSSHTunnelToSDNResponse.connected:type_name -> org.lfedge.evetest.TunnelConnected
+	0,  // 16: org.lfedge.evetest.Evetest.Continue:input_type -> org.lfedge.evetest.ContinueRequest
+	2,  // 17: org.lfedge.evetest.Evetest.Exit:input_type -> org.lfedge.evetest.ExitRequest
+	4,  // 18: org.lfedge.evetest.Evetest.Status:input_type -> org.lfedge.evetest.StatusRequest
+	6,  // 19: org.lfedge.evetest.Evetest.HardRebootEVEDevice:input_type -> org.lfedge.evetest.EVEDeviceRequest
+	6,  // 20: org.lfedge.evetest.Evetest.SoftRebootEVEDevice:input_type -> org.lfedge.evetest.EVEDeviceRequest
+	6,  // 21: org.lfedge.evetest.Evetest.GetEVEConfig:input_type -> org.lfedge.evetest.EVEDeviceRequest
+	7,  // 22: org.lfedge.evetest.Evetest.GetEVEInfo:input_type -> org.lfedge.evetest.EVEDeviceStreamableRequest
+	7,  // 23: org.lfedge.evetest.Evetest.GetEVEMetrics:input_type -> org.lfedge.evetest.EVEDeviceStreamableRequest
+	7,  // 24: org.lfedge.evetest.Evetest.GetEVELogs:input_type -> org.lfedge.evetest.EVEDeviceStreamableRequest
+	6,  // 25: org.lfedge.evetest.Evetest.GetEVEConsoleOutput:input_type -> org.lfedge.evetest.EVEDeviceRequest
+	12, // 26: org.lfedge.evetest.Evetest.GetAppInfo:input_type -> org.lfedge.evetest.AppRequest
+	12, // 27: org.lfedge.evetest.Evetest.GetAppMetrics:input_type -> org.lfedge.evetest.AppRequest
+	12, // 28: org.lfedge.evetest.Evetest.GetAppLogs:input_type -> org.lfedge.evetest.AppRequest
+	12, // 29: org.lfedge.evetest.Evetest.GetAppFlowLogs:input_type -> org.lfedge.evetest.AppRequest
+	16, // 30: org.lfedge.evetest.Evetest.GetNIInfo:input_type -> org.lfedge.evetest.NIRequest
+	16, // 31: org.lfedge.evetest.Evetest.GetNIMetrics:input_type -> org.lfedge.evetest.NIRequest
+	6,  // 32: org.lfedge.evetest.Evetest.CollectInfo:input_type -> org.lfedge.evetest.EVEDeviceRequest
+	22, // 33: org.lfedge.evetest.Evetest.ConnectTunnelToEVE:input_type -> org.lfedge.evetest.ConnectTunnelToEVERequest
+	24, // 34: org.lfedge.evetest.Evetest.ConnectConsoleToEVE:input_type -> org.lfedge.evetest.ConnectConsoleToEVERequest
+	39, // 35: org.lfedge.evetest.Evetest.GetSDNStatus:input_type -> org.lfedge.evetest.SDNRequest
+	39, // 36: org.lfedge.evetest.Evetest.GetSDNNetworkModel:input_type -> org.lfedge.evetest.SDNRequest
+	39, // 37: org.lfedge.evetest.Evetest.GetSDNConfigGraph:input_type -> org.lfedge.evetest.SDNRequest
+	39, // 38: org.lfedge.evetest.Evetest.StreamSDNLogs:input_type -> org.lfedge.evetest.SDNRequest
+	26, // 39: org.lfedge.evetest.Evetest.ConnectTunnelToSDN:input_type -> org.lfedge.evetest.ConnectSSHTunnelToSDNRequest
+	1,  // 40: org.lfedge.evetest.Evetest.Continue:output_type -> org.lfedge.evetest.ContinueResponse
+	3,  // 41: org.lfedge.evetest.Evetest.Exit:output_type -> org.lfedge.evetest.ExitResponse
+	5,  // 42: org.lfedge.evetest.Evetest.Status:output_type -> org.lfedge.evetest.StatusResponse
+	8,  // 43: org.lfedge.evetest.Evetest.HardRebootEVEDevice:output_type -> org.lfedge.evetest.EVERebootResponse
+	8,  // 44: org.lfedge.evetest.Evetest.SoftRebootEVEDevice:output_type -> org.lfedge.evetest.EVERebootResponse
+	9,  // 45: org.lfedge.evetest.Evetest.GetEVEConfig:output_type -> org.lfedge.evetest.EVEConfigResponse
+	10, // 46: org.lfedge.evetest.Evetest.GetEVEInfo:output_type -> org.lfedge.evetest.EVEInfoResponse
+	11, // 47: org.lfedge.evetest.Evetest.GetEVEMetrics:output_type -> org.lfedge.evetest.EVEMetricsResponse
+	40, // 48: org.lfedge.evetest.Evetest.GetEVELogs:output_type -> org.lfedge.evetest.LogMessage
+	41, // 49: org.lfedge.evetest.Evetest.GetEVEConsoleOutput:output_type -> org.lfedge.evetest.ConsoleOutputResponse
+	13, // 50: org.lfedge.evetest.Evetest.GetAppInfo:output_type -> org.lfedge.evetest.AppInfoResponse
+	14, // 51: org.lfedge.evetest.Evetest.GetAppMetrics:output_type -> org.lfedge.evetest.AppMetricsResponse
+	40, // 52: org.lfedge.evetest.Evetest.GetAppLogs:output_type -> org.lfedge.evetest.LogMessage
+	15, // 53: org.lfedge.evetest.Evetest.GetAppFlowLogs:output_type -> org.lfedge.evetest.AppFlowLogsResponse
+	17, // 54: org.lfedge.evetest.Evetest.GetNIInfo:output_type -> org.lfedge.evetest.NIInfoResponse
+	18, // 55: org.lfedge.evetest.Evetest.GetNIMetrics:output_type -> org.lfedge.evetest.NIMetricsResponse
+	19, // 56: org.lfedge.evetest.Evetest.CollectInfo:output_type -> org.lfedge.evetest.CollectInfoResponse
+	23, // 57: org.lfedge.evetest.Evetest.ConnectTunnelToEVE:output_type -> org.lfedge.evetest.ConnectTunnelToEVEResponse
+	25, // 58: org.lfedge.evetest.Evetest.ConnectConsoleToEVE:output_type -> org.lfedge.evetest.ConnectConsoleToEVEResponse
+	42, // 59: org.lfedge.evetest.Evetest.GetSDNStatus:output_type -> org.lfedge.evetest.SDNStatusResponse
+	43, // 60: org.lfedge.evetest.Evetest.GetSDNNetworkModel:output_type -> org.lfedge.evetest.SDNGetNetworkModelResponse
+	44, // 61: org.lfedge.evetest.Evetest.GetSDNConfigGraph:output_type -> org.lfedge.evetest.SDNConfigGraphResponse
+	40, // 62: org.lfedge.evetest.Evetest.StreamSDNLogs:output_type -> org.lfedge.evetest.LogMessage
+	27, // 63: org.lfedge.evetest.Evetest.ConnectTunnelToSDN:output_type -> org.lfedge.evetest.ConnectSSHTunnelToSDNResponse
+	40, // [40:64] is the sub-list for method output_type
+	16, // [16:40] is the sub-list for method input_type
+	16, // [16:16] is the sub-list for extension type_name
+	16, // [16:16] is the sub-list for extension extendee
+	0,  // [0:16] is the sub-list for field type_name
 }
 
 func init() { file_evetest_proto_init() }
@@ -2078,27 +1844,27 @@ func file_evetest_proto_init() {
 	}
 	file_common_proto_init()
 	file_sdn_proto_init()
-	file_evetest_proto_msgTypes[26].OneofWrappers = []any{
+	file_evetest_proto_msgTypes[22].OneofWrappers = []any{
 		(*ConnectTunnelToEVERequest_Connect)(nil),
 		(*ConnectTunnelToEVERequest_Data)(nil),
 	}
-	file_evetest_proto_msgTypes[27].OneofWrappers = []any{
+	file_evetest_proto_msgTypes[23].OneofWrappers = []any{
 		(*ConnectTunnelToEVEResponse_Connected)(nil),
 		(*ConnectTunnelToEVEResponse_Data)(nil),
 	}
-	file_evetest_proto_msgTypes[28].OneofWrappers = []any{
+	file_evetest_proto_msgTypes[24].OneofWrappers = []any{
 		(*ConnectConsoleToEVERequest_Connect)(nil),
 		(*ConnectConsoleToEVERequest_Data)(nil),
 	}
-	file_evetest_proto_msgTypes[29].OneofWrappers = []any{
+	file_evetest_proto_msgTypes[25].OneofWrappers = []any{
 		(*ConnectConsoleToEVEResponse_ConnectReply)(nil),
 		(*ConnectConsoleToEVEResponse_Data)(nil),
 	}
-	file_evetest_proto_msgTypes[30].OneofWrappers = []any{
+	file_evetest_proto_msgTypes[26].OneofWrappers = []any{
 		(*ConnectSSHTunnelToSDNRequest_Connect)(nil),
 		(*ConnectSSHTunnelToSDNRequest_Data)(nil),
 	}
-	file_evetest_proto_msgTypes[31].OneofWrappers = []any{
+	file_evetest_proto_msgTypes[27].OneofWrappers = []any{
 		(*ConnectSSHTunnelToSDNResponse_Connected)(nil),
 		(*ConnectSSHTunnelToSDNResponse_Data)(nil),
 	}
@@ -2108,7 +1874,7 @@ func file_evetest_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_evetest_proto_rawDesc), len(file_evetest_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   32,
+			NumMessages:   28,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

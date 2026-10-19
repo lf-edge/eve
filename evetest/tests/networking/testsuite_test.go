@@ -189,8 +189,6 @@ func TestBootstrapSuite(test *testing.T) {
 //
 // Subtests
 // --------
-//   - TestPNAC (variants: REQUIRE_SCEP_PROXY=false / =true) -- 802.1X +
-//     SCEP enrollment.
 //   - TestDHCPIPv4Only / TestStaticIPv4Only -- IPv4-only port config on a
 //     dual-stack SDN network.
 //   - TestDNSFunctionality -- per-port DNS aggregation, resolv.conf
@@ -220,23 +218,6 @@ func TestDeviceConnectivitySuite(test *testing.T) {
 	)
 
 	evetest.RunTestSuite(
-		evetest.TestCase{
-			Test: TestPNAC,
-			Variants: []evetest.TestVariant{
-				{
-					Name: "TestPNACWithoutProxy",
-					Parameters: []evetest.TestParameterValue{
-						{Key: requireSCEPProxyParamKey, Value: false},
-					},
-				},
-				{
-					Name: "TestPNACWithProxy",
-					Parameters: []evetest.TestParameterValue{
-						{Key: requireSCEPProxyParamKey, Value: true},
-					},
-				},
-			},
-		},
 		evetest.TestCase{
 			Test: TestDHCPIPv4Only,
 		},

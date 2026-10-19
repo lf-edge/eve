@@ -104,9 +104,6 @@ func TestPurgeNeverActivatedApp(test *testing.T) {
 		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
 	})
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 
 	// Step 1: deploy an app whose image tag does not exist, so it never
 	// activates.

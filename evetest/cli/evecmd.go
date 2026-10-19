@@ -49,7 +49,6 @@ func eveCommand() *cobra.Command {
 		eveSCPCmd(),
 		evePortFwdCmd(),
 		eveConsoleCmd(),
-		eveKubectlCmd(),
 	)
 	return eveCmd
 }
@@ -1040,57 +1039,6 @@ func runConsoleRaw(grpcPipe utils.GrpcClientPipe[
 		log.WithField("component", "eve-console"),
 		"EVE console", grpcPipe, stdioPipe)
 	return nil
-}
-
-func eveKubectlCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:                "kubectl [kubectl-args...]",
-		Short:              "Run kubectl commands against the EVE device Kubernetes cluster",
-		DisableFlagParsing: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			// DisableFlagParsing passes all args raw, including inherited parent
-			// persistent flags (-d/--devicename). Parse and strip them here.
-			devName, kubectlArgs := extractDeviceFlag(args)
-
-			// Write EVE SSH private key to a temporary file.
-			keyFilepath, err := createTmpSSHKeyFile(constants.EVESSHPrivateKey)
-			if err != nil {
-				return err
-			}
-			defer func() {
-				_ = os.Remove(keyFilepath)
-			}()
-
-			localPort, wait, closeFn := localEVETunnel(context.Background(),
-				&pb.EVETunnelConnect{DeviceName: devName, TargetPort: 22})
-			defer closeFn()
-
-			var sshArgs []string
-			// Allocate a remote PTY when stdin is a terminal so that
-			// interactive kubectl commands (e.g. exec -it) work correctly.
-			if fi, err := os.Stdin.Stat(); err == nil &&
-				(fi.Mode()&os.ModeCharDevice) != 0 {
-				sshArgs = append(sshArgs, "-t")
-			}
-			sshArgs = append(sshArgs, utils.EveSSHCommonArgs...)
-			sshArgs = append(sshArgs,
-				"-i", keyFilepath,
-				"-p", strconv.Itoa(localPort),
-				"root@127.0.0.1",
-				"eve", "exec", "kube", "kubectl",
-			)
-			sshArgs = append(sshArgs, kubectlArgs...)
-			err = utils.RunCommandForeground("ssh", sshArgs, utils.SetThisProcessStdin())
-			closeFn()
-			if tunnelErr := wait(); err != nil && tunnelErr != nil {
-				return tunnelErr
-			}
-			if err != nil {
-				return fmt.Errorf("kubectl command failed: %w", err)
-			}
-			return nil
-		},
-	}
 }
 
 // extractDeviceFlag removes -d/--devicename flags from args (added by cobra's

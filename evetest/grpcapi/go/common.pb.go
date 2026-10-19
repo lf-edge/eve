@@ -79,10 +79,9 @@ func (ArchType) EnumDescriptor() ([]byte, []int) {
 type HypervisorType int32
 
 const (
-	HypervisorType_HV_UNKNOWN  HypervisorType = 0
-	HypervisorType_HV_KVM      HypervisorType = 1
-	HypervisorType_HV_XEN      HypervisorType = 2
-	HypervisorType_HV_KUBEVIRT HypervisorType = 3
+	HypervisorType_HV_UNKNOWN HypervisorType = 0
+	HypervisorType_HV_KVM     HypervisorType = 1
+	HypervisorType_HV_XEN     HypervisorType = 2
 )
 
 // Enum value maps for HypervisorType.
@@ -91,13 +90,11 @@ var (
 		0: "HV_UNKNOWN",
 		1: "HV_KVM",
 		2: "HV_XEN",
-		3: "HV_KUBEVIRT",
 	}
 	HypervisorType_value = map[string]int32{
-		"HV_UNKNOWN":  0,
-		"HV_KVM":      1,
-		"HV_XEN":      2,
-		"HV_KUBEVIRT": 3,
+		"HV_UNKNOWN": 0,
+		"HV_KVM":     1,
+		"HV_XEN":     2,
 	}
 )
 
@@ -1077,15 +1074,14 @@ const file_common_proto_rawDesc = "" +
 	"\n" +
 	"ARCH_AMD64\x10\x01\x12\x0e\n" +
 	"\n" +
-	"ARCH_ARM64\x10\x02*I\n" +
+	"ARCH_ARM64\x10\x02*8\n" +
 	"\x0eHypervisorType\x12\x0e\n" +
 	"\n" +
 	"HV_UNKNOWN\x10\x00\x12\n" +
 	"\n" +
 	"\x06HV_KVM\x10\x01\x12\n" +
 	"\n" +
-	"\x06HV_XEN\x10\x02\x12\x0f\n" +
-	"\vHV_KUBEVIRT\x10\x03*\x82\x02\n" +
+	"\x06HV_XEN\x10\x02*\x82\x02\n" +
 	"\n" +
 	"Capability\x12\x1a\n" +
 	"\x16CAPABILITY_UNSPECIFIED\x10\x00\x12\x1b\n" +
