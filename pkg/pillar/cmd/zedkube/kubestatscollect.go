@@ -7,6 +7,7 @@ package zedkube
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -99,6 +100,7 @@ func (z *zedkube) collectKubeStats() {
 		}
 		// Publish the cluster info
 		clusterInfo := types.KubeClusterInfo{
+			Witness:   parseWitnessStatus(nodes),
 			Nodes:     nodesInfo,
 			AppPods:   podsInfo,
 			AppVMIs:   vmisInfo,
@@ -250,6 +252,30 @@ func getKubeNodeInfo(node corev1.Node, z *zedkube) *types.KubeNodeInfo {
 	}
 
 	return &nodeInfo
+}
+
+// parseWitnessStatus reads the witness's status from the annotation of
+// whichever node hosts it. The witness has no Node object of its own,
+// having no kubelet, so it reports through its host.
+func parseWitnessStatus(nodes []corev1.Node) *types.WitnessStatus {
+	for _, node := range nodes {
+		raw, ok := node.Annotations[types.NodeWitnessAnnotation]
+		if !ok {
+			continue
+		}
+		var status types.WitnessStatus
+		if err := json.Unmarshal([]byte(raw), &status); err != nil {
+			log.Errorf("parseWitnessStatus: node %s: %v", node.Name, err)
+			continue
+		}
+		// A parked witness stamps Idle on its own node, which says
+		// nothing about the node that actually hosts the witness.
+		if status.State == types.WitnessEtcdStateIdle {
+			continue
+		}
+		return &status
+	}
+	return nil
 }
 
 func getAppKubePods(ctx context.Context, clientset *kubernetes.Clientset) ([]corev1.Pod, error) {
