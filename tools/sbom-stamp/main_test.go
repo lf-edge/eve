@@ -246,14 +246,24 @@ func scanned() []byte {
 		pkg("SPDXRef-Package-go-module-pillar-1", "github.com/lf-edge/eve/pkg/pillar", "v0.0.0", "NOASSERTION", "", "pkg:golang/github.com/lf-edge/eve/pkg/pillar@v0.0.0") + `,` +
 		pkg("SPDXRef-Package-go-module-errors-1", "github.com/pkg/errors", "v0.9.1", "NOASSERTION", "", "pkg:golang/github.com/pkg/errors@v0.9.1") + `],` +
 		`"files":[{"fileName":"bin/busybox","SPDXID":"SPDXRef-File-bin-busybox-1","checksums":[{"algorithm":"SHA256","checksumValue":"9d75f0d7c398df565d7ac04c6819b62d6d8f9560f5eb4672596ecd8f7e96ae91"}]},` +
-		`{"fileName":"etc/gone","SPDXID":"SPDXRef-File-etc-gone-1","checksums":[{"algorithm":"SHA256","checksumValue":"00"}]}],` +
-		`"relationships":[]}`)
+		`{"fileName":"etc/gone","SPDXID":"SPDXRef-File-etc-gone-1","checksums":[{"algorithm":"SHA256","checksumValue":"00"}]},` +
+		`{"fileName":"etc/hosts","SPDXID":"SPDXRef-File-etc-hosts-1","checksums":[{"algorithm":"SHA256","checksumValue":"11"}]}],` +
+		`"relationships":[{"spdxElementId":"SPDXRef-Package-apk-busybox-1","relatedSpdxElement":"SPDXRef-File-etc-gone-1","relationshipType":"CONTAINS"},` +
+		`{"spdxElementId":"SPDXRef-Package-apk-busybox-1","relatedSpdxElement":"SPDXRef-File-etc-hosts-1","relationshipType":"CONTAINS"}]}`)
 }
 
 // content is what stampTar collects from tarWithContent.
 var content = Content{
-	SHA1:   map[string]string{"9d75f0d7c398df565d7ac04c6819b62d6d8f9560f5eb4672596ecd8f7e96ae91": "2f106f27fa1f28a8a4e02aeb10d73b78f9c9b24a"},
+	SHA1: map[string]string{
+		"9d75f0d7c398df565d7ac04c6819b62d6d8f9560f5eb4672596ecd8f7e96ae91": "2f106f27fa1f28a8a4e02aeb10d73b78f9c9b24a",
+		"4f8a2cc398d8664277a96a7843ab4958ab1d0a347cbe7c071fde0fcb58230793": "abba3508de929934a4e4b5198e00683c2b633bbc",
+	},
 	Images: map[string]string{"containers/onboot/000-rngd/rootfs": "docker.io/lfedge/eve-rngd:ba4c5b192f086f3d2dfadc46061b71afc44edd62"},
+	Paths: map[string]string{
+		"containers/onboot/000-rngd/rootfs":             "",
+		"containers/onboot/000-rngd/rootfs/bin/busybox": "9d75f0d7c398df565d7ac04c6819b62d6d8f9560f5eb4672596ecd8f7e96ae91",
+		"etc/hosts": "4f8a2cc398d8664277a96a7843ab4958ab1d0a347cbe7c071fde0fcb58230793",
+	},
 }
 
 func TestFill(t *testing.T) {
@@ -298,8 +308,22 @@ func TestFill(t *testing.T) {
 	if len(sums) != 2 || sums[1].(map[string]any)["checksumValue"] != "2f106f27fa1f28a8a4e02aeb10d73b78f9c9b24a" {
 		t.Errorf("bin/busybox checksums %v", sums)
 	}
-	if st.NoSupplier != 1 || st.NoSHA1 != 1 {
-		t.Errorf("stats %+v, want 1 package without supplier and 1 file without SHA1", st)
+	// etc/gone is not in the tar, and etc/hosts holds other content there.
+	if len(d.Files) != 2 || d.Files[1]["fileName"] != "etc/hosts" {
+		t.Fatalf("files %v, want bin/busybox and etc/hosts", d.Files)
+	}
+	wantSums := `[{"algorithm":"SHA256","checksumValue":"4f8a2cc398d8664277a96a7843ab4958ab1d0a347cbe7c071fde0fcb58230793"},` +
+		`{"algorithm":"SHA1","checksumValue":"abba3508de929934a4e4b5198e00683c2b633bbc"}]`
+	if got, _ := json.Marshal(d.Files[1]["checksums"]); string(got) != wantSums {
+		t.Errorf("etc/hosts checksums %s, want %s", got, wantSums)
+	}
+	for _, r := range d.Relationships {
+		if r.RelatedSpdxElement == "SPDXRef-File-etc-gone-1" {
+			t.Errorf("relationship to the dropped etc/gone kept: %+v", r)
+		}
+	}
+	if st.NoSupplier != 1 || st.NoSHA1 != 0 || st.AbsentFiles != 1 || st.ReplacedFiles != 1 {
+		t.Errorf("stats %+v, want 1 package without supplier, 1 file dropped, 1 rehashed, none without SHA1", st)
 	}
 	if again, _, _ := Stamp(out, opts, content); !bytes.Equal(out, again) {
 		t.Errorf("restamping a filled document changed it")
@@ -323,6 +347,7 @@ func tarWithContent(t *testing.T, path string, members ...[2]string) {
 	write(&tar.Header{Name: "containers/onboot/000-rngd/rootfs/", Typeflag: tar.TypeDir, Mode: 0o755, Format: tar.FormatPAX,
 		PAXRecords: map[string]string{"LINUXKIT.source": content.Images["containers/onboot/000-rngd/rootfs"]}}, "")
 	write(&tar.Header{Name: "containers/onboot/000-rngd/rootfs/bin/busybox", Typeflag: tar.TypeReg, Mode: 0o755, Size: 7}, "busybox")
+	write(&tar.Header{Name: "etc/hosts", Typeflag: tar.TypeReg, Mode: 0o644, Size: 5}, "hosts")
 	for _, m := range members {
 		write(&tar.Header{Name: m[0], Typeflag: tar.TypeReg, Mode: 0o644, Size: int64(len(m[1]))}, m[1])
 	}
