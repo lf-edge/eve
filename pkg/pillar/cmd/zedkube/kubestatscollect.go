@@ -249,9 +249,30 @@ func getKubeNodeInfo(node corev1.Node, z *zedkube) *types.KubeNodeInfo {
 		Schedulable:        schedulable,
 		Admission:          admission,
 		NodeID:             node.Labels["node-uuid"],
+		Recovery:           parseNodeRecovery(node),
 	}
 
 	return &nodeInfo
+}
+
+// parseNodeRecovery reads back the quorum-recovery status a node stamps
+// on itself. Only that node knows it, so this is the same route the
+// node-uuid label already takes into this message.
+//
+// A malformed annotation is dropped rather than failing the collection:
+// one node's bad annotation must not cost the report every other node's
+// status.
+func parseNodeRecovery(node corev1.Node) *types.KubeQuorumRecoveryStatus {
+	raw, ok := node.Annotations[types.NodeRecoveryAnnotation]
+	if !ok {
+		return nil
+	}
+	var status types.KubeQuorumRecoveryStatus
+	if err := json.Unmarshal([]byte(raw), &status); err != nil {
+		log.Errorf("parseNodeRecovery: node %s: %v", node.Name, err)
+		return nil
+	}
+	return &status
 }
 
 // parseWitnessStatus reads the witness's status from the annotation of

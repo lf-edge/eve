@@ -6,10 +6,11 @@ package monitor
 import (
 	"encoding/json"
 	"testing"
+	"time"
 )
 
 // TestSameAnnotations guards the check that keeps an unchanged tick from
-// writing. Status changes rarely and the tick runs every 15
+// writing. Recovery status changes rarely and the tick runs every 15
 // seconds, so patching regardless would be a steady stream of writes
 // into etcd carrying no new information.
 func TestSameAnnotations(t *testing.T) {
@@ -36,26 +37,77 @@ func TestSameAnnotations(t *testing.T) {
 	}
 }
 
-// TestBuildStampPatch checks that an empty value becomes a JSON null,
-// the merge-patch spelling of "delete this annotation".
-func TestBuildStampPatch(t *testing.T) {
-	patch, err := buildStampPatch(map[string]string{"set": "v", "gone": ""})
+// TestRecoveryStatus pins when a node has a recovery status to report. A
+// node that was never the seed holds a bump pending, so its applied
+// generation trails the controller's with nothing owed, and reporting it
+// would show a recovery that is not happening.
+func TestRecoveryStatus(t *testing.T) {
+	at := time.Date(2026, 10, 29, 18, 12, 38, 0, time.UTC)
+	begun := at.Add(time.Hour)
+	cases := []struct {
+		name       string
+		state      recoveryState
+		wantNil    bool
+		applied    uint32
+		converging bool
+		transition time.Time
+		wantErr    bool
+	}{
+		{"never recorded", recoveryState{}, true, 0, false, time.Time{}, false},
+		{"seed at its generation", recoveryState{applied: 1, recorded: true, asSeed: true, appliedAt: at},
+			false, 1, false, at, false},
+		{"non-seed holding a pending bump", recoveryState{applied: 0, recorded: true, appliedAt: at},
+			true, 0, false, time.Time{}, false},
+		{"non-seed converging", recoveryState{applied: 0, recorded: true, appliedAt: at, intent: &begun},
+			false, 0, true, begun, false},
+		{"seed converging", recoveryState{applied: 1, recorded: true, asSeed: true, appliedAt: at, intent: &begun},
+			false, 1, true, begun, false},
+		{"non-seed with a failure", recoveryState{applied: 0, recorded: true, appliedAt: at, failure: "rejected"},
+			false, 0, false, at, true},
+		{"failure before anything was recorded", recoveryState{failure: "rejected"},
+			false, 0, false, time.Time{}, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := c.state.status()
+			if c.wantNil {
+				if got != nil {
+					t.Fatalf("status() = %+v, want nil", got)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatal("status() = nil, want a status")
+			}
+			if got.AppliedGeneration != c.applied || got.Converging != c.converging ||
+				!got.LastTransitionAt.Equal(c.transition) || (got.Error.Error != "") != c.wantErr {
+				t.Errorf("status() = %+v, want applied %d converging %v at %v error %v",
+					got, c.applied, c.converging, c.transition, c.wantErr)
+			}
+		})
+	}
+}
+
+// TestStatusPatch checks that a removed annotation is a null in the merge
+// patch, which is what deletes it, and that the others are set.
+func TestStatusPatch(t *testing.T) {
+	patch, err := statusPatch(map[string]string{"set": "v"}, []string{"gone"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	var got struct {
 		Metadata struct {
-			Annotations map[string]*string `json:"annotations"`
-		} `json:"metadata"`
+			Annotations map[string]*string
+		}
 	}
 	if err := json.Unmarshal(patch, &got); err != nil {
 		t.Fatal(err)
 	}
 	ann := got.Metadata.Annotations
 	if v, ok := ann["set"]; !ok || v == nil || *v != "v" {
-		t.Errorf("annotation %q = %v, want \"v\"", "set", v)
+		t.Errorf("set annotation = %v, want v", v)
 	}
 	if v, ok := ann["gone"]; !ok || v != nil {
-		t.Errorf("annotation %q = %v, want explicit null", "gone", v)
+		t.Errorf("removed annotation = %v present %v, want an explicit null", v, ok)
 	}
 }
