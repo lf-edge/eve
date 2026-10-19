@@ -42,10 +42,11 @@ func swtpmArgs(id uuid.UUID) []string {
 }
 
 // A domain's swtpm is per-domain overhead like its shim, so once vtpm has
-// launched it, it must move from vtpm's service cgroup under /eve to the swtpm
-// cgroup beside the domains, in the memory hierarchy. vtpm runs in its own pid
-// namespace, so the pid it records is of no use to pillar: the swtpm is found
-// by the pid file named on its command line.
+// launched it, it must move from vtpm's service cgroup under /eve to the
+// helpers child of the domain's own cgroup, in the memory hierarchy, created
+// ahead of the task. vtpm runs in its own pid namespace, so the pid it records
+// is of no use to pillar: the swtpm is found by the pid file named on its
+// command line.
 func TestJoinSwtpmCgroup(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "memory.usage_in_bytes"), []byte("0\n"), 0644); err != nil {
@@ -60,12 +61,12 @@ func TestJoinSwtpmCgroup(t *testing.T) {
 		4244: {"grep", fmt.Sprintf(types.SwtpmPidPath, id)},
 	})
 
-	if err := joinSwtpmCgroup(root, procRoot, id); err != nil {
+	if err := joinSwtpmCgroup(root, procRoot, id, "task-1"); err != nil {
 		t.Fatalf("joinSwtpmCgroup failed: %v", err)
 	}
-	procs, err := os.ReadFile(filepath.Join(root, "eve-user-apps", "swtpm", "cgroup.procs"))
+	procs, err := os.ReadFile(filepath.Join(root, "eve-user-apps", "task-1", "helpers", "cgroup.procs"))
 	if err != nil {
-		t.Fatalf("the swtpm cgroup was not populated: %v", err)
+		t.Fatalf("the helpers cgroup was not populated: %v", err)
 	}
 	if string(procs) != "4242" {
 		t.Fatalf("cgroup.procs = %q, want the pid 4242 of the domain's swtpm", procs)
@@ -79,7 +80,7 @@ func TestJoinSwtpmCgroupWithoutMemoryHierarchy(t *testing.T) {
 	id := uuid.Must(uuid.NewV4())
 	procRoot := fakeProc(t, map[int][]string{4242: swtpmArgs(id)})
 
-	err := joinSwtpmCgroup(root, procRoot, id)
+	err := joinSwtpmCgroup(root, procRoot, id, "task-1")
 	if !errors.Is(err, containerd.ErrNoMemoryHierarchy) {
 		t.Fatalf("joinSwtpmCgroup returned %v, want ErrNoMemoryHierarchy", err)
 	}
@@ -96,7 +97,7 @@ func TestJoinSwtpmCgroupWithoutProcess(t *testing.T) {
 	}
 	procRoot := fakeProc(t, map[int][]string{4243: swtpmArgs(uuid.Must(uuid.NewV4()))})
 
-	if err := joinSwtpmCgroup(root, procRoot, uuid.Must(uuid.NewV4())); err == nil {
+	if err := joinSwtpmCgroup(root, procRoot, uuid.Must(uuid.NewV4()), "task-1"); err == nil {
 		t.Fatal("joinSwtpmCgroup succeeded without a swtpm process for the domain")
 	}
 }

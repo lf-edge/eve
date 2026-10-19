@@ -16,23 +16,20 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
-// swtpmCgroupName names the cgroup every domain's swtpm joins.
-//
-// Like the domain's shim, the swtpm is per-domain overhead, but vtpm starts it
-// in its own service cgroup, /eve/services/vtpm, whose memory is part of the
-// fixed budget EVE's services share under /eve. It joins the cgroup beside the
-// domains instead, in the memory hierarchy only, keeping vtpm's cpuset.
-const swtpmCgroupName = "swtpm"
-
-// joinSwtpmCgroup moves the swtpm vtpm launched for domain id to the swtpm
-// cgroup, creating it if needed. memoryRoot is the cgroup v1 memory hierarchy,
+// joinSwtpmCgroup moves the swtpm vtpm launched for domain id, whose task is
+// named task, to the helpers cgroup of that task, creating it if needed: like
+// the domain's shim, the swtpm is per-domain overhead, but vtpm starts it in
+// its own service cgroup, /eve/services/vtpm, whose memory is part of the
+// fixed budget EVE's services share under /eve. In the helpers cgroup it
+// counts against the domain's memory limit instead, in the memory hierarchy
+// only, keeping vtpm's cpuset. memoryRoot is the cgroup v1 memory hierarchy,
 // normally containerd.HostMemoryCgroupRoot; without one the error is
 // containerd.ErrNoMemoryHierarchy. procRoot is the proc filesystem of the host
 // pid namespace, which pillar shares: vtpm does not, so the pid it records for
 // the swtpm is not usable here, and the swtpm is found by the pid file it was
 // told to write, which names the domain.
-func joinSwtpmCgroup(memoryRoot, procRoot string, id uuid.UUID) error {
-	_, hostDir, err := containerd.UserAppsMemoryCgroup(memoryRoot, swtpmCgroupName)
+func joinSwtpmCgroup(memoryRoot, procRoot string, id uuid.UUID, task string) error {
+	cgroup, hostDir, err := containerd.AppHelpersCgroup(memoryRoot, task)
 	if err != nil {
 		return err
 	}
@@ -41,7 +38,7 @@ func joinSwtpmCgroup(memoryRoot, procRoot string, id uuid.UUID) error {
 		return err
 	}
 	if err := os.WriteFile(filepath.Join(hostDir, "cgroup.procs"), []byte(strconv.Itoa(pid)), 0644); err != nil {
-		return fmt.Errorf("cannot move swtpm pid %d to the %s cgroup: %w", pid, swtpmCgroupName, err)
+		return fmt.Errorf("cannot move swtpm pid %d to the %s cgroup: %w", pid, cgroup, err)
 	}
 	return nil
 }

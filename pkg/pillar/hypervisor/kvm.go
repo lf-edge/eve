@@ -2318,7 +2318,7 @@ func (ctx KvmContext) VirtualTPMSetup(domainName string, wp *types.WatchdogParam
 	}
 	// The swtpm is running (vtpm waits for its pid file) and charged to vtpm's
 	// cgroup; staying there is harmless, so a failure to move it is only logged.
-	if err := joinSwtpmCgroup(containerd.HostMemoryCgroupRoot, "/proc", domainUUID); err != nil {
+	if err := joinSwtpmCgroup(containerd.HostMemoryCgroupRoot, "/proc", domainUUID, domainName); err != nil {
 		logrus.Warnf("swtpm of %s stays in vtpm's cgroup: %v", domainName, err)
 	}
 	return nil
