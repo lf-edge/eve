@@ -78,8 +78,7 @@ const (
 //     newlogd's on-disk log level cache, which handles logs produced before
 //     zedagent publishes the live config. The phase *depends* on that cache, so
 //     do not clear it mid-test; it also sets the EVE floor -- present from
-//     17.0.0-rc2 (including 17.0.0-lts) and on master, absent from 17.0.0 and
-//     17.0.0-rc1.
+//     14.5.5-rc1 and on master, absent from earlier releases.
 //  5. Anchor at ZInfoDevice.BootTime of the post-reboot message, minus 2s for
 //     its +-1s jitter. LastRebootTime only identifies the message: with no
 //     recorded reboot reason it is stamped during nodeagent startup, well into

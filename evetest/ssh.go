@@ -204,7 +204,7 @@ func scpRemotePath(remotePath string, legacy bool) string {
 }
 
 // runSCP runs scp over SFTP (the OpenSSH 9.x default) and, if that fails,
-// retries once with the legacy SCP protocol (-O). EVE 16.0-stable ships an
+// retries once with the legacy SCP protocol (-O). EVE 14.5-stable ships an
 // sshd whose "Subsystem sftp" path does not exist, so SFTP never works there
 // ("scp: Connection closed"), while the legacy protocol only needs the scp
 // binary on the device.

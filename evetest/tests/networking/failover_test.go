@@ -664,12 +664,12 @@ func TestNetworkConfigFallback(test *testing.T) {
 // on its only management uplink.
 //
 // Connectivity under each impairment is confirmed directly:
-// timer.deviceinfo.interval is lowered to its allowed minimum (30s) so zedagent
-// publishes a fresh ZInfoDevice periodically even absent any real change
-// (see zedagent/handleconfig.go's configTimerTask), and after every impairment
-// change the test asserts (via WatchDeviceInfo) that such an update still
-// arrives within a bounded timeout. Actually getting a message through is a
-// direct proof of connectivity.
+// timer.metric.interval is lowered by the framework to 20s so EVE publishes
+// fresh device metrics periodically even absent any real change, and after
+// every impairment change the test asserts (via WatchDeviceMetrics) that such
+// an update still arrives within a bounded timeout. Actually getting a message
+// through is a direct proof of connectivity. (EVE 14.5 does not allow lowering
+// timer.deviceinfo.interval, which is fixed at ~10 minutes.)
 //
 // Network model
 // -------------
@@ -686,7 +686,7 @@ func TestNetworkConfigFallback(test *testing.T) {
 //
 // Phases
 // ------
-//  1. Baseline: apply config (including the lowered timer.deviceinfo.interval),
+//  1. Baseline: apply config (including the lowered metric interval),
 //     wait for the NI ONLINE and the app RUNNING, confirm the device is
 //     ONLINE and the app can curl http-server.test.
 //  2. High-loss link: UpdateNetworkModel sets TrafficControl{loss_probability:
@@ -746,16 +746,6 @@ func TestIntermittentConnectivity(test *testing.T) {
 
 	devConfig := evetest.NewEdgeDeviceConfig(devName)
 
-	// Lower the periodic (unconditional, even absent any real change)
-	// device-info publish interval to its allowed minimum, so the test can
-	// use "a fresh ZInfoDevice arrives within a bounded timeout" as a
-	// direct, real-time signal that EVE is still getting through to the
-	// controller -- see zedagent/handleconfig.go's configTimerTask
-	// ("ticker for periodical info publish when no real change").
-	cfgProps := pillartypes.NewConfigItemValueMap()
-	cfgProps.SetGlobalValueInt(pillartypes.DevInfoInterval, 30)
-	devConfig.SetConfigProperties(cfgProps)
-
 	eth0Net := devConfig.AddNetwork(
 		evetest.DHCPNetworkConfig{NetworkType: evecommon.NetworkType_V4Only})
 	devConfig.AddNetworkAdapter(evetest.NetworkAdapterConfig{
@@ -813,6 +803,8 @@ func TestIntermittentConnectivity(test *testing.T) {
 
 	devUpdates, stopDevWatch := device.WatchDeviceInfo()
 	defer stopDevWatch()
+	metricUpdates, stopMetricWatch := device.WatchDeviceMetrics()
+	defer stopMetricWatch()
 	niUpdates, stopNIWatch := device.WatchNetworkInstanceInfo(niUUID)
 	defer stopNIWatch()
 	device.ApplyConfig(devConfig, false, false)
@@ -846,9 +838,9 @@ func TestIntermittentConnectivity(test *testing.T) {
 	t.Expect(device.GetState()).To(Equal(api.EVEDeviceState_EVE_DEVICE_STATE_ONLINE))
 	evetest.Checkpoint("phase1-baseline-complete")
 
-	// infoTimeout bounds how long a fresh ZInfoDevice update may take to
-	// arrive after an impairment is applied: with timer.deviceinfo.interval
-	// lowered to 30s above, 90s gives 3x margin for retries under packet
+	// infoTimeout bounds how long a fresh DeviceMetric update may take to
+	// arrive after an impairment is applied: with timer.metric.interval
+	// lowered to 20s by the framework, 90s gives 3x margin for retries under packet
 	// loss/high latency before treating an actual delivery failure as such.
 	infoTimeout := 90 * time.Second
 	waitForFreshInfo := func(reason string) {
@@ -859,14 +851,14 @@ func TestIntermittentConnectivity(test *testing.T) {
 	drainBacklog:
 		for {
 			select {
-			case <-devUpdates:
+			case <-metricUpdates:
 			default:
 				break drainBacklog
 			}
 		}
-		log.Infof("Waiting for a fresh device info update (%s)...", reason)
-		t.Eventually(devUpdates, infoTimeout).Should(Receive(),
-			"EVE should still get periodic device info through "+
+		log.Infof("Waiting for a fresh device metric update (%s)...", reason)
+		t.Eventually(metricUpdates, infoTimeout).Should(Receive(),
+			"EVE should still get periodic device metrics through "+
 				"to the controller (%s)", reason)
 	}
 

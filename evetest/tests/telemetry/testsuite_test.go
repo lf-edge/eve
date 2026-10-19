@@ -12,9 +12,8 @@ import (
 // TestTelemetrySuite drives the channels through which EVE reports itself to the
 // controller - info messages, metric messages and logs - and the configuration
 // of the on-device pipeline that produces the logs. That pipeline is newlogd,
-// which collects events from memlogd and the kernel, routes them through Vector
-// (EVE's log-processing engine, configured with the vector.config global config
-// item) and uploads them to the controller in gzip batches.
+// which collects events from memlogd and the kernel and uploads them to the
+// controller in gzip batches.
 //
 // Every subtest declares the HYPERVISOR and TPM parameters and passes both to
 // setupTelemetryTestDevice, which states the device requirements in one place.
@@ -41,14 +40,6 @@ import (
 //     counters plus memory, CPU and controller-connectivity counters.
 //   - TestDeviceLogs -- logs produced by EVE services and by the kernel reach
 //     the controller.
-//   - TestWorkingConfig -- a valid custom Vector config is promoted and
-//     actively transforms the upload stream.
-//   - TestFaultyConfig -- a Vector config that fails validation is never
-//     promoted and the running pipeline keeps uploading.
-//   - TestEmptyConfig -- clearing vector.config restores the Vector config
-//     built into the image.
-//   - TestInvalidBase64Config -- a vector.config value that is not base64 is
-//     rejected by pillar and never reaches Vector.
 //   - TestRemoteLogLevelNone -- remote log levels set to "none" stop log upload
 //     without stopping the device or its local log collection.
 func TestTelemetrySuite(test *testing.T) {
@@ -70,18 +61,6 @@ func TestTelemetrySuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestDeviceLogs,
-		},
-		evetest.TestCase{
-			Test: TestWorkingConfig,
-		},
-		evetest.TestCase{
-			Test: TestFaultyConfig,
-		},
-		evetest.TestCase{
-			Test: TestEmptyConfig,
-		},
-		evetest.TestCase{
-			Test: TestInvalidBase64Config,
 		},
 		evetest.TestCase{
 			Test: TestRemoteLogLevelNone,

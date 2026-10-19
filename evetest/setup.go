@@ -220,7 +220,6 @@ func (th *TestHarness) buildEveConfig(dev *deviceState) *api.EveConfig {
 	// execution.
 	globalProperties.SetGlobalValueInt(pillartypes.ConfigInterval, 5)
 	globalProperties.SetGlobalValueInt(pillartypes.MetricInterval, 20)
-	globalProperties.SetGlobalValueInt(pillartypes.DevInfoInterval, 30)
 	withInjectedConfigProperties := dev.requirement.WithInjectedConfigProperties
 	if withInjectedConfigProperties != nil {
 		globalProperties.UpdateItemValues(withInjectedConfigProperties)

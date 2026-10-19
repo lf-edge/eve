@@ -25,8 +25,6 @@ import (
 //     LPS-driven ones).
 //   - TestDevLocalInfo -- LPS devinfo reporting and LPS-driven
 //     COMMAND_SHUTDOWN/COMMAND_GRACEFUL_POWEROFF device commands.
-//   - TestNetworkLocalChanges -- per-port AllowLocalModifications /
-//     LPS network-config override behavior.
 func TestLPSSuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
@@ -47,9 +45,6 @@ func TestLPSSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestDevLocalInfo,
-		},
-		evetest.TestCase{
-			Test: TestNetworkLocalChanges,
 		},
 	)
 }
