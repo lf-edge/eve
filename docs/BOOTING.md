@@ -35,7 +35,7 @@ Before we proceed describing each type of boot flow in details, let us first est
 
 1. rootfs image (either a [squashfs](https://www.kernel.org/doc/html/latest/filesystems/squashfs.html) or [ext4](https://www.kernel.org/doc/html/latest/filesystems/ext4/index.html))
 2. 2nd stage GRUB (in UEFI format)
-3. Dom0 linux kernel (this doubles as type-2 hypervisor for KVM)
+3. Linux kernel (the host kernel, which with KVM doubles as the hypervisor)
 4. Optional Alpine-derived initramfs [init entrypoint](https://gitlab.alpinelinux.org/alpine/mkinitfs) as a compressed cpio
 5. Optional container that performs [EVE installation](../pkg/mkimage-raw-efi/install) as a compressed cpio
 6. Optional extra files (e.g. content of config partition) as a compressed cpio
@@ -149,12 +149,22 @@ and invalidate TPM measurements. Note that an override grub.cfg is expected
 to be a [complete override](../pkg/grub/rootfs.cfg#L143) and anyone constructing
 its content is expected to be familiar with the overall flow of read-only grub.cfg.
 
+### GRUB options on the CONFIG partition
+
 Options to use in grub.cfg on the CONFIG partition are defined below. Most options may be defined in the format
 `set_global GRUB_VARIABLE "OPTION1=VAL1 OPTION2"` or appended to the value of variable with
 `set_global GRUB_VARIABLE "$GRUB_VARIABLE OPTION1=VAL1 OPTION2"`. Please make sure that you understand the effect
 of these options, they may affect the device operability. Adding/editing options in grub.cfg might make the device
 fail to boot where the only possible recovery is to have a keyboard and screen to manually override incorrect settings
 in grub.cfg with graphical GRUB menu to get the device to boot again.
+
+Several of these names carry a `dom0` prefix: the `hv_dom0_*` variables with their
+`dom0_mem` and `dom0_max_vcpus` options, `dom0_console`, `dom0_extra_args` and
+`dom0_platform_tweaks`. `dom0` is the Xen-era name of the EVE host system, from the
+releases that could run on the Xen hypervisor (see [HYPERVISORS.md](HYPERVISORS.md#xen-historically)).
+The names are kept unchanged on purpose: a grub.cfg override on the CONFIG partition is
+written once and survives every EVE update, so existing overrides must keep working.
+Wherever one of these names appears, `dom0` means the EVE host, not a virtual machine.
 
 1. Cgroup related options. Please follow the [example](README.md#eve-cgroups) to write
    these values in the correct GRUB variables:
@@ -205,8 +215,8 @@ in grub.cfg with graphical GRUB menu to get the device to boot again.
 
    **Security Note:** This dynamic modification is secure because grub.cfg is measured to PCR 8, maintaining boot integrity verification through TPM attestation.
 
-As an example of using serial port and VGA as a console for the Dom0 (in Xen terminology,
-but also applies for KVM, which means the "host" operating system) the following
+As an example of using serial port and VGA as a console for the host operating
+system (`dom0`, see [above](#grub-options-on-the-config-partition)) the following
 arguments should be used:
 
 ```shell
