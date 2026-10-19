@@ -5,7 +5,9 @@ package volumemgr
 
 import (
 	"testing"
+	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
@@ -48,5 +50,41 @@ func TestRemoteLoadedSortsAboveLoaded(t *testing.T) {
 	if types.REMOTELOADED <= types.LOADED {
 		t.Fatalf("REMOTELOADED (%d) is no longer above LOADED (%d); revisit contentTreeNotLocallyUsable",
 			types.REMOTELOADED, types.LOADED)
+	}
+}
+
+// TestContentTreeSatisfiedByPVCsNativeContainer pins that a content tree used
+// by a native container volume is never accepted from its PVC: the pod runs
+// the image from containerd and never reads the PVC, so skipping the download
+// leaves the pod failing with ErrImageNeverPull.
+func TestContentTreeSatisfiedByPVCsNativeContainer(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		nativeContainer bool
+		want            bool
+	}{
+		{name: "native container needs the image", nativeContainer: true, want: false},
+		{name: "VM disk is satisfied by its PVC", nativeContainer: false, want: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, pub := initVolumeModifyCtxForTest(t)
+			ctx.hvTypeKube = true
+
+			contentID := mustNewUUID(t)
+			vc := types.VolumeConfig{
+				VolumeID:          mustNewUUID(t),
+				ContentID:         contentID,
+				IsNativeContainer: tc.nativeContainer,
+			}
+			pvcName := vc.GetPVCName()
+			pvcAdoptCache[pvcName] = pvcAdoptCacheEntry{state: kubeapi.PVCStateReady, checked: time.Now()}
+			t.Cleanup(func() { delete(pvcAdoptCache, pvcName) })
+			publishTestVolumeConfig(t, ctx, pub, vc)
+
+			status := &types.ContentTreeStatus{ContentID: contentID}
+			if got := contentTreeSatisfiedByPVCs(ctx, status); got != tc.want {
+				t.Errorf("contentTreeSatisfiedByPVCs() = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }
