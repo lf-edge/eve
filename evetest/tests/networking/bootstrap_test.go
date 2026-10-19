@@ -181,9 +181,6 @@ func TestBootstrapWithLastResort(test *testing.T) {
 			Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
 		})
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 	evetest.Checkpoint("config-applied")
 
 	// Wait for device info to report the expected DevicePortStatus list.
@@ -343,9 +340,6 @@ func TestBootstrapWithStaticIP(test *testing.T) {
 
 	// Apply the same bootstrap configuration also through the controller.
 	device.ApplyConfig(bootstrapConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 	evetest.Checkpoint("config-applied")
 
 	// Neither bootstrap config nor override.json remain persisted after
@@ -634,9 +628,6 @@ func TestBootstrapWithProxy(test *testing.T) {
 
 	// Apply the same bootstrap configuration also through the controller.
 	device.ApplyConfig(bootstrapConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 	evetest.Checkpoint("config-applied")
 
 	// Neither bootstrap config nor override.json remain persisted after
@@ -786,9 +777,6 @@ func TestBootstrapWithMgmtVLAN(test *testing.T) {
 
 	// Apply the same bootstrap configuration also through the controller.
 	device.ApplyConfig(bootstrapConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 	evetest.Checkpoint("config-applied")
 
 	// Neither bootstrap config nor override.json remain persisted after
@@ -970,9 +958,6 @@ func TestBootstrapWithLACPBond(test *testing.T) {
 
 	// Apply the same bootstrap configuration also through the controller.
 	device.ApplyConfig(bootstrapConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 	evetest.Checkpoint("config-applied")
 
 	// Neither bootstrap config nor override.json remain persisted after
@@ -1078,9 +1063,6 @@ func TestBootstrapWithNetworkBoot(test *testing.T) {
 			Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
 		})
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 	evetest.Checkpoint("config-applied")
 
 	// Last-resort was used only for the device's very first contact with the

@@ -79,8 +79,7 @@ type NetworkConfig interface {
 
 // NoIPNetworkConfig represents configuration for an Ethernet interface
 // without assigning an IP address (no static IP and no DHCP client).
-// It is typically used for L2-only setups (e.g., bridge members) or for
-// cluster networks, where IP addresses are assigned from the cluster configuration.
+// It is typically used for L2-only setups (e.g., bridge members).
 type NoIPNetworkConfig struct {
 	MTU uint16
 }
@@ -713,7 +712,6 @@ type LocalNetworkInstanceConfig struct {
 	EnableFlowlog            bool
 	MTU                      uint16
 	ForwardLLDP              bool
-	ClusterWide              bool
 }
 
 func (config LocalNetworkInstanceConfig) toProto(th *TestHarness,
@@ -821,7 +819,6 @@ func (config LocalNetworkInstanceConfig) toProto(th *TestHarness,
 		Mtu:                      uint32(config.MTU),
 		DisableFlowlog:           !config.EnableFlowlog,
 		ForwardLldp:              config.ForwardLLDP,
-		ClusterWide:              config.ClusterWide,
 	}
 }
 
@@ -834,7 +831,6 @@ type SwitchNetworkInstanceConfig struct {
 	MTU             uint16                // used only for airgap switch NI
 	ForwardLLDP     bool
 	VlanAccessPorts []pillartypes.VlanAccessPort // VLAN access port assignments; empty = no VLAN filtering
-	ClusterWide     bool
 }
 
 func (config SwitchNetworkInstanceConfig) toProto(th *TestHarness,
@@ -869,33 +865,22 @@ func (config SwitchNetworkInstanceConfig) toProto(th *TestHarness,
 		DisableFlowlog:  !config.EnableFlowlog,
 		ForwardLldp:     config.ForwardLLDP,
 		VlanAccessPorts: vlanAccessPorts,
-		ClusterWide:     config.ClusterWide,
 	}
 }
 
 // ApplicationInstanceConfig wraps configuration for a single application deployed on EVE.
 type ApplicationInstanceConfig struct {
-	DisplayName        string
-	Activate           bool
-	ProfileList        []string
-	Image              ApplicationImageStorage
-	VirtualizationMode eveconfig.VmMode
-	CPUs               uint
-	MemoryBytes        uint64
-	DiskBytes          uint64
-	EnableVNC          bool
-	VNCDisplay         uint
-	VNCPassword        string
-	// RemoteConsole gates VNC access under the Kubevirt hypervisor: unlike
-	// KVM (where EnableVNC/VNCDisplay/VNCPassword directly configure a raw
-	// QEMU VNC socket reachable on the device's uplink IP), Kubevirt exposes
-	// VNC via zedkube's virtctl-based proxy, which only binds the VNC port
-	// on 127.0.0.1 and is gated by this field, not by EnableVNC. VNCDisplay
-	// still selects the port (5900+VNCDisplay); VNCPassword is not enforced
-	// -- see pkg/pillar/docs/vnc-workflows.md. zedkube only starts/stops the
-	// proxy on a *change* of this field, and only one remote-console session
-	// is allowed on the device at a time.
-	RemoteConsole       bool
+	DisplayName         string
+	Activate            bool
+	ProfileList         []string
+	Image               ApplicationImageStorage
+	VirtualizationMode  eveconfig.VmMode
+	CPUs                uint
+	MemoryBytes         uint64
+	DiskBytes           uint64
+	EnableVNC           bool
+	VNCDisplay          uint
+	VNCPassword         string
 	DisableLogs         bool
 	UserData            string
 	NetworkAdapters     []AppNetworkAdapter
@@ -964,7 +949,6 @@ func (config ApplicationInstanceConfig) toProto(th *TestHarness, devName string,
 		Fixedresources: vmConfig,
 		Activate:       config.Activate,
 		ProfileList:    config.ProfileList,
-		RemoteConsole:  config.RemoteConsole,
 	}
 	if volumeUUID != NilUUID {
 		appInstConfig.VolumeRefList = append(appInstConfig.VolumeRefList,

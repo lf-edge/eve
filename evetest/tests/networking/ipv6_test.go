@@ -111,9 +111,6 @@ func TestDeviceIPv6Connectivity(test *testing.T) {
 	devUpdates, stopDevWatch := device.WatchDeviceInfo()
 	defer stopDevWatch()
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 	evetest.Checkpoint("config-applied")
 
 	log := evetest.Logger()
@@ -335,9 +332,6 @@ func TestApplicationIPv6Connectivity(test *testing.T) {
 	appUpdates, stopAppWatch := device.WatchAppInfo(appUUID)
 	defer stopAppWatch()
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 
 	timeoutExcludingDownload := 5 * time.Minute
 	device.WaitUntilAppIsRunning(appUUID, timeoutExcludingDownload)

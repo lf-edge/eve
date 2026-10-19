@@ -169,9 +169,6 @@ func TestAccessVLANs(test *testing.T) {
 		SharedLabels:  []string{"switch-ports"},
 	})
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 
 	// Switch NI: eth1 is trunk (carries VLAN 100 and 200 tagged via the SDN router);
 	// eth2 is access port for VLAN 100; eth3 is access port for VLAN 200.
@@ -644,9 +641,6 @@ func TestVLANSubinterfaces(test *testing.T) {
 	// waitUntilConfirmed=false: after the model switch below, EVE may temporarily
 	// lose controller connectivity, delaying the LastProcessedConfig metric publish.
 	device.ApplyConfig(devConfig, true, false)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 	// Give EVE a moment to process the port config (activate vlan interfaces)
 	// before switching the SDN side, so the new interfaces are ready to carry
 	// traffic as soon as VLAN tagging is enabled.
@@ -1025,9 +1019,6 @@ func TestVLANSubinterfacesOnTopOfLAGs(test *testing.T) {
 	// because after the SDN model switch below, EVE may temporarily lose controller
 	// connectivity while LACP negotiates.
 	device.ApplyConfig(devConfig, true, false)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 	// Give EVE a moment to create the bond and VLAN sub-interfaces before switching
 	// the SDN side, so the interfaces are ready to carry traffic immediately.
 	time.Sleep(10 * time.Second)

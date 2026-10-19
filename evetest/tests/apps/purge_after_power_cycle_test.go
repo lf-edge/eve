@@ -33,50 +33,24 @@ const (
 )
 
 // TestVMAppPurgeAfterPowerCycle exercises a purge issued while the device is
-// powered off, on the hypervisor selected by the HYPERVISOR parameter. The
-// sequence is identical for every hypervisor; only the end-state assertions
-// differ, because what a "generation" of a workload is differs.
+// powered off, on the hypervisor selected by the HYPERVISOR parameter.
 //
-// Kubevirt (HYPERVISOR=kubevirt - the default for this test)
-// ----------------------------------------------------------
-// This is the path on which a purge can lose track of the generation it is
-// replacing, and the sequence below is what makes that possible. /run is
-// tmpfs, so a reboot drops DomainConfig/DomainStatus while the VMIRS survives
-// in etcd and re-creates its own replica. zedmanager re-detects the purge from
-// the persisted counter, but a teardown check that consults only /run finds
-// nothing, concludes "no domain to halt" and advances the counter, which leaves
-// the old generation's VMIRS in the cluster beside the new one. Both then
-// survive indefinitely, each reporting ready. The test drives that sequence
-// deterministically rather than through the narrow same-node replica-restart
-// race, so it holds as a guard rather than reproducing only sometimes.
-//
-// kvm/xen (the control, HYPERVISOR=kvm)
-// -------------------------------------
-// A duplicate generation cannot occur here. A domain is a local qemu process:
-// the power-off destroys it, nothing re-creates a replica while the node is
-// down, and no object outlives the node for a later purge to lose track of. The
-// domain name carries no purge counter either ("<uuid>.<version>.<appnum>"), so
-// two generations could not coexist under distinct names even in principle.
-//
-// The kvm variant is therefore expected to pass even where the kube path is
-// broken, and that asymmetry is the point: it localises a surviving generation
-// to the kube path instead of to code both share. What the kvm variant does
-// cover is everything in a purge that is not hypervisor-specific:
+// A domain is a local qemu process: the power-off destroys it and nothing
+// re-creates it while the node is down. The domain name carries no purge
+// counter ("<uuid>.<version>.<appnum>"), so two generations could not coexist
+// under distinct names even in principle. What this test covers is everything
+// in a purge that is not hypervisor-specific:
 //
 //  1. The purge must complete. zedmanager parks the outgoing VolumeRefStatus
 //     and waits for volumemgr to confirm the delete; if the reboot wiped
 //     volumemgr's own state for that reference before it was asked again, the
 //     confirmation never arrives and the app stays in DownloadAndVerify for
-//     ever, never requesting the new volume. That code is in zedmanager and is
-//     shared by every hypervisor, so a kvm failure here says the wedge is not
-//     specific to the kube path.
+//     ever, never requesting the new volume.
 //  2. The old generation's disk must be gone, and no volume artifact may be left
-//     that no live VolumeStatus names - the kvm-shaped form of a purge going
-//     wrong is a disk nobody owns, not a second running domain.
-//  3. kvm must not regress when the kube path changes, because the two share
-//     zedmanager code, and because DomainStatus.DomainId carries the same
-//     meaning on every hypervisor: zero if and only if the domain is confirmed
-//     absent, and for kvm the qemu pid otherwise.
+//     that no live VolumeStatus names - the form of a purge going wrong here is
+//     a disk nobody owns, not a second running domain.
+//  3. DomainStatus.DomainId must be zero if and only if the domain is confirmed
+//     absent, and the qemu pid otherwise.
 //
 // Network model
 // -------------
@@ -90,16 +64,11 @@ const (
 //     in; default ext4 (configurable via FILESYSTEM).
 //   - SystemAdapter on eth0 (DHCP, mgmt+app).
 //   - One Local NI "local-ni" (10.11.13.0/24, a distinct subnet from the other
-//     tests in this suite) and one shim-VM app (vmShimApplication). The same
-//     app fixture serves both variants: a container image with
-//     VirtualizationMode=HVM runs in a VMIRS on eve-k and in a qemu domain on
-//     kvm, which is what makes the two results comparable.
+//     tests in this suite) and one shim-VM app (vmShimApplication).
 //
 // Test parameters
 // ---------------
-//   - HYPERVISOR (kubevirt|kvm|xen), read from the suite: this test runs
-//     wherever the suite runs, and both hypervisors are worth running - see
-//     above for what each one can and cannot show.
+//   - HYPERVISOR (kvm|xen), read from the suite.
 //   - TPM via evetest.TPMParameter().
 //   - FILESYSTEM (ext4|zfs, defaults to ext4) via evetest.FilesystemParameter().
 //   - POWER_CUT_METHOD (power-cycle|controller-reboot, defaults to
@@ -128,21 +97,16 @@ const (
 //     waits for the device to boot, then WaitUntilAppIsRunning waits for the
 //     purge to complete. A purge wedged on a volume-ref removal never gets
 //     past this point, so the wait is itself an assertion.
-//  6. End-state assertions: assertPurgeCompleted for what every hypervisor
-//     must satisfy (counter advanced, purge phase finished, one volume at a new
-//     generation), then assertKubePurgeEndState or
-//     assertLocalDomainPurgeEndState for what only that hypervisor can be
-//     asked. On Kubevirt the decisive one is "exactly one VMIRS, named for the
-//     NEW generation": nothing else notices an old generation that stays in
-//     the cluster, since both would survive indefinitely, each reporting ready.
+//  6. End-state assertions: assertPurgeCompleted (counter advanced, purge
+//     phase finished, one volume at a new generation), then
+//     assertLocalDomainPurgeEndState for what only a local-domain hypervisor
+//     can be asked.
 //  7. purge-survived-reboot: reboot the node once more, after the purge has
 //     already settled, and re-run the phase-6 assertions unchanged. The field
 //     report this test comes from had a further reboot adding another copy of
 //     the volume without removing the first, so reaching the right end state
 //     once is not the same as holding it across a boot. Reusing the phase-6
-//     assertions is deliberate: the decisive kube check ("exactly one VMIRS,
-//     named for the NEW generation") is exactly what a resurrected generation
-//     would break.
+//     assertions is deliberate.
 //
 // Suite placement
 // ---------------
@@ -222,21 +186,15 @@ func TestVMAppPurgeAfterPowerCycle(test *testing.T) {
 	device.ApplyConfig(devConfig, true, true)
 	log := evetest.Logger()
 	log.Infof("Submitted config with application UUID=%v", appUUID)
-	if hypervisor == evetest.HypervisorKubevirt {
-		// k3s and Longhorn must be up before the app can start; without this the
-		// app sits in INITIAL and consumes the app-ready budget.
-		device.WaitForClusterNodeIsReady(clusterReadyTimeout)
-	}
 	evetest.Checkpoint("config-applied")
 
 	device.WaitUntilAppIsRunning(appUUID, appReadyTimeout)
 	evetest.Checkpoint("app-is-running")
 
 	// Baseline: the volume generation key and its on-disk path, both of which the
-	// purge must replace, plus the counter it must advance. Unlike
-	// TestVMAppPurgeReplacesVMIRS there is no domain-identity check, because
-	// the power cycle recreates the domain by itself and a changed DomainId
-	// would prove nothing about the purge.
+	// purge must replace, plus the counter it must advance. There is no
+	// domain-identity check, because the power cycle recreates the domain by
+	// itself and a changed DomainId would prove nothing about the purge.
 	baselineVolGen := ""
 	baselineVolPath := ""
 	t.Eventually(func(g Gomega) {
@@ -292,11 +250,6 @@ func TestVMAppPurgeAfterPowerCycle(test *testing.T) {
 					return ts != nil && ts.AsTime().After(rebootRequestedAt)
 				})))
 	}
-	if hypervisor == evetest.HypervisorKubevirt {
-		// The node went down and took k3s with it, so it has to become Ready
-		// again before the purged app can be scheduled.
-		device.WaitForClusterNodeIsReady(clusterReadyTimeout)
-	}
 	evetest.Checkpoint("device-powered-on")
 
 	device.WaitUntilAppIsRunning(appUUID, appReadyTimeout)
@@ -305,28 +258,15 @@ func TestVMAppPurgeAfterPowerCycle(test *testing.T) {
 	wantCounter := baselineCounter + 1
 	t.Eventually(func(g Gomega) {
 		assertPurgeCompleted(g, device, appUUID, wantCounter, baselineVolGen)
-		if hypervisor == evetest.HypervisorKubevirt {
-			assertKubePurgeEndState(g, device, appUUID, appDisplayName, wantCounter)
-		} else {
-			assertLocalDomainPurgeEndState(g, device, appUUID, baselineVolGen,
-				hypervisor)
-		}
+		assertLocalDomainPurgeEndState(g, device, appUUID, baselineVolGen,
+			hypervisor)
 	}, purgeEndStateTimeout, assertPollInterval).Should(Succeed())
 	evetest.Checkpoint("purge-verified")
 
 	// The old generation's storage is reclaimed on its own schedule, minutes
 	// after the purge itself completes - see assertOldVolumeReclaimed.
-	//
-	// assertNoOrphanedPVCs is disabled on Kubevirt for now: sweepStaleGenerations
-	// deletes the old VMIRS and its pod but not its PVC, so the old generation's
-	// disk stays behind. That is a pillar fix, not a test bug - re-enable this
-	// once sweepStaleGenerations deletes the PVC too.
 	t.Eventually(func(g Gomega) {
-		if hypervisor == evetest.HypervisorKubevirt {
-			// assertNoOrphanedPVCs(g, device)
-		} else {
-			assertOldVolumeReclaimed(g, device, baselineVolPath)
-		}
+		assertOldVolumeReclaimed(g, device, baselineVolPath)
 	}, storageReclaimTimeout, storageReclaimPollInterval).Should(Succeed())
 	evetest.Checkpoint("old-storage-reclaimed")
 
@@ -335,22 +275,14 @@ func TestVMAppPurgeAfterPowerCycle(test *testing.T) {
 	// without removing the first.
 	log.Infof("Rebooting device %q now that the purge has settled", devName)
 	device.SoftReboot(true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(clusterReadyTimeout)
-	}
 	device.WaitUntilAppIsRunning(appUUID, appReadyTimeout)
 
-	// Deliberately the phase-6 assertions verbatim: a generation resurrected by
-	// the reboot is exactly what "exactly one VMIRS, named for the NEW
-	// generation" rules out, and the counter must not have moved either.
+	// Deliberately the phase-6 assertions verbatim: the counter must not have
+	// moved, and the old generation must not have been resurrected.
 	t.Eventually(func(g Gomega) {
 		assertPurgeCompleted(g, device, appUUID, wantCounter, baselineVolGen)
-		if hypervisor == evetest.HypervisorKubevirt {
-			assertKubePurgeEndState(g, device, appUUID, appDisplayName, wantCounter)
-		} else {
-			assertLocalDomainPurgeEndState(g, device, appUUID, baselineVolGen,
-				hypervisor)
-		}
+		assertLocalDomainPurgeEndState(g, device, appUUID, baselineVolGen,
+			hypervisor)
 	}, postRebootEndStateTimeout, assertPollInterval).Should(Succeed())
 	evetest.Checkpoint("purge-survived-reboot")
 }

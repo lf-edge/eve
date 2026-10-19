@@ -1321,9 +1321,6 @@ func Setup(requirements ...Requirement) {
 
 	// Onboard EVE devices.
 	th.onboardEVEDevices()
-
-	// Configure K3s registry mirror on kubevirt devices if a mirror is specified.
-	th.applyK3sRegistryMirrorIfConfigured()
 }
 
 // RunParallel runs workerFunc concurrently in numOfWorkers goroutines.

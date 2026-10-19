@@ -152,9 +152,6 @@ func TestProfile(test *testing.T) {
 	})
 
 	device.ApplyConfig(devConfig, true, true)
-	if hypervisor == evetest.HypervisorKubevirt {
-		device.WaitForClusterNodeIsReady(20 * time.Minute)
-	}
 
 	timeoutExcludingDownload := 5 * time.Minute
 	device.WaitUntilAppIsRunning(lpsAppUUID, timeoutExcludingDownload)

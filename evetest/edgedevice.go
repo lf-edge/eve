@@ -462,13 +462,7 @@ func (t *BaseOSDatastoreType) FromString(s string) error {
 // revert), so the expected reboot count is incremented accordingly.
 //
 // An optional timeout bounds the wait instead of the default, which is sized
-// for an ordinary base-OS upgrade: download, one reboot, done. A cross-flavor
-// boot-disk conversion is a different animal -- it also runs an offline
-// shrink+grow across several reboots and then brings up a whole
-// container-cluster stack -- and it lands close enough to the default that a
-// healthy conversion and an expired budget are separated by a couple of minutes
-// of host load. A test driving one should pass a longer timeout, otherwise it
-// reports a conversion that was still progressing as a failure.
+// for an ordinary base-OS upgrade: download, one reboot, done.
 func (d *EdgeDevice) UpgradeEVE(targetEVEVersion string, targetEVEHypervisor Hypervisor,
 	datastoreType BaseOSDatastoreType, waitUntilUpgraded bool, expectRevert bool,
 	timeout ...time.Duration) {
@@ -915,18 +909,11 @@ func (d *EdgeDevice) waitForRevert(targetShortVersion string) {
 // reboot-driven flows the framework itself drives (RequestReboot,
 // SoftReboot, HardReboot, UpgradeEVE) declare their own; this is for
 // flows where the trigger is a config change and the reboot is EVE's
-// chosen means of carrying it out — converting a cluster member back to
-// a single node, for instance, which reboots to restore the pre-cluster
-// /var/lib before k3s starts.
+// chosen means of carrying it out.
 //
 // Declare it before applying the config that causes it: the audit only
 // compares totals, but a declaration that races the observation reads as
 // an accident in the log.
-//
-// A cross-flavor boot-disk conversion is the other case: it runs an offline
-// shrink/grow across more reboots than UpgradeEVE accounts for, and how many is
-// known only to the test driving it, since a plain kvm<->k conversion with no
-// resize reboots differently than a shrink+grow.
 func (d *EdgeDevice) ExpectReboots(count int) {
 	d.th.collectCoverageFromDevice(d.th.ctx, d.devName)
 	for i := 0; i < count; i++ {
@@ -1916,15 +1903,6 @@ func (d *EdgeDevice) PurgeApplication(appUUID uuid.UUID, volumeGen VolumeGenerat
 	}
 }
 
-// DialViaSSH opens a TCP connection to address, tunneled through an SSH
-// connection to this device (an SSH direct-tcpip channel), as if address is
-// dialed from the device itself. Useful for reaching services that only
-// listen on the device's own loopback interface, e.g. the Kubevirt VNC proxy
-// gated by ApplicationInstanceConfig.RemoteConsole.
-func (d *EdgeDevice) DialViaSSH(network, address string) (net.Conn, error) {
-	return d.th.dialViaSSH(d.th.ctx, d.devName, network, address)
-}
-
 // ReachableAddress returns the host:port through which the given TCP port of
 // the device can be reached from the test process, for handing an endpoint of
 // the device, such as its SSH port, to a tool the test runs.
@@ -2873,217 +2851,6 @@ func (d *EdgeDevice) WatchNTPSources() (
 	return ch, d.trackWatcherUnsub(unsub)
 }
 
-// EVEKubeAppNamespace is the Kubernetes namespace EVE runs app workloads in;
-// both VMIRS objects and their PVCs live there. See
-// pkg/pillar/kubeapi.EVEKubeNameSpace.
-const EVEKubeAppNamespace = "eve-kube-app"
-
-// appDomainNameLabel holds the owning app's DomainName,
-// "<uuid>.<version>.<appnum>" (the eveLabelKey constant in
-// hypervisor/kubevirt.go). EVE puts this label in the VMIRS
-// spec.selector.matchLabels and in the VMI template, but not in the VMIRS
-// metadata.labels, so attribution reads the selector - the same way pillar
-// attributes a VMIRS in sweepStaleGenerations.
-const appDomainNameLabel = "App-Domain-Name"
-
-// RunKubectl runs kubectl on the device with the given arguments and returns
-// its trimmed standard output. The call goes through "eve exec kube" because
-// kubectl exists only in the kube container, so the device has to be an EVE-K
-// node.
-//
-// The returned error carries kubectl's own standard error, which says why the
-// command was refused. A caller polling a cluster that is still coming up
-// should treat any error as a retryable "not yet": kubectl fails this way
-// while k3s is starting, and that is indistinguishable here from a real
-// refusal.
-func (d *EdgeDevice) RunKubectl(args string, timeout time.Duration) (string, error) {
-	stdout, stderr, err := d.RunShellScript(
-		"eve exec kube kubectl "+args, timeout, 0)
-	if err != nil {
-		return "", fmt.Errorf("kubectl %s: %w (stderr: %s)",
-			args, err, strings.TrimSpace(stderr))
-	}
-	return strings.TrimSpace(stdout), nil
-}
-
-// ListAppVMIRS returns the sorted names of every VMIRS belonging to appUUID,
-// whichever purge generation each one is. A VMIRS name embeds the app's purge
-// counter (base.GetAppKubeNameWithPurge), which makes this the one vantage
-// point from which a stale generation surviving a purge is observable at all:
-// pillar's own DomainStatus is keyed by app UUID and so can only ever describe
-// one of them.
-//
-// Attribution is by the appDomainNameLabel selector rather than the name,
-// since the label value also carries a version and an appnum that do not
-// matter here. An empty list with a nil error means the app has no VMIRS; an
-// error means the list could not be read, which a caller inside an Eventually
-// should retry rather than fail on.
-func (d *EdgeDevice) ListAppVMIRS(
-	appUUID uuid.UUID, timeout time.Duration) ([]string, error) {
-	stdout, err := d.RunKubectl(
-		"-n "+EVEKubeAppNamespace+" get vmirs -o json", timeout)
-	if err != nil {
-		return nil, err
-	}
-	var list struct {
-		Items []struct {
-			Metadata struct {
-				Name string `json:"name"`
-			} `json:"metadata"`
-			Spec struct {
-				Selector struct {
-					MatchLabels map[string]string `json:"matchLabels"`
-				} `json:"selector"`
-			} `json:"spec"`
-		} `json:"items"`
-	}
-	if err := json.Unmarshal([]byte(stdout), &list); err != nil {
-		return nil, fmt.Errorf("parsing kubectl vmirs output: %w", err)
-	}
-	prefix := appUUID.String() + "."
-	var names []string
-	for _, item := range list.Items {
-		if strings.HasPrefix(
-			item.Spec.Selector.MatchLabels[appDomainNameLabel], prefix) {
-			names = append(names, item.Metadata.Name)
-		}
-	}
-	sort.Strings(names)
-	return names, nil
-}
-
-// GetClusterInfo returns the last recorded information about the Kubernetes
-// cluster, or nil if no such info message has been received yet.
-func (d *EdgeDevice) GetClusterInfo() *eveinfo.ZInfoKubeCluster {
-	devUUID := d.getDevUUID()
-	var result *eveinfo.ZInfoKubeCluster
-	d.iterateInfoMsgs(devUUID,
-		func(msg *eveinfo.ZInfoMsg) bool {
-			return msg.GetZtype() == eveinfo.ZInfoTypes_ZiKubeCluster &&
-				msg.GetClusterInfo() != nil
-		},
-		func(msg *eveinfo.ZInfoMsg) {
-			result = msg.GetClusterInfo()
-		},
-	)
-	return result
-}
-
-// WatchClusterInfo subscribes to Kubernetes cluster info updates and returns a
-// buffered channel that receives each new ZInfoKubeCluster as it arrives.
-// Call the returned close function to stop watching and close the channel.
-func (d *EdgeDevice) WatchClusterInfo() (
-	updates <-chan *eveinfo.ZInfoKubeCluster, stop func()) {
-	devUUID := d.getDevUUID()
-	rawCh := make(chan *eveinfo.ZInfoMsg, watchChannelBufSize)
-	unsub, err := d.th.adamClient.SubscribeToDeviceInfoMsgs(devUUID,
-		func(msg *eveinfo.ZInfoMsg) bool {
-			return msg.GetZtype() == eveinfo.ZInfoTypes_ZiKubeCluster &&
-				msg.GetClusterInfo() != nil
-		},
-		rawCh,
-	)
-	if err != nil {
-		d.th.t.Fatalf("WatchClusterInfo: failed to subscribe to info messages "+
-			"for device %q: %v", d.devName, err)
-	}
-	ch := make(chan *eveinfo.ZInfoKubeCluster, watchChannelBufSize)
-	go func() {
-		defer close(ch)
-		for msg := range rawCh {
-			ch <- msg.GetClusterInfo()
-		}
-	}()
-	return ch, d.trackWatcherUnsub(unsub)
-}
-
-// WaitForClusterNodeIsReady waits until this device's own ZInfoKubeCluster
-// report shows this device as a Ready node with healthy cluster storage.
-//
-// Only the elected leader node publishes cluster info, so this is only
-// meaningful when called on a single-node cluster (where the sole device is
-// necessarily the leader) or on a device already known to be the leader; for
-// a multi-node cluster where the leader isn't known in advance, use
-// EdgeCluster.WaitUntilNodesAreReady instead.
-func (d *EdgeDevice) WaitForClusterNodeIsReady(timeout time.Duration) {
-	d.th.log.Infof("Waiting for cluster node %q to become ready...", d.devName)
-
-	// Subscribe before taking the initial snapshot, so a transition landing
-	// between the two calls can never be missed.
-	updates, stop := d.WatchClusterInfo()
-	defer stop()
-
-	if info := d.GetClusterInfo(); info != nil && clusterNodeReady(info, d.devName) {
-		d.th.log.Infof("Cluster node %q is already ready", d.devName)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(d.th.ctx, timeout)
-	defer cancel()
-	for {
-		select {
-		case info, ok := <-updates:
-			if !ok {
-				d.th.t.Fatalf("Cluster info subscription closed while waiting "+
-					"for node %q to become ready", d.devName)
-			}
-			if clusterNodeReady(info, d.devName) {
-				d.th.log.Infof("Cluster node %q is now ready", d.devName)
-				return
-			}
-		case <-ctx.Done():
-			d.th.t.Fatalf("Timed out waiting for cluster node %q to become ready",
-				d.devName)
-		}
-	}
-}
-
-// GetClusterUpdateInfo returns the last recorded information regarding the Kubernetes
-// cluster update, or nil if no such info message has been received yet.
-func (d *EdgeDevice) GetClusterUpdateInfo() *eveinfo.ZInfoKubeClusterUpdateStatus {
-	devUUID := d.getDevUUID()
-	var result *eveinfo.ZInfoKubeClusterUpdateStatus
-	d.iterateInfoMsgs(devUUID,
-		func(msg *eveinfo.ZInfoMsg) bool {
-			return msg.GetZtype() == eveinfo.ZInfoTypes_ZiKubeClusterUpdateStatus &&
-				msg.GetClusterUpdateInfo() != nil
-		},
-		func(msg *eveinfo.ZInfoMsg) {
-			result = msg.GetClusterUpdateInfo()
-		},
-	)
-	return result
-}
-
-// WatchClusterUpdateInfo subscribes to Kubernetes cluster-update info messages
-// and returns a buffered channel that receives each new ZInfoKubeClusterUpdateStatus
-// as it arrives.
-// Call the returned close function to stop watching and close the channel.
-func (d *EdgeDevice) WatchClusterUpdateInfo() (
-	updates <-chan *eveinfo.ZInfoKubeClusterUpdateStatus, stop func()) {
-	devUUID := d.getDevUUID()
-	rawCh := make(chan *eveinfo.ZInfoMsg, watchChannelBufSize)
-	unsub, err := d.th.adamClient.SubscribeToDeviceInfoMsgs(devUUID,
-		func(msg *eveinfo.ZInfoMsg) bool {
-			return msg.GetZtype() == eveinfo.ZInfoTypes_ZiKubeClusterUpdateStatus &&
-				msg.GetClusterUpdateInfo() != nil
-		},
-		rawCh,
-	)
-	if err != nil {
-		d.th.t.Fatalf("WatchClusterUpdateInfo: failed to subscribe to info messages "+
-			"for device %q: %v", d.devName, err)
-	}
-	ch := make(chan *eveinfo.ZInfoKubeClusterUpdateStatus, watchChannelBufSize)
-	go func() {
-		defer close(ch)
-		for msg := range rawCh {
-			ch <- msg.GetClusterUpdateInfo()
-		}
-	}()
-	return ch, d.trackWatcherUnsub(unsub)
-}
-
 // GetDeviceMetrics returns the last recorded device-level metrics,
 // or nil if no metrics message has been received yet.
 func (d *EdgeDevice) GetDeviceMetrics() *evemetrics.DeviceMetric {
@@ -3255,45 +3022,6 @@ func (d *EdgeDevice) WatchVolumeMetrics(
 				if vm.GetUuid() == volUUIDStr {
 					ch <- vm
 				}
-			}
-		}
-	}()
-	return ch, d.trackWatcherUnsub(unsub)
-}
-
-// GetClusterMetrics returns the last recorded metrics for the Kubernetes cluster,
-// or nil if no cluster metrics message has been received yet.
-func (d *EdgeDevice) GetClusterMetrics() *evemetrics.KubeClusterMetrics {
-	devUUID := d.getDevUUID()
-	var result *evemetrics.KubeClusterMetrics
-	d.iterateMetricMsgs(devUUID,
-		func(msg *evemetrics.ZMetricMsg) {
-			if msg.GetCm() != nil {
-				result = msg.GetCm()
-			}
-		},
-	)
-	return result
-}
-
-// WatchClusterMetrics subscribes to Kubernetes cluster metrics updates and
-// returns a buffered channel that receives each new KubeClusterMetrics as it arrives.
-// Call the returned close function to stop watching and close the channel.
-func (d *EdgeDevice) WatchClusterMetrics() (
-	updates <-chan *evemetrics.KubeClusterMetrics, stop func()) {
-	devUUID := d.getDevUUID()
-	rawCh := make(chan *evemetrics.ZMetricMsg, watchChannelBufSize)
-	unsub, err := d.th.adamClient.SubscribeToDeviceMetrics(devUUID, rawCh)
-	if err != nil {
-		d.th.t.Fatalf("WatchClusterMetrics: failed to subscribe to metrics "+
-			"for device %q: %v", d.devName, err)
-	}
-	ch := make(chan *evemetrics.KubeClusterMetrics, watchChannelBufSize)
-	go func() {
-		defer close(ch)
-		for msg := range rawCh {
-			if cm := msg.GetCm(); cm != nil {
-				ch <- cm
 			}
 		}
 	}()
