@@ -733,8 +733,9 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 		// cluster-wide. Don't make the app wait on re-establishing that
 		// source image in that case -- see tryAdoptExistingClusterPVC for the
 		// full rationale and the safety argument (generation matching,
-		// upload-complete check).
-		if !verifyOnly && status.State < types.CREATING_VOLUME &&
+		// upload-complete check). Not for a native container: its pod runs
+		// the image from containerd, so the image must be loaded first.
+		if !verifyOnly && !status.IsNativeContainer && status.State < types.CREATING_VOLUME &&
 			contentTreeNotLocallyUsable(ctStatus) {
 			switch tryAdoptExistingClusterPVC(ctx, status) {
 			case kubeapi.PVCStateReady:
