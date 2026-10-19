@@ -29,6 +29,9 @@ const maxFreshPVCProbesPerCheck = 2
 //
 // Conservative by construction:
 //   - EVE-k only; classic hypervisors have no PVC to be satisfied by.
+//   - Never for a native container volume: its pod (NOHYPER) runs the image
+//     straight from containerd and does not read the PVC, so the source image
+//     is still needed.
 //   - Volumes owned by another node (IsReplicated) are skipped: this node is
 //     not the one that would download for them.
 //   - Requires at least one referencing volume. A content tree with no volume
@@ -49,6 +52,11 @@ func contentTreeSatisfiedByPVCs(ctx *volumemgrContext, status *types.ContentTree
 		vc := c.(types.VolumeConfig)
 		if vc.ContentID != status.ContentID {
 			continue
+		}
+		if vc.IsNativeContainer {
+			log.Functionf("contentTreeSatisfiedByPVCs(%s): volume %s is a native container, its image is needed",
+				key, vc.Key())
+			return false
 		}
 		if vc.IsReplicated {
 			// Another node is the designated owner; it downloads, not us.
