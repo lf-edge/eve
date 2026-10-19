@@ -87,12 +87,12 @@ func ReconcileNvidiaGPU(ctx context.Context) error {
 
 // reconcileNvidiaGPU is the path-parameterised core of ReconcileNvidiaGPU.
 func reconcileNvidiaGPU(ctx context.Context, manifestsDstDir string) error {
-	_, err := os.ReadFile(NvidiaPlatformFile)
-	if errors.Is(err, os.ErrNotExist) {
-		return clearStaleNvidiaLabel(ctx)
-	}
+	present, err := nvidiaUserlandPresent()
 	if err != nil {
-		return fmt.Errorf("read %s: %w", NvidiaPlatformFile, err)
+		return err
+	}
+	if !present {
+		return clearStaleNvidiaLabel(ctx)
 	}
 	if err := stageNvidiaPluginManifest(filepath.Join(nvidiaManifestsSrc, nvidiaPluginManifestName), manifestsDstDir); err != nil {
 		return err
@@ -102,6 +102,36 @@ func reconcileNvidiaGPU(ctx context.Context, manifestsDstDir string) error {
 		return err
 	}
 	return reconcileNvidiaNodeLabel(ctx, usable)
+}
+
+// StageNvidiaManifest refreshes the staged device plugin manifest from the
+// image, without touching the node label. It runs before k3s starts, so k3s
+// applies the current manifest rather than the one an older EVE staged: the
+// steady-state tick only runs once the system pods are Ready, and a stale
+// manifest can keep the plugin pod from ever becoming Ready.
+func StageNvidiaManifest() error {
+	return stageNvidiaManifest(manifestsDst)
+}
+
+func stageNvidiaManifest(manifestsDstDir string) error {
+	present, err := nvidiaUserlandPresent()
+	if err != nil || !present {
+		return err
+	}
+	return stageNvidiaPluginManifest(filepath.Join(nvidiaManifestsSrc, nvidiaPluginManifestName), manifestsDstDir)
+}
+
+// nvidiaUserlandPresent reports whether this image ships pkg/nvidia's
+// userland, i.e. whether NvidiaPlatformFile exists and is readable.
+func nvidiaUserlandPresent() (bool, error) {
+	_, err := os.ReadFile(NvidiaPlatformFile)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read %s: %w", NvidiaPlatformFile, err)
+	}
+	return true, nil
 }
 
 // clearStaleNvidiaLabel drops a label left by an earlier image with an
