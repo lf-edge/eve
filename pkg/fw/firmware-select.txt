@@ -4,7 +4,9 @@
 # Which firmware pkg/fw ships. tools/update-fw-lists.py turns these rules into
 # firmware-<list>.txt, the exact list the Dockerfile copies. Run it after
 # changing the kernel or any firmware version. A list is named after its
-# architecture, with a suffix for a variant: amd64-k is eve-k on amd64.
+# architecture, with a suffix for a variant: amd64-k is eve-k on amd64. A build
+# ships the list its pkg/fw build file names with FW_VARIANT, and the tool fails
+# if that list is not read from the build's kernel.
 #
 #   <list> platforms <p>...    read the kernels `make kernel-tag` pins for
 #                              these platforms
@@ -47,8 +49,9 @@ amd64 extra rsi/*
 # Hailo-8: the out-of-tree hailo_pci declares nothing.
 amd64 extra hailo/*
 
-# eve-k on amd64 runs the hwe kernel (HV=k), which builds far more drivers.
-amd64-k platforms generic
+# eve-k on amd64 runs the hwe kernel (HV=k), which builds far more drivers,
+# and on ai-generic the ai kernel: hwe plus the NVIDIA open kernel modules.
+amd64-k platforms generic ai-generic
 amd64-k hv k
 amd64-k include amd64
 # ath12k (Wi-Fi 7) builds its names per chip and declares none of them:

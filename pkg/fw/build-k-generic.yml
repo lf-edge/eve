@@ -4,8 +4,11 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # eve-k ships the firmware its kernel can load: on amd64 the hwe kernel builds
-# far more drivers than the kvm one (firmware-amd64-k.txt). Other platforms
-# have no build-k-<platform>.yml and keep their usual firmware image.
+# far more drivers than the kvm one (firmware-amd64-k.txt). eve-k on ai-generic,
+# whose kernel is hwe plus the NVIDIA modules, ships the same list:
+# build-k-ai-generic.yml is a link to this file, so both platforms build this
+# one image (the Dockerfile has no ai-generic stage). Other platforms have no
+# build-k-<platform>.yml and keep their usual firmware image.
 ---
 image: eve-fw
 org: lfedge

@@ -38,18 +38,22 @@ made depends on the architecture:
   [pkg/fw/firmware-amd64.txt](../pkg/fw/firmware-amd64.txt). The list is
   generated from the kernel, as described below.
 - **eve-k on amd64** (`HV=k`) ships
-  [pkg/fw/firmware-amd64-k.txt](../pkg/fw/firmware-amd64-k.txt), generated the
-  same way from the `hwe` kernel eve-k runs, which builds far more drivers.
+  [pkg/fw/firmware-amd64-k.txt](../pkg/fw/firmware-amd64-k.txt) on `generic`
+  and `ai-generic`, generated the same way from the kernels eve-k runs there:
+  `hwe`, which builds far more drivers, and `ai`, `hwe` plus the NVIDIA open
+  kernel modules.
 - **arm64 and riscv64** ship a per-device selection written by hand in the
   `compactor-common` stage of the Dockerfile. Most of their firmware is chosen
   by board name (device tree compatible strings, NVRAM per board), which needs
   rules of its own. eve-k on these architectures runs the same kernel as kvm,
   so it ships the same selection.
 
-An `HV=k` build picks pkg/fw's `build-k-<PLATFORM>.yml` when it exists, before
-`build-k.yml`. Only `build-k-generic.yml` exists, and it builds the
-`-generic-k` image with the eve-k list; the NVIDIA platforms keep their own
-image, with the JetPack firmware, for eve-k too.
+An `HV=k` build picks pkg/fw's `build-k-<PLATFORM>.yml` when it exists, then
+`build-k.yml`, then the file a kvm build uses. `build-k-generic.yml` builds the
+`-generic-k` image with the eve-k list (`FW_VARIANT=-k`), and
+`build-k-ai-generic.yml` is a link to it; the NVIDIA Jetson platforms keep
+their own image, with the JetPack firmware, for eve-k too. The tool fails if a
+build the Makefile accepts ships a list that is not generated from its kernel.
 
 ### The generated list
 
@@ -60,11 +64,14 @@ after its architecture, with a suffix for a variant: `amd64` and `amd64-k`. For
 each list, it:
 
 1. Reads the kernel images that `make kernel-tag` pins for the platforms the
-   rules name (for amd64: `generic` and `rt`; for amd64-k: `generic` with
-   `HV=k`).
+   rules name (for amd64: `generic` and `rt`; for amd64-k: `generic` and
+   `ai-generic` with `HV=k`).
 1. Collects every firmware name the kernels declare with `MODULE_FIRMWARE`:
    the `firmware=` entries in each module's modinfo, and in
-   `modules.builtin.modinfo` for built-in drivers.
+   `modules.builtin.modinfo` for built-in drivers. A name the kernel image
+   ships itself in `/lib/firmware`, such as the GSP firmware of the NVIDIA
+   driver in the `ai` kernel, needs nothing from pkg/fw: it is neither listed
+   nor missing.
 1. Builds the `build` stage of pkg/fw and resolves each name against its
    `/lib/firmware` the way the driver loads it:
    - a symlink is shipped together with its target;

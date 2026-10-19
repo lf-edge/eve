@@ -123,11 +123,11 @@ RUN if [ "${TARGETARCH}" = "arm64" ]; then \
 
 # The firmware an architecture's kernels can load, as listed in
 # firmware-<arch><variant>.txt by tools/update-fw-lists.py, which reads the
-# "build" stage above. FW_VARIANT is "-k" for eve-k (build-k-generic.yml),
-# whose amd64 kernel builds more drivers. Architectures without a list use the
-# per-device selection in compactor-common instead; compactor-generic-<arch>
-# below picks one or the other, and an architecture that gets a list is added
-# to both places.
+# "build" stage above. FW_VARIANT is "-k" for eve-k (build-k-generic.yml, and
+# build-k-ai-generic.yml, a link to it), whose amd64 kernels build more drivers.
+# Architectures without a list use the per-device selection in compactor-common
+# instead; compactor-generic-<arch> below picks one or the other, and an
+# architecture that gets a list is added to both places.
 FROM build AS listed
 ARG TARGETARCH
 ARG FW_VARIANT
