@@ -37,7 +37,7 @@ If EVE is running on hardware with a trusted platform module (TPM), then these k
 
 | Certificate | Purpose | Type | Location |
 |-------------|---------|------|----------|
-| TLS root of trust | Standard TLS | Any | /config/v2tlsbaseroot-certificates.pem |
+| TLS root of trust | Standard TLS | Any | /etc/ssl/certs in the EVE root filesystem |
 
 ## How to Verify TPM Endorsment Key
 

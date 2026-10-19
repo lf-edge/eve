@@ -7,8 +7,7 @@ In general, EVE is trying to make sure that its controller always has the last w
 * `grub.cfg` - local tweaks to an [otherwise readonly grub.cfg](README.md#runtime-lifecycle)
 * `DevicePortConfig/override.json` - initial configuration for all of EVE's network interfaces (*deprecated*, see below for details)
 * `server` - contains a FQDN of a controller and its port (e.g. controller.acme.com:123)
-* `root-certificate.pem` - contains an x509 root certificate to trust for the controller for TLS in V1 API and object signing in V2 API
-* `v2tlsbaseroot-certificates.pem` - contains the x509 root certificate to trust for the TLS to the controller when using the V2 API
+* `root-certificate.pem` - contains an x509 root certificate to trust for the controller for object signing, and for TLS in addition to the CA certificates in the EVE root filesystem (`/etc/ssl/certs`)
 * `onboard.cert.pem` - onboarding certificate for the [initial registration](REGISTRATION.md) with the controller
 * `wpa_supplicant.conf` - a legacy way of configuring EVE's WiFi
 * `authorized_keys` - initial authorized SSH keys for accessing EVE's debug console; DO NOT use options, we only accept 'keytype, base64-encoded key, comment' format. This file is a bootstrap source only: it is read at boot when `GlobalConfig/global.json` is absent, and ignored once the controller's global configuration is in effect. From then on the `debug.enable.ssh` property - empty by default, which both installs no keys and rejects port 22 - decides whether SSH is reachable and with which keys. The file is not removed at onboarding, so it stays on the CONFIG partition and stays measured into PCR 14
@@ -22,7 +21,7 @@ Once an installer has been run on an edge node, the content of the partition wit
 ## Bootstrap configuration
 
 EVE doesn't care how it gets its configuration objects as long as they come from the source that can be trusted.
-Normally, this trusted source happens to be EVE's controller and the trust is established via TLS connection that is validated by the `v2tlsbaseroot-certificates.pem` and furthermore by controller signing configuration objects and device validating these signatures against the `root-certificate.pem`.
+Normally, this trusted source happens to be EVE's controller and the trust is established via TLS connection that is validated by the CA certificates in the EVE root filesystem and furthermore by controller signing configuration objects and device validating these signatures against the `root-certificate.pem`.
 
 However, in some scenarios, device might not be able to establish the initial controller connectivity using the default network configuration (for definition see "Last Resort" section in [DEVICE-CONNECTIVITY.md](./DEVICE-CONNECTIVITY.md)). For example, the network to which the device is connected may require that all traffic goes through a network proxy, otherwise it is blocked. Or the network may use static IP settings without providing DHCP service, expecting every endpoint to select and configure an appropriate IP address on its own. Or maybe device has only LTE connectivity and needs to know what APN to register into the network with.
 In such cases it is required to deliver the initial, also known as *bootstrap*, device configuration off-line. The recommended method (over some legacy mechanisms described below) is to prepare a single-use EVE installation medium, carrying the bootstrap config for the target device inside the EVE partition.
