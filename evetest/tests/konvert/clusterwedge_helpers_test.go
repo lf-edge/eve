@@ -92,7 +92,7 @@ func isK3sReady(info *eveinfo.ZInfoKubeCluster) bool {
 // node that never becomes ready and storage that never initializes are different
 // findings and volumemgr's silence cannot tell them apart.
 func waitK3sNodeReady(t Gomega, device *evetest.EdgeDevice, timeout time.Duration) {
-	if isK3sReady(device.GetClusterInfo()) {
+	if info, _ := device.GetClusterInfo(); isK3sReady(info) {
 		return
 	}
 	clusterUpdates, stop := device.WatchClusterInfo()

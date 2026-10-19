@@ -64,8 +64,7 @@ func soleNodeReady(info *eveinfo.ZInfoKubeCluster, devName string) bool {
 //
 // Network model
 // -------------
-//   - netmodels.SeparateClusterPort -- same as TestThreeNodesCluster, so
-//     the suite can reuse the three VMs instead of recreating them: eth0
+//   - netmodels.SeparateClusterPort -- same as TestThreeNodesCluster: eth0
 //     on a shared management+app bridge with DHCP, eth1 on a cluster-only
 //     bridge (10.244.244.0/24).
 //
@@ -102,7 +101,8 @@ func soleNodeReady(info *eveinfo.ZInfoKubeCluster, devName string) bool {
 // Suite placement
 // ---------------
 //   - TestNodeClusterSuite, after TestThreeNodesCluster: same device and
-//     network requirements, so the framework reuses the VMs.
+//     network requirements (though each subtest gets its own fresh VMs),
+//     so it reads as a variation on the plain three-node formation.
 func TestClusterToSingleConversion(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
@@ -205,7 +205,7 @@ func TestClusterToSingleConversion(test *testing.T) {
 	// running k3s. That reboot is required behaviour, not a crash, so
 	// declare it — Close audits observed reboots against expected ones and
 	// would otherwise report the conversion working as a failure.
-	convertedDev.ExpectReboots(1)
+	convertedDev.ExpectAdditionalReboots(1)
 
 	// Applied per-device: the other two keep their cluster config, so the
 	// controller is removing one member rather than dissolving the cluster.
@@ -256,7 +256,7 @@ func TestClusterToSingleConversion(test *testing.T) {
 	// exactly while the bug was present, and stopped once it was fixed.
 	t.Eventually(func() bool {
 		for _, name := range remainingNames {
-			info := evetest.GetEdgeDevice(name).GetClusterInfo()
+			info, _ := evetest.GetEdgeDevice(name).GetClusterInfo()
 			if info == nil {
 				continue // not the stats leader
 			}
