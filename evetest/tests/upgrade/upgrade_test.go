@@ -278,7 +278,8 @@ func TestEVEUpgrade(test *testing.T) {
 		activeHypervisor = initialHypervisor
 	}
 	if activeHypervisor == evetest.HypervisorKubevirt {
-		if !isK3sReady(device.GetClusterInfo()) {
+		info, _ := device.GetClusterInfo()
+		if !isK3sReady(info) {
 			clusterUpdates, stopClusterWatch := device.WatchClusterInfo()
 			defer stopClusterWatch()
 			t.Eventually(clusterUpdates, 20*time.Minute).Should(Receive(

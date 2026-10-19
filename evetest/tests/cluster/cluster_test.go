@@ -166,7 +166,7 @@ func TestSingleNodeCluster(test *testing.T) {
 
 	timeout := 20 * time.Minute
 	device.WaitForClusterNodeIsReady(timeout)
-	clusterInfo := device.GetClusterInfo()
+	clusterInfo, _ := device.GetClusterInfo()
 	t.Expect(clusterInfo.Nodes).To(HaveLen(1))
 	t.Expect(clusterInfo.ClusterId).NotTo(BeEmpty())
 	t.Expect(clusterInfo.Nodes[0].RoleServer).To(BeTrue())
@@ -261,11 +261,12 @@ func TestSingleNodeCluster(test *testing.T) {
 //
 // Network model
 // -------------
-//   - netmodels.SeparateClusterPort -- six ports (two per device, labeled
-//     dev{1,2,3}-eth{0,1}). eth0 ports of all devices share a single
-//     management+app SDN bridge with DHCP and controller reachability.
-//     eth1 ports of all devices share a separate cluster-only bridge
-//     (10.244.244.0/24, no Internet) used for inter-node K3s traffic.
+//   - netmodels.SeparateClusterPort(devName[:]...) -- six ports (two per
+//     device, labeled edge-dev{1,2,3}-eth{0,1}). eth0 ports of all devices
+//     share a single management+app SDN bridge with DHCP and controller
+//     reachability. eth1 ports of all devices share a separate
+//     cluster-only bridge (10.244.244.0/24, no Internet) used for
+//     inter-node K3s traffic.
 //
 // Device configuration
 // --------------------

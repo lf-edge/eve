@@ -312,6 +312,22 @@ func (cc *EdgeClusterConfig) forEachDevice(fn func(dc *EdgeDeviceConfig)) {
 	}
 }
 
+// SetWitness configures the 2-node-HA witness's virtual etcd IP on every
+// device's cluster config. The witness always co-locates with whichever
+// device currently owns JoinServerIp - there is no separate placement
+// field (matches config.EdgeNodeClusterWitness's design).
+func (cc *EdgeClusterConfig) SetWitness(witnessIP net.IP) {
+	cc.forEachDevice(func(dc *EdgeDeviceConfig) {
+		if dc.Cluster == nil {
+			cc.th.t.Fatalf("SetWitness: device %q has no cluster config",
+				dc.GetDeviceName())
+		}
+		dc.Cluster.Witness = &eveconfig.EdgeNodeClusterWitness{
+			WitnessIp: witnessIP.String(),
+		}
+	})
+}
+
 // SetConfigProperties sets configuration properties on all devices.
 func (cc *EdgeClusterConfig) SetConfigProperties(configProps *pillartypes.ConfigItemValueMap) {
 	cc.forEachDevice(func(dc *EdgeDeviceConfig) {
