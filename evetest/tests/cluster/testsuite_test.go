@@ -18,7 +18,12 @@ import (
 // The single-node subtests run before the three-node ones. The three-node
 // subtests that share device requirements and network model run back to back
 // so that evetest can reuse the provisioned devices; TestClusterVMApp needs
-// its own device requirements (no vCPU caps) and therefore runs last.
+// its own device requirements (no vCPU caps) and therefore runs after them.
+//
+// TestTwoNodeHACluster runs last. It requests its own two-device,
+// SeparateClusterPort topology, distinct from the three-device one used
+// above, and is placed last simply because it has different requirements
+// from all the other tests.
 //
 // Test parameters
 // ---------------
@@ -67,6 +72,9 @@ func TestNodeClusterSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestClusterVMApp,
+		},
+		evetest.TestCase{
+			Test: TestTwoNodeHACluster,
 		},
 	)
 }
