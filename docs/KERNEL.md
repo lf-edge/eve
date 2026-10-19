@@ -132,6 +132,8 @@ This file defines the kernel version selection logic based on architecture and p
 Location: `/tools/update_kernel_commits.py`
 
 This Python script automates the process of updating kernel commits in EVE.
+It pins only the kernels `kernel-version.mk` selects (plus a pinned next branch)
+and needs `pip install "tree-sitter>=0.23" tree-sitter-make`.
 
 **Features:**
 
