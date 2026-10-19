@@ -84,7 +84,7 @@ RUN mkdir -p /var/run/dbus/
 
 COPY mmagent /mmagent
 WORKDIR /mmagent
-RUN CGO_ENABLED=0 go build -v
+RUN CGO_ENABLED=0 go build -v -ldflags "-s -w"
 
 FROM scratch
 
