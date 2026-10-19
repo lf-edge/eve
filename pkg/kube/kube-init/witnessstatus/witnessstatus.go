@@ -16,14 +16,16 @@ import (
 	"sync"
 
 	"github.com/lf-edge/eve/pkg/kube/kube-init/pubsubclient"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/role"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 var (
-	mu     sync.Mutex
-	pub    pubsub.Publication
-	cached types.WitnessStatus
+	mu       sync.Mutex
+	pub      pubsub.Publication
+	cached   types.WitnessStatus
+	received bool
 )
 
 // RegisterPublisher creates the publication. Call once at startup,
@@ -72,6 +74,56 @@ func SetError(err error, witnessIP string) {
 	cached.Error.SetErrorDescription(types.ErrorDescription{Error: err.Error()})
 	mu.Unlock()
 	publish()
+}
+
+// SubscriptionLabel identifies this topic's subscription.
+const SubscriptionLabel = "witnessstatus"
+
+// RegisterSubscriber lets the kube role read what the witness on the
+// same device publishes, so it can stamp it on its own Node object for
+// the cluster-info reporter to collect. The witness has no Node of its
+// own to annotate.
+func RegisterSubscriber(m *pubsubclient.Manager) error {
+	_, err := m.Register(SubscriptionLabel, pubsub.SubscriptionOptions{
+		AgentName:     role.Witness.String(),
+		MyAgentName:   pubsubclient.AgentName(),
+		TopicImpl:     types.WitnessStatus{},
+		Persistent:    false,
+		CreateHandler: handleChange,
+		ModifyHandler: handleModify,
+		DeleteHandler: handleDelete,
+	})
+	return err
+}
+
+func handleChange(_ interface{}, _ string, statusArg interface{}) {
+	status, ok := statusArg.(types.WitnessStatus)
+	if !ok {
+		return
+	}
+	mu.Lock()
+	cached = status
+	received = true
+	mu.Unlock()
+}
+
+func handleModify(ctxArg interface{}, key string, statusArg, _ interface{}) {
+	handleChange(ctxArg, key, statusArg)
+}
+
+func handleDelete(_ interface{}, _ string, _ interface{}) {
+	mu.Lock()
+	cached = types.WitnessStatus{}
+	received = false
+	mu.Unlock()
+}
+
+// Received reports whether a witness on this device has published
+// anything. False on every device that does not host one.
+func Received() bool {
+	mu.Lock()
+	defer mu.Unlock()
+	return received
 }
 
 // Get returns the current status.
