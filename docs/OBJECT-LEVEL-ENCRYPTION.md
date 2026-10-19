@@ -24,7 +24,7 @@ And it requires that the controller and the device can create an encryption key,
 
 The shared secret is fed through SHA-256 as a key derivation function per [NIST SP 800-56A Rev. 3](https://csrc.nist.gov/publications/detail/sp/800-56a/rev-3/final) and [FIPS PUB 180-4](https://csrc.nist.gov/publications/detail/fips/180/4/final).
 
-The derived key is used an [AES 256 CTS key](https://en.wikipedia.org/wiki/Advanced_Encryption_Standard) with an initialization vector passed from the controller as part of the device configuration message. This key and IV are then used for encrypting the sensitive information between the controller and the device.
+The derived key is used as an [AES-256](https://en.wikipedia.org/wiki/Advanced_Encryption_Standard) key in CFB mode with an initialization vector passed from the controller as part of the device configuration message. This key and IV are then used for encrypting the sensitive information between the controller and the device.
 
 The ECC certificates used in the exchange are:
 
