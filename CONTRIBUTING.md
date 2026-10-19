@@ -294,6 +294,7 @@ all relevant kernel versions. All active branches of the eve-kernel project
 can be listed using the script `./tools/update_kernel_commits.py`:
 
 ```sh
+pip install requests colorama "tree-sitter>=0.23" tree-sitter-make
 ./tools/update_kernel_commits.py -v
 ```
 
