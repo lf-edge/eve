@@ -18,6 +18,9 @@ env:
   # github.com clone this job makes.
   GITHUB_TOKEN: ${{ github.token }}
   GIT_ASKPASS: ${{ github.workspace }}/tools/github-askpass.sh
+  # Signature policy for tools/eve-cosign.sh, the same as publish.yml's.
+  EVE_COSIGN_IDENTITY_REGEXP: '^https://github\.com/lf-edge/eve/\.github/workflows/(release-sign\.yml@refs/heads/master|build-alpine-base\.yml@refs/heads/master|publish\.yml@refs/heads/(master|[0-9]+\.[0-9]+(-stable)?))$'
+  EVE_COSIGN_REPOSITORY: lf-edge/eve
 
 jobs:
   # Step 1: Build alpine-base for each arch
@@ -77,6 +80,7 @@ jobs:
     if: github.ref_name == github.event.repository.default_branch
     permissions:
       contents: read
+      id-token: write
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
@@ -88,6 +92,10 @@ jobs:
         with:
           username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
           password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6  # v4.1.2
+        with:
+          cosign-release: v3.1.3
       - name: Create multi-arch manifest for alpine-base
         run: |
           echo "Creating manifest for alpine-base: ${{ needs.build-base.outputs.hash }}"
@@ -95,6 +103,11 @@ jobs:
             \
             LINUXKIT_EXTRA_BUILD_ARGS="--hash ${{ needs.build-base.outputs.hash }}" \
             pkg/alpine-base
+      - name: Sign alpine-base
+        env:
+          HASH: ${{ needs.build-base.outputs.hash }}
+        run: |
+          ./tools/eve-cosign.sh sign-tags "eve-alpine-base:$HASH"
 
   # Step 3: Commit updated alpine-base hash to master
   commit-hash:
@@ -175,6 +188,7 @@ jobs:
     if: github.ref_name == github.event.repository.default_branch
     permissions:
       contents: read
+      id-token: write
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
@@ -187,8 +201,16 @@ jobs:
         with:
           username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
           password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6  # v4.1.2
+        with:
+          cosign-release: v3.1.3
       - name: Create multi-arch manifest for eve-alpine
         run: |
           make V=1 LINUXKIT_PKG_TARGET=manifest \
             \
             pkg/alpine
+      - name: Sign eve-alpine
+        run: |
+          tag=$(make --no-print-directory -s alpine-show-tag | tail -1)
+          ./tools/eve-cosign.sh sign-tags "${tag##*/}"
