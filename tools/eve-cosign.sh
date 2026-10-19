@@ -11,8 +11,8 @@
 #       linuxkit cache into <outdir>/pulled (the registry already serves the
 #       digest) and <outdir>/built (built by this job), list the package tags
 #       holding a built manifest in <outdir>/built-tags, and verify the
-#       pulled manifests and, for the given architectures, the `FROM
-#       lfedge/eve-*` bases of the built ones. A tag build must have built
+#       pulled manifests and, for the given architectures, the lfedge/eve-*
+#       bases of the built ones. A tag build must have built
 #       nothing but the packages every build rebuilds (FORCE_BUILD_PKGS in
 #       the Makefile), since it cannot sign. A re-run of a branch build lists the
 #       pulled manifests that do not verify in <outdir>/unsigned instead of
@@ -38,7 +38,7 @@
 #   EVE_SIG_PREFIX              where package signatures live
 #                               (default EVE_PKG_PREFIX)
 #   EVE_COSIGN_EXCLUDE          regexp of package names not signed by EVE's
-#                               workflows (default ^eve-kernel$)
+#                               workflows (default ^eve-(kernel|rust)$)
 #   LINUXKIT_CACHE              linuxkit cache (default ~/.linuxkit/cache)
 
 set -euo pipefail
@@ -47,7 +47,7 @@ EVE="$(cd "$(dirname "$0")/.." && pwd)"
 OIDC_ISSUER=https://token.actions.githubusercontent.com
 PKG_PREFIX="${EVE_PKG_PREFIX:-docker.io/lfedge}"
 SIG_PREFIX="${EVE_SIG_PREFIX:-$PKG_PREFIX}"
-EXCLUDE="${EVE_COSIGN_EXCLUDE:-^eve-kernel$}"
+EXCLUDE="${EVE_COSIGN_EXCLUDE:-^eve-(kernel|rust)$}"
 CACHE="${LINUXKIT_CACHE:-$HOME/.linuxkit/cache}"
 
 die() {
@@ -232,18 +232,23 @@ sign_index() {
     sign_digest "$ref"
 }
 
-# The platform manifests, for the given architectures, of the `FROM
-# lfedge/eve-*:<tag>` images that the packages listed in $1 are built from.
-# A base the registry does not serve is printed as its bare tag, which then
-# fails verification; bases listed in $1 themselves are skipped, since this
-# job built them and signs them after pushing.
+# The platform manifests, for the given architectures, of the lfedge/eve-*
+# images that the packages listed in $1 are built from: those a FROM line
+# names, with or without --platform, and those an ARG pins for a later
+# `FROM ${ARG}`. A tag must start with a lowercase letter or digit, which
+# leaves out Dockerfile.in placeholders such as XENTOOLS_TAG. A base the
+# registry does not serve is printed as its bare tag, which then fails
+# verification; bases listed in $1 themselves are skipped, since this job
+# built them and signs them after pushing.
 base_manifests() {
     local list="$1" name ref arch index
     shift
     sed 's/@.*//' "$list" | sort -u | while read -r name; do
-        cat "$EVE/pkg/${name#eve-}"/Dockerfile* 2>/dev/null || true
+        cat "$EVE/pkg/${name#eve-}"/Dockerfile{,.in} 2>/dev/null || true
     done |
-    sed -nE 's|^FROM[[:space:]]+(docker\.io/)?lfedge/(eve-[a-z0-9-]+:[0-9a-f]+).*|\2|p' | sort -u |
+    grep -E '^[[:space:]]*(FROM|ARG)[[:space:]]' |
+    grep -oE '(^|[[:space:]=])(docker\.io/)?lfedge/eve-[a-z0-9-]+:[a-z0-9][A-Za-z0-9_.-]*' |
+    sed -E 's|.*lfedge/||' | sort -u |
     while read -r ref; do
         [[ "${ref%:*}" =~ $EXCLUDE ]] && continue
         grep -q "^${ref%:*}@sha256:" "$list" && continue

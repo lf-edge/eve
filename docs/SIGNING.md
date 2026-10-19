@@ -158,7 +158,8 @@ after `make pkgs` and again after `make eve`, with `tools/eve-cosign.sh`:
 
 - every `lfedge/eve-*` platform manifest in the linuxkit cache that the
   registry already served, by the digest in the cache rather than the tag
-- the `FROM lfedge/eve-*` base images of every package the job built
+- the `lfedge/eve-*` base images of every package the job built, named on a
+  `FROM` line or pinned by an `ARG` that a `FROM` uses
 
 Packages are pushed only under their content tag, and only by branch builds.
 
@@ -183,8 +184,8 @@ every build (`FORCE_BUILD_PKGS`): their tag does not name their content, so a
 tag build rebuilds them from the tagged source, as it does EVE itself.
 
 Not signed by EVE's workflows, and therefore not verified: `lfedge/eve-kernel`
-(published by the eve-kernel repository), `linuxkit/*` images, and external
-`FROM` images. The build pins them by tag or digest as before.
+and `lfedge/eve-rust` (published by the eve-kernel and eve-rust repositories),
+`linuxkit/*` images, and external `FROM` images. The build pins them by tag or digest as before.
 
 ## Enabling on a branch
 
