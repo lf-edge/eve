@@ -596,6 +596,11 @@ func main() {
 		if err := witnessstatus.RegisterPublisher(psMgr); err != nil {
 			log.Fatalf("witness status publisher: %v", err)
 		}
+	} else if err := witnessstatus.RegisterSubscriber(psMgr); err != nil {
+		// The kube role forwards what a witness on this device
+		// publishes onto its own Node object. A device with no witness
+		// simply never receives anything on the topic.
+		log.Fatalf("witness status subscriber: %v", err)
 	}
 
 	// Register all topic subscribers before psMgr.Run starts —
