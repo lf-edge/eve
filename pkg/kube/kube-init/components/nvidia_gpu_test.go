@@ -315,6 +315,37 @@ func TestReconcileNvidiaGPU_RemovesLegacyManifests(t *testing.T) {
 	}
 }
 
+// Before k3s starts the manifest is refreshed with no API server to label
+// the node with.
+func TestStageNvidiaManifest_StagesWithoutTouchingLabel(t *testing.T) {
+	f := redirectNvidiaGPU(t)
+	f.setPlatform(t, "nvidia-jp6")
+	writeFile(t, filepath.Join(f.dst, nvidiaPluginManifestName), "stale")
+	writeFile(t, filepath.Join(f.dst, "nvidia-device-plugin-18.0.yml"), "old")
+	if err := stageNvidiaManifest(f.dst); err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	if got, _ := f.staged(t); got != testNvidiaManifest {
+		t.Errorf("staged %q, want the NVIDIA manifest", got)
+	}
+	if _, err := os.Stat(filepath.Join(f.dst, "nvidia-device-plugin-18.0.yml")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("legacy manifest still present (err=%v)", err)
+	}
+	if f.node.gets != 0 || f.node.patches != 0 {
+		t.Errorf("node label accessed: gets=%d patches=%d", f.node.gets, f.node.patches)
+	}
+}
+
+func TestStageNvidiaManifest_NoNvidiaUserlandStagesNothing(t *testing.T) {
+	f := redirectNvidiaGPU(t)
+	if err := stageNvidiaManifest(f.dst); err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	if _, ok := f.staged(t); ok {
+		t.Error("staged a manifest on an image without an NVIDIA userland")
+	}
+}
+
 // The auto-deploy dir belongs to the k3s server; until it exists there is
 // nothing to stage into, and the next tick retries.
 func TestReconcileNvidiaGPU_WaitsForK3sManifestsDir(t *testing.T) {

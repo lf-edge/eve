@@ -1789,6 +1789,11 @@ func (d *daemon) enterStartingK3s(ctx context.Context) {
 		d.supervisor = k3s.NewSupervisor()
 	}
 
+	// Refresh the staged NVIDIA manifest before k3s applies it.
+	if err := components.StageNvidiaManifest(); err != nil {
+		log.Printf("WARNING: stage NVIDIA manifest: %v", err)
+	}
+
 	if err := d.supervisor.Start(); err != nil {
 		log.Printf("failed to start k3s: %v", err)
 		if ctx.Err() == nil {
