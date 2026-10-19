@@ -91,13 +91,19 @@ The rules are:
 Every `exclude` and `extra` carries a comment saying why, usually the device it
 is for.
 
-The header of the generated list records the kernel images it was generated
-from, and every name a module declares that the firmware tree lacks:
+The header of the generated list records the kernels it was generated from, by
+branch and configuration flavour but not commit, and every name a module
+declares that the firmware tree lacks:
 
 ```text
+# kernel: eve-kernel-amd64-v6.18.55-generic-core
 # missing: ath10k_pci ath10k/QCA6174/hw3.0/firmware-5.bin
 # missing: rsi_usb rs9113_wlan_qspi.rps
 ```
+
+A new commit of a kernel branch that changes no declared firmware therefore
+leaves the lists as they are; a new kernel version changes the `# kernel:`
+lines.
 
 A missing name is usually harmless. The driver also accepts another version,
 which is in the list when the tree has one (ath10k tries firmware API 6 down to
@@ -111,8 +117,8 @@ it shows up in the diff of the list.
 `make check-fw-lists` regenerates the lists without writing them, and fails with
 a diff if a committed list is out of date. CI runs it on every change to the
 kernel pins (`kernel-version.mk`, `kernel-commits.mk`), so a kernel update that
-does not regenerate the lists fails its pull request instead of leaving a driver
-without firmware.
+changes the lists but does not regenerate them fails its pull request instead
+of leaving a driver without firmware.
 
 ## Kernel and firmware versions
 
@@ -160,8 +166,10 @@ Two cases fall outside these rules:
    tools/update-fw-lists.py
    ```
 
-1. Review the diff of `pkg/fw/firmware-*.txt`:
-   - the `# kernel:` lines name the new kernel images;
+1. Review the diff of `pkg/fw/firmware-*.txt`, if any: a kernel commit that
+   declares the same firmware as the one before leaves the lists unchanged.
+   - the `# kernel:` lines change with the kernel version or flavour, not with
+     its commit;
    - added files come from drivers the kernel now builds, or from firmware
      versions the drivers now accept;
    - removed files come from drivers the kernel no longer builds, or from
