@@ -4,6 +4,8 @@
 package main
 
 import (
+	"bufio"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"path"
@@ -143,6 +145,65 @@ func withPURL(refs []externalRef, purl string) []externalRef {
 	return out
 }
 
+// suppliersTxt maps package URLs to suppliers; update-suppliers.py adds to it.
+//
+//go:embed suppliers.txt
+var suppliersTxt string
+
+var suppliers = mustParseSuppliers(suppliersTxt)
+
+func mustParseSuppliers(s string) map[string]string {
+	m, err := parseSuppliers(s)
+	if err != nil {
+		panic(err)
+	}
+	return m
+}
+
+// parseSuppliers reads lines of a purl prefix and an SPDX supplier separated
+// by a tab, skipping blank lines and lines starting with #.
+func parseSuppliers(s string) (map[string]string, error) {
+	m := map[string]string{}
+	sc := bufio.NewScanner(strings.NewReader(s))
+	for n := 1; sc.Scan(); n++ {
+		line := sc.Text()
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		prefix, supplier, ok := strings.Cut(line, "\t")
+		switch {
+		case !ok || !strings.HasPrefix(prefix, "pkg:") || strings.ContainsAny(prefix, "@?#"):
+			return nil, fmt.Errorf("suppliers.txt:%d: want <purl prefix><tab><supplier>", n)
+		case !strings.HasPrefix(supplier, "Organization: ") && !strings.HasPrefix(supplier, "Person: "):
+			return nil, fmt.Errorf("suppliers.txt:%d: supplier must start with \"Organization: \" or \"Person: \"", n)
+		case m[prefix] != "":
+			return nil, fmt.Errorf("suppliers.txt:%d: %s listed twice", n, prefix)
+		}
+		m[prefix] = supplier
+	}
+	return m, sc.Err()
+}
+
+// mappedSupplier looks up purl, without its version, qualifiers and subpath,
+// in m, then each shorter run of its leading path segments, and returns the
+// supplier of the longest match or "".
+func mappedSupplier(m map[string]string, purl string) string {
+	key, _, _ := strings.Cut(purl, "#")
+	key, _, _ = strings.Cut(key, "?")
+	key, _, _ = strings.Cut(key, "@")
+	for strings.HasPrefix(key, "pkg:") {
+		if s := m[key]; s != "" {
+			return s
+		}
+		i := strings.LastIndexByte(key, '/')
+		if i < 0 {
+			break
+		}
+		key = key[:i]
+	}
+	return ""
+}
+
 // knownSupplier names the supplier of a package the scanner left without one,
 // or returns "" when it cannot tell.
 func knownSupplier(p pkgInfo) string {
@@ -158,7 +219,7 @@ func knownSupplier(p pkgInfo) string {
 		apkRelease.MatchString(p.VersionInfo):
 		return alpine
 	}
-	return ""
+	return mappedSupplier(suppliers, purl)
 }
 
 // fillPackage names and versions the root linuxkit makes for each image, and
