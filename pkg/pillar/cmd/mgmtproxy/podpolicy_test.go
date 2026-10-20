@@ -18,6 +18,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 // --- Proxy-Authorization token -------------------------------------------
@@ -686,14 +688,14 @@ func TestDestinationAllowedPermitted(t *testing.T) {
 }
 
 func TestResolvePinnedTargetIPLiteralDenied(t *testing.T) {
-	_, err := resolvePinnedTarget(context.Background(), "169.254.169.254", "80")
+	_, err := resolvePinnedTarget(context.Background(), nil, "169.254.169.254", "80")
 	if err == nil {
 		t.Fatal("expected denial for metadata IP literal")
 	}
 }
 
 func TestResolvePinnedTargetIPLiteralAllowed(t *testing.T) {
-	got, err := resolvePinnedTarget(context.Background(), "93.184.216.34", "443")
+	got, err := resolvePinnedTarget(context.Background(), nil, "93.184.216.34", "443")
 	if err != nil {
 		t.Fatalf("resolvePinnedTarget: %v", err)
 	}
@@ -702,16 +704,13 @@ func TestResolvePinnedTargetIPLiteralAllowed(t *testing.T) {
 	}
 }
 
-// stubLookup swaps lookupIPAddr for the duration of the test.
-func stubLookup(t *testing.T, addrs ...string) {
-	t.Helper()
-	orig := lookupIPAddr
-	t.Cleanup(func() { lookupIPAddr = orig })
+// stubLookup returns a lookupFunc answering every hostname with addrs.
+func stubLookup(addrs ...string) lookupFunc {
 	var ipa []net.IPAddr
 	for _, a := range addrs {
 		ipa = append(ipa, net.IPAddr{IP: net.ParseIP(a)})
 	}
-	lookupIPAddr = func(_ context.Context, _ string) ([]net.IPAddr, error) {
+	return func(_ context.Context, _ string) ([]net.IPAddr, error) {
 		return ipa, nil
 	}
 }
@@ -721,16 +720,14 @@ func stubLookup(t *testing.T, addrs ...string) {
 // lets `metadata.google.internal` (which resolves to 169.254.169.254) straight
 // through. resolvePinnedTarget must resolve first and check the result.
 func TestResolvePinnedTargetHostnameResolvesToDenied(t *testing.T) {
-	stubLookup(t, "169.254.169.254")
-	_, err := resolvePinnedTarget(context.Background(), "metadata.google.internal", "80")
+	_, err := resolvePinnedTarget(context.Background(), stubLookup("169.254.169.254"), "metadata.google.internal", "80")
 	if err == nil {
 		t.Fatal("expected denial for hostname resolving to metadata IP")
 	}
 }
 
 func TestResolvePinnedTargetHostnameAllowedPinsResolvedAddress(t *testing.T) {
-	stubLookup(t, "93.184.216.34")
-	got, err := resolvePinnedTarget(context.Background(), "example.com", "443")
+	got, err := resolvePinnedTarget(context.Background(), stubLookup("93.184.216.34"), "example.com", "443")
 	if err != nil {
 		t.Fatalf("resolvePinnedTarget: %v", err)
 	}
@@ -744,22 +741,74 @@ func TestResolvePinnedTargetHostnameAllowedPinsResolvedAddress(t *testing.T) {
 // just the one that would happen to be dialed — since which record the
 // dialer picks isn't guaranteed to be the one that was inspected.
 func TestResolvePinnedTargetMultiAnswerAnyDenied(t *testing.T) {
-	stubLookup(t, "93.184.216.34", "127.0.0.1")
-	_, err := resolvePinnedTarget(context.Background(), "multi.example", "443")
+	_, err := resolvePinnedTarget(context.Background(), stubLookup("93.184.216.34", "127.0.0.1"), "multi.example", "443")
 	if err == nil {
 		t.Fatal("expected denial when any resolved address is denied")
 	}
 }
 
 func TestResolvePinnedTargetLookupFailure(t *testing.T) {
-	orig := lookupIPAddr
-	defer func() { lookupIPAddr = orig }()
-	lookupIPAddr = func(_ context.Context, _ string) ([]net.IPAddr, error) {
+	lookup := func(_ context.Context, _ string) ([]net.IPAddr, error) {
 		return nil, &net.DNSError{Err: "no such host", Name: "bad.example", IsNotFound: true}
 	}
-	_, err := resolvePinnedTarget(context.Background(), "bad.example", "443")
+	_, err := resolvePinnedTarget(context.Background(), lookup, "bad.example", "443")
 	if err == nil {
 		t.Fatal("expected error when resolution fails")
+	}
+}
+
+// TestLookupViaMgmtPortsFallsBackAcrossPorts checks that hostname resolution
+// is bound to each management port's source IP in cost order and moves on to
+// the next port when a port's DNS servers don't answer, rather than using an
+// unsourced query.
+func TestLookupViaMgmtPortsFallsBackAcrossPorts(t *testing.T) {
+	orig := lookupFromSource
+	t.Cleanup(func() { lookupFromSource = orig })
+	var tried []string
+	lookupFromSource = func(_ context.Context, ifName string, srcIP net.IP,
+		_ string) ([]net.IPAddr, error) {
+		tried = append(tried, ifName+"/"+srcIP.String())
+		if ifName == "eth0" {
+			return nil, &net.DNSError{Err: "i/o timeout", Name: "x", IsTimeout: true}
+		}
+		return []net.IPAddr{{IP: net.ParseIP("93.184.216.34")}}, nil
+	}
+	ctx := newTestContext(mkDNS(
+		mkPort("eth0", 0, net.ParseIP("192.0.2.10")),
+		mkPort("eth1", 1, net.ParseIP("198.51.100.10")),
+	), 255)
+
+	got, err := resolvePinnedTarget(context.Background(), ctx.lookupViaMgmtPorts(),
+		"download.example", "443")
+	if err != nil {
+		t.Fatalf("resolvePinnedTarget: %v", err)
+	}
+	if got != "93.184.216.34:443" {
+		t.Errorf("got %q, want dial pinned to the resolved address", got)
+	}
+	want := []string{"eth0/192.0.2.10", "eth1/198.51.100.10"}
+	if strings.Join(tried, ",") != strings.Join(want, ",") {
+		t.Errorf("lookups tried %v, want %v", tried, want)
+	}
+}
+
+func TestLookupViaMgmtPortsAllPortsFail(t *testing.T) {
+	orig := lookupFromSource
+	t.Cleanup(func() { lookupFromSource = orig })
+	lookupFromSource = func(context.Context, string, net.IP, string) ([]net.IPAddr, error) {
+		return nil, errors.New("no answer")
+	}
+	ctx := newTestContext(mkDNS(mkPort("eth0", 0, net.ParseIP("192.0.2.10"))), 255)
+	if _, err := ctx.lookupViaMgmtPorts()(context.Background(), "x.example"); err == nil {
+		t.Fatal("expected error when every port fails to resolve")
+	}
+}
+
+func TestLookupViaMgmtPortsNotReady(t *testing.T) {
+	ctx := newTestContext(types.DeviceNetworkStatus{}, 0)
+	ctx.dnsInitialized = false
+	if _, err := ctx.lookupViaMgmtPorts()(context.Background(), "x.example"); err == nil {
+		t.Fatal("expected error before network status is initialized")
 	}
 }
 
