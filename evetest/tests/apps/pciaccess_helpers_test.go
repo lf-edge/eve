@@ -397,6 +397,18 @@ func (a pciAccess) isConsole() bool {
 	return a.Func == "" && hasAnyPrefix(a.Path, consolePathPrefixes)
 }
 
+// vcpuThreadName matches the name QEMU gives its vCPU threads, "CPU 0/KVM".
+// The tracer reports a thread under its own name, and a guest's config-space
+// write that vfio passes through to the device is made by the vCPU thread
+// that took the exit, not by the main thread named after the binary.
+var vcpuThreadName = regexp.MustCompile(`^CPU [0-9]+/KVM$`)
+
+// isQEMU reports whether comm names the device model, by its main thread or
+// one of its vCPU threads, which drives the device on the guest's behalf.
+func isQEMU(comm string) bool {
+	return strings.HasPrefix(comm, "qemu-system-") || vcpuThreadName.MatchString(comm)
+}
+
 // isViolation reports whether the access is one the host must not make while
 // a device is passed through: any write-open of a PCI device attribute, and
 // any reset, config-space write or BAR mapping by a process other than qemu,
@@ -407,7 +419,7 @@ func (a pciAccess) isConsole() bool {
 // debug.enable.vga is switched, so those opens are only reported.
 func (a pciAccess) isViolation() bool {
 	if a.Func != "" {
-		return !strings.HasPrefix(a.Comm, "qemu-system-")
+		return !isQEMU(a.Comm)
 	}
 	return a.isWriteOpen() && hasAnyPrefix(a.Path, pciPathPrefixes)
 }
