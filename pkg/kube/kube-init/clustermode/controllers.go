@@ -28,6 +28,31 @@ import (
 // until the recycle actually happens.
 var ControllerRestartFlag state.Marker = "/var/lib/controller-restart-needed"
 
+// ControllerRestartPending mirrors an armed ControllerRestartFlag on the
+// /run bind shared with pillar, which cannot see /var/lib (a ZFS zvol on
+// some devices). Pillar's ClusterStorageReadyForVolumes reports not-ready
+// while it exists, so no app volume is created against controllers that
+// are about to be recycled. Keep the path in sync with
+// kubeapi.kubeControllerRestartPending; see "Markers shared with pillar" in
+// the kube-init README.
+var ControllerRestartPending state.Marker = "/run/kube/controller-restart-pending"
+
+// ArmControllerRestart sets ControllerRestartFlag and its /run mirror.
+func ArmControllerRestart() error {
+	if err := state.Mark(ControllerRestartFlag); err != nil {
+		return err
+	}
+	return state.Mark(ControllerRestartPending)
+}
+
+// disarmControllerRestart clears ControllerRestartFlag and its /run mirror.
+func disarmControllerRestart() error {
+	if err := state.Unmark(ControllerRestartFlag); err != nil {
+		return err
+	}
+	return state.Unmark(ControllerRestartPending)
+}
+
 // controllerNamespaces are the namespaces whose controllers sit in the
 // app-volume path (Longhorn, CDI, KubeVirt) or serve it (CoreDNS,
 // local-path-provisioner for CDI scratch space).
@@ -115,13 +140,18 @@ func RestartStaleControllers(ctx context.Context, status *k3s.ClusterStatus, nod
 		return fmt.Errorf("check %s: %w", ControllerRestartFlag, err)
 	}
 	if !flagged {
-		return nil
+		return state.Unmark(ControllerRestartPending)
 	}
 	if status == nil || !status.IsBootstrapNode {
 		// Only the bootstrap migrates its datastore. A joining node's
 		// old pods do not exist in the cluster it joins, so its kubelet
 		// tears them down without help.
-		return state.Unmark(ControllerRestartFlag)
+		return disarmControllerRestart()
+	}
+	// /run is tmpfs: re-create the mirror if a reboot dropped it while the
+	// flag was still armed.
+	if err := state.Mark(ControllerRestartPending); err != nil {
+		return err
 	}
 	podAPI := recyclePods()
 	if podAPI == nil {
@@ -158,7 +188,7 @@ func RestartStaleControllers(ctx context.Context, status *k3s.ClusterStatus, nod
 	}
 	log.Printf("controllers: recycled %d controller pod(s) on %s after datastore migration",
 		len(stale), nodeName)
-	return state.Unmark(ControllerRestartFlag)
+	return disarmControllerRestart()
 }
 
 // staleControllerPods selects the pods RestartStaleControllers recycles:
