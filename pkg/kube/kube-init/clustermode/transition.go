@@ -372,9 +372,20 @@ func (r *Runner) StepClearCNIStateIfNonBootstrap(_ context.Context) error {
 // bootstrap server inside k3s.ProvisionClusterConfig — a transition
 // should not skip that wait even though k3s has already been
 // running once on this node.
+//
+// On the bootstrap node the config written here makes the next k3s
+// start migrate sqlite into a fresh etcd, so it also arms
+// ControllerRestartFlag for the health worker's
+// RestartStaleControllers pass.
 func (r *Runner) StepProvisionConfig(ctx context.Context) error {
 	if err := k3s.ProvisionClusterConfig(ctx, true); err != nil {
 		return fmt.Errorf("provision cluster config: %w", err)
+	}
+	if r.cs.IsBootstrapNode {
+		if err := state.Mark(ControllerRestartFlag); err != nil {
+			// Non-fatal, same reasoning as the masterlease flag.
+			log.Printf("WARNING: arm controller-restart flag: %v", err)
+		}
 	}
 	return nil
 }
