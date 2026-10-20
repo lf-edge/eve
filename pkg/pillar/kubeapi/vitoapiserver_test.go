@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -156,5 +158,28 @@ func TestVirtctlFailure(t *testing.T) {
 	got = virtctlFailure([]byte(strings.Repeat("é", 2000)), exitErr)
 	if !utf8.ValidString(got) || len(got) > maxVirtctlFailureLen {
 		t.Errorf("invalid or oversized after cut: valid=%v len=%d", utf8.ValidString(got), len(got))
+	}
+}
+
+// The path is a contract with pkg/kube/cluster-init.sh, which writes it as
+// CONTROLLER_RESTART_PENDING; a rename on either side would disable the gate
+// silently.
+func TestControllerRestartPending(t *testing.T) {
+	if kubeControllerRestartPending != "/run/kube/controller-restart-pending" {
+		t.Fatalf("marker path changed to %q: keep it in sync with cluster-init.sh",
+			kubeControllerRestartPending)
+	}
+	saved := kubeControllerRestartPending
+	t.Cleanup(func() { kubeControllerRestartPending = saved })
+	kubeControllerRestartPending = filepath.Join(t.TempDir(), "controller-restart-pending")
+
+	if ControllerRestartPending() {
+		t.Error("pending reported without a marker")
+	}
+	if err := os.WriteFile(kubeControllerRestartPending, []byte("1"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if !ControllerRestartPending() {
+		t.Error("marker present but not reported as pending")
 	}
 }
