@@ -382,7 +382,7 @@ func (r *Runner) StepProvisionConfig(ctx context.Context) error {
 		return fmt.Errorf("provision cluster config: %w", err)
 	}
 	if r.cs.IsBootstrapNode {
-		if err := state.Mark(ControllerRestartFlag); err != nil {
+		if err := ArmControllerRestart(); err != nil {
 			// Non-fatal, same reasoning as the masterlease flag.
 			log.Printf("WARNING: arm controller-restart flag: %v", err)
 		}

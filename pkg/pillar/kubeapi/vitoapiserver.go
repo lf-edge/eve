@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -95,6 +96,22 @@ func CreatePVC(pvcName string, size uint64, log *base.LogObject, storageClass st
 // each have an available replica before a CDI image upload can succeed.
 var cdiControlPlaneDeployments = []string{"cdi-apiserver", "cdi-deployment", "cdi-uploadproxy"}
 
+// kubeControllerRestartPending is set by kube-init on the /run bind shared with
+// the kube container while it still has to recycle the Longhorn/CDI/KubeVirt
+// controller pods after a single->cluster datastore migration (their informers
+// are blind until then). It is written by clustermode.ControllerRestartPending in
+// the separate kube-init module; the contract is documented under "Markers shared
+// with pillar" in pkg/kube/kube-init/README.md. A var so tests can redirect it.
+var kubeControllerRestartPending = "/run/kube/controller-restart-pending"
+
+// ControllerRestartPending reports whether kube-init still has to recycle the
+// cluster-storage controllers after a single->cluster datastore migration. Until
+// it has, storage must be treated as not ready even if it was ready before.
+func ControllerRestartPending() bool {
+	_, err := os.Stat(kubeControllerRestartPending)
+	return err == nil
+}
+
 // ClusterStorageReadyForVolumes reports whether the EVE-k cluster storage stack is
 // ready to create app volumes: the `longhorn` StorageClass exists and the Longhorn
 // control-plane daemonsets are running on this node, the CDI upload proxy Service
@@ -116,7 +133,17 @@ var cdiControlPlaneDeployments = []string{"cdi-apiserver", "cdi-deployment", "cd
 // nodeName is this device's Kubernetes node name (derived by the caller from
 // EdgeNodeInfo.DeviceName), used for the per-node Longhorn checks below — not
 // os.Hostname().
+//
+// It also reports not-ready while kube-init's kubeControllerRestartPending marker
+// exists: right after a single->cluster transition the controllers above are all
+// Running and Available, yet still watching the pre-migration datastore, and are
+// about to be recycled.
 func ClusterStorageReadyForVolumes(log *base.LogObject, nodeName string) bool {
+	if ControllerRestartPending() {
+		log.Functionf("ClusterStorageReadyForVolumes: controller recycle after datastore migration still pending (%s)",
+			kubeControllerRestartPending)
+		return false
+	}
 	clientset, err := GetClientSet()
 	if err != nil {
 		log.Functionf("ClusterStorageReadyForVolumes: no clientset yet: %v", err)

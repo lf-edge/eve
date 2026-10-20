@@ -5,6 +5,7 @@ package volumemgr
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -52,4 +53,40 @@ func TestSetStorageReadinessNeverBlocks(t *testing.T) {
 	ready, unmet := ctx.storageReadiness()
 	assert.True(t, ready)
 	assert.Empty(t, unmet)
+}
+
+// A node that served volumes in single-node mode has storage cached as ready,
+// and pillar survives the single->cluster transition. While kube-init still has
+// to recycle the controllers, that cache must not let a volume create through,
+// and it must be dropped so the next probe waits for the recycled controllers.
+func TestClusterStorageReadyDropsCacheWhileRestartPending(t *testing.T) {
+	savedCache, savedAt, savedPending := clusterStorageReadyCache,
+		clusterStorageReadyCheckAt, controllerRestartPending
+	t.Cleanup(func() {
+		clusterStorageReadyCache, clusterStorageReadyCheckAt = savedCache, savedAt
+		controllerRestartPending = savedPending
+	})
+
+	ctx := &volumemgrContext{hvTypeKube: true}
+	clusterStorageReadyCache = true
+	clusterStorageReadyCheckAt = time.Now()
+
+	controllerRestartPending = func() bool { return true }
+	assert.False(t, clusterStorageReady(ctx))
+	assert.False(t, clusterStorageReadyCache, "cache kept while the recycle is pending")
+
+	// Not EVE-k: never gated.
+	assert.True(t, clusterStorageReady(&volumemgrContext{hvTypeKube: false}))
+}
+
+func TestClusterStorageReadyUsesCacheWhenNothingPending(t *testing.T) {
+	savedCache, savedPending := clusterStorageReadyCache, controllerRestartPending
+	t.Cleanup(func() {
+		clusterStorageReadyCache = savedCache
+		controllerRestartPending = savedPending
+	})
+
+	clusterStorageReadyCache = true
+	controllerRestartPending = func() bool { return false }
+	assert.True(t, clusterStorageReady(&volumemgrContext{hvTypeKube: true}))
 }
