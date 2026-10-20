@@ -37,6 +37,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
 	"github.com/lf-edge/eve/pkg/pillar/utils/wait"
 	"golang.org/x/crypto/hkdf"
 )
@@ -543,10 +544,52 @@ func destinationAllowed(ip net.IP) error {
 	return nil
 }
 
-// lookupIPAddr resolves hostnames for resolvePinnedTarget. var so tests can
-// stub it without making real DNS queries, matching the rest of this
-// package's "var so tests can redirect" convention.
-var lookupIPAddr = net.DefaultResolver.LookupIPAddr
+// lookupFromSource resolves host with a resolver bound to the given port and
+// source IP, so the query follows that port's routing table instead of the
+// main one. var so tests can stub it without making real DNS queries,
+// matching the rest of this package's "var so tests can redirect" convention.
+var lookupFromSource = func(
+	ctx context.Context, ifName string, srcIP net.IP, host string) ([]net.IPAddr, error) {
+	resolver := controllerconn.NewResolverWithLocalIP(log, ifName, srcIP).NetResolver()
+	return resolver.LookupIPAddr(ctx, host)
+}
+
+// lookupFunc resolves a hostname for resolvePinnedTarget.
+type lookupFunc func(ctx context.Context, host string) ([]net.IPAddr, error)
+
+// lookupViaMgmtPorts returns a lookupFunc that tries each management port in
+// cost order, like dialCostAware does, and returns the first successful
+// answer. The system resolver is deliberately not used: it sends unsourced
+// queries along the main routing table, which need not reach a given port's
+// DNS servers.
+func (ctx *mgmtProxyContext) lookupViaMgmtPorts() lookupFunc {
+	return func(parent context.Context, host string) ([]net.IPAddr, error) {
+		dns, maxCost, ready := ctx.snapshot()
+		if !ready {
+			return nil, errors.New("device network status or global config not yet initialized")
+		}
+		timeout := time.Duration(ctx.dialTimeout.Load())
+		rotation := int(ctx.dialRotation.Add(1))
+		sources := mgmtSources(dns, maxCost, rotation)
+		if len(sources) == 0 {
+			return nil, errors.New("no management interfaces available")
+		}
+		var errs []error
+		for _, src := range sources {
+			lctx, cancel := context.WithTimeout(parent, timeout)
+			addrs, err := lookupFromSource(lctx, src.IfName, src.SrcIP, host)
+			cancel()
+			if err == nil && len(addrs) > 0 {
+				return addrs, nil
+			}
+			if err == nil {
+				err = errors.New("no addresses returned")
+			}
+			errs = append(errs, fmt.Errorf("%s/%v: %w", src.IfName, src.SrcIP, err))
+		}
+		return nil, errors.Join(errs...)
+	}
+}
 
 // resolvePinnedTarget applies destinationAllowed to a CONNECT target's host,
 // resolving hostnames first so a name mapping into a denied range (e.g.
@@ -555,14 +598,14 @@ var lookupIPAddr = net.DefaultResolver.LookupIPAddr
 // that will be dialed, so a multi-answer hostname can't sneak a denied
 // address past the check. The returned target has its host rewritten to the
 // single checked address, pinning the dial against DNS rebinding.
-func resolvePinnedTarget(ctx context.Context, host, port string) (string, error) {
+func resolvePinnedTarget(ctx context.Context, lookup lookupFunc, host, port string) (string, error) {
 	if ip := net.ParseIP(host); ip != nil {
 		if err := destinationAllowed(ip); err != nil {
 			return "", err
 		}
 		return net.JoinHostPort(host, port), nil
 	}
-	addrs, err := lookupIPAddr(ctx, host)
+	addrs, err := lookup(ctx, host)
 	if err != nil {
 		return "", fmt.Errorf("resolve %s: %w", host, err)
 	}

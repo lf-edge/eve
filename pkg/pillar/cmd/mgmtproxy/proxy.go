@@ -126,7 +126,7 @@ func handleConnect(ctx *mgmtProxyContext, w http.ResponseWriter, req *http.Reque
 	}
 
 	if podFacing {
-		pinned, err := resolvePinnedTarget(req.Context(), host, port)
+		pinned, err := resolvePinnedTarget(req.Context(), ctx.lookupViaMgmtPorts(), host, port)
 		if err != nil {
 			log.Warnf("mgmtproxy: CONNECT %s from %s DENIED: %v",
 				target, req.RemoteAddr, err)
