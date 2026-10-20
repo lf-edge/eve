@@ -27,6 +27,18 @@ Pillar-published pubsub topics are read via subscriptions
 (see `pubsubclient`). Inter-process I/O with k3s goes through `kubectlx`,
 which wraps `k3s kubectl` / `k3s ctr` / `crictl`.
 
+## Markers shared with pillar
+
+`/var/lib` is not visible to pillar (on ZFS devices it is a zvol), so state
+that pillar acts on is mirrored onto the `/run` bind both containers share.
+kube-init and pillar are separate Go modules and cannot share a constant: each
+side spells the path out and pins it in a test, so renaming one side breaks
+that side's test.
+
+| Path | Written by | Read by | Meaning |
+|---|---|---|---|
+| `/run/kube/controller-restart-pending` | `clustermode.ControllerRestartPending` | `kubeapi.ControllerRestartPending` (volumemgr's storage-readiness gate) | The controller pods still have to be recycled after a single→cluster datastore migration; app volume creation waits. |
+
 ## Package map
 
 | Package | Responsibility |
