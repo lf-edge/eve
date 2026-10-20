@@ -163,10 +163,10 @@ CMD []
 # /opt/vendor/nvidia; buildkit builds only the stages the selected platform
 # reaches, so neither pipeline runs for the other.
 # ---------------------------------------------------------------------------
-FROM lfedge/eve-alpine:080e2b4c683508649d72d2ae9b166153d819ca5d AS dgpu-base
-ENV BUILD_PKGS="dpkg tar zstd"
-RUN eve-alpine-deploy.sh && \
-    mkdir -p /staging/opt /staging/etc && \
+FROM lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544 AS dgpu-base
+ENV BUILD_PKGS="tar zstd"
+RUN eve-ubuntu-deploy.sh && \
+    mkdir -p /staging/opt /staging/etc /sbom-out/usr/share/doc && \
     register-sbom-pkg.sh -o /sbom-out
 
 # Nothing to stage on these architectures - empty package.
@@ -174,7 +174,7 @@ FROM dgpu-base AS dgpu-arm64
 FROM dgpu-base AS dgpu-riscv64
 
 FROM dgpu-base AS dgpu-amd64
-SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
+SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
 # NVIDIA_DRIVER_VERSION must match eve-kernel's Makefile.eve: the kernel module,
 # this userland and the GSP firmware are pinned to each other exactly.
 ARG NVIDIA_DRIVER_BRANCH=580
@@ -261,7 +261,8 @@ FROM dgpu-${TARGETARCH} AS dgpu
 FROM scratch AS out-dgpu
 COPY --from=dgpu /staging/opt /opt
 COPY --from=dgpu /staging/etc /etc
-COPY --from=dgpu /sbom-out/lib/apk/db/installed /lib/apk/db/installed
+COPY --from=dgpu /sbom-out/var/lib/dpkg/status.d /var/lib/dpkg/status.d
+COPY --from=dgpu /sbom-out/usr/share/doc /usr/share/doc
 
 ENTRYPOINT []
 CMD []

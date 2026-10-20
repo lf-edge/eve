@@ -80,8 +80,8 @@ pool, because the pool deletes superseded versions and a pinned driver
 version would stop building at Ubuntu's next driver update. Each one is
 fetched with `ADD --checksum=sha256:...`, so a driver or toolkit bump changes
 a URL and its checksum together, a rebuild reproduces the same userland or
-fails, and the build needs no network in `RUN`. The stages run on eve-alpine:
-`dpkg-deb` extracts the debs, calling `zstd` for Ubuntu's `data.tar.zst`.
+fails, and the build needs no network in `RUN`. The stages run on eve-ubuntu,
+whose `dpkg-deb` extracts the debs.
 
 ## References
 

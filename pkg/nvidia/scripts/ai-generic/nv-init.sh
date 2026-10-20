@@ -14,12 +14,10 @@ VENDOR=/opt/vendor/nvidia
 # same pattern as pkg/nvidia's nv-init.sh for the /hostfs case.
 export PATH="${VENDOR}/bin:${PATH}"
 
-# The NVIDIA tools are glibc binaries. Their libraries are the vendor tree and
-# the host's glibc, which images/modifiers/platform/ai-generic/ai-generic.yq
-# bind-mounts into pillar at /lib/x86_64-linux-gnu. pillar's own
-# /etc/ld.so.cache is musl's, so the glibc loader needs the path spelled out -
-# for those tools only, because musl's loader reads LD_LIBRARY_PATH too.
-GLIBC_LIBRARY_PATH="${VENDOR}/dist/usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu"
+# The NVIDIA tools find their libraries in the vendor tree, which pillar's
+# /etc/ld.so.cache does not cover, so the path is spelled out - for those
+# tools only. Their glibc is pillar's own.
+VENDOR_LIBRARY_PATH="${VENDOR}/dist/usr/lib/x86_64-linux-gnu"
 
 # Bound on each NVML call below (nvidia-smi, nvidia-ctk). device-steps.sh runs
 # this script synchronously before zedagent and nim start, so a GPU that wedges
@@ -30,7 +28,7 @@ NVML_TIMEOUT=${NVML_TIMEOUT:-120}
 
 # Runs an NVIDIA tool with its libraries, bounded by NVML_TIMEOUT.
 nvml() {
-    timeout -k 10 "${NVML_TIMEOUT}" env LD_LIBRARY_PATH="${GLIBC_LIBRARY_PATH}" "$@"
+    timeout -k 10 "${NVML_TIMEOUT}" env LD_LIBRARY_PATH="${VENDOR_LIBRARY_PATH}" "$@"
 }
 
 echo "nvidia-dgpu: loading kernel modules"
@@ -112,9 +110,9 @@ fi
 # nv-init.sh creates above live at the real /dev. It defaults to --driver-root.
 #
 #   --nvidia-cdi-hook-path  embeds the hook path containerd will invoke
-#   --ldconfig-path         embeds the glibc ldconfig the update-ldcache hook runs
-#                           against the container rootfs (Alpine's musl ldconfig
-#                           cannot write a glibc ld.so.cache)
+#   --ldconfig-path         embeds the ldconfig the update-ldcache hook runs
+#                           against the container rootfs: the static binary,
+#                           because Ubuntu's /sbin/ldconfig is a wrapper script
 #
 # Both of those stay host paths under the driver-root rewrite, which is correct:
 # runc execs them on the host, not inside the container.
