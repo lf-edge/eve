@@ -31,6 +31,10 @@ zfs_set_default_parameters() {
     set_module_parameter zfs zfs_vdev_async_read_max_active 10
     set_module_parameter zfs zfs_vdev_async_write_min_active 1
     set_module_parameter zfs zfs_vdev_async_write_max_active 10
+    # On SATA disks with unqueued TRIM each TRIM command drains the NCQ queue
+    # and holds the disk until it completes, so a smaller cap than the 128 MiB
+    # default shortens each stall. zfsmanager checks this value.
+    set_module_parameter zfs zfs_trim_extent_bytes_max $((16*1024*1024))
 }
 
 # Load ZFS and set parameters
