@@ -91,8 +91,8 @@ func TestWriteWaitsForFirstConnection(t *testing.T) {
 	if err := <-writeErr; err != nil {
 		t.Fatal(err)
 	}
-	if sw.msgsDropped != 0 {
-		t.Errorf("dropped %d messages", sw.msgsDropped)
+	if dropped := sw.msgsDropped.Load(); dropped != 0 {
+		t.Errorf("dropped %d messages", dropped)
 	}
 }
 

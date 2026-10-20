@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"slices"
+	"sync/atomic"
 	"time"
 )
 
@@ -24,9 +25,9 @@ type BufferedSockWriter struct {
 	path            string
 	buffer          chan []byte
 	reconnect       time.Duration
-	msgsDropped     int       // count of dropped messages due to full buffer or write errors
-	reportWhenCount int       // count at which to report num dropped messages
-	waitDeadline    time.Time // until then Write blocks on a full buffer
+	msgsDropped     atomic.Int64 // count of dropped messages due to full buffer or write errors
+	reportWhenCount int          // count at which to report num dropped messages
+	waitDeadline    time.Time    // until then Write blocks on a full buffer
 }
 
 // NewBufferedSockWriter creates a new buffered socket writer that writes to the specified path.
@@ -41,7 +42,6 @@ func newBufferedSockWriter(path string, bufSize int, reconnect, waitFor time.Dur
 		path:            path,
 		buffer:          make(chan []byte, bufSize),
 		reconnect:       reconnect,
-		msgsDropped:     0,
 		reportWhenCount: 1, // initial report count
 		waitDeadline:    time.Now().Add(waitFor),
 	}
@@ -61,7 +61,7 @@ func (sw *BufferedSockWriter) run() {
 		for msg := range sw.buffer {
 			_, err := conn.Write(msg)
 			if err != nil {
-				sw.msgsDropped++
+				sw.msgsDropped.Add(1)
 				log.Errorf("socket write failed: %v, reconnecting...", err)
 				conn.Close()
 				break // reconnect
@@ -89,15 +89,15 @@ func (sw *BufferedSockWriter) Write(p []byte) (int, error) {
 		case <-timer.C:
 		}
 	}
-	sw.msgsDropped++
+	sw.msgsDropped.Add(1)
 	return 0, fmt.Errorf("buffer full, dropping log")
 }
 
 // ReportDroppedMsgs checks if the number of dropped msgs has reached the report threshold and then grows the threshold exponentially.
 func (sw *BufferedSockWriter) ReportDroppedMsgs() int {
-	if sw.msgsDropped == sw.reportWhenCount {
+	if dropped := int(sw.msgsDropped.Load()); dropped == sw.reportWhenCount {
 		sw.reportWhenCount *= 2 // report every 2x the previous count
-		return sw.msgsDropped
+		return dropped
 	}
 	return 0 // no report needed
 }
