@@ -88,7 +88,7 @@ func fakeDomain(t *testing.T, vcpus, others []int) {
 	t.Cleanup(func() { vcpuThreadIDs, domainPid = oldIDs, oldPid })
 	files := map[string]string{"eve-user-apps/dom/cpuset.cpus": "2"}
 	for _, g := range []string{"emulator", "vcpu0", "vcpu1"} {
-		files["eve-user-apps/dom/"+g+"/cpuset.cpus"] = ""
+		files["eve-user-apps/dom/task/"+g+"/cpuset.cpus"] = ""
 	}
 	cgrouptest.FakeTree(t, files)
 }
@@ -113,14 +113,14 @@ func TestArrangeDomainThreads_Pinned(t *testing.T) {
 	g.Expect(arrangeDomainThreads("dom", "qmp", a)).To(gomega.Succeed())
 
 	for _, grp := range []string{"emulator", "vcpu0", "vcpu1"} {
-		g.Expect(readGroupFile(t, "eve-user-apps/dom/"+grp, "cgroup.type")).To(gomega.Equal("threaded"))
+		g.Expect(readGroupFile(t, "eve-user-apps/dom/task/"+grp, "cgroup.type")).To(gomega.Equal("threaded"))
 	}
-	g.Expect(readGroupFile(t, "eve-user-apps/dom", "cgroup.subtree_control")).To(gomega.Equal("+cpuset"))
+	g.Expect(readGroupFile(t, "eve-user-apps/dom/task", "cgroup.subtree_control")).To(gomega.Equal("+cpuset"))
 	g.Expect(*moves).To(gomega.ConsistOf(
-		threadMove{"eve-user-apps/dom/emulator", 1318, "2"},
-		threadMove{"eve-user-apps/dom/vcpu0", 1320, "6"},
-		threadMove{"eve-user-apps/dom/vcpu1", 1321, "7"},
-		threadMove{"eve-user-apps/dom/emulator", 1330, "2"},
+		threadMove{"eve-user-apps/dom/task/emulator", 1318, "2"},
+		threadMove{"eve-user-apps/dom/task/vcpu0", 1320, "6"},
+		threadMove{"eve-user-apps/dom/task/vcpu1", 1321, "7"},
+		threadMove{"eve-user-apps/dom/task/emulator", 1330, "2"},
 	))
 	g.Expect(readGroupFile(t, "eve-user-apps/dom", "cpuset.cpus")).To(gomega.Equal("6,7,2"))
 }
@@ -135,7 +135,7 @@ func TestArrangeDomainThreads_PinnedIODedicated(t *testing.T) {
 	g.Expect(arrangeDomainThreads("dom", "qmp",
 		types.CPUAssignment{CPUs: []uint32{6, 7}})).To(gomega.Succeed())
 
-	g.Expect(readGroupFile(t, "eve-user-apps/dom/emulator", "cpuset.cpus")).To(gomega.BeEmpty())
+	g.Expect(readGroupFile(t, "eve-user-apps/dom/task/emulator", "cpuset.cpus")).To(gomega.BeEmpty())
 	g.Expect(readGroupFile(t, "eve-user-apps/dom", "cpuset.cpus")).To(gomega.Equal("6,7"))
 }
 
@@ -149,9 +149,9 @@ func TestArrangeDomainThreads_Unpinned(t *testing.T) {
 	g.Expect(arrangeDomainThreads("dom", "qmp", types.CPUAssignment{})).To(gomega.Succeed())
 
 	g.Expect(*moves).To(gomega.ConsistOf(
-		threadMove{"eve-user-apps/dom/emulator", 1318, ""},
-		threadMove{"eve-user-apps/dom/vcpu0", 1320, ""},
-		threadMove{"eve-user-apps/dom/vcpu1", 1321, ""},
+		threadMove{"eve-user-apps/dom/task/emulator", 1318, ""},
+		threadMove{"eve-user-apps/dom/task/vcpu0", 1320, ""},
+		threadMove{"eve-user-apps/dom/task/vcpu1", 1321, ""},
 	))
 	g.Expect(readGroupFile(t, "eve-user-apps/dom", "cpuset.cpus")).To(gomega.Equal("2"))
 }
@@ -215,8 +215,8 @@ func TestPlaceNXRecoveryThreadWaitsForIt(t *testing.T) {
 		time.Sleep(30 * time.Millisecond)
 		p.thread("1318", "1373", kvmNXRecoveryComm)
 	}()
-	placeNXRecoveryThread("dom", 1318, "eve-user-apps/dom/emulator")
-	g.Expect(*moves).To(gomega.Equal([]threadMove{{"eve-user-apps/dom/emulator", 1373, ""}}))
+	placeNXRecoveryThread("dom", 1318, "eve-user-apps/dom/task/emulator")
+	g.Expect(*moves).To(gomega.Equal([]threadMove{{"eve-user-apps/dom/task/emulator", 1373, ""}}))
 }
 
 // No thread (a kernel that runs it elsewhere): give up after nxRecoveryWait.
@@ -229,7 +229,7 @@ func TestPlaceNXRecoveryThreadGivesUp(t *testing.T) {
 	nxRecoveryWait = 50 * time.Millisecond
 	t.Cleanup(func() { nxRecoveryWait = old })
 	start := time.Now()
-	placeNXRecoveryThread("dom", 1318, "eve-user-apps/dom/emulator")
+	placeNXRecoveryThread("dom", 1318, "eve-user-apps/dom/task/emulator")
 	g.Expect(*moves).To(gomega.BeEmpty())
 	g.Expect(time.Since(start)).To(gomega.BeNumerically("<", time.Second))
 }
@@ -257,15 +257,15 @@ func TestNXRecoveryThreadExpected(t *testing.T) {
 func TestSetIOCPUs(t *testing.T) {
 	g := gomega.NewWithT(t)
 	cgrouptest.FakeTree(t, map[string]string{
-		"eve-user-apps/dom/cpuset.cpus":          "6,7,2",
-		"eve-user-apps/dom/emulator/cpuset.cpus": "2",
+		"eve-user-apps/dom/cpuset.cpus":               "6,7,2",
+		"eve-user-apps/dom/task/emulator/cpuset.cpus": "2",
 	})
 	a := types.CPUAssignment{CPUs: []uint32{6, 7}, IOCPUs: []uint32{2, 3, 4}}
 
 	g.Expect(SetIOCPUs("dom", a)).To(gomega.Succeed())
 
 	g.Expect(readGroupFile(t, "eve-user-apps/dom", "cpuset.cpus")).To(gomega.Equal("6,7,2,3,4"))
-	g.Expect(readGroupFile(t, "eve-user-apps/dom/emulator", "cpuset.cpus")).To(gomega.Equal("2,3,4"))
+	g.Expect(readGroupFile(t, "eve-user-apps/dom/task/emulator", "cpuset.cpus")).To(gomega.Equal("2,3,4"))
 }
 
 // The domain's group is written before its emulator group: when the domain
@@ -273,7 +273,7 @@ func TestSetIOCPUs(t *testing.T) {
 func TestSetIOCPUs_DomainFirst(t *testing.T) {
 	g := gomega.NewWithT(t)
 	cgrouptest.FakeTree(t, map[string]string{
-		"eve-user-apps/dom/emulator/cpuset.cpus": "2",
+		"eve-user-apps/dom/task/emulator/cpuset.cpus": "2",
 	})
 	domainFile := cgroup.Path("eve-user-apps/dom", "cpuset.cpus")
 	g.Expect(os.Mkdir(domainFile, 0o755)).To(gomega.Succeed()) // a write to it fails
@@ -281,5 +281,5 @@ func TestSetIOCPUs_DomainFirst(t *testing.T) {
 
 	g.Expect(SetIOCPUs("dom", a)).ToNot(gomega.Succeed())
 
-	g.Expect(readGroupFile(t, "eve-user-apps/dom/emulator", "cpuset.cpus")).To(gomega.Equal("2"))
+	g.Expect(readGroupFile(t, "eve-user-apps/dom/task/emulator", "cpuset.cpus")).To(gomega.Equal("2"))
 }

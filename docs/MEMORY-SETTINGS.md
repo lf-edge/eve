@@ -63,7 +63,9 @@ The cgroups hierarchy in EVE is as follows:
 │     └── <some services>
 ├── eve-memory-monitor    <--- the memory monitor, outside EVE's memory limit
 └── eve-user-apps
-    ├── <uuid1>           <--- user application 1
+    ├── <uuid1>           <--- user application 1: its memory limit and CPUs
+    │   ├── task          <--- the application itself, runc's cgroup
+    │   └── helpers       <--- its containerd shim and swtpm
     └── <uuid2>           <--- user application 2
 ```
 
@@ -86,7 +88,13 @@ The `eve/services` cgroup also contains services necessary for the EVE OS to
 function properly.
 
 All the user applications are running in the sub-cgroup of the `eve-user-apps`
-cgroup. Each user application has its own sub-cgroup.
+cgroup. Each user application has its own sub-cgroup, which carries its memory
+limit and its CPUs and holds two children: `task`, where runc runs the
+application under a limit of its own, its RAM plus the VMM overhead, and
+`helpers`, where the processes EVE runs for it, its containerd shim and its
+swtpm, are charged. The application's cgroup gets a fixed 32 MiB on top of
+the task's limit for them, which the memory check for new application
+instances counts too, and they run on the application's CPUs.
 
 ### Memory settings in EVE
 
@@ -284,7 +292,10 @@ This value is used to calculate the overall memory need for the app instance. It
 is calculated during the app instance creation and is used to decide if the
 app instance can be started. If the app instance can be started, the memory
 overhead is added to the RAM value and the resulting value is used to
-set the memory *limits for the cgroup* of the app instance.
+set the memory *limits for the cgroup* of the app instance. A further fixed
+32 MiB, counted in the same check, goes to the app instance's cgroup on top
+of that for the helper processes EVE runs beside it, its containerd shim and
+its swtpm (see the cgroups hierarchy above).
 
 #### VMM Overhead calculation
 

@@ -54,12 +54,12 @@ func newContainerd() Hypervisor {
 	}
 }
 
-// CountMemOverhead - returns the memory overhead for a domain.
+// CountMemOverhead returns the memory overhead for a domain: no VMM, but the
+// allowance of the domain's helpers, its containerd shim.
 func (ctx ctrdContext) CountMemOverhead(domainName string, domainUUID uuid.UUID, domainRAMMemory int64, vmmMaxMem int64,
 	domainMaxCpus int64, domainVCpus int64, domainIoAdapterList []types.IoAdapter, aa *types.AssignableAdapters,
 	globalConfig *types.ConfigItemValueMap) (uint64, error) {
-	// Does containerd have any overhead?
-	return 0, nil
+	return types.DomainHelpersMemory, nil
 }
 
 func (ctx ctrdContext) GetCapabilities() (*types.Capabilities, error) {

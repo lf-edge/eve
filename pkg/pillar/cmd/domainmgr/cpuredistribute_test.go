@@ -106,8 +106,8 @@ func TestRefreshPlacement_IOThreadsFollowHousekeeping(t *testing.T) {
 	holdCPUs(t, ctx.cpuPlacement.placer, config.UUIDandVersion.UUID, 1, 5)
 	domain := path.Join(containerd.GetServicesNamespace(), config.GetTaskName())
 	cgrouptest.FakeTree(t, map[string]string{
-		domain + "/cpuset.cpus":          "1,5,0,2,3,4,6,7",
-		domain + "/emulator/cpuset.cpus": "0,2,3,4,6,7",
+		domain + "/cpuset.cpus":               "1,5,0,2,3,4,6,7",
+		domain + "/task/emulator/cpuset.cpus": "0,2,3,4,6,7",
 	})
 	status := types.DomainStatus{UUIDandVersion: config.UUIDandVersion, Activated: true}
 	status.DomainName = config.GetTaskName()
@@ -130,7 +130,7 @@ func TestRefreshPlacement_IOThreadsFollowHousekeeping(t *testing.T) {
 	if want := []uint32{1, 5, 0, 4}; !reflect.DeepEqual(got.VmConfig.CPUs, want) {
 		t.Errorf("published cpuset %v, want %v", got.VmConfig.CPUs, want)
 	}
-	for group, want := range map[string]string{domain: "1,5,0,4", domain + "/emulator": "0,4"} {
+	for group, want := range map[string]string{domain: "1,5,0,4", domain + "/task/emulator": "0,4"} {
 		b, err := os.ReadFile(cgroup.Path(group, "cpuset.cpus"))
 		if err != nil {
 			t.Fatal(err)

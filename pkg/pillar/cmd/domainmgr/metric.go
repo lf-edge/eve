@@ -92,9 +92,10 @@ func logWatermarks(ctx *domainContext, status *types.DomainStatus, dm *types.Dom
 	}
 }
 
-// logOOMKills logs the processes the OOM killer killed in the domain's cgroup
-// since the previous metrics pass. A container whose main process survives
-// keeps running without the killed ones, and nothing else reports the loss.
+// logOOMKills logs the processes the OOM killer killed in the domain's task
+// cgroup since the previous metrics pass. A container whose main process
+// survives keeps running without the killed ones, and nothing else reports the
+// loss.
 func logOOMKills(ctx *domainContext, status *types.DomainStatus, dm types.DomainMetric) {
 	var prev uint64
 	if m, _ := ctx.pubDomainMetric.Get(dm.Key()); m != nil {

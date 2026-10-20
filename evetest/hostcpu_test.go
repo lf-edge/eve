@@ -44,3 +44,21 @@ func TestParseHostTopology(t *testing.T) {
 		}
 	}
 }
+
+// A QEMU thread's group is named relative to the task child of the domain's
+// cgroup, where EVE runs the domain beside its helpers, as the kernel reports
+// it from any cgroup namespace.
+func TestGroupBelow(t *testing.T) {
+	const dom = "c0ffee00-0000-4000-8000-000000000001.1.1"
+	for path, want := range map[string]string{
+		"/eve-user-apps/" + dom + "/task/emulator": "emulator",
+		"/eve-user-apps/" + dom + "/task/vcpu1":    "vcpu1",
+		"/" + dom + "/task/vcpu0":                  "vcpu0",
+		"/eve-user-apps/" + dom + "/task":          "",
+		"/eve/services/qemu":                       "/eve/services/qemu",
+	} {
+		if got := groupBelow(path, dom); got != want {
+			t.Errorf("groupBelow(%q) = %q, want %q", path, got, want)
+		}
+	}
+}
