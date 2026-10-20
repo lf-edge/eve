@@ -1517,11 +1517,8 @@ if [ -f /var/lib/base-k3s-mode ]; then
         install_kubevirt=0
 fi
 
-# install_sriov_manifests stages the sriov-cni binary on the host CNI bin
-# directory and installs the sriov-network-device-plugin DaemonSet when
-# SR-IOV-capable hardware is present.  The sriov-cni binary is baked into
-# the image at /usr/bin/sriov (sourced from the upstream sriov-cni image
-# at build time), so no DaemonSet is needed to stage it at runtime.
+# sriov_network_vfs_present returns success when this host has a network PCI
+# function with SR-IOV VFs actually instantiated.
 #
 # Detection uses /sys/bus/pci/devices/*/sriov_numvfs because /sys/class/net is
 # per-network-namespace — this script runs in the kube container, whose netns
@@ -1529,12 +1526,75 @@ fi
 # them.  /sys/bus/pci is namespace-independent and exposes sriov_numvfs for any
 # PCI device with SR-IOV capability regardless of which netns owns the netdev.
 #
+# A matching sriov_numvfs alone is not enough, both halves matter:
+#   - Network class: sriov_numvfs is exposed by every SR-IOV-capable function,
+#     not only by NICs (e.g. GPUs with vGPU support, class 0x030000).  Only
+#     PCI base class 0x02 (network controller) counts; an unreadable class
+#     attribute fails closed.
+#   - numvfs > 0: capability is not configuration.  zedkube builds the device
+#     plugin's ConfigMap from the IoNetEthVF bundles in AssignableAdapters,
+#     which exist only once domainmgr has created the VFs.  With no VFs the
+#     resourceList is empty and the upstream plugin exits rather than idles,
+#     so the pod would crashloop for the life of the node.
+sriov_network_vfs_present() {
+        for numvfs_path in /sys/bus/pci/devices/*/sriov_numvfs; do
+                [ -r "$numvfs_path" ] || continue
+                numvfs=$(cat "$numvfs_path" 2>/dev/null)
+                case "$numvfs" in
+                        ''|0|*[!0-9]*) continue ;;
+                esac
+                pci_class=$(cat "${numvfs_path%/sriov_numvfs}/class" 2>/dev/null)
+                case "$pci_class" in
+                        0x02*) return 0 ;;
+                esac
+        done
+        return 1
+}
+
+# Set once the SR-IOV device plugin workload has been confirmed absent, so
+# the steady-state loop on nodes without SR-IOV VFs stops making API calls.
+SRIOV_WORKLOAD_GONE=false
+
+# retract_sriov_manifests undoes a staging this host should never have had.
+# Earlier versions staged the device plugin on any SR-IOV-capable hardware;
+# the staged manifest survives reboots and EVE upgrades and k3s re-applies it
+# from disk on every boot, so tightening the gate alone would leave those
+# nodes crashlooping.  The file goes first, then the objects: k3s would
+# re-apply the manifest if it were still on disk when the DaemonSet
+# disappeared.
+retract_sriov_manifests() {
+        if [ -f "${KUBE_MANIFESTS_DIR}/sriov-device-plugin.yaml" ]; then
+                rm -f "${KUBE_MANIFESTS_DIR}/sriov-device-plugin.yaml"
+                logmsg "retracted sriov-device-plugin.yaml: no SR-IOV network VFs on this host"
+                SRIOV_WORKLOAD_GONE=false
+        fi
+        [ "$SRIOV_WORKLOAD_GONE" = true ] && return
+        # Not latched on failure, the next iteration retries
+        if kubectl -n kube-system delete daemonset kube-sriov-device-plugin --ignore-not-found >/dev/null 2>&1 && \
+           kubectl -n kube-system delete serviceaccount sriov-device-plugin --ignore-not-found >/dev/null 2>&1; then
+                SRIOV_WORKLOAD_GONE=true
+        fi
+}
+
+# install_sriov_manifests stages the sriov-cni binary on the host CNI bin
+# directory and installs the sriov-network-device-plugin DaemonSet when
+# SR-IOV network VFs are present (see sriov_network_vfs_present).  The
+# sriov-cni binary is baked into the image at /usr/bin/sriov (sourced from
+# the upstream sriov-cni image at build time), so no DaemonSet is needed to
+# stage it at runtime.  On hosts without SR-IOV network VFs it instead
+# retracts the manifest and the objects k3s applied from it.
+#
 # Idempotent: cp -u only overwrites when the source file is newer, so repeated
 # calls from the main loop are cheap and pick up new versions on EVE upgrades
 # without requiring a cluster re-init.
 install_sriov_manifests() {
         [ -d "${KUBE_MANIFESTS_DIR}" ] || return
-        ls /sys/bus/pci/devices/*/sriov_numvfs >/dev/null 2>&1 || return
+        if ! sriov_network_vfs_present; then
+                retract_sriov_manifests
+                return
+        fi
+        # VFs can appear on a host we retracted from earlier
+        SRIOV_WORKLOAD_GONE=false
         # Stage to both CNI bin dirs to match the convention used for other
         # plugins (eve-bridge, host-local, etc.).  Multus is configured with
         # binDir=/var/lib/cni/bin and will invoke sriov from there; /opt/cni/bin
