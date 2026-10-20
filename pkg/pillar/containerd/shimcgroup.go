@@ -18,8 +18,6 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const ctrdConfiguredCgroup = "/eve/containerd"
-
 // ErrNoCgroupTree is returned by the cgroup helpers when there is no cgroup
 // v2 tree to create the cgroup in.
 var ErrNoCgroupTree = errors.New("no cgroup v2 tree")
