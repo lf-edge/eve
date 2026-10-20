@@ -15,7 +15,7 @@ FROM lfedge/eve-uefi:cbe04da0bf4436fdffbebed11a6a436d31519189 AS uefi-build
 # drag python3 in through ubuntu-virt
 FROM lfedge/eve-qemu:88d4c339a62a5c1d3ce113ecbce578340eb38849 AS qemu
 # the zfs userland pillar links against and ships, see pkg/dom0-ztools
-FROM lfedge/eve-dom0-ztools:926579af8ae3f33aec8f4257bfbd7da4ae5a8881  AS zfs
+FROM lfedge/eve-dom0-ztools:bf39a3e8715241b9c29baf8e350b48c87e6b354f  AS zfs
 
 # native build
 # hadolint ignore=DL3006

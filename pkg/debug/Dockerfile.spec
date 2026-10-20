@@ -1,4 +1,4 @@
-FROM lfedge/eve-ubuntu:ce501daedafe54c66d1d2561e0cd215d49ea1f60
+FROM lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544
 
 ENV BUILD_PKGS="jq pciutils usbutils util-linux"
 
