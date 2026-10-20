@@ -158,7 +158,11 @@ The differences that bit during the port and are easy to reintroduce:
   containers that reboot the device, so plain `reboot` keeps signalling the
   linuxkit init as it did on Alpine. Audit every command a package execs
   (`base.Exec`, `exec.Command`, scripts) against the image before relying on
-  a boot smoke test; a missing command fails only when that path runs.
+  a boot smoke test; a missing command fails only when that path runs. The
+  qemu service's `/etc/qemu-ifup` is the cautionary tale: QEMU ran it without
+  `ifconfig` and `brctl`, so it failed on both lines at every VM start, and
+  nothing noticed because pillar's network instance reconciler attaches the
+  VIF to the bridge itself. It calls busybox's `ip` now.
 * Same name, different behaviour: procps `pgrep`/`pkill` match the process
   name (comm) unless `-f`, busybox matched argv[0], so `pgrep /usr/bin/foo`
   silently matches nothing (use `pgrep -x foo` or `-f`); procps `ps` without

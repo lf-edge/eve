@@ -1,3 +1,6 @@
 #!/bin/sh
-ifconfig "$1" 0.0.0.0 up
-brctl addif "$2" "$1" || true
+# QEMU runs this for a tap netdev, with the bridge pillar created as the
+# second argument (patches/9002): bring the tap up and attach it to the
+# bridge. busybox, because the image carries neither net-tools nor iproute2.
+/bin/busybox ip link set dev "$1" up
+/bin/busybox ip link set dev "$1" master "$2" || echo "qemu-ifup: cannot attach $1 to $2" >&2

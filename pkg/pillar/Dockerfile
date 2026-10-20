@@ -13,7 +13,7 @@ ARG EVE_UBUNTU_IMAGE=lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544
 FROM lfedge/eve-uefi:cbe04da0bf4436fdffbebed11a6a436d31519189 AS uefi-build
 # qemu-img and qemu-nbd of the qemu that runs the VMs; Ubuntu's qemu-utils would
 # drag python3 in through ubuntu-virt
-FROM lfedge/eve-xen-tools:04383aadea99b1bedb416fe8165dc3a128be815b AS qemu
+FROM lfedge/eve-qemu:88d4c339a62a5c1d3ce113ecbce578340eb38849 AS qemu
 # the zfs userland pillar links against and ships, see pkg/dom0-ztools
 FROM lfedge/eve-dom0-ztools:926579af8ae3f33aec8f4257bfbd7da4ae5a8881  AS zfs
 
@@ -170,8 +170,7 @@ COPY --from=zfs / /zfs/
 RUN while read -r x; do mkdir -p "/out$(dirname "$x")"; cp -P "/zfs$x" "/out$x"; done < /zfs/etc/zfs-files
 # qemu-img and qemu-nbd with their libraries and dpkg records, see above
 COPY --from=qemu / /qemu/
-RUN copy-with-libs.sh -m -r /qemu -o /out /usr/lib/xen/bin/qemu-img /usr/lib/xen/bin/qemu-nbd && \
-    ln -s ../lib/xen/bin/qemu-img /out/usr/bin/qemu-img && ln -s ../lib/xen/bin/qemu-nbd /out/usr/bin/qemu-nbd
+RUN copy-with-libs.sh -m -r /qemu -o /out /usr/bin/qemu-img /usr/bin/qemu-nbd
 COPY --from=fscrypt /opt/zededa/bin /out/opt/zededa/bin
 COPY --from=gpttools / /out
 # baseosmgr execs /usr/bin/storage-resizer for the online check/backup/grow steps
