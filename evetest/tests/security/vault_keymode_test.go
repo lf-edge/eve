@@ -373,15 +373,22 @@ func readVaultStatus(t *WithT, device *evetest.EdgeDevice) vaultStatus {
 // newlogCount returns how many records in the device's on-disk logs contain
 // pattern.
 //
-// The whole of /persist/newlog is swept, not just collect/: collect/ holds only
-// the last few minutes because newlogd rotates on size or a timer, so anything
-// older -- including most of the current boot -- is already in the gzipped
-// queues. One zcat per file keeps the argument list bounded and lets -f cover
-// the plaintext chunks in collect/.
+// Only the keep stream is counted. newlogd writes every record to both the
+// keep and the upload stream (collect/dev.log.keep.* and dev.log.upload.*
+// while current, keepSentQueue/ and devUpload/ once rotated), and loguploader
+// deletes an upload file as soon as the controller has it, so a count over
+// both streams drops whenever an upload completes between two measurements,
+// which a reboot makes likely. The keep queue only shrinks by quota, long
+// after a test. collect/ holds only the last few minutes because newlogd
+// rotates on size or a timer, so anything older -- including most of the
+// current boot -- is already in the gzipped keep queue. One zcat per file
+// keeps the argument list bounded and lets -f cover the plaintext file in
+// collect/.
 func newlogCount(t *WithT, device *evetest.EdgeDevice, pattern string) int {
 	out := runInPillar(t, device,
-		"sh -c 'find /persist/newlog -name \"dev.log.*\" -exec zcat -f {} \\; "+
-			"| grep -a -F -c -- \""+pattern+"\" || true'")
+		"sh -c 'find /persist/newlog/collect /persist/newlog/keepSentQueue "+
+			"\\( -name \"dev.log.keep.*\" -o -path \"*/keepSentQueue/dev.log.*\" \\) "+
+			"-exec zcat -f {} \\; | grep -a -F -c -- \""+pattern+"\" || true'")
 	count, err := strconv.Atoi(strings.TrimSpace(out))
 	t.Expect(err).ToNot(HaveOccurred(),
 		"unexpected grep -c output %q for pattern %q", out, pattern)
