@@ -1053,5 +1053,11 @@ func StartUserContainerdInstance() error {
 		err := cmd.Wait()
 		logrus.Fatalf("user containerd stopped: %v", err)
 	}()
+	go func() {
+		err := joinUserContainerdCgroup(cgroup.Root, "/proc", cmd.Process.Pid, userContainerdCgroupTimeout)
+		if err != nil {
+			logrus.Warnf("user containerd stays in its own cgroup: %v", err)
+		}
+	}()
 	return nil
 }
