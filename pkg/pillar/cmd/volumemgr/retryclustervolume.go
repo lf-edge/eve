@@ -12,10 +12,16 @@ import (
 
 // Cache for the EVE-k cluster-storage readiness probe (single-threaded volumemgr
 // main loop, so no lock needed). Once ready it stays ready (longhorn/CDI don't
-// un-deploy); while not ready we re-probe at most every clusterStorageProbeTTL.
+// un-deploy), except while kube-init recycles the controllers after a
+// single->cluster datastore migration; while not ready we re-probe at most every
+// clusterStorageProbeTTL.
 var (
 	clusterStorageReadyCache   bool
 	clusterStorageReadyCheckAt time.Time
+
+	// controllerRestartPending is indirected so tests can drive it without a
+	// marker on /run.
+	controllerRestartPending = kubeapi.ControllerRestartPending
 )
 
 const clusterStorageProbeTTL = 15 * time.Second
@@ -65,6 +71,14 @@ func clusterVolumeRetryActionFor(status *types.VolumeStatus) clusterVolumeRetryA
 func clusterStorageReady(ctx *volumemgrContext) bool {
 	if !ctx.hvTypeKube {
 		return true
+	}
+	// Checked ahead of the cache: pillar is not restarted by the transition, so
+	// a node that served volumes in single-node mode is already cached as ready.
+	// Dropping the cache makes the next probe wait for the recycled controllers
+	// to be available again, not just for the marker to go.
+	if controllerRestartPending() {
+		clusterStorageReadyCache = false
+		return false
 	}
 	if clusterStorageReadyCache {
 		return true

@@ -75,6 +75,11 @@ func ClusterStorageReadyForVolumes(*base.LogObject, string) bool {
 	return true
 }
 
+// ControllerRestartPending is a stub for non EVE-k builds (no kube-init).
+func ControllerRestartPending() bool {
+	return false
+}
+
 // PVCAdoptionState mirrors the k-build type, with the same four values in
 // the same order, so callers can reference it without a build tag. See the
 // k-build definition for what each value means. Only PVCStateUnknown is ever
