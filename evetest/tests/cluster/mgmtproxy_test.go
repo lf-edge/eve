@@ -624,6 +624,12 @@ spec:
 		BeNumerically(">", afterStep2.SuccessByPort["eth0"]),
 		"the second importer's fetch must have gone out via eth0")
 
+	// step3DeployTimeout bounds the container app deployment. Pulling the image
+	// and rolling it out into a PVC walks both management ports, and every
+	// operation first waits out a timeout on the one without Internet access
+	// before falling back to the other.
+	const step3DeployTimeout = 15 * time.Minute
+
 	// --- Step 3: EVE-API path, NOHYPER container ---
 	//
 	// The container app's own network instance is air-gapped (no uplink
@@ -674,7 +680,7 @@ spec:
 		device.ApplyConfig(devConfig, true, true)
 		log.Infof("Submitted config with step 3 (EVE API) UUID=%v", step3UUID)
 		evetest.Checkpoint("step3-config-is-submitted")
-		device.WaitUntilAppIsRunning(step3UUID, 10*time.Minute)
+		device.WaitUntilAppIsRunning(step3UUID, step3DeployTimeout)
 	} else {
 		niUUID := clusterConfig.AddNetworkInstance(niConfig)
 		appConfig.NetworkAdapters = []evetest.AppNetworkAdapter{
@@ -691,7 +697,7 @@ spec:
 		cluster.ApplyConfig(clusterConfig, true, true)
 		log.Infof("Submitted config with step 3 (EVE API) UUID=%v", step3UUID)
 		evetest.Checkpoint("step3-config-is-submitted")
-		cluster.WaitUntilAppIsRunning(step3UUID, 10*time.Minute)
+		cluster.WaitUntilAppIsRunning(step3UUID, step3DeployTimeout)
 	}
 	evetest.Checkpoint("step3-is-deployed")
 
