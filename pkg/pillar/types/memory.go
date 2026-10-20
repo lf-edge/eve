@@ -21,6 +21,15 @@ const (
 	PillarCgroup = "eve/services/pillar"
 )
 
+// DomainHelpersMemory is the memory a domain's cgroup, /eve-user-apps/<task>,
+// gets on top of the task's limit for the helper processes pillar charges
+// beside the task, in the cgroup's helpers child: the domain's containerd
+// shim, which keeps 8 to 15 MB, and its swtpm, up to 6 MB in the field. The
+// admission check counts it for every domain pillar runs through its
+// containerd, so that the task keeps the whole limit its VMM overhead gives
+// it and the helpers are paid for all the same.
+const DomainHelpersMemory = 32 << 20
+
 // GetPillarHardMemoryLimitInBytes returns pillar's cgroup memory.max;
 // cgroup.Unlimited when it has none.
 func GetPillarHardMemoryLimitInBytes() (uint64, error) {
