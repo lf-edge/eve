@@ -103,6 +103,32 @@ import (
 //     warnings and retried, not lost: all apps reach RUNNING and the
 //     warnings clear; regression test for apps wedged in LOADING with no
 //     error when the pool saturated.
+//   - TestCPUPlacementOnePerCore -- an app asking for dedicated whole
+//     physical cores gets one vCPU per distinct core, each pinned 1:1.
+//   - TestCPUPlacementWholeCoreSMT -- the same, but both SMT siblings of each
+//     core become vCPUs and the guest is told which vCPUs are siblings.
+//   - TestCPUPlacementMultiApp -- whole-core-SMT, one-per-core and
+//     housekeeping-pool apps deployed together: each placed as its policy
+//     asks, on disjoint CPUs and disjoint physical cores, with housekeeping
+//     left intact.
+//   - TestCPUPlacementStability -- the same set survives a reboot, a staggered
+//     (start-delayed) start and a reverse restart order on the same host CPUs.
+//   - TestCPUPlacementParkedSiblings -- the SMT sibling a one-per-core app leaves
+//     unused is consumed by it, not spare: no other workload gets it in its
+//     cpuset, the node does not advertise it as free, and nothing is ever
+//     observed running on it.
+//   - TestCPUPlacementNeedsRepack -- on a node fragmented by thread-granular
+//     workloads (free threads, no free whole core) a whole-core app is refused
+//     as NEEDS_REPACK rather than INSUFFICIENT, and a repack
+//     really does let it run.
+//   - TestCPUPlacementFailsClosed -- every class of unsatisfiable placement
+//     request (odd vCPUs with whole-core SMT, the isolated pool on a node
+//     without kernel isolation, invalid policy) is refused with its own
+//     cpu_placement_error and an ERROR, never boots, and leaves the node's
+//     dedicated CPU pool unchanged.
+//   - TestCPUIsolatedPool -- on a node booted with isolcpus, the isolated cores
+//     go to the app that asks for hard isolation and to nothing else: the other
+//     workloads, and the node's free housekeeping capacity, stay off them.
 //   - TestVMAppPurgeReplacesVMIRS -- a plain purge of a healthy app leaves
 //     exactly one VMIRS, named for the new generation. Kubevirt only; skips
 //     on any other hypervisor.
@@ -175,6 +201,42 @@ func TestAppsSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestWorkerPoolSaturation,
+		},
+		evetest.TestCase{
+			Test: TestCPUPlacementOnePerCore,
+		},
+		evetest.TestCase{
+			Test: TestCPUPlacementWholeCoreSMT,
+		},
+		// Right after TestCPUPlacementWholeCoreSMT: it needs the same device
+		// (8 CPUs, 2 threads per core), so the framework can reuse the VM.
+		evetest.TestCase{
+			Test: TestCPUPlacementMultiApp,
+		},
+		// Also needs the 8-CPU, 2-threads-per-core device, so it follows the
+		// tests that already require one.
+		evetest.TestCase{
+			Test: TestCPUPlacementStability,
+		},
+		// Same device again.
+		evetest.TestCase{
+			Test: TestCPUPlacementParkedSiblings,
+		},
+		// Also the 8-CPU, 2-threads-per-core device: it needs SMT siblings to
+		// fragment the node in the first place.
+		evetest.TestCase{
+			Test: TestCPUPlacementNeedsRepack,
+		},
+		// Same 8-CPU, 2-threads-per-core device: the whole-core-SMT holder
+		// application it keeps running throughout needs real SMT siblings.
+		evetest.TestCase{
+			Test: TestCPUPlacementFailsClosed,
+		},
+		// Last of the CPU placement tests: it is the only one needing a device
+		// booted with a different kernel command line (isolcpus), so it comes
+		// after everything that shares the warm 8-CPU device.
+		evetest.TestCase{
+			Test: TestCPUIsolatedPool,
 		},
 		evetest.TestCase{
 			Test: TestVMAppPurgeReplacesVMIRS,

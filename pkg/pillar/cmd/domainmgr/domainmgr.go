@@ -19,6 +19,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -38,7 +39,9 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/cpuallocator"
+	"github.com/lf-edge/eve/pkg/pillar/cputopology"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
+	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -151,8 +154,24 @@ type domainContext struct {
 	// cli options
 	hypervisorPtr *string
 	// CPUs management
-	cpuAllocator        *cpuallocator.CPUAllocator
+	cpuPlacement        *cpuPlacement
 	cpuPinningSupported bool
+	// subCPUDemandSet is zedmanager's set of apps intended to run, with their
+	// CPU intent. Placement is planned over it rather than over the
+	// DomainConfigs received so far, which cover only the apps whose volumes
+	// already resolved.
+	subCPUDemandSet pubsub.Subscription
+	// pubCPUPoolStatus carries the node CPU pool report to zedagent, which
+	// projects it onto ZInfoDevice.cpu_pools. domainmgr owns the allocator, so
+	// it is the only agent that can compute it.
+	pubCPUPoolStatus pubsub.Publication
+	// hostCpuset keeps the host processes on the housekeeping CPUs; nil where
+	// EVE does not pin workloads (see hostcpuset.go).
+	hostCpuset *hostCpuset
+	// cpuTopologyPinningSupported is Capabilities.CPUTopologyPinning: whether
+	// this node can apply a whole-core placement (per-vCPU pinning and a guest
+	// SMT topology).
+	cpuTopologyPinningSupported bool
 	// Is it EVE 'k'
 	hvTypeKube bool
 	nodeName   string
@@ -341,6 +360,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	domainCtx.pubCapabilities = capabilitiesInfoPub
 
+	cpuPoolStatusPub, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.CPUPoolStatus{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	domainCtx.pubCPUPoolStatus = cpuPoolStatusPub
+
 	// Look for nodeagent status
 	subNodeAgentStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "nodeagent",
@@ -470,6 +498,45 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	domainCtx.subZFSPoolStatus = subZFSPoolStatus
 
+	subCPUDemandSet, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedmanager",
+		MyAgentName:   agentName,
+		TopicImpl:     types.CPUDemandSet{},
+		Activate:      true,
+		Ctx:           &domainCtx,
+		CreateHandler: handleCPUDemandSetCreate,
+		ModifyHandler: handleCPUDemandSetModify,
+		DeleteHandler: handleCPUDemandSetDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	domainCtx.subCPUDemandSet = subCPUDemandSet
+
+	// Subscribe to DomainConfig from zedmanager. Created here, with the demand
+	// set, because CPU placement plans over both from the first demand set on;
+	// activated once domainmgr is ready to run domains.
+	subDomainConfig, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:      "zedmanager",
+			MyAgentName:    agentName,
+			TopicImpl:      types.DomainConfig{},
+			Activate:       false,
+			Ctx:            &domainCtx,
+			CreateHandler:  handleDomainCreate,
+			ModifyHandler:  handleDomainModify,
+			DeleteHandler:  handleDomainDelete,
+			RestartHandler: handleRestart,
+			WarningTime:    warningTime,
+			ErrorTime:      errorTime,
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	domainCtx.subDomainConfig = subDomainConfig
+
 	// Wait for ConfigItemValueMap
 	for !domainCtx.GCComplete {
 		log.Noticef("waiting for GCComplete")
@@ -538,6 +605,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	log.Noticef("processed GlobalConfig")
 
+	// The CPU topology decides what the node can advertise, so it is read
+	// before the capabilities are published.
+	domainCtx.cpuPlacement = newCPUPlacement(newHostPlacer())
+
 	capabilitiesSent := false
 	capabilitiesTicker := time.NewTicker(5 * time.Second)
 	if err := getAndPublishCapabilities(&domainCtx, hyper); err != nil {
@@ -580,6 +651,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		case change := <-subZFSPoolStatus.MsgChan():
 			subZFSPoolStatus.ProcessChange(change)
 
+		case change := <-subCPUDemandSet.MsgChan():
+			subCPUDemandSet.ProcessChange(change)
+
 		case <-domainCtx.publishTicker.C:
 			publishProcessesHandler(&domainCtx)
 
@@ -605,12 +679,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatal(err)
 	}
 	domainCtx.cpuPinningSupported = caps.CPUPinning
+	domainCtx.cpuTopologyPinningSupported = caps.CPUTopologyPinning
 
 	// Need to wait for things to get started
-	var resources types.HostMemory
 	for i := 0; true; i++ {
 		delay := 10
-		resources, err = hyper.GetHostCPUMem()
+		_, err = hyper.GetHostCPUMem()
 		if err == nil {
 			break
 		}
@@ -622,14 +696,21 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 
-	cpusReserved, err := getReservedCPUsNum()
-	if err != nil {
-		log.Warnf("Failed to get reserved CPU number, use 1 by default: %s", err)
+	// Keep the host processes off the CPUs workloads hold, where EVE pins
+	// workloads; under EVE-k the kubelet owns the cgroups.
+	if domainCtx.cpuTopologyPinningSupported {
+		if _, err := os.Stat(filepath.Join(hostCgroupRoot, "cpuset", "cpuset.cpus")); err == nil {
+			domainCtx.hostCpuset = newHostCpuset(hostCgroupRoot, "/proc")
+		} else {
+			log.Warnf("host cpuset: no cgroup v1 cpuset hierarchy (%v); host "+
+				"processes may run on dedicated CPUs", err)
+		}
 	}
-
-	if domainCtx.cpuAllocator, err = cpuallocator.Init(resources.Ncpus, uint32(cpusReserved)); err != nil {
-		log.Fatal(err)
-	}
+	// DomainStatus is in /run, so this matters only across a domainmgr restart:
+	// the running workloads keep their CPUs.
+	domainCtx.cpuPlacement.reseed(&domainCtx)
+	// On a node with no pinned workload this is the only report of its CPUs.
+	domainCtx.cpuPlacement.publish(&domainCtx)
 
 	// Wait until we have been onboarded aka know our own UUID however we do not use the UUID
 	if _, err := wait.WaitForOnboarded(ps, log, agentName, warningTime, errorTime); err != nil {
@@ -759,25 +840,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	//casClient which is commonly used across volumemgr will be closed when volumemgr exits.
 	defer domainCtx.casClient.CloseClient()
 
-	// Subscribe to DomainConfig from zedmanager
-	subDomainConfig, err := ps.NewSubscription(
-		pubsub.SubscriptionOptions{
-			AgentName:      "zedmanager",
-			MyAgentName:    agentName,
-			TopicImpl:      types.DomainConfig{},
-			Activate:       false,
-			Ctx:            &domainCtx,
-			CreateHandler:  handleDomainCreate,
-			ModifyHandler:  handleDomainModify,
-			DeleteHandler:  handleDomainDelete,
-			RestartHandler: handleRestart,
-			WarningTime:    warningTime,
-			ErrorTime:      errorTime,
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	domainCtx.subDomainConfig = subDomainConfig
 	subDomainConfig.Activate()
 
 	for {
@@ -796,6 +858,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-subDomainConfig.MsgChan():
 			subDomainConfig.ProcessChange(change)
+
+		case change := <-subCPUDemandSet.MsgChan():
+			subCPUDemandSet.ProcessChange(change)
 
 		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
@@ -820,6 +885,44 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
+}
+
+// newHostPlacer builds the CPU placer over this node's topology, the CPUs
+// reserved for EVE and the CPUs the kernel isolates.
+func newHostPlacer() *cpuallocator.Placer {
+	cpusReserved, err := getReservedCPUsNum()
+	if err != nil {
+		log.Warnf("Failed to get reserved CPU number, use 1 by default: %s", err)
+	}
+	topo, err := cputopology.DiscoverTopology()
+	if err != nil {
+		// The synthesized model cannot tell SMT siblings apart, so the placer
+		// gives no workload CPUs of its own on it.
+		log.Errorf("CPU topology discovery failed (%v); no workload is given "+
+			"CPUs of its own on this node", err)
+	}
+	isolated, _, err := hardware.IsolatedCPUSets()
+	if err != nil {
+		log.Errorf("CPU isolation: cannot read the CPUs the kernel isolates: %v", err)
+	}
+	var isolatedLCPUs []cputopology.LCPU
+	for _, cpu := range isolated {
+		isolatedLCPUs = append(isolatedLCPUs, cputopology.LCPU(cpu))
+	}
+	placer, err := cpuallocator.NewPlacer(topo, cpusReserved, isolatedLCPUs)
+	if err != nil {
+		log.Fatalf("Cannot allocate CPUs (check the eve_max_vcpus kernel argument): %s", err)
+	}
+	log.Noticef("CPU topology: %d physical cores", len(topo.Cores))
+	if len(isolatedLCPUs) > 0 {
+		log.Noticef("Kernel isolates CPUs %v; they go only to workloads that "+
+			"ask for kernel isolation, and everything else is kept off them",
+			isolatedLCPUs)
+	}
+	for _, issue := range placer.IsolationIssues() {
+		log.Errorf("CPU isolation: %s", issue.Message)
+	}
+	return placer
 }
 
 func getReservedCPUsNum() (uint32, error) {
@@ -864,6 +967,26 @@ func handleRestart(ctxArg interface{}, restartCounter int) {
 		ctx.pubDomainStatus.SignalRestarted()
 		return
 	}
+}
+
+// The demand set is a placement input: a change re-plans and wakes every
+// workload to bring itself in line.
+func handleCPUDemandSetCreate(ctxArg interface{}, key string, _ interface{}) {
+	handleCPUDemandSetImpl(ctxArg)
+}
+
+func handleCPUDemandSetModify(ctxArg interface{}, key string, _ interface{},
+	_ interface{}) {
+	handleCPUDemandSetImpl(ctxArg)
+}
+
+func handleCPUDemandSetDelete(ctxArg interface{}, key string, _ interface{}) {
+	handleCPUDemandSetImpl(ctxArg)
+}
+
+func handleCPUDemandSetImpl(ctxArg interface{}) {
+	ctx := ctxArg.(*domainContext)
+	ctx.cpuPlacement.inputsChanged(ctx)
 }
 
 func publishDomainStatus(ctx *domainContext, status *types.DomainStatus) {
@@ -933,16 +1056,29 @@ type handlers map[string]channels
 
 var handlerMap handlers
 
+// handlerMapLock guards handlerMap. The map is created and torn down from the
+// pubsub goroutine (handleDomainCreate/Delete) but read from every per-domain
+// goroutine, because notifyCPUHandlers fans out from whichever domain just
+// took or gave back CPUs. Without the lock that is both a map race and a send
+// on a channel handleDomainDelete may have just closed.
+var handlerMapLock sync.Mutex
+
 func handlersInit() {
 	handlerMap = make(handlers)
 }
 
-func triggerCPUNotification() {
+// notifyCPUHandlers wakes every domain handler to bring its workload in line
+// with a placement change (refreshPlacement). A wakeup is only a hint: the
+// handler re-derives everything from the current state, on the next tick if it
+// misses this one.
+func notifyCPUHandlers() {
+	handlerMapLock.Lock()
+	defer handlerMapLock.Unlock()
 	for _, handler := range handlerMap {
 		select {
 		case handler.cpuChannel <- Notify{}:
 		default:
-			log.Warnf("Already sent a CPU Notify...")
+			// A wakeup is already queued, which covers this one.
 		}
 	}
 }
@@ -954,8 +1090,12 @@ func handleDomainModify(ctxArg interface{}, key string, configArg interface{},
 	oldConfigArg interface{}) {
 
 	log.Functionf("handleDomainModify(%s)", key)
+	ctx := ctxArg.(*domainContext)
 	config := configArg.(types.DomainConfig)
+	ctx.cpuPlacement.inputsChanged(ctx)
+	handlerMapLock.Lock()
 	h, ok := handlerMap[config.Key()]
+	handlerMapLock.Unlock()
 	if !ok {
 		log.Fatalf("handleDomainModify called on config that does not exist")
 	}
@@ -973,14 +1113,18 @@ func handleDomainCreate(ctxArg interface{}, key string, configArg interface{}) {
 	log.Functionf("handleDomainCreate(%s)", key)
 	ctx := ctxArg.(*domainContext)
 	config := configArg.(types.DomainConfig)
+	ctx.cpuPlacement.inputsChanged(ctx)
+	handlerMapLock.Lock()
 	h, ok := handlerMap[config.Key()]
 	if ok {
+		handlerMapLock.Unlock()
 		log.Fatalf("handleDomainCreate called on config that already exists")
 	}
 	hConfig := make(chan Notify, 1)
 	hCPU := make(chan Notify, 1)
 	h1 := channels{configChannel: hConfig, cpuChannel: hCPU}
 	handlerMap[config.Key()] = h1
+	handlerMapLock.Unlock()
 	log.Functionf("Creating %s at %s", "runHandler", agentlog.GetMyStack())
 	go runHandler(ctx, key, hConfig, hCPU)
 	h = h1
@@ -1004,14 +1148,18 @@ func handleDomainDelete(ctxArg interface{}, key string,
 	if config.IsCipher || config.CloudInitUserData != nil {
 		unpublishCipherBlockStatus(ctx, config.Key())
 	}
+	ctx.cpuPlacement.inputsChanged(ctx)
 	// Do we have a channel/goroutine?
+	handlerMapLock.Lock()
 	h, ok := handlerMap[key]
 	if ok {
 		log.Functionf("Closing channels")
 		close(h.cpuChannel)
 		close(h.configChannel)
 		delete(handlerMap, key)
-	} else {
+	}
+	handlerMapLock.Unlock()
+	if !ok {
 		log.Tracef("handleDomainDelete: unknown %s", key)
 		return
 	}
@@ -1077,29 +1225,7 @@ func runHandler(ctx *domainContext, key string, configChannel <-chan Notify, cpu
 			}
 		case _, ok := <-cpuChannel:
 			if ok {
-				if !ctx.cpuPinningSupported {
-					continue
-				}
-				sub := ctx.subDomainConfig
-				c, err := sub.Get(key)
-				if err != nil {
-					log.Errorf("runHandler no config for %s", key)
-					continue
-				}
-				config := c.(types.DomainConfig)
-				status := lookupDomainStatus(ctx, key)
-				if status == nil {
-					log.Errorf("No Status for %s", config.DisplayName)
-					continue
-				}
-				if crashFrozen(status) {
-					continue
-				}
-				if !config.VmConfig.CPUsPinned {
-					if err = updateNonPinnedCPUs(ctx, &config, status); err != nil {
-						log.Warnf("failed to redistribute CPUs in %s", config.DisplayName)
-					}
-				}
+				refreshPlacement(ctx, key)
 			}
 		case ev := <-crashCh:
 			// Mode-A crash (guest internal-error): capture the guest core
@@ -1126,6 +1252,7 @@ func runHandler(ctx *domainContext, key string, configChannel <-chan Notify, cpu
 					// goroutine will drive finishCrashCapture; do not reconcile.
 				}
 			}
+			refreshPlacement(ctx, key)
 		}
 	}
 	log.Functionf("runHandler(%s) DONE", key)
@@ -1544,14 +1671,7 @@ func setCgroupCpuset(config *types.DomainConfig, status *types.DomainStatus) err
 		log.Warnf("Failed to find cgroups directory for %s", config.DisplayName)
 		return nil
 	}
-	// Convert a list of CPUs to a CPU string
-	cpuStrings := make([]string, 0)
-	for _, cpu := range status.VmConfig.CPUs {
-		cpuStrings = append(cpuStrings, strconv.FormatUint(uint64(cpu), 10))
-	}
-	cpuMask := strings.Join(cpuStrings, ",")
-
-	err = controller.Update(&specs.LinuxResources{CPU: &specs.LinuxCPU{Cpus: cpuMask}})
+	err = controller.Update(&specs.LinuxResources{CPU: &specs.LinuxCPU{Cpus: cpuList(status.VmConfig.CPUs)}})
 	if err != nil {
 		log.Warnf("Failed to update CPU set for %s", config.DisplayName)
 		return err
@@ -1560,51 +1680,19 @@ func setCgroupCpuset(config *types.DomainConfig, status *types.DomainStatus) err
 	return nil
 }
 
-func updateNonPinnedCPUs(ctx *domainContext, config *types.DomainConfig, status *types.DomainStatus) error {
-	status.VmConfig.CPUs = ctx.cpuAllocator.GetAllFree()
-	err := setCgroupCpuset(config, status)
-	if err != nil {
-		return errors.New("failed to redistribute CPUs between VMs, can affect the inter-VM isolation")
+// setSharedCPUs moves a workload without CPUs of its own onto cpus, reporting
+// whether its status changed. On a failed cgroup write the status keeps the set
+// the workload still runs on, and the next refresh tries again.
+func setSharedCPUs(config *types.DomainConfig, status *types.DomainStatus, cpus []uint32) bool {
+	previous := status.VmConfig.CPUs
+	status.VmConfig.CPUs = cpus
+	if err := setCgroupCpuset(config, status); err != nil {
+		log.Warnf("failed to redistribute CPUs in %s, which can affect the "+
+			"inter-VM isolation: %v", config.DisplayName, err)
+		status.VmConfig.CPUs = previous
+		return false
 	}
-	return nil
-}
-
-// assignCPUs assigns CPUs to the VM based on the configuration
-// By the assignment, we mean that the CPUs are assigned in the CPUAllocator context to the given VM
-// and the cpumask is updated in the *status*
-func assignCPUs(ctx *domainContext, config *types.DomainConfig, status *types.DomainStatus) error {
-	if config.VmConfig.CPUsPinned { // Pin the CPU
-		// CPUs may already be allocated for this UUID from a prior
-		// doActivate that returned early (e.g. kubevirt cluster-trust path
-		// after a version bump). The cpuAllocator records one allocation
-		// per UUID and would error with "multiple allocations for UUID"
-		// on a second Allocate call, leaving the app permanently broken.
-		// Reuse the existing allocation when present.
-		if len(status.VmConfig.CPUs) > 0 {
-			return nil
-		}
-		cpusToAssign, err := ctx.cpuAllocator.Allocate(config.UUIDandVersion.UUID, config.VCpus)
-		if err != nil {
-			return err
-		}
-		for _, cpu := range cpusToAssign {
-			status.VmConfig.CPUs = append(status.VmConfig.CPUs, cpu)
-		}
-	} else { // VM has no pinned CPUs, assign all the CPUs from the shared set
-		status.VmConfig.CPUs = ctx.cpuAllocator.GetAllFree()
-	}
-	return nil
-}
-
-// releaseCPUs releases the CPUs that were previously assigned to the VM.
-// The cpumask in the *status* is updated accordingly, and the CPUs are released in the CPUAllocator context.
-func releaseCPUs(ctx *domainContext, config *types.DomainConfig, status *types.DomainStatus) {
-	if ctx.cpuPinningSupported && config.VmConfig.CPUsPinned && status.VmConfig.CPUs != nil {
-		if err := ctx.cpuAllocator.Free(config.UUIDandVersion.UUID); err != nil {
-			log.Errorf("Failed to free CPUs for %s: %s", config.DisplayName, err)
-		}
-	}
-	status.VmConfig.CPUs = nil
+	return true
 }
 
 func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
@@ -1888,13 +1976,41 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		config.UUIDandVersion, config.DisplayName)
 
 	if ctx.cpuPinningSupported {
-		if err := assignCPUs(ctx, &config, status); err != nil {
+		if err := ctx.cpuPlacement.assign(ctx, &config, status); err != nil {
+			var waiting *placementWaiting
+			if errors.As(err, &waiting) {
+				// Not a refusal: refreshPlacement retries as the holders leave
+				// or the demand set completes.
+				if !slices.Equal(status.CPUWait.Holders, waiting.holders) ||
+					status.CPUWait.AppSet != waiting.appSet {
+					log.Noticef("CPU placement: %s is %v", config.DisplayName, waiting)
+					since := status.CPUWait.Since
+					if !status.CPUWait.Waiting() {
+						since = time.Now()
+					}
+					status.CPUWait = types.CPUWait{Holders: waiting.holders,
+						AppSet: waiting.appSet, Since: since}
+					publishDomainStatus(ctx, status)
+				}
+				return
+			}
 			log.Warnf("failed to assign CPUs for %s err %v", config.DisplayName, err)
-			errDescription := types.ErrorDescription{Error: err.Error()}
-			status.SetErrorDescription(errDescription)
+			// Neither BootFailed nor ConfigFailed: like a workload whose PCI
+			// device is missing, a workload refused CPUs stays down until an
+			// explicit action, so no retry path may restart it. A stale
+			// AdaptersFailed would have maybeRetryAdapters re-enter here.
+			status.CPUWait = types.CPUWait{}
+			status.AdaptersFailed = false
+			var refusal *placementError
+			if errors.As(err, &refusal) {
+				refuseCPUs(status, refusal)
+			} else {
+				status.SetErrorDescription(types.ErrorDescription{Error: err.Error()})
+			}
 			publishDomainStatus(ctx, status)
 			return
 		}
+		status.CPUWait = types.CPUWait{}
 		log.Functionf("CPUs for %s assigned: %v", config.DisplayName, status.VmConfig.CPUs)
 	}
 
@@ -1904,7 +2020,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		status.PendingAdd = false
 		status.SetErrorDescription(*errDescription)
 		status.AdaptersFailed = true
-		releaseCPUs(ctx, &config, status)
+		ctx.cpuPlacement.release(ctx, status)
 		publishDomainStatus(ctx, status)
 		releaseAdapters(ctx, config.IoAdapterList, config.UUIDandVersion.UUID,
 			nil)
@@ -1928,7 +2044,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		status.PendingAdd = false
 		status.SetErrorNow(err.Error())
 		status.AdaptersFailed = true
-		releaseCPUs(ctx, &config, status)
+		ctx.cpuPlacement.release(ctx, status)
 		publishDomainStatus(ctx, status)
 		releaseAdapters(ctx, config.IoAdapterList, config.UUIDandVersion.UUID,
 			nil)
@@ -1952,7 +2068,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 					snapshotID, config.UUIDandVersion.UUID, err)
 				log.Error(err.Error())
 				status.SetErrorNow(err.Error())
-				releaseCPUs(ctx, &config, status)
+				ctx.cpuPlacement.release(ctx, status)
 				return
 			}
 
@@ -1981,7 +2097,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 					err := fmt.Errorf("doActivate: Failed to write cloud-init metadata file. Error %s", err)
 					log.Error(err.Error())
 					status.SetErrorNow(err.Error())
-					releaseCPUs(ctx, &config, status)
+					ctx.cpuPlacement.release(ctx, status)
 					return
 				}
 
@@ -1992,7 +2108,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 						err := fmt.Errorf("doActivate: Failed to apply cloud-init config. Error %s", err)
 						log.Error(err.Error())
 						status.SetErrorNow(err.Error())
-						releaseCPUs(ctx, &config, status)
+						ctx.cpuPlacement.release(ctx, status)
 						return
 					}
 				}
@@ -2016,7 +2132,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 				// after the format is right.
 				status.ConfigFailed = true
 				status.SetErrorNow(err.Error())
-				releaseCPUs(ctx, &config, status)
+				ctx.cpuPlacement.release(ctx, status)
 				return
 			}
 		}
@@ -2071,7 +2187,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		log.Errorf("Failed to create DomainStatus from %+v: %s",
 			config, err)
 		status.SetErrorNow(err.Error())
-		releaseCPUs(ctx, &config, status)
+		ctx.cpuPlacement.release(ctx, status)
 		return
 	}
 
@@ -2091,7 +2207,8 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 			log.Errorf("DomainCreate for %s: %s", status.DomainName, err)
 			status.BootFailed = true
 			status.SetErrorNow(err.Error())
-			releaseCPUs(ctx, &config, status)
+			// The CPUs stay held, as the adapters do: maybeRetryBoot creates the
+			// domain again from this status. doInactivate releases them.
 			publishDomainStatus(ctx, status)
 			return
 		}
@@ -2106,9 +2223,6 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 			errDescription := types.ErrorDescription{Error: err.Error()}
 			status.SetErrorDescription(errDescription)
 			publishDomainStatus(ctx, status)
-		}
-		if config.CPUsPinned {
-			triggerCPUNotification()
 		}
 	}
 
@@ -2409,13 +2523,7 @@ func doCleanup(ctx *domainContext, status *types.DomainStatus) {
 	}
 
 	if ctx.cpuPinningSupported {
-		if status.VmConfig.CPUsPinned {
-			if err := ctx.cpuAllocator.Free(status.UUIDandVersion.UUID); err != nil {
-				log.Warnf("Failed to free for %s: %s", status.DisplayName, err)
-			}
-			triggerCPUNotification()
-		}
-		status.VmConfig.CPUs = nil
+		ctx.cpuPlacement.release(ctx, status)
 	}
 	releaseAdapters(ctx, status.IoAdapterList, status.UUIDandVersion.UUID,
 		status)
@@ -2847,6 +2955,10 @@ func handleModify(ctx *domainContext, key string,
 	} else if !config.Activate {
 		log.Functionf("handleModify(%v) NOT activating for %s",
 			config.UUIDandVersion, config.DisplayName)
+		if status.CPUWait.Waiting() {
+			status.CPUWait = types.CPUWait{}
+			publishDomainStatus(ctx, status)
+		}
 		// In kubevirt mode, an Activate=false that still carries UserActivate=true
 		// is normally a cluster-status cascade (failover bookkeeping, transient
 		// scheduling churn) where the VMIRS identity is unchanged — preserve it
@@ -2858,6 +2970,11 @@ func handleModify(ctx *domainContext, key string,
 		purgeChanged := config.PurgeCounter != status.PurgeCounter
 		restartChanged := config.RestartCounter != status.RestartCounter
 		teardownNeeded := purgeChanged || restartChanged
+		if !teardownNeeded {
+			// A plain stop, unlike a restart, ends a repack's claim on the
+			// workload.
+			ctx.cpuPlacement.forget(ctx, status.UUIDandVersion.UUID)
+		}
 		if ctx.hvTypeKube && config.UserActivate && !teardownNeeded {
 			if status.HasError() {
 				log.Noticef("handleModify(%s) kubevirt: clearing error without "+
@@ -3086,6 +3203,9 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 	publishDomainStatus(ctx, status)
 	// Write out what we modified to DomainStatus aka delete
 	unpublishDomainStatus(ctx, status)
+	// A workload that failed to boot still holds its CPUs here.
+	ctx.cpuPlacement.release(ctx, status)
+	ctx.cpuPlacement.forget(ctx, status.UUIDandVersion.UUID)
 	// No point in publishing metrics any more
 	ctx.pubDomainMetric.Unpublish(status.Key())
 
@@ -4664,6 +4784,10 @@ func getAndPublishCapabilities(ctx *domainContext, hyper hypervisor.Hypervisor) 
 	capabilities, err := hyper.GetCapabilities()
 	if err != nil {
 		return fmt.Errorf("cannot get capabilities: %v", err)
+	}
+	// Placement needs the topology as well as the hypervisor's pinning.
+	if ctx.cpuPlacement.placer.Degraded() {
+		capabilities.CPUTopologyPinning = false
 	}
 	return ctx.pubCapabilities.Publish("global", *capabilities)
 }

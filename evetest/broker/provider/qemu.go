@@ -1542,7 +1542,7 @@ func (dev *qemuDevice) buildArgs() []string {
 		// are needed: the Linux guest (6.12) enables async PF on
 		// kvm-asyncpf-int alone.
 		"-cpu", "host,-kvm-asyncpf,-kvm-asyncpf-int",
-		"-smp", fmt.Sprintf("%d", dev.spec.CPUs),
+		"-smp", smpArg(dev.spec.CPUs, dev.spec.ThreadsPerCore),
 		"-m", fmt.Sprintf("%d", dev.spec.MemoryBytes>>20),
 		"-nographic",
 		// vIOMMU (with the split irqchip its interrupt remapping requires),

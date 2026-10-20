@@ -18,6 +18,35 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
+// CPUTopology converts a device spec's CPU count and requested threads-per-core
+// into a concrete sockets/cores/threads layout for the hypervisor.
+//
+// A guest can only reason about SMT if it is told which logical CPUs share a
+// physical core, and neither QEMU nor libvirt infers that: left alone both
+// present every CPU as its own single-thread core. Keeping the arithmetic here
+// means the qemu and libvirt providers cannot disagree about it.
+//
+// The default (threads-per-core of zero or one) reproduces exactly what the
+// providers did before this existed: one socket, one core per CPU, one thread
+// per core. A requested value that does not divide the CPU count is ignored
+// rather than silently rounded, since a partial core is not a thing a guest can
+// be shown.
+func CPUTopology(cpus, threadsPerCore uint) (sockets, cores, threads uint) {
+	if threadsPerCore < 2 || cpus%threadsPerCore != 0 {
+		return 1, cpus, 1
+	}
+	return 1, cpus / threadsPerCore, threadsPerCore
+}
+
+// smpArg renders the QEMU -smp value for a device's CPU layout. QEMU expands a
+// bare "-smp N" with threads=1, so the topology has to be stated explicitly for
+// the guest to see sibling threads at all.
+func smpArg(cpus, threadsPerCore uint) string {
+	sockets, cores, threads := CPUTopology(cpus, threadsPerCore)
+	return fmt.Sprintf("%d,sockets=%d,cores=%d,threads=%d",
+		cpus, sockets, cores, threads)
+}
+
 // namePrefix is prepended to all domain (VM) names created by a device
 // provider. This ensures that test/dev resources are clearly separated from
 // user-managed objects. When listing devices, the prefix is stripped so that

@@ -357,6 +357,28 @@ type AppInstanceStatus struct {
 	NoUploadStatsToController bool
 	// Am I Cluster Designated Node Id for this app
 	IsDesignatedNodeID bool
+	// CPUPlacementStatus mirrors DomainStatus.CPUPlacementStatus: domainmgr's
+	// verdict on the workload's CPU request. A refusal's text is in the error; a
+	// placement worse than planned is advisory status, not an error -- the
+	// workload runs normally -- so it is kept out of ErrorAndTimeWithSource,
+	// where it would make every HasError() caller treat it as failed.
+	// zedagent reports it as the app's cpu_placement_status and
+	// cpu_placement_error.
+	CPUPlacementStatus CPUPlacementStatus
+	// RepackFor mirrors DomainStatus.RepackFor: the workloads this one has to be
+	// restarted together with so that they can be placed. Advisory for the same
+	// reason; zedagent reports the workload as
+	// CPUPlacementStatusRepackAdvised so the controller includes it in the
+	// repack set.
+	RepackFor []string
+	// AssignedCPUs mirrors DomainStatus.CPUAssignment(): the host CPUs the
+	// workload holds, which zedagent reports next to its assigned adapters.
+	AssignedCPUs CPUAssignment
+	// CPUWait mirrors DomainStatus.CPUWait, which zedagent reports as
+	// CPUPlacementStatusWaiting with a WARNING: a wait lasts until its holders
+	// leave, so the controller has to be able to tell it from a workload that
+	// is stuck.
+	CPUWait CPUWait
 }
 
 // TruncateErrors cuts the status's own error and the error of every volume

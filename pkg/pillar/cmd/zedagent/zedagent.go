@@ -139,6 +139,7 @@ type zedagentContext struct {
 	subDiskMetric             pubsub.Subscription
 	subAppDiskMetric          pubsub.Subscription
 	subCapabilities           pubsub.Subscription
+	subCPUPoolStatus          pubsub.Subscription
 	subAppInstMetaData        pubsub.Subscription
 	subWwanMetrics            pubsub.Subscription
 	subWwanStatus             pubsub.Subscription
@@ -1177,6 +1178,9 @@ func mainEventLoop(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 		case change := <-zedagentCtx.subCapabilities.MsgChan():
 			zedagentCtx.subCapabilities.ProcessChange(change)
 
+		case change := <-zedagentCtx.subCPUPoolStatus.MsgChan():
+			zedagentCtx.subCPUPoolStatus.ProcessChange(change)
+
 		case change := <-zedagentCtx.subBaseOsMgrStatus.MsgChan():
 			zedagentCtx.subBaseOsMgrStatus.ProcessChange(change)
 
@@ -1909,14 +1913,36 @@ func initPostOnboardSubs(zedagentCtx *zedagentContext) {
 		log.Fatal(err)
 	}
 
+	// The capabilities decide the optional capabilities the device info
+	// reports.
 	zedagentCtx.subCapabilities, err = ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "domainmgr",
-		MyAgentName: agentName,
-		TopicImpl:   types.Capabilities{},
-		Activate:    true,
-		Ctx:         zedagentCtx,
-		WarningTime: warningTime,
-		ErrorTime:   errorTime,
+		AgentName:     "domainmgr",
+		MyAgentName:   agentName,
+		TopicImpl:     types.Capabilities{},
+		Activate:      true,
+		Ctx:           zedagentCtx,
+		CreateHandler: handleCapabilitiesCreate,
+		ModifyHandler: handleCapabilitiesModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// The node CPU pool report: how the logical CPUs are partitioned between
+	// housekeeping, dedicated and kernel-isolated, and how much of each is left.
+	// Only domainmgr can compute it, since it owns the CPU allocator.
+	zedagentCtx.subCPUPoolStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "domainmgr",
+		MyAgentName:   agentName,
+		TopicImpl:     types.CPUPoolStatus{},
+		Activate:      true,
+		Ctx:           zedagentCtx,
+		CreateHandler: handleCPUPoolStatusCreate,
+		ModifyHandler: handleCPUPoolStatusModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -2763,6 +2789,30 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 func handleAACreate(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	handleAAImpl(ctxArg, key, statusArg)
+}
+
+// A change to what the node can do is reported when it happens: whether it
+// places CPUs decides which fields the controller may send it.
+func handleCapabilitiesCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	triggerPublishDevInfo(ctxArg.(*zedagentContext))
+}
+
+func handleCapabilitiesModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	triggerPublishDevInfo(ctxArg.(*zedagentContext))
+}
+
+// A CPU pool change is reported when it happens, like a change to the
+// assignable adapters: it is what the controller reads to know what still fits.
+func handleCPUPoolStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	triggerPublishDevInfo(ctxArg.(*zedagentContext))
+}
+
+func handleCPUPoolStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	triggerPublishDevInfo(ctxArg.(*zedagentContext))
 }
 
 func handleAAModify(ctxArg interface{}, key string,
