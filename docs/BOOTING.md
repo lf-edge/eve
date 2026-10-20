@@ -176,9 +176,11 @@ Wherever one of these names appears, `dom0` means the EVE host, not a virtual ma
        (default is `set_global hv_eve_mem_settings "eve_mem=520M,max:650M"`)
     4. `eve_max_vcpus` option of `hv_eve_mem_settings` variable - cpu limit for cgroups with services of EVE
        (default is `set_global hv_eve_cpu_settings "eve_max_vcpus=1""`)
-    5. `ctrd_mem` option of `hv_ctrd_mem_settings` variable - memory limit for cgroups with containerd-shims of EVE
+    5. `ctrd_mem` option of `hv_ctrd_mem_settings` variable - memory limit for the cgroup of EVE's system containerd
+       and the shims of EVE's services; the apps' containerd and the apps' shims are charged to the apps
        (default is `set_global hv_ctrd_mem_settings "ctrd_mem=320M,max:400M"`)
-    6. `ctrd_max_vcpus` option of `hv_ctrd_cpu_settings` variable - cpu limit for cgroups with containerd-shims of EVE
+    6. `ctrd_max_vcpus` option of `hv_ctrd_cpu_settings` variable - cpu limit for the cgroup of EVE's system containerd
+       and the shims of EVE's services; the apps' containerd and the apps' shims run on the apps' CPUs
        (default is `set_global hv_ctrd_cpu_settings "ctrd_max_vcpus=1"`)
 2. Installer options. These options are used during [the installation](DEPLOYMENT.md) process and may be set by adding
    them to `dom0_extra_args` grub variable with line
