@@ -16,7 +16,8 @@ control socket; the shell aliases `k3s-control`, `k3s-start`, `k3s-stop`,
 k3s install) runs sequentially. Once components are deployed, the FSM
 moves to a steady-state RUNNING state with a per-tick health worker that
 reapplies idempotent component config, runs storage policy, sweeps stale
-masterleases, and watches for cluster-config changes. The supervisor
+masterleases, recycles controller pods after a datastore migration, and
+watches for cluster-config changes. The supervisor
 subprocess owns the k3s server; pre-restart hooks let kube-init insert
 work (e.g. RT cgroup setup) between stop and start without re-implementing
 the supervisor.
@@ -36,7 +37,7 @@ which wraps `k3s kubectl` / `k3s ctr` / `crictl`.
 | `k3s` | k3s install, config rendering, supervisor, readiness, token rotation, cluster status. |
 | `components` | Multus, KubeVirt, CDI, Longhorn, descheduler, debug-user RBAC, kube-vip, storage classes. |
 | `deploy` | Declarative DAG runner for the deploy graph (parallelism, deps, BestEffort). |
-| `clustermode` | Single↔HA transitions, startup-rank stagger, stale masterlease sweep. |
+| `clustermode` | Single↔HA transitions, startup-rank stagger, stale masterlease sweep, post-migration controller recycle. |
 | `monitor` | Steady-state watchers: cluster-config polling, user-overrides, log rotation, node-label drift. |
 | `update` | Cross-reboot upgrade flow for k3s + cluster components, KubeClusterUpdateStatus gating. |
 | `images` | Pre-packaged tarball import (external-boot-image, rt-operator, KubeVirt/CDI/Longhorn). |
