@@ -9,7 +9,6 @@ import "C"
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -72,90 +71,87 @@ func (h *walkHeartbeat) beat() {
 	h.tick()
 }
 
-// SizeFromDir performs a du -s equivalent operation.
-// Didn't use os.ReadDir and filepath.Walk because they sort (quick_sort) all files per directory
-// which is an unnecessary costly operation.
+// fileDevice returns the device holding fi, its st_dev, and whether that is
+// known. Tests replace it to stand in for mount points, which a unit test
+// cannot create.
+var fileDevice = func(fi os.FileInfo) (uint64, bool) {
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, false
+	}
+	return st.Dev, true
+}
+
+// SizeFromDir performs a du -sx equivalent operation: a sum over the tree
+// under dirname, following no symbolic link and staying on the filesystem
+// dirname is on. A subdirectory with another st_dev is a mount point, such
+// as the rootfs overlay of a running container under its volume directory:
+// its content belongs to the filesystem it is mounted from, and walking it
+// would pin a dentry and an inode of every file in pillar's memory cgroup.
+//
+// The walk is filepath.Walk rather than WalkDir: the sum needs the FileInfo
+// of every entry, so the lstat WalkDir defers would be issued anyway.
+//
 // tick, when not nil, is called as the walk advances, at most once every
 // walkTickInterval; a caller whose goroutine is watched by the watchdog uses it
 // to report liveness while measuring a tree that takes minutes. It fires only
 // after a directory read returns, so a walk stuck in the kernel stays silent and
 // the watchdog still catches it.
 func SizeFromDir(log *base.LogObject, dirname string, tick func()) (uint64, error) {
-	return sizeFromDir(log, dirname, newWalkHeartbeat(tick))
-}
-
-func sizeFromDir(log *base.LogObject, dirname string, hb *walkHeartbeat) (uint64, error) {
+	root, err := os.Lstat(dirname)
+	if err != nil {
+		return 0, fmt.Errorf("Stat %s: %v", dirname, err)
+	}
+	if !root.IsDir() {
+		return uint64(root.Size()), nil
+	}
+	rootDev, _ := fileDevice(root)
+	hb := newWalkHeartbeat(tick)
 	var totalUsed uint64
-	fileInfo, err := os.Stat(dirname)
-	if err != nil {
-		err = fmt.Errorf("Stat %s: %v", dirname, err)
-		return totalUsed, err
-	}
-	if !fileInfo.IsDir() {
-		return uint64(fileInfo.Size()), nil
-	}
-	f, err := os.Open(dirname)
-	if err != nil {
-		err = fmt.Errorf("Exception while opening %s: %v", dirname, err)
-		return totalUsed, err
-	}
-	defer func() {
-		if err := f.Close(); err != nil {
-			log.Errorf("cannot close dir %s: %s", dirname, err)
-		}
-	}()
-	for {
-		locations, err := f.Readdir(10)
-		if err == io.EOF {
-			break
-		}
+	walkErr := filepath.Walk(dirname, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return totalUsed, err
+			// A directory that cannot be read, or an entry gone since its
+			// directory was read, counts for what was summed so far; only
+			// the root is reported.
+			if path == dirname {
+				return err
+			}
+			log.Tracef("Skipping %s: %v\n", path, err)
+			return nil
 		}
 		hb.beat()
-		for _, location := range locations {
-			filename := dirname + "/" + location.Name()
-			log.Tracef("Looking in %s\n", filename)
-			if location.IsDir() {
-				size, _ := sizeFromDir(log, filename, hb)
-				log.Tracef("Dir %s size %d\n", filename, size)
-				totalUsed += size
-			} else {
-				// The selection of these two persist directories is intended to pick a balance
-				// between:
-				// 		- calling syscall.Stat() on every file which is heavy on time and compute
-				//		- not calling syscall.Stat() on anything which can overestimate storage allocated
-				//			because the difference between allocated and provisioned storage is
-				//			not accounted for.
-				//
-				// It is believed that the majority of sparsefile usage (by provisioned GB)
-				// will be in the clear and vault volumes base directories so a lot of compute time
-				// can be saved by not checking detailed allocated bytes information in deeper
-				// directories.
-				if strings.HasPrefix(dirname, types.VolumeEncryptedDirName) ||
-					strings.HasPrefix(dirname, types.VolumeClearDirName) {
-					// FileInfo.Size() returns the provisioned size
-					// Sparse files will have a smaller allocated size than provisioned
-					// Use full syscall.Stat_t to get the allocated size
-					allocatedBytes, err := StatAllocatedBytes(filename)
-					if err != nil {
-						allocatedBytes = uint64(location.Size())
-					}
-					// Fully Allocated: don't use allocated bytes
-					// stat math of %b*%B as it will over-account space
-					if allocatedBytes >= uint64(location.Size()) {
-						allocatedBytes = uint64(location.Size())
-					}
-					log.Tracef("File %s Size %d\n", filename, allocatedBytes)
-					totalUsed += allocatedBytes
-				} else {
-					log.Tracef("File %s Size %d\n", filename, location.Size())
-					totalUsed += uint64(location.Size())
-				}
+		if info.IsDir() {
+			if dev, known := fileDevice(info); known && dev != rootDev {
+				log.Tracef("Dir %s is on another filesystem, skipped\n", path)
+				return filepath.SkipDir
 			}
+			return nil
 		}
+		size := fileSize(path, info)
+		log.Tracef("File %s Size %d\n", path, size)
+		totalUsed += size
+		return nil
+	})
+	return totalUsed, walkErr
+}
+
+// fileSize returns the bytes the file at path takes. Under the volume
+// directories that is its allocated size, since the provisioned size of a
+// sparse image overstates what it takes on disk; elsewhere it is the size in
+// its directory entry, as a second stat of every file would cost more than
+// the precision is worth there.
+func fileSize(path string, info os.FileInfo) uint64 {
+	size := uint64(info.Size())
+	if !strings.HasPrefix(path, types.VolumeEncryptedDirName) &&
+		!strings.HasPrefix(path, types.VolumeClearDirName) {
+		return size
 	}
-	return totalUsed, nil
+	// Blocks can exceed the size of a fully allocated file, which would
+	// over-account it.
+	if allocated, err := StatAllocatedBytes(path); err == nil && allocated < size {
+		return allocated
+	}
+	return size
 }
 
 // PartitionSize - Given "sdb1" return the size of the partition; "sdb"
