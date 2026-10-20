@@ -1,6 +1,12 @@
 admin =
-#realtime = yes
-#priority = 1
+# Lock watchdog(8) in memory and schedule it in real time, as the upstream
+# default config does. Its tests must keep running while the services around
+# it, in the same memory cgroup, thrash on reclaim; a watchdog(8) that pages
+# and waits in line stops petting the hardware watchdog first, and the device
+# resets before any test has failed and before the repair binary could record
+# why.
+realtime = yes
+priority = 1
 interval = 1
 logtick  = 60
 repair-binary=/sbin/watchdog-report.sh

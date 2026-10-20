@@ -156,22 +156,46 @@ func updateMemoryMonitorConfig(ctx *watcherContext) {
 	return
 }
 
-// Listens to root cgroup in hierarchy mode (events always propagate
-// up to the root) and call Go garbage collector with reasonable
-// interval when certain amount of memory has been allocated (presumably
-// there is something to reclaim) by an application.
-func handleMemoryPressureEvents() {
-	controller, err := cgroups.Load(cgroups.V1, cgroups.StaticPath(""))
+// hostCgroupRoot is the host's cgroupfs. Registering an event writes to it,
+// and pillar's own mount of it is read-only.
+const hostCgroupRoot = "/hostfs/sys/fs/cgroup"
+
+// memoryPressureCgroup is the cgroup whose memory pressure, or that of any
+// cgroup below it, makes zedbox collect garbage: /eve, the budget all of
+// EVE's services share, of which pillar's own cgroup is only a part. The
+// heap's slack above the live data is the lion's share of what zedbox grows
+// by under a deployment, and the collector gives it back only when asked.
+const memoryPressureCgroup = "/eve"
+
+// registerMemoryPressure registers for medium memory pressure in cgroup and
+// the cgroups below it, in the cgroup v1 memory hierarchy under cgroupRoot,
+// and returns the file the kernel signals every event on.
+func registerMemoryPressure(cgroupRoot, cgroup string) (*os.File, error) {
+	hierarchy := func() ([]cgroups.Subsystem, error) {
+		return []cgroups.Subsystem{cgroups.NewMemory(cgroupRoot)}, nil
+	}
+	controller, err := cgroups.Load(hierarchy, cgroups.StaticPath(cgroup))
 	if err != nil {
-		log.Warnf("handleMemoryPressureEvents(): failed to find root cgroups directory")
+		return nil, fmt.Errorf("cannot load the memory cgroup %s under %s: %w", cgroup, cgroupRoot, err)
+	}
+	event := cgroups.MemoryPressureEvent(cgroups.MediumPressure, cgroups.HierarchyMode)
+	efd, err := controller.RegisterMemoryEvent(event)
+	if err != nil {
+		return nil, fmt.Errorf("cannot register for memory pressure in %s: %w", cgroup, err)
+	}
+	return os.NewFile(efd, "memory pressure in "+cgroup), nil
+}
+
+// handleMemoryPressureEvents calls the Go garbage collector, with a reasonable
+// interval and only once a certain amount of memory has been allocated
+// (presumably there is something to reclaim), whenever the memory budget
+// zedbox lives under comes under pressure.
+func handleMemoryPressureEvents() {
+	fd, err := registerMemoryPressure(hostCgroupRoot, memoryPressureCgroup)
+	if err != nil {
+		log.Errorf("handleMemoryPressureEvents(): %v", err)
 		return
 	}
-	defer controller.Delete()
-	event := cgroups.MemoryPressureEvent(cgroups.MediumPressure,
-		cgroups.HierarchyMode)
-	efd, err := controller.RegisterMemoryEvent(event)
-
-	fd := os.NewFile(efd, "efd")
 	defer fd.Close()
 
 	buf := make([]byte, 8)

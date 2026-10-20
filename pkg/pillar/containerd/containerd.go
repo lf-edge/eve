@@ -699,6 +699,12 @@ func (client *Client) CtrStopContainer(ctx context.Context, containerID string, 
 	// to the err returned is worth anything at this point
 	_ = task.Kill(ctx, signal, containerd.WithKillAll)
 
+	// runc destroys the task's cgroup with the task, which fails while the
+	// domain's helpers, its shim above all, still live in it.
+	if err := evictAppHelpers(HostMemoryCgroupRoot, containerID); err != nil {
+		logrus.Warnf("helpers of %s stay in its cgroup, deleting the task may fail: %v", containerID, err)
+	}
+
 	if force {
 		_, err = task.Delete(ctx, containerd.WithProcessKill)
 	} else {
@@ -1037,6 +1043,12 @@ func StartUserContainerdInstance() error {
 	go func() {
 		err := cmd.Wait()
 		logrus.Fatalf("user containerd stopped: %v", err)
+	}()
+	go func() {
+		err := joinUserContainerdCgroup(HostMemoryCgroupRoot, "/proc", cmd.Process.Pid, userContainerdCgroupTimeout)
+		if err != nil {
+			logrus.Warnf("user containerd stays in its own cgroup: %v", err)
+		}
 	}()
 	return nil
 }

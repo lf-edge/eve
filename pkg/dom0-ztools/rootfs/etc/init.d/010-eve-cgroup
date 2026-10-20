@@ -90,8 +90,16 @@ for srv in $EVESERVICES; do
     done
 done
 
-#Creating cgroup for containerd
+#Creating cgroup for containerd. It exists in the cpu hierarchy too, so that
+#both containerd daemons and the shims they start are weighed as one group
+#under eve, instead of the system daemon and its shims standing at the root
+#and the user daemon inside pillar's group.
 mkdir -p /sys/fs/cgroup/memory/eve/containerd
+mkdir -p /sys/fs/cgroup/cpu/eve/containerd
+
+#EVE's weight on the CPUs it is confined to, against the applications that
+#share them (/eve-user-apps, default 1024): 4 to 1.
+/bin/echo 4096 > /sys/fs/cgroup/cpu/eve/cpu.shares
 
 existingCPULimit=$(</sys/fs/cgroup/cpuset/cpuset.cpus grep -o '0-[1-9]*' | cut -d '-' -f 2)
 if [ -z "${existingCPULimit}" ]; then
