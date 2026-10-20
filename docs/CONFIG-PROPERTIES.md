@@ -47,8 +47,8 @@ This document mirrors the key names, types, defaults, and ranges defined there.
 | debug.enable.console | boolean | true | - | - | allow console access to EVE, reboot required to disable (controller by default overrides to false) |
 | debug.enable.vnc.shim.vm | boolean | false | - | - | allow VNC access to the container application shim VM (reboot required to disable) |
 | datastore.http.security.allowinsecureauth | boolean | false | - | - | allow sending authorization header over unencrypted http connection |
-| storage.dom0.disk.minusage.percent | integer percent | 20 | 20 | 80 | min. percent of persist partition reserved for dom0 |
-| storage.dom0.disk.maxusagebytes | integer bytes | 2147483648 | 104857600 | 4294967295 (max uint32) | max bytes of persist partition that can be used by dom0 |
+| storage.dom0.disk.minusage.percent | integer percent | 20 | 20 | 80 | min. percent of persist partition reserved for EVE itself (`dom0` is the Xen-era name of the host) |
+| storage.dom0.disk.maxusagebytes | integer bytes | 2147483648 | 104857600 | 4294967295 (max uint32) | max bytes of persist partition that EVE itself can use |
 | storage.zfs.reserved.percent | integer percent | 20 | 1 | 99 | min. percent of persist partition reserved for zfs performance |
 | storage.longhorn.disk.reserved.gigabytes | integer GB | 2 | 0 | 1048576 | per-disk storage reserved by Longhorn on the local node; overrides Longhorn's default 25% reservation. 0 sets storageReserved to 0 bytes (no reservation). 1048576 disables EVE's override, leaving Longhorn's current value in place |
 | storage.longhorn.snapshot.cron | cron string | `0 0 * * *` | - | - | cron schedule for Longhorn recurring snapshots; empty string disables. Snapshots bound delta rebuilds after node power loss to writes since the last snapshot. Default daily at midnight UTC. Standard 5-field cron syntax. EVE-k only. |

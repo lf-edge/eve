@@ -1747,7 +1747,7 @@ func detectIntelIGPU(adapters []types.IoAdapter, aa *types.AssignableAdapters) b
 }
 
 // CreateDomConfig creates a domain config (a qemu config file,
-// typically named something like xen-%d.cfg)
+// typically named something like dom%d.cfg)
 func (ctx KvmContext) CreateDomConfig(domainName string,
 	config types.DomainConfig, status types.DomainStatus,
 	diskStatusList []types.DiskStatus, aa *types.AssignableAdapters,

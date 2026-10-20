@@ -158,7 +158,9 @@ and is misleading. The following table shows the mapping:
 That way, the `dom0_mem` setting sets the memory limits for the `eve` cgroup,
 the `ctrd_mem` setting sets the memory limits for the `eve/containerd` cgroup,
 and the `eve_mem` setting sets the memory limits for the `eve/services` cgroup
-and all the sub-cgroups of the `eve/services` cgroup.
+and all the sub-cgroups of the `eve/services` cgroup. `dom0` is the Xen-era name
+of the host system, kept so that existing `/config/grub.cfg` overrides keep
+working (see [HYPERVISORS.md](HYPERVISORS.md#xen-historically)).
 
 For example, the following kernel command line arguments:
 

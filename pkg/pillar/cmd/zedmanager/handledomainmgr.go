@@ -21,8 +21,9 @@ const (
 	OVMFBIOSCombined = "/usr/share/ovmf/OVMF.fd"
 	// OVMFBIOSCode UEFI OVMF BIOS firmware (only code)
 	OVMFBIOSCode = "/usr/share/ovmf/OVMF_CODE.fd"
-	// RunxInitrd initrd of the VMs container apps run in, in the host rootfs
-	RunxInitrd = "/hostfs/boot/runx-initrd"
+	// RunxInitrd initrd of the VMs container apps run in. It ships in pillar's
+	// rootfs, which QEMU reaches through the /hostfs bind of its domain.
+	RunxInitrd = "/hostfs/containers/services/pillar/rootfs/boot/runx-initrd"
 )
 
 // legacyBootPaths maps the boot file paths of EVE releases that ran QEMU from

@@ -235,7 +235,7 @@ func TestDeviceIPv6Connectivity(test *testing.T) {
 //     app's address on the switch NI):
 //     - `ip -6 addr show eth0` contains the reported global-unicast IPv6.
 //     - Explicitly write the RDNSS server (fd23:131b:6500::1) to
-//     /etc/resolv.conf. EVE's initrd (pkg/xen-tools/initrd/init-initrd)
+//     /etc/resolv.conf. EVE's initrd (pkg/pillar/initrd/init-initrd)
 //     should eventually do this automatically from RA RDNSS options; until
 //     then the test sets it directly.
 //     - `nslookup -type=AAAA http-server.test` resolves to fdde:55a:74d4::7.
@@ -421,7 +421,7 @@ func TestApplicationIPv6Connectivity(test *testing.T) {
 
 	evetest.Checkpoint("app-ssh-reachable")
 
-	// TODO: EVE's initrd (pkg/xen-tools/initrd/init-initrd) should pick up
+	// TODO: EVE's initrd (pkg/pillar/initrd/init-initrd) should pick up
 	// the RDNSS server from Router Advertisements and write /etc/resolv.conf
 	// automatically. Until that is fixed, set it explicitly here.
 	log.Infof("Configuring DNS server inside the app...")

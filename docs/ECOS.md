@@ -184,7 +184,7 @@ ECI Configuration is a json file with the following schema:
 ## Configuration of Docker/OCI based ECOs
 
 We use special prepared VMs to run ECOs based on Docker/OCI (if edge-node supports hardware-assistance virtualization).
-In this case we start VM with the kernel of EVE and with pre-build [initrd](../pkg/xen-tools/initrd). Inside init we
+In this case we start VM with the kernel of EVE and with pre-build [initrd](../pkg/pillar/initrd). Inside init we
 make needed system mounts, mount rootfs (to /mnt) and block devices attached (to mount points defined in the file
 `mountPoints`). Static IP address is assigned to the network interface if the option `ip` defined in the kernel cmdline,
 otherwise dhcp is enabled.
@@ -214,7 +214,7 @@ To override defaults you can set Service flag inside AppInstanceConfig.
 
 In this mode we will rely on prepared OCI images we build using linuxkit. Inside [build.yml](https://github.com/linuxkit/linuxkit/blob/master/docs/packages.md#package-source) of the source files of image we build using linuxkit we have `config` field, which linuxkit uses to configure various options of container. It is possible to [define](https://github.com/linuxkit/linuxkit/blob/e532e7310810293cc1de7ef118ae9b85f8a03c47/src/cmd/linuxkit/moby/config.go#L63-L104) mounts, namespaces, capabilities inside build.yml. linuxkit bundle options we define inside `build.yml` into `org.mobyproject.config` label of OCI image during package build, for example for [pkg/pillar](EVE-IMAGE-SOURCES.md#container-images-to-sources). EVE-OS will use them to configure containerd to run app instances. This mode only works for app instances based on OCI images with `org.mobyproject.config` label defined.
 
-We will enforce NOHYPER VmMode for the service to run as a container in the host/dom0.
+We will enforce NOHYPER VmMode for the service to run as a container in the host.
 
 ## ECI Distribution Specification
 

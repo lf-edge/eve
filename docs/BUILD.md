@@ -507,7 +507,7 @@ The following custom packages are used:
 
 #### Custom Live Packages
 
-* kernel: EVE uses its own custom kernel (taken from [eve-kernel](https://github.com/lf-edge/eve-kernel) project), rather than one of the standard linuxkit ones. This is primarily due to kernel modules and drivers, especially on arm, as well as Xen requirements.
+* kernel: EVE uses its own custom kernel (taken from [eve-kernel](https://github.com/lf-edge/eve-kernel) project), rather than one of the standard linuxkit ones. This is primarily due to kernel modules and drivers, especially on arm.
 * `init` packages:
   * `lfedge/eve-grub` - CoreOS inspired GRUB required to enable CoreOS-style dual partition upgrades. See [UPSTREAMING.md](./UPSTREAMING.md#grub) for a more detailed discussion of what is unique in this grub.
   * `lfedge/eve-fw` - various firmware required for device drivers.
@@ -521,7 +521,7 @@ The following custom packages are used:
 
 #### Custom Installer Packages
 
-* kernel: EVE uses its own custom kernel (taken from [eve-kernel](https://github.com/lf-edge/eve-kernel) project), rather than one of the standard linuxkit ones. This is primarily due to kernel modules and drivers, especially on arm, as well as Xen requirements.
+* kernel: EVE uses its own custom kernel (taken from [eve-kernel](https://github.com/lf-edge/eve-kernel) project), rather than one of the standard linuxkit ones. This is primarily due to kernel modules and drivers, especially on arm.
 * `init` packages:
   * `lfedge/eve-grub` - CoreOS inspired GRUB required to enable CoreOS-style dual partition upgrades.
   * `lfedge/eve-devices-trees` - device trees for all the ARM platforms that EVE supports.
@@ -826,10 +826,10 @@ init:
 
 We may want to rebuild using the latest version currently available to us of each of the above packages. If we changed 1, 3 or even all of them, it is a tedious and error-prone job to change the hashes of the commits for each of them.
 
-Similarly, a `pkg/` may be sourced from another package which, in turn, has a specific commit. For example, the first line of the generated qrexec-dom0 [Dockerfile](../pkg/qrexec-dom0/Dockerfile) is:
+Similarly, a `pkg/` may be sourced from another package which, in turn, has a specific commit. For example, the first line of the generated external-boot-image [Dockerfile](../pkg/external-boot-image/Dockerfile.in) is:
 
 ```yml
-FROM lfedge/eve-xen-tools@sha256:4a6d0bcfc33a3096398b4daa0931f9583c674358eeb47241e0df5f96e24c0110 as xentools
+FROM lfedge/eve-pillar:4a6d0bcfc33a3096398b4daa0931f9583c674358eeb47241e0df5f96e24c0110 AS initrd-build
 ```
 
 The Dockerfile mentioned above is not checked into the repository, but instead generated from a template by a parse-pkgs script.

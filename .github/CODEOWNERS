@@ -75,7 +75,6 @@
 /pkg/vtpm/                            @shjala
 /pkg/watchdog/                        @eriknordmark
 /pkg/wwan/                            @milan-zededa
-/pkg/xen-tools/                       @rucoder @rene @shjala
 
 # pillar agents
 /pkg/pillar/cmd/baseosmgr/            @eriknordmark
@@ -100,6 +99,7 @@
 # pillar libraries
 /pkg/pillar/cas/                      @europaul
 /pkg/pillar/containerd/               @christoph-zededa @europaul @rene
+/pkg/pillar/initrd/                   @rucoder @rene @shjala
 /pkg/pillar/controllerconn/           @eriknordmark @milan-zededa @christoph-zededa
 /pkg/pillar/conntester/               @milan-zededa
 /pkg/pillar/dpcmanager/               @milan-zededa
