@@ -477,14 +477,16 @@ LinuxKit - which is used to build both `rootfs.img` and `rootfs_installer.img` -
 ### Standard Packages
 
 EVE uses a number of standard linuxkit packages. These are enumerated below. Others may be added later.
+The `init` process, the host userland and the console login (`getty`) come from
+EVE's own `pkg/init` (see [UBUNTU.md](UBUNTU.md)), which builds linuxkit's init
+programs on the Ubuntu base.
 
 #### Standard Live Packages
 
 * `init` packages
-  * `linuxkit/init` - for the `init` process
-  * `linuxkit/runc` - for `runc`
+  * `linuxkit/runc` - for `runc` (rebuilt as `pkg/runc` with the binary stripped)
   * `linuxkit/containerd` - for `containerd`
-  * `linuxkit/getty` - for `getty` to log in on console
+  * `linuxkit/memlogd` - for the in-memory log
 * `onboot` packages
   * `linuxkit/sysctl`
   * `linuxkit/modprobe` - customized for the appropriate modules
@@ -495,9 +497,8 @@ EVE uses a number of standard linuxkit packages. These are enumerated below. Oth
 #### Standard Installer Packages
 
 * `init` packages
-  * `linuxkit/init` - for the `init` process
-  * `linuxkit/runc` - for `runc`
-  * `linuxkit/getty` - for `getty` to log in on console
+  * `linuxkit/runc` - for `runc` (rebuilt as `pkg/runc` with the binary stripped)
+  * `linuxkit/memlogd` - for the in-memory log
 
 ### Custom Packages
 

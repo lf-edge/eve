@@ -12,7 +12,7 @@ ENV BUILD_PKGS="curl tar make patch g++ gcc libc6-dev linux-libc-dev git zlib1g-
 # forget to check on all supported architectures: e.g. arm64
 # binaries are typically larger than amd64 ones).
 # apt is here so that collect-info.sh can add tools on a device with network access.
-# musl: ctr, bind-mounted from the Alpine based linuxkit host, is a musl binary
+# musl: ctr, bind-mounted from the host, comes from linuxkit's Alpine built containerd image and is a musl binary
 ENV PKGS="openssl openssh-client openssh-server tini util-linux mount ca-certificates pciutils usbutils tcpdump strace iproute2 curl zlib1g procps tar gzip dmidecode iptables dhcpcd-base tio socat hexedit netcat-openbsd bash less vim-tiny apt musl lsof net-tools kmod xxd busybox-static bridge-utils"
 
 RUN eve-ubuntu-deploy.sh

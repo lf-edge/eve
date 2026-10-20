@@ -49,9 +49,9 @@ RUN tar -C /tmp/zfs-out -cf - . | tar -C /out --keep-directory-symlink -xf -
 # Register zfs in the dpkg status area, mandatory for it to be included in the SBOM.
 RUN register-sbom-pkg.sh -n zfs -v "${ZFS_VERSION}" -l CDDL-1.0 -u https://github.com/openzfs/zfs
 
-# The image is an init overlay of the EVE host rootfs, whose userland is
-# linuxkit's musl busybox: stage the zfs userland with the libraries it
-# needs, glibc included, as plain directories (no merged-/usr symlinks).
+# The image is an init overlay of the EVE host rootfs (pkg/init, the same
+# Ubuntu base): stage the zfs userland with the libraries it needs as plain
+# directories (no merged-/usr symlinks), the way the host rootfs is laid out.
 # hadolint ignore=SC2046
 RUN copy-with-libs.sh -o /stage $(cat /tmp/zfs-files) && \
     cp /tmp/zfs-files /stage/etc/zfs-files && \

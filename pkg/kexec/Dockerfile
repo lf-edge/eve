@@ -4,9 +4,8 @@ ENV BUILD_PKGS="patch curl make gcc perl uuid-dev libblkid-dev git mtools linux-
 
 RUN eve-ubuntu-deploy.sh
 
-# Build kexec-tools. The image is an init overlay of the EVE host rootfs,
-# whose userland is linuxkit's busybox, so kexec is linked statically and
-# the overlay carries no libraries.
+# Build kexec-tools. The image is an init overlay of the EVE host rootfs;
+# kexec is linked statically so the overlay carries no libraries.
 ENV KEXEC_VERSION=2.0.32
 WORKDIR /tmp/kexec/kexec-tools-${KEXEC_VERSION}
 ADD https://mirrors.edge.kernel.org/pub/linux/utils/kernel/kexec/kexec-tools-${KEXEC_VERSION}.tar.gz /tmp/kexec/kexec-tools.tgz

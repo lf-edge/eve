@@ -77,7 +77,7 @@ The image is a single stage that contains:
   builder), and the dpkg records of the
   packages they came from. It is how images that cannot carry a whole Ubuntu
   rootfs are assembled: the `init:` images that are overlaid onto the EVE host
-  rootfs (dom0-ztools, udev, kexec), whose userland is linuxkit's musl busybox,
+  rootfs (dom0-ztools, udev, kexec; the host rootfs itself is pkg/init),
   and the bpftrace runtime shipped by the debug container. It never recreates
   the merged-/usr symlinks of Ubuntu (`/bin -> usr/bin`, ...): a symlink in
   place of an existing directory does not extract onto the host rootfs. With
@@ -116,10 +116,38 @@ reads `PARTUUID`, `PARTLABEL` and friends from the udev database, so the udev
 package keeps eudev's block device rules that import the blkid properties
 (zboot and pillar depend on those columns); `sgdisk` lives in `/usr/sbin`;
 `sshd` needs `/run/sshd`; `bsdtar` wants a UTF-8 locale; and mtools needs the
-`IBM850` iconv module, which `/out` therefore keeps. The linuxkit host stays
-Alpine based, so a container that executes a bind-mounted host binary linked
-against musl (`ctr` in the debug and watchdog containers) installs Ubuntu's
+`IBM850` iconv module, which `/out` therefore keeps. `ctr` and `runc` still
+come from linuxkit's Alpine built containerd and runc images, so a container
+that executes the bind-mounted `ctr` (debug, watchdog) installs Ubuntu's
 `musl` package to get the `/lib/ld-musl-*.so.1` loader.
+
+The host rootfs (pkg/init) is `/out` as well, with busybox-static for PID 1
+(busybox init runs linuxkit's `/etc/inittab`), the hotplug helper and the
+applets the init scripts expect, plus linuxkit's init programs built from the
+commit `linuxkit/init:v1.3.0` came from. Since every container carries the
+same `/out`, the squashfs stores the host's copy once with theirs. Ubuntu's
+merged-/usr symlinks are replaced by real `/bin`, `/sbin`, `/lib` and
+`/lib64` directories (the kernel's modules, the firmware and the init overlays
+add real directories there), each mirroring its `/usr` counterpart entry by
+entry, so both spellings of a path work: the dynamic loader where the
+binaries name it, dpkg's alternatives (`/bin/nc.openbsd`), the Ubuntu tools
+under `/bin` whatever PATH's order (busybox's login puts `/bin` before
+`/usr/bin`). The busybox applets fill in where Ubuntu has no tool of the
+name. `/bin/sh` is busybox ash, not dash: the init scripts use ash features
+(`${var/pat/rep}`) that dash lacks, and the console shell keeps its history
+and line editing. Debian builds busybox as a *standalone shell*: ash runs
+its own applet for every command name it has (`ps`, `grep`, `sed`, `nc`,
+`run-parts`, `mount`, ...) whatever PATH says, so the host's scripts see
+busybox's tools exactly as they did on Alpine, and a program of the same
+name from an Ubuntu package is only reached by a path with a slash
+(`/usr/bin/nc`, which the eve CLI uses for the `-z` probe Debian's busybox
+nc lacks). pkg/init therefore ships linuxkit's Alpine-style `/etc/profile`
+in place of Ubuntu's, whose `run-parts --list` would hit busybox's
+run-parts and never source `/etc/profile.d`. `pgrep` and `pkill` come from
+procps, `agetty` from util-linux, and the `musl` package provides the loader
+of `ctr` and `runc`, which are still linuxkit's Alpine builds. Nothing else
+of linuxkit's getty image is needed: EVE's own `rungetty.sh` and `001-getty`
+live in dom0-ztools; `/etc/securetty` comes from the image manifests.
 
 The differences that bit during the port and are easy to reintroduce:
 

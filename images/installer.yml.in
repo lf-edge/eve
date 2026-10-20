@@ -3,11 +3,10 @@ kernel:
   # the unified_cgroup_hierarchy forces cgroupsv1, which is required until pillar is ready to support v2
   cmdline: "rootdelay=3 linuxkit.unified_cgroup_hierarchy=0"
 init:
-  - linuxkit/init:v1.3.0
+  - EVE_INIT_TAG # the host rootfs: init, the userland and the console login (agetty)
   - RUNC_TAG # linuxkit/runc:v1.3.0 (runc v3.3.0) with the binary stripped
-  # pillar's logic rely on existence of getty and /etc/init.d/001-getty inside
-  - linuxkit/getty:v1.3.0
   - linuxkit/memlogd:v1.3.0
+  # pillar's getty handling needs agetty (EVE_INIT_TAG) and /etc/init.d/001-getty with rungetty.sh (DOM0ZTOOLS_TAG)
   - GRUB_TAG
   - DOM0ZTOOLS_TAG
   - FW_TAG

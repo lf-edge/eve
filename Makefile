@@ -511,7 +511,7 @@ ifeq ($(ZARCH),amd64)
     endif
 endif
 
-PKGS_riscv64=pkg/ipxe pkg/mkconf pkg/mkimage-iso-efi pkg/grub     \
+PKGS_riscv64=pkg/ipxe pkg/mkconf pkg/mkimage-iso-efi pkg/grub pkg/init \
              pkg/mkimage-raw-efi pkg/uefi pkg/u-boot \
 	     pkg/debug pkg/dom0-ztools pkg/gpt-tools pkg/storage-init pkg/mkrootfs-squash \
 	     pkg/bsp-imx pkg/optee-os pkg/recovertpm pkg/bpftrace

@@ -3,7 +3,7 @@
 
 FROM lfedge/eve-ubuntu:17fea35e37517165b27e0e3f142d38750eb0a544 AS watchdog-build
 ENV BUILD_PKGS="build-essential file libtirpc-dev linux-libc-dev tar util-linux"
-# musl: ctr, bind-mounted from the Alpine based linuxkit host, is a musl binary
+# musl: ctr, bind-mounted from the host, comes from linuxkit's Alpine built containerd image and is a musl binary
 # util-linux-extra: wdctl, used by init.sh
 ENV PKGS="util-linux libtirpc3t64 musl util-linux-extra procps"
 RUN eve-ubuntu-deploy.sh

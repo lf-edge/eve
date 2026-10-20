@@ -1,0 +1,25 @@
+# The /etc/profile of the EVE host rootfs, in place of Ubuntu's.
+#
+# The console shell is busybox ash, and Debian builds busybox as a standalone
+# shell: for any command name that is one of its applets (run-parts, nc, ps,
+# grep, ...) it runs the applet, whatever PATH says; only a path with a slash
+# reaches another program. Ubuntu's profile lists /etc/profile.d with
+# "run-parts --list", which busybox's run-parts does not know, so nothing in
+# /etc/profile.d would ever be sourced. This is the profile linuxkit's init
+# image (Alpine) had, which the EVE profile.d scripts were written for.
+
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+export PAGER=less
+umask 022
+
+# host and working directory in the prompt: bash and busybox ash expand these
+PS1='\h:\w\$ '
+
+for script in /etc/profile.d/*.sh ; do
+	if [ -r "$script" ] ; then
+		# shellcheck source=/dev/null
+		. "$script"
+	fi
+done
+unset script

@@ -7,8 +7,8 @@ APP_CONFIG_DIR="/run/zedagent/AppInstanceConfig"
 APP_STATUS_DIR="/run/zedmanager/AppInstanceStatus"
 
 # Locate jq: use the binary shipped inside the pillar onboot container and run it
-# through the glibc loader of that same sysroot, so it works from the musl based
-# host as well as from the debug container without needing its libraries there.
+# through the glibc loader of that same sysroot, so it works from the host as
+# well as from the debug container without needing jq or its libraries there.
 _JQ_SYSROOT="/containers/onboot/004-pillar-onboot/lower"
 jq() {
     _jq_lib="${_JQ_SYSROOT}/usr/lib/$(uname -m)-linux-gnu"
@@ -116,7 +116,9 @@ http_debug_request() {
     URL="$1"
     running=0
 
-    if nc -z 127.1 6543; then
+    # by path: on the host, busybox ash runs its own nc applet for a bare nc,
+    # and Debian's busybox nc has no -z; /usr/bin/nc is OpenBSD's netcat
+    if /usr/bin/nc -z 127.1 6543; then
         running=1
     fi
 
@@ -124,10 +126,10 @@ http_debug_request() {
         kill -USR2 "$(cat /run/zedbox.pid)"
     fi
 
-    printf "POST %s HTTP/1.0\r\n\r\n" "$URL" | nc 127.1 6543
+    printf "POST %s HTTP/1.0\r\n\r\n" "$URL" | /usr/bin/nc 127.1 6543
 
     if [ "$running" = "0" ]; then
-        printf "POST /stop HTTP/1.0\r\n\r\n" | nc 127.1 6543
+        printf "POST /stop HTTP/1.0\r\n\r\n" | /usr/bin/nc 127.1 6543
     fi
 }
 
