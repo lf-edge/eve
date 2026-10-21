@@ -863,9 +863,9 @@ func WaitLonghornReady(ctx context.Context) error {
 
 	kc := kubeclient.Default()
 
-	dsFactory := informers.NewSharedInformerFactoryWithOptions(kc.Clientset,
+	dsFactory := informers.NewSharedInformerFactoryWithOptions(kc.WatchClientset,
 		longhornInformerResync, informers.WithNamespace(kubectlx.LonghornNamespace))
-	dynFactory := dynamicinformer.NewFilteredDynamicSharedInformerFactory(kc.Dynamic,
+	dynFactory := dynamicinformer.NewFilteredDynamicSharedInformerFactory(kc.WatchDynamic,
 		longhornInformerResync, kubectlx.LonghornNamespace, nil)
 
 	dsInformer := dsFactory.Apps().V1().DaemonSets().Informer()
