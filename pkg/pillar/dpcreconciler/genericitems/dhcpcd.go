@@ -212,6 +212,13 @@ func (c *DhcpcdConfigurator) Delete(ctx context.Context, item depgraph.Item) err
 		case types.DhcpTypeStatic, types.DhcpTypeClient:
 			startTime := time.Now()
 			var extras []string
+			// --release and --exit need to know if dhcpcd is running in v4/v6-only mode.
+			switch config.Type {
+			case types.NetworkTypeIpv4Only:
+				extras = append(extras, "--ipv4only")
+			case types.NetworkTypeIpv6Only:
+				extras = append(extras, "--ipv6only")
+			}
 			// Run release, wait for a bit, then exit and give up.
 			failed := false
 			for {
