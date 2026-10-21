@@ -4,8 +4,14 @@
 package networking_test
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
+	"math/big"
 	"strconv"
 	"strings"
 	"sync"
@@ -246,4 +252,36 @@ nohup /tmp/traffic.sh >/tmp/traffic.log 2>&1 </dev/null &
 		Password: "testpassword",
 	}, script, 20*time.Second, 0)
 	t.Expect(err).ToNot(HaveOccurred())
+}
+
+// generateUnrelatedCA returns a freshly generated self-signed RSA CA
+// (certificate and PKCS#1 private key, both PEM) that has no relation to any CA
+// the test network was built with. It is used to make an authenticator (RADIUS
+// server) trust only a CA that did not issue the device's certificate.
+func generateUnrelatedCA(commonName string) (certPEM, keyPEM string, err error) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return "", "", err
+	}
+	serial, err := rand.Int(rand.Reader, big.NewInt(1<<62))
+	if err != nil {
+		return "", "", err
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber:          serial,
+		Subject:               pkix.Name{CommonName: commonName, Organization: []string{"evetest"}},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(24 * time.Hour),
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		return "", "", err
+	}
+	certPEM = string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
+	keyPEM = string(pem.EncodeToMemory(&pem.Block{
+		Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}))
+	return certPEM, keyPEM, nil
 }
