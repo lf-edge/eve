@@ -7,7 +7,7 @@ ARG BUILD_PKGS_BASE="bash binutils-dev build-base bc bison flex openssl-dev util
 ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:cfcc44432b107927b6a12da994750fe37ca3fc3b
 
 # OPTEE-OS images
-FROM lfedge/eve-optee-os:a6b4a19a45b41a1e1f65c2675840382496c50dc7 AS optee-os
+FROM lfedge/eve-optee-os:4d6fe18d0170c5c495dcf457e72b5763534e747e AS optee-os
 
 # hadolint ignore=DL3006
 FROM ${EVE_ALPINE_IMAGE} as build-native
@@ -20,7 +20,7 @@ ARG BUILD_PKGS_BASE
 RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
 
 # hadolint ignore=DL3029
-FROM --platform=${BUILDPLATFORM} lfedge/eve-cross-compilers:2ad1b1119b61404045cc67709bf2081abbe42c62 AS cross-compilers
+FROM --platform=${BUILDPLATFORM} lfedge/eve-cross-compilers:e9e7463c7a8b861d0451ba0015ea0bdb9017c54f AS cross-compilers
 
 # will use several packages from target arch and copy them to sysroot
 # hadolint ignore=DL3006
