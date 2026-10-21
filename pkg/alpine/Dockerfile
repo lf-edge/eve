@@ -28,6 +28,11 @@ RUN apk add --no-cache abuild gcc sudo
 # hadolint ignore=DL3059
 RUN abuild-keygen -a -i -n
 
+# Alpine 3.16 no longer receives CA bundle updates. Rebuild the current
+# certificate data against this branch's libraries instead of upgrading Alpine.
+COPY ca-certificates /tmp/ca-backport/main/ca-certificates/
+RUN cd /tmp/ca-backport/main/ca-certificates && abuild -F -P /tmp/ca-packages -r
+
 # create all the mirrors
 WORKDIR /tmp/mirrors
 RUN [ -f /etc/apk/repositories.upstream ] || mv /etc/apk/repositories /etc/apk/repositories.upstream
