@@ -54,19 +54,6 @@ func (th *TestHarness) runScriptOnEVEOverSSH(ctx context.Context, devName string
 		stdout, stderr, stdoutWatchdogTimeout)
 }
 
-// sshTunnelConn wraps an SSH-tunneled net.Conn so that closing it also closes
-// the underlying SSH client connection that carries it.
-type sshTunnelConn struct {
-	net.Conn
-	client *ssh.Client
-}
-
-func (c *sshTunnelConn) Close() error {
-	err := c.Conn.Close()
-	_ = c.client.Close()
-	return err
-}
-
 // runScriptOverSSH executes a shell script on a remote host over SSH
 // using the Go crypto/ssh client library. It supports username/password and
 // client-certificate authentication methods (see AuthMethod).
@@ -204,7 +191,7 @@ func scpRemotePath(remotePath string, legacy bool) string {
 }
 
 // runSCP runs scp over SFTP (the OpenSSH 9.x default) and, if that fails,
-// retries once with the legacy SCP protocol (-O). EVE 14.5-stable ships an
+// retries once with the legacy SCP protocol (-O). EVE 13.4-stable ships an
 // sshd whose "Subsystem sftp" path does not exist, so SFTP never works there
 // ("scp: Connection closed"), while the legacy protocol only needs the scp
 // binary on the device.

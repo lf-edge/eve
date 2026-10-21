@@ -30,7 +30,7 @@ const faultWindow = 2 * time.Minute
 const convergeTimeout = 8 * time.Minute
 
 // deviceInfoTimeout bounds the wait for the periodic device info, which EVE
-// 14.5 publishes every 10 minutes +/- 20% and does not allow to configure.
+// 13.4 publishes every 10 minutes +/- 20% and does not allow to configure.
 const deviceInfoTimeout = 13 * time.Minute
 
 // TestInfoRetriedAfterLostController verifies that a state change which happens
@@ -149,7 +149,7 @@ func TestInfoRetriedAfterLostController(test *testing.T) {
 // test deliberately does not depend on it. It uses the device information
 // instead: that is the one report EVE re-sends on a timer even when nothing
 // changed (zedagent's configTimerTask), so its arrival after the rejections is
-// a reliable signal that the queue is still delivering. EVE 14.5 does not
+// a reliable signal that the queue is still delivering. EVE 13.4 does not
 // allow lowering that interval, which is fixed at 10 minutes +/- 20%, so the
 // wait is correspondingly long.
 //

@@ -46,11 +46,11 @@ import (
 //  5. encrypt-cert-rotated-2: decryption now needs a keypair a rotation itself
 //     installed, so a controller that mixed up which keypair it retired fails here
 //     and not in phase 3. A third application would only repeat phase 4.
-//  6. device-rebooted -> apps-running-after-reboot: the ControllerCert publication
-//     is ephemeral (/run) and the reboot wiped it, so the ECDH certificate must be
-//     there again before anything decrypts. Not a checkpoint check -- zedagent
-//     refetches /certs unconditionally at startup. The marker reads then prove the
-//     recreated containers decrypted their blocks again.
+//  6. device-rebooted -> apps-running-after-reboot: the ECDH certificate is still
+//     published (EVE 13.4 persists the ControllerCert publication, so this does
+//     not prove a refetch). Not a checkpoint check -- zedagent refetches /certs
+//     unconditionally at startup. The marker reads then prove the recreated
+//     containers decrypted their blocks again.
 //  7. Delete both applications and wait until the device reports them gone.
 //
 // Test params: HYPERVISOR (defaults to KVM).

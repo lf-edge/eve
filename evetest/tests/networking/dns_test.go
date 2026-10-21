@@ -38,15 +38,18 @@ import (
 //   - ethernet3 (eth3, mgmt, cost=0): DHCP only; the DHCP-provided server (badDns3)
 //     has no static entries, so it cannot resolve the controller.
 //     Effective DNS: [badDns3].
-//   - ethernet2 (eth2, mgmt+app, cost=1): DHCP; static server staticDns2 appended.
-//     Effective DNS: [dhcpDns2, staticDns2].
+//   - ethernet2 (eth2, mgmt+app, cost=1): DHCP; static server staticDns2
+//     configured, but replaced by the DHCP-provided one in EVE 13.4.
+//     Effective DNS: [dhcpDns2].
 //     By that point ethernet0 and ethernet1 have already contributed their DNS
 //     servers (5 entries combined, exceeding the historical 3-entry cap), so a
 //     successful connectivity check on ethernet2 confirms the cap regression is gone.
-//   - ethernet0 (eth0, mgmt, cost=2): DHCP; static server staticDns0 appended.
-//     Effective DNS: [dhcpDns0, staticDns0].
-//   - ethernet1 (eth1, mgmt+app, cost=2): DHCP; static server staticDns1 appended.
-//     Effective DNS: [dhcpDns1a, dhcpDns1b, staticDns1].
+//   - ethernet0 (eth0, mgmt, cost=2): DHCP; static server staticDns0
+//     configured, but replaced by the DHCP-provided one in EVE 13.4.
+//     Effective DNS: [dhcpDns0].
+//   - ethernet1 (eth1, mgmt+app, cost=2): DHCP; static server staticDns1
+//     configured, but replaced by the DHCP-provided ones in EVE 13.4.
+//     Effective DNS: [dhcpDns1a, dhcpDns1b].
 //
 // Phases
 // ------
@@ -262,16 +265,19 @@ func TestDNSFunctionality(test *testing.T) {
 			}
 
 			// Each port's DNS set must match exactly (order-independent).
+			// EVE 13.4 replaces the statically configured DNS servers with
+			// the ones reported by dhcpcd (newer EVE appends them), so the
+			// static servers are not expected here.
 			if !generics.EqualSets(eth0.GetDns().GetDNSservers(),
-				[]string{dhcpDNS0IP, staticDNS0IP}) {
+				[]string{dhcpDNS0IP}) {
 				return false
 			}
 			if !generics.EqualSets(eth1.GetDns().GetDNSservers(),
-				[]string{dhcpDNS1aIP, dhcpDNS1bIP, staticDNS1IP}) {
+				[]string{dhcpDNS1aIP, dhcpDNS1bIP}) {
 				return false
 			}
 			if !generics.EqualSets(eth2.GetDns().GetDNSservers(),
-				[]string{dhcpDNS2IP, staticDNS2IP}) {
+				[]string{dhcpDNS2IP}) {
 				return false
 			}
 			if !generics.EqualSets(eth3.GetDns().GetDNSservers(),

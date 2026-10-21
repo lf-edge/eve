@@ -40,9 +40,9 @@ import (
 //     A stale cached serverSigningCertHash shows up here, not in phase 3.
 //  5. app-2-running: a cipher block minted after both rotations. Reaching RUNNING
 //     proves nothing about decryption, see assertCipherDecryptionSucceeded.
-//  6. device-rebooted -> apps-running-after-reboot: the ControllerCert publication
-//     is ephemeral (/run) and the reboot wiped it, so both certificates must be
-//     there again. Not a checkpoint check -- zedagent refetches /certs
+//  6. device-rebooted -> apps-running-after-reboot: both certificates are still
+//     published (EVE 13.4 persists the ControllerCert publication, so this does
+//     not prove a refetch). Not a checkpoint check -- zedagent refetches /certs
 //     unconditionally at startup, so a corrupt checkpoint passes too. The marker
 //     reads prove the recreated containers decrypted their blocks again.
 //  7. Delete both applications and wait until the device reports them gone.
@@ -109,7 +109,7 @@ func TestControllerSigningCertChange(test *testing.T) {
 		"signing-cert-app2", 2223, secondAppMarker)
 	evetest.Checkpoint("app-2-running")
 
-	// Phase 6: the device must repopulate its ephemeral controller certificates.
+	// Phase 6: the device must still hold both controller certificates.
 	log.Infof("Rebooting the device...")
 	device.SoftReboot(true)
 	evetest.Checkpoint("device-rebooted")

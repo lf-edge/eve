@@ -3116,8 +3116,9 @@ func ReadAllPublications[T any](d *EdgeDevice, fromAgent string,
 // The device side is the only place this can be observed: /certs is an
 // unauthenticated pull carrying no device UUID, so the controller does not even
 // record the request, and the device never acknowledges which certificates it
-// accepted. The ControllerCert publication is ephemeral (/run), which makes the
-// observation inherently fresh across a reboot.
+// accepted. EVE 13.4 persists the ControllerCert publication under
+// /persist/status, so unlike on newer builds (where it is in memory, under /run)
+// the observation is not fresh across a reboot.
 //
 // Certificates are matched on the PEM rather than on the hash, because the hash
 // is truncated on its way to the device (Adam serves only the first 16 bytes,
@@ -3135,7 +3136,7 @@ func (d *EdgeDevice) WaitUntilHasControllerCert(
 	deadline := time.Now().Add(timeout)
 	for {
 		certs, readErr := ReadAllPublications[pillartypes.ControllerCert](
-			d, "zedagent", false)
+			d, "zedagent", true)
 		if readErr != nil {
 			// Warn, not Debug: a read path broken for an unrelated reason would
 			// otherwise burn the whole timeout without a trace.
@@ -3154,13 +3155,12 @@ func (d *EdgeDevice) WaitUntilHasControllerCert(
 				ctrlCert.Type, hex.EncodeToString(ctrlCert.CertHash)))
 		}
 		if time.Now().After(deadline) {
-			// Naming the path matters: the topic is ephemeral only on newer
-			// builds, so on an older build the certificates are published under
-			// /persist/status and an empty list here does not mean the device
+			// Naming the path matters: the topic is ephemeral (/run) on newer
+			// builds, so on those an empty list here does not mean the device
 			// holds none.
 			d.th.t.Fatalf("Device %q did not publish the expected controller "+
 				"certificate of type %v within %v; certificates found under "+
-				"/run/zedagent/ControllerCert: [%s]; "+
+				"/persist/status/zedagent/ControllerCert: [%s]; "+
 				"last read error: %v",
 				d.devName, certType, timeout, strings.Join(published, ", "), readErr)
 		}

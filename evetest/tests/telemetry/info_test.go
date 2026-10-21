@@ -114,7 +114,7 @@ func TestDeviceInfo(test *testing.T) {
 
 	// Phase 2: EVE reports the network configuration it applied.
 	// The info messages sent right after the config is applied can predate
-	// volumemgr's first DiskMetric, and EVE 14.5 publishes the next device info
+	// volumemgr's first DiskMetric, and EVE 13.4 publishes the next device info
 	// only every 10 minutes +/- 20% (not configurable).
 	timeout := 13 * time.Minute
 	var devInfo *eveinfo.ZInfoDevice

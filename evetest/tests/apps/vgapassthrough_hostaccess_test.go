@@ -6,7 +6,6 @@ package apps_test
 import (
 	"fmt"
 	"net"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -337,30 +336,21 @@ func TestVGAPassthroughNoHostAccess(test *testing.T) {
 		quietWindow)
 	time.Sleep(quietWindow)
 
-	// Phase 5: a static DNS server appended to eth0's DHCP-provided one is
+	// Phase 5: a static DNS server added next to eth0's DHCP-provided one is
 	// a new DPC for nim to test and apply, and every resulting
-	// DeviceNetworkStatus update runs domainmgr's reconciliation.
+	// DeviceNetworkStatus update runs domainmgr's reconciliation. EVE 13.4 does
+	// not report the added server (it replaces the static servers with the
+	// ones learned from dhcpcd), so only the applied configuration is awaited.
 	tracer.mark(phaseDNSChange)
 	devConfig.UpdateNetwork(dhcpNet, evetest.DHCPNetworkConfig{
 		NetworkType: evecommon.NetworkType_V4Only,
 		DNSServers:  []net.IP{evetest.IPAddress(altDNSServer)},
 	})
 	device.ApplyConfig(devConfig, true, true)
-	t.Eventually(devUpdates, timeout).Should(Receive(matchers.SatisfyPredicate(
-		"management port eth0 reports the added DNS server",
-		func(dinfo *eveinfo.ZInfoDevice) bool {
-			return slices.Contains(dnsServersOfPort(dinfo, "ethernet0"), altDNSServer)
-		})))
 	devConfig.UpdateNetwork(dhcpNet, evetest.DHCPNetworkConfig{
 		NetworkType: evecommon.NetworkType_V4Only,
 	})
 	device.ApplyConfig(devConfig, true, true)
-	t.Eventually(devUpdates, timeout).Should(Receive(matchers.SatisfyPredicate(
-		"management port eth0 no longer reports the added DNS server",
-		func(dinfo *eveinfo.ZInfoDevice) bool {
-			servers := dnsServersOfPort(dinfo, "ethernet0")
-			return len(servers) > 0 && !slices.Contains(servers, altDNSServer)
-		})))
 
 	// Phase 6: each change of debug.enable.usb makes domainmgr revisit the
 	// pciback placement of every adapter. Switching off first and then on

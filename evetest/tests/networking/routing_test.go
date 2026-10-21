@@ -1335,7 +1335,10 @@ func TestApplicationGateway(test *testing.T) {
 
 	t.Expect(c1Routes).To(ContainSubstring("10.50.0.0/24"))
 	t.Expect(c1Routes).To(ContainSubstring("172.28.1.0/24"))
-	t.Expect(c1Routes).To(ContainSubstring("10.21.21.0/24 via 172.28.1.2"))
+	// EVE 13.4 hands out DHCP leases with an all-ones netmask, which makes the
+	// NI bridge the next hop of the propagated route (172.28.1.1) instead of
+	// the app gateway itself (172.28.1.2), as newer EVE does.
+	t.Expect(c1Routes).To(MatchRegexp(`10\.21\.21\.0/24 via 172\.28\.1\.[12]\b`))
 
 	// app-client1: curl http-server-1 (direct via ni-eth0 → eth0).
 	log.Infof("app-client1: curl http-server-1.test (direct via ni-eth0)...")
@@ -1355,7 +1358,10 @@ func TestApplicationGateway(test *testing.T) {
 	out, _, err = device.RunShellScriptInsideApp(appC2UUID, appAuth,
 		"ip route", sshTimeout, 0)
 	t.Expect(err).ToNot(HaveOccurred())
-	t.Expect(out).To(ContainSubstring("default via 172.28.2.2"))
+	// With the all-ones netmask of EVE 13.4, the propagated default route
+	// points at the NI bridge (172.28.2.1), which routes to app-gw, instead
+	// of at app-gw itself (172.28.2.2).
+	t.Expect(out).To(MatchRegexp(`default via 172\.28\.2\.[12]\b`))
 	t.Expect(out).To(ContainSubstring("172.28.2.0/24"))
 
 	// app-client2: curl http-server-2 (via airgap2 default route → app-gw → ni-eth1).

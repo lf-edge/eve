@@ -140,9 +140,8 @@ func assertUserDataDecrypted(t *WithT, device *evetest.EdgeDevice,
 	}, appMarkerReadTimeout, pollingInterval).Should(Succeed())
 }
 
-// assertDeviceHasControllerCert reads EVE's ephemeral (/run) ControllerCert
-// publication and so requires a build where the topic is not persisted; on
-// older builds it fails as if the device held no certificate.
+// assertDeviceHasControllerCert reads EVE's persistent (/persist/status)
+// ControllerCert publication, which is where EVE 13.4 keeps it.
 func assertDeviceHasControllerCert(t *WithT, device *evetest.EdgeDevice,
 	certType evecerts.ZCertType, expectedCertPEM []byte) {
 

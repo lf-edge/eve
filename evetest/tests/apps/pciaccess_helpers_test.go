@@ -221,27 +221,6 @@ func lookupAssignableAdapter(dinfo *eveinfo.ZInfoDevice, name string) *eveinfo.Z
 	return nil
 }
 
-// dnsServersOfPort returns the DNS servers the device info reports for the
-// named port of the current port configuration, nil when there is no such
-// port yet.
-func dnsServersOfPort(dinfo *eveinfo.ZInfoDevice, portName string) []string {
-	sysAdapter := dinfo.GetSystemAdapter()
-	if sysAdapter == nil {
-		return nil
-	}
-	statusList := sysAdapter.GetStatus()
-	current := int(sysAdapter.GetCurrentIndex())
-	if current >= len(statusList) {
-		return nil
-	}
-	for _, port := range statusList[current].GetPorts() {
-		if port.GetName() == portName {
-			return port.GetDns().GetDNSservers()
-		}
-	}
-	return nil
-}
-
 // readAssignableAdapter returns pillar's I/O bundle for the given physical
 // label, read from domainmgr's AssignableAdapters publication. It is the only
 // place the PCI address of an adapter is available, as the device info API
