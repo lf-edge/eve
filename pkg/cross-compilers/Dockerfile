@@ -14,15 +14,13 @@ USER builder
 
 RUN git config --global user.email 'builder@projecteve.dev' && git config --global user.name 'Project EVE' && \
     abuild-keygen -a -n -i && \
-    mkdir /home/builder/packages
+    mkdir -p /home/builder/packages "${APORTS}"
 
-ADD --chown=builder:abuild https://gitlab.alpinelinux.org/alpine/aports/-/archive/"v${ALPINE_VERSION}"/aports-"v${ALPINE_VERSION}".tar.gz "${APORTS}"/aports.tar.gz
+ADD --chown=builder:abuild https://github.com/alpinelinux/aports.git#v${ALPINE_VERSION} "${APORTS}"
 
 COPY --chown=builder:abuild patches/aports /home/builder/patches
 
 WORKDIR $APORTS
-
-RUN tar -xzvf aports.tar.gz --strip-components=1 && rm -rf aports.tar.gz
 
 # Versions must be aligned with content of APKBUILD
 ENV BINUTILS_VERSION 2.38
