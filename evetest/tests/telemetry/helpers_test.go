@@ -4,7 +4,6 @@
 package telemetry_test
 
 import (
-	"crypto/sha256"
 	"fmt"
 	"time"
 
@@ -14,7 +13,6 @@ import (
 	"github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve/evetest"
 	"github.com/lf-edge/eve/evetest/netmodels"
-	pillartypes "github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 const (
@@ -78,22 +76,6 @@ func singleMgmtPortConfig() *evetest.EdgeDeviceConfig {
 		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
 	})
 	return devConfig
-}
-
-// replaceConfigProperties overwrites the device-wide configuration properties
-// of devConfig, so that the same configuration object can be re-applied with
-// different properties without rebuilding (and thus renumbering) its networks
-// and adapters. SetConfigProperties appends, hence the reset; the framework
-// adds its own defaults for whatever the test leaves unset on every apply.
-func replaceConfigProperties(devConfig *evetest.EdgeDeviceConfig,
-	cfgProps *pillartypes.ConfigItemValueMap) {
-	devConfig.ConfigItems = nil
-	devConfig.SetConfigProperties(cfgProps)
-}
-
-// sha256Hex returns the hex-encoded SHA-256 digest of b.
-func sha256Hex(b []byte) string {
-	return fmt.Sprintf("%x", sha256.Sum256(b))
 }
 
 // newLogProbeMarker returns a marker string unique to a single probe.

@@ -10,8 +10,7 @@ import (
 )
 
 // TestTelemetrySuite drives the channels through which EVE reports itself to the
-// controller - info messages, metric messages and logs - and the configuration
-// of the on-device pipeline that produces the logs. That pipeline is newlogd,
+// controller - info messages, metric messages and logs. The log pipeline is newlogd,
 // which collects events from memlogd and the kernel and uploads them to the
 // controller in gzip batches.
 //
@@ -25,12 +24,9 @@ import (
 // but the hypervisor is a parameter regardless, even though nothing here is
 // hypervisor-specific.
 //
-// The subtests are grouped by subject - what EVE reports, then how the log
-// pipeline is configured - and the two that reboot the device go last so that
-// the others do not pay for a reboot. Nothing beyond that is load-bearing: the
-// framework resets the device configuration between subtests, and each subtest
-// establishes the state it needs before it asserts anything, so the order can be
-// changed freely.
+// The order of the subtests is not load-bearing: the framework resets the device
+// configuration between subtests, and each subtest establishes the state it
+// needs before it asserts anything, so the order can be changed freely.
 //
 // Subtests
 // --------
@@ -40,8 +36,6 @@ import (
 //     counters plus memory, CPU and controller-connectivity counters.
 //   - TestDeviceLogs -- logs produced by EVE services and by the kernel reach
 //     the controller.
-//   - TestRemoteLogLevelNone -- remote log levels set to "none" stop log upload
-//     without stopping the device or its local log collection.
 func TestTelemetrySuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
@@ -61,9 +55,6 @@ func TestTelemetrySuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestDeviceLogs,
-		},
-		evetest.TestCase{
-			Test: TestRemoteLogLevelNone,
 		},
 	)
 }

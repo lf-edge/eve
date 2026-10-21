@@ -1364,7 +1364,9 @@ func (storage SFTPStorage) toProto(th *TestHarness, log *logrus.Entry, devName s
 	if storage.ServerPort != 0 {
 		port = strconv.Itoa(int(storage.ServerPort))
 	}
-	dsConfig.Fqdn = "sftp://" + net.JoinHostPort(storage.ServerAddress, port)
+	// EVE 13.4 ships an eve-libs SFTP client that expects a bare "host:port"
+	// and would try to resolve the scheme of "sftp://host:port" as a hostname.
+	dsConfig.Fqdn = net.JoinHostPort(storage.ServerAddress, port)
 	if th.isDeviceOnboarded(devName) {
 		var err error
 		cipherData, err := th.encryptCipherData(devName,
@@ -2459,7 +2461,7 @@ func (dc *EdgeDeviceConfig) UpdateApplication(
 			equalAdapter := func(a1, a2 *eveconfig.Adapter) bool {
 				return proto.Equal(a1, a2)
 			}
-			// On EVE 14.5 a change of the adapters (I/O or network) of a
+			// On EVE 13.4 a change of the adapters (I/O or network) of a
 			// deployed app is rejected by zedmanager unless the controller
 			// also requests a purge; staging such a change until the next
 			// restart is not supported.

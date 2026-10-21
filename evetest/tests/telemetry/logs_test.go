@@ -38,12 +38,11 @@ import (
 // Device configuration
 // --------------------
 //   - SystemAdapter for eth0 (DHCP, mgmt+apps), logical label "ethernet0".
-//   - debug.kernel.loglevel and debug.kernel.remote.loglevel set to "info".
-//     Both already default to "info" (types.SyslogKernelDefaultLogLevel) and
-//     a userspace write to /dev/kmsg lands at that priority, but the kernel
-//     path is gated by its own knobs -- separate from the debug.default.*
-//     ones the framework sets -- so the test states its dependency instead of
-//     inheriting it.
+//   - debug.kernel.loglevel set to "info". It already defaults to "info"
+//     (types.SyslogKernelDefaultLogLevel) and a userspace write to /dev/kmsg
+//     lands at that priority, but the kernel path is gated by its own knob --
+//     separate from the debug.default.* ones the framework sets -- so the test
+//     states its dependency instead of inheriting it.
 //   - The framework defaults already enable newlog.allow.fastupload.
 //
 // Phases / assertions
@@ -88,11 +87,10 @@ func TestDeviceLogs(test *testing.T) {
 	evetest.Checkpoint("setup-done")
 
 	// Build and apply the device configuration. The kernel log path has its
-	// own level knobs, independent of the framework-wide debug.default.*.
+	// own level knob, independent of the framework-wide debug.default.*.
 	devConfig := singleMgmtPortConfig()
 	cfgProps := pillartypes.NewConfigItemValueMap()
 	cfgProps.SetGlobalValueString(pillartypes.KernelLogLevel, "info")
-	cfgProps.SetGlobalValueString(pillartypes.KernelRemoteLogLevel, "info")
 	devConfig.SetConfigProperties(cfgProps)
 	device.ApplyConfig(devConfig, true, true)
 	evetest.Checkpoint("config-applied")

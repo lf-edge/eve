@@ -12,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	eveflowlog "github.com/lf-edge/eve-api/go/flowlog"
@@ -45,21 +44,6 @@ type metricMsgGrpcIterator[T any] struct {
 	stream grpc.ServerStreamingServer[T]
 	// mapper extracts a response from a metrics message; returns nil to skip.
 	mapper func(*evemetrics.ZMetricMsg) (*T, error)
-}
-
-// syncStream wraps a gRPC server stream with a mutex so that Send can be
-// called concurrently from multiple goroutines. It embeds the underlying
-// stream to satisfy the full grpc.ServerStreamingServer interface.
-type syncStream[T any] struct {
-	grpc.ServerStream
-	stream grpc.ServerStreamingServer[T]
-	mu     sync.Mutex
-}
-
-func (s *syncStream[T]) Send(msg *T) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.stream.Send(msg)
 }
 
 func (w *metricMsgGrpcIterator[T]) Iterate(msg *evemetrics.ZMetricMsg) (bool, error) {
@@ -519,36 +503,6 @@ func (th *TestHarness) GetNIMetrics(
 	}
 	return th.adamClient.IterateDeviceMetrics(
 		stream.Context(), devUUID, iterator, req.GetFollow())
-}
-
-// getOnboardedDevices returns a map of device name to UUID for all onboarded devices.
-func (th *TestHarness) getOnboardedDevices() map[string]uuid.UUID {
-	th.devicesM.Lock()
-	defer th.devicesM.Unlock()
-	devices := make(map[string]uuid.UUID)
-	for devName, devState := range th.devices {
-		if devState.ID != uuid.Nil {
-			devices[devName] = devState.ID
-		}
-	}
-	return devices
-}
-
-// waitForParallelStreams waits for all goroutines to finish and returns the
-// first non-nil, non-context-canceled error. If any goroutine fails, the
-// context is canceled to stop the others.
-func waitForParallelStreams(ctx context.Context, cancel context.CancelFunc,
-	errCh <-chan error, count int) error {
-	var firstErr error
-	for i := 0; i < count; i++ {
-		if err := <-errCh; err != nil && firstErr == nil {
-			if ctx.Err() == nil {
-				firstErr = err
-				cancel()
-			}
-		}
-	}
-	return firstErr
 }
 
 // resolveAppUUID parses appNameOrUUID as a UUID.

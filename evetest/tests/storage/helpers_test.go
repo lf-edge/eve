@@ -28,7 +28,14 @@ func appHasError(info *eveinfo.ZInfoApp) (string, bool) {
 // volumeHasError reports whether info carries a VolumeErr, for use as a
 // StopIf fast-fail condition on Eventually assertions waiting on volume state.
 func volumeHasError(info *eveinfo.ZInfoVolume) (string, bool) {
-	if desc := info.GetVolumeErr().GetDescription(); desc != "" {
+	volumeErr := info.GetVolumeErr()
+	// EVE 13.4 can report a transient NOTICE-severity error while the volume's
+	// content tree is created (the datastore config is not yet visible to the
+	// downloader); the download is retried automatically ("Retry download").
+	if volumeErr.GetSeverity() == eveinfo.Severity_SEVERITY_NOTICE {
+		return "", false
+	}
+	if desc := volumeErr.GetDescription(); desc != "" {
 		return "Volume reports an error: " + desc, true
 	}
 	return "", false

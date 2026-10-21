@@ -201,23 +201,6 @@ func getPortIPv4Addr(portLL string, dinfo *eveinfo.ZInfoDevice) net.IP {
 	return nil
 }
 
-// getPortIPv6GlobalAddr returns the first global-unicast IPv6 address assigned
-// to the port with the given logical label from the currently active
-// DevicePortStatus entry, or nil if the port is not found or has no such address.
-func getPortIPv6GlobalAddr(portLL string, dinfo *eveinfo.ZInfoDevice) net.IP {
-	port := getDevicePort(portLL, dinfo)
-	if port == nil {
-		return nil
-	}
-	for _, ipStr := range port.GetIPAddrs() {
-		ip := net.ParseIP(ipStr)
-		if ip != nil && ip.To4() == nil && ip.IsGlobalUnicast() {
-			return ip
-		}
-	}
-	return nil
-}
-
 // getCurrentDPC returns the active DevicePortStatus from dinfo, or nil if the
 // system adapter info is absent or the current index is out of range.
 func getCurrentDPC(dinfo *eveinfo.ZInfoDevice) *eveinfo.DevicePortStatus {

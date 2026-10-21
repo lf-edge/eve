@@ -179,10 +179,6 @@ func TestBootstrapSuite(test *testing.T) {
 //     (currently stub scenarios).
 //   - TestMgmtTrafficRoutedViaApp -- EVE's own device-management traffic
 //     routed through an app-based NAT gateway, surviving a full reboot.
-//   - TestDeviceIPv6Connectivity -- IPv6-only device side (stub scenario).
-//   - TestDeviceNTPConfig -- per-port NTP server aggregation (DHCP + static,
-//     exclusive-override) and chronyd synchronization against real public
-//     NTP servers.
 //   - TestVLANSubinterfaces -- VLAN sub-interfaces (stub scenarios).
 //   - TestCellularConnectivity / TestWifiConnectivity -- wireless;
 //     intentionally unimplemented (require PCI/USB passthrough).
@@ -215,12 +211,6 @@ func TestDeviceConnectivitySuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestMgmtTrafficRoutedViaApp,
-		},
-		evetest.TestCase{
-			Test: TestDeviceIPv6Connectivity,
-		},
-		evetest.TestCase{
-			Test: TestDeviceNTPConfig,
 		},
 		evetest.TestCase{
 			Test: TestVLANSubinterfaces,
@@ -258,10 +248,6 @@ func TestDeviceConnectivitySuite(test *testing.T) {
 //     yet wired up in evetest).
 //   - TestLocalNetInstanceACLs / TestSwitchNetInstanceACLs -- ACL
 //     filtering on Local / Switch NIs (variants: ENABLE_FLOWLOG=false / =true).
-//   - TestApplicationIPv6Connectivity -- app on a Switch NI in an
-//     IPv6-only segment (stub scenario).
-//   - TestApplicationNTPConfig -- per-NI DHCP-advertised NTP server set
-//     (port union NI) reaching the application's published VIF status.
 //   - TestPropagatedRoutes / TestLocalNIWithMultiplePorts /
 //     TestApplicationGateway -- IP-routing-related scenarios mirroring
 //     the eden app-routing examples (stub scenarios).
@@ -342,12 +328,6 @@ func TestApplicationConnectivitySuite(test *testing.T) {
 					},
 				},
 			},
-		},
-		evetest.TestCase{
-			Test: TestApplicationIPv6Connectivity,
-		},
-		evetest.TestCase{
-			Test: TestApplicationNTPConfig,
 		},
 		evetest.TestCase{
 			Test: TestPropagatedRoutes,

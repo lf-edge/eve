@@ -47,7 +47,7 @@ const (
 //     of the checked-out EVE repo)
 //   - HYPERVISOR: target hypervisor for the upgraded EVE (default: kvm)
 //   - INITIAL_EVE_VERSION: initial EVE version the device starts on (required,
-//     e.g. "14.5.0-lts")
+//     e.g. "13.4.3-lts")
 //   - INITIAL_EVE_REPO: container image repository the initial EVE version is
 //     pulled from (default: EVETEST_EVE_REPO's own default)
 //   - INITIAL_HYPERVISOR: initial hypervisor for the starting device (default: kvm)
@@ -74,10 +74,10 @@ func TestEVEUpgrade(test *testing.T) {
 		evetest.DiskSizeMiBParameter(),
 		evetest.TestParameterDefinition{
 			Key:          initialEVEVersionParamKey,
-			DefaultValue: "14.5.0-lts",
+			DefaultValue: "13.4.3-lts",
 			Description: evetest.TestParameterDescription{
 				Summary: "EVE version to upgrade from (the pre-upgrade initial version)",
-				Default: "14.5.0-lts",
+				Default: "13.4.3-lts",
 			},
 		},
 		evetest.TestParameterDefinition{
