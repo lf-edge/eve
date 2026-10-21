@@ -19,15 +19,13 @@ USER builder
 RUN git config --global user.email 'builder@projecteve.dev'
 RUN git config --global user.name 'Project EVE'
 RUN abuild-keygen -a -n -i
-RUN mkdir /home/builder/packages
+RUN mkdir -p /home/builder/packages "${APORTS}"
 
-ADD --chown=builder:abuild https://gitlab.alpinelinux.org/alpine/aports/-/archive/"v${ALPINE_VERSION}"/aports-"v${ALPINE_VERSION}".tar.gz "${APORTS}"/aports.tar.gz
+ADD --chown=builder:abuild https://github.com/alpinelinux/aports.git#v${ALPINE_VERSION} "${APORTS}"
 
 COPY --chown=builder:abuild patches/aports /home/builder/patches
 
 WORKDIR $APORTS
-
-RUN tar -xzvf aports.tar.gz --strip-components=1 && rm -rf aports.tar.gz
 
 ADD --chown=builder:abuild --unpack=false https://distfiles.alpinelinux.org/distfiles/v3.22/abuild-3.15.0.tar.gz /var/cache/distfiles/abuild-3.15.0.tar.gz
 ADD --chown=builder:abuild --unpack=false https://distfiles.alpinelinux.org/distfiles/v3.22/acl-2.3.2.tar.gz /var/cache/distfiles/acl-2.3.2.tar.gz
