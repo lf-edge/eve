@@ -37,6 +37,15 @@ if [ -n "$PKGS" ]; then
      apk fetch -X "$ALPINE_REPO" --no-cache -o "$CACHE" $PKGS
 fi
 
+# Replace cached CA packages, including copies fetched as dependencies.
+# Refreshing only the cache image leaves the obsolete 3.16 packages in place.
+for p in ca-certificates ca-certificates-bundle; do
+  if ls "$CACHE/${p}"-[0-9]*.apk >/dev/null 2>&1; then
+    rm -f "$CACHE/${p}"-[0-9]*.apk
+    cp /tmp/ca-packages/main/"$(apk --print-arch)"/"${p}"-[0-9]*.apk "$CACHE/"
+  fi
+done
+
 # index the cache
 rm -f "$CACHE"/APKINDEX*
 apk index --rewrite-arch "$(apk --print-arch)" -o "$CACHE/APKINDEX.unsigned.tar.gz" "$CACHE"/*.apk
