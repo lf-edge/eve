@@ -234,10 +234,9 @@ func TestDescribeNodeReady(t *testing.T) {
 // TestGetNodeBoundedStopsWaitingOnAHungAPI is the bug in one test. A
 // poll loop whose single call can block for the whole enclosing budget
 // is not a poll loop: it polls once, logs nothing, and the silence reads
-// as "not Ready" when the truth is "no answer". client-go sets no
-// client-side deadline and rest.Config.Timeout is deliberately unset
-// (it would also cut the informers' watches), so the bound has to come
-// from a per-call context.
+// as "not Ready" when the truth is "no answer". The clientset here has
+// no rest.Config.Timeout, so the bound has to come from the per-call
+// context.
 func TestGetNodeBoundedStopsWaitingOnAHungAPI(t *testing.T) {
 	// A server that accepts the request and never replies, which is how
 	// the real apiserver behaved after a cluster join.
