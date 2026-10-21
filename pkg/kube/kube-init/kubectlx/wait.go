@@ -24,6 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/tools/cache"
 	watchtools "k8s.io/client-go/tools/watch"
 	"k8s.io/client-go/util/jsonpath"
@@ -131,20 +132,21 @@ func listResource(
 	return nil, fmt.Errorf("waitOn: unsupported resource %s.%s/%s", resource, group, version)
 }
 
-// watchResource mirrors listResource for the Watch side.
+// watchResource mirrors listResource for the Watch side. It uses the
+// watch clients, because requestTimeout would cut the watch stream.
 func watchResource(
 	ctx context.Context, kc *kubeclient.Client,
 	group, version, resource, namespace string, o metav1.ListOptions,
 ) (watch.Interface, error) {
 	switch {
 	case group == "apps" && version == "v1" && resource == "deployments":
-		return kc.Clientset.AppsV1().Deployments(namespace).Watch(ctx, o)
+		return kc.WatchClientset.AppsV1().Deployments(namespace).Watch(ctx, o)
 	case group == "apps" && version == "v1" && resource == "daemonsets":
-		return kc.Clientset.AppsV1().DaemonSets(namespace).Watch(ctx, o)
+		return kc.WatchClientset.AppsV1().DaemonSets(namespace).Watch(ctx, o)
 	case group == "batch" && version == "v1" && resource == "jobs":
-		return kc.Clientset.BatchV1().Jobs(namespace).Watch(ctx, o)
+		return kc.WatchClientset.BatchV1().Jobs(namespace).Watch(ctx, o)
 	case group == "apiextensions.k8s.io" && version == "v1" && resource == "customresourcedefinitions":
-		return kc.APIExtClientset.ApiextensionsV1().CustomResourceDefinitions().Watch(ctx, o)
+		return kc.WatchAPIExtClientset.ApiextensionsV1().CustomResourceDefinitions().Watch(ctx, o)
 	}
 	return nil, fmt.Errorf("waitOn: unsupported resource %s.%s/%s", resource, group, version)
 }
@@ -311,25 +313,23 @@ func WaitForCondition(
 	defer cancel()
 
 	sel := fields.OneTermEqualSelector("metadata.name", name).String()
-	dyn := kc.Dynamic.Resource(mapping.Resource)
-	var scoped interface {
-		List(ctx context.Context, opts metav1.ListOptions) (*unstructured.UnstructuredList, error)
-		Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error)
+	scope := func(d dynamic.Interface) dynamic.ResourceInterface {
+		r := d.Resource(mapping.Resource)
+		if mapping.Scope.Name() == meta.RESTScopeNameNamespace {
+			return r.Namespace(namespace)
+		}
+		return r
 	}
-	if mapping.Scope.Name() == meta.RESTScopeNameNamespace {
-		scoped = dyn.Namespace(namespace)
-	} else {
-		scoped = dyn
-	}
+	lister, watcher := scope(kc.Dynamic), scope(kc.WatchDynamic)
 
 	lw := &cache.ListWatch{
 		ListFunc: func(o metav1.ListOptions) (runtime.Object, error) {
 			o.FieldSelector = sel
-			return scoped.List(waitCtx, o)
+			return lister.List(waitCtx, o)
 		},
 		WatchFunc: func(o metav1.ListOptions) (watch.Interface, error) {
 			o.FieldSelector = sel
-			return scoped.Watch(waitCtx, o)
+			return watcher.Watch(waitCtx, o)
 		},
 	}
 

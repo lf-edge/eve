@@ -40,7 +40,9 @@ import (
 // without needing an accessor method per shape. The zero value is
 // unusable; construct with New.
 type Client struct {
-	// Config is the loaded *rest.Config from the k3s kubeconfig file.
+	// Config is the loaded *rest.Config from the k3s kubeconfig file,
+	// with Timeout set to requestTimeout. Clear Timeout on a copy
+	// before building a client that watches.
 	Config *rest.Config
 
 	// Clientset is the typed core+apps+batch+rbac clientset. Use for
@@ -64,6 +66,13 @@ type Client struct {
 	// discovery client. Callers should Reset() on a NoKindMatchError
 	// and retry once — this handles the CRD-just-installed race.
 	Mapper meta.RESTMapper
+
+	// WatchClientset, WatchAPIExtClientset and WatchDynamic are the
+	// same clients without requestTimeout. Use them for Watch calls and
+	// informers, because requestTimeout also cuts an open watch stream.
+	WatchClientset       kubernetes.Interface
+	WatchAPIExtClientset apiextclientset.Interface
+	WatchDynamic         dynamic.Interface
 
 	// InformerFactory is the typed shared factory (core+apps+batch+…).
 	// Started by Start. Every subsystem should read informers from this
@@ -93,35 +102,67 @@ func New(kubeconfigPath string) (*Client, error) {
 // newFromConfig is the internal seam so tests can pass a synthetic
 // *rest.Config (e.g. envtest) without touching the filesystem.
 func newFromConfig(config *rest.Config) (*Client, error) {
-	clientset, err := kubernetes.NewForConfig(config)
+	watchConfig := rest.CopyConfig(config)
+	watchConfig.Timeout = 0
+	config = rest.CopyConfig(config)
+	config.Timeout = requestTimeout
+
+	clientset, apiext, dyn, err := buildClients(config)
 	if err != nil {
-		return nil, fmt.Errorf("kubeclient: build typed clientset: %w", err)
+		return nil, fmt.Errorf("kubeclient: %w", err)
 	}
-	apiext, err := apiextclientset.NewForConfig(config)
+	watchClientset, watchAPIExt, watchDyn, err := buildClients(watchConfig)
 	if err != nil {
-		return nil, fmt.Errorf("kubeclient: build apiextensions clientset: %w", err)
+		return nil, fmt.Errorf("kubeclient: watch: %w", err)
 	}
-	dyn, err := dynamic.NewForConfig(config)
-	if err != nil {
-		return nil, fmt.Errorf("kubeclient: build dynamic client: %w", err)
-	}
-	disco, err := discovery.NewDiscoveryClientForConfig(config)
+	// Discovery keeps its own 32s default timeout, which it applies
+	// only when the config has none.
+	disco, err := discovery.NewDiscoveryClientForConfig(watchConfig)
 	if err != nil {
 		return nil, fmt.Errorf("kubeclient: build discovery client: %w", err)
 	}
 	cached := discocache.NewMemCacheClient(disco)
 	mapper := restmapper.NewDeferredDiscoveryRESTMapper(cached)
 	return &Client{
-		Config:          config,
-		Clientset:       clientset,
-		APIExtClientset: apiext,
-		Dynamic:         dyn,
-		Discovery:       disco,
-		Mapper:          mapper,
-		InformerFactory: informers.NewSharedInformerFactory(clientset, informerResync),
-		DynamicFactory:  dynamicinformer.NewDynamicSharedInformerFactory(dyn, informerResync),
+		Config:               config,
+		Clientset:            clientset,
+		APIExtClientset:      apiext,
+		Dynamic:              dyn,
+		Discovery:            disco,
+		Mapper:               mapper,
+		WatchClientset:       watchClientset,
+		WatchAPIExtClientset: watchAPIExt,
+		WatchDynamic:         watchDyn,
+		InformerFactory:      informers.NewSharedInformerFactory(watchClientset, informerResync),
+		DynamicFactory:       dynamicinformer.NewDynamicSharedInformerFactory(watchDyn, informerResync),
 	}, nil
 }
+
+// buildClients builds the typed, apiextensions and dynamic clients for
+// config.
+func buildClients(config *rest.Config) (
+	kubernetes.Interface, apiextclientset.Interface, dynamic.Interface, error,
+) {
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("build typed clientset: %w", err)
+	}
+	apiext, err := apiextclientset.NewForConfig(config)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("build apiextensions clientset: %w", err)
+	}
+	dyn, err := dynamic.NewForConfig(config)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("build dynamic client: %w", err)
+	}
+	return clientset, apiext, dyn, nil
+}
+
+// requestTimeout bounds each call through the request clients when the
+// caller's context has no shorter deadline. It is longer than the
+// apiserver's own 60s request timeout, so it only stops a call that the
+// apiserver never answers. It is a var so that tests can shorten it.
+var requestTimeout = 90 * time.Second
 
 // informerResync is the periodic resync interval for both informer
 // factories. 10 minutes matches the kubectl default and is short
