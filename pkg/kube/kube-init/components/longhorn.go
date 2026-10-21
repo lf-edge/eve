@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kubeclient"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kubectlx"
@@ -23,6 +24,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/httpstream"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/remotecommand"
 )
@@ -321,6 +323,9 @@ func podExec(
 	ctx context.Context, podName, namespace, container string,
 	command []string, stdin io.Reader,
 ) error {
+	ctx, cancel := context.WithTimeout(ctx, podExecTimeout)
+	defer cancel()
+
 	kc := kubeclient.Default()
 	req := kc.Clientset.CoreV1().RESTClient().Post().
 		Resource("pods").Name(podName).Namespace(namespace).
@@ -338,9 +343,22 @@ func podExec(
 	if err != nil {
 		return fmt.Errorf("build exec URL: %w", err)
 	}
-	exec, err := remotecommand.NewSPDYExecutor(kc.Config, "POST", execURL)
+	// WebSocket first: SPDY ignores ctx while it waits for the upgrade
+	// response. SPDY stays as the fallback for an apiserver that refuses
+	// the WebSocket upgrade.
+	wsExec, err := remotecommand.NewWebSocketExecutor(kc.Config, "GET", execURL.String())
+	if err != nil {
+		return fmt.Errorf("build WebSocket executor: %w", err)
+	}
+	spdyExec, err := remotecommand.NewSPDYExecutor(kc.Config, "POST", execURL)
 	if err != nil {
 		return fmt.Errorf("build SPDY executor: %w", err)
+	}
+	exec, err := remotecommand.NewFallbackExecutor(wsExec, spdyExec, func(err error) bool {
+		return httpstream.IsUpgradeFailure(err) || httpstream.IsHTTPSProxyError(err)
+	})
+	if err != nil {
+		return fmt.Errorf("build exec executor: %w", err)
 	}
 	var stdout, stderr bytes.Buffer
 	streamOpts := remotecommand.StreamOptions{Stdout: &stdout, Stderr: &stderr}
@@ -358,3 +376,8 @@ func podExec(
 	}
 	return nil
 }
+
+// podExecTimeout bounds one podExec call. kubeclient's requestTimeout
+// does not cover exec, because the executors make their own connections.
+// It is a var so that tests can shorten it.
+var podExecTimeout = 60 * time.Second
