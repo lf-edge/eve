@@ -38,6 +38,8 @@ const (
 
 	hostapdStartTimeout = 5 * time.Second
 	hostapdStopTimeout  = 10 * time.Second
+	// How long to wait for hostapd to remove a deauthenticated station.
+	hostapdDeauthTimeout = 10 * time.Second
 )
 
 var macRE = regexp.MustCompile(`^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$`)
@@ -59,6 +61,8 @@ type Hostapd struct {
 	// Re-authentication generation counter.
 	// Whenever this value changes, all currently authenticated supplicants
 	// are forcibly de-authenticated and required to re-authenticate.
+	// The authentication is restarted by hostapd (EAP-Request/Identity), without
+	// relying on the supplicant to notice the loss of authorization.
 	ReauthGeneration uint32
 }
 
@@ -153,6 +157,18 @@ type eventWatcher struct {
 // Create starts Hostapd.
 func (c *HostapdConfigurator) Create(ctx context.Context, item depgraph.Item) error {
 	config := item.(Hostapd)
+	if err := prepareHostapd(config); err != nil {
+		return err
+	}
+	done := reconciler.ContinueInBackground(ctx)
+	go func() {
+		done(c.startHostapdProcess(config))
+	}()
+	return nil
+}
+
+// prepareHostapd creates all files needed by hostapd and prepares the bridge.
+func prepareHostapd(config Hostapd) error {
 	if err := prepareHostapdCertificates(config); err != nil {
 		return err
 	}
@@ -165,72 +181,126 @@ func (c *HostapdConfigurator) Create(ctx context.Context, item depgraph.Item) er
 	if err := setBridgeEAPOLForwarding(config.BridgeIfName, true); err != nil {
 		return err
 	}
-	if err := setBridgePromiscuousMode(config.BridgeIfName, true); err != nil {
+	return setBridgePromiscuousMode(config.BridgeIfName, true)
+}
+
+// startHostapdProcess starts hostapd and the watcher of its authentication events.
+func (c *HostapdConfigurator) startHostapdProcess(config Hostapd) error {
+	deadline := time.Now().Add(hostapdStartTimeout)
+	if err := startHostapd(config); err != nil {
+		log.Error(err)
 		return err
 	}
+
+	// Wait for hostapd control socket to appear.
+	ctrlSocket := hostapdCtrlSocket(config.BridgeIfName)
+	for {
+		if _, err := os.Stat(ctrlSocket); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			err := fmt.Errorf("hostapd ctrl socket %s did not appear", ctrlSocket)
+			log.Error(err)
+			return err
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	if c.PNACEventPublishCh == nil {
+		return nil
+	}
+
+	script, err := createHostapdEventScript(config)
+	if err != nil {
+		return err
+	}
+
+	ctrl := hostapdCtrlSocketDir()
+	cmd := exec.Command("hostapd_cli", "-p", ctrl, "-a", script)
+	if err = cmd.Start(); err != nil {
+		err = fmt.Errorf("failed to register hostapd event script")
+		log.Error(err)
+		return err
+	}
+	go func() { _ = cmd.Wait() }()
+
+	c.Lock()
+	if c.eventWatchers == nil {
+		c.eventWatchers = make(map[string]*eventWatcher)
+	}
+	watcher := &eventWatcher{}
+	watcher.ctx, watcher.cancel = context.WithCancel(context.Background())
+	c.eventWatchers[config.DaemonName] = watcher
+	c.Unlock()
+	_ = runHostapdEventWatcher(watcher, config.DaemonName, c.PNACEventPublishCh)
+	return nil
+}
+
+// stopHostapdProcess stops the event watcher and hostapd, and removes the files
+// created for them.
+func (c *HostapdConfigurator) stopHostapdProcess(config Hostapd) error {
+	c.Lock()
+	if watcher := c.eventWatchers[config.DaemonName]; watcher != nil {
+		watcher.cancel()
+		watcher.wg.Wait()
+		delete(c.eventWatchers, config.DaemonName)
+	}
+	c.Unlock()
+	if err := stopHostapd(config.DaemonName); err != nil {
+		return err
+	}
+	// ignore errors from here
+	_ = removeHostapdConfFile(config.DaemonName)
+	_ = removeHostapdEAPUsersFile(config.DaemonName)
+	_ = removeHostapdCtrlSocket(config.BridgeIfName)
+	_ = removeHostapdLogFile(config.DaemonName)
+	_ = removeHostapdPidFile(config.DaemonName)
+	_ = removeHostapdEventScript(config.DaemonName)
+	_ = removeHostapdEventSocket(config.DaemonName)
+	_ = removeHostapdCertDir(config.DaemonName)
+	return nil
+}
+
+// Modify applies a change in ReauthGeneration, CA or EAP users. All connected
+// ports are deauthenticated and then made to authenticate again, like a switch
+// does when the 802.1X state of a port is re-initialized. The CA and EAP users
+// are not reloaded by hostapd without a restart.
+func (c *HostapdConfigurator) Modify(ctx context.Context,
+	oldItem, newItem depgraph.Item) (err error) {
+	oldConfig := oldItem.(Hostapd)
+	config := newItem.(Hostapd)
 	done := reconciler.ContinueInBackground(ctx)
 	go func() {
-		deadline := time.Now().Add(hostapdStartTimeout)
-		if err := startHostapd(config); err != nil {
-			log.Error(err)
-			done(err)
-			return
-		}
-
-		// Wait for hostapd control socket to appear.
-		ctrlSocket := hostapdCtrlSocket(config.BridgeIfName)
-		for {
-			if _, err := os.Stat(ctrlSocket); err == nil {
-				break
-			}
-			if time.Now().After(deadline) {
-				err := fmt.Errorf("hostapd ctrl socket %s did not appear", ctrlSocket)
-				log.Error(err)
-				done(err)
-				return
-			}
-			time.Sleep(200 * time.Millisecond)
-		}
-
-		if c.PNACEventPublishCh == nil {
-			done(nil)
-			return
-		}
-
-		script, err := createHostapdEventScript(config)
-		if err != nil {
-			done(err)
-			return
-		}
-
-		ctrl := hostapdCtrlSocketDir()
-		cmd := exec.Command("hostapd_cli", "-p", ctrl, "-a", script)
-		if err = cmd.Start(); err != nil {
-			err = fmt.Errorf("failed to register hostapd event script")
-			log.Error(err)
-			done(err)
-			return
-		}
-
-		c.Lock()
-		if c.eventWatchers == nil {
-			c.eventWatchers = make(map[string]*eventWatcher)
-		}
-		watcher := &eventWatcher{}
-		watcher.ctx, watcher.cancel = context.WithCancel(context.Background())
-		c.eventWatchers[config.DaemonName] = watcher
-		c.Unlock()
-		_ = runHostapdEventWatcher(watcher, config.DaemonName, c.PNACEventPublishCh)
-		done(nil)
+		done(c.modifyHostapd(oldConfig, config))
 	}()
 	return nil
 }
 
-// Modify is able to apply change in ReauthGeneration, deauthenticate all connected ports.
-func (c *HostapdConfigurator) Modify(ctx context.Context,
-	_, newItem depgraph.Item) (err error) {
-	config := newItem.(Hostapd)
-	return deauthenticateAllPorts(config)
+func (c *HostapdConfigurator) modifyHostapd(oldConfig, config Hostapd) error {
+	stations, err := deauthenticateAllPorts(config)
+	if err != nil {
+		return err
+	}
+	if hostapdCredentialsChanged(oldConfig, config) {
+		// Wait for hostapd de-authenticate events to get processed.
+		time.Sleep(3 * time.Second)
+		if err = c.stopHostapdProcess(oldConfig); err != nil {
+			return err
+		}
+		if err = prepareHostapd(config); err != nil {
+			return err
+		}
+		if err = c.startHostapdProcess(config); err != nil {
+			return err
+		}
+	}
+	return restartAuthentication(config, stations)
+}
+
+func hostapdCredentialsChanged(h1, h2 Hostapd) bool {
+	return h1.CaCertPem != h2.CaCertPem ||
+		h1.CaKeyPem != h2.CaKeyPem ||
+		!generics.EqualSetsFn(h1.Users, h2.Users, equalEAPUsers)
 }
 
 // Delete stops Hostapd.
@@ -238,47 +308,30 @@ func (c *HostapdConfigurator) Delete(ctx context.Context, item depgraph.Item) er
 	config := item.(Hostapd)
 	done := reconciler.ContinueInBackground(ctx)
 	go func() {
-		if err := deauthenticateAllPorts(config); err != nil {
+		if _, err := deauthenticateAllPorts(config); err != nil {
 			done(err)
 			return
 		}
 		// Wait for hostapd de-authenticate events to get processed.
 		time.Sleep(3 * time.Second)
-		c.Lock()
-		if watcher := c.eventWatchers[config.DaemonName]; watcher != nil {
-			watcher.cancel()
-			watcher.wg.Wait()
-			delete(c.eventWatchers, config.DaemonName)
-		}
-		c.Unlock()
-		err := stopHostapd(config.DaemonName)
+		err := c.stopHostapdProcess(config)
 		if err == nil {
 			// ignore errors from here
 			_ = setBridgeEAPOLForwarding(config.BridgeIfName, false)
 			_ = setBridgePromiscuousMode(config.BridgeIfName, false)
-			_ = removeHostapdConfFile(config.DaemonName)
-			_ = removeHostapdEAPUsersFile(config.DaemonName)
-			_ = removeHostapdCtrlSocket(config.BridgeIfName)
-			_ = removeHostapdLogFile(config.DaemonName)
-			_ = removeHostapdPidFile(config.DaemonName)
-			_ = removeHostapdEventScript(config.DaemonName)
-			_ = removeHostapdEventSocket(config.DaemonName)
-			_ = removeHostapdCertDir(config.DaemonName)
 		}
 		done(err)
 	}()
 	return nil
 }
 
-// NeedsRecreate always returns true if anything besides ReauthGeneration changes.
+// NeedsRecreate returns true if the bridge changes. Everything else is applied
+// by Modify.
 func (c *HostapdConfigurator) NeedsRecreate(
 	oldItem, newItem depgraph.Item) (recreate bool) {
 	h1 := oldItem.(Hostapd)
 	h2 := newItem.(Hostapd)
-	return h1.BridgeIfName != h2.BridgeIfName ||
-		h1.CaCertPem != h2.CaCertPem ||
-		h1.CaKeyPem != h2.CaKeyPem ||
-		!generics.EqualSetsFn(h1.Users, h2.Users, equalEAPUsers)
+	return h1.BridgeIfName != h2.BridgeIfName
 }
 
 func hostapdConfigPath(daemonName string) string {
@@ -406,7 +459,9 @@ func removeHostapdEventSocket(daemonName string) error {
 	return nil
 }
 
-func deauthenticateAllPorts(config Hostapd) error {
+// deauthenticateAllPorts deauthenticates all stations known to hostapd
+// and returns their MAC addresses.
+func deauthenticateAllPorts(config Hostapd) (stations []string, err error) {
 	ctrl := hostapdCtrlSocketDir()
 
 	out, err := exec.Command("hostapd_cli", "-p", ctrl, "-i", config.BridgeIfName,
@@ -414,7 +469,7 @@ func deauthenticateAllPorts(config Hostapd) error {
 	if err != nil {
 		err = fmt.Errorf("hostapd_cli all_sta failed: %w", err)
 		log.Error(err)
-		return err
+		return nil, err
 	}
 
 	for _, line := range strings.Split(string(out), "\n") {
@@ -424,11 +479,56 @@ func deauthenticateAllPorts(config Hostapd) error {
 			if err != nil {
 				err = fmt.Errorf("hostapd_cli deauthenticate %q failed: %w", line, err)
 				log.Error(err)
+				return nil, err
+			}
+			stations = append(stations, line)
+		}
+	}
+	return stations, nil
+}
+
+// restartAuthentication makes hostapd start a new EAP exchange with every given
+// (already deauthenticated) station. Deauthentication alone sends nothing to a
+// wired supplicant, which would therefore keep considering its port authorized.
+// Adding the station back makes hostapd send an EAP-Request/Identity, which is
+// what a switch does after re-initializing the port.
+func restartAuthentication(config Hostapd, stations []string) error {
+	ctrl := hostapdCtrlSocketDir()
+	for _, mac := range stations {
+		// hostapd removes the station asynchronously after the deauthentication.
+		deadline := time.Now().Add(hostapdDeauthTimeout)
+		for stationKnown(ctrl, config.BridgeIfName, mac) {
+			if time.Now().After(deadline) {
+				err := fmt.Errorf("station %s was not removed by hostapd in time", mac)
+				log.Error(err)
 				return err
 			}
+			time.Sleep(200 * time.Millisecond)
+		}
+		err := exec.Command("hostapd_cli", "-p", ctrl, "-i", config.BridgeIfName,
+			"new_sta", mac).Run()
+		if err != nil {
+			err = fmt.Errorf("hostapd_cli new_sta %q failed: %w", mac, err)
+			log.Error(err)
+			return err
 		}
 	}
 	return nil
+}
+
+// stationKnown returns true if hostapd still lists the given station.
+func stationKnown(ctrl, ifName, mac string) bool {
+	out, err := exec.Command("hostapd_cli", "-p", ctrl, "-i", ifName,
+		"list_sta").CombinedOutput()
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.EqualFold(strings.TrimSpace(line), mac) {
+			return true
+		}
+	}
+	return false
 }
 
 func createHostapdEventScript(config Hostapd) (string, error) {
