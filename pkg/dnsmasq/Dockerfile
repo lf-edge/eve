@@ -1,7 +1,7 @@
 # Copyright (c) 2025 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-alpine:308b37b2049096bc2385c28c1cbeef436985cc87 as build
+FROM lfedge/eve-alpine:80c5dbe1085d0650030be8a110eaec66ef532672 as build
 ENV BUILD_PKGS gcc make patch libc-dev linux-headers tar xz coreutils
 RUN eve-alpine-deploy.sh
 

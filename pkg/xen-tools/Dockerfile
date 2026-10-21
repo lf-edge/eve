@@ -3,8 +3,8 @@
 # Copyright (c) 2023 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-uefi:0813a2a0bc6eb92446346210070cf5e6b3cb9682 as uefi-build
-FROM lfedge/eve-alpine:308b37b2049096bc2385c28c1cbeef436985cc87 AS runx-build
+FROM lfedge/eve-uefi:cf30752ba2c056ff0466e26747e8e61d0b643107 as uefi-build
+FROM lfedge/eve-alpine:80c5dbe1085d0650030be8a110eaec66ef532672 AS runx-build
 ENV BUILD_PKGS mkinitfs gcc musl-dev e2fsprogs chrony agetty
 RUN eve-alpine-deploy.sh
 
@@ -20,7 +20,7 @@ RUN gcc -s -o /chroot2 /tmp/chroot2.c -Wall -Werror
 RUN gcc -s -o /hacf /tmp/hacf.c -Wall -Werror
 RUN mkinitfs -n -F base -i /init-initrd -o /runx-initrd
 
-FROM lfedge/eve-alpine:308b37b2049096bc2385c28c1cbeef436985cc87 AS build
+FROM lfedge/eve-alpine:80c5dbe1085d0650030be8a110eaec66ef532672 AS build
 ENV BUILD_PKGS \
     gcc make libc-dev dev86 xz-dev perl bash python3-dev \
     gettext iasl util-linux-dev ncurses-dev glib-dev \

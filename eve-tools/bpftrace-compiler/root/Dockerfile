@@ -5,9 +5,9 @@ ARG EVE_KERNEL
 # hadolint ignore=DL3006
 FROM ${EVE_KERNEL} AS kernel
 
-FROM lfedge/eve-bpftrace:64f87b9dfce42524b0364159a6cc3b88ae3445b2 AS eve-bpftrace
+FROM lfedge/eve-bpftrace:49b22c5e0daaf4e380fa18ffafdba7cfbdfb9f43 AS eve-bpftrace
 
-FROM lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2 AS bpftrace
+FROM lfedge/eve-alpine:80c5dbe1085d0650030be8a110eaec66ef532672 AS bpftrace
 
 # hadolint ignore=DL3018
 RUN apk add --no-cache --initdb make gcc g++ git perl musl-dev cmake zlib-dev bcc-dev libbpf-dev cereal flex bison llvm13-libs llvm13-dev llvm13-static clang-dev clang-static pahole gtest-dev bash
