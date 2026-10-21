@@ -1,0 +1,6 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+
+# clean up broken symlinks store
+find -L /etc/ssl/certs -maxdepth 1 -type l -delete
+rmdir /etc/ssl/certs 2>/dev/null || true
