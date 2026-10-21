@@ -13,10 +13,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/zededa/ghw/internal/config"
 	"github.com/zededa/ghw/pkg/cpu"
 	"github.com/zededa/ghw/pkg/marshal"
 	"github.com/zededa/ghw/pkg/memory"
-	"github.com/zededa/ghw/pkg/option"
 )
 
 // Architecture describes the overall hardware architecture. It can be either
@@ -112,13 +112,10 @@ type Info struct {
 
 // New returns a pointer to an Info struct that contains information about the
 // NUMA topology on the host system
-func New(opt ...option.Option) (*Info, error) {
-	opts := &option.Options{}
-	for _, o := range opt {
-		o(opts)
-	}
+func New(args ...any) (*Info, error) {
+	ctx := config.ContextFromArgs(args...)
 	info := &Info{}
-	if err := info.load(opts); err != nil {
+	if err := info.load(ctx); err != nil {
 		return nil, err
 	}
 	for _, node := range info.Nodes {

@@ -12,8 +12,9 @@ import (
 
 	"github.com/jaypipes/pcidb"
 
+	"github.com/zededa/ghw/internal/config"
+	"github.com/zededa/ghw/internal/log"
 	"github.com/zededa/ghw/pkg/marshal"
-	"github.com/zededa/ghw/pkg/option"
 	"github.com/zededa/ghw/pkg/topology"
 	"github.com/zededa/ghw/pkg/util"
 )
@@ -40,6 +41,20 @@ type Device struct {
 	// for IOMMU Groups see also:
 	// https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/7/html/virtualization_deployment_and_administration_guide/sect-iommu-deep-dive
 	IOMMUGroup string `json:"iommu_group"`
+	// Modalias is the raw contents of the device's sysfs `modalias` file.
+	// Useful for callers that want to do custom vendor/device/class matching
+	// beyond what the pcidb lookup provides.
+	Modalias string `json:"modalias,omitempty"`
+
+	// Parent is the resolved parent Device pointer for this device (the
+	// PCIe upstream port or root complex device). It is nil for root
+	// devices. Populated after enumeration; not included in JSON output to
+	// avoid cycles. Use ParentAddress for the serialized form.
+	Parent *Device `json:"-"`
+	// Children are the resolved downstream Device pointers, in
+	// no particular order. Populated after enumeration; not included in
+	// JSON output.
+	Children []*Device `json:"-"`
 }
 
 type devIdent struct {
@@ -59,6 +74,7 @@ type devMarshallable struct {
 	Subclass      devIdent `json:"subclass"`
 	Interface     devIdent `json:"programming_interface"`
 	IOMMUGroup    string   `json:"iommu_group"`
+	Modalias      string   `json:"modalias,omitempty"`
 }
 
 // NOTE(jaypipes) Device has a custom JSON marshaller because we don't want
@@ -96,6 +112,7 @@ func (d *Device) MarshalJSON() ([]byte, error) {
 			Name: d.ProgrammingInterface.Name,
 		},
 		IOMMUGroup: d.IOMMUGroup,
+		Modalias:   d.Modalias,
 	}
 	return json.Marshal(dm)
 }
@@ -123,6 +140,49 @@ func (d *Device) String() string {
 	)
 }
 
+// Walk visits d and each of its descendants in pre-order, invoking fn
+// on every node. If fn returns false the subtree below the current
+// node is skipped. Walk operates on the in-memory Parent/Children
+// pointers populated during enumeration, so it does no I/O.
+func (d *Device) Walk(fn func(*Device) bool) {
+	if d == nil {
+		return
+	}
+	if !fn(d) {
+		return
+	}
+	for _, c := range d.Children {
+		c.Walk(fn)
+	}
+}
+
+// Ancestors returns d's proper ancestors, nearest first: parent,
+// grandparent, and so on up to the root. The returned slice is empty
+// for a root device.
+func (d *Device) Ancestors() []*Device {
+	if d == nil {
+		return nil
+	}
+	var out []*Device
+	for p := d.Parent; p != nil; p = p.Parent {
+		out = append(out, p)
+	}
+	return out
+}
+
+// Root returns the topmost device in d's chain (the ancestor whose
+// Parent is nil). For a root device, Root returns d itself.
+func (d *Device) Root() *Device {
+	if d == nil {
+		return nil
+	}
+	cur := d
+	for cur.Parent != nil {
+		cur = cur.Parent
+	}
+	return cur
+}
+
 type Info struct {
 	db   *pcidb.PCIDB
 	arch topology.Architecture
@@ -136,25 +196,31 @@ func (i *Info) String() string {
 
 // New returns a pointer to an Info struct that contains information about the
 // PCI devices on the host system
-func New(opt ...option.Option) (*Info, error) {
-	topo, err := topology.New(opt...)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"failed to initialize PCI info dur to failure to initialize "+
-				"Topology info: %w",
-			err,
-		)
-	}
-	opts := &option.Options{}
-	for _, o := range opt {
-		o(opts)
-	}
+func New(args ...any) (*Info, error) {
+	ctx := config.ContextFromArgs(args...)
 	// by default we don't report NUMA information;
 	// we will only if are sure we are running on NUMA architecture
 	info := &Info{
-		arch: topo.Architecture,
+		arch: topology.ArchitectureSMP, // default to SMP
+		db:   config.PCIDB(ctx),
 	}
-	if err := info.load(opts); err != nil {
+	// Skip topology detection if requested to reduce memory consumption
+	if !config.TopologyEnabled(ctx) {
+		log.Warn(
+			ctx, "topology detection disabled, assuming SMP architecture",
+		)
+	} else {
+		topo, err := topology.New(ctx)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"failed to initialize PCI info due to failure to initialize "+
+					"Topology info: %w",
+				err,
+			)
+		}
+		info.arch = topo.Architecture
+	}
+	if err := info.load(ctx); err != nil {
 		return nil, err
 	}
 	return info, nil

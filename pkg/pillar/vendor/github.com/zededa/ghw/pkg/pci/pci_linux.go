@@ -6,6 +6,7 @@
 package pci
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -13,19 +14,19 @@ import (
 
 	"github.com/jaypipes/pcidb"
 
+	"github.com/zededa/ghw/internal/log"
 	"github.com/zededa/ghw/pkg/linuxpath"
-	"github.com/zededa/ghw/pkg/option"
 	pciaddr "github.com/zededa/ghw/pkg/pci/address"
 	"github.com/zededa/ghw/pkg/topology"
 	"github.com/zededa/ghw/pkg/util"
 )
 
 const (
-	// found running `wc` against real linux systems
-	modAliasExpectedLength = 54
+	// modalias content length, sans trailing newline
+	modAliasExpectedLength = 53
 )
 
-func (i *Info) load(opts *option.Options) error {
+func (i *Info) load(ctx context.Context) error {
 	pcidbOpt := &pcidb.WithOption{}
 	if path := os.Getenv("PCIDB_PATH"); path != "" {
 		pcidbOpt = pcidb.WithPath(path)
@@ -37,7 +38,7 @@ func (i *Info) load(opts *option.Options) error {
 		}
 		i.db = db
 	}
-	i.Devices = i.getDevices(opts)
+	i.Devices = i.getDevices(ctx)
 	return nil
 }
 
@@ -66,15 +67,15 @@ func getDeviceRevision(paths *linuxpath.Paths, pciAddr *pciaddr.Address) string 
 	return strings.TrimSpace(string(revision))
 }
 
-func getDeviceNUMANode(opts *option.Options, pciAddr *pciaddr.Address) *topology.Node {
-	paths := linuxpath.New(opts)
+func getDeviceNUMANode(ctx context.Context, pciAddr *pciaddr.Address) *topology.Node {
+	paths := linuxpath.New(ctx)
 	numaNodePath := filepath.Join(paths.SysBusPciDevices, pciAddr.String(), "numa_node")
 
 	if _, err := os.Stat(numaNodePath); err != nil {
 		return nil
 	}
 
-	nodeIdx := util.SafeIntFromFile(opts, numaNodePath)
+	nodeIdx := util.SafeIntFromFile(ctx, numaNodePath)
 	if nodeIdx == -1 {
 		return nil
 	}
@@ -92,6 +93,15 @@ func getDeviceIommuGroup(paths *linuxpath.Paths, pciAddr *pciaddr.Address) strin
 		return ""
 	}
 	return filepath.Base(dest)
+}
+
+func getDeviceModalias(paths *linuxpath.Paths, pciAddr *pciaddr.Address) string {
+	fp := getDeviceModaliasPath(paths, pciAddr)
+	data, err := os.ReadFile(fp)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
 }
 
 func getDeviceParentAddress(paths *linuxpath.Paths, pciAddr *pciaddr.Address) string {
@@ -133,18 +143,6 @@ type deviceModaliasInfo struct {
 	classID      string
 	subclassID   string
 	progIfaceID  string
-}
-
-func parseModaliasFile(fp string) *deviceModaliasInfo {
-	if _, err := os.Stat(fp); err != nil {
-		return nil
-	}
-	data, err := os.ReadFile(fp)
-	if err != nil {
-		return nil
-	}
-
-	return parseModaliasData(string(data))
 }
 
 func parseModaliasData(data string) *deviceModaliasInfo {
@@ -373,8 +371,8 @@ func (info *Info) getDeviceFromModaliasInfo(
 
 // getDevices returns a list of pointers to Device structs present on the
 // host system
-func (info *Info) getDevices(opts *option.Options) []*Device {
-	paths := linuxpath.New(opts)
+func (info *Info) getDevices(ctx context.Context) []*Device {
+	paths := linuxpath.New(ctx)
 	devs := make([]*Device, 0)
 	// We scan the /sys/bus/pci/devices directory which contains a collection
 	// of symlinks. The names of the symlinks are all the known PCI addresses
@@ -382,41 +380,66 @@ func (info *Info) getDevices(opts *option.Options) []*Device {
 	// address and append to the returned array.
 	links, err := os.ReadDir(paths.SysBusPciDevices)
 	if err != nil {
-		opts.Warn("failed to read /sys/bus/pci/devices")
+		log.Warn(ctx, "failed to read /sys/bus/pci/devices")
 		return nil
 	}
 	for _, link := range links {
 		address := link.Name()
 		pciAddr := pciaddr.FromString(address)
 		if pciAddr == nil {
-			opts.Warn("error parsing the pci address %q", address)
+			log.Warn(ctx, "error parsing the pci address %q", address)
 			return nil
 		}
 
-		// no cached data, let's get the information from system.
-		fp := getDeviceModaliasPath(paths, pciAddr)
-		if fp == "" {
-			opts.Warn("error finding modalias info for device %q", address)
+		modalias := getDeviceModalias(paths, pciAddr)
+		if modalias == "" {
+			log.Warn(ctx, "error finding modalias info for device %q", address)
 			return nil
 		}
 
-		modaliasInfo := parseModaliasFile(fp)
+		modaliasInfo := parseModaliasData(modalias)
 		if modaliasInfo == nil {
-			opts.Warn("error parsing modalias info for device %q", address)
+			log.Warn(ctx, "error parsing modalias info for device %q", address)
 			return nil
 		}
 
 		device := info.getDeviceFromModaliasInfo(address, modaliasInfo)
 		device.Revision = getDeviceRevision(paths, pciAddr)
 		if info.arch == topology.ArchitectureNUMA {
-			device.Node = getDeviceNUMANode(opts, pciAddr)
+			device.Node = getDeviceNUMANode(ctx, pciAddr)
 		}
 		device.Driver = getDeviceDriver(paths, pciAddr)
 		device.ParentAddress = getDeviceParentAddress(paths, pciAddr)
 		device.IOMMUGroup = getDeviceIommuGroup(paths, pciAddr)
+		device.Modalias = modalias
 		devs = append(devs, device)
 	}
+	linkDeviceTree(devs)
 	return devs
+}
+
+// linkDeviceTree resolves ParentAddress strings into Parent pointers and
+// fills in each device's Children list. Devices with no matching parent
+// in the slice (e.g. root complex devices) keep Parent == nil.
+func linkDeviceTree(devs []*Device) {
+	if len(devs) == 0 {
+		return
+	}
+	byAddr := make(map[string]*Device, len(devs))
+	for _, d := range devs {
+		byAddr[d.Address] = d
+	}
+	for _, d := range devs {
+		if d.ParentAddress == "" {
+			continue
+		}
+		parent, ok := byAddr[d.ParentAddress]
+		if !ok {
+			continue
+		}
+		d.Parent = parent
+		parent.Children = append(parent.Children, d)
+	}
 }
 
 // FindPCIAddress extracts the deepest (most specific) PCI BDF address from a

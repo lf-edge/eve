@@ -9,8 +9,8 @@ package accelerator
 import (
 	"fmt"
 
+	"github.com/zededa/ghw/internal/config"
 	"github.com/zededa/ghw/pkg/marshal"
-	"github.com/zededa/ghw/pkg/option"
 	"github.com/zededa/ghw/pkg/pci"
 )
 
@@ -41,9 +41,10 @@ type Info struct {
 
 // New returns a pointer to an Info struct that contains information about the
 // accelerator devices on the host system
-func New(opt ...option.Option) (*Info, error) {
+func New(args ...any) (*Info, error) {
+	ctx := config.ContextFromArgs(args...)
 	info := &Info{}
-	if err := info.load(opt...); err != nil {
+	if err := info.load(ctx); err != nil {
 		return nil, err
 	}
 	return info, nil
@@ -55,7 +56,7 @@ func (i *Info) String() string {
 		numDevsStr = "device"
 	}
 	return fmt.Sprintf(
-		"processing accelerators (%d %s)",
+		"accelerators (%d %s)",
 		len(i.Devices),
 		numDevsStr,
 	)

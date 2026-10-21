@@ -6,15 +6,17 @@
 package linuxpath
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 
-	"github.com/zededa/ghw/pkg/option"
+	"github.com/zededa/ghw/internal/config"
 )
 
 // PathRoots holds the roots of all the filesystem subtrees
 // ghw wants to access.
 type PathRoots struct {
+	Dev  string
 	Etc  string
 	Proc string
 	Run  string
@@ -25,6 +27,7 @@ type PathRoots struct {
 // DefaultPathRoots return the canonical default value for PathRoots
 func DefaultPathRoots() PathRoots {
 	return PathRoots{
+		Dev:  "/dev",
 		Etc:  "/etc",
 		Proc: "/proc",
 		Run:  "/run",
@@ -35,21 +38,25 @@ func DefaultPathRoots() PathRoots {
 
 // PathRootsFromContext initialize PathRoots from the given Context,
 // allowing overrides of the canonical default paths.
-func PathRootsFromContext(opts *option.Options) PathRoots {
+func PathRootsFromContext(ctx context.Context) PathRoots {
 	roots := DefaultPathRoots()
-	if pathEtc, ok := opts.PathOverrides["/etc"]; ok {
+	overrides := config.PathOverrides(ctx)
+	if pathDev, ok := overrides["/dev"]; ok {
+		roots.Dev = pathDev
+	}
+	if pathEtc, ok := overrides["/etc"]; ok {
 		roots.Etc = pathEtc
 	}
-	if pathProc, ok := opts.PathOverrides["/proc"]; ok {
+	if pathProc, ok := overrides["/proc"]; ok {
 		roots.Proc = pathProc
 	}
-	if pathRun, ok := opts.PathOverrides["/run"]; ok {
+	if pathRun, ok := overrides["/run"]; ok {
 		roots.Run = pathRun
 	}
-	if pathSys, ok := opts.PathOverrides["/sys"]; ok {
+	if pathSys, ok := overrides["/sys"]; ok {
 		roots.Sys = pathSys
 	}
-	if pathVar, ok := opts.PathOverrides["/var"]; ok {
+	if pathVar, ok := overrides["/var"]; ok {
 		roots.Var = pathVar
 	}
 	return roots
@@ -71,34 +78,41 @@ type Paths struct {
 	SysClassDRM            string
 	SysClassDMI            string
 	SysClassNet            string
+	SysClassTPM            string
 	SysClassTty            string
-	SysClassTpm            string
+	SysClassWatchdog       string
+	SysFirmwareDeviceTree  string
 	RunUdevData            string
+	DevWatchdog            string
 }
 
 // New returns a new Paths struct containing filepath fields relative to the
 // supplied Context
-func New(opts *option.Options) *Paths {
-	roots := PathRootsFromContext(opts)
+func New(ctx context.Context) *Paths {
+	roots := PathRootsFromContext(ctx)
+	chroot := config.Chroot(ctx)
 	return &Paths{
-		SysRoot:                filepath.Join(opts.Chroot, roots.Sys),
-		VarLog:                 filepath.Join(opts.Chroot, roots.Var, "log"),
-		ProcMeminfo:            filepath.Join(opts.Chroot, roots.Proc, "meminfo"),
-		ProcCpuinfo:            filepath.Join(opts.Chroot, roots.Proc, "cpuinfo"),
-		ProcMounts:             filepath.Join(opts.Chroot, roots.Proc, "self", "mounts"),
-		SysKernelMMHugepages:   filepath.Join(opts.Chroot, roots.Sys, "kernel", "mm", "hugepages"),
-		SysBlock:               filepath.Join(opts.Chroot, roots.Sys, "block"),
-		SysDevicesSystemNode:   filepath.Join(opts.Chroot, roots.Sys, "devices", "system", "node"),
-		SysDevicesSystemMemory: filepath.Join(opts.Chroot, roots.Sys, "devices", "system", "memory"),
-		SysDevicesSystemCPU:    filepath.Join(opts.Chroot, roots.Sys, "devices", "system", "cpu"),
-		SysBusPciDevices:       filepath.Join(opts.Chroot, roots.Sys, "bus", "pci", "devices"),
-		SysBusUsbDevices:       filepath.Join(opts.Chroot, roots.Sys, "bus", "usb", "devices"),
-		SysClassDRM:            filepath.Join(opts.Chroot, roots.Sys, "class", "drm"),
-		SysClassDMI:            filepath.Join(opts.Chroot, roots.Sys, "class", "dmi"),
-		SysClassNet:            filepath.Join(opts.Chroot, roots.Sys, "class", "net"),
-		SysClassTty:            filepath.Join(opts.Chroot, roots.Sys, "class", "tty"),
-		SysClassTpm:            filepath.Join(opts.Chroot, roots.Sys, "class", "tpm"),
-		RunUdevData:            filepath.Join(opts.Chroot, roots.Run, "udev", "data"),
+		SysRoot:                filepath.Join(chroot, roots.Sys),
+		VarLog:                 filepath.Join(chroot, roots.Var, "log"),
+		ProcMeminfo:            filepath.Join(chroot, roots.Proc, "meminfo"),
+		ProcCpuinfo:            filepath.Join(chroot, roots.Proc, "cpuinfo"),
+		ProcMounts:             filepath.Join(chroot, roots.Proc, "self", "mounts"),
+		SysKernelMMHugepages:   filepath.Join(chroot, roots.Sys, "kernel", "mm", "hugepages"),
+		SysBlock:               filepath.Join(chroot, roots.Sys, "block"),
+		SysDevicesSystemNode:   filepath.Join(chroot, roots.Sys, "devices", "system", "node"),
+		SysDevicesSystemMemory: filepath.Join(chroot, roots.Sys, "devices", "system", "memory"),
+		SysDevicesSystemCPU:    filepath.Join(chroot, roots.Sys, "devices", "system", "cpu"),
+		SysBusPciDevices:       filepath.Join(chroot, roots.Sys, "bus", "pci", "devices"),
+		SysBusUsbDevices:       filepath.Join(chroot, roots.Sys, "bus", "usb", "devices"),
+		SysClassDRM:            filepath.Join(chroot, roots.Sys, "class", "drm"),
+		SysClassDMI:            filepath.Join(chroot, roots.Sys, "class", "dmi"),
+		SysClassNet:            filepath.Join(chroot, roots.Sys, "class", "net"),
+		SysClassTPM:            filepath.Join(chroot, roots.Sys, "class", "tpm"),
+		SysClassTty:            filepath.Join(chroot, roots.Sys, "class", "tty"),
+		SysClassWatchdog:       filepath.Join(chroot, roots.Sys, "class", "watchdog"),
+		SysFirmwareDeviceTree:  filepath.Join(chroot, roots.Sys, "firmware", "devicetree", "base"),
+		RunUdevData:            filepath.Join(chroot, roots.Run, "udev", "data"),
+		DevWatchdog:            filepath.Join(chroot, roots.Dev, "watchdog"),
 	}
 }
 

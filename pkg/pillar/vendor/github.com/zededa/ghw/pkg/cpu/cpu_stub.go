@@ -9,13 +9,11 @@
 package cpu
 
 import (
+	"context"
+	"errors"
 	"runtime"
-
-	"github.com/pkg/errors"
-
-	"github.com/zededa/ghw/pkg/option"
 )
 
-func (i *Info) load(opts *option.Options) error {
+func (i *Info) load(ctx context.Context) error {
 	return errors.New("cpu.Info.load not implemented on " + runtime.GOOS)
 }

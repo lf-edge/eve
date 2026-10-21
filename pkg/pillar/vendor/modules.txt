@@ -1160,9 +1160,11 @@ github.com/xlab/treeprint
 # github.com/yusufpapurcu/wmi v1.2.4
 ## explicit; go 1.16
 github.com/yusufpapurcu/wmi
-# github.com/zededa/ghw v0.0.0-20260427124750-9a7dc80ae71c
+# github.com/zededa/ghw v0.0.0-20261023150111-40a9305b4956
 ## explicit; go 1.21
 github.com/zededa/ghw
+github.com/zededa/ghw/internal/config
+github.com/zededa/ghw/internal/log
 github.com/zededa/ghw/pkg/accelerator
 github.com/zededa/ghw/pkg/baseboard
 github.com/zededa/ghw/pkg/bios
@@ -1173,6 +1175,7 @@ github.com/zededa/ghw/pkg/chassis
 github.com/zededa/ghw/pkg/cpu
 github.com/zededa/ghw/pkg/gpu
 github.com/zededa/ghw/pkg/linuxdmi
+github.com/zededa/ghw/pkg/linuxdt
 github.com/zededa/ghw/pkg/linuxpath
 github.com/zededa/ghw/pkg/marshal
 github.com/zededa/ghw/pkg/memory

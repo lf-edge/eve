@@ -9,13 +9,11 @@
 package memory
 
 import (
+	"context"
+	"errors"
 	"runtime"
-
-	"github.com/zededa/ghw/pkg/option"
-
-	"github.com/pkg/errors"
 )
 
-func (i *Info) load(opts *option.Options) error {
+func (i *Info) load(ctx context.Context) error {
 	return errors.New("mem.Info.load not implemented on " + runtime.GOOS)
 }

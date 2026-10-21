@@ -6,22 +6,33 @@
 package linuxdmi
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/zededa/ghw/internal/log"
 	"github.com/zededa/ghw/pkg/linuxpath"
-	"github.com/zededa/ghw/pkg/option"
 	"github.com/zededa/ghw/pkg/util"
 )
 
-func Item(opts *option.Options, value string) string {
-	paths := linuxpath.New(opts)
+// Available returns true if DMI/SMBIOS data is exposed by the kernel, i.e. the
+// host has a populated /sys/class/dmi/id directory. It is used to decide whether
+// to fall back to other sources (such as the DeviceTree) for hardware identity.
+func Available(ctx context.Context) bool {
+	paths := linuxpath.New(ctx)
+	fi, err := os.Stat(filepath.Join(paths.SysClassDMI, "id"))
+	return err == nil && fi.IsDir()
+}
+
+func Item(ctx context.Context, value string) string {
+	paths := linuxpath.New(ctx)
 	path := filepath.Join(paths.SysClassDMI, "id", value)
 
+	log.Debug(ctx, "reading from %q", path)
 	b, err := os.ReadFile(path)
 	if err != nil {
-		opts.Warn("Unable to read %s: %s\n", value, err)
+		log.Warn(ctx, "Unable to read %s: %s\n", value, err)
 		return util.UNKNOWN
 	}
 
