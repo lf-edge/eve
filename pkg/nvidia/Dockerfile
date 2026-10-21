@@ -5,7 +5,7 @@
 
 ARG PLATFORM=generic
 
-FROM lfedge/eve-alpine:308b37b2049096bc2385c28c1cbeef436985cc87 as build-base
+FROM lfedge/eve-alpine:7e47986458eee8572769f4fcebbc03bb545e5990 as build-base
 ENV BUILD_PKGS="autoconf automake build-base coreutils gettext git glib-dev libtool libmd-dev ncurses-dev tar xz-dev yq zstd-dev"
 
 RUN eve-alpine-deploy.sh
