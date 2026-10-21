@@ -1,4 +1,4 @@
-FROM lfedge/eve-alpine:cfcc44432b107927b6a12da994750fe37ca3fc3b as kernel-build
+FROM lfedge/eve-alpine:44327feff13d28d971cedf9f557b74685e0069d0 as kernel-build
 
 ENV BUILD_PKGS argp-standalone automake bash bc binutils-dev bison build-base \
                diffutils flex git gmp-dev gnupg installkernel kmod \

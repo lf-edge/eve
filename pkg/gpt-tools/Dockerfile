@@ -1,4 +1,4 @@
-FROM lfedge/eve-alpine:cfcc44432b107927b6a12da994750fe37ca3fc3b as build
+FROM lfedge/eve-alpine:44327feff13d28d971cedf9f557b74685e0069d0 as build
 ENV BUILD_PKGS gcc make file patch libc-dev util-linux-dev linux-headers openssl-dev g++ tar
 RUN eve-alpine-deploy.sh
 
