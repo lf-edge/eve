@@ -527,22 +527,15 @@ func logEveryNPolls(attempt int, what string, err error) {
 
 // apiCallBudget bounds a single API call inside a poll loop.
 //
-// client-go applies no client-side deadline of its own and we
-// deliberately do not set rest.Config.Timeout — that would also cut the
-// informers' long-lived watches. So without a per-call context a Get
-// against an apiserver that accepts the connection and then never
-// answers blocks for the whole enclosing budget, and the loop around it
-// polls exactly once.
-//
-// That is what happened on 2026-08-05: edge-dev2's readiness wait made a
-// single Get after its cluster join, that call hung, and five minutes
-// passed with no output and no retry — which read as "the node is not
-// Ready" when the truth was "we never got an answer". edge-dev1
-// considered the same node Ready throughout.
+// kubeclient's requestTimeout also bounds each call, but it is much
+// longer than one poll interval. Without a per-call context, a Get
+// against an apiserver that accepts the connection and never answers
+// blocks for the full requestTimeout. The loop then logs and retries
+// far less often than its interval says.
 const apiCallBudget = 10 * time.Second
 
 // getNodeBounded fetches a node under apiCallBudget so a hung apiserver
-// costs one iteration rather than the entire readiness budget. A
+// costs one short iteration rather than a full requestTimeout. A
 // deadline here surfaces as an ordinary error and drives the poll loop's
 // retry and logging.
 func getNodeBounded(
