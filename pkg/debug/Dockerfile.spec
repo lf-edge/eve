@@ -1,4 +1,4 @@
-FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04
+FROM lfedge/eve-alpine:80c5dbe1085d0650030be8a110eaec66ef532672
 
 ENV BUILD_PKGS="jq pciutils usbutils lsblk"
 
