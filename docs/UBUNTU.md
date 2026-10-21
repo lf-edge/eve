@@ -185,6 +185,16 @@ The differences that bit during the port and are easy to reintroduce:
   more) and under master's `ROOTFS_MAXSIZE_MB` of 290. Removing everything
   a container never runs (perl, the dpkg and debconf tools, docs, locales,
   fonts, unused qemu and swtpm helpers) would give another 8 MiB.
+* Memory: the services use more of it. Measured on a kvm test device with 25
+  shim VMs (TestLotsOfApps): the `eve/services` cgroup holds 507 MiB on the
+  Alpine image and exceeds its former 650 MiB limit on the Ubuntu one, which
+  idles at 534 MiB (pillar 150, wwan 91, newlogd 61, vector 53, vtpm 43,
+  guacd 33, debug 34, node-exporter 17 ...) before any app's containerd shim
+  and swtpm are added; at the limit the device thrashed until the watchdog
+  reset it. The kvm defaults of `pkg/grub/rootfs.cfg` (`dom0_mem`,
+  `eve_mem`) are 160 MiB and 200 MiB higher for that reason; trimming the
+  services (ModemManager without modems, guacd, the idle vTPM) would give
+  some of it back.
 * Names: gid 65534 is `nogroup`, not `nobody` (pillar adds a `nobody` group
   alias for dnsmasq); `mkisofs` does not exist, only `xorrisofs` (pillar links
   it); `/var/run` is a symlink to `/run`.
