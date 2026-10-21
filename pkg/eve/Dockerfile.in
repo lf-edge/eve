@@ -1,4 +1,4 @@
-FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04 as tools
+FROM lfedge/eve-alpine:939296ecc7691e7fa14a9a61064556fd563c503f as tools
 ENV PKGS="qemu-img tar u-boot-tools coreutils dosfstools"
 RUN eve-alpine-deploy.sh
 
