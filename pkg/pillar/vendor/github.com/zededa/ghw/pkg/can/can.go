@@ -3,9 +3,9 @@ package can
 import (
 	"fmt"
 
+	"github.com/zededa/ghw/internal/config"
 	"github.com/zededa/ghw/pkg/bus"
 	"github.com/zededa/ghw/pkg/marshal"
-	"github.com/zededa/ghw/pkg/option"
 )
 
 type Device struct {
@@ -21,13 +21,10 @@ func (i *Info) String() string {
 	return fmt.Sprintf("CAN (%d devices)", len(i.Devices))
 }
 
-func New(opts ...option.Option) (*Info, error) {
-	merged := option.FromEnv()
-	for _, opt := range opts {
-		opt(merged)
-	}
+func New(args ...any) (*Info, error) {
+	ctx := config.ContextFromArgs(args...)
 	info := &Info{}
-	if err := info.load(merged); err != nil {
+	if err := info.load(ctx); err != nil {
 		return nil, err
 	}
 	return info, nil

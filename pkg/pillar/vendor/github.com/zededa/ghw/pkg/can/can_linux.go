@@ -1,21 +1,21 @@
 package can
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/zededa/ghw/pkg/bus"
 	"github.com/zededa/ghw/pkg/linuxpath"
-	"github.com/zededa/ghw/pkg/option"
 	"github.com/zededa/ghw/pkg/pci"
 	pciAddress "github.com/zededa/ghw/pkg/pci/address"
 	"github.com/zededa/ghw/pkg/usb"
 	usbAddress "github.com/zededa/ghw/pkg/usb/address"
 )
 
-func (i *Info) load(opts *option.Options) error {
-	paths := linuxpath.New(opts)
+func (i *Info) load(ctx context.Context) error {
+	paths := linuxpath.New(ctx)
 	// CAN devices are network devices with type 280 (ARPHRD_CAN)
 	entries, err := os.ReadDir(paths.SysClassNet)
 	if err != nil {

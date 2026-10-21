@@ -9,12 +9,11 @@
 package serial
 
 import (
+	"context"
 	"fmt"
 	"runtime"
-
-	"github.com/zededa/ghw/pkg/option"
 )
 
-func (i *Info) load(opts *option.Options) error {
+func (i *Info) load(ctx context.Context) error {
 	return fmt.Errorf("serial load not implemented on %s", runtime.GOOS)
 }

@@ -1,5 +1,5 @@
-//go:build !linux && !windows
-// +build !linux,!windows
+//go:build !linux && !darwin && !windows
+// +build !linux,!darwin,!windows
 
 // Use and distribution licensed under the Apache license version 2.
 //
@@ -9,13 +9,11 @@
 package product
 
 import (
+	"context"
+	"errors"
 	"runtime"
-
-	"github.com/pkg/errors"
-
-	"github.com/zededa/ghw/pkg/option"
 )
 
-func (i *Info) load(opts *option.Options) error {
+func (i *Info) load(ctx context.Context) error {
 	return errors.New("productFillInfo not implemented on " + runtime.GOOS)
 }

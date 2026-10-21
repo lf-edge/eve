@@ -4,9 +4,9 @@
 package can
 
 import (
-	"github.com/zededa/ghw/pkg/option"
+	"context"
 )
 
-func (i *Info) load(opts *option.Options) error {
+func (i *Info) load(ctx context.Context) error {
 	return nil
 }

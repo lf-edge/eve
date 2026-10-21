@@ -7,6 +7,7 @@
 package ghw
 
 import (
+	"github.com/zededa/ghw/internal/config"
 	"github.com/zededa/ghw/pkg/accelerator"
 	"github.com/zededa/ghw/pkg/baseboard"
 	"github.com/zededa/ghw/pkg/bios"
@@ -28,21 +29,28 @@ import (
 	"github.com/zededa/ghw/pkg/watchdog"
 )
 
-// DEPRECATED: Please use Option
-type WithOption = option.Option
-type Option = option.Option
-
 var (
-	WithChroot      = option.WithChroot
-	WithAlerter     = option.WithAlerter
-	WithNullAlerter = option.WithNullAlerter
-	// match the existing environ variable to minimize surprises
-	WithDisableWarnings = option.WithNullAlerter
-	WithDisableTools    = option.WithDisableTools
-	WithPathOverrides   = option.WithPathOverrides
+	ContextFromEnv = config.ContextFromEnv
+
+	WithChroot = config.WithChroot
+	// DEPRECATED: Please use WithLogger
+	WithAlerter = option.WithAlerter
+	// DEPRECATED: Please use WithDisableWarnings
+	WithNullAlerter     = option.WithNullAlerter
+	WithDisableWarnings = config.WithDisableWarnings
+	WithDisableTools    = config.WithDisableTools
+	WithDisableTopology = config.WithDisableTopology
+	WithPathOverrides   = config.WithPathOverrides
+	WithUSBUeventPath   = config.WithUSBUeventPath
+	WithPCIDB           = config.WithPCIDB
+	WithLogLevel        = config.WithLogLevel
+	WithDebug           = config.WithDebug
+	WithLogger          = config.WithLogger
 )
 
-type PathOverrides = option.PathOverrides
+type Modifier = config.Modifier
+
+type PathOverrides map[string]string
 
 type CPUInfo = cpu.Info
 
@@ -200,6 +208,19 @@ var (
 	Accelerator = accelerator.New
 )
 
+type WatchdogInfo = watchdog.Info
+
+var (
+	Watchdog = watchdog.New
+)
+
+type TPMInfo = tpm.Info
+type TPMDevice = tpm.Device
+
+var (
+	TPM = tpm.New
+)
+
 type SerialInfo = serial.Info
 type SerialDevice = serial.Device
 
@@ -211,16 +232,4 @@ type CANInfo = can.Info
 
 var (
 	CAN = can.New
-)
-
-type TPMInfo = tpm.Info
-
-var (
-	TPM = tpm.New
-)
-
-type WatchdogInfo = watchdog.Info
-
-var (
-	Watchdog = watchdog.New
 )

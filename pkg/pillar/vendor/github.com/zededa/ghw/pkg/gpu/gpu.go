@@ -9,8 +9,8 @@ package gpu
 import (
 	"fmt"
 
+	"github.com/zededa/ghw/internal/config"
 	"github.com/zededa/ghw/pkg/marshal"
-	"github.com/zededa/ghw/pkg/option"
 	"github.com/zededa/ghw/pkg/pci"
 	"github.com/zededa/ghw/pkg/topology"
 )
@@ -53,9 +53,10 @@ type Info struct {
 
 // New returns a pointer to an Info struct that contains information about the
 // graphics cards on the host system
-func New(opt ...option.Option) (*Info, error) {
+func New(args ...any) (*Info, error) {
+	ctx := config.ContextFromArgs(args...)
 	info := &Info{}
-	if err := info.load(opt...); err != nil {
+	if err := info.load(ctx); err != nil {
 		return nil, err
 	}
 	return info, nil

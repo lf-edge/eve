@@ -1,12 +1,19 @@
 //go:build !linux
 // +build !linux
 
+// Use and distribution licensed under the Apache license version 2.
+//
+// See the COPYING file in the root project directory for full text.
+//
+
 package tpm
 
 import (
-	"github.com/zededa/ghw/pkg/option"
+	"context"
+	"errors"
+	"runtime"
 )
 
-func (i *Info) load(opts *option.Options) error {
-	return nil
+func (i *Info) load(ctx context.Context) error {
+	return errors.New("tpm load not implemented on " + runtime.GOOS)
 }
