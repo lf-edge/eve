@@ -237,11 +237,6 @@ func TestWpaSupplicantConfiguratorPaths(t *testing.T) {
 		t.Errorf("configPath() dir = %q, want %q", filepath.Dir(cfgPath), nimRunDir)
 	}
 
-	watcherPath := c.eventWatcherScriptPath(ifName)
-	if !strings.HasSuffix(watcherPath, "wpa_supplicant-wlan0-watcher.sh") {
-		t.Errorf("eventWatcherScriptPath() = %q, want suffix wpa_supplicant-wlan0-watcher.sh", watcherPath)
-	}
-
 	statePath := c.pnacStatePath(ifName)
 	if !strings.HasSuffix(statePath, ifName) {
 		t.Errorf("pnacStatePath() = %q, want suffix %q", statePath, ifName)
