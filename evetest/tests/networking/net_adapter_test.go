@@ -197,8 +197,18 @@ func TestStaticIPv4Only(test *testing.T) {
 }
 
 const requireSCEPProxyParamKey = "REQUIRE_SCEP_PROXY"
+const pnacReauthCycleCountParamKey = "PNAC_REAUTH_CYCLE_COUNT"
 
 var (
+	pnacReauthCycleCountParam = evetest.TestParameterDefinition{
+		Key:          pnacReauthCycleCountParamKey,
+		DefaultValue: 3,
+		Description: evetest.TestParameterDescription{
+			Summary: "Number of re-authentication cycles (trusted CA changes) " +
+				"to exercise; increase to look for resource growth",
+			Default: "3",
+		},
+	}
 	requireSCEPProxyParam = evetest.TestParameterDefinition{
 		Key:          requireSCEPProxyParamKey,
 		DefaultValue: false,
@@ -263,6 +273,37 @@ var (
 //  6. SCEP profile swap while device is NOT ONLINE: create a new SCEP profile
 //     while the device is rebooting. We previously had a bug where the device
 //     failed to remove the old, now-obsolete profile in this scenario.
+//  7. Stress cycles (PNAC_REAUTH_CYCLE_COUNT, 3 by default) that repeatedly
+//     re-authenticate the port, make the authenticator reject the device and
+//     re-enroll certificates. Every cycle:
+//     a. Re-initializes the port on the authenticator twice (the switch-side
+//     "initialize"): after each one the reported LastAuthTimestamp must
+//     advance (a missed supplicant event leaves it stale) and the port must
+//     keep an IP from the authenticated VLAN.
+//     b. Makes the authenticator trust only an unrelated CA and re-initializes
+//     the port: the reported state must become FAILED with an error (not
+//     stay AUTHENTICATED) and the port must move to a pre-auth ("guest")
+//     VLAN IP. Note that hostapd also signs its server certificate with the
+//     CA, so here the supplicant rejects the server rather than the other
+//     way round; the observable outcome is the same.
+//     c. Restores the authenticator's CA and re-initializes: the port must
+//     authenticate again without manual intervention and renew its IP in
+//     the authenticated VLAN.
+//     d. Disables PNAC and removes the SCEP profile (the certificate must be
+//     removed and the port must fall back to a pre-auth VLAN IP), then
+//     re-adds both with a different key type and checks enrollment,
+//     authentication and the IP again.
+//     After every cycle the EVE memory usage reported in device metrics is
+//     logged. An unexpected reboot (e.g. after an agent was killed for running
+//     out of memory) fails the test.
+//
+// Test params
+// -----------
+//   - HYPERVISOR (defaults to KVM).
+//   - REQUIRE_SCEP_PROXY (defaults to false).
+//   - PNAC_REAUTH_CYCLE_COUNT (defaults to 3): number of cycles of phase 7,
+//     set via EVETEST_PNAC_REAUTH_CYCLE_COUNT. Raise it (e.g. to 20) to look
+//     for memory growth; 0 skips phase 7.
 func TestPNAC(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
@@ -272,11 +313,15 @@ func TestPNAC(test *testing.T) {
 	evetest.DefineTestParameters(
 		evetest.HypervisorParameter(),
 		requireSCEPProxyParam,
+		pnacReauthCycleCountParam,
 	)
 
 	// Get parameter values set for this test execution.
 	hypervisor := evetest.GetHypervisorParameterValue()
 	requireSCEPProxy := evetest.GetTestParameter[bool](requireSCEPProxyParamKey)
+	reauthCycles := evetest.GetTestParameter[int](pnacReauthCycleCountParamKey)
+	t.Expect(reauthCycles).To(BeNumerically(">=", 0),
+		"EVETEST_PNAC_REAUTH_CYCLE_COUNT must not be negative")
 
 	// Set up the test harness and specify the test prerequisites.
 	devName := "edge-dev"
@@ -302,20 +347,20 @@ func TestPNAC(test *testing.T) {
 		evetest.DHCPNetworkConfig{
 			NetworkType: evecommon.NetworkType_V4Only,
 		})
-	devConfig.AddNetworkAdapter(
-		evetest.NetworkAdapterConfig{
-			LogicalLabel:  "ethernet0",
-			PhysicalLabel: "eth0",
-			InterfaceName: "eth0",
-			NetworkUUID:   dhcpNet,
-			Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
-			PNAC: evetest.PNAC{
-				Enable:                    true,
-				EAPIdentity:               "evetest",
-				EAPMethod:                 eveconfig.EAPMethod_EAP_METHOD_TLS,
-				CertEnrollmentProfileName: "scep-test",
-			},
-		})
+	adapterConfig := evetest.NetworkAdapterConfig{
+		LogicalLabel:  "ethernet0",
+		PhysicalLabel: "eth0",
+		InterfaceName: "eth0",
+		NetworkUUID:   dhcpNet,
+		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+		PNAC: evetest.PNAC{
+			Enable:                    true,
+			EAPIdentity:               "evetest",
+			EAPMethod:                 eveconfig.EAPMethod_EAP_METHOD_TLS,
+			CertEnrollmentProfileName: "scep-test",
+		},
+	}
+	devConfig.AddNetworkAdapter(adapterConfig)
 	scepServerHostname := "scep-server.test"
 	if requireSCEPProxy {
 		// Adam does not use DNS servers running inside SDN and therefore
@@ -458,13 +503,13 @@ func TestPNAC(test *testing.T) {
 	// against the received config after boot.
 	device.RequestReboot(false)
 	devConfig.DeleteSCEPProfile("scep-test")
-	devConfig.AddSCEPProfile(
-		evetest.SCEPProfile{
+	newSCEPProfile := func(caCertsPEM ...string) evetest.SCEPProfile {
+		return evetest.SCEPProfile{
 			Name:               "new-scep-profile",
 			SCEPServerURL:      fmt.Sprintf("http://%s:8080/scep", scepServerHostname),
 			UseControllerProxy: requireSCEPProxy,
 			ChallengePassword:  "123456789",
-			CACertsPEM:         []string{netmodels.PnacRootCACertPEM},
+			CACertsPEM:         caCertsPEM,
 			CSR: evetest.CSRProfile{
 				CommonName:         devName,
 				Organization:       "different-org",
@@ -474,8 +519,11 @@ func TestPNAC(test *testing.T) {
 				KeyType:            eveconfig.KeyType_KEY_TYPE_RSA_2048,
 				HashAlgorithm:      eveconfig.HashAlgorithm_HASH_ALGORITHM_SHA256,
 			},
-		})
+		}
+	}
+	devConfig.AddSCEPProfile(newSCEPProfile(netmodels.PnacRootCACertPEM))
 	devConfig.Pnacs[0].CertEnrollmentProfileName = "new-scep-profile"
+	adapterConfig.PNAC.CertEnrollmentProfileName = "new-scep-profile"
 	configAppliedAt = time.Now()
 	device.ApplyConfig(devConfig, false, false)
 
@@ -522,19 +570,169 @@ func TestPNAC(test *testing.T) {
 	t.Expect(issueTime.Before(time.Now())).To(BeTrue())
 	t.Expect(expirationTime.After(time.Now())).To(BeTrue())
 
+	// dinfo predates the reboot: authenticate against the latest info and only
+	// accept an authentication performed after the new config was applied.
+	dinfo = device.GetDeviceInfo()
 	pnacStatus = getPNACStatus("ethernet0", dinfo)
-	if pnacStatus.GetState() != eveinfo.SupplicantState_SUPPLICANT_STATE_AUTHENTICATED {
-		t.Eventually(devUpdates, timeout).Should(Receive(matchers.SatisfyPredicate(
-			"Device has authenticated port ethernet0 with new cert",
-			func(info *eveinfo.ZInfoDevice) bool {
-				dinfo = info
-				pnacStatus = getPNACStatus("ethernet0", dinfo)
-				pnacState := pnacStatus.GetState()
-				return pnacState == eveinfo.SupplicantState_SUPPLICANT_STATE_AUTHENTICATED
-			})))
+	authVLANSubnet = evetest.IPSubnet("172.20.20.0/24")
+	portIP = getPortIPv4Addr("ethernet0", dinfo)
+	if pnacStatus.GetState() != eveinfo.SupplicantState_SUPPLICANT_STATE_AUTHENTICATED ||
+		!pnacStatus.GetLastAuthTimestamp().AsTime().After(configAppliedAt) ||
+		portIP == nil || !authVLANSubnet.Contains(portIP) {
+		pnacStatus = waitForPNACAuthenticated(t, devUpdates, "ethernet0",
+			configAppliedAt, authVLANSubnet, timeout,
+			"Device has authenticated port ethernet0 with new cert")
 	}
 
 	evetest.Checkpoint("port-authenticated-with-new-cert")
+
+	// Stress cycles: switch-port re-initialization, RADIUS rejection and
+	// recovery, PNAC disable + re-enrollment.
+	preAuthVLANSubnet := evetest.IPSubnet("172.20.10.0/24")
+	reauthTimeout := 5 * time.Minute
+	var reauthGeneration uint32
+	// authenticatorModel returns the network model with the authenticator
+	// trusting the given CA; every call also re-initializes the port.
+	authenticatorModel := func(caCertPEM, caKeyPEM string) *api.NetworkModel {
+		reauthGeneration++
+		model := netmodels.SingleEthWithPNAC(requireSCEPProxy)
+		pnac := model.Bridges[0].Pnac
+		pnac.CaCertPem = caCertPEM
+		pnac.CaKeyPem = caKeyPEM
+		pnac.ReauthGeneration = reauthGeneration
+		return model
+	}
+	defer func() {
+		if reauthCycles > 0 {
+			evetest.UpdateNetworkModel(netmodels.SingleEthWithPNAC(requireSCEPProxy))
+		}
+	}()
+	keyTypes := []eveconfig.KeyType{
+		eveconfig.KeyType_KEY_TYPE_RSA_2048,
+		eveconfig.KeyType_KEY_TYPE_RSA_3072,
+		eveconfig.KeyType_KEY_TYPE_RSA_4096,
+	}
+	scepProfileName := "new-scep-profile"
+	for i := 1; i <= reauthCycles; i++ {
+		evetest.Logger().Infof("PNAC stress cycle %d/%d", i, reauthCycles)
+		lastAuth := pnacStatus.GetLastAuthTimestamp().AsTime()
+
+		// a. Authenticator re-initializes the port; EVE must notice every
+		// successful re-authentication.
+		for j := 1; j <= 2; j++ {
+			evetest.UpdateNetworkModel(authenticatorModel(
+				netmodels.PnacRootCACertPEM, netmodels.PnacRootCAKeyPEM))
+			pnacStatus = waitForPNACAuthenticated(t, devUpdates, "ethernet0",
+				lastAuth, authVLANSubnet, reauthTimeout,
+				fmt.Sprintf("cycle %d: LastAuthTimestamp advanced after port re-init #%d",
+					i, j))
+			lastAuth = pnacStatus.GetLastAuthTimestamp().AsTime()
+		}
+		evetest.Checkpoint(fmt.Sprintf("cycle-%d-reinit", i))
+
+		// b. Authenticator rejects the device.
+		otherCACert, otherCAKey, err := generateUnrelatedCA(
+			fmt.Sprintf("unrelated-ca-%d", i))
+		t.Expect(err).ToNot(HaveOccurred())
+		evetest.UpdateNetworkModel(authenticatorModel(otherCACert, otherCAKey))
+		t.Eventually(devUpdates, reauthTimeout).Should(Receive(matchers.SatisfyPredicate(
+			fmt.Sprintf("cycle %d: authentication failure is reported and "+
+				"the port moved to the pre-auth VLAN", i),
+			func(info *eveinfo.ZInfoDevice) bool {
+				status := getPNACStatus("ethernet0", info)
+				ip := getPortIPv4Addr("ethernet0", info)
+				return status.GetState() == eveinfo.SupplicantState_SUPPLICANT_STATE_FAILED &&
+					status.GetErr() != nil &&
+					ip != nil && preAuthVLANSubnet.Contains(ip)
+			})))
+		evetest.Checkpoint(fmt.Sprintf("cycle-%d-rejected", i))
+
+		// c. Authenticator trusts the device again; no manual action.
+		evetest.UpdateNetworkModel(authenticatorModel(
+			netmodels.PnacRootCACertPEM, netmodels.PnacRootCAKeyPEM))
+		pnacStatus = waitForPNACAuthenticated(t, devUpdates, "ethernet0",
+			lastAuth, authVLANSubnet, reauthTimeout,
+			fmt.Sprintf("cycle %d: port recovered after the authenticator "+
+				"trusts the device again", i))
+		_, stderr, err = device.RunShellScript(command, 0, 30*time.Second)
+		t.Expect(err).ToNot(HaveOccurred(), "curl failed: %s", stderr)
+		evetest.Checkpoint(fmt.Sprintf("cycle-%d-recovered", i))
+
+		// d. Disable PNAC, drop the profile, enroll a different certificate.
+		adapterConfig.PNAC.Enable = false
+		devConfig.UpdateNetworkAdapter(adapterConfig)
+		devConfig.DeleteSCEPProfile(scepProfileName)
+		device.ApplyConfig(devConfig, false, false)
+		t.Eventually(devUpdates, reauthTimeout).Should(Receive(matchers.SatisfyPredicate(
+			fmt.Sprintf("cycle %d: enrolled certificate removed, PNAC disabled "+
+				"and the port moved to the pre-auth VLAN", i),
+			func(info *eveinfo.ZInfoDevice) bool {
+				ip := getPortIPv4Addr("ethernet0", info)
+				return len(info.GetEnrolledCerts()) == 0 &&
+					!getPNACStatus("ethernet0", info).GetEnabled() &&
+					ip != nil && preAuthVLANSubnet.Contains(ip)
+			})))
+		evetest.Checkpoint(fmt.Sprintf("cycle-%d-pnac-disabled", i))
+
+		profile := newSCEPProfile(netmodels.PnacRootCACertPEM)
+		profile.Name = fmt.Sprintf("scep-cycle-%d", i)
+		scepProfileName = profile.Name
+		profile.CSR.KeyType = keyTypes[i%len(keyTypes)]
+		devConfig.AddSCEPProfile(profile)
+		adapterConfig.PNAC.Enable = true
+		adapterConfig.PNAC.CertEnrollmentProfileName = profile.Name
+		devConfig.UpdateNetworkAdapter(adapterConfig)
+		enrollAfter := time.Now()
+		device.ApplyConfig(devConfig, false, false)
+		t.Eventually(devUpdates, reauthTimeout).Should(Receive(matchers.SatisfyPredicate(
+			fmt.Sprintf("cycle %d: certificate enrolled with profile %s", i, profile.Name),
+			func(info *eveinfo.ZInfoDevice) bool {
+				certs := info.GetEnrolledCerts()
+				return len(certs) == 1 &&
+					certs[0].GetCertEnrollmentProfileName() == profile.Name &&
+					certs[0].GetStatus() == eveinfo.CertStatus_CERT_STATUS_AVAILABLE
+			})))
+		pnacStatus = waitForPNACAuthenticated(t, devUpdates, "ethernet0",
+			enrollAfter, authVLANSubnet, reauthTimeout,
+			fmt.Sprintf("cycle %d: port authenticated with the new certificate", i))
+		evetest.Checkpoint(fmt.Sprintf("cycle-%d-reenrolled", i))
+
+		// Memory usage is only logged: it includes reclaimable page cache. If
+		// repeated cycles exhausted EVE memory, the device would reboot, which
+		// evetest reports as an unexpected reboot.
+		if memory := device.GetDeviceMetrics().GetDeviceMemory(); memory != nil {
+			evetest.Logger().Infof("PNAC stress cycle %d/%d done: EVE memory "+
+				"used %d MB of %d MB", i, reauthCycles,
+				memory.GetUsedEveMB(), memory.GetAllocatedEveMB())
+		}
+	}
+}
+
+// waitForPNACAuthenticated waits until the port with the given logical label
+// reports an authentication performed strictly after notBefore, in the
+// AUTHENTICATED state without an error, and holds an IPv4 address from the given
+// subnet. It returns the status that satisfied the conditions.
+func waitForPNACAuthenticated(t Gomega, updates <-chan *eveinfo.ZInfoDevice,
+	portLL string, notBefore time.Time, subnet *net.IPNet,
+	timeout time.Duration, description string) *eveinfo.PNACStatus {
+	var result *eveinfo.PNACStatus
+	t.Eventually(updates, timeout).Should(Receive(matchers.SatisfyPredicate(
+		description,
+		func(info *eveinfo.ZInfoDevice) bool {
+			status := getPNACStatus(portLL, info)
+			if status == nil || !status.GetEnabled() || status.GetErr() != nil ||
+				status.GetState() != eveinfo.SupplicantState_SUPPLICANT_STATE_AUTHENTICATED ||
+				!status.GetLastAuthTimestamp().AsTime().After(notBefore) {
+				return false
+			}
+			ip := getPortIPv4Addr(portLL, info)
+			if ip == nil || !subnet.Contains(ip) {
+				return false
+			}
+			result = status
+			return true
+		})))
+	return result
 }
 
 // getPNACStatus returns the PNAC (802.1X) status for the port with the given
