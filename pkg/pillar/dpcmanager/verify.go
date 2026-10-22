@@ -235,6 +235,16 @@ func (m *DpcManager) verifyDPC(ctx context.Context) (status types.DPCState) {
 			"canceling them and continue with verification", elapsed)
 		m.reconcileStatus.CancelAsyncOps()
 	}
+	if m.isDHCPReacquirePending() {
+		if elapsed < waitForAsyncRetries*m.dpcTestDuration {
+			m.Log.Noticef("DPC verify: Waiting for DHCP reacquire to finish")
+			status = types.DPCStateAsyncWait
+			m.updateDPCState(status)
+			return status
+		}
+		m.Log.Warnf("DPC verify: DHCP reacquire is pending for too long "+
+			"(waited for %v), continue with verification", elapsed)
+	}
 
 	// Check controller connectivity.
 	m.updateDNS()
