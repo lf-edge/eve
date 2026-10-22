@@ -285,7 +285,13 @@ func waitForAppHTTPReady(t *GomegaWithT, cluster *evetest.EdgeCluster,
 	appUUID uuid.UUID, edgePort uint16, timeout time.Duration) {
 	host := cluster.FindDeviceHostingApp(appUUID, 2*time.Minute)
 	t.Expect(host).NotTo(BeNil(), "no cluster device reports hosting app %s", appUUID)
+	waitForAppHTTPReadyOn(t, host, appUUID, edgePort, timeout)
+}
 
+// waitForAppHTTPReadyOn is waitForAppHTTPReady for a caller that has already
+// verified which device hosts the app.
+func waitForAppHTTPReadyOn(t *GomegaWithT, host *evetest.EdgeDevice,
+	appUUID uuid.UUID, edgePort uint16, timeout time.Duration) {
 	ips := host.GetDeviceIPAddress(clusterNIPort)
 	t.Expect(ips).NotTo(BeEmpty(), "device %s has no address on %s",
 		host.GetConfig().GetDeviceName(), clusterNIPort)
@@ -531,16 +537,15 @@ func TestDNIDandBackupDNID(test *testing.T) {
 		dev1.WaitUntilAppIsRunning(vm2UUID, backupOpWait)
 		evetest.Checkpoint("vm2-activated-on-backup" + checkpointSuffix)
 
-		backupHost := cluster.FindDeviceHostingApp(vm2UUID, 2*time.Minute)
-		t.Expect(backupHost).NotTo(BeNil(), "no cluster device reports hosting vm2")
-		t.Expect(backupHost.GetConfig().GetDeviceName()).NotTo(Equal(devName[2]),
-			"vm2 is supposed to be down on its own designated node %s, not running there", devName[2])
+		// edge-dev1 is the only node that can host vm2 here, so require it
+		// rather than just "not edge-dev3".
+		backupHost := cluster.WaitUntilAppIsHostedOn(vm2UUID, devName[0], 2*time.Minute)
 		evetest.Checkpoint("vm2-backup-placement-verified" + checkpointSuffix)
 
 		// The backup node reporting RUNNING is not enough: this is exactly
 		// where a domain can come up on a volume whose content never
 		// landed. Make the guest prove it booted.
-		waitForAppHTTPReady(t, cluster, vm2UUID, vm2HTTPPort, appHTTPReadyTimeout)
+		waitForAppHTTPReadyOn(t, backupHost, vm2UUID, vm2HTTPPort, appHTTPReadyTimeout)
 		evetest.Checkpoint("vm2-backup-http-ready" + checkpointSuffix)
 	}
 
@@ -619,13 +624,12 @@ func TestDNIDandBackupDNID(test *testing.T) {
 	dev3.WaitUntilAppIsRunning(vm2UUID, failbackTimeout)
 	evetest.Checkpoint("vm2-failed-back")
 
-	failbackHost := cluster.FindDeviceHostingApp(vm2UUID, 2*time.Minute)
-	t.Expect(failbackHost).NotTo(BeNil(), "no cluster device reports hosting vm2")
-	t.Expect(failbackHost.GetConfig().GetDeviceName()).To(Equal(devName[2]),
-		"vm2 did not fail back to its own designated node %s", devName[2])
+	// The app info above comes from edge-dev3 itself; placement comes from
+	// cluster info, which can lag and still show vm2 on the backup node.
+	failbackHost := cluster.WaitUntilAppIsHostedOn(vm2UUID, devName[2], 2*time.Minute)
 	evetest.Checkpoint("vm2-failback-placement-verified")
 
-	waitForAppHTTPReady(t, cluster, vm2UUID, vm2HTTPPort, appHTTPReadyTimeout)
+	waitForAppHTTPReadyOn(t, failbackHost, vm2UUID, vm2HTTPPort, appHTTPReadyTimeout)
 	evetest.Checkpoint("vm2-failback-http-ready")
 }
 
