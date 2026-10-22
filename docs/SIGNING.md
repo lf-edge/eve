@@ -14,7 +14,7 @@ its own builds the same way.
 | `lfedge/eve:<tag>[-<platform>]-<hv>-<arch>`, `lfedge/eve-sources:…`, their multi-arch indexes, and an SPDX SBOM attestation on each EVE image except riscv64 | `release-sign.yml@refs/heads/master` | release tags, after approval |
 | `<arch>.<hv>.<platform>.sha256sums` release asset | `release-sign.yml@refs/heads/master` | release tags, after approval |
 | `lfedge/eve-<pkg>` platform manifests and indexes | `publish.yml@refs/heads/<branch>` | pushes to `master`, `N.N` and `N.N-stable` that build the package |
-| `lfedge/eve-alpine-base` and `lfedge/eve-alpine` platform manifests and indexes | `build-alpine-base.yml@refs/heads/master` | manual runs of that workflow on `master` |
+| `lfedge/eve-alpine-base` platform manifests and index | `build-alpine-base.yml@refs/heads/master` | manual runs of that workflow on `master` |
 
 Each `sha256sums` also covers `<arch>.<hv>.<platform>.images.txt`, which names
 the image digests the release files were extracted from. Its signature is the
@@ -196,13 +196,15 @@ and `lfedge/eve-rust` (published by the eve-kernel and eve-rust repositories),
    self-review on, and deployments limited to release tag names. Set the
    repository variable `RELEASE_APPROVERS` to the reviewers to mention, as
    `@user @user …`.
-2. Package images pushed before signing carry no signature and are reused by
-   content hash indefinitely. Change every package's source on the branch so
-   that the next build rebuilds, pushes and signs all of them.
-3. Run `build-alpine-base.yml` on `master`, so that `eve-alpine-base`, which
-   every `eve-alpine` build starts from, is signed.
-4. Set `EVE_COSIGN_ENFORCE` to `true` once every branch that builds releases
-   has been through step 2, and step 3 has run.
+2. Run `build-alpine-base.yml` on `master`. It builds and signs
+   `eve-alpine-base`, which every `eve-alpine` build starts from, under a new
+   tag.
+3. Package images pushed before signing carry no signature and are reused by
+   content hash indefinitely. Change every package's source on the branch, with
+   `pkg/alpine` on the `eve-alpine-base` from step 2, so that the next build
+   rebuilds, pushes and signs all of them.
+4. Set `EVE_COSIGN_ENFORCE` to `true` once step 2 has run and every branch
+   that builds releases has been through step 3.
 
 A package pushed by one build and pulled by another before the first has
 signed it, a window of a few seconds, fails enforced verification; re-running
