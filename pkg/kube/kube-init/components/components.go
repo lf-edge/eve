@@ -1294,10 +1294,11 @@ metadata:
   name: %s
   namespace: longhorn-system
 spec:
+  name: %s
   allowScheduling: true
   evictionRequested: false
   tags: []
-`, name)
+`, name, name)
 	if err := kubectlx.Apply(ctx, kubeclient.Default(),
 		[]byte(yaml), kubectlx.ApplyOptions{}); err != nil {
 		return fmt.Errorf("apply longhorn node %s: %w", name, err)
