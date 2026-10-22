@@ -8,6 +8,7 @@ import (
 	"net"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -79,6 +80,7 @@ type fakeSupplicant struct {
 	mu       sync.Mutex
 	attached net.Addr
 	detached chan struct{}
+	logoffs  atomic.Int32
 }
 
 func newFakeSupplicant(t *testing.T, path string) *fakeSupplicant {
@@ -110,6 +112,9 @@ func (f *fakeSupplicant) serve() {
 			_, _ = f.conn.WriteTo([]byte("PONG\n"), addr)
 		case "DETACH":
 			close(f.detached)
+		case "LOGOFF":
+			f.logoffs.Add(1)
+			_, _ = f.conn.WriteTo([]byte("OK\n"), addr)
 		}
 	}
 }
@@ -240,6 +245,23 @@ func TestWpaEventListenerNoSupplicant(t *testing.T) {
 	err := wpaEventListener(context.Background(), filepath.Join(dir, "missing"),
 		filepath.Join(dir, "client"), nil, func(string) {})
 	if err == nil {
+		t.Fatal("expected an error when wpa_supplicant is not running")
+	}
+}
+
+func TestWpaCtrlLogoff(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	ctrlPath := filepath.Join(dir, "eth0")
+	fake := newFakeSupplicant(t, ctrlPath)
+	if err := wpaCtrlLogoff(ctrlPath, filepath.Join(dir, "client")); err != nil {
+		t.Fatalf("LOGOFF failed: %v", err)
+	}
+	if n := fake.logoffs.Load(); n != 1 {
+		t.Fatalf("expected 1 LOGOFF command, got %d", n)
+	}
+	if err := wpaCtrlLogoff(filepath.Join(dir, "missing"),
+		filepath.Join(dir, "client")); err == nil {
 		t.Fatal("expected an error when wpa_supplicant is not running")
 	}
 }
