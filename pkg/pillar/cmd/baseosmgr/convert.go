@@ -168,7 +168,7 @@ func removeResizeFailedMarkerFromOverlay() error {
 // overlay, so the two never diverge. Used when the conversion target changes or
 // is withdrawn. Best-effort; logs failures.
 func clearResizeFailedMarker() {
-	if err := withConfigPartitionRW(func(mountDir string) error {
+	if err := zboot.WithConfigPartitionRW(func(mountDir string) error {
 		return removeMarkerFile(filepath.Join(mountDir, resizeFailedMarkerName))
 	}); err != nil {
 		log.Warnf("clearResizeFailedMarker: partition: %v", err)
@@ -227,15 +227,15 @@ func maybeConvert(ctx *baseOsMgrContext, status *types.BaseOsStatus) bool {
 	// The backup and the shrink flag file must be written to the CONFIG partition
 	// itself: the runtime /config is a read-only tmpfs RAM copy that storage-init
 	// remounts read-only, so a write there is lost on the reboot the shrink relies
-	// on. Mount the partition read-write and point the resizer at it (the same
-	// approach the monitor agent uses to update /config). The check/grow steps do
-	// not write /config, but mounting unconditionally keeps the one /config-writing
-	// step (backup) covered without first probing the decision.
+	// on. Mount the partition read-write and point the resizer at it. The
+	// check/grow steps do not write /config, but mounting unconditionally keeps the
+	// one /config-writing step (backup) covered without first probing the decision.
+	// fn always succeeds here; the resizer result is captured via closure variables.
 	var res diskconvert.Result
 	var runErr error
 	var declineReason string
 	var clearedStale bool
-	mountErr := withConfigPartitionRW(func(mountDir string) error {
+	mountErr := zboot.WithConfigPartitionRW(func(mountDir string) error {
 		// A prior offline shrink/grow that aborted under this running image left a
 		// resize-failed.json marker (storage-init's resize_abort). markerVerdict
 		// decides: decline (re-arming would fail identically and reboot-loop), or
@@ -320,44 +320,6 @@ func maybeConvert(ctx *baseOsMgrContext, status *types.BaseOsStatus) bool {
 		return declineConversion(ctx, status,
 			fmt.Sprintf("conversion failed: %v", runErr))
 	}
-}
-
-// withConfigPartitionRW mounts the CONFIG partition read-write at a temp dir
-// under /run, calls fn with that dir, then unmounts. The conversion backup and
-// the shrink flag file have to be written here, on the real partition, because
-// the runtime /config is a read-only tmpfs RAM copy whose writes do not survive
-// the reboot into the offline shrink. Mirrors cmd/monitor/monitor.go, which
-// writes the server file the same way. Returns the mount error (fn not run), or
-// fn's error, or the unmount error; the caller here lets fn always succeed and
-// captures the resizer result via closure variables.
-func withConfigPartitionRW(fn func(mountDir string) error) error {
-	out, err := base.Exec(log, "/sbin/findfs", "PARTLABEL=CONFIG").Output()
-	if err != nil {
-		return fmt.Errorf("findfs PARTLABEL=CONFIG: %w (%s)", err, strings.TrimSpace(string(out)))
-	}
-	devicePath := strings.TrimSpace(string(out))
-	if devicePath == "" {
-		return fmt.Errorf("no CONFIG partition found")
-	}
-	mountDir, err := os.MkdirTemp("/run", "convert-config-")
-	if err != nil {
-		return fmt.Errorf("create temp mount dir: %w", err)
-	}
-	if err := syscall.Mount(devicePath, mountDir, "vfat", 0, "iocharset=iso8859-1"); err != nil {
-		_ = os.RemoveAll(mountDir) // never mounted, safe to remove
-		return fmt.Errorf("mount CONFIG partition %s: %w", devicePath, err)
-	}
-	fnErr := fn(mountDir)
-	// Only remove the mountpoint once it is actually unmounted; RemoveAll on a
-	// still-mounted dir would delete files on the CONFIG partition.
-	if umountErr := syscall.Unmount(mountDir, 0); umountErr != nil {
-		if fnErr != nil {
-			return fnErr
-		}
-		return fmt.Errorf("unmount CONFIG partition %s: %w", mountDir, umountErr)
-	}
-	_ = os.RemoveAll(mountDir)
-	return fnErr
 }
 
 // conversionDecision runs the read-only storage-resizer pre-flight check on the

@@ -144,9 +144,11 @@ maintenance mode. Nothing else on the device can reconstruct the mode.
 > read-write. At runtime `/config` is a **read-only tmpfs RAM copy** of that
 > partition (storage-init copies the partition into RAM, unmounts it, and
 > remounts the tmpfs read-only), so writes to the runtime `/config` are lost on
-> reboot. The caller must find `PARTLABEL=CONFIG`, mount it read-write at a temp
-> path, point `--backup-dir`/`--flag-file` there, write, sync, and unmount (the
-> `monitor` agent's `findfs PARTLABEL=CONFIG` pattern). Wiring that mount around
+> reboot. The caller must find the boot disk's CONFIG partition with
+> `zboot partdev CONFIG` (never search all disks: a forgotten installer stick
+> has a CONFIG partition too), mount it read-write at a temp path, point
+> `--backup-dir`/`--flag-file` there, write, sync, and unmount (pillar's
+> `zboot.WithConfigPartitionRW`). Wiring that mount around
 > `backup`/`restore`/`cleanup` is a correctness requirement, not yet implemented.
 
 ### shrink / grow — the repartition

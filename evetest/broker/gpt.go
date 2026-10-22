@@ -32,7 +32,8 @@ const (
 	gptMinEntrySize = 128
 	// gptConfigPartName is the GPT partition name EVE gives its config
 	// partition, in both the live (make-raw do_conf) and installer
-	// (do_conf_win) layouts. EVE itself finds it with `findfs PARTLABEL=CONFIG`.
+	// (do_conf_win) layouts. EVE itself finds it on the boot disk with
+	// `zboot partdev CONFIG`.
 	gptConfigPartName = "CONFIG"
 )
 

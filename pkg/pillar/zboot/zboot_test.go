@@ -67,6 +67,62 @@ func pkill(path string) bool {
 	return false
 }
 
+func TestGetConfigPartitionDevname(t *testing.T) {
+	tests := []struct {
+		name    string
+		zboot   string // body of the fake zboot script put first on PATH
+		wantDev string
+		wantErr bool
+	}{
+		{
+			name: "CONFIG on the boot disk",
+			zboot: `[ "$*" = "partdev CONFIG" ] && { echo /dev/vdb4; exit 0; }
+exit 1`,
+			wantDev: "/dev/vdb4",
+		},
+		{name: "zboot fails", zboot: "exit 1", wantErr: true},
+		{name: "no CONFIG on the boot disk", zboot: "exit 0", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			script := "#!/bin/sh\n" + tt.zboot + "\n"
+			if err := os.WriteFile(filepath.Join(dir, "zboot"), []byte(script), 0700); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+
+			dev, err := GetConfigPartitionDevname()
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
+			}
+			if dev != tt.wantDev {
+				t.Fatalf("got %q, want %q", dev, tt.wantDev)
+			}
+		})
+	}
+}
+
+func TestWithConfigPartitionRWNoPartition(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "zboot"), []byte("#!/bin/sh\nexit 1\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+
+	called := false
+	err := WithConfigPartitionRW(func(string) error {
+		called = true
+		return nil
+	})
+	if err == nil {
+		t.Fatal("expected an error when the CONFIG partition cannot be found")
+	}
+	if called {
+		t.Fatal("fn must not run without a mounted CONFIG partition")
+	}
+}
+
 func TestExecWithRetry(t *testing.T) {
 	t.Parallel()
 
