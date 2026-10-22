@@ -384,6 +384,18 @@ func (c *WpaSupplicantConfigurator) Delete(ctx context.Context, item depgraph.It
 			}
 		}
 
+		// Without EAPOL-Logoff the authenticator keeps the port authorized
+		// (e.g. in the post-authentication VLAN) after the supplicant is gone.
+		if s.PNACConfig != nil {
+			ctrlPath := filepath.Join(types.WpaSupplicantCtrlSockDir, s.AdapterIfName)
+			localPath := filepath.Join(nimRunDir,
+				fmt.Sprintf("wpa_ctrl-%s-%d-logoff", s.AdapterIfName, os.Getpid()))
+			if err := wpaCtrlLogoff(ctrlPath, localPath); err != nil {
+				c.Log.Warnf("Failed to send EAPOL-Logoff for %s: %v",
+					s.AdapterIfName, err)
+			}
+		}
+
 		// Stop wpa_supplicant itself.
 		var err error
 		if pms != nil && pms.supplicantPM != nil {
