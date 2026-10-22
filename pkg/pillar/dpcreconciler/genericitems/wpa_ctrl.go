@@ -129,6 +129,44 @@ func wpaEventListener(ctx context.Context, ctrlPath, localPath string,
 	}
 }
 
+// wpaCtrlCommand sends a single command to the control socket of wpa_supplicant
+// and returns its reply.
+func wpaCtrlCommand(ctrlPath, localPath, command string) (string, error) {
+	laddr := &net.UnixAddr{Name: localPath, Net: "unixgram"}
+	raddr := &net.UnixAddr{Name: ctrlPath, Net: "unixgram"}
+	_ = os.Remove(localPath)
+	conn, err := net.DialUnix("unixgram", laddr, raddr)
+	if err != nil {
+		return "", fmt.Errorf("failed to connect to %s: %w", ctrlPath, err)
+	}
+	defer os.Remove(localPath)
+	defer conn.Close()
+	if _, err = conn.Write([]byte(command)); err != nil {
+		return "", fmt.Errorf("failed to send %s: %w", command, err)
+	}
+	_ = conn.SetReadDeadline(time.Now().Add(wpaCtrlReplyTimeout))
+	buf := make([]byte, wpaCtrlMaxMsgSize)
+	n, err := conn.Read(buf)
+	if err != nil {
+		return "", fmt.Errorf("no reply to %s: %w", command, err)
+	}
+	return strings.TrimSpace(string(buf[:n])), nil
+}
+
+// wpaCtrlLogoff makes wpa_supplicant send an EAPOL-Logoff frame, which tells
+// the authenticator that the port is no longer in use by an authenticated
+// supplicant and should be unauthorized.
+func wpaCtrlLogoff(ctrlPath, localPath string) error {
+	reply, err := wpaCtrlCommand(ctrlPath, localPath, "LOGOFF")
+	if err != nil {
+		return err
+	}
+	if reply != "OK" {
+		return fmt.Errorf("unexpected reply to LOGOFF: %q", reply)
+	}
+	return nil
+}
+
 // wpaCtrlAttach registers the connection to receive unsolicited events.
 func wpaCtrlAttach(conn *net.UnixConn, buf []byte) error {
 	if _, err := conn.Write([]byte("ATTACH")); err != nil {
