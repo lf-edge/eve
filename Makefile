@@ -481,13 +481,14 @@ IGNORE_DOCKERFILE_HASHES_PKGS=bsp-imx vtpm optee-os wwan wlan watchdog uefi acrn
 IGNORE_DOCKERFILE_HASHES_EVE_TOOLS=bpftrace-compiler
 
 IGNORE_DOCKERFILE_DOT_GO_DIR=$(shell find .go/ -name Dockerfile -exec echo "-i {}" \;)
+IGNORE_DOCKERFILE_EVETEST_DIR=$(shell find evetest/ -name Dockerfile -exec echo "-i {}" \;)
 IGNORE_DOCKERFILE_HASHES_PKGS_ARGS=$(foreach pkg,$(IGNORE_DOCKERFILE_HASHES_PKGS),-i pkg/$(pkg)/Dockerfile)
 IGNORE_DOCKERFILE_HASHES_EVE_TOOLS_ARGS=$(foreach tool,$(IGNORE_DOCKERFILE_HASHES_EVE_TOOLS),$(addprefix -i ,$(shell find eve-tools/$(tool) -path '*/vendor' -prune -o -name Dockerfile -print)))
 
 .PHONY: check-docker-hashes-consistency
 check-docker-hashes-consistency: $(DOCKERFILE_FROM_CHECKER)
 	@echo "Checking Dockerfiles for inconsistencies"
-	$(DOCKERFILE_FROM_CHECKER) ./ $(IGNORE_DOCKERFILE_HASHES_PKGS_ARGS) $(IGNORE_DOCKERFILE_HASHES_EVE_TOOLS_ARGS) $(IGNORE_DOCKERFILE_DOT_GO_DIR)
+	$(DOCKERFILE_FROM_CHECKER) ./ $(IGNORE_DOCKERFILE_HASHES_PKGS_ARGS) $(IGNORE_DOCKERFILE_HASHES_EVE_TOOLS_ARGS) $(IGNORE_DOCKERFILE_DOT_GO_DIR) $(IGNORE_DOCKERFILE_EVETEST_DIR)
 
 yetus:
 	@echo Running yetus
