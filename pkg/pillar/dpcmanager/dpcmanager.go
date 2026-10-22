@@ -270,6 +270,11 @@ type dhcpReacquireTracker struct {
 	// Used to detect when the DHCP client obtains an IP from a different subnet
 	// (i.e. the VLAN transition completed successfully).
 	prevSubnet *net.IPNet
+	// Whether the port had PNAC enabled when the tracker was created.
+	// The reacquire is applicable also after PNAC is removed from the port
+	// (the supplicant logs off, which may move the port to another VLAN),
+	// but not if the PNAC configuration changed in the meantime.
+	pnacEnabled bool
 	// Set to true after a reacquire is triggered. Cleared when an AddrChange
 	// is processed and the next action (retry or stop) is decided.
 	// Prevents duplicate scheduling when multiple AddrChange events arrive.
@@ -512,6 +517,7 @@ func (m *DpcManager) run(ctx context.Context) {
 				// Check if the subnet changed for any port with an active
 				// DHCP reacquire tracker (i.e. after PNAC state change).
 				m.checkDHCPReacquireSubnetChange(ifAttrs.IfName)
+				m.resumeVerifyIfAsyncDone(ctx)
 			case netmonitor.DNSInfoChange:
 				m.updateDNS()
 
@@ -525,6 +531,7 @@ func (m *DpcManager) run(ctx context.Context) {
 
 		case portLL := <-m.dhcpReacquireSignals:
 			m.processDHCPReacquireSignal(ctx, portLL)
+			m.resumeVerifyIfAsyncDone(ctx)
 
 		case <-ctx.Done():
 			return
@@ -589,8 +596,9 @@ func (m *DpcManager) processPNACEvent(event netmonitor.PNACEvent) {
 		prevSubnet = portStatus.IPv4Subnet
 	}
 	tracker := &dhcpReacquireTracker{
-		prevSubnet: prevSubnet,
-		cancel:     make(chan struct{}),
+		prevSubnet:  prevSubnet,
+		pnacEnabled: portConfig.PNAC.Enabled,
+		cancel:      make(chan struct{}),
 	}
 	m.dhcpReacquireState[portLL] = tracker
 	m.scheduleDHCPReacquireRetry(portLL, tracker)
@@ -632,8 +640,9 @@ func (m *DpcManager) processDHCPReacquireSignal(ctx context.Context, portLL stri
 		// ignore stale signal.
 		return
 	}
-	// If the current DPC no longer has PNAC+DHCP client for this port,
-	// the reacquire is no longer needed.
+	// If the current DPC has a different PNAC configuration for this port
+	// than at the time when the reacquire was scheduled (e.g. a switch to
+	// another DPC), or no DHCP client, the reacquire is no longer needed.
 	dpc, haveDPC := m.getCurrentDPC()
 	if !haveDPC {
 		m.cancelDHCPReacquireTracker(portLL)
@@ -641,9 +650,10 @@ func (m *DpcManager) processDHCPReacquireSignal(ctx context.Context, portLL stri
 	}
 	portConfig := dpc.LookupPortByLogicallabel(portLL)
 	if portConfig == nil ||
-		!portConfig.PNAC.Enabled || portConfig.Dhcp != types.DhcpTypeClient {
+		portConfig.PNAC.Enabled != tracker.pnacEnabled ||
+		portConfig.Dhcp != types.DhcpTypeClient {
 		m.Log.Noticef("PNAC: Canceling DHCP reacquire for port %q: "+
-			"no longer has PNAC+DHCP client configured", portLL)
+			"PNAC or DHCP client configuration changed", portLL)
 		m.cancelDHCPReacquireTracker(portLL)
 		return
 	}
@@ -657,6 +667,26 @@ func (m *DpcManager) processDHCPReacquireSignal(ctx context.Context, portLL stri
 	m.resumeVerifyIfAsyncDone(ctx)
 	// The next retry (if needed) will be scheduled when we receive
 	// an AddrChange event and compare the new subnet with the previous one.
+}
+
+// isDHCPReacquirePending returns true while any port of the current DPC awaits
+// the first DHCP reacquire or the address change it causes. Testing connectivity
+// before that would use a lease obtained in the previous VLAN.
+func (m *DpcManager) isDHCPReacquirePending() bool {
+	dpc, haveDPC := m.getCurrentDPC()
+	if !haveDPC {
+		return false
+	}
+	for _, port := range dpc.Ports {
+		tracker := m.dhcpReacquireState[port.Logicallabel]
+		if tracker == nil || tracker.pnacEnabled != port.PNAC.Enabled {
+			continue
+		}
+		if tracker.retriesDone == 0 || tracker.awaitingAddrChange {
+			return true
+		}
+	}
+	return false
 }
 
 // checkDHCPReacquireSubnetChange checks whether a DHCP reacquire tracker
