@@ -27,5 +27,7 @@ kube-controller-arg:
   - "node-monitor-period=10s"
   - "node-monitor-grace-period=40s"
 kube-apiserver-arg:
-  - "event-ttl=72h"
+  # kine (sqlite) restarts every TTL from k3s start, so a TTL longer
+  # than the uptime never expires events and the datastore keeps growing
+  - "event-ttl=1h"
   - "authentication-token-webhook-config-file=/etc/kube-api-authn-webhook.yaml"
