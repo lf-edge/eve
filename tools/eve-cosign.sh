@@ -128,11 +128,14 @@ resolve() {
 
 # The platform manifests of every cached $PKG_PREFIX/eve-* entry whose
 # manifest blob is present, attestation manifests and $EXCLUDE left out, as
-# "<name>@<digest> <name>:<tag>" lines.
+# "<name>@<digest> <name>:<tag>" lines. `linuxkit pkg push` adds a
+# "<tag>-<arch>" entry for each manifest of a pushed index, attestations
+# included as "<tag>-unknown", copying the index's descriptor and annotations.
 cached_pkg_manifests() {
     local blobs="$CACHE/blobs/sha256"
     jq -r --arg p "$PKG_PREFIX/eve-" '.manifests[]
         | select((.annotations["org.opencontainers.image.ref.name"] // "") | startswith($p))
+        | select(.annotations["vnd.docker.reference.type"] != "attestation-manifest")
         | (.annotations["org.opencontainers.image.ref.name"] | sub(".*/"; "")) as $ref
         | [($ref | sub(":[^:]*$"; "")), $ref, .mediaType, .digest] | @tsv' "$CACHE/index.json" |
     while IFS=$'\t' read -r name ref type digest; do
