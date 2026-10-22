@@ -259,15 +259,16 @@ sign_tag() {
 # leaves out Dockerfile.in placeholders such as XENTOOLS_TAG. A base the
 # registry does not serve is printed as its bare tag, which then fails
 # verification; bases listed in $1 themselves are skipped, since this job
-# built them and signs them after pushing.
+# built them and signs them after pushing. No match is not an error: a job
+# that pulled every package has no Dockerfile to scan.
 base_manifests() {
     local list="$1" name ref arch index
     shift
     sed 's/@.*//' "$list" | sort -u | while read -r name; do
         cat "$EVE/pkg/${name#eve-}"/Dockerfile{,.in} 2>/dev/null || true
     done |
-    grep -E '^[[:space:]]*(FROM|ARG)[[:space:]]' |
-    grep -oE '(^|[[:space:]=])(docker\.io/)?lfedge/eve-[a-z0-9-]+:[a-z0-9][A-Za-z0-9_.-]*' |
+    { grep -E '^[[:space:]]*(FROM|ARG)[[:space:]]' || true; } |
+    { grep -oE '(^|[[:space:]=])(docker\.io/)?lfedge/eve-[a-z0-9-]+:[a-z0-9][A-Za-z0-9_.-]*' || true; } |
     sed -E 's|.*lfedge/||' | sort -u |
     while read -r ref; do
         [[ "${ref%:*}" =~ $EXCLUDE ]] && continue
