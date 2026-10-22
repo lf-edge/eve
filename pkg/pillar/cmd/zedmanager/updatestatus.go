@@ -230,6 +230,19 @@ func doUpdate(ctx *zedmanagerContext,
 				status.Key())
 			return changed
 		}
+		// doRemove completed; transition to RecreateVolumes and
+		// persist the purge counter so we don't re-detect the
+		// purge on next reboot. Without this transition the app
+		// would stay stuck in BringDown/HALTING forever when
+		// doUpdate is called directly (e.g. from
+		// handleCreateAppInstanceStatus or checkLowPriorityApps)
+		// instead of via updateAIStatusUUID → removeAIStatus.
+		log.Functionf("PurgeInprogress(%s) RecreateVolumes",
+			status.Key())
+		status.PurgeInprogress = types.RecreateVolumes
+		publishAppInstanceStatus(ctx, status)
+		c := purgeCmdDone(ctx, config, status)
+		changed = changed || c
 		log.Functionf("PurgeInprogress(%s) bringing it up",
 			status.Key())
 	}
