@@ -456,7 +456,7 @@ func TestPNAC(test *testing.T) {
 	// Swap SCEP profile while device is not online.
 	// The goal is to check that EVE will (eventually) properly resync persisted config
 	// against the received config after boot.
-	device.RequestReboot(false)
+	device.RequestReboot(false, false)
 	devConfig.DeleteSCEPProfile("scep-test")
 	devConfig.AddSCEPProfile(
 		evetest.SCEPProfile{

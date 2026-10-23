@@ -952,9 +952,14 @@ func (d *EdgeDevice) UnexpectedRebootCount() int {
 	return max(devState.rebootCount-devState.expectedRebootCount, 0)
 }
 
-// RequestReboot requests a device reboot via configuration and optionally
-// waits until the reboot completes.
-func (d *EdgeDevice) RequestReboot(waitUntilRebooted bool) {
+// RequestReboot requests a device reboot via configuration.
+//
+// If waitUntilFetched is true, the function blocks until the device has
+// fetched the config carrying the incremented reboot counter, so the caller
+// knows the request reached the device before, e.g., cutting its connectivity.
+// If waitUntilRebooted is true, it additionally waits until the reboot
+// completes; see rebootAndWait.
+func (d *EdgeDevice) RequestReboot(waitUntilFetched bool, waitUntilRebooted bool) {
 	d.th.incExpectedRebootCount(d.devName)
 	d.th.collectCoverageFromDevice(d.th.ctx, d.devName)
 	config := d.getConfig(true)
@@ -967,7 +972,7 @@ func (d *EdgeDevice) RequestReboot(waitUntilRebooted bool) {
 			Counter: reboot.GetCounter() + 1, DesiredState: true}
 	}
 	d.rebootAndWait(waitUntilRebooted, func() {
-		d.ApplyConfig(config, false, false)
+		d.ApplyConfig(config, waitUntilFetched, false)
 	})
 }
 

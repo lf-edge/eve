@@ -232,7 +232,7 @@ func TestVaultKeyModeRecovery(test *testing.T) {
 			"fault", vaultKeyModeFile)
 
 	log.Infof("Rebooting the device with the wrong vault key mode recorded...")
-	device.RequestReboot(true)
+	device.RequestReboot(false, true)
 	evetest.Checkpoint("rebooted-with-wrong-key-mode")
 
 	waitForVaultOpen(t, device, filesystem, "after the wrong key mode was recorded")
@@ -283,7 +283,7 @@ func TestVaultKeyModeRecovery(test *testing.T) {
 		msgFromDisk:      newlogCount(t, device, msgFromDisk),
 	}
 	log.Infof("Rebooting the device again, now with the key mode corrected...")
-	device.RequestReboot(true)
+	device.RequestReboot(false, true)
 	evetest.Checkpoint("rebooted-with-corrected-key-mode")
 
 	waitForVaultOpen(t, device, filesystem, "after a second reboot")
@@ -315,7 +315,7 @@ func TestVaultKeyModeRecovery(test *testing.T) {
 func settleVaultSeal(t *WithT, device *evetest.EdgeDevice,
 	filesystem evetest.Filesystem) {
 	for i := 0; i < maxSettleReboots; i++ {
-		device.RequestReboot(true)
+		device.RequestReboot(false, true)
 		waitForVaultOpen(t, device, filesystem, "after a settle reboot")
 		if readVaultStatus(t, device).UnlockMethod == unlockTPMLocalSealed {
 			return

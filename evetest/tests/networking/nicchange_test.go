@@ -639,7 +639,7 @@ func (tc *nicCountChangeTest) swapNICs() {
 // comes back with both NICs.
 func (tc *nicCountChangeTest) rebootDeviceAndVerify() {
 	log := evetest.Logger()
-	tc.device.RequestReboot(true)
+	tc.device.RequestReboot(false, true)
 	tc.t.Eventually(func(t Gomega) {
 		log.Infof("Waiting for app SSH daemon to start and become reachable after reboot...")
 		output, _, err := tc.runInApp("ip a")
