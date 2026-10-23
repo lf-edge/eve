@@ -17,12 +17,17 @@ import (
 	pcitypes "github.com/jaypipes/pcidb/types"
 	"github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/cputopology"
 	"github.com/lf-edge/eve/pkg/pillar/evetpm"
+	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"github.com/zededa/ghw"
 	"github.com/zededa/ghw/pkg/can"
+	"github.com/zededa/ghw/pkg/cpu"
+	"github.com/zededa/ghw/pkg/memory"
 	"github.com/zededa/ghw/pkg/option"
 	"github.com/zededa/ghw/pkg/pci/address"
 	"github.com/zededa/ghw/pkg/watchdog"
+	"google.golang.org/protobuf/proto"
 )
 
 func GetInventoryInfo(log *base.LogObject) (*info.HardwareInventory, error) {
@@ -36,6 +41,7 @@ func GetInventoryInfo(log *base.LogObject) (*info.HardwareInventory, error) {
 	inventory.CanDevices, errs["CAN"] = getCANDevices()
 	inventory.Bios, errs["BIOS"] = getBIOSInfo()
 	inventory.CpuInfo, errs["CPU"] = getCPUInfo()
+	inventory.KernelCpuIsolation, errs["CPU isolation"] = getKernelCPUIsolation()
 	inventory.TotalMemoryBytes, errs["Memory"] = getMemoryBytes()
 	inventory.TotalStorageBytes, errs["Storage"] = getStorageBytes()
 	inventory.WatchdogPresent, errs["Watchdog"] = watchdogPresent()
@@ -155,6 +161,7 @@ func getPCIDevices() ([]*info.PCIDevice, error) {
 			ClassId:                classId,
 			SubclassId:             subclassId,
 			IommuGroup:             pci.IOMMUGroup,
+			LocalCpuIds:            generics.MapList(pci.LocalCPUs, func(c int) uint32 { return uint32(c) }),
 		})
 	}
 
@@ -421,22 +428,112 @@ func getFirmwareAttributes() map[string]string {
 }
 
 func getCPUInfo() (*info.CPUInfo, error) {
-	cpuInfo, err := ghw.CPU(option.WithDisableTools())
+	topo, err := cputopology.Discover(option.WithDisableTools())
+	return cpuInfo(topo), err
+}
+
+// coreClasses maps ghw's core types to the API's; an unknown type is
+// CORE_CLASS_UNSPECIFIED.
+var coreClasses = map[cpu.CoreType]info.CoreClass{
+	cpu.CoreTypePerformance: info.CoreClass_CORE_CLASS_PERFORMANCE,
+	cpu.CoreTypeEfficiency:  info.CoreClass_CORE_CLASS_EFFICIENCY,
+	cpu.CoreTypeUniform:     info.CoreClass_CORE_CLASS_UNIFORM,
+}
+
+// cpuInfo reports one CPU per online logical CPU, with its coordinates as
+// placement sees them, and the cache instances serving them. A degraded
+// topology reports no coordinates, and names no cache so none is reported:
+// unset is how the API says unknown, where zeros would describe one socket
+// of single-thread cores.
+func cpuInfo(topo *cputopology.Topology) *info.CPUInfo {
+	out := &info.CPUInfo{}
+	if topo.HW == nil {
+		for _, core := range topo.Cores {
+			for _, id := range core.Siblings {
+				out.Cpus = append(out.Cpus, &info.CPU{Id: uint32(id)})
+			}
+		}
+		return out
+	}
+
+	packages := map[int]*cpu.Processor{}
+	for _, p := range topo.HW.Processors {
+		packages[p.ID] = p
+	}
+	for _, lp := range topo.HW.LogicalProcessors {
+		c := &info.CPU{Id: uint32(lp.ID), CoreClass: coreClasses[lp.CoreType]}
+		if p := packages[lp.ProcessorID]; p != nil {
+			c.Model, c.Vendor = p.Model, p.Vendor
+		}
+		c.BaseFreqKhz, c.MaxFreqKhz = known(lp.BaseFrequencyKHz), known(lp.MaxFrequencyKHz)
+		if core := topo.CoreOf(cputopology.LCPU(lp.ID)); core != nil && !topo.Degraded {
+			c.SocketId = proto.Uint32(uint32(core.Socket))
+			c.CoreId = proto.Uint32(uint32(core.ID))
+			c.NumaNode = proto.Uint32(uint32(core.NUMA))
+			c.L2Id = cacheID(core.L2)
+			c.L3Id = cacheID(core.L3)
+		}
+		out.Cpus = append(out.Cpus, c)
+	}
+
+	for _, cache := range topo.HW.Caches {
+		id, named := topo.CacheIDOf(cache)
+		level := cacheLevel(cache)
+		if !named || level == info.CacheLevel_CACHE_LEVEL_UNSPECIFIED {
+			continue
+		}
+		out.Caches = append(out.Caches, &info.CacheDomain{Level: level, Id: id,
+			CpuIds: cache.LogicalProcessors, SizeBytes: known(cache.SizeBytes)})
+	}
+	return out
+}
+
+func cacheID(id cputopology.CacheID) *uint32 {
+	if !id.Known {
+		return nil
+	}
+	return proto.Uint32(id.ID)
+}
+
+// known is an optional value read as 0 when the kernel does not expose it.
+func known(v uint64) *uint64 {
+	if v == 0 {
+		return nil
+	}
+	return proto.Uint64(v)
+}
+
+// cacheLevel is the level a cache is reported at. Level 1 is reported as its
+// data and instruction caches; levels 2 and 3 by the cache that stands for
+// the level, the one a CPU's l2_id and l3_id name. Other caches are left out.
+func cacheLevel(cache *memory.Cache) info.CacheLevel {
+	switch {
+	case cache.Level == 1 && cache.Type == memory.CacheTypeData:
+		return info.CacheLevel_CACHE_LEVEL_L1D
+	case cache.Level == 1 && cache.Type == memory.CacheTypeInstruction:
+		return info.CacheLevel_CACHE_LEVEL_L1I
+	case cache.Level == 2 && cputopology.StandsForLevel(cache):
+		return info.CacheLevel_CACHE_LEVEL_L2
+	case cache.Level == 3 && cputopology.StandsForLevel(cache):
+		return info.CacheLevel_CACHE_LEVEL_L3
+	}
+	return info.CacheLevel_CACHE_LEVEL_UNSPECIFIED
+}
+
+// getKernelCPUIsolation reports the CPUs the running kernel isolates
+// (isolcpus) and runs without the periodic tick (nohz_full). A set that
+// cannot be read is an error and leaves the report unset: a node whose
+// isolated set is unreadable is not a node without isolation.
+func getKernelCPUIsolation() (*info.KernelCPUIsolation, error) {
+	isolated, nohzFull, err := cputopology.KernelIsolation(ghw.ContextFromEnv())
 	if err != nil {
 		return nil, err
 	}
-	cpuInfoProto := &info.CPUInfo{}
-	for _, proc := range cpuInfo.Processors {
-		for _, core := range proc.Cores {
-			c := info.CPU{
-				Model:  proc.Model,
-				Vendor: proc.Vendor,
-				Id:     uint32(core.ID),
-			}
-			cpuInfoProto.Cpus = append(cpuInfoProto.Cpus, &c)
-		}
-	}
-	return cpuInfoProto, nil
+	toAPI := func(c cputopology.LCPU) uint32 { return uint32(c) }
+	return &info.KernelCPUIsolation{
+		IsolatedCpuIds: generics.MapList(isolated, toAPI),
+		NohzFullCpuIds: generics.MapList(nohzFull, toAPI),
+	}, nil
 }
 
 func getMemoryBytes() (uint64, error) {
