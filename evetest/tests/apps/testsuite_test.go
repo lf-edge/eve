@@ -92,6 +92,10 @@ import (
 //     its assigned adapter are deleted in one configuration; the device
 //     must release the adapter without the entry and not reboot; regression
 //     test for a crash of domainmgr at the release.
+//   - TestDeviceShutdownAndRecovery -- controller-requested shutdown of all
+//     app instances brings the app to HALTED and the device through
+//     PREPARING_POWEROFF/PREPARED_POWEROFF; a subsequent reboot recovers
+//     both the app and its network instance.
 //   - TestHaltAfterImmediateDeactivate -- an app stopped in the same second
 //     it reports RUNNING still halts promptly; regression test for the
 //     graceful budget an unset virtualization mode used to be granted.
@@ -166,6 +170,9 @@ func TestAppsSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestAppTeardownWithRemovedAdapter,
+		},
+		evetest.TestCase{
+			Test: TestDeviceShutdownAndRecovery,
 		},
 		evetest.TestCase{
 			Test: TestHaltAfterImmediateDeactivate,
