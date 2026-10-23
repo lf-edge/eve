@@ -66,6 +66,17 @@ enum Capability {
   // together let a test hot-plug devices such as a USB flash drive. Requires a
   // provider with a QMP monitor the broker can reach.
   CAPABILITY_QMP = 8;
+  // Selecting the active PCR banks of an emulated host TPM.
+  CAPABILITY_TPM_PCR_BANKS = 9;
+}
+
+// Active PCR banks supported by an emulated TPM.
+enum TPMPCRBank {
+  TPM_PCR_BANK_UNSPECIFIED = 0;
+  TPM_PCR_BANK_SHA1 = 1;
+  TPM_PCR_BANK_SHA256 = 2;
+  TPM_PCR_BANK_SHA384 = 3;
+  TPM_PCR_BANK_SHA512 = 4;
 }
 
 // Reference to a specific EVE image used for provisioning or testing.
@@ -111,6 +122,8 @@ message EVEDevice {
   string serial_number = 5;
   repeated EVEInterface interfaces = 6;
   ImageRef image = 7;
+  // Active PCR banks for the emulated TPM; empty uses provider defaults.
+  repeated TPMPCRBank tpm_pcr_banks = 8;
 }
 
 // Represents the current lifecycle state of an EVE device.

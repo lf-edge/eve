@@ -377,7 +377,8 @@ func (p *QemuProvider) GetSupportedDeviceArchs() ([]api.ArchType, error) {
 func (p *QemuProvider) Capabilities() []api.Capability {
 	// Plus QMP access: this provider has a QMP monitor of every device VM that
 	// the broker can reach (see ExecuteQMP).
-	return append(commonCapabilities(), api.Capability_CAPABILITY_QMP)
+	return append(commonCapabilities(), api.Capability_CAPABILITY_QMP,
+		api.Capability_CAPABILITY_TPM_PCR_BANKS)
 }
 
 // DiskImageStrategy returns DiskImageOverlay: qemu attaches local files
@@ -434,6 +435,18 @@ func (p *QemuProvider) SetupDevice(
 				tpmDir, name, err)
 			log.Error(err)
 			return err
+		}
+		if len(spec.TPMPCRBanks) != 0 {
+			banks, err := tpmPCRBankNames(spec.TPMPCRBanks)
+			if err != nil {
+				return err
+			}
+			out, err := exec.Command("swtpm_setup", "--tpm2", "--tpm-state", "dir://"+tpmDir,
+				"--pcr-banks", strings.Join(banks, ",")).CombinedOutput()
+			if err != nil {
+				return fmt.Errorf("configure TPM PCR banks for device %q: %w: %s",
+					name, err, strings.TrimSpace(string(out)))
+			}
 		}
 		dev.tpm.stateDir = tpmDir
 		dev.tpm.socket = filepath.Join(tpmDir, "swtpm.sock")

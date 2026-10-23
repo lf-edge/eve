@@ -93,17 +93,34 @@ func (lf *logForwarder) run(ctx context.Context) {
 		if err != nil {
 			return
 		}
-		// drain FIFO until EOF (writer closed).
+		// Drain the FIFO until the writer closes it. A read deadline lets us
+		// notice cancellation while blocked, so stop() never hangs on a quiet
+		// swtpm.
 		for {
+			if ctx.Err() != nil {
+				_ = fifo.Close()
+				return
+			}
+			_ = fifo.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
 			n, readErr := fifo.Read(buf)
 			if n > 0 {
 				lf.writeToLog(buf[:n])
 			}
 			if readErr != nil {
-				break
+				if errors.Is(readErr, os.ErrDeadlineExceeded) {
+					continue
+				}
+				break // EOF (writer closed) or a real error: reopen
 			}
 		}
 		fifo.Close()
+		// Pause before reopening so a FIFO with no writer (before swtpm opens it,
+		// or after it exits) does not spin the CPU reopening on immediate EOF.
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(100 * time.Millisecond):
+		}
 	}
 }
 

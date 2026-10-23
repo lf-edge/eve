@@ -201,6 +201,8 @@ type DeviceSpec struct {
 
 	// Enable attachment of a TPM device (Trusted Platform Module).
 	WithTPM bool
+	// Active PCR banks for the emulated TPM. Empty uses the provider default.
+	TPMPCRBanks []api.TPMPCRBank
 
 	// SerialNumber is the system serial number exposed to the guest firmware
 	// and operating system (DMI/SMBIOS System Serial Number).

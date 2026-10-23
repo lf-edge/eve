@@ -27,6 +27,7 @@ profile vtpm /usr/bin/vtpm {
 
     # allow executing swtpm
     /usr/bin/swtpm                  Px,
+    /usr/bin/swtpm_ioctl            ix,
 
     # allow saving boot variables
     /persist/status                 rw,
@@ -36,6 +37,12 @@ profile vtpm /usr/bin/vtpm {
 
     # allow reading upper limit backlog for listen(2) (golang)
     /proc/sys/net/core/somaxconn                            r,
+
+    # verify that a pid file still names this VM's swtpm before signalling it
+    owner /proc/[0-9]*/{exe,cmdline}                          r,
+    # Reading another process's /proc entries also requires AppArmor's
+    # ptrace read permission. Do not grant trace/attach permission.
+    ptrace (read) peer=swtpm,
 
     # allow reading transparent hugepage size (golang)
     /sys/kernel/mm/transparent_hugepage/hpage_pmd_size      r,
