@@ -160,11 +160,6 @@ func (e *MemoryDriverPublisher) Stop() error {
 	return nil
 }
 
-// LargeDirName where to put large fields
-func (e *MemoryDriverPublisher) LargeDirName() string {
-	return tmpDir
-}
-
 // MemoryDriverSubscriber struct
 type MemoryDriverSubscriber struct {
 	topic       string
@@ -198,9 +193,4 @@ func (e *MemoryDriverSubscriber) Stop() error {
 	// Unregister the subscriber channel
 	e.subscribers.Delete(e.topic)
 	return nil
-}
-
-// LargeDirName where to put large fields
-func (e *MemoryDriverSubscriber) LargeDirName() string {
-	return tmpDir
 }

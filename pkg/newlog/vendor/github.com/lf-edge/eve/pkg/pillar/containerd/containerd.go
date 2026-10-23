@@ -529,10 +529,13 @@ func (client *Client) CtrLogIOCreator(domainName string) cio.Creator {
 	pipeStdout, err := os.OpenFile(stdoutFile, os.O_WRONLY, 0)
 	if err != nil {
 		logrus.Errorf("CtrLogIOCreator: Error opening file %s with: %s", stdoutFile, err)
+		// Release the reader goroutine so it doesn't leak waiting for a writer.
+		unblockFifoReader(stdoutFile)
 	}
 	pipeStderr, err := os.OpenFile(stderrFile, os.O_WRONLY, 0)
 	if err != nil {
 		logrus.Errorf("CtrLogIOCreator: Error opening file %s with: %s", stderrFile, err)
+		unblockFifoReader(stderrFile)
 	}
 
 	// Create a fake stdin, so we won't break any interactive application

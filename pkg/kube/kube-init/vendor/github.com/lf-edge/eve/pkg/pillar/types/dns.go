@@ -33,6 +33,19 @@ type NetworkPortStatus struct {
 	IfName       string
 	Phylabel     string // Physical name set by controller/model
 	Logicallabel string
+	// PciLong is the long-form PCI address (e.g. "0000:06:00.0") of the
+	// physical device backing this port, when it has one. It gives the port a
+	// stable identity independent of the kernel-assigned interface name, which
+	// can differ from the model (e.g. ethN vs enpNsN) or change across driver
+	// re-binds. Empty for ports not backed by a PCI device (e.g. USB NICs).
+	PciLong string
+	// UnderlyingIfInstanceID identifies the interface NIM enslaves under a
+	// bridge when bridging this port (a physical NIC, VLAN sub-interface, or
+	// bond) -- always defined, whether or not the port is currently bridged.
+	UnderlyingIfInstanceID IfInstanceID
+	// BridgeIfInstanceID identifies the bridge NIM creates over
+	// UnderlyingIfInstanceID. Zero when this port isn't bridged by NIM.
+	BridgeIfInstanceID IfInstanceID
 	// Unlike the logicallabel, which is defined in the device model and unique
 	// for each port, these user-configurable "shared" labels are potentially
 	// assigned to multiple ports so that they can be used all together with
@@ -77,6 +90,13 @@ type NetworkPortStatus struct {
 	// Server (LPS). Reported only back to LPS and never sent to the controller.
 	LpsConfigError string
 }
+
+// IfInstanceID uniquely identifies one concrete network-interface object
+// (NIC, bridge, VLAN sub-interface, or bond) managed by NIM, system-wide.
+// Unlike ifindex (reused by the kernel) or ifname (renamed by NIM), it
+// changes only when NIM actually destroys and recreates the object. Zero
+// means undefined.
+type IfInstanceID uint64
 
 type AddrInfo struct {
 	Addr             net.IP
@@ -244,7 +264,9 @@ func (status DeviceNetworkStatus) MostlyEqual(status2 DeviceNetworkStatus) bool 
 			p1.InvalidConfig != p2.InvalidConfig ||
 			p1.Cost != p2.Cost ||
 			p1.MTU != p2.MTU ||
-			p1.ConfigSource.Origin != p2.ConfigSource.Origin {
+			p1.ConfigSource.Origin != p2.ConfigSource.Origin ||
+			p1.UnderlyingIfInstanceID != p2.UnderlyingIfInstanceID ||
+			p1.BridgeIfInstanceID != p2.BridgeIfInstanceID {
 			return false
 		}
 		if p1.Dhcp != p2.Dhcp ||
@@ -675,13 +697,22 @@ func getLocalAddrListImpl(dns DeviceNetworkStatus,
 	return addrs, nil
 }
 
-// Check if an interface name is a port owned by nim
-func IsPort(dns DeviceNetworkStatus, ifname string) bool {
+// IsPort reports whether the named interface, or the physical device at the
+// given PCI address, is currently used as a device port owned by nim. Matching
+// on pciLong (when non-empty) in addition to the interface name makes the check
+// robust to the kernel-assigned name differing from the model (e.g. ethN vs
+// enpNsN) or changing across driver re-binds. Either argument may be empty and
+// an empty argument never matches, so passing an empty ifname with a non-empty
+// pciLong matches purely on the PCI address (useful for a device whose modeled
+// type is not network but which is in fact backing a network port).
+func IsPort(dns DeviceNetworkStatus, ifname, pciLong string) bool {
 	for _, us := range dns.Ports {
-		if us.IfName != ifname {
-			continue
+		if ifname != "" && us.IfName == ifname {
+			return true
 		}
-		return true
+		if pciLong != "" && us.PciLong == pciLong {
+			return true
+		}
 	}
 	return false
 }

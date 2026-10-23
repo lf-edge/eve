@@ -32,6 +32,30 @@ type AppNetworkConfig struct {
 	CipherBlockStatus CipherBlockStatus
 	MetaDataType      MetaDataType
 	DeploymentType    AppRuntimeType
+	// KubeApp is set only for app network configs synthesized by zedkube for directly-deployed
+	// Kubernetes workloads (helm/raw yaml) that have no controller-provided AppInstanceConfig.
+	// nil for the controller-managed (ENC) path. It lets zedrouter resolve an inbound CNI pod
+	// to this config by Kubernetes identity (namespace + ReplicaSet name) instead of the UUID
+	// prefix embedded in controller-managed pod names.
+	KubeApp *KubeAppInfo
+}
+
+// KubeAppInfo carries the Kubernetes identity of a directly-deployed workload so zedrouter can
+// resolve an inbound CNI pod to its synthesized AppNetworkConfig. The synthesized
+// AppNetworkConfig.UUIDandVersion.UUID equals base.KubeAppUUID(Namespace, OwnerName).
+type KubeAppInfo struct {
+	// Namespace of the Kubernetes workload.
+	Namespace string
+	// OwnerName is either the exact name of an ownerless bare Pod or the bare ReplicaSet name
+	// (or VMI name). ReplicaSet pods are "<OwnerName>-<5char>"; zedrouter matches inbound pods
+	// against it with base.KubePodMatchesOwner.
+	OwnerName string
+	// ConfigError is set by zedkube when the workload's network attachments cannot be
+	// supported (e.g. a ReplicaSet with more than one replica). Such a config is published
+	// inactive and without adapters, only so that zedrouter can fail the workload's CNI
+	// requests with this message (returned verbatim, so it must be self-explanatory)
+	// instead of a generic "config not found".
+	ConfigError string
 }
 
 // Key :
@@ -112,6 +136,10 @@ type AppNetworkStatus struct {
 	PendingDelete  bool
 	ConfigInSync   bool
 	DisplayName    string
+	// KubeApp is copied from AppNetworkConfig only for directly-deployed
+	// Kubernetes workloads. zedkube uses this identity together with the
+	// zedrouter-assigned adapter addresses to publish NI DNS records.
+	KubeApp *KubeAppInfo
 	// AppPod is only valid in Kubernetes mode.
 	AppPod cnirpc.AppPod
 	// Copy from the AppNetworkConfig; used to delete when config is gone.
@@ -314,6 +342,13 @@ type AppNetAdapterConfig struct {
 	AccessVlanID    uint32
 	IfIdx           uint32 // If we have multiple interfaces on that network, we will increase the index
 	AllowToDiscover bool
+
+	// DefaultRouteVia, if set, overrides the default-route gateway for this adapter: the
+	// adapter's default route (if any) is installed via this address instead of the Network
+	// Instance's own gateway. The address must be reachable on the Network Instance (e.g. a
+	// peer application's IP). Currently only set by zedkube for directly-deployed Kubernetes
+	// workloads (the "default-route" networks-annotation field); nil otherwise.
+	DefaultRouteVia net.IP
 }
 
 // ACEDirection determines rule direction.
@@ -778,6 +813,17 @@ type NetworkInstanceConfig struct {
 	// by the forwarding plane.
 	ForwardLLDP bool
 
+	// ClusterWide indicates whether this network instance is shared across an
+	// Edge Node Cluster (ENC) rather than being device-specific.
+	// If false (default), the network instance is only instantiated on this
+	// individual device.
+	// If true, the network instance is downloaded to and instantiated identically
+	// on every device that is a member of the Edge Node Cluster, allowing app
+	// instances on any cluster node to attach to the same logical network
+	// instance (e.g. for apps that may be relocated between nodes, or for native
+	// Kubernetes applications).
+	ClusterWide bool
+
 	// Any errors from the parser
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
@@ -1090,10 +1136,14 @@ type NetworkInstanceStatus struct {
 	// Labels of device ports used for external connectivity.
 	// The list is empty for air-gapped network instances.
 	Ports []string
-	// List of NTP servers published to applications connected to this network instance.
-	// This includes the NTP server from the NI config (if any) and all NTP servers
-	// associated with ports used by the network instance for external connectivity.
-	NTPServers []netutils.HostnameOrIP
+	// CombinedNTPServers is the list of NTP servers published to applications
+	// connected to this network instance. It combines the NTP server from the
+	// NI config (if any) with all NTP servers associated with ports used by
+	// the network instance for external connectivity. Named distinctly from
+	// the embedded NetworkInstanceConfig.NtpServers (the NI-only raw config)
+	// since the two previously differed only by case, which let a caller
+	// silently read the wrong one through field promotion.
+	CombinedNTPServers []netutils.HostnameOrIP
 	// The intended state of the routing table.
 	// Includes user-configured static routes and potentially also automatically
 	// generated default route.
