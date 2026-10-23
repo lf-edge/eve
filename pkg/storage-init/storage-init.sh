@@ -75,6 +75,13 @@ CONFIGDIR_PERSIST=/tmp/config_ro
 # idiom) so the resizer's output is visible too. tee errors are ignored in case
 # /dev/console is absent.
 log() { echo "$(date -Ins -u) $*" | tee /dev/console 2>/dev/null; return 0; }
+
+# config_partition echoes the CONFIG partition on the boot disk. Never search
+# all disks for it: a forgotten installer stick has a CONFIG partition too.
+# zboot and cgpt are on the host, not in this container.
+config_partition() {
+    chroot /hostfs zboot partdev CONFIG
+}
 SMART_DETAILS_FILE=$PERSISTDIR/SMART_details.json
 SMART_DETAILS_PREVIOUS_FILE=$PERSISTDIR/SMART_details_previous.json
 IS_IN_KDUMP_KERNEL=$(! test -f /proc/vmcore; echo $?)
@@ -87,7 +94,7 @@ eve_flavor=$(cat /hostfs/etc/eve-hv-type)
 ln -s "$CONFIGDIR" "/var/$CONFIGDIR"
 ln -s "$PERSISTDIR" "/var/$PERSISTDIR"
 
-if CONFIG=$(findfs PARTLABEL=CONFIG) && [ -n "$CONFIG" ]; then
+if CONFIG=$(config_partition) && [ -n "$CONFIG" ]; then
     if ! fsck.vfat -y "$CONFIG"; then
         echo "$(date -Ins -u) fsck.vfat $CONFIG failed"
     fi

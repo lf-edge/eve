@@ -78,6 +78,16 @@ create_new_p3_part() {
                   --change-name="$num_p3_part":'P3' "$1"
 }
 
+# boot_disk_partdev prints the partition labeled $1 on the boot disk. zboot is
+# on the host; when we run in a container (debug) the host is at /hostfs.
+boot_disk_partdev() {
+  if [ -x /hostfs/usr/bin/zboot ]; then
+    chroot /hostfs zboot partdev "$1"
+  else
+    zboot partdev "$1"
+  fi
+}
+
 mount_partlabel() {
   PARTLABEL="$1"
   if [ -z "$2" ]; then
@@ -87,7 +97,7 @@ mount_partlabel() {
   if ! mkdir -p "$MOUNTPOINT"; then
      echo "ERROR: failed to ensure $MOUNTPOINT" && exit 1
   fi
-  MOUNT_DEV=$(/sbin/findfs PARTLABEL="$PARTLABEL")
+  MOUNT_DEV=$(boot_disk_partdev "$PARTLABEL")
   if [ -z "$MOUNT_DEV" ]; then
     echo "ERROR: no device with PARTLABEL=$PARTLABEL found" && exit 1
   fi
@@ -98,7 +108,7 @@ mount_partlabel() {
 
 unmount_partlabel() {
   PARTLABEL="$1"
-  MOUNT_DEV=$(/sbin/findfs PARTLABEL="$PARTLABEL")
+  MOUNT_DEV=$(boot_disk_partdev "$PARTLABEL")
   if [ -z "$MOUNT_DEV" ]; then
     echo "ERROR: no device with PARTLABEL=$PARTLABEL found" && exit 1
   fi
