@@ -117,7 +117,7 @@ const (
 //     and read the persisted purge counter.
 //  3. device-powered-off: EdgeDevice.SyncDisks(), then the node goes down by
 //     the selected POWER_CUT_METHOD - PowerOff() (hard power-off through the
-//     broker, no reboot to bring it back on its own) or RequestReboot(false).
+//     broker, no reboot to bring it back on its own) or RequestReboot(false, false).
 //     The sync matters - see EdgeDevice.SyncDisks.
 //  4. purge-issued-while-down: PurgeApplication(waitUntilPurged=false) -
 //     bumps the purge counter and pushes config to the controller; this must
@@ -275,7 +275,7 @@ func TestVMAppPurgeAfterPowerCycle(test *testing.T) {
 
 		rebootRequestedAt := time.Now()
 		log.Infof("Rebooting device %q from the controller", devName)
-		device.RequestReboot(false)
+		device.RequestReboot(false, false)
 		evetest.Checkpoint("device-rebooting")
 
 		device.PurgeApplication(appUUID, evetest.BumpVolumeGeneration, false, 0)

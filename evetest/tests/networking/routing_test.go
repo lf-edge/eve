@@ -1815,7 +1815,7 @@ func TestMgmtTrafficRoutedViaApp(test *testing.T) {
 
 	log.Infof("Phase 6: triggering reboot via the controller...")
 	rebootIssuedAt := time.Now()
-	device.RequestReboot(false)
+	device.RequestReboot(false, false)
 
 	// Poll SSH connectivity to the app's WAN VIF directly -- independent of
 	// EVE's own management path -- until boot_id differs from the

@@ -228,7 +228,7 @@ func TestDownloadBurstWithDeadMgmtPorts(test *testing.T) {
 	// worker configured above needs a reboot to take effect. The downloader
 	// reports the size when it starts; require that line before deploying.
 	rebootIssued := time.Now()
-	device.RequestReboot(true)
+	device.RequestReboot(false, true)
 	t.Eventually(func() []evetest.LogMsg {
 		return device.GetLogs(evetest.LogMsgMatch{
 			MsgHasSubstring: fmt.Sprintf(transportHandlersLogFmt, transportHandlers),

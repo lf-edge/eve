@@ -62,7 +62,7 @@ func rebootEVEK(t Gomega, device *evetest.EdgeDevice, appUUID uuid.UUID) string 
 	bootID := readAppBootID(t, device, appUUID)
 	evetest.Logger().Infof("rebooting EVE-K after the conversion")
 	issued := time.Now()
-	device.RequestReboot(false)
+	device.RequestReboot(false, false)
 	t.Eventually(func(g Gomega) {
 		out, _, err := device.RunShellScript("cut -d. -f1 /proc/uptime", eveShellTimeout, 0)
 		g.Expect(err).NotTo(HaveOccurred())

@@ -30,7 +30,7 @@ const (
 	hwInfoTimeout      = 2 * time.Minute
 	hwInfoPollInterval = 5 * time.Second
 
-	// RequestReboot(true) returns only once the device is back and has reported a
+	// RequestReboot(false, true) returns only once the device is back and has reported a
 	// fresh LastRebootTime, so this covers just the gap between that device info
 	// message and the hardware info message - zedagent triggers both during
 	// startup, seconds apart.
@@ -94,7 +94,7 @@ const (
 //  4. inventory-fields-checked: the field assertions.
 //
 //  5. device-rebooted -> inventory-stable-after-reboot: reboot via
-//     RequestReboot(true), then compare the two inventories. Here a watch is the
+//     RequestReboot(false, true), then compare the two inventories. Here a watch is the
 //     right tool, opened *before* the reboot: it streams only messages arriving
 //     after subscribing, so what it delivers can only be the publish from the
 //     rebooted device's own startup, not the record the controller already held.
@@ -224,7 +224,7 @@ func TestHardwareInventory(test *testing.T) {
 	// rebooted device publishes during startup.
 	hwUpdates, stopHwWatch := device.WatchHardwareInfo()
 	defer stopHwWatch()
-	device.RequestReboot(true)
+	device.RequestReboot(false, true)
 	evetest.Checkpoint("device-rebooted")
 
 	var rebootedHwInfo *eveinfo.ZInfoHardware

@@ -219,7 +219,7 @@ func TestDevLocalInfo(test *testing.T) {
 
 	// Step 4: recovery via a controller-driven reboot.
 	log.Infof("Rebooting the device via the controller to recover from the shutdown")
-	device.RequestReboot(true)
+	device.RequestReboot(false, true)
 	device.WaitUntilAppIsRunning(app1UUID, timeout)
 	device.WaitUntilAppIsRunning(lpsAppUUID, timeout)
 	waitApp1SSHReachable()
