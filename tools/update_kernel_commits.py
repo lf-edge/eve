@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # pylint: disable=too-many-lines
 """
-Copyright (c) 2023-2025 Zededa, Inc.
+Copyright (c) 2023-2026 Zededa, Inc.
 SPDX-License-Identifier: Apache-2.0
 
 This script does two things:
@@ -11,9 +11,12 @@ This script does two things:
 
 this script queries the GitHub API to get the latest commit hashes for the kernel branches
 The generated commit message is saved to kernel-update-commit-message.txt
+Only the branches kernel-version.mk selects for some ZARCH, PLATFORM and HV, plus the
+next branches already pinned, are written.
 
 Note:
 - This module depends on the 'requests' library for making HTTP requests to the GitHub API.
+- It reads kernel-version.mk with the 'tree-sitter' and 'tree-sitter-make' libraries.
 - Make sure to review the generated commit message before committing the changes to your repository.
 
 Author: Mikhail Malyshev <mike.malyshev@gmail.com>
@@ -25,6 +28,7 @@ import json
 import os
 import re
 import sys
+from typing import NamedTuple
 import requests
 from colorama import Fore, Style, init  # pylint: disable=import-error
 
@@ -35,6 +39,17 @@ try:
     PYTEST_AVAILABLE = True
 except ImportError:
     PYTEST_AVAILABLE = False
+
+# main() requires tree-sitter, the module and its other tests do not
+try:
+    import tree_sitter_make  # pylint: disable=import-error
+    from tree_sitter import Language, Parser  # pylint: disable=import-error
+
+    # tree-sitter before 0.23 rejects the language object of tree-sitter-make
+    MAKE_LANGUAGE = Language(tree_sitter_make.language())
+    TREE_SITTER_AVAILABLE = True
+except (ImportError, TypeError):
+    TREE_SITTER_AVAILABLE = False
 
 
 class LinuxKernelTagNotPushedError(Exception):
@@ -311,137 +326,963 @@ def parse_kernel_commits_file(file_path):
     return commits
 
 
-def check_tag_exists(tag_name, repo_owner, repo_name, token=None, verbose=False):
+class KernelVersionScanError(Exception):
+    """Exception raised when a makefile cannot be evaluated without running make."""
+
+
+class _InvalidCombination(Exception):
+    """Raised when kernel-version.mk calls $(error) for a ZARCH, PLATFORM and HV combination."""
+
+
+_SCAN_INPUTS = ("ZARCH", "PLATFORM", "HV")
+
+
+class ParsedMakefile:
+    """A makefile parsed with tree-sitter-make, to read assignments without running make."""
+
+    def __init__(self, source, path):
+        self._path = path
+        self._src = source.encode("utf-8")
+        self._root = Parser(MAKE_LANGUAGE).parse(self._src).root_node
+
+    def text(self, node):
+        """The source text of a node."""
+        return self._src[node.start_byte : node.end_byte].decode("utf-8")
+
+    def unsupported(self, node, reason="unsupported make construct"):
+        """A KernelVersionScanError naming the node's construct and line."""
+        snippet = (self.text(node).strip().splitlines() or [""])[0]
+        return KernelVersionScanError(
+            f"{self._path}:{node.start_point[0] + 1}: {reason} ({node.type}): {snippet}"
+        )
+
+    def single_assignment(self, name):
+        """The only assignment of name in the file, which must be unconditional."""
+        found = [
+            node
+            for node in self._assignments([self._root])
+            if self._name(node).rstrip("+?:!") == name
+        ]
+        if len(found) != 1:
+            raise KernelVersionScanError(
+                f"{self._path}: expected one {name} assignment, found {len(found)}"
+            )
+        if (
+            found[0].parent.type != "makefile"
+            or found[0].has_error
+            or self._name(found[0]) != name
+        ):
+            raise self.unsupported(
+                found[0], f"{name} must be an unconditional top-level assignment"
+            )
+        return found[0]
+
+    def literal_words(self, name):
+        """The words of the only assignment of name, whose value must be literal."""
+        value = self.single_assignment(name).child_by_field_name("value")
+        if value is None:
+            return []
+        if value.named_children:
+            raise self.unsupported(value, f"{name} must be a literal list")
+        return self._literal(value, self.text(value)).split()
+
+    def _name(self, assignment):
+        return self.text(assignment.child_by_field_name("name"))
+
+    def _descendants(self, nodes):
+        for node in nodes:
+            yield node
+            yield from self._descendants(node.named_children)
+
+    def _assignments(self, nodes):
+        return (n for n in self._descendants(nodes) if n.type == "variable_assignment")
+
+    def _literal(self, node, text):
+        # tree-sitter-make keeps both in the value, make does not
+        if "#" in text or "\\\n" in text:
+            raise self.unsupported(node, "comment or line continuation in a value")
+        return text
+
+
+def read_hv_supported(source, path="Makefile"):
     """
-    Check if a specific tag exists in the repository.
+    Returns the HV values of the top-level Makefile's HV_SUPPORTED.
 
     Parameters:
-    - tag_name (str): The tag name to check (e.g., "v6.1.111").
-    - repo_owner (str): The owner of the GitHub repository.
-    - repo_name (str): The name of the GitHub repository.
-    - token (str): GitHub personal access token for authentication.
-    - verbose (bool): Enable verbose output.
-
-    Returns:
-    - bool: True if the tag exists, False otherwise.
+    - source (str): The content of the top-level Makefile.
+    - path (str): The file name used in error messages.
     """
-    headers = {"Accept": "application/vnd.github.v3+json"}
-    if token:
-        headers["Authorization"] = f"token {token}"
+    return ParsedMakefile(source, path).literal_words("HV_SUPPORTED")
 
-    # Check if tag exists using the git refs API
-    api_url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/git/refs/tags/{tag_name}"
 
-    try:
-        response = requests.get(api_url, headers=headers, timeout=30)
-        if response.status_code == 200:
-            if verbose:
-                print(f"    Tag {tag_name} exists in repository")
-            return True
-        if response.status_code == 403:
-            # API rate limit - assume tag exists since we can't verify
-            if verbose:
-                print(
-                    f"    Tag {tag_name} not found in repository "
-                    f"(status: {response.status_code})"
+class KernelVersionScanner(ParsedMakefile):
+    """
+    Evaluates the kernel selection of kernel-version.mk for ZARCH, PLATFORM and HV
+    combinations without running make.
+
+    The statements before 'include kernel-commits.mk' are evaluated. Supported are
+    the constructs the file uses there, = and ?= assignments, ifeq/ifneq in the
+    (a, b) form with else ifeq/ifneq chains and else, variable references with
+    computed names, and the findstring, filter and error functions, plus :=.
+    Anything else, and what tree-sitter-make misreads, raises
+    KernelVersionScanError, so a new construct is never guessed at.
+    """
+
+    def __init__(self, source, path="kernel-version.mk"):
+        super().__init__(source, path)
+        if self._root.has_error:
+            raise KernelVersionScanError(
+                f"{path}:{self._error_line(self._root)}: make syntax error"
+            )
+        statements = self._root.named_children
+        include = next(
+            (
+                index
+                for index, statement in enumerate(statements)
+                if statement.type == "include_directive"
+                and statement.children[0].type == "include"
+                and self.text(statement.child_by_field_name("filenames"))
+                == "kernel-commits.mk"
+            ),
+            None,
+        )
+        if include is None:
+            raise KernelVersionScanError(f"{path}: no 'include kernel-commits.mk'")
+        for assignment in self._assignments(statements):
+            if self._name(assignment)[-1] in "+?:!":
+                raise self.unsupported(
+                    assignment, "write a blank between the name and the operator"
                 )
-            return False
-        # For other status codes, assume tag doesn't exist
-        if verbose:
-            print(f"    Tag {tag_name} not found (status: {response.status_code})")
-        return False
-    except (requests.RequestException, KeyError, ValueError) as exc:
-        if verbose:
-            print(f"    Error checking tag {tag_name}: {exc}")
-        return False
+        self._selection = statements[:include]
+        self._commit_name = self._kernel_commit_name()
+        # the assigned names, each mapped to its assignment after the include if
+        # any, as make expands the name with that later value
+        self._assigned = {
+            name: None for name in map(self._name, self._assignments(self._selection))
+        }
+        self._assigned.update(
+            (self._name(a), a) for a in self._assignments(statements[include + 1 :])
+        )
+        self._vars = {}
 
+    def combinations(self, hypervisors):
+        """Yields every (ZARCH, PLATFORM, HV) from ARCHS, PLATFORMS_<arch> and hypervisors."""
+        for zarch in self.literal_words("ARCHS"):
+            for platform in self.literal_words(f"PLATFORMS_{zarch}"):
+                for hv in hypervisors:  # pylint: disable=invalid-name
+                    yield zarch, platform, hv
 
-def _fetch_kernel_tags(repo_owner, repo_name, headers, verbose):
-    """Helper function to fetch kernel tags from GitHub."""
-    api_url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/tags?per_page=100&page=1"
-    try:
-        response = requests.get(api_url, headers=headers, timeout=30)
-        if response.status_code != 200:
-            if verbose:
-                print(f"    Failed to fetch tags: {response.status_code}")
+    def select(self, zarch, platform, hv):  # pylint: disable=invalid-name
+        """
+        Returns (KERNEL_COMMIT_* variable name, KERNEL_CONFIG_FLAVOR, KERNEL_COMPILER)
+        for the combination, or None if it is invalid: it calls $(error) or leaves
+        a variable of the KERNEL_COMMIT name empty.
+        """
+        self._vars = dict(zip(_SCAN_INPUTS, (zarch, platform, hv)))
+        try:
+            for statement in self._selection:
+                self._run(statement)
+            if not all(self._value(name) for name in self._required_names()):
+                return None
+            return (
+                self._expand([self._commit_name]),
+                # main() mirrors what the file does with it after the include
+                self._raw_value("KERNEL_CONFIG_FLAVOR"),
+                self._value("KERNEL_COMPILER"),
+            )
+        except _InvalidCombination:
             return None
 
-        page_tags = response.json()
-        # Filter for Linux kernel version tags (vX.Y.Z or vX.Y format)
-        tags = [
-            tag for tag in page_tags if re.match(r"^v\d+\.\d+(\.\d+)?$", tag["name"])
+    def _error_line(self, node):
+        if node.is_error or node.is_missing:
+            return node.start_point[0] + 1
+        return next(
+            (self._error_line(c) for c in node.children if c.has_error),
+            node.start_point[0] + 1,
+        )
+
+    def _kernel_commit_name(self):
+        assignment = self.single_assignment("KERNEL_COMMIT")
+        value = assignment.child_by_field_name("value")
+        references = value.named_children if value else []
+        if (
+            len(references) != 1
+            or references[0].type != "variable_reference"
+            or self.text(references[0]) != self.text(value)
+        ):
+            raise self.unsupported(
+                assignment, "KERNEL_COMMIT must be a single variable reference"
+            )
+        return self._reference_name(references[0])
+
+    def _required_names(self):
+        """The variables the KERNEL_COMMIT name is built from."""
+        return [
+            self.text(node.named_children[0])
+            for node in self._descendants([self._commit_name])
+            if node.type == "variable_reference"
+            and node.named_children[0].type == "word"
         ]
-        return tags
-    except (requests.RequestException, KeyError, ValueError) as exc:
-        if verbose:
-            print(f"    Error fetching tags: {exc}")
+
+    def _reference_name(self, node):
+        tokens = [child.type for child in node.children[:2]]
+        names = node.named_children
+        if (
+            tokens not in (["$", "("], ["$", "{"])
+            or len(names) != 1
+            or names[0].type not in ("word", "concatenation")
+        ):
+            raise self.unsupported(node)
+        return names[0]
+
+    def _run(self, node):
+        if node.type == "comment":
+            return
+        if node.type == "variable_assignment":
+            self._assign(node)
+        elif node.type == "conditional":
+            self._run_conditional(node)
+        elif node.type == "function_call" and self._function(node) == "error":
+            raise _InvalidCombination()
+        else:
+            raise self.unsupported(node)
+
+    def _run_conditional(self, node):
+        branches = [node] + [
+            c
+            for c in node.named_children
+            if c.type in ("elsif_directive", "else_directive")
+        ]
+        for branch in branches:
+            condition = branch.child_by_field_name("condition")
+            if condition is None or self._holds(condition):
+                for index, child in enumerate(branch.children):
+                    if (
+                        child.is_named
+                        and branch.field_name_for_child(index) != "condition"
+                        and child.type not in ("elsif_directive", "else_directive")
+                    ):
+                        self._run(child)
+                return
+
+    def _holds(self, node):
+        if node.type not in ("ifeq_directive", "ifneq_directive"):
+            raise self.unsupported(node)
+        parens = [child for child in node.children if child.type in ("(", ")")]
+        if not parens:
+            raise self.unsupported(node, "only the ifeq (a, b) form is supported")
+        after_open = self._src[parens[0].end_byte : parens[0].end_byte + 1]
+        before_close = self._src[parens[-1].start_byte - 1 : parens[-1].start_byte]
+        if after_open.isspace() or before_close.isspace():
+            raise self.unsupported(
+                node, "make keeps a blank after '(' or before ')' in the arguments"
+            )
+        equal = self._expand(node.children_by_field_name("arg0")) == self._expand(
+            node.children_by_field_name("arg1")
+        )
+        return equal == (node.type == "ifeq_directive")
+
+    def _assign(self, node):
+        name = self._name(node)
+        if name in _SCAN_INPUTS:
+            raise self.unsupported(node, f"{name} is an input of the scan")
+        operator = node.child_by_field_name("operator").type
+        value = node.child_by_field_name("value")
+        nodes = [value] if value is not None else []
+        if operator == "=" or (operator == "?=" and name not in self._vars):
+            # a recursive variable keeps its nodes and is expanded where it is used
+            self._vars[name] = nodes
+        elif operator == ":=":
+            self._vars[name] = self._expand(nodes)
+        elif operator != "?=":
+            raise self.unsupported(node, f"unsupported assignment operator {operator}")
+
+    def _value(self, name):
+        late = None if name in _SCAN_INPUTS else self._assigned.get(name)
+        if late is not None:
+            raise self.unsupported(
+                late,
+                "assigned after 'include kernel-commits.mk', which the selection reads",
+            )
+        return self._raw_value(name)
+
+    def _raw_value(self, name):
+        value = self._vars.get(name, "")
+        if isinstance(value, str):
+            return value
+        if value is None:
+            raise KernelVersionScanError(
+                f"{self._path}: variable {name} references itself"
+            )
+        self._vars[name] = None
+        try:
+            return self._expand(value)
+        finally:
+            self._vars[name] = value
+
+    def _references(self, nodes):
+        for node in nodes:
+            if node.type in ("variable_reference", "function_call"):
+                yield node
+            elif node.type in ("text", "word", "concatenation", "arguments"):
+                yield from self._references(node.named_children)
+            else:
+                raise self.unsupported(node)
+
+    def _pieces(self, nodes):
+        """Yields (is_literal, text) for the source spanned by nodes, references expanded."""
+        if not nodes:
+            return
+        position = nodes[0].start_byte
+        for reference in self._references(nodes):
+            literal = self._src[position : reference.start_byte].decode("utf-8")
+            yield True, self._literal(nodes[0], literal)
+            yield False, self._expand_reference(reference)
+            position = reference.end_byte
+        literal = self._src[position : nodes[-1].end_byte].decode("utf-8")
+        yield True, self._literal(nodes[0], literal)
+
+    def _expand(self, nodes):
+        return "".join(text for _, text in self._pieces(nodes))
+
+    def _function(self, node):
+        return node.child_by_field_name("function").type
+
+    def _arguments(self, node):
+        arguments = [""]
+        for is_literal, text in self._pieces(
+            [c for c in node.named_children if c.type == "arguments"]
+        ):
+            if is_literal:
+                first, *rest = text.split(",")
+                arguments[-1] += first
+                arguments += rest
+            else:
+                arguments[-1] += text
+        return arguments
+
+    def _expand_reference(self, node):
+        if node.type == "variable_reference":
+            name_node = self._reference_name(node)
+            name = self._expand([name_node])
+            if (
+                name_node.type == "word"
+                and name not in _SCAN_INPUTS
+                and name not in self._assigned
+            ):
+                raise self.unsupported(
+                    node, f"{name} is neither an input nor assigned before the include"
+                )
+            return self._value(name)
+        function = self._function(node)
+        if function == "error":
+            raise _InvalidCombination()
+        arguments = self._arguments(node)
+        if function == "findstring" and len(arguments) == 2:
+            find, text = arguments
+            return find if find in text else ""
+        if function == "filter" and len(arguments) == 2:
+            patterns, words = (argument.split() for argument in arguments)
+            return " ".join(
+                word
+                for word in words
+                if any(self._filter_matches(pattern, word) for pattern in patterns)
+            )
+        raise self.unsupported(node)
+
+    @staticmethod
+    def _filter_matches(pattern, word):
+        prefix, percent, suffix = pattern.partition("%")
+        if not percent:
+            return pattern == word
+        return (
+            len(word) >= len(prefix) + len(suffix)
+            and word.startswith(prefix)
+            and word.endswith(suffix)
+        )
+
+
+def scan_kernel_version_mk(source, hypervisors, path="kernel-version.mk"):
+    """
+    Evaluates kernel-version.mk for every ZARCH, PLATFORM and HV combination.
+
+    Parameters:
+    - source (str): The content of kernel-version.mk.
+    - hypervisors (iterable): The HV values to combine (HV_SUPPORTED).
+    - path (str): The file name used in error messages.
+
+    Returns:
+    - tuple: ({KERNEL_COMMIT_* variable: set of KERNEL_CONFIG_FLAVOR values} for the
+      valid combinations, their KERNEL_COMPILER)
+
+    Raises:
+    - KernelVersionScanError: When the file uses a construct the scanner does not
+      evaluate, or no combination selects a kernel.
+    """
+    scanner = KernelVersionScanner(source, path)
+    config_flavours, compilers = {}, set()
+    for combination in scanner.combinations(hypervisors):
+        selected = scanner.select(*combination)
+        if selected:
+            variable, config_flavour, compiler = selected
+            config_flavours.setdefault(variable, set()).add(config_flavour)
+            compilers.add(compiler)
+    if not config_flavours:
+        raise KernelVersionScanError(f"{path}: no combination selects a kernel")
+    if len(compilers) != 1 or "" in compilers:
+        raise KernelVersionScanError(
+            f"{path}: expected one KERNEL_COMPILER, found {sorted(compilers)}"
+        )
+    return config_flavours, compilers.pop()
+
+
+if PYTEST_AVAILABLE:
+
+    REQUIRES_TREE_SITTER = pytest.mark.skipif(
+        not TREE_SITTER_AVAILABLE, reason="needs tree-sitter and tree-sitter-make"
+    )
+
+    SAMPLE_KERNEL_VERSION_MK = """\
+KERNEL_COMPILER=gcc
+KERNEL_CONFIG_FLAVOR ?=
+FLAVOR_DEFAULT ?= generic
+FLAVOR_DEFAULT ?= ignored
+PLATFORMS_amd64=generic rt
+PLATFORMS_arm64=generic nvidia-jp6 imx
+ARCHS=amd64 arm64
+
+ifeq (, $(filter $(ZARCH), $(ARCHS)))
+    $(error "Unsupported architecture $(ZARCH)")
+endif
+
+ifeq ($(ZARCH), amd64)
+    KERNEL_VERSION=v6.18.55
+    ifneq ($(PLATFORM), rt)
+        KERNEL_FLAVOR=$(FLAVOR_DEFAULT)
+        KERNEL_CONFIG_FLAVOR=core
+    else ifeq ($(HV), k)
+        $(error "PLATFORM=rt does not support HV=k")
+    else
+        # rt has its own branch
+        KERNEL_FLAVOR=rt
+    endif
+else ifeq ($(ZARCH), arm64)
+    ifeq (, $(findstring nvidia,$(PLATFORM)))
+        KERNEL_FLAVOR=generic
+        KERNEL_VERSION=v6.1.155
+        ifeq ($(PLATFORM), imx)
+            KERNEL_VERSION=
+        endif
+    else
+        KVER_nvidia-jp6=v5.15.136
+        KERNEL_FLAVOR=$(PLATFORM)
+        KERNEL_VERSION=$(KVER_$(PLATFORM))
+    endif
+endif
+
+include kernel-commits.mk
+
+KERNEL_COMMIT=$(KERNEL_COMMIT_$(ZARCH)_$(KERNEL_VERSION)_$(KERNEL_FLAVOR))
+"""
+
+    @REQUIRES_TREE_SITTER
+    def test_scan_kernel_version_mk_sample():
+        """
+        ifeq/ifneq/else ifeq chains, ?=, computed names, findstring and filter are
+        evaluated; $(error) and an empty KERNEL_VERSION invalidate a combination.
+        """
+        scanner = KernelVersionScanner(SAMPLE_KERNEL_VERSION_MK)
+        assert len(list(scanner.combinations(["kvm", "k", "mini"]))) == 15
+        assert scanner.select("amd64", "generic", "k") == (
+            "KERNEL_COMMIT_amd64_v6.18.55_generic",
+            "core",
+            "gcc",
+        )
+        assert scanner.select("amd64", "rt", "kvm") == (
+            "KERNEL_COMMIT_amd64_v6.18.55_rt",
+            "",
+            "gcc",
+        )
+        assert scanner.select("amd64", "rt", "k") is None
+        assert scanner.select("arm64", "imx", "kvm") is None
+        assert scanner.select("riscv64", "generic", "mini") is None
+        assert scan_kernel_version_mk(SAMPLE_KERNEL_VERSION_MK, ["kvm", "k"]) == (
+            {
+                "KERNEL_COMMIT_amd64_v6.18.55_generic": {"core"},
+                "KERNEL_COMMIT_amd64_v6.18.55_rt": {""},
+                "KERNEL_COMMIT_arm64_v6.1.155_generic": {""},
+                "KERNEL_COMMIT_arm64_v5.15.136_nvidia-jp6": {""},
+            },
+            "gcc",
+        )
+
+    @REQUIRES_TREE_SITTER
+    def test_scan_kernel_version_mk_names():
+        """
+        Validity comes from the variables inside the KERNEL_COMMIT reference, a
+        file that selects nothing is an error, and so is an assignment after the
+        include to a variable the selection reads, even through a computed name.
+        """
+        source = (
+            "ARCHS=amd64\nPLATFORMS_amd64=generic imx\nKERNEL_COMPILER=gcc\n"
+            "KVER_generic=v6.18.55\nKVER=$(KVER_$(PLATFORM))\n"
+            "include kernel-commits.mk\n"
+            "KERNEL_COMMIT=$(KERNEL_COMMIT_$(ZARCH)_$(KVER)_generic)\n"
+        )
+        assert scan_kernel_version_mk(source, ["kvm"]) == (
+            {"KERNEL_COMMIT_amd64_v6.18.55_generic": {""}},
+            "gcc",
+        )
+        with pytest.raises(KernelVersionScanError, match="no combination selects"):
+            scan_kernel_version_mk(source.replace("generic imx", "imx"), ["kvm"])
+        for late in ["KVER=v6.19", "KVER_generic=v6.19", "KERNEL_COMPILER=clang"]:
+            with pytest.raises(KernelVersionScanError, match=":8: assigned after"):
+                scan_kernel_version_mk(source + late + "\n", ["kvm"])
+
+    @REQUIRES_TREE_SITTER
+    def test_scan_kernel_version_mk_unsupported():
+        """
+        A construct the scanner does not evaluate, or that tree-sitter-make
+        misreads, is an error naming its line.
+        """
+        for construct in [
+            "ifdef HV\nendif",
+            'ifeq "$(HV)" "k"\nendif',
+            "ifeq ( $(HV),k)\nendif",
+            "ifeq ($(HV),k )\nendif",
+            "KERNEL_VERSION=$(strip v6.18.55)",
+            "KERNEL_VERSION=$(shell echo v6.18.55)",
+            "KERNEL_VERSION=$(HOSTARCH)",
+            "KERNEL_VERSION=v6.18.55 # comment",
+            "KERNEL_VERSION=v6.18 \\\n    .55",
+            "KERNEL_VERSION?=v6.18.55",
+            "KERNEL_VERSION+=v6.18.55",
+            "KERNEL_VERSION += v6.18.55",
+            "define KERNEL_VERSION\nv6.18.55\nendef",
+            "export KERNEL_VERSION=v6.18.55",
+            "$(info amd64)",
+            "PLATFORM=generic",
+        ]:
+            source = (
+                "ARCHS=amd64\nPLATFORMS_amd64=generic\n"
+                f"{construct}\n"
+                "include kernel-commits.mk\n"
+                "KERNEL_COMMIT=$(KERNEL_COMMIT_$(ZARCH)_$(KERNEL_VERSION)_generic)\n"
+            )
+            with pytest.raises(KernelVersionScanError, match=r"kernel-version.mk:3: "):
+                scan_kernel_version_mk(source, ["kvm"])
+
+    @REQUIRES_TREE_SITTER
+    def test_scan_kernel_version_mk_repo():
+        """
+        The repository's kernel-version.mk, combined with the Makefile's
+        HV_SUPPORTED, selects exactly the kernels and flavours EVE builds.
+        """
+        root = os.path.join(os.path.dirname(__file__), "..")
+        with open(os.path.join(root, "Makefile"), "r", encoding="utf-8") as file:
+            hypervisors = read_hv_supported(file.read())
+        assert hypervisors == ["kvm", "k", "mini"]
+        path = os.path.join(root, "kernel-version.mk")
+        with open(path, "r", encoding="utf-8") as file:
+            assert scan_kernel_version_mk(file.read(), hypervisors) == (
+                {
+                    "KERNEL_COMMIT_amd64_v6.18.55_generic": {"core", "rt", "hwe", "ai"},
+                    "KERNEL_COMMIT_arm64_v6.1.155_generic": {""},
+                    "KERNEL_COMMIT_arm64_v5.10.192_nvidia-jp5": {""},
+                    "KERNEL_COMMIT_arm64_v5.15.136_nvidia-jp6": {""},
+                    "KERNEL_COMMIT_arm64_v6.8.12_nvidia-jp7": {""},
+                    "KERNEL_COMMIT_riscv64_v6.1.112_generic": {""},
+                },
+                "gcc",
+            )
+
+
+class KernelSelection(NamedTuple):
+    """The kernels the build uses: the Docker image groups it pulls per branch."""
+
+    images: dict
+    compiler: str
+
+
+def read_kernel_selection(kernel_version_mk="kernel-version.mk", makefile="Makefile"):
+    """
+    Evaluates kernel-version.mk for every ZARCH, PLATFORM and HV in the Makefile's
+    HV_SUPPORTED. Exits with an error if that is not possible.
+
+    Returns:
+    - KernelSelection: {branch: names of the Docker images the build pulls for
+      it} and the compiler of those images.
+    """
+    if not TREE_SITTER_AVAILABLE:
+        sys.exit(
+            "Error: reading kernel-version.mk needs tree-sitter 0.23 or later: "
+            "pip install 'tree-sitter>=0.23' tree-sitter-make"
+        )
+    try:
+        with open(makefile, "r", encoding="utf-8") as file:
+            hypervisors = read_hv_supported(file.read(), makefile)
+        with open(kernel_version_mk, "r", encoding="utf-8") as file:
+            config_flavours, compiler = scan_kernel_version_mk(
+                file.read(), hypervisors, kernel_version_mk
+            )
+    except KernelVersionScanError as error:
+        sys.exit(f"Error: {error}")
+    # kernel-version.mk tags the images
+    # $(KERNEL_BRANCH)-$(KERNEL_CONFIG_FLAVOR)-<commit>-$(KERNEL_COMPILER), without
+    # the flavour part when KERNEL_CONFIG_FLAVOR is empty
+    images = {}
+    for variable, flavours in config_flavours.items():
+        branch = variable_to_branch_name(variable)
+        images[branch] = {
+            f"{branch}-{flavour}" if flavour else branch for flavour in flavours
+        }
+    return KernelSelection(images, compiler)
+
+
+def reconcile_selected_branches(selected_branches, old_commits, github_commits):
+    """
+    Matches the branches kernel-version.mk selects with GitHub and kernel-commits.mk.
+    GitHub branches the build does not use are skipped and listed in one line.
+
+    Parameters:
+    - selected_branches (iterable): The branches kernel-version.mk selects.
+    - old_commits (dict): The branches and commits in kernel-commits.mk.
+    - github_commits (dict): The branches and latest commits on GitHub.
+
+    Returns:
+    - tuple: (the GitHub commits of the selected branches and of the next branches
+      already pinned, which no build selects; True if a selected branch is not on
+      GitHub, as kernel-commits.mk would then lose a pin the build needs)
+    """
+    selected = set(selected_branches)
+    kept = selected | {branch for branch in old_commits if branch.endswith("-next")}
+    skipped = sorted(set(github_commits) - kept - set(old_commits))
+    if skipped:
+        print(
+            f"Skipping branches kernel-version.mk does not select: {', '.join(skipped)}"
+        )
+
+    for branch in sorted(set(old_commits) - selected):
+        if branch not in kept:
+            reason = "no longer selected by kernel-version.mk"
+        elif branch not in github_commits:
+            reason = "the branch was removed from the repository or protected"
+        else:
+            continue
+        print(Fore.YELLOW + "[warning]" + Style.RESET_ALL + f" :{branch}: {reason}.")
+
+    is_error = False
+    for branch in sorted(selected - set(github_commits)):
+        is_error = True
+        if branch in old_commits:
+            reason = (
+                f"pinned at {old_commits[branch]}, "
+                "but GitHub does not list it (deleted or protected)"
+            )
+        else:
+            reason = "neither pinned in kernel-commits.mk nor on GitHub"
+        print(
+            Fore.RED
+            + "[Error]"
+            + Style.RESET_ALL
+            + f" :{branch}: selected by kernel-version.mk, {reason}."
+        )
+
+    kept_commits = {
+        branch: commit for branch, commit in github_commits.items() if branch in kept
+    }
+    return kept_commits, is_error
+
+
+if PYTEST_AVAILABLE:
+
+    def test_reconcile_selected_branches(capsys):
+        """
+        Unselected GitHub branches are skipped, a pinned branch the build no longer
+        selects is dropped, and a selected branch missing on GitHub is an error.
+        """
+        amd64 = "eve-kernel-amd64-v6.18.55-generic"
+        jp5 = "eve-kernel-arm64-v5.10.192-nvidia-jp5"
+        jp6 = "eve-kernel-arm64-v5.15.136-nvidia-jp6"
+        jp7 = "eve-kernel-arm64-v6.8.12-nvidia-jp7"
+        old = "eve-kernel-amd64-v6.1.112-generic"
+        github_commits = {
+            amd64: "a2",
+            jp6: "c1",
+            old: "o1",
+            "eve-kernel-amd64-next": "n1",
+            "eve-kernel-amd64-v6.18.46-generic": "b1",
+        }
+        old_commits = {
+            amd64: "a1",
+            jp5: "d1",
+            old: "o1",
+            "eve-kernel-amd64-next": "n1",
+            "eve-kernel-arm64-next": "m1",
+        }
+
+        assert reconcile_selected_branches(
+            [amd64, jp5, jp6, jp7], old_commits, github_commits
+        ) == ({amd64: "a2", jp6: "c1", "eve-kernel-amd64-next": "n1"}, True)
+        out = capsys.readouterr().out
+        assert (
+            "Skipping branches kernel-version.mk does not select: "
+            "eve-kernel-amd64-v6.18.46-generic\n"
+        ) in out
+        assert out.count(old) == 1
+        assert f":{old}: no longer selected by kernel-version.mk." in out
+        assert (
+            ":eve-kernel-arm64-next: the branch was removed from the repository"
+            " or protected."
+        ) in out
+        assert f":{jp5}: selected by kernel-version.mk, pinned at d1" in out
+        assert f":{jp7}: selected by kernel-version.mk, neither pinned" in out
+
+        assert reconcile_selected_branches([amd64], {amd64: "a1"}, {amd64: "a2"}) == (
+            {amd64: "a2"},
+            False,
+        )
+
+
+def parse_kernel_version(tag, missing_patch=0):
+    """
+    Parse the leading vMAJOR.MINOR[.PATCH] of a kernel tag, e.g. v6.18.55,
+    v6.17-rc7 or v6.1.111-rt42.
+
+    Parameters:
+    - tag (str): The tag name.
+    - missing_patch: The patch level of a vMAJOR.MINOR tag. float("inf") makes
+      v5.10 an upper bound that every v5.10.x is at or below.
+
+    Returns:
+    - tuple: (major, minor, patch) to compare versions numerically, or None if
+      the tag does not start with a kernel version.
+    """
+    match = re.match(r"v(\d+)\.(\d+)(?:\.(\d+))?", tag)
+    if not match:
         return None
+    major, minor, patch = match.groups()
+    return int(major), int(minor), missing_patch if patch is None else int(patch)
 
 
-def _check_single_tag(tag, commit_sha, repo_config, headers, verbose):
-    """Helper to check a single tag and return ahead_by count."""
+def _fetch_kernel_tags(repo_config, headers, verbose, version_hint=None):
+    """
+    Helper function to fetch kernel tag names from GitHub: the most recent 100
+    tags plus, with a version hint, every tag of its vMAJOR.MINOR line, which
+    can be older than those.
+    """
     repo_owner, repo_name = repo_config
-    tag_name = tag["name"]
+    api_url = f"https://api.github.com/repos/{repo_owner}/{repo_name}"
+    queries = [(f"{api_url}/tags?per_page=100&page=1", lambda tag: tag["name"])]
+    version = parse_kernel_version(version_hint) if version_hint else None
+    if version:
+        queries.append(
+            (
+                # pylint: disable-next=unsubscriptable-object
+                f"{api_url}/git/matching-refs/tags/v{version[0]}.{version[1]}",
+                lambda ref: ref["ref"].removeprefix("refs/tags/"),
+            )
+        )
+
+    tags = []
+    for url, tag_name in queries:
+        try:
+            response = requests.get(url, headers=headers, timeout=30)
+            if response.status_code == 200:
+                tags += [tag_name(item) for item in response.json()]
+            elif verbose:
+                print(f"    Failed to fetch tags: {response.status_code}")
+        except (requests.RequestException, KeyError, ValueError) as exc:
+            if verbose:
+                print(f"    Error fetching tags: {exc}")
+    return tags
+
+
+def _below_hint(tag, version_hint):
+    """True for a kernel tag other than the hint whose version is not beyond it."""
+    version = parse_kernel_version(tag)
+    if version is None or tag == version_hint:
+        return False
+    return not version_hint or version <= parse_kernel_version(
+        version_hint, float("inf")
+    )
+
+
+def base_tag_candidates(tags, version_hint=None):
+    """
+    Order the tags that may be the base of a new branch besides the hint itself:
+    the kernel tags at or below the hint's version (all without a hint), newest
+    first.
+
+    Parameters:
+    - tags (iterable): Tag names. Those without a leading kernel version are dropped.
+    - version_hint (str): The kernel version in the branch name (e.g. v6.18.55),
+      or None.
+
+    Returns:
+    - list: The candidate tag names.
+    """
+    return sorted(
+        (tag for tag in dict.fromkeys(tags) if _below_hint(tag, version_hint)),
+        key=parse_kernel_version,
+        reverse=True,
+    )
+
+
+def _ancestor_tag_distance(compare):
+    """
+    Returns how many commits the commit is ahead of the tag, given the GitHub
+    compare/{tag}...{commit} result, or None if there is no result or the tag
+    is not an ancestor of the commit (the two diverged or the commit is behind
+    the tag).
+    """
+    if not compare or compare.get("status") not in ("ahead", "identical"):
+        return None
+    if compare.get("behind_by") != 0:
+        return None
+    return compare.get("ahead_by", float("inf"))
+
+
+def select_base_tag(distances, version_hint=None):
+    """
+    Choose the base tag of a new branch: the tag of the kernel version in the
+    branch name if it is an ancestor of the branch commit, otherwise the
+    ancestor tag at or below that version with the fewest commits ahead.
+    Without a version hint any ancestor tag qualifies.
+
+    Parameters:
+    - distances (dict): For each compared tag, the commits the branch commit is
+      ahead of it, or None if the tag is not an ancestor.
+    - version_hint (str): The kernel version in the branch name, or None.
+
+    Returns:
+    - str: The base tag, or None if no tag qualifies.
+    """
+    if version_hint and distances.get(version_hint) is not None:
+        return version_hint
+    ancestors = {
+        tag: distance
+        for tag, distance in distances.items()
+        if distance is not None and _below_hint(tag, version_hint)
+    }
+    return min(ancestors, key=ancestors.get) if ancestors else None
+
+
+if PYTEST_AVAILABLE:
+
+    def test_ancestor_tag_distance():
+        """
+        Only a tag the commit contains qualifies as its base.
+        """
+        for compare, expected in [
+            ({"status": "ahead", "ahead_by": 42, "behind_by": 0}, 42),
+            ({"status": "identical", "ahead_by": 0, "behind_by": 0}, 0),
+            ({"status": "diverged", "ahead_by": 12, "behind_by": 345}, None),
+            ({"status": "behind", "ahead_by": 0, "behind_by": 7}, None),
+            ({"ahead_by": 3}, None),
+            (None, None),
+        ]:
+            assert _ancestor_tag_distance(compare) == expected
+
+    def test_base_tag_candidates():
+        """
+        Versions compare numerically, tags beyond the hint and tags that are not
+        kernel versions are dropped, and a two-part hint covers its patch levels.
+        """
+        assert parse_kernel_version("v6.18.55") > parse_kernel_version("v6.18.9")
+        assert parse_kernel_version("v6.19") > parse_kernel_version("v6.18.55")
+        assert parse_kernel_version("v6.1.111-rt42") == (6, 1, 111)
+        assert parse_kernel_version("v6.17-rc7") == (6, 17, 0)
+        assert parse_kernel_version("v5.10", float("inf")) == (5, 10, float("inf"))
+        assert parse_kernel_version("platform-drivers-x86-v4.5-3") is None
+        tags = ["v6.18.9", "v6.19", "v6.18.55", "latest", "v6.18.56", "v6.18-rc7"]
+        assert base_tag_candidates(tags, "v6.18.55") == ["v6.18.9", "v6.18-rc7"]
+        assert base_tag_candidates(tags) == [
+            "v6.19",
+            "v6.18.56",
+            "v6.18.55",
+            "v6.18.9",
+            "v6.18-rc7",
+        ]
+        assert base_tag_candidates(
+            ["v5.9", "v5.10", "v5.10.186", "v5.11", "v5.10.192"], "v5.10"
+        ) == ["v5.10.192", "v5.10.186", "v5.9"]
+
+    def test_select_base_tag():
+        """
+        The hint tag wins if it is an ancestor; otherwise the nearest ancestor at
+        or below the hint, never a newer or a diverged tag.
+        """
+        distances = {
+            "v6.19": 3,
+            "v6.18.56": 4,
+            "v6.18.55": 500,
+            "v6.18.54": None,
+            "v6.18.53": 60,
+            "v6.18.50": 80,
+            "v6.1.111-rt42": 70,
+        }
+
+        assert select_base_tag(distances, "v6.18.55") == "v6.18.55"
+        assert select_base_tag(distances, "v6.18.54") == "v6.18.53"
+        no_hint_tag = {**distances, "v6.18.55": None}
+        assert select_base_tag(no_hint_tag, "v6.18.55") == "v6.18.53"
+        assert select_base_tag(distances, "v6.1.111") == "v6.1.111-rt42"
+        assert select_base_tag(distances) == "v6.19"
+        assert select_base_tag(distances, "v6.0") is None
+        assert select_base_tag({"v6.18.54": None}) is None
+        series = {"v5.10": None, "v5.10.186": 50, "v5.9": 900}
+        assert select_base_tag(series, "v5.10") == "v5.10.186"
+
+
+def _check_single_tag(tag_name, commit_sha, repo_config, headers, verbose):
+    """Helper to check a single tag: its ahead_by count, None if not an ancestor."""
+    repo_owner, repo_name = repo_config
 
     api_url = (
         f"https://api.github.com/repos/{repo_owner}/{repo_name}/"
         f"compare/{tag_name}...{commit_sha}"
     )
 
-    response = requests.get(api_url, headers=headers, timeout=30)
-    if response.status_code != 200:
+    try:
+        response = requests.get(api_url, headers=headers, timeout=30)
+        if response.status_code != 200:
+            if verbose:
+                print(f"      {tag_name}: not found ({response.status_code})")
+            return None
+        compare = response.json()
+    except (requests.RequestException, ValueError) as exc:
+        if verbose:
+            print(f"      Error checking {tag_name}: {exc}")
         return None
 
-    data = response.json()
-    ahead_by = data.get("ahead_by", float("inf"))
-
+    ahead_by = _ancestor_tag_distance(compare)
     if verbose:
-        print(f"      {tag_name}: {ahead_by} commits ahead")
+        if ahead_by is None:
+            print(
+                f"      {tag_name}: not an ancestor ({compare.get('status')}), skipped"
+            )
+        else:
+            print(f"      {tag_name}: {ahead_by} commits ahead")
 
     return ahead_by
 
 
-def _find_best_tag(tags, commit_sha, repo_config, headers, verbose):
-    """Helper function to find the best tag among candidates."""
-    best_tag = None
-    smallest_ahead = float("inf")
-
-    # Check only first 20 tags to limit API calls
-    for tag in tags[:20]:
-        try:
-            ahead_by = _check_single_tag(tag, commit_sha, repo_config, headers, verbose)
-            if ahead_by is None:
-                continue
-
-            if ahead_by < smallest_ahead:
-                smallest_ahead = ahead_by
-                best_tag = tag["name"]
-
-                # Early exit if we found a good match
-                if ahead_by < 100:
-                    if verbose:
-                        print("    Found good match, stopping search early")
-                    break
-        except (requests.RequestException, KeyError, ValueError) as exc:
-            if verbose:
-                print(f"      Error checking {tag.get('name', 'unknown')}: {exc}")
-
-    return best_tag, smallest_ahead
-
-
 def find_nearest_kernel_tag(
-    commit_sha, repo_owner, repo_name, token=None, verbose=False
+    commit_sha, repo_config, token=None, verbose=False, version_hint=None
 ):
     """
-    Find the nearest Linux kernel tag (vX.Y.Z format) that is an ancestor of the given commit.
+    Find the nearest Linux kernel tag that is an ancestor of the given commit.
     This simulates 'git describe --tags' using GitHub API.
 
     Parameters:
     - commit_sha (str): The commit SHA to find the nearest tag for.
-    - repo_owner (str): The owner of the GitHub repository.
-    - repo_name (str): The name of the GitHub repository.
+    - repo_config (tuple): (repo_owner, repo_name) for the GitHub repository.
     - token (str): GitHub personal access token for authentication.
     - verbose (bool): Enable verbose output.
+    - version_hint (str): The kernel version in the branch name (e.g. v6.18.55),
+      or None. That tag is checked first and chosen if it is an ancestor; a tag
+      beyond that version never is (see select_base_tag()).
 
     Returns:
     - str: The nearest kernel tag, or None if not found.
@@ -453,25 +1294,76 @@ def find_nearest_kernel_tag(
     if verbose:
         print(f"  Searching for nearest kernel tag for commit {commit_sha[:12]}...")
 
-    # Get only the first page of tags (most recent 100)
-    tags = _fetch_kernel_tags(repo_owner, repo_name, headers, verbose)
-    if not tags:
+    distances = {}
+    if version_hint:
+        distances[version_hint] = _check_single_tag(
+            version_hint, commit_sha, repo_config, headers, verbose
+        )
+    if distances.get(version_hint) is None:
+        candidates = base_tag_candidates(
+            _fetch_kernel_tags(repo_config, headers, verbose, version_hint),
+            version_hint,
+        )
         if verbose:
-            print("    No kernel tags found")
-        return None
+            print(f"    Checking {len(candidates[:20])} candidate kernel tags...")
+        # Check only first 20 tags to limit API calls
+        for tag in candidates[:20]:
+            distances[tag] = _check_single_tag(
+                tag, commit_sha, repo_config, headers, verbose
+            )
+            if distances[tag] is not None and distances[tag] < 100:
+                if verbose:
+                    print("    Found good match, stopping search early")
+                break
 
-    if verbose:
-        print(f"    Checking {len(tags)} recent kernel tags...")
-
-    # Find the best tag among candidates
-    best_tag, smallest_ahead = _find_best_tag(
-        tags, commit_sha, (repo_owner, repo_name), headers, verbose
-    )
+    best_tag = select_base_tag(distances, version_hint)
 
     if best_tag and verbose:
-        print(f"    Found nearest tag: {best_tag} ({smallest_ahead} commits ahead)")
+        print(
+            f"    Found nearest tag: {best_tag} ({distances[best_tag]} commits ahead)"
+        )
 
     return best_tag
+
+
+if PYTEST_AVAILABLE:
+
+    def test_find_nearest_kernel_tag(monkeypatch):
+        """
+        The hint tag is checked first and, if it is an ancestor, no tag list is
+        fetched; otherwise the candidates are compared newest first until one is
+        less than 100 commits behind the commit.
+        """
+        compared = []
+
+        def check(tag_name, *_):
+            compared.append(tag_name)
+            return {"v6.18.46": 13, "v6.18.44": 150, "v6.18.9": 90}.get(tag_name)
+
+        def tags(*_):
+            return ["v6.19", "v6.18.45", "v6.18.44", "v6.18.9", "v6.18.8", "latest"]
+
+        monkeypatch.setitem(globals(), "_check_single_tag", check)
+        monkeypatch.setitem(globals(), "_fetch_kernel_tags", tags)
+
+        assert find_nearest_kernel_tag("c", ("o", "r"), version_hint="v6.18.46") == (
+            "v6.18.46"
+        )
+        assert compared == ["v6.18.46"]
+
+        compared.clear()
+        assert find_nearest_kernel_tag("c", ("o", "r"), version_hint="v6.18.47") == (
+            "v6.18.9"
+        )
+        assert compared == ["v6.18.47", "v6.18.45", "v6.18.44", "v6.18.9"]
+
+        compared.clear()
+        assert find_nearest_kernel_tag("c", ("o", "r")) == "v6.18.9"
+        assert compared == ["v6.19", "v6.18.45", "v6.18.44", "v6.18.9"]
+
+        compared.clear()
+        assert find_nearest_kernel_tag("c", ("o", "r"), version_hint="v6.0") is None
+        assert compared == ["v6.0"]
 
 
 def find_merge_base_for_next_branch(
@@ -498,10 +1390,7 @@ def find_merge_base_for_next_branch(
     next_commit = all_branches[branch_name]
 
     # Find the nearest kernel tag using GitHub API
-    repo_owner, repo_name = repo_config
-    nearest_tag = find_nearest_kernel_tag(
-        next_commit, repo_owner, repo_name, token, verbose
-    )
+    nearest_tag = find_nearest_kernel_tag(next_commit, repo_config, token, verbose)
 
     if nearest_tag:
         if verbose:
@@ -525,7 +1414,7 @@ def _validate_old_commit(repo_owner, repo_name, old_commit, headers):
         return
 
     # If not found as commit, check if it's a tag (for new branches)
-    if re.match(r"^v\d+\.\d+(\.\d+)?$", old_commit):
+    if parse_kernel_version(old_commit):
         tag_url = (
             f"https://api.github.com/repos/{repo_owner}/{repo_name}"
             f"/git/refs/tags/{old_commit}"
@@ -687,19 +1576,10 @@ def _process_versioned_branch(branch, new_commit, token, verbose):
 
     if verbose:
         print(f"    New versioned branch: {branch}, commit: {new_commit}")
-        print(f"    Checking if tag {tag} exists...")
+        print(f"    Searching for tag {tag} or the nearest tag below it...")
 
-    # Check if the tag exists in the repository
-    if check_tag_exists(tag, "lf-edge", "eve-kernel", token, verbose):
-        if verbose:
-            print(f"    Using tag {tag} as starting point")
-        return (tag, new_commit)
-
-    # Tag doesn't exist, try to find the nearest tag
-    if verbose:
-        print(f"    Tag {tag} not found, searching for nearest tag...")
     nearest_tag = find_nearest_kernel_tag(
-        new_commit, "lf-edge", "eve-kernel", token, verbose
+        new_commit, ("lf-edge", "eve-kernel"), token, verbose, version_hint=tag
     )
     if nearest_tag:
         if verbose:
@@ -880,60 +1760,114 @@ def _fetch_tags_per_branch(branches, verbose=False):
     return tags
 
 
-def fetch_docker_tags(branches, verbose=False):
+def group_docker_tags(branches, known_branches, docker_tag_list, compiler="gcc"):
+    """
+    Groups Docker tags by image name and assigns each group to its branch.
+
+    A branch with config flavours pushes one image per flavour, e.g.
+    eve-kernel-amd64-v6.18.55-generic-core-<commit>-gcc. A group belongs to the
+    longest known branch name it equals or extends with "-<flavour>", so tags of
+    eve-kernel-arm64-v5.10.192-nvidia-jp5 that a query for
+    eve-kernel-arm64-v5.10.192-nvidia returns stay with their own branch.
+
+    Args:
+        branches (iterable): Branch names the tags were queried for.
+        known_branches (iterable): Every branch name on GitHub and in kernel-commits.mk.
+        docker_tag_list (list): (tag, last pushed date) tuples.
+        compiler (str): The compiler of the images the build pulls
+        (KERNEL_COMPILER in kernel-version.mk); other images do not count.
+
+    Returns:
+        dict: {branch: {group: {commit: last pushed date}}} for the queried branches.
+    """
+    branches = set(branches)
+    candidates = sorted(set(known_branches) | branches, key=len, reverse=True)
+    branch_groups = {}
+    for tag, tag_last_pushed in docker_tag_list:
+        match = re.match(r"^(eve-kernel-.*)-([a-f0-9]+)-(gcc|clang)$", tag)
+        if not match:
+            print(f"Warning: tag '{tag}' doesn't match regex")
+            continue
+        group, commit, tag_compiler = match.groups()
+        branch = next(
+            (b for b in candidates if group == b or group.startswith(b + "-")), None
+        )
+        if branch not in branches or tag_compiler != compiler:
+            continue
+        groups = branch_groups.setdefault(branch, {})
+        groups.setdefault(group, {})[commit] = tag_last_pushed
+    return branch_groups
+
+
+def select_docker_commits(branch_groups, required_images=None):
+    """
+    Picks for each branch the most recent commit whose image was pushed to every
+    group the build pulls: required_images[branch] when given, every group of the
+    branch otherwise. A commit dates from its earliest push among those groups,
+    so rebuilding an old commit does not make it recent.
+
+    Args:
+        branch_groups (dict): The result of group_docker_tags().
+        required_images (dict): {branch: group names}, for the branches
+        kernel-version.mk selects (one per KERNEL_CONFIG_FLAVOR it uses).
+
+    Returns:
+        dict: {branch: commit}. A branch with no commit common to its required
+        groups is left out.
+    """
+    docker_commits = {}
+    for branch, groups in branch_groups.items():
+        required = (required_images or {}).get(branch) or groups
+        pushes = [groups.get(group, {}) for group in required]
+        common = set.intersection(*(set(commits) for commits in pushes))
+        if common:
+            _, docker_commits[branch] = max(
+                (min(commits[commit] for commits in pushes), commit)
+                for commit in common
+            )
+    return docker_commits
+
+
+def fetch_docker_tags(branches, known_branches, selection, verbose=False):
     """
     Fetches kernel commits from docker hub and returns them as a dictionary of
     (branch, commit) pairs.
 
     Args:
-        branches (iterable): Branch names to look up tags for. Each one is queried
+        branches (list): Branch names to look up tags for. Each one is queried
         separately so no single listing runs past the anonymous pagination limit.
+        known_branches (iterable): Every branch name, to assign tags to the right one.
+        selection (KernelSelection): The images the build pulls.
         verbose (bool): If True, prints all tags with decoded dates and all kernel commits
         from docker hub.
 
     Returns:
         dict: A dictionary of (branch, commit) pairs.
     """
-    docker_tag_list = _fetch_tags_per_branch(branches, verbose)
-
-    # group tags by common capture group e.g. amd64-v6.1.38-generic
-    tag_groups = {}
-    for tag, tag_last_pushed in docker_tag_list:
-        match = re.match(r"^(eve-kernel-.*)-[a-f0-9]+-gcc|clang$", tag)
-        if match:
-            branch_name = match.group(1)
-            if branch_name not in tag_groups:
-                tag_groups[branch_name] = []
-            tag_groups[branch_name].append((tag, tag_last_pushed))
-        else:
-            print(f"Warning: tag '{tag}' doesn't match regex")
-
-    # sort each group by date in descending order
-    # so the first tag in each group is the most recent one
-    for branch, docker_tag_list in tag_groups.items():
-        docker_tag_list.sort(key=lambda x: x[1], reverse=True)
-        tag_groups[branch] = docker_tag_list
+    branch_groups = group_docker_tags(
+        branches,
+        known_branches,
+        _fetch_tags_per_branch(branches, verbose),
+        selection.compiler,
+    )
 
     # print all tags with decoded dates
     if verbose:
         print("All tags:")
-        for branch, docker_tag_list in tag_groups.items():
+        for branch, groups in branch_groups.items():
             print(branch)
-            for tag, tag_last_pushed in docker_tag_list:
-                # decode date from tag. Not really needed. To make sure we can handle date format
-                date = datetime.datetime.strptime(
-                    tag_last_pushed, "%Y-%m-%dT%H:%M:%S.%fZ"
-                )
-                print(f"\t{tag} : {date.isoformat()}")
+            for group, commits in groups.items():
+                print(f"  {group}")
+                for commit, tag_last_pushed in sorted(
+                    commits.items(), key=lambda x: x[1], reverse=True
+                ):
+                    # not really needed, makes sure we can handle the date format
+                    date = datetime.datetime.strptime(
+                        tag_last_pushed, "%Y-%m-%dT%H:%M:%S.%fZ"
+                    )
+                    print(f"\t{commit} : {date.isoformat()}")
 
-    # and collect (branch, commit) pairs by splitting tag name by '-'
-    # and taking second last element as commit
-    docker_commits = {}
-    for branch, docker_tag_list in tag_groups.items():
-        # take first tag from each group. The is the most recent one
-        latest_tag = docker_tag_list[0][0]
-        commit = latest_tag.split("-")[-2]
-        docker_commits[branch] = commit
+    docker_commits = select_docker_commits(branch_groups, selection.images)
 
     # print all kernel commits from docker hub
     if verbose:
@@ -943,6 +1877,100 @@ def fetch_docker_tags(branches, verbose=False):
             print(f"{branch} : {docker_commits[branch]}")
 
     return docker_commits
+
+
+if PYTEST_AVAILABLE:
+
+    def test_docker_commits_cover_every_flavour():
+        """
+        Flavoured tags map to their branch and the newest commit pushed for
+        every flavour wins; one missing in a flavour is not chosen, and a
+        rebuild of an old commit does not make it the newest.
+        """
+        branch = "eve-kernel-amd64-v6.18.55-generic"
+        flavours = ["", "ai-", "core-", "hwe-", "rt-"]
+        tags = [
+            (f"{branch}-{flavour}{commit}-gcc", pushed)
+            for commit, pushed in [
+                ("111111111111", "2026-01-01T00:00:00.000000Z"),
+                ("222222222222", "2026-02-01T00:00:00.000000Z"),
+            ]
+            for flavour in flavours
+        ] + [
+            (f"{branch}-{flavour}333333333333-gcc", "2026-03-01T00:00:00.000000Z")
+            for flavour in flavours
+            if flavour != "rt-"
+        ]
+
+        branch_groups = group_docker_tags([branch], [branch], tags)
+        assert sorted(branch_groups[branch]) == [
+            branch + suffix for suffix in ["", "-ai", "-core", "-hwe", "-rt"]
+        ]
+        assert select_docker_commits(branch_groups) == {branch: "222222222222"}
+
+        rebuilt = f"{branch}-core-111111111111-gcc"
+        tags = [
+            (tag, "2026-04-01T00:00:00.000000Z" if tag == rebuilt else pushed)
+            for tag, pushed in tags
+        ]
+        branch_groups = group_docker_tags([branch], [branch], tags)
+        assert select_docker_commits(branch_groups) == {branch: "222222222222"}
+
+    def test_docker_commits_plain_branch():
+        """
+        A branch without config flavours has a single group and its newest gcc
+        image wins: clang images do not count, and the tags of a longer branch
+        that the name query also returns stay with that branch.
+        """
+        nvidia = "eve-kernel-arm64-v5.10.192-nvidia"
+        jp5 = nvidia + "-jp5"
+        tags = [
+            (f"{nvidia}-444444444444-gcc", "2026-01-01T00:00:00.000000Z"),
+            (f"{nvidia}-555555555555-gcc", "2026-02-01T00:00:00.000000Z"),
+            (f"{nvidia}-666666666666-clang", "2026-03-01T00:00:00.000000Z"),
+            (f"{jp5}-777777777777-gcc", "2026-04-01T00:00:00.000000Z"),
+        ]
+
+        branch_groups = group_docker_tags([nvidia], [nvidia, jp5], tags)
+        assert branch_groups == {
+            nvidia: {
+                nvidia: {
+                    "444444444444": "2026-01-01T00:00:00.000000Z",
+                    "555555555555": "2026-02-01T00:00:00.000000Z",
+                }
+            }
+        }
+        assert select_docker_commits(branch_groups) == {nvidia: "555555555555"}
+
+    def test_docker_commits_required_flavours():
+        """
+        Only the flavours the build pulls count: a retired flavour or an unused
+        plain image neither blocks a commit nor makes it newer.
+        """
+        branch = "eve-kernel-amd64-v6.18.55-generic"
+        flavours = ["core", "rt", "hwe", "ai"]
+        tags = [
+            (f"{branch}-{flavour}-{commit}-gcc", pushed)
+            for commit, pushed in [
+                ("111111111111", "2026-01-01T00:00:00.000000Z"),
+                ("222222222222", "2026-02-01T00:00:00.000000Z"),
+            ]
+            for flavour in flavours
+        ] + [
+            (f"{branch}-111111111111-gcc", "2026-05-01T00:00:00.000000Z"),
+            (f"{branch}-legacy-000000000000-gcc", "2025-01-01T00:00:00.000000Z"),
+        ]
+        branch_groups = group_docker_tags([branch], [branch], tags)
+        required = {branch: {f"{branch}-{flavour}" for flavour in flavours}}
+
+        assert not select_docker_commits(branch_groups)
+        assert select_docker_commits(branch_groups, required) == {
+            branch: "222222222222"
+        }
+        del branch_groups[branch][f"{branch}-ai"]["222222222222"]
+        assert select_docker_commits(branch_groups, required) == {
+            branch: "111111111111"
+        }
 
 
 def print_user_tips():
@@ -1055,7 +2083,9 @@ def parse_cmd_args():
     return args
 
 
-def adjust_branches_by_docker_tags(new_commits, updated_branches, docker_tags):
+def adjust_branches_by_docker_tags(
+    new_commits, updated_branches, docker_tags, pinned_branches, selected_branches=()
+):
     """
     Adjusts the branches by comparing the commits from GitHub and Docker Hub.
 
@@ -1063,30 +2093,55 @@ def adjust_branches_by_docker_tags(new_commits, updated_branches, docker_tags):
         new_commits (dict): A dictionary containing the new commits.
         updated_branches (dict): A dictionary containing the updated branches.
         docker_tags (dict): A dictionary containing the Docker tags.
+        pinned_branches (iterable): The branches in kernel-commits.mk.
+        selected_branches (iterable): The branches kernel-version.mk selects.
+        Neither these nor the pinned ones may be dropped.
 
     Returns:
         bool: A boolean value indicating whether an error occurred.
     """
-    for branch, docker_commit in docker_tags.items():
-        is_error = False
-        # only for updated branches
-        if branch not in updated_branches:
+    is_error = False
+    for branch, (current_gh_commit, latest_gh_commit) in list(updated_branches.items()):
+        if current_gh_commit is None and latest_gh_commit is None:
+            # reported by reconcile_selected_branches()
             continue
+
+        docker_commit = docker_tags.get(branch)
+        if docker_commit is None and (
+            branch in pinned_branches or branch in selected_branches
+        ):
+            # kernel-commits.mk without it would break the build
+            is_error = True
+            msg = f" :{branch}: no commit has an image on docker hub for every flavour."
+            del updated_branches[branch]
+            if branch in pinned_branches:
+                msg += (
+                    "\n\tKeeping the pinned commit: " + Fore.GREEN + current_gh_commit
+                )
+                new_commits[branch] = current_gh_commit
+            else:
+                del new_commits[branch]
+            print(Fore.RED + "[Error]" + Style.RESET_ALL + msg)
+            continue
+        if docker_commit is None:
+            print(
+                Fore.YELLOW
+                + "[ WARN ]"
+                + Style.RESET_ALL
+                + f" :{branch}: the image for commit {latest_gh_commit} was not pushed to "
+                + "docker.\n\tNo docker tag found for the branch. Is this a new branch?"
+            )
+            print(
+                f"Deleting the branch from updated branches. "
+                f"{branch} will not be updated."
+            )
+            del updated_branches[branch]
+            del new_commits[branch]
+            continue
+
         # if a commit from docker doesn't match commit from github
         # it means the image was not pushed so we cannot use commit from github
         # and we fallback to the commit from docker hub
-        current_gh_commit, latest_gh_commit = updated_branches[branch]
-
-        if current_gh_commit is None and latest_gh_commit is None:
-            # branch was removed. Print nice info message
-            print(
-                Fore.YELLOW
-                + "[warning]"
-                + Style.RESET_ALL
-                + f" :{branch}: the branch was removed from the repository or protected."
-            )
-            continue
-
         if docker_commit != latest_gh_commit:
             is_error = True
             msg = (
@@ -1116,30 +2171,68 @@ def adjust_branches_by_docker_tags(new_commits, updated_branches, docker_tags):
         # always update to our source of truth
         new_commits[branch] = docker_commit
 
-        # After processing all branches, handle branches not in docker_tags
-        # Make a copy of keys to avoid modification during iteration
-        branches_to_check = list(updated_branches.keys())
+    return is_error
 
-        for branch in branches_to_check:
-            if branch not in docker_tags:
-                current_gh_commit, latest_gh_commit = updated_branches[branch]
 
-                print(
-                    Fore.YELLOW
-                    + "[ WARN ]"
-                    + Style.RESET_ALL
-                    + f" :{branch}: the image for commit {latest_gh_commit} was not pushed to "
-                    + "docker.\n\tNo docker tag found for the branch. Is this a new branch?"
-                )
-                print(
-                    f"Deleting the branch from updated branches. "
-                    f"{branch} will not be updated."
-                )
-                del updated_branches[branch]
-                # a branch removed from github is not in new_commits at all
-                new_commits.pop(branch, None)
+if PYTEST_AVAILABLE:
 
-        return is_error
+    def test_adjust_branches_by_docker_tags_checks_every_branch():
+        """
+        Every updated branch is checked against Docker Hub, not only the first:
+        the second one falls back to its Docker commit and the error is reported,
+        a new branch without Docker tags is dropped.
+        """
+        amd64 = "eve-kernel-amd64-v6.18.55-generic"
+        arm64 = "eve-kernel-arm64-v6.1.155-generic"
+        riscv64 = "eve-kernel-riscv64-v6.1.112-generic"
+        new_commits = {amd64: "a2", arm64: "b3", riscv64: "c2"}
+        updated_branches = {
+            amd64: ("a1", "a2"),
+            arm64: ("b1", "b3"),
+            riscv64: ("v6.1.112", "c2"),
+        }
+        docker_tags = {amd64: "a2", arm64: "b2"}
+
+        assert adjust_branches_by_docker_tags(
+            new_commits, updated_branches, docker_tags, [amd64, arm64]
+        )
+        assert updated_branches == {amd64: ("a1", "a2"), arm64: ("b1", "b2")}
+        assert new_commits == {amd64: "a2", arm64: "b2"}
+
+    def test_adjust_branches_by_docker_tags_keeps_pins(capsys):
+        """
+        A pinned branch without a usable Docker commit keeps its pinned commit and
+        is an error; a removed branch needs no image.
+        """
+        jp5 = "eve-kernel-arm64-v5.10.192-nvidia-jp5"
+        removed = "eve-kernel-amd64-v6.1.112-generic"
+        new_commits = {jp5: "d2"}
+        updated_branches = {jp5: ("d1", "d2"), removed: (None, None)}
+
+        assert adjust_branches_by_docker_tags(
+            new_commits, updated_branches, {}, [jp5, removed]
+        )
+        assert updated_branches == {removed: (None, None)}
+        assert new_commits == {jp5: "d1"}
+        assert "commit None" not in capsys.readouterr().out
+
+    def test_adjust_branches_by_docker_tags_needs_selected(capsys):
+        """
+        A branch kernel-version.mk selects but kernel-commits.mk does not pin yet,
+        without a commit whose images cover every flavour, is an error rather than
+        a new branch to drop.
+        """
+        new = "eve-kernel-amd64-v6.18.60-generic"
+        new_commits = {new: "e1"}
+        updated_branches = {new: ("v6.18.60", "e1")}
+
+        assert adjust_branches_by_docker_tags(
+            new_commits, updated_branches, {}, [], [new]
+        )
+        assert not updated_branches and not new_commits
+        out = capsys.readouterr().out
+        assert f":{new}: no commit has an image" in out
+        assert "Is this a new branch" not in out
 
 
 def print_commit_errors(errors):
@@ -1209,6 +2302,16 @@ def print_updated_branches(updated_branches):
             )
 
 
+def print_fix_and_rerun():
+    """Prints the last line of a run that found errors and wrote nothing."""
+    print(
+        Fore.RED
+        + "[Error]"
+        + Style.RESET_ALL
+        + ": Please fix the issues and rerun the script."
+    )
+
+
 def main():
     """
     The main function that orchestrates the generation of a commit message for kernel updates.
@@ -1221,10 +2324,17 @@ def main():
 
     # parse command line arguments. Only token is supported for now
     args = parse_cmd_args()
-    new_commits = fetch_latest_commits_from_github(
+    old_commits = parse_kernel_commits_file(kernel_commits_mk_file)
+    selection = read_kernel_selection()
+    github_commits = fetch_latest_commits_from_github(
         gh_user, get_github_token(args.token), args.verbose
     )
-    old_commits = parse_kernel_commits_file(kernel_commits_mk_file)
+    new_commits, is_error = reconcile_selected_branches(
+        selection.images, old_commits, github_commits
+    )
+    if is_error:
+        print_fix_and_rerun()
+        return
     updated_branches = find_updated_branches(
         old_commits, new_commits, get_github_token(args.token), args.verbose
     )
@@ -1235,22 +2345,20 @@ def main():
 
     print_updated_branches(updated_branches)
 
-    # branches gone from github are still in kernel-commits.mk and their docker tags
-    # linger, so query them too to have them reported as removed rather than untagged
-    queried_branches = list(new_commits) + [
-        branch for branch in updated_branches if branch not in new_commits
-    ]
-
     # fetch tags from docker hub and convert them to branch names
     if adjust_branches_by_docker_tags(
-        new_commits, updated_branches, fetch_docker_tags(queried_branches, args.verbose)
+        new_commits,
+        updated_branches,
+        fetch_docker_tags(
+            list(new_commits),
+            set(github_commits) | set(old_commits),
+            selection,
+            args.verbose,
+        ),
+        old_commits,
+        selection.images,
     ):
-        print(
-            Fore.RED
-            + "[Error]"
-            + Style.RESET_ALL
-            + ": Please fix the issues and rerun the script."
-        )
+        print_fix_and_rerun()
         return
 
     if not updated_branches:
