@@ -22,6 +22,14 @@ install_kubevirt=1
 TRANSITION_PIPE="/tmp/cluster_transition_pipe$$"
 TRANSITION_FLAG_FILE="/tmp/cluster_transition_flag"
 MASTERLEASE_CLEANUP_FLAG="/var/lib/masterlease-cleanup-needed"
+# Set on the bootstrap node by the single-to-cluster transition and cleared by
+# restart_stale_controllers once the controller pods have been recycled.
+CONTROLLER_RESTART_FLAG="/var/lib/controller-restart-needed"
+# Mirror of CONTROLLER_RESTART_FLAG on the /run bind shared with pillar, which
+# cannot see /var/lib (a zvol on ZFS). pillar's ClusterStorageReadyForVolumes
+# holds app volume creation while it exists; keep the path in sync with
+# kubeapi.kubeControllerRestartPending.
+CONTROLLER_RESTART_PENDING="/run/kube/controller-restart-pending"
 RebootReasonFile="/persist/reboot-reason"
 BootReasonFile="/persist/boot-reason"
 BootReasonKubeTransition="BootReasonKubeTransition" # Must match string in types package
@@ -429,6 +437,94 @@ cleanup_stale_masterleases() {
     done
     rm -f "$MASTERLEASE_CLEANUP_FLAG"
     logmsg "cleanup_stale_masterleases: done"
+}
+
+# restart_stale_controllers deletes the controller pods on this node after a
+# single-to-cluster transition so they come back with fresh informer caches.
+#
+# On the bootstrap node the transition restarts k3s with cluster-init, which
+# migrates the sqlite datastore into a new embedded etcd whose revisions start
+# well below the last kine resourceVersion. terminate_k3s stops only k3s, so the
+# pods keep running in the user containerd, and their reflectors resume watching
+# from a now-future resourceVersion and drop events until etcd counts past it.
+# Longhorn shows it first: a new Volume CR never reaches longhorn-manager's
+# cache, CSI CreateVolume fails with "not found" then "already exists", and the
+# app volume's PVC upload fails.
+#
+# Recycled: Deployment-owned pods in kube-system, longhorn-system, cdi and
+# kubevirt, plus the longhorn-manager and virt-handler DaemonSet pods, created
+# before the flag was armed (newer ones already listed from the new etcd).
+# Data-path pods (instance-manager, engine-image, csi-plugin), node plumbing and
+# the app namespace are left alone. The flag stays armed, and is retried on the
+# next main-loop iteration, while the API is unreachable or a delete fails.
+restart_stale_controllers() {
+    if [ ! -f "$CONTROLLER_RESTART_FLAG" ]; then
+        rm -f "$CONTROLLER_RESTART_PENDING"
+        return 0
+    fi
+    if [ ! -f "$enc_status_file" ]; then
+        # No longer in cluster mode: nothing to recycle, and the mirror must
+        # not hold pillar's volume creation forever.
+        rm -f "$CONTROLLER_RESTART_FLAG" "$CONTROLLER_RESTART_PENDING"
+        return 0
+    fi
+    get_enc_status || return 0
+    if [ "$is_bootstrap" != "true" ]; then
+        rm -f "$CONTROLLER_RESTART_FLAG" "$CONTROLLER_RESTART_PENDING"
+        return 0
+    fi
+    # /run is tmpfs: re-create the mirror if a reboot dropped it.
+    mkdir -p "$(dirname "$CONTROLLER_RESTART_PENDING")"
+    touch "$CONTROLLER_RESTART_PENDING"
+    [ -n "$HOSTNAME" ] || return 0
+
+    armed_at=$(stat -c %Y "$CONTROLLER_RESTART_FLAG") || return 0
+    if ! pods_json=$(kubectl get pods -A --field-selector "spec.nodeName=$HOSTNAME" -o json 2>&1); then
+        logmsg "restart_stale_controllers: list pods on $HOSTNAME failed, will retry: $pods_json"
+        return 0
+    fi
+    if ! stale=$(echo "$pods_json" | stale_controller_pods "$HOSTNAME" "$armed_at"); then
+        logmsg "restart_stale_controllers: could not parse the pod list, will retry"
+        return 0
+    fi
+
+    failed=0
+    count=0
+    while read -r ns name; do
+        [ -n "$name" ] || continue
+        if out=$(kubectl delete pod -n "$ns" "$name" --ignore-not-found --wait=false 2>&1); then
+            count=$((count + 1))
+        else
+            logmsg "restart_stale_controllers: delete $ns/$name failed, will retry: $out"
+            failed=1
+        fi
+    done <<EOF
+$stale
+EOF
+    [ "$failed" = 0 ] || return 0
+    rm -f "$CONTROLLER_RESTART_FLAG" "$CONTROLLER_RESTART_PENDING"
+    logmsg "restart_stale_controllers: recycled $count controller pod(s) on $HOSTNAME after datastore migration"
+}
+
+# stale_controller_pods reads a pod list (kubectl -o json) on stdin and prints
+# "namespace name" for each pod restart_stale_controllers recycles: live pods on
+# node $1, created before epoch second $2, in the controller namespaces, owned
+# by a ReplicaSet or by the longhorn-manager / virt-handler DaemonSet. The node
+# is checked here too, not only through the field selector.
+stale_controller_pods() {
+    jq -r --arg node "$1" --argjson armed "$2" '
+      .items[]
+      | select(.spec.nodeName == $node)
+      | select(.metadata.namespace | IN("kube-system", "longhorn-system", "cdi", "kubevirt"))
+      | select(.metadata.deletionTimestamp == null)
+      | select(.status.phase != "Succeeded" and .status.phase != "Failed")
+      | select((.metadata.creationTimestamp | fromdateiso8601) < $armed)
+      | ((.metadata.ownerReferences // []) | map(select(.controller == true)) | first) as $owner
+      | select($owner != null)
+      | select($owner.kind == "ReplicaSet"
+          or ($owner.kind == "DaemonSet"
+              and ($owner.name == "longhorn-manager" or $owner.name == "virt-handler")))
+      | "\(.metadata.namespace) \(.metadata.name)"'
 }
 
 external_boot_image_import() {
@@ -940,6 +1036,13 @@ check_cluster_config_change() {
 
             # restart k3s will run only if we are ready after the transition configs set
             terminate_k3s
+            if [ "$is_bootstrap" = "true" ]; then
+              # k3s restarts with cluster-init and migrates sqlite into a new
+              # etcd; armed after the stop so every older pod predates it.
+              touch "$CONTROLLER_RESTART_FLAG"
+              mkdir -p "$(dirname "$CONTROLLER_RESTART_PENDING")"
+              touch "$CONTROLLER_RESTART_PENDING"
+            fi
             # remove the /var/lib/rancher/k3s/server/tls directory files
             if [ "$is_bootstrap" = "false" ]; then
               rm -rf /var/lib/rancher/k3s/server/tls/*
@@ -1906,6 +2009,7 @@ fi
         install_sriov_manifests
         fix_node_password_secret
         cleanup_stale_masterleases
+        restart_stale_controllers
         save_cluster_startup_rank
         check_log_file_size "k3s.log"
         check_log_file_size "multus.log"
