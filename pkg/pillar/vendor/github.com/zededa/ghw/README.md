@@ -1,8 +1,7 @@
 # `ghw` - Go HardWare discovery/inspection library
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/jaypipes/ghw.svg)](https://pkg.go.dev/github.com/jaypipes/ghw)
-[![Go Report Card](https://goreportcard.com/badge/github.com/jaypipes/ghw)](https://goreportcard.com/report/github.com/jaypipes/ghw)
-[![Build Status](https://github.com/jaypipes/ghw/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/jaypipes/ghw/actions)
+[![Test Status](https://github.com/jaypipes/ghw/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/jaypipes/ghw/actions)
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
 
 ![ghw mascot](images/ghw-gopher.png)
@@ -662,6 +661,13 @@ information.
 > can read that library's README for more information about the various structs
 > that are exposed on the `ghw.PCIInfo` struct.
 
+To use a PCI database you loaded or built yourself instead of the one `ghw`
+loads, pass it with `ghw.WithPCIDB()`:
+
+```go
+pci, err := ghw.PCI(ghw.WithPCIDB(db))
+```
+
 The `ghw.PCI()` function returns a `ghw.PCIInfo` struct that contains
 information about the host computer's PCI devices.
 
@@ -1164,6 +1170,12 @@ The `ghw.ProductInfo` struct contains multiple fields:
 > **NOTE**: These fields are often missing for non-server hardware. Don't be
 > surprised to see empty string, "Default string" or "None" values.
 
+> **NOTE**: On MacOSX/Darwin, this information comes from the `IOPlatformExpertDevice`
+> node of the I/O Registry and from `system_profiler`, so `ghw.ProductInfo.Name`
+> is the machine model identifier (e.g. `Mac14,7`), `ghw.ProductInfo.Family` the
+> marketing name (e.g. `MacBook Pro`) and `ghw.ProductInfo.SKU` Apple's part
+> number (e.g. `Z1AB0001CLL/A`).
+
 ```go
 package main
 
@@ -1201,22 +1213,100 @@ WARNING: Unable to read product_serial: open /sys/class/dmi/id/product_serial: p
 You can ignore them or use the [Disabling warning messages](#disabling-warning-messages)
 feature to quiet things down.
 
+### Watchdog (Linux only)
+
+The `ghw.Watchdog()` function returns a `ghw.WatchdogInfo` struct that
+indicates whether the host system has a hardware watchdog.
+
+The `ghw.WatchdogInfo` struct contains one field:
+
+* `ghw.WatchdogInfo.Present` is a bool indicating whether a hardware watchdog
+  was detected, either as an entry under `/sys/class/watchdog` or as the
+  `/dev/watchdog` character device on older kernels
+
+```go
+package main
+
+import (
+	"fmt"
+
+	"github.com/jaypipes/ghw"
+)
+
+func main() {
+	watchdog, err := ghw.Watchdog()
+	if err != nil {
+		fmt.Printf("Error getting watchdog info: %v", err)
+	}
+
+	fmt.Printf("%v\n", watchdog)
+}
+```
+
+Example output from my personal workstation:
+
+```
+watchdog present: true
+```
+
+### TPM (Linux only)
+
+The `ghw.TPM()` function returns a `ghw.TPMInfo` struct that contains
+information about the Trusted Platform Module(s) (TPM) on the host system.
+
+The `ghw.TPMInfo` struct contains a `Devices` field:
+
+* `ghw.TPMInfo.Devices` is a slice of pointers to `ghw.TPMDevice` structs, one
+  for each TPM detected under `/sys/class/tpm`
+
+Each `ghw.TPMDevice` struct contains multiple fields:
+
+* `ghw.TPMDevice.ManufacturerName` is a string with the human-readable TPM
+  manufacturer short name (e.g. `AMD`, `IFX` for Infineon, `STM` for
+  STMicroelectronics)
+* `ghw.TPMDevice.ManufacturerVendorID` is a string with the 16-bit TCG Vendor
+  ID assigned to the manufacturer, when the host exposes it (e.g. `0x1414`)
+* `ghw.TPMDevice.FirmwareVersion` is a string with the TPM firmware version, if
+  exposed by the driver
+* `ghw.TPMDevice.SpecVersion` is a string with the TCG specification version the
+  TPM implements (e.g. `1.2` or `2.0`)
+
+```go
+package main
+
+import (
+	"fmt"
+
+	"github.com/jaypipes/ghw"
+)
+
+func main() {
+	tpm, err := ghw.TPM()
+	if err != nil {
+		fmt.Printf("Error getting TPM info: %v", err)
+	}
+
+	fmt.Printf("%v\n", tpm)
+}
+```
+
+Example output from my personal workstation:
+
+```
+tpm manufacturer_name=STM manufacturer_vendor_id= firmware_version= spec_version=2.0
+```
+
 ## Advanced Usage
 
 ### Disabling warning messages
 
 When `ghw` isn't able to retrieve some information, it may print certain
-warning messages to `stderr`. To disable these warnings, simply set the
+warning messages to `stderr`. To disable these warnings, set the
 `GHW_DISABLE_WARNINGS` environs variable:
 
 ```
 $ ghwc memory
-WARNING:
-Could not determine total physical bytes of memory. This may
-be due to the host being a virtual machine or container with no
-/var/log/syslog file, or the current user may not have necessary
-privileges to read the syslog. We are falling back to setting the
-total physical amount of memory to the total usable amount of memory
+WARN:  Could not determine total physical bytes of memory. This may be due to the host being a virtual machine or container with no /var/log/syslog file, or the current user may not have necessary privileges to read the syslog. We are falling back to setting the total physical amount of memory to the total usable amount of memory
 memory (24GB physical, 24GB usable)
 ```
 
@@ -1225,10 +1315,10 @@ $ GHW_DISABLE_WARNINGS=1 ghwc memory
 memory (24GB physical, 24GB usable)
 ```
 
-You can disable warning programmatically using the `WithDisableWarnings` option:
+You can disable warning programmatically using the `WithDisableWarnings`
+modifier:
 
 ```go
-
 import (
 	"github.com/jaypipes/ghw"
 )
@@ -1236,14 +1326,172 @@ import (
 mem, err := ghw.Memory(ghw.WithDisableWarnings())
 ```
 
-`WithDisableWarnings` is a alias for the `WithNullAlerter` option, which in turn
-leverages the more general `Alerter` feature of ghw.
+### Controlling log output
 
-You may supply a `Alerter` to ghw to redirect all the warnings there, like
-logger objects (see for example golang's stdlib `log.Logger`).
-`Alerter` is in fact the minimal logging interface `ghw needs.
-To learn more, please check the `option.Alerter` interface and the `ghw.WithAlerter()`
-function.
+The default log output in `ghw` only writes WARN-level messages to `stderr` in
+a simple `WARN: <msg>` log record format:
+
+```
+$ ghwc baseboard
+WARN:  Unable to read board_serial: open /sys/class/dmi/id/board_serial: permission denied
+baseboard vendor=System76 version=thelio-mira-b4.1 product=Thelio Mira
+```
+
+You can control a number of log output options programmatically or by using
+environs variables.
+
+#### Change the log level
+
+To change the log level `ghw` uses, set the `GHW_LOG_LEVEL` environs variable:
+
+```
+$ GHW_LOG_LEVEL=debug ghwc baseboard
+DEBUG: reading from "/sys/class/dmi/id/board_asset_tag"
+DEBUG: reading from "/sys/class/dmi/id/board_serial"
+WARN:  Unable to read board_serial: open /sys/class/dmi/id/board_serial: permission denied
+DEBUG: reading from "/sys/class/dmi/id/board_vendor"
+DEBUG: reading from "/sys/class/dmi/id/board_version"
+DEBUG: reading from "/sys/class/dmi/id/board_name"
+baseboard vendor=System76 version=thelio-mira-b4.1 product=Thelio Mira
+```
+
+Changing `GHW_LOG_LEVEL` to `error` has the same effect of setting
+`GHW_DISABLE_WARNINGS`:
+
+```
+$ GHW_LOG_LEVEL=error ghwc baseboard
+baseboard vendor=System76 version=thelio-mira-b4.1 product=Thelio Mira
+```
+
+You can change the log level programmatically using the `WithLogLevel`
+modifier:
+
+```go
+import (
+    "log/slog"
+
+	"github.com/jaypipes/ghw"
+)
+
+bb, err := ghw.Baseboard(ghw.WithLogLevel(slog.LevelDebug))
+```
+
+#### Use logfmt output format
+
+To use the [logfmt][logfmt] standard log output format, set the
+`GHW_LOG_LOGFMT` envrions variable:
+
+```
+$ GHW_LOG_LOGFMT=1 ghwc baseboard
+time=2025-12-28T07:31:08.614-05:00 level=WARN msg="Unable to read board_serial: open /sys/class/dmi/id/board_serial: permission denied"
+baseboard vendor=System76 version=thelio-mira-b4.1 product=Thelio Mira
+```
+
+You can tell `ghw` to use `logfmt` standard output formatting using the `WithLogLogfmt`
+modifier:
+
+```go
+import (
+    "log/slog"
+
+	"github.com/jaypipes/ghw"
+)
+
+bb, err := ghw.Baseboard(ghw.WithLogLogfmt())
+```
+
+[logfmt]: https://www.cloudbees.com/blog/logfmt-a-log-format-thats-easy-to-read-and-write
+
+#### Provide a custom logger
+
+You can programmatically override the logger that `ghw` uses with the
+`WithLogger` modifier. You pass in an instance of `slog.Logger`, like this
+example that shows how to use a simple logger with colored log output:
+
+```go
+package main
+
+import (
+    "context"
+    "encoding/json"
+    "io"
+    "log"
+    "log/slog"
+
+    "github.com/fatih/color"
+    "github.com/jaypipes/ghw"
+)
+
+type PrettyHandlerOptions struct {
+    SlogOpts slog.HandlerOptions
+}
+
+type PrettyHandler struct {
+    slog.Handler
+    l *log.Logger
+}
+
+func (h *PrettyHandler) Handle(ctx context.Context, r slog.Record) error {
+    level := r.Level.String() + ":"
+
+    switch r.Level {
+    case slog.LevelDebug:
+        level = color.MagentaString(level)
+    case slog.LevelInfo:
+        level = color.BlueString(level)
+    case slog.LevelWarn:
+        level = color.YellowString(level)
+    case slog.LevelError:
+        level = color.RedString(level)
+    }
+
+    fields := make(map[string]any, r.NumAttrs())
+    r.Attrs(func(a slog.Attr) bool {
+        fields[a.Key] = a.Value.Any()
+
+        return true
+    })
+
+    b, err := json.MarshalIndent(fields, "", "  ")
+    if err != nil {
+        return err
+    }
+
+    timeStr := r.Time.Format("[15:05:05.000]")
+    msg := color.CyanString(r.Message)
+
+    h.l.Println(timeStr, level, msg, color.WhiteString(string(b)))
+
+    return nil
+}
+
+func NewPrettyHandler(
+    out io.Writer,
+    opts PrettyHandlerOptions,
+) *PrettyHandler {
+    h := &PrettyHandler{
+        Handler: slog.NewJSONHandler(out, &opts.SlogOpts),
+        l:       log.New(out, "", 0),
+    }
+
+    return h
+}
+
+func main() {
+    opts := PrettyHandlerOptions{
+        SlogOpts: slog.HandlerOptions{
+            Level: slog.LevelDebug,
+        },
+    }
+    handler := NewPrettyHandler(os.Stdout, opts)
+    logger := slog.New(handler)
+    bb, err := ghw.Baseboard(ghw.WithLogger(logger))
+    if err != nil {
+        logger.Error(err.String())
+    }
+    fmt.Println(bb)
+}
+```
 
 ### Overriding the root mountpoint `ghw` uses
 
@@ -1467,8 +1715,8 @@ external tools when available.
 
 > **WARNING**: on all platforms, disabling external tools make ghw return less
 > data.  Unless noted otherwise, there is _no fallback flow_ if external tools
-> are disabled. On MacOSX/Darwin, disabling external tools disables block
-> support entirely
+> are disabled. On MacOSX/Darwin, disabling external tools disables block and
+> product support entirely
 
 ## Developers
 

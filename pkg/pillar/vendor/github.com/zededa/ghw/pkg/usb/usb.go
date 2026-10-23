@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/zededa/ghw/pkg/marshal"
-	"github.com/zededa/ghw/pkg/option"
+	"github.com/zededa/ghw/internal/config"
 	"github.com/zededa/ghw/pkg/bus"
+	"github.com/zededa/ghw/pkg/marshal"
 	usbAddress "github.com/zededa/ghw/pkg/usb/address"
 )
 
@@ -120,13 +120,10 @@ func (i *Info) String() string {
 
 // New returns a pointer to an Info struct that contains information about the
 // USB devices on the host system
-func New(opt ...option.Option) (*Info, error) {
-	opts := &option.Options{}
-	for _, o := range opt {
-		o(opts)
-	}
+func New(args ...any) (*Info, error) {
+	ctx := config.ContextFromArgs(args...)
 	info := &Info{}
-	if err := info.load(opts); err != nil {
+	if err := info.load(ctx); err != nil {
 		return nil, err
 	}
 

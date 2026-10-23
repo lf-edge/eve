@@ -7,6 +7,7 @@ package serial
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,17 +16,16 @@ import (
 
 	"github.com/zededa/ghw/pkg/bus"
 	"github.com/zededa/ghw/pkg/linuxpath"
-	"github.com/zededa/ghw/pkg/option"
 	"github.com/zededa/ghw/pkg/pci"
 	pciAddress "github.com/zededa/ghw/pkg/pci/address"
 	"github.com/zededa/ghw/pkg/usb"
 	usbAddress "github.com/zededa/ghw/pkg/usb/address"
 )
 
-func (i *Info) load(opts *option.Options) error {
+func (i *Info) load(ctx context.Context) error {
 	var errs []error
 
-	i.Devices, errs = serials(opts)
+	i.Devices, errs = serials(ctx)
 
 	if len(errs) == 0 {
 		return nil
@@ -33,8 +33,8 @@ func (i *Info) load(opts *option.Options) error {
 	return fmt.Errorf("error(s) happened during reading serial info: %+v", errs)
 }
 
-func serials(opts *option.Options) ([]*Device, []error) {
-	paths := linuxpath.New(opts)
+func serials(ctx context.Context) ([]*Device, []error) {
+	paths := linuxpath.New(ctx)
 	ttyClass := paths.SysClassTty
 	entries, err := os.ReadDir(ttyClass)
 	if err != nil {

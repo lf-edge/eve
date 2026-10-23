@@ -8,6 +8,7 @@ package usb
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,8 +16,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/zededa/ghw/internal/config"
 	"github.com/zededa/ghw/pkg/linuxpath"
-	"github.com/zededa/ghw/pkg/option"
 	"github.com/zededa/ghw/pkg/pci"
 	pciAddress "github.com/zededa/ghw/pkg/pci/address"
 	usbAddress "github.com/zededa/ghw/pkg/usb/address"
@@ -24,10 +25,10 @@ import (
 
 var pciBDFRe = regexp.MustCompile(`(?i)\b([0-9a-f]{4}):([0-9a-f]{2}):([0-9a-f]{2})\.([0-7])\b`)
 
-func (i *Info) load(opts *option.Options) error {
+func (i *Info) load(ctx context.Context) error {
 	var errs []error
 
-	i.Devices, errs = usbs(opts)
+	i.Devices, errs = usbs(ctx)
 
 	if len(errs) == 0 {
 		return nil
@@ -83,8 +84,8 @@ func slurp(path string) string {
 	return string(bytes.TrimSpace(bs))
 }
 
-func usbs(opts *option.Options) ([]*Device, []error) {
-	paths := linuxpath.New(opts)
+func usbs(ctx context.Context) ([]*Device, []error) {
+	paths := linuxpath.New(ctx)
 	devs := make([]*Device, 0)
 	errs := []error{}
 
@@ -113,7 +114,7 @@ func usbs(opts *option.Options) ([]*Device, []error) {
 		dev := Device{}
 
 		dev.UEventFilePath = filepath.Join(fullDir, "uevent")
-		if opts.USBUeventPath != "" && opts.USBUeventPath != dev.UEventFilePath {
+		if only := config.USBUeventPath(ctx); only != "" && only != dev.UEventFilePath {
 			continue
 		}
 

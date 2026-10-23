@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/zededa/ghw/internal/config"
 	"github.com/zededa/ghw/pkg/accelerator"
 	"github.com/zededa/ghw/pkg/baseboard"
 	"github.com/zededa/ghw/pkg/bios"
@@ -22,7 +23,6 @@ import (
 	"github.com/zededa/ghw/pkg/marshal"
 	"github.com/zededa/ghw/pkg/memory"
 	"github.com/zededa/ghw/pkg/net"
-	"github.com/zededa/ghw/pkg/option"
 	"github.com/zededa/ghw/pkg/pci"
 	"github.com/zededa/ghw/pkg/product"
 	"github.com/zededa/ghw/pkg/serial"
@@ -48,93 +48,89 @@ type HostInfo struct {
 	Product     *product.Info     `json:"product"`
 	PCI         *pci.Info         `json:"pci"`
 	USB         *usb.Info         `json:"usb"`
+	Watchdog    *watchdog.Info    `json:"watchdog"`
+	TPM         *tpm.Info         `json:"tpm"`
 	Serial      *serial.Info      `json:"serial"`
 	CAN         *can.Info         `json:"can"`
-	TPM         *tpm.Info         `json:"tpm"`
-	Watchdog    *watchdog.Info    `json:"watchdog"`
 	StatusLED   bool              `json:"status_led"`
 }
 
 // Host returns a pointer to a HostInfo struct that contains fields with
 // information about the host system's CPU, memory, network devices, etc
-func Host(opts ...Option) (*HostInfo, error) {
-	memInfo, err := memory.New(opts...)
+func Host(args ...any) (*HostInfo, error) {
+	ctx := config.ContextFromArgs(args...)
+	memInfo, err := memory.New(ctx)
 	if err != nil {
 		return nil, err
 	}
-	blockInfo, err := block.New(opts...)
+	blockInfo, err := block.New(ctx)
 	if err != nil {
 		return nil, err
 	}
-	cpuInfo, err := cpu.New(opts...)
+	cpuInfo, err := cpu.New(ctx)
 	if err != nil {
 		return nil, err
 	}
-	topologyInfo, err := topology.New(opts...)
+	topologyInfo, err := topology.New(ctx)
 	if err != nil {
 		return nil, err
 	}
-	netInfo, err := net.New(opts...)
+	netInfo, err := net.New(ctx)
 	if err != nil {
 		return nil, err
 	}
-	gpuInfo, err := gpu.New(opts...)
+	gpuInfo, err := gpu.New(ctx)
 	if err != nil {
 		return nil, err
 	}
-	acceleratorInfo, err := accelerator.New(opts...)
+	acceleratorInfo, err := accelerator.New(ctx)
 	if err != nil {
 		return nil, err
 	}
-	chassisInfo, err := chassis.New(opts...)
+	chassisInfo, err := chassis.New(ctx)
 	if err != nil {
 		return nil, err
 	}
-	biosInfo, err := bios.New(opts...)
+	biosInfo, err := bios.New(ctx)
 	if err != nil {
 		return nil, err
 	}
-	baseboardInfo, err := baseboard.New(opts...)
+	baseboardInfo, err := baseboard.New(ctx)
 	if err != nil {
 		return nil, err
 	}
-	productInfo, err := product.New(opts...)
+	productInfo, err := product.New(ctx)
 	if err != nil {
 		return nil, err
 	}
-	pciInfo, err := pci.New(opts...)
+	pciInfo, err := pci.New(ctx)
 	if err != nil {
 		return nil, err
 	}
-	usbInfo, err := usb.New(opts...)
+	usbInfo, err := usb.New(ctx)
 	if err != nil {
 		return nil, err
 	}
-	serialInfo, err := serial.New(opts...)
+	watchdogInfo, err := watchdog.New(ctx)
 	if err != nil {
 		return nil, err
 	}
-	canInfo, err := can.New(opts...)
+	tpmInfo, err := tpm.New(ctx)
 	if err != nil {
 		return nil, err
 	}
-	tpmInfo, err := tpm.New(opts...)
+	serialInfo, err := serial.New(ctx)
 	if err != nil {
 		return nil, err
 	}
-	watchdogInfo, err := watchdog.New(opts...)
+	canInfo, err := can.New(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	// Simple check for LEDs
 	statusLED := false
-	merged := option.FromEnv()
-	for _, opt := range opts {
-		opt(merged)
-	}
-
-	if entries, err := os.ReadDir(filepath.Join(merged.Chroot, "sys", "class", "leds")); err == nil && len(entries) > 0 {
+	if entries, err := os.ReadDir(filepath.Join(config.Chroot(ctx), "sys", "class", "leds")); err == nil && len(entries) > 0 {
 		statusLED = true
 	}
 
@@ -152,10 +148,10 @@ func Host(opts ...Option) (*HostInfo, error) {
 		Product:     productInfo,
 		PCI:         pciInfo,
 		USB:         usbInfo,
+		Watchdog:    watchdogInfo,
+		TPM:         tpmInfo,
 		Serial:      serialInfo,
 		CAN:         canInfo,
-		TPM:         tpmInfo,
-		Watchdog:    watchdogInfo,
 		StatusLED:   statusLED,
 	}, nil
 }
@@ -178,10 +174,10 @@ func (info *HostInfo) String() string {
 		info.Product.String(),
 		info.PCI.String(),
 		info.USB.String(),
+		info.Watchdog.String(),
+		info.TPM.String(),
 		info.Serial.String(),
 		info.CAN.String(),
-		info.TPM.String(),
-		info.Watchdog.String(),
 		info.StatusLED,
 	)
 }

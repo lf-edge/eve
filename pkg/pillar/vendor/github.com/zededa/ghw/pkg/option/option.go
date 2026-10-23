@@ -4,6 +4,9 @@
 // See the COPYING file in the root project directory for full text.
 //
 
+// NOTE(jaypipes): This entire package is deprecated and will be removed in the
+// 1.0 release of ghw. Please use the aliased definitions of WithXXX functions
+// in the main `ghw` package.
 package option
 
 import (
@@ -128,6 +131,8 @@ func WithChroot(dir string) Option {
 }
 
 // WithAlerter sets alerting options for ghw
+//
+// DEPRECATED. Use `pkg/context.WithDisableWarnings`
 func WithAlerter(alerter Alerter) Option {
 	return func(opts *Options) {
 		opts.Alerter = alerter
@@ -135,6 +140,8 @@ func WithAlerter(alerter Alerter) Option {
 }
 
 // WithNullAlerter sets No-op alerting options for ghw
+//
+// DEPRECATED. Use `pkg/context.WithDisableWarnings`
 func WithNullAlerter() Option {
 	return func(opts *Options) {
 		opts.Alerter = NullAlerter
@@ -143,6 +150,8 @@ func WithNullAlerter() Option {
 
 // WithDisableTools revents ghw from calling external tools to discover
 // hardware capabilities.
+//
+// DEPRECATED. Use `pkg/context.WithDisableTools`
 func WithDisableTools() Option {
 	return func(opts *Options) {
 		opts.DisableTools = true
@@ -153,6 +162,8 @@ func WithDisableTools() Option {
 // to ghw. This is useful if you want to use a preloaded or specially configured
 // PCI database, such as one created with custom pcidb.WithOption settings, instead
 // of letting ghw load the PCI database automatically.
+//
+// DEPRECATED. Use `ghw.WithPCIDB`
 func WithPCIDB(pcidb *pcidb.PCIDB) Option {
 	return func(opts *Options) {
 		opts.PCIDB = pcidb
@@ -169,6 +180,8 @@ func WithUSBUeventPath(path string) Option {
 type PathOverrides map[string]string
 
 // WithPathOverrides supplies path-specific overrides for the context
+//
+// DEPRECATED. Use `pkg/context.WithPathOverrides`
 func WithPathOverrides(overrides PathOverrides) Option {
 	return func(opts *Options) {
 		opts.PathOverrides = overrides
@@ -177,6 +190,8 @@ func WithPathOverrides(overrides PathOverrides) Option {
 
 // FromEnv returns an Options populated from the environs or default option
 // values
+//
+// DEPRECATED. Use `pkg/context.FromEnv`
 func FromEnv() *Options {
 	return &Options{
 		Chroot:       EnvOrDefaultChroot(),
