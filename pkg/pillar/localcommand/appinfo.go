@@ -462,6 +462,11 @@ func (lc *LocalCmdAgent) prepareAppInfo() *profile.LocalAppInfoList {
 		zinfoAppInst.Version = ais.UUIDandVersion.Version
 		zinfoAppInst.Name = ais.DisplayName
 		zinfoAppInst.Err = ais.ErrorAndTimeWithSource.ErrorDescription.ToProto()
+		// Err holds a single error; report the runtime error only when there
+		// is no lifecycle error.
+		if zinfoAppInst.Err == nil {
+			zinfoAppInst.Err = ais.RuntimeErr.ToProto()
+		}
 		zinfoAppInst.State = ais.State.ZSwState()
 		if appCmd, hasEntry :=
 			lc.appCommands.AppCommands[zinfoAppInst.Id]; hasEntry {

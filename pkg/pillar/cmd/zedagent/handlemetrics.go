@@ -1160,6 +1160,19 @@ func encodeProxyStatus(proxyConfig *types.ProxyConfig) *info.ProxyStatus {
 	return status
 }
 
+// appErrors returns the lifecycle and runtime errors of aiStatus, skipping unset
+// ones so that no empty entry is reported.
+func appErrors(aiStatus *types.AppInstanceStatus) []*info.ErrorInfo {
+	var errs []*info.ErrorInfo
+	if !aiStatus.ErrorTime.IsZero() {
+		errs = append(errs, aiStatus.ErrorAndTimeWithSource.ErrorDescription.ToProto())
+	}
+	if !aiStatus.RuntimeErr.ErrorTime.IsZero() {
+		errs = append(errs, aiStatus.RuntimeErr.ToProto())
+	}
+	return errs
+}
+
 // This function is called per change, hence needs to try over all management ports
 // When aiStatus is nil it means a delete and we send a message
 // containing only the UUID to inform zedcloud about the delete.
@@ -1193,10 +1206,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 		ReportAppInfo.AppVersion = aiStatus.UUIDandVersion.Version
 		ReportAppInfo.AppName = aiStatus.DisplayName
 		ReportAppInfo.State = aiStatus.State.ZSwState()
-		if !aiStatus.ErrorTime.IsZero() {
-			errInfo := aiStatus.ErrorAndTimeWithSource.ErrorDescription.ToProto()
-			ReportAppInfo.AppErr = append(ReportAppInfo.AppErr, errInfo)
-		}
+		ReportAppInfo.AppErr = appErrors(aiStatus)
 
 		if aiStatus.BootTime.IsZero() {
 			// If never booted
