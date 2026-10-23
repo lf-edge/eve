@@ -108,7 +108,7 @@ func TestVaultKeyKeptOnTPMError(test *testing.T) {
 
 	log.Infof("Rebooting with %s presence-check faults armed...", transientKeyPresenceFaults)
 	base := armFault(transientKeyPresenceFaults)
-	device.RequestReboot(true)
+	device.RequestReboot(false, true)
 	evetest.Checkpoint("rebooted-with-transient-fault")
 
 	waitForVaultOpen(t, device, filesystem, "after the transient fault")
@@ -128,7 +128,7 @@ func TestVaultKeyKeptOnTPMError(test *testing.T) {
 
 	log.Infof("Rebooting with every presence check failing...")
 	base = armFault("always")
-	device.RequestReboot(true)
+	device.RequestReboot(false, true)
 	evetest.Checkpoint("rebooted-with-persistent-fault")
 
 	expectNewlogGrew(t, device, msgPresenceFailed, base[msgPresenceFailed],
@@ -142,7 +142,7 @@ func TestVaultKeyKeptOnTPMError(test *testing.T) {
 	t.Expect(err).ToNot(HaveOccurred(),
 		"failed to remove %s (stderr: %s)", keyPresenceFaultFile, stderr)
 	device.SyncDisks()
-	device.RequestReboot(true)
+	device.RequestReboot(false, true)
 	evetest.Checkpoint("rebooted-with-fault-cleared")
 	expectOriginalVault("after the persistent fault was cleared")
 

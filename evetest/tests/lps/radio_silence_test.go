@@ -156,7 +156,7 @@ func TestRadioSilence(test *testing.T) {
 	evetest.Checkpoint("radio-silence-on-pre-reboot")
 
 	log.Infof("Rebooting the device via the controller")
-	device.RequestReboot(true)
+	device.RequestReboot(false, true)
 	evetest.Checkpoint("device-rebooted")
 
 	// Step 6: persistence -- EVE's own state only, no LPS interaction.

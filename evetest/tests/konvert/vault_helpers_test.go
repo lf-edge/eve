@@ -59,7 +59,7 @@ func settleVaultLocal(t Gomega, device *evetest.EdgeDevice) settleMark {
 		default:
 			log.Infof("vault unlocked from the controller key (attempt %d/%d); rebooting to re-seal",
 				attempt, maxReboots)
-			device.RequestReboot(true)
+			device.RequestReboot(false, true)
 		}
 	}
 	t.Expect(false).To(BeTrue(),
